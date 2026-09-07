@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { WifiSlash } from '@phosphor-icons/react'
+import { EnvelopeSimple, WifiSlash } from '@phosphor-icons/react'
 import { supabase, cloudEnabled } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -44,6 +44,15 @@ function Problem({ text }: { text: string }) {
 export function AccessGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [ready, setReady] = useState(!cloudEnabled)
+  /**
+   * Знаем ли мы уже, состоит ли человек в бюджете.
+   *
+   * Установленное на телефон приложение имеет отдельное хранилище от браузера,
+   * поэтому при первом запуске оно не помнит ни сессии, ни семьи. Пока состав
+   * не пришёл с сервера, показывать «создать бюджет» нельзя: человек, у
+   * которого бюджет давно есть, увидит предложение завести новый.
+   */
+  const [membershipKnown, setMembershipKnown] = useState(false)
   const householdId = useStore((s) => s.householdId)
   const setSync = useStore((s) => s.setSync)
 
@@ -62,13 +71,17 @@ export function AccessGate({ children }: { children: ReactNode }) {
 
   // Узнаём, в какой семье состоим, и включаем синхронизацию.
   useEffect(() => {
-    if (!session) return
+    if (!session) {
+      setMembershipKnown(false)
+      return
+    }
     let cancelled = false
     loadMembership()
       .then((membership) => {
         if (cancelled) return
         const mine = membership.find((m) => m.userId === session.user.id)
         setSync({ membership, householdId: mine?.householdId ?? null })
+        setMembershipKnown(true)
         if (mine) {
           startSyncEngine()
           // Сначала забираем общий документ, и только потом заводим участников
@@ -76,17 +89,37 @@ export function AccessGate({ children }: { children: ReactNode }) {
           void sync().then(() => useStore.getState().adoptMembers(membership))
         }
       })
-      .catch((e) => setSync({ lastError: e instanceof Error ? e.message : String(e) }))
+      .catch((e) => {
+        if (cancelled) return
+        setSync({ lastError: e instanceof Error ? e.message : String(e) })
+        // Не пускаем в «создать бюджет» из-за сетевой ошибки: если человек уже
+        // в бюджете, он завёл бы второй и растерял данные по двум разным.
+        setMembershipKnown(Boolean(useStore.getState().householdId))
+      })
     return () => {
       cancelled = true
     }
   }, [session, setSync])
 
   if (!cloudEnabled) return <>{children}</>
-  if (!ready) return null
+  if (!ready) return <Splash />
   if (!session) return <SignIn />
+  // Есть сохранённая привязка — пускаем сразу, не дожидаясь ответа сервера.
+  if (!householdId && !membershipKnown) return <Splash note="Открываем бюджет" />
   if (!householdId) return <PickHousehold defaultName={session.user.email?.split('@')[0] ?? ''} />
   return <>{children}</>
+}
+
+/** Пока идёт проверка — знак и одна строка вместо пустого экрана или чужого вопроса. */
+function Splash({ note }: { note?: string }) {
+  return (
+    <div className="flex min-h-dvh flex-col items-center justify-center gap-3">
+      <span className="grid size-11 place-items-center rounded-2xl bg-brand font-display text-[17px] font-bold text-brand-ink">
+        FF
+      </span>
+      <span className="text-[13.5px] text-ink-3">{note ?? 'Минуту…'}</span>
+    </div>
+  )
 }
 
 function SignIn() {
@@ -126,8 +159,37 @@ function SignIn() {
 
   if (sent) {
     return (
-      <Shell title="Проверьте почту" note={`Отправили письмо на ${email}. Откройте ссылку из письма, чтобы подтвердить адрес, и возвращайтесь сюда.`}>
-        <Button variant="outline" onClick={() => { setSent(false); setMode('in') }}>Вернуться ко входу</Button>
+      <Shell title="Осталось подтвердить почту">
+        <div className="rounded-2xl border border-line bg-surface p-5">
+          <div className="flex items-start gap-3.5">
+            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand">
+              <EnvelopeSimple size={20} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[14.5px] leading-relaxed">
+                Письмо ушло на <b className="break-all">{email}</b>
+              </p>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">
+                Откройте ссылку из письма — она подтвердит адрес. Дальше вернитесь сюда и войдите
+                тем же паролем.
+              </p>
+            </div>
+          </div>
+
+          <ol className="mt-4 flex flex-col gap-2.5 border-t border-line pt-4">
+            {[
+              'Ссылка может открыть пустую страницу — это нормально, подтверждение всё равно засчитано.',
+              'Если письма нет через пару минут, загляните в «Спам» и «Промоакции».',
+            ].map((line, i) => (
+              <li key={i} className="flex gap-2.5 text-[12.5px] leading-relaxed text-ink-2">
+                <span className="mt-[3px] size-1.5 shrink-0 rounded-full bg-brand" />
+                {line}
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        <Button onClick={() => { setSent(false); setMode('in') }}>Я подтвердил — войти</Button>
       </Shell>
     )
   }
