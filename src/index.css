@@ -1,0 +1,207 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:is(.dark *));
+
+/* ---------------------------------------------------------------
+   Единственный источник цвета. Ни один компонент не имеет права
+   писать литеральный цвет — только токен отсюда.
+   Пары light/dark обязаны существовать обе: если добавляешь токен
+   в :root, добавь его и в .dark, иначе элемент пропадёт при смене темы.
+---------------------------------------------------------------- */
+:root {
+  --canvas: #e9edec;
+  --surface: #ffffff;
+  --surface-2: #f5f8f7;
+  --surface-3: #e7ecea;
+  --line: #dbe2e0;
+  --line-strong: #c2ccc9;
+  --ink: #0d1512;
+  --ink-2: #495653;
+  --ink-3: #6d7a77;
+
+  /* Бренд — меняется пользователем в «Оформлении» */
+  --brand: #0a6b57;
+  --brand-ink: #ffffff;
+  --brand-soft: #dcede7;
+
+  /* Участники */
+  --pa: #1e4fd1;
+  --pb: #b0295a;
+
+  /* Разделы бюджета — меняются пользователем */
+  --d1: #3b62b8;
+  --d2: #b4523c;
+  --d3: #2e7d4f;
+  --d4: #8a6d3b;
+  --d5: #5a6c78;
+
+  --warn: #7a5200;
+  --warn-soft: #faf0d9;
+  --warn-line: #e0c489;
+  --gold: #8a6d1c;
+  --gold-soft: #f5edd6;
+  --track: #e3e8e6;
+  --dot-ink: #ffffff;
+
+  --shadow-1: 0 1px 2px rgb(13 21 18 / 0.06), 0 8px 24px rgb(13 21 18 / 0.06);
+  --shadow-2: 0 2px 6px rgb(13 21 18 / 0.1), 0 18px 48px rgb(13 21 18 / 0.14);
+
+  /* --- мост в shadcn/ui --- */
+  --background: var(--canvas);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--brand);
+  --primary-foreground: var(--brand-ink);
+  --secondary: var(--surface-3);
+  --secondary-foreground: var(--ink);
+  --muted: var(--surface-2);
+  --muted-foreground: var(--ink-3);
+  --accent: var(--surface-3);
+  --accent-foreground: var(--ink);
+  --destructive: #9e2020;
+  --destructive-foreground: #ffffff;
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--brand);
+  --radius: 0.75rem;
+}
+
+.dark {
+  --canvas: #0a100e;
+  --surface: #131a18;
+  --surface-2: #1a2321;
+  --surface-3: #232d2b;
+  --line: #26312f;
+  --line-strong: #38443f;
+  --ink: #e7edeb;
+  --ink-2: #a5b1ad;
+  --ink-3: #7d8a86;
+
+  --brand: #17b98c;
+  --brand-ink: #04201a;
+  --brand-soft: #0f312a;
+
+  --pa: #7ca2ff;
+  --pb: #ff87ac;
+
+  --d1: #7fa5f0;
+  --d2: #f0917a;
+  --d3: #5cc98a;
+  --d4: #d8b372;
+  --d5: #9fb3be;
+
+  --warn: #e7b96a;
+  --warn-soft: #2a2317;
+  --warn-line: #4a3d20;
+  --gold: #d9b65c;
+  --gold-soft: #2a2517;
+  --track: #26312f;
+  --dot-ink: #0a100e;
+
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.35);
+  --shadow-2: 0 2px 8px rgb(0 0 0 / 0.5), 0 20px 56px rgb(0 0 0 / 0.55);
+
+  --destructive: #ff8b7a;
+  --destructive-foreground: #0a100e;
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-brand: var(--brand);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-soft: var(--brand-soft);
+  --color-pa: var(--pa);
+  --color-pb: var(--pb);
+  --color-d1: var(--d1);
+  --color-d2: var(--d2);
+  --color-d3: var(--d3);
+  --color-d4: var(--d4);
+  --color-d5: var(--d5);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-warn-line: var(--warn-line);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-track: var(--track);
+  --color-dot-ink: var(--dot-ink);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --font-display: 'Onest', 'Golos Text', system-ui, sans-serif;
+  --font-sans: 'Golos Text', 'Segoe UI', system-ui, sans-serif;
+
+  --shadow-card: var(--shadow-1);
+  --shadow-lift: var(--shadow-2);
+}
+
+@layer base {
+  * {
+    border-color: var(--line);
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    margin: 0;
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
+  }
+  button {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+}
+
+@utility num {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

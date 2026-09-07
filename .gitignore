@@ -1,0 +1,13 @@
+node_modules
+dist
+dist-ssr
+*.local
+.DS_Store
+dev-dist
+
+# локальные переменные окружения
+.env
+.env.local
+
+# личные настройки Claude Code
+.claude/settings.local.json
