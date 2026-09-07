@@ -6,7 +6,7 @@ import { Bar, Legend, Ring } from '@/components/charts'
 import { money, plain, pct } from '@/lib/money'
 import { monthKey, monthIn, monthFrom, dayLabel } from '@/lib/dates'
 import {
-  amountAt, liveCredits, liveGoals, liveObligations, nextChange, totalIncome, useStore,
+  amountAt, budgetAmounts, liveCredits, liveGoals, liveObligations, nextChange, useStore,
 } from '@/store/useStore'
 
 export function Overview() {
@@ -18,14 +18,22 @@ export function Overview() {
   const obligations = liveObligations(store.obligations)
   const credits = liveCredits(store.credits)
 
-  const income = totalIncome(people)
-  const spent = categories.filter((c) => c.key !== 'd5').reduce((a, c) => a + c.amount, 0)
-  const free = income - spent
+  // Суммы по разделам считаются из обязательств, кредитов и целей, а не хранятся
+  // отдельно: иначе бюджет остаётся в нулях, пока их не перепишут руками.
+  const amounts = budgetAmounts(store)
+  const income = amounts.income
+  const free = amounts.d5
+  const spent = income - free
   const key = monthKey()
 
   const segments = categories
     .filter((c) => c.key !== 'd5')
-    .map((c) => ({ key: c.key, value: c.amount, color: `var(--${c.key})`, label: c.name }))
+    .map((c) => ({
+      key: c.key,
+      value: amounts[c.key as 'd1' | 'd2' | 'd3' | 'd4'],
+      color: `var(--${c.key})`,
+      label: c.name,
+    }))
   segments.push({ key: 'd5', value: Math.max(0, free), color: 'var(--d5)', label: 'Свободно' })
 
   // Событие «освободится N ₸» рождается из версий обязательства, а не заводится руками.

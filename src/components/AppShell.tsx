@@ -82,7 +82,7 @@ export function AppShell() {
         <Outlet />
       </main>
 
-      <nav className="grid shrink-0 grid-cols-5 border-t border-line bg-surface px-1 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))]">
+      <nav className="grid shrink-0 grid-cols-5 border-t border-line bg-surface px-1 pt-1 pb-[max(4px,env(safe-area-inset-bottom))]">
         {TABS.map((t, i) =>
           t ? (
             <NavLink
@@ -91,7 +91,7 @@ export function AppShell() {
               end={t.to === '/'}
               className={({ isActive }) =>
                 cn(
-                  'flex flex-col items-center gap-0.5 px-0.5 py-1.5',
+                  'flex flex-col items-center gap-0.5 px-0.5 py-1',
                   isActive ? 'text-brand' : 'text-ink-3',
                 )
               }
@@ -108,7 +108,7 @@ export function AppShell() {
               key={i}
               onClick={() => setAddOpen(true)}
               aria-label="Добавить"
-              className="flex flex-col items-center justify-center py-1.5"
+              className="flex flex-col items-center justify-center py-1"
             >
               <span className="grid size-8 place-items-center rounded-[11px] bg-brand text-brand-ink">
                 <Plus size={17} weight="bold" />

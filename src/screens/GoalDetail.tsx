@@ -1,16 +1,18 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Plus } from '@phosphor-icons/react'
-import { Card, Callout, Field, Section, Segmented } from '@/components/kit'
+import { Card, Callout, Field, Section, Segmented, Tag } from '@/components/kit'
 import { Ring } from '@/components/charts'
+import { hueColor } from '@/lib/palette'
+import { useIsDark } from '@/lib/useTheme'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Slider } from '@/components/ui/slider'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { money, parseMoney, plain } from '@/lib/money'
 import { goalMonths, goalMonthly } from '@/lib/finance'
-import { monthAfter, monthInAfter } from '@/lib/dates'
-import { useStore } from '@/store/useStore'
+import { addMonths, monthAfter, monthInAfter, monthKey, monthTitle } from '@/lib/dates'
+import { contributionStreak, useStore } from '@/store/useStore'
 import type { PersonId } from '@/store/types'
 
 type Mode = 'date' | 'amount'
@@ -25,6 +27,7 @@ export function GoalDetail() {
   const removeGoal = useStore((s) => s.removeGoal)
   const inflation = useStore((s) => s.settings.inflation)
 
+  const dark = useIsDark()
   const [mode, setMode] = useState<Mode>('date')
   const [addOpen, setAddOpen] = useState(false)
   const [amount, setAmount] = useState('')
@@ -38,6 +41,14 @@ export function GoalDetail() {
       </div>
     )
   }
+
+  // Ритм считается по взносам именно в эту цель.
+  const streak = contributionStreak(goal.movements)
+  const filled = new Set(goal.movements.filter((m) => m.amount > 0).map((m) => m.date.slice(0, 7)))
+  const last12 = Array.from({ length: 12 }, (_, i) => {
+    const k = addMonths(monthKey(), i - 11)
+    return { key: k, label: monthTitle(k), filled: filled.has(k) }
+  })
 
   const remaining = Math.max(0, goal.need - goal.have)
   const months = goalMonths(remaining, goal.monthly)
@@ -124,6 +135,29 @@ export function GoalDetail() {
         При инфляции {(inflation * 100).toFixed(1).replace('.', ',')}% в год к моменту достижения
         такая же покупка будет стоить около {money(indexed)}. Расчёт выше — в сегодняшних деньгах.
       </Callout>
+
+      <Section title="Ритм цели" />
+      <Card>
+        <div className="mb-3 flex items-center gap-2.5">
+          <b className="text-[14.5px] font-semibold">Пополняем без пропусков</b>
+          {streak > 0 && <Tag tone="gold">{streak} мес.</Tag>}
+        </div>
+        <div className="flex gap-1.5">
+          {last12.map((m) => (
+            <i
+              key={m.key}
+              title={m.label}
+              className="h-[20px] flex-1 rounded"
+              style={{ background: m.filled ? hueColor(goal.hue, dark) : 'var(--track)' }}
+            />
+          ))}
+        </div>
+        <p className="mt-3 text-[12.5px] leading-relaxed text-ink-3">
+          {streak > 0
+            ? 'Считается по взносам именно в эту цель, а не по плану.'
+            : 'Закрасится, как только появится первый взнос. Считается по фактическим пополнениям этой цели.'}
+        </p>
+      </Card>
 
       <Section title="История цели" />
       <Card flush>

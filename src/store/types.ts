@@ -111,12 +111,25 @@ export type Obligation = Tracked & {
   parentId?: string
 }
 
+export type Currency = 'KZT' | 'USD' | 'EUR'
+
 export type Account = Tracked & {
   id: string
   name: string
   note: string
+  /** Всегда в тенге — по нему считается капитал. */
   amount: number
   kind: 'card' | 'cash' | 'deposit' | 'envelope'
+  /**
+   * Валютный счёт хранит и сумму в валюте, и курс, по которому её перевели.
+   * Курс вводится вручную и запоминается вместе с датой: так прошлые цифры
+   * не переписываются при каждом скачке курса, а человек видит, по какому
+   * курсу считалось.
+   */
+  currency?: Currency
+  foreignAmount?: number
+  rate?: number
+  rateAt?: string
   deposit?: {
     annualRate: number
     months: number

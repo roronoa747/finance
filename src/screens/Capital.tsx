@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Bank, CalendarPlus, Coins, CreditCard, House, Plus, Wallet } from '@phosphor-icons/react'
 import { Card, Field, Row, Section, Segmented } from '@/components/kit'
+import type { Account, Currency, PersonId } from '@/store/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -9,7 +10,7 @@ import { money, parseMoney, plain, ratePct } from '@/lib/money'
 import { cn } from '@/lib/utils'
 import { annuityMonths, annuityTotal, rateFromSchedule } from '@/lib/finance'
 import {
-  amountAt, goalSavings, nextChange, liveAccounts, liveCredits, liveObligations, netWorth, useStore,
+  amountAt, goalSavings, nextChange, liveAccounts, liveCredits, liveGoals, liveObligations, netWorth, useStore,
 } from '@/store/useStore'
 import { addMonths, monthKey, monthTitle } from '@/lib/dates'
 
@@ -23,6 +24,8 @@ const ICONS = {
 export function Capital() {
   const [addOpen, setAddOpen] = useState(false)
   const [obligationId, setObligationId] = useState<string | null>(null)
+  const [accountOpen, setAccountOpen] = useState(false)
+  const [incomeOpen, setIncomeOpen] = useState(false)
   const store = useStore()
   const accounts = liveAccounts(store.accounts)
   const credits = liveCredits(store.credits)
@@ -78,7 +81,13 @@ export function Capital() {
               />
             </Link>
           ) : (
-            <Row key={a.id} icon={ICONS[a.kind]} title={a.name} note={a.note} value={money(a.amount)} />
+            <Row
+              key={a.id}
+              icon={ICONS[a.kind]}
+              title={a.name}
+              note={a.currency ? `${plain(a.foreignAmount ?? 0)} ${a.currency} · курс ${a.rate}` : a.note}
+              value={money(a.amount)}
+            />
           ),
         )}
       </Card>
@@ -114,13 +123,236 @@ export function Capital() {
           ))}
       </Card>
 
-      <Button variant="outline" className="w-full bg-surface-2" onClick={() => setAddOpen(true)}>
-        <Plus size={16} weight="bold" /> Добавить кредит
-      </Button>
+      <div className="flex flex-col gap-2">
+        <Button variant="outline" className="w-full bg-surface-2" onClick={() => setAccountOpen(true)}>
+          <Plus size={16} weight="bold" /> Добавить счёт или накопления
+        </Button>
+        <Button variant="outline" className="w-full bg-surface-2" onClick={() => setAddOpen(true)}>
+          <Plus size={16} weight="bold" /> Добавить кредит
+        </Button>
+        <Button variant="outline" className="w-full bg-surface-2" onClick={() => setIncomeOpen(true)}>
+          <Plus size={16} weight="bold" /> Внеплановый доход
+        </Button>
+      </div>
+
+      <AddAccountDialog open={accountOpen} onOpenChange={setAccountOpen} />
+      <ExtraIncomeDialog open={incomeOpen} onOpenChange={setIncomeOpen} />
 
       <AddCreditDialog open={addOpen} onOpenChange={setAddOpen} />
       <ObligationDialog id={obligationId} onClose={() => setObligationId(null)} />
     </div>
+  )
+}
+
+const KINDS: { value: Account['kind']; label: string }[] = [
+  { value: 'card', label: 'Карта' },
+  { value: 'cash', label: 'Наличные' },
+  { value: 'deposit', label: 'Вклад' },
+  { value: 'envelope', label: 'Конверт' },
+]
+
+/** Счёт, наличные, вклад или конверт — в том числе в валюте. */
+function AddAccountDialog({
+  open, onOpenChange,
+}: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const addAccount = useStore((s) => s.addAccount)
+
+  const [name, setName] = useState('')
+  const [kind, setKind] = useState<Account['kind']>('card')
+  const [amount, setAmount] = useState('')
+  const [currency, setCurrency] = useState<Currency>('KZT')
+  const [rate, setRate] = useState('')
+  const [depositRate, setDepositRate] = useState('')
+
+  const foreign = currency !== 'KZT'
+  const rateValue = parseFloat(rate.replace(',', '.'))
+  const inTenge = foreign
+    ? Math.round(parseMoney(amount) * (Number.isFinite(rateValue) ? rateValue : 0))
+    : parseMoney(amount)
+  const ready = parseMoney(amount) > 0 && (!foreign || inTenge > 0)
+
+  function create() {
+    if (!ready) return
+    const annual = parseFloat(depositRate.replace(',', '.'))
+    addAccount({
+      name: name.trim() || KINDS.find((k) => k.value === kind)!.label,
+      note: foreign ? `${plain(parseMoney(amount))} ${currency}` : '',
+      amount: inTenge,
+      kind,
+      ...(foreign
+        ? { currency, foreignAmount: parseMoney(amount), rate: rateValue, rateAt: new Date().toISOString() }
+        : {}),
+      ...(kind === 'deposit' && Number.isFinite(annual) && annual > 0
+        ? { deposit: { annualRate: annual / 100, months: 12, monthlyTopUp: 0, capitalize: true } }
+        : {}),
+    })
+    setName(''); setAmount(''); setRate(''); setDepositRate('')
+    onOpenChange(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[88dvh] max-w-[92vw] overflow-y-auto rounded-2xl border-line bg-surface sm:max-w-[400px]">
+        <DialogHeader><DialogTitle className="font-display">Счёт или накопления</DialogTitle></DialogHeader>
+
+        <Field label="Что это">
+          <div className="grid grid-cols-2 gap-2">
+            {KINDS.map((k) => (
+              <button
+                key={k.value}
+                onClick={() => setKind(k.value)}
+                aria-pressed={kind === k.value}
+                className={cn(
+                  'rounded-xl border px-3 py-2.5 text-[13.5px]',
+                  kind === k.value ? 'border-brand bg-brand-soft font-medium' : 'border-line bg-surface-2 text-ink-2',
+                )}
+              >
+                {k.label}
+              </button>
+            ))}
+          </div>
+        </Field>
+
+        <Field label="Название">
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Например, Kaspi Gold" />
+        </Field>
+
+        <Field label="Валюта">
+          <div className="grid grid-cols-3 gap-2">
+            {(['KZT', 'USD', 'EUR'] as Currency[]).map((c) => (
+              <button
+                key={c}
+                onClick={() => setCurrency(c)}
+                aria-pressed={currency === c}
+                className={cn(
+                  'rounded-xl border px-3 py-2.5 text-[13.5px]',
+                  currency === c ? 'border-brand bg-brand-soft font-medium' : 'border-line bg-surface-2 text-ink-2',
+                )}
+              >
+                {c === 'KZT' ? '₸' : c === 'USD' ? '$' : '€'}
+              </button>
+            ))}
+          </div>
+        </Field>
+
+        <Field label={foreign ? `Сумма в ${currency}` : 'Сумма, ₸'}>
+          <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="numeric" className="num" />
+        </Field>
+
+        {foreign && (
+          <>
+            <Field label={`Курс: сколько тенге за 1 ${currency}`}>
+              <Input value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="533" className="num" />
+            </Field>
+            {inTenge > 0 && (
+              <div className="mb-3 rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-[13px]">
+                В капитале это <b className="num">{money(inTenge)}</b>
+                <p className="mt-1 text-[12px] leading-relaxed text-ink-3">
+                  Курс запоминается вместе с датой. Прошлые цифры от скачков курса не поедут —
+                  чтобы обновить, поменяете курс вручную.
+                </p>
+              </div>
+            )}
+          </>
+        )}
+
+        {kind === 'deposit' && (
+          <Field label="Ставка по вкладу, % годовых — если есть">
+            <Input value={depositRate} onChange={(e) => setDepositRate(e.target.value)} inputMode="decimal" placeholder="16,5" className="num" />
+          </Field>
+        )}
+
+        <Button onClick={create} disabled={!ready} className="w-full">Добавить</Button>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/**
+ * Внеплановый доход: премия, подарок, возврат налога.
+ *
+ * Отдельный сценарий, потому что это ровно тот момент, когда отложить легче
+ * всего — деньги ещё не считаются «своими». Если такие поступления просто
+ * растворяются в бюджете, самая доступная возможность накопить проходит мимо.
+ */
+function ExtraIncomeDialog({
+  open, onOpenChange,
+}: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const { people, contribute, setAccountAmount } = useStore()
+  const goals = liveGoals(useStore((s) => s.goals))
+  const accounts = liveAccounts(useStore((s) => s.accounts))
+
+  const [amount, setAmount] = useState('')
+  const [by, setBy] = useState<PersonId>(people[0]?.id ?? 'a')
+  const [target, setTarget] = useState('')
+
+  const value = parseMoney(amount)
+  const ready = value > 0 && Boolean(target)
+
+  function apply() {
+    if (!ready) return
+    const [kind, id] = target.split(':')
+    if (kind === 'goal') contribute(id, value, by)
+    else {
+      const acc = accounts.find((a) => a.id === id)
+      if (acc) setAccountAmount(id, acc.amount + value)
+    }
+    setAmount(''); setTarget('')
+    onOpenChange(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[88dvh] max-w-[92vw] overflow-y-auto rounded-2xl border-line bg-surface sm:max-w-[400px]">
+        <DialogHeader><DialogTitle className="font-display">Внеплановый доход</DialogTitle></DialogHeader>
+        <p className="-mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-2">
+          Премия, подарок, возврат налога — то, чего нет в плане месяца. Направьте сразу,
+          пока деньги не разошлись по мелочам.
+        </p>
+
+        <Field label="Сумма, ₸">
+          <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="numeric" className="num" autoFocus />
+        </Field>
+
+        {people.length > 1 && (
+          <Field label="Кому пришло">
+            <Segmented<PersonId>
+              value={by}
+              onChange={setBy}
+              options={people.map((p) => ({ value: p.id, label: p.name }))}
+            />
+          </Field>
+        )}
+
+        <Field label="Куда направить">
+          <select
+            value={target}
+            onChange={(e) => setTarget(e.target.value)}
+            className="w-full rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-[15px]"
+          >
+            <option value="">Выберите…</option>
+            {goals.length > 0 && (
+              <optgroup label="В цель">
+                {goals.map((g) => <option key={g.id} value={`goal:${g.id}`}>{g.name}</option>)}
+              </optgroup>
+            )}
+            {accounts.length > 0 && (
+              <optgroup label="На счёт">
+                {accounts.map((a) => <option key={a.id} value={`account:${a.id}`}>{a.name}</option>)}
+              </optgroup>
+            )}
+          </select>
+        </Field>
+
+        {!goals.length && !accounts.length && (
+          <p className="mb-3 text-[12.5px] text-ink-3">
+            Сначала заведите цель или счёт — иначе деньги некуда положить.
+          </p>
+        )}
+
+        <Button onClick={apply} disabled={!ready} className="w-full">Записать</Button>
+      </DialogContent>
+    </Dialog>
   )
 }
 

@@ -7,12 +7,22 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { money, parseMoney, plain } from '@/lib/money'
+import { addMonths, monthKey, monthTitle } from '@/lib/dates'
 import { HUES, HUE_KEYS, type HueKey } from '@/lib/palette'
-import { liveGoals, liveWishlist, useStore } from '@/store/useStore'
+import { contributionStreak, liveGoals, liveWishlist, useStore } from '@/store/useStore'
 import type { PersonId } from '@/store/types'
 import { cn } from '@/lib/utils'
 
 type Tab = 'goals' | 'wish'
+
+const monthWord = (n: number) => {
+  const t = n % 10
+  const h = n % 100
+  if (h >= 11 && h <= 14) return 'месяцев'
+  if (t === 1) return 'месяц'
+  if (t >= 2 && t <= 4) return 'месяца'
+  return 'месяцев'
+}
 
 export function Goals() {
   const [params, setParams] = useSearchParams()
@@ -45,6 +55,15 @@ function GoalList() {
   const [have, setHave] = useState('0')
   const [monthly, setMonthly] = useState('')
   const [hue, setHue] = useState<HueKey>('blue')
+
+  // Ритм считается по фактическим взносам во все цели, а не задан числом в коде.
+  const allMovements = goals.flatMap((g) => g.movements)
+  const streak = contributionStreak(allMovements)
+  const filledMonths = new Set(allMovements.filter((m) => m.amount > 0).map((m) => m.date.slice(0, 7)))
+  const last12 = Array.from({ length: 12 }, (_, i) => {
+    const key = addMonths(monthKey(), i - 11)
+    return { key, label: monthTitle(key), filled: filledMonths.has(key) }
+  })
 
   function create() {
     const n = parseMoney(need)
@@ -96,20 +115,22 @@ function GoalList() {
       <Card>
         <div className="mb-3 flex items-center gap-2.5">
           <b className="text-[14.5px] font-semibold">Откладываем без пропусков</b>
-          <Tag tone="gold">7 месяцев</Tag>
+          {streak > 0 && <Tag tone="gold">{streak} {monthWord(streak)}</Tag>}
         </div>
         <div className="flex gap-1.5">
-          {Array.from({ length: 12 }).map((_, i) => (
+          {last12.map((m) => (
             <i
-              key={i}
+              key={m.key}
+              title={m.label}
               className="h-[22px] flex-1 rounded-md"
-              style={{ background: i < 7 ? 'var(--brand)' : 'var(--track)' }}
+              style={{ background: m.filled ? 'var(--brand)' : 'var(--track)' }}
             />
           ))}
         </div>
-        <p className="mt-3 text-[12.5px] text-ink-3">
-          Месяц засчитывается, если план по целям выполнен и нет просрочек по кредиту. Иначе
-          геймификация поощряла бы закидывать деньги в цель вместо обязательного платежа.
+        <p className="mt-3 text-[12.5px] leading-relaxed text-ink-3">
+          {streak > 0
+            ? 'Закрашен месяц, в котором был хотя бы один взнос в любую цель. Серия считается назад от текущего месяца.'
+            : 'Пока ни одного взноса. Полоски закрасятся сами, как только начнёте пополнять цели — считается по фактическим взносам, а не по плану.'}
         </p>
       </Card>
 

@@ -50,7 +50,9 @@ export type State = SyncDoc & {
   removeCredit: (id: string) => void
   setDeposit: (id: string, patch: Partial<NonNullable<Account['deposit']>>) => void
   setAccountAmount: (id: string, amount: number) => void
-  addAccount: (a: Pick<Account, 'name' | 'note' | 'amount' | 'kind' | 'deposit'>) => void
+  addAccount: (
+    a: Pick<Account, 'name' | 'note' | 'amount' | 'kind' | 'deposit' | 'currency' | 'foreignAmount' | 'rate' | 'rateAt'>,
+  ) => void
   addCredit: (c: Pick<Credit, 'name' | 'note' | 'principal' | 'annualRate' | 'payment' | 'day'>) => void
 
   /** Заводит участников из состава семьи: имена берутся из аккаунтов, а не из кода. */
@@ -499,6 +501,74 @@ export const mandatoryMonthly = (categories: Category[]) =>
  * видел только кредит. Когда появится привязка цели к вкладу, эти суммы
  * начнут браться со счёта и здесь считаться перестанут — для того и флаг.
  */
+/**
+ * Суммы по разделам бюджета.
+ *
+ * Жильё, кредиты и цели НЕ вводятся руками: они уже описаны обязательствами,
+ * кредитами и планом по целям. Держать их отдельным числом значит завести
+ * вторую версию правды, которая немедленно разойдётся с первой — что и
+ * случилось: человек завёл аренду и цель, а бюджет остался в нулях.
+ *
+ * Руками задаётся только «еда и быт»: это единственная статья, которую мы
+ * принципиально не отслеживаем по операциям. Свободный остаток — то, что
+ * осталось от дохода.
+ */
+export function budgetAmounts(state: Pick<State, 'categories' | 'obligations' | 'credits' | 'goals' | 'people'>) {
+  const key = monthKey()
+  const housing = liveObligations(state.obligations)
+    .filter((o) => o.category === 'd1')
+    .reduce((a, o) => a + amountAt(o, key), 0)
+  const other = liveObligations(state.obligations)
+    .filter((o) => o.category !== 'd1' && o.category !== 'd2')
+    .reduce((a, o) => a + amountAt(o, key), 0)
+  const debts =
+    liveCredits(state.credits).reduce((a, c) => a + c.payment, 0) +
+    liveObligations(state.obligations)
+      .filter((o) => o.category === 'd2')
+      .reduce((a, o) => a + amountAt(o, key), 0)
+  const goals = liveGoals(state.goals).reduce((a, g) => a + g.monthly, 0)
+  const living = (state.categories.find((c) => c.key === 'd4')?.amount ?? 0) + other
+  const income = totalIncome(state.people)
+  const free = income - housing - debts - goals - living
+
+  return { d1: housing, d2: debts, d3: goals, d4: living, d5: free, income }
+}
+
+/**
+ * Месяцы подряд со взносами, считая назад от текущего.
+ *
+ * Раньше на экране стояла «7 месяцев» — просто написанное в коде число.
+ * Такая цифра хуже, чем её отсутствие: она выглядит как факт, но не значит
+ * ничего, и первый же человек, который сверит её с реальностью, перестанет
+ * верить и остальным цифрам.
+ *
+ * Текущий месяц не обрывает серию, даже если взноса ещё не было: он не
+ * закончился, и наказывать за это рано.
+ */
+export function contributionStreak(movements: { date: string; amount: number }[]): number {
+  const months = new Set(
+    movements.filter((m) => m.amount > 0).map((m) => m.date.slice(0, 7)),
+  )
+  if (!months.size) return 0
+
+  let streak = 0
+  let cursor = monthKey()
+  if (!months.has(cursor)) cursor = addMonthsKey(cursor, -1)
+
+  while (months.has(cursor)) {
+    streak++
+    cursor = addMonthsKey(cursor, -1)
+  }
+  return streak
+}
+
+/** Локальный сдвиг ключа месяца — чтобы не тянуть сюда весь модуль дат. */
+function addMonthsKey(key: string, delta: number): string {
+  const [y, m] = key.split('-').map(Number)
+  const total = y * 12 + (m - 1) + delta
+  return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, '0')}`
+}
+
 export const goalSavings = (goals: Goal[]) =>
   liveGoals(goals)
     .filter((g) => !g.accountId)
