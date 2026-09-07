@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Bank, CalendarPlus, Coins, CreditCard, House, Plus, Wallet } from '@phosphor-icons/react'
 import { Card, Field, Row, Section, Segmented } from '@/components/kit'
 import type { Account, Currency, PersonId } from '@/store/types'
@@ -25,7 +25,10 @@ export function Capital() {
   const [addOpen, setAddOpen] = useState(false)
   const [obligationId, setObligationId] = useState<string | null>(null)
   const [accountOpen, setAccountOpen] = useState(false)
-  const [incomeOpen, setIncomeOpen] = useState(false)
+  // «Внеплановый доход» живёт в меню «+»: это действие, а не раздел капитала.
+  const [params, setParams] = useSearchParams()
+  const incomeOpen = params.get('income') === '1'
+  const setIncomeOpen = (v: boolean) => setParams(v ? { income: '1' } : {}, { replace: true })
   const store = useStore()
   const accounts = liveAccounts(store.accounts)
   const credits = liveCredits(store.credits)
@@ -92,6 +95,10 @@ export function Capital() {
         )}
       </Card>
 
+      <Button variant="outline" className="w-full bg-surface-2" onClick={() => setAccountOpen(true)}>
+        <Plus size={16} weight="bold" /> Добавить счёт или накопления
+      </Button>
+
       <Section title="Обязательства" />
       <Card flush>
         {credits.map((c) => {
@@ -123,17 +130,9 @@ export function Capital() {
           ))}
       </Card>
 
-      <div className="flex flex-col gap-2">
-        <Button variant="outline" className="w-full bg-surface-2" onClick={() => setAccountOpen(true)}>
-          <Plus size={16} weight="bold" /> Добавить счёт или накопления
-        </Button>
-        <Button variant="outline" className="w-full bg-surface-2" onClick={() => setAddOpen(true)}>
-          <Plus size={16} weight="bold" /> Добавить кредит
-        </Button>
-        <Button variant="outline" className="w-full bg-surface-2" onClick={() => setIncomeOpen(true)}>
-          <Plus size={16} weight="bold" /> Внеплановый доход
-        </Button>
-      </div>
+      <Button variant="outline" className="w-full bg-surface-2" onClick={() => setAddOpen(true)}>
+        <Plus size={16} weight="bold" /> Добавить кредит
+      </Button>
 
       <AddAccountDialog open={accountOpen} onOpenChange={setAccountOpen} />
       <ExtraIncomeDialog open={incomeOpen} onOpenChange={setIncomeOpen} />

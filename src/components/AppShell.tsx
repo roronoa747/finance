@@ -131,7 +131,11 @@ export function AppShell() {
               />
             )}
             <Row
-              icon={<TrendUp size={16} />} title="Пополнить цель" note="взнос в накопления"
+              icon={<TrendUp size={16} />} title="Внеплановый доход" note="премия, подарок, возврат"
+              onClick={() => { setAddOpen(false); navigate('/capital?income=1') }}
+            />
+            <Row
+              icon={<Target size={16} />} title="Пополнить цель" note="взнос в накопления"
               onClick={() => { setAddOpen(false); navigate('/goals') }}
             />
             <Row
