@@ -6,7 +6,6 @@ dist-ssr
 dev-dist
 
 # локальные переменные окружения
-.env
 .env.local
 
 # личные настройки Claude Code
