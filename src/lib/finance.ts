@@ -33,6 +33,42 @@ export function annuityTotal(principal: number, annualRate: number, payment: num
   return Number.isFinite(n) ? payment * n : Infinity
 }
 
+/**
+ * Ставка, выведенная из условий кредита.
+ *
+ * В договоре ГЭСВ есть всегда, но найти её там умеет не каждый, а платёж
+ * и срок человек помнит наизусть. Из них ставка вычисляется однозначно:
+ * подбираем ту, при которой график сходится за нужное число месяцев.
+ *
+ * Возвращает null, когда решения нет: если платёж меньше, чем принципал,
+ * делённый на срок, долг не закроется ни при какой ставке — значит в цифрах
+ * ошибка, и лучше сказать об этом, чем показать выдуманный процент.
+ */
+export function rateFromSchedule(
+  principal: number,
+  payment: number,
+  months: number,
+): number | null {
+  if (principal <= 0 || payment <= 0 || months <= 0) return null
+
+  // При нулевой ставке долг гасится ровно за principal / payment месяцев.
+  // Если это больше запрошенного срока, платёж не покрывает даже тело долга.
+  if (principal / payment > months + 1e-9) return null
+
+  // Срок растёт вместе со ставкой, поэтому годится обычное деление пополам.
+  let low = 0
+  let high = 2 // 200% годовых — заведомо выше любого потребительского кредита
+
+  if (annuityMonths(principal, high, payment) < months) return high
+
+  for (let i = 0; i < 80; i++) {
+    const mid = (low + high) / 2
+    if (annuityMonths(principal, mid, payment) < months) low = mid
+    else high = mid
+  }
+  return (low + high) / 2
+}
+
 export type Prepayment = {
   monthsNow: number
   monthsAfter: number

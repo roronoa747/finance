@@ -3,9 +3,9 @@ import { ArrowLeft, Copy, UserPlus } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Field, Segmented } from '@/components/kit'
-import { money, parseMoney } from '@/lib/money'
+import { money, parseMoney, ratePct } from '@/lib/money'
 import { HUES, HUE_KEYS, type HueKey } from '@/lib/palette'
-import { goalMonthly } from '@/lib/finance'
+import { goalMonthly, rateFromSchedule } from '@/lib/finance'
 import { mySlot, useStore } from '@/store/useStore'
 import { createInvite } from '@/store/sync'
 import { cn } from '@/lib/utils'
@@ -114,6 +114,9 @@ export function Setup() {
   const [payment, setPayment] = useState('')
   const [rate, setRate] = useState('')
   const [creditDay, setCreditDay] = useState('12')
+  // Ставку можно не знать: тогда выводим её из срока.
+  const [rateMode, setRateMode] = useState<'rate' | 'term'>('rate')
+  const [term, setTerm] = useState('')
 
   const [goalName, setGoalName] = useState('')
   const [goalNeed, setGoalNeed] = useState('')
@@ -168,6 +171,15 @@ export function Setup() {
     next()
   }
 
+  /** Ставка: либо введена, либо выведена из суммы, платежа и срока. */
+  function creditRate(): number | null {
+    if (rateMode === 'rate') {
+      const v = parseFloat(rate.replace(',', '.'))
+      return Number.isFinite(v) && v > 0 ? v / 100 : null
+    }
+    return rateFromSchedule(parseMoney(principal), parseMoney(payment), parseMoney(term))
+  }
+
   function saveCredit() {
     if (hasCredit === 'yes') {
       const p = parseMoney(payment)
@@ -175,7 +187,7 @@ export function Setup() {
         name: 'Кредит',
         note: 'ежемесячный платёж',
         principal: parseMoney(principal),
-        annualRate: (parseFloat(rate.replace(',', '.')) || 0) / 100,
+        annualRate: creditRate() ?? 0,
         payment: p,
         day: Math.min(28, Math.max(1, parseMoney(creditDay) || 1)),
       })
@@ -310,6 +322,7 @@ export function Setup() {
   }
 
   if (step === 'credit') {
+    const computedRate = creditRate()
     return (
       <Frame
         step={idx} total={total} onBack={back}
@@ -336,15 +349,50 @@ export function Setup() {
             <Field label="Платёж в месяц, ₸">
               <Input value={payment} onChange={(e) => setPayment(e.target.value)} inputMode="numeric" placeholder="117 000" className="num" />
             </Field>
-            <Field label="Ставка (ГЭСВ из договора), % годовых">
-              <Input value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="23,4" className="num" />
+            <Field label="Что знаете про ставку">
+              <Segmented<'rate' | 'term'>
+                value={rateMode}
+                onChange={setRateMode}
+                options={[
+                  { value: 'rate', label: 'Знаю ставку' },
+                  { value: 'term', label: 'Знаю срок' },
+                ]}
+              />
             </Field>
+
+            {rateMode === 'rate' ? (
+              <Field label="Ставка (ГЭСВ из договора), % годовых">
+                <Input value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="23,4" className="num" />
+              </Field>
+            ) : (
+              <Field label="Сколько платежей осталось">
+                <Input value={term} onChange={(e) => setTerm(e.target.value)} inputMode="numeric" placeholder="17" className="num" />
+              </Field>
+            )}
+
+            {rateMode === 'term' && parseMoney(term) > 0 && parseMoney(payment) > 0 && (
+              computedRate !== null ? (
+                <div className="mb-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3">
+                  <span className="text-[12.5px] text-ink-2">Ставка получается</span>
+                  <div className="font-display text-[20px] font-semibold tracking-[-0.02em] num">
+                    {ratePct(computedRate, 1)} годовых
+                  </div>
+                </div>
+              ) : (
+                <div className="mb-3 rounded-xl border border-warn-line bg-warn-soft px-3.5 py-3 text-[12.5px] leading-relaxed text-ink-2">
+                  При таком платеже долг за этот срок не закрывается. Проверьте суммы: скорее
+                  всего, платёж или число платежей указаны неверно.
+                </div>
+              )
+            )}
+
             <Field label="День платежа">
               <Input value={creditDay} onChange={(e) => setCreditDay(e.target.value)} inputMode="numeric" className="num" />
             </Field>
             <p className="text-[12.5px] leading-relaxed text-ink-3">
-              Берите ГЭСВ, а не ставку с витрины: в договоре это «годовая эффективная ставка
-              вознаграждения». Она учитывает комиссии, и по ней считается настоящая переплата.
+              Если ставку знаете — берите ГЭСВ из договора, а не с витрины: там она называется
+              «годовая эффективная ставка вознаграждения» и учитывает комиссии. Если не знаете —
+              укажите, сколько платежей осталось, и ставка посчитается сама.
             </p>
           </>
         )}

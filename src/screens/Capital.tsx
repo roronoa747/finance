@@ -1,8 +1,12 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Bank, Coins, CreditCard, House, Wallet } from '@phosphor-icons/react'
-import { Card, Row, Section, Tag } from '@/components/kit'
-import { money, plain, ratePct } from '@/lib/money'
-import { annuityMonths, annuityTotal } from '@/lib/finance'
+import { Bank, Coins, CreditCard, House, Plus, Wallet } from '@phosphor-icons/react'
+import { Card, Field, Row, Section, Segmented } from '@/components/kit'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { money, parseMoney, plain, ratePct } from '@/lib/money'
+import { annuityMonths, annuityTotal, rateFromSchedule } from '@/lib/finance'
 import {
   amountAt, liveAccounts, liveCredits, liveObligations, netWorth, useStore,
 } from '@/store/useStore'
@@ -16,6 +20,7 @@ const ICONS = {
 }
 
 export function Capital() {
+  const [addOpen, setAddOpen] = useState(false)
   const store = useStore()
   const accounts = liveAccounts(store.accounts)
   const credits = liveCredits(store.credits)
@@ -83,20 +88,124 @@ export function Capital() {
           ))}
       </Card>
 
-      <Card>
-        <div className="mb-2.5 flex items-center gap-2.5">
-          <b className="text-[14.5px] font-semibold">Депозит «Первая квартира»</b>
-          <Tag tone="gold">+8% к плану</Tag>
-        </div>
-        <div className="flex h-4 overflow-hidden rounded-lg bg-track">
-          <span className="block h-full" style={{ width: '64%', background: 'var(--brand)' }} />
-          <span className="block h-full" style={{ width: '6%', background: 'var(--gold)' }} />
-        </div>
-        <p className="mt-2.5 text-[12.5px] text-ink-2">
-          Золотая часть — то, что вы положили сверх плана. Это и есть вся геймификация вкладов:
-          обгоняем собственный график, а не абстрактный уровень.
-        </p>
-      </Card>
+      <Button variant="outline" className="w-full bg-surface-2" onClick={() => setAddOpen(true)}>
+        <Plus size={16} weight="bold" /> Добавить кредит
+      </Button>
+
+      <AddCreditDialog open={addOpen} onOpenChange={setAddOpen} />
     </div>
+  )
+}
+
+/**
+ * Второй и последующие кредиты.
+ *
+ * В мастере заводится один, основной — там важно не утомить человека. Всё
+ * остальное добавляется здесь, когда до этого дойдут руки.
+ *
+ * Ставку можно не знать: если указать, сколько платежей осталось, она
+ * выводится из суммы, платежа и срока однозначно.
+ */
+function AddCreditDialog({
+  open, onOpenChange,
+}: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const addCredit = useStore((s) => s.addCredit)
+  const credits = useStore((s) => s.credits)
+  const setCategoryAmount = useStore((s) => s.setCategoryAmount)
+
+  const [name, setName] = useState('')
+  const [principal, setPrincipal] = useState('')
+  const [payment, setPayment] = useState('')
+  const [mode, setMode] = useState<'rate' | 'term'>('rate')
+  const [rate, setRate] = useState('')
+  const [term, setTerm] = useState('')
+  const [day, setDay] = useState('12')
+
+  const resolvedRate =
+    mode === 'rate'
+      ? (() => {
+          const v = parseFloat(rate.replace(',', '.'))
+          return Number.isFinite(v) && v > 0 ? v / 100 : null
+        })()
+      : rateFromSchedule(parseMoney(principal), parseMoney(payment), parseMoney(term))
+
+  const ready = parseMoney(principal) > 0 && parseMoney(payment) > 0 && resolvedRate !== null
+
+  function create() {
+    if (!ready) return
+    const pay = parseMoney(payment)
+    addCredit({
+      name: name.trim() || 'Кредит',
+      note: 'ежемесячный платёж',
+      principal: parseMoney(principal),
+      annualRate: resolvedRate ?? 0,
+      payment: pay,
+      day: Math.min(28, Math.max(1, parseMoney(day) || 1)),
+    })
+    // В корзине «Кредиты» должна стоять сумма всех платежей, а не последнего.
+    const total = liveCredits(credits).reduce((a, c) => a + c.payment, 0) + pay
+    setCategoryAmount('d2', total)
+    setName(''); setPrincipal(''); setPayment(''); setRate(''); setTerm('')
+    onOpenChange(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[88dvh] max-w-[92vw] overflow-y-auto rounded-2xl border-line bg-surface sm:max-w-[400px]">
+        <DialogHeader><DialogTitle className="font-display">Ещё один кредит</DialogTitle></DialogHeader>
+
+        <Field label="Название">
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Например, рассрочка на телефон" />
+        </Field>
+        <Field label="Остаток долга, ₸">
+          <Input value={principal} onChange={(e) => setPrincipal(e.target.value)} inputMode="numeric" placeholder="600 000" className="num" />
+        </Field>
+        <Field label="Платёж в месяц, ₸">
+          <Input value={payment} onChange={(e) => setPayment(e.target.value)} inputMode="numeric" placeholder="55 000" className="num" />
+        </Field>
+
+        <Field label="Что знаете про ставку">
+          <Segmented<'rate' | 'term'>
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: 'rate', label: 'Знаю ставку' },
+              { value: 'term', label: 'Знаю срок' },
+            ]}
+          />
+        </Field>
+
+        {mode === 'rate' ? (
+          <Field label="Ставка (ГЭСВ), % годовых">
+            <Input value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="23,4" className="num" />
+          </Field>
+        ) : (
+          <Field label="Сколько платежей осталось">
+            <Input value={term} onChange={(e) => setTerm(e.target.value)} inputMode="numeric" placeholder="12" className="num" />
+          </Field>
+        )}
+
+        {mode === 'term' && parseMoney(term) > 0 && parseMoney(payment) > 0 && (
+          resolvedRate !== null ? (
+            <div className="mb-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3">
+              <span className="text-[12.5px] text-ink-2">Ставка получается</span>
+              <div className="font-display text-[20px] font-semibold tracking-[-0.02em] num">
+                {ratePct(resolvedRate, 1)} годовых
+              </div>
+            </div>
+          ) : (
+            <div className="mb-3 rounded-xl border border-warn-line bg-warn-soft px-3.5 py-3 text-[12.5px] leading-relaxed text-ink-2">
+              При таком платеже долг за этот срок не закрывается — проверьте суммы.
+            </div>
+          )
+        )}
+
+        <Field label="День платежа">
+          <Input value={day} onChange={(e) => setDay(e.target.value)} inputMode="numeric" className="num" />
+        </Field>
+
+        <Button onClick={create} disabled={!ready} className="w-full">Добавить</Button>
+      </DialogContent>
+    </Dialog>
   )
 }
