@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   House, ChartBar, Plus, Target, Vault, PaintBrush, Sparkle,
-  ShoppingBag, CreditCard, TrendUp, DownloadSimple,
+  ShoppingBag, CreditCard, TrendUp, DownloadSimple, UserPlus,
 } from '@phosphor-icons/react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { AppearancePanel } from '@/components/AppearancePanel'
@@ -30,6 +30,7 @@ export function AppShell() {
   const [addOpen, setAddOpen] = useState(false)
   const [themeOpen, setThemeOpen] = useState(false)
   const people = useStore((s) => s.people)
+  const membership = useStore((s) => s.membership)
   const { pathname } = useLocation()
   const navigate = useNavigate()
 
@@ -37,8 +38,11 @@ export function AppShell() {
     pathname === '/' ? monthTitle(monthKey())
     : TITLES[pathname] ?? (pathname.startsWith('/goals') ? 'Цель' : 'Вклад')
 
+  // Высота фиксирована, а не минимальна: при min-height контейнер растёт вместе
+  // с содержимым, внутренняя прокрутка не включается, и нижняя панель уезжает
+  // вниз страницы вместо того, чтобы стоять на месте.
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-[520px] flex-col bg-canvas md:max-w-[420px] md:my-8 md:min-h-0 md:h-[860px] md:rounded-[42px] md:border md:border-line-strong md:shadow-lift md:overflow-hidden">
+    <div className="mx-auto flex h-dvh w-full max-w-[520px] flex-col overflow-hidden bg-canvas md:my-8 md:h-[860px] md:max-w-[420px] md:rounded-[42px] md:border md:border-line-strong md:shadow-lift">
       <header className="flex shrink-0 items-center gap-3 bg-canvas px-4.5 pb-3 pt-4.5">
         <div className="flex items-center">
           {people.map((p, i) => (
@@ -120,6 +124,12 @@ export function AppShell() {
             <SheetTitle className="font-display text-[16px]">Добавить</SheetTitle>
           </SheetHeader>
           <div className="flex flex-col pb-2">
+            {membership.length < 2 && (
+              <Row
+                icon={<UserPlus size={16} />} title="Пригласить партнёра" note="код для второго участника"
+                onClick={() => { setAddOpen(false); navigate('/') }}
+              />
+            )}
             <Row
               icon={<TrendUp size={16} />} title="Пополнить цель" note="взнос в накопления"
               onClick={() => { setAddOpen(false); navigate('/goals') }}
