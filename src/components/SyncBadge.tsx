@@ -104,7 +104,7 @@ export function SyncBadge() {
 
             {membership.length > 0 && (
               <div className="rounded-xl border border-line px-3.5 py-3">
-                <div className="mb-2 text-[12px] uppercase tracking-[0.07em] text-ink-3">В казне</div>
+                <div className="mb-2 text-[12px] uppercase tracking-[0.07em] text-ink-3">В бюджете</div>
                 {membership.map((m) => (
                   <div key={m.userId} className="flex items-center gap-2.5 py-1 text-[14px]">
                     <i className="size-2.5 rounded-full" style={{ background: `var(--p${m.slot})` }} />

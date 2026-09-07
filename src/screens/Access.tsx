@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { Vault, WifiSlash } from '@phosphor-icons/react'
+import { WifiSlash } from '@phosphor-icons/react'
 import { supabase, cloudEnabled } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,10 +12,12 @@ function Shell({ title, note, children }: { title: string; note?: string; childr
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-[420px] flex-col justify-center gap-4 px-5 py-10">
       <div className="mb-1 flex items-center gap-2.5">
-        <span className="grid size-9 place-items-center rounded-xl bg-brand text-brand-ink">
-          <Vault size={19} weight="fill" />
+        <span className="grid size-9 place-items-center rounded-xl bg-brand font-display text-[15px] font-bold tracking-[0.02em] text-brand-ink">
+          FF
         </span>
-        <span className="font-display text-[19px] font-semibold tracking-[-0.02em]">Казна</span>
+        <span className="font-display text-[19px] font-semibold tracking-[-0.02em]">
+          Family Finance
+        </span>
       </div>
       <div>
         <h1 className="font-display text-[24px] font-semibold leading-tight tracking-[-0.025em]">{title}</h1>
@@ -37,7 +39,7 @@ function Problem({ text }: { text: string }) {
 
 /**
  * Ворота: без облака пускаем сразу (приложение остаётся локальным),
- * с облаком — вход, затем выбор «создать казну» или «войти по коду».
+ * с облаком — вход, затем выбор «создать бюджет» или «войти по коду».
  */
 export function AccessGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
@@ -131,7 +133,7 @@ function SignIn() {
   return (
     <Shell
       title={mode === 'in' ? 'Вход' : 'Создать аккаунт'}
-      note="Общая казна на двоих. Данные хранятся на вашем устройстве и синхронизируются между телефонами."
+      note="Общий бюджет на двоих. Данные хранятся на вашем устройстве и синхронизируются между телефонами."
     >
       <Segmented<'in' | 'up'>
         value={mode}
@@ -178,7 +180,7 @@ function PickHousehold({ defaultName }: { defaultName: string }) {
     setProblem('')
     try {
       const id = mode === 'create'
-        ? await createHousehold('Наша казна', name.trim() || 'Участник')
+        ? await createHousehold("Наш бюджет", name.trim() || "Участник")
         : await joinHousehold(code.trim(), name.trim() || 'Участник')
       const membership = await loadMembership()
       setSync({ householdId: id, membership })
@@ -197,9 +199,9 @@ function PickHousehold({ defaultName }: { defaultName: string }) {
 
   return (
     <Shell
-      title="Общая казна"
+      title="Общий бюджет"
       note={mode === 'create'
-        ? 'Создайте казну, а потом пригласите второго — он войдёт по короткому коду.'
+        ? 'Создайте бюджет, а потом пригласите второго — он войдёт по короткому коду.'
         : 'Введите код, который вам продиктовали.'}
     >
       <Segmented<'create' | 'join'>
@@ -222,12 +224,12 @@ function PickHousehold({ defaultName }: { defaultName: string }) {
       </div>
       <Problem text={problem} />
       <Button onClick={go} disabled={busy || !name.trim() || (mode === 'join' && !code.trim())}>
-        {busy ? 'Минуту…' : mode === 'create' ? 'Создать казну' : 'Войти в казну'}
+        {busy ? 'Минуту…' : mode === 'create' ? 'Создать бюджет' : 'Войти в бюджет'}
       </Button>
       {mode === 'create' && (
         <p className="rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-2">
-          Всё, что вы уже завели на этом устройстве — цели, покупки, обязательства — уедет в общую
-          казну при создании. Ничего не потеряется.
+          Всё, что вы уже завели на этом устройстве — цели, покупки, обязательства — уедет в общий
+          бюджет при создании. Ничего не потеряется.
         </p>
       )}
       <button onClick={signOut} className="mt-1 text-center text-[13px] text-ink-3 hover:text-ink">

@@ -12,9 +12,11 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'Казна',
-        short_name: 'Казна',
-        description: 'Семейная казна: цели, обязательства и накопления на двоих',
+        name: 'Family Finance',
+        // Короткое имя — то, что подписывает иконку на домашнем экране.
+        // Длинное там всё равно обрежется, поэтому монограмма.
+        short_name: 'FF',
+        description: 'Семейные финансы на двоих: цели, обязательства и накопления',
         lang: 'ru',
         start_url: '/',
         display: 'standalone',
