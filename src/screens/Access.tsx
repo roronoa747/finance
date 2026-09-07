@@ -60,10 +60,14 @@ export function AccessGate({ children }: { children: ReactNode }) {
     if (!supabase) return
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
+      // Ставим сразу: без этого приложение не знает, чей это телефон, и
+      // экраны, которые на это опираются, оказываются пустыми.
+      setSync({ userId: data.session?.user.id ?? null })
       setReady(true)
     })
     const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
       setSession(next)
+      setSync({ userId: next?.user.id ?? null })
       if (!next) setSync({ householdId: null, userId: null, membership: [], rev: 0, status: 'offline' })
     })
     return () => listener.subscription.unsubscribe()

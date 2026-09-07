@@ -29,11 +29,14 @@ function SetupGate({ children }: { children: React.ReactNode }) {
 
   if (!setupDoneAt) return <Setup />
 
-  // Ждём состав семьи: пока неизвестно, чей это телефон, решать нельзя.
+  /*
+    Если по какой-то причине не удалось понять, чей это телефон, пускаем
+    в приложение. Пустой экран вместо бюджета — худший из возможных исходов:
+    человек видит белое поле и не знает, сломалось ли всё или ещё грузится.
+  */
   const slot = mySlot({ membership, userId })
-  if (membership.length > 0 && !slot) return null
   const me = slot ? people.find((x) => x.id === slot) : undefined
-  if (me && me.salary === 0) return <Setup />
+  if (slot && me && me.salary === 0) return <Setup />
 
   return <>{children}</>
 }

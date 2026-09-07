@@ -1,7 +1,8 @@
-import { useStore } from '@/store/useStore'
+import { mySlot, useStore } from '@/store/useStore'
 import { ACCENTS, ACCENT_KEYS, HUES, HUE_KEYS } from '@/lib/palette'
 import type { AccentKey, CategoryKey, HueKey, ThemeChoice } from '@/lib/palette'
 import { Segmented } from '@/components/kit'
+import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
 function SubHead({ children }: { children: string }) {
@@ -37,9 +38,35 @@ export function AppearancePanel() {
   const setTheme = useStore((s) => s.setTheme)
   const setAccent = useStore((s) => s.setAccent)
   const setCategoryHue = useStore((s) => s.setCategoryHue)
+  const setPerson = useStore((s) => s.setPerson)
+  const people = useStore((s) => s.people)
+  const membership = useStore((s) => s.membership)
+  const userId = useStore((s) => s.userId)
+  const slot = mySlot({ membership, userId })
+  const me = slot ? people.find((p) => p.id === slot) : undefined
 
   return (
     <div className="pb-2">
+      <SubHead>Ваше имя</SubHead>
+      {slot ? (
+        <>
+          <Input
+            defaultValue={me?.name ?? ''}
+            placeholder="Имя"
+            onBlur={(e) => {
+              const next = e.target.value.trim()
+              if (next && next !== me?.name) setPerson(slot, { name: next })
+            }}
+          />
+          <p className="mt-1.5 text-[12px] leading-relaxed text-ink-3">
+            Так вас видит партнёр — на полосе доходов, в покупках и во взносах.
+            По умолчанию подставляется начало адреса почты.
+          </p>
+        </>
+      ) : (
+        <p className="text-[12.5px] text-ink-3">Загружаем состав бюджета…</p>
+      )}
+
       <SubHead>Тема</SubHead>
       <Segmented<ThemeChoice>
         value={settings.theme}

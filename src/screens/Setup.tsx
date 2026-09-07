@@ -68,7 +68,7 @@ function Frame({
 
 export function Setup() {
   const {
-    people, membership, userId, householdId, setPerson, addObligation, addCredit, addGoal,
+    people, membership, userId, householdId, obligations, goals, setPerson, addObligation, addCredit, addGoal,
     setCategoryAmount, finishSetup, adoptMembers,
   } = useStore()
 
@@ -81,9 +81,22 @@ export function Setup() {
     ''
   const setupDone = useStore((s) => s.setupDoneAt)
 
-  // Второму участнику незачем заново заводить жильё и кредиты.
-  const joining = Boolean(setupDone)
-  const steps: Step[] = joining ? ['income'] : FIRST_STEPS
+  /*
+    Второму участнику незачем заново заводить жильё и кредиты.
+    Смотрим не только на флаг: если в бюджете уже есть обязательства или цели,
+    значит настройку кто-то прошёл, даже если флаг не успел долететь. Так было
+    у Аруны — она присоединилась за секунды до того, как флаг ушёл в облако,
+    и приложение предложило ей завести жильё заново.
+  */
+  const alreadySetUp =
+    Boolean(setupDone) || obligations.some((o) => !o.deletedAt) || goals.some((g) => !g.deletedAt)
+  const joining = alreadySetUp
+  // Приглашать некого, если второй уже в бюджете.
+  const steps: Step[] = joining
+    ? ['income']
+    : membership.length >= 2
+      ? ['income', 'housing', 'credit', 'goal']
+      : FIRST_STEPS
   const [idx, setIdx] = useState(0)
   const step = steps[idx]
 
@@ -180,7 +193,9 @@ export function Setup() {
       addGoal({ name: goalName.trim() || 'Первая цель', need, have, monthly, hue: goalHue })
       setCategoryAmount('d3', monthly)
     }
-    next()
+    // Если приглашать некого, шаг с кодом пропущен — заканчиваем здесь.
+    if (steps.includes('invite')) next()
+    else finishSetup()
   }
 
   async function makeInvite() {
@@ -390,7 +405,6 @@ export function Setup() {
     )
   }
 
-  // invite
   return (
     <Frame
       step={idx} total={total} onBack={back}
