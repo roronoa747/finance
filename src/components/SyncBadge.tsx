@@ -25,6 +25,7 @@ export function SyncBadge() {
   const membership = useStore((s) => s.membership)
   const householdId = useStore((s) => s.householdId)
   const resetAll = useStore((s) => s.resetAll)
+  const people = useStore((s) => s.people)
 
   if (!cloudEnabled) {
     return (
@@ -110,7 +111,7 @@ export function SyncBadge() {
                 {membership.map((m) => (
                   <div key={m.userId} className="flex items-center gap-2.5 py-1 text-[14px]">
                     <i className="size-2.5 rounded-full" style={{ background: `var(--p${m.slot})` }} />
-                    {m.displayName}
+                    {people.find((p) => p.id === m.slot)?.name ?? m.displayName}
                     {m.role === 'viewer' && <span className="text-[12px] text-ink-3">только просмотр</span>}
                   </div>
                 ))}

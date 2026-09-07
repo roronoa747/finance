@@ -64,7 +64,7 @@ export function AccessGate({ children }: { children: ReactNode }) {
     })
     const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
       setSession(next)
-      if (!next) setSync({ householdId: null, membership: [], rev: 0, status: 'offline' })
+      if (!next) setSync({ householdId: null, userId: null, membership: [], rev: 0, status: 'offline' })
     })
     return () => listener.subscription.unsubscribe()
   }, [setSync])
@@ -80,7 +80,7 @@ export function AccessGate({ children }: { children: ReactNode }) {
       .then((membership) => {
         if (cancelled) return
         const mine = membership.find((m) => m.userId === session.user.id)
-        setSync({ membership, householdId: mine?.householdId ?? null })
+        setSync({ membership, householdId: mine?.householdId ?? null, userId: session.user.id })
         setMembershipKnown(true)
         if (mine) {
           startSyncEngine()

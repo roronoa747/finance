@@ -15,6 +15,8 @@ export type State = SyncDoc & {
 
   /* --- состояние синхронизации; в документ не входит --- */
   householdId: string | null
+  /** Кто сейчас вошёл. Единственный надёжный способ понять, чья это карточка. */
+  userId: string | null
   membership: Membership[]
   rev: number
   status: SyncStatus
@@ -57,7 +59,7 @@ export type State = SyncDoc & {
   /* --- синхронизация --- */
   getDoc: () => SyncDoc
   applyDoc: (doc: SyncDoc, rev: number) => void
-  setSync: (patch: Partial<Pick<State, 'status' | 'rev' | 'lastSyncedAt' | 'lastError' | 'householdId' | 'membership' | 'forceReplace'>>) => void
+  setSync: (patch: Partial<Pick<State, 'status' | 'rev' | 'lastSyncedAt' | 'lastError' | 'householdId' | 'userId' | 'membership' | 'forceReplace'>>) => void
   markDirty: () => void
 
   resetAll: () => void
@@ -116,6 +118,7 @@ export const useStore = create<State>()(
       settings: defaultSettings,
 
       householdId: null,
+      userId: null,
       membership: [],
       rev: 0,
       status: 'offline',
@@ -269,11 +272,9 @@ export const useStore = create<State>()(
           let changed = false
           const people = members.map((m) => {
             const existing = known.get(m.slot)
-            if (existing) {
-              if (existing.name === m.displayName) return existing
-              changed = true
-              return touch({ ...existing, name: m.displayName })
-            }
+            // Имя не перезаписываем: человек мог переименовать себя в приложении,
+            // и подставлять сюда логин из почты значило бы откатывать его правку.
+            if (existing) return existing
             changed = true
             return {
               id: m.slot,
@@ -381,6 +382,7 @@ export const useStore = create<State>()(
         setupDoneAt: s.setupDoneAt,
         settings: s.settings,
         householdId: s.householdId,
+        userId: s.userId,
         membership: s.membership,
         rev: s.rev,
         lastSyncedAt: s.lastSyncedAt,
@@ -395,6 +397,23 @@ export const useStore = create<State>()(
 /* ---------------- производные величины ---------------- */
 
 const alive = <T extends { deletedAt?: string | null }>(x: T) => !x.deletedAt
+
+/**
+ * Чей это телефон — определяется по идентификатору аккаунта, и только по нему.
+ *
+ * Раньше «я» вычислялось как первый участник, для которого нашлась карточка
+ * в бюджете. Пока человек был один, это работало. Как только присоединился
+ * второй, приложение показало ему имя первого и записало его доход в чужую
+ * карточку — деньги оказались приписаны не тому человеку.
+ *
+ * null означает «состав ещё не пришёл»: в этом случае лучше подождать, чем
+ * угадать. Без облака участник ровно один, и это слот «a».
+ */
+export function mySlot(state: Pick<State, 'membership' | 'userId'>): PersonId | null {
+  if (!state.membership.length) return 'a'
+  if (!state.userId) return null
+  return state.membership.find((m) => m.userId === state.userId)?.slot ?? null
+}
 
 export const liveGoals = (goals: Goal[]) => goals.filter(alive)
 export const liveWishlist = (list: WishItem[]) => list.filter(alive)

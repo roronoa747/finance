@@ -6,7 +6,7 @@ import { Field, Segmented } from '@/components/kit'
 import { money, parseMoney } from '@/lib/money'
 import { HUES, HUE_KEYS, type HueKey } from '@/lib/palette'
 import { goalMonthly } from '@/lib/finance'
-import { useStore } from '@/store/useStore'
+import { mySlot, useStore } from '@/store/useStore'
 import { createInvite } from '@/store/sync'
 import { cn } from '@/lib/utils'
 
@@ -68,13 +68,17 @@ function Frame({
 
 export function Setup() {
   const {
-    people, membership, householdId, setPerson, addObligation, addCredit, addGoal,
+    people, membership, userId, householdId, setPerson, addObligation, addCredit, addGoal,
     setCategoryAmount, finishSetup, adoptMembers,
   } = useStore()
 
-  const me = membership.find((m) => people.some((p) => p.id === m.slot))
-  const mySlot = me?.slot ?? membership[0]?.slot ?? 'a'
-  const myName = membership.find((m) => m.slot === mySlot)?.displayName ?? 'Вы'
+  // Кто заполняет — определяется по аккаунту. Раньше бралось первое совпадение
+  // в составе семьи, и второй участник записывал свой доход в чужую карточку.
+  const slot = mySlot({ membership, userId })
+  const knownName =
+    (slot ? people.find((p) => p.id === slot)?.name : undefined) ??
+    membership.find((m) => m.slot === slot)?.displayName ??
+    ''
   const setupDone = useStore((s) => s.setupDoneAt)
 
   // Второму участнику незачем заново заводить жильё и кредиты.
@@ -83,6 +87,7 @@ export function Setup() {
   const [idx, setIdx] = useState(0)
   const step = steps[idx]
 
+  const [name, setName] = useState(knownName)
   const [salary, setSalary] = useState('')
   const [payday, setPayday] = useState('10')
 
@@ -111,10 +116,12 @@ export function Setup() {
   const back = () => setIdx((i) => Math.max(i - 1, 0))
 
   function saveIncome() {
+    if (!slot) return
     // Состав семьи мог ещё не догрузиться, и тогда записывать доход было бы
-    // некуда: setPerson правит существующего участника, а не создаёт его.
+    // некуда: setPerson заводит участника, а не молча правит пустой список.
     if (membership.length) adoptMembers(membership)
-    setPerson(mySlot, {
+    setPerson(slot, {
+      name: name.trim() || knownName || 'Участник',
       salary: parseMoney(salary),
       payday: Math.min(28, Math.max(1, parseMoney(payday) || 1)),
     })
@@ -201,24 +208,30 @@ export function Setup() {
 
   const total = steps.length
 
+  // Состав семьи ещё не пришёл: показывать чужое имя хуже, чем подождать.
+  if (membership.length > 0 && !slot) return null
+
   if (step === 'income') {
     return (
       <Frame
         step={idx} total={total}
-        title={joining ? `${myName}, добавьте свой доход` : `${myName}, начнём с дохода`}
+        title={joining ? 'Добавьте свой доход' : 'Начнём с дохода'}
         note={joining
           ? 'Жильё и цели партнёр уже завёл. От вас нужна только зарплата — без неё бюджет посчитает долю неверно.'
           : 'Оклад без бонусов. Нерегулярные премии добавим отдельно — они не должны попадать в план месяца.'}
         footer={
-          <Button onClick={saveIncome} disabled={!parseMoney(salary)}>
+          <Button onClick={saveIncome} disabled={!parseMoney(salary) || !name.trim()}>
             {joining ? 'Готово' : 'Дальше'}
           </Button>
         }
       >
+        <Field label="Как вас зовут">
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Имя" />
+        </Field>
         <Field label="Зарплата в месяц, ₸">
           <Input
             value={salary} onChange={(e) => setSalary(e.target.value)}
-            inputMode="numeric" placeholder="450 000" className="num text-[17px]" autoFocus
+            inputMode="numeric" placeholder="450 000" className="num text-[17px]"
           />
         </Field>
         <Field label="День зарплаты">
