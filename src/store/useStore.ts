@@ -43,6 +43,11 @@ export type State = SyncDoc & {
 
   amendObligation: (id: string, from: string, amount: number, reason?: string) => void
   addObligation: (o: Pick<Obligation, 'name' | 'note' | 'day' | 'category' | 'estimate'> & { amount: number }) => void
+  /** Правит действующую сумму: это исправление ошибки, а не изменение с даты. */
+  correctObligation: (id: string, amount: number) => void
+  updateObligation: (id: string, patch: Partial<Pick<Obligation, 'name' | 'note' | 'day' | 'estimate'>>) => void
+  removeObligation: (id: string) => void
+  removeCredit: (id: string) => void
   setDeposit: (id: string, patch: Partial<NonNullable<Account['deposit']>>) => void
   setAccountAmount: (id: string, amount: number) => void
   addAccount: (a: Pick<Account, 'name' | 'note' | 'amount' | 'kind' | 'deposit'>) => void
@@ -229,6 +234,50 @@ export const useStore = create<State>()(
                     .sort((x, y) => x.from.localeCompare(y.from)),
                 })
               : o,
+          ),
+          status: 'dirty',
+        })),
+
+      /**
+       * Исправление ошибки в текущей сумме — это НЕ то же самое, что изменение
+       * с будущего месяца. Здесь мы правим действующую версию: значит, сумма
+       * была введена неверно с самого начала. Для «с ноября станет меньше»
+       * есть amendObligation, который добавляет новую версию и оставляет
+       * историю нетронутой.
+       */
+      correctObligation: (id, amount) =>
+        set((s) => ({
+          obligations: s.obligations.map((o) => {
+            if (o.id !== id) return o
+            const sorted = [...o.versions].sort((a, b) => a.from.localeCompare(b.from))
+            const current = sorted.filter((v) => v.from <= monthKey()).pop()
+            if (!current) return o
+            return touch({
+              ...o,
+              versions: o.versions.map((v) => (v.from === current.from ? { ...v, amount } : v)),
+            })
+          }),
+          status: 'dirty',
+        })),
+
+      updateObligation: (id, patch) =>
+        set((s) => ({
+          obligations: s.obligations.map((o) => (o.id === id ? touch({ ...o, ...patch }) : o)),
+          status: 'dirty',
+        })),
+
+      removeObligation: (id) =>
+        set((s) => ({
+          obligations: s.obligations.map((o) =>
+            o.id === id ? { ...o, deletedAt: now(), updatedAt: now() } : o,
+          ),
+          status: 'dirty',
+        })),
+
+      removeCredit: (id) =>
+        set((s) => ({
+          credits: s.credits.map((c) =>
+            c.id === id ? { ...c, deletedAt: now(), updatedAt: now() } : c,
           ),
           status: 'dirty',
         })),
@@ -442,6 +491,20 @@ export const mandatoryMonthly = (categories: Category[]) =>
   categories.filter((c) => c.key === 'd1' || c.key === 'd2' || c.key === 'd4')
     .reduce((a, c) => a + c.amount, 0)
 
-export const netWorth = (accounts: Account[], credits: Credit[]) =>
-  liveAccounts(accounts).reduce((a, x) => a + x.amount, 0) -
+/**
+ * Накопленное по целям — это тоже деньги семьи.
+ *
+ * Пока цель не привязана к счёту, её накопления больше нигде не учтены:
+ * человек ввёл «уже накоплено 2 млн», а капитал показал минус, потому что
+ * видел только кредит. Когда появится привязка цели к вкладу, эти суммы
+ * начнут браться со счёта и здесь считаться перестанут — для того и флаг.
+ */
+export const goalSavings = (goals: Goal[]) =>
+  liveGoals(goals)
+    .filter((g) => !g.accountId)
+    .reduce((a, g) => a + Math.max(0, g.have), 0)
+
+export const netWorth = (accounts: Account[], credits: Credit[], goals: Goal[] = []) =>
+  liveAccounts(accounts).reduce((a, x) => a + x.amount, 0) +
+  goalSavings(goals) -
   liveCredits(credits).reduce((a, c) => a + c.principal, 0)

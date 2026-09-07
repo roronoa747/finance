@@ -88,15 +88,26 @@ export function Setup() {
     у Аруны — она присоединилась за секунды до того, как флаг ушёл в облако,
     и приложение предложило ей завести жильё заново.
   */
-  const alreadySetUp =
-    Boolean(setupDone) || obligations.some((o) => !o.deletedAt) || goals.some((g) => !g.deletedAt)
-  const joining = alreadySetUp
+  /*
+    Решение принимается ОДИН раз, при открытии мастера, и дальше не пересматривается.
+    Иначе получается так: шаг с жильём создаёт обязательство, признак «настройка
+    пройдена» тут же становится истинным, набор шагов схлопывается до одного —
+    и человека с шага жилья выбрасывает сразу на приглашение, минуя кредит и цель.
+  */
+  const [joining] = useState(
+    () =>
+      Boolean(setupDone) ||
+      obligations.some((o) => !o.deletedAt) ||
+      goals.some((g) => !g.deletedAt),
+  )
   // Приглашать некого, если второй уже в бюджете.
-  const steps: Step[] = joining
-    ? ['income']
-    : membership.length >= 2
-      ? ['income', 'housing', 'credit', 'goal']
-      : FIRST_STEPS
+  const [steps] = useState<Step[]>(() =>
+    joining
+      ? ['income']
+      : membership.length >= 2
+        ? ['income', 'housing', 'credit', 'goal']
+        : FIRST_STEPS,
+  )
   const [idx, setIdx] = useState(0)
   const step = steps[idx]
 
