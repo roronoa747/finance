@@ -17,12 +17,14 @@ export function SyncBadge() {
   const [code, setCode] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [confirmReset, setConfirmReset] = useState(false)
 
   const status = useStore((s) => s.status)
   const lastError = useStore((s) => s.lastError)
   const lastSyncedAt = useStore((s) => s.lastSyncedAt)
   const membership = useStore((s) => s.membership)
   const householdId = useStore((s) => s.householdId)
+  const resetAll = useStore((s) => s.resetAll)
 
   if (!cloudEnabled) {
     return (
@@ -156,6 +158,35 @@ export function SyncBadge() {
               возможности. Если оба правили одно и то же офлайн — взносы и покупки сложатся, а не
               перезатрут друг друга.
             </p>
+
+            <div className="border-t border-line pt-3">
+              {confirmReset ? (
+                <>
+                  <p className="mb-2 text-[12.5px] leading-relaxed text-warn">
+                    Сотрутся доходы, цели, покупки, обязательства и счета — у обоих участников
+                    и в облаке. Отменить будет нельзя.
+                  </p>
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1" onClick={() => setConfirmReset(false)}>
+                      Отмена
+                    </Button>
+                    <Button
+                      className="flex-1 bg-destructive text-destructive-foreground"
+                      onClick={() => { resetAll(); setConfirmReset(false); setOpen(false); void sync() }}
+                    >
+                      Стереть всё
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <button
+                  onClick={() => setConfirmReset(true)}
+                  className="text-[12.5px] text-ink-3 hover:text-destructive"
+                >
+                  Начать бюджет заново
+                </button>
+              )}
+            </div>
           </div>
         </SheetContent>
       </Sheet>

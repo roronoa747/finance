@@ -71,7 +71,9 @@ export function AccessGate({ children }: { children: ReactNode }) {
         setSync({ membership, householdId: mine?.householdId ?? null })
         if (mine) {
           startSyncEngine()
-          void sync()
+          // Сначала забираем общий документ, и только потом заводим участников
+          // из состава — иначе создали бы их поверх ещё не полученных данных.
+          void sync().then(() => useStore.getState().adoptMembers(membership))
         }
       })
       .catch((e) => setSync({ lastError: e instanceof Error ? e.message : String(e) }))

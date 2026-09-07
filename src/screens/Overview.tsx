@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { Clock } from '@phosphor-icons/react'
-import { Card, Callout, Hero, Row, Section, Tag } from '@/components/kit'
+import { Clock, Plus } from '@phosphor-icons/react'
+import { Card, Callout, Hero, Row, Section } from '@/components/kit'
+import { InviteBanner } from '@/screens/Setup'
 import { Bar, Legend, Ring } from '@/components/charts'
 import { money, plain, pct } from '@/lib/money'
 import { monthKey, monthIn, monthFrom, dayLabel } from '@/lib/dates'
@@ -46,6 +47,8 @@ export function Overview() {
 
   return (
     <div className="flex flex-col gap-3.5 pt-1">
+      <InviteBanner />
+
       <Card>
         <Hero label={`Свободно в ${monthIn(key, false)}`} value={money(free)} />
         <div className="flex flex-col gap-[7px]">
@@ -86,6 +89,15 @@ export function Overview() {
             Распределить
           </button>
         </div>
+      )}
+
+      {free < 0 && (
+        <Callout title="План пока не сходится">
+          Расписано на {money(-free)} больше, чем приходит.
+          {people.length < 2
+            ? ' Скорее всего, доход второго участника ещё не внесён — пригласите его, и цифра сойдётся.'
+            : ' Уменьшите любую строку в «Бюджете» — свободный остаток пересчитается сам.'}
+        </Callout>
       )}
 
       {freed && freed.change && (
@@ -132,10 +144,19 @@ export function Overview() {
             </Link>
           )
         })}
-      </div>
-
-      <div className="flex justify-center pt-1">
-        <Tag>данные хранятся на этом устройстве</Tag>
+        {!goals.length && (
+          <Link
+            to="/goals"
+            className="flex w-full items-center gap-3 rounded-2xl border border-dashed border-line-strong bg-surface px-4 py-4"
+          >
+            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-3 text-ink-2">
+              <Plus size={17} weight="bold" />
+            </span>
+            <span className="text-[13.5px] leading-snug text-ink-2">
+              Целей пока нет. Добавьте первую — приложение посчитает, сколько откладывать в месяц.
+            </span>
+          </Link>
+        )}
       </div>
     </div>
   )

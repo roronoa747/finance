@@ -67,12 +67,34 @@ export async function sync(): Promise<void> {
       const row = (Array.isArray(pulled) ? pulled[0] : pulled) as
         | { rev: number; data: SyncDoc }
         | undefined
-      const remoteRev = row?.rev ?? 0
-      const remoteDoc = row?.data ?? null
+
+      /*
+        Пустой ответ — это не «на сервере ничего нет», а «сервер не отдал нам
+        документ»: чаще всего протухла сессия или пользователь больше не
+        числится в семье. Если это проглотить, клиент попробует записать с
+        нулевой ревизией, получит расхождение и после нескольких кругов
+        покажет «не сошлось» — сообщение, по которому невозможно понять причину.
+      */
+      if (!row || typeof row.rev !== 'number') {
+        s().setSync({
+          status: 'error',
+          lastError: 'Сервер не отдал бюджет. Похоже, сессия устарела — выйдите и войдите снова.',
+        })
+        return
+      }
+
+      const remoteRev = row.rev
+      const remoteDoc = row.data ?? null
 
       const localDoc = s().getDoc()
-      // Первый выход в облако: на сервере пусто, заливаем своё как есть.
-      const merged = isEmptyDoc(remoteDoc) ? localDoc : mergeDocs(localDoc, remoteDoc as SyncDoc)
+      /*
+        Обычно сливаем. Не сливаем в двух случаях:
+        — на сервере пусто, это первый выход в облако;
+        — идёт сброс, и локальная пустота должна ЗАМЕНИТЬ облачную копию,
+          иначе слияние добросовестно вернёт всё, что мы только что стёрли.
+      */
+      const replace = s().forceReplace || isEmptyDoc(remoteDoc)
+      const merged = replace ? localDoc : mergeDocs(localDoc, remoteDoc as SyncDoc)
 
       s().applyDoc(merged, remoteRev)
 
@@ -88,7 +110,13 @@ export async function sync(): Promise<void> {
 
       if (!result.conflict) {
         s().applyDoc(result.data ?? merged, result.rev)
-        s().setSync({ status: 'idle', lastSyncedAt: new Date().toISOString(), lastError: null })
+        s().setSync({
+          status: 'idle',
+          lastSyncedAt: new Date().toISOString(),
+          lastError: null,
+          // Замена состоялась — дальше работаем обычным слиянием.
+          forceReplace: false,
+        })
         return
       }
 

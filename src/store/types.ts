@@ -140,6 +140,13 @@ export type SyncDoc = {
   obligations: Obligation[]
   accounts: Account[]
   credits: Credit[]
+  /**
+   * Когда закончили первичную настройку бюджета. Пустое значит, что показываем
+   * мастер. Живёт в общем документе, а не в настройках устройства: второй
+   * участник, зайдя со своего телефона, не должен снова проходить настройку
+   * жилья и кредитов — у него будет только свой короткий шаг про доход.
+   */
+  setupDoneAt?: string | null
 }
 
 export type SyncStatus = 'offline' | 'idle' | 'syncing' | 'dirty' | 'error' | 'conflict'

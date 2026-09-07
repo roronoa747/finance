@@ -99,6 +99,9 @@ function mergeObligation(winner: Obligation, a: Obligation, b: Obligation): Obli
 
 export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
   return {
+    // Настройку проходят один раз на семью: если хоть кто-то её закончил,
+    // отменить это слиянием нельзя.
+    setupDoneAt: local.setupDoneAt ?? remote.setupDoneAt ?? null,
     people: mergeList(local.people ?? [], remote.people ?? [], (x) => x.id),
     categories: mergeList(local.categories ?? [], remote.categories ?? [], (x) => x.key),
     goals: mergeList(local.goals ?? [], remote.goals ?? [], (x) => x.id, mergeGoal),
@@ -117,5 +120,11 @@ export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
 /** Пустой ли документ на сервере — тогда заливаем своё, а не сливаем с ничем. */
 export function isEmptyDoc(doc: Partial<SyncDoc> | null | undefined): boolean {
   if (!doc) return true
-  return !doc.people?.length && !doc.goals?.length && !doc.categories?.length
+  return (
+    !doc.people?.length &&
+    !doc.goals?.length &&
+    !doc.categories?.length &&
+    !doc.obligations?.length &&
+    !doc.setupDoneAt
+  )
 }

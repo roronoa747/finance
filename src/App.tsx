@@ -9,11 +9,37 @@ import { Deposit } from '@/screens/Deposit'
 import { Ritual } from '@/screens/Ritual'
 import { useThemeSync } from '@/lib/useTheme'
 import { AccessGate } from '@/screens/Access'
+import { Setup } from '@/screens/Setup'
+import { useStore } from '@/store/useStore'
+import { cloudEnabled } from '@/lib/supabase'
+
+/**
+ * Мастер настройки показывается, пока бюджет не заведён, и отдельно —
+ * присоединившемуся участнику, у которого ещё нет своего дохода.
+ */
+function SetupGate({ children }: { children: React.ReactNode }) {
+  const setupDoneAt = useStore((s) => s.setupDoneAt)
+  const people = useStore((s) => s.people)
+  const membership = useStore((s) => s.membership)
+  const householdId = useStore((s) => s.householdId)
+
+  // Без облака мастер тоже нужен: приложение стартует с пустого листа.
+  if (cloudEnabled && !householdId) return <>{children}</>
+
+  if (!setupDoneAt) return <Setup />
+
+  const mySlot = membership.find((m) => people.some((p) => p.id === m.slot))?.slot
+  const me = mySlot ? people.find((p) => p.id === mySlot) : undefined
+  if (membership.length > 0 && me && me.salary === 0) return <Setup />
+
+  return <>{children}</>
+}
 
 export default function App() {
   useThemeSync()
   return (
     <AccessGate>
+    <SetupGate>
     <HashRouter>
       <Routes>
         <Route element={<AppShell />}>
@@ -28,6 +54,7 @@ export default function App() {
         </Route>
       </Routes>
     </HashRouter>
+    </SetupGate>
     </AccessGate>
   )
 }

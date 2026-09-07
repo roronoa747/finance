@@ -20,6 +20,12 @@ export type State = SyncDoc & {
   status: SyncStatus
   lastSyncedAt: string | null
   lastError: string | null
+  /**
+   * Локальное состояние должно ЗАМЕНИТЬ облачное, а не слиться с ним.
+   * Нужно ровно для сброса: иначе стёртые данные вернулись бы обратно при
+   * первом же обмене, потому что слияние честно восстановило бы их с сервера.
+   */
+  forceReplace: boolean
 
   setPerson: (id: PersonId, patch: Partial<Person>) => void
   setCategoryAmount: (key: CategoryKey, amount: number) => void
@@ -34,8 +40,15 @@ export type State = SyncDoc & {
   removeWish: (id: string) => void
 
   amendObligation: (id: string, from: string, amount: number, reason?: string) => void
+  addObligation: (o: Pick<Obligation, 'name' | 'note' | 'day' | 'category' | 'estimate'> & { amount: number }) => void
   setDeposit: (id: string, patch: Partial<NonNullable<Account['deposit']>>) => void
   setAccountAmount: (id: string, amount: number) => void
+  addAccount: (a: Pick<Account, 'name' | 'note' | 'amount' | 'kind' | 'deposit'>) => void
+  addCredit: (c: Pick<Credit, 'name' | 'note' | 'principal' | 'annualRate' | 'payment' | 'day'>) => void
+
+  /** Заводит участников из состава семьи: имена берутся из аккаунтов, а не из кода. */
+  adoptMembers: (members: Membership[]) => void
+  finishSetup: () => void
 
   setTheme: (t: ThemeChoice) => void
   setAccent: (a: AccentKey) => void
@@ -44,7 +57,7 @@ export type State = SyncDoc & {
   /* --- синхронизация --- */
   getDoc: () => SyncDoc
   applyDoc: (doc: SyncDoc, rev: number) => void
-  setSync: (patch: Partial<Pick<State, 'status' | 'rev' | 'lastSyncedAt' | 'lastError' | 'householdId' | 'membership'>>) => void
+  setSync: (patch: Partial<Pick<State, 'status' | 'rev' | 'lastSyncedAt' | 'lastError' | 'householdId' | 'membership' | 'forceReplace'>>) => void
   markDirty: () => void
 
   resetAll: () => void
@@ -55,60 +68,38 @@ function touch<T extends { updatedAt: string }>(x: T): T {
   return { ...x, updatedAt: now() }
 }
 
+/**
+ * Пустой бюджет.
+ *
+ * Никаких выдуманных зарплат, целей и покупок: чужие цифры на первом экране
+ * мешают понять, что здесь твоё, а что нет, и их всё равно пришлось бы удалять
+ * руками. Всё, что нужно, спрашивает мастер первичной настройки.
+ *
+ * Единственное, что заводится заранее, — пять корзин бюджета. Это не данные,
+ * а структура: к ним привязаны цвета разделов, и пользователь их переименовывает
+ * и наполняет, а не создаёт с нуля.
+ */
 function seedState(): SyncDoc {
   const t = now()
 
-  const people: Person[] = [
-    { id: 'a', name: 'Ильяс', salary: 620_000, payday: 10, updatedAt: t },
-    { id: 'b', name: 'Аруна', salary: 430_000, payday: 25, updatedAt: t },
-  ]
-
   const categories: Category[] = [
-    { key: 'd1', name: 'Жильё', note: 'аренда · коммуналка · интернет', amount: 308_000, updatedAt: t },
-    { key: 'd2', name: 'Кредит', note: 'обязательный платёж', amount: 117_000, updatedAt: t },
-    { key: 'd3', name: 'Цели', note: 'взносы в накопления', amount: 250_000, updatedAt: t },
-    { key: 'd4', name: 'Еда и быт', note: 'продукты, транспорт, мелочи', amount: 220_000, updatedAt: t },
-    { key: 'd5', name: 'Свободно', note: 'распределяется в конце месяца', amount: 155_000, updatedAt: t },
+    { key: 'd1', name: 'Жильё', note: 'аренда, коммуналка, интернет', amount: 0, updatedAt: t },
+    { key: 'd2', name: 'Кредиты', note: 'обязательные платежи', amount: 0, updatedAt: t },
+    { key: 'd3', name: 'Цели', note: 'взносы в накопления', amount: 0, updatedAt: t },
+    { key: 'd4', name: 'Еда и быт', note: 'продукты, транспорт, мелочи', amount: 0, updatedAt: t },
+    { key: 'd5', name: 'Свободно', note: 'считается само — это остаток', amount: 0, updatedAt: t },
   ]
 
-  const goals: Goal[] = [
-    { id: 'flat', name: 'Первая квартира', need: 6_000_000, seed: 1_840_000, have: 1_840_000, monthly: 180_000, hue: 'green', planPct: 0.3, movements: [], updatedAt: t },
-    { id: 'cushion', name: 'Подушка безопасности', need: 2_600_000, seed: 940_000, have: 940_000, monthly: 40_000, hue: 'blue', planPct: 0.38, movements: [], updatedAt: t },
-    { id: 'trip', name: 'Отпуск', need: 900_000, seed: 610_000, have: 610_000, monthly: 30_000, hue: 'teal', planPct: 0.62, movements: [], updatedAt: t },
-  ]
-
-  const wishlist: WishItem[] = [
-    { id: uid(), name: 'Диван в гостиную', price: 320_000, by: 'b', addedOn: '12 августа', bought: false, updatedAt: t },
-    { id: uid(), name: 'Робот-пылесос', price: 140_000, by: 'a', addedOn: '2 сентября', bought: false, updatedAt: t },
-    { id: uid(), name: 'Сковорода', price: 18_000, by: 'a', addedOn: '28 августа', bought: false, updatedAt: t },
-    { id: uid(), name: 'Микроволновка', price: 65_000, by: 'b', addedOn: '10 августа', bought: true, boughtOn: '14 августа', updatedAt: t },
-  ]
-
-  const obligations: Obligation[] = [
-    {
-      id: 'rent', name: 'Аренда', note: 'квартира', day: 5, category: 'd1', updatedAt: t,
-      versions: [
-        { from: '2025-01', amount: 280_000 },
-        { from: '2026-11', amount: 220_000, reason: 'Переезд' },
-      ],
-    },
-    { id: 'utilities', name: 'Коммуналка', note: 'плавает по сезону', day: 15, category: 'd1', parentId: 'rent', estimate: true, versions: [{ from: '2025-01', amount: 22_000 }], updatedAt: t },
-    { id: 'internet', name: 'Интернет', note: 'подпункт жилья', day: 18, category: 'd1', parentId: 'rent', versions: [{ from: '2025-01', amount: 6_000 }], updatedAt: t },
-  ]
-
-  const accounts: Account[] = [
-    { id: 'otbasy', name: 'Отбасы · Первая квартира', note: 'жилищный вклад', amount: 1_840_000, kind: 'deposit', deposit: { annualRate: 0.02, months: 24, monthlyTopUp: 180_000, capitalize: true }, updatedAt: t },
-    { id: 'halyk', name: 'Депозит · Подушка', note: 'Halyk', amount: 940_000, kind: 'deposit', deposit: { annualRate: 0.165, months: 12, monthlyTopUp: 40_000, capitalize: true }, updatedAt: t },
-    { id: 'kaspi', name: 'Карта · Kaspi', note: 'повседневный счёт', amount: 240_000, kind: 'card', updatedAt: t },
-    { id: 'usd', name: 'Наличные · доллары', note: '$1 200', amount: 640_000, kind: 'cash', updatedAt: t },
-    { id: 'trip-env', name: 'Конверт · Отпуск', note: 'лежит на карте', amount: 610_000, kind: 'envelope', updatedAt: t },
-  ]
-
-  const credits: Credit[] = [
-    { id: 'consumer', name: 'Потребительский кредит', note: 'Halyk', principal: 1_640_000, annualRate: 0.234, payment: 117_000, day: 12, updatedAt: t },
-  ]
-
-  return { people, categories, goals, wishlist, obligations, accounts, credits }
+  return {
+    people: [],
+    categories,
+    goals: [],
+    wishlist: [],
+    obligations: [],
+    accounts: [],
+    credits: [],
+    setupDoneAt: null,
+  }
 }
 
 const defaultSettings: Settings = {
@@ -117,8 +108,6 @@ const defaultSettings: Settings = {
   categories: { d1: 'blue', d2: 'brick', d3: 'green', d4: 'ochre', d5: 'steel' },
   inflation: 0.102,
 }
-
-const DOC_KEYS = ['people', 'categories', 'goals', 'wishlist', 'obligations', 'accounts', 'credits'] as const
 
 export const useStore = create<State>()(
   persist(
@@ -132,12 +121,31 @@ export const useStore = create<State>()(
       status: 'offline',
       lastSyncedAt: null,
       lastError: null,
+      forceReplace: false,
 
+      /*
+        Заводит участника, если его ещё нет.
+        Без облака состав семьи взять неоткуда, и при первой настройке правка
+        уходила бы в пустой список — доход молча не сохранялся.
+      */
       setPerson: (id, patch) =>
-        set((s) => ({
-          people: s.people.map((p) => (p.id === id ? touch({ ...p, ...patch }) : p)),
-          status: 'dirty',
-        })),
+        set((s) => {
+          const exists = s.people.some((p) => p.id === id)
+          const people = exists
+            ? s.people.map((p) => (p.id === id ? touch({ ...p, ...patch }) : p))
+            : [
+                ...s.people,
+                {
+                  id,
+                  name: 'Вы',
+                  salary: 0,
+                  payday: 1,
+                  ...patch,
+                  updatedAt: now(),
+                } as Person,
+              ]
+          return { people, status: 'dirty' }
+        }),
 
       setCategoryAmount: (key, amount) =>
         set((s) => ({
@@ -222,6 +230,67 @@ export const useStore = create<State>()(
           status: 'dirty',
         })),
 
+      addObligation: ({ amount, ...o }) =>
+        set((s) => ({
+          obligations: [
+            ...s.obligations,
+            {
+              ...o,
+              id: uid(),
+              // Первая версия суммы действует «всегда»: нижняя граница нам не важна,
+              // важно, что дальше сумма не перезаписывается, а получает новые версии.
+              versions: [{ from: '2000-01', amount }],
+              updatedAt: now(),
+            },
+          ],
+          status: 'dirty',
+        })),
+
+      addAccount: (a) =>
+        set((s) => ({
+          accounts: [...s.accounts, { ...a, id: uid(), updatedAt: now() }],
+          status: 'dirty',
+        })),
+
+      addCredit: (c) =>
+        set((s) => ({
+          credits: [...s.credits, { ...c, id: uid(), updatedAt: now() }],
+          status: 'dirty',
+        })),
+
+      /*
+        Имена участников приходят из аккаунтов Supabase, а не из кода.
+        Слот (a/b/c) задаёт цвет и приходит оттуда же, поэтому цвет человека
+        одинаковый на обоих телефонах.
+      */
+      adoptMembers: (members) =>
+        set((s) => {
+          const known = new Map(s.people.map((p) => [p.id, p]))
+          let changed = false
+          const people = members.map((m) => {
+            const existing = known.get(m.slot)
+            if (existing) {
+              if (existing.name === m.displayName) return existing
+              changed = true
+              return touch({ ...existing, name: m.displayName })
+            }
+            changed = true
+            return {
+              id: m.slot,
+              name: m.displayName,
+              salary: 0,
+              payday: 1,
+              updatedAt: now(),
+            } as Person
+          })
+          // Тех, кто уже был, но кого нет в составе, не трогаем: возможно, состав
+          // просто ещё не догрузился, а терять данные из-за этого нельзя.
+          for (const p of s.people) if (!people.some((x) => x.id === p.id)) people.push(p)
+          return changed ? { people, status: 'dirty' } : {}
+        }),
+
+      finishSetup: () => set(() => ({ setupDoneAt: now(), status: 'dirty' })),
+
       setDeposit: (id, patch) =>
         set((s) => ({
           accounts: s.accounts.map((a) =>
@@ -250,6 +319,7 @@ export const useStore = create<State>()(
         return {
           people: s.people, categories: s.categories, goals: s.goals, wishlist: s.wishlist,
           obligations: s.obligations, accounts: s.accounts, credits: s.credits,
+          setupDoneAt: s.setupDoneAt ?? null,
         }
       },
 
@@ -258,34 +328,42 @@ export const useStore = create<State>()(
           people: doc.people ?? [], categories: doc.categories ?? [], goals: doc.goals ?? [],
           wishlist: doc.wishlist ?? [], obligations: doc.obligations ?? [],
           accounts: doc.accounts ?? [], credits: doc.credits ?? [],
+          setupDoneAt: doc.setupDoneAt ?? null,
           rev,
         })),
 
       setSync: (patch) => set(() => patch),
       markDirty: () => set(() => ({ status: 'dirty' })),
 
-      resetAll: () => set({ ...seedState(), rev: 0, status: 'offline' }),
+      resetAll: () =>
+        set({ ...seedState(), status: 'dirty', forceReplace: true }),
     }),
     {
       name: 'kazna-v1',
-      version: 2,
-      // Данные уже введены на телефоне — молча их терять нельзя.
-      migrate: (persisted: unknown, from: number) => {
-        const s = persisted as Record<string, unknown>
-        if (from >= 2 || !s) return s
-        const t = now()
-        const stamp = <T extends object>(arr: unknown): T[] =>
-          Array.isArray(arr) ? arr.map((x) => ({ updatedAt: t, ...(x as object) })) as T[] : []
-
-        for (const key of DOC_KEYS) s[key] = stamp(s[key])
-
-        // У целей появилось поле seed: восстанавливаем его из накопленного минус взносы.
-        s.goals = (s.goals as Goal[]).map((g) => {
-          const sum = (g.movements ?? []).reduce((a, m) => a + m.amount, 0)
-          return { ...g, seed: g.seed ?? Math.max(0, (g.have ?? 0) - sum) }
-        })
-
-        return { ...s, householdId: null, membership: [], rev: 0, status: 'offline' }
+      version: 3,
+      /**
+       * Переход на третью версию стирает данные, а не переносит их.
+       *
+       * До неё приложение стартовало с придуманного примера — чужие зарплаты,
+       * цели и покупки. Часть этого успела уехать в облако. Переносить такое
+       * бессмысленно: это не данные семьи, а декорация, которую всё равно
+       * пришлось бы удалять руками.
+       *
+       * Настройки оформления и привязку к семье сохраняем — их заводили осознанно.
+       * Флаг forceReplace заставит облачную копию замениться на пустую, иначе
+       * стёртое вернулось бы обратно при первом же обмене.
+       */
+      migrate: (persisted: unknown) => {
+        const s = (persisted ?? {}) as Record<string, unknown>
+        return {
+          ...seedState(),
+          settings: (s.settings as Settings) ?? defaultSettings,
+          householdId: (s.householdId as string | null) ?? null,
+          membership: (s.membership as Membership[]) ?? [],
+          rev: 0,
+          lastSyncedAt: null as string | null,
+          forceReplace: true,
+        }
       },
       /**
        * Сохраняем явным списком. Статус синхронизации и текст ошибки не пишем:
@@ -300,12 +378,16 @@ export const useStore = create<State>()(
         obligations: s.obligations,
         accounts: s.accounts,
         credits: s.credits,
+        setupDoneAt: s.setupDoneAt,
         settings: s.settings,
         householdId: s.householdId,
         membership: s.membership,
         rev: s.rev,
         lastSyncedAt: s.lastSyncedAt,
-      }) as unknown as State,
+        // Сохраняем: если после сброса закрыть приложение до синхронизации,
+        // намерение стереть должно пережить перезапуск, иначе облако вернёт старое.
+        forceReplace: s.forceReplace,
+      }),
     },
   ),
 )
