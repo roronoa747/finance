@@ -38,7 +38,9 @@ function SetupGate({ children }: { children: React.ReactNode }) {
   const me = slot ? people.find((x) => x.id === slot) : undefined
   // Признак — явная отметка, а не нулевая зарплата: ноль бывает законным,
   // и раньше любое обнуление данных зацикливало мастер.
-  if (slot && me && !me.onboardedAt) return <Setup />
+  // Отметка ИЛИ введённая зарплата: если человек уже вписал доход, спрашивать
+  // снова нельзя, даже если отметка не доехала при слиянии.
+  if (slot && me && !me.onboardedAt && me.salary <= 0) return <Setup />
 
   return <>{children}</>
 }

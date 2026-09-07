@@ -420,7 +420,6 @@ export const useStore = create<State>()(
           membership: (s.membership as Membership[]) ?? [],
           rev: 0,
           lastSyncedAt: null as string | null,
-          forceReplace: true,
         }
       },
       /**
@@ -443,9 +442,13 @@ export const useStore = create<State>()(
         membership: s.membership,
         rev: s.rev,
         lastSyncedAt: s.lastSyncedAt,
-        // Сохраняем: если после сброса закрыть приложение до синхронизации,
-        // намерение стереть должно пережить перезапуск, иначе облако вернёт старое.
-        forceReplace: s.forceReplace,
+        /*
+          forceReplace НЕ сохраняем намеренно.
+          Он нужен ровно на один обмен — заменить облачную копию после сброса.
+          Пока он лежал в хранилище, устройство, которое давно не открывали,
+          при запуске заменяло облако своим устаревшим состоянием и стирало
+          всё, что успели ввести на другом телефоне.
+        */
       }),
     },
   ),
