@@ -405,8 +405,14 @@ export const useStore = create<State>()(
        * Флаг forceReplace заставит облачную копию замениться на пустую, иначе
        * стёртое вернулось бы обратно при первом же обмене.
        */
-      migrate: (persisted: unknown) => {
+      migrate: (persisted: unknown, from: number) => {
         const s = (persisted ?? {}) as Record<string, unknown>
+
+        // Стираем ТОЛЬКО при переходе с версий, где лежал демонстрационный
+        // пример. Всё, что новее, переносим как есть: данные семьи не должны
+        // пропадать из-за очередного обновления приложения.
+        if (from >= 3) return s
+
         return {
           ...seedState(),
           settings: (s.settings as Settings) ?? defaultSettings,

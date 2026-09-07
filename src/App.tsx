@@ -36,7 +36,9 @@ function SetupGate({ children }: { children: React.ReactNode }) {
   */
   const slot = mySlot({ membership, userId })
   const me = slot ? people.find((x) => x.id === slot) : undefined
-  if (slot && me && me.salary === 0) return <Setup />
+  // Признак — явная отметка, а не нулевая зарплата: ноль бывает законным,
+  // и раньше любое обнуление данных зацикливало мастер.
+  if (slot && me && !me.onboardedAt) return <Setup />
 
   return <>{children}</>
 }

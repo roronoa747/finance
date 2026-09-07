@@ -151,6 +151,7 @@ export function Setup() {
       name: name.trim() || knownName || 'Участник',
       salary: parseMoney(salary),
       payday: Math.min(28, Math.max(1, parseMoney(payday) || 1)),
+      onboardedAt: new Date().toISOString(),
     })
     if (joining) finishSetup()
     else next()
