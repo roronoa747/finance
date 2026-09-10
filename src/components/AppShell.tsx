@@ -82,7 +82,16 @@ export function AppShell() {
         <Outlet />
       </main>
 
-      <nav className="grid shrink-0 grid-cols-5 border-t border-line bg-surface px-1 pt-1 pb-[max(4px,env(safe-area-inset-bottom))]">
+      <nav className={cn(
+          'grid shrink-0 grid-cols-5 border-t border-line bg-surface px-1 py-1.5',
+          /*
+            Отступ под системную полосу нужен ТОЛЬКО в установленном приложении.
+            В браузере снизу уже стоит его собственная панель, а inset всё равно
+            приходит ненулевым — и под кнопками появлялась пустая полоса.
+          */
+          '[@media(display-mode:standalone)]:pb-[calc(6px+env(safe-area-inset-bottom))]',
+          '[@media(display-mode:fullscreen)]:pb-[calc(6px+env(safe-area-inset-bottom))]',
+        )}>
         {TABS.map((t, i) =>
           t ? (
             <NavLink
@@ -91,7 +100,7 @@ export function AppShell() {
               end={t.to === '/'}
               className={({ isActive }) =>
                 cn(
-                  'flex flex-col items-center gap-0.5 px-0.5 py-1',
+                  'flex flex-col items-center gap-0.5 px-0.5',
                   isActive ? 'text-brand' : 'text-ink-3',
                 )
               }
@@ -108,7 +117,7 @@ export function AppShell() {
               key={i}
               onClick={() => setAddOpen(true)}
               aria-label="Добавить"
-              className="flex flex-col items-center justify-center py-1"
+              className="flex flex-col items-center justify-center"
             >
               <span className="grid size-8 place-items-center rounded-[11px] bg-brand text-brand-ink">
                 <Plus size={17} weight="bold" />
