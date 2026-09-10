@@ -13,6 +13,7 @@ import {
   amountAt, goalSavings, nextChange, liveAccounts, liveCredits, liveGoals, liveObligations, netWorth, useStore,
 } from '@/store/useStore'
 import { addMonths, monthFrom, monthKey, monthTitle } from '@/lib/dates'
+import { fetchRates, type FxRates } from '@/lib/fx'
 
 const ICONS = {
   deposit: <Bank size={17} />,
@@ -162,8 +163,29 @@ function AddAccountDialog({
   const [currency, setCurrency] = useState<Currency>('KZT')
   const [rate, setRate] = useState('')
   const [depositRate, setDepositRate] = useState('')
+  // Курс тянем от Нацбанка, но оставляем возможность вписать свой.
+  const [rateInfo, setRateInfo] = useState<FxRates | null>(null)
+  const [rateBusy, setRateBusy] = useState(false)
+  const [rateFailed, setRateFailed] = useState(false)
 
   const foreign = currency !== 'KZT'
+
+  useEffect(() => {
+    if (!open || !foreign || rateInfo || rateBusy) return
+    setRateBusy(true)
+    fetchRates()
+      .then((r) => {
+        if (r) setRateInfo(r)
+        else setRateFailed(true)
+      })
+      .finally(() => setRateBusy(false))
+  }, [open, foreign, rateInfo, rateBusy])
+
+  // Подставляем курс выбранной валюты, пока человек не вписал свой.
+  useEffect(() => {
+    const auto = rateInfo?.rates?.[currency]
+    if (auto && !rate) setRate(String(auto))
+  }, [rateInfo, currency]) // eslint-disable-line react-hooks/exhaustive-deps
   const rateValue = parseFloat(rate.replace(',', '.'))
   const inTenge = foreign
     ? Math.round(parseMoney(amount) * (Number.isFinite(rateValue) ? rateValue : 0))
@@ -217,8 +239,8 @@ function AddAccountDialog({
         </Field>
 
         <Field label="Валюта">
-          <div className="grid grid-cols-3 gap-2">
-            {(['KZT', 'USD', 'EUR'] as Currency[]).map((c) => (
+          <div className="grid grid-cols-4 gap-2">
+            {(['KZT', 'USD', 'EUR', 'RUB'] as Currency[]).map((c) => (
               <button
                 key={c}
                 onClick={() => setCurrency(c)}
@@ -228,7 +250,7 @@ function AddAccountDialog({
                   currency === c ? 'border-brand bg-brand-soft font-medium' : 'border-line bg-surface-2 text-ink-2',
                 )}
               >
-                {c === 'KZT' ? '₸' : c === 'USD' ? '$' : '€'}
+                {c === 'KZT' ? '₸' : c === 'USD' ? '$' : c === 'EUR' ? '€' : '₽'}
               </button>
             ))}
           </div>
@@ -243,6 +265,15 @@ function AddAccountDialog({
             <Field label={`Курс: сколько тенге за 1 ${currency}`}>
               <Input value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="533" className="num" />
             </Field>
+            <p className="-mt-2 mb-3 text-[12px] leading-relaxed text-ink-3">
+              {rateBusy
+                ? 'Запрашиваем курс Нацбанка…'
+                : rateInfo
+                  ? `Курс ${rateInfo.source} на ${new Date(rateInfo.date).toLocaleDateString('ru-RU')}. Можно заменить своим.`
+                  : rateFailed
+                    ? 'Курс Нацбанка сейчас недоступен — впишите вручную.'
+                    : ''}
+            </p>
             {inTenge > 0 && (
               <div className="mb-3 rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-[13px]">
                 В капитале это <b className="num">{money(inTenge)}</b>

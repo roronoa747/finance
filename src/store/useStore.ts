@@ -38,6 +38,8 @@ export type State = SyncDoc & {
 
   addGoal: (g: Pick<Goal, 'name' | 'need' | 'have' | 'monthly' | 'hue'>) => void
   removeGoal: (id: string) => void
+  /** Правка цели. Накопленное меняется через seed, чтобы взносы остались целы. */
+  updateGoal: (id: string, patch: Partial<Pick<Goal, 'name' | 'need' | 'hue' | 'monthly'>> & { have?: number }) => void
   setGoalMonthly: (id: string, monthly: number) => void
   contribute: (id: string, amount: number, by: PersonId) => void
 
@@ -212,6 +214,21 @@ export const useStore = create<State>()(
       removeGoal: (id) =>
         set((s) => ({
           goals: s.goals.map((g) => (g.id === id ? { ...g, deletedAt: now(), updatedAt: now() } : g)),
+          status: 'dirty',
+        })),
+
+      updateGoal: (id, patch) =>
+        set((s) => ({
+          goals: s.goals.map((g) => {
+            if (g.id !== id) return g
+            const { have, ...rest } = patch
+            if (have === undefined) return touch({ ...g, ...rest })
+            // Накопленное складывается из seed и взносов. Правим seed, иначе
+            // ручная правка суммы стёрла бы историю пополнений.
+            const sum = g.movements.reduce((a, m) => a + m.amount, 0)
+            const seed = Math.max(0, have - sum)
+            return touch({ ...g, ...rest, seed, have: Math.max(0, seed + sum) })
+          }),
           status: 'dirty',
         })),
 

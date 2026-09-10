@@ -129,7 +129,7 @@ export type Obligation = Tracked & {
   parentId?: string
 }
 
-export type Currency = 'KZT' | 'USD' | 'EUR'
+export type Currency = 'KZT' | 'USD' | 'EUR' | 'RUB'
 
 export type Account = Tracked & {
   id: string

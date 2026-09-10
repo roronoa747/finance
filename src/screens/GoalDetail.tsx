@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Plus } from '@phosphor-icons/react'
+import { ArrowLeft, PencilSimple, Plus } from '@phosphor-icons/react'
 import { Card, Callout, Field, Section, Segmented, Tag } from '@/components/kit'
 import { Ring } from '@/components/charts'
-import { hueColor } from '@/lib/palette'
+import { HUES, HUE_KEYS, hueColor } from '@/lib/palette'
 import { useIsDark } from '@/lib/useTheme'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,6 +14,7 @@ import { goalMonths, goalMonthly } from '@/lib/finance'
 import { addMonths, monthAfter, monthInAfter, monthKey, monthTitle } from '@/lib/dates'
 import { contributionStreak, useStore } from '@/store/useStore'
 import type { PersonId } from '@/store/types'
+import { cn } from '@/lib/utils'
 
 type Mode = 'date' | 'amount'
 
@@ -24,12 +25,12 @@ export function GoalDetail() {
   const people = useStore((s) => s.people)
   const setGoalMonthly = useStore((s) => s.setGoalMonthly)
   const contribute = useStore((s) => s.contribute)
-  const removeGoal = useStore((s) => s.removeGoal)
   const inflation = useStore((s) => s.settings.inflation)
 
   const dark = useIsDark()
   const [mode, setMode] = useState<Mode>('date')
   const [addOpen, setAddOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
   const [amount, setAmount] = useState('')
   const [by, setBy] = useState<PersonId>('a')
 
@@ -76,12 +77,19 @@ export function GoalDetail() {
       <Card>
         <div className="mb-4 flex items-center gap-3.5">
           <Ring progress={progress} plan={goal.planPct} hue={goal.hue} size={58} />
-          <div>
-            <div className="font-display text-[18px] font-semibold tracking-[-0.01em]">{goal.name}</div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-display text-[18px] font-semibold tracking-[-0.01em]">{goal.name}</div>
             <div className="text-[13px] text-ink-3 num">
               {plain(goal.have)} из {plain(goal.need)} ₸
             </div>
           </div>
+          <button
+            onClick={() => setEditOpen(true)}
+            aria-label="Изменить цель"
+            className="grid size-9 shrink-0 place-items-center rounded-xl border border-line text-ink-2 hover:bg-surface-2 hover:text-ink"
+          >
+            <PencilSimple size={17} />
+          </button>
         </div>
 
         <Segmented<Mode>
@@ -186,12 +194,13 @@ export function GoalDetail() {
         )}
       </Card>
 
-      <button
-        onClick={() => { removeGoal(goal.id); navigate('/goals') }}
-        className="mb-2 self-center text-[13px] text-ink-3 hover:text-destructive"
-      >
-        Удалить цель
-      </button>
+
+      <EditGoalDialog
+        goalId={goal.id}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onDeleted={() => navigate('/goals')}
+      />
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-[92vw] rounded-2xl border-line bg-surface sm:max-w-[400px]">
@@ -206,5 +215,112 @@ export function GoalDetail() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+/**
+ * Правка цели: название, сумма, накопленное, цвет и удаление.
+ *
+ * Накопленное правится через seed, а не напрямую: сумма складывается из seed
+ * и взносов, и запись поверх стёрла бы историю пополнений.
+ */
+function EditGoalDialog({
+  goalId, open, onOpenChange, onDeleted,
+}: { goalId: string; open: boolean; onOpenChange: (v: boolean) => void; onDeleted: () => void }) {
+  const goal = useStore((s) => s.goals.find((g) => g.id === goalId))
+  const updateGoal = useStore((s) => s.updateGoal)
+  const removeGoal = useStore((s) => s.removeGoal)
+  const [confirm, setConfirm] = useState(false)
+
+  if (!goal) return null
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[88dvh] max-w-[92vw] overflow-y-auto rounded-2xl border-line bg-surface sm:max-w-[400px]">
+        <DialogHeader><DialogTitle className="font-display">Изменить цель</DialogTitle></DialogHeader>
+
+        <Field label="Название">
+          <Input
+            defaultValue={goal.name}
+            onBlur={(e) => {
+              const v = e.target.value.trim()
+              if (v && v !== goal.name) updateGoal(goal.id, { name: v })
+            }}
+          />
+        </Field>
+
+        <Field label="Сколько нужно, ₸">
+          <Input
+            defaultValue={plain(goal.need)}
+            inputMode="numeric"
+            className="num"
+            onBlur={(e) => {
+              const v = parseMoney(e.target.value)
+              if (v > 0 && v !== goal.need) updateGoal(goal.id, { need: v })
+            }}
+          />
+        </Field>
+
+        <Field label="Уже накоплено, ₸">
+          <Input
+            key={goal.have}
+            defaultValue={plain(goal.have)}
+            inputMode="numeric"
+            className="num"
+            onBlur={(e) => {
+              const v = parseMoney(e.target.value)
+              if (v !== goal.have) updateGoal(goal.id, { have: v })
+            }}
+          />
+        </Field>
+        {goal.movements.length > 0 && (
+          <p className="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-3">
+            Взносы ({goal.movements.length}) останутся в истории: правится только та часть,
+            с которой цель завели.
+          </p>
+        )}
+
+        <Field label="Цвет">
+          <div className="flex flex-wrap gap-2">
+            {HUE_KEYS.map((h) => (
+              <button
+                key={h}
+                aria-label={HUES[h].label}
+                aria-pressed={goal.hue === h}
+                onClick={() => updateGoal(goal.id, { hue: h })}
+                className={cn(
+                  'size-[26px] rounded-[9px] border-2',
+                  goal.hue === h ? 'border-ink' : 'border-transparent',
+                )}
+                style={{ background: HUES[h].light }}
+              />
+            ))}
+          </div>
+        </Field>
+
+        <div className="border-t border-line pt-3">
+          {confirm ? (
+            <>
+              <p className="mb-2 text-[12.5px] leading-relaxed text-warn">
+                Цель и её история взносов исчезнут у обоих участников. Отменить нельзя.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setConfirm(false)}>Отмена</Button>
+                <Button
+                  className="flex-1 bg-destructive text-destructive-foreground"
+                  onClick={() => { removeGoal(goal.id); onOpenChange(false); onDeleted() }}
+                >
+                  Удалить
+                </Button>
+              </div>
+            </>
+          ) : (
+            <button onClick={() => setConfirm(true)} className="text-[13px] text-ink-3 hover:text-destructive">
+              Удалить цель
+            </button>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
