@@ -26,6 +26,42 @@ const open = async (at) => {
 const store = () => page.evaluate(() => JSON.parse(localStorage.getItem('kazna-v1')).state)
 
 try {
+  /*
+    Хранилище. Самая дорогая из уже сделанных ошибок жила здесь: миграция
+    стирала демонстрационный пример независимо от версии, с которой шёл
+    переход, и данные семьи слетали при обновлении.
+
+    Что здесь проверяется честно: данные текущей версии переживают запуск, а
+    переход со старой поднимает номер и не трогает оформление и состав семьи.
+
+    Чего проверить нельзя: защиту `from >= 3` внутри migrate. Пока версия в
+    коде равна сохранённой, migrate вообще не вызывается — я снимал защиту и
+    убедился, что прогон этого не замечает. Она станет проверяемой, когда
+    появится версия 4; до тех пор её надёжность держится на чтении кода.
+  */
+  await open('/capital')
+  const kept = await store()
+  check('данные текущей версии переживают запуск',
+    kept.people.length === 2 && kept.goals[0].have === 2000000 && kept.credits[0].payment === 117000,
+    `${kept.people.length} чел., цель ${kept.goals?.[0]?.have}, платёж ${kept.credits?.[0]?.payment}`)
+
+  // Версия 1 — это ещё придуманный пример, его стирают. Но оформление и
+  // привязка к семье заводились осознанно и обязаны уцелеть.
+  await page.evaluate((v) => {
+    const s = JSON.parse(v)
+    s.version = 1
+    s.state.settings.accent = 'copper'
+    localStorage.setItem('kazna-v1', JSON.stringify(s))
+  }, JSON.stringify(seed))
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.waitForSelector('nav', { timeout: 15000 })
+  await page.waitForTimeout(400)
+  const migrated = await page.evaluate(() => JSON.parse(localStorage.getItem('kazna-v1')))
+  check('переход с первой версии поднимает номер', migrated.version === 3, migrated.version)
+  check('оформление и семья при этом уцелели',
+    migrated.state.settings.accent === 'copper' && migrated.state.membership.length === 2,
+    `${migrated.state.settings.accent}, участников ${migrated.state.membership?.length}`)
+
   // --- кредит: строка открывается, поля правятся, удаление спрашивает ---
   await open('/capital')
   check('капитал открылся', (await page.locator('text=Чистый капитал').count()) > 0)
