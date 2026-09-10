@@ -182,3 +182,26 @@ export function emergencyCoverage(saved: number, mandatoryMonthly: number): numb
   if (!mandatoryMonthly) return 0
   return saved / mandatoryMonthly
 }
+
+/**
+ * Во что обходится долг прямо сейчас.
+ *
+ * Смысл в доле платежа, уходящей в проценты. Человек сравнивает долги по
+ * остатку и по платежу, а дороже всего оказывается не самый большой и не самый
+ * заметный: кредитная карта с маленьким платежом гасится годами, потому что
+ * почти весь платёж съедают проценты, и остаток почти не двигается.
+ */
+export function debtCost(principal: number, annualRate: number, payment: number) {
+  const monthlyInterest = (principal * annualRate) / 12
+  const months = annuityMonths(principal, annualRate, payment)
+  const closes = Number.isFinite(months) && months > 0
+  return {
+    /** Сколько уходит в проценты за месяц, ничего не погашая. */
+    monthlyInterest,
+    /** Какая доля платежа — проценты. Выше половины значит, что долг почти стоит. */
+    interestShare: payment > 0 ? Math.min(1, monthlyInterest / payment) : 1,
+    months,
+    closes,
+    overpay: closes ? payment * months - principal : Infinity,
+  }
+}

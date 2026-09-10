@@ -238,6 +238,33 @@ try {
       deletedGoal: f({ ...base, goals: [goal({ deletedAt: '2026-01-01T00:00:00.000Z' })] }),
     }
   })
+  // --- какой долг гасить первым ---
+  await open('/capital')
+  check('совет о самом дорогом долге показан', (await page.locator('text=Что гасить первым').count()) > 0)
+  const advice = await page.locator('text=Самая дорогая ставка').locator('xpath=..').innerText()
+  check('назван долг с высшей ставкой, а не самый большой',
+    advice.includes('Кредитная карта') && !advice.includes('Кредит Халык'),
+    advice.split('\n').slice(0, 3).join(' | '))
+  check('видно, что половина платежа — проценты', /5[01]%/.test(advice), advice.match(/\d+%/g)?.join(' '))
+
+  const debt = await page.evaluate(() => {
+    const f = window.__debtCost
+    return {
+      // Кредитная карта: платёж 8400, ставка 30,6% — половина уходит в проценты.
+      card: f(165000, 0.306, 8400),
+      // Платёж меньше процентов: долг не гасится вообще.
+      stuck: f(165000, 0.306, 3000),
+      // Рассрочка без процентов.
+      free: f(120000, 0, 10000),
+    }
+  })
+  check('доля процентов у карты около половины',
+    Math.round(debt.card.interestShare * 100) === 50, Math.round(debt.card.interestShare * 100) + '%')
+  check('долг с малым платежом признан незакрывающимся', debt.stuck.closes === false)
+  check('у рассрочки нет ни процентов, ни переплаты',
+    debt.free.monthlyInterest === 0 && Math.round(debt.free.overpay) === 0,
+    `проценты ${debt.free.monthlyInterest}, переплата ${debt.free.overpay}`)
+
   check('пустое состояние — бюджета нет', gate.empty === false)
   check('введённая зарплата — бюджет есть', gate.withSalary === true)
   check('нулевая зарплата сама по себе бюджетом не считается', gate.zeroSalary === false)

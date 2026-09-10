@@ -4,15 +4,16 @@ import { Bank, CalendarPlus, Coins, CreditCard, House, Plus, Wallet } from '@pho
 import {
   Card, Field, NumField, NumFieldBlur, Row, SavedMark, Section, Segmented, useSavedMark,
 } from '@/components/kit'
-import type { Account, Currency, PersonId } from '@/store/types'
+import type { Account, Credit, Currency, PersonId } from '@/store/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { money, parseMoney, plain, ratePct } from '@/lib/money'
 import { cn } from '@/lib/utils'
-import { annuityMonths, annuityTotal, rateFromSchedule } from '@/lib/finance'
+import { annuityMonths, annuityTotal, debtCost, prepayment, rateFromSchedule } from '@/lib/finance'
 import {
-  amountAt, goalSavings, nextChange, liveAccounts, liveCredits, liveGoals, liveObligations, netWorth, useStore,
+  amountAt, budgetAmounts, goalSavings, nextChange, liveAccounts, liveCredits, liveGoals,
+  liveObligations, netWorth, useStore,
 } from '@/store/useStore'
 import { addMonths, monthFrom, monthKey, monthTitle } from '@/lib/dates'
 import { fetchRates, type FxRates } from '@/lib/fx'
@@ -149,6 +150,8 @@ export function Capital() {
       <Button variant="outline" className="w-full bg-surface-2" onClick={() => setAddOpen(true)}>
         <Plus size={16} weight="bold" /> Добавить кредит
       </Button>
+
+      <DebtAdvice credits={credits} free={budgetAmounts(store).d5} />
 
       <AddAccountDialog open={accountOpen} onOpenChange={setAccountOpen} />
       <ExtraIncomeDialog open={incomeOpen} onOpenChange={setIncomeOpen} />
@@ -1007,5 +1010,111 @@ function AccountDialog({ id, onClose }: { id: string | null; onClose: () => void
         </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+
+/**
+ * Какой долг гасить первым и что это даст.
+ *
+ * Порядок — по ставке, а не по остатку и не по абсолютным процентам. Это не
+ * придирка: у большого кредита процентов в тенге больше, но каждый тенге долга
+ * там стоит дешевле, и свободные деньги выгоднее нести туда, где ставка выше.
+ * Из четырёх долгов заказчика самый дорогой — кредитная карта с наименьшим
+ * платежом: её остаток почти не двигается, потому что половину платежа
+ * съедают проценты.
+ *
+ * Сумма досрочного взноса берётся из свободных денег месяца, а не выдумывается.
+ * Если их хватает на весь остаток, предлагаем закрыть долг целиком: советовать
+ * «добавьте 390 000 к платежу 8 400» — значит не понимать собственный расчёт.
+ */
+function DebtAdvice({ credits, free }: { credits: Credit[]; free: number }) {
+  const ranked = credits
+    .map((c) => ({ credit: c, cost: debtCost(c.principal, c.annualRate, c.payment) }))
+    .filter((x) => x.credit.annualRate > 0 && x.credit.principal > 0)
+    .sort((a, b) =>
+      b.credit.annualRate - a.credit.annualRate ||
+      b.cost.monthlyInterest - a.cost.monthlyInterest)
+
+  const worst = ranked[0]
+  if (!worst) return null
+
+  const { credit, cost } = worst
+  const share = Math.round(cost.interestShare * 100)
+  const spare = Math.floor(Math.max(0, free) / 5000) * 5000
+  const closesWhole = spare >= credit.principal
+  const gain = spare > 0 && !closesWhole
+    ? prepayment(credit.principal, credit.annualRate, credit.payment, spare)
+    : null
+
+  return (
+    <>
+      <Section title="Что гасить первым" />
+      <Card>
+        <div className="text-[13px] text-ink-2">Самая дорогая ставка</div>
+        <div className="font-display text-[19px] font-semibold tracking-[-0.02em]">{credit.name}</div>
+
+        <div className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3 text-[13px]">
+          <div className="flex justify-between">
+            <span className="text-ink-2">Ставка</span>
+            <b className="num">{ratePct(credit.annualRate, 1)}</b>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-ink-2">Проценты в месяц</span>
+            <b className="num text-warn">{money(Math.round(cost.monthlyInterest))}</b>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-ink-2">Это доля платежа</span>
+            <b className="num">{share}%</b>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-ink-2">{cost.closes ? 'Переплата до конца' : 'Долг не закрывается'}</span>
+            <b className="num text-warn">
+              {cost.closes ? money(Math.round(cost.overpay)) : 'платёж меньше процентов'}
+            </b>
+          </div>
+        </div>
+
+        <p className="mt-3 text-[12.5px] leading-relaxed text-ink-3">
+          {share >= 50
+            ? 'Больше половины платежа уходит в проценты, поэтому остаток почти не двигается. Такой долг выгоднее закрыть раньше остальных, даже если он самый маленький.'
+            : 'Здесь самая высокая ставка из ваших долгов, поэтому каждый лишний тенге, внесённый сюда, экономит больше, чем в любом другом.'}
+        </p>
+
+        {closesWhole ? (
+          <div className="mt-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3">
+            <div className="text-[12.5px] text-ink-2">
+              Свободных денег в этом месяце хватает на весь остаток
+            </div>
+            <div className="mt-1 font-display text-[19px] font-semibold tracking-[-0.02em]">
+              Закрыть целиком — {money(credit.principal)}
+            </div>
+            {cost.closes && (
+              <div className="mt-0.5 text-[13px] text-ink-2 num">
+                это сэкономит {money(Math.round(cost.overpay))} процентов
+              </div>
+            )}
+          </div>
+        ) : gain && Number.isFinite(gain.monthsSaved) && gain.monthsSaved >= 1 ? (
+          <div className="mt-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3">
+            <div className="text-[12.5px] text-ink-2">
+              Если добавлять к платежу {money(spare)} — столько сейчас свободно
+            </div>
+            <div className="mt-1 font-display text-[19px] font-semibold tracking-[-0.02em]">
+              Закроется на {Math.round(gain.monthsSaved)} мес. раньше
+            </div>
+            <div className="mt-0.5 text-[13px] text-ink-2 num">
+              и сэкономит {money(Math.round(gain.saved))}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-3 rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-[12.5px] leading-relaxed text-ink-2">
+            {free > 0
+              ? 'Свободных денег в этом месяце меньше пяти тысяч — досрочное погашение пока не из чего считать.'
+              : 'В этом месяце свободных денег нет. Как только появятся, здесь будет видно, сколько даст досрочный взнос именно в этот долг.'}
+          </div>
+        )}
+      </Card>
+    </>
   )
 }

@@ -30,10 +30,19 @@ export const seed = {
       { id: 'usd', name: 'Доллары', note: 'наличные', amount: 456890, kind: 'cash', currency: 'USD', foreignAmount: 1000, rate: 456.89, updatedAt: '2026-01-01T00:00:00.000Z' },
       { id: 'dep', name: 'Отбасы', note: 'жилищный', amount: 1500000, kind: 'deposit', updatedAt: '2026-01-01T00:00:00.000Z', deposit: { annualRate: 0.02, months: 24, monthlyTopUp: 50000, capitalize: true } },
     ],
-    credits: [{
-      id: 'c1', name: 'Кредит Халык', note: 'ежемесячный платёж', principal: 1640000,
-      annualRate: 0.234, payment: 117000, day: 12, updatedAt: '2026-01-01T00:00:00.000Z',
-    }],
+    credits: [
+      {
+        id: 'c1', name: 'Кредит Халык', note: 'ежемесячный платёж', principal: 1640000,
+        annualRate: 0.234, payment: 117000, day: 12, updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      // Маленький долг с маленьким платежом и большой ставкой: по остатку он
+      // выглядит безобидно, а обходится дороже всех. Ради этого случая и
+      // заведён совет о самом дорогом долге.
+      {
+        id: 'c2', name: 'Кредитная карта', note: 'минимальный платёж', principal: 165000,
+        annualRate: 0.306, payment: 8400, day: 25, updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ],
     settings: { theme: 'auto', accent: 'copper', categories: { d1: 'blue', d2: 'brick', d3: 'green', d4: 'ochre', d5: 'steel' }, inflation: 0.102 },
     membership: [{ userId: 'u1', slot: 'a', name: 'Ильяс' }, { userId: 'u2', slot: 'b', name: 'Аруна' }],
     userId: 'u1',
