@@ -11,7 +11,7 @@ import {
   WEEKDAYS, addMonths, dayLabel, daysInMonth, leadingBlanks, monthFrom, monthKey, monthTitle, today,
 } from '@/lib/dates'
 import {
-  amountAt, budgetAmounts, liveCredits, liveObligations, nextSalaryChange, salaryAt, useStore,
+  amountAt, budgetAmounts, dueIn, liveCredits, liveObligations, nextSalaryChange, salaryAt, useStore,
 } from '@/store/useStore'
 import type { PersonId } from '@/store/types'
 import { Button } from '@/components/ui/button'
@@ -51,8 +51,10 @@ export function Budget() {
       value: salaryAt(p, key), color: `var(--p${p.id})`, income: true,
       open: () => setSalaryFor(p.id),
     })),
-    ...obligations.map((o) => ({
-      id: o.id, day: o.day, name: o.name, note: o.estimate ? 'оценка по сезону' : o.note,
+    // Годовое списывается один раз и в свой месяц — в календаре так и стоит.
+    ...obligations.filter((o) => dueIn(o, key)).map((o) => ({
+      id: o.id, day: o.day, name: o.name,
+      note: o.every === 'year' ? 'раз в год' : o.estimate ? 'оценка по сезону' : o.note,
       value: amountAt(o, key), color: `var(--${o.category})`, income: false, estimate: o.estimate,
       open: () => navigate(`/capital?obligation=${o.id}`),
     })),

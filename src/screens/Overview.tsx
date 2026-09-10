@@ -6,7 +6,7 @@ import { Bar, Legend, Ring } from '@/components/charts'
 import { money, plain, pct } from '@/lib/money'
 import { monthKey, monthIn, monthFrom, dayLabel } from '@/lib/dates'
 import {
-  amountAt, budgetAmounts, liveCredits, liveGoals, liveObligations, nextChange, salaryAt, useStore,
+  amountAt, budgetAmounts, dueIn, liveCredits, liveGoals, liveObligations, nextChange, salaryAt, useStore,
 } from '@/store/useStore'
 
 export function Overview() {
@@ -43,9 +43,12 @@ export function Overview() {
 
   // Строка ведёт туда, где эту запись правят, а не в общий список капитала.
   const upcoming = [
-    ...obligations.map((o) => ({
+    // Годовые платежи показываются только в свой месяц: висеть двенадцать
+    // раз в году страховке незачем, а пропасть она не должна.
+    ...obligations.filter((o) => dueIn(o, key)).map((o) => ({
       id: o.id, name: o.name, day: o.day, value: amountAt(o, key),
-      note: o.estimate ? 'оценка по сезону' : o.note, color: `var(--${o.category})`,
+      note: o.every === 'year' ? 'раз в год' : o.estimate ? 'оценка по сезону' : o.note,
+      color: `var(--${o.category})`,
       estimate: o.estimate, to: `/capital?obligation=${o.id}`,
     })),
     ...credits.map((c) => ({

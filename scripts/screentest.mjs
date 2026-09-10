@@ -271,6 +271,64 @@ try {
   await page.waitForTimeout(300)
   check('отмена возвращает к кнопке', (await page.locator('text=Отменить нельзя').count()) === 0)
 
+  // --- долг с несходящимися цифрами: форма не должна отказывать ---
+  await open('/capital')
+  await page.locator('button:has-text("Долг или рассрочка")').first().click()
+  await page.waitForTimeout(400)
+  check('форма долга открылась', (await page.locator('text=Остаток долга, ₸').count()) > 0)
+
+  const nameIn = page.locator('input:not([inputmode])').first()
+  await nameIn.fill('Рассрочка на телефон')
+  const nums = page.locator('input[inputmode="numeric"]')
+  await nums.nth(0).fill(''); await nums.nth(0).type('159979')
+  await nums.nth(1).fill(''); await nums.nth(1).type('22858')
+  await page.locator('button:has-text("Знаю срок")').click()
+  await page.waitForTimeout(300)
+  const termIn = page.locator('input[inputmode="numeric"]').nth(2)
+  await termIn.fill(''); await termIn.type('6')
+  await page.waitForTimeout(400)
+
+  const addBtn = page.locator('button:has-text("Добавить")').last()
+  check('кнопка «Добавить» не заблокирована', !(await addBtn.isDisabled()))
+  const warn = await page.locator('text=похоже, платежей').first().innerText().catch(() => '')
+  check('расхождение объяснено и назван верный срок', warn.includes('платежей 7'), warn.slice(0, 80))
+
+  await addBtn.click()
+  await page.waitForTimeout(500)
+  const s11 = await store()
+  const added = s11.credits.find((c) => c.name === 'Рассрочка на телефон')
+  check('долг записан несмотря на расхождение', Boolean(added), added?.principal)
+  check('записан как рассрочка без процентов', added?.annualRate === 0, added?.annualRate)
+
+  // --- подписка: годовая сумма делится на двенадцать, но списывается разом ---
+  await open('/capital?add=payment')
+  check('форма регулярного платежа открылась', (await page.locator('text=Что оплачиваем').count()) > 0)
+  await page.locator('input:not([inputmode])').first().fill('Страховка')
+  await page.locator('button:has-text("Раз в год")').click()
+  await page.waitForTimeout(300)
+  const yearSum = page.locator('input[inputmode="numeric"]').first()
+  await yearSum.fill(''); await yearSum.type('120000')
+  await page.waitForTimeout(400)
+  check('годовая сумма показана месячной долей',
+    (await page.locator('text=10 000').count()) > 0,
+    await page.locator('text=В плане месяца').first().innerText().catch(() => '—'))
+
+  // Списание в декабре, а сейчас сентябрь: в календарь этого месяца попасть не должно.
+  await page.locator('button:has-text("Дек")').click()
+  await page.locator('button:has-text("Добавить")').last().click()
+  await page.waitForTimeout(500)
+  const s12 = await store()
+  const ins = s12.obligations.find((o) => o.name === 'Страховка')
+  check('годовой платёж записан с месяцем списания',
+    ins?.every === 'year' && ins?.month === 12, `${ins?.every}, месяц ${ins?.month}`)
+
+  await page.goto(`${URL}/scripts/screentest.html?at=%2F`, { waitUntil: 'domcontentloaded' })
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.waitForSelector('nav', { timeout: 15000 })
+  await page.waitForTimeout(400)
+  check('годовой платёж не висит в чужом месяце',
+    (await page.locator('text=Страховка').count()) === 0)
+
   // --- какой долг гасить первым ---
   await open('/capital')
   check('совет о самом дорогом долге показан', (await page.locator('text=Что гасить первым').count()) > 0)

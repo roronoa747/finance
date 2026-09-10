@@ -4,7 +4,8 @@ import { Bank, CalendarPlus, Coins, CreditCard, House, Plus, Wallet } from '@pho
 import {
   Card, DangerZone, Field, Hint, NumField, NumFieldBlur, Row, SavedMark, Section, Segmented, useSavedMark,
 } from '@/components/kit'
-import type { Account, Credit, Currency, PersonId } from '@/store/types'
+import type { Account, Credit, Currency, Obligation, Person, PersonId } from '@/store/types'
+import type { CategoryKey } from '@/lib/palette'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -15,8 +16,23 @@ import {
   amountAt, budgetAmounts, goalSavings, nextChange, liveAccounts, liveCredits, liveGoals,
   liveObligations, netWorth, useStore,
 } from '@/store/useStore'
-import { addMonths, monthFrom, monthKey, monthTitle } from '@/lib/dates'
+import { MONTHS_NOM, addMonths, monthFrom, monthKey, monthTitle } from '@/lib/dates'
 import { fetchRates, type FxRates } from '@/lib/fx'
+
+/**
+ * Подпись под названием платежа. Собирается из того, что человек про него
+ * сказал: чей он, как часто списывается и точна ли сумма. Чужая подписка,
+ * висящая в общем списке без имени, выглядит как общая трата.
+ */
+function obligationNote(o: Obligation, people: Person[]): string {
+  const parts: string[] = []
+  const owner = o.who ? people.find((p) => p.id === o.who)?.name : null
+  if (owner) parts.push(owner)
+  if (o.every === 'year') parts.push('раз в год')
+  if (o.estimate) parts.push('оценка')
+  if (o.note && !parts.length) parts.push(o.note)
+  return parts.join(' · ')
+}
 
 const ICONS = {
   deposit: <Bank size={17} />,
@@ -26,7 +42,7 @@ const ICONS = {
 }
 
 export function Capital() {
-  const [addOpen, setAddOpen] = useState(false)
+
   const navigate = useNavigate()
   const [accountId, setAccountId] = useState<string | null>(null)
   const [accountOpen, setAccountOpen] = useState(false)
@@ -38,6 +54,10 @@ export function Capital() {
   */
   const [params, setParams] = useSearchParams()
   const incomeOpen = params.get('income') === '1'
+  const addOpen = params.get('add') === 'debt'
+  const paymentOpen = params.get('add') === 'payment'
+  const setAddOpen = (v: boolean) => setParams(v ? { add: 'debt' } : {}, { replace: true })
+  const setPaymentOpen = (v: boolean) => setParams(v ? { add: 'payment' } : {}, { replace: true })
   const setIncomeOpen = (v: boolean) => setParams(v ? { income: '1' } : {}, { replace: true })
   const obligationId = params.get('obligation')
   const creditId = params.get('credit')
@@ -48,6 +68,7 @@ export function Capital() {
   const accounts = liveAccounts(store.accounts)
   const credits = liveCredits(store.credits)
   const obligations = liveObligations(store.obligations)
+  const people = store.people
   const key = monthKey()
   const total = netWorth(store.accounts, store.credits, store.goals)
   const saved = goalSavings(store.goals)
@@ -141,7 +162,7 @@ export function Capital() {
               key={o.id}
               icon={<House size={17} />}
               title={o.name}
-              note={o.estimate ? 'оценка · ' + o.note : o.note}
+              note={obligationNote(o, people)}
               value={money(amountAt(o, key))}
               sub={nextChange(o, key) ? 'сумма изменится' : 'в месяц'}
               onClick={() => setObligationId(o.id)}
@@ -149,16 +170,22 @@ export function Capital() {
           ))}
       </Card>
 
-      <Button variant="outline" className="w-full bg-surface-2" onClick={() => setAddOpen(true)}>
-        <Plus size={16} weight="bold" /> Добавить кредит
-      </Button>
+      <div className="flex flex-col gap-2">
+        <Button variant="outline" className="w-full bg-surface-2" onClick={() => setPaymentOpen(true)}>
+          <Plus size={16} weight="bold" /> Подписка или услуга
+        </Button>
+        <Button variant="outline" className="w-full bg-surface-2" onClick={() => setAddOpen(true)}>
+          <Plus size={16} weight="bold" /> Долг или рассрочка
+        </Button>
+      </div>
 
       <DebtAdvice credits={credits} free={budgetAmounts(store).d5} />
 
       <AddAccountDialog open={accountOpen} onOpenChange={setAccountOpen} />
       <ExtraIncomeDialog open={incomeOpen} onOpenChange={setIncomeOpen} />
 
-      <AddCreditDialog open={addOpen} onOpenChange={setAddOpen} />
+      <AddDebtDialog open={addOpen} onOpenChange={setAddOpen} />
+      <AddObligationDialog open={paymentOpen} onOpenChange={setPaymentOpen} />
       <ObligationDialog id={obligationId} onClose={() => setObligationId(null)} />
       <CreditDialog id={creditId} onClose={() => setCreditId(null)} />
       <AccountDialog id={accountId} onClose={() => setAccountId(null)} />
@@ -428,6 +455,7 @@ function ObligationDialog({
 }: { id: string | null; onClose: () => void }) {
   const obligation = useStore((s) => s.obligations.find((o) => o.id === id))
   const { correctObligation, updateObligation, amendObligation, removeObligation } = useStore()
+  const people = useStore((s) => s.people)
   const key = monthKey()
 
   const [amount, setAmount] = useState('')
@@ -504,6 +532,62 @@ function ObligationDialog({
             kind="int"
           />
         </Field>
+
+        <Field label="Как часто">
+          <Segmented<'month' | 'year'>
+            value={obligation.every === 'year' ? 'year' : 'month'}
+            onChange={(v) => updateObligation(obligation.id, {
+              every: v,
+              month: v === 'year' ? obligation.month ?? Number(key.split('-')[1]) : undefined,
+            })}
+            options={[
+              { value: 'month', label: 'Каждый месяц' },
+              { value: 'year', label: 'Раз в год' },
+            ]}
+          />
+        </Field>
+
+        {obligation.every === 'year' && (
+          <>
+            <Field label="Месяц списания">
+              <div className="grid grid-cols-4 gap-1.5">
+                {MONTHS_NOM.map((m, i) => (
+                  <button
+                    key={m}
+                    type="button"
+                    aria-pressed={(obligation.month ?? 1) === i + 1}
+                    onClick={() => updateObligation(obligation.id, { month: i + 1 })}
+                    className={cn(
+                      'rounded-lg border px-1 py-1.5 text-[12px]',
+                      (obligation.month ?? 1) === i + 1
+                        ? 'border-brand bg-brand-soft font-semibold text-brand'
+                        : 'border-line text-ink-2',
+                    )}
+                  >
+                    {m.slice(0, 3)}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <p className="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-3">
+              В плане месяца этот платёж занимает {money(Math.round(current / 12))} —
+              годовая сумма делится на двенадцать.
+            </p>
+          </>
+        )}
+
+        {people.length > 1 && (
+          <Field label="Чьё это">
+            <Segmented<'all' | PersonId>
+              value={obligation.who ?? 'all'}
+              onChange={(v) => updateObligation(obligation.id, { who: v === 'all' ? null : v })}
+              options={[
+                { value: 'all', label: 'Общее' },
+                ...people.map((p) => ({ value: p.id as 'all' | PersonId, label: p.name })),
+              ]}
+            />
+          </Field>
+        )}
 
         <label className="mb-3 flex items-center gap-2.5 text-[13.5px]">
           <input
@@ -600,15 +684,18 @@ function ObligationDialog({
 }
 
 /**
- * Второй и последующие кредиты.
+ * Долг: кредит, рассрочка, займ у родителей.
  *
- * В мастере заводится один, основной — там важно не утомить человека. Всё
- * остальное добавляется здесь, когда до этого дойдут руки.
+ * Слово «кредит» здесь не годится. Рассрочка на телефон — не кредит, процентов
+ * в ней нет, и заказчик справедливо не хотел заводить её под этим словом.
  *
- * Ставку можно не знать: если указать, сколько платежей осталось, она
- * выводится из суммы, платежа и срока однозначно.
+ * Главное правило этой формы: она не отказывает. Человек переносит цифры из
+ * банковского приложения, а не сочиняет их, и если они не сходятся, виновата
+ * не форма и не человек — где-то в выписке комиссия, страховка или лишний
+ * платёж. Раньше кнопка «Добавить» просто гасла, и записать долг было нельзя
+ * вовсе. Теперь запись проходит, а расхождение показано словами и цифрой.
  */
-function AddCreditDialog({
+function AddDebtDialog({
   open, onOpenChange,
 }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const addCredit = useStore((s) => s.addCredit)
@@ -616,21 +703,37 @@ function AddCreditDialog({
   const [name, setName] = useState('')
   const [principal, setPrincipal] = useState('')
   const [payment, setPayment] = useState('')
-  const [mode, setMode] = useState<'rate' | 'term'>('rate')
+  const [mode, setMode] = useState<'none' | 'rate' | 'term'>('none')
   const [rate, setRate] = useState('')
   const [term, setTerm] = useState('')
   const [day, setDay] = useState('12')
 
-  const resolvedRate =
-    mode === 'rate'
-      ? (() => {
-          const v = parseFloat(rate.replace(',', '.'))
-          // Ноль — это рассрочка без процентов, а не «ставку не ввели».
-          return Number.isFinite(v) && v >= 0 ? v / 100 : null
-        })()
-      : rateFromSchedule(parseMoney(principal), parseMoney(payment), parseMoney(term))
+  const left = parseMoney(principal)
+  const pay = parseMoney(payment)
+  const months = parseMoney(term)
 
-  const ready = parseMoney(principal) > 0 && parseMoney(payment) > 0 && resolvedRate !== null
+  const typed = (() => {
+    const v = parseFloat(rate.replace(',', '.'))
+    return Number.isFinite(v) && v >= 0 ? v / 100 : null
+  })()
+  const derived = mode === 'term' ? rateFromSchedule(left, pay, months) : null
+
+  /*
+    Рассрочка — это ноль, а не «неизвестно». Если срок указан, но ставку из него
+    вывести нельзя, тоже считаем долг беспроцентным: это ближе к правде, чем
+    выдуманный процент, и человек всегда может поправить ставку потом.
+  */
+  const resolvedRate = mode === 'none' ? 0 : mode === 'rate' ? typed ?? 0 : derived ?? 0
+
+  // Сколько платежей выходит, если процентов нет. С этим числом сверяем срок,
+  // названный человеком: расхождение почти всегда означает лишний платёж.
+  const plainMonths = pay > 0 ? Math.ceil(left / pay) : 0
+  const mismatch =
+    mode === 'term' && months > 0 && pay > 0 && left > 0 && derived === null
+      ? { paid: months * pay, gap: left - months * pay, suggest: plainMonths }
+      : null
+
+  const ready = left > 0 && pay > 0
 
   function create() {
     if (!ready) return
@@ -638,21 +741,21 @@ function AddCreditDialog({
     // сама. Хранить её вторым числом — это ровно тот случай, из-за которого
     // бюджет уже однажды остался в нулях.
     addCredit({
-      name: name.trim() || 'Кредит',
-      note: 'ежемесячный платёж',
-      principal: parseMoney(principal),
-      annualRate: resolvedRate ?? 0,
-      payment: parseMoney(payment),
+      name: name.trim() || 'Долг',
+      note: resolvedRate > 0 ? 'ежемесячный платёж' : 'рассрочка',
+      principal: left,
+      annualRate: resolvedRate,
+      payment: pay,
       day: Math.min(28, Math.max(1, parseMoney(day) || 1)),
     })
-    setName(''); setPrincipal(''); setPayment(''); setRate(''); setTerm('')
+    setName(''); setPrincipal(''); setPayment(''); setRate(''); setTerm(''); setMode('none')
     onOpenChange(false)
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[88dvh] max-w-[92vw] overflow-y-auto rounded-2xl border-line bg-surface sm:max-w-[400px]">
-        <DialogHeader><DialogTitle className="font-display">Ещё один кредит</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle className="font-display">Долг или рассрочка</DialogTitle></DialogHeader>
 
         <Field label="Название">
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Например, рассрочка на телефон" />
@@ -664,40 +767,60 @@ function AddCreditDialog({
           <NumField value={payment} onValue={setPayment} placeholder="55 000" />
         </Field>
 
-        <Field label="Что знаете про ставку">
-          <Segmented<'rate' | 'term'>
+        <Field label="Проценты">
+          <Segmented<'none' | 'rate' | 'term'>
             value={mode}
             onChange={setMode}
             options={[
+              { value: 'none', label: 'Без них' },
               { value: 'rate', label: 'Знаю ставку' },
               { value: 'term', label: 'Знаю срок' },
             ]}
           />
         </Field>
 
-        {mode === 'rate' ? (
+        {mode === 'none' && (
+          <p className="-mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-3">
+            Рассрочка: платите ровно столько, сколько должны. Приложение посчитает,
+            что долг закроется за {plainMonths || '—'} платеж{plainMonths === 1 ? '' : 'ей'}.
+          </p>
+        )}
+
+        {mode === 'rate' && (
           <Field label="Ставка (ГЭСВ), % годовых">
             <NumField value={rate} onValue={setRate} kind="rate" placeholder="23,4" />
           </Field>
-        ) : (
+        )}
+
+        {mode === 'term' && (
           <Field label="Сколько платежей осталось">
             <NumField value={term} onValue={setTerm} kind="int" placeholder="12" />
           </Field>
         )}
 
-        {mode === 'term' && parseMoney(term) > 0 && parseMoney(payment) > 0 && (
-          resolvedRate !== null ? (
-            <div className="mb-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3">
-              <span className="text-[12.5px] text-ink-2">Ставка получается</span>
-              <div className="font-display text-[20px] font-semibold tracking-[-0.02em] num">
-                {ratePct(resolvedRate, 1)} годовых
-              </div>
+        {mode === 'term' && months > 0 && pay > 0 && derived !== null && (
+          <div className="mb-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3">
+            <span className="text-[12.5px] text-ink-2">Ставка получается</span>
+            <div className="font-display text-[20px] font-semibold tracking-[-0.02em] num">
+              {ratePct(derived, 1)} годовых
             </div>
-          ) : (
-            <div className="mb-3 rounded-xl border border-warn-line bg-warn-soft px-3.5 py-3 text-[12.5px] leading-relaxed text-ink-2">
-              При таком платеже долг за этот срок не закрывается — проверьте суммы.
-            </div>
-          )
+          </div>
+        )}
+
+        {mismatch && (
+          <div className="mb-3 rounded-xl border border-warn-line bg-warn-soft px-3.5 py-3">
+            <p className="text-[12.5px] leading-relaxed text-ink-2">
+              {months} платеж{months === 1 ? '' : 'ей'} по {plain(pay)} — это {plain(mismatch.paid)} ₸,
+              а остаток вы указали {plain(left)} ₸.
+              {mismatch.gap > 0
+                ? ` Не хватает ${plain(mismatch.gap)} ₸: похоже, платежей ${mismatch.suggest}, а не ${months}.`
+                : ' Выходит больше остатка — видимо, в платёж входит что-то ещё.'}
+            </p>
+            <p className="mt-2 text-[12.5px] leading-relaxed text-ink-3">
+              Записать всё равно можно: сохраним как рассрочку без процентов, а ставку
+              поправите, когда сверитесь с банком.
+            </p>
+          </div>
         )}
 
         <Field label="День платежа">
@@ -1061,5 +1184,167 @@ function DebtAdvice({ credits, free }: { credits: Credit[]; free: number }) {
         )}
       </Card>
     </>
+  )
+}
+
+/**
+ * Регулярный платёж: подписка, тариф на связь, страховка, абонемент.
+ *
+ * До этого обязательство заводилось только в мастере настройки — то есть
+ * жильё и коммуналка, и больше ничего. Всё остальное записывать было некуда,
+ * и заказчик заводил подписки кредитами, где у них появлялись остаток долга и
+ * ставка, которых у подписки нет.
+ *
+ * Справочника видов нет намеренно: заказчик запретил хардкод. Название
+ * свободное, а периодичность, месяц списания и владелец — поля.
+ */
+function AddObligationDialog({
+  open, onOpenChange,
+}: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const addObligation = useStore((s) => s.addObligation)
+  const categories = useStore((s) => s.categories)
+  const people = useStore((s) => s.people)
+
+  const [name, setName] = useState('')
+  const [amount, setAmount] = useState('')
+  const [every, setEvery] = useState<'month' | 'year'>('month')
+  const [month, setMonth] = useState(String(new Date().getMonth() + 1))
+  const [day, setDay] = useState('10')
+  const [who, setWho] = useState<'all' | PersonId>('all')
+  const [category, setCategory] = useState<CategoryKey>('d4')
+  const [estimate, setEstimate] = useState(false)
+
+  // Цели и свободный остаток — не корзины для платежей: первая считается из
+  // планов, вторая и есть то, что осталось.
+  const buckets = categories.filter((c) => c.key !== 'd3' && c.key !== 'd5')
+  const ready = name.trim().length > 0 && parseMoney(amount) > 0
+
+  function create() {
+    if (!ready) return
+    addObligation({
+      name: name.trim(),
+      note: every === 'year' ? 'раз в год' : 'ежемесячно',
+      day: Math.min(28, Math.max(1, parseMoney(day) || 1)),
+      category,
+      estimate,
+      every,
+      month: every === 'year' ? Math.min(12, Math.max(1, parseMoney(month) || 1)) : undefined,
+      who: who === 'all' ? null : who,
+      amount: parseMoney(amount),
+    })
+    setName(''); setAmount(''); setEstimate(false)
+    onOpenChange(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[88dvh] max-w-[92vw] overflow-y-auto rounded-2xl border-line bg-surface sm:max-w-[400px]">
+        <DialogHeader><DialogTitle className="font-display">Регулярный платёж</DialogTitle></DialogHeader>
+
+        <Field label="Что оплачиваем">
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Например, интернет или абонемент"
+          />
+        </Field>
+
+        <Field label="Как часто">
+          <Segmented<'month' | 'year'>
+            value={every}
+            onChange={setEvery}
+            options={[
+              { value: 'month', label: 'Каждый месяц' },
+              { value: 'year', label: 'Раз в год' },
+            ]}
+          />
+        </Field>
+
+        <Field label={every === 'year' ? 'Сумма за год, ₸' : 'Сумма в месяц, ₸'}>
+          <NumField value={amount} onValue={setAmount} placeholder="5 000" />
+        </Field>
+
+        {every === 'year' && parseMoney(amount) > 0 && (
+          <p className="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-3">
+            В плане месяца это займёт {money(Math.round(parseMoney(amount) / 12))} — годовая сумма
+            делится на двенадцать, чтобы не завышать одиннадцать месяцев и не удивляться
+            на двенадцатый.
+          </p>
+        )}
+
+        {every === 'year' && (
+          <Field label="Месяц списания">
+            <div className="grid grid-cols-4 gap-1.5">
+              {MONTHS_NOM.map((m, i) => (
+                <button
+                  key={m}
+                  type="button"
+                  aria-pressed={parseMoney(month) === i + 1}
+                  onClick={() => setMonth(String(i + 1))}
+                  className={cn(
+                    'rounded-lg border px-1 py-1.5 text-[12px]',
+                    parseMoney(month) === i + 1
+                      ? 'border-brand bg-brand-soft font-semibold text-brand'
+                      : 'border-line text-ink-2',
+                  )}
+                >
+                  {m.slice(0, 3)}
+                </button>
+              ))}
+            </div>
+          </Field>
+        )}
+
+        <Field label="День платежа">
+          <NumField value={day} onValue={setDay} kind="int" />
+        </Field>
+
+        {people.length > 1 && (
+          <Field label="Чьё это">
+            <Segmented<'all' | PersonId>
+              value={who}
+              onChange={setWho}
+              options={[
+                { value: 'all', label: 'Общее' },
+                ...people.map((p) => ({ value: p.id as 'all' | PersonId, label: p.name })),
+              ]}
+            />
+          </Field>
+        )}
+
+        <Field label="В какой раздел бюджета">
+          <div className="flex flex-wrap gap-1.5">
+            {buckets.map((c) => (
+              <button
+                key={c.key}
+                type="button"
+                aria-pressed={category === c.key}
+                onClick={() => setCategory(c.key)}
+                className={cn(
+                  'rounded-lg border px-2.5 py-1.5 text-[12.5px]',
+                  category === c.key
+                    ? 'border-brand bg-brand-soft font-semibold text-brand'
+                    : 'border-line text-ink-2',
+                )}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+        </Field>
+
+        <label className="mb-3 flex items-center gap-2.5 text-[13.5px]">
+          <input
+            type="checkbox"
+            checked={estimate}
+            onChange={(e) => setEstimate(e.target.checked)}
+            className="size-4 accent-[var(--brand)]"
+          />
+          Сумма плавает — показывать как оценку
+        </label>
+
+        <Button onClick={create} disabled={!ready} className="w-full">Добавить</Button>
+      </DialogContent>
+    </Dialog>
   )
 }

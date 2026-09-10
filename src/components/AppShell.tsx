@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   House, ChartBar, Plus, Target, Vault, PaintBrush, Sparkle,
-  ShoppingBag, CreditCard, TrendUp, DownloadSimple, UserPlus,
+  ShoppingBag, CreditCard, Receipt, TrendUp, DownloadSimple, UserPlus,
 } from '@phosphor-icons/react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { AppearancePanel } from '@/components/AppearancePanel'
@@ -152,8 +152,12 @@ export function AppShell() {
               onClick={() => { setAddOpen(false); navigate('/goals?tab=wish') }}
             />
             <Row
-              icon={<CreditCard size={16} />} title="Внести по кредиту" note="в том числе досрочно"
-              onClick={() => { setAddOpen(false); navigate('/capital') }}
+              icon={<Receipt size={16} />} title="Подписка или услуга" note="связь, страховка, абонемент"
+              onClick={() => { setAddOpen(false); navigate('/capital?add=payment') }}
+            />
+            <Row
+              icon={<CreditCard size={16} />} title="Долг или рассрочка" note="кредит, рассрочка, займ"
+              onClick={() => { setAddOpen(false); navigate('/capital?add=debt') }}
             />
             <Row
               icon={<DownloadSimple size={16} />} title="Импорт выписки" note="Kaspi PDF, Halyk XLS"

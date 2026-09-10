@@ -57,10 +57,16 @@ export type State = SyncDoc & {
   updateWish: (id: string, patch: Partial<Pick<WishItem, 'name' | 'price' | 'by' | 'url'>>) => void
 
   amendObligation: (id: string, from: string, amount: number, reason?: string) => void
-  addObligation: (o: Pick<Obligation, 'name' | 'note' | 'day' | 'category' | 'estimate'> & { amount: number }) => void
+  addObligation: (
+    o: Pick<Obligation, 'name' | 'note' | 'day' | 'category' | 'estimate' | 'every' | 'month' | 'who'>
+      & { amount: number },
+  ) => void
   /** Правит действующую сумму: это исправление ошибки, а не изменение с даты. */
   correctObligation: (id: string, amount: number) => void
-  updateObligation: (id: string, patch: Partial<Pick<Obligation, 'name' | 'note' | 'day' | 'estimate'>>) => void
+  updateObligation: (
+    id: string,
+    patch: Partial<Pick<Obligation, 'name' | 'note' | 'day' | 'estimate' | 'category' | 'every' | 'month' | 'who'>>,
+  ) => void
   removeObligation: (id: string) => void
   removeCredit: (id: string) => void
   updateCredit: (
@@ -593,6 +599,24 @@ export function amountAt(o: Obligation, key = monthKey()): number {
   return active.length ? active[active.length - 1].amount : 0
 }
 
+/**
+ * Сколько этот платёж занимает в плане месяца.
+ *
+ * Годовое делится на двенадцать. Иначе выбор был бы между двумя враньями:
+ * показывать страховку полной суммой каждый месяц или не показывать её
+ * одиннадцать месяцев подряд, а на двенадцатый удивляться, куда делись деньги.
+ */
+export function monthlyAmount(o: Obligation, key = monthKey()): number {
+  const full = amountAt(o, key)
+  return o.every === 'year' ? full / 12 : full
+}
+
+/** Списывается ли этот платёж в указанном месяце — для календаря и списка. */
+export function dueIn(o: Obligation, key = monthKey()): boolean {
+  if (o.every !== 'year') return true
+  return (o.month ?? 1) === Number(key.split('-')[1])
+}
+
 /** Ближайшее будущее изменение суммы — из него рождается событие «освободится N ₸». */
 export function nextChange(o: Obligation, key = monthKey()) {
   const future = o.versions.filter((v) => v.from > key).sort((a, b) => a.from.localeCompare(b.from))
@@ -673,15 +697,15 @@ export function budgetAmounts(state: Pick<State, 'categories' | 'obligations' | 
   const key = monthKey()
   const housing = liveObligations(state.obligations)
     .filter((o) => o.category === 'd1')
-    .reduce((a, o) => a + amountAt(o, key), 0)
+    .reduce((a, o) => a + monthlyAmount(o, key), 0)
   const other = liveObligations(state.obligations)
     .filter((o) => o.category !== 'd1' && o.category !== 'd2')
-    .reduce((a, o) => a + amountAt(o, key), 0)
+    .reduce((a, o) => a + monthlyAmount(o, key), 0)
   const debts =
     liveCredits(state.credits).reduce((a, c) => a + c.payment, 0) +
     liveObligations(state.obligations)
       .filter((o) => o.category === 'd2')
-      .reduce((a, o) => a + amountAt(o, key), 0)
+      .reduce((a, o) => a + monthlyAmount(o, key), 0)
   const goals = liveGoals(state.goals).reduce((a, g) => a + g.monthly, 0)
   const living = (state.categories.find((c) => c.key === 'd4')?.amount ?? 0) + other
   const income = totalIncome(state.people)
