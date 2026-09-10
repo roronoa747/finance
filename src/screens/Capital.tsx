@@ -11,9 +11,11 @@ import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { money, parseMoney, plain, ratePct } from '@/lib/money'
 import { cn } from '@/lib/utils'
-import { annuityMonths, annuityTotal, debtCost, prepayment, rateFromSchedule } from '@/lib/finance'
 import {
-  amountAt, budgetAmounts, goalSavings, nextChange, liveAccounts, liveCredits, liveGoals,
+  annuityMonths, annuityTotal, debtCost, halfOverpayExtra, lumpSum, prepayment, rateFromSchedule,
+} from '@/lib/finance'
+import {
+  amountAt, goalSavings, nextChange, liveAccounts, liveCredits, liveGoals,
   liveObligations, netWorth, useStore,
 } from '@/store/useStore'
 import { MONTHS_NOM, addMonths, monthFrom, monthKey, monthTitle } from '@/lib/dates'
@@ -61,6 +63,8 @@ export function Capital() {
   const setIncomeOpen = (v: boolean) => setParams(v ? { income: '1' } : {}, { replace: true })
   const obligationId = params.get('obligation')
   const creditId = params.get('credit')
+  const payoffId = params.get('payoff')
+  const setPayoffId = (v: string | null) => setParams(v ? { payoff: v } : {}, { replace: true })
   const setObligationId = (id: string | null) =>
     setParams(id ? { obligation: id } : {}, { replace: true })
   const setCreditId = (id: string | null) => setParams(id ? { credit: id } : {}, { replace: true })
@@ -179,7 +183,7 @@ export function Capital() {
         </Button>
       </div>
 
-      <DebtAdvice credits={credits} free={budgetAmounts(store).d5} />
+      <DebtAdvice credits={credits} onPayoff={setPayoffId} />
 
       <AddAccountDialog open={accountOpen} onOpenChange={setAccountOpen} />
       <ExtraIncomeDialog open={incomeOpen} onOpenChange={setIncomeOpen} />
@@ -187,8 +191,9 @@ export function Capital() {
       <AddDebtDialog open={addOpen} onOpenChange={setAddOpen} />
       <AddObligationDialog open={paymentOpen} onOpenChange={setPaymentOpen} />
       <ObligationDialog id={obligationId} onClose={() => setObligationId(null)} />
-      <CreditDialog id={creditId} onClose={() => setCreditId(null)} />
+      <CreditDialog id={creditId} onClose={() => setCreditId(null)} onPayoff={setPayoffId} />
       <AccountDialog id={accountId} onClose={() => setAccountId(null)} />
+      <PayoffDialog id={payoffId} onClose={() => setPayoffId(null)} />
     </div>
   )
 }
@@ -841,7 +846,9 @@ function AddDebtDialog({
  * на самом деле — там комиссии, страховки и досрочные погашения, — и подставлять
  * вместо человека расчётную цифру значит тихо разойтись с выпиской.
  */
-function CreditDialog({ id, onClose }: { id: string | null; onClose: () => void }) {
+function CreditDialog({
+  id, onClose, onPayoff,
+}: { id: string | null; onClose: () => void; onPayoff: (id: string) => void }) {
   const credit = useStore((s) => s.credits.find((c) => c.id === id))
   const updateCredit = useStore((s) => s.updateCredit)
   const removeCredit = useStore((s) => s.removeCredit)
@@ -921,6 +928,14 @@ function CreditDialog({ id, onClose }: { id: string | null; onClose: () => void 
             }}
           />
         </Field>
+
+        <Button
+          variant="outline"
+          className="mb-3 w-full bg-surface-2"
+          onClick={() => { onClose(); setTimeout(() => onPayoff(credit.id), 0) }}
+        >
+          Посчитать досрочное погашение
+        </Button>
 
         <Field label="Примечание">
           <Input
@@ -1096,7 +1111,7 @@ function AccountDialog({ id, onClose }: { id: string | null; onClose: () => void
  * Если их хватает на весь остаток, предлагаем закрыть долг целиком: советовать
  * «добавьте 390 000 к платежу 8 400» — значит не понимать собственный расчёт.
  */
-function DebtAdvice({ credits, free }: { credits: Credit[]; free: number }) {
+function DebtAdvice({ credits, onPayoff }: { credits: Credit[]; onPayoff: (id: string) => void }) {
   const ranked = credits
     .map((c) => ({ credit: c, cost: debtCost(c.principal, c.annualRate, c.payment) }))
     .filter((x) => x.credit.annualRate > 0 && x.credit.principal > 0)
@@ -1109,11 +1124,17 @@ function DebtAdvice({ credits, free }: { credits: Credit[]; free: number }) {
 
   const { credit, cost } = worst
   const share = Math.round(cost.interestShare * 100)
-  const spare = Math.floor(Math.max(0, free) / 5000) * 5000
-  const closesWhole = spare >= credit.principal
-  const gain = spare > 0 && !closesWhole
-    ? prepayment(credit.principal, credit.annualRate, credit.payment, spare)
-    : null
+  /*
+    Сумму берём не из свободного остатка в плане. Плановый остаток — это то,
+    что осталось после расписанных статей, а не деньги в кармане: заказчик
+    ответил на такой совет коротко — «сумм таких нету».
+
+    Опорой служит добавка, снимающая половину переплаты: она считается из
+    самого долга и обычно оказывается небольшой, потому что отдача падает
+    быстро. Сколько вносить на самом деле, человек решает в калькуляторе.
+  */
+  const half = halfOverpayExtra(credit.principal, credit.annualRate, credit.payment)
+  const gain = half ? prepayment(credit.principal, credit.annualRate, credit.payment, half) : null
 
   return (
     <>
@@ -1149,39 +1170,27 @@ function DebtAdvice({ credits, free }: { credits: Credit[]; free: number }) {
             : 'Здесь самая высокая ставка из ваших долгов, поэтому каждый лишний тенге, внесённый сюда, экономит больше, чем в любом другом.'}
         </p>
 
-        {closesWhole ? (
+        {gain && half && Number.isFinite(gain.monthsSaved) ? (
           <div className="mt-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3">
             <div className="text-[12.5px] text-ink-2">
-              Свободных денег в этом месяце хватает на весь остаток
+              Половину переплаты снимает добавка в
             </div>
-            <div className="mt-1 font-display text-[19px] font-semibold tracking-[-0.02em]">
-              Закрыть целиком — {money(credit.principal)}
-            </div>
-            {cost.closes && (
-              <div className="mt-0.5 text-[13px] text-ink-2 num">
-                это сэкономит {money(Math.round(cost.overpay))} процентов
-              </div>
-            )}
-          </div>
-        ) : gain && Number.isFinite(gain.monthsSaved) && gain.monthsSaved >= 1 ? (
-          <div className="mt-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3">
-            <div className="text-[12.5px] text-ink-2">
-              Если добавлять к платежу {money(spare)} — столько сейчас свободно
-            </div>
-            <div className="mt-1 font-display text-[19px] font-semibold tracking-[-0.02em]">
-              Закроется на {Math.round(gain.monthsSaved)} мес. раньше
+            <div className="mt-1 font-display text-[19px] font-semibold tracking-[-0.02em] num">
+              {money(half)} в месяц
             </div>
             <div className="mt-0.5 text-[13px] text-ink-2 num">
-              и сэкономит {money(Math.round(gain.saved))}
+              это {Math.round(gain.monthsSaved)} мес. и {money(Math.round(gain.saved))}
             </div>
           </div>
-        ) : (
-          <div className="mt-3 rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-[12.5px] leading-relaxed text-ink-2">
-            {free > 0
-              ? 'Свободных денег в этом месяце меньше пяти тысяч — досрочное погашение пока не из чего считать.'
-              : 'В этом месяце свободных денег нет. Как только появятся, здесь будет видно, сколько даст досрочный взнос именно в этот долг.'}
-          </div>
-        )}
+        ) : null}
+
+        <Button
+          variant="outline"
+          className="mt-3 w-full bg-surface-2"
+          onClick={() => onPayoff(credit.id)}
+        >
+          Посчитать на свою сумму
+        </Button>
       </Card>
     </>
   )
@@ -1344,6 +1353,167 @@ function AddObligationDialog({
         </label>
 
         <Button onClick={create} disabled={!ready} className="w-full">Добавить</Button>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/**
+ * Калькулятор досрочного погашения.
+ *
+ * Заказчик сказал прямо: «сумм таких нету». Приложение считало добавку от
+ * свободного остатка в плане, а плановый остаток — это не деньги в кармане, а
+ * то, что осталось после расписанных статей. Советовать вносить сто тысяч
+ * человеку, у которого их нет, — не совет, а раздражение.
+ *
+ * Поэтому сумму называет человек, а приложение показывает, что она даёт. И
+ * показывает главное: отдача падает быстро. На кредитной карте первые пять
+ * тысяч убирают половину переплаты, а вчетверо большая добавка — только вдвое
+ * больше. Ради этой мысли калькулятор и сделан: она превращает «надо копить и
+ * гасить» в конкретную посильную сумму.
+ */
+function PayoffDialog({ id, onClose }: { id: string | null; onClose: () => void }) {
+  const credit = useStore((s) => s.credits.find((c) => c.id === id))
+  const [mode, setMode] = useState<'monthly' | 'once'>('monthly')
+  const [amount, setAmount] = useState('')
+
+  const principal = credit?.principal ?? 0
+  const rate = credit?.annualRate ?? 0
+  const pay = credit?.payment ?? 0
+
+  const cost = credit ? debtCost(principal, rate, pay) : null
+  const half = credit ? halfOverpayExtra(principal, rate, pay) : null
+
+  // Подсказки — не круглые числа из воздуха: половина платежа, платёж целиком
+  // и точка, снимающая половину переплаты.
+  const chips = Array.from(new Set([
+    Math.round(pay / 2 / 1000) * 1000,
+    Math.round(pay / 1000) * 1000,
+    ...(half ? [half] : []),
+  ].filter((v) => v > 0))).sort((a, b) => a - b)
+
+  const value = parseMoney(amount)
+  const result = credit && value > 0
+    ? mode === 'monthly'
+      ? prepayment(principal, rate, pay, value)
+      : lumpSum(principal, rate, pay, value)
+    : null
+
+  // Небольшая таблица рядом: по одному числу невидно, что отдача падает.
+  const ladder = credit && cost?.closes
+    ? [0.5, 1, 2, 4].map((k) => {
+        const extra = Math.round((pay * k) / 1000) * 1000
+        return { extra, ...prepayment(principal, rate, pay, extra) }
+      }).filter((r) => r.extra > 0 && Number.isFinite(r.monthsAfter))
+    : []
+
+  useEffect(() => { setAmount(''); setMode('monthly') }, [id])
+
+  if (!credit || !cost) return null
+
+  return (
+    <Dialog open={Boolean(id)} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent
+        className="max-h-[88dvh] max-w-[92vw] overflow-y-auto rounded-2xl border-line bg-surface sm:max-w-[400px]"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <DialogHeader>
+          <DialogTitle className="font-display">Досрочное погашение</DialogTitle>
+        </DialogHeader>
+
+        <div className="mb-3 rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-[13px]">
+          <div className="mb-1 font-medium">{credit.name}</div>
+          <div className="flex justify-between">
+            <span className="text-ink-2">Осталось платежей</span>
+            <b className="num">{cost.closes ? Math.ceil(cost.months) : '—'}</b>
+          </div>
+          <div className="mt-1 flex justify-between">
+            <span className="text-ink-2">Переплата, если не трогать</span>
+            <b className="num text-warn">{cost.closes ? money(Math.round(cost.overpay)) : 'долг не закрывается'}</b>
+          </div>
+        </div>
+
+        <Field label="Как вносите">
+          <Segmented<'monthly' | 'once'>
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: 'monthly', label: 'Каждый месяц' },
+              { value: 'once', label: 'Разово' },
+            ]}
+          />
+        </Field>
+
+        <Field label={mode === 'monthly' ? 'Сколько добавите к платежу, ₸' : 'Сколько внесёте разом, ₸'}>
+          <NumField value={amount} onValue={setAmount} placeholder={String(chips[0] ?? 5000)} />
+        </Field>
+
+        {mode === 'monthly' && chips.length > 0 && (
+          <div className="-mt-1 mb-3 flex flex-wrap gap-1.5">
+            {chips.map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setAmount(plain(v))}
+                className={cn(
+                  'rounded-lg border px-2.5 py-1.5 text-[12.5px] num',
+                  value === v ? 'border-brand bg-brand-soft font-semibold text-brand' : 'border-line text-ink-2',
+                )}
+              >
+                +{plain(v)}
+                {v === half && <span className="ml-1 text-[11px]">половина переплаты</span>}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {result && Number.isFinite(result.monthsAfter) ? (
+          <div className="mb-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3">
+            <div className="font-display text-[19px] font-semibold tracking-[-0.02em]">
+              {result.monthsSaved >= 1
+                ? `Закроется на ${Math.round(result.monthsSaved)} мес. раньше`
+                : 'Срок почти не изменится'}
+            </div>
+            <div className="mt-0.5 text-[13px] text-ink-2 num">
+              экономия {money(Math.max(0, Math.round(result.saved)))}
+            </div>
+            <div className="mt-1.5 text-[12.5px] text-ink-3">
+              Останется {Math.max(0, Math.ceil(result.monthsAfter))} платеж
+              {Math.ceil(result.monthsAfter) === 1 ? '' : 'ей'} вместо {Math.ceil(result.monthsNow)}.
+            </div>
+          </div>
+        ) : (
+          <p className="mb-3 text-[12.5px] leading-relaxed text-ink-3">
+            Впишите сумму, которую действительно можете внести. Приложение не
+            станет предлагать больше — считать по деньгам, которых нет, смысла нет.
+          </p>
+        )}
+
+        {ladder.length > 0 && (
+          <>
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-3">
+              Отдача падает
+            </div>
+            <div className="mb-3 flex flex-col gap-1.5 text-[13px]">
+              {ladder.map((r) => (
+                <div key={r.extra} className="flex items-baseline gap-2">
+                  <span className="num text-ink-2">+{plain(r.extra)}</span>
+                  <span className="ml-auto num">−{Math.round(r.monthsSaved)} мес.</span>
+                  <span className="w-[92px] text-right num text-brand">
+                    {money(Math.max(0, Math.round(r.saved)))}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {half && (
+              <p className="mb-1 text-[12.5px] leading-relaxed text-ink-3">
+                Половину переплаты снимает уже добавка в {money(half)} — дальше каждая
+                следующая тысяча даёт меньше предыдущей. Если больших сумм нет, начинать
+                стоит отсюда.
+              </p>
+            )}
+          </>
+        )}
       </DialogContent>
     </Dialog>
   )

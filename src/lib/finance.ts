@@ -205,3 +205,74 @@ export function debtCost(principal: number, annualRate: number, payment: number)
     overpay: closes ? payment * months - principal : Infinity,
   }
 }
+
+/**
+ * Разовый досрочный взнос: часть остатка гасится сразу, платёж не меняется.
+ *
+ * Второй способ рядом с ежемесячной добавкой, потому что деньги приходят
+ * по-разному. Премия или возврат — это разовая сумма, и «добавляйте по столько
+ * каждый месяц» для неё бессмысленный совет.
+ *
+ * Взнос больше остатка — это просто закрытие долга: считаем по остатку, чтобы
+ * экономия не оказалась завышенной на сумму, которую платить было не нужно.
+ */
+export function lumpSum(
+  principal: number,
+  annualRate: number,
+  payment: number,
+  lump: number,
+): Prepayment {
+  const paid = Math.max(0, Math.min(lump, principal))
+  const left = principal - paid
+  const monthsNow = annuityMonths(principal, annualRate, payment)
+  const monthsAfter = left <= 0 ? 0 : annuityMonths(left, annualRate, payment)
+  const overpayNow = payment * monthsNow - principal
+  const overpayAfter = left <= 0 ? 0 : payment * monthsAfter - left
+  return {
+    monthsNow,
+    monthsAfter,
+    monthsSaved: monthsNow - monthsAfter,
+    overpayNow,
+    overpayAfter,
+    saved: overpayNow - overpayAfter,
+  }
+}
+
+/**
+ * Наименьшая ежемесячная добавка, снимающая половину переплаты.
+ *
+ * Это и есть «разумные рамки». На кредитной карте с остатком 165 000 и
+ * платежом 8 433 добавка в 5 000 убирает 31 000 переплаты из 66 000, а
+ * вчетверо большая — только вдвое больше. Отдача падает быстро, и совет
+ * «вносите как можно больше» бесполезен человеку, у которого таких сумм нет.
+ *
+ * Ищем делением пополам: экономия растёт с добавкой монотонно. Возвращаем
+ * округление вверх до шага, чтобы получилось число, которое можно назвать
+ * вслух, а не 4 137.
+ */
+export function halfOverpayExtra(
+  principal: number,
+  annualRate: number,
+  payment: number,
+  step = 1000,
+): number | null {
+  const months = annuityMonths(principal, annualRate, payment)
+  if (!Number.isFinite(months)) return null
+  const target = (payment * months - principal) / 2
+  if (target <= 0) return null
+
+  const savedBy = (extra: number) => {
+    const m = annuityMonths(principal, annualRate, payment + extra)
+    return payment * months - principal - ((payment + extra) * m - principal)
+  }
+
+  let lo = 0
+  let hi = principal
+  if (savedBy(hi) < target) return null
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2
+    if (savedBy(mid) < target) lo = mid
+    else hi = mid
+  }
+  return Math.ceil(hi / step) * step
+}

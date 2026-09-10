@@ -9,7 +9,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { createRoot } from 'react-dom/client'
 import { useThemeSync } from '@/lib/useTheme'
 import { hasBudgetData } from '@/store/useStore'
-import { debtCost } from '@/lib/finance'
+import { debtCost, halfOverpayExtra, lumpSum, prepayment } from '@/lib/finance'
 import { AppShell } from '@/components/AppShell'
 import { Capital } from '@/screens/Capital'
 import { Deposit } from '@/screens/Deposit'
@@ -44,5 +44,7 @@ function Harness() {
 // стенде не участвуют.
 ;(window as unknown as { __hasBudgetData: typeof hasBudgetData }).__hasBudgetData = hasBudgetData
 ;(window as unknown as { __debtCost: typeof debtCost }).__debtCost = debtCost
+;(window as unknown as { __payoff: object }).__payoff =
+  { lump: lumpSum, half: halfOverpayExtra, pre: prepayment }
 
 createRoot(document.getElementById('root')!).render(<Harness />)

@@ -356,6 +356,49 @@ try {
     debt.free.monthlyInterest === 0 && Math.round(debt.free.overpay) === 0,
     `проценты ${debt.free.monthlyInterest}, переплата ${debt.free.overpay}`)
 
+  // --- калькулятор досрочного погашения ---
+  await open('/capital')
+  check('совет не предлагает сумм из планового остатка',
+    (await page.locator('text=хватает на весь остаток').count()) === 0)
+  await page.locator('button:has-text("Посчитать на свою сумму")').first().click()
+  await page.waitForTimeout(500)
+  check('калькулятор открылся', (await page.locator('text=Досрочное погашение').count()) > 0)
+
+  const extra = page.locator('input[inputmode="numeric"]').first()
+  await extra.fill(''); await extra.type('5000')
+  await page.waitForTimeout(400)
+  // Сверяем показанное с расчётом: экран и формула должны говорить одно и то же.
+  const shown = Number((await page.locator('text=экономия').first().innerText()).replace(/[^\d]/g, ''))
+  const expected = await page.evaluate(() =>
+    Math.round(window.__payoff.pre(165000, 0.306, 8400, 5000).saved))
+  check('показанная экономия совпадает с расчётом', shown === expected, `${shown} против ${expected}`)
+
+  await page.locator('button:has-text("Разово")').click()
+  await page.waitForTimeout(300)
+  await extra.fill(''); await extra.type('50000')
+  await page.waitForTimeout(400)
+  check('разовый взнос считается отдельно',
+    (await page.locator('text=Останется').count()) > 0)
+
+  const payoff = await page.evaluate(() => {
+    const { lump, half, pre } = window.__payoff
+    return {
+      // Кредитная карта заказчика: остаток 165 000, ГЭСВ 30,6%, платёж 8 433.
+      half: half(164949, 0.306, 8433),
+      // Взнос больше остатка не должен давать экономию больше переплаты.
+      over: lump(164949, 0.306, 8433, 500000),
+      // Рассрочка: переплаты нет, снимать нечего.
+      free: half(120000, 0, 10000),
+      small: pre(164949, 0.306, 8433, 5000),
+    }
+  })
+  check('точка «половина переплаты» посчитана', payoff.half === 6000, payoff.half)
+  check('взнос больше остатка не завышает экономию',
+    Math.round(payoff.over.saved) === Math.round(payoff.over.overpayNow), Math.round(payoff.over.saved))
+  check('у беспроцентного долга точки нет', payoff.free === null, payoff.free)
+  check('добавка 5 000 снимает около половины переплаты',
+    Math.round(payoff.small.saved) > payoff.small.overpayNow * 0.45, Math.round(payoff.small.saved))
+
   check('пустое состояние — бюджета нет', gate.empty === false)
   check('введённая зарплата — бюджет есть', gate.withSalary === true)
   check('нулевая зарплата сама по себе бюджетом не считается', gate.zeroSalary === false)
