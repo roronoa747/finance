@@ -28,6 +28,14 @@ export type State = SyncDoc & {
    * первом же обмене, потому что слияние честно восстановило бы их с сервера.
    */
   forceReplace: boolean
+  /**
+   * Ответило ли облако в этом запуске.
+   *
+   * Не сохраняется: это факт про текущий сеанс, а не про данные. Нужен воротам
+   * настройки — пока облако молчит, нельзя утверждать, что бюджет не заведён,
+   * и предлагать завести его заново.
+   */
+  cloudAnswered: boolean
 
   setPerson: (id: PersonId, patch: Partial<Person>) => void
   /** Планирует новый оклад с указанного месяца, сохраняя прежний в истории. */
@@ -82,7 +90,7 @@ export type State = SyncDoc & {
   /* --- синхронизация --- */
   getDoc: () => SyncDoc
   applyDoc: (doc: SyncDoc, rev: number) => void
-  setSync: (patch: Partial<Pick<State, 'status' | 'rev' | 'lastSyncedAt' | 'lastError' | 'householdId' | 'userId' | 'membership' | 'forceReplace'>>) => void
+  setSync: (patch: Partial<Pick<State, 'status' | 'rev' | 'lastSyncedAt' | 'lastError' | 'householdId' | 'userId' | 'membership' | 'forceReplace' | 'cloudAnswered'>>) => void
   markDirty: () => void
 
   resetAll: () => void
@@ -148,6 +156,7 @@ export const useStore = create<State>()(
       lastSyncedAt: null,
       lastError: null,
       forceReplace: false,
+      cloudAnswered: false,
 
       /*
         Заводит участника, если его ещё нет.
@@ -473,6 +482,7 @@ export const useStore = create<State>()(
 
       applyDoc: (doc, rev) =>
         set(() => ({
+          cloudAnswered: true,
           people: doc.people ?? [], categories: doc.categories ?? [], goals: doc.goals ?? [],
           wishlist: doc.wishlist ?? [], obligations: doc.obligations ?? [],
           accounts: doc.accounts ?? [], credits: doc.credits ?? [],
@@ -639,6 +649,26 @@ export const mandatoryMonthly = (categories: Category[]) =>
  * принципиально не отслеживаем по операциям. Свободный остаток — то, что
  * осталось от дохода.
  */
+/**
+ * Заведён ли бюджет — по самим данным, а не по отметке.
+ *
+ * Нужен только чтобы НЕ показать мастер настройки. Обратное правило —
+ * «данных нет, значит настройки не было» — выводить из данных нельзя:
+ * нулевая зарплата законна, и на этом мастер однажды уже зациклился.
+ * Здесь направление безопасное: если что-то введено, спрашивать не о чем.
+ */
+export function hasBudgetData(
+  state: Pick<State, 'people' | 'obligations' | 'credits' | 'goals' | 'accounts'>,
+): boolean {
+  return (
+    state.people.some((p) => salaryAt(p) > 0) ||
+    liveObligations(state.obligations).length > 0 ||
+    liveCredits(state.credits).length > 0 ||
+    liveGoals(state.goals).length > 0 ||
+    liveAccounts(state.accounts).length > 0
+  )
+}
+
 export function budgetAmounts(state: Pick<State, 'categories' | 'obligations' | 'credits' | 'goals' | 'people'>) {
   const key = monthKey()
   const housing = liveObligations(state.obligations)

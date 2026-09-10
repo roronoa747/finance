@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowDown, ArrowUp } from '@phosphor-icons/react'
 import {
-  Callout, Card, Field, NumField, NumFieldBlur, Row, Section, Segmented, Stat,
+  Callout, Card, Field, NumField, NumFieldBlur, Row, SavedMark, Section, Segmented, Stat, useSavedMark,
 } from '@/components/kit'
 import { Bar, Legend } from '@/components/charts'
 import { Input } from '@/components/ui/input'
@@ -357,6 +357,8 @@ function SalaryDialog({ id, onClose }: { id: PersonId | null; onClose: () => voi
   const [fromMonth, setFromMonth] = useState(addMonths(key, 1))
   const [reason, setReason] = useState('')
 
+  const saved = useSavedMark(person?.id, person?.updatedAt)
+
   if (!person) return null
 
   const current = salaryAt(person, key)
@@ -368,7 +370,12 @@ function SalaryDialog({ id, onClose }: { id: PersonId | null; onClose: () => voi
   return (
     <Dialog open={Boolean(id)} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-h-[88dvh] max-w-[92vw] overflow-y-auto rounded-2xl border-line bg-surface sm:max-w-[400px]">
-        <DialogHeader><DialogTitle className="font-display">{person.name}</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 font-display">
+            {person.name}
+            <SavedMark on={saved} />
+          </DialogTitle>
+        </DialogHeader>
 
         <Field label="Имя">
           <Input

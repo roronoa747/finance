@@ -115,7 +115,7 @@ export function AccessGate({ children }: { children: ReactNode }) {
 }
 
 /** Пока идёт проверка — знак и одна строка вместо пустого экрана или чужого вопроса. */
-function Splash({ note }: { note?: string }) {
+export function Splash({ note }: { note?: string }) {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-3">
       <span className="grid size-11 place-items-center rounded-2xl bg-brand font-display text-[17px] font-bold text-brand-ink">

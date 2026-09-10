@@ -8,6 +8,7 @@
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { createRoot } from 'react-dom/client'
 import { useThemeSync } from '@/lib/useTheme'
+import { hasBudgetData } from '@/store/useStore'
 import { AppShell } from '@/components/AppShell'
 import { Capital } from '@/screens/Capital'
 import { Deposit } from '@/screens/Deposit'
@@ -37,5 +38,9 @@ function Harness() {
     </MemoryRouter>
   )
 }
+
+// Селектор ворот проверяется напрямую: сами ворота живут выше экранов и в
+// стенде не участвуют.
+;(window as unknown as { __hasBudgetData: typeof hasBudgetData }).__hasBudgetData = hasBudgetData
 
 createRoot(document.getElementById('root')!).render(<Harness />)

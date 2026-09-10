@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, PencilSimple, Plus } from '@phosphor-icons/react'
-import { Callout, Card, Field, NumField, NumFieldBlur, Section, Segmented, Tag } from '@/components/kit'
+import {
+  Callout, Card, Field, NumField, NumFieldBlur, SavedMark, Section, Segmented, Tag, useSavedMark,
+} from '@/components/kit'
 import { Ring } from '@/components/charts'
 import { HUES, HUE_KEYS, hueColor } from '@/lib/palette'
 import { useIsDark } from '@/lib/useTheme'
@@ -232,6 +234,8 @@ function EditGoalDialog({
   const removeGoal = useStore((s) => s.removeGoal)
   const [confirm, setConfirm] = useState(false)
 
+  const saved = useSavedMark(goal?.id, goal?.updatedAt)
+
   if (!goal) return null
 
   return (
@@ -241,7 +245,12 @@ function EditGoalDialog({
         /* Правка существующей записи не должна выбрасывать клавиатуру и выделять название. */
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <DialogHeader><DialogTitle className="font-display">Изменить цель</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 font-display">
+            Изменить цель
+            <SavedMark on={saved} />
+          </DialogTitle>
+        </DialogHeader>
 
         <Field label="Название">
           <Input
@@ -296,6 +305,8 @@ function EditGoalDialog({
             ))}
           </div>
         </Field>
+
+        <Button onClick={() => onOpenChange(false)} className="mb-3 w-full">Готово</Button>
 
         <div className="border-t border-line pt-3">
           {confirm ? (

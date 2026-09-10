@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Bank, CalendarPlus, Coins, CreditCard, House, Plus, Wallet } from '@phosphor-icons/react'
-import { Card, Field, NumField, NumFieldBlur, Row, Section, Segmented } from '@/components/kit'
+import {
+  Card, Field, NumField, NumFieldBlur, Row, SavedMark, Section, Segmented, useSavedMark,
+} from '@/components/kit'
 import type { Account, Currency, PersonId } from '@/store/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,6 +26,7 @@ const ICONS = {
 
 export function Capital() {
   const [addOpen, setAddOpen] = useState(false)
+  const navigate = useNavigate()
   const [accountId, setAccountId] = useState<string | null>(null)
   const [accountOpen, setAccountOpen] = useState(false)
   /*
@@ -85,15 +88,15 @@ export function Capital() {
       <Card flush>
         {accounts.map((a) =>
           a.deposit ? (
-            <Link key={a.id} to={`/capital/${a.id}`} className="block">
-              <Row
-                icon={ICONS[a.kind]}
-                title={a.name}
-                note={`${a.note} · ${ratePct(a.deposit.annualRate, 1)} годовых`}
-                value={money(a.amount)}
-                sub="условия →"
-              />
-            </Link>
+            <Row
+              key={a.id}
+              icon={ICONS[a.kind]}
+              title={a.name}
+              note={`${a.note} · ${ratePct(a.deposit.annualRate, 1)} годовых`}
+              value={money(a.amount)}
+              sub="условия вклада"
+              onClick={() => navigate(`/capital/${a.id}`)}
+            />
           ) : (
             <Row
               key={a.id}
@@ -101,7 +104,6 @@ export function Capital() {
               title={a.name}
               note={a.currency ? `${plain(a.foreignAmount ?? 0)} ${a.currency} · курс ${String(a.rate).replace('.', ',')}` : a.note}
               value={money(a.amount)}
-              sub="изменить →"
               onClick={() => setAccountId(a.id)}
             />
           ),
@@ -122,9 +124,9 @@ export function Capital() {
               key={c.id}
               icon={<CreditCard size={17} />}
               title={c.name}
-              note={`ГЭСВ ${ratePct(c.annualRate, 1)} · ${Math.ceil(months)} платежей`}
+              note={`${c.annualRate > 0 ? `ГЭСВ ${ratePct(c.annualRate, 1)}` : 'без процентов'} · ${Math.ceil(months)} платежей`}
               value={money(c.principal)}
-              sub={`переплата ${plain(Math.round(overpay))}`}
+              sub={overpay > 0 ? `переплата ${plain(Math.round(overpay))}` : undefined}
               onClick={() => setCreditId(c.id)}
             />
           )
@@ -138,7 +140,7 @@ export function Capital() {
               title={o.name}
               note={o.estimate ? 'оценка · ' + o.note : o.note}
               value={money(amountAt(o, key))}
-              sub={nextChange(o, key) ? 'изменится →' : 'в месяц'}
+              sub={nextChange(o, key) ? 'сумма изменится' : 'в месяц'}
               onClick={() => setObligationId(o.id)}
             />
           ))}
@@ -428,6 +430,7 @@ function ObligationDialog({
   const [fromMonth, setFromMonth] = useState(addMonths(key, 1))
   const [reason, setReason] = useState('')
   const [planning, setPlanning] = useState(false)
+  const [confirm, setConfirm] = useState(false)
 
   const current = obligation ? amountAt(obligation, key) : 0
   useEffect(() => {
@@ -436,9 +439,12 @@ function ObligationDialog({
       setNewAmount('')
       setReason('')
       setPlanning(false)
+      setConfirm(false)
       setFromMonth(addMonths(monthKey(), 1))
     }
   }, [obligation?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const saved = useSavedMark(obligation?.id, obligation?.updatedAt)
 
   if (!obligation) return null
 
@@ -453,7 +459,12 @@ function ObligationDialog({
         /* Правка существующей записи не должна выбрасывать клавиатуру и выделять название. */
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <DialogHeader><DialogTitle className="font-display">{obligation.name}</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 font-display">
+            {obligation.name}
+            <SavedMark on={saved} />
+          </DialogTitle>
+        </DialogHeader>
 
         <Field label="Название">
           <Input
@@ -573,12 +584,31 @@ function ObligationDialog({
           </>
         )}
 
-        <button
-          onClick={() => { removeObligation(obligation.id); onClose() }}
-          className="mb-1 self-center text-[13px] text-ink-3 hover:text-destructive"
-        >
-          Удалить обязательство
-        </button>
+        <Button onClick={onClose} className="mb-3 w-full">Готово</Button>
+
+        <div className="border-t border-line pt-3">
+          {confirm ? (
+            <>
+              <p className="mb-2 text-[12.5px] leading-relaxed text-warn">
+                Обязательство исчезнет у обоих участников вместе с историей суммы.
+                Отменить нельзя.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setConfirm(false)}>Отмена</Button>
+                <Button
+                  className="flex-1 bg-destructive text-destructive-foreground"
+                  onClick={() => { removeObligation(obligation.id); onClose() }}
+                >
+                  Удалить
+                </Button>
+              </div>
+            </>
+          ) : (
+            <button onClick={() => setConfirm(true)} className="text-[13px] text-ink-3 hover:text-destructive">
+              Удалить обязательство
+            </button>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   )
@@ -610,7 +640,8 @@ function AddCreditDialog({
     mode === 'rate'
       ? (() => {
           const v = parseFloat(rate.replace(',', '.'))
-          return Number.isFinite(v) && v > 0 ? v / 100 : null
+          // Ноль — это рассрочка без процентов, а не «ставку не ввели».
+          return Number.isFinite(v) && v >= 0 ? v / 100 : null
         })()
       : rateFromSchedule(parseMoney(principal), parseMoney(payment), parseMoney(term))
 
@@ -710,6 +741,8 @@ function CreditDialog({ id, onClose }: { id: string | null; onClose: () => void 
 
   useEffect(() => { setConfirm(false) }, [id])
 
+  const saved = useSavedMark(credit?.id, credit?.updatedAt)
+
   if (!credit) return null
 
   const months = annuityMonths(credit.principal, credit.annualRate, credit.payment)
@@ -723,7 +756,12 @@ function CreditDialog({ id, onClose }: { id: string | null; onClose: () => void 
         /* Правка существующей записи не должна выбрасывать клавиатуру и выделять название. */
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <DialogHeader><DialogTitle className="font-display">{credit.name}</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 font-display">
+            {credit.name}
+            <SavedMark on={saved} />
+          </DialogTitle>
+        </DialogHeader>
 
         <Field label="Название">
           <Input
@@ -761,7 +799,9 @@ function CreditDialog({ id, onClose }: { id: string | null; onClose: () => void 
             kind="rate"
             onCommit={(text) => {
               const v = parseFloat(text.replace(',', '.'))
-              if (Number.isFinite(v) && v > 0) updateCredit(credit.id, { annualRate: v / 100 })
+              // Ноль законен: рассрочка без процентов. Раньше он отбрасывался,
+              // и правка на 0 молча не сохранялась.
+              if (Number.isFinite(v) && v >= 0) updateCredit(credit.id, { annualRate: v / 100 })
             }}
           />
         </Field>
@@ -804,6 +844,8 @@ function CreditDialog({ id, onClose }: { id: string | null; onClose: () => void 
             Проверьте остаток, платёж и ставку.
           </div>
         )}
+
+        <Button onClick={onClose} className="mb-3 w-full">Готово</Button>
 
         <div className="border-t border-line pt-3">
           {confirm ? (
@@ -850,6 +892,8 @@ function AccountDialog({ id, onClose }: { id: string | null; onClose: () => void
 
   useEffect(() => { setConfirm(false) }, [id])
 
+  const saved = useSavedMark(account?.id, account?.updatedAt)
+
   if (!account) return null
 
   const foreign = Boolean(account.currency)
@@ -862,7 +906,12 @@ function AccountDialog({ id, onClose }: { id: string | null; onClose: () => void
         /* Правка существующей записи не должна выбрасывать клавиатуру и выделять название. */
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <DialogHeader><DialogTitle className="font-display">{account.name}</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 font-display">
+            {account.name}
+            <SavedMark on={saved} />
+          </DialogTitle>
+        </DialogHeader>
 
         <Field label="Название">
           <Input
@@ -923,6 +972,8 @@ function AccountDialog({ id, onClose }: { id: string | null; onClose: () => void
             }}
           />
         </Field>
+
+        <Button onClick={onClose} className="mb-3 w-full">Готово</Button>
 
         <div className="border-t border-line pt-3">
           {confirm ? (

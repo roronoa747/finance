@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Check, Link as LinkIcon, Plus } from '@phosphor-icons/react'
-import { Callout, Card, Field, NumField, NumFieldBlur, Section, Segmented, Tag } from '@/components/kit'
+import {
+  Callout, Card, Field, NumField, NumFieldBlur, SavedMark, Section, Segmented, Tag, useSavedMark,
+} from '@/components/kit'
 import { Ring } from '@/components/charts'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -320,6 +322,8 @@ function WishDialog({ id, onClose }: { id: string | null; onClose: () => void })
 
   useEffect(() => { setConfirm(false) }, [id])
 
+  const saved = useSavedMark(wish?.id, wish?.updatedAt)
+
   if (!wish) return null
 
   return (
@@ -329,7 +333,12 @@ function WishDialog({ id, onClose }: { id: string | null; onClose: () => void })
         /* Правка существующей записи не должна выбрасывать клавиатуру и выделять название. */
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <DialogHeader><DialogTitle className="font-display">{wish.name}</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 font-display">
+            {wish.name}
+            <SavedMark on={saved} />
+          </DialogTitle>
+        </DialogHeader>
 
         <Field label="Что покупаем">
           <Input
@@ -367,6 +376,8 @@ function WishDialog({ id, onClose }: { id: string | null; onClose: () => void })
             options={people.map((p) => ({ value: p.id, label: p.name }))}
           />
         </Field>
+
+        <Button onClick={onClose} className="mb-3 w-full">Готово</Button>
 
         <div className="border-t border-line pt-3">
           {confirm ? (

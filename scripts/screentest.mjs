@@ -178,6 +178,71 @@ try {
   // Ссылка на обязательство должна открывать его сразу, а не общий список.
   await open('/capital?obligation=rent')
   check('адрес открывает обязательство напрямую', (await page.locator('text=Сумма сейчас, ₸').count()) > 0)
+  // --- рассрочка: ставка 0 законна, раньше правка на ноль молча пропадала ---
+  await open('/capital')
+  await page.locator('text=Кредит Халык').first().click()
+  await page.waitForTimeout(400)
+
+  // Отметка не должна гореть просто оттого, что окно открыли: тогда она не
+  // отличала бы сохранение от его отсутствия и врала бы ровно в том случае,
+  // ради которого заведена.
+  const mark = () => page.locator('text=Сохранено').first().evaluate((e) => getComputedStyle(e).opacity)
+  check('при открытии отметки нет', (await mark()) === '0', `прозрачность ${await mark()}`)
+
+  // На телефоне автофокус выбрасывает клавиатуру и выделяет название — при
+  // правке существующей записи это только мешает.
+  const focused = await page.evaluate(() => document.activeElement?.tagName ?? '—')
+  check('окно правки не выхватывает поле', focused !== 'INPUT', focused)
+
+  const rate = page.locator('input[inputmode="decimal"]').first()
+  await rate.fill(''); await rate.type('0'); await rate.blur()
+  await page.waitForTimeout(400)
+  const s9 = await store()
+  check('ставка 0 сохраняется', s9.credits[0].annualRate === 0, s9.credits[0].annualRate)
+  check('после сохранения отметка загорается', (await mark()) === '1', `прозрачность ${await mark()}`)
+
+  // Закрываем правку и смотрим на строку: «ГЭСВ 0,0%» — это не подпись, это шум.
+  await page.locator('button:has-text("Готово")').first().click()
+  await page.waitForTimeout(400)
+  check('кредит без процентов подписан словами',
+    (await page.locator('text=без процентов').count()) > 0,
+    await page.locator('button:has-text("Кредит Халык")').first().innerText().catch(() => '—'))
+
+  check('кнопка «Готово» закрывает правку',
+    (await page.locator('text=Ставка (ГЭСВ), % годовых').count()) === 0)
+
+  // --- нажимаемая строка выглядит нажимаемой и не срабатывает при прокрутке ---
+  check('у строк есть шеврон', (await page.locator('path[d="M1 1l5.5 6L1 13"]').count()) > 0)
+
+  const row = page.locator('button:has-text("Кредит Халык")').first()
+  const box = await row.boundingBox()
+  await page.mouse.move(box.x + 30, box.y + 8)
+  await page.mouse.down()
+  await page.mouse.move(box.x + 30, box.y + 70, { steps: 6 })
+  await page.mouse.up()
+  await page.waitForTimeout(400)
+  check('протяжка по строке не открывает правку',
+    (await page.locator('text=Ставка (ГЭСВ), % годовых').count()) === 0)
+
+  // --- признак «бюджет уже заведён»: только он не пускает мастер настройки ---
+  const gate = await page.evaluate(() => {
+    const f = window.__hasBudgetData
+    const base = { people: [], obligations: [], credits: [], goals: [], accounts: [] }
+    const person = (salary) => ({ id: 'a', name: 'x', salary, payday: 1 })
+    const goal = (extra) => ({ id: 'g', name: 'g', need: 1, have: 0, monthly: 0, hue: 'blue', planPct: 0, movements: [], ...extra })
+    return {
+      empty: f(base),
+      withSalary: f({ ...base, people: [person(100)] }),
+      zeroSalary: f({ ...base, people: [person(0)] }),
+      withGoal: f({ ...base, goals: [goal()] }),
+      deletedGoal: f({ ...base, goals: [goal({ deletedAt: '2026-01-01T00:00:00.000Z' })] }),
+    }
+  })
+  check('пустое состояние — бюджета нет', gate.empty === false)
+  check('введённая зарплата — бюджет есть', gate.withSalary === true)
+  check('нулевая зарплата сама по себе бюджетом не считается', gate.zeroSalary === false)
+  check('цель — бюджет есть', gate.withGoal === true)
+  check('удалённая цель не считается', gate.deletedGoal === false)
 } catch (e) {
   check('прогон дошёл до конца', false, String(e).slice(0, 300))
 }

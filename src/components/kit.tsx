@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from 'react'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { clean, caretAt, sigBefore, type NumKind } from '@/lib/num'
 import { cn } from '@/lib/utils'
@@ -31,6 +31,15 @@ export function Section({ title, action }: { title: string; action?: ReactNode }
   )
 }
 
+/**
+ * Строка списка. Если её можно открыть, это видно: справа стоит шеврон, а не
+ * догадка. Раньше нажималась вся строка, но выглядела она как текст, и было
+ * непонятно, куда целиться.
+ *
+ * Тап после прокрутки не считается: палец, который вёл список и остановился на
+ * строке, не должен открывать её правку. Порог в 8 пикселей отделяет нажатие
+ * от движения — меньше этого палец сдвигается и при обычном тапе.
+ */
 export function Row({
   icon, title, note, value, sub, onClick, accent,
 }: {
@@ -43,12 +52,23 @@ export function Row({
   accent?: string
 }) {
   const Tag = onClick ? 'button' : 'div'
+  const from = useRef<{ x: number; y: number } | null>(null)
+  const dragged = useRef(false)
+
   return (
     <Tag
-      onClick={onClick}
+      onPointerDown={(e) => {
+        from.current = { x: e.clientX, y: e.clientY }
+        dragged.current = false
+      }}
+      onPointerMove={(e) => {
+        const p = from.current
+        if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 8) dragged.current = true
+      }}
+      onClick={onClick && (() => { if (!dragged.current) onClick() })}
       className={cn(
         'flex w-full items-center gap-3 border-b border-line px-4 py-3 text-left last:border-b-0',
-        onClick && 'hover:bg-surface-2',
+        onClick && 'hover:bg-surface-2 active:bg-surface-3',
       )}
     >
       {icon && (
@@ -69,7 +89,65 @@ export function Row({
           {sub && <span className="block text-[12px] text-ink-3">{sub}</span>}
         </span>
       )}
+      {onClick && (
+        <svg
+          width="8" height="14" viewBox="0 0 8 14" fill="none" aria-hidden
+          stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+          className="ml-0.5 shrink-0 text-ink-3"
+        >
+          <path d="M1 1l5.5 6L1 13" />
+        </svg>
+      )}
     </Tag>
+  )
+}
+
+/**
+ * Показывает «Сохранено», когда запись действительно изменилась.
+ *
+ * Формы правки применяют изменение по уходу из поля, без кнопки. Это тихо:
+ * заказчик решил, что правка не сработала — а она не сработала совсем по
+ * другой причине, и отличить одно от другого было нечем.
+ *
+ * Отметка висит на updatedAt самой записи, а не на событии в форме: значит,
+ * показано ровно то, что легло в хранилище, и соврать она не может.
+ *
+ * Запись передаётся вместе с её id, и это не украшение. Диалог висит в дереве
+ * всегда, а закрытым показывает пустоту — без id открытие любой записи
+ * выглядело как изменение с «ничего» на «что-то», и отметка загоралась сразу
+ * при открытии, ничего не сохранив.
+ */
+export function useSavedMark(id?: string | null, stamp?: string): boolean {
+  const [on, setOn] = useState(false)
+  const seen = useRef<{ id?: string | null; stamp?: string }>({ id, stamp })
+
+  useEffect(() => {
+    if (seen.current.id !== id) {
+      seen.current = { id, stamp }
+      setOn(false)
+      return
+    }
+    if (seen.current.stamp === stamp) return
+    seen.current = { id, stamp }
+    setOn(true)
+    const t = setTimeout(() => setOn(false), 1800)
+    return () => clearTimeout(t)
+  }, [id, stamp])
+
+  return on
+}
+
+export function SavedMark({ on }: { on: boolean }) {
+  return (
+    <span
+      aria-live="polite"
+      className={cn(
+        'text-[12px] font-normal text-brand transition-opacity duration-200',
+        on ? 'opacity-100' : 'opacity-0',
+      )}
+    >
+      Сохранено
+    </span>
   )
 }
 

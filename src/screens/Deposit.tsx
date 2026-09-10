@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft } from '@phosphor-icons/react'
-import { Callout, Card, Field, NumFieldBlur, Segmented } from '@/components/kit'
+import { Callout, Card, Field, NumFieldBlur, SavedMark, Segmented, useSavedMark } from '@/components/kit'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { money, parseMoney, plain, ratePct } from '@/lib/money'
@@ -18,6 +18,7 @@ export function Deposit() {
   const removeAccount = useStore((s) => s.removeAccount)
   const inflation = useStore((s) => s.settings.inflation)
   const [confirm, setConfirm] = useState(false)
+  const saved = useSavedMark(account?.id, account?.updatedAt)
 
   if (!account?.deposit) {
     return (
@@ -45,7 +46,10 @@ export function Deposit() {
       </button>
 
       <Card>
-        <div className="mb-4 font-display text-[18px] font-semibold">{account.name}</div>
+        <div className="mb-4 flex items-center gap-2">
+          <span className="font-display text-[18px] font-semibold">{account.name}</span>
+          <SavedMark on={saved} />
+        </div>
 
         <Field label="Название">
           <Input
