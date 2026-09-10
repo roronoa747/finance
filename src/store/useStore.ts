@@ -46,6 +46,7 @@ export type State = SyncDoc & {
   addWish: (w: Pick<WishItem, 'name' | 'price' | 'by' | 'url'>) => void
   toggleBought: (id: string) => void
   removeWish: (id: string) => void
+  updateWish: (id: string, patch: Partial<Pick<WishItem, 'name' | 'price' | 'by' | 'url'>>) => void
 
   amendObligation: (id: string, from: string, amount: number, reason?: string) => void
   addObligation: (o: Pick<Obligation, 'name' | 'note' | 'day' | 'category' | 'estimate'> & { amount: number }) => void
@@ -285,6 +286,12 @@ export const useStore = create<State>()(
           wishlist: s.wishlist.map((w) =>
             w.id === id ? { ...w, deletedAt: now(), updatedAt: now() } : w,
           ),
+          status: 'dirty',
+        })),
+
+      updateWish: (id, patch) =>
+        set((s) => ({
+          wishlist: s.wishlist.map((w) => (w.id === id ? touch({ ...w, ...patch }) : w)),
           status: 'dirty',
         })),
 

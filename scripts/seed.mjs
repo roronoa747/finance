@@ -17,7 +17,10 @@ export const seed = {
       id: 'flat', name: 'Первая квартира', need: 6000000, seed: 2000000, have: 2000000,
       monthly: 200000, hue: 'green', planPct: 0.3, movements: [], updatedAt: '2026-01-01T00:00:00.000Z',
     }],
-    wishlist: [],
+    wishlist: [{
+      id: 'w1', name: 'Сковорода', price: 32000, by: 'b', addedOn: '12 августа',
+      url: 'https://example.kz/pan', bought: false, updatedAt: '2026-01-01T00:00:00.000Z',
+    }],
     obligations: [{
       id: 'rent', name: 'Аренда', note: 'квартира', day: 5, category: 'd1',
       versions: [{ from: '2025-01', amount: 280000 }], updatedAt: '2026-01-01T00:00:00.000Z',

@@ -97,6 +97,28 @@ try {
   await page.waitForTimeout(400)
   const s6 = await store()
   check('связь цели со счётом разорвана', s6.goals[0].accountId === null, s6.goals[0].accountId)
+  // --- покупки: строка открывает правку, ссылка осталась ссылкой ---
+  await open('/goals?tab=wish')
+  check('список покупок открылся', (await page.locator('text=Сковорода').count()) > 0)
+  check('ссылка на товар осталась ссылкой', (await page.locator('a:has-text("ссылка")').count()) > 0)
+
+  await page.locator('button:has-text("Сковорода")').first().click()
+  await page.waitForTimeout(400)
+  check('покупка открывается по нажатию', (await page.locator('text=Что покупаем').count()) > 0)
+
+  const wishPrice = page.locator('input[inputmode="numeric"]').first()
+  await wishPrice.fill(''); await wishPrice.type('45000'); await wishPrice.blur()
+  await page.waitForTimeout(300)
+  const s7 = await store()
+  check('цена покупки сохранилась', s7.wishlist[0].price === 45000, s7.wishlist[0].price)
+
+  await page.locator('text=Удалить из списка').click()
+  await page.waitForTimeout(200)
+  check('удаление покупки спрашивает', (await page.locator('text=Отменить нельзя').count()) > 0)
+  await page.locator('button:has-text("Удалить")').last().click()
+  await page.waitForTimeout(400)
+  const s8 = await store()
+  check('покупка помечена удалённой', Boolean(s8.wishlist[0].deletedAt), s8.wishlist[0].deletedAt)
 } catch (e) {
   check('прогон дошёл до конца', false, String(e).slice(0, 300))
 }

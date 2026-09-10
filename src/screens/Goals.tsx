@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Check, Link as LinkIcon, Plus, Trash } from '@phosphor-icons/react'
-import { Callout, Card, Field, NumField, Section, Segmented, Tag } from '@/components/kit'
+import { Check, Link as LinkIcon, Plus } from '@phosphor-icons/react'
+import { Callout, Card, Field, NumField, NumFieldBlur, Section, Segmented, Tag } from '@/components/kit'
 import { Ring } from '@/components/charts'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -174,9 +174,10 @@ function GoalList() {
 
 function Wishlist() {
   const store = useStore()
-  const { people, addWish, toggleBought, removeWish } = store
+  const { people, addWish, toggleBought } = store
   const wishlist = liveWishlist(store.wishlist)
   const [open, setOpen] = useState(false)
+  const [editId, setEditId] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [price, setPrice] = useState('')
   const [url, setUrl] = useState('')
@@ -219,27 +220,28 @@ function Wishlist() {
             >
               <Check size={14} weight="bold" />
             </button>
-            <div className="min-w-0 flex-1">
-              <b className="block text-[14.5px] font-medium">{w.name}</b>
-              <div className="mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-3">
+            {/*
+              Ссылка вынесена из нажимаемой области: ссылка внутри кнопки —
+              и невалидная разметка, и промах пальцем вместо перехода.
+            */}
+            <button onClick={() => setEditId(w.id)} className="min-w-0 flex-1 text-left">
+              <b className="block truncate text-[14.5px] font-medium">{w.name}</b>
+              <span className="mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-3">
                 <i className="size-[7px] shrink-0 rounded-full" style={{ background: `var(--p${w.by})` }} />
                 {nameOf(w.by)} · {w.addedOn}
-                {w.url && (
-                  <a
-                    href={w.url}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="ml-1 inline-flex items-center gap-1 rounded-md border border-line px-1.5 text-[11.5px] text-brand"
-                  >
-                    <LinkIcon size={10} /> ссылка
-                  </a>
-                )}
-              </div>
-            </div>
-            <span className="shrink-0 text-[14px] font-semibold num">{plain(w.price)}</span>
-            <button onClick={() => removeWish(w.id)} aria-label="Удалить" className="shrink-0 text-ink-3 hover:text-ink">
-              <Trash size={15} />
+              </span>
             </button>
+            {w.url && (
+              <a
+                href={w.url}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-line px-1.5 py-0.5 text-[11.5px] text-brand"
+              >
+                <LinkIcon size={10} /> ссылка
+              </a>
+            )}
+            <span className="shrink-0 text-[14px] font-semibold num">{plain(w.price)}</span>
           </div>
         ))}
         {!active.length && <div className="px-4 py-6 text-center text-[13px] text-ink-3">Список пуст</div>}
@@ -298,6 +300,97 @@ function Wishlist() {
           <Button onClick={create} className="w-full">Добавить в список</Button>
         </DialogContent>
       </Dialog>
+
+      <WishDialog id={editId} onClose={() => setEditId(null)} />
     </>
+  )
+}
+
+/**
+ * Правка покупки. Раньше строку можно было только вычеркнуть или удалить, а
+ * корзина стояла вплотную к цене: промахнуться пальцем и стереть чужое желание
+ * было проще, чем открыть ссылку. Теперь удаление внутри и спрашивает.
+ */
+function WishDialog({ id, onClose }: { id: string | null; onClose: () => void }) {
+  const wish = useStore((s) => s.wishlist.find((w) => w.id === id))
+  const people = useStore((s) => s.people)
+  const updateWish = useStore((s) => s.updateWish)
+  const removeWish = useStore((s) => s.removeWish)
+  const [confirm, setConfirm] = useState(false)
+
+  useEffect(() => { setConfirm(false) }, [id])
+
+  if (!wish) return null
+
+  return (
+    <Dialog open={Boolean(id)} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent
+        className="max-h-[88dvh] max-w-[92vw] overflow-y-auto rounded-2xl border-line bg-surface sm:max-w-[400px]"
+        /* Правка существующей записи не должна выбрасывать клавиатуру и выделять название. */
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <DialogHeader><DialogTitle className="font-display">{wish.name}</DialogTitle></DialogHeader>
+
+        <Field label="Что покупаем">
+          <Input
+            defaultValue={wish.name}
+            onBlur={(e) => {
+              const v = e.target.value.trim()
+              if (v && v !== wish.name) updateWish(wish.id, { name: v })
+            }}
+          />
+        </Field>
+        <Field label="Цена, ₸">
+          <NumFieldBlur
+            initial={plain(wish.price)}
+            onCommit={(text) => {
+              const v = parseMoney(text)
+              if (v !== wish.price) updateWish(wish.id, { price: v })
+            }}
+          />
+        </Field>
+        <Field label="Ссылка на товар">
+          <Input
+            defaultValue={wish.url ?? ''}
+            inputMode="url"
+            placeholder="можно оставить пустым"
+            onBlur={(e) => {
+              const v = e.target.value.trim()
+              if (v !== (wish.url ?? '')) updateWish(wish.id, { url: v || undefined })
+            }}
+          />
+        </Field>
+        <Field label="Кто добавил">
+          <Segmented<PersonId>
+            value={wish.by}
+            onChange={(v) => updateWish(wish.id, { by: v })}
+            options={people.map((p) => ({ value: p.id, label: p.name }))}
+          />
+        </Field>
+
+        <div className="border-t border-line pt-3">
+          {confirm ? (
+            <>
+              <p className="mb-2 text-[12.5px] leading-relaxed text-warn">
+                Покупка исчезнет из списка у обоих. Отменить нельзя.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setConfirm(false)}>Отмена</Button>
+                <Button
+                  className="flex-1 bg-destructive text-destructive-foreground"
+                  onClick={() => { removeWish(wish.id); onClose() }}
+                >
+                  Удалить
+                </Button>
+              </div>
+            </>
+          ) : (
+            <button onClick={() => setConfirm(true)} className="text-[13px] text-ink-3 hover:text-destructive">
+              Удалить из списка
+            </button>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
