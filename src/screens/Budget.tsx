@@ -5,9 +5,15 @@ import { Bar, Legend } from '@/components/charts'
 import { Input } from '@/components/ui/input'
 import { money, parseMoney, pct, plain } from '@/lib/money'
 import {
-  WEEKDAYS, dayLabel, daysInMonth, leadingBlanks, monthKey, monthTitle, today,
+  WEEKDAYS, addMonths, dayLabel, daysInMonth, leadingBlanks, monthFrom, monthKey, monthTitle, today,
 } from '@/lib/dates'
-import { amountAt, budgetAmounts, liveCredits, liveObligations, useStore } from '@/store/useStore'
+import {
+  amountAt, budgetAmounts, liveCredits, liveObligations, nextSalaryChange, salaryAt, useStore,
+} from '@/store/useStore'
+import type { PersonId } from '@/store/types'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Field } from '@/components/kit'
 import { cn } from '@/lib/utils'
 
 const DERIVED_NOTE: Record<string, string> = {
@@ -24,8 +30,9 @@ type Event = {
 
 export function Budget() {
   const [view, setView] = useState<View>('plan')
+  const [salaryFor, setSalaryFor] = useState<PersonId | null>(null)
   const store = useStore()
-  const { people, categories, setCategoryAmount, setPerson } = store
+  const { people, categories, setCategoryAmount } = store
   const obligations = liveObligations(store.obligations)
   const credits = liveCredits(store.credits)
   const key = monthKey()
@@ -36,7 +43,7 @@ export function Budget() {
   const events: Event[] = [
     ...people.map((p) => ({
       id: `pay-${p.id}`, day: p.payday, name: `Зарплата · ${p.name}`, note: 'оклад',
-      value: p.salary, color: `var(--p${p.id})`, income: true,
+      value: salaryAt(p, key), color: `var(--p${p.id})`, income: true,
     })),
     ...obligations.map((o) => ({
       id: o.id, day: o.day, name: o.name, note: o.estimate ? 'оценка по сезону' : o.note,
@@ -78,26 +85,35 @@ export function Budget() {
             <div className="mb-3.5 mt-0.5 font-display text-[30px] font-semibold tracking-[-0.025em] num">
               {money(income)}
             </div>
-            <Bar segments={people.map((p) => ({ key: p.id, value: p.salary, color: `var(--p${p.id})`, label: p.name }))} />
+            <Bar segments={people.map((p) => ({ key: p.id, value: salaryAt(p, key), color: `var(--p${p.id})`, label: p.name }))} />
             <div className="mt-3.5 flex flex-col gap-3">
-              {people.map((p) => (
-                <div key={p.id} className="flex items-center gap-2.5">
-                  <i className="size-2.5 shrink-0 rounded-[3px]" style={{ background: `var(--p${p.id})` }} />
-                  <span className="text-[14px] text-ink-2">
-                    {p.name} · {p.payday} числа
-                  </span>
-                  <span className="ml-auto flex items-center gap-2">
-                    <Input
-                      aria-label={`Оклад ${p.name}`}
-                      inputMode="numeric"
-                      defaultValue={plain(p.salary)}
-                      onBlur={(e) => setPerson(p.id, { salary: parseMoney(e.target.value) })}
-                      className="h-9 w-[118px] bg-surface-2 text-right num"
-                    />
-                    <span className="w-8 text-right text-[12px] text-ink-3 num">{pct(p.salary, income)}%</span>
-                  </span>
-                </div>
-              ))}
+              {people.map((p) => {
+                const now = salaryAt(p, key)
+                const change = nextSalaryChange(p, key)
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => setSalaryFor(p.id)}
+                    className="flex w-full items-center gap-2.5 rounded-lg py-1 text-left hover:bg-surface-2"
+                  >
+                    <i className="size-2.5 shrink-0 rounded-[3px]" style={{ background: `var(--p${p.id})` }} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[14px] text-ink-2">
+                        {p.name} · {p.payday} числа
+                      </span>
+                      {change && (
+                        <span className="block text-[12px] text-brand">
+                          с {monthFrom(change.from)} — {money(change.amount)}
+                        </span>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span className="block text-[14.5px] font-semibold num">{money(now)}</span>
+                      <span className="block text-[12px] text-ink-3 num">{pct(now, income)}%</span>
+                    </span>
+                  </button>
+                )
+              })}
             </div>
             {people.length > 1 && (
               <p className="mt-3 border-t border-line pt-3 text-[12.5px] text-ink-3">
@@ -307,7 +323,149 @@ export function Budget() {
         </Card>
       )}
 
+      <SalaryDialog id={salaryFor} onClose={() => setSalaryFor(null)} />
+
       <div className="pb-2 text-center text-[12px] text-ink-3">{monthTitle(key)}</div>
     </div>
+  )
+}
+
+/**
+ * Оклад участника: имя, день зарплаты, исправление и запланированное изменение.
+ *
+ * Правка и изменение разведены так же, как у обязательств. Правка одним полем
+ * затирала прошлое: месячные срезы за прошедшие месяцы пересчитывались по новой
+ * зарплате и переставали сходиться с тем, что человек реально получал.
+ */
+function SalaryDialog({ id, onClose }: { id: PersonId | null; onClose: () => void }) {
+  const person = useStore((s) => s.people.find((p) => p.id === id))
+  const { setPerson, correctSalary, amendSalary } = useStore()
+  const key = monthKey()
+
+  const [planning, setPlanning] = useState(false)
+  const [newAmount, setNewAmount] = useState('')
+  const [fromMonth, setFromMonth] = useState(addMonths(key, 1))
+  const [reason, setReason] = useState('')
+
+  if (!person) return null
+
+  const current = salaryAt(person, key)
+  const months = Array.from({ length: 13 }, (_, i) => addMonths(key, i))
+  const planned = parseMoney(newAmount)
+  const delta = planned > 0 ? planned - current : 0
+  const history = [...(person.salaryVersions ?? [])].sort((a, b) => b.from.localeCompare(a.from))
+
+  return (
+    <Dialog open={Boolean(id)} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-h-[88dvh] max-w-[92vw] overflow-y-auto rounded-2xl border-line bg-surface sm:max-w-[400px]">
+        <DialogHeader><DialogTitle className="font-display">{person.name}</DialogTitle></DialogHeader>
+
+        <Field label="Имя">
+          <Input
+            defaultValue={person.name}
+            onBlur={(e) => {
+              const v = e.target.value.trim()
+              if (v && v !== person.name) setPerson(person.id, { name: v })
+            }}
+          />
+        </Field>
+
+        <Field label="Оклад сейчас, ₸">
+          <Input
+            key={current}
+            defaultValue={plain(current)}
+            inputMode="numeric"
+            className="num"
+            onBlur={(e) => {
+              const v = parseMoney(e.target.value)
+              if (v > 0 && v !== current) correctSalary(person.id, v)
+            }}
+          />
+        </Field>
+        <p className="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-3">
+          Это исправление: оклад был введён неверно. Если зарплата действительно
+          меняется — не трогайте это поле, а запланируйте изменение ниже.
+        </p>
+
+        <Field label="День зарплаты">
+          <Input
+            defaultValue={String(person.payday)}
+            inputMode="numeric"
+            className="num"
+            onBlur={(e) => {
+              const v = Math.min(28, Math.max(1, parseMoney(e.target.value) || 1))
+              if (v !== person.payday) setPerson(person.id, { payday: v })
+            }}
+          />
+        </Field>
+
+        {!planning ? (
+          <Button variant="outline" className="mb-3 w-full bg-surface-2" onClick={() => setPlanning(true)}>
+            Запланировать изменение
+          </Button>
+        ) : (
+          <div className="mb-3 rounded-xl border border-brand p-3.5">
+            <Field label="Новый оклад, ₸">
+              <Input value={newAmount} onChange={(e) => setNewAmount(e.target.value)} inputMode="numeric" placeholder={plain(current)} className="num" autoFocus />
+            </Field>
+            <Field label="С какого месяца">
+              <select
+                value={fromMonth}
+                onChange={(e) => setFromMonth(e.target.value)}
+                className="w-full rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-[15px]"
+              >
+                {months.map((m) => <option key={m} value={m}>{monthTitle(m)}</option>)}
+              </select>
+            </Field>
+            <Field label="Причина">
+              <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Повышение, смена работы…" />
+            </Field>
+
+            {planned > 0 && delta !== 0 && (
+              <div className={cn(
+                'mb-3 rounded-xl px-3.5 py-3 text-[13px] leading-relaxed',
+                delta > 0 ? 'bg-brand-soft text-ink-2' : 'bg-warn-soft text-ink-2',
+              )}>
+                {delta > 0
+                  ? <>С {monthFrom(fromMonth)} доход вырастет на <b>{money(delta)}</b> в месяц — {money(delta * 12)} за год.</>
+                  : <>С {monthFrom(fromMonth)} доход снизится на <b>{money(-delta)}</b> в месяц. Свободный остаток пересчитается сам.</>}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setPlanning(false)}>Отмена</Button>
+              <Button
+                className="flex-1"
+                disabled={planned <= 0}
+                onClick={() => {
+                  amendSalary(person.id, fromMonth, planned, reason.trim() || undefined)
+                  setPlanning(false)
+                  setNewAmount('')
+                }}
+              >
+                Запланировать
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {history.length > 1 && (
+          <>
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-3">История оклада</div>
+            <div className="mb-1 flex flex-col gap-1.5">
+              {history.map((v) => (
+                <div key={v.from} className="flex items-baseline gap-2 text-[13px]">
+                  <span className="text-ink-3">
+                    {v.from <= key ? 'с' : 'станет с'} {monthFrom(v.from)}
+                  </span>
+                  <b className="ml-auto num">{money(v.amount)}</b>
+                  {v.reason && <span className="text-[12px] text-ink-3">{v.reason}</span>}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }

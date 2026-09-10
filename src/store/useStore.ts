@@ -30,6 +30,10 @@ export type State = SyncDoc & {
   forceReplace: boolean
 
   setPerson: (id: PersonId, patch: Partial<Person>) => void
+  /** Планирует новый оклад с указанного месяца, сохраняя прежний в истории. */
+  amendSalary: (id: PersonId, from: string, amount: number, reason?: string) => void
+  /** Исправляет текущий оклад: он был введён неверно, история ни при чём. */
+  correctSalary: (id: PersonId, amount: number) => void
   setCategoryAmount: (key: CategoryKey, amount: number) => void
 
   addGoal: (g: Pick<Goal, 'name' | 'need' | 'have' | 'monthly' | 'hue'>) => void
@@ -156,6 +160,38 @@ export const useStore = create<State>()(
               ]
           return { people, status: 'dirty' }
         }),
+
+      amendSalary: (id, from, amount, reason) =>
+        set((s) => ({
+          people: s.people.map((p) => {
+            if (p.id !== id) return p
+            // Первая версия описывает то, что было до сих пор: иначе прошлое
+            // осталось бы без суммы и старые месяцы обнулились бы.
+            const base = p.salaryVersions?.length
+              ? p.salaryVersions
+              : [{ from: '2000-01', amount: p.salary }]
+            const versions = [...base.filter((v) => v.from !== from), { from, amount, reason }]
+              .sort((a, b) => a.from.localeCompare(b.from))
+            return touch({ ...p, salaryVersions: versions })
+          }),
+          status: 'dirty',
+        })),
+
+      correctSalary: (id, amount) =>
+        set((s) => ({
+          people: s.people.map((p) => {
+            if (p.id !== id) return p
+            const cur = (p.salaryVersions ?? []).filter((v) => v.from <= monthKey()).pop()
+            return touch({
+              ...p,
+              salary: amount,
+              salaryVersions: cur
+                ? p.salaryVersions!.map((v) => (v.from === cur.from ? { ...v, amount } : v))
+                : p.salaryVersions,
+            })
+          }),
+          status: 'dirty',
+        })),
 
       setCategoryAmount: (key, amount) =>
         set((s) => ({
@@ -495,8 +531,29 @@ export function nextChange(o: Obligation, key = monthKey()) {
   return { ...future[0], delta: future[0].amount - current }
 }
 
-export const totalIncome = (people: Person[]) =>
-  people.filter(alive).reduce((a, p) => a + p.salary, 0)
+/**
+ * Оклад, действующий в указанном месяце.
+ * Без версий возвращает текущее значение — так работают все, кто ещё не
+ * планировал изменений.
+ */
+export function salaryAt(p: Person, key = monthKey()): number {
+  const v = (p.salaryVersions ?? [])
+    .filter((x) => x.from <= key)
+    .sort((a, b) => a.from.localeCompare(b.from))
+  return v.length ? v[v.length - 1].amount : p.salary
+}
+
+/** Ближайшее запланированное изменение оклада. */
+export function nextSalaryChange(p: Person, key = monthKey()) {
+  const future = (p.salaryVersions ?? [])
+    .filter((x) => x.from > key)
+    .sort((a, b) => a.from.localeCompare(b.from))
+  if (!future.length) return null
+  return { ...future[0], delta: future[0].amount - salaryAt(p, key) }
+}
+
+export const totalIncome = (people: Person[], key = monthKey()) =>
+  people.filter(alive).reduce((a, p) => a + salaryAt(p, key), 0)
 
 export const mandatoryMonthly = (categories: Category[]) =>
   categories.filter((c) => c.key === 'd1' || c.key === 'd2' || c.key === 'd4')

@@ -12,7 +12,7 @@ import { annuityMonths, annuityTotal, rateFromSchedule } from '@/lib/finance'
 import {
   amountAt, goalSavings, nextChange, liveAccounts, liveCredits, liveGoals, liveObligations, netWorth, useStore,
 } from '@/store/useStore'
-import { addMonths, monthKey, monthTitle } from '@/lib/dates'
+import { addMonths, monthFrom, monthKey, monthTitle } from '@/lib/dates'
 
 const ICONS = {
   deposit: <Bank size={17} />,
@@ -484,8 +484,8 @@ function ObligationDialog({
                 delta < 0 ? 'bg-brand-soft text-ink-2' : 'bg-warn-soft text-ink-2',
               )}>
                 {delta < 0
-                  ? <>С {monthTitle(fromMonth).toLowerCase()} освободится <b>{money(-delta)}</b> в месяц — {money(-delta * 12)} за год. Приложение предложит решить, куда их направить.</>
-                  : <>С {monthTitle(fromMonth).toLowerCase()} платёж вырастет на <b>{money(delta)}</b> в месяц.</>}
+                  ? <>С {monthFrom(fromMonth)} освободится <b>{money(-delta)}</b> в месяц — {money(-delta * 12)} за год. Приложение предложит решить, куда их направить.</>
+                  : <>С {monthFrom(fromMonth)} платёж вырастет на <b>{money(delta)}</b> в месяц.</>}
               </div>
             )}
 
@@ -517,7 +517,7 @@ function ObligationDialog({
             <div className="mb-3 flex flex-col gap-1.5">
               {[...obligation.versions].sort((a, b) => b.from.localeCompare(a.from)).map((v) => (
                 <div key={v.from} className="flex items-baseline gap-2 text-[13px]">
-                  <span className="text-ink-3">{v.from <= key ? 'с' : 'станет с'} {monthTitle(v.from).toLowerCase()}</span>
+                  <span className="text-ink-3">{v.from <= key ? 'с' : 'станет с'} {monthFrom(v.from)}</span>
                   <b className="ml-auto num">{money(v.amount)}</b>
                   {v.reason && <span className="text-[12px] text-ink-3">{v.reason}</span>}
                 </div>

@@ -6,7 +6,7 @@ import { Bar, Legend, Ring } from '@/components/charts'
 import { money, plain, pct } from '@/lib/money'
 import { monthKey, monthIn, monthFrom, dayLabel } from '@/lib/dates'
 import {
-  amountAt, budgetAmounts, liveCredits, liveGoals, liveObligations, nextChange, useStore,
+  amountAt, budgetAmounts, liveCredits, liveGoals, liveObligations, nextChange, salaryAt, useStore,
 } from '@/store/useStore'
 
 export function Overview() {
@@ -62,7 +62,7 @@ export function Overview() {
         <div className="flex flex-col gap-[7px]">
           <Bar
             segments={people.map((p) => ({
-              key: p.id, value: p.salary, color: `var(--p${p.id})`, label: p.name,
+              key: p.id, value: salaryAt(p, key), color: `var(--p${p.id})`, label: p.name,
             }))}
           />
           <div className="flex justify-between text-[12px] text-ink-3">
