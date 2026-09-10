@@ -1,5 +1,6 @@
 import type { ComponentProps, ReactNode } from 'react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { clean, caretAt, sigBefore, type NumKind } from '@/lib/num'
 import { cn } from '@/lib/utils'
@@ -323,5 +324,139 @@ export function NumFieldBlur({
       onBlur={() => onCommit(text)}
       {...rest}
     />
+  )
+}
+
+/**
+ * Пояснение под знаком вопроса.
+ *
+ * Половина текстов на экранах объясняет, откуда взялась цифра. В первый раз
+ * это нужно, дальше — шум: заказчик так и сказал. Прячем их сюда, но не
+ * выбрасываем — расчёт, который нельзя проверить, доверия не прибавляет.
+ *
+ * Сторона выбирается по месту на экране: у правого края всплывающее окно
+ * прижимается вправо, иначе уезжало бы за границу и обрезалось.
+ */
+export function Hint({ children, label = 'Пояснение' }: { children: ReactNode; label?: string }) {
+  const [at, setAt] = useState<{ left: number; top: number; width: number } | null>(null)
+  const box = useRef<HTMLSpanElement>(null)
+
+  useEffect(() => {
+    if (!at) return
+    const close = (e: Event) => {
+      if (!box.current?.contains(e.target as Node)) setAt(null)
+    }
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setAt(null) }
+    // Окно закреплено на экране, а не на странице: при прокрутке оно осталось
+    // бы висеть в стороне от своего знака вопроса.
+    const hide = () => setAt(null)
+    document.addEventListener('pointerdown', close)
+    document.addEventListener('keydown', esc)
+    window.addEventListener('scroll', hide, true)
+    return () => {
+      document.removeEventListener('pointerdown', close)
+      document.removeEventListener('keydown', esc)
+      window.removeEventListener('scroll', hide, true)
+    }
+  }, [at])
+
+  return (
+    <span ref={box} className="relative inline-flex align-middle">
+      <button
+        type="button"
+        aria-label={label}
+        aria-expanded={Boolean(at)}
+        onClick={(e) => {
+          if (at) { setAt(null); return }
+          const r = e.currentTarget.getBoundingClientRect()
+          /*
+            Положение считаем сами и прижимаем к экрану. Привязка к знаку
+            вопроса не работает: на телефоне окно шире, чем расстояние от него
+            до любого края, и уезжало за границу что влево, что вправо.
+          */
+          const width = Math.min(268, window.innerWidth - 24)
+          const left = Math.min(Math.max(12, r.left), window.innerWidth - width - 12)
+          setAt({ left, top: r.bottom + 6, width })
+        }}
+        className={cn(
+          'grid size-[17px] place-items-center rounded-full border text-[11px] font-semibold leading-none transition-colors',
+          at ? 'border-brand text-brand' : 'border-line-strong text-ink-3',
+        )}
+      >
+        ?
+      </button>
+      {at && (
+        <span
+          role="note"
+          style={{ left: at.left, top: at.top, width: at.width }}
+          className="fixed z-50 rounded-xl border border-line bg-surface p-3 text-[12.5px] font-normal leading-relaxed text-ink-2 shadow-lift"
+        >
+          {children}
+        </span>
+      )}
+    </span>
+  )
+}
+
+/**
+ * Удаление. Отдельным блоком, потому что это единственное необратимое действие
+ * в приложении и раньше оно выглядело как ссылка «мелким серым».
+ *
+ * Красный и знак внимания — не украшение: по такой кнопке не промахиваются
+ * случайно, а второй шаг с прямым перечислением того, что исчезнет, отделяет
+ * решение от нажатия.
+ */
+export function DangerZone({
+  label, warning, confirmLabel = 'Удалить', onConfirm,
+}: {
+  label: string
+  warning: ReactNode
+  confirmLabel?: string
+  onConfirm: () => void
+}) {
+  const [confirm, setConfirm] = useState(false)
+
+  return (
+    <div className="mt-1 border-t border-line pt-3">
+      {confirm ? (
+        <div className="rounded-xl border border-destructive-line bg-destructive-soft p-3">
+          <div className="mb-2 flex gap-2">
+            <svg
+              width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden
+              stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"
+              className="mt-px shrink-0 text-destructive"
+            >
+              <path d="M12 3.5 1.8 20.5h20.4L12 3.5ZM12 10v4M12 17.5h.01" />
+            </svg>
+            <p className="text-[12.5px] leading-relaxed text-ink-2">{warning}</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1 bg-surface" onClick={() => setConfirm(false)}>
+              Отмена
+            </Button>
+            <Button
+              className="flex-1 bg-destructive text-destructive-foreground hover:bg-destructive"
+              onClick={onConfirm}
+            >
+              {confirmLabel}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setConfirm(true)}
+          className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-destructive-line bg-destructive-soft px-4 py-2.5 text-[13px] font-medium text-destructive active:translate-y-px"
+        >
+          <svg
+            width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden
+            stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"
+          >
+            <path d="M12 3.5 1.8 20.5h20.4L12 3.5ZM12 10v4M12 17.5h.01" />
+          </svg>
+          {label}
+        </button>
+      )}
+    </div>
   )
 }

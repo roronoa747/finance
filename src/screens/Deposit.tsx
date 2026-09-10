@@ -1,8 +1,8 @@
-import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft } from '@phosphor-icons/react'
-import { Callout, Card, Field, NumFieldBlur, SavedMark, Segmented, useSavedMark } from '@/components/kit'
-import { Button } from '@/components/ui/button'
+import {
+  Callout, Card, DangerZone, Field, NumFieldBlur, SavedMark, Segmented, useSavedMark,
+} from '@/components/kit'
 import { Input } from '@/components/ui/input'
 import { money, parseMoney, plain, ratePct } from '@/lib/money'
 import { deposit as calcDeposit, realRate } from '@/lib/finance'
@@ -17,7 +17,6 @@ export function Deposit() {
   const updateAccount = useStore((s) => s.updateAccount)
   const removeAccount = useStore((s) => s.removeAccount)
   const inflation = useStore((s) => s.settings.inflation)
-  const [confirm, setConfirm] = useState(false)
   const saved = useSavedMark(account?.id, account?.updatedAt)
 
   if (!account?.deposit) {
@@ -110,28 +109,11 @@ export function Deposit() {
           />
         </Field>
 
-        <div className="border-t border-line pt-3">
-          {confirm ? (
-            <>
-              <p className="mb-2 text-[12.5px] leading-relaxed text-warn">
-                Вклад исчезнет у обоих участников вместе с условиями. Отменить нельзя.
-              </p>
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1" onClick={() => setConfirm(false)}>Отмена</Button>
-                <Button
-                  className="flex-1 bg-destructive text-destructive-foreground"
-                  onClick={() => { removeAccount(account.id); navigate('/capital') }}
-                >
-                  Удалить
-                </Button>
-              </div>
-            </>
-          ) : (
-            <button onClick={() => setConfirm(true)} className="text-[13px] text-ink-3 hover:text-destructive">
-              Удалить вклад
-            </button>
-          )}
-        </div>
+        <DangerZone
+          label="Удалить вклад"
+          warning="Вклад исчезнет у обоих участников вместе с условиями. Отменить нельзя."
+          onConfirm={() => { removeAccount(account.id); navigate('/capital') }}
+        />
       </Card>
 
       <Card>

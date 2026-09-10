@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Check, Link as LinkIcon, Plus } from '@phosphor-icons/react'
 import {
-  Callout, Card, Field, NumField, NumFieldBlur, SavedMark, Section, Segmented, Tag, useSavedMark,
+  Callout, Card, DangerZone, Field, Hint, NumField, NumFieldBlur, SavedMark, Section, Segmented, Tag,
+  useSavedMark,
 } from '@/components/kit'
 import { Ring } from '@/components/charts'
 import { Button } from '@/components/ui/button'
@@ -117,6 +118,11 @@ function GoalList() {
       <Card>
         <div className="mb-3 flex items-center gap-2.5">
           <b className="text-[14.5px] font-semibold">Откладываем без пропусков</b>
+          <Hint>
+            {streak > 0
+              ? 'Закрашен месяц, в котором был хотя бы один взнос в любую цель. Серия считается назад от текущего месяца.'
+              : 'Пока ни одного взноса. Полоски закрасятся сами, как только начнёте пополнять цели — считается по фактическим взносам, а не по плану.'}
+          </Hint>
           {streak > 0 && <Tag tone="gold">{streak} {monthWord(streak)}</Tag>}
         </div>
         <div className="flex gap-1.5">
@@ -129,11 +135,6 @@ function GoalList() {
             />
           ))}
         </div>
-        <p className="mt-3 text-[12.5px] leading-relaxed text-ink-3">
-          {streak > 0
-            ? 'Закрашен месяц, в котором был хотя бы один взнос в любую цель. Серия считается назад от текущего месяца.'
-            : 'Пока ни одного взноса. Полоски закрасятся сами, как только начнёте пополнять цели — считается по фактическим взносам, а не по плану.'}
-        </p>
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -318,9 +319,6 @@ function WishDialog({ id, onClose }: { id: string | null; onClose: () => void })
   const people = useStore((s) => s.people)
   const updateWish = useStore((s) => s.updateWish)
   const removeWish = useStore((s) => s.removeWish)
-  const [confirm, setConfirm] = useState(false)
-
-  useEffect(() => { setConfirm(false) }, [id])
 
   const saved = useSavedMark(wish?.id, wish?.updatedAt)
 
@@ -379,28 +377,11 @@ function WishDialog({ id, onClose }: { id: string | null; onClose: () => void })
 
         <Button onClick={onClose} className="mb-3 w-full">Готово</Button>
 
-        <div className="border-t border-line pt-3">
-          {confirm ? (
-            <>
-              <p className="mb-2 text-[12.5px] leading-relaxed text-warn">
-                Покупка исчезнет из списка у обоих. Отменить нельзя.
-              </p>
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1" onClick={() => setConfirm(false)}>Отмена</Button>
-                <Button
-                  className="flex-1 bg-destructive text-destructive-foreground"
-                  onClick={() => { removeWish(wish.id); onClose() }}
-                >
-                  Удалить
-                </Button>
-              </div>
-            </>
-          ) : (
-            <button onClick={() => setConfirm(true)} className="text-[13px] text-ink-3 hover:text-destructive">
-              Удалить из списка
-            </button>
-          )}
-        </div>
+        <DangerZone
+          label="Удалить из списка"
+          warning="Покупка исчезнет из списка у обоих. Отменить нельзя."
+          onConfirm={() => { removeWish(wish.id); onClose() }}
+        />
       </DialogContent>
     </Dialog>
   )

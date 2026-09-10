@@ -63,6 +63,8 @@
   --accent-foreground: var(--ink);
   --destructive: #9e2020;
   --destructive-foreground: #ffffff;
+  --destructive-soft: #fbe9e9;
+  --destructive-line: #ecc4c4;
   --border: var(--line);
   --input: var(--line);
   --ring: var(--brand);
@@ -106,6 +108,8 @@
 
   --destructive: #ff8b7a;
   --destructive-foreground: #0a100e;
+  --destructive-soft: #2a1614;
+  --destructive-line: #52302b;
 }
 
 @theme inline {
@@ -152,6 +156,8 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-soft: var(--destructive-soft);
+  --color-destructive-line: var(--destructive-line);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

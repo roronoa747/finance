@@ -238,6 +238,39 @@ try {
       deletedGoal: f({ ...base, goals: [goal({ deletedAt: '2026-01-01T00:00:00.000Z' })] }),
     }
   })
+  // --- пояснения спрятаны под знак вопроса ---
+  await open('/capital')
+  check('пояснение скрыто, пока не спросили',
+    (await page.locator('text=Всё, что есть, минус всё, что должны').count()) === 0)
+  const hint = page.locator('button[aria-label="Пояснение"]').first()
+  check('знак вопроса на месте', (await hint.count()) > 0)
+  await hint.click()
+  await page.waitForTimeout(300)
+  check('по нажатию пояснение открывается',
+    (await page.locator('text=Всё, что есть, минус всё, что должны').count()) > 0)
+  await page.mouse.click(200, 700)
+  await page.waitForTimeout(300)
+  check('нажатие мимо закрывает пояснение',
+    (await page.locator('text=Всё, что есть, минус всё, что должны').count()) === 0)
+
+  // --- удаление: два шага и красный блок, а не серая ссылка ---
+  await open('/capital')
+  await page.locator('text=Аренда').first().click()
+  await page.waitForTimeout(400)
+  const del = page.locator('button:has-text("Удалить обязательство")').first()
+  const delColor = await del.evaluate((e) => getComputedStyle(e).color)
+  check('кнопка удаления красная', delColor !== 'rgb(0, 0, 0)' && /rgb\(1[0-9]{2}|rgb\(2[0-9]{2}/.test(delColor), delColor)
+  check('у кнопки удаления есть знак внимания', (await del.locator('svg').count()) > 0)
+  await del.click()
+  await page.waitForTimeout(300)
+  check('первое нажатие не удаляет, а спрашивает',
+    (await page.locator('text=Отменить нельзя').count()) > 0)
+  const s10 = await store()
+  check('обязательство пока на месте', !s10.obligations[0].deletedAt)
+  await page.locator('button:has-text("Отмена")').first().click()
+  await page.waitForTimeout(300)
+  check('отмена возвращает к кнопке', (await page.locator('text=Отменить нельзя').count()) === 0)
+
   // --- какой долг гасить первым ---
   await open('/capital')
   check('совет о самом дорогом долге показан', (await page.locator('text=Что гасить первым').count()) > 0)

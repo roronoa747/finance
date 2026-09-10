@@ -14,7 +14,8 @@ import { seed } from './seed.mjs'
 
 const URL = process.env.URL ?? 'http://localhost:5180'
 const FLOOR = Number(process.env.FLOOR ?? 4.5) // требование к обычному тексту
-const SCREENS = ['/', '/budget', '/goals', '/goals?tab=wish', '/goals/flat', '/capital', '/capital/dep']
+// Диалог правки входит в список: красный блок удаления живёт только там.
+const SCREENS = ['/', '/budget', '/goals', '/goals?tab=wish', '/goals/flat', '/capital', '/capital/dep', '/capital?obligation=rent']
 
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } })

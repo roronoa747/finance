@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowDown, ArrowUp } from '@phosphor-icons/react'
 import {
-  Callout, Card, Field, NumField, NumFieldBlur, Row, SavedMark, Section, Segmented, Stat, useSavedMark,
+  Callout, Card, Field, Hint, NumField, NumFieldBlur, Row, SavedMark, Section, Segmented, Stat, useSavedMark,
 } from '@/components/kit'
 import { Bar, Legend } from '@/components/charts'
 import { Input } from '@/components/ui/input'
@@ -180,11 +180,14 @@ export function Budget() {
                 </div>
               </div>
             </div>
-            <p className="mt-3 border-t border-line pt-3 text-[12.5px] leading-relaxed text-ink-3">
-              Жильё, кредиты и цели считаются из того, что вы уже завели: меняются они
-              в «Капитале» и в целях. Руками задаётся только «еда и быт» — единственная
-              статья, которую мы намеренно не отслеживаем по операциям.
-            </p>
+            <div className="mt-3 flex items-center gap-1.5 border-t border-line pt-3 text-[12.5px] text-ink-3">
+              Откуда эти суммы
+              <Hint>
+                Жильё, кредиты и цели считаются из того, что вы уже завели: меняются они
+                в «Капитале» и в целях. Руками задаётся только «еда и быт» — единственная
+                статья, которую мы намеренно не отслеживаем по операциям.
+              </Hint>
+            </div>
           </Card>
 
           {free < 0 && (

@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, PencilSimple, Plus } from '@phosphor-icons/react'
 import {
-  Callout, Card, Field, NumField, NumFieldBlur, SavedMark, Section, Segmented, Tag, useSavedMark,
+  Callout, Card, DangerZone, Field, Hint, NumField, NumFieldBlur, SavedMark, Section, Segmented, Tag,
+  useSavedMark,
 } from '@/components/kit'
 import { Ring } from '@/components/charts'
 import { HUES, HUE_KEYS, hueColor } from '@/lib/palette'
@@ -150,6 +151,11 @@ export function GoalDetail() {
       <Card>
         <div className="mb-3 flex items-center gap-2.5">
           <b className="text-[14.5px] font-semibold">Пополняем без пропусков</b>
+          <Hint>
+            {streak > 0
+              ? 'Считается по взносам именно в эту цель, а не по плану.'
+              : 'Закрасится, как только появится первый взнос. Считается по фактическим пополнениям этой цели.'}
+          </Hint>
           {streak > 0 && <Tag tone="gold">{streak} мес.</Tag>}
         </div>
         <div className="flex gap-1.5">
@@ -162,11 +168,6 @@ export function GoalDetail() {
             />
           ))}
         </div>
-        <p className="mt-3 text-[12.5px] leading-relaxed text-ink-3">
-          {streak > 0
-            ? 'Считается по взносам именно в эту цель, а не по плану.'
-            : 'Закрасится, как только появится первый взнос. Считается по фактическим пополнениям этой цели.'}
-        </p>
       </Card>
 
       <Section title="История цели" />
@@ -232,7 +233,6 @@ function EditGoalDialog({
   const goal = useStore((s) => s.goals.find((g) => g.id === goalId))
   const updateGoal = useStore((s) => s.updateGoal)
   const removeGoal = useStore((s) => s.removeGoal)
-  const [confirm, setConfirm] = useState(false)
 
   const saved = useSavedMark(goal?.id, goal?.updatedAt)
 
@@ -308,28 +308,11 @@ function EditGoalDialog({
 
         <Button onClick={() => onOpenChange(false)} className="mb-3 w-full">Готово</Button>
 
-        <div className="border-t border-line pt-3">
-          {confirm ? (
-            <>
-              <p className="mb-2 text-[12.5px] leading-relaxed text-warn">
-                Цель и её история взносов исчезнут у обоих участников. Отменить нельзя.
-              </p>
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1" onClick={() => setConfirm(false)}>Отмена</Button>
-                <Button
-                  className="flex-1 bg-destructive text-destructive-foreground"
-                  onClick={() => { removeGoal(goal.id); onOpenChange(false); onDeleted() }}
-                >
-                  Удалить
-                </Button>
-              </div>
-            </>
-          ) : (
-            <button onClick={() => setConfirm(true)} className="text-[13px] text-ink-3 hover:text-destructive">
-              Удалить цель
-            </button>
-          )}
-        </div>
+        <DangerZone
+          label="Удалить цель"
+          warning="Цель и её история взносов исчезнут у обоих участников. Отменить нельзя."
+          onConfirm={() => { removeGoal(goal.id); onOpenChange(false); onDeleted() }}
+        />
       </DialogContent>
     </Dialog>
   )

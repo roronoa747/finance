@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Bank, CalendarPlus, Coins, CreditCard, House, Plus, Wallet } from '@phosphor-icons/react'
 import {
-  Card, Field, NumField, NumFieldBlur, Row, SavedMark, Section, Segmented, useSavedMark,
+  Card, DangerZone, Field, Hint, NumField, NumFieldBlur, Row, SavedMark, Section, Segmented, useSavedMark,
 } from '@/components/kit'
 import type { Account, Credit, Currency, PersonId } from '@/store/types'
 import { Button } from '@/components/ui/button'
@@ -55,7 +55,13 @@ export function Capital() {
   return (
     <div className="flex flex-col gap-3.5 pt-1">
       <Card>
-        <div className="text-[13px] text-ink-2">Чистый капитал</div>
+        <div className="flex items-center gap-1.5 text-[13px] text-ink-2">
+          Чистый капитал
+          <Hint>
+            Всё, что есть, минус всё, что должны. Накопления по целям тоже считаются:
+            это ваши деньги, даже если счёт под них ещё не заведён.
+          </Hint>
+        </div>
         <div className="font-display text-[30px] font-semibold tracking-[-0.025em] num">{money(total)}</div>
 
         <div className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3 text-[13px]">
@@ -79,10 +85,6 @@ export function Capital() {
           )}
         </div>
 
-        <p className="mt-3 text-[12.5px] leading-relaxed text-ink-3">
-          Всё, что есть, минус всё, что должны. Накопления по целям тоже считаются: это ваши
-          деньги, даже если счёт под них ещё не заведён.
-        </p>
       </Card>
 
       <Section title="Где лежат деньги" />
@@ -433,7 +435,6 @@ function ObligationDialog({
   const [fromMonth, setFromMonth] = useState(addMonths(key, 1))
   const [reason, setReason] = useState('')
   const [planning, setPlanning] = useState(false)
-  const [confirm, setConfirm] = useState(false)
 
   const current = obligation ? amountAt(obligation, key) : 0
   useEffect(() => {
@@ -442,8 +443,7 @@ function ObligationDialog({
       setNewAmount('')
       setReason('')
       setPlanning(false)
-      setConfirm(false)
-      setFromMonth(addMonths(monthKey(), 1))
+        setFromMonth(addMonths(monthKey(), 1))
     }
   }, [obligation?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -589,29 +589,11 @@ function ObligationDialog({
 
         <Button onClick={onClose} className="mb-3 w-full">Готово</Button>
 
-        <div className="border-t border-line pt-3">
-          {confirm ? (
-            <>
-              <p className="mb-2 text-[12.5px] leading-relaxed text-warn">
-                Обязательство исчезнет у обоих участников вместе с историей суммы.
-                Отменить нельзя.
-              </p>
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1" onClick={() => setConfirm(false)}>Отмена</Button>
-                <Button
-                  className="flex-1 bg-destructive text-destructive-foreground"
-                  onClick={() => { removeObligation(obligation.id); onClose() }}
-                >
-                  Удалить
-                </Button>
-              </div>
-            </>
-          ) : (
-            <button onClick={() => setConfirm(true)} className="text-[13px] text-ink-3 hover:text-destructive">
-              Удалить обязательство
-            </button>
-          )}
-        </div>
+        <DangerZone
+          label="Удалить обязательство"
+          warning="Обязательство исчезнет у обоих участников вместе с историей суммы. Отменить нельзя."
+          onConfirm={() => { removeObligation(obligation.id); onClose() }}
+        />
       </DialogContent>
     </Dialog>
   )
@@ -740,9 +722,6 @@ function CreditDialog({ id, onClose }: { id: string | null; onClose: () => void 
   const credit = useStore((s) => s.credits.find((c) => c.id === id))
   const updateCredit = useStore((s) => s.updateCredit)
   const removeCredit = useStore((s) => s.removeCredit)
-  const [confirm, setConfirm] = useState(false)
-
-  useEffect(() => { setConfirm(false) }, [id])
 
   const saved = useSavedMark(credit?.id, credit?.updatedAt)
 
@@ -850,29 +829,11 @@ function CreditDialog({ id, onClose }: { id: string | null; onClose: () => void 
 
         <Button onClick={onClose} className="mb-3 w-full">Готово</Button>
 
-        <div className="border-t border-line pt-3">
-          {confirm ? (
-            <>
-              <p className="mb-2 text-[12.5px] leading-relaxed text-warn">
-                Кредит исчезнет у обоих участников, и платёж перестанет учитываться
-                в бюджете. Отменить нельзя.
-              </p>
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1" onClick={() => setConfirm(false)}>Отмена</Button>
-                <Button
-                  className="flex-1 bg-destructive text-destructive-foreground"
-                  onClick={() => { removeCredit(credit.id); onClose() }}
-                >
-                  Удалить
-                </Button>
-              </div>
-            </>
-          ) : (
-            <button onClick={() => setConfirm(true)} className="text-[13px] text-ink-3 hover:text-destructive">
-              Удалить кредит
-            </button>
-          )}
-        </div>
+        <DangerZone
+          label="Удалить кредит"
+          warning="Кредит исчезнет у обоих участников, и платёж перестанет учитываться в бюджете. Отменить нельзя."
+          onConfirm={() => { removeCredit(credit.id); onClose() }}
+        />
       </DialogContent>
     </Dialog>
   )
@@ -891,9 +852,6 @@ function AccountDialog({ id, onClose }: { id: string | null; onClose: () => void
   const updateAccount = useStore((s) => s.updateAccount)
   const removeAccount = useStore((s) => s.removeAccount)
   const goals = useStore((s) => s.goals)
-  const [confirm, setConfirm] = useState(false)
-
-  useEffect(() => { setConfirm(false) }, [id])
 
   const saved = useSavedMark(account?.id, account?.updatedAt)
 
@@ -978,36 +936,23 @@ function AccountDialog({ id, onClose }: { id: string | null; onClose: () => void
 
         <Button onClick={onClose} className="mb-3 w-full">Готово</Button>
 
-        <div className="border-t border-line pt-3">
-          {confirm ? (
+        <DangerZone
+          label="Удалить счёт"
+          warning={
             <>
-              <p className="mb-2 text-[12.5px] leading-relaxed text-warn">
-                Счёт исчезнет у обоих участников. Отменить нельзя.
-                {attached.length > 0 && (
-                  <>
-                    {' '}Накопления по {attached.length === 1 ? 'цели' : 'целям'}
-                    {' «'}{attached.map((g) => g.name).join('», «')}{'» '}
-                    останутся на месте: они снова будут считаться отдельно, а не
-                    лежащими на этом счёте.
-                  </>
-                )}
-              </p>
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1" onClick={() => setConfirm(false)}>Отмена</Button>
-                <Button
-                  className="flex-1 bg-destructive text-destructive-foreground"
-                  onClick={() => { removeAccount(account.id); onClose() }}
-                >
-                  Удалить
-                </Button>
-              </div>
+              Счёт исчезнет у обоих участников. Отменить нельзя.
+              {attached.length > 0 && (
+                <>
+                  {' '}Накопления по {attached.length === 1 ? 'цели' : 'целям'}
+                  {' «'}{attached.map((g) => g.name).join('», «')}{'» '}
+                  останутся на месте: они снова будут считаться отдельно, а не
+                  лежащими на этом счёте.
+                </>
+              )}
             </>
-          ) : (
-            <button onClick={() => setConfirm(true)} className="text-[13px] text-ink-3 hover:text-destructive">
-              Удалить счёт
-            </button>
-          )}
-        </div>
+          }
+          onConfirm={() => { removeAccount(account.id); onClose() }}
+        />
       </DialogContent>
     </Dialog>
   )
