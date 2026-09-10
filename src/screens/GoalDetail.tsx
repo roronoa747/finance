@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, PencilSimple, Plus } from '@phosphor-icons/react'
-import { Card, Callout, Field, Section, Segmented, Tag } from '@/components/kit'
+import { Callout, Card, Field, NumField, NumFieldBlur, Section, Segmented, Tag } from '@/components/kit'
 import { Ring } from '@/components/charts'
 import { HUES, HUE_KEYS, hueColor } from '@/lib/palette'
 import { useIsDark } from '@/lib/useTheme'
@@ -206,7 +206,7 @@ export function GoalDetail() {
         <DialogContent className="max-w-[92vw] rounded-2xl border-line bg-surface sm:max-w-[400px]">
           <DialogHeader><DialogTitle className="font-display">Пополнить «{goal.name}»</DialogTitle></DialogHeader>
           <Field label="Сумма, ₸">
-            <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="numeric" placeholder={plain(goal.monthly)} className="num" autoFocus />
+            <NumField value={amount} onValue={setAmount} placeholder={plain(goal.monthly)} autoFocus />
           </Field>
           <Field label="Кто вносит">
             <Segmented<PersonId> value={by} onChange={setBy} options={people.map((p) => ({ value: p.id, label: p.name }))} />
@@ -250,25 +250,20 @@ function EditGoalDialog({
         </Field>
 
         <Field label="Сколько нужно, ₸">
-          <Input
-            defaultValue={plain(goal.need)}
-            inputMode="numeric"
-            className="num"
-            onBlur={(e) => {
-              const v = parseMoney(e.target.value)
+          <NumFieldBlur
+            initial={plain(goal.need)}
+            onCommit={(text) => {
+              const v = parseMoney(text)
               if (v > 0 && v !== goal.need) updateGoal(goal.id, { need: v })
             }}
           />
         </Field>
 
         <Field label="Уже накоплено, ₸">
-          <Input
-            key={goal.have}
-            defaultValue={plain(goal.have)}
-            inputMode="numeric"
-            className="num"
-            onBlur={(e) => {
-              const v = parseMoney(e.target.value)
+          <NumFieldBlur
+            initial={plain(goal.have)}
+            onCommit={(text) => {
+              const v = parseMoney(text)
               if (v !== goal.have) updateGoal(goal.id, { have: v })
             }}
           />

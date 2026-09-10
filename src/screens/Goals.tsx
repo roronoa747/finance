@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Check, Link as LinkIcon, Plus, Trash } from '@phosphor-icons/react'
-import { Card, Callout, Field, Section, Segmented, Tag } from '@/components/kit'
+import { Callout, Card, Field, NumField, Section, Segmented, Tag } from '@/components/kit'
 import { Ring } from '@/components/charts'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -141,13 +141,13 @@ function GoalList() {
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Например, машина" />
           </Field>
           <Field label="Сколько нужно, ₸">
-            <Input value={need} onChange={(e) => setNeed(e.target.value)} inputMode="numeric" placeholder="3 000 000" className="num" />
+            <NumField value={need} onValue={setNeed} placeholder="3 000 000" />
           </Field>
           <Field label="Уже есть, ₸">
-            <Input value={have} onChange={(e) => setHave(e.target.value)} inputMode="numeric" className="num" />
+            <NumField value={have} onValue={setHave} />
           </Field>
           <Field label="Откладывать в месяц, ₸">
-            <Input value={monthly} onChange={(e) => setMonthly(e.target.value)} inputMode="numeric" placeholder="по умолчанию — за 24 месяца" className="num" />
+            <NumField value={monthly} onValue={setMonthly} placeholder="по умолчанию — за 24 месяца" />
           </Field>
           <Field label="Цвет">
             <div className="flex flex-wrap gap-2">
@@ -283,7 +283,7 @@ function Wishlist() {
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Например, сковорода" />
           </Field>
           <Field label="Цена, ₸">
-            <Input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="numeric" placeholder="18 000" className="num" />
+            <NumField value={price} onValue={setPrice} placeholder="18 000" />
           </Field>
           <Field label="Ссылка на товар">
             <Input value={url} onChange={(e) => setUrl(e.target.value)} inputMode="url" placeholder="можно оставить пустым" />

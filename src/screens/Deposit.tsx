@@ -1,7 +1,6 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft } from '@phosphor-icons/react'
-import { Card, Callout, Field, Segmented } from '@/components/kit'
-import { Input } from '@/components/ui/input'
+import { Callout, Card, Field, NumFieldBlur, Segmented } from '@/components/kit'
 import { money, parseMoney, plain, ratePct } from '@/lib/money'
 import { deposit as calcDeposit, realRate } from '@/lib/finance'
 import { useStore } from '@/store/useStore'
@@ -44,30 +43,32 @@ export function Deposit() {
         <div className="mb-4 text-[13px] text-ink-3">{account.note}</div>
 
         <Field label="Сумма на счёте, ₸">
-          <Input
-            inputMode="numeric" className="num" defaultValue={plain(account.amount)}
-            onBlur={(e) => setAccountAmount(account.id, parseMoney(e.target.value))}
+          <NumFieldBlur
+            initial={plain(account.amount)}
+            onCommit={(text) => setAccountAmount(account.id, parseMoney(text))}
           />
         </Field>
         <Field label="Ставка, % годовых">
-          <Input
-            inputMode="decimal" className="num" defaultValue={(d.annualRate * 100).toString().replace('.', ',')}
-            onBlur={(e) => {
-              const v = parseFloat(e.target.value.replace(',', '.').replace(/[^\d.]/g, ''))
+          <NumFieldBlur
+            initial={(d.annualRate * 100).toString().replace('.', ',')}
+            onCommit={(text) => {
+              const v = parseFloat(text.replace(',', '.').replace(/[^\d.]/g, ''))
               if (Number.isFinite(v)) setDeposit(account.id, { annualRate: v / 100 })
             }}
+            kind="rate"
           />
         </Field>
         <Field label="Пополнение в месяц, ₸">
-          <Input
-            inputMode="numeric" className="num" defaultValue={plain(d.monthlyTopUp)}
-            onBlur={(e) => setDeposit(account.id, { monthlyTopUp: parseMoney(e.target.value) })}
+          <NumFieldBlur
+            initial={plain(d.monthlyTopUp)}
+            onCommit={(text) => setDeposit(account.id, { monthlyTopUp: parseMoney(text) })}
           />
         </Field>
         <Field label="Срок, месяцев">
-          <Input
-            inputMode="numeric" className="num" defaultValue={String(d.months)}
-            onBlur={(e) => setDeposit(account.id, { months: Math.max(1, parseMoney(e.target.value)) })}
+          <NumFieldBlur
+            initial={String(d.months)}
+            onCommit={(text) => setDeposit(account.id, { months: Math.max(1, parseMoney(text)) })}
+            kind="int"
           />
         </Field>
         <Field label="Капитализация">

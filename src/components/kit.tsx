@@ -1,4 +1,7 @@
-import type { ReactNode } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
+import { Input } from '@/components/ui/input'
+import { clean, caretAt, sigBefore, type NumKind } from '@/lib/num'
 import { cn } from '@/lib/utils'
 
 export function Card({
@@ -167,5 +170,80 @@ export function Hero({ label, value }: { label: string; value: string }) {
         {value}
       </div>
     </>
+  )
+}
+
+/**
+ * Поле для чисел: показывает набранное по правилам из lib/num и возвращает
+ * курсор на место. Разряды сдвигают текст под курсором, поэтому браузеру
+ * нельзя доверить его положение — иначе он уезжает в конец строки.
+ */
+export function NumField({
+  value, onValue, kind = 'money', className, ...rest
+}: {
+  value: string
+  onValue: (v: string) => void
+  kind?: NumKind
+} & Omit<ComponentProps<'input'>, 'value' | 'onChange'>) {
+  const ref = useRef<HTMLInputElement>(null)
+  const wanted = useRef<number | null>(null)
+
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (el && wanted.current !== null && document.activeElement === el) {
+      el.setSelectionRange(wanted.current, wanted.current)
+    }
+    wanted.current = null
+  })
+
+  return (
+    <Input
+      ref={ref}
+      value={value}
+      inputMode={kind === 'rate' ? 'decimal' : 'numeric'}
+      className={cn('num', className)}
+      onChange={(e) => {
+        const el = e.currentTarget
+        const upto = el.value.slice(0, el.selectionStart ?? el.value.length)
+        const sig = sigBefore(upto)
+        const next = clean(el.value, kind, value)
+        wanted.current = caretAt(next, sig)
+        onValue(next)
+      }}
+      {...rest}
+    />
+  )
+}
+
+/**
+ * То же поле, но хранит набранное само и отдаёт его по уходу из поля.
+ * Часть форм написана так намеренно: правка применяется целиком, а не на
+ * каждый нажатый символ, иначе промежуточное «2» из «250 000» успевает
+ * уехать в общий бюджет и на второе устройство.
+ *
+ * Если значение поменялось снаружи — правка партнёра приехала синхронизацией —
+ * поле показывает новое, а не держит устаревшее набранное.
+ */
+export function NumFieldBlur({
+  initial, onCommit, kind = 'money', ...rest
+}: {
+  initial: string
+  onCommit: (v: string) => void
+  kind?: NumKind
+} & Omit<ComponentProps<'input'>, 'value' | 'onChange' | 'onBlur' | 'defaultValue'>) {
+  const [text, setText] = useState(() => clean(initial, kind))
+  const seen = useRef(initial)
+  if (seen.current !== initial) {
+    seen.current = initial
+    setText(clean(initial, kind))
+  }
+  return (
+    <NumField
+      value={text}
+      onValue={setText}
+      kind={kind}
+      onBlur={() => onCommit(text)}
+      {...rest}
+    />
   )
 }

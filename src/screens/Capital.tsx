@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Bank, CalendarPlus, Coins, CreditCard, House, Plus, Wallet } from '@phosphor-icons/react'
-import { Card, Field, Row, Section, Segmented } from '@/components/kit'
+import { Card, Field, NumField, NumFieldBlur, Row, Section, Segmented } from '@/components/kit'
 import type { Account, Currency, PersonId } from '@/store/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -257,13 +257,13 @@ function AddAccountDialog({
         </Field>
 
         <Field label={foreign ? `Сумма в ${currency}` : 'Сумма, ₸'}>
-          <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="numeric" className="num" />
+          <NumField value={amount} onValue={setAmount} />
         </Field>
 
         {foreign && (
           <>
             <Field label={`Курс: сколько тенге за 1 ${currency}`}>
-              <Input value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="533" className="num" />
+              <NumField value={rate} onValue={setRate} kind="rate" placeholder="533" />
             </Field>
             <p className="-mt-2 mb-3 text-[12px] leading-relaxed text-ink-3">
               {rateBusy
@@ -288,7 +288,7 @@ function AddAccountDialog({
 
         {kind === 'deposit' && (
           <Field label="Ставка по вкладу, % годовых — если есть">
-            <Input value={depositRate} onChange={(e) => setDepositRate(e.target.value)} inputMode="decimal" placeholder="16,5" className="num" />
+            <NumField value={depositRate} onValue={setDepositRate} kind="rate" placeholder="16,5" />
           </Field>
         )}
 
@@ -341,7 +341,7 @@ function ExtraIncomeDialog({
         </p>
 
         <Field label="Сумма, ₸">
-          <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="numeric" className="num" autoFocus />
+          <NumField value={amount} onValue={setAmount} autoFocus />
         </Field>
 
         {people.length > 1 && (
@@ -447,15 +447,13 @@ function ObligationDialog({
         </Field>
 
         <Field label="Сумма сейчас, ₸">
-          <Input
+          <NumField
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onValue={setAmount}
             onBlur={() => {
               const v = parseMoney(amount)
               if (v > 0 && v !== current) correctObligation(obligation.id, v)
             }}
-            inputMode="numeric"
-            className="num"
           />
         </Field>
         <p className="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-3">
@@ -464,14 +462,13 @@ function ObligationDialog({
         </p>
 
         <Field label="День платежа">
-          <Input
-            defaultValue={String(obligation.day)}
-            inputMode="numeric"
-            className="num"
-            onBlur={(e) => {
-              const v = Math.min(28, Math.max(1, parseMoney(e.target.value) || 1))
+          <NumFieldBlur
+            initial={String(obligation.day)}
+            onCommit={(text) => {
+              const v = Math.min(28, Math.max(1, parseMoney(text) || 1))
               if (v !== obligation.day) updateObligation(obligation.id, { day: v })
             }}
+            kind="int"
           />
         </Field>
 
@@ -492,7 +489,7 @@ function ObligationDialog({
         ) : (
           <div className="mb-3 rounded-xl border border-brand p-3.5">
             <Field label="Новая сумма, ₸">
-              <Input value={newAmount} onChange={(e) => setNewAmount(e.target.value)} inputMode="numeric" placeholder={plain(current)} className="num" autoFocus />
+              <NumField value={newAmount} onValue={setNewAmount} placeholder={plain(current)} autoFocus />
             </Field>
             <Field label="С какого месяца">
               <select
@@ -629,10 +626,10 @@ function AddCreditDialog({
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Например, рассрочка на телефон" />
         </Field>
         <Field label="Остаток долга, ₸">
-          <Input value={principal} onChange={(e) => setPrincipal(e.target.value)} inputMode="numeric" placeholder="600 000" className="num" />
+          <NumField value={principal} onValue={setPrincipal} placeholder="600 000" />
         </Field>
         <Field label="Платёж в месяц, ₸">
-          <Input value={payment} onChange={(e) => setPayment(e.target.value)} inputMode="numeric" placeholder="55 000" className="num" />
+          <NumField value={payment} onValue={setPayment} placeholder="55 000" />
         </Field>
 
         <Field label="Что знаете про ставку">
@@ -648,11 +645,11 @@ function AddCreditDialog({
 
         {mode === 'rate' ? (
           <Field label="Ставка (ГЭСВ), % годовых">
-            <Input value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="23,4" className="num" />
+            <NumField value={rate} onValue={setRate} kind="rate" placeholder="23,4" />
           </Field>
         ) : (
           <Field label="Сколько платежей осталось">
-            <Input value={term} onChange={(e) => setTerm(e.target.value)} inputMode="numeric" placeholder="12" className="num" />
+            <NumField value={term} onValue={setTerm} kind="int" placeholder="12" />
           </Field>
         )}
 
@@ -672,7 +669,7 @@ function AddCreditDialog({
         )}
 
         <Field label="День платежа">
-          <Input value={day} onChange={(e) => setDay(e.target.value)} inputMode="numeric" className="num" />
+          <NumField value={day} onValue={setDay} kind="int" />
         </Field>
 
         <Button onClick={create} disabled={!ready} className="w-full">Добавить</Button>

@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { ArrowDown, ArrowUp } from '@phosphor-icons/react'
-import { Card, Callout, Row, Section, Segmented, Stat } from '@/components/kit'
+import {
+  Callout, Card, Field, NumField, NumFieldBlur, Row, Section, Segmented, Stat,
+} from '@/components/kit'
 import { Bar, Legend } from '@/components/charts'
 import { Input } from '@/components/ui/input'
 import { money, parseMoney, pct, plain } from '@/lib/money'
@@ -13,7 +15,6 @@ import {
 import type { PersonId } from '@/store/types'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Field } from '@/components/kit'
 import { cn } from '@/lib/utils'
 
 const DERIVED_NOTE: Record<string, string> = {
@@ -145,12 +146,11 @@ export function Budget() {
                       {derived ? (
                         <div className="text-[15px] font-semibold num">{money(value)}</div>
                       ) : (
-                        <Input
+                        <NumFieldBlur
+                          initial={plain(c.amount)}
+                          onCommit={(text) => setCategoryAmount(c.key, parseMoney(text))}
                           aria-label={c.name}
-                          inputMode="numeric"
-                          defaultValue={plain(c.amount)}
-                          onBlur={(e) => setCategoryAmount(c.key, parseMoney(e.target.value))}
-                          className="h-9 w-[118px] bg-surface-2 text-right num"
+                          className="h-9 w-[118px] bg-surface-2 text-right"
                         />
                       )}
                       <div className="mt-0.5 text-[12px] font-medium text-brand num">
@@ -371,13 +371,10 @@ function SalaryDialog({ id, onClose }: { id: PersonId | null; onClose: () => voi
         </Field>
 
         <Field label="Оклад сейчас, ₸">
-          <Input
-            key={current}
-            defaultValue={plain(current)}
-            inputMode="numeric"
-            className="num"
-            onBlur={(e) => {
-              const v = parseMoney(e.target.value)
+          <NumFieldBlur
+            initial={plain(current)}
+            onCommit={(text) => {
+              const v = parseMoney(text)
               if (v > 0 && v !== current) correctSalary(person.id, v)
             }}
           />
@@ -388,14 +385,13 @@ function SalaryDialog({ id, onClose }: { id: PersonId | null; onClose: () => voi
         </p>
 
         <Field label="День зарплаты">
-          <Input
-            defaultValue={String(person.payday)}
-            inputMode="numeric"
-            className="num"
-            onBlur={(e) => {
-              const v = Math.min(28, Math.max(1, parseMoney(e.target.value) || 1))
+          <NumFieldBlur
+            initial={String(person.payday)}
+            onCommit={(text) => {
+              const v = Math.min(28, Math.max(1, parseMoney(text) || 1))
               if (v !== person.payday) setPerson(person.id, { payday: v })
             }}
+            kind="int"
           />
         </Field>
 
@@ -406,7 +402,7 @@ function SalaryDialog({ id, onClose }: { id: PersonId | null; onClose: () => voi
         ) : (
           <div className="mb-3 rounded-xl border border-brand p-3.5">
             <Field label="Новый оклад, ₸">
-              <Input value={newAmount} onChange={(e) => setNewAmount(e.target.value)} inputMode="numeric" placeholder={plain(current)} className="num" autoFocus />
+              <NumField value={newAmount} onValue={setNewAmount} placeholder={plain(current)} autoFocus />
             </Field>
             <Field label="С какого месяца">
               <select

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ArrowLeft, Copy, UserPlus } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Field, Segmented } from '@/components/kit'
+import { Field, NumField, Segmented } from '@/components/kit'
 import { money, parseMoney, ratePct } from '@/lib/money'
 import { HUES, HUE_KEYS, type HueKey } from '@/lib/palette'
 import { goalMonthly, rateFromSchedule } from '@/lib/finance'
@@ -268,16 +268,10 @@ export function Setup() {
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Имя" />
         </Field>
         <Field label="Зарплата в месяц, ₸">
-          <Input
-            value={salary} onChange={(e) => setSalary(e.target.value)}
-            inputMode="numeric" placeholder="450 000" className="num text-[17px]"
-          />
+          <NumField value={salary} onValue={setSalary} placeholder="450 000" className="text-[17px]" />
         </Field>
         <Field label="День зарплаты">
-          <Input
-            value={payday} onChange={(e) => setPayday(e.target.value)}
-            inputMode="numeric" className="num" placeholder="10"
-          />
+          <NumField value={payday} onValue={setPayday} kind="int" placeholder="10" />
         </Field>
         <p className="text-[12.5px] leading-relaxed text-ink-3">
           День нужен, чтобы календарь показал провал между вашей зарплатой и зарплатой партнёра —
@@ -311,19 +305,13 @@ export function Setup() {
           />
         </Field>
         <Field label={tenure === 'own' ? 'Содержание в месяц, ₸' : 'Платёж в месяц, ₸'}>
-          <Input
-            value={housing} onChange={(e) => setHousing(e.target.value)}
-            inputMode="numeric" placeholder="280 000" className="num text-[17px]"
-          />
+          <NumField value={housing} onValue={setHousing} placeholder="280 000" className="text-[17px]" />
         </Field>
         <Field label="День платежа">
-          <Input value={housingDay} onChange={(e) => setHousingDay(e.target.value)} inputMode="numeric" className="num" />
+          <NumField value={housingDay} onValue={setHousingDay} kind="int" />
         </Field>
         <Field label="Коммуналка в месяц, ₸ — примерно">
-          <Input
-            value={utilities} onChange={(e) => setUtilities(e.target.value)}
-            inputMode="numeric" placeholder="22 000" className="num"
-          />
+          <NumField value={utilities} onValue={setUtilities} placeholder="22 000" />
         </Field>
         <p className="text-[12.5px] leading-relaxed text-ink-3">
           Коммуналку приложение будет помечать как оценку: она плавает по сезонам, и выдавать её
@@ -356,10 +344,10 @@ export function Setup() {
         {hasCredit === 'yes' && (
           <>
             <Field label="Остаток долга, ₸">
-              <Input value={principal} onChange={(e) => setPrincipal(e.target.value)} inputMode="numeric" placeholder="1 600 000" className="num" />
+              <NumField value={principal} onValue={setPrincipal} placeholder="1 600 000" />
             </Field>
             <Field label="Платёж в месяц, ₸">
-              <Input value={payment} onChange={(e) => setPayment(e.target.value)} inputMode="numeric" placeholder="117 000" className="num" />
+              <NumField value={payment} onValue={setPayment} placeholder="117 000" />
             </Field>
             <Field label="Что знаете про ставку">
               <Segmented<'rate' | 'term'>
@@ -374,11 +362,11 @@ export function Setup() {
 
             {rateMode === 'rate' ? (
               <Field label="Ставка (ГЭСВ из договора), % годовых">
-                <Input value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="23,4" className="num" />
+                <NumField value={rate} onValue={setRate} kind="rate" placeholder="23,4" />
               </Field>
             ) : (
               <Field label="Сколько платежей осталось">
-                <Input value={term} onChange={(e) => setTerm(e.target.value)} inputMode="numeric" placeholder="17" className="num" />
+                <NumField value={term} onValue={setTerm} kind="int" placeholder="17" />
               </Field>
             )}
 
@@ -399,7 +387,7 @@ export function Setup() {
             )}
 
             <Field label="День платежа">
-              <Input value={creditDay} onChange={(e) => setCreditDay(e.target.value)} inputMode="numeric" className="num" />
+              <NumField value={creditDay} onValue={setCreditDay} kind="int" />
             </Field>
             <p className="text-[12.5px] leading-relaxed text-ink-3">
               Если ставку знаете — берите ГЭСВ из договора, а не с витрины: там она называется
@@ -433,13 +421,13 @@ export function Setup() {
           <Input value={goalName} onChange={(e) => setGoalName(e.target.value)} placeholder="Первая квартира" />
         </Field>
         <Field label="Сколько нужно, ₸">
-          <Input value={goalNeed} onChange={(e) => setGoalNeed(e.target.value)} inputMode="numeric" placeholder="6 000 000" className="num text-[17px]" />
+          <NumField value={goalNeed} onValue={setGoalNeed} placeholder="6 000 000" className="text-[17px]" />
         </Field>
         <Field label="Уже накоплено, ₸">
-          <Input value={goalHave} onChange={(e) => setGoalHave(e.target.value)} inputMode="numeric" className="num" />
+          <NumField value={goalHave} onValue={setGoalHave} />
         </Field>
         <Field label="За сколько месяцев хотите успеть">
-          <Input value={goalMonths} onChange={(e) => setGoalMonths(e.target.value)} inputMode="numeric" className="num" />
+          <NumField value={goalMonths} onValue={setGoalMonths} kind="int" />
         </Field>
         <Field label="Цвет">
           <div className="flex flex-wrap gap-2">
