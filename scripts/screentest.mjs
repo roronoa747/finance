@@ -399,6 +399,53 @@ try {
   check('добавка 5 000 снимает около половины переплаты',
     Math.round(payoff.small.saved) > payoff.small.overpayNow * 0.45, Math.round(payoff.small.saved))
 
+  // --- до зарплаты: отрезок от сегодня до ближайшего дохода ---
+  const payday = await page.evaluate(() => {
+    const f = window.__untilPayday
+    const s = JSON.parse(localStorage.getItem('kazna-v1')).state
+    const cut = (r) => r && ({
+      кто: r.who.name,
+      черезДней: r.inDays,
+      месяц: r.key,
+      списаний: r.dueTotal,
+      что: r.due.map((d) => d.name + '/' + d.day + '/' + d.when),
+      знаемОстаток: r.knowsCash,
+      наСчетах: r.onAccounts,
+    })
+    return {
+      // Зарплаты 10-го и 25-го. Первого числа ближайшая — 10-го, и аренда 5-го
+      // попадает в отрезок: ровно та ситуация, из-за которой карточка заведена —
+      // платить надо раньше, чем придут деньги.
+      first: cut(f(s, { day: 1, key: '2026-09' })),
+      // Пятнадцатого ближайшая — 25-го, аренда 5-го уже прошла.
+      mid: cut(f(s, { day: 15, key: '2026-09' })),
+      // Двадцать шестого все зарплаты месяца прошли: отрезок уходит в октябрь.
+      // Платёж 28-го числа при этом обязан остаться в сентябрьской части.
+      after: cut(f(
+        { ...s, credits: [...s.credits, { id: 'late', name: 'Поздний', principal: 1, annualRate: 0, payment: 900, day: 28 }] },
+        { day: 26, key: '2026-09' },
+      )),
+      // Без счетов вывода «хватает» быть не должно.
+      noCash: cut(f({ ...s, accounts: [] }, { day: 1, key: '2026-09' })),
+    }
+  })
+  check('первого числа ближайшая зарплата — 10-го',
+    payday.first.черезДней === 9 && payday.first.кто === 'Ильяс',
+    payday.first.кто + ', через ' + payday.first.черезДней)
+  check('платёж до зарплаты попал в отрезок',
+    payday.first.что.some((x) => x.startsWith('Аренда/5')), payday.first.что.join(', '))
+  check('прошедший платёж в отрезок не попал',
+    !payday.mid.что.some((x) => x.startsWith('Аренда/5')), payday.mid.что.join(', '))
+  check('после последней зарплаты отрезок уходит в следующий месяц',
+    payday.after.месяц === '2026-10', payday.after.месяц)
+  check('в отрезок попали списания обоих месяцев',
+    payday.after.что.some((x) => x.endsWith('2026-09')) && payday.after.что.some((x) => x.endsWith('2026-10')),
+    payday.after.что.join(', '))
+  check('без счетов остаток не выдумывается', payday.noCash.знаемОстаток === false)
+  // На вкладе 1 500 000, на карте 240 000 и валюта 456 890. Вклад не в счёт.
+  check('вклад не считается доступными деньгами',
+    payday.first.наСчетах === 696890, payday.first.наСчетах)
+
   check('пустое состояние — бюджета нет', gate.empty === false)
   check('введённая зарплата — бюджет есть', gate.withSalary === true)
   check('нулевая зарплата сама по себе бюджетом не считается', gate.zeroSalary === false)

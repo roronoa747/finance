@@ -1,12 +1,14 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { Clock, Plus } from '@phosphor-icons/react'
 import { Card, Callout, Hero, Row, Section } from '@/components/kit'
+import { cn } from '@/lib/utils'
 import { InviteBanner } from '@/screens/Setup'
 import { Bar, Legend, Ring } from '@/components/charts'
 import { money, plain, pct } from '@/lib/money'
 import { monthKey, monthIn, monthFrom, dayLabel } from '@/lib/dates'
 import {
-  amountAt, budgetAmounts, dueIn, liveCredits, liveGoals, liveObligations, nextChange, salaryAt, useStore,
+  amountAt, budgetAmounts, dueIn, liveCredits, liveGoals, liveObligations, nextChange, salaryAt,
+  untilPayday, useStore,
 } from '@/store/useStore'
 
 export function Overview() {
@@ -120,6 +122,8 @@ export function Overview() {
         </Callout>
       )}
 
+      <UntilPayday />
+
       <Section
         title="Впереди"
         action={<Link to="/budget" className="text-[13px] text-brand">Календарь</Link>}
@@ -173,4 +177,86 @@ export function Overview() {
       </div>
     </div>
   )
+}
+
+/**
+ * Что успеет списаться до ближайшей зарплаты.
+ *
+ * Календарный месяц и жизнь идут не в такт: первого числа приложение уже
+ * расписало весь доход, хотя денег ещё не приходило. Заказчик назвал это
+ * странным и объяснил почему — ориентир обычно зарплата, а не первое число.
+ *
+ * Карточка отвечает ровно на то, что можно узнать из введённого: когда придут
+ * деньги и что нужно заплатить раньше. Вывод «хватит или нет» появляется
+ * только когда заведены счета: без остатка на карте это было бы гаданием,
+ * а гадание про деньги хуже молчания.
+ */
+function UntilPayday() {
+  const store = useStore()
+  const info = untilPayday(store)
+  if (!info || !info.due.length) return null
+
+  const { who, income, inDays, day, key, due, dueTotal, knowsCash, onAccounts, shortfall } = info
+
+  return (
+    <>
+      <Section title="До зарплаты" />
+      <Card>
+        <div className="flex items-baseline gap-2">
+          <span className="font-display text-[19px] font-semibold tracking-[-0.02em]">
+            {inDays === 0 ? 'Сегодня' : `Через ${inDays} ${dayWord(inDays)}`}
+          </span>
+          <span className="ml-auto text-[13px] text-ink-3">
+            {dayLabel(day, key)}
+          </span>
+        </div>
+        <div className="mt-0.5 text-[13px] text-ink-2">
+          {who.name} получит {money(income)}
+        </div>
+
+        <div className="mt-3 border-t border-line pt-3">
+          <div className="flex items-baseline">
+            <span className="text-[13px] text-ink-2">Списаний до неё</span>
+            <b className="ml-auto num text-[14.5px]">{money(dueTotal)}</b>
+          </div>
+          <div className="mt-2 flex flex-col gap-1.5">
+            {due.map((d) => (
+              <div key={d.id} className="flex items-baseline gap-2 text-[12.5px]">
+                <span className="text-ink-3">{dayLabel(d.day, d.when)}</span>
+                <span className="truncate text-ink-2">{d.name}</span>
+                <span className="ml-auto shrink-0 num">{plain(d.value)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {knowsCash ? (
+          <div
+            className={cn(
+              'mt-3 rounded-xl border px-3.5 py-3 text-[12.5px] leading-relaxed',
+              shortfall >= 0 ? 'border-brand bg-brand-soft text-ink-2' : 'border-warn-line bg-warn-soft text-ink-2',
+            )}
+          >
+            {shortfall >= 0
+              ? `На счетах ${plain(onAccounts)} ₸ — хватает, остаётся ${plain(shortfall)} ₸.`
+              : `На счетах ${plain(onAccounts)} ₸ — не хватает ${plain(-shortfall)} ₸. Перенесите платёж или возьмите из накоплений, но решите это сейчас, а не в день списания.`}
+          </div>
+        ) : (
+          <p className="mt-3 text-[12.5px] leading-relaxed text-ink-3">
+            Хватит ли этого, приложение не знает: остаток на картах не заведён. Добавьте
+            счёт в «Капитале» — и здесь появится ответ вместо списка.
+          </p>
+        )}
+      </Card>
+    </>
+  )
+}
+
+const dayWord = (n: number) => {
+  const t = n % 10
+  const h = n % 100
+  if (h >= 11 && h <= 14) return 'дней'
+  if (t === 1) return 'день'
+  if (t >= 2 && t <= 4) return 'дня'
+  return 'дней'
 }

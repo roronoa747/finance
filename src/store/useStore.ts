@@ -5,7 +5,7 @@ import type {
   Settings, SyncDoc, SyncStatus, WishItem,
 } from './types'
 import type { AccentKey, CategoryKey, HueKey, ThemeChoice } from '@/lib/palette'
-import { monthKey } from '@/lib/dates'
+import { addMonths, daysInMonth, monthKey, today } from '@/lib/dates'
 
 const uid = () => Math.random().toString(36).slice(2, 10)
 const now = () => new Date().toISOString()
@@ -758,3 +758,79 @@ export const netWorth = (accounts: Account[], credits: Credit[], goals: Goal[] =
   liveAccounts(accounts).reduce((a, x) => a + x.amount, 0) +
   goalSavings(goals) -
   liveCredits(credits).reduce((a, c) => a + c.principal, 0)
+
+/**
+ * Что происходит до ближайшей зарплаты.
+ *
+ * Месяц в приложении календарный, а жизнь — от зарплаты до зарплаты. Заказчик
+ * сказал об этом так: пока доход не пришёл, всё уже висит расходами, и это
+ * выглядит странно, потому что ориентир обычно зарплата.
+ *
+ * Считается только то, что известно наверняка: когда придут ближайшие деньги и
+ * что нужно заплатить до этого. Сколько сейчас на карте, приложение не знает и
+ * не выдумывает — вывод «хватает или нет» появляется, когда заведены счета, и
+ * не появляется, пока их нет.
+ *
+ * Отрезок может перейти в следующий месяц: если все зарплаты в этом месяце уже
+ * прошли, ближайшая — первая в следующем, и списания берутся из обоих месяцев.
+ */
+export function untilPayday(
+  state: Pick<State, 'people' | 'obligations' | 'credits' | 'accounts'>,
+  now = today(),
+) {
+  const key = now.key
+  const days = daysInMonth(key)
+
+  const ahead = state.people
+    .filter((p) => p.payday >= now.day)
+    .sort((a, b) => a.payday - b.payday)[0]
+  const wrapped = [...state.people].sort((a, b) => a.payday - b.payday)[0]
+  const who = ahead ?? wrapped
+  if (!who) return null
+
+  const nextKey = ahead ? key : addMonths(key, 1)
+  const inDays = ahead ? who.payday - now.day : days - now.day + who.payday
+
+  // Все списания месяца одним списком: обязательства и платежи по долгам.
+  const itemsOf = (k: string) => [
+    ...liveObligations(state.obligations)
+      .filter((o) => dueIn(o, k))
+      .map((o) => ({ id: o.id, name: o.name, day: o.day, value: amountAt(o, k), when: k })),
+    ...liveCredits(state.credits)
+      .map((c) => ({ id: c.id, name: c.name, day: c.day, value: c.payment, when: k })),
+  ]
+
+  const due = ahead
+    ? itemsOf(key).filter((x) => x.day >= now.day && x.day <= who.payday)
+    : [
+        ...itemsOf(key).filter((x) => x.day >= now.day),
+        ...itemsOf(nextKey)
+          .filter((x) => x.day <= who.payday)
+          .map((x) => ({ ...x, id: x.id + '@next' })),
+      ]
+  due.sort((a, b) => a.when.localeCompare(b.when) || a.day - b.day)
+
+  /*
+    Вклад в этот расчёт не входит. Деньги на нём есть, но платить с него
+    аренду нельзя: он или заморожен сроком, или закрывать его ради платежа
+    дороже, чем занять. Считаем только то, чем действительно можно заплатить
+    завтра, иначе ответ «хватает» будет вежливым враньём.
+  */
+  const accounts = liveAccounts(state.accounts).filter((a) => a.kind !== 'deposit')
+  const onAccounts = accounts.reduce((a, x) => a + x.amount, 0)
+  const dueTotal = due.reduce((a, x) => a + x.value, 0)
+
+  return {
+    who,
+    income: salaryAt(who, nextKey),
+    inDays,
+    day: who.payday,
+    key: nextKey,
+    due,
+    dueTotal,
+    /** Известен ли остаток на счетах — без него вывод «хватает» был бы гаданием. */
+    knowsCash: accounts.length > 0,
+    onAccounts,
+    shortfall: onAccounts - dueTotal,
+  }
+}
