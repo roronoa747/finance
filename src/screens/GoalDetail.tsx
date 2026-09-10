@@ -236,7 +236,11 @@ function EditGoalDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[88dvh] max-w-[92vw] overflow-y-auto rounded-2xl border-line bg-surface sm:max-w-[400px]">
+      <DialogContent
+        className="max-h-[88dvh] max-w-[92vw] overflow-y-auto rounded-2xl border-line bg-surface sm:max-w-[400px]"
+        /* Правка существующей записи не должна выбрасывать клавиатуру и выделять название. */
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
         <DialogHeader><DialogTitle className="font-display">Изменить цель</DialogTitle></DialogHeader>
 
         <Field label="Название">

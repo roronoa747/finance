@@ -25,6 +25,8 @@ const ICONS = {
 export function Capital() {
   const [addOpen, setAddOpen] = useState(false)
   const [obligationId, setObligationId] = useState<string | null>(null)
+  const [creditId, setCreditId] = useState<string | null>(null)
+  const [accountId, setAccountId] = useState<string | null>(null)
   const [accountOpen, setAccountOpen] = useState(false)
   // «Внеплановый доход» живёт в меню «+»: это действие, а не раздел капитала.
   const [params, setParams] = useSearchParams()
@@ -89,8 +91,10 @@ export function Capital() {
               key={a.id}
               icon={ICONS[a.kind]}
               title={a.name}
-              note={a.currency ? `${plain(a.foreignAmount ?? 0)} ${a.currency} · курс ${a.rate}` : a.note}
+              note={a.currency ? `${plain(a.foreignAmount ?? 0)} ${a.currency} · курс ${String(a.rate).replace('.', ',')}` : a.note}
               value={money(a.amount)}
+              sub="изменить →"
+              onClick={() => setAccountId(a.id)}
             />
           ),
         )}
@@ -113,6 +117,7 @@ export function Capital() {
               note={`ГЭСВ ${ratePct(c.annualRate, 1)} · ${Math.ceil(months)} платежей`}
               value={money(c.principal)}
               sub={`переплата ${plain(Math.round(overpay))}`}
+              onClick={() => setCreditId(c.id)}
             />
           )
         })}
@@ -140,6 +145,8 @@ export function Capital() {
 
       <AddCreditDialog open={addOpen} onOpenChange={setAddOpen} />
       <ObligationDialog id={obligationId} onClose={() => setObligationId(null)} />
+      <CreditDialog id={creditId} onClose={() => setCreditId(null)} />
+      <AccountDialog id={accountId} onClose={() => setAccountId(null)} />
     </div>
   )
 }
@@ -433,7 +440,11 @@ function ObligationDialog({
 
   return (
     <Dialog open={Boolean(id)} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-h-[88dvh] max-w-[92vw] overflow-y-auto rounded-2xl border-line bg-surface sm:max-w-[400px]">
+      <DialogContent
+        className="max-h-[88dvh] max-w-[92vw] overflow-y-auto rounded-2xl border-line bg-surface sm:max-w-[400px]"
+        /* Правка существующей записи не должна выбрасывать клавиатуру и выделять название. */
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
         <DialogHeader><DialogTitle className="font-display">{obligation.name}</DialogTitle></DialogHeader>
 
         <Field label="Название">
@@ -578,8 +589,6 @@ function AddCreditDialog({
   open, onOpenChange,
 }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const addCredit = useStore((s) => s.addCredit)
-  const credits = useStore((s) => s.credits)
-  const setCategoryAmount = useStore((s) => s.setCategoryAmount)
 
   const [name, setName] = useState('')
   const [principal, setPrincipal] = useState('')
@@ -601,18 +610,17 @@ function AddCreditDialog({
 
   function create() {
     if (!ready) return
-    const pay = parseMoney(payment)
+    // Сумму раздела «Кредиты» здесь не записываем: она складывается из платежей
+    // сама. Хранить её вторым числом — это ровно тот случай, из-за которого
+    // бюджет уже однажды остался в нулях.
     addCredit({
       name: name.trim() || 'Кредит',
       note: 'ежемесячный платёж',
       principal: parseMoney(principal),
       annualRate: resolvedRate ?? 0,
-      payment: pay,
+      payment: parseMoney(payment),
       day: Math.min(28, Math.max(1, parseMoney(day) || 1)),
     })
-    // В корзине «Кредиты» должна стоять сумма всех платежей, а не последнего.
-    const total = liveCredits(credits).reduce((a, c) => a + c.payment, 0) + pay
-    setCategoryAmount('d2', total)
     setName(''); setPrincipal(''); setPayment(''); setRate(''); setTerm('')
     onOpenChange(false)
   }
@@ -673,6 +681,271 @@ function AddCreditDialog({
         </Field>
 
         <Button onClick={create} disabled={!ready} className="w-full">Добавить</Button>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/**
+ * Правка кредита. До этого кредит можно было только завести и удалить: строка
+ * в списке никуда не вела, а платёж и остаток меняются постоянно.
+ *
+ * Остаток правится руками намеренно. Приложение не знает, сколько банк списал
+ * на самом деле — там комиссии, страховки и досрочные погашения, — и подставлять
+ * вместо человека расчётную цифру значит тихо разойтись с выпиской.
+ */
+function CreditDialog({ id, onClose }: { id: string | null; onClose: () => void }) {
+  const credit = useStore((s) => s.credits.find((c) => c.id === id))
+  const updateCredit = useStore((s) => s.updateCredit)
+  const removeCredit = useStore((s) => s.removeCredit)
+  const [confirm, setConfirm] = useState(false)
+
+  useEffect(() => { setConfirm(false) }, [id])
+
+  if (!credit) return null
+
+  const months = annuityMonths(credit.principal, credit.annualRate, credit.payment)
+  const overpay = annuityTotal(credit.principal, credit.annualRate, credit.payment) - credit.principal
+  const closes = Number.isFinite(months) && months > 0
+
+  return (
+    <Dialog open={Boolean(id)} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent
+        className="max-h-[88dvh] max-w-[92vw] overflow-y-auto rounded-2xl border-line bg-surface sm:max-w-[400px]"
+        /* Правка существующей записи не должна выбрасывать клавиатуру и выделять название. */
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <DialogHeader><DialogTitle className="font-display">{credit.name}</DialogTitle></DialogHeader>
+
+        <Field label="Название">
+          <Input
+            defaultValue={credit.name}
+            onBlur={(e) => {
+              const v = e.target.value.trim()
+              if (v && v !== credit.name) updateCredit(credit.id, { name: v })
+            }}
+          />
+        </Field>
+
+        <Field label="Остаток долга, ₸">
+          <NumFieldBlur
+            initial={plain(credit.principal)}
+            onCommit={(text) => {
+              const v = parseMoney(text)
+              if (v > 0 && v !== credit.principal) updateCredit(credit.id, { principal: v })
+            }}
+          />
+        </Field>
+
+        <Field label="Платёж в месяц, ₸">
+          <NumFieldBlur
+            initial={plain(credit.payment)}
+            onCommit={(text) => {
+              const v = parseMoney(text)
+              if (v > 0 && v !== credit.payment) updateCredit(credit.id, { payment: v })
+            }}
+          />
+        </Field>
+
+        <Field label="Ставка (ГЭСВ), % годовых">
+          <NumFieldBlur
+            initial={(credit.annualRate * 100).toFixed(1).replace('.', ',')}
+            kind="rate"
+            onCommit={(text) => {
+              const v = parseFloat(text.replace(',', '.'))
+              if (Number.isFinite(v) && v > 0) updateCredit(credit.id, { annualRate: v / 100 })
+            }}
+          />
+        </Field>
+
+        <Field label="День платежа">
+          <NumFieldBlur
+            initial={String(credit.day)}
+            kind="int"
+            onCommit={(text) => {
+              const v = Math.min(28, Math.max(1, parseMoney(text) || 1))
+              if (v !== credit.day) updateCredit(credit.id, { day: v })
+            }}
+          />
+        </Field>
+
+        <Field label="Примечание">
+          <Input
+            defaultValue={credit.note}
+            onBlur={(e) => {
+              const v = e.target.value.trim()
+              if (v !== credit.note) updateCredit(credit.id, { note: v })
+            }}
+          />
+        </Field>
+
+        {closes ? (
+          <div className="mb-3 rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-[13px]">
+            <div className="flex justify-between">
+              <span className="text-ink-2">Платежей осталось</span>
+              <b className="num">{Math.ceil(months)}</b>
+            </div>
+            <div className="mt-1 flex justify-between">
+              <span className="text-ink-2">Переплата до конца</span>
+              <b className="num text-warn">{money(Math.round(overpay))}</b>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-3 rounded-xl border border-warn-line bg-warn-soft px-3.5 py-3 text-[12.5px] leading-relaxed text-ink-2">
+            При таком платеже долг не закрывается: проценты съедают его целиком.
+            Проверьте остаток, платёж и ставку.
+          </div>
+        )}
+
+        <div className="border-t border-line pt-3">
+          {confirm ? (
+            <>
+              <p className="mb-2 text-[12.5px] leading-relaxed text-warn">
+                Кредит исчезнет у обоих участников, и платёж перестанет учитываться
+                в бюджете. Отменить нельзя.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setConfirm(false)}>Отмена</Button>
+                <Button
+                  className="flex-1 bg-destructive text-destructive-foreground"
+                  onClick={() => { removeCredit(credit.id); onClose() }}
+                >
+                  Удалить
+                </Button>
+              </div>
+            </>
+          ) : (
+            <button onClick={() => setConfirm(true)} className="text-[13px] text-ink-3 hover:text-destructive">
+              Удалить кредит
+            </button>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/**
+ * Правка счёта. Раньше счёт можно было только завести: ни переименовать, ни
+ * поправить сумму, ни удалить — и первый же заведённый по ошибке счёт оставался
+ * в капитале навсегда.
+ *
+ * Валютный счёт хранит сумму в валюте и курс, а в капитал отдаёт уже тенге:
+ * пересчёт живёт в одном месте, а не на каждом экране.
+ */
+function AccountDialog({ id, onClose }: { id: string | null; onClose: () => void }) {
+  const account = useStore((s) => s.accounts.find((a) => a.id === id))
+  const updateAccount = useStore((s) => s.updateAccount)
+  const removeAccount = useStore((s) => s.removeAccount)
+  const goals = useStore((s) => s.goals)
+  const [confirm, setConfirm] = useState(false)
+
+  useEffect(() => { setConfirm(false) }, [id])
+
+  if (!account) return null
+
+  const foreign = Boolean(account.currency)
+  const attached = liveGoals(goals).filter((g) => g.accountId === account.id)
+
+  return (
+    <Dialog open={Boolean(id)} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent
+        className="max-h-[88dvh] max-w-[92vw] overflow-y-auto rounded-2xl border-line bg-surface sm:max-w-[400px]"
+        /* Правка существующей записи не должна выбрасывать клавиатуру и выделять название. */
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <DialogHeader><DialogTitle className="font-display">{account.name}</DialogTitle></DialogHeader>
+
+        <Field label="Название">
+          <Input
+            defaultValue={account.name}
+            onBlur={(e) => {
+              const v = e.target.value.trim()
+              if (v && v !== account.name) updateAccount(account.id, { name: v })
+            }}
+          />
+        </Field>
+
+        {foreign ? (
+          <>
+            <Field label={`Сумма в ${account.currency}`}>
+              <NumFieldBlur
+                initial={plain(account.foreignAmount ?? 0)}
+                onCommit={(text) => {
+                  const v = parseMoney(text)
+                  const rate = account.rate ?? 1
+                  updateAccount(account.id, { foreignAmount: v, amount: Math.round(v * rate) })
+                }}
+              />
+            </Field>
+            <Field label={`Курс: сколько тенге за 1 ${account.currency}`}>
+              <NumFieldBlur
+                initial={String(account.rate ?? '').replace('.', ',')}
+                kind="rate"
+                onCommit={(text) => {
+                  const v = parseFloat(text.replace(',', '.'))
+                  if (!Number.isFinite(v) || v <= 0) return
+                  updateAccount(account.id, {
+                    rate: v,
+                    amount: Math.round((account.foreignAmount ?? 0) * v),
+                    rateAt: new Date().toISOString(),
+                  })
+                }}
+              />
+            </Field>
+            <p className="-mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-3">
+              В капитале счёт стоит как {money(account.amount)} — по этому курсу.
+            </p>
+          </>
+        ) : (
+          <Field label="Сумма, ₸">
+            <NumFieldBlur
+              initial={plain(account.amount)}
+              onCommit={(text) => updateAccount(account.id, { amount: parseMoney(text) })}
+            />
+          </Field>
+        )}
+
+        <Field label="Примечание">
+          <Input
+            defaultValue={account.note}
+            onBlur={(e) => {
+              const v = e.target.value.trim()
+              if (v !== account.note) updateAccount(account.id, { note: v })
+            }}
+          />
+        </Field>
+
+        <div className="border-t border-line pt-3">
+          {confirm ? (
+            <>
+              <p className="mb-2 text-[12.5px] leading-relaxed text-warn">
+                Счёт исчезнет у обоих участников. Отменить нельзя.
+                {attached.length > 0 && (
+                  <>
+                    {' '}Накопления по {attached.length === 1 ? 'цели' : 'целям'}
+                    {' «'}{attached.map((g) => g.name).join('», «')}{'» '}
+                    останутся на месте: они снова будут считаться отдельно, а не
+                    лежащими на этом счёте.
+                  </>
+                )}
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setConfirm(false)}>Отмена</Button>
+                <Button
+                  className="flex-1 bg-destructive text-destructive-foreground"
+                  onClick={() => { removeAccount(account.id); onClose() }}
+                >
+                  Удалить
+                </Button>
+              </div>
+            </>
+          ) : (
+            <button onClick={() => setConfirm(true)} className="text-[13px] text-ink-3 hover:text-destructive">
+              Удалить счёт
+            </button>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   )

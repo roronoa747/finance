@@ -54,8 +54,17 @@ export type State = SyncDoc & {
   updateObligation: (id: string, patch: Partial<Pick<Obligation, 'name' | 'note' | 'day' | 'estimate'>>) => void
   removeObligation: (id: string) => void
   removeCredit: (id: string) => void
+  updateCredit: (
+    id: string,
+    patch: Partial<Pick<Credit, 'name' | 'note' | 'principal' | 'annualRate' | 'payment' | 'day'>>,
+  ) => void
   setDeposit: (id: string, patch: Partial<NonNullable<Account['deposit']>>) => void
   setAccountAmount: (id: string, amount: number) => void
+  updateAccount: (
+    id: string,
+    patch: Partial<Pick<Account, 'name' | 'note' | 'amount' | 'kind' | 'currency' | 'foreignAmount' | 'rate' | 'rateAt'>>,
+  ) => void
+  removeAccount: (id: string) => void
   addAccount: (
     a: Pick<Account, 'name' | 'note' | 'amount' | 'kind' | 'deposit' | 'currency' | 'foreignAmount' | 'rate' | 'rateAt'>,
   ) => void
@@ -337,6 +346,12 @@ export const useStore = create<State>()(
           status: 'dirty',
         })),
 
+      updateCredit: (id, patch) =>
+        set((s) => ({
+          credits: s.credits.map((c) => (c.id === id ? touch({ ...c, ...patch }) : c)),
+          status: 'dirty',
+        })),
+
       addObligation: ({ amount, ...o }) =>
         set((s) => ({
           obligations: [
@@ -407,6 +422,27 @@ export const useStore = create<State>()(
       setAccountAmount: (id, amount) =>
         set((s) => ({
           accounts: s.accounts.map((a) => (a.id === id ? touch({ ...a, amount }) : a)),
+          status: 'dirty',
+        })),
+
+      updateAccount: (id, patch) =>
+        set((s) => ({
+          accounts: s.accounts.map((a) => (a.id === id ? touch({ ...a, ...patch }) : a)),
+          status: 'dirty',
+        })),
+
+      /*
+        Цель может лежать на счёте — тогда её накопления не считаются вторым
+        активом, иначе одни и те же деньги вошли бы в капитал дважды. Если счёт
+        удалить, не разорвав связь, деньги исчезнут совсем: счёта уже нет, а
+        цель всё ещё считается лежащей на нём.
+      */
+      removeAccount: (id) =>
+        set((s) => ({
+          accounts: s.accounts.map((a) =>
+            a.id === id ? { ...a, deletedAt: now(), updatedAt: now() } : a,
+          ),
+          goals: s.goals.map((g) => (g.accountId === id ? touch({ ...g, accountId: null }) : g)),
           status: 'dirty',
         })),
 

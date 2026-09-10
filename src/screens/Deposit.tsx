@@ -1,6 +1,9 @@
+import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft } from '@phosphor-icons/react'
 import { Callout, Card, Field, NumFieldBlur, Segmented } from '@/components/kit'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { money, parseMoney, plain, ratePct } from '@/lib/money'
 import { deposit as calcDeposit, realRate } from '@/lib/finance'
 import { useStore } from '@/store/useStore'
@@ -11,7 +14,10 @@ export function Deposit() {
   const account = useStore((s) => s.accounts.find((a) => a.id === id))
   const setDeposit = useStore((s) => s.setDeposit)
   const setAccountAmount = useStore((s) => s.setAccountAmount)
+  const updateAccount = useStore((s) => s.updateAccount)
+  const removeAccount = useStore((s) => s.removeAccount)
   const inflation = useStore((s) => s.settings.inflation)
+  const [confirm, setConfirm] = useState(false)
 
   if (!account?.deposit) {
     return (
@@ -39,8 +45,26 @@ export function Deposit() {
       </button>
 
       <Card>
-        <div className="font-display text-[18px] font-semibold">{account.name}</div>
-        <div className="mb-4 text-[13px] text-ink-3">{account.note}</div>
+        <div className="mb-4 font-display text-[18px] font-semibold">{account.name}</div>
+
+        <Field label="Название">
+          <Input
+            defaultValue={account.name}
+            onBlur={(e) => {
+              const v = e.target.value.trim()
+              if (v && v !== account.name) updateAccount(account.id, { name: v })
+            }}
+          />
+        </Field>
+        <Field label="Примечание">
+          <Input
+            defaultValue={account.note}
+            onBlur={(e) => {
+              const v = e.target.value.trim()
+              if (v !== account.note) updateAccount(account.id, { note: v })
+            }}
+          />
+        </Field>
 
         <Field label="Сумма на счёте, ₸">
           <NumFieldBlur
@@ -81,6 +105,29 @@ export function Deposit() {
             ]}
           />
         </Field>
+
+        <div className="border-t border-line pt-3">
+          {confirm ? (
+            <>
+              <p className="mb-2 text-[12.5px] leading-relaxed text-warn">
+                Вклад исчезнет у обоих участников вместе с условиями. Отменить нельзя.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setConfirm(false)}>Отмена</Button>
+                <Button
+                  className="flex-1 bg-destructive text-destructive-foreground"
+                  onClick={() => { removeAccount(account.id); navigate('/capital') }}
+                >
+                  Удалить
+                </Button>
+              </div>
+            </>
+          ) : (
+            <button onClick={() => setConfirm(true)} className="text-[13px] text-ink-3 hover:text-destructive">
+              Удалить вклад
+            </button>
+          )}
+        </div>
       </Card>
 
       <Card>
