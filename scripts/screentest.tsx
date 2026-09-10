@@ -7,6 +7,7 @@
  */
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { createRoot } from 'react-dom/client'
+import { useThemeSync } from '@/lib/useTheme'
 import { AppShell } from '@/components/AppShell'
 import { Capital } from '@/screens/Capital'
 import { Deposit } from '@/screens/Deposit'
@@ -18,17 +19,23 @@ import '@/index.css'
 
 const start = new URLSearchParams(location.search).get('at') ?? '/capital'
 
-createRoot(document.getElementById('root')!).render(
-  <MemoryRouter initialEntries={[start]}>
-    <Routes>
-      <Route element={<AppShell />}>
-        <Route index element={<Overview />} />
-        <Route path="budget" element={<Budget />} />
-        <Route path="goals" element={<Goals />} />
-        <Route path="goals/:id" element={<GoalDetail />} />
-        <Route path="capital" element={<Capital />} />
-        <Route path="capital/:id" element={<Deposit />} />
-      </Route>
-    </Routes>
-  </MemoryRouter>,
-)
+/** Тема применяется тем же кодом, что и в приложении, иначе проверять нечего. */
+function Harness() {
+  useThemeSync()
+  return (
+    <MemoryRouter initialEntries={[start]}>
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route index element={<Overview />} />
+          <Route path="budget" element={<Budget />} />
+          <Route path="goals" element={<Goals />} />
+          <Route path="goals/:id" element={<GoalDetail />} />
+          <Route path="capital" element={<Capital />} />
+          <Route path="capital/:id" element={<Deposit />} />
+        </Route>
+      </Routes>
+    </MemoryRouter>
+  )
+}
+
+createRoot(document.getElementById('root')!).render(<Harness />)

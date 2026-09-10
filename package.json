@@ -10,7 +10,8 @@
     "typecheck": "tsc -b --noEmit",
     "smoke": "node scripts/smoke.mjs",
     "test:num": "node scripts/numtest.mjs",
-    "test:screens": "node scripts/screentest.mjs"
+    "test:screens": "node scripts/screentest.mjs",
+    "test:theme": "node scripts/themetest.mjs"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
