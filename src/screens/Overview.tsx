@@ -41,15 +41,16 @@ export function Overview() {
     .map((o) => ({ o, change: nextChange(o, key) }))
     .find((x) => x.change && x.change.delta < 0)
 
+  // Строка ведёт туда, где эту запись правят, а не в общий список капитала.
   const upcoming = [
     ...obligations.map((o) => ({
       id: o.id, name: o.name, day: o.day, value: amountAt(o, key),
       note: o.estimate ? 'оценка по сезону' : o.note, color: `var(--${o.category})`,
-      estimate: o.estimate,
+      estimate: o.estimate, to: `/capital?obligation=${o.id}`,
     })),
     ...credits.map((c) => ({
       id: c.id, name: c.name, day: c.day, value: c.payment,
-      note: c.note, color: 'var(--d2)', estimate: false,
+      note: c.note, color: 'var(--d2)', estimate: false, to: `/capital?credit=${c.id}`,
     })),
   ].sort((a, b) => a.day - b.day)
 
@@ -130,6 +131,7 @@ export function Overview() {
             note={`${dayLabel(u.day, key)} · ${u.note}`}
             value={money(u.value)}
             sub={u.estimate ? 'оценка' : undefined}
+            onClick={() => navigate(u.to)}
           />
         ))}
       </Card>

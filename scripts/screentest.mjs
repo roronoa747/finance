@@ -119,6 +119,29 @@ try {
   await page.waitForTimeout(400)
   const s8 = await store()
   check('покупка помечена удалённой', Boolean(s8.wishlist[0].deletedAt), s8.wishlist[0].deletedAt)
+  // --- строки «Впереди» и «Бюджета» ведут туда, где запись правят ---
+  await open('/')
+  await page.locator('text=Аренда').first().click()
+  await page.waitForTimeout(500)
+  check('из «Обзора» открывается обязательство', (await page.locator('text=Сумма сейчас, ₸').count()) > 0)
+
+  await open('/budget')
+  await page.locator('button:has-text("Список")').click()
+  await page.waitForTimeout(300)
+  await page.locator('text=Кредит Халык').first().click()
+  await page.waitForTimeout(500)
+  check('из «Бюджета» открывается кредит', (await page.locator('text=Ставка (ГЭСВ), % годовых').count()) > 0)
+
+  await open('/budget')
+  await page.locator('button:has-text("Список")').click()
+  await page.waitForTimeout(300)
+  await page.locator('text=Зарплата · Ильяс').first().click()
+  await page.waitForTimeout(500)
+  check('из «Бюджета» открывается оклад', (await page.locator('text=Оклад сейчас, ₸').count()) > 0)
+
+  // Ссылка на обязательство должна открывать его сразу, а не общий список.
+  await open('/capital?obligation=rent')
+  check('адрес открывает обязательство напрямую', (await page.locator('text=Сумма сейчас, ₸').count()) > 0)
 } catch (e) {
   check('прогон дошёл до конца', false, String(e).slice(0, 300))
 }

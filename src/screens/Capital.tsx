@@ -24,14 +24,22 @@ const ICONS = {
 
 export function Capital() {
   const [addOpen, setAddOpen] = useState(false)
-  const [obligationId, setObligationId] = useState<string | null>(null)
-  const [creditId, setCreditId] = useState<string | null>(null)
   const [accountId, setAccountId] = useState<string | null>(null)
   const [accountOpen, setAccountOpen] = useState(false)
-  // «Внеплановый доход» живёт в меню «+»: это действие, а не раздел капитала.
+  /*
+    Что открыто, записано в адрес. «Внеплановый доход» живёт в меню «+», а
+    обязательство и кредит — в строках «Обзора» и «Бюджета»: там они только
+    показываются, а правятся здесь, и без адреса пришлось бы искать нужную
+    строку глазами после каждого перехода.
+  */
   const [params, setParams] = useSearchParams()
   const incomeOpen = params.get('income') === '1'
   const setIncomeOpen = (v: boolean) => setParams(v ? { income: '1' } : {}, { replace: true })
+  const obligationId = params.get('obligation')
+  const creditId = params.get('credit')
+  const setObligationId = (id: string | null) =>
+    setParams(id ? { obligation: id } : {}, { replace: true })
+  const setCreditId = (id: string | null) => setParams(id ? { credit: id } : {}, { replace: true })
   const store = useStore()
   const accounts = liveAccounts(store.accounts)
   const credits = liveCredits(store.credits)

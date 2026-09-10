@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ArrowDown, ArrowUp } from '@phosphor-icons/react'
 import {
   Callout, Card, Field, NumField, NumFieldBlur, Row, Section, Segmented, Stat,
@@ -27,11 +28,14 @@ type View = 'plan' | 'calendar' | 'list'
 type Event = {
   id: string; day: number; name: string; note: string
   value: number; color: string; income: boolean; estimate?: boolean
+  /** Куда ведёт строка: там эту запись правят. */
+  open: () => void
 }
 
 export function Budget() {
   const [view, setView] = useState<View>('plan')
   const [salaryFor, setSalaryFor] = useState<PersonId | null>(null)
+  const navigate = useNavigate()
   const store = useStore()
   const { people, categories, setCategoryAmount } = store
   const obligations = liveObligations(store.obligations)
@@ -45,18 +49,22 @@ export function Budget() {
     ...people.map((p) => ({
       id: `pay-${p.id}`, day: p.payday, name: `Зарплата · ${p.name}`, note: 'оклад',
       value: salaryAt(p, key), color: `var(--p${p.id})`, income: true,
+      open: () => setSalaryFor(p.id),
     })),
     ...obligations.map((o) => ({
       id: o.id, day: o.day, name: o.name, note: o.estimate ? 'оценка по сезону' : o.note,
       value: amountAt(o, key), color: `var(--${o.category})`, income: false, estimate: o.estimate,
+      open: () => navigate(`/capital?obligation=${o.id}`),
     })),
     ...credits.map((c) => ({
       id: c.id, day: c.day, name: c.name, note: c.note,
       value: c.payment, color: 'var(--d2)', income: false,
+      open: () => navigate(`/capital?credit=${c.id}`),
     })),
     {
       id: 'goals', day: 1, name: 'Взносы в цели', note: 'по плану месяца',
       value: amounts.d3, color: 'var(--d3)', income: false,
+      open: () => navigate('/goals'),
     },
   ].sort((a, b) => a.day - b.day)
 
@@ -257,6 +265,7 @@ export function Budget() {
                       {e.income ? '+' : '−'}{plain(e.value)}
                     </span>
                   }
+                  onClick={e.open}
                 />
               ))}
             </Card>
@@ -318,6 +327,7 @@ export function Budget() {
                 </span>
               }
               sub={e.estimate ? 'оценка' : undefined}
+              onClick={e.open}
             />
           ))}
         </Card>
