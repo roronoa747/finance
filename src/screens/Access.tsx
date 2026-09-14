@@ -133,14 +133,40 @@ function SignIn() {
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState('')
   const [sent, setSent] = useState(false)
+  /*
+    Тупик, в который попал третий зарегистрировавшийся. Письмо не дошло —
+    при входе приложение показывало английское «Email not confirmed», а
+    повторная регистрация отвечала «такая почта уже есть, войдите». Выхода
+    не было ни с одной стороны. Теперь в обоих случаях есть кнопка отправить
+    письмо заново.
+  */
+  const [unconfirmed, setUnconfirmed] = useState(false)
+  const [resent, setResent] = useState<'idle' | 'busy' | 'done' | 'fail'>('idle')
+
+  // Ссылка из письма возвращает туда, откуда регистрировались. Без этого она
+  // вела на адрес сайта из настроек проекта и открывала пустую страницу.
+  const back = typeof window === 'undefined' ? undefined : window.location.origin
+
+  async function resend() {
+    if (!supabase) return
+    setResent('busy')
+    const { error } = await supabase.auth.resend({
+      type: 'signup', email: email.trim(), options: { emailRedirectTo: back },
+    })
+    setResent(error ? 'fail' : 'done')
+  }
 
   async function submit() {
     if (!supabase) return
     setBusy(true)
     setProblem('')
+    setUnconfirmed(false)
+    setResent('idle')
     try {
       if (mode === 'up') {
-        const { data, error } = await supabase.auth.signUp({ email: email.trim(), password })
+        const { data, error } = await supabase.auth.signUp({
+          email: email.trim(), password, options: { emailRedirectTo: back },
+        })
         if (error) throw error
         // Если в проекте включено подтверждение почты, сессии сразу не будет.
         if (!data.session) setSent(true)
@@ -150,9 +176,14 @@ function SignIn() {
       }
     } catch (e) {
       const raw = e instanceof Error ? e.message : String(e)
+      const notConfirmed = /not confirmed/i.test(raw)
+      const taken = /already registered/i.test(raw)
+      setUnconfirmed(notConfirmed || taken)
       setProblem(
-        /invalid login/i.test(raw) ? 'Почта или пароль не подходят.'
-        : /already registered/i.test(raw) ? 'Такая почта уже зарегистрирована — войдите.'
+        notConfirmed ? 'Почта ещё не подтверждена: ссылка из письма не открывалась.'
+        : taken ? 'Такая почта уже зарегистрирована. Если письмо так и не пришло — отправим ещё раз.'
+        : /rate limit|too many/i.test(raw) ? 'Слишком много писем подряд. Подождите минуту и попробуйте снова.'
+        : /invalid login/i.test(raw) ? 'Почта или пароль не подходят.'
         : /password/i.test(raw) ? 'Пароль слишком короткий: нужно хотя бы 6 символов.'
         : raw,
       )
@@ -182,7 +213,7 @@ function SignIn() {
 
           <ol className="mt-4 flex flex-col gap-2.5 border-t border-line pt-4">
             {[
-              'Ссылка может открыть пустую страницу — это нормально, подтверждение всё равно засчитано.',
+              'Ссылка вернёт в приложение — дальше просто войдите тем же паролем.',
               'Если письма нет через пару минут, загляните в «Спам» и «Промоакции».',
             ].map((line, i) => (
               <li key={i} className="flex gap-2.5 text-[12.5px] leading-relaxed text-ink-2">
@@ -194,6 +225,7 @@ function SignIn() {
         </div>
 
         <Button onClick={() => { setSent(false); setMode('in') }}>Я подтвердил — войти</Button>
+        <ResendButton state={resent} onClick={resend} />
       </Shell>
     )
   }
@@ -224,6 +256,7 @@ function SignIn() {
         </Field>
       </div>
       <Problem text={problem} />
+      {unconfirmed && email && <ResendButton state={resent} onClick={resend} />}
       <Button onClick={submit} disabled={busy || !email || !password}>
         {busy ? 'Минуту…' : mode === 'in' ? 'Войти' : 'Создать аккаунт'}
       </Button>
@@ -232,6 +265,28 @@ function SignIn() {
         этого будет больно.
       </p>
     </Shell>
+  )
+}
+
+/** Повторная отправка письма: единственный выход, если первое не дошло. */
+function ResendButton({ state, onClick }: { state: 'idle' | 'busy' | 'done' | 'fail'; onClick: () => void }) {
+  return (
+    <div className="text-center">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={state === 'busy'}
+        className="text-[13.5px] font-medium text-brand disabled:opacity-60"
+      >
+        {state === 'busy' ? 'Отправляем…' : 'Письмо не пришло — отправить ещё раз'}
+      </button>
+      {state === 'done' && (
+        <p className="mt-1 text-[12.5px] text-ink-2">Отправили. Проверьте «Спам» и «Промоакции».</p>
+      )}
+      {state === 'fail' && (
+        <p className="mt-1 text-[12.5px] text-warn">Не получилось — подождите минуту: письма нельзя слать подряд.</p>
+      )}
+    </div>
   )
 }
 
