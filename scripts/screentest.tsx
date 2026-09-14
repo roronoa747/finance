@@ -9,7 +9,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { createRoot } from 'react-dom/client'
 import { useThemeSync } from '@/lib/useTheme'
 import { hasBudgetData, untilPayday } from '@/store/useStore'
-import { debtCost, halfOverpayExtra, lumpSum, prepayment } from '@/lib/finance'
+import { debtCost, halfOverpayExtra, lumpSum, prepayment, simulateStrategy } from '@/lib/finance'
 import { AppShell } from '@/components/AppShell'
 import { Capital } from '@/screens/Capital'
 import { Deposit } from '@/screens/Deposit'
@@ -45,6 +45,7 @@ function Harness() {
 ;(window as unknown as { __hasBudgetData: typeof hasBudgetData }).__hasBudgetData = hasBudgetData
 ;(window as unknown as { __debtCost: typeof debtCost }).__debtCost = debtCost
 ;(window as unknown as { __untilPayday: typeof untilPayday }).__untilPayday = untilPayday
+;(window as unknown as { __simulateStrategy: typeof simulateStrategy }).__simulateStrategy = simulateStrategy
 ;(window as unknown as { __payoff: object }).__payoff =
   { lump: lumpSum, half: halfOverpayExtra, pre: prepayment }
 

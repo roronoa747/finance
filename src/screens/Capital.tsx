@@ -13,10 +13,11 @@ import { money, parseMoney, plain, ratePct } from '@/lib/money'
 import { cn } from '@/lib/utils'
 import {
   annuityMonths, annuityTotal, debtCost, halfOverpayExtra, lumpSum, prepayment, rateFromSchedule,
+  simulateStrategy, type StrategyResult,
 } from '@/lib/finance'
 import {
   amountAt, goalSavings, nextChange, liveAccounts, liveCredits, liveGoals,
-  liveObligations, netWorth, useStore,
+  liveObligations, monthlyAmount, netWorth, useStore,
 } from '@/store/useStore'
 import { MONTHS_NOM, addMonths, monthFrom, monthKey, monthTitle } from '@/lib/dates'
 import { fetchRates, type FxRates } from '@/lib/fx'
@@ -1112,6 +1113,7 @@ function AccountDialog({ id, onClose }: { id: string | null; onClose: () => void
  * «добавьте 390 000 к платежу 8 400» — значит не понимать собственный расчёт.
  */
 function DebtAdvice({ credits, onPayoff }: { credits: Credit[]; onPayoff: (id: string) => void }) {
+  const [view, setView] = useState<'order' | 'strategy'>('order')
   const ranked = credits
     .map((c) => ({ credit: c, cost: debtCost(c.principal, c.annualRate, c.payment) }))
     .filter((x) => x.credit.annualRate > 0 && x.credit.principal > 0)
@@ -1140,57 +1142,74 @@ function DebtAdvice({ credits, onPayoff }: { credits: Credit[]; onPayoff: (id: s
     <>
       <Section title="Что гасить первым" />
       <Card>
-        <div className="text-[13px] text-ink-2">Самая дорогая ставка</div>
-        <div className="font-display text-[19px] font-semibold tracking-[-0.02em]">{credit.name}</div>
-
-        <div className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3 text-[13px]">
-          <div className="flex justify-between">
-            <span className="text-ink-2">Ставка</span>
-            <b className="num">{ratePct(credit.annualRate, 1)}</b>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-ink-2">Проценты в месяц</span>
-            <b className="num text-warn">{money(Math.round(cost.monthlyInterest))}</b>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-ink-2">Это доля платежа</span>
-            <b className="num">{share}%</b>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-ink-2">{cost.closes ? 'Переплата до конца' : 'Долг не закрывается'}</span>
-            <b className="num text-warn">
-              {cost.closes ? money(Math.round(cost.overpay)) : 'платёж меньше процентов'}
-            </b>
-          </div>
+        <div className="mb-3">
+          <Segmented<'order' | 'strategy'>
+            value={view}
+            onChange={setView}
+            options={[
+              { value: 'order', label: 'Какой первым' },
+              { value: 'strategy', label: 'Копить или гасить' },
+            ]}
+          />
         </div>
 
-        <p className="mt-3 text-[12.5px] leading-relaxed text-ink-3">
-          {share >= 50
-            ? 'Больше половины платежа уходит в проценты, поэтому остаток почти не двигается. Такой долг выгоднее закрыть раньше остальных, даже если он самый маленький.'
-            : 'Здесь самая высокая ставка из ваших долгов, поэтому каждый лишний тенге, внесённый сюда, экономит больше, чем в любом другом.'}
-        </p>
+        {view === 'strategy' ? (
+          <StrategyCompare credits={credits} />
+        ) : (
+          <>
+            <div className="text-[13px] text-ink-2">Самая дорогая ставка</div>
+            <div className="font-display text-[19px] font-semibold tracking-[-0.02em]">{credit.name}</div>
 
-        {gain && half && Number.isFinite(gain.monthsSaved) ? (
-          <div className="mt-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3">
-            <div className="text-[12.5px] text-ink-2">
-              Половину переплаты снимает добавка в
+            <div className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3 text-[13px]">
+              <div className="flex justify-between">
+                <span className="text-ink-2">Ставка</span>
+                <b className="num">{ratePct(credit.annualRate, 1)}</b>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-ink-2">Проценты в месяц</span>
+                <b className="num text-warn">{money(Math.round(cost.monthlyInterest))}</b>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-ink-2">Это доля платежа</span>
+                <b className="num">{share}%</b>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-ink-2">{cost.closes ? 'Переплата до конца' : 'Долг не закрывается'}</span>
+                <b className="num text-warn">
+                  {cost.closes ? money(Math.round(cost.overpay)) : 'платёж меньше процентов'}
+                </b>
+              </div>
             </div>
-            <div className="mt-1 font-display text-[19px] font-semibold tracking-[-0.02em] num">
-              {money(half)} в месяц
-            </div>
-            <div className="mt-0.5 text-[13px] text-ink-2 num">
-              это {Math.round(gain.monthsSaved)} мес. и {money(Math.round(gain.saved))}
-            </div>
-          </div>
-        ) : null}
 
-        <Button
-          variant="outline"
-          className="mt-3 w-full bg-surface-2"
-          onClick={() => onPayoff(credit.id)}
-        >
-          Посчитать на свою сумму
-        </Button>
+            <p className="mt-3 text-[12.5px] leading-relaxed text-ink-3">
+              {share >= 50
+                ? 'Больше половины платежа уходит в проценты, поэтому остаток почти не двигается. Такой долг выгоднее закрыть раньше остальных, даже если он самый маленький.'
+                : 'Здесь самая высокая ставка из ваших долгов, поэтому каждый лишний тенге, внесённый сюда, экономит больше, чем в любом другом.'}
+            </p>
+
+            {gain && half && Number.isFinite(gain.monthsSaved) ? (
+              <div className="mt-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3">
+                <div className="text-[12.5px] text-ink-2">
+                  Половину переплаты снимает добавка в
+                </div>
+                <div className="mt-1 font-display text-[19px] font-semibold tracking-[-0.02em] num">
+                  {money(half)} в месяц
+                </div>
+                <div className="mt-0.5 text-[13px] text-ink-2 num">
+                  это {Math.round(gain.monthsSaved)} мес. и {money(Math.round(gain.saved))}
+                </div>
+              </div>
+            ) : null}
+
+            <Button
+              variant="outline"
+              className="mt-3 w-full bg-surface-2"
+              onClick={() => onPayoff(credit.id)}
+            >
+              Посчитать на свою сумму
+            </Button>
+          </>
+        )}
       </Card>
     </>
   )
@@ -1516,5 +1535,193 @@ function PayoffDialog({ id, onClose }: { id: string | null; onClose: () => void 
         )}
       </DialogContent>
     </Dialog>
+  )
+}
+
+/**
+ * Копить или гасить — два сценария рядом.
+ *
+ * Идея заказчика: пока на долгах 26–33% годовых, откладывать на жильё, декрет
+ * и вклады — значит переплачивать банку больше, чем приносят накопления. На
+ * его числах это оказалось правдой с запасом: за три года разница 986 247 ₸.
+ *
+ * Экран не решает за людей, а показывает оба исхода при одинаковых тратах. И
+ * три вещи делает по умолчанию осторожно, потому что иначе совет навредит:
+ * подушка набирается раньше досрочных взносов, цель можно оставить
+ * пополняемой (декрет — страховка, а не вложение), беспроцентные рассрочки
+ * досрочно не гасятся.
+ *
+ * Названия целей не разбираются: какая из них страховка, решают люди галочкой.
+ * Угадывать «декрет» по слову в названии — тот самый хардкод, который заказчик
+ * запретил.
+ */
+function StrategyCompare({ credits }: { credits: Credit[] }) {
+  const goals = liveGoals(useStore((s) => s.goals))
+  const obligations = liveObligations(useStore((s) => s.obligations))
+
+  const [months, setMonths] = useState<12 | 24 | 36>(36)
+  const [kept, setKept] = useState<string[]>([])
+  const [cushion, setCushion] = useState(true)
+  const [useSaved, setUseSaved] = useState(false)
+
+  const key = monthKey()
+  const debts = credits.map((c) => ({ principal: c.principal, annualRate: c.annualRate, payment: c.payment }))
+  const saving = goals.reduce((a, g) => a + g.monthly, 0)
+  const keep = goals.filter((g) => kept.includes(g.id)).reduce((a, g) => a + g.monthly, 0)
+  const start = goals.reduce((a, g) => a + Math.max(0, g.have), 0)
+  // Уже накопленное направляется в долги только из целей, которые разрешено трогать.
+  const movable = goals.filter((g) => !kept.includes(g.id)).reduce((a, g) => a + Math.max(0, g.have), 0)
+
+  // Подушка — месяц обязательных списаний: жильё, подписки и платежи по долгам.
+  const mandatory =
+    obligations.reduce((a, o) => a + monthlyAmount(o, key), 0) +
+    credits.reduce((a, c) => a + c.payment, 0)
+  const buffer = cushion ? Math.round(mandatory / 1000) * 1000 : 0
+
+  const interestFree = credits.filter((c) => c.annualRate === 0 && c.principal > 0)
+  const redirected = saving - keep
+
+  const a = simulateStrategy({ debts, saving, keep: saving, payDebts: false, start, months })
+  const b = simulateStrategy({
+    debts, saving, keep, payDebts: true, start, months,
+    buffer, lump: useSaved ? Math.max(0, movable - buffer) : 0,
+  })
+  const gain = b.net - a.net
+
+  const Col = ({ title, r, strong }: { title: string; r: StrategyResult; strong?: boolean }) => (
+    <div className={cn('flex-1 rounded-xl border px-3 py-2.5', strong ? 'border-brand bg-brand-soft' : 'border-line bg-surface-2')}>
+      <div className="mb-1.5 text-[12px] font-semibold text-ink-2">{title}</div>
+      <div className="text-[11.5px] text-ink-2">накоплено</div>
+      <div className="num text-[13.5px] font-semibold">{money(Math.round(r.savings))}</div>
+      <div className="mt-1 text-[11.5px] text-ink-2">долг</div>
+      <div className="num text-[13.5px] font-semibold">{money(Math.round(r.debtLeft))}</div>
+      <div className="mt-1 text-[11.5px] text-ink-2">процентов банку</div>
+      <div className="num text-[13.5px] font-semibold text-warn">{money(Math.round(r.interestTotal))}</div>
+      <div className="mt-1 text-[11.5px] text-ink-2">без процентных долгов</div>
+      <div className="text-[13px] font-medium">
+        {r.debtFreeMonth === null ? 'не закрываются' : r.debtFreeMonth === 0 ? 'уже' : `через ${r.debtFreeMonth} мес.`}
+      </div>
+    </div>
+  )
+
+  if (!debts.some((d) => d.annualRate > 0 && d.principal > 0)) return null
+
+  return (
+    <div>
+      <div className="mb-3 flex items-center gap-1.5 text-[13px] text-ink-2">
+        Одинаковые траты, разный порядок
+        <Hint>
+          В обоих сценариях уходит одно и то же: платежи по долгам плюс {plain(saving)} ₸ в цели.
+          Разница только в том, куда идут деньги. «Сначала долги» направляет взносы в самый
+          дорогой долг, а закрытый долг освобождает платёж для следующего.
+        </Hint>
+      </div>
+
+      <Field label="Горизонт">
+        <Segmented<'12' | '24' | '36'>
+          value={String(months) as '12' | '24' | '36'}
+          onChange={(v) => setMonths(Number(v) as 12 | 24 | 36)}
+          options={[
+            { value: '12', label: 'Год' },
+            { value: '24', label: 'Два' },
+            { value: '36', label: 'Три' },
+          ]}
+        />
+      </Field>
+
+      {redirected > 0 ? (
+        <>
+          <div className="mb-3 flex gap-2">
+            <Col title="Копим как сейчас" r={a} strong={gain < 0} />
+            <Col title="Сначала долги" r={b} strong={gain >= 0} />
+          </div>
+
+          <div className="mb-3 rounded-xl border border-line px-3.5 py-3">
+            <div className="text-[12.5px] text-ink-2">
+              {gain >= 0 ? 'Сначала долги выгоднее на' : 'Копить выгоднее на'}
+            </div>
+            <div className="font-display text-[22px] font-semibold tracking-[-0.02em] num">
+              {money(Math.abs(Math.round(gain)))}
+            </div>
+            <div className="text-[12.5px] text-ink-3">
+              чистыми через {months} мес. — это деньги, которые не ушли банку
+            </div>
+          </div>
+        </>
+      ) : (
+        <p className="mb-3 rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-[12.5px] leading-relaxed text-ink-2">
+          Все цели отмечены как неприкосновенные — направлять в долги нечего. Снимите отметку
+          с цели, которую можно поставить на паузу.
+        </p>
+      )}
+
+      {goals.length > 0 && (
+        <div className="mb-3">
+          <div className="mb-1.5 flex items-center gap-1.5 text-[12.5px] text-ink-3">
+            Что не останавливать
+            <Hint>
+              Отметьте цели-страховки. Если декрет или другая обязательная трата ближе года,
+              пауза там обойдётся дороже процентов: доход упадёт, а долги останутся.
+            </Hint>
+          </div>
+          <div className="flex flex-col gap-2">
+            {goals.map((g) => (
+              <label key={g.id} className="flex items-center gap-2.5 text-[13.5px]">
+                <input
+                  type="checkbox"
+                  checked={kept.includes(g.id)}
+                  onChange={(e) =>
+                    setKept((list) => (e.target.checked ? [...list, g.id] : list.filter((x) => x !== g.id)))}
+                  className="size-4 accent-[var(--brand)]"
+                />
+                <span className="min-w-0 flex-1 truncate">{g.name}</span>
+                <span className="shrink-0 text-[12.5px] text-ink-3 num">{plain(g.monthly)}/мес</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <label className="mb-2 flex items-start gap-2.5 text-[13.5px]">
+        <input
+          type="checkbox"
+          checked={cushion}
+          onChange={(e) => setCushion(e.target.checked)}
+          className="mt-0.5 size-4 accent-[var(--brand)]"
+        />
+        <span>
+          Сначала подушка — {money(Math.round(mandatory / 1000) * 1000)}
+          <span className="block text-[12px] text-ink-3">
+            месяц обязательных списаний; без неё первая поломка вернёт вас на кредитную карту
+          </span>
+        </span>
+      </label>
+
+      {movable > 0 && (
+        <label className="mb-3 flex items-start gap-2.5 text-[13.5px]">
+          <input
+            type="checkbox"
+            checked={useSaved}
+            onChange={(e) => setUseSaved(e.target.checked)}
+            className="mt-0.5 size-4 accent-[var(--brand)]"
+          />
+          <span>
+            Вложить уже накопленное — {money(Math.max(0, movable - buffer))}
+            <span className="block text-[12px] text-ink-3">
+              из неотмеченных целей, подушка остаётся. Если это вклад с госпремией — сначала
+              проверьте условия: премия может обыграть ставку.
+            </span>
+          </span>
+        </label>
+      )}
+
+      {interestFree.length > 0 && (
+        <p className="text-[12px] leading-relaxed text-ink-3">
+          Беспроцентные долги — {interestFree.map((c) => c.name).join(', ')} — досрочно не
+          гасятся: они ничего не стоят, а внесённые раньше срока деньги просто перестают быть
+          доступными.
+        </p>
+      )}
+    </div>
   )
 }

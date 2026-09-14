@@ -15,7 +15,11 @@ import { seed } from './seed.mjs'
 const URL = process.env.URL ?? 'http://localhost:5180'
 const FLOOR = Number(process.env.FLOOR ?? 4.5) // требование к обычному тексту
 // Диалог правки входит в список: красный блок удаления живёт только там.
-const SCREENS = ['/', '/budget', '/goals', '/goals?tab=wish', '/goals/flat', '/capital', '/capital/dep', '/capital?obligation=rent']
+// Часть видов открывается нажатием, а не адресом — для них указана кнопка.
+const SCREENS = [
+  '/', '/budget', '/goals', '/goals?tab=wish', '/goals/flat', '/capital', '/capital/dep', '/capital?obligation=rent',
+  { at: '/capital', click: 'Копить или гасить' },
+]
 
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
@@ -80,7 +84,9 @@ const probe = () => page.evaluate((floor) => {
 const results = []
 try {
   for (const theme of ['light', 'dark']) {
-    for (const at of SCREENS) {
+    for (const screen of SCREENS) {
+      const at = typeof screen === 'string' ? screen : screen.at
+      const click = typeof screen === 'string' ? null : screen.click
       await page.goto(`${URL}/scripts/screentest.html?at=${encodeURIComponent(at)}`, { waitUntil: 'domcontentloaded' })
       await page.evaluate(([v, t]) => {
         const s = JSON.parse(v)
@@ -90,12 +96,17 @@ try {
       await page.reload({ waitUntil: 'domcontentloaded' })
       await page.waitForSelector('nav', { timeout: 15000 })
       await page.waitForTimeout(500)
+      if (click) {
+        await page.locator(`button:has-text("${click}")`).first().click()
+        await page.waitForTimeout(400)
+      }
+      const label = click ? `${at} → ${click}` : at
       const dark = await page.evaluate(() => document.documentElement.classList.contains('dark'))
       if ((theme === 'dark') !== dark) {
-        results.push({ at, theme, bad: [{ text: 'тема не применилась', ratio: 0 }] })
+        results.push({ at: label, theme, bad: [{ text: 'тема не применилась', ratio: 0 }] })
         continue
       }
-      results.push({ at, theme, bad: await probe() })
+      results.push({ at: label, theme, bad: await probe() })
     }
   }
 } catch (e) {

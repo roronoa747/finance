@@ -446,6 +446,62 @@ try {
   check('вклад не считается доступными деньгами',
     payday.first.наСчетах === 696890, payday.first.наСчетах)
 
+  // --- копить или гасить: расчёт на живых числах заказчика ---
+  const strat = await page.evaluate(() => {
+    const sim = window.__simulateStrategy
+    const debts = [
+      { principal: 139996, annualRate: 0, payment: 23334 },
+      { principal: 164949, annualRate: 0.306, payment: 8433 },
+      { principal: 2210587, annualRate: 0.32876724179763384, payment: 100760 },
+      { principal: 469512, annualRate: 0.2645380112940806, payment: 28172 },
+      { principal: 159979, annualRate: 0, payment: 22858 },
+      { principal: 133355, annualRate: 0, payment: 26677 },
+    ]
+    const base = { debts, saving: 183889, start: 0, months: 36 }
+    const a = sim({ ...base, keep: 183889, payDebts: false })
+    const b = sim({ ...base, keep: 0, payDebts: true })
+    const careful = sim({ ...base, keep: 45000, payDebts: true, buffer: 515000 })
+    // Досрочный взнос в рассрочку под 0% не меняет чистый итог — минус из
+    // накоплений, минус из долга, — поэтому сравнивать по нему бесполезно:
+    // проверка проходила и без правила. Правило видно по деньгам на руках
+    // через месяц: они не должны уйти в беспроцентный долг раньше срока.
+    const zeroOnly = debts.filter((d) => d.annualRate === 0)
+    const za = sim({ ...base, debts: zeroOnly, keep: 183889, payDebts: false, months: 1 })
+    const zb = sim({ ...base, debts: zeroOnly, keep: 0, payDebts: true, months: 1 })
+    const lumpy = sim({ ...base, start: 100000, lump: 999999999, keep: 0, payDebts: true, months: 1 })
+    return {
+      gain: Math.round(b.net - a.net),
+      interestA: Math.round(a.interestTotal),
+      interestB: Math.round(b.interestTotal),
+      freeA: a.debtFreeMonth, freeB: b.debtFreeMonth,
+      careful: Math.round(careful.net - a.net), carefulFree: careful.debtFreeMonth,
+      zeroKept: Math.round(zb.savings - za.savings),
+      lumpSavings: Math.round(lumpy.savings),
+    }
+  })
+  check('разница за три года совпадает с ручным расчётом', strat.gain === 986247, strat.gain)
+  check('процентов банку 1 403 751 против 417 504',
+    strat.interestA === 1403751 && strat.interestB === 417504, strat.interestA + ' / ' + strat.interestB)
+  check('процентные долги закрываются за 10 месяцев вместо 34',
+    strat.freeA === 34 && strat.freeB === 10, strat.freeA + ' / ' + strat.freeB)
+  check('с подушкой и декретом выигрыш меньше, но остаётся',
+    strat.careful > 0 && strat.careful < strat.gain, strat.careful + ', закрытие через ' + strat.carefulFree)
+  check('беспроцентные рассрочки досрочно не гасятся — деньги остаются на руках',
+    strat.zeroKept === 0, 'разница в накоплениях ' + strat.zeroKept)
+  check('в долги нельзя вложить больше накопленного', strat.lumpSavings >= 0, strat.lumpSavings)
+
+  // --- переключатель на экране ---
+  await open('/capital')
+  await page.locator('button:has-text("Копить или гасить")').first().click()
+  await page.waitForTimeout(400)
+  check('переключатель показывает сравнение',
+    (await page.locator('text=Сначала долги выгоднее на').count()) > 0)
+
+  await page.locator('label:has-text("Первая квартира") input[type="checkbox"]').check()
+  await page.waitForTimeout(300)
+  check('если все цели неприкосновенны, сравнивать нечего',
+    (await page.locator('text=направлять в долги нечего').count()) > 0)
+
   check('пустое состояние — бюджета нет', gate.empty === false)
   check('введённая зарплата — бюджет есть', gate.withSalary === true)
   check('нулевая зарплата сама по себе бюджетом не считается', gate.zeroSalary === false)

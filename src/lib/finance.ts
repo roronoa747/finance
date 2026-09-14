@@ -276,3 +276,124 @@ export function halfOverpayExtra(
   }
   return Math.ceil(hi / step) * step
 }
+
+export type StrategyDebt = { principal: number; annualRate: number; payment: number }
+
+export type StrategyResult = {
+  /** Сколько лежит в накоплениях к горизонту, включая то, что было на старте. */
+  savings: number
+  /** Сколько долга осталось к горизонту. */
+  debtLeft: number
+  /** Накопления минус долг — единственное число, по которому стратегии сравнимы. */
+  net: number
+  /** Проценты, отданные к горизонту. */
+  interest: number
+  /** Проценты за всё время, пока не закроется последний процентный долг. */
+  interestTotal: number
+  /** Месяц, в котором закрыт последний процентный долг; null — не закрывается. */
+  debtFreeMonth: number | null
+}
+
+/**
+ * Что будет с деньгами, если копить как сейчас, и что — если сначала гасить.
+ *
+ * Мысль заказчика: пока на долгах 26–33% годовых, откладывать под 2% — значит
+ * терять разницу на каждом тенге. На его числах разница за три года вышла
+ * 986 247 ₸. Формулой это не берётся: закрытый долг освобождает платёж,
+ * и он каскадом уходит в следующий. Поэтому считаем помесячно.
+ *
+ * Обе стратегии тратят одинаково — платежи плюс взносы в цели, — и отличаются
+ * только тем, куда идут деньги. Без этого сравнение было бы нечестным.
+ *
+ * Три правила, без которых совет стал бы вредным:
+ *
+ * - Беспроцентные долги досрочно не гасятся. Рассрочка под 0% ничего не стоит,
+ *   а деньги, внесённые в неё раньше срока, просто перестают быть доступными.
+ * - Сначала подушка. Пока её нет, любая поломка вернёт на кредитную карту, и
+ *   выигрыш съест она же. Подушка считается накоплением, а не тратой.
+ * - Часть целей продолжает пополняться (keep). Декретный депозит — страховка:
+ *   если декрет близко, пауза там обходится дороже процентов.
+ */
+export function simulateStrategy(opts: {
+  debts: StrategyDebt[]
+  /** Сколько сейчас уходит в цели за месяц. */
+  saving: number
+  /** Из них продолжает идти в цели и в стратегии «сначала долги». */
+  keep: number
+  /** true — «сначала долги», false — «копим как сейчас». */
+  payDebts: boolean
+  /** Уже накоплено на старте. */
+  start: number
+  /** Сколько из накопленного сразу направить в долги. */
+  lump?: number
+  /** Размер подушки, которую набрать прежде, чем гасить досрочно. */
+  buffer?: number
+  months: number
+}): StrategyResult {
+  const { saving, keep, payDebts, start, months } = opts
+  const debts = opts.debts.map((d) => ({ ...d }))
+  const budget = debts.reduce((a, d) => a + d.payment, 0) + saving
+  // Досрочно гасятся только долги с процентами, самый дорогой первым.
+  const costly = () =>
+    debts.filter((d) => d.principal > 0.5 && d.annualRate > 0).sort((a, b) => b.annualRate - a.annualRate)
+
+  let savings = start
+  let interest = 0
+  let buffered = 0
+  const buffer = payDebts ? Math.max(0, opts.buffer ?? 0) : 0
+
+  if (payDebts && opts.lump) {
+    let lump = Math.min(opts.lump, start)
+    for (const d of costly()) {
+      if (lump <= 0) break
+      const put = Math.min(lump, d.principal)
+      d.principal -= put
+      lump -= put
+      savings -= put
+    }
+  }
+
+  let snapshot: StrategyResult | null = null
+  let debtFreeMonth: number | null = costly().length ? null : 0
+
+  // Считаем дальше горизонта, чтобы знать, когда закроется последний долг.
+  for (let m = 1; m <= 600; m++) {
+    let pool = budget
+    for (const d of debts) {
+      if (d.principal <= 0.5) continue
+      const due = (d.principal * d.annualRate) / 12
+      interest += due
+      const pay = Math.min(d.payment, d.principal + due)
+      d.principal = d.principal + due - pay
+      pool -= pay
+    }
+
+    if (payDebts) {
+      const kept = Math.min(pool, keep)
+      savings += kept
+      pool -= kept
+      const toBuffer = Math.min(pool, buffer - buffered)
+      buffered += toBuffer
+      savings += toBuffer
+      pool -= toBuffer
+      for (const d of costly()) {
+        if (pool <= 0) break
+        const put = Math.min(pool, d.principal)
+        d.principal -= put
+        pool -= put
+      }
+    }
+    savings += pool
+
+    if (debtFreeMonth === null && costly().length === 0) debtFreeMonth = m
+
+    if (m === months) {
+      const debtLeft = debts.reduce((a, d) => a + Math.max(0, d.principal), 0)
+      snapshot = { savings, debtLeft, net: savings - debtLeft, interest, interestTotal: 0, debtFreeMonth: null }
+    }
+    if (m >= months && debtFreeMonth !== null) break
+  }
+
+  const result = snapshot ?? { savings, debtLeft: 0, net: savings, interest, interestTotal: 0, debtFreeMonth: null }
+  return { ...result, interestTotal: interest, debtFreeMonth }
+}
