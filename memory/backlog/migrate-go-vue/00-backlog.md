@@ -1,7 +1,7 @@
 # Бэклог «Миграция на Go + Vue 3» (MGV)
 
-> **Статус:** 🔄 в работе: Блок 1 закрыт 🏁 (клинап выполнен, все 9 замечаний устранены), готов к старту Блок 2 (Vue Core & Math, `/worker migrate-go-vue 2`).
-> Создан Go-модуль, схема PostgreSQL, авторизация, синхронизация, E2E тесты и CI пайплайн.
+> **Статус:** 🔄 в работе: Блок 1 закрыт 🏁, Блок 2 (Vue Core & Math) выполнен исполнителем ✅ (готов к ревью критика, `/critic migrate-go-vue 2`).
+> Создан Go-модуль, схема PostgreSQL, авторизация, синхронизация, E2E тесты, CI пайплайн, Vue 3 SPA, Pinia хранилище, клиент Go API и портирована вся математика со 100% зелёными тестами.
 
 Источник: `migrate-go-vue-brief.md` (резюме интервью подтверждено владельцем 2026-09-23).
 Формат — `memory/process/BACKLOG-GUIDE.md`. **Решения §2 зафиксированы — рабочие сессии их не пересматривают.**
@@ -55,9 +55,9 @@
 | | MGV-02 Модели, миграции и репозитории данных | `block-1-backend/MGV-02-db-models-repo.md` | MGV-01 | ✅ |
 | | MGV-03 Аутентификация, JWT и управление домохозяйством | `block-1-backend/MGV-03-auth-household.md` | MGV-02 | ✅ |
 | | MGV-04 API синхронизации `household_docs` и `private_docs` с ревизиями | `block-1-backend/MGV-04-sync-api.md` | MGV-03 | ✅ |
-| **2. Vue Core & Math** ⬜ | MGV-05 Скелет Vue 3 + Vite + Tailwind + Pinia | `block-2-vue-core/MGV-05-vue-skeleton.md` | MGV-04 | ⬜ |
-| | MGV-06 Портирование финансовой математики и слияния (`merge.ts`) | `block-2-vue-core/MGV-06-finance-merge-math.md` | MGV-05 | ⬜ |
-| | MGV-07 Клиент синхронизации API и хранилище Pinia | `block-2-vue-core/MGV-07-pinia-sync-store.md` | MGV-06 | ⬜ |
+| **2. Vue Core & Math** 🔄 в работе *(исполнитель ✅)* | MGV-05 Скелет Vue 3 + Vite + Tailwind + Pinia | `block-2-vue-core/MGV-05-vue-skeleton.md` | MGV-04 | ✅ |
+| | MGV-06 Портирование финансовой математики и слияния (`merge.ts`) | `block-2-vue-core/MGV-06-finance-merge-math.md` | MGV-05 | ✅ |
+| | MGV-07 Клиент синхронизации API и хранилище Pinia | `block-2-vue-core/MGV-07-pinia-sync-store.md` | MGV-06 | ✅ |
 | **3. Экраны: База** ⬜ | MGV-08 Экраны `Access.vue` (вход/инвайт) и `Setup.vue` (мастер) | `block-3-screens-base/MGV-08-access-setup.md` | MGV-07 | ⬜ |
 | | MGV-09 Экран `Overview.vue` (сводка, капитал, графики) | `block-3-screens-base/MGV-09-overview.md` | MGV-08 | ⬜ |
 | **4. Экраны: Бюджет** ⬜ | MGV-10 Экран `Budget.vue` (План, Календарь, Список) | `block-4-budget-ritual/MGV-10-budget-calendar.md` | MGV-09 | ⬜ |

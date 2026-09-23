@@ -6,7 +6,7 @@
 
 | Бэклог | Каталог | Статус | Следующий шаг |
 |---|---|---|---|
-| Миграция на Go + Vue 3 (`migrate-go-vue`) | `memory/backlog/migrate-go-vue/` | 🔄 Блок 1 (Go Backend) 🏁 закрыт; Блок 2 готов к старту | `/worker migrate-go-vue 2` |
+| Миграция на Go + Vue 3 (`migrate-go-vue`) | `memory/backlog/migrate-go-vue/` | 🔄 Блок 2 (Vue Core) выполнен исполнителем ✅, готов к ревью критика | `/critic migrate-go-vue 2` |
 
 ## Закрытые (архив)
 
