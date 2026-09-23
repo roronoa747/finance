@@ -1,29 +1,29 @@
-﻿<script setup lang="ts">
-withDefaults(
+<script setup lang="ts">
+import type { HTMLAttributes } from 'vue'
+import { cn } from '@/lib/utils'
+
+const props = withDefaults(
   defineProps<{
+    defaultValue?: string | number
     modelValue?: string | number
+    class?: HTMLAttributes['class']
+    className?: string
     type?: string
     placeholder?: string
     disabled?: boolean
     autocomplete?: string
     autocapitalize?: string
     inputmode?: 'none' | 'text' | 'decimal' | 'numeric' | 'tel' | 'search' | 'email' | 'url'
-    className?: string
   }>(),
   {
-    modelValue: '',
     type: 'text',
-    placeholder: '',
-    disabled: false,
     autocomplete: 'off',
     autocapitalize: 'off',
-    inputmode: 'text',
-    className: '',
   },
 )
 
-const emit = defineEmits<{
-  (e: 'update:modelValue', value: string): void
+const emits = defineEmits<{
+  (e: 'update:modelValue', payload: string): void
   (e: 'keydown', event: KeyboardEvent): void
   (e: 'blur', event: FocusEvent): void
 }>()
@@ -38,12 +38,16 @@ const emit = defineEmits<{
     :autocomplete="autocomplete"
     :autocapitalize="autocapitalize"
     :inputmode="inputmode"
-    :class="[
-      'h-10 w-full min-w-0 rounded-xl border border-line bg-surface px-3.5 py-2 text-[14.5px] text-ink outline-none transition-all placeholder:text-ink-3 disabled:pointer-events-none disabled:opacity-50 focus:border-brand focus:ring-1 focus:ring-brand shadow-xs',
-      className,
-    ]"
-    @input="(e) => emit('update:modelValue', (e.target as HTMLInputElement).value)"
-    @keydown="(e) => emit('keydown', e)"
-    @blur="(e) => emit('blur', e)"
+    data-slot="input"
+    :class="
+      cn(
+        'flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 text-ink',
+        props.class,
+        props.className,
+      )
+    "
+    @input="emits('update:modelValue', ($event.target as HTMLInputElement).value)"
+    @keydown="(e) => emits('keydown', e)"
+    @blur="(e) => emits('blur', e)"
   />
 </template>
