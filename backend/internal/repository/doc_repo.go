@@ -92,7 +92,7 @@ func (r *sqlDocRepository) PushHouseholdDoc(ctx context.Context, householdID str
 	// 3. Update doc
 	updateQuery := `
 		UPDATE household_docs
-		SET data = $1, rev = rev + 1, updated_at = now(), updated_by = $2
+		SET data = $1::jsonb, rev = rev + 1, updated_at = now(), updated_by = $2
 		WHERE household_id = $3
 		RETURNING household_id, rev, data, updated_at, updated_by;`
 
@@ -171,7 +171,7 @@ func (r *sqlDocRepository) PushPrivateDoc(ctx context.Context, householdID, user
 		// Insert initial record
 		insertQuery := `
 			INSERT INTO private_docs (household_id, user_id, rev, data)
-			VALUES ($1, $2, 1, $3)
+			VALUES ($1, $2, 1, $3::jsonb)
 			RETURNING household_id, user_id, rev, data, updated_at;`
 		newDoc := &models.PrivateDoc{}
 		if err := tx.QueryRowContext(ctx, insertQuery, householdID, userID, data).Scan(
@@ -194,7 +194,7 @@ func (r *sqlDocRepository) PushPrivateDoc(ctx context.Context, householdID, user
 
 	updateQuery := `
 		UPDATE private_docs
-		SET data = $1, rev = rev + 1, updated_at = now()
+		SET data = $1::jsonb, rev = rev + 1, updated_at = now()
 		WHERE household_id = $2 AND user_id = $3
 		RETURNING household_id, user_id, rev, data, updated_at;`
 
