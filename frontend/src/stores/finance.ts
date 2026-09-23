@@ -171,6 +171,57 @@ export const useFinanceStore = defineStore('finance', () => {
     }
   }
 
+  async function pullHousehold(client: ApiClient = apiClient): Promise<HouseholdDocResponse | null> {
+    try {
+      const serverDoc = await client.getHouseholdDoc()
+      if (serverDoc && serverDoc.data) {
+        if (status.value === 'dirty') {
+          householdDoc.value = mergeDocs(householdDoc.value, serverDoc.data)
+        } else {
+          householdDoc.value = serverDoc.data
+          householdRev.value = serverDoc.rev
+          status.value = 'idle'
+        }
+        saveLocalState()
+      }
+      return serverDoc
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      lastError.value = msg
+      return null
+    }
+  }
+
+  async function pullPrivateDoc(client: ApiClient = apiClient) {
+    try {
+      const res = await client.getPrivateDoc()
+      if (res) {
+        privateDoc.value = res.data ?? {}
+        privateRev.value = res.rev
+        saveLocalState()
+      }
+      return res
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      lastError.value = msg
+      return null
+    }
+  }
+
+  async function pushPrivateDoc(data: Record<string, unknown>, client: ApiClient = apiClient) {
+    try {
+      const res = await client.pushPrivateDoc(privateRev.value, data)
+      privateDoc.value = res.data ?? data
+      privateRev.value = res.rev
+      saveLocalState()
+      return res
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      lastError.value = msg
+      throw err
+    }
+  }
+
   function scheduleSync(delay = 1500, client: ApiClient = apiClient) {
     if (syncTimer) clearTimeout(syncTimer)
     syncTimer = setTimeout(() => {
@@ -201,6 +252,9 @@ export const useFinanceStore = defineStore('finance', () => {
     mutateHouseholdDoc,
     resetDoc,
     syncHousehold,
+    pullHousehold,
+    pullPrivateDoc,
+    pushPrivateDoc,
     scheduleSync,
   }
 })

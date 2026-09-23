@@ -259,4 +259,42 @@ describe('merge.ts — слияние версий документа казны
     expect(merged1.categories[0].amount).toBe(300_000)
     expect(merged1.setupDoneAt).toBe(doc.setupDoneAt)
   })
+
+  it('слияние категорий и вишлиста сохраняет элементы и выбирает актуальные правки', () => {
+    const docA: SyncDoc = {
+      ...createEmptyDoc(),
+      categories: [
+        { key: 'd1', name: 'Жильё', note: '', amount: 300_000, updatedAt: '2026-09-20T10:00:00Z' },
+      ],
+      wishlist: [
+        { id: 'w-1', name: 'Кофемашина', price: 250_000, by: 'a', addedOn: '2026-09-20', bought: false, updatedAt: '2026-09-20T10:00:00Z' },
+      ],
+    }
+
+    const docB: SyncDoc = {
+      ...createEmptyDoc(),
+      categories: [
+        { key: 'd1', name: 'Аренда жилья', note: 'уточнено', amount: 320_000, updatedAt: '2026-09-22T10:00:00Z' },
+        { key: 'd2', name: 'Еда и кафе', note: '', amount: 150_000, updatedAt: '2026-09-21T10:00:00Z' },
+      ],
+      wishlist: [
+        { id: 'w-1', name: 'Кофемашина DeLonghi', price: 260_000, by: 'a', addedOn: '2026-09-20', bought: true, updatedAt: '2026-09-23T10:00:00Z' },
+        { id: 'w-2', name: 'Наушники', price: 80_000, by: 'b', addedOn: '2026-09-21', bought: false, updatedAt: '2026-09-21T10:00:00Z' },
+      ],
+    }
+
+    const merged = mergeDocs(docA, docB)
+
+    // Категории: d1 обновлена до 320k, d2 добавлена
+    expect(merged.categories).toHaveLength(2)
+    const cat1 = merged.categories.find((c) => c.key === 'd1')
+    expect(cat1?.name).toBe('Аренда жилья')
+    expect(cat1?.amount).toBe(320_000)
+
+    // Вишлист: w-1 стал купленным, w-2 добавлен
+    expect(merged.wishlist).toHaveLength(2)
+    const w1 = merged.wishlist.find((w) => w.id === 'w-1')
+    expect(w1?.name).toBe('Кофемашина DeLonghi')
+    expect(w1?.bought).toBe(true)
+  })
 })

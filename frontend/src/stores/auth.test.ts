@@ -105,4 +105,73 @@ describe('stores/auth.ts — Pinia хранилище авторизации и 
     expect(auth.user?.email).toBe('me@example.com')
     expect(auth.household?.name).toBe('Наша Семья')
   })
+
+  it('fetchMe при 401 очищает токен и сессию', async () => {
+    const auth = useAuthStore()
+    auth.token = 'expired-token'
+    auth.user = { id: 'u-1', email: 'me@example.com', created_at: '' }
+
+    const { ApiError } = await import('@/api/client')
+    vi.spyOn(apiClient, 'me').mockRejectedValue(new ApiError('Unauthorized', 401))
+
+    await expect(auth.fetchMe()).rejects.toThrow('Unauthorized')
+    expect(auth.isAuthenticated).toBe(false)
+    expect(auth.token).toBeNull()
+    expect(auth.user).toBeNull()
+  })
+
+  it('fetchMe при сетевой ошибке сохраняет локальную сессию', async () => {
+    const auth = useAuthStore()
+    auth.token = 'valid-token'
+    auth.user = { id: 'u-1', email: 'me@example.com', created_at: '' }
+
+    vi.spyOn(apiClient, 'me').mockRejectedValue(new Error('Network error (offline)'))
+
+    await expect(auth.fetchMe()).rejects.toThrow('Network error')
+    // Сессия должна остаться, чтобы приложение работало офлайн
+    expect(auth.token).toBe('valid-token')
+    expect(auth.user?.email).toBe('me@example.com')
+    expect(auth.isAuthenticated).toBe(true)
+  })
+
+  it('createInvite и joinHousehold', async () => {
+    const auth = useAuthStore()
+    vi.spyOn(apiClient, 'createInvite').mockResolvedValue({
+      code: 'INVITE123',
+      expires_at: '2026-09-24T10:00:00Z',
+    })
+
+    const inv = await auth.createInvite()
+    expect(inv.code).toBe('INVITE123')
+
+    vi.spyOn(apiClient, 'joinHousehold').mockResolvedValue({
+      token: 'joined-token',
+      member: {
+        household_id: 'h-2',
+        user_id: 'u-2',
+        slot: 'b',
+        display_name: 'Аруна',
+        role: 'member',
+        joined_at: '',
+      },
+    })
+    vi.spyOn(apiClient, 'me').mockResolvedValue({
+      user: { id: 'u-2', email: 'aruna@example.com', created_at: '' },
+      household: { id: 'h-2', name: 'Семья', created_by: 'u-1', created_at: '' },
+      member: {
+        household_id: 'h-2',
+        user_id: 'u-2',
+        slot: 'b',
+        display_name: 'Аруна',
+        role: 'member',
+        joined_at: '',
+      },
+    })
+
+    const joinRes = await auth.joinHousehold({ code: 'INVITE123', display_name: 'Аруна' })
+    expect(joinRes.token).toBe('joined-token')
+    expect(auth.token).toBe('joined-token')
+    expect(auth.user?.email).toBe('aruna@example.com')
+    expect(auth.isMember).toBe(true)
+  })
 })

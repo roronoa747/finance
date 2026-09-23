@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { apiClient } from '@/api/client'
+import { apiClient, ApiError } from '@/api/client'
 import type { User, Household, HouseholdMember } from '@/types/api'
 
 function getItem(key: string): string | null {
@@ -109,12 +109,14 @@ export const useAuthStore = defineStore('auth', () => {
       household.value = res.household
       member.value = res.member
 
-      localStorage.setItem('ff_user', JSON.stringify(res.user))
-      localStorage.setItem('ff_household', JSON.stringify(res.household))
-      localStorage.setItem('ff_member', JSON.stringify(res.member))
+      setItem('ff_user', JSON.stringify(res.user))
+      setItem('ff_household', JSON.stringify(res.household))
+      setItem('ff_member', JSON.stringify(res.member))
       return res
     } catch (err) {
-      clearAuth()
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        clearAuth()
+      }
       throw err
     } finally {
       loading.value = false
@@ -142,8 +144,8 @@ export const useAuthStore = defineStore('auth', () => {
       const res = await apiClient.joinHousehold(data)
       token.value = res.token
       member.value = res.member
-      localStorage.setItem('ff_auth_token', res.token)
-      localStorage.setItem('ff_member', JSON.stringify(res.member))
+      setItem('ff_auth_token', res.token)
+      setItem('ff_member', JSON.stringify(res.member))
       // Refresh me to get full household and user profile
       await fetchMe()
       return res

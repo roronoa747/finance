@@ -216,4 +216,66 @@ describe('stores/finance.ts — Pinia хранилище казны и синх�
     // 50k + 60k = 110k
     expect(goal.have).toBe(110_000)
   })
+
+  it('pullHousehold обновляет состояние без отправки push', async () => {
+    const store = useFinanceStore()
+    expect(store.status).toBe('idle')
+
+    const serverDoc: SyncDoc = {
+      ...defaultSyncDoc(),
+      setupDoneAt: '2026-09-23T12:00:00Z',
+      people: [
+        { id: 'a', name: 'Ильяс', salary: 600_000, payday: 10, updatedAt: '2026-09-23T10:00:00Z' },
+      ],
+    }
+
+    const mockClient = {
+      getHouseholdDoc: vi.fn().mockResolvedValue({
+        household_id: 'h-1',
+        rev: 7,
+        data: serverDoc,
+        updated_at: '2026-09-23T12:00:00Z',
+      }),
+      pushHouseholdDoc: vi.fn(),
+    } as unknown as ApiClient
+
+    const res = await store.pullHousehold(mockClient)
+    expect(res?.rev).toBe(7)
+    expect(store.people).toHaveLength(1)
+    expect(store.people[0].name).toBe('Ильяс')
+    expect(store.householdRev).toBe(7)
+    expect(store.status).toBe('idle')
+    expect(mockClient.pushHouseholdDoc).not.toHaveBeenCalled()
+  })
+
+  it('pullPrivateDoc и pushPrivateDoc работают с изолированным личным кошельком', async () => {
+    const store = useFinanceStore()
+    const mockClient = {
+      getPrivateDoc: vi.fn().mockResolvedValue({
+        household_id: 'h-1',
+        user_id: 'u-1',
+        rev: 2,
+        data: { secretNotes: 'Личные сбережения', amount: 150_000 },
+        updated_at: '2026-09-23T10:00:00Z',
+      }),
+      pushPrivateDoc: vi.fn().mockImplementation(async (rev: number, data: Record<string, unknown>) => {
+        return {
+          household_id: 'h-1',
+          user_id: 'u-1',
+          rev: rev + 1,
+          data,
+          updated_at: new Date().toISOString(),
+        }
+      }),
+    } as unknown as ApiClient
+
+    await store.pullPrivateDoc(mockClient)
+    expect(store.privateRev).toBe(2)
+    expect(store.privateDoc.amount).toBe(150_000)
+
+    await store.pushPrivateDoc({ secretNotes: 'Обновлено', amount: 200_000 }, mockClient)
+    expect(store.privateRev).toBe(3)
+    expect(store.privateDoc.amount).toBe(200_000)
+    expect(mockClient.pushPrivateDoc).toHaveBeenCalledWith(2, { secretNotes: 'Обновлено', amount: 200_000 })
+  })
 })
