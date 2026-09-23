@@ -259,13 +259,14 @@ describe('views/Overview.vue — Финансовые показатели, ка
 
     const html = await renderToString(app)
 
-    // Проверяем наличие ключевых секций и чисел в HTML
+    // Проверяем наличие ключевых секций и элементов разметки эталона
     expect(html).toContain('Пригласите партнёра') // people.length < 2
     expect(html).toContain('Свободно в')
-    expect(html).toContain('Капитал')
-    expect(html).toContain('Доход месяца')
-    expect(html).toContain('Обязательства')
-    expect(html).toContain('Подушка')
+    expect(html).toContain('Доход')
+    expect(html).toContain('распределено')
+    expect(html).toContain('Впереди')
+    expect(html).toContain('Календарь')
+    expect(html).toContain('Цели')
   })
 })
 

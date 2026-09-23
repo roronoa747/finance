@@ -12,28 +12,25 @@ import { useAuthStore } from '@/stores/auth'
 import { money, plain, pct } from '@/lib/money'
 import { monthKey, monthIn, monthFrom, dayLabel } from '@/lib/dates'
 import {
+  amountAt,
   budgetAmounts,
+  dueIn,
   liveCredits,
   liveGoals,
   liveObligations,
   nextChange,
   salaryAt,
-  amountAt,
-  dueIn,
   untilPayday,
-  netWorth,
-  cushionMonths,
-  liquidCash,
-  mandatoryMonthly,
 } from '@/lib/finance'
+import { cn } from '@/lib/utils'
 import Card from '@/components/kit/Card.vue'
 import Section from '@/components/kit/Section.vue'
 import Row from '@/components/kit/Row.vue'
 import Callout from '@/components/kit/Callout.vue'
+import Hero from '@/components/kit/Hero.vue'
 import Button from '@/components/ui/Button.vue'
-import MetricCard from '@/components/MetricCard.vue'
-import CategoryBar, { type Segment } from '@/components/CategoryBar.vue'
-import EmergencyBanner from '@/components/EmergencyBanner.vue'
+import Bar, { type Seg } from '@/components/Bar.vue'
+import Legend, { type LegendItem } from '@/components/Legend.vue'
 import Ring from '@/components/Ring.vue'
 
 const router = useRouter()
@@ -47,27 +44,16 @@ const categories = computed(() => financeStore.categories)
 const goals = computed(() => liveGoals(financeStore.goals))
 const obligations = computed(() => liveObligations(financeStore.obligations))
 const credits = computed(() => liveCredits(financeStore.credits))
-const accounts = computed(() => financeStore.accounts)
 
-// Расчёт бюджетов по доменным правилам finance.ts
+// Суммы по разделам считаются из обязательств, кредитов и целей
 const amounts = computed(() => budgetAmounts(financeStore.householdDoc))
 const income = computed(() => amounts.value.income)
 const free = computed(() => amounts.value.d5)
 const spent = computed(() => income.value - free.value)
 
-// Сегменты доходов по участникам
-const peopleSegments = computed<Segment[]>(() => {
-  return people.value.map((p) => ({
-    key: p.id,
-    value: salaryAt(p, key.value),
-    color: `var(--p${p.id})`,
-    label: p.name,
-  }))
-})
-
-// Сегменты расходов по категориям
-const categorySegments = computed<Segment[]>(() => {
-  const segs: Segment[] = categories.value
+// Сегменты расходов по категориям для Bar и Legend
+const segments = computed<Seg[]>(() => {
+  const segs: Seg[] = categories.value
     .filter((c) => c.key !== 'd5')
     .map((c) => ({
       key: c.key,
@@ -85,24 +71,33 @@ const categorySegments = computed<Segment[]>(() => {
   return segs
 })
 
-// Совокупный капитал
-const totalNetWorth = computed(() => {
-  return netWorth(accounts.value, credits.value, goals.value)
+const legendItems = computed<LegendItem[]>(() => {
+  return segments.value.map((s) => ({
+    key: s.key,
+    color: s.color,
+    name: s.label ?? '',
+    value: money(s.value),
+  }))
 })
 
-// Подушка безопасности
-const liquid = computed(() => liquidCash(accounts.value))
-const mandatory = computed(() => mandatoryMonthly(categories.value))
-const cushion = computed(() => cushionMonths(accounts.value, mandatory.value))
+// Сегменты зарплат участников для первого Bar
+const peopleSegments = computed<Seg[]>(() => {
+  return people.value.map((p) => ({
+    key: String(p.id),
+    value: salaryAt(p, key.value),
+    color: `var(--p${p.id})`,
+    label: p.name,
+  }))
+})
 
-// Событие высвобождения средств (если платёж снизится в будущем)
+// Событие «освободится N ₸»
 const freed = computed(() => {
   return obligations.value
     .map((o) => ({ o, change: nextChange(o, key.value) }))
     .find((x) => x.change && x.change.delta < 0)
 })
 
-// Ближайшие списания
+// Ближайшие списания «Впереди»
 const upcoming = computed(() => {
   const items = [
     ...obligations.value
@@ -115,7 +110,7 @@ const upcoming = computed(() => {
         note: o.every === 'year' ? 'раз в год' : o.estimate ? 'оценка по сезону' : o.note,
         color: `var(--${o.category})`,
         estimate: o.estimate,
-        to: '/budget',
+        to: `/capital?obligation=${o.id}`,
       })),
     ...credits.value.map((c) => ({
       id: c.id,
@@ -125,13 +120,13 @@ const upcoming = computed(() => {
       note: c.note || 'ежемесячный платёж',
       color: 'var(--d2)',
       estimate: false,
-      to: '/capital',
+      to: `/capital?credit=${c.id}`,
     })),
   ]
   return items.sort((a, b) => a.day - b.day)
 })
 
-// Данные до зарплаты
+// Данные блока «До зарплаты»
 const paydayInfo = computed(() => {
   return untilPayday(financeStore.householdDoc)
 })
@@ -179,7 +174,7 @@ async function copyInvite() {
     <!-- Invite Partner Banner (if single member) -->
     <div
       v-if="people.length < 2"
-      class="rounded-2xl border border-brand/50 bg-surface p-4 shadow-xs"
+      class="rounded-[18px] border border-brand bg-surface p-4"
     >
       <div class="flex items-start gap-3">
         <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand">
@@ -187,7 +182,7 @@ async function copyInvite() {
         </span>
         <div class="min-w-0 flex-1">
           <b class="block font-display text-[15.5px] font-semibold text-ink">Пригласите партнёра</b>
-          <p class="mt-0.5 text-[12.5px] leading-relaxed text-ink-2">
+          <p class="mt-1 text-[13px] leading-relaxed text-ink-2">
             Пока бюджет видите только вы. У второго будет свой вход, а цели и покупки — общие.
           </p>
         </div>
@@ -197,110 +192,83 @@ async function copyInvite() {
         <template v-if="inviteCode">
           <button
             type="button"
-            class="flex w-full items-center justify-center gap-2 rounded-xl border border-brand bg-brand-soft py-2.5 font-display text-[22px] font-semibold tracking-[0.14em] num text-ink cursor-pointer"
+            class="flex w-full items-center justify-center gap-2 rounded-xl border border-brand bg-brand-soft py-3 font-display text-[22px] font-semibold tracking-[0.14em] num text-ink cursor-pointer"
             @click="copyInvite"
           >
             {{ inviteCode }}
             <PhCopy :size="16" class="text-ink-3" />
           </button>
-          <p v-if="copied" class="mt-1 text-center text-[12px] font-medium text-brand">
-            Скопировано в буфер
+          <p v-if="copied" class="mt-1.5 text-center text-[12px] text-brand">
+            Скопировано
           </p>
         </template>
         <Button v-else class="w-full" :disabled="inviteBusy" @click="makeInvite">
-          {{ inviteBusy ? 'Создаём код…' : 'Создать код приглашения' }}
+          {{ inviteBusy ? 'Минуту…' : 'Создать код приглашения' }}
         </Button>
       </div>
     </div>
 
     <!-- Main Hero Card: Свободный остаток и полосы распределения -->
     <Card>
-      <div class="text-[13px] font-medium text-ink-2">
-        Свободно в {{ monthIn(key, false) }}
-      </div>
-      <div class="mb-3 font-display text-[38px] font-semibold leading-[1.1] tracking-[-0.03em] num text-ink">
-        {{ money(free) }}
-      </div>
-
-      <div class="flex flex-col gap-2">
+      <Hero :label="`Свободно в ${monthIn(key, false)}`" :value="money(free)" />
+      <div class="flex flex-col gap-[7px]">
         <!-- Полоса доходов по людям -->
-        <CategoryBar :segments="peopleSegments" />
+        <Bar :segments="peopleSegments" />
 
         <div class="flex justify-between text-[12px] text-ink-3">
-          <span>Доход <b class="num text-ink">{{ money(income) }}</b></span>
-          <span>распределено <b class="num text-ink">{{ pct(spent, income) }}%</b></span>
+          <span>Доход {{ money(income) }}</span>
+          <span>распределено {{ pct(spent, income) }}%</span>
         </div>
 
         <!-- Полоса расходов по категориям -->
-        <CategoryBar thick :segments="categorySegments" show-legend />
+        <Bar thick :segments="segments" />
       </div>
+
+      <Legend :items="legendItems" />
     </Card>
 
-    <!-- 4 Key Metrics Grid -->
-    <div class="grid grid-cols-2 gap-2.5">
-      <MetricCard
-        label="Капитал"
-        :value="money(totalNetWorth)"
-        :sub="totalNetWorth >= 0 ? 'Чистые активы' : 'Кредиты превышают счета'"
-        :accent="totalNetWorth >= 0 ? 'var(--brand)' : 'var(--warn)'"
-      />
-      <MetricCard
-        label="Доход месяца"
-        :value="money(income)"
-        sub="Сумма всех зарплат"
-      />
-      <MetricCard
-        label="Обязательства"
-        :value="money(spent)"
-        sub="Жильё, долги, цели"
-      />
-      <MetricCard
-        label="Свободный остаток"
-        :value="money(free)"
-        :trend="pct(free, income) + '%'"
-        :trend-positive="free >= 0"
-        :sub="free >= 0 ? 'Доступно в казну' : 'Дефицит бюджета'"
-      />
-    </div>
-
-    <!-- Emergency Cushion Banner -->
-    <EmergencyBanner
-      :months="cushion"
-      :cash="liquid"
-      :monthly-mandatory="mandatory"
-    />
-
-    <!-- Freed Money Alert -->
+    <!-- Событие высвобождения средств -->
     <div
       v-if="freed && freed.change"
-      class="rounded-2xl border border-brand bg-surface p-4 shadow-xs"
+      class="rounded-[18px] border border-brand bg-surface p-4"
     >
-      <div class="mb-1 text-[11px] font-semibold uppercase tracking-[0.07em] text-brand">
+      <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-brand">
         С {{ monthFrom(freed.change.from, false) }}
       </div>
-      <h3 class="mb-1 font-display text-[18px] font-semibold tracking-[-0.01em] text-ink">
+      <h3 class="mb-1 font-display text-[19px] font-semibold tracking-[-0.01em] text-ink">
         Освободится {{ money(Math.abs(freed.change.delta)) }} в месяц
       </h3>
-      <p class="mb-3 text-[12.5px] leading-relaxed text-ink-2">
+      <p class="mb-3.5 text-[13px] text-ink-2">
         {{ freed.o.name }} снизится с {{ plain(amountAt(freed.o, key)) }} до {{ plain(freed.change.amount) }} ₸.
         За год это {{ money(Math.abs(freed.change.delta) * 12) }} — решите заранее, куда они пойдут.
       </p>
-      <Button class="w-full" @click="router.push('/ritual')">
-        Распределить в ритуале
-      </Button>
+      <button
+        type="button"
+        class="w-full rounded-xl bg-brand px-4 py-2.5 text-[14px] font-semibold text-brand-ink active:translate-y-px cursor-pointer"
+        @click="router.push('/ritual')"
+      >
+        Распределить
+      </button>
     </div>
 
-    <!-- Deficit Warning Callout -->
+    <!-- Предупреждение: план не сходится -->
     <Callout v-if="free < 0" title="План пока не сходится">
       Расписано на {{ money(-free) }} больше, чем приходит.
       {{
         people.length < 2
-          ? ' Скорее всего, доход партнёра ещё не внесён — пригласите второго участника.'
-          : ' Уменьшите необязательные траты в «Бюджете», и баланс сойдётся.'
+          ? ' Скорее всего, доход второго участника ещё не внесён — пригласите его, и цифра сойдётся.'
+          : ' Уменьшите любую строку в «Бюджете» — свободный остаток пересчитается сам.'
       }}
     </Callout>
 
-    <!-- Section: До зарплаты -->
+    <!-- Подсказка: перед экономией будет пик -->
+    <Callout v-if="freed && freed.change" title="Перед экономией будет пик">
+      В месяц переезда платятся депозит, комиссия и перевозка — сверх обычных расходов.
+      Экономия начнётся только со следующего месяца, и приложение не будет делать вид,
+      что это не так.
+    </Callout>
+
+    <!-- Блок «До зарплаты» -->
     <template v-if="paydayInfo && paydayInfo.due.length">
       <Section title="До зарплаты" />
       <Card>
@@ -313,7 +281,7 @@ async function copyInvite() {
           </span>
         </div>
         <div class="mt-0.5 text-[13px] text-ink-2">
-          {{ paydayInfo.who.name }} получит <b class="num text-ink">{{ money(paydayInfo.income) }}</b>
+          {{ paydayInfo.who.name }} получит {{ money(paydayInfo.income) }}
         </div>
 
         <div class="mt-3 border-t border-line pt-3">
@@ -329,109 +297,97 @@ async function copyInvite() {
             >
               <span class="text-ink-3">{{ dayLabel(d.day, d.when) }}</span>
               <span class="truncate text-ink-2">{{ d.name }}</span>
-              <span class="ml-auto shrink-0 num font-medium text-ink">{{ plain(d.value) }}</span>
+              <span class="ml-auto shrink-0 num text-ink">{{ plain(d.value) }}</span>
             </div>
           </div>
         </div>
 
         <div
           v-if="paydayInfo.knowsCash"
-          :class="[
-            'mt-3 rounded-xl border p-3 text-[12.5px] leading-relaxed',
-            paydayInfo.shortfall >= 0
-              ? 'border-brand bg-brand-soft text-ink-2'
-              : 'border-warn-line bg-warn-soft text-ink-2',
-          ]"
+          :class="
+            cn(
+              'mt-3 rounded-xl border px-3.5 py-3 text-[12.5px] leading-relaxed',
+              paydayInfo.shortfall >= 0
+                ? 'border-brand bg-brand-soft text-ink-2'
+                : 'border-warn-line bg-warn-soft text-ink-2',
+            )
+          "
         >
-          <template v-if="paydayInfo.shortfall >= 0">
-            На счетах {{ plain(paydayInfo.onAccounts) }} ₸ — хватает, остаётся {{ plain(paydayInfo.shortfall) }} ₸.
-          </template>
-          <template v-else>
-            На счетах {{ plain(paydayInfo.onAccounts) }} ₸ — не хватает {{ plain(-paydayInfo.shortfall) }} ₸. Перенесите платёж или пополните счёт.
-          </template>
+          {{
+            paydayInfo.shortfall >= 0
+              ? `На счетах ${plain(paydayInfo.onAccounts)} ₸ — хватает, остаётся ${plain(paydayInfo.shortfall)} ₸.`
+              : `На счетах ${plain(paydayInfo.onAccounts)} ₸ — не хватает ${plain(-paydayInfo.shortfall)} ₸. Перенесите платёж или возьмите из накоплений, но решите это сейчас, а не в день списания.`
+          }}
         </div>
-        <p v-else class="mt-3 text-[12px] leading-relaxed text-ink-3">
-          Остаток на картах не заведён. Добавьте счёт в разделе «Капитал», чтобы видеть точный баланс.
+        <p v-else class="mt-3 text-[12.5px] leading-relaxed text-ink-3">
+          Хватит ли этого, приложение не знает: остаток на картах не заведён. Добавьте
+          счёт в «Капитале» — и здесь появится ответ вместо списка.
         </p>
       </Card>
     </template>
 
-    <!-- Section: Впереди (Календарь списаний) -->
+    <!-- Секция «Впереди» -->
     <Section title="Впереди">
       <template #action>
-        <RouterLink to="/budget" class="text-[13px] font-medium text-brand hover:underline">
-          Календарь
-        </RouterLink>
+        <RouterLink to="/budget" class="text-[13px] text-brand hover:underline">Календарь</RouterLink>
       </template>
     </Section>
 
     <Card flush>
-      <template v-if="upcoming.length">
-        <Row
-          v-for="u in upcoming"
-          :key="u.id"
-          :accent="u.color"
-          :title="u.name"
-          :note="`${dayLabel(u.day, key)} · ${u.note}`"
-          :value="money(u.value)"
-          :sub="u.estimate ? 'оценка' : undefined"
-          clickable
-          @click="router.push(u.to)"
-        >
-          <template #icon>
-            <PhClock :size="17" />
-          </template>
-        </Row>
-      </template>
-      <div v-else class="p-4 text-center text-[13px] text-ink-3">
-        Ближайших списаний нет
-      </div>
+      <Row
+        v-for="u in upcoming"
+        :key="u.id"
+        :accent="u.color"
+        :title="u.name"
+        :note="`${dayLabel(u.day, key)} · ${u.note}`"
+        :value="money(u.value)"
+        :sub="u.estimate ? 'оценка' : undefined"
+        @click="router.push(u.to)"
+      >
+        <template #icon>
+          <PhClock :size="17" />
+        </template>
+      </Row>
     </Card>
 
-    <!-- Section: Цели -->
+    <!-- Секция «Цели» -->
     <Section title="Цели">
       <template #action>
-        <RouterLink to="/goals" class="text-[13px] font-medium text-brand hover:underline">
-          Все
-        </RouterLink>
+        <RouterLink to="/goals" class="text-[13px] text-brand hover:underline">Все</RouterLink>
       </template>
     </Section>
 
     <div class="flex gap-2.5 overflow-x-auto pb-1 [scrollbar-width:none]">
-      <template v-if="goals.length">
-        <div
-          v-for="g in goals"
-          :key="g.id"
-          class="w-[145px] shrink-0 rounded-2xl border border-line bg-surface p-3.5 shadow-xs cursor-pointer hover:border-line-strong transition-all"
-          @click="router.push('/goals')"
-        >
-          <Ring
-            :progress="g.need ? g.have / g.need : 0"
-            :plan="g.planPct"
-            :hue="g.hue"
-            :size="44"
-          />
-          <div class="mt-2 text-[13px] font-medium text-ink leading-tight truncate">
-            {{ g.name }}
-          </div>
-          <div class="mt-0.5 text-[11.5px] text-ink-3 num">
-            {{ Math.round((g.need ? g.have / g.need : 0) * 100) }}% · {{ plain(g.have) }}
-          </div>
+      <RouterLink
+        v-for="g in goals"
+        :key="g.id"
+        :to="`/goals/${g.id}`"
+        class="w-[138px] shrink-0 rounded-2xl border border-line bg-surface p-3.5"
+      >
+        <Ring
+          :progress="g.need ? g.have / g.need : 0"
+          :plan="g.planPct"
+          :hue="g.hue"
+          :size="44"
+        />
+        <div class="mt-2 text-[13px] font-medium leading-tight text-ink">{{ g.name }}</div>
+        <div class="mt-0.5 text-[12px] text-ink-3 num">
+          {{ Math.round((g.need ? g.have / g.need : 0) * 100) }}% · {{ plain(g.have) }}
         </div>
-      </template>
+      </RouterLink>
 
-      <div
-        v-else
-        class="flex w-full items-center gap-3 rounded-2xl border border-dashed border-line-strong bg-surface p-4 cursor-pointer hover:bg-surface-2 transition-colors"
-        @click="router.push('/goals')"
+      <RouterLink
+        v-if="!goals.length"
+        to="/goals"
+        class="flex w-full items-center gap-3 rounded-2xl border border-dashed border-line-strong bg-surface px-4 py-4"
       >
         <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-3 text-ink-2">
-          <PhPlus :size="18" weight="bold" />
+          <PhPlus :size="17" weight="bold" />
         </span>
-        <span class="text-[13px] leading-snug text-ink-2">
-          Целей пока нет. Добавьте первую — приложение посчитает, сколько откладывать.
+        <span class="text-[13.5px] leading-snug text-ink-2">
+          Целей пока нет. Добавьте первую — приложение посчитает, сколько откладывать в месяц.
         </span>
-      </div>
+      </RouterLink>
     </div>
   </div>
 </template>
