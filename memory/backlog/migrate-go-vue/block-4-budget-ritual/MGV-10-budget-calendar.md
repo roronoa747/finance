@@ -3,7 +3,7 @@
 Блок 4 · MVP · Каталог: `frontend/` · Зависит от: MGV-09 · Роли: все
 
 ## Контекст (что уже есть)
-- Завершён Блок 3: базовая навигация, `AppShell.vue`, `Access.vue`, `Setup.vue`, `Overview.vue`, UI Kit (`Button.vue`, `Input.vue`, `NumField.vue`, `Segmented.vue`, `Card.vue`, `Row.vue`, `Section.vue`, `Callout.vue`), `CategoryBar.vue`.
+- Завершён Блок 3: базовая навигация, `AppShell.vue`, `Access.vue`, `Setup.vue`, `Overview.vue`, UI Kit (`Button.vue`, `Input.vue` на `shadcn-vue`, `NumField.vue`, `Segmented.vue`, `Card.vue`, `Row.vue`, `Section.vue`, `Callout.vue`, `Hero.vue`), компоненты графиков (`Bar.vue`, `Legend.vue`, `Ring.vue`).
 - Хранилище `useFinanceStore` (`frontend/src/stores/finance.ts`): методы `setCategoryAmount`, `mutateHouseholdDoc`, реактивные списки `people`, `categories`, `obligations`, `credits`, `goals`.
 - Финансовая математика `frontend/src/lib/finance.ts`: `budgetAmounts`, `dueIn`, `amountAt`, `salaryAt`, `liveObligations`, `liveCredits`.
 - Модуль дат `frontend/src/lib/dates.ts`: `monthKey`, `daysInMonth`, `leadingBlanks`, `WEEKDAYS`, `dayLabel`, `today`.
@@ -14,7 +14,7 @@
 1. Создать компонент `Budget.vue` (`frontend/src/views/Budget.vue`):
    - Переключатель трёх режимов просмотра через `Segmented.vue`:
      - **«План» (`plan`)**:
-       - Карточка дохода семьи: сумма зарплат, полоса участников (`CategoryBar`), список участников с окладами и днями выплат.
+       - Карточка дохода семьи: сумма зарплат, полоса участников (`Bar.vue` с сегментами участников), список участников с окладами и днями выплат.
        - Модальное окно или форма изменения оклада участника (добавление новой версии оклада с текущей даты).
        - Разделы расходов по категориям (`d1`–`d5`): расчётные обязательства (`d1` жильё, `d2` кредиты, `d3` цели) и настраиваемый бюджет на быт (`d4`). Поле ввода для изменения суммы `d4` через `setCategoryAmount('d4', ...)`.
      - **«Календарь» (`calendar`)**:

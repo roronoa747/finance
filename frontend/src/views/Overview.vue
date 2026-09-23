@@ -342,6 +342,7 @@ async function copyInvite() {
         :note="`${dayLabel(u.day, key)} · ${u.note}`"
         :value="money(u.value)"
         :sub="u.estimate ? 'оценка' : undefined"
+        clickable
         @click="router.push(u.to)"
       >
         <template #icon>

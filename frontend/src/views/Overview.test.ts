@@ -249,6 +249,31 @@ describe('views/Overview.vue — Финансовые показатели, ка
       { key: 'd4', name: 'Еда и быт', note: '', amount: 150_000, updatedAt: '' },
       { key: 'd5', name: 'Свободно', note: '', amount: 300_000, updatedAt: '' },
     ]
+    store.householdDoc.obligations = [
+      {
+        id: 'ob-rent',
+        name: 'Аренда квартиры',
+        note: 'ежемесячно',
+        day: 5,
+        category: 'd1',
+        versions: [{ from: '2026-01', amount: 200_000 }],
+        updatedAt: '',
+      },
+    ]
+    store.householdDoc.goals = [
+      {
+        id: 'g-cushion',
+        name: 'Подушка безопасности',
+        need: 1_000_000,
+        seed: 350_000,
+        have: 350_000,
+        monthly: 50_000,
+        hue: 'teal',
+        planPct: 0.35,
+        movements: [],
+        updatedAt: '',
+      },
+    ]
     store.householdDoc.accounts = [
       { id: 'acc-1', name: 'Kaspi Gold', note: '', kind: 'card', amount: 500_000, updatedAt: '' },
     ]
@@ -266,7 +291,10 @@ describe('views/Overview.vue — Финансовые показатели, ка
     expect(html).toContain('распределено')
     expect(html).toContain('Впереди')
     expect(html).toContain('Календарь')
+    expect(html).toContain('Аренда квартиры')
     expect(html).toContain('Цели')
+    expect(html).toContain('Подушка безопасности')
+    expect(html).toContain('35%')
   })
 })
 

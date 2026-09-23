@@ -183,5 +183,24 @@ describe('views/Access & Setup — Бизнес-сценарии экранов 
     expect(html).toContain('По коду')
     expect(html).toContain('Попробовать в демо-режиме без регистрации')
   })
+
+  it('компонентный рендер Setup.vue: проверка отображения шага 1 (доход), полей ввода и кнопки продолжения', async () => {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('vue/server-renderer')
+    const { createMemoryHistory } = await import('vue-router')
+    const { createAppRouter } = await import('@/router')
+    const { default: Setup } = await import('./Setup.vue')
+
+    const router = createAppRouter(createMemoryHistory())
+    const app = createSSRApp(Setup)
+    app.use(router)
+
+    const html = await renderToString(app)
+    expect(html).toContain('Начнём с дохода')
+    expect(html).toContain('Как вас зовут')
+    expect(html).toContain('Зарплата в месяц, ₸')
+    expect(html).toContain('День зарплаты (1–28)')
+    expect(html).toContain('Дальше')
+  })
 })
 

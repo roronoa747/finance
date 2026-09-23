@@ -13,9 +13,9 @@
 ```
 
 Блок-специфика:
-- Среда: Node.js 20+, каталог `frontend/`. Стек: Vue 3 (Composition API, `<script setup>`), Vite, Tailwind CSS 4, Pinia, `@phosphor-icons/vue`, `vue-router`.
+- Среда: Node.js 20+, каталог `frontend/`. Стек: Vue 3 (Composition API, `<script setup>`), Vite, Tailwind CSS 4, Pinia, `@phosphor-icons/vue`, `vue-router`, `shadcn-vue` (`radix-vue`, стиль `new-york`, `neutral base`, утилита `cn()` из `@/lib/utils`).
 - Факты Блоков 1, 2 и 3:
-  - Готова навигационная основа `AppShell.vue` с переходом на `/budget`, модальными панелями и UI Kit (`Button.vue`, `Input.vue`, `NumField.vue`, `Segmented.vue`, `Card.vue`, `Row.vue`, `Section.vue`, `Callout.vue`), компонентом полосы `CategoryBar.vue`.
+  - Готова навигационная основа `AppShell.vue` с переходом на `/budget`, модальными панелями и UI Kit (`Button.vue`, `Input.vue` на `shadcn-vue`, `NumField.vue`, `Segmented.vue`, `Card.vue`, `Row.vue`, `Section.vue`, `Callout.vue`, `Hero.vue`), компонентами графиков (`Bar.vue` с `Seg[]`, `Legend.vue`, `Ring.vue`).
   - Маршруты `/budget` и `/ritual` зарегистрированы в `frontend/src/router/index.ts` и временно рендерят `PlaceholderView.vue`.
   - Хранилище `useFinanceStore`: реактивное состояние казны (`people`, `categories`, `obligations`, `credits`, `goals`), методы `setCategoryAmount`, `mutateHouseholdDoc`, `syncHousehold`.
   - Все финансовые расчёты производятся функциями из `frontend/src/lib/finance.ts`, форматирование — через `money.ts`, даты и сетка календаря — через `dates.ts`.
