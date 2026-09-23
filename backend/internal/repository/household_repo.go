@@ -281,6 +281,9 @@ func (r *sqlHouseholdRepository) JoinHousehold(ctx context.Context, code, userID
 		}
 		usedSlots[s] = true
 	}
+	if err := usedSlotsRows.Err(); err != nil {
+		return nil, fmt.Errorf("failed during slots iteration: %w", err)
+	}
 
 	var assignedSlot string
 	for _, candidate := range []string{"a", "b", "c"} {

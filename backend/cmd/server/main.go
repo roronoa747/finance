@@ -15,9 +15,12 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
+	"finance-backend/internal/auth"
 	"finance-backend/internal/config"
 	"finance-backend/internal/db"
 	"finance-backend/internal/handlers"
+	"finance-backend/internal/repository"
+	"finance-backend/migrations"
 )
 
 func main() {
@@ -26,7 +29,14 @@ func main() {
 		log.Fatalf("failed to load configuration: %v", err)
 	}
 
-	var database *sql.DB
+	var (
+		database      *sql.DB
+		userRepo      repository.UserRepository
+		householdRepo repository.HouseholdRepository
+	)
+
+	tokenService := auth.NewTokenService(cfg.JWTSecret, 30*24*time.Hour)
+
 	if cfg.DatabaseURL != "" {
 		database, err = db.Connect(cfg.DatabaseURL)
 		if err != nil {
@@ -34,12 +44,28 @@ func main() {
 		} else {
 			defer database.Close()
 			log.Println("connected to PostgreSQL successfully")
+
+			// Run auto-migrations
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := db.RunMigrations(ctx, database, migrations.FS); err != nil {
+				log.Printf("warning: migration runner encountered an error: %v", err)
+			}
 		}
-	} else {
-		log.Println("DATABASE_URL is not set; running without database connection")
 	}
 
-	r := setupRouter(cfg, database)
+	if database != nil {
+		userRepo = repository.NewSQLUserRepository(database)
+		householdRepo = repository.NewSQLHouseholdRepository(database)
+	} else {
+		log.Println("using in-memory mock repositories (development mode)")
+		mockRepos := repository.NewMockRepositories()
+		mockRepos.Households.SetDocRepo(mockRepos.Docs)
+		userRepo = mockRepos.Users
+		householdRepo = mockRepos.Households
+	}
+
+	r := setupRouter(cfg, database, userRepo, householdRepo, tokenService)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
@@ -72,7 +98,13 @@ func main() {
 	log.Println("server stopped gracefully")
 }
 
-func setupRouter(cfg *config.Config, database *sql.DB) *chi.Mux {
+func setupRouter(
+	cfg *config.Config,
+	database *sql.DB,
+	userRepo repository.UserRepository,
+	householdRepo repository.HouseholdRepository,
+	tokenService *auth.TokenService,
+) *chi.Mux {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -89,8 +121,23 @@ func setupRouter(cfg *config.Config, database *sql.DB) *chi.Mux {
 		MaxAge:           300,
 	}))
 
+	authHandler := handlers.NewAuthHandler(userRepo, householdRepo, tokenService)
+	householdHandler := handlers.NewHouseholdHandler(householdRepo, tokenService)
+
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", handlers.HealthHandler(database))
+
+		api.Post("/auth/register", authHandler.Register)
+		api.Post("/auth/login", authHandler.Login)
+
+		// Protected endpoints
+		api.Group(func(protected chi.Router) {
+			protected.Use(auth.Middleware(tokenService))
+			protected.Get("/auth/me", authHandler.Me)
+
+			protected.Post("/household/invites", householdHandler.CreateInvite)
+			protected.Post("/household/join", householdHandler.JoinHousehold)
+		})
 	})
 
 	return r
