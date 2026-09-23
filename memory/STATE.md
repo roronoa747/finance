@@ -6,7 +6,7 @@
 
 | Бэклог | Каталог | Статус | Следующий шаг |
 |---|---|---|---|
-| Миграция на Go + Vue 3 (`migrate-go-vue`) | `memory/backlog/migrate-go-vue/` | 🔄 Блок 1 (Go Backend) подготовлен | `/worker migrate-go-vue 1 ultrathink` |
+| Миграция на Go + Vue 3 (`migrate-go-vue`) | `memory/backlog/migrate-go-vue/` | 🔄 Блок 1 (Go Backend): исполнитель ✅ | `/critic migrate-go-vue 1 ultracode` |
 
 ## Закрытые (архив)
 

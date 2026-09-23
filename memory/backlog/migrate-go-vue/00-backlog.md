@@ -51,10 +51,10 @@
 
 | Блок | Задача | Файл | Зависит от | Статус |
 |---|---|---|---|---|
-| **1. Go Backend** 🔄 *(L: безопасность, БД)* | MGV-01 Скелет Go-сервера, конфиг и подключение к PostgreSQL | `block-1-backend/MGV-01-go-skeleton-db.md` | — | ⬜ |
-| | MGV-02 Модели, миграции и репозитории данных | `block-1-backend/MGV-02-db-models-repo.md` | MGV-01 | ⬜ |
-| | MGV-03 Аутентификация, JWT и управление домохозяйством | `block-1-backend/MGV-03-auth-household.md` | MGV-02 | ⬜ |
-| | MGV-04 API синхронизации `household_docs` и `private_docs` с ревизиями | `block-1-backend/MGV-04-sync-api.md` | MGV-03 | ⬜ |
+| **1. Go Backend** 🔄 *(L: безопасность, БД)* | MGV-01 Скелет Go-сервера, конфиг и подключение к PostgreSQL | `block-1-backend/MGV-01-go-skeleton-db.md` | — | ✅ |
+| | MGV-02 Модели, миграции и репозитории данных | `block-1-backend/MGV-02-db-models-repo.md` | MGV-01 | ✅ |
+| | MGV-03 Аутентификация, JWT и управление домохозяйством | `block-1-backend/MGV-03-auth-household.md` | MGV-02 | ✅ |
+| | MGV-04 API синхронизации `household_docs` и `private_docs` с ревизиями | `block-1-backend/MGV-04-sync-api.md` | MGV-03 | ✅ |
 | **2. Vue Core & Math** ⬜ | MGV-05 Скелет Vue 3 + Vite + Tailwind + Pinia | `block-2-vue-core/MGV-05-vue-skeleton.md` | MGV-04 | ⬜ |
 | | MGV-06 Портирование финансовой математики и слияния (`merge.ts`) | `block-2-vue-core/MGV-06-finance-merge-math.md` | MGV-05 | ⬜ |
 | | MGV-07 Клиент синхронизации API и хранилище Pinia | `block-2-vue-core/MGV-07-pinia-sync-store.md` | MGV-06 | ⬜ |
