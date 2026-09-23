@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"finance-backend/internal/auth"
 	"finance-backend/internal/repository"
@@ -29,7 +30,7 @@ type ConflictResponse struct {
 
 func (h *SyncHandler) GetHouseholdDoc(w http.ResponseWriter, r *http.Request) {
 	householdID, ok := auth.GetHouseholdID(r.Context())
-	if !ok {
+	if !ok || strings.TrimSpace(householdID) == "" {
 		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
@@ -51,13 +52,13 @@ func (h *SyncHandler) PushHouseholdDoc(w http.ResponseWriter, r *http.Request) {
 	}
 
 	householdID, ok := auth.GetHouseholdID(r.Context())
-	if !ok {
+	if !ok || strings.TrimSpace(householdID) == "" {
 		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
 
 	userID, ok := auth.GetUserID(r.Context())
-	if !ok {
+	if !ok || strings.TrimSpace(userID) == "" {
 		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
@@ -95,13 +96,13 @@ func (h *SyncHandler) PushHouseholdDoc(w http.ResponseWriter, r *http.Request) {
 
 func (h *SyncHandler) GetPrivateDoc(w http.ResponseWriter, r *http.Request) {
 	householdID, ok := auth.GetHouseholdID(r.Context())
-	if !ok {
+	if !ok || strings.TrimSpace(householdID) == "" {
 		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
 
 	userID, ok := auth.GetUserID(r.Context())
-	if !ok {
+	if !ok || strings.TrimSpace(userID) == "" {
 		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
@@ -117,13 +118,13 @@ func (h *SyncHandler) GetPrivateDoc(w http.ResponseWriter, r *http.Request) {
 
 func (h *SyncHandler) PushPrivateDoc(w http.ResponseWriter, r *http.Request) {
 	householdID, ok := auth.GetHouseholdID(r.Context())
-	if !ok {
+	if !ok || strings.TrimSpace(householdID) == "" {
 		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
 
 	userID, ok := auth.GetUserID(r.Context())
-	if !ok {
+	if !ok || strings.TrimSpace(userID) == "" {
 		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}

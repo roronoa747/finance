@@ -43,8 +43,17 @@ func (h *HouseholdHandler) CreateInvite(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	householdID, _ := auth.GetHouseholdID(r.Context())
-	userID, _ := auth.GetUserID(r.Context())
+	householdID, ok := auth.GetHouseholdID(r.Context())
+	if !ok || strings.TrimSpace(householdID) == "" {
+		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+
+	userID, ok := auth.GetUserID(r.Context())
+	if !ok || strings.TrimSpace(userID) == "" {
+		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
 
 	invite, err := h.householdRepo.CreateInvite(r.Context(), householdID, userID)
 	if err != nil {
@@ -69,7 +78,7 @@ func (h *HouseholdHandler) JoinHousehold(w http.ResponseWriter, r *http.Request)
 	}
 
 	userID, ok := auth.GetUserID(r.Context())
-	if !ok {
+	if !ok || strings.TrimSpace(userID) == "" {
 		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
