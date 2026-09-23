@@ -1,7 +1,7 @@
 # Бэклог «Миграция на Go + Vue 3» (MGV)
 
-> **Статус:** 🔄 в работе: Блоки 1, 2 и 3 закрыты 🏁. Блок 4 готов к работе (`/worker migrate-go-vue 4`).
-> Реализованы экраны Access, Setup, Overview, каркас AppShell с навигацией, темами и UI Kit. 100% зелёные тесты (60 тестов в 11 сьютах). Приёмка в браузере пройдена успешно.
+> **Статус:** 🔄 в работе: Блоки 1 и 2 закрыты 🏁. Блок 3 возвращён исполнителю на доработку (переход на честный shadcn-vue и приведение к эталону по решению владельца).
+> Следующий шаг: `/worker migrate-go-vue 3`.
 
 Источник: `migrate-go-vue-brief.md` (резюме интервью подтверждено владельцем 2026-09-23).
 Формат — `memory/process/BACKLOG-GUIDE.md`. **Решения §2 зафиксированы — рабочие сессии их не пересматривают.**
@@ -20,7 +20,7 @@
 
 - **Р-1. Стек бэкенда**: Go (Go 1.27+), стандартная библиотека + роутер Chi, чистая архитектура (handlers, service, repository). *(источник: бриф)*
 - **Р-2. База данных**: PostgreSQL. Схема повторяет проверенную модель: `households`, `household_members`, `household_docs`, `private_docs`, `household_invites`. *(источник: выбор владельца)*
-- **Р-3. Фронтенд**: Vue 3 (Composition API, `<script setup>`), Vite, TypeScript, Pinia, Tailwind CSS 4, Phosphor Icons for Vue. *(источник: бриф)*
+- ~~**Р-3. Фронтенд**: Vue 3 (Composition API, `<script setup>`), Vite, TypeScript, Pinia, Tailwind CSS 4, Phosphor Icons for Vue. *(источник: бриф)*~~ ➔ **Р-3 (в редакции от 2026-09-23)**: Vue 3 (Composition API, `<script setup>`), Vite, TypeScript, Pinia, Tailwind CSS 4, **shadcn-vue** (библиотека компонентов на базе `radix-vue`, стиль `new-york`, `neutral base`), Phosphor Icons for Vue. *(источник: решение владельца, см. [`memory/decisions/shadcn-vue.md`](../decisions/shadcn-vue.md))*
 - **Р-4. Структура проекта (монорепозиторий)**:
   - `backend/` — исходники Go API.
   - `frontend/` — исходники Vue 3 SPA.
@@ -58,8 +58,8 @@
 | **2. Vue Core & Math** 🏁 закрыт *(M: фронтенд ядро)* | MGV-05 Скелет Vue 3 + Vite + Tailwind + Pinia | `block-2-vue-core/MGV-05-vue-skeleton.md` | MGV-04 | ✅ |
 | | MGV-06 Портирование финансовой математики и слияния (`merge.ts`) | `block-2-vue-core/MGV-06-finance-merge-math.md` | MGV-05 | ✅ |
 | | MGV-07 Клиент синхронизации API и хранилище Pinia | `block-2-vue-core/MGV-07-pinia-sync-store.md` | MGV-06 | ✅ |
-| **3. Экраны: База** 🏁 закрыт *(M: фронтенд экраны)* | MGV-08 Экраны `Access.vue` (вход/инвайт) и `Setup.vue` (мастер) | `block-3-screens-base/MGV-08-access-setup.md` | MGV-07 | ✅ |
-| | MGV-09 Экран `Overview.vue` (сводка, капитал, графики) | `block-3-screens-base/MGV-09-overview.md` | MGV-08 | ✅ |
+| **3. Экраны: База** 🔄 на доработке *(M: фронтенд экраны)* | MGV-08 Экраны `Access.vue` (вход/инвайт) и `Setup.vue` (мастер) | `block-3-screens-base/MGV-08-access-setup.md` | MGV-07 | 🔄 |
+| | MGV-09 Экран `Overview.vue` (сводка, капитал, графики) | `block-3-screens-base/MGV-09-overview.md` | MGV-08 | 🔄 |
 | **4. Экраны: Бюджет** ⬜ | MGV-10 Экран `Budget.vue` (План, Календарь, Список) | `block-4-budget-ritual/MGV-10-budget-calendar.md` | MGV-09 | ⬜ |
 | | MGV-11 Экран `Ritual.vue` (высвобождение средств) | `block-4-budget-ritual/MGV-11-ritual.md` | MGV-10 | ⬜ |
 | **5. Капитал & Приёмка** ⬜ | MGV-12 Экран `Capital.vue` (счета, кредиты, досрочка) | `block-5-capital-goals/MGV-12-capital-credits.md` | MGV-11 | ⬜ |
