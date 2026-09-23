@@ -1,0 +1,473 @@
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { PhArrowLeft, PhCopy, PhUserPlus } from '@phosphor-icons/vue'
+import { useAuthStore } from '@/stores/auth'
+import { useFinanceStore } from '@/stores/finance'
+import { parseMoney, money, ratePct } from '@/lib/money'
+import { goalMonthly, rateFromSchedule } from '@/lib/finance'
+import { HUES, HUE_KEYS, type HueKey } from '@/lib/palette'
+import Button from '@/components/ui/Button.vue'
+import Input from '@/components/ui/Input.vue'
+import Field from '@/components/kit/Field.vue'
+import NumField from '@/components/kit/NumField.vue'
+import Segmented from '@/components/kit/Segmented.vue'
+
+type Step = 'income' | 'housing' | 'credit' | 'goal' | 'invite'
+
+const router = useRouter()
+const authStore = useAuthStore()
+const financeStore = useFinanceStore()
+
+const slot = computed(() => authStore.slot || 'a')
+const knownName = computed(() => {
+  const existing = financeStore.people.find((p) => p.id === slot.value)
+  return existing?.name || authStore.member?.display_name || authStore.user?.email?.split('@')[0] || ''
+})
+
+// Если в бюджете уже есть обязательства, цели или флаг setupDone, значит партнёр уже настроил основу
+const joining = computed(() => {
+  return (
+    financeStore.setupDone ||
+    financeStore.obligations.length > 0 ||
+    financeStore.goals.length > 0
+  )
+})
+
+const steps = computed<Step[]>(() => {
+  if (joining.value) return ['income']
+  return ['income', 'housing', 'credit', 'goal', 'invite']
+})
+
+const currentStepIndex = ref(0)
+const step = computed(() => steps.value[currentStepIndex.value])
+const totalSteps = computed(() => steps.value.length)
+
+// Step 1: Income
+const name = ref(knownName.value || 'Участник')
+const salary = ref('')
+const payday = ref('10')
+
+// Step 2: Housing
+const tenure = ref<'rent' | 'mortgage' | 'own'>('rent')
+const housingAmount = ref('')
+const housingDay = ref('5')
+const utilitiesAmount = ref('')
+
+// Step 3: Credit
+const hasCredit = ref<'no' | 'yes'>('no')
+const creditPrincipal = ref('')
+const creditPayment = ref('')
+const creditRateMode = ref<'rate' | 'term'>('rate')
+const creditRate = ref('')
+const creditTerm = ref('')
+const creditDay = ref('12')
+
+// Step 4: Goal
+const goalName = ref('')
+const goalNeed = ref('')
+const goalHave = ref('0')
+const goalMonths = ref('24')
+const goalHue = ref<HueKey>('green')
+
+// Step 5: Invite
+const inviteCode = ref<string | null>(null)
+const inviteBusy = ref(false)
+const copied = ref(false)
+
+const computedCreditRate = computed(() => {
+  if (creditRateMode.value === 'rate') {
+    const v = parseFloat(creditRate.value.replace(',', '.'))
+    return Number.isFinite(v) && v > 0 ? v / 100 : null
+  }
+  return rateFromSchedule(
+    parseMoney(creditPrincipal.value),
+    parseMoney(creditPayment.value),
+    parseMoney(creditTerm.value),
+  )
+})
+
+const calculatedGoalMonthly = computed(() => {
+  const need = parseMoney(goalNeed.value)
+  const have = parseMoney(goalHave.value)
+  const months = Math.max(1, parseMoney(goalMonths.value) || 24)
+  return need > 0 ? goalMonthly(Math.max(0, need - have), months) : 0
+})
+
+function next() {
+  if (currentStepIndex.value < steps.value.length - 1) {
+    currentStepIndex.value++
+  } else {
+    finish()
+  }
+}
+
+function back() {
+  if (currentStepIndex.value > 0) {
+    currentStepIndex.value--
+  }
+}
+
+async function handleMakeInvite() {
+  inviteBusy.value = true
+  try {
+    const res = await authStore.createInvite()
+    inviteCode.value = res.code
+  } catch (err) {
+    console.error('Ошибка создания инвайта:', err)
+  } finally {
+    inviteBusy.value = false
+  }
+}
+
+async function handleCopy() {
+  if (!inviteCode.value) return
+  try {
+    await navigator.clipboard.writeText(inviteCode.value)
+    copied.value = true
+    setTimeout(() => {
+      copied.value = false
+    }, 2000)
+  } catch {
+    // clipboard might be blocked
+  }
+}
+
+function finish() {
+  // 1. Сохраняем человека
+  financeStore.setPerson(slot.value, {
+    name: name.value.trim() || 'Участник',
+    salary: parseMoney(salary.value),
+    payday: Math.min(28, Math.max(1, parseMoney(payday.value) || 10)),
+    onboardedAt: new Date().toISOString(),
+  })
+
+  // Если это не joining, сохраняем жильё, кредит и цель
+  if (!joining.value) {
+    // 2. Жильё
+    const hAmount = parseMoney(housingAmount.value)
+    const uAmount = parseMoney(utilitiesAmount.value)
+    if (hAmount > 0) {
+      financeStore.addObligation({
+        name: tenure.value === 'rent' ? 'Аренда' : tenure.value === 'mortgage' ? 'Ипотека' : 'Жильё',
+        note: tenure.value === 'own' ? 'содержание' : 'ежемесячный платёж',
+        day: Math.min(28, Math.max(1, parseMoney(housingDay.value) || 5)),
+        category: 'd1',
+        amount: hAmount,
+      })
+    }
+    if (uAmount > 0) {
+      financeStore.addObligation({
+        name: 'Коммуналка',
+        note: 'плавает по сезону',
+        day: 15,
+        category: 'd1',
+        estimate: true,
+        amount: uAmount,
+      })
+    }
+    if (hAmount + uAmount > 0) {
+      financeStore.setCategoryAmount('d1', hAmount + uAmount)
+    }
+
+    // 3. Кредит
+    if (hasCredit.value === 'yes') {
+      const p = parseMoney(creditPayment.value)
+      if (p > 0) {
+        financeStore.addCredit({
+          name: 'Кредит',
+          note: 'ежемесячный платёж',
+          principal: parseMoney(creditPrincipal.value),
+          annualRate: computedCreditRate.value ?? 0,
+          payment: p,
+          day: Math.min(28, Math.max(1, parseMoney(creditDay.value) || 12)),
+        })
+        financeStore.setCategoryAmount('d2', p)
+      }
+    }
+
+    // 4. Цель
+    const need = parseMoney(goalNeed.value)
+    if (need > 0) {
+      const have = parseMoney(goalHave.value)
+      const monthly = calculatedGoalMonthly.value
+      financeStore.addGoal({
+        name: goalName.value.trim() || 'Первая цель',
+        need,
+        have,
+        monthly,
+        hue: goalHue.value,
+      })
+      financeStore.setCategoryAmount('d3', monthly)
+    }
+  }
+
+  // 5. Завершение
+  financeStore.finishSetup()
+  void financeStore.syncHousehold()
+  void router.push('/')
+}
+</script>
+
+<template>
+  <div class="mx-auto flex min-h-dvh w-full max-w-[440px] flex-col px-5 pb-6 pt-5 text-left">
+    <!-- Header with progress bar -->
+    <div class="mb-5 flex items-center gap-3">
+      <button
+        v-if="currentStepIndex > 0"
+        type="button"
+        aria-label="Назад"
+        class="text-ink-2 hover:text-ink cursor-pointer"
+        @click="back"
+      >
+        <PhArrowLeft :size="18" />
+      </button>
+      <span
+        v-else
+        class="grid size-7 place-items-center rounded-lg bg-brand font-display text-[12px] font-bold text-brand-ink"
+      >
+        FF
+      </span>
+
+      <div class="flex flex-1 gap-1">
+        <i
+          v-for="(_, i) in totalSteps"
+          :key="i"
+          class="h-[3px] flex-1 rounded-full transition-colors"
+          :style="{ background: i <= currentStepIndex ? 'var(--brand)' : 'var(--track)' }"
+        />
+      </div>
+    </div>
+
+    <!-- Step Title & Description -->
+    <div class="mb-4">
+      <h1 class="font-display text-[26px] font-semibold leading-tight tracking-[-0.03em] text-ink">
+        <template v-if="step === 'income'">
+          {{ joining ? 'Добавьте свой доход' : 'Начнём с дохода' }}
+        </template>
+        <template v-else-if="step === 'housing'">Жильё</template>
+        <template v-else-if="step === 'credit'">Кредиты</template>
+        <template v-else-if="step === 'goal'">На что копим</template>
+        <template v-else-if="step === 'invite'">Пригласите партнёра</template>
+      </h1>
+
+      <p class="mt-1.5 text-[14px] leading-relaxed text-ink-2">
+        <template v-if="step === 'income'">
+          {{
+            joining
+              ? 'Жильё и цели партнёр уже завёл. От вас нужна только зарплата.'
+              : 'Оклад без бонусов. Нерегулярные премии добавим отдельно.'
+          }}
+        </template>
+        <template v-else-if="step === 'housing'">
+          Самая большая статья у большинства пар. С неё считается подушка безопасности.
+        </template>
+        <template v-else-if="step === 'credit'">
+          Если есть — приложение покажет переплату и экономию от досрочного погашения.
+        </template>
+        <template v-else-if="step === 'goal'">
+          Одной цели достаточно. Приложение посчитает, сколько откладывать в месяц.
+        </template>
+        <template v-else-if="step === 'invite'">
+          Бюджет общий: у второго будет свой вход, а цели и покупки — одни на двоих.
+        </template>
+      </p>
+    </div>
+
+    <!-- Step Content -->
+    <div class="flex-1 mt-2">
+      <!-- Step 1: Income -->
+      <div v-if="step === 'income'" class="flex flex-col gap-1">
+        <Field label="Как вас зовут">
+          <Input v-model="name" placeholder="Имя" />
+        </Field>
+        <Field label="Зарплата в месяц, ₸">
+          <NumField v-model="salary" placeholder="450 000" class-name="text-[17px]" />
+        </Field>
+        <Field label="День зарплаты (1–28)">
+          <NumField v-model="payday" kind="int" placeholder="10" />
+        </Field>
+      </div>
+
+      <!-- Step 2: Housing -->
+      <div v-else-if="step === 'housing'" class="flex flex-col gap-2">
+        <Field label="Как живёте">
+          <Segmented
+            v-model="tenure"
+            :options="[
+              { value: 'rent', label: 'Аренда' },
+              { value: 'mortgage', label: 'Ипотека' },
+              { value: 'own', label: 'Своё' },
+            ]"
+          />
+        </Field>
+        <Field :label="tenure === 'own' ? 'Содержание в месяц, ₸' : 'Платёж в месяц, ₸'">
+          <NumField v-model="housingAmount" placeholder="280 000" class-name="text-[17px]" />
+        </Field>
+        <Field label="День платежа">
+          <NumField v-model="housingDay" kind="int" placeholder="5" />
+        </Field>
+        <Field label="Коммуналка в месяц, ₸ (примерно)">
+          <NumField v-model="utilitiesAmount" placeholder="22 000" />
+        </Field>
+      </div>
+
+      <!-- Step 3: Credit -->
+      <div v-else-if="step === 'credit'" class="flex flex-col gap-2">
+        <Field label="Есть действующий кредит или рассрочка?">
+          <Segmented
+            v-model="hasCredit"
+            :options="[
+              { value: 'no', label: 'Нет' },
+              { value: 'yes', label: 'Есть' },
+            ]"
+          />
+        </Field>
+
+        <template v-if="hasCredit === 'yes'">
+          <Field label="Остаток долга, ₸">
+            <NumField v-model="creditPrincipal" placeholder="1 600 000" />
+          </Field>
+          <Field label="Платёж в месяц, ₸">
+            <NumField v-model="creditPayment" placeholder="117 000" />
+          </Field>
+          <Field label="Что знаете про ставку">
+            <Segmented
+              v-model="creditRateMode"
+              :options="[
+                { value: 'rate', label: 'Знаю ставку %' },
+                { value: 'term', label: 'Знаю срок' },
+              ]"
+            />
+          </Field>
+          <Field v-if="creditRateMode === 'rate'" label="Ставка (ГЭСВ), % годовых">
+            <NumField v-model="creditRate" kind="rate" placeholder="23,4" />
+          </Field>
+          <Field v-else label="Сколько месяцев осталось">
+            <NumField v-model="creditTerm" kind="int" placeholder="18" />
+          </Field>
+          <div
+            v-if="creditRateMode === 'term' && computedCreditRate !== null"
+            class="mb-3 rounded-xl border border-brand bg-brand-soft p-3 text-left"
+          >
+            <span class="text-[12px] text-ink-2">Ставка получается</span>
+            <div class="font-display text-[19px] font-semibold num text-ink">
+              {{ ratePct(computedCreditRate, 1) }} годовых
+            </div>
+          </div>
+          <Field label="День платежа">
+            <NumField v-model="creditDay" kind="int" placeholder="12" />
+          </Field>
+        </template>
+      </div>
+
+      <!-- Step 4: Goal -->
+      <div v-else-if="step === 'goal'" class="flex flex-col gap-2">
+        <Field label="Название цели">
+          <Input v-model="goalName" placeholder="Первая квартира" />
+        </Field>
+        <Field label="Сколько нужно, ₸">
+          <NumField v-model="goalNeed" placeholder="6 000 000" class-name="text-[17px]" />
+        </Field>
+        <Field label="Уже накоплено, ₸">
+          <NumField v-model="goalHave" placeholder="0" />
+        </Field>
+        <Field label="За сколько месяцев хотите накопить">
+          <NumField v-model="goalMonths" kind="int" placeholder="24" />
+        </Field>
+        <Field label="Цвет">
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="h in HUE_KEYS"
+              :key="h"
+              type="button"
+              :aria-label="HUES[h].label"
+              :class="[
+                'size-7 rounded-xl border-2 transition-all cursor-pointer',
+                goalHue === h ? 'border-ink scale-105 shadow-xs' : 'border-transparent',
+              ]"
+              :style="{ background: HUES[h].light }"
+              @click="goalHue = h"
+            />
+          </div>
+        </Field>
+        <div v-if="calculatedGoalMonthly > 0" class="rounded-xl border border-brand bg-brand-soft p-3.5">
+          <span class="text-[12.5px] text-ink-2">Откладывать в месяц</span>
+          <div class="font-display text-[21px] font-semibold num text-ink">
+            {{ money(calculatedGoalMonthly) }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 5: Invite -->
+      <div v-else-if="step === 'invite'" class="flex flex-col items-center gap-4 rounded-2xl border border-line bg-surface p-6 text-center">
+        <span class="grid size-12 place-items-center rounded-2xl bg-brand-soft text-brand">
+          <PhUserPlus :size="24" />
+        </span>
+
+        <template v-if="inviteCode">
+          <div>
+            <div class="text-[13px] text-ink-2">Код приглашения</div>
+            <button
+              type="button"
+              class="mt-1 flex items-center justify-center gap-2 font-display text-[28px] font-semibold tracking-[0.14em] num text-ink cursor-pointer"
+              @click="handleCopy"
+            >
+              {{ inviteCode }}
+              <PhCopy :size="18" class="text-ink-3" />
+            </button>
+          </div>
+          <p class="text-[12.5px] leading-relaxed text-ink-2 max-w-[280px]">
+            Продиктуйте его партнёру. Он войдёт по коду и присоединится к вашей семье.
+          </p>
+          <span v-if="copied" class="text-[12px] font-medium text-brand">Скопировано в буфер</span>
+        </template>
+        <template v-else>
+          <p class="text-[13px] leading-relaxed text-ink-2">
+            Создадим короткий код — его удобно продиктовать вслух. Код действует две недели.
+          </p>
+          <Button class="w-full" :disabled="inviteBusy" @click="handleMakeInvite">
+            {{ inviteBusy ? 'Создаём…' : 'Создать код приглашения' }}
+          </Button>
+        </template>
+      </div>
+    </div>
+
+    <!-- Step Footer Actions -->
+    <div class="mt-6 flex flex-col gap-2">
+      <Button
+        v-if="step === 'income'"
+        :disabled="!parseMoney(salary) || !name.trim()"
+        @click="joining ? finish() : next()"
+      >
+        {{ joining ? 'Готово' : 'Дальше' }}
+      </Button>
+
+      <template v-else-if="step === 'housing'">
+        <Button @click="next">Дальше</Button>
+        <Button variant="ghost" @click="next">Пропустить</Button>
+      </template>
+
+      <template v-else-if="step === 'credit'">
+        <Button @click="next">
+          {{ hasCredit === 'yes' ? 'Дальше' : 'Кредитов нет' }}
+        </Button>
+        <Button v-if="hasCredit === 'yes'" variant="ghost" @click="next">Пропустить</Button>
+      </template>
+
+      <template v-else-if="step === 'goal'">
+        <Button @click="next">Дальше</Button>
+        <Button variant="ghost" @click="next">Пока без цели</Button>
+      </template>
+
+      <template v-else-if="step === 'invite'">
+        <Button @click="finish">
+          {{ inviteCode ? 'Готово' : 'Перейти к бюджету' }}
+        </Button>
+        <p v-if="!inviteCode" class="text-center text-[12px] text-ink-3">
+          Можно пригласить позже — кнопка есть на главном экране.
+        </p>
+      </template>
+    </div>
+  </div>
+</template>

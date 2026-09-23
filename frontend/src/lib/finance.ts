@@ -1,3 +1,5 @@
+import type { Account, Category, Credit, Goal, Obligation, Person } from '@/types/finance'
+import { addMonths, daysInMonth, monthKey, today } from '@/lib/dates'
 /**
  * Расчётное ядро. Чистые функции: ни сети, ни состояния, ни ИИ.
  *
@@ -396,4 +398,204 @@ export function simulateStrategy(opts: {
 
   const result = snapshot ?? { savings, debtLeft: 0, net: savings, interest, interestTotal: 0, debtFreeMonth: null }
   return { ...result, interestTotal: interest, debtFreeMonth }
+}
+
+
+/* ---------------- производные величины и расчеты бюджетов ---------------- */
+
+const alive = <T extends { deletedAt?: string | null }>(x: T) => !x.deletedAt;
+
+export const liveGoals = (goals: Goal[]) => (goals || []).filter(alive);
+export const liveObligations = (list: Obligation[]) => (list || []).filter(alive);
+export const liveCredits = (list: Credit[]) => (list || []).filter(alive);
+export const liveAccounts = (list: Account[]) => (list || []).filter(alive);
+
+/** Сумма обязательства, действующая в указанном месяце. */
+export function amountAt(o: Obligation, key = monthKey()): number {
+  const versions = o.versions || [];
+  const active = versions.filter((v) => v.from <= key).sort((a, b) => a.from.localeCompare(b.from));
+  return active.length ? active[active.length - 1].amount : 0;
+}
+
+/** Сколько этот платёж занимает в плане месяца (годовые делятся на 12). */
+export function monthlyAmount(o: Obligation, key = monthKey()): number {
+  const full = amountAt(o, key);
+  return o.every === 'year' ? full / 12 : full;
+}
+
+/** Списывается ли этот платёж в указанном месяце. */
+export function dueIn(o: Obligation, key = monthKey()): boolean {
+  if (o.every !== 'year') return true;
+  return (o.month ?? 1) === Number(key.split('-')[1]);
+}
+
+/** Ближайшее будущее изменение суммы. */
+export function nextChange(o: Obligation, key = monthKey()) {
+  const versions = o.versions || [];
+  const future = versions.filter((v) => v.from > key).sort((a, b) => a.from.localeCompare(b.from));
+  if (!future.length) return null;
+  const current = amountAt(o, key);
+  return { ...future[0], delta: future[0].amount - current };
+}
+
+/** Оклад, действующий в указанном месяце. */
+export function salaryAt(p: Person, key = monthKey()): number {
+  const v = (p.salaryVersions ?? [])
+    .filter((x) => x.from <= key)
+    .sort((a, b) => a.from.localeCompare(b.from));
+  return v.length ? v[v.length - 1].amount : p.salary;
+}
+
+/** Совокупный доход участников. */
+export const totalIncome = (people: Person[], key = monthKey()) =>
+  (people || []).filter(alive).reduce((a, p) => a + salaryAt(p, key), 0);
+
+/** Обязательные базовые расходы в месяц (d1 + d2 + d4). */
+export const mandatoryMonthly = (categories: Category[]) =>
+  (categories || [])
+    .filter((c) => c.key === 'd1' || c.key === 'd2' || c.key === 'd4')
+    .reduce((a, c) => a + c.amount, 0);
+
+/** Проверка наличия заведённых данных в бюджете. */
+export function hasBudgetData(state: {
+  people?: Person[];
+  obligations?: Obligation[];
+  credits?: Credit[];
+  goals?: Goal[];
+  accounts?: Account[];
+}): boolean {
+  const people = state.people || [];
+  const obligations = state.obligations || [];
+  const credits = state.credits || [];
+  const goals = state.goals || [];
+  const accounts = state.accounts || [];
+
+  return (
+    people.some((p) => salaryAt(p) > 0) ||
+    liveObligations(obligations).length > 0 ||
+    liveCredits(credits).length > 0 ||
+    liveGoals(goals).length > 0 ||
+    liveAccounts(accounts).length > 0
+  );
+}
+
+/** Суммы по 5 разделам бюджета. */
+export function budgetAmounts(state: {
+  categories?: Category[];
+  obligations?: Obligation[];
+  credits?: Credit[];
+  goals?: Goal[];
+  people?: Person[];
+}) {
+  const key = monthKey();
+  const obligations = state.obligations || [];
+  const credits = state.credits || [];
+  const goalsList = state.goals || [];
+  const people = state.people || [];
+  const categories = state.categories || [];
+
+  const housing = liveObligations(obligations)
+    .filter((o) => o.category === 'd1')
+    .reduce((a, o) => a + monthlyAmount(o, key), 0);
+  const other = liveObligations(obligations)
+    .filter((o) => o.category !== 'd1' && o.category !== 'd2')
+    .reduce((a, o) => a + monthlyAmount(o, key), 0);
+  const debts =
+    liveCredits(credits).reduce((a, c) => a + c.payment, 0) +
+    liveObligations(obligations)
+      .filter((o) => o.category === 'd2')
+      .reduce((a, o) => a + monthlyAmount(o, key), 0);
+  const goals = liveGoals(goalsList).reduce((a, g) => a + g.monthly, 0);
+  const living = (categories.find((c) => c.key === 'd4')?.amount ?? 0) + other;
+  const income = totalIncome(people, key);
+  const free = income - housing - debts - goals - living;
+
+  return { d1: housing, d2: debts, d3: goals, d4: living, d5: free, income };
+}
+
+export const goalSavings = (goals: Goal[]) =>
+  liveGoals(goals)
+    .filter((g) => !g.accountId)
+    .reduce((a, g) => a + Math.max(0, g.have), 0);
+
+export const netWorth = (accounts: Account[], credits: Credit[], goals: Goal[] = []) =>
+  liveAccounts(accounts).reduce((a, x) => a + x.amount, 0) +
+  goalSavings(goals) -
+  liveCredits(credits).reduce((a, c) => a + c.principal, 0);
+
+/** До зарплаты: когда придут деньги и что нужно заплатить до этого. */
+export function untilPayday(
+  state: {
+    people?: Person[];
+    obligations?: Obligation[];
+    credits?: Credit[];
+    accounts?: Account[];
+  },
+  now = today(),
+) {
+  const people = state.people || [];
+  const obligations = state.obligations || [];
+  const credits = state.credits || [];
+  const accountsList = state.accounts || [];
+
+  const key = now.key;
+  const days = daysInMonth(key);
+
+  const ahead = people
+    .filter((p) => p.payday >= now.day)
+    .sort((a, b) => a.payday - b.payday)[0];
+  const wrapped = [...people].sort((a, b) => a.payday - b.payday)[0];
+  const who = ahead ?? wrapped;
+  if (!who) return null;
+
+  const nextKey = ahead ? key : addMonths(key, 1);
+  const inDays = ahead ? who.payday - now.day : days - now.day + who.payday;
+
+  const itemsOf = (k: string) => [
+    ...liveObligations(obligations)
+      .filter((o) => dueIn(o, k))
+      .map((o) => ({ id: o.id, name: o.name, day: o.day, value: amountAt(o, k), when: k })),
+    ...liveCredits(credits)
+      .map((c) => ({ id: c.id, name: c.name, day: c.day, value: c.payment, when: k })),
+  ];
+
+  const due = ahead
+    ? itemsOf(key).filter((x) => x.day >= now.day && x.day <= who.payday)
+    : [
+        ...itemsOf(key).filter((x) => x.day >= now.day),
+        ...itemsOf(nextKey)
+          .filter((x) => x.day <= who.payday)
+          .map((x) => ({ ...x, id: x.id + '@next' })),
+      ];
+  due.sort((a, b) => a.when.localeCompare(b.when) || a.day - b.day);
+
+  const accounts = liveAccounts(accountsList).filter((a) => a.kind !== 'deposit');
+  const onAccounts = accounts.reduce((a, x) => a + x.amount, 0);
+  const dueTotal = due.reduce((a, x) => a + x.value, 0);
+
+  return {
+    who,
+    income: salaryAt(who, nextKey),
+    inDays,
+    day: who.payday,
+    key: nextKey,
+    due,
+    dueTotal,
+    knowsCash: accounts.length > 0,
+    onAccounts,
+    shortfall: onAccounts - dueTotal,
+  };
+}
+
+/** Подсчёт ликвидных средств на картах и счетах. */
+export function liquidCash(liquidAccounts: Account[]): number {
+  return liveAccounts(liquidAccounts)
+    .filter((a) => a.kind === 'card' || a.kind === 'cash' || a.kind === 'envelope')
+    .reduce((a, x) => a + x.amount, 0);
+}
+
+/** Подушка безопасности в месяцах обязательных расходов. */
+export function cushionMonths(liquidAccounts: Account[], monthlyMandatory: number): number {
+  if (monthlyMandatory <= 0) return 0;
+  return +(liquidCash(liquidAccounts) / monthlyMandatory).toFixed(1);
 }

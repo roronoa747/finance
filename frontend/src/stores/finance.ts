@@ -2,7 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { mergeDocs, isEmptyDoc } from '@/lib/merge'
-import type { SyncDoc, SyncStatus } from '@/types/finance'
+import type { SyncDoc, SyncStatus, Person, PersonId } from '@/types/finance'
+import type { CategoryKey, HueKey } from '@/lib/palette'
 import type { ConflictResponse, HouseholdDocResponse } from '@/types/api'
 
 export function defaultSyncDoc(): SyncDoc {
@@ -230,6 +231,154 @@ export const useFinanceStore = defineStore('finance', () => {
     }, delay)
   }
 
+  
+
+  function setPerson(id: PersonId, patch: Partial<Person>) {
+    mutateHouseholdDoc((doc) => {
+      let p = doc.people.find((x) => x.id === id);
+      if (!p) {
+        p = {
+          id,
+          name: patch.name || 'Участник',
+          salary: patch.salary ?? 0,
+          payday: patch.payday ?? 10,
+          updatedAt: new Date().toISOString(),
+          ...patch,
+        };
+        doc.people.push(p);
+      } else {
+        Object.assign(p, patch, { updatedAt: new Date().toISOString() });
+      }
+    });
+  }
+
+  function addObligation(o: {
+    name: string;
+    note?: string;
+    day: number;
+    category: CategoryKey;
+    amount: number;
+    estimate?: boolean;
+    every?: 'month' | 'year';
+    month?: number;
+    who?: PersonId | null;
+  }) {
+    const id = Math.random().toString(36).slice(2, 10);
+    const t = new Date().toISOString();
+    mutateHouseholdDoc((doc) => {
+      doc.obligations.push({
+        id,
+        name: o.name,
+        note: o.note || '',
+        day: o.day,
+        category: o.category,
+        estimate: o.estimate,
+        every: o.every,
+        month: o.month,
+        who: o.who,
+        versions: [{ from: '2000-01', amount: o.amount }],
+        updatedAt: t,
+      });
+    });
+  }
+
+  function addCredit(c: {
+    name: string;
+    note?: string;
+    principal: number;
+    annualRate: number;
+    payment: number;
+    day: number;
+  }) {
+    const id = Math.random().toString(36).slice(2, 10);
+    const t = new Date().toISOString();
+    mutateHouseholdDoc((doc) => {
+      doc.credits.push({
+        id,
+        name: c.name,
+        note: c.note || '',
+        principal: c.principal,
+        annualRate: c.annualRate,
+        payment: c.payment,
+        day: c.day,
+        updatedAt: t,
+      });
+    });
+  }
+
+  function addGoal(g: {
+    name: string;
+    need: number;
+    have?: number;
+    monthly: number;
+    hue: HueKey;
+  }) {
+    const id = Math.random().toString(36).slice(2, 10);
+    const t = new Date().toISOString();
+    const have = g.have ?? 0;
+    mutateHouseholdDoc((doc) => {
+      doc.goals.push({
+        id,
+        name: g.name,
+        need: g.need,
+        seed: have,
+        have,
+        monthly: g.monthly,
+        hue: g.hue,
+        planPct: g.need > 0 ? Math.min(1, have / g.need) : 0,
+        movements: [],
+        updatedAt: t,
+      });
+    });
+  }
+
+  function setCategoryAmount(key: CategoryKey, amount: number) {
+    const t = new Date().toISOString();
+    mutateHouseholdDoc((doc) => {
+      let cat = doc.categories.find((c) => c.key === key);
+      if (cat) {
+        cat.amount = amount;
+        cat.updatedAt = t;
+      } else {
+        doc.categories.push({
+          key,
+          name: key === 'd1' ? 'Жильё' : key === 'd2' ? 'Кредиты' : key === 'd3' ? 'Цели' : key === 'd4' ? 'Еда и быт' : 'Свободно',
+          note: '',
+          amount,
+          updatedAt: t,
+        });
+      }
+    });
+  }
+
+  function finishSetup() {
+    mutateHouseholdDoc((doc) => {
+      doc.setupDoneAt = new Date().toISOString();
+    });
+  }
+
+  function adoptMembers(members: { slot: PersonId; displayName?: string; display_name?: string }[]) {
+    const t = new Date().toISOString();
+    mutateHouseholdDoc((doc) => {
+      for (const m of members) {
+        const existing = doc.people.find((p) => p.id === m.slot);
+        if (!existing) {
+          doc.people.push({
+            id: m.slot,
+            name: m.displayName || m.display_name || 'Участник',
+            salary: 0,
+            payday: 10,
+            updatedAt: t,
+          });
+        }
+      }
+    });
+  }
+
+  function resetAll() {
+    resetDoc();
+  }
+
   return {
     householdDoc,
     householdRev,
@@ -256,5 +405,13 @@ export const useFinanceStore = defineStore('finance', () => {
     pullPrivateDoc,
     pushPrivateDoc,
     scheduleSync,
+    setPerson,
+    addObligation,
+    addCredit,
+    addGoal,
+    setCategoryAmount,
+    finishSetup,
+    adoptMembers,
+    resetAll,
   }
 })
