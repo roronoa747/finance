@@ -17,7 +17,6 @@ import {
   PhX,
 } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
-import { useAuthStore } from '@/stores/auth'
 import { monthTitle, monthKey } from '@/lib/dates'
 import SyncBadge from '@/components/SyncBadge.vue'
 import AppearancePanel from '@/components/AppearancePanel.vue'
@@ -26,13 +25,12 @@ import Row from '@/components/kit/Row.vue'
 const route = useRoute()
 const router = useRouter()
 const financeStore = useFinanceStore()
-const authStore = useAuthStore()
 
 const addOpen = ref(false)
 const themeOpen = ref(false)
 
 const people = computed(() => financeStore.people)
-const memberCount = computed(() => authStore.household ? 2 : people.value.length)
+const memberCount = computed(() => people.value.length)
 
 const title = computed(() => {
   const p = route.path
@@ -194,7 +192,7 @@ function onSparkleClick() {
             title="Пригласить партнёра"
             note="код для второго участника"
             clickable
-            @click="navigateAndClose('/setup')"
+            @click="navigateAndClose('/')"
           >
             <template #icon><PhUserPlus :size="16" class="text-brand" /></template>
           </Row>

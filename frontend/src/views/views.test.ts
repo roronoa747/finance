@@ -163,4 +163,25 @@ describe('views/Access & Setup — Бизнес-сценарии экранов 
     expect(financeStore.people.find((p) => p.id === 'b')?.salary).toBe(500_000)
     expect(financeStore.people.find((p) => p.id === 'b')?.name).toBe('Аруна')
   })
+
+  it('компонентный рендер Access.vue: проверка разметки табов, полей и демо-кнопки', async () => {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('vue/server-renderer')
+    const { createMemoryHistory } = await import('vue-router')
+    const { createAppRouter } = await import('@/router')
+    const { default: Access } = await import('./Access.vue')
+
+    const router = createAppRouter(createMemoryHistory())
+    const app = createSSRApp(Access)
+    app.use(router)
+
+    const html = await renderToString(app)
+    expect(html).toContain('Family Finance')
+    expect(html).toContain('Вход')
+    expect(html).toContain('Войти')
+    expect(html).toContain('Создать')
+    expect(html).toContain('По коду')
+    expect(html).toContain('Попробовать в демо-режиме без регистрации')
+  })
 })
+

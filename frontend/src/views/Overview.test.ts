@@ -231,4 +231,41 @@ describe('views/Overview.vue — Финансовые показатели, ка
     expect(payday?.due[0].name).toBe('Коммуналка')
     expect(payday?.dueTotal).toBe(35_000)
   })
+
+  it('рендерит Overview.vue с моковыми данными хранилища (компонентный рендер)', async () => {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('vue/server-renderer')
+    const { createMemoryHistory } = await import('vue-router')
+    const { createAppRouter } = await import('@/router')
+    const { default: Overview } = await import('./Overview.vue')
+
+    const store = useFinanceStore()
+    store.householdDoc.people = [
+      { id: 'a', name: 'Ильяс', salary: 700_000, payday: 10, updatedAt: '' },
+    ]
+    store.householdDoc.categories = [
+      { key: 'd1', name: 'Жильё', note: '', amount: 200_000, updatedAt: '' },
+      { key: 'd2', name: 'Кредиты', note: '', amount: 50_000, updatedAt: '' },
+      { key: 'd4', name: 'Еда и быт', note: '', amount: 150_000, updatedAt: '' },
+      { key: 'd5', name: 'Свободно', note: '', amount: 300_000, updatedAt: '' },
+    ]
+    store.householdDoc.accounts = [
+      { id: 'acc-1', name: 'Kaspi Gold', note: '', kind: 'card', amount: 500_000, updatedAt: '' },
+    ]
+
+    const router = createAppRouter(createMemoryHistory())
+    const app = createSSRApp(Overview)
+    app.use(router)
+
+    const html = await renderToString(app)
+
+    // Проверяем наличие ключевых секций и чисел в HTML
+    expect(html).toContain('Пригласите партнёра') // people.length < 2
+    expect(html).toContain('Свободно в')
+    expect(html).toContain('Капитал')
+    expect(html).toContain('Доход месяца')
+    expect(html).toContain('Обязательства')
+    expect(html).toContain('Подушка')
+  })
 })
+

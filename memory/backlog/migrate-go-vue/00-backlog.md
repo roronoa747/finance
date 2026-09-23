@@ -1,7 +1,7 @@
 # Бэклог «Миграция на Go + Vue 3» (MGV)
 
-> **Статус:** 🔄 в работе: Блоки 1 и 2 закрыты 🏁. Блок 3 реализован исполнителем ✅, готов к проверке критиком (`/critic migrate-go-vue 3`).
-> Создан Go-модуль, схема PostgreSQL, авторизация, синхронизация, E2E тесты, CI пайплайн, Vue 3 SPA, Pinia хранилище, клиент Go API и портирована вся математика со 100% зелёными тестами (44 теста в 7 сьютах).
+> **Статус:** 🔄 в работе: Блоки 1 и 2 закрыты 🏁. Блок 3 проверен критиком ✅, готов к приёмке (`/accept migrate-go-vue 3`).
+> Реализованы экраны Access, Setup, Overview, каркас AppShell с навигацией, темами и UI Kit. 100% зелёные тесты (60 тестов в 11 сьютах).
 
 Источник: `migrate-go-vue-brief.md` (резюме интервью подтверждено владельцем 2026-09-23).
 Формат — `memory/process/BACKLOG-GUIDE.md`. **Решения §2 зафиксированы — рабочие сессии их не пересматривают.**
@@ -58,7 +58,7 @@
 | **2. Vue Core & Math** 🏁 закрыт *(M: фронтенд ядро)* | MGV-05 Скелет Vue 3 + Vite + Tailwind + Pinia | `block-2-vue-core/MGV-05-vue-skeleton.md` | MGV-04 | ✅ |
 | | MGV-06 Портирование финансовой математики и слияния (`merge.ts`) | `block-2-vue-core/MGV-06-finance-merge-math.md` | MGV-05 | ✅ |
 | | MGV-07 Клиент синхронизации API и хранилище Pinia | `block-2-vue-core/MGV-07-pinia-sync-store.md` | MGV-06 | ✅ |
-| **3. Экраны: База** 🔄 *(в ревью)* | MGV-08 Экраны `Access.vue` (вход/инвайт) и `Setup.vue` (мастер) | `block-3-screens-base/MGV-08-access-setup.md` | MGV-07 | ✅ |
+| **3. Экраны: База** ✅ *(готов к приёмке)* | MGV-08 Экраны `Access.vue` (вход/инвайт) и `Setup.vue` (мастер) | `block-3-screens-base/MGV-08-access-setup.md` | MGV-07 | ✅ |
 | | MGV-09 Экран `Overview.vue` (сводка, капитал, графики) | `block-3-screens-base/MGV-09-overview.md` | MGV-08 | ✅ |
 | **4. Экраны: Бюджет** ⬜ | MGV-10 Экран `Budget.vue` (План, Календарь, Список) | `block-4-budget-ritual/MGV-10-budget-calendar.md` | MGV-09 | ⬜ |
 | | MGV-11 Экран `Ritual.vue` (высвобождение средств) | `block-4-budget-ritual/MGV-11-ritual.md` | MGV-10 | ⬜ |

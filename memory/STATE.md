@@ -6,7 +6,7 @@
 
 | Бэклог | Каталог | Статус | Следующий шаг |
 |---|---|---|---|
-| Миграция на Go + Vue 3 (`migrate-go-vue`) | `memory/backlog/migrate-go-vue/` | 🔄 Блоки 1 и 2 закрыты 🏁. Готов к старту Блок 3 («Экраны: База») | `/worker migrate-go-vue 3` |
+| Миграция на Go + Vue 3 (`migrate-go-vue`) | `memory/backlog/migrate-go-vue/` | 🔄 Блоки 1 и 2 закрыты 🏁. Блок 3 проверен критиком ✅, готов к приёмке | `/accept migrate-go-vue 3` |
 
 ## Закрытые (архив)
 
