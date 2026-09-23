@@ -10,3 +10,7 @@ dev-dist
 
 # личные настройки Claude Code
 .claude/settings.local.json
+
+# локальные секреты memory фреймворка
+memory/secrets/*
+!memory/secrets/README.md

@@ -1,0 +1,90 @@
+# Бэклог «Миграция на Go + Vue 3» (MGV)
+
+> **Статус:** 🔄 в работе: подготовка Блока 1 (Go-бэкенд).
+> Инициализация Go-модуля, схемы базы данных PostgreSQL, авторизации и синхронизации.
+
+Источник: `migrate-go-vue-brief.md` (резюме интервью подтверждено владельцем 2026-09-23).
+Формат — `memory/process/BACKLOG-GUIDE.md`. **Решения §2 зафиксированы — рабочие сессии их не пересматривают.**
+
+---
+
+## 1. Цель
+
+Перевести полнофункциональное семейное финансовое приложение с React 19 + Supabase на независимый стек: **Go (REST API бэкенд) + Vue 3 SPA (фронтенд) + PostgreSQL**. Сохранить 100% бизнес-логики, алгоритмов слияния и финансовой математики без регрессий.
+
+Режим процесса: **L** (архитектурная смена стека и безопасности; Блок 1 идёт по L-конвейеру с каталожным ревью).
+
+---
+
+## 2. Зафиксированные решения
+
+- **Р-1. Стек бэкенда**: Go (Go 1.27+), стандартная библиотека + роутер Chi, чистая архитектура (handlers, service, repository). *(источник: бриф)*
+- **Р-2. База данных**: PostgreSQL. Схема повторяет проверенную модель: `households`, `household_members`, `household_docs`, `private_docs`, `household_invites`. *(источник: выбор владельца)*
+- **Р-3. Фронтенд**: Vue 3 (Composition API, `<script setup>`), Vite, TypeScript, Pinia, Tailwind CSS 4, Phosphor Icons for Vue. *(источник: бриф)*
+- **Р-4. Структура проекта (монорепозиторий)**:
+  - `backend/` — исходники Go API.
+  - `frontend/` — исходники Vue 3 SPA.
+  - `src/` — текущий эталонный код React (не удаляется до успешной сквозной приёмки Блока 5). *(источник: решение архитектора)*
+- **Р-5. Приватность и безопасность**:
+  - `household_docs` — доступен обоим партнёрам домохозяйства.
+  - `private_docs` — физически изолирован, доступен ТОЛЬКО владельцу (авторизованному `user_id`).
+  - Пароли хэшируются через bcrypt, токены — JWT (HS256). *(источник: безопасность)*
+
+---
+
+## 3. Матрица прав
+
+| Действие | Member (участник) | Viewer (наблюдатель) | Анонимный |
+|---|---|---|---|
+| Регистрация / Вход | — | — | ✅ |
+| Чтение семейного бюджета (`household_docs`) | ✅ | ✅ | ❌ |
+| Запись в семейный бюджет (`household_docs`) | ✅ | ❌ | ❌ |
+| Доступ к личному кошельку (`private_docs`) | ✅ (только свой) | ✅ (только свой) | ❌ |
+| Создание инвайта партнёру | ✅ | ❌ | ❌ |
+
+---
+
+## 4. Блоки и задачи
+
+Статусы задач: ⬜ не начата · 🔄 в работе · ✅ готова. 
+Статус блока (⬜ 🔄 ✅ принят · 🏁 закрыт).
+
+| Блок | Задача | Файл | Зависит от | Статус |
+|---|---|---|---|---|
+| **1. Go Backend** 🔄 *(L: безопасность, БД)* | MGV-01 Скелет Go-сервера, конфиг и подключение к PostgreSQL | `block-1-backend/MGV-01-go-skeleton-db.md` | — | ⬜ |
+| | MGV-02 Модели, миграции и репозитории данных | `block-1-backend/MGV-02-db-models-repo.md` | MGV-01 | ⬜ |
+| | MGV-03 Аутентификация, JWT и управление домохозяйством | `block-1-backend/MGV-03-auth-household.md` | MGV-02 | ⬜ |
+| | MGV-04 API синхронизации `household_docs` и `private_docs` с ревизиями | `block-1-backend/MGV-04-sync-api.md` | MGV-03 | ⬜ |
+| **2. Vue Core & Math** ⬜ | MGV-05 Скелет Vue 3 + Vite + Tailwind + Pinia | `block-2-vue-core/MGV-05-vue-skeleton.md` | MGV-04 | ⬜ |
+| | MGV-06 Портирование финансовой математики и слияния (`merge.ts`) | `block-2-vue-core/MGV-06-finance-merge-math.md` | MGV-05 | ⬜ |
+| | MGV-07 Клиент синхронизации API и хранилище Pinia | `block-2-vue-core/MGV-07-pinia-sync-store.md` | MGV-06 | ⬜ |
+| **3. Экраны: База** ⬜ | MGV-08 Экраны `Access.vue` (вход/инвайт) и `Setup.vue` (мастер) | `block-3-screens-base/MGV-08-access-setup.md` | MGV-07 | ⬜ |
+| | MGV-09 Экран `Overview.vue` (сводка, капитал, графики) | `block-3-screens-base/MGV-09-overview.md` | MGV-08 | ⬜ |
+| **4. Экраны: Бюджет** ⬜ | MGV-10 Экран `Budget.vue` (План, Календарь, Список) | `block-4-budget-ritual/MGV-10-budget-calendar.md` | MGV-09 | ⬜ |
+| | MGV-11 Экран `Ritual.vue` (высвобождение средств) | `block-4-budget-ritual/MGV-11-ritual.md` | MGV-10 | ⬜ |
+| **5. Капитал & Приёмка** ⬜ | MGV-12 Экран `Capital.vue` (счета, кредиты, досрочка) | `block-5-capital-goals/MGV-12-capital-credits.md` | MGV-11 | ⬜ |
+| | MGV-13 Экраны `Goals.vue`, `GoalDetail.vue`, `Deposit.vue` | `block-5-capital-goals/MGV-13-goals-deposit.md` | MGV-12 | ⬜ |
+| | MGV-14 Сквозная приёмка, E2E тесты двух клиентов | `block-5-capital-goals/MGV-14-e2e-acceptance.md` | MGV-13 | ⬜ |
+
+---
+
+## 5. Протокол
+
+По `memory/process/BACKLOG-GUIDE.md`. 
+- **Блок 1** проходит по регламенту **L**:
+  1. `/worker migrate-go-vue 1` (реализация)
+  2. `/critic migrate-go-vue 1` (проверка диффа и тестов)
+  3. `/accept migrate-go-vue 1` (приёмка функционала)
+  4. `/dir-review migrate-go-vue 1 backend` (каталожное ревью безопасности)
+  5. `/cleanup migrate-go-vue 1` (финализация)
+- **Блоки 2–5** идут по стандартному регламенту **M**.
+
+---
+
+## 6. Технический контекст
+
+- Порт бэкенда: `8080` (дефолт `http://localhost:8080`).
+- Порт фронтенда: `5173` (Vite дефолт).
+- База данных: PostgreSQL. Таблицы создаются миграциями в `backend/migrations/`.
+- Верификация Go: `cd backend && go test ./...`.
+- Верификация Vue: `cd frontend && npm run build && npm test`.
