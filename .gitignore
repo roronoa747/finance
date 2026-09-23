@@ -14,3 +14,9 @@ dev-dist
 # локальные секреты memory фреймворка
 memory/secrets/*
 !memory/secrets/README.md
+
+# Go бэкенд
+*.exe
+backend/server
+backend/.env
+coverage.out
