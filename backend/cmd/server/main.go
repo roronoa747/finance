@@ -41,17 +41,16 @@ func main() {
 	if cfg.DatabaseURL != "" {
 		database, err = db.Connect(cfg.DatabaseURL)
 		if err != nil {
-			log.Printf("warning: unable to connect to database: %v", err)
-		} else {
-			defer database.Close()
-			log.Println("connected to PostgreSQL successfully")
+			log.Fatalf("fatal: unable to connect to database: %v", err)
+		}
+		defer database.Close()
+		log.Println("connected to PostgreSQL successfully")
 
-			// Run auto-migrations
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			if err := db.RunMigrations(ctx, database, migrations.FS); err != nil {
-				log.Printf("warning: migration runner encountered an error: %v", err)
-			}
+		// Run auto-migrations
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := db.RunMigrations(ctx, database, migrations.FS); err != nil {
+			log.Fatalf("fatal: migration runner encountered an error: %v", err)
 		}
 	}
 
