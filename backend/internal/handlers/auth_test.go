@@ -192,3 +192,131 @@ func TestAuthAndHouseholdFlow(t *testing.T) {
 		t.Fatalf("expected 200 OK for Bob's me endpoint, got %d", meRecBob.Code)
 	}
 }
+
+func TestAuthValidationAndDuplicate(t *testing.T) {
+	router, _, _ := setupTestApp()
+
+	// 1. Invalid email (no @)
+	body1 := makeAuthJSON("invalid-email", "Secret123", "User", "HH")
+	req1 := httptest.NewRequest(http.MethodPost, "/api/auth/register", bytes.NewReader(body1))
+	req1.Header.Set("Content-Type", "application/json")
+	rec1 := httptest.NewRecorder()
+	router.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 Bad Request for invalid email, got %d", rec1.Code)
+	}
+
+	// 2. Short password (< 6 chars)
+	body2 := makeAuthJSON("user@domain.com", "123", "User", "HH")
+	req2 := httptest.NewRequest(http.MethodPost, "/api/auth/register", bytes.NewReader(body2))
+	req2.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	router.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 Bad Request for short password, got %d", rec2.Code)
+	}
+
+	// 3. Register user with uppercase email
+	body3 := makeAuthJSON("UpperCase@Domain.COM", "Secret123", "User", "HH")
+	req3 := httptest.NewRequest(http.MethodPost, "/api/auth/register", bytes.NewReader(body3))
+	req3.Header.Set("Content-Type", "application/json")
+	rec3 := httptest.NewRecorder()
+	router.ServeHTTP(rec3, req3)
+	if rec3.Code != http.StatusCreated {
+		t.Fatalf("expected 201 Created for register, got %d", rec3.Code)
+	}
+
+	// 4. Duplicate registration (same email lowercase) -> 409 Conflict
+	body4 := makeAuthJSON("uppercase@domain.com", "Secret123", "User", "HH")
+	req4 := httptest.NewRequest(http.MethodPost, "/api/auth/register", bytes.NewReader(body4))
+	req4.Header.Set("Content-Type", "application/json")
+	rec4 := httptest.NewRecorder()
+	router.ServeHTTP(rec4, req4)
+	if rec4.Code != http.StatusConflict {
+		t.Errorf("expected 409 Conflict for duplicate email, got %d", rec4.Code)
+	}
+
+	// 5. Login with lowercase email succeeds (case-insensitivity)
+	loginBody := makeAuthJSON("uppercase@domain.com", "Secret123", "", "")
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRec := httptest.NewRecorder()
+	router.ServeHTTP(loginRec, loginReq)
+	if loginRec.Code != http.StatusOK {
+		t.Errorf("expected 200 OK for case-insensitive login, got %d", loginRec.Code)
+	}
+}
+
+func TestHouseholdInviteEdgeCases(t *testing.T) {
+	router, repos, tokens := setupTestApp()
+	ctx := t.Context()
+
+	// 1. Create household and member
+	u1, _ := repos.Users.Create(ctx, "owner@invite.test", "hash")
+	hh, _, _ := repos.Households.CreateHousehold(ctx, "Test Family", u1.ID, "Owner")
+	ownerToken, _ := tokens.GenerateToken(u1.ID, hh.ID, "member", "a")
+
+	// Create viewer user
+	u2, _ := repos.Users.Create(ctx, "viewer@invite.test", "hash")
+	viewerToken, _ := tokens.GenerateToken(u2.ID, hh.ID, "viewer", "b")
+
+	// 2. Viewer tries to create invite -> 403 Forbidden (§3 rights matrix)
+	viewerInviteReq := httptest.NewRequest(http.MethodPost, "/api/household/invites", nil)
+	viewerInviteReq.Header.Set("Authorization", "Bearer "+viewerToken)
+	viewerInviteRec := httptest.NewRecorder()
+	router.ServeHTTP(viewerInviteRec, viewerInviteReq)
+
+	if viewerInviteRec.Code != http.StatusForbidden {
+		t.Errorf("expected 403 Forbidden when viewer creates invite, got %d", viewerInviteRec.Code)
+	}
+
+	// 3. Member creates invite -> 201 Created
+	ownerInviteReq := httptest.NewRequest(http.MethodPost, "/api/household/invites", nil)
+	ownerInviteReq.Header.Set("Authorization", "Bearer "+ownerToken)
+	ownerInviteRec := httptest.NewRecorder()
+	router.ServeHTTP(ownerInviteRec, ownerInviteReq)
+
+	if ownerInviteRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 Created, got %d", ownerInviteRec.Code)
+	}
+	var inv struct {
+		Code string `json:"code"`
+	}
+	_ = json.NewDecoder(ownerInviteRec.Body).Decode(&inv)
+
+	// 4. Partner joins with non-existent invite code -> 404
+	joinBadReq := httptest.NewRequest(http.MethodPost, "/api/household/join", bytes.NewBufferString(`{"code":"BADCODE1","display_name":"Partner"}`))
+	joinBadReq.Header.Set("Authorization", "Bearer "+viewerToken)
+	joinBadReq.Header.Set("Content-Type", "application/json")
+	joinBadRec := httptest.NewRecorder()
+	router.ServeHTTP(joinBadRec, joinBadReq)
+
+	if joinBadRec.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for bad invite code, got %d", joinBadRec.Code)
+	}
+
+	// 5. Valid join
+	joinValidReq := httptest.NewRequest(http.MethodPost, "/api/household/join", bytes.NewBufferString(`{"code":"`+inv.Code+`","display_name":"Partner"}`))
+	joinValidReq.Header.Set("Authorization", "Bearer "+viewerToken)
+	joinValidReq.Header.Set("Content-Type", "application/json")
+	joinValidRec := httptest.NewRecorder()
+	router.ServeHTTP(joinValidRec, joinValidReq)
+
+	if joinValidRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for valid join, got %d", joinValidRec.Code)
+	}
+
+	// 6. Reuse the same invite code -> 400 Bad Request
+	u3, _ := repos.Users.Create(ctx, "third@invite.test", "hash")
+	thirdToken, _ := tokens.GenerateToken(u3.ID, "hh-temp", "member", "a")
+
+	reuseReq := httptest.NewRequest(http.MethodPost, "/api/household/join", bytes.NewBufferString(`{"code":"`+inv.Code+`","display_name":"Third"}`))
+	reuseReq.Header.Set("Authorization", "Bearer "+thirdToken)
+	reuseReq.Header.Set("Content-Type", "application/json")
+	reuseRec := httptest.NewRecorder()
+	router.ServeHTTP(reuseRec, reuseReq)
+
+	if reuseRec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 Bad Request for reused invite, got %d", reuseRec.Code)
+	}
+}

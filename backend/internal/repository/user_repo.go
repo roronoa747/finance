@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"finance-backend/internal/models"
 )
@@ -29,19 +30,23 @@ func NewSQLUserRepository(db *sql.DB) UserRepository {
 }
 
 func (r *sqlUserRepository) Create(ctx context.Context, email, passwordHash string) (*models.User, error) {
+	cleanEmail := strings.ToLower(strings.TrimSpace(email))
 	query := `
 		INSERT INTO users (email, password_hash)
 		VALUES ($1, $2)
 		RETURNING id, email, password_hash, created_at;`
 
 	user := &models.User{}
-	err := r.db.QueryRowContext(ctx, query, email, passwordHash).Scan(
+	err := r.db.QueryRowContext(ctx, query, cleanEmail, passwordHash).Scan(
 		&user.ID,
 		&user.Email,
 		&user.PasswordHash,
 		&user.CreatedAt,
 	)
 	if err != nil {
+		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "UNIQUE constraint") || strings.Contains(err.Error(), "23505") {
+			return nil, ErrUserAlreadyExists
+		}
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
 
@@ -49,13 +54,14 @@ func (r *sqlUserRepository) Create(ctx context.Context, email, passwordHash stri
 }
 
 func (r *sqlUserRepository) GetByEmail(ctx context.Context, email string) (*models.User, error) {
+	cleanEmail := strings.ToLower(strings.TrimSpace(email))
 	query := `
 		SELECT id, email, password_hash, created_at
 		FROM users
-		WHERE email = $1;`
+		WHERE LOWER(email) = $1;`
 
 	user := &models.User{}
-	err := r.db.QueryRowContext(ctx, query, email).Scan(
+	err := r.db.QueryRowContext(ctx, query, cleanEmail).Scan(
 		&user.ID,
 		&user.Email,
 		&user.PasswordHash,

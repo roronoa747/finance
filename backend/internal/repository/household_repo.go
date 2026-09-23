@@ -127,6 +127,7 @@ func (r *sqlHouseholdRepository) GetMembership(ctx context.Context, userID strin
 		FROM household_members m
 		JOIN households h ON h.id = m.household_id
 		WHERE m.user_id = $1
+		ORDER BY m.joined_at DESC
 		LIMIT 1;`
 
 	m := &models.HouseholdMember{}

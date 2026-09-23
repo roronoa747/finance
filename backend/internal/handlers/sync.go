@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"finance-backend/internal/auth"
@@ -73,6 +74,10 @@ func (h *SyncHandler) PushHouseholdDoc(w http.ResponseWriter, r *http.Request) {
 
 	updatedDoc, conflict, err := h.docRepo.PushHouseholdDoc(r.Context(), householdID, req.LastSeenRev, req.Data, userID)
 	if err != nil {
+		if errors.Is(err, repository.ErrDocNotFound) {
+			respondJSON(w, http.StatusNotFound, map[string]string{"error": "household document not found"})
+			return
+		}
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update household document"})
 		return
 	}

@@ -55,7 +55,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req.Email = strings.TrimSpace(req.Email)
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 	if req.Email == "" || !strings.Contains(req.Email, "@") {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "valid email is required"})
 		return
@@ -107,7 +107,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req.Email = strings.TrimSpace(req.Email)
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 	if req.Email == "" || req.Password == "" {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "email and password are required"})
 		return

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -202,5 +203,112 @@ func TestPrivateDocIsolationAndOptimisticLock(t *testing.T) {
 
 	if bobStaleRec.Code != http.StatusConflict {
 		t.Fatalf("expected 409 Conflict for Bob stale private push, got %d", bobStaleRec.Code)
+	}
+}
+
+func TestSyncConcurrentOptimisticLock(t *testing.T) {
+	router, repos, tokens := setupSyncTestApp()
+	ctx := t.Context()
+
+	u1, _ := repos.Users.Create(ctx, "concurrent@sync.test", "hash1")
+	hh, _, _ := repos.Households.CreateHousehold(ctx, "Concurrent HH", u1.ID, "User1")
+	token, _ := tokens.GenerateToken(u1.ID, hh.ID, "member", "a")
+
+	// Initial rev is 1. 5 concurrent goroutines try to push with last_seen_rev: 1.
+	const workers = 5
+	var wg sync.WaitGroup
+	var successCount int
+	var conflictCount int
+	var mu sync.Mutex
+
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			payload := `{"last_seen_rev": 1, "data": {"updated_by_worker": ` + jsonNumber(workerID) + `}}`
+			req := httptest.NewRequest(http.MethodPost, "/api/sync/household", bytes.NewBufferString(payload))
+			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			mu.Lock()
+			defer mu.Unlock()
+			if rec.Code == http.StatusOK {
+				successCount++
+			} else if rec.Code == http.StatusConflict {
+				conflictCount++
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	if successCount != 1 {
+		t.Errorf("expected exactly 1 successful write, got %d", successCount)
+	}
+	if conflictCount != workers-1 {
+		t.Errorf("expected %d conflicts, got %d", workers-1, conflictCount)
+	}
+}
+
+func jsonNumber(n int) string {
+	b, _ := json.Marshal(n)
+	return string(b)
+}
+
+func TestSyncViewerCanWritePrivateDoc(t *testing.T) {
+	router, repos, tokens := setupSyncTestApp()
+	ctx := t.Context()
+
+	u1, _ := repos.Users.Create(ctx, "viewer-write@sync.test", "hash1")
+	hh, _, _ := repos.Households.CreateHousehold(ctx, "Viewer Test HH", u1.ID, "Admin")
+
+	u2, _ := repos.Users.Create(ctx, "viewer-user@sync.test", "hash2")
+	inv, _ := repos.Households.CreateInvite(ctx, hh.ID, u1.ID)
+	_, _ = repos.Households.JoinHousehold(ctx, inv.Code, u2.ID, "Viewer")
+	viewerToken, _ := tokens.GenerateToken(u2.ID, hh.ID, "viewer", "b")
+
+	// 1. Viewer writes to their own private doc -> 200 OK
+	privPayload := `{"last_seen_rev": 1, "data": {"my_notes": "viewer notes"}}`
+	privReq := httptest.NewRequest(http.MethodPost, "/api/sync/private", bytes.NewBufferString(privPayload))
+	privReq.Header.Set("Authorization", "Bearer "+viewerToken)
+	privReq.Header.Set("Content-Type", "application/json")
+	privRec := httptest.NewRecorder()
+	router.ServeHTTP(privRec, privReq)
+
+	if privRec.Code != http.StatusOK {
+		t.Errorf("expected viewer to be able to write private doc (200), got %d: %s", privRec.Code, privRec.Body.String())
+	}
+
+	// 2. Viewer cannot write to household doc -> 403 Forbidden
+	hhPayload := `{"last_seen_rev": 1, "data": {"budget": {}}}`
+	hhReq := httptest.NewRequest(http.MethodPost, "/api/sync/household", bytes.NewBufferString(hhPayload))
+	hhReq.Header.Set("Authorization", "Bearer "+viewerToken)
+	hhReq.Header.Set("Content-Type", "application/json")
+	hhRec := httptest.NewRecorder()
+	router.ServeHTTP(hhRec, hhReq)
+
+	if hhRec.Code != http.StatusForbidden {
+		t.Errorf("expected 403 Forbidden for viewer writing household doc, got %d", hhRec.Code)
+	}
+}
+
+func TestSyncMalformedPayload(t *testing.T) {
+	router, repos, tokens := setupSyncTestApp()
+	ctx := t.Context()
+
+	u1, _ := repos.Users.Create(ctx, "malformed@sync.test", "hash1")
+	hh, _, _ := repos.Households.CreateHousehold(ctx, "Malformed Test HH", u1.ID, "User")
+	token, _ := tokens.GenerateToken(u1.ID, hh.ID, "member", "a")
+
+	badReq := httptest.NewRequest(http.MethodPost, "/api/sync/household", bytes.NewBufferString(`{bad json`))
+	badReq.Header.Set("Authorization", "Bearer "+token)
+	badReq.Header.Set("Content-Type", "application/json")
+	badRec := httptest.NewRecorder()
+	router.ServeHTTP(badRec, badReq)
+
+	if badRec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 Bad Request for malformed JSON, got %d", badRec.Code)
 	}
 }

@@ -159,13 +159,22 @@ func (m *MockHouseholdRepo) GetMembership(ctx context.Context, userID string) (*
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
+	var latestMember *models.HouseholdMember
+	var latestHousehold *models.Household
+
 	for hID, memberList := range m.members {
 		for _, member := range memberList {
 			if member.UserID == userID {
-				h := m.households[hID]
-				return member, h, nil
+				if latestMember == nil || member.JoinedAt.After(latestMember.JoinedAt) {
+					latestMember = member
+					latestHousehold = m.households[hID]
+				}
 			}
 		}
+	}
+
+	if latestMember != nil {
+		return latestMember, latestHousehold, nil
 	}
 	return nil, nil, ErrMembershipNotFound
 }
