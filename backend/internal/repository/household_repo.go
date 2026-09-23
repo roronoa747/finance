@@ -250,7 +250,13 @@ func (r *sqlHouseholdRepository) JoinHousehold(ctx context.Context, code, userID
 		return nil, ErrInviteExpired
 	}
 
-	// 2. Check if user is already a member of this household
+	// 2. Lock parent household to strictly serialize concurrent joins and slot assignment
+	var lockedHouseholdID string
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM households WHERE id = $1 FOR UPDATE;`, inv.HouseholdID).Scan(&lockedHouseholdID); err != nil {
+		return nil, fmt.Errorf("failed to lock household: %w", err)
+	}
+
+	// 3. Check if user is already a member of this household
 	var existingMember models.HouseholdMember
 	checkMemberQuery := `
 		SELECT household_id, user_id, slot, display_name, role, joined_at
