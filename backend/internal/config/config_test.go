@@ -27,8 +27,12 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.JWTSecret != "dev-secret-change-in-production" {
 		t.Errorf("expected default secret, got %s", cfg.JWTSecret)
 	}
-	if cfg.CORSOrigin != "*" {
-		t.Errorf("expected default CORS origin '*', got %s", cfg.CORSOrigin)
+	if cfg.CORSOrigin != "http://localhost:5173,http://127.0.0.1:5173" {
+		t.Errorf("expected default CORS origin, got %s", cfg.CORSOrigin)
+	}
+	origins := cfg.AllowedOrigins()
+	if len(origins) != 2 || origins[0] != "http://localhost:5173" || origins[1] != "http://127.0.0.1:5173" {
+		t.Errorf("unexpected allowed origins: %v", origins)
 	}
 	if cfg.Env != "development" {
 		t.Errorf("expected default env 'development', got %s", cfg.Env)
