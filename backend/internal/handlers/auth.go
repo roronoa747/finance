@@ -81,6 +81,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	// 2. Create household and initial membership (slot 'a')
 	household, member, err := h.householdRepo.CreateHousehold(r.Context(), req.HouseholdName, user.ID, req.DisplayName)
 	if err != nil {
+		_ = h.userRepo.Delete(r.Context(), user.ID)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create household"})
 		return
 	}
@@ -126,6 +127,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	member, household, err := h.householdRepo.GetMembership(r.Context(), user.ID)
 	if err != nil {
+		if errors.Is(err, repository.ErrMembershipNotFound) {
+			respondJSON(w, http.StatusNotFound, map[string]string{"error": "household membership not found"})
+			return
+		}
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load household membership"})
 		return
 	}

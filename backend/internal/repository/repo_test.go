@@ -51,6 +51,15 @@ func TestUserRepository(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for non-existent user, got nil")
 	}
+
+	// 6. Delete user
+	if err := repo.Delete(ctx, user.ID); err != nil {
+		t.Fatalf("failed to delete user: %v", err)
+	}
+	_, err = repo.GetByID(ctx, user.ID)
+	if err == nil {
+		t.Fatal("expected user to be deleted, but was found")
+	}
 }
 
 func TestHouseholdRepository(t *testing.T) {

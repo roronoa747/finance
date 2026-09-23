@@ -86,6 +86,19 @@ func (m *MockUserRepo) GetByID(ctx context.Context, id string) (*models.User, er
 	return user, nil
 }
 
+func (m *MockUserRepo) Delete(ctx context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	user, exists := m.users[id]
+	if !exists {
+		return nil
+	}
+	delete(m.users, id)
+	delete(m.byEmail, user.Email)
+	return nil
+}
+
 // --- MockHouseholdRepo ---
 
 type MockHouseholdRepo struct {

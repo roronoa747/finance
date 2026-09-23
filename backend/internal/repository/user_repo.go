@@ -19,6 +19,7 @@ type UserRepository interface {
 	Create(ctx context.Context, email, passwordHash string) (*models.User, error)
 	GetByEmail(ctx context.Context, email string) (*models.User, error)
 	GetByID(ctx context.Context, id string) (*models.User, error)
+	Delete(ctx context.Context, id string) error
 }
 
 type sqlUserRepository struct {
@@ -99,3 +100,12 @@ func (r *sqlUserRepository) GetByID(ctx context.Context, id string) (*models.Use
 
 	return user, nil
 }
+
+func (r *sqlUserRepository) Delete(ctx context.Context, id string) error {
+	query := `DELETE FROM users WHERE id = $1;`
+	if _, err := r.db.ExecContext(ctx, query, id); err != nil {
+		return fmt.Errorf("failed to delete user: %w", err)
+	}
+	return nil
+}
+
