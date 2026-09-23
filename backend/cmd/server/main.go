@@ -33,6 +33,7 @@ func main() {
 		database      *sql.DB
 		userRepo      repository.UserRepository
 		householdRepo repository.HouseholdRepository
+		docRepo       repository.DocRepository
 	)
 
 	tokenService := auth.NewTokenService(cfg.JWTSecret, 30*24*time.Hour)
@@ -57,15 +58,17 @@ func main() {
 	if database != nil {
 		userRepo = repository.NewSQLUserRepository(database)
 		householdRepo = repository.NewSQLHouseholdRepository(database)
+		docRepo = repository.NewSQLDocRepository(database)
 	} else {
 		log.Println("using in-memory mock repositories (development mode)")
 		mockRepos := repository.NewMockRepositories()
 		mockRepos.Households.SetDocRepo(mockRepos.Docs)
 		userRepo = mockRepos.Users
 		householdRepo = mockRepos.Households
+		docRepo = mockRepos.Docs
 	}
 
-	r := setupRouter(cfg, database, userRepo, householdRepo, tokenService)
+	r := setupRouter(cfg, database, userRepo, householdRepo, docRepo, tokenService)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
@@ -103,6 +106,7 @@ func setupRouter(
 	database *sql.DB,
 	userRepo repository.UserRepository,
 	householdRepo repository.HouseholdRepository,
+	docRepo repository.DocRepository,
 	tokenService *auth.TokenService,
 ) *chi.Mux {
 	r := chi.NewRouter()
@@ -123,6 +127,7 @@ func setupRouter(
 
 	authHandler := handlers.NewAuthHandler(userRepo, householdRepo, tokenService)
 	householdHandler := handlers.NewHouseholdHandler(householdRepo, tokenService)
+	syncHandler := handlers.NewSyncHandler(docRepo)
 
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", handlers.HealthHandler(database))
@@ -137,6 +142,11 @@ func setupRouter(
 
 			protected.Post("/household/invites", householdHandler.CreateInvite)
 			protected.Post("/household/join", householdHandler.JoinHousehold)
+
+			protected.Get("/sync/household", syncHandler.GetHouseholdDoc)
+			protected.Post("/sync/household", syncHandler.PushHouseholdDoc)
+			protected.Get("/sync/private", syncHandler.GetPrivateDoc)
+			protected.Post("/sync/private", syncHandler.PushPrivateDoc)
 		})
 	})
 
