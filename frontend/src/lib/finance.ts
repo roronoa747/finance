@@ -686,7 +686,9 @@ export function lastAccountFor(
  *
  * Счета и кредиты — с остатками из отметок (стор отдаёт такие). Отмеченное в своём
  * месяце в «заплатить» не входит: деньги уже ушли со счёта, иначе вычлись бы
- * дважды (Р-5, честный остаток). Закрытый кредит платежа не ждёт.
+ * дважды (Р-5, честный остаток). Оно возвращается отдельно (`paid`, сумма — из
+ * отметки), чтобы экран показал его оплаченным, а не молча потерял. Закрытый
+ * кредит платежа не ждёт.
  */
 export function untilPayday(
   state: {
@@ -717,16 +719,20 @@ export function untilPayday(
   const nextKey = ahead ? key : addMonths(key, 1);
   const inDays = ahead ? who.payday - now.day : days - now.day + who.payday;
 
+  const item = (kind: ScheduledKind, x: { id: string; name: string; day: number }, value: number, k: string) => {
+    const paid = paidFor(payments, kind, x.id, k);
+    return { id: x.id, targetId: x.id, kind, name: x.name, day: x.day, value: paid ? paid.amount : value, when: k, paid: !!paid };
+  };
   const itemsOf = (k: string) => [
     ...liveObligations(obligations)
-      .filter((o) => dueIn(o, k) && !paidFor(payments, 'obligation', o.id, k))
-      .map((o) => ({ id: o.id, name: o.name, day: o.day, value: amountAt(o, k), when: k })),
+      .filter((o) => dueIn(o, k))
+      .map((o) => item('obligation', o, amountAt(o, k), k)),
     ...liveCredits(credits)
-      .filter((c) => c.principal > 0 && !paidFor(payments, 'credit', c.id, k))
-      .map((c) => ({ id: c.id, name: c.name, day: c.day, value: creditDueAmount(c), when: k })),
+      .map((c) => item('credit', c, creditDueAmount(c), k))
+      .filter((x) => x.paid || x.value > 0),
   ];
 
-  const due = ahead
+  const inWindow = ahead
     ? itemsOf(key).filter((x) => x.day >= now.day && x.day <= who.payday)
     : [
         ...itemsOf(key).filter((x) => x.day >= now.day),
@@ -734,7 +740,9 @@ export function untilPayday(
           .filter((x) => x.day <= who.payday)
           .map((x) => ({ ...x, id: x.id + '@next' })),
       ];
-  due.sort((a, b) => a.when.localeCompare(b.when) || a.day - b.day);
+  inWindow.sort((a, b) => a.when.localeCompare(b.when) || a.day - b.day);
+  const due = inWindow.filter((x) => !x.paid);
+  const paid = inWindow.filter((x) => x.paid);
 
   const accounts = liveAccounts(accountsList).filter((a) => a.kind !== 'deposit');
   const onAccounts = accounts.reduce((a, x) => a + x.amount, 0);
@@ -747,6 +755,7 @@ export function untilPayday(
     day: who.payday,
     key: nextKey,
     due,
+    paid,
     dueTotal,
     knowsCash: accounts.length > 0,
     onAccounts,

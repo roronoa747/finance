@@ -21,7 +21,9 @@ import {
   liveCredits,
   liveObligations,
   nextSalaryChange,
+  paidFor,
   salaryAt,
+  type ScheduledKind,
 } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
@@ -37,6 +39,7 @@ import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
 import Bar from '@/components/Bar.vue'
 import Legend from '@/components/Legend.vue'
 import SalaryDialog from '@/components/SalaryDialog.vue'
+import PaidRow from '@/components/PaidRow.vue'
 
 const DERIVED_NOTE: Record<string, string> = {
   d1: 'сумма обязательств по жилью',
@@ -64,6 +67,8 @@ interface EventItem {
   color: string
   income: boolean
   estimate?: boolean
+  /** Платёж по графику — отмечается «Оплатил». */
+  pay?: ScheduledKind
   open: () => void
 }
 
@@ -109,22 +114,27 @@ const events = computed<EventItem[]>(() => {
         color: `var(--${o.category})`,
         income: false,
         estimate: o.estimate,
+        pay: 'obligation' as const,
         open: () => {
           void router.push(`/capital?obligation=${o.id}`)
         },
       })),
-    ...credits.value.map((c) => ({
-      id: c.id,
-      day: c.day,
-      name: c.name,
-      note: c.note,
-      value: c.payment,
-      color: 'var(--d2)',
-      income: false,
-      open: () => {
-        void router.push(`/capital?credit=${c.id}`)
-      },
-    })),
+    // Закрытый долг в этом месяце не платится, если его не закрыли этим же платежом.
+    ...credits.value
+      .filter((c) => c.principal > 0 || paidFor(financeStore.payments, 'credit', c.id, key.value))
+      .map((c) => ({
+        id: c.id,
+        day: c.day,
+        name: c.name,
+        note: c.note,
+        value: c.payment,
+        color: 'var(--d2)',
+        income: false,
+        pay: 'credit' as const,
+        open: () => {
+          void router.push(`/capital?credit=${c.id}`)
+        },
+      })),
     {
       id: 'goals',
       day: 1,
@@ -354,28 +364,45 @@ function handleD4Commit(text: string) {
       </div>
 
       <Card v-if="dayEvents.length > 0" flush>
-        <Row
-          v-for="e in dayEvents"
-          :key="e.id"
-          :accent="e.color"
-          :title="e.name"
-          :note="e.note"
-          clickable
-          @click="e.open"
-        >
-          <template #icon>
-            <PhArrowUp v-if="e.income" :size="15" weight="bold" />
-            <PhArrowDown v-else :size="15" weight="bold" />
-          </template>
-          <template #value>
-            <span
-              class="block text-[14.5px] font-semibold num"
-              :style="{ color: e.income ? 'var(--brand)' : undefined }"
-            >
-              {{ e.income ? '+' : '−' }}{{ plain(e.value) }}
-            </span>
-          </template>
-        </Row>
+        <template v-for="e in dayEvents" :key="e.id">
+          <PaidRow
+            v-if="e.pay"
+            :kind="e.pay"
+            :target-id="e.id"
+            :period="key"
+            :accent="e.color"
+            :title="e.name"
+            :note="e.note"
+            :estimate="e.estimate"
+            clickable
+            @open="e.open"
+          >
+            <template #icon>
+              <PhArrowDown :size="15" weight="bold" />
+            </template>
+          </PaidRow>
+          <Row
+            v-else
+            :accent="e.color"
+            :title="e.name"
+            :note="e.note"
+            clickable
+            @click="e.open"
+          >
+            <template #icon>
+              <PhArrowUp v-if="e.income" :size="15" weight="bold" />
+              <PhArrowDown v-else :size="15" weight="bold" />
+            </template>
+            <template #value>
+              <span
+                class="block text-[14.5px] font-semibold num"
+                :style="{ color: e.income ? 'var(--brand)' : undefined }"
+              >
+                {{ e.income ? '+' : '−' }}{{ plain(e.value) }}
+              </span>
+            </template>
+          </Row>
+        </template>
       </Card>
 
       <Card>
@@ -436,29 +463,46 @@ function handleD4Commit(text: string) {
     <!-- РЕЖИМ 3: СПИСОК -->
     <template v-if="view === 'list'">
       <Card flush>
-        <Row
-          v-for="e in events"
-          :key="e.id"
-          :accent="e.color"
-          :title="e.name"
-          :note="`${dayLabel(e.day, key)} · ${e.note}`"
-          :sub="e.estimate ? 'оценка' : undefined"
-          clickable
-          @click="e.open"
-        >
-          <template #icon>
-            <PhArrowUp v-if="e.income" :size="15" weight="bold" />
-            <PhArrowDown v-else :size="15" weight="bold" />
-          </template>
-          <template #value>
-            <span
-              class="block text-[14.5px] font-semibold num"
-              :style="{ color: e.income ? 'var(--brand)' : undefined }"
-            >
-              {{ e.income ? '+' : '−' }}{{ plain(e.value) }}
-            </span>
-          </template>
-        </Row>
+        <template v-for="e in events" :key="e.id">
+          <PaidRow
+            v-if="e.pay"
+            :kind="e.pay"
+            :target-id="e.id"
+            :period="key"
+            :accent="e.color"
+            :title="e.name"
+            :note="`${dayLabel(e.day, key)}${e.note ? ` · ${e.note}` : ''}`"
+            :estimate="e.estimate"
+            clickable
+            @open="e.open"
+          >
+            <template #icon>
+              <PhArrowDown :size="15" weight="bold" />
+            </template>
+          </PaidRow>
+          <Row
+            v-else
+            :accent="e.color"
+            :title="e.name"
+            :note="`${dayLabel(e.day, key)} · ${e.note}`"
+            :sub="e.estimate ? 'оценка' : undefined"
+            clickable
+            @click="e.open"
+          >
+            <template #icon>
+              <PhArrowUp v-if="e.income" :size="15" weight="bold" />
+              <PhArrowDown v-else :size="15" weight="bold" />
+            </template>
+            <template #value>
+              <span
+                class="block text-[14.5px] font-semibold num"
+                :style="{ color: e.income ? 'var(--brand)' : undefined }"
+              >
+                {{ e.income ? '+' : '−' }}{{ plain(e.value) }}
+              </span>
+            </template>
+          </Row>
+        </template>
       </Card>
     </template>
 

@@ -1,10 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { setActivePinia, createPinia } from 'pinia'
+import { setActivePinia, createPinia, type Pinia } from 'pinia'
+import { createSSRApp, type Component } from 'vue'
+import { renderToString } from 'vue/server-renderer'
+import { createMemoryHistory } from 'vue-router'
+import { createAppRouter } from '../src/router'
 import { useFinanceStore, defaultSyncDoc } from '../src/stores/finance'
 import { ApiClient, ApiError } from '../src/api/client'
 import type { SyncDoc } from '../src/types/finance'
 import type { HouseholdDocResponse, ConflictResponse } from '../src/types/api'
-import { nextObligationDue } from '../src/lib/finance'
+import { lastAccountFor, nextObligationDue } from '../src/lib/finance'
+import { money, plain } from '../src/lib/money'
+import Overview from '../src/views/Overview.vue'
+import Capital from '../src/views/Capital.vue'
 
 /**
  * Блок 1 развития: «Оплатил», досрочка, подписки. Два телефона — два стора Pinia
@@ -38,11 +45,22 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
   const at = (iso: string) => vi.setSystemTime(new Date(iso))
 
   async function phone() {
-    setActivePinia(createPinia())
+    const pinia = createPinia()
+    setActivePinia(pinia)
     const store = useFinanceStore()
     const client = backend()
     await store.pullHousehold(client)
-    return { store, client }
+    return { store, client, pinia }
+  }
+
+  /** Экран глазами телефона: SSR-рендер на его сторе. */
+  async function screen(pinia: Pinia, view: Component, path: string) {
+    setActivePinia(pinia)
+    const router = createAppRouter(createMemoryHistory())
+    await router.push(path)
+    const app = createSSRApp(view)
+    app.use(router)
+    return renderToString(app)
   }
 
   beforeEach(() => {
@@ -106,6 +124,36 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
       expect(nextObligationDue(store.obligations[0], store.payments)?.period).toBe('2026-10')
       expect(store.status).toBe('idle')
     }
+  })
+
+  it('RP-07: «оплатил аренду» одним нажатием → виден следующий платёж, карта уменьшилась; второй телефон после синка видит то же', async () => {
+    // В августе аренду уже платили с карты (до сверки 1 сентября) — счёт больше не спрашивается.
+    server.data.payments = [
+      {
+        id: 'aug', kind: 'obligation', targetId: 'rent', period: '2026-08', amount: 220_000,
+        accountId: 'card', by: 'b', at: '2026-08-05T10:00:00.000Z', updatedAt: '2026-08-05T10:00:00.000Z',
+      },
+    ]
+    const A = await phone()
+    const B = await phone()
+
+    setActivePinia(A.pinia)
+    expect(await screen(A.pinia, Overview, '/')).toContain('Оплатил')
+
+    // Одно нажатие = то, что делает кнопка: счёт прошлой оплаты, сумма по графику.
+    at('2026-09-24T08:00:00Z')
+    expect(lastAccountFor(A.store.payments, 'rent', A.store.accounts)).toBe('card')
+    A.store.markPaid('obligation', 'rent', 'a', { period: '2026-09', accountId: 'card' })
+
+    const shownA = await screen(A.pinia, Overview, '/')
+    expect(shownA).toContain(`оплачено · дальше 5 октября · ${plain(220_000)} ₸`)
+    expect(A.store.accounts[0].amount).toBe(780_000)
+
+    await A.store.syncHousehold(A.client)
+    await B.store.pullHousehold(B.client)
+    const shownB = await screen(B.pinia, Overview, '/')
+    expect(shownB).toContain(`оплачено · дальше 5 октября · ${plain(220_000)} ₸`)
+    expect(await screen(B.pinia, Capital, '/capital')).toContain(money(780_000))
   })
 
   it('одну аренду отметили оба офлайн → записей две, списание одно; снятие у одного возвращает деньги обоим', async () => {

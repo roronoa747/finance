@@ -19,19 +19,20 @@ import {
   liveGoals,
   liveObligations,
   nextChange,
+  paidFor,
   salaryAt,
   untilPayday,
 } from '@/lib/finance'
 import { cn } from '@/lib/utils'
 import Card from '@/components/kit/Card.vue'
 import Section from '@/components/kit/Section.vue'
-import Row from '@/components/kit/Row.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Hero from '@/components/kit/Hero.vue'
 import Button from '@/components/ui/Button.vue'
 import Bar, { type Seg } from '@/components/Bar.vue'
 import Legend, { type LegendItem } from '@/components/Legend.vue'
 import Ring from '@/components/Ring.vue'
+import PaidRow from '@/components/PaidRow.vue'
 
 const router = useRouter()
 const financeStore = useFinanceStore()
@@ -97,16 +98,16 @@ const freed = computed(() => {
     .find((x) => x.change && x.change.delta < 0)
 })
 
-// Ближайшие списания «Впереди»
+// Платежи месяца «Впереди»: оплаченное — не предстоящее, уходит вниз с отметкой
 const upcoming = computed(() => {
   const items = [
     ...obligations.value
       .filter((o) => dueIn(o, key.value))
       .map((o) => ({
         id: o.id,
+        kind: 'obligation' as const,
         name: o.name,
         day: o.day,
-        value: amountAt(o, key.value),
         note: o.every === 'year' ? 'раз в год' : o.estimate ? 'оценка по сезону' : o.note,
         color: `var(--${o.category})`,
         estimate: o.estimate,
@@ -114,16 +115,20 @@ const upcoming = computed(() => {
       })),
     ...credits.value.map((c) => ({
       id: c.id,
+      kind: 'credit' as const,
       name: c.name,
       day: c.day,
-      value: c.payment,
       note: c.note || 'ежемесячный платёж',
       color: 'var(--d2)',
       estimate: false,
       to: `/capital?credit=${c.id}`,
     })),
-  ]
-  return items.sort((a, b) => a.day - b.day)
+  ].map((x) => ({ ...x, paid: !!paidFor(financeStore.payments, x.kind, x.id, key.value) }))
+  // Закрытый долг в этом месяце не платится, если его не закрыли этим же платежом.
+  const open = items.filter(
+    (x) => x.kind !== 'credit' || x.paid || (credits.value.find((c) => c.id === x.id)?.principal ?? 0) > 0,
+  )
+  return open.sort((a, b) => Number(a.paid) - Number(b.paid) || a.day - b.day)
 })
 
 // Данные блока «До зарплаты»: остатки общих счетов и долгов — из отметок, как их отдаёт стор
@@ -275,7 +280,7 @@ async function copyInvite() {
     </Callout>
 
     <!-- Блок «До зарплаты» -->
-    <template v-if="paydayInfo && paydayInfo.due.length">
+    <template v-if="paydayInfo && (paydayInfo.due.length || paydayInfo.paid.length)">
       <Section title="До зарплаты" />
       <Card>
         <div class="flex items-baseline gap-2">
@@ -295,16 +300,17 @@ async function copyInvite() {
             <span class="text-[13px] text-ink-2">Списаний до неё</span>
             <b class="ml-auto num text-[14.5px] text-ink">{{ money(paydayInfo.dueTotal) }}</b>
           </div>
-          <div class="mt-2 flex flex-col gap-1.5">
-            <div
-              v-for="d in paydayInfo.due"
+          <div class="mt-1 flex flex-col">
+            <PaidRow
+              v-for="d in [...paydayInfo.due, ...paydayInfo.paid]"
               :key="d.id"
-              class="flex items-baseline gap-2 text-[12.5px]"
-            >
-              <span class="text-ink-3">{{ dayLabel(d.day, d.when) }}</span>
-              <span class="truncate text-ink-2">{{ d.name }}</span>
-              <span class="ml-auto shrink-0 num text-ink">{{ plain(d.value) }}</span>
-            </div>
+              dense
+              :kind="d.kind"
+              :target-id="d.targetId"
+              :period="d.when"
+              :title="d.name"
+              :note="dayLabel(d.day, d.when)"
+            />
           </div>
         </div>
 
@@ -340,21 +346,23 @@ async function copyInvite() {
     </Section>
 
     <Card flush>
-      <Row
+      <PaidRow
         v-for="u in upcoming"
         :key="u.id"
+        :kind="u.kind"
+        :target-id="u.id"
+        :period="key"
         :accent="u.color"
         :title="u.name"
-        :note="`${dayLabel(u.day, key)} · ${u.note}`"
-        :value="money(u.value)"
-        :sub="u.estimate ? 'оценка' : undefined"
+        :note="`${dayLabel(u.day, key)}${u.note ? ` · ${u.note}` : ''}`"
+        :estimate="u.estimate"
         clickable
-        @click="router.push(u.to)"
+        @open="router.push(u.to)"
       >
         <template #icon>
           <PhClock :size="17" />
         </template>
-      </Row>
+      </PaidRow>
     </Card>
 
     <!-- Секция «Цели» -->

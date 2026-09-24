@@ -15,6 +15,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { money, plain, parseMoney, ratePct } from '@/lib/money'
 import {
   addMonths,
+  dayLabel,
   monthFrom,
   monthKey,
   monthTitle,
@@ -34,9 +35,12 @@ import {
   monthlyAmount,
   netWorth,
   nextChange,
+  nextCreditDue,
+  nextObligationDue,
   prepayment,
   rateFromSchedule,
   simulateStrategy,
+  type Due,
   type StrategyResult,
 } from '@/lib/finance'
 import type { Account, Currency, Obligation, Person, PersonId } from '@/types/finance'
@@ -56,6 +60,7 @@ import Segmented from '@/components/kit/Segmented.vue'
 import Tag from '@/components/kit/Tag.vue'
 import DangerZone from '@/components/kit/DangerZone.vue'
 import Button from '@/components/ui/Button.vue'
+import PaidRow from '@/components/PaidRow.vue'
 import Input from '@/components/ui/Input.vue'
 
 const router = useRouter()
@@ -420,6 +425,28 @@ const activeCredit = computed(() =>
 /* ------------------ Модалка обязательства ------------------ */
 const activeObligation = computed(() =>
   obligations.value.find((o) => o.id === selectedObligationId.value),
+)
+
+// Платёж, который модалка предлагает отметить, берётся при открытии: после
+// «Оплатил» строка остаётся на этом месяце и показывает следующий платёж, а не
+// перескакивает на следующий месяц с новой кнопкой.
+const creditDue = ref<Due | null>(null)
+watch(
+  () => activeCredit.value?.id,
+  () => {
+    creditDue.value = activeCredit.value ? nextCreditDue(activeCredit.value, financeStore.payments) : null
+  },
+  { immediate: true },
+)
+const obligationDue = ref<Due | null>(null)
+watch(
+  () => activeObligation.value?.id,
+  () => {
+    obligationDue.value = activeObligation.value
+      ? nextObligationDue(activeObligation.value, financeStore.payments)
+      : null
+  },
+  { immediate: true },
 )
 const obEditAmount = ref('')
 const obPlanning = ref(false)
@@ -1024,6 +1051,18 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <div v-if="creditDue" class="mb-3 rounded-xl border border-line px-3">
+          <PaidRow
+            dense
+            more
+            kind="credit"
+            :target-id="activeCredit.id"
+            :period="creditDue.period"
+            :title="`Платёж ${dayLabel(creditDue.day, creditDue.period)}`"
+            note="по графику"
+          />
+        </div>
+
         <Button
           class="w-full mb-3"
           @click="
@@ -1128,6 +1167,19 @@ onUnmounted(() => {
           >
             <PhX :size="16" />
           </button>
+        </div>
+
+        <div v-if="obligationDue" class="mb-3 rounded-xl border border-line px-3">
+          <PaidRow
+            dense
+            more
+            kind="obligation"
+            :target-id="activeObligation.id"
+            :period="obligationDue.period"
+            :title="`Платёж ${dayLabel(obligationDue.day, obligationDue.period)}`"
+            :note="activeObligation.every === 'year' ? 'раз в год' : 'по графику'"
+            :estimate="activeObligation.estimate"
+          />
         </div>
 
         <Field label="Сумма сейчас, ₸">
