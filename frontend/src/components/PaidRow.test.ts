@@ -150,10 +150,16 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     expect(before).toContain(`Списаний до неё`)
     expect(before).toContain(money(220_000))
 
+    // Оплачен только ранний платёж (кредит 15-го) — он уходит под аренду 28-го.
     store.markPaid('credit', 'loan', 'a', { accountId: 'card' })
+    const creditPaid = await page(Overview, '/')
+    expect(ahead(creditPaid).indexOf('Аренда')).toBeLessThan(ahead(creditPaid).indexOf('Кредит'))
+    expect(ahead(creditPaid)).toContain('оплачено · дальше')
+
     store.markPaid('obligation', 'rent', 'a', { accountId: 'card' })
     const after = await page(Overview, '/')
-    expect(ahead(after)).toContain('оплачено · дальше')
+    // Оплачено всё — снова по дню.
+    expect(ahead(after).indexOf('Кредит')).toBeLessThan(ahead(after).indexOf('Аренда'))
     // Всё оплачено: до зарплаты списывать нечего, на счетах — остаток из отметок.
     expect(after).toContain(`На счетах ${plain(722_000)} ₸`)
     expect(after).toContain(money(0))
