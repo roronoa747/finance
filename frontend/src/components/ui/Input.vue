@@ -32,7 +32,7 @@ const emits = defineEmits<{
 <template>
   <input
     :type="type"
-    :value="modelValue"
+    :value="modelValue !== undefined ? modelValue : defaultValue"
     :placeholder="placeholder"
     :disabled="disabled"
     :autocomplete="autocomplete"

@@ -15,8 +15,10 @@ import {
   salaryAt,
 } from '@/lib/finance'
 import { monthKey } from '@/lib/dates'
-import { money } from '@/lib/money'
+import { money, plain } from '@/lib/money'
 import Budget from './Budget.vue'
+import SalaryDialog from '@/components/SalaryDialog.vue'
+import Input from '@/components/ui/Input.vue'
 
 describe('views/Budget.vue — План, Календарь, Список и оклады', () => {
   const storageMap = new Map<string, string>()
@@ -280,5 +282,39 @@ describe('views/Budget.vue — План, Календарь, Список и о�
     expect(htmlList).toContain('Зарплата · Ильяс')
     expect(htmlList).toContain('Зарплата · Динара')
     expect(htmlList).toContain('Взносы в цели')
+  })
+
+  it('компонентный рендер SalaryDialog.vue отображает имя, текущий оклад и элементы управления', async () => {
+    const store = useFinanceStore()
+    store.householdDoc.people = [
+      {
+        id: 'a',
+        name: 'Ильяс',
+        salary: 650_000,
+        payday: 10,
+        salaryVersions: [{ from: '2026-01', amount: 650_000 }],
+        updatedAt: '',
+      },
+    ]
+
+    const app = createSSRApp(SalaryDialog, { id: 'a' })
+    const html = await renderToString(app)
+
+    expect(html).toContain('Ильяс')
+    expect(html).toContain(plain(650_000))
+    expect(html).toContain('10')
+    expect(html).toContain('Запланировать изменение')
+    expect(html).toContain('Оклад сейчас, ₸')
+    expect(html).toContain('День зарплаты')
+  })
+
+  it('Input.vue корректно отображает defaultValue при отсутствии modelValue', async () => {
+    const appDefault = createSSRApp(Input, { defaultValue: 'Ильяс' })
+    const htmlDefault = await renderToString(appDefault)
+    expect(htmlDefault).toContain('value="Ильяс"')
+
+    const appModel = createSSRApp(Input, { modelValue: 'Динара', defaultValue: 'Ильяс' })
+    const htmlModel = await renderToString(appModel)
+    expect(htmlModel).toContain('value="Динара"')
   })
 })

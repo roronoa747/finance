@@ -31,6 +31,15 @@ const planning = ref(false)
 const newAmount = ref('')
 const fromMonth = ref(addMonths(monthKey(), 1))
 const reason = ref('')
+const personName = ref(person.value?.name ?? '')
+
+watch(
+  () => person.value?.name,
+  (name) => {
+    if (name !== undefined) personName.value = name
+  },
+  { immediate: true },
+)
 
 const saved = ref(false)
 let savedTimer: ReturnType<typeof setTimeout> | null = null
@@ -48,6 +57,7 @@ watch(
       newAmount.value = ''
       reason.value = ''
       fromMonth.value = addMonths(monthKey(), 1)
+      personName.value = person.value?.name ?? ''
       return
     }
 
@@ -70,10 +80,9 @@ const history = computed(() =>
   [...(person.value?.salaryVersions ?? [])].sort((a, b) => b.from.localeCompare(a.from)),
 )
 
-function onNameBlur(e: FocusEvent) {
+function onNameBlur() {
   if (!person.value) return
-  const input = e.target as HTMLInputElement
-  const v = input.value.trim()
+  const v = personName.value.trim()
   if (v && v !== person.value.name) {
     financeStore.setPerson(person.value.id, { name: v })
   }
@@ -153,7 +162,7 @@ onUnmounted(() => {
       </div>
 
       <Field label="Имя">
-        <Input :default-value="person.name" @blur="onNameBlur" />
+        <Input v-model="personName" @blur="onNameBlur" />
       </Field>
 
       <Field label="Оклад сейчас, ₸">

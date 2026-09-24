@@ -38,6 +38,7 @@ function handleClick(e: MouseEvent) {
 <template>
   <component
     :is="clickable ? 'button' : 'div'"
+    :type="clickable ? 'button' : undefined"
     class="flex w-full items-center gap-3 border-b border-line px-4 py-3 text-left last:border-b-0 transition-colors"
     :class="clickable ? 'hover:bg-surface-2 active:bg-surface-3 cursor-pointer' : ''"
     @pointerdown="onPointerDown"

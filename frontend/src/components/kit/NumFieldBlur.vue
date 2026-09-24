@@ -36,6 +36,11 @@ watch(
 function onBlur() {
   emit('commit', text.value)
 }
+
+function onEnter(e: Event) {
+  emit('commit', text.value)
+  ;(e.target as HTMLInputElement)?.blur()
+}
 </script>
 
 <template>
@@ -48,6 +53,6 @@ function onBlur() {
     :class="props.class"
     :class-name="props.className"
     @blur="onBlur"
-    @keydown.enter="onBlur"
+    @keydown.enter="onEnter"
   />
 </template>
