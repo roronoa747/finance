@@ -413,4 +413,154 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
       expect(store.status).toBe('idle')
     }
   })
+
+  // ---- Приёмка Блока 1: сценарии, прогнанные в браузере на стенде §6 ----
+
+  it('приёмка: документ прода без payments и якорей — цифры экранов те же, что у клиента Блока 0', async () => {
+    // Документ как в проде до деплоя Блока 1. Ожидаемые числа сняты в браузере с
+    // клиента Блока 0 (main, 2c098a9) на этом же документе 24 сентября по Алматы.
+    server.data = {
+      setupDoneAt: T0,
+      people: [
+        { id: 'a', name: 'Ильяс', salary: 700_000, payday: 10, updatedAt: T0 },
+        { id: 'b', name: 'Аруна', salary: 500_000, payday: 20, updatedAt: T0 },
+      ],
+      categories: [
+        { key: 'd1', name: 'Жильё', note: '', amount: 260_000, updatedAt: T0 },
+        { key: 'd2', name: 'Кредиты', note: '', amount: 58_000, updatedAt: T0 },
+        { key: 'd3', name: 'Цели', note: '', amount: 100_000, updatedAt: T0 },
+        { key: 'd4', name: 'Еда и быт', note: '', amount: 300_000, updatedAt: T0 },
+        { key: 'd5', name: 'Свободно', note: '', amount: 0, updatedAt: T0 },
+      ],
+      obligations: [
+        { id: 'rent', name: 'Аренда', note: '', day: 5, category: 'd1', versions: [{ from: '2026-01', amount: 220_000 }], updatedAt: T0 },
+        { id: 'util', name: 'Коммуналка', note: '', day: 8, category: 'd1', estimate: true, versions: [{ from: '2026-01', amount: 35_000 }], updatedAt: T0 },
+        { id: 'slack', name: 'Slack', note: '', day: 12, category: 'd4', every: 'month', versions: [{ from: '2026-01', amount: 3_000 }], updatedAt: T0 },
+        { id: 'netflix', name: 'Netflix', note: '', day: 18, category: 'd4', every: 'month', versions: [{ from: '2026-01', amount: 4_990 }], updatedAt: T0 },
+        { id: 'icloud', name: 'iCloud', note: '', day: 5, month: 10, category: 'd4', every: 'year', versions: [{ from: '2026-01', amount: 11_990 }], updatedAt: T0 },
+      ],
+      credits: [{ id: 'loan', name: 'Кредит', note: '', principal: 1_000_000, annualRate: 0.33, payment: 58_000, day: 7, updatedAt: T0 }],
+      goals: [
+        { id: 'trip', name: 'Поездка', need: 2_000_000, seed: 600_000, have: 600_000, monthly: 100_000, hue: 'teal', planPct: 0.3, movements: [], updatedAt: T0 },
+      ],
+      wishlist: [],
+      accounts: [
+        { id: 'card', name: 'Kaspi Gold', note: '', kind: 'card', amount: 1_000_000, updatedAt: T0 },
+        { id: 'dep', name: 'Депозит', note: '', kind: 'deposit', amount: 2_000_000, updatedAt: T0 },
+      ],
+    } as SyncDoc
+    at('2026-09-24T18:00:00Z')
+    const A = await phone()
+
+    const overview = await screen(A.pinia, Overview, '/')
+    expect(overview).toContain(money(478_011)) // Свободно в сентябре
+    expect(overview).toContain(money(308_989)) // Еда и быт
+    expect(overview).toContain('Через 16 дней')
+    expect(overview).toContain(money(324_990)) // Списаний до неё
+    expect(overview).toContain(`На счетах ${plain(1_000_000)} ₸ — хватает, остаётся ${plain(675_010)} ₸.`)
+    const capital = await screen(A.pinia, Capital, '/capital')
+    expect(capital).toContain(money(2_600_000)) // Чистый капитал
+    expect(capital).toContain('24 платежей')
+    expect(capital).toContain(`переплата ${plain(374_102)}`)
+    // Открытие ничего не пишет: ни отметок, ни якорей, ни push.
+    expect(A.store.payments).toEqual([])
+    expect(A.store.accounts.find((a) => a.id === 'card')?.amount).toBe(1_000_000)
+    expect(A.client.pushHouseholdDoc).not.toHaveBeenCalled()
+  })
+
+  it('приёмка: «Впереди» — оплачен только ранний платёж → он уходит ниже неоплаченного позднего', async () => {
+    const A = await phone()
+    const ahead = (html: string) => html.slice(html.indexOf('Впереди'))
+    const before = ahead(await screen(A.pinia, Overview, '/'))
+    expect(before.indexOf('Аренда')).toBeLessThan(before.indexOf('Кредит')) // по дню: 5-е раньше 15-го
+
+    setActivePinia(A.pinia)
+    A.store.markPaid('obligation', 'rent', 'a', { period: '2026-09', accountId: 'card' })
+    const after = ahead(await screen(A.pinia, Overview, '/'))
+    expect(after.indexOf('Кредит')).toBeLessThan(after.indexOf('Аренда'))
+    expect(after).toContain(`оплачено · дальше 5 октября · ${plain(220_000)} ₸`)
+  })
+
+  it('приёмка: коммуналку-оценку отметили оба офлайн разными суммами → списана одна, ранняя, у обоих', async () => {
+    server.data.obligations.push({
+      id: 'util', name: 'Коммуналка', note: '', day: 8, category: 'd1', estimate: true,
+      versions: [{ from: '2026-01', amount: 35_000 }], updatedAt: T0,
+    })
+    const A = await phone()
+    const B = await phone()
+
+    setOnline(false)
+    at('2026-09-24T08:00:00Z')
+    A.store.markPaid('obligation', 'util', 'a', { period: '2026-09', amount: 35_000, accountId: 'card' })
+    at('2026-09-24T08:05:00Z')
+    B.store.markPaid('obligation', 'util', 'b', { period: '2026-09', amount: 36_000, accountId: 'card' })
+
+    setOnline(true)
+    await A.store.syncHousehold(A.client)
+    await B.store.syncHousehold(B.client) // 409 → слияние из server_doc
+    await A.store.pullHousehold(A.client)
+
+    expect(server.data.payments!.filter((p) => !p.deletedAt)).toHaveLength(2)
+    for (const { store } of [A, B]) {
+      expect(paidFor(store.payments, 'obligation', 'util', '2026-09')?.amount).toBe(35_000)
+      expect(store.accounts[0].amount).toBe(965_000)
+    }
+  })
+
+  it('приёмка (правка критика): «Оплатил» → взнос в цель с той же карты → партнёр снял отметку — деньги вернулись у обоих', async () => {
+    const A = await phone()
+    const B = await phone()
+
+    at('2026-09-24T08:00:00Z')
+    A.store.markPaid('obligation', 'rent', 'a', { period: '2026-09', accountId: 'card' })
+    at('2026-09-24T08:10:00Z')
+    A.store.shiftAccountAmount('card', -50_000) // взнос в цель со счёта (GoalDetail)
+    await A.store.syncHousehold(A.client)
+    await B.store.pullHousehold(B.client)
+    expect(B.store.accounts[0].amount).toBe(730_000)
+
+    at('2026-09-24T08:20:00Z')
+    B.store.unmarkPaid('obligation', 'rent', '2026-09')
+    await B.store.syncHousehold(B.client)
+    await A.store.pullHousehold(A.client)
+    for (const { store } of [A, B]) {
+      expect(store.accounts[0].amount).toBe(950_000)
+      expect(store.accounts[0].amountSetAt).toBe(T0) // сдвиг не двигал якорь сверки
+    }
+  })
+
+  it('приёмка: «снизить платёж» — второй телефон видит новый платёж и счётчик; снятие с него возвращает платёж первому', async () => {
+    const A = await phone()
+    const B = await phone()
+    const term = lumpPlan(1_000_000, 0.33, 58_000, 200_000, 'term')!
+    const lower = lumpPlan(800_000, 0.33, 58_000, 100_000, 'payment')!
+
+    setActivePinia(A.pinia)
+    at('2026-09-24T08:00:00Z')
+    A.store.applyPrepayment('loan', 'a', { amount: 200_000, mode: 'term', accountId: 'card' })
+    at('2026-09-24T08:05:00Z')
+    A.store.applyPrepayment('loan', 'a', { amount: 100_000, mode: 'payment' }) // счёт — прошлый (Р-5)
+    await A.store.syncHousehold(A.client)
+    await B.store.pullHousehold(B.client)
+
+    expect(lower.payment).toBe(50_750)
+    expect(term.saved + lower.saved).toBe(181_913)
+    expect(B.store.credits[0].payment).toBe(lower.payment)
+    expect(B.store.credits[0].principal).toBe(700_000)
+    expect(B.store.accounts[0].amount).toBe(700_000)
+    expect(prepaySaved(B.store.payments)).toBe(181_913)
+    expect(await screen(B.pinia, Capital, '/capital')).toContain(money(181_913))
+
+    setActivePinia(B.pinia)
+    at('2026-09-24T09:00:00Z')
+    B.store.removePrepayment(B.store.payments.find((p) => p.kind === 'prepay' && p.mode === 'payment')!.id)
+    await B.store.syncHousehold(B.client)
+    await A.store.pullHousehold(A.client)
+    for (const { store } of [A, B]) {
+      expect(store.credits[0].payment).toBe(58_000)
+      expect(store.credits[0].principal).toBe(800_000)
+      expect(store.accounts[0].amount).toBe(800_000)
+      expect(prepaySaved(store.payments)).toBe(term.saved)
+    }
+  })
 })
