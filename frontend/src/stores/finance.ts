@@ -20,10 +20,23 @@ export function defaultSyncDoc(): SyncDoc {
   }
 }
 
+/** Семья демо-режима: её документ не уходит на сервер (Р-32). */
+export const DEMO_HOUSEHOLD = 'demo-household-1'
+
 const STORAGE_KEY_DOC = 'ff_household_doc'
 const STORAGE_KEY_REV = 'ff_household_rev'
 const STORAGE_KEY_PRIV_DOC = 'ff_private_doc'
 const STORAGE_KEY_PRIV_REV = 'ff_private_rev'
+const STORAGE_KEY_UNSENT = 'ff_unsent'
+const STORAGE_KEY_DOC_HOUSEHOLD = 'ff_doc_household'
+const LOCAL_KEYS = [
+  STORAGE_KEY_DOC,
+  STORAGE_KEY_REV,
+  STORAGE_KEY_PRIV_DOC,
+  STORAGE_KEY_PRIV_REV,
+  STORAGE_KEY_UNSENT,
+  STORAGE_KEY_DOC_HOUSEHOLD,
+]
 
 function readStorage<T>(key: string, fallback: T): T {
   try {
@@ -35,6 +48,19 @@ function readStorage<T>(key: string, fallback: T): T {
   }
 }
 
+// Запрос не дошёл до сервера (fetch бросил не ApiError) — это «нет сети», а не «не
+// сошлось». navigator.onLine на это не годится: после перезагрузки без сети и в сети
+// без интернета он бывает true.
+function unreachable(err: unknown): boolean {
+  return !(err instanceof ApiError)
+}
+
+// Правка, которая ничего не меняет, не пишется: свежий updatedAt без изменения
+// выиграл бы слияние по времени у настоящей правки с другого устройства.
+function unchanged<T extends object>(cur: T | undefined, patch: Partial<T>): boolean {
+  return !!cur && (Object.keys(patch) as (keyof T)[]).every((k) => cur[k] === patch[k])
+}
+
 export const useFinanceStore = defineStore('finance', () => {
   const householdDoc = ref<SyncDoc>(readStorage<SyncDoc>(STORAGE_KEY_DOC, defaultSyncDoc()))
   const householdRev = ref<number>(readStorage<number>(STORAGE_KEY_REV, 0))
@@ -44,7 +70,19 @@ export const useFinanceStore = defineStore('finance', () => {
   )
   const privateRev = ref<number>(readStorage<number>(STORAGE_KEY_PRIV_REV, 0))
 
-  const status = ref<SyncStatus>('idle')
+  // Есть правки, которых сервер ещё не видел. Живёт в localStorage, а не в статусе:
+  // после сбоя, перезапуска или повторного входа по нему видно, что документ надо
+  // слить с серверным, а не заменить им (Н-6), и что выход сотрёт несохранённое.
+  const savedUnsent = readStorage<{ household?: boolean; private?: boolean }>(STORAGE_KEY_UNSENT, {})
+  const unsent = ref<boolean>(Boolean(savedUnsent.household))
+  const privateUnsent = ref<boolean>(Boolean(savedUnsent.private))
+  const hasUnsent = computed(() => unsent.value || privateUnsent.value)
+  // Семья, которой принадлежит документ на этом телефоне (см. claimFor).
+  const docHousehold = ref<string | null>(readStorage<string | null>(STORAGE_KEY_DOC_HOUSEHOLD, null))
+  // Демо — черновик будущей семьи: живёт только на телефоне, к серверу не ходит (Р-32).
+  const isDemo = computed(() => docHousehold.value === DEMO_HOUSEHOLD)
+
+  const status = ref<SyncStatus>(unsent.value ? 'dirty' : 'idle')
   const lastSyncedAt = ref<string | null>(null)
   const lastError = ref<string | null>(null)
   const forceReplace = ref<boolean>(false)
@@ -55,6 +93,8 @@ export const useFinanceStore = defineStore('finance', () => {
   let localEdits = 0
   // Растёт с каждым запуском синка: фоновый pull не откатывает его результат.
   let syncRuns = 0
+  // Растёт при выходе: ответ, запрошенный до выхода, не пишет прежнюю семью в стор.
+  let session = 0
 
   // Getters
   const people = computed(() => householdDoc.value.people || [])
@@ -75,18 +115,94 @@ export const useFinanceStore = defineStore('finance', () => {
       localStorage.setItem(STORAGE_KEY_REV, JSON.stringify(householdRev.value))
       localStorage.setItem(STORAGE_KEY_PRIV_DOC, JSON.stringify(privateDoc.value))
       localStorage.setItem(STORAGE_KEY_PRIV_REV, JSON.stringify(privateRev.value))
+      localStorage.setItem(
+        STORAGE_KEY_UNSENT,
+        JSON.stringify({ household: unsent.value, private: privateUnsent.value }),
+      )
+      localStorage.setItem(STORAGE_KEY_DOC_HOUSEHOLD, JSON.stringify(docHousehold.value))
     } catch (e) {
       console.error('Ошибка записи локального состояния:', e)
     }
+  }
+
+  /**
+   * Стирает документы этого телефона — выход из аккаунта. Иначе следующий вход,
+   * в том числе другим человеком, слил бы прежнюю семью с новой.
+   */
+  function clearLocal() {
+    session++
+    localEdits++
+    // Синк прежней семьи мог повиснуть в сети: вход в новую не должен его ждать
+    // (pull при идущем синке отбрасывает ответ). Вернувшись, тот синк ничего не тронет.
+    isSyncing = false
+    if (syncTimer) clearTimeout(syncTimer)
+    syncTimer = null
+    householdDoc.value = defaultSyncDoc()
+    householdRev.value = 0
+    privateDoc.value = {}
+    privateRev.value = 0
+    unsent.value = false
+    privateUnsent.value = false
+    docHousehold.value = null
+    status.value = 'idle'
+    lastSyncedAt.value = null
+    lastError.value = null
+    forceReplace.value = false
+    try {
+      if (typeof localStorage !== 'undefined') for (const key of LOCAL_KEYS) localStorage.removeItem(key)
+    } catch (e) {
+      console.error('Ошибка очистки локального состояния:', e)
+    }
+  }
+
+  /**
+   * Документ на телефоне принадлежит одной семье. Вход в другую семью стирает его
+   * вместе с неотправленным — семьи не смешиваются; вход в ту же оставляет, и
+   * неотправленное уходит после входа (Н-6: вход истёк, правка не пропала).
+   * Документ без хозяина (записан до RP-04) считается документом той семьи, где вошли.
+   */
+  function claimFor(householdId: string) {
+    if (docHousehold.value && docHousehold.value !== householdId) clearLocal()
+    docHousehold.value = householdId
+    saveLocalState()
+  }
+
+  /** Вход в существующую семью (логин, код приглашения): её документы — с сервера. */
+  async function enterFamily(householdId: string, client: ApiClient = apiClient) {
+    claimFor(householdId)
+    await pullHousehold(client)
+    await pullPrivateDoc(client)
+  }
+
+  /** Новая семья без демо: у неё ещё ничего нет, остатки прежнего документа не переносятся. */
+  function startNewFamily(householdId: string) {
+    clearLocal()
+    claimFor(householdId)
+  }
+
+  /**
+   * «Да» после регистрации из демо (Р-32): весь демо-документ, общий и личный,
+   * становится первым документом новой семьи; участник a — под именем из регистрации.
+   * Сервер у новой семьи пуст, поэтому синк заливает документ как есть.
+   */
+  async function adoptDemo(householdId: string, name: string, client: ApiClient = apiClient) {
+    docHousehold.value = householdId
+    unsent.value = true
+    saveLocalState()
+    setPerson('a', { name })
+    await syncHousehold(client)
+    if (privateUnsent.value) await pullPrivateDoc(client)
   }
 
   function setHouseholdDoc(doc: SyncDoc, rev?: number) {
     householdDoc.value = doc
     if (typeof rev === 'number') {
       householdRev.value = rev
+      unsent.value = false
       status.value = 'idle'
     } else {
       localEdits++
+      unsent.value = true
       status.value = 'dirty'
       scheduleSync()
     }
@@ -96,6 +212,7 @@ export const useFinanceStore = defineStore('finance', () => {
   function mutateHouseholdDoc(mutator: (doc: SyncDoc) => void) {
     localEdits++
     mutator(householdDoc.value)
+    unsent.value = true
     status.value = 'dirty'
     saveLocalState()
     scheduleSync()
@@ -105,13 +222,14 @@ export const useFinanceStore = defineStore('finance', () => {
     localEdits++
     householdDoc.value = defaultSyncDoc()
     forceReplace.value = true
+    unsent.value = true
     status.value = 'dirty'
     saveLocalState()
     scheduleSync(100)
   }
 
   async function syncHousehold(client: ApiClient = apiClient): Promise<void> {
-    if (isSyncing) return
+    if (isSyncing || isDemo.value) return
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       status.value = 'offline'
       return
@@ -119,8 +237,13 @@ export const useFinanceStore = defineStore('finance', () => {
 
     isSyncing = true
     syncRuns++
+    // Запланированный синк не нужен: этот круг возьмёт все правки, сделанные до него,
+    // а правка во время отправки запланирует следующий сама.
+    if (syncTimer) clearTimeout(syncTimer)
+    syncTimer = null
     status.value = 'syncing'
     lastError.value = null
+    const s = session
 
     const MAX_ATTEMPTS = 4
 
@@ -128,9 +251,11 @@ export const useFinanceStore = defineStore('finance', () => {
       let currentServerDoc: HouseholdDocResponse
       try {
         currentServerDoc = await client.getHouseholdDoc()
+        if (s !== session) return
       } catch (err) {
+        if (s !== session) return
         const msg = err instanceof Error ? err.message : String(err)
-        status.value = 'error'
+        status.value = unreachable(err) ? 'offline' : 'error'
         lastError.value = `Ошибка загрузки бюджета с сервера: ${msg}`
         return
       }
@@ -148,6 +273,7 @@ export const useFinanceStore = defineStore('finance', () => {
         try {
           const editsBeforePush = localEdits
           const pushRes = await client.pushHouseholdDoc(currentRev, merged)
+          if (s !== session) return
           if (localEdits !== editsBeforePush) {
             // Правка пришла, пока запрос был в пути: сервер её не видел. Документ
             // оставляем локальным, ревизию берём новую — правка уйдёт следующим кругом.
@@ -160,6 +286,7 @@ export const useFinanceStore = defineStore('finance', () => {
           }
           householdDoc.value = pushRes.data ?? merged
           householdRev.value = pushRes.rev
+          unsent.value = false
           status.value = 'idle'
           lastSyncedAt.value = new Date().toISOString()
           lastError.value = null
@@ -167,6 +294,7 @@ export const useFinanceStore = defineStore('finance', () => {
           saveLocalState()
           return
         } catch (pushErr) {
+          if (s !== session) return
           if (pushErr instanceof ApiError && pushErr.status === 409) {
             // Конфликт версий: на сервере обновлён документ
             const conflictData = pushErr.data as ConflictResponse<HouseholdDocResponse> | undefined
@@ -186,24 +314,37 @@ export const useFinanceStore = defineStore('finance', () => {
       status.value = 'conflict'
       lastError.value = 'Не удалось согласовать версии бюджета после нескольких попыток'
     } catch (err) {
+      if (s !== session) return
       const msg = err instanceof Error ? err.message : String(err)
-      status.value = 'error'
+      status.value = unreachable(err) ? 'offline' : 'error'
       lastError.value = msg
     } finally {
-      isSyncing = false
+      // После выхода флаг принадлежит синку новой сессии.
+      if (s === session) isSyncing = false
     }
   }
 
   async function pullHousehold(client: ApiClient = apiClient): Promise<HouseholdDocResponse | null> {
+    if (isDemo.value) return null
+    // Без сети не спрашиваем: бейдж говорит «нет сети», а не «не сошлось».
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      if (!isSyncing) status.value = 'offline'
+      return null
+    }
     const editsBefore = localEdits
     const runsBefore = syncRuns
+    const s = session
     try {
       const serverDoc = await client.getHouseholdDoc()
+      if (s !== session) return null
       if (serverDoc && serverDoc.data) {
         // Синк шёл или прошёл, пока ждали ответ: его результат новее этого ответа.
         if (isSyncing || syncRuns !== runsBefore) return serverDoc
-        if (status.value === 'dirty' || localEdits !== editsBefore) {
+        // Заменить серверной копией можно, только если сервер видел всё локальное;
+        // иначе — слить (Н-6: правка после сбоя и повторного входа не пропадает).
+        if (unsent.value || localEdits !== editsBefore) {
           householdDoc.value = mergeDocs(householdDoc.value, serverDoc.data)
+          if (unsent.value) scheduleSync(undefined, client)
         } else {
           householdDoc.value = serverDoc.data
           householdRev.value = serverDoc.rev
@@ -213,25 +354,38 @@ export const useFinanceStore = defineStore('finance', () => {
       }
       return serverDoc
     } catch (err) {
+      if (s !== session) return null
       const msg = err instanceof Error ? err.message : String(err)
       lastError.value = msg
       // Иначе фоновый pull с истёкшим входом молча показывал бы «синхронизировано»;
       // 'error' заставит следующий круг движка пройти полный синк и показать причину.
-      if (status.value === 'idle') status.value = 'error'
+      if (unreachable(err)) {
+        if (!isSyncing) status.value = 'offline'
+      } else if (status.value === 'idle') status.value = 'error'
       return null
     }
   }
 
   async function pullPrivateDoc(client: ApiClient = apiClient) {
+    if (isDemo.value) return null
+    const s = session
     try {
       const res = await client.getPrivateDoc()
-      if (res) {
+      if (s !== session) return null
+      if (res && privateUnsent.value) {
+        // Личный документ пока не сливается (RP-15): неотправленное с телефона
+        // досылается поверх, а не затирается серверной копией.
+        privateRev.value = res.rev
+        saveLocalState()
+        await pushPrivateDoc(privateDoc.value, client).catch(() => {})
+      } else if (res) {
         privateDoc.value = res.data ?? {}
         privateRev.value = res.rev
         saveLocalState()
       }
       return res
     } catch (err) {
+      if (s !== session) return null
       const msg = err instanceof Error ? err.message : String(err)
       lastError.value = msg
       return null
@@ -239,13 +393,17 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   async function pushPrivateDoc(data: Record<string, unknown>, client: ApiClient = apiClient) {
+    const s = session
     try {
       const res = await client.pushPrivateDoc(privateRev.value, data)
+      if (s !== session) return res
       privateDoc.value = res.data ?? data
       privateRev.value = res.rev
+      privateUnsent.value = false
       saveLocalState()
       return res
     } catch (err) {
+      if (s !== session) throw err
       const msg = err instanceof Error ? err.message : String(err)
       lastError.value = msg
       throw err
@@ -253,6 +411,7 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   function scheduleSync(delay = 1500, client: ApiClient = apiClient) {
+    if (isDemo.value) return
     if (syncTimer) clearTimeout(syncTimer)
     syncTimer = setTimeout(() => {
       syncTimer = null
@@ -263,6 +422,7 @@ export const useFinanceStore = defineStore('finance', () => {
   
 
   function setPerson(id: PersonId, patch: Partial<Person>) {
+    if (unchanged(people.value.find((x) => x.id === id), patch)) return
     mutateHouseholdDoc((doc) => {
       let p = doc.people.find((x) => x.id === id);
       if (!p) {
@@ -362,6 +522,7 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   function setCategoryAmount(key: CategoryKey, amount: number) {
+    if (unchanged(categories.value.find((c) => c.key === key), { amount })) return
     const t = new Date().toISOString();
     mutateHouseholdDoc((doc) => {
       let cat = doc.categories.find((c) => c.key === key);
@@ -422,6 +583,9 @@ export const useFinanceStore = defineStore('finance', () => {
   function correctSalary(id: PersonId, amount: number) {
     const t = new Date().toISOString()
     const key = monthKey()
+    const p0 = people.value.find((x) => x.id === id)
+    const cur0 = (p0?.salaryVersions ?? []).filter((v) => v.from <= key).pop()
+    if (!p0 || (p0.salary === amount && (!cur0 || cur0.amount === amount))) return
     mutateHouseholdDoc((doc) => {
       const p = doc.people.find((x) => x.id === id)
       if (!p) return
@@ -447,8 +611,9 @@ export const useFinanceStore = defineStore('finance', () => {
 
   function mutatePrivateDoc(mutator: (data: Record<string, unknown>) => void) {
     mutator(privateDoc.value)
+    privateUnsent.value = true
     saveLocalState()
-    void pushPrivateDoc(privateDoc.value).catch(() => {})
+    if (!isDemo.value) void pushPrivateDoc(privateDoc.value).catch(() => {})
   }
 
   function addAccount(
@@ -502,6 +667,7 @@ export const useFinanceStore = defineStore('finance', () => {
   function updateAccount(id: string, patch: Partial<Account>) {
     const t = new Date().toISOString()
     const isPriv = ((privateDoc.value.accounts as Account[]) || []).some((x) => x.id === id)
+    if (unchanged(accounts.value.find((x) => x.id === id), patch)) return
     if (isPriv) {
       mutatePrivateDoc((doc) => {
         const list = (doc.accounts as Account[]) || []
@@ -522,6 +688,7 @@ export const useFinanceStore = defineStore('finance', () => {
   function setDeposit(id: string, deposit: Partial<NonNullable<Account['deposit']>>) {
     const t = new Date().toISOString()
     const isPriv = ((privateDoc.value.accounts as Account[]) || []).some((x) => x.id === id)
+    if (unchanged(accounts.value.find((x) => x.id === id)?.deposit, deposit)) return
     if (isPriv) {
       mutatePrivateDoc((doc) => {
         const list = (doc.accounts as Account[]) || []
@@ -594,6 +761,8 @@ export const useFinanceStore = defineStore('finance', () => {
   function correctObligation(id: string, amount: number) {
     const t = new Date().toISOString()
     const key = monthKey()
+    const o0 = obligations.value.find((x) => x.id === id)
+    if (!o0 || (o0.versions ?? []).filter((v) => v.from <= key).pop()?.amount === amount) return
     mutateHouseholdDoc((doc) => {
       const o = (doc.obligations || []).find((x) => x.id === id)
       if (!o) return
@@ -674,6 +843,11 @@ export const useFinanceStore = defineStore('finance', () => {
     privateDoc,
     privateRev,
     status,
+    unsent,
+    privateUnsent,
+    hasUnsent,
+    docHousehold,
+    isDemo,
     lastSyncedAt,
     lastError,
     forceReplace,
@@ -692,6 +866,11 @@ export const useFinanceStore = defineStore('finance', () => {
     mutateHouseholdDoc,
     mutatePrivateDoc,
     resetDoc,
+    clearLocal,
+    claimFor,
+    enterFamily,
+    startNewFamily,
+    adoptDemo,
     syncHousehold,
     pullHousehold,
     pullPrivateDoc,

@@ -303,6 +303,26 @@ func (m *MockHouseholdRepo) JoinHousehold(ctx context.Context, code, userID, dis
 
 // --- MockDocRepo ---
 
+// keepStoredKeys mirrors keepStoredKeysSQL (doc_repo.go): top-level keys the
+// pushed document lacks come from the stored one; anything but two objects is
+// stored as sent.
+func keepStoredKeys(stored, pushed json.RawMessage) json.RawMessage {
+	var s, p map[string]json.RawMessage
+	if json.Unmarshal(stored, &s) != nil || json.Unmarshal(pushed, &p) != nil || s == nil || p == nil {
+		return pushed
+	}
+	for k, v := range s {
+		if _, ok := p[k]; !ok {
+			p[k] = v
+		}
+	}
+	out, err := json.Marshal(p)
+	if err != nil {
+		return pushed
+	}
+	return out
+}
+
 type MockDocRepo struct {
 	mu            sync.RWMutex
 	householdDocs map[string]*models.HouseholdDoc          // householdID -> doc
@@ -385,7 +405,7 @@ func (m *MockDocRepo) PushHouseholdDoc(ctx context.Context, householdID string, 
 	newDoc := &models.HouseholdDoc{
 		HouseholdID: householdID,
 		Rev:         doc.Rev + 1,
-		Data:        data,
+		Data:        keepStoredKeys(doc.Data, data),
 		UpdatedAt:   time.Now(),
 		UpdatedBy:   &updatedBy,
 	}
@@ -451,7 +471,7 @@ func (m *MockDocRepo) PushPrivateDoc(ctx context.Context, householdID, userID st
 		HouseholdID: householdID,
 		UserID:      userID,
 		Rev:         doc.Rev + 1,
-		Data:        data,
+		Data:        keepStoredKeys(doc.Data, data),
 		UpdatedAt:   time.Now(),
 	}
 	m.privateDocs[householdID][userID] = newDoc

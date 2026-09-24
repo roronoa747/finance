@@ -82,6 +82,25 @@ describe('startSyncEngine — правки партнёра без собств�
     expect(pull).not.toHaveBeenCalled()
   })
 
+  it('RP-04: старт без сети — сразу «нет сети»; сеть вернулась — синк', () => {
+    signIn('real-token')
+    const finance = useFinanceStore()
+    const pull = vi.spyOn(finance, 'pullHousehold').mockResolvedValue(null)
+    const sync = vi.spyOn(finance, 'syncHousehold').mockResolvedValue()
+    const { win, doc } = fakeEnv()
+    Object.defineProperty(win, 'navigator', { value: { onLine: false } })
+
+    startSyncEngine(win, doc)
+    expect(finance.status).toBe('offline')
+    expect(sync).not.toHaveBeenCalled()
+    // Документ получил хозяина — семью, в которой вошли.
+    expect(finance.docHousehold).toBe('h1')
+
+    win.dispatchEvent(new Event('online'))
+    expect(sync).toHaveBeenCalledTimes(1)
+    expect(pull).not.toHaveBeenCalled()
+  })
+
   it('раз в минуту — только на видимом экране', () => {
     const { finance, pull, doc } = setup('real-token')
     finance.status = 'idle'

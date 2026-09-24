@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { apiClient, ApiError } from '@/api/client'
 import type { User, Household, HouseholdMember } from '@/types/api'
+import { useFinanceStore } from './finance'
 
 function getItem(key: string): string | null {
   return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null
@@ -162,8 +163,20 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  function logout() {
+  /**
+   * Выход. Документы семьи на телефоне стираются, чтобы следующий вход не смешал
+   * семьи. Если сервер видел не всё, без явного выбора ничего не делает и
+   * возвращает false — экран сначала спрашивает человека:
+   *  'discard' — выйти, неотправленное пропадёт;
+   *  'keep' — выйти, документ с неотправленным остаётся до входа в ту же семью
+   *           (вход истёк, отправить нельзя; вход в другую семью его сотрёт).
+   */
+  function logout(choice?: 'keep' | 'discard'): boolean {
+    const finance = useFinanceStore()
+    if (finance.hasUnsent && !choice) return false
+    if (choice !== 'keep') finance.clearLocal()
     clearAuth()
+    return true
   }
 
   return {

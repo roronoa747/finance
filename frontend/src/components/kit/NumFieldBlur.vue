@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, type HTMLAttributes } from 'vue'
-import { clean, type NumKind } from '@/lib/num'
+import { clean, numChanged, type NumKind } from '@/lib/num'
 import NumField from './NumField.vue'
 
 const props = withDefaults(
@@ -33,12 +33,14 @@ watch(
   },
 )
 
+// Нет изменения — нет записи: коммит того же значения со свежим временем
+// затирал правку с другого устройства.
 function onBlur() {
-  emit('commit', text.value)
+  if (numChanged(text.value, props.initial, props.kind)) emit('commit', text.value)
 }
 
+// Enter только уводит фокус, коммит — в onBlur: иначе одно действие давало два.
 function onEnter(e: Event) {
-  emit('commit', text.value)
   ;(e.target as HTMLInputElement)?.blur()
 }
 </script>

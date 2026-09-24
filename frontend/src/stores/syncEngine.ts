@@ -1,5 +1,5 @@
 import { useAuthStore } from './auth'
-import { useFinanceStore } from './finance'
+import { useFinanceStore, DEMO_HOUSEHOLD } from './finance'
 
 /** Как часто ловить правки партнёра, пока приложение открыто. */
 export const BACKGROUND_SYNC_MS = 60_000
@@ -42,9 +42,17 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
     if (doc.visibilityState === 'visible') sync()
   }, BACKGROUND_SYNC_MS)
 
-  // Старт с сохранённой сессией: статус в localStorage не хранится, и неотправленная
-  // перед закрытием правка выглядела бы как 'idle' — поэтому первый круг всегда полный.
-  if (signedIn()) void finance.syncHousehold()
+  // Демо, начатое до RP-05: документ помечается демо и больше не ходит на сервер.
+  if (auth.isDemo) finance.claimFor(DEMO_HOUSEHOLD)
+
+  if (signedIn()) {
+    // Документ, записанный до RP-04, получает хозяина — семью, в которой вошли.
+    if (auth.household) finance.claimFor(auth.household.id)
+    // Без сети статус честный сразу, а не «синхронизировано» до первого события.
+    if (win.navigator?.onLine === false) finance.status = 'offline'
+    // Первый круг всегда полный: неотправленная перед закрытием правка не теряется.
+    else void finance.syncHousehold()
+  }
 }
 
 /** Только для тестов: движок запускается один раз на страницу. */
