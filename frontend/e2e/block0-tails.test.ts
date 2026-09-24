@@ -5,6 +5,10 @@ import { useFinanceStore, defaultSyncDoc, DEMO_HOUSEHOLD } from '../src/stores/f
 import { ApiClient, ApiError } from '../src/api/client'
 import type { SyncDoc, Account } from '../src/types/finance'
 import type { HouseholdDocResponse, PrivateDocResponse } from '../src/types/api'
+import { createSSRApp } from 'vue'
+import { renderToString } from 'vue/server-renderer'
+import { createAppRouter } from '../src/router'
+import Access from '../src/views/Access.vue'
 
 /**
  * Блок 0 «Хвосты переключения» — сценарии приёмки на фейковом бэкенде.
@@ -156,5 +160,30 @@ describe('e2e / Блок 0 — демо как черновик будущей �
     expect(finance.privateAccounts).toEqual([])
     expect(finance.hasUnsent).toBe(false)
     expect(finance.isDemo).toBe(false)
+  })
+
+  it('экран входа: черновик демо — строка о неперенесении; правки ждут входа — демо не предлагается', async () => {
+    const renderAccess = async () => {
+      const router = createAppRouter()
+      const app = createSSRApp(Access)
+      app.use(router)
+      await router.push('/access')
+      return renderToString(app)
+    }
+
+    startDemoAndEdit()
+    let html = await renderAccess()
+    expect(html).toContain('Вернуться в демо')
+    expect(html).toContain('спросим, взять ли то, что вы заполнили в демо')
+
+    // «Войти заново» в семье h-1: правки ждут на телефоне — вход в демо стёр бы их.
+    setActivePinia(createPinia())
+    localStorage.clear()
+    const finance = useFinanceStore()
+    finance.claimFor('h-1')
+    finance.setPerson('a', { name: 'Ильяс' })
+    html = await renderAccess()
+    expect(html).toContain('Неотправленные правки ждут на этом телефоне')
+    expect(html).not.toContain('демо-режиме')
   })
 })

@@ -46,6 +46,8 @@ async function enterHousehold() {
 // при входе в существующую — нет, и это сказано заранее.
 const hasDemoDraft = computed(() => financeStore.isDemo)
 const askDemo = ref(false)
+// После «Войти заново» правки семьи ждут на телефоне: старт демо стёр бы их молча.
+const editsWaitLogin = computed(() => financeStore.hasUnsent && !financeStore.isDemo)
 
 async function answerDemo(take: boolean) {
   const household = authStore.household
@@ -381,7 +383,10 @@ function startDemoMode() {
     </form>
 
     <!-- Sandbox / Demo Mode Button -->
-    <div class="mt-6 pt-5 border-t border-line text-center">
+    <p v-if="editsWaitLogin" class="mt-6 pt-5 border-t border-line text-center text-[12px] text-ink-3">
+      Неотправленные правки ждут на этом телефоне — войдите в свою семью, и они уйдут.
+    </p>
+    <div v-else class="mt-6 pt-5 border-t border-line text-center">
       <button
         type="button"
         class="inline-flex items-center gap-1.5 text-[13px] font-medium text-brand hover:underline cursor-pointer"
