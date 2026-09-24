@@ -27,6 +27,13 @@ import {
   untilPayday,
   lumpPlan,
   prepaySaved,
+  budgetAmounts,
+  dueIn,
+  groupTotal,
+  groupChildren,
+  isSubscription,
+  keepQuestions,
+  KEEP_ASK_DAYS,
 } from './finance'
 import { plain, money, moneyShort, parseMoney, pct, ratePct } from './money'
 import { clean, caretAt, sigBefore } from './num'
@@ -514,5 +521,82 @@ describe('RP-08 — применить досрочку', () => {
     ]
     expect(prepaySaved(list)).toBe(180_000)
     expect(prepaySaved([])).toBe(0)
+  })
+})
+
+describe('RP-09 — группы подписок и «оставить?»', () => {
+  const T0 = '2026-01-01T00:00:00Z'
+  const sub = (id: string, amount: number, extra: Partial<Obligation> = {}): Obligation => ({
+    id, name: id, note: '', day: 10, category: 'd4', versions: [{ from: '2000-01', amount }], updatedAt: T0, ...extra,
+  })
+  const work: Obligation = { id: 'work', name: 'Рабочие', note: '', day: 1, category: 'd4', versions: [], group: true, noAsk: true, updatedAt: T0 }
+  const fun: Obligation = { ...work, id: 'fun', name: 'Досуг', noAsk: false }
+  const rent = sub('rent', 220_000, { category: 'd1' })
+  const util = sub('util', 35_000, { estimate: true })
+  const people: Person[] = [{ id: 'a', name: 'Ильяс', salary: 700_000, payday: 20, updatedAt: T0 }]
+
+  it('итог группы — сумма подписок, годовые — долей месяца, целые', () => {
+    const list = [fun, sub('netflix', 4_990, { parentId: 'fun' }), sub('icloud', 11_990, { parentId: 'fun', every: 'year', month: 3 }), sub('gym', 15_000)]
+    expect(groupChildren(fun, list).map((o) => o.id)).toEqual(['netflix', 'icloud'])
+    // 4 990 + 11 990 / 12 = 5 989,17 → 5 989.
+    expect(groupTotal(fun, list, '2026-09')).toBe(5_989)
+    // Удалённая подписка в итог не входит.
+    expect(groupTotal(fun, [...list.slice(0, 2), { ...list[2], deletedAt: T0 }], '2026-09')).toBe(4_990)
+  })
+
+  it('группа не входит в budgetAmounts, dueIn и untilPayday; подписки — входят; бюджет от группировки не меняется', () => {
+    const loose = [rent, sub('netflix', 4_990), sub('slack', 3_000)]
+    const grouped = [rent, work, fun, sub('netflix', 4_990, { parentId: 'fun' }), sub('slack', 3_000, { parentId: 'work' })]
+    expect(budgetAmounts({ obligations: grouped, people })).toEqual(budgetAmounts({ obligations: loose, people }))
+    expect(dueIn(fun, '2026-09')).toBe(false)
+    const due = untilPayday({ people, obligations: grouped }, { day: 5, key: '2026-09' })!.due.map((x) => x.id)
+    expect(due).toEqual(['rent', 'netflix', 'slack'])
+    expect(isSubscription(fun)).toBe(false)
+    expect(isSubscription(rent)).toBe(false)
+    expect(isSubscription(util)).toBe(false)
+    expect(isSubscription(sub('netflix', 1))).toBe(true)
+  })
+
+  it('годовая досуговая: спрашивает в окне 14 дней до продления, после ответа — до следующего года', () => {
+    expect(KEEP_ASK_DAYS).toBe(14)
+    // Продление 12 ноября; окно — с 29 октября. Моменты — полдень по Алматы (07:00 UTC).
+    const icloud = sub('icloud', 11_990, { every: 'year', month: 11, day: 12, keptAt: '2026-03-01T07:00:00Z' })
+    const at = (d: string) => new Date(`${d}T07:00:00Z`)
+    expect(keepQuestions([icloud], at('2026-10-28'))).toEqual([])
+    expect(keepQuestions([icloud], at('2026-10-29')).map((o) => o.id)).toEqual(['icloud'])
+    expect(keepQuestions([icloud], at('2026-11-12')).map((o) => o.id)).toEqual(['icloud'])
+    const kept = { ...icloud, keptAt: '2026-10-30T07:00:00Z' }
+    expect(keepQuestions([kept], at('2026-11-05'))).toEqual([])
+    // После продления до следующего окна тихо; в следующем году — снова.
+    expect(keepQuestions([kept], at('2026-11-13'))).toEqual([])
+    expect(keepQuestions([kept], at('2027-10-29')).map((o) => o.id)).toEqual(['icloud'])
+    // В рабочей группе — никогда.
+    expect(keepQuestions([work, { ...icloud, parentId: 'work' }], at('2026-11-01'))).toEqual([])
+    // В досуговой группе — как без группы.
+    expect(keepQuestions([fun, { ...icloud, parentId: 'fun' }], at('2026-11-01'))).toHaveLength(1)
+  })
+
+  it('ежемесячная: раз в квартал; граница квартала и момент ответа — по Алматы', () => {
+    const netflix = (keptAt: string | null) => sub('netflix', 4_990, { keptAt })
+    // Ответ 30 июня — до начала III квартала: в сентябре спросит.
+    expect(keepQuestions([netflix('2026-06-30T07:00:00Z')], new Date('2026-09-10T07:00:00Z'))).toHaveLength(1)
+    // 30 июня 20:00 UTC — уже 1 июля 01:00 в Алматы: ответ этого квартала, не спросит.
+    expect(keepQuestions([netflix('2026-06-30T20:00:00Z')], new Date('2026-09-10T07:00:00Z'))).toEqual([])
+    // 30 сентября 23:30 в Алматы — ещё III квартал; 00:30 1 октября — уже IV, спросит.
+    const julyAnswer = netflix('2026-07-02T07:00:00Z')
+    expect(keepQuestions([julyAnswer], new Date('2026-09-30T18:30:00Z'))).toEqual([])
+    expect(keepQuestions([julyAnswer], new Date('2026-09-30T19:30:00Z'))).toHaveLength(1)
+    // Без ответа вовсе (заведена до RP-09) — спросит.
+    expect(keepQuestions([netflix(null)], new Date('2026-09-10T07:00:00Z'))).toHaveLength(1)
+  })
+
+  it('спрашивает только подписки: аренду, коммуналку и группы — нет; сначала ближайшие годовые, затем дороже', () => {
+    const now = new Date('2026-11-01T07:00:00Z')
+    const list = [
+      rent, util, fun,
+      sub('cheap', 1_990), sub('pricey', 9_990),
+      sub('icloud', 11_990, { every: 'year', month: 11, day: 12, keptAt: '2026-01-01T07:00:00Z' }),
+    ]
+    expect(keepQuestions(list, now).map((o) => o.id)).toEqual(['icloud', 'pricey', 'cheap'])
   })
 })

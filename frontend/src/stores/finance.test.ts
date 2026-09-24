@@ -937,4 +937,40 @@ describe('RP-06: отметки оплат в сторе', () => {
     expect(store.markPaid('credit', loan, 'a')).toBeNull()
     expect(store.payments).toHaveLength(0)
   })
+
+  it('RP-09: группа — создать, положить, вынуть (null), удалить; подписки остаются; группу не отметить', () => {
+    const store = useFinanceStore()
+    store.addObligation({ name: 'Netflix', day: 10, category: 'd4', amount: 4_990 })
+    store.addObligation({ name: 'Slack', day: 3, category: 'd4', amount: 3_000 })
+    // Заведённая подписка уже «оставлена» — сразу не спрашивается.
+    expect(store.obligations[0].keptAt).toBe('2026-09-24T07:00:00.000Z')
+    const [netflix, slack] = store.obligations.map((o) => o.id)
+    const fun = store.addGroup('Досуг')
+    const work = store.addGroup('Рабочие', true)
+    expect(store.obligations.find((o) => o.id === work)).toMatchObject({ group: true, noAsk: true, versions: [] })
+
+    store.moveToGroup(netflix, fun)
+    store.moveToGroup(slack, work)
+    expect(store.obligations.find((o) => o.id === netflix)!.parentId).toBe(fun)
+    store.moveToGroup(netflix, null)
+    // Вынуть — явный null: при слиянии не воскреснет прежняя группа.
+    expect(store.obligations.find((o) => o.id === netflix)!.parentId).toBeNull()
+
+    expect(store.markPaid('obligation', work, 'a', { period: '2026-09', accountId: null })).toBeNull()
+
+    at('2026-09-24T09:00:00Z')
+    store.removeGroup(work)
+    expect(store.obligations.find((o) => o.id === work)!.deletedAt).toBe('2026-09-24T09:00:00.000Z')
+    expect(store.obligations.find((o) => o.id === slack)).toMatchObject({ parentId: null })
+    expect(store.obligations.find((o) => o.id === slack)!.deletedAt).toBeFalsy()
+  })
+
+  it('RP-09: «оставить» пишет keptAt в общий документ', () => {
+    const store = useFinanceStore()
+    store.addObligation({ name: 'Netflix', day: 10, category: 'd4', amount: 4_990 })
+    at('2026-12-01T07:00:00Z')
+    store.keepSubscription(store.obligations[0].id)
+    expect(store.householdDoc.obligations[0].keptAt).toBe('2026-12-01T07:00:00.000Z')
+    expect(store.unsent).toBe(true)
+  })
 })

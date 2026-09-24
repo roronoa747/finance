@@ -489,9 +489,43 @@ export const useFinanceStore = defineStore('finance', () => {
         month: o.month,
         who: o.who,
         versions: [{ from: '2000-01', amount: o.amount }],
+        // Завести — уже решение «оставить»: только что добавленное не спрашиваем (Р-20).
+        keptAt: t,
         updatedAt: t,
       });
     });
+  }
+
+  /** Группа подписок со свободным названием (Р-20): сама не платёж, суммы нет. */
+  function addGroup(name: string, noAsk = false) {
+    const id = Math.random().toString(36).slice(2, 10)
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      doc.obligations.push({ id, name, note: '', day: 1, category: 'd4', versions: [], group: true, noAsk, updatedAt: t })
+    })
+    return id
+  }
+
+  /** Положить подписку в группу или вынуть (null). */
+  function moveToGroup(id: string, groupId: string | null) {
+    if (unchanged(obligations.value.find((x) => x.id === id), { parentId: groupId })) return
+    updateObligation(id, { parentId: groupId })
+  }
+
+  /** Ответ «оставить» на вопрос о подписке — до следующего вопроса по правилам Р-20. */
+  function keepSubscription(id: string) {
+    updateObligation(id, { keptAt: new Date().toISOString() })
+  }
+
+  /** Удалить группу: подписки остаются, просто без группы. */
+  function removeGroup(id: string) {
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      for (const o of doc.obligations || []) {
+        if (o.id === id) Object.assign(o, { deletedAt: t, updatedAt: t })
+        else if (o.parentId === id) Object.assign(o, { parentId: null, updatedAt: t })
+      }
+    })
   }
 
   function addCredit(c: {
@@ -806,7 +840,8 @@ export const useFinanceStore = defineStore('finance', () => {
     let amount: number
     let principal: number | undefined
     if (kind === 'obligation') {
-      const o = obligations.value.find((x) => x.id === targetId && !x.deletedAt)
+      // Группа подписок — не платёж (RP-09).
+      const o = obligations.value.find((x) => x.id === targetId && !x.deletedAt && !x.group)
       if (!o) return null
       period = opts.period ?? nextObligationDue(o, payments.value)?.period
       if (!period) return null
@@ -1073,6 +1108,10 @@ export const useFinanceStore = defineStore('finance', () => {
     correctObligation,
     amendObligation,
     removeObligation,
+    addGroup,
+    moveToGroup,
+    keepSubscription,
+    removeGroup,
     addCredit,
     updateCredit,
     removeCredit,

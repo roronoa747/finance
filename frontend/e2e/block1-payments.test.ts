@@ -8,7 +8,7 @@ import { useFinanceStore, defaultSyncDoc } from '../src/stores/finance'
 import { ApiClient, ApiError } from '../src/api/client'
 import type { SyncDoc } from '../src/types/finance'
 import type { HouseholdDocResponse, ConflictResponse } from '../src/types/api'
-import { lastAccountFor, lumpPlan, nextObligationDue, prepaySaved } from '../src/lib/finance'
+import { budgetAmounts, lastAccountFor, lumpPlan, nextObligationDue, prepaySaved } from '../src/lib/finance'
 import { money, plain } from '../src/lib/money'
 import Overview from '../src/views/Overview.vue'
 import Capital from '../src/views/Capital.vue'
@@ -180,6 +180,60 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
       expect(payoff).toContain('Применённые досрочки')
       expect(payoff).toContain('сократили срок')
     }
+  })
+
+  it('RP-09: рабочая группа не спрашивает «оставить?», годовая досуговая перед продлением — спрашивает; ответ и «отменить» — у обоих', async () => {
+    const sub = (id: string, name: string, amount: number, extra: Record<string, unknown> = {}) => ({
+      id, name, note: '', day: 10, category: 'd4' as const, versions: [{ from: '2000-01', amount }], updatedAt: T0, ...extra,
+    })
+    server.data.obligations.push(
+      { id: 'work', name: 'Рабочие', note: '', day: 1, category: 'd4', versions: [], group: true, noAsk: true, updatedAt: T0 },
+      sub('slack', 'Slack', 3_000, { parentId: 'work', keptAt: null }),
+      sub('netflix', 'Netflix', 4_990, { keptAt: '2026-06-01T07:00:00.000Z' }),
+      // Продление 5 октября — через 11 дней.
+      sub('icloud', 'iCloud', 11_990, { every: 'year', month: 10, day: 5, keptAt: '2026-01-10T07:00:00.000Z' }),
+    )
+    const A = await phone()
+    const B = await phone()
+
+    let overview = await screen(A.pinia, Overview, '/')
+    expect(overview).toContain('Оставить «iCloud»?')
+    expect(overview).toContain('Продлится 5 октября')
+    expect(overview).not.toContain('Оставить «Slack»?')
+
+    setActivePinia(A.pinia)
+    at('2026-09-24T08:00:00Z')
+    A.store.keepSubscription('icloud')
+    overview = await screen(A.pinia, Overview, '/')
+    expect(overview).toContain('Оставить «Netflix»?')
+    expect(overview).toContain('Раз в квартал сверяем подписки')
+
+    // Партнёр тот же вопрос не получает — ответ в общем документе.
+    await A.store.syncHousehold(A.client)
+    await B.store.pullHousehold(B.client)
+    overview = await screen(B.pinia, Overview, '/')
+    expect(overview).not.toContain('Оставить «iCloud»?')
+    expect(overview).toContain('Оставить «Netflix»?')
+
+    // «Отменить» — надгробие: подписка ушла у обоих, спрашивать больше некого.
+    setActivePinia(B.pinia)
+    B.store.removeObligation('netflix')
+    await B.store.syncHousehold(B.client)
+    await A.store.pullHousehold(A.client)
+    overview = await screen(A.pinia, Overview, '/')
+    expect(overview).not.toContain('Оставить «')
+    const capital = await screen(A.pinia, Capital, '/capital')
+    expect(capital).not.toContain('Netflix')
+    // Группа видна с подписками и итогом; годовая — «в год».
+    expect(capital).toContain('Рабочие')
+    expect(capital).toContain('1 подписка · рабочие')
+    expect(capital).toContain('Slack')
+    expect(capital).toContain('в год')
+
+    // Бюджет месяца от группировки не изменился.
+    const doc = A.store.householdDoc
+    const flat = { ...doc, obligations: doc.obligations.filter((o) => !o.group).map((o) => ({ ...o, parentId: null })) }
+    expect(budgetAmounts(doc)).toEqual(budgetAmounts(flat))
   })
 
   it('одну аренду отметили оба офлайн → записей две, списание одно; снятие у одного возвращает деньги обоим', async () => {

@@ -15,10 +15,12 @@ import {
   amountAt,
   budgetAmounts,
   dueIn,
+  keepQuestions,
   liveCredits,
   liveGoals,
   liveObligations,
   nextChange,
+  nextObligationDue,
   paidFor,
   salaryAt,
   untilPayday,
@@ -141,6 +143,23 @@ const paydayInfo = computed(() => {
     payments: financeStore.payments,
   })
 })
+
+// «Оставить?» (Р-20): один вопрос за раз, спокойно; отвечает участник, не viewer
+const keepAsk = computed(() => (authStore.isViewer ? null : (keepQuestions(financeStore.obligations)[0] ?? null)))
+const keepRenewal = computed(() =>
+  keepAsk.value?.every === 'year' ? nextObligationDue(keepAsk.value, financeStore.payments) : null,
+)
+const cancelling = ref(false)
+
+function keepSub() {
+  if (keepAsk.value) financeStore.keepSubscription(keepAsk.value.id)
+  cancelling.value = false
+}
+
+function cancelSub() {
+  if (keepAsk.value) financeStore.removeObligation(keepAsk.value.id)
+  cancelling.value = false
+}
 
 function dayWord(n: number) {
   const t = n % 10
@@ -337,6 +356,32 @@ async function copyInvite() {
         </p>
       </Card>
     </template>
+
+    <!-- «Оставить?» — подписка, о которой пора спросить -->
+    <Card v-if="keepAsk">
+      <div class="text-[12.5px] text-ink-3">
+        {{ keepRenewal ? `Продлится ${dayLabel(keepRenewal.day, keepRenewal.period)}` : 'Раз в квартал сверяем подписки' }}
+      </div>
+      <div class="mt-0.5 font-display text-[17px] font-semibold tracking-[-0.01em] text-ink">
+        Оставить «{{ keepAsk.name }}»?
+      </div>
+      <div class="text-[13px] text-ink-2 num">
+        {{ money(amountAt(keepAsk, key)) }} {{ keepAsk.every === 'year' ? 'в год' : 'в месяц' }}
+      </div>
+      <div v-if="!cancelling" class="mt-3 flex gap-2">
+        <Button class="flex-1" @click="keepSub">Оставить</Button>
+        <Button variant="outline" class="flex-1 bg-surface-2" @click="cancelling = true">Отменить</Button>
+      </div>
+      <div v-else class="mt-3 rounded-xl border border-line bg-surface-2 p-3">
+        <p class="mb-2 text-[12.5px] leading-relaxed text-ink-2">
+          Подписка уйдёт из бюджета и планов у вас обоих. Отключить её в самом сервисе нужно отдельно.
+        </p>
+        <div class="flex gap-2">
+          <Button variant="outline" class="flex-1 bg-surface" @click="cancelling = false">Не сейчас</Button>
+          <Button class="flex-1" @click="cancelSub">Отменить подписку</Button>
+        </div>
+      </div>
+    </Card>
 
     <!-- Секция «Впереди» -->
     <Section title="Впереди">

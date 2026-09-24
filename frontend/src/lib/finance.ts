@@ -1,5 +1,5 @@
 import type { Account, Category, Credit, Goal, Obligation, Payment, Person, WishItem } from '@/types/finance'
-import { addMonths, daysInMonth, monthKey, today } from '@/lib/dates'
+import { addMonths, daysInMonth, monthKey, parseMonthKey, today } from '@/lib/dates'
 /**
  * Расчётное ядро. Чистые функции: ни сети, ни состояния, ни ИИ.
  *
@@ -462,7 +462,13 @@ export function simulateStrategy(opts: {
 const alive = <T extends { deletedAt?: string | null }>(x: T) => !x.deletedAt;
 
 export const liveGoals = (goals: Goal[]) => (goals || []).filter(alive);
-export const liveObligations = (list: Obligation[]) => (list || []).filter(alive);
+/**
+ * Живые обязательства — то, что платится. Группа подписок (RP-09) — не платёж и
+ * сюда не входит: ни в бюджет, ни в календарь, ни в «до зарплаты», ни в отметки.
+ * Группы отдаёт `liveGroups`.
+ */
+export const liveObligations = (list: Obligation[]) => (list || []).filter((o) => alive(o) && !o.group);
+export const liveGroups = (list: Obligation[]) => (list || []).filter((o) => alive(o) && !!o.group);
 export const liveCredits = (list: Credit[]) => (list || []).filter(alive);
 export const liveAccounts = (list: Account[]) => (list || []).filter(alive);
 export const liveWishlist = (list: WishItem[]) => (list || []).filter(alive);
@@ -480,8 +486,9 @@ export function monthlyAmount(o: Obligation, key = monthKey()): number {
   return o.every === 'year' ? full / 12 : full;
 }
 
-/** Списывается ли этот платёж в указанном месяце. */
+/** Списывается ли этот платёж в указанном месяце. Группа подписок не списывается никогда. */
 export function dueIn(o: Obligation, key = monthKey()): boolean {
+  if (o.group) return false;
   if (o.every !== 'year') return true;
   return (o.month ?? 1) === Number(key.split('-')[1]);
 }
@@ -493,6 +500,71 @@ export function nextChange(o: Obligation, key = monthKey()) {
   if (!future.length) return null;
   const current = amountAt(o, key);
   return { ...future[0], delta: future[0].amount - current };
+}
+
+/* ---------------- группы подписок и «оставить?» (RP-09) ---------------- */
+
+/** Подписки группы — живые обязательства, лежащие в ней. */
+export const groupChildren = (group: Obligation, list: Obligation[]) =>
+  liveObligations(list).filter((o) => o.parentId === group.id);
+
+/** Итог группы за месяц — сумма её подписок; годовые — долей, как в плане месяца. */
+export function groupTotal(group: Obligation, list: Obligation[], key = monthKey()): number {
+  return Math.round(groupChildren(group, list).reduce((a, o) => a + monthlyAmount(o, key), 0));
+}
+
+/**
+ * Подписка — то, что заводит форма «Подписка или услуга»: быт (d4), сумма не
+ * плавает. Аренду, кредиты и коммуналку «оставить?» не спрашиваем.
+ */
+export const isSubscription = (o: Obligation) => !o.group && o.category === 'd4' && !o.estimate;
+
+/**
+ * За сколько дней до годового продления спрашивать «оставить?». Две недели —
+ * успеть отменить до списания и решить вдвоём, а не в день, когда деньги ушли.
+ */
+export const KEEP_ASK_DAYS = 14;
+
+/** Номер календарного дня — для разницы в днях. */
+const dayNo = (key: string, day: number) => {
+  const { year, month } = parseMonthKey(key);
+  return Date.UTC(year, month, day) / 86_400_000;
+};
+
+/**
+ * Кого спросить «оставить?» сейчас (Р-20). Только подписки, и не из группы с
+ * флагом «рабочие». Годовую — в последние KEEP_ASK_DAYS дней перед продлением,
+ * если в этом окне ещё не ответили. Ежемесячную — если последний ответ
+ * «оставить» был до начала текущего квартала. Календарь — Алматы. Первыми —
+ * ближайшие годовые продления, затем ежемесячные подороже.
+ */
+export function keepQuestions(list: Obligation[], now = new Date()): Obligation[] {
+  const t = today(now);
+  const todayNo = dayNo(t.key, t.day);
+  const { year, month } = parseMonthKey(t.key);
+  const quarterNo = dayNo(`${year}-${String(Math.floor(month / 3) * 3 + 1).padStart(2, '0')}`, 1);
+  const quiet = new Set(liveGroups(list).filter((g) => g.noAsk).map((g) => g.id));
+
+  const asks: { o: Obligation; wait: number }[] = [];
+  for (const o of liveObligations(list)) {
+    if (!isSubscription(o) || (o.parentId && quiet.has(o.parentId))) continue;
+    const k = o.keptAt ? today(new Date(o.keptAt)) : null;
+    const kept = k ? dayNo(k.key, k.day) : -Infinity;
+    if (o.every === 'year') {
+      const on = (y: number) => {
+        const key = `${y}-${String(o.month ?? 1).padStart(2, '0')}`;
+        return dayNo(key, Math.min(o.day, daysInMonth(key)));
+      };
+      const renewal = on(year) >= todayNo ? on(year) : on(year + 1);
+      const from = renewal - KEEP_ASK_DAYS;
+      if (todayNo >= from && kept < from) asks.push({ o, wait: renewal - todayNo });
+    } else if (kept < quarterNo) {
+      asks.push({ o, wait: Infinity });
+    }
+  }
+  return asks
+    .sort((a, b) => a.wait - b.wait || amountAt(b.o, t.key) - amountAt(a.o, t.key))
+    .map((x) => x.o);
 }
 
 /** Оклад, действующий в указанном месяце. */
