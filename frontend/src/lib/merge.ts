@@ -110,17 +110,6 @@ function mergeObligation(winner: Obligation, a: Obligation, b: Obligation): Obli
   }
 }
 
-const KNOWN_KEYS = new Set([
-  'setupDoneAt',
-  'people',
-  'categories',
-  'goals',
-  'wishlist',
-  'obligations',
-  'accounts',
-  'credits',
-])
-
 type WithId = Tracked & { id: string }
 
 function isIdList(v: unknown): v is WithId[] {
@@ -130,13 +119,16 @@ function isIdList(v: unknown): v is WithId[] {
   )
 }
 
-/** Ключи верхнего уровня, которых этот код не знает (правило 3). */
-function mergeUnknownKeys(local: SyncDoc, remote: SyncDoc): Record<string, unknown> {
+/**
+ * Ключи верхнего уровня, которых этот код не знает (правило 3). Знакомые — те,
+ * что mergeDocs сливает явно (`known`): новый ключ достаточно добавить туда.
+ */
+function mergeUnknownKeys(local: SyncDoc, remote: SyncDoc, known: SyncDoc): Record<string, unknown> {
   const l = local as unknown as Record<string, unknown>
   const r = remote as unknown as Record<string, unknown>
   const out: Record<string, unknown> = {}
   for (const key of new Set([...Object.keys(l), ...Object.keys(r)])) {
-    if (KNOWN_KEYS.has(key)) continue
+    if (key in known) continue
     const a = l[key]
     const b = r[key]
     if (a === undefined) out[key] = b
@@ -148,8 +140,7 @@ function mergeUnknownKeys(local: SyncDoc, remote: SyncDoc): Record<string, unkno
 }
 
 export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
-  return {
-    ...mergeUnknownKeys(local, remote),
+  const known: SyncDoc = {
     // Настройку проходят один раз на семью: если хоть кто-то её закончил,
     // отменить это слиянием нельзя.
     setupDoneAt: local.setupDoneAt ?? remote.setupDoneAt ?? null,
@@ -166,6 +157,7 @@ export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
     accounts: mergeList(local.accounts ?? [], remote.accounts ?? [], (x) => x.id),
     credits: mergeList(local.credits ?? [], remote.credits ?? [], (x) => x.id),
   }
+  return { ...mergeUnknownKeys(local, remote, known), ...known }
 }
 
 /** Пустой ли документ на сервере — тогда заливаем своё, а не сливаем с ничем. */
