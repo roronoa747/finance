@@ -4,10 +4,16 @@ on:
   push:
     paths:
       - 'backend/**'
+      - 'api/**'
+      - 'go.mod'
+      - 'go.sum'
       - '.github/workflows/ci-backend.yml'
   pull_request:
     paths:
       - 'backend/**'
+      - 'api/**'
+      - 'go.mod'
+      - 'go.sum'
       - '.github/workflows/ci-backend.yml'
 
 jobs:
@@ -25,6 +31,9 @@ jobs:
       - run: go build ./...
       - run: go vet ./...
       - run: go test -v ./...
+      # Функция Vercel — корневой модуль с replace на ./backend
+      - run: go vet ./api/... && go test -v ./api/...
+        working-directory: .
 
   integration:
     runs-on: ubuntu-latest

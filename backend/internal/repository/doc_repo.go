@@ -22,6 +22,9 @@ type DocRepository interface {
 	PushPrivateDoc(ctx context.Context, householdID, userID string, expectedRev int64, data json.RawMessage) (*models.PrivateDoc, bool, error)
 }
 
+// Document JSON is passed to SQL as a string, never as []byte: with
+// binary_parameters=yes (needed behind the transaction pooler) lib/pq sends
+// []byte in binary format, which jsonb input rejects.
 type sqlDocRepository struct {
 	db *sql.DB
 }
@@ -97,7 +100,7 @@ func (r *sqlDocRepository) PushHouseholdDoc(ctx context.Context, householdID str
 		RETURNING household_id, rev, data, updated_at, updated_by;`
 
 	newDoc := &models.HouseholdDoc{}
-	err = tx.QueryRowContext(ctx, updateQuery, data, updatedBy, householdID).Scan(
+	err = tx.QueryRowContext(ctx, updateQuery, string(data), updatedBy, householdID).Scan(
 		&newDoc.HouseholdID,
 		&newDoc.Rev,
 		&newDoc.Data,
@@ -174,7 +177,7 @@ func (r *sqlDocRepository) PushPrivateDoc(ctx context.Context, householdID, user
 			VALUES ($1, $2, 1, $3::jsonb)
 			RETURNING household_id, user_id, rev, data, updated_at;`
 		newDoc := &models.PrivateDoc{}
-		if err := tx.QueryRowContext(ctx, insertQuery, householdID, userID, data).Scan(
+		if err := tx.QueryRowContext(ctx, insertQuery, householdID, userID, string(data)).Scan(
 			&newDoc.HouseholdID, &newDoc.UserID, &newDoc.Rev, &newDoc.Data, &newDoc.UpdatedAt,
 		); err != nil {
 			return nil, false, fmt.Errorf("failed to insert initial private doc: %w", err)
@@ -199,7 +202,7 @@ func (r *sqlDocRepository) PushPrivateDoc(ctx context.Context, householdID, user
 		RETURNING household_id, user_id, rev, data, updated_at;`
 
 	newDoc := &models.PrivateDoc{}
-	err = tx.QueryRowContext(ctx, updateQuery, data, householdID, userID).Scan(
+	err = tx.QueryRowContext(ctx, updateQuery, string(data), householdID, userID).Scan(
 		&newDoc.HouseholdID,
 		&newDoc.UserID,
 		&newDoc.Rev,

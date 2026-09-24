@@ -25,7 +25,7 @@ func Open(t *testing.T) *sql.DB {
 		t.Skipf("%s is not set: skipping PostgreSQL integration test", EnvVar)
 	}
 
-	database, err := db.Connect(url)
+	database, err := db.Connect(url, db.ServerPool)
 	if err != nil {
 		t.Fatalf("failed to connect to test database: %v", err)
 	}

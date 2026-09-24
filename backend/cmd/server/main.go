@@ -1,3 +1,5 @@
+// Command server runs the API as a long-lived process for local development.
+// Unlike the Vercel function it applies migrations on start.
 package main
 
 import (
@@ -11,17 +13,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
-
-	"finance-backend/internal/auth"
 	"finance-backend/internal/config"
 	"finance-backend/internal/db"
-	"finance-backend/internal/fx"
-	"finance-backend/internal/handlers"
-	"finance-backend/internal/repository"
 	"finance-backend/migrations"
+	"finance-backend/server"
 )
 
 func main() {
@@ -30,17 +25,9 @@ func main() {
 		log.Fatalf("failed to load configuration: %v", err)
 	}
 
-	var (
-		database      *sql.DB
-		userRepo      repository.UserRepository
-		householdRepo repository.HouseholdRepository
-		docRepo       repository.DocRepository
-	)
-
-	tokenService := auth.NewTokenService(cfg.JWTSecret, 30*24*time.Hour)
-
+	var database *sql.DB
 	if cfg.DatabaseURL != "" {
-		database, err = db.Connect(cfg.DatabaseURL)
+		database, err = db.Connect(cfg.DatabaseURL, db.ServerPool)
 		if err != nil {
 			log.Fatalf("fatal: unable to connect to database: %v", err)
 		}
@@ -55,24 +42,14 @@ func main() {
 		}
 	}
 
-	if database != nil {
-		userRepo = repository.NewSQLUserRepository(database)
-		householdRepo = repository.NewSQLHouseholdRepository(database)
-		docRepo = repository.NewSQLDocRepository(database)
-	} else {
-		log.Println("using in-memory mock repositories (development mode)")
-		mockRepos := repository.NewMockRepositories()
-		mockRepos.Households.SetDocRepo(mockRepos.Docs)
-		userRepo = mockRepos.Users
-		householdRepo = mockRepos.Households
-		docRepo = mockRepos.Docs
+	handler, err := server.NewHandler(cfg, database)
+	if err != nil {
+		log.Fatalf("fatal: %v", err)
 	}
-
-	r := setupRouter(cfg, database, userRepo, householdRepo, docRepo, tokenService, fx.NewClient())
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      r,
+		Handler:      handler,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -99,58 +76,4 @@ func main() {
 	}
 
 	log.Println("server stopped gracefully")
-}
-
-func setupRouter(
-	cfg *config.Config,
-	database *sql.DB,
-	userRepo repository.UserRepository,
-	householdRepo repository.HouseholdRepository,
-	docRepo repository.DocRepository,
-	tokenService *auth.TokenService,
-	fxClient *fx.Client,
-) *chi.Mux {
-	r := chi.NewRouter()
-
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   cfg.AllowedOrigins(),
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
-		ExposedHeaders:   []string{"Link"},
-		AllowCredentials: true,
-		MaxAge:           300,
-	}))
-
-	authHandler := handlers.NewAuthHandler(userRepo, householdRepo, tokenService)
-	householdHandler := handlers.NewHouseholdHandler(householdRepo, tokenService)
-	syncHandler := handlers.NewSyncHandler(docRepo)
-
-	r.Route("/api", func(api chi.Router) {
-		api.Get("/health", handlers.HealthHandler(database))
-		api.Get("/fx-rate", handlers.FxRateHandler(fxClient))
-
-		api.Post("/auth/register", authHandler.Register)
-		api.Post("/auth/login", authHandler.Login)
-
-		// Protected endpoints
-		api.Group(func(protected chi.Router) {
-			protected.Use(auth.Middleware(tokenService))
-			protected.Get("/auth/me", authHandler.Me)
-
-			protected.Post("/household/invites", householdHandler.CreateInvite)
-			protected.Post("/household/join", householdHandler.JoinHousehold)
-
-			protected.Get("/sync/household", syncHandler.GetHouseholdDoc)
-			protected.Post("/sync/household", syncHandler.PushHouseholdDoc)
-			protected.Get("/sync/private", syncHandler.GetPrivateDoc)
-			protected.Post("/sync/private", syncHandler.PushPrivateDoc)
-		})
-	})
-
-	return r
 }
