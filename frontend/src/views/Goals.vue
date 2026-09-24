@@ -155,7 +155,7 @@ function toggleWishBought(id: string, itemName: string) {
     const item = (doc.wishlist || []).find((w) => w.id === id)
     if (item) {
       item.bought = !item.bought
-      item.boughtOn = item.bought ? new Date().toISOString() : undefined
+      item.boughtOn = item.bought ? new Date().toISOString() : null
       item.updatedAt = new Date().toISOString()
       if (item.bought) {
         justBought.value = itemName

@@ -14,6 +14,17 @@ import type { Goal, GoalMovement, Obligation, SyncDoc, Tracked } from '@/types/f
  *     срок — вещи, где «последний прав» никого не разоряет, а проигравшая
  *     версия всё равно остаётся в истории документа на сервере.
  *
+ *  3. Незнакомое не теряется. После деплоя старый код на телефоне отрабатывает
+ *     ещё один запуск и сливает документ, в котором уже есть данные нового кода.
+ *     Поле сущности, которого нет у победителя (ключа нет вовсе), берётся у
+ *     проигравшей версии; явный null у победителя — значение, а не отсутствие.
+ *     Незнакомый ключ верхнего уровня: список объектов с id сливается по id,
+ *     как известные списки; прочее берётся со стороны, где ключ есть, а при
+ *     обеих — у remote (сервера). Этот код незнакомый ключ править не умеет,
+ *     значит его локальное значение — прошлая копия с сервера, и свежее то, что
+ *     на сервере сейчас. Выбор детерминирован; для равных значений слияние
+ *     коммутативно.
+ *
  * Слияние коммутативно и идемпотентно: порядок аргументов не меняет результат,
  * повторное слияние ничего не портит. Это важно, потому что при конфликте
  * версий клиент сливает и пробует снова — и так может повторяться.
@@ -53,7 +64,9 @@ function mergeList<T extends Tracked>(
     }
     // Сравниваем по идентификатору, а не по позиции: порядок в массиве значения не имеет.
     const winner = pickNewer(mine, item, idOf(mine) <= id ? 'a' : 'b')
-    const merged = mergeDeletion(winner, mine, item)
+    const loser = winner === mine ? item : mine
+    // Поля, которых победитель не знает, остаются от проигравшего (правило 3).
+    const merged = mergeDeletion({ ...loser, ...winner }, mine, item)
     out.set(id, combine ? combine(merged, mine, item) : merged)
   }
 
@@ -97,8 +110,46 @@ function mergeObligation(winner: Obligation, a: Obligation, b: Obligation): Obli
   }
 }
 
+const KNOWN_KEYS = new Set([
+  'setupDoneAt',
+  'people',
+  'categories',
+  'goals',
+  'wishlist',
+  'obligations',
+  'accounts',
+  'credits',
+])
+
+type WithId = Tracked & { id: string }
+
+function isIdList(v: unknown): v is WithId[] {
+  return (
+    Array.isArray(v) &&
+    v.every((x) => typeof x === 'object' && x !== null && typeof (x as { id?: unknown }).id === 'string')
+  )
+}
+
+/** Ключи верхнего уровня, которых этот код не знает (правило 3). */
+function mergeUnknownKeys(local: SyncDoc, remote: SyncDoc): Record<string, unknown> {
+  const l = local as unknown as Record<string, unknown>
+  const r = remote as unknown as Record<string, unknown>
+  const out: Record<string, unknown> = {}
+  for (const key of new Set([...Object.keys(l), ...Object.keys(r)])) {
+    if (KNOWN_KEYS.has(key)) continue
+    const a = l[key]
+    const b = r[key]
+    if (a === undefined) out[key] = b
+    else if (b === undefined) out[key] = a
+    else if (isIdList(a) && isIdList(b)) out[key] = mergeList(a, b, (x) => x.id)
+    else out[key] = b
+  }
+  return out
+}
+
 export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
   return {
+    ...mergeUnknownKeys(local, remote),
     // Настройку проходят один раз на семью: если хоть кто-то её закончил,
     // отменить это слиянием нельзя.
     setupDoneAt: local.setupDoneAt ?? remote.setupDoneAt ?? null,

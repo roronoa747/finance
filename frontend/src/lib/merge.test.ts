@@ -297,4 +297,107 @@ describe('merge.ts — слияние версий документа казны
     expect(w1?.name).toBe('Кофемашина DeLonghi')
     expect(w1?.bought).toBe(true)
   })
+
+  describe('RP-02: незнакомое не теряется', () => {
+    type Loose = SyncDoc & Record<string, unknown>
+    const pay = (id: string, amount: number, extra: Record<string, unknown> = {}) => ({
+      id,
+      amount,
+      updatedAt: '2026-09-20T10:00:00Z',
+      ...extra,
+    })
+    const unk = (doc: SyncDoc, key: string) => (doc as Loose)[key]
+
+    it('незнакомый список с id с одной стороны сохраняется', () => {
+      const withPayments = { ...createEmptyDoc(), payments: [pay('p1', 100)] } as Loose
+      const res1 = mergeDocs(createEmptyDoc(), withPayments)
+      const res2 = mergeDocs(withPayments, createEmptyDoc())
+      expect(unk(res1, 'payments')).toEqual([pay('p1', 100)])
+      expect(unk(res2, 'payments')).toEqual([pay('p1', 100)])
+    })
+
+    it('разные записи с двух сторон объединяются, надгробие побеждает', () => {
+      const local = { ...createEmptyDoc(), payments: [pay('p1', 100), pay('p2', 200)] } as Loose
+      const remote = {
+        ...createEmptyDoc(),
+        payments: [pay('p3', 300), pay('p2', 200, { deletedAt: '2026-09-21T10:00:00Z', updatedAt: '2026-09-19T10:00:00Z' })],
+      } as Loose
+      const list = unk(mergeDocs(local, remote), 'payments') as { id: string; deletedAt?: string | null }[]
+      expect(list.map((p) => p.id).sort()).toEqual(['p1', 'p2', 'p3'])
+      expect(list.find((p) => p.id === 'p2')?.deletedAt).toBe('2026-09-21T10:00:00Z')
+      // Пустой список с одной стороны — тоже список: объединяется, а не затирает.
+      const withEmpty = { ...createEmptyDoc(), payments: [] } as Loose
+      expect(unk(mergeDocs(withEmpty, remote), 'payments')).toHaveLength(2)
+    })
+
+    it('незнакомый скаляр и объект верхнего уровня сохраняются; при обеих — берётся remote', () => {
+      const local = { ...createEmptyDoc(), review: { text: 'старый' }, flag: 1 } as Loose
+      const remote = { ...createEmptyDoc(), review: { text: 'новый' }, onlyRemote: 'x' } as Loose
+      const res = mergeDocs(local, remote)
+      expect(unk(res, 'review')).toEqual({ text: 'новый' })
+      expect(unk(res, 'flag')).toBe(1)
+      expect(unk(res, 'onlyRemote')).toBe('x')
+      // Явный null с сервера — значение.
+      expect(unk(mergeDocs(local, { ...createEmptyDoc(), review: null } as Loose), 'review')).toBeNull()
+    })
+
+    it('поле, которого нет у победителя, остаётся от проигравшего; явный null — значение', () => {
+      const old: Account = {
+        id: 'acc',
+        name: 'Kaspi',
+        note: '',
+        amount: 100,
+        kind: 'card',
+        updatedAt: '2026-09-20T10:00:00Z',
+      }
+      const fromNewClient = { ...old, amountSetAt: '2026-09-20T10:00:00Z' } as Account
+      // Старый клиент поправил имя позже, про amountSetAt он не знает.
+      const fromOldClient: Account = { ...old, name: 'Kaspi Gold', updatedAt: '2026-09-22T10:00:00Z' }
+
+      for (const [a, b] of [
+        [fromOldClient, fromNewClient],
+        [fromNewClient, fromOldClient],
+      ]) {
+        const acc = mergeDocs({ ...createEmptyDoc(), accounts: [a] }, { ...createEmptyDoc(), accounts: [b] })
+          .accounts[0] as Account & { amountSetAt?: string | null }
+        expect(acc.name).toBe('Kaspi Gold')
+        expect(acc.amountSetAt).toBe('2026-09-20T10:00:00Z')
+      }
+
+      const cleared = { ...fromOldClient, amountSetAt: null } as unknown as Account
+      const acc = mergeDocs({ ...createEmptyDoc(), accounts: [fromNewClient] }, { ...createEmptyDoc(), accounts: [cleared] })
+        .accounts[0] as Account & { amountSetAt?: string | null }
+      expect(acc.amountSetAt).toBeNull()
+    })
+
+    it('коммутативность и идемпотентность на незнакомых данных', () => {
+      const a = {
+        ...createEmptyDoc(),
+        payments: [pay('p1', 100), pay('p2', 200, { updatedAt: '2026-09-22T10:00:00Z' })],
+        review: { text: 'тот же' },
+      } as Loose
+      const b = {
+        ...createEmptyDoc(),
+        payments: [pay('p3', 300), pay('p2', 250, { note: 'только у b' })],
+        review: { text: 'тот же' },
+      } as Loose
+      const byId = (doc: SyncDoc) =>
+        [...(unk(doc, 'payments') as { id: string }[])].sort((x, y) => x.id.localeCompare(y.id))
+
+      const ab = mergeDocs(a, b)
+      const ba = mergeDocs(b, a)
+      expect(byId(ab)).toEqual(byId(ba))
+      expect(unk(ab, 'review')).toEqual(unk(ba, 'review'))
+      const p2 = byId(ab).find((p) => p.id === 'p2') as unknown as { amount: number; note?: string }
+      expect(p2.amount).toBe(200)
+      expect(p2.note).toBe('только у b')
+
+      // Как в тесте выше: первый проход дописывает deletedAt: null, дальше — неподвижная точка.
+      const once = mergeDocs(a, a)
+      expect(mergeDocs(once, once)).toEqual(once)
+      const abab = mergeDocs(ab, ab)
+      expect(mergeDocs(abab, abab)).toEqual(abab)
+      expect(mergeDocs(abab, b)).toEqual(mergeDocs(abab, abab))
+    })
+  })
 })

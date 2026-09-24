@@ -101,7 +101,7 @@ export type WishItem = Tracked & {
   addedOn: string
   url?: string
   bought: boolean
-  boughtOn?: string
+  boughtOn?: string | null
 }
 
 /**
