@@ -7,12 +7,14 @@ import {
   accountBalance,
   amountAt,
   creditBalance,
+  creditResplit,
   creditSplit,
   lastAccountFor,
   lumpPlan,
   nextCreditDue,
   nextObligationDue,
   paidFor,
+  shiftedBase,
   type LumpMode,
   type ScheduledKind,
 } from '@/lib/finance'
@@ -753,8 +755,38 @@ export const useFinanceStore = defineStore('finance', () => {
     }
   }
 
+  /** Ручной ввод остатка — сверка с банком: новая база и якорь (`amountAnchor`). */
   function setAccountAmount(id: string, amount: number) {
     updateAccount(id, { amount })
+  }
+
+  /**
+   * Сдвинуть остаток на сумму — взнос в цель со счёта, снятие с цели, внеплановый
+   * доход. Это не сверка: база сдвигается на ту же дельту, якорь прежний
+   * (finance.ts `shiftedBase`). С якорем «сейчас» отметки до этого момента перестали
+   * бы двигать остаток: снятая по ошибке не вернула бы деньги, офлайн-отметка
+   * партнёра после слияния не списалась бы.
+   */
+  function shiftAccountAmount(id: string, delta: number) {
+    const t = new Date().toISOString()
+    const shift = (x: Account) => ({
+      amount: shiftedBase(x, payments.value, delta),
+      ...amountAnchor(x, {}, t),
+      updatedAt: t,
+    })
+    const priv = ((privateDoc.value.accounts as Account[]) || []).find((x) => x.id === id)
+    const raw = priv ?? (householdDoc.value.accounts || []).find((x) => x.id === id)
+    if (!raw || shiftedBase(raw, payments.value, delta) === raw.amount) return
+    if (priv) {
+      mutatePrivateDoc((doc) => {
+        doc.accounts = ((doc.accounts as Account[]) || []).map((x) => (x.id === id ? { ...x, ...shift(x) } : x))
+      })
+    } else {
+      mutateHouseholdDoc((doc) => {
+        const a = (doc.accounts || []).find((x) => x.id === id)
+        if (a) Object.assign(a, shift(a))
+      })
+    }
   }
 
   function setDeposit(id: string, deposit: Partial<NonNullable<Account['deposit']>>) {
@@ -858,22 +890,10 @@ export const useFinanceStore = defineStore('finance', () => {
     const existing = paidFor(payments.value, kind, targetId, period)
     if (existing) return existing
 
-    const t = new Date().toISOString()
-    const record: Payment = {
-      id: Math.random().toString(36).slice(2, 10),
-      kind,
-      targetId,
-      period,
-      amount,
-      ...(principal === undefined ? {} : { principal }),
-      accountId:
-        opts.accountId !== undefined
-          ? opts.accountId
-          : (lastAccountFor(payments.value, targetId, accounts.value) ?? null),
-      by,
-      at: t,
-      updatedAt: t,
-    }
+    const record = newPayment(
+      { kind, targetId, period, amount, ...(principal === undefined ? {} : { principal }), by },
+      opts.accountId,
+    )
     mutateHouseholdDoc((doc) => {
       if (!doc.payments) doc.payments = []
       doc.payments.push(record)
@@ -882,21 +902,82 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   /**
-   * Снять отметку (Р-7): надгробие на все живые записи пары — и на двойную с
-   * другого телефона, иначе та всплыла бы оплатой. Деньги возвращаются на счёт,
-   * долг — к прежнему остатку: записи просто перестают считаться.
+   * Новая запись отметки: id, момент и счёт. Счёт по умолчанию — прошлой оплаты
+   * этой цели (Р-5); оплат не было — «не списывать»: без выбора деньги не двигаются.
+   * `at` — когда оплатили: по умолчанию сейчас, у правки — момент исправляемой.
+   */
+  function newPayment(
+    fields: Omit<Payment, 'id' | 'accountId' | 'at' | 'updatedAt'>,
+    accountId: string | null | undefined,
+    at?: string,
+  ): Payment {
+    const t = new Date().toISOString()
+    return {
+      id: Math.random().toString(36).slice(2, 10),
+      ...fields,
+      accountId:
+        accountId !== undefined ? accountId : (lastAccountFor(payments.value, fields.targetId, accounts.value) ?? null),
+      at: at ?? t,
+      updatedAt: t,
+    }
+  }
+
+  /** Та же оплата: цель и месяц. Двойная отметка с другого телефона — та же пара. */
+  const samePair = (a: Pick<Payment, 'kind' | 'targetId' | 'period'>) => (p: Payment) =>
+    p.kind === a.kind && p.targetId === a.targetId && p.period === a.period
+
+  /** Надгробие на все живые записи пары — и на двойную, иначе та всплыла бы оплатой. */
+  function buryPair(doc: SyncDoc, pair: (p: Payment) => boolean, t: string) {
+    for (const p of doc.payments ?? []) {
+      if (!p.deletedAt && pair(p)) Object.assign(p, { deletedAt: t, updatedAt: t })
+    }
+  }
+
+  /**
+   * Снять отметку (Р-7): записи пары перестают считаться — деньги возвращаются на
+   * счёт, долг к прежнему остатку. Кроме записи, которую уже покрыла ручная сверка
+   * остатка (до якоря): она и так не двигала остаток.
    */
   function unmarkPaid(kind: ScheduledKind, targetId: string, period: string) {
     if (!paidFor(payments.value, kind, targetId, period)) return
     const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => buryPair(doc, samePair({ kind, targetId, period }), t))
+  }
+
+  /**
+   * Поправить отметку — другая сумма или счёт. Запись неизменна (Р-7): старая —
+   * надгробие, новая — с моментом оплаты `at` исходной, потому что деньги ушли
+   * тогда, а не при правке. Иначе запись, которую уже покрыла ручная сверка
+   * остатка (до якоря), после правки оказалась бы после якоря и списалась второй
+   * раз. Проценты месяца у кредита — из исходной записи (`creditResplit`), а не от
+   * остатка, уменьшенного с тех пор отметками следующих месяцев. Ничего не
+   * поменяли — ничего не пишется.
+   */
+  function editPaid(record: Payment, opts: { amount: number; accountId: string | null }): Payment | null {
+    if (record.kind === 'prepay') return null
+    if (opts.amount === record.amount && opts.accountId === record.accountId) return record
+    const pair = samePair(record)
+    let amount = opts.amount
+    let principal: number | undefined
+    if (record.kind === 'credit') {
+      const raw = (householdDoc.value.credits || []).find((x) => x.id === record.targetId && !x.deletedAt)
+      if (!raw) return null
+      const split = creditResplit(record, opts.amount, creditBalance(raw, payments.value.filter((p) => !pair(p))))
+      amount = split.amount
+      principal = split.body
+    }
+    const { kind, targetId, period, by } = record
+    const next = newPayment(
+      { kind, targetId, period, amount, ...(principal === undefined ? {} : { principal }), by },
+      opts.accountId,
+      record.at,
+    )
     mutateHouseholdDoc((doc) => {
-      for (const p of doc.payments ?? []) {
-        if (!p.deletedAt && p.kind === kind && p.targetId === targetId && p.period === period) {
-          p.deletedAt = t
-          p.updatedAt = t
-        }
-      }
+      buryPair(doc, pair, next.updatedAt)
+      if (!doc.payments) doc.payments = []
+      doc.payments.push(next)
     })
+    return next
   }
 
   /**
@@ -914,27 +995,23 @@ export const useFinanceStore = defineStore('finance', () => {
     const plan = lumpPlan(c.principal, c.annualRate, c.payment, opts.amount, opts.mode)
     if (!plan) return null
 
-    const t = new Date().toISOString()
     // Взнос, закрывший долг, платёж не переписывает: платить больше нечего и так.
     const lowers = opts.mode === 'payment' && plan.left > 0 && plan.payment !== c.payment
-    const record: Payment = {
-      id: Math.random().toString(36).slice(2, 10),
-      kind: 'prepay',
-      targetId: c.id,
-      period: monthKey(),
-      amount: plan.paid,
-      principal: plan.paid,
-      accountId:
-        opts.accountId !== undefined
-          ? opts.accountId
-          : (lastAccountFor(payments.value, c.id, accounts.value) ?? null),
-      by,
-      at: t,
-      updatedAt: t,
-      saved: plan.saved,
-      mode: opts.mode,
-      ...(lowers ? { prevPayment: c.payment, newPayment: plan.payment } : {}),
-    }
+    const record = newPayment(
+      {
+        kind: 'prepay',
+        targetId: c.id,
+        period: monthKey(),
+        amount: plan.paid,
+        principal: plan.paid,
+        by,
+        saved: plan.saved,
+        mode: opts.mode,
+        ...(lowers ? { prevPayment: c.payment, newPayment: plan.payment } : {}),
+      },
+      opts.accountId,
+    )
+    const t = record.updatedAt
     mutateHouseholdDoc((doc) => {
       if (!doc.payments) doc.payments = []
       doc.payments.push(record)
@@ -1117,6 +1194,7 @@ export const useFinanceStore = defineStore('finance', () => {
     removeCredit,
     markPaid,
     unmarkPaid,
+    editPaid,
     applyPrepayment,
     removePrepayment,
     addGoal,
@@ -1127,6 +1205,7 @@ export const useFinanceStore = defineStore('finance', () => {
     addAccount,
     updateAccount,
     setAccountAmount,
+    shiftAccountAmount,
     setDeposit,
     removeAccount,
     setCategoryAmount,

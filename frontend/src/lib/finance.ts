@@ -267,6 +267,10 @@ export type LumpPlan = {
  *    платёж — прежний × остаток / долг, а экономия меньше, чем у «сократить срок»:
  *    там весь прежний платёж продолжает гасить тело.
  *
+ * `saved` — оценка в непрерывных месяцах, как у `lumpSum` и калькулятора: от
+ * помесячного графика с округлением процентов (`creditSplit`) она отличается на
+ * доли процента, и это снимок на момент применения, а не обещание до тенге.
+ *
  * Всё на выходе — целые тенге и целые платежи: это пишется в документ и
  * показывается как сумма. null — считать нечего: взноса нет, долга нет или
  * платёж не покрывает проценты (срока, который сохранять, не существует).
@@ -293,7 +297,8 @@ export function lumpPlan(
     return { paid, left, payment, months: Math.ceil(r.monthsAfter), monthsBefore, saved: saved(r.overpayAfter) }
   }
   const next = annuityPayment(left, annualRate, n)
-  return { paid, left, payment: Math.round(next), months: monthsBefore, monthsBefore, saved: saved(next * n - left) }
+  // Платёж 0 при живом остатке не закрыл бы долг никогда: не меньше тенге.
+  return { paid, left, payment: Math.max(1, Math.round(next)), months: monthsBefore, monthsBefore, saved: saved(next * n - left) }
 }
 
 /**
@@ -471,6 +476,8 @@ export const liveObligations = (list: Obligation[]) => (list || []).filter((o) =
 export const liveGroups = (list: Obligation[]) => (list || []).filter((o) => alive(o) && !!o.group);
 export const liveCredits = (list: Credit[]) => (list || []).filter(alive);
 export const liveAccounts = (list: Account[]) => (list || []).filter(alive);
+/** Счета, с которых списывают платежи: живые, в тенге (валюта платежей — не-скоуп, Р-1). */
+export const payableAccounts = (list: Account[]) => liveAccounts(list).filter((a) => (a.currency ?? 'KZT') === 'KZT');
 export const liveWishlist = (list: WishItem[]) => (list || []).filter(alive);
 
 /** Сумма обязательства, действующая в указанном месяце. */
@@ -676,7 +683,20 @@ export type ScheduledKind = 'obligation' | 'credit'
  */
 export function creditSplit(principal: number, annualRate: number, amount: number) {
   const left = Math.max(0, Math.round(principal))
-  const interest = Math.round((left * annualRate) / 12)
+  return splitPayment(left, Math.round((left * annualRate) / 12), amount)
+}
+
+/**
+ * Правка отметки кредита (другая сумма): проценты месяца — из исправляемой записи.
+ * Они зависят от остатка до платежа, а не от суммы, и не должны пересчитываться
+ * от остатка, который с тех пор уменьшили отметки следующих месяцев. `left` —
+ * остаток без этой отметки: больше него в тело не уйдёт.
+ */
+export function creditResplit(old: Payment, amount: number, left: number) {
+  return splitPayment(Math.max(0, Math.round(left)), Math.max(0, old.amount - (old.principal ?? 0)), amount)
+}
+
+function splitPayment(left: number, interest: number, amount: number) {
   const paid = Math.max(0, Math.min(Math.round(amount), left + interest))
   const body = Math.min(left, Math.max(0, paid - interest))
   return { amount: paid, interest: paid - body, body }
@@ -684,6 +704,14 @@ export function creditSplit(principal: number, annualRate: number, amount: numbe
 
 /** Сколько списать по графику в этом месяце: платёж, а в последний раз — остаток с процентами. */
 export const creditDueAmount = (c: Credit) => creditSplit(c.principal, c.annualRate, c.payment).amount
+
+/**
+ * Ждёт ли кредит платежа в этом месяце. Закрытый долг (остаток из отметок 0) —
+ * нет, если только его не закрыли платежом этого же месяца: тогда платёж есть и
+ * показывается оплаченным. Одно правило для Бюджета, Обзора и «до зарплаты».
+ */
+export const creditDueIn = (c: Credit, payments: Payment[], key: string) =>
+  !!paidFor(payments, 'credit', c.id, key) || creditDueAmount(c) > 0
 
 /**
  * Отметки, которые считаются.
@@ -727,7 +755,7 @@ export function paidFor(
  * Действует ли отметка на остаток: сделана не раньше ручной сверки — до неё
  * деньги уже вошли во введённую сумму. Сверки не было — действуют все.
  */
-const afterAnchor = (p: Payment, anchor?: string | null) => !anchor || p.at >= anchor
+export const afterAnchor = (p: Payment, anchor?: string | null) => !anchor || p.at >= anchor
 
 /** Остаток счёта: база минус списания по отметкам после сверки. */
 export function accountBalance(a: Account, payments: Payment[] = []): number {
@@ -736,10 +764,22 @@ export function accountBalance(a: Account, payments: Payment[] = []): number {
     .reduce((left, p) => left - p.amount, a.amount)
 }
 
+/**
+ * Новая база счёта, когда остаток сдвигают на сумму (взнос в цель со счёта,
+ * снятие с цели, внеплановый доход). Это не сверка с банком: база меняется на ту
+ * же дельту, якорь остаётся прежним — иначе отметки до этого момента (снятая по
+ * ошибке, офлайн-отметка партнёра) перестали бы двигать остаток. Видимый остаток
+ * ниже нуля не уводится — как раньше у взноса в цель.
+ */
+export function shiftedBase(a: Account, payments: Payment[], delta: number): number {
+  const visible = accountBalance(a, payments)
+  return a.amount + Math.max(Math.round(delta), -Math.max(0, visible))
+}
+
 /** Остаток долга: база минус тело по отметкам и досрочкам после ручного ввода. */
 export function creditBalance(c: Credit, payments: Payment[] = []): number {
   const paid = countedPayments(payments)
-    .filter((p) => p.targetId === c.id && p.kind !== 'obligation' && afterAnchor(p, c.principalSetAt))
+    .filter((p) => p.targetId === c.id && (p.kind === 'credit' || p.kind === 'prepay') && afterAnchor(p, c.principalSetAt))
     .reduce((sum, p) => sum + (p.principal ?? 0), 0)
   return Math.max(0, c.principal - paid)
 }
@@ -782,7 +822,7 @@ export function nextObligationDue(o: Obligation, payments: Payment[] = [], now =
 
 /** То же для кредита. Кредит — с остатком из отметок; закрытый платежей не ждёт. */
 export function nextCreditDue(c: Credit, payments: Payment[] = [], now = today()): Due | null {
-  if (c.principal <= 0) return null
+  if (creditDueAmount(c) <= 0) return null
   for (let i = 0; i < DUE_HORIZON; i++) {
     const period = addMonths(now.key, i)
     if (paidFor(payments, 'credit', c.id, period)) continue
@@ -863,8 +903,8 @@ export function untilPayday(
       .filter((o) => dueIn(o, k))
       .map((o) => item('obligation', o, amountAt(o, k), k)),
     ...liveCredits(credits)
-      .map((c) => item('credit', c, creditDueAmount(c), k))
-      .filter((x) => x.paid || x.value > 0),
+      .filter((c) => creditDueIn(c, payments, k))
+      .map((c) => item('credit', c, creditDueAmount(c), k)),
   ];
 
   const inWindow = ahead

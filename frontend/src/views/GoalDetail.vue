@@ -68,20 +68,11 @@ function applyDeposit() {
 
   if (depositOperation.value === 'deposit') {
     financeStore.contribute(goal.value.id, v, depositBy.value, depositNote.value.trim() || undefined)
-    if (depositAccountId.value) {
-      const acc = accounts.value.find((a) => a.id === depositAccountId.value)
-      if (acc) {
-        financeStore.setAccountAmount(acc.id, Math.max(0, acc.amount - v))
-      }
-    }
+    // Сдвиг остатка, а не сверка: отметки оплат до взноса продолжают считаться.
+    if (depositAccountId.value) financeStore.shiftAccountAmount(depositAccountId.value, -v)
   } else {
     financeStore.withdraw(goal.value.id, v, depositBy.value, depositNote.value.trim() || undefined)
-    if (depositAccountId.value) {
-      const acc = accounts.value.find((a) => a.id === depositAccountId.value)
-      if (acc) {
-        financeStore.setAccountAmount(acc.id, acc.amount + v)
-      }
-    }
+    if (depositAccountId.value) financeStore.shiftAccountAmount(depositAccountId.value, v)
   }
 
   depositAmount.value = ''

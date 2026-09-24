@@ -18,12 +18,12 @@ import { money, plain, parseMoney, ratePct } from '@/lib/money'
 import {
   MONTHS_NOM,
   addMonths,
+  atLabel,
   dayLabel,
   monthFrom,
   monthKey,
   monthTitle,
   parseMonthKey,
-  today,
 } from '@/lib/dates'
 import {
   amountAt,
@@ -41,6 +41,7 @@ import {
   liveGoals,
   liveGroups,
   liveObligations,
+  payableAccounts,
   lumpPlan,
   lumpSum,
   monthlyAmount,
@@ -170,10 +171,8 @@ function applyExtraIncome() {
   if (kind === 'goal') {
     financeStore.contribute(id, extraIncomeValue.value, extraIncomeBy.value, 'Внеплановый доход')
   } else {
-    const acc = allAccounts.value.find((a) => a.id === id)
-    if (acc) {
-      financeStore.setAccountAmount(id, acc.amount + extraIncomeValue.value)
-    }
+    // Сдвиг остатка, а не сверка: отметки оплат до дохода продолжают считаться.
+    financeStore.shiftAccountAmount(id, extraIncomeValue.value)
   }
   extraIncomeAmount.value = ''
   extraIncomeTarget.value = ''
@@ -354,6 +353,11 @@ function createObligation() {
 }
 
 /* ------------------ Группы подписок (RP-09) ------------------ */
+/** Флаг группы: спрашивать ли «оставить?» о её подписках. */
+const NO_ASK_OPTIONS = [
+  { value: false, label: 'Спрашивать' },
+  { value: true, label: 'Рабочие — нет' },
+]
 const groupName = ref('')
 const groupNoAsk = ref(false)
 
@@ -596,7 +600,7 @@ const applyAccount = ref('')
 const applyDone = ref<Payment | null>(null)
 const removingPrepay = ref<string | null>(null)
 
-const applyAccounts = computed(() => accounts.value.filter((a) => (a.currency ?? 'KZT') === 'KZT'))
+const applyAccounts = computed(() => payableAccounts(allAccounts.value))
 const applyPlan = computed(() => {
   const c = activePayoffCredit.value
   const v = parseMoney(payoffAmount.value)
@@ -631,10 +635,6 @@ function applyPrepay() {
   payoffAmount.value = ''
 }
 
-function prepayDay(at: string) {
-  const d = today(new Date(at))
-  return dayLabel(d.day, d.key)
-}
 
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') {
@@ -1327,7 +1327,6 @@ onUnmounted(() => {
             :period="obligationDue.period"
             :title="`Платёж ${dayLabel(obligationDue.day, obligationDue.period)}`"
             :note="activeObligation.every === 'year' ? 'раз в год' : 'по графику'"
-            :estimate="activeObligation.estimate"
           />
         </div>
 
@@ -1443,7 +1442,7 @@ onUnmounted(() => {
           <span class="text-[12.5px] font-medium text-ink-3">Спрашивать «оставить?»</span>
           <div class="grid grid-cols-2 gap-2">
             <button
-              v-for="opt in [{ value: false, label: 'Спрашивать' }, { value: true, label: 'Рабочие — нет' }]"
+              v-for="opt in NO_ASK_OPTIONS"
               :key="opt.label"
               type="button"
               :class="cn('rounded-xl border px-3 py-2.5 text-[13px] font-medium transition-colors cursor-pointer', groupNoAsk === opt.value ? 'border-brand bg-brand-soft text-brand' : 'border-line bg-surface-2 text-ink-2')"
@@ -1491,7 +1490,7 @@ onUnmounted(() => {
           <span class="text-[12.5px] font-medium text-ink-3">Спрашивать «оставить?»</span>
           <div class="grid grid-cols-2 gap-2">
             <button
-              v-for="opt in [{ value: false, label: 'Спрашивать' }, { value: true, label: 'Рабочие — нет' }]"
+              v-for="opt in NO_ASK_OPTIONS"
               :key="opt.label"
               type="button"
               :class="cn('rounded-xl border px-3 py-2.5 text-[13px] font-medium transition-colors cursor-pointer', !!activeGroup.noAsk === opt.value ? 'border-brand bg-brand-soft text-brand' : 'border-line bg-surface-2 text-ink-2')"
@@ -1689,7 +1688,7 @@ onUnmounted(() => {
           >
             <div class="flex items-baseline gap-2">
               <span class="text-ink-2">
-                {{ prepayDay(p.at) }} · {{ p.mode === 'payment' ? 'снизили платёж' : 'сократили срок' }}
+                {{ atLabel(p.at) }} · {{ p.mode === 'payment' ? 'снизили платёж' : 'сократили срок' }}
               </span>
               <b class="ml-auto num text-ink">{{ money(p.amount) }}</b>
             </div>

@@ -4,15 +4,16 @@ import { PhCheck, PhX } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain, parseMoney } from '@/lib/money'
-import { addMonths, dayLabel, today } from '@/lib/dates'
+import { addMonths, atLabel, dayLabel } from '@/lib/dates'
 import {
+  afterAnchor,
   amountAt,
   creditDueAmount,
   lastAccountFor,
-  liveAccounts,
   nextCreditDue,
   nextObligationDue,
   paidFor,
+  payableAccounts,
   type ScheduledKind,
 } from '@/lib/finance'
 import { cn } from '@/lib/utils'
@@ -37,8 +38,6 @@ const props = defineProps<{
   /** Подпись неоплаченного: дата, частота. */
   note?: string
   accent?: string
-  /** Сумма плавает (коммуналка): нажатие сразу спрашивает сумму. */
-  estimate?: boolean
   /** Строка ведёт дальше: нажатие мимо кнопки — событие open. */
   clickable?: boolean
   /** Под строкой — «Другая сумма или счёт» (модалки Капитала). */
@@ -63,6 +62,9 @@ const credit = computed(() =>
 
 const record = computed(() => paidFor(finance.payments, props.kind, props.targetId, props.period))
 
+/** Сумма плавает (коммуналка): нажатие сразу спрашивает сумму — на любом экране. */
+const estimate = computed(() => !!obligation.value?.estimate)
+
 /** Сколько платить за этот месяц по графику. */
 const due = computed(() => {
   if (obligation.value) return amountAt(obligation.value, props.period)
@@ -81,11 +83,7 @@ const next = computed(() => {
 // Viewer видит отметки, но не ставит их (Р-13): сервер и так отверг бы push.
 const canMark = computed(() => !auth.isViewer)
 
-const paidOn = computed(() => {
-  if (!record.value) return ''
-  const d = today(new Date(record.value.at))
-  return dayLabel(d.day, d.key)
-})
+const paidOn = computed(() => (record.value ? atLabel(record.value.at) : ''))
 
 const fromAccount = computed(() => {
   const id = record.value?.accountId
@@ -95,9 +93,7 @@ const fromAccount = computed(() => {
 })
 
 /** Счета, с которых можно списать: платежи в тенге (валюта платежей — не-скоуп). */
-const choices = computed(() =>
-  liveAccounts(finance.accounts).filter((a) => (a.currency ?? 'KZT') === 'KZT'),
-)
+const choices = computed(() => payableAccounts(finance.accounts))
 
 const sheet = ref<'mark' | 'paid' | null>(null)
 const amountText = ref('')
@@ -117,7 +113,7 @@ function openMark(amount: number, account: string | null | undefined) {
 function tap() {
   const last = lastAccountFor(finance.payments, props.targetId, finance.accounts)
   firstTime.value = last === undefined
-  if (last === undefined || props.estimate) openMark(due.value, last)
+  if (last === undefined || estimate.value) openMark(due.value, last)
   else finance.markPaid(props.kind, props.targetId, auth.slot ?? 'a', { period: props.period, accountId: last })
 }
 
@@ -130,13 +126,9 @@ function openMore() {
 function confirmMark() {
   const amount = parseMoney(amountText.value)
   if (chosen.value === undefined || amount <= 0) return
-  // Правка отмеченного — снять и отметить заново: запись неизменна (Р-7).
-  if (record.value) finance.unmarkPaid(props.kind, props.targetId, props.period)
-  finance.markPaid(props.kind, props.targetId, auth.slot ?? 'a', {
-    period: props.period,
-    amount,
-    accountId: chosen.value,
-  })
+  // Правка отмеченного — новая запись с тем же моментом оплаты (стор, Р-7).
+  if (record.value) finance.editPaid(record.value, { amount, accountId: chosen.value })
+  else finance.markPaid(props.kind, props.targetId, auth.slot ?? 'a', { period: props.period, amount, accountId: chosen.value })
   sheet.value = null
 }
 
@@ -145,10 +137,13 @@ function unmark() {
   sheet.value = null
 }
 
+// Отметка до ручной сверки остатка в нём уже учтена: снятие её не вернёт — не обещаем.
 const unmarkNote = computed(() => {
+  const r = record.value
   const parts = ['Платёж снова станет неоплаченным']
-  if (record.value?.accountId) parts.push('деньги вернутся на счёт')
-  if (credit.value) parts.push('остаток долга — к прежнему')
+  const acc = r?.accountId ? finance.accounts.find((a) => a.id === r.accountId) : undefined
+  if (r?.accountId && (!acc || afterAnchor(r, acc.amountSetAt))) parts.push('деньги вернутся на счёт')
+  if (r && credit.value && afterAnchor(r, credit.value.principalSetAt)) parts.push('остаток долга — к прежнему')
   return parts.join(', ') + '.'
 })
 </script>

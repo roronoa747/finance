@@ -104,3 +104,9 @@ export function dayLabel(day: number, key = monthKey()): string {
 export function today(d = new Date()): { day: number; key: string } {
   return { day: almaty(d).getUTCDate(), key: monthKey(d) }
 }
+
+/** День момента времени по Алматы, «5 сентября» — когда отметили оплату. */
+export function atLabel(iso: string): string {
+  const d = today(new Date(iso))
+  return dayLabel(d.day, d.key)
+}

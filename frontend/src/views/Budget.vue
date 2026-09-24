@@ -16,6 +16,8 @@ import {
 } from '@/lib/dates'
 import {
   amountAt,
+  creditDueAmount,
+  creditDueIn,
   budgetAmounts,
   dueIn,
   liveCredits,
@@ -110,7 +112,8 @@ const events = computed<EventItem[]>(() => {
         day: o.day,
         name: o.name,
         note: o.every === 'year' ? 'раз в год' : o.estimate ? 'оценка по сезону' : o.note,
-        value: amountAt(o, key.value),
+        // Отмеченное — суммой отметки, как в строке «Оплатил»: итог сходится со строками.
+        value: paidFor(financeStore.payments, 'obligation', o.id, key.value)?.amount ?? amountAt(o, key.value),
         color: `var(--${o.category})`,
         income: false,
         estimate: o.estimate,
@@ -119,15 +122,14 @@ const events = computed<EventItem[]>(() => {
           void router.push(`/capital?obligation=${o.id}`)
         },
       })),
-    // Закрытый долг в этом месяце не платится, если его не закрыли этим же платежом.
     ...credits.value
-      .filter((c) => c.principal > 0 || paidFor(financeStore.payments, 'credit', c.id, key.value))
+      .filter((c) => creditDueIn(c, financeStore.payments, key.value))
       .map((c) => ({
         id: c.id,
         day: c.day,
         name: c.name,
         note: c.note,
-        value: c.payment,
+        value: paidFor(financeStore.payments, 'credit', c.id, key.value)?.amount ?? creditDueAmount(c),
         color: 'var(--d2)',
         income: false,
         pay: 'credit' as const,
@@ -373,7 +375,6 @@ function handleD4Commit(text: string) {
             :accent="e.color"
             :title="e.name"
             :note="e.note"
-            :estimate="e.estimate"
             clickable
             @open="e.open"
           >
@@ -472,7 +473,6 @@ function handleD4Commit(text: string) {
             :accent="e.color"
             :title="e.name"
             :note="`${dayLabel(e.day, key)}${e.note ? ` · ${e.note}` : ''}`"
-            :estimate="e.estimate"
             clickable
             @open="e.open"
           >

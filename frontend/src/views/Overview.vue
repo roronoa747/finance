@@ -14,6 +14,7 @@ import { monthKey, monthIn, monthFrom, dayLabel } from '@/lib/dates'
 import {
   amountAt,
   budgetAmounts,
+  creditDueIn,
   dueIn,
   keepQuestions,
   liveCredits,
@@ -112,25 +113,21 @@ const upcoming = computed(() => {
         day: o.day,
         note: o.every === 'year' ? 'раз в год' : o.estimate ? 'оценка по сезону' : o.note,
         color: `var(--${o.category})`,
-        estimate: o.estimate,
         to: `/capital?obligation=${o.id}`,
       })),
-    ...credits.value.map((c) => ({
-      id: c.id,
-      kind: 'credit' as const,
-      name: c.name,
-      day: c.day,
-      note: c.note || 'ежемесячный платёж',
-      color: 'var(--d2)',
-      estimate: false,
-      to: `/capital?credit=${c.id}`,
-    })),
+    ...credits.value
+      .filter((c) => creditDueIn(c, financeStore.payments, key.value))
+      .map((c) => ({
+        id: c.id,
+        kind: 'credit' as const,
+        name: c.name,
+        day: c.day,
+        note: c.note || 'ежемесячный платёж',
+        color: 'var(--d2)',
+        to: `/capital?credit=${c.id}`,
+      })),
   ].map((x) => ({ ...x, paid: !!paidFor(financeStore.payments, x.kind, x.id, key.value) }))
-  // Закрытый долг в этом месяце не платится, если его не закрыли этим же платежом.
-  const open = items.filter(
-    (x) => x.kind !== 'credit' || x.paid || (credits.value.find((c) => c.id === x.id)?.principal ?? 0) > 0,
-  )
-  return open.sort((a, b) => Number(a.paid) - Number(b.paid) || a.day - b.day)
+  return items.sort((a, b) => Number(a.paid) - Number(b.paid) || a.day - b.day)
 })
 
 // Данные блока «До зарплаты»: остатки общих счетов и долгов — из отметок, как их отдаёт стор
@@ -149,16 +146,18 @@ const keepAsk = computed(() => (authStore.isViewer ? null : (keepQuestions(finan
 const keepRenewal = computed(() =>
   keepAsk.value?.every === 'year' ? nextObligationDue(keepAsk.value, financeStore.payments) : null,
 )
-const cancelling = ref(false)
+// Какую подписку собрались отменить: если синк сменил вопрос, подтверждение не
+// переезжает на другую подписку.
+const cancelling = ref<string | null>(null)
 
 function keepSub() {
   if (keepAsk.value) financeStore.keepSubscription(keepAsk.value.id)
-  cancelling.value = false
+  cancelling.value = null
 }
 
 function cancelSub() {
-  if (keepAsk.value) financeStore.removeObligation(keepAsk.value.id)
-  cancelling.value = false
+  if (keepAsk.value && cancelling.value === keepAsk.value.id) financeStore.removeObligation(keepAsk.value.id)
+  cancelling.value = null
 }
 
 function dayWord(n: number) {
@@ -366,18 +365,18 @@ async function copyInvite() {
         Оставить «{{ keepAsk.name }}»?
       </div>
       <div class="text-[13px] text-ink-2 num">
-        {{ money(amountAt(keepAsk, key)) }} {{ keepAsk.every === 'year' ? 'в год' : 'в месяц' }}
+        {{ money(keepRenewal ? keepRenewal.amount : amountAt(keepAsk, key)) }} {{ keepAsk.every === 'year' ? 'в год' : 'в месяц' }}
       </div>
-      <div v-if="!cancelling" class="mt-3 flex gap-2">
+      <div v-if="cancelling !== keepAsk.id" class="mt-3 flex gap-2">
         <Button class="flex-1" @click="keepSub">Оставить</Button>
-        <Button variant="outline" class="flex-1 bg-surface-2" @click="cancelling = true">Отменить</Button>
+        <Button variant="outline" class="flex-1 bg-surface-2" @click="cancelling = keepAsk.id">Отменить</Button>
       </div>
       <div v-else class="mt-3 rounded-xl border border-line bg-surface-2 p-3">
         <p class="mb-2 text-[12.5px] leading-relaxed text-ink-2">
           Подписка уйдёт из бюджета и планов у вас обоих. Отключить её в самом сервисе нужно отдельно.
         </p>
         <div class="flex gap-2">
-          <Button variant="outline" class="flex-1 bg-surface" @click="cancelling = false">Не сейчас</Button>
+          <Button variant="outline" class="flex-1 bg-surface" @click="cancelling = null">Не сейчас</Button>
           <Button class="flex-1" @click="cancelSub">Отменить подписку</Button>
         </div>
       </div>
@@ -400,7 +399,6 @@ async function copyInvite() {
         :accent="u.color"
         :title="u.name"
         :note="`${dayLabel(u.day, key)}${u.note ? ` · ${u.note}` : ''}`"
-        :estimate="u.estimate"
         clickable
         @open="router.push(u.to)"
       >
