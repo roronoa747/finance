@@ -207,6 +207,40 @@ describe('views/Goals.vue, GoalDetail.vue, Deposit.vue — Цели, депоз�
     expect(html).toContain('История цели')
   })
 
+  it('тёмная тема: кольцо и «Ритм цели» — тёмный оттенок цели (PV-08)', async () => {
+    const { isDark } = await import('@/lib/theme')
+    const { HUES } = await import('@/lib/palette')
+    const store = useFinanceStore()
+    store.addGoal({ name: 'Автомобиль', need: 5_000_000, have: 1_500_000, monthly: 150_000, hue: 'blue' })
+    const gId = store.goals[0].id
+    store.contribute(gId, 150_000, 'a')
+
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('vue/server-renderer')
+    const { createRouter, createMemoryHistory } = await import('vue-router')
+    const GoalDetail = (await import('./GoalDetail.vue')).default
+    const render = async () => {
+      const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/goals/:id', component: GoalDetail }] })
+      await router.push(`/goals/${gId}`)
+      await router.isReady()
+      const app = createSSRApp(GoalDetail)
+      app.use(router)
+      return renderToString(app)
+    }
+
+    try {
+      isDark.value = true
+      const html = await render()
+      expect(html).toContain(`stroke="${HUES.blue.dark}"`)
+      expect(html).toContain(`background:${HUES.blue.dark}`)
+      expect(html).not.toContain(HUES.blue.light)
+    } finally {
+      isDark.value = false
+    }
+    const light = await render()
+    expect(light).toContain(`background:${HUES.blue.light}`)
+  })
+
   it('цель со взносом 0 — срок не наступит, прогноза «дорожает» нет (PV-04)', async () => {
     const store = useFinanceStore()
     store.addGoal({ name: 'Когда-нибудь', need: 1_000_000, have: 100_000, monthly: 0, hue: 'blue' })

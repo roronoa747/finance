@@ -5,6 +5,11 @@ import './style.css'
 import App from './App.vue'
 import { startSyncEngine } from './stores/syncEngine'
 import { watchServiceWorkerUpdates } from './lib/pwa'
+import { applyCurrentPalette, watchSystemTheme } from './lib/theme'
+
+// Тема — до монтирования: на /access и /setup тоже, без вспышки светлой.
+applyCurrentPalette()
+watchSystemTheme()
 
 const app = createApp(App)
 const pinia = createPinia()

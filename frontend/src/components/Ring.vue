@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { hueColor, type HueKey } from '@/lib/palette'
+import { isDark } from '@/lib/theme'
 
 const props = withDefaults(
   defineProps<{
@@ -8,19 +9,18 @@ const props = withDefaults(
     plan?: number
     size?: number
     hue: HueKey
-    dark?: boolean
   }>(),
   {
     plan: 0,
     size: 44,
-    dark: false,
   },
 )
 
 const R = 34
 const C = 2 * Math.PI * R
 
-const strokeColor = computed(() => hueColor(props.hue, props.dark))
+// Цвет дуги — по текущей теме (как React useIsDark): в тёмной — тёмный оттенок.
+const strokeColor = computed(() => hueColor(props.hue, isDark.value))
 const filled = computed(() => (Math.min(props.progress, 1) * C).toFixed(1))
 const over = computed(() =>
   props.progress > 1 ? (Math.min(props.progress - 1, 0.25) * C).toFixed(1) : 0,

@@ -1,12 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import {
-  ACCENTS,
-  ACCENT_KEYS,
-  type AccentKey,
-  type ThemeChoice,
-  applyTheme,
-} from '@/lib/palette'
+import { ref } from 'vue'
+import { ACCENTS, ACCENT_KEYS, type AccentKey, type ThemeChoice } from '@/lib/palette'
+import { readAccent, readThemeChoice, setAccent, setThemeChoice } from '@/lib/theme'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import Segmented from '@/components/kit/Segmented.vue'
@@ -19,33 +14,20 @@ const authStore = useAuthStore()
 const financeStore = useFinanceStore()
 const router = useRouter()
 
-const currentTheme = ref<ThemeChoice>(
-  (typeof localStorage !== 'undefined' && (localStorage.getItem('ff_theme') as ThemeChoice)) || 'auto',
-)
-const currentAccent = ref<AccentKey>(
-  (typeof localStorage !== 'undefined' && (localStorage.getItem('ff_accent') as AccentKey)) || 'emerald',
-)
+// Тема применена ещё в main.ts; панель только показывает и меняет выбор.
+const currentTheme = ref<ThemeChoice>(readThemeChoice())
+const currentAccent = ref<AccentKey>(readAccent())
 
 const userName = ref(authStore.member?.display_name || authStore.user?.email?.split('@')[0] || '')
 
 function updateTheme(th: ThemeChoice) {
   currentTheme.value = th
-  if (typeof localStorage !== 'undefined') localStorage.setItem('ff_theme', th)
-  applyCurrentPalette()
+  setThemeChoice(th)
 }
 
 function updateAccent(acc: AccentKey) {
   currentAccent.value = acc
-  if (typeof localStorage !== 'undefined') localStorage.setItem('ff_accent', acc)
-  applyCurrentPalette()
-}
-
-function applyCurrentPalette() {
-  applyTheme({
-    theme: currentTheme.value,
-    accent: currentAccent.value,
-    categories: { d1: 'blue', d2: 'brick', d3: 'green', d4: 'ochre', d5: 'steel' },
-  })
+  setAccent(acc)
 }
 
 function saveName() {
@@ -88,10 +70,6 @@ function leave(choice: 'keep' | 'discard') {
   leaving.value = null
   void router.push('/access')
 }
-
-onMounted(() => {
-  applyCurrentPalette()
-})
 </script>
 
 <template>

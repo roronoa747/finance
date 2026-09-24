@@ -8,6 +8,7 @@ import { INFLATION, goalMonths, goalMonthly, indexedNeed } from '@/lib/finance'
 import { addMonths, monthAfter, monthInAfter, monthKey, monthTitle } from '@/lib/dates'
 import { contributionStreak } from '@/lib/finance'
 import { HUES, HUE_KEYS, hueColor, type HueKey } from '@/lib/palette'
+import { isDark } from '@/lib/theme'
 import type { PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
 
@@ -39,6 +40,8 @@ const accounts = computed(() => financeStore.accounts)
 const remaining = computed(() => (goal.value ? Math.max(0, goal.value.need - goal.value.have) : 0))
 const months = computed(() => (goal.value ? goalMonths(remaining.value, goal.value.monthly) : 1))
 const progress = computed(() => (goal.value && goal.value.need > 0 ? goal.value.have / goal.value.need : 0))
+// Заливка «Ритма цели» — оттенок цели для текущей темы.
+const rhythmColor = computed(() => (goal.value ? hueColor(goal.value.hue, isDark.value) : ''))
 // Во сколько обойдётся та же цель к сроку, если она дорожает вместе с рынком; взнос 0 — прогноза нет.
 const indexed = computed(() => (goal.value ? indexedNeed(goal.value.need, months.value) : null))
 
@@ -247,7 +250,7 @@ function saveEdit() {
           :key="m.key"
           :title="m.label"
           class="h-[20px] flex-1 rounded transition-colors"
-          :style="{ background: m.filled ? hueColor(goal.hue, false) : 'var(--track)' }"
+          :style="{ background: m.filled ? rhythmColor : 'var(--track)' }"
         />
       </div>
     </Card>
