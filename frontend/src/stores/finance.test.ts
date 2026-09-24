@@ -618,6 +618,31 @@ describe('stores/finance.ts — Pinia хранилище казны и синх�
       expect(store.people).toEqual([])
       expect(store.householdRev).toBe(0)
     })
+
+    it('синк прежней семьи повис при выходе — вход в новую семью всё равно получает её документ', async () => {
+      const store = useFinanceStore()
+      store.claimFor('h-1')
+      store.setPerson('a', { name: 'Ильяс' })
+      const hung = deferred<HouseholdDocResponse>()
+      const oldClient = { getHouseholdDoc: vi.fn().mockReturnValue(hung.promise) } as unknown as ApiClient
+      const oldSync = store.syncHousehold(oldClient)
+
+      store.clearLocal()
+      const other = fakeServer({ ...defaultSyncDoc(), setupDoneAt: '2026-09-01T00:00:00Z', people: [person('a', 'Дана')] })
+      store.claimFor('h-2')
+      await store.pullHousehold(other.client)
+      expect(store.people.map((p) => p.name)).toEqual(['Дана'])
+      expect(store.setupDone).toBe(true)
+
+      // Новый синк не ждёт повисший запрос прежней семьи, а тот, вернувшись, ничего не трогает.
+      store.setPerson('a', { name: 'Дана К.' })
+      await store.syncHousehold(other.client)
+      expect(other.server.data.people[0].name).toBe('Дана К.')
+      hung.resolve(serverResponse(9, { ...defaultSyncDoc(), people: [person('a', 'Ильяс')] }))
+      await oldSync
+      expect(store.people.map((p) => p.name)).toEqual(['Дана К.'])
+      expect(store.status).toBe('idle')
+    })
   })
 
   it('RP-05: в демо правки не шлют ни одного запроса и не дают «не сошлось»', async () => {

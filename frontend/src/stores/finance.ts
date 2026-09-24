@@ -132,6 +132,9 @@ export const useFinanceStore = defineStore('finance', () => {
   function clearLocal() {
     session++
     localEdits++
+    // Синк прежней семьи мог повиснуть в сети: вход в новую не должен его ждать
+    // (pull при идущем синке отбрасывает ответ). Вернувшись, тот синк ничего не тронет.
+    isSyncing = false
     if (syncTimer) clearTimeout(syncTimer)
     syncTimer = null
     householdDoc.value = defaultSyncDoc()
@@ -316,7 +319,8 @@ export const useFinanceStore = defineStore('finance', () => {
       status.value = unreachable(err) ? 'offline' : 'error'
       lastError.value = msg
     } finally {
-      isSyncing = false
+      // После выхода флаг принадлежит синку новой сессии.
+      if (s === session) isSyncing = false
     }
   }
 
