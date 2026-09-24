@@ -3,8 +3,9 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 // Проверяет собранный dist: запускать после `npm run build` (так идёт CI).
+// Признак сборки — index.html, а не sw.js: иначе пропажа SW пропустила бы тест молча.
 const dist = resolve(import.meta.dirname, '../dist')
-const built = existsSync(resolve(dist, 'sw.js'))
+const built = existsSync(resolve(dist, 'index.html'))
 
 describe.skipIf(!built)('PWA-сборка заменяет React-PWA (MGV-17)', () => {
   it('манифест совпадает с React-версией', () => {
