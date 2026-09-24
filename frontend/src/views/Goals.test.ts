@@ -9,8 +9,9 @@ import {
   deposit,
   realRate,
   indexedNeed,
+  INFLATION,
 } from '@/lib/finance'
-import { money } from '@/lib/money'
+import { money, ratePct } from '@/lib/money'
 
 describe('views/Goals.vue, GoalDetail.vue, Deposit.vue — Цели, депозиты и вишлист', () => {
   const storageMap = new Map<string, string>()
@@ -127,7 +128,9 @@ describe('views/Goals.vue, GoalDetail.vue, Deposit.vue — Цели, депоз�
     expect(res.interest).toBeGreaterThan(140_000)
     expect(res.effectiveRate).toBeGreaterThan(annualRate)
 
-    const real = realRate(res.effectiveRate, 0.08)
+    // Инфляция — общая константа приложения (Р-19), не 8%.
+    const real = realRate(res.effectiveRate, INFLATION)
+    expect(real).toBeLessThan(realRate(res.effectiveRate, 0.08))
     expect(real).toBeLessThan(res.effectiveRate)
     expect(real).toBeGreaterThan(0)
   })
@@ -260,6 +263,18 @@ describe('views/Goals.vue, GoalDetail.vue, Deposit.vue — Цели, депоз�
     expect(html).toContain('Эффективная ставка')
     expect(html).toContain('Ваши взносы')
     expect(html).toContain('Заработал банк')
+
+    // PV-05: инфляция 10,2% из общей константы и обе плашки React.
+    const eff = deposit({ principal: 1_000_000, annualRate: 0.14, months: 12, monthlyTopUp: 0, capitalize: true }).effectiveRate
+    const text = html.replace(/<!--[^>]*-->/g, '')
+    expect(text).toContain('Реальная доходность ниже той, что на витрине')
+    expect(text).toContain(
+      `При инфляции 10,2% эффективная ставка ${ratePct(eff, 1)} оставляет примерно ${ratePct(realRate(eff, INFLATION), 1)} настоящих. Это не повод не копить — это повод не путать номинал с доходом.`,
+    )
+    expect(text).toContain('Проценты считает приложение, а не банк')
+    expect(text).toContain(
+      'Формула аннуитета и капитализации работает офлайн, на ваших цифрах. Когда появится ИИ-советник, он получит уже посчитанный результат и будет только объяснять его словами — считать деньги модели не доверяем.',
+    )
   })
 
   it('рендерит вкладку вишлиста при переходе по /goals?tab=wish', async () => {

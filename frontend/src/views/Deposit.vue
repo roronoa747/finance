@@ -4,7 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { PhArrowLeft } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { money, plain, parseMoney, ratePct } from '@/lib/money'
-import { deposit as calcDeposit, realRate } from '@/lib/finance'
+import { INFLATION, deposit as calcDeposit, realRate } from '@/lib/finance'
 
 import Card from '@/components/kit/Card.vue'
 import Field from '@/components/kit/Field.vue'
@@ -25,7 +25,6 @@ const account = computed(() =>
 )
 
 const saved = ref(false)
-const inflation = ref(0.08) // 8% годовых по умолчанию
 
 const depositData = computed(() => account.value?.deposit)
 
@@ -41,7 +40,7 @@ const calcResult = computed(() => {
 })
 
 const realEffective = computed(() =>
-  calcResult.value ? realRate(calcResult.value.effectiveRate, inflation.value) : 0,
+  calcResult.value ? realRate(calcResult.value.effectiveRate, INFLATION) : 0,
 )
 
 function onNameBlur(e: Event) {
@@ -204,10 +203,18 @@ function onCapitalizeChange(v: string) {
       </div>
     </Card>
 
-    <Callout v-if="calcResult" title="Реальная доходность ниже той, что на витрине">
-      При инфляции {{(inflation * 100).toFixed(1).replace('.', ',')}}% эффективная ставка
-      {{ ratePct(calcResult.effectiveRate, 1) }} оставляет примерно {{ ratePct(realEffective, 1) }}
-      настоящих. Это не повод не копить — это повод не путать номинал с чистым доходом.
-    </Callout>
+    <template v-if="calcResult">
+      <Callout title="Реальная доходность ниже той, что на витрине">
+        При инфляции {{ ratePct(INFLATION, 1) }} эффективная ставка
+        {{ ratePct(calcResult.effectiveRate, 1) }} оставляет примерно {{ ratePct(realEffective, 1) }} настоящих.
+        Это не повод не копить — это повод не путать номинал с доходом.
+      </Callout>
+
+      <Callout title="Проценты считает приложение, а не банк">
+        Формула аннуитета и капитализации работает офлайн, на ваших цифрах. Когда появится
+        ИИ-советник, он получит уже посчитанный результат и будет только объяснять его словами —
+        считать деньги модели не доверяем.
+      </Callout>
+    </template>
   </div>
 </template>
