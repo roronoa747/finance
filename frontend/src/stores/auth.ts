@@ -13,6 +13,9 @@ function removeItem(key: string): void {
   if (typeof localStorage !== 'undefined') localStorage.removeItem(key)
 }
 
+/** Токен демо-режима (Access.vue): сервера за ним нет, синхронизировать нечего. */
+export const DEMO_TOKEN = 'demo-token'
+
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(getItem('ff_auth_token'))
   const user = ref<User | null>(
@@ -28,6 +31,7 @@ export const useAuthStore = defineStore('auth', () => {
   const error = ref<string | null>(null)
 
   const isAuthenticated = computed(() => Boolean(token.value && user.value))
+  const isDemo = computed(() => token.value === DEMO_TOKEN)
   const isMember = computed(() => member.value?.role === 'member')
   const isViewer = computed(() => member.value?.role === 'viewer')
   const slot = computed(() => member.value?.slot)
@@ -170,6 +174,7 @@ export const useAuthStore = defineStore('auth', () => {
     loading,
     error,
     isAuthenticated,
+    isDemo,
     isMember,
     isViewer,
     slot,

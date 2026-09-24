@@ -1,9 +1,6 @@
 import { useAuthStore } from './auth'
 import { useFinanceStore } from './finance'
 
-/** Токен демо-режима (Access.vue): сервера за ним нет, синхронизировать нечего. */
-const DEMO_TOKEN = 'demo-token'
-
 /** Как часто ловить правки партнёра, пока приложение открыто. */
 export const BACKGROUND_SYNC_MS = 60_000
 
@@ -23,7 +20,7 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
 
   const auth = useAuthStore()
   const finance = useFinanceStore()
-  const signedIn = () => auth.isAuthenticated && auth.token !== DEMO_TOKEN
+  const signedIn = () => auth.isAuthenticated && !auth.isDemo
 
   const sync = () => {
     if (!signedIn()) return
