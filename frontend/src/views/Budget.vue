@@ -15,15 +15,10 @@ import {
   today,
 } from '@/lib/dates'
 import {
-  amountAt,
-  creditDueAmount,
-  creditDueIn,
   budgetAmounts,
-  dueIn,
-  liveCredits,
-  liveObligations,
+  duesTotal,
+  monthDues,
   nextSalaryChange,
-  paidFor,
   salaryAt,
   type ScheduledKind,
 } from '@/lib/finance'
@@ -84,8 +79,12 @@ const financeStore = useFinanceStore()
 const key = computed(() => monthKey())
 const people = computed(() => financeStore.people)
 const categories = computed(() => financeStore.categories)
-const obligations = computed(() => liveObligations(financeStore.obligations))
-const credits = computed(() => liveCredits(financeStore.credits))
+const dues = computed(() =>
+  monthDues(
+    { obligations: financeStore.obligations, credits: financeStore.credits, payments: financeStore.payments },
+    key.value,
+  ),
+)
 
 const amounts = computed(() => budgetAmounts(financeStore.householdDoc))
 const income = computed(() => amounts.value.income)
@@ -105,38 +104,25 @@ const events = computed<EventItem[]>(() => {
         salaryFor.value = p.id
       },
     })),
-    ...obligations.value
-      .filter((o) => dueIn(o, key.value))
-      .map((o) => ({
-        id: o.id,
-        day: o.day,
-        name: o.name,
-        note: o.every === 'year' ? 'раз в год' : o.estimate ? 'оценка по сезону' : o.note,
-        // Отмеченное — суммой отметки, как в строке «Оплатил»: итог сходится со строками.
-        value: paidFor(financeStore.payments, 'obligation', o.id, key.value)?.amount ?? amountAt(o, key.value),
-        color: `var(--${o.category})`,
-        income: false,
-        estimate: o.estimate,
-        pay: 'obligation' as const,
-        open: () => {
-          void router.push(`/capital?obligation=${o.id}`)
-        },
-      })),
-    ...credits.value
-      .filter((c) => creditDueIn(c, financeStore.payments, key.value))
-      .map((c) => ({
-        id: c.id,
-        day: c.day,
-        name: c.name,
-        note: c.note,
-        value: paidFor(financeStore.payments, 'credit', c.id, key.value)?.amount ?? creditDueAmount(c),
-        color: 'var(--d2)',
-        income: false,
-        pay: 'credit' as const,
-        open: () => {
-          void router.push(`/capital?credit=${c.id}`)
-        },
-      })),
+    // Платежи месяца — одно правило finance.ts; сумма отмеченного — из отметки.
+    ...dues.value.map((d) => ({
+      id: d.targetId,
+      day: d.day,
+      name: d.name,
+      ...(d.kind === 'obligation'
+        ? {
+            note: d.obligation.every === 'year' ? 'раз в год' : d.obligation.estimate ? 'оценка по сезону' : d.obligation.note,
+            color: `var(--${d.obligation.category})`,
+            estimate: d.obligation.estimate,
+          }
+        : { note: d.credit.note, color: 'var(--d2)' }),
+      value: d.amount,
+      income: false,
+      pay: d.kind,
+      open: () => {
+        void router.push(`/capital?${d.kind}=${d.targetId}`)
+      },
+    })),
     {
       id: 'goals',
       day: 1,
@@ -153,9 +139,7 @@ const events = computed<EventItem[]>(() => {
   return items.sort((a, b) => a.day - b.day)
 })
 
-const obligationsTotal = computed(() =>
-  events.value.filter((e) => !e.income && e.id !== 'goals').reduce((a, e) => a + e.value, 0),
-)
+const obligationsTotal = computed(() => duesTotal(dues.value))
 const savedTotal = computed(() => amounts.value.d3)
 
 const dayEvents = computed(() => events.value.filter((e) => e.day === selected.value))

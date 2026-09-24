@@ -860,6 +860,54 @@ export function lastAccountFor(
   return liveAccounts(accounts).some((a) => a.id === last.accountId) ? last.accountId : undefined
 }
 
+type MonthDueBase = {
+  targetId: string
+  name: string
+  /** Число месяца, как оно заведено у платежа. */
+  day: number
+  /** Сумма: у отмеченного — из отметки, иначе по графику месяца. */
+  amount: number
+  paid: boolean
+}
+
+/** Платёж месяца по графику; сам платёж — для подписи, цвета и ссылки на экране. */
+export type MonthDue =
+  | (MonthDueBase & { kind: 'obligation'; obligation: Obligation })
+  | (MonthDueBase & { kind: 'credit'; credit: Credit })
+
+/**
+ * Платежи месяца — одно правило для «до зарплаты», календаря и списка Бюджета и
+ * «Впереди» на Обзоре. Обязательства, что списываются в этом месяце (группа
+ * подписок — нет), и кредиты, ждущие платежа (закрытый — только в месяц, когда его
+ * закрыли). Кредиты — с остатками из отметок, как их отдаёт стор. Сумма
+ * отмеченного — из отметки, как в строке «Оплатил»: итог сходится со строками.
+ * Порядок — обязательства, затем кредиты; сортирует экран.
+ */
+export function monthDues(
+  state: { obligations?: Obligation[]; credits?: Credit[]; payments?: Payment[] },
+  key: string,
+): MonthDue[] {
+  const payments = state.payments || []
+  const obligations: MonthDue[] = liveObligations(state.obligations || [])
+    .filter((o) => dueIn(o, key))
+    .map((o) => {
+      const paid = paidFor(payments, 'obligation', o.id, key)
+      const amount = paid ? paid.amount : amountAt(o, key)
+      return { kind: 'obligation', obligation: o, targetId: o.id, name: o.name, day: o.day, amount, paid: !!paid }
+    })
+  const credits: MonthDue[] = liveCredits(state.credits || [])
+    .filter((c) => creditDueIn(c, payments, key))
+    .map((c) => {
+      const paid = paidFor(payments, 'credit', c.id, key)
+      const amount = paid ? paid.amount : creditDueAmount(c)
+      return { kind: 'credit', credit: c, targetId: c.id, name: c.name, day: c.day, amount, paid: !!paid }
+    })
+  return [...obligations, ...credits]
+}
+
+/** Итог платежей месяца — сумма строк. */
+export const duesTotal = (dues: MonthDue[]) => dues.reduce((a, d) => a + d.amount, 0)
+
 /**
  * До зарплаты: когда придут деньги и что нужно заплатить до этого.
  *
@@ -898,18 +946,17 @@ export function untilPayday(
   const nextKey = ahead ? key : addMonths(key, 1);
   const inDays = ahead ? who.payday - now.day : days - now.day + who.payday;
 
-  const item = (kind: ScheduledKind, x: { id: string; name: string; day: number }, value: number, k: string) => {
-    const paid = paidFor(payments, kind, x.id, k);
-    return { id: x.id, targetId: x.id, kind, name: x.name, day: x.day, value: paid ? paid.amount : value, when: k, paid: !!paid };
-  };
-  const itemsOf = (k: string) => [
-    ...liveObligations(obligations)
-      .filter((o) => dueIn(o, k))
-      .map((o) => item('obligation', o, amountAt(o, k), k)),
-    ...liveCredits(credits)
-      .filter((c) => creditDueIn(c, payments, k))
-      .map((c) => item('credit', c, creditDueAmount(c), k)),
-  ];
+  const itemsOf = (k: string) =>
+    monthDues({ obligations, credits, payments }, k).map((d) => ({
+      id: d.targetId,
+      targetId: d.targetId,
+      kind: d.kind,
+      name: d.name,
+      day: d.day,
+      value: d.amount,
+      when: k,
+      paid: d.paid,
+    }));
 
   const inWindow = ahead
     ? itemsOf(key).filter((x) => x.day >= now.day && x.day <= who.payday)

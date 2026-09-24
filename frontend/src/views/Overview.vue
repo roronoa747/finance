@@ -14,15 +14,12 @@ import { monthKey, monthIn, monthFrom, dayLabel } from '@/lib/dates'
 import {
   amountAt,
   budgetAmounts,
-  creditDueIn,
-  dueIn,
   keepQuestions,
-  liveCredits,
   liveGoals,
   liveObligations,
+  monthDues,
   nextChange,
   nextObligationDue,
-  paidFor,
   salaryAt,
   untilPayday,
 } from '@/lib/finance'
@@ -47,7 +44,6 @@ const people = computed(() => financeStore.people)
 const categories = computed(() => financeStore.categories)
 const goals = computed(() => liveGoals(financeStore.goals))
 const obligations = computed(() => liveObligations(financeStore.obligations))
-const credits = computed(() => liveCredits(financeStore.credits))
 
 // Суммы по разделам считаются из обязательств, кредитов и целей
 const amounts = computed(() => budgetAmounts(financeStore.householdDoc))
@@ -101,32 +97,25 @@ const freed = computed(() => {
     .find((x) => x.change && x.change.delta < 0)
 })
 
-// Платежи месяца «Впереди»: оплаченное — не предстоящее, уходит вниз с отметкой
+// Платежи месяца «Впереди» (правило finance.ts): оплаченное — не предстоящее, уходит вниз с отметкой
 const upcoming = computed(() => {
-  const items = [
-    ...obligations.value
-      .filter((o) => dueIn(o, key.value))
-      .map((o) => ({
-        id: o.id,
-        kind: 'obligation' as const,
-        name: o.name,
-        day: o.day,
-        note: o.every === 'year' ? 'раз в год' : o.estimate ? 'оценка по сезону' : o.note,
-        color: `var(--${o.category})`,
-        to: `/capital?obligation=${o.id}`,
-      })),
-    ...credits.value
-      .filter((c) => creditDueIn(c, financeStore.payments, key.value))
-      .map((c) => ({
-        id: c.id,
-        kind: 'credit' as const,
-        name: c.name,
-        day: c.day,
-        note: c.note || 'ежемесячный платёж',
-        color: 'var(--d2)',
-        to: `/capital?credit=${c.id}`,
-      })),
-  ].map((x) => ({ ...x, paid: !!paidFor(financeStore.payments, x.kind, x.id, key.value) }))
+  const items = monthDues(
+    { obligations: financeStore.obligations, credits: financeStore.credits, payments: financeStore.payments },
+    key.value,
+  ).map((d) => ({
+    id: d.targetId,
+    kind: d.kind,
+    name: d.name,
+    day: d.day,
+    paid: d.paid,
+    ...(d.kind === 'obligation'
+      ? {
+          note: d.obligation.every === 'year' ? 'раз в год' : d.obligation.estimate ? 'оценка по сезону' : d.obligation.note,
+          color: `var(--${d.obligation.category})`,
+        }
+      : { note: d.credit.note || 'ежемесячный платёж', color: 'var(--d2)' }),
+    to: `/capital?${d.kind}=${d.targetId}`,
+  }))
   return items.sort((a, b) => Number(a.paid) - Number(b.paid) || a.day - b.day)
 })
 

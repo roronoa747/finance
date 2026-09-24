@@ -29,6 +29,8 @@ import {
   nextCreditDue,
   lastAccountFor,
   untilPayday,
+  monthDues,
+  duesTotal,
   lumpPlan,
   prepaySaved,
   budgetAmounts,
@@ -547,6 +549,48 @@ describe('RP-06 — отметки оплат и остатки из них', ()
     // Отметка сентября аренду октября не снимает.
     const sepMark = { ...early, period: '2026-09' }
     expect(untilPayday({ people, obligations: [rent], credits: [lateLoan], payments: [sepMark] }, now)!.due.map((x) => x.id)).toEqual(['loan', 'rent@next'])
+  })
+
+  it('платежи месяца (monthDues): одно правило для «до зарплаты», Бюджета и «Впереди»; итог = сумма строк', () => {
+    const yearly: Obligation = { ...rent, id: 'ivi', name: 'Иви', every: 'year', month: 10, versions: [{ from: '2000-01', amount: 12_000 }] }
+    const group: Obligation = { ...rent, id: 'fun', name: 'Досуг', group: true, versions: [{ from: '2000-01', amount: 9_999 }] }
+    const gone: Obligation = { ...rent, id: 'old', deletedAt: T0 }
+    const small = { ...loan, id: 'small', principal: 10_000, annualRate: 0.12 }
+    const obligations = [rent, yearly, group, gone]
+    const credits = [loan, small]
+
+    // Сентябрь без отметок: годовая (октябрь), группа и удалённое — не платежи месяца.
+    const sep = monthDues({ obligations, credits }, '2026-09')
+    expect(sep.map((d) => [d.kind, d.targetId, d.amount, d.paid])).toEqual([
+      ['obligation', 'rent', 220_000, false],
+      ['credit', 'loan', 58_000, false],
+      // Последний платёж — остаток с процентами, а не полный платёж.
+      ['credit', 'small', 10_100, false],
+    ])
+    expect(duesTotal(sep)).toBe(288_100)
+    expect(monthDues({ obligations, credits }, '2026-10').map((d) => d.targetId)).toEqual(['rent', 'ivi', 'loan', 'small'])
+
+    // Отмечено другой суммой — сумма из отметки; кредит, закрытый этим месяцем, остаётся оплаченным.
+    const r = pay({ id: 'r', kind: 'obligation', targetId: 'rent', period: '2026-09', amount: 215_000 })
+    const last = pay({ id: 'x', kind: 'credit', targetId: 'small', period: '2026-09', amount: 10_100, principal: 10_000 })
+    const payments = [r, last]
+    const closed = [loan, { ...small, principal: creditBalance(small, payments) }]
+    const paid = monthDues({ obligations, credits: closed, payments }, '2026-09')
+    expect(paid.map((d) => [d.targetId, d.amount, d.paid])).toEqual([
+      ['rent', 215_000, true],
+      ['loan', 58_000, false],
+      ['small', 10_100, true],
+    ])
+    expect(duesTotal(paid)).toBe(283_100)
+    // В октябре закрытого кредита уже нет.
+    expect(monthDues({ obligations, credits: closed, payments }, '2026-10').map((d) => d.targetId)).toEqual(['rent', 'ivi', 'loan'])
+
+    // «До зарплаты» строится на том же правиле: окно с 1-го по 20-е сентября — все строки месяца.
+    const people: Person[] = [{ id: 'a', name: 'Ильяс', salary: 700_000, payday: 20, updatedAt: T0 }]
+    const payday = untilPayday({ people, obligations, credits: closed, payments }, { day: 1, key: '2026-09' })!
+    expect([...payday.due, ...payday.paid].map((x) => [x.targetId, x.value, x.paid])).toEqual(
+      paid.map((d) => [d.targetId, d.amount, d.paid]).sort((a, b) => Number(a[2]) - Number(b[2])),
+    )
   })
 
   it('счета для оплаты — только живые в тенге; день отметки — по Алматы', () => {
