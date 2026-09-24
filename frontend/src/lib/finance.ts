@@ -1,4 +1,4 @@
-import type { Account, Category, Credit, Goal, Obligation, Person } from '@/types/finance'
+import type { Account, Category, Credit, Goal, Obligation, Person, WishItem } from '@/types/finance'
 import { addMonths, daysInMonth, monthKey, today } from '@/lib/dates'
 /**
  * Расчётное ядро. Чистые функции: ни сети, ни состояния, ни ИИ.
@@ -409,6 +409,7 @@ export const liveGoals = (goals: Goal[]) => (goals || []).filter(alive);
 export const liveObligations = (list: Obligation[]) => (list || []).filter(alive);
 export const liveCredits = (list: Credit[]) => (list || []).filter(alive);
 export const liveAccounts = (list: Account[]) => (list || []).filter(alive);
+export const liveWishlist = (list: WishItem[]) => (list || []).filter(alive);
 
 /** Сумма обязательства, действующая в указанном месяце. */
 export function amountAt(o: Obligation, key = monthKey()): number {
@@ -607,4 +608,24 @@ export function liquidCash(liquidAccounts: Account[]): number {
 export function cushionMonths(liquidAccounts: Account[], monthlyMandatory: number): number {
   if (monthlyMandatory <= 0) return 0;
   return +(liquidCash(liquidAccounts) / monthlyMandatory).toFixed(1);
+}
+
+/**
+ * Подсчёт серии месяцев регулярных взносов в цели.
+ */
+export function contributionStreak(movements: { date: string; amount: number }[]): number {
+  const months = new Set(
+    movements.filter((m) => m.amount > 0).map((m) => m.date.slice(0, 7)),
+  )
+  if (!months.size) return 0
+
+  let streak = 0
+  let cursor = monthKey()
+  if (!months.has(cursor)) cursor = addMonths(cursor, -1)
+
+  while (months.has(cursor)) {
+    streak++
+    cursor = addMonths(cursor, -1)
+  }
+  return streak
 }

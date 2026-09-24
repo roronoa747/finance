@@ -9,8 +9,10 @@ import AppShell from '@/components/AppShell.vue'
 import Overview from '@/views/Overview.vue'
 import Budget from '@/views/Budget.vue'
 import Capital from '@/views/Capital.vue'
+import Goals from '@/views/Goals.vue'
+import GoalDetail from '@/views/GoalDetail.vue'
+import Deposit from '@/views/Deposit.vue'
 import Ritual from '@/views/Ritual.vue'
-import PlaceholderView from '@/views/PlaceholderView.vue'
 
 export const routes: RouteRecordRaw[] = [
   {
@@ -43,12 +45,22 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'goals',
         name: 'goals',
-        component: PlaceholderView,
+        component: Goals,
+      },
+      {
+        path: 'goals/:id',
+        name: 'goal-detail',
+        component: GoalDetail,
       },
       {
         path: 'capital',
         name: 'capital',
         component: Capital,
+      },
+      {
+        path: 'capital/:id',
+        name: 'deposit',
+        component: Deposit,
       },
       {
         path: 'ritual',
