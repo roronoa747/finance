@@ -25,3 +25,34 @@ jobs:
       - run: go build ./...
       - run: go vet ./...
       - run: go test -v ./...
+
+  integration:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: finance_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Одноразовая БД CI-контейнера, вход без пароля (trust)
+      TEST_DATABASE_URL: postgres://postgres@localhost:5432/finance_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          check-latest: true
+      # -p 1: PG-тесты разных пакетов сбрасывают одну схему
+      - run: go test -p 1 -count=1 -v -run Postgres ./...
