@@ -22,6 +22,9 @@ type DocRepository interface {
 	PushPrivateDoc(ctx context.Context, householdID, userID string, expectedRev int64, data json.RawMessage) (*models.PrivateDoc, bool, error)
 }
 
+// Document JSON is passed to SQL as a string, never as []byte: with
+// binary_parameters=yes (needed behind the transaction pooler) lib/pq sends
+// []byte in binary format, which jsonb input rejects.
 type sqlDocRepository struct {
 	db *sql.DB
 }
@@ -33,7 +36,7 @@ func NewSQLDocRepository(db *sql.DB) DocRepository {
 func (r *sqlDocRepository) GetHouseholdDoc(ctx context.Context, householdID string) (*models.HouseholdDoc, error) {
 	query := `
 		SELECT household_id, rev, data, updated_at, updated_by
-		FROM household_docs
+		FROM app.household_docs
 		WHERE household_id = $1;`
 
 	doc := &models.HouseholdDoc{}
@@ -64,7 +67,7 @@ func (r *sqlDocRepository) PushHouseholdDoc(ctx context.Context, householdID str
 	// 1. Lock current row
 	selectQuery := `
 		SELECT household_id, rev, data, updated_at, updated_by
-		FROM household_docs
+		FROM app.household_docs
 		WHERE household_id = $1
 		FOR UPDATE;`
 
@@ -91,13 +94,13 @@ func (r *sqlDocRepository) PushHouseholdDoc(ctx context.Context, householdID str
 
 	// 3. Update doc
 	updateQuery := `
-		UPDATE household_docs
+		UPDATE app.household_docs
 		SET data = $1::jsonb, rev = rev + 1, updated_at = now(), updated_by = $2
 		WHERE household_id = $3
 		RETURNING household_id, rev, data, updated_at, updated_by;`
 
 	newDoc := &models.HouseholdDoc{}
-	err = tx.QueryRowContext(ctx, updateQuery, data, updatedBy, householdID).Scan(
+	err = tx.QueryRowContext(ctx, updateQuery, string(data), updatedBy, householdID).Scan(
 		&newDoc.HouseholdID,
 		&newDoc.Rev,
 		&newDoc.Data,
@@ -118,7 +121,7 @@ func (r *sqlDocRepository) PushHouseholdDoc(ctx context.Context, householdID str
 func (r *sqlDocRepository) GetPrivateDoc(ctx context.Context, householdID, userID string) (*models.PrivateDoc, error) {
 	query := `
 		SELECT household_id, user_id, rev, data, updated_at
-		FROM private_docs
+		FROM app.private_docs
 		WHERE household_id = $1 AND user_id = $2;`
 
 	doc := &models.PrivateDoc{}
@@ -155,7 +158,7 @@ func (r *sqlDocRepository) PushPrivateDoc(ctx context.Context, householdID, user
 
 	selectQuery := `
 		SELECT household_id, user_id, rev, data, updated_at
-		FROM private_docs
+		FROM app.private_docs
 		WHERE household_id = $1 AND user_id = $2
 		FOR UPDATE;`
 
@@ -170,11 +173,11 @@ func (r *sqlDocRepository) PushPrivateDoc(ctx context.Context, householdID, user
 	if errors.Is(err, sql.ErrNoRows) {
 		// Insert initial record
 		insertQuery := `
-			INSERT INTO private_docs (household_id, user_id, rev, data)
+			INSERT INTO app.private_docs (household_id, user_id, rev, data)
 			VALUES ($1, $2, 1, $3::jsonb)
 			RETURNING household_id, user_id, rev, data, updated_at;`
 		newDoc := &models.PrivateDoc{}
-		if err := tx.QueryRowContext(ctx, insertQuery, householdID, userID, data).Scan(
+		if err := tx.QueryRowContext(ctx, insertQuery, householdID, userID, string(data)).Scan(
 			&newDoc.HouseholdID, &newDoc.UserID, &newDoc.Rev, &newDoc.Data, &newDoc.UpdatedAt,
 		); err != nil {
 			return nil, false, fmt.Errorf("failed to insert initial private doc: %w", err)
@@ -193,13 +196,13 @@ func (r *sqlDocRepository) PushPrivateDoc(ctx context.Context, householdID, user
 	}
 
 	updateQuery := `
-		UPDATE private_docs
+		UPDATE app.private_docs
 		SET data = $1::jsonb, rev = rev + 1, updated_at = now()
 		WHERE household_id = $2 AND user_id = $3
 		RETURNING household_id, user_id, rev, data, updated_at;`
 
 	newDoc := &models.PrivateDoc{}
-	err = tx.QueryRowContext(ctx, updateQuery, data, householdID, userID).Scan(
+	err = tx.QueryRowContext(ctx, updateQuery, string(data), householdID, userID).Scan(
 		&newDoc.HouseholdID,
 		&newDoc.UserID,
 		&newDoc.Rev,

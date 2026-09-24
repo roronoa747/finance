@@ -51,6 +51,10 @@ export const useFinanceStore = defineStore('finance', () => {
 
   let syncTimer: ReturnType<typeof setTimeout> | null = null
   let isSyncing = false
+  // Растёт с каждой локальной правкой: ответ сервера, запрошенный до неё, её не затирает.
+  let localEdits = 0
+  // Растёт с каждым запуском синка: фоновый pull не откатывает его результат.
+  let syncRuns = 0
 
   // Getters
   const people = computed(() => householdDoc.value.people || [])
@@ -82,6 +86,7 @@ export const useFinanceStore = defineStore('finance', () => {
       householdRev.value = rev
       status.value = 'idle'
     } else {
+      localEdits++
       status.value = 'dirty'
       scheduleSync()
     }
@@ -89,6 +94,7 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   function mutateHouseholdDoc(mutator: (doc: SyncDoc) => void) {
+    localEdits++
     mutator(householdDoc.value)
     status.value = 'dirty'
     saveLocalState()
@@ -96,6 +102,7 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   function resetDoc() {
+    localEdits++
     householdDoc.value = defaultSyncDoc()
     forceReplace.value = true
     status.value = 'dirty'
@@ -111,6 +118,7 @@ export const useFinanceStore = defineStore('finance', () => {
     }
 
     isSyncing = true
+    syncRuns++
     status.value = 'syncing'
     lastError.value = null
 
@@ -138,7 +146,18 @@ export const useFinanceStore = defineStore('finance', () => {
         saveLocalState()
 
         try {
+          const editsBeforePush = localEdits
           const pushRes = await client.pushHouseholdDoc(currentRev, merged)
+          if (localEdits !== editsBeforePush) {
+            // Правка пришла, пока запрос был в пути: сервер её не видел. Документ
+            // оставляем локальным, ревизию берём новую — правка уйдёт следующим кругом.
+            householdRev.value = pushRes.rev
+            status.value = 'dirty'
+            forceReplace.value = false
+            saveLocalState()
+            scheduleSync(undefined, client)
+            return
+          }
           householdDoc.value = pushRes.data ?? merged
           householdRev.value = pushRes.rev
           status.value = 'idle'
@@ -176,10 +195,14 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   async function pullHousehold(client: ApiClient = apiClient): Promise<HouseholdDocResponse | null> {
+    const editsBefore = localEdits
+    const runsBefore = syncRuns
     try {
       const serverDoc = await client.getHouseholdDoc()
       if (serverDoc && serverDoc.data) {
-        if (status.value === 'dirty') {
+        // Синк шёл или прошёл, пока ждали ответ: его результат новее этого ответа.
+        if (isSyncing || syncRuns !== runsBefore) return serverDoc
+        if (status.value === 'dirty' || localEdits !== editsBefore) {
           householdDoc.value = mergeDocs(householdDoc.value, serverDoc.data)
         } else {
           householdDoc.value = serverDoc.data
@@ -192,6 +215,9 @@ export const useFinanceStore = defineStore('finance', () => {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       lastError.value = msg
+      // Иначе фоновый pull с истёкшим входом молча показывал бы «синхронизировано»;
+      // 'error' заставит следующий круг движка пройти полный синк и показать причину.
+      if (status.value === 'idle') status.value = 'error'
       return null
     }
   }

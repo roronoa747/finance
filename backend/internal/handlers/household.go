@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -65,10 +64,8 @@ func (h *HouseholdHandler) CreateInvite(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *HouseholdHandler) JoinHousehold(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req JoinRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	if !decodeJSONBody(w, r, 1<<20, &req) {
 		return
 	}
 

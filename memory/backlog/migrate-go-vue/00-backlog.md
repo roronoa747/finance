@@ -1,7 +1,7 @@
 # Бэклог «Миграция на Go + Vue 3» (MGV)
 
-> **Статус:** Блоки 1–5 🏁 (у Блока 1 деплой перенесён в Блок 6 решением владельца 2026-09-24; CI бэкенда зелёный на `mgv-ci`). Блок 6 «Прод-инфраструктура и cutover» ⬜ — задачи MGV-15…MGV-19 заведены 2026-09-24 по брифу Блока 6.
-> Следующий шаг: `/worker migrate-go-vue 6 ultrathink` (промпты — `block-6-prod-cutover/SESSION.md`).
+> **Статус:** Блоки 1–5 🏁 (у Блока 1 деплой перенесён в Блок 6 решением владельца 2026-09-24; CI бэкенда зелёный на `mgv-ci`). Блок 6 «Прод-инфраструктура и cutover» 🔄 — MGV-15…19 ✅ (исполнитель 2026-09-24; репетиция на preview пройдена, `CUTOVER.md` готов); критик ✅ 2026-09-24 (гонки синка Vue, fail-fast функции, защита `testdb`); приёмка ✅ 2026-09-24 (в т.ч. синк двух устройств на preview HEAD). Ревью backend ✅ 2026-09-24 — блокеров нет, в клинап: матрица `binary_parameters` в CI + 2 комментария.
+> Следующий шаг: `/dir-review migrate-go-vue 6 frontend` → `/cleanup migrate-go-vue 6` (промпты — `block-6-prod-cutover/SESSION.md`).
 
 Источник: `migrate-go-vue-brief.md` (резюме интервью подтверждено владельцем 2026-09-23); Блок 6 — `migrate-go-vue-block-6-brief.md` (подтверждён 2026-09-24).
 Формат — `memory/process/BACKLOG-GUIDE.md`. **Решения §2 зафиксированы — рабочие сессии их не пересматривают.**
@@ -78,11 +78,11 @@
 | **5. Капитал & Приёмка** 🏁 закрыт *(M: фронтенд экраны)* | MGV-12 Экран `Capital.vue` (счета, кредиты, досрочка) | `block-5-capital-goals/MGV-12-capital-credits.md` | MGV-11 | ✅ |
 | | MGV-13 Экраны `Goals.vue`, `GoalDetail.vue`, `Deposit.vue` | `block-5-capital-goals/MGV-13-goals-deposit.md` | MGV-12 | ✅ |
 | | MGV-14 Сквозная приёмка, E2E тесты двух клиентов | `block-5-capital-goals/MGV-14-e2e-acceptance.md` | MGV-13 | ✅ |
-| **6. Прод-инфраструктура и cutover** ⬜ *(L: живые данные, пароли, секреты, прод; ревью — `backend`, `frontend`; деплой = cutover в клинапе)* | MGV-15 Go к проду: fail-fast, схема `app`, коды 400/413, `/api/fx-rate` | `block-6-prod-cutover/MGV-15-go-prod-ready.md` | Блоки 1–5 | ⬜ |
-| | MGV-16 Vercel: Go-функция, сборка Vue, миграции отдельной командой, пулер, preview | `block-6-prod-cutover/MGV-16-vercel-go-function.md` | MGV-15 | ⬜ |
-| | MGV-17 PWA во Vue, замена SW React, курс через `/api/fx-rate`, CI фронта | `block-6-prod-cutover/MGV-17-vue-pwa-fx.md` | MGV-16 | ⬜ |
-| | MGV-18 Перенос данных Supabase → `app` и обратный скрипт | `block-6-prod-cutover/MGV-18-data-transfer.md` | MGV-15 | ⬜ |
-| | MGV-19 Репетиция cutover на preview и ранбук `CUTOVER.md` | `block-6-prod-cutover/MGV-19-rehearsal-runbook.md` | MGV-16, MGV-17, MGV-18 | ⬜ |
+| **6. Прод-инфраструктура и cutover** ✅ принят *(L: живые данные, пароли, секреты, прод; ревью — `backend`, `frontend`; деплой = cutover в клинапе)* | MGV-15 Go к проду: fail-fast, схема `app`, коды 400/413, `/api/fx-rate` | `block-6-prod-cutover/MGV-15-go-prod-ready.md` | Блоки 1–5 | ✅ |
+| | MGV-16 Vercel: Go-функция, сборка Vue, миграции отдельной командой, пулер, preview | `block-6-prod-cutover/MGV-16-vercel-go-function.md` | MGV-15 | ✅ |
+| | MGV-17 PWA во Vue, замена SW React, курс через `/api/fx-rate`, CI фронта | `block-6-prod-cutover/MGV-17-vue-pwa-fx.md` | MGV-16 | ✅ |
+| | MGV-18 Перенос данных Supabase → `app` и обратный скрипт | `block-6-prod-cutover/MGV-18-data-transfer.md` | MGV-15 | ✅ |
+| | MGV-19 Репетиция cutover на preview и ранбук `CUTOVER.md` | `block-6-prod-cutover/MGV-19-rehearsal-runbook.md` | MGV-16, MGV-17, MGV-18 | ✅ |
 
 Трассировка брифа Блока 6 → задачи: эскиз п.1 → MGV-15 (Р-7, Р-11, Р-13); п.2 → MGV-16 (Р-6, Р-12); п.3 → MGV-17 (Р-10, Р-11); п.4 → MGV-18 (Р-8, Р-9, Р-14); п.5 → MGV-19 (Р-9, Р-15); само переключение прода — клинап Блока 6 по `CUTOVER.md`. CI фронта (MGV-17) — не из брифа, а из инварианта гайда «CI обязателен».
 
@@ -99,6 +99,10 @@
 | **Блокер деплоя**: fail-fast при `APP_ENV=production` без `DATABASE_URL` (иначе молча in-memory моки) и с дефолтным `JWT_SECRET` (подделка токенов) | Повторный клинап Блока 1 | ➡️ MGV-15 |
 | Прод-инфраструктура Go (хостинг, прод-PostgreSQL, домен, env) + **перенос данных из Supabase** — задач в бэклоге нет | Повторный клинап Блока 1 | ➡️ MGV-16, MGV-18, MGV-19 + клинап Блока 6 |
 | Коды ошибок синка: битый UTF-8 → 500 (надо 400), тело > лимита → 400 (надо 413) | Повторный клинап Блока 1 | ➡️ MGV-15 (Р-13) |
+| `data` синка с `\u0000` или одиночным суррогатом (`\udc00`): `jsonb` отвергает → 500, синк клиента застревает в `error` (битый UTF-8 уже → 400) | Handoff исполнителя Блока 6, критик | ⏳ после cutover, низкий — вердикт `REVIEW-backend.md` Н-2: клиент 400 и 500 не различает, паритет с React; перед переключением путь записи синка не трогаем |
+| Форма нового счёта: курс подставляется только в пустое поле — при смене валюты остаётся курс первой (EUR 508,71 для USD); унаследовано от React | Приёмка Блока 6 (владелец на preview) | ➡️ вердикт `/dir-review migrate-go-vue 6 frontend` (кандидат в клинап до cutover) |
+| Офлайн шапка Vue показывает «синхронизировано» — индикатор не слушает сеть до попытки синка | Handoff исполнителя Блока 6 | ⏳ после cutover, мелкая UX-задача (не блокер: данные офлайн открываются) |
+| `transfer forward`: пропущенный (без пароля/удалённый) пользователь, на которого ссылается `public`, → голая ошибка FK и ROLLBACK | Критик Блока 6 | не делаем: безопасно (ничего не пишется), на живых данных `-dry-run` зелёный; клинап перед окном повторяет `-dry-run` |
 | **Уборка старого**: удаление React `src/` (и корневых `vite.config.ts`/`package.json` React), таблиц React в `public`, пользователей Supabase Auth, Edge Function `fx-rate` | Бриф Блока 6 | ⏳ через 2 недели стабильной работы после cutover и с «да» владельца |
 
 ---

@@ -10,6 +10,8 @@ import (
 )
 
 // RunMigrations applies pending SQL migrations from the given filesystem.
+// It needs a pool of at least two connections: one stays pinned for the
+// advisory lock while the migrations run on another.
 func RunMigrations(ctx context.Context, database *sql.DB, migrationsFS fs.FS) error {
 	if database == nil {
 		return fmt.Errorf("database connection is nil")
@@ -31,9 +33,10 @@ func RunMigrations(ctx context.Context, database *sql.DB, migrationsFS fs.FS) er
 		_, _ = lockConn.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtext('migrations'));`)
 	}()
 
-	// Ensure schema_migrations table exists
+	// Ensure the app schema and its migration ledger exist
 	createTableSQL := `
-	CREATE TABLE IF NOT EXISTS schema_migrations (
+	CREATE SCHEMA IF NOT EXISTS app;
+	CREATE TABLE IF NOT EXISTS app.schema_migrations (
 		version TEXT PRIMARY KEY,
 		applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
 	);`
@@ -56,7 +59,7 @@ func RunMigrations(ctx context.Context, database *sql.DB, migrationsFS fs.FS) er
 
 	for _, filename := range filenames {
 		var exists bool
-		checkSQL := `SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1);`
+		checkSQL := `SELECT EXISTS (SELECT 1 FROM app.schema_migrations WHERE version = $1);`
 		if err := database.QueryRowContext(ctx, checkSQL, filename).Scan(&exists); err != nil {
 			return fmt.Errorf("failed to check migration status for %s: %w", filename, err)
 		}
@@ -80,7 +83,7 @@ func RunMigrations(ctx context.Context, database *sql.DB, migrationsFS fs.FS) er
 			return fmt.Errorf("failed to execute migration %s: %w", filename, err)
 		}
 
-		recordSQL := `INSERT INTO schema_migrations (version) VALUES ($1);`
+		recordSQL := `INSERT INTO app.schema_migrations (version) VALUES ($1);`
 		if _, err := tx.ExecContext(ctx, recordSQL, filename); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("failed to record migration %s: %w", filename, err)

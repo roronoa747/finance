@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { PhSparkle } from '@phosphor-icons/vue'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore, DEMO_TOKEN } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
@@ -98,7 +98,7 @@ async function submit() {
 
 function startDemoMode() {
   authStore.setAuthData({
-    token: 'demo-token',
+    token: DEMO_TOKEN,
     user: { id: 'demo-user-1', email: 'demo@family.local', created_at: new Date().toISOString() },
     household: {
       id: 'demo-household-1',

@@ -51,10 +51,8 @@ type LoginRequest struct {
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req RegisterRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	if !decodeJSONBody(w, r, 1<<20, &req) {
 		return
 	}
 
@@ -109,10 +107,8 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req LoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	if !decodeJSONBody(w, r, 1<<20, &req) {
 		return
 	}
 
@@ -181,6 +177,22 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		"household": household,
 		"member":    member,
 	})
+}
+
+// decodeJSONBody reads at most limit bytes of JSON into dst. On failure it has
+// already answered: 413 when the body exceeds the limit, 400 when it is malformed.
+func decodeJSONBody(w http.ResponseWriter, r *http.Request, limit int64, dst interface{}) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			respondJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request body too large"})
+			return false
+		}
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return false
+	}
+	return true
 }
 
 func respondJSON(w http.ResponseWriter, status int, data interface{}) {

@@ -2,9 +2,12 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -310,5 +313,63 @@ func TestSyncMalformedPayload(t *testing.T) {
 
 	if badRec.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 Bad Request for malformed JSON, got %d", badRec.Code)
+	}
+}
+
+func TestSyncOversizedBodyReturns413(t *testing.T) {
+	router, repos, tokens := setupSyncTestApp()
+	ctx := t.Context()
+
+	u1, _ := repos.Users.Create(ctx, "big@sync.test", "hash1")
+	hh, _, _ := repos.Households.CreateHousehold(ctx, "Big HH", u1.ID, "User")
+	token, _ := tokens.GenerateToken(u1.ID, hh.ID, "member", "a")
+
+	body := `{"last_seen_rev": 1, "data": {"blob": "` + strings.Repeat("x", maxDocBodyBytes) + `"}}`
+	for _, path := range []string{"/api/sync/household", "/api/sync/private"} {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusRequestEntityTooLarge {
+			t.Errorf("%s: expected 413 for body over the limit, got %d", path, rec.Code)
+		}
+	}
+}
+
+// docRepoSpy fails the test if a push reaches the repository.
+type docRepoSpy struct {
+	repository.DocRepository
+	t *testing.T
+}
+
+func (s docRepoSpy) PushHouseholdDoc(ctx context.Context, householdID string, expectedRev int64, data json.RawMessage, updatedBy string) (*models.HouseholdDoc, bool, error) {
+	s.t.Error("invalid UTF-8 must be rejected before the repository")
+	return nil, false, errors.New("unexpected")
+}
+
+func (s docRepoSpy) PushPrivateDoc(ctx context.Context, householdID, userID string, expectedRev int64, data json.RawMessage) (*models.PrivateDoc, bool, error) {
+	s.t.Error("invalid UTF-8 must be rejected before the repository")
+	return nil, false, errors.New("unexpected")
+}
+
+func TestSyncInvalidUTF8Returns400(t *testing.T) {
+	tokens := auth.NewTokenService("sync-test-signing-key", 2*time.Hour)
+	syncHandler := NewSyncHandler(docRepoSpy{t: t})
+	r := chi.NewRouter()
+	r.With(auth.Middleware(tokens)).Post("/api/sync/household", syncHandler.PushHouseholdDoc)
+	r.With(auth.Middleware(tokens)).Post("/api/sync/private", syncHandler.PushPrivateDoc)
+
+	token, _ := tokens.GenerateToken("user-1", "hh-1", "member", "a")
+	body := []byte("{\"last_seen_rev\": 1, \"data\": {\"name\": \"\xff\xfe\"}}")
+	for _, path := range []string{"/api/sync/household", "/api/sync/private"} {
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: expected 400 for invalid UTF-8, got %d: %s", path, rec.Code, rec.Body.String())
+		}
 	}
 }

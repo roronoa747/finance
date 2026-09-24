@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"bytes"
@@ -14,6 +14,7 @@ import (
 
 	"finance-backend/internal/auth"
 	"finance-backend/internal/config"
+	"finance-backend/internal/fx"
 	"finance-backend/internal/handlers"
 	"finance-backend/internal/models"
 	"finance-backend/internal/repository"
@@ -60,7 +61,7 @@ func runLiveServerE2EFlow(
 	}
 	tokenService := auth.NewTokenService(cfg.JWTSecret, 24*time.Hour)
 
-	router := setupRouter(cfg, database, userRepo, householdRepo, docRepo, tokenService)
+	router := NewRouter(cfg, database, Repos{Users: userRepo, Households: householdRepo, Docs: docRepo}, tokenService, fx.NewClient())
 	wantDBStatus := "disconnected"
 	if database != nil {
 		wantDBStatus = "connected"

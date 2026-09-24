@@ -9,8 +9,23 @@ import (
 	_ "github.com/lib/pq"
 )
 
+// Pool sizes the connection pool.
+type Pool struct {
+	MaxOpen int
+	MaxIdle int
+}
+
+// ServerPool suits the long-running server (cmd/server).
+var ServerPool = Pool{MaxOpen: 25, MaxIdle: 10}
+
+// ServerlessPool suits one Vercel function instance: the Supavisor transaction
+// pooler behind it multiplexes the free Supabase connection limit and sync
+// queries are short, so a couple of connections per instance is enough; extra
+// concurrent requests wait in database/sql.
+var ServerlessPool = Pool{MaxOpen: 2, MaxIdle: 2}
+
 // Connect initializes and validates a PostgreSQL connection pool.
-func Connect(databaseURL string) (*sql.DB, error) {
+func Connect(databaseURL string, pool Pool) (*sql.DB, error) {
 	if databaseURL == "" {
 		return nil, fmt.Errorf("database URL is empty")
 	}
@@ -20,8 +35,8 @@ func Connect(databaseURL string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	database.SetMaxOpenConns(25)
-	database.SetMaxIdleConns(10)
+	database.SetMaxOpenConns(pool.MaxOpen)
+	database.SetMaxIdleConns(pool.MaxIdle)
 	database.SetConnMaxLifetime(15 * time.Minute)
 	database.SetConnMaxIdleTime(5 * time.Minute)
 

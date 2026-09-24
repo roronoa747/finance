@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useFinanceStore, defaultSyncDoc } from './finance'
 import { ApiClient, ApiError } from '@/api/client'
-import type { SyncDoc, Goal } from '@/types/finance'
+import type { SyncDoc, Goal, Person, PersonId } from '@/types/finance'
 import type { HouseholdDocResponse, ConflictResponse } from '@/types/api'
 
 describe('stores/finance.ts — Pinia хранилище казны и синхронизация', () => {
@@ -277,5 +277,98 @@ describe('stores/finance.ts — Pinia хранилище казны и синх�
     expect(store.privateRev).toBe(3)
     expect(store.privateDoc.amount).toBe(200_000)
     expect(mockClient.pushPrivateDoc).toHaveBeenCalledWith(2, { secretNotes: 'Обновлено', amount: 200_000 })
+  })
+  // Критик Блока 6: движок синка (MGV-19) зовёт pullHousehold в фоне — ответ, пришедший
+  // после локальной правки или во время синка, не должен её затирать.
+  function deferred<T>() {
+    let resolve!: (v: T) => void
+    let reject!: (e: Error) => void
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res
+      reject = rej
+    })
+    return { promise, resolve, reject }
+  }
+  const person = (id: PersonId, name: string): Person => ({ id, name, salary: 500_000, payday: 10, updatedAt: '2026-09-24T10:00:00Z' })
+  const serverResponse = (rev: number, doc: SyncDoc) =>
+    ({ household_id: 'h-1', rev, data: doc, updated_at: '2026-09-24T10:00:00Z' }) as HouseholdDocResponse
+
+  it('pullHousehold: ответ, пришедший после локальной правки, её не затирает', async () => {
+    const store = useFinanceStore()
+    const get = deferred<HouseholdDocResponse>()
+    const client = { getHouseholdDoc: vi.fn().mockReturnValue(get.promise) } as unknown as ApiClient
+
+    const pulling = store.pullHousehold(client)
+    store.mutateHouseholdDoc((doc) => {
+      doc.people.push(person('a', 'Ильяс'))
+    })
+    get.resolve(serverResponse(5, defaultSyncDoc()))
+    await pulling
+
+    expect(store.people.map((p) => p.name)).toEqual(['Ильяс'])
+    expect(store.status).toBe('dirty')
+  })
+
+  it('pullHousehold: ответ, пришедший во время синка, документ и ревизию не трогает', async () => {
+    const store = useFinanceStore()
+    store.mutateHouseholdDoc((doc) => {
+      doc.people.push(person('a', 'Ильяс'))
+    })
+    const pullGet = deferred<HouseholdDocResponse>()
+    const push = deferred<HouseholdDocResponse>()
+    const client = {
+      getHouseholdDoc: vi.fn()
+        .mockReturnValueOnce(pullGet.promise)
+        .mockResolvedValueOnce(serverResponse(1, defaultSyncDoc())),
+      pushHouseholdDoc: vi.fn().mockReturnValue(push.promise),
+    } as unknown as ApiClient
+
+    const pulling = store.pullHousehold(client)
+    const syncing = store.syncHousehold(client)
+    pullGet.resolve(serverResponse(1, defaultSyncDoc()))
+    await pulling
+    expect(store.people.map((p) => p.name)).toEqual(['Ильяс'])
+
+    push.reject(new Error('network'))
+    await syncing
+    expect(store.status).toBe('error')
+    expect(store.people.map((p) => p.name)).toEqual(['Ильяс'])
+  })
+
+  it('правка во время push не теряется: остаётся dirty и уходит следующим кругом', async () => {
+    const store = useFinanceStore()
+    store.mutateHouseholdDoc((doc) => {
+      doc.people.push(person('a', 'Ильяс'))
+    })
+    const push = deferred<HouseholdDocResponse>()
+    const client = {
+      getHouseholdDoc: vi.fn().mockResolvedValue(serverResponse(1, defaultSyncDoc())),
+      // Тело запроса сериализуется в момент вызова — как JSON.stringify в ApiClient.
+      pushHouseholdDoc: vi.fn().mockImplementation((_rev: number, data: SyncDoc) => {
+        const sent = JSON.parse(JSON.stringify(data)) as SyncDoc
+        return push.promise.then(() => serverResponse(2, sent))
+      }),
+    } as unknown as ApiClient
+
+    const syncing = store.syncHousehold(client)
+    await vi.waitFor(() => expect(client.pushHouseholdDoc).toHaveBeenCalled())
+    store.mutateHouseholdDoc((doc) => {
+      doc.people.push(person('b', 'Аруна'))
+    })
+    push.resolve(serverResponse(2, defaultSyncDoc()))
+    await syncing
+
+    expect(store.people.map((p) => p.name)).toEqual(['Ильяс', 'Аруна'])
+    expect(store.householdRev).toBe(2)
+    expect(store.status).toBe('dirty')
+  })
+  it('pullHousehold: сбой (истёкший вход) не оставляет «синхронизировано»', async () => {
+    const store = useFinanceStore()
+    const client = {
+      getHouseholdDoc: vi.fn().mockRejectedValue(new ApiError('unauthorized', 401)),
+    } as unknown as ApiClient
+
+    expect(await store.pullHousehold(client)).toBeNull()
+    expect(store.status).toBe('error')
   })
 })

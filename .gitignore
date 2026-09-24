@@ -17,6 +17,5 @@ memory/secrets/*
 
 # Go бэкенд
 *.exe
-backend/server
 backend/.env
 coverage.out
