@@ -893,13 +893,13 @@ describe('RP-06: отметки оплат в сторе', () => {
     expect(Math.ceil(annuityMonths(c.principal, c.annualRate, c.payment))).toBe(plan.months)
     expect(plan.months).toBeLessThan(monthsBefore)
     expect(balance(store, card)).toBe(800_000)
-    expect(prepaySaved(store.payments)).toBe(plan.saved)
+    expect(prepaySaved(store.payments, store.credits)).toBe(plan.saved)
 
     at('2026-09-24T09:00:00Z')
     store.removePrepayment(rec.id)
     expect(store.credits[0].principal).toBe(1_000_000)
     expect(balance(store, card)).toBe(1_000_000)
-    expect(prepaySaved(store.payments)).toBe(0)
+    expect(prepaySaved(store.payments, store.credits)).toBe(0)
   })
 
   it('RP-08: «снизить платёж» меняет платёж кредита; снятие возвращает и его', () => {

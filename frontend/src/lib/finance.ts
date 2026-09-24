@@ -788,10 +788,16 @@ export function creditBalance(c: Credit, payments: Payment[] = []): number {
   return Math.max(0, c.principal - paid)
 }
 
-/** Сколько процентов не отдадим банку по всем применённым досрочкам — по живым (Р-6). */
-export function prepaySaved(payments: Payment[] = []): number {
+/**
+ * Сколько процентов не отдадим банку по всем применённым досрочкам (Р-6): живые
+ * досрочки живых кредитов. Удалённый кредит из счётчика уходит вместе со своими
+ * досрочками — как из капитала: снять их уже негде, а кредит, заведённый по ошибке,
+ * не должен оставлять экономию, которой не было.
+ */
+export function prepaySaved(payments: Payment[], credits: Credit[]): number {
+  const live = new Set(liveCredits(credits).map((c) => c.id))
   return countedPayments(payments)
-    .filter((p) => p.kind === 'prepay')
+    .filter((p) => p.kind === 'prepay' && live.has(p.targetId))
     .reduce((sum, p) => sum + (p.saved ?? 0), 0)
 }
 

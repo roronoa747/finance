@@ -99,7 +99,7 @@ const totalHouseholdAmount = computed(() => householdAccounts.value.reduce((a, x
 const totalPrivateAmount = computed(() => privateAccounts.value.reduce((a, x) => a + x.amount, 0))
 const totalSaved = computed(() => goalSavings(goals.value))
 const totalDebts = computed(() => credits.value.reduce((a, c) => a + c.principal, 0))
-const totalPrepaySaved = computed(() => prepaySaved(financeStore.payments))
+const totalPrepaySaved = computed(() => prepaySaved(financeStore.payments, financeStore.credits))
 
 const groups = computed(() => liveGroups(financeStore.obligations))
 // Подписка группы, которой больше нет, показывается сама по себе.

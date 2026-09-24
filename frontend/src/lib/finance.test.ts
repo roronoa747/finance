@@ -804,7 +804,7 @@ describe('RP-08 — применить досрочку', () => {
     expect(free).toMatchObject({ left: 500_000, payment: 41_667, months: 12, saved: 0 })
   })
 
-  it('счётчик «сэкономлено на процентах» — сумма по живым досрочкам', () => {
+  it('счётчик «сэкономлено на процентах» — сумма по живым досрочкам живых кредитов', () => {
     const base = { targetId: 'loan', period: '2026-09', accountId: null, by: 'a' as const, at: '2026-09-05T10:00:00Z', updatedAt: '2026-09-05T10:00:00Z' }
     const list: Payment[] = [
       { ...base, id: 'p1', kind: 'prepay', amount: 200_000, principal: 200_000, saved: 150_000 },
@@ -812,8 +812,17 @@ describe('RP-08 — применить досрочку', () => {
       { ...base, id: 'p3', kind: 'prepay', amount: 10_000, principal: 10_000, saved: 9_000, deletedAt: '2026-09-06T00:00:00Z' },
       { ...base, id: 'm', kind: 'credit', amount: 58_000, principal: 30_500 },
     ]
-    expect(prepaySaved(list)).toBe(180_000)
-    expect(prepaySaved([])).toBe(0)
+    const loan: Credit = { id: 'loan', name: 'Кредит', note: '', principal: P, annualRate: R, payment: PAY, day: 15, updatedAt: base.at }
+    expect(prepaySaved(list, [loan])).toBe(180_000)
+    expect(prepaySaved([], [loan])).toBe(0)
+
+    // Досрочка удалённого кредита в счётчик не входит — как сам кредит в капитал.
+    const mistake: Credit = { ...loan, id: 'oops', deletedAt: '2026-09-07T00:00:00Z' }
+    const trial: Payment = { ...base, id: 'p4', targetId: 'oops', kind: 'prepay', amount: 100_000, principal: 100_000, saved: 70_000 }
+    expect(prepaySaved([...list, trial], [loan, mistake])).toBe(180_000)
+    expect(prepaySaved([...list, trial], [loan, { ...mistake, deletedAt: null }])).toBe(250_000)
+    // Кредита нет в списке вовсе — тоже не считается.
+    expect(prepaySaved(list, [])).toBe(0)
   })
 })
 

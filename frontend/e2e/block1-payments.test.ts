@@ -182,7 +182,7 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     for (const p of [A, B]) {
       expect(p.store.credits[0].principal).toBe(plan.left)
       expect(p.store.accounts[0].amount).toBe(800_000)
-      expect(prepaySaved(p.store.payments)).toBe(plan.saved)
+      expect(prepaySaved(p.store.payments, p.store.credits)).toBe(plan.saved)
       const capital = await screen(p.pinia, Capital, '/capital')
       expect(capital).toContain(money(800_000))
       expect(capital).toContain(`${plan.months} платежей`)
@@ -548,7 +548,7 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     expect(B.store.credits[0].payment).toBe(lower.payment)
     expect(B.store.credits[0].principal).toBe(700_000)
     expect(B.store.accounts[0].amount).toBe(700_000)
-    expect(prepaySaved(B.store.payments)).toBe(181_913)
+    expect(prepaySaved(B.store.payments, B.store.credits)).toBe(181_913)
     expect(await screen(B.pinia, Capital, '/capital')).toContain(money(181_913))
 
     setActivePinia(B.pinia)
@@ -560,7 +560,7 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
       expect(store.credits[0].payment).toBe(58_000)
       expect(store.credits[0].principal).toBe(800_000)
       expect(store.accounts[0].amount).toBe(800_000)
-      expect(prepaySaved(store.payments)).toBe(term.saved)
+      expect(prepaySaved(store.payments, store.credits)).toBe(term.saved)
     }
   })
 })
