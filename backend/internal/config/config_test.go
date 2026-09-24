@@ -89,6 +89,7 @@ func TestLoadProductionFailsFast(t *testing.T) {
 		{"explicit default secret", "postgres://db", DefaultJWTSecret, "JWT_SECRET"},
 		{"short secret", "postgres://db", prodSecret[:31], "JWT_SECRET"},
 		{"nothing set", "", "", "DATABASE_URL"},
+		{"blank secret", "postgres://db", strings.Repeat(" ", 40), "JWT_SECRET"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -105,5 +106,16 @@ func TestLoadProductionFailsFast(t *testing.T) {
 				t.Errorf("error %q should mention %s", err, tc.wantErr)
 			}
 		})
+	}
+}
+
+// A mistyped APP_ENV must not switch the production checks off.
+func TestLoadProductionIgnoresCaseAndSpaces(t *testing.T) {
+	for _, env := range []string{"Production", " production ", "PRODUCTION"} {
+		clearEnv(t)
+		t.Setenv("APP_ENV", env)
+		if _, err := Load(); err == nil {
+			t.Errorf("APP_ENV=%q without DATABASE_URL must fail", env)
+		}
 	}
 }

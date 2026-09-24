@@ -60,18 +60,22 @@ func NewHandler(cfg *config.Config, database *sql.DB) (http.Handler, error) {
 // FromEnv builds the handler for a serverless function: configuration from the
 // environment and a small pool. It never runs migrations — cmd/migrate does,
 // over a session connection (the advisory lock needs one).
+//
+// The function only runs on Vercel (Preview and Production), so it applies the
+// production checks whatever APP_ENV says: a forgotten variable must not start
+// it on in-memory mocks or with the default JWT secret.
 func FromEnv() (http.Handler, error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, fmt.Errorf("load configuration: %w", err)
 	}
+	if err := cfg.ValidateProduction(); err != nil {
+		return nil, fmt.Errorf("load configuration: %w", err)
+	}
 
-	var database *sql.DB
-	if cfg.DatabaseURL != "" {
-		database, err = db.Connect(cfg.DatabaseURL, db.ServerlessPool)
-		if err != nil {
-			return nil, fmt.Errorf("connect to database: %w", err)
-		}
+	database, err := db.Connect(cfg.DatabaseURL, db.ServerlessPool)
+	if err != nil {
+		return nil, fmt.Errorf("connect to database: %w", err)
 	}
 	return NewHandler(cfg, database)
 }

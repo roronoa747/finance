@@ -112,25 +112,12 @@ func forward(ctx context.Context, tx *sql.Tx, opt options, out io.Writer) error 
 		fmt.Fprintln(out, "app: cleared (-replace)")
 	}
 
-	var skipped []string
-	rows, err := tx.QueryContext(ctx, `
+	skipped, err := queryStrings(ctx, tx, `
 		SELECT id FROM auth.users
 		WHERE deleted_at IS NULL AND (email IS NULL OR coalesce(encrypted_password, '') = '')
 		ORDER BY id`)
 	if err != nil {
 		return fmt.Errorf("find users without password: %w", err)
-	}
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return err
-		}
-		skipped = append(skipped, id)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
 	}
 	for _, id := range skipped {
 		fmt.Fprintf(out, "users: skipped %s — no email or password, cannot log in\n", id)
@@ -158,8 +145,7 @@ func forward(ctx context.Context, tx *sql.Tx, opt options, out io.Writer) error 
 // back returns documents edited in Go to the React tables — the rollback path.
 // It updates rows public already has and writes nothing else.
 func back(ctx context.Context, tx *sql.Tx, opt options, out io.Writer) error {
-	var orphans []string
-	rows, err := tx.QueryContext(ctx, `
+	orphans, err := queryStrings(ctx, tx, `
 		SELECT 'household_docs ' || a.household_id FROM app.household_docs a
 		WHERE NOT EXISTS (SELECT 1 FROM public.household_docs p WHERE p.household_id = a.household_id)
 		UNION ALL
@@ -168,18 +154,6 @@ func back(ctx context.Context, tx *sql.Tx, opt options, out io.Writer) error {
 		ORDER BY 1`)
 	if err != nil {
 		return fmt.Errorf("find rows missing in public: %w", err)
-	}
-	for rows.Next() {
-		var o string
-		if err := rows.Scan(&o); err != nil {
-			rows.Close()
-			return err
-		}
-		orphans = append(orphans, o)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
 	}
 	for _, o := range orphans {
 		fmt.Fprintf(out, "warning: %s exists only in app (created after cutover), not returned\n", o)
@@ -206,6 +180,24 @@ func back(ctx context.Context, tx *sql.Tx, opt options, out io.Writer) error {
 	n, _ = res.RowsAffected()
 	fmt.Fprintf(out, "private_docs: returned %d\n", n)
 	return nil
+}
+
+// queryStrings returns the single text column of every row.
+func queryStrings(ctx context.Context, tx *sql.Tx, query string) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
 }
 
 // reconcile compares both schemas inside the transaction and prints a report

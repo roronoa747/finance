@@ -19,7 +19,7 @@ REST API приложения: вход, домохозяйство, синхр�
 
 | Переменная | Где | Значение |
 |---|---|---|
-| `APP_ENV` | прод | `production` — включает fail-fast: без `DATABASE_URL` или с дефолтным/коротким (< 32) `JWT_SECRET` сервер не стартует |
+| `APP_ENV` | прод | `production` (регистр и пробелы не важны) — включает fail-fast: без `DATABASE_URL` или с дефолтным/коротким (< 32) `JWT_SECRET` сервер не стартует. Функция Vercel (`FromEnv`) проверяет это **всегда**, даже без `APP_ENV` |
 | `DATABASE_URL` | прод, опционально локально | без неё локально — in-memory моки |
 | `JWT_SECRET` | прод | 32+ символа, свой для Preview и Production |
 | `PORT`, `CORS_ORIGIN` | только `cmd/server` | дефолты `8080` и `localhost:5173` |
@@ -43,3 +43,6 @@ DATABASE_URL=<5432> go run ./cmd/transfer back [-force] [-dry-run] # откат:
 go test ./...                                         # юнит-тесты на моках
 TEST_DATABASE_URL=<одноразовая БД> go test -p 1 -run Postgres ./...   # БД стирается
 ```
+
+`testdb` отказывается работать, если в `TEST_DATABASE_URL` есть `supabase`: тесты делают
+`DROP SCHEMA public CASCADE`, а на живом проекте там прод-данные React.

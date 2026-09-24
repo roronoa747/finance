@@ -23,12 +23,13 @@ func call(path string) *httptest.ResponseRecorder {
 }
 
 func TestHandlerServesHealthAndBuildsOnce(t *testing.T) {
-	t.Setenv("APP_ENV", "")
-	t.Setenv("DATABASE_URL", "")
 	builds := 0
 	reset(t, func() (http.Handler, error) {
 		builds++
-		return server.FromEnv()
+		// Routing itself is covered by backend/server tests; here only the build count matters.
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
+		}), nil
 	})
 
 	for range 3 {
@@ -61,12 +62,18 @@ func TestHandlerRetriesFailedBuild(t *testing.T) {
 }
 
 func TestHandlerProductionWithoutEnvFails(t *testing.T) {
-	t.Setenv("APP_ENV", "production")
-	t.Setenv("DATABASE_URL", "")
-	t.Setenv("JWT_SECRET", "")
-	reset(t, server.FromEnv)
+	// The function applies production checks whatever APP_ENV says: a Vercel
+	// project with a missing or mistyped APP_ENV must not serve mocks either.
+	for _, env := range []string{"production", "Production ", ""} {
+		t.Run("APP_ENV="+env, func(t *testing.T) {
+			t.Setenv("APP_ENV", env)
+			t.Setenv("DATABASE_URL", "")
+			t.Setenv("JWT_SECRET", "")
+			reset(t, server.FromEnv)
 
-	if rec := call("/api/health"); rec.Code != http.StatusInternalServerError {
-		t.Errorf("production without env must not serve mocks, got %d", rec.Code)
+			if rec := call("/api/health"); rec.Code != http.StatusInternalServerError {
+				t.Errorf("function without env must not serve mocks, got %d", rec.Code)
+			}
+		})
 	}
 }

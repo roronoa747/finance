@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,6 +24,11 @@ func Open(t *testing.T) *sql.DB {
 	url := os.Getenv(EnvVar)
 	if url == "" {
 		t.Skipf("%s is not set: skipping PostgreSQL integration test", EnvVar)
+	}
+	// The reset below drops public: on the live Supabase project that is the
+	// React production data. Its connection strings sit next to the test ones.
+	if strings.Contains(strings.ToLower(url), "supabase") {
+		t.Fatalf("%s points at Supabase: integration tests wipe the database, use a disposable one", EnvVar)
 	}
 
 	database, err := db.Connect(url, db.ServerPool)

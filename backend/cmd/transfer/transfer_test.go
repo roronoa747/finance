@@ -22,6 +22,7 @@ const (
 	aliceID = "11111111-1111-1111-1111-111111111111"
 	bobID   = "22222222-2222-2222-2222-222222222222"
 	ghostID = "33333333-3333-3333-3333-333333333333" // signed up by magic link: no password
+	goneID  = "44444444-4444-4444-4444-444444444444" // deleted in Supabase: not copied
 	homeID  = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
 	aliceOldLogin = "alice-old-supabase-" + "login"
@@ -79,6 +80,8 @@ func setup(t *testing.T) (*sql.DB, string) {
 		{`INSERT INTO auth.users (id, email, encrypted_password) VALUES
 		  ($1, 'Alice@Test.KZ', $3), ($2, 'bob@test.kz', $3), ($4, 'ghost@test.kz', NULL)`,
 			[]any{aliceID, bobID, string(hash), ghostID}},
+		{`INSERT INTO auth.users (id, email, encrypted_password, deleted_at) VALUES ($1, 'gone@test.kz', $2, now())`,
+			[]any{goneID, string(hash)}},
 		{`INSERT INTO public.households (id, name, created_by) VALUES ($1, 'Наша казна', $2)`, []any{homeID, aliceID}},
 		{`INSERT INTO public.household_members (household_id, user_id, slot, display_name, role) VALUES
 		  ($1, $2, 'a', 'Ильяс', 'member'), ($1, $3, 'b', 'Аруна', 'member')`, []any{homeID, aliceID, bobID}},

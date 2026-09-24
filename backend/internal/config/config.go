@@ -34,24 +34,27 @@ func Load() (*Config, error) {
 		Env:         getEnv("APP_ENV", "development"),
 	}
 	if cfg.IsProduction() {
-		if err := cfg.validateProduction(); err != nil {
+		if err := cfg.ValidateProduction(); err != nil {
 			return nil, err
 		}
 	}
 	return cfg, nil
 }
 
-// IsProduction reports whether APP_ENV is "production".
+// IsProduction reports whether APP_ENV is "production", ignoring case and
+// surrounding spaces: a mistyped value must not silently switch the checks off.
 func (c *Config) IsProduction() bool {
-	return c.Env == "production"
+	return strings.EqualFold(strings.TrimSpace(c.Env), "production")
 }
 
-func (c *Config) validateProduction() error {
+// ValidateProduction reports what production would refuse: no database, or a
+// default, blank or short JWT secret.
+func (c *Config) ValidateProduction() error {
 	var errs []error
 	if c.DatabaseURL == "" {
 		errs = append(errs, errors.New("DATABASE_URL is required in production"))
 	}
-	if c.JWTSecret == DefaultJWTSecret || len(c.JWTSecret) < minProdJWTSecretLen {
+	if c.JWTSecret == DefaultJWTSecret || len(strings.TrimSpace(c.JWTSecret)) < minProdJWTSecretLen {
 		errs = append(errs, errors.New("JWT_SECRET must be set to a non-default value of at least 32 characters in production"))
 	}
 	return errors.Join(errs...)
