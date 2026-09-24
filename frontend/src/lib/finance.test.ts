@@ -624,7 +624,7 @@ describe('RP-08 — применить досрочку', () => {
     const shorter = lumpPlan(P, R, PAY, LUMP, 'term')!
 
     expect(lower.left).toBe(800_000)
-    expect(lower.payment).toBe(Math.round(annuityPayment(800_000, R, n)))
+    expect(lower.payment).toBe(Math.ceil((PAY * 800_000) / P))
     // При том же сроке платёж пропорционален долгу: 58 000 × 0,8.
     expect(lower.payment).toBe(46_400)
     expect(lower.months).toBe(Math.ceil(n))
@@ -683,9 +683,9 @@ describe('RP-08 — применить досрочку', () => {
       // Платёж — аннуитет на остаток на прежний непрерывный срок (формула в лоб)…
       const i = R / 12
       const annuity = (left * i) / (1 - Math.pow(1 + i, -before.n))
-      expect(plan.payment).toBe(Math.round(annuity))
-      // …а при том же сроке он пропорционален долгу: 58 000 × остаток / долг.
-      expect(plan.payment).toBe(Math.round((PAY * left) / debt))
+      expect(Math.abs(plan.payment - annuity)).toBeLessThan(1)
+      // …а при том же сроке он пропорционален долгу: 58 000 × остаток / долг, вверх до тенге.
+      expect(plan.payment).toBe(Math.ceil((PAY * left) / debt))
       // Экономия: n × (прежний − новый) − взнос = взнос × переплата / долг.
       expect(plan.saved).toBe(Math.round((lump * before.overpay) / debt))
     }
@@ -706,7 +706,10 @@ describe('RP-08 — применить досрочку', () => {
     // Взнос почти во весь долг: остаток 10 000.
     const almost = { term: lumpPlan(P3, R3, PAY3, 2_990_000, 'term')!, payment: lumpPlan(P3, R3, PAY3, 2_990_000, 'payment')! }
     expect(almost.term).toEqual({ paid: 2_990_000, left: 10_000, payment: PAY3, months: 1, monthsBefore: 36, saved: 1_237_033 })
-    expect(almost.payment).toEqual({ paid: 2_990_000, left: 10_000, payment: 392, months: 36, monthsBefore: 36, saved: 1_233_017 })
+    // 117 699 × 10 000 / 3 000 000 = 392,33 → 393: платёж 392 растянул бы долг на 37-й платёж.
+    expect(almost.payment).toEqual({ paid: 2_990_000, left: 10_000, payment: 393, months: 36, monthsBefore: 36, saved: 1_233_017 })
+    expect(Math.ceil(annuityMonths(10_000, R3, 392))).toBe(37)
+    expect(Math.ceil(annuityMonths(10_000, R3, 393))).toBe(36)
     // «Сократить срок» с остатком 10 000 — один закрывающий платёж: 10 000 + 2% = 10 200.
     expect(creditSplit(10_000, R3, PAY3)).toEqual({ amount: 10_200, interest: 200, body: 10_000 })
 
@@ -717,6 +720,19 @@ describe('RP-08 — применить досрочку', () => {
     }
     expect(third.payment.saved).toBeLessThan(third.term.saved)
     expect(almost.payment.saved).toBeLessThan(almost.term.saved)
+  })
+
+  it('«снизить платёж» у кредита с банковским платежом — срок в строке кредита не вырос (платёж вверх)', () => {
+    // 1 000 000 под 18% на 12 месяцев: банк округлил аннуитет 91 679,99 вверх — 91 680.
+    const R18 = 0.18
+    const BANK = 91_680
+    expect(BANK).toBe(Math.ceil(annuityPayment(1_000_000, R18, 12)))
+    const plan = lumpPlan(1_000_000, R18, BANK, 10_000, 'payment')!
+    expect(plan.monthsBefore).toBe(12)
+    // 91 680 × 990 000 / 1 000 000 = 90 763,2 → 90 764; `Math.round` дал бы 90 763 и «13 платежей».
+    expect(plan.payment).toBe(90_764)
+    expect(Math.ceil(annuityMonths(plan.left, R18, plan.payment))).toBeLessThanOrEqual(plan.monthsBefore)
+    expect(Math.ceil(annuityMonths(plan.left, R18, 90_763))).toBe(13)
   })
 
   it('«снизить платёж» с крошечным остатком — платёж не меньше 1 ₸, а не 0', () => {

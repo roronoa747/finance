@@ -264,8 +264,8 @@ export type LumpPlan = {
  *  - «сократить срок» (term) — платёж тот же, долг закроется раньше (`lumpSum`);
  *  - «снизить платёж» (payment) — срок тот же, платёж пересчитывается аннуитетом
  *    на остаток. При том же сроке проценты пропорциональны долгу, поэтому новый
- *    платёж — прежний × остаток / долг, а экономия меньше, чем у «сократить срок»:
- *    там весь прежний платёж продолжает гасить тело.
+ *    платёж — прежний × остаток / долг (вверх до тенге), а экономия меньше, чем у
+ *    «сократить срок»: там весь прежний платёж продолжает гасить тело.
  *
  * `saved` — оценка в непрерывных месяцах, как у `lumpSum` и калькулятора: от
  * помесячного графика с округлением процентов (`creditSplit`) она отличается на
@@ -297,8 +297,12 @@ export function lumpPlan(
     return { paid, left, payment, months: Math.ceil(r.monthsAfter), monthsBefore, saved: saved(r.overpayAfter) }
   }
   const next = annuityPayment(left, annualRate, n)
-  // Платёж 0 при живом остатке не закрыл бы долг никогда: не меньше тенге.
-  return { paid, left, payment: Math.max(1, Math.round(next)), months: monthsBefore, monthsBefore, saved: saved(next * n - left) }
+  // Новый платёж — прежний × остаток / долг на целых (без шума плавающей точки
+  // аннуитета), округлённый вверх: платёж ниже точного растянул бы долг на лишний
+  // платёж, и строка кредита показала бы срок длиннее прежнего. Платёж 0 при
+  // живом остатке не закрыл бы долг никогда: не меньше тенге.
+  const lowered = Math.max(1, Math.ceil((payment * left) / debt))
+  return { paid, left, payment: lowered, months: monthsBefore, monthsBefore, saved: saved(next * n - left) }
 }
 
 /**
