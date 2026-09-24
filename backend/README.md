@@ -11,6 +11,8 @@ REST API приложения: вход, домохозяйство, синхр�
   - `../api/index.go` — функция Vercel (корневой модуль `finance-vercel`, `replace` на
     `./backend`); миграций **не** запускает, пул — `db.ServerlessPool`.
 - `cmd/migrate` — миграции отдельной командой (прод).
+- `cmd/transfer` — перенос семьи между таблицами React (`auth.users`, `public.*`) и схемой `app`
+  в одной транзакции со сверкой до `COMMIT` (расхождение → `ROLLBACK`, код выхода ≠ 0).
 - `migrations/` — SQL, встроены в бинарник.
 
 ## Переменные окружения
@@ -35,6 +37,9 @@ REST API приложения: вход, домохозяйство, синхр�
 ```sh
 go run ./cmd/server                                   # локально, моки
 DATABASE_URL=<5432> go run ./cmd/migrate              # миграции схемы app (идемпотентно)
+DATABASE_URL=<5432> go run ./cmd/transfer forward -dry-run   # репетиция переноса, всё откатывается
+DATABASE_URL=<5432> go run ./cmd/transfer forward [-replace] # копия public → app (-replace: app не пуст)
+DATABASE_URL=<5432> go run ./cmd/transfer back [-force] [-dry-run] # откат: документы app → public
 go test ./...                                         # юнит-тесты на моках
 TEST_DATABASE_URL=<одноразовая БД> go test -p 1 -run Postgres ./...   # БД стирается
 ```
