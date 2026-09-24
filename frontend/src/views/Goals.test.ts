@@ -232,4 +232,40 @@ describe('views/Goals.vue, GoalDetail.vue, Deposit.vue — Цели, депоз�
     expect(html).toContain('Ваши взносы')
     expect(html).toContain('Заработал банк')
   })
+
+  it('рендерит вкладку вишлиста при переходе по /goals?tab=wish', async () => {
+    const store = useFinanceStore()
+    store.mutateHouseholdDoc((doc) => {
+      doc.wishlist = [
+        {
+          id: 'w-test',
+          name: 'Робот-пылесос',
+          price: 180_000,
+          by: 'a',
+          bought: false,
+          addedOn: '24.09.2026',
+          updatedAt: '2026-09-24T00:00:00Z',
+        },
+      ]
+    })
+
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('vue/server-renderer')
+    const { createRouter, createMemoryHistory } = await import('vue-router')
+    const Goals = (await import('./Goals.vue')).default
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/goals', component: Goals }],
+    })
+    await router.push('/goals?tab=wish')
+    await router.isReady()
+
+    const app = createSSRApp(Goals)
+    app.use(router)
+
+    const html = await renderToString(app)
+    expect(html).toContain('Робот-пылесос')
+    expect(html).toContain('Записать покупку')
+  })
 })

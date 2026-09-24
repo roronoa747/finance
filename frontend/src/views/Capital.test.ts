@@ -199,4 +199,35 @@ describe('views/Capital.vue — Счета, кредиты, досрочное �
     expect(html).toContain('Обязательства')
     expect(html).toContain('Кредитная карта')
   })
+
+  it('рендерит модалку «Внеплановый доход» при переходе по маршруту /capital?income=1', async () => {
+    const store = useFinanceStore()
+    store.addGoal({
+      name: 'Резерв',
+      need: 500_000,
+      have: 100_000,
+      monthly: 50_000,
+      hue: 'teal',
+    })
+
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('vue/server-renderer')
+    const { createRouter, createMemoryHistory } = await import('vue-router')
+    const Capital = (await import('./Capital.vue')).default
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/capital', component: Capital }],
+    })
+    await router.push('/capital?income=1')
+    await router.isReady()
+
+    const app = createSSRApp(Capital)
+    app.use(router)
+
+    const html = await renderToString(app)
+    expect(html).toContain('Внеплановый доход')
+    expect(html).toContain('Премия, подарок, возврат налога')
+    expect(html).toContain('Резерв')
+  })
 })

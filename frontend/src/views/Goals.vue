@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { PhCheck, PhLink, PhPlus } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { money, plain, parseMoney } from '@/lib/money'
@@ -23,11 +23,33 @@ import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import { PhX } from '@phosphor-icons/vue'
 
-type Tab = 'goals' | 'wish'
-const tab = ref<Tab>('goals')
-
 const router = useRouter()
+const route = useRoute()
 const financeStore = useFinanceStore()
+
+type Tab = 'goals' | 'wish'
+const tab = ref<Tab>(route.query?.tab === 'wish' ? 'wish' : 'goals')
+
+watch(
+  () => route.query?.tab,
+  (val) => {
+    tab.value = val === 'wish' ? 'wish' : 'goals'
+  },
+)
+
+watch(tab, (t) => {
+  if (t === 'wish') {
+    if (route.query?.tab !== 'wish') {
+      void router.replace({ query: { ...route.query, tab: 'wish' } })
+    }
+  } else {
+    if (route.query?.tab === 'wish') {
+      const q = { ...route.query }
+      delete q.tab
+      void router.replace({ query: q })
+    }
+  }
+})
 
 const goals = computed(() => liveGoals(financeStore.goals))
 const wishlist = computed(() => liveWishlist(financeStore.wishlist))

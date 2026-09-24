@@ -6,7 +6,7 @@
 
 | Бэклог | Каталог | Статус | Следующий шаг |
 |---|---|---|---|
-| Миграция на Go + Vue 3 (`migrate-go-vue`) | `memory/backlog/migrate-go-vue/` | 🔄 Блоки 1, 2, 3 и 4 закрыты 🏁. Блок 5 (Капитал & Приёмка) готов к работе | `/worker migrate-go-vue 5` |
+| Миграция на Go + Vue 3 (`migrate-go-vue`) | `memory/backlog/migrate-go-vue/` | 🔄 Блоки 1–4 закрыты 🏁. Блок 5 прошёл ревью критика ✅ | `/accept migrate-go-vue 5` |
 
 ## Закрытые (архив)
 

@@ -97,6 +97,7 @@ const selectedCreditId = ref<string | null>(null)
 const addObligationOpen = ref(false)
 const selectedObligationId = ref<string | null>(null)
 const payoffCreditId = ref<string | null>(null)
+const extraIncomeOpen = ref(false)
 
 // Check query params on mount/update
 watch(
@@ -107,9 +108,41 @@ watch(
     if (typeof q.credit === 'string') selectedCreditId.value = q.credit
     if (typeof q.obligation === 'string') selectedObligationId.value = q.obligation
     if (typeof q.payoff === 'string') payoffCreditId.value = q.payoff
+    if (q.income === '1') extraIncomeOpen.value = true
   },
   { immediate: true },
 )
+
+/* ------------------ Внеплановый доход ------------------ */
+const extraIncomeAmount = ref('')
+const extraIncomeBy = ref<PersonId>('a')
+const extraIncomeTarget = ref('')
+
+const extraIncomeValue = computed(() => parseMoney(extraIncomeAmount.value))
+const canApplyExtraIncome = computed(
+  () => extraIncomeValue.value > 0 && Boolean(extraIncomeTarget.value),
+)
+
+function applyExtraIncome() {
+  if (!canApplyExtraIncome.value) return
+  const [kind, id] = extraIncomeTarget.value.split(':')
+  if (kind === 'goal') {
+    financeStore.contribute(id, extraIncomeValue.value, extraIncomeBy.value, 'Внеплановый доход')
+  } else {
+    const acc = allAccounts.value.find((a) => a.id === id)
+    if (acc) {
+      financeStore.setAccountAmount(id, acc.amount + extraIncomeValue.value)
+    }
+  }
+  extraIncomeAmount.value = ''
+  extraIncomeTarget.value = ''
+  extraIncomeOpen.value = false
+  if (route.query.income) {
+    const q = { ...route.query }
+    delete q.income
+    void router.replace({ query: q })
+  }
+}
 
 /* ------------------ Добавление счета ------------------ */
 const newAccountKind = ref<Account['kind']>('card')
@@ -478,6 +511,7 @@ function onKeydown(e: KeyboardEvent) {
     addObligationOpen.value = false
     selectedObligationId.value = null
     payoffCreditId.value = null
+    extraIncomeOpen.value = false
   }
 }
 
@@ -1257,6 +1291,76 @@ onUnmounted(() => {
         </div>
 
         <Button class="w-full" @click="payoffCreditId = null">Закрыть</Button>
+      </div>
+    </div>
+
+    <!-- МОДАЛКА: Внеплановый доход -->
+    <div
+      v-if="extraIncomeOpen"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
+      @click.self="extraIncomeOpen = false"
+    >
+      <div class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-2xl border border-line bg-surface p-5 shadow-2xl text-left">
+        <div class="mb-3 flex items-center justify-between">
+          <h3 class="font-display text-[17px] font-semibold text-ink">Внеплановый доход</h3>
+          <button
+            type="button"
+            aria-label="Закрыть"
+            class="grid size-7 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
+            @click="extraIncomeOpen = false"
+          >
+            <PhX :size="16" />
+          </button>
+        </div>
+        <p class="-mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-2">
+          Премия, подарок, возврат налога — то, чего нет в плане месяца. Направьте сразу,
+          пока деньги не разошлись по мелочам.
+        </p>
+
+        <Field label="Сумма, ₸">
+          <NumField v-model="extraIncomeAmount" placeholder="50 000" class="mb-3" />
+        </Field>
+
+        <Field v-if="people.length > 1" label="Кому пришло">
+          <div class="flex gap-2 mb-3">
+            <button
+              v-for="p in people"
+              :key="p.id"
+              type="button"
+              :class="cn('rounded-xl border px-3 py-2 text-[13px] flex-1 cursor-pointer', extraIncomeBy === p.id ? 'border-brand bg-brand-soft text-brand font-medium' : 'border-line text-ink-2')"
+              @click="extraIncomeBy = p.id"
+            >
+              {{ p.name }}
+            </button>
+          </div>
+        </Field>
+
+        <Field label="Куда направить">
+          <select
+            v-model="extraIncomeTarget"
+            class="w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[14px] text-ink mb-3"
+          >
+            <option value="">Выберите…</option>
+            <optgroup v-if="goals.length > 0" label="В цель">
+              <option v-for="g in goals" :key="g.id" :value="`goal:${g.id}`">
+                {{ g.name }}
+              </option>
+            </optgroup>
+            <optgroup v-if="accounts.length > 0" label="На счёт">
+              <option v-for="a in accounts" :key="a.id" :value="`account:${a.id}`">
+                {{ a.name }}
+              </option>
+            </optgroup>
+          </select>
+        </Field>
+
+        <p v-if="!goals.length && !accounts.length" class="mb-3 text-[12.5px] text-ink-3">
+          Сначала заведите цель или счёт — иначе деньги некуда положить.
+        </p>
+
+        <Button :disabled="!canApplyExtraIncome" class="w-full mt-1" @click="applyExtraIncome">
+          Записать
+        </Button>
       </div>
     </div>
   </div>
