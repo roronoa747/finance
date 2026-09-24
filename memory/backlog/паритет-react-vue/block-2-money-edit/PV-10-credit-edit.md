@@ -19,17 +19,17 @@
   (`useSavedMark(credit.id, credit.updatedAt)` `:857, :875`); `DangerZone` (`:971-975`): «Удалить
   кредит» / «Кредит исчезнет у обоих участников, и платёж перестанет учитываться в бюджете.
   Отменить нельзя.»
-- **Vue — `views/Capital.vue` модалка кредита `:1160-1222`** (`?credit=` → watch `:150`):
-  заголовок `:1168` (имя, без `SavedMark`); `:1179-1192` — только чтение («Остаток долга»,
-  «Ежемесячный платёж», «Ставка» — `'0%'`); `PaidRow` `:1194-1204` (`kind credit`, `dense`,
+- **Vue — `views/Capital.vue` модалка кредита `:1143-1205`** (`?credit=` → watch `:166`):
+  заголовок `:1151` (имя, без `SavedMark`); `:1162-1175` — только чтение («Остаток долга»,
+  «Ежемесячный платёж», «Ставка» — `'0%'`); `PaidRow` `:1177-1187` (`kind credit`, `dense`,
   `more`, title `Платёж ${dayLabel(...)}`, note «по графику»); «Симулятор досрочного погашения»
-  `:1206-1214`; `DangerZone` `:1216-1220` («Долг исчезнет из бюджета и графика выплат.»).
-  `updateCredit` из UI не вызывается нигде. `creditDue` (`:492-499`) снимается только при смене
+  `:1189-1197`; `DangerZone` `:1199-1203` («Долг исчезнет из бюджета и графика выплат.»).
+  `updateCredit` из UI не вызывается нигде. `creditDue` (`:465-472`) снимается только при смене
   id — после правки дня заголовок `PaidRow` останется со старым днём.
-- Стор `stores/finance.ts:843-855` `updateCredit(id, patch: Partial<Credit>)`: `principalSetAt =
+- Стор `stores/finance.ts:844-856` `updateCredit(id, patch: Partial<Credit>)`: `principalSetAt =
   'principal' in patch ? t : (c.principalSetAt ?? null)`, `updatedAt = t`; `unchanged()` нет
-  (в отличие от `updateAccount` `:742`) — защита только `NumFieldBlur` (`numChanged`,
-  `kit/NumFieldBlur.vue:38-40`). Геттер `credits` (`:130-132`) отдаёт **производный** `principal`;
+  (в отличие от `updateAccount` `:743`) — защита только `NumFieldBlur` (`numChanged`,
+  `kit/NumFieldBlur.vue:38-40`). Геттер `credits` (`:131-133`) отдаёт **производный** `principal`;
   модалка показывает его; правка «Остаток» пишет **новую базу + якорь** (сверка, как
   `setAccountAmount`), после неё отметки до якоря не вычитаются — так задумано (RP-06).
   `Credit` (`types/finance.ts:205-220`): `id`, `name`, `note`, `principal`, `principalSetAt?`,
@@ -46,12 +46,12 @@
   лесенка «Отдача падает» (`:1513-1515`), под ней при `half` (`:1527-1533`): «Половину
   переплаты снимает уже добавка в {money(half)} — дальше каждая следующая тысяча даёт меньше
   предыдущей. Если больших сумм нет, начинать стоит отсюда.»
-  Vue: `payoffMode` `:539`, `payoffAmount` `:540` — при смене кредита не сбрасываются
-  (`watch(payoffCreditId)` `:616-625` сбрасывает только `applyDone`, `removingPrepay`,
-  `applyAccount`); прочерки `:1571`, `:1576` («Переплата без досрочки» → «—»); placeholder
-  «5 000» жёстко (`:1593`); чип «½ переплаты» (`:1605`); заголовок «Отдача падает с ростом
-  суммы» (`:1726`); текстов «Впишите сумму…» и «Половину переплаты…» нет. `debtCost` (`finance.ts:197-210`)
-  → `closes`, `overpay` (`Infinity`, если не закрывается); `halfOverpayExtra` (`:316-341`).
+  Vue: `payoffMode` `:512`, `payoffAmount` `:513` — при смене кредита не сбрасываются
+  (`watch(payoffCreditId)` `:589-598` сбрасывает только `applyDone`, `removingPrepay`,
+  `applyAccount`); прочерки `:1554`, `:1559` («Переплата без досрочки» → «—»); placeholder
+  «5 000» жёстко (`:1576`); чип «½ переплаты» (`:1588`); заголовок «Отдача падает с ростом
+  суммы» (`:1707`); текстов «Впишите сумму…» и «Половину переплаты…» нет. `debtCost` (`finance.ts:247-260`)
+  → `closes`, `overpay` (`Infinity`, если не закрывается); `halfOverpayExtra` (`:372-397`).
 - Кит после PV-09: `Sheet`, `Select`, `Field group`, `useSavedMark`, `NumFieldBlur`.
 
 ## Задача

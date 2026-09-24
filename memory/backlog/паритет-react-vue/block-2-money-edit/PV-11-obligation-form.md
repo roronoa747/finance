@@ -12,16 +12,16 @@
   подсказка для годовой суммы (`:1295-1301`): «В плане месяца это займёт {money(amount/12)} —
   годовая сумма делится на двенадцать, чтобы не завышать одиннадцать месяцев и не удивляться на
   двенадцатый.»; месяц — сетка из 12 кнопок (`:1303-1324`).
-  Vue `views/Capital.vue`: `obCategory = ref('d4')` (`:329`), `obEstimate = ref(false)` (`:330`)
-  передаются в `createObligation` (`:336-353`), в шаблоне (`:1224-1300`) элементов выбора нет;
-  месяц — `<select>` (`:1262-1269`); подсказки про годовую нет. Стор `addObligation(o: { name;
-  note?; day; category; amount; estimate?; every?; month?; who? })` (`stores/finance.ts:469-499`).
-  Разделы — геттер `financeStore.categories` (`:119`); в пустом документе `categories: []`,
-  создаются лениво в `setCategoryAmount` (`:584-602`, имена зашиты `:595`: d1 «Жильё», d2
+  Vue `views/Capital.vue`: `obCategory = ref('d4')` (`:351`), `obEstimate = ref(false)` (`:352`)
+  передаются в `createObligation` (`:358-375`), в шаблоне (`:1207-1283`) элементов выбора нет;
+  месяц — `<select>` (`:1245-1252`); подсказки про годовую нет. Стор `addObligation(o: { name;
+  note?; day; category; amount; estimate?; every?; month?; who? })` (`stores/finance.ts:470-500`).
+  Разделы — геттер `financeStore.categories` (`:120`); в пустом документе `categories: []`,
+  создаются лениво в `setCategoryAmount` (`:585-603`, имена зашиты `:596`: d1 «Жильё», d2
   «Кредиты», d3 «Цели», d4 «Еда и быт», иначе «Свободно»); демо-засев `views/Access.vue:164-169`.
   **Риск:** список разделов может быть пустым — нужен запасной список имён из одного места.
   Раздел и оценка влияют на расчёты: `isSubscription = !group && category === 'd4' &&
-  !estimate` (`finance.ts:527`) — вопрос «Оставить?» RP-09; `budgetAmounts` — d1 жильё, d2 долги,
+  !estimate` (`finance.ts:685`) — вопрос «Оставить?» RP-09; `budgetAmounts` — d1 жильё, d2 долги,
   остальное в d4; `PaidRow` у оценки спрашивает сумму.
 - **А-9.** React `ObligationDialog` `:459-690` (`correctObligation`, `updateObligation`,
   `amendObligation`, `removeObligation` `:463`; при смене id сброс `:474-482`): «Название»
@@ -45,23 +45,23 @@
   `v.reason` мелко. «Готово» (`:680`), `SavedMark` (`:484, :502`), `DangerZone` (`:682-686`):
   «Удалить обязательство» / «Обязательство исчезнет у обоих участников вместе с историей суммы.
   Отменить нельзя.»
-  Vue модалка `:1302-1418`: `PaidRow` `:1321-1331`; группа (подписки) `:1333-1343` →
-  `moveToGroup`; «Сумма сейчас» `:1345-1354` (`correctObligation` при `v > 0`; текст `:1355-1358`
-  без «не трогайте это поле, а»); планирование `:1360-1408` (placeholder «Новая сумма», без
+  Vue модалка `:1285-1401`: `PaidRow` `:1304-1314`; группа (подписки) `:1316-1326` →
+  `moveToGroup`; «Сумма сейчас» `:1328-1337` (`correctObligation` при `v > 0`; текст `:1338-1341`
+  без «не трогайте это поле, а»); планирование `:1343-1391` (placeholder «Новая сумма», без
   autofocus, «…освободится X в месяц!» без годовой, без подсказки; `obNewAmount` не очищается
-  `:1400-1403`; месяцы `plannedObligationMonths` `:526-528`); «Готово» `:1410`; `DangerZone`
-  `:1412-1416` («Обязательство исчезнет из бюджета и планов.»). Нет: название, день, как часто,
-  месяц, «Чьё это», оценка, история, `SavedMark`. `obligationDue` (`:500-509`) снимается только
-  при смене id (комментарий `:489-491`).
-  Стор: `updateObligation(id, patch)` (`:1053-1058`, без `unchanged`), `correctObligation`
-  (`:1060-1076`, правит версию `from <= monthKey()`, no-op при той же сумме), `amendObligation(id,
-  from, amount, reason?)` (`:1078-1089`), `removeObligation` (`:1091-1099`). `Obligation`
+  `:1383-1386`; месяцы `plannedObligationMonths` `:499-501`); «Готово» `:1393`; `DangerZone`
+  `:1395-1399` («Обязательство исчезнет из бюджета и планов.»). Нет: название, день, как часто,
+  месяц, «Чьё это», оценка, история, `SavedMark`. `obligationDue` (`:473-482`) снимается только
+  при смене id (комментарий `:462-464`).
+  Стор: `updateObligation(id, patch)` (`:1054-1059`, без `unchanged`), `correctObligation`
+  (`:1061-1077`, правит версию `from <= monthKey()`, no-op при той же сумме), `amendObligation(id,
+  from, amount, reason?)` (`:1079-1090`), `removeObligation` (`:1092-1100`). `Obligation`
   (`types/finance.ts:119-164`): `name`, `note`, `day`, `category`, `versions[{from, amount,
   reason?}]`, `estimate?`, `parentId?`, `group?`, `noAsk?`, `keptAt?`, `every?`, `month?`, `who?`.
-  `nextObligationDue(o, payments, now)` (`finance.ts:813`) — день и периодичность определяют
+  `nextObligationDue(o, payments, now)` (`finance.ts:980`) — день и периодичность определяют
   месяц отметки (Блок 1 RP). `monthFrom` — `lib/dates.ts:71`; `MONTHS_NOM` — `:1`.
 - Кит после PV-09: `Sheet`, `Select`, `Field group`, `useSavedMark`; чекбокс — как в
-  `StrategyCompare` (PV-02).
+  `components/StrategyCompare.vue:178` (PV-02).
 
 ## Задача
 

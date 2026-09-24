@@ -30,9 +30,34 @@
 - **Тексты — дословно из React** по строкам в ТЗ (Р-2); подсказки и предупреждения удаления —
   тоже.
 - Р-13: на кит переводятся только экраны блока (Капитал, `PaidRow`); чужие модалки не трогать.
-- <критик Блока 1 впишет: фактические имена после Блока 1 (`openCredits`, `StrategyCompare`,
-  `lib/theme.ts`), что клинап RP сделал с `monthDues`/`plural`/`lumpPlan`, сдвиги строк
-  `Capital.vue`>
+- **Что уже в коде после Блока 1 PV и клинапа Блока 1 RP** (факт, критик Блока 1 2026-09-25):
+  - `lib/finance.ts`: `openCredits(list)` — живые с производным остатком > 0 (только кредиты из
+    геттера стора); `costliestCredits(list)` — открытые с процентами, дороже первым (Капитал
+    `rankedDebts`, Ритуал `credit`); `budgetAmounts` — «Кредиты» по `openCredits`, Бюджет и Обзор
+    передают `{ ...householdDoc, credits: financeStore.credits }`; `installmentMonths`,
+    `scheduleMismatch`, `goalHave`, `INFLATION`, `indexedNeed`, `strategyInputs`, `strategyGain`.
+  - Клинап RP: `monthDues({ obligations, credits, payments }, key)` + `duesTotal` — одно правило
+    «платежи месяца» (`untilPayday`, «На обязательства» Бюджета, «Впереди» Обзора); `plural(n, one,
+    few, many)` в `lib/utils.ts` — все «N платежей / дней / месяцев» через неё (и новые тексты: React
+    «платеж{ей|}» → склонение, решение Н-8); `lumpPlan` «снизить платёж» — `Math.max(1,
+    Math.ceil(payment × left / debt))`; `prepaySaved(payments, credits)` — только живые кредиты,
+    `credits` обязателен; `prepayUndoNote` в Капитале — текст снятия досрочки.
+  - `components/StrategyCompare.vue` (вкладка «Копить или гасить» Капитала): пропсы `credits`
+    (открытые), `goals`, `obligations`, `monthKey`, `initial?`; внутри — `Field label="Горизонт"` с
+    `Segmented` (PV-09 `Field group` — и сюда). Кнопку «Выбрать этот план» добавит PV-15 (Блок 3).
+  - Капитал: пропсы `initialAdvice` и `initialDebt` — только для SSR-тестов; форма «Долг или
+    рассрочка» — `Segmented` «Без них / Знаю ставку / Знаю срок» в `Field label="Проценты"`,
+    предупреждение `scheduleMismatch`, подписи React («День платежа», «Добавить»).
+  - `lib/theme.ts` — тема и акцент (`readThemeChoice` / `setThemeChoice`, `readAccent` / `setAccent`,
+    `applyCurrentPalette`, `isDark`, `watchSystemTheme`), `main.ts` применяет до `mount`; `Ring` без
+    пропа `dark`. `lib/setup.ts` — `setupPlan`; `lib/pwa.ts` — `watchServiceWorkerUpdates`.
+  - Номера строк в ТЗ PV-09…PV-13 пересчитаны критиком Блока 1 на HEAD `pv-block-1-calculator`
+    (бэклог строился на `87cf02f`). Ветка Блока 2 — от `main` после утреннего деплоя: код тот же,
+    но перед стартом `git log main -1` — если после деплоя были правки `Capital.vue`, сверить строки.
+  - Грабли Блока 1: `Segmented` внутри `Field` (`<label>`) — имя кнопки включает подпись, в
+    Playwright искать `button:has-text(/^Год$/)` (PV-09 это и чинит); `structuredClone` на
+    реактивном документе Pinia — `DataCloneError`, в тестах клон через JSON; полностраничные снимки
+    headless ловят середину `transition-colors` — ждать 300 мс; скрипты стенда — в scratchpad.
 - Среда: стенд §6, два профиля + viewer, 390px; курс на стенде без сети — «недоступен».
 - Верификация: `cd frontend && npm run build && npm test` + браузер по критериям ТЗ.
 - Следующий шаг — `/critic паритет-react-vue 2 ultracode`.

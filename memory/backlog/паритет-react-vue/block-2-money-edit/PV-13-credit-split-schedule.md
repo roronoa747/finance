@@ -7,27 +7,28 @@
 - Р-8: строка кредита — следующий платёж с разбивкой; отметки «Оплатил» и досрочки — с итогом за
   всё время; Бюджет — «из них проценты банку N ₸ в месяц»; график платежей по кредиту (при
   активном плане — с досрочками, это PV-17). В React этого не было — новое.
-- `lib/finance.ts`: `creditSplit(principal, annualRate, amount)` (`:684-687`; проценты =
-  `round(left × rate / 12)`, `{amount, interest, body}` через `splitPayment` `:699-703`);
-  `creditResplit(old, amount, left)` (`:695-697`); `creditDueAmount(c)` (`:706`);
-  `paidFor(payments, kind, targetId, period)` (`:741-752`); `countedPayments` (`:724-738`;
+- `lib/finance.ts`: `creditSplit(principal, annualRate, amount)` (`:845-848`; проценты =
+  `round(left × rate / 12)`, `{amount, interest, body}` через `splitPayment` `:860-864`);
+  `creditResplit(old, amount, left)` (`:856-858`); `creditDueAmount(c)` (`:867`);
+  `paidFor(payments, kind, targetId, period)` (`:902-913`); `countedPayments` (`:885-899`;
   надгробия не считаются, пара `kind:targetId:period` — одна запись, досрочки не
-  схлопываются); `prepaySaved(payments)` (`:788-792`; после клинапа Н-4 — по живым кредитам);
-  `creditBalance` (`:780-785`). `Payment` (`types/finance.ts:231-265`): `amount`, `principal?`
-  (тело, снимок; пишут `markPaid` `stores/finance.ts:886-888` = `split.body`, `editPaid`
-  `:962-968`, `applyPrepayment` `:1006` = `plan.paid`), `saved?`, `mode?`, `period`, `at`.
+  схлопываются); `prepaySaved(payments, credits)` (`:954-959`; Н-4 уже сделан — только досрочки живых кредитов);
+  `creditBalance` (`:941-946`). `Payment` (`types/finance.ts:231-265`): `amount`, `principal?`
+  (тело, снимок; пишут `markPaid` `stores/finance.ts:887-889` = `split.body`, `editPaid`
+  `:963-969`, `applyPrepayment` `:1007` = `plan.paid`), `saved?`, `mode?`, `period`, `at`.
 - Где показывается сумма: `components/PaidRow.vue` — строка `:184-186` `money(record ?
   record.amount : due)`, подпись `:172-179` («оплачено · дальше …»; у кредита `:176-178`
   «остаток X ₸» / «долг закрыт»); лист «оплачено» `:246-267` («Сумма» `:251-254`, «Остаток
   долга» `:263-266`); `due` `:69-73` = `creditDueAmount(credit)`, `credit` `:59-61` из
   `finance.credits` (производный). Для отмеченного тело = `record.principal ?? 0`, проценты =
   `amount − тело`; для неотмеченного — `creditSplit(credit.principal, credit.annualRate, due)`.
-- Капитал: список кредитов `views/Capital.vue:747-764` (`Row`: `note` `:751` — «ГЭСВ N% ·
-  M платежей», `value` = `money(principal)`, `sub` «переплата N» `:753-757`; платёж в строке не
-  показывается); модалка кредита (PV-10); «Досрочками уже сэкономили…» `:818-821`; в модалке
-  досрочки «Применённые досрочки» со «Снять» `:1680-1721`.
-- Бюджет: `budgetAmounts` d2 (после PV-01 — по открытым кредитам); строки «Куда уходит»
-  `Budget.vue:229-263`, d2 в шаблоне `:417-449`. «Впереди»/календарь — `monthDues` после клинапа.
+- Капитал: список кредитов `views/Capital.vue:733-750` (`Row`: `note` `:737` — «ГЭСВ N% ·
+  M платежей» через `paymentsLeft` `:133-136`, `value` = `money(principal)`, `sub` «переплата N» `:739-743`; платёж в строке не
+  показывается); модалка кредита (PV-10); «Досрочками уже сэкономили…» `:804-807`; в модалке
+  досрочки «Применённые досрочки» со «Снять» `:1663-1702`.
+- Бюджет: `budgetAmounts` (`finance.ts:789`) d2 — уже по открытым кредитам (`openCredits`
+  `:810`, PV-01 сделан); строки «Куда уходит» `Budget.vue:214-248`, d2 в шаблоне `:402-434`.
+  «Впереди»/календарь — уже на `monthDues` (`finance.ts:1049`; `Budget.vue:83`, `Overview.vue:103`).
 - После PV-09: `Sheet`, `Row` со слотом `action`; после PV-10 — модалка кредита на `Sheet`.
 
 ## Задача
