@@ -1,17 +1,22 @@
 package config
 
 import (
-	"os"
+	"strings"
 	"testing"
 )
 
+// clearEnv blanks every variable Load reads; getEnv treats "" as unset.
+func clearEnv(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{"PORT", "DATABASE_URL", "JWT_SECRET", "CORS_ORIGIN", "APP_ENV"} {
+		t.Setenv(key, "")
+	}
+}
+
+const prodSecret = "0123456789abcdef0123456789abcdef" // exactly 32 characters
+
 func TestLoadDefaults(t *testing.T) {
-	// Clean env vars to test defaults
-	os.Unsetenv("PORT")
-	os.Unsetenv("DATABASE_URL")
-	os.Unsetenv("JWT_SECRET")
-	os.Unsetenv("CORS_ORIGIN")
-	os.Unsetenv("APP_ENV")
+	clearEnv(t)
 
 	cfg, err := Load()
 	if err != nil {
@@ -24,7 +29,7 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.DatabaseURL != "" {
 		t.Errorf("expected empty database URL, got %s", cfg.DatabaseURL)
 	}
-	if cfg.JWTSecret != "dev-secret-change-in-production" {
+	if cfg.JWTSecret != DefaultJWTSecret {
 		t.Errorf("expected default secret, got %s", cfg.JWTSecret)
 	}
 	if cfg.CORSOrigin != "http://localhost:5173,http://127.0.0.1:5173" {
@@ -37,22 +42,18 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Env != "development" {
 		t.Errorf("expected default env 'development', got %s", cfg.Env)
 	}
+	if cfg.IsProduction() {
+		t.Error("development config must not report production")
+	}
 }
 
 func TestLoadFromEnv(t *testing.T) {
-	os.Setenv("PORT", "9090")
-	os.Setenv("DATABASE_URL", "postgres://localhost:5432/finance_test?sslmode=disable")
-	os.Setenv("JWT_SECRET", "custom-jwt-signing-key")
-	os.Setenv("CORS_ORIGIN", "http://localhost:5173")
-	os.Setenv("APP_ENV", "production")
-
-	defer func() {
-		os.Unsetenv("PORT")
-		os.Unsetenv("DATABASE_URL")
-		os.Unsetenv("JWT_SECRET")
-		os.Unsetenv("CORS_ORIGIN")
-		os.Unsetenv("APP_ENV")
-	}()
+	clearEnv(t)
+	t.Setenv("PORT", "9090")
+	t.Setenv("DATABASE_URL", "postgres://localhost:5432/finance_test?sslmode=disable")
+	t.Setenv("JWT_SECRET", prodSecret)
+	t.Setenv("CORS_ORIGIN", "http://localhost:5173")
+	t.Setenv("APP_ENV", "production")
 
 	cfg, err := Load()
 	if err != nil {
@@ -65,13 +66,44 @@ func TestLoadFromEnv(t *testing.T) {
 	if cfg.DatabaseURL != "postgres://localhost:5432/finance_test?sslmode=disable" {
 		t.Errorf("expected database URL, got %s", cfg.DatabaseURL)
 	}
-	if cfg.JWTSecret != "custom-jwt-signing-key" {
+	if cfg.JWTSecret != prodSecret {
 		t.Errorf("expected JWT secret, got %s", cfg.JWTSecret)
 	}
 	if cfg.CORSOrigin != "http://localhost:5173" {
 		t.Errorf("expected CORS origin, got %s", cfg.CORSOrigin)
 	}
-	if cfg.Env != "production" {
-		t.Errorf("expected env 'production', got %s", cfg.Env)
+	if !cfg.IsProduction() {
+		t.Error("expected production config")
+	}
+}
+
+func TestLoadProductionFailsFast(t *testing.T) {
+	cases := []struct {
+		name    string
+		dbURL   string
+		secret  string
+		wantErr string
+	}{
+		{"no database", "", prodSecret, "DATABASE_URL"},
+		{"default secret", "postgres://db", "", "JWT_SECRET"}, // unset → default
+		{"explicit default secret", "postgres://db", DefaultJWTSecret, "JWT_SECRET"},
+		{"short secret", "postgres://db", prodSecret[:31], "JWT_SECRET"},
+		{"nothing set", "", "", "DATABASE_URL"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			clearEnv(t)
+			t.Setenv("APP_ENV", "production")
+			t.Setenv("DATABASE_URL", tc.dbURL)
+			t.Setenv("JWT_SECRET", tc.secret)
+
+			cfg, err := Load()
+			if err == nil {
+				t.Fatalf("expected error, got config %+v", cfg)
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Errorf("error %q should mention %s", err, tc.wantErr)
+			}
+		})
 	}
 }

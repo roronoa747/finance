@@ -33,7 +33,7 @@ func NewSQLUserRepository(db *sql.DB) UserRepository {
 func (r *sqlUserRepository) Create(ctx context.Context, email, passwordHash string) (*models.User, error) {
 	cleanEmail := strings.ToLower(strings.TrimSpace(email))
 	query := `
-		INSERT INTO users (email, password_hash)
+		INSERT INTO app.users (email, password_hash)
 		VALUES ($1, $2)
 		RETURNING id, email, password_hash, created_at;`
 
@@ -58,7 +58,7 @@ func (r *sqlUserRepository) GetByEmail(ctx context.Context, email string) (*mode
 	cleanEmail := strings.ToLower(strings.TrimSpace(email))
 	query := `
 		SELECT id, email, password_hash, created_at
-		FROM users
+		FROM app.users
 		WHERE LOWER(email) = $1;`
 
 	user := &models.User{}
@@ -81,7 +81,7 @@ func (r *sqlUserRepository) GetByEmail(ctx context.Context, email string) (*mode
 func (r *sqlUserRepository) GetByID(ctx context.Context, id string) (*models.User, error) {
 	query := `
 		SELECT id, email, password_hash, created_at
-		FROM users
+		FROM app.users
 		WHERE id = $1;`
 
 	user := &models.User{}
@@ -102,7 +102,7 @@ func (r *sqlUserRepository) GetByID(ctx context.Context, id string) (*models.Use
 }
 
 func (r *sqlUserRepository) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM users WHERE id = $1;`
+	query := `DELETE FROM app.users WHERE id = $1;`
 	if _, err := r.db.ExecContext(ctx, query, id); err != nil {
 		return fmt.Errorf("failed to delete user: %w", err)
 	}

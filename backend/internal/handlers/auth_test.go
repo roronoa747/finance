@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -396,5 +397,24 @@ func TestLoginWithoutMembershipReturns404(t *testing.T) {
 		bytes.NewReader(makeAuthJSON("lonely@example.com", "secret123", "", ""))))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAuthOversizedBodyReturns413(t *testing.T) {
+	router, repos, tokens := setupTestApp()
+	u, _ := repos.Users.Create(t.Context(), "big@auth.test", "hash")
+	hh, _, _ := repos.Households.CreateHousehold(t.Context(), "HH", u.ID, "U")
+	token, _ := tokens.GenerateToken(u.ID, hh.ID, "member", "a")
+
+	body := `{"email": "` + strings.Repeat("a", 1<<20) + `@x.kz"}`
+	for _, path := range []string{"/api/auth/login", "/api/auth/register", "/api/household/join"} {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusRequestEntityTooLarge {
+			t.Errorf("%s: expected 413 for body over the limit, got %d", path, rec.Code)
+		}
 	}
 }

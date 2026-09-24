@@ -1,9 +1,16 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"strings"
 )
+
+// DefaultJWTSecret is the development-only signing key; production refuses it.
+const DefaultJWTSecret = "dev-secret-change-in-production"
+
+// minProdJWTSecretLen is the shortest JWT_SECRET accepted in production.
+const minProdJWTSecretLen = 32
 
 // Config holds the application configuration
 type Config struct {
@@ -15,14 +22,39 @@ type Config struct {
 }
 
 // Load loads configuration from environment variables with fallback defaults.
+// With APP_ENV=production it fails instead of falling back: without a database
+// the server would silently serve in-memory mocks, and the default secret
+// would let anyone forge tokens.
 func Load() (*Config, error) {
-	return &Config{
+	cfg := &Config{
 		Port:        getEnv("PORT", "8080"),
 		DatabaseURL: getEnv("DATABASE_URL", ""),
-		JWTSecret:   getEnv("JWT_SECRET", "dev-secret-change-in-production"),
+		JWTSecret:   getEnv("JWT_SECRET", DefaultJWTSecret),
 		CORSOrigin:  getEnv("CORS_ORIGIN", "http://localhost:5173,http://127.0.0.1:5173"),
 		Env:         getEnv("APP_ENV", "development"),
-	}, nil
+	}
+	if cfg.IsProduction() {
+		if err := cfg.validateProduction(); err != nil {
+			return nil, err
+		}
+	}
+	return cfg, nil
+}
+
+// IsProduction reports whether APP_ENV is "production".
+func (c *Config) IsProduction() bool {
+	return c.Env == "production"
+}
+
+func (c *Config) validateProduction() error {
+	var errs []error
+	if c.DatabaseURL == "" {
+		errs = append(errs, errors.New("DATABASE_URL is required in production"))
+	}
+	if c.JWTSecret == DefaultJWTSecret || len(c.JWTSecret) < minProdJWTSecretLen {
+		errs = append(errs, errors.New("JWT_SECRET must be set to a non-default value of at least 32 characters in production"))
+	}
+	return errors.Join(errs...)
 }
 
 // AllowedOrigins parses comma-separated CORS origins into a slice.

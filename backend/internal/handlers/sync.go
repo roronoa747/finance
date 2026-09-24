@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
 	"finance-backend/internal/auth"
 	"finance-backend/internal/repository"
@@ -17,6 +18,9 @@ type SyncHandler struct {
 func NewSyncHandler(docRepo repository.DocRepository) *SyncHandler {
 	return &SyncHandler{docRepo: docRepo}
 }
+
+// maxDocBodyBytes caps a pushed document; larger bodies get 413.
+const maxDocBodyBytes = 10 << 20
 
 type PushDocRequest struct {
 	LastSeenRev int64           `json:"last_seen_rev"`
@@ -63,15 +67,19 @@ func (h *SyncHandler) PushHouseholdDoc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 	var req PushDocRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	if !decodeJSONBody(w, r, maxDocBodyBytes, &req) {
 		return
 	}
 
 	if len(req.Data) == 0 {
 		req.Data = json.RawMessage("{}")
+	}
+	// RawMessage keeps the bytes verbatim; PostgreSQL would reject invalid
+	// UTF-8 in jsonb and surface it as a 500.
+	if !utf8.Valid(req.Data) {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "data must be valid UTF-8"})
+		return
 	}
 
 	updatedDoc, conflict, err := h.docRepo.PushHouseholdDoc(r.Context(), householdID, req.LastSeenRev, req.Data, userID)
@@ -130,15 +138,19 @@ func (h *SyncHandler) PushPrivateDoc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 	var req PushDocRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	if !decodeJSONBody(w, r, maxDocBodyBytes, &req) {
 		return
 	}
 
 	if len(req.Data) == 0 {
 		req.Data = json.RawMessage("{}")
+	}
+	// RawMessage keeps the bytes verbatim; PostgreSQL would reject invalid
+	// UTF-8 in jsonb and surface it as a 500.
+	if !utf8.Valid(req.Data) {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "data must be valid UTF-8"})
+		return
 	}
 
 	updatedDoc, conflict, err := h.docRepo.PushPrivateDoc(r.Context(), householdID, userID, req.LastSeenRev, req.Data)

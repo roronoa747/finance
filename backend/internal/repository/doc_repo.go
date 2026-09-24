@@ -33,7 +33,7 @@ func NewSQLDocRepository(db *sql.DB) DocRepository {
 func (r *sqlDocRepository) GetHouseholdDoc(ctx context.Context, householdID string) (*models.HouseholdDoc, error) {
 	query := `
 		SELECT household_id, rev, data, updated_at, updated_by
-		FROM household_docs
+		FROM app.household_docs
 		WHERE household_id = $1;`
 
 	doc := &models.HouseholdDoc{}
@@ -64,7 +64,7 @@ func (r *sqlDocRepository) PushHouseholdDoc(ctx context.Context, householdID str
 	// 1. Lock current row
 	selectQuery := `
 		SELECT household_id, rev, data, updated_at, updated_by
-		FROM household_docs
+		FROM app.household_docs
 		WHERE household_id = $1
 		FOR UPDATE;`
 
@@ -91,7 +91,7 @@ func (r *sqlDocRepository) PushHouseholdDoc(ctx context.Context, householdID str
 
 	// 3. Update doc
 	updateQuery := `
-		UPDATE household_docs
+		UPDATE app.household_docs
 		SET data = $1::jsonb, rev = rev + 1, updated_at = now(), updated_by = $2
 		WHERE household_id = $3
 		RETURNING household_id, rev, data, updated_at, updated_by;`
@@ -118,7 +118,7 @@ func (r *sqlDocRepository) PushHouseholdDoc(ctx context.Context, householdID str
 func (r *sqlDocRepository) GetPrivateDoc(ctx context.Context, householdID, userID string) (*models.PrivateDoc, error) {
 	query := `
 		SELECT household_id, user_id, rev, data, updated_at
-		FROM private_docs
+		FROM app.private_docs
 		WHERE household_id = $1 AND user_id = $2;`
 
 	doc := &models.PrivateDoc{}
@@ -155,7 +155,7 @@ func (r *sqlDocRepository) PushPrivateDoc(ctx context.Context, householdID, user
 
 	selectQuery := `
 		SELECT household_id, user_id, rev, data, updated_at
-		FROM private_docs
+		FROM app.private_docs
 		WHERE household_id = $1 AND user_id = $2
 		FOR UPDATE;`
 
@@ -170,7 +170,7 @@ func (r *sqlDocRepository) PushPrivateDoc(ctx context.Context, householdID, user
 	if errors.Is(err, sql.ErrNoRows) {
 		// Insert initial record
 		insertQuery := `
-			INSERT INTO private_docs (household_id, user_id, rev, data)
+			INSERT INTO app.private_docs (household_id, user_id, rev, data)
 			VALUES ($1, $2, 1, $3::jsonb)
 			RETURNING household_id, user_id, rev, data, updated_at;`
 		newDoc := &models.PrivateDoc{}
@@ -193,7 +193,7 @@ func (r *sqlDocRepository) PushPrivateDoc(ctx context.Context, householdID, user
 	}
 
 	updateQuery := `
-		UPDATE private_docs
+		UPDATE app.private_docs
 		SET data = $1::jsonb, rev = rev + 1, updated_at = now()
 		WHERE household_id = $2 AND user_id = $3
 		RETURNING household_id, user_id, rev, data, updated_at;`

@@ -18,6 +18,7 @@ import (
 	"finance-backend/internal/auth"
 	"finance-backend/internal/config"
 	"finance-backend/internal/db"
+	"finance-backend/internal/fx"
 	"finance-backend/internal/handlers"
 	"finance-backend/internal/repository"
 	"finance-backend/migrations"
@@ -67,7 +68,7 @@ func main() {
 		docRepo = mockRepos.Docs
 	}
 
-	r := setupRouter(cfg, database, userRepo, householdRepo, docRepo, tokenService)
+	r := setupRouter(cfg, database, userRepo, householdRepo, docRepo, tokenService, fx.NewClient())
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
@@ -107,6 +108,7 @@ func setupRouter(
 	householdRepo repository.HouseholdRepository,
 	docRepo repository.DocRepository,
 	tokenService *auth.TokenService,
+	fxClient *fx.Client,
 ) *chi.Mux {
 	r := chi.NewRouter()
 
@@ -130,6 +132,7 @@ func setupRouter(
 
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", handlers.HealthHandler(database))
+		api.Get("/fx-rate", handlers.FxRateHandler(fxClient))
 
 		api.Post("/auth/register", authHandler.Register)
 		api.Post("/auth/login", authHandler.Login)

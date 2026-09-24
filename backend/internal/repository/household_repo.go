@@ -57,7 +57,7 @@ func (r *sqlHouseholdRepository) CreateHousehold(ctx context.Context, name, crea
 	// 1. Insert household
 	h := &models.Household{}
 	insertHHQuery := `
-		INSERT INTO households (name, created_by)
+		INSERT INTO app.households (name, created_by)
 		VALUES ($1, $2)
 		RETURNING id, name, created_by, created_at;`
 	if err := tx.QueryRowContext(ctx, insertHHQuery, name, creatorID).Scan(
@@ -69,7 +69,7 @@ func (r *sqlHouseholdRepository) CreateHousehold(ctx context.Context, name, crea
 	// 2. Insert member (slot: 'a', role: 'member')
 	m := &models.HouseholdMember{}
 	insertMemberQuery := `
-		INSERT INTO household_members (household_id, user_id, slot, display_name, role)
+		INSERT INTO app.household_members (household_id, user_id, slot, display_name, role)
 		VALUES ($1, $2, 'a', $3, 'member')
 		RETURNING household_id, user_id, slot, display_name, role, joined_at;`
 	if err := tx.QueryRowContext(ctx, insertMemberQuery, h.ID, creatorID, creatorDisplayName).Scan(
@@ -80,7 +80,7 @@ func (r *sqlHouseholdRepository) CreateHousehold(ctx context.Context, name, crea
 
 	// 3. Initialize household_docs
 	insertDocQuery := `
-		INSERT INTO household_docs (household_id, rev, data, updated_by)
+		INSERT INTO app.household_docs (household_id, rev, data, updated_by)
 		VALUES ($1, 1, '{}'::jsonb, $2);`
 	if _, err := tx.ExecContext(ctx, insertDocQuery, h.ID, creatorID); err != nil {
 		return nil, nil, fmt.Errorf("failed to initialize household_docs: %w", err)
@@ -88,7 +88,7 @@ func (r *sqlHouseholdRepository) CreateHousehold(ctx context.Context, name, crea
 
 	// 4. Initialize private_docs for creator
 	insertPrivDocQuery := `
-		INSERT INTO private_docs (household_id, user_id, rev, data)
+		INSERT INTO app.private_docs (household_id, user_id, rev, data)
 		VALUES ($1, $2, 1, '{}'::jsonb);`
 	if _, err := tx.ExecContext(ctx, insertPrivDocQuery, h.ID, creatorID); err != nil {
 		return nil, nil, fmt.Errorf("failed to initialize private_docs: %w", err)
@@ -104,7 +104,7 @@ func (r *sqlHouseholdRepository) CreateHousehold(ctx context.Context, name, crea
 func (r *sqlHouseholdRepository) GetHousehold(ctx context.Context, householdID string) (*models.Household, error) {
 	query := `
 		SELECT id, name, created_by, created_at
-		FROM households
+		FROM app.households
 		WHERE id = $1;`
 
 	h := &models.Household{}
@@ -124,8 +124,8 @@ func (r *sqlHouseholdRepository) GetMembership(ctx context.Context, userID strin
 	query := `
 		SELECT m.household_id, m.user_id, m.slot, m.display_name, m.role, m.joined_at,
 		       h.id, h.name, h.created_by, h.created_at
-		FROM household_members m
-		JOIN households h ON h.id = m.household_id
+		FROM app.household_members m
+		JOIN app.households h ON h.id = m.household_id
 		WHERE m.user_id = $1
 		ORDER BY m.joined_at DESC
 		LIMIT 1;`
@@ -149,7 +149,7 @@ func (r *sqlHouseholdRepository) GetMembership(ctx context.Context, userID strin
 func (r *sqlHouseholdRepository) GetMembers(ctx context.Context, householdID string) ([]models.HouseholdMember, error) {
 	query := `
 		SELECT household_id, user_id, slot, display_name, role, joined_at
-		FROM household_members
+		FROM app.household_members
 		WHERE household_id = $1
 		ORDER BY slot ASC;`
 
@@ -179,7 +179,7 @@ func (r *sqlHouseholdRepository) CreateInvite(ctx context.Context, householdID, 
 	code := strings.ToUpper(hex.EncodeToString(codeBytes))
 
 	query := `
-		INSERT INTO household_invites (code, household_id, created_by, expires_at)
+		INSERT INTO app.household_invites (code, household_id, created_by, expires_at)
 		VALUES ($1, $2, $3, now() + INTERVAL '14 days')
 		RETURNING code, household_id, created_by, created_at, expires_at;`
 
@@ -197,7 +197,7 @@ func (r *sqlHouseholdRepository) CreateInvite(ctx context.Context, householdID, 
 func (r *sqlHouseholdRepository) GetInvite(ctx context.Context, code string) (*models.HouseholdInvite, error) {
 	query := `
 		SELECT code, household_id, created_by, created_at, expires_at, used_by, used_at
-		FROM household_invites
+		FROM app.household_invites
 		WHERE code = $1;`
 
 	inv := &models.HouseholdInvite{}
@@ -229,7 +229,7 @@ func (r *sqlHouseholdRepository) JoinHousehold(ctx context.Context, code, userID
 	// 1. Lock and check invite
 	invQuery := `
 		SELECT code, household_id, created_by, created_at, expires_at, used_by, used_at
-		FROM household_invites
+		FROM app.household_invites
 		WHERE code = $1
 		FOR UPDATE;`
 	inv := &models.HouseholdInvite{}
@@ -252,7 +252,7 @@ func (r *sqlHouseholdRepository) JoinHousehold(ctx context.Context, code, userID
 
 	// 2. Lock parent household to strictly serialize concurrent joins and slot assignment
 	var lockedHouseholdID string
-	if err := tx.QueryRowContext(ctx, `SELECT id FROM households WHERE id = $1 FOR UPDATE;`, inv.HouseholdID).Scan(&lockedHouseholdID); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM app.households WHERE id = $1 FOR UPDATE;`, inv.HouseholdID).Scan(&lockedHouseholdID); err != nil {
 		return nil, fmt.Errorf("failed to lock household: %w", err)
 	}
 
@@ -260,7 +260,7 @@ func (r *sqlHouseholdRepository) JoinHousehold(ctx context.Context, code, userID
 	var existingMember models.HouseholdMember
 	checkMemberQuery := `
 		SELECT household_id, user_id, slot, display_name, role, joined_at
-		FROM household_members
+		FROM app.household_members
 		WHERE household_id = $1 AND user_id = $2;`
 	err = tx.QueryRowContext(ctx, checkMemberQuery, inv.HouseholdID, userID).Scan(
 		&existingMember.HouseholdID, &existingMember.UserID, &existingMember.Slot,
@@ -274,7 +274,7 @@ func (r *sqlHouseholdRepository) JoinHousehold(ctx context.Context, code, userID
 	}
 
 	// 3. Find available slot ('a', 'b', 'c')
-	usedSlotsRows, err := tx.QueryContext(ctx, `SELECT slot FROM household_members WHERE household_id = $1;`, inv.HouseholdID)
+	usedSlotsRows, err := tx.QueryContext(ctx, `SELECT slot FROM app.household_members WHERE household_id = $1;`, inv.HouseholdID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query used slots: %w", err)
 	}
@@ -306,7 +306,7 @@ func (r *sqlHouseholdRepository) JoinHousehold(ctx context.Context, code, userID
 	// 4. Insert new member
 	m := &models.HouseholdMember{}
 	insertMemberQuery := `
-		INSERT INTO household_members (household_id, user_id, slot, display_name, role)
+		INSERT INTO app.household_members (household_id, user_id, slot, display_name, role)
 		VALUES ($1, $2, $3, $4, 'member')
 		RETURNING household_id, user_id, slot, display_name, role, joined_at;`
 	if err := tx.QueryRowContext(ctx, insertMemberQuery, inv.HouseholdID, userID, assignedSlot, displayName).Scan(
@@ -317,7 +317,7 @@ func (r *sqlHouseholdRepository) JoinHousehold(ctx context.Context, code, userID
 
 	// 5. Initialize private_docs for this user
 	insertPrivDocQuery := `
-		INSERT INTO private_docs (household_id, user_id, rev, data)
+		INSERT INTO app.private_docs (household_id, user_id, rev, data)
 		VALUES ($1, $2, 1, '{}'::jsonb)
 		ON CONFLICT DO NOTHING;`
 	if _, err := tx.ExecContext(ctx, insertPrivDocQuery, inv.HouseholdID, userID); err != nil {
@@ -326,7 +326,7 @@ func (r *sqlHouseholdRepository) JoinHousehold(ctx context.Context, code, userID
 
 	// 6. Mark invite as used
 	updateInvQuery := `
-		UPDATE household_invites
+		UPDATE app.household_invites
 		SET used_by = $1, used_at = now()
 		WHERE code = $2;`
 	if _, err := tx.ExecContext(ctx, updateInvQuery, userID, inv.Code); err != nil {

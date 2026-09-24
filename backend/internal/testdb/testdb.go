@@ -16,7 +16,7 @@ import (
 const EnvVar = "TEST_DATABASE_URL"
 
 // Open skips the test unless TEST_DATABASE_URL is set. Otherwise it wipes the
-// public schema, applies all migrations and returns the connection pool.
+// app and public schemas, applies all migrations and returns the connection pool.
 func Open(t *testing.T) *sql.DB {
 	t.Helper()
 
@@ -34,7 +34,7 @@ func Open(t *testing.T) *sql.DB {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if _, err := database.ExecContext(ctx, `DROP SCHEMA public CASCADE; CREATE SCHEMA public;`); err != nil {
+	if _, err := database.ExecContext(ctx, `DROP SCHEMA IF EXISTS app CASCADE; DROP SCHEMA public CASCADE; CREATE SCHEMA public;`); err != nil {
 		t.Fatalf("failed to reset test schema: %v", err)
 	}
 	if err := db.RunMigrations(ctx, database, migrations.FS); err != nil {
