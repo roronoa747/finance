@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"finance-backend/internal/auth"
+	"finance-backend/internal/models"
 	"finance-backend/internal/repository"
 )
 
@@ -318,5 +320,81 @@ func TestHouseholdInviteEdgeCases(t *testing.T) {
 
 	if reuseRec.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 Bad Request for reused invite, got %d", reuseRec.Code)
+	}
+}
+
+// failingHouseholdRepo fails household creation, as a dropped client or a DB
+// error would, to exercise the compensating user delete in Register.
+type failingHouseholdRepo struct {
+	repository.HouseholdRepository
+}
+
+func (failingHouseholdRepo) CreateHousehold(ctx context.Context, name, creatorID, creatorDisplayName string) (*models.Household, *models.HouseholdMember, error) {
+	return nil, nil, context.Canceled
+}
+
+// ctxCheckingUserRepo records whether Delete received an already-cancelled context.
+type ctxCheckingUserRepo struct {
+	*repository.MockUserRepo
+	deleteCtxErr error
+	deleted      bool
+}
+
+func (u *ctxCheckingUserRepo) Delete(ctx context.Context, id string) error {
+	u.deleted = true
+	u.deleteCtxErr = ctx.Err()
+	return u.MockUserRepo.Delete(ctx, id)
+}
+
+func TestRegisterCompensatesOrphanUser(t *testing.T) {
+	repos := repository.NewMockRepositories()
+	users := &ctxCheckingUserRepo{MockUserRepo: repos.Users}
+	tokens := auth.NewTokenService("test-secret-salt-key", 2*time.Hour)
+	failing := NewAuthHandler(users, failingHouseholdRepo{repos.Households}, tokens)
+
+	// Client disconnects: the request context is already cancelled
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/register",
+		bytes.NewReader(makeAuthJSON("orphan@example.com", "secret123", "", ""))).WithContext(ctx)
+	rec := httptest.NewRecorder()
+	failing.Register(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !users.deleted {
+		t.Fatal("expected compensating delete of the orphan user")
+	}
+	if users.deleteCtxErr != nil {
+		t.Errorf("compensating delete got a cancelled context: %v", users.deleteCtxErr)
+	}
+
+	// The same email can register again once the household step works
+	working := NewAuthHandler(repos.Users, repos.Households, tokens)
+	rec = httptest.NewRecorder()
+	working.Register(rec, httptest.NewRequest(http.MethodPost, "/api/auth/register",
+		bytes.NewReader(makeAuthJSON("orphan@example.com", "secret123", "", ""))))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected re-registration 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestLoginWithoutMembershipReturns404(t *testing.T) {
+	router, repos, _ := setupTestApp()
+
+	hash, err := auth.HashPassword("secret123")
+	if err != nil {
+		t.Fatalf("hash: %v", err)
+	}
+	if _, err := repos.Users.Create(context.Background(), "lonely@example.com", hash); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/auth/login",
+		bytes.NewReader(makeAuthJSON("lonely@example.com", "secret123", "", ""))))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
 	}
 }

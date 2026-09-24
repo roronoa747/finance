@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 
@@ -82,7 +84,11 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	// 2. Create household and initial membership (slot 'a')
 	household, member, err := h.householdRepo.CreateHousehold(r.Context(), req.HouseholdName, user.ID, req.DisplayName)
 	if err != nil {
-		_ = h.userRepo.Delete(r.Context(), user.ID)
+		// Compensate even if the client has gone: a cancelled request context is
+		// the likeliest cause of this failure and would otherwise abort the delete.
+		if delErr := h.userRepo.Delete(context.WithoutCancel(r.Context()), user.ID); delErr != nil {
+			log.Printf("register: failed to remove orphan user %s: %v", user.ID, delErr)
+		}
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create household"})
 		return
 	}
