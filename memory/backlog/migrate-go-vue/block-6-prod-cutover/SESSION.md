@@ -2,7 +2,7 @@
 
 **Цель блока:** перевести прод `family-finance-ff.vercel.app` с React + Supabase на Go + Vue на тех же Vercel и Supabase — с переносом семьи и паролей, без потери данных и с отрепетированным откатом.
 
-Сессии: исполнитель ✅ · критик ✅ · приёмка ✅ · ревью backend ✅ · ревью frontend ✅ · клинап (cutover) ⬜
+Сессии: исполнитель ✅ · критик ✅ · приёмка ✅ · ревью backend ✅ · ревью frontend ✅ · клинап (cutover) ✅
 
 ---
 
@@ -342,3 +342,56 @@
 - Следующий шаг — `/dir-review migrate-go-vue 6 backend`.
 
 ## Итоги пост-приёмки (только L)
+
+Клинап-сессия 2026-09-24 (Opus 5.5). **Прод переключён на Go + Vue**, Production `dpl_7oFLdkGH2mURZ6S4mbPjXFnEQnfx`
+(`main` `1921ffb`). Отката не было.
+
+- **Выполненные рекомендации ревью (вердикт: клинап)**:
+  - backend **Н-1** (`c4b9857`): job `integration` — матрица `dsn_params: ['', '&binary_parameters=yes']`;
+    CI на `0625a95` зелёный в обоих вариантах.
+  - backend **Н-5** (`f983b57`): doc-комментарий `RunMigrations` — нужен пул из 2+ соединений.
+  - backend **Н-6** (`f7fc4d6`): комментарий `ServerlessPool` без допущения «один запрос за раз».
+  - frontend **Н-1** (`47925b7`): шрифты Onest/Golos Text в `frontend/index.html` + проверка в
+    `pwa-build.test.ts` (мутационно: без правки — красный).
+  - frontend **Н-2** (`6dd6dd2`): курс формы счёта следует за валютой, если не вписан руками —
+    чистая `formRate` в `lib/fx.ts` + флаг `rateTouched` в `Capital.vue`; 4 теста.
+  - frontend **Н-3** (`895818d`): `DEMO_TOKEN` и `isDemo` из `stores/auth.ts`.
+  - frontend **Н-4** (`0625a95`): удалён `public/icons.svg`, убран `includeAssets`; прекэш 8 → 6 записей.
+- **Отклонения от рекомендаций (с причиной)**:
+  - frontend Н-2: тест не на форму, а на чистую функцию `formRate` — во фронте нет инфраструктуры
+    DOM-тестов (только SSR-рендер), заводить её ради клинапа — новая зависимость. Интерактив проверил
+    владелец на проде (смоук п.7).
+  - frontend Н-4: удаление `includeAssets` дубль `favicon.svg` **не убрало** — его давали иконки
+    манифеста (`includeManifestIcons` по умолчанию `true`). Добавлено `includeManifestIcons: false`
+    (иконку и так берёт `globPatterns`); цель ревью достигнута.
+  - frontend Н-7 (решение отдано клинапу): не закрыт — у React демо-режима не было, какой статус
+    синка показывать в демо — продуктовый вопрос, а не клинап. Остаётся хвостом §4.
+- **Верификация**: `npm run build` (vue-tsc + vite) ✅; `npm test` — 22 файла, 116 тестов ✅ (было 111:
+  +1 шрифты, +4 `formRate`); `go build/vet/test -count=1 ./...` + `./api/...` ✅; CI `ci-backend`
+  (test, integration ×2) и `ci-frontend` на `0625a95` ✅; preview `dpl_CxvvSAhgPNnervztLrjhp9oR1VaH` —
+  шрифты в `index.html` ✅ (интерактив preview владелец открыть не смог — перенесён в смоук прода).
+- **Cutover по `CUTOVER.md`** (каждая ⛔ — «да» владельца в сессии):
+  - §0: `migrate` — «schema app is up to date»; `forward -replace -dry-run` — `OK`; React-деплой для
+    отката — `dpl_AV2UGjCwhnNqmRe2HFTAr5WJ8QSV` (последний Production, `isRollbackCandidate`) = ранбук.
+  - §2 финальная копия: users 4, households 1, members 2, household_docs 1, private_docs 2, invites 1 —
+    все `OK`; `household_docs` public rev 655 `= app`; `private_docs` rev `=`; `result: OK — committed`.
+  - §3 Production-env: `APP_ENV`, `DATABASE_URL` (пулер), `JWT_SECRET` — новый,
+    `memory/secrets/vercel-jwt.md` → `PRODUCTION_JWT_SECRET`.
+  - §4 merge `--no-ff` в `main` + push (`b3e0dd9..1921ffb`, вместе с 62 коммитами блоков 1–5).
+  - §5 смоук: `/api/health` → `db: connected`; `/api/fx-rate` → курс Нацбанка; `/sw.js`, манифест,
+    SPA-маршруты → 200; чужой вход → 401; `/api/nope` → 404; владелец на двух телефонах: PWA → Vue,
+    вход старыми паролями, данные как в React, синк двух устройств, офлайн, шрифты, курс при смене
+    валюты — ✅, кроме «Еда и быт» (ниже).
+- **«Еда и быт» слетела на 0 (владелец ждал 100 000)** — не перенос: в `public` поле = 0 с 2026-09-20,
+  копия точна. Причина — унаследованный от React (`kit.tsx` `NumFieldBlur`) коммит на каждый blur
+  без изменений со свежим `updatedAt`: устройство со старым значением тапом по полю перебивает правку
+  партнёра (LWW). Владелец: cutover ок, баг — хвостом §4; значение вписывает заново.
+- **Наблюдение**: после копии React-клиент (ещё не обновлённый SW) дописал в `public` rev 655 → 657
+  (13:07 UTC). Сверка `public` vs `app` по ключам — отличается только `categories` (правка «Еды» уже в
+  Vue), т.е. записи React были пустыми ревизиями полного синка, данные не потеряны. В ранбук на
+  будущее: окно закрывать только после обновления SW на обоих устройствах.
+- **Хвосты §4**: backend Н-2 (` ` → 400) — уже был; frontend Н-5 → к «Уборке старого»;
+  frontend Н-6 (`pullHousehold` после повторного входа), Н-7 (демо ходит на сервер), баг поля
+  «Еда и быт» — новые строки.
+- **`transfer forward` больше не запускать** — `-replace` сотрёт всё, что сделано в Go.
+
