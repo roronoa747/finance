@@ -21,3 +21,19 @@ export async function fetchRates(fetchImpl: typeof fetch = fetch): Promise<FxRat
     return null
   }
 }
+
+/**
+ * Курс в поле формы счёта: вписанный руками курс не трогаем; иначе — курс
+ * выбранной валюты (при смене валюты авто-курс меняется вместе с ней).
+ * Стёртое поле снова заполняется автоматически.
+ */
+export function formRate(
+  info: FxRates | null,
+  currency: string,
+  current: string,
+  touched: boolean,
+): string {
+  if (touched && current) return current
+  const auto = info?.rates?.[currency]
+  return auto ? String(auto) : ''
+}

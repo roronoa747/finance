@@ -42,7 +42,7 @@ import {
 import type { Account, Currency, Obligation, Person, PersonId } from '@/types/finance'
 import type { CategoryKey } from '@/lib/palette'
 import { cn } from '@/lib/utils'
-import { fetchRates, type FxRates } from '@/lib/fx'
+import { fetchRates, formRate, type FxRates } from '@/lib/fx'
 
 import Card from '@/components/kit/Card.vue'
 import Section from '@/components/kit/Section.vue'
@@ -150,6 +150,8 @@ const newAccountName = ref('')
 const newAccountAmount = ref('')
 const newAccountCurrency = ref<Currency>('KZT')
 const newAccountRate = ref('')
+/** Курс вписан руками — авто-курс его больше не перезаписывает. */
+const rateTouched = ref(false)
 const newAccountDepositRate = ref('')
 const newAccountIsPrivate = ref(false)
 const rateInfo = ref<FxRates | null>(null)
@@ -187,9 +189,12 @@ watch([accountOpen, isForeign], async ([open, foreign]) => {
   }
 })
 
+watch(accountOpen, (open) => {
+  if (open) rateTouched.value = false
+})
+
 watch([rateInfo, newAccountCurrency], ([info, cur]) => {
-  const auto = info?.rates?.[cur]
-  if (auto && !newAccountRate.value) newAccountRate.value = String(auto)
+  newAccountRate.value = formRate(info, cur, newAccountRate.value, rateTouched.value)
 })
 
 function createAccount() {
@@ -846,7 +851,12 @@ onUnmounted(() => {
 
         <div v-if="isForeign" class="mb-3 flex flex-col gap-2">
           <Field :label="`Курс: сколько тенге за 1 ${newAccountCurrency}`">
-            <NumField v-model="newAccountRate" kind="rate" placeholder="533" />
+            <NumField
+              v-model="newAccountRate"
+              kind="rate"
+              placeholder="533"
+              @update:model-value="rateTouched = true"
+            />
           </Field>
           <div v-if="accountInTenge > 0" class="rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-[12.5px]">
             В капитале это: <b class="num text-ink">{{ money(accountInTenge) }}</b>
