@@ -62,9 +62,9 @@
 | | MGV-09 Экран `Overview.vue` (сводка, капитал, графики) | `block-3-screens-base/MGV-09-overview.md` | MGV-08 | ✅ |
 | **4. Экраны: Бюджет** 🏁 закрыт *(M: фронтенд экраны)* | MGV-10 Экран `Budget.vue` (План, Календарь, Список) | `block-4-budget-ritual/MGV-10-budget-calendar.md` | MGV-09 | ✅ |
 | | MGV-11 Экран `Ritual.vue` (высвобождение средств) | `block-4-budget-ritual/MGV-11-ritual.md` | MGV-10 | ✅ |
-| **5. Капитал & Приёмка** ⬜ | MGV-12 Экран `Capital.vue` (счета, кредиты, досрочка) | `block-5-capital-goals/MGV-12-capital-credits.md` | MGV-11 | ⬜ |
-| | MGV-13 Экраны `Goals.vue`, `GoalDetail.vue`, `Deposit.vue` | `block-5-capital-goals/MGV-13-goals-deposit.md` | MGV-12 | ⬜ |
-| | MGV-14 Сквозная приёмка, E2E тесты двух клиентов | `block-5-capital-goals/MGV-14-e2e-acceptance.md` | MGV-13 | ⬜ |
+| **5. Капитал & Приёмка** 🏁 закрыт *(M: фронтенд экраны)* | MGV-12 Экран `Capital.vue` (счета, кредиты, досрочка) | `block-5-capital-goals/MGV-12-capital-credits.md` | MGV-11 | ✅ |
+| | MGV-13 Экраны `Goals.vue`, `GoalDetail.vue`, `Deposit.vue` | `block-5-capital-goals/MGV-13-goals-deposit.md` | MGV-12 | ✅ |
+| | MGV-14 Сквозная приёмка, E2E тесты двух клиентов | `block-5-capital-goals/MGV-14-e2e-acceptance.md` | MGV-13 | ✅ |
 
 ### Хвосты и после MVP (идеи владельца от 2026-09-23)
 
