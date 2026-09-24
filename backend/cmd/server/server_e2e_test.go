@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +17,7 @@ import (
 	"finance-backend/internal/handlers"
 	"finance-backend/internal/models"
 	"finance-backend/internal/repository"
+	"finance-backend/internal/testdb"
 )
 
 type MeResponse struct {
@@ -24,19 +27,44 @@ type MeResponse struct {
 }
 
 func TestLiveServerE2EFlow(t *testing.T) {
-	// 1. Initialize configuration and in-memory mock repository layer
+	// In-memory mock repository layer
+	mockRepos := repository.NewMockRepositories()
+	mockRepos.Households.SetDocRepo(mockRepos.Docs)
+
+	runLiveServerE2EFlow(t, nil, mockRepos.Users, mockRepos.Households, mockRepos.Docs)
+}
+
+// TestLiveServerE2EFlowPostgres runs the same flow against a real PostgreSQL.
+// Skipped unless TEST_DATABASE_URL is set; the target database is wiped.
+func TestLiveServerE2EFlowPostgres(t *testing.T) {
+	database := testdb.Open(t)
+
+	runLiveServerE2EFlow(t, database,
+		repository.NewSQLUserRepository(database),
+		repository.NewSQLHouseholdRepository(database),
+		repository.NewSQLDocRepository(database))
+}
+
+func runLiveServerE2EFlow(
+	t *testing.T,
+	database *sql.DB,
+	userRepo repository.UserRepository,
+	householdRepo repository.HouseholdRepository,
+	docRepo repository.DocRepository,
+) {
 	cfg := &config.Config{
 		Port:       "8080",
 		Env:        "test",
 		JWTSecret:  "e2e-acceptance-testing-secret-key-32chars",
 		CORSOrigin: "http://localhost:5173",
 	}
-
-	mockRepos := repository.NewMockRepositories()
-	mockRepos.Households.SetDocRepo(mockRepos.Docs)
 	tokenService := auth.NewTokenService(cfg.JWTSecret, 24*time.Hour)
 
-	router := setupRouter(cfg, nil, mockRepos.Users, mockRepos.Households, mockRepos.Docs, tokenService)
+	router := setupRouter(cfg, database, userRepo, householdRepo, docRepo, tokenService)
+	wantDBStatus := "disconnected"
+	if database != nil {
+		wantDBStatus = "connected"
+	}
 
 	// Spin up real HTTP server listening on local TCP socket
 	ts := httptest.NewServer(router)
@@ -87,7 +115,7 @@ func TestLiveServerE2EFlow(t *testing.T) {
 		if err := json.Unmarshal(body, &health); err != nil {
 			t.Fatalf("invalid json: %v", err)
 		}
-		if health["status"] != "ok" || health["db"] != "disconnected" {
+		if health["status"] != "ok" || health["db"] != wantDBStatus {
 			t.Errorf("unexpected health body: %+v", health)
 		}
 	})
@@ -408,7 +436,12 @@ func TestLiveServerE2EFlow(t *testing.T) {
 
 	// Step 15: Viewer role permissions check
 	t.Run("Viewer role cannot push to household doc but can read and push private doc", func(t *testing.T) {
-		viewerToken, err := tokenService.GenerateToken("viewer-user-uuid", aliceHouseholdID, "viewer", "c")
+		// A real user row: PostgreSQL enforces uuid + FK on private_docs.user_id
+		viewer, err := userRepo.Create(context.Background(), "viewer@example.com", "not-a-real-hash")
+		if err != nil {
+			t.Fatalf("failed to create viewer user: %v", err)
+		}
+		viewerToken, err := tokenService.GenerateToken(viewer.ID, aliceHouseholdID, "viewer", "c")
 		if err != nil {
 			t.Fatalf("failed to generate viewer token: %v", err)
 		}
