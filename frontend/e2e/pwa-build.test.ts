@@ -45,4 +45,10 @@ describe.skipIf(!built)('PWA-сборка заменяет React-PWA (MGV-17)', 
     const reactIcon = readFileSync(resolve(import.meta.dirname, '../../public/favicon.svg'), 'utf-8')
     expect(icon).toBe(reactIcon)
   })
+
+  it('шрифты Onest и Golos Text подключены, как в React', () => {
+    const html = readFileSync(resolve(dist, 'index.html'), 'utf-8')
+    expect(html).toContain('fonts.googleapis.com/css2?family=Onest')
+    expect(html).toContain('family=Golos+Text')
+  })
 })
