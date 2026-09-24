@@ -849,12 +849,17 @@ describe('RP-09 — группы подписок и «оставить?»', () 
   })
 
   it('группа не входит в budgetAmounts, dueIn и untilPayday; подписки — входят; бюджет от группировки не меняется', () => {
+    // У группы бывает своя сумма: старый PWA Блока 0 групп не знает, покажет её
+    // обязательством 0 ₸, и правка «Сумма сейчас» запишет ей versions. С суммой 0
+    // тест был бы зелёным и без исключения группы.
+    const priced = (g: Obligation): Obligation => ({ ...g, versions: [{ from: '2000-01', amount: 9_999 }] })
     const loose = [rent, sub('netflix', 4_990), sub('slack', 3_000)]
-    const grouped = [rent, work, fun, sub('netflix', 4_990, { parentId: 'fun' }), sub('slack', 3_000, { parentId: 'work' })]
+    const grouped = [rent, priced(work), priced(fun), sub('netflix', 4_990, { parentId: 'fun' }), sub('slack', 3_000, { parentId: 'work' })]
     expect(budgetAmounts({ obligations: grouped, people })).toEqual(budgetAmounts({ obligations: loose, people }))
-    expect(dueIn(fun, '2026-09')).toBe(false)
+    expect(dueIn(priced(fun), '2026-09')).toBe(false)
     const due = untilPayday({ people, obligations: grouped }, { day: 5, key: '2026-09' })!.due.map((x) => x.id)
     expect(due).toEqual(['rent', 'netflix', 'slack'])
+    expect(monthDues({ obligations: grouped }, '2026-09').map((d) => d.targetId)).toEqual(['rent', 'netflix', 'slack'])
     expect(isSubscription(fun)).toBe(false)
     expect(isSubscription(rent)).toBe(false)
     expect(isSubscription(util)).toBe(false)
