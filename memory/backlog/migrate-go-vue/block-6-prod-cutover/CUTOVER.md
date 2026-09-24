@@ -81,6 +81,8 @@ Vercel соберёт Production по `vercel.json` (Vue из `frontend/`, Go-ф
 
 ## 6. После
 
+- **`transfer forward` после переключения не запускать**: `-replace` сотрёт всё, что участники
+  сделали в Go (флаг — единственная защита).
 - Снять из памяти агента запись `no-push-main-during-migration`.
 - `memory/STATE.md`, Handoff клинапа, статус блока.
 - Хвост «Уборка старого» (React `src/`, таблицы `public`, `auth.users`, Edge Function `fx-rate`,
@@ -90,6 +92,8 @@ Vercel соберёт Production по `vercel.json` (Vue из `frontend/`, Go-ф
 
 Триггер: красный смоук, «данные не те» от владельца, или Go-функция не поднимается.
 
+0. Сказать участникам: **ничего не править**, пока не пройдёт шаг 3 — правку, сделанную в React
+   до `back`, шаг 2 перезапишет документом из `app` (сверка этого не заметит).
 1. **Vercel → Deployments → `dpl_AV2UGjCwhnNqmRe2HFTAr5WJ8QSV` → Promote** (Instant Rollback;
    коннектор: `request_rollback`/`request_promote`). React снова на прод-адресе.
    `main` при этом остаётся с Go — **не пушить `main`**, пока не решено, что дальше
