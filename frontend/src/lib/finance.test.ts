@@ -16,10 +16,14 @@ import {
   debtCost,
   simulateStrategy,
   creditSplit,
+  creditResplit,
   creditDueAmount,
+  creditDueIn,
   countedPayments,
   paidFor,
   accountBalance,
+  shiftedBase,
+  payableAccounts,
   creditBalance,
   nextObligationDue,
   nextCreditDue,
@@ -37,7 +41,7 @@ import {
 } from './finance'
 import { plain, money, moneyShort, parseMoney, pct, ratePct } from './money'
 import { clean, caretAt, sigBefore } from './num'
-import { monthKey, parseMonthKey, addMonths, daysInMonth, leadingBlanks, today } from './dates'
+import { monthKey, parseMonthKey, addMonths, daysInMonth, leadingBlanks, today, atLabel } from '@/lib/dates'
 import type { Account, Credit, Obligation, Payment, Person } from '@/types/finance'
 
 describe('finance.ts — аннуитет и кредитные расчёты', () => {
@@ -436,6 +440,130 @@ describe('RP-06 — отметки оплат и остатки из них', ()
     expect(closed.due.map((x) => x.id)).toEqual(['rent'])
   })
 
+  it('правка отметки кредита: проценты — из исходной записи, тело = сумма − проценты, не больше остатка', () => {
+    // Отметка сентября: 58 000, из них тело 30 500 → проценты 27 500.
+    const old = pay({ id: 'l', kind: 'credit', targetId: 'loan', period: '2026-09', amount: 58_000, principal: 30_500 })
+    // Остаток без этой отметки — 1 000 000: заплатили 60 000, тело 32 500.
+    expect(creditResplit(old, 60_000, 1_000_000)).toEqual({ amount: 60_000, interest: 27_500, body: 32_500 })
+    // Остаток с тех пор уменьшили отметки следующих месяцев — проценты не пересчитываются
+    // (creditSplit от 900 000 дал бы 24 750).
+    expect(creditResplit(old, 60_000, 900_000)).toEqual({ amount: 60_000, interest: 27_500, body: 32_500 })
+    expect(creditSplit(900_000, 0.33, 60_000).interest).toBe(24_750)
+    // Сумма больше остатка с процентами урезается до закрывающей.
+    expect(creditResplit(old, 60_000, 10_000)).toEqual({ amount: 37_500, interest: 27_500, body: 10_000 })
+    // Сумма меньше процентов — тело 0, всё ушло банку.
+    expect(creditResplit(old, 20_000, 1_000_000)).toEqual({ amount: 20_000, interest: 20_000, body: 0 })
+    // Долга уже нет: в тело ничего, берутся только проценты месяца.
+    expect(creditResplit(old, 58_000, 0)).toEqual({ amount: 27_500, interest: 27_500, body: 0 })
+    // Дробная сумма округляется до тенге.
+    expect(creditResplit(old, 60_000.4, 1_000_000)).toEqual({ amount: 60_000, interest: 27_500, body: 32_500 })
+  })
+
+  it('сдвиг остатка: база ± дельта, якорь прежний, видимый остаток ниже нуля не уводится', () => {
+    expect(shiftedBase(card, [], 100_000)).toBe(600_000)
+    expect(shiftedBase(card, [], -100_000)).toBe(400_000)
+    expect(shiftedBase(card, [], 100_000.4)).toBe(600_000)
+
+    // Отметка после якоря: видимый 280 000 — снять больше нельзя, база уходит ровно в видимый 0.
+    const anchored = { ...card, amountSetAt: '2026-09-05T09:00:00Z' }
+    const r = pay({ id: 'r', kind: 'obligation', targetId: 'rent', period: '2026-09', amount: 220_000 })
+    expect(accountBalance(anchored, [r])).toBe(280_000)
+    expect(shiftedBase(anchored, [r], -300_000)).toBe(220_000)
+    expect(accountBalance({ ...anchored, amount: shiftedBase(anchored, [r], -300_000) }, [r])).toBe(0)
+    expect(shiftedBase(anchored, [r], -80_000)).toBe(420_000)
+    expect(accountBalance({ ...anchored, amount: 420_000 }, [r])).toBe(200_000)
+
+    // Отметка до якоря в видимый не входит (уже в базе) и сдвигу не мешает: снять можно все 500 000.
+    const beforeAnchor = { ...r, at: '2026-09-05T08:00:00Z' }
+    expect(accountBalance(anchored, [beforeAnchor])).toBe(500_000)
+    expect(shiftedBase(anchored, [beforeAnchor], -600_000)).toBe(0)
+    expect(shiftedBase(anchored, [beforeAnchor], 50_000)).toBe(550_000)
+    // Снятие такой отметки остатка не меняет — и после сдвига тоже.
+    expect(accountBalance({ ...anchored, amount: 550_000 }, [{ ...beforeAnchor, deletedAt: T0 }])).toBe(550_000)
+
+    // Видимый уже в минусе: списать нельзя ничего, пополнить — можно.
+    const low = { ...card, amount: 100_000 }
+    expect(accountBalance(low, [r])).toBe(-120_000)
+    expect(shiftedBase(low, [r], -50_000)).toBe(100_000)
+    expect(shiftedBase(low, [r], 50_000)).toBe(150_000)
+  })
+
+  it('закрытый кредит платежа не ждёт — кроме месяца, где его закрыли; платёж 0 — не ждёт', () => {
+    // Последний платёж сентября закрыл долг 10 000 под 12%: 10 100, тело 10 000.
+    const small = { ...loan, principal: 10_000, annualRate: 0.12 }
+    const last = pay({ id: 'x', kind: 'credit', targetId: 'loan', period: '2026-09', amount: 10_100, principal: 10_000 })
+    const closed = { ...small, principal: creditBalance(small, [last]) }
+    expect(closed.principal).toBe(0)
+    expect(creditDueAmount(closed)).toBe(0)
+    expect(creditDueIn(closed, [last], '2026-09')).toBe(true)
+    expect(creditDueIn(closed, [last], '2026-10')).toBe(false)
+    expect(creditDueIn(closed, [last], '2026-08')).toBe(false)
+    expect(nextCreditDue(closed, [last], { day: 20, key: '2026-09' })).toBeNull()
+    // Снятая отметка — долг снова жив и ждёт.
+    const undone = [{ ...last, deletedAt: T0 }]
+    expect(creditDueIn({ ...small, principal: creditBalance(small, undone) }, undone, '2026-09')).toBe(true)
+
+    // В «до зарплаты» месяца закрытия — в оплаченном, не в «заплатить».
+    const people: Person[] = [{ id: 'a', name: 'Ильяс', salary: 700_000, payday: 20, updatedAt: T0 }]
+    const sep = untilPayday({ people, credits: [closed], payments: [last] }, { day: 3, key: '2026-09' })!
+    expect(sep.due).toEqual([])
+    expect(sep.paid.map((x) => [x.id, x.value])).toEqual([['loan', 10_100]])
+    const oct = untilPayday({ people, credits: [closed], payments: [last] }, { day: 3, key: '2026-10' })!
+    expect([...oct.due, ...oct.paid]).toEqual([])
+
+    // Остаток есть, а платёж 0 (не заполнен): ждать нечего.
+    const noPay = { ...loan, payment: 0 }
+    expect(creditDueAmount(noPay)).toBe(0)
+    expect(creditDueIn(noPay, [], '2026-09')).toBe(false)
+    expect(nextCreditDue(noPay, [], { day: 20, key: '2026-09' })).toBeNull()
+  })
+
+  it('остаток долга — только по отметкам кредита и досрочкам: отметка обязательства с тем же targetId не считается', () => {
+    const m = pay({ id: 'm', kind: 'credit', targetId: 'loan', period: '2026-09', amount: 58_000, principal: 30_500 })
+    // Запись обязательства с телом — битая или чужая: остаток не двигает.
+    const stray = pay({ id: 'o', kind: 'obligation', targetId: 'loan', period: '2026-09', amount: 50_000, principal: 50_000 })
+    expect(creditBalance(loan, [stray])).toBe(1_000_000)
+    expect(creditBalance(loan, [m, stray])).toBe(969_500)
+    const pre = pay({ id: 'p', kind: 'prepay', targetId: 'loan', period: '2026-09', amount: 100_000, principal: 100_000 })
+    expect(creditBalance(loan, [m, stray, pre])).toBe(869_500)
+  })
+
+  it('до зарплаты через месяц: платёж следующего месяца, оплаченный заранее, — в paid, не в due и не в сумме', () => {
+    // Сегодня 20 сентября, зарплата 5-го: окно — остаток сентября и октябрь до 5-го.
+    const people: Person[] = [{ id: 'a', name: 'Ильяс', salary: 700_000, payday: 5, updatedAt: T0 }]
+    const lateLoan = { ...loan, day: 25 }
+    const now = { day: 20, key: '2026-09' }
+    const before = untilPayday({ people, obligations: [rent], credits: [lateLoan], accounts: [card] }, now)!
+    expect(before.key).toBe('2026-10')
+    expect(before.due.map((x) => x.id)).toEqual(['loan', 'rent@next'])
+    expect(before.dueTotal).toBe(278_000)
+
+    // Аренду октября заплатили заранее, другой суммой.
+    const early = pay({ id: 'r', kind: 'obligation', targetId: 'rent', period: '2026-10', amount: 215_000 })
+    const after = untilPayday({ people, obligations: [rent], credits: [lateLoan], accounts: [card], payments: [early] }, now)!
+    expect(after.due.map((x) => x.id)).toEqual(['loan'])
+    expect(after.paid.map((x) => [x.id, x.when, x.value])).toEqual([['rent@next', '2026-10', 215_000]])
+    expect(after.dueTotal).toBe(58_000)
+    // Отметка сентября аренду октября не снимает.
+    const sepMark = { ...early, period: '2026-09' }
+    expect(untilPayday({ people, obligations: [rent], credits: [lateLoan], payments: [sepMark] }, now)!.due.map((x) => x.id)).toEqual(['loan', 'rent@next'])
+  })
+
+  it('счета для оплаты — только живые в тенге; день отметки — по Алматы', () => {
+    const accounts: Account[] = [
+      card,
+      { ...card, id: 'kzt', currency: 'KZT' },
+      { ...card, id: 'usd', currency: 'USD' },
+      { ...card, id: 'gone', deletedAt: T0 },
+    ]
+    expect(payableAccounts(accounts).map((a) => a.id)).toEqual(['card', 'kzt'])
+    expect(payableAccounts([])).toEqual([])
+
+    // 19:30 UTC 30 сентября — 00:30 1 октября в Алматы; 18:30 — ещё 23:30 30-го.
+    expect(atLabel('2026-09-30T19:30:00Z')).toBe('1 октября')
+    expect(atLabel('2026-09-30T18:30:00Z')).toBe('30 сентября')
+  })
+
   it('граница месяца — по Алматы (UTC+5), а не по поясу телефона', () => {
     // 23:30 UTC 31 августа — в Алматы уже 04:30 1 сентября.
     const lateUtc = new Date(Date.UTC(2026, 7, 31, 23, 30))
@@ -456,16 +584,38 @@ describe('RP-08 — применить досрочку', () => {
   const PAY = 58_000
   const LUMP = 200_000
 
-  /** Независимая сверка: помесячный график в дробях, проценты до закрытия долга. */
-  function scheduleInterest(principal: number, payment: number): number {
+  /**
+   * Независимая сверка: помесячный график, как его ведёт приложение, — `creditSplit`
+   * каждый месяц (проценты от остатка, округлённые до тенге, последний платёж —
+   * остаток с процентами) до закрытия долга. Возвращает проценты банку и число платежей.
+   */
+  function schedule(principal: number, rate: number, payment: number) {
     let left = principal
     let interest = 0
-    for (let m = 0; m < 1000 && left > 1e-6; m++) {
-      const due = (left * R) / 12
-      interest += due
-      left = left + due - Math.min(payment, left + due)
+    let n = 0
+    for (; n < 1000 && left > 0; n++) {
+      const s = creditSplit(left, rate, payment)
+      interest += s.interest
+      left -= s.body
     }
-    return interest
+    return { interest, n }
+  }
+
+  /**
+   * Экономия по графику: проценты до взноса минус проценты после.
+   *
+   * `lumpPlan.saved` считается в непрерывных месяцах (платёж × дробный срок − долг):
+   * последний неполный месяц там — доля платежа, а в графике — остаток с процентами
+   * за целый месяц; плюс проценты графика округляются до тенге каждый месяц. Поэтому
+   * до тенге они не совпадают. На живых и крайних случаях ниже расхождение ≤ 103 ₸
+   * (≤ 0,18%); допуск — 0,3% и не больше 150 ₸: больше — значит сломана формула, а
+   * не округление.
+   */
+  function expectSavedMatchesSchedule(P0: number, rate: number, pay: number, plan: { left: number; payment: number; saved: number }) {
+    const byMonths = schedule(P0, rate, pay).interest - schedule(plan.left, rate, plan.payment).interest
+    const diff = Math.abs(byMonths - plan.saved)
+    expect(diff).toBeLessThanOrEqual(150)
+    expect(diff / plan.saved).toBeLessThan(0.003)
   }
 
   it('«снизить платёж»: новый платёж = аннуитет на остаток и прежний срок; экономия ≥ 0 и меньше, чем у «сократить срок»', () => {
@@ -491,10 +641,93 @@ describe('RP-08 — применить досрочку', () => {
       for (const v of Object.values(plan)) expect(Number.isInteger(v)).toBe(true)
     }
 
-    // Сверка помесячным графиком: экономия — разница процентов до и после, в пределах 1%.
-    const before = scheduleInterest(P, PAY)
-    expect(Math.abs(before - scheduleInterest(800_000, PAY) - shorter.saved) / shorter.saved).toBeLessThan(0.01)
-    expect(Math.abs(before - scheduleInterest(800_000, 46_400) - lower.saved) / lower.saved).toBeLessThan(0.01)
+    // Сверка помесячным графиком: экономия — разница процентов до и после (допуск — у хелпера).
+    expectSavedMatchesSchedule(P, R, PAY, shorter)
+    expectSavedMatchesSchedule(P, R, PAY, lower)
+  })
+
+  /** Непрерывный срок и переплата — формулой, без `annuityMonths`/`lumpSum`. */
+  function continuous(principal: number, rate: number, payment: number) {
+    const i = rate / 12
+    const n = -Math.log(1 - (principal * i) / payment) / Math.log(1 + i)
+    return { n, overpay: payment * n - principal }
+  }
+
+  it('живой случай до тенге: «сократить срок» 200 000 — 18 платежей вместо 24, не отдадим 154 457', () => {
+    expect(lumpPlan(P, R, PAY, LUMP, 'term')).toEqual({
+      paid: 200_000, left: 800_000, payment: 58_000, months: 18, monthsBefore: 24, saved: 154_457,
+    })
+    // Независимо: экономия — разница переплат в непрерывных месяцах при том же платеже.
+    const before = continuous(P, R, PAY)
+    const after = continuous(800_000, R, PAY)
+    expect(Math.ceil(before.n)).toBe(24)
+    expect(Math.ceil(after.n)).toBe(18)
+    expect(Math.round(before.overpay - after.overpay)).toBe(154_457)
+    // По графику платежей — тоже 24 и 18.
+    expect(schedule(P, R, PAY).n).toBe(24)
+    expect(schedule(800_000, R, PAY).n).toBe(18)
+  })
+
+  it('живой случай до тенге: «снизить платёж» 200 000 — 46 400 и 74 820; после — 800 000, «снизить платёж» 100 000 — 50 750 и 27 456', () => {
+    // Первый шаг — «сократить срок» (154 457), второй — «снизить платёж» по новому остатку
+    // с прежним платежом 58 000; счётчик в браузере — 154 457 + 27 456 = 181 913 (Handoff).
+    const lower = lumpPlan(P, R, PAY, LUMP, 'payment')!
+    expect(lower).toEqual({ paid: 200_000, left: 800_000, payment: 46_400, months: 24, monthsBefore: 24, saved: 74_820 })
+    const second = lumpPlan(800_000, R, PAY, 100_000, 'payment')!
+    expect(second).toEqual({ paid: 100_000, left: 700_000, payment: 50_750, months: 18, monthsBefore: 18, saved: 27_456 })
+    expect(lumpPlan(P, R, PAY, LUMP, 'term')!.saved + second.saved).toBe(181_913)
+
+    for (const [debt, lump, plan] of [[P, LUMP, lower], [800_000, 100_000, second]] as const) {
+      const before = continuous(debt, R, PAY)
+      const left = debt - lump
+      // Платёж — аннуитет на остаток на прежний непрерывный срок (формула в лоб)…
+      const i = R / 12
+      const annuity = (left * i) / (1 - Math.pow(1 + i, -before.n))
+      expect(plan.payment).toBe(Math.round(annuity))
+      // …а при том же сроке он пропорционален долгу: 58 000 × остаток / долг.
+      expect(plan.payment).toBe(Math.round((PAY * left) / debt))
+      // Экономия: n × (прежний − новый) − взнос = взнос × переплата / долг.
+      expect(plan.saved).toBe(Math.round((lump * before.overpay) / debt))
+    }
+    expectSavedMatchesSchedule(800_000, R, PAY, second)
+    expectSavedMatchesSchedule(800_000, R, PAY, lumpPlan(800_000, R, PAY, 100_000, 'term')!)
+  })
+
+  it('сверка с графиком: 3 000 000 под 24% на 36 месяцев — треть и почти весь долг, оба режима', () => {
+    const P3 = 3_000_000
+    const R3 = 0.24
+    const PAY3 = 117_699
+    expect(PAY3).toBe(Math.round(annuityPayment(P3, R3, 36)))
+
+    const third = { term: lumpPlan(P3, R3, PAY3, 1_000_000, 'term')!, payment: lumpPlan(P3, R3, PAY3, 1_000_000, 'payment')! }
+    expect(third.term).toEqual({ paid: 1_000_000, left: 2_000_000, payment: PAY3, months: 21, monthsBefore: 36, saved: 768_832 })
+    expect(third.payment).toEqual({ paid: 1_000_000, left: 2_000_000, payment: 78_466, months: 36, monthsBefore: 36, saved: 412_380 })
+
+    // Взнос почти во весь долг: остаток 10 000.
+    const almost = { term: lumpPlan(P3, R3, PAY3, 2_990_000, 'term')!, payment: lumpPlan(P3, R3, PAY3, 2_990_000, 'payment')! }
+    expect(almost.term).toEqual({ paid: 2_990_000, left: 10_000, payment: PAY3, months: 1, monthsBefore: 36, saved: 1_237_033 })
+    expect(almost.payment).toEqual({ paid: 2_990_000, left: 10_000, payment: 392, months: 36, monthsBefore: 36, saved: 1_233_017 })
+    // «Сократить срок» с остатком 10 000 — один закрывающий платёж: 10 000 + 2% = 10 200.
+    expect(creditSplit(10_000, R3, PAY3)).toEqual({ amount: 10_200, interest: 200, body: 10_000 })
+
+    for (const plan of [third.term, third.payment, almost.term, almost.payment]) {
+      expectSavedMatchesSchedule(P3, R3, PAY3, plan)
+      expect(plan.saved).toBeLessThanOrEqual(Math.round(continuous(P3, R3, PAY3).overpay))
+      for (const v of Object.values(plan)) expect(Number.isInteger(v)).toBe(true)
+    }
+    expect(third.payment.saved).toBeLessThan(third.term.saved)
+    expect(almost.payment.saved).toBeLessThan(almost.term.saved)
+  })
+
+  it('«снизить платёж» с крошечным остатком — платёж не меньше 1 ₸, а не 0', () => {
+    // 100 000 под 20%, платёж 10 000, взнос 99 999: аннуитет на 1 ₸ — доли тенге.
+    const plan = lumpPlan(100_000, 0.2, 10_000, 99_999, 'payment')!
+    expect(plan.left).toBe(1)
+    expect(annuityPayment(1, 0.2, annuityMonths(100_000, 0.2, 10_000))).toBeLessThan(0.5)
+    expect(plan.payment).toBe(1)
+    expect(plan.months).toBe(plan.monthsBefore)
+    // Такой платёж долг закрывает: 1 ₸ под 20% — проценты 0, тело 1.
+    expect(creditSplit(plan.left, 0.2, plan.payment)).toEqual({ amount: 1, interest: 0, body: 1 })
   })
 
   it('взнос больше долга закрывает его; нечего считать — null; рассрочка 0% — экономии нет', () => {

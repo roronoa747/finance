@@ -7,6 +7,8 @@ import { createAppRouter } from '@/router'
 import { useFinanceStore, defaultSyncDoc } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain } from '@/lib/money'
+import { groupTotal } from '@/lib/finance'
+import type { Obligation } from '@/types/finance'
 import PaidRow from './PaidRow.vue'
 import Capital from '@/views/Capital.vue'
 import Overview from '@/views/Overview.vue'
@@ -33,7 +35,8 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     vi.useRealTimers()
   })
 
-  function family(role: 'member' | 'viewer' = 'member') {
+  /** Семья с арендой и кредитом; `extra` — обязательства сверх аренды. */
+  function family(role: 'member' | 'viewer' = 'member', extra: Obligation[] = []) {
     useAuthStore().setAuthData({
       token: 't',
       user: { id: 'u', email: 'u@example.com', created_at: T0 },
@@ -49,6 +52,7 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
         accounts: [{ id: 'card', name: 'Kaspi Gold', note: '', amount: 1_000_000, amountSetAt: T0, kind: 'card', updatedAt: T0 }],
         obligations: [
           { id: 'rent', name: 'Аренда', note: '', day: 28, category: 'd1', versions: [{ from: '2000-01', amount: 220_000 }], updatedAt: T0 },
+          ...extra,
         ],
         credits: [
           { id: 'loan', name: 'Кредит', note: '', principal: 1_000_000, principalSetAt: T0, annualRate: 0.33, payment: 58_000, day: 15, updatedAt: T0 },
@@ -160,5 +164,147 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     const html = await page(Budget, '/budget', { initialView: 'list' })
     expect(html.match(/Оплатил/g)).toHaveLength(2)
     expect(html).toContain('Зарплата · Ильяс')
+  })
+
+  /* ---------------- критик dfc7ab0: группы, viewer, оценка, «оставить?» ---------------- */
+
+  const sub = (id: string, name: string, amount: number, extra: Partial<Obligation> = {}): Obligation => ({
+    id, name, note: '', day: 12, category: 'd4', versions: [{ from: '2000-01', amount }], updatedAt: T0, ...extra,
+  })
+  const fun: Obligation = { id: 'fun', name: 'Досуг', note: '', day: 1, category: 'd4', versions: [], group: true, updatedAt: T0 }
+
+  /**
+   * Капитал с состоянием модалки, которое в SSR не набрать кликами: `created`
+   * вызывается и на сервере — после setup, до рендера.
+   */
+  async function capitalWith(path: string, state: Record<string, unknown>) {
+    const router = createAppRouter(createMemoryHistory())
+    await router.push(path)
+    const app = createSSRApp(Capital)
+    app.use(router)
+    app.mixin({
+      created() {
+        // Корень приложения — сам экран Капитала.
+        if (this.$.parent === null) Object.assign(this.$.setupState, state)
+      },
+    })
+    return renderToString(app)
+  }
+
+  it('RP-09: SSR-рендер Капитала — группа с итогом, подписки под ней, годовая «в год»', async () => {
+    const netflix = sub('netflix', 'Netflix', 4_990, { parentId: 'fun' })
+    const icloud = sub('icloud', 'iCloud', 11_990, { parentId: 'fun', every: 'year', month: 3 })
+    const store = family('member', [fun, netflix, icloud])
+    const html = await page(Capital, '/capital')
+
+    // 4 990 + 11 990 / 12 = 5 989,17 → 5 989: итог группы из finance.ts.
+    const total = groupTotal(fun, store.obligations, '2026-09')
+    expect(total).toBe(5_989)
+    const groupRow = html.slice(html.indexOf('Досуг'), html.indexOf('</button>', html.indexOf('Досуг')))
+    expect(groupRow).toContain('2 подписки')
+    expect(groupRow).toContain(money(total))
+    expect(groupRow).toContain('в месяц')
+
+    // Подписки — только под группой (в отступе после её строки), каждая по разу.
+    const group = html.indexOf('Досуг')
+    const nest = html.indexOf('pl-6', group)
+    expect(group).toBeGreaterThan(-1)
+    expect(nest).toBeGreaterThan(group)
+    for (const name of ['Netflix', 'iCloud']) {
+      expect(html.split(name)).toHaveLength(2)
+      expect(html.indexOf(name)).toBeGreaterThan(nest)
+    }
+    const netflixRow = html.slice(html.indexOf('Netflix'), html.indexOf('iCloud'))
+    expect(netflixRow).toContain(money(4_990))
+    expect(netflixRow).toContain('в месяц')
+    const icloudRow = html.slice(html.indexOf('iCloud'), html.indexOf('</button>', html.indexOf('iCloud')))
+    expect(icloudRow).toContain(money(11_990))
+    expect(icloudRow).toContain('раз в год')
+    expect(icloudRow).toMatch(/>в год</)
+  })
+
+  it('viewer: в модалке досрочки нет «Снять» и «Применить досрочку»; участник их видит', async () => {
+    const state = { payoffMode: 'once', payoffAmount: '100 000' }
+    for (const role of ['member', 'viewer'] as const) {
+      setActivePinia(createPinia())
+      const store = family(role)
+      expect(store.applyPrepayment('loan', 'a', { amount: 50_000, mode: 'term', accountId: 'card' })).not.toBeNull()
+      const html = await capitalWith('/capital?payoff=loan', state)
+      // Досрочку видят оба — запись общая.
+      expect(html).toContain('Досрочное погашение')
+      expect(html).toContain('Применённые досрочки')
+      expect(html).toContain(money(50_000))
+      if (role === 'member') {
+        expect(html).toContain('Применить к кредиту')
+        expect(html).toContain('Применить досрочку')
+        expect(html).toContain('Снять')
+      } else {
+        expect(html).not.toContain('Применить к кредиту')
+        expect(html).not.toContain('Применить досрочку')
+        expect(html).not.toContain('Снять')
+      }
+    }
+  })
+
+  it('viewer: на Обзоре нет «Оставить?» и «Оплатил», в Бюджете (список) нет «Оплатил»; участник их видит', async () => {
+    // Ежемесячная подписка без keptAt — участника о ней спросили бы.
+    const netflix = sub('netflix', 'Netflix', 4_990)
+    for (const role of ['member', 'viewer'] as const) {
+      setActivePinia(createPinia())
+      family(role, [netflix])
+      const overview = await page(Overview, '/')
+      const budget = await page(Budget, '/budget', { initialView: 'list' })
+      // Платежи на месте у обоих — пропадают только кнопки.
+      expect(overview).toContain('Впереди')
+      expect(overview).toContain('Netflix')
+      expect(budget).toContain('Аренда')
+      if (role === 'member') {
+        expect(overview).toContain('Оставить «Netflix»?')
+        expect(overview).toContain('Оплатил')
+        expect(budget).toContain('Оплатил')
+      } else {
+        expect(overview).not.toContain('Оставить «')
+        expect(overview).not.toContain('Оплатил')
+        expect(budget).not.toContain('Оплатил')
+      }
+    }
+  })
+
+  it('оценочное обязательство: «оценка» из самого обязательства — в строке без пропа и в «До зарплаты»', async () => {
+    const util = sub('util', 'Коммуналка', 35_000, { category: 'd3', day: 26, estimate: true })
+    family('member', [util])
+    const utilRow = { kind: 'obligation', targetId: 'util', period: '2026-09', title: 'Коммуналка', note: '26 сентября' }
+    const html = await row(utilRow)
+    expect(html).toMatch(/>оценка</)
+    expect(html).toContain(money(35_000))
+    // Контроль: у аренды признака нет.
+    expect(await row(rent)).not.toMatch(/>оценка</)
+
+    const overview = await page(Overview, '/')
+    const payday = overview.slice(overview.indexOf('До зарплаты'), overview.indexOf('Впереди'))
+    expect(payday).toContain('Коммуналка')
+    expect(payday).toMatch(/Коммуналка[\s\S]*?>оценка</)
+    // Аренда (28-е) в том же блоке идёт после коммуналки (26-е) — и без признака.
+    const rentAt = payday.indexOf('Аренда')
+    expect(rentAt).toBeGreaterThan(payday.indexOf('Коммуналка'))
+    expect(payday.slice(rentAt)).not.toMatch(/>оценка</)
+  })
+
+  it('«Оставить?» у годовой: сумма продления из новой версии, а не текущая', async () => {
+    // Продление 5 октября; с октября — 12 000 вместо 10 000.
+    const yearly = sub('ivi', 'Иви', 10_000, {
+      every: 'year', month: 10, day: 5, keptAt: null,
+      versions: [{ from: '2000-01', amount: 10_000 }, { from: '2026-10', amount: 12_000 }],
+    })
+    family('member', [yearly])
+    vi.setSystemTime(new Date('2026-09-25T07:00:00Z')) // 25 сентября, Алматы: до продления 10 дней
+    const html = await page(Overview, '/')
+    const start = html.indexOf('Продлится')
+    expect(start).toBeGreaterThan(-1)
+    const card = html.slice(start, html.indexOf('Впереди', start))
+    expect(card).toContain('Продлится 5 октября')
+    expect(card).toContain('Оставить «Иви»?')
+    expect(card).toContain(`${money(12_000)} в год`)
+    expect(card).not.toContain(money(10_000))
   })
 })

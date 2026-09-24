@@ -8,7 +8,16 @@ import { useFinanceStore, defaultSyncDoc } from '../src/stores/finance'
 import { ApiClient, ApiError } from '../src/api/client'
 import type { SyncDoc } from '../src/types/finance'
 import type { HouseholdDocResponse, ConflictResponse } from '../src/types/api'
-import { budgetAmounts, lastAccountFor, lumpPlan, nextObligationDue, prepaySaved } from '../src/lib/finance'
+import {
+  accountBalance,
+  budgetAmounts,
+  countedPayments,
+  lastAccountFor,
+  lumpPlan,
+  nextObligationDue,
+  paidFor,
+  prepaySaved,
+} from '../src/lib/finance'
 import { money, plain } from '../src/lib/money'
 import Overview from '../src/views/Overview.vue'
 import Capital from '../src/views/Capital.vue'
@@ -110,8 +119,11 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
 
     setOnline(true)
     await A.store.syncHousehold(A.client)
-    // B пушит поверх ревизии A: 409 → слияние → повтор.
+    // B синкает после A: syncHousehold сначала берёт свежую ревизию A (GET), сливает
+    // и пушит на неё — 409 тут не возникает, push один. Настоящий 409 (ревизия
+    // сдвинулась между GET и push) — в сценарии «настоящий 409» ниже.
     await B.store.syncHousehold(B.client)
+    expect(B.client.pushHouseholdDoc).toHaveBeenCalledTimes(1)
     await A.store.pullHousehold(A.client)
     expect(server.rev).toBe(3)
 
@@ -265,6 +277,140 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
       expect(store.payments.every((p) => p.deletedAt)).toBe(true)
       expect(store.accounts[0].amount).toBe(1_000_000)
       expect(nextObligationDue(store.obligations[0], store.payments)?.period).toBe('2026-09')
+    }
+  })
+
+  it('настоящий 409: A пушит между GET и push телефона B → B сливает из server_doc и повторяет; обе отметки у всех, общая пара списана один раз', async () => {
+    const A = await phone()
+    const B = await phone()
+
+    setOnline(false)
+    at('2026-09-24T08:00:00Z')
+    A.store.markPaid('obligation', 'rent', 'a', { accountId: 'card' })
+    // B не видит отметки A: та же аренда вторым нажатием и кредит.
+    at('2026-09-24T08:02:00Z')
+    B.store.markPaid('obligation', 'rent', 'b', { accountId: 'card' })
+    at('2026-09-24T08:10:00Z')
+    B.store.markPaid('credit', 'loan', 'b', { accountId: 'card' })
+    setOnline(true)
+
+    // Первый push B задерживается: пока он в пути, A успевает синкнуться — сервер
+    // уходит на ревизию 2, а B пушит с ревизией 1, взятой GET-ом.
+    const realPush = B.client.pushHouseholdDoc
+    let pushesB = 0
+    const conflicts: number[] = []
+    B.client.pushHouseholdDoc = vi.fn(async (rev: number, data: SyncDoc) => {
+      pushesB++
+      if (pushesB === 1) {
+        await A.store.syncHousehold(A.client)
+        expect(server.rev).toBe(2)
+      }
+      try {
+        return await realPush(rev, data)
+      } catch (err) {
+        if (err instanceof ApiError) conflicts.push(err.status)
+        throw err
+      }
+    }) as ApiClient['pushHouseholdDoc']
+
+    await B.store.syncHousehold(B.client)
+    expect(B.client.getHouseholdDoc).toHaveBeenCalledTimes(2) // pull в phone() + GET синка — повтор без GET
+    expect(pushesB).toBe(2)
+    expect(conflicts).toEqual([409])
+    expect(server.rev).toBe(3)
+    await A.store.pullHousehold(A.client)
+
+    const card = server.data.accounts[0]
+    // 1 000 000 − 220 000 аренда (пара rent/2026-09 — одна, из двух записей) − 58 000 кредит.
+    expect(accountBalance(card, server.data.payments)).toBe(722_000)
+    expect(server.data.payments).toHaveLength(3)
+    for (const { store } of [A, B]) {
+      expect(store.payments).toHaveLength(3)
+      expect(countedPayments(store.payments).map((p) => `${p.kind}:${p.targetId}`).sort()).toEqual([
+        'credit:loan',
+        'obligation:rent',
+      ])
+      // Засчитана ранняя запись пары — отметка A.
+      expect(paidFor(store.payments, 'obligation', 'rent', '2026-09')?.by).toBe('a')
+      expect(store.accounts[0].amount).toBe(accountBalance(card, server.data.payments))
+      expect(store.accounts[0].amount).toBe(722_000)
+      expect(store.credits[0].principal).toBe(969_500)
+      expect(store.status).toBe('idle')
+    }
+  })
+
+  it('A офлайн отметил аренду с карты, B не видя сделал взнос в цель с карты → у обоих карта 1 000 000 − 220 000 − 50 000', async () => {
+    server.data.goals = [
+      {
+        id: 'japan', name: 'Япония', need: 1_500_000, seed: 0, have: 0, monthly: 100_000, hue: 'teal',
+        planPct: 0, movements: [], updatedAt: T0,
+      },
+    ]
+    const A = await phone()
+    const B = await phone()
+
+    setOnline(false)
+    at('2026-09-24T08:00:00Z')
+    A.store.markPaid('obligation', 'rent', 'a', { accountId: 'card' })
+
+    // Взнос позже отметки A: так делает GoalDetail — взнос + сдвиг счёта. Якорь не
+    // переезжает на «сейчас», иначе офлайн-отметка A после слияния не списалась бы.
+    setOnline(true)
+    at('2026-09-24T08:10:00Z')
+    B.store.contribute('japan', 50_000, 'b')
+    B.store.shiftAccountAmount('card', -50_000)
+    expect(B.store.accounts[0].amount).toBe(950_000)
+    await B.store.syncHousehold(B.client)
+
+    await A.store.syncHousehold(A.client)
+    await B.store.pullHousehold(B.client)
+    expect(server.rev).toBe(3)
+
+    const card = server.data.accounts[0]
+    expect(card.amount).toBe(950_000)
+    expect(card.amountSetAt).toBe(T0)
+    expect(accountBalance(card, server.data.payments)).toBe(730_000)
+    for (const { store } of [A, B]) {
+      expect(store.accounts[0].amount).toBe(1_000_000 - 220_000 - 50_000)
+      expect(store.goals[0].have).toBe(50_000)
+      expect(store.status).toBe('idle')
+    }
+  })
+
+  it('A отметил аренду, B сверил карту с банком, A поправил сумму отметки → у обоих карта = сверенная, второго списания нет', async () => {
+    const A = await phone()
+    const B = await phone()
+
+    at('2026-09-24T08:00:00Z')
+    const record = A.store.markPaid('obligation', 'rent', 'a', { accountId: 'card' })!
+    await A.store.syncHousehold(A.client)
+    await B.store.pullHousehold(B.client)
+    expect(B.store.accounts[0].amount).toBe(780_000)
+
+    // Банк уже списал аренду и ещё 5 000 комиссии: B вводит остаток — новая база и якорь.
+    at('2026-09-24T08:30:00Z')
+    B.store.setAccountAmount('card', 775_000)
+    await B.store.syncHousehold(B.client)
+
+    // A (сверки не видел) правит отметку: на самом деле заплатили 230 000.
+    at('2026-09-24T09:00:00Z')
+    const edited = A.store.editPaid(record, { amount: 230_000, accountId: 'card' })!
+    // Момент оплаты — исходный: запись до якоря сверки, остаток она не двигает.
+    // С `at` = момент правки карта стала бы 775 000 − 230 000.
+    expect(edited.at).toBe(record.at)
+    expect(edited.updatedAt).toBe('2026-09-24T09:00:00.000Z')
+    await A.store.syncHousehold(A.client)
+    await B.store.pullHousehold(B.client)
+    expect(server.rev).toBe(4)
+
+    const card = server.data.accounts[0]
+    expect(card.amountSetAt).toBe('2026-09-24T08:30:00.000Z')
+    expect(accountBalance(card, server.data.payments)).toBe(775_000)
+    for (const { store } of [A, B]) {
+      expect(store.accounts[0].amount).toBe(775_000)
+      expect(paidFor(store.payments, 'obligation', 'rent', '2026-09')?.amount).toBe(230_000)
+      expect(store.payments.filter((p) => !p.deletedAt)).toHaveLength(1)
+      expect(store.status).toBe('idle')
     }
   })
 })

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { mergeDocs, isEmptyDoc } from './merge'
-import { accountBalance, creditBalance, paidFor } from './finance'
+import { accountBalance, creditBalance, paidFor, shiftedBase } from './finance'
 import type { SyncDoc, Goal, Obligation, Person, Category, Account, Credit, Payment } from '@/types/finance'
 
 function createEmptyDoc(): SyncDoc {
@@ -471,5 +471,102 @@ describe('RP-06: отметки оплат при слиянии', () => {
     expect(mergeDocs(old, old).payments).toEqual([])
     const twice = mergeDocs(merged, merged)
     expect(mergeDocs(twice, twice)).toEqual(twice)
+  })
+  describe('сверка и сдвиг остатка на одном телефоне, отметка на другом', () => {
+    // Карта со сверкой в начале месяца: база 1 000 000, якорь T0.
+    const anchored: Account = { ...card, amountSetAt: T0 }
+    const withCard = (a: Account, payments: Payment[] = []): SyncDoc => ({ ...base, accounts: [a], payments })
+    const both = (a: SyncDoc, b: SyncDoc) => [mergeDocs(a, b), mergeDocs(b, a)]
+
+    it('сверка на A, отметка на B после сверки — списывается из сверенной суммы', () => {
+      const tA = '2026-09-05T08:00:00Z'
+      // A сверил с банком: 800 000, база и якорь — момент сверки.
+      const a = withCard({ ...anchored, amount: 800_000, amountSetAt: tA, updatedAt: tA })
+      // B отметил аренду позже сверки: в сверенную сумму она ещё не вошла.
+      const b = withCard(anchored, [mark('r1', { at: '2026-09-05T10:00:00Z', by: 'b' })])
+      for (const doc of both(a, b)) {
+        expect(doc.accounts[0].amount).toBe(800_000)
+        expect(doc.accounts[0].amountSetAt).toBe(tA)
+        expect(accountBalance(doc.accounts[0], doc.payments)).toBe(580_000)
+      }
+    })
+
+    it('сверка на A, отметка на B до сверки — сверка её уже включает, не списывается', () => {
+      const tA = '2026-09-05T12:00:00Z'
+      const a = withCard({ ...anchored, amount: 800_000, amountSetAt: tA, updatedAt: tA })
+      const b = withCard(anchored, [mark('r1', { at: '2026-09-05T10:00:00Z', by: 'b' })])
+      for (const doc of both(a, b)) {
+        expect(accountBalance(doc.accounts[0], doc.payments)).toBe(800_000)
+        // Оплата при этом остаётся отмеченной: сверка гасит только списание.
+        expect(paidFor(doc.payments, 'obligation', 'rent', '2026-09')?.id).toBe('r1')
+      }
+    })
+
+    it('сдвиг остатка на A (якорь прежний), офлайн-отметка на B раньше — обе суммы уходят', () => {
+      // Регрессия: сдвиг с якорем «сейчас» съедал офлайн-отметку партнёра.
+      const tA = '2026-09-06T08:00:00Z'
+      // Как shiftAccountAmount: A не видит отметку B, база −50 000, якорь не трогаем.
+      const shifted: Account = { ...anchored, amount: shiftedBase(anchored, [], -50_000), updatedAt: tA }
+      expect(shifted.amount).toBe(950_000)
+      const a = withCard(shifted)
+      const b = withCard(anchored, [mark('r1', { at: '2026-09-05T10:00:00Z', by: 'b' })])
+      for (const doc of both(a, b)) {
+        expect(doc.accounts[0].amountSetAt).toBe(T0)
+        expect(accountBalance(doc.accounts[0], doc.payments)).toBe(1_000_000 - 50_000 - 220_000)
+      }
+    })
+  })
+
+  describe('коммутативность слияния отметок', () => {
+    const tomb = (p: Payment, at: string): Payment => ({ ...p, deletedAt: at, updatedAt: at })
+    const sorted = (doc: SyncDoc) => [...(doc.payments ?? [])].sort((x, y) => x.id.localeCompare(y.id))
+    const balances = (doc: SyncDoc) => ({
+      card: accountBalance(doc.accounts[0], doc.payments),
+      loan: creditBalance(doc.credits[0], doc.payments),
+    })
+
+    // Общее у обоих до разрыва связи: отметка кредита за сентябрь.
+    const loanMark = mark('l1', { kind: 'credit', targetId: 'loan', amount: 58_000, principal: 30_500 })
+
+    it('разные записи, пара с обеих сторон, надгробие на одной — результат не зависит от порядка', () => {
+      const a: SyncDoc = {
+        ...base,
+        payments: [
+          mark('ra', { targetId: 'net', amount: 12_000, at: '2026-09-03T09:00:00Z' }),
+          mark('x1', { at: '2026-09-05T10:00:00Z' }),
+          tomb(loanMark, '2026-09-06T00:00:00Z'),
+        ],
+      }
+      const b: SyncDoc = {
+        ...base,
+        payments: [
+          mark('rb', { targetId: 'gym', amount: 15_000, by: 'b', at: '2026-09-04T09:00:00Z' }),
+          mark('x2', { by: 'b', at: '2026-09-05T10:03:00Z' }),
+          loanMark,
+        ],
+      }
+      const ab = mergeDocs(a, b)
+      const ba = mergeDocs(b, a)
+      expect(sorted(ab)).toEqual(sorted(ba))
+      expect(sorted(ab).map((p) => p.id)).toEqual(['l1', 'ra', 'rb', 'x1', 'x2'])
+      expect(ab.payments?.find((p) => p.id === 'l1')?.deletedAt).toBe('2026-09-06T00:00:00Z')
+      // Пара схлопывается в одну аренду; кредит снят — ни тело, ни списание не действуют.
+      expect(balances(ab)).toEqual({ card: 1_000_000 - 12_000 - 15_000 - 220_000, loan: 1_000_000 })
+      expect(balances(ba)).toEqual(balances(ab))
+    })
+
+    it('надгробие на обеих сторонах в разное время — запись мертва, остатки равны в обоих порядках', () => {
+      // Время надгробия берётся у local (хвост §4), поэтому toEqual по записям тут не сверяем.
+      const a: SyncDoc = { ...base, payments: [tomb(loanMark, '2026-09-06T00:00:00Z'), mark('x1', {})] }
+      const b: SyncDoc = { ...base, payments: [tomb(loanMark, '2026-09-07T00:00:00Z'), mark('x1', {})] }
+      const ab = mergeDocs(a, b)
+      const ba = mergeDocs(b, a)
+      for (const doc of [ab, ba]) {
+        expect(doc.payments?.find((p) => p.id === 'l1')?.deletedAt).toBeTruthy()
+        expect(paidFor(doc.payments, 'credit', 'loan', '2026-09')).toBeNull()
+      }
+      expect(balances(ab)).toEqual({ card: 780_000, loan: 1_000_000 })
+      expect(balances(ba)).toEqual(balances(ab))
+    })
   })
 })

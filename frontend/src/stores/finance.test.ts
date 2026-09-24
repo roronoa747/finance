@@ -973,4 +973,261 @@ describe('RP-06: отметки оплат в сторе', () => {
     expect(store.householdDoc.obligations[0].keptAt).toBe('2026-12-01T07:00:00.000Z')
     expect(store.unsent).toBe(true)
   })
+
+  // Критик Блока 1 (dfc7ab0): сдвиг остатка без якоря и правка отметки с моментом оплаты.
+  describe('shiftAccountAmount: сдвиг остатка — не сверка', () => {
+    // Микрозадачи мок-ответа pushPrivateDoc; таймеры не крутим — иначе ушёл бы синк в сеть.
+    const flush = async () => {
+      for (let i = 0; i < 10; i++) await Promise.resolve()
+    }
+    it('взнос в цель после отметки, затем снятие отметки — деньги вернулись; якорь прежний', () => {
+      const { store, card, rent } = family()
+      const anchor = store.householdDoc.accounts[0].amountSetAt
+      expect(anchor).toBe('2026-09-24T07:00:00.000Z')
+      store.markPaid('obligation', rent, 'a', { accountId: card })
+      expect(balance(store, card)).toBe(780_000)
+
+      at('2026-09-24T09:00:00Z')
+      store.shiftAccountAmount(card, -50_000) // как взнос в цель со счёта
+      expect(balance(store, card)).toBe(730_000)
+      expect(store.householdDoc.accounts[0]).toMatchObject({
+        amount: 950_000, amountSetAt: anchor, updatedAt: '2026-09-24T09:00:00.000Z',
+      })
+
+      at('2026-09-24T10:00:00Z')
+      store.unmarkPaid('obligation', rent, '2026-09')
+      // Со сверкой «сейчас» отметка осталась бы в базе и остаток был бы 730 000.
+      expect(balance(store, card)).toBe(950_000)
+      expect(store.householdDoc.accounts[0].amountSetAt).toBe(anchor)
+    })
+
+    it('шаг вниз ниже нуля видимого остатка обрезается до 0; дальше вниз — ничего не пишется', () => {
+      const { store, card, rent } = family()
+      store.markPaid('obligation', rent, 'a', { accountId: card })
+      at('2026-09-24T09:00:00Z')
+      store.shiftAccountAmount(card, -2_000_000)
+      expect(balance(store, card)).toBe(0)
+      // База сдвинута ровно на видимые 780 000, а не на 2 000 000.
+      expect(store.householdDoc.accounts[0].amount).toBe(220_000)
+
+      at('2026-09-24T10:00:00Z')
+      const before = JSON.stringify(store.householdDoc)
+      store.shiftAccountAmount(card, -10_000)
+      expect(JSON.stringify(store.householdDoc)).toBe(before)
+      // Шаг вверх от нуля — как доход.
+      store.shiftAccountAmount(card, 15_000)
+      expect(balance(store, card)).toBe(15_000)
+    })
+
+    it('нулевая дельта и чужой id ничего не пишут', () => {
+      const { store, card } = family()
+      store.setHouseholdDoc(store.householdDoc, 3) // «отправлено»: чистое состояние
+      at('2026-09-24T09:00:00Z')
+      const before = JSON.stringify(store.householdDoc)
+      store.shiftAccountAmount(card, 0)
+      store.shiftAccountAmount('нет-такого', 10_000)
+      expect(JSON.stringify(store.householdDoc)).toBe(before)
+      expect(store.status).toBe('idle')
+      expect(store.unsent).toBe(false)
+    })
+
+    it('общий счёт: правка помечает общий документ неотправленным', () => {
+      const { store, card } = family()
+      store.setHouseholdDoc(store.householdDoc, 3)
+      store.shiftAccountAmount(card, 30_000)
+      expect(balance(store, card)).toBe(1_030_000)
+      expect(store.unsent).toBe(true)
+      expect(store.status).toBe('dirty')
+    })
+
+    it('личный счёт: сдвигается в личном документе, якорь прежний, privateUnsent — как у обычной правки', async () => {
+      const push = vi.spyOn(apiClient, 'pushPrivateDoc').mockImplementation(async (rev, data) => ({
+        household_id: 'h-1', user_id: 'u-1', rev: rev + 1, data, updated_at: '2026-09-24T08:00:00Z',
+      }))
+      try {
+        const { store, rent } = family()
+        store.addAccount({ name: 'Моя карта', kind: 'card', amount: 300_000 }, true)
+        const mine = store.privateAccounts[0].id
+        await flush()
+        expect(store.privateUnsent).toBe(false)
+        at('2026-09-24T09:00:00Z')
+        store.markPaid('obligation', rent, 'a', { accountId: mine })
+        expect(store.privateAccounts[0].amount).toBe(80_000)
+        store.setHouseholdDoc(store.householdDoc, 3)
+        push.mockClear()
+
+        at('2026-09-24T10:00:00Z')
+        store.shiftAccountAmount(mine, -50_000)
+        expect(store.privateUnsent).toBe(true)
+        expect(store.unsent).toBe(false)
+        expect(store.privateAccounts[0].amount).toBe(30_000)
+        const raw = (store.privateDoc.accounts as { amount: number; amountSetAt: string }[])[0]
+        expect(raw).toMatchObject({ amount: 250_000, amountSetAt: '2026-09-24T08:00:00.000Z' })
+        // Общий документ личным счётом не тронут.
+        expect(store.householdDoc.accounts.map((a) => a.id)).not.toContain(mine)
+        expect(push).toHaveBeenCalledTimes(1)
+        await flush()
+        expect(store.privateUnsent).toBe(false)
+
+        // Ниже нуля — обрезка до 0, как у общего.
+        store.shiftAccountAmount(mine, -100_000)
+        expect(store.privateAccounts[0].amount).toBe(0)
+      } finally {
+        push.mockRestore()
+      }
+    })
+  })
+
+  describe('editPaid: правка отметки — новая запись с моментом исходной', () => {
+    it('без сверки 220 000 → 225 000: карта −5 000, новая запись с at исходной, старая — надгробие', () => {
+      const { store, card, rent } = family()
+      const rec = store.markPaid('obligation', rent, 'a', { accountId: card })!
+      expect(balance(store, card)).toBe(780_000)
+
+      at('2026-09-24T09:00:00Z')
+      const next = store.editPaid(rec, { amount: 225_000, accountId: card })!
+      expect(next.id).not.toBe(rec.id)
+      expect(next).toMatchObject({
+        kind: 'obligation', targetId: rent, period: '2026-09', amount: 225_000, accountId: card, by: 'a',
+        at: '2026-09-24T08:00:00.000Z', updatedAt: '2026-09-24T09:00:00.000Z',
+      })
+      expect(balance(store, card)).toBe(775_000)
+      const raw = store.householdDoc.payments!
+      expect(raw).toHaveLength(2)
+      expect(raw.find((p) => p.id === rec.id)).toMatchObject({
+        amount: 220_000, deletedAt: '2026-09-24T09:00:00.000Z', updatedAt: '2026-09-24T09:00:00.000Z',
+      })
+      expect(raw.find((p) => p.id === next.id)!.deletedAt).toBeUndefined()
+    })
+
+    it('после сверки: та же сумма и счёт — ничего не пишет', () => {
+      const { store, card, rent } = family()
+      const rec = store.markPaid('obligation', rent, 'a', { accountId: card })!
+      at('2026-09-24T09:00:00Z')
+      store.setAccountAmount(card, 800_000)
+      store.setHouseholdDoc(store.householdDoc, 3)
+      const before = JSON.stringify(store.householdDoc)
+
+      at('2026-09-24T10:00:00Z')
+      expect(store.editPaid(rec, { amount: 220_000, accountId: card })).toBe(rec)
+      expect(JSON.stringify(store.householdDoc)).toBe(before)
+      expect(store.payments).toHaveLength(1)
+      expect(store.status).toBe('idle')
+      expect(store.unsent).toBe(false)
+      expect(balance(store, card)).toBe(800_000)
+    })
+
+    it('после сверки: правка на 210 000 не списывает второй раз — карта равна сверенной', () => {
+      const { store, card, rent } = family()
+      const rec = store.markPaid('obligation', rent, 'a', { accountId: card })!
+      at('2026-09-24T09:00:00Z')
+      store.setAccountAmount(card, 800_000)
+
+      at('2026-09-24T10:00:00Z')
+      const next = store.editPaid(rec, { amount: 210_000, accountId: card })!
+      expect(next.amount).toBe(210_000)
+      expect(next.at).toBe('2026-09-24T08:00:00.000Z')
+      expect(balance(store, card)).toBe(800_000)
+    })
+
+    it('смена счёта без сверки: деньги ушли с нового счёта и вернулись на старый', () => {
+      const { store, card, rent } = family()
+      store.addAccount({ name: 'Halyk', kind: 'card', amount: 500_000 })
+      const halyk = store.accounts[2].id
+      const rec = store.markPaid('obligation', rent, 'a', { accountId: card })!
+      expect(balance(store, card)).toBe(780_000)
+
+      at('2026-09-24T09:00:00Z')
+      const next = store.editPaid(rec, { amount: 220_000, accountId: halyk })!
+      expect(next).toMatchObject({ amount: 220_000, accountId: halyk, at: '2026-09-24T08:00:00.000Z' })
+      expect(balance(store, card)).toBe(1_000_000)
+      expect(balance(store, halyk)).toBe(280_000)
+      // Счёт по умолчанию следующей оплаты — уже новый (Р-5).
+      at('2026-10-05T05:00:00Z')
+      expect(store.markPaid('obligation', rent, 'a')!.accountId).toBe(halyk)
+    })
+
+    it('кредит: смена счёта долг не меняет; другая сумма — тело за вычетом процентов сентябрьской записи', () => {
+      const { store, card, loan } = family()
+      store.addAccount({ name: 'Halyk', kind: 'card', amount: 500_000 })
+      const halyk = store.accounts[2].id
+      const sep = store.markPaid('credit', loan, 'a', { accountId: card })!
+      expect(sep).toMatchObject({ amount: 58_000, principal: 30_500 }) // проценты 27 500
+      at('2026-10-15T05:00:00Z')
+      const oct = store.markPaid('credit', loan, 'a', { accountId: card })!
+      expect(oct).toMatchObject({ amount: 58_000, principal: 31_339 }) // проценты 26 661
+      expect(store.credits[0].principal).toBe(938_161)
+
+      // Та же сумма, другой счёт: проценты сентября — из записи (27 500), а не от
+      // остатка без сентября (968 661 × 0,33 / 12 = 26 638) — тело то же.
+      at('2026-10-16T05:00:00Z')
+      const moved = store.editPaid(sep, { amount: 58_000, accountId: halyk })!
+      expect(moved).toMatchObject({ period: '2026-09', amount: 58_000, principal: 30_500, accountId: halyk, at: sep.at })
+      expect(store.credits[0].principal).toBe(938_161)
+      expect(balance(store, card)).toBe(942_000)
+      expect(balance(store, halyk)).toBe(442_000)
+
+      // 60 000: тело = 60 000 − 27 500 = 32 500.
+      at('2026-10-17T05:00:00Z')
+      const more = store.editPaid(moved, { amount: 60_000, accountId: halyk })!
+      expect(more).toMatchObject({ amount: 60_000, principal: 32_500 })
+      expect(store.credits[0].principal).toBe(1_000_000 - 32_500 - 31_339)
+      expect(store.credits[0].principal).toBe(936_161)
+      expect(balance(store, halyk)).toBe(440_000)
+      // В базе долга по-прежнему исходный миллион, живых записей — две.
+      expect(store.householdDoc.credits[0].principal).toBe(1_000_000)
+      expect(store.payments.filter((p) => !p.deletedAt)).toHaveLength(2)
+    })
+
+    it('досрочку правкой отметки не поправить — null, ничего не пишется', () => {
+      const { store, card, loan } = family()
+      const rec = store.applyPrepayment(loan, 'a', { amount: 100_000, mode: 'term', accountId: card })!
+      const before = JSON.stringify(store.householdDoc)
+      at('2026-09-24T09:00:00Z')
+      expect(store.editPaid(rec, { amount: 50_000, accountId: card })).toBeNull()
+      expect(JSON.stringify(store.householdDoc)).toBe(before)
+      expect(store.credits[0].principal).toBe(900_000)
+    })
+  })
+
+  it('кредит «оплатил» другой суммой (70 000): проценты по графику, остальное в тело', () => {
+    const { store, card, loan } = family()
+    const rec = store.markPaid('credit', loan, 'a', { amount: 70_000, accountId: card })!
+    // 1 000 000 × 0,33 / 12 = 27 500 процентов, тело 42 500.
+    expect(rec).toMatchObject({ period: '2026-09', amount: 70_000, principal: 42_500 })
+    expect(store.credits[0].principal).toBe(957_500)
+    expect(balance(store, card)).toBe(930_000)
+    // Платёж кредита по графику не изменился.
+    expect(store.credits[0].payment).toBe(58_000)
+  })
+
+  it('досрочка больше остатка (1 200 000, «снизить платёж») — списывается ровно долг, платёж не трогается', () => {
+    const { store, card, loan } = family()
+    const rec = store.applyPrepayment(loan, 'a', { amount: 1_200_000, mode: 'payment', accountId: card })!
+    expect(rec).toMatchObject({ kind: 'prepay', amount: 1_000_000, principal: 1_000_000, mode: 'payment' })
+    expect(rec.prevPayment).toBeUndefined()
+    expect(rec.newPayment).toBeUndefined()
+    expect(balance(store, card)).toBe(0)
+    expect(store.credits[0]).toMatchObject({ principal: 0, payment: 58_000 })
+    // Закрытый долг платежа не ждёт.
+    expect(store.markPaid('credit', loan, 'a')).toBeNull()
+  })
+
+  describe('граница месяца по Алматы (UTC+5), а не по поясу машины', () => {
+    it('30 сентября 19:30Z = 1 октября 00:30 в Алматы: отметка и досрочка — октябрь', () => {
+      const { store, card, rent, loan } = family()
+      at('2026-09-30T19:30:00Z')
+      expect(store.markPaid('obligation', rent, 'a', { accountId: card })!.period).toBe('2026-10')
+      expect(store.markPaid('credit', loan, 'a', { accountId: card })!.period).toBe('2026-10')
+      expect(store.applyPrepayment(loan, 'a', { amount: 100_000, mode: 'term', accountId: card })!.period).toBe('2026-10')
+    })
+
+    it('30 сентября 18:30Z = 23:30 в Алматы: ещё сентябрь', () => {
+      const { store, card, rent, loan } = family()
+      at('2026-09-30T18:30:00Z')
+      expect(store.markPaid('obligation', rent, 'a', { accountId: card })!.period).toBe('2026-09')
+      expect(store.markPaid('credit', loan, 'a', { accountId: card })!.period).toBe('2026-09')
+      expect(store.applyPrepayment(loan, 'a', { amount: 100_000, mode: 'term', accountId: card })!.period).toBe('2026-09')
+    })
+  })
 })
