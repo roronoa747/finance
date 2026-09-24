@@ -345,8 +345,23 @@ describe('stores/finance.ts — Pinia хранилище казны и синх�
 
     push.reject(new Error('network'))
     await syncing
-    expect(store.status).toBe('error')
+    // RP-04: запрос не дошёл до сервера — «нет сети», а не «не сошлось».
+    expect(store.status).toBe('offline')
+    expect(store.unsent).toBe(true)
     expect(store.people.map((p) => p.name)).toEqual(['Ильяс'])
+  })
+
+  it('RP-04: без связи с сервером (fetch упал) — «нет сети»; ответ сервера с ошибкой — «не сошлось»', async () => {
+    const store = useFinanceStore()
+    const failFetch = { getHouseholdDoc: vi.fn().mockRejectedValue(new TypeError('Failed to fetch')) } as unknown as ApiClient
+    await store.pullHousehold(failFetch)
+    expect(store.status).toBe('offline')
+    await store.syncHousehold(failFetch)
+    expect(store.status).toBe('offline')
+
+    const serverSaysNo = { getHouseholdDoc: vi.fn().mockRejectedValue(new ApiError('internal', 500)) } as unknown as ApiClient
+    await store.syncHousehold(serverSaysNo)
+    expect(store.status).toBe('error')
   })
 
   it('правка во время push не теряется: остаётся dirty и уходит следующим кругом', async () => {

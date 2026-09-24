@@ -48,6 +48,13 @@ function readStorage<T>(key: string, fallback: T): T {
   }
 }
 
+// Запрос не дошёл до сервера (fetch бросил не ApiError) — это «нет сети», а не «не
+// сошлось». navigator.onLine на это не годится: после перезагрузки без сети и в сети
+// без интернета он бывает true.
+function unreachable(err: unknown): boolean {
+  return !(err instanceof ApiError)
+}
+
 // Правка, которая ничего не меняет, не пишется: свежий updatedAt без изменения
 // выиграл бы слияние по времени у настоящей правки с другого устройства.
 function unchanged<T extends object>(cur: T | undefined, patch: Partial<T>): boolean {
@@ -245,7 +252,7 @@ export const useFinanceStore = defineStore('finance', () => {
       } catch (err) {
         if (s !== session) return
         const msg = err instanceof Error ? err.message : String(err)
-        status.value = 'error'
+        status.value = unreachable(err) ? 'offline' : 'error'
         lastError.value = `Ошибка загрузки бюджета с сервера: ${msg}`
         return
       }
@@ -306,7 +313,7 @@ export const useFinanceStore = defineStore('finance', () => {
     } catch (err) {
       if (s !== session) return
       const msg = err instanceof Error ? err.message : String(err)
-      status.value = 'error'
+      status.value = unreachable(err) ? 'offline' : 'error'
       lastError.value = msg
     } finally {
       isSyncing = false
@@ -348,7 +355,9 @@ export const useFinanceStore = defineStore('finance', () => {
       lastError.value = msg
       // Иначе фоновый pull с истёкшим входом молча показывал бы «синхронизировано»;
       // 'error' заставит следующий круг движка пройти полный синк и показать причину.
-      if (status.value === 'idle') status.value = 'error'
+      if (unreachable(err)) {
+        if (!isSyncing) status.value = 'offline'
+      } else if (status.value === 'idle') status.value = 'error'
       return null
     }
   }
