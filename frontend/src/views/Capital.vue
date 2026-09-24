@@ -46,7 +46,6 @@ import {
   payableAccounts,
   lumpPlan,
   lumpSum,
-  monthlyAmount,
   netWorth,
   nextChange,
   nextCreditDue,
@@ -55,10 +54,8 @@ import {
   prepaySaved,
   prepayment,
   rateFromSchedule,
-  simulateStrategy,
   type Due,
   type LumpMode,
-  type StrategyResult,
 } from '@/lib/finance'
 import type { Account, Credit, Currency, Obligation, Payment, Person, PersonId } from '@/types/finance'
 import type { CategoryKey } from '@/lib/palette'
@@ -78,7 +75,16 @@ import Tag from '@/components/kit/Tag.vue'
 import DangerZone from '@/components/kit/DangerZone.vue'
 import Button from '@/components/ui/Button.vue'
 import PaidRow from '@/components/PaidRow.vue'
+import StrategyCompare from '@/components/StrategyCompare.vue'
 import Input from '@/components/ui/Input.vue'
+
+const props = withDefaults(
+  defineProps<{
+    /** Вкладка «Что гасить первым» на старте — для SSR-тестов. */
+    initialAdvice?: 'order' | 'strategy'
+  }>(),
+  { initialAdvice: 'order' },
+)
 
 const router = useRouter()
 const route = useRoute()
@@ -383,7 +389,7 @@ const groupCandidates = computed(() =>
 )
 
 /* ------------------ Анализ долгов (DebtAdvice) ------------------ */
-const adviceView = ref<'order' | 'strategy'>('order')
+const adviceView = ref<'order' | 'strategy'>(props.initialAdvice)
 const rankedDebts = computed(() =>
   costliestCredits(credits.value).map((c) => ({
     credit: c,
@@ -409,52 +415,6 @@ const worstGain = computed(() =>
         worstHalfExtra.value,
       )
     : null,
-)
-
-/* ------------------ Симулятор стратегий ------------------ */
-const stratMonths = ref<12 | 24 | 36>(36)
-const stratCushion = ref(true)
-
-// Закрытый кредит в стратегию не передаётся: его платёж стал бы «лишними деньгами».
-const stratDebts = computed(() =>
-  openCredits(credits.value).map((c) => ({
-    principal: c.principal,
-    annualRate: c.annualRate,
-    payment: c.payment,
-  })),
-)
-const stratSaving = computed(() => goals.value.reduce((a, g) => a + g.monthly, 0))
-const stratStart = computed(() => goals.value.reduce((a, g) => a + Math.max(0, g.have), 0))
-const stratMandatory = computed(
-  () =>
-    obligations.value.reduce((a, o) => a + monthlyAmount(o, key.value), 0) +
-    openCredits(credits.value).reduce((a, c) => a + c.payment, 0),
-)
-const stratBuffer = computed(() =>
-  stratCushion.value ? Math.round(stratMandatory.value / 1000) * 1000 : 0,
-)
-
-const stratA = computed<StrategyResult>(() =>
-  simulateStrategy({
-    debts: stratDebts.value,
-    saving: stratSaving.value,
-    keep: stratSaving.value,
-    payDebts: false,
-    start: stratStart.value,
-    months: stratMonths.value,
-  }),
-)
-const stratB = computed<StrategyResult>(() =>
-  simulateStrategy({
-    debts: stratDebts.value,
-    saving: stratSaving.value,
-    keep: 0,
-    payDebts: true,
-    start: stratStart.value,
-    months: stratMonths.value,
-    buffer: stratBuffer.value,
-    lump: 0,
-  }),
 )
 
 /* ------------------ Модалка детального счета ------------------ */
@@ -926,35 +886,13 @@ onUnmounted(() => {
         </div>
 
         <!-- Копить или гасить -->
-        <div v-else class="flex flex-col gap-3">
-          <div class="flex gap-2">
-            <div class="flex-1 rounded-xl border border-line bg-surface-2 p-3 text-left">
-              <div class="text-[12px] font-medium text-ink-3">Копить как сейчас</div>
-              <div class="mt-1 font-display text-[16px] font-semibold num text-ink">
-                {{ money(Math.round(stratA.savings)) }}
-              </div>
-              <div class="text-[11.5px] text-ink-3 mt-1">долг: {{ money(Math.round(stratA.debtLeft)) }}</div>
-              <div class="text-[11.5px] text-warn">проценты: {{ money(Math.round(stratA.interestTotal)) }}</div>
-            </div>
-            <div class="flex-1 rounded-xl border border-brand bg-brand-soft p-3 text-left">
-              <div class="text-[12px] font-medium text-brand">Сначала гасить</div>
-              <div class="mt-1 font-display text-[16px] font-semibold num text-brand">
-                {{ money(Math.round(stratB.savings)) }}
-              </div>
-              <div class="text-[11.5px] text-ink-3 mt-1">долг: {{ money(Math.round(stratB.debtLeft)) }}</div>
-              <div class="text-[11.5px] text-warn">проценты: {{ money(Math.round(stratB.interestTotal)) }}</div>
-            </div>
-          </div>
-
-          <div
-            v-if="stratB.net - stratA.net > 0"
-            class="rounded-xl border border-brand/40 bg-brand-soft/60 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-2"
-          >
-            При стратегии «сначала гасить» чистая выгода составит
-            <b class="text-brand">{{ money(Math.round(stratB.net - stratA.net)) }}</b>
-            за {{ stratMonths }} мес.
-          </div>
-        </div>
+        <StrategyCompare
+          v-else
+          :credits="openCredits(credits)"
+          :goals="goals"
+          :obligations="obligations"
+          :month-key="key"
+        />
       </Card>
     </template>
 

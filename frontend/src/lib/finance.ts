@@ -467,6 +467,86 @@ export function simulateStrategy(opts: {
   return { ...result, interestTotal: interest, debtFreeMonth }
 }
 
+export type StrategyInputs = {
+  debts: StrategyDebt[]
+  /** Сколько сейчас уходит в цели за месяц. */
+  saving: number
+  /** Из них — взносы целей, которые не останавливать. */
+  keep: number
+  /** Уже накоплено во всех целях. */
+  start: number
+  /** Накоплено в целях, которые можно трогать (не отмеченных). */
+  movable: number
+  /** Месяц обязательных списаний: живые платежи и платежи по долгам. */
+  mandatory: number
+  /** Подушка — тот же месяц, до тысяч; видна и при снятой галке. */
+  cushionSize: number
+  /** Подушка, которую «Сначала долги» набирает до досрочек: 0 без галки. */
+  buffer: number
+  /** Что из накопленного можно вложить в долги: неотмеченные цели минус подушка. */
+  spare: number
+  /** Сколько из накопленного вкладывается сразу: `spare` с галкой, иначе 0. */
+  lump: number
+  /** Беспроцентные долги с остатком — досрочно не гасятся. */
+  interestFree: Credit[]
+  /** Сколько взносов в месяц «Сначала долги» направляет в долги. */
+  redirected: number
+}
+
+/**
+ * Входы калькулятора «копить или гасить» — формулы React `StrategyCompare`.
+ * Кредиты — производные (геттер стора); закрытые и удалённые отсекаются здесь
+ * же: платёж закрытого стал бы в `simulateStrategy` «лишними деньгами».
+ * Какая цель — страховка, решают люди галочкой (`kept`), по названию не угадываем.
+ */
+export function strategyInputs(opts: {
+  credits: Credit[]
+  goals: Goal[]
+  obligations: Obligation[]
+  key: string
+  /** id целей, которые не останавливать. */
+  kept: string[]
+  cushion: boolean
+  useSaved: boolean
+}): StrategyInputs {
+  const credits = openCredits(opts.credits)
+  const goals = liveGoals(opts.goals)
+  const kept = goals.filter((g) => opts.kept.includes(g.id))
+  const free = goals.filter((g) => !opts.kept.includes(g.id))
+  const have = (list: Goal[]) => list.reduce((a, g) => a + Math.max(0, g.have), 0)
+
+  const debts = credits.map((c) => ({ principal: c.principal, annualRate: c.annualRate, payment: c.payment }))
+  const saving = goals.reduce((a, g) => a + g.monthly, 0)
+  const keep = kept.reduce((a, g) => a + g.monthly, 0)
+  const start = have(goals)
+  const movable = have(free)
+  // Годовые платежи входят долей месяца — отсюда дробь; наружу — целые.
+  const month =
+    liveObligations(opts.obligations).reduce((a, o) => a + monthlyAmount(o, opts.key), 0) +
+    credits.reduce((a, c) => a + c.payment, 0)
+  const cushionSize = Math.round(month / 1000) * 1000
+  const buffer = opts.cushion ? cushionSize : 0
+  const spare = Math.max(0, movable - buffer)
+
+  return {
+    debts,
+    saving,
+    keep,
+    start,
+    movable,
+    mandatory: Math.round(month),
+    cushionSize,
+    buffer,
+    spare,
+    lump: opts.useSaved ? spare : 0,
+    interestFree: credits.filter((c) => c.annualRate === 0 && c.principal > 0),
+    redirected: saving - keep,
+  }
+}
+
+/** Насколько «Сначала долги» богаче «Копим как сейчас» к горизонту; минус — копить выгоднее. */
+export const strategyGain = (a: StrategyResult, b: StrategyResult) => Math.round(b.net - a.net)
+
 
 /* ---------------- производные величины и расчеты бюджетов ---------------- */
 
