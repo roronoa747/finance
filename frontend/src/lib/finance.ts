@@ -446,6 +446,15 @@ export function salaryAt(p: Person, key = monthKey()): number {
   return v.length ? v[v.length - 1].amount : p.salary;
 }
 
+/** Ближайшее запланированное изменение оклада. */
+export function nextSalaryChange(p: Person, key = monthKey()) {
+  const future = (p.salaryVersions ?? [])
+    .filter((x) => x.from > key)
+    .sort((a, b) => a.from.localeCompare(b.from));
+  if (!future.length) return null;
+  return { ...future[0], delta: future[0].amount - salaryAt(p, key) };
+}
+
 /** Совокупный доход участников. */
 export const totalIncome = (people: Person[], key = monthKey()) =>
   (people || []).filter(alive).reduce((a, p) => a + salaryAt(p, key), 0);

@@ -57,8 +57,10 @@ function handleClick(e: MouseEvent) {
       <span v-if="note" class="block text-[12.5px] text-ink-3">{{ note }}</span>
     </span>
 
-    <span v-if="value !== undefined || sub" class="shrink-0 text-right">
-      <span v-if="value !== undefined" class="block text-[14.5px] font-semibold num text-ink">{{ value }}</span>
+    <span v-if="value !== undefined || sub || $slots.value" class="shrink-0 text-right">
+      <slot name="value">
+        <span v-if="value !== undefined" class="block text-[14.5px] font-semibold num text-ink">{{ value }}</span>
+      </slot>
       <span v-if="sub" class="block text-[12px] text-ink-3">{{ sub }}</span>
     </span>
 

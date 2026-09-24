@@ -7,6 +7,7 @@ import Access from '@/views/Access.vue'
 import Setup from '@/views/Setup.vue'
 import AppShell from '@/components/AppShell.vue'
 import Overview from '@/views/Overview.vue'
+import Budget from '@/views/Budget.vue'
 import PlaceholderView from '@/views/PlaceholderView.vue'
 
 export const routes: RouteRecordRaw[] = [
@@ -35,7 +36,7 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'budget',
         name: 'budget',
-        component: PlaceholderView,
+        component: Budget,
       },
       {
         path: 'goals',

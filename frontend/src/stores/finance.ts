@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { mergeDocs, isEmptyDoc } from '@/lib/merge'
+import { monthKey } from '@/lib/dates'
 import type { SyncDoc, SyncStatus, Person, PersonId } from '@/types/finance'
 import type { CategoryKey, HueKey } from '@/lib/palette'
 import type { ConflictResponse, HouseholdDocResponse } from '@/types/api'
@@ -375,6 +376,47 @@ export const useFinanceStore = defineStore('finance', () => {
     });
   }
 
+  function amendSalary(id: PersonId, from: string, amount: number, reason?: string) {
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      const p = doc.people.find((x) => x.id === id)
+      if (!p) return
+      const base = p.salaryVersions?.length
+        ? p.salaryVersions
+        : [{ from: '2000-01', amount: p.salary }]
+      const versions = [...base.filter((v) => v.from !== from), { from, amount, reason }]
+        .sort((a, b) => a.from.localeCompare(b.from))
+      p.salaryVersions = versions
+      p.updatedAt = t
+    })
+  }
+
+  function correctSalary(id: PersonId, amount: number) {
+    const t = new Date().toISOString()
+    const key = monthKey()
+    mutateHouseholdDoc((doc) => {
+      const p = doc.people.find((x) => x.id === id)
+      if (!p) return
+      const cur = (p.salaryVersions ?? []).filter((v) => v.from <= key).pop()
+      p.salary = amount
+      if (cur && p.salaryVersions) {
+        p.salaryVersions = p.salaryVersions.map((v) => (v.from === cur.from ? { ...v, amount } : v))
+      }
+      p.updatedAt = t
+    })
+  }
+
+  function setGoalMonthly(id: string, monthly: number) {
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      const g = doc.goals.find((x) => x.id === id)
+      if (g) {
+        g.monthly = monthly
+        g.updatedAt = t
+      }
+    })
+  }
+
   function resetAll() {
     resetDoc();
   }
@@ -406,6 +448,9 @@ export const useFinanceStore = defineStore('finance', () => {
     pushPrivateDoc,
     scheduleSync,
     setPerson,
+    correctSalary,
+    amendSalary,
+    setGoalMonthly,
     addObligation,
     addCredit,
     addGoal,
