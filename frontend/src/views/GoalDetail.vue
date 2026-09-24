@@ -3,8 +3,8 @@ import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { PhArrowLeft, PhPencilSimple, PhPlus, PhMinus, PhX } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
-import { money, plain, parseMoney } from '@/lib/money'
-import { goalMonths, goalMonthly } from '@/lib/finance'
+import { money, plain, parseMoney, ratePct } from '@/lib/money'
+import { INFLATION, goalMonths, goalMonthly, indexedNeed } from '@/lib/finance'
 import { addMonths, monthAfter, monthInAfter, monthKey, monthTitle } from '@/lib/dates'
 import { contributionStreak } from '@/lib/finance'
 import { HUES, HUE_KEYS, hueColor, type HueKey } from '@/lib/palette'
@@ -39,6 +39,8 @@ const accounts = computed(() => financeStore.accounts)
 const remaining = computed(() => (goal.value ? Math.max(0, goal.value.need - goal.value.have) : 0))
 const months = computed(() => (goal.value ? goalMonths(remaining.value, goal.value.monthly) : 1))
 const progress = computed(() => (goal.value && goal.value.need > 0 ? goal.value.have / goal.value.need : 0))
+// Во сколько обойдётся та же цель к сроку, если она дорожает вместе с рынком; взнос 0 — прогноза нет.
+const indexed = computed(() => (goal.value ? indexedNeed(goal.value.need, months.value) : null))
 
 const minMonthly = computed(() => (goal.value ? Math.max(5_000, Math.round((goal.value.monthly * 0.4) / 5_000) * 5_000) : 5_000))
 const maxMonthly = computed(() => (goal.value ? Math.max(minMonthly.value + 5_000, Math.round((goal.value.monthly * 2.6) / 5_000) * 5_000) : 100_000))
@@ -220,8 +222,9 @@ function saveEdit() {
       </Button>
     </div>
 
-    <Callout title="Дисциплина накоплений" tone="good">
-      Регулярные пополнения помогают закрыть цель быстрее и защитить сбережения.
+    <Callout v-if="indexed !== null" title="Цель дорожает вместе с рынком">
+      При инфляции {{ ratePct(INFLATION, 1) }} в год к моменту достижения
+      такая же покупка будет стоить около {{ money(indexed) }}. Расчёт выше — в сегодняшних деньгах.
     </Callout>
 
     <!-- Ритм цели -->

@@ -176,6 +176,31 @@ export function realRate(nominal: number, inflation: number): number {
   return (1 + nominal) / (1 + inflation) - 1
 }
 
+/**
+ * Инфляция в год — одна на приложение (Р-19). В React это была настройка
+ * устройства без UI, то есть фактически константа; поля в документе и стора
+ * настроек нет.
+ */
+export const INFLATION = 0.102
+
+/**
+ * Во что обойдётся та же цель через `months` месяцев, если она дорожает вместе
+ * с рынком. null — взнос 0, срок не наступит, и прогноза нет.
+ */
+export function indexedNeed(need: number, months: number, inflation = INFLATION): number | null {
+  if (!Number.isFinite(months)) return null
+  return Math.round(need * Math.pow(1 + inflation, months / 12))
+}
+
+/**
+ * Сколько лежит в цели: стартовое накопленное плюс все движения. Меньше нуля не
+ * бывает — снятие сверх накопленного пишется в историю целиком, а остаток 0.
+ * Одна формула для стора и слияния, иначе телефоны покажут разное.
+ */
+export function goalHave(seed: number | undefined, movements: { amount: number }[] = []): number {
+  return Math.max(0, (seed ?? 0) + movements.reduce((a, m) => a + m.amount, 0))
+}
+
 /** Сколько месяцев копить остаток при заданном взносе. */
 export function goalMonths(remaining: number, monthly: number): number {
   if (monthly <= 0) return Infinity

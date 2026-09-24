@@ -13,6 +13,9 @@ import {
   realRate,
   goalMonths,
   goalMonthly,
+  goalHave,
+  indexedNeed,
+  INFLATION,
   emergencyTarget,
   emergencyCoverage,
   debtCost,
@@ -1109,5 +1112,24 @@ describe('PV-03 — долг «по сроку»', () => {
     expect(installmentMonths(1_000_000, 10_000)).toBe(100)
     expect(installmentMonths(1_000_000, 30_000)).toBe(34)
     expect(installmentMonths(1_000_000, 0)).toBe(0)
+  })
+})
+
+describe('PV-04 — накопленное и прогноз цели', () => {
+  it('goalHave: seed + движения, не ниже нуля; без движений — seed', () => {
+    expect(goalHave(100_000, [{ amount: 50_000 }, { amount: -20_000 }])).toBe(130_000)
+    expect(goalHave(100_000, [{ amount: -150_000 }])).toBe(0)
+    expect(goalHave(undefined, [{ amount: 30_000 }])).toBe(30_000)
+    expect(goalHave(70_000)).toBe(70_000)
+  })
+
+  it('indexedNeed: цена цели через N месяцев при инфляции 10,2%; взнос 0 (Infinity) — null; целое', () => {
+    expect(INFLATION).toBe(0.102)
+    expect(indexedNeed(1_000_000, 24)).toBe(Math.round(1_000_000 * 1.102 ** 2))
+    expect(indexedNeed(1_000_000, 24)).toBe(1_214_404)
+    expect(indexedNeed(1_000_000, Infinity)).toBeNull()
+    const v = indexedNeed(777_777, 7)!
+    expect(Number.isInteger(v)).toBe(true)
+    expect(indexedNeed(1_000_000, 12, 0.08)).toBe(1_080_000)
   })
 })

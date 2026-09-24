@@ -5,7 +5,8 @@ import { useAuthStore } from './auth'
 import { ApiClient, ApiError, apiClient } from '@/api/client'
 import type { SyncDoc, Goal, Person, PersonId } from '@/types/finance'
 import type { HouseholdDocResponse, ConflictResponse } from '@/types/api'
-import { annuityMonths, lumpPlan, nextObligationDue, prepaySaved } from '@/lib/finance'
+import { annuityMonths, goalHave, lumpPlan, nextObligationDue, prepaySaved } from '@/lib/finance'
+import { mergeDocs } from '@/lib/merge'
 
 describe('stores/finance.ts — Pinia хранилище казны и синхронизация', () => {
   const storageMap = new Map<string, string>()
@@ -1229,5 +1230,45 @@ describe('RP-06: отметки оплат в сторе', () => {
       expect(store.markPaid('credit', loan, 'a', { accountId: card })!.period).toBe('2026-09')
       expect(store.applyPrepayment(loan, 'a', { amount: 100_000, mode: 'term', accountId: card })!.period).toBe('2026-09')
     })
+  })
+})
+
+describe('PV-04: накопленное в цели не уходит в минус', () => {
+  const storage = new Map<string, string>()
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('снять больше накопленного — 0, движение записано полной суммой; следующий взнос — от seed + Σ, не от 0', () => {
+    const store = useFinanceStore()
+    store.addGoal({ name: 'Отпуск', need: 1_000_000, have: 100_000, monthly: 50_000, hue: 'teal' })
+    const id = store.goals[0].id
+
+    store.withdraw(id, 150_000, 'a')
+    expect(store.goals[0].have).toBe(0)
+    expect(store.goals[0].movements.map((m) => m.amount)).toEqual([-150_000])
+
+    // 100 000 − 150 000 + 80 000 = 30 000: история не режется, минус не «прощается».
+    store.contribute(id, 80_000, 'b')
+    expect(store.goals[0].have).toBe(30_000)
+    expect(goalHave(store.goals[0].seed, store.goals[0].movements)).toBe(30_000)
+
+    // Слияние с самим собой (как второй телефон после синка) — то же число.
+    const merged = mergeDocs(JSON.parse(JSON.stringify(store.householdDoc)), JSON.parse(JSON.stringify(store.householdDoc)))
+    expect(merged.goals[0].have).toBe(30_000)
   })
 })
