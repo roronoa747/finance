@@ -15,12 +15,20 @@ func RunMigrations(ctx context.Context, database *sql.DB, migrationsFS fs.FS) er
 		return fmt.Errorf("database connection is nil")
 	}
 
-	// Acquire advisory lock to prevent race conditions during migrations across multiple replicas
-	if _, err := database.ExecContext(ctx, `SELECT pg_advisory_lock(hashtext('migrations'));`); err != nil {
+	// Acquire advisory lock to prevent race conditions during migrations across multiple replicas.
+	// The lock belongs to a session, so lock and unlock must share one pinned connection:
+	// through the pool they could land on different sessions and leak the lock.
+	lockConn, err := database.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection for migration lock: %w", err)
+	}
+	defer lockConn.Close()
+
+	if _, err := lockConn.ExecContext(ctx, `SELECT pg_advisory_lock(hashtext('migrations'));`); err != nil {
 		return fmt.Errorf("failed to acquire migration advisory lock: %w", err)
 	}
 	defer func() {
-		_, _ = database.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtext('migrations'));`)
+		_, _ = lockConn.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtext('migrations'));`)
 	}()
 
 	// Ensure schema_migrations table exists
