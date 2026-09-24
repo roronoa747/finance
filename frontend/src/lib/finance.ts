@@ -481,6 +481,28 @@ export const liveGoals = (goals: Goal[]) => (goals || []).filter(alive);
 export const liveObligations = (list: Obligation[]) => (list || []).filter((o) => alive(o) && !o.group);
 export const liveGroups = (list: Obligation[]) => (list || []).filter((o) => alive(o) && !!o.group);
 export const liveCredits = (list: Credit[]) => (list || []).filter(alive);
+/**
+ * Открытые кредиты — живые, по которым ещё есть что платить. Закрытый отметками
+ * (остаток 0, строка остаётся с «долг закрыт») не входит ни в бюджет, ни в
+ * стратегию, ни в Ритуал.
+ *
+ * Принимает **производные** кредиты — геттер `financeStore.credits`, где остаток
+ * уже выведен из отметок (RP-06). Сырой документ не давать: там `principal` —
+ * база последней сверки, закрытость в нём не видна.
+ */
+export const openCredits = (list: Credit[]) => liveCredits(list).filter((c) => c.principal > 0);
+/**
+ * Долги, которые стоит гасить досрочно: открытые с процентами, самый дорогой
+ * первым (при равной ставке — тот, что больше съедает процентами в месяц).
+ * Беспроцентные досрочно не гасятся: они ничего не стоят. Кредиты — производные,
+ * как у `openCredits`.
+ */
+export const costliestCredits = (list: Credit[]) =>
+  openCredits(list)
+    .filter((c) => c.annualRate > 0)
+    .map((c) => ({ c, interest: debtCost(c.principal, c.annualRate, c.payment).monthlyInterest }))
+    .sort((a, b) => b.c.annualRate - a.c.annualRate || b.interest - a.interest)
+    .map((x) => x.c);
 export const liveAccounts = (list: Account[]) => (list || []).filter(alive);
 /** Счета, с которых списывают платежи: живые, в тенге (валюта платежей — не-скоуп, Р-1). */
 export const payableAccounts = (list: Account[]) => liveAccounts(list).filter((a) => (a.currency ?? 'KZT') === 'KZT');
@@ -630,7 +652,10 @@ export function hasBudgetData(state: {
   );
 }
 
-/** Суммы по 5 разделам бюджета. */
+/**
+ * Суммы по 5 разделам бюджета. Кредиты — производные (геттер стора): платёж
+ * закрытого кредита в «Кредиты» не входит и освобождает «Свободно».
+ */
 export function budgetAmounts(state: {
   categories?: Category[];
   obligations?: Obligation[];
@@ -652,7 +677,7 @@ export function budgetAmounts(state: {
     .filter((o) => o.category !== 'd1' && o.category !== 'd2')
     .reduce((a, o) => a + monthlyAmount(o, key), 0);
   const debts =
-    liveCredits(credits).reduce((a, c) => a + c.payment, 0) +
+    openCredits(credits).reduce((a, c) => a + c.payment, 0) +
     liveObligations(obligations)
       .filter((o) => o.category === 'd2')
       .reduce((a, o) => a + monthlyAmount(o, key), 0);

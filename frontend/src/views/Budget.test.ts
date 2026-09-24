@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { createSSRApp } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -316,5 +316,65 @@ describe('views/Budget.vue — План, Календарь, Список и о�
     const appModel = createSSRApp(Input, { modelValue: 'Динара', defaultValue: 'Ильяс' })
     const htmlModel = await renderToString(appModel)
     expect(htmlModel).toContain('value="Динара"')
+  })
+})
+
+describe('PV-01 — закрытый кредит вне бюджета', () => {
+  const storage = new Map<string, string>()
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    // Таймеры подделаны: запланированный синк не уходит в сеть.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  async function render(view: 'plan' | 'calendar') {
+    const app = createSSRApp(Budget, { initialView: view })
+    app.use(createAppRouter(createMemoryHistory()))
+    return renderToString(app)
+  }
+
+  it('кредит закрыт досрочкой на всю сумму → «Свободно» выросло ровно на его платёж, «Кредиты» без него', async () => {
+    const store = useFinanceStore()
+    store.householdDoc.people = [{ id: 'a', name: 'Ильяс', salary: 1_000_000, payday: 10, updatedAt: '' }]
+    store.householdDoc.categories = [{ key: 'd4', name: 'Еда и быт', note: '', amount: 200_000, updatedAt: '' }]
+    store.householdDoc.accounts = [{ id: 'card', name: 'Kaspi', note: '', kind: 'card', amount: 2_000_000, updatedAt: '' }]
+    store.householdDoc.credits = [
+      { id: 'cr-a', name: 'Рассрочка', note: '', principal: 300_000, annualRate: 0.24, payment: 60_000, day: 12, updatedAt: '' },
+      { id: 'cr-b', name: 'Банк', note: '', principal: 1_000_000, annualRate: 0.18, payment: 91_680, day: 20, updatedAt: '' },
+    ]
+
+    // До закрытия: 1 000 000 − 151 680 − 200 000.
+    const before = budgetAmounts({ ...store.householdDoc, credits: store.credits })
+    expect(before).toMatchObject({ d2: 151_680, d5: 648_320 })
+    expect(await render('plan')).toContain(money(648_320))
+    expect(await render('calendar')).toContain(money(151_680))
+
+    store.applyPrepayment('cr-a', 'a', { amount: store.credits[0].principal, mode: 'term', accountId: 'card' })
+    expect(store.credits[0].principal).toBe(0)
+
+    const after = budgetAmounts({ ...store.householdDoc, credits: store.credits })
+    expect(after.d2).toBe(91_680)
+    expect(after.d5 - before.d5).toBe(60_000)
+    const plan = await render('plan')
+    expect(plan).toContain(money(708_320))
+    expect(plan).not.toContain(money(648_320))
+    const calendar = await render('calendar')
+    expect(calendar).toContain(money(91_680))
+    expect(calendar).not.toContain(money(151_680))
+    // Сырой документ закрытость не видит — поэтому экраны передают производные кредиты.
+    expect(budgetAmounts(store.householdDoc).d2).toBe(151_680)
   })
 })

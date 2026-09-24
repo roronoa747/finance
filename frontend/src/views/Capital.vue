@@ -30,6 +30,7 @@ import {
   amountAt,
   annuityMonths,
   annuityTotal,
+  costliestCredits,
   debtCost,
   goalSavings,
   groupChildren,
@@ -50,6 +51,7 @@ import {
   nextChange,
   nextCreditDue,
   nextObligationDue,
+  openCredits,
   prepaySaved,
   prepayment,
   rateFromSchedule,
@@ -383,14 +385,10 @@ const groupCandidates = computed(() =>
 /* ------------------ Анализ долгов (DebtAdvice) ------------------ */
 const adviceView = ref<'order' | 'strategy'>('order')
 const rankedDebts = computed(() =>
-  credits.value
-    .map((c) => ({ credit: c, cost: debtCost(c.principal, c.annualRate, c.payment) }))
-    .filter((x) => x.credit.annualRate > 0 && x.credit.principal > 0)
-    .sort(
-      (a, b) =>
-        b.credit.annualRate - a.credit.annualRate ||
-        b.cost.monthlyInterest - a.cost.monthlyInterest,
-    ),
+  costliestCredits(credits.value).map((c) => ({
+    credit: c,
+    cost: debtCost(c.principal, c.annualRate, c.payment),
+  })),
 )
 const worstDebt = computed(() => rankedDebts.value[0] || null)
 const worstHalfExtra = computed(() =>
@@ -417,8 +415,9 @@ const worstGain = computed(() =>
 const stratMonths = ref<12 | 24 | 36>(36)
 const stratCushion = ref(true)
 
+// Закрытый кредит в стратегию не передаётся: его платёж стал бы «лишними деньгами».
 const stratDebts = computed(() =>
-  credits.value.map((c) => ({
+  openCredits(credits.value).map((c) => ({
     principal: c.principal,
     annualRate: c.annualRate,
     payment: c.payment,
@@ -429,7 +428,7 @@ const stratStart = computed(() => goals.value.reduce((a, g) => a + Math.max(0, g
 const stratMandatory = computed(
   () =>
     obligations.value.reduce((a, o) => a + monthlyAmount(o, key.value), 0) +
-    credits.value.reduce((a, c) => a + c.payment, 0),
+    openCredits(credits.value).reduce((a, c) => a + c.payment, 0),
 )
 const stratBuffer = computed(() =>
   stratCushion.value ? Math.round(stratMandatory.value / 1000) * 1000 : 0,

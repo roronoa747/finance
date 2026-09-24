@@ -34,6 +34,8 @@ import {
   lumpPlan,
   prepaySaved,
   budgetAmounts,
+  openCredits,
+  costliestCredits,
   dueIn,
   groupTotal,
   groupChildren,
@@ -915,5 +917,54 @@ describe('RP-09 — группы подписок и «оставить?»', () 
       sub('icloud', 11_990, { every: 'year', month: 11, day: 12, keptAt: '2026-01-01T07:00:00Z' }),
     ]
     expect(keepQuestions(list, now).map((o) => o.id)).toEqual(['icloud', 'pricey', 'cheap'])
+  })
+})
+
+describe('PV-01 — закрытый кредит вне плана', () => {
+  const T0 = '2026-09-01T00:00:00Z'
+  const credit = (id: string, p: Partial<Credit> = {}): Credit => ({
+    id,
+    name: id,
+    note: '',
+    principal: 1_000_000,
+    annualRate: 0.24,
+    payment: 50_000,
+    day: 15,
+    updatedAt: T0,
+    ...p,
+  })
+  const people: Person[] = [
+    { id: 'a', name: 'Аня', salary: 900_000, payday: 10, updatedAt: T0 } as Person,
+  ]
+
+  it('openCredits: удалённый и закрытый — вне, беспроцентный с остатком — внутри', () => {
+    const list = [
+      credit('open'),
+      credit('closed', { principal: 0 }),
+      credit('gone', { deletedAt: T0 }),
+      credit('zero', { annualRate: 0 }),
+    ]
+    expect(openCredits(list).map((c) => c.id)).toEqual(['open', 'zero'])
+  })
+
+  it('costliestCredits: только открытые с процентами, дороже — первым; при равной ставке — больше процентов в месяц', () => {
+    const list = [
+      credit('cheap', { annualRate: 0.12 }),
+      credit('zero', { annualRate: 0 }),
+      credit('closed', { annualRate: 0.4, principal: 0 }),
+      credit('small', { annualRate: 0.33, principal: 200_000 }),
+      credit('big', { annualRate: 0.33, principal: 900_000 }),
+    ]
+    expect(costliestCredits(list).map((c) => c.id)).toEqual(['big', 'small', 'cheap'])
+  })
+
+  it('budgetAmounts: платёж закрытого кредита не входит в «Кредиты» и не уменьшает «Свободно»', () => {
+    const open = budgetAmounts({ people, credits: [credit('x'), credit('y', { payment: 30_000 })] })
+    const closed = budgetAmounts({ people, credits: [credit('x'), credit('y', { payment: 30_000, principal: 0 })] })
+    expect(open.d2).toBe(80_000)
+    expect(closed.d2).toBe(50_000)
+    expect(closed.d5 - open.d5).toBe(30_000)
+    // Беспроцентный с остатком — платится, входит.
+    expect(budgetAmounts({ people, credits: [credit('z', { annualRate: 0 })] }).d2).toBe(50_000)
   })
 })

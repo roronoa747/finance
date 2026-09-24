@@ -46,7 +46,8 @@ const goals = computed(() => liveGoals(financeStore.goals))
 const obligations = computed(() => liveObligations(financeStore.obligations))
 
 // Суммы по разделам считаются из обязательств, кредитов и целей
-const amounts = computed(() => budgetAmounts(financeStore.householdDoc))
+// Кредиты — производные: закрытый отметками в «Кредиты» не входит (PV-01).
+const amounts = computed(() => budgetAmounts({ ...financeStore.householdDoc, credits: financeStore.credits }))
 const income = computed(() => amounts.value.income)
 const free = computed(() => amounts.value.d5)
 const spent = computed(() => income.value - free.value)
