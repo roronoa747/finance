@@ -14,7 +14,8 @@ export default defineConfig({
     // её SW на том же /sw.js со scope '/', и autoUpdate заменяет его этим.
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      // Иконку уже берёт globPatterns (svg) — без этого она дважды в прекэше.
+      includeManifestIcons: false,
       manifest: {
         name: 'Family Finance',
         // Короткое имя подписывает иконку на домашнем экране.
