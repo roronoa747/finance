@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { mergeDocs, isEmptyDoc } from '@/lib/merge'
 import { monthKey } from '@/lib/dates'
-import type { SyncDoc, SyncStatus, Person, PersonId } from '@/types/finance'
+import type { SyncDoc, SyncStatus, Person, PersonId, Account, Credit, Goal, Obligation } from '@/types/finance'
 import type { CategoryKey, HueKey } from '@/lib/palette'
 import type { ConflictResponse, HouseholdDocResponse } from '@/types/api'
 
@@ -57,7 +57,9 @@ export const useFinanceStore = defineStore('finance', () => {
   const categories = computed(() => householdDoc.value.categories || [])
   const goals = computed(() => householdDoc.value.goals || [])
   const obligations = computed(() => householdDoc.value.obligations || [])
-  const accounts = computed(() => householdDoc.value.accounts || [])
+  const householdAccounts = computed(() => householdDoc.value.accounts || [])
+  const privateAccounts = computed(() => ((privateDoc.value.accounts as Account[]) || []))
+  const accounts = computed(() => [...householdAccounts.value, ...privateAccounts.value])
   const credits = computed(() => householdDoc.value.credits || [])
   const wishlist = computed(() => householdDoc.value.wishlist || [])
   const setupDone = computed(() => Boolean(householdDoc.value.setupDoneAt))
@@ -417,6 +419,225 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
+  function mutatePrivateDoc(mutator: (data: Record<string, unknown>) => void) {
+    mutator(privateDoc.value)
+    saveLocalState()
+    void pushPrivateDoc(privateDoc.value).catch(() => {})
+  }
+
+  function addAccount(
+    a: {
+      name: string
+      note?: string
+      amount: number
+      kind: 'card' | 'cash' | 'deposit' | 'envelope'
+      currency?: 'KZT' | 'USD' | 'EUR' | 'RUB'
+      foreignAmount?: number
+      rate?: number
+      rateAt?: string
+      deposit?: {
+        annualRate: number
+        months: number
+        monthlyTopUp: number
+        capitalize: boolean
+      }
+    },
+    isPrivate = false,
+  ) {
+    const id = Math.random().toString(36).slice(2, 10)
+    const t = new Date().toISOString()
+    const newAccount: Account = {
+      id,
+      name: a.name,
+      note: a.note || '',
+      amount: a.amount,
+      kind: a.kind,
+      currency: a.currency,
+      foreignAmount: a.foreignAmount,
+      rate: a.rate,
+      rateAt: a.rateAt,
+      deposit: a.deposit,
+      updatedAt: t,
+    }
+
+    if (isPrivate) {
+      mutatePrivateDoc((doc) => {
+        const list = (doc.accounts as Account[]) || []
+        doc.accounts = [...list, newAccount]
+      })
+    } else {
+      mutateHouseholdDoc((doc) => {
+        if (!doc.accounts) doc.accounts = []
+        doc.accounts.push(newAccount)
+      })
+    }
+  }
+
+  function updateAccount(id: string, patch: Partial<Account>) {
+    const t = new Date().toISOString()
+    const isPriv = ((privateDoc.value.accounts as Account[]) || []).some((x) => x.id === id)
+    if (isPriv) {
+      mutatePrivateDoc((doc) => {
+        const list = (doc.accounts as Account[]) || []
+        doc.accounts = list.map((x) => (x.id === id ? { ...x, ...patch, updatedAt: t } : x))
+      })
+    } else {
+      mutateHouseholdDoc((doc) => {
+        const a = (doc.accounts || []).find((x) => x.id === id)
+        if (a) Object.assign(a, patch, { updatedAt: t })
+      })
+    }
+  }
+
+  function setAccountAmount(id: string, amount: number) {
+    updateAccount(id, { amount })
+  }
+
+  function setDeposit(id: string, deposit: Partial<NonNullable<Account['deposit']>>) {
+    const t = new Date().toISOString()
+    const isPriv = ((privateDoc.value.accounts as Account[]) || []).some((x) => x.id === id)
+    if (isPriv) {
+      mutatePrivateDoc((doc) => {
+        const list = (doc.accounts as Account[]) || []
+        doc.accounts = list.map((x) => {
+          if (x.id !== id) return x
+          return {
+            ...x,
+            deposit: { ...(x.deposit || { annualRate: 0, months: 12, monthlyTopUp: 0, capitalize: true }), ...deposit },
+            updatedAt: t,
+          }
+        })
+      })
+    } else {
+      mutateHouseholdDoc((doc) => {
+        const a = (doc.accounts || []).find((x) => x.id === id)
+        if (a) {
+          a.deposit = {
+            ...(a.deposit || { annualRate: 0, months: 12, monthlyTopUp: 0, capitalize: true }),
+            ...deposit,
+          }
+          a.updatedAt = t
+        }
+      })
+    }
+  }
+
+  function removeAccount(id: string) {
+    const t = new Date().toISOString()
+    const isPriv = ((privateDoc.value.accounts as Account[]) || []).some((x) => x.id === id)
+    if (isPriv) {
+      mutatePrivateDoc((doc) => {
+        const list = (doc.accounts as Account[]) || []
+        doc.accounts = list.map((x) => (x.id === id ? { ...x, deletedAt: t, updatedAt: t } : x))
+      })
+    } else {
+      mutateHouseholdDoc((doc) => {
+        const a = (doc.accounts || []).find((x) => x.id === id)
+        if (a) {
+          a.deletedAt = t
+          a.updatedAt = t
+        }
+      })
+    }
+  }
+
+  function updateCredit(id: string, patch: Partial<Credit>) {
+    mutateHouseholdDoc((doc) => {
+      const c = (doc.credits || []).find((x) => x.id === id)
+      if (c) Object.assign(c, patch, { updatedAt: new Date().toISOString() })
+    })
+  }
+
+  function removeCredit(id: string) {
+    mutateHouseholdDoc((doc) => {
+      const c = (doc.credits || []).find((x) => x.id === id)
+      if (c) {
+        c.deletedAt = new Date().toISOString()
+        c.updatedAt = c.deletedAt
+      }
+    })
+  }
+
+  function updateObligation(id: string, patch: Partial<Obligation>) {
+    mutateHouseholdDoc((doc) => {
+      const o = (doc.obligations || []).find((x) => x.id === id)
+      if (o) Object.assign(o, patch, { updatedAt: new Date().toISOString() })
+    })
+  }
+
+  function correctObligation(id: string, amount: number) {
+    const t = new Date().toISOString()
+    const key = monthKey()
+    mutateHouseholdDoc((doc) => {
+      const o = (doc.obligations || []).find((x) => x.id === id)
+      if (!o) return
+      const cur = (o.versions ?? []).filter((v) => v.from <= key).pop()
+      if (cur) {
+        o.versions = o.versions.map((v) => (v.from === cur.from ? { ...v, amount } : v))
+      } else {
+        o.versions = [{ from: '2000-01', amount }]
+      }
+      o.updatedAt = t
+    })
+  }
+
+  function amendObligation(id: string, from: string, amount: number, reason?: string) {
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      const o = (doc.obligations || []).find((x) => x.id === id)
+      if (!o) return
+      const base = o.versions?.length ? o.versions : [{ from: '2000-01', amount: 0 }]
+      const versions = [...base.filter((v) => v.from !== from), { from, amount, reason }]
+        .sort((a, b) => a.from.localeCompare(b.from))
+      o.versions = versions
+      o.updatedAt = t
+    })
+  }
+
+  function removeObligation(id: string) {
+    mutateHouseholdDoc((doc) => {
+      const o = (doc.obligations || []).find((x) => x.id === id)
+      if (o) {
+        o.deletedAt = new Date().toISOString()
+        o.updatedAt = o.deletedAt
+      }
+    })
+  }
+
+  function updateGoal(id: string, patch: Partial<Goal>) {
+    mutateHouseholdDoc((doc) => {
+      const g = (doc.goals || []).find((x) => x.id === id)
+      if (g) Object.assign(g, patch, { updatedAt: new Date().toISOString() })
+    })
+  }
+
+  function removeGoal(id: string) {
+    mutateHouseholdDoc((doc) => {
+      const g = (doc.goals || []).find((x) => x.id === id)
+      if (g) {
+        g.deletedAt = new Date().toISOString()
+        g.updatedAt = g.deletedAt
+      }
+    })
+  }
+
+  function contribute(id: string, amount: number, by: PersonId, note?: string) {
+    const t = new Date().toISOString()
+    const mid = Math.random().toString(36).slice(2, 10)
+    mutateHouseholdDoc((doc) => {
+      const g = (doc.goals || []).find((x) => x.id === id)
+      if (!g) return
+      if (!g.movements) g.movements = []
+      g.movements.push({ id: mid, date: t, amount, by, note })
+      g.have = (g.seed ?? 0) + g.movements.reduce((sum, m) => sum + m.amount, 0)
+      g.updatedAt = t
+    })
+  }
+
+  function withdraw(id: string, amount: number, by: PersonId, note?: string) {
+    contribute(id, -Math.abs(amount), by, note)
+  }
+
   function resetAll() {
     resetDoc();
   }
@@ -434,6 +655,8 @@ export const useFinanceStore = defineStore('finance', () => {
     categories,
     goals,
     obligations,
+    householdAccounts,
+    privateAccounts,
     accounts,
     credits,
     wishlist,
@@ -441,6 +664,7 @@ export const useFinanceStore = defineStore('finance', () => {
     saveLocalState,
     setHouseholdDoc,
     mutateHouseholdDoc,
+    mutatePrivateDoc,
     resetDoc,
     syncHousehold,
     pullHousehold,
@@ -452,8 +676,23 @@ export const useFinanceStore = defineStore('finance', () => {
     amendSalary,
     setGoalMonthly,
     addObligation,
+    updateObligation,
+    correctObligation,
+    amendObligation,
+    removeObligation,
     addCredit,
+    updateCredit,
+    removeCredit,
     addGoal,
+    updateGoal,
+    removeGoal,
+    contribute,
+    withdraw,
+    addAccount,
+    updateAccount,
+    setAccountAmount,
+    setDeposit,
+    removeAccount,
     setCategoryAmount,
     finishSetup,
     adoptMembers,
