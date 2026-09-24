@@ -19,6 +19,7 @@ import {
   prepaySaved,
 } from '../src/lib/finance'
 import { money, plain } from '../src/lib/money'
+import { plural } from '../src/lib/utils'
 import Overview from '../src/views/Overview.vue'
 import Capital from '../src/views/Capital.vue'
 
@@ -185,7 +186,7 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
       expect(prepaySaved(p.store.payments, p.store.credits)).toBe(plan.saved)
       const capital = await screen(p.pinia, Capital, '/capital')
       expect(capital).toContain(money(800_000))
-      expect(capital).toContain(`${plan.months} платежей`)
+      expect(capital).toContain(`${plan.months} ${plural(plan.months, 'платёж', 'платежа', 'платежей')}`)
       expect(capital).toContain('Досрочками уже сэкономили на процентах')
       expect(capital).toContain(money(plan.saved))
       const payoff = await screen(p.pinia, Capital, '/capital?payoff=loan')
@@ -460,7 +461,7 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     expect(overview).toContain(`На счетах ${plain(1_000_000)} ₸ — хватает, остаётся ${plain(675_010)} ₸.`)
     const capital = await screen(A.pinia, Capital, '/capital')
     expect(capital).toContain(money(2_600_000)) // Чистый капитал
-    expect(capital).toContain('24 платежей')
+    expect(capital).toContain('24 платежа')
     expect(capital).toContain(`переплата ${plain(374_102)}`)
     // Открытие ничего не пишет: ни отметок, ни якорей, ни push.
     expect(A.store.payments).toEqual([])

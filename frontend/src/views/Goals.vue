@@ -8,7 +8,7 @@ import { addMonths, monthKey, monthTitle } from '@/lib/dates'
 import { HUES, HUE_KEYS, type HueKey } from '@/lib/palette'
 import { contributionStreak, liveGoals, liveWishlist } from '@/lib/finance'
 import type { PersonId, WishItem } from '@/types/finance'
-import { cn } from '@/lib/utils'
+import { cn, plural } from '@/lib/utils'
 
 import Card from '@/components/kit/Card.vue'
 import Section from '@/components/kit/Section.vue'
@@ -66,15 +66,6 @@ const last12 = computed(() =>
     return { key: k, label: monthTitle(k), filled: filledMonths.value.has(k) }
   }),
 )
-
-function monthWord(n: number) {
-  const t = n % 10
-  const h = n % 100
-  if (h >= 11 && h <= 14) return 'месяцев'
-  if (t === 1) return 'месяц'
-  if (t >= 2 && t <= 4) return 'месяца'
-  return 'месяцев'
-}
 
 /* ------------------ Создание цели ------------------ */
 const openGoalModal = ref(false)
@@ -224,7 +215,7 @@ function toggleWishBought(id: string, itemName: string) {
                 : 'Пока ни одного взноса. Полоски закрасятся сами, как только начнёте пополнять цели — считается по фактическим взносам, а не по плану.'
             }}
           </Hint>
-          <Tag v-if="streak > 0" tone="gold">{{ streak }} {{ monthWord(streak) }}</Tag>
+          <Tag v-if="streak > 0" tone="gold">{{ streak }} {{ plural(streak, 'месяц', 'месяца', 'месяцев') }}</Tag>
         </div>
         <div class="flex gap-1.5">
           <i

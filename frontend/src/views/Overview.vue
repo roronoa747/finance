@@ -23,7 +23,7 @@ import {
   salaryAt,
   untilPayday,
 } from '@/lib/finance'
-import { cn } from '@/lib/utils'
+import { cn, plural } from '@/lib/utils'
 import Card from '@/components/kit/Card.vue'
 import Section from '@/components/kit/Section.vue'
 import Callout from '@/components/kit/Callout.vue'
@@ -147,15 +147,6 @@ function keepSub() {
 function cancelSub() {
   if (keepAsk.value && cancelling.value === keepAsk.value.id) financeStore.removeObligation(keepAsk.value.id)
   cancelling.value = null
-}
-
-function dayWord(n: number) {
-  const t = n % 10
-  const h = n % 100
-  if (h >= 11 && h <= 14) return 'дней'
-  if (t === 1) return 'день'
-  if (t >= 2 && t <= 4) return 'дня'
-  return 'дней'
 }
 
 // Баннер приглашения
@@ -292,7 +283,7 @@ async function copyInvite() {
       <Card>
         <div class="flex items-baseline gap-2">
           <span class="font-display text-[19px] font-semibold tracking-[-0.02em] text-ink">
-            {{ paydayInfo.inDays === 0 ? 'Сегодня' : `Через ${paydayInfo.inDays} ${dayWord(paydayInfo.inDays)}` }}
+            {{ paydayInfo.inDays === 0 ? 'Сегодня' : `Через ${paydayInfo.inDays} ${plural(paydayInfo.inDays, 'день', 'дня', 'дней')}` }}
           </span>
           <span class="ml-auto text-[13px] text-ink-3">
             {{ dayLabel(paydayInfo.day, paydayInfo.key) }}

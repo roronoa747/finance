@@ -58,9 +58,9 @@ import {
   type LumpMode,
   type StrategyResult,
 } from '@/lib/finance'
-import type { Account, Currency, Obligation, Payment, Person, PersonId } from '@/types/finance'
+import type { Account, Credit, Currency, Obligation, Payment, Person, PersonId } from '@/types/finance'
 import type { CategoryKey } from '@/lib/palette'
-import { cn } from '@/lib/utils'
+import { cn, plural } from '@/lib/utils'
 import { fetchRates, formRate, type FxRates } from '@/lib/fx'
 
 import Card from '@/components/kit/Card.vue'
@@ -114,10 +114,13 @@ function obligationSub(o: Obligation): string {
 
 function groupNote(g: Obligation): string {
   const n = groupChildren(g, financeStore.obligations).length
-  const t = n % 10
-  const h = n % 100
-  const word = h >= 11 && h <= 14 ? 'подписок' : t === 1 ? 'подписка' : t >= 2 && t <= 4 ? 'подписки' : 'подписок'
-  return `${n} ${word}${g.noAsk ? ' · рабочие' : ''}`
+  return `${n} ${plural(n, 'подписка', 'подписки', 'подписок')}${g.noAsk ? ' · рабочие' : ''}`
+}
+
+/** «24 платежа» в строке кредита: сколько осталось при нынешнем платеже. */
+function paymentsLeft(c: Credit): string {
+  const n = Math.ceil(annuityMonths(c.principal, c.annualRate, c.payment))
+  return `${n} ${plural(n, 'платёж', 'платежа', 'платежей')}`
 }
 
 function obligationNote(o: Obligation, members: Person[]): string {
@@ -762,7 +765,7 @@ onUnmounted(() => {
         v-for="c in credits"
         :key="c.id"
         :title="c.name"
-        :note="`${c.annualRate > 0 ? 'ГЭСВ ' + ratePct(c.annualRate, 1) : 'рассрочка'} · ${Math.ceil(annuityMonths(c.principal, c.annualRate, c.payment))} платежей`"
+        :note="`${c.annualRate > 0 ? 'ГЭСВ ' + ratePct(c.annualRate, 1) : 'рассрочка'} · ${paymentsLeft(c)}`"
         :value="money(c.principal)"
         :sub="
           annuityTotal(c.principal, c.annualRate, c.payment) - c.principal > 0
@@ -1150,7 +1153,7 @@ onUnmounted(() => {
             </button>
           </div>
           <p v-if="debtMode === 'none' && plainMonths > 0" class="mt-2 text-[12px] text-ink-3">
-            Рассрочка закроется примерно за {{ plainMonths }} платежей.
+            Рассрочка закроется примерно за {{ plainMonths }} {{ plural(plainMonths, 'платёж', 'платежа', 'платежей') }}.
           </p>
         </Field>
 

@@ -17,7 +17,7 @@ import {
 } from '@/lib/finance'
 import { monthAfter, monthFrom, monthFromAfter, monthInAfter, monthKey } from '@/lib/dates'
 import { useFinanceStore } from '@/stores/finance'
-import { cn } from '@/lib/utils'
+import { cn, plural } from '@/lib/utils'
 
 const STEP = 10_000
 
@@ -67,7 +67,8 @@ function effectForCredit(extra: number) {
   if (!credit.value) return ''
   const p = prepayment(credit.value.principal, credit.value.annualRate, credit.value.payment, extra)
   if (!extra) {
-    return `Сейчас: ${Math.ceil(p.monthsNow)} платежей, переплата ${money(Math.round(p.overpayNow))}`
+    const n = Math.ceil(p.monthsNow)
+    return `Сейчас: ${n} ${plural(n, 'платёж', 'платежа', 'платежей')}, переплата ${money(Math.round(p.overpayNow))}`
   }
   return `Закроется за ${Math.ceil(p.monthsAfter)} мес. вместо ${Math.ceil(p.monthsNow)}. Переплата меньше на ${money(Math.round(p.saved))}`
 }

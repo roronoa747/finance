@@ -43,6 +43,7 @@ import {
 } from './finance'
 import { plain, money, moneyShort, parseMoney, pct, ratePct } from './money'
 import { clean, caretAt, sigBefore } from './num'
+import { plural } from './utils'
 import { monthKey, parseMonthKey, addMonths, daysInMonth, leadingBlanks, today, atLabel } from '@/lib/dates'
 import type { Account, Credit, Obligation, Payment, Person } from '@/types/finance'
 
@@ -220,6 +221,13 @@ describe('money.ts & num.ts & dates.ts — форматирование и па�
     expect(parseMoney(`1${NB}050${NB}000 ₸`)).toBe(1050000)
     expect(pct(25, 100)).toBe(25)
     expect(ratePct(0.165, 1)).toBe('16,5%')
+  })
+
+  it('utils.ts plural: склонение слова при числе', () => {
+    const w = (n: number) => plural(n, 'платёж', 'платежа', 'платежей')
+    expect([1, 21, 101].map(w)).toEqual(['платёж', 'платёж', 'платёж'])
+    expect([2, 4, 24, 102].map(w)).toEqual(['платежа', 'платежа', 'платежа', 'платежа'])
+    expect([0, 5, 11, 12, 14, 18, 111, 25].map(w)).toEqual(Array(8).fill('платежей'))
   })
 
   it('num.ts разбор полей ввода (clean, caretAt, sigBefore)', () => {
