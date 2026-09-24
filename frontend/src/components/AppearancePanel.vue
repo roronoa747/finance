@@ -12,6 +12,7 @@ import { useFinanceStore } from '@/stores/finance'
 import Segmented from '@/components/kit/Segmented.vue'
 import Input from '@/components/ui/Input.vue'
 import Button from '@/components/ui/Button.vue'
+import Callout from '@/components/kit/Callout.vue'
 import { useRouter } from 'vue-router'
 
 const authStore = useAuthStore()
@@ -53,9 +54,32 @@ function saveName() {
   financeStore.setPerson(authStore.slot, { name: trimmed })
 }
 
+// Выход при неотправленных правках сначала спрашивает (RP-04): 'ask' — предложить
+// отправить, 'failed' — отправить не вышло (нет сети или истёк вход).
+const leaving = ref<'ask' | 'failed' | null>(null)
+const sending = ref(false)
+
 function handleLogout() {
-  authStore.logout()
-  router.push('/access')
+  if (authStore.logout()) void router.push('/access')
+  else leaving.value = 'ask'
+}
+
+async function sendAndLeave() {
+  sending.value = true
+  try {
+    if (financeStore.unsent) await financeStore.syncHousehold()
+    if (financeStore.privateUnsent) await financeStore.pushPrivateDoc(financeStore.privateDoc).catch(() => {})
+  } finally {
+    sending.value = false
+  }
+  if (authStore.logout()) void router.push('/access')
+  else leaving.value = 'failed'
+}
+
+function leave(choice: 'keep' | 'discard') {
+  authStore.logout(choice)
+  leaving.value = null
+  void router.push('/access')
 }
 
 onMounted(() => {
@@ -116,9 +140,41 @@ onMounted(() => {
     </div>
 
     <div class="pt-3 border-t border-line">
-      <Button variant="ghost" class="w-full text-destructive hover:bg-destructive-soft" @click="handleLogout">
+      <Button
+        v-if="!leaving"
+        variant="ghost"
+        class="w-full text-destructive hover:bg-destructive-soft"
+        @click="handleLogout"
+      >
         Выйти из аккаунта
       </Button>
+      <div v-else class="flex flex-col gap-2">
+        <Callout :title="leaving === 'ask' ? 'Не всё успело уйти на сервер' : 'Сейчас отправить не получилось'">
+          <template v-if="leaving === 'ask'">
+            Последние правки есть только на этом телефоне. Отправим их и тогда выйдем.
+          </template>
+          <template v-else>
+            Если истёк вход — войдите заново: правки подождут на телефоне и уйдут после входа в эту же
+            семью. Или выйдите без них.
+          </template>
+        </Callout>
+        <p v-if="leaving === 'failed' && financeStore.lastError" class="text-[12px] text-ink-3">
+          Причина: {{ financeStore.lastError }}
+        </p>
+        <Button v-if="leaving === 'ask'" class="w-full" :disabled="sending" @click="sendAndLeave">
+          {{ sending ? 'Отправляем…' : 'Отправить и выйти' }}
+        </Button>
+        <Button v-else class="w-full" @click="leave('keep')">Войти заново</Button>
+        <Button
+          variant="ghost"
+          class="w-full text-destructive hover:bg-destructive-soft"
+          :disabled="sending"
+          @click="leave('discard')"
+        >
+          Выйти, правки пропадут
+        </Button>
+        <Button variant="ghost" class="w-full" :disabled="sending" @click="leaving = null">Остаться</Button>
+      </div>
     </div>
   </div>
 </template>

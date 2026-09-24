@@ -35,6 +35,14 @@ onMounted(() => {
   }
 })
 
+// Документ телефона привязывается к семье, куда вошли: чужой стирается, свой
+// сливается с серверным — неотправленное после истёкшего входа уходит (RP-04).
+async function enterHousehold() {
+  if (authStore.household) financeStore.claimFor(authStore.household.id)
+  await financeStore.pullHousehold()
+  await financeStore.pullPrivateDoc()
+}
+
 async function submit() {
   busy.value = true
   errorMessage.value = ''
@@ -46,7 +54,7 @@ async function submit() {
         return
       }
       await authStore.login({ email: email.value.trim(), ['pass' + 'word']: pass.value } as any)
-      await financeStore.pullHousehold()
+      await enterHousehold()
       if (financeStore.setupDone) {
         await router.push('/')
       } else {
@@ -63,6 +71,7 @@ async function submit() {
         display_name: displayName.value.trim(),
         household_name: householdName.value.trim() || 'Наш бюджет',
       } as any)
+      if (authStore.household) financeStore.claimFor(authStore.household.id)
       await router.push('/setup')
     } else if (mode.value === 'join') {
       if (!inviteCode.value.trim() || !displayName.value.trim()) {
@@ -73,7 +82,7 @@ async function submit() {
         code: inviteCode.value.trim().toUpperCase(),
         display_name: displayName.value.trim(),
       })
-      await financeStore.pullHousehold()
+      await enterHousehold()
       if (financeStore.setupDone) {
         await router.push('/')
       } else {
