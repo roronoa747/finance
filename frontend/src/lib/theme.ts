@@ -9,7 +9,7 @@
  * и на `/setup`, а не только когда открыта панель «Оформление».
  */
 import { ref } from 'vue'
-import { ACCENTS, applyTheme, resolveDark, type AccentKey, type ThemeChoice } from '@/lib/palette'
+import { ACCENT_KEYS, applyTheme, resolveDark, type AccentKey, type ThemeChoice } from '@/lib/palette'
 
 const THEME_KEY = 'ff_theme'
 const ACCENT_KEY = 'ff_accent'
@@ -45,7 +45,8 @@ export function readThemeChoice(): ThemeChoice {
 
 export function readAccent(): AccentKey {
   const v = read(ACCENT_KEY)
-  return v && v in ACCENTS ? (v as AccentKey) : 'emerald'
+  // Список, а не `in`: имена из прототипа объекта («toString») — не акцент.
+  return v && ACCENT_KEYS.includes(v as AccentKey) ? (v as AccentKey) : 'emerald'
 }
 
 /** Применяет выбранные тему и акцент к документу и обновляет `isDark`. */

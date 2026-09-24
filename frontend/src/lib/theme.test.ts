@@ -131,5 +131,12 @@ describe('PV-08: тема на старте и «Авто» следит за т
     storage.set('ff_accent', 'neon')
     expect(readThemeChoice()).toBe('auto')
     expect(readAccent()).toBe('emerald')
+    // Имена из прототипа объекта — тоже мусор, а не акцент (критик).
+    for (const junk of ['toString', 'constructor', '__proto__']) {
+      storage.set('ff_accent', junk)
+      storage.set('ff_theme', junk)
+      expect(readAccent()).toBe('emerald')
+      expect(readThemeChoice()).toBe('auto')
+    }
   })
 })
