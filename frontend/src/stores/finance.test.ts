@@ -5,6 +5,7 @@ import { useAuthStore } from './auth'
 import { ApiClient, ApiError, apiClient } from '@/api/client'
 import type { SyncDoc, Goal, Person, PersonId } from '@/types/finance'
 import type { HouseholdDocResponse, ConflictResponse } from '@/types/api'
+import { nextObligationDue } from '@/lib/finance'
 
 describe('stores/finance.ts — Pinia хранилище казны и синхронизация', () => {
   const storageMap = new Map<string, string>()
@@ -691,5 +692,199 @@ describe('stores/finance.ts — Pinia хранилище казны и синх�
 
     expect(await store.pullHousehold(client)).toBeNull()
     expect(store.status).toBe('error')
+  })
+})
+
+describe('RP-06: отметки оплат в сторе', () => {
+  const storage = new Map<string, string>()
+  const at = (iso: string) => vi.setSystemTime(new Date(iso))
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    // Часы подделаны, таймеры тоже: запланированный синк не уходит в сеть.
+    vi.useFakeTimers()
+    at('2026-09-24T07:00:00Z') // 12:00 в Алматы
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  function family() {
+    const store = useFinanceStore()
+    store.addAccount({ name: 'Kaspi', kind: 'card', amount: 1_000_000 })
+    store.addAccount({ name: 'Наличные', kind: 'cash', amount: 50_000 })
+    store.addObligation({ name: 'Аренда', day: 5, category: 'd1', amount: 220_000 })
+    store.addCredit({ name: 'Кредит', principal: 1_000_000, annualRate: 0.33, payment: 58_000, day: 15 })
+    at('2026-09-24T08:00:00Z')
+    return {
+      store,
+      card: store.accounts[0].id,
+      cash: store.accounts[1].id,
+      rent: store.obligations[0].id,
+      loan: store.credits[0].id,
+    }
+  }
+  const balance = (store: ReturnType<typeof useFinanceStore>, id: string) =>
+    store.accounts.find((a) => a.id === id)!.amount
+
+  it('«оплатил аренду»: запись по графику, карта уменьшилась, следующий — октябрь; повтор не удваивает', () => {
+    const { store, card, rent } = family()
+    const rec = store.markPaid('obligation', rent, 'a', { accountId: card })!
+    expect(rec).toMatchObject({
+      kind: 'obligation', targetId: rent, period: '2026-09', amount: 220_000, accountId: card, by: 'a',
+    })
+    expect(balance(store, card)).toBe(780_000)
+    // В документе — база и запись; остаток выводится, а не перезаписывается.
+    expect(store.householdDoc.accounts[0].amount).toBe(1_000_000)
+    expect(store.householdDoc.payments).toHaveLength(1)
+    expect(store.unsent).toBe(true)
+    expect(nextObligationDue(store.obligations[0], store.payments)).toMatchObject({ period: '2026-10', day: 5 })
+
+    at('2026-09-24T08:00:05Z')
+    expect(store.markPaid('obligation', rent, 'b', { period: '2026-09', accountId: card })!.id).toBe(rec.id)
+    expect(store.payments).toHaveLength(1)
+    expect(balance(store, card)).toBe(780_000)
+  })
+
+  it('снять отметку — деньги вернулись; снова — новая запись; счёт по умолчанию — прошлой оплаты', () => {
+    const { store, card, cash, rent } = family()
+    const first = store.markPaid('obligation', rent, 'a', { accountId: cash })!
+    at('2026-09-24T09:00:00Z')
+    store.unmarkPaid('obligation', rent, '2026-09')
+    expect(balance(store, cash)).toBe(50_000)
+    expect(store.payments[0].deletedAt).toBe('2026-09-24T09:00:00.000Z')
+
+    at('2026-09-24T10:00:00Z')
+    const again = store.markPaid('obligation', rent, 'a', { accountId: card })!
+    expect(again.id).not.toBe(first.id)
+    expect(again.period).toBe('2026-09')
+    expect(balance(store, card)).toBe(780_000)
+
+    // Октябрь без выбора счёта — с той же карты (Р-5).
+    at('2026-10-05T05:00:00Z')
+    const october = store.markPaid('obligation', rent, 'b')!
+    expect(october).toMatchObject({ period: '2026-10', accountId: card })
+    expect(balance(store, card)).toBe(560_000)
+  })
+
+  it('первая оплата без выбора счёта ничего не списывает', () => {
+    const { store, card, rent } = family()
+    expect(store.markPaid('obligation', rent, 'a')!.accountId).toBeNull()
+    expect(balance(store, card)).toBe(1_000_000)
+  })
+
+  it('кредит: остаток уменьшается на тело, следующий месяц считает проценты от нового; снятие возвращает', () => {
+    const { store, card, loan } = family()
+    const sep = store.markPaid('credit', loan, 'a', { accountId: card })!
+    // 1 000 000 × 0,33 / 12 = 27 500 процентов, тело 30 500.
+    expect(sep).toMatchObject({ period: '2026-09', amount: 58_000, principal: 30_500 })
+    expect(store.credits[0].principal).toBe(969_500)
+    expect(balance(store, card)).toBe(942_000)
+
+    at('2026-10-15T05:00:00Z')
+    const oct = store.markPaid('credit', loan, 'a')!
+    // 969 500 × 0,33 / 12 = 26 661,25 → 26 661; тело 31 339.
+    expect(oct).toMatchObject({ period: '2026-10', principal: 31_339, accountId: card })
+    expect(store.credits[0].principal).toBe(938_161)
+
+    store.unmarkPaid('credit', loan, '2026-10')
+    expect(store.credits[0].principal).toBe(969_500)
+    expect(balance(store, card)).toBe(942_000)
+    // База долга в документе не менялась ни разу.
+    expect(store.householdDoc.credits[0].principal).toBe(1_000_000)
+  })
+
+  it('сверка руками после отметки: новая база и якорь, прошлая отметка второй раз не вычитается', () => {
+    const { store, card, rent, loan } = family()
+    store.markPaid('obligation', rent, 'a', { accountId: card })
+    expect(balance(store, card)).toBe(780_000)
+
+    at('2026-09-24T09:00:00Z')
+    store.setAccountAmount(card, 800_000)
+    expect(balance(store, card)).toBe(800_000)
+    expect(store.householdDoc.accounts[0]).toMatchObject({ amount: 800_000, amountSetAt: '2026-09-24T09:00:00.000Z' })
+
+    at('2026-09-24T10:00:00Z')
+    store.markPaid('credit', loan, 'a', { accountId: card })
+    expect(balance(store, card)).toBe(742_000)
+    // Аренда уже в сверенной сумме: снятие её отметки остаток не меняет.
+    store.unmarkPaid('obligation', rent, '2026-09')
+    expect(balance(store, card)).toBe(742_000)
+
+    // Ручной ввод остатка долга — тоже якорь.
+    at('2026-09-24T11:00:00Z')
+    store.updateCredit(loan, { principal: 950_000 })
+    expect(store.credits[0].principal).toBe(950_000)
+    expect(store.householdDoc.credits[0].principalSetAt).toBe('2026-09-24T11:00:00.000Z')
+  })
+
+  it('тот же видимый остаток не пишет ни базу, ни якорь; переименование якорь не двигает', () => {
+    const { store, card, rent } = family()
+    store.markPaid('obligation', rent, 'a', { accountId: card })
+    const before = JSON.stringify(store.householdDoc.accounts)
+    at('2026-09-24T09:00:00Z')
+    store.setAccountAmount(card, 780_000)
+    expect(JSON.stringify(store.householdDoc.accounts)).toBe(before)
+
+    const anchor = store.householdDoc.accounts[0].amountSetAt
+    store.updateAccount(card, { name: 'Kaspi Gold' })
+    expect(store.householdDoc.accounts[0]).toMatchObject({ name: 'Kaspi Gold', amount: 1_000_000, amountSetAt: anchor })
+    expect(balance(store, card)).toBe(780_000)
+
+    // Счёт до RP-06 без якоря: правка пишет ключ явным null — при слиянии победитель
+    // не возьмёт чужой якорь к своей базе.
+    store.mutateHouseholdDoc((doc) => {
+      doc.accounts.push({ id: 'old', name: 'Старый', note: '', amount: 5_000, kind: 'cash', updatedAt: '2026-01-01T00:00:00Z' })
+    })
+    store.updateAccount('old', { note: 'в сейфе' })
+    const old = store.householdDoc.accounts.find((a) => a.id === 'old')!
+    expect('amountSetAt' in old && old.amountSetAt === null).toBe(true)
+  })
+
+  it('личный счёт: запись в общем документе, остаток уменьшается у владельца', () => {
+    const { store, rent } = family()
+    store.addAccount({ name: 'Моя карта', kind: 'card', amount: 300_000 }, true)
+    const mine = store.privateAccounts[0].id
+    at('2026-09-24T09:00:00Z')
+    store.markPaid('obligation', rent, 'a', { accountId: mine })
+    expect(store.privateAccounts[0].amount).toBe(80_000)
+    expect(store.householdDoc.payments?.[0].accountId).toBe(mine)
+    expect((store.privateDoc.accounts as { amount: number }[])[0].amount).toBe(300_000)
+  })
+
+  it('старые данные без payments и якорей открываются с теми же цифрами', () => {
+    const store = useFinanceStore()
+    const old = {
+      people: [{ id: 'a' as const, name: 'Ильяс', salary: 700_000, payday: 10, updatedAt: '2026-01-01T00:00:00Z' }],
+      categories: [],
+      goals: [],
+      wishlist: [],
+      obligations: [],
+      accounts: [{ id: 'k', name: 'Kaspi', note: '', amount: 400_000, kind: 'card' as const, updatedAt: '2026-01-01T00:00:00Z' }],
+      credits: [{ id: 'c', name: 'Кредит', note: '', principal: 500_000, annualRate: 0.2, payment: 30_000, day: 5, updatedAt: '2026-01-01T00:00:00Z' }],
+      setupDoneAt: '2026-01-01T00:00:00Z',
+    } satisfies SyncDoc
+    store.setHouseholdDoc(old, 3)
+    expect(store.payments).toEqual([])
+    expect(store.accounts[0].amount).toBe(400_000)
+    expect(store.credits[0].principal).toBe(500_000)
+    expect(defaultSyncDoc().payments).toEqual([])
+  })
+
+  it('удалённое обязательство и закрытый кредит отметить нельзя', () => {
+    const { store, rent, loan } = family()
+    store.removeObligation(rent)
+    expect(store.markPaid('obligation', rent, 'a')).toBeNull()
+    store.updateCredit(loan, { principal: 0 })
+    expect(store.markPaid('credit', loan, 'a')).toBeNull()
+    expect(store.payments).toHaveLength(0)
   })
 })

@@ -126,9 +126,15 @@ const upcoming = computed(() => {
   return items.sort((a, b) => a.day - b.day)
 })
 
-// Данные блока «До зарплаты»
+// Данные блока «До зарплаты»: остатки общих счетов и долгов — из отметок, как их отдаёт стор
 const paydayInfo = computed(() => {
-  return untilPayday(financeStore.householdDoc)
+  return untilPayday({
+    people: financeStore.people,
+    obligations: financeStore.obligations,
+    credits: financeStore.credits,
+    accounts: financeStore.householdAccounts,
+    payments: financeStore.payments,
+  })
 })
 
 function dayWord(n: number) {

@@ -151,7 +151,8 @@ describe('e2e / block-5 — Сквозной сценарий Капитала, 
     financeStore.withdraw(japanGoal.id, 50_000, 'a', 'Форс-мажор')
     financeStore.setAccountAmount(kaspiAcc.id, updatedAcc.amount + 50_000)
     expect(updatedGoal.have).toBe(1_000_000)
-    expect(updatedAcc.amount).toBe(400_000)
+    // Стор отдаёт счёт копией с остатком из отметок (RP-06) — перечитываем.
+    expect(financeStore.householdAccounts.find((a) => a.id === kaspiAcc.id)!.amount).toBe(400_000)
 
     // 6. Сложный процент с капитализацией (Deposit.vue, MGV-13)
     const depositCalc = deposit({

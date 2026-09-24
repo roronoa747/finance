@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { mergeDocs, isEmptyDoc } from './merge'
-import type { SyncDoc, Goal, Obligation, Person, Category, Account, Credit } from '@/types/finance'
+import { accountBalance, creditBalance, paidFor } from './finance'
+import type { SyncDoc, Goal, Obligation, Person, Category, Account, Credit, Payment } from '@/types/finance'
 
 function createEmptyDoc(): SyncDoc {
   return {
@@ -309,25 +310,25 @@ describe('merge.ts — слияние версий документа казны
     const unk = (doc: SyncDoc, key: string) => (doc as Loose)[key]
 
     it('незнакомый список с id с одной стороны сохраняется', () => {
-      const withPayments = { ...createEmptyDoc(), payments: [pay('p1', 100)] } as Loose
-      const res1 = mergeDocs(createEmptyDoc(), withPayments)
-      const res2 = mergeDocs(withPayments, createEmptyDoc())
-      expect(unk(res1, 'payments')).toEqual([pay('p1', 100)])
-      expect(unk(res2, 'payments')).toEqual([pay('p1', 100)])
+      const withReceipts = { ...createEmptyDoc(), receipts: [pay('p1', 100)] } as Loose
+      const res1 = mergeDocs(createEmptyDoc(), withReceipts)
+      const res2 = mergeDocs(withReceipts, createEmptyDoc())
+      expect(unk(res1, 'receipts')).toEqual([pay('p1', 100)])
+      expect(unk(res2, 'receipts')).toEqual([pay('p1', 100)])
     })
 
     it('разные записи с двух сторон объединяются, надгробие побеждает', () => {
-      const local = { ...createEmptyDoc(), payments: [pay('p1', 100), pay('p2', 200)] } as Loose
+      const local = { ...createEmptyDoc(), receipts: [pay('p1', 100), pay('p2', 200)] } as Loose
       const remote = {
         ...createEmptyDoc(),
-        payments: [pay('p3', 300), pay('p2', 200, { deletedAt: '2026-09-21T10:00:00Z', updatedAt: '2026-09-19T10:00:00Z' })],
+        receipts: [pay('p3', 300), pay('p2', 200, { deletedAt: '2026-09-21T10:00:00Z', updatedAt: '2026-09-19T10:00:00Z' })],
       } as Loose
-      const list = unk(mergeDocs(local, remote), 'payments') as { id: string; deletedAt?: string | null }[]
+      const list = unk(mergeDocs(local, remote), 'receipts') as { id: string; deletedAt?: string | null }[]
       expect(list.map((p) => p.id).sort()).toEqual(['p1', 'p2', 'p3'])
       expect(list.find((p) => p.id === 'p2')?.deletedAt).toBe('2026-09-21T10:00:00Z')
       // Пустой список с одной стороны — тоже список: объединяется, а не затирает.
-      const withEmpty = { ...createEmptyDoc(), payments: [] } as Loose
-      expect(unk(mergeDocs(withEmpty, remote), 'payments')).toHaveLength(2)
+      const withEmpty = { ...createEmptyDoc(), receipts: [] } as Loose
+      expect(unk(mergeDocs(withEmpty, remote), 'receipts')).toHaveLength(2)
     })
 
     it('незнакомый скаляр и объект верхнего уровня сохраняются; при обеих — берётся remote', () => {
@@ -373,16 +374,16 @@ describe('merge.ts — слияние версий документа казны
     it('коммутативность и идемпотентность на незнакомых данных', () => {
       const a = {
         ...createEmptyDoc(),
-        payments: [pay('p1', 100), pay('p2', 200, { updatedAt: '2026-09-22T10:00:00Z' })],
+        receipts: [pay('p1', 100), pay('p2', 200, { updatedAt: '2026-09-22T10:00:00Z' })],
         review: { text: 'тот же' },
       } as Loose
       const b = {
         ...createEmptyDoc(),
-        payments: [pay('p3', 300), pay('p2', 250, { note: 'только у b' })],
+        receipts: [pay('p3', 300), pay('p2', 250, { note: 'только у b' })],
         review: { text: 'тот же' },
       } as Loose
       const byId = (doc: SyncDoc) =>
-        [...(unk(doc, 'payments') as { id: string }[])].sort((x, y) => x.id.localeCompare(y.id))
+        [...(unk(doc, 'receipts') as { id: string }[])].sort((x, y) => x.id.localeCompare(y.id))
 
       const ab = mergeDocs(a, b)
       const ba = mergeDocs(b, a)
@@ -399,5 +400,76 @@ describe('merge.ts — слияние версий документа казны
       expect(mergeDocs(abab, abab)).toEqual(abab)
       expect(mergeDocs(abab, b)).toEqual(mergeDocs(abab, abab))
     })
+  })
+})
+
+describe('RP-06: отметки оплат при слиянии', () => {
+  const T0 = '2026-09-01T00:00:00Z'
+  const card: Account = { id: 'card', name: 'Kaspi', note: '', amount: 1_000_000, kind: 'card', updatedAt: T0 }
+  const loan: Credit = {
+    id: 'loan', name: 'Кредит', note: '', principal: 1_000_000, annualRate: 0.33, payment: 58_000, day: 15, updatedAt: T0,
+  }
+  const base: SyncDoc = { ...createEmptyDoc(), accounts: [card], credits: [loan], payments: [] }
+  const mark = (id: string, p: Partial<Payment>): Payment => ({
+    id,
+    kind: 'obligation',
+    targetId: 'rent',
+    period: '2026-09',
+    amount: 220_000,
+    accountId: 'card',
+    by: 'a',
+    at: '2026-09-05T10:00:00Z',
+    updatedAt: '2026-09-05T10:00:00Z',
+    ...p,
+  })
+  const ids = (doc: SyncDoc) => (doc.payments ?? []).map((p) => p.id).sort()
+
+  it('две офлайн-отметки разных платежей с двух клиентов — после слияния обе', () => {
+    const a: SyncDoc = { ...base, payments: [mark('ra', { by: 'a' })] }
+    const b: SyncDoc = {
+      ...base,
+      payments: [mark('lb', { kind: 'credit', targetId: 'loan', amount: 58_000, principal: 30_500, by: 'b' })],
+    }
+    const ab = mergeDocs(a, b)
+    const ba = mergeDocs(b, a)
+    expect(ids(ab)).toEqual(['lb', 'ra'])
+    expect(ids(ba)).toEqual(['lb', 'ra'])
+    expect(accountBalance(ab.accounts[0], ab.payments)).toBe(1_000_000 - 220_000 - 58_000)
+    expect(creditBalance(ab.credits[0], ab.payments)).toBe(969_500)
+  })
+
+  it('одна пара с двух клиентов (разные id) — обе записи остаются, остаток уменьшен один раз', () => {
+    const a: SyncDoc = { ...base, payments: [mark('x1', { at: '2026-09-05T10:00:00Z' })] }
+    const b: SyncDoc = { ...base, payments: [mark('x2', { at: '2026-09-05T10:03:00Z', by: 'b' })] }
+    const ab = mergeDocs(a, b)
+    const ba = mergeDocs(b, a)
+    expect(ids(ab)).toEqual(['x1', 'x2'])
+    expect(accountBalance(ab.accounts[0], ab.payments)).toBe(780_000)
+    expect(accountBalance(ba.accounts[0], ba.payments)).toBe(780_000)
+    expect(paidFor(ab.payments, 'obligation', 'rent', '2026-09')?.id).toBe('x1')
+  })
+
+  it('снятие побеждает отметку и не воскресает; повторная отметка — новая запись', () => {
+    const marked = mark('r1', {})
+    const unmarked = { ...marked, deletedAt: '2026-09-06T00:00:00Z', updatedAt: '2026-09-06T00:00:00Z' }
+    const again = mark('r2', { at: '2026-09-07T00:00:00Z', updatedAt: '2026-09-07T00:00:00Z' })
+    // Партнёр видел только отметку; у нас она снята и поставлена снова.
+    const partner: SyncDoc = { ...base, payments: [marked] }
+    const mine: SyncDoc = { ...base, payments: [unmarked, again] }
+    for (const doc of [mergeDocs(partner, mine), mergeDocs(mine, partner)]) {
+      expect(doc.payments?.find((p) => p.id === 'r1')?.deletedAt).toBe('2026-09-06T00:00:00Z')
+      expect(accountBalance(doc.accounts[0], doc.payments)).toBe(780_000)
+      expect(paidFor(doc.payments, 'obligation', 'rent', '2026-09')?.id).toBe('r2')
+    }
+  })
+
+  it('документ без payments (до Блока 1) сливается с новым; слияние идемпотентно', () => {
+    const old = { ...createEmptyDoc(), accounts: [card] }
+    const fresh: SyncDoc = { ...base, payments: [mark('r1', {})] }
+    const merged = mergeDocs(old, fresh)
+    expect(ids(merged)).toEqual(['r1'])
+    expect(mergeDocs(old, old).payments).toEqual([])
+    const twice = mergeDocs(merged, merged)
+    expect(mergeDocs(twice, twice)).toEqual(twice)
   })
 })
