@@ -37,6 +37,10 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Прод ходит через пулер с binary_parameters=yes — в этом режиме []byte в jsonb падает
+        dsn_params: ['', '&binary_parameters=yes']
     defaults:
       run:
         working-directory: backend
@@ -56,7 +60,7 @@ jobs:
           --health-retries 10
     env:
       # Одноразовая БД CI-контейнера, вход без пароля (trust)
-      TEST_DATABASE_URL: postgres://postgres@localhost:5432/finance_test?sslmode=disable
+      TEST_DATABASE_URL: postgres://postgres@localhost:5432/finance_test?sslmode=disable${{ matrix.dsn_params }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
