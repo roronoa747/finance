@@ -8,6 +8,7 @@ import Setup from '@/views/Setup.vue'
 import AppShell from '@/components/AppShell.vue'
 import Overview from '@/views/Overview.vue'
 import Budget from '@/views/Budget.vue'
+import Ritual from '@/views/Ritual.vue'
 import PlaceholderView from '@/views/PlaceholderView.vue'
 
 export const routes: RouteRecordRaw[] = [
@@ -51,7 +52,7 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'ritual',
         name: 'ritual',
-        component: PlaceholderView,
+        component: Ritual,
       },
     ],
   },
