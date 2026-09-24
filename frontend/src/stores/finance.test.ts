@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useFinanceStore, defaultSyncDoc } from './finance'
 import { ApiClient, ApiError } from '@/api/client'
@@ -362,6 +362,74 @@ describe('stores/finance.ts — Pinia хранилище казны и синх�
     expect(store.householdRev).toBe(2)
     expect(store.status).toBe('dirty')
   })
+  describe('RP-01: правка тем же значением ничего не пишет', () => {
+    const T0 = '2026-09-20T10:00:00Z'
+    function loadClean(store: ReturnType<typeof useFinanceStore>) {
+      store.setHouseholdDoc(
+        {
+          ...defaultSyncDoc(),
+          people: [{ ...person('a', 'Ильяс'), salary: 700_000, updatedAt: T0 }],
+          categories: [{ key: 'd4', name: 'Еда и быт', note: '', amount: 150_000, updatedAt: T0 }],
+          accounts: [
+            {
+              id: 'acc', name: 'Kaspi', note: '', amount: 90_000, kind: 'deposit', updatedAt: T0,
+              deposit: { annualRate: 0.14, months: 12, monthlyTopUp: 10_000, capitalize: true },
+            },
+          ],
+          obligations: [
+            { id: 'rent', name: 'Аренда', note: '', day: 5, category: 'd1', versions: [{ from: '2000-01', amount: 220_000 }], updatedAt: T0 },
+          ],
+        },
+        3,
+      )
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('то же значение: ни updatedAt, ни статуса, ни синка', () => {
+      const store = useFinanceStore()
+      loadClean(store)
+
+      store.setCategoryAmount('d4', 150_000)
+      store.correctSalary('a', 700_000)
+      store.setAccountAmount('acc', 90_000)
+      store.updateAccount('acc', { name: 'Kaspi', note: '' })
+      store.setPerson('a', { name: 'Ильяс', payday: 10 })
+      store.setDeposit('acc', { monthlyTopUp: 10_000, months: 12 })
+      store.correctObligation('rent', 220_000)
+
+      expect(store.status).toBe('idle')
+      expect(vi.getTimerCount()).toBe(0)
+      expect(store.categories[0].updatedAt).toBe(T0)
+      expect(store.people[0].updatedAt).toBe(T0)
+      expect(store.accounts[0].updatedAt).toBe(T0)
+      expect(store.obligations[0].updatedAt).toBe(T0)
+    })
+
+    it('новое значение пишется как раньше', () => {
+      const store = useFinanceStore()
+      loadClean(store)
+
+      store.setCategoryAmount('d4', 160_000)
+      expect(store.categories[0].amount).toBe(160_000)
+      expect(store.categories[0].updatedAt).not.toBe(T0)
+      expect(store.status).toBe('dirty')
+
+      store.correctSalary('a', 750_000)
+      expect(store.people[0].salary).toBe(750_000)
+      expect(store.people[0].updatedAt).not.toBe(T0)
+
+      store.setAccountAmount('acc', 95_000)
+      expect(store.accounts[0].amount).toBe(95_000)
+      expect(store.accounts[0].updatedAt).not.toBe(T0)
+    })
+  })
+
   it('pullHousehold: сбой (истёкший вход) не оставляет «синхронизировано»', async () => {
     const store = useFinanceStore()
     const client = {

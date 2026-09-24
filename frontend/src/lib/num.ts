@@ -51,6 +51,26 @@ export function caretAt(text: string, sig: number): number {
   return text.length
 }
 
+/** Число в поле без оглядки на разряды и запятую; пустое или нечисло — null. */
+function numValue(s: string, kind: NumKind): number | null {
+  const c = clean(s, kind)
+  if (c === '') return null
+  const n = kind === 'rate' ? parseFloat(c.replace(',', '.')) : parseInt(c.replace(/\D/g, ''), 10)
+  return Number.isFinite(n) ? n : null
+}
+
+/**
+ * Изменил ли человек значение поля по сравнению с тем, что было при входе.
+ * Сравниваются числа, а не строки: «150 000» и «150000» — одно и то же.
+ *
+ * Зачем: тап по полю и уход из него без правки раньше коммитил старое значение
+ * со свежим временем правки, и слияние по времени затирало настоящую правку
+ * партнёра с другого телефона.
+ */
+export function numChanged(text: string, initial: string | number, kind: NumKind): boolean {
+  return numValue(text, kind) !== numValue(String(initial ?? ''), kind)
+}
+
 /** Сколько значащих знаков слева от курсора. */
 export function sigBefore(text: string): number {
   return (text.match(/[\d,]/g) ?? []).length

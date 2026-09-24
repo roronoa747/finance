@@ -35,6 +35,12 @@ function readStorage<T>(key: string, fallback: T): T {
   }
 }
 
+// Правка, которая ничего не меняет, не пишется: свежий updatedAt без изменения
+// выиграл бы слияние по времени у настоящей правки с другого устройства.
+function unchanged<T extends object>(cur: T | undefined, patch: Partial<T>): boolean {
+  return !!cur && (Object.keys(patch) as (keyof T)[]).every((k) => cur[k] === patch[k])
+}
+
 export const useFinanceStore = defineStore('finance', () => {
   const householdDoc = ref<SyncDoc>(readStorage<SyncDoc>(STORAGE_KEY_DOC, defaultSyncDoc()))
   const householdRev = ref<number>(readStorage<number>(STORAGE_KEY_REV, 0))
@@ -263,6 +269,7 @@ export const useFinanceStore = defineStore('finance', () => {
   
 
   function setPerson(id: PersonId, patch: Partial<Person>) {
+    if (unchanged(people.value.find((x) => x.id === id), patch)) return
     mutateHouseholdDoc((doc) => {
       let p = doc.people.find((x) => x.id === id);
       if (!p) {
@@ -362,6 +369,7 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   function setCategoryAmount(key: CategoryKey, amount: number) {
+    if (unchanged(categories.value.find((c) => c.key === key), { amount })) return
     const t = new Date().toISOString();
     mutateHouseholdDoc((doc) => {
       let cat = doc.categories.find((c) => c.key === key);
@@ -422,6 +430,9 @@ export const useFinanceStore = defineStore('finance', () => {
   function correctSalary(id: PersonId, amount: number) {
     const t = new Date().toISOString()
     const key = monthKey()
+    const p0 = people.value.find((x) => x.id === id)
+    const cur0 = (p0?.salaryVersions ?? []).filter((v) => v.from <= key).pop()
+    if (!p0 || (p0.salary === amount && (!cur0 || cur0.amount === amount))) return
     mutateHouseholdDoc((doc) => {
       const p = doc.people.find((x) => x.id === id)
       if (!p) return
@@ -502,6 +513,7 @@ export const useFinanceStore = defineStore('finance', () => {
   function updateAccount(id: string, patch: Partial<Account>) {
     const t = new Date().toISOString()
     const isPriv = ((privateDoc.value.accounts as Account[]) || []).some((x) => x.id === id)
+    if (unchanged(accounts.value.find((x) => x.id === id), patch)) return
     if (isPriv) {
       mutatePrivateDoc((doc) => {
         const list = (doc.accounts as Account[]) || []
@@ -522,6 +534,7 @@ export const useFinanceStore = defineStore('finance', () => {
   function setDeposit(id: string, deposit: Partial<NonNullable<Account['deposit']>>) {
     const t = new Date().toISOString()
     const isPriv = ((privateDoc.value.accounts as Account[]) || []).some((x) => x.id === id)
+    if (unchanged(accounts.value.find((x) => x.id === id)?.deposit, deposit)) return
     if (isPriv) {
       mutatePrivateDoc((doc) => {
         const list = (doc.accounts as Account[]) || []
@@ -594,6 +607,8 @@ export const useFinanceStore = defineStore('finance', () => {
   function correctObligation(id: string, amount: number) {
     const t = new Date().toISOString()
     const key = monthKey()
+    const o0 = obligations.value.find((x) => x.id === id)
+    if (!o0 || (o0.versions ?? []).filter((v) => v.from <= key).pop()?.amount === amount) return
     mutateHouseholdDoc((doc) => {
       const o = (doc.obligations || []).find((x) => x.id === id)
       if (!o) return

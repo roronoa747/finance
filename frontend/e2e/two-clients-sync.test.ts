@@ -10,6 +10,8 @@ import type { SyncDoc, Goal, Account } from '../src/types/finance'
 import type { HouseholdDocResponse, ConflictResponse, PrivateDocResponse } from '../src/types/api'
 import { netWorth, goalMonths, nextChange } from '../src/lib/finance'
 import { monthKey } from '../src/lib/dates'
+import { plain, parseMoney } from '../src/lib/money'
+import { numChanged } from '../src/lib/num'
 import Overview from '../src/views/Overview.vue'
 import Capital from '../src/views/Capital.vue'
 
@@ -380,5 +382,43 @@ describe('e2e / MGV-14 — Сквозная приёмка: совместная
     expect(htmlOverviewB).toContain('Семейный отпуск в горах')
     expect(htmlOverviewB).toContain('Ильяс')
     expect(htmlOverviewB).toContain('Аруна')
+  })
+
+  it('RP-01: тап по «Еда и быт» без правки не затирает правку партнёра', async () => {
+    serverHouseholdDoc.data.categories = [
+      { key: 'd4', name: 'Еда и быт', note: '', amount: 150_000, updatedAt: '2026-01-01T00:00:00Z' },
+    ]
+    const piniaA = createPinia()
+    const piniaB = createPinia()
+    const clientA = createMockBackendClient('u-ilyas')
+    const clientB = createMockBackendClient('u-aruna')
+
+    setActivePinia(piniaA)
+    const storeA = useFinanceStore()
+    await storeA.pullHousehold(clientA)
+    setActivePinia(piniaB)
+    const storeB = useFinanceStore()
+    await storeB.pullHousehold(clientB)
+
+    // A меняет «Еда и быт» и отправляет.
+    setActivePinia(piniaA)
+    storeA.setCategoryAmount('d4', 180_000)
+    await storeA.syncHousehold(clientA)
+    expect(serverHouseholdDoc.data.categories[0].amount).toBe(180_000)
+
+    // B ещё видит старое значение, тапает по полю и уходит: поле видит, что
+    // значение то же, и не коммитит; стор на всякий случай тоже не пишет.
+    setActivePinia(piniaB)
+    const initial = plain(storeB.categories[0].amount)
+    expect(numChanged(initial, initial, 'money')).toBe(false)
+    storeB.setCategoryAmount('d4', parseMoney(initial))
+    expect(storeB.status).toBe('idle')
+    await storeB.syncHousehold(clientB)
+    expect(storeB.categories[0].amount).toBe(180_000)
+
+    setActivePinia(piniaA)
+    await storeA.pullHousehold(clientA)
+    expect(storeA.categories[0].amount).toBe(180_000)
+    expect(serverHouseholdDoc.data.categories[0].amount).toBe(180_000)
   })
 })
