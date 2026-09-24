@@ -18,9 +18,10 @@ type Pool struct {
 // ServerPool suits the long-running server (cmd/server).
 var ServerPool = Pool{MaxOpen: 25, MaxIdle: 10}
 
-// ServerlessPool suits one Vercel function instance: it handles one request at
-// a time, and the transaction pooler behind it multiplexes the free Supabase
-// connection limit, so a couple of connections is plenty.
+// ServerlessPool suits one Vercel function instance: the Supavisor transaction
+// pooler behind it multiplexes the free Supabase connection limit and sync
+// queries are short, so a couple of connections per instance is enough; extra
+// concurrent requests wait in database/sql.
 var ServerlessPool = Pool{MaxOpen: 2, MaxIdle: 2}
 
 // Connect initializes and validates a PostgreSQL connection pool.
