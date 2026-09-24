@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { useFinanceStore, defaultSyncDoc } from './finance'
+import { useFinanceStore, defaultSyncDoc, DEMO_HOUSEHOLD } from './finance'
 import { useAuthStore } from './auth'
-import { ApiClient, ApiError } from '@/api/client'
+import { ApiClient, ApiError, apiClient } from '@/api/client'
 import type { SyncDoc, Goal, Person, PersonId } from '@/types/finance'
 import type { HouseholdDocResponse, ConflictResponse } from '@/types/api'
 
@@ -603,6 +603,44 @@ describe('stores/finance.ts — Pinia хранилище казны и синх�
       expect(store.people).toEqual([])
       expect(store.householdRev).toBe(0)
     })
+  })
+
+  it('RP-05: в демо правки не шлют ни одного запроса и не дают «не сошлось»', async () => {
+    vi.useFakeTimers()
+    try {
+      const calls = { n: 0 }
+      const count = () => {
+        calls.n++
+        return Promise.reject(new ApiError('unauthorized', 401))
+      }
+      const counter = {
+        getHouseholdDoc: vi.fn(count),
+        pushHouseholdDoc: vi.fn(count),
+        getPrivateDoc: vi.fn(count),
+        pushPrivateDoc: vi.fn(count),
+      } as unknown as ApiClient
+      for (const m of ['getHouseholdDoc', 'pushHouseholdDoc', 'getPrivateDoc', 'pushPrivateDoc'] as const) {
+        vi.spyOn(apiClient, m).mockImplementation(count as never)
+      }
+
+      const store = useFinanceStore()
+      store.startNewFamily(DEMO_HOUSEHOLD)
+      expect(store.isDemo).toBe(true)
+      store.setCategoryAmount('d4', 280_000)
+      store.addAccount({ name: 'Заначка', kind: 'cash', amount: 10_000 }, true)
+      store.resetDoc()
+      await vi.advanceTimersByTimeAsync(5_000)
+      await store.syncHousehold(counter)
+      await store.pullHousehold(counter)
+      await store.pullPrivateDoc(counter)
+
+      expect(calls.n).toBe(0)
+      expect(store.status).not.toBe('error')
+      expect(store.status).not.toBe('conflict')
+    } finally {
+      vi.restoreAllMocks()
+      vi.useRealTimers()
+    }
   })
 
   it('pullHousehold: сбой (истёкший вход) не оставляет «синхронизировано»', async () => {

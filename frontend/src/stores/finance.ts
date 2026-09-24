@@ -20,6 +20,9 @@ export function defaultSyncDoc(): SyncDoc {
   }
 }
 
+/** Семья демо-режима: её документ не уходит на сервер (Р-32). */
+export const DEMO_HOUSEHOLD = 'demo-household-1'
+
 const STORAGE_KEY_DOC = 'ff_household_doc'
 const STORAGE_KEY_REV = 'ff_household_rev'
 const STORAGE_KEY_PRIV_DOC = 'ff_private_doc'
@@ -69,6 +72,8 @@ export const useFinanceStore = defineStore('finance', () => {
   const hasUnsent = computed(() => unsent.value || privateUnsent.value)
   // Семья, которой принадлежит документ на этом телефоне (см. claimFor).
   const docHousehold = ref<string | null>(readStorage<string | null>(STORAGE_KEY_DOC_HOUSEHOLD, null))
+  // Демо — черновик будущей семьи: живёт только на телефоне, к серверу не ходит (Р-32).
+  const isDemo = computed(() => docHousehold.value === DEMO_HOUSEHOLD)
 
   const status = ref<SyncStatus>(unsent.value ? 'dirty' : 'idle')
   const lastSyncedAt = ref<string | null>(null)
@@ -152,6 +157,33 @@ export const useFinanceStore = defineStore('finance', () => {
     saveLocalState()
   }
 
+  /** Вход в существующую семью (логин, код приглашения): её документы — с сервера. */
+  async function enterFamily(householdId: string, client: ApiClient = apiClient) {
+    claimFor(householdId)
+    await pullHousehold(client)
+    await pullPrivateDoc(client)
+  }
+
+  /** Новая семья без демо: у неё ещё ничего нет, остатки прежнего документа не переносятся. */
+  function startNewFamily(householdId: string) {
+    clearLocal()
+    claimFor(householdId)
+  }
+
+  /**
+   * «Да» после регистрации из демо (Р-32): весь демо-документ, общий и личный,
+   * становится первым документом новой семьи; участник a — под именем из регистрации.
+   * Сервер у новой семьи пуст, поэтому синк заливает документ как есть.
+   */
+  async function adoptDemo(householdId: string, name: string, client: ApiClient = apiClient) {
+    docHousehold.value = householdId
+    unsent.value = true
+    saveLocalState()
+    setPerson('a', { name })
+    await syncHousehold(client)
+    if (privateUnsent.value) await pullPrivateDoc(client)
+  }
+
   function setHouseholdDoc(doc: SyncDoc, rev?: number) {
     householdDoc.value = doc
     if (typeof rev === 'number') {
@@ -187,7 +219,7 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   async function syncHousehold(client: ApiClient = apiClient): Promise<void> {
-    if (isSyncing) return
+    if (isSyncing || isDemo.value) return
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       status.value = 'offline'
       return
@@ -195,6 +227,10 @@ export const useFinanceStore = defineStore('finance', () => {
 
     isSyncing = true
     syncRuns++
+    // Запланированный синк не нужен: этот круг возьмёт все правки, сделанные до него,
+    // а правка во время отправки запланирует следующий сама.
+    if (syncTimer) clearTimeout(syncTimer)
+    syncTimer = null
     status.value = 'syncing'
     lastError.value = null
     const s = session
@@ -278,6 +314,7 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   async function pullHousehold(client: ApiClient = apiClient): Promise<HouseholdDocResponse | null> {
+    if (isDemo.value) return null
     // Без сети не спрашиваем: бейдж говорит «нет сети», а не «не сошлось».
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       if (!isSyncing) status.value = 'offline'
@@ -317,6 +354,7 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   async function pullPrivateDoc(client: ApiClient = apiClient) {
+    if (isDemo.value) return null
     const s = session
     try {
       const res = await client.getPrivateDoc()
@@ -326,7 +364,7 @@ export const useFinanceStore = defineStore('finance', () => {
         // досылается поверх, а не затирается серверной копией.
         privateRev.value = res.rev
         saveLocalState()
-        void pushPrivateDoc(privateDoc.value, client).catch(() => {})
+        await pushPrivateDoc(privateDoc.value, client).catch(() => {})
       } else if (res) {
         privateDoc.value = res.data ?? {}
         privateRev.value = res.rev
@@ -360,6 +398,7 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   function scheduleSync(delay = 1500, client: ApiClient = apiClient) {
+    if (isDemo.value) return
     if (syncTimer) clearTimeout(syncTimer)
     syncTimer = setTimeout(() => {
       syncTimer = null
@@ -561,7 +600,7 @@ export const useFinanceStore = defineStore('finance', () => {
     mutator(privateDoc.value)
     privateUnsent.value = true
     saveLocalState()
-    void pushPrivateDoc(privateDoc.value).catch(() => {})
+    if (!isDemo.value) void pushPrivateDoc(privateDoc.value).catch(() => {})
   }
 
   function addAccount(
@@ -795,6 +834,7 @@ export const useFinanceStore = defineStore('finance', () => {
     privateUnsent,
     hasUnsent,
     docHousehold,
+    isDemo,
     lastSyncedAt,
     lastError,
     forceReplace,
@@ -815,6 +855,9 @@ export const useFinanceStore = defineStore('finance', () => {
     resetDoc,
     clearLocal,
     claimFor,
+    enterFamily,
+    startNewFamily,
+    adoptDemo,
     syncHousehold,
     pullHousehold,
     pullPrivateDoc,

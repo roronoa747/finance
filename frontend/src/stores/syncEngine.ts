@@ -1,5 +1,5 @@
 import { useAuthStore } from './auth'
-import { useFinanceStore } from './finance'
+import { useFinanceStore, DEMO_HOUSEHOLD } from './finance'
 
 /** Как часто ловить правки партнёра, пока приложение открыто. */
 export const BACKGROUND_SYNC_MS = 60_000
@@ -41,6 +41,9 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
   win.setInterval(() => {
     if (doc.visibilityState === 'visible') sync()
   }, BACKGROUND_SYNC_MS)
+
+  // Демо, начатое до RP-05: документ помечается демо и больше не ходит на сервер.
+  if (auth.isDemo) finance.claimFor(DEMO_HOUSEHOLD)
 
   if (signedIn()) {
     // Документ, записанный до RP-04, получает хозяина — семью, в которой вошли.

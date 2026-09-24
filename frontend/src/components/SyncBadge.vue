@@ -46,7 +46,16 @@ async function triggerManualSync() {
 
 <template>
   <div>
+    <!-- Демо к серверу не ходит (Р-32): статуса синхронизации у него нет. -->
+    <span
+      v-if="authStore.isDemo"
+      class="text-[12px] font-medium text-ink-3"
+      title="Демо живёт только на этом телефоне"
+    >
+      демо
+    </span>
     <button
+      v-else
       type="button"
       :class="[
         'flex items-center gap-1.5 text-[12px] font-medium transition-colors cursor-pointer',

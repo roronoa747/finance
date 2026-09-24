@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { PhSparkle } from '@phosphor-icons/vue'
 import { useAuthStore, DEMO_TOKEN } from '@/stores/auth'
-import { useFinanceStore } from '@/stores/finance'
+import { useFinanceStore, DEMO_HOUSEHOLD } from '@/stores/finance'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Segmented from '@/components/kit/Segmented.vue'
@@ -16,7 +16,8 @@ const route = useRoute()
 const authStore = useAuthStore()
 const financeStore = useFinanceStore()
 
-const mode = ref<Mode>('login')
+// Из демо чаще приходят создавать семью — туда и открываем.
+const mode = ref<Mode>(financeStore.isDemo ? 'register' : 'login')
 
 // Form fields
 const email = ref('')
@@ -35,12 +36,29 @@ onMounted(() => {
   }
 })
 
-// Документ телефона привязывается к семье, куда вошли: чужой стирается, свой
-// сливается с серверным — неотправленное после истёкшего входа уходит (RP-04).
+// Документ телефона привязывается к семье, куда вошли: чужой (и черновик демо)
+// стирается, свой сливается с серверным — неотправленное после истёкшего входа уходит.
 async function enterHousehold() {
-  if (authStore.household) financeStore.claimFor(authStore.household.id)
-  await financeStore.pullHousehold()
-  await financeStore.pullPrivateDoc()
+  if (authStore.household) await financeStore.enterFamily(authStore.household.id)
+}
+
+// Черновик демо на телефоне (Р-32): при создании семьи его можно взять с собой,
+// при входе в существующую — нет, и это сказано заранее.
+const hasDemoDraft = computed(() => financeStore.isDemo)
+const askDemo = ref(false)
+
+async function answerDemo(take: boolean) {
+  const household = authStore.household
+  if (!household) return
+  busy.value = true
+  try {
+    if (take) await financeStore.adoptDemo(household.id, displayName.value.trim())
+    else financeStore.startNewFamily(household.id)
+    askDemo.value = false
+    await router.push(financeStore.setupDone ? '/' : '/setup')
+  } finally {
+    busy.value = false
+  }
 }
 
 async function submit() {
@@ -71,7 +89,11 @@ async function submit() {
         display_name: displayName.value.trim(),
         household_name: householdName.value.trim() || 'Наш бюджет',
       } as any)
-      if (authStore.household) financeStore.claimFor(authStore.household.id)
+      if (hasDemoDraft.value) {
+        askDemo.value = true
+        return
+      }
+      if (authStore.household) financeStore.startNewFamily(authStore.household.id)
       await router.push('/setup')
     } else if (mode.value === 'join') {
       if (!inviteCode.value.trim() || !displayName.value.trim()) {
@@ -106,6 +128,8 @@ async function submit() {
 }
 
 function startDemoMode() {
+  // Черновик демо уже есть — возвращаемся к нему, а не начинаем пример заново.
+  const resume = financeStore.isDemo
   authStore.setAuthData({
     token: DEMO_TOKEN,
     user: { id: 'demo-user-1', email: 'demo@family.local', created_at: new Date().toISOString() },
@@ -124,6 +148,11 @@ function startDemoMode() {
       joined_at: new Date().toISOString(),
     },
   })
+  if (resume) {
+    void router.push('/')
+    return
+  }
+  financeStore.startNewFamily(DEMO_HOUSEHOLD)
   financeStore.mutateHouseholdDoc((doc) => {
     doc.setupDoneAt = new Date().toISOString()
     doc.people = [
@@ -207,6 +236,24 @@ function startDemoMode() {
       </span>
     </div>
 
+    <!-- Регистрация из демо: взять ли черновик в новую семью (Р-32) -->
+    <div v-if="askDemo" class="flex flex-col gap-3">
+      <h1 class="font-display text-[25px] font-semibold leading-tight tracking-[-0.025em] text-ink">
+        Взять то, что вы заполнили в демо?
+      </h1>
+      <p class="text-[13.5px] leading-relaxed text-ink-2">
+        Бюджет, счета, кредиты и цели из демо станут данными новой семьи, ваше имя — из регистрации.
+        Если нет — начнём с чистого листа.
+      </p>
+      <Button class="w-full mt-1" :disabled="busy" @click="answerDemo(true)">
+        {{ busy ? 'Минуту…' : 'Да, взять' }}
+      </Button>
+      <Button variant="ghost" class="w-full" :disabled="busy" @click="answerDemo(false)">
+        Нет, начать с чистого
+      </Button>
+    </div>
+
+    <template v-else>
     <!-- Title and Note -->
     <div class="mb-5">
       <h1 class="font-display text-[25px] font-semibold leading-tight tracking-[-0.025em] text-ink">
@@ -312,6 +359,14 @@ function startDemoMode() {
         {{ errorMessage }}
       </div>
 
+      <p v-if="hasDemoDraft" class="mb-3 text-[12.5px] leading-relaxed text-ink-3">
+        {{
+          mode === 'register'
+            ? 'После создания спросим, взять ли то, что вы заполнили в демо.'
+            : 'Заполненное в демо сюда не переносится: у семьи уже есть свои данные. Взять его с собой можно при создании новой семьи.'
+        }}
+      </p>
+
       <Button type="submit" class="w-full mt-1" :disabled="busy">
         {{
           busy
@@ -333,11 +388,16 @@ function startDemoMode() {
         @click="startDemoMode"
       >
         <PhSparkle :size="16" />
-        Попробовать в демо-режиме без регистрации
+        {{ hasDemoDraft ? 'Вернуться в демо' : 'Попробовать в демо-режиме без регистрации' }}
       </button>
       <p class="mt-1 text-[11.5px] text-ink-3">
-        Загружает готовую семью с примерами расходов, кредитов и целей.
+        {{
+          hasDemoDraft
+            ? 'Черновик демо сохранён на этом телефоне.'
+            : 'Загружает готовую семью с примерами расходов, кредитов и целей.'
+        }}
       </p>
     </div>
+    </template>
   </div>
 </template>

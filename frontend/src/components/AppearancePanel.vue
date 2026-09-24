@@ -76,6 +76,13 @@ async function sendAndLeave() {
   else leaving.value = 'failed'
 }
 
+// Из демо — к созданию семьи или входу; черновик демо остаётся на телефоне до ответа
+// «взять ли его» при регистрации (Р-32).
+function leaveDemo() {
+  authStore.clearAuth()
+  void router.push('/access')
+}
+
 function leave(choice: 'keep' | 'discard') {
   authStore.logout(choice)
   leaving.value = null
@@ -139,7 +146,14 @@ onMounted(() => {
       </div>
     </div>
 
-    <div class="pt-3 border-t border-line">
+    <div v-if="authStore.isDemo" class="flex flex-col gap-2 pt-3 border-t border-line">
+      <p class="text-[12.5px] leading-relaxed text-ink-2">
+        Это демо: всё живёт только на этом телефоне. Создайте семью — и заполненное можно будет взять с
+        собой.
+      </p>
+      <Button class="w-full" @click="leaveDemo">Создать семью или войти</Button>
+    </div>
+    <div v-else class="pt-3 border-t border-line">
       <Button
         v-if="!leaving"
         variant="ghost"
