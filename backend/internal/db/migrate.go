@@ -10,6 +10,8 @@ import (
 )
 
 // RunMigrations applies pending SQL migrations from the given filesystem.
+// It needs a pool of at least two connections: one stays pinned for the
+// advisory lock while the migrations run on another.
 func RunMigrations(ctx context.Context, database *sql.DB, migrationsFS fs.FS) error {
 	if database == nil {
 		return fmt.Errorf("database connection is nil")
