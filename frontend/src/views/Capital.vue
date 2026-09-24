@@ -26,6 +26,7 @@ import {
   parseMonthKey,
 } from '@/lib/dates'
 import {
+  afterAnchor,
   amountAt,
   annuityMonths,
   annuityTotal,
@@ -623,6 +624,19 @@ watch(
   },
   { immediate: true },
 )
+
+// Снятие обещает только то, что сделает стор (как `unmarkNote` у отметок): остаток
+// и счёт возвращаются, если досрочка после их ручной сверки, платёж — если его с
+// тех пор не меняли.
+function prepayUndoNote(p: Payment): string {
+  const c = activePayoffCredit.value
+  const acc = p.accountId ? financeStore.accounts.find((a) => a.id === p.accountId) : undefined
+  const parts = ['Досрочка уйдёт из списка и счётчика']
+  if (c && afterAnchor(p, c.principalSetAt)) parts.push('остаток долга — к прежнему')
+  if (p.accountId && (!acc || afterAnchor(p, acc.amountSetAt))) parts.push('деньги вернутся на счёт')
+  if (p.prevPayment !== undefined && c?.payment === p.newPayment) parts.push('платёж — к прежнему')
+  return parts.join(', ') + '.'
+}
 
 function applyPrepay() {
   const c = activePayoffCredit.value
@@ -1704,9 +1718,7 @@ onUnmounted(() => {
               </button>
             </div>
             <div v-if="removingPrepay === p.id" class="mt-2 rounded-xl border border-line bg-surface-2 p-3">
-              <p class="mb-2 leading-relaxed text-ink-2">
-                Остаток долга и деньги на счёте вернутся к прежним{{ p.prevPayment !== undefined ? ', платёж — тоже' : '' }}.
-              </p>
+              <p class="mb-2 leading-relaxed text-ink-2">{{ prepayUndoNote(p) }}</p>
               <div class="flex gap-2">
                 <Button variant="outline" class="flex-1 bg-surface" @click="removingPrepay = null">Отмена</Button>
                 <Button

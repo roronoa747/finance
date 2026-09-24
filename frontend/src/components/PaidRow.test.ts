@@ -246,6 +246,45 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     }
   })
 
+  it('снятие досрочки обещает только то, что вернёт стор: «Не списывать» — без счёта; платёж — пока его не меняли; после сверки — без счёта и остатка', async () => {
+    const store = family()
+    const undo = async (id: string) => {
+      const html = await capitalWith('/capital?payoff=loan', { removingPrepay: id })
+      const at = html.indexOf('Досрочка уйдёт')
+      expect(at).toBeGreaterThan(-1)
+      return html.slice(at, html.indexOf('</p>', at))
+    }
+
+    // «Не списывать»: со счёта ничего не уходило — про счёт ни слова.
+    const free = store.applyPrepayment('loan', 'a', { amount: 50_000, mode: 'term', accountId: null })!
+    const freeNote = await undo(free.id)
+    expect(freeNote).toContain('остаток долга — к прежнему')
+    expect(freeNote).not.toContain('на счёт')
+    expect(freeNote).not.toContain('деньги')
+    expect(freeNote).not.toContain('платёж')
+
+    // «Снизить платёж» с карты: вернутся и деньги, и платёж.
+    vi.setSystemTime(new Date('2026-09-24T09:00:00Z'))
+    const lower = store.applyPrepayment('loan', 'a', { amount: 100_000, mode: 'payment', accountId: 'card' })!
+    expect(lower.newPayment).toBeDefined()
+    const lowerNote = await undo(lower.id)
+    expect(lowerNote).toContain('деньги вернутся на счёт')
+    expect(lowerNote).toContain('платёж — к прежнему')
+
+    // Платёж с тех пор снизила другая досрочка — стор его не вернёт, текст не обещает.
+    vi.setSystemTime(new Date('2026-09-24T10:00:00Z'))
+    store.applyPrepayment('loan', 'a', { amount: 50_000, mode: 'payment', accountId: 'card' })
+    expect(await undo(lower.id)).not.toContain('платёж — к прежнему')
+
+    // Остаток карты и долга сверили руками после досрочки — ни деньги, ни остаток не вернутся.
+    vi.setSystemTime(new Date('2026-09-24T11:00:00Z'))
+    store.setAccountAmount('card', 700_000)
+    store.updateCredit('loan', { principal: 500_000 })
+    const reconciled = await undo(lower.id)
+    expect(reconciled).not.toContain('деньги вернутся')
+    expect(reconciled).not.toContain('остаток долга')
+  })
+
   it('viewer: на Обзоре нет «Оставить?» и «Оплатил», в Бюджете (список) нет «Оплатил»; участник их видит', async () => {
     // Ежемесячная подписка без keptAt — участника о ней спросили бы.
     const netflix = sub('netflix', 'Netflix', 4_990)
