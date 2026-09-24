@@ -14,12 +14,12 @@ import (
 )
 
 var (
-	ErrHouseholdNotFound = errors.New("household not found")
+	ErrHouseholdNotFound  = errors.New("household not found")
 	ErrMembershipNotFound = errors.New("user does not belong to any household")
-	ErrInviteNotFound    = errors.New("invite not found")
-	ErrInviteExpired     = errors.New("invite code has expired")
-	ErrInviteAlreadyUsed = errors.New("invite code has already been used")
-	ErrHouseholdFull     = errors.New("household has reached maximum members")
+	ErrInviteNotFound     = errors.New("invite not found")
+	ErrInviteExpired      = errors.New("invite code has expired")
+	ErrInviteAlreadyUsed  = errors.New("invite code has already been used")
+	ErrHouseholdFull      = errors.New("household has reached maximum members")
 )
 
 type HouseholdRepository interface {

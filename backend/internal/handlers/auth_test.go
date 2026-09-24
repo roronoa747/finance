@@ -43,7 +43,7 @@ func setupTestApp() (*chi.Mux, *repository.MockRepositories, *auth.TokenService)
 
 func makeAuthJSON(email, pass, displayName, householdName string) []byte {
 	m := map[string]string{
-		"email":          email,
+		"email":         email,
 		"pass" + "word": pass,
 	}
 	if displayName != "" {

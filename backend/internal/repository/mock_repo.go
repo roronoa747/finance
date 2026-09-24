@@ -32,8 +32,8 @@ func NewMockRepositories() *MockRepositories {
 // --- MockUserRepo ---
 
 type MockUserRepo struct {
-	mu    sync.RWMutex
-	users map[string]*models.User // id -> User
+	mu      sync.RWMutex
+	users   map[string]*models.User // id -> User
 	byEmail map[string]*models.User
 }
 
@@ -304,8 +304,8 @@ func (m *MockHouseholdRepo) JoinHousehold(ctx context.Context, code, userID, dis
 // --- MockDocRepo ---
 
 type MockDocRepo struct {
-	mu           sync.RWMutex
-	householdDocs map[string]*models.HouseholdDoc      // householdID -> doc
+	mu            sync.RWMutex
+	householdDocs map[string]*models.HouseholdDoc          // householdID -> doc
 	privateDocs   map[string]map[string]*models.PrivateDoc // householdID -> userID -> doc
 }
 

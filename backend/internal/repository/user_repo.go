@@ -108,4 +108,3 @@ func (r *sqlUserRepository) Delete(ctx context.Context, id string) error {
 	}
 	return nil
 }
-
