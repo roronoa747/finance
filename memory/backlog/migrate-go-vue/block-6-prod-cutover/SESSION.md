@@ -213,8 +213,9 @@
   - React-прод не менялся: `family-finance-ff.vercel.app` — `#root`, `/api/health` → 404; Production-деплой
     `dpl_AV2UGjCwhnNqmRe2HFTAr5WJ8QSV` (коммит `b3e0dd9`) — кандидат на откат.
 - **Остаток MGV-19 (нужен владелец):**
-  1. Разрешить `go run ./cmd/transfer forward -replace` на живой базе (копия в `app`; `public` только
-     читается) — или выполнить команду самому по `CUTOVER.md` (шаг 2, без окна).
+  1. ~~Разрешить `transfer forward -replace`~~ — **сделано 2026-09-24 с «да» владельца**: копия в `app`,
+     сверка всё `OK` (4 / 1 / 2 / казна rev 632 `= app` / оба `private_docs` rev `=`), `committed`.
+     Сразу же `transfer back -dry-run` — `OK`, откачено (п. 3 выполнен).
   2. Вход обоих участников старыми паролями на preview (share-ссылка), сверка экранов с React,
      синк двух устройств, правка офлайн → синк, офлайн-открытие на телефоне.
   3. После проверок: `transfer back -dry-run` (агент), удаление тестовых пользователей preview.
