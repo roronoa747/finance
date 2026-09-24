@@ -78,10 +78,10 @@
 | **5. Капитал & Приёмка** 🏁 закрыт *(M: фронтенд экраны)* | MGV-12 Экран `Capital.vue` (счета, кредиты, досрочка) | `block-5-capital-goals/MGV-12-capital-credits.md` | MGV-11 | ✅ |
 | | MGV-13 Экраны `Goals.vue`, `GoalDetail.vue`, `Deposit.vue` | `block-5-capital-goals/MGV-13-goals-deposit.md` | MGV-12 | ✅ |
 | | MGV-14 Сквозная приёмка, E2E тесты двух клиентов | `block-5-capital-goals/MGV-14-e2e-acceptance.md` | MGV-13 | ✅ |
-| **6. Прод-инфраструктура и cutover** 🔄 *(L: живые данные, пароли, секреты, прод; ревью — `backend`, `frontend`; деплой = cutover в клинапе)* | MGV-15 Go к проду: fail-fast, схема `app`, коды 400/413, `/api/fx-rate` | `block-6-prod-cutover/MGV-15-go-prod-ready.md` | Блоки 1–5 | 🔄 |
-| | MGV-16 Vercel: Go-функция, сборка Vue, миграции отдельной командой, пулер, preview | `block-6-prod-cutover/MGV-16-vercel-go-function.md` | MGV-15 | 🔄 |
-| | MGV-17 PWA во Vue, замена SW React, курс через `/api/fx-rate`, CI фронта | `block-6-prod-cutover/MGV-17-vue-pwa-fx.md` | MGV-16 | 🔄 |
-| | MGV-18 Перенос данных Supabase → `app` и обратный скрипт | `block-6-prod-cutover/MGV-18-data-transfer.md` | MGV-15 | 🔄 |
+| **6. Прод-инфраструктура и cutover** 🔄 *(L: живые данные, пароли, секреты, прод; ревью — `backend`, `frontend`; деплой = cutover в клинапе)* | MGV-15 Go к проду: fail-fast, схема `app`, коды 400/413, `/api/fx-rate` | `block-6-prod-cutover/MGV-15-go-prod-ready.md` | Блоки 1–5 | ✅ |
+| | MGV-16 Vercel: Go-функция, сборка Vue, миграции отдельной командой, пулер, preview | `block-6-prod-cutover/MGV-16-vercel-go-function.md` | MGV-15 | ✅ |
+| | MGV-17 PWA во Vue, замена SW React, курс через `/api/fx-rate`, CI фронта | `block-6-prod-cutover/MGV-17-vue-pwa-fx.md` | MGV-16 | ✅ |
+| | MGV-18 Перенос данных Supabase → `app` и обратный скрипт | `block-6-prod-cutover/MGV-18-data-transfer.md` | MGV-15 | ✅ |
 | | MGV-19 Репетиция cutover на preview и ранбук `CUTOVER.md` | `block-6-prod-cutover/MGV-19-rehearsal-runbook.md` | MGV-16, MGV-17, MGV-18 | 🔄 |
 
 Трассировка брифа Блока 6 → задачи: эскиз п.1 → MGV-15 (Р-7, Р-11, Р-13); п.2 → MGV-16 (Р-6, Р-12); п.3 → MGV-17 (Р-10, Р-11); п.4 → MGV-18 (Р-8, Р-9, Р-14); п.5 → MGV-19 (Р-9, Р-15); само переключение прода — клинап Блока 6 по `CUTOVER.md`. CI фронта (MGV-17) — не из брифа, а из инварианта гайда «CI обязателен».
