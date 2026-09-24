@@ -1,7 +1,7 @@
 # Бэклог «Миграция на Go + Vue 3» (MGV)
 
-> **Статус:** Блоки 1–5 🏁 (у Блока 1 деплой перенесён в Блок 6 решением владельца 2026-09-24; CI бэкенда зелёный на `mgv-ci`). Блок 6 «Прод-инфраструктура и cutover» ⬜ — задачи MGV-15…MGV-19 заведены 2026-09-24 по брифу Блока 6.
-> Следующий шаг: `/worker migrate-go-vue 6 ultrathink` (промпты — `block-6-prod-cutover/SESSION.md`).
+> **Статус:** Блоки 1–5 🏁 (у Блока 1 деплой перенесён в Блок 6 решением владельца 2026-09-24; CI бэкенда зелёный на `mgv-ci`). Блок 6 «Прод-инфраструктура и cutover» 🔄 — MGV-15…19 ✅ (исполнитель 2026-09-24; репетиция на preview пройдена, `CUTOVER.md` готов).
+> Следующий шаг: `/critic migrate-go-vue 6 ultracode` (промпты — `block-6-prod-cutover/SESSION.md`).
 
 Источник: `migrate-go-vue-brief.md` (резюме интервью подтверждено владельцем 2026-09-23); Блок 6 — `migrate-go-vue-block-6-brief.md` (подтверждён 2026-09-24).
 Формат — `memory/process/BACKLOG-GUIDE.md`. **Решения §2 зафиксированы — рабочие сессии их не пересматривают.**
@@ -82,7 +82,7 @@
 | | MGV-16 Vercel: Go-функция, сборка Vue, миграции отдельной командой, пулер, preview | `block-6-prod-cutover/MGV-16-vercel-go-function.md` | MGV-15 | ✅ |
 | | MGV-17 PWA во Vue, замена SW React, курс через `/api/fx-rate`, CI фронта | `block-6-prod-cutover/MGV-17-vue-pwa-fx.md` | MGV-16 | ✅ |
 | | MGV-18 Перенос данных Supabase → `app` и обратный скрипт | `block-6-prod-cutover/MGV-18-data-transfer.md` | MGV-15 | ✅ |
-| | MGV-19 Репетиция cutover на preview и ранбук `CUTOVER.md` | `block-6-prod-cutover/MGV-19-rehearsal-runbook.md` | MGV-16, MGV-17, MGV-18 | 🔄 |
+| | MGV-19 Репетиция cutover на preview и ранбук `CUTOVER.md` | `block-6-prod-cutover/MGV-19-rehearsal-runbook.md` | MGV-16, MGV-17, MGV-18 | ✅ |
 
 Трассировка брифа Блока 6 → задачи: эскиз п.1 → MGV-15 (Р-7, Р-11, Р-13); п.2 → MGV-16 (Р-6, Р-12); п.3 → MGV-17 (Р-10, Р-11); п.4 → MGV-18 (Р-8, Р-9, Р-14); п.5 → MGV-19 (Р-9, Р-15); само переключение прода — клинап Блока 6 по `CUTOVER.md`. CI фронта (MGV-17) — не из брифа, а из инварианта гайда «CI обязателен».
 
