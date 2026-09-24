@@ -202,5 +202,36 @@ describe('views/Access & Setup — Бизнес-сценарии экранов 
     expect(html).toContain('День зарплаты (1–28)')
     expect(html).toContain('Дальше')
   })
-})
 
+  it('PV-06: удалённая цель и удалённое обязательство не делают семью «настроенной» — полный мастер из 5 шагов', async () => {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('vue/server-renderer')
+    const { createMemoryHistory } = await import('vue-router')
+    const { createAppRouter } = await import('@/router')
+    const { default: Setup } = await import('./Setup.vue')
+    const render = () => {
+      const app = createSSRApp(Setup)
+      app.use(createAppRouter(createMemoryHistory()))
+      return renderToString(app)
+    }
+    const bars = (html: string) => html.match(/h-\[3px\] flex-1 rounded-full/g)?.length ?? 0
+
+    const store = useFinanceStore()
+    const T = '2026-09-01T00:00:00Z'
+    store.householdDoc.goals = [
+      { id: 'g', name: 'Старая', need: 1, seed: 0, have: 0, monthly: 0, hue: 'teal', planPct: 0, movements: [], updatedAt: T, deletedAt: T },
+    ]
+    store.householdDoc.obligations = [
+      { id: 'o', name: 'Старая аренда', note: '', day: 5, category: 'd1', versions: [{ from: '2026-01', amount: 1 }], updatedAt: T, deletedAt: T },
+    ]
+    let html = await render()
+    expect(html).toContain('Начнём с дохода')
+    expect(bars(html)).toBe(5)
+
+    // Живая цель — партнёр уже настроил: только доход.
+    store.householdDoc.goals = [{ ...store.householdDoc.goals[0], deletedAt: null }]
+    html = await render()
+    expect(html).toContain('Добавьте свой доход')
+    expect(bars(html)).toBe(1)
+  })
+})

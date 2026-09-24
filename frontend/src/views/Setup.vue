@@ -5,7 +5,8 @@ import { PhArrowLeft, PhCopy, PhUserPlus } from '@phosphor-icons/vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { parseMoney, money, ratePct } from '@/lib/money'
-import { goalMonthly, rateFromSchedule } from '@/lib/finance'
+import { liveGoals, liveObligations } from '@/lib/finance'
+import { setupCreditRate, setupGoalMonthly, setupPlan, type SetupForm, type SetupSkips } from '@/lib/setup'
 import { HUES, HUE_KEYS, type HueKey } from '@/lib/palette'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
@@ -25,12 +26,13 @@ const knownName = computed(() => {
   return existing?.name || authStore.member?.display_name || authStore.user?.email?.split('@')[0] || ''
 })
 
-// Если в бюджете уже есть обязательства, цели или флаг setupDone, значит партнёр уже настроил основу
+// Если в бюджете уже есть обязательства, цели или флаг setupDone, значит партнёр уже настроил основу.
+// Считаются только живые: удалённая цель не делает семью «настроенной» (как в React).
 const joining = computed(() => {
   return (
     financeStore.setupDone ||
-    financeStore.obligations.length > 0 ||
-    financeStore.goals.length > 0
+    liveObligations(financeStore.obligations).length > 0 ||
+    liveGoals(financeStore.goals).length > 0
   )
 })
 
@@ -75,28 +77,41 @@ const inviteCode = ref<string | null>(null)
 const inviteBusy = ref(false)
 const copied = ref(false)
 
-const computedCreditRate = computed(() => {
-  if (creditRateMode.value === 'rate') {
-    const v = parseFloat(creditRate.value.replace(',', '.'))
-    return Number.isFinite(v) && v > 0 ? v / 100 : null
-  }
-  return rateFromSchedule(
-    parseMoney(creditPrincipal.value),
-    parseMoney(creditPayment.value),
-    parseMoney(creditTerm.value),
-  )
-})
+const form = computed<SetupForm>(() => ({
+  tenure: tenure.value,
+  housing: housingAmount.value,
+  housingDay: housingDay.value,
+  utilities: utilitiesAmount.value,
+  hasCredit: hasCredit.value,
+  creditPrincipal: creditPrincipal.value,
+  creditPayment: creditPayment.value,
+  creditRateMode: creditRateMode.value,
+  creditRate: creditRate.value,
+  creditTerm: creditTerm.value,
+  creditDay: creditDay.value,
+  goalName: goalName.value,
+  goalNeed: goalNeed.value,
+  goalHave: goalHave.value,
+  goalMonths: goalMonths.value,
+  goalHue: goalHue.value,
+}))
+
+// «Пропустить» / «Пока без цели»: введённое остаётся в полях, но не пишется (Р-22).
+// «Дальше» того же шага флаг снимает — человек мог вернуться назад и передумать.
+const skips = ref<SetupSkips>({ housing: false, credit: false, goal: false })
+
+function go(which: keyof SetupSkips, skip: boolean) {
+  skips.value = { ...skips.value, [which]: skip }
+  next()
+}
+
+const computedCreditRate = computed(() => setupCreditRate(form.value))
 // Срок и платёж названы — показываем ставку или честно говорим, что график не сходится.
 const termEntered = computed(
   () => creditRateMode.value === 'term' && parseMoney(creditTerm.value) > 0 && parseMoney(creditPayment.value) > 0,
 )
 
-const calculatedGoalMonthly = computed(() => {
-  const need = parseMoney(goalNeed.value)
-  const have = parseMoney(goalHave.value)
-  const months = Math.max(1, parseMoney(goalMonths.value) || 24)
-  return need > 0 ? goalMonthly(Math.max(0, need - have), months) : 0
-})
+const calculatedGoalMonthly = computed(() => setupGoalMonthly(form.value))
 
 function next() {
   if (currentStepIndex.value < steps.value.length - 1) {
@@ -138,6 +153,9 @@ async function handleCopy() {
 }
 
 function finish() {
+  // Решение принимается до записи: первая же запись сделала бы семью «настроенной».
+  const isJoining = joining.value
+
   // 1. Сохраняем человека
   financeStore.setPerson(slot.value, {
     name: name.value.trim() || 'Участник',
@@ -146,63 +164,20 @@ function finish() {
     onboardedAt: new Date().toISOString(),
   })
 
-  // Если это не joining, сохраняем жильё, кредит и цель
-  if (!joining.value) {
-    // 2. Жильё
-    const hAmount = parseMoney(housingAmount.value)
-    const uAmount = parseMoney(utilitiesAmount.value)
-    if (hAmount > 0) {
-      financeStore.addObligation({
-        name: tenure.value === 'rent' ? 'Аренда' : tenure.value === 'mortgage' ? 'Ипотека' : 'Жильё',
-        note: tenure.value === 'own' ? 'содержание' : 'ежемесячный платёж',
-        day: Math.min(28, Math.max(1, parseMoney(housingDay.value) || 5)),
-        category: 'd1',
-        amount: hAmount,
-      })
+  // 2–4. Жильё, кредит и цель — что решил setupPlan (пропущенные шаги не пишутся)
+  if (!isJoining) {
+    const plan = setupPlan(form.value, skips.value)
+    if (plan.housing) {
+      for (const o of plan.housing.obligations) financeStore.addObligation(o)
+      financeStore.setCategoryAmount('d1', plan.housing.d1)
     }
-    if (uAmount > 0) {
-      financeStore.addObligation({
-        name: 'Коммуналка',
-        note: 'плавает по сезону',
-        day: 15,
-        category: 'd1',
-        estimate: true,
-        amount: uAmount,
-      })
+    if (plan.credit) {
+      financeStore.addCredit(plan.credit.credit)
+      financeStore.setCategoryAmount('d2', plan.credit.d2)
     }
-    if (hAmount + uAmount > 0) {
-      financeStore.setCategoryAmount('d1', hAmount + uAmount)
-    }
-
-    // 3. Кредит
-    if (hasCredit.value === 'yes') {
-      const p = parseMoney(creditPayment.value)
-      if (p > 0) {
-        financeStore.addCredit({
-          name: 'Кредит',
-          note: 'ежемесячный платёж',
-          principal: parseMoney(creditPrincipal.value),
-          annualRate: computedCreditRate.value ?? 0,
-          payment: p,
-          day: Math.min(28, Math.max(1, parseMoney(creditDay.value) || 12)),
-        })
-        financeStore.setCategoryAmount('d2', p)
-      }
-    }
-
-    // 4. Цель
-    const need = parseMoney(goalNeed.value)
-    if (need > 0) {
-      const have = parseMoney(goalHave.value)
-      const monthly = calculatedGoalMonthly.value
-      financeStore.addGoal({
-        name: goalName.value.trim() || 'Первая цель',
-        need,
-        have,
-        monthly,
-        hue: goalHue.value,
-      })
-      financeStore.setCategoryAmount('d3', monthly)
+    if (plan.goal) {
+      financeStore.addGoal(plan.goal.goal)
+      financeStore.setCategoryAmount('d3', plan.goal.d3)
     }
   }
 
@@ -462,20 +437,20 @@ function finish() {
       </Button>
 
       <template v-else-if="step === 'housing'">
-        <Button @click="next">Дальше</Button>
-        <Button variant="ghost" @click="next">Пропустить</Button>
+        <Button @click="go('housing', false)">Дальше</Button>
+        <Button variant="ghost" @click="go('housing', true)">Пропустить</Button>
       </template>
 
       <template v-else-if="step === 'credit'">
-        <Button @click="next">
+        <Button @click="go('credit', false)">
           {{ hasCredit === 'yes' ? 'Дальше' : 'Кредитов нет' }}
         </Button>
-        <Button v-if="hasCredit === 'yes'" variant="ghost" @click="next">Пропустить</Button>
+        <Button v-if="hasCredit === 'yes'" variant="ghost" @click="go('credit', true)">Пропустить</Button>
       </template>
 
       <template v-else-if="step === 'goal'">
-        <Button @click="next">Дальше</Button>
-        <Button variant="ghost" @click="next">Пока без цели</Button>
+        <Button @click="go('goal', false)">Дальше</Button>
+        <Button variant="ghost" @click="go('goal', true)">Пока без цели</Button>
       </template>
 
       <template v-else-if="step === 'invite'">
