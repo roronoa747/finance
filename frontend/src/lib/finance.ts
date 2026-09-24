@@ -71,6 +71,31 @@ export function rateFromSchedule(
   return (low + high) / 2
 }
 
+/** Сколько платежей у долга без процентов: рассрочка гасится ровно суммой платежей. */
+export const installmentMonths = (principal: number, payment: number) =>
+  payment > 0 ? Math.ceil(principal / payment) : 0
+
+/**
+ * Почему из срока не выводится ставка — словами и цифрой (React `AddDebtDialog`).
+ *
+ * Форма долга не отказывает: человек переносит цифры из банковского приложения,
+ * и если они не сходятся, где-то в выписке комиссия, страховка или лишний
+ * платёж. Запись проходит как рассрочка без процентов, а расхождение видно:
+ * `paid` — сколько дадут названные платежи, `gap` — сколько не хватает до
+ * остатка (минус — выходит больше остатка), `suggest` — сколько платежей было
+ * бы без процентов. null — график сходится (ставка есть) или входы не заданы.
+ */
+export function scheduleMismatch(
+  principal: number,
+  payment: number,
+  months: number,
+): { paid: number; gap: number; suggest: number } | null {
+  if (principal <= 0 || payment <= 0 || months <= 0) return null
+  if (rateFromSchedule(principal, payment, months) !== null) return null
+  const paid = months * payment
+  return { paid, gap: principal - paid, suggest: installmentMonths(principal, payment) }
+}
+
 export type Prepayment = {
   monthsNow: number
   monthsAfter: number

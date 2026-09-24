@@ -86,6 +86,10 @@ const computedCreditRate = computed(() => {
     parseMoney(creditTerm.value),
   )
 })
+// Срок и платёж названы — показываем ставку или честно говорим, что график не сходится.
+const termEntered = computed(
+  () => creditRateMode.value === 'term' && parseMoney(creditTerm.value) > 0 && parseMoney(creditPayment.value) > 0,
+)
 
 const calculatedGoalMonthly = computed(() => {
   const need = parseMoney(goalNeed.value)
@@ -335,29 +339,43 @@ function finish() {
             <Segmented
               v-model="creditRateMode"
               :options="[
-                { value: 'rate', label: 'Знаю ставку %' },
+                { value: 'rate', label: 'Знаю ставку' },
                 { value: 'term', label: 'Знаю срок' },
               ]"
             />
           </Field>
-          <Field v-if="creditRateMode === 'rate'" label="Ставка (ГЭСВ), % годовых">
+          <Field v-if="creditRateMode === 'rate'" label="Ставка (ГЭСВ из договора), % годовых">
             <NumField v-model="creditRate" kind="rate" placeholder="23,4" />
           </Field>
-          <Field v-else label="Сколько месяцев осталось">
-            <NumField v-model="creditTerm" kind="int" placeholder="18" />
+          <Field v-else label="Сколько платежей осталось">
+            <NumField v-model="creditTerm" kind="int" placeholder="17" />
           </Field>
-          <div
-            v-if="creditRateMode === 'term' && computedCreditRate !== null"
-            class="mb-3 rounded-xl border border-brand bg-brand-soft p-3 text-left"
-          >
-            <span class="text-[12px] text-ink-2">Ставка получается</span>
-            <div class="font-display text-[19px] font-semibold num text-ink">
-              {{ ratePct(computedCreditRate, 1) }} годовых
+          <template v-if="termEntered">
+            <div
+              v-if="computedCreditRate !== null"
+              class="mb-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3 text-left"
+            >
+              <span class="text-[12.5px] text-ink-2">Ставка получается</span>
+              <div class="font-display text-[20px] font-semibold tracking-[-0.02em] num text-ink">
+                {{ ratePct(computedCreditRate, 1) }} годовых
+              </div>
             </div>
-          </div>
+            <div
+              v-else
+              class="mb-3 rounded-xl border border-warn-line bg-warn-soft px-3.5 py-3 text-[12.5px] leading-relaxed text-ink-2"
+            >
+              При таком платеже долг за этот срок не закрывается. Проверьте суммы: скорее
+              всего, платёж или число платежей указаны неверно.
+            </div>
+          </template>
           <Field label="День платежа">
             <NumField v-model="creditDay" kind="int" placeholder="12" />
           </Field>
+          <p class="text-[12.5px] leading-relaxed text-ink-3">
+            Если ставку знаете — берите ГЭСВ из договора, а не с витрины: там она называется
+            «годовая эффективная ставка вознаграждения» и учитывает комиссии. Если не знаете —
+            укажите, сколько платежей осталось, и ставка посчитается сама.
+          </p>
         </template>
       </div>
 

@@ -4,6 +4,8 @@ import {
   annuityMonths,
   annuityTotal,
   rateFromSchedule,
+  scheduleMismatch,
+  installmentMonths,
   prepayment,
   lumpSum,
   halfOverpayExtra,
@@ -1081,5 +1083,31 @@ describe('PV-02 — калькулятор «копить или гасить»'
     const r = (net: number) => ({ savings: net, debtLeft: 0, net, interest: 0, interestTotal: 0, debtFreeMonth: 0 })
     expect(strategyGain(r(100.4), r(250.9))).toBe(151)
     expect(strategyGain(r(500), r(200))).toBe(-300)
+  })
+})
+
+describe('PV-03 — долг «по сроку»', () => {
+  it('scheduleMismatch: график сходится — null; не хватает на тело — сколько и сколько платежей было бы', () => {
+    // 1 000 000 платежом 91 680 за 12 — это 18% годовых, расхождения нет.
+    expect(scheduleMismatch(1_000_000, 91_680, 12)).toBeNull()
+    expect(scheduleMismatch(1_000_000, 10_000, 12)).toEqual({ paid: 120_000, gap: 880_000, suggest: 100 })
+    // Ровно без процентов — сходится (ставка 0), не расхождение.
+    expect(scheduleMismatch(120_000, 10_000, 12)).toBeNull()
+    for (const [p, pay, n] of [[0, 10_000, 12], [1_000_000, 0, 12], [1_000_000, 10_000, 0], [-1, 10_000, 12]]) {
+      expect(scheduleMismatch(p, pay, n)).toBeNull()
+    }
+  })
+
+  it('rateFromSchedule: срок короче, чем выходит даже при 200%, — потолок 2 («200,0% годовых»)', () => {
+    // 1 000 000 платежом 500 000: при 200% годовых закрывается за 3 платежа, а назвали 4.
+    expect(rateFromSchedule(1_000_000, 500_000, 4)).toBe(2)
+    expect(ratePct(2, 1)).toBe('200,0%')
+    expect(ratePct(rateFromSchedule(1_000_000, 91_680, 12)!, 1)).toBe('18,0%')
+  })
+
+  it('installmentMonths: платежей без процентов — вверх до целого; без платежа — 0', () => {
+    expect(installmentMonths(1_000_000, 10_000)).toBe(100)
+    expect(installmentMonths(1_000_000, 30_000)).toBe(34)
+    expect(installmentMonths(1_000_000, 0)).toBe(0)
   })
 })

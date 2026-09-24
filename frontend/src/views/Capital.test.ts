@@ -295,3 +295,56 @@ describe('PV-02: калькулятор в Капитале (SSR)', () => {
     expect(html).toContain(`Сначала подушка — ${money(312_000)}`)
   })
 })
+
+describe('PV-03: форма долга — ставка из срока и расхождение (SSR)', () => {
+  beforeEach(() => {
+    const storage = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    setActivePinia(createPinia())
+  })
+
+  async function render(props: Record<string, unknown> = {}) {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('vue/server-renderer')
+    const { createRouter, createMemoryHistory } = await import('vue-router')
+    const Capital = (await import('./Capital.vue')).default
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/capital', component: Capital }] })
+    await router.push('/capital?add=debt')
+    await router.isReady()
+    const app = createSSRApp(Capital, props)
+    app.use(router)
+    return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
+  }
+
+  it('по маршруту /capital?add=debt — переключатель React и текст «Без них»', async () => {
+    const html = await render()
+    expect(html).toContain('Долг или рассрочка')
+    for (const t of ['Без них', 'Знаю ставку', 'Знаю срок']) expect(html).toContain(`>${t}</button>`)
+    expect(html).toContain('Рассрочка: платите ровно столько, сколько должны. Приложение посчитает, что долг закроется за — платежей.')
+  })
+
+  it('«Знаю срок», 1 000 000 / 10 000 / 12 — предупреждение с числами и «Записать всё равно можно»', async () => {
+    const { plain } = await import('@/lib/money')
+    const html = await render({ initialDebt: { mode: 'term', principal: '1 000 000', payment: '10 000', term: '12' } })
+    expect(html).toContain('Сколько платежей осталось')
+    expect(html).toContain(
+      `12 платежей по ${plain(10_000)} — это ${plain(120_000)} ₸, а остаток вы указали ${plain(1_000_000)} ₸. Не хватает ${plain(880_000)} ₸: похоже, платежей 100, а не 12.`,
+    )
+    expect(html).toContain(
+      'Записать всё равно можно: сохраним как рассрочку без процентов, а ставку поправите, когда сверитесь с банком.',
+    )
+    expect(html).not.toContain('Ставка получается')
+  })
+
+  it('«Знаю срок», 1 000 000 / 91 680 / 12 — «Ставка получается 18,0% годовых», предупреждения нет', async () => {
+    const html = await render({ initialDebt: { mode: 'term', principal: '1 000 000', payment: '91 680', term: '12' } })
+    expect(html).toContain('Ставка получается')
+    expect(html).toContain('18,0% годовых')
+    expect(html).not.toContain('Записать всё равно можно')
+  })
+})
