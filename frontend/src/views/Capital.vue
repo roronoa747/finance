@@ -1130,12 +1130,12 @@ onUnmounted(() => {
           </p>
         </div>
 
-        <Field label="День списания">
+        <Field label="День платежа">
           <NumField v-model="debtDay" kind="int" class="mb-3" />
         </Field>
 
         <Button :disabled="!canCreateDebt" class="w-full mt-2" @click="createDebt">
-          Добавить долг
+          Добавить
         </Button>
       </div>
     </div>

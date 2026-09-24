@@ -347,4 +347,12 @@ describe('PV-03: форма долга — ставка из срока и ра�
     expect(html).toContain('18,0% годовых')
     expect(html).not.toContain('Записать всё равно можно')
   })
+
+  it('подписи формы — как React AddDebtDialog: «День платежа», кнопка «Добавить» (критик)', async () => {
+    const html = await render()
+    expect(html).toContain('День платежа')
+    expect(html).not.toContain('День списания')
+    expect(html).toMatch(/>\s*Добавить\s*<\/button>/)
+    expect(html).not.toContain('Добавить долг')
+  })
 })
