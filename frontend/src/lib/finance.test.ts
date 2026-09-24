@@ -25,6 +25,8 @@ import {
   nextCreditDue,
   lastAccountFor,
   untilPayday,
+  lumpPlan,
+  prepaySaved,
 } from './finance'
 import { plain, money, moneyShort, parseMoney, pct, ratePct } from './money'
 import { clean, caretAt, sigBefore } from './num'
@@ -437,5 +439,80 @@ describe('RP-06 — отметки оплат и остатки из них', ()
     expect(monthKey(new Date(Date.UTC(2026, 7, 31, 19, 0)))).toBe('2026-09')
     // Новый год.
     expect(monthKey(new Date(Date.UTC(2026, 11, 31, 20, 0)))).toBe('2027-01')
+  })
+})
+
+describe('RP-08 — применить досрочку', () => {
+  // Живой случай: кредит 1 000 000 под 33% годовых, платёж 58 000, разовый взнос 200 000.
+  const P = 1_000_000
+  const R = 0.33
+  const PAY = 58_000
+  const LUMP = 200_000
+
+  /** Независимая сверка: помесячный график в дробях, проценты до закрытия долга. */
+  function scheduleInterest(principal: number, payment: number): number {
+    let left = principal
+    let interest = 0
+    for (let m = 0; m < 1000 && left > 1e-6; m++) {
+      const due = (left * R) / 12
+      interest += due
+      left = left + due - Math.min(payment, left + due)
+    }
+    return interest
+  }
+
+  it('«снизить платёж»: новый платёж = аннуитет на остаток и прежний срок; экономия ≥ 0 и меньше, чем у «сократить срок»', () => {
+    const n = annuityMonths(P, R, PAY)
+    const lower = lumpPlan(P, R, PAY, LUMP, 'payment')!
+    const shorter = lumpPlan(P, R, PAY, LUMP, 'term')!
+
+    expect(lower.left).toBe(800_000)
+    expect(lower.payment).toBe(Math.round(annuityPayment(800_000, R, n)))
+    // При том же сроке платёж пропорционален долгу: 58 000 × 0,8.
+    expect(lower.payment).toBe(46_400)
+    expect(lower.months).toBe(Math.ceil(n))
+    expect(lower.months).toBe(lower.monthsBefore)
+
+    expect(shorter.payment).toBe(PAY)
+    expect(shorter.months).toBeLessThan(shorter.monthsBefore)
+    expect(shorter.months).toBe(Math.ceil(annuityMonths(800_000, R, PAY)))
+    expect(shorter.saved).toBe(Math.round(lumpSum(P, R, PAY, LUMP).saved))
+
+    expect(lower.saved).toBeGreaterThanOrEqual(0)
+    expect(lower.saved).toBeLessThan(shorter.saved)
+    for (const plan of [lower, shorter]) {
+      for (const v of Object.values(plan)) expect(Number.isInteger(v)).toBe(true)
+    }
+
+    // Сверка помесячным графиком: экономия — разница процентов до и после, в пределах 1%.
+    const before = scheduleInterest(P, PAY)
+    expect(Math.abs(before - scheduleInterest(800_000, PAY) - shorter.saved) / shorter.saved).toBeLessThan(0.01)
+    expect(Math.abs(before - scheduleInterest(800_000, 46_400) - lower.saved) / lower.saved).toBeLessThan(0.01)
+  })
+
+  it('взнос больше долга закрывает его; нечего считать — null; рассрочка 0% — экономии нет', () => {
+    const closing = lumpPlan(300_000, R, PAY, 500_000, 'payment')!
+    expect(closing).toMatchObject({ paid: 300_000, left: 0, payment: 0, months: 0 })
+    expect(closing.saved).toBe(Math.round(PAY * annuityMonths(300_000, R, PAY) - 300_000))
+
+    expect(lumpPlan(P, R, PAY, 0, 'term')).toBeNull()
+    expect(lumpPlan(0, R, PAY, LUMP, 'term')).toBeNull()
+    // Платёж меньше процентов (27 500): срока нет, сохранять нечего.
+    expect(lumpPlan(P, R, 20_000, LUMP, 'payment')).toBeNull()
+
+    const free = lumpPlan(600_000, 0, 50_000, 100_000, 'payment')!
+    expect(free).toMatchObject({ left: 500_000, payment: 41_667, months: 12, saved: 0 })
+  })
+
+  it('счётчик «сэкономлено на процентах» — сумма по живым досрочкам', () => {
+    const base = { targetId: 'loan', period: '2026-09', accountId: null, by: 'a' as const, at: '2026-09-05T10:00:00Z', updatedAt: '2026-09-05T10:00:00Z' }
+    const list: Payment[] = [
+      { ...base, id: 'p1', kind: 'prepay', amount: 200_000, principal: 200_000, saved: 150_000 },
+      { ...base, id: 'p2', kind: 'prepay', amount: 50_000, principal: 50_000, saved: 30_000 },
+      { ...base, id: 'p3', kind: 'prepay', amount: 10_000, principal: 10_000, saved: 9_000, deletedAt: '2026-09-06T00:00:00Z' },
+      { ...base, id: 'm', kind: 'credit', amount: 58_000, principal: 30_500 },
+    ]
+    expect(prepaySaved(list)).toBe(180_000)
+    expect(prepaySaved([])).toBe(0)
   })
 })

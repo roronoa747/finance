@@ -8,7 +8,7 @@ import { useFinanceStore, defaultSyncDoc } from '../src/stores/finance'
 import { ApiClient, ApiError } from '../src/api/client'
 import type { SyncDoc } from '../src/types/finance'
 import type { HouseholdDocResponse, ConflictResponse } from '../src/types/api'
-import { lastAccountFor, nextObligationDue } from '../src/lib/finance'
+import { lastAccountFor, lumpPlan, nextObligationDue, prepaySaved } from '../src/lib/finance'
 import { money, plain } from '../src/lib/money'
 import Overview from '../src/views/Overview.vue'
 import Capital from '../src/views/Capital.vue'
@@ -154,6 +154,32 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     const shownB = await screen(B.pinia, Overview, '/')
     expect(shownB).toContain(`оплачено · дальше 5 октября · ${plain(220_000)} ₸`)
     expect(await screen(B.pinia, Capital, '/capital')).toContain(money(780_000))
+  })
+
+  it('RP-08: досрочка «сократить срок» меняет остаток и срок, показывает сэкономленное — у обоих, до тенге', async () => {
+    const A = await phone()
+    const B = await phone()
+    const plan = lumpPlan(1_000_000, 0.33, 58_000, 200_000, 'term')!
+
+    setActivePinia(A.pinia)
+    at('2026-09-24T08:00:00Z')
+    A.store.applyPrepayment('loan', 'a', { amount: 200_000, mode: 'term', accountId: 'card' })
+    await A.store.syncHousehold(A.client)
+    await B.store.pullHousehold(B.client)
+
+    for (const p of [A, B]) {
+      expect(p.store.credits[0].principal).toBe(plan.left)
+      expect(p.store.accounts[0].amount).toBe(800_000)
+      expect(prepaySaved(p.store.payments)).toBe(plan.saved)
+      const capital = await screen(p.pinia, Capital, '/capital')
+      expect(capital).toContain(money(800_000))
+      expect(capital).toContain(`${plan.months} платежей`)
+      expect(capital).toContain('Досрочками уже сэкономили на процентах')
+      expect(capital).toContain(money(plan.saved))
+      const payoff = await screen(p.pinia, Capital, '/capital?payoff=loan')
+      expect(payoff).toContain('Применённые досрочки')
+      expect(payoff).toContain('сократили срок')
+    }
   })
 
   it('одну аренду отметили оба офлайн → записей две, списание одно; снятие у одного возвращает деньги обоим', async () => {

@@ -5,7 +5,7 @@ import { useAuthStore } from './auth'
 import { ApiClient, ApiError, apiClient } from '@/api/client'
 import type { SyncDoc, Goal, Person, PersonId } from '@/types/finance'
 import type { HouseholdDocResponse, ConflictResponse } from '@/types/api'
-import { nextObligationDue } from '@/lib/finance'
+import { annuityMonths, lumpPlan, nextObligationDue, prepaySaved } from '@/lib/finance'
 
 describe('stores/finance.ts — Pinia хранилище казны и синхронизация', () => {
   const storageMap = new Map<string, string>()
@@ -877,6 +877,56 @@ describe('RP-06: отметки оплат в сторе', () => {
     expect(store.accounts[0].amount).toBe(400_000)
     expect(store.credits[0].principal).toBe(500_000)
     expect(defaultSyncDoc().payments).toEqual([])
+  })
+
+  it('RP-08: досрочка «сократить срок» — остаток и срок меньше, карта уменьшилась; снятие возвращает всё', () => {
+    const { store, card, loan } = family()
+    const monthsBefore = Math.ceil(annuityMonths(1_000_000, 0.33, 58_000))
+    const plan = lumpPlan(1_000_000, 0.33, 58_000, 200_000, 'term')!
+    const rec = store.applyPrepayment(loan, 'a', { amount: 200_000, mode: 'term', accountId: card })!
+    expect(rec).toMatchObject({ kind: 'prepay', targetId: loan, period: '2026-09', amount: 200_000, principal: 200_000, saved: plan.saved, mode: 'term' })
+    expect(rec.prevPayment).toBeUndefined()
+
+    const c = store.credits[0]
+    expect(c.principal).toBe(800_000)
+    expect(c.payment).toBe(58_000)
+    expect(Math.ceil(annuityMonths(c.principal, c.annualRate, c.payment))).toBe(plan.months)
+    expect(plan.months).toBeLessThan(monthsBefore)
+    expect(balance(store, card)).toBe(800_000)
+    expect(prepaySaved(store.payments)).toBe(plan.saved)
+
+    at('2026-09-24T09:00:00Z')
+    store.removePrepayment(rec.id)
+    expect(store.credits[0].principal).toBe(1_000_000)
+    expect(balance(store, card)).toBe(1_000_000)
+    expect(prepaySaved(store.payments)).toBe(0)
+  })
+
+  it('RP-08: «снизить платёж» меняет платёж кредита; снятие возвращает и его', () => {
+    const { store, card, loan } = family()
+    const rec = store.applyPrepayment(loan, 'a', { amount: 200_000, mode: 'payment', accountId: card })!
+    expect(rec).toMatchObject({ mode: 'payment', prevPayment: 58_000, newPayment: 46_400 })
+    expect(store.credits[0]).toMatchObject({ principal: 800_000, payment: 46_400 })
+    // Следующая отметка «оплатил» — уже новым платежом.
+    expect(store.markPaid('credit', loan, 'a', { accountId: card })!.amount).toBe(46_400)
+
+    at('2026-09-24T09:00:00Z')
+    store.unmarkPaid('credit', loan, '2026-09')
+    store.removePrepayment(rec.id)
+    expect(store.credits[0]).toMatchObject({ principal: 1_000_000, payment: 58_000 })
+    expect(balance(store, card)).toBe(1_000_000)
+  })
+
+  it('RP-08: платёж, изменённый после досрочки, снятие не затирает; счёт по умолчанию — прошлой оплаты кредита', () => {
+    const { store, cash, loan } = family()
+    store.markPaid('credit', loan, 'a', { accountId: cash })
+    at('2026-09-24T09:00:00Z')
+    const rec = store.applyPrepayment(loan, 'a', { amount: 100_000, mode: 'payment' })!
+    expect(rec.accountId).toBe(cash)
+    at('2026-09-24T10:00:00Z')
+    store.updateCredit(loan, { payment: 40_000 })
+    store.removePrepayment(rec.id)
+    expect(store.credits[0].payment).toBe(40_000)
   })
 
   it('удалённое обязательство и закрытый кредит отметить нельзя', () => {

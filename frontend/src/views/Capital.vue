@@ -12,6 +12,7 @@ import {
   PhX,
 } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
+import { useAuthStore } from '@/stores/auth'
 import { money, plain, parseMoney, ratePct } from '@/lib/money'
 import {
   addMonths,
@@ -19,6 +20,7 @@ import {
   monthFrom,
   monthKey,
   monthTitle,
+  today,
 } from '@/lib/dates'
 import {
   amountAt,
@@ -27,23 +29,27 @@ import {
   debtCost,
   goalSavings,
   halfOverpayExtra,
+  lastAccountFor,
   liveAccounts,
   liveCredits,
   liveGoals,
   liveObligations,
+  lumpPlan,
   lumpSum,
   monthlyAmount,
   netWorth,
   nextChange,
   nextCreditDue,
   nextObligationDue,
+  prepaySaved,
   prepayment,
   rateFromSchedule,
   simulateStrategy,
   type Due,
+  type LumpMode,
   type StrategyResult,
 } from '@/lib/finance'
-import type { Account, Currency, Obligation, Person, PersonId } from '@/types/finance'
+import type { Account, Currency, Obligation, Payment, Person, PersonId } from '@/types/finance'
 import type { CategoryKey } from '@/lib/palette'
 import { cn } from '@/lib/utils'
 import { fetchRates, formRate, type FxRates } from '@/lib/fx'
@@ -66,6 +72,7 @@ import Input from '@/components/ui/Input.vue'
 const router = useRouter()
 const route = useRoute()
 const financeStore = useFinanceStore()
+const authStore = useAuthStore()
 
 const key = computed(() => monthKey())
 const people = computed(() => financeStore.people)
@@ -83,6 +90,7 @@ const totalHouseholdAmount = computed(() => householdAccounts.value.reduce((a, x
 const totalPrivateAmount = computed(() => privateAccounts.value.reduce((a, x) => a + x.amount, 0))
 const totalSaved = computed(() => goalSavings(goals.value))
 const totalDebts = computed(() => credits.value.reduce((a, c) => a + c.principal, 0))
+const totalPrepaySaved = computed(() => prepaySaved(financeStore.payments))
 
 function obligationNote(o: Obligation, members: Person[]): string {
   const parts: string[] = []
@@ -534,6 +542,53 @@ const payoffLadder = computed(() => {
     .filter((res) => res.extra > 0 && Number.isFinite(res.monthsAfter))
 })
 
+/* ------------------ Применить досрочку (RP-08) ------------------ */
+const applyMode = ref<LumpMode>('term')
+// '' — счёт не выбран, 'none' — «не списывать», иначе id счёта.
+const applyAccount = ref('')
+const applyDone = ref<Payment | null>(null)
+const removingPrepay = ref<string | null>(null)
+
+const applyAccounts = computed(() => accounts.value.filter((a) => (a.currency ?? 'KZT') === 'KZT'))
+const applyPlan = computed(() => {
+  const c = activePayoffCredit.value
+  const v = parseMoney(payoffAmount.value)
+  return c && v > 0 ? lumpPlan(c.principal, c.annualRate, c.payment, v, applyMode.value) : null
+})
+const creditPrepays = computed(() =>
+  financeStore.payments
+    .filter((p) => p.kind === 'prepay' && !p.deletedAt && p.targetId === payoffCreditId.value)
+    .sort((a, b) => b.at.localeCompare(a.at)),
+)
+
+// Счёт по умолчанию — прошлой оплаты этого кредита (Р-5).
+watch(
+  payoffCreditId,
+  (id) => {
+    applyDone.value = null
+    removingPrepay.value = null
+    const last = id ? lastAccountFor(financeStore.payments, id, financeStore.accounts) : undefined
+    applyAccount.value = last === undefined ? '' : (last ?? 'none')
+  },
+  { immediate: true },
+)
+
+function applyPrepay() {
+  const c = activePayoffCredit.value
+  if (!c || !applyPlan.value || !applyAccount.value) return
+  applyDone.value = financeStore.applyPrepayment(c.id, authStore.slot ?? 'a', {
+    amount: parseMoney(payoffAmount.value),
+    mode: applyMode.value,
+    accountId: applyAccount.value === 'none' ? null : applyAccount.value,
+  })
+  payoffAmount.value = ''
+}
+
+function prepayDay(at: string) {
+  const d = today(new Date(at))
+  return dayLabel(d.day, d.key)
+}
+
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     accountOpen.value = false
@@ -682,6 +737,11 @@ onUnmounted(() => {
         Обязательств пока нет
       </div>
     </Card>
+
+    <p v-if="totalPrepaySaved > 0" class="-mt-1 px-1 text-[12.5px] text-ink-2">
+      Досрочками уже сэкономили на процентах
+      <b class="num text-brand">{{ money(totalPrepaySaved) }}</b>
+    </p>
 
     <div class="flex flex-col gap-2">
       <Button variant="outline" class="w-full bg-surface-2" @click="addObligationOpen = true">
@@ -1331,6 +1391,104 @@ onUnmounted(() => {
           </div>
           <div class="mt-1 text-[12px] text-ink-2">
             Останется платежей: {{ Math.max(0, Math.ceil(payoffResult.monthsAfter)) }} вместо {{ Math.ceil(payoffResult.monthsNow) }}.
+          </div>
+        </div>
+
+        <!-- Применить разовую досрочку (Р-6) -->
+        <div
+          v-if="payoffMode === 'once' && applyPlan && !authStore.isViewer"
+          class="mb-3 rounded-xl border border-line p-3.5"
+        >
+          <div class="mb-2 text-[13px] font-medium text-ink">Применить к кредиту</div>
+          <Segmented
+            v-model="applyMode"
+            :options="[
+              { value: 'term', label: 'Сократить срок' },
+              { value: 'payment', label: 'Снизить платёж' },
+            ]"
+            class="mb-3"
+          />
+          <div class="mb-3 flex flex-col gap-1.5 text-[13px]">
+            <div class="flex justify-between">
+              <span class="text-ink-2">Остаток долга</span>
+              <b class="num text-ink">{{ money(applyPlan.left) }}</b>
+            </div>
+            <div v-if="applyPlan.left === 0" class="text-ink-2">Долг закроется этим взносом.</div>
+            <div v-else-if="applyMode === 'term'" class="flex justify-between">
+              <span class="text-ink-2">Платежей останется</span>
+              <b class="num text-ink">{{ applyPlan.months }} вместо {{ applyPlan.monthsBefore }}</b>
+            </div>
+            <div v-else class="flex justify-between">
+              <span class="text-ink-2">Платёж</span>
+              <b class="num text-ink">{{ money(applyPlan.payment) }} вместо {{ money(activePayoffCredit.payment) }}</b>
+            </div>
+          </div>
+          <div class="mb-3 rounded-xl bg-brand-soft px-3 py-2 text-[13px] text-ink-2">
+            Не отдадим банку <b class="num text-brand">{{ money(applyPlan.saved) }}</b>
+          </div>
+          <Field label="Откуда списать">
+            <select
+              v-model="applyAccount"
+              class="w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[14px] text-ink"
+            >
+              <option value="" disabled>Выберите счёт…</option>
+              <option v-for="a in applyAccounts" :key="a.id" :value="a.id">
+                {{ a.name }} · {{ money(a.amount) }}
+              </option>
+              <option value="none">Не списывать — только отметить</option>
+            </select>
+          </Field>
+          <Button class="w-full" :disabled="!applyAccount" @click="applyPrepay">Применить досрочку</Button>
+        </div>
+
+        <div
+          v-if="applyDone"
+          class="mb-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3 text-[13px] text-ink-2"
+        >
+          Досрочка применена: не отдадим банку
+          <b class="num text-brand">{{ money(applyDone.saved ?? 0) }}</b>.
+        </div>
+
+        <div v-if="creditPrepays.length > 0" class="mb-3">
+          <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-3">
+            Применённые досрочки
+          </div>
+          <div
+            v-for="p in creditPrepays"
+            :key="p.id"
+            class="border-b border-line py-2 text-[12.5px] last:border-b-0"
+          >
+            <div class="flex items-baseline gap-2">
+              <span class="text-ink-2">
+                {{ prepayDay(p.at) }} · {{ p.mode === 'payment' ? 'снизили платёж' : 'сократили срок' }}
+              </span>
+              <b class="ml-auto num text-ink">{{ money(p.amount) }}</b>
+            </div>
+            <div class="flex items-baseline gap-2">
+              <span class="text-brand">не отдадим банку <span class="num">{{ money(p.saved ?? 0) }}</span></span>
+              <button
+                v-if="!authStore.isViewer && removingPrepay !== p.id"
+                type="button"
+                class="ml-auto text-ink-3 hover:underline cursor-pointer"
+                @click="removingPrepay = p.id"
+              >
+                Снять
+              </button>
+            </div>
+            <div v-if="removingPrepay === p.id" class="mt-2 rounded-xl border border-line bg-surface-2 p-3">
+              <p class="mb-2 leading-relaxed text-ink-2">
+                Остаток долга и деньги на счёте вернутся к прежним{{ p.prevPayment !== undefined ? ', платёж — тоже' : '' }}.
+              </p>
+              <div class="flex gap-2">
+                <Button variant="outline" class="flex-1 bg-surface" @click="removingPrepay = null">Отмена</Button>
+                <Button
+                  class="flex-1"
+                  @click="() => { financeStore.removePrepayment(p.id); removingPrepay = null; applyDone = null }"
+                >
+                  Снять
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
 

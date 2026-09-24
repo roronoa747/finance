@@ -9,9 +9,11 @@ import {
   creditBalance,
   creditSplit,
   lastAccountFor,
+  lumpPlan,
   nextCreditDue,
   nextObligationDue,
   paidFor,
+  type LumpMode,
   type ScheduledKind,
 } from '@/lib/finance'
 import type { SyncDoc, SyncStatus, Person, PersonId, Account, Credit, Goal, Obligation, Payment } from '@/types/finance'
@@ -862,6 +864,70 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
+  /**
+   * Применить разовую досрочку (Р-6): запись того же списка, что «оплатил» — всё
+   * в тело, со счёта прошлой оплаты этого кредита (Р-5), со снимком сэкономленных
+   * процентов. «Снизить платёж» ещё и меняет платёж кредита; прежний — в записи.
+   */
+  function applyPrepayment(
+    creditId: string,
+    by: PersonId,
+    opts: { amount: number; mode: LumpMode; accountId?: string | null },
+  ): Payment | null {
+    const c = credits.value.find((x) => x.id === creditId && !x.deletedAt)
+    if (!c) return null
+    const plan = lumpPlan(c.principal, c.annualRate, c.payment, opts.amount, opts.mode)
+    if (!plan) return null
+
+    const t = new Date().toISOString()
+    // Взнос, закрывший долг, платёж не переписывает: платить больше нечего и так.
+    const lowers = opts.mode === 'payment' && plan.left > 0 && plan.payment !== c.payment
+    const record: Payment = {
+      id: Math.random().toString(36).slice(2, 10),
+      kind: 'prepay',
+      targetId: c.id,
+      period: monthKey(),
+      amount: plan.paid,
+      principal: plan.paid,
+      accountId:
+        opts.accountId !== undefined
+          ? opts.accountId
+          : (lastAccountFor(payments.value, c.id, accounts.value) ?? null),
+      by,
+      at: t,
+      updatedAt: t,
+      saved: plan.saved,
+      mode: opts.mode,
+      ...(lowers ? { prevPayment: c.payment, newPayment: plan.payment } : {}),
+    }
+    mutateHouseholdDoc((doc) => {
+      if (!doc.payments) doc.payments = []
+      doc.payments.push(record)
+      const raw = lowers ? doc.credits.find((x) => x.id === c.id) : undefined
+      if (raw) Object.assign(raw, { payment: plan.payment, principalSetAt: raw.principalSetAt ?? null, updatedAt: t })
+    })
+    return record
+  }
+
+  /**
+   * Снять досрочку: надгробие — остаток и счёт возвращаются сами. Платёж
+   * «снизить платёж» возвращается к прежнему, только если его с тех пор не
+   * меняли: иначе снятие затёрло бы более позднее решение.
+   */
+  function removePrepayment(id: string) {
+    const p = payments.value.find((x) => x.id === id && x.kind === 'prepay' && !x.deletedAt)
+    if (!p) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      const rec = (doc.payments ?? []).find((x) => x.id === id)
+      if (rec) Object.assign(rec, { deletedAt: t, updatedAt: t })
+      const c = p.prevPayment !== undefined ? doc.credits.find((x) => x.id === p.targetId) : undefined
+      if (c && c.payment === p.newPayment) {
+        Object.assign(c, { payment: p.prevPayment, principalSetAt: c.principalSetAt ?? null, updatedAt: t })
+      }
+    })
+  }
+
   function removeCredit(id: string) {
     mutateHouseholdDoc((doc) => {
       const c = (doc.credits || []).find((x) => x.id === id)
@@ -1012,6 +1078,8 @@ export const useFinanceStore = defineStore('finance', () => {
     removeCredit,
     markPaid,
     unmarkPaid,
+    applyPrepayment,
+    removePrepayment,
     addGoal,
     updateGoal,
     removeGoal,

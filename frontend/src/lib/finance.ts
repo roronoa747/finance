@@ -82,8 +82,9 @@ export type Prepayment = {
 
 /**
  * Досрочное погашение стратегией «сокращать срок»: платёж растёт на extra.
- * Второй режим — «сокращать платёж» — срок не меняется, экономия меньше;
- * его добавим, когда появится реальный график из банка.
+ * Это калькулятор ежемесячной добавки. Разовую досрочку, которую применяют к
+ * кредиту, в обоих режимах — «сократить срок» и «снизить платёж» — считает
+ * `lumpPlan`.
  */
 export function prepayment(
   principal: number,
@@ -238,6 +239,61 @@ export function lumpSum(
     overpayAfter,
     saved: overpayNow - overpayAfter,
   }
+}
+
+export type LumpMode = 'term' | 'payment'
+
+export type LumpPlan = {
+  /** Сколько реально уйдёт в тело: не больше остатка. */
+  paid: number
+  /** Остаток после взноса. */
+  left: number
+  /** Платёж после: тот же при «сократить срок», новый при «снизить платёж». */
+  payment: number
+  /** Сколько платежей останется. */
+  months: number
+  monthsBefore: number
+  /** Сколько процентов не отдадим банку. */
+  saved: number
+}
+
+/**
+ * Разовая досрочка, применённая к кредиту (Р-6): что станет с остатком, платежом
+ * и сроком и сколько процентов не отдадим банку. Два режима, как у банков:
+ *
+ *  - «сократить срок» (term) — платёж тот же, долг закроется раньше (`lumpSum`);
+ *  - «снизить платёж» (payment) — срок тот же, платёж пересчитывается аннуитетом
+ *    на остаток. При том же сроке проценты пропорциональны долгу, поэтому новый
+ *    платёж — прежний × остаток / долг, а экономия меньше, чем у «сократить срок»:
+ *    там весь прежний платёж продолжает гасить тело.
+ *
+ * Всё на выходе — целые тенге и целые платежи: это пишется в документ и
+ * показывается как сумма. null — считать нечего: взноса нет, долга нет или
+ * платёж не покрывает проценты (срока, который сохранять, не существует).
+ */
+export function lumpPlan(
+  principal: number,
+  annualRate: number,
+  payment: number,
+  lump: number,
+  mode: LumpMode,
+): LumpPlan | null {
+  const debt = Math.round(principal)
+  const paid = Math.max(0, Math.min(Math.round(lump), debt))
+  const n = annuityMonths(debt, annualRate, payment)
+  if (debt <= 0 || paid <= 0 || !Number.isFinite(n)) return null
+  const left = debt - paid
+  const monthsBefore = Math.ceil(n)
+  const overpayNow = payment * n - debt
+  const saved = (overpayAfter: number) => Math.round(Math.max(0, overpayNow - overpayAfter))
+
+  if (left === 0) return { paid, left, payment: 0, months: 0, monthsBefore, saved: saved(0) }
+  if (mode === 'term') {
+    const r = lumpSum(debt, annualRate, payment, paid)
+    return { paid, left, payment, months: Math.ceil(r.monthsAfter), monthsBefore, saved: saved(r.overpayAfter) }
+  }
+  const next = annuityPayment(left, annualRate, n)
+  return { paid, left, payment: Math.round(next), months: monthsBefore, monthsBefore, saved: saved(next * n - left) }
 }
 
 /**
@@ -614,6 +670,13 @@ export function creditBalance(c: Credit, payments: Payment[] = []): number {
     .filter((p) => p.targetId === c.id && p.kind !== 'obligation' && afterAnchor(p, c.principalSetAt))
     .reduce((sum, p) => sum + (p.principal ?? 0), 0)
   return Math.max(0, c.principal - paid)
+}
+
+/** Сколько процентов не отдадим банку по всем применённым досрочкам — по живым (Р-6). */
+export function prepaySaved(payments: Payment[] = []): number {
+  return countedPayments(payments)
+    .filter((p) => p.kind === 'prepay')
+    .reduce((sum, p) => sum + (p.saved ?? 0), 0)
 }
 
 export type Due = {
