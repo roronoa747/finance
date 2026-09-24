@@ -373,3 +373,84 @@ func TestSyncInvalidUTF8Returns400(t *testing.T) {
 		}
 	}
 }
+
+// RP-03 (Р-14): a push from a client that does not know a top-level key must
+// not erase it; keys sent explicitly, [] and null included, are respected.
+func TestSyncPushKeepsKeysMissingFromOldClient(t *testing.T) {
+	router, repos, tokens := setupSyncTestApp()
+	ctx := t.Context()
+
+	u1, _ := repos.Users.Create(ctx, "alice@keys.test", "hash1")
+	hh, _, _ := repos.Households.CreateHousehold(ctx, "Keys HH", u1.ID, "Alice")
+	token, _ := tokens.GenerateToken(u1.ID, hh.ID, "member", "a")
+
+	push := func(path, body string) map[string]json.RawMessage {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(body))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("push %s: expected 200, got %d: %s", path, rec.Code, rec.Body.String())
+		}
+		var resp struct {
+			Data map[string]json.RawMessage `json:"data"`
+		}
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode push response: %v", err)
+		}
+		return resp.Data
+	}
+	stored := func() map[string]json.RawMessage {
+		t.Helper()
+		doc, err := repos.Docs.GetHouseholdDoc(ctx, hh.ID)
+		if err != nil {
+			t.Fatalf("get stored doc: %v", err)
+		}
+		var data map[string]json.RawMessage
+		if err := json.Unmarshal(doc.Data, &data); err != nil {
+			t.Fatalf("decode stored doc: %v", err)
+		}
+		return data
+	}
+	expectKey := func(where string, data map[string]json.RawMessage, key, want string) {
+		t.Helper()
+		got, ok := data[key]
+		if !ok {
+			t.Fatalf("%s: key %q is missing", where, key)
+		}
+		var g, w any
+		_ = json.Unmarshal(got, &g)
+		_ = json.Unmarshal([]byte(want), &w)
+		gb, _ := json.Marshal(g)
+		wb, _ := json.Marshal(w)
+		if string(gb) != string(wb) {
+			t.Errorf("%s: %s = %s, want %s", where, key, gb, wb)
+		}
+	}
+
+	// Registration stores {}; the first push of a new client lands as is.
+	resp := push("/api/sync/household", `{"last_seen_rev": 1, "data": {"people": [{"id": "a"}], "payments": [{"id": "p1"}]}}`)
+	expectKey("first push", resp, "payments", `[{"id": "p1"}]`)
+
+	// The old client knows people only: payments survive in the response and in storage.
+	resp = push("/api/sync/household", `{"last_seen_rev": 2, "data": {"people": [{"id": "a", "name": "Ильяс"}]}}`)
+	expectKey("old client response", resp, "payments", `[{"id": "p1"}]`)
+	expectKey("old client response", resp, "people", `[{"id": "a", "name": "Ильяс"}]`)
+	expectKey("old client storage", stored(), "payments", `[{"id": "p1"}]`)
+
+	// An explicit empty list and an explicit null are values, not absence.
+	resp = push("/api/sync/household", `{"last_seen_rev": 3, "data": {"people": [], "payments": []}}`)
+	expectKey("explicit []", resp, "payments", `[]`)
+	expectKey("explicit []", resp, "people", `[]`)
+	resp = push("/api/sync/household", `{"last_seen_rev": 4, "data": {"payments": null}}`)
+	expectKey("explicit null", resp, "payments", `null`)
+	expectKey("explicit null", resp, "people", `[]`)
+
+	// The same for the private document.
+	push("/api/sync/private", `{"last_seen_rev": 1, "data": {"accounts": [{"id": "x"}], "wishes": [{"id": "w1"}]}}`)
+	resp = push("/api/sync/private", `{"last_seen_rev": 2, "data": {"accounts": []}}`)
+	expectKey("private old client", resp, "wishes", `[{"id": "w1"}]`)
+	expectKey("private old client", resp, "accounts", `[]`)
+}

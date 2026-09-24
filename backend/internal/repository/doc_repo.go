@@ -29,6 +29,21 @@ type sqlDocRepository struct {
 	db *sql.DB
 }
 
+// keepStoredKeysSQL is the data written by a successful push: top-level keys
+// the pushed document lacks are carried over from the stored one. jsonb ||
+// takes the pushed value on shared keys, so explicit [] and null still win.
+//
+// Why (Р-14): after a deploy an installed PWA runs its old JS once more, and a
+// client older than RP-02 drops top-level keys it does not know when merging —
+// its push would erase, say, payments for everyone. The server does not know
+// the document schema, so it works only at the top level; nested fields are
+// the client's job (frontend/src/lib/merge.ts). A non-object is stored as sent.
+//
+// It runs inside the UPDATE of the row locked by SELECT ... FOR UPDATE after
+// the revision check, so no other push can slip in between.
+const keepStoredKeysSQL = `CASE WHEN jsonb_typeof(data) = 'object' AND jsonb_typeof($1::jsonb) = 'object'
+			THEN data || $1::jsonb ELSE $1::jsonb END`
+
 func NewSQLDocRepository(db *sql.DB) DocRepository {
 	return &sqlDocRepository{db: db}
 }
@@ -95,7 +110,7 @@ func (r *sqlDocRepository) PushHouseholdDoc(ctx context.Context, householdID str
 	// 3. Update doc
 	updateQuery := `
 		UPDATE app.household_docs
-		SET data = $1::jsonb, rev = rev + 1, updated_at = now(), updated_by = $2
+		SET data = ` + keepStoredKeysSQL + `, rev = rev + 1, updated_at = now(), updated_by = $2
 		WHERE household_id = $3
 		RETURNING household_id, rev, data, updated_at, updated_by;`
 
@@ -197,7 +212,7 @@ func (r *sqlDocRepository) PushPrivateDoc(ctx context.Context, householdID, user
 
 	updateQuery := `
 		UPDATE app.private_docs
-		SET data = $1::jsonb, rev = rev + 1, updated_at = now()
+		SET data = ` + keepStoredKeysSQL + `, rev = rev + 1, updated_at = now()
 		WHERE household_id = $2 AND user_id = $3
 		RETURNING household_id, user_id, rev, data, updated_at;`
 
