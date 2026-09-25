@@ -15,13 +15,12 @@ import {
   today,
 } from '@/lib/dates'
 import {
-  amountAt,
   budgetAmounts,
-  dueIn,
-  liveCredits,
-  liveObligations,
+  duesTotal,
+  monthDues,
   nextSalaryChange,
   salaryAt,
+  type ScheduledKind,
 } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
@@ -37,6 +36,7 @@ import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
 import Bar from '@/components/Bar.vue'
 import Legend from '@/components/Legend.vue'
 import SalaryDialog from '@/components/SalaryDialog.vue'
+import PaidRow from '@/components/PaidRow.vue'
 
 const DERIVED_NOTE: Record<string, string> = {
   d1: 'сумма обязательств по жилью',
@@ -64,6 +64,8 @@ interface EventItem {
   color: string
   income: boolean
   estimate?: boolean
+  /** Платёж по графику — отмечается «Оплатил». */
+  pay?: ScheduledKind
   open: () => void
 }
 
@@ -77,8 +79,12 @@ const financeStore = useFinanceStore()
 const key = computed(() => monthKey())
 const people = computed(() => financeStore.people)
 const categories = computed(() => financeStore.categories)
-const obligations = computed(() => liveObligations(financeStore.obligations))
-const credits = computed(() => liveCredits(financeStore.credits))
+const dues = computed(() =>
+  monthDues(
+    { obligations: financeStore.obligations, credits: financeStore.credits, payments: financeStore.payments },
+    key.value,
+  ),
+)
 
 const amounts = computed(() => budgetAmounts(financeStore.householdDoc))
 const income = computed(() => amounts.value.income)
@@ -98,31 +104,23 @@ const events = computed<EventItem[]>(() => {
         salaryFor.value = p.id
       },
     })),
-    ...obligations.value
-      .filter((o) => dueIn(o, key.value))
-      .map((o) => ({
-        id: o.id,
-        day: o.day,
-        name: o.name,
-        note: o.every === 'year' ? 'раз в год' : o.estimate ? 'оценка по сезону' : o.note,
-        value: amountAt(o, key.value),
-        color: `var(--${o.category})`,
-        income: false,
-        estimate: o.estimate,
-        open: () => {
-          void router.push(`/capital?obligation=${o.id}`)
-        },
-      })),
-    ...credits.value.map((c) => ({
-      id: c.id,
-      day: c.day,
-      name: c.name,
-      note: c.note,
-      value: c.payment,
-      color: 'var(--d2)',
+    // Платежи месяца — одно правило finance.ts; сумма отмеченного — из отметки.
+    ...dues.value.map((d) => ({
+      id: d.targetId,
+      day: d.day,
+      name: d.name,
+      ...(d.kind === 'obligation'
+        ? {
+            note: d.obligation.every === 'year' ? 'раз в год' : d.obligation.estimate ? 'оценка по сезону' : d.obligation.note,
+            color: `var(--${d.obligation.category})`,
+            estimate: d.obligation.estimate,
+          }
+        : { note: d.credit.note, color: 'var(--d2)' }),
+      value: d.amount,
       income: false,
+      pay: d.kind,
       open: () => {
-        void router.push(`/capital?credit=${c.id}`)
+        void router.push(`/capital?${d.kind}=${d.targetId}`)
       },
     })),
     {
@@ -141,9 +139,7 @@ const events = computed<EventItem[]>(() => {
   return items.sort((a, b) => a.day - b.day)
 })
 
-const obligationsTotal = computed(() =>
-  events.value.filter((e) => !e.income && e.id !== 'goals').reduce((a, e) => a + e.value, 0),
-)
+const obligationsTotal = computed(() => duesTotal(dues.value))
 const savedTotal = computed(() => amounts.value.d3)
 
 const dayEvents = computed(() => events.value.filter((e) => e.day === selected.value))
@@ -354,28 +350,44 @@ function handleD4Commit(text: string) {
       </div>
 
       <Card v-if="dayEvents.length > 0" flush>
-        <Row
-          v-for="e in dayEvents"
-          :key="e.id"
-          :accent="e.color"
-          :title="e.name"
-          :note="e.note"
-          clickable
-          @click="e.open"
-        >
-          <template #icon>
-            <PhArrowUp v-if="e.income" :size="15" weight="bold" />
-            <PhArrowDown v-else :size="15" weight="bold" />
-          </template>
-          <template #value>
-            <span
-              class="block text-[14.5px] font-semibold num"
-              :style="{ color: e.income ? 'var(--brand)' : undefined }"
-            >
-              {{ e.income ? '+' : '−' }}{{ plain(e.value) }}
-            </span>
-          </template>
-        </Row>
+        <template v-for="e in dayEvents" :key="e.id">
+          <PaidRow
+            v-if="e.pay"
+            :kind="e.pay"
+            :target-id="e.id"
+            :period="key"
+            :accent="e.color"
+            :title="e.name"
+            :note="e.note"
+            clickable
+            @open="e.open"
+          >
+            <template #icon>
+              <PhArrowDown :size="15" weight="bold" />
+            </template>
+          </PaidRow>
+          <Row
+            v-else
+            :accent="e.color"
+            :title="e.name"
+            :note="e.note"
+            clickable
+            @click="e.open"
+          >
+            <template #icon>
+              <PhArrowUp v-if="e.income" :size="15" weight="bold" />
+              <PhArrowDown v-else :size="15" weight="bold" />
+            </template>
+            <template #value>
+              <span
+                class="block text-[14.5px] font-semibold num"
+                :style="{ color: e.income ? 'var(--brand)' : undefined }"
+              >
+                {{ e.income ? '+' : '−' }}{{ plain(e.value) }}
+              </span>
+            </template>
+          </Row>
+        </template>
       </Card>
 
       <Card>
@@ -436,29 +448,45 @@ function handleD4Commit(text: string) {
     <!-- РЕЖИМ 3: СПИСОК -->
     <template v-if="view === 'list'">
       <Card flush>
-        <Row
-          v-for="e in events"
-          :key="e.id"
-          :accent="e.color"
-          :title="e.name"
-          :note="`${dayLabel(e.day, key)} · ${e.note}`"
-          :sub="e.estimate ? 'оценка' : undefined"
-          clickable
-          @click="e.open"
-        >
-          <template #icon>
-            <PhArrowUp v-if="e.income" :size="15" weight="bold" />
-            <PhArrowDown v-else :size="15" weight="bold" />
-          </template>
-          <template #value>
-            <span
-              class="block text-[14.5px] font-semibold num"
-              :style="{ color: e.income ? 'var(--brand)' : undefined }"
-            >
-              {{ e.income ? '+' : '−' }}{{ plain(e.value) }}
-            </span>
-          </template>
-        </Row>
+        <template v-for="e in events" :key="e.id">
+          <PaidRow
+            v-if="e.pay"
+            :kind="e.pay"
+            :target-id="e.id"
+            :period="key"
+            :accent="e.color"
+            :title="e.name"
+            :note="`${dayLabel(e.day, key)}${e.note ? ` · ${e.note}` : ''}`"
+            clickable
+            @open="e.open"
+          >
+            <template #icon>
+              <PhArrowDown :size="15" weight="bold" />
+            </template>
+          </PaidRow>
+          <Row
+            v-else
+            :accent="e.color"
+            :title="e.name"
+            :note="`${dayLabel(e.day, key)} · ${e.note}`"
+            :sub="e.estimate ? 'оценка' : undefined"
+            clickable
+            @click="e.open"
+          >
+            <template #icon>
+              <PhArrowUp v-if="e.income" :size="15" weight="bold" />
+              <PhArrowDown v-else :size="15" weight="bold" />
+            </template>
+            <template #value>
+              <span
+                class="block text-[14.5px] font-semibold num"
+                :style="{ color: e.income ? 'var(--brand)' : undefined }"
+              >
+                {{ e.income ? '+' : '−' }}{{ plain(e.value) }}
+              </span>
+            </template>
+          </Row>
+        </template>
       </Card>
     </template>
 

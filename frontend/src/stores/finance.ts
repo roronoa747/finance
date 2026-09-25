@@ -3,7 +3,22 @@ import { ref, computed } from 'vue'
 import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { mergeDocs, isEmptyDoc } from '@/lib/merge'
 import { monthKey } from '@/lib/dates'
-import type { SyncDoc, SyncStatus, Person, PersonId, Account, Credit, Goal, Obligation } from '@/types/finance'
+import {
+  accountBalance,
+  amountAt,
+  creditBalance,
+  creditResplit,
+  creditSplit,
+  lastAccountFor,
+  lumpPlan,
+  nextCreditDue,
+  nextObligationDue,
+  paidFor,
+  shiftedBase,
+  type LumpMode,
+  type ScheduledKind,
+} from '@/lib/finance'
+import type { SyncDoc, SyncStatus, Person, PersonId, Account, Credit, Goal, Obligation, Payment } from '@/types/finance'
 import type { CategoryKey, HueKey } from '@/lib/palette'
 import type { ConflictResponse, HouseholdDocResponse } from '@/types/api'
 
@@ -16,6 +31,9 @@ export function defaultSyncDoc(): SyncDoc {
     obligations: [],
     accounts: [],
     credits: [],
+    // Ключ нужен и пустым: сервер хранит ключи, которых нет в push (RP-03), и
+    // «Сбросить данные» обнулит отметки на сервере, только если ключ прислан.
+    payments: [],
     setupDoneAt: null,
   }
 }
@@ -101,10 +119,17 @@ export const useFinanceStore = defineStore('finance', () => {
   const categories = computed(() => householdDoc.value.categories || [])
   const goals = computed(() => householdDoc.value.goals || [])
   const obligations = computed(() => householdDoc.value.obligations || [])
-  const householdAccounts = computed(() => householdDoc.value.accounts || [])
-  const privateAccounts = computed(() => ((privateDoc.value.accounts as Account[]) || []))
+  const payments = computed(() => householdDoc.value.payments ?? [])
+  // Остатки счетов и долгов экраны получают уже выведенными из отметок (RP-06):
+  // в документе лежит база последней ручной сверки. Личный счёт тоже считается по
+  // отметкам общего документа — у партнёра такого id просто нет.
+  const withBalance = (a: Account): Account => ({ ...a, amount: accountBalance(a, payments.value) })
+  const householdAccounts = computed(() => (householdDoc.value.accounts || []).map(withBalance))
+  const privateAccounts = computed(() => ((privateDoc.value.accounts as Account[]) || []).map(withBalance))
   const accounts = computed(() => [...householdAccounts.value, ...privateAccounts.value])
-  const credits = computed(() => householdDoc.value.credits || [])
+  const credits = computed(() =>
+    (householdDoc.value.credits || []).map((c) => ({ ...c, principal: creditBalance(c, payments.value) })),
+  )
   const wishlist = computed(() => householdDoc.value.wishlist || [])
   const setupDone = computed(() => Boolean(householdDoc.value.setupDoneAt))
 
@@ -466,9 +491,43 @@ export const useFinanceStore = defineStore('finance', () => {
         month: o.month,
         who: o.who,
         versions: [{ from: '2000-01', amount: o.amount }],
+        // Завести — уже решение «оставить»: только что добавленное не спрашиваем (Р-20).
+        keptAt: t,
         updatedAt: t,
       });
     });
+  }
+
+  /** Группа подписок со свободным названием (Р-20): сама не платёж, суммы нет. */
+  function addGroup(name: string, noAsk = false) {
+    const id = Math.random().toString(36).slice(2, 10)
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      doc.obligations.push({ id, name, note: '', day: 1, category: 'd4', versions: [], group: true, noAsk, updatedAt: t })
+    })
+    return id
+  }
+
+  /** Положить подписку в группу или вынуть (null). */
+  function moveToGroup(id: string, groupId: string | null) {
+    if (unchanged(obligations.value.find((x) => x.id === id), { parentId: groupId })) return
+    updateObligation(id, { parentId: groupId })
+  }
+
+  /** Ответ «оставить» на вопрос о подписке — до следующего вопроса по правилам Р-20. */
+  function keepSubscription(id: string) {
+    updateObligation(id, { keptAt: new Date().toISOString() })
+  }
+
+  /** Удалить группу: подписки остаются, просто без группы. */
+  function removeGroup(id: string) {
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      for (const o of doc.obligations || []) {
+        if (o.id === id) Object.assign(o, { deletedAt: t, updatedAt: t })
+        else if (o.parentId === id) Object.assign(o, { parentId: null, updatedAt: t })
+      }
+    })
   }
 
   function addCredit(c: {
@@ -487,6 +546,7 @@ export const useFinanceStore = defineStore('finance', () => {
         name: c.name,
         note: c.note || '',
         principal: c.principal,
+        principalSetAt: t,
         annualRate: c.annualRate,
         payment: c.payment,
         day: c.day,
@@ -642,6 +702,7 @@ export const useFinanceStore = defineStore('finance', () => {
       name: a.name,
       note: a.note || '',
       amount: a.amount,
+      amountSetAt: t,
       kind: a.kind,
       currency: a.currency,
       foreignAmount: a.foreignAmount,
@@ -664,25 +725,68 @@ export const useFinanceStore = defineStore('finance', () => {
     }
   }
 
+  /**
+   * Якорь остатка при записи счёта. Остаток, введённый руками, — новая база:
+   * отметки до этого момента в него уже вошли. Без правки остатка якорь пишется
+   * прежним, пусть и null: иначе при слиянии победитель без ключа взял бы якорь
+   * проигравшего к своей старой базе (RP-02) и потерял бы отметки между ними.
+   */
+  function amountAnchor(cur: Account, patch: Partial<Account>, t: string) {
+    return { amountSetAt: 'amount' in patch ? t : (cur.amountSetAt ?? null) }
+  }
+
   function updateAccount(id: string, patch: Partial<Account>) {
     const t = new Date().toISOString()
     const isPriv = ((privateDoc.value.accounts as Account[]) || []).some((x) => x.id === id)
+    // Сравнение — с видимым остатком: тот же остаток не пишет ни базу, ни якорь.
     if (unchanged(accounts.value.find((x) => x.id === id), patch)) return
     if (isPriv) {
       mutatePrivateDoc((doc) => {
         const list = (doc.accounts as Account[]) || []
-        doc.accounts = list.map((x) => (x.id === id ? { ...x, ...patch, updatedAt: t } : x))
+        doc.accounts = list.map((x) =>
+          x.id === id ? { ...x, ...patch, ...amountAnchor(x, patch, t), updatedAt: t } : x,
+        )
       })
     } else {
       mutateHouseholdDoc((doc) => {
         const a = (doc.accounts || []).find((x) => x.id === id)
-        if (a) Object.assign(a, patch, { updatedAt: t })
+        if (a) Object.assign(a, patch, amountAnchor(a, patch, t), { updatedAt: t })
       })
     }
   }
 
+  /** Ручной ввод остатка — сверка с банком: новая база и якорь (`amountAnchor`). */
   function setAccountAmount(id: string, amount: number) {
     updateAccount(id, { amount })
+  }
+
+  /**
+   * Сдвинуть остаток на сумму — взнос в цель со счёта, снятие с цели, внеплановый
+   * доход. Это не сверка: база сдвигается на ту же дельту, якорь прежний
+   * (finance.ts `shiftedBase`). С якорем «сейчас» отметки до этого момента перестали
+   * бы двигать остаток: снятая по ошибке не вернула бы деньги, офлайн-отметка
+   * партнёра после слияния не списалась бы.
+   */
+  function shiftAccountAmount(id: string, delta: number) {
+    const t = new Date().toISOString()
+    const shift = (x: Account) => ({
+      amount: shiftedBase(x, payments.value, delta),
+      ...amountAnchor(x, {}, t),
+      updatedAt: t,
+    })
+    const priv = ((privateDoc.value.accounts as Account[]) || []).find((x) => x.id === id)
+    const raw = priv ?? (householdDoc.value.accounts || []).find((x) => x.id === id)
+    if (!raw || shiftedBase(raw, payments.value, delta) === raw.amount) return
+    if (priv) {
+      mutatePrivateDoc((doc) => {
+        doc.accounts = ((doc.accounts as Account[]) || []).map((x) => (x.id === id ? { ...x, ...shift(x) } : x))
+      })
+    } else {
+      mutateHouseholdDoc((doc) => {
+        const a = (doc.accounts || []).find((x) => x.id === id)
+        if (a) Object.assign(a, shift(a))
+      })
+    }
   }
 
   function setDeposit(id: string, deposit: Partial<NonNullable<Account['deposit']>>) {
@@ -697,6 +801,7 @@ export const useFinanceStore = defineStore('finance', () => {
           return {
             ...x,
             deposit: { ...(x.deposit || { annualRate: 0, months: 12, monthlyTopUp: 0, capitalize: true }), ...deposit },
+            ...amountAnchor(x, {}, t),
             updatedAt: t,
           }
         })
@@ -709,6 +814,7 @@ export const useFinanceStore = defineStore('finance', () => {
             ...(a.deposit || { annualRate: 0, months: 12, monthlyTopUp: 0, capitalize: true }),
             ...deposit,
           }
+          Object.assign(a, amountAnchor(a, {}, t))
           a.updatedAt = t
         }
       })
@@ -735,9 +841,202 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   function updateCredit(id: string, patch: Partial<Credit>) {
+    const t = new Date().toISOString()
     mutateHouseholdDoc((doc) => {
       const c = (doc.credits || []).find((x) => x.id === id)
-      if (c) Object.assign(c, patch, { updatedAt: new Date().toISOString() })
+      // Якорь — как у счёта (amountAnchor): введённый остаток долга — новая база.
+      if (c) {
+        Object.assign(c, patch, {
+          principalSetAt: 'principal' in patch ? t : (c.principalSetAt ?? null),
+          updatedAt: t,
+        })
+      }
+    })
+  }
+
+  /**
+   * «Оплатил» (Р-3, Р-5, Р-7): запись об оплате платежа цели за месяц. По
+   * умолчанию — ближайший неоплаченный месяц, сумма по графику и счёт прошлой
+   * оплаты этой цели (оплат не было — «не списывать»: деньги без выбора счёта не
+   * двигаются); всё это можно передать явно. Тело кредита считает finance.ts от
+   * остатка на сейчас — в записи снимок. Отмеченный месяц второй записи не получает.
+   * Возвращает запись, по которой месяц оплачен, или null, если платить нечего.
+   */
+  function markPaid(
+    kind: ScheduledKind,
+    targetId: string,
+    by: PersonId,
+    opts: { period?: string; amount?: number; accountId?: string | null } = {},
+  ): Payment | null {
+    let period: string | undefined
+    let amount: number
+    let principal: number | undefined
+    if (kind === 'obligation') {
+      // Группа подписок — не платёж (RP-09).
+      const o = obligations.value.find((x) => x.id === targetId && !x.deletedAt && !x.group)
+      if (!o) return null
+      period = opts.period ?? nextObligationDue(o, payments.value)?.period
+      if (!period) return null
+      amount = opts.amount ?? amountAt(o, period)
+    } else {
+      const c = credits.value.find((x) => x.id === targetId && !x.deletedAt)
+      if (!c) return null
+      period = opts.period ?? nextCreditDue(c, payments.value)?.period
+      if (!period) return null
+      const split = creditSplit(c.principal, c.annualRate, opts.amount ?? c.payment)
+      amount = split.amount
+      principal = split.body
+    }
+    const existing = paidFor(payments.value, kind, targetId, period)
+    if (existing) return existing
+
+    const record = newPayment(
+      { kind, targetId, period, amount, ...(principal === undefined ? {} : { principal }), by },
+      opts.accountId,
+    )
+    mutateHouseholdDoc((doc) => {
+      if (!doc.payments) doc.payments = []
+      doc.payments.push(record)
+    })
+    return record
+  }
+
+  /**
+   * Новая запись отметки: id, момент и счёт. Счёт по умолчанию — прошлой оплаты
+   * этой цели (Р-5); оплат не было — «не списывать»: без выбора деньги не двигаются.
+   * `at` — когда оплатили: по умолчанию сейчас, у правки — момент исправляемой.
+   */
+  function newPayment(
+    fields: Omit<Payment, 'id' | 'accountId' | 'at' | 'updatedAt'>,
+    accountId: string | null | undefined,
+    at?: string,
+  ): Payment {
+    const t = new Date().toISOString()
+    return {
+      id: Math.random().toString(36).slice(2, 10),
+      ...fields,
+      accountId:
+        accountId !== undefined ? accountId : (lastAccountFor(payments.value, fields.targetId, accounts.value) ?? null),
+      at: at ?? t,
+      updatedAt: t,
+    }
+  }
+
+  /** Та же оплата: цель и месяц. Двойная отметка с другого телефона — та же пара. */
+  const samePair = (a: Pick<Payment, 'kind' | 'targetId' | 'period'>) => (p: Payment) =>
+    p.kind === a.kind && p.targetId === a.targetId && p.period === a.period
+
+  /** Надгробие на все живые записи пары — и на двойную, иначе та всплыла бы оплатой. */
+  function buryPair(doc: SyncDoc, pair: (p: Payment) => boolean, t: string) {
+    for (const p of doc.payments ?? []) {
+      if (!p.deletedAt && pair(p)) Object.assign(p, { deletedAt: t, updatedAt: t })
+    }
+  }
+
+  /**
+   * Снять отметку (Р-7): записи пары перестают считаться — деньги возвращаются на
+   * счёт, долг к прежнему остатку. Кроме записи, которую уже покрыла ручная сверка
+   * остатка (до якоря): она и так не двигала остаток.
+   */
+  function unmarkPaid(kind: ScheduledKind, targetId: string, period: string) {
+    if (!paidFor(payments.value, kind, targetId, period)) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => buryPair(doc, samePair({ kind, targetId, period }), t))
+  }
+
+  /**
+   * Поправить отметку — другая сумма или счёт. Запись неизменна (Р-7): старая —
+   * надгробие, новая — с моментом оплаты `at` исходной, потому что деньги ушли
+   * тогда, а не при правке. Иначе запись, которую уже покрыла ручная сверка
+   * остатка (до якоря), после правки оказалась бы после якоря и списалась второй
+   * раз. Проценты месяца у кредита — из исходной записи (`creditResplit`), а не от
+   * остатка, уменьшенного с тех пор отметками следующих месяцев. Ничего не
+   * поменяли — ничего не пишется.
+   */
+  function editPaid(record: Payment, opts: { amount: number; accountId: string | null }): Payment | null {
+    if (record.kind === 'prepay') return null
+    if (opts.amount === record.amount && opts.accountId === record.accountId) return record
+    const pair = samePair(record)
+    let amount = opts.amount
+    let principal: number | undefined
+    if (record.kind === 'credit') {
+      const raw = (householdDoc.value.credits || []).find((x) => x.id === record.targetId && !x.deletedAt)
+      if (!raw) return null
+      const split = creditResplit(record, opts.amount, creditBalance(raw, payments.value.filter((p) => !pair(p))))
+      amount = split.amount
+      principal = split.body
+    }
+    const { kind, targetId, period, by } = record
+    const next = newPayment(
+      { kind, targetId, period, amount, ...(principal === undefined ? {} : { principal }), by },
+      opts.accountId,
+      record.at,
+    )
+    mutateHouseholdDoc((doc) => {
+      buryPair(doc, pair, next.updatedAt)
+      if (!doc.payments) doc.payments = []
+      doc.payments.push(next)
+    })
+    return next
+  }
+
+  /**
+   * Применить разовую досрочку (Р-6): запись того же списка, что «оплатил» — всё
+   * в тело, со счёта прошлой оплаты этого кредита (Р-5), со снимком сэкономленных
+   * процентов. «Снизить платёж» ещё и меняет платёж кредита; прежний — в записи.
+   */
+  function applyPrepayment(
+    creditId: string,
+    by: PersonId,
+    opts: { amount: number; mode: LumpMode; accountId?: string | null },
+  ): Payment | null {
+    const c = credits.value.find((x) => x.id === creditId && !x.deletedAt)
+    if (!c) return null
+    const plan = lumpPlan(c.principal, c.annualRate, c.payment, opts.amount, opts.mode)
+    if (!plan) return null
+
+    // Взнос, закрывший долг, платёж не переписывает: платить больше нечего и так.
+    const lowers = opts.mode === 'payment' && plan.left > 0 && plan.payment !== c.payment
+    const record = newPayment(
+      {
+        kind: 'prepay',
+        targetId: c.id,
+        period: monthKey(),
+        amount: plan.paid,
+        principal: plan.paid,
+        by,
+        saved: plan.saved,
+        mode: opts.mode,
+        ...(lowers ? { prevPayment: c.payment, newPayment: plan.payment } : {}),
+      },
+      opts.accountId,
+    )
+    const t = record.updatedAt
+    mutateHouseholdDoc((doc) => {
+      if (!doc.payments) doc.payments = []
+      doc.payments.push(record)
+      const raw = lowers ? doc.credits.find((x) => x.id === c.id) : undefined
+      if (raw) Object.assign(raw, { payment: plan.payment, principalSetAt: raw.principalSetAt ?? null, updatedAt: t })
+    })
+    return record
+  }
+
+  /**
+   * Снять досрочку: надгробие — остаток и счёт возвращаются сами. Платёж
+   * «снизить платёж» возвращается к прежнему, только если его с тех пор не
+   * меняли: иначе снятие затёрло бы более позднее решение.
+   */
+  function removePrepayment(id: string) {
+    const p = payments.value.find((x) => x.id === id && x.kind === 'prepay' && !x.deletedAt)
+    if (!p) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      const rec = (doc.payments ?? []).find((x) => x.id === id)
+      if (rec) Object.assign(rec, { deletedAt: t, updatedAt: t })
+      const c = p.prevPayment !== undefined ? doc.credits.find((x) => x.id === p.targetId) : undefined
+      if (c && c.payment === p.newPayment) {
+        Object.assign(c, { payment: p.prevPayment, principalSetAt: c.principalSetAt ?? null, updatedAt: t })
+      }
     })
   }
 
@@ -859,6 +1158,7 @@ export const useFinanceStore = defineStore('finance', () => {
     privateAccounts,
     accounts,
     credits,
+    payments,
     wishlist,
     setupDone,
     saveLocalState,
@@ -885,9 +1185,18 @@ export const useFinanceStore = defineStore('finance', () => {
     correctObligation,
     amendObligation,
     removeObligation,
+    addGroup,
+    moveToGroup,
+    keepSubscription,
+    removeGroup,
     addCredit,
     updateCredit,
     removeCredit,
+    markPaid,
+    unmarkPaid,
+    editPaid,
+    applyPrepayment,
+    removePrepayment,
     addGoal,
     updateGoal,
     removeGoal,
@@ -896,6 +1205,7 @@ export const useFinanceStore = defineStore('finance', () => {
     addAccount,
     updateAccount,
     setAccountAmount,
+    shiftAccountAmount,
     setDeposit,
     removeAccount,
     setCategoryAmount,

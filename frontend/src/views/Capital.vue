@@ -9,39 +9,58 @@ import {
   PhHouse,
   PhPlus,
   PhCalendarPlus,
+  PhFolderSimple,
   PhX,
 } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
+import { useAuthStore } from '@/stores/auth'
 import { money, plain, parseMoney, ratePct } from '@/lib/money'
 import {
+  MONTHS_NOM,
   addMonths,
+  atLabel,
+  dayLabel,
   monthFrom,
   monthKey,
   monthTitle,
+  parseMonthKey,
 } from '@/lib/dates'
 import {
+  afterAnchor,
   amountAt,
   annuityMonths,
   annuityTotal,
   debtCost,
   goalSavings,
+  groupChildren,
+  groupTotal,
   halfOverpayExtra,
+  isSubscription,
+  lastAccountFor,
   liveAccounts,
   liveCredits,
   liveGoals,
+  liveGroups,
   liveObligations,
+  payableAccounts,
+  lumpPlan,
   lumpSum,
   monthlyAmount,
   netWorth,
   nextChange,
+  nextCreditDue,
+  nextObligationDue,
+  prepaySaved,
   prepayment,
   rateFromSchedule,
   simulateStrategy,
+  type Due,
+  type LumpMode,
   type StrategyResult,
 } from '@/lib/finance'
-import type { Account, Currency, Obligation, Person, PersonId } from '@/types/finance'
+import type { Account, Credit, Currency, Obligation, Payment, Person, PersonId } from '@/types/finance'
 import type { CategoryKey } from '@/lib/palette'
-import { cn } from '@/lib/utils'
+import { cn, plural } from '@/lib/utils'
 import { fetchRates, formRate, type FxRates } from '@/lib/fx'
 
 import Card from '@/components/kit/Card.vue'
@@ -56,11 +75,13 @@ import Segmented from '@/components/kit/Segmented.vue'
 import Tag from '@/components/kit/Tag.vue'
 import DangerZone from '@/components/kit/DangerZone.vue'
 import Button from '@/components/ui/Button.vue'
+import PaidRow from '@/components/PaidRow.vue'
 import Input from '@/components/ui/Input.vue'
 
 const router = useRouter()
 const route = useRoute()
 const financeStore = useFinanceStore()
+const authStore = useAuthStore()
 
 const key = computed(() => monthKey())
 const people = computed(() => financeStore.people)
@@ -78,6 +99,29 @@ const totalHouseholdAmount = computed(() => householdAccounts.value.reduce((a, x
 const totalPrivateAmount = computed(() => privateAccounts.value.reduce((a, x) => a + x.amount, 0))
 const totalSaved = computed(() => goalSavings(goals.value))
 const totalDebts = computed(() => credits.value.reduce((a, c) => a + c.principal, 0))
+const totalPrepaySaved = computed(() => prepaySaved(financeStore.payments, financeStore.credits))
+
+const groups = computed(() => liveGroups(financeStore.obligations))
+// Подписка группы, которой больше нет, показывается сама по себе.
+const ungrouped = computed(() =>
+  obligations.value.filter((o) => !o.parentId || !groups.value.some((g) => g.id === o.parentId)),
+)
+
+function obligationSub(o: Obligation): string {
+  if (nextChange(o, key.value)) return 'сумма изменится'
+  return o.every === 'year' ? 'в год' : 'в месяц'
+}
+
+function groupNote(g: Obligation): string {
+  const n = groupChildren(g, financeStore.obligations).length
+  return `${n} ${plural(n, 'подписка', 'подписки', 'подписок')}${g.noAsk ? ' · рабочие' : ''}`
+}
+
+/** «24 платежа» в строке кредита: сколько осталось при нынешнем платеже. */
+function paymentsLeft(c: Credit): string {
+  const n = Math.ceil(annuityMonths(c.principal, c.annualRate, c.payment))
+  return `${n} ${plural(n, 'платёж', 'платежа', 'платежей')}`
+}
 
 function obligationNote(o: Obligation, members: Person[]): string {
   const parts: string[] = []
@@ -98,6 +142,8 @@ const addObligationOpen = ref(false)
 const selectedObligationId = ref<string | null>(null)
 const payoffCreditId = ref<string | null>(null)
 const extraIncomeOpen = ref(false)
+const addGroupOpen = ref(false)
+const selectedGroupId = ref<string | null>(null)
 
 // Check query params on mount/update
 watch(
@@ -129,10 +175,8 @@ function applyExtraIncome() {
   if (kind === 'goal') {
     financeStore.contribute(id, extraIncomeValue.value, extraIncomeBy.value, 'Внеплановый доход')
   } else {
-    const acc = allAccounts.value.find((a) => a.id === id)
-    if (acc) {
-      financeStore.setAccountAmount(id, acc.amount + extraIncomeValue.value)
-    }
+    // Сдвиг остатка, а не сверка: отметки оплат до дохода продолжают считаться.
+    financeStore.shiftAccountAmount(id, extraIncomeValue.value)
   }
   extraIncomeAmount.value = ''
   extraIncomeTarget.value = ''
@@ -283,7 +327,7 @@ function createDebt() {
 const obName = ref('')
 const obAmount = ref('')
 const obEvery = ref<'month' | 'year'>('month')
-const obMonth = ref(String(new Date().getMonth() + 1))
+const obMonth = ref(String(parseMonthKey(monthKey()).month + 1))
 const obDay = ref('10')
 const obWho = ref<'all' | PersonId>('all')
 const obCategory = ref<CategoryKey>('d4')
@@ -311,6 +355,30 @@ function createObligation() {
   obEstimate.value = false
   addObligationOpen.value = false
 }
+
+/* ------------------ Группы подписок (RP-09) ------------------ */
+/** Флаг группы: спрашивать ли «оставить?» о её подписках. */
+const NO_ASK_OPTIONS = [
+  { value: false, label: 'Спрашивать' },
+  { value: true, label: 'Рабочие — нет' },
+]
+const groupName = ref('')
+const groupNoAsk = ref(false)
+
+function createGroup() {
+  const name = groupName.value.trim()
+  if (!name) return
+  financeStore.addGroup(name, groupNoAsk.value)
+  groupName.value = ''
+  groupNoAsk.value = false
+  addGroupOpen.value = false
+}
+
+const activeGroup = computed(() => groups.value.find((g) => g.id === selectedGroupId.value))
+/** Подписки, которые можно положить в открытую группу. */
+const groupCandidates = computed(() =>
+  obligations.value.filter((o) => isSubscription(o) && o.parentId !== selectedGroupId.value),
+)
 
 /* ------------------ Анализ долгов (DebtAdvice) ------------------ */
 const adviceView = ref<'order' | 'strategy'>('order')
@@ -421,6 +489,28 @@ const activeCredit = computed(() =>
 const activeObligation = computed(() =>
   obligations.value.find((o) => o.id === selectedObligationId.value),
 )
+
+// Платёж, который модалка предлагает отметить, берётся при открытии: после
+// «Оплатил» строка остаётся на этом месяце и показывает следующий платёж, а не
+// перескакивает на следующий месяц с новой кнопкой.
+const creditDue = ref<Due | null>(null)
+watch(
+  () => activeCredit.value?.id,
+  () => {
+    creditDue.value = activeCredit.value ? nextCreditDue(activeCredit.value, financeStore.payments) : null
+  },
+  { immediate: true },
+)
+const obligationDue = ref<Due | null>(null)
+watch(
+  () => activeObligation.value?.id,
+  () => {
+    obligationDue.value = activeObligation.value
+      ? nextObligationDue(activeObligation.value, financeStore.payments)
+      : null
+  },
+  { immediate: true },
+)
 const obEditAmount = ref('')
 const obPlanning = ref(false)
 const obNewAmount = ref('')
@@ -507,6 +597,62 @@ const payoffLadder = computed(() => {
     .filter((res) => res.extra > 0 && Number.isFinite(res.monthsAfter))
 })
 
+/* ------------------ Применить досрочку (RP-08) ------------------ */
+const applyMode = ref<LumpMode>('term')
+// '' — счёт не выбран, 'none' — «не списывать», иначе id счёта.
+const applyAccount = ref('')
+const applyDone = ref<Payment | null>(null)
+const removingPrepay = ref<string | null>(null)
+
+const applyAccounts = computed(() => payableAccounts(allAccounts.value))
+const applyPlan = computed(() => {
+  const c = activePayoffCredit.value
+  const v = parseMoney(payoffAmount.value)
+  return c && v > 0 ? lumpPlan(c.principal, c.annualRate, c.payment, v, applyMode.value) : null
+})
+const creditPrepays = computed(() =>
+  financeStore.payments
+    .filter((p) => p.kind === 'prepay' && !p.deletedAt && p.targetId === payoffCreditId.value)
+    .sort((a, b) => b.at.localeCompare(a.at)),
+)
+
+// Счёт по умолчанию — прошлой оплаты этого кредита (Р-5).
+watch(
+  payoffCreditId,
+  (id) => {
+    applyDone.value = null
+    removingPrepay.value = null
+    const last = id ? lastAccountFor(financeStore.payments, id, financeStore.accounts) : undefined
+    applyAccount.value = last === undefined ? '' : (last ?? 'none')
+  },
+  { immediate: true },
+)
+
+// Снятие обещает только то, что сделает стор (как `unmarkNote` у отметок): остаток
+// и счёт возвращаются, если досрочка после их ручной сверки, платёж — если его с
+// тех пор не меняли.
+function prepayUndoNote(p: Payment): string {
+  const c = activePayoffCredit.value
+  const acc = p.accountId ? financeStore.accounts.find((a) => a.id === p.accountId) : undefined
+  const parts = ['Досрочка уйдёт из списка и счётчика']
+  if (c && afterAnchor(p, c.principalSetAt)) parts.push('остаток долга — к прежнему')
+  if (p.accountId && (!acc || afterAnchor(p, acc.amountSetAt))) parts.push('деньги вернутся на счёт')
+  if (p.prevPayment !== undefined && c?.payment === p.newPayment) parts.push('платёж — к прежнему')
+  return parts.join(', ') + '.'
+}
+
+function applyPrepay() {
+  const c = activePayoffCredit.value
+  if (!c || !applyPlan.value || !applyAccount.value) return
+  applyDone.value = financeStore.applyPrepayment(c.id, authStore.slot ?? 'a', {
+    amount: parseMoney(payoffAmount.value),
+    mode: applyMode.value,
+    accountId: applyAccount.value === 'none' ? null : applyAccount.value,
+  })
+  payoffAmount.value = ''
+}
+
+
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     accountOpen.value = false
@@ -517,6 +663,8 @@ function onKeydown(e: KeyboardEvent) {
     selectedObligationId.value = null
     payoffCreditId.value = null
     extraIncomeOpen.value = false
+    addGroupOpen.value = false
+    selectedGroupId.value = null
   }
 }
 
@@ -617,7 +765,7 @@ onUnmounted(() => {
         v-for="c in credits"
         :key="c.id"
         :title="c.name"
-        :note="`${c.annualRate > 0 ? 'ГЭСВ ' + ratePct(c.annualRate, 1) : 'рассрочка'} · ${Math.ceil(annuityMonths(c.principal, c.annualRate, c.payment))} платежей`"
+        :note="`${c.annualRate > 0 ? 'ГЭСВ ' + ratePct(c.annualRate, 1) : 'рассрочка'} · ${paymentsLeft(c)}`"
         :value="money(c.principal)"
         :sub="
           annuityTotal(c.principal, c.annualRate, c.payment) - c.principal > 0
@@ -632,14 +780,14 @@ onUnmounted(() => {
         </template>
       </Row>
 
-      <!-- Обязательства -->
+      <!-- Обязательства вне групп -->
       <Row
-        v-for="o in obligations.filter((x) => !x.parentId)"
+        v-for="o in ungrouped"
         :key="o.id"
         :title="o.name"
         :note="obligationNote(o, people)"
         :value="money(amountAt(o, key))"
-        :sub="nextChange(o, key) ? 'сумма изменится' : 'в месяц'"
+        :sub="obligationSub(o)"
         clickable
         @click="selectedObligationId = o.id"
       >
@@ -648,13 +796,46 @@ onUnmounted(() => {
         </template>
       </Row>
 
+      <!-- Группы подписок: итог и подписки внутри (Р-20) -->
+      <template v-for="g in groups" :key="g.id">
+        <Row
+          :title="g.name"
+          :note="groupNote(g)"
+          :value="money(groupTotal(g, financeStore.obligations, key))"
+          sub="в месяц"
+          clickable
+          @click="selectedGroupId = g.id"
+        >
+          <template #icon>
+            <PhFolderSimple :size="17" />
+          </template>
+        </Row>
+        <div class="border-b border-line pl-6 last:border-b-0">
+          <Row
+            v-for="o in groupChildren(g, financeStore.obligations)"
+            :key="o.id"
+            :title="o.name"
+            :note="obligationNote(o, people)"
+            :value="money(amountAt(o, key))"
+            :sub="obligationSub(o)"
+            clickable
+            @click="selectedObligationId = o.id"
+          />
+        </div>
+      </template>
+
       <div
-        v-if="!credits.length && !obligations.length"
+        v-if="!credits.length && !obligations.length && !groups.length"
         class="px-4 py-6 text-center text-[13px] text-ink-3"
       >
         Обязательств пока нет
       </div>
     </Card>
+
+    <p v-if="totalPrepaySaved > 0" class="-mt-1 px-1 text-[12.5px] text-ink-2">
+      Досрочками уже сэкономили на процентах
+      <b class="num text-brand">{{ money(totalPrepaySaved) }}</b>
+    </p>
 
     <div class="flex flex-col gap-2">
       <Button variant="outline" class="w-full bg-surface-2" @click="addObligationOpen = true">
@@ -662,6 +843,9 @@ onUnmounted(() => {
       </Button>
       <Button variant="outline" class="w-full bg-surface-2" @click="addDebtOpen = true">
         <PhPlus :size="16" weight="bold" /> Долг или рассрочка
+      </Button>
+      <Button variant="outline" class="w-full bg-surface-2" @click="addGroupOpen = true">
+        <PhFolderSimple :size="16" /> Группа подписок
       </Button>
     </div>
 
@@ -969,7 +1153,7 @@ onUnmounted(() => {
             </button>
           </div>
           <p v-if="debtMode === 'none' && plainMonths > 0" class="mt-2 text-[12px] text-ink-3">
-            Рассрочка закроется примерно за {{ plainMonths }} платежей.
+            Рассрочка закроется примерно за {{ plainMonths }} {{ plural(plainMonths, 'платёж', 'платежа', 'платежей') }}.
           </p>
         </Field>
 
@@ -1022,6 +1206,18 @@ onUnmounted(() => {
             <span class="text-ink-2">Ставка</span>
             <b class="num text-ink">{{ activeCredit.annualRate > 0 ? ratePct(activeCredit.annualRate, 1) : '0%' }}</b>
           </div>
+        </div>
+
+        <div v-if="creditDue" class="mb-3 rounded-xl border border-line px-3">
+          <PaidRow
+            dense
+            more
+            kind="credit"
+            :target-id="activeCredit.id"
+            :period="creditDue.period"
+            :title="`Платёж ${dayLabel(creditDue.day, creditDue.period)}`"
+            note="по графику"
+          />
         </div>
 
         <Button
@@ -1080,6 +1276,15 @@ onUnmounted(() => {
           <NumField v-model="obAmount" placeholder="5 000" class="mb-3" />
         </Field>
 
+        <Field v-if="obEvery === 'year'" label="Месяц списания">
+          <select
+            v-model="obMonth"
+            class="mb-3 w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[14px] text-ink"
+          >
+            <option v-for="(m, i) in MONTHS_NOM" :key="m" :value="String(i + 1)">{{ m }}</option>
+          </select>
+        </Field>
+
         <Field label="День платежа">
           <NumField v-model="obDay" kind="int" class="mb-3" />
         </Field>
@@ -1128,6 +1333,30 @@ onUnmounted(() => {
           >
             <PhX :size="16" />
           </button>
+        </div>
+
+        <div v-if="obligationDue" class="mb-3 rounded-xl border border-line px-3">
+          <PaidRow
+            dense
+            more
+            kind="obligation"
+            :target-id="activeObligation.id"
+            :period="obligationDue.period"
+            :title="`Платёж ${dayLabel(obligationDue.day, obligationDue.period)}`"
+            :note="activeObligation.every === 'year' ? 'раз в год' : 'по графику'"
+          />
+        </div>
+
+        <div v-if="isSubscription(activeObligation) && groups.length" class="mb-3.5 flex flex-col gap-1.5">
+          <span class="text-[12.5px] font-medium text-ink-3">Группа</span>
+          <select
+            :value="activeObligation.parentId ?? ''"
+            class="w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[14px] text-ink"
+            @change="(e) => financeStore.moveToGroup(activeObligation!.id, (e.target as HTMLSelectElement).value || null)"
+          >
+            <option value="">Без группы</option>
+            <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
+          </select>
         </div>
 
         <Field label="Сумма сейчас, ₸">
@@ -1201,6 +1430,134 @@ onUnmounted(() => {
           label="Удалить обязательство"
           warning="Обязательство исчезнет из бюджета и планов."
           @confirm="() => { financeStore.removeObligation(activeObligation!.id); selectedObligationId = null }"
+        />
+      </div>
+    </div>
+
+    <!-- МОДАЛКА: Новая группа подписок -->
+    <div
+      v-if="addGroupOpen"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
+      @click.self="addGroupOpen = false"
+    >
+      <div class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-2xl border border-line bg-surface p-5 shadow-2xl text-left">
+        <div class="mb-4 flex items-center justify-between">
+          <h3 class="font-display text-[17px] font-semibold text-ink">Группа подписок</h3>
+          <button
+            type="button"
+            aria-label="Закрыть"
+            class="grid size-7 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
+            @click="addGroupOpen = false"
+          >
+            <PhX :size="16" />
+          </button>
+        </div>
+        <Field label="Название">
+          <Input v-model="groupName" placeholder="Рабочие, досуг, для дома…" class="mb-3" />
+        </Field>
+        <div class="mb-3.5 flex flex-col gap-1.5">
+          <span class="text-[12.5px] font-medium text-ink-3">Спрашивать «оставить?»</span>
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              v-for="opt in NO_ASK_OPTIONS"
+              :key="opt.label"
+              type="button"
+              :class="cn('rounded-xl border px-3 py-2.5 text-[13px] font-medium transition-colors cursor-pointer', groupNoAsk === opt.value ? 'border-brand bg-brand-soft text-brand' : 'border-line bg-surface-2 text-ink-2')"
+              @click="groupNoAsk = opt.value"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+        <Button :disabled="!groupName.trim()" class="w-full" @click="createGroup">Создать группу</Button>
+      </div>
+    </div>
+
+    <!-- МОДАЛКА: Группа подписок — название, флаг, подписки -->
+    <div
+      v-if="activeGroup"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
+      @click.self="selectedGroupId = null"
+    >
+      <div class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-2xl border border-line bg-surface p-5 shadow-2xl text-left">
+        <div class="mb-4 flex items-center justify-between">
+          <h3 class="font-display text-[17px] font-semibold text-ink">{{ activeGroup.name }}</h3>
+          <button
+            type="button"
+            aria-label="Закрыть"
+            class="grid size-7 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
+            @click="selectedGroupId = null"
+          >
+            <PhX :size="16" />
+          </button>
+        </div>
+
+        <Field label="Название">
+          <Input
+            :default-value="activeGroup.name"
+            class="mb-3"
+            @blur="(e: Event) => {
+              const v = (e.target as HTMLInputElement).value.trim()
+              if (v && v !== activeGroup!.name) financeStore.updateObligation(activeGroup!.id, { name: v })
+            }"
+          />
+        </Field>
+
+        <div class="mb-3.5 flex flex-col gap-1.5">
+          <span class="text-[12.5px] font-medium text-ink-3">Спрашивать «оставить?»</span>
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              v-for="opt in NO_ASK_OPTIONS"
+              :key="opt.label"
+              type="button"
+              :class="cn('rounded-xl border px-3 py-2.5 text-[13px] font-medium transition-colors cursor-pointer', !!activeGroup.noAsk === opt.value ? 'border-brand bg-brand-soft text-brand' : 'border-line bg-surface-2 text-ink-2')"
+              @click="!!activeGroup.noAsk !== opt.value && financeStore.updateObligation(activeGroup.id, { noAsk: opt.value })"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+
+        <div class="mb-3 rounded-xl border border-line bg-surface-2 p-3 text-[13px]">
+          <div class="mb-1 flex justify-between">
+            <span class="text-ink-2">Итого</span>
+            <b class="num text-ink">{{ money(groupTotal(activeGroup, financeStore.obligations, key)) }} в месяц</b>
+          </div>
+          <div
+            v-for="o in groupChildren(activeGroup, financeStore.obligations)"
+            :key="o.id"
+            class="flex items-center gap-2 border-t border-line py-1.5"
+          >
+            <span class="min-w-0 flex-1 truncate text-ink-2">{{ o.name }}</span>
+            <span class="num text-ink">{{ plain(amountAt(o, key)) }} {{ o.every === 'year' ? 'в год' : 'в месяц' }}</span>
+            <button
+              type="button"
+              class="text-[12.5px] text-ink-3 hover:underline cursor-pointer"
+              @click="financeStore.moveToGroup(o.id, null)"
+            >
+              Вынуть
+            </button>
+          </div>
+        </div>
+
+        <div v-if="groupCandidates.length" class="mb-3.5 flex flex-col gap-1.5">
+          <span class="text-[12.5px] font-medium text-ink-3">Добавить подписку</span>
+          <select
+            value=""
+            class="w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[14px] text-ink"
+            @change="(e) => { const el = e.target as HTMLSelectElement; if (el.value) financeStore.moveToGroup(el.value, activeGroup!.id); el.value = '' }"
+          >
+            <option value="">Выберите…</option>
+            <option v-for="o in groupCandidates" :key="o.id" :value="o.id">{{ o.name }}</option>
+          </select>
+        </div>
+
+        <Button class="w-full mb-3" @click="selectedGroupId = null">Готово</Button>
+
+        <DangerZone
+          label="Удалить группу"
+          warning="Группа исчезнет, подписки останутся — просто без группы."
+          @confirm="() => { financeStore.removeGroup(activeGroup!.id); selectedGroupId = null }"
         />
       </div>
     </div>
@@ -1279,6 +1636,102 @@ onUnmounted(() => {
           </div>
           <div class="mt-1 text-[12px] text-ink-2">
             Останется платежей: {{ Math.max(0, Math.ceil(payoffResult.monthsAfter)) }} вместо {{ Math.ceil(payoffResult.monthsNow) }}.
+          </div>
+        </div>
+
+        <!-- Применить разовую досрочку (Р-6) -->
+        <div
+          v-if="payoffMode === 'once' && applyPlan && !authStore.isViewer"
+          class="mb-3 rounded-xl border border-line p-3.5"
+        >
+          <div class="mb-2 text-[13px] font-medium text-ink">Применить к кредиту</div>
+          <Segmented
+            v-model="applyMode"
+            :options="[
+              { value: 'term', label: 'Сократить срок' },
+              { value: 'payment', label: 'Снизить платёж' },
+            ]"
+            class="mb-3"
+          />
+          <div class="mb-3 flex flex-col gap-1.5 text-[13px]">
+            <div class="flex justify-between">
+              <span class="text-ink-2">Остаток долга</span>
+              <b class="num text-ink">{{ money(applyPlan.left) }}</b>
+            </div>
+            <div v-if="applyPlan.left === 0" class="text-ink-2">Долг закроется этим взносом.</div>
+            <div v-else-if="applyMode === 'term'" class="flex justify-between">
+              <span class="text-ink-2">Платежей останется</span>
+              <b class="num text-ink">{{ applyPlan.months }} вместо {{ applyPlan.monthsBefore }}</b>
+            </div>
+            <div v-else class="flex justify-between">
+              <span class="text-ink-2">Платёж</span>
+              <b class="num text-ink">{{ money(applyPlan.payment) }} вместо {{ money(activePayoffCredit.payment) }}</b>
+            </div>
+          </div>
+          <div class="mb-3 rounded-xl bg-brand-soft px-3 py-2 text-[13px] text-ink-2">
+            Не отдадим банку <b class="num text-brand">{{ money(applyPlan.saved) }}</b>
+          </div>
+          <Field label="Откуда списать">
+            <select
+              v-model="applyAccount"
+              class="w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[14px] text-ink"
+            >
+              <option value="" disabled>Выберите счёт…</option>
+              <option v-for="a in applyAccounts" :key="a.id" :value="a.id">
+                {{ a.name }} · {{ money(a.amount) }}
+              </option>
+              <option value="none">Не списывать — только отметить</option>
+            </select>
+          </Field>
+          <Button class="w-full" :disabled="!applyAccount" @click="applyPrepay">Применить досрочку</Button>
+        </div>
+
+        <div
+          v-if="applyDone"
+          class="mb-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3 text-[13px] text-ink-2"
+        >
+          Досрочка применена: не отдадим банку
+          <b class="num text-brand">{{ money(applyDone.saved ?? 0) }}</b>.
+        </div>
+
+        <div v-if="creditPrepays.length > 0" class="mb-3">
+          <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-3">
+            Применённые досрочки
+          </div>
+          <div
+            v-for="p in creditPrepays"
+            :key="p.id"
+            class="border-b border-line py-2 text-[12.5px] last:border-b-0"
+          >
+            <div class="flex items-baseline gap-2">
+              <span class="text-ink-2">
+                {{ atLabel(p.at) }} · {{ p.mode === 'payment' ? 'снизили платёж' : 'сократили срок' }}
+              </span>
+              <b class="ml-auto num text-ink">{{ money(p.amount) }}</b>
+            </div>
+            <div class="flex items-baseline gap-2">
+              <span class="text-brand">не отдадим банку <span class="num">{{ money(p.saved ?? 0) }}</span></span>
+              <button
+                v-if="!authStore.isViewer && removingPrepay !== p.id"
+                type="button"
+                class="ml-auto text-ink-3 hover:underline cursor-pointer"
+                @click="removingPrepay = p.id"
+              >
+                Снять
+              </button>
+            </div>
+            <div v-if="removingPrepay === p.id" class="mt-2 rounded-xl border border-line bg-surface-2 p-3">
+              <p class="mb-2 leading-relaxed text-ink-2">{{ prepayUndoNote(p) }}</p>
+              <div class="flex gap-2">
+                <Button variant="outline" class="flex-1 bg-surface" @click="removingPrepay = null">Отмена</Button>
+                <Button
+                  class="flex-1"
+                  @click="() => { financeStore.removePrepayment(p.id); removingPrepay = null; applyDone = null }"
+                >
+                  Снять
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
 

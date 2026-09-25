@@ -14,24 +14,25 @@ import { monthKey, monthIn, monthFrom, dayLabel } from '@/lib/dates'
 import {
   amountAt,
   budgetAmounts,
-  dueIn,
-  liveCredits,
+  keepQuestions,
   liveGoals,
   liveObligations,
+  monthDues,
   nextChange,
+  nextObligationDue,
   salaryAt,
   untilPayday,
 } from '@/lib/finance'
-import { cn } from '@/lib/utils'
+import { cn, plural } from '@/lib/utils'
 import Card from '@/components/kit/Card.vue'
 import Section from '@/components/kit/Section.vue'
-import Row from '@/components/kit/Row.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Hero from '@/components/kit/Hero.vue'
 import Button from '@/components/ui/Button.vue'
 import Bar, { type Seg } from '@/components/Bar.vue'
 import Legend, { type LegendItem } from '@/components/Legend.vue'
 import Ring from '@/components/Ring.vue'
+import PaidRow from '@/components/PaidRow.vue'
 
 const router = useRouter()
 const financeStore = useFinanceStore()
@@ -43,7 +44,6 @@ const people = computed(() => financeStore.people)
 const categories = computed(() => financeStore.categories)
 const goals = computed(() => liveGoals(financeStore.goals))
 const obligations = computed(() => liveObligations(financeStore.obligations))
-const credits = computed(() => liveCredits(financeStore.credits))
 
 // Суммы по разделам считаются из обязательств, кредитов и целей
 const amounts = computed(() => budgetAmounts(financeStore.householdDoc))
@@ -97,47 +97,56 @@ const freed = computed(() => {
     .find((x) => x.change && x.change.delta < 0)
 })
 
-// Ближайшие списания «Впереди»
+// Платежи месяца «Впереди» (правило finance.ts): оплаченное — не предстоящее, уходит вниз с отметкой
 const upcoming = computed(() => {
-  const items = [
-    ...obligations.value
-      .filter((o) => dueIn(o, key.value))
-      .map((o) => ({
-        id: o.id,
-        name: o.name,
-        day: o.day,
-        value: amountAt(o, key.value),
-        note: o.every === 'year' ? 'раз в год' : o.estimate ? 'оценка по сезону' : o.note,
-        color: `var(--${o.category})`,
-        estimate: o.estimate,
-        to: `/capital?obligation=${o.id}`,
-      })),
-    ...credits.value.map((c) => ({
-      id: c.id,
-      name: c.name,
-      day: c.day,
-      value: c.payment,
-      note: c.note || 'ежемесячный платёж',
-      color: 'var(--d2)',
-      estimate: false,
-      to: `/capital?credit=${c.id}`,
-    })),
-  ]
-  return items.sort((a, b) => a.day - b.day)
+  const items = monthDues(
+    { obligations: financeStore.obligations, credits: financeStore.credits, payments: financeStore.payments },
+    key.value,
+  ).map((d) => ({
+    id: d.targetId,
+    kind: d.kind,
+    name: d.name,
+    day: d.day,
+    paid: d.paid,
+    ...(d.kind === 'obligation'
+      ? {
+          note: d.obligation.every === 'year' ? 'раз в год' : d.obligation.estimate ? 'оценка по сезону' : d.obligation.note,
+          color: `var(--${d.obligation.category})`,
+        }
+      : { note: d.credit.note || 'ежемесячный платёж', color: 'var(--d2)' }),
+    to: `/capital?${d.kind}=${d.targetId}`,
+  }))
+  return items.sort((a, b) => Number(a.paid) - Number(b.paid) || a.day - b.day)
 })
 
-// Данные блока «До зарплаты»
+// Данные блока «До зарплаты»: остатки общих счетов и долгов — из отметок, как их отдаёт стор
 const paydayInfo = computed(() => {
-  return untilPayday(financeStore.householdDoc)
+  return untilPayday({
+    people: financeStore.people,
+    obligations: financeStore.obligations,
+    credits: financeStore.credits,
+    accounts: financeStore.householdAccounts,
+    payments: financeStore.payments,
+  })
 })
 
-function dayWord(n: number) {
-  const t = n % 10
-  const h = n % 100
-  if (h >= 11 && h <= 14) return 'дней'
-  if (t === 1) return 'день'
-  if (t >= 2 && t <= 4) return 'дня'
-  return 'дней'
+// «Оставить?» (Р-20): один вопрос за раз, спокойно; отвечает участник, не viewer
+const keepAsk = computed(() => (authStore.isViewer ? null : (keepQuestions(financeStore.obligations)[0] ?? null)))
+const keepRenewal = computed(() =>
+  keepAsk.value?.every === 'year' ? nextObligationDue(keepAsk.value, financeStore.payments) : null,
+)
+// Какую подписку собрались отменить: если синк сменил вопрос, подтверждение не
+// переезжает на другую подписку.
+const cancelling = ref<string | null>(null)
+
+function keepSub() {
+  if (keepAsk.value) financeStore.keepSubscription(keepAsk.value.id)
+  cancelling.value = null
+}
+
+function cancelSub() {
+  if (keepAsk.value && cancelling.value === keepAsk.value.id) financeStore.removeObligation(keepAsk.value.id)
+  cancelling.value = null
 }
 
 // Баннер приглашения
@@ -269,12 +278,12 @@ async function copyInvite() {
     </Callout>
 
     <!-- Блок «До зарплаты» -->
-    <template v-if="paydayInfo && paydayInfo.due.length">
+    <template v-if="paydayInfo && (paydayInfo.due.length || paydayInfo.paid.length)">
       <Section title="До зарплаты" />
       <Card>
         <div class="flex items-baseline gap-2">
           <span class="font-display text-[19px] font-semibold tracking-[-0.02em] text-ink">
-            {{ paydayInfo.inDays === 0 ? 'Сегодня' : `Через ${paydayInfo.inDays} ${dayWord(paydayInfo.inDays)}` }}
+            {{ paydayInfo.inDays === 0 ? 'Сегодня' : `Через ${paydayInfo.inDays} ${plural(paydayInfo.inDays, 'день', 'дня', 'дней')}` }}
           </span>
           <span class="ml-auto text-[13px] text-ink-3">
             {{ dayLabel(paydayInfo.day, paydayInfo.key) }}
@@ -289,16 +298,17 @@ async function copyInvite() {
             <span class="text-[13px] text-ink-2">Списаний до неё</span>
             <b class="ml-auto num text-[14.5px] text-ink">{{ money(paydayInfo.dueTotal) }}</b>
           </div>
-          <div class="mt-2 flex flex-col gap-1.5">
-            <div
-              v-for="d in paydayInfo.due"
+          <div class="mt-1 flex flex-col">
+            <PaidRow
+              v-for="d in [...paydayInfo.due, ...paydayInfo.paid]"
               :key="d.id"
-              class="flex items-baseline gap-2 text-[12.5px]"
-            >
-              <span class="text-ink-3">{{ dayLabel(d.day, d.when) }}</span>
-              <span class="truncate text-ink-2">{{ d.name }}</span>
-              <span class="ml-auto shrink-0 num text-ink">{{ plain(d.value) }}</span>
-            </div>
+              dense
+              :kind="d.kind"
+              :target-id="d.targetId"
+              :period="d.when"
+              :title="d.name"
+              :note="dayLabel(d.day, d.when)"
+            />
           </div>
         </div>
 
@@ -326,6 +336,32 @@ async function copyInvite() {
       </Card>
     </template>
 
+    <!-- «Оставить?» — подписка, о которой пора спросить -->
+    <Card v-if="keepAsk">
+      <div class="text-[12.5px] text-ink-3">
+        {{ keepRenewal ? `Продлится ${dayLabel(keepRenewal.day, keepRenewal.period)}` : 'Раз в квартал сверяем подписки' }}
+      </div>
+      <div class="mt-0.5 font-display text-[17px] font-semibold tracking-[-0.01em] text-ink">
+        Оставить «{{ keepAsk.name }}»?
+      </div>
+      <div class="text-[13px] text-ink-2 num">
+        {{ money(keepRenewal ? keepRenewal.amount : amountAt(keepAsk, key)) }} {{ keepAsk.every === 'year' ? 'в год' : 'в месяц' }}
+      </div>
+      <div v-if="cancelling !== keepAsk.id" class="mt-3 flex gap-2">
+        <Button class="flex-1" @click="keepSub">Оставить</Button>
+        <Button variant="outline" class="flex-1 bg-surface-2" @click="cancelling = keepAsk.id">Отменить</Button>
+      </div>
+      <div v-else class="mt-3 rounded-xl border border-line bg-surface-2 p-3">
+        <p class="mb-2 text-[12.5px] leading-relaxed text-ink-2">
+          Подписка уйдёт из бюджета и планов у вас обоих. Отключить её в самом сервисе нужно отдельно.
+        </p>
+        <div class="flex gap-2">
+          <Button variant="outline" class="flex-1 bg-surface" @click="cancelling = null">Не сейчас</Button>
+          <Button class="flex-1" @click="cancelSub">Отменить подписку</Button>
+        </div>
+      </div>
+    </Card>
+
     <!-- Секция «Впереди» -->
     <Section title="Впереди">
       <template #action>
@@ -334,21 +370,22 @@ async function copyInvite() {
     </Section>
 
     <Card flush>
-      <Row
+      <PaidRow
         v-for="u in upcoming"
         :key="u.id"
+        :kind="u.kind"
+        :target-id="u.id"
+        :period="key"
         :accent="u.color"
         :title="u.name"
-        :note="`${dayLabel(u.day, key)} · ${u.note}`"
-        :value="money(u.value)"
-        :sub="u.estimate ? 'оценка' : undefined"
+        :note="`${dayLabel(u.day, key)}${u.note ? ` · ${u.note}` : ''}`"
         clickable
-        @click="router.push(u.to)"
+        @open="router.push(u.to)"
       >
         <template #icon>
           <PhClock :size="17" />
         </template>
-      </Row>
+      </PaidRow>
     </Card>
 
     <!-- Секция «Цели» -->

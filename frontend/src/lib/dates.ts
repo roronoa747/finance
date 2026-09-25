@@ -16,9 +16,21 @@ export const MONTHS_PRE = [
 
 export const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 
-/** Ключ месяца вида «2026-09» — на нём строятся все срезы. */
+/**
+ * Календарь приложения — по Алматы (Р-30): фиксированный UTC+5, как `almaty` в
+ * backend/internal/fx. «Сегодня» и месяц одинаковы на любом телефоне, в каком бы
+ * поясе он ни был: иначе вечером последнего числа отметка платежа на одном телефоне
+ * ложилась бы в один месяц, а календарь другого показывал бы уже следующий.
+ */
+const ALMATY_OFFSET_MS = 5 * 60 * 60 * 1000
+
+/** Момент времени, у которого UTC-поля — это часы на стене в Алматы. */
+const almaty = (d: Date) => new Date(d.getTime() + ALMATY_OFFSET_MS)
+
+/** Ключ месяца вида «2026-09» — на нём строятся все срезы. Месяц — по Алматы. */
 export function monthKey(d = new Date()): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  const a = almaty(d)
+  return `${a.getUTCFullYear()}-${String(a.getUTCMonth() + 1).padStart(2, '0')}`
 }
 
 export function parseMonthKey(key: string): { year: number; month: number } {
@@ -88,7 +100,13 @@ export function dayLabel(day: number, key = monthKey()): string {
   return `${day} ${MONTHS_GEN[parseMonthKey(key).month]}`
 }
 
-export function today(): { day: number; key: string } {
-  const d = new Date()
-  return { day: d.getDate(), key: monthKey(d) }
+/** Сегодняшнее число и месяц — по Алматы. */
+export function today(d = new Date()): { day: number; key: string } {
+  return { day: almaty(d).getUTCDate(), key: monthKey(d) }
+}
+
+/** День момента времени по Алматы, «5 сентября» — когда отметили оплату. */
+export function atLabel(iso: string): string {
+  const d = today(new Date(iso))
+  return dayLabel(d.day, d.key)
 }

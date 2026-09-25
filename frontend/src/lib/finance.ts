@@ -1,5 +1,5 @@
-import type { Account, Category, Credit, Goal, Obligation, Person, WishItem } from '@/types/finance'
-import { addMonths, daysInMonth, monthKey, today } from '@/lib/dates'
+import type { Account, Category, Credit, Goal, Obligation, Payment, Person, WishItem } from '@/types/finance'
+import { addMonths, daysInMonth, monthKey, parseMonthKey, today } from '@/lib/dates'
 /**
  * Расчётное ядро. Чистые функции: ни сети, ни состояния, ни ИИ.
  *
@@ -82,8 +82,9 @@ export type Prepayment = {
 
 /**
  * Досрочное погашение стратегией «сокращать срок»: платёж растёт на extra.
- * Второй режим — «сокращать платёж» — срок не меняется, экономия меньше;
- * его добавим, когда появится реальный график из банка.
+ * Это калькулятор ежемесячной добавки. Разовую досрочку, которую применяют к
+ * кредиту, в обоих режимах — «сократить срок» и «снизить платёж» — считает
+ * `lumpPlan`.
  */
 export function prepayment(
   principal: number,
@@ -238,6 +239,72 @@ export function lumpSum(
     overpayAfter,
     saved: overpayNow - overpayAfter,
   }
+}
+
+export type LumpMode = 'term' | 'payment'
+
+export type LumpPlan = {
+  /** Сколько реально уйдёт в тело: не больше остатка. */
+  paid: number
+  /** Остаток после взноса. */
+  left: number
+  /** Платёж после: тот же при «сократить срок», новый при «снизить платёж». */
+  payment: number
+  /** Сколько платежей останется. */
+  months: number
+  monthsBefore: number
+  /** Сколько процентов не отдадим банку. */
+  saved: number
+}
+
+/**
+ * Разовая досрочка, применённая к кредиту (Р-6): что станет с остатком, платежом
+ * и сроком и сколько процентов не отдадим банку. Два режима, как у банков:
+ *
+ *  - «сократить срок» (term) — платёж тот же, долг закроется раньше (`lumpSum`);
+ *  - «снизить платёж» (payment) — срок тот же, платёж пересчитывается аннуитетом
+ *    на остаток. При том же сроке проценты пропорциональны долгу, поэтому новый
+ *    платёж — прежний × остаток / долг (вверх до тенге), а экономия меньше, чем у
+ *    «сократить срок»: там весь прежний платёж продолжает гасить тело.
+ *
+ * `saved` — оценка в непрерывных месяцах, как у `lumpSum` и калькулятора; снимок на
+ * момент применения, а не обещание до тенге. С помесячным графиком (`creditSplit`:
+ * проценты округляются каждый месяц, последний платёж — остаток с процентами за
+ * целый месяц) она расходится: на реальных кредитах — до нескольких процентов
+ * экономии, на коротких и дорогих — больше.
+ *
+ * Всё на выходе — целые тенге и целые платежи: это пишется в документ и
+ * показывается как сумма. null — считать нечего: взноса нет, долга нет или
+ * платёж не покрывает проценты (срока, который сохранять, не существует).
+ */
+export function lumpPlan(
+  principal: number,
+  annualRate: number,
+  payment: number,
+  lump: number,
+  mode: LumpMode,
+): LumpPlan | null {
+  const debt = Math.round(principal)
+  const paid = Math.max(0, Math.min(Math.round(lump), debt))
+  const n = annuityMonths(debt, annualRate, payment)
+  if (debt <= 0 || paid <= 0 || !Number.isFinite(n)) return null
+  const left = debt - paid
+  const monthsBefore = Math.ceil(n)
+  const overpayNow = payment * n - debt
+  const saved = (overpayAfter: number) => Math.round(Math.max(0, overpayNow - overpayAfter))
+
+  if (left === 0) return { paid, left, payment: 0, months: 0, monthsBefore, saved: saved(0) }
+  if (mode === 'term') {
+    const r = lumpSum(debt, annualRate, payment, paid)
+    return { paid, left, payment, months: Math.ceil(r.monthsAfter), monthsBefore, saved: saved(r.overpayAfter) }
+  }
+  const next = annuityPayment(left, annualRate, n)
+  // Новый платёж — прежний × остаток / долг на целых (без шума плавающей точки
+  // аннуитета), округлённый вверх: платёж ниже точного растянул бы долг на лишний
+  // платёж, и строка кредита показала бы срок длиннее прежнего. Платёж 0 при
+  // живом остатке не закрыл бы долг никогда: не меньше тенге.
+  const lowered = Math.max(1, Math.ceil((payment * left) / debt))
+  return { paid, left, payment: lowered, months: monthsBefore, monthsBefore, saved: saved(next * n - left) }
 }
 
 /**
@@ -406,9 +473,17 @@ export function simulateStrategy(opts: {
 const alive = <T extends { deletedAt?: string | null }>(x: T) => !x.deletedAt;
 
 export const liveGoals = (goals: Goal[]) => (goals || []).filter(alive);
-export const liveObligations = (list: Obligation[]) => (list || []).filter(alive);
+/**
+ * Живые обязательства — то, что платится. Группа подписок (RP-09) — не платёж и
+ * сюда не входит: ни в бюджет, ни в календарь, ни в «до зарплаты», ни в отметки.
+ * Группы отдаёт `liveGroups`.
+ */
+export const liveObligations = (list: Obligation[]) => (list || []).filter((o) => alive(o) && !o.group);
+export const liveGroups = (list: Obligation[]) => (list || []).filter((o) => alive(o) && !!o.group);
 export const liveCredits = (list: Credit[]) => (list || []).filter(alive);
 export const liveAccounts = (list: Account[]) => (list || []).filter(alive);
+/** Счета, с которых списывают платежи: живые, в тенге (валюта платежей — не-скоуп, Р-1). */
+export const payableAccounts = (list: Account[]) => liveAccounts(list).filter((a) => (a.currency ?? 'KZT') === 'KZT');
 export const liveWishlist = (list: WishItem[]) => (list || []).filter(alive);
 
 /** Сумма обязательства, действующая в указанном месяце. */
@@ -424,8 +499,9 @@ export function monthlyAmount(o: Obligation, key = monthKey()): number {
   return o.every === 'year' ? full / 12 : full;
 }
 
-/** Списывается ли этот платёж в указанном месяце. */
+/** Списывается ли этот платёж в указанном месяце. Группа подписок не списывается никогда. */
 export function dueIn(o: Obligation, key = monthKey()): boolean {
+  if (o.group) return false;
   if (o.every !== 'year') return true;
   return (o.month ?? 1) === Number(key.split('-')[1]);
 }
@@ -437,6 +513,71 @@ export function nextChange(o: Obligation, key = monthKey()) {
   if (!future.length) return null;
   const current = amountAt(o, key);
   return { ...future[0], delta: future[0].amount - current };
+}
+
+/* ---------------- группы подписок и «оставить?» (RP-09) ---------------- */
+
+/** Подписки группы — живые обязательства, лежащие в ней. */
+export const groupChildren = (group: Obligation, list: Obligation[]) =>
+  liveObligations(list).filter((o) => o.parentId === group.id);
+
+/** Итог группы за месяц — сумма её подписок; годовые — долей, как в плане месяца. */
+export function groupTotal(group: Obligation, list: Obligation[], key = monthKey()): number {
+  return Math.round(groupChildren(group, list).reduce((a, o) => a + monthlyAmount(o, key), 0));
+}
+
+/**
+ * Подписка — то, что заводит форма «Подписка или услуга»: быт (d4), сумма не
+ * плавает. Аренду, кредиты и коммуналку «оставить?» не спрашиваем.
+ */
+export const isSubscription = (o: Obligation) => !o.group && o.category === 'd4' && !o.estimate;
+
+/**
+ * За сколько дней до годового продления спрашивать «оставить?». Две недели —
+ * успеть отменить до списания и решить вдвоём, а не в день, когда деньги ушли.
+ */
+export const KEEP_ASK_DAYS = 14;
+
+/** Номер календарного дня — для разницы в днях. */
+const dayNo = (key: string, day: number) => {
+  const { year, month } = parseMonthKey(key);
+  return Date.UTC(year, month, day) / 86_400_000;
+};
+
+/**
+ * Кого спросить «оставить?» сейчас (Р-20). Только подписки, и не из группы с
+ * флагом «рабочие». Годовую — в последние KEEP_ASK_DAYS дней перед продлением,
+ * если в этом окне ещё не ответили. Ежемесячную — если последний ответ
+ * «оставить» был до начала текущего квартала. Календарь — Алматы. Первыми —
+ * ближайшие годовые продления, затем ежемесячные подороже.
+ */
+export function keepQuestions(list: Obligation[], now = new Date()): Obligation[] {
+  const t = today(now);
+  const todayNo = dayNo(t.key, t.day);
+  const { year, month } = parseMonthKey(t.key);
+  const quarterNo = dayNo(`${year}-${String(Math.floor(month / 3) * 3 + 1).padStart(2, '0')}`, 1);
+  const quiet = new Set(liveGroups(list).filter((g) => g.noAsk).map((g) => g.id));
+
+  const asks: { o: Obligation; wait: number }[] = [];
+  for (const o of liveObligations(list)) {
+    if (!isSubscription(o) || (o.parentId && quiet.has(o.parentId))) continue;
+    const k = o.keptAt ? today(new Date(o.keptAt)) : null;
+    const kept = k ? dayNo(k.key, k.day) : -Infinity;
+    if (o.every === 'year') {
+      const on = (y: number) => {
+        const key = `${y}-${String(o.month ?? 1).padStart(2, '0')}`;
+        return dayNo(key, Math.min(o.day, daysInMonth(key)));
+      };
+      const renewal = on(year) >= todayNo ? on(year) : on(year + 1);
+      const from = renewal - KEEP_ASK_DAYS;
+      if (todayNo >= from && kept < from) asks.push({ o, wait: renewal - todayNo });
+    } else if (kept < quarterNo) {
+      asks.push({ o, wait: Infinity });
+    }
+  }
+  return asks
+    .sort((a, b) => a.wait - b.wait || amountAt(b.o, t.key) - amountAt(a.o, t.key))
+    .map((x) => x.o);
 }
 
 /** Оклад, действующий в указанном месяце. */
@@ -533,13 +674,264 @@ export const netWorth = (accounts: Account[], credits: Credit[], goals: Goal[] =
   goalSavings(goals) -
   liveCredits(credits).reduce((a, c) => a + c.principal, 0);
 
-/** До зарплаты: когда придут деньги и что нужно заплатить до этого. */
+/* ---------------- отметки оплат и остатки из них (RP-06) ---------------- */
+
+/** Что можно отметить по графику. Досрочка — не платёж графика, а отдельный взнос. */
+export type ScheduledKind = 'obligation' | 'credit'
+
+/**
+ * Очередной платёж кредита: сколько уйдёт в проценты и сколько в тело (Р-4).
+ *
+ * Проценты за месяц — остаток × ставка / 12, как везде в этом файле, округлённые
+ * до тенге: в документ и на экран попадают только целые. Больше остатка с
+ * процентами не берётся — последний платёж закрывает долг, а не переплачивает.
+ * Сумма меньше процентов долг не двигает: тело 0, всё ушло банку.
+ */
+export function creditSplit(principal: number, annualRate: number, amount: number) {
+  const left = Math.max(0, Math.round(principal))
+  return splitPayment(left, Math.round((left * annualRate) / 12), amount)
+}
+
+/**
+ * Правка отметки кредита (другая сумма): проценты месяца — из исправляемой записи.
+ * Они зависят от остатка до платежа, а не от суммы, и не должны пересчитываться
+ * от остатка, который с тех пор уменьшили отметки следующих месяцев. `left` —
+ * остаток без этой отметки: больше него в тело не уйдёт.
+ */
+export function creditResplit(old: Payment, amount: number, left: number) {
+  return splitPayment(Math.max(0, Math.round(left)), Math.max(0, old.amount - (old.principal ?? 0)), amount)
+}
+
+function splitPayment(left: number, interest: number, amount: number) {
+  const paid = Math.max(0, Math.min(Math.round(amount), left + interest))
+  const body = Math.min(left, Math.max(0, paid - interest))
+  return { amount: paid, interest: paid - body, body }
+}
+
+/** Сколько списать по графику в этом месяце: платёж, а в последний раз — остаток с процентами. */
+export const creditDueAmount = (c: Credit) => creditSplit(c.principal, c.annualRate, c.payment).amount
+
+/**
+ * Ждёт ли кредит платежа в этом месяце. Закрытый долг (остаток из отметок 0) —
+ * нет, если только его не закрыли платежом этого же месяца: тогда платёж есть и
+ * показывается оплаченным. Одно правило для Бюджета, Обзора и «до зарплаты».
+ */
+export const creditDueIn = (c: Credit, payments: Payment[], key: string) =>
+  !!paidFor(payments, 'credit', c.id, key) || creditDueAmount(c) > 0
+
+/**
+ * Отметки, которые считаются.
+ *
+ * Надгробия не считаются — так снятая отметка возвращает деньги. Одну пару
+ * (цель, месяц) могли отметить с двух телефонов офлайн: записей две, а платёж
+ * был один. Считается ранняя по времени, при равенстве — с меньшим id, остальные
+ * ни на что не влияют (Р-7). Досрочки не схлопываются: две за месяц — два взноса.
+ */
+export function countedPayments(payments: Payment[] = []): Payment[] {
+  const first = new Map<string, Payment>()
+  const prepays: Payment[] = []
+  for (const p of payments) {
+    if (p.deletedAt) continue
+    if (p.kind === 'prepay') {
+      prepays.push(p)
+      continue
+    }
+    const key = `${p.kind}:${p.targetId}:${p.period}`
+    const cur = first.get(key)
+    if (!cur || p.at < cur.at || (p.at === cur.at && p.id < cur.id)) first.set(key, p)
+  }
+  return [...first.values(), ...prepays]
+}
+
+/** Отметка, по которой платёж за месяц считается оплаченным; null — не отмечен. */
+export function paidFor(
+  payments: Payment[] = [],
+  kind: ScheduledKind,
+  targetId: string,
+  period: string,
+): Payment | null {
+  return (
+    countedPayments(payments).find(
+      (p) => p.kind === kind && p.targetId === targetId && p.period === period,
+    ) ?? null
+  )
+}
+
+/**
+ * Действует ли отметка на остаток: сделана не раньше ручной сверки — до неё
+ * деньги уже вошли во введённую сумму. Сверки не было — действуют все.
+ */
+export const afterAnchor = (p: Payment, anchor?: string | null) => !anchor || p.at >= anchor
+
+/** Остаток счёта: база минус списания по отметкам после сверки. */
+export function accountBalance(a: Account, payments: Payment[] = []): number {
+  return countedPayments(payments)
+    .filter((p) => p.accountId === a.id && afterAnchor(p, a.amountSetAt))
+    .reduce((left, p) => left - p.amount, a.amount)
+}
+
+/**
+ * Новая база счёта, когда остаток сдвигают на сумму (взнос в цель со счёта,
+ * снятие с цели, внеплановый доход). Это не сверка с банком: база меняется на ту
+ * же дельту, якорь остаётся прежним — иначе отметки до этого момента (снятая по
+ * ошибке, офлайн-отметка партнёра) перестали бы двигать остаток. Видимый остаток
+ * ниже нуля не уводится — как раньше у взноса в цель.
+ */
+export function shiftedBase(a: Account, payments: Payment[], delta: number): number {
+  const visible = accountBalance(a, payments)
+  return a.amount + Math.max(Math.round(delta), -Math.max(0, visible))
+}
+
+/** Остаток долга: база минус тело по отметкам и досрочкам после ручного ввода. */
+export function creditBalance(c: Credit, payments: Payment[] = []): number {
+  const paid = countedPayments(payments)
+    .filter((p) => p.targetId === c.id && (p.kind === 'credit' || p.kind === 'prepay') && afterAnchor(p, c.principalSetAt))
+    .reduce((sum, p) => sum + (p.principal ?? 0), 0)
+  return Math.max(0, c.principal - paid)
+}
+
+/**
+ * Сколько процентов не отдадим банку по всем применённым досрочкам (Р-6): живые
+ * досрочки живых кредитов. Удалённый кредит из счётчика уходит вместе со своими
+ * досрочками — как из капитала: снять их уже негде, а кредит, заведённый по ошибке,
+ * не должен оставлять экономию, которой не было.
+ */
+export function prepaySaved(payments: Payment[], credits: Credit[]): number {
+  const live = new Set(liveCredits(credits).map((c) => c.id))
+  return countedPayments(payments)
+    .filter((p) => p.kind === 'prepay' && live.has(p.targetId))
+    .reduce((sum, p) => sum + (p.saved ?? 0), 0)
+}
+
+export type Due = {
+  kind: ScheduledKind
+  targetId: string
+  /** Месяц платежа по графику. */
+  period: string
+  /** Число месяца; платёж 31-го в коротком месяце — в его последний день. */
+  day: number
+  amount: number
+}
+
+/** Сколько месяцев вперёд искать платёж: годовой найдётся за 12, остальное — запас. */
+const DUE_HORIZON = 24
+
+/**
+ * Ближайший неоплаченный платёж обязательства: с текущего месяца вперёд,
+ * отмеченные месяцы пропускаются. Прошедшее число этого месяца без отметки — всё
+ * ещё «этот» платёж: его могли внести позже срока (Р-3, без упрёка). Прошлые
+ * месяцы не ищем — неотмеченное там нейтрально и оплаты не ждёт.
+ */
+export function nextObligationDue(o: Obligation, payments: Payment[] = [], now = today()): Due | null {
+  for (let i = 0; i < DUE_HORIZON; i++) {
+    const period = addMonths(now.key, i)
+    const amount = amountAt(o, period)
+    if (!dueIn(o, period) || amount <= 0 || paidFor(payments, 'obligation', o.id, period)) continue
+    return { kind: 'obligation', targetId: o.id, period, day: Math.min(o.day, daysInMonth(period)), amount }
+  }
+  return null
+}
+
+/** То же для кредита. Кредит — с остатком из отметок; закрытый платежей не ждёт. */
+export function nextCreditDue(c: Credit, payments: Payment[] = [], now = today()): Due | null {
+  if (creditDueAmount(c) <= 0) return null
+  for (let i = 0; i < DUE_HORIZON; i++) {
+    const period = addMonths(now.key, i)
+    if (paidFor(payments, 'credit', c.id, period)) continue
+    return {
+      kind: 'credit',
+      targetId: c.id,
+      period,
+      day: Math.min(c.day, daysInMonth(period)),
+      amount: creditDueAmount(c),
+    }
+  }
+  return null
+}
+
+/**
+ * Счёт по умолчанию для оплаты цели — тот, с которого её оплачивали в прошлый раз
+ * (Р-5): последняя живая отметка этой цели, включая досрочки кредита. null — в
+ * прошлый раз выбрали «не списывать»; undefined — оплат не было или того счёта
+ * здесь нет (удалён, личный счёт партнёра): счёт надо спросить.
+ */
+export function lastAccountFor(
+  payments: Payment[],
+  targetId: string,
+  accounts: Account[],
+): string | null | undefined {
+  const last = payments
+    .filter((p) => !p.deletedAt && p.targetId === targetId)
+    .sort((a, b) => b.at.localeCompare(a.at))[0]
+  if (!last) return undefined
+  if (last.accountId === null) return null
+  return liveAccounts(accounts).some((a) => a.id === last.accountId) ? last.accountId : undefined
+}
+
+type MonthDueBase = {
+  targetId: string
+  name: string
+  /** Число месяца, как оно заведено у платежа. */
+  day: number
+  /** Сумма: у отмеченного — из отметки, иначе по графику месяца. */
+  amount: number
+  paid: boolean
+}
+
+/** Платёж месяца по графику; сам платёж — для подписи, цвета и ссылки на экране. */
+export type MonthDue =
+  | (MonthDueBase & { kind: 'obligation'; obligation: Obligation })
+  | (MonthDueBase & { kind: 'credit'; credit: Credit })
+
+/**
+ * Платежи месяца — одно правило для «до зарплаты», календаря и списка Бюджета и
+ * «Впереди» на Обзоре. Обязательства, что списываются в этом месяце (группа
+ * подписок — нет), и кредиты, ждущие платежа (закрытый — только в месяц, когда его
+ * закрыли). Кредиты — с остатками из отметок, как их отдаёт стор. Сумма
+ * отмеченного — из отметки, как в строке «Оплатил»: итог сходится со строками.
+ * Порядок — обязательства, затем кредиты; сортирует экран.
+ */
+export function monthDues(
+  state: { obligations?: Obligation[]; credits?: Credit[]; payments?: Payment[] },
+  key: string,
+): MonthDue[] {
+  const payments = state.payments || []
+  const obligations: MonthDue[] = liveObligations(state.obligations || [])
+    .filter((o) => dueIn(o, key))
+    .map((o) => {
+      const paid = paidFor(payments, 'obligation', o.id, key)
+      const amount = paid ? paid.amount : amountAt(o, key)
+      return { kind: 'obligation', obligation: o, targetId: o.id, name: o.name, day: o.day, amount, paid: !!paid }
+    })
+  const credits: MonthDue[] = liveCredits(state.credits || [])
+    .filter((c) => creditDueIn(c, payments, key))
+    .map((c) => {
+      const paid = paidFor(payments, 'credit', c.id, key)
+      const amount = paid ? paid.amount : creditDueAmount(c)
+      return { kind: 'credit', credit: c, targetId: c.id, name: c.name, day: c.day, amount, paid: !!paid }
+    })
+  return [...obligations, ...credits]
+}
+
+/** Итог платежей месяца — сумма строк. */
+export const duesTotal = (dues: MonthDue[]) => dues.reduce((a, d) => a + d.amount, 0)
+
+/**
+ * До зарплаты: когда придут деньги и что нужно заплатить до этого.
+ *
+ * Счета и кредиты — с остатками из отметок (стор отдаёт такие). Отмеченное в своём
+ * месяце в «заплатить» не входит: деньги уже ушли со счёта, иначе вычлись бы
+ * дважды (Р-5, честный остаток). Оно возвращается отдельно (`paid`, сумма — из
+ * отметки), чтобы экран показал его оплаченным, а не молча потерял. Закрытый
+ * кредит платежа не ждёт.
+ */
 export function untilPayday(
   state: {
     people?: Person[];
     obligations?: Obligation[];
     credits?: Credit[];
     accounts?: Account[];
+    payments?: Payment[];
   },
   now = today(),
 ) {
@@ -547,6 +939,7 @@ export function untilPayday(
   const obligations = state.obligations || [];
   const credits = state.credits || [];
   const accountsList = state.accounts || [];
+  const payments = state.payments || [];
 
   const key = now.key;
   const days = daysInMonth(key);
@@ -561,15 +954,19 @@ export function untilPayday(
   const nextKey = ahead ? key : addMonths(key, 1);
   const inDays = ahead ? who.payday - now.day : days - now.day + who.payday;
 
-  const itemsOf = (k: string) => [
-    ...liveObligations(obligations)
-      .filter((o) => dueIn(o, k))
-      .map((o) => ({ id: o.id, name: o.name, day: o.day, value: amountAt(o, k), when: k })),
-    ...liveCredits(credits)
-      .map((c) => ({ id: c.id, name: c.name, day: c.day, value: c.payment, when: k })),
-  ];
+  const itemsOf = (k: string) =>
+    monthDues({ obligations, credits, payments }, k).map((d) => ({
+      id: d.targetId,
+      targetId: d.targetId,
+      kind: d.kind,
+      name: d.name,
+      day: d.day,
+      value: d.amount,
+      when: k,
+      paid: d.paid,
+    }));
 
-  const due = ahead
+  const inWindow = ahead
     ? itemsOf(key).filter((x) => x.day >= now.day && x.day <= who.payday)
     : [
         ...itemsOf(key).filter((x) => x.day >= now.day),
@@ -577,7 +974,9 @@ export function untilPayday(
           .filter((x) => x.day <= who.payday)
           .map((x) => ({ ...x, id: x.id + '@next' })),
       ];
-  due.sort((a, b) => a.when.localeCompare(b.when) || a.day - b.day);
+  inWindow.sort((a, b) => a.when.localeCompare(b.when) || a.day - b.day);
+  const due = inWindow.filter((x) => !x.paid);
+  const paid = inWindow.filter((x) => x.paid);
 
   const accounts = liveAccounts(accountsList).filter((a) => a.kind !== 'deposit');
   const onAccounts = accounts.reduce((a, x) => a + x.amount, 0);
@@ -590,6 +989,7 @@ export function untilPayday(
     day: who.payday,
     key: nextKey,
     due,
+    paid,
     dueTotal,
     knowsCash: accounts.length > 0,
     onAccounts,
