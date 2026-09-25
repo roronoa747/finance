@@ -511,7 +511,6 @@ export const useFinanceStore = defineStore('finance', () => {
 
   /** Положить подписку в группу или вынуть (null). */
   function moveToGroup(id: string, groupId: string | null) {
-    if (unchanged(obligations.value.find((x) => x.id === id), { parentId: groupId })) return
     updateObligation(id, { parentId: groupId })
   }
 

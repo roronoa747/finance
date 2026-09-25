@@ -14,6 +14,7 @@ import type { HouseholdDocResponse, ConflictResponse } from '../src/types/api'
 import { budgetAmounts, nextCreditDue } from '../src/lib/finance'
 import Capital from '../src/views/Capital.vue'
 import Overview from '../src/views/Overview.vue'
+import PaidRow from '../src/components/PaidRow.vue'
 
 /**
  * Блок 2 «Правка денег» (PV-09…PV-13): два телефона — два стора Pinia на одном
@@ -188,6 +189,30 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     const amounts = budgetAmounts({ ...B.store.householdDoc, credits: B.store.credits })
     expect(amounts.d1).toBe(285_000)
     expect(amounts.d4).toBe(0)
+
+    // Нажатие «Оплатил» (критик): счёт уже известен по сентябрю — без оценки платёж
+    // отмечается одним нажатием, с оценкой открывается лист с суммой, отметки нет.
+    const garage = B.store.obligations.find((o) => o.name === 'Гараж')!
+    for (const o of [util, garage]) B.store.markPaid('obligation', o.id, 'b', { period: '2026-09', accountId: 'card' })
+    const tap = async (targetId: string, title: string) => {
+      setActivePinia(B.pinia)
+      let sheet: unknown
+      const app = createSSRApp(PaidRow, { kind: 'obligation', targetId, period: '2026-10', title })
+      app.mixin({
+        created() {
+          if (this.$.parent !== null) return
+          ;(this.$.setupState.tap as () => void)()
+          sheet = this.$.setupState.sheet
+        },
+      })
+      await renderToString(app)
+      return sheet
+    }
+    const october = (id: string) => B.store.payments.filter((p) => p.targetId === id && p.period === '2026-10')
+    expect(await tap(util.id, 'Коммуналка')).toBe('mark')
+    expect(october(util.id)).toHaveLength(0)
+    expect(await tap(garage.id, 'Гараж')).toBe(null)
+    expect(october(garage.id)).toHaveLength(1)
   })
 
   /**
@@ -279,5 +304,39 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     await router.push('/capital?credit=loan')
     await nextTick()
     expect(screenA.selectedCreditId).toBe('loan')
+
+    // Кредит удалили на другом телефоне, пока окно открыто (критик): лист закрылся, id в
+    // ref остался — адрес всё равно чистится, и «+» открывает форму снова.
+    next = navigated()
+    A.store.removeCredit('loan')
+    await next
+    expect(router.currentRoute.value.fullPath).toBe('/capital')
+    await router.push('/capital?add=debt')
+    await nextTick()
+    expect(screenA.addDebtOpen).toBe(true)
+  })
+
+  it('PV-10 (критик): закрытый кредит снова открыт сверкой остатка — у модалки появляется «Оплатил»', async () => {
+    const A = await phone()
+    useAuthStore().setAuthData({
+      token: 't',
+      user: { id: 'u', email: 'u@example.com', created_at: T0 },
+      household: { id: 'h-family', name: 'Семья', created_by: 'u', created_at: T0 },
+      member: { household_id: 'h-family', user_id: 'u', slot: 'a', display_name: 'Ильяс', role: 'member', joined_at: T0 },
+    })
+    at('2026-09-24T08:00:00Z')
+    A.store.applyPrepayment('loan', 'a', { amount: 1_000_000, mode: 'term', accountId: 'card' })
+    expect(A.store.credits[0].principal).toBe(0)
+
+    const router = createAppRouter(createMemoryHistory())
+    await router.push('/capital?credit=loan')
+    const screenA = mountLive(A.pinia, router)
+    expect(screenA.creditDue).toBe(null)
+
+    at('2026-09-24T09:00:00Z')
+    ;(screenA.onCreditPrincipal as (t: string) => void)('150 000')
+    await nextTick()
+    expect(A.store.credits[0].principal).toBe(150_000)
+    expect(screenA.creditDue).toMatchObject({ kind: 'credit', targetId: 'loan', period: '2026-09', day: 15 })
   })
 })

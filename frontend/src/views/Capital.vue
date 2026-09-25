@@ -196,27 +196,6 @@ watch(
   { immediate: true },
 )
 
-/** Параметры адреса, которыми открываются окна. */
-const QUERY_KEYS = ['add', 'income', 'credit', 'obligation', 'payoff']
-const queryModalOpen = computed(
-  () =>
-    addDebtOpen.value ||
-    addObligationOpen.value ||
-    extraIncomeOpen.value ||
-    !!selectedCreditId.value ||
-    !!selectedObligationId.value ||
-    !!payoffCreditId.value,
-)
-// Все такие окна закрылись — адрес очищается (React `setParams({}, { replace: true })`),
-// каким бы путём их ни закрыли: крестик, фон, Escape, «Готово», запись формы. Иначе
-// тот же «+» ведёт на тот же адрес, перехода нет — и окно больше не открывается.
-watch(queryModalOpen, (open) => {
-  if (open || !QUERY_KEYS.some((k) => k in route.query)) return
-  const q = { ...route.query }
-  for (const k of QUERY_KEYS) delete q[k]
-  void router.replace({ query: q })
-})
-
 /* ------------------ Внеплановый доход ------------------ */
 const extraIncomeAmount = ref('')
 const extraIncomeBy = ref<PersonId>('a')
@@ -597,6 +576,10 @@ watch(
     () => activeCredit.value?.day,
     () => activeCredit.value?.payment,
     () => activeCredit.value?.annualRate,
+    // Закрытый долг снова открылся (сверка остатка, снятая синком отметка) — снимка
+    // ещё нет. Сам остаток не следим: после «Оплатил», закрывшего долг, строка
+    // оплаченного месяца должна остаться.
+    () => !creditDue.value && (activeCredit.value?.principal ?? 0) > 0,
   ],
   () => {
     creditDue.value = activeCredit.value ? nextCreditDue(activeCredit.value, financeStore.payments) : null
@@ -618,7 +601,6 @@ watch(
   },
   { immediate: true },
 )
-const obEditAmount = ref('')
 const obPlanning = ref(false)
 const obNewAmount = ref('')
 const obFromMonth = ref(addMonths(key.value, 1))
@@ -636,7 +618,6 @@ watch(
   () => {
     const ob = activeObligation.value
     if (!ob) return
-    obEditAmount.value = plain(amountAt(ob, key.value))
     obPlanning.value = false
     obNewAmount.value = ''
     obReason.value = ''
@@ -662,8 +643,10 @@ function onObligationNameBlur(e: Event) {
   const v = (e.target as HTMLInputElement).value.trim()
   if (v && v !== activeObligation.value?.name) editObligation({ name: v })
 }
-function onObligationAmountBlur() {
-  const v = parseMoney(obEditAmount.value)
+// Поле следует за суммой документа (`NumFieldBlur`): после «Запланировать» с этого
+// месяца или правки партнёра уход из поля не откатывает сумму к старому тексту.
+function onObligationAmount(text: string) {
+  const v = parseMoney(text)
   if (activeObligation.value && v > 0 && v !== obCurrent.value) {
     financeStore.correctObligation(activeObligation.value.id, v)
   }
@@ -697,18 +680,35 @@ function planObligation() {
 const activePayoffCredit = computed(() =>
   credits.value.find((c) => c.id === payoffCreditId.value),
 )
+
+/** Параметры адреса, которыми открываются окна. Очистка (Б-15) — ниже окон: её наблюдатель читает их сразу. */
+const QUERY_KEYS = ['add', 'income', 'credit', 'obligation', 'payoff']
+const queryModalOpen = computed(
+  () =>
+    addDebtOpen.value ||
+    addObligationOpen.value ||
+    extraIncomeOpen.value ||
+    // Окно показано, а не только id в ref: удалённая синком запись закрывает лист,
+    // но id остаётся — адрес тогда не очистился бы никогда.
+    !!activeCredit.value ||
+    !!activeObligation.value ||
+    !!activePayoffCredit.value,
+)
+// Все такие окна закрылись — адрес очищается (React `setParams({}, { replace: true })`),
+// каким бы путём их ни закрыли: крестик, фон, Escape, «Готово», запись формы. Иначе
+// тот же «+» ведёт на тот же адрес, перехода нет — и окно больше не открывается.
+watch(queryModalOpen, (open) => {
+  if (open || !QUERY_KEYS.some((k) => k in route.query)) return
+  const q = { ...route.query }
+  for (const k of QUERY_KEYS) delete q[k]
+  void router.replace({ query: q })
+})
+
 const payoffMode = ref<'monthly' | 'once'>('monthly')
 const payoffAmount = ref('')
 
-const payoffCost = computed(() =>
-  activePayoffCredit.value
-    ? debtCost(
-        activePayoffCredit.value.principal,
-        activePayoffCredit.value.annualRate,
-        activePayoffCredit.value.payment,
-      )
-    : null,
-)
+// Остаток 0 — долг закрыт отметками или досрочкой: выводов нет, шапка пишет «долг закрыт»,
+// а окно открывается по-прежнему — в нём снимают досрочку, закрывшую долг.
 const payoffOutlook = computed(() => (activePayoffCredit.value ? creditOutlook(activePayoffCredit.value) : null))
 const payoffHalf = computed(() =>
   activePayoffCredit.value
@@ -743,7 +743,7 @@ const payoffResult = computed(() => {
 })
 
 const payoffLadder = computed(() => {
-  if (!activePayoffCredit.value || !payoffCost.value?.closes) return []
+  if (!activePayoffCredit.value || !payoffOutlook.value?.closes) return []
   const p = activePayoffCredit.value.principal
   const r = activePayoffCredit.value.annualRate
   const pay = activePayoffCredit.value.payment
@@ -1581,7 +1581,7 @@ function applyPrepay() {
           </Field>
 
           <Field label="Сумма сейчас, ₸">
-            <NumField v-model="obEditAmount" class="mb-1" @blur="onObligationAmountBlur" />
+            <NumFieldBlur :initial="plain(obCurrent)" class="mb-1" @commit="onObligationAmount" />
           </Field>
           <p class="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-3">
             Это исправление: сумма была введена неверно. Если платёж меняется с какого-то месяца —
@@ -1811,7 +1811,13 @@ function applyPrepay() {
           <div class="flex justify-between">
             <span class="text-ink-2">Переплата, если не трогать</span>
             <b class="num text-warn">
-              {{ payoffOutlook?.closes ? money(payoffOutlook.overpay) : 'долг не закрывается' }}
+              {{
+                payoffOutlook?.closes
+                  ? money(payoffOutlook.overpay)
+                  : activePayoffCredit.principal > 0
+                    ? 'долг не закрывается'
+                    : 'долг закрыт'
+              }}
             </b>
           </div>
         </div>
@@ -1974,7 +1980,7 @@ function applyPrepay() {
               :key="item.extra"
               class="flex items-center justify-between border-b border-line/60 py-1"
             >
-              <span class="num text-ink-2">+{{ plain(item.extra) }} ₸</span>
+              <span class="num text-ink-2">+{{ plain(item.extra) }}</span>
               <span class="num text-ink-3">−{{ Math.round(item.monthsSaved) }} мес.</span>
               <span class="num font-medium text-brand">{{ money(Math.max(0, Math.round(item.saved))) }}</span>
             </div>

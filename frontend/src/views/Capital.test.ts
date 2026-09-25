@@ -488,6 +488,8 @@ describe('PV-10: модалка кредита и калькулятор дос�
     expect(html).toContain('половина переплаты')
     expect(html).not.toContain('½')
     expect(html).toMatch(/>\s*Отдача падает\s*</)
+    // Добавка в строке лесенки — без «₸», как React `+{plain(r.extra)}` (критик).
+    expect(html).toContain(`+${plain(29_000)}</span>`)
     expect(html).toContain(
       `Половину переплаты снимает уже добавка в ${money(half)} — дальше каждая следующая тысяча даёт меньше предыдущей. Если больших сумм нет, начинать стоит отсюда.`,
     )
@@ -497,6 +499,18 @@ describe('PV-10: модалка кредита и калькулятор дос�
     expect(withSum).toMatch(/экономия \d/)
     expect(withSum).toMatch(/Останется \d+ платеж(а|ей)? вместо \d+\./)
     expect(withSum).not.toContain('Впишите сумму')
+  })
+
+  it('калькулятор закрытого кредита: «долг закрыт», а не «не закрывается» (критик)', async () => {
+    const store = await family()
+    store.applyPrepayment('loan', 'a', { amount: 1_000_000, mode: 'term', accountId: 'card' })
+    expect(store.credits.find((c) => c.id === 'loan')!.principal).toBe(0)
+    const html = await render('/capital?payoff=loan')
+    expect(html).toContain('Переплата, если не трогать')
+    expect(html).toMatch(/>\s*долг закрыт\s*</)
+    expect(html).not.toContain('долг не закрывается')
+    // Окно нужно закрытому долгу ради «Снять» у досрочки, закрывшей его.
+    expect(html).toContain('Применённые досрочки')
   })
 })
 
@@ -559,7 +573,7 @@ describe('PV-11: форма платежа и модалка обязатель�
     )
   }
 
-  async function render(path: string, state: Record<string, unknown> = {}) {
+  async function render(path: string, state: Record<string, unknown> = {}, probe?: () => void) {
     const { createSSRApp } = await import('vue')
     const { renderToString } = await import('vue/server-renderer')
     const { createRouter, createMemoryHistory } = await import('vue-router')
@@ -571,7 +585,9 @@ describe('PV-11: форма платежа и модалка обязатель�
     app.use(router)
     app.mixin({
       created() {
-        if (this.$.parent === null) Object.assign(this.$.setupState, state)
+        if (this.$.parent !== null) return
+        Object.assign(this.$.setupState, state)
+        probe?.()
       },
     })
     return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
@@ -651,6 +667,18 @@ describe('PV-11: форма платежа и модалка обязатель�
     expect(html).toContain(
       'Месяц, который выберете, оплачивается уже по новой сумме. Если переезд в середине месяца, ставьте следующий: за текущий вы платите по-старому.',
     )
+  })
+
+  it('«Сумма сейчас» следует за документом: план с этого месяца уже в поле (критик)', async () => {
+    const { plain } = await import('@/lib/money')
+    await family()
+    // Окно уже открыто (setup прошёл), затем «Запланировать» с сентября — или то же
+    // синком от партнёра. Старый текст поля при уходе из него откатил бы план.
+    const html = await render('/capital?obligation=rent', {}, () =>
+      useFinanceStore().amendObligation('rent', '2026-09', 250_000, 'переезд'),
+    )
+    const field = html.slice(html.indexOf('Сумма сейчас, ₸'))
+    expect(field.slice(0, field.indexOf('</label>'))).toContain(`value="${plain(250_000)}"`)
   })
 
   it('viewer: полей и удаления нет, история и цифры видны', async () => {
@@ -744,6 +772,21 @@ describe('PV-12: счета — валютный, удаление, тексты
     expect(html).toContain('value="512,34"')
     expect(html).toContain(`В капитале счёт стоит как ${money(512_340)} — по этому курсу.`)
     expect(html).not.toContain('>Сумма, ₸</span>')
+  })
+
+  it('правка валютного из окна: курс → тенге по fxToTenge и дата курса; сумма в валюте — тенге, дата прежняя (критик)', async () => {
+    const { fxToTenge } = await import('@/lib/finance')
+    await family()
+    const store = useFinanceStore()
+    const usd = () => store.accounts.find((a) => a.id === 'usd')!
+    await render('/capital', { selectedAccountId: 'usd' }, (s) => (s.onAccountRate as (t: string) => void)('441,89'))
+    expect(usd()).toMatchObject({ rate: 441.89, foreignAmount: 1_000, amount: fxToTenge(1_000, 441.89), rateAt: '2026-09-24T07:00:00.000Z' })
+    expect(usd().amount).toBe(441_890)
+
+    vi.setSystemTime(new Date('2026-09-24T08:00:00Z'))
+    await render('/capital', { selectedAccountId: 'usd' }, (s) => (s.onForeignAmount as (t: string) => void)('1 200'))
+    expect(usd()).toMatchObject({ foreignAmount: 1_200, amount: fxToTenge(1_200, 441.89), rateAt: '2026-09-24T07:00:00.000Z' })
+    expect(usd().amount).toBe(530_268)
   })
 
   it('счёт в тенге: «Сумма, ₸»; удаление — текст React с целями на счёте', async () => {
