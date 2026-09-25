@@ -9,6 +9,7 @@ import {
   prepayment,
   emergencyCoverage,
   amountAt,
+  costliestCredits,
   liveCredits,
   liveGoals,
   liveObligations,
@@ -45,7 +46,8 @@ const done = ref(false)
 const used = computed(() => Object.values(alloc.value).reduce((a, v) => a + v, 0))
 const left = computed(() => total.value - used.value)
 const mandatory = computed(() => mandatoryMonthly(categories.value))
-const credit = computed(() => credits.value[0])
+// Досрочка — в самый дорогой открытый долг с процентами, не в первый по порядку.
+const credit = computed(() => costliestCredits(credits.value)[0])
 
 function set(id: string, delta: number) {
   const cur = alloc.value[id] ?? 0

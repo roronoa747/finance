@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useFinanceStore } from '@/stores/finance'
 import {
@@ -298,3 +298,53 @@ describe('views/Overview.vue — Финансовые показатели, ка
   })
 })
 
+
+describe('PV-01 — закрытый кредит вне «Свободно» Обзора', () => {
+  const storage = new Map<string, string>()
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('кредит закрыт досрочкой → «Свободно в …» выросло ровно на его платёж', async () => {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('vue/server-renderer')
+    const { createMemoryHistory } = await import('vue-router')
+    const { createAppRouter } = await import('@/router')
+    const { money } = await import('@/lib/money')
+    const { default: Overview } = await import('./Overview.vue')
+    const render = () => {
+      const app = createSSRApp(Overview)
+      app.use(createAppRouter(createMemoryHistory()))
+      return renderToString(app)
+    }
+
+    const store = useFinanceStore()
+    store.householdDoc.people = [{ id: 'a', name: 'Ильяс', salary: 1_000_000, payday: 10, updatedAt: '' }]
+    store.householdDoc.categories = [{ key: 'd4', name: 'Еда и быт', note: '', amount: 200_000, updatedAt: '' }]
+    store.householdDoc.accounts = [{ id: 'card', name: 'Kaspi', note: '', kind: 'card', amount: 2_000_000, updatedAt: '' }]
+    store.householdDoc.credits = [
+      { id: 'cr-a', name: 'Рассрочка', note: '', principal: 300_000, annualRate: 0.24, payment: 60_000, day: 12, updatedAt: '' },
+      { id: 'cr-b', name: 'Банк', note: '', principal: 1_000_000, annualRate: 0.18, payment: 91_680, day: 20, updatedAt: '' },
+    ]
+
+    expect(await render()).toContain(money(648_320))
+    store.applyPrepayment('cr-a', 'a', { amount: 300_000, mode: 'term', accountId: 'card' })
+    const html = await render()
+    expect(html).toContain(money(708_320))
+    expect(html).not.toContain(money(648_320))
+  })
+})

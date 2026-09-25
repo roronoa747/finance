@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useFinanceStore } from '@/stores/finance'
 import {
@@ -229,5 +229,130 @@ describe('views/Capital.vue — Счета, кредиты, досрочное �
     expect(html).toContain('Внеплановый доход')
     expect(html).toContain('Премия, подарок, возврат налога')
     expect(html).toContain('Резерв')
+  })
+})
+
+describe('PV-02: калькулятор в Капитале (SSR)', () => {
+  const storage = new Map<string, string>()
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  async function render(props: Record<string, unknown> = {}) {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('vue/server-renderer')
+    const { createRouter, createMemoryHistory } = await import('vue-router')
+    const Capital = (await import('./Capital.vue')).default
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/capital', component: Capital }] })
+    await router.push('/capital')
+    await router.isReady()
+    const app = createSSRApp(Capital, props)
+    app.use(router)
+    return renderToString(app)
+  }
+
+  it('вкладка «Копить или гасить» — компонент StrategyCompare; закрытый кредит в расчёт не входит', async () => {
+    const { money } = await import('@/lib/money')
+    const store = useFinanceStore()
+    store.addAccount({ name: 'Kaspi', kind: 'card', amount: 3_000_000 })
+    store.addObligation({ name: 'Аренда', day: 5, category: 'd1', amount: 220_000 })
+    store.addCredit({ name: 'Кредитка', principal: 300_000, annualRate: 0.4, payment: 30_000, day: 10 })
+    store.addCredit({ name: 'Банк', principal: 1_000_000, annualRate: 0.18, payment: 91_680, day: 20 })
+    store.addGoal({ name: 'Квартира', need: 5_000_000, have: 400_000, monthly: 150_000, hue: 'teal' })
+
+    // По умолчанию — «Какой первым».
+    expect(await render()).not.toContain('Одинаковые траты, разный порядок')
+
+    // Кредитку закрыли досрочкой — в стратегии остаётся только «Банк».
+    const card = store.credits[0].id
+    store.applyPrepayment(card, 'a', { amount: 300_000, mode: 'term', accountId: store.accounts[0].id })
+    expect(store.credits[0].principal).toBe(0)
+
+    const html = await render({ initialAdvice: 'strategy' })
+    expect(html).toContain('Одинаковые траты, разный порядок')
+    expect(html).toContain('Горизонт')
+    const debts = [{ principal: 1_000_000, annualRate: 0.18, payment: 91_680 }]
+    const a = simulateStrategy({ debts, saving: 150_000, keep: 150_000, payDebts: false, start: 400_000, months: 36 })
+    const b = simulateStrategy({ debts, saving: 150_000, keep: 0, payDebts: true, start: 400_000, months: 36, buffer: 312_000, lump: 0 })
+    expect(html).toContain(money(a.savings))
+    expect(html).toContain(money(b.savings))
+    expect(html).toContain(money(Math.round(b.net - a.net)))
+    // Подушка — аренда и платёж открытого долга: 220 000 + 91 680 → 312 000.
+    expect(html).toContain(`Сначала подушка — ${money(312_000)}`)
+  })
+})
+
+describe('PV-03: форма долга — ставка из срока и расхождение (SSR)', () => {
+  beforeEach(() => {
+    const storage = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    setActivePinia(createPinia())
+  })
+
+  async function render(props: Record<string, unknown> = {}) {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('vue/server-renderer')
+    const { createRouter, createMemoryHistory } = await import('vue-router')
+    const Capital = (await import('./Capital.vue')).default
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/capital', component: Capital }] })
+    await router.push('/capital?add=debt')
+    await router.isReady()
+    const app = createSSRApp(Capital, props)
+    app.use(router)
+    return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
+  }
+
+  it('по маршруту /capital?add=debt — переключатель React и текст «Без них»', async () => {
+    const html = await render()
+    expect(html).toContain('Долг или рассрочка')
+    for (const t of ['Без них', 'Знаю ставку', 'Знаю срок']) expect(html).toContain(`>${t}</button>`)
+    expect(html).toContain('Рассрочка: платите ровно столько, сколько должны. Приложение посчитает, что долг закроется за — платежей.')
+  })
+
+  it('«Знаю срок», 1 000 000 / 10 000 / 12 — предупреждение с числами и «Записать всё равно можно»', async () => {
+    const { plain } = await import('@/lib/money')
+    const html = await render({ initialDebt: { mode: 'term', principal: '1 000 000', payment: '10 000', term: '12' } })
+    expect(html).toContain('Сколько платежей осталось')
+    expect(html).toContain(
+      `12 платежей по ${plain(10_000)} — это ${plain(120_000)} ₸, а остаток вы указали ${plain(1_000_000)} ₸. Не хватает ${plain(880_000)} ₸: похоже, платежей 100, а не 12.`,
+    )
+    expect(html).toContain(
+      'Записать всё равно можно: сохраним как рассрочку без процентов, а ставку поправите, когда сверитесь с банком.',
+    )
+    expect(html).not.toContain('Ставка получается')
+  })
+
+  it('«Знаю срок», 1 000 000 / 91 680 / 12 — «Ставка получается 18,0% годовых», предупреждения нет', async () => {
+    const html = await render({ initialDebt: { mode: 'term', principal: '1 000 000', payment: '91 680', term: '12' } })
+    expect(html).toContain('Ставка получается')
+    expect(html).toContain('18,0% годовых')
+    expect(html).not.toContain('Записать всё равно можно')
+  })
+
+  it('подписи формы — как React AddDebtDialog: «День платежа», кнопка «Добавить» (критик)', async () => {
+    const html = await render()
+    expect(html).toContain('День платежа')
+    expect(html).not.toContain('День списания')
+    expect(html).toMatch(/>\s*Добавить\s*<\/button>/)
+    expect(html).not.toContain('Добавить долг')
   })
 })

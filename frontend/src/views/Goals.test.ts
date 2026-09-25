@@ -8,7 +8,10 @@ import {
   liveWishlist,
   deposit,
   realRate,
+  indexedNeed,
+  INFLATION,
 } from '@/lib/finance'
+import { money, ratePct } from '@/lib/money'
 
 describe('views/Goals.vue, GoalDetail.vue, Deposit.vue — Цели, депозиты и вишлист', () => {
   const storageMap = new Map<string, string>()
@@ -125,7 +128,9 @@ describe('views/Goals.vue, GoalDetail.vue, Deposit.vue — Цели, депоз�
     expect(res.interest).toBeGreaterThan(140_000)
     expect(res.effectiveRate).toBeGreaterThan(annualRate)
 
-    const real = realRate(res.effectiveRate, 0.08)
+    // Инфляция — общая константа приложения (Р-19), не 8%.
+    const real = realRate(res.effectiveRate, INFLATION)
+    expect(real).toBeLessThan(realRate(res.effectiveRate, 0.08))
     expect(real).toBeLessThan(res.effectiveRate)
     expect(real).toBeGreaterThan(0)
   })
@@ -162,7 +167,7 @@ describe('views/Goals.vue, GoalDetail.vue, Deposit.vue — Цели, депоз�
     expect(html).toContain('Новая цель')
   })
 
-  it('рендерит GoalDetail.vue с деталями цели, слайдером и блоком дисциплины', async () => {
+  it('рендерит GoalDetail.vue с деталями цели и прогнозом «дорожает вместе с рынком» (PV-04)', async () => {
     const store = useFinanceStore()
     store.addGoal({
       name: 'Автомобиль',
@@ -190,9 +195,70 @@ describe('views/Goals.vue, GoalDetail.vue, Deposit.vue — Цели, депоз�
 
     const html = await renderToString(app)
     expect(html).toContain('Автомобиль')
-    expect(html).toContain('Дисциплина накоплений')
+    expect(html).not.toContain('Дисциплина накоплений')
+    // Остаток 3 500 000 взносом 150 000 — 24 месяца; 5 000 000 × 1,102² = 6 072 020.
+    const indexed = indexedNeed(5_000_000, goalMonths(3_500_000, 150_000))
+    expect(indexed).toBe(6_072_020)
+    expect(html).toContain('Цель дорожает вместе с рынком')
+    expect(html).toContain(
+      `При инфляции 10,2% в год к моменту достижения такая же покупка будет стоить около ${money(indexed!)}. Расчёт выше — в сегодняшних деньгах.`,
+    )
     expect(html).toContain('Ритм цели')
     expect(html).toContain('История цели')
+  })
+
+  it('тёмная тема: кольцо и «Ритм цели» — тёмный оттенок цели (PV-08)', async () => {
+    const { isDark } = await import('@/lib/theme')
+    const { HUES } = await import('@/lib/palette')
+    const store = useFinanceStore()
+    store.addGoal({ name: 'Автомобиль', need: 5_000_000, have: 1_500_000, monthly: 150_000, hue: 'blue' })
+    const gId = store.goals[0].id
+    store.contribute(gId, 150_000, 'a')
+
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('vue/server-renderer')
+    const { createRouter, createMemoryHistory } = await import('vue-router')
+    const GoalDetail = (await import('./GoalDetail.vue')).default
+    const render = async () => {
+      const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/goals/:id', component: GoalDetail }] })
+      await router.push(`/goals/${gId}`)
+      await router.isReady()
+      const app = createSSRApp(GoalDetail)
+      app.use(router)
+      return renderToString(app)
+    }
+
+    try {
+      isDark.value = true
+      const html = await render()
+      expect(html).toContain(`stroke="${HUES.blue.dark}"`)
+      expect(html).toContain(`background:${HUES.blue.dark}`)
+      expect(html).not.toContain(HUES.blue.light)
+    } finally {
+      isDark.value = false
+    }
+    const light = await render()
+    expect(light).toContain(`background:${HUES.blue.light}`)
+  })
+
+  it('цель со взносом 0 — срок не наступит, прогноза «дорожает» нет (PV-04)', async () => {
+    const store = useFinanceStore()
+    store.addGoal({ name: 'Когда-нибудь', need: 1_000_000, have: 100_000, monthly: 0, hue: 'blue' })
+    const gId = store.goals[0].id
+
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('vue/server-renderer')
+    const { createRouter, createMemoryHistory } = await import('vue-router')
+    const GoalDetail = (await import('./GoalDetail.vue')).default
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/goals/:id', component: GoalDetail }] })
+    await router.push(`/goals/${gId}`)
+    await router.isReady()
+    const app = createSSRApp(GoalDetail)
+    app.use(router)
+
+    const html = await renderToString(app)
+    expect(html).toContain('Когда-нибудь')
+    expect(html).not.toContain('Цель дорожает вместе с рынком')
   })
 
   it('рендерит Deposit.vue для счета с депозитными условиями', async () => {
@@ -231,6 +297,18 @@ describe('views/Goals.vue, GoalDetail.vue, Deposit.vue — Цели, депоз�
     expect(html).toContain('Эффективная ставка')
     expect(html).toContain('Ваши взносы')
     expect(html).toContain('Заработал банк')
+
+    // PV-05: инфляция 10,2% из общей константы и обе плашки React.
+    const eff = deposit({ principal: 1_000_000, annualRate: 0.14, months: 12, monthlyTopUp: 0, capitalize: true }).effectiveRate
+    const text = html.replace(/<!--[^>]*-->/g, '')
+    expect(text).toContain('Реальная доходность ниже той, что на витрине')
+    expect(text).toContain(
+      `При инфляции 10,2% эффективная ставка ${ratePct(eff, 1)} оставляет примерно ${ratePct(realRate(eff, INFLATION), 1)} настоящих. Это не повод не копить — это повод не путать номинал с доходом.`,
+    )
+    expect(text).toContain('Проценты считает приложение, а не банк')
+    expect(text).toContain(
+      'Формула аннуитета и капитализации работает офлайн, на ваших цифрах. Когда появится ИИ-советник, он получит уже посчитанный результат и будет только объяснять его словами — считать деньги модели не доверяем.',
+    )
   })
 
   it('рендерит вкладку вишлиста при переходе по /goals?tab=wish', async () => {

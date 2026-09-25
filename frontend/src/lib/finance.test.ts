@@ -4,6 +4,8 @@ import {
   annuityMonths,
   annuityTotal,
   rateFromSchedule,
+  scheduleMismatch,
+  installmentMonths,
   prepayment,
   lumpSum,
   halfOverpayExtra,
@@ -11,10 +13,15 @@ import {
   realRate,
   goalMonths,
   goalMonthly,
+  goalHave,
+  indexedNeed,
+  INFLATION,
   emergencyTarget,
   emergencyCoverage,
   debtCost,
   simulateStrategy,
+  strategyInputs,
+  strategyGain,
   creditSplit,
   creditResplit,
   creditDueAmount,
@@ -34,6 +41,8 @@ import {
   lumpPlan,
   prepaySaved,
   budgetAmounts,
+  openCredits,
+  costliestCredits,
   dueIn,
   groupTotal,
   groupChildren,
@@ -45,7 +54,7 @@ import { plain, money, moneyShort, parseMoney, pct, ratePct } from './money'
 import { clean, caretAt, sigBefore } from './num'
 import { plural } from './utils'
 import { monthKey, parseMonthKey, addMonths, daysInMonth, leadingBlanks, today, atLabel } from '@/lib/dates'
-import type { Account, Credit, Obligation, Payment, Person } from '@/types/finance'
+import type { Account, Credit, Goal, Obligation, Payment, Person } from '@/types/finance'
 
 describe('finance.ts — аннуитет и кредитные расчёты', () => {
   it('annuityPayment — корректный расчёт платежа при нулевой и положительной ставке', () => {
@@ -915,5 +924,212 @@ describe('RP-09 — группы подписок и «оставить?»', () 
       sub('icloud', 11_990, { every: 'year', month: 11, day: 12, keptAt: '2026-01-01T07:00:00Z' }),
     ]
     expect(keepQuestions(list, now).map((o) => o.id)).toEqual(['icloud', 'pricey', 'cheap'])
+  })
+})
+
+describe('PV-01 — закрытый кредит вне плана', () => {
+  const T0 = '2026-09-01T00:00:00Z'
+  const credit = (id: string, p: Partial<Credit> = {}): Credit => ({
+    id,
+    name: id,
+    note: '',
+    principal: 1_000_000,
+    annualRate: 0.24,
+    payment: 50_000,
+    day: 15,
+    updatedAt: T0,
+    ...p,
+  })
+  const people: Person[] = [
+    { id: 'a', name: 'Аня', salary: 900_000, payday: 10, updatedAt: T0 } as Person,
+  ]
+
+  it('openCredits: удалённый и закрытый — вне, беспроцентный с остатком — внутри', () => {
+    const list = [
+      credit('open'),
+      credit('closed', { principal: 0 }),
+      credit('gone', { deletedAt: T0 }),
+      credit('zero', { annualRate: 0 }),
+    ]
+    expect(openCredits(list).map((c) => c.id)).toEqual(['open', 'zero'])
+  })
+
+  it('costliestCredits: только открытые с процентами, дороже — первым; при равной ставке — больше процентов в месяц', () => {
+    const list = [
+      credit('cheap', { annualRate: 0.12 }),
+      credit('zero', { annualRate: 0 }),
+      credit('closed', { annualRate: 0.4, principal: 0 }),
+      credit('small', { annualRate: 0.33, principal: 200_000 }),
+      credit('big', { annualRate: 0.33, principal: 900_000 }),
+    ]
+    expect(costliestCredits(list).map((c) => c.id)).toEqual(['big', 'small', 'cheap'])
+  })
+
+  it('budgetAmounts: платёж закрытого кредита не входит в «Кредиты» и не уменьшает «Свободно»', () => {
+    const open = budgetAmounts({ people, credits: [credit('x'), credit('y', { payment: 30_000 })] })
+    const closed = budgetAmounts({ people, credits: [credit('x'), credit('y', { payment: 30_000, principal: 0 })] })
+    expect(open.d2).toBe(80_000)
+    expect(closed.d2).toBe(50_000)
+    expect(closed.d5 - open.d5).toBe(30_000)
+    // Беспроцентный с остатком — платится, входит.
+    expect(budgetAmounts({ people, credits: [credit('z', { annualRate: 0 })] }).d2).toBe(50_000)
+  })
+})
+
+describe('PV-02 — калькулятор «копить или гасить»', () => {
+  const T0 = '2026-09-01T00:00:00Z'
+  const loan = { principal: 1_000_000, annualRate: 0.24, payment: 50_000 }
+
+  it('simulateStrategy: подушка набирается до досрочек — пока она неполна, долг идёт только по графику', () => {
+    const run = (payDebts: boolean, months: number) =>
+      simulateStrategy({ debts: [loan], saving: 100_000, keep: 0, payDebts, start: 0, buffer: 300_000, months })
+    // Три месяца по 100 000 уходят в подушку: долг тот же, что у «копим как сейчас».
+    expect(run(true, 1)).toMatchObject({ savings: 100_000, debtLeft: 970_000 })
+    expect(run(true, 3).debtLeft).toBeCloseTo(run(false, 3).debtLeft, 6)
+    expect(run(true, 3).savings).toBe(300_000)
+    // Четвёртый — подушка полна, взнос идёт в долг, накопления стоят.
+    expect(run(true, 4).savings).toBe(300_000)
+    expect(run(false, 4).debtLeft - run(true, 4).debtLeft).toBeCloseTo(100_000, 6)
+    // «Копим как сейчас» подушку не знает — копит всё.
+    expect(run(false, 4).savings).toBe(400_000)
+  })
+
+  it('simulateStrategy: вложенное накопленное ограничено тем, что есть, и уменьшает накопления', () => {
+    const run = (lump: number, payDebts = true) =>
+      simulateStrategy({ debts: [loan], saving: 0, keep: 0, payDebts, start: 200_000, lump, months: 1 })
+    // Больше, чем накоплено, не вложить: 500 000 → 200 000.
+    expect(run(500_000)).toMatchObject({ savings: 0 })
+    expect(run(500_000).debtLeft).toBeCloseTo(800_000 * 1.02 - 50_000, 6)
+    expect(run(100_000).savings).toBe(100_000)
+    expect(run(100_000).debtLeft).toBeCloseTo(900_000 * 1.02 - 50_000, 6)
+    // «Копим как сейчас» накопленное не трогает.
+    expect(run(500_000, false).savings).toBe(200_000)
+  })
+
+  it('simulateStrategy: без процентных долгов — «уже» (0); платёж не больше процентов — null; иначе месяц закрытия', () => {
+    const run = (debts: { principal: number; annualRate: number; payment: number }[]) =>
+      simulateStrategy({ debts, saving: 0, keep: 0, payDebts: false, start: 0, months: 12 }).debtFreeMonth
+    expect(run([])).toBe(0)
+    expect(run([{ principal: 200_000, annualRate: 0, payment: 20_000 }])).toBe(0)
+    expect(run([{ principal: 1_000_000, annualRate: 0.36, payment: 30_000 }])).toBeNull()
+    // 100 000 под 12% платежом 50 000: 51 000 → 1 510 → закрыт в третьем месяце.
+    expect(run([{ principal: 100_000, annualRate: 0.12, payment: 50_000 }])).toBe(3)
+  })
+
+  const goal = (id: string, monthly: number, have: number, p: Partial<Goal> = {}): Goal => ({
+    id, name: id, need: 5_000_000, seed: have, have, monthly, hue: 'teal', planPct: 0, movements: [], updatedAt: T0, ...p,
+  })
+  const ob = (id: string, amount: number, p: Partial<Obligation> = {}): Obligation => ({
+    id, name: id, note: '', day: 5, category: 'd1', versions: [{ from: '2000-01', amount }], updatedAt: T0, ...p,
+  })
+  const cr = (id: string, principal: number, annualRate: number, payment: number): Credit => ({
+    id, name: id, note: '', principal, annualRate, payment, day: 15, updatedAt: T0,
+  })
+  const goals = [
+    goal('flat', 50_000, 300_000),
+    goal('baby', 30_000, 100_000),
+    goal('minus', 20_000, -5_000),
+    goal('gone', 999, 999, { deletedAt: T0 }),
+  ]
+  const obligations = [
+    ob('rent', 220_000),
+    ob('insurance', 60_000, { every: 'year', month: 3 }),
+    ob('group', 0, { group: true, category: 'd4' }),
+    ob('old', 99_000, { deletedAt: T0 }),
+  ]
+  const credits = [cr('loan', 1_000_000, 0.24, 50_000), cr('zero', 200_000, 0, 20_000), cr('closed', 0, 0.3, 40_000)]
+  const base = { credits, goals, obligations, key: '2026-09', kept: ['baby'], cushion: true, useSaved: false }
+
+  it('strategyInputs: взносы, накопленное, подушка, беспроцентные — по формулам React; всё целое', () => {
+    const x = strategyInputs(base)
+    expect(x).toMatchObject({
+      saving: 100_000,
+      keep: 30_000, // только отмеченная цель
+      start: 400_000, // минус цели — как 0, удалённая — вне
+      movable: 300_000, // без отмеченной
+      mandatory: 295_000, // 220 000 + 60 000 / 12 + 50 000 + 20 000; закрытый кредит — вне
+      cushionSize: 295_000,
+      buffer: 295_000,
+      spare: 5_000,
+      lump: 0, // галки «вложить» нет
+      redirected: 70_000,
+    })
+    expect(x.debts).toEqual([
+      { principal: 1_000_000, annualRate: 0.24, payment: 50_000 },
+      { principal: 200_000, annualRate: 0, payment: 20_000 },
+    ])
+    expect(x.interestFree.map((c) => c.id)).toEqual(['zero'])
+    for (const v of [x.saving, x.keep, x.start, x.movable, x.mandatory, x.cushionSize, x.buffer, x.spare, x.lump, x.redirected]) {
+      expect(Number.isInteger(v)).toBe(true)
+    }
+  })
+
+  it('strategyInputs: без подушки буфер 0, а сумма подушки видна; «вложить» — всё из неотмеченных', () => {
+    const x = strategyInputs({ ...base, cushion: false, useSaved: true })
+    expect(x).toMatchObject({ cushionSize: 295_000, buffer: 0, spare: 300_000, lump: 300_000 })
+    expect(strategyInputs({ ...base, useSaved: true }).lump).toBe(5_000)
+    expect(strategyInputs({ ...base, kept: [] })).toMatchObject({ keep: 0, movable: 400_000, redirected: 100_000 })
+  })
+
+  it('strategyInputs: подушка — до тысяч, месяц с долей годового — целый', () => {
+    const cushion = (list: Obligation[]) => strategyInputs({ ...base, credits: [], obligations: list })
+    expect(cushion([ob('a', 220_400)]).cushionSize).toBe(220_000)
+    expect(cushion([ob('a', 220_500)]).cushionSize).toBe(221_000)
+    // 11 990 в год — 999,17 в месяц.
+    expect(cushion([ob('a', 220_000), ob('b', 11_990, { every: 'year' })])).toMatchObject({
+      mandatory: 220_999,
+      cushionSize: 221_000,
+    })
+  })
+
+  it('strategyGain: целое, знак — чья стратегия богаче', () => {
+    const r = (net: number) => ({ savings: net, debtLeft: 0, net, interest: 0, interestTotal: 0, debtFreeMonth: 0 })
+    expect(strategyGain(r(100.4), r(250.9))).toBe(151)
+    expect(strategyGain(r(500), r(200))).toBe(-300)
+  })
+})
+
+describe('PV-03 — долг «по сроку»', () => {
+  it('scheduleMismatch: график сходится — null; не хватает на тело — сколько и сколько платежей было бы', () => {
+    // 1 000 000 платежом 91 680 за 12 — это 18% годовых, расхождения нет.
+    expect(scheduleMismatch(1_000_000, 91_680, 12)).toBeNull()
+    expect(scheduleMismatch(1_000_000, 10_000, 12)).toEqual({ paid: 120_000, gap: 880_000, suggest: 100 })
+    // Ровно без процентов — сходится (ставка 0), не расхождение.
+    expect(scheduleMismatch(120_000, 10_000, 12)).toBeNull()
+    for (const [p, pay, n] of [[0, 10_000, 12], [1_000_000, 0, 12], [1_000_000, 10_000, 0], [-1, 10_000, 12]]) {
+      expect(scheduleMismatch(p, pay, n)).toBeNull()
+    }
+  })
+
+  it('rateFromSchedule: срок короче, чем выходит даже при 200%, — потолок 2 («200,0% годовых»)', () => {
+    // 1 000 000 платежом 500 000: при 200% годовых закрывается за 3 платежа, а назвали 4.
+    expect(rateFromSchedule(1_000_000, 500_000, 4)).toBe(2)
+    expect(ratePct(2, 1)).toBe('200,0%')
+    expect(ratePct(rateFromSchedule(1_000_000, 91_680, 12)!, 1)).toBe('18,0%')
+  })
+
+  it('installmentMonths: платежей без процентов — вверх до целого; без платежа — 0', () => {
+    expect(installmentMonths(1_000_000, 10_000)).toBe(100)
+    expect(installmentMonths(1_000_000, 30_000)).toBe(34)
+    expect(installmentMonths(1_000_000, 0)).toBe(0)
+  })
+})
+
+describe('PV-04 — накопленное и прогноз цели', () => {
+  it('goalHave: seed + движения, не ниже нуля; без движений — seed', () => {
+    expect(goalHave(100_000, [{ amount: 50_000 }, { amount: -20_000 }])).toBe(130_000)
+    expect(goalHave(100_000, [{ amount: -150_000 }])).toBe(0)
+    expect(goalHave(undefined, [{ amount: 30_000 }])).toBe(30_000)
+    expect(goalHave(70_000)).toBe(70_000)
+  })
+
+  it('indexedNeed: цена цели через N месяцев при инфляции 10,2%; взнос 0 (Infinity) — null; целое', () => {
+    expect(INFLATION).toBe(0.102)
+    expect(indexedNeed(1_000_000, 24)).toBe(Math.round(1_000_000 * 1.102 ** 2))
+    expect(indexedNeed(1_000_000, 24)).toBe(1_214_404)
+    expect(indexedNeed(1_000_000, Infinity)).toBeNull()
+    const v = indexedNeed(777_777, 7)!
+    expect(Number.isInteger(v)).toBe(true)
+    expect(indexedNeed(1_000_000, 12, 0.08)).toBe(1_080_000)
   })
 })

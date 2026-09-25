@@ -1,4 +1,5 @@
-import type { Goal, GoalMovement, Obligation, SyncDoc, Tracked } from '@/types/finance'
+import type { Goal, Obligation, SyncDoc, Tracked } from '@/types/finance'
+import { goalHave } from '@/lib/finance'
 
 /**
  * Слияние двух версий документа — сердце синхронизации.
@@ -83,10 +84,6 @@ function unionById<T extends { id: string }>(a: T[] = [], b: T[] = []): T[] {
   return [...out.values()]
 }
 
-function sumMovements(movements: GoalMovement[]): number {
-  return movements.reduce((acc, m) => acc + m.amount, 0)
-}
-
 function mergeGoal(winner: Goal, a: Goal, b: Goal): Goal {
   const movements = unionById(a.movements ?? [], b.movements ?? []).sort((x, y) =>
     y.date.localeCompare(x.date),
@@ -97,7 +94,8 @@ function mergeGoal(winner: Goal, a: Goal, b: Goal): Goal {
     seed,
     movements,
     // Пересчёт из объединённого списка — единственный способ не потерять взнос.
-    have: Math.max(0, seed + sumMovements(movements)),
+    // Формула та же, что у стора (goalHave): остаток не ниже нуля.
+    have: goalHave(seed, movements),
   }
 }
 

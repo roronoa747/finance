@@ -71,6 +71,31 @@ export function rateFromSchedule(
   return (low + high) / 2
 }
 
+/** Сколько платежей у долга без процентов: рассрочка гасится ровно суммой платежей. */
+export const installmentMonths = (principal: number, payment: number) =>
+  payment > 0 ? Math.ceil(principal / payment) : 0
+
+/**
+ * Почему из срока не выводится ставка — словами и цифрой (React `AddDebtDialog`).
+ *
+ * Форма долга не отказывает: человек переносит цифры из банковского приложения,
+ * и если они не сходятся, где-то в выписке комиссия, страховка или лишний
+ * платёж. Запись проходит как рассрочка без процентов, а расхождение видно:
+ * `paid` — сколько дадут названные платежи, `gap` — сколько не хватает до
+ * остатка (минус — выходит больше остатка), `suggest` — сколько платежей было
+ * бы без процентов. null — график сходится (ставка есть) или входы не заданы.
+ */
+export function scheduleMismatch(
+  principal: number,
+  payment: number,
+  months: number,
+): { paid: number; gap: number; suggest: number } | null {
+  if (principal <= 0 || payment <= 0 || months <= 0) return null
+  if (rateFromSchedule(principal, payment, months) !== null) return null
+  const paid = months * payment
+  return { paid, gap: principal - paid, suggest: installmentMonths(principal, payment) }
+}
+
 export type Prepayment = {
   monthsNow: number
   monthsAfter: number
@@ -149,6 +174,31 @@ export function deposit(input: DepositInput): DepositResult {
 /** Реальная доходность по Фишеру: что останется после инфляции. */
 export function realRate(nominal: number, inflation: number): number {
   return (1 + nominal) / (1 + inflation) - 1
+}
+
+/**
+ * Инфляция в год — одна на приложение (Р-19). В React это была настройка
+ * устройства без UI, то есть фактически константа; поля в документе и стора
+ * настроек нет.
+ */
+export const INFLATION = 0.102
+
+/**
+ * Во что обойдётся та же цель через `months` месяцев, если она дорожает вместе
+ * с рынком. null — взнос 0, срок не наступит, и прогноза нет.
+ */
+export function indexedNeed(need: number, months: number, inflation = INFLATION): number | null {
+  if (!Number.isFinite(months)) return null
+  return Math.round(need * Math.pow(1 + inflation, months / 12))
+}
+
+/**
+ * Сколько лежит в цели: стартовое накопленное плюс все движения. Меньше нуля не
+ * бывает — снятие сверх накопленного пишется в историю целиком, а остаток 0.
+ * Одна формула для стора и слияния, иначе телефоны покажут разное.
+ */
+export function goalHave(seed: number | undefined, movements: { amount: number }[] = []): number {
+  return Math.max(0, (seed ?? 0) + movements.reduce((a, m) => a + m.amount, 0))
 }
 
 /** Сколько месяцев копить остаток при заданном взносе. */
@@ -467,6 +517,86 @@ export function simulateStrategy(opts: {
   return { ...result, interestTotal: interest, debtFreeMonth }
 }
 
+export type StrategyInputs = {
+  debts: StrategyDebt[]
+  /** Сколько сейчас уходит в цели за месяц. */
+  saving: number
+  /** Из них — взносы целей, которые не останавливать. */
+  keep: number
+  /** Уже накоплено во всех целях. */
+  start: number
+  /** Накоплено в целях, которые можно трогать (не отмеченных). */
+  movable: number
+  /** Месяц обязательных списаний: живые платежи и платежи по долгам. */
+  mandatory: number
+  /** Подушка — тот же месяц, до тысяч; видна и при снятой галке. */
+  cushionSize: number
+  /** Подушка, которую «Сначала долги» набирает до досрочек: 0 без галки. */
+  buffer: number
+  /** Что из накопленного можно вложить в долги: неотмеченные цели минус подушка. */
+  spare: number
+  /** Сколько из накопленного вкладывается сразу: `spare` с галкой, иначе 0. */
+  lump: number
+  /** Беспроцентные долги с остатком — досрочно не гасятся. */
+  interestFree: Credit[]
+  /** Сколько взносов в месяц «Сначала долги» направляет в долги. */
+  redirected: number
+}
+
+/**
+ * Входы калькулятора «копить или гасить» — формулы React `StrategyCompare`.
+ * Кредиты — производные (геттер стора); закрытые и удалённые отсекаются здесь
+ * же: платёж закрытого стал бы в `simulateStrategy` «лишними деньгами».
+ * Какая цель — страховка, решают люди галочкой (`kept`), по названию не угадываем.
+ */
+export function strategyInputs(opts: {
+  credits: Credit[]
+  goals: Goal[]
+  obligations: Obligation[]
+  key: string
+  /** id целей, которые не останавливать. */
+  kept: string[]
+  cushion: boolean
+  useSaved: boolean
+}): StrategyInputs {
+  const credits = openCredits(opts.credits)
+  const goals = liveGoals(opts.goals)
+  const kept = goals.filter((g) => opts.kept.includes(g.id))
+  const free = goals.filter((g) => !opts.kept.includes(g.id))
+  const have = (list: Goal[]) => list.reduce((a, g) => a + Math.max(0, g.have), 0)
+
+  const debts = credits.map((c) => ({ principal: c.principal, annualRate: c.annualRate, payment: c.payment }))
+  const saving = goals.reduce((a, g) => a + g.monthly, 0)
+  const keep = kept.reduce((a, g) => a + g.monthly, 0)
+  const start = have(goals)
+  const movable = have(free)
+  // Годовые платежи входят долей месяца — отсюда дробь; наружу — целые.
+  const month =
+    liveObligations(opts.obligations).reduce((a, o) => a + monthlyAmount(o, opts.key), 0) +
+    credits.reduce((a, c) => a + c.payment, 0)
+  const cushionSize = Math.round(month / 1000) * 1000
+  const buffer = opts.cushion ? cushionSize : 0
+  const spare = Math.max(0, movable - buffer)
+
+  return {
+    debts,
+    saving,
+    keep,
+    start,
+    movable,
+    mandatory: Math.round(month),
+    cushionSize,
+    buffer,
+    spare,
+    lump: opts.useSaved ? spare : 0,
+    interestFree: credits.filter((c) => c.annualRate === 0 && c.principal > 0),
+    redirected: saving - keep,
+  }
+}
+
+/** Насколько «Сначала долги» богаче «Копим как сейчас» к горизонту; минус — копить выгоднее. */
+export const strategyGain = (a: StrategyResult, b: StrategyResult) => Math.round(b.net - a.net)
+
 
 /* ---------------- производные величины и расчеты бюджетов ---------------- */
 
@@ -481,6 +611,28 @@ export const liveGoals = (goals: Goal[]) => (goals || []).filter(alive);
 export const liveObligations = (list: Obligation[]) => (list || []).filter((o) => alive(o) && !o.group);
 export const liveGroups = (list: Obligation[]) => (list || []).filter((o) => alive(o) && !!o.group);
 export const liveCredits = (list: Credit[]) => (list || []).filter(alive);
+/**
+ * Открытые кредиты — живые, по которым ещё есть что платить. Закрытый отметками
+ * (остаток 0, строка остаётся с «долг закрыт») не входит ни в бюджет, ни в
+ * стратегию, ни в Ритуал.
+ *
+ * Принимает **производные** кредиты — геттер `financeStore.credits`, где остаток
+ * уже выведен из отметок (RP-06). Сырой документ не давать: там `principal` —
+ * база последней сверки, закрытость в нём не видна.
+ */
+export const openCredits = (list: Credit[]) => liveCredits(list).filter((c) => c.principal > 0);
+/**
+ * Долги, которые стоит гасить досрочно: открытые с процентами, самый дорогой
+ * первым (при равной ставке — тот, что больше съедает процентами в месяц).
+ * Беспроцентные досрочно не гасятся: они ничего не стоят. Кредиты — производные,
+ * как у `openCredits`.
+ */
+export const costliestCredits = (list: Credit[]) =>
+  openCredits(list)
+    .filter((c) => c.annualRate > 0)
+    .map((c) => ({ c, interest: debtCost(c.principal, c.annualRate, c.payment).monthlyInterest }))
+    .sort((a, b) => b.c.annualRate - a.c.annualRate || b.interest - a.interest)
+    .map((x) => x.c);
 export const liveAccounts = (list: Account[]) => (list || []).filter(alive);
 /** Счета, с которых списывают платежи: живые, в тенге (валюта платежей — не-скоуп, Р-1). */
 export const payableAccounts = (list: Account[]) => liveAccounts(list).filter((a) => (a.currency ?? 'KZT') === 'KZT');
@@ -630,7 +782,10 @@ export function hasBudgetData(state: {
   );
 }
 
-/** Суммы по 5 разделам бюджета. */
+/**
+ * Суммы по 5 разделам бюджета. Кредиты — производные (геттер стора): платёж
+ * закрытого кредита в «Кредиты» не входит и освобождает «Свободно».
+ */
 export function budgetAmounts(state: {
   categories?: Category[];
   obligations?: Obligation[];
@@ -652,7 +807,7 @@ export function budgetAmounts(state: {
     .filter((o) => o.category !== 'd1' && o.category !== 'd2')
     .reduce((a, o) => a + monthlyAmount(o, key), 0);
   const debts =
-    liveCredits(credits).reduce((a, c) => a + c.payment, 0) +
+    openCredits(credits).reduce((a, c) => a + c.payment, 0) +
     liveObligations(obligations)
       .filter((o) => o.category === 'd2')
       .reduce((a, o) => a + monthlyAmount(o, key), 0);

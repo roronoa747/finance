@@ -17,16 +17,16 @@
   1))})`; «Курс…» (`:1038-1052`, `v > 0`) → `{rate: v, amount: round(foreignAmount × v), rateAt:
   now}`; текст «В капитале счёт стоит как {money(amount)} — по этому курсу.» (`:1053-1055`);
   для тенге — «Сумма, ₸» (`:1058-1063`).
-  Vue: добавление `:1019-1031` (поле курса, «В капитале это»); `rateInfo`/`rateBusy`/`rateFailed`
-  в script (`:197-199`, запрос `:220-230`, `formRate` `:236-238`) в шаблон не выведены; метка
-  вклада `:1033` без «— если есть». Правка `:1043-1091`: только «Сумма на счёте, ₸» →
-  `setAccountAmount` (`:1069-1075`) — и для валютного; `foreignAmount`/`rate` устаревают, а строка
-  списка `:711` показывает `${foreignAmount} ${currency} · курс ${rate}`. `activeAccountSaved`
-  (`:461`) не сбрасывается при смене счёта. `Account` (`types/finance.ts:168-203`): `amount`
+  Vue: добавление `:983-995` (поле курса, «В капитале это»); `rateInfo`/`rateBusy`/`rateFailed`
+  в script (`:213-215`, запрос `:236-246`, `formRate` `:252-254`) в шаблон не выведены; метка
+  вклада `:997` без «— если есть». Правка `:1007-1055`: только «Сумма на счёте, ₸» →
+  `setAccountAmount` (`:1033-1039`) — и для валютного; `foreignAmount`/`rate` устаревают, а строка
+  списка `:697` показывает `${foreignAmount} ${currency} · курс ${rate}`. `activeAccountSaved`
+  (`:434`) не сбрасывается при смене счёта. `Account` (`types/finance.ts:168-203`): `amount`
   (тенге, база), `amountSetAt?`, `kind`, `currency?` (`KZT|USD|EUR|RUB`), `foreignAmount?`,
-  `rate?`, `rateAt?`, `deposit?`. Стор: `updateAccount(id, patch)` (`:738-756`, `unchanged`,
-  якорь при `amount` в patch `:734-736`), `setAccountAmount` (`:759-761`), `addAccount(a,
-  isPrivate)` (`:679-726`). `payableAccounts` (`finance.ts:480`) исключает валютные из оплат —
+  `rate?`, `rateAt?`, `deposit?`. Стор: `updateAccount(id, patch)` (`:739-757`, `unchanged`,
+  якорь при `amount` в patch `:735-737`), `setAccountAmount` (`:760-762`), `addAccount(a,
+  isPrivate)` (`:680-727`). `payableAccounts` (`finance.ts:638`) исключает валютные из оплат —
   якорь при смене курса безопасен. Курс: `lib/fx.ts` `fetchRates()` → `GET /api/fx-rate`
   (`null` при ошибке), `formRate(info, currency, current, touched)`; Go отдаёт `{rates, date,
   source: "Национальный банк РК"}` (Р-15 — не менять).
@@ -36,19 +36,20 @@
   « Накопления по {цели|целям} «A», «B» останутся на месте: они снова будут считаться отдельно,
   а не лежащими на этом счёте.» `useStore.ts:462-469` `removeAccount`: надгробие + `goals.map(g
   => g.accountId === id ? touch({...g, accountId: null}) : g)`. Vue `removeAccount(id)`
-  (`stores/finance.ts:824-841`): только `deletedAt` (приватный — в `privateDoc`, общий — в
-  `householdDoc`), **цели не отвязывает** → `goalSavings` (`finance.ts:661-664`, только
+  (`stores/finance.ts:825-842`): только `deletedAt` (приватный — в `privateDoc`, общий — в
+  `householdDoc`), **цели не отвязывает** → `goalSavings` (`finance.ts:822-825`, только
   `!accountId`) теряет их накопления из капитала; отвязку делать в `householdDoc` и для
-  приватного счёта. Vue-тексты: счёт `:1085-1089` («Счёт будет удален. Это действие нельзя
-  отменить.»), вклад `views/Deposit.vue:175-179`. `kit/DangerZone.vue`: `label`, `warning:
+  приватного счёта. Vue-тексты: счёт `:1049-1053` («Счёт будет удален. Это действие нельзя
+  отменить.»), вклад `views/Deposit.vue:174-178`. `kit/DangerZone.vue`: `label`, `warning:
   string`, `confirmLabel`, emit `confirm` — для списка целей вычислить строку.
-- **Б-15.** Vue `Capital.vue:145-156` `watch(() => route.query, …, {immediate: true})` только
-  ставит флаги; при закрытии query не чистится (крестик, `@click.self`, Escape — `:639-652`);
-  исключение — `applyExtraIncome` удаляет `income` через `router.replace` (`:180-184`).
+- **Б-15.** Vue `Capital.vue:161-172` `watch(() => route.query, …, {immediate: true})` только
+  ставит флаги; при закрытии query не чистится (крестик, `@click.self`, Escape — `:625-638`);
+  исключение — `applyExtraIncome` удаляет `income` через `router.replace` (`:196-200`).
   Повторный переход на тот же URL — дубликат навигации, watch не срабатывает. React
   `:58-71`: закрытие → `setParams({}, {replace: true})`. Ссылки «+» — `AppShell.vue:171-246`
   (`/capital?income=1`, `/capital?add=payment`, `/capital?add=debt`; `navigateAndClose` `:45-48`);
-  ещё `Budget.vue:122, :137`, `Overview.vue:116, :127` (`?obligation=`, `?credit=`).
+  ещё `Budget.vue:124`, `Overview.vue:118` (одна ссылка `/capital?${d.kind}=${d.targetId}` на
+  строку `monthDues` → `?obligation=` / `?credit=`).
 - Кит после PV-09: `Sheet`, `useSavedMark`, `NumFieldBlur`.
 
 ## Задача

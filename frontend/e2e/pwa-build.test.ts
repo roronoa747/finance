@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 // Проверяет собранный dist: запускать после `npm run build` (так идёт CI).
@@ -38,6 +38,17 @@ describe.skipIf(!built)('PWA-сборка заменяет React-PWA (MGV-17)', 
     // API в прекэш и runtime-кэш не попадает
     expect(sw).not.toMatch(/url:"\/?api\//)
     expect(sw).not.toContain(String.raw`registerRoute(/^\/api`)
+  })
+
+  it('приложение перезагружается на новую версию SW и проверяет её при возврате (PV-07)', () => {
+    const assets = resolve(dist, 'assets')
+    const js = readdirSync(assets)
+      .filter((f) => f.endsWith('.js'))
+      .map((f) => readFileSync(resolve(assets, f), 'utf-8'))
+      .join('\n')
+    expect(js).toContain('controllerchange')
+    expect(js).toContain('visibilitychange')
+    expect(js).toContain('getRegistration')
   })
 
   it('иконка — привычная иконка React-PWA', () => {

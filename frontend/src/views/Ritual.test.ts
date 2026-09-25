@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { createSSRApp } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -13,6 +13,7 @@ import {
 import { monthKey } from '@/lib/dates'
 import { money } from '@/lib/money'
 import Ritual from './Ritual.vue'
+import type { Credit, Obligation } from '@/types/finance'
 
 describe('views/Ritual.vue — Высвобождение средств и сценарии ритуала', () => {
   const storageMap = new Map<string, string>()
@@ -195,5 +196,82 @@ describe('views/Ritual.vue — Высвобождение средств и сц
     // Применяем метод setGoalMonthly
     store.setGoalMonthly('g-1', 50_000)
     expect(store.goals[0].monthly).toBe(50_000)
+  })
+})
+
+describe('PV-01 — Ритуал: досрочка в самый дорогой открытый долг', () => {
+  const storage = new Map<string, string>()
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const T = '2026-09-01T00:00:00Z'
+  const rent: Obligation = {
+    id: 'ob-rent',
+    name: 'Аренда квартиры',
+    note: '',
+    day: 5,
+    category: 'd1',
+    versions: [
+      { from: '2026-01', amount: 250_000 },
+      { from: '2027-06', amount: 200_000 },
+    ],
+    updatedAt: T,
+  }
+  const bank: Credit = { id: 'bank', name: 'Банк', note: '', principal: 1_000_000, annualRate: 0.18, payment: 91_680, day: 20, updatedAt: T }
+  /** Что Ритуал пишет в корзине кредита при нуле добавки — по кредиту `c`. */
+  const nowLine = (c: Credit) => {
+    const p = prepayment(c.principal, c.annualRate, c.payment, 0)
+    return `Сейчас: ${Math.ceil(p.monthsNow)} платежей, переплата ${money(Math.round(p.overpayNow))}`
+  }
+
+  async function render() {
+    const app = createSSRApp(Ritual)
+    app.use(createAppRouter(createMemoryHistory()))
+    return renderToString(app)
+  }
+
+  it('первый по порядку документа — беспроцентный: корзина считает эффект по процентному', async () => {
+    const store = useFinanceStore()
+    store.householdDoc.obligations = [rent]
+    const zero: Credit = { ...bank, id: 'zero', name: 'Рассрочка', annualRate: 0, principal: 600_000, payment: 50_000 }
+    store.householdDoc.credits = [zero, bank]
+
+    const html = await render()
+    expect(html).toContain('Досрочно по кредиту')
+    expect(html).toContain(nowLine(bank))
+    expect(html).not.toContain(nowLine(zero))
+  })
+
+  it('первый по порядку закрыт досрочкой: корзина — по открытому; все закрыты — корзины нет', async () => {
+    const store = useFinanceStore()
+    store.householdDoc.obligations = [rent]
+    store.householdDoc.accounts = [{ id: 'card', name: 'Kaspi', note: '', kind: 'card', amount: 3_000_000, updatedAt: T }]
+    const card: Credit = { ...bank, id: 'card-loan', name: 'Кредитка', annualRate: 0.4, principal: 200_000, payment: 20_000 }
+    store.householdDoc.credits = [card, bank]
+    // Дороже всех — кредитка: пока открыта, корзина по ней.
+    expect(await render()).toContain(nowLine(card))
+
+    store.applyPrepayment('card-loan', 'a', { amount: 200_000, mode: 'term', accountId: 'card' })
+    let html = await render()
+    expect(html).toContain(nowLine(bank))
+
+    store.applyPrepayment('bank', 'a', { amount: 1_000_000, mode: 'term', accountId: 'card' })
+    html = await render()
+    expect(html).not.toContain('Досрочно по кредиту')
   })
 })

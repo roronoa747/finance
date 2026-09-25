@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { mergeDocs, isEmptyDoc } from './merge'
-import { accountBalance, creditBalance, paidFor, shiftedBase } from './finance'
+import { accountBalance, creditBalance, goalHave, paidFor, shiftedBase } from './finance'
 import type { SyncDoc, Goal, Obligation, Person, Category, Account, Credit, Payment } from '@/types/finance'
 
 function createEmptyDoc(): SyncDoc {
@@ -568,5 +568,29 @@ describe('RP-06: отметки оплат при слиянии', () => {
       expect(balances(ab)).toEqual({ card: 780_000, loan: 1_000_000 })
       expect(balances(ba)).toEqual(balances(ab))
     })
+  })
+})
+
+describe('PV-04: цель с движениями в минус — 0 с обеих сторон слияния', () => {
+  const goal = (p: Partial<Goal>): Goal => ({
+    id: 'g-1', name: 'Отпуск', need: 1_000_000, seed: 100_000, have: 0, monthly: 50_000, hue: 'teal', planPct: 0,
+    updatedAt: '2026-09-21T10:00:00Z', movements: [], ...p,
+  })
+
+  it('локально сняли 150 000 из 100 000, у партнёра — взнос 20 000: итог 0 в любом порядке, оба движения на месте', () => {
+    const local = goal({ have: 0, movements: [{ id: 'm-out', date: '2026-09-21', amount: -150_000, by: 'a' }] })
+    const remote = goal({
+      have: 120_000,
+      updatedAt: '2026-09-22T10:00:00Z',
+      movements: [{ id: 'm-in', date: '2026-09-22', amount: 20_000, by: 'b' }],
+    })
+    const docA: SyncDoc = { ...createEmptyDoc(), goals: [local] }
+    const docB: SyncDoc = { ...createEmptyDoc(), goals: [remote] }
+    for (const merged of [mergeDocs(docA, docB), mergeDocs(docB, docA)]) {
+      expect(merged.goals[0].have).toBe(0)
+      expect(merged.goals[0].movements.map((m) => m.id).sort()).toEqual(['m-in', 'm-out'])
+      // Та же формула, что у стора.
+      expect(merged.goals[0].have).toBe(goalHave(merged.goals[0].seed, merged.goals[0].movements))
+    }
   })
 })

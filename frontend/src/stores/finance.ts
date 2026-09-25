@@ -9,6 +9,7 @@ import {
   creditBalance,
   creditResplit,
   creditSplit,
+  goalHave,
   lastAccountFor,
   lumpPlan,
   nextCreditDue,
@@ -1123,7 +1124,8 @@ export const useFinanceStore = defineStore('finance', () => {
       if (!g) return
       if (!g.movements) g.movements = []
       g.movements.push({ id: mid, date: t, amount, by, note })
-      g.have = (g.seed ?? 0) + g.movements.reduce((sum, m) => sum + m.amount, 0)
+      // Снятие сверх накопленного пишется целиком, остаток — не ниже нуля (как в слиянии).
+      g.have = goalHave(g.seed, g.movements)
       g.updatedAt = t
     })
   }
