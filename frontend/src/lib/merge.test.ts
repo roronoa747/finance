@@ -626,6 +626,27 @@ describe('PV-14: планы «Сначала долги» при слиянии'
     }
   })
 
+  it('Н-5: часы отменившего отстают — отмена не теряется, «активный» слабее конца плана в обоих порядках', () => {
+    // A выбрал план в 12:00 по своим часам; B отменил через 30 с, но его часы отстают на минуту.
+    const active = plan('p1', { startedAt: '2026-09-20T12:00:00.000Z', updatedAt: '2026-09-20T12:00:00.000Z' })
+    const cancelled = plan('p1', {
+      startedAt: '2026-09-20T12:00:00.000Z', status: 'cancelled', endedAt: '2026-09-20T11:59:30.000Z',
+      result: { savedInterest: 0 }, updatedAt: '2026-09-20T11:59:30.000Z',
+    })
+    const done = plan('p1', {
+      startedAt: '2026-09-20T12:00:00.000Z', status: 'done', endedAt: '2026-09-20T11:59:00.000Z',
+      result: { savedInterest: 5_000 }, updatedAt: '2026-09-20T11:59:00.000Z',
+    })
+    for (const [x, y] of [[active, cancelled], [cancelled, active]]) {
+      const merged = mergeDocs(doc([x]), doc([y]))
+      expect(merged.plans![0]).toMatchObject({ status: 'cancelled', endedAt: '2026-09-20T11:59:30.000Z', result: { savedInterest: 0 } })
+      expect(activePlan(merged.plans)).toBeNull()
+    }
+    for (const [x, y] of [[active, done], [done, active]]) {
+      expect(mergeDocs(doc([x]), doc([y])).plans![0]).toMatchObject({ status: 'done', result: { savedInterest: 5_000 } })
+    }
+  })
+
   it('надгробие сильнее правки и не воскресает', () => {
     const tomb = plan('p1', { deletedAt: '2026-09-12T00:00:00.000Z', updatedAt: '2026-09-12T00:00:00.000Z' })
     const edited = plan('p1', { updatedAt: '2026-09-15T00:00:00.000Z' })

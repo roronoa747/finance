@@ -100,14 +100,17 @@ function mergeGoal(winner: Goal, a: Goal, b: Goal): Goal {
 }
 
 /**
- * План: статус — по последней правке, но «завершён» сильнее «отменён» (Р-5): партнёр
- * офлайн отменил план, который здесь уже закрыл последний долг, — план всё равно уходит
- * в историю завершённым, с датой и итогом завершения.
+ * План: статус идёт в одну сторону — active → cancelled или done, повторный выбор — новый
+ * id. Поэтому «активный» — самый слабый статус, как у надгробия: конец плана не теряется,
+ * даже если часы отменившего телефона отстают. «Завершён» сильнее «отменён» (Р-5): партнёр
+ * офлайн отменил план, который здесь уже закрыл последний долг, — план уходит в историю
+ * завершённым. Дата и итог — той стороны, чей статус взят; равные статусы — по последней правке.
  */
 function mergePlan(winner: DebtPlan, a: DebtPlan, b: DebtPlan): DebtPlan {
-  if (winner.status !== 'cancelled') return winner
-  const done = [a, b].find((p) => p.status === 'done')
-  return done ? { ...winner, status: 'done', endedAt: done.endedAt, result: done.result } : winner
+  const rank = (p: DebtPlan) => (p.status === 'done' ? 2 : p.status === 'cancelled' ? 1 : 0)
+  if (rank(winner) === Math.max(rank(a), rank(b))) return winner
+  const end = rank(a) > rank(b) ? a : b
+  return { ...winner, status: end.status, endedAt: end.endedAt, result: end.result }
 }
 
 function mergeObligation(winner: Obligation, a: Obligation, b: Obligation): Obligation {
