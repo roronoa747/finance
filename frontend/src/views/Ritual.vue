@@ -6,7 +6,7 @@ import Button from '@/components/ui/Button.vue'
 import { money, plain } from '@/lib/money'
 import {
   goalMonths,
-  prepayment,
+  creditOutlook,
   emergencyCoverage,
   amountAt,
   costliestCredits,
@@ -15,13 +15,15 @@ import {
   liveObligations,
   lumpPlan,
   nextChange,
+  NO_SAVING,
   planMandatory,
+  prepayOutcome,
   planPrepays,
   stepDue,
 } from '@/lib/finance'
 import { monthAfter, monthFrom, monthFromAfter, monthInAfter, monthKey } from '@/lib/dates'
 import { useFinanceStore } from '@/stores/finance'
-import { cn, plural } from '@/lib/utils'
+import { cn, plural, sentence } from '@/lib/utils'
 
 const STEP = 10_000
 
@@ -74,14 +76,18 @@ function effectForGoal(goalId: string, extra: number) {
   return `${monthAfter(now - 1)} вместо ${monthFromAfter(base - 1)}. Быстрее на ${base - now} мес.`
 }
 
+// Сроки и деньги — `creditOutlook` / `prepayOutcome` (целые, без «Infinity»); платёж не
+// покрывает проценты — текст Р-11, как в окне досрочки и на экране плана.
 function effectForCredit(extra: number) {
   if (!credit.value) return ''
-  const p = prepayment(credit.value.principal, credit.value.annualRate, credit.value.payment, extra)
   if (!extra) {
-    const n = Math.ceil(p.monthsNow)
-    return `Сейчас: ${n} ${plural(n, 'платёж', 'платежа', 'платежей')}, переплата ${money(Math.round(p.overpayNow))}`
+    const now = creditOutlook(credit.value)
+    if (!now.closes) return `Сейчас: ${NO_SAVING}`
+    return `Сейчас: ${now.months} ${plural(now.months, 'платёж', 'платежа', 'платежей')}, переплата ${money(now.overpay)}`
   }
-  return `Закроется за ${Math.ceil(p.monthsAfter)} мес. вместо ${Math.ceil(p.monthsNow)}. Переплата меньше на ${money(Math.round(p.saved))}`
+  const p = prepayOutcome(credit.value, extra, 'monthly')
+  if (!p) return sentence(NO_SAVING)
+  return `Закроется за ${p.monthsAfter} мес. вместо ${p.monthsNow}. Переплата меньше на ${money(p.saved)}`
 }
 
 /** Корзина плана: шаг месяца (и добавка сверху) в самый дорогой долг — «сократить срок». */
@@ -103,7 +109,7 @@ function effectForPlan(extra: number) {
   const lp = lumpPlan(c.principal, c.annualRate, c.payment, base + extra, 'term')
   if (!lp) return ''
   if (lp.left === 0) return `${head}: долг закроется`
-  if (lp.openEnded) return `${head}: при текущем платеже долг не закрывается — экономию не считаем`
+  if (lp.openEnded) return `${head}: ${NO_SAVING}`
   return `${head}: платежей останется ${lp.months} вместо ${lp.monthsBefore}, не отдадим банку ${money(lp.saved)}`
 }
 

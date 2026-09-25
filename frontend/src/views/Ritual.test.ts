@@ -279,6 +279,18 @@ describe('PV-01 — Ритуал: досрочка в самый дорогой 
     html = await render()
     expect(html).not.toContain('Досрочно по кредиту')
   })
+
+  it('клинап Н-3: платёж не покрывает проценты — без «Infinity», «∞» и «NaN», текст Р-11', async () => {
+    const store = useFinanceStore()
+    store.householdDoc.obligations = [rent]
+    // 1 000 000 под 60%: проценты 50 000 в месяц при платеже 40 000 — долг не закрывается.
+    store.householdDoc.credits = [{ ...bank, id: 'bad', name: 'Кредитка', annualRate: 0.6, payment: 40_000 }]
+    const html = await render()
+    expect(html).toContain('Сейчас: при текущем платеже долг не закрывается — экономию не считаем')
+    const withExtra = await renderScreen(Ritual, '/ritual', undefined, [screenMixin({ alloc: { credit: 10_000 } })])
+    expect(withExtra).toContain('При текущем платеже долг не закрывается — экономию не считаем')
+    for (const h of [html, withExtra]) expect(h).not.toMatch(/Infinity|∞|NaN/)
+  })
 })
 
 describe('PV-16: шаг плана в Ритуале (SSR)', () => {
