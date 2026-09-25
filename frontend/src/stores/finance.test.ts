@@ -1595,6 +1595,21 @@ describe('PV-14: план «Сначала долги» в сторе', () => {
     expect(store.payments.filter((p) => p.planId === plan.id)).toHaveLength(1)
   })
 
+  it('applyPlanStep: шаг закрыл кредитку — второе нажатие вносит остаток суммы месяца в «Кредит»; «Свободно» не меняется', () => {
+    // Кредитка 20 000 под 40%: последний платёж 20 667; сумма месяца — 100 000 пауз + 20 667.
+    const cc = { id: 'cc', name: 'Кредитка', note: '', principal: 20_000, principalSetAt: T0, annualRate: 0.4, payment: 25_000, day: 22, updatedAt: T0 }
+    const store = family([familyDoc().credits[0], cc])
+    choose(store)
+    const free = () => budgetAmounts({ ...store.householdDoc, credits: store.credits }).d5
+    const before = free()
+    expect(store.applyPlanStep('a', { accountId: 'card' })).toMatchObject({ targetId: 'cc', amount: 20_000 })
+    expect(free()).toBe(before)
+    expect(store.applyPlanStep('a', { accountId: 'card' })).toMatchObject({ targetId: 'loan', amount: 100_667 })
+    expect(free()).toBe(before)
+    expect(store.applyPlanStep('a', { accountId: 'card' })).toBeNull()
+    expect(store.accounts[0].amount).toBe(2_000_000 - 120_667)
+  })
+
   it('applyPlanStep: без истории счёта и без accountId — null (спросить); с прошлой оплатой — её счёт', () => {
     const store = family()
     choose(store)

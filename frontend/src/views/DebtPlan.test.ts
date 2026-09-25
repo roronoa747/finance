@@ -194,6 +194,29 @@ describe('views/DebtPlan.vue — экран плана «Сначала долг
       expect(html).not.toMatch(/>\s*Внести по плану\s*</)
     })
 
+    it('шаг закрыл кредитку, сумма месяца не вся — второй шаг в «Кредит»; внесён — обе досрочки в «Внесено по плану»', async () => {
+      useAuthStore().setAuthData(authAs('member'))
+      // Кредитка 20 000 под 40%: последний платёж 20 667 — он и 100 000 пауз минус 20 000 внесённых.
+      const credits = planFamilyDoc().credits.map((c) => (c.id === 'cc' ? { ...c, principal: 20_000 } : c))
+      const first = prepay({ amount: 20_000, principal: 20_000 })
+      family({ credits, payments: [first] })
+      const html = await renderScreen(DebtPlan, '/plan')
+      expect(html).toContain(money(100_667))
+      expect(html).toContain('досрочно в «Кредит»')
+      expect(html).toContain(`Уже внесено ${money(20_000)} — «Кредитка» закрыт`)
+      expect(html).toMatch(/>\s*Внести по плану\s*</)
+
+      setActivePinia(createPinia())
+      useAuthStore().setAuthData(authAs('member'))
+      const second = prepay({ id: 'p2', targetId: 'loan', amount: 100_667, principal: 100_667, at: '2026-09-21T05:00:00.000Z' })
+      family({ credits, payments: [first, second] })
+      const done = await renderScreen(DebtPlan, '/plan')
+      expect(done).toContain('Внесено по плану')
+      expect(done).toContain(`${money(20_000)} в «Кредитка»`)
+      expect(done).toContain(`${money(100_667)} в «Кредит»`)
+      expect(done).not.toMatch(/>\s*Внести по плану\s*</)
+    })
+
     it('шаг — подушка: «Сначала подушка» и «Пополнить подушку»', async () => {
       const goals = planFamilyDoc().goals.map((g) => (g.id === 'cushion' ? { ...g, have: 100_000, seed: 100_000 } : g))
       family({ goals })

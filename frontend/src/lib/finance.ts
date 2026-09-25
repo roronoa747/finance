@@ -1502,6 +1502,19 @@ const releasedCredits = (plan: DebtPlan, credits: Credit[], payments: Payment[],
   )
 
 /**
+ * Сколько освободил закрытый долг в месяце `key`. Закрыт досрочкой этого месяца — ровно
+ * то, что его платёж занимал в «Кредитах» до досрочки (последний платёж — остаток с
+ * процентами, а не весь платёж): внесённый шаг «Свободно» не меняет. Закрыт раньше —
+ * весь платёж. Кредит — производный: досрочки месяца возвращаются к остатку до них.
+ */
+function releasedPayment(c: Credit, payments: Payment[], key: string): number {
+  const body = countedPayments(payments)
+    .filter((p) => p.kind === 'prepay' && p.targetId === c.id && p.period === key && afterAnchor(p, c.principalSetAt))
+    .reduce((a, p) => a + (p.principal ?? p.amount), 0)
+  return body > 0 ? creditDueAmount({ ...c, principal: c.principal + body }) : c.payment
+}
+
+/**
  * Сколько план направляет в долги за месяц: взносы целей на паузе и платежи закрытых
  * долгов плана — закрыт самый дорогой, его платёж идёт в следующий (Р-5).
  */
@@ -1514,22 +1527,32 @@ export function planExtra(
 ): number {
   return (
     pausedGoals(plan, goals).reduce((a, g) => a + g.monthly, 0) +
-    releasedCredits(plan, credits, payments, key).reduce((a, c) => a + c.payment, 0)
+    releasedCredits(plan, credits, payments, key).reduce((a, c) => a + releasedPayment(c, payments, key), 0)
   )
 }
+
+/** Сумма месяца плана (Р-4): `planExtra`, а в месяц старта — ещё «вложить уже накопленное». */
+export const planMonthSum = (plan: DebtPlan, state: PlanState, key: string) =>
+  planExtra(plan, state.goals ?? [], state.credits ?? [], state.payments ?? [], key) +
+  (key === planStartMonth(plan) ? plan.lump : 0)
 
 /**
  * Шаг месяца уже внесён (Р-4: одна сумма в месяц) — живая досрочка любого плана за этот
  * месяц: отменили план и выбрали заново, двое выбрали разные планы офлайн — семья не
  * платит шаг месяца второй раз. Итог плана (`planFact`) считает только свои досрочки.
  */
-export const planPrepay = (payments: Payment[] = [], period: string) =>
-  countedPayments(payments).find((p) => p.kind === 'prepay' && !!p.planId && p.period === period) ?? null
+export const planPrepays = (payments: Payment[] = [], period: string) =>
+  countedPayments(payments)
+    .filter((p) => p.kind === 'prepay' && !!p.planId && p.period === period)
+    .sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id))
 
 export type PlanStep =
   /** Сначала подушка (Р-7): `missing` — сколько не хватает до месяца списаний, `amount` — сколько из плана туда. */
   | { kind: 'cushion'; goalId: string; amount: number; missing: number }
-  /** Досрочка месяца в самый дорогой долг; `applied` — уже внесена. */
+  /**
+   * Досрочка месяца в самый дорогой долг. `applied` — месяц закрыт: последняя досрочка
+   * плана, `amount` — всё внесённое за месяц, `creditId` — её долг.
+   */
   | { kind: 'prepay'; creditId: string; amount: number; period: string; applied: Payment | null }
   /** Долгов с процентами не осталось — план закрывает `settlePlans`. */
   | { kind: 'done' }
@@ -1557,28 +1580,35 @@ export const planMandatory = (state: PlanState, key: string) =>
   }).mandatory
 
 /**
- * Шаг плана на месяц `key` (Р-4, Р-7) — одна сумма и всегда за текущий месяц:
- * пропущенные месяцы не копятся, план считается от факта (остатки — производные).
- * В месяц старта к досрочке добавляется «вложить уже накопленное». Сумма не больше
- * остатка долга — взнос сверх него `lumpPlan` всё равно не возьмёт.
+ * Шаг плана на месяц `key` (Р-4, Р-7) — одна сумма месяца (`planMonthSum`) и всегда за
+ * текущий месяц: пропущенные месяцы не копятся, план считается от факта (остатки —
+ * производные). Шаг не больше остатка долга; закрыл долг, а сумма месяца не вся — остаток
+ * вторым шагом в следующий по ставке (Р-5), вместе с платежом закрытого долга.
  */
 export function planStep(plan: DebtPlan, state: PlanState, key: string): PlanStep {
   const credits = state.credits ?? []
-  const payments = state.payments ?? []
   const costly = costliestCredits(credits)
   if (!costly.length) return { kind: 'done' }
-  const applied = planPrepay(payments, key)
-  if (applied) return { kind: 'prepay', creditId: applied.targetId, amount: applied.amount, period: key, applied }
+  const target = costly[0]
+  const month = planMonthSum(plan, state, key)
+  const paid = planPrepays(state.payments, key)
+  if (paid.length) {
+    const last = paid[paid.length - 1]
+    const total = paid.reduce((a, p) => a + p.amount, 0)
+    const closed = (credits.find((c) => c.id === last.targetId)?.principal ?? 0) <= 0
+    if (closed && month > total) {
+      return { kind: 'prepay', creditId: target.id, amount: Math.min(month - total, target.principal), period: key, applied: null }
+    }
+    return { kind: 'prepay', creditId: last.targetId, amount: total, period: key, applied: last }
+  }
 
-  const extra = planExtra(plan, state.goals ?? [], credits, payments, key)
   const cushion = liveGoals(state.goals ?? []).find((g) => g.id === plan.cushionGoalId)
   if (cushion) {
     const missing = planMandatory(state, key) - Math.max(0, cushion.have)
+    const extra = planExtra(plan, state.goals ?? [], credits, state.payments ?? [], key)
     if (missing > 0) return { kind: 'cushion', goalId: cushion.id, amount: Math.min(extra, missing), missing }
   }
-  const target = costly[0]
-  const lump = key === planStartMonth(plan) ? plan.lump : 0
-  return { kind: 'prepay', creditId: target.id, amount: Math.min(extra + lump, target.principal), period: key, applied: null }
+  return { kind: 'prepay', creditId: target.id, amount: Math.min(month, target.principal), period: key, applied: null }
 }
 
 /**
@@ -1602,7 +1632,7 @@ export function planForecast(plan: DebtPlan, state: PlanState, key: string): Pla
   })
   const cushion = liveGoals(state.goals ?? []).find((g) => g.id === plan.cushionGoalId)
   const buffer = cushion ? Math.max(0, inputs.mandatory - Math.max(0, cushion.have)) : 0
-  const lump = key === planStartMonth(plan) && !planPrepay(payments, key) ? plan.lump : 0
+  const lump = key === planStartMonth(plan) && !planPrepays(payments, key).length ? plan.lump : 0
   const released = releasedCredits(plan, credits, payments, key).reduce((a, c) => a + c.payment, 0)
   const base = { debts: inputs.debts, saving: inputs.saving + released, keep: inputs.keep, start: inputs.start, months: plan.months }
   const a = simulateStrategy({ ...base, payDebts: false })
@@ -1654,6 +1684,7 @@ export function planMonths(plan: DebtPlan, state: PlanState, key: string): PlanM
   const start = planStartMonth(plan)
   const steps = planFact(plan, payments).steps
   const step = planStep(plan, state, key)
+  const due = stepDue(step)?.amount ?? 0
   const rows: PlanMonth[] = []
   for (let period = start; period <= key; period = addMonths(period, 1)) {
     const own = steps.filter((s) => s.period === period)
@@ -1661,7 +1692,8 @@ export function planMonths(plan: DebtPlan, state: PlanState, key: string): PlanM
     const current = period === key && step.kind === 'prepay'
     const missed = () =>
       planExtra(plan, state.goals ?? [], state.credits ?? [], payments, period) + (period === start ? plan.lump : 0)
-    const planned = fact ? fact : current ? step.amount : period === key ? 0 : missed()
+    // Текущий месяц: внесённое и шаг, который ещё ждёт (второй — после закрытого долга).
+    const planned = current ? (fact + due) || step.amount : fact ? fact : period === key ? 0 : missed()
     rows.push({ period, planned, fact, creditId: own[0]?.creditId ?? (current ? step.creditId : null) })
   }
   return rows
@@ -1722,7 +1754,8 @@ export function planSchedule(
   const target = costliestCredits(credits)[0]
   if (!target) return null
   const now = stepDue(planStep(plan, state, key))?.amount ?? 0
-  const monthly = planExtra(plan, state.goals ?? [], credits, payments, key)
+  // Дальше — сумма обычного месяца: платёж долга, закрытого в этом, свободен целиком.
+  const monthly = planExtra(plan, state.goals ?? [], credits, payments, addMonths(key, 1))
   const extra = [{ period: key, amount: now }]
   // Каждый месяц в долг уходит не меньше шага: дальше закрытия шаги не нужны.
   const months = monthly > 0 ? Math.min(SCHEDULE_CAP, Math.ceil(target.principal / monthly) + 1) : 0

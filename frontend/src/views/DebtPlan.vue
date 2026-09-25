@@ -20,6 +20,7 @@ import {
   planForecast,
   planMonths,
   planSchedule,
+  planPrepays,
   planStartMonth,
   stepDue,
 } from '@/lib/finance'
@@ -49,6 +50,9 @@ const paused = computed(() => liveGoals(financeStore.goals).filter((g) => financ
 const cushion = computed(() =>
   plan.value?.cushionGoalId ? liveGoals(financeStore.goals).find((g) => g.id === plan.value!.cushionGoalId) : undefined,
 )
+// Досрочки плана этого месяца: шаг закрыл долг — остаток идёт вторым шагом в следующий.
+const monthPaid = computed(() => planPrepays(financeStore.payments, key.value))
+const paidTotal = computed(() => monthPaid.value.reduce((a, p) => a + p.amount, 0))
 
 /* ------------------ Выигрыш (Р-6) ------------------ */
 const forecastNow = computed(() => (plan.value ? planForecast(plan.value, state.value, key.value) : null))
@@ -126,14 +130,18 @@ const justDone = computed(() => {
           </template>
           <template v-else-if="step.applied">
             <div class="text-[14.5px] font-medium text-ink">Внесено по плану</div>
-            <p class="mt-0.5 text-[13px] text-ink-2 num">
-              {{ money(step.applied.amount) }} в «{{ creditName(step.creditId) }}» · {{ atLabel(step.applied.at) }}
+            <p v-for="p in monthPaid" :key="p.id" class="mt-0.5 text-[13px] text-ink-2 num">
+              {{ money(p.amount) }} в «{{ creditName(p.targetId) }}» · {{ atLabel(p.at) }}
             </p>
           </template>
           <template v-else>
             <div class="font-display text-[22px] font-semibold tracking-[-0.02em] num text-ink">{{ money(step.amount) }}</div>
             <p class="mt-0.5 text-[13px] text-ink-2">
               досрочно в «{{ creditName(step.creditId) }}» — самый дорогой долг; платёж прежний, срок короче
+            </p>
+            <p v-if="monthPaid.length" class="mt-1.5 text-[12.5px] leading-relaxed text-ink-2 num">
+              Уже внесено {{ money(paidTotal) }} — «{{ creditName(monthPaid.at(-1)!.targetId) }}» закрыт, остаток
+              шага этого месяца идёт в следующий долг.
             </p>
             <div class="mt-3"><PlanStepAction wide /></div>
           </template>

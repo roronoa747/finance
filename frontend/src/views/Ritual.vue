@@ -16,6 +16,7 @@ import {
   lumpPlan,
   nextChange,
   planMandatory,
+  planPrepays,
   stepDue,
 } from '@/lib/finance'
 import { monthAfter, monthFrom, monthFromAfter, monthInAfter, monthKey } from '@/lib/dates'
@@ -88,10 +89,13 @@ function effectForPlan(extra: number) {
   const c = credit.value
   const s = step.value
   if (!c || !s || s.kind === 'done') return ''
-  // Внесённый шаг мог закрыть самый дорогой долг — имя берём у шага, а не у нынешнего первого.
+  // Внесённый шаг мог закрыть самый дорогой долг (и тогда шагов два) — имена берём у
+  // досрочек месяца, а не у нынешнего первого.
   if (s.kind === 'prepay' && s.applied && !extra) {
-    const paid = financeStore.credits.find((x) => x.id === s.creditId)?.name ?? c.name
-    return `Шаг этого месяца внесён — ${money(s.applied.amount)} в «${paid}»`
+    const names = planPrepays(financeStore.payments, key.value).map(
+      (p) => `«${financeStore.credits.find((x) => x.id === p.targetId)?.name ?? c.name}»`,
+    )
+    return `Шаг этого месяца внесён — ${money(s.amount)} в ${[...new Set(names)].join(' и ')}`
   }
   if (s.kind === 'cushion' && !extra) return `Шаг плана в этом месяце — подушка; досрочка в «${c.name}» — следующим шагом`
   const base = stepDue(s)?.amount ?? 0
