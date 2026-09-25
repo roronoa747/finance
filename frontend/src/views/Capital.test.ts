@@ -602,7 +602,7 @@ describe('PV-11: форма платежа и модалка обязатель�
     )
   }
 
-  async function render(path: string, state: Record<string, unknown> = {}, probe?: () => void) {
+  async function render(path: string, state: Record<string, unknown> = {}, probe?: (s: Record<string, unknown>) => void) {
     const { createSSRApp } = await import('vue')
     const { renderToString } = await import('vue/server-renderer')
     const { createRouter, createMemoryHistory } = await import('vue-router')
@@ -616,7 +616,7 @@ describe('PV-11: форма платежа и модалка обязатель�
       created() {
         if (this.$.parent !== null) return
         Object.assign(this.$.setupState, state)
-        probe?.()
+        probe?.(this.$.setupState)
       },
     })
     return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
@@ -674,6 +674,25 @@ describe('PV-11: форма платежа и модалка обязатель�
     expect(html).toContain('Удалить обязательство')
   })
 
+  it('модалка: «В какой раздел бюджета» — раздел меняется правкой, а не удалением (исключение из Р-2, Р-14)', async () => {
+    await family()
+    const store = useFinanceStore()
+    const html = await render('/capital?obligation=ins')
+    const section = html.slice(html.indexOf('В какой раздел бюджета'))
+    for (const name of ['Дом', 'Кредиты', 'Еда и быт']) expect(section).toMatch(button(name))
+    expect(pressed(section, 'Еда и быт')).toBe(true)
+
+    // «Страховка» из быта в жильё: тот же id и история, подпиской больше не считается.
+    const { isSubscription } = await import('@/lib/finance')
+    expect(isSubscription(store.obligations.find((o) => o.id === 'ins')!)).toBe(true)
+    await render('/capital?obligation=ins', {}, (s) => (s.editObligation as (p: object) => void)({ category: 'd1' }))
+    const moved = store.obligations.find((o) => o.id === 'ins')!
+    expect(moved).toMatchObject({ id: 'ins', category: 'd1', versions: [{ from: '2000-01', amount: 60_000 }] })
+    expect(isSubscription(moved)).toBe(false)
+    const after = await render('/capital?obligation=ins')
+    expect(pressed(after.slice(after.indexOf('В какой раздел бюджета')), 'Дом')).toBe(true)
+  })
+
   it('годовое: сетка месяцев с отмеченным и доля в плане месяца', async () => {
     const { money } = await import('@/lib/money')
     await family()
@@ -718,6 +737,7 @@ describe('PV-11: форма платежа и модалка обязатель�
     expect(html).not.toContain('Запланировать изменение')
     expect(html).not.toContain('Удалить обязательство')
     expect(html).not.toContain('<input')
+    expect(html).not.toContain('В какой раздел бюджета')
     expect(html).toContain('Сумма сейчас')
     expect(html).toContain(money(200_000))
     expect(html).toContain('История суммы')

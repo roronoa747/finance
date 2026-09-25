@@ -1603,6 +1603,22 @@ function applyPrepay() {
             />
           </Field>
 
+          <!-- Раздела в модалке React нет — исключение из Р-2: иначе испорченный раздел не поправить (Р-14). -->
+          <Field label="В какой раздел бюджета" group>
+            <div class="flex flex-wrap gap-1.5">
+              <button
+                v-for="c in obBuckets"
+                :key="c.key"
+                type="button"
+                :aria-pressed="activeObligation.category === c.key"
+                :class="cn('rounded-lg border px-2.5 py-1.5 text-[12.5px] cursor-pointer', activeObligation.category === c.key ? 'border-brand bg-brand-soft font-semibold text-brand' : 'border-line text-ink-2')"
+                @click="editObligation({ category: c.key })"
+              >
+                {{ c.name }}
+              </button>
+            </div>
+          </Field>
+
           <label class="mb-3 flex items-center gap-2.5 text-[13.5px] text-ink">
             <input
               type="checkbox"
