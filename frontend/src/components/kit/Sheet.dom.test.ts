@@ -129,6 +129,34 @@ describe('Н-2: kit/Sheet в DOM', () => {
     expect(dialogs()).toHaveLength(0)
     expect(document.activeElement).toBe(opener)
   })
+
+  // Критик Блока 4 паритета: поле пишет по уходу из него, а родитель на `close` убирает запись
+  // окна — blur должен прийти, пока окно ещё открыто.
+  it('Escape, крестик и фон: поле с фокусом получает blur до close', async () => {
+    for (const how of ['escape', 'cross', 'scrim'] as const) {
+      const s = reactive({ open: true })
+      const seen: boolean[] = []
+      mount(() =>
+        h(Sheet, { open: s.open, title: 'Окно', onClose: () => (s.open = false) }, () =>
+          h('input', { id: 'field', onBlur: () => seen.push(s.open) }),
+        ),
+      )
+      await nextTick()
+      document.getElementById('field')!.focus()
+      if (how === 'escape') key('Escape')
+      else if (how === 'cross') document.querySelector<HTMLElement>('[aria-label="Закрыть"]')!.click()
+      else {
+        const scrim = scrimOf(dialogs()[0])
+        scrim.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+        scrim.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      }
+      await nextTick()
+      expect({ how, open: s.open, seen }).toEqual({ how, open: false, seen: [true] })
+      app?.unmount()
+      app = null
+      document.body.innerHTML = ''
+    }
+  })
 })
 
 describe('Н-2: kit/Row в DOM', () => {
