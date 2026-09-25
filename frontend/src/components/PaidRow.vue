@@ -23,6 +23,7 @@ import Row from '@/components/kit/Row.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Button from '@/components/ui/Button.vue'
+import AccountChoice from '@/components/AccountChoice.vue'
 
 /**
  * «Оплатил» — одна строка для всего, что платится по графику (Р-3): обязательства
@@ -276,38 +277,11 @@ const unmarkNote = computed(() => {
         <NumField v-model="amountText" />
       </Field>
 
-      <Field label="С какого счёта" group>
-        <button
-          v-for="a in choices"
-          :key="a.id"
-          type="button"
-          :class="
-            cn(
-              'flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-[13.5px] transition-colors cursor-pointer',
-              chosen === a.id ? 'border-brand bg-brand-soft font-medium text-brand' : 'border-line bg-surface-2 text-ink-2',
-            )
-          "
-          @click="chosen = a.id"
-        >
-          <span class="truncate">{{ a.name }}</span>
-          <span class="shrink-0 num">{{ money(a.amount) }}</span>
-        </button>
-        <button
-          type="button"
-          :class="
-            cn(
-              'rounded-xl border px-3 py-2.5 text-left text-[13.5px] transition-colors cursor-pointer',
-              chosen === null ? 'border-brand bg-brand-soft font-medium text-brand' : 'border-line bg-surface-2 text-ink-2',
-            )
-          "
-          @click="chosen = null"
-        >
-          Не списывать — только отметить
-        </button>
+      <AccountChoice v-model="chosen" :accounts="choices">
         <p v-if="firstTime" class="text-[12px] leading-relaxed text-ink-3">
           Спрашиваем один раз: дальше этот платёж отметится одним нажатием с того же счёта.
         </p>
-      </Field>
+      </AccountChoice>
 
       <Button
         class="w-full"
