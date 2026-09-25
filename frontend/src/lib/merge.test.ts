@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { mergeDocs, isEmptyDoc } from './merge'
-import { accountBalance, creditBalance, goalHave, paidFor, shiftedBase } from './finance'
-import type { SyncDoc, Goal, Obligation, Person, Category, Account, Credit, Payment } from '@/types/finance'
+import { accountBalance, activePlan, creditBalance, goalHave, paidFor, shiftedBase } from './finance'
+import type { SyncDoc, Goal, Obligation, Person, Category, Account, Credit, DebtPlan, Payment } from '@/types/finance'
 
 function createEmptyDoc(): SyncDoc {
   return {
@@ -592,5 +592,60 @@ describe('PV-04: цель с движениями в минус — 0 с обе�
       // Та же формула, что у стора.
       expect(merged.goals[0].have).toBe(goalHave(merged.goals[0].seed, merged.goals[0].movements))
     }
+  })
+})
+
+describe('PV-14: планы «Сначала долги» при слиянии', () => {
+  const T0 = '2026-09-10T05:00:00.000Z'
+  const plan = (id: string, p: Partial<DebtPlan> = {}): DebtPlan => ({
+    id, status: 'active', by: 'a', startedAt: T0, endedAt: null, keptGoalIds: [], cushionGoalId: null, creditIds: ['cc'],
+    months: 24, lump: 0, forecast: { gain: 100_000, savedInterest: 80_000, debtFreeMonth: '2028-03' }, result: null,
+    updatedAt: T0, ...p,
+  })
+  const doc = (plans?: DebtPlan[]): SyncDoc => ({ ...createEmptyDoc(), ...(plans ? { plans } : {}) })
+  // Слияние проставляет явное «не удалён» (null) там, где запись была с обеих сторон.
+  const byId = (d: SyncDoc) =>
+    [...(d.plans ?? [])].sort((a, b) => a.id.localeCompare(b.id)).map((p) => ({ ...p, deletedAt: p.deletedAt ?? null }))
+  const alive = (p: DebtPlan) => ({ ...p, deletedAt: null })
+
+  it('план с одной стороны — у обоих; статус — по последней правке (отмена позже выбора)', () => {
+    const chosen = plan('p1')
+    const cancelled = plan('p1', { status: 'cancelled', endedAt: '2026-09-20T00:00:00.000Z', updatedAt: '2026-09-20T00:00:00.000Z' })
+    expect(byId(mergeDocs(doc([chosen]), doc([])))).toEqual([alive(chosen)])
+    for (const merged of [mergeDocs(doc([chosen]), doc([cancelled])), mergeDocs(doc([cancelled]), doc([chosen]))]) {
+      expect(byId(merged)).toEqual([alive(cancelled)])
+      expect(activePlan(merged.plans)).toBeNull()
+    }
+  })
+
+  it('надгробие сильнее правки и не воскресает', () => {
+    const tomb = plan('p1', { deletedAt: '2026-09-12T00:00:00.000Z', updatedAt: '2026-09-12T00:00:00.000Z' })
+    const edited = plan('p1', { updatedAt: '2026-09-15T00:00:00.000Z' })
+    for (const merged of [mergeDocs(doc([tomb]), doc([edited])), mergeDocs(doc([edited]), doc([tomb]))]) {
+      expect(merged.plans).toHaveLength(1)
+      expect(merged.plans![0].deletedAt).toBe('2026-09-12T00:00:00.000Z')
+      expect(activePlan(merged.plans)).toBeNull()
+    }
+  })
+
+  it('двое выбрали разные планы офлайн — после слияния оба в списке, активный — поздний, в любом порядке', () => {
+    const a = doc([plan('pa', { startedAt: '2026-09-10T05:00:00.000Z' })])
+    const b = doc([plan('pb', { by: 'b', startedAt: '2026-09-10T06:30:00.000Z' })])
+    for (const merged of [mergeDocs(a, b), mergeDocs(b, a)]) {
+      expect(byId(merged).map((p) => p.id)).toEqual(['pa', 'pb'])
+      expect(activePlan(merged.plans)?.id).toBe('pb')
+    }
+    const ab = mergeDocs(a, b)
+    expect(byId(mergeDocs(ab, b))).toEqual(byId(ab))
+  })
+
+  it('документ старого клиента (без ключа plans) не стирает планы — в обе стороны', () => {
+    const fresh = doc([plan('p1')])
+    const old = doc()
+    expect('plans' in old).toBe(false)
+    expect(byId(mergeDocs(old, fresh))).toEqual([alive(plan('p1'))])
+    expect(byId(mergeDocs(fresh, old))).toEqual([alive(plan('p1'))])
+    // Оба без ключа — пустой список, а не undefined: так его и отправит push.
+    expect(mergeDocs(old, doc()).plans).toEqual([])
   })
 })

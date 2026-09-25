@@ -3,9 +3,18 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useFinanceStore, defaultSyncDoc, DEMO_HOUSEHOLD } from './finance'
 import { useAuthStore } from './auth'
 import { ApiClient, ApiError, apiClient } from '@/api/client'
-import type { SyncDoc, Goal, Person, PersonId } from '@/types/finance'
+import type { SyncDoc, DebtPlan, Goal, Payment, Person, PersonId } from '@/types/finance'
 import type { HouseholdDocResponse, ConflictResponse } from '@/types/api'
-import { annuityMonths, goalHave, lumpPlan, nextObligationDue, prepaySaved } from '@/lib/finance'
+import {
+  annuityMonths,
+  budgetAmounts,
+  goalHave,
+  lumpPlan,
+  nextObligationDue,
+  pausedGoals,
+  planForecast,
+  prepaySaved,
+} from '@/lib/finance'
 import { mergeDocs } from '@/lib/merge'
 
 describe('stores/finance.ts — Pinia хранилище казны и синхронизация', () => {
@@ -1485,5 +1494,222 @@ describe('PV-12: счета — удаление с отвязкой целей,
     at('2026-09-25T09:00:00Z')
     store.updateAccount(id, { foreignAmount: 1_200, amount: fxToTenge(1_200, 441.89) })
     expect(store.accounts[0].amount).toBe(530_268)
+  })
+})
+
+describe('PV-14: план «Сначала долги» в сторе', () => {
+  const storage = new Map<string, string>()
+  const at = (iso: string) => vi.setSystemTime(new Date(iso))
+  const T0 = '2026-09-01T00:00:00.000Z'
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    at('2026-09-24T07:00:00Z')
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const goal = (id: string, have: number, monthly: number): Goal => ({
+    id, name: id, need: 3_000_000, seed: have, have, monthly, hue: 'teal', planPct: 0, movements: [], updatedAt: T0,
+  })
+  /** Семья: подушка полна (400 000 ≥ месяц списаний 303 000), на паузе встанут отпуск и машина — 100 000 в месяц. */
+  function familyDoc(credits?: SyncDoc['credits']): SyncDoc {
+    return {
+      ...defaultSyncDoc(),
+      setupDoneAt: T0,
+      people: [{ id: 'a', name: 'Ильяс', salary: 700_000, payday: 10, updatedAt: T0 }],
+      accounts: [{ id: 'card', name: 'Kaspi', note: '', amount: 2_000_000, amountSetAt: T0, kind: 'card', updatedAt: T0 }],
+      obligations: [
+        { id: 'rent', name: 'Аренда', note: '', day: 5, category: 'd1', versions: [{ from: '2000-01', amount: 220_000 }], updatedAt: T0 },
+      ],
+      credits: credits ?? [
+        { id: 'loan', name: 'Кредит', note: '', principal: 1_000_000, principalSetAt: T0, annualRate: 0.33, payment: 58_000, day: 15, updatedAt: T0 },
+        { id: 'cc', name: 'Кредитка', note: '', principal: 300_000, principalSetAt: T0, annualRate: 0.4, payment: 25_000, day: 22, updatedAt: T0 },
+      ],
+      goals: [goal('cushion', 400_000, 30_000), goal('trip', 50_000, 40_000), goal('car', 200_000, 60_000)],
+    }
+  }
+  function family(credits?: SyncDoc['credits']) {
+    const store = useFinanceStore()
+    store.setHouseholdDoc(familyDoc(credits), 1)
+    return store
+  }
+  const choose = (store: ReturnType<typeof useFinanceStore>) =>
+    store.choosePlan({ keptGoalIds: [], cushionGoalId: 'cushion', months: 24, lump: 0 }, 'a')
+  const asViewer = () =>
+    useAuthStore().setAuthData({
+      token: 't',
+      user: { id: 'u-b', email: 'b@example.com', created_at: T0 },
+      household: { id: 'h-1', name: 'Семья', created_by: 'u-a', created_at: T0 },
+      member: { household_id: 'h-1', user_id: 'u-b', slot: 'b', display_name: 'Аруна', role: 'viewer', joined_at: T0 },
+    })
+
+  it('choosePlan: план в документе с прогнозом на момент выбора; прежний активный — отменён', () => {
+    const store = family()
+    const first = choose(store)!
+    expect(first).toMatchObject({
+      status: 'active', by: 'a', startedAt: '2026-09-24T07:00:00.000Z', cushionGoalId: 'cushion', creditIds: ['cc', 'loan'], months: 24,
+    })
+    expect(first.forecast).toEqual(planForecast(first, { goals: store.goals, credits: store.credits, obligations: store.obligations, payments: [] }, '2026-09'))
+    expect(first.forecast.savedInterest).toBeGreaterThan(0)
+    expect(store.plans).toHaveLength(1)
+    expect(store.activePlan?.id).toBe(first.id)
+    expect(store.status).toBe('dirty')
+
+    at('2026-09-24T08:00:00Z')
+    const second = store.choosePlan({ keptGoalIds: ['car'], cushionGoalId: null, months: 12, lump: 0 }, 'a')!
+    expect(store.plans.map((p) => p.status)).toEqual(['cancelled', 'active'])
+    expect(store.plans[0]).toMatchObject({ endedAt: '2026-09-24T08:00:00.000Z', result: { savedInterest: 0 } })
+    expect(store.activePlan?.id).toBe(second.id)
+  })
+
+  it('choosePlan без долгов с процентами — null, документ не меняется', () => {
+    const store = family([
+      { id: 'inst', name: 'Рассрочка', note: '', principal: 240_000, principalSetAt: T0, annualRate: 0, payment: 20_000, day: 25, updatedAt: T0 },
+    ])
+    expect(choose(store)).toBeNull()
+    expect(store.plans).toEqual([])
+  })
+
+  it('applyPlanStep: досрочка шага с planId, «сократить срок», платёж кредита прежний; повтор в том же месяце — null', () => {
+    const store = family()
+    const plan = choose(store)!
+    const rec = store.applyPlanStep('a', { accountId: 'card' })!
+    expect(rec).toMatchObject({
+      kind: 'prepay', targetId: 'cc', period: '2026-09', amount: 100_000, principal: 100_000, planId: plan.id, mode: 'term', accountId: 'card',
+    })
+    expect(rec.saved).toBeGreaterThan(0)
+    expect(store.credits.find((c) => c.id === 'cc')).toMatchObject({ principal: 200_000, payment: 25_000 })
+    expect(store.accounts[0].amount).toBe(1_900_000)
+    expect(store.applyPlanStep('a', { accountId: 'card' })).toBeNull()
+    expect(store.payments.filter((p) => p.planId === plan.id)).toHaveLength(1)
+  })
+
+  it('applyPlanStep: без истории счёта и без accountId — null (спросить); с прошлой оплатой — её счёт', () => {
+    const store = family()
+    choose(store)
+    expect(store.applyPlanStep('a')).toBeNull()
+    expect(store.payments).toHaveLength(0)
+
+    store.markPaid('credit', 'cc', 'a', { accountId: 'card' })
+    expect(store.applyPlanStep('a')).toMatchObject({ kind: 'prepay', targetId: 'cc', accountId: 'card' })
+  })
+
+  it('cancelPlan: цели возобновились (пауз нет), план в истории с итогом', () => {
+    const store = family()
+    const plan = choose(store)!
+    const rec = store.applyPlanStep('a', { accountId: 'card' })!
+    expect(pausedGoals(store.activePlan!, store.goals).map((g) => g.id)).toEqual(['trip', 'car'])
+
+    store.cancelPlan()
+    expect(store.activePlan).toBeNull()
+    expect(store.plans).toEqual([
+      expect.objectContaining({ id: plan.id, status: 'cancelled', endedAt: '2026-09-24T07:00:00.000Z', result: { savedInterest: rec.saved } }),
+    ])
+    // «Взносы в цели» — снова все цели; взносы в самих целях не трогали.
+    expect(budgetAmounts({ ...store.householdDoc, credits: store.credits }).d3).toBe(130_000)
+    expect(store.goals.map((g) => g.monthly)).toEqual([30_000, 40_000, 60_000])
+  })
+
+  it('settlePlan: досрочка на весь остаток последнего процентного долга — план done с итогом', () => {
+    const store = family([
+      { id: 'loan', name: 'Кредит', note: '', principal: 1_000_000, principalSetAt: T0, annualRate: 0.33, payment: 58_000, day: 15, updatedAt: T0 },
+    ])
+    const plan = choose(store)!
+    const step = store.applyPlanStep('a', { accountId: 'card' })!
+    expect(store.activePlan?.id).toBe(plan.id)
+
+    at('2026-09-25T07:00:00Z')
+    store.applyPrepayment('loan', 'a', { amount: 900_000, mode: 'term', accountId: 'card' })
+    expect(store.credits[0].principal).toBe(0)
+    expect(store.activePlan).toBeNull()
+    expect(store.plans[0]).toMatchObject({ status: 'done', endedAt: '2026-09-25T07:00:00.000Z', result: { savedInterest: step.saved } })
+
+    // Сняли досрочку — долг снова открыт, но завершённый план остаётся историей.
+    store.removePrepayment(store.payments.at(-1)!.id)
+    expect(store.credits[0].principal).toBeGreaterThan(0)
+    expect(store.plans[0].status).toBe('done')
+  })
+
+  it('viewer: choosePlan — null, документ не менялся; applyPlanStep и cancelPlan ничего не пишут (Р-12)', () => {
+    const member = family()
+    choose(member)
+    const doc = JSON.stringify(member.householdDoc)
+    asViewer()
+    expect(member.choosePlan({ keptGoalIds: [], cushionGoalId: null, months: 12, lump: 0 }, 'b')).toBeNull()
+    expect(member.applyPlanStep('b', { accountId: 'card' })).toBeNull()
+    member.cancelPlan()
+    expect(JSON.stringify(member.householdDoc)).toBe(doc)
+  })
+
+  it('граница месяца по Алматы: 30 сентября 19:30Z — досрочка плана за октябрь', () => {
+    const store = family()
+    choose(store)
+    at('2026-09-30T19:30:00Z')
+    expect(store.applyPlanStep('a', { accountId: 'card' })!.period).toBe('2026-10')
+  })
+
+  it('resetDoc: документ с пустым списком планов — сервер обнулит и их', () => {
+    const store = family()
+    choose(store)
+    store.resetDoc()
+    expect(store.householdDoc.plans).toEqual([])
+  })
+
+  describe('после слияния', () => {
+    function server(data: SyncDoc) {
+      const state = { rev: 1, data }
+      const client = {
+        getHouseholdDoc: vi.fn(async () => ({ household_id: 'h-1', rev: state.rev, data: JSON.parse(JSON.stringify(state.data)), updated_at: T0 })),
+        pushHouseholdDoc: vi.fn(async (_rev: number, d: SyncDoc) => {
+          state.rev += 1
+          state.data = JSON.parse(JSON.stringify(d))
+          return { household_id: 'h-1', rev: state.rev, data: state.data, updated_at: T0 }
+        }),
+      } as unknown as ApiClient
+      return { state, client }
+    }
+    const planOf = (id: string, startedAt: string): DebtPlan => ({
+      id, status: 'active', by: 'a', startedAt, endedAt: null, keptGoalIds: [], cushionGoalId: 'cushion', creditIds: ['cc', 'loan'],
+      months: 24, lump: 0, forecast: { gain: 0, savedInterest: 0, debtFreeMonth: null }, result: null, updatedAt: startedAt,
+    })
+
+    it('два активных после офлайна — отправляется документ, где старший отменён', async () => {
+      vi.stubGlobal('navigator', { onLine: true })
+      const { state, client } = server({ ...familyDoc(), plans: [planOf('pb', '2026-09-24T06:00:00.000Z')] })
+      const store = family()
+      store.mutateHouseholdDoc((doc) => (doc.plans = [planOf('pa', '2026-09-24T05:00:00.000Z')]))
+      await store.syncHousehold(client)
+      const sent = [...(state.data.plans ?? [])].sort((a, b) => a.id.localeCompare(b.id))
+      expect(sent.map((p) => [p.id, p.status])).toEqual([['pa', 'cancelled'], ['pb', 'active']])
+      expect(store.activePlan?.id).toBe('pb')
+    })
+
+    it('партнёр закрыл последний долг — pull завершает план у этого телефона', async () => {
+      vi.stubGlobal('navigator', { onLine: true })
+      const closing = (id: string, targetId: string, amount: number): Payment => ({
+        id, kind: 'prepay', targetId, period: '2026-09', amount, principal: amount, accountId: 'card', by: 'b',
+        at: '2026-09-24T06:30:00.000Z', updatedAt: '2026-09-24T06:30:00.000Z', saved: 1_000, mode: 'term', planId: 'pb',
+      })
+      const { client } = server({
+        ...familyDoc(),
+        plans: [planOf('pb', '2026-09-24T06:00:00.000Z')],
+        payments: [closing('x1', 'cc', 300_000), closing('x2', 'loan', 1_000_000)],
+      })
+      const store = useFinanceStore()
+      await store.pullHousehold(client)
+      expect(store.plans[0]).toMatchObject({ status: 'done', result: { savedInterest: 2_000 } })
+      expect(store.status).toBe('dirty')
+    })
   })
 })

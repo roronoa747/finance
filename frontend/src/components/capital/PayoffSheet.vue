@@ -217,6 +217,11 @@ function applyPrepay() {
             <b class="num text-ink">{{ money(applyPlan.left) }}</b>
           </div>
           <div v-if="applyPlan.left === 0" class="text-ink-2">Долг закроется этим взносом.</div>
+          <!-- Платёж не покрывает проценты (Р-11): сравнивать не с чем, платёж прежний в обоих режимах. -->
+          <div v-else-if="applyPlan.openEnded" class="flex justify-between">
+            <span class="text-ink-2">Платежей останется</span>
+            <b class="num text-ink">{{ Number.isFinite(applyPlan.months) ? applyPlan.months : '—' }}</b>
+          </div>
           <div v-else-if="applyMode === 'term'" class="flex justify-between">
             <span class="text-ink-2">Платежей останется</span>
             <b class="num text-ink">{{ applyPlan.months }} вместо {{ applyPlan.monthsBefore }}</b>
@@ -226,7 +231,10 @@ function applyPrepay() {
             <b class="num text-ink">{{ money(applyPlan.payment) }} вместо {{ money(activePayoffCredit.payment) }}</b>
           </div>
         </div>
-        <div class="mb-3 rounded-xl bg-brand-soft px-3 py-2 text-[13px] text-ink-2">
+        <div v-if="applyPlan.openEnded" class="mb-3 rounded-xl bg-warn-soft px-3 py-2 text-[13px] text-ink-2">
+          При текущем платеже долг не закрывается — экономию не считаем
+        </div>
+        <div v-else class="mb-3 rounded-xl bg-brand-soft px-3 py-2 text-[13px] text-ink-2">
           Не отдадим банку <b class="num text-brand">{{ money(applyPlan.saved) }}</b>
         </div>
         <Field label="Откуда списать">
@@ -245,8 +253,8 @@ function applyPrepay() {
         v-if="applyDone"
         class="mb-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3 text-[13px] text-ink-2"
       >
-        Досрочка применена: не отдадим банку
-        <b class="num text-brand">{{ money(applyDone.saved ?? 0) }}</b>.
+        Досрочка применена<template v-if="(applyDone.saved ?? 0) > 0">: не отдадим банку
+        <b class="num text-brand">{{ money(applyDone.saved ?? 0) }}</b></template>.
       </div>
 
       <div v-if="creditPrepays.length > 0" class="mb-3">
@@ -269,7 +277,7 @@ function applyPrepay() {
             {{ plain(paymentSplit(p, activePayoffCredit, 0).interest) }}
           </div>
           <div class="flex items-baseline gap-2">
-            <span class="text-brand">не отдадим банку <span class="num">{{ money(p.saved ?? 0) }}</span></span>
+            <span v-if="(p.saved ?? 0) > 0" class="text-brand">не отдадим банку <span class="num">{{ money(p.saved ?? 0) }}</span></span>
             <button
               v-if="!authStore.isViewer && removingPrepay !== p.id"
               type="button"

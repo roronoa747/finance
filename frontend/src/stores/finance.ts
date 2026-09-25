@@ -5,7 +5,9 @@ import { mergeDocs, isEmptyDoc } from '@/lib/merge'
 import { monthKey } from '@/lib/dates'
 import {
   accountBalance,
+  activePlan as pickActivePlan,
   amountAt,
+  costliestCredits,
   creditBalance,
   creditResplit,
   creditSplit,
@@ -15,11 +17,28 @@ import {
   nextCreditDue,
   nextObligationDue,
   paidFor,
+  planFact,
+  planForecast,
+  planStep,
+  settlePlans,
   shiftedBase,
   type LumpMode,
+  type PlanState,
   type ScheduledKind,
 } from '@/lib/finance'
-import type { SyncDoc, SyncStatus, Person, PersonId, Account, Credit, Goal, Obligation, Payment } from '@/types/finance'
+import type {
+  SyncDoc,
+  SyncStatus,
+  Person,
+  PersonId,
+  Account,
+  Credit,
+  DebtPlan,
+  Goal,
+  Obligation,
+  Payment,
+} from '@/types/finance'
+import { useAuthStore } from '@/stores/auth'
 import { DEFAULT_CATEGORY_NAMES, type CategoryKey, type HueKey } from '@/lib/palette'
 import type { ConflictResponse, HouseholdDocResponse } from '@/types/api'
 
@@ -35,6 +54,7 @@ export function defaultSyncDoc(): SyncDoc {
     // Ключ нужен и пустым: сервер хранит ключи, которых нет в push (RP-03), и
     // «Сбросить данные» обнулит отметки на сервере, только если ключ прислан.
     payments: [],
+    plans: [],
     setupDoneAt: null,
   }
 }
@@ -133,6 +153,16 @@ export const useFinanceStore = defineStore('finance', () => {
   )
   const wishlist = computed(() => householdDoc.value.wishlist || [])
   const setupDone = computed(() => Boolean(householdDoc.value.setupDoneAt))
+  // Планы «Сначала долги» (PV-14): старые документы приходят без ключа.
+  const plans = computed(() => householdDoc.value.plans ?? [])
+  const activePlan = computed(() => pickActivePlan(plans.value))
+  /** Всё, от чего считается шаг и прогноз плана: кредиты — производные. */
+  const planState = (): PlanState => ({
+    goals: goals.value,
+    credits: credits.value,
+    obligations: obligations.value,
+    payments: payments.value,
+  })
 
   function saveLocalState() {
     try {
@@ -292,6 +322,9 @@ export const useFinanceStore = defineStore('finance', () => {
       for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
         const replace = forceReplace.value || isEmptyDoc(currentData)
         const merged = replace ? householdDoc.value : mergeDocs(householdDoc.value, currentData)
+        // После слияния планы — по правилам (два активных, долги закрыл партнёр) — прямо
+        // в отправляемом документе, без лишнего круга.
+        settleIn(merged)
 
         householdDoc.value = merged
         saveLocalState()
@@ -377,6 +410,7 @@ export const useFinanceStore = defineStore('finance', () => {
           status.value = 'idle'
         }
         saveLocalState()
+        settlePlan()
       }
       return serverDoc
     } catch (err) {
@@ -861,6 +895,7 @@ export const useFinanceStore = defineStore('finance', () => {
         })
       }
     })
+    settlePlan()
   }
 
   /**
@@ -907,6 +942,7 @@ export const useFinanceStore = defineStore('finance', () => {
       if (!doc.payments) doc.payments = []
       doc.payments.push(record)
     })
+    settlePlan()
     return record
   }
 
@@ -951,6 +987,7 @@ export const useFinanceStore = defineStore('finance', () => {
     if (!paidFor(payments.value, kind, targetId, period)) return
     const t = new Date().toISOString()
     mutateHouseholdDoc((doc) => buryPair(doc, samePair({ kind, targetId, period }), t))
+    settlePlan()
   }
 
   /**
@@ -986,6 +1023,7 @@ export const useFinanceStore = defineStore('finance', () => {
       if (!doc.payments) doc.payments = []
       doc.payments.push(next)
     })
+    settlePlan()
     return next
   }
 
@@ -993,11 +1031,12 @@ export const useFinanceStore = defineStore('finance', () => {
    * Применить разовую досрочку (Р-6): запись того же списка, что «оплатил» — всё
    * в тело, со счёта прошлой оплаты этого кредита (Р-5), со снимком сэкономленных
    * процентов. «Снизить платёж» ещё и меняет платёж кредита; прежний — в записи.
+   * `planId` — досрочка по выбранному плану (PV-14).
    */
   function applyPrepayment(
     creditId: string,
     by: PersonId,
-    opts: { amount: number; mode: LumpMode; accountId?: string | null },
+    opts: { amount: number; mode: LumpMode; accountId?: string | null; planId?: string },
   ): Payment | null {
     const c = credits.value.find((x) => x.id === creditId && !x.deletedAt)
     if (!c) return null
@@ -1017,6 +1056,7 @@ export const useFinanceStore = defineStore('finance', () => {
         saved: plan.saved,
         mode: opts.mode,
         ...(lowers ? { prevPayment: c.payment, newPayment: plan.payment } : {}),
+        ...(opts.planId ? { planId: opts.planId } : {}),
       },
       opts.accountId,
     )
@@ -1027,6 +1067,7 @@ export const useFinanceStore = defineStore('finance', () => {
       const raw = lowers ? doc.credits.find((x) => x.id === c.id) : undefined
       if (raw) Object.assign(raw, { payment: plan.payment, principalSetAt: raw.principalSetAt ?? null, updatedAt: t })
     })
+    settlePlan()
     return record
   }
 
@@ -1047,6 +1088,7 @@ export const useFinanceStore = defineStore('finance', () => {
         Object.assign(c, { payment: p.prevPayment, principalSetAt: c.principalSetAt ?? null, updatedAt: t })
       }
     })
+    settlePlan()
   }
 
   function removeCredit(id: string) {
@@ -1057,6 +1099,101 @@ export const useFinanceStore = defineStore('finance', () => {
         c.updatedAt = c.deletedAt
       }
     })
+    settlePlan()
+  }
+
+  /* ------------------ План «Сначала долги» (PV-14) ------------------ */
+
+  // Viewer не выбирает и не отменяет план (Р-12): сервер и так отверг бы push.
+  const viewer = () => useAuthStore().isViewer
+
+  /**
+   * Планы по правилам Р-5/Р-9 прямо в документе: два активных — старший отменён,
+   * долгов с процентами не осталось — активный завершён. Кредиты — из этого же
+   * документа (производные). Возвращает, поменялось ли что-то.
+   */
+  function settleIn(doc: SyncDoc): boolean {
+    if (viewer() || !(doc.plans ?? []).length) return false
+    const docPayments = doc.payments ?? []
+    const derived = (doc.credits || []).map((c) => ({ ...c, principal: creditBalance(c, docPayments) }))
+    const next = settlePlans(doc.plans, derived, docPayments, new Date().toISOString())
+    if (next) doc.plans = next
+    return !!next
+  }
+
+  /** То же для документа телефона — после правок долгов и после слияния. */
+  function settlePlan() {
+    if (viewer() || !activePlan.value) return
+    const next = settlePlans(plans.value, credits.value, payments.value, new Date().toISOString())
+    if (next) mutateHouseholdDoc((doc) => (doc.plans = next))
+  }
+
+  /**
+   * «Выбрать этот план» (Р-4): план — запись общего документа с прогнозом на момент
+   * выбора; прежний активный отменяется. Долгов с процентами нет — выбирать нечего.
+   */
+  function choosePlan(
+    opts: { keptGoalIds: string[]; cushionGoalId: string | null; months: 12 | 24 | 36; lump: number },
+    by: PersonId,
+  ): DebtPlan | null {
+    if (viewer()) return null
+    const costly = costliestCredits(credits.value)
+    if (!costly.length) return null
+    const t = new Date().toISOString()
+    const draft: DebtPlan = {
+      id: Math.random().toString(36).slice(2, 10),
+      status: 'active',
+      by,
+      startedAt: t,
+      endedAt: null,
+      keptGoalIds: [...opts.keptGoalIds],
+      cushionGoalId: opts.cushionGoalId,
+      creditIds: costly.map((c) => c.id),
+      months: opts.months,
+      lump: Math.max(0, Math.round(opts.lump)),
+      forecast: { gain: 0, savedInterest: 0, debtFreeMonth: null },
+      result: null,
+      updatedAt: t,
+    }
+    const plan: DebtPlan = { ...draft, forecast: planForecast(draft, planState(), monthKey()) }
+    mutateHouseholdDoc((doc) => {
+      if (!doc.plans) doc.plans = []
+      for (const p of doc.plans) endPlan(p, 'cancelled', t)
+      doc.plans.push(plan)
+    })
+    return plan
+  }
+
+  /** Активный план уходит в историю: статус, дата и итог по его досрочкам. */
+  function endPlan(p: DebtPlan, status: 'done' | 'cancelled', t: string) {
+    if (p.deletedAt || p.status !== 'active') return
+    Object.assign(p, { status, endedAt: t, result: { savedInterest: planFact(p, payments.value).savedInterest }, updatedAt: t })
+  }
+
+  /** «Отменить план» (Р-5): цели возобновятся сами (пауза выводится из плана), история останется. */
+  function cancelPlan() {
+    if (viewer() || !activePlan.value) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      for (const p of doc.plans ?? []) endPlan(p, 'cancelled', t)
+    })
+  }
+
+  /**
+   * Досрочка по плану одним нажатием (Р-4, Р-10): сумма шага в самый дорогой долг,
+   * «сократить срок» по умолчанию. Счёт — прошлой оплаты этого кредита (Р-5 RP);
+   * истории нет и счёт не передан — null: счёт надо спросить. Шаг месяца уже внесён
+   * или это не досрочка (подушка, долгов нет) — null.
+   */
+  function applyPlanStep(by: PersonId, opts: { accountId?: string | null; mode?: LumpMode } = {}): Payment | null {
+    const plan = activePlan.value
+    if (viewer() || !plan) return null
+    const step = planStep(plan, planState(), monthKey())
+    if (step.kind !== 'prepay' || step.applied || step.amount <= 0) return null
+    const accountId =
+      opts.accountId !== undefined ? opts.accountId : lastAccountFor(payments.value, step.creditId, accounts.value)
+    if (accountId === undefined) return null
+    return applyPrepayment(step.creditId, by, { amount: step.amount, mode: opts.mode ?? 'term', accountId, planId: plan.id })
   }
 
   function updateObligation(id: string, patch: Partial<Obligation>) {
@@ -1172,6 +1309,8 @@ export const useFinanceStore = defineStore('finance', () => {
     payments,
     wishlist,
     setupDone,
+    plans,
+    activePlan,
     saveLocalState,
     setHouseholdDoc,
     mutateHouseholdDoc,
@@ -1208,6 +1347,10 @@ export const useFinanceStore = defineStore('finance', () => {
     editPaid,
     applyPrepayment,
     removePrepayment,
+    choosePlan,
+    cancelPlan,
+    applyPlanStep,
+    settlePlan,
     addGoal,
     updateGoal,
     removeGoal,

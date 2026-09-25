@@ -159,6 +159,9 @@ export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
     // Отметка неизменна, кроме надгробия: по id, удаление сильнее. Остатки из них
     // выводит finance.ts, поэтому здесь пересчитывать нечего.
     payments: mergeList(local.payments ?? [], remote.payments ?? [], (x) => x.id),
+    // Планы «Сначала долги» (PV-14): статус и итог — по последней правке. Два активных
+    // после офлайна остаются оба — активным считается поздний (`activePlan`, Р-9).
+    plans: mergeList(local.plans ?? [], remote.plans ?? [], (x) => x.id),
   }
   return { ...mergeUnknownKeys(local, remote, known), ...known }
 }
