@@ -3,9 +3,8 @@ import { computed } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { plain, parseMoney } from '@/lib/money'
 import { liveGoals } from '@/lib/finance'
-import { HUES, HUE_KEYS, type HueKey } from '@/lib/palette'
+import type { HueKey } from '@/lib/palette'
 import type { Goal } from '@/types/finance'
-import { cn } from '@/lib/utils'
 
 import Field from '@/components/kit/Field.vue'
 import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
@@ -13,6 +12,7 @@ import SavedMark from '@/components/kit/SavedMark.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import DangerZone from '@/components/kit/DangerZone.vue'
 import { useSavedMark } from '@/components/kit/useSavedMark'
+import HuePicker from '@/components/goals/HuePicker.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 
@@ -83,20 +83,7 @@ function remove() {
         <NumFieldBlur :initial="plain(goal.monthly)" class="mb-3" @commit="onMonthly" />
       </Field>
 
-      <Field label="Цвет" group>
-        <div class="flex flex-wrap gap-2 mb-3">
-          <button
-            v-for="h in HUE_KEYS"
-            :key="h"
-            type="button"
-            :aria-label="HUES[h].label"
-            :aria-pressed="goal.hue === h"
-            :class="cn('size-[28px] rounded-[9px] border-2 cursor-pointer transition-transform', goal.hue === h ? 'border-ink scale-110' : 'border-transparent')"
-            :style="{ background: HUES[h].light }"
-            @click="onHue(h)"
-          />
-        </div>
-      </Field>
+      <HuePicker :model-value="goal.hue" @update:model-value="onHue" />
 
       <Button class="mb-3 w-full" @click="emit('close')">Готово</Button>
 

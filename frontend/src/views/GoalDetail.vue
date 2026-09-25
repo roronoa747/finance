@@ -5,9 +5,18 @@ import { PhArrowLeft, PhPencilSimple, PhPlus, PhMinus } from '@phosphor-icons/vu
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain, parseMoney, ratePct } from '@/lib/money'
-import { INFLATION, goalDoneMonth, goalMonths, goalMonthly, indexedNeed, payableAccounts, planForecast } from '@/lib/finance'
+import {
+  INFLATION,
+  contributionStreak,
+  goalDoneMonth,
+  goalMonths,
+  goalMonthly,
+  indexedNeed,
+  liveGoals,
+  payableAccounts,
+  planForecast,
+} from '@/lib/finance'
 import { addMonths, monthIn, monthKey, monthTitle } from '@/lib/dates'
-import { contributionStreak } from '@/lib/finance'
 import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
 import type { PersonId } from '@/types/finance'
@@ -39,7 +48,9 @@ const financeStore = useFinanceStore()
 const authStore = useAuthStore()
 
 const goalId = computed(() => route.params.id as string)
-const goal = computed(() => financeStore.goals.find((g) => g.id === goalId.value))
+// Удалил партнёр — «Цель не найдена», как окно правки (`GoalSheet`): пополнение ушло бы в
+// надгробие, а счёт списался бы.
+const goal = computed(() => liveGoals(financeStore.goals).find((g) => g.id === goalId.value))
 const people = computed(() => financeStore.people)
 // Пополнение и снятие двигают тенговую базу счёта: валютный счёт пересчитал бы её по
 // курсу при следующей правке и молча потерял сдвиг. Удалённые счета — тоже не сюда.

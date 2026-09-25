@@ -17,6 +17,7 @@ import {
 } from '@/lib/finance'
 import { money, plain, ratePct } from '@/lib/money'
 import { addMonths, monthIn } from '@/lib/dates'
+import { HUES } from '@/lib/palette'
 import { T0, authAs, planFamilyDoc, planOf } from '@/test/planFamily'
 import { renderScreen, screenMixin } from '@/test/screenState'
 import Goals from './Goals.vue'
@@ -579,6 +580,14 @@ describe('PV-18: покупки — правка, «Уже купили», viewe
     expect(html).not.toContain('Вернуть в список')
     expect(html).not.toContain('Добавить покупку')
     expect(html).not.toContain('role="dialog"')
+    // Строка — не кнопка: нажимать нечего.
+    expect(html).toContain('<div class="min-w-0 flex-1 text-left"><b class="block truncate text-[14.5px] font-medium text-ink">Сковорода</b>')
+  })
+
+  it('member: строка покупки — кнопка правки', async () => {
+    family('member', list())
+    const html = await renderScreen(Goals, '/goals?tab=wish')
+    expect(html).toContain('<button type="button" class="min-w-0 flex-1 text-left cursor-pointer"><b class="block truncate text-[14.5px] font-medium text-ink">Сковорода</b>')
   })
 })
 
@@ -605,6 +614,10 @@ describe('PV-19: цель — окно правки, взнос полем, да
     return store
   }
   const trip = (store: ReturnType<typeof useFinanceStore>) => store.goals.find((g) => g.id === 'trip')!
+  /** Отмеченные кнопки «Цвет» (у `Segmented` тоже есть `aria-pressed` — их не считаем). */
+  const hueLabels = new Set(Object.values(HUES).map((h) => h.label))
+  const pressedHues = (html: string) =>
+    [...html.matchAll(/aria-label="([^"]+)" aria-pressed="true"/g)].map((m) => m[1]).filter((l) => hueLabels.has(l))
 
   it('окно «Изменить цель»: поля React со значениями, «Уже накоплено» и пояснение про взносы, удаление — текст React', async () => {
     const store = family()
@@ -619,10 +632,19 @@ describe('PV-19: цель — окно правки, взнос полем, да
     expect(html).toContain(`value="${plain(65_000)}"`)
     expect(html).toContain('Взносы (2) останутся в истории: правится только та часть, с которой цель завели.')
     expect(html).toContain('aria-label="Цвет"')
+    expect(pressedHues(html)).toEqual([HUES.teal.label])
     expect(html).toContain('Готово')
     expect(html).toContain('Цель и её история взносов исчезнут у обоих участников. Отменить нельзя.')
     expect(html).not.toContain('Сохранить')
     expect(html).not.toContain('bg-black/40')
+  })
+
+  it('окно «Новая цель»: «Цвет» — группа, выбранный цвет отмечен', async () => {
+    family()
+    const html = await renderScreen(Goals, '/goals', undefined, [screenMixin({ openGoalModal: true, goalHue: 'plum' })])
+    expect(html).toContain('Новая цель')
+    expect(html).toContain('role="group" aria-label="Цвет"')
+    expect(pressedHues(html)).toEqual([HUES.plum.label])
   })
 
   it('без взносов пояснения нет', async () => {
@@ -691,6 +713,16 @@ describe('PV-19: цель — окно правки, взнос полем, да
     expect(html).toContain('Цель закроется после плана')
     expect(html).not.toContain('Цель закроется в ')
     expect(goalDoneMonth(74, '2026-09', { debtFreeMonth: null })).toBeNull()
+  })
+
+  it('цель удалил партнёр — «Цель не найдена», пополнять нечего', async () => {
+    const store = family()
+    store.mutateHouseholdDoc((doc) => {
+      doc.goals.find((g) => g.id === 'trip')!.deletedAt = '2026-09-24T06:00:00.000Z'
+    })
+    const html = await renderScreen(GoalDetail, '/goals/trip')
+    expect(html).toContain('Цель не найдена.')
+    expect(html).not.toContain('Пополнить')
   })
 
   it('viewer: ни карандаша, ни окна правки, ни поля взноса — сумма видна', async () => {

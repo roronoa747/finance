@@ -6,7 +6,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain, parseMoney } from '@/lib/money'
 import { addMonths, atLabel, monthKey, monthTitle } from '@/lib/dates'
-import { HUES, HUE_KEYS, type HueKey } from '@/lib/palette'
+import type { HueKey } from '@/lib/palette'
 import { contributionStreak, liveGoals, liveWishlist } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
 import { cn, plural } from '@/lib/utils'
@@ -21,6 +21,7 @@ import Sheet from '@/components/kit/Sheet.vue'
 import Tag from '@/components/kit/Tag.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Ring from '@/components/Ring.vue'
+import HuePicker from '@/components/goals/HuePicker.vue'
 import WishSheet from '@/components/goals/WishSheet.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
@@ -237,32 +238,29 @@ function markBought(id: string, itemName: string) {
           :key="w.id"
           class="flex items-center gap-3 border-b border-line px-3.5 py-3 last:border-b-0"
         >
-          <!-- Viewer видит список, но не правит (Р-12, матрица §3) -->
-          <template v-if="!authStore.isViewer">
-            <button
-              type="button"
-              aria-label="Отметить купленным"
-              class="grid size-[26px] shrink-0 place-items-center rounded-lg border-[1.5px] border-line-strong text-transparent hover:border-brand hover:text-brand cursor-pointer"
-              @click="markBought(w.id, w.name)"
-            >
-              <PhCheck :size="14" weight="bold" />
-            </button>
-            <!-- Ссылка вынесена из нажимаемой области: ссылка внутри кнопки — невалидная разметка. -->
-            <button type="button" class="min-w-0 flex-1 text-left cursor-pointer" @click="editWishId = w.id">
-              <b class="block truncate text-[14.5px] font-medium text-ink">{{ w.name }}</b>
-              <span class="mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-3">
-                <i class="size-[7px] shrink-0 rounded-full" :style="{ background: `var(--p${w.by})` }" />
-                {{ nameOf(w.by) }} · {{ wishDate(w.addedOn) }}
-              </span>
-            </button>
-          </template>
-          <div v-else class="min-w-0 flex-1 text-left">
+          <!-- Viewer видит список, но не правит (Р-12, матрица §3): ни галочки, ни кнопки строки -->
+          <button
+            v-if="!authStore.isViewer"
+            type="button"
+            aria-label="Отметить купленным"
+            class="grid size-[26px] shrink-0 place-items-center rounded-lg border-[1.5px] border-line-strong text-transparent hover:border-brand hover:text-brand cursor-pointer"
+            @click="markBought(w.id, w.name)"
+          >
+            <PhCheck :size="14" weight="bold" />
+          </button>
+          <!-- Ссылка вынесена из нажимаемой области: ссылка внутри кнопки — невалидная разметка. -->
+          <component
+            :is="authStore.isViewer ? 'div' : 'button'"
+            :type="authStore.isViewer ? undefined : 'button'"
+            :class="cn('min-w-0 flex-1 text-left', !authStore.isViewer && 'cursor-pointer')"
+            @click="editWishId = w.id"
+          >
             <b class="block truncate text-[14.5px] font-medium text-ink">{{ w.name }}</b>
             <span class="mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-3">
               <i class="size-[7px] shrink-0 rounded-full" :style="{ background: `var(--p${w.by})` }" />
               {{ nameOf(w.by) }} · {{ wishDate(w.addedOn) }}
             </span>
-          </div>
+          </component>
           <a
             v-if="w.url"
             :href="w.url"
@@ -335,19 +333,7 @@ function markBought(id: string, itemName: string) {
         <NumField v-model="goalMonthly" placeholder="по умолчанию — за 24 месяца" class="mb-3" />
       </Field>
 
-      <Field label="Цвет" group>
-        <div class="flex flex-wrap gap-2 mb-3">
-          <button
-            v-for="h in HUE_KEYS"
-            :key="h"
-            type="button"
-            :aria-label="HUES[h].label"
-            :class="cn('size-[28px] rounded-[9px] border-2 cursor-pointer transition-transform', goalHue === h ? 'border-ink scale-110' : 'border-transparent')"
-            :style="{ background: HUES[h].light }"
-            @click="goalHue = h"
-          />
-        </div>
-      </Field>
+      <HuePicker v-model="goalHue" />
 
       <Button :disabled="!canCreateGoal" class="w-full mt-2" @click="createGoal">
         Создать цель
