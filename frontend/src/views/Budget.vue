@@ -45,6 +45,7 @@ const DERIVED_NOTE: Record<string, string> = {
   d2: 'платежи по кредитам',
   d3: 'взносы по всем целям',
   plan: 'взносы целей на паузе и платежи закрытых долгов — по шагу плана',
+  cushion: 'взносы целей на паузе — в подушку, пока в ней меньше месяца списаний',
 }
 
 type ViewMode = 'plan' | 'calendar' | 'list'
@@ -108,7 +109,9 @@ const lines = computed(() =>
         ? (cat?.note ?? '')
         : l.key === 'd3' && financeStore.activePlan
           ? 'взносы целей, кроме тех, что на паузе'
-          : DERIVED_NOTE[l.key]
+          : l.key === 'plan' && amounts.value.planCushion
+            ? DERIVED_NOTE.cushion
+            : DERIVED_NOTE[l.key]
     return { ...l, note, color: l.key === 'plan' ? 'var(--d2)' : `var(--${l.key})`, base: cat?.amount ?? 0 }
   }),
 )

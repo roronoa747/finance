@@ -952,11 +952,13 @@ export function budgetAmounts(state: {
     .filter((g) => !paused.has(g.id))
     .reduce((a, g) => a + g.monthly, 0);
   const extra = plan ? planExtra(plan, goalsList, credits, payments, key) : 0;
+  // Фаза подушки (Р-7): деньги плана кладутся в подушку — строка называется по фазе (Н-4).
+  const planCushion = !!plan && planStep(plan, { goals: goalsList, credits, obligations, payments }, key).kind === 'cushion';
   const living = (categories.find((c) => c.key === 'd4')?.amount ?? 0) + other;
   const income = totalIncome(people, key);
   const free = income - housing - debts - goals - living - extra;
 
-  return { d1: housing, d2: debts, d3: goals, d4: living, d5: free, income, planExtra: extra };
+  return { d1: housing, d2: debts, d3: goals, d4: living, d5: free, income, planExtra: extra, planCushion };
 }
 
 export type BudgetLine = { key: 'd1' | 'd2' | 'd3' | 'plan' | 'd4'; name: string; amount: number }
@@ -965,13 +967,15 @@ export type BudgetLine = { key: 'd1' | 'd2' | 'd3' | 'plan' | 'd4'; name: string
  * Строки «Куда уходит» Бюджета и сегменты Обзора (PV-15 п. 7) — по ключам d1–d4, а не
  * по заведённым разделам: строка есть, если раздел заведён или в нём есть сумма; имя —
  * семьи или запасное. Раздел в документ не пишется (пустой раздел со свежим updatedAt
- * затёр бы сумму партнёра). С планом — «Досрочно по плану» сразу после целей.
+ * затёр бы сумму партнёра). С планом — «Досрочно по плану» сразу после целей, а пока
+ * план набирает подушку — «По плану — в подушку» (Р-7).
  */
 export function budgetLines(categories: Category[], amounts: ReturnType<typeof budgetAmounts>): BudgetLine[] {
   const out: BudgetLine[] = []
   for (const key of ['d1', 'd2', 'd3', 'plan', 'd4'] as const) {
     if (key === 'plan') {
-      if (amounts.planExtra > 0) out.push({ key, name: 'Досрочно по плану', amount: amounts.planExtra })
+      const name = amounts.planCushion ? 'По плану — в подушку' : 'Досрочно по плану'
+      if (amounts.planExtra > 0) out.push({ key, name, amount: amounts.planExtra })
       continue
     }
     if (!categories.some((c) => c.key === key) && amounts[key] <= 0) continue
@@ -1772,7 +1776,22 @@ export type PlanMonth = {
   fact: number
   /** В какой долг: внесённый или долг шага; null — не было. */
   creditId: string | null
+  /**
+   * Месяц подушки (Р-7): в подушке было меньше месяца списаний — план клал деньги в неё,
+   * досрочек и не ждал. `planned` — сколько в подушку, `fact` — взносы в неё за месяц.
+   */
+  cushion?: true
 }
+
+/** Накопленное цели на начало месяца `period` — по её движениям (не ниже нуля, как `goalHave`). */
+const goalHaveBefore = (g: Goal, period: string) =>
+  goalHave(g.seed, (g.movements ?? []).filter((m) => monthKey(new Date(m.date)) < period))
+
+/** Сколько положили в цель за месяц `period`. */
+const goalPutIn = (g: Goal, period: string) =>
+  (g.movements ?? [])
+    .filter((m) => m.amount > 0 && monthKey(new Date(m.date)) === period)
+    .reduce((a, m) => a + m.amount, 0)
 
 /** План и факт по месяцам (Р-6): с месяца старта по `key` включительно. */
 export function planMonths(plan: DebtPlan, state: PlanState, key: string): PlanMonth[] {
@@ -1781,13 +1800,26 @@ export function planMonths(plan: DebtPlan, state: PlanState, key: string): PlanM
   const steps = planFact(plan, payments).steps
   const step = planStep(plan, state, key)
   const due = stepDue(step)?.amount ?? 0
+  const cushion = liveGoals(state.goals ?? []).find((g) => g.id === plan.cushionGoalId)
   const rows: PlanMonth[] = []
   for (let period = start; period <= key; period = addMonths(period, 1)) {
     const own = steps.filter((s) => s.period === period)
     const fact = own.reduce((a, s) => a + s.amount, 0)
+    const extra = () => planExtra(plan, state.goals ?? [], state.credits ?? [], payments, period)
+    // Месяц подушки (Р-7): не пропуск — план клал деньги в подушку (прошлый — по её движениям).
+    const short =
+      !cushion || fact
+        ? 0
+        : period === key
+          ? step.kind === 'cushion' ? step.missing : 0
+          : planMandatory(state, period) - goalHaveBefore(cushion, period)
+    if (cushion && short > 0) {
+      const planned = period === key && step.kind === 'cushion' ? step.amount : Math.min(extra(), short)
+      rows.push({ period, planned, fact: goalPutIn(cushion, period), creditId: null, cushion: true })
+      continue
+    }
     const current = period === key && step.kind === 'prepay'
-    const missed = () =>
-      planExtra(plan, state.goals ?? [], state.credits ?? [], payments, period) + (period === start ? plan.lump : 0)
+    const missed = () => extra() + (period === start ? plan.lump : 0)
     // Текущий месяц: внесённое и шаг, который ещё ждёт (второй — после закрытого долга).
     const planned = current ? (fact + due) || step.amount : fact ? fact : period === key ? 0 : missed()
     rows.push({ period, planned, fact, creditId: own[0]?.creditId ?? (current ? step.creditId : null) })

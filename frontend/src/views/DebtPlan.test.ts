@@ -252,6 +252,18 @@ describe('views/DebtPlan.vue — экран плана «Сначала долг
       expect(html).not.toContain('досрочки не было')
     })
 
+    it('хвост 6: «План и факт» в фазе подушки — сумма месяца «в подушку», не «—» и не «0 ₸»', async () => {
+      vi.setSystemTime(new Date('2026-10-15T07:00:00Z'))
+      const goals = planFamilyDoc().goals.map((g) => (g.id === 'cushion' ? { ...g, have: 100_000, seed: 100_000 } : g))
+      family({ goals })
+      const html = await renderScreen(DebtPlan, '/plan')
+      const table = html.slice(html.indexOf('План и факт по месяцам'), html.indexOf('Что не ушло в цели')).replace(/<[^>]+>/g, ' ').replace(/[ \n\t\r]+/g, ' ')
+      expect(table).toContain(`сен 2026 ${money(100_000)} — в подушку`)
+      expect(table).toContain(`окт 2026 ${money(100_000)} — в подушку`)
+      // «0 ₸» отдельным числом — не часть «100 000 ₸».
+      expect(table).not.toMatch(/(?:^|\s)0\s*₸/)
+    })
+
     it('на паузе нет взносов (все цели, кроме подушки, «не останавливать») — шага «0 ₸» нет', async () => {
       useAuthStore().setAuthData(authAs('member'))
       family({ plans: [planOf({ keptGoalIds: ['trip', 'car'] })] })

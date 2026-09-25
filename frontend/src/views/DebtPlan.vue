@@ -68,7 +68,7 @@ const months = computed(() => (plan.value ? planMonths(plan.value, state.value, 
  */
 const missed = computed(() => {
   const prev = months.value.at(-2)
-  return prev && !prev.fact && step.value?.kind !== 'cushion' ? prev.period : null
+  return prev && !prev.fact && !prev.cushion ? prev.period : null
 })
 
 /* ------------------ График долга с шагами плана (Р-8) ------------------ */
@@ -187,12 +187,12 @@ const justDone = computed(() => {
           <span class="text-ink-3">Месяц</span>
           <span class="text-right text-ink-3">План</span>
           <span class="text-right text-ink-3">Факт</span>
-          <span class="text-ink-3">Долг</span>
+          <span class="text-ink-3">Куда</span>
           <template v-for="m in months" :key="m.period">
             <span :class="cn(m.period === key ? 'font-semibold text-brand' : 'text-ink-2')">{{ monthShort(m.period) }}</span>
             <span class="text-right text-ink">{{ money(m.planned) }}</span>
             <span :class="cn('text-right', m.fact ? 'text-ink' : 'text-ink-3')">{{ m.fact ? money(m.fact) : '—' }}</span>
-            <span class="truncate text-ink-2">{{ creditName(m.creditId) || '—' }}</span>
+            <span class="truncate text-ink-2">{{ m.cushion ? 'в подушку' : creditName(m.creditId) || '—' }}</span>
           </template>
         </div>
       </Card>

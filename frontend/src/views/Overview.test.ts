@@ -389,6 +389,15 @@ describe('PV-15: сегменты Обзора — «Досрочно по пл�
     expect(legend(html, 'Свободно')).toBe(legend(before, 'Свободно'))
   })
 
+  it('Н-4: пока план набирает подушку — в легенде «По плану — в подушку» с той же суммой', async () => {
+    const store = useFinanceStore()
+    const thin = planFamilyDoc().goals.map((g) => (g.id === 'cushion' ? { ...g, have: 150_000, seed: 150_000 } : g))
+    store.setHouseholdDoc(planFamilyDoc({ goals: thin, plans: [planOf()] }), 1)
+    const html = await renderScreen(Overview, '/')
+    expect(legend(html, 'По плану — в подушку')).toBe(100_000)
+    expect(legend(html, 'Досрочно по плану')).toBeNull()
+  })
+
   it('п. 7: раздела d1 нет, аренда в d1 — сегмент и строка «Жильё»; без аренды — нет', async () => {
     const store = useFinanceStore()
     const categories = planFamilyDoc().categories.filter((c) => c.key === 'd4')

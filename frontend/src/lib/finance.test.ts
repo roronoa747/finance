@@ -1592,7 +1592,7 @@ describe('PV-14 — план «Сначала долги»: модель и ра
       { key: 'd2', name: 'Долги', note: '', amount: 0, updatedAt: T0 },
       { key: 'd4', name: 'Еда и быт', note: '', amount: 150_000, updatedAt: T0 },
     ]
-    const amounts = { d1: 220_000, d2: 0, d3: 30_000, d4: 150_000, d5: 0, income: 0, planExtra: 100_000 }
+    const amounts = { d1: 220_000, d2: 0, d3: 30_000, d4: 150_000, d5: 0, income: 0, planExtra: 100_000, planCushion: false }
     expect(budgetLines(cats, amounts)).toEqual([
       { key: 'd1', name: DEFAULT_CATEGORY_NAMES.d1, amount: 220_000 },
       { key: 'd2', name: 'Долги', amount: 0 },
@@ -1602,6 +1602,42 @@ describe('PV-14 — план «Сначала долги»: модель и ра
     ])
     // Раздела нет и суммы нет — строки нет; плана нет — строки плана нет.
     expect(budgetLines([], { ...amounts, d1: 0, planExtra: 0 }).map((l) => l.key)).toEqual(['d3', 'd4'])
+    // Н-4: пока план набирает подушку — строка называется по фазе, сумма та же.
+    expect(budgetLines(cats, { ...amounts, planCushion: true }).find((l) => l.key === 'plan')).toEqual({
+      key: 'plan', name: 'По плану — в подушку', amount: 100_000,
+    })
+  })
+
+  it('Н-4: budgetAmounts знает фазу подушки — шаг плана «подушка»; подушка полна — нет', () => {
+    const base = { people, obligations: [rent], credits: state().credits, payments: [], plans: [plan()] }
+    const thin = budgetAmounts({ ...base, goals: goals(150_000) })
+    expect(thin).toMatchObject({ planCushion: true, planExtra: 100_000 })
+    expect(budgetAmounts({ ...base, goals: goals(400_000) }).planCushion).toBe(false)
+    expect(budgetAmounts({ ...base, goals: goals(150_000), plans: [] }).planCushion).toBe(false)
+  })
+
+  it('хвост 6: «План и факт» в фазе подушки — месяцы подушки не пропуски, текущий — не «0 ₸»', () => {
+    // План с июля, подушка 150 000 из 323 000 не набрана — июль, август и сентябрь — месяцы подушки.
+    const p = plan({ startedAt: '2026-07-10T05:00:00.000Z' })
+    const s = state({ cushionHave: 150_000 })
+    expect(planStep(p, s, '2026-09')).toMatchObject({ kind: 'cushion', amount: 100_000 })
+    expect(planMonths(p, s, '2026-09')).toEqual([
+      { period: '2026-07', planned: 100_000, fact: 0, creditId: null, cushion: true },
+      { period: '2026-08', planned: 100_000, fact: 0, creditId: null, cushion: true },
+      { period: '2026-09', planned: 100_000, fact: 0, creditId: null, cushion: true },
+    ])
+    // Подушку добрали в августе (взнос 200 000): июль — подушка с фактом взноса, август и сентябрь — досрочки.
+    const topped = goals(150_000).map((g) =>
+      g.id === 'cushion'
+        ? { ...g, have: 350_000, movements: [{ id: 'm', date: '2026-07-20T05:00:00.000Z', amount: 200_000, by: 'a' as const }] }
+        : g,
+    )
+    const later = { ...s, goals: topped }
+    expect(planMonths(p, later, '2026-09').map((m) => [m.period, m.planned, m.fact, m.cushion ?? false])).toEqual([
+      ['2026-07', 100_000, 200_000, true],
+      ['2026-08', 100_000, 0, false],
+      ['2026-09', 100_000, 0, false],
+    ])
   })
 
   it('planStep: закрыт самый дорогой — следующий по ставке, planExtra вырос на его платёж; все закрыты — done', () => {

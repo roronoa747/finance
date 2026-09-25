@@ -446,6 +446,17 @@ describe('PV-15: «Досрочно по плану» и разделы по к�
     expect(html.slice(html.indexOf('>Цели<'), html.indexOf('>Досрочно по плану<'))).toContain('background:var(--d2)')
   })
 
+  it('Н-4: пока план набирает подушку — строка «По плану — в подушку», сумма и «Свободно» те же', async () => {
+    const store = useFinanceStore()
+    const thin = planFamilyDoc().goals.map((g) => (g.id === 'cushion' ? { ...g, have: 150_000, seed: 150_000 } : g))
+    store.setHouseholdDoc(planFamilyDoc({ goals: thin, plans: [planOf()] }), 1)
+    const html = await renderScreen(Budget, '/budget')
+    expect(lineAmount(html, 'По плану — в подушку')).toBe(100_000)
+    expect(html).not.toContain('Досрочно по плану')
+    expect(html).toContain('взносы целей на паузе — в подушку, пока в ней меньше месяца списаний')
+    expect(lineAmount(html, 'Свободно')).toBe(budgetAmounts({ ...store.householdDoc, credits: store.credits }).d5)
+  })
+
   it('п. 7: раздела d1 нет, аренда в d1 — строка «Жильё» с её суммой, Σ строк + «Свободно» = доход; без аренды строки нет', async () => {
     const store = useFinanceStore()
     const categories = planFamilyDoc().categories.filter((c) => c.key === 'd4')
