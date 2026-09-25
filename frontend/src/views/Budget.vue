@@ -162,6 +162,23 @@ const events = computed<EventItem[]>(() => {
       },
     },
   ]
+  // Деньги плана (Н-1 ревью): та же строка, что в «Куда уходит», — иначе в календаре и
+  // списке 100 000 плана пропадали. «Отложено» их не берёт: они не откладываются.
+  const plan = lines.value.find((l) => l.key === 'plan')
+  if (plan) {
+    items.push({
+      id: 'plan',
+      day: 1,
+      name: plan.name,
+      note: 'по шагу плана',
+      value: plan.amount,
+      color: plan.color,
+      income: false,
+      open: () => {
+        void router.push('/plan')
+      },
+    })
+  }
   return items.sort((a, b) => a.day - b.day)
 })
 

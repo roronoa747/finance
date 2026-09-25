@@ -19,7 +19,7 @@ import { monthKey } from '@/lib/dates'
 import { money, plain } from '@/lib/money'
 import Budget from './Budget.vue'
 import { planFamilyDoc, planOf } from '@/test/planFamily'
-import { renderScreen } from '@/test/screenState'
+import { renderScreen, screenMixin } from '@/test/screenState'
 import SalaryDialog from '@/components/SalaryDialog.vue'
 import Input from '@/components/ui/Input.vue'
 
@@ -444,6 +444,25 @@ describe('PV-15: «Досрочно по плану» и разделы по к�
     // Строка плана — сразу после целей, цвет раздела кредитов.
     expect(html.indexOf('>Досрочно по плану<')).toBeGreaterThan(html.indexOf('>Цели<'))
     expect(html.slice(html.indexOf('>Цели<'), html.indexOf('>Досрочно по плану<'))).toContain('background:var(--d2)')
+  })
+
+  it('Н-1: «Список» и «Календарь» — событие плана той же суммой, Σ расходов как без плана', async () => {
+    // Расходы списка: «−N» у каждого события (платежи месяца, цели, план).
+    const spent = (html: string) =>
+      [...html.matchAll(/−([\d\s\u00a0\u202f]+)</g)].reduce((a, m) => a + Number(m[1].replace(/\D/g, '')), 0)
+    const store = useFinanceStore()
+    store.setHouseholdDoc(planFamilyDoc(), 1)
+    const without = await renderScreen(Budget, '/budget', { initialView: 'list' })
+    store.setHouseholdDoc(planFamilyDoc({ plans: [planOf()] }), 2)
+    const list = await renderScreen(Budget, '/budget', { initialView: 'list' })
+    const row = (html: string, name: string) => html.slice(html.indexOf(`>${name}<`), html.indexOf(`>${name}<`) + 400)
+    expect(row(list, 'Досрочно по плану')).toContain(`−${plain(100_000)}`)
+    expect(row(list, 'Взносы в цели')).toContain(`−${plain(30_000)}`)
+    expect(spent(list)).toBe(spent(without))
+    expect(spent(list)).toBe(130_000 + 220_000 + 58_000 + 25_000 + 20_000)
+    // Календарь берёт точки и строки дня из тех же событий: 1-е число — цели и план.
+    const cal = await renderScreen(Budget, '/budget', { initialView: 'calendar' }, [screenMixin({ selected: 1 })])
+    expect(row(cal, 'Досрочно по плану')).toContain(`−${plain(100_000)}`)
   })
 
   it('Н-4: пока план набирает подушку — строка «По плану — в подушку», сумма и «Свободно» те же', async () => {
