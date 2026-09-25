@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { setActivePinia, createPinia, type Pinia } from 'pinia'
-import { createRenderer, createSSRApp, nextTick, ssrContextKey, type Component } from 'vue'
+import { createRenderer, createSSRApp, h, nextTick, ssrContextKey, type Component } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { createAppRouter } from '../src/router'
@@ -27,6 +27,9 @@ import Overview from '../src/views/Overview.vue'
 import Budget from '../src/views/Budget.vue'
 import PaidRow from '../src/components/PaidRow.vue'
 import DangerZone from '../src/components/kit/DangerZone.vue'
+import CreditSheet from '../src/components/capital/CreditSheet.vue'
+import PayoffSheet from '../src/components/capital/PayoffSheet.vue'
+import { screenMixin } from '../src/test/screenState'
 
 /**
  * Блок 2 «Правка денег» (PV-09…PV-13): два телефона — два стора Pinia на одном
@@ -46,7 +49,8 @@ describe('PV-09: кит окон', () => {
     expect(css).toMatch(/--color-scrim: var\(--scrim\)/)
 
     // Экраны блока — без литерального затемнения.
-    for (const file of ['../src/views/Capital.vue', '../src/components/PaidRow.vue']) {
+    const sheets = ['AccountSheet', 'CreditSheet', 'ObligationSheet', 'PayoffSheet'].map((n) => `../src/components/capital/${n}.vue`)
+    for (const file of ['../src/views/Capital.vue', '../src/components/PaidRow.vue', ...sheets]) {
       const src = readFileSync(resolve(import.meta.dirname, file), 'utf-8')
       expect(src).not.toMatch(/bg-black|fixed inset-0|<select/)
     }
@@ -232,7 +236,12 @@ describe('e2e / Блок 2 паритета — правка денег на д�
    * наблюдатели не работают, а закрытие окна чистит адрес именно наблюдателем.
    * Возвращает состояние экрана (setupState).
    */
-  function mountLive(pinia: Pinia, router: ReturnType<typeof createAppRouter>) {
+  function mountLive(
+    pinia: Pinia,
+    router: ReturnType<typeof createAppRouter>,
+    /** Окно Капитала само по себе (Н-3) и его пропсы — живые, от состояния экрана. */
+    sheet?: { view: Component; props: () => Record<string, unknown> },
+  ) {
     type N = { children: N[]; parent: N | null; text?: string }
     const node = (text?: string): N => ({ children: [], parent: null, text })
     const detach = (n: N) => {
@@ -262,7 +271,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       querySelector: () => null,
     })
     setActivePinia(pinia)
-    const app = createApp(Capital)
+    const app = createApp(sheet ? { render: () => h(sheet.view, sheet.props()) } : Capital)
     app.use(router)
     // Vitest в Node собирает .vue для SSR: setup пишет свой модуль в SSR-контекст, а
     // рендер у компонента серверный. Нужен только setup с наблюдателями — рисовать нечего.
@@ -271,7 +280,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       if (!/missing template or render function/.test(msg)) console.warn(msg)
     }
     const vm = app.mount(node())
-    return vm.$.setupState as Record<string, unknown>
+    return (sheet ? vm.$.subTree.component! : vm.$).setupState as Record<string, unknown>
   }
 
   it('PV-12 (Б-15): окно, открытое по адресу, при закрытии чистит адрес — тот же «+» открывает его снова', async () => {
@@ -342,7 +351,9 @@ describe('e2e / Блок 2 паритета — правка денег на д�
 
     const router = createAppRouter(createMemoryHistory())
     await router.push('/capital?credit=loan')
-    const screenA = mountLive(A.pinia, router)
+    const capitalA = mountLive(A.pinia, router)
+    // Окно кредита — `CreditSheet` (Н-3): открытый кредит берёт у экрана.
+    const screenA = mountLive(A.pinia, router, { view: CreditSheet, props: () => ({ creditId: capitalA.selectedCreditId }) })
     expect(screenA.creditDue).toBe(null)
 
     at('2026-09-24T09:00:00Z')
@@ -408,12 +419,10 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       await router.isReady()
       const app = createSSRApp(view, opts.props)
       app.use(router)
+      app.mixin(screenMixin(opts.state, opts.act))
       app.mixin({
         created() {
-          if (this.$.parent === null) {
-            Object.assign(this.$.setupState, opts.state ?? {})
-            opts.act?.(this.$.setupState)
-          } else if (opts.danger && this.$.type === DangerZone) {
+          if (opts.danger && this.$.type === DangerZone) {
             if (opts.danger === 'open') this.$.setupState.confirm = true
             else this.$.emit('confirm')
           }
@@ -777,20 +786,22 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       await router.push('/capital?payoff=loan')
       const screenA = mountLive(A.pinia, router)
       expect(screenA.payoffCreditId).toBe('loan')
-      screenA.payoffMode = 'once'
-      screenA.payoffAmount = '100 000'
-      screenA.applyMode = 'payment'
+      // Калькулятор — окно `PayoffSheet` (Н-3): открытый кредит берёт у экрана.
+      const payoffA = mountLive(A.pinia, router, { view: PayoffSheet, props: () => ({ creditId: screenA.payoffCreditId }) })
+      payoffA.payoffMode = 'once'
+      payoffA.payoffAmount = '100 000'
+      payoffA.applyMode = 'payment'
       await nextTick()
       // 1 000 000 − 100 000 = 900 000.
-      expect(screenA.applyPlan).toMatchObject({ paid: 100_000, left: 900_000 })
+      expect(payoffA.applyPlan).toMatchObject({ paid: 100_000, left: 900_000 })
       // Другой кредит — чистый калькулятор: сумма пустая, режим «каждый месяц», и
       // «Снизить платёж» кредита «Кредит» не переходит к рассрочке (клинап).
       screenA.payoffCreditId = inst.id
       await nextTick()
-      expect(screenA.payoffAmount).toBe('')
-      expect(screenA.payoffMode).toBe('monthly')
-      expect(screenA.applyMode).toBe('term')
-      expect(screenA.applyPlan).toBe(null)
+      expect(payoffA.payoffAmount).toBe('')
+      expect(payoffA.payoffMode).toBe('monthly')
+      expect(payoffA.applyMode).toBe('term')
+      expect(payoffA.applyPlan).toBe(null)
 
       // Калькулятор рассрочки на A: 240 000 / 20 000 = 12 платежей, переплаты 0;
       // подсказка суммы — первый чип: половина платежа 10 000.

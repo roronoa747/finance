@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useFinanceStore } from '@/stores/finance'
+import { screenMixin } from '@/test/screenState'
 import {
   netWorth,
   prepayment,
@@ -416,11 +417,7 @@ describe('PV-10: модалка кредита и калькулятор дос�
     await router.isReady()
     const app = createSSRApp(Capital)
     app.use(router)
-    app.mixin({
-      created() {
-        if (this.$.parent === null) Object.assign(this.$.setupState, state)
-      },
-    })
+    app.mixin(screenMixin(state))
     return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
   }
 
@@ -612,13 +609,7 @@ describe('PV-11: форма платежа и модалка обязатель�
     await router.isReady()
     const app = createSSRApp(Capital)
     app.use(router)
-    app.mixin({
-      created() {
-        if (this.$.parent !== null) return
-        Object.assign(this.$.setupState, state)
-        probe?.(this.$.setupState)
-      },
-    })
+    app.mixin(screenMixin(state, probe))
     return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
   }
 
@@ -806,13 +797,7 @@ describe('PV-12: счета — валютный, удаление, тексты
     await router.isReady()
     const app = createSSRApp(Capital)
     app.use(router)
-    app.mixin({
-      created() {
-        if (this.$.parent !== null) return
-        Object.assign(this.$.setupState, state)
-        probe?.(this.$.setupState)
-      },
-    })
+    app.mixin(screenMixin(state, probe))
     return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
   }
 
@@ -990,11 +975,7 @@ describe('PV-13: разбивка и график в Капитале (SSR)', ()
     await router.isReady()
     const app = createSSRApp(Capital)
     app.use(router)
-    app.mixin({
-      created() {
-        if (this.$.parent === null) Object.assign(this.$.setupState, state)
-      },
-    })
+    app.mixin(screenMixin(state))
     return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
   }
 
