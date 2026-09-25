@@ -188,6 +188,31 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     expect(plainRow).not.toContain('hover:bg-surface-2')
   })
 
+  it('PV-13: у кредита — в долг и банку: в строке по графику, после отметки — по записи, в листе «оплачено»', async () => {
+    const store = family()
+    // 1 000 000 × 0,33 / 12 = 27 500 банку, 30 500 в долг.
+    const before = await row(loan)
+    expect(before).toContain(`в долг ${plain(30_500)}`)
+    expect(before).toContain(`банку ${plain(27_500)}`)
+    // Аренда — не кредит: разбивки нет.
+    expect(await row(rent)).not.toContain('в долг')
+
+    store.markPaid('credit', 'loan', 'a', { amount: 60_000, accountId: 'card' })
+    const after = await row(loan)
+    expect(after).toContain(`в долг ${plain(32_500)}`)
+    expect(after).toContain(`банку ${plain(27_500)}`)
+
+    const app = createSSRApp(PaidRow, loan)
+    app.mixin({
+      created() {
+        if (this.$.parent === null) this.$.setupState.sheet = 'paid'
+      },
+    })
+    const sheet = await renderToString(app)
+    expect(sheet).toContain('Из них')
+    expect(sheet).toContain(`в долг ${plain(32_500)} · банку ${plain(27_500)}`)
+  })
+
   it('PV-09: в Бюджете платёж — «−N», как соседние строки; на Обзоре — сумма с ₸', async () => {
     const store = family()
     const budget = await page(Budget, '/budget', { initialView: 'list' })

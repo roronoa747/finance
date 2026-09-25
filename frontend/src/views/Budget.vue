@@ -16,6 +16,7 @@ import {
 } from '@/lib/dates'
 import {
   budgetAmounts,
+  budgetInterest,
   duesTotal,
   monthDues,
   nextSalaryChange,
@@ -89,6 +90,8 @@ const dues = computed(() =>
 // Кредиты — производные: закрытый отметками в «Кредиты» не входит (PV-01).
 const amounts = computed(() => budgetAmounts({ ...financeStore.householdDoc, credits: financeStore.credits }))
 const income = computed(() => amounts.value.income)
+// Сколько из «Кредитов» уходит банку процентами (Р-8) — по тем же производным кредитам.
+const interest = computed(() => budgetInterest(financeStore.credits))
 const free = computed(() => amounts.value.d5)
 
 const events = computed<EventItem[]>(() => {
@@ -227,6 +230,9 @@ function handleD4Commit(text: string) {
               <div class="text-[14.5px] font-medium text-ink">{{ c.name }}</div>
               <div class="text-[12.5px] text-ink-3">
                 {{ c.key !== 'd4' ? DERIVED_NOTE[c.key] : c.note }}
+              </div>
+              <div v-if="c.key === 'd2' && interest > 0" class="text-[12px] text-ink-3 num">
+                из них проценты банку {{ money(interest) }} в месяц
               </div>
             </div>
             <div class="text-right">

@@ -14,6 +14,7 @@ import {
   nextObligationDue,
   paidFor,
   payableAccounts,
+  paymentSplit,
   type ScheduledKind,
 } from '@/lib/finance'
 import { cn } from '@/lib/utils'
@@ -78,6 +79,9 @@ const due = computed(() => {
 
 /** Сумма в строке: у отмеченного — из отметки. */
 const shown = computed(() => (record.value ? record.value.amount : due.value))
+
+/** Кредит: сколько из суммы в долг и сколько банку — у отмеченного по записи (Р-8). */
+const split = computed(() => (credit.value && shown.value > 0 ? paymentSplit(record.value, credit.value, due.value) : null))
 
 /** Следующий неоплаченный платёж после этого месяца. */
 const next = computed(() => {
@@ -178,6 +182,10 @@ const unmarkNote = computed(() => {
         {{ minus ? `−${plain(shown)}` : money(shown) }}
       </span>
       <span v-if="estimate && !record" class="block text-[12px] text-ink-3">оценка</span>
+      <template v-if="split">
+        <span class="block text-[11.5px] text-ink-3 num">в долг {{ plain(split.body) }}</span>
+        <span class="block text-[11.5px] text-ink-3 num">банку {{ plain(split.interest) }}</span>
+      </template>
     </template>
 
     <template v-if="record || (canMark && due > 0)" #action>
@@ -227,6 +235,10 @@ const unmarkNote = computed(() => {
         <div class="flex justify-between gap-3">
           <span class="text-ink-2">Сумма</span>
           <b class="num text-ink">{{ money(record.amount) }}</b>
+        </div>
+        <div v-if="split" class="flex justify-between gap-3">
+          <span class="text-ink-2">Из них</span>
+          <b class="num text-ink">в долг {{ plain(split.body) }} · банку {{ plain(split.interest) }}</b>
         </div>
         <div class="flex justify-between gap-3">
           <span class="text-ink-2">Счёт</span>

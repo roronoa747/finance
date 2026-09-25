@@ -987,6 +987,108 @@ export function prepaySaved(payments: Payment[], credits: Credit[]): number {
     .reduce((sum, p) => sum + (p.saved ?? 0), 0)
 }
 
+/* ---------------- «в долг / банку» и график платежей (Р-8) ---------------- */
+
+/** Досрочка — вся в тело; платёж графика — по снимку тела в записи. */
+const recordBody = (p: Payment) => (p.kind === 'prepay' ? p.amount : (p.principal ?? 0))
+
+/**
+ * Сколько из платежа ушло в долг и сколько банку. Отмеченный — по записи: тело в
+ * ней снимок на момент оплаты, пересчитывать от нынешнего остатка нечестно.
+ * Неотмеченный — по графику (`creditSplit`) от остатка кредита сейчас (кредит —
+ * производный, из геттера стора).
+ */
+export function paymentSplit(record: Payment | null, credit: Credit, due: number) {
+  if (record) {
+    const body = recordBody(record)
+    return { body, interest: record.amount - body }
+  }
+  const s = creditSplit(credit.principal, credit.annualRate, due)
+  return { body: s.body, interest: s.interest }
+}
+
+/** За всё время по кредиту: сколько ушло в долг и банку, сколько было платежей (с досрочками). */
+export function creditTotals(payments: Payment[], creditId: string) {
+  const list = countedPayments(payments).filter(
+    (p) => p.targetId === creditId && (p.kind === 'credit' || p.kind === 'prepay'),
+  )
+  const body = list.reduce((a, p) => a + recordBody(p), 0)
+  return { body, interest: list.reduce((a, p) => a + p.amount, 0) - body, count: list.length }
+}
+
+/**
+ * Проценты банку в месяц по открытым кредитам — часть «Кредитов» Бюджета. Та же
+ * разбивка, что у строки кредита: платёж меньше процентов — банку уходит весь платёж.
+ * Кредиты — производные.
+ */
+export const budgetInterest = (credits: Credit[]) =>
+  openCredits(credits).reduce((a, c) => a + creditSplit(c.principal, c.annualRate, c.payment).interest, 0)
+
+export type ScheduleRow = {
+  period: string
+  /** Число месяца; платёж 31-го в коротком месяце — в его последний день. */
+  day: number
+  /** Платёж графика: у оплаченного — из записи. */
+  amount: number
+  body: number
+  interest: number
+  /** Досрочка в этом месяце: применённая (запись) или запланированная (`extra`). */
+  extra: number
+  /** Остаток долга после этого месяца. */
+  left: number
+  paid: boolean
+}
+
+/** Дальше графика не считаем: платёж меньше процентов долг не закрывает никогда. */
+const SCHEDULE_CAP = 600
+
+/**
+ * График платежей по кредиту с месяца `from` до закрытия (не больше 600 строк).
+ * Остаток — производный: отметки и досрочки в нём уже учтены. Отмеченный месяц —
+ * по записи; неотмеченные считаются помесячно (`creditSplit`) от остатка, поэтому
+ * Σ тела неоплаченных строк и запланированных досрочек = остаток. `extra` —
+ * досрочки будущих месяцев (план): гасят тело до платежа своего месяца. Уже
+ * применённые досрочки видны в строке своего месяца, но второй раз не вычитаются.
+ */
+export function creditSchedule(
+  credit: Credit,
+  payments: Payment[] = [],
+  opts: { from?: string; extra?: { period: string; amount: number }[] } = {},
+): ScheduleRow[] {
+  const from = opts.from ?? monthKey()
+  const own = countedPayments(payments).filter((p) => p.targetId === credit.id)
+  const applied = (period: string) =>
+    own.filter((p) => p.kind === 'prepay' && p.period === period).reduce((a, p) => a + p.amount, 0)
+  const planned = (period: string) =>
+    (opts.extra ?? []).filter((x) => x.period === period).reduce((a, x) => a + Math.max(0, Math.round(x.amount)), 0)
+
+  let left = Math.max(0, Math.round(credit.principal))
+  const rows: ScheduleRow[] = []
+  for (let i = 0; i < SCHEDULE_CAP; i++) {
+    const period = addMonths(from, i)
+    const day = Math.min(credit.day, daysInMonth(period))
+    const rec = own.find((p) => p.kind === 'credit' && p.period === period)
+    if (rec) {
+      const body = recordBody(rec)
+      rows.push({ period, day, amount: rec.amount, body, interest: rec.amount - body, extra: applied(period), left, paid: true })
+      continue
+    }
+    if (left <= 0) break
+    const extra = Math.min(left, planned(period))
+    left -= extra
+    const s = creditSplit(left, credit.annualRate, credit.payment)
+    left -= s.body
+    rows.push({ period, day, amount: s.amount, body: s.body, interest: s.interest, extra: extra + applied(period), left, paid: false })
+  }
+  // Оплаченные месяцы перед первым неоплаченным уже вычтены из остатка: остаток после
+  // каждого из них — обратным ходом от первого неоплаченного.
+  const first = rows.findIndex((r) => !r.paid)
+  for (let j = (first < 0 ? rows.length : first) - 2; j >= 0; j--) {
+    rows[j].left = rows[j + 1].left + rows[j + 1].body + rows[j + 1].extra
+  }
+  return rows
+}
+
 export type Due = {
   kind: ScheduledKind
   targetId: string

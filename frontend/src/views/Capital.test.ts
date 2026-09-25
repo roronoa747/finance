@@ -790,3 +790,119 @@ describe('PV-12: счета — валютный, удаление, тексты
     expect(await render('/capital', { accountOpen: true, newAccountKind: 'deposit' })).toContain('Ставка по вкладу, % годовых — если есть')
   })
 })
+
+describe('PV-13: разбивка и график в Капитале (SSR)', () => {
+  const T0 = '2026-09-01T00:00:00.000Z'
+
+  beforeEach(() => {
+    const storage = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  async function family() {
+    const { useAuthStore } = await import('@/stores/auth')
+    const { defaultSyncDoc } = await import('@/stores/finance')
+    useAuthStore().setAuthData({
+      token: 't',
+      user: { id: 'u', email: 'u@example.com', created_at: T0 },
+      household: { id: 'h', name: 'Семья', created_by: 'u', created_at: T0 },
+      member: { household_id: 'h', user_id: 'u', slot: 'a', display_name: 'Ильяс', role: 'member', joined_at: T0 },
+    })
+    const store = useFinanceStore()
+    store.setHouseholdDoc(
+      {
+        ...defaultSyncDoc(),
+        setupDoneAt: T0,
+        people: [{ id: 'a', name: 'Ильяс', salary: 700_000, payday: 10, updatedAt: T0 }],
+        accounts: [{ id: 'card', name: 'Kaspi Gold', note: '', amount: 1_000_000, amountSetAt: T0, kind: 'card', updatedAt: T0 }],
+        credits: [
+          { id: 'loan', name: 'Кредит', note: '', principal: 1_000_000, principalSetAt: T0, annualRate: 0.33, payment: 58_000, day: 15, updatedAt: T0 },
+        ],
+      },
+      1,
+    )
+    return store
+  }
+
+  async function render(path: string, state: Record<string, unknown> = {}) {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('vue/server-renderer')
+    const { createRouter, createMemoryHistory } = await import('vue-router')
+    const Capital = (await import('./Capital.vue')).default
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/capital', component: Capital }] })
+    await router.push(path)
+    await router.isReady()
+    const app = createSSRApp(Capital)
+    app.use(router)
+    app.mixin({
+      created() {
+        if (this.$.parent === null) Object.assign(this.$.setupState, state)
+      },
+    })
+    return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
+  }
+
+  it('строка кредита: следующий платёж — в долг и банку; после отметки — следующий месяц от нового остатка', async () => {
+    const { plain } = await import('@/lib/money')
+    const { creditSplit } = await import('@/lib/finance')
+    const store = await family()
+    expect(await render('/capital')).toContain(`платёж ${plain(58_000)} ₸: в долг ${plain(30_500)}, банку ${plain(27_500)}`)
+
+    store.markPaid('credit', 'loan', 'a', { accountId: 'card' })
+    const next = creditSplit(969_500, 0.33, 58_000)
+    expect(await render('/capital')).toContain(`платёж ${plain(58_000)} ₸: в долг ${plain(next.body)}, банку ${plain(next.interest)}`)
+  })
+
+  it('модалка: «За всё время» = creditTotals (с досрочкой); у досрочки — в долг и банку', async () => {
+    const { money, plain } = await import('@/lib/money')
+    const { creditTotals } = await import('@/lib/finance')
+    const store = await family()
+    expect(await render('/capital?credit=loan')).not.toContain('За всё время')
+
+    store.markPaid('credit', 'loan', 'a', { accountId: 'card' })
+    store.applyPrepayment('loan', 'a', { amount: 100_000, mode: 'term', accountId: 'card' })
+    const totals = creditTotals(store.payments, 'loan')
+    expect(totals).toEqual({ body: 130_500, interest: 27_500, count: 2 })
+    const html = await render('/capital?credit=loan')
+    expect(html).toContain(`За всё время: в долг ${money(130_500)}, банку ${money(27_500)} (2 платежа)`)
+
+    const payoff = await render('/capital?payoff=loan')
+    expect(payoff).toContain(`в долг ${plain(100_000)} · банку 0`)
+  })
+
+  it('график платежей: свёрнут; развёрнутый — оплаченный месяц помечен, Σ «в долг» неоплаченных = остаток', async () => {
+    const { plain } = await import('@/lib/money')
+    const { creditSchedule } = await import('@/lib/finance')
+    const store = await family()
+    store.markPaid('credit', 'loan', 'a', { accountId: 'card' })
+
+    const closed = await render('/capital?credit=loan')
+    expect(closed).toContain('График платежей')
+    expect(closed).toContain('Показать')
+    expect(closed).not.toContain('Остаток</span>')
+
+    const html = await render('/capital?credit=loan', { scheduleOpen: true })
+    const rows = creditSchedule(store.credits[0], store.payments)
+    expect(rows[0]).toMatchObject({ period: '2026-09', paid: true })
+    expect(rows.filter((r) => !r.paid).reduce((a, r) => a + r.body, 0)).toBe(969_500)
+    // Отметка «оплачен» — одна, в ячейке сентября.
+    expect(html.match(/aria-label="оплачен"/g)).toHaveLength(1)
+    const mark = html.indexOf('aria-label="оплачен"')
+    expect(html.slice(mark, html.indexOf('</span>', mark))).toContain('сен 2026')
+    expect(html).toContain('окт 2026')
+    expect(html).toContain(plain(rows[1].left))
+    expect(html).toContain(plain(rows.at(-1)!.amount))
+  })
+})

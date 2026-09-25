@@ -25,6 +25,10 @@ import {
   creditSplit,
   creditOutlook,
   fxToTenge,
+  paymentSplit,
+  creditTotals,
+  budgetInterest,
+  creditSchedule,
   creditResplit,
   creditDueAmount,
   creditDueIn,
@@ -1162,5 +1166,124 @@ describe('PV-12 — валютный счёт', () => {
     expect(fxToTenge(100, 512.34)).toBe(51_234)
     expect(Number.isInteger(fxToTenge(333, 441.89))).toBe(true)
     expect(fxToTenge(0, 512.34)).toBe(0)
+  })
+})
+
+describe('PV-13 — «в долг / банку» и график платежей', () => {
+  const T0 = '2026-09-01T00:00:00.000Z'
+  const loan: Credit = { id: 'loan', name: 'Кредит', note: '', principal: 1_000_000, principalSetAt: T0, annualRate: 0.33, payment: 58_000, day: 15, updatedAt: T0 }
+  const pay = (p: Partial<Payment> & Pick<Payment, 'id' | 'kind' | 'targetId' | 'period' | 'amount'>): Payment => ({
+    accountId: null, by: 'a', at: '2026-09-15T08:00:00.000Z', updatedAt: '2026-09-15T08:00:00.000Z', ...p,
+  })
+
+  it('paymentSplit: отмеченный — по снимку записи, неотмеченный — по графику от остатка', () => {
+    // Снимок: 58 000 = 30 500 в долг + 27 500 банку — даже если остаток с тех пор другой.
+    const rec = pay({ id: 'r', kind: 'credit', targetId: 'loan', period: '2026-09', amount: 58_000, principal: 30_500 })
+    expect(paymentSplit(rec, { ...loan, principal: 500_000 }, 58_000)).toEqual({ body: 30_500, interest: 27_500 })
+    // По графику: проценты 1 000 000 × 0,33 / 12 = 27 500.
+    expect(paymentSplit(null, loan, 58_000)).toEqual({ body: 30_500, interest: 27_500 })
+    // Досрочка — вся в тело.
+    const pre = pay({ id: 'p', kind: 'prepay', targetId: 'loan', period: '2026-09', amount: 100_000, principal: 100_000 })
+    expect(paymentSplit(pre, loan, 0)).toEqual({ body: 100_000, interest: 0 })
+  })
+
+  it('creditTotals: учтённые записи этого кредита, досрочка целиком в тело', () => {
+    const list = [
+      pay({ id: 'a1', kind: 'credit', targetId: 'loan', period: '2026-08', amount: 58_000, principal: 30_000 }),
+      pay({ id: 'a2', kind: 'credit', targetId: 'loan', period: '2026-09', amount: 58_000, principal: 30_500 }),
+      // Двойная отметка того же месяца с другого телефона — одна оплата.
+      pay({ id: 'a3', kind: 'credit', targetId: 'loan', period: '2026-09', amount: 58_000, principal: 30_500, at: '2026-09-16T08:00:00.000Z' }),
+      pay({ id: 'a4', kind: 'prepay', targetId: 'loan', period: '2026-09', amount: 100_000, principal: 100_000 }),
+      // Снятая и чужая — не считаются.
+      pay({ id: 'a5', kind: 'credit', targetId: 'loan', period: '2026-07', amount: 58_000, principal: 29_000, deletedAt: T0 }),
+      pay({ id: 'a6', kind: 'credit', targetId: 'bank', period: '2026-09', amount: 91_680, principal: 76_680 }),
+      pay({ id: 'a7', kind: 'obligation', targetId: 'loan', period: '2026-09', amount: 1_000 }),
+    ]
+    expect(creditTotals(list, 'loan')).toEqual({ body: 160_500, interest: 55_500, count: 3 })
+    expect(creditTotals([], 'loan')).toEqual({ body: 0, interest: 0, count: 0 })
+  })
+
+  it('budgetInterest: проценты месяца открытых кредитов; закрытый и 0% — ноль', () => {
+    const bank: Credit = { ...loan, id: 'bank', principal: 1_000_000, annualRate: 0.18, payment: 91_680 }
+    const closed: Credit = { ...loan, id: 'closed', principal: 0 }
+    const zero: Credit = { ...loan, id: 'zero', annualRate: 0, payment: 25_000 }
+    expect(budgetInterest([closed])).toBe(0)
+    expect(budgetInterest([zero])).toBe(0)
+    expect(budgetInterest([loan, bank, closed, zero])).toBe(27_500 + 15_000)
+    // Удалённый — тоже нет.
+    expect(budgetInterest([{ ...loan, deletedAt: T0 }])).toBe(0)
+  })
+
+  it('creditSchedule: Σ тела = остаток, последний платёж — остаток с процентами, всё целое', () => {
+    const rows = creditSchedule(loan, [], { from: '2026-09' })
+    expect(rows[0]).toMatchObject({ period: '2026-09', day: 15, amount: 58_000, body: 30_500, interest: 27_500, left: 969_500, paid: false })
+    expect(rows.reduce((a, r) => a + r.body, 0)).toBe(1_000_000)
+    expect(rows.at(-1)!.left).toBe(0)
+    const last = rows.at(-1)!
+    const before = rows.at(-2)!.left
+    expect(last.amount).toBe(last.body + last.interest)
+    expect(last.amount).toBeLessThanOrEqual(before + Math.round((before * 0.33) / 12))
+    expect(last.body).toBe(before)
+    for (const r of rows) for (const v of [r.amount, r.body, r.interest, r.left]) expect(Number.isInteger(v)).toBe(true)
+    // День 31 в коротком месяце — последний день.
+    expect(creditSchedule({ ...loan, day: 31 }, [], { from: '2026-09' })[0].day).toBe(30)
+  })
+
+  it('creditSchedule: отмеченный месяц — по записи и paid; остаток кредита уже без него', () => {
+    const rec = pay({ id: 'r', kind: 'credit', targetId: 'loan', period: '2026-09', amount: 60_000, principal: 32_500 })
+    const derived = { ...loan, principal: creditBalance(loan, [rec]) } // как отдаёт стор
+    expect(derived.principal).toBe(967_500)
+    const rows = creditSchedule(derived, [rec], { from: '2026-09' })
+    expect(rows[0]).toMatchObject({ period: '2026-09', amount: 60_000, body: 32_500, interest: 27_500, left: 967_500, paid: true })
+    expect(rows[1]).toMatchObject({ period: '2026-10', paid: false })
+    expect(rows.filter((r) => !r.paid).reduce((a, r) => a + r.body, 0)).toBe(967_500)
+  })
+
+  it('creditSchedule: применённая досрочка видна в своём месяце, но не вычитается второй раз; досрочки плана сокращают график', () => {
+    const pre = pay({ id: 'p', kind: 'prepay', targetId: 'loan', period: '2026-09', amount: 100_000, principal: 100_000 })
+    const derived = { ...loan, principal: creditBalance(loan, [pre]) }
+    const rows = creditSchedule(derived, [pre], { from: '2026-09' })
+    expect(rows[0].extra).toBe(100_000)
+    expect(rows.reduce((a, r) => a + r.body, 0)).toBe(900_000)
+
+    const plain = creditSchedule(loan, [], { from: '2026-09' })
+    const extra = [{ period: '2026-10', amount: 200_000 }, { period: '2027-01', amount: 150_000 }]
+    const planned = creditSchedule(loan, [], { from: '2026-09', extra })
+    expect(planned.length).toBeLessThan(plain.length)
+    expect(planned[1].extra).toBe(200_000)
+    expect(planned.reduce((a, r) => a + r.body + (r.paid ? 0 : r.extra), 0)).toBe(1_000_000)
+    // Досрочка больше остатка закрывает долг в своём месяце.
+    const all = creditSchedule(loan, [], { from: '2026-09', extra: [{ period: '2026-10', amount: 5_000_000 }] })
+    expect(all).toHaveLength(2)
+    expect(all[1]).toMatchObject({ amount: 0, extra: 969_500, left: 0 })
+  })
+
+  it('creditSchedule: платёж не покрывает проценты — 600 строк, остаток не растёт; закрытый — пусто', () => {
+    const bad: Credit = { ...loan, annualRate: 0.36, payment: 25_000 }
+    const rows = creditSchedule(bad, [], { from: '2026-09' })
+    expect(rows).toHaveLength(600)
+    expect(rows.every((r) => r.left === 1_000_000 && r.body === 0 && r.interest === 25_000)).toBe(true)
+    expect(creditSchedule({ ...loan, principal: 0 }, [], { from: '2026-09' })).toEqual([])
+  })
+
+  it('creditSchedule на случайных входах: целые, Σ тела = остаток, строки = creditOutlook', () => {
+    let seed = 7
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+    for (let i = 0; i < 300; i++) {
+      const principal = Math.round(10_000 + rnd() * 5_000_000)
+      const annualRate = Math.round(rnd() * 600) / 1000
+      const interest = Math.round((principal * annualRate) / 12)
+      const payment = interest + Math.round(1_000 + rnd() * principal * 0.2)
+      const c = { ...loan, principal, annualRate, payment }
+      const rows = creditSchedule(c, [], { from: '2026-09' })
+      expect(rows.reduce((a, r) => a + r.body, 0)).toBe(principal)
+      expect(rows.at(-1)!.left).toBe(0)
+      for (const r of rows) {
+        expect(Number.isInteger(r.amount) && Number.isInteger(r.body) && Number.isInteger(r.interest)).toBe(true)
+        expect(r.amount).toBe(r.body + r.interest)
+      }
+      // Помесячный график — с округлением процентов; непрерывная оценка — в пределах платежа.
+      expect(Math.abs(rows.length - creditOutlook(c).months)).toBeLessThanOrEqual(1)
+    }
   })
 })

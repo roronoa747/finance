@@ -10,6 +10,7 @@ import {
   PhPlus,
   PhCalendarPlus,
   PhFolderSimple,
+  PhCheck,
 } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
@@ -31,6 +32,8 @@ import {
   annuityTotal,
   costliestCredits,
   creditOutlook,
+  creditSchedule,
+  creditTotals,
   fxToTenge,
   debtCost,
   goalSavings,
@@ -46,6 +49,7 @@ import {
   liveGroups,
   liveObligations,
   payableAccounts,
+  paymentSplit,
   plannedChange,
   lumpPlan,
   lumpSum,
@@ -139,6 +143,21 @@ function groupNote(g: Obligation): string {
 function paymentsLeft(c: Credit): string {
   const n = Math.ceil(annuityMonths(c.principal, c.annualRate, c.payment))
   return `${n} ${plural(n, 'платёж', 'платежа', 'платежей')}`
+}
+
+/** Строка кредита: ставка, сколько платежей и следующий платёж — в долг и банку (Р-8). */
+function creditNote(c: Credit): string {
+  const head = `${c.annualRate > 0 ? 'ГЭСВ ' + ratePct(c.annualRate, 1) : 'рассрочка'} · ${paymentsLeft(c)}`
+  const due = nextCreditDue(c, financeStore.payments)
+  if (!due) return head
+  const split = paymentSplit(null, c, due.amount)
+  return `${head} · платёж ${plain(due.amount)} ₸: в долг ${plain(split.body)}, банку ${plain(split.interest)}`
+}
+
+/** «сен 2026» — месяц в графике платежей. */
+function scheduleMonth(period: string): string {
+  const { year, month } = parseMonthKey(period)
+  return `${MONTHS_NOM[month].slice(0, 3).toLowerCase()} ${year}`
 }
 
 function obligationNote(o: Obligation, members: Person[]): string {
@@ -519,6 +538,15 @@ const creditSaved = useSavedMark(
   () => activeCredit.value?.updatedAt,
 )
 const activeCreditOutlook = computed(() => (activeCredit.value ? creditOutlook(activeCredit.value) : null))
+const activeCreditTotals = computed(() =>
+  activeCredit.value ? creditTotals(financeStore.payments, activeCredit.value.id) : null,
+)
+// График — свёрнут по умолчанию и при смене кредита.
+const scheduleOpen = ref(false)
+watch(selectedCreditId, () => (scheduleOpen.value = false))
+const activeSchedule = computed(() =>
+  activeCredit.value && scheduleOpen.value ? creditSchedule(activeCredit.value, financeStore.payments) : [],
+)
 /** Ставка в поле правки — как в React: проценты с одним знаком. */
 const rateText = (r: number) => (r * 100).toFixed(1).replace('.', ',')
 
@@ -870,7 +898,7 @@ function applyPrepay() {
         v-for="c in credits"
         :key="c.id"
         :title="c.name"
-        :note="`${c.annualRate > 0 ? 'ГЭСВ ' + ratePct(c.annualRate, 1) : 'рассрочка'} · ${paymentsLeft(c)}`"
+        :note="creditNote(c)"
         :value="money(c.principal)"
         :sub="
           annuityTotal(c.principal, c.annualRate, c.payment) - c.principal > 0
@@ -1277,6 +1305,15 @@ function applyPrepay() {
           />
         </div>
 
+        <p
+          v-if="activeCreditTotals && activeCreditTotals.count > 0"
+          class="-mt-1 mb-3 px-1 text-[12.5px] leading-relaxed text-ink-2 num"
+        >
+          За всё время: в долг {{ money(activeCreditTotals.body) }}, банку {{ money(activeCreditTotals.interest) }}
+          ({{ activeCreditTotals.count }}
+          {{ plural(activeCreditTotals.count, 'платёж', 'платежа', 'платежей') }})
+        </p>
+
         <!-- Viewer видит цифры, но не правит (Р-12, матрица §3) -->
         <div
           v-if="authStore.isViewer"
@@ -1353,6 +1390,42 @@ function applyPrepay() {
           >
             При таком платеже долг не закрывается: проценты съедают его целиком.
             Проверьте остаток, платёж и ставку.
+          </div>
+
+          <!-- График платежей (Р-8): свёрнут; платёж меньше процентов — графика нет, есть текст выше -->
+          <div v-if="activeCreditOutlook.closes" class="mb-3 rounded-xl border border-line px-3.5 py-2.5">
+            <button
+              type="button"
+              class="flex w-full items-center justify-between gap-2 text-left cursor-pointer"
+              :aria-expanded="scheduleOpen"
+              @click="scheduleOpen = !scheduleOpen"
+            >
+              <span class="text-[13px] font-medium text-ink">График платежей</span>
+              <span class="text-[12.5px] text-brand">{{ scheduleOpen ? 'Свернуть' : 'Показать' }}</span>
+            </button>
+            <div
+              v-if="scheduleOpen"
+              class="mt-2.5 grid grid-cols-[auto_1fr_1fr_1fr_1fr] gap-x-2 gap-y-1 text-right text-[11.5px] num"
+            >
+              <span class="text-left text-ink-3">Месяц</span>
+              <span class="text-ink-3">Платёж</span>
+              <span class="text-ink-3">В долг</span>
+              <span class="text-ink-3">Банку</span>
+              <span class="text-ink-3">Остаток</span>
+              <template v-for="r in activeSchedule" :key="r.period">
+                <span :class="cn('flex items-center gap-1 text-left', r.paid ? 'text-brand' : 'text-ink-2')">
+                  <PhCheck v-if="r.paid" :size="11" weight="bold" aria-label="оплачен" />
+                  {{ scheduleMonth(r.period) }}
+                </span>
+                <span :class="r.paid ? 'text-ink-3' : 'text-ink'">{{ plain(r.amount) }}</span>
+                <span :class="r.paid ? 'text-ink-3' : 'text-ink'">{{ plain(r.body) }}</span>
+                <span :class="r.paid ? 'text-ink-3' : 'text-ink'">{{ plain(r.interest) }}</span>
+                <span :class="r.paid ? 'text-ink-3' : 'text-ink'">{{ plain(r.left) }}</span>
+                <span v-if="r.extra > 0" class="col-span-5 -mt-0.5 text-right text-brand">
+                  досрочка {{ plain(r.extra) }}
+                </span>
+              </template>
+            </div>
           </div>
         </template>
 
@@ -1859,6 +1932,10 @@ function applyPrepay() {
                 {{ atLabel(p.at) }} · {{ p.mode === 'payment' ? 'снизили платёж' : 'сократили срок' }}
               </span>
               <b class="ml-auto num text-ink">{{ money(p.amount) }}</b>
+            </div>
+            <div class="text-ink-3 num">
+              в долг {{ plain(paymentSplit(p, activePayoffCredit, 0).body) }} · банку
+              {{ plain(paymentSplit(p, activePayoffCredit, 0).interest) }}
             </div>
             <div class="flex items-baseline gap-2">
               <span class="text-brand">не отдадим банку <span class="num">{{ money(p.saved ?? 0) }}</span></span>
