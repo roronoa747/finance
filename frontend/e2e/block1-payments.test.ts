@@ -1,13 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { setActivePinia, createPinia, type Pinia } from 'pinia'
-import { createSSRApp, type Component } from 'vue'
-import { renderToString } from 'vue/server-renderer'
-import { createMemoryHistory } from 'vue-router'
-import { createAppRouter } from '../src/router'
-import { useFinanceStore, defaultSyncDoc } from '../src/stores/finance'
+import { setActivePinia } from 'pinia'
+import { defaultSyncDoc } from '../src/stores/finance'
+import { at, phone, screen, setOnline, type FakeServer } from './support/family'
 import { ApiClient, ApiError } from '../src/api/client'
 import type { SyncDoc } from '../src/types/finance'
-import type { HouseholdDocResponse, ConflictResponse } from '../src/types/api'
 import {
   accountBalance,
   budgetAmounts,
@@ -28,50 +24,8 @@ import Capital from '../src/views/Capital.vue'
  * на одном фейковом сервере с ревизиями и 409, как в two-clients-sync.
  */
 describe('e2e / Блок 1 — отметки оплат на двух телефонах', () => {
-  let server: { rev: number; data: SyncDoc }
+  let server: FakeServer
   const T0 = '2026-09-01T00:00:00.000Z'
-
-  function backend(): ApiClient {
-    const snapshot = (): HouseholdDocResponse => ({
-      household_id: 'h-family',
-      rev: server.rev,
-      data: JSON.parse(JSON.stringify(server.data)),
-      updated_at: new Date().toISOString(),
-    })
-    return {
-      getHouseholdDoc: vi.fn(async () => snapshot()),
-      pushHouseholdDoc: vi.fn(async (rev: number, data: SyncDoc) => {
-        if (rev !== server.rev) {
-          const conflict: ConflictResponse<HouseholdDocResponse> = { error: 'conflict', server_doc: snapshot() }
-          throw new ApiError('conflict', 409, conflict)
-        }
-        server = { rev: server.rev + 1, data: JSON.parse(JSON.stringify(data)) }
-        return snapshot()
-      }),
-    } as unknown as ApiClient
-  }
-
-  const setOnline = (onLine: boolean) => vi.stubGlobal('navigator', { onLine })
-  const at = (iso: string) => vi.setSystemTime(new Date(iso))
-
-  async function phone() {
-    const pinia = createPinia()
-    setActivePinia(pinia)
-    const store = useFinanceStore()
-    const client = backend()
-    await store.pullHousehold(client)
-    return { store, client, pinia }
-  }
-
-  /** Экран глазами телефона: SSR-рендер на его сторе. */
-  async function screen(pinia: Pinia, view: Component, path: string) {
-    setActivePinia(pinia)
-    const router = createAppRouter(createMemoryHistory())
-    await router.push(path)
-    const app = createSSRApp(view)
-    app.use(router)
-    return renderToString(app)
-  }
 
   beforeEach(() => {
     // Таймеры подделаны: запланированный синк не уходит в настоящий apiClient.
@@ -104,8 +58,8 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
   })
 
   it('A отмечает аренду офлайн, B — кредит офлайн → после синка у обоих обе отметки, карта уменьшена на обе', async () => {
-    const A = await phone()
-    const B = await phone()
+    const A = await phone(server)
+    const B = await phone(server)
 
     setOnline(false)
     at('2026-09-24T08:00:00Z')
@@ -147,8 +101,8 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
         accountId: 'card', by: 'b', at: '2026-08-05T10:00:00.000Z', updatedAt: '2026-08-05T10:00:00.000Z',
       },
     ]
-    const A = await phone()
-    const B = await phone()
+    const A = await phone(server)
+    const B = await phone(server)
 
     setActivePinia(A.pinia)
     expect(await screen(A.pinia, Overview, '/')).toContain('Оплатил')
@@ -170,8 +124,8 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
   })
 
   it('RP-08: досрочка «сократить срок» меняет остаток и срок, показывает сэкономленное — у обоих, до тенге', async () => {
-    const A = await phone()
-    const B = await phone()
+    const A = await phone(server)
+    const B = await phone(server)
     const plan = lumpPlan(1_000_000, 0.33, 58_000, 200_000, 'term')!
 
     setActivePinia(A.pinia)
@@ -206,8 +160,8 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
       // Продление 5 октября — через 11 дней.
       sub('icloud', 'iCloud', 11_990, { every: 'year', month: 10, day: 5, keptAt: '2026-01-10T07:00:00.000Z' }),
     )
-    const A = await phone()
-    const B = await phone()
+    const A = await phone(server)
+    const B = await phone(server)
 
     let overview = await screen(A.pinia, Overview, '/')
     expect(overview).toContain('Оставить «iCloud»?')
@@ -250,8 +204,8 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
   })
 
   it('одну аренду отметили оба офлайн → записей две, списание одно; снятие у одного возвращает деньги обоим', async () => {
-    const A = await phone()
-    const B = await phone()
+    const A = await phone(server)
+    const B = await phone(server)
 
     setOnline(false)
     at('2026-09-24T08:00:00Z')
@@ -282,8 +236,8 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
   })
 
   it('настоящий 409: A пушит между GET и push телефона B → B сливает из server_doc и повторяет; обе отметки у всех, общая пара списана один раз', async () => {
-    const A = await phone()
-    const B = await phone()
+    const A = await phone(server)
+    const B = await phone(server)
 
     setOnline(false)
     at('2026-09-24T08:00:00Z')
@@ -347,8 +301,8 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
         planPct: 0, movements: [], updatedAt: T0,
       },
     ]
-    const A = await phone()
-    const B = await phone()
+    const A = await phone(server)
+    const B = await phone(server)
 
     setOnline(false)
     at('2026-09-24T08:00:00Z')
@@ -379,8 +333,8 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
   })
 
   it('A отметил аренду, B сверил карту с банком, A поправил сумму отметки → у обоих карта = сверенная, второго списания нет', async () => {
-    const A = await phone()
-    const B = await phone()
+    const A = await phone(server)
+    const B = await phone(server)
 
     at('2026-09-24T08:00:00Z')
     const record = A.store.markPaid('obligation', 'rent', 'a', { accountId: 'card' })!
@@ -451,7 +405,7 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
       ],
     } as SyncDoc
     at('2026-09-24T18:00:00Z')
-    const A = await phone()
+    const A = await phone(server)
 
     const overview = await screen(A.pinia, Overview, '/')
     expect(overview).toContain(money(478_011)) // Свободно в сентябре
@@ -470,7 +424,7 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
   })
 
   it('приёмка: «Впереди» — оплачен только ранний платёж → он уходит ниже неоплаченного позднего', async () => {
-    const A = await phone()
+    const A = await phone(server)
     const ahead = (html: string) => html.slice(html.indexOf('Впереди'))
     const before = ahead(await screen(A.pinia, Overview, '/'))
     expect(before.indexOf('Аренда')).toBeLessThan(before.indexOf('Кредит')) // по дню: 5-е раньше 15-го
@@ -487,8 +441,8 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
       id: 'util', name: 'Коммуналка', note: '', day: 8, category: 'd1', estimate: true,
       versions: [{ from: '2026-01', amount: 35_000 }], updatedAt: T0,
     })
-    const A = await phone()
-    const B = await phone()
+    const A = await phone(server)
+    const B = await phone(server)
 
     setOnline(false)
     at('2026-09-24T08:00:00Z')
@@ -509,8 +463,8 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
   })
 
   it('приёмка (правка критика): «Оплатил» → взнос в цель с той же карты → партнёр снял отметку — деньги вернулись у обоих', async () => {
-    const A = await phone()
-    const B = await phone()
+    const A = await phone(server)
+    const B = await phone(server)
 
     at('2026-09-24T08:00:00Z')
     A.store.markPaid('obligation', 'rent', 'a', { period: '2026-09', accountId: 'card' })
@@ -531,8 +485,8 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
   })
 
   it('приёмка: «снизить платёж» — второй телефон видит новый платёж и счётчик; снятие с него возвращает платёж первому', async () => {
-    const A = await phone()
-    const B = await phone()
+    const A = await phone(server)
+    const B = await phone(server)
     const term = lumpPlan(1_000_000, 0.33, 58_000, 200_000, 'term')!
     const lower = lumpPlan(800_000, 0.33, 58_000, 100_000, 'payment')!
 

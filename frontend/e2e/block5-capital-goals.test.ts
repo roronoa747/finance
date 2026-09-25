@@ -13,7 +13,6 @@ import {
   deposit,
   realRate,
 } from '../src/lib/finance'
-import { monthKey } from '../src/lib/dates'
 
 describe('e2e / block-5 — Сквозной сценарий Капитала, Целей, Депозитов и Сквозной приёмки', () => {
   const storageMap = new Map<string, string>()
@@ -36,15 +35,14 @@ describe('e2e / block-5 — Сквозной сценарий Капитала, 
   it('сквозной сценарий: настройка семьи -> расчет совокупного капитала -> досрочка по кредиту -> цели и вишлист -> сложный процент депозита', async () => {
     const authStore = useAuthStore()
     const financeStore = useFinanceStore()
-    const curMonth = monthKey()
 
     // 1. Авторизация пользователя
     authStore.setAuthData({
       token: 'jwt-token-block5',
       user: { id: 'u-ilyas', email: 'ilyas@example.com', created_at: '2026-09-24T08:00:00Z' },
-      household: { id: 'h-family', name: 'Семья Ильясовых', created_at: '2026-09-24T08:00:00Z' },
+      household: { id: 'h-family', name: 'Семья Ильясовых', created_by: 'u-ilyas', created_at: '2026-09-24T08:00:00Z' },
       member: {
-        id: 'm-1',
+        joined_at: '2026-09-24T08:00:00Z',
         household_id: 'h-family',
         user_id: 'u-ilyas',
         display_name: 'Ильяс',
@@ -73,7 +71,8 @@ describe('e2e / block-5 — Сквозной сценарий Капитала, 
       name: 'Личный криптокошелек',
       amount: 300_000,
       currency: 'KZT',
-      kind: 'broker',
+      // Не для расходов — из видов счёта это только «вклад».
+      kind: 'deposit',
     }, true)
 
     financeStore.addCredit({
@@ -115,7 +114,7 @@ describe('e2e / block-5 — Сквозной сценарий Капитала, 
     expect(currentNetWorth).toBe(200_000)
 
     const liquid = liquidCash(financeStore.accounts)
-    // Ликвидные средства (карта 500k, депозит и брокер не считаются кэшем)
+    // Ликвидные средства (карта 500k; депозит и криптокошелёк — вклады, не кэш)
     expect(liquid).toBe(500_000)
 
     // 4. Симулятор досрочного погашения кредита (MGV-12)

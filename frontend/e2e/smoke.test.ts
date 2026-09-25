@@ -84,7 +84,7 @@ describe('e2e / smoke — Сквозной интеграционный смоу
         updatedAt: new Date().toISOString(),
       })
       doc.categories.push({
-        key: 'cat-rent',
+        key: 'd1',
         name: 'Аренда жилья',
         amount: 350_000,
         note: 'Ежемесячно',

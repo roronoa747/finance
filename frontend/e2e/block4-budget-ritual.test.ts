@@ -11,10 +11,9 @@ import {
   nextSalaryChange,
   nextChange,
   goalMonths,
-  prepayment,
 } from '../src/lib/finance'
 import { monthKey } from '../src/lib/dates'
-import { money, plain } from '../src/lib/money'
+import { money } from '../src/lib/money'
 import Budget from '../src/views/Budget.vue'
 import Ritual from '../src/views/Ritual.vue'
 
@@ -45,9 +44,9 @@ describe('e2e / block-4 — Сквозной сценарий Бюджета (П
     authStore.setAuthData({
       token: 'jwt-token-family',
       user: { id: 'u-ilyas', email: 'ilyas@example.com', created_at: '2026-09-23T10:00:00Z' },
-      household: { id: 'h-family', name: 'Семья Ильясовых', created_at: '2026-09-23T10:00:00Z' },
+      household: { id: 'h-family', name: 'Семья Ильясовых', created_by: 'u-ilyas', created_at: '2026-09-23T10:00:00Z' },
       member: {
-        id: 'm-1',
+        joined_at: '2026-09-23T10:00:00Z',
         household_id: 'h-family',
         user_id: 'u-ilyas',
         display_name: 'Ильяс',
