@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   annuityPayment,
   annuityMonths,
@@ -59,12 +59,31 @@ import {
   isSubscription,
   keepQuestions,
   KEEP_ASK_DAYS,
+  creditMonthPayment,
+  activePlan,
+  pausedGoals,
+  planExtra,
+  planStep,
+  planForecast,
+  planFact,
+  planMonths,
+  planMonthSum,
+  lumpShares,
+  planLumpTakes,
+  settlePlans,
+  pauseShift,
+  pauseMissed,
+  planSchedule,
+  endedPlan,
+  budgetLines,
+  type PlanState,
 } from './finance'
 import { plain, money, moneyShort, parseMoney, pct, ratePct } from './money'
 import { clean, caretAt, sigBefore } from './num'
 import { plural } from './utils'
 import { monthKey, parseMonthKey, addMonths, daysInMonth, leadingBlanks, today, atLabel } from '@/lib/dates'
-import type { Account, Credit, Goal, Obligation, Payment, Person } from '@/types/finance'
+import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person } from '@/types/finance'
+import { DEFAULT_CATEGORY_NAMES } from '@/lib/palette'
 
 describe('finance.ts — аннуитет и кредитные расчёты', () => {
   it('annuityPayment — корректный расчёт платежа при нулевой и положительной ставке', () => {
@@ -826,8 +845,11 @@ describe('RP-08 — применить досрочку', () => {
 
     expect(lumpPlan(P, R, PAY, 0, 'term')).toBeNull()
     expect(lumpPlan(0, R, PAY, LUMP, 'term')).toBeNull()
-    // Платёж меньше процентов (27 500): срока нет, сохранять нечего.
-    expect(lumpPlan(P, R, 20_000, LUMP, 'payment')).toBeNull()
+    // Платёж меньше процентов (27 500): срока нет — взнос вносится, экономию не считаем
+    // (Р-11, PV-14); платёж прежний и в «снизить платёж».
+    expect(lumpPlan(P, R, 20_000, LUMP, 'payment')).toEqual({
+      paid: LUMP, left: P - LUMP, payment: 20_000, months: Infinity, monthsBefore: Infinity, saved: 0, openEnded: true,
+    })
 
     const free = lumpPlan(600_000, 0, 50_000, 100_000, 'payment')!
     expect(free).toMatchObject({ left: 500_000, payment: 41_667, months: 12, saved: 0 })
@@ -1388,5 +1410,541 @@ describe('PV-13 — «в долг / банку» и график платеже�
       // Помесячный график — с округлением процентов; непрерывная оценка — в пределах платежа.
       expect(Math.abs(rows.length - creditOutlook(c).months)).toBeLessThanOrEqual(1)
     }
+  })
+})
+
+describe('PV-14 — план «Сначала долги»: модель и расчёт от факта', () => {
+  const T0 = '2026-09-01T00:00:00.000Z'
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  const credit = (id: string, p: Partial<Credit> = {}): Credit => ({
+    id, name: id, note: '', principal: 1_000_000, principalSetAt: T0, annualRate: 0.33, payment: 58_000, day: 15, updatedAt: T0, ...p,
+  })
+  const goal = (id: string, p: Partial<Goal> = {}): Goal => ({
+    id, name: id, need: 1_000_000, seed: 0, have: 0, monthly: 0, hue: 'teal', planPct: 0, movements: [], updatedAt: T0, ...p,
+  })
+  const rent: Obligation = {
+    id: 'rent', name: 'Аренда', note: '', day: 5, category: 'd1', versions: [{ from: '2000-01', amount: 220_000 }], updatedAt: T0,
+  }
+  const people: Person[] = [
+    { id: 'a', name: 'Ильяс', salary: 700_000, payday: 10, updatedAt: T0 } as Person,
+    { id: 'b', name: 'Аруна', salary: 500_000, payday: 20, updatedAt: T0 } as Person,
+  ]
+  const prepay = (id: string, p: Partial<Payment>): Payment => ({
+    id, kind: 'prepay', targetId: 'cc', period: '2026-09', amount: 100_000, principal: 100_000, accountId: 'card',
+    by: 'a', at: '2026-09-20T10:00:00.000Z', updatedAt: '2026-09-20T10:00:00.000Z', saved: 10_000, mode: 'term', ...p,
+  })
+  const plan = (p: Partial<DebtPlan> = {}): DebtPlan => ({
+    id: 'plan', status: 'active', by: 'a', startedAt: '2026-09-10T05:00:00.000Z', endedAt: null,
+    keptGoalIds: [], cushionGoalId: 'cushion', creditIds: ['cc', 'loan'], months: 24, lump: 0,
+    forecast: { gain: 0, savedInterest: 0, debtFreeMonth: null }, result: null, updatedAt: T0, ...p,
+  })
+  /** Семья стенда: подушка 100 000 / 30 000 в месяц, отпуск 40 000, машина 60 000; три долга. */
+  const goals = (cushionHave = 100_000) => [
+    goal('cushion', { have: cushionHave, seed: cushionHave, monthly: 30_000 }),
+    goal('trip', { monthly: 40_000 }),
+    goal('car', { monthly: 60_000 }),
+  ]
+  const credits = (p: Record<string, Partial<Credit>> = {}) => [
+    credit('loan', p.loan),
+    credit('cc', { principal: 300_000, annualRate: 0.4, payment: 25_000, day: 22, ...p.cc }),
+    credit('inst', { principal: 240_000, annualRate: 0, payment: 20_000, day: 25, ...p.inst }),
+  ]
+  /** Кредиты, как их отдаёт стор: остаток — из отметок. */
+  const derived = (list: Credit[], payments: Payment[]) => list.map((c) => ({ ...c, principal: creditBalance(c, payments) }))
+  const state = (o: { cushionHave?: number; credits?: Credit[]; payments?: Payment[] } = {}): PlanState => {
+    const payments = o.payments ?? []
+    return { goals: goals(o.cushionHave), credits: derived(o.credits ?? credits(), payments), obligations: [rent], payments }
+  }
+
+  describe('п. 5 — месяц закрытия долга: одно правило', () => {
+    // Последний плановый платёж 50 000 × 2% = 1 000 процентов: списано 51 000, долг закрыт.
+    const last = credit('last', { principal: 50_000, annualRate: 0.24, payment: 58_000 })
+    const open = credit('open', { annualRate: 0.24, payment: 50_000 })
+    const paidLast: Payment = {
+      id: 'm', kind: 'credit', targetId: 'last', period: '2026-09', amount: 51_000, principal: 50_000, accountId: 'card',
+      by: 'a', at: '2026-09-15T05:00:00.000Z', updatedAt: '2026-09-15T05:00:00.000Z',
+    }
+    const creditDues = (list: Credit[], payments: Payment[], key: string) =>
+      duesTotal(monthDues({ credits: list, payments }, key).filter((d) => d.kind === 'credit'))
+
+    it('закрыт плановым «Оплатил» этого месяца — в «Кредитах» и в платежах месяца суммой отметки; «Свободно» сходится', () => {
+      const payments = [paidLast]
+      const list = derived([last, open], payments)
+      expect(list.find((c) => c.id === 'last')!.principal).toBe(0)
+      const a = budgetAmounts({ people, credits: list, payments })
+      expect(a.d2).toBe(50_000 + 51_000)
+      expect(creditDues(list, payments, '2026-09')).toBe(a.d2)
+      expect(a.d5).toBe(a.income - creditDues(list, payments, '2026-09'))
+      expect(creditMonthPayment(list[0], payments, '2026-09')).toBe(51_000)
+    })
+
+    it('в следующем месяце его нет нигде', () => {
+      vi.setSystemTime(new Date('2026-10-05T07:00:00Z'))
+      const payments = [paidLast]
+      const list = derived([last, open], payments)
+      expect(budgetAmounts({ people, credits: list, payments }).d2).toBe(50_000)
+      expect(monthDues({ credits: list, payments }, '2026-10').map((d) => d.targetId)).toEqual(['open'])
+    })
+
+    it('последний платёж не отмечен — «Кредиты» и «На обязательства» одной суммой: остаток с процентами, не весь платёж', () => {
+      // 30 000 под 33%: 825 процентов — последний платёж 30 825, а не 58 000.
+      const tail = credit('tail', { principal: 30_000, annualRate: 0.33, payment: 58_000 })
+      const list = derived([tail, open], [])
+      const a = budgetAmounts({ people, credits: list, payments: [] })
+      expect(creditMonthPayment(list[0], [], '2026-09')).toBe(30_825)
+      expect(a.d2).toBe(30_825 + 50_000)
+      expect(creditDues(list, [], '2026-09')).toBe(a.d2)
+    })
+
+    it('отметка другой суммой у открытого кредита — и там, и там сумма отметки', () => {
+      const paidMore: Payment = { ...paidLast, id: 'o', targetId: 'open', amount: 55_000, principal: 53_000 }
+      const list = derived([open], [paidMore])
+      expect(budgetAmounts({ people, credits: list, payments: [paidMore] }).d2).toBe(55_000)
+      expect(creditDues(list, [paidMore], '2026-09')).toBe(55_000)
+    })
+
+    it('с планом: долг плана закрыт плановым «Оплатил» — в этом месяце его платёж в «Кредитах», не в плане; со следующего — в плане', () => {
+      // Кредитка: 20 000 под 40%, последний платёж 20 667 отмечен в сентябре.
+      const list = credits({ cc: { principal: 20_000 } })
+      const paidCc: Payment = { ...paidLast, id: 'c', targetId: 'cc', amount: 20_667, principal: 20_000 }
+      const payments = [paidCc]
+      const s = state({ cushionHave: 400_000, credits: list, payments })
+      const doc = { people, goals: goals(400_000), credits: s.credits, payments }
+      const withPlan = budgetAmounts({ ...doc, plans: [plan()] })
+      const without = budgetAmounts(doc)
+      expect(withPlan.d2).toBe(58_000 + 20_667 + 20_000)
+      expect(withPlan.planExtra).toBe(100_000)
+      expect(withPlan.d5).toBe(without.d5)
+      expect(planStep(plan(), s, '2026-09')).toMatchObject({ kind: 'prepay', creditId: 'loan', amount: 100_000 })
+
+      vi.setSystemTime(new Date('2026-10-05T07:00:00Z'))
+      const octPlan = budgetAmounts({ ...doc, plans: [plan()] })
+      const octWithout = budgetAmounts(doc)
+      expect(octPlan.d2).toBe(58_000 + 20_000)
+      expect(planExtra(plan(), goals(400_000), s.credits!, payments, '2026-10')).toBe(125_000)
+      expect(octPlan.planExtra).toBe(125_000)
+      // Освободившийся платёж по Р-5 идёт в следующий долг, а не в «Свободно».
+      expect(octPlan.d5).toBe(octWithout.d5 - 25_000)
+    })
+
+    it('закрыт досрочкой — выпадает сразу (PV-01)', () => {
+      const payments = [prepay('p', { targetId: 'last', amount: 50_000, principal: 50_000 })]
+      const list = derived([last, open], payments)
+      expect(budgetAmounts({ people, credits: list, payments }).d2).toBe(50_000)
+      expect(monthDues({ credits: list, payments }, '2026-09').map((d) => d.targetId)).toEqual(['open'])
+    })
+  })
+
+  it('activePlan: поздний из двух активных; отменённый, завершённый и надгробие — не активны', () => {
+    const early = plan({ id: 'early', startedAt: '2026-09-10T05:00:00.000Z' })
+    const late = plan({ id: 'late', startedAt: '2026-09-11T05:00:00.000Z' })
+    expect(activePlan([late, early])?.id).toBe('late')
+    expect(activePlan([early, late])?.id).toBe('late')
+    expect(activePlan([plan({ status: 'cancelled' }), plan({ status: 'done' }), plan({ deletedAt: T0 })])).toBeNull()
+  })
+
+  it('pausedGoals и planExtra: на паузе — всё, кроме «не останавливать» и подушки', () => {
+    const p = plan({ keptGoalIds: ['car'] })
+    expect(pausedGoals(p, goals()).map((g) => g.id)).toEqual(['trip'])
+    expect(planExtra(p, goals(), state().credits!, [], '2026-09')).toBe(40_000)
+    expect(planExtra(plan(), goals(), state().credits!, [], '2026-09')).toBe(100_000)
+  })
+
+  it('planStep: подушка ниже месяца обязательных — cushion с min(extra, недостача)', () => {
+    // Месяц обязательных: аренда 220 000 + платежи долгов 58 000 + 25 000 + 20 000 = 323 000.
+    expect(planStep(plan(), state(), '2026-09')).toEqual({ kind: 'cushion', goalId: 'cushion', amount: 100_000, missing: 223_000 })
+    expect(planStep(plan(), state({ cushionHave: 300_000 }), '2026-09')).toEqual({
+      kind: 'cushion', goalId: 'cushion', amount: 23_000, missing: 23_000,
+    })
+  })
+
+  it('planStep: подушка полна — досрочка в самый дорогой; месяц старта — «+ накопленное»; не больше остатка', () => {
+    const full = state({ cushionHave: 400_000 })
+    expect(planStep(plan(), full, '2026-10')).toEqual({ kind: 'prepay', creditId: 'cc', amount: 100_000, period: '2026-10', applied: null })
+    expect(planStep(plan({ lump: 50_000 }), full, '2026-09')).toMatchObject({ creditId: 'cc', amount: 150_000 })
+    expect(planStep(plan({ lump: 250_000 }), full, '2026-09')).toMatchObject({ creditId: 'cc', amount: 300_000 })
+    // Без подушки в плане — сразу досрочка.
+    expect(planStep(plan({ cushionGoalId: null }), state(), '2026-10')).toMatchObject({ kind: 'prepay', amount: 130_000 })
+  })
+
+  it('«вложить накопленное» — только в месяц старта по Алматы; после внесённого шага прогноз его не учитывает', () => {
+    const full = state({ cushionHave: 400_000 })
+    expect(planStep(plan({ lump: 50_000 }), full, '2026-10')).toMatchObject({ amount: 100_000 })
+    // Выбран 30 сентября в 00:30 по Алматы — месяц старта октябрь.
+    const late = plan({ startedAt: '2026-09-30T19:30:00.000Z', lump: 50_000 })
+    expect(planStep(late, full, '2026-10')).toMatchObject({ amount: 150_000 })
+    expect(planStep(late, full, '2026-11')).toMatchObject({ amount: 100_000 })
+    expect(planMonths(late, full, '2026-11').map((m) => [m.period, m.planned])).toEqual([
+      ['2026-10', 150_000],
+      ['2026-11', 100_000],
+    ])
+    const applied = state({ cushionHave: 400_000, payments: [prepay('p1', { planId: 'plan', amount: 150_000, principal: 150_000 })] })
+    expect(planForecast(plan({ lump: 50_000 }), applied, '2026-09')).toEqual(planForecast(plan(), applied, '2026-09'))
+  })
+
+  it('budgetLines: строки по ключам d1–d4, имя семьи или запасное; «Досрочно по плану» — сразу после целей', () => {
+    const cats: Category[] = [
+      { key: 'd2', name: 'Долги', note: '', amount: 0, updatedAt: T0 },
+      { key: 'd4', name: 'Еда и быт', note: '', amount: 150_000, updatedAt: T0 },
+    ]
+    const amounts = { d1: 220_000, d2: 0, d3: 30_000, d4: 150_000, d5: 0, income: 0, planExtra: 100_000, planCushion: false }
+    expect(budgetLines(cats, amounts)).toEqual([
+      { key: 'd1', name: DEFAULT_CATEGORY_NAMES.d1, amount: 220_000 },
+      { key: 'd2', name: 'Долги', amount: 0 },
+      { key: 'd3', name: DEFAULT_CATEGORY_NAMES.d3, amount: 30_000 },
+      { key: 'plan', name: 'Досрочно по плану', amount: 100_000 },
+      { key: 'd4', name: 'Еда и быт', amount: 150_000 },
+    ])
+    // Раздела нет и суммы нет — строки нет; плана нет — строки плана нет.
+    expect(budgetLines([], { ...amounts, d1: 0, planExtra: 0 }).map((l) => l.key)).toEqual(['d3', 'd4'])
+    // Н-4: пока план набирает подушку — строка называется по фазе, сумма та же.
+    expect(budgetLines(cats, { ...amounts, planCushion: true }).find((l) => l.key === 'plan')).toEqual({
+      key: 'plan', name: 'По плану — в подушку', amount: 100_000,
+    })
+  })
+
+  it('Н-4: budgetAmounts знает фазу подушки — шаг плана «подушка»; подушка полна — нет', () => {
+    const base = { people, obligations: [rent], credits: state().credits, payments: [], plans: [plan()] }
+    const thin = budgetAmounts({ ...base, goals: goals(150_000) })
+    expect(thin).toMatchObject({ planCushion: true, planExtra: 100_000 })
+    expect(budgetAmounts({ ...base, goals: goals(400_000) }).planCushion).toBe(false)
+    expect(budgetAmounts({ ...base, goals: goals(150_000), plans: [] }).planCushion).toBe(false)
+  })
+
+  it('хвост 6: «План и факт» в фазе подушки — месяцы подушки не пропуски, текущий — не «0 ₸»', () => {
+    // План с июля, подушка 150 000 из 323 000 не набрана — июль, август и сентябрь — месяцы подушки.
+    const p = plan({ startedAt: '2026-07-10T05:00:00.000Z' })
+    const s = state({ cushionHave: 150_000 })
+    expect(planStep(p, s, '2026-09')).toMatchObject({ kind: 'cushion', amount: 100_000 })
+    expect(planMonths(p, s, '2026-09')).toEqual([
+      { period: '2026-07', planned: 100_000, fact: 0, creditId: null, cushion: true },
+      { period: '2026-08', planned: 100_000, fact: 0, creditId: null, cushion: true },
+      { period: '2026-09', planned: 100_000, fact: 0, creditId: null, cushion: true },
+    ])
+    // Подушку добрали в августе (взнос 200 000): июль — подушка с фактом взноса, август и сентябрь — досрочки.
+    const topped = goals(150_000).map((g) =>
+      g.id === 'cushion'
+        ? { ...g, have: 350_000, movements: [{ id: 'm', date: '2026-07-20T05:00:00.000Z', amount: 200_000, by: 'a' as const }] }
+        : g,
+    )
+    const later = { ...s, goals: topped }
+    expect(planMonths(p, later, '2026-09').map((m) => [m.period, m.planned, m.fact, m.cushion ?? false])).toEqual([
+      ['2026-07', 100_000, 200_000, true],
+      ['2026-08', 100_000, 0, false],
+      ['2026-09', 100_000, 0, false],
+    ])
+  })
+
+  it('planStep: закрыт самый дорогой — следующий по ставке, planExtra вырос на его платёж; все закрыты — done', () => {
+    const payments = [prepay('p1', { planId: 'plan', amount: 300_000, principal: 300_000, period: '2026-09' })]
+    const s = state({ cushionHave: 400_000, payments })
+    expect(s.credits!.find((c) => c.id === 'cc')!.principal).toBe(0)
+    expect(planExtra(plan(), s.goals!, s.credits!, payments, '2026-10')).toBe(100_000 + 25_000)
+    expect(planStep(plan(), s, '2026-10')).toEqual({ kind: 'prepay', creditId: 'loan', amount: 125_000, period: '2026-10', applied: null })
+
+    const all = [...payments, prepay('p2', { planId: 'plan', targetId: 'loan', amount: 1_000_000, principal: 1_000_000, period: '2026-10' })]
+    // Рассрочка 0% не держит план: гасить досрочно нечего.
+    expect(planStep(plan(), state({ cushionHave: 400_000, payments: all }), '2026-10')).toEqual({ kind: 'done' })
+  })
+
+  it('planStep: applied — живая досрочка плана за этот месяц; надгробие, досрочка без плана и прошлый месяц — нет', () => {
+    const full = { cushionHave: 400_000 }
+    const mine = prepay('mine', { planId: 'plan' })
+    expect(planStep(plan(), state({ ...full, payments: [mine] }), '2026-09')).toEqual({
+      kind: 'prepay', creditId: 'cc', amount: 100_000, period: '2026-09', applied: mine,
+    })
+    for (const other of [
+      prepay('dead', { planId: 'plan', deletedAt: '2026-09-21T00:00:00.000Z' }),
+      prepay('free', {}),
+      prepay('old', { planId: 'plan', period: '2026-08' }),
+    ]) {
+      expect(planStep(plan(), state({ ...full, payments: [other] }), '2026-09')).toMatchObject({ kind: 'prepay', applied: null })
+    }
+  })
+
+  it('шаг месяца один на семью (Р-4): досрочка прежнего плана за этот месяц — шаг внесён; в итог нового плана она не идёт', () => {
+    // Отменили план и выбрали заново в том же месяце, или двое выбрали разные планы офлайн.
+    const full = { cushionHave: 400_000 }
+    const earlier = prepay('earlier', { planId: 'old-plan', saved: 9_000 })
+    expect(planStep(plan(), state({ ...full, payments: [earlier] }), '2026-09')).toMatchObject({ kind: 'prepay', applied: earlier })
+    expect(planFact(plan(), [earlier], credits()).savedInterest).toBe(0)
+  })
+
+  it('planForecast: от меньшего остатка долг закрывается не позже; выигрыш и проценты — целые', () => {
+    const now = planForecast(plan(), state({ cushionHave: 400_000 }), '2026-09')
+    const less = planForecast(plan(), state({ cushionHave: 400_000, credits: credits({ loan: { principal: 500_000 } }) }), '2026-09')
+    expect(now.debtFreeMonth).not.toBeNull()
+    expect(less.debtFreeMonth! < now.debtFreeMonth!).toBe(true)
+    for (const f of [now, less]) {
+      expect(Number.isInteger(f.gain)).toBe(true)
+      expect(Number.isInteger(f.savedInterest)).toBe(true)
+      expect(f.savedInterest).toBeGreaterThan(0)
+    }
+  })
+
+  it('planFact: Σ saved живых досрочек с planId — без чужих и снятых; шаги по порядку', () => {
+    const payments = [
+      prepay('p2', { planId: 'plan', period: '2026-10', targetId: 'loan', amount: 125_000, saved: 40_000, at: '2026-10-20T10:00:00.000Z' }),
+      prepay('p1', { planId: 'plan', saved: 30_000 }),
+      prepay('dead', { planId: 'plan', saved: 99_000, deletedAt: '2026-09-21T00:00:00.000Z' }),
+      prepay('free', { saved: 7_000 }),
+      prepay('alien', { planId: 'other', saved: 5_000 }),
+    ]
+    expect(planFact(plan(), payments, credits())).toEqual({
+      savedInterest: 70_000,
+      steps: [
+        { period: '2026-09', creditId: 'cc', amount: 100_000 },
+        { period: '2026-10', creditId: 'loan', amount: 125_000 },
+      ],
+    })
+  })
+
+  it('planFact: экономия удалённого кредита в итог плана не идёт — как счётчик Капитала (prepaySaved)', () => {
+    const payments = [prepay('p1', { planId: 'plan', saved: 30_000 }), prepay('p2', { planId: 'plan', targetId: 'loan', saved: 40_000 })]
+    const list = credits({ cc: { deletedAt: '2026-09-22T00:00:00.000Z' } })
+    expect(planFact(plan(), payments, list).savedInterest).toBe(40_000)
+    expect(planFact(plan(), payments, list).savedInterest).toBe(prepaySaved(payments, list))
+    // Итог плана при отмене и завершении — тот же счёт.
+    expect(endedPlan(plan(), 'cancelled', payments, list, '2026-09-25T00:00:00.000Z').result).toEqual({ savedInterest: 40_000 })
+  })
+
+  it('planMonths: месяцы со старта; внесённый — факт, пропущенный — без факта, текущий — шаг', () => {
+    const s = state({ cushionHave: 400_000, payments: [prepay('p1', { planId: 'plan' })] })
+    expect(planMonths(plan(), s, '2026-11')).toEqual([
+      { period: '2026-09', planned: 100_000, fact: 100_000, creditId: 'cc' },
+      { period: '2026-10', planned: 100_000, fact: 0, creditId: null },
+      { period: '2026-11', planned: 100_000, fact: 0, creditId: 'cc' },
+    ])
+  })
+
+  it('budgetAmounts с планом: «Взносы в цели» без пауз, «Досрочно по плану» = их взносы, «Свободно» прежнее', () => {
+    const base = { people, obligations: [rent], goals: goals(), credits: state().credits, payments: [] }
+    const without = budgetAmounts(base)
+    const withPlan = budgetAmounts({ ...base, plans: [plan()] })
+    expect(without.d3).toBe(130_000)
+    expect(without.planExtra).toBe(0)
+    expect(withPlan.d3).toBe(30_000)
+    expect(withPlan.planExtra).toBe(100_000)
+    expect(withPlan.d5).toBe(without.d5)
+    // Отменённый план — как без плана.
+    expect(budgetAmounts({ ...base, plans: [plan({ status: 'cancelled' })] })).toEqual(without)
+  })
+
+  it('budgetAmounts: долг плана закрыт досрочкой — его платёж уходит из «Кредитов» в план, «Свободно» прежнее', () => {
+    const payments = [prepay('p1', { planId: 'plan', amount: 300_000, principal: 300_000 })]
+    const base = { people, obligations: [rent], goals: goals(), payments, plans: [plan()] }
+    const before = budgetAmounts({ ...base, credits: derived(credits(), []), payments: [] })
+    const after = budgetAmounts({ ...base, credits: derived(credits(), payments) })
+    expect(before.d2 - after.d2).toBe(25_000)
+    expect(after.planExtra - before.planExtra).toBe(25_000)
+    expect(after.d5).toBe(before.d5)
+  })
+
+  describe('клинап: «вложить уже накопленное» — доли целей на паузе', () => {
+    const three = [goal('a', { have: 100_000 }), goal('b', { have: 100_000 }), goal('c', { have: 100_000 })]
+
+    it('lumpShares: доля накопленного, целые тенге, Σ ровно сумма, не больше накопленного', () => {
+      expect(lumpShares(three, 100_000)).toEqual([
+        { goalId: 'a', amount: 33_334 }, { goalId: 'b', amount: 33_333 }, { goalId: 'c', amount: 33_333 },
+      ])
+      expect(lumpShares([goal('a', { have: 50_000 }), goal('b', { have: 200_000 })], 150_000)).toEqual([
+        { goalId: 'a', amount: 30_000 }, { goalId: 'b', amount: 120_000 },
+      ])
+      // Больше накопленного не снять; пустые и «в минусе» цели не участвуют.
+      expect(lumpShares([goal('a', { have: 10_000 }), goal('z', { have: -5_000 })], 50_000)).toEqual([{ goalId: 'a', amount: 10_000 }])
+      expect(lumpShares(three, 0)).toEqual([])
+      let seed = 11
+      const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+      for (let i = 0; i < 200; i++) {
+        const list = Array.from({ length: 1 + Math.floor(rnd() * 5) }, (_, k) => goal(`g${k}`, { have: Math.round(rnd() * 500_000) }))
+        const want = Math.round(rnd() * 1_000_000)
+        const got = lumpShares(list, want)
+        const total = list.reduce((a, g) => a + g.have, 0)
+        expect(got.reduce((a, x) => a + x.amount, 0)).toBe(Math.min(want, total))
+        for (const x of got) {
+          expect(Number.isInteger(x.amount)).toBe(true)
+          expect(x.amount).toBeLessThanOrEqual(list.find((g) => g.id === x.goalId)!.have)
+        }
+      }
+    })
+
+    it('planLumpTakes: только цели на паузе, только месяц старта, без уже снятого планом', () => {
+      const p = plan({ lump: 150_000 })
+      const list = [goal('cushion', { have: 400_000 }), goal('trip', { have: 50_000 }), goal('car', { have: 200_000 })]
+      expect(planLumpTakes(p, list, 250_000, '2026-09')).toEqual([
+        { goalId: 'trip', amount: 30_000 }, { goalId: 'car', amount: 120_000 },
+      ])
+      // Шаг меньше «вложить» — снимается не больше шага.
+      expect(planLumpTakes(p, list, 50_000, '2026-09').reduce((a, x) => a + x.amount, 0)).toBe(50_000)
+      expect(planLumpTakes(p, list, 250_000, '2026-10')).toEqual([])
+      const taken = list.map((g) =>
+        g.id === 'trip' ? { ...g, movements: [{ id: 'm', date: T0, amount: -100_000, by: 'a' as const, planId: 'plan' }] } : g,
+      )
+      expect(planLumpTakes(p, taken, 250_000, '2026-09').reduce((a, x) => a + x.amount, 0)).toBe(50_000)
+    })
+  })
+
+  describe('клинап: шаг закрыл долг — остаток суммы месяца вторым шагом (Р-4, Р-5)', () => {
+    // Кредитка: осталось 20 000 под 40% — последний платёж 20 667 (667 процентов), платёж 25 000.
+    const list = credits({ cc: { principal: 20_000 } })
+    const s1 = prepay('s1', { planId: 'plan', amount: 20_000, principal: 20_000 })
+    const s2 = prepay('s2', {
+      planId: 'plan', targetId: 'loan', amount: 100_667, principal: 100_667,
+      at: '2026-09-21T10:00:00.000Z', updatedAt: '2026-09-21T10:00:00.000Z',
+    })
+    const full = (payments: Payment[] = []) => state({ cushionHave: 400_000, credits: list, payments })
+    const budget = (payments: Payment[]) =>
+      budgetAmounts({ people, obligations: [rent], goals: goals(400_000), credits: derived(list, payments), payments, plans: [plan()] })
+
+    it('шаг закрыл долг — «Свободно» то же: платёж долга уходит из «Кредитов» в план той же суммой, не весь платёж', () => {
+      expect(planStep(plan(), full(), '2026-09')).toMatchObject({ creditId: 'cc', amount: 20_000, applied: null })
+      const before = budget([])
+      const after = budget([s1])
+      expect(before.d2 - after.d2).toBe(20_667)
+      expect(after.planExtra - before.planExtra).toBe(20_667)
+      expect(after.d5).toBe(before.d5)
+      // Со следующего месяца закрытый долг отдаёт плану весь свой платёж.
+      expect(planExtra(plan(), goals(400_000), derived(list, [s1]), [s1], '2026-10')).toBe(125_000)
+    })
+
+    it('остаток — вторым шагом в следующий по ставке; внесён — месяц закрыт, Σ досрочек = сумма месяца', () => {
+      expect(planStep(plan(), full([s1]), '2026-09')).toEqual({
+        kind: 'prepay', creditId: 'loan', amount: 100_667, period: '2026-09', applied: null,
+      })
+      expect(planMonths(plan(), full([s1]), '2026-09')).toEqual([{ period: '2026-09', planned: 120_667, fact: 20_000, creditId: 'cc' }])
+      expect(planStep(plan(), full([s1, s2]), '2026-09')).toEqual({
+        kind: 'prepay', creditId: 'loan', amount: 120_667, period: '2026-09', applied: s2,
+      })
+      expect(planMonthSum(plan(), full([s1, s2]), '2026-09')).toBe(s1.amount + s2.amount)
+      expect(budget([s1, s2]).d5).toBe(budget([]).d5)
+    })
+
+    it('«вложить накопленное» больше остатка долга — остаток накопленного идёт вторым шагом', () => {
+      const p = plan({ lump: 500_000 })
+      expect(planStep(p, state({ cushionHave: 400_000 }), '2026-09')).toMatchObject({ creditId: 'cc', amount: 300_000 })
+      const first = prepay('l1', { planId: 'plan', amount: 300_000, principal: 300_000 })
+      // 100 000 пауз + 25 000 платежа кредитки + 500 000 накопленного − 300 000 внесённых.
+      expect(planStep(p, state({ cushionHave: 400_000, payments: [first] }), '2026-09')).toMatchObject({
+        creditId: 'loan', amount: 325_000, applied: null,
+      })
+    })
+
+    it('шаг внесли меньшей суммой и долг открыт — месяц закрыт, второго шага нет (пропуск без упрёка)', () => {
+      const less = prepay('less', { planId: 'plan', amount: 50_000, principal: 50_000 })
+      expect(planStep(plan(), state({ cushionHave: 400_000, payments: [less] }), '2026-09')).toMatchObject({
+        creditId: 'cc', amount: 50_000, applied: less,
+      })
+    })
+  })
+
+  it('settlePlans: два активных — старший отменён; долгов с процентами нет — завершён с итогом; иначе null', () => {
+    const t = '2026-09-25T00:00:00.000Z'
+    const early = plan({ id: 'early', startedAt: '2026-09-10T05:00:00.000Z' })
+    const late = plan({ id: 'late', startedAt: '2026-09-11T05:00:00.000Z' })
+    const s = state()
+    expect(settlePlans([late], s.credits!, [], t)).toBeNull()
+    const two = settlePlans([early, late], s.credits!, [], t)!
+    expect(two.map((p) => [p.id, p.status])).toEqual([['early', 'cancelled'], ['late', 'active']])
+    expect(two[0]).toMatchObject({ endedAt: t, updatedAt: t, result: { savedInterest: 0 } })
+
+    const payments = [
+      prepay('p1', { planId: 'late', amount: 300_000, principal: 300_000, saved: 30_000 }),
+      prepay('p2', { planId: 'late', targetId: 'loan', amount: 1_000_000, principal: 1_000_000, saved: 400_000 }),
+    ]
+    const done = settlePlans([late], derived(credits(), payments), payments, t)!
+    expect(done[0]).toMatchObject({ status: 'done', endedAt: t, result: { savedInterest: 430_000 } })
+  })
+
+  describe('PV-17 — пауза целей и график с шагами плана', () => {
+    it('pauseShift: цель на паузе с сентября по ноябрь — 3 мес.; подушка и «не останавливать» — 0; закрытый план — по месяц конца', () => {
+      const trip = goals().find((g) => g.id === 'trip')!
+      expect(pauseShift(plan(), trip, '2026-11')).toBe(3)
+      expect(pauseMissed(plan(), trip, '2026-11')).toBe(3 * 40_000)
+      expect(pauseShift(plan(), goals().find((g) => g.id === 'cushion')!, '2026-11')).toBe(0)
+      expect(pauseShift(plan({ keptGoalIds: ['trip'] }), trip, '2026-11')).toBe(0)
+      expect(pauseShift(plan({ status: 'done', endedAt: '2026-10-20T00:00:00.000Z' }), trip, '2027-03')).toBe(2)
+      // Через год: декабрь → январь считается как соседние месяцы.
+      expect(pauseShift(plan(), trip, '2027-01')).toBe(5)
+    })
+
+    it('planSchedule: шаги до закрытия долга; Σ досрочек и тела платежей = остаток; после закрытия — следующий долг', () => {
+      const s = state({ cushionHave: 400_000 })
+      const sched = planSchedule(plan(), s, '2026-09')!
+      expect(sched.creditId).toBe('cc')
+      const rows = sched.rows
+      expect(rows[0]).toMatchObject({ period: '2026-09', extra: 100_000 })
+      expect(rows.at(-1)!.left).toBe(0)
+      expect(rows.reduce((a, r) => a + r.extra + r.body, 0)).toBe(300_000)
+      // Каждый месяц до последнего — полный шаг плана.
+      expect(rows.slice(0, -1).every((r) => r.extra === 100_000)).toBe(true)
+
+      const payments = [prepay('p1', { planId: 'plan', amount: 300_000, principal: 300_000 })]
+      const next = planSchedule(plan(), state({ cushionHave: 400_000, payments }), '2026-10')!
+      expect(next.creditId).toBe('loan')
+      // Кредитка закрыта — её платёж 25 000 идёт в план: шаг 125 000.
+      expect(next.rows[0]).toMatchObject({ period: '2026-10', extra: 125_000 })
+      expect(next.rows.reduce((a, r) => a + r.extra + r.body, 0)).toBe(1_000_000)
+    })
+
+    it('planSchedule: шаг месяца внесён — в этом месяце досрочка из записи, дальше — шаги; подушка — месяц без шага', () => {
+      const payments = [prepay('mine', { planId: 'plan' })]
+      const applied = planSchedule(plan(), state({ cushionHave: 400_000, payments }), '2026-09')!
+      expect(applied.rows[0]).toMatchObject({ period: '2026-09', extra: 100_000 })
+      expect(applied.rows[1]).toMatchObject({ period: '2026-10', extra: 100_000 })
+      expect(applied.rows.reduce((a, r) => a + r.extra + r.body, 0)).toBe(300_000)
+
+      const thin = planSchedule(plan(), state({ cushionHave: 100_000 }), '2026-09')!
+      expect(thin.rows[0].extra).toBe(0)
+      expect(thin.rows[1].extra).toBe(100_000)
+    })
+
+    it('planSchedule: платёж месяца уже отмечен, шаг ещё нет — шаг в строке этого месяца, долг закрывается так же', () => {
+      // Кредитка 300 000: «Оплатил» сентября 25 000 (в долг 15 000), остаток 285 000.
+      const paid: Payment = {
+        id: 'm', kind: 'credit', targetId: 'cc', period: '2026-09', amount: 25_000, principal: 15_000, accountId: 'card',
+        by: 'a', at: '2026-09-22T05:00:00.000Z', updatedAt: '2026-09-22T05:00:00.000Z',
+      }
+      const s = state({ cushionHave: 400_000, payments: [paid] })
+      expect(planStep(plan(), s, '2026-09')).toMatchObject({ kind: 'prepay', amount: 100_000, applied: null })
+      const rows = planSchedule(plan(), s, '2026-09')!.rows
+      expect(rows[0]).toMatchObject({ period: '2026-09', paid: true, extra: 100_000, left: 185_000 })
+      expect(rows.at(-1)!.left).toBe(0)
+      // Остаток после сентябрьской отметки = шаги плана + тело будущих платежей.
+      expect(rows.reduce((a, r) => a + r.extra + (r.paid ? 0 : r.body), 0)).toBe(285_000)
+    })
+
+    it('planForecast: долг, который без плана не закрывается (платёж ≤ процентов), — экономию не считаем (Р-11)', () => {
+      // Кредитка 500 000 под 40%: проценты ≈ 16 667 при платеже 10 000.
+      const card = credit('cc', { principal: 500_000, annualRate: 0.4, payment: 10_000 })
+      const f = planForecast(plan({ creditIds: ['cc'] }), state({ cushionHave: 400_000, credits: [card] }), '2026-09')
+      expect(f.savedInterest).toBeNull()
+      expect(f.debtFreeMonth).not.toBeNull()
+      expect(Number.isFinite(f.gain)).toBe(true)
+    })
+  })
+
+  describe('Р-11: досрочка при платеже меньше процентов', () => {
+    // Кредитка 1 000 000 под 36%: проценты 30 000 в месяц, платёж 25 000 — долг не закрывается.
+    it('взнос вносится: openEnded, остаток верный, экономия 0, платёж прежний в обоих режимах', () => {
+      for (const mode of ['term', 'payment'] as const) {
+        expect(lumpPlan(1_000_000, 0.36, 25_000, 100_000, mode)).toEqual({
+          paid: 100_000, left: 900_000, payment: 25_000, months: Infinity, monthsBefore: Infinity, saved: 0, openEnded: true,
+        })
+      }
+      // Взнос сделал платёж посильным: 600 000 × 3% = 18 000 < 25 000 — срок уже число.
+      const after = lumpPlan(1_000_000, 0.36, 25_000, 400_000, 'term')!
+      expect(after.openEnded).toBe(true)
+      expect(after.months).toBe(Math.ceil(annuityMonths(600_000, 0.36, 25_000)))
+      expect(Number.isFinite(after.months)).toBe(true)
+    })
+
+    it('взнос на весь остаток закрывает долг: left 0, months 0', () => {
+      expect(lumpPlan(1_000_000, 0.36, 25_000, 1_500_000, 'term')).toMatchObject({ paid: 1_000_000, left: 0, months: 0, payment: 0, saved: 0 })
+    })
   })
 })

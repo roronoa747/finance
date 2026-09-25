@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter, useRoute, RouterLink } from 'vue-router'
 import { PhArrowLeft, PhPencilSimple, PhPlus, PhMinus, PhX } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { money, plain, parseMoney, ratePct } from '@/lib/money'
@@ -38,6 +38,11 @@ const people = computed(() => financeStore.people)
 // Пополнение и снятие двигают тенговую базу счёта: валютный счёт пересчитал бы её по
 // курсу при следующей правке и молча потерял сдвиг. Удалённые счета — тоже не сюда.
 const accounts = computed(() => payableAccounts(financeStore.accounts))
+
+// План «Сначала долги» (PV-15): пауза выводится из плана, взнос цели не трогается (Р-9).
+const plan = computed(() => financeStore.activePlan)
+const paused = computed(() => financeStore.pausedGoalIds.has(goalId.value))
+const planCushion = computed(() => !!plan.value && plan.value.cushionGoalId === goalId.value)
 
 const remaining = computed(() => (goal.value ? Math.max(0, goal.value.need - goal.value.have) : 0))
 const months = computed(() => (goal.value ? goalMonths(remaining.value, goal.value.monthly) : 1))
@@ -180,6 +185,7 @@ function saveEdit() {
               : `При взносе ${money(goal.monthly)} в месяц · ${months} мес.`
           }}
         </div>
+        <div v-if="paused" class="text-[12px] text-ink-3">после плана</div>
       </div>
 
       <!-- Ползунок / выбор ежемесячного платежа -->
@@ -204,6 +210,16 @@ function saveEdit() {
         Чтобы успеть за год, нужно {{ money(goalMonthly(remaining, 12)) }} в месяц.
       </div>
     </Card>
+
+    <Callout v-if="paused" title="На паузе ради плана">
+      Взнос {{ money(goal.monthly) }} идёт в досрочку самого дорогого долга — так семья отдаст банку
+      меньше. Цель возобновится сама, когда долги с процентами закроются, или когда вы отмените план.
+      <RouterLink to="/plan" class="font-medium text-brand">Открыть план</RouterLink>
+    </Callout>
+    <Callout v-else-if="planCushion" tone="good" title="Подушка плана: взносы продолжаются">
+      Пока в ней меньше месяца обязательных списаний, шаг плана — пополнить её.
+      <RouterLink to="/plan" class="font-medium text-brand">Открыть план</RouterLink>
+    </Callout>
 
     <div class="flex gap-2">
       <Button

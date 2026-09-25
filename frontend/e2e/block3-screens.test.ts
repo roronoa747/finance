@@ -7,7 +7,6 @@ import {
   budgetAmounts,
   totalIncome,
   netWorth,
-  cushionMonths,
   untilPayday,
 } from '../src/lib/finance'
 
@@ -41,9 +40,9 @@ describe('e2e / block-3 — Сквозной сценарий навигации
     authStore.setAuthData({
       token: 'jwt-token-ilyas',
       user: { id: 'u-ilyas', email: 'ilyas@example.com', created_at: '2026-09-23T10:00:00Z' },
-      household: { id: 'h-family', name: 'Семья Ильясовых', created_at: '2026-09-23T10:00:00Z' },
+      household: { id: 'h-family', name: 'Семья Ильясовых', created_by: 'u-ilyas', created_at: '2026-09-23T10:00:00Z' },
       member: {
-        id: 'm-1',
+        joined_at: '2026-09-23T10:00:00Z',
         household_id: 'h-family',
         user_id: 'u-ilyas',
         display_name: 'Ильяс',
@@ -151,9 +150,9 @@ describe('e2e / block-3 — Сквозной сценарий навигации
     authStore.setAuthData({
       token: 'jwt-token-aruna',
       user: { id: 'u-aruna', email: 'aruna@example.com', created_at: '2026-09-23T11:00:00Z' },
-      household: { id: 'h-family', name: 'Семья Ильясовых', created_at: '2026-09-23T10:00:00Z' },
+      household: { id: 'h-family', name: 'Семья Ильясовых', created_by: 'u-aruna', created_at: '2026-09-23T10:00:00Z' },
       member: {
-        id: 'm-2',
+        joined_at: '2026-09-23T10:00:00Z',
         household_id: 'h-family',
         user_id: 'u-aruna',
         display_name: 'Аруна',

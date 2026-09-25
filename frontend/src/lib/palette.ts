@@ -88,6 +88,11 @@ export const DEFAULT_CATEGORY_NAMES: Record<CategoryKey, string> = {
   d5: 'Свободно',
 }
 
+/** Имя раздела: как его назвала семья, а если раздел не заведён — запасное. */
+export function categoryName(categories: { key: CategoryKey; name: string }[], key: CategoryKey): string {
+  return categories.find((c) => c.key === key)?.name ?? DEFAULT_CATEGORY_NAMES[key]
+}
+
 export function prefersDark(): boolean {
   return typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
 }

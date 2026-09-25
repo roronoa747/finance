@@ -23,8 +23,41 @@
   ТЗ); тексты дословно. Модалки Целей переводятся на `Sheet` (Р-13: экран блока).
 - Стор — единственный путь правки (`mutateHouseholdDoc` через методы стора; прямые мутации из
   вью убрать). `seed`/`have` — по формуле `goalHave` (PV-04).
-- <критик Блока 3 впишет: `Sheet`/`useSavedMark`/`DangerZone` после блоков 2–3, методы
-  `wishlist`, `updateGoal` после PV-14>
+- **Что уже в коде после Блока 3** (факт, критик Блока 3 2026-09-25; номера строк — на
+  `pv-block-3-debt-plan`, после merge могут сдвинуться — искать по именам):
+  - Кит: `kit/Sheet.vue` (`open`, `title`, `z?`, emit `close`; слоты тела, `mark`, `footer`;
+    Escape — верхнему, фокус в окно и назад; поведение закреплено `kit/Sheet.dom.test.ts` на
+    `happy-dom`); `useSavedMark(() => id, () => updatedAt)` + `kit/SavedMark` в слот `mark`;
+    `NumFieldBlur`, `Segmented`, `Field group`, `DangerZone` (`label`, `warning`,
+    `confirm-label`, emit `confirm`). Образцы окна с автосохранением по blur —
+    `components/capital/CreditSheet.vue`, `AccountSheet.vue` (пропс — id, emit `close`;
+    `:open` — по найденной записи: у кредита — среди `liveCredits`, удалил партнёр — окно
+    закрылось).
+  - На Целях окна всё ещё самодельные: `Goals.vue` (`fixed inset-0 … bg-black/40` —
+    `:305`, `:357`), `GoalDetail.vue` (`:312`, `:373` — окно правки цели); оба экрана блок и
+    так трогает → на `Sheet` (Р-13), литерального затемнения не оставить.
+  - **`wishlist` в сторе — только геттер** (`stores/finance.ts:154`), методов нет;
+    `Goals.vue` по-прежнему пишет покупки напрямую (`mutateHouseholdDoc` `:137`, `:149`).
+  - **`updateGoal(id, patch)`** (`stores/finance.ts:1248`) PV-14 не менял: `Object.assign` +
+    `updatedAt`, без `unchanged` и без правила `seed`. План «Сначала долги» в цели **не
+    пишет** (Р-9 паритета): пауза выводится `pausedGoals(activePlan, goals)`, `Goal.monthly`
+    не трогается. Значит правка «Откладывать в месяц» у цели на паузе сразу меняет шаг
+    плана (`planExtra` = Σ взносов пауз), а «Уже накоплено» у цели-подушки — шаг `cushion`
+    (`planStep`); settle плана после `updateGoal` не нужен (долги не меняются). На
+    `GoalDetail.vue` у цели на паузе — Callout «На паузе ради плана» и подпись «после плана»
+    под датой; на `Goals.vue` — `Tag` вместо «N/мес»: вёрстку этих мест не ломать
+    (SSR-тесты `views/Goals.test.ts`).
+  - Тесты вью — SSR (`renderScreen` из `src/test/screenState.ts` — экран с роутером без
+    охранника); стенд двух телефонов e2e — `e2e/support/family.ts` (`fakeServer`, `phone`,
+    `screen`, `at`, `setOnline`); `e2e/` проверяется `vue-tsc -b` (`tsconfig.e2e.json`).
+  - **После клинапа Блока 3** (факт, 2026-09-25; подробно — §6 бэклога): пауза цели —
+    `financeStore.pausedGoalIds` (Set), шаг плана — `financeStore.planStepNow()`, не собирать
+    заново. У целей на паузе бывают движения с `planId` (заметка «в долги по плану») — это
+    снятие «вложить уже накопленное» при шаге месяца старта; PV-19 («Уже накоплено», `seed`) их
+    не теряет и не переписывает (`planLumpTakes` считает снятое по ним). Выбор счёта списания —
+    `components/AccountChoice.vue` (v-model `string | null | undefined`, подсказка слотом) —
+    брать его, если окну нужен выбор счёта кнопками. Прокрутка экрана сбрасывается сама
+    (`AppShell`). Хвост Н-8 ревью Б3 (дата цели на паузе) владелец отдал в PV-19 — п. 4 ТЗ.
 - Среда: стенд §6, два профиля + viewer. Верификация: `cd frontend && npm run build && npm test`.
 - Следующий шаг — `/critic паритет-react-vue 4`.
 

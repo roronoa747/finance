@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { setActivePinia, createPinia, type Pinia } from 'pinia'
-import { createSSRApp, type Component } from 'vue'
+import { setActivePinia, type Pinia } from 'pinia'
+import { createSSRApp } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { createRouter, createMemoryHistory } from 'vue-router'
+import { routes } from '../src/router'
 import { useFinanceStore, defaultSyncDoc } from '../src/stores/finance'
-import { ApiClient, ApiError } from '../src/api/client'
+import { at, phone, screen, setOnline, type FakeServer } from './support/family'
 import type { SyncDoc } from '../src/types/finance'
-import type { HouseholdDocResponse, ConflictResponse } from '../src/types/api'
 import { liveGoals, liveObligations, openCredits } from '../src/lib/finance'
 import { setupPlan, type SetupForm } from '../src/lib/setup'
 import { HUES } from '../src/lib/palette'
@@ -31,69 +31,23 @@ import StrategyCompare from '../src/components/StrategyCompare.vue'
  * (Capital.tsx:1568-1589), и совпали с браузером до тенге.
  */
 describe('e2e / PV Блок 1 — калькулятор и точные расчёты на двух телефонах', () => {
-  let server: { rev: number; data: SyncDoc }
+  let server: FakeServer
   const T0 = '2026-09-01T00:00:00.000Z'
-
-  function backend(): ApiClient {
-    const snapshot = (): HouseholdDocResponse => ({
-      household_id: 'h-family',
-      rev: server.rev,
-      data: JSON.parse(JSON.stringify(server.data)),
-      updated_at: new Date().toISOString(),
-    })
-    return {
-      getHouseholdDoc: vi.fn(async () => snapshot()),
-      pushHouseholdDoc: vi.fn(async (rev: number, data: SyncDoc) => {
-        if (rev !== server.rev) {
-          const conflict: ConflictResponse<HouseholdDocResponse> = { error: 'conflict', server_doc: snapshot() }
-          throw new ApiError('conflict', 409, conflict)
-        }
-        server = { rev: server.rev + 1, data: JSON.parse(JSON.stringify(data)) }
-        return snapshot()
-      }),
-    } as unknown as ApiClient
-  }
-
-  const setOnline = (onLine: boolean) => vi.stubGlobal('navigator', { onLine })
-  const at = (iso: string) => vi.setSystemTime(new Date(iso))
-
-  async function phone() {
-    const pinia = createPinia()
-    setActivePinia(pinia)
-    const store = useFinanceStore()
-    const client = backend()
-    await store.pullHousehold(client)
-    return { store, client, pinia }
-  }
-
-  /** Экран глазами телефона: SSR на его сторе, маршрут — только нужный экрану. */
-  async function screen(pinia: Pinia, view: Component, pattern: string, path = pattern, props?: Record<string, unknown>) {
-    setActivePinia(pinia)
-    // Остальные адреса — заглушка: ссылки экрана на другие экраны не шумят предупреждениями.
-    const router = createRouter({
-      history: createMemoryHistory(),
-      routes: [{ path: pattern, component: view }, { path: '/:rest(.*)*', component: view }],
-    })
-    await router.push(path)
-    await router.isReady()
-    const app = createSSRApp(view, props)
-    app.use(router)
-    return renderToString(app)
-  }
 
   /** Калькулятор телефона с заданным стартовым состоянием (горизонт, галки). */
   async function strategy(pinia: Pinia, initial: { months?: 12 | 24 | 36; kept?: string[]; cushion?: boolean; useSaved?: boolean }) {
     setActivePinia(pinia)
     const store = useFinanceStore()
-    return renderToString(
-      createSSRApp(StrategyCompare, {
-        credits: openCredits(store.credits),
-        goals: liveGoals(store.goals),
-        obligations: liveObligations(store.obligations),
-        monthKey: '2026-09',
-        initial,
-      }),
-    )
+    const app = createSSRApp(StrategyCompare, {
+      credits: openCredits(store.credits),
+      goals: liveGoals(store.goals),
+      obligations: liveObligations(store.obligations),
+      monthKey: '2026-09',
+      initial,
+    })
+    // Ссылки калькулятора — RouterLink (PV-15): нужен роутер.
+    app.use(createRouter({ history: createMemoryHistory(), routes }))
+    return renderToString(app)
   }
 
   /** Колонка калькулятора как её видит человек: накоплено, долг, проценты, срок. */
@@ -157,9 +111,9 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
   })
 
   it('PV-02: калькулятор — семь элементов и числа React до тенге на каждом переключении', async () => {
-    const A = await phone()
+    const A = await phone(server)
 
-    const capital = await screen(A.pinia, Capital, '/capital', '/capital', { initialAdvice: 'strategy' })
+    const capital = await screen(A.pinia, Capital, '/capital', { initialAdvice: 'strategy' })
     // Текст подсказки открывается по «?» — он проверен в браузере, в SSR она закрыта.
     expect(capital).toContain('Одинаковые траты, разный порядок')
     expect(capital).toContain('Горизонт')
@@ -198,8 +152,8 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
   })
 
   it('PV-01: A закрывает Кредитку досрочкой — у обоих «Свободно» +30 000, «Кредиты» без неё, Ритуал и калькулятор — по открытым', async () => {
-    const A = await phone()
-    const B = await phone()
+    const A = await phone(server)
+    const B = await phone(server)
 
     expect(await screen(A.pinia, Overview, '/')).toContain(money(738_320))
     const budgetBefore = await screen(A.pinia, Budget, '/budget')
@@ -223,7 +177,7 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
       expect(budget).toContain(money(768_320))
       const ritual = await screen(P.pinia, Ritual, '/ritual')
       expect(ritual).toContain(`Сейчас: 12 платежей, переплата ${money(100_160)}`)
-      const capital = await screen(P.pinia, Capital, '/capital', '/capital', { initialAdvice: 'strategy' })
+      const capital = await screen(P.pinia, Capital, '/capital', { initialAdvice: 'strategy' })
       // Строка закрытого остаётся, в калькулятор он не входит: подушка 332 000, выигрыш 48 987.
       expect(capital).toContain('Кредитка')
       expect(capital).toContain(`Сначала подушка — ${money(332_000)}`)
@@ -234,9 +188,9 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
   })
 
   it('PV-03: форма долга — расхождение словами и цифрами, ставка «по сроку» 18,0%', async () => {
-    const A = await phone()
+    const A = await phone(server)
     const form = (payment: string) =>
-      screen(A.pinia, Capital, '/capital', '/capital?add=debt', {
+      screen(A.pinia, Capital, '/capital?add=debt', {
         initialDebt: { mode: 'term', principal: '1 000 000', payment, term: '12' },
       })
 
@@ -254,11 +208,11 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
   })
 
   it('PV-04: снятие больше накопленного — 0 у обоих телефонов, движение целиком, прогноз «дорожает вместе с рынком»', async () => {
-    const A = await phone()
-    const B = await phone()
+    const A = await phone(server)
+    const B = await phone(server)
     const kid = (p: typeof A) => p.store.goals.find((g) => g.id === 'kid')!
 
-    expect(await screen(A.pinia, GoalDetail, '/goals/:id', '/goals/kid')).toContain(`около ${money(2_633_568)}`) // 34 мес.
+    expect(await screen(A.pinia, GoalDetail, '/goals/kid')).toContain(`около ${money(2_633_568)}`) // 34 мес.
 
     // A снимает 500 000 из 300 000, B в это время офлайн пополняет на 100 000.
     at('2026-09-25T05:00:00Z')
@@ -277,7 +231,7 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
     for (const P of [A, B]) {
       expect(kid(P).have).toBe(0)
       expect(kid(P).movements.map((m) => m.amount).sort((x, y) => x - y)).toEqual([-500_000, 100_000])
-      const detail = await screen(P.pinia, GoalDetail, '/goals/:id', '/goals/kid')
+      const detail = await screen(P.pinia, GoalDetail, '/goals/kid')
       expect(detail).toContain(`0 из ${plain(2_000_000)} ₸`)
       expect(detail).toContain('Цель дорожает вместе с рынком')
       expect(detail).toContain('10,2%')
@@ -285,12 +239,12 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
       expect(detail).not.toContain('Дисциплина накоплений')
     }
     expect(server.data.goals.find((g) => g.id === 'kid')?.have).toBe(0)
-    expect(await screen(A.pinia, GoalDetail, '/goals/:id', '/goals/flat')).toContain(`около ${money(7_964_911)}`) // 35 мес.
+    expect(await screen(A.pinia, GoalDetail, '/goals/flat')).toContain(`около ${money(7_964_911)}`) // 35 мес.
   })
 
   it('PV-05: вклад — инфляция 10,2% и вторая плашка React', async () => {
-    const A = await phone()
-    const html = await screen(A.pinia, Deposit, '/capital/:id', '/capital/dep')
+    const A = await phone(server)
+    const html = await screen(A.pinia, Deposit, '/capital/dep')
     // 14% с ежемесячной капитализацией = 14,9% эффективных; (1,149 / 1,102) − 1 = 4,3% (при 8% было бы 6,4%).
     expect(html).toContain('При инфляции 10,2% эффективная ставка')
     expect(html).toContain('14,9%')
@@ -320,7 +274,7 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
   })
 
   it('PV-08: тёмная тема — кольца Обзора тёмными оттенками целей', async () => {
-    const A = await phone()
+    const A = await phone(server)
     isDark.value = true
     const dark = await screen(A.pinia, Overview, '/')
     expect(dark).toContain(`stroke="${HUES.blue.dark}"`)

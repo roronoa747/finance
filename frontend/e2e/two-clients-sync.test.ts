@@ -6,7 +6,7 @@ import { createAppRouter } from '../src/router'
 import { useAuthStore } from '../src/stores/auth'
 import { useFinanceStore, defaultSyncDoc } from '../src/stores/finance'
 import { ApiClient, ApiError } from '../src/api/client'
-import type { SyncDoc, Goal, Account } from '../src/types/finance'
+import type { SyncDoc, Account } from '../src/types/finance'
 import type { HouseholdDocResponse, ConflictResponse, PrivateDocResponse } from '../src/types/api'
 import { netWorth, goalMonths, nextChange } from '../src/lib/finance'
 import { monthKey } from '../src/lib/dates'
@@ -157,13 +157,13 @@ describe('e2e / MGV-14 — Сквозная приёмка: совместная
     authStoreA.setAuthData({
       token: 'jwt-token-ilyas',
       user: { id: 'u-ilyas', email: 'ilyas@example.com', created_at: '2026-09-24T00:00:00Z' },
-      household: { id: 'h-family', name: 'Семья Ильяса и Аруны', created_at: '2026-09-24T00:00:00Z' },
+      household: { id: 'h-family', name: 'Семья Ильяса и Аруны', created_by: 'u-ilyas', created_at: '2026-09-24T00:00:00Z' },
       member: {
-        id: 'm-ilyas',
+        joined_at: '2026-09-24T00:00:00Z',
         household_id: 'h-family',
         user_id: 'u-ilyas',
         display_name: 'Ильяс',
-        role: 'owner',
+        role: 'member',
         slot: 'a',
       },
     })
@@ -180,9 +180,9 @@ describe('e2e / MGV-14 — Сквозная приёмка: совместная
     authStoreB.setAuthData({
       token: 'jwt-token-aruna',
       user: { id: 'u-aruna', email: 'aruna@example.com', created_at: '2026-09-24T00:00:00Z' },
-      household: { id: 'h-family', name: 'Семья Ильяса и Аруны', created_at: '2026-09-24T00:00:00Z' },
+      household: { id: 'h-family', name: 'Семья Ильяса и Аруны', created_by: 'u-aruna', created_at: '2026-09-24T00:00:00Z' },
       member: {
-        id: 'm-aruna',
+        joined_at: '2026-09-24T00:00:00Z',
         household_id: 'h-family',
         user_id: 'u-aruna',
         display_name: 'Аруна',

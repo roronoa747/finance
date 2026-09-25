@@ -1,16 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { setActivePinia, createPinia, type Pinia } from 'pinia'
-import { createRenderer, createSSRApp, nextTick, ssrContextKey, type Component } from 'vue'
+import { setActivePinia, type Pinia } from 'pinia'
+import { createRenderer, createSSRApp, h, nextTick, ssrContextKey, type Component } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import { createRouter, createMemoryHistory } from 'vue-router'
+import { createMemoryHistory } from 'vue-router'
 import { createAppRouter } from '../src/router'
-import { useFinanceStore, defaultSyncDoc } from '../src/stores/finance'
+import { defaultSyncDoc } from '../src/stores/finance'
 import { useAuthStore } from '../src/stores/auth'
-import { ApiClient, ApiError } from '../src/api/client'
-import type { Category, SyncDoc } from '../src/types/finance'
-import type { HouseholdDocResponse, ConflictResponse } from '../src/types/api'
+import type { Category } from '../src/types/finance'
+import { at, phone, screen, type FakeServer } from './support/family'
 import {
   budgetAmounts,
   creditSchedule,
@@ -27,6 +26,9 @@ import Overview from '../src/views/Overview.vue'
 import Budget from '../src/views/Budget.vue'
 import PaidRow from '../src/components/PaidRow.vue'
 import DangerZone from '../src/components/kit/DangerZone.vue'
+import CreditSheet from '../src/components/capital/CreditSheet.vue'
+import PayoffSheet from '../src/components/capital/PayoffSheet.vue'
+import { screenMixin } from '../src/test/screenState'
 
 /**
  * Блок 2 «Правка денег» (PV-09…PV-13): два телефона — два стора Pinia на одном
@@ -46,7 +48,8 @@ describe('PV-09: кит окон', () => {
     expect(css).toMatch(/--color-scrim: var\(--scrim\)/)
 
     // Экраны блока — без литерального затемнения.
-    for (const file of ['../src/views/Capital.vue', '../src/components/PaidRow.vue']) {
+    const sheets = ['AccountSheet', 'CreditSheet', 'ObligationSheet', 'PayoffSheet'].map((n) => `../src/components/capital/${n}.vue`)
+    for (const file of ['../src/views/Capital.vue', '../src/components/PaidRow.vue', ...sheets]) {
       const src = readFileSync(resolve(import.meta.dirname, file), 'utf-8')
       expect(src).not.toMatch(/bg-black|fixed inset-0|<select/)
     }
@@ -54,49 +57,9 @@ describe('PV-09: кит окон', () => {
 })
 
 describe('e2e / Блок 2 паритета — правка денег на двух телефонах', () => {
-  let server: { rev: number; data: SyncDoc }
+  let server: FakeServer
   const T0 = '2026-09-01T00:00:00.000Z'
 
-  function backend(): ApiClient {
-    const snapshot = (): HouseholdDocResponse => ({
-      household_id: 'h-family',
-      rev: server.rev,
-      data: JSON.parse(JSON.stringify(server.data)),
-      updated_at: new Date().toISOString(),
-    })
-    return {
-      getHouseholdDoc: vi.fn(async () => snapshot()),
-      pushHouseholdDoc: vi.fn(async (rev: number, data: SyncDoc) => {
-        if (rev !== server.rev) {
-          const conflict: ConflictResponse<HouseholdDocResponse> = { error: 'conflict', server_doc: snapshot() }
-          throw new ApiError('conflict', 409, conflict)
-        }
-        server = { rev: server.rev + 1, data: JSON.parse(JSON.stringify(data)) }
-        return snapshot()
-      }),
-    } as unknown as ApiClient
-  }
-
-  const at = (iso: string) => vi.setSystemTime(new Date(iso))
-
-  async function phone() {
-    const pinia = createPinia()
-    setActivePinia(pinia)
-    const store = useFinanceStore()
-    const client = backend()
-    await store.pullHousehold(client)
-    return { store, client, pinia }
-  }
-
-  /** Экран глазами телефона: SSR-рендер на его сторе. */
-  async function screen(pinia: Pinia, view: Component, path: string) {
-    setActivePinia(pinia)
-    const router = createAppRouter(createMemoryHistory())
-    await router.push(path)
-    const app = createSSRApp(view)
-    app.use(router)
-    return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
-  }
 
   beforeEach(() => {
     // Таймеры подделаны: запланированный синк не уходит в настоящий apiClient.
@@ -129,8 +92,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
   })
 
   it('PV-10: правка ставки у кредита с отметкой не меняет остаток; правка остатка — якорь; второй телефон видит день и ставку', async () => {
-    const A = await phone()
-    const B = await phone()
+    const A = await phone(server)
+    const B = await phone(server)
 
     at('2026-09-24T08:00:00Z')
     A.store.markPaid('credit', 'loan', 'a', { accountId: 'card' })
@@ -164,24 +127,12 @@ describe('e2e / Блок 2 паритета — правка денег на д�
 
   /** Форма Капитала на телефоне: поля заполнены, нажата кнопка формы. */
   async function submit(pinia: Pinia, path: string, state: Record<string, unknown>, action: string) {
-    setActivePinia(pinia)
-    const router = createAppRouter(createMemoryHistory())
-    await router.push(path)
-    const app = createSSRApp(Capital)
-    app.use(router)
-    app.mixin({
-      created() {
-        if (this.$.parent !== null) return
-        Object.assign(this.$.setupState, state)
-        this.$.setupState[action]()
-      },
-    })
-    await renderToString(app)
+    await screen(pinia, Capital, path, undefined, [screenMixin(state, (s) => (s[action] as () => void)())])
   }
 
   it('PV-11: коммуналка с оценкой из формы — «До зарплаты» спрашивает сумму; аренда в «Жильё» — d1 Бюджета, не d4', async () => {
-    const A = await phone()
-    const B = await phone()
+    const A = await phone(server)
+    const B = await phone(server)
 
     at('2026-09-24T08:00:00Z')
     await submit(A.pinia, '/capital?add=payment', { obName: 'Коммуналка', obAmount: '35 000', obDay: '8', obCategory: 'd1', obEstimate: true }, 'createObligation')
@@ -232,7 +183,12 @@ describe('e2e / Блок 2 паритета — правка денег на д�
    * наблюдатели не работают, а закрытие окна чистит адрес именно наблюдателем.
    * Возвращает состояние экрана (setupState).
    */
-  function mountLive(pinia: Pinia, router: ReturnType<typeof createAppRouter>) {
+  function mountLive(
+    pinia: Pinia,
+    router: ReturnType<typeof createAppRouter>,
+    /** Окно Капитала само по себе (Н-3) и его пропсы — живые, от состояния экрана. */
+    sheet?: { view: Component; props: () => Record<string, unknown> },
+  ) {
     type N = { children: N[]; parent: N | null; text?: string }
     const node = (text?: string): N => ({ children: [], parent: null, text })
     const detach = (n: N) => {
@@ -262,7 +218,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       querySelector: () => null,
     })
     setActivePinia(pinia)
-    const app = createApp(Capital)
+    const app = createApp(sheet ? { render: () => h(sheet.view, sheet.props()) } : Capital)
     app.use(router)
     // Vitest в Node собирает .vue для SSR: setup пишет свой модуль в SSR-контекст, а
     // рендер у компонента серверный. Нужен только setup с наблюдателями — рисовать нечего.
@@ -271,11 +227,13 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       if (!/missing template or render function/.test(msg)) console.warn(msg)
     }
     const vm = app.mount(node())
-    return vm.$.setupState as Record<string, unknown>
+    const inst = sheet ? vm.$.subTree.component! : vm.$
+    // setupState — внутреннее поле экземпляра, в публичных типах Vue его нет.
+    return (inst as unknown as { setupState: Record<string, unknown> }).setupState
   }
 
   it('PV-12 (Б-15): окно, открытое по адресу, при закрытии чистит адрес — тот же «+» открывает его снова', async () => {
-    const A = await phone()
+    const A = await phone(server)
     useAuthStore().setAuthData({
       token: 't',
       user: { id: 'u', email: 'u@example.com', created_at: T0 },
@@ -329,7 +287,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
   })
 
   it('PV-10 (критик): закрытый кредит снова открыт сверкой остатка — у модалки появляется «Оплатил»', async () => {
-    const A = await phone()
+    const A = await phone(server)
     useAuthStore().setAuthData({
       token: 't',
       user: { id: 'u', email: 'u@example.com', created_at: T0 },
@@ -342,7 +300,9 @@ describe('e2e / Блок 2 паритета — правка денег на д�
 
     const router = createAppRouter(createMemoryHistory())
     await router.push('/capital?credit=loan')
-    const screenA = mountLive(A.pinia, router)
+    const capitalA = mountLive(A.pinia, router)
+    // Окно кредита — `CreditSheet` (Н-3): открытый кредит берёт у экрана.
+    const screenA = mountLive(A.pinia, router, { view: CreditSheet, props: () => ({ creditId: capitalA.selectedCreditId }) })
     expect(screenA.creditDue).toBe(null)
 
     at('2026-09-24T09:00:00Z')
@@ -401,30 +361,21 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       path: string,
       opts: { props?: Record<string, unknown>; state?: ScreenState; act?: (s: ScreenState) => void; danger?: 'open' | 'confirm' } = {},
     ) {
-      setActivePinia(pinia)
-      // Остальные адреса — тот же экран: ссылки на другие экраны не шумят предупреждениями.
-      const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:rest(.*)*', component: view }] })
-      await router.push(path)
-      await router.isReady()
-      const app = createSSRApp(view, opts.props)
-      app.use(router)
-      app.mixin({
-        created() {
-          if (this.$.parent === null) {
-            Object.assign(this.$.setupState, opts.state ?? {})
-            opts.act?.(this.$.setupState)
-          } else if (opts.danger && this.$.type === DangerZone) {
+      return screen(pinia, view, path, opts.props, [
+        screenMixin(opts.state, opts.act),
+        {
+          created() {
+            if (!opts.danger || this.$.type !== DangerZone) return
             if (opts.danger === 'open') this.$.setupState.confirm = true
             else this.$.emit('confirm')
-          }
+          },
         },
-      })
-      return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
+      ])
     }
 
     it('приёмка: PV-11 — «Интернет» из формы без оценки — подписка (второй спрашивает «Оставить?»); день и «Чьё это» аренды — у второго в Бюджете и Капитале', async () => {
-      const A = await phone()
-      const B = await phone()
+      const A = await phone(server)
+      const B = await phone(server)
 
       at('2026-09-24T08:00:00Z')
       // Раздел и оценку не трогаем — дефолт формы как в React: «Еда и быт», оценка снята.
@@ -481,8 +432,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     })
 
     it('приёмка: PV-11 — план суммы на A: у второго «История суммы» — две строки с причиной, в месяц перехода «станет с» → «с»; viewer видит историю без полей', async () => {
-      const A = await phone()
-      const B = await phone()
+      const A = await phone(server)
+      const B = await phone(server)
       const plan = { obPlanning: true, obNewAmount: '200 000', obFromMonth: '2026-11', obReason: 'Переезд' }
 
       at('2026-09-24T08:00:00Z')
@@ -541,8 +492,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
         { id: 'trip', name: 'Отпуск', need: 600_000, seed: 100_000, have: 100_000, monthly: 50_000, hue: 'blue', planPct: 0, accountId: 'safe', movements: [], updatedAt: T0 },
         { id: 'flat', name: 'Квартира', need: 6_000_000, seed: 200_000, have: 200_000, monthly: 150_000, hue: 'plum', planPct: 0, movements: [], updatedAt: T0 },
       ]
-      const A = await phone()
-      const B = await phone()
+      const A = await phone(server)
+      const B = await phone(server)
 
       // До: счета 1 000 000 + 300 000; по целям отдельно — только «Квартира» 200 000
       // (остальные лежат на «Сейфе»); долг 1 000 000 → капитал 500 000.
@@ -584,8 +535,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
         id: 'usd', name: 'Доллары', note: '', amount: 512_340, amountSetAt: T0, kind: 'cash',
         currency: 'USD', foreignAmount: 1_000, rate: 512.34, rateAt: T0, updatedAt: T0,
       })
-      const A = await phone()
-      const B = await phone()
+      const A = await phone(server)
+      const B = await phone(server)
       const usd = (p: typeof A) => p.store.accounts.find((a) => a.id === 'usd')!
 
       // Курс 512,34 → 479,26: 1 000 × 479,26 = 479 260 ₸, дата курса — сейчас.
@@ -623,8 +574,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
 
     it('приёмка: PV-13 — отметки и досрочка на двух телефонах: «За всё время», проценты в Бюджете, строка кредита, график = остаток', async () => {
       server.data.categories = categories
-      const A = await phone()
-      const B = await phone()
+      const A = await phone(server)
+      const B = await phone(server)
       // Проценты месяца — round(остаток × 33% / 12). До отметок: 1 000 000 → 27 500.
       expect(await page(B.pinia, Budget, '/budget')).toContain(`из них проценты банку ${money(27_500)} в месяц`)
 
@@ -714,8 +665,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     })
 
     it('приёмка: PV-10 — правка платежа на A: у второго ни якоря, ни нового остатка; «долг не закрывается» в окне и калькуляторе; возврат платежа — выводы', async () => {
-      const A = await phone()
-      const B = await phone()
+      const A = await phone(server)
+      const B = await phone(server)
 
       at('2026-09-24T08:00:00Z')
       on(A).store.markPaid('credit', 'loan', 'a', { accountId: 'card' })
@@ -756,8 +707,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     })
 
     it('приёмка: PV-10 — калькулятор: кредит А с суммой → кредит Б — поле пустое; рассрочка второго, закрытая досрочкой, — «долг закрыт»', async () => {
-      const A = await phone()
-      const B = await phone()
+      const A = await phone(server)
+      const B = await phone(server)
 
       // B заводит рассрочку 240 000 по 20 000 без процентов из формы долга.
       at('2026-09-24T08:00:00Z')
@@ -777,20 +728,22 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       await router.push('/capital?payoff=loan')
       const screenA = mountLive(A.pinia, router)
       expect(screenA.payoffCreditId).toBe('loan')
-      screenA.payoffMode = 'once'
-      screenA.payoffAmount = '100 000'
-      screenA.applyMode = 'payment'
+      // Калькулятор — окно `PayoffSheet` (Н-3): открытый кредит берёт у экрана.
+      const payoffA = mountLive(A.pinia, router, { view: PayoffSheet, props: () => ({ creditId: screenA.payoffCreditId }) })
+      payoffA.payoffMode = 'once'
+      payoffA.payoffAmount = '100 000'
+      payoffA.applyMode = 'payment'
       await nextTick()
       // 1 000 000 − 100 000 = 900 000.
-      expect(screenA.applyPlan).toMatchObject({ paid: 100_000, left: 900_000 })
+      expect(payoffA.applyPlan).toMatchObject({ paid: 100_000, left: 900_000 })
       // Другой кредит — чистый калькулятор: сумма пустая, режим «каждый месяц», и
       // «Снизить платёж» кредита «Кредит» не переходит к рассрочке (клинап).
       screenA.payoffCreditId = inst.id
       await nextTick()
-      expect(screenA.payoffAmount).toBe('')
-      expect(screenA.payoffMode).toBe('monthly')
-      expect(screenA.applyMode).toBe('term')
-      expect(screenA.applyPlan).toBe(null)
+      expect(payoffA.payoffAmount).toBe('')
+      expect(payoffA.payoffMode).toBe('monthly')
+      expect(payoffA.applyMode).toBe('term')
+      expect(payoffA.applyPlan).toBe(null)
 
       // Калькулятор рассрочки на A: 240 000 / 20 000 = 12 платежей, переплаты 0;
       // подсказка суммы — первый чип: половина платежа 10 000.

@@ -6,10 +6,12 @@ import {
   netWorth,
   cushionMonths,
   liquidCash,
-  mandatoryMonthly,
   nextChange,
   untilPayday,
 } from '@/lib/finance'
+import { planFamilyDoc, planOf } from '@/test/planFamily'
+import { renderScreen } from '@/test/screenState'
+import Overview from './Overview.vue'
 
 describe('views/Overview.vue — Финансовые показатели, капитал и подушка безопасности', () => {
   const storageMap = new Map<string, string>()
@@ -171,9 +173,8 @@ describe('views/Overview.vue — Финансовые показатели, ка
       { key: 'd4', name: 'Еда и быт', note: '', amount: 150_000, updatedAt: '' },
     ]
 
-    // Обязательные расходы: d1(200k) + d2(50k) + d4(150k) = 400 000 ₸
-    const mandatory = mandatoryMonthly(store.categories)
-    expect(mandatory).toBe(400_000)
+    // Месяц обязательных расходов — числом (его считает planMandatory; ревью Блока 3 Н-7).
+    const mandatory = 400_000
 
     // Ликвидные средства (карты + нал, без депозита): 600k + 150k = 750 000 ₸
     const cash = liquidCash(store.accounts)
@@ -346,5 +347,76 @@ describe('PV-01 — закрытый кредит вне «Свободно» О
     const html = await render()
     expect(html).toContain(money(708_320))
     expect(html).not.toContain(money(648_320))
+  })
+})
+
+describe('PV-15: сегменты Обзора — «Досрочно по плану» и разделы по ключам (SSR)', () => {
+  const storage = new Map<string, string>()
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  /** Строка легенды: название — сумма. */
+  const legend = (html: string, name: string) => {
+    const at = html.indexOf(`<span class="text-ink-2">${name}</span>`)
+    if (at < 0) return null
+    const m = html.slice(at).match(/(\d[\d\s\u00a0\u202f]*?)[\s\u00a0\u202f]*₸/)
+    return m ? Number(m[1].replace(/\D/g, '')) : null
+  }
+
+  it('с планом — «Досрочно по плану» = Σ взносов пауз, «Цели» без них, «Свободно» и «Свободно в …» как без плана', async () => {
+    const store = useFinanceStore()
+    store.setHouseholdDoc(planFamilyDoc(), 1)
+    const before = await renderScreen(Overview, '/')
+    store.setHouseholdDoc(planFamilyDoc({ plans: [planOf()] }), 2)
+    const html = await renderScreen(Overview, '/')
+    expect(legend(html, 'Досрочно по плану')).toBe(100_000)
+    expect(legend(before, 'Досрочно по плану')).toBeNull()
+    expect(legend(html, 'Цели')).toBe(30_000)
+    expect(legend(before, 'Цели')).toBe(130_000)
+    expect(legend(html, 'Свободно')).toBe(legend(before, 'Свободно'))
+    // Н-11: Hero «Свободно в …» — своё число (легенда обрезает минус), сравниваем и его.
+    const hero = (h: string) => {
+      const m = h.slice(h.indexOf('Свободно в сентябре')).match(/(\d[\d\s  ]*?)[\s  ]*₸/)
+      return m ? Number(m[1].replace(/\D/g, '')) : null
+    }
+    expect(hero(before)).toBe(1_200_000 - 220_000 - 103_000 - 130_000 - 150_000)
+    expect(hero(html)).toBe(hero(before))
+  })
+
+  it('Н-4: пока план набирает подушку — в легенде «По плану — в подушку» с той же суммой', async () => {
+    const store = useFinanceStore()
+    const thin = planFamilyDoc().goals.map((g) => (g.id === 'cushion' ? { ...g, have: 150_000, seed: 150_000 } : g))
+    store.setHouseholdDoc(planFamilyDoc({ goals: thin, plans: [planOf()] }), 1)
+    const html = await renderScreen(Overview, '/')
+    expect(legend(html, 'По плану — в подушку')).toBe(100_000)
+    expect(legend(html, 'Досрочно по плану')).toBeNull()
+  })
+
+  it('п. 7: раздела d1 нет, аренда в d1 — сегмент и строка «Жильё»; без аренды — нет', async () => {
+    const store = useFinanceStore()
+    const categories = planFamilyDoc().categories.filter((c) => c.key === 'd4')
+    store.setHouseholdDoc(planFamilyDoc({ categories }), 1)
+    const html = await renderScreen(Overview, '/')
+    expect(legend(html, 'Жильё')).toBe(220_000)
+    // Сегменты легенды с «Свободно» складываются в доход — без плана и с ним.
+    const names = ['Жильё', 'Кредиты', 'Цели', 'Еда и быт', 'Свободно']
+    const income = budgetAmounts({ ...store.householdDoc, credits: store.credits }).income
+    const sum = (h: string, list: string[]) => list.reduce((a, n) => a + (legend(h, n) ?? NaN), 0)
+    expect(sum(html, names)).toBe(income)
+    store.setHouseholdDoc(planFamilyDoc({ categories, plans: [planOf()] }), 2)
+    expect(sum(await renderScreen(Overview, '/'), [...names, 'Досрочно по плану'])).toBe(income)
+    store.setHouseholdDoc(planFamilyDoc({ categories, obligations: [] }), 3)
+    expect(legend(await renderScreen(Overview, '/'), 'Жильё')).toBeNull()
   })
 })

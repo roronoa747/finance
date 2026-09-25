@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter, RouterLink, RouterView } from 'vue-router'
 import {
   PhHouse,
@@ -39,8 +39,21 @@ const title = computed(() => {
   if (p.startsWith('/goals')) return 'Цели и покупки'
   if (p.startsWith('/capital')) return 'Капитал'
   if (p.startsWith('/ritual')) return 'Ритуал'
+  if (p.startsWith('/plan')) return 'План'
   return 'Family Finance'
 })
+
+// Прокручивается не окно, а <main>: новый экран открывается сверху, а не на прокрутке
+// прошлого (после «Выбрать этот план» шаг месяца был за верхом экрана). По path, не
+// fullPath: Капитал открывает окна параметром адреса (Б-15) — список не прыгает.
+const mainEl = ref<HTMLElement | null>(null)
+watch(
+  () => route.path,
+  () => {
+    if (mainEl.value) mainEl.value.scrollTop = 0
+  },
+  { flush: 'post' },
+)
 
 function navigateAndClose(to: string) {
   addOpen.value = false
@@ -109,7 +122,7 @@ function onSparkleClick() {
     </header>
 
     <!-- Main Content Area -->
-    <main class="flex-1 overflow-y-auto px-4 pb-6 [overscroll-behavior:contain]">
+    <main ref="mainEl" class="flex-1 overflow-y-auto px-4 pb-6 [overscroll-behavior:contain]">
       <RouterView />
     </main>
 

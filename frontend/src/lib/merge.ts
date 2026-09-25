@@ -1,4 +1,4 @@
-import type { Goal, Obligation, SyncDoc, Tracked } from '@/types/finance'
+import type { DebtPlan, Goal, Obligation, SyncDoc, Tracked } from '@/types/finance'
 import { goalHave } from '@/lib/finance'
 
 /**
@@ -99,6 +99,20 @@ function mergeGoal(winner: Goal, a: Goal, b: Goal): Goal {
   }
 }
 
+/**
+ * План: статус идёт в одну сторону — active → cancelled или done, повторный выбор — новый
+ * id. Поэтому «активный» — самый слабый статус, как у надгробия: конец плана не теряется,
+ * даже если часы отменившего телефона отстают. «Завершён» сильнее «отменён» (Р-5): партнёр
+ * офлайн отменил план, который здесь уже закрыл последний долг, — план уходит в историю
+ * завершённым. Дата и итог — той стороны, чей статус взят; равные статусы — по последней правке.
+ */
+function mergePlan(winner: DebtPlan, a: DebtPlan, b: DebtPlan): DebtPlan {
+  const rank = (p: DebtPlan) => (p.status === 'done' ? 2 : p.status === 'cancelled' ? 1 : 0)
+  if (rank(winner) === Math.max(rank(a), rank(b))) return winner
+  const end = rank(a) > rank(b) ? a : b
+  return { ...winner, status: end.status, endedAt: end.endedAt, result: end.result }
+}
+
 function mergeObligation(winner: Obligation, a: Obligation, b: Obligation): Obligation {
   // Версии сумм тоже только добавляются. Ключ — месяц вступления в силу.
   const byMonth = new Map<string, Obligation['versions'][number]>()
@@ -159,6 +173,10 @@ export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
     // Отметка неизменна, кроме надгробия: по id, удаление сильнее. Остатки из них
     // выводит finance.ts, поэтому здесь пересчитывать нечего.
     payments: mergeList(local.payments ?? [], remote.payments ?? [], (x) => x.id),
+    // Планы «Сначала долги» (PV-14): статус и итог — по последней правке, «завершён»
+    // сильнее «отменён». Два активных после офлайна остаются оба — активным считается
+    // поздний (`activePlan`, Р-9).
+    plans: mergeList(local.plans ?? [], remote.plans ?? [], (x) => x.id, mergePlan),
   }
   return { ...mergeUnknownKeys(local, remote, known), ...known }
 }

@@ -14,6 +14,7 @@ import { monthKey, monthIn, monthFrom, dayLabel } from '@/lib/dates'
 import {
   amountAt,
   budgetAmounts,
+  budgetLines,
   keepQuestions,
   liveGoals,
   liveObligations,
@@ -52,16 +53,15 @@ const income = computed(() => amounts.value.income)
 const free = computed(() => amounts.value.d5)
 const spent = computed(() => income.value - free.value)
 
-// Сегменты расходов по категориям для Bar и Legend
+// Сегменты расходов для Bar и Legend — те же строки, что «Куда уходит» Бюджета
+// (`budgetLines`, PV-15 п. 7); «Досрочно по плану» — цветом раздела кредитов.
 const segments = computed<Seg[]>(() => {
-  const segs: Seg[] = categories.value
-    .filter((c) => c.key !== 'd5')
-    .map((c) => ({
-      key: c.key,
-      value: amounts.value[c.key as 'd1' | 'd2' | 'd3' | 'd4'] || 0,
-      color: `var(--${c.key})`,
-      label: c.name,
-    }))
+  const segs: Seg[] = budgetLines(categories.value, amounts.value).map((l) => ({
+    key: l.key,
+    value: l.amount,
+    color: l.key === 'plan' ? 'var(--d2)' : `var(--${l.key})`,
+    label: l.name,
+  }))
 
   segs.push({
     key: 'd5',

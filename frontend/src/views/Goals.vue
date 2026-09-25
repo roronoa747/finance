@@ -52,6 +52,8 @@ watch(tab, (t) => {
 })
 
 const goals = computed(() => liveGoals(financeStore.goals))
+// Пауза выводится из активного плана (Р-9): взнос цели при этом не меняется.
+const paused = computed(() => financeStore.pausedGoalIds)
 const wishlist = computed(() => liveWishlist(financeStore.wishlist))
 const people = computed(() => financeStore.people)
 
@@ -191,7 +193,8 @@ function toggleWishBought(id: string, itemName: string) {
             <span class="block text-[14.5px] font-semibold num text-ink">
               {{ Math.round((g.need > 0 ? g.have / g.need : 0) * 100) }}%
             </span>
-            <span class="block text-[12px] text-ink-3 num">{{ plain(g.monthly) }}/мес</span>
+            <Tag v-if="paused.has(g.id)" class="mt-0.5 inline-block">На паузе ради плана</Tag>
+            <span v-else class="block text-[12px] text-ink-3 num">{{ plain(g.monthly) }}/мес</span>
           </span>
         </div>
 

@@ -18,6 +18,8 @@ import {
 import { monthKey } from '@/lib/dates'
 import { money, plain } from '@/lib/money'
 import Budget from './Budget.vue'
+import { planFamilyDoc, planOf } from '@/test/planFamily'
+import { renderScreen, screenMixin } from '@/test/screenState'
 import SalaryDialog from '@/components/SalaryDialog.vue'
 import Input from '@/components/ui/Input.vue'
 
@@ -398,5 +400,99 @@ describe('PV-01 — закрытый кредит вне бюджета', () => 
     const plan = await render('plan')
     expect(plan).toContain(`из них проценты банку ${money(15_000)} в месяц`)
     expect(plan).not.toContain(money(21_000))
+  })
+})
+
+describe('PV-15: «Досрочно по плану» и разделы по ключам (SSR)', () => {
+  const storage = new Map<string, string>()
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  /** Строка «Куда уходит»: сумма в ячейке значения (подпись «из них проценты» — не она). */
+  const lineAmount = (html: string, name: string) => {
+    const at = html.indexOf(`>${name}</div>`)
+    if (at < 0) return null
+    const m = html.slice(at).match(/font-semibold num text-ink\">(\d[\d\s\u00a0\u202f]*?)[\s\u00a0\u202f]*₸/)
+    return m ? Number(m[1].replace(/\D/g, '')) : null
+  }
+
+  it('с планом — «Досрочно по плану» = Σ взносов пауз, «Цели» без них, «Свободно» как без плана', async () => {
+    const store = useFinanceStore()
+    store.setHouseholdDoc(planFamilyDoc(), 1)
+    const before = await renderScreen(Budget, '/budget')
+    const free = budgetAmounts({ ...store.householdDoc, credits: store.credits }).d5
+    expect(lineAmount(before, 'Цели')).toBe(130_000)
+    expect(before).not.toContain('Досрочно по плану')
+
+    store.setHouseholdDoc(planFamilyDoc({ plans: [planOf()] }), 2)
+    const html = await renderScreen(Budget, '/budget')
+    expect(lineAmount(html, 'Досрочно по плану')).toBe(40_000 + 60_000)
+    expect(lineAmount(html, 'Цели')).toBe(30_000)
+    expect(html).toContain('взносы целей на паузе и платежи закрытых долгов — по шагу плана')
+    expect(lineAmount(html, 'Свободно')).toBe(free)
+    // Строка плана — сразу после целей, цвет раздела кредитов.
+    expect(html.indexOf('>Досрочно по плану<')).toBeGreaterThan(html.indexOf('>Цели<'))
+    expect(html.slice(html.indexOf('>Цели<'), html.indexOf('>Досрочно по плану<'))).toContain('background:var(--d2)')
+  })
+
+  it('Н-1: «Список» и «Календарь» — событие плана той же суммой, Σ расходов как без плана', async () => {
+    // Расходы списка: «−N» у каждого события (платежи месяца, цели, план).
+    const spent = (html: string) =>
+      [...html.matchAll(/−([\d\s\u00a0\u202f]+)</g)].reduce((a, m) => a + Number(m[1].replace(/\D/g, '')), 0)
+    const store = useFinanceStore()
+    store.setHouseholdDoc(planFamilyDoc(), 1)
+    const without = await renderScreen(Budget, '/budget', { initialView: 'list' })
+    store.setHouseholdDoc(planFamilyDoc({ plans: [planOf()] }), 2)
+    const list = await renderScreen(Budget, '/budget', { initialView: 'list' })
+    const row = (html: string, name: string) => html.slice(html.indexOf(`>${name}<`), html.indexOf(`>${name}<`) + 400)
+    expect(row(list, 'Досрочно по плану')).toContain(`−${plain(100_000)}`)
+    expect(row(list, 'Взносы в цели')).toContain(`−${plain(30_000)}`)
+    expect(spent(list)).toBe(spent(without))
+    expect(spent(list)).toBe(130_000 + 220_000 + 58_000 + 25_000 + 20_000)
+    // Календарь берёт точки и строки дня из тех же событий: 1-е число — цели и план.
+    const cal = await renderScreen(Budget, '/budget', { initialView: 'calendar' }, [screenMixin({ selected: 1 })])
+    expect(row(cal, 'Досрочно по плану')).toContain(`−${plain(100_000)}`)
+  })
+
+  it('Н-4: пока план набирает подушку — строка «По плану — в подушку», сумма и «Свободно» те же', async () => {
+    const store = useFinanceStore()
+    const thin = planFamilyDoc().goals.map((g) => (g.id === 'cushion' ? { ...g, have: 150_000, seed: 150_000 } : g))
+    store.setHouseholdDoc(planFamilyDoc({ goals: thin, plans: [planOf()] }), 1)
+    const html = await renderScreen(Budget, '/budget')
+    expect(lineAmount(html, 'По плану — в подушку')).toBe(100_000)
+    expect(html).not.toContain('Досрочно по плану')
+    expect(html).toContain('взносы целей на паузе — в подушку, пока в ней меньше месяца списаний')
+    expect(lineAmount(html, 'Свободно')).toBe(budgetAmounts({ ...store.householdDoc, credits: store.credits }).d5)
+  })
+
+  it('п. 7: раздела d1 нет, аренда в d1 — строка «Жильё» с её суммой, Σ строк + «Свободно» = доход; без аренды строки нет', async () => {
+    const store = useFinanceStore()
+    const categories = planFamilyDoc().categories.filter((c) => c.key === 'd4')
+    store.setHouseholdDoc(planFamilyDoc({ categories }), 1)
+    const html = await renderScreen(Budget, '/budget')
+    expect(lineAmount(html, 'Жильё')).toBe(220_000)
+    const names = ['Жильё', 'Кредиты', 'Цели', 'Еда и быт']
+    const shown = names.map((n) => lineAmount(html, n))
+    expect(shown.every((v) => v !== null)).toBe(true)
+    const income = budgetAmounts({ ...store.householdDoc, credits: store.credits }).income
+    // «Еда и быт» — поле ввода базы раздела; платежи в d4 сверх базы в строке не видны (так и в
+    // React, хвост §4 критика Блока 3), поэтому здесь — сумма раздела из budgetAmounts.
+    const d4 = budgetAmounts({ ...store.householdDoc, credits: store.credits }).d4
+    expect(shown[0]! + shown[1]! + shown[2]! + d4 + lineAmount(html, 'Свободно')!).toBe(income)
+    expect(store.householdDoc.categories.map((c) => c.key)).toEqual(['d4'])
+
+    store.setHouseholdDoc(planFamilyDoc({ categories, obligations: [] }), 2)
+    expect(await renderScreen(Budget, '/budget')).not.toContain('>Жильё</div>')
   })
 })

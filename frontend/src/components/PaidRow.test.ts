@@ -13,6 +13,7 @@ import PaidRow from './PaidRow.vue'
 import Capital from '@/views/Capital.vue'
 import Overview from '@/views/Overview.vue'
 import Budget from '@/views/Budget.vue'
+import { screenMixin } from '@/test/screenState'
 
 describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
   const storage = new Map<string, string>()
@@ -243,12 +244,8 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     await router.push(path)
     const app = createSSRApp(Capital)
     app.use(router)
-    app.mixin({
-      created() {
-        // Корень приложения — сам экран Капитала.
-        if (this.$.parent === null) Object.assign(this.$.setupState, state)
-      },
-    })
+    // Поля калькулятора — в его окне (`PayoffSheet`, Н-3), не в самом экране.
+    app.mixin(screenMixin(state))
     return renderToString(app)
   }
 
