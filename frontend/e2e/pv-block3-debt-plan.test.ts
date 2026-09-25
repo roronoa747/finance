@@ -9,6 +9,8 @@ import GoalDetail from '../src/views/GoalDetail.vue'
 import Budget from '../src/views/Budget.vue'
 import Overview from '../src/views/Overview.vue'
 import DebtPlan from '../src/views/DebtPlan.vue'
+import Capital from '../src/views/Capital.vue'
+import { plain } from '../src/lib/money'
 import { at, fakeServer, phone, screen, setOnline, type FakeServer } from './support/family'
 
 /**
@@ -135,6 +137,43 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
       expect(await screen(B.pinia, DebtPlan, '/plan')).toContain('Плана нет')
       expect(B.store.plans).toHaveLength(1)
       expect(B.store.plans[0].status).toBe('cancelled')
+    })
+  })
+
+  describe('PV-16 — шаг плана одним нажатием', () => {
+    it('A вносит шаг со счёта прошлой оплаты → у B остаток и карта меньше, шаг «внесено»; следующий месяц — новый шаг', async () => {
+      const A = await phone(server)
+      const B = await phone(server)
+      on(A).store.choosePlan({ keptGoalIds: [], cushionGoalId: 'cushion', months: 24, lump: 0 }, 'a')
+      // Кредитку уже оплачивали с карты — счёт шага не спрашивается.
+      A.store.markPaid('credit', 'cc', 'a', { accountId: 'card' })
+      const ccBefore = A.store.credits.find((c) => c.id === 'cc')!.principal
+      const cardBefore = A.store.accounts[0].amount
+
+      at('2026-09-24T09:00:00Z')
+      const rec = A.store.applyPlanStep('a')!
+      expect(rec).toMatchObject({ kind: 'prepay', targetId: 'cc', amount: 100_000, accountId: 'card', mode: 'term', period: '2026-09' })
+      await A.store.syncHousehold(A.client)
+      await on(B).store.pullHousehold(B.client)
+
+      expect(B.store.credits.find((c) => c.id === 'cc')!.principal).toBe(ccBefore - 100_000)
+      expect(B.store.accounts[0].amount).toBe(cardBefore - 100_000)
+      const capitalB = await screen(B.pinia, Capital, '/capital')
+      expect(capitalB).toContain(`внесено по плану · ${plain(100_000)} ₸ · 24 сентября`)
+      expect(await screen(B.pinia, DebtPlan, '/plan')).toContain('Внесено по плану')
+      // Второй раз в том же месяце шаг не вносится — ни у A, ни у B.
+      expect(on(A).store.applyPlanStep('a')).toBeNull()
+      expect(on(B).store.applyPlanStep('b', { accountId: 'card' })).toBeNull()
+
+      // Октябрь: новый шаг — снова 100 000 в самую дорогую кредитку; сентябрьский — в факте.
+      at('2026-10-05T07:00:00Z')
+      const october = await screen(B.pinia, Capital, '/capital')
+      expect(october).toContain(`шаг плана: ${plain(100_000)} ₸ в октябре 2026`)
+      const planB = await screen(B.pinia, DebtPlan, '/plan')
+      expect(planB).toMatch(/>\s*Внести по плану\s*</)
+      expect(planB).not.toContain('досрочки не было')
+      const next = on(B).store.applyPlanStep('b')!
+      expect(next).toMatchObject({ period: '2026-10', targetId: 'cc', accountId: 'card' })
     })
   })
 })

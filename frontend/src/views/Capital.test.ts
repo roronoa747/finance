@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useFinanceStore } from '@/stores/finance'
-import { screenMixin } from '@/test/screenState'
+import { renderScreen, screenMixin } from '@/test/screenState'
+import { useAuthStore } from '@/stores/auth'
+import { authAs, planFamilyDoc, planOf } from '@/test/planFamily'
+import { money, plain } from '@/lib/money'
+import Capital from './Capital.vue'
 import {
   netWorth,
   prepayment,
@@ -1029,5 +1033,82 @@ describe('PV-13: разбивка и график в Капитале (SSR)', ()
     expect(html).toContain('окт 2026')
     expect(html).toContain(plain(rows[1].left))
     expect(html).toContain(plain(rows.at(-1)!.amount))
+  })
+})
+
+describe('PV-16: шаг плана в строке кредита (SSR)', () => {
+  const storage = new Map<string, string>()
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  const family = () => {
+    const store = useFinanceStore()
+    store.setHouseholdDoc(planFamilyDoc({ plans: [planOf()] }), 1)
+    return store
+  }
+  const button = />\s*Внести по плану\s*</
+  const row = (html: string, name: string) => {
+    const at = html.indexOf(`>${name}</span>`)
+    return html.slice(at, html.indexOf('</button>', at))
+  }
+
+  it('кредит плана — «шаг плана: N ₸ в сентябре 2026», «Внести по плану» и «Изменить режим»; другой — без подписи', async () => {
+    useAuthStore().setAuthData(authAs('member'))
+    family()
+    const html = await renderScreen(Capital, '/capital')
+    expect(row(html, 'Кредитка')).toContain(`шаг плана: ${plain(100_000)} ₸ в сентябре 2026`)
+    expect(row(html, 'Кредит')).not.toContain('шаг плана')
+    expect(html.match(new RegExp(button.source, 'g'))).toHaveLength(1)
+    expect(html).toContain('Изменить режим')
+  })
+
+  it('после applyPlanStep — «внесено по плану · N ₸ · дата», кнопки нет', async () => {
+    useAuthStore().setAuthData(authAs('member'))
+    const store = family()
+    store.applyPlanStep('a', { accountId: 'card' })
+    const html = await renderScreen(Capital, '/capital')
+    expect(row(html, 'Кредитка')).toContain(`внесено по плану · ${plain(100_000)} ₸ · 24 сентября`)
+    expect(html).not.toMatch(button)
+    expect(html).not.toContain('Изменить режим')
+  })
+
+  it('viewer — подпись шага видна, кнопок нет (Р-12)', async () => {
+    useAuthStore().setAuthData(authAs('viewer', 'b'))
+    family()
+    const html = await renderScreen(Capital, '/capital')
+    expect(row(html, 'Кредитка')).toContain('шаг плана')
+    expect(html).not.toMatch(button)
+    expect(html).not.toContain('Изменить режим')
+  })
+
+  it('«Изменить режим» — окно досрочки разово на сумму шага; запись с id плана, «снизить платёж» — шаг внесён', async () => {
+    useAuthStore().setAuthData(authAs('member'))
+    const store = family()
+    const html = await renderScreen(Capital, '/capital', undefined, [
+      screenMixin({}, (s) => (s.changePlanMode as (c: unknown) => void)(store.credits.find((c) => c.id === 'cc'))),
+    ])
+    expect(html).toContain(`Шаг плана — ${money(100_000)}.`)
+    expect(html).toContain(`value="${plain(100_000)}"`)
+    expect(html).toContain('Применить к кредиту')
+
+    await renderScreen(Capital, '/capital', undefined, [
+      screenMixin({}, (s) => (s.changePlanMode as (c: unknown) => void)(store.credits.find((c) => c.id === 'cc'))),
+      screenMixin({ applyMode: 'payment', applyAccount: 'card' }, (s) => (s.applyPrepay as () => void)()),
+    ])
+    const rec = store.payments.find((p) => p.kind === 'prepay')!
+    expect(rec).toMatchObject({ targetId: 'cc', amount: 100_000, planId: 'plan', mode: 'payment' })
+    expect(store.credits.find((c) => c.id === 'cc')!.payment).toBeLessThan(25_000)
+    expect(store.applyPlanStep('a', { accountId: 'card' })).toBeNull()
   })
 })

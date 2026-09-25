@@ -13,7 +13,7 @@ import {
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain, parseMoney, ratePct } from '@/lib/money'
-import { MONTHS_NOM, monthKey, parseMonthKey } from '@/lib/dates'
+import { MONTHS_NOM, atLabel, monthIn, monthKey, parseMonthKey } from '@/lib/dates'
 import {
   amountAt,
   costliestCredits,
@@ -65,6 +65,7 @@ import AccountSheet from '@/components/capital/AccountSheet.vue'
 import CreditSheet from '@/components/capital/CreditSheet.vue'
 import ObligationSheet from '@/components/capital/ObligationSheet.vue'
 import PayoffSheet from '@/components/capital/PayoffSheet.vue'
+import PlanStepAction from '@/components/PlanStepAction.vue'
 import Input from '@/components/ui/Input.vue'
 
 const props = withDefaults(
@@ -450,6 +451,28 @@ function choosePlan(opts: { keptGoalIds: string[]; cushionGoalId: string | null;
   if (financeStore.choosePlan(opts, authStore.slot ?? 'a')) void router.push('/plan')
 }
 
+/** Шаг плана в строке его кредита (PV-16, Р-6): вместо `credits[0]` — долг, который план гасит сейчас. */
+function planLine(c: Credit): string {
+  const s = planNow.value
+  if (s?.kind !== 'prepay' || s.creditId !== c.id) return ''
+  return s.applied
+    ? `внесено по плану · ${plain(s.applied.amount)} ₸ · ${atLabel(s.applied.at)}`
+    : `шаг плана: ${plain(s.amount)} ₸ в ${monthIn(key.value)}`
+}
+const planDue = (c: Credit) => {
+  const s = planNow.value
+  return s?.kind === 'prepay' && s.creditId === c.id && !s.applied && s.amount > 0 ? s : null
+}
+// «Изменить режим»: окно досрочки с суммой шага — там можно «снизить платёж» (Р-10); запись
+// пойдёт с id плана, и план пересчитается от факта.
+const payoffPlan = ref<{ id: string; amount: number } | null>(null)
+function changePlanMode(c: Credit) {
+  const s = planDue(c)
+  if (!s || !plan.value) return
+  payoffPlan.value = { id: plan.value.id, amount: s.amount }
+  payoffCreditId.value = c.id
+}
+
 /* ------------------ Окна по адресу (Б-15) ------------------ */
 /** Параметры адреса, которыми открываются окна. */
 const QUERY_KEYS = ['add', 'income', 'credit', 'obligation', 'payoff']
@@ -559,7 +582,6 @@ watch(queryModalOpen, (open) => {
         v-for="c in credits"
         :key="c.id"
         :title="c.name"
-        :note="creditNote(c)"
         :value="money(c.principal)"
         :sub="creditSub(c)"
         clickable
@@ -568,6 +590,21 @@ watch(queryModalOpen, (open) => {
         <template #icon>
           <PhCreditCard :size="17" />
         </template>
+        <template #note>
+          <span class="block text-[12.5px] text-ink-3">{{ creditNote(c) }}</span>
+          <span v-if="planLine(c)" class="block text-[12.5px] font-medium text-brand num">{{ planLine(c) }}</span>
+        </template>
+        <!-- Под строкой, а не действием справа: на 390px кнопка сжимала подпись кредита в столбик. -->
+        <div v-if="planDue(c) && !authStore.isViewer" class="mx-4 -mt-0.5 mb-3 flex items-center gap-3">
+          <PlanStepAction />
+          <button
+            type="button"
+            class="text-[12.5px] text-brand hover:underline cursor-pointer"
+            @click="changePlanMode(c)"
+          >
+            Изменить режим
+          </button>
+        </div>
       </Row>
 
       <!-- Обязательства вне групп -->
@@ -1078,7 +1115,14 @@ watch(queryModalOpen, (open) => {
     </Sheet>
 
     <!-- МОДАЛКА: Калькулятор досрочного погашения (Payoff) -->
-    <PayoffSheet :credit-id="payoffCreditId" @close="payoffCreditId = null" />
+    <PayoffSheet
+      :credit-id="payoffCreditId"
+      :plan="payoffPlan"
+      @close="
+        payoffCreditId = null;
+        payoffPlan = null;
+      "
+    />
 
     <!-- МОДАЛКА: Внеплановый доход -->
     <Sheet :open="extraIncomeOpen" title="Внеплановый доход" @close="extraIncomeOpen = false">

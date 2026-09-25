@@ -31,8 +31,10 @@ import Button from '@/components/ui/Button.vue'
 /**
  * Калькулятор досрочного погашения (React `PayoffDialog`) и применение досрочки
  * к кредиту (RP-08): вывод, чипы, лесенка отдачи, применённые досрочки со снятием.
+ * `plan` — открыто из шага плана «Изменить режим» (PV-16): сумма шага подставлена,
+ * разовый взнос, запись — с id плана (Р-10: режим можно сменить, план считается от факта).
  */
-const props = defineProps<{ creditId: string | null }>()
+const props = defineProps<{ creditId: string | null; plan?: { id: string; amount: number } | null }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const financeStore = useFinanceStore()
@@ -83,16 +85,20 @@ const creditPrepays = computed(() =>
     .sort((a, b) => b.at.localeCompare(a.at)),
 )
 
+// Досрочка шага плана ещё не внесена этим окном: вторая запись того же месяца пойдёт без id плана.
+const planPending = ref(false)
+
 // Другой кредит — чистый калькулятор (React `PayoffDialog`); счёт по умолчанию —
-// прошлой оплаты этого кредита (Р-5).
+// прошлой оплаты этого кредита (Р-5). Из шага плана — разовый взнос на сумму шага.
 watch(
-  () => props.creditId,
-  (id) => {
-    payoffAmount.value = ''
-    payoffMode.value = 'monthly'
+  [() => props.creditId, () => props.plan?.id],
+  ([id]) => {
+    payoffAmount.value = props.plan ? plain(props.plan.amount) : ''
+    payoffMode.value = props.plan ? 'once' : 'monthly'
     applyMode.value = 'term'
     applyDone.value = null
     removingPrepay.value = null
+    planPending.value = !!props.plan
     const last = id ? lastAccountFor(financeStore.payments, id, financeStore.accounts) : undefined
     applyAccount.value = last === undefined ? '' : (last ?? 'none')
   },
@@ -119,7 +125,9 @@ function applyPrepay() {
     amount: parseMoney(payoffAmount.value),
     mode: applyMode.value,
     accountId: applyAccount.value === 'none' ? null : applyAccount.value,
+    ...(planPending.value && props.plan ? { planId: props.plan.id } : {}),
   })
+  if (applyDone.value) planPending.value = false
   payoffAmount.value = ''
 }
 </script>
@@ -146,6 +154,11 @@ function applyPrepay() {
           </b>
         </div>
       </div>
+
+      <p v-if="planPending" class="-mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-2">
+        Шаг плана — {{ money(plan!.amount) }}. Можно «снизить платёж» вместо «сократить срок»: план
+        пересчитается от факта.
+      </p>
 
       <Field label="Как вносите" group>
         <Segmented
@@ -268,7 +281,7 @@ function applyPrepay() {
         >
           <div class="flex items-baseline gap-2">
             <span class="text-ink-2">
-              {{ atLabel(p.at) }} · {{ p.mode === 'payment' ? 'снизили платёж' : 'сократили срок' }}
+              {{ atLabel(p.at) }} · {{ p.mode === 'payment' ? 'снизили платёж' : 'сократили срок' }}{{ p.planId ? ' · по плану' : '' }}
             </span>
             <b class="ml-auto num text-ink">{{ money(p.amount) }}</b>
           </div>
