@@ -6,7 +6,6 @@ import {
   netWorth,
   cushionMonths,
   liquidCash,
-  mandatoryMonthly,
   nextChange,
   untilPayday,
 } from '@/lib/finance'
@@ -174,9 +173,8 @@ describe('views/Overview.vue — Финансовые показатели, ка
       { key: 'd4', name: 'Еда и быт', note: '', amount: 150_000, updatedAt: '' },
     ]
 
-    // Обязательные расходы: d1(200k) + d2(50k) + d4(150k) = 400 000 ₸
-    const mandatory = mandatoryMonthly(store.categories)
-    expect(mandatory).toBe(400_000)
+    // Месяц обязательных расходов — числом (его считает planMandatory; ревью Блока 3 Н-7).
+    const mandatory = 400_000
 
     // Ликвидные средства (карты + нал, без депозита): 600k + 150k = 750 000 ₸
     const cash = liquidCash(store.accounts)

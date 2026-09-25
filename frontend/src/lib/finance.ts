@@ -880,12 +880,6 @@ export function nextSalaryChange(p: Person, key = monthKey()) {
 export const totalIncome = (people: Person[], key = monthKey()) =>
   (people || []).filter(alive).reduce((a, p) => a + salaryAt(p, key), 0);
 
-/** Обязательные базовые расходы в месяц (d1 + d2 + d4). */
-export const mandatoryMonthly = (categories: Category[]) =>
-  (categories || [])
-    .filter((c) => c.key === 'd1' || c.key === 'd2' || c.key === 'd4')
-    .reduce((a, c) => a + c.amount, 0);
-
 /** Проверка наличия заведённых данных в бюджете. */
 export function hasBudgetData(state: {
   people?: Person[];
