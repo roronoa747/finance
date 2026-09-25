@@ -22,8 +22,48 @@
 - Р-15: бэкенд не трогать — тексты Go переводятся на фронте (таблица в PV-20); участники
   шторки — из `people` документа (PV-21, дефолт составителя).
 - Тексты React дословно (строки в ТЗ). Экраны блока — на `Sheet` (`SyncBadge`, `SalaryDialog`).
-- <критик Блока 4 впишет: `Sheet`/`useSavedMark` образцы на Целях, `lib/theme.ts` после PV-08,
-  `DEFAULT_CATEGORY_NAMES` после PV-11>
+- **Что уже в коде после Блока 4** (факт, критик Блока 4 2026-09-25; ТЗ писались до Блока 1 —
+  номера строк в них уехали, ниже — текущие на `pv-block-4-wishes-goals`; после merge искать по
+  именам):
+  - **Окна.** `kit/Sheet.vue`: закрытие Escape, крестиком и фоном сначала уводит фокус из поля
+    (критик Б4) — поле с записью по уходу (`NumFieldBlur`, `@blur`) правку не теряет, родитель
+    может сразу обнулять запись окна. Образцы окна правки записи — `components/goals/GoalSheet.vue`,
+    `WishSheet.vue`, `components/capital/CreditSheet.vue` (пропс — id, `:open` по живой записи,
+    emit `close`); окна создания — `Sheet` на месте с `v-model` (`Goals.vue` «Новая цель»,
+    «Покупка в дом»). Автофокус поля в листе — как PV-11: `nextTick(() => …querySelector('input')
+    ?.focus())` (`ObligationSheet.vue:141`), не атрибут `autofocus` (лист вставляется после
+    загрузки). Самодельные окна остались: `SyncBadge.vue:78` (PV-21 → `Sheet`),
+    `SalaryDialog.vue:129` (PV-23 п. 4 → `Sheet`), два листа `AppShell.vue:187, :264` (Н-8 —
+    владелец не принял; «Оформление» PV-22 живёт в одном из них — свой хром без Escape и без
+    `close()` кита).
+  - **«Сохранено»:** `useSavedMark(() => id, () => updatedAt)` + `kit/SavedMark` в слот `mark`
+    (`GoalSheet`, `WishSheet`). Если `updatedAt` записи двигают и другие действия — метку вешать
+    на значение поля (`GoalDetail.vue` «Откладывать в месяц»: `() => String(goal.monthly)`,
+    отклонение 7 Б4) — пригодится `Deposit.vue` (PV-23 п. 3: `saved.value = true` `:56-102`,
+    показ `:127`).
+  - **Цвет:** `components/goals/HuePicker.vue` (v-model `HueKey`, `Field group` с подписью «Цвет»,
+    `aria-pressed`, образцы `HUES[h].light`) — окна цели. «Цвета разделов» PV-22 — тот же ряд:
+    подпись — пропсом, а не третья копия. В `Setup.vue:371` своя копия с `Field` без `group`
+    (подпись входит в имя первой кнопки, §6) — PV-23 п. 1 и так трогает мастер (Р-13).
+  - **`lib/theme.ts` после PV-08:** `read` / `write` (`localStorage` в `try/catch`, не
+    экспортируются), `readThemeChoice`, `readAccent`, `applyCurrentPalette()` → `applyTheme({
+    theme, accent, categories: CATEGORIES })` (цвета разделов — константа `CATEGORIES` модуля),
+    `setThemeChoice`, `setAccent`, `watchSystemTheme`, `isDark`. PV-22: `readCategoryHues` /
+    `setCategoryHue` — рядом на тех же `read`/`write`, `applyCurrentPalette` берёт их вместо
+    `CATEGORIES`.
+  - **Имена разделов после PV-11/PV-15:** `DEFAULT_CATEGORY_NAMES` и `categoryName(categories,
+    key)` (`lib/palette.ts:83, :92`) — запасное имя незаведённого раздела; строки Бюджета —
+    `budgetLines`.
+  - **Текущие строки из ТЗ:** `stores/finance.ts` — `resetDoc` `:293`, `setPerson` `:500`,
+    `resetAll` `:1366`; `AppearancePanel.vue` — `userName` `:21`, `saveName` `:33`;
+    `SalaryDialog.vue` «Новый оклад» `:173`; `Access.vue` регэкспы `:118-123`; `Overview.vue` —
+    `makeInvite` `:158`, баннер `:186` (без `isViewer`); `Setup.vue` `handleMakeInvite` `:130`;
+    `GoalDetail.vue` окно «Пополнить / Снять» `:306` (уже `Sheet`, «Кто вносит» — `Segmented`;
+    заголовок и «Внести» React (PV-23 п. 4) — только в режиме пополнения, у «Снять» свои);
+    `Capital.vue:143` «рассрочка» в строке кредита (`:346` — `note` нового кредита, не трогать);
+    `router/index.ts` — все экраны статическим импортом (Н-9, PV-23 п. 9).
+  - Хвосты §4 для PV-23 (судьбу даёт владелец, без неё не делать): «viewer без форм» (Капитал и
+    Цели — «Новая цель», «Пополнить»/«Снять»).
 - Среда: стенд §6 (Go на моках даёт те же тексты ошибок, что прод), два профиля + viewer.
   Верификация: `cd frontend && npm run build && npm test`.
 - Следующий шаг — `/critic паритет-react-vue 5`.
