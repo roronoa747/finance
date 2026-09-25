@@ -15,9 +15,8 @@ import {
   liveObligations,
   lumpPlan,
   nextChange,
-  pausedGoals,
   planMandatory,
-  planStep,
+  stepDue,
 } from '@/lib/finance'
 import { monthAfter, monthFrom, monthFromAfter, monthInAfter, monthKey } from '@/lib/dates'
 import { useFinanceStore } from '@/stores/finance'
@@ -55,8 +54,8 @@ const credit = computed(() => costliestCredits(credits.value)[0])
 // План «Сначала долги» (PV-16): его досрочка вносится кнопкой плана, Ритуал её только
 // показывает — распределяет он «освободившееся», а у плана своя сумма.
 const plan = computed(() => financeStore.activePlan)
-const step = computed(() => (plan.value ? planStep(plan.value, financeStore.planState(), key.value) : null))
-const paused = computed(() => new Set(plan.value ? pausedGoals(plan.value, financeStore.goals).map((g) => g.id) : []))
+const step = computed(() => financeStore.planStepNow())
+const paused = computed(() => financeStore.pausedGoalIds)
 
 function set(id: string, delta: number) {
   const cur = alloc.value[id] ?? 0
@@ -95,7 +94,7 @@ function effectForPlan(extra: number) {
     return `Шаг этого месяца внесён — ${money(s.applied.amount)} в «${paid}»`
   }
   if (s.kind === 'cushion' && !extra) return `Шаг плана в этом месяце — подушка; досрочка в «${c.name}» — следующим шагом`
-  const base = s.kind === 'prepay' && !s.applied ? s.amount : 0
+  const base = stepDue(s)?.amount ?? 0
   const head = base ? `Шаг плана — ${money(base + extra)} в «${c.name}»` : `${money(extra)} в «${c.name}»`
   const lp = lumpPlan(c.principal, c.annualRate, c.payment, base + extra, 'term')
   if (!lp) return ''

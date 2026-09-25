@@ -1535,6 +1535,13 @@ export type PlanStep =
   | { kind: 'done' }
 
 /**
+ * Шаг-досрочка, который ждёт оплаты: не внесён и не пустой; иначе null. Одно правило
+ * для кнопки «Внести по плану», строки кредита, Ритуала, окна досрочки и графика плана.
+ */
+export const stepDue = (step: PlanStep | null | undefined) =>
+  step?.kind === 'prepay' && !step.applied && step.amount > 0 ? step : null
+
+/**
  * Месяц обязательных списаний — как у калькулятора (`strategyInputs`): им меряют
  * подушку и шаг плана, и корзина подушки Ритуала.
  */
@@ -1714,8 +1721,7 @@ export function planSchedule(
   const payments = state.payments ?? []
   const target = costliestCredits(credits)[0]
   if (!target) return null
-  const step = planStep(plan, state, key)
-  const now = step.kind === 'prepay' && !step.applied ? step.amount : 0
+  const now = stepDue(planStep(plan, state, key))?.amount ?? 0
   const monthly = planExtra(plan, state.goals ?? [], credits, payments, key)
   const extra = [{ period: key, amount: now }]
   // Каждый месяц в долг уходит не меньше шага: дальше закрытия шаги не нужны.

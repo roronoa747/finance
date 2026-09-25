@@ -18,12 +18,15 @@ import {
   nextCreditDue,
   nextObligationDue,
   paidFor,
+  pausedGoals,
   planForecast,
   planStep,
   settlePlans,
+  stepDue,
   shiftedBase,
   type LumpMode,
   type PlanState,
+  type PlanStep,
   type ScheduledKind,
 } from '@/lib/finance'
 import type {
@@ -162,6 +165,17 @@ export const useFinanceStore = defineStore('finance', () => {
     obligations: obligations.value,
     payments: payments.value,
   })
+  /**
+   * Шаг активного плана в этом месяце — одно место для экранов и `applyPlanStep`. Функция,
+   * а не computed: месяц берётся из часов при каждом вызове (смена месяца при открытом
+   * приложении, `vi.setSystemTime` в тестах), а экраны зовут её внутри своих computed.
+   */
+  const planStepNow = (): PlanStep | null =>
+    activePlan.value ? planStep(activePlan.value, planState(), monthKey()) : null
+  /** Цели на паузе ради плана (Р-9): выводятся из плана — одно место для экранов. */
+  const pausedGoalIds = computed(
+    () => new Set(activePlan.value ? pausedGoals(activePlan.value, goals.value).map((g) => g.id) : []),
+  )
 
   function saveLocalState() {
     try {
@@ -1186,8 +1200,8 @@ export const useFinanceStore = defineStore('finance', () => {
   function applyPlanStep(by: PersonId, opts: { accountId?: string | null; mode?: LumpMode } = {}): Payment | null {
     const plan = activePlan.value
     if (viewer() || !plan) return null
-    const step = planStep(plan, planState(), monthKey())
-    if (step.kind !== 'prepay' || step.applied || step.amount <= 0) return null
+    const step = stepDue(planStepNow())
+    if (!step) return null
     const accountId =
       opts.accountId !== undefined ? opts.accountId : lastAccountFor(payments.value, step.creditId, accounts.value)
     if (accountId === undefined) return null
@@ -1310,6 +1324,8 @@ export const useFinanceStore = defineStore('finance', () => {
     plans,
     activePlan,
     planState,
+    planStepNow,
+    pausedGoalIds,
     saveLocalState,
     setHouseholdDoc,
     mutateHouseholdDoc,

@@ -4,7 +4,7 @@ import { useRouter, useRoute, RouterLink } from 'vue-router'
 import { PhArrowLeft, PhPencilSimple, PhPlus, PhMinus, PhX } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { money, plain, parseMoney, ratePct } from '@/lib/money'
-import { INFLATION, goalMonths, goalMonthly, indexedNeed, payableAccounts, pausedGoals } from '@/lib/finance'
+import { INFLATION, goalMonths, goalMonthly, indexedNeed, payableAccounts } from '@/lib/finance'
 import { addMonths, monthAfter, monthInAfter, monthKey, monthTitle } from '@/lib/dates'
 import { contributionStreak } from '@/lib/finance'
 import { HUES, HUE_KEYS, hueColor, type HueKey } from '@/lib/palette'
@@ -41,7 +41,7 @@ const accounts = computed(() => payableAccounts(financeStore.accounts))
 
 // План «Сначала долги» (PV-15): пауза выводится из плана, взнос цели не трогается (Р-9).
 const plan = computed(() => financeStore.activePlan)
-const paused = computed(() => !!plan.value && pausedGoals(plan.value, financeStore.goals).some((g) => g.id === goalId.value))
+const paused = computed(() => financeStore.pausedGoalIds.has(goalId.value))
 const planCushion = computed(() => !!plan.value && plan.value.cushionGoalId === goalId.value)
 
 const remaining = computed(() => (goal.value ? Math.max(0, goal.value.need - goal.value.have) : 0))

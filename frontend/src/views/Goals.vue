@@ -6,7 +6,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { money, plain, parseMoney } from '@/lib/money'
 import { addMonths, monthKey, monthTitle } from '@/lib/dates'
 import { HUES, HUE_KEYS, type HueKey } from '@/lib/palette'
-import { contributionStreak, liveGoals, liveWishlist, pausedGoals } from '@/lib/finance'
+import { contributionStreak, liveGoals, liveWishlist } from '@/lib/finance'
 import type { PersonId, WishItem } from '@/types/finance'
 import { cn, plural } from '@/lib/utils'
 
@@ -53,9 +53,7 @@ watch(tab, (t) => {
 
 const goals = computed(() => liveGoals(financeStore.goals))
 // Пауза выводится из активного плана (Р-9): взнос цели при этом не меняется.
-const paused = computed(
-  () => new Set(financeStore.activePlan ? pausedGoals(financeStore.activePlan, financeStore.goals).map((g) => g.id) : []),
-)
+const paused = computed(() => financeStore.pausedGoalIds)
 const wishlist = computed(() => liveWishlist(financeStore.wishlist))
 const people = computed(() => financeStore.people)
 

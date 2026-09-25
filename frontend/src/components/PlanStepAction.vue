@@ -3,8 +3,7 @@ import { computed, ref } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money } from '@/lib/money'
-import { monthKey } from '@/lib/dates'
-import { lastAccountFor, payableAccounts, planStep } from '@/lib/finance'
+import { lastAccountFor, payableAccounts, stepDue } from '@/lib/finance'
 import { cn } from '@/lib/utils'
 import Field from '@/components/kit/Field.vue'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -24,13 +23,7 @@ const props = defineProps<{
 const finance = useFinanceStore()
 const auth = useAuthStore()
 
-const step = computed(() =>
-  finance.activePlan ? planStep(finance.activePlan, finance.planState(), monthKey()) : null,
-)
-const due = computed(() => {
-  const s = step.value
-  return s?.kind === 'prepay' && !s.applied && s.amount > 0 ? s : null
-})
+const due = computed(() => stepDue(finance.planStepNow()))
 const credit = computed(() => finance.credits.find((c) => c.id === due.value?.creditId))
 const canPay = computed(() => !auth.isViewer && !!due.value)
 

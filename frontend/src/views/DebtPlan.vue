@@ -16,13 +16,12 @@ import {
   liveGoals,
   pauseMissed,
   pauseShift,
-  pausedGoals,
   planFact,
   planForecast,
   planMonths,
   planSchedule,
   planStartMonth,
-  planStep,
+  stepDue,
 } from '@/lib/finance'
 import type { DebtPlan } from '@/types/finance'
 import { cn } from '@/lib/utils'
@@ -43,10 +42,10 @@ const authStore = useAuthStore()
 const key = computed(() => monthKey())
 const plan = computed(() => financeStore.activePlan)
 const state = computed(() => financeStore.planState())
-const step = computed(() => (plan.value ? planStep(plan.value, state.value, key.value) : null))
+const step = computed(() => financeStore.planStepNow())
 const creditName = (id: string | null) => financeStore.credits.find((c) => c.id === id)?.name ?? ''
 const goalName = (id: string) => liveGoals(financeStore.goals).find((g) => g.id === id)?.name ?? ''
-const paused = computed(() => (plan.value ? pausedGoals(plan.value, financeStore.goals) : []))
+const paused = computed(() => liveGoals(financeStore.goals).filter((g) => financeStore.pausedGoalIds.has(g.id)))
 const cushion = computed(() =>
   plan.value?.cushionGoalId ? liveGoals(financeStore.goals).find((g) => g.id === plan.value!.cushionGoalId) : undefined,
 )
@@ -112,7 +111,7 @@ const justDone = computed(() => {
       </Card>
 
       <!-- Шаг этого месяца (PV-16, Р-4, Р-7) -->
-      <template v-if="step && step.kind !== 'done' && (step.kind === 'cushion' || step.applied || step.amount > 0)">
+      <template v-if="step && step.kind !== 'done' && (step.kind === 'cushion' || step.applied || stepDue(step))">
         <Section title="Шаг этого месяца" />
         <Card>
           <template v-if="step.kind === 'cushion'">

@@ -3,7 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain, parseMoney } from '@/lib/money'
-import { atLabel, monthKey } from '@/lib/dates'
+import { atLabel } from '@/lib/dates'
 import {
   afterAnchor,
   creditOutlook,
@@ -15,7 +15,7 @@ import {
   paymentSplit,
   payoffChips,
   payoffLadder,
-  planPrepay,
+  stepDue,
   prepayOutcome,
   type LumpMode,
 } from '@/lib/finance'
@@ -88,14 +88,14 @@ const creditPrepays = computed(() =>
 
 // Шаг плана — только для своего кредита (окно могли открыть потом для другого).
 const stepPlan = computed(() => (props.plan && props.plan.creditId === props.creditId ? props.plan : null))
-// Шаг ещё ждёт: план активен, досрочки плана за месяц нет (её мог внести партнёр, пока окно
-// открыто, или её сняли здесь же) — выводится из документа, не флагом окна. Иначе запись
-// идёт без id плана: шаг месяца один (Р-4).
+// Шаг ещё ждёт оплаты в этом кредите (его мог внести партнёр, пока окно открыто, или его
+// сняли здесь же) — выводится из документа, не флагом окна. Иначе запись идёт без id
+// плана: шаг месяца один (Р-4).
 const planPending = computed(
   () =>
     !!stepPlan.value &&
     financeStore.activePlan?.id === stepPlan.value.id &&
-    !planPrepay(financeStore.payments, monthKey()),
+    stepDue(financeStore.planStepNow())?.creditId === stepPlan.value.creditId,
 )
 
 // Другой кредит — чистый калькулятор (React `PayoffDialog`); счёт по умолчанию —

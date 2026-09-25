@@ -36,7 +36,7 @@ import {
   nextChange,
   nextCreditDue,
   openCredits,
-  planStep,
+  stepDue,
   prepayOutcome,
   prepaySaved,
   rateFromSchedule,
@@ -445,7 +445,7 @@ const worstGain = computed(() =>
 
 /* ------------------ План «Сначала долги» (PV-15) ------------------ */
 const plan = computed(() => financeStore.activePlan)
-const planNow = computed(() => (plan.value ? planStep(plan.value, financeStore.planState(), key.value) : null))
+const planNow = computed(() => financeStore.planStepNow())
 
 function choosePlan(opts: { keptGoalIds: string[]; cushionGoalId: string | null; months: 12 | 24 | 36; lump: number }) {
   if (financeStore.choosePlan(opts, authStore.slot ?? 'a')) void router.push('/plan')
@@ -454,14 +454,13 @@ function choosePlan(opts: { keptGoalIds: string[]; cushionGoalId: string | null;
 /** Шаг плана в строке его кредита (PV-16, Р-6): вместо `credits[0]` — долг, который план гасит сейчас. */
 function planLine(c: Credit): string {
   const s = planNow.value
-  if (s?.kind !== 'prepay' || s.creditId !== c.id || (!s.applied && s.amount <= 0)) return ''
-  return s.applied
-    ? `внесено по плану · ${plain(s.applied.amount)} ₸ · ${atLabel(s.applied.at)}`
-    : `шаг плана: ${plain(s.amount)} ₸ в ${monthIn(key.value)}`
+  if (s?.kind !== 'prepay' || s.creditId !== c.id) return ''
+  if (s.applied) return `внесено по плану · ${plain(s.applied.amount)} ₸ · ${atLabel(s.applied.at)}`
+  return planDue(c) ? `шаг плана: ${plain(s.amount)} ₸ в ${monthIn(key.value)}` : ''
 }
 const planDue = (c: Credit) => {
-  const s = planNow.value
-  return s?.kind === 'prepay' && s.creditId === c.id && !s.applied && s.amount > 0 ? s : null
+  const s = stepDue(planNow.value)
+  return s?.creditId === c.id ? s : null
 }
 // «Изменить режим»: окно досрочки с суммой шага — там можно «снизить платёж» (Р-10); запись
 // пойдёт с id плана, и план пересчитается от факта.
