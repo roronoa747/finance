@@ -2,10 +2,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useFinanceStore, defaultSyncDoc } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import type { WishItem } from '@/types/finance'
+import type { SyncDoc, WishItem } from '@/types/finance'
 import {
+  goalDoneMonth,
   goalMonths,
   goalMonthly,
+  planForecast,
   contributionStreak,
   liveWishlist,
   deposit,
@@ -14,7 +16,8 @@ import {
   INFLATION,
 } from '@/lib/finance'
 import { money, plain, ratePct } from '@/lib/money'
-import { planFamilyDoc, planOf } from '@/test/planFamily'
+import { addMonths, monthIn } from '@/lib/dates'
+import { T0, authAs, planFamilyDoc, planOf } from '@/test/planFamily'
 import { renderScreen, screenMixin } from '@/test/screenState'
 import Goals from './Goals.vue'
 import GoalDetail from './GoalDetail.vue'
@@ -576,5 +579,127 @@ describe('PV-18: покупки — правка, «Уже купили», viewe
     expect(html).not.toContain('Вернуть в список')
     expect(html).not.toContain('Добавить покупку')
     expect(html).not.toContain('role="dialog"')
+  })
+})
+
+describe('PV-19: цель — окно правки, взнос полем, дата на паузе (SSR GoalDetail)', () => {
+  const storage = new Map<string, string>()
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  function family(role: 'member' | 'viewer' = 'member', extra: Partial<SyncDoc> = {}) {
+    useAuthStore().setAuthData(authAs(role))
+    const store = useFinanceStore()
+    store.setHouseholdDoc(planFamilyDoc(extra), 1)
+    return store
+  }
+  const trip = (store: ReturnType<typeof useFinanceStore>) => store.goals.find((g) => g.id === 'trip')!
+
+  it('окно «Изменить цель»: поля React со значениями, «Уже накоплено» и пояснение про взносы, удаление — текст React', async () => {
+    const store = family()
+    store.contribute('trip', 10_000, 'a')
+    store.contribute('trip', 5_000, 'b')
+    const html = await renderScreen(GoalDetail, '/goals/trip', undefined, [screenMixin({ openEditModal: true, confirm: true })])
+    expect(html).toContain('role="dialog"')
+    expect(html).toContain('Изменить цель')
+    for (const label of ['Название', 'Сколько нужно, ₸', 'Уже накоплено, ₸']) expect(html).toContain(`>${label}</span>`)
+    expect(html).toContain('value="Отпуск"')
+    expect(html).toContain(`value="${plain(3_000_000)}"`)
+    expect(html).toContain(`value="${plain(65_000)}"`)
+    expect(html).toContain('Взносы (2) останутся в истории: правится только та часть, с которой цель завели.')
+    expect(html).toContain('aria-label="Цвет"')
+    expect(html).toContain('Готово')
+    expect(html).toContain('Цель и её история взносов исчезнут у обоих участников. Отменить нельзя.')
+    expect(html).not.toContain('Сохранить')
+    expect(html).not.toContain('bg-black/40')
+  })
+
+  it('без взносов пояснения нет', async () => {
+    family()
+    const html = await renderScreen(GoalDetail, '/goals/trip', undefined, [screenMixin({ openEditModal: true })])
+    expect(html).toContain('>Уже накоплено, ₸</span>')
+    expect(html).not.toContain('останутся в истории')
+  })
+
+  it('«Уже накоплено» по уходу из поля — seed, история взносов на месте; «Сколько нужно» 0 — не пишется', async () => {
+    const store = family()
+    store.contribute('trip', 10_000, 'a')
+    await renderScreen(GoalDetail, '/goals/trip', undefined, [
+      screenMixin({ openEditModal: true }, (s) => {
+        ;(s.onHave as (t: string) => void)('120 000')
+        ;(s.onNeed as (t: string) => void)('0')
+      }),
+    ])
+    expect(trip(store)).toMatchObject({ seed: 110_000, have: 120_000, need: 3_000_000 })
+    expect(trip(store).movements.map((m) => m.amount)).toEqual([10_000])
+  })
+
+  it('п. 5: ползунка нет — поле «Откладывать в месяц» с суммой; по уходу из поля — взнос в сторе, 0 и пусто — без записи', async () => {
+    const store = family()
+    const html = await renderScreen(GoalDetail, '/goals/trip')
+    expect(html).not.toContain('type="range"')
+    expect(html).toContain('>Откладывать в месяц, ₸</span>')
+    expect(html).toContain(`value="${plain(40_000)}"`)
+    expect(html).toContain('Чтобы успеть за год, нужно')
+
+    for (const empty of ['0', '']) {
+      await renderScreen(GoalDetail, '/goals/trip', undefined, [screenMixin({}, (s) => (s.onMonthly as (t: string) => void)(empty))])
+      expect(trip(store).monthly).toBe(40_000)
+    }
+    expect(store.status).toBe('idle')
+
+    const after = await renderScreen(GoalDetail, '/goals/car', undefined, [
+      screenMixin({}, (s) => (s.onMonthly as (t: string) => void)('73 000')),
+    ])
+    expect(store.goals.find((g) => g.id === 'car')!.monthly).toBe(73_000)
+    expect(after).toContain(money(73_000))
+    // Машина без плана: 3 000 000 − 200 000 при 73 000 в месяц — 39 взносов с сентября.
+    expect(after).toContain(`Цель закроется в ${monthIn(addMonths('2026-09', goalMonths(2_800_000, 73_000) - 1))}`)
+  })
+
+  it('п. 4: цель на паузе закроется позже месяца без процентных долгов — от конца плана', async () => {
+    const store = family('member', { plans: [planOf()] })
+    const html = await renderScreen(GoalDetail, '/goals/trip')
+    const free = planForecast(planOf(), store.planState(), '2026-09').debtFreeMonth!
+    expect(free).toMatch(/^\d{4}-\d{2}$/)
+    const done = addMonths(free, goalMonths(3_000_000 - 50_000, 40_000))
+    expect(done > free).toBe(true)
+    expect(html).toContain(`Цель закроется в ${monthIn(done)}`)
+    expect(html).toContain('после плана')
+    // Прежняя дата — будто взносы идут с сентября — ушла.
+    expect(html).not.toContain(`Цель закроется в ${monthIn(addMonths('2026-09', goalMonths(2_950_000, 40_000) - 1))}`)
+    expect(goalDoneMonth(74, '2026-09', { debtFreeMonth: free })).toBe(done)
+  })
+
+  it('п. 4: долги с планом не закрываются — «после плана» без месяца', async () => {
+    const huge = { id: 'huge', name: 'Займ', note: '', principal: 100_000_000, principalSetAt: T0, annualRate: 0.6, payment: 100_000, day: 3, updatedAt: T0 }
+    const store = family('member', { plans: [planOf()] })
+    store.mutateHouseholdDoc((doc) => doc.credits.push(huge))
+    expect(planForecast(planOf(), store.planState(), '2026-09').debtFreeMonth).toBeNull()
+    const html = await renderScreen(GoalDetail, '/goals/trip')
+    expect(html).toContain('Цель закроется после плана')
+    expect(html).not.toContain('Цель закроется в ')
+    expect(goalDoneMonth(74, '2026-09', { debtFreeMonth: null })).toBeNull()
+  })
+
+  it('viewer: ни карандаша, ни окна правки, ни поля взноса — сумма видна', async () => {
+    family('viewer')
+    const html = await renderScreen(GoalDetail, '/goals/trip', undefined, [screenMixin({ openEditModal: true })])
+    expect(html).not.toContain('aria-label="Изменить цель"')
+    expect(html).not.toContain('role="dialog"')
+    expect(html).not.toContain('Откладывать в месяц, ₸')
+    expect(html).not.toContain('<input')
+    expect(html).toContain(money(40_000))
   })
 })

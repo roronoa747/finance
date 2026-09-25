@@ -1970,3 +1970,77 @@ describe('PV-18: покупки в сторе', () => {
     expect(store.wishlist[0]).toMatchObject({ bought: false, boughtOn: null, updatedAt: '2026-09-24T09:00:00.000Z' })
   })
 })
+
+describe('PV-19: «Уже накоплено» правит seed, история взносов цела', () => {
+  const storage = new Map<string, string>()
+  const at = (iso: string) => vi.setSystemTime(new Date(iso))
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    at('2026-09-24T07:00:00Z')
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** Цель с seed 100 000 и двумя взносами на 50 000. */
+  function goalWithMovements() {
+    const store = useFinanceStore()
+    store.addGoal({ name: 'Отпуск', need: 1_000_000, have: 100_000, monthly: 50_000, hue: 'teal' })
+    const id = store.goals[0].id
+    store.contribute(id, 30_000, 'a')
+    store.contribute(id, 20_000, 'b')
+    return { store, id }
+  }
+
+  it('have 120 000 при seed 100 000 и взносах 50 000 → seed 70 000, have 120 000, движения на месте', () => {
+    const { store, id } = goalWithMovements()
+    const movements = JSON.parse(JSON.stringify(store.goals[0].movements))
+    at('2026-09-24T08:00:00Z')
+    store.updateGoal(id, { have: 120_000 })
+    expect(store.goals[0]).toMatchObject({ seed: 70_000, have: 120_000, updatedAt: '2026-09-24T08:00:00.000Z' })
+    expect(store.goals[0].movements).toEqual(movements)
+    // Следующий взнос — от нового seed, а не от старого.
+    store.contribute(id, 10_000, 'a')
+    expect(store.goals[0].have).toBe(130_000)
+  })
+
+  it('have меньше суммы взносов → seed 0, have = Σ взносов', () => {
+    const { store, id } = goalWithMovements()
+    store.updateGoal(id, { have: 20_000 })
+    expect(store.goals[0]).toMatchObject({ seed: 0, have: 50_000 })
+  })
+
+  it('повторный патч без изменений — ничего не пишет; остальные поля — как раньше', () => {
+    const { store, id } = goalWithMovements()
+    store.updateGoal(id, { have: 120_000 })
+    const before = JSON.stringify(store.householdDoc)
+    at('2026-09-24T09:00:00Z')
+    store.updateGoal(id, { have: 120_000 })
+    store.updateGoal(id, { name: 'Отпуск', need: 1_000_000 })
+    expect(JSON.stringify(store.householdDoc)).toBe(before)
+
+    store.updateGoal(id, { name: 'Отпуск в Турции', monthly: 73_000 })
+    expect(store.goals[0]).toMatchObject({ name: 'Отпуск в Турции', monthly: 73_000, seed: 70_000, have: 120_000 })
+  })
+
+  it('снятие «вложить накопленное» по плану (движение с planId) правка не теряет и не переписывает', () => {
+    const { store, id } = goalWithMovements()
+    store.mutateHouseholdDoc((doc) => {
+      doc.goals[0].movements.push({ id: 'lump', date: '2026-09-24T07:00:00.000Z', amount: -40_000, by: 'a', note: 'в долги по плану', planId: 'plan' })
+      doc.goals[0].have = goalHave(doc.goals[0].seed, doc.goals[0].movements)
+    })
+    store.updateGoal(id, { have: 200_000 })
+    expect(store.goals[0].movements.find((m) => m.id === 'lump')).toMatchObject({ amount: -40_000, planId: 'plan' })
+    expect(store.goals[0]).toMatchObject({ seed: 190_000, have: 200_000 })
+  })
+})

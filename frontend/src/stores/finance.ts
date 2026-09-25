@@ -1265,10 +1265,24 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
+  /**
+   * Правка цели. «Уже накоплено» (`have`) правит seed, а не сумму (React `useStore.ts:245-258`):
+   * накопленное складывается из seed и взносов, запись поверх стёрла бы историю пополнений.
+   */
   function updateGoal(id: string, patch: Partial<Goal>) {
+    const cur = goals.value.find((x) => x.id === id)
+    if (!cur) return
+    const { have, ...rest } = patch
+    let next: Partial<Goal> = rest
+    if (have !== undefined) {
+      const sum = (cur.movements ?? []).reduce((a, m) => a + m.amount, 0)
+      const seed = Math.max(0, have - sum)
+      next = { ...rest, seed, have: goalHave(seed, cur.movements) }
+    }
+    if (unchanged(cur, next)) return
     mutateHouseholdDoc((doc) => {
       const g = (doc.goals || []).find((x) => x.id === id)
-      if (g) Object.assign(g, patch, { updatedAt: new Date().toISOString() })
+      if (g) Object.assign(g, next, { updatedAt: new Date().toISOString() })
     })
   }
 

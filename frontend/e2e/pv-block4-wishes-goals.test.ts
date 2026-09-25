@@ -5,6 +5,8 @@ import { liveWishlist } from '../src/lib/finance'
 import { money, plain } from '../src/lib/money'
 import type { SyncDoc, WishItem } from '../src/types/finance'
 import Goals from '../src/views/Goals.vue'
+import GoalDetail from '../src/views/GoalDetail.vue'
+import { screenMixin } from '../src/test/screenState'
 import { at, fakeServer, phone, screen, setOnline, type FakeServer } from './support/family'
 
 /**
@@ -104,6 +106,52 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       // `mergeList` дописывает незнакомую запись в конец (React `store/merge.ts:38-60` — так же).
       expect(B.store.wishlist.find((w) => w.name === 'Утюг')).toMatchObject({ addedOn: '2026-09-24T07:00:00.000Z' })
       expect(await screen(B.pinia, Goals, '/goals?tab=wish')).toContain('Ильяс · 24 сентября')
+    })
+  })
+
+  describe('PV-19 — цель', () => {
+    const ring = (have: number, need: number) => `stroke-dasharray="${((have / need) * 2 * Math.PI * 34).toFixed(1)} `
+
+    it('A правит «Уже накоплено» → у B сумма и кольцо обновились, история взносов на месте', async () => {
+      server.data.goals = [
+        { id: 'trip', name: 'Отпуск', need: 1_000_000, seed: 100_000, have: 150_000, monthly: 50_000, hue: 'teal', planPct: 0,
+          movements: [{ id: 'm1', date: '2026-09-05T06:00:00.000Z', amount: 50_000, by: 'b' }], updatedAt: T0 },
+      ]
+      const A = await phone(server)
+      const B = await phone(server)
+      expect(await screen(B.pinia, GoalDetail, '/goals/trip')).toContain(ring(150_000, 1_000_000))
+
+      at('2026-09-24T08:00:00Z')
+      on(A).store.updateGoal('trip', { have: 400_000 })
+      await A.store.syncHousehold(A.client)
+      await on(B).store.syncHousehold(B.client)
+
+      expect(B.store.goals[0]).toMatchObject({ seed: 350_000, have: 400_000 })
+      expect(B.store.goals[0].movements.map((m) => m.id)).toEqual(['m1'])
+      const html = await screen(B.pinia, GoalDetail, '/goals/trip')
+      expect(html).toContain(`${plain(400_000)} из ${plain(1_000_000)} ₸`)
+      expect(html).toContain(ring(400_000, 1_000_000))
+      expect(html).toContain(`+${plain(50_000)} ₸`)
+    })
+
+    it('A вводит «Откладывать в месяц» числом → B видит сумму и новую дату', async () => {
+      server.data.goals = [
+        { id: 'trip', name: 'Отпуск', need: 1_000_000, seed: 100_000, have: 100_000, monthly: 50_000, hue: 'teal', planPct: 0, movements: [], updatedAt: T0 },
+      ]
+      const A = await phone(server)
+      const B = await phone(server)
+      at('2026-09-24T08:00:00Z')
+      await screen(A.pinia, GoalDetail, '/goals/trip', undefined, [
+        screenMixin({}, (s) => (s.onMonthly as (t: string) => void)('73 000')),
+      ])
+      await A.store.syncHousehold(A.client)
+      await on(B).store.syncHousehold(B.client)
+      expect(B.store.goals[0].monthly).toBe(73_000)
+      const html = await screen(B.pinia, GoalDetail, '/goals/trip')
+      expect(html).toContain(money(73_000))
+      // 900 000 при 73 000 в месяц — 13 взносов с сентября: сентябрь 2027.
+      expect(html).toContain('Цель закроется в сентябре 2027')
+      expect(html).not.toContain('type="range"')
     })
   })
 })
