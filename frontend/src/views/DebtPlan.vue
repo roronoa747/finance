@@ -10,7 +10,7 @@ import { RouterLink, useRouter } from 'vue-router'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money } from '@/lib/money'
-import { MONTHS_NOM, addMonths, atLabel, monthIn, monthKey, monthTitle, parseMonthKey } from '@/lib/dates'
+import { atLabel, monthIn, monthKey, monthShort, monthTitle } from '@/lib/dates'
 import {
   costliestCredits,
   liveGoals,
@@ -20,7 +20,6 @@ import {
   planFact,
   planForecast,
   planMonths,
-  planPrepay,
   planSchedule,
   planStartMonth,
   planStep,
@@ -47,16 +46,6 @@ const state = computed(() => financeStore.planState())
 const step = computed(() => (plan.value ? planStep(plan.value, state.value, key.value) : null))
 const creditName = (id: string | null) => financeStore.credits.find((c) => c.id === id)?.name ?? ''
 const goalName = (id: string) => liveGoals(financeStore.goals).find((g) => g.id === id)?.name ?? ''
-/**
- * Прошлый месяц плана прошёл без досрочки — одна строка без упрёка (Р-4): план уже
- * пересчитан от факта, пропуски не копятся.
- */
-const missed = computed(() => {
-  if (!plan.value) return null
-  const prev = addMonths(key.value, -1)
-  if (prev < planStartMonth(plan.value) || planPrepay(plan.value, financeStore.payments, prev)) return null
-  return prev
-})
 const paused = computed(() => (plan.value ? pausedGoals(plan.value, financeStore.goals) : []))
 const cushion = computed(() =>
   plan.value?.cushionGoalId ? liveGoals(financeStore.goals).find((g) => g.id === plan.value!.cushionGoalId) : undefined,
@@ -64,16 +53,19 @@ const cushion = computed(() =>
 
 /* ------------------ Выигрыш (Р-6) ------------------ */
 const forecastNow = computed(() => (plan.value ? planForecast(plan.value, state.value, key.value) : null))
-const fact = computed(() => (plan.value ? planFact(plan.value, financeStore.payments) : null))
+const fact = computed(() => (plan.value ? planFact(plan.value, financeStore.payments, financeStore.credits) : null))
 const closes = (m: string | null) => (m ? `долги с процентами закроются в ${monthIn(m)}` : 'долги с процентами не закрываются')
 
 /* ------------------ План и факт по месяцам ------------------ */
 const months = computed(() => (plan.value ? planMonths(plan.value, state.value, key.value) : []))
-/** «сен 2026» — строка таблицы месяцев. */
-function shortMonth(period: string): string {
-  const { year, month } = parseMonthKey(period)
-  return `${MONTHS_NOM[month].slice(0, 3).toLowerCase()} ${year}`
-}
+/**
+ * Прошлый месяц плана прошёл без досрочки — одна строка без упрёка (Р-4): план уже
+ * пересчитан от факта, пропуски не копятся. Пока шаг — подушка, досрочек и не ждём.
+ */
+const missed = computed(() => {
+  const prev = months.value.at(-2)
+  return prev && !prev.fact && step.value?.kind !== 'cushion' ? prev.period : null
+})
 
 /* ------------------ График долга с шагами плана (Р-8) ------------------ */
 const scheduleOpen = ref(false)
@@ -113,7 +105,7 @@ const justDone = computed(() => {
       </Card>
 
       <!-- Шаг этого месяца (PV-16, Р-4, Р-7) -->
-      <template v-if="step && step.kind !== 'done'">
+      <template v-if="step && step.kind !== 'done' && (step.kind === 'cushion' || step.applied || step.amount > 0)">
         <Section title="Шаг этого месяца" />
         <Card>
           <template v-if="step.kind === 'cushion'">
@@ -177,7 +169,7 @@ const justDone = computed(() => {
           <span class="text-right text-ink-3">Факт</span>
           <span class="text-ink-3">Долг</span>
           <template v-for="m in months" :key="m.period">
-            <span :class="cn(m.period === key ? 'font-semibold text-brand' : 'text-ink-2')">{{ shortMonth(m.period) }}</span>
+            <span :class="cn(m.period === key ? 'font-semibold text-brand' : 'text-ink-2')">{{ monthShort(m.period) }}</span>
             <span class="text-right text-ink">{{ money(m.planned) }}</span>
             <span :class="cn('text-right', m.fact ? 'text-ink' : 'text-ink-3')">{{ m.fact ? money(m.fact) : '—' }}</span>
             <span class="truncate text-ink-2">{{ creditName(m.creditId) || '—' }}</span>

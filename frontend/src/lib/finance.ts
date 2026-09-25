@@ -1,5 +1,6 @@
 import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PlanForecast, WishItem } from '@/types/finance'
 import { addMonths, daysInMonth, monthKey, parseMonthKey, today } from '@/lib/dates'
+import { categoryName } from '@/lib/palette'
 /**
  * Расчётное ядро. Чистые функции: ни сети, ни состояния, ни ИИ.
  *
@@ -955,6 +956,27 @@ export function budgetAmounts(state: {
   return { d1: housing, d2: debts, d3: goals, d4: living, d5: free, income, planExtra: extra };
 }
 
+export type BudgetLine = { key: 'd1' | 'd2' | 'd3' | 'plan' | 'd4'; name: string; amount: number }
+
+/**
+ * Строки «Куда уходит» Бюджета и сегменты Обзора (PV-15 п. 7) — по ключам d1–d4, а не
+ * по заведённым разделам: строка есть, если раздел заведён или в нём есть сумма; имя —
+ * семьи или запасное. Раздел в документ не пишется (пустой раздел со свежим updatedAt
+ * затёр бы сумму партнёра). С планом — «Досрочно по плану» сразу после целей.
+ */
+export function budgetLines(categories: Category[], amounts: ReturnType<typeof budgetAmounts>): BudgetLine[] {
+  const out: BudgetLine[] = []
+  for (const key of ['d1', 'd2', 'd3', 'plan', 'd4'] as const) {
+    if (key === 'plan') {
+      if (amounts.planExtra > 0) out.push({ key, name: 'Досрочно по плану', amount: amounts.planExtra })
+      continue
+    }
+    if (!categories.some((c) => c.key === key) && amounts[key] <= 0) continue
+    out.push({ key, name: categoryName(categories, key), amount: amounts[key] })
+  }
+  return out
+}
+
 export const goalSavings = (goals: Goal[]) =>
   liveGoals(goals)
     .filter((g) => !g.accountId)
@@ -1011,16 +1033,16 @@ export const creditDueIn = (c: Credit, payments: Payment[], key: string) =>
   !!paidFor(payments, 'credit', c.id, key) || creditDueAmount(c) > 0
 
 /**
- * Платёж кредита в бюджете месяца — то же правило, что у платежей месяца
- * (`creditDueIn`, PV-14 п. 5): открытый — платёж по графику; закрытый своим
- * «Оплатил» этого месяца — сумма отметки (деньги ушли в этом месяце, «Кредиты» и
- * «На обязательства» сходятся); закрытый раньше или досрочкой — 0: платёж свободен
- * (без плана — в «Свободно», с планом — в следующий долг, `planExtra`).
- * Кредит — производный.
+ * Платёж кредита за месяц — одно правило для «Кредитов» бюджета, «На обязательства»
+ * (`monthDues`) и плана (PV-14 п. 5): отмеченный в этом месяце — сумма отметки
+ * (деньги ушли, даже если она закрыла долг); неотмеченный — платёж по графику
+ * (`creditDueAmount`: в последний месяц — остаток с процентами); закрытый раньше или
+ * досрочкой — 0: платёж свободен (без плана — в «Свободно», с планом — в следующий
+ * долг, `planExtra`). Кредит — производный.
  */
 export function creditMonthPayment(c: Credit, payments: Payment[], key: string): number {
   if (!creditDueIn(c, payments, key)) return 0
-  return c.principal > 0 ? c.payment : (paidFor(payments, 'credit', c.id, key)?.amount ?? 0)
+  return paidFor(payments, 'credit', c.id, key)?.amount ?? creditDueAmount(c)
 }
 
 /**
@@ -1312,9 +1334,8 @@ export function monthDues(
   const credits: MonthDue[] = liveCredits(state.credits || [])
     .filter((c) => creditDueIn(c, payments, key))
     .map((c) => {
-      const paid = paidFor(payments, 'credit', c.id, key)
-      const amount = paid ? paid.amount : creditDueAmount(c)
-      return { kind: 'credit', credit: c, targetId: c.id, name: c.name, day: c.day, amount, paid: !!paid }
+      const paid = !!paidFor(payments, 'credit', c.id, key)
+      return { kind: 'credit', credit: c, targetId: c.id, name: c.name, day: c.day, amount: creditMonthPayment(c, payments, key), paid }
     })
   return [...obligations, ...credits]
 }
@@ -1505,8 +1526,11 @@ export type PlanStep =
   /** Долгов с процентами не осталось — план закрывает `settlePlans`. */
   | { kind: 'done' }
 
-/** Месяц обязательных списаний — как у калькулятора (`strategyInputs`). */
-const planMandatory = (state: PlanState, key: string) =>
+/**
+ * Месяц обязательных списаний — как у калькулятора (`strategyInputs`): им меряют
+ * подушку и шаг плана, и корзина подушки Ритуала.
+ */
+export const planMandatory = (state: PlanState, key: string) =>
   strategyInputs({
     credits: state.credits ?? [],
     goals: state.goals ?? [],
@@ -1576,15 +1600,25 @@ export function planForecast(plan: DebtPlan, state: PlanState, key: string): Pla
 }
 
 /** Факт плана (Р-6): досрочки с его id — сэкономленные проценты и шаги по порядку. */
-export function planFact(plan: DebtPlan, payments: Payment[] = []) {
+export function planFact(plan: DebtPlan, payments: Payment[] = [], credits: Credit[] = []) {
   const own = countedPayments(payments)
     .filter((p) => p.kind === 'prepay' && p.planId === plan.id)
     .sort((a, b) => a.at.localeCompare(b.at))
   return {
-    savedInterest: own.reduce((a, p) => a + (p.saved ?? 0), 0),
+    // Как счётчик Капитала: у удалённого кредита экономии нет (`prepaySaved`).
+    savedInterest: prepaySaved(own, credits),
     steps: own.map((p) => ({ period: p.period, creditId: p.targetId, amount: p.amount })),
   }
 }
+
+/** План уходит в историю (Р-5): статус, дата конца и итог по его досрочкам. */
+export const endedPlan = (
+  p: DebtPlan,
+  status: 'done' | 'cancelled',
+  payments: Payment[],
+  credits: Credit[],
+  t: string,
+): DebtPlan => ({ ...p, status, endedAt: t, result: { savedInterest: planFact(p, payments, credits).savedInterest }, updatedAt: t })
 
 export type PlanMonth = {
   period: string
@@ -1630,7 +1664,7 @@ export function settlePlans(plans: DebtPlan[] = [], credits: Credit[], payments:
     const status = p.id !== latest.id ? 'cancelled' : done ? 'done' : null
     if (!status) return p
     changed = true
-    return { ...p, status, endedAt: t, result: { savedInterest: planFact(p, payments).savedInterest }, updatedAt: t }
+    return endedPlan(p, status, payments, credits, t)
   })
   return changed ? next : null
 }

@@ -14,6 +14,7 @@ import { monthKey, monthIn, monthFrom, dayLabel } from '@/lib/dates'
 import {
   amountAt,
   budgetAmounts,
+  budgetLines,
   keepQuestions,
   liveGoals,
   liveObligations,
@@ -24,7 +25,6 @@ import {
   untilPayday,
 } from '@/lib/finance'
 import { cn, plural } from '@/lib/utils'
-import { categoryName } from '@/lib/palette'
 import Card from '@/components/kit/Card.vue'
 import Section from '@/components/kit/Section.vue'
 import Callout from '@/components/kit/Callout.vue'
@@ -53,20 +53,15 @@ const income = computed(() => amounts.value.income)
 const free = computed(() => amounts.value.d5)
 const spent = computed(() => income.value - free.value)
 
-// Сегменты расходов для Bar и Legend — по ключам d1–d4, как строки Бюджета (PV-15 п. 7):
-// раздел заведён или в нём есть сумма; с планом — «Досрочно по плану» после целей.
+// Сегменты расходов для Bar и Legend — те же строки, что «Куда уходит» Бюджета
+// (`budgetLines`, PV-15 п. 7); «Досрочно по плану» — цветом раздела кредитов.
 const segments = computed<Seg[]>(() => {
-  const segs: Seg[] = []
-  for (const key of ['d1', 'd2', 'd3', 'plan', 'd4'] as const) {
-    if (key === 'plan') {
-      if (amounts.value.planExtra > 0) {
-        segs.push({ key, value: amounts.value.planExtra, color: 'var(--d2)', label: 'Досрочно по плану' })
-      }
-      continue
-    }
-    if (!categories.value.some((c) => c.key === key) && amounts.value[key] <= 0) continue
-    segs.push({ key, value: amounts.value[key], color: `var(--${key})`, label: categoryName(categories.value, key) })
-  }
+  const segs: Seg[] = budgetLines(categories.value, amounts.value).map((l) => ({
+    key: l.key,
+    value: l.amount,
+    color: l.key === 'plan' ? 'var(--d2)' : `var(--${l.key})`,
+    label: l.name,
+  }))
 
   segs.push({
     key: 'd5',

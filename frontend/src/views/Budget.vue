@@ -16,6 +16,7 @@ import {
 } from '@/lib/dates'
 import {
   budgetAmounts,
+  budgetLines,
   budgetInterest,
   duesTotal,
   monthDues,
@@ -24,7 +25,6 @@ import {
   type ScheduledKind,
 } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
-import { categoryName } from '@/lib/palette'
 import { cn } from '@/lib/utils'
 
 import Card from '@/components/kit/Card.vue'
@@ -44,7 +44,7 @@ const DERIVED_NOTE: Record<string, string> = {
   d1: 'сумма обязательств по жилью',
   d2: 'платежи по кредитам',
   d3: 'взносы по всем целям',
-  plan: 'взносы целей на паузе — в самый дорогой долг',
+  plan: 'взносы целей на паузе и платежи закрытых долгов — по шагу плана',
 }
 
 type ViewMode = 'plan' | 'calendar' | 'list'
@@ -96,35 +96,22 @@ const income = computed(() => amounts.value.income)
 const interest = computed(() => budgetInterest(financeStore.credits))
 const free = computed(() => amounts.value.d5)
 
-type Line = { key: 'd1' | 'd2' | 'd3' | 'd4' | 'plan'; name: string; note: string; color: string; amount: number; base: number }
 /**
- * Строки «Куда уходит» — по ключам d1–d4, а не по заведённым разделам (PV-15 п. 7):
- * строка есть, если раздел заведён или в нём есть сумма; имя — семьи или запасное.
- * Раздел в документ не пишется (пустой раздел со свежим updatedAt затёр бы сумму
- * партнёра). С планом — «Досрочно по плану» после целей, цвет раздела кредитов.
+ * Строки «Куда уходит» — `budgetLines` (по ключам d1–d4, PV-15 п. 7; «Досрочно по плану»
+ * — цветом раздела кредитов). У «Еды и быта» — поле базы раздела.
  */
-const lines = computed<Line[]>(() => {
-  const out: Line[] = []
-  for (const key of ['d1', 'd2', 'd3', 'plan', 'd4'] as const) {
-    if (key === 'plan') {
-      if (amounts.value.planExtra > 0) {
-        out.push({ key, name: 'Досрочно по плану', note: DERIVED_NOTE.plan, color: 'var(--d2)', amount: amounts.value.planExtra, base: 0 })
-      }
-      continue
-    }
-    const cat = categories.value.find((c) => c.key === key)
-    const amount = amounts.value[key]
-    if (!cat && amount <= 0) continue
+const lines = computed(() =>
+  budgetLines(categories.value, amounts.value).map((l) => {
+    const cat = categories.value.find((c) => c.key === l.key)
     const note =
-      key === 'd4'
+      l.key === 'd4'
         ? (cat?.note ?? '')
-        : key === 'd3' && financeStore.activePlan
+        : l.key === 'd3' && financeStore.activePlan
           ? 'взносы целей, кроме тех, что на паузе'
-          : DERIVED_NOTE[key]
-    out.push({ key, name: categoryName(categories.value, key), note, color: `var(--${key})`, amount, base: cat?.amount ?? 0 })
-  }
-  return out
-})
+          : DERIVED_NOTE[l.key]
+    return { ...l, note, color: l.key === 'plan' ? 'var(--d2)' : `var(--${l.key})`, base: cat?.amount ?? 0 }
+  }),
+)
 
 const events = computed<EventItem[]>(() => {
   const items: EventItem[] = [

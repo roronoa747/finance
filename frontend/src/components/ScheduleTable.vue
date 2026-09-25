@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { PhCheck } from '@phosphor-icons/vue'
 import { plain } from '@/lib/money'
-import { MONTHS_NOM, parseMonthKey } from '@/lib/dates'
+import { monthShort } from '@/lib/dates'
 import type { ScheduleRow } from '@/lib/finance'
 import { cn } from '@/lib/utils'
 
@@ -10,12 +10,6 @@ import { cn } from '@/lib/utils'
  * месяц помечен, досрочка месяца — строкой под ним. Окно кредита и экран плана.
  */
 withDefaults(defineProps<{ rows: ScheduleRow[]; extraLabel?: string }>(), { extraLabel: 'досрочка' })
-
-/** «сен 2026» — месяц в графике платежей. */
-function scheduleMonth(period: string): string {
-  const { year, month } = parseMonthKey(period)
-  return `${MONTHS_NOM[month].slice(0, 3).toLowerCase()} ${year}`
-}
 </script>
 
 <template>
@@ -28,7 +22,7 @@ function scheduleMonth(period: string): string {
     <template v-for="r in rows" :key="r.period">
       <span :class="cn('flex items-center gap-1 text-left', r.paid ? 'text-brand' : 'text-ink-2')">
         <PhCheck v-if="r.paid" :size="11" weight="bold" aria-label="оплачен" />
-        {{ scheduleMonth(r.period) }}
+        {{ monthShort(r.period) }}
       </span>
       <span :class="r.paid ? 'text-ink-3' : 'text-ink'">{{ plain(r.amount) }}</span>
       <span :class="r.paid ? 'text-ink-3' : 'text-ink'">{{ plain(r.body) }}</span>

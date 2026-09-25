@@ -454,7 +454,7 @@ function choosePlan(opts: { keptGoalIds: string[]; cushionGoalId: string | null;
 /** Шаг плана в строке его кредита (PV-16, Р-6): вместо `credits[0]` — долг, который план гасит сейчас. */
 function planLine(c: Credit): string {
   const s = planNow.value
-  if (s?.kind !== 'prepay' || s.creditId !== c.id) return ''
+  if (s?.kind !== 'prepay' || s.creditId !== c.id || (!s.applied && s.amount <= 0)) return ''
   return s.applied
     ? `внесено по плану · ${plain(s.applied.amount)} ₸ · ${atLabel(s.applied.at)}`
     : `шаг плана: ${plain(s.amount)} ₸ в ${monthIn(key.value)}`

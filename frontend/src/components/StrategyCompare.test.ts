@@ -187,6 +187,16 @@ describe('PV-15: «Выбрать этот план» в калькулятор�
     expect(t).toContain(`Шаг этого месяца — пополнить подушку «Подушка» на ${money(100_000)}: до месяца обязательных списаний не хватает ${money(306_680)}.`)
   })
 
+  it('кроме подушки, все цели «не останавливать» — план направлять нечего: кнопка неактивна, шага «0 ₸» нет', async () => {
+    const html = await render({ initial: { kept: ['flat'], cushionGoalId: 'baby' } })
+    expect(html.replace(/<!--[^>]*-->/g, '')).toMatch(/<button[^>]*\bdisabled\b[^>]*>\s*Выбрать этот план\s*</)
+    const t = text(html)
+    expect(t).toContain('Плану нечего направлять в долги: кроме подушки, все цели отмечены «не останавливать».')
+    const choice = t.slice(t.indexOf('Подушка — какая цель?'))
+    expect(choice).not.toContain('Шаг этого месяца')
+    expect(choice).not.toContain(money(0))
+  })
+
   it('viewer — без кнопки выбора, остальное видно (Р-12)', async () => {
     const html = await render({ canChoose: false })
     expect(html).not.toMatch(/>\s*Выбрать этот план\s*</)

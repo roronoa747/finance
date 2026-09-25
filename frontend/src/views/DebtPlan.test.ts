@@ -52,7 +52,9 @@ describe('views/DebtPlan.vue — экран плана «Сначала долг
         const row = html.slice(html.indexOf(`>${name}<`))
         expect(row.slice(0, row.indexOf('</button>'))).toContain(money(monthly))
       }
-      expect(html.slice(html.indexOf('Цели на паузе'))).not.toContain('>Подушка<')
+      const pausedSection = html.slice(html.indexOf('Что не ушло в цели'), html.indexOf('Подушка плана'))
+      expect(pausedSection).toContain('>Отпуск<')
+      expect(pausedSection).not.toContain('>Подушка<')
       expect(html).toContain('Подушка плана — «Подушка»: взносы продолжаются.')
       expect(html).toMatch(cancelButton)
     })
@@ -110,7 +112,7 @@ describe('views/DebtPlan.vue — экран плана «Сначала долг
       expect(html).toContain(
         `Сейчас (от факта) не отдадим банку ${money(now.savedInterest)} , долги с процентами закроются в ${monthIn(now.debtFreeMonth!)}`,
       )
-      expect(planFact(plan, store.payments).savedInterest).toBe(16_000)
+      expect(planFact(plan, store.payments, store.credits).savedInterest).toBe(16_000)
       expect(html).toContain(`Уже сэкономили ${money(16_000)}`)
     })
 
@@ -198,6 +200,59 @@ describe('views/DebtPlan.vue — экран плана «Сначала долг
       vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
       family()
       expect(await renderScreen(DebtPlan, '/plan')).not.toContain('досрочки не было')
+    })
+
+    it('шаг — подушка: строки о пропуске нет — досрочек в эту пору план и не ждёт', async () => {
+      vi.setSystemTime(new Date('2026-10-15T07:00:00Z'))
+      const goals = planFamilyDoc().goals.map((g) => (g.id === 'cushion' ? { ...g, have: 100_000, seed: 100_000 } : g))
+      family({ goals })
+      const html = await renderScreen(DebtPlan, '/plan')
+      expect(html).toContain('Сначала подушка')
+      expect(html).not.toContain('досрочки не было')
+    })
+
+    it('на паузе нет взносов (все цели, кроме подушки, «не останавливать») — шага «0 ₸» нет', async () => {
+      useAuthStore().setAuthData(authAs('member'))
+      family({ plans: [planOf({ keptGoalIds: ['trip', 'car'] })] })
+      const html = await renderScreen(DebtPlan, '/plan')
+      expect(html).not.toContain('Шаг этого месяца')
+      expect(html).not.toMatch(/>\s*Внести по плану\s*</)
+    })
+  })
+
+  describe('PV-16 — «Внести по плану» одним нажатием (PlanStepAction)', () => {
+    const tap = (s: Record<string, unknown>) => (s.tap as () => void)()
+    beforeEach(() => useAuthStore().setAuthData(authAs('member')))
+
+    it('кредит уже оплачивали — одно нажатие: досрочка шага с того же счёта, лист не открывается', async () => {
+      const store = family()
+      store.markPaid('credit', 'cc', 'a', { accountId: 'card' })
+      const card = store.accounts[0].amount
+      const html = await renderScreen(DebtPlan, '/plan', undefined, [screenMixin({}, tap)])
+      expect(store.payments.filter((p) => p.kind === 'prepay')).toEqual([
+        expect.objectContaining({ targetId: 'cc', amount: 100_000, planId: 'plan', accountId: 'card', mode: 'term' }),
+      ])
+      expect(store.accounts[0].amount).toBe(card - 100_000)
+      expect(html).not.toContain('С какого счёта')
+    })
+
+    it('оплат не было — нажатие только открывает лист «С какого счёта», ничего не записано', async () => {
+      const store = family()
+      const html = await renderScreen(DebtPlan, '/plan', undefined, [screenMixin({}, tap)])
+      expect(store.payments).toEqual([])
+      expect(html).toContain('Досрочка по плану')
+      expect(html).toContain('С какого счёта')
+      expect(html).toContain('Не списывать — только отметить')
+    })
+
+    it('в листе выбрали «Не списывать» — запись без счёта, остаток карты прежний', async () => {
+      const store = family()
+      const card = store.accounts[0].amount
+      await renderScreen(DebtPlan, '/plan', undefined, [
+        screenMixin({ open: true, chosen: null }, (s) => (s.confirm as () => void)()),
+      ])
+      expect(store.payments).toEqual([expect.objectContaining({ kind: 'prepay', planId: 'plan', accountId: null })])
+      expect(store.accounts[0].amount).toBe(card)
     })
   })
 })

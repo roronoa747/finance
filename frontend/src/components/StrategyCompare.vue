@@ -21,6 +21,7 @@ import { monthIn } from '@/lib/dates'
 import {
   costliestCredits,
   pausedGoals,
+  planExtra,
   planStartMonth,
   planStep,
   simulateStrategy,
@@ -154,6 +155,9 @@ const draft = computed<DebtPlan>(() => ({
   updatedAt: '',
 }))
 const draftPaused = computed(() => pausedGoals(draft.value, props.goals))
+// Сколько план будет направлять в долги каждый месяц; 0 — выбирать нечего (всё, кроме
+// подушки, «не останавливать»): план назначал бы шаг «0 ₸».
+const draftExtra = computed(() => planExtra(draft.value, props.goals, props.credits))
 const draftStep = computed(() =>
   planStep(draft.value, { goals: props.goals, credits: props.credits, obligations: props.obligations }, props.monthKey),
 )
@@ -325,21 +329,26 @@ const stepLine = computed(() => {
         вас на кредитную карту. <RouterLink to="/goals" class="font-medium text-brand">Завести цель</RouterLink>
       </Callout>
 
-      <Button v-if="canChoose" class="w-full" @click="choose">Выбрать этот план</Button>
+      <Button v-if="canChoose" class="w-full" :disabled="!draftExtra" @click="choose">Выбрать этот план</Button>
       <div class="mt-2 flex flex-col gap-1 text-[12.5px] leading-relaxed text-ink-2">
-        <p v-if="draftPaused.length">
+        <p v-if="!draftExtra">
+          Плану нечего направлять в долги: кроме подушки, все цели отмечены «не останавливать».
+        </p>
+        <p v-else-if="draftPaused.length">
           На паузу встанут: {{ draftPaused.map((g) => g.name).join(', ') }} —
-          <span class="num">{{ money(draftPaused.reduce((a, g) => a + g.monthly, 0)) }}</span> в месяц.
+          <span class="num">{{ money(draftExtra) }}</span> в месяц.
           Взносы в них не пропадут: они пойдут в долги, а цели возобновятся сами.
         </p>
-        <p v-if="firstDebt">Первым гасится «{{ firstDebt.name }}» — самый дорогой долг.</p>
-        <p v-if="draftStep.kind === 'cushion'" class="num">
-          Шаг этого месяца — пополнить подушку «{{ goalName(draftStep.goalId) }}» на {{ money(draftStep.amount) }}:
-          до месяца обязательных списаний не хватает {{ money(draftStep.missing) }}.
-        </p>
-        <p v-else-if="draftStep.kind === 'prepay'" class="num">
-          Шаг этого месяца — {{ money(draftStep.amount) }} досрочно в «{{ firstDebt?.name }}».
-        </p>
+        <template v-if="draftExtra">
+          <p v-if="firstDebt">Первым гасится «{{ firstDebt.name }}» — самый дорогой долг.</p>
+          <p v-if="draftStep.kind === 'cushion'" class="num">
+            Шаг этого месяца — пополнить подушку «{{ goalName(draftStep.goalId) }}» на {{ money(draftStep.amount) }}:
+            до месяца обязательных списаний не хватает {{ money(draftStep.missing) }}.
+          </p>
+          <p v-else-if="draftStep.kind === 'prepay'" class="num">
+            Шаг этого месяца — {{ money(draftStep.amount) }} досрочно в «{{ firstDebt?.name }}».
+          </p>
+        </template>
       </div>
     </div>
   </div>

@@ -13,6 +13,7 @@ import {
   debtCost,
   halfOverpayExtra,
   simulateStrategy,
+  strategyInputs,
 } from '@/lib/finance'
 
 describe('views/Capital.vue — Счета, кредиты, досрочное погашение и капитал', () => {
@@ -482,6 +483,16 @@ describe('PV-10: модалка кредита и калькулятор дос�
     const withSum = await render('/capital?payoff=card-debt', { payoffAmount: '10 000' })
     expect(withSum).toContain('Впишите сумму, которую действительно можете внести.')
     expect(withSum).not.toContain('Infinity')
+  })
+
+  it('Р-11: «Применить к кредиту» при платеже ≤ процентов — взнос вносится, «экономию не считаем», без Infinity/NaN', async () => {
+    await family()
+    const html = await render('/capital?payoff=card-debt', { payoffMode: 'once', payoffAmount: '100 000' })
+    expect(html).toContain('Применить к кредиту')
+    expect(html).toContain('При текущем платеже долг не закрывается — экономию не считаем')
+    expect(html).not.toContain('Не отдадим банку')
+    expect(html).not.toContain('Infinity')
+    expect(html).not.toContain('NaN')
   })
 
   it('строка кредита: «N платежей · переплата M»; платёж ≤ процентов — «долг не закрывается»; остаток 0 — «долг закрыт» (ревью Н-1)', async () => {
@@ -1090,6 +1101,37 @@ describe('PV-16: шаг плана в строке кредита (SSR)', () => 
     expect(row(html, 'Кредитка')).toContain('шаг плана')
     expect(html).not.toMatch(button)
     expect(html).not.toContain('Изменить режим')
+  })
+
+  it('на паузе нет взносов — подписи «шаг плана: 0 ₸» у кредита нет', async () => {
+    useAuthStore().setAuthData(authAs('member'))
+    useFinanceStore().setHouseholdDoc(planFamilyDoc({ plans: [planOf({ keptGoalIds: ['trip', 'car'] })] }), 1)
+    const html = await renderScreen(Capital, '/capital')
+    expect(html).not.toContain('шаг плана')
+    expect(html).not.toMatch(button)
+  })
+
+  it('калькулятор в Капитале: viewer выбора не видит; выбор участника — план в сторе, «вложить накопленное» без денег подушки', async () => {
+    const choice = /<button[^>]*>\s*Выбрать этот план\s*</
+    const store = useFinanceStore()
+    store.setHouseholdDoc(planFamilyDoc(), 1)
+    useAuthStore().setAuthData(authAs('viewer', 'b'))
+    const viewer = await renderScreen(Capital, '/capital?advice=strategy')
+    expect(viewer).toContain('Подушка — какая цель?')
+    expect(viewer).not.toMatch(choice)
+
+    useAuthStore().setAuthData(authAs('member'))
+    expect(await renderScreen(Capital, '/capital?advice=strategy')).toMatch(choice)
+    await renderScreen(Capital, '/capital?advice=strategy', undefined, [
+      screenMixin({ cushion: false, useSaved: true, cushionGoalId: 'cushion' }, (s) => (s.choose as () => void)()),
+    ])
+    const plan = store.activePlan!
+    expect(plan).toMatchObject({ keptGoalIds: [], cushionGoalId: 'cushion', months: 36, creditIds: ['cc', 'loan'] })
+    // Накоплено в «Отпуске» и «Машине» — 250 000; 400 000 подушки в долги не идут.
+    expect(plan.lump).toBe(250_000)
+    expect(plan.lump).toBe(
+      strategyInputs({ credits: store.credits, goals: store.goals, obligations: store.obligations, key: '2026-09', kept: ['cushion'], cushion: false, useSaved: true }).lump,
+    )
   })
 
   it('«Изменить режим» — окно досрочки разово на сумму шага; запись с id плана, «снизить платёж» — шаг внесён', async () => {

@@ -11,13 +11,13 @@ import {
   creditBalance,
   creditResplit,
   creditSplit,
+  endedPlan,
   goalHave,
   lastAccountFor,
   lumpPlan,
   nextCreditDue,
   nextObligationDue,
   paidFor,
-  planFact,
   planForecast,
   planStep,
   settlePlans,
@@ -148,9 +148,8 @@ export const useFinanceStore = defineStore('finance', () => {
   const householdAccounts = computed(() => (householdDoc.value.accounts || []).map(withBalance))
   const privateAccounts = computed(() => ((privateDoc.value.accounts as Account[]) || []).map(withBalance))
   const accounts = computed(() => [...householdAccounts.value, ...privateAccounts.value])
-  const credits = computed(() =>
-    (householdDoc.value.credits || []).map((c) => ({ ...c, principal: creditBalance(c, payments.value) })),
-  )
+  const derivedCredits = (list: Credit[], pays: Payment[]) => list.map((c) => ({ ...c, principal: creditBalance(c, pays) }))
+  const credits = computed(() => derivedCredits(householdDoc.value.credits || [], payments.value))
   const wishlist = computed(() => householdDoc.value.wishlist || [])
   const setupDone = computed(() => Boolean(householdDoc.value.setupDoneAt))
   // Планы «Сначала долги» (PV-14): старые документы приходят без ключа.
@@ -1115,8 +1114,7 @@ export const useFinanceStore = defineStore('finance', () => {
   function settleIn(doc: SyncDoc): boolean {
     if (viewer() || !(doc.plans ?? []).length) return false
     const docPayments = doc.payments ?? []
-    const derived = (doc.credits || []).map((c) => ({ ...c, principal: creditBalance(c, docPayments) }))
-    const next = settlePlans(doc.plans, derived, docPayments, new Date().toISOString())
+    const next = settlePlans(doc.plans, derivedCredits(doc.credits || [], docPayments), docPayments, new Date().toISOString())
     if (next) doc.plans = next
     return !!next
   }
@@ -1164,10 +1162,10 @@ export const useFinanceStore = defineStore('finance', () => {
     return plan
   }
 
-  /** Активный план уходит в историю: статус, дата и итог по его досрочкам. */
+  /** Активный план уходит в историю: статус, дата и итог по его досрочкам (`endedPlan`). */
   function endPlan(p: DebtPlan, status: 'done' | 'cancelled', t: string) {
     if (p.deletedAt || p.status !== 'active') return
-    Object.assign(p, { status, endedAt: t, result: { savedInterest: planFact(p, payments.value).savedInterest }, updatedAt: t })
+    Object.assign(p, endedPlan(p, status, payments.value, credits.value, t))
   }
 
   /** «Отменить план» (Р-5): цели возобновятся сами (пауза выводится из плана), история останется. */

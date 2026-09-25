@@ -439,7 +439,7 @@ describe('PV-15: «Досрочно по плану» и разделы по к�
     const html = await renderScreen(Budget, '/budget')
     expect(lineAmount(html, 'Досрочно по плану')).toBe(40_000 + 60_000)
     expect(lineAmount(html, 'Цели')).toBe(30_000)
-    expect(html).toContain('взносы целей на паузе — в самый дорогой долг')
+    expect(html).toContain('взносы целей на паузе и платежи закрытых долгов — по шагу плана')
     expect(lineAmount(html, 'Свободно')).toBe(free)
     // Строка плана — сразу после целей, цвет раздела кредитов.
     expect(html.indexOf('>Досрочно по плану<')).toBeGreaterThan(html.indexOf('>Цели<'))
@@ -456,7 +456,8 @@ describe('PV-15: «Досрочно по плану» и разделы по к�
     const shown = names.map((n) => lineAmount(html, n))
     expect(shown.every((v) => v !== null)).toBe(true)
     const income = budgetAmounts({ ...store.householdDoc, credits: store.credits }).income
-    // «Еда и быт» — поле ввода (база раздела); в строке — вся сумма раздела, как в budgetAmounts.
+    // «Еда и быт» — поле ввода базы раздела; платежи в d4 сверх базы в строке не видны (так и в
+    // React, хвост §4 критика Блока 3), поэтому здесь — сумма раздела из budgetAmounts.
     const d4 = budgetAmounts({ ...store.householdDoc, credits: store.credits }).d4
     expect(shown[0]! + shown[1]! + shown[2]! + d4 + lineAmount(html, 'Свободно')!).toBe(income)
     expect(store.householdDoc.categories.map((c) => c.key)).toEqual(['d4'])

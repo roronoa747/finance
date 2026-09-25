@@ -393,8 +393,16 @@ describe('PV-15: сегменты Обзора — «Досрочно по пл�
     const store = useFinanceStore()
     const categories = planFamilyDoc().categories.filter((c) => c.key === 'd4')
     store.setHouseholdDoc(planFamilyDoc({ categories }), 1)
-    expect(legend(await renderScreen(Overview, '/'), 'Жильё')).toBe(220_000)
-    store.setHouseholdDoc(planFamilyDoc({ categories, obligations: [] }), 2)
+    const html = await renderScreen(Overview, '/')
+    expect(legend(html, 'Жильё')).toBe(220_000)
+    // Сегменты легенды с «Свободно» складываются в доход — без плана и с ним.
+    const names = ['Жильё', 'Кредиты', 'Цели', 'Еда и быт', 'Свободно']
+    const income = budgetAmounts({ ...store.householdDoc, credits: store.credits }).income
+    const sum = (h: string, list: string[]) => list.reduce((a, n) => a + (legend(h, n) ?? NaN), 0)
+    expect(sum(html, names)).toBe(income)
+    store.setHouseholdDoc(planFamilyDoc({ categories, plans: [planOf()] }), 2)
+    expect(sum(await renderScreen(Overview, '/'), [...names, 'Досрочно по плану'])).toBe(income)
+    store.setHouseholdDoc(planFamilyDoc({ categories, obligations: [] }), 3)
     expect(legend(await renderScreen(Overview, '/'), 'Жильё')).toBeNull()
   })
 })

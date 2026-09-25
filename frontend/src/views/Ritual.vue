@@ -14,8 +14,9 @@ import {
   liveGoals,
   liveObligations,
   lumpPlan,
-  mandatoryMonthly,
   nextChange,
+  pausedGoals,
+  planMandatory,
   planStep,
 } from '@/lib/finance'
 import { monthAfter, monthFrom, monthFromAfter, monthInAfter, monthKey } from '@/lib/dates'
@@ -29,7 +30,6 @@ const financeStore = useFinanceStore()
 
 const key = computed(() => monthKey())
 const people = computed(() => financeStore.people)
-const categories = computed(() => financeStore.categories)
 const goals = computed(() => liveGoals(financeStore.goals))
 const credits = computed(() => liveCredits(financeStore.credits))
 const obligations = computed(() => liveObligations(financeStore.obligations))
@@ -47,7 +47,8 @@ const done = ref(false)
 
 const used = computed(() => Object.values(alloc.value).reduce((a, v) => a + v, 0))
 const left = computed(() => total.value - used.value)
-const mandatory = computed(() => mandatoryMonthly(categories.value))
+// Месяц списаний — тот же, что у шага плана (подушка в Ритуале есть только с планом).
+const mandatory = computed(() => planMandatory(financeStore.planState(), key.value))
 // Досрочка — в самый дорогой открытый долг с процентами, не в первый по порядку.
 const credit = computed(() => costliestCredits(credits.value)[0])
 
@@ -55,6 +56,7 @@ const credit = computed(() => costliestCredits(credits.value)[0])
 // показывает — распределяет он «освободившееся», а у плана своя сумма.
 const plan = computed(() => financeStore.activePlan)
 const step = computed(() => (plan.value ? planStep(plan.value, financeStore.planState(), key.value) : null))
+const paused = computed(() => new Set(plan.value ? pausedGoals(plan.value, financeStore.goals).map((g) => g.id) : []))
 
 function set(id: string, delta: number) {
   const cur = alloc.value[id] ?? 0
@@ -87,14 +89,26 @@ function effectForPlan(extra: number) {
   const c = credit.value
   const s = step.value
   if (!c || !s || s.kind === 'done') return ''
-  if (s.kind === 'prepay' && s.applied && !extra) return `Шаг этого месяца внесён — ${money(s.applied.amount)} в «${c.name}»`
+  // Внесённый шаг мог закрыть самый дорогой долг — имя берём у шага, а не у нынешнего первого.
+  if (s.kind === 'prepay' && s.applied && !extra) {
+    const paid = financeStore.credits.find((x) => x.id === s.creditId)?.name ?? c.name
+    return `Шаг этого месяца внесён — ${money(s.applied.amount)} в «${paid}»`
+  }
+  if (s.kind === 'cushion' && !extra) return `Шаг плана в этом месяце — подушка; досрочка в «${c.name}» — следующим шагом`
   const base = s.kind === 'prepay' && !s.applied ? s.amount : 0
   const head = base ? `Шаг плана — ${money(base + extra)} в «${c.name}»` : `${money(extra)} в «${c.name}»`
   const lp = lumpPlan(c.principal, c.annualRate, c.payment, base + extra, 'term')
-  if (!lp) return `Шаг плана в этом месяце — подушка; досрочка в «${c.name}» — следующим шагом`
+  if (!lp) return ''
   if (lp.left === 0) return `${head}: долг закроется`
   if (lp.openEnded) return `${head}: при текущем платеже долг не закрывается — экономию не считаем`
   return `${head}: платежей останется ${lp.months} вместо ${lp.monthsBefore}, не отдадим банку ${money(lp.saved)}`
+}
+
+/** Цель на паузе ради плана (Р-9): её взнос, и добавка тоже, уходит в досрочку до конца плана. */
+function effectForPaused(extra: number) {
+  return extra
+    ? `На паузе ради плана: +${money(extra)} пойдут в досрочку, цель ускорится после плана`
+    : 'На паузе ради плана: её взнос сейчас идёт в досрочку'
 }
 
 function effectForLife(extra: number) {
@@ -124,7 +138,9 @@ const pots = computed(() => [
         ? `Через год покроет ${emergencyCoverage(g.have + (g.monthly + x) * 12, mandatory.value)
             .toFixed(1)
             .replace('.', ',')} мес. расходов`
-        : effectForGoal(g.id, x),
+        : paused.value.has(g.id)
+          ? effectForPaused(x)
+          : effectForGoal(g.id, x),
   })),
   ...(credit.value
     ? [

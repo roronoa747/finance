@@ -3,7 +3,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useFinanceStore, defaultSyncDoc, DEMO_HOUSEHOLD } from './finance'
 import { useAuthStore } from './auth'
 import { ApiClient, ApiError, apiClient } from '@/api/client'
-import type { SyncDoc, DebtPlan, Goal, Payment, Person, PersonId } from '@/types/finance'
+import type { SyncDoc, Credit, DebtPlan, Goal, Payment, Person, PersonId } from '@/types/finance'
 import type { HouseholdDocResponse, ConflictResponse } from '@/types/api'
 import {
   annuityMonths,
@@ -1664,6 +1664,100 @@ describe('PV-14: план «Сначала долги» в сторе', () => {
     choose(store)
     store.resetDoc()
     expect(store.householdDoc.plans).toEqual([])
+  })
+
+  describe('settlePlan после правок долгов (критик Блока 3)', () => {
+    const loanOnly = (p: Partial<Credit> = {}): SyncDoc['credits'] => [
+      { id: 'loan', name: 'Кредит', note: '', principal: 50_000, principalSetAt: T0, annualRate: 0.33, payment: 58_000, day: 15, updatedAt: T0, ...p },
+    ]
+
+    it('последний процентный долг закрыт плановым «Оплатил» — план done', () => {
+      const store = family(loanOnly())
+      choose(store)
+      store.markPaid('credit', 'loan', 'a', { accountId: 'card' })
+      expect(store.credits[0].principal).toBe(0)
+      expect(store.activePlan).toBeNull()
+      expect(store.plans[0]).toMatchObject({ status: 'done', result: { savedInterest: 0 } })
+    })
+
+    it('удалили последний процентный долг — план done; удалили не последний — план идёт', () => {
+      const store = family()
+      choose(store)
+      store.removeCredit('cc')
+      expect(store.activePlan?.status).toBe('active')
+      store.removeCredit('loan')
+      expect(store.activePlan).toBeNull()
+      expect(store.plans[0].status).toBe('done')
+    })
+
+    it('ставку последнего долга поправили на 0% — процентных долгов нет, план done', () => {
+      const store = family(loanOnly({ principal: 1_000_000 }))
+      choose(store)
+      store.updateCredit('loan', { annualRate: 0 })
+      expect(store.plans[0].status).toBe('done')
+    })
+
+    it('сняли незакрывающую отметку — план остаётся активным', () => {
+      const store = family()
+      const plan = choose(store)!
+      const paid = store.markPaid('credit', 'cc', 'a', { accountId: 'card' })!
+      store.unmarkPaid('credit', 'cc', paid.period)
+      expect(store.activePlan?.id).toBe(plan.id)
+    })
+  })
+
+  describe('applyPlanStep: счёт шага (PV-16, Р-5 RP)', () => {
+    const withDeposit = (store: ReturnType<typeof useFinanceStore>) =>
+      store.mutateHouseholdDoc((doc) =>
+        doc.accounts.push({ id: 'dep', name: 'Депозит', note: '', amount: 1_000_000, amountSetAt: T0, kind: 'card', updatedAt: T0 }),
+      )
+    const amountOf = (store: ReturnType<typeof useFinanceStore>, id: string) => store.accounts.find((a) => a.id === id)!.amount
+
+    it('счёт — прошлой оплаты этого кредита, а не последней оплаты вообще и не первый счёт', () => {
+      const store = family()
+      withDeposit(store)
+      choose(store)
+      store.markPaid('credit', 'cc', 'a', { accountId: 'dep' })
+      at('2026-09-24T08:00:00Z')
+      store.markPaid('credit', 'loan', 'a', { accountId: 'card' })
+      const card = amountOf(store, 'card')
+      const dep = amountOf(store, 'dep')
+      const rec = store.applyPlanStep('a')!
+      expect(rec).toMatchObject({ targetId: 'cc', accountId: 'dep' })
+      expect(amountOf(store, 'dep')).toBe(dep - rec.amount)
+      expect(amountOf(store, 'card')).toBe(card)
+    })
+
+    it('история есть только у другого кредита — счёт спросить (null)', () => {
+      const store = family()
+      choose(store)
+      store.markPaid('credit', 'loan', 'a', { accountId: 'card' })
+      expect(store.applyPlanStep('a')).toBeNull()
+    })
+
+    it('прошлую оплату кредита «не списывали» — шаг тоже без списания и без вопроса', () => {
+      const store = family()
+      choose(store)
+      store.markPaid('credit', 'cc', 'a', { accountId: null })
+      const card = amountOf(store, 'card')
+      expect(store.applyPlanStep('a')).toMatchObject({ targetId: 'cc', accountId: null })
+      expect(amountOf(store, 'card')).toBe(card)
+    })
+  })
+
+  it('Р-11: шаг плана в кредитку, где платёж меньше процентов, вносится — экономия 0, платёж прежний', () => {
+    // 1 000 000 под 36% — 30 000 процентов в месяц при платеже 25 000: долг не закрывается.
+    const store = family([
+      { id: 'card-debt', name: 'Кредитка', note: '', principal: 1_000_000, principalSetAt: T0, annualRate: 0.36, payment: 25_000, day: 22, updatedAt: T0 },
+    ])
+    const plan = choose(store)!
+    const rec = store.applyPlanStep('a', { accountId: 'card' })!
+    expect(rec).toMatchObject({ planId: plan.id, amount: 100_000, saved: 0, mode: 'term' })
+    expect(store.credits[0]).toMatchObject({ principal: 900_000, payment: 25_000 })
+    // «Снизить платёж» у бессрочного долга тоже не трогает платёж: срока, который сохранять, нет.
+    const more = store.applyPrepayment('card-debt', 'a', { amount: 50_000, mode: 'payment', accountId: 'card' })!
+    expect(more.saved).toBe(0)
+    expect(store.credits[0].payment).toBe(25_000)
   })
 
   describe('после слияния', () => {

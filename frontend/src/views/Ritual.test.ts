@@ -6,8 +6,10 @@ import { createMemoryHistory } from 'vue-router'
 import { createAppRouter } from '@/router'
 import { useFinanceStore } from '@/stores/finance'
 import {
+  emergencyCoverage,
   goalMonths,
   lumpPlan,
+  planMandatory,
   prepayment,
   nextChange,
 } from '@/lib/finance'
@@ -338,6 +340,47 @@ describe('PV-16: шаг плана в Ритуале (SSR)', () => {
     const first = ['>Подушка<', '>Отпуск<', '>Машина<'].map((n) => html.indexOf(n))
     expect(first[0]).toBeLessThan(first[1])
     expect(first[0]).toBeLessThan(first[2])
+  })
+
+  it('подушка — цель плана по id, а не по названию: план с подушкой «Отпуск» — «покроет» у «Отпуска», не у «Подушки»', async () => {
+    family({ plans: [planOf({ cushionGoalId: 'trip' })] })
+    const html = await renderScreen(Ritual, '/ritual')
+    // Корзина — от своего названия до названия следующей.
+    const names = ['Подушка', 'Отпуск', 'Машина', 'Досрочно по плану'].map((n) => html.indexOf(`>${n}<`))
+    const pot = (name: string) => {
+      const at = html.indexOf(`>${name}<`)
+      return html.slice(at, Math.min(...names.filter((i) => i > at), html.length))
+    }
+    expect(pot('Отпуск')).toContain('Через год покроет')
+    expect(pot('Подушка')).not.toContain('Через год покроет')
+  })
+
+  it('корзина подушки меряет тем же месяцем списаний, что и шаг плана (planMandatory)', async () => {
+    const store = family({ plans: [planOf()] })
+    const html = await renderScreen(Ritual, '/ritual')
+    const g = store.goals.find((x) => x.id === 'cushion')!
+    const month = planMandatory(store.planState(), '2026-09')
+    expect(month).toBe(323_000)
+    const cover = emergencyCoverage(g.have + g.monthly * 12, month).toFixed(1).replace('.', ',')
+    expect(html).toContain(`Через год покроет ${cover} мес. расходов`)
+  })
+
+  it('цель на паузе не обещает «быстрее»: её взнос и добавка уходят в досрочку', async () => {
+    family({ plans: [planOf()] })
+    const html = await renderScreen(Ritual, '/ritual', undefined, [screenMixin({ alloc: { trip: 10_000 } })])
+    const trip = html.slice(html.indexOf('>Отпуск<'), html.indexOf('>Машина<'))
+    expect(trip).toContain(`На паузе ради плана: +${money(10_000)} пойдут в досрочку, цель ускорится после плана`)
+    expect(trip).not.toContain('Быстрее')
+    expect(html.slice(html.indexOf('>Машина<'))).toContain('На паузе ради плана: её взнос сейчас идёт в досрочку')
+  })
+
+  it('внесённый шаг закрыл самый дорогой долг — Ритуал называет его, а не следующий', async () => {
+    const store = family({ plans: [planOf()] })
+    const left = store.credits.find((c) => c.id === 'cc')!.principal
+    store.applyPrepayment('cc', 'a', { amount: left, mode: 'term', accountId: 'card', planId: 'plan' })
+    expect(store.credits.find((c) => c.id === 'cc')!.principal).toBe(0)
+    const html = await renderScreen(Ritual, '/ritual')
+    expect(html).toContain(`Шаг этого месяца внесён — ${money(left)} в «Кредитка»`)
   })
 
   it('confirm пишет только цели: досрочки по плану Ритуал не вносит', async () => {

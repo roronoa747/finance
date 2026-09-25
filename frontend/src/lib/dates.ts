@@ -44,6 +44,12 @@ export function monthTitle(key: string): string {
   return `${MONTHS_NOM[month]} ${year}`
 }
 
+/** «сен 2026» — строка таблицы: график платежей, план по месяцам. */
+export function monthShort(key: string): string {
+  const { year, month } = parseMonthKey(key)
+  return `${MONTHS_NOM[month].slice(0, 3).toLowerCase()} ${year}`
+}
+
 /** Сдвиг ключа месяца на N месяцев. */
 export function addMonths(key: string, n: number): string {
   const { year, month } = parseMonthKey(key)
