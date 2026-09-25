@@ -38,8 +38,10 @@ function onPointerMove(e: PointerEvent) {
   }
 }
 
+// Нажатие с клавиатуры (detail 0) — не свайп: мышь могла просто пройти над строкой
+// после прошлого клика, а лист вернул фокус на неё.
 function handleClick(e: MouseEvent) {
-  if (!dragged.value) {
+  if (!dragged.value || e.detail === 0) {
     emit('click', e)
   }
 }

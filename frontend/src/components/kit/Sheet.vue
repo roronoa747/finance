@@ -33,10 +33,45 @@ const card = ref<HTMLElement | null>(null)
 const me = Symbol('sheet')
 let back: HTMLElement | null = null
 
+const FOCUSABLE =
+  'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+
 function onKeydown(e: KeyboardEvent) {
-  if (e.key !== 'Escape' || e.defaultPrevented || stack[stack.length - 1] !== me) return
-  e.preventDefault()
-  emit('close')
+  if (e.defaultPrevented || stack[stack.length - 1] !== me) return
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    emit('close')
+    return
+  }
+  // Tab не уводит фокус под затемнение: там можно открыть другое окно, которое
+  // встанет под это.
+  if (e.key !== 'Tab' || !card.value) return
+  const items = [...card.value.querySelectorAll<HTMLElement>(FOCUSABLE)]
+  if (!items.length) return
+  const first = items[0]
+  const last = items[items.length - 1]
+  const at = document.activeElement
+  const inside = at instanceof HTMLElement && card.value.contains(at)
+  if (e.shiftKey && (!inside || at === first || at === card.value)) {
+    e.preventDefault()
+    last.focus()
+  } else if (!e.shiftKey && (!inside || at === last)) {
+    e.preventDefault()
+    first.focus()
+  }
+}
+
+// Закрывает только нажатие, начатое на затемнении: выделение текста из поля,
+// отпущенное за краем окна, тоже даёт click по фону — окно закрылось бы с правкой.
+let downOnScrim = false
+
+function onScrimDown(e: PointerEvent) {
+  downOnScrim = e.target === e.currentTarget
+}
+
+function onScrimClick() {
+  if (downOnScrim) emit('close')
+  downOnScrim = false
 }
 
 function show() {
@@ -79,7 +114,8 @@ onUnmounted(() => {
       v-if="open"
       class="fixed inset-0 flex items-end justify-center bg-scrim backdrop-blur-xs sm:items-center sm:p-4"
       :style="{ zIndex: z }"
-      @click.self="emit('close')"
+      @pointerdown="onScrimDown"
+      @click.self="onScrimClick"
     >
       <div
         ref="card"
