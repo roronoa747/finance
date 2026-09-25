@@ -10,28 +10,28 @@
   `wishlist`, `obligations`, `accounts`, `credits`, `payments?`, `setupDoneAt?`. `Goal`
   (`:65-94`): `need`, `seed`, `have`, `monthly`, `hue`, `planPct`, `movements`, `accountId?` —
   флага паузы нет и не будет (Р-9). `Payment` (`:231-265`). `Tracked` (`:16-19`).
-  `defaultSyncDoc()` (`stores/finance.ts:25-39`); `mutateHouseholdDoc` (`:237-244`);
-  геттеры `goals` (`:120`, с надгробиями; `liveGoals` — `lib/finance.ts:469`), `payments` (`:122`),
-  `credits` (`:130-132`, производные). `applyPrepayment(creditId, by, { amount, mode: 'term' |
-  'payment', accountId? })` (`:988-1022`; `null`, если `lumpPlan` вернул `null`; `period =
-  monthKey()`; при `'payment'` переписывает `credit.payment`), `removePrepayment` (`:1029-1041`),
-  `markPaid` (`:865-902`), `unmarkPaid`, `newPayment(fields, accountId, at?)` (`:909-923`;
+  `defaultSyncDoc()` (`stores/finance.ts:26-40`); `mutateHouseholdDoc` (`:238-245`);
+  геттеры `goals` (`:121`, с надгробиями; `liveGoals` — `lib/finance.ts:619`), `payments` (`:123`),
+  `credits` (`:131-133`, производные). `applyPrepayment(creditId, by, { amount, mode: 'term' |
+  'payment', accountId? })` (`:997-1031`; `null`, если `lumpPlan` вернул `null`; `period =
+  monthKey()`; при `'payment'` переписывает `credit.payment`), `removePrepayment` (`:1038-1050`),
+  `markPaid` (`:874-911`), `unmarkPaid`, `newPayment(fields, accountId, at?)` (`:918-932`;
   счёт по умолчанию `lastAccountFor(...) ?? null`).
 - **Слияние** `lib/merge.ts`: `known` (`:145-164`) — `setupDoneAt`, `people`, `categories`,
   `goals` (+`mergeGoal`), `wishlist`, `obligations` (+`mergeObligation`), `accounts`,
   `credits`, `payments` — все списки через `mergeList` по `id` (`:51-76`: LWW по `updatedAt`,
   при равенстве local, `{...loser, ...winner}`, надгробие сильнее). Новый ключ — добавить в
   `known` (комментарий `:125-126`). `isEmptyDoc` (`:169-178`).
-- **Математика** `lib/finance.ts`: `simulateStrategy` (`:380-462`), `strategyInputs` /
+- **Математика** `lib/finance.ts`: `simulateStrategy` (`:450-532`), `strategyInputs` /
   `strategyGain` (PV-02), `openCredits` / `costliestCredits` (PV-01), `lumpPlan(principal, rate,
-  payment, lump, mode)` (`:278-302`; **`null` при `debt <= 0 || paid <= 0 ||
-  !isFinite(annuityMonths(...))`** `:288` — платёж не покрывает проценты; хвост §4 RP, Р-11),
-  `annuityMonths` (`:24-30`, `Infinity` при `x <= 0`), `debtCost` (`:197-210`), `creditBalance`,
-  `prepaySaved`, `countedPayments`, `budgetAmounts(state)` (`:628-659`; d3 = Σ `monthly` живых
-  целей `:653`, `free` `:656`), `mandatoryMonthly(categories)` (`:599-602`), `emergencyCoverage`,
+  payment, lump, mode)` (`:344-372`; **`null` при `debt <= 0 || paid <= 0 ||
+  !isFinite(annuityMonths(...))`** `:354` — платёж не покрывает проценты; хвост §4 RP, Р-11),
+  `annuityMonths` (`:24-30`, `Infinity` при `x <= 0`), `debtCost` (`:247-260`), `creditBalance`,
+  `prepaySaved`, `countedPayments`, `budgetAmounts(state)` (`:818-849`; d3 = Σ `monthly` живых
+  целей `:843`, `free` `:846`), `mandatoryMonthly(categories)` (`:786-789`), `emergencyCoverage`,
   `goalMonths`. Даты — `lib/dates.ts`: `monthKey(d?)`, `addMonths(key, n)`, `today()`,
   `parseMonthKey`, `monthTitle`, `monthIn`, `monthAfter`, `atLabel`.
-- Тесты: `stores/finance.test.ts` (`family()` `:720-734`, фальшивые таймеры `2026-09-24T07:00Z`),
+- Тесты: `stores/finance.test.ts` (`family()` `:721-735`, фальшивые таймеры `2026-09-24T07:00Z`),
   `lib/merge.test.ts` (`createEmptyDoc` `:6-17`, хелперы `mark`/`both`/`tomb` `:413-521`),
   `lib/finance.test.ts`.
 

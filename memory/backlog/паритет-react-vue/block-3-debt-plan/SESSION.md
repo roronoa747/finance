@@ -27,8 +27,30 @@
   `finance.ts`; закрытые кредиты — `openCredits` (PV-01); `creditBalance` на геттере не звать.
 - Р-11: `lumpPlan` при платеже ≤ процентов — `openEnded`, не `null`.
 - Р-16: месяц шага и пропуск — `monthKey()` по Алматы; тесты на фиксированном времени.
-- <критик Блока 2 впишет: имена функций разбивки/графика (PV-13), устройство `Sheet`,
-  пропсы `StrategyCompare`, сигнатура `applyPrepayment` после Блока 2>
+- **Что уже в коде после Блока 2** (факт, критик Блока 2 2026-09-25; подробно — §6 бэклога):
+  - Разбивка и график (PV-13, `lib/finance.ts`): `paymentSplit(record | null, credit, due)`,
+    `creditTotals(payments, creditId)`, `budgetInterest(credits)`, `creditSchedule(credit,
+    payments, { from?, extra? })` → `ScheduleRow[]`. `extra: { period, amount }[]` — будущие
+    досрочки: гасят тело до платежа своего месяца (PV-17 передаёт шаги плана); уже применённые
+    досрочки месяца видны в `extra` строки и второй раз не вычитаются. В модалке кредита —
+    свёрнутый «График платежей» и «За всё время».
+  - Окна: `kit/Sheet.vue` (`open`, `title`, `z?`, emit `close`; слоты тела, `mark`, `footer`;
+    Escape — только верхний, Tab не выходит из окна, фокус назад). Окно выбора плана — `Sheet` с
+    содержимым под `v-if`. Новое окно Капитала по адресу — в `QUERY_KEYS` и `queryModalOpen`
+    (Б-15, «окно показано»). Группы кнопок — `Field group`; `Select`; `useSavedMark`; `Row` со
+    слотом `action` вне кнопки строки (кнопка «Внести по плану» PV-16 — туда).
+  - `StrategyCompare` Блоком 2 не менялся (кроме `Field group` у «Горизонт»): пропсы `credits`
+    (открытые), `goals`, `obligations`, `monthKey`, `initial?: { months, kept, cushion,
+    useSaved }` (для SSR-тестов).
+  - `applyPrepayment(creditId, by, { amount, mode: 'term' | 'payment', accountId? })` →
+    `Payment | null` (`stores/finance.ts:997-1031`) Блоком 2 не менялся; `planId?` добавит PV-14.
+    `lumpPlan` при платеже ≤ процентов — всё ещё `null` (Р-11 → PV-14). Калькулятор закрытого
+    кредита пишет «долг закрыт».
+  - Номера строк в ТЗ PV-14…PV-16 пересчитаны критиком Блока 2 на HEAD `pv-block-2-money-edit`.
+    Клинап Блока 2 может сдвинуть `Capital.vue` (хвосты §4 с кандидатом «клинап») — перед
+    стартом сверить.
+  - Хвосты Блока 2 рядом с планом: «округление в Капитале» (калькулятор), «годовое
+    обязательство ×12» (`plannedChange`) — судьба у владельца.
 - Среда: стенд §6, два профиля + viewer; смена месяца — `vi.setSystemTime` в тестах, в
   браузере — фикстура документа с датой старта плана в прошлом месяце.
 - Верификация: `cd frontend && npm run build && npm test` + браузер по критериям ТЗ.

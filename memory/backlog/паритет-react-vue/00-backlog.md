@@ -5,7 +5,8 @@
 > зелёный на `e08e641`); утром задеплоен с владельцем — merge `443c85b`, Production
 > `dpl_6APa5xHWZ8sY5EqHBu8C3qbAc1Kd`, смоук агента и владельца ✅. Блок 2 🔄 — исполнитель ✅
 > 2026-09-25 (PV-09…PV-13, ветка `pv-block-2-money-edit`, тесты 354/354, браузер 118/118; не
-> запушена). Блоки 3–5 ⬜. Осталось: 3 блока, 10 задач (+ роли Блока 2). Дефолты составителя
+> запушена), критик ✅ 2026-09-25 (11 правок, 6 хвостов §4 — один решить до Р-14; тесты
+> 358/358). Блоки 3–5 ⬜. Осталось: 3 блока, 10 задач (+ роли Блока 2). Дефолты составителя
 > (§2 Р-19…Р-22, ТЗ PV-14, PV-18, PV-21) владелец принял 2026-09-25.
 
 Источник: `паритет-react-vue-brief.md` (резюме интервью подтверждено владельцем 2026-09-24;
@@ -193,6 +194,12 @@ PV-14 (Р-9, Р-11, Р-16), PV-15 (Р-4, Р-12), PV-16 (Р-6, Р-7, Р-10), PV-1
 | Роль партнёра («только просмотр») в шторке синка (Б-18) без ручки Go недоступна: `/auth/me` отдаёт только себя, `/api/household/members` нет (репозиторий `GetMembers` есть). PV-21 показывает участников из `people` документа и роль только свою. Ручка — вне Р-15 | Составитель (разведка PV-21) | ⏳ не решено (кандидат: S-задача бэкенда после паритета) |
 | Viewer видит в Капитале кнопки добавления (счёт, подписка, долг, группа подписок) и их формы, окно группы (название, «Спрашивать», «Вынуть») и экран вклада с полями — сервер отвергнет push (403), но формы есть вопреки матрице §3. Блок 2 скрыл у viewer только правку кредита, обязательства и счёта (свои ТЗ) | Исполнитель Блока 2 | ⏳ не решено (кандидат: S-задача «viewer без форм» или PV-23) |
 | Месяц закрытия кредита последним плановым «Оплатил»: «Кредиты» и «Свободно» (`budgetAmounts`, PV-01 — закрыт = производный остаток 0) уже без его платежа, хотя деньги ушли в этом месяце; «На обязательства» (`monthDues`, правило `creditDueIn`) его ещё показывает — на экране Бюджета числа расходятся на один месяц. Для досрочки (критерий PV-01) так и задумано. Вариант: d2 = открытые + с отметкой «Оплатил» в текущем месяце (правило `creditDueIn`) — меняет определение ТЗ PV-01, поэтому не правка критика | Критик Блока 1 | **Блок 3 — PV-14** (владелец, 2026-09-25): одно правило месяца закрытия долга рядом с переходом платежа плана в следующий долг |
+| **Раздел обязательства после создания не меняется нигде:** модалка по React (`ObligationDialog :459-690`) без «В какой раздел бюджета». Р-14 рассчитывает на правку испорченных `d4` «в вернувшихся формах» — оценку поправить можно, раздел нет: «Аренда» в `d4` останется подпиской («Оставить?»); удалить и завести заново — теряется история, а отметка месяца остаётся за старым id (повторное «Оплатил» спишет второй раз). Варианты: в модалку «В какой раздел бюджета» (`obBuckets` → `updateObligation({ category })`, осознанное отступление от Р-2) или другой способ в Р-14 | Критик Блока 2 | ⏳ не решено — **решить до сверки Р-14 в приёмке Блока 2** (кандидат: клинап Блока 2, ≈15 строк + тест) |
+| Годовое обязательство: «освободится X в месяц — Y за год» завышено в 12 раз — `plannedChange(current, planned)` (`finance.ts:678`) не знает периодичность, модалка передаёт полную годовую сумму (страховка 60 000 → 48 000: «12 000 ₸ в месяц — 144 000 ₸ за год» вместо 1 000 / 12 000). Так же в React (`:637-639`) и в формуле ТЗ PV-11, поэтому правка — отступление от Р-2; SSR-тест «планирование» закрепляет нынешнее | Критик Блока 2 | ⏳ не решено (кандидат: клинап Блока 2 — `plannedChange(current, planned, every)`) |
+| Форма платежа предлагает «Жильё»/«Кредиты» запасными именами, даже если раздела нет в `categories` (отклонение 5 Handoff Блока 2): платёж в `d1`/`d2` без раздела не виден в «Куда уходит» (`Budget.vue:217`) и полосе Обзора, а «Свободно» уже меньше. Корень старше блока: разделы Vue ленивые, мастер пишет только `d1`–`d3` (React заводил все пять). Ленивое создание в `addObligation` небезопасно по LWW (раздел с суммой 0 и свежим `updatedAt` затрёт сумму партнёра) — либо `updatedAt` эпохи, либо строки Бюджета/Обзора по фиксированным `d1`–`d4` с `DEFAULT_CATEGORY_NAMES` | Критик Блока 2 | ⏳ не решено |
+| Валютный счёт принимает тенговые сдвиги («Внеплановый доход» → «На счёт», `Capital.vue:2032`; пополнение/снятие цели `GoalDetail.vue:322`): `shiftAccountAmount` двигает тенговую базу, `foreignAmount` прежний — следующая правка курса или суммы в валюте (PV-12) пересчитывает `amount = fxToTenge(...)` и молча теряет сдвиг (50 000 ₸ пропали при курсе +0,01). В React тот же изъян. Вариант: для сдвигов — только `payableAccounts` (тенге) | Критик Блока 2 | ⏳ не решено (кандидат: клинап Блока 2 или PV-19 — `GoalDetail`) |
+| Системное «Назад» не закрывает окно, открытое по адресу (`/capital?add=debt` → «Назад» → адрес чистый, форма открыта): наблюдатель `route.query` только ставит флаги. В React закрывает (окна из `useSearchParams`). Было до блока; Б-15 требовал только очистку при закрытии. Нужна отметка «открыто адресом» — меняет модель Б-15 | Критик Блока 2 | ⏳ не решено |
+| Округление денег в `Capital.vue` вопреки §6: чипы и лесенка калькулятора досрочки, `sub` строки кредита (`Math.round(annuityTotal − principal)` — то же даёт `creditOutlook(c).overpay`), «экономия», «Что гасить первым» (`worstDebt`). Всё — до блока и 1:1 с React, отказа нет (на выходе целые). Вынести в `finance.ts` | Критик Блока 2 | ⏳ не решено (кандидат: ревью frontend Блока 2 → клинап) |
 
 ## 5. Протокол
 
@@ -239,7 +246,8 @@ PV-14 (Р-9, Р-11, Р-16), PV-15 (Р-4, Р-12), PV-16 (Р-6, Р-7, Р-10), PV-1
   `views/*.vue`, расчёты `lib/finance.ts`, время `lib/dates.ts`, палитра `lib/palette.ts`,
   слияние `lib/merge.ts`, стор `stores/finance.ts`, типы `types/finance.ts`, оболочка
   `components/AppShell.vue`, кит `components/kit/*` (Callout, Card, DangerZone, Field, Hero,
-  Hint, NumField, NumFieldBlur, Row, SavedMark, Section, Segmented, Stat, Tag), `components/`
+  Hint, NumField, NumFieldBlur, Row, SavedMark, Section, Segmented, Select, Sheet, Stat, Tag,
+  `useSavedMark.ts` — PV-09), `components/`
   (Ring, PaidRow, SalaryDialog, SyncBadge, AppearancePanel, Bar, CategoryBar, Legend),
   `components/ui/Button.vue`, `Input.vue`. Иконки — `@phosphor-icons/vue`.
 - Прод: `family-finance-ff.vercel.app` (Vercel, Go-функция `api/index.go` + `frontend/dist`).
@@ -279,19 +287,29 @@ PV-14 (Р-9, Р-11, Р-16), PV-15 (Р-4, Р-12), PV-16 (Р-6, Р-7, Р-10), PV-1
 
 **Деньги и время**
 - Деньги — целые тенге в состоянии. Все расчёты — `frontend/src/lib/finance.ts` (чистые
-  функции); `Math.round` только там, в компонентах арифметики с деньгами нет.
+  функции); `Math.round` только там, в компонентах арифметики с деньгами нет (старые
+  исключения в `Capital.vue` — хвост §4 «округление в Капитале»).
 - Есть: `annuityPayment`, `annuityMonths`, `annuityTotal`, `rateFromSchedule(principal,
   payment, months): number | null`, `prepayment`, `lumpSum`, `lumpPlan(principal, rate,
   payment, lump, mode)`, `debtCost`, `halfOverpayExtra`, `simulateStrategy({debts, saving,
-  keep, payDebts, start, lump?, buffer?, months})` (`:380`, построчно = React `:317`),
+  keep, payDebts, start, lump?, buffer?, months})` (`:450`, построчно = React `:317`),
   `creditSplit(principal, rate, payment)`, `creditBalance`, `creditDueAmount`, `creditDueIn`,
   `nextCreditDue`, `nextObligationDue`, `paidFor`, `countedPayments`, `prepaySaved`,
-  `untilPayday(state)`, `budgetAmounts(state)` (`:628`; d2 = платежи `liveCredits` + d2-
+  `untilPayday(state)`, `budgetAmounts(state)` (`:818`; d2 = платежи `openCredits` + d2-
   обязательства), `monthlyAmount(o, key)`, `mandatoryMonthly(categories)`, `cushionMonths`,
   `netWorth`, `goalSavings`, `goalMonths(remaining, monthly)` (`Infinity` при взносе 0),
   `realRate(nominal, inflation)`, `live*`-фильтры (`liveCredits` — только `!deletedAt`,
   закрытость не смотрит). После клинапа Блока 1 RP — `monthDues(...)` (Н-3) и `plural`
   (`lib/utils.ts`, Н-8) — сверить по «Итогам пост-приёмки».
+- Блок 2 (PV-10…PV-13): `creditOutlook(c)` → `{ closes, months, overpay }` (на `debtCost`;
+  остаток 0 → `closes false`); `paymentSplit(record | null, credit, due)` → `{ body, interest }`
+  (отмеченный — снимок записи, иначе `creditSplit`); `creditTotals(payments, creditId)` →
+  `{ body, interest, count }` (с досрочками); `budgetInterest(credits)` — проценты месяца по
+  открытым; `creditSchedule(credit, payments, { from?, extra? })` → `ScheduleRow[]` (`period`,
+  `day`, `amount`, `body`, `interest`, `extra`, `left`, `paid`; кап 600; `extra` — будущие
+  досрочки, гасят тело до платежа месяца); `fxToTenge(foreignAmount, rate)`; `yearShare(yearly)`;
+  `plannedChange(current, planned)` → `{ monthly, yearly }`. Имена разделов по умолчанию —
+  `DEFAULT_CATEGORY_NAMES` (`lib/palette.ts`).
 - Время: `lib/dates.ts` — `today(d?)`, `monthKey(d?)` по Asia/Almaty (фиксированный UTC+5),
   `atLabel(iso)`. Пояс машины разработчика — Europe/Berlin: тесты с календарём — на
   фиксированных моментах (`vi.setSystemTime`).
@@ -305,9 +323,20 @@ PV-14 (Р-9, Р-11, Р-16), PV-15 (Р-4, Р-12), PV-16 (Р-6, Р-7, Р-10), PV-1
 - Токены — `frontend/src/style.css`: `:root {` (`:11`) и `.dark {` (`:74`), `@custom-variant dark`;
   новый токен — обязательно в обоих блоках. Правило заказчика: строгий банковский вид.
 - `Callout` (kit): `title`, `tone?: 'warn' | 'good'` (дефолт `warn`), текст в слот.
-  `Segmented` — generic по строковым значениям. **`Field` рендерит `<label>`** — группа
-  кнопок внутри получает имя первой кнопки с подписью (хвост RP → PV-09); до PV-09 новые
-  формы строят как соседние, не чинить походя.
+  `Segmented` — generic по строковым значениям. **`Field` рендерит `<label>`**; группа кнопок —
+  только `Field group` (`<div role="group" aria-label>`, PV-09), иначе имя первой кнопки
+  включает подпись.
+- **Окна — `kit/Sheet.vue`** (PV-09): пропсы `open`, `title`, `z?` (50; лист поверх окна — 60),
+  emit `close`, слоты тела, `mark` («Сохранено» в шапке), `footer`. Лист снизу на телефоне, по
+  центру с `sm`; затемнение — токен `--scrim`. Escape закрывает только верхний (стек), фокус —
+  в окно и назад, Tab не выходит из окна, фон закрывает только нажатие, начатое на нём.
+  `Teleport to="body"`, без `document` (SSR-тесты) — на месте. Образец: `<Sheet
+  :open="!!activeX" title="…" @close="xId = null"><template v-if="activeX">…</template></Sheet>`.
+  `kit/Select.vue` (`options` или слот `<option>`), `Row` — слоты `action` (вне кнопки строки),
+  `note`, под строкой; `dense`, `muted`. «Сохранено» — `useSavedMark(() => id, () => updatedAt)`.
+- Капитал открывает окна и по адресу (`add`, `income`, `credit`, `obligation`, `payoff`):
+  закрытие всех таких окон чистит адрес (Б-15, `QUERY_KEYS` + `queryModalOpen` по «окно
+  показано»). Новое окно по адресу — добавить в оба места.
 
 **Верификация и тесты**
 - `cd frontend && npm run build && npm test` (`vue-tsc -b && vite build`; `vitest run`, Node,
