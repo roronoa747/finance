@@ -652,6 +652,9 @@ export const liveAccounts = (list: Account[]) => (list || []).filter(alive);
 export const payableAccounts = (list: Account[]) => liveAccounts(list).filter((a) => (a.currency ?? 'KZT') === 'KZT');
 export const liveWishlist = (list: WishItem[]) => (list || []).filter(alive);
 
+/** Валюта в тенге по курсу — целые тенге. Единственное место, где сумма умножается на курс. */
+export const fxToTenge = (foreignAmount: number, rate: number) => Math.round(foreignAmount * rate);
+
 /** Сумма обязательства, действующая в указанном месяце. */
 export function amountAt(o: Obligation, key = monthKey()): number {
   const versions = o.versions || [];

@@ -822,6 +822,12 @@ export const useFinanceStore = defineStore('finance', () => {
     }
   }
 
+  /**
+   * Удалить счёт. Цели, чьи накопления лежали на нём, отвязываются (React
+   * `removeAccount`): иначе `goalSavings` их больше не считает, а счёта, где они
+   * лежали, в капитале уже нет — накопления пропали бы. Цели живут в общем
+   * документе, поэтому отвязка — там, и для личного счёта тоже.
+   */
   function removeAccount(id: string) {
     const t = new Date().toISOString()
     const isPriv = ((privateDoc.value.accounts as Account[]) || []).some((x) => x.id === id)
@@ -830,12 +836,13 @@ export const useFinanceStore = defineStore('finance', () => {
         const list = (doc.accounts as Account[]) || []
         doc.accounts = list.map((x) => (x.id === id ? { ...x, deletedAt: t, updatedAt: t } : x))
       })
-    } else {
+    }
+    if (!isPriv || goals.value.some((g) => g.accountId === id)) {
       mutateHouseholdDoc((doc) => {
-        const a = (doc.accounts || []).find((x) => x.id === id)
-        if (a) {
-          a.deletedAt = t
-          a.updatedAt = t
+        const a = isPriv ? undefined : (doc.accounts || []).find((x) => x.id === id)
+        if (a) Object.assign(a, { deletedAt: t, updatedAt: t })
+        for (const g of doc.goals || []) {
+          if (g.accountId === id) Object.assign(g, { accountId: null, updatedAt: t })
         }
       })
     }

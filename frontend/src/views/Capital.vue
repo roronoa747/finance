@@ -31,6 +31,7 @@ import {
   annuityTotal,
   costliestCredits,
   creditOutlook,
+  fxToTenge,
   debtCost,
   goalSavings,
   groupChildren,
@@ -162,7 +163,7 @@ const extraIncomeOpen = ref(false)
 const addGroupOpen = ref(false)
 const selectedGroupId = ref<string | null>(null)
 
-// Check query params on mount/update
+// Окна открываются и по адресу: «+» в шапке, строки Бюджета и Обзора.
 watch(
   () => route.query,
   (q) => {
@@ -175,6 +176,27 @@ watch(
   },
   { immediate: true },
 )
+
+/** Параметры адреса, которыми открываются окна. */
+const QUERY_KEYS = ['add', 'income', 'credit', 'obligation', 'payoff']
+const queryModalOpen = computed(
+  () =>
+    addDebtOpen.value ||
+    addObligationOpen.value ||
+    extraIncomeOpen.value ||
+    !!selectedCreditId.value ||
+    !!selectedObligationId.value ||
+    !!payoffCreditId.value,
+)
+// Все такие окна закрылись — адрес очищается (React `setParams({}, { replace: true })`),
+// каким бы путём их ни закрыли: крестик, фон, Escape, «Готово», запись формы. Иначе
+// тот же «+» ведёт на тот же адрес, перехода нет — и окно больше не открывается.
+watch(queryModalOpen, (open) => {
+  if (open || !QUERY_KEYS.some((k) => k in route.query)) return
+  const q = { ...route.query }
+  for (const k of QUERY_KEYS) delete q[k]
+  void router.replace({ query: q })
+})
 
 /* ------------------ Внеплановый доход ------------------ */
 const extraIncomeAmount = ref('')
@@ -198,11 +220,6 @@ function applyExtraIncome() {
   extraIncomeAmount.value = ''
   extraIncomeTarget.value = ''
   extraIncomeOpen.value = false
-  if (route.query.income) {
-    const q = { ...route.query }
-    delete q.income
-    void router.replace({ query: q })
-  }
 }
 
 /* ------------------ Добавление счета ------------------ */
@@ -231,8 +248,18 @@ const parsedAccountAmount = computed(() => parseMoney(newAccountAmount.value))
 const rateValue = computed(() => parseFloat(newAccountRate.value.replace(',', '.')))
 const accountInTenge = computed(() =>
   isForeign.value
-    ? Math.round(parsedAccountAmount.value * (Number.isFinite(rateValue.value) ? rateValue.value : 0))
+    ? fxToTenge(parsedAccountAmount.value, Number.isFinite(rateValue.value) ? rateValue.value : 0)
     : parsedAccountAmount.value,
+)
+/** Откуда курс — три состояния запроса (React `AddAccountDialog`). Дата — «25.09.2026». */
+const rateNote = computed(() =>
+  rateBusy.value
+    ? 'Запрашиваем курс Нацбанка…'
+    : rateInfo.value
+      ? `Курс ${rateInfo.value.source} на ${rateInfo.value.date.split('-').reverse().join('.')}. Можно заменить своим.`
+      : rateFailed.value
+        ? 'Курс Нацбанка сейчас недоступен — впишите вручную.'
+        : '',
 )
 const canCreateAccount = computed(
   () => parsedAccountAmount.value > 0 && (!isForeign.value || accountInTenge.value > 0),
@@ -445,23 +472,43 @@ const worstGain = computed(() =>
 const activeAccount = computed(() =>
   allAccounts.value.find((a) => a.id === selectedAccountId.value),
 )
-const activeAccountSaved = ref(false)
+const accountSaved = useSavedMark(
+  () => activeAccount.value?.id,
+  () => activeAccount.value?.updatedAt,
+)
 
+function editAccount(patch: Partial<Account>) {
+  if (activeAccount.value) financeStore.updateAccount(activeAccount.value.id, patch)
+}
 function onAccountNameBlur(e: Event) {
   const v = (e.target as HTMLInputElement).value.trim()
-  if (activeAccount.value && v && v !== activeAccount.value.name) {
-    financeStore.updateAccount(activeAccount.value.id, { name: v })
-    activeAccountSaved.value = true
-  }
+  if (v && v !== activeAccount.value?.name) editAccount({ name: v })
 }
-
 function onAccountNoteBlur(e: Event) {
   const v = (e.target as HTMLInputElement).value.trim()
-  if (activeAccount.value && v !== activeAccount.value.note) {
-    financeStore.updateAccount(activeAccount.value.id, { note: v })
-    activeAccountSaved.value = true
-  }
+  if (v !== activeAccount.value?.note) editAccount({ note: v })
 }
+// Валютный счёт (React `AccountDialog`): сумма в валюте и курс; тенге — по курсу.
+// Курс сменили — это новая оценка счёта: сумма в тенге и дата курса.
+function onForeignAmount(text: string) {
+  const v = parseMoney(text)
+  editAccount({ foreignAmount: v, amount: fxToTenge(v, activeAccount.value?.rate ?? 1) })
+}
+function onAccountRate(text: string) {
+  const v = parseFloat(text.replace(',', '.'))
+  if (!Number.isFinite(v) || v <= 0) return
+  editAccount({ rate: v, amount: fxToTenge(activeAccount.value?.foreignAmount ?? 0, v), rateAt: new Date().toISOString() })
+}
+
+/** Цели, чьи накопления лежат на открытом счёте: при удалении они отвяжутся. */
+const accountGoals = computed(() => goals.value.filter((g) => g.accountId === selectedAccountId.value))
+const accountRemoveWarning = computed(() => {
+  const names = accountGoals.value.map((g) => g.name)
+  const tail = names.length
+    ? ` Накопления по ${names.length === 1 ? 'цели' : 'целям'} «${names.join('», «')}» останутся на месте: они снова будут считаться отдельно, а не лежащими на этом счёте.`
+    : ''
+  return `Счёт исчезнет у обоих участников. Отменить нельзя.${tail}`
+})
 
 /* ------------------ Модалка кредита ------------------ */
 const activeCredit = computed(() =>
@@ -1061,12 +1108,17 @@ function applyPrepay() {
             @update:model-value="rateTouched = true"
           />
         </Field>
-        <div v-if="accountInTenge > 0" class="rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-[12.5px]">
-          В капитале это: <b class="num text-ink">{{ money(accountInTenge) }}</b>
+        <p v-if="rateNote" class="-mt-3 text-[12px] leading-relaxed text-ink-3">{{ rateNote }}</p>
+        <div v-if="accountInTenge > 0" class="rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-[13px] text-ink-2">
+          В капитале это <b class="num text-ink">{{ money(accountInTenge) }}</b>
+          <p class="mt-1 text-[12px] leading-relaxed text-ink-3">
+            Курс запоминается вместе с датой. Прошлые цифры от скачков курса не поедут — чтобы
+            обновить, поменяете курс вручную.
+          </p>
         </div>
       </div>
 
-      <Field v-if="newAccountKind === 'deposit'" label="Ставка по вкладу, % годовых">
+      <Field v-if="newAccountKind === 'deposit'" label="Ставка по вкладу, % годовых — если есть">
         <NumField v-model="newAccountDepositRate" kind="rate" placeholder="16,5" class="mb-3" />
       </Field>
 
@@ -1078,18 +1130,48 @@ function applyPrepay() {
     <!-- МОДАЛКА: Детальный просмотр и правка счета -->
     <Sheet :open="!!activeAccount" :title="activeAccount?.name ?? ''" @close="selectedAccountId = null">
       <template #mark>
-        <SavedMark :on="activeAccountSaved" />
+        <SavedMark :on="accountSaved" />
       </template>
-      <template v-if="activeAccount">
+      <!-- Viewer видит цифры, но не правит (Р-12, матрица §3) -->
+      <template v-if="activeAccount && authStore.isViewer">
+        <div class="mb-3 rounded-xl border border-line bg-surface-2 p-3 text-[13px] flex flex-col gap-1.5">
+          <div v-if="activeAccount.currency" class="flex justify-between">
+            <span class="text-ink-2">Сумма в {{ activeAccount.currency }}</span>
+            <b class="num text-ink">{{ plain(activeAccount.foreignAmount ?? 0) }}</b>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-ink-2">В капитале</span>
+            <b class="num text-ink">{{ money(activeAccount.amount) }}</b>
+          </div>
+        </div>
+        <Button class="w-full" @click="selectedAccountId = null">Готово</Button>
+      </template>
+      <template v-else-if="activeAccount">
         <Field label="Название">
           <Input :default-value="activeAccount.name" class="mb-3" @blur="onAccountNameBlur" />
         </Field>
 
-        <Field label="Сумма на счёте, ₸">
+        <template v-if="activeAccount.currency">
+          <Field :label="`Сумма в ${activeAccount.currency}`">
+            <NumFieldBlur :initial="plain(activeAccount.foreignAmount ?? 0)" class="mb-3" @commit="onForeignAmount" />
+          </Field>
+          <Field :label="`Курс: сколько тенге за 1 ${activeAccount.currency}`">
+            <NumFieldBlur
+              :initial="String(activeAccount.rate ?? '').replace('.', ',')"
+              kind="rate"
+              class="mb-3"
+              @commit="onAccountRate"
+            />
+          </Field>
+          <p class="-mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-3">
+            В капитале счёт стоит как {{ money(activeAccount.amount) }} — по этому курсу.
+          </p>
+        </template>
+        <Field v-else label="Сумма, ₸">
           <NumFieldBlur
             :initial="plain(activeAccount.amount)"
             class="mb-3"
-            @commit="(text) => { financeStore.setAccountAmount(activeAccount!.id, parseMoney(text)); activeAccountSaved = true }"
+            @commit="(text) => financeStore.setAccountAmount(activeAccount!.id, parseMoney(text))"
           />
         </Field>
 
@@ -1103,7 +1185,7 @@ function applyPrepay() {
 
         <DangerZone
           label="Удалить счёт"
-          warning="Счёт будет удален. Это действие нельзя отменить."
+          :warning="accountRemoveWarning"
           @confirm="() => { financeStore.removeAccount(activeAccount!.id); selectedAccountId = null }"
         />
       </template>

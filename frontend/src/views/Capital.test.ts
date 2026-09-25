@@ -667,3 +667,126 @@ describe('PV-11: форма платежа и модалка обязатель�
     expect(html).toContain('индексация')
   })
 })
+
+describe('PV-12: счета — валютный, удаление, тексты курса (SSR)', () => {
+  const T0 = '2026-09-01T00:00:00.000Z'
+
+  beforeEach(() => {
+    const storage = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  async function family(role: 'member' | 'viewer' = 'member') {
+    const { useAuthStore } = await import('@/stores/auth')
+    const { defaultSyncDoc } = await import('@/stores/finance')
+    useAuthStore().setAuthData({
+      token: 't',
+      user: { id: 'u', email: 'u@example.com', created_at: T0 },
+      household: { id: 'h', name: 'Семья', created_by: 'u', created_at: T0 },
+      member: { household_id: 'h', user_id: 'u', slot: 'a', display_name: 'Ильяс', role, joined_at: T0 },
+    })
+    useFinanceStore().setHouseholdDoc(
+      {
+        ...defaultSyncDoc(),
+        setupDoneAt: T0,
+        people: [{ id: 'a', name: 'Ильяс', salary: 700_000, payday: 10, updatedAt: T0 }],
+        accounts: [
+          { id: 'card', name: 'Kaspi Gold', note: '', amount: 1_000_000, amountSetAt: T0, kind: 'card', updatedAt: T0 },
+          { id: 'usd', name: 'Доллары', note: '', amount: 512_340, amountSetAt: T0, kind: 'cash', currency: 'USD', foreignAmount: 1_000, rate: 512.34, rateAt: T0, updatedAt: T0 },
+        ],
+        goals: [
+          { id: 'flat', name: 'Квартира', need: 5_000_000, have: 400_000, monthly: 100_000, hue: 'teal', accountId: 'card', movements: [], updatedAt: T0 },
+          { id: 'trip', name: 'Отпуск', need: 900_000, have: 150_000, monthly: 50_000, hue: 'teal', accountId: 'card', movements: [], updatedAt: T0 },
+        ],
+      },
+      1,
+    )
+  }
+
+  async function render(path: string, state: Record<string, unknown> = {}, probe?: (s: Record<string, unknown>) => void) {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('vue/server-renderer')
+    const { createRouter, createMemoryHistory } = await import('vue-router')
+    const Capital = (await import('./Capital.vue')).default
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/capital', component: Capital }] })
+    await router.push(path)
+    await router.isReady()
+    const app = createSSRApp(Capital)
+    app.use(router)
+    app.mixin({
+      created() {
+        if (this.$.parent !== null) return
+        Object.assign(this.$.setupState, state)
+        probe?.(this.$.setupState)
+      },
+    })
+    return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
+  }
+
+  it('валютный счёт: сумма в валюте, курс и «по этому курсу»', async () => {
+    const { money } = await import('@/lib/money')
+    await family()
+    const html = await render('/capital', { selectedAccountId: 'usd' })
+    expect(html).toContain('>Сумма в USD</span>')
+    expect(html).toContain('>Курс: сколько тенге за 1 USD</span>')
+    expect(html).toContain('value="512,34"')
+    expect(html).toContain(`В капитале счёт стоит как ${money(512_340)} — по этому курсу.`)
+    expect(html).not.toContain('>Сумма, ₸</span>')
+  })
+
+  it('счёт в тенге: «Сумма, ₸»; удаление — текст React с целями на счёте', async () => {
+    await family()
+    let warning = ''
+    const html = await render('/capital', { selectedAccountId: 'card' }, (s) => (warning = s.accountRemoveWarning as string))
+    expect(html).toContain('>Сумма, ₸</span>')
+    expect(html).not.toContain('Сумма в USD')
+    expect(html).toContain('Удалить счёт')
+    expect(warning).toBe(
+      'Счёт исчезнет у обоих участников. Отменить нельзя. Накопления по целям «Квартира», «Отпуск» останутся на месте: они снова будут считаться отдельно, а не лежащими на этом счёте.',
+    )
+
+    // Без целей — только первая фраза.
+    await render('/capital', { selectedAccountId: 'usd' }, (s) => (warning = s.accountRemoveWarning as string))
+    expect(warning).toBe('Счёт исчезнет у обоих участников. Отменить нельзя.')
+  })
+
+  it('viewer: цифры счёта без полей и удаления', async () => {
+    const { money, plain } = await import('@/lib/money')
+    await family('viewer')
+    const html = await render('/capital', { selectedAccountId: 'usd' })
+    expect(html).not.toContain('<input')
+    expect(html).not.toContain('Удалить счёт')
+    expect(html).toContain(plain(1_000))
+    expect(html).toContain(money(512_340))
+  })
+
+  it('добавление валютного счёта: курс Нацбанка с датой, «В капитале это», «Курс запоминается…»', async () => {
+    const { money } = await import('@/lib/money')
+    await family()
+    const info = { rates: { USD: 441.89 }, date: '2026-09-25', source: 'Национальный банк РК' }
+    const html = await render('/capital', {
+      accountOpen: true, newAccountCurrency: 'USD', newAccountAmount: '1 000', newAccountRate: '441,89', rateInfo: info,
+    })
+    expect(html).toContain('Курс Национальный банк РК на 25.09.2026. Можно заменить своим.')
+    expect(html).toContain(`В капитале это <b class="num text-ink">${money(441_890)}</b>`)
+    expect(html).toContain('Курс запоминается вместе с датой. Прошлые цифры от скачков курса не поедут — чтобы обновить, поменяете курс вручную.')
+
+    expect(await render('/capital', { accountOpen: true, newAccountCurrency: 'USD', rateBusy: true })).toContain('Запрашиваем курс Нацбанка…')
+    expect(await render('/capital', { accountOpen: true, newAccountCurrency: 'USD', rateFailed: true })).toContain(
+      'Курс Нацбанка сейчас недоступен — впишите вручную.',
+    )
+    expect(await render('/capital', { accountOpen: true, newAccountKind: 'deposit' })).toContain('Ставка по вкладу, % годовых — если есть')
+  })
+})

@@ -24,6 +24,7 @@ import {
   strategyGain,
   creditSplit,
   creditOutlook,
+  fxToTenge,
   creditResplit,
   creditDueAmount,
   creditDueIn,
@@ -1153,5 +1154,13 @@ describe('PV-10 — выводы модалки кредита', () => {
 
     // Рассрочка без процентов: переплаты нет.
     expect(creditOutlook({ principal: 300_000, annualRate: 0, payment: 25_000 })).toEqual({ closes: true, months: 12, overpay: 0 })
+  })
+})
+
+describe('PV-12 — валютный счёт', () => {
+  it('fxToTenge: 100 USD по 512,34 — 51 234 ₸, целое', () => {
+    expect(fxToTenge(100, 512.34)).toBe(51_234)
+    expect(Number.isInteger(fxToTenge(333, 441.89))).toBe(true)
+    expect(fxToTenge(0, 512.34)).toBe(0)
   })
 })

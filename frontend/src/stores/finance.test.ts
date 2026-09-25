@@ -1413,3 +1413,77 @@ describe('PV-11: платёж — раздел, оценка, правка об�
     expect(store.obligations[0].updatedAt).toBe(stamp)
   })
 })
+
+describe('PV-12: счета — удаление с отвязкой целей, валютный счёт', () => {
+  const storage = new Map<string, string>()
+  const at = (iso: string) => vi.setSystemTime(new Date(iso))
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    at('2026-09-24T07:00:00Z')
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('удаление общего и личного счёта отвязывает цели — накопления снова в капитале', async () => {
+    const { goalSavings, netWorth } = await import('@/lib/finance')
+    const store = useFinanceStore()
+    store.addAccount({ name: 'Депозит', kind: 'deposit', amount: 2_000_000 })
+    store.addAccount({ name: 'Заначка', kind: 'cash', amount: 300_000 }, true)
+    const [shared, own] = store.accounts.map((a) => a.id)
+    store.addGoal({ name: 'Квартира', need: 5_000_000, have: 400_000, monthly: 100_000, hue: 'teal' })
+    store.addGoal({ name: 'Отпуск', need: 900_000, have: 150_000, monthly: 50_000, hue: 'teal' })
+    store.updateGoal(store.goals[0].id, { accountId: shared })
+    store.updateGoal(store.goals[1].id, { accountId: own })
+    expect(goalSavings(store.goals)).toBe(0)
+
+    at('2026-09-24T08:00:00Z')
+    store.removeAccount(shared)
+    expect(store.goals[0].accountId).toBeNull()
+    expect(store.goals[0].updatedAt).toBe('2026-09-24T08:00:00.000Z')
+    expect(store.householdDoc.accounts[0].deletedAt).toBe('2026-09-24T08:00:00.000Z')
+    expect(goalSavings(store.goals)).toBe(400_000)
+
+    // Личный счёт — в личном документе, а отвязка цели — в общем.
+    at('2026-09-24T09:00:00Z')
+    store.removeAccount(own)
+    expect((store.privateDoc.accounts as { deletedAt?: string }[])[0].deletedAt).toBe('2026-09-24T09:00:00.000Z')
+    expect(store.householdDoc.goals[1].accountId).toBeNull()
+    expect(goalSavings(store.goals)).toBe(550_000)
+    expect(netWorth(store.accounts, store.credits, store.goals)).toBe(550_000)
+  })
+
+  it('без привязанных целей личный счёт не трогает общий документ', () => {
+    const store = useFinanceStore()
+    store.addAccount({ name: 'Заначка', kind: 'cash', amount: 300_000 }, true)
+    const before = JSON.stringify(store.householdDoc)
+    store.removeAccount(store.accounts[0].id)
+    expect(JSON.stringify(store.householdDoc)).toBe(before)
+  })
+
+  it('валютный счёт: новый курс — тенге пересчитаны по fxToTenge, дата курса обновлена', async () => {
+    const { fxToTenge } = await import('@/lib/finance')
+    const store = useFinanceStore()
+    store.addAccount({
+      name: 'Доллары', kind: 'cash', amount: 512_340, currency: 'USD', foreignAmount: 1_000, rate: 512.34, rateAt: '2026-09-01T00:00:00.000Z',
+    })
+    const id = store.accounts[0].id
+    at('2026-09-25T08:00:00Z')
+    store.updateAccount(id, { rate: 441.89, amount: fxToTenge(1_000, 441.89), rateAt: new Date().toISOString() })
+    expect(store.accounts[0]).toMatchObject({ amount: 441_890, rate: 441.89, rateAt: '2026-09-25T08:00:00.000Z', foreignAmount: 1_000 })
+
+    at('2026-09-25T09:00:00Z')
+    store.updateAccount(id, { foreignAmount: 1_200, amount: fxToTenge(1_200, 441.89) })
+    expect(store.accounts[0].amount).toBe(530_268)
+  })
+})

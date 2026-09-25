@@ -173,7 +173,7 @@ function onCapitalizeChange(v: string) {
 
       <DangerZone
         label="Удалить вклад"
-        warning="Вклад исчезнет вместе с условиями и балансом. Отменить нельзя."
+        warning="Вклад исчезнет у обоих участников вместе с условиями. Отменить нельзя."
         @confirm="() => { financeStore.removeAccount(account!.id); router.push('/capital') }"
       />
     </Card>

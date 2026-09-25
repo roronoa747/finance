@@ -2,11 +2,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { setActivePinia, createPinia, type Pinia } from 'pinia'
-import { createSSRApp, type Component } from 'vue'
+import { createRenderer, createSSRApp, nextTick, ssrContextKey, type Component } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { createMemoryHistory } from 'vue-router'
 import { createAppRouter } from '../src/router'
 import { useFinanceStore, defaultSyncDoc } from '../src/stores/finance'
+import { useAuthStore } from '../src/stores/auth'
 import { ApiClient, ApiError } from '../src/api/client'
 import type { SyncDoc } from '../src/types/finance'
 import type { HouseholdDocResponse, ConflictResponse } from '../src/types/api'
@@ -187,5 +188,96 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     const amounts = budgetAmounts({ ...B.store.householdDoc, credits: B.store.credits })
     expect(amounts.d1).toBe(285_000)
     expect(amounts.d4).toBe(0)
+  })
+
+  /**
+   * Живой экран без браузера: рендерер Vue на простых объектах вместо DOM. В SSR
+   * наблюдатели не работают, а закрытие окна чистит адрес именно наблюдателем.
+   * Возвращает состояние экрана (setupState).
+   */
+  function mountLive(pinia: Pinia, router: ReturnType<typeof createAppRouter>) {
+    type N = { children: N[]; parent: N | null; text?: string }
+    const node = (text?: string): N => ({ children: [], parent: null, text })
+    const detach = (n: N) => {
+      if (n.parent) n.parent.children.splice(n.parent.children.indexOf(n), 1)
+      n.parent = null
+    }
+    const { createApp } = createRenderer<N, N>({
+      createElement: () => node(),
+      createText: (t) => node(t),
+      createComment: (t) => node(t),
+      setText: (n, t) => void (n.text = t),
+      setElementText: (n, t) => {
+        n.children = []
+        n.text = t
+      },
+      insert: (child, parent, anchor) => {
+        detach(child)
+        const i = anchor ? parent.children.indexOf(anchor) : -1
+        if (i < 0) parent.children.push(child)
+        else parent.children.splice(i, 0, child)
+        child.parent = parent
+      },
+      remove: detach,
+      parentNode: (n) => n.parent,
+      nextSibling: (n) => (n.parent ? (n.parent.children[n.parent.children.indexOf(n) + 1] ?? null) : null),
+      patchProp: () => {},
+      querySelector: () => null,
+    })
+    setActivePinia(pinia)
+    const app = createApp(Capital)
+    app.use(router)
+    // Vitest в Node собирает .vue для SSR: setup пишет свой модуль в SSR-контекст, а
+    // рендер у компонента серверный. Нужен только setup с наблюдателями — рисовать нечего.
+    app.provide(ssrContextKey, { modules: new Set() })
+    app.config.warnHandler = (msg) => {
+      if (!/missing template or render function/.test(msg)) console.warn(msg)
+    }
+    const vm = app.mount(node())
+    return vm.$.setupState as Record<string, unknown>
+  }
+
+  it('PV-12 (Б-15): окно, открытое по адресу, при закрытии чистит адрес — тот же «+» открывает его снова', async () => {
+    const A = await phone()
+    useAuthStore().setAuthData({
+      token: 't',
+      user: { id: 'u', email: 'u@example.com', created_at: T0 },
+      household: { id: 'h-family', name: 'Семья', created_by: 'u', created_at: T0 },
+      member: { household_id: 'h-family', user_id: 'u', slot: 'a', display_name: 'Ильяс', role: 'member', joined_at: T0 },
+    })
+    const router = createAppRouter(createMemoryHistory())
+    await router.push('/capital?add=debt')
+    expect(router.currentRoute.value.fullPath).toBe('/capital?add=debt')
+    const screenA = mountLive(A.pinia, router)
+    expect(screenA.addDebtOpen).toBe(true)
+
+    const navigated = () => new Promise<void>((done) => { const off = router.afterEach(() => { off(); done() }) })
+    let next = navigated()
+    screenA.addDebtOpen = false
+    await next
+    expect(router.currentRoute.value.fullPath).toBe('/capital')
+
+    // Второй «+ Кредит или рассрочка» — новый переход, форма снова открыта.
+    await router.push('/capital?add=debt')
+    await nextTick()
+    expect(screenA.addDebtOpen).toBe(true)
+
+    // Строка Бюджета → кредит; из него — калькулятор: адрес держится, пока открыто хоть одно окно.
+    screenA.addDebtOpen = false
+    await navigated()
+    await router.push('/capital?credit=loan')
+    await nextTick()
+    expect(screenA.selectedCreditId).toBe('loan')
+    screenA.payoffCreditId = 'loan'
+    screenA.selectedCreditId = null
+    await nextTick()
+    expect(router.currentRoute.value.query.credit).toBe('loan')
+    next = navigated()
+    screenA.payoffCreditId = null
+    await next
+    expect(router.currentRoute.value.fullPath).toBe('/capital')
+    await router.push('/capital?credit=loan')
+    await nextTick()
+    expect(screenA.selectedCreditId).toBe('loan')
   })
 })
