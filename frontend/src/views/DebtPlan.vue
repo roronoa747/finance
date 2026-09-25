@@ -14,6 +14,7 @@ import { atLabel, monthIn, monthKey, monthShort, monthTitle } from '@/lib/dates'
 import {
   costliestCredits,
   liveGoals,
+  NO_SAVING,
   pauseMissed,
   pauseShift,
   planFact,
@@ -57,8 +58,6 @@ const paidTotal = computed(() => monthPaid.value.reduce((a, p) => a + p.amount, 
 /* ------------------ Выигрыш (Р-6) ------------------ */
 const forecastNow = computed(() => (plan.value ? planForecast(plan.value, state.value, key.value) : null))
 const fact = computed(() => (plan.value ? planFact(plan.value, financeStore.payments, financeStore.credits) : null))
-// Р-11: платёж не покрывает проценты — сравнивать не с чем.
-const NO_SAVING = 'при текущем платеже долг не закрывается — экономию не считаем'
 const closes = (m: string | null) => (m ? `долги с процентами закроются в ${monthIn(m)}` : 'долги с процентами не закрываются')
 
 /* ------------------ План и факт по месяцам ------------------ */

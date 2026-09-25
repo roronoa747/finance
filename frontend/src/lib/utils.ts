@@ -17,3 +17,6 @@ export function plural(n: number, one: string, few: string, many: string): strin
   if (t >= 2 && t <= 4) return few
   return many
 }
+
+/** Строка с заглавной — общий текст (например, `NO_SAVING`) в начале предложения. */
+export const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)

@@ -128,6 +128,22 @@ describe('PV-02: StrategyCompare — «копить или гасить» как
     expect(html).not.toContain('Вложить уже накопленное')
   })
 
+  it('клинап (Р-11): долг без плана не закрывается — вместо гигантских процентов «не считаем» и строка Р-11', async () => {
+    // 1 000 000 под 60%: проценты 50 000 в месяц при платеже 40 000 — «копим как сейчас» его не закроет.
+    const bad = [credit('bad', 'Кредитка', 1_000_000, 0.6, 40_000)]
+    const html = await render({ credits: bad })
+    const { a, b } = expected({ credits: bad, months: 36, kept: [], cushion: true, useSaved: false })
+    expect(a.debtFreeMonth).toBeNull()
+    expect(a.interestTotal).toBeGreaterThan(1e15)
+    expect(html).not.toContain(money(a.interestTotal))
+    expect(html).toContain('не считаем')
+    expect(html).toContain('При текущем платеже долг не закрывается — экономию не считаем.')
+    // «Сначала долги» его закрывает — там проценты числом.
+    expect(b.debtFreeMonth).not.toBeNull()
+    expect(html).toContain(money(b.interestTotal))
+    expect(html).not.toMatch(/\d{1,3}(?:[\s  ]\d{3}){5,}/)
+  })
+
   it('без долга с процентами — ничего не показывает', async () => {
     const html = await render({ credits: [credit('zero', 'Рассрочка', 300_000, 0, 30_000)] })
     expect(html).not.toContain('Одинаковые траты')

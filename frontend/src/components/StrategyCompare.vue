@@ -35,7 +35,7 @@ import {
   type PlanStep,
 } from '@/lib/finance'
 import type { Credit, DebtPlan, Goal, Obligation, Payment } from '@/types/finance'
-import { cn } from '@/lib/utils'
+import { cn, sentence } from '@/lib/utils'
 import Callout from '@/components/kit/Callout.vue'
 import Field from '@/components/kit/Field.vue'
 import Hint from '@/components/kit/Hint.vue'
@@ -118,6 +118,8 @@ const columns = computed(() => [
   { title: 'Копим как сейчас', r: a.value, strong: gain.value < 0 },
   { title: 'Сначала долги', r: b.value, strong: gain.value >= 0 },
 ])
+// Какой-то сценарий не закрывает долг и за 600 месяцев (платёж не покрывает проценты).
+const openEnded = computed(() => columns.value.some((c) => c.r.debtFreeMonth === null))
 
 function freeWhen(month: number | null): string {
   if (month === null) return 'не закрываются'
@@ -233,11 +235,16 @@ const stepLine = computed(() => {
           <div class="mt-1 text-[11.5px] text-ink-2">долг</div>
           <div class="num text-[13.5px] font-semibold text-ink">{{ money(col.r.debtLeft) }}</div>
           <div class="mt-1 text-[11.5px] text-ink-2">процентов банку</div>
-          <div class="num text-[13.5px] font-semibold text-warn">{{ money(col.r.interestTotal) }}</div>
+          <!-- Р-11: долг не закрывается — проценты за 600 месяцев симуляции не экономия, а шум. -->
+          <div class="num text-[13.5px] font-semibold text-warn">
+            {{ col.r.debtFreeMonth === null ? 'не считаем' : money(col.r.interestTotal) }}
+          </div>
           <div class="mt-1 text-[11.5px] text-ink-2">без процентных долгов</div>
           <div class="text-[13px] font-medium text-ink">{{ freeWhen(col.r.debtFreeMonth) }}</div>
         </div>
       </div>
+
+      <p v-if="openEnded" class="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-3">{{ sentence(NO_SAVING) }}.</p>
 
       <div class="mb-3 rounded-xl border border-line px-3.5 py-3">
         <div class="text-[12.5px] text-ink-2">

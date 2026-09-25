@@ -11,6 +11,7 @@ import {
   lastAccountFor,
   liveCredits,
   lumpPlan,
+  NO_SAVING,
   payableAccounts,
   paymentSplit,
   payoffChips,
@@ -20,7 +21,7 @@ import {
   type LumpMode,
 } from '@/lib/finance'
 import type { Payment } from '@/types/finance'
-import { cn, plural } from '@/lib/utils'
+import { cn, plural, sentence } from '@/lib/utils'
 
 import Field from '@/components/kit/Field.vue'
 import NumField from '@/components/kit/NumField.vue'
@@ -253,7 +254,7 @@ function applyPrepay() {
           </div>
         </div>
         <div v-if="applyPlan.openEnded" class="mb-3 rounded-xl bg-warn-soft px-3 py-2 text-[13px] text-ink-2">
-          При текущем платеже долг не закрывается — экономию не считаем
+          {{ sentence(NO_SAVING) }}
         </div>
         <div v-else class="mb-3 rounded-xl bg-brand-soft px-3 py-2 text-[13px] text-ink-2">
           Не отдадим банку <b class="num text-brand">{{ money(applyPlan.saved) }}</b>
