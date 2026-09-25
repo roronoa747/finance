@@ -1272,3 +1272,74 @@ describe('PV-04: накопленное в цели не уходит в мин�
     expect(merged.goals[0].have).toBe(30_000)
   })
 })
+
+describe('PV-10: правка кредита — якорь только у остатка', () => {
+  const storage = new Map<string, string>()
+  const at = (iso: string) => vi.setSystemTime(new Date(iso))
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    at('2026-09-24T07:00:00Z')
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** Кредит 1 000 000 под 33% с отметкой за сентябрь: производный остаток 969 500. */
+  function paidLoan() {
+    const store = useFinanceStore()
+    store.addAccount({ name: 'Kaspi', kind: 'card', amount: 1_000_000 })
+    store.addCredit({ name: 'Кредит', principal: 1_000_000, annualRate: 0.33, payment: 58_000, day: 15 })
+    const id = store.credits[0].id
+    at('2026-09-24T08:00:00Z')
+    store.markPaid('credit', id, 'a', { accountId: store.accounts[0].id })
+    expect(store.credits[0].principal).toBe(969_500)
+    return { store, id, anchor: store.householdDoc.credits[0].principalSetAt }
+  }
+
+  it('день, ставка, платёж, название, примечание — не двигают якорь и производный остаток', () => {
+    const { store, id, anchor } = paidLoan()
+    let t = 9
+    for (const patch of [{ day: 20 }, { annualRate: 0.25 }, { payment: 60_000 }, { name: 'Халык' }, { note: 'авто' }]) {
+      at(`2026-09-24T${String(t++).padStart(2, '0')}:00:00Z`)
+      store.updateCredit(id, patch)
+      expect(store.householdDoc.credits[0]).toMatchObject(patch)
+      expect(store.householdDoc.credits[0].principalSetAt).toBe(anchor)
+      // База прежняя, отметка до якоря по-прежнему вычитается.
+      expect(store.householdDoc.credits[0].principal).toBe(1_000_000)
+      expect(store.credits[0].principal).toBe(969_500)
+    }
+  })
+
+  it('остаток — сверка: новая база и якорь, отметки до якоря больше не вычитаются', () => {
+    const { store, id, anchor } = paidLoan()
+    at('2026-09-25T08:00:00Z')
+    store.updateCredit(id, { principal: 950_000 })
+    expect(store.householdDoc.credits[0].principalSetAt).toBe('2026-09-25T08:00:00.000Z')
+    expect(store.householdDoc.credits[0].principalSetAt).not.toBe(anchor)
+    expect(store.credits[0].principal).toBe(950_000)
+  })
+
+  it('тот же патч ничего не пишет: updatedAt прежний; тот же видимый остаток — без якоря', () => {
+    const { store, id, anchor } = paidLoan()
+    at('2026-09-24T09:00:00Z')
+    store.updateCredit(id, { day: 20, annualRate: 0.25 })
+    const stamp = store.householdDoc.credits[0].updatedAt
+    at('2026-09-24T10:00:00Z')
+    store.updateCredit(id, { day: 20, annualRate: 0.25 })
+    // Видимый остаток 969 500 — не сверка, а тот же остаток.
+    store.updateCredit(id, { principal: 969_500 })
+    expect(store.householdDoc.credits[0].updatedAt).toBe(stamp)
+    expect(store.householdDoc.credits[0].principalSetAt).toBe(anchor)
+    expect(store.householdDoc.credits[0].principal).toBe(1_000_000)
+  })
+})

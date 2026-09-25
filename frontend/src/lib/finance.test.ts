@@ -23,6 +23,7 @@ import {
   strategyInputs,
   strategyGain,
   creditSplit,
+  creditOutlook,
   creditResplit,
   creditDueAmount,
   creditDueIn,
@@ -1131,5 +1132,26 @@ describe('PV-04 — накопленное и прогноз цели', () => {
     const v = indexedNeed(777_777, 7)!
     expect(Number.isInteger(v)).toBe(true)
     expect(indexedNeed(1_000_000, 12, 0.08)).toBe(1_080_000)
+  })
+})
+
+describe('PV-10 — выводы модалки кредита', () => {
+  it('creditOutlook: платёж ≤ процентов — долг не закрывается; иначе — формулы React', () => {
+    // 1 000 000 под 36%: проценты 30 000 в месяц.
+    expect(creditOutlook({ principal: 1_000_000, annualRate: 0.36, payment: 30_000 })).toEqual({
+      closes: false, months: Infinity, overpay: Infinity,
+    })
+    expect(creditOutlook({ principal: 1_000_000, annualRate: 0.36, payment: 25_000 }).closes).toBe(false)
+
+    // React: months = annuityMonths, overpay = annuityTotal − principal; на экране ceil и round.
+    const c = { principal: 1_000_000, annualRate: 0.33, payment: 58_000 }
+    const out = creditOutlook(c)
+    expect(out.closes).toBe(true)
+    expect(out.months).toBe(Math.ceil(annuityMonths(c.principal, c.annualRate, c.payment)))
+    expect(out.overpay).toBe(Math.round(annuityTotal(c.principal, c.annualRate, c.payment) - c.principal))
+    expect(Number.isInteger(out.months) && Number.isInteger(out.overpay)).toBe(true)
+
+    // Рассрочка без процентов: переплаты нет.
+    expect(creditOutlook({ principal: 300_000, annualRate: 0, payment: 25_000 })).toEqual({ closes: true, months: 12, overpay: 0 })
   })
 })

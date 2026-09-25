@@ -842,6 +842,8 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   function updateCredit(id: string, patch: Partial<Credit>) {
+    // Сравнение — с видимым остатком, как у счёта: тот же остаток не пишет ни базу, ни якорь.
+    if (unchanged(credits.value.find((x) => x.id === id), patch)) return
     const t = new Date().toISOString()
     mutateHouseholdDoc((doc) => {
       const c = (doc.credits || []).find((x) => x.id === id)

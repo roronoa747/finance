@@ -356,3 +356,146 @@ describe('PV-03: форма долга — ставка из срока и ра�
     expect(html).not.toContain('Добавить долг')
   })
 })
+
+/* ---------------- Блок 2 паритета: правка денег ---------------- */
+
+describe('PV-10: модалка кредита и калькулятор досрочки (SSR)', () => {
+  const T0 = '2026-09-01T00:00:00.000Z'
+
+  beforeEach(() => {
+    const storage = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  async function family(role: 'member' | 'viewer' = 'member') {
+    const { useAuthStore } = await import('@/stores/auth')
+    const { defaultSyncDoc } = await import('@/stores/finance')
+    useAuthStore().setAuthData({
+      token: 't',
+      user: { id: 'u', email: 'u@example.com', created_at: T0 },
+      household: { id: 'h', name: 'Семья', created_by: 'u', created_at: T0 },
+      member: { household_id: 'h', user_id: 'u', slot: 'a', display_name: 'Ильяс', role, joined_at: T0 },
+    })
+    const store = useFinanceStore()
+    store.setHouseholdDoc(
+      {
+        ...defaultSyncDoc(),
+        setupDoneAt: T0,
+        people: [{ id: 'a', name: 'Ильяс', salary: 700_000, payday: 10, updatedAt: T0 }],
+        accounts: [{ id: 'card', name: 'Kaspi Gold', note: '', amount: 1_000_000, amountSetAt: T0, kind: 'card', updatedAt: T0 }],
+        credits: [
+          { id: 'loan', name: 'Кредит', note: '', principal: 1_000_000, principalSetAt: T0, annualRate: 0.33, payment: 58_000, day: 15, updatedAt: T0 },
+          // Проценты 30 000 при платеже 25 000 — не закрывается.
+          { id: 'card-debt', name: 'Кредитка', note: '', principal: 1_000_000, principalSetAt: T0, annualRate: 0.36, payment: 25_000, day: 5, updatedAt: T0 },
+        ],
+      },
+      1,
+    )
+    return store
+  }
+
+  async function render(path: string, state: Record<string, unknown> = {}) {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('vue/server-renderer')
+    const { createRouter, createMemoryHistory } = await import('vue-router')
+    const Capital = (await import('./Capital.vue')).default
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/capital', component: Capital }] })
+    await router.push(path)
+    await router.isReady()
+    const app = createSSRApp(Capital)
+    app.use(router)
+    app.mixin({
+      created() {
+        if (this.$.parent === null) Object.assign(this.$.setupState, state)
+      },
+    })
+    return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
+  }
+
+  it('участник: поля React, выводы из creditOutlook, кнопка калькулятора, удаление', async () => {
+    const { money, plain } = await import('@/lib/money')
+    const { creditOutlook } = await import('@/lib/finance')
+    await family()
+    const html = await render('/capital?credit=loan')
+    for (const label of ['Название', 'Остаток долга, ₸', 'Платёж в месяц, ₸', 'Ставка (ГЭСВ), % годовых', 'День платежа', 'Примечание']) {
+      expect(html).toContain(`>${label}</span>`)
+    }
+    expect(html).toContain(`value="${plain(1_000_000)}"`)
+    expect(html).toContain('value="33,0"')
+    expect(html).toContain('value="15"')
+    const out = creditOutlook({ principal: 1_000_000, annualRate: 0.33, payment: 58_000 })
+    expect(html).toContain('Платежей осталось')
+    expect(html).toContain(`>${out.months}</b>`)
+    expect(html).toContain('Переплата до конца')
+    expect(html).toContain(money(out.overpay))
+    expect(html).toContain('Посчитать досрочное погашение')
+    expect(html).toContain('Удалить кредит')
+    expect(html).not.toContain('Симулятор досрочного погашения')
+  })
+
+  it('платёж не покрывает проценты — текст React вместо выводов', async () => {
+    await family()
+    const html = await render('/capital?credit=card-debt')
+    expect(html).toContain(
+      'При таком платеже долг не закрывается: проценты съедают его целиком. Проверьте остаток, платёж и ставку.'.replace(/ /g, ' '),
+    )
+    expect(html).not.toContain('Платежей осталось')
+  })
+
+  it('viewer: полей и удаления нет, цифры видны', async () => {
+    const { money } = await import('@/lib/money')
+    await family('viewer')
+    const html = await render('/capital?credit=loan')
+    expect(html).not.toContain('Остаток долга, ₸')
+    expect(html).not.toContain('Ставка (ГЭСВ), % годовых')
+    expect(html).not.toContain('Удалить кредит')
+    expect(html).not.toContain('<input')
+    expect(html).toContain('Остаток долга')
+    expect(html).toContain(money(1_000_000))
+    expect(html).toContain('33,0%')
+    expect(html).toContain('Платежей осталось')
+  })
+
+  it('калькулятор: «долг не закрывается» в шапке и подсказка без суммы', async () => {
+    await family()
+    const html = await render('/capital?payoff=card-debt')
+    expect(html).toContain('Переплата, если не трогать')
+    expect(html).toContain('долг не закрывается')
+    expect(html).toContain('Впишите сумму, которую действительно можете внести. Приложение не станет предлагать больше — считать по деньгам, которых нет, смысла нет.')
+    expect(html).not.toContain('Отдача падает')
+  })
+
+  it('калькулятор: подсказка поля — первый чип, чип «половина переплаты», лесенка «Отдача падает» с пояснением', async () => {
+    const { money, plain } = await import('@/lib/money')
+    const { halfOverpayExtra } = await import('@/lib/finance')
+    await family()
+    const half = halfOverpayExtra(1_000_000, 0.33, 58_000)!
+    const chips = [29_000, 58_000, half].sort((a, b) => a - b)
+    const html = await render('/capital?payoff=loan')
+    expect(html).toContain(`placeholder="${plain(chips[0])}"`)
+    expect(html).toContain('половина переплаты')
+    expect(html).not.toContain('½')
+    expect(html).toMatch(/>\s*Отдача падает\s*</)
+    expect(html).toContain(
+      `Половину переплаты снимает уже добавка в ${money(half)} — дальше каждая следующая тысяча даёт меньше предыдущей. Если больших сумм нет, начинать стоит отсюда.`,
+    )
+
+    // С суммой — результат React: «экономия …», «Останется N платежей вместо M».
+    const withSum = await render('/capital?payoff=loan', { payoffAmount: plain(half) })
+    expect(withSum).toMatch(/экономия \d/)
+    expect(withSum).toMatch(/Останется \d+ платеж(а|ей)? вместо \d+\./)
+    expect(withSum).not.toContain('Впишите сумму')
+  })
+})

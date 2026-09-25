@@ -259,6 +259,20 @@ export function debtCost(principal: number, annualRate: number, payment: number)
   }
 }
 
+export type CreditOutlook = { closes: boolean; months: number; overpay: number }
+
+/**
+ * Что станет с долгом при нынешнем платеже — выводы модалки кредита (React
+ * `CreditDialog`): сколько платежей осталось (вверх до целого) и сколько уйдёт банку
+ * сверх остатка (до тенге). Платёж не покрывает проценты — `closes: false`, чисел нет.
+ */
+export function creditOutlook(c: { principal: number; annualRate: number; payment: number }): CreditOutlook {
+  const cost = debtCost(c.principal, c.annualRate, c.payment)
+  return cost.closes
+    ? { closes: true, months: Math.ceil(cost.months), overpay: Math.round(cost.overpay) }
+    : { closes: false, months: Infinity, overpay: Infinity }
+}
+
 /**
  * Разовый досрочный взнос: часть остатка гасится сразу, платёж не меняется.
  *

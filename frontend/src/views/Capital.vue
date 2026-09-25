@@ -30,6 +30,7 @@ import {
   annuityMonths,
   annuityTotal,
   costliestCredits,
+  creditOutlook,
   debtCost,
   goalSavings,
   groupChildren,
@@ -76,6 +77,7 @@ import Select from '@/components/kit/Select.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Tag from '@/components/kit/Tag.vue'
 import DangerZone from '@/components/kit/DangerZone.vue'
+import { useSavedMark } from '@/components/kit/useSavedMark'
 import Button from '@/components/ui/Button.vue'
 import PaidRow from '@/components/PaidRow.vue'
 import StrategyCompare from '@/components/StrategyCompare.vue'
@@ -454,6 +456,44 @@ function onAccountNoteBlur(e: Event) {
 const activeCredit = computed(() =>
   credits.value.find((c) => c.id === selectedCreditId.value),
 )
+const creditSaved = useSavedMark(
+  () => activeCredit.value?.id,
+  () => activeCredit.value?.updatedAt,
+)
+const activeCreditOutlook = computed(() => (activeCredit.value ? creditOutlook(activeCredit.value) : null))
+/** Ставка в поле правки — как в React: проценты с одним знаком. */
+const rateText = (r: number) => (r * 100).toFixed(1).replace('.', ',')
+
+// Поля пишутся по уходу из поля (React `CreditDialog`); остаток — только явным полем:
+// это сверка с банком, она ставит якорь (RP-06).
+function editCredit(patch: Partial<Credit>) {
+  if (activeCredit.value) financeStore.updateCredit(activeCredit.value.id, patch)
+}
+function onCreditNameBlur(e: Event) {
+  const v = (e.target as HTMLInputElement).value.trim()
+  if (v && v !== activeCredit.value?.name) editCredit({ name: v })
+}
+function onCreditNoteBlur(e: Event) {
+  const v = (e.target as HTMLInputElement).value.trim()
+  if (v !== activeCredit.value?.note) editCredit({ note: v })
+}
+function onCreditPrincipal(text: string) {
+  const v = parseMoney(text)
+  if (v > 0 && v !== activeCredit.value?.principal) editCredit({ principal: v })
+}
+function onCreditPayment(text: string) {
+  const v = parseMoney(text)
+  if (v > 0 && v !== activeCredit.value?.payment) editCredit({ payment: v })
+}
+function onCreditRate(text: string) {
+  const v = parseFloat(text.replace(',', '.'))
+  // Ноль законен: рассрочка без процентов.
+  if (Number.isFinite(v) && v >= 0) editCredit({ annualRate: v / 100 })
+}
+function onCreditDay(text: string) {
+  const v = Math.min(28, Math.max(1, parseMoney(text) || 1))
+  if (v !== activeCredit.value?.day) editCredit({ day: v })
+}
 
 /* ------------------ Модалка обязательства ------------------ */
 const activeObligation = computed(() =>
@@ -462,10 +502,16 @@ const activeObligation = computed(() =>
 
 // Платёж, который модалка предлагает отметить, берётся при открытии: после
 // «Оплатил» строка остаётся на этом месяце и показывает следующий платёж, а не
-// перескакивает на следующий месяц с новой кнопкой.
+// перескакивает на следующий месяц с новой кнопкой. Правка дня, платежа или ставки
+// меняет сам график — тогда снимок берётся заново.
 const creditDue = ref<Due | null>(null)
 watch(
-  () => activeCredit.value?.id,
+  [
+    () => activeCredit.value?.id,
+    () => activeCredit.value?.day,
+    () => activeCredit.value?.payment,
+    () => activeCredit.value?.annualRate,
+  ],
   () => {
     creditDue.value = activeCredit.value ? nextCreditDue(activeCredit.value, financeStore.payments) : null
   },
@@ -522,6 +568,7 @@ const payoffCost = computed(() =>
       )
     : null,
 )
+const payoffOutlook = computed(() => (activePayoffCredit.value ? creditOutlook(activePayoffCredit.value) : null))
 const payoffHalf = computed(() =>
   activePayoffCredit.value
     ? halfOverpayExtra(
@@ -586,10 +633,13 @@ const creditPrepays = computed(() =>
     .sort((a, b) => b.at.localeCompare(a.at)),
 )
 
-// Счёт по умолчанию — прошлой оплаты этого кредита (Р-5).
+// Другой кредит — чистый калькулятор (React `PayoffDialog`); счёт по умолчанию —
+// прошлой оплаты этого кредита (Р-5).
 watch(
   payoffCreditId,
   (id) => {
+    payoffAmount.value = ''
+    payoffMode.value = 'monthly'
     applyDone.value = null
     removingPrepay.value = null
     const last = id ? lastAccountFor(financeStore.payments, id, financeStore.accounts) : undefined
@@ -1063,22 +1113,10 @@ function applyPrepay() {
 
     <!-- МОДАЛКА: Детальный просмотр кредита -->
     <Sheet :open="!!activeCredit" :title="activeCredit?.name ?? ''" @close="selectedCreditId = null">
+      <template #mark>
+        <SavedMark :on="creditSaved" />
+      </template>
       <template v-if="activeCredit">
-        <div class="mb-3 rounded-xl border border-line bg-surface-2 p-3 text-[13px] flex flex-col gap-1.5">
-          <div class="flex justify-between">
-            <span class="text-ink-2">Остаток долга</span>
-            <b class="num text-ink">{{ money(activeCredit.principal) }}</b>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-ink-2">Ежемесячный платёж</span>
-            <b class="num text-ink">{{ money(activeCredit.payment) }}</b>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-ink-2">Ставка</span>
-            <b class="num text-ink">{{ activeCredit.annualRate > 0 ? ratePct(activeCredit.annualRate, 1) : '0%' }}</b>
-          </div>
-        </div>
-
         <div v-if="creditDue" class="mb-3 rounded-xl border border-line px-3">
           <PaidRow
             dense
@@ -1091,19 +1129,91 @@ function applyPrepay() {
           />
         </div>
 
+        <!-- Viewer видит цифры, но не правит (Р-12, матрица §3) -->
+        <div
+          v-if="authStore.isViewer"
+          class="mb-3 rounded-xl border border-line bg-surface-2 p-3 text-[13px] flex flex-col gap-1.5"
+        >
+          <div class="flex justify-between">
+            <span class="text-ink-2">Остаток долга</span>
+            <b class="num text-ink">{{ money(activeCredit.principal) }}</b>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-ink-2">Платёж в месяц</span>
+            <b class="num text-ink">{{ money(activeCredit.payment) }}</b>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-ink-2">Ставка (ГЭСВ)</span>
+            <b class="num text-ink">{{ ratePct(activeCredit.annualRate, 1) }}</b>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-ink-2">День платежа</span>
+            <b class="num text-ink">{{ activeCredit.day }}</b>
+          </div>
+        </div>
+        <template v-else>
+          <Field label="Название">
+            <Input :default-value="activeCredit.name" class="mb-3" @blur="onCreditNameBlur" />
+          </Field>
+          <Field label="Остаток долга, ₸">
+            <NumFieldBlur :initial="plain(activeCredit.principal)" class="mb-3" @commit="onCreditPrincipal" />
+          </Field>
+          <Field label="Платёж в месяц, ₸">
+            <NumFieldBlur :initial="plain(activeCredit.payment)" class="mb-3" @commit="onCreditPayment" />
+          </Field>
+          <Field label="Ставка (ГЭСВ), % годовых">
+            <NumFieldBlur :initial="rateText(activeCredit.annualRate)" kind="rate" class="mb-3" @commit="onCreditRate" />
+          </Field>
+          <Field label="День платежа">
+            <NumFieldBlur :initial="String(activeCredit.day)" kind="int" class="mb-3" @commit="onCreditDay" />
+          </Field>
+        </template>
+
         <Button
-          class="w-full mb-3"
+          variant="outline"
+          class="mb-3 w-full bg-surface-2"
           @click="
             payoffCreditId = activeCredit.id;
             selectedCreditId = null;
           "
         >
-          Симулятор досрочного погашения
+          Посчитать досрочное погашение
         </Button>
 
+        <Field v-if="!authStore.isViewer" label="Примечание">
+          <Input :default-value="activeCredit.note" class="mb-3" @blur="onCreditNoteBlur" />
+        </Field>
+
+        <!-- Закрытый долг (остаток 0) выводов не ждёт: строка «Оплатил» уже говорит «долг закрыт». -->
+        <template v-if="activeCredit.principal > 0 && activeCreditOutlook">
+          <div
+            v-if="activeCreditOutlook.closes"
+            class="mb-3 rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-[13px]"
+          >
+            <div class="flex justify-between">
+              <span class="text-ink-2">Платежей осталось</span>
+              <b class="num text-ink">{{ activeCreditOutlook.months }}</b>
+            </div>
+            <div class="mt-1 flex justify-between">
+              <span class="text-ink-2">Переплата до конца</span>
+              <b class="num text-warn">{{ money(activeCreditOutlook.overpay) }}</b>
+            </div>
+          </div>
+          <div
+            v-else
+            class="mb-3 rounded-xl border border-warn-line bg-warn-soft px-3.5 py-3 text-[12.5px] leading-relaxed text-ink-2"
+          >
+            При таком платеже долг не закрывается: проценты съедают его целиком.
+            Проверьте остаток, платёж и ставку.
+          </div>
+        </template>
+
+        <Button class="mb-3 w-full" @click="selectedCreditId = null">Готово</Button>
+
         <DangerZone
-          label="Удалить долг"
-          warning="Долг исчезнет из бюджета и графика выплат."
+          v-if="!authStore.isViewer"
+          label="Удалить кредит"
+          warning="Кредит исчезнет у обоих участников, и платёж перестанет учитываться в бюджете. Отменить нельзя."
           @confirm="() => { financeStore.removeCredit(activeCredit!.id); selectedCreditId = null }"
         />
       </template>
@@ -1358,12 +1468,12 @@ function applyPrepay() {
           <div class="font-medium text-ink">{{ activePayoffCredit.name }}</div>
           <div class="flex justify-between">
             <span class="text-ink-2">Осталось платежей</span>
-            <b class="num text-ink">{{ payoffCost?.closes ? Math.ceil(payoffCost.months) : '—' }}</b>
+            <b class="num text-ink">{{ payoffOutlook?.closes ? payoffOutlook.months : '—' }}</b>
           </div>
           <div class="flex justify-between">
-            <span class="text-ink-2">Переплата без досрочки</span>
+            <span class="text-ink-2">Переплата, если не трогать</span>
             <b class="num text-warn">
-              {{ payoffCost?.closes ? money(Math.round(payoffCost.overpay)) : '—' }}
+              {{ payoffOutlook?.closes ? money(payoffOutlook.overpay) : 'долг не закрывается' }}
             </b>
           </div>
         </div>
@@ -1380,7 +1490,7 @@ function applyPrepay() {
         </Field>
 
         <Field :label="payoffMode === 'monthly' ? 'Сколько добавите к платежу, ₸' : 'Сколько внесёте разом, ₸'">
-          <NumField v-model="payoffAmount" placeholder="5 000" class="mb-2" />
+          <NumField v-model="payoffAmount" :placeholder="plain(payoffChips[0] ?? 5000)" class="mb-2" />
         </Field>
 
         <div v-if="payoffChips.length > 0 && payoffMode === 'monthly'" class="mb-3 flex flex-wrap gap-1.5">
@@ -1392,7 +1502,7 @@ function applyPrepay() {
             @click="payoffAmount = plain(v)"
           >
             +{{ plain(v) }}
-            <span v-if="v === payoffHalf" class="ml-1 text-[10.5px]">½ переплаты</span>
+            <span v-if="v === payoffHalf" class="ml-1 text-[10.5px]">половина переплаты</span>
           </button>
         </div>
 
@@ -1405,12 +1515,18 @@ function applyPrepay() {
             }}
           </div>
           <div class="mt-0.5 text-[13px] font-medium text-ink num">
-            Экономия: {{ money(Math.max(0, Math.round(payoffResult.saved))) }}
+            экономия {{ money(Math.max(0, Math.round(payoffResult.saved))) }}
           </div>
           <div class="mt-1 text-[12px] text-ink-2">
-            Останется платежей: {{ Math.max(0, Math.ceil(payoffResult.monthsAfter)) }} вместо {{ Math.ceil(payoffResult.monthsNow) }}.
+            Останется {{ Math.max(0, Math.ceil(payoffResult.monthsAfter)) }}
+            {{ plural(Math.max(0, Math.ceil(payoffResult.monthsAfter)), 'платёж', 'платежа', 'платежей') }}
+            вместо {{ Math.ceil(payoffResult.monthsNow) }}.
           </div>
         </div>
+        <p v-else class="mb-3 text-[12.5px] leading-relaxed text-ink-3">
+          Впишите сумму, которую действительно можете внести. Приложение не станет предлагать
+          больше — считать по деньгам, которых нет, смысла нет.
+        </p>
 
         <!-- Применить разовую досрочку (Р-6) -->
         <div
@@ -1508,7 +1624,7 @@ function applyPrepay() {
         <!-- Лесенка отдачи -->
         <div v-if="payoffLadder.length > 0" class="mb-3">
           <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-3">
-            Отдача падает с ростом суммы
+            Отдача падает
           </div>
           <div class="flex flex-col gap-1 text-[12.5px]">
             <div
@@ -1521,6 +1637,10 @@ function applyPrepay() {
               <span class="num font-medium text-brand">{{ money(Math.max(0, Math.round(item.saved))) }}</span>
             </div>
           </div>
+          <p v-if="payoffHalf" class="mt-2 text-[12.5px] leading-relaxed text-ink-3">
+            Половину переплаты снимает уже добавка в {{ money(payoffHalf) }} — дальше каждая
+            следующая тысяча даёт меньше предыдущей. Если больших сумм нет, начинать стоит отсюда.
+          </p>
         </div>
 
         <Button class="w-full" @click="payoffCreditId = null">Закрыть</Button>
