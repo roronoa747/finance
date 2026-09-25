@@ -618,6 +618,14 @@ describe('PV-14: планы «Сначала долги» при слиянии'
     }
   })
 
+  it('«завершён» сильнее позднего «отменён» (Р-5): партнёр офлайн отменил план, который здесь закрыл последний долг', () => {
+    const done = plan('p1', { status: 'done', endedAt: '2026-09-20T08:00:00.000Z', result: { savedInterest: 3_851 }, updatedAt: '2026-09-20T08:00:00.000Z' })
+    const cancelled = plan('p1', { status: 'cancelled', endedAt: '2026-09-20T09:00:00.000Z', result: { savedInterest: 0 }, updatedAt: '2026-09-20T09:00:00.000Z' })
+    for (const merged of [mergeDocs(doc([done]), doc([cancelled])), mergeDocs(doc([cancelled]), doc([done]))]) {
+      expect(merged.plans![0]).toMatchObject({ status: 'done', endedAt: '2026-09-20T08:00:00.000Z', result: { savedInterest: 3_851 } })
+    }
+  })
+
   it('надгробие сильнее правки и не воскресает', () => {
     const tomb = plan('p1', { deletedAt: '2026-09-12T00:00:00.000Z', updatedAt: '2026-09-12T00:00:00.000Z' })
     const edited = plan('p1', { updatedAt: '2026-09-15T00:00:00.000Z' })

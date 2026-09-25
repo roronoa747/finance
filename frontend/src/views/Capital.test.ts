@@ -1153,6 +1153,54 @@ describe('PV-16: шаг плана в строке кредита (SSR)', () => 
     expect(store.credits.find((c) => c.id === 'cc')!.payment).toBeLessThan(25_000)
     expect(store.applyPlanStep('a', { accountId: 'card' })).toBeNull()
   })
+
+  it('окно досрочки плана: сняли досрочку шага — повторная снова по плану; партнёр внёс шаг, пока окно открыто, — запись без id плана', async () => {
+    useAuthStore().setAuthData(authAs('member'))
+    const store = family()
+    const cc = () => store.credits.find((c) => c.id === 'cc')
+    // Одно и то же окно: применили, сняли, передумали насчёт режима (Р-10) и применили снова.
+    await renderScreen(Capital, '/capital', undefined, [
+      screenMixin({}, (s) => (s.changePlanMode as (c: unknown) => void)(cc())),
+      screenMixin({ applyAccount: 'card' }, (s) => {
+        const apply = s.applyPrepay as () => void
+        apply()
+        const first = store.payments.find((p) => p.kind === 'prepay')!
+        expect(first.planId).toBe('plan')
+        store.removePrepayment(first.id)
+        s.applyMode = 'payment'
+        s.payoffAmount = plain(100_000)
+        apply()
+      }),
+    ])
+    const again = store.payments.filter((p) => p.kind === 'prepay' && !p.deletedAt)
+    expect(again).toEqual([expect.objectContaining({ planId: 'plan', mode: 'payment' })])
+    store.removePrepayment(again[0].id)
+
+    // Окно открыто, шаг вносит партнёр — «Применить» пишет обычную досрочку.
+    await renderScreen(Capital, '/capital', undefined, [
+      screenMixin({}, (s) => (s.changePlanMode as (c: unknown) => void)(cc())),
+      screenMixin({ applyAccount: 'card' }, (s) => {
+        const apply = s.applyPrepay as () => void
+        store.applyPlanStep('b', { accountId: 'card' })
+        apply()
+      }),
+    ])
+    const live = store.payments.filter((p) => p.kind === 'prepay' && !p.deletedAt)
+    expect(live.filter((p) => p.planId)).toHaveLength(1)
+    expect(live.filter((p) => !p.planId)).toHaveLength(1)
+  })
+
+  it('шаг плана не подставляется в окно досрочки другого кредита', async () => {
+    useAuthStore().setAuthData(authAs('member'))
+    const store = family()
+    const html = await renderScreen(Capital, '/capital', undefined, [
+      screenMixin({ payoffPlan: { id: 'plan', amount: 100_000, creditId: 'cc' }, payoffCreditId: 'loan' }),
+      screenMixin({ payoffMode: 'once', payoffAmount: '50 000', applyAccount: 'card' }, (s) => (s.applyPrepay as () => void)()),
+    ])
+    expect(html).not.toContain('Шаг плана —')
+    expect(store.payments.find((p) => p.kind === 'prepay')).toMatchObject({ targetId: 'loan', amount: 50_000 })
+    expect(store.payments.find((p) => p.kind === 'prepay')!.planId).toBeUndefined()
+  })
 })
 
 describe('PV-17 (Р-8): график в окне кредита — с шагами плана у кредита-цели', () => {

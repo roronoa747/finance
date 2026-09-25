@@ -54,6 +54,8 @@ const cushion = computed(() =>
 /* ------------------ Выигрыш (Р-6) ------------------ */
 const forecastNow = computed(() => (plan.value ? planForecast(plan.value, state.value, key.value) : null))
 const fact = computed(() => (plan.value ? planFact(plan.value, financeStore.payments, financeStore.credits) : null))
+// Р-11: платёж не покрывает проценты — сравнивать не с чем.
+const NO_SAVING = 'при текущем платеже долг не закрывается — экономию не считаем'
 const closes = (m: string | null) => (m ? `долги с процентами закроются в ${monthIn(m)}` : 'долги с процентами не закрываются')
 
 /* ------------------ План и факт по месяцам ------------------ */
@@ -82,11 +84,16 @@ const history = computed(() =>
     .filter((p) => !p.deletedAt && p.status !== 'active')
     .sort((a, b) => (b.endedAt ?? '').localeCompare(a.endedAt ?? '')),
 )
+/**
+ * Итог плана — живым счётом его досрочек (`planFact`), а не снимком `result`: досрочка
+ * партнёра, пришедшая после конца плана, и снятая досрочка видны сразу у обоих.
+ */
+const savedOf = (p: DebtPlan) => planFact(p, financeStore.payments, financeStore.credits).savedInterest
 function historyLine(p: DebtPlan): string {
   const from = planStartMonth(p)
   const to = endMonth(p)
   const span = from === to ? monthTitle(from) : `${monthTitle(from)} — ${monthTitle(to)}`
-  const saved = money(p.result?.savedInterest ?? 0)
+  const saved = money(savedOf(p))
   return p.status === 'done' ? `${span}: сэкономили ${saved} процентов` : `${span}: отменён, сэкономили ${saved}`
 }
 // План закрылся в этом месяце — цели уже возобновились (Р-5): скажем об этом, пока месяц не кончился.
@@ -144,13 +151,20 @@ const justDone = computed(() => {
           <div>
             <div class="text-ink-3">При выборе ожидали</div>
             <div class="text-ink num">
-              не отдадим банку <b>{{ money(plan.forecast.savedInterest) }}</b>, {{ closes(plan.forecast.debtFreeMonth) }}
+              <template v-if="plan.forecast.savedInterest === null">{{ NO_SAVING }}</template>
+              <template v-else>
+                не отдадим банку <b>{{ money(plan.forecast.savedInterest) }}</b>, {{ closes(plan.forecast.debtFreeMonth) }}
+              </template>
             </div>
           </div>
           <div v-if="forecastNow" class="border-t border-line pt-2.5">
             <div class="text-ink-3">Сейчас (от факта)</div>
+            <!-- От нынешних остатков: уже сэкономленное — строкой ниже. -->
             <div class="text-ink num">
-              не отдадим банку <b>{{ money(forecastNow.savedInterest) }}</b>, {{ closes(forecastNow.debtFreeMonth) }}
+              <template v-if="forecastNow.savedInterest === null">{{ NO_SAVING }}</template>
+              <template v-else>
+                ещё не отдадим банку <b>{{ money(forecastNow.savedInterest) }}</b>, {{ closes(forecastNow.debtFreeMonth) }}
+              </template>
             </div>
           </div>
           <div v-if="fact" class="flex items-baseline justify-between border-t border-line pt-2.5">
@@ -215,7 +229,7 @@ const justDone = computed(() => {
 
     <template v-else>
       <Callout v-if="justDone" tone="good" title="Долги с процентами закрыты — цели возобновились">
-        Сэкономили {{ money(justDone.result?.savedInterest ?? 0) }} процентов.
+        Сэкономили {{ money(savedOf(justDone)) }} процентов.
       </Callout>
       <Card>
         <div class="font-display text-[17px] font-semibold text-ink">Плана нет</div>

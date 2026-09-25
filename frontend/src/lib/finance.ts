@@ -1211,8 +1211,12 @@ export function creditSchedule(
     const day = Math.min(credit.day, daysInMonth(period))
     const rec = own.find((p) => p.kind === 'credit' && p.period === period)
     if (rec) {
+      // Платёж месяца отмечен, а досрочка месяца ещё только запланирована (шаг плана) —
+      // она тоже гасит тело в этом месяце.
       const body = recordBody(rec)
-      rows.push({ period, day, amount: rec.amount, body, interest: rec.amount - body, extra: applied(period), left, paid: true })
+      const extra = Math.min(left, planned(period))
+      left -= extra
+      rows.push({ period, day, amount: rec.amount, body, interest: rec.amount - body, extra: extra + applied(period), left, paid: true })
       continue
     }
     if (left <= 0) break
@@ -1514,9 +1518,13 @@ export function planExtra(
   )
 }
 
-/** Досрочка плана за месяц — живая запись с его id; одна в месяц (Р-4). */
-export const planPrepay = (plan: DebtPlan, payments: Payment[] = [], period: string) =>
-  countedPayments(payments).find((p) => p.kind === 'prepay' && p.planId === plan.id && p.period === period) ?? null
+/**
+ * Шаг месяца уже внесён (Р-4: одна сумма в месяц) — живая досрочка любого плана за этот
+ * месяц: отменили план и выбрали заново, двое выбрали разные планы офлайн — семья не
+ * платит шаг месяца второй раз. Итог плана (`planFact`) считает только свои досрочки.
+ */
+export const planPrepay = (payments: Payment[] = [], period: string) =>
+  countedPayments(payments).find((p) => p.kind === 'prepay' && !!p.planId && p.period === period) ?? null
 
 export type PlanStep =
   /** Сначала подушка (Р-7): `missing` — сколько не хватает до месяца списаний, `amount` — сколько из плана туда. */
@@ -1552,7 +1560,7 @@ export function planStep(plan: DebtPlan, state: PlanState, key: string): PlanSte
   const payments = state.payments ?? []
   const costly = costliestCredits(credits)
   if (!costly.length) return { kind: 'done' }
-  const applied = planPrepay(plan, payments, key)
+  const applied = planPrepay(payments, key)
   if (applied) return { kind: 'prepay', creditId: applied.targetId, amount: applied.amount, period: key, applied }
 
   const extra = planExtra(plan, state.goals ?? [], credits, payments, key)
@@ -1587,14 +1595,17 @@ export function planForecast(plan: DebtPlan, state: PlanState, key: string): Pla
   })
   const cushion = liveGoals(state.goals ?? []).find((g) => g.id === plan.cushionGoalId)
   const buffer = cushion ? Math.max(0, inputs.mandatory - Math.max(0, cushion.have)) : 0
-  const lump = key === planStartMonth(plan) && !planPrepay(plan, payments, key) ? plan.lump : 0
+  const lump = key === planStartMonth(plan) && !planPrepay(payments, key) ? plan.lump : 0
   const released = releasedCredits(plan, credits, payments, key).reduce((a, c) => a + c.payment, 0)
   const base = { debts: inputs.debts, saving: inputs.saving + released, keep: inputs.keep, start: inputs.start, months: plan.months }
   const a = simulateStrategy({ ...base, payDebts: false })
   const b = simulateStrategy({ ...base, payDebts: true, lump, buffer })
+  // Долг, который не закрывается, копит проценты все 600 месяцев симуляции — разность таких
+  // сумм не экономия, а шум (Р-11: «экономию не считаем»).
+  const comparable = a.debtFreeMonth !== null && b.debtFreeMonth !== null
   return {
     gain: strategyGain(a, b),
-    savedInterest: Math.max(0, Math.round(a.interestTotal - b.interestTotal)),
+    savedInterest: comparable ? Math.max(0, Math.round(a.interestTotal - b.interestTotal)) : null,
     debtFreeMonth: b.debtFreeMonth === null ? null : addMonths(key, b.debtFreeMonth),
   }
 }

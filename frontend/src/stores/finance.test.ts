@@ -1605,6 +1605,17 @@ describe('PV-14: план «Сначала долги» в сторе', () => {
     expect(store.applyPlanStep('a')).toMatchObject({ kind: 'prepay', targetId: 'cc', accountId: 'card' })
   })
 
+  it('отменили и выбрали план заново в том же месяце — шаг месяца уже внесён, второй раз не вносится (Р-4)', () => {
+    const store = family()
+    choose(store)
+    const first = store.applyPlanStep('a', { accountId: 'card' })!
+    store.cancelPlan()
+    at('2026-09-24T08:00:00Z')
+    choose(store)
+    expect(store.applyPlanStep('a', { accountId: 'card' })).toBeNull()
+    expect(store.payments.filter((p) => p.kind === 'prepay')).toEqual([first])
+  })
+
   it('cancelPlan: цели возобновились (пауз нет), план в истории с итогом', () => {
     const store = family()
     const plan = choose(store)!

@@ -6,6 +6,8 @@ import { routes } from '@/router'
 type State = Record<string, unknown>
 
 const MISSING = Symbol('нет поля')
+/** Выполнилось ли действие смеси — `renderScreen` не даёт ему молча пропасть. */
+const acted = new WeakMap<ComponentOptions, () => boolean>()
 
 /**
  * SSR-тест экрана: поля и нажатия подаются тому компоненту, у которого они есть. Окна
@@ -16,13 +18,15 @@ const MISSING = Symbol('нет поля')
  */
 export function screenMixin(state: State = {}, act?: (s: State) => void): ComponentOptions {
   let done = !act
-  return {
+  const mixin: ComponentOptions = {
     created() {
       const s = this.$.setupState as State
       for (const k in state) if (k in s) s[k] = state[k]
       if (!done) done = tryAct(s, act!)
     },
   }
+  acted.set(mixin, () => done)
+  return mixin
 }
 
 /** Действие над полями компонента; обращение к чужому полю — «не этот компонент». */
@@ -63,5 +67,9 @@ export async function renderScreen(
   const app = createSSRApp(view, props)
   app.use(router)
   for (const m of mixins) app.mixin(m)
-  return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
+  const html = (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
+  // Действие не нашло компонента со всеми полями (окно не открылось, опечатка, viewer) —
+  // иначе проверка «ничего не изменилось» прошла бы вхолостую.
+  if (mixins.some((m) => acted.get(m)?.() === false)) throw new Error('screenMixin: действие не нашло компонента со всеми полями')
+  return html
 }

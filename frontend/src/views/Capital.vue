@@ -465,11 +465,11 @@ const planDue = (c: Credit) => {
 }
 // «Изменить режим»: окно досрочки с суммой шага — там можно «снизить платёж» (Р-10); запись
 // пойдёт с id плана, и план пересчитается от факта.
-const payoffPlan = ref<{ id: string; amount: number } | null>(null)
+const payoffPlan = ref<{ id: string; amount: number; creditId: string } | null>(null)
 function changePlanMode(c: Credit) {
   const s = planDue(c)
   if (!s || !plan.value) return
-  payoffPlan.value = { id: plan.value.id, amount: s.amount }
+  payoffPlan.value = { id: plan.value.id, amount: s.amount, creditId: c.id }
   payoffCreditId.value = c.id
 }
 

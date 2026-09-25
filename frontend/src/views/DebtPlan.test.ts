@@ -110,7 +110,7 @@ describe('views/DebtPlan.vue — экран плана «Сначала долг
       expect(html).toContain(`При выборе ожидали не отдадим банку ${money(180_000)} , долги с процентами закроются в январе 2028`)
       const now = planForecast(plan, store.planState(), '2026-10')
       expect(html).toContain(
-        `Сейчас (от факта) не отдадим банку ${money(now.savedInterest)} , долги с процентами закроются в ${monthIn(now.debtFreeMonth!)}`,
+        `Сейчас (от факта) ещё не отдадим банку ${money(now.savedInterest!)} , долги с процентами закроются в ${monthIn(now.debtFreeMonth!)}`,
       )
       expect(planFact(plan, store.payments, store.credits).savedInterest).toBe(16_000)
       expect(html).toContain(`Уже сэкономили ${money(16_000)}`)
@@ -127,6 +127,24 @@ describe('views/DebtPlan.vue — экран плана «Сначала долг
       expect(rows[0]).toMatchObject({ period: '2026-10', extra: 40_000 })
       for (const r of rows.filter((x) => x.extra > 0)) expect(html).toContain(`по плану ${plain(r.extra)}`)
       expect(html).toContain('ноя 2026')
+    })
+
+    it('история — живой итог: досрочка партнёра, пришедшая после отмены, в итоге отменённого плана', async () => {
+      // Снимок result при отмене — 0, а досрочка B с id плана (9 000 сэкономили) пришла потом.
+      const cancelled = planOf({ status: 'cancelled', endedAt: '2026-09-21T05:00:00.000Z', result: { savedInterest: 0 } })
+      setup({ plans: [cancelled], payments: [payments[0]] })
+      const html = text(await renderScreen(DebtPlan, '/plan'))
+      expect(html).toContain(`Сентябрь 2026: отменён, сэкономили ${money(9_000)}`)
+    })
+
+    it('Р-11: долг не закрывается без плана — вместо «не отдадим банку N» «экономию не считаем»', async () => {
+      const store = setup({ plans: [planOf({ keptGoalIds: ['car'], forecast: { gain: 0, savedInterest: null, debtFreeMonth: '2027-03' } })] })
+      store.updateCredit('cc', { payment: 5_000 })
+      store.updateCredit('loan', { payment: 20_000 })
+      const html = text(await renderScreen(DebtPlan, '/plan'))
+      const win = html.slice(html.indexOf('Выигрыш'), html.indexOf('Уже сэкономили'))
+      expect(win).toContain('При выборе ожидали при текущем платеже долг не закрывается — экономию не считаем')
+      expect(win).toContain('Сейчас (от факта) при текущем платеже долг не закрывается — экономию не считаем')
     })
 
     it('план закрыт в этом месяце — Callout «цели возобновились» и строка истории; в следующем месяце — только история', async () => {
