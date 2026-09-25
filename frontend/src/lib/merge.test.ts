@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { mergeDocs, isEmptyDoc } from './merge'
 import { accountBalance, activePlan, creditBalance, goalHave, paidFor, shiftedBase } from './finance'
-import type { SyncDoc, Goal, Obligation, Person, Category, Account, Credit, DebtPlan, Payment } from '@/types/finance'
+import type { SyncDoc, Goal, Obligation, Person, Category, Account, Credit, DebtPlan, Payment, WishItem } from '@/types/finance'
 
 function createEmptyDoc(): SyncDoc {
   return {
@@ -676,5 +676,51 @@ describe('PV-14: планы «Сначала долги» при слиянии'
     expect(byId(mergeDocs(fresh, old))).toEqual([alive(plan('p1'))])
     // Оба без ключа — пустой список, а не undefined: так его и отправит push.
     expect(mergeDocs(old, doc()).plans).toEqual([])
+  })
+})
+
+describe('PV-18: покупка — LWW по записи целиком', () => {
+  const T0 = '2026-09-20T10:00:00.000Z'
+  const wish = (patch: Partial<WishItem> = {}): WishItem => ({
+    id: 'w-1', name: 'Пылесос', price: 180_000, by: 'a', addedOn: T0, url: 'https://kaspi.kz/p', bought: false, updatedAt: T0, ...patch,
+  })
+  const doc = (w: WishItem): SyncDoc => ({ ...createEmptyDoc(), wishlist: [w] })
+
+  it('A правит цену, B офлайн позже отмечает покупку — побеждает поздняя запись целиком: цена A теряется', () => {
+    const a = doc(wish({ price: 150_000, updatedAt: '2026-09-21T10:00:00.000Z' }))
+    const b = doc(wish({ bought: true, boughtOn: '2026-09-21T11:00:00.000Z', updatedAt: '2026-09-21T11:00:00.000Z' }))
+    for (const merged of [mergeDocs(a, b), mergeDocs(b, a)]) {
+      expect(merged.wishlist[0]).toMatchObject({ bought: true, boughtOn: '2026-09-21T11:00:00.000Z', price: 180_000 })
+    }
+  })
+
+  it('стёртая ссылка — пустая строка: запись партнёра со старой ссылкой её не возвращает', () => {
+    const a = doc(wish({ url: '', updatedAt: '2026-09-21T10:00:00.000Z' }))
+    const b = doc(wish())
+    for (const merged of [mergeDocs(a, b), mergeDocs(b, a)]) expect(merged.wishlist[0].url).toBe('')
+  })
+})
+
+describe('PV-19: правка «Уже накоплено» против офлайн-взноса', () => {
+  const T0 = '2026-09-20T10:00:00.000Z'
+  const base: Goal = {
+    id: 'g', name: 'Отпуск', need: 1_000_000, seed: 100_000, have: 150_000, monthly: 50_000, hue: 'teal', planPct: 0,
+    movements: [{ id: 'm1', date: T0, amount: 50_000, by: 'a' }], updatedAt: T0,
+  }
+  const doc = (g: Goal): SyncDoc => ({ ...createEmptyDoc(), goals: [g] })
+
+  it('A правит have (seed 100 000 → 70 000), B офлайн вносит 30 000 → have = seed_A + Σ, история B цела', () => {
+    // A: «Уже накоплено» 120 000 — seed = 120 000 − 50 000.
+    const a = doc({ ...base, seed: 70_000, have: 120_000, updatedAt: '2026-09-21T10:00:00.000Z' })
+    // B офлайн, раньше правки A: взнос 30 000 от старого seed.
+    const m2 = { id: 'm2', date: '2026-09-21T09:00:00.000Z', amount: 30_000, by: 'b' as const }
+    const b = doc({ ...base, have: 180_000, movements: [...base.movements, m2], updatedAt: '2026-09-21T09:00:00.000Z' })
+    for (const merged of [mergeDocs(a, b), mergeDocs(b, a)]) {
+      const g = merged.goals[0]
+      expect(g.seed).toBe(70_000)
+      expect(g.movements.map((m) => m.id).sort()).toEqual(['m1', 'm2'])
+      expect(g.have).toBe(70_000 + 50_000 + 30_000)
+      expect(g.have).toBe(goalHave(g.seed, g.movements))
+    }
   })
 })

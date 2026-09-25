@@ -1,27 +1,41 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRouter, useRoute, RouterLink } from 'vue-router'
-import { PhArrowLeft, PhPencilSimple, PhPlus, PhMinus, PhX } from '@phosphor-icons/vue'
+import { PhArrowLeft, PhPencilSimple, PhPlus, PhMinus } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
+import { useAuthStore } from '@/stores/auth'
 import { money, plain, parseMoney, ratePct } from '@/lib/money'
-import { INFLATION, goalMonths, goalMonthly, indexedNeed, payableAccounts } from '@/lib/finance'
-import { addMonths, monthAfter, monthInAfter, monthKey, monthTitle } from '@/lib/dates'
-import { contributionStreak } from '@/lib/finance'
-import { HUES, HUE_KEYS, hueColor, type HueKey } from '@/lib/palette'
+import {
+  INFLATION,
+  contributionStreak,
+  goalDoneMonth,
+  goalMonths,
+  goalMonthly,
+  indexedNeed,
+  liveGoals,
+  payableAccounts,
+  planForecast,
+} from '@/lib/finance'
+import { addMonths, monthIn, monthKey, monthTitle } from '@/lib/dates'
+import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
 import type { PersonId } from '@/types/finance'
-import { cn } from '@/lib/utils'
 
 import Card from '@/components/kit/Card.vue'
 import Section from '@/components/kit/Section.vue'
 import Field from '@/components/kit/Field.vue'
 import Hint from '@/components/kit/Hint.vue'
 import NumField from '@/components/kit/NumField.vue'
+import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
+import SavedMark from '@/components/kit/SavedMark.vue'
 import Segmented from '@/components/kit/Segmented.vue'
+import Select from '@/components/kit/Select.vue'
+import Sheet from '@/components/kit/Sheet.vue'
 import Tag from '@/components/kit/Tag.vue'
 import Callout from '@/components/kit/Callout.vue'
-import DangerZone from '@/components/kit/DangerZone.vue'
+import { useSavedMark } from '@/components/kit/useSavedMark'
 import Ring from '@/components/Ring.vue'
+import GoalSheet from '@/components/goals/GoalSheet.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 
@@ -31,9 +45,12 @@ const mode = ref<Mode>('date')
 const router = useRouter()
 const route = useRoute()
 const financeStore = useFinanceStore()
+const authStore = useAuthStore()
 
 const goalId = computed(() => route.params.id as string)
-const goal = computed(() => financeStore.goals.find((g) => g.id === goalId.value))
+// Удалил партнёр — «Цель не найдена», как окно правки (`GoalSheet`): пополнение ушло бы в
+// надгробие, а счёт списался бы.
+const goal = computed(() => liveGoals(financeStore.goals).find((g) => g.id === goalId.value))
 const people = computed(() => financeStore.people)
 // Пополнение и снятие двигают тенговую базу счёта: валютный счёт пересчитал бы её по
 // курсу при следующей правке и молча потерял сдвиг. Удалённые счета — тоже не сюда.
@@ -52,8 +69,26 @@ const rhythmColor = computed(() => (goal.value ? hueColor(goal.value.hue, isDark
 // Во сколько обойдётся та же цель к сроку, если она дорожает вместе с рынком; взнос 0 — прогноза нет.
 const indexed = computed(() => (goal.value ? indexedNeed(goal.value.need, months.value) : null))
 
-const minMonthly = computed(() => (goal.value ? Math.max(5_000, Math.round((goal.value.monthly * 0.4) / 5_000) * 5_000) : 5_000))
-const maxMonthly = computed(() => (goal.value ? Math.max(minMonthly.value + 5_000, Math.round((goal.value.monthly * 2.6) / 5_000) * 5_000) : 100_000))
+// Цель на паузе стоит, пока план не закроет долги с процентами (Н-8 ревью Блока 3): дата —
+// от месяца без процентных долгов по прогнозу плана; не закрываются — месяца нет.
+const forecast = computed(() => (paused.value && plan.value ? planForecast(plan.value, financeStore.planState(), monthKey()) : null))
+const doneMonth = computed(() => goalDoneMonth(months.value, monthKey(), forecast.value ?? undefined))
+const doneTitle = computed(() => (doneMonth.value ? monthTitle(doneMonth.value) : paused.value ? 'После плана' : '—'))
+const doneLine = computed(() =>
+  doneMonth.value ? `Цель закроется в ${monthIn(doneMonth.value)}` : paused.value ? 'Цель закроется после плана' : '',
+)
+
+/* ------------------ Взнос полем (исключение из Р-2, владелец 2026-09-25) ------------------ */
+// «Сохранено» — по самому взносу, а не по updatedAt цели: пополнение тоже меняет цель, но
+// взнос оно не трогает.
+const monthlySaved = useSavedMark(
+  () => goal.value?.id,
+  () => (goal.value ? String(goal.value.monthly) : undefined),
+)
+function onMonthly(text: string) {
+  const v = parseMoney(text)
+  if (goal.value && v > 0 && v !== goal.value.monthly) financeStore.setGoalMonthly(goal.value.id, v)
+}
 
 const streak = computed(() => (goal.value ? contributionStreak(goal.value.movements || []) : 0))
 const filled = computed(() =>
@@ -94,35 +129,8 @@ function applyDeposit() {
 }
 
 /* ------------------ Редактирование цели ------------------ */
+// Поля окна пишутся сами по уходу из поля (`GoalSheet`); viewer окна не открывает (Р-12).
 const openEditModal = ref(false)
-const editName = ref('')
-const editNeed = ref('')
-const editMonthly = ref('')
-const editHue = ref<HueKey>('blue')
-
-function openEdit() {
-  if (!goal.value) return
-  editName.value = goal.value.name
-  editNeed.value = plain(goal.value.need)
-  editMonthly.value = plain(goal.value.monthly)
-  editHue.value = goal.value.hue
-  openEditModal.value = true
-}
-
-function saveEdit() {
-  if (!goal.value) return
-  const n = parseMoney(editNeed.value)
-  const m = parseMoney(editMonthly.value)
-  if (!editName.value.trim() || n <= 0) return
-
-  financeStore.updateGoal(goal.value.id, {
-    name: editName.value.trim(),
-    need: n,
-    monthly: m > 0 ? m : goal.value.monthly,
-    hue: editHue.value,
-  })
-  openEditModal.value = false
-}
 </script>
 
 <template>
@@ -154,10 +162,11 @@ function saveEdit() {
           </div>
         </div>
         <button
+          v-if="!authStore.isViewer"
           type="button"
           aria-label="Изменить цель"
           class="grid size-9 shrink-0 place-items-center rounded-xl border border-line text-ink-2 hover:bg-surface-2 hover:text-ink cursor-pointer"
-          @click="openEdit"
+          @click="openEditModal = true"
         >
           <PhPencilSimple :size="17" />
         </button>
@@ -176,34 +185,22 @@ function saveEdit() {
           {{ mode === 'date' ? 'Откладывать в месяц' : 'Цель будет достигнута' }}
         </div>
         <div class="mt-1 font-display text-[32px] font-semibold leading-tight tracking-[-0.025em] num text-ink">
-          {{ mode === 'date' ? money(goal.monthly) : monthAfter(months - 1) }}
+          {{ mode === 'date' ? money(goal.monthly) : doneTitle }}
         </div>
         <div class="mt-1.5 text-[13px] text-ink-2">
-          {{
-            mode === 'date'
-              ? `Цель закроется в ${monthInAfter(months - 1)}`
-              : `При взносе ${money(goal.monthly)} в месяц · ${months} мес.`
-          }}
+          {{ mode === 'date' ? doneLine : `При взносе ${money(goal.monthly)} в месяц · ${months} мес.` }}
         </div>
-        <div v-if="paused" class="text-[12px] text-ink-3">после плана</div>
+        <div v-if="paused && doneMonth" class="text-[12px] text-ink-3">после плана</div>
       </div>
 
-      <!-- Ползунок / выбор ежемесячного платежа -->
-      <div class="mt-4 flex flex-col gap-1.5">
-        <div class="flex items-center justify-between text-[12px] text-ink-3">
-          <span>{{ money(minMonthly) }}</span>
-          <span class="font-medium text-ink num">{{ money(goal.monthly) }}/мес</span>
-          <span>{{ money(maxMonthly) }}</span>
+      <!-- Взнос вводится числом, а не ползунком (исключение из Р-2, владелец 2026-09-25). Viewer — только сумма. -->
+      <div v-if="!authStore.isViewer" class="mt-4">
+        <div class="-mb-3.5 flex justify-end">
+          <SavedMark :on="monthlySaved" />
         </div>
-        <input
-          type="range"
-          :min="minMonthly"
-          :max="maxMonthly"
-          :step="5000"
-          :value="Math.min(maxMonthly, Math.max(minMonthly, goal.monthly))"
-          class="w-full accent-[var(--brand)] cursor-pointer"
-          @input="(e) => financeStore.setGoalMonthly(goal!.id, Number((e.target as HTMLInputElement).value))"
-        />
+        <Field label="Откладывать в месяц, ₸">
+          <NumFieldBlur :initial="plain(goal.monthly)" @commit="onMonthly" />
+        </Field>
       </div>
 
       <div class="mt-3 border-t border-line pt-3 text-[12.5px] text-ink-2">
@@ -306,117 +303,45 @@ function saveEdit() {
       </div>
     </Card>
 
-    <!-- МОДАЛКА: Пополнить / Снять -->
-    <div
-      v-if="openDepositModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
-      @click.self="openDepositModal = false"
+    <!-- Окно: Пополнить / Снять -->
+    <Sheet
+      :open="openDepositModal"
+      :title="depositOperation === 'deposit' ? 'Пополнить цель' : 'Снять средства'"
+      @close="openDepositModal = false"
     >
-      <div class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-2xl border border-line bg-surface p-5 shadow-2xl text-left">
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="font-display text-[17px] font-semibold text-ink">
-            {{ depositOperation === 'deposit' ? 'Пополнить цель' : 'Снять средства' }}
-          </h3>
-          <button
-            type="button"
-            aria-label="Закрыть"
-            class="grid size-7 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
-            @click="openDepositModal = false"
-          >
-            <PhX :size="16" />
-          </button>
-        </div>
+      <Field label="Сумма, ₸">
+        <NumField v-model="depositAmount" placeholder="10 000" class="mb-3" />
+      </Field>
 
-        <Field label="Сумма, ₸">
-          <NumField v-model="depositAmount" placeholder="10 000" class="mb-3" />
-        </Field>
-
-        <Field v-if="accounts.length > 0" :label="depositOperation === 'deposit' ? 'Списать со счёта (опционально)' : 'Зачислить на счёт (опционально)'">
-          <select
-            v-model="depositAccountId"
-            class="w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-[14px] text-ink mb-3"
-          >
-            <option value="">Не списывать со счетов</option>
-            <option v-for="a in accounts" :key="a.id" :value="a.id">
-              {{ a.name }} ({{ money(a.amount) }})
-            </option>
-          </select>
-        </Field>
-
-        <Field v-if="people.length > 1" label="Кто вносит">
-          <div class="flex gap-2 mb-3">
-            <button
-              v-for="p in people"
-              :key="p.id"
-              type="button"
-              :class="cn('rounded-xl border px-3 py-2 text-[13px] flex-1 cursor-pointer', depositBy === p.id ? 'border-brand bg-brand-soft text-brand font-medium' : 'border-line text-ink-2')"
-              @click="depositBy = p.id"
-            >
-              {{ p.name }}
-            </button>
-          </div>
-        </Field>
-
-        <Field label="Примечание">
-          <Input v-model="depositNote" placeholder="Премия, накопления…" class="mb-3" />
-        </Field>
-
-        <Button :disabled="parseMoney(depositAmount) <= 0" class="w-full mt-2" @click="applyDeposit">
-          {{ depositOperation === 'deposit' ? 'Пополнить' : 'Снять' }}
-        </Button>
-      </div>
-    </div>
-
-    <!-- МОДАЛКА: Редактировать цель -->
-    <div
-      v-if="openEditModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
-      @click.self="openEditModal = false"
-    >
-      <div class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-2xl border border-line bg-surface p-5 shadow-2xl text-left">
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="font-display text-[17px] font-semibold text-ink">Изменить цель</h3>
-          <button
-            type="button"
-            aria-label="Закрыть"
-            class="grid size-7 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
-            @click="openEditModal = false"
-          >
-            <PhX :size="16" />
-          </button>
-        </div>
-
-        <Field label="Название">
-          <Input v-model="editName" class="mb-3" />
-        </Field>
-        <Field label="Сколько нужно, ₸">
-          <NumField v-model="editNeed" class="mb-3" />
-        </Field>
-        <Field label="Откладывать в месяц, ₸">
-          <NumField v-model="editMonthly" class="mb-3" />
-        </Field>
-
-        <Field label="Цвет">
-          <div class="flex flex-wrap gap-2 mb-3">
-            <button
-              v-for="h in HUE_KEYS"
-              :key="h"
-              type="button"
-              :class="cn('size-[28px] rounded-[9px] border-2 cursor-pointer transition-transform', editHue === h ? 'border-ink scale-110' : 'border-transparent')"
-              :style="{ background: HUES[h].light }"
-              @click="editHue = h"
-            />
-          </div>
-        </Field>
-
-        <Button class="w-full mb-3" @click="saveEdit">Сохранить</Button>
-
-        <DangerZone
-          label="Удалить цель"
-          warning="Цель исчезнет вместе с историей взносов. Это действие нельзя отменить."
-          @confirm="() => { financeStore.removeGoal(goal!.id); router.push('/goals') }"
+      <Field v-if="accounts.length > 0" :label="depositOperation === 'deposit' ? 'Списать со счёта (опционально)' : 'Зачислить на счёт (опционально)'">
+        <Select
+          v-model="depositAccountId"
+          :options="[
+            { value: '', label: 'Не списывать со счетов' },
+            ...accounts.map((a) => ({ value: a.id, label: `${a.name} (${money(a.amount)})` })),
+          ]"
+          class="mb-3"
         />
-      </div>
-    </div>
+      </Field>
+
+      <Field v-if="people.length > 1" label="Кто вносит" group>
+        <Segmented v-model="depositBy" :options="people.map((p) => ({ value: p.id, label: p.name }))" />
+      </Field>
+
+      <Field label="Примечание">
+        <Input v-model="depositNote" placeholder="Премия, накопления…" class="mb-3" />
+      </Field>
+
+      <Button :disabled="parseMoney(depositAmount) <= 0" class="w-full mt-2" @click="applyDeposit">
+        {{ depositOperation === 'deposit' ? 'Пополнить' : 'Снять' }}
+      </Button>
+    </Sheet>
+
+    <!-- Окно: Изменить цель -->
+    <GoalSheet
+      :goal-id="openEditModal && !authStore.isViewer ? goal.id : null"
+      @close="openEditModal = false"
+      @removed="router.push('/goals')"
+    />
   </div>
 </template>

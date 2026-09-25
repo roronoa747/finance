@@ -36,11 +36,22 @@ let back: HTMLElement | null = null
 const FOCUSABLE =
   'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
 
+/**
+ * Закрыть окно, не потеряв правку. Поля окон пишут по уходу из поля (`NumFieldBlur`,
+ * `@blur`), а родитель на `close` сразу убирает запись окна — blur, пришедший позже (фокус
+ * назад в `hide`), писать уже некуда. Escape фокус не трогает, крестик в Safari тоже.
+ */
+function close() {
+  const at = document.activeElement
+  if (at instanceof HTMLElement && card.value?.contains(at)) at.blur()
+  emit('close')
+}
+
 function onKeydown(e: KeyboardEvent) {
   if (e.defaultPrevented || stack[stack.length - 1] !== me) return
   if (e.key === 'Escape') {
     e.preventDefault()
-    emit('close')
+    close()
     return
   }
   // Tab не уводит фокус под затемнение: там можно открыть другое окно, которое
@@ -70,7 +81,7 @@ function onScrimDown(e: PointerEvent) {
 }
 
 function onScrimClick() {
-  if (downOnScrim) emit('close')
+  if (downOnScrim) close()
   downOnScrim = false
 }
 
@@ -135,7 +146,7 @@ onUnmounted(() => {
             type="button"
             aria-label="Закрыть"
             class="grid size-7 shrink-0 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
-            @click="emit('close')"
+            @click="close"
           >
             <PhX :size="16" />
           </button>

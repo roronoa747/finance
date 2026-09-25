@@ -42,6 +42,7 @@ import type {
   Goal,
   Obligation,
   Payment,
+  WishItem,
 } from '@/types/finance'
 import { useAuthStore } from '@/stores/auth'
 import { DEFAULT_CATEGORY_NAMES, type CategoryKey, type HueKey } from '@/lib/palette'
@@ -1264,10 +1265,24 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
+  /**
+   * Правка цели. «Уже накоплено» (`have`) правит seed, а не сумму (React `useStore.ts:245-258`):
+   * накопленное складывается из seed и взносов, запись поверх стёрла бы историю пополнений.
+   */
   function updateGoal(id: string, patch: Partial<Goal>) {
+    const cur = goals.value.find((x) => x.id === id)
+    if (!cur) return
+    const { have, ...rest } = patch
+    let next: Partial<Goal> = rest
+    if (have !== undefined) {
+      const sum = (cur.movements ?? []).reduce((a, m) => a + m.amount, 0)
+      const seed = Math.max(0, have - sum)
+      next = { ...rest, seed, have: goalHave(seed, cur.movements) }
+    }
+    if (unchanged(cur, next)) return
     mutateHouseholdDoc((doc) => {
       const g = (doc.goals || []).find((x) => x.id === id)
-      if (g) Object.assign(g, patch, { updatedAt: new Date().toISOString() })
+      if (g) Object.assign(g, next, { updatedAt: new Date().toISOString() })
     })
   }
 
@@ -1297,6 +1312,55 @@ export const useFinanceStore = defineStore('finance', () => {
 
   function withdraw(id: string, amount: number, by: PersonId, note?: string) {
     contribute(id, -Math.abs(amount), by, note)
+  }
+
+  // Покупки в дом (React `useStore.ts:280-311`). Даты — ISO, а не «сегодня» как в React:
+  // показ — `atLabel`; старые строки `dd.mm.yyyy` из прода экран показывает как есть.
+  function addWish(w: { name: string; price: number; by: PersonId; url?: string }) {
+    const t = new Date().toISOString()
+    const item: WishItem = {
+      id: Math.random().toString(36).slice(2, 10),
+      name: w.name,
+      price: w.price,
+      by: w.by,
+      url: w.url,
+      bought: false,
+      addedOn: t,
+      updatedAt: t,
+    }
+    mutateHouseholdDoc((doc) => {
+      if (!doc.wishlist) doc.wishlist = []
+      doc.wishlist.unshift(item)
+    })
+  }
+
+  function updateWish(id: string, patch: Partial<WishItem>) {
+    if (unchanged(wishlist.value.find((x) => x.id === id), patch)) return
+    mutateHouseholdDoc((doc) => {
+      const w = (doc.wishlist || []).find((x) => x.id === id)
+      if (w) Object.assign(w, patch, { updatedAt: new Date().toISOString() })
+    })
+  }
+
+  function removeWish(id: string) {
+    mutateHouseholdDoc((doc) => {
+      const w = (doc.wishlist || []).find((x) => x.id === id)
+      if (w) {
+        w.deletedAt = new Date().toISOString()
+        w.updatedAt = w.deletedAt
+      }
+    })
+  }
+
+  function toggleBought(id: string) {
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      const w = (doc.wishlist || []).find((x) => x.id === id)
+      if (!w) return
+      w.bought = !w.bought
+      w.boughtOn = w.bought ? t : null
+      w.updatedAt = t
+    })
   }
 
   function resetAll() {
@@ -1378,6 +1442,10 @@ export const useFinanceStore = defineStore('finance', () => {
     removeGoal,
     contribute,
     withdraw,
+    addWish,
+    updateWish,
+    removeWish,
+    toggleBought,
     addAccount,
     updateAccount,
     setAccountAmount,

@@ -3,11 +3,12 @@ import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { PhCheck, PhLink, PhPlus } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
+import { useAuthStore } from '@/stores/auth'
 import { money, plain, parseMoney } from '@/lib/money'
-import { addMonths, monthKey, monthTitle } from '@/lib/dates'
-import { HUES, HUE_KEYS, type HueKey } from '@/lib/palette'
+import { addMonths, atLabel, monthKey, monthTitle } from '@/lib/dates'
+import type { HueKey } from '@/lib/palette'
 import { contributionStreak, liveGoals, liveWishlist } from '@/lib/finance'
-import type { PersonId, WishItem } from '@/types/finance'
+import type { PersonId } from '@/types/finance'
 import { cn, plural } from '@/lib/utils'
 
 import Card from '@/components/kit/Card.vue'
@@ -16,16 +17,19 @@ import Field from '@/components/kit/Field.vue'
 import Hint from '@/components/kit/Hint.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Segmented from '@/components/kit/Segmented.vue'
+import Sheet from '@/components/kit/Sheet.vue'
 import Tag from '@/components/kit/Tag.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Ring from '@/components/Ring.vue'
+import HuePicker from '@/components/goals/HuePicker.vue'
+import WishSheet from '@/components/goals/WishSheet.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
-import { PhX } from '@phosphor-icons/vue'
 
 const router = useRouter()
 const route = useRoute()
 const financeStore = useFinanceStore()
+const authStore = useAuthStore()
 
 type Tab = 'goals' | 'wish'
 const tab = ref<Tab>(route.query?.tab === 'wish' ? 'wish' : 'goals')
@@ -108,53 +112,42 @@ const wishName = ref('')
 const wishPrice = ref('')
 const wishUrl = ref('')
 const wishBy = ref<PersonId>('a')
-const justBought = ref<string | null>(null)
+const editWishId = ref<string | null>(null)
+/** Последняя отмеченная покупка и её номер среди купленных — на момент отметки. */
+const justBought = ref<{ name: string; n: number } | null>(null)
 
 const activeWish = computed(() => wishlist.value.filter((w) => !w.bought))
 const boughtWish = computed(() => wishlist.value.filter((w) => w.bought))
+const boughtSum = computed(() => boughtWish.value.reduce((a, w) => a + w.price, 0))
 
 function nameOf(id: PersonId) {
   return people.value.find((p) => p.id === id)?.name || 'Участник'
 }
 
+/** Новые даты — ISO («5 сентября»); старые строки из прода (`24.09.2026`) — как есть. */
+function wishDate(s: string | null | undefined) {
+  if (!s) return ''
+  return /^\d{4}-\d{2}-\d{2}/.test(s) ? atLabel(s) : s
+}
+
 function createWish() {
   if (!wishName.value.trim()) return
-  const id = Math.random().toString(36).slice(2, 10)
-  const t = new Date().toISOString()
-  const item: WishItem = {
-    id,
+  financeStore.addWish({
     name: wishName.value.trim(),
     price: parseMoney(wishPrice.value),
     by: wishBy.value,
     url: wishUrl.value.trim() || undefined,
-    bought: false,
-    addedOn: new Date().toLocaleDateString('ru-RU'),
-    updatedAt: t,
-  }
-
-  financeStore.mutateHouseholdDoc((doc) => {
-    if (!doc.wishlist) doc.wishlist = []
-    doc.wishlist.push(item)
   })
-
   wishName.value = ''
   wishPrice.value = ''
   wishUrl.value = ''
   openWishModal.value = false
 }
 
-function toggleWishBought(id: string, itemName: string) {
-  financeStore.mutateHouseholdDoc((doc) => {
-    const item = (doc.wishlist || []).find((w) => w.id === id)
-    if (item) {
-      item.bought = !item.bought
-      item.boughtOn = item.bought ? new Date().toISOString() : null
-      item.updatedAt = new Date().toISOString()
-      if (item.bought) {
-        justBought.value = itemName
-      }
-    }
-  })
+// Номер — до отметки: в React `bought.length + 1` считался уже после неё и был на один больше.
+function markBought(id: string, itemName: string) {
+  justBought.value = { name: itemName, n: boughtWish.value.length + 1 }
+  financeStore.toggleBought(id)
 }
 </script>
 
@@ -234,8 +227,9 @@ function toggleWishBought(id: string, itemName: string) {
 
     <!-- Вкладка ПОКУПКИ (Wishlist) -->
     <template v-else>
-      <Callout v-if="justBought" tone="good" :title="`Куплено — ${justBought}`">
-        Вещь переехала в историю с датой и автором — видно, куда уходят деньги на быт.
+      <Callout v-if="justBought" tone="good" :title="`Куплено — ${justBought.name}`">
+        Это {{ justBought.n }}-я покупка в дом. Вещь переехала в историю с датой и автором —
+        через год будет видно, куда уходили деньги на быт.
       </Callout>
 
       <Card flush>
@@ -244,21 +238,29 @@ function toggleWishBought(id: string, itemName: string) {
           :key="w.id"
           class="flex items-center gap-3 border-b border-line px-3.5 py-3 last:border-b-0"
         >
+          <!-- Viewer видит список, но не правит (Р-12, матрица §3): ни галочки, ни кнопки строки -->
           <button
+            v-if="!authStore.isViewer"
             type="button"
             aria-label="Отметить купленным"
-            class="grid size-[26px] shrink-0 place-items-center rounded-lg border border-line-strong text-transparent hover:border-brand hover:text-brand cursor-pointer"
-            @click="toggleWishBought(w.id, w.name)"
+            class="grid size-[26px] shrink-0 place-items-center rounded-lg border-[1.5px] border-line-strong text-transparent hover:border-brand hover:text-brand cursor-pointer"
+            @click="markBought(w.id, w.name)"
           >
             <PhCheck :size="14" weight="bold" />
           </button>
-          <div class="min-w-0 flex-1 text-left">
+          <!-- Ссылка вынесена из нажимаемой области: ссылка внутри кнопки — невалидная разметка. -->
+          <component
+            :is="authStore.isViewer ? 'div' : 'button'"
+            :type="authStore.isViewer ? undefined : 'button'"
+            :class="cn('min-w-0 flex-1 text-left', !authStore.isViewer && 'cursor-pointer')"
+            @click="editWishId = w.id"
+          >
             <b class="block truncate text-[14.5px] font-medium text-ink">{{ w.name }}</b>
             <span class="mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-3">
               <i class="size-[7px] shrink-0 rounded-full" :style="{ background: `var(--p${w.by})` }" />
-              {{ nameOf(w.by) }} · {{ w.addedOn }}
+              {{ nameOf(w.by) }} · {{ wishDate(w.addedOn) }}
             </span>
-          </div>
+          </component>
           <a
             v-if="w.url"
             :href="w.url"
@@ -268,134 +270,98 @@ function toggleWishBought(id: string, itemName: string) {
           >
             <PhLink :size="10" /> ссылка
           </a>
-          <span class="shrink-0 text-[14px] font-semibold num text-ink">{{ money(w.price) }}</span>
+          <span class="shrink-0 text-[14px] font-semibold num text-ink">{{ plain(w.price) }}</span>
         </div>
         <div v-if="!activeWish.length" class="px-4 py-6 text-center text-[13px] text-ink-3">
           Список пуст
         </div>
       </Card>
 
-      <Button variant="outline" class="w-full bg-surface-2" @click="openWishModal = true">
-        <PhPlus :size="16" weight="bold" /> Записать покупку
+      <Button v-if="!authStore.isViewer" variant="outline" class="w-full bg-surface-2" @click="openWishModal = true">
+        <PhPlus :size="16" weight="bold" /> Добавить покупку
       </Button>
 
-      <template v-if="boughtWish.length > 0">
-        <Section title="Куплено" />
-        <Card flush>
-          <div
-            v-for="w in boughtWish"
-            :key="w.id"
-            class="flex items-center gap-3 border-b border-line px-3.5 py-2.5 last:border-b-0 opacity-70"
+      <Section title="Уже купили">
+        <template v-if="boughtWish.length" #action>
+          <span class="text-[13px] text-ink-3 num">{{ money(boughtSum) }}</span>
+        </template>
+      </Section>
+      <Card flush>
+        <div
+          v-for="w in boughtWish"
+          :key="w.id"
+          class="flex items-center gap-3 border-b border-line px-3.5 py-3 last:border-b-0"
+        >
+          <button
+            v-if="!authStore.isViewer"
+            type="button"
+            aria-label="Вернуть в список"
+            class="grid size-[26px] shrink-0 place-items-center rounded-lg border-[1.5px] border-brand bg-brand text-brand-ink cursor-pointer"
+            @click="financeStore.toggleBought(w.id)"
           >
-            <div class="min-w-0 flex-1 text-left">
-              <span class="block truncate text-[14px] text-ink line-through">{{ w.name }}</span>
-              <span class="text-[12px] text-ink-3">{{ nameOf(w.by) }}</span>
+            <PhCheck :size="14" weight="bold" />
+          </button>
+          <div class="min-w-0 flex-1">
+            <b class="block text-[14.5px] font-medium text-ink-3 line-through">{{ w.name }}</b>
+            <div class="mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-3">
+              <i class="size-[7px] shrink-0 rounded-full" :style="{ background: `var(--p${w.by})` }" />
+              {{ nameOf(w.by) }} · куплено {{ wishDate(w.boughtOn) }}
             </div>
-            <span class="shrink-0 text-[13.5px] num text-ink-3">{{ money(w.price) }}</span>
           </div>
-        </Card>
-      </template>
+          <span class="shrink-0 text-[14px] font-semibold text-ink-3 num">{{ plain(w.price) }}</span>
+        </div>
+        <div v-if="!boughtWish.length" class="px-4 py-6 text-center text-[13px] text-ink-3">
+          Пока ничего
+        </div>
+      </Card>
+
+      <WishSheet :wish-id="authStore.isViewer ? null : editWishId" @close="editWishId = null" />
     </template>
 
-    <!-- МОДАЛКА: Создать цель -->
-    <div
-      v-if="openGoalModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
-      @click.self="openGoalModal = false"
-    >
-      <div class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-2xl border border-line bg-surface p-5 shadow-2xl text-left">
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="font-display text-[17px] font-semibold text-ink">Новая цель</h3>
-          <button
-            type="button"
-            aria-label="Закрыть"
-            class="grid size-7 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
-            @click="openGoalModal = false"
-          >
-            <PhX :size="16" />
-          </button>
-        </div>
+    <!-- Окно: Создать цель -->
+    <Sheet :open="openGoalModal" title="Новая цель" @close="openGoalModal = false">
+      <Field label="Название">
+        <Input v-model="goalName" placeholder="Например, машина, отпуск" class="mb-3" />
+      </Field>
+      <Field label="Сколько нужно, ₸">
+        <NumField v-model="goalNeed" placeholder="3 000 000" class="mb-3" />
+      </Field>
+      <Field label="Уже есть, ₸">
+        <NumField v-model="goalHave" class="mb-3" />
+      </Field>
+      <Field label="Откладывать в месяц, ₸">
+        <NumField v-model="goalMonthly" placeholder="по умолчанию — за 24 месяца" class="mb-3" />
+      </Field>
 
-        <Field label="Название">
-          <Input v-model="goalName" placeholder="Например, машина, отпуск" class="mb-3" />
-        </Field>
-        <Field label="Сколько нужно, ₸">
-          <NumField v-model="goalNeed" placeholder="3 000 000" class="mb-3" />
-        </Field>
-        <Field label="Уже есть, ₸">
-          <NumField v-model="goalHave" class="mb-3" />
-        </Field>
-        <Field label="Откладывать в месяц, ₸">
-          <NumField v-model="goalMonthly" placeholder="по умолчанию — за 24 месяца" class="mb-3" />
-        </Field>
+      <HuePicker v-model="goalHue" />
 
-        <Field label="Цвет">
-          <div class="flex flex-wrap gap-2 mb-3">
-            <button
-              v-for="h in HUE_KEYS"
-              :key="h"
-              type="button"
-              :aria-label="HUES[h].label"
-              :class="cn('size-[28px] rounded-[9px] border-2 cursor-pointer transition-transform', goalHue === h ? 'border-ink scale-110' : 'border-transparent')"
-              :style="{ background: HUES[h].light }"
-              @click="goalHue = h"
-            />
-          </div>
-        </Field>
+      <Button :disabled="!canCreateGoal" class="w-full mt-2" @click="createGoal">
+        Создать цель
+      </Button>
+    </Sheet>
 
-        <Button :disabled="!canCreateGoal" class="w-full mt-2" @click="createGoal">
-          Создать цель
-        </Button>
-      </div>
-    </div>
+    <!-- Окно: Покупка в дом (React `Goals.tsx:284-305`) -->
+    <Sheet :open="openWishModal" title="Покупка в дом" @close="openWishModal = false">
+      <Field label="Что покупаем">
+        <Input v-model="wishName" placeholder="Например, сковорода" class="mb-3" />
+      </Field>
+      <Field label="Цена, ₸">
+        <NumField v-model="wishPrice" placeholder="18 000" class="mb-3" />
+      </Field>
+      <Field label="Ссылка на товар">
+        <Input v-model="wishUrl" inputmode="url" placeholder="можно оставить пустым" class="mb-3" />
+      </Field>
 
-    <!-- МОДАЛКА: Записать покупку -->
-    <div
-      v-if="openWishModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
-      @click.self="openWishModal = false"
-    >
-      <div class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-2xl border border-line bg-surface p-5 shadow-2xl text-left">
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="font-display text-[17px] font-semibold text-ink">Покупка в дом</h3>
-          <button
-            type="button"
-            aria-label="Закрыть"
-            class="grid size-7 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
-            @click="openWishModal = false"
-          >
-            <PhX :size="16" />
-          </button>
-        </div>
+      <Field v-if="people.length > 1" label="Кто добавил" group>
+        <Segmented
+          v-model="wishBy"
+          :options="people.map((p) => ({ value: p.id, label: p.name }))"
+        />
+      </Field>
 
-        <Field label="Что купить">
-          <Input v-model="wishName" placeholder="Например, кофемашина" class="mb-3" />
-        </Field>
-        <Field label="Примерная цена, ₸">
-          <NumField v-model="wishPrice" placeholder="150 000" class="mb-3" />
-        </Field>
-        <Field label="Ссылка (если есть)">
-          <Input v-model="wishUrl" placeholder="https://..." class="mb-3" />
-        </Field>
-
-        <Field v-if="people.length > 1" label="Кто добавил">
-          <div class="flex gap-2 mb-3">
-            <button
-              v-for="p in people"
-              :key="p.id"
-              type="button"
-              :class="cn('rounded-xl border px-3 py-2 text-[13px] flex-1 cursor-pointer', wishBy === p.id ? 'border-brand bg-brand-soft text-brand font-medium' : 'border-line text-ink-2')"
-              @click="wishBy = p.id"
-            >
-              {{ p.name }}
-            </button>
-          </div>
-        </Field>
-
-        <Button :disabled="!wishName.trim()" class="w-full mt-2" @click="createWish">
-          Записать
-        </Button>
-      </div>
-    </div>
+      <Button :disabled="!wishName.trim()" class="w-full mt-2" @click="createWish">
+        Добавить в список
+      </Button>
+    </Sheet>
   </div>
 </template>

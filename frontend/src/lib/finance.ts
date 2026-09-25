@@ -208,6 +208,18 @@ export function goalMonths(remaining: number, monthly: number): number {
   return Math.max(1, Math.ceil(remaining / monthly))
 }
 
+/**
+ * Месяц, когда цель закроется за `months` взносов (Н-8 ревью Блока 3): взносы идут с месяца
+ * `key`. Цель на паузе ради плана (`pause` — прогноз активного плана) стоит, пока план не
+ * закроет последний долг с процентами: взносы — с месяца после `debtFreeMonth`. null — месяца
+ * нет: долги не закрываются или взнос 0.
+ */
+export function goalDoneMonth(months: number, key: string, pause?: { debtFreeMonth: string | null }): string | null {
+  if (!Number.isFinite(months)) return null
+  if (!pause) return addMonths(key, months - 1)
+  return pause.debtFreeMonth === null ? null : addMonths(pause.debtFreeMonth, months)
+}
+
 /** Какой взнос нужен, чтобы успеть за N месяцев. */
 export function goalMonthly(remaining: number, months: number): number {
   if (months <= 0) return remaining
