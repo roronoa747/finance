@@ -50,6 +50,14 @@
   - Тесты вью — SSR (`renderScreen` из `src/test/screenState.ts` — экран с роутером без
     охранника); стенд двух телефонов e2e — `e2e/support/family.ts` (`fakeServer`, `phone`,
     `screen`, `at`, `setOnline`); `e2e/` проверяется `vue-tsc -b` (`tsconfig.e2e.json`).
+  - **После клинапа Блока 3** (факт, 2026-09-25; подробно — §6 бэклога): пауза цели —
+    `financeStore.pausedGoalIds` (Set), шаг плана — `financeStore.planStepNow()`, не собирать
+    заново. У целей на паузе бывают движения с `planId` (заметка «в долги по плану») — это
+    снятие «вложить уже накопленное» при шаге месяца старта; PV-19 («Уже накоплено», `seed`) их
+    не теряет и не переписывает (`planLumpTakes` считает снятое по ним). Выбор счёта списания —
+    `components/AccountChoice.vue` (v-model `string | null | undefined`, подсказка слотом) —
+    брать его, если окну нужен выбор счёта кнопками. Прокрутка экрана сбрасывается сама
+    (`AppShell`). Хвост Н-8 ревью Б3 (дата цели на паузе) владелец отдал в PV-19 — п. 4 ТЗ.
 - Среда: стенд §6, два профиля + viewer. Верификация: `cd frontend && npm run build && npm test`.
 - Следующий шаг — `/critic паритет-react-vue 4`.
 
