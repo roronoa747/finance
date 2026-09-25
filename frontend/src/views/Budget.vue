@@ -354,6 +354,7 @@ function handleD4Commit(text: string) {
         <template v-for="e in dayEvents" :key="e.id">
           <PaidRow
             v-if="e.pay"
+            minus
             :kind="e.pay"
             :target-id="e.id"
             :period="key"
@@ -452,6 +453,7 @@ function handleD4Commit(text: string) {
         <template v-for="e in events" :key="e.id">
           <PaidRow
             v-if="e.pay"
+            minus
             :kind="e.pay"
             :target-id="e.id"
             :period="key"

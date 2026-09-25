@@ -172,6 +172,36 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     expect(html).toContain('Зарплата · Ильяс')
   })
 
+  it('PV-09: строка на kit/Row — отклик и шеврон у кликабельной, «Оплатил» вне кнопки строки', async () => {
+    family()
+    const chevron = 'M1 1l5.5 6L1 13'
+    const html = await row({ ...rent, clickable: true })
+    expect(html).toContain('hover:bg-surface-2 active:bg-surface-3')
+    expect(html).toContain(chevron)
+    // Кнопка строки закрывается раньше, чем начинается «Оплатил»: кнопка в кнопке недопустима.
+    const rowButton = html.indexOf('<button')
+    expect(html.indexOf('</button>', rowButton)).toBeLessThan(html.indexOf('Оплатил'))
+    expect(html.indexOf('<button', rowButton + 1)).toBeLessThan(html.indexOf('Оплатил'))
+    // Без clickable — ни шеврона, ни отклика (строка «До зарплаты»).
+    const plainRow = await row(rent)
+    expect(plainRow).not.toContain(chevron)
+    expect(plainRow).not.toContain('hover:bg-surface-2')
+  })
+
+  it('PV-09: в Бюджете платёж — «−N», как соседние строки; на Обзоре — сумма с ₸', async () => {
+    const store = family()
+    const budget = await page(Budget, '/budget', { initialView: 'list' })
+    expect(budget).toContain(`−${plain(220_000)}`)
+    expect(budget).toContain(`−${plain(58_000)}`)
+    expect(budget).toContain(`+${plain(700_000)}`)
+    // Отмеченный — тоже со знаком, сумма из отметки.
+    store.markPaid('obligation', 'rent', 'a', { amount: 225_000, accountId: 'card' })
+    expect(await page(Budget, '/budget', { initialView: 'list' })).toContain(`−${plain(225_000)}`)
+    const overview = await page(Overview, '/')
+    expect(overview).toContain(money(58_000))
+    expect(overview).not.toContain(`−${plain(58_000)}`)
+  })
+
   /* ---------------- критик dfc7ab0: группы, viewer, оценка, «оставить?» ---------------- */
 
   const sub = (id: string, name: string, amount: number, extra: Partial<Obligation> = {}): Obligation => ({

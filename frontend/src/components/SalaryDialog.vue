@@ -10,6 +10,7 @@ import Field from '@/components/kit/Field.vue'
 import NumField from '@/components/kit/NumField.vue'
 import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
 import SavedMark from '@/components/kit/SavedMark.vue'
+import { useSavedMark } from '@/components/kit/useSavedMark'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import { PhX } from '@phosphor-icons/vue'
@@ -41,34 +42,20 @@ watch(
   { immediate: true },
 )
 
-const saved = ref(false)
-let savedTimer: ReturnType<typeof setTimeout> | null = null
-const lastSeenStamp = ref<string | undefined>(undefined)
-const lastSeenId = ref<PersonId | null>(null)
+const saved = useSavedMark(
+  () => props.id ?? undefined,
+  () => person.value?.updatedAt,
+)
 
+// Другой человек — чистая форма.
 watch(
-  () => [props.id, person.value?.updatedAt] as const,
-  ([newId, newStamp]) => {
-    if (newId !== lastSeenId.value) {
-      lastSeenId.value = newId
-      lastSeenStamp.value = newStamp
-      saved.value = false
-      planning.value = false
-      newAmount.value = ''
-      reason.value = ''
-      fromMonth.value = addMonths(monthKey(), 1)
-      personName.value = person.value?.name ?? ''
-      return
-    }
-
-    if (newStamp && newStamp !== lastSeenStamp.value) {
-      lastSeenStamp.value = newStamp
-      saved.value = true
-      if (savedTimer) clearTimeout(savedTimer)
-      savedTimer = setTimeout(() => {
-        saved.value = false
-      }, 1800)
-    }
+  () => props.id,
+  () => {
+    planning.value = false
+    newAmount.value = ''
+    reason.value = ''
+    fromMonth.value = addMonths(monthKey(), 1)
+    personName.value = person.value?.name ?? ''
   },
 )
 
@@ -130,7 +117,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  if (savedTimer) clearTimeout(savedTimer)
   if (typeof document !== 'undefined') {
     document.removeEventListener('keydown', onKeydown)
   }

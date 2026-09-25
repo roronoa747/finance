@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   PhBank,
@@ -10,7 +10,6 @@ import {
   PhPlus,
   PhCalendarPlus,
   PhFolderSimple,
-  PhX,
 } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
@@ -73,6 +72,8 @@ import NumField from '@/components/kit/NumField.vue'
 import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
 import SavedMark from '@/components/kit/SavedMark.vue'
 import Segmented from '@/components/kit/Segmented.vue'
+import Select from '@/components/kit/Select.vue'
+import Sheet from '@/components/kit/Sheet.vue'
 import Tag from '@/components/kit/Tag.vue'
 import DangerZone from '@/components/kit/DangerZone.vue'
 import Button from '@/components/ui/Button.vue'
@@ -620,34 +621,6 @@ function applyPrepay() {
   })
   payoffAmount.value = ''
 }
-
-
-function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape') {
-    accountOpen.value = false
-    selectedAccountId.value = null
-    addDebtOpen.value = false
-    selectedCreditId.value = null
-    addObligationOpen.value = false
-    selectedObligationId.value = null
-    payoffCreditId.value = null
-    extraIncomeOpen.value = false
-    addGroupOpen.value = false
-    selectedGroupId.value = null
-  }
-}
-
-onMounted(() => {
-  if (typeof document !== 'undefined') {
-    document.addEventListener('keydown', onKeydown)
-  }
-})
-
-onUnmounted(() => {
-  if (typeof document !== 'undefined') {
-    document.removeEventListener('keydown', onKeydown)
-  }
-})
 </script>
 
 <template>
@@ -907,125 +880,91 @@ onUnmounted(() => {
     </template>
 
     <!-- МОДАЛКА: Добавить счет -->
-    <div
-      v-if="accountOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
-      @click.self="accountOpen = false"
-    >
-      <div class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-2xl border border-line bg-surface p-5 shadow-2xl text-left">
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="font-display text-[17px] font-semibold text-ink">Счёт или накопления</h3>
+    <Sheet :open="accountOpen" title="Счёт или накопления" @close="accountOpen = false">
+      <Field label="Приватность счёта" group>
+        <div class="grid grid-cols-2 gap-2 mb-3">
           <button
             type="button"
-            aria-label="Закрыть"
-            class="grid size-7 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
-            @click="accountOpen = false"
+            :class="cn('rounded-xl border px-3 py-2.5 text-[13px] font-medium transition-colors cursor-pointer', !newAccountIsPrivate ? 'border-brand bg-brand-soft text-brand' : 'border-line bg-surface-2 text-ink-2')"
+            @click="newAccountIsPrivate = false"
           >
-            <PhX :size="16" />
+            Общий (семья)
+          </button>
+          <button
+            type="button"
+            :class="cn('rounded-xl border px-3 py-2.5 text-[13px] font-medium transition-colors cursor-pointer', newAccountIsPrivate ? 'border-brand bg-brand-soft text-brand' : 'border-line bg-surface-2 text-ink-2')"
+            @click="newAccountIsPrivate = true"
+          >
+            Личный (только мне)
           </button>
         </div>
+      </Field>
 
-        <Field label="Приватность счёта">
-          <div class="grid grid-cols-2 gap-2 mb-3">
-            <button
-              type="button"
-              :class="cn('rounded-xl border px-3 py-2.5 text-[13px] font-medium transition-colors cursor-pointer', !newAccountIsPrivate ? 'border-brand bg-brand-soft text-brand' : 'border-line bg-surface-2 text-ink-2')"
-              @click="newAccountIsPrivate = false"
-            >
-              Общий (семья)
-            </button>
-            <button
-              type="button"
-              :class="cn('rounded-xl border px-3 py-2.5 text-[13px] font-medium transition-colors cursor-pointer', newAccountIsPrivate ? 'border-brand bg-brand-soft text-brand' : 'border-line bg-surface-2 text-ink-2')"
-              @click="newAccountIsPrivate = true"
-            >
-              Личный (только мне)
-            </button>
-          </div>
-        </Field>
-
-        <Field label="Что это">
-          <div class="grid grid-cols-2 gap-2 mb-3">
-            <button
-              v-for="k in accountKinds"
-              :key="k.value"
-              type="button"
-              :class="cn('rounded-xl border px-3 py-2 text-[13px] transition-colors cursor-pointer', newAccountKind === k.value ? 'border-brand bg-brand-soft font-medium text-brand' : 'border-line bg-surface-2 text-ink-2')"
-              @click="newAccountKind = k.value"
-            >
-              {{ k.label }}
-            </button>
-          </div>
-        </Field>
-
-        <Field label="Название">
-          <Input v-model="newAccountName" placeholder="Например, Kaspi Gold" class="mb-3" />
-        </Field>
-
-        <Field label="Валюта">
-          <div class="grid grid-cols-4 gap-2 mb-3">
-            <button
-              v-for="c in (['KZT', 'USD', 'EUR', 'RUB'] as Currency[])"
-              :key="c"
-              type="button"
-              :class="cn('rounded-xl border px-3 py-2 text-[13px] transition-colors cursor-pointer', newAccountCurrency === c ? 'border-brand bg-brand-soft font-medium text-brand' : 'border-line bg-surface-2 text-ink-2')"
-              @click="newAccountCurrency = c"
-            >
-              {{ c === 'KZT' ? '₸' : c === 'USD' ? '$' : c === 'EUR' ? '€' : '₽' }}
-            </button>
-          </div>
-        </Field>
-
-        <Field :label="isForeign ? `Сумма в ${newAccountCurrency}` : 'Сумма, ₸'">
-          <NumField v-model="newAccountAmount" class="mb-3" />
-        </Field>
-
-        <div v-if="isForeign" class="mb-3 flex flex-col gap-2">
-          <Field :label="`Курс: сколько тенге за 1 ${newAccountCurrency}`">
-            <NumField
-              v-model="newAccountRate"
-              kind="rate"
-              placeholder="533"
-              @update:model-value="rateTouched = true"
-            />
-          </Field>
-          <div v-if="accountInTenge > 0" class="rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-[12.5px]">
-            В капитале это: <b class="num text-ink">{{ money(accountInTenge) }}</b>
-          </div>
+      <Field label="Что это" group>
+        <div class="grid grid-cols-2 gap-2 mb-3">
+          <button
+            v-for="k in accountKinds"
+            :key="k.value"
+            type="button"
+            :class="cn('rounded-xl border px-3 py-2 text-[13px] transition-colors cursor-pointer', newAccountKind === k.value ? 'border-brand bg-brand-soft font-medium text-brand' : 'border-line bg-surface-2 text-ink-2')"
+            @click="newAccountKind = k.value"
+          >
+            {{ k.label }}
+          </button>
         </div>
+      </Field>
 
-        <Field v-if="newAccountKind === 'deposit'" label="Ставка по вкладу, % годовых">
-          <NumField v-model="newAccountDepositRate" kind="rate" placeholder="16,5" class="mb-3" />
+      <Field label="Название">
+        <Input v-model="newAccountName" placeholder="Например, Kaspi Gold" class="mb-3" />
+      </Field>
+
+      <Field label="Валюта" group>
+        <div class="grid grid-cols-4 gap-2 mb-3">
+          <button
+            v-for="c in (['KZT', 'USD', 'EUR', 'RUB'] as Currency[])"
+            :key="c"
+            type="button"
+            :class="cn('rounded-xl border px-3 py-2 text-[13px] transition-colors cursor-pointer', newAccountCurrency === c ? 'border-brand bg-brand-soft font-medium text-brand' : 'border-line bg-surface-2 text-ink-2')"
+            @click="newAccountCurrency = c"
+          >
+            {{ c === 'KZT' ? '₸' : c === 'USD' ? '$' : c === 'EUR' ? '€' : '₽' }}
+          </button>
+        </div>
+      </Field>
+
+      <Field :label="isForeign ? `Сумма в ${newAccountCurrency}` : 'Сумма, ₸'">
+        <NumField v-model="newAccountAmount" class="mb-3" />
+      </Field>
+
+      <div v-if="isForeign" class="mb-3 flex flex-col gap-2">
+        <Field :label="`Курс: сколько тенге за 1 ${newAccountCurrency}`">
+          <NumField
+            v-model="newAccountRate"
+            kind="rate"
+            placeholder="533"
+            @update:model-value="rateTouched = true"
+          />
         </Field>
-
-        <Button :disabled="!canCreateAccount" class="w-full mt-2" @click="createAccount">
-          Добавить счёт
-        </Button>
+        <div v-if="accountInTenge > 0" class="rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-[12.5px]">
+          В капитале это: <b class="num text-ink">{{ money(accountInTenge) }}</b>
+        </div>
       </div>
-    </div>
+
+      <Field v-if="newAccountKind === 'deposit'" label="Ставка по вкладу, % годовых">
+        <NumField v-model="newAccountDepositRate" kind="rate" placeholder="16,5" class="mb-3" />
+      </Field>
+
+      <Button :disabled="!canCreateAccount" class="w-full mt-2" @click="createAccount">
+        Добавить счёт
+      </Button>
+    </Sheet>
 
     <!-- МОДАЛКА: Детальный просмотр и правка счета -->
-    <div
-      v-if="activeAccount"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
-      @click.self="selectedAccountId = null"
-    >
-      <div class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-2xl border border-line bg-surface p-5 shadow-2xl text-left">
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="flex items-center gap-2 font-display text-[17px] font-semibold text-ink">
-            {{ activeAccount.name }}
-            <SavedMark :on="activeAccountSaved" />
-          </h3>
-          <button
-            type="button"
-            aria-label="Закрыть"
-            class="grid size-7 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
-            @click="selectedAccountId = null"
-          >
-            <PhX :size="16" />
-          </button>
-        </div>
-
+    <Sheet :open="!!activeAccount" :title="activeAccount?.name ?? ''" @close="selectedAccountId = null">
+      <template #mark>
+        <SavedMark :on="activeAccountSaved" />
+      </template>
+      <template v-if="activeAccount">
         <Field label="Название">
           <Input :default-value="activeAccount.name" class="mb-3" @blur="onAccountNameBlur" />
         </Field>
@@ -1051,114 +990,80 @@ onUnmounted(() => {
           warning="Счёт будет удален. Это действие нельзя отменить."
           @confirm="() => { financeStore.removeAccount(activeAccount!.id); selectedAccountId = null }"
         />
-      </div>
-    </div>
+      </template>
+    </Sheet>
 
     <!-- МОДАЛКА: Добавить долг или рассрочку -->
-    <div
-      v-if="addDebtOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
-      @click.self="addDebtOpen = false"
-    >
-      <div class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-2xl border border-line bg-surface p-5 shadow-2xl text-left">
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="font-display text-[17px] font-semibold text-ink">Долг или рассрочка</h3>
-          <button
-            type="button"
-            aria-label="Закрыть"
-            class="grid size-7 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
-            @click="addDebtOpen = false"
-          >
-            <PhX :size="16" />
-          </button>
+    <Sheet :open="addDebtOpen" title="Долг или рассрочка" @close="addDebtOpen = false">
+      <Field label="Название">
+        <Input v-model="debtName" placeholder="Например, рассрочка на телефон" class="mb-3" />
+      </Field>
+      <Field label="Остаток долга, ₸">
+        <NumField v-model="debtPrincipal" placeholder="600 000" class="mb-3" />
+      </Field>
+      <Field label="Платёж в месяц, ₸">
+        <NumField v-model="debtPayment" placeholder="55 000" class="mb-3" />
+      </Field>
+
+      <Field label="Проценты" group>
+        <Segmented
+          v-model="debtMode"
+          :options="[
+            { value: 'none', label: 'Без них' },
+            { value: 'rate', label: 'Знаю ставку' },
+            { value: 'term', label: 'Знаю срок' },
+          ]"
+        />
+      </Field>
+      <p v-if="debtMode === 'none'" class="-mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-3">
+        Рассрочка: платите ровно столько, сколько должны. Приложение посчитает, что долг
+        закроется за {{ plainMonths || '—' }} {{ plural(plainMonths, 'платёж', 'платежа', 'платежей') }}.
+      </p>
+
+      <Field v-if="debtMode === 'rate'" label="Ставка (ГЭСВ), % годовых">
+        <NumField v-model="debtRate" kind="rate" placeholder="23,4" class="mb-3" />
+      </Field>
+      <Field v-if="debtMode === 'term'" label="Сколько платежей осталось">
+        <NumField v-model="debtTerm" kind="int" placeholder="12" class="mb-3" />
+      </Field>
+
+      <div
+        v-if="debtMode === 'term' && termMonths > 0 && paymentVal > 0 && derivedRate !== null"
+        class="mb-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3"
+      >
+        <span class="text-[12.5px] text-ink-2">Ставка получается</span>
+        <div class="font-display text-[20px] font-semibold tracking-[-0.02em] num text-ink">
+          {{ ratePct(derivedRate, 1) }} годовых
         </div>
-
-        <Field label="Название">
-          <Input v-model="debtName" placeholder="Например, рассрочка на телефон" class="mb-3" />
-        </Field>
-        <Field label="Остаток долга, ₸">
-          <NumField v-model="debtPrincipal" placeholder="600 000" class="mb-3" />
-        </Field>
-        <Field label="Платёж в месяц, ₸">
-          <NumField v-model="debtPayment" placeholder="55 000" class="mb-3" />
-        </Field>
-
-        <Field label="Проценты">
-          <Segmented
-            v-model="debtMode"
-            :options="[
-              { value: 'none', label: 'Без них' },
-              { value: 'rate', label: 'Знаю ставку' },
-              { value: 'term', label: 'Знаю срок' },
-            ]"
-          />
-        </Field>
-        <p v-if="debtMode === 'none'" class="-mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-3">
-          Рассрочка: платите ровно столько, сколько должны. Приложение посчитает, что долг
-          закроется за {{ plainMonths || '—' }} {{ plural(plainMonths, 'платёж', 'платежа', 'платежей') }}.
-        </p>
-
-        <Field v-if="debtMode === 'rate'" label="Ставка (ГЭСВ), % годовых">
-          <NumField v-model="debtRate" kind="rate" placeholder="23,4" class="mb-3" />
-        </Field>
-        <Field v-if="debtMode === 'term'" label="Сколько платежей осталось">
-          <NumField v-model="debtTerm" kind="int" placeholder="12" class="mb-3" />
-        </Field>
-
-        <div
-          v-if="debtMode === 'term' && termMonths > 0 && paymentVal > 0 && derivedRate !== null"
-          class="mb-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3"
-        >
-          <span class="text-[12.5px] text-ink-2">Ставка получается</span>
-          <div class="font-display text-[20px] font-semibold tracking-[-0.02em] num text-ink">
-            {{ ratePct(derivedRate, 1) }} годовых
-          </div>
-        </div>
-
-        <div v-if="mismatch" class="mb-3 rounded-xl border border-warn-line bg-warn-soft px-3.5 py-3">
-          <p class="text-[12.5px] leading-relaxed text-ink-2">
-            {{ termMonths }} {{ plural(termMonths, 'платёж', 'платежа', 'платежей') }} по {{ plain(paymentVal) }} — это
-            {{ plain(mismatch.paid) }} ₸, а остаток вы указали {{ plain(leftPrincipal) }} ₸.{{
-              mismatch.gap > 0
-                ? ` Не хватает ${plain(mismatch.gap)} ₸: похоже, платежей ${mismatch.suggest}, а не ${termMonths}.`
-                : ' Выходит больше остатка — видимо, в платёж входит что-то ещё.'
-            }}
-          </p>
-          <p class="mt-2 text-[12.5px] leading-relaxed text-ink-3">
-            Записать всё равно можно: сохраним как рассрочку без процентов, а ставку
-            поправите, когда сверитесь с банком.
-          </p>
-        </div>
-
-        <Field label="День платежа">
-          <NumField v-model="debtDay" kind="int" class="mb-3" />
-        </Field>
-
-        <Button :disabled="!canCreateDebt" class="w-full mt-2" @click="createDebt">
-          Добавить
-        </Button>
       </div>
-    </div>
+
+      <div v-if="mismatch" class="mb-3 rounded-xl border border-warn-line bg-warn-soft px-3.5 py-3">
+        <p class="text-[12.5px] leading-relaxed text-ink-2">
+          {{ termMonths }} {{ plural(termMonths, 'платёж', 'платежа', 'платежей') }} по {{ plain(paymentVal) }} — это
+          {{ plain(mismatch.paid) }} ₸, а остаток вы указали {{ plain(leftPrincipal) }} ₸.{{
+            mismatch.gap > 0
+              ? ` Не хватает ${plain(mismatch.gap)} ₸: похоже, платежей ${mismatch.suggest}, а не ${termMonths}.`
+              : ' Выходит больше остатка — видимо, в платёж входит что-то ещё.'
+          }}
+        </p>
+        <p class="mt-2 text-[12.5px] leading-relaxed text-ink-3">
+          Записать всё равно можно: сохраним как рассрочку без процентов, а ставку
+          поправите, когда сверитесь с банком.
+        </p>
+      </div>
+
+      <Field label="День платежа">
+        <NumField v-model="debtDay" kind="int" class="mb-3" />
+      </Field>
+
+      <Button :disabled="!canCreateDebt" class="w-full mt-2" @click="createDebt">
+        Добавить
+      </Button>
+    </Sheet>
 
     <!-- МОДАЛКА: Детальный просмотр кредита -->
-    <div
-      v-if="activeCredit"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
-      @click.self="selectedCreditId = null"
-    >
-      <div class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-2xl border border-line bg-surface p-5 shadow-2xl text-left">
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="font-display text-[17px] font-semibold text-ink">{{ activeCredit.name }}</h3>
-          <button
-            type="button"
-            aria-label="Закрыть"
-            class="grid size-7 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
-            @click="selectedCreditId = null"
-          >
-            <PhX :size="16" />
-          </button>
-        </div>
-
+    <Sheet :open="!!activeCredit" :title="activeCredit?.name ?? ''" @close="selectedCreditId = null">
+      <template v-if="activeCredit">
         <div class="mb-3 rounded-xl border border-line bg-surface-2 p-3 text-[13px] flex flex-col gap-1.5">
           <div class="flex justify-between">
             <span class="text-ink-2">Остаток долга</span>
@@ -1201,106 +1106,71 @@ onUnmounted(() => {
           warning="Долг исчезнет из бюджета и графика выплат."
           @confirm="() => { financeStore.removeCredit(activeCredit!.id); selectedCreditId = null }"
         />
-      </div>
-    </div>
+      </template>
+    </Sheet>
 
     <!-- МОДАЛКА: Добавить обязательство / подписку -->
-    <div
-      v-if="addObligationOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
-      @click.self="addObligationOpen = false"
-    >
-      <div class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-2xl border border-line bg-surface p-5 shadow-2xl text-left">
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="font-display text-[17px] font-semibold text-ink">Регулярный платёж</h3>
+    <Sheet :open="addObligationOpen" title="Регулярный платёж" @close="addObligationOpen = false">
+      <Field label="Что оплачиваем">
+        <Input v-model="obName" placeholder="Интернет, абонемент, страховка…" class="mb-3" />
+      </Field>
+
+      <Field label="Как часто" group>
+        <Segmented
+          v-model="obEvery"
+          :options="[
+            { value: 'month', label: 'Каждый месяц' },
+            { value: 'year', label: 'Раз в год' },
+          ]"
+          class="mb-3"
+        />
+      </Field>
+
+      <Field :label="obEvery === 'year' ? 'Сумма за год, ₸' : 'Сумма в месяц, ₸'">
+        <NumField v-model="obAmount" placeholder="5 000" class="mb-3" />
+      </Field>
+
+      <Field v-if="obEvery === 'year'" label="Месяц списания">
+        <Select
+          v-model="obMonth"
+          class="mb-3"
+          :options="MONTHS_NOM.map((m, i) => ({ value: String(i + 1), label: m }))"
+        />
+      </Field>
+
+      <Field label="День платежа">
+        <NumField v-model="obDay" kind="int" class="mb-3" />
+      </Field>
+
+      <Field v-if="people.length > 1" label="Чьё это" group>
+        <div class="flex gap-1.5 mb-3">
           <button
             type="button"
-            aria-label="Закрыть"
-            class="grid size-7 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
-            @click="addObligationOpen = false"
+            :class="cn('rounded-lg border px-3 py-1.5 text-[12.5px] cursor-pointer', obWho === 'all' ? 'border-brand bg-brand-soft text-brand font-medium' : 'border-line text-ink-2')"
+            @click="obWho = 'all'"
           >
-            <PhX :size="16" />
+            Общее
+          </button>
+          <button
+            v-for="p in people"
+            :key="p.id"
+            type="button"
+            :class="cn('rounded-lg border px-3 py-1.5 text-[12.5px] cursor-pointer', obWho === p.id ? 'border-brand bg-brand-soft text-brand font-medium' : 'border-line text-ink-2')"
+            @click="obWho = p.id"
+          >
+            {{ p.name }}
           </button>
         </div>
+      </Field>
 
-        <Field label="Что оплачиваем">
-          <Input v-model="obName" placeholder="Интернет, абонемент, страховка…" class="mb-3" />
-        </Field>
-
-        <Field label="Как часто">
-          <Segmented
-            v-model="obEvery"
-            :options="[
-              { value: 'month', label: 'Каждый месяц' },
-              { value: 'year', label: 'Раз в год' },
-            ]"
-            class="mb-3"
-          />
-        </Field>
-
-        <Field :label="obEvery === 'year' ? 'Сумма за год, ₸' : 'Сумма в месяц, ₸'">
-          <NumField v-model="obAmount" placeholder="5 000" class="mb-3" />
-        </Field>
-
-        <Field v-if="obEvery === 'year'" label="Месяц списания">
-          <select
-            v-model="obMonth"
-            class="mb-3 w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[14px] text-ink"
-          >
-            <option v-for="(m, i) in MONTHS_NOM" :key="m" :value="String(i + 1)">{{ m }}</option>
-          </select>
-        </Field>
-
-        <Field label="День платежа">
-          <NumField v-model="obDay" kind="int" class="mb-3" />
-        </Field>
-
-        <Field v-if="people.length > 1" label="Чьё это">
-          <div class="flex gap-1.5 mb-3">
-            <button
-              type="button"
-              :class="cn('rounded-lg border px-3 py-1.5 text-[12.5px] cursor-pointer', obWho === 'all' ? 'border-brand bg-brand-soft text-brand font-medium' : 'border-line text-ink-2')"
-              @click="obWho = 'all'"
-            >
-              Общее
-            </button>
-            <button
-              v-for="p in people"
-              :key="p.id"
-              type="button"
-              :class="cn('rounded-lg border px-3 py-1.5 text-[12.5px] cursor-pointer', obWho === p.id ? 'border-brand bg-brand-soft text-brand font-medium' : 'border-line text-ink-2')"
-              @click="obWho = p.id"
-            >
-              {{ p.name }}
-            </button>
-          </div>
-        </Field>
-
-        <Button :disabled="!canCreateObligation" class="w-full mt-2" @click="createObligation">
-          Добавить платёж
-        </Button>
-      </div>
-    </div>
+      <Button :disabled="!canCreateObligation" class="w-full mt-2" @click="createObligation">
+        Добавить платёж
+      </Button>
+    </Sheet>
 
     <!-- МОДАЛКА: Обязательство (правка и запланированное изменение) -->
-    <div
-      v-if="activeObligation"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
-      @click.self="selectedObligationId = null"
-    >
-      <div class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-2xl border border-line bg-surface p-5 shadow-2xl text-left">
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="font-display text-[17px] font-semibold text-ink">{{ activeObligation.name }}</h3>
-          <button
-            type="button"
-            aria-label="Закрыть"
-            class="grid size-7 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
-            @click="selectedObligationId = null"
-          >
-            <PhX :size="16" />
-          </button>
-        </div>
-
+    <Sheet :open="!!activeObligation" :title="activeObligation?.name ?? ''" @close="selectedObligationId = null">
+      <template v-if="activeObligation">
         <div v-if="obligationDue" class="mb-3 rounded-xl border border-line px-3">
           <PaidRow
             dense
@@ -1313,17 +1183,13 @@ onUnmounted(() => {
           />
         </div>
 
-        <div v-if="isSubscription(activeObligation) && groups.length" class="mb-3.5 flex flex-col gap-1.5">
-          <span class="text-[12.5px] font-medium text-ink-3">Группа</span>
-          <select
-            :value="activeObligation.parentId ?? ''"
-            class="w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[14px] text-ink"
-            @change="(e) => financeStore.moveToGroup(activeObligation!.id, (e.target as HTMLSelectElement).value || null)"
-          >
-            <option value="">Без группы</option>
-            <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
-          </select>
-        </div>
+        <Field v-if="isSubscription(activeObligation) && groups.length" label="Группа">
+          <Select
+            :model-value="activeObligation.parentId ?? ''"
+            :options="[{ value: '', label: 'Без группы' }, ...groups.map((g) => ({ value: g.id, label: g.name }))]"
+            @update:model-value="(v) => financeStore.moveToGroup(activeObligation!.id, v || null)"
+          />
+        </Field>
 
         <Field label="Сумма сейчас, ₸">
           <NumField
@@ -1350,14 +1216,10 @@ onUnmounted(() => {
             <NumField v-model="obNewAmount" placeholder="Новая сумма" />
           </Field>
           <Field label="С какого месяца">
-            <select
+            <Select
               v-model="obFromMonth"
-              class="w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-[14px] text-ink"
-            >
-              <option v-for="m in plannedObligationMonths" :key="m" :value="m">
-                {{ monthTitle(m) }}
-              </option>
-            </select>
+              :options="plannedObligationMonths.map((m) => ({ value: m, label: monthTitle(m) }))"
+            />
           </Field>
           <Field label="Причина">
             <Input v-model="obReason" placeholder="Переезд, индексация…" />
@@ -1397,67 +1259,33 @@ onUnmounted(() => {
           warning="Обязательство исчезнет из бюджета и планов."
           @confirm="() => { financeStore.removeObligation(activeObligation!.id); selectedObligationId = null }"
         />
-      </div>
-    </div>
+      </template>
+    </Sheet>
 
     <!-- МОДАЛКА: Новая группа подписок -->
-    <div
-      v-if="addGroupOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
-      @click.self="addGroupOpen = false"
-    >
-      <div class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-2xl border border-line bg-surface p-5 shadow-2xl text-left">
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="font-display text-[17px] font-semibold text-ink">Группа подписок</h3>
+    <Sheet :open="addGroupOpen" title="Группа подписок" @close="addGroupOpen = false">
+      <Field label="Название">
+        <Input v-model="groupName" placeholder="Рабочие, досуг, для дома…" class="mb-3" />
+      </Field>
+      <Field label="Спрашивать «оставить?»" group>
+        <div class="grid grid-cols-2 gap-2">
           <button
+            v-for="opt in NO_ASK_OPTIONS"
+            :key="opt.label"
             type="button"
-            aria-label="Закрыть"
-            class="grid size-7 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
-            @click="addGroupOpen = false"
+            :class="cn('rounded-xl border px-3 py-2.5 text-[13px] font-medium transition-colors cursor-pointer', groupNoAsk === opt.value ? 'border-brand bg-brand-soft text-brand' : 'border-line bg-surface-2 text-ink-2')"
+            @click="groupNoAsk = opt.value"
           >
-            <PhX :size="16" />
+            {{ opt.label }}
           </button>
         </div>
-        <Field label="Название">
-          <Input v-model="groupName" placeholder="Рабочие, досуг, для дома…" class="mb-3" />
-        </Field>
-        <div class="mb-3.5 flex flex-col gap-1.5">
-          <span class="text-[12.5px] font-medium text-ink-3">Спрашивать «оставить?»</span>
-          <div class="grid grid-cols-2 gap-2">
-            <button
-              v-for="opt in NO_ASK_OPTIONS"
-              :key="opt.label"
-              type="button"
-              :class="cn('rounded-xl border px-3 py-2.5 text-[13px] font-medium transition-colors cursor-pointer', groupNoAsk === opt.value ? 'border-brand bg-brand-soft text-brand' : 'border-line bg-surface-2 text-ink-2')"
-              @click="groupNoAsk = opt.value"
-            >
-              {{ opt.label }}
-            </button>
-          </div>
-        </div>
-        <Button :disabled="!groupName.trim()" class="w-full" @click="createGroup">Создать группу</Button>
-      </div>
-    </div>
+      </Field>
+      <Button :disabled="!groupName.trim()" class="w-full" @click="createGroup">Создать группу</Button>
+    </Sheet>
 
     <!-- МОДАЛКА: Группа подписок — название, флаг, подписки -->
-    <div
-      v-if="activeGroup"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
-      @click.self="selectedGroupId = null"
-    >
-      <div class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-2xl border border-line bg-surface p-5 shadow-2xl text-left">
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="font-display text-[17px] font-semibold text-ink">{{ activeGroup.name }}</h3>
-          <button
-            type="button"
-            aria-label="Закрыть"
-            class="grid size-7 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
-            @click="selectedGroupId = null"
-          >
-            <PhX :size="16" />
-          </button>
-        </div>
-
+    <Sheet :open="!!activeGroup" :title="activeGroup?.name ?? ''" @close="selectedGroupId = null">
+      <template v-if="activeGroup">
         <Field label="Название">
           <Input
             :default-value="activeGroup.name"
@@ -1469,8 +1297,7 @@ onUnmounted(() => {
           />
         </Field>
 
-        <div class="mb-3.5 flex flex-col gap-1.5">
-          <span class="text-[12.5px] font-medium text-ink-3">Спрашивать «оставить?»</span>
+        <Field label="Спрашивать «оставить?»" group>
           <div class="grid grid-cols-2 gap-2">
             <button
               v-for="opt in NO_ASK_OPTIONS"
@@ -1482,7 +1309,7 @@ onUnmounted(() => {
               {{ opt.label }}
             </button>
           </div>
-        </div>
+        </Field>
 
         <div class="mb-3 rounded-xl border border-line bg-surface-2 p-3 text-[13px]">
           <div class="mb-1 flex justify-between">
@@ -1506,17 +1333,13 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div v-if="groupCandidates.length" class="mb-3.5 flex flex-col gap-1.5">
-          <span class="text-[12.5px] font-medium text-ink-3">Добавить подписку</span>
-          <select
-            value=""
-            class="w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[14px] text-ink"
-            @change="(e) => { const el = e.target as HTMLSelectElement; if (el.value) financeStore.moveToGroup(el.value, activeGroup!.id); el.value = '' }"
-          >
-            <option value="">Выберите…</option>
-            <option v-for="o in groupCandidates" :key="o.id" :value="o.id">{{ o.name }}</option>
-          </select>
-        </div>
+        <Field v-if="groupCandidates.length" label="Добавить подписку">
+          <Select
+            model-value=""
+            :options="[{ value: '', label: 'Выберите…' }, ...groupCandidates.map((o) => ({ value: o.id, label: o.name }))]"
+            @update:model-value="(v) => v && financeStore.moveToGroup(v, activeGroup!.id)"
+          />
+        </Field>
 
         <Button class="w-full mb-3" @click="selectedGroupId = null">Готово</Button>
 
@@ -1525,28 +1348,12 @@ onUnmounted(() => {
           warning="Группа исчезнет, подписки останутся — просто без группы."
           @confirm="() => { financeStore.removeGroup(activeGroup!.id); selectedGroupId = null }"
         />
-      </div>
-    </div>
+      </template>
+    </Sheet>
 
     <!-- МОДАЛКА: Калькулятор досрочного погашения (Payoff) -->
-    <div
-      v-if="activePayoffCredit"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
-      @click.self="payoffCreditId = null"
-    >
-      <div class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-2xl border border-line bg-surface p-5 shadow-2xl text-left">
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="font-display text-[17px] font-semibold text-ink">Досрочное погашение</h3>
-          <button
-            type="button"
-            aria-label="Закрыть"
-            class="grid size-7 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
-            @click="payoffCreditId = null"
-          >
-            <PhX :size="16" />
-          </button>
-        </div>
-
+    <Sheet :open="!!activePayoffCredit" title="Досрочное погашение" @close="payoffCreditId = null">
+      <template v-if="activePayoffCredit">
         <div class="mb-3 rounded-xl border border-line bg-surface-2 p-3 text-[13px] flex flex-col gap-1">
           <div class="font-medium text-ink">{{ activePayoffCredit.name }}</div>
           <div class="flex justify-between">
@@ -1561,7 +1368,7 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <Field label="Как вносите">
+        <Field label="Как вносите" group>
           <Segmented
             v-model="payoffMode"
             :options="[
@@ -1638,16 +1445,13 @@ onUnmounted(() => {
             Не отдадим банку <b class="num text-brand">{{ money(applyPlan.saved) }}</b>
           </div>
           <Field label="Откуда списать">
-            <select
-              v-model="applyAccount"
-              class="w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[14px] text-ink"
-            >
+            <Select v-model="applyAccount">
               <option value="" disabled>Выберите счёт…</option>
               <option v-for="a in applyAccounts" :key="a.id" :value="a.id">
                 {{ a.name }} · {{ money(a.amount) }}
               </option>
               <option value="none">Не списывать — только отметить</option>
-            </select>
+            </Select>
           </Field>
           <Button class="w-full" :disabled="!applyAccount" @click="applyPrepay">Применить досрочку</Button>
         </div>
@@ -1720,77 +1524,57 @@ onUnmounted(() => {
         </div>
 
         <Button class="w-full" @click="payoffCreditId = null">Закрыть</Button>
-      </div>
-    </div>
+      </template>
+    </Sheet>
 
     <!-- МОДАЛКА: Внеплановый доход -->
-    <div
-      v-if="extraIncomeOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
-      @click.self="extraIncomeOpen = false"
-    >
-      <div class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-2xl border border-line bg-surface p-5 shadow-2xl text-left">
-        <div class="mb-3 flex items-center justify-between">
-          <h3 class="font-display text-[17px] font-semibold text-ink">Внеплановый доход</h3>
+    <Sheet :open="extraIncomeOpen" title="Внеплановый доход" @close="extraIncomeOpen = false">
+      <p class="-mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-2">
+        Премия, подарок, возврат налога — то, чего нет в плане месяца. Направьте сразу,
+        пока деньги не разошлись по мелочам.
+      </p>
+
+      <Field label="Сумма, ₸">
+        <NumField v-model="extraIncomeAmount" placeholder="50 000" class="mb-3" />
+      </Field>
+
+      <Field v-if="people.length > 1" label="Кому пришло" group>
+        <div class="flex gap-2 mb-3">
           <button
+            v-for="p in people"
+            :key="p.id"
             type="button"
-            aria-label="Закрыть"
-            class="grid size-7 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
-            @click="extraIncomeOpen = false"
+            :class="cn('rounded-xl border px-3 py-2 text-[13px] flex-1 cursor-pointer', extraIncomeBy === p.id ? 'border-brand bg-brand-soft text-brand font-medium' : 'border-line text-ink-2')"
+            @click="extraIncomeBy = p.id"
           >
-            <PhX :size="16" />
+            {{ p.name }}
           </button>
         </div>
-        <p class="-mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-2">
-          Премия, подарок, возврат налога — то, чего нет в плане месяца. Направьте сразу,
-          пока деньги не разошлись по мелочам.
-        </p>
+      </Field>
 
-        <Field label="Сумма, ₸">
-          <NumField v-model="extraIncomeAmount" placeholder="50 000" class="mb-3" />
-        </Field>
+      <Field label="Куда направить">
+        <Select v-model="extraIncomeTarget" class="mb-3">
+          <option value="">Выберите…</option>
+          <optgroup v-if="goals.length > 0" label="В цель">
+            <option v-for="g in goals" :key="g.id" :value="`goal:${g.id}`">
+              {{ g.name }}
+            </option>
+          </optgroup>
+          <optgroup v-if="accounts.length > 0" label="На счёт">
+            <option v-for="a in accounts" :key="a.id" :value="`account:${a.id}`">
+              {{ a.name }}
+            </option>
+          </optgroup>
+        </Select>
+      </Field>
 
-        <Field v-if="people.length > 1" label="Кому пришло">
-          <div class="flex gap-2 mb-3">
-            <button
-              v-for="p in people"
-              :key="p.id"
-              type="button"
-              :class="cn('rounded-xl border px-3 py-2 text-[13px] flex-1 cursor-pointer', extraIncomeBy === p.id ? 'border-brand bg-brand-soft text-brand font-medium' : 'border-line text-ink-2')"
-              @click="extraIncomeBy = p.id"
-            >
-              {{ p.name }}
-            </button>
-          </div>
-        </Field>
+      <p v-if="!goals.length && !accounts.length" class="mb-3 text-[12.5px] text-ink-3">
+        Сначала заведите цель или счёт — иначе деньги некуда положить.
+      </p>
 
-        <Field label="Куда направить">
-          <select
-            v-model="extraIncomeTarget"
-            class="w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[14px] text-ink mb-3"
-          >
-            <option value="">Выберите…</option>
-            <optgroup v-if="goals.length > 0" label="В цель">
-              <option v-for="g in goals" :key="g.id" :value="`goal:${g.id}`">
-                {{ g.name }}
-              </option>
-            </optgroup>
-            <optgroup v-if="accounts.length > 0" label="На счёт">
-              <option v-for="a in accounts" :key="a.id" :value="`account:${a.id}`">
-                {{ a.name }}
-              </option>
-            </optgroup>
-          </select>
-        </Field>
-
-        <p v-if="!goals.length && !accounts.length" class="mb-3 text-[12.5px] text-ink-3">
-          Сначала заведите цель или счёт — иначе деньги некуда положить.
-        </p>
-
-        <Button :disabled="!canApplyExtraIncome" class="w-full mt-1" @click="applyExtraIncome">
-          Записать
-        </Button>
-      </div>
-    </div>
+      <Button :disabled="!canApplyExtraIncome" class="w-full mt-1" @click="applyExtraIncome">
+        Записать
+      </Button>
+    </Sheet>
   </div>
 </template>

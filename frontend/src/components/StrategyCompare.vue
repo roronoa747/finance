@@ -104,7 +104,7 @@ function toggleKept(id: string, on: boolean) {
       </Hint>
     </div>
 
-    <Field label="Горизонт">
+    <Field label="Горизонт" group>
       <Segmented v-model="horizon" :options="[...HORIZONS]" />
     </Field>
 
