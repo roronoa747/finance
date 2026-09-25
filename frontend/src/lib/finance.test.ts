@@ -27,6 +27,7 @@ import {
   prepayOutcome,
   payoffChips,
   payoffLadder,
+  plannedChange,
   fxToTenge,
   paymentSplit,
   creditTotals,
@@ -1247,6 +1248,19 @@ describe('Н-1 ревью Блока 2 — калькулятор досрочк
     }
     expect(payoffLadder(stuck)).toEqual([])
     expect(payoffLadder({ ...loan, principal: 0 })).toEqual([])
+  })
+})
+
+describe('PV-11 — запланированная смена суммы (клинап, исключение из Р-2)', () => {
+  it('plannedChange: месячное — разница в месяц и ×12 за год; годовое — разница / 12 в месяц и сама разница за год', () => {
+    expect(plannedChange(200_000, 180_000)).toEqual({ monthly: -20_000, yearly: -240_000 })
+    expect(plannedChange(200_000, 180_000, 'month')).toEqual({ monthly: -20_000, yearly: -240_000 })
+    // Страховка 60 000 → 48 000 в год: 1 000 в месяц, 12 000 за год (React писал 12 000 / 144 000).
+    expect(plannedChange(60_000, 48_000, 'year')).toEqual({ monthly: -1_000, yearly: -12_000 })
+    expect(plannedChange(60_000, 72_000, 'year')).toEqual({ monthly: 1_000, yearly: 12_000 })
+    // Новой суммы нет — изменения нет.
+    expect(plannedChange(60_000, 0, 'year')).toEqual({ monthly: 0, yearly: 0 })
+    expect(Number.isInteger(plannedChange(60_000, 59_000, 'year').monthly)).toBe(true)
   })
 })
 

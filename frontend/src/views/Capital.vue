@@ -634,7 +634,9 @@ const obCurrent = computed(() => (activeObligation.value ? amountAt(activeObliga
 const plannedObligationMonths = computed(() =>
   Array.from({ length: 13 }, (_, i) => addMonths(key.value, i)),
 )
-const obChange = computed(() => plannedChange(obCurrent.value, parseMoney(obNewAmount.value)))
+const obChange = computed(() =>
+  plannedChange(obCurrent.value, parseMoney(obNewAmount.value), activeObligation.value?.every),
+)
 /** История суммы — новые сверху (React `ObligationDialog`). */
 const obHistory = computed(() =>
   [...(activeObligation.value?.versions ?? [])].sort((a, b) => b.from.localeCompare(a.from)),

@@ -709,9 +709,13 @@ describe('PV-11: форма платежа и модалка обязатель�
     await family()
     const html = await render('/capital?obligation=ins', { obPlanning: true, obNewAmount: '48 000', obFromMonth: '2026-11' })
     expect(html).toContain(`placeholder="${plain(60_000)}"`)
+    // Годовое 60 000 → 48 000: 1 000 в месяц, 12 000 за год (исключение из Р-2; React — 12 000 / 144 000).
     expect(html).toContain(
-      `С ноября 2026 освободится <b>${money(12_000)}</b> в месяц — ${money(144_000)} за год. Приложение предложит решить, куда их направить.`,
+      `С ноября 2026 освободится <b>${money(1_000)}</b> в месяц — ${money(12_000)} за год. Приложение предложит решить, куда их направить.`,
     )
+    // Месячное — как было: разница в месяц и ×12 за год.
+    const rent = await render('/capital?obligation=rent', { obPlanning: true, obNewAmount: '180 000', obFromMonth: '2026-10' })
+    expect(rent).toContain(`освободится <b>${money(20_000)}</b> в месяц — ${money(240_000)} за год.`)
     expect(html).toContain(
       'Месяц, который выберете, оплачивается уже по новой сумме. Если переезд в середине месяца, ставьте следующий: за текущий вы платите по-старому.',
     )

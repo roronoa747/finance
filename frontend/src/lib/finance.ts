@@ -749,11 +749,13 @@ export const yearShare = (yearly: number) => Math.round(yearly / 12);
 
 /**
  * Запланированная смена суммы обязательства: насколько платёж изменится в месяц и
- * за год. Новой суммы нет — изменения нет.
+ * за год. Новой суммы нет — изменения нет. У годового сумма — за год: в месяц это
+ * двенадцатая часть разницы, за год — сама разница (исключение из Р-2: React
+ * умножал разницу годовой суммы ещё на 12, `memory/decisions/r2-exceptions-pv-block2.md`).
  */
-export function plannedChange(current: number, planned: number) {
-  const monthly = planned > 0 ? Math.round(planned - current) : 0;
-  return { monthly, yearly: monthly * 12 };
+export function plannedChange(current: number, planned: number, every?: Obligation['every']) {
+  const diff = planned > 0 ? Math.round(planned - current) : 0;
+  return every === 'year' ? { monthly: yearShare(diff), yearly: diff } : { monthly: diff, yearly: diff * 12 };
 }
 
 /** Списывается ли этот платёж в указанном месяце. Группа подписок не списывается никогда. */
