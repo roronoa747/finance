@@ -176,4 +176,38 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
       expect(next).toMatchObject({ period: '2026-10', targetId: 'cc', accountId: 'card' })
     })
   })
+
+  describe('PV-17 — конец плана', () => {
+    it('досрочка на весь остаток последнего процентного долга → у обоих план в истории с итогом, паузы сняты', async () => {
+      // Один процентный долг — кредитка; рассрочка 0% план не держит.
+      server.data.credits = server.data.credits.filter((c) => c.id !== 'loan')
+      const A = await phone(server)
+      const B = await phone(server)
+      on(A).store.choosePlan({ keptGoalIds: [], cushionGoalId: 'cushion', months: 12, lump: 0 }, 'a')
+      const step = A.store.applyPlanStep('a', { accountId: 'card' })!
+      expect(step.amount).toBe(100_000)
+      await A.store.syncHousehold(A.client)
+      await on(B).store.pullHousehold(B.client)
+      expect(await screen(B.pinia, Goals, '/goals')).toContain('На паузе ради плана')
+
+      // Остаток кредитки — одной досрочкой с телефона B.
+      at('2026-09-26T07:00:00Z')
+      const left = B.store.credits.find((c) => c.id === 'cc')!.principal
+      on(B).store.applyPrepayment('cc', 'b', { amount: left, mode: 'term', accountId: 'card' })
+      expect(B.store.activePlan).toBeNull()
+      expect(B.store.plans[0]).toMatchObject({ status: 'done', result: { savedInterest: step.saved } })
+      await B.store.syncHousehold(B.client)
+      await on(A).store.pullHousehold(A.client)
+
+      for (const p of [A, B]) {
+        expect(p.store.activePlan).toBeNull()
+        expect(p.store.plans[0].status).toBe('done')
+        expect(await screen(p.pinia, Goals, '/goals')).not.toContain('На паузе ради плана')
+        const plan = await screen(p.pinia, DebtPlan, '/plan')
+        expect(plan).toContain('Долги с процентами закрыты — цели возобновились')
+        expect(plan).toContain(`Сентябрь 2026: сэкономили ${money(step.saved ?? 0)} процентов`)
+      }
+      expect(await screen(A.pinia, Budget, '/budget')).not.toContain('Досрочно по плану')
+    })
+  })
 })

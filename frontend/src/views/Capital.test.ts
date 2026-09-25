@@ -1112,3 +1112,31 @@ describe('PV-16: шаг плана в строке кредита (SSR)', () => 
     expect(store.applyPlanStep('a', { accountId: 'card' })).toBeNull()
   })
 })
+
+describe('PV-17 (Р-8): график в окне кредита — с шагами плана у кредита-цели', () => {
+  const storage = new Map<string, string>()
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('кредит плана — строки графика с досрочками шагов; другой кредит — без них', async () => {
+    const store = useFinanceStore()
+    store.setHouseholdDoc(planFamilyDoc({ plans: [planOf()] }), 1)
+    const cc = await renderScreen(Capital, '/capital?credit=cc', undefined, [screenMixin({ scheduleOpen: true })])
+    expect(cc).toContain(`досрочка ${plain(100_000)}`)
+    const loan = await renderScreen(Capital, '/capital?credit=loan', undefined, [screenMixin({ scheduleOpen: true })])
+    expect(loan).toContain('График платежей')
+    expect(loan).not.toContain('досрочка ')
+    expect(store.status).toBe('idle')
+  })
+})

@@ -1634,3 +1634,47 @@ export function settlePlans(plans: DebtPlan[] = [], credits: Credit[], payments:
   })
   return changed ? next : null
 }
+
+/**
+ * На сколько месяцев цель на паузе ради плана (PV-17, Р-6): с месяца старта по `key`
+ * включительно, у закрытого плана — по месяц конца. Каждый такой месяц взнос шёл в
+ * долги, и дата цели сдвигается на столько же. Цель «не останавливать» и подушка — 0.
+ */
+export function pauseShift(plan: DebtPlan, goal: Goal, key: string): number {
+  if (plan.keptGoalIds.includes(goal.id) || plan.cushionGoalId === goal.id) return 0
+  const start = planStartMonth(plan)
+  const end = plan.endedAt ? monthKey(new Date(plan.endedAt)) : key
+  const last = end < key ? end : key
+  if (last < start) return 0
+  const a = parseMonthKey(start)
+  const b = parseMonthKey(last)
+  return (b.year - a.year) * 12 + (b.month - a.month) + 1
+}
+
+/** Сколько не ушло в цель за паузу: взнос × месяцы паузы (Р-6). */
+export const pauseMissed = (plan: DebtPlan, goal: Goal, key: string) => goal.monthly * pauseShift(plan, goal, key)
+
+/**
+ * График платежей долга, который план гасит сейчас (PV-17, Р-8): `creditSchedule` с
+ * будущими шагами плана — в этом месяце сумма шага (внесённый уже в графике, подушка —
+ * ноль), дальше каждый месяц то, что план направляет в долги, пока долг не закроется.
+ * Закрылся самый дорогой — график следующего по ставке. null — долгов с процентами нет.
+ */
+export function planSchedule(
+  plan: DebtPlan,
+  state: PlanState,
+  key: string,
+): { creditId: string; rows: ScheduleRow[] } | null {
+  const credits = state.credits ?? []
+  const payments = state.payments ?? []
+  const target = costliestCredits(credits)[0]
+  if (!target) return null
+  const step = planStep(plan, state, key)
+  const now = step.kind === 'prepay' && !step.applied ? step.amount : 0
+  const monthly = planExtra(plan, state.goals ?? [], credits, payments, key)
+  const extra = [{ period: key, amount: now }]
+  // Каждый месяц в долг уходит не меньше шага: дальше закрытия шаги не нужны.
+  const months = monthly > 0 ? Math.min(SCHEDULE_CAP, Math.ceil(target.principal / monthly) + 1) : 0
+  for (let i = 1; i <= months; i++) extra.push({ period: addMonths(key, i), amount: monthly })
+  return { creditId: target.id, rows: creditSchedule(target, payments, { from: key, extra }) }
+}

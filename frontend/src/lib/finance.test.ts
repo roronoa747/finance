@@ -68,6 +68,9 @@ import {
   planFact,
   planMonths,
   settlePlans,
+  pauseShift,
+  pauseMissed,
+  planSchedule,
   type PlanState,
 } from './finance'
 import { plain, money, moneyShort, parseMoney, pct, ratePct } from './money'
@@ -1627,6 +1630,50 @@ describe('PV-14 — план «Сначала долги»: модель и ра
     ]
     const done = settlePlans([late], derived(credits(), payments), payments, t)!
     expect(done[0]).toMatchObject({ status: 'done', endedAt: t, result: { savedInterest: 430_000 } })
+  })
+
+  describe('PV-17 — пауза целей и график с шагами плана', () => {
+    it('pauseShift: цель на паузе с сентября по ноябрь — 3 мес.; подушка и «не останавливать» — 0; закрытый план — по месяц конца', () => {
+      const trip = goals().find((g) => g.id === 'trip')!
+      expect(pauseShift(plan(), trip, '2026-11')).toBe(3)
+      expect(pauseMissed(plan(), trip, '2026-11')).toBe(3 * 40_000)
+      expect(pauseShift(plan(), goals().find((g) => g.id === 'cushion')!, '2026-11')).toBe(0)
+      expect(pauseShift(plan({ keptGoalIds: ['trip'] }), trip, '2026-11')).toBe(0)
+      expect(pauseShift(plan({ status: 'done', endedAt: '2026-10-20T00:00:00.000Z' }), trip, '2027-03')).toBe(2)
+      // Через год: декабрь → январь считается как соседние месяцы.
+      expect(pauseShift(plan(), trip, '2027-01')).toBe(5)
+    })
+
+    it('planSchedule: шаги до закрытия долга; Σ досрочек и тела платежей = остаток; после закрытия — следующий долг', () => {
+      const s = state({ cushionHave: 400_000 })
+      const sched = planSchedule(plan(), s, '2026-09')!
+      expect(sched.creditId).toBe('cc')
+      const rows = sched.rows
+      expect(rows[0]).toMatchObject({ period: '2026-09', extra: 100_000 })
+      expect(rows.at(-1)!.left).toBe(0)
+      expect(rows.reduce((a, r) => a + r.extra + r.body, 0)).toBe(300_000)
+      // Каждый месяц до последнего — полный шаг плана.
+      expect(rows.slice(0, -1).every((r) => r.extra === 100_000)).toBe(true)
+
+      const payments = [prepay('p1', { planId: 'plan', amount: 300_000, principal: 300_000 })]
+      const next = planSchedule(plan(), state({ cushionHave: 400_000, payments }), '2026-10')!
+      expect(next.creditId).toBe('loan')
+      // Кредитка закрыта — её платёж 25 000 идёт в план: шаг 125 000.
+      expect(next.rows[0]).toMatchObject({ period: '2026-10', extra: 125_000 })
+      expect(next.rows.reduce((a, r) => a + r.extra + r.body, 0)).toBe(1_000_000)
+    })
+
+    it('planSchedule: шаг месяца внесён — в этом месяце досрочка из записи, дальше — шаги; подушка — месяц без шага', () => {
+      const payments = [prepay('mine', { planId: 'plan' })]
+      const applied = planSchedule(plan(), state({ cushionHave: 400_000, payments }), '2026-09')!
+      expect(applied.rows[0]).toMatchObject({ period: '2026-09', extra: 100_000 })
+      expect(applied.rows[1]).toMatchObject({ period: '2026-10', extra: 100_000 })
+      expect(applied.rows.reduce((a, r) => a + r.extra + r.body, 0)).toBe(300_000)
+
+      const thin = planSchedule(plan(), state({ cushionHave: 100_000 }), '2026-09')!
+      expect(thin.rows[0].extra).toBe(0)
+      expect(thin.rows[1].extra).toBe(100_000)
+    })
   })
 
   describe('Р-11: досрочка при платеже меньше процентов', () => {

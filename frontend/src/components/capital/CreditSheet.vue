@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { PhCheck } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain, parseMoney, ratePct } from '@/lib/money'
-import { MONTHS_NOM, dayLabel, parseMonthKey } from '@/lib/dates'
-import { creditOutlook, creditSchedule, creditTotals, liveCredits, nextCreditDue, type Due } from '@/lib/finance'
+import { dayLabel, monthKey } from '@/lib/dates'
+import { creditOutlook, creditSchedule, creditTotals, liveCredits, nextCreditDue, planSchedule, type Due } from '@/lib/finance'
 import type { Credit } from '@/types/finance'
-import { cn, plural } from '@/lib/utils'
+import { plural } from '@/lib/utils'
 
 import Field from '@/components/kit/Field.vue'
 import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
@@ -18,6 +17,7 @@ import { useSavedMark } from '@/components/kit/useSavedMark'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import PaidRow from '@/components/PaidRow.vue'
+import ScheduleTable from '@/components/ScheduleTable.vue'
 
 /**
  * Окно кредита Капитала: «Оплатил» за ближайший платёж, правка полей (React
@@ -45,17 +45,16 @@ const activeCreditTotals = computed(() =>
 // График — свёрнут по умолчанию и при смене кредита.
 const scheduleOpen = ref(false)
 watch(() => props.creditId, () => (scheduleOpen.value = false))
-const activeSchedule = computed(() =>
-  activeCredit.value && scheduleOpen.value ? creditSchedule(activeCredit.value, financeStore.payments) : [],
-)
+// Кредит, который гасит активный план, — график с его будущими шагами (Р-8).
+const activeSchedule = computed(() => {
+  const c = activeCredit.value
+  if (!c || !scheduleOpen.value) return []
+  const plan = financeStore.activePlan
+  const withPlan = plan ? planSchedule(plan, financeStore.planState(), monthKey()) : null
+  return withPlan?.creditId === c.id ? withPlan.rows : creditSchedule(c, financeStore.payments)
+})
 /** Ставка в поле правки — как в React: проценты с одним знаком. */
 const rateText = (r: number) => (r * 100).toFixed(1).replace('.', ',')
-
-/** «сен 2026» — месяц в графике платежей. */
-function scheduleMonth(period: string): string {
-  const { year, month } = parseMonthKey(period)
-  return `${MONTHS_NOM[month].slice(0, 3).toLowerCase()} ${year}`
-}
 
 // Поля пишутся по уходу из поля (React `CreditDialog`); остаток — только явным полем:
 // это сверка с банком, она ставит якорь (RP-06).
@@ -220,29 +219,7 @@ watch(
             <span class="text-[13px] font-medium text-ink">График платежей</span>
             <span class="text-[12.5px] text-brand">{{ scheduleOpen ? 'Свернуть' : 'Показать' }}</span>
           </button>
-          <div
-            v-if="scheduleOpen"
-            class="mt-2.5 grid grid-cols-[auto_1fr_1fr_1fr_1fr] gap-x-2 gap-y-1 text-right text-[11.5px] num"
-          >
-            <span class="text-left text-ink-3">Месяц</span>
-            <span class="text-ink-3">Платёж</span>
-            <span class="text-ink-3">В долг</span>
-            <span class="text-ink-3">Банку</span>
-            <span class="text-ink-3">Остаток</span>
-            <template v-for="r in activeSchedule" :key="r.period">
-              <span :class="cn('flex items-center gap-1 text-left', r.paid ? 'text-brand' : 'text-ink-2')">
-                <PhCheck v-if="r.paid" :size="11" weight="bold" aria-label="оплачен" />
-                {{ scheduleMonth(r.period) }}
-              </span>
-              <span :class="r.paid ? 'text-ink-3' : 'text-ink'">{{ plain(r.amount) }}</span>
-              <span :class="r.paid ? 'text-ink-3' : 'text-ink'">{{ plain(r.body) }}</span>
-              <span :class="r.paid ? 'text-ink-3' : 'text-ink'">{{ plain(r.interest) }}</span>
-              <span :class="r.paid ? 'text-ink-3' : 'text-ink'">{{ plain(r.left) }}</span>
-              <span v-if="r.extra > 0" class="col-span-5 -mt-0.5 text-right text-brand">
-                досрочка {{ plain(r.extra) }}
-              </span>
-            </template>
-          </div>
+          <ScheduleTable v-if="scheduleOpen" :rows="activeSchedule" class="mt-2.5" />
         </div>
       </template>
 
