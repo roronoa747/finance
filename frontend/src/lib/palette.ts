@@ -76,6 +76,18 @@ export const ACCENT_KEYS = Object.keys(ACCENTS) as AccentKey[]
 export type ThemeChoice = 'auto' | 'light' | 'dark'
 export type CategoryKey = 'd1' | 'd2' | 'd3' | 'd4' | 'd5'
 
+/**
+ * Имена разделов бюджета, пока семья их не завела: разделы создаются лениво (первая
+ * сумма в плане), а форма платежа должна предложить раздел и в пустом документе.
+ */
+export const DEFAULT_CATEGORY_NAMES: Record<CategoryKey, string> = {
+  d1: 'Жильё',
+  d2: 'Кредиты',
+  d3: 'Цели',
+  d4: 'Еда и быт',
+  d5: 'Свободно',
+}
+
 export function prefersDark(): boolean {
   return typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
 }

@@ -10,8 +10,9 @@ import { useFinanceStore, defaultSyncDoc } from '../src/stores/finance'
 import { ApiClient, ApiError } from '../src/api/client'
 import type { SyncDoc } from '../src/types/finance'
 import type { HouseholdDocResponse, ConflictResponse } from '../src/types/api'
-import { nextCreditDue } from '../src/lib/finance'
+import { budgetAmounts, nextCreditDue } from '../src/lib/finance'
 import Capital from '../src/views/Capital.vue'
+import Overview from '../src/views/Overview.vue'
 
 /**
  * Блок 2 «Правка денег» (PV-09…PV-13): два телефона — два стора Pinia на одном
@@ -145,5 +146,46 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     setActivePinia(A.pinia)
     await A.store.pullHousehold(A.client)
     expect(A.store.credits[0].principal).toBe(960_000)
+  })
+
+  /** Форма Капитала на телефоне: поля заполнены, нажата кнопка формы. */
+  async function submit(pinia: Pinia, path: string, state: Record<string, unknown>, action: string) {
+    setActivePinia(pinia)
+    const router = createAppRouter(createMemoryHistory())
+    await router.push(path)
+    const app = createSSRApp(Capital)
+    app.use(router)
+    app.mixin({
+      created() {
+        if (this.$.parent !== null) return
+        Object.assign(this.$.setupState, state)
+        this.$.setupState[action]()
+      },
+    })
+    await renderToString(app)
+  }
+
+  it('PV-11: коммуналка с оценкой из формы — «До зарплаты» спрашивает сумму; аренда в «Жильё» — d1 Бюджета, не d4', async () => {
+    const A = await phone()
+    const B = await phone()
+
+    at('2026-09-24T08:00:00Z')
+    await submit(A.pinia, '/capital?add=payment', { obName: 'Коммуналка', obAmount: '35 000', obDay: '8', obCategory: 'd1', obEstimate: true }, 'createObligation')
+    await submit(A.pinia, '/capital?add=payment', { obName: 'Гараж', obAmount: '30 000', obDay: '9', obCategory: 'd1' }, 'createObligation')
+    const util = A.store.obligations.find((o) => o.name === 'Коммуналка')!
+    expect(util).toMatchObject({ category: 'd1', estimate: true, day: 8 })
+    await A.store.syncHousehold(A.client)
+
+    setActivePinia(B.pinia)
+    await B.store.pullHousehold(B.client)
+    // «До зарплаты» (до 10 октября): коммуналка 8 октября — с «оценкой», её «Оплатил» откроет лист с суммой.
+    const overview = await screen(B.pinia, Overview, '/')
+    const until = overview.slice(overview.indexOf('Коммуналка'))
+    expect(until.slice(0, until.indexOf('Оплатил'))).toContain('оценка')
+
+    // Жильё — d1 Бюджета: аренда 220 000 + коммуналка 35 000 + гараж 30 000; в d4 их нет.
+    const amounts = budgetAmounts({ ...B.store.householdDoc, credits: B.store.credits })
+    expect(amounts.d1).toBe(285_000)
+    expect(amounts.d4).toBe(0)
   })
 })

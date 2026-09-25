@@ -499,3 +499,171 @@ describe('PV-10: модалка кредита и калькулятор дос�
     expect(withSum).not.toContain('Впишите сумму')
   })
 })
+
+describe('PV-11: форма платежа и модалка обязательства (SSR)', () => {
+  const T0 = '2026-09-01T00:00:00.000Z'
+
+  beforeEach(() => {
+    const storage = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  async function family(role: 'member' | 'viewer' = 'member', withCategories = true) {
+    const { useAuthStore } = await import('@/stores/auth')
+    const { defaultSyncDoc } = await import('@/stores/finance')
+    useAuthStore().setAuthData({
+      token: 't',
+      user: { id: 'u', email: 'u@example.com', created_at: T0 },
+      household: { id: 'h', name: 'Семья', created_by: 'u', created_at: T0 },
+      member: { household_id: 'h', user_id: 'u', slot: 'a', display_name: 'Ильяс', role, joined_at: T0 },
+    })
+    useFinanceStore().setHouseholdDoc(
+      {
+        ...defaultSyncDoc(),
+        setupDoneAt: T0,
+        people: [
+          { id: 'a', name: 'Ильяс', salary: 700_000, payday: 10, updatedAt: T0 },
+          { id: 'b', name: 'Аруна', salary: 500_000, payday: 20, updatedAt: T0 },
+        ],
+        categories: withCategories
+          ? [
+              { key: 'd1', name: 'Дом', note: '', amount: 250_000, updatedAt: T0 },
+              { key: 'd3', name: 'Цели', note: '', amount: 0, updatedAt: T0 },
+              { key: 'd4', name: 'Еда и быт', note: '', amount: 300_000, updatedAt: T0 },
+            ]
+          : [],
+        obligations: [
+          {
+            id: 'rent', name: 'Аренда', note: '', day: 5, category: 'd1', who: 'b', updatedAt: T0,
+            versions: [
+              { from: '2026-01', amount: 200_000 },
+              { from: '2026-11', amount: 220_000, reason: 'индексация' },
+            ],
+          },
+          { id: 'ins', name: 'Страховка', note: '', day: 12, category: 'd4', every: 'year', month: 3, versions: [{ from: '2000-01', amount: 60_000 }], updatedAt: T0 },
+        ],
+      },
+      1,
+    )
+  }
+
+  async function render(path: string, state: Record<string, unknown> = {}) {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('vue/server-renderer')
+    const { createRouter, createMemoryHistory } = await import('vue-router')
+    const Capital = (await import('./Capital.vue')).default
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/capital', component: Capital }] })
+    await router.push(path)
+    await router.isReady()
+    const app = createSSRApp(Capital)
+    app.use(router)
+    app.mixin({
+      created() {
+        if (this.$.parent === null) Object.assign(this.$.setupState, state)
+      },
+    })
+    return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
+  }
+
+  const pressed = (html: string, label: string) => new RegExp(`aria-pressed="true"[^>]*>\\s*${label}\\s*<`).test(html)
+  const button = (label: string) => new RegExp(`>\\s*${label}\\s*</button>`)
+
+  it('форма: «В какой раздел бюджета» — жильё, кредиты, быт (имена семьи), быт по умолчанию; флажок оценки', async () => {
+    await family()
+    const html = await render('/capital?add=payment')
+    expect(html).toContain('В какой раздел бюджета')
+    for (const name of ['Дом', 'Кредиты', 'Еда и быт']) expect(html).toMatch(button(name))
+    expect(html).not.toMatch(button('Цели'))
+    expect(html).not.toMatch(button('Свободно'))
+    expect(pressed(html, 'Еда и быт')).toBe(true)
+    expect(html).toContain('Сумма плавает — показывать как оценку')
+    expect(html).not.toMatch(/type="checkbox"[^>]*checked/)
+  })
+
+  it('форма в пустом документе — запасные имена разделов', async () => {
+    await family('member', false)
+    const html = await render('/capital?add=payment')
+    for (const name of ['Жильё', 'Кредиты', 'Еда и быт']) expect(html).toMatch(button(name))
+  })
+
+  it('форма «Раз в год»: сетка месяцев и подсказка про двенадцатую часть', async () => {
+    const { money } = await import('@/lib/money')
+    await family()
+    const html = await render('/capital?add=payment', { obEvery: 'year', obAmount: '60 000', obMonth: '3' })
+    expect(html).toContain('Месяц списания')
+    expect(pressed(html, 'Мар')).toBe(true)
+    expect(html).toContain(
+      `В плане месяца это займёт ${money(5_000)} — годовая сумма делится на двенадцать, чтобы не завышать одиннадцать месяцев и не удивляться на двенадцатый.`,
+    )
+  })
+
+  it('модалка обязательства: поля React, «Чьё это», история суммы с причиной, удаление', async () => {
+    const { money } = await import('@/lib/money')
+    await family()
+    const html = await render('/capital?obligation=rent')
+    for (const label of ['Название', 'Сумма сейчас, ₸', 'День платежа', 'Как часто', 'Чьё это']) {
+      expect(html).toContain(`>${label}</span>`)
+    }
+    expect(html).toContain(
+      'Это исправление: сумма была введена неверно. Если платёж меняется с какого-то месяца — не трогайте это поле, а запланируйте изменение ниже.',
+    )
+    expect(pressed(html, 'Аруна')).toBe(true)
+    expect(html).toContain('История суммы')
+    const history = html.slice(html.indexOf('История суммы'))
+    expect(history.indexOf('станет с ноября 2026')).toBeGreaterThan(-1)
+    expect(history.indexOf('станет с ноября 2026')).toBeLessThan(history.indexOf('с января 2026'))
+    expect(history).toContain(money(220_000))
+    expect(history).toContain('индексация')
+    expect(html).toContain('Удалить обязательство')
+  })
+
+  it('годовое: сетка месяцев с отмеченным и доля в плане месяца', async () => {
+    const { money } = await import('@/lib/money')
+    await family()
+    const html = await render('/capital?obligation=ins')
+    expect(pressed(html, 'Раз в год')).toBe(true)
+    expect(pressed(html, 'Мар')).toBe(true)
+    expect(html).toContain(`В плане месяца этот платёж занимает ${money(5_000)} — годовая сумма делится на двенадцать.`)
+    // Одна версия — истории нет.
+    expect(html).not.toContain('История суммы')
+  })
+
+  it('планирование: подсказка поля — нынешняя сумма, разница в месяц и за год, подсказка о месяце', async () => {
+    const { money, plain } = await import('@/lib/money')
+    await family()
+    const html = await render('/capital?obligation=ins', { obPlanning: true, obNewAmount: '48 000', obFromMonth: '2026-11' })
+    expect(html).toContain(`placeholder="${plain(60_000)}"`)
+    expect(html).toContain(
+      `С ноября 2026 освободится <b>${money(12_000)}</b> в месяц — ${money(144_000)} за год. Приложение предложит решить, куда их направить.`,
+    )
+    expect(html).toContain(
+      'Месяц, который выберете, оплачивается уже по новой сумме. Если переезд в середине месяца, ставьте следующий: за текущий вы платите по-старому.',
+    )
+  })
+
+  it('viewer: полей и удаления нет, история и цифры видны', async () => {
+    const { money } = await import('@/lib/money')
+    await family('viewer')
+    const html = await render('/capital?obligation=rent')
+    expect(html).not.toContain('Сумма сейчас, ₸')
+    expect(html).not.toContain('Запланировать изменение')
+    expect(html).not.toContain('Удалить обязательство')
+    expect(html).not.toContain('<input')
+    expect(html).toContain('Сумма сейчас')
+    expect(html).toContain(money(200_000))
+    expect(html).toContain('История суммы')
+    expect(html).toContain('индексация')
+  })
+})

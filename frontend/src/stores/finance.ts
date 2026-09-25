@@ -20,7 +20,7 @@ import {
   type ScheduledKind,
 } from '@/lib/finance'
 import type { SyncDoc, SyncStatus, Person, PersonId, Account, Credit, Goal, Obligation, Payment } from '@/types/finance'
-import type { CategoryKey, HueKey } from '@/lib/palette'
+import { DEFAULT_CATEGORY_NAMES, type CategoryKey, type HueKey } from '@/lib/palette'
 import type { ConflictResponse, HouseholdDocResponse } from '@/types/api'
 
 export function defaultSyncDoc(): SyncDoc {
@@ -593,7 +593,7 @@ export const useFinanceStore = defineStore('finance', () => {
       } else {
         doc.categories.push({
           key,
-          name: key === 'd1' ? 'Жильё' : key === 'd2' ? 'Кредиты' : key === 'd3' ? 'Цели' : key === 'd4' ? 'Еда и быт' : 'Свободно',
+          name: DEFAULT_CATEGORY_NAMES[key],
           note: '',
           amount,
           updatedAt: t,
@@ -1054,6 +1054,7 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   function updateObligation(id: string, patch: Partial<Obligation>) {
+    if (unchanged(obligations.value.find((x) => x.id === id), patch)) return
     mutateHouseholdDoc((doc) => {
       const o = (doc.obligations || []).find((x) => x.id === id)
       if (o) Object.assign(o, patch, { updatedAt: new Date().toISOString() })

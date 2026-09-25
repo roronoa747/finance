@@ -1343,3 +1343,73 @@ describe('PV-10: правка кредита — якорь только у ос
     expect(store.householdDoc.credits[0].principal).toBe(1_000_000)
   })
 })
+
+describe('PV-11: платёж — раздел, оценка, правка обязательства', () => {
+  const storage = new Map<string, string>()
+  const at = (iso: string) => vi.setSystemTime(new Date(iso))
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    at('2026-09-24T07:00:00Z')
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('раздел и оценка из формы: «Оставить?» спрашивает только о подписке (быт, без оценки)', async () => {
+    const { isSubscription, keepQuestions } = await import('@/lib/finance')
+    const store = useFinanceStore()
+    store.addObligation({ name: 'Интернет', day: 10, category: 'd4', amount: 7_000 })
+    store.addObligation({ name: 'Коммуналка', day: 8, category: 'd4', estimate: true, amount: 35_000 })
+    store.addObligation({ name: 'Аренда', day: 5, category: 'd1', amount: 220_000 })
+    const [internet, util, rent] = store.obligations
+    expect(util.estimate).toBe(true)
+    expect(rent.category).toBe('d1')
+    expect([internet, util, rent].map(isSubscription)).toEqual([true, false, false])
+
+    // Новый квартал — вопрос о подписках, заведённых в прошлом.
+    expect(keepQuestions(store.obligations, new Date('2026-10-05T07:00:00Z')).map((o) => o.name)).toEqual(['Интернет'])
+  })
+
+  it('«Раз в год» с месяцем — следующий платёж в месяц списания; «Каждый месяц» — снова ежемесячно', () => {
+    const store = useFinanceStore()
+    store.addObligation({ name: 'Страховка', day: 12, category: 'd4', amount: 60_000 })
+    const id = store.obligations[0].id
+    expect(nextObligationDue(store.obligations[0], store.payments)).toMatchObject({ period: '2026-09', day: 12 })
+
+    at('2026-09-24T08:00:00Z')
+    store.updateObligation(id, { every: 'year', month: 3 })
+    expect(nextObligationDue(store.obligations[0], store.payments)).toMatchObject({ period: '2027-03', day: 12 })
+
+    at('2026-09-24T09:00:00Z')
+    store.updateObligation(id, { every: 'month' })
+    expect(nextObligationDue(store.obligations[0], store.payments)).toMatchObject({ period: '2026-09' })
+  })
+
+  it('повторная правка тем же значением ничего не пишет; «Чьё это» — null, не undefined', () => {
+    const store = useFinanceStore()
+    store.people.push({ id: 'b', name: 'Аруна', salary: 0, payday: 20, updatedAt: '2026-09-01T00:00:00Z' })
+    store.addObligation({ name: 'Спортзал', day: 3, category: 'd4', amount: 15_000, who: 'b' })
+    const id = store.obligations[0].id
+
+    at('2026-09-24T08:00:00Z')
+    store.updateObligation(id, { day: 20, who: null })
+    const stamp = store.obligations[0].updatedAt
+    expect(store.obligations[0].who).toBeNull()
+    // Слияние возьмёт null победителя, а не «b» проигравшего (Р-14 RP, mergeList).
+    expect(JSON.parse(JSON.stringify(store.householdDoc)).obligations[0].who).toBeNull()
+
+    at('2026-09-24T09:00:00Z')
+    store.updateObligation(id, { day: 20, who: null })
+    expect(store.obligations[0].updatedAt).toBe(stamp)
+  })
+})

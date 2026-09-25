@@ -665,6 +665,18 @@ export function monthlyAmount(o: Obligation, key = monthKey()): number {
   return o.every === 'year' ? full / 12 : full;
 }
 
+/** Сколько годовой платёж занимает в плане месяца — до тенге (подсказки формы). */
+export const yearShare = (yearly: number) => Math.round(yearly / 12);
+
+/**
+ * Запланированная смена суммы обязательства: насколько платёж изменится в месяц и
+ * за год. Новой суммы нет — изменения нет.
+ */
+export function plannedChange(current: number, planned: number) {
+  const monthly = planned > 0 ? Math.round(planned - current) : 0;
+  return { monthly, yearly: monthly * 12 };
+}
+
 /** Списывается ли этот платёж в указанном месяце. Группа подписок не списывается никогда. */
 export function dueIn(o: Obligation, key = monthKey()): boolean {
   if (o.group) return false;
