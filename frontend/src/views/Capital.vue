@@ -28,14 +28,11 @@ import {
 import {
   afterAnchor,
   amountAt,
-  annuityMonths,
-  annuityTotal,
   costliestCredits,
   creditOutlook,
   creditSchedule,
   creditTotals,
   fxToTenge,
-  debtCost,
   goalSavings,
   groupChildren,
   groupTotal,
@@ -52,14 +49,15 @@ import {
   paymentSplit,
   plannedChange,
   lumpPlan,
-  lumpSum,
   netWorth,
   nextChange,
   nextCreditDue,
   nextObligationDue,
   openCredits,
+  payoffChips,
+  payoffLadder,
+  prepayOutcome,
   prepaySaved,
-  prepayment,
   rateFromSchedule,
   scheduleMismatch,
   yearShare,
@@ -139,10 +137,22 @@ function groupNote(g: Obligation): string {
   return `${n} ${plural(n, 'подписка', 'подписки', 'подписок')}${g.noAsk ? ' · рабочие' : ''}`
 }
 
-/** «24 платежа» в строке кредита: сколько осталось при нынешнем платеже. */
+/**
+ * «24 платежа» в строке кредита: сколько осталось при нынешнем платеже. Закрытый и
+ * незакрываемый долг — словами, как модалка и калькулятор (`creditOutlook` не
+ * различает их сам).
+ */
 function paymentsLeft(c: Credit): string {
-  const n = Math.ceil(annuityMonths(c.principal, c.annualRate, c.payment))
-  return `${n} ${plural(n, 'платёж', 'платежа', 'платежей')}`
+  if (c.principal <= 0) return 'долг закрыт'
+  const out = creditOutlook(c)
+  if (!out.closes) return 'долг не закрывается'
+  return `${out.months} ${plural(out.months, 'платёж', 'платежа', 'платежей')}`
+}
+
+/** «переплата 123 456» под суммой строки — только у долга, который закрывается с переплатой. */
+function creditSub(c: Credit): string | undefined {
+  const out = creditOutlook(c)
+  return out.closes && out.overpay > 0 ? `переплата ${plain(out.overpay)}` : undefined
 }
 
 /** Строка кредита: ставка, сколько платежей и следующий платёж — в долг и банку (Р-8). */
@@ -440,10 +450,7 @@ const groupCandidates = computed(() =>
 /* ------------------ Анализ долгов (DebtAdvice) ------------------ */
 const adviceView = ref<'order' | 'strategy'>(props.initialAdvice)
 const rankedDebts = computed(() =>
-  costliestCredits(credits.value).map((c) => ({
-    credit: c,
-    cost: debtCost(c.principal, c.annualRate, c.payment),
-  })),
+  costliestCredits(credits.value).map((c) => ({ credit: c, cost: creditOutlook(c) })),
 )
 const worstDebt = computed(() => rankedDebts.value[0] || null)
 const worstHalfExtra = computed(() =>
@@ -457,12 +464,7 @@ const worstHalfExtra = computed(() =>
 )
 const worstGain = computed(() =>
   worstDebt.value && worstHalfExtra.value
-    ? prepayment(
-        worstDebt.value.credit.principal,
-        worstDebt.value.credit.annualRate,
-        worstDebt.value.credit.payment,
-        worstHalfExtra.value,
-      )
+    ? prepayOutcome(worstDebt.value.credit, worstHalfExtra.value, 'monthly')
     : null,
 )
 
@@ -719,41 +721,12 @@ const payoffHalf = computed(() =>
       )
     : null,
 )
-const payoffChips = computed(() => {
-  if (!activePayoffCredit.value) return []
-  const pay = activePayoffCredit.value.payment
-  return Array.from(
-    new Set(
-      [
-        Math.round(pay / 2 / 1000) * 1000,
-        Math.round(pay / 1000) * 1000,
-        ...(payoffHalf.value ? [payoffHalf.value] : []),
-      ].filter((v) => v > 0),
-    ),
-  ).sort((a, b) => a - b)
-})
+const chips = computed(() => (activePayoffCredit.value ? payoffChips(activePayoffCredit.value) : []))
 const payoffResult = computed(() => {
-  if (!activePayoffCredit.value) return null
   const v = parseMoney(payoffAmount.value)
-  if (v <= 0) return null
-  const p = activePayoffCredit.value.principal
-  const r = activePayoffCredit.value.annualRate
-  const pay = activePayoffCredit.value.payment
-  return payoffMode.value === 'monthly' ? prepayment(p, r, pay, v) : lumpSum(p, r, pay, v)
+  return activePayoffCredit.value && v > 0 ? prepayOutcome(activePayoffCredit.value, v, payoffMode.value) : null
 })
-
-const payoffLadder = computed(() => {
-  if (!activePayoffCredit.value || !payoffOutlook.value?.closes) return []
-  const p = activePayoffCredit.value.principal
-  const r = activePayoffCredit.value.annualRate
-  const pay = activePayoffCredit.value.payment
-  return [0.5, 1, 2, 4]
-    .map((k) => {
-      const extra = Math.round((pay * k) / 1000) * 1000
-      return { extra, ...prepayment(p, r, pay, extra) }
-    })
-    .filter((res) => res.extra > 0 && Number.isFinite(res.monthsAfter))
-})
+const ladder = computed(() => (activePayoffCredit.value ? payoffLadder(activePayoffCredit.value) : []))
 
 /* ------------------ Применить досрочку (RP-08) ------------------ */
 const applyMode = ref<LumpMode>('term')
@@ -900,11 +873,7 @@ function applyPrepay() {
         :title="c.name"
         :note="creditNote(c)"
         :value="money(c.principal)"
-        :sub="
-          annuityTotal(c.principal, c.annualRate, c.payment) - c.principal > 0
-            ? `переплата ${plain(Math.round(annuityTotal(c.principal, c.annualRate, c.payment) - c.principal))}`
-            : undefined
-        "
+        :sub="creditSub(c)"
         clickable
         @click="selectedCreditId = c.id"
       >
@@ -1009,11 +978,11 @@ function applyPrepay() {
             </div>
             <div class="flex justify-between">
               <span class="text-ink-2">Проценты в месяц</span>
-              <b class="num text-warn">{{ money(Math.round(worstDebt.cost.monthlyInterest)) }}</b>
+              <b class="num text-warn">{{ money(worstDebt.cost.monthlyInterest) }}</b>
             </div>
             <div class="flex justify-between">
               <span class="text-ink-2">Доля платежа в проценты</span>
-              <b class="num text-ink">{{ Math.round(worstDebt.cost.interestShare * 100) }}%</b>
+              <b class="num text-ink">{{ worstDebt.cost.sharePct }}%</b>
             </div>
             <div class="flex justify-between">
               <span class="text-ink-2">
@@ -1022,7 +991,7 @@ function applyPrepay() {
               <b class="num text-warn">
                 {{
                   worstDebt.cost.closes
-                    ? money(Math.round(worstDebt.cost.overpay))
+                    ? money(worstDebt.cost.overpay)
                     : 'платёж меньше процентов'
                 }}
               </b>
@@ -1031,14 +1000,14 @@ function applyPrepay() {
 
           <p class="mt-3 text-[12.5px] leading-relaxed text-ink-3">
             {{
-              Math.round(worstDebt.cost.interestShare * 100) >= 50
+              worstDebt.cost.sharePct >= 50
                 ? 'Больше половины платежа уходит в проценты, поэтому остаток почти не двигается. Такой долг выгоднее закрыть раньше остальных, даже если он самый маленький.'
                 : 'Здесь самая высокая ставка из ваших долгов, поэтому каждый лишний тенге, внесённый сюда, экономит больше, чем в любом другом.'
             }}
           </p>
 
           <div
-            v-if="worstGain && worstHalfExtra && Number.isFinite(worstGain.monthsSaved)"
+            v-if="worstGain && worstHalfExtra"
             class="mt-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3"
           >
             <div class="text-[12.5px] text-ink-2">Половину переплаты снимает добавка в</div>
@@ -1046,7 +1015,7 @@ function applyPrepay() {
               {{ money(worstHalfExtra) }} в месяц
             </div>
             <div class="mt-0.5 text-[13px] text-ink-2 num">
-              это минус {{ Math.round(worstGain.monthsSaved) }} мес. и экономия {{ money(Math.round(worstGain.saved)) }}
+              это минус {{ worstGain.monthsSaved }} мес. и экономия {{ money(worstGain.saved) }}
             </div>
           </div>
 
@@ -1834,12 +1803,12 @@ function applyPrepay() {
         </Field>
 
         <Field :label="payoffMode === 'monthly' ? 'Сколько добавите к платежу, ₸' : 'Сколько внесёте разом, ₸'">
-          <NumField v-model="payoffAmount" :placeholder="plain(payoffChips[0] ?? 5000)" class="mb-2" />
+          <NumField v-model="payoffAmount" :placeholder="plain(chips[0] ?? 5000)" class="mb-2" />
         </Field>
 
-        <div v-if="payoffChips.length > 0 && payoffMode === 'monthly'" class="mb-3 flex flex-wrap gap-1.5">
+        <div v-if="chips.length > 0 && payoffMode === 'monthly'" class="mb-3 flex flex-wrap gap-1.5">
           <button
-            v-for="v in payoffChips"
+            v-for="v in chips"
             :key="v"
             type="button"
             :class="cn('rounded-lg border px-2.5 py-1 text-[12px] num transition-colors cursor-pointer', parseMoney(payoffAmount) === v ? 'border-brand bg-brand-soft text-brand font-medium' : 'border-line text-ink-2')"
@@ -1850,21 +1819,21 @@ function applyPrepay() {
           </button>
         </div>
 
-        <div v-if="payoffResult && Number.isFinite(payoffResult.monthsAfter)" class="mb-3 rounded-xl border border-brand bg-brand-soft p-3.5">
+        <div v-if="payoffResult" class="mb-3 rounded-xl border border-brand bg-brand-soft p-3.5">
           <div class="font-display text-[18px] font-semibold text-brand">
             {{
-              payoffResult.monthsSaved >= 1
-                ? `Закроется на ${Math.round(payoffResult.monthsSaved)} мес. раньше`
+              payoffResult.sooner
+                ? `Закроется на ${payoffResult.monthsSaved} мес. раньше`
                 : 'Срок почти не изменится'
             }}
           </div>
           <div class="mt-0.5 text-[13px] font-medium text-ink num">
-            экономия {{ money(Math.max(0, Math.round(payoffResult.saved))) }}
+            экономия {{ money(payoffResult.saved) }}
           </div>
           <div class="mt-1 text-[12px] text-ink-2">
-            Останется {{ Math.max(0, Math.ceil(payoffResult.monthsAfter)) }}
-            {{ plural(Math.max(0, Math.ceil(payoffResult.monthsAfter)), 'платёж', 'платежа', 'платежей') }}
-            вместо {{ Math.ceil(payoffResult.monthsNow) }}.
+            Останется {{ payoffResult.monthsAfter }}
+            {{ plural(payoffResult.monthsAfter, 'платёж', 'платежа', 'платежей') }}
+            вместо {{ payoffResult.monthsNow }}.
           </div>
         </div>
         <p v-else class="mb-3 text-[12.5px] leading-relaxed text-ink-3">
@@ -1970,19 +1939,19 @@ function applyPrepay() {
         </div>
 
         <!-- Лесенка отдачи -->
-        <div v-if="payoffLadder.length > 0" class="mb-3">
+        <div v-if="ladder.length > 0" class="mb-3">
           <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-3">
             Отдача падает
           </div>
           <div class="flex flex-col gap-1 text-[12.5px]">
             <div
-              v-for="item in payoffLadder"
+              v-for="item in ladder"
               :key="item.extra"
               class="flex items-center justify-between border-b border-line/60 py-1"
             >
               <span class="num text-ink-2">+{{ plain(item.extra) }}</span>
-              <span class="num text-ink-3">−{{ Math.round(item.monthsSaved) }} мес.</span>
-              <span class="num font-medium text-brand">{{ money(Math.max(0, Math.round(item.saved))) }}</span>
+              <span class="num text-ink-3">−{{ item.monthsSaved }} мес.</span>
+              <span class="num font-medium text-brand">{{ money(item.saved) }}</span>
             </div>
           </div>
           <p v-if="payoffHalf" class="mt-2 text-[12.5px] leading-relaxed text-ink-3">

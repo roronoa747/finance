@@ -24,6 +24,9 @@ import {
   strategyGain,
   creditSplit,
   creditOutlook,
+  prepayOutcome,
+  payoffChips,
+  payoffLadder,
   fxToTenge,
   paymentSplit,
   creditTotals,
@@ -1144,7 +1147,7 @@ describe('PV-10 — выводы модалки кредита', () => {
   it('creditOutlook: платёж ≤ процентов — долг не закрывается; иначе — формулы React', () => {
     // 1 000 000 под 36%: проценты 30 000 в месяц.
     expect(creditOutlook({ principal: 1_000_000, annualRate: 0.36, payment: 30_000 })).toEqual({
-      closes: false, months: Infinity, overpay: Infinity,
+      closes: false, months: Infinity, overpay: Infinity, monthlyInterest: 30_000, sharePct: 100,
     })
     expect(creditOutlook({ principal: 1_000_000, annualRate: 0.36, payment: 25_000 }).closes).toBe(false)
 
@@ -1157,7 +1160,93 @@ describe('PV-10 — выводы модалки кредита', () => {
     expect(Number.isInteger(out.months) && Number.isInteger(out.overpay)).toBe(true)
 
     // Рассрочка без процентов: переплаты нет.
-    expect(creditOutlook({ principal: 300_000, annualRate: 0, payment: 25_000 })).toEqual({ closes: true, months: 12, overpay: 0 })
+    expect(creditOutlook({ principal: 300_000, annualRate: 0, payment: 25_000 })).toEqual({
+      closes: true, months: 12, overpay: 0, monthlyInterest: 0, sharePct: 0,
+    })
+  })
+
+  it('creditOutlook: проценты в месяц и доля платежа — целые, как «Что гасить первым» React (ревью Н-1)', () => {
+    const c = { principal: 1_000_000, annualRate: 0.33, payment: 58_000 }
+    const cost = debtCost(c.principal, c.annualRate, c.payment)
+    expect(creditOutlook(c)).toMatchObject({
+      monthlyInterest: Math.round(cost.monthlyInterest),
+      sharePct: Math.round(cost.interestShare * 100),
+    })
+    expect(creditOutlook(c)).toMatchObject({ monthlyInterest: 27_500, sharePct: 47 })
+    // Закрытый долг: остаток 0 — тоже `closes: false`; различать по остатку.
+    expect(creditOutlook({ principal: 0, annualRate: 0.33, payment: 58_000 })).toMatchObject({
+      closes: false, monthlyInterest: 0, sharePct: 0,
+    })
+  })
+})
+
+describe('Н-1 ревью Блока 2 — калькулятор досрочки в finance.ts', () => {
+  const loan = { principal: 1_000_000, annualRate: 0.33, payment: 58_000 }
+  // Проценты 30 000 при платеже 25 000 — не закрывается.
+  const stuck = { principal: 1_000_000, annualRate: 0.36, payment: 25_000 }
+
+  it('prepayOutcome: целые выводы React — ceil платежей, round месяцев и экономии', () => {
+    for (const [mode, raw] of [
+      ['monthly', prepayment(loan.principal, loan.annualRate, loan.payment, 29_000)],
+      ['once', lumpSum(loan.principal, loan.annualRate, loan.payment, 29_000)],
+    ] as const) {
+      const out = prepayOutcome(loan, 29_000, mode)!
+      expect(out).toEqual({
+        monthsNow: Math.ceil(raw.monthsNow),
+        monthsAfter: Math.max(0, Math.ceil(raw.monthsAfter)),
+        monthsSaved: Math.round(raw.monthsSaved),
+        sooner: raw.monthsSaved >= 1,
+        saved: Math.max(0, Math.round(raw.saved)),
+      })
+      for (const v of [out.monthsNow, out.monthsAfter, out.monthsSaved, out.saved]) expect(Number.isInteger(v)).toBe(true)
+    }
+  })
+
+  it('prepayOutcome: долг не закрывается ни до, ни после взноса — null (без Infinity на экране)', () => {
+    expect(prepayOutcome(stuck, 1_000, 'monthly')).toBe(null)
+    // После добавки долг закрылся бы, но «сейчас» — бесконечность: выводов нет.
+    expect(Number.isFinite(prepayment(stuck.principal, stuck.annualRate, stuck.payment, 10_000).monthsAfter)).toBe(true)
+    expect(prepayOutcome(stuck, 10_000, 'monthly')).toBe(null)
+    expect(prepayOutcome(stuck, 500_000, 'once')).toBe(null)
+  })
+
+  it('prepayOutcome: разовый взнос больше остатка — 0 платежей, экономия ≥ 0 и не больше переплаты', () => {
+    const out = prepayOutcome(loan, 2_000_000, 'once')!
+    expect(out.monthsAfter).toBe(0)
+    expect(out.saved).toBeGreaterThanOrEqual(0)
+    expect(out.saved).toBe(creditOutlook(loan).overpay)
+    expect(out.monthsNow).toBe(creditOutlook(loan).months)
+  })
+
+  it('prepayOutcome: срок короче меньше чем на месяц — «почти не изменится», хотя округлённо −1 мес.', () => {
+    const short = { principal: 150_000, annualRate: 0.3, payment: 50_000 }
+    const raw = prepayment(short.principal, short.annualRate, short.payment, 10_000)
+    expect(raw.monthsSaved).toBeGreaterThan(0.5)
+    expect(raw.monthsSaved).toBeLessThan(1)
+    expect(prepayOutcome(short, 10_000, 'monthly')).toMatchObject({ monthsSaved: 1, sooner: false })
+  })
+
+  it('payoffChips: половина платежа, платёж и половина переплаты — без повторов, по возрастанию', () => {
+    const half = halfOverpayExtra(loan.principal, loan.annualRate, loan.payment)!
+    expect(payoffChips(loan)).toEqual([...new Set([29_000, 58_000, half])].sort((a, b) => a - b))
+    expect(payoffChips(loan)).toContain(half)
+    // Платёж 1 400: полплатежа и платёж округляются до одной тысячи — один чип.
+    const tiny = { principal: 10_000, annualRate: 0.2, payment: 1_400 }
+    const chips = payoffChips(tiny)
+    expect(chips).toEqual([...new Set(chips)].sort((a, b) => a - b))
+    expect(chips.filter((v) => v === 1_000)).toHaveLength(1)
+    expect(chips.every((v) => v > 0)).toBe(true)
+  })
+
+  it('payoffLadder: 0,5×, 1×, 2×, 4× платежа — конечные целые; у незакрываемого и закрытого долга пусто', () => {
+    const ladder = payoffLadder(loan)
+    expect(ladder.map((r) => r.extra)).toEqual([29_000, 58_000, 116_000, 232_000])
+    for (const r of ladder) {
+      expect(r).toEqual({ extra: r.extra, ...prepayOutcome(loan, r.extra, 'monthly') })
+      expect(Number.isInteger(r.monthsSaved) && Number.isInteger(r.saved)).toBe(true)
+    }
+    expect(payoffLadder(stuck)).toEqual([])
+    expect(payoffLadder({ ...loan, principal: 0 })).toEqual([])
   })
 })
 

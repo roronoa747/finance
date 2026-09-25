@@ -259,18 +259,94 @@ export function debtCost(principal: number, annualRate: number, payment: number)
   }
 }
 
-export type CreditOutlook = { closes: boolean; months: number; overpay: number }
+export type CreditOutlook = {
+  closes: boolean
+  months: number
+  overpay: number
+  /** Проценты за месяц — до тенге. */
+  monthlyInterest: number
+  /** Доля платежа в проценты — целые проценты. */
+  sharePct: number
+}
 
 /**
  * Что станет с долгом при нынешнем платеже — выводы модалки кредита (React
- * `CreditDialog`): сколько платежей осталось (вверх до целого) и сколько уйдёт банку
- * сверх остатка (до тенге). Платёж не покрывает проценты — `closes: false`, чисел нет.
+ * `CreditDialog`) и «Что гасить первым»: сколько платежей осталось (вверх до целого),
+ * сколько уйдёт банку сверх остатка (до тенге), проценты за месяц и их доля в платеже.
+ * `closes: false` — чисел срока и переплаты нет: платёж не покрывает проценты **или
+ * долг уже закрыт** (остаток 0). Различать эти случаи — по остатку.
  */
 export function creditOutlook(c: { principal: number; annualRate: number; payment: number }): CreditOutlook {
   const cost = debtCost(c.principal, c.annualRate, c.payment)
+  const now = { monthlyInterest: Math.round(cost.monthlyInterest), sharePct: Math.round(cost.interestShare * 100) }
   return cost.closes
-    ? { closes: true, months: Math.ceil(cost.months), overpay: Math.round(cost.overpay) }
-    : { closes: false, months: Infinity, overpay: Infinity }
+    ? { closes: true, months: Math.ceil(cost.months), overpay: Math.round(cost.overpay), ...now }
+    : { closes: false, months: Infinity, overpay: Infinity, ...now }
+}
+
+/** Выводы калькулятора досрочки — целые платежи и тенге. */
+export type PrepayOutcome = {
+  /** Платежей сейчас и после взноса — вверх до целого. */
+  monthsNow: number
+  monthsAfter: number
+  /** На сколько месяцев раньше — до целого. */
+  monthsSaved: number
+  /** Срок сокращается хотя бы на месяц (React сравнивает до округления). */
+  sooner: boolean
+  /** Сколько процентов не отдадим банку — до тенге, не меньше нуля. */
+  saved: number
+}
+
+/**
+ * Досрочка в калькуляторе (React `PayoffDialog`): ежемесячная добавка (`prepayment`)
+ * или разовый взнос (`lumpSum`). null — выводов нет: долг не закрывается при нынешнем
+ * платеже или после взноса, и срок с переплатой бесконечны.
+ */
+export function prepayOutcome(
+  c: { principal: number; annualRate: number; payment: number },
+  extra: number,
+  mode: 'monthly' | 'once',
+): PrepayOutcome | null {
+  const r =
+    mode === 'monthly'
+      ? prepayment(c.principal, c.annualRate, c.payment, extra)
+      : lumpSum(c.principal, c.annualRate, c.payment, extra)
+  if (!Number.isFinite(r.monthsNow) || !Number.isFinite(r.monthsAfter)) return null
+  return {
+    monthsNow: Math.ceil(r.monthsNow),
+    monthsAfter: Math.max(0, Math.ceil(r.monthsAfter)),
+    monthsSaved: Math.round(r.monthsSaved),
+    sooner: r.monthsSaved >= 1,
+    saved: Math.max(0, Math.round(r.saved)),
+  }
+}
+
+/**
+ * Чипы ежемесячной добавки: половина платежа, платёж (до тысячи) и добавка, снимающая
+ * половину переплаты. Без повторов и нулей, по возрастанию.
+ */
+export function payoffChips(c: { principal: number; annualRate: number; payment: number }): number[] {
+  const half = halfOverpayExtra(c.principal, c.annualRate, c.payment)
+  const round = (v: number) => Math.round(v / 1000) * 1000
+  return [...new Set([round(c.payment / 2), round(c.payment), ...(half ? [half] : [])].filter((v) => v > 0))].sort(
+    (a, b) => a - b,
+  )
+}
+
+/**
+ * «Отдача падает»: добавка в полплатежа, платёж, два и четыре (до тысячи) и что каждая
+ * даёт. Только у долга, который закрывается: у закрытого и у того, где платёж не
+ * покрывает проценты, лесенки нет.
+ */
+export function payoffLadder(c: { principal: number; annualRate: number; payment: number }) {
+  if (!creditOutlook(c).closes) return []
+  return [0.5, 1, 2, 4]
+    .map((k) => Math.round((c.payment * k) / 1000) * 1000)
+    .filter((extra) => extra > 0)
+    .flatMap((extra) => {
+      const out = prepayOutcome(c, extra, 'monthly')
+      return out ? [{ extra, ...out }] : []
+    })
 }
 
 /**

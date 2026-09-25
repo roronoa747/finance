@@ -475,6 +475,34 @@ describe('PV-10: модалка кредита и калькулятор дос�
     expect(html).toContain('долг не закрывается')
     expect(html).toContain('Впишите сумму, которую действительно можете внести. Приложение не станет предлагать больше — считать по деньгам, которых нет, смысла нет.')
     expect(html).not.toContain('Отдача падает')
+
+    // Добавка, с которой долг закрылся бы, выводов не даёт: «сейчас» — бесконечность
+    // (было «Закроется на Infinity мес. раньше», ревью Н-1).
+    const withSum = await render('/capital?payoff=card-debt', { payoffAmount: '10 000' })
+    expect(withSum).toContain('Впишите сумму, которую действительно можете внести.')
+    expect(withSum).not.toContain('Infinity')
+  })
+
+  it('строка кредита: «N платежей · переплата M»; платёж ≤ процентов — «долг не закрывается»; остаток 0 — «долг закрыт» (ревью Н-1)', async () => {
+    const { plain } = await import('@/lib/money')
+    const { plural } = await import('@/lib/utils')
+    const { creditOutlook } = await import('@/lib/finance')
+    const store = await family()
+    const out = creditOutlook({ principal: 1_000_000, annualRate: 0.33, payment: 58_000 })
+    const html = await render('/capital')
+    expect(html).toContain(`ГЭСВ 33,0% · ${out.months} ${plural(out.months, 'платёж', 'платежа', 'платежей')} · платёж`)
+    expect(html).toContain(`>переплата ${plain(out.overpay)}<`)
+    expect(html).toContain('ГЭСВ 36,0% · долг не закрывается · платёж')
+    expect(html).not.toContain('Infinity')
+    expect(html).not.toContain('∞')
+    // Переплата — только у долга, который закрывается.
+    expect(html.match(/>переплата /g)).toHaveLength(1)
+
+    store.applyPrepayment('loan', 'a', { amount: 1_000_000, mode: 'term', accountId: 'card' })
+    const closed = await render('/capital')
+    expect(closed).toContain('ГЭСВ 33,0% · долг закрыт<')
+    expect(closed).not.toContain('0 платежей')
+    expect(closed).not.toMatch(/>переплата /)
   })
 
   it('калькулятор: подсказка поля — первый чип, чип «половина переплаты», лесенка «Отдача падает» с пояснением', async () => {
@@ -508,7 +536,8 @@ describe('PV-10: модалка кредита и калькулятор дос�
     const html = await render('/capital?payoff=loan')
     expect(html).toContain('Переплата, если не трогать')
     expect(html).toMatch(/>\s*долг закрыт\s*</)
-    expect(html).not.toContain('долг не закрывается')
+    // В окне; строка «Кредитки» на экране под ним честно пишет «долг не закрывается».
+    expect(html.slice(html.indexOf('role="dialog"'))).not.toContain('долг не закрывается')
     // Окно нужно закрытому долгу ради «Снять» у досрочки, закрывшей его.
     expect(html).toContain('Применённые досрочки')
   })
