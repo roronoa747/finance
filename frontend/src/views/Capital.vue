@@ -107,6 +107,9 @@ const key = computed(() => monthKey())
 const people = computed(() => financeStore.people)
 const allAccounts = computed(() => financeStore.accounts)
 const accounts = computed(() => liveAccounts(allAccounts.value))
+// Куда ложатся тенговые суммы (доход, досрочка): у валютного счёта тенге — по курсу, и
+// следующая правка курса или суммы в валюте молча стёрла бы сдвиг.
+const payAccounts = computed(() => payableAccounts(allAccounts.value))
 const householdAccounts = computed(() => liveAccounts(financeStore.householdAccounts))
 const privateAccounts = computed(() => liveAccounts(financeStore.privateAccounts))
 const credits = computed(() => liveCredits(financeStore.credits))
@@ -739,7 +742,6 @@ const applyAccount = ref('')
 const applyDone = ref<Payment | null>(null)
 const removingPrepay = ref<string | null>(null)
 
-const applyAccounts = computed(() => payableAccounts(allAccounts.value))
 const applyPlan = computed(() => {
   const c = activePayoffCredit.value
   const v = parseMoney(payoffAmount.value)
@@ -1896,7 +1898,7 @@ function applyPrepay() {
           <Field label="Откуда списать">
             <Select v-model="applyAccount">
               <option value="" disabled>Выберите счёт…</option>
-              <option v-for="a in applyAccounts" :key="a.id" :value="a.id">
+              <option v-for="a in payAccounts" :key="a.id" :value="a.id">
                 {{ a.name }} · {{ money(a.amount) }}
               </option>
               <option value="none">Не списывать — только отметить</option>
@@ -2017,15 +2019,15 @@ function applyPrepay() {
               {{ g.name }}
             </option>
           </optgroup>
-          <optgroup v-if="accounts.length > 0" label="На счёт">
-            <option v-for="a in accounts" :key="a.id" :value="`account:${a.id}`">
+          <optgroup v-if="payAccounts.length > 0" label="На счёт">
+            <option v-for="a in payAccounts" :key="a.id" :value="`account:${a.id}`">
               {{ a.name }}
             </option>
           </optgroup>
         </Select>
       </Field>
 
-      <p v-if="!goals.length && !accounts.length" class="mb-3 text-[12.5px] text-ink-3">
+      <p v-if="!goals.length && !payAccounts.length" class="mb-3 text-[12.5px] text-ink-3">
         Сначала заведите цель или счёт — иначе деньги некуда положить.
       </p>
 

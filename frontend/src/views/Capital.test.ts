@@ -898,6 +898,14 @@ describe('PV-12: счета — валютный, удаление, тексты
     expect(await deposit(id('Общий вклад'))).toBe('Вклад исчезнет у обоих участников вместе с условиями. Отменить нельзя.')
   })
 
+  it('«Внеплановый доход» → «На счёт»: только тенговые счета — сдвиг валютного стёрла бы правка курса (клинап)', async () => {
+    await family()
+    const html = await render('/capital?income=1')
+    expect(html).toContain('label="На счёт"')
+    expect(html).toContain('value="account:card"')
+    expect(html).not.toContain('value="account:usd"')
+  })
+
   it('viewer: цифры счёта без полей и удаления', async () => {
     const { money, plain } = await import('@/lib/money')
     await family('viewer')
