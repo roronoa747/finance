@@ -20,6 +20,7 @@ import {
   paidFor,
   pausedGoals,
   planForecast,
+  planLumpTakes,
   planStep,
   settlePlans,
   stepDue,
@@ -1058,6 +1059,12 @@ export const useFinanceStore = defineStore('finance', () => {
 
     // Взнос, закрывший долг, платёж не переписывает: платить больше нечего и так.
     const lowers = opts.mode === 'payment' && plan.left > 0 && plan.payment !== c.payment
+    // «Вложить уже накопленное» (клинап Блока 3): эта часть шага месяца старта снимается с
+    // целей на паузе, а на счёт приходит сдвигом (как «снять с цели на счёт») — со счёта
+    // уходит только остальное. Цели, досрочка и счёт — одной записью документа.
+    const debtPlan = opts.planId ? plans.value.find((p) => p.id === opts.planId && !p.deletedAt) : undefined
+    const takes = debtPlan ? planLumpTakes(debtPlan, goals.value, plan.paid, monthKey()) : []
+    const took = takes.reduce((a, x) => a + x.amount, 0)
     const record = newPayment(
       {
         kind: 'prepay',
@@ -1074,12 +1081,24 @@ export const useFinanceStore = defineStore('finance', () => {
       opts.accountId,
     )
     const t = record.updatedAt
+    const privateAccount = ((privateDoc.value.accounts as Account[]) || []).some((x) => x.id === record.accountId)
     mutateHouseholdDoc((doc) => {
       if (!doc.payments) doc.payments = []
       doc.payments.push(record)
       const raw = lowers ? doc.credits.find((x) => x.id === c.id) : undefined
       if (raw) Object.assign(raw, { payment: plan.payment, principalSetAt: raw.principalSetAt ?? null, updatedAt: t })
+      for (const x of takes) {
+        const g = (doc.goals || []).find((y) => y.id === x.goalId)
+        if (!g) continue
+        const id = Math.random().toString(36).slice(2, 10)
+        g.movements = [...(g.movements ?? []), { id, date: t, amount: -x.amount, by, note: 'в долги по плану', planId: debtPlan!.id }]
+        g.have = goalHave(g.seed, g.movements)
+        g.updatedAt = t
+      }
+      const acc = took && !privateAccount ? (doc.accounts || []).find((a) => a.id === record.accountId) : undefined
+      if (acc) Object.assign(acc, { amount: acc.amount + took, updatedAt: t })
     })
+    if (took && privateAccount && record.accountId) shiftAccountAmount(record.accountId, took)
     settlePlan()
     return record
   }

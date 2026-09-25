@@ -68,6 +68,8 @@ import {
   planFact,
   planMonths,
   planMonthSum,
+  lumpShares,
+  planLumpTakes,
   settlePlans,
   pauseShift,
   pauseMissed,
@@ -1705,6 +1707,50 @@ describe('PV-14 — план «Сначала долги»: модель и ра
     expect(before.d2 - after.d2).toBe(25_000)
     expect(after.planExtra - before.planExtra).toBe(25_000)
     expect(after.d5).toBe(before.d5)
+  })
+
+  describe('клинап: «вложить уже накопленное» — доли целей на паузе', () => {
+    const three = [goal('a', { have: 100_000 }), goal('b', { have: 100_000 }), goal('c', { have: 100_000 })]
+
+    it('lumpShares: доля накопленного, целые тенге, Σ ровно сумма, не больше накопленного', () => {
+      expect(lumpShares(three, 100_000)).toEqual([
+        { goalId: 'a', amount: 33_334 }, { goalId: 'b', amount: 33_333 }, { goalId: 'c', amount: 33_333 },
+      ])
+      expect(lumpShares([goal('a', { have: 50_000 }), goal('b', { have: 200_000 })], 150_000)).toEqual([
+        { goalId: 'a', amount: 30_000 }, { goalId: 'b', amount: 120_000 },
+      ])
+      // Больше накопленного не снять; пустые и «в минусе» цели не участвуют.
+      expect(lumpShares([goal('a', { have: 10_000 }), goal('z', { have: -5_000 })], 50_000)).toEqual([{ goalId: 'a', amount: 10_000 }])
+      expect(lumpShares(three, 0)).toEqual([])
+      let seed = 11
+      const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+      for (let i = 0; i < 200; i++) {
+        const list = Array.from({ length: 1 + Math.floor(rnd() * 5) }, (_, k) => goal(`g${k}`, { have: Math.round(rnd() * 500_000) }))
+        const want = Math.round(rnd() * 1_000_000)
+        const got = lumpShares(list, want)
+        const total = list.reduce((a, g) => a + g.have, 0)
+        expect(got.reduce((a, x) => a + x.amount, 0)).toBe(Math.min(want, total))
+        for (const x of got) {
+          expect(Number.isInteger(x.amount)).toBe(true)
+          expect(x.amount).toBeLessThanOrEqual(list.find((g) => g.id === x.goalId)!.have)
+        }
+      }
+    })
+
+    it('planLumpTakes: только цели на паузе, только месяц старта, без уже снятого планом', () => {
+      const p = plan({ lump: 150_000 })
+      const list = [goal('cushion', { have: 400_000 }), goal('trip', { have: 50_000 }), goal('car', { have: 200_000 })]
+      expect(planLumpTakes(p, list, 250_000, '2026-09')).toEqual([
+        { goalId: 'trip', amount: 30_000 }, { goalId: 'car', amount: 120_000 },
+      ])
+      // Шаг меньше «вложить» — снимается не больше шага.
+      expect(planLumpTakes(p, list, 50_000, '2026-09').reduce((a, x) => a + x.amount, 0)).toBe(50_000)
+      expect(planLumpTakes(p, list, 250_000, '2026-10')).toEqual([])
+      const taken = list.map((g) =>
+        g.id === 'trip' ? { ...g, movements: [{ id: 'm', date: T0, amount: -100_000, by: 'a' as const, planId: 'plan' }] } : g,
+      )
+      expect(planLumpTakes(p, taken, 250_000, '2026-09').reduce((a, x) => a + x.amount, 0)).toBe(50_000)
+    })
   })
 
   describe('клинап: шаг закрыл долг — остаток суммы месяца вторым шагом (Р-4, Р-5)', () => {

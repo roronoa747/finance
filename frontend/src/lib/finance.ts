@@ -1531,6 +1531,43 @@ export function planExtra(
   )
 }
 
+/**
+ * Сколько снять с каждой цели, чтобы вместе вышло `amount`: доля её накопленного, целые
+ * тенге (метод наибольшего остатка), не больше накопленного. Σ = min(amount, Σ накопленного).
+ */
+export function lumpShares(goals: Goal[], amount: number): { goalId: string; amount: number }[] {
+  const pool = goals.map((g) => ({ goalId: g.id, have: Math.max(0, Math.round(g.have)) })).filter((g) => g.have > 0)
+  const total = pool.reduce((a, g) => a + g.have, 0)
+  const take = Math.min(Math.max(0, Math.round(amount)), total)
+  if (!take) return []
+  const shares = pool.map((g) => {
+    const exact = (take * g.have) / total
+    return { goalId: g.goalId, amount: Math.floor(exact), rest: exact - Math.floor(exact) }
+  })
+  let left = take - shares.reduce((a, x) => a + x.amount, 0)
+  for (const x of [...shares].sort((a, b) => b.rest - a.rest)) {
+    if (left <= 0) break
+    x.amount++
+    left--
+  }
+  return shares.filter((x) => x.amount > 0).map(({ goalId, amount }) => ({ goalId, amount }))
+}
+
+/**
+ * «Вложить уже накопленное» при внесении шага (Р-4; клинап Блока 3, вариант (а)): эти деньги
+ * лежат в целях на паузе — с них и снимаются, не со счёта. Только в месяц старта и не больше
+ * того, что план ещё не снял (движения с его `planId`, и у удалённых целей): «Снять»
+ * досрочку и внести заново — второй раз не снимется.
+ */
+export function planLumpTakes(plan: DebtPlan, goals: Goal[], paid: number, key: string) {
+  if (key !== planStartMonth(plan) || plan.lump <= 0) return []
+  const taken = goals
+    .flatMap((g) => g.movements ?? [])
+    .filter((m) => m.planId === plan.id)
+    .reduce((a, m) => a - m.amount, 0)
+  return lumpShares(pausedGoals(plan, goals), Math.min(paid, plan.lump - taken))
+}
+
 /** Сумма месяца плана (Р-4): `planExtra`, а в месяц старта — ещё «вложить уже накопленное». */
 export const planMonthSum = (plan: DebtPlan, state: PlanState, key: string) =>
   planExtra(plan, state.goals ?? [], state.credits ?? [], state.payments ?? [], key) +

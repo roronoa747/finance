@@ -60,6 +60,11 @@ export type GoalMovement = {
   amount: number
   by: PersonId
   note?: string
+  /**
+   * Снятие «вложить уже накопленное» по плану «Сначала долги» (клинап Блока 3): id плана —
+   * накопленное снимается в долг один раз, сколько бы шаг ни снимали и ни вносили.
+   */
+  planId?: string
 }
 
 export type Goal = Tracked & {

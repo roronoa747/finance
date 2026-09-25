@@ -13,7 +13,9 @@ import {
   nextObligationDue,
   pausedGoals,
   planForecast,
+  netWorth,
   prepaySaved,
+  strategyInputs,
 } from '@/lib/finance'
 import { mergeDocs } from '@/lib/merge'
 
@@ -1608,6 +1610,64 @@ describe('PV-14: план «Сначала долги» в сторе', () => {
     expect(free()).toBe(before)
     expect(store.applyPlanStep('a', { accountId: 'card' })).toBeNull()
     expect(store.accounts[0].amount).toBe(2_000_000 - 120_667)
+  })
+
+  describe('клинап: «вложить уже накопленное» — с целей на паузе, не со счёта (вариант (а))', () => {
+    // На паузе отпуск (50 000) и машина (200 000); вложить 150 000 — доли 30 000 и 120 000.
+    const chooseLump = (store: ReturnType<typeof useFinanceStore>) =>
+      store.choosePlan({ keptGoalIds: [], cushionGoalId: 'cushion', months: 24, lump: 150_000 }, 'a')!
+    const haves = (store: ReturnType<typeof useFinanceStore>) => store.goals.map((g) => g.have)
+    const worth = (store: ReturnType<typeof useFinanceStore>) => netWorth(store.accounts, store.credits, store.goals)
+
+    it('шаг месяца старта: накопленное снято с целей на паузе долями, со счёта ушли только взносы; капитал прежний', () => {
+      const store = family()
+      const plan = chooseLump(store)
+      const before = worth(store)
+      const rec = store.applyPlanStep('a', { accountId: 'card' })!
+      expect(rec).toMatchObject({ targetId: 'cc', amount: 250_000, accountId: 'card', planId: plan.id })
+      expect(haves(store)).toEqual([400_000, 20_000, 80_000])
+      expect(store.goals[1].movements).toEqual([
+        expect.objectContaining({ amount: -30_000, planId: plan.id, note: 'в долги по плану', by: 'a' }),
+      ])
+      expect(store.accounts[0].amount).toBe(2_000_000 - 100_000)
+      expect(worth(store)).toBe(before)
+      // После отмены калькулятор не предлагает вложить уже вложенное.
+      store.cancelPlan()
+      const spare = strategyInputs({
+        credits: store.credits, goals: store.goals, obligations: store.obligations, key: '2026-09', kept: ['cushion'], cushion: false, useSaved: true,
+      }).spare
+      expect(spare).toBe(100_000)
+    })
+
+    it('«Снять» досрочку и внести шаг заново — с целей второй раз не снимается, капитал прежний', () => {
+      const store = family()
+      chooseLump(store)
+      const before = worth(store)
+      const rec = store.applyPlanStep('a', { accountId: 'card' })!
+      store.removePrepayment(rec.id)
+      // Досрочки нет, а снятое с целей лежит на счёте — как «снять с цели на счёт».
+      expect(store.accounts[0].amount).toBe(2_000_000 + 150_000)
+      expect(worth(store)).toBe(before)
+      expect(store.applyPlanStep('a', { accountId: 'card' })).toMatchObject({ amount: 250_000 })
+      expect(haves(store)).toEqual([400_000, 20_000, 80_000])
+      expect(store.accounts[0].amount).toBe(2_000_000 - 100_000)
+      expect(worth(store)).toBe(before)
+    })
+
+    it('«Не списывать» — снято с целей, счёт не тронут; не месяц старта — цели не трогаются', () => {
+      const store = family()
+      chooseLump(store)
+      store.applyPlanStep('a', { accountId: null })
+      expect(haves(store)).toEqual([400_000, 20_000, 80_000])
+      expect(store.accounts[0].amount).toBe(2_000_000)
+
+      setActivePinia(createPinia())
+      const next = family()
+      chooseLump(next)
+      at('2026-10-05T07:00:00Z')
+      expect(next.applyPlanStep('a', { accountId: 'card' })).toMatchObject({ amount: 100_000 })
+      expect(haves(next)).toEqual([400_000, 50_000, 200_000])
+    })
   })
 
   it('applyPlanStep: без истории счёта и без accountId — null (спросить); с прошлой оплатой — её счёт', () => {
