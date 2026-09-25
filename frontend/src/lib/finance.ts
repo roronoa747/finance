@@ -1,4 +1,4 @@
-import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PlanForecast, WishItem } from '@/types/finance'
+import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem } from '@/types/finance'
 import { addMonths, daysInMonth, monthKey, parseMonthKey, today } from '@/lib/dates'
 import { categoryName } from '@/lib/palette'
 /**
@@ -403,6 +403,9 @@ export type LumpPlan = {
    */
   openEnded?: boolean
 }
+
+/** Р-11: платёж не покрывает проценты — сравнивать не с чем. Один текст для всех экранов. */
+export const NO_SAVING = 'при текущем платеже долг не закрывается — экономию не считаем'
 
 /**
  * Разовая досрочка, применённая к кредиту (Р-6): что станет с остатком, платежом
@@ -1566,6 +1569,62 @@ export function planLumpTakes(plan: DebtPlan, goals: Goal[], paid: number, key: 
     .filter((m) => m.planId === plan.id)
     .reduce((a, m) => a - m.amount, 0)
   return lumpShares(pausedGoals(plan, goals), Math.min(paid, plan.lump - taken))
+}
+
+/** Сколько из взноса `paid` снимется с целей на паузе (`planLumpTakes`), остальное — со счёта. */
+export const planLumpPart = (plan: DebtPlan, goals: Goal[], paid: number, key: string) =>
+  planLumpTakes(plan, goals, paid, key).reduce((a, x) => a + x.amount, 0)
+
+/**
+ * «Вложить уже накопленное» плана (PV-15): накопленное целей, которые встанут на паузу, —
+ * без «не останавливать» и без цели-подушки (она для поломок, а не для долгов), минус
+ * буфер галочки «Сначала подушка». Подпись галочки и записанный план — одно число.
+ */
+export const planLumpOf = (opts: {
+  credits: Credit[]
+  goals: Goal[]
+  obligations: Obligation[]
+  key: string
+  kept: string[]
+  cushionGoalId: string | null
+  cushion: boolean
+}) =>
+  strategyInputs({
+    ...opts,
+    kept: opts.cushionGoalId ? [...opts.kept, opts.cushionGoalId] : opts.kept,
+    useSaved: true,
+  }).lump
+
+/**
+ * План, который запишет «Выбрать этот план» (Р-4, Р-9): стор его пишет, калькулятор
+ * показывает под кнопкой шаг и прогноз — выбранное = записанное. Долги плана —
+ * процентные на момент выбора; прогноз (`planForecast`) считает тот, кто пишет.
+ */
+export function planDraft(opts: {
+  id: string
+  by: PersonId
+  t: string
+  keptGoalIds: string[]
+  cushionGoalId: string | null
+  months: 12 | 24 | 36
+  lump: number
+  credits: Credit[]
+}): DebtPlan {
+  return {
+    id: opts.id,
+    status: 'active',
+    by: opts.by,
+    startedAt: opts.t,
+    endedAt: null,
+    keptGoalIds: [...opts.keptGoalIds],
+    cushionGoalId: opts.cushionGoalId,
+    creditIds: costliestCredits(opts.credits).map((c) => c.id),
+    months: opts.months,
+    lump: Math.max(0, Math.round(opts.lump)),
+    forecast: { gain: 0, savedInterest: 0, debtFreeMonth: null },
+    result: null,
+    updatedAt: opts.t,
+  }
 }
 
 /** Сумма месяца плана (Р-4): `planExtra`, а в месяц старта — ещё «вложить уже накопленное». */

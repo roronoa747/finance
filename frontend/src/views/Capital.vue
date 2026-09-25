@@ -759,6 +759,7 @@ watch(queryModalOpen, (open) => {
           :goals="goals"
           :obligations="obligations"
           :month-key="key"
+          :payments="financeStore.payments"
           :plan="plan"
           :step="planNow"
           :can-choose="!authStore.isViewer"

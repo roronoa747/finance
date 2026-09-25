@@ -19,6 +19,7 @@ import {
   nextObligationDue,
   paidFor,
   pausedGoals,
+  planDraft,
   planForecast,
   planLumpTakes,
   planStep,
@@ -1171,21 +1172,8 @@ export const useFinanceStore = defineStore('finance', () => {
     const costly = costliestCredits(credits.value)
     if (!costly.length) return null
     const t = new Date().toISOString()
-    const draft: DebtPlan = {
-      id: Math.random().toString(36).slice(2, 10),
-      status: 'active',
-      by,
-      startedAt: t,
-      endedAt: null,
-      keptGoalIds: [...opts.keptGoalIds],
-      cushionGoalId: opts.cushionGoalId,
-      creditIds: costly.map((c) => c.id),
-      months: opts.months,
-      lump: Math.max(0, Math.round(opts.lump)),
-      forecast: { gain: 0, savedInterest: 0, debtFreeMonth: null },
-      result: null,
-      updatedAt: t,
-    }
+    // Та же сборка, что показывает калькулятор под кнопкой: выбранное = записанное.
+    const draft = planDraft({ ...opts, id: Math.random().toString(36).slice(2, 10), by, t, credits: credits.value })
     const plan: DebtPlan = { ...draft, forecast: planForecast(draft, planState(), monthKey()) }
     mutateHouseholdDoc((doc) => {
       if (!doc.plans) doc.plans = []

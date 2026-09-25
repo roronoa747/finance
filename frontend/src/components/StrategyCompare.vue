@@ -21,7 +21,12 @@ import { monthIn } from '@/lib/dates'
 import {
   costliestCredits,
   pausedGoals,
+  planDraft,
   planExtra,
+  planForecast,
+  NO_SAVING,
+  planLumpOf,
+  planLumpPart,
   planStartMonth,
   planStep,
   simulateStrategy,
@@ -29,7 +34,7 @@ import {
   strategyInputs,
   type PlanStep,
 } from '@/lib/finance'
-import type { Credit, DebtPlan, Goal, Obligation } from '@/types/finance'
+import type { Credit, DebtPlan, Goal, Obligation, Payment } from '@/types/finance'
 import { cn } from '@/lib/utils'
 import Callout from '@/components/kit/Callout.vue'
 import Field from '@/components/kit/Field.vue'
@@ -45,6 +50,8 @@ const props = defineProps<{
   goals: Goal[]
   obligations: Obligation[]
   monthKey: string
+  /** Отметки и досрочки семьи: шаг под кнопкой знает, что внесено в этом месяце. */
+  payments?: Payment[]
   /** Стартовое состояние — для SSR-тестов и сценариев. */
   initial?: { months?: Horizon; kept?: string[]; cushion?: boolean; useSaved?: boolean; cushionGoalId?: string | null }
   /** Активный план семьи: вместо выбора — его карточка. */
@@ -122,46 +129,57 @@ function toggleKept(id: string, on: boolean) {
 }
 
 /* ------------------ Выбрать этот план (PV-15) ------------------ */
-// «Вложить накопленное» в плане не трогает цель-подушку: она для поломок, а не для долгов.
-const planLump = computed(() =>
-  useSaved.value
-    ? strategyInputs({
-        credits: props.credits,
-        goals: props.goals,
-        obligations: props.obligations,
-        key: props.monthKey,
-        kept: cushionGoalId.value ? [...kept.value, cushionGoalId.value] : kept.value,
-        cushion: cushion.value,
-        useSaved: true,
-      }).lump
-    : 0,
+// «Вложить накопленное» плана — одно число в подписи галочки и в записанном плане
+// (`planLumpOf`: без цели-подушки — она для поломок, а не для долгов).
+const lumpOffer = computed(() =>
+  planLumpOf({
+    credits: props.credits,
+    goals: props.goals,
+    obligations: props.obligations,
+    key: props.monthKey,
+    kept: kept.value,
+    cushionGoalId: cushionGoalId.value,
+    cushion: cushion.value,
+  }),
 )
+const planLump = computed(() => (useSaved.value ? lumpOffer.value : 0))
 /**
- * План, который выберется сейчас, — только для пояснения: что встанет на паузу, какой
- * долг первый, шаг месяца. Начало — середина показанного месяца, чтобы шаг взял
- * «вложить накопленное» месяца старта.
+ * План, который выберется сейчас (`planDraft` — та же сборка, что пишет стор): что встанет
+ * на паузу, какой долг первый, шаг месяца с учётом внесённого и прогноз. Начало — середина
+ * показанного месяца, чтобы шаг взял «вложить накопленное» месяца старта.
  */
-const draft = computed<DebtPlan>(() => ({
-  id: 'draft',
-  status: 'active',
-  by: 'a',
-  startedAt: `${props.monthKey}-15T12:00:00.000Z`,
-  keptGoalIds: kept.value,
-  cushionGoalId: cushionGoalId.value,
-  creditIds: costliestCredits(props.credits).map((c) => c.id),
-  months: months.value,
-  lump: planLump.value,
-  forecast: { gain: 0, savedInterest: 0, debtFreeMonth: null },
-  updatedAt: '',
+const draft = computed(() =>
+  planDraft({
+    id: 'draft',
+    by: 'a',
+    t: `${props.monthKey}-15T12:00:00.000Z`,
+    keptGoalIds: kept.value,
+    cushionGoalId: cushionGoalId.value,
+    months: months.value,
+    lump: planLump.value,
+    credits: props.credits,
+  }),
+)
+const draftState = computed(() => ({
+  goals: props.goals,
+  credits: props.credits,
+  obligations: props.obligations,
+  payments: props.payments ?? [],
 }))
 const draftPaused = computed(() => pausedGoals(draft.value, props.goals))
 // Сколько план будет направлять в долги каждый месяц; 0 — выбирать нечего (всё, кроме
 // подушки, «не останавливать»): план назначал бы шаг «0 ₸».
-const draftExtra = computed(() => planExtra(draft.value, props.goals, props.credits))
-const draftStep = computed(() =>
-  planStep(draft.value, { goals: props.goals, credits: props.credits, obligations: props.obligations }, props.monthKey),
+const draftExtra = computed(() => planExtra(draft.value, props.goals, props.credits, props.payments))
+const draftStep = computed(() => planStep(draft.value, draftState.value, props.monthKey))
+// Сколько из шага месяца — накопленное целей на паузе (снимется с них, не со счёта).
+const draftLumpPart = computed(() =>
+  draftStep.value.kind === 'prepay' ? planLumpPart(draft.value, props.goals, draftStep.value.amount, props.monthKey) : 0,
 )
+// Прогноз, который запишется в план (Р-6: «При выборе ожидали»).
+const draftForecast = computed(() => planForecast(draft.value, draftState.value, props.monthKey))
+const closes = (m: string | null) => (m ? `долги с процентами закроются в ${monthIn(m)}` : 'долги с процентами не закрываются')
 const firstDebt = computed(() => costliestCredits(props.credits)[0])
+const goalDebt = (id: string) => props.credits.find((c) => c.id === id)?.name ?? ''
 const goalName = (id: string) => props.goals.find((g) => g.id === id)?.name ?? ''
 
 function choose() {
@@ -276,7 +294,7 @@ const stepLine = computed(() => {
     <label v-if="inputs.movable > 0" class="mb-3 flex items-start gap-2.5 text-[13.5px] text-ink">
       <input v-model="useSaved" type="checkbox" class="mt-0.5 size-4 accent-[var(--brand)]" />
       <span>
-        Вложить уже накопленное — {{ money(inputs.spare) }}
+        Вложить уже накопленное — {{ money(lumpOffer) }}
         <span class="block text-[12px] text-ink-3">
           из неотмеченных целей, подушка остаётся. Если это вклад с госпремией — сначала
           проверьте условия: премия может обыграть ставку.
@@ -345,8 +363,20 @@ const stepLine = computed(() => {
             Шаг этого месяца — пополнить подушку «{{ goalName(draftStep.goalId) }}» на {{ money(draftStep.amount) }}:
             до месяца обязательных списаний не хватает {{ money(draftStep.missing) }}.
           </p>
+          <p v-else-if="draftStep.kind === 'prepay' && draftStep.applied" class="num">
+            Шаг этого месяца уже внесён — {{ money(draftStep.amount) }}: следующий шаг — в следующем месяце.
+          </p>
           <p v-else-if="draftStep.kind === 'prepay'" class="num">
-            Шаг этого месяца — {{ money(draftStep.amount) }} досрочно в «{{ firstDebt?.name }}».
+            Шаг этого месяца — {{ money(draftStep.amount) }} досрочно в «{{ goalDebt(draftStep.creditId) }}»<template
+              v-if="draftLumpPart"
+            >, из них {{ money(draftLumpPart) }} — из накопленного в целях на паузе</template>.
+          </p>
+          <p class="num">
+            <template v-if="draftForecast.savedInterest === null">Прогноз: {{ NO_SAVING }}.</template>
+            <template v-else>
+              Прогноз плана: не отдадим банку {{ money(draftForecast.savedInterest) }},
+              {{ closes(draftForecast.debtFreeMonth) }}.
+            </template>
           </p>
         </template>
       </div>

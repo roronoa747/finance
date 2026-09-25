@@ -4,8 +4,8 @@ import { renderToString } from 'vue/server-renderer'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { routes } from '@/router'
 import { money, plain } from '@/lib/money'
-import { simulateStrategy, strategyGain, strategyInputs } from '@/lib/finance'
-import type { Credit, DebtPlan, Goal, Obligation } from '@/types/finance'
+import { planDraft, planForecast, planLumpOf, simulateStrategy, strategyGain, strategyInputs } from '@/lib/finance'
+import type { Credit, DebtPlan, Goal, Obligation, Payment } from '@/types/finance'
 import StrategyCompare from './StrategyCompare.vue'
 
 describe('PV-02: StrategyCompare — «копить или гасить» как в React (SSR)', () => {
@@ -195,6 +195,34 @@ describe('PV-15: «Выбрать этот план» в калькулятор�
     const choice = t.slice(t.indexOf('Подушка — какая цель?'))
     expect(choice).not.toContain('Шаг этого месяца')
     expect(choice).not.toContain(money(0))
+  })
+
+  it('клинап: под кнопкой — прогноз, который запишется; «вложить» = lump плана без цели-подушки, и откуда он', async () => {
+    const t = text(await render({ initial: { cushionGoalId: 'baby', useSaved: true } }))
+    // Накопленное «Квартиры» 600 000 минус подушка месяца 337 000; «Декрет» — подушка плана, не трогается.
+    const lump = planLumpOf({ credits, goals, obligations: [rent], key: '2026-09', kept: [], cushionGoalId: 'baby', cushion: true })
+    expect(lump).toBe(263_000)
+    expect(t).toContain(`Вложить уже накопленное — ${money(263_000)}`)
+    const draft = planDraft({
+      id: 'x', by: 'a', t: '2026-09-15T12:00:00.000Z', keptGoalIds: [], cushionGoalId: 'baby', months: 36, lump, credits,
+    })
+    const f = planForecast(draft, { goals, credits, obligations: [rent], payments: [] }, '2026-09')
+    expect(f.savedInterest).toBeGreaterThan(0)
+    expect(t).toContain(`Прогноз плана: не отдадим банку ${money(f.savedInterest!)}`)
+    // 100 000 взноса «Квартиры» + 263 000 накопленного; накопленное снимется с цели, не со счёта.
+    expect(t).toContain(
+      `Шаг этого месяца — ${money(363_000)} досрочно в «Кредитка», из них ${money(263_000)} — из накопленного в целях на паузе.`,
+    )
+  })
+
+  it('клинап: шаг месяца уже внесён (план отменили и выбирают заново) — под кнопкой его не обещаем', async () => {
+    const earlier: Payment = {
+      id: 'p', kind: 'prepay', targetId: 'card', period: '2026-09', amount: 150_000, principal: 150_000, accountId: 'c',
+      by: 'a', at: '2026-09-12T05:00:00.000Z', updatedAt: '2026-09-12T05:00:00.000Z', planId: 'old',
+    }
+    const t = text(await render({ payments: [earlier] }))
+    expect(t).toContain(`Шаг этого месяца уже внесён — ${money(150_000)}: следующий шаг — в следующем месяце.`)
+    expect(t).not.toContain('досрочно в «Кредитка».')
   })
 
   it('viewer — без кнопки выбора, остальное видно (Р-12)', async () => {
