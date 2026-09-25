@@ -707,8 +707,8 @@ describe('PV-12: счета — валютный, удаление, тексты
           { id: 'usd', name: 'Доллары', note: '', amount: 512_340, amountSetAt: T0, kind: 'cash', currency: 'USD', foreignAmount: 1_000, rate: 512.34, rateAt: T0, updatedAt: T0 },
         ],
         goals: [
-          { id: 'flat', name: 'Квартира', need: 5_000_000, have: 400_000, monthly: 100_000, hue: 'teal', accountId: 'card', movements: [], updatedAt: T0 },
-          { id: 'trip', name: 'Отпуск', need: 900_000, have: 150_000, monthly: 50_000, hue: 'teal', accountId: 'card', movements: [], updatedAt: T0 },
+          { id: 'flat', name: 'Квартира', need: 5_000_000, seed: 400_000, have: 400_000, monthly: 100_000, hue: 'teal', planPct: 0, accountId: 'card', movements: [], updatedAt: T0 },
+          { id: 'trip', name: 'Отпуск', need: 900_000, seed: 150_000, have: 150_000, monthly: 50_000, hue: 'teal', planPct: 0, accountId: 'card', movements: [], updatedAt: T0 },
         ],
       },
       1,
