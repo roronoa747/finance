@@ -779,14 +779,17 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(screenA.payoffCreditId).toBe('loan')
       screenA.payoffMode = 'once'
       screenA.payoffAmount = '100 000'
+      screenA.applyMode = 'payment'
       await nextTick()
       // 1 000 000 − 100 000 = 900 000.
       expect(screenA.applyPlan).toMatchObject({ paid: 100_000, left: 900_000 })
-      // Другой кредит — чистый калькулятор: сумма пустая, режим «каждый месяц».
+      // Другой кредит — чистый калькулятор: сумма пустая, режим «каждый месяц», и
+      // «Снизить платёж» кредита «Кредит» не переходит к рассрочке (клинап).
       screenA.payoffCreditId = inst.id
       await nextTick()
       expect(screenA.payoffAmount).toBe('')
       expect(screenA.payoffMode).toBe('monthly')
+      expect(screenA.applyMode).toBe('term')
       expect(screenA.applyPlan).toBe(null)
 
       // Калькулятор рассрочки на A: 240 000 / 20 000 = 12 платежей, переплаты 0;

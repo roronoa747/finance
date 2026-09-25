@@ -760,6 +760,7 @@ watch(
   (id) => {
     payoffAmount.value = ''
     payoffMode.value = 'monthly'
+    applyMode.value = 'term'
     applyDone.value = null
     removingPrepay.value = null
     const last = id ? lastAccountFor(financeStore.payments, id, financeStore.accounts) : undefined
