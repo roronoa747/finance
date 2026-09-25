@@ -259,6 +259,96 @@ export function debtCost(principal: number, annualRate: number, payment: number)
   }
 }
 
+export type CreditOutlook = {
+  closes: boolean
+  months: number
+  overpay: number
+  /** Проценты за месяц — до тенге. */
+  monthlyInterest: number
+  /** Доля платежа в проценты — целые проценты. */
+  sharePct: number
+}
+
+/**
+ * Что станет с долгом при нынешнем платеже — выводы модалки кредита (React
+ * `CreditDialog`) и «Что гасить первым»: сколько платежей осталось (вверх до целого),
+ * сколько уйдёт банку сверх остатка (до тенге), проценты за месяц и их доля в платеже.
+ * `closes: false` — чисел срока и переплаты нет: платёж не покрывает проценты **или
+ * долг уже закрыт** (остаток 0). Различать эти случаи — по остатку.
+ */
+export function creditOutlook(c: { principal: number; annualRate: number; payment: number }): CreditOutlook {
+  const cost = debtCost(c.principal, c.annualRate, c.payment)
+  const now = { monthlyInterest: Math.round(cost.monthlyInterest), sharePct: Math.round(cost.interestShare * 100) }
+  return cost.closes
+    ? { closes: true, months: Math.ceil(cost.months), overpay: Math.round(cost.overpay), ...now }
+    : { closes: false, months: Infinity, overpay: Infinity, ...now }
+}
+
+/** Выводы калькулятора досрочки — целые платежи и тенге. */
+export type PrepayOutcome = {
+  /** Платежей сейчас и после взноса — вверх до целого. */
+  monthsNow: number
+  monthsAfter: number
+  /** На сколько месяцев раньше — до целого. */
+  monthsSaved: number
+  /** Срок сокращается хотя бы на месяц (React сравнивает до округления). */
+  sooner: boolean
+  /** Сколько процентов не отдадим банку — до тенге, не меньше нуля. */
+  saved: number
+}
+
+/**
+ * Досрочка в калькуляторе (React `PayoffDialog`): ежемесячная добавка (`prepayment`)
+ * или разовый взнос (`lumpSum`). null — выводов нет: долг не закрывается при нынешнем
+ * платеже или после взноса, и срок с переплатой бесконечны.
+ */
+export function prepayOutcome(
+  c: { principal: number; annualRate: number; payment: number },
+  extra: number,
+  mode: 'monthly' | 'once',
+): PrepayOutcome | null {
+  const r =
+    mode === 'monthly'
+      ? prepayment(c.principal, c.annualRate, c.payment, extra)
+      : lumpSum(c.principal, c.annualRate, c.payment, extra)
+  if (!Number.isFinite(r.monthsNow) || !Number.isFinite(r.monthsAfter)) return null
+  return {
+    monthsNow: Math.ceil(r.monthsNow),
+    monthsAfter: Math.max(0, Math.ceil(r.monthsAfter)),
+    monthsSaved: Math.round(r.monthsSaved),
+    sooner: r.monthsSaved >= 1,
+    saved: Math.max(0, Math.round(r.saved)),
+  }
+}
+
+/**
+ * Чипы ежемесячной добавки: половина платежа, платёж (до тысячи) и добавка, снимающая
+ * половину переплаты. Без повторов и нулей, по возрастанию.
+ */
+export function payoffChips(c: { principal: number; annualRate: number; payment: number }): number[] {
+  const half = halfOverpayExtra(c.principal, c.annualRate, c.payment)
+  const round = (v: number) => Math.round(v / 1000) * 1000
+  return [...new Set([round(c.payment / 2), round(c.payment), ...(half ? [half] : [])].filter((v) => v > 0))].sort(
+    (a, b) => a - b,
+  )
+}
+
+/**
+ * «Отдача падает»: добавка в полплатежа, платёж, два и четыре (до тысячи) и что каждая
+ * даёт. Только у долга, который закрывается: у закрытого и у того, где платёж не
+ * покрывает проценты, лесенки нет.
+ */
+export function payoffLadder(c: { principal: number; annualRate: number; payment: number }) {
+  if (!creditOutlook(c).closes) return []
+  return [0.5, 1, 2, 4]
+    .map((k) => Math.round((c.payment * k) / 1000) * 1000)
+    .filter((extra) => extra > 0)
+    .flatMap((extra) => {
+      const out = prepayOutcome(c, extra, 'monthly')
+      return out ? [{ extra, ...out }] : []
+    })
+}
+
 /**
  * Разовый досрочный взнос: часть остатка гасится сразу, платёж не меняется.
  *
@@ -638,6 +728,9 @@ export const liveAccounts = (list: Account[]) => (list || []).filter(alive);
 export const payableAccounts = (list: Account[]) => liveAccounts(list).filter((a) => (a.currency ?? 'KZT') === 'KZT');
 export const liveWishlist = (list: WishItem[]) => (list || []).filter(alive);
 
+/** Валюта в тенге по курсу — целые тенге. Единственное место, где сумма умножается на курс. */
+export const fxToTenge = (foreignAmount: number, rate: number) => Math.round(foreignAmount * rate);
+
 /** Сумма обязательства, действующая в указанном месяце. */
 export function amountAt(o: Obligation, key = monthKey()): number {
   const versions = o.versions || [];
@@ -649,6 +742,20 @@ export function amountAt(o: Obligation, key = monthKey()): number {
 export function monthlyAmount(o: Obligation, key = monthKey()): number {
   const full = amountAt(o, key);
   return o.every === 'year' ? full / 12 : full;
+}
+
+/** Сколько годовой платёж занимает в плане месяца — до тенге (подсказки формы). */
+export const yearShare = (yearly: number) => Math.round(yearly / 12);
+
+/**
+ * Запланированная смена суммы обязательства: насколько платёж изменится в месяц и
+ * за год. Новой суммы нет — изменения нет. У годового сумма — за год: в месяц это
+ * двенадцатая часть разницы, за год — сама разница (исключение из Р-2: React
+ * умножал разницу годовой суммы ещё на 12, `memory/decisions/r2-exceptions-pv-block2.md`).
+ */
+export function plannedChange(current: number, planned: number, every?: Obligation['every']) {
+  const diff = planned > 0 ? Math.round(planned - current) : 0;
+  return every === 'year' ? { monthly: yearShare(diff), yearly: diff } : { monthly: diff, yearly: diff * 12 };
 }
 
 /** Списывается ли этот платёж в указанном месяце. Группа подписок не списывается никогда. */
@@ -956,6 +1063,108 @@ export function prepaySaved(payments: Payment[], credits: Credit[]): number {
   return countedPayments(payments)
     .filter((p) => p.kind === 'prepay' && live.has(p.targetId))
     .reduce((sum, p) => sum + (p.saved ?? 0), 0)
+}
+
+/* ---------------- «в долг / банку» и график платежей (Р-8) ---------------- */
+
+/** Досрочка — вся в тело; платёж графика — по снимку тела в записи. */
+const recordBody = (p: Payment) => (p.kind === 'prepay' ? p.amount : (p.principal ?? 0))
+
+/**
+ * Сколько из платежа ушло в долг и сколько банку. Отмеченный — по записи: тело в
+ * ней снимок на момент оплаты, пересчитывать от нынешнего остатка нечестно.
+ * Неотмеченный — по графику (`creditSplit`) от остатка кредита сейчас (кредит —
+ * производный, из геттера стора).
+ */
+export function paymentSplit(record: Payment | null, credit: Credit, due: number) {
+  if (record) {
+    const body = recordBody(record)
+    return { body, interest: record.amount - body }
+  }
+  const s = creditSplit(credit.principal, credit.annualRate, due)
+  return { body: s.body, interest: s.interest }
+}
+
+/** За всё время по кредиту: сколько ушло в долг и банку, сколько было платежей (с досрочками). */
+export function creditTotals(payments: Payment[], creditId: string) {
+  const list = countedPayments(payments).filter(
+    (p) => p.targetId === creditId && (p.kind === 'credit' || p.kind === 'prepay'),
+  )
+  const body = list.reduce((a, p) => a + recordBody(p), 0)
+  return { body, interest: list.reduce((a, p) => a + p.amount, 0) - body, count: list.length }
+}
+
+/**
+ * Проценты банку в месяц по открытым кредитам — часть «Кредитов» Бюджета. Та же
+ * разбивка, что у строки кредита: платёж меньше процентов — банку уходит весь платёж.
+ * Кредиты — производные.
+ */
+export const budgetInterest = (credits: Credit[]) =>
+  openCredits(credits).reduce((a, c) => a + creditSplit(c.principal, c.annualRate, c.payment).interest, 0)
+
+export type ScheduleRow = {
+  period: string
+  /** Число месяца; платёж 31-го в коротком месяце — в его последний день. */
+  day: number
+  /** Платёж графика: у оплаченного — из записи. */
+  amount: number
+  body: number
+  interest: number
+  /** Досрочка в этом месяце: применённая (запись) или запланированная (`extra`). */
+  extra: number
+  /** Остаток долга после этого месяца. */
+  left: number
+  paid: boolean
+}
+
+/** Дальше графика не считаем: платёж меньше процентов долг не закрывает никогда. */
+const SCHEDULE_CAP = 600
+
+/**
+ * График платежей по кредиту с месяца `from` до закрытия (не больше 600 строк).
+ * Остаток — производный: отметки и досрочки в нём уже учтены. Отмеченный месяц —
+ * по записи; неотмеченные считаются помесячно (`creditSplit`) от остатка, поэтому
+ * Σ тела неоплаченных строк и запланированных досрочек = остаток. `extra` —
+ * досрочки будущих месяцев (план): гасят тело до платежа своего месяца. Уже
+ * применённые досрочки видны в строке своего месяца, но второй раз не вычитаются.
+ */
+export function creditSchedule(
+  credit: Credit,
+  payments: Payment[] = [],
+  opts: { from?: string; extra?: { period: string; amount: number }[] } = {},
+): ScheduleRow[] {
+  const from = opts.from ?? monthKey()
+  const own = countedPayments(payments).filter((p) => p.targetId === credit.id)
+  const applied = (period: string) =>
+    own.filter((p) => p.kind === 'prepay' && p.period === period).reduce((a, p) => a + p.amount, 0)
+  const planned = (period: string) =>
+    (opts.extra ?? []).filter((x) => x.period === period).reduce((a, x) => a + Math.max(0, Math.round(x.amount)), 0)
+
+  let left = Math.max(0, Math.round(credit.principal))
+  const rows: ScheduleRow[] = []
+  for (let i = 0; i < SCHEDULE_CAP; i++) {
+    const period = addMonths(from, i)
+    const day = Math.min(credit.day, daysInMonth(period))
+    const rec = own.find((p) => p.kind === 'credit' && p.period === period)
+    if (rec) {
+      const body = recordBody(rec)
+      rows.push({ period, day, amount: rec.amount, body, interest: rec.amount - body, extra: applied(period), left, paid: true })
+      continue
+    }
+    if (left <= 0) break
+    const extra = Math.min(left, planned(period))
+    left -= extra
+    const s = creditSplit(left, credit.annualRate, credit.payment)
+    left -= s.body
+    rows.push({ period, day, amount: s.amount, body: s.body, interest: s.interest, extra: extra + applied(period), left, paid: false })
+  }
+  // Оплаченные месяцы перед первым неоплаченным уже вычтены из остатка: остаток после
+  // каждого из них — обратным ходом от первого неоплаченного.
+  const first = rows.findIndex((r) => !r.paid)
+  for (let j = (first < 0 ? rows.length : first) - 2; j >= 0; j--) {
+    rows[j].left = rows[j + 1].left + rows[j + 1].body + rows[j + 1].extra
+  }
+  return rows
 }
 
 export type Due = {

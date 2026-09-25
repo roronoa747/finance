@@ -261,6 +261,37 @@ describe('views/Goals.vue, GoalDetail.vue, Deposit.vue — Цели, депоз�
     expect(html).not.toContain('Цель дорожает вместе с рынком')
   })
 
+  it('пополнение и снятие цели: только живые тенговые счета — валютный стёр бы сдвиг при правке курса (клинап)', async () => {
+    const store = useFinanceStore()
+    store.addGoal({ name: 'Отпуск', need: 900_000, have: 100_000, monthly: 50_000, hue: 'blue' })
+    store.addAccount({ name: 'Kaspi Gold', kind: 'card', amount: 300_000 })
+    store.addAccount({ name: 'Доллары', kind: 'cash', amount: 441_890, currency: 'USD', foreignAmount: 1_000, rate: 441.89 })
+    store.addAccount({ name: 'Старая карта', kind: 'card', amount: 10_000 })
+    store.removeAccount(store.accounts.find((a) => a.name === 'Старая карта')!.id)
+    const gId = store.goals[0].id
+
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('vue/server-renderer')
+    const { createRouter, createMemoryHistory } = await import('vue-router')
+    const GoalDetail = (await import('./GoalDetail.vue')).default
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/goals/:id', component: GoalDetail }] })
+    await router.push(`/goals/${gId}`)
+    await router.isReady()
+    const app = createSSRApp(GoalDetail)
+    app.use(router)
+    app.mixin({
+      created() {
+        if (this.$.parent === null) Object.assign(this.$.setupState, { openDepositModal: true })
+      },
+    })
+
+    const html = await renderToString(app)
+    expect(html).toContain('Списать со счёта (опционально)')
+    expect(html).toContain('Kaspi Gold (')
+    expect(html).not.toContain('Доллары (')
+    expect(html).not.toContain('Старая карта (')
+  })
+
   it('рендерит Deposit.vue для счета с депозитными условиями', async () => {
     const store = useFinanceStore()
     store.addAccount({

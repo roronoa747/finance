@@ -4,7 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { PhArrowLeft, PhPencilSimple, PhPlus, PhMinus, PhX } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { money, plain, parseMoney, ratePct } from '@/lib/money'
-import { INFLATION, goalMonths, goalMonthly, indexedNeed } from '@/lib/finance'
+import { INFLATION, goalMonths, goalMonthly, indexedNeed, payableAccounts } from '@/lib/finance'
 import { addMonths, monthAfter, monthInAfter, monthKey, monthTitle } from '@/lib/dates'
 import { contributionStreak } from '@/lib/finance'
 import { HUES, HUE_KEYS, hueColor, type HueKey } from '@/lib/palette'
@@ -35,7 +35,9 @@ const financeStore = useFinanceStore()
 const goalId = computed(() => route.params.id as string)
 const goal = computed(() => financeStore.goals.find((g) => g.id === goalId.value))
 const people = computed(() => financeStore.people)
-const accounts = computed(() => financeStore.accounts)
+// Пополнение и снятие двигают тенговую базу счёта: валютный счёт пересчитал бы её по
+// курсу при следующей правке и молча потерял сдвиг. Удалённые счета — тоже не сюда.
+const accounts = computed(() => payableAccounts(financeStore.accounts))
 
 const remaining = computed(() => (goal.value ? Math.max(0, goal.value.need - goal.value.have) : 0))
 const months = computed(() => (goal.value ? goalMonths(remaining.value, goal.value.monthly) : 1))

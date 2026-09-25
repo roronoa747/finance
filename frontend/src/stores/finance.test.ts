@@ -1272,3 +1272,218 @@ describe('PV-04: накопленное в цели не уходит в мин�
     expect(merged.goals[0].have).toBe(30_000)
   })
 })
+
+describe('PV-10: правка кредита — якорь только у остатка', () => {
+  const storage = new Map<string, string>()
+  const at = (iso: string) => vi.setSystemTime(new Date(iso))
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    at('2026-09-24T07:00:00Z')
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** Кредит 1 000 000 под 33% с отметкой за сентябрь: производный остаток 969 500. */
+  function paidLoan() {
+    const store = useFinanceStore()
+    store.addAccount({ name: 'Kaspi', kind: 'card', amount: 1_000_000 })
+    store.addCredit({ name: 'Кредит', principal: 1_000_000, annualRate: 0.33, payment: 58_000, day: 15 })
+    const id = store.credits[0].id
+    at('2026-09-24T08:00:00Z')
+    store.markPaid('credit', id, 'a', { accountId: store.accounts[0].id })
+    expect(store.credits[0].principal).toBe(969_500)
+    return { store, id, anchor: store.householdDoc.credits[0].principalSetAt }
+  }
+
+  it('день, ставка, платёж, название, примечание — не двигают якорь и производный остаток', () => {
+    const { store, id, anchor } = paidLoan()
+    let t = 9
+    for (const patch of [{ day: 20 }, { annualRate: 0.25 }, { payment: 60_000 }, { name: 'Халык' }, { note: 'авто' }]) {
+      at(`2026-09-24T${String(t++).padStart(2, '0')}:00:00Z`)
+      store.updateCredit(id, patch)
+      expect(store.householdDoc.credits[0]).toMatchObject(patch)
+      expect(store.householdDoc.credits[0].principalSetAt).toBe(anchor)
+      // База прежняя, отметка до якоря по-прежнему вычитается.
+      expect(store.householdDoc.credits[0].principal).toBe(1_000_000)
+      expect(store.credits[0].principal).toBe(969_500)
+    }
+  })
+
+  it('остаток — сверка: новая база и якорь, отметки до якоря больше не вычитаются', () => {
+    const { store, id, anchor } = paidLoan()
+    at('2026-09-25T08:00:00Z')
+    store.updateCredit(id, { principal: 950_000 })
+    expect(store.householdDoc.credits[0].principalSetAt).toBe('2026-09-25T08:00:00.000Z')
+    expect(store.householdDoc.credits[0].principalSetAt).not.toBe(anchor)
+    expect(store.credits[0].principal).toBe(950_000)
+  })
+
+  it('тот же патч ничего не пишет: updatedAt прежний; тот же видимый остаток — без якоря', () => {
+    const { store, id, anchor } = paidLoan()
+    at('2026-09-24T09:00:00Z')
+    store.updateCredit(id, { day: 20, annualRate: 0.25 })
+    const stamp = store.householdDoc.credits[0].updatedAt
+    at('2026-09-24T10:00:00Z')
+    store.updateCredit(id, { day: 20, annualRate: 0.25 })
+    // Видимый остаток 969 500 — не сверка, а тот же остаток.
+    store.updateCredit(id, { principal: 969_500 })
+    expect(store.householdDoc.credits[0].updatedAt).toBe(stamp)
+    expect(store.householdDoc.credits[0].principalSetAt).toBe(anchor)
+    expect(store.householdDoc.credits[0].principal).toBe(1_000_000)
+  })
+})
+
+describe('PV-11: платёж — раздел, оценка, правка обязательства', () => {
+  const storage = new Map<string, string>()
+  const at = (iso: string) => vi.setSystemTime(new Date(iso))
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    at('2026-09-24T07:00:00Z')
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('раздел и оценка из формы: «Оставить?» спрашивает только о подписке (быт, без оценки)', async () => {
+    const { isSubscription, keepQuestions } = await import('@/lib/finance')
+    const store = useFinanceStore()
+    store.addObligation({ name: 'Интернет', day: 10, category: 'd4', amount: 7_000 })
+    store.addObligation({ name: 'Коммуналка', day: 8, category: 'd4', estimate: true, amount: 35_000 })
+    store.addObligation({ name: 'Аренда', day: 5, category: 'd1', amount: 220_000 })
+    const [internet, util, rent] = store.obligations
+    expect(util.estimate).toBe(true)
+    expect(rent.category).toBe('d1')
+    expect([internet, util, rent].map(isSubscription)).toEqual([true, false, false])
+
+    // Новый квартал — вопрос о подписках, заведённых в прошлом.
+    expect(keepQuestions(store.obligations, new Date('2026-10-05T07:00:00Z')).map((o) => o.name)).toEqual(['Интернет'])
+  })
+
+  it('«Раз в год» с месяцем — следующий платёж в месяц списания; «Каждый месяц» — снова ежемесячно', () => {
+    const store = useFinanceStore()
+    store.addObligation({ name: 'Страховка', day: 12, category: 'd4', amount: 60_000 })
+    const id = store.obligations[0].id
+    expect(nextObligationDue(store.obligations[0], store.payments)).toMatchObject({ period: '2026-09', day: 12 })
+
+    at('2026-09-24T08:00:00Z')
+    store.updateObligation(id, { every: 'year', month: 3 })
+    expect(nextObligationDue(store.obligations[0], store.payments)).toMatchObject({ period: '2027-03', day: 12 })
+
+    at('2026-09-24T09:00:00Z')
+    store.updateObligation(id, { every: 'month' })
+    expect(nextObligationDue(store.obligations[0], store.payments)).toMatchObject({ period: '2026-09' })
+  })
+
+  it('повторная правка тем же значением ничего не пишет; «Чьё это» — null, не undefined', () => {
+    const store = useFinanceStore()
+    store.people.push({ id: 'b', name: 'Аруна', salary: 0, payday: 20, updatedAt: '2026-09-01T00:00:00Z' })
+    store.addObligation({ name: 'Спортзал', day: 3, category: 'd4', amount: 15_000, who: 'b' })
+    const id = store.obligations[0].id
+
+    at('2026-09-24T08:00:00Z')
+    store.updateObligation(id, { day: 20, who: null })
+    const stamp = store.obligations[0].updatedAt
+    expect(store.obligations[0].who).toBeNull()
+    // Слияние возьмёт null победителя, а не «b» проигравшего (Р-14 RP, mergeList).
+    expect(JSON.parse(JSON.stringify(store.householdDoc)).obligations[0].who).toBeNull()
+
+    at('2026-09-24T09:00:00Z')
+    store.updateObligation(id, { day: 20, who: null })
+    expect(store.obligations[0].updatedAt).toBe(stamp)
+  })
+})
+
+describe('PV-12: счета — удаление с отвязкой целей, валютный счёт', () => {
+  const storage = new Map<string, string>()
+  const at = (iso: string) => vi.setSystemTime(new Date(iso))
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    at('2026-09-24T07:00:00Z')
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('удаление общего и личного счёта отвязывает цели — накопления снова в капитале', async () => {
+    const { goalSavings, netWorth } = await import('@/lib/finance')
+    const store = useFinanceStore()
+    store.addAccount({ name: 'Депозит', kind: 'deposit', amount: 2_000_000 })
+    store.addAccount({ name: 'Заначка', kind: 'cash', amount: 300_000 }, true)
+    const [shared, own] = store.accounts.map((a) => a.id)
+    store.addGoal({ name: 'Квартира', need: 5_000_000, have: 400_000, monthly: 100_000, hue: 'teal' })
+    store.addGoal({ name: 'Отпуск', need: 900_000, have: 150_000, monthly: 50_000, hue: 'teal' })
+    store.updateGoal(store.goals[0].id, { accountId: shared })
+    store.updateGoal(store.goals[1].id, { accountId: own })
+    expect(goalSavings(store.goals)).toBe(0)
+
+    at('2026-09-24T08:00:00Z')
+    store.removeAccount(shared)
+    expect(store.goals[0].accountId).toBeNull()
+    expect(store.goals[0].updatedAt).toBe('2026-09-24T08:00:00.000Z')
+    expect(store.householdDoc.accounts[0].deletedAt).toBe('2026-09-24T08:00:00.000Z')
+    expect(goalSavings(store.goals)).toBe(400_000)
+
+    // Личный счёт — в личном документе, а отвязка цели — в общем.
+    at('2026-09-24T09:00:00Z')
+    store.removeAccount(own)
+    expect((store.privateDoc.accounts as { deletedAt?: string }[])[0].deletedAt).toBe('2026-09-24T09:00:00.000Z')
+    expect(store.householdDoc.goals[1].accountId).toBeNull()
+    expect(goalSavings(store.goals)).toBe(550_000)
+    expect(netWorth(store.accounts, store.credits, store.goals)).toBe(550_000)
+  })
+
+  it('без привязанных целей личный счёт не трогает общий документ', () => {
+    const store = useFinanceStore()
+    store.addAccount({ name: 'Заначка', kind: 'cash', amount: 300_000 }, true)
+    const before = JSON.stringify(store.householdDoc)
+    store.removeAccount(store.accounts[0].id)
+    expect(JSON.stringify(store.householdDoc)).toBe(before)
+  })
+
+  it('валютный счёт: новый курс — тенге пересчитаны по fxToTenge, дата курса обновлена', async () => {
+    const { fxToTenge } = await import('@/lib/finance')
+    const store = useFinanceStore()
+    store.addAccount({
+      name: 'Доллары', kind: 'cash', amount: 512_340, currency: 'USD', foreignAmount: 1_000, rate: 512.34, rateAt: '2026-09-01T00:00:00.000Z',
+    })
+    const id = store.accounts[0].id
+    at('2026-09-25T08:00:00Z')
+    store.updateAccount(id, { rate: 441.89, amount: fxToTenge(1_000, 441.89), rateAt: new Date().toISOString() })
+    expect(store.accounts[0]).toMatchObject({ amount: 441_890, rate: 441.89, rateAt: '2026-09-25T08:00:00.000Z', foreignAmount: 1_000 })
+
+    at('2026-09-25T09:00:00Z')
+    store.updateAccount(id, { foreignAmount: 1_200, amount: fxToTenge(1_200, 441.89) })
+    expect(store.accounts[0].amount).toBe(530_268)
+  })
+})

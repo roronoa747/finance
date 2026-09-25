@@ -8,6 +8,7 @@ import { useFinanceStore } from '@/stores/finance'
 import {
   amountAt,
   budgetAmounts,
+  budgetInterest,
   dueIn,
   liveCredits,
   liveObligations,
@@ -376,5 +377,26 @@ describe('PV-01 — закрытый кредит вне бюджета', () => 
     expect(calendar).not.toContain(money(151_680))
     // Сырой документ закрытость не видит — поэтому экраны передают производные кредиты.
     expect(budgetAmounts(store.householdDoc).d2).toBe(151_680)
+  })
+
+  it('PV-13: под «Кредитами» — «из них проценты банку N ₸ в месяц» = budgetInterest; закрытый кредит выпадает', async () => {
+    const store = useFinanceStore()
+    store.householdDoc.people = [{ id: 'a', name: 'Ильяс', salary: 1_000_000, payday: 10, updatedAt: '' }]
+    store.householdDoc.categories = (['d1', 'd2', 'd3', 'd4', 'd5'] as const).map((key) => ({
+      key, name: key === 'd2' ? 'Кредиты' : key, note: '', amount: 0, updatedAt: '',
+    }))
+    store.householdDoc.accounts = [{ id: 'card', name: 'Kaspi', note: '', kind: 'card', amount: 2_000_000, updatedAt: '' }]
+    store.householdDoc.credits = [
+      { id: 'cr-a', name: 'Рассрочка', note: '', principal: 300_000, annualRate: 0.24, payment: 60_000, day: 12, updatedAt: '' },
+      { id: 'cr-b', name: 'Банк', note: '', principal: 1_000_000, annualRate: 0.18, payment: 91_680, day: 20, updatedAt: '' },
+    ]
+    // 300 000 × 0,24 / 12 = 6 000; 1 000 000 × 0,18 / 12 = 15 000.
+    expect(budgetInterest(store.credits)).toBe(21_000)
+    expect(await render('plan')).toContain(`из них проценты банку ${money(21_000)} в месяц`)
+
+    store.applyPrepayment('cr-a', 'a', { amount: 300_000, mode: 'term', accountId: 'card' })
+    const plan = await render('plan')
+    expect(plan).toContain(`из них проценты банку ${money(15_000)} в месяц`)
+    expect(plan).not.toContain(money(21_000))
   })
 })

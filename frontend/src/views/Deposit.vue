@@ -24,6 +24,12 @@ const account = computed(() =>
   financeStore.accounts.find((a) => a.id === accountId.value),
 )
 
+/** Личный вклад партнёр не видит — предупреждение без «у обоих участников». */
+const removeWarning = computed(() => {
+  const isPrivate = financeStore.privateAccounts.some((a) => a.id === accountId.value)
+  return `Вклад исчезнет${isPrivate ? '' : ' у обоих участников'} вместе с условиями. Отменить нельзя.`
+})
+
 const saved = ref(false)
 
 const depositData = computed(() => account.value?.deposit)
@@ -173,7 +179,7 @@ function onCapitalizeChange(v: string) {
 
       <DangerZone
         label="Удалить вклад"
-        warning="Вклад исчезнет вместе с условиями и балансом. Отменить нельзя."
+        :warning="removeWarning"
         @confirm="() => { financeStore.removeAccount(account!.id); router.push('/capital') }"
       />
     </Card>

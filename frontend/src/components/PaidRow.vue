@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { PhCheck, PhX } from '@phosphor-icons/vue'
+import { PhCheck } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain, parseMoney } from '@/lib/money'
@@ -14,10 +14,13 @@ import {
   nextObligationDue,
   paidFor,
   payableAccounts,
+  paymentSplit,
   type ScheduledKind,
 } from '@/lib/finance'
 import { cn } from '@/lib/utils'
 import Field from '@/components/kit/Field.vue'
+import Row from '@/components/kit/Row.vue'
+import Sheet from '@/components/kit/Sheet.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Button from '@/components/ui/Button.vue'
 
@@ -44,6 +47,8 @@ const props = defineProps<{
   more?: boolean
   /** Без боковых отступов — строка внутри карточки. */
   dense?: boolean
+  /** Расход в списке Бюджета — «−N», как соседние строки. */
+  minus?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -71,6 +76,12 @@ const due = computed(() => {
   if (credit.value) return creditDueAmount(credit.value)
   return 0
 })
+
+/** Сумма в строке: у отмеченного — из отметки. */
+const shown = computed(() => (record.value ? record.value.amount : due.value))
+
+/** Кредит: сколько из суммы в долг и сколько банку — у отмеченного по записи (Р-8). */
+const split = computed(() => (credit.value && shown.value > 0 ? paymentSplit(record.value, credit.value, due.value) : null))
 
 /** Следующий неоплаченный платёж после этого месяца. */
 const next = computed(() => {
@@ -149,45 +160,35 @@ const unmarkNote = computed(() => {
 </script>
 
 <template>
-  <div :class="cn('border-b border-line last:border-b-0', dense ? 'py-2.5' : 'px-4 py-3')">
-    <div class="flex w-full items-center gap-3">
-      <component
-        :is="clickable ? 'button' : 'div'"
-        :type="clickable ? 'button' : undefined"
-        :class="cn('flex min-w-0 flex-1 items-center gap-3 text-left', clickable && 'cursor-pointer')"
-        @click="clickable && emit('open')"
-      >
-        <div
-          v-if="$slots.icon"
-          class="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-surface-3"
-          :style="accent ? { color: accent, background: 'transparent', border: '1px solid var(--line)' } : undefined"
-        >
-          <slot name="icon" />
-        </div>
+  <Row :title="title" :accent="accent" :clickable="clickable" :dense="dense" :muted="!!record" @click="clickable && emit('open')">
+    <template v-if="$slots.icon" #icon>
+      <slot name="icon" />
+    </template>
 
-        <span class="min-w-0 flex-1">
-          <span :class="cn('block truncate text-[14.5px] font-medium', record ? 'text-ink-2' : 'text-ink')">
-            {{ title }}
-          </span>
-          <template v-if="record">
-            <span class="block text-[12.5px] text-ink-3">
-              оплачено{{ next ? ` · дальше ${dayLabel(next.day, next.period)} · ${plain(next.amount)} ₸` : '' }}
-            </span>
-            <span v-if="credit" class="block text-[12.5px] text-ink-3 num">
-              {{ credit.principal > 0 ? `остаток ${plain(credit.principal)} ₸` : 'долг закрыт' }}
-            </span>
-          </template>
-          <span v-else-if="note" class="block text-[12.5px] text-ink-3">{{ note }}</span>
+    <template #note>
+      <template v-if="record">
+        <span class="block text-[12.5px] text-ink-3">
+          оплачено{{ next ? ` · дальше ${dayLabel(next.day, next.period)} · ${plain(next.amount)} ₸` : '' }}
         </span>
-
-        <span class="shrink-0 text-right">
-          <span :class="cn('block text-[14.5px] font-semibold num', record ? 'text-ink-3' : 'text-ink')">
-            {{ money(record ? record.amount : due) }}
-          </span>
-          <span v-if="estimate && !record" class="block text-[12px] text-ink-3">оценка</span>
+        <span v-if="credit" class="block text-[12.5px] text-ink-3 num">
+          {{ credit.principal > 0 ? `остаток ${plain(credit.principal)} ₸` : 'долг закрыт' }}
         </span>
-      </component>
+      </template>
+      <span v-else-if="note" class="block text-[12.5px] text-ink-3">{{ note }}</span>
+    </template>
 
+    <template #value>
+      <span :class="cn('block text-[14.5px] font-semibold num', record ? 'text-ink-3' : 'text-ink')">
+        {{ minus ? `−${plain(shown)}` : money(shown) }}
+      </span>
+      <span v-if="estimate && !record" class="block text-[12px] text-ink-3">оценка</span>
+      <template v-if="split">
+        <span class="block text-[11.5px] text-ink-3 num">в долг {{ plain(split.body) }}</span>
+        <span class="block text-[11.5px] text-ink-3 num">банку {{ plain(split.interest) }}</span>
+      </template>
+    </template>
+
+    <template v-if="record || (canMark && due > 0)" #action>
       <button
         v-if="record && canMark"
         type="button"
@@ -205,133 +206,116 @@ const unmarkNote = computed(() => {
         <PhCheck :size="15" weight="bold" />
       </span>
       <button
-        v-else-if="canMark && due > 0"
+        v-else
         type="button"
         class="shrink-0 rounded-lg border border-line-strong bg-surface-2 px-2.5 py-1.5 text-[12.5px] font-medium text-ink active:translate-y-px cursor-pointer"
         @click="tap"
       >
         Оплатил
       </button>
-    </div>
+    </template>
 
     <button
       v-if="more && canMark && !record && due > 0"
       type="button"
-      class="mt-2 text-[12.5px] text-brand hover:underline cursor-pointer"
+      :class="cn('-mt-0.5 mb-2.5 text-[12.5px] text-brand hover:underline cursor-pointer', !dense && 'mx-4')"
       @click="openMore"
     >
       Другая сумма или счёт
     </button>
+  </Row>
 
-    <Teleport to="body">
-      <div
-        v-if="sheet"
-        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
-        @click.self="sheet = null"
-      >
-        <div class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-2xl border border-line bg-surface p-5 shadow-2xl text-left">
-          <div class="mb-4 flex items-center justify-between">
-            <h3 class="font-display text-[17px] font-semibold text-ink">{{ title }}</h3>
-            <button
-              type="button"
-              aria-label="Закрыть"
-              class="grid size-7 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
-              @click="sheet = null"
-            >
-              <PhX :size="16" />
-            </button>
-          </div>
-
-          <template v-if="sheet === 'paid' && record">
-            <div class="mb-3 flex flex-col gap-1.5 rounded-xl border border-line bg-surface-2 p-3 text-[13px]">
-              <div class="flex justify-between gap-3">
-                <span class="text-ink-2">Оплачено</span>
-                <b class="num text-ink">{{ paidOn }}</b>
-              </div>
-              <div class="flex justify-between gap-3">
-                <span class="text-ink-2">Сумма</span>
-                <b class="num text-ink">{{ money(record.amount) }}</b>
-              </div>
-              <div class="flex justify-between gap-3">
-                <span class="text-ink-2">Счёт</span>
-                <b class="truncate text-ink">{{ fromAccount }}</b>
-              </div>
-              <div v-if="next" class="flex justify-between gap-3">
-                <span class="text-ink-2">Следующий платёж</span>
-                <b class="num text-ink">{{ dayLabel(next.day, next.period) }} · {{ money(next.amount) }}</b>
-              </div>
-              <div v-if="credit" class="flex justify-between gap-3">
-                <span class="text-ink-2">Остаток долга</span>
-                <b class="num text-ink">{{ money(credit.principal) }}</b>
-              </div>
-            </div>
-
-            <div v-if="confirmUnmark" class="rounded-xl border border-line bg-surface-2 p-3">
-              <p class="mb-2 text-[12.5px] leading-relaxed text-ink-2">{{ unmarkNote }}</p>
-              <div class="flex gap-2">
-                <Button variant="outline" class="flex-1 bg-surface" @click="confirmUnmark = false">Отмена</Button>
-                <Button class="flex-1" @click="unmark">Снять</Button>
-              </div>
-            </div>
-            <div v-else class="flex flex-col gap-2">
-              <Button variant="outline" class="w-full bg-surface-2" @click="openMark(record.amount, record.accountId)">
-                Другая сумма или счёт
-              </Button>
-              <Button variant="outline" class="w-full bg-surface-2" @click="confirmUnmark = true">
-                Снять отметку
-              </Button>
-            </div>
-          </template>
-
-          <template v-else-if="sheet === 'mark'">
-            <Field label="Сумма, ₸">
-              <NumField v-model="amountText" />
-            </Field>
-
-            <div class="mb-3.5 flex flex-col gap-1.5">
-              <span class="text-[12.5px] font-medium text-ink-3">С какого счёта</span>
-              <button
-                v-for="a in choices"
-                :key="a.id"
-                type="button"
-                :class="
-                  cn(
-                    'flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-[13.5px] transition-colors cursor-pointer',
-                    chosen === a.id ? 'border-brand bg-brand-soft font-medium text-brand' : 'border-line bg-surface-2 text-ink-2',
-                  )
-                "
-                @click="chosen = a.id"
-              >
-                <span class="truncate">{{ a.name }}</span>
-                <span class="shrink-0 num">{{ money(a.amount) }}</span>
-              </button>
-              <button
-                type="button"
-                :class="
-                  cn(
-                    'rounded-xl border px-3 py-2.5 text-left text-[13.5px] transition-colors cursor-pointer',
-                    chosen === null ? 'border-brand bg-brand-soft font-medium text-brand' : 'border-line bg-surface-2 text-ink-2',
-                  )
-                "
-                @click="chosen = null"
-              >
-                Не списывать — только отметить
-              </button>
-              <p v-if="firstTime" class="text-[12px] leading-relaxed text-ink-3">
-                Спрашиваем один раз: дальше этот платёж отметится одним нажатием с того же счёта.
-              </p>
-            </div>
-
-            <Button
-              class="w-full"
-              :disabled="chosen === undefined || parseMoney(amountText) <= 0"
-              @click="confirmMark"
-            >
-              {{ record ? 'Сохранить' : 'Отметить оплату' }}
-            </Button>
-          </template>
+  <Sheet :open="sheet !== null" :title="title" :z="60" @close="sheet = null">
+    <template v-if="sheet === 'paid' && record">
+      <div class="mb-3 flex flex-col gap-1.5 rounded-xl border border-line bg-surface-2 p-3 text-[13px]">
+        <div class="flex justify-between gap-3">
+          <span class="text-ink-2">Оплачено</span>
+          <b class="num text-ink">{{ paidOn }}</b>
+        </div>
+        <div class="flex justify-between gap-3">
+          <span class="text-ink-2">Сумма</span>
+          <b class="num text-ink">{{ money(record.amount) }}</b>
+        </div>
+        <div v-if="split" class="flex justify-between gap-3">
+          <span class="text-ink-2">Из них</span>
+          <b class="num text-ink">в долг {{ plain(split.body) }} · банку {{ plain(split.interest) }}</b>
+        </div>
+        <div class="flex justify-between gap-3">
+          <span class="text-ink-2">Счёт</span>
+          <b class="truncate text-ink">{{ fromAccount }}</b>
+        </div>
+        <div v-if="next" class="flex justify-between gap-3">
+          <span class="text-ink-2">Следующий платёж</span>
+          <b class="num text-ink">{{ dayLabel(next.day, next.period) }} · {{ money(next.amount) }}</b>
+        </div>
+        <div v-if="credit" class="flex justify-between gap-3">
+          <span class="text-ink-2">Остаток долга</span>
+          <b class="num text-ink">{{ money(credit.principal) }}</b>
         </div>
       </div>
-    </Teleport>
-  </div>
+
+      <div v-if="confirmUnmark" class="rounded-xl border border-line bg-surface-2 p-3">
+        <p class="mb-2 text-[12.5px] leading-relaxed text-ink-2">{{ unmarkNote }}</p>
+        <div class="flex gap-2">
+          <Button variant="outline" class="flex-1 bg-surface" @click="confirmUnmark = false">Отмена</Button>
+          <Button class="flex-1" @click="unmark">Снять</Button>
+        </div>
+      </div>
+      <div v-else class="flex flex-col gap-2">
+        <Button variant="outline" class="w-full bg-surface-2" @click="openMark(record.amount, record.accountId)">
+          Другая сумма или счёт
+        </Button>
+        <Button variant="outline" class="w-full bg-surface-2" @click="confirmUnmark = true">
+          Снять отметку
+        </Button>
+      </div>
+    </template>
+
+    <template v-else-if="sheet === 'mark'">
+      <Field label="Сумма, ₸">
+        <NumField v-model="amountText" />
+      </Field>
+
+      <Field label="С какого счёта" group>
+        <button
+          v-for="a in choices"
+          :key="a.id"
+          type="button"
+          :class="
+            cn(
+              'flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-[13.5px] transition-colors cursor-pointer',
+              chosen === a.id ? 'border-brand bg-brand-soft font-medium text-brand' : 'border-line bg-surface-2 text-ink-2',
+            )
+          "
+          @click="chosen = a.id"
+        >
+          <span class="truncate">{{ a.name }}</span>
+          <span class="shrink-0 num">{{ money(a.amount) }}</span>
+        </button>
+        <button
+          type="button"
+          :class="
+            cn(
+              'rounded-xl border px-3 py-2.5 text-left text-[13.5px] transition-colors cursor-pointer',
+              chosen === null ? 'border-brand bg-brand-soft font-medium text-brand' : 'border-line bg-surface-2 text-ink-2',
+            )
+          "
+          @click="chosen = null"
+        >
+          Не списывать — только отметить
+        </button>
+        <p v-if="firstTime" class="text-[12px] leading-relaxed text-ink-3">
+          Спрашиваем один раз: дальше этот платёж отметится одним нажатием с того же счёта.
+        </p>
+      </Field>
+
+      <Button
+        class="w-full"
+        :disabled="chosen === undefined || parseMoney(amountText) <= 0"
+        @click="confirmMark"
+      >
+        {{ record ? 'Сохранить' : 'Отметить оплату' }}
+      </Button>
+    </template>
+  </Sheet>
 </template>

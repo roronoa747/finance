@@ -19,6 +19,20 @@
 
 - Ветка `pv-block-3-debt-plan` от `main` (после деплоя Блока 2). Push — с согласия владельца;
   `main` не трогать.
+- **До PV-14 — хвосты ревью frontend Блока 2** (судьбы — владелец, 2026-09-25; рецепты — §4 и
+  `../block-2-money-edit/REVIEW-frontend.md`), по коммиту на хвост, сообщение `PV-14…PV-17 (хвосты
+  Б2): Н-N — …`, поведение экранов не меняется:
+  1. **Н-2** (первая задача) — DOM-тесты кита: dev-зависимость `happy-dom`,
+     `// @vitest-environment happy-dom` только в новом `kit/Sheet.dom.test.ts` (два листа — Escape
+     верхнему; Tab/Shift+Tab по кругу; `pointerdown` на карточке + `click` на фоне — открыто; фокус
+     назад; `Row` — `click` `detail: 0` после `pointermove` > 8 px). Остальные тесты — в Node.
+  2. **Н-3** — разрез `Capital.vue` на окна `components/capital/` (`CreditSheet`, `ObligationSheet`,
+     `PayoffSheet`, `AccountSheet`; пропсы — id записи, emit `close`; очистка адреса Б-15 и
+     `QUERY_KEYS` остаются в Капитале). До PV-16. Все SSR-тесты и e2e Капитала — зелёные без правки
+     ожиданий (переезд, не переделка).
+  3. **Н-6 + Н-7** — `frontend/tsconfig.e2e.json` в `references` (`vue-tsc -b` и CI проверяют e2e),
+     20 ошибок фикстур — по реальным типам; `e2e/support/family.ts` (`fakeServer`, `phone`,
+     `screen`, `at`), три файла на него. До первого сценария `pv-block3-*`.
 - Задачи по порядку: `PV-14` (модель, математика, стор, слияние — без UI) → `PV-15` → `PV-16`
   → `PV-17`. К UI не переходить, пока тесты PV-14 не зелёные.
 - **Деньги и документ (L):** `plans` — новый список верхнего уровня: тип → `defaultSyncDoc()`
@@ -27,8 +41,38 @@
   `finance.ts`; закрытые кредиты — `openCredits` (PV-01); `creditBalance` на геттере не звать.
 - Р-11: `lumpPlan` при платеже ≤ процентов — `openEnded`, не `null`.
 - Р-16: месяц шага и пропуск — `monthKey()` по Алматы; тесты на фиксированном времени.
-- <критик Блока 2 впишет: имена функций разбивки/графика (PV-13), устройство `Sheet`,
-  пропсы `StrategyCompare`, сигнатура `applyPrepayment` после Блока 2>
+- **Что уже в коде после Блока 2** (факт, критик Блока 2 2026-09-25; подробно — §6 бэклога):
+  - Разбивка и график (PV-13, `lib/finance.ts`): `paymentSplit(record | null, credit, due)`,
+    `creditTotals(payments, creditId)`, `budgetInterest(credits)`, `creditSchedule(credit,
+    payments, { from?, extra? })` → `ScheduleRow[]`. `extra: { period, amount }[]` — будущие
+    досрочки: гасят тело до платежа своего месяца (PV-17 передаёт шаги плана); уже применённые
+    досрочки месяца видны в `extra` строки и второй раз не вычитаются. В модалке кредита —
+    свёрнутый «График платежей» и «За всё время».
+  - Окна: `kit/Sheet.vue` (`open`, `title`, `z?`, emit `close`; слоты тела, `mark`, `footer`;
+    Escape — только верхний, Tab не выходит из окна, фокус назад). Окно выбора плана — `Sheet` с
+    содержимым под `v-if`. Новое окно Капитала по адресу — в `QUERY_KEYS` и `queryModalOpen`
+    (Б-15, «окно показано»). Группы кнопок — `Field group`; `Select`; `useSavedMark`; `Row` со
+    слотом `action` вне кнопки строки (кнопка «Внести по плану» PV-16 — туда).
+  - `StrategyCompare` Блоком 2 не менялся (кроме `Field group` у «Горизонт»): пропсы `credits`
+    (открытые), `goals`, `obligations`, `monthKey`, `initial?: { months, kept, cushion,
+    useSaved }` (для SSR-тестов).
+  - `applyPrepayment(creditId, by, { amount, mode: 'term' | 'payment', accountId? })` →
+    `Payment | null` (`stores/finance.ts:997-1031`) Блоком 2 не менялся; `planId?` добавит PV-14.
+    `lumpPlan` при платеже ≤ процентов — всё ещё `null` (Р-11 → PV-14). Калькулятор закрытого
+    кредита пишет «долг закрыт».
+  - Номера строк в ТЗ PV-14…PV-16 пересчитаны критиком Блока 2 на `7f8772f`; **клинап Блока 2
+    сдвинул `Capital.vue`** (2 048 → 2 040 строк), разрез Н-3 сдвинет ещё — искать по именам, не
+    по номерам.
+  - Хвост Блока 2 → **PV-15 п. 7** (владелец): строки «Куда уходит» и сегменты Обзора — по
+    ключам `d1`–`d4`, не по `categories`.
+  - **Клинап Блока 2 (факт, `ef45ee8..b35d82a`):** `creditOutlook` + `monthlyInterest`,
+    `sharePct`; `prepayOutcome(c, extra, 'monthly' | 'once')` → `… | null`, `payoffChips`,
+    `payoffLadder` (`finance.ts`) — в Капитале нет `Math.` над деньгами, строка кредита: «долг
+    закрыт» / «долг не закрывается» / «N платежей» (шаг плана PV-16 встаёт рядом — не вернуть
+    `annuityMonths` в шаблон). Раздел в модалке обязательства; `plannedChange(current, planned,
+    every?)`; в Капитале `payAccounts` (= `payableAccounts`) — один список на доход и досрочку,
+    шаг плана PV-16 берёт его же; `applyMode` сбрасывается при смене кредита. `SavedMark` — текст
+    через `v-if`, слот `mark` у `Sheet` рядом с `<h3>`.
 - Среда: стенд §6, два профиля + viewer; смена месяца — `vi.setSystemTime` в тестах, в
   браузере — фикстура документа с датой старта плана в прошлом месяце.
 - Верификация: `cd frontend && npm run build && npm test` + браузер по критериям ТЗ.

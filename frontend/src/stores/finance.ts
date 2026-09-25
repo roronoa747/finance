@@ -20,7 +20,7 @@ import {
   type ScheduledKind,
 } from '@/lib/finance'
 import type { SyncDoc, SyncStatus, Person, PersonId, Account, Credit, Goal, Obligation, Payment } from '@/types/finance'
-import type { CategoryKey, HueKey } from '@/lib/palette'
+import { DEFAULT_CATEGORY_NAMES, type CategoryKey, type HueKey } from '@/lib/palette'
 import type { ConflictResponse, HouseholdDocResponse } from '@/types/api'
 
 export function defaultSyncDoc(): SyncDoc {
@@ -511,7 +511,6 @@ export const useFinanceStore = defineStore('finance', () => {
 
   /** Положить подписку в группу или вынуть (null). */
   function moveToGroup(id: string, groupId: string | null) {
-    if (unchanged(obligations.value.find((x) => x.id === id), { parentId: groupId })) return
     updateObligation(id, { parentId: groupId })
   }
 
@@ -593,7 +592,7 @@ export const useFinanceStore = defineStore('finance', () => {
       } else {
         doc.categories.push({
           key,
-          name: key === 'd1' ? 'Жильё' : key === 'd2' ? 'Кредиты' : key === 'd3' ? 'Цели' : key === 'd4' ? 'Еда и быт' : 'Свободно',
+          name: DEFAULT_CATEGORY_NAMES[key],
           note: '',
           amount,
           updatedAt: t,
@@ -822,6 +821,12 @@ export const useFinanceStore = defineStore('finance', () => {
     }
   }
 
+  /**
+   * Удалить счёт. Цели, чьи накопления лежали на нём, отвязываются (React
+   * `removeAccount`): иначе `goalSavings` их больше не считает, а счёта, где они
+   * лежали, в капитале уже нет — накопления пропали бы. Цели живут в общем
+   * документе, поэтому отвязка — там, и для личного счёта тоже.
+   */
   function removeAccount(id: string) {
     const t = new Date().toISOString()
     const isPriv = ((privateDoc.value.accounts as Account[]) || []).some((x) => x.id === id)
@@ -830,18 +835,21 @@ export const useFinanceStore = defineStore('finance', () => {
         const list = (doc.accounts as Account[]) || []
         doc.accounts = list.map((x) => (x.id === id ? { ...x, deletedAt: t, updatedAt: t } : x))
       })
-    } else {
+    }
+    if (!isPriv || goals.value.some((g) => g.accountId === id)) {
       mutateHouseholdDoc((doc) => {
-        const a = (doc.accounts || []).find((x) => x.id === id)
-        if (a) {
-          a.deletedAt = t
-          a.updatedAt = t
+        const a = isPriv ? undefined : (doc.accounts || []).find((x) => x.id === id)
+        if (a) Object.assign(a, { deletedAt: t, updatedAt: t })
+        for (const g of doc.goals || []) {
+          if (g.accountId === id) Object.assign(g, { accountId: null, updatedAt: t })
         }
       })
     }
   }
 
   function updateCredit(id: string, patch: Partial<Credit>) {
+    // Сравнение — с видимым остатком, как у счёта: тот же остаток не пишет ни базу, ни якорь.
+    if (unchanged(credits.value.find((x) => x.id === id), patch)) return
     const t = new Date().toISOString()
     mutateHouseholdDoc((doc) => {
       const c = (doc.credits || []).find((x) => x.id === id)
@@ -1052,6 +1060,7 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   function updateObligation(id: string, patch: Partial<Obligation>) {
+    if (unchanged(obligations.value.find((x) => x.id === id), patch)) return
     mutateHouseholdDoc((doc) => {
       const o = (doc.obligations || []).find((x) => x.id === id)
       if (o) Object.assign(o, patch, { updatedAt: new Date().toISOString() })

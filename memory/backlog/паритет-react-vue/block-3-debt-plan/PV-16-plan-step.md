@@ -15,12 +15,14 @@
   кредиту» при `credit`, «Качество жизни»); `effectForCredit` `:66-73` (`prepayment`);
   `confirm()` `:98-107` пишет только цели (`setGoalMonthly`), кредит и «жизнь» — никуда.
   Тесты `views/Ritual.test.ts` (5 SSR), `e2e/block4-budget-ritual.test.ts:168-211`.
-- Капитал: строка кредита `views/Capital.vue:747-764` (после PV-13 — с разбивкой; `Row` со
-  слотом `action` после PV-09); модалка досрочки — блок «Применить к кредиту» (`:1626-1678`,
-  `applyAccount`, `applyPrepay()` `:627-636`), список применённых `:1680-1721`.
+- Капитал: строка кредита `views/Capital.vue:896-915` (`Row`, `note` = `creditNote(c)` `:149-155` —
+  «ГЭСВ · N платежей · платёж X ₸: в долг Y, банку Z» по `nextCreditDue` + `paymentSplit`; у `Row`
+  есть слот `action` вне кнопки строки — PV-09); модалка досрочки — блок «Применить к кредиту»
+  (`:1875-1924`, `applyAccount`, `applyPrepay()` `:805-814`), список применённых `:1926-1970`
+  (у каждой — «в долг X · банку Y»). Закрытому кредиту шапка калькулятора пишет «долг закрыт».
 - PV-14: `planStep` (`cushion` / `prepay` с `applied` / `done`), `applyPlanStep(by, {accountId?,
   mode})`, `activePlan`; `lastAccountFor(payments, targetId, accounts)` (`finance.ts`),
-  `payableAccounts`; лист выбора счёта — образец `PaidRow.vue:291-323` (список кнопок с
+  `payableAccounts`; лист выбора счёта — образец `PaidRow.vue:279-310` (`Field label="С какого счёта" group`) (список кнопок с
   остатками, «Не списывать»).
 - `dates.ts`: `monthTitle`, `monthIn`, `addMonths`.
 
