@@ -385,6 +385,13 @@ describe('PV-15: сегменты Обзора — «Досрочно по пл�
     expect(legend(html, 'Цели')).toBe(30_000)
     expect(legend(before, 'Цели')).toBe(130_000)
     expect(legend(html, 'Свободно')).toBe(legend(before, 'Свободно'))
+    // Н-11: Hero «Свободно в …» — своё число (легенда обрезает минус), сравниваем и его.
+    const hero = (h: string) => {
+      const m = h.slice(h.indexOf('Свободно в сентябре')).match(/(\d[\d\s  ]*?)[\s  ]*₸/)
+      return m ? Number(m[1].replace(/\D/g, '')) : null
+    }
+    expect(hero(before)).toBe(1_200_000 - 220_000 - 103_000 - 130_000 - 150_000)
+    expect(hero(html)).toBe(hero(before))
   })
 
   it('Н-4: пока план набирает подушку — в легенде «По плану — в подушку» с той же суммой', async () => {
