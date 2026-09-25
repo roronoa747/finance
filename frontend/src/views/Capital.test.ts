@@ -834,6 +834,46 @@ describe('PV-12: счета — валютный, удаление, тексты
     expect(warning).toBe('Счёт исчезнет у обоих участников. Отменить нельзя.')
   })
 
+  it('личный счёт и личный вклад: удаление без «у обоих участников» — партнёр их не видит (ревью Н-4)', async () => {
+    await family()
+    const store = useFinanceStore()
+    store.addAccount({ name: 'Заначка', kind: 'cash', amount: 300_000 }, true)
+    store.addAccount({ name: 'Мой вклад', kind: 'deposit', amount: 500_000, deposit: { annualRate: 0.14, months: 12, monthlyTopUp: 0, capitalize: true } }, true)
+    store.addAccount({ name: 'Общий вклад', kind: 'deposit', amount: 800_000, deposit: { annualRate: 0.14, months: 12, monthlyTopUp: 0, capitalize: true } })
+    const id = (name: string) => store.accounts.find((a) => a.name === name)!.id
+    // Цель на личном счёте — хвост про отвязку остаётся.
+    store.updateGoal('flat', { accountId: id('Заначка') })
+
+    let warning = ''
+    await render('/capital', { selectedAccountId: id('Заначка') }, (s) => (warning = s.accountRemoveWarning as string))
+    expect(warning).toBe(
+      'Счёт исчезнет. Отменить нельзя. Накопления по цели «Квартира» останутся на месте: они снова будут считаться отдельно, а не лежащими на этом счёте.',
+    )
+
+    const deposit = async (accountId: string) => {
+      const { createSSRApp } = await import('vue')
+      const { renderToString } = await import('vue/server-renderer')
+      const { createRouter, createMemoryHistory } = await import('vue-router')
+      const Deposit = (await import('./Deposit.vue')).default
+      const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/capital/:id', component: Deposit }] })
+      await router.push(`/capital/${accountId}`)
+      await router.isReady()
+      const app = createSSRApp(Deposit)
+      app.use(router)
+      let text = ''
+      app.mixin({
+        created() {
+          if (this.$.parent === null) text = this.$.setupState.removeWarning as string
+        },
+      })
+      const html = await renderToString(app)
+      expect(html).toContain('Удалить вклад')
+      return text
+    }
+    expect(await deposit(id('Мой вклад'))).toBe('Вклад исчезнет вместе с условиями. Отменить нельзя.')
+    expect(await deposit(id('Общий вклад'))).toBe('Вклад исчезнет у обоих участников вместе с условиями. Отменить нельзя.')
+  })
+
   it('viewer: цифры счёта без полей и удаления', async () => {
     const { money, plain } = await import('@/lib/money')
     await family('viewer')
