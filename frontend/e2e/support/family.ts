@@ -1,10 +1,8 @@
 import { vi } from 'vitest'
 import { setActivePinia, createPinia, type Pinia } from 'pinia'
-import { createSSRApp, type Component, type ComponentOptions } from 'vue'
-import { renderToString } from 'vue/server-renderer'
-import { createRouter, createMemoryHistory } from 'vue-router'
-import { routes } from '../../src/router'
+import type { Component, ComponentOptions } from 'vue'
 import { useFinanceStore } from '../../src/stores/finance'
+import { renderScreen } from '../../src/test/screenState'
 import { ApiClient, ApiError } from '../../src/api/client'
 import type { SyncDoc } from '../../src/types/finance'
 import type { HouseholdDocResponse, ConflictResponse } from '../../src/types/api'
@@ -54,11 +52,7 @@ export async function phone(server: FakeServer) {
   return { store, client, pinia }
 }
 
-/**
- * Экран глазами телефона: SSR на его сторе. Маршруты приложения без охранника входа —
- * адрес, параметры и запрос те же, что в браузере. Комментарии SSR вырезаны: текст —
- * как его видит человек. `mixins` — поля и нажатия до рендера (`screenMixin`).
- */
+/** Экран глазами телефона: SSR на его сторе (`renderScreen`). */
 export async function screen(
   pinia: Pinia,
   view: Component,
@@ -67,13 +61,7 @@ export async function screen(
   mixins: ComponentOptions[] = [],
 ) {
   setActivePinia(pinia)
-  const router = createRouter({ history: createMemoryHistory(), routes })
-  await router.push(path)
-  await router.isReady()
-  const app = createSSRApp(view, props)
-  app.use(router)
-  for (const m of mixins) app.mixin(m)
-  return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
+  return renderScreen(view, path, props, mixins)
 }
 
 /** «Сейчас» телефона и сервера (фальшивые таймеры включает сам тест). */

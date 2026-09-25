@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useFinanceStore } from '@/stores/finance'
 import {
@@ -11,7 +11,11 @@ import {
   indexedNeed,
   INFLATION,
 } from '@/lib/finance'
-import { money, ratePct } from '@/lib/money'
+import { money, plain, ratePct } from '@/lib/money'
+import { planFamilyDoc, planOf } from '@/test/planFamily'
+import { renderScreen } from '@/test/screenState'
+import Goals from './Goals.vue'
+import GoalDetail from './GoalDetail.vue'
 
 describe('views/Goals.vue, GoalDetail.vue, Deposit.vue — Цели, депозиты и вишлист', () => {
   const storageMap = new Map<string, string>()
@@ -376,5 +380,71 @@ describe('views/Goals.vue, GoalDetail.vue, Deposit.vue — Цели, депоз�
     const html = await renderToString(app)
     expect(html).toContain('Робот-пылесос')
     expect(html).toContain('Записать покупку')
+  })
+})
+
+describe('PV-15: пауза целей ради плана (SSR)', () => {
+  const storage = new Map<string, string>()
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  const family = (withPlan = true) => {
+    const store = useFinanceStore()
+    store.setHouseholdDoc(planFamilyDoc(withPlan ? { plans: [planOf()] } : {}), 1)
+    return store
+  }
+  const between = (html: string, from: string, to: string) => html.slice(html.indexOf(from), html.indexOf(to, html.indexOf(from)))
+
+  it('список: цель на паузе — «На паузе ради плана» вместо взноса; подушка — со взносом, без тега', async () => {
+    family()
+    const html = await renderScreen(Goals, '/goals')
+    const trip = between(html, '>Отпуск<', '</div>')
+    expect(trip).toContain('На паузе ради плана')
+    expect(trip).not.toContain('/мес')
+    const cushion = between(html, '>Подушка<', '</div>')
+    expect(cushion).not.toContain('На паузе ради плана')
+    expect(cushion).toContain(`${plain(30_000)}/мес`)
+  })
+
+  it('без плана — тегов паузы нет', async () => {
+    family(false)
+    expect(await renderScreen(Goals, '/goals')).not.toContain('На паузе ради плана')
+  })
+
+  it('GoalDetail на паузе — Callout с суммой взноса и ссылкой на план, дата «после плана»; взнос в документе прежний', async () => {
+    const store = family()
+    const html = await renderScreen(GoalDetail, '/goals/trip')
+    expect(html).toContain('На паузе ради плана')
+    expect(html).toContain(`Взнос ${money(40_000)} идёт в досрочку самого дорогого долга — так семья отдаст банку`)
+    expect(html).toContain('Цель возобновится сама, когда долги с процентами закроются, или когда вы отмените план.')
+    expect(html).toContain('href="/plan"')
+    expect(html).toContain('после плана')
+    expect(store.householdDoc.goals.find((g) => g.id === 'trip')!.monthly).toBe(40_000)
+    expect(store.status).toBe('idle')
+  })
+
+  it('GoalDetail подушки — «Подушка плана: взносы продолжаются»; без плана — ни того, ни другого', async () => {
+    family()
+    const cushion = await renderScreen(GoalDetail, '/goals/cushion')
+    expect(cushion).toContain('Подушка плана: взносы продолжаются')
+    expect(cushion).not.toContain('На паузе ради плана')
+    expect(cushion).not.toContain('после плана')
+
+    setActivePinia(createPinia())
+    family(false)
+    const free = await renderScreen(GoalDetail, '/goals/trip')
+    expect(free).not.toContain('На паузе ради плана')
+    expect(free).not.toContain('Подушка плана')
   })
 })

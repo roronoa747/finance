@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, type Pinia } from 'pinia'
 import { createSSRApp } from 'vue'
 import { renderToString } from 'vue/server-renderer'
+import { createRouter, createMemoryHistory } from 'vue-router'
+import { routes } from '../src/router'
 import { useFinanceStore, defaultSyncDoc } from '../src/stores/finance'
 import { at, phone, screen, setOnline, type FakeServer } from './support/family'
 import type { SyncDoc } from '../src/types/finance'
@@ -36,15 +38,16 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
   async function strategy(pinia: Pinia, initial: { months?: 12 | 24 | 36; kept?: string[]; cushion?: boolean; useSaved?: boolean }) {
     setActivePinia(pinia)
     const store = useFinanceStore()
-    return renderToString(
-      createSSRApp(StrategyCompare, {
-        credits: openCredits(store.credits),
-        goals: liveGoals(store.goals),
-        obligations: liveObligations(store.obligations),
-        monthKey: '2026-09',
-        initial,
-      }),
-    )
+    const app = createSSRApp(StrategyCompare, {
+      credits: openCredits(store.credits),
+      goals: liveGoals(store.goals),
+      obligations: liveObligations(store.obligations),
+      monthKey: '2026-09',
+      initial,
+    })
+    // Ссылки калькулятора — RouterLink (PV-15): нужен роутер.
+    app.use(createRouter({ history: createMemoryHistory(), routes }))
+    return renderToString(app)
   }
 
   /** Колонка калькулятора как её видит человек: накоплено, долг, проценты, срок. */

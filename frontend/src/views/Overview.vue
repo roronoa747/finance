@@ -24,6 +24,7 @@ import {
   untilPayday,
 } from '@/lib/finance'
 import { cn, plural } from '@/lib/utils'
+import { categoryName } from '@/lib/palette'
 import Card from '@/components/kit/Card.vue'
 import Section from '@/components/kit/Section.vue'
 import Callout from '@/components/kit/Callout.vue'
@@ -52,16 +53,20 @@ const income = computed(() => amounts.value.income)
 const free = computed(() => amounts.value.d5)
 const spent = computed(() => income.value - free.value)
 
-// Сегменты расходов по категориям для Bar и Legend
+// Сегменты расходов для Bar и Legend — по ключам d1–d4, как строки Бюджета (PV-15 п. 7):
+// раздел заведён или в нём есть сумма; с планом — «Досрочно по плану» после целей.
 const segments = computed<Seg[]>(() => {
-  const segs: Seg[] = categories.value
-    .filter((c) => c.key !== 'd5')
-    .map((c) => ({
-      key: c.key,
-      value: amounts.value[c.key as 'd1' | 'd2' | 'd3' | 'd4'] || 0,
-      color: `var(--${c.key})`,
-      label: c.name,
-    }))
+  const segs: Seg[] = []
+  for (const key of ['d1', 'd2', 'd3', 'plan', 'd4'] as const) {
+    if (key === 'plan') {
+      if (amounts.value.planExtra > 0) {
+        segs.push({ key, value: amounts.value.planExtra, color: 'var(--d2)', label: 'Досрочно по плану' })
+      }
+      continue
+    }
+    if (!categories.value.some((c) => c.key === key) && amounts.value[key] <= 0) continue
+    segs.push({ key, value: amounts.value[key], color: `var(--${key})`, label: categoryName(categories.value, key) })
+  }
 
   segs.push({
     key: 'd5',

@@ -24,6 +24,7 @@ import {
   type ScheduledKind,
 } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
+import { categoryName } from '@/lib/palette'
 import { cn } from '@/lib/utils'
 
 import Card from '@/components/kit/Card.vue'
@@ -43,6 +44,7 @@ const DERIVED_NOTE: Record<string, string> = {
   d1: 'сумма обязательств по жилью',
   d2: 'платежи по кредитам',
   d3: 'взносы по всем целям',
+  plan: 'взносы целей на паузе — в самый дорогой долг',
 }
 
 type ViewMode = 'plan' | 'calendar' | 'list'
@@ -93,6 +95,36 @@ const income = computed(() => amounts.value.income)
 // Сколько из «Кредитов» уходит банку процентами (Р-8) — по тем же производным кредитам.
 const interest = computed(() => budgetInterest(financeStore.credits))
 const free = computed(() => amounts.value.d5)
+
+type Line = { key: 'd1' | 'd2' | 'd3' | 'd4' | 'plan'; name: string; note: string; color: string; amount: number; base: number }
+/**
+ * Строки «Куда уходит» — по ключам d1–d4, а не по заведённым разделам (PV-15 п. 7):
+ * строка есть, если раздел заведён или в нём есть сумма; имя — семьи или запасное.
+ * Раздел в документ не пишется (пустой раздел со свежим updatedAt затёр бы сумму
+ * партнёра). С планом — «Досрочно по плану» после целей, цвет раздела кредитов.
+ */
+const lines = computed<Line[]>(() => {
+  const out: Line[] = []
+  for (const key of ['d1', 'd2', 'd3', 'plan', 'd4'] as const) {
+    if (key === 'plan') {
+      if (amounts.value.planExtra > 0) {
+        out.push({ key, name: 'Досрочно по плану', note: DERIVED_NOTE.plan, color: 'var(--d2)', amount: amounts.value.planExtra, base: 0 })
+      }
+      continue
+    }
+    const cat = categories.value.find((c) => c.key === key)
+    const amount = amounts.value[key]
+    if (!cat && amount <= 0) continue
+    const note =
+      key === 'd4'
+        ? (cat?.note ?? '')
+        : key === 'd3' && financeStore.activePlan
+          ? 'взносы целей, кроме тех, что на паузе'
+          : DERIVED_NOTE[key]
+    out.push({ key, name: categoryName(categories.value, key), note, color: `var(--${key})`, amount, base: cat?.amount ?? 0 })
+  }
+  return out
+})
 
 const events = computed<EventItem[]>(() => {
   const items: EventItem[] = [
@@ -218,18 +250,18 @@ function handleD4Commit(text: string) {
       <Card>
         <div class="flex flex-col">
           <div
-            v-for="c in categories.filter((cat) => cat.key !== 'd5')"
+            v-for="c in lines"
             :key="c.key"
             class="flex items-center gap-3 border-b border-line py-3 last:border-b-0"
           >
             <i
               class="min-h-[34px] w-[3px] self-stretch rounded-sm"
-              :style="{ background: `var(--${c.key})` }"
+              :style="{ background: c.color }"
             />
             <div class="min-w-0 flex-1">
               <div class="text-[14.5px] font-medium text-ink">{{ c.name }}</div>
               <div class="text-[12.5px] text-ink-3">
-                {{ c.key !== 'd4' ? DERIVED_NOTE[c.key] : c.note }}
+                {{ c.note }}
               </div>
               <div v-if="c.key === 'd2' && interest > 0" class="text-[12px] text-ink-3 num">
                 из них проценты банку {{ money(interest) }} в месяц
@@ -237,18 +269,18 @@ function handleD4Commit(text: string) {
             </div>
             <div class="text-right">
               <div v-if="c.key !== 'd4'" class="text-[15px] font-semibold num text-ink">
-                {{ money(amounts[c.key as 'd1' | 'd2' | 'd3' | 'd4'] || 0) }}
+                {{ money(c.amount) }}
               </div>
               <div v-else>
                 <NumFieldBlur
-                  :initial="plain(c.amount)"
+                  :initial="plain(c.base)"
                   :aria-label="c.name"
                   class-name="h-9 w-[118px] bg-surface-2 text-right"
                   @commit="handleD4Commit"
                 />
               </div>
               <div class="mt-0.5 text-[12px] font-medium text-brand num">
-                {{ pct(amounts[c.key as 'd1' | 'd2' | 'd3' | 'd4'] || 0, income) }}% дохода
+                {{ pct(c.amount, income) }}% дохода
               </div>
             </div>
           </div>

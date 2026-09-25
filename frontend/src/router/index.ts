@@ -13,6 +13,7 @@ import Goals from '@/views/Goals.vue'
 import GoalDetail from '@/views/GoalDetail.vue'
 import Deposit from '@/views/Deposit.vue'
 import Ritual from '@/views/Ritual.vue'
+import DebtPlan from '@/views/DebtPlan.vue'
 
 export const routes: RouteRecordRaw[] = [
   {
@@ -66,6 +67,11 @@ export const routes: RouteRecordRaw[] = [
         path: 'ritual',
         name: 'ritual',
         component: Ritual,
+      },
+      {
+        path: 'plan',
+        name: 'plan',
+        component: DebtPlan,
       },
     ],
   },

@@ -11,6 +11,7 @@ import {
   PhFolderSimple,
 } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
+import { useAuthStore } from '@/stores/auth'
 import { money, plain, parseMoney, ratePct } from '@/lib/money'
 import { MONTHS_NOM, monthKey, parseMonthKey } from '@/lib/dates'
 import {
@@ -35,6 +36,7 @@ import {
   nextChange,
   nextCreditDue,
   openCredits,
+  planStep,
   prepayOutcome,
   prepaySaved,
   rateFromSchedule,
@@ -78,6 +80,7 @@ const props = withDefaults(
 const router = useRouter()
 const route = useRoute()
 const financeStore = useFinanceStore()
+const authStore = useAuthStore()
 
 const key = computed(() => monthKey())
 const people = computed(() => financeStore.people)
@@ -418,7 +421,8 @@ const groupCandidates = computed(() =>
 )
 
 /* ------------------ Анализ долгов (DebtAdvice) ------------------ */
-const adviceView = ref<'order' | 'strategy'>(props.initialAdvice)
+// «Открыть калькулятор» с экрана плана — сразу на вкладке «Копить или гасить».
+const adviceView = ref<'order' | 'strategy'>(route.query.advice === 'strategy' ? 'strategy' : props.initialAdvice)
 const rankedDebts = computed(() =>
   costliestCredits(credits.value).map((c) => ({ credit: c, cost: creditOutlook(c) })),
 )
@@ -437,6 +441,14 @@ const worstGain = computed(() =>
     ? prepayOutcome(worstDebt.value.credit, worstHalfExtra.value, 'monthly')
     : null,
 )
+
+/* ------------------ План «Сначала долги» (PV-15) ------------------ */
+const plan = computed(() => financeStore.activePlan)
+const planNow = computed(() => (plan.value ? planStep(plan.value, financeStore.planState(), key.value) : null))
+
+function choosePlan(opts: { keptGoalIds: string[]; cushionGoalId: string | null; months: 12 | 24 | 36; lump: number }) {
+  if (financeStore.choosePlan(opts, authStore.slot ?? 'a')) void router.push('/plan')
+}
 
 /* ------------------ Окна по адресу (Б-15) ------------------ */
 /** Параметры адреса, которыми открываются окна. */
@@ -711,6 +723,10 @@ watch(queryModalOpen, (open) => {
           :goals="goals"
           :obligations="obligations"
           :month-key="key"
+          :plan="plan"
+          :step="planNow"
+          :can-choose="!authStore.isViewer"
+          @choose="choosePlan"
         />
       </Card>
     </template>

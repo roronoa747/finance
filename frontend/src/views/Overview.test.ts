@@ -10,6 +10,9 @@ import {
   nextChange,
   untilPayday,
 } from '@/lib/finance'
+import { planFamilyDoc, planOf } from '@/test/planFamily'
+import { renderScreen } from '@/test/screenState'
+import Overview from './Overview.vue'
 
 describe('views/Overview.vue — Финансовые показатели, капитал и подушка безопасности', () => {
   const storageMap = new Map<string, string>()
@@ -346,5 +349,52 @@ describe('PV-01 — закрытый кредит вне «Свободно» О
     const html = await render()
     expect(html).toContain(money(708_320))
     expect(html).not.toContain(money(648_320))
+  })
+})
+
+describe('PV-15: сегменты Обзора — «Досрочно по плану» и разделы по ключам (SSR)', () => {
+  const storage = new Map<string, string>()
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  /** Строка легенды: название — сумма. */
+  const legend = (html: string, name: string) => {
+    const at = html.indexOf(`<span class="text-ink-2">${name}</span>`)
+    if (at < 0) return null
+    const m = html.slice(at).match(/(\d[\d\s\u00a0\u202f]*?)[\s\u00a0\u202f]*₸/)
+    return m ? Number(m[1].replace(/\D/g, '')) : null
+  }
+
+  it('с планом — «Досрочно по плану» = Σ взносов пауз, «Цели» без них, «Свободно» и «Свободно в …» как без плана', async () => {
+    const store = useFinanceStore()
+    store.setHouseholdDoc(planFamilyDoc(), 1)
+    const before = await renderScreen(Overview, '/')
+    store.setHouseholdDoc(planFamilyDoc({ plans: [planOf()] }), 2)
+    const html = await renderScreen(Overview, '/')
+    expect(legend(html, 'Досрочно по плану')).toBe(100_000)
+    expect(legend(before, 'Досрочно по плану')).toBeNull()
+    expect(legend(html, 'Цели')).toBe(30_000)
+    expect(legend(before, 'Цели')).toBe(130_000)
+    expect(legend(html, 'Свободно')).toBe(legend(before, 'Свободно'))
+  })
+
+  it('п. 7: раздела d1 нет, аренда в d1 — сегмент и строка «Жильё»; без аренды — нет', async () => {
+    const store = useFinanceStore()
+    const categories = planFamilyDoc().categories.filter((c) => c.key === 'd4')
+    store.setHouseholdDoc(planFamilyDoc({ categories }), 1)
+    expect(legend(await renderScreen(Overview, '/'), 'Жильё')).toBe(220_000)
+    store.setHouseholdDoc(planFamilyDoc({ categories, obligations: [] }), 2)
+    expect(legend(await renderScreen(Overview, '/'), 'Жильё')).toBeNull()
   })
 })

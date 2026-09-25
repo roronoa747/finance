@@ -1311,6 +1311,7 @@ export const useFinanceStore = defineStore('finance', () => {
     setupDone,
     plans,
     activePlan,
+    planState,
     saveLocalState,
     setHouseholdDoc,
     mutateHouseholdDoc,

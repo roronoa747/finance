@@ -10,15 +10,31 @@
  *
  * Все числа — `strategyInputs` / `simulateStrategy` / `strategyGain`; компонент
  * только показывает.
+ *
+ * «Выбрать этот план» (PV-15, Р-4): выбор уходит событием `choose` — стор и переход
+ * на экран плана у Капитала. С активным планом вместо выбора — его карточка.
  */
 import { computed, ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import { money, plain } from '@/lib/money'
-import { simulateStrategy, strategyGain, strategyInputs } from '@/lib/finance'
-import type { Credit, Goal, Obligation } from '@/types/finance'
+import { monthIn } from '@/lib/dates'
+import {
+  costliestCredits,
+  pausedGoals,
+  planStartMonth,
+  planStep,
+  simulateStrategy,
+  strategyGain,
+  strategyInputs,
+  type PlanStep,
+} from '@/lib/finance'
+import type { Credit, DebtPlan, Goal, Obligation } from '@/types/finance'
 import { cn } from '@/lib/utils'
+import Callout from '@/components/kit/Callout.vue'
 import Field from '@/components/kit/Field.vue'
 import Hint from '@/components/kit/Hint.vue'
 import Segmented from '@/components/kit/Segmented.vue'
+import Button from '@/components/ui/Button.vue'
 
 type Horizon = 12 | 24 | 36
 
@@ -29,13 +45,25 @@ const props = defineProps<{
   obligations: Obligation[]
   monthKey: string
   /** Стартовое состояние — для SSR-тестов и сценариев. */
-  initial?: { months?: Horizon; kept?: string[]; cushion?: boolean; useSaved?: boolean }
+  initial?: { months?: Horizon; kept?: string[]; cushion?: boolean; useSaved?: boolean; cushionGoalId?: string | null }
+  /** Активный план семьи: вместо выбора — его карточка. */
+  plan?: DebtPlan | null
+  /** Шаг активного плана в этом месяце (`planStep` от стора). */
+  step?: PlanStep | null
+  /** Участник, а не viewer: может выбрать план (Р-12). */
+  canChoose?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'choose', opts: { keptGoalIds: string[]; cushionGoalId: string | null; months: Horizon; lump: number }): void
 }>()
 
 const months = ref<Horizon>(props.initial?.months ?? 36)
 const kept = ref<string[]>(props.initial?.kept ?? [])
 const cushion = ref(props.initial?.cushion ?? true)
 const useSaved = ref(props.initial?.useSaved ?? false)
+// Подушка плана — цель, которую отметили (Р-7): по названию не угадываем.
+const cushionGoalId = ref<string | null>(props.initial?.cushionGoalId ?? null)
 
 const HORIZONS = [
   { value: '12', label: 'Год' },
@@ -91,6 +119,63 @@ function freeWhen(month: number | null): string {
 function toggleKept(id: string, on: boolean) {
   kept.value = on ? [...kept.value, id] : kept.value.filter((x) => x !== id)
 }
+
+/* ------------------ Выбрать этот план (PV-15) ------------------ */
+// «Вложить накопленное» в плане не трогает цель-подушку: она для поломок, а не для долгов.
+const planLump = computed(() =>
+  useSaved.value
+    ? strategyInputs({
+        credits: props.credits,
+        goals: props.goals,
+        obligations: props.obligations,
+        key: props.monthKey,
+        kept: cushionGoalId.value ? [...kept.value, cushionGoalId.value] : kept.value,
+        cushion: cushion.value,
+        useSaved: true,
+      }).lump
+    : 0,
+)
+/**
+ * План, который выберется сейчас, — только для пояснения: что встанет на паузу, какой
+ * долг первый, шаг месяца. Начало — середина показанного месяца, чтобы шаг взял
+ * «вложить накопленное» месяца старта.
+ */
+const draft = computed<DebtPlan>(() => ({
+  id: 'draft',
+  status: 'active',
+  by: 'a',
+  startedAt: `${props.monthKey}-15T12:00:00.000Z`,
+  keptGoalIds: kept.value,
+  cushionGoalId: cushionGoalId.value,
+  creditIds: costliestCredits(props.credits).map((c) => c.id),
+  months: months.value,
+  lump: planLump.value,
+  forecast: { gain: 0, savedInterest: 0, debtFreeMonth: null },
+  updatedAt: '',
+}))
+const draftPaused = computed(() => pausedGoals(draft.value, props.goals))
+const draftStep = computed(() =>
+  planStep(draft.value, { goals: props.goals, credits: props.credits, obligations: props.obligations }, props.monthKey),
+)
+const firstDebt = computed(() => costliestCredits(props.credits)[0])
+const goalName = (id: string) => props.goals.find((g) => g.id === id)?.name ?? ''
+
+function choose() {
+  emit('choose', {
+    keptGoalIds: [...kept.value],
+    cushionGoalId: cushionGoalId.value,
+    months: months.value,
+    lump: planLump.value,
+  })
+}
+
+/** Шаг активного плана в карточке — без упрёка, одной строкой. */
+const stepLine = computed(() => {
+  const s = props.step
+  if (!s || s.kind === 'done') return 'долги с процентами закрыты'
+  if (s.kind === 'cushion') return `шаг этого месяца — подушка, ${money(s.amount)}`
+  return s.applied ? `шаг этого месяца внесён · ${money(s.amount)}` : `шаг этого месяца ${money(s.amount)}`
+})
 </script>
 
 <template>
@@ -200,5 +285,62 @@ function toggleKept(id: string, on: boolean) {
       гасятся: они ничего не стоят, а внесённые раньше срока деньги просто перестают быть
       доступными.
     </p>
+
+    <!-- Активный план — его карточка вместо выбора (PV-15) -->
+    <div v-if="plan" class="mt-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3">
+      <div class="text-[13.5px] font-medium text-ink">План выбран в {{ monthIn(planStartMonth(plan)) }}</div>
+      <div class="mt-0.5 text-[12.5px] text-ink-2 num">{{ stepLine }}</div>
+      <RouterLink to="/plan" class="mt-1.5 inline-block text-[13px] font-medium text-brand">Открыть план →</RouterLink>
+    </div>
+
+    <!-- Выбрать этот план (Р-4, Р-7) -->
+    <div v-else-if="inputs.redirected > 0" class="mt-3 border-t border-line pt-3">
+      <Field label="Подушка — какая цель?" group>
+        <div class="mb-3 flex flex-col gap-2">
+          <label v-for="g in goals" :key="g.id" class="flex items-center gap-2.5 text-[13.5px] text-ink">
+            <input
+              type="radio"
+              name="plan-cushion"
+              :checked="cushionGoalId === g.id"
+              class="size-4 accent-[var(--brand)]"
+              @change="cushionGoalId = g.id"
+            />
+            <span class="min-w-0 flex-1 truncate">{{ g.name }}</span>
+          </label>
+          <label class="flex items-center gap-2.5 text-[13.5px] text-ink">
+            <input
+              type="radio"
+              name="plan-cushion"
+              :checked="cushionGoalId === null"
+              class="size-4 accent-[var(--brand)]"
+              @change="cushionGoalId = null"
+            />
+            Без подушки
+          </label>
+        </div>
+      </Field>
+      <!-- Р-7: подушки нет — план предлагает её завести. -->
+      <Callout v-if="cushionGoalId === null" title="Заведите цель-подушку — план начнёт с неё" class="mb-3">
+        Месяц обязательных списаний на отдельной цели: пока её нет, первая поломка вернёт
+        вас на кредитную карту. <RouterLink to="/goals" class="font-medium text-brand">Завести цель</RouterLink>
+      </Callout>
+
+      <Button v-if="canChoose" class="w-full" @click="choose">Выбрать этот план</Button>
+      <div class="mt-2 flex flex-col gap-1 text-[12.5px] leading-relaxed text-ink-2">
+        <p v-if="draftPaused.length">
+          На паузу встанут: {{ draftPaused.map((g) => g.name).join(', ') }} —
+          <span class="num">{{ money(draftPaused.reduce((a, g) => a + g.monthly, 0)) }}</span> в месяц.
+          Взносы в них не пропадут: они пойдут в долги, а цели возобновятся сами.
+        </p>
+        <p v-if="firstDebt">Первым гасится «{{ firstDebt.name }}» — самый дорогой долг.</p>
+        <p v-if="draftStep.kind === 'cushion'" class="num">
+          Шаг этого месяца — пополнить подушку «{{ goalName(draftStep.goalId) }}» на {{ money(draftStep.amount) }}:
+          до месяца обязательных списаний не хватает {{ money(draftStep.missing) }}.
+        </p>
+        <p v-else-if="draftStep.kind === 'prepay'" class="num">
+          Шаг этого месяца — {{ money(draftStep.amount) }} досрочно в «{{ firstDebt?.name }}».
+        </p>
+      </div>
+    </div>
   </div>
 </template>

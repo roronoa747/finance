@@ -1,4 +1,7 @@
-import type { ComponentOptions } from 'vue'
+import { createSSRApp, type Component, type ComponentOptions } from 'vue'
+import { renderToString } from 'vue/server-renderer'
+import { createRouter, createMemoryHistory } from 'vue-router'
+import { routes } from '@/router'
 
 type State = Record<string, unknown>
 
@@ -41,4 +44,24 @@ function tryAct(s: State, act: (s: State) => void): boolean {
     if (e === MISSING) return false
     throw e
   }
+}
+
+/**
+ * Экран в SSR на активной Pinia: маршруты приложения без охранника входа — адрес,
+ * параметры и запрос те же, что в браузере. Комментарии SSR вырезаны: текст — как его
+ * видит человек. `mixins` — поля и нажатия до рендера (`screenMixin`).
+ */
+export async function renderScreen(
+  view: Component,
+  path: string,
+  props?: Record<string, unknown>,
+  mixins: ComponentOptions[] = [],
+) {
+  const router = createRouter({ history: createMemoryHistory(), routes })
+  await router.push(path)
+  await router.isReady()
+  const app = createSSRApp(view, props)
+  app.use(router)
+  for (const m of mixins) app.mixin(m)
+  return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
 }

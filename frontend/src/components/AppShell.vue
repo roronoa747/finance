@@ -39,6 +39,7 @@ const title = computed(() => {
   if (p.startsWith('/goals')) return 'Цели и покупки'
   if (p.startsWith('/capital')) return 'Капитал'
   if (p.startsWith('/ritual')) return 'Ритуал'
+  if (p.startsWith('/plan')) return 'План'
   return 'Family Finance'
 })
 
