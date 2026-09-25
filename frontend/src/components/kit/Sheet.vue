@@ -126,10 +126,11 @@ onUnmounted(() => {
         class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-t-3xl border border-line bg-surface p-5 pb-8 text-left shadow-lift outline-none sm:rounded-2xl sm:pb-5"
       >
         <div class="mb-4 flex items-center justify-between gap-3">
-          <h3 class="flex min-w-0 items-center gap-2 font-display text-[17px] font-semibold text-ink">
-            <span :id="titleId">{{ title }}</span>
+          <!-- Отметка рядом с заголовком, а не внутри: имя окна и заголовок — только title. -->
+          <div class="flex min-w-0 items-center gap-2">
+            <h3 :id="titleId" class="min-w-0 font-display text-[17px] font-semibold text-ink">{{ title }}</h3>
             <slot name="mark" />
-          </h3>
+          </div>
           <button
             type="button"
             aria-label="Закрыть"

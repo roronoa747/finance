@@ -26,7 +26,9 @@ describe('PV-09: kit/Sheet — окно на ките (SSR)', () => {
     expect(html).toContain('role="dialog"')
     const id = html.match(/aria-labelledby="([^"]+)"/)?.[1]
     expect(id).toBeTruthy()
-    expect(html).toContain(`id="${id}">Кредит Kaspi<`)
+    // Имя окна и заголовок — только title; отметка стоит рядом, не внутри (ревью Н-5).
+    expect(html).toMatch(new RegExp(`<h3 id="${id}"[^>]*>Кредит Kaspi</h3>`))
+    expect(html.indexOf('Сохранено')).toBeGreaterThan(html.indexOf('</h3>'))
   })
 
   it('закрытое — ничего', async () => {
