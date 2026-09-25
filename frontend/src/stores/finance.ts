@@ -42,6 +42,7 @@ import type {
   Goal,
   Obligation,
   Payment,
+  WishItem,
 } from '@/types/finance'
 import { useAuthStore } from '@/stores/auth'
 import { DEFAULT_CATEGORY_NAMES, type CategoryKey, type HueKey } from '@/lib/palette'
@@ -1299,6 +1300,55 @@ export const useFinanceStore = defineStore('finance', () => {
     contribute(id, -Math.abs(amount), by, note)
   }
 
+  // Покупки в дом (React `useStore.ts:280-311`). Даты — ISO, а не «сегодня» как в React:
+  // показ — `atLabel`; старые строки `dd.mm.yyyy` из прода экран показывает как есть.
+  function addWish(w: { name: string; price: number; by: PersonId; url?: string }) {
+    const t = new Date().toISOString()
+    const item: WishItem = {
+      id: Math.random().toString(36).slice(2, 10),
+      name: w.name,
+      price: w.price,
+      by: w.by,
+      url: w.url,
+      bought: false,
+      addedOn: t,
+      updatedAt: t,
+    }
+    mutateHouseholdDoc((doc) => {
+      if (!doc.wishlist) doc.wishlist = []
+      doc.wishlist.unshift(item)
+    })
+  }
+
+  function updateWish(id: string, patch: Partial<WishItem>) {
+    if (unchanged(wishlist.value.find((x) => x.id === id), patch)) return
+    mutateHouseholdDoc((doc) => {
+      const w = (doc.wishlist || []).find((x) => x.id === id)
+      if (w) Object.assign(w, patch, { updatedAt: new Date().toISOString() })
+    })
+  }
+
+  function removeWish(id: string) {
+    mutateHouseholdDoc((doc) => {
+      const w = (doc.wishlist || []).find((x) => x.id === id)
+      if (w) {
+        w.deletedAt = new Date().toISOString()
+        w.updatedAt = w.deletedAt
+      }
+    })
+  }
+
+  function toggleBought(id: string) {
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      const w = (doc.wishlist || []).find((x) => x.id === id)
+      if (!w) return
+      w.bought = !w.bought
+      w.boughtOn = w.bought ? t : null
+      w.updatedAt = t
+    })
+  }
+
   function resetAll() {
     resetDoc();
   }
@@ -1378,6 +1428,10 @@ export const useFinanceStore = defineStore('finance', () => {
     removeGoal,
     contribute,
     withdraw,
+    addWish,
+    updateWish,
+    removeWish,
+    toggleBought,
     addAccount,
     updateAccount,
     setAccountAmount,

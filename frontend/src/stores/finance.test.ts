@@ -9,6 +9,7 @@ import {
   annuityMonths,
   budgetAmounts,
   goalHave,
+  liveWishlist,
   lumpPlan,
   nextObligationDue,
   pausedGoals,
@@ -1891,5 +1892,81 @@ describe('PV-14: план «Сначала долги» в сторе', () => {
       expect(store.plans[0]).toMatchObject({ status: 'done', result: { savedInterest: 2_000 } })
       expect(store.status).toBe('dirty')
     })
+  })
+})
+
+describe('PV-18: покупки в сторе', () => {
+  const storage = new Map<string, string>()
+  const at = (iso: string) => vi.setSystemTime(new Date(iso))
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    at('2026-09-24T07:00:00Z')
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('addWish: новая — в начало списка, дата добавления и updatedAt — ISO момента', () => {
+    const store = useFinanceStore()
+    store.addWish({ name: 'Сковорода', price: 18_000, by: 'a' })
+    at('2026-09-25T07:00:00Z')
+    store.addWish({ name: 'Пылесос', price: 180_000, by: 'b', url: 'https://kaspi.kz/p' })
+    expect(store.wishlist.map((w) => w.name)).toEqual(['Пылесос', 'Сковорода'])
+    expect(store.wishlist[0]).toMatchObject({
+      price: 180_000, by: 'b', url: 'https://kaspi.kz/p', bought: false,
+      addedOn: '2026-09-25T07:00:00.000Z', updatedAt: '2026-09-25T07:00:00.000Z',
+    })
+    expect(store.status).toBe('dirty')
+  })
+
+  it('updateWish: правка пишет updatedAt; то же значение — не пишет ничего', () => {
+    const store = useFinanceStore()
+    store.addWish({ name: 'Сковорода', price: 18_000, by: 'a' })
+    const id = store.wishlist[0].id
+    at('2026-09-24T08:00:00Z')
+    store.updateWish(id, { price: 21_000 })
+    expect(store.wishlist[0]).toMatchObject({ price: 21_000, updatedAt: '2026-09-24T08:00:00.000Z' })
+
+    const before = JSON.stringify(store.householdDoc)
+    at('2026-09-24T09:00:00Z')
+    store.updateWish(id, { price: 21_000, name: 'Сковорода' })
+    expect(JSON.stringify(store.householdDoc)).toBe(before)
+  })
+
+  it('removeWish: надгробие, liveWishlist без него, слияние не воскрешает', () => {
+    const store = useFinanceStore()
+    store.addWish({ name: 'Сковорода', price: 18_000, by: 'a' })
+    const id = store.wishlist[0].id
+    const partner = JSON.parse(JSON.stringify(store.householdDoc))
+    at('2026-09-24T08:00:00Z')
+    store.removeWish(id)
+    expect(store.wishlist[0].deletedAt).toBe('2026-09-24T08:00:00.000Z')
+    expect(liveWishlist(store.wishlist)).toEqual([])
+    // Партнёр позже поправил цену у себя — удаление всё равно сильнее.
+    partner.wishlist[0].price = 25_000
+    partner.wishlist[0].updatedAt = '2026-09-24T09:00:00.000Z'
+    expect(liveWishlist(mergeDocs(JSON.parse(JSON.stringify(store.householdDoc)), partner).wishlist)).toEqual([])
+  })
+
+  it('toggleBought: купили — дата ISO; вернули в список — null', () => {
+    const store = useFinanceStore()
+    store.addWish({ name: 'Сковорода', price: 18_000, by: 'a' })
+    const id = store.wishlist[0].id
+    at('2026-09-24T08:00:00Z')
+    store.toggleBought(id)
+    expect(store.wishlist[0]).toMatchObject({ bought: true, boughtOn: '2026-09-24T08:00:00.000Z', updatedAt: '2026-09-24T08:00:00.000Z' })
+    at('2026-09-24T09:00:00Z')
+    store.toggleBought(id)
+    expect(store.wishlist[0]).toMatchObject({ bought: false, boughtOn: null, updatedAt: '2026-09-24T09:00:00.000Z' })
   })
 })

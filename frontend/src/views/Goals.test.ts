@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { useFinanceStore } from '@/stores/finance'
+import { useFinanceStore, defaultSyncDoc } from '@/stores/finance'
+import { useAuthStore } from '@/stores/auth'
+import type { WishItem } from '@/types/finance'
 import {
   goalMonths,
   goalMonthly,
@@ -13,7 +15,7 @@ import {
 } from '@/lib/finance'
 import { money, plain, ratePct } from '@/lib/money'
 import { planFamilyDoc, planOf } from '@/test/planFamily'
-import { renderScreen } from '@/test/screenState'
+import { renderScreen, screenMixin } from '@/test/screenState'
 import Goals from './Goals.vue'
 import GoalDetail from './GoalDetail.vue'
 
@@ -379,7 +381,7 @@ describe('views/Goals.vue, GoalDetail.vue, Deposit.vue — Цели, депоз�
 
     const html = await renderToString(app)
     expect(html).toContain('Робот-пылесос')
-    expect(html).toContain('Записать покупку')
+    expect(html).toContain('Добавить покупку')
   })
 })
 
@@ -446,5 +448,133 @@ describe('PV-15: пауза целей ради плана (SSR)', () => {
     const free = await renderScreen(GoalDetail, '/goals/trip')
     expect(free).not.toContain('На паузе ради плана')
     expect(free).not.toContain('Подушка плана')
+  })
+})
+
+describe('PV-18: покупки — правка, «Уже купили», viewer (SSR)', () => {
+  const T0 = '2026-09-01T00:00:00.000Z'
+  const storage = new Map<string, string>()
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  const wish = (w: Partial<WishItem> & Pick<WishItem, 'id' | 'name' | 'price'>): WishItem => ({
+    by: 'a', addedOn: '2026-09-10T06:00:00.000Z', bought: false, updatedAt: T0, ...w,
+  })
+
+  function family(role: 'member' | 'viewer' = 'member', wishlist: WishItem[] = []) {
+    useAuthStore().setAuthData({
+      token: 't',
+      user: { id: 'u', email: 'u@example.com', created_at: T0 },
+      household: { id: 'h', name: 'Семья', created_by: 'u', created_at: T0 },
+      member: { household_id: 'h', user_id: 'u', slot: 'a', display_name: 'Ильяс', role, joined_at: T0 },
+    })
+    const store = useFinanceStore()
+    store.setHouseholdDoc(
+      {
+        ...defaultSyncDoc(),
+        setupDoneAt: T0,
+        people: [
+          { id: 'a', name: 'Ильяс', salary: 700_000, payday: 10, updatedAt: T0 },
+          { id: 'b', name: 'Аруна', salary: 500_000, payday: 20, updatedAt: T0 },
+        ],
+        wishlist,
+      },
+      1,
+    )
+    return store
+  }
+
+  const list = () => [
+    wish({ id: 'pan', name: 'Сковорода', price: 18_000, url: 'https://kaspi.kz/p' }),
+    // Строка из прода: дата добавления — `toLocaleDateString('ru-RU')`.
+    wish({ id: 'old', name: 'Чайник', price: 12_000, by: 'b', addedOn: '24.09.2026' }),
+    wish({ id: 'vac', name: 'Пылесос', price: 180_000, by: 'b', bought: true, boughtOn: '2026-09-20T15:00:00.000Z' }),
+    wish({ id: 'iron', name: 'Утюг', price: 25_000, bought: true, boughtOn: '2026-08-05T15:00:00.000Z' }),
+  ]
+
+  it('списки React: подпись с датой, цена без ₸, «Уже купили» с итогом, «Вернуть в список»', async () => {
+    family('member', list())
+    const html = await renderScreen(Goals, '/goals?tab=wish')
+    expect(html).toContain('Ильяс · 10 сентября')
+    expect(html).toContain('Аруна · 24.09.2026')
+    expect(html).toContain(`>${plain(18_000)}</span>`)
+    expect(html).toContain('aria-label="Отметить купленным"')
+    expect(html).toContain('Добавить покупку')
+    expect(html).toContain('Уже купили')
+    expect(html).toContain(money(205_000))
+    expect(html).toContain('Аруна · куплено 20 сентября')
+    expect(html).toContain('Ильяс · куплено 5 августа')
+    expect(html.match(/aria-label="Вернуть в список"/g)).toHaveLength(2)
+    expect(html).toContain('line-through">Пылесос<')
+    expect(html).not.toContain('Пока ничего')
+    expect(html).not.toContain('Список пуст')
+  })
+
+  it('пусто: «Список пуст», «Уже купили» виден с «Пока ничего» и без итога', async () => {
+    family()
+    const html = await renderScreen(Goals, '/goals?tab=wish')
+    expect(html).toContain('Список пуст')
+    expect(html).toContain('Уже купили')
+    expect(html).toContain('Пока ничего')
+    expect(html).not.toContain(money(0))
+  })
+
+  it('отметили купленным — карточка React с номером покупки, строка ушла в «Уже купили»', async () => {
+    const store = family('member', list())
+    const html = await renderScreen(Goals, '/goals?tab=wish', undefined, [
+      screenMixin({}, (s) => (s.markBought as (id: string, name: string) => void)('pan', 'Сковорода')),
+    ])
+    expect(html).toContain('Куплено — Сковорода')
+    expect(html).toContain('Это 3-я покупка в дом. Вещь переехала в историю с датой и автором — через год будет видно, куда уходили деньги на быт.')
+    expect(store.wishlist.find((w) => w.id === 'pan')).toMatchObject({ bought: true, boughtOn: '2026-09-24T07:00:00.000Z' })
+    expect(html).toContain(money(223_000))
+  })
+
+  it('нажатие на строку — окно правки: поля React со значениями, «Готово», удаление с текстом React', async () => {
+    family('member', list())
+    const html = await renderScreen(Goals, '/goals?tab=wish', undefined, [screenMixin({ editWishId: 'pan' })])
+    expect(html).toContain('role="dialog"')
+    for (const label of ['Что покупаем', 'Цена, ₸', 'Ссылка на товар']) expect(html).toContain(`>${label}</span>`)
+    expect(html).toContain('aria-label="Кто добавил"')
+    expect(html).toContain('value="Сковорода"')
+    expect(html).toContain(`value="${plain(18_000)}"`)
+    expect(html).toContain('value="https://kaspi.kz/p"')
+    expect(html).toContain('Готово')
+    expect(html).toContain('Удалить из списка')
+  })
+
+  it('окно создания — тексты React', async () => {
+    family()
+    const html = await renderScreen(Goals, '/goals?tab=wish', undefined, [screenMixin({ openWishModal: true })])
+    expect(html).toContain('Покупка в дом')
+    expect(html).toContain('placeholder="Например, сковорода"')
+    expect(html).toContain('placeholder="18 000"')
+    expect(html).toContain('placeholder="можно оставить пустым"')
+    expect(html).toContain('aria-label="Кто добавил"')
+    expect(html).toContain('Добавить в список')
+    expect(html).not.toContain('bg-black/40')
+  })
+
+  it('viewer: список и итог видны, кнопок и окна правки нет', async () => {
+    family('viewer', list())
+    const html = await renderScreen(Goals, '/goals?tab=wish', undefined, [screenMixin({ editWishId: 'pan' })])
+    expect(html).toContain('Сковорода')
+    expect(html).toContain(money(205_000))
+    expect(html).toContain('Аруна · куплено 20 сентября')
+    expect(html).not.toContain('Отметить купленным')
+    expect(html).not.toContain('Вернуть в список')
+    expect(html).not.toContain('Добавить покупку')
+    expect(html).not.toContain('role="dialog"')
   })
 })
