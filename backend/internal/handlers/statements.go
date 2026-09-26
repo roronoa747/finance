@@ -174,8 +174,12 @@ func validateOperation(op models.Operation) string {
 		if longDigits.MatchString(s) {
 			return "text field contains a long number"
 		}
-		if !utf8.ValidString(s) {
-			return "text field must be valid UTF-8"
+	}
+	// Postgres text cannot hold NUL (pdf.js emits control characters for unknown
+	// glyphs). Broken UTF-8 never gets here: json.Unmarshal replaces it with U+FFFD.
+	for _, s := range []string{op.Merchant, text(op.Counterparty), text(op.Note), text(op.CategoryID)} {
+		if strings.ContainsRune(s, 0) {
+			return "text field contains NUL"
 		}
 	}
 	return ""

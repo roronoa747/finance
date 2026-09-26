@@ -209,6 +209,9 @@ func TestOperationsValidation(t *testing.T) {
 		"id too short":              with("id", "abc"),
 		"unknown bank":              with("bank", "halyk"),
 		"upload_id not uuid":        with("upload_id", "not-a-uuid"),
+		// Postgres text не хранит NUL — без проверки батч падал в 500.
+		"NUL in merchant":    with("merchant", "MAGNUM\x00 ALMATY"),
+		"NUL in category_id": with("category_id", "sc_food\x00"),
 	}
 	for name, bad := range cases {
 		rec := app.do(t, http.MethodPost, "/api/operations/batch", app.alice, map[string]any{"operations": []any{bad}})
