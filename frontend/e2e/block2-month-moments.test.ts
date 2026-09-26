@@ -3,7 +3,7 @@ import { setActivePinia } from 'pinia'
 import { defaultSyncDoc } from '../src/stores/finance'
 import { useAuthStore } from '../src/stores/auth'
 import { at, phone, screen, setOnline, type FakeServer } from './support/family'
-import { accountBalance, budgetAmounts, paidFor, salaryFree } from '../src/lib/finance'
+import { accountBalance, budgetAmounts, monthSummary, paidFor, salaryFree } from '../src/lib/finance'
 import { money } from '../src/lib/money'
 import { authAs } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
@@ -201,6 +201,47 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       expect(await screen(A.pinia, Ritual, '/ritual?from=credit&credit=tv')).toContain('Этот долг ещё не закрыт')
       // В документе — только записи оплат: моменты не пишутся.
       expect(Object.keys(server.data).filter((k) => /moment|history/i.test(k))).toEqual([])
+    })
+  })
+
+  describe('RP-13 — итог месяца на двоих', () => {
+    it('A и B отмечают своё офлайн → 28-го у обоих одна карточка «Наш сентябрь», цифры — monthSummary', async () => {
+      const A = await phone(server)
+      useAuthStore().setAuthData(authAs('member', 'a'))
+      const B = await phone(server)
+      useAuthStore().setAuthData(authAs('member', 'b'))
+
+      setOnline(false)
+      setActivePinia(A.pinia)
+      A.store.markSalary('a', { accountId: 'card' })
+      A.store.markPaid('obligation', 'rent', 'a', { period: '2026-09', accountId: 'card' })
+      A.store.contribute('trip', 150_000, 'a')
+      at('2026-09-15T06:00:00Z')
+      setActivePinia(B.pinia)
+      B.store.markPaid('credit', 'loan', 'b', { period: '2026-09', accountId: 'card' })
+      setOnline(true)
+      await A.store.syncHousehold(A.client)
+      await B.store.syncHousehold(B.client)
+      await A.store.syncHousehold(A.client)
+
+      at('2026-09-28T07:00:00Z')
+      const summary = monthSummary(
+        { credits: A.store.householdDoc.credits, goals: A.store.goals, payments: A.store.payments, wishlist: A.store.wishlist },
+        '2026-09',
+      )
+      expect(summary.paid).toEqual({ count: 2, amount: 220_000 + 58_000 })
+      expect(summary.income).toBe(700_000)
+      expect(summary.toGoals).toBe(150_000)
+
+      const cardOf = (html: string) => html.slice(html.indexOf('Итог месяца'), html.indexOf('Итог августа'))
+      const a = cardOf(await screen(A.pinia, Overview, '/'))
+      const b = cardOf(await screen(B.pinia, Overview, '/'))
+      expect(a).toContain('Наш сентябрь')
+      expect(a).toContain(money(summary.paid.amount))
+      expect(a).toContain(money(summary.income))
+      expect(a).toContain(`${summary.closest!.from}% → ${summary.closest!.to}%`)
+      expect(b).toBe(a)
+      expect(a).not.toMatch(/Ильяс|Аруна/)
     })
   })
 })

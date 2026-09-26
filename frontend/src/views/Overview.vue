@@ -25,6 +25,7 @@ import {
   nextObligationDue,
   salaryAt,
   salaryOpen,
+  summaryMonth,
   untilPayday,
 } from '@/lib/finance'
 import { cn, plural } from '@/lib/utils'
@@ -42,6 +43,7 @@ import Legend, { type LegendItem } from '@/components/Legend.vue'
 import Ring from '@/components/Ring.vue'
 import PaidRow from '@/components/PaidRow.vue'
 import SalaryRow from '@/components/SalaryRow.vue'
+import MonthSummaryCard from '@/components/MonthSummaryCard.vue'
 
 const router = useRouter()
 const financeStore = useFinanceStore()
@@ -176,6 +178,9 @@ const history = computed(() =>
       }
     }),
 )
+
+// Итог месяца (RP-13): за какой месяц — `summaryMonth` (конец этого, начало следующего).
+const summaryKey = computed(() => summaryMonth())
 
 // Вопрос в конце месяца (RP-11): «Остались деньги?» → раскладка остатка. Ответ помнит
 // устройство — месяц ответа в localStorage, документ не трогается: партнёра спросят на его
@@ -337,6 +342,9 @@ const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: ma
         <Button variant="outline" class="flex-1 bg-surface-2" @click="answerRest">Не сейчас</Button>
       </div>
     </Card>
+
+    <!-- Итог месяца на двоих (RP-13): конец месяца и первые дни следующего -->
+    <MonthSummaryCard v-if="summaryKey" :month="summaryKey" />
 
     <!-- Предупреждение: план не сходится -->
     <Callout v-if="free < 0" title="План пока не сходится">

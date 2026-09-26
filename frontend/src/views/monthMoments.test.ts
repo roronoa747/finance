@@ -199,4 +199,68 @@ describe('Блок 2: моменты месяца (SSR)', () => {
       expect(car.movements).toEqual([])
     })
   })
+
+  describe('RP-13 — итог месяца на двоих', () => {
+    // Сентябрь: аренда (Ильяс) и кредит (Аруна) оплачены, пришли обе зарплаты, взнос в «Отпуск».
+    const pay = (p: Partial<Payment> & Pick<Payment, 'id' | 'kind' | 'targetId' | 'amount' | 'by'>): Payment => ({
+      period: '2026-09', accountId: 'card', at: '2026-09-10T05:00:00.000Z', updatedAt: '2026-09-10T05:00:00.000Z', ...p,
+    })
+    const september = (): Partial<SyncDoc> => ({
+      payments: [
+        pay({ id: 'r', kind: 'obligation', targetId: 'rent', amount: 220_000, by: 'a' }),
+        pay({ id: 'l', kind: 'credit', targetId: 'loan', amount: 58_000, principal: 30_500, by: 'b' }),
+        pay({ id: 'sa', kind: 'salary', targetId: 'a', amount: 700_000, by: 'a' }),
+        pay({ id: 'sb', kind: 'salary', targetId: 'b', amount: 500_000, by: 'b' }),
+      ],
+      goals: planFamilyDoc().goals.map((g) =>
+        g.id === 'trip' ? { ...g, movements: [{ id: 'm', date: '2026-09-15T05:00:00.000Z', amount: 250_000, by: 'b' as const }], have: 300_000 } : g,
+      ),
+    })
+    const card = (html: string) => {
+      const from = html.indexOf('Итог месяца')
+      return from < 0 ? '' : html.slice(from, html.indexOf('</button>', html.indexOf('Итог ', from + 12)))
+    }
+    const text = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
+
+    it('в конце месяца — «Наш сентябрь» с цифрами finance.ts; в середине — нет; в первые дни октября — сентябрь', async () => {
+      family('member', 'a', september())
+      const t = text(card(await renderScreen(Overview, '/')))
+      expect(t).toContain('Наш сентябрь')
+      expect(t).toContain(`Оплатили 2 платежа ${money(278_000)}`)
+      expect(t).toContain(`Пришло зарплатой ${money(1_200_000)}`)
+      expect(t).toContain(`Отложили в цели ${money(250_000)}`)
+      // «Отпуск»: 50 000 → 300 000 из 3 000 000 — 2% → 10%.
+      expect(t).toContain('«Отпуск» 2% → 10%')
+      expect(t).toContain('Итог августа')
+
+      vi.setSystemTime(new Date('2026-09-20T07:00:00Z'))
+      expect(await renderScreen(Overview, '/')).not.toContain('Итог месяца')
+      vi.setSystemTime(new Date('2026-10-03T07:00:00Z'))
+      expect(text(card(await renderScreen(Overview, '/')))).toContain('Наш сентябрь')
+    })
+
+    it('оба участника и viewer видят один и тот же итог — без имён и сравнений', async () => {
+      family('member', 'a', september())
+      const a = card(await renderScreen(Overview, '/'))
+      setActivePinia(createPinia())
+      family('member', 'b', september())
+      const b = card(await renderScreen(Overview, '/'))
+      setActivePinia(createPinia())
+      family('viewer', 'b', september())
+      const v = card(await renderScreen(Overview, '/'))
+      expect(a).not.toBe('')
+      expect(b).toBe(a)
+      expect(v).toBe(a)
+      expect(text(a)).not.toMatch(/Ильяс|Аруна|больше|меньше|лучше|хуже|молодц/i)
+    })
+
+    it('месяц раньше — в той же карточке; пустой месяц — спокойная строка', async () => {
+      family('member', 'a', september())
+      const html = await renderScreen(Overview, '/', undefined, [screenMixin({ earlier: true })])
+      const t = text(card(html))
+      expect(t).toContain('Наш август')
+      expect(t).toContain('В августе отметок пока нет.')
+      expect(t).toContain('Итог сентября')
+    })
+  })
 })

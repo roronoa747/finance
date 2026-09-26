@@ -82,13 +82,16 @@ import {
   monthEndAsk,
   MONTH_END_DAYS,
   progressMoments,
+  monthSummary,
+  summaryMonth,
+  SUMMARY_FIRST_DAYS,
   type PlanState,
 } from './finance'
 import { plain, money, moneyShort, parseMoney, pct, ratePct } from './money'
 import { clean, caretAt, sigBefore } from './num'
 import { plural } from './utils'
 import { monthKey, parseMonthKey, addMonths, daysInMonth, leadingBlanks, today, atLabel } from '@/lib/dates'
-import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person } from '@/types/finance'
+import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, WishItem } from '@/types/finance'
 import { DEFAULT_CATEGORY_NAMES } from '@/lib/palette'
 
 describe('finance.ts — аннуитет и кредитные расчёты', () => {
@@ -2212,6 +2215,105 @@ describe('RP-12 — моменты прогресса', () => {
     const half = goal([{ ...m, amount: 500_000, date: '2026-10-01T05:00:00Z' }])
     const list = progressMoments({ credits: [small], goals: [half], payments: [sep, oct] })
     expect(list.map((x) => x.kind)).toEqual(['closed', 'half'])
+  })
+})
+
+describe('RP-13 — итог месяца на двоих', () => {
+  const T0 = '2026-08-01T00:00:00Z'
+  const rec = (p: Partial<Payment> & Pick<Payment, 'id' | 'kind' | 'targetId' | 'amount'>): Payment => ({
+    period: '2026-09', accountId: 'card', by: 'a', at: '2026-09-10T05:00:00Z', updatedAt: '2026-09-10T05:00:00Z', ...p,
+  })
+  const loan: Credit = { id: 'loan', name: 'Кредит', note: '', principal: 1_000_000, principalSetAt: T0, annualRate: 0.33, payment: 58_000, day: 15, updatedAt: T0 }
+  const tv: Credit = { id: 'tv', name: 'Телевизор', note: '', principal: 30_000, principalSetAt: T0, annualRate: 0, payment: 30_000, day: 12, updatedAt: T0 }
+  const gone: Credit = { ...loan, id: 'gone', deletedAt: T0 }
+  const payments: Payment[] = [
+    rec({ id: 'rent9', kind: 'obligation', targetId: 'rent', amount: 220_000 }),
+    rec({ id: 'rent9b', kind: 'obligation', targetId: 'rent', amount: 220_000, by: 'b', at: '2026-09-10T06:00:00Z' }),
+    rec({ id: 'loan9', kind: 'credit', targetId: 'loan', amount: 58_000, principal: 30_500 }),
+    rec({ id: 'tv9', kind: 'credit', targetId: 'tv', amount: 30_000, principal: 30_000, by: 'b', at: '2026-09-12T05:00:00Z' }),
+    rec({ id: 'rent8', kind: 'obligation', targetId: 'rent', amount: 220_000, period: '2026-08', at: '2026-08-05T05:00:00Z' }),
+    rec({ id: 'net9', kind: 'obligation', targetId: 'net', amount: 10_000, deletedAt: '2026-09-11T00:00:00Z' }),
+    rec({ id: 'sa', kind: 'salary', targetId: 'a', amount: 700_000 }),
+    rec({ id: 'sb', kind: 'salary', targetId: 'b', amount: 500_000, by: 'b', at: '2026-09-20T05:00:00Z' }),
+    rec({ id: 'pre', kind: 'prepay', targetId: 'loan', amount: 100_000, principal: 100_000, saved: 40_000 }),
+    rec({ id: 'preGone', kind: 'prepay', targetId: 'gone', amount: 50_000, principal: 50_000, saved: 9_000 }),
+  ]
+  const mv = (id: string, date: string, amount: number, by: 'a' | 'b' = 'a') => ({ id, date, amount, by })
+  const trip: Goal = {
+    id: 'trip', name: 'Отпуск', need: 1_000_000, seed: 100_000, have: 0, monthly: 50_000, hue: 'teal', planPct: 0, updatedAt: T0,
+    movements: [
+      mv('t8', '2026-08-10T05:00:00Z', 300_000),
+      mv('t9', '2026-09-10T05:00:00Z', 200_000, 'b'),
+      mv('t9out', '2026-09-15T05:00:00Z', -50_000),
+      mv('t10', '2026-10-01T05:00:00Z', 400_000),
+    ],
+  }
+  const car: Goal = { ...trip, id: 'car', name: 'Машина', need: 2_000_000, seed: 0, movements: [mv('c9', '2026-09-20T05:00:00Z', 100_000)] }
+  const wish = (id: string, price: number, p: Partial<WishItem>): WishItem => ({
+    id, name: id, price, by: 'a', addedOn: T0, bought: true, boughtOn: '2026-09-14T05:00:00Z', updatedAt: T0, ...p,
+  })
+  const wishlist = [
+    wish('pylesos', 50_000, {}),
+    wish('old', 30_000, { boughtOn: '12.09.2026' }),
+    wish('aug', 70_000, { boughtOn: '2026-08-20T05:00:00Z' }),
+    wish('later', 90_000, { bought: false, boughtOn: null }),
+    wish('deleted', 80_000, { deletedAt: T0 }),
+  ]
+  const state = { credits: [loan, tv, gone], goals: [trip, car], payments, wishlist }
+
+  it('итог на наборе записей и взносов: оплачено, пришло, закрыто, досрочки, цели, покупки', () => {
+    expect(monthSummary(state, '2026-09')).toEqual({
+      key: '2026-09',
+      // Аренда (двойная — один раз), кредит, последний платёж «Телевизора»; снятая — нет.
+      paid: { count: 3, amount: 220_000 + 58_000 + 30_000 },
+      income: 1_200_000,
+      closed: [{ creditId: 'tv', name: 'Телевизор' }],
+      // Досрочка удалённого кредита не считается — как в счётчике «сэкономили».
+      prepaid: { count: 1, amount: 100_000, saved: 40_000 },
+      toGoals: 200_000 + 100_000,
+      fromGoals: 50_000,
+      // «Отпуск»: 400 000 → 550 000 из 1 000 000; «Машина» — 5%: ближе всех «Отпуск».
+      closest: { goalId: 'trip', name: 'Отпуск', from: 40, to: 55 },
+      // ISO и старый «dd.mm.yyyy»; августовская, некупленная и удалённая — нет.
+      bought: { count: 2, amount: 80_000 },
+    })
+  })
+
+  it('записи другого месяца не попадают; пустой месяц — нули', () => {
+    const aug = monthSummary(state, '2026-08')
+    expect(aug.paid).toEqual({ count: 1, amount: 220_000 })
+    expect(aug.income).toBe(0)
+    expect(aug.closed).toEqual([])
+    expect(aug.toGoals).toBe(300_000)
+    expect(aug.closest).toEqual({ goalId: 'trip', name: 'Отпуск', from: 10, to: 40 })
+    expect(aug.bought).toEqual({ count: 1, amount: 70_000 })
+    const nov = monthSummary(state, '2026-11')
+    expect(nov).toEqual({
+      key: '2026-11', paid: { count: 0, amount: 0 }, income: 0, closed: [], prepaid: { count: 0, amount: 0, saved: 0 },
+      toGoals: 0, fromGoals: 0, closest: null, bought: { count: 0, amount: 0 },
+    })
+  })
+
+  it('надгробия не считаются: снятая закрывшая отметка — долг не закрыт, платёж не оплачен', () => {
+    const undone = payments.map((p) => (p.id === 'tv9' ? { ...p, deletedAt: '2026-09-13T00:00:00Z' } : p))
+    const s = monthSummary({ ...state, payments: undone }, '2026-09')
+    expect(s.closed).toEqual([])
+    expect(s.paid).toEqual({ count: 2, amount: 278_000 })
+  })
+
+  it('нет полей по участникам: кто платил и вносил, в итог не выходит', () => {
+    const json = JSON.stringify(monthSummary(state, '2026-09'))
+    expect(json).not.toMatch(/"by"|"a"|"b"|Ильяс|Аруна|person/)
+  })
+
+  it('окно карточки: последние дни месяца — этот месяц, первые SUMMARY_FIRST_DAYS — прошлый, середина — нет', () => {
+    expect(SUMMARY_FIRST_DAYS).toBe(5)
+    expect(summaryMonth({ day: 28, key: '2026-09' })).toBe('2026-09')
+    expect(summaryMonth({ day: 27, key: '2026-09' })).toBeNull()
+    expect(summaryMonth({ day: 1, key: '2026-10' })).toBe('2026-09')
+    expect(summaryMonth({ day: 5, key: '2026-10' })).toBe('2026-09')
+    expect(summaryMonth({ day: 6, key: '2026-10' })).toBeNull()
+    expect(summaryMonth({ day: 3, key: '2027-01' })).toBe('2026-12')
   })
 })
 

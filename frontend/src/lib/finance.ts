@@ -1576,6 +1576,113 @@ export function progressMoments(state: { credits?: Credit[]; goals?: Goal[]; pay
   return out.sort((a, b) => b.at.localeCompare(a.at) || a.id.localeCompare(b.id));
 }
 
+/* ---------------- итог месяца на двоих (RP-13) ---------------- */
+
+/** Сколько первых дней месяца Обзор ещё показывает итог прошлого. */
+export const SUMMARY_FIRST_DAYS = 5;
+
+/**
+ * За какой месяц показать итог сейчас (Р-22): в последние MONTH_END_DAYS дней — за этот
+ * (он почти прожит), в первые SUMMARY_FIRST_DAYS дней — за прошлый (он только закончился);
+ * в остальные дни — null, карточки нет. Календарь — Алматы.
+ */
+export function summaryMonth(now = today()): string | null {
+  if (now.day > daysInMonth(now.key) - MONTH_END_DAYS) return now.key;
+  if (now.day <= SUMMARY_FIRST_DAYS) return addMonths(now.key, -1);
+  return null;
+}
+
+/** Ключ месяца даты покупки: ISO или «dd.mm.yyyy» старых записей из прода. */
+function boughtMonth(on: string | null | undefined): string | null {
+  if (!on) return null;
+  const old = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(on);
+  if (old) return `${old[3]}-${old[2]}`;
+  const d = new Date(on);
+  return Number.isNaN(d.getTime()) ? null : monthKey(d);
+}
+
+/** Итог месяца «мы» — без полей по участникам (Р-22). Суммы — целые тенге. */
+export type MonthSummary = {
+  key: string;
+  /** Платежи по графику (обязательства и кредиты), отмеченные за этот месяц. */
+  paid: { count: number; amount: number };
+  /** Зарплаты, отмеченные «пришла» за этот месяц, — вместе. */
+  income: number;
+  /** Долги, закрытые в этом месяце. */
+  closed: { creditId: string; name: string }[];
+  /** Досрочки месяца: сколько внесли и сколько процентов не отдадим банку. */
+  prepaid: { count: number; amount: number; saved: number };
+  /** Взносы в цели за месяц и снятия из них. */
+  toGoals: number;
+  fromGoals: number;
+  /**
+   * Приближение к желаниям: цель, ближе всех к сумме среди тех, где в этом месяце было
+   * движение, — сколько процентов собрано на начало и на конец месяца (целые, до 100).
+   */
+  closest: { goalId: string; name: string; from: number; to: number } | null;
+  /** Купленное из списка покупок в этом месяце. */
+  bought: { count: number; amount: number };
+};
+
+/**
+ * Итог месяца на двоих (Р-22): что оплатили, что закрыли, сколько отложили и насколько
+ * приблизились к желаниям. Считает только записанное, в документ не пишет. Месяц записи
+ * оплаты — её `period` (как у отметок), взноса и закрытия долга — дата по Алматы, покупки
+ * — `boughtOn`. Надгробия не считаются; двойная отметка — один раз (`countedPayments`).
+ * Кредиты — из документа, как у `progressMoments`. Кто платил и вносил — не разрезается.
+ */
+export function monthSummary(
+  state: { credits?: Credit[]; goals?: Goal[]; payments?: Payment[]; wishlist?: WishItem[] },
+  key: string,
+): MonthSummary {
+  const records = countedPayments(state.payments ?? []).filter((p) => p.period === key);
+  const scheduled = records.filter((p) => p.kind === 'obligation' || p.kind === 'credit');
+  const liveIds = new Set(liveCredits(state.credits ?? []).map((c) => c.id));
+  const prepays = records.filter((p) => p.kind === 'prepay' && liveIds.has(p.targetId));
+
+  const inMonth = (iso: string) => monthKey(new Date(iso)) === key;
+  let toGoals = 0;
+  let fromGoals = 0;
+  let closest: MonthSummary['closest'] = null;
+  let closestHave = -1;
+  for (const g of liveGoals(state.goals ?? [])) {
+    const moves = (g.movements ?? []).filter((m) => inMonth(m.date));
+    for (const m of moves) {
+      if (m.amount > 0) toGoals += m.amount;
+      else fromGoals -= m.amount;
+    }
+    if (!moves.length || !(g.need > 0)) continue;
+    const before = goalHave(g.seed, (g.movements ?? []).filter((m) => monthKey(new Date(m.date)) < key));
+    const after = goalHave(g.seed, (g.movements ?? []).filter((m) => monthKey(new Date(m.date)) <= key));
+    const share = Math.min(1, after / g.need);
+    if (share > closestHave) {
+      closestHave = share;
+      const pct = (have: number) => Math.round(Math.min(1, have / g.need) * 100);
+      closest = { goalId: g.id, name: g.name, from: pct(before), to: pct(after) };
+    }
+  }
+
+  const bought = liveWishlist(state.wishlist ?? []).filter((w) => w.bought && boughtMonth(w.boughtOn) === key);
+
+  return {
+    key,
+    paid: { count: scheduled.length, amount: scheduled.reduce((a, p) => a + p.amount, 0) },
+    income: records.filter((p) => p.kind === 'salary').reduce((a, p) => a + p.amount, 0),
+    closed: progressMoments({ credits: state.credits, payments: state.payments })
+      .filter((m): m is Extract<Moment, { kind: 'closed' }> => m.kind === 'closed' && inMonth(m.at))
+      .map((m) => ({ creditId: m.creditId, name: m.name })),
+    prepaid: {
+      count: prepays.length,
+      amount: prepays.reduce((a, p) => a + p.amount, 0),
+      saved: prepays.reduce((a, p) => a + (p.saved ?? 0), 0),
+    },
+    toGoals,
+    fromGoals,
+    closest,
+    bought: { count: bought.length, amount: bought.reduce((a, w) => a + w.price, 0) },
+  };
+}
+
 /** Подсчёт ликвидных средств на картах и счетах. */
 export function liquidCash(liquidAccounts: Account[]): number {
   return liveAccounts(liquidAccounts)
