@@ -22,12 +22,20 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
   const finance = useFinanceStore()
   const signedIn = () => auth.isAuthenticated && !auth.isDemo
 
+  // Личный документ (B2C-05) — тем же кругом: неотправленное досылаем со слиянием, иначе
+  // забираем правки со второго устройства (успешный pull снимает и прошлый сбой).
+  const syncPrivate = () => {
+    if (finance.privateUnsent) void finance.syncPrivate()
+    else void finance.pullPrivateDoc()
+  }
+
   const sync = () => {
     if (!signedIn()) return
     // Только 'idle' значит «локально всё уже на сервере». Правка без сети оставляет
     // 'offline', сбой — 'error': их нужно слить и отправить, а не затереть серверной копией.
     if (finance.status === 'idle') void finance.pullHousehold()
     else void finance.syncHousehold()
+    syncPrivate()
   }
 
   win.addEventListener('online', sync)
@@ -51,7 +59,10 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
     // Без сети статус честный сразу, а не «синхронизировано» до первого события.
     if (win.navigator?.onLine === false) finance.status = 'offline'
     // Первый круг всегда полный: неотправленная перед закрытием правка не теряется.
-    else void finance.syncHousehold()
+    else {
+      void finance.syncHousehold()
+      syncPrivate()
+    }
   }
 }
 

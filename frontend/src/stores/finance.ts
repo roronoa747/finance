@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, type Ref } from 'vue'
 import { apiClient, type ApiClient, ApiError } from '@/api/client'
-import { mergeDocs, isEmptyDoc } from '@/lib/merge'
+import { mergeDocs, mergePrivateDocs, isEmptyDoc } from '@/lib/merge'
 import { monthKey } from '@/lib/dates'
 import {
   accountBalance,
@@ -145,6 +145,22 @@ export const useFinanceStore = defineStore('finance', () => {
   let syncRuns = 0
   // Растёт при выходе: ответ, запрошенный до выхода, не пишет прежнюю семью в стор.
   let session = 0
+  // Личный документ (B2C-05): свои правки, свой синк, своя ошибка — бейдж учитывает оба.
+  let privateEdits = 0
+  let privateInFlight: Promise<void> | null = null
+  let privateTimer: ReturnType<typeof setTimeout> | null = null
+  const privateError = ref<boolean>(false)
+
+  /**
+   * Состояние для бейджа: общий документ и личный вместе (B2C-05). Сеть, синк и сбой общего
+   * — как есть; иначе сбой личного — «не сошлось», неотправленная правка любого — «ждёт».
+   */
+  const syncStatus = computed<SyncStatus>(() => {
+    const s = status.value
+    if (s !== 'idle' && s !== 'dirty') return s
+    if (privateError.value) return 'error'
+    return s === 'dirty' || privateUnsent.value ? 'dirty' : 'idle'
+  })
 
   // Getters
   const people = computed(() => householdDoc.value.people || [])
@@ -213,11 +229,16 @@ export const useFinanceStore = defineStore('finance', () => {
   function clearLocal() {
     session++
     localEdits++
+    privateEdits++
     // Синк прежней семьи мог повиснуть в сети: вход в новую не должен его ждать
     // (pull при идущем синке отбрасывает ответ). Вернувшись, тот синк ничего не тронет.
     isSyncing = false
+    privateInFlight = null
     if (syncTimer) clearTimeout(syncTimer)
     syncTimer = null
+    if (privateTimer) clearTimeout(privateTimer)
+    privateTimer = null
+    privateError.value = false
     householdDoc.value = defaultSyncDoc()
     householdRev.value = 0
     privateDoc.value = {}
@@ -310,6 +331,64 @@ export const useFinanceStore = defineStore('finance', () => {
     scheduleSync(100)
   }
 
+  /** Документ, который синкается протоколом ревизий: общий или личный (B2C-05). */
+  interface DocChannel<T> {
+    doc: Ref<T>
+    rev: Ref<number>
+    /** Счётчик локальных правок этого документа. */
+    edits: () => number
+    push: (rev: number, data: T) => Promise<{ rev: number; data: T | null }>
+    merge: (local: T, remote: T) => T
+    /** Серверную копию не сливать, а заменить своей (пустой сервер, сброс бюджета). */
+    replace: (remote: T) => boolean
+    settle?: (merged: T) => void
+  }
+
+  const MAX_ATTEMPTS = 4
+
+  /**
+   * Слить с серверной копией и отправить; на 409 — слить с копией из ответа и повторить (до
+   * MAX_ATTEMPTS). `server` null — сервер не спрашивали: уходит своё, 409 вернёт его копию.
+   * 'edited' — правка пришла, пока запрос был в пути: документ остаётся локальным, ревизия
+   * новая. 'stale' — был выход. Сбой сети и сервера — исключением.
+   */
+  async function exchange<T>(
+    ch: DocChannel<T>,
+    s: number,
+    rev: number,
+    server: T | null,
+  ): Promise<'sent' | 'edited' | 'conflict' | 'stale'> {
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const merged = server === null || ch.replace(server) ? ch.doc.value : ch.merge(ch.doc.value, server)
+      ch.settle?.(merged)
+      ch.doc.value = merged
+      saveLocalState()
+      try {
+        const editsBeforePush = ch.edits()
+        const res = await ch.push(rev, merged)
+        if (s !== session) return 'stale'
+        ch.rev.value = res.rev
+        if (ch.edits() !== editsBeforePush) {
+          saveLocalState()
+          return 'edited'
+        }
+        ch.doc.value = res.data ?? merged
+        saveLocalState()
+        return 'sent'
+      } catch (err) {
+        if (s !== session) return 'stale'
+        // Конфликт версий: сервер отдал свою копию — сливаем с ней и пробуем снова.
+        const conflict = err instanceof ApiError && err.status === 409
+          ? (err.data as ConflictResponse<{ rev: number; data: T | null }> | undefined)?.server_doc
+          : undefined
+        if (!conflict?.data) throw err
+        rev = conflict.rev
+        server = conflict.data
+      }
+    }
+    return 'conflict'
+  }
+
   async function syncHousehold(client: ApiClient = apiClient): Promise<void> {
     if (isSyncing || isDemo.value) return
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
@@ -327,12 +406,10 @@ export const useFinanceStore = defineStore('finance', () => {
     lastError.value = null
     const s = session
 
-    const MAX_ATTEMPTS = 4
-
     try {
-      let currentServerDoc: HouseholdDocResponse
+      let server: HouseholdDocResponse
       try {
-        currentServerDoc = await client.getHouseholdDoc()
+        server = await client.getHouseholdDoc()
         if (s !== session) return
       } catch (err) {
         if (s !== session) return
@@ -342,62 +419,43 @@ export const useFinanceStore = defineStore('finance', () => {
         return
       }
 
-      let currentRev = currentServerDoc.rev
-      let currentData = currentServerDoc.data
-
-      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-        const replace = forceReplace.value || isEmptyDoc(currentData)
-        const merged = replace ? householdDoc.value : mergeDocs(householdDoc.value, currentData)
-        // После слияния планы — по правилам (два активных, долги закрыл партнёр) — прямо
-        // в отправляемом документе, без лишнего круга.
-        settleIn(merged)
-
-        householdDoc.value = merged
+      const result = await exchange(
+        {
+          doc: householdDoc,
+          rev: householdRev,
+          edits: () => localEdits,
+          push: (rev, data) => client.pushHouseholdDoc(rev, data),
+          merge: mergeDocs,
+          replace: (remote) => forceReplace.value || isEmptyDoc(remote),
+          // После слияния планы — по правилам (два активных, долги закрыл партнёр) — прямо
+          // в отправляемом документе, без лишнего круга.
+          settle: settleIn,
+        },
+        s,
+        server.rev,
+        server.data,
+      )
+      if (result === 'stale') return
+      if (result === 'edited') {
+        // Правка пришла, пока запрос был в пути: сервер её не видел. Документ остался
+        // локальным, ревизия — новая: правка уйдёт следующим кругом.
+        status.value = 'dirty'
+        forceReplace.value = false
         saveLocalState()
-
-        try {
-          const editsBeforePush = localEdits
-          const pushRes = await client.pushHouseholdDoc(currentRev, merged)
-          if (s !== session) return
-          if (localEdits !== editsBeforePush) {
-            // Правка пришла, пока запрос был в пути: сервер её не видел. Документ
-            // оставляем локальным, ревизию берём новую — правка уйдёт следующим кругом.
-            householdRev.value = pushRes.rev
-            status.value = 'dirty'
-            forceReplace.value = false
-            saveLocalState()
-            scheduleSync(undefined, client)
-            return
-          }
-          householdDoc.value = pushRes.data ?? merged
-          householdRev.value = pushRes.rev
-          unsent.value = false
-          status.value = 'idle'
-          lastSyncedAt.value = new Date().toISOString()
-          lastError.value = null
-          forceReplace.value = false
-          saveLocalState()
-          return
-        } catch (pushErr) {
-          if (s !== session) return
-          if (pushErr instanceof ApiError && pushErr.status === 409) {
-            // Конфликт версий: на сервере обновлён документ
-            const conflictData = pushErr.data as ConflictResponse<HouseholdDocResponse> | undefined
-            const conflictServerDoc = conflictData?.server_doc
-            if (conflictServerDoc && conflictServerDoc.data) {
-              // Обновляем текущие серверные данные из ответа 409 и повторяем слияние
-              currentRev = conflictServerDoc.rev
-              currentData = conflictServerDoc.data
-              continue
-            }
-          }
-          throw pushErr
-        }
+        scheduleSync(undefined, client)
+        return
       }
-
-      // Если 4 попытки подряд закончились конфликтом
-      status.value = 'conflict'
-      lastError.value = 'Не удалось согласовать версии бюджета после нескольких попыток'
+      if (result === 'conflict') {
+        status.value = 'conflict'
+        lastError.value = 'Не удалось согласовать версии бюджета после нескольких попыток'
+        return
+      }
+      unsent.value = false
+      status.value = 'idle'
+      lastSyncedAt.value = new Date().toISOString()
+      lastError.value = null
+      forceReplace.value = false
+      saveLocalState()
     } catch (err) {
       if (s !== session) return
       const msg = err instanceof Error ? err.message : String(err)
@@ -452,48 +510,113 @@ export const useFinanceStore = defineStore('finance', () => {
     }
   }
 
+  /**
+   * Личный документ с сервера. Всё отправлено — серверная копия заменяет локальную (правки со
+   * второго устройства); есть неотправленное или правка пришла во время запроса — сливается
+   * (B2C-05) и досылается.
+   */
   async function pullPrivateDoc(client: ApiClient = apiClient) {
     if (isDemo.value) return null
+    const editsBefore = privateEdits
     const s = session
     try {
       const res = await client.getPrivateDoc()
-      if (s !== session) return null
-      if (res && privateUnsent.value) {
-        // Личный документ пока не сливается (RP-15): неотправленное с телефона
-        // досылается поверх, а не затирается серверной копией.
+      if (s !== session || !res) return res ?? null
+      // Синк личного шёл, пока ждали ответ: его результат новее.
+      if (privateInFlight) return res
+      if (privateUnsent.value || privateEdits !== editsBefore) {
+        privateDoc.value = mergePrivateDocs(privateDoc.value, res.data ?? {})
         privateRev.value = res.rev
+        privateUnsent.value = true
         saveLocalState()
-        await pushPrivateDoc(privateDoc.value, client).catch(() => {})
-      } else if (res) {
+        await syncPrivate(client)
+      } else {
         privateDoc.value = res.data ?? {}
         privateRev.value = res.rev
+        privateError.value = false
         saveLocalState()
       }
       return res
     } catch (err) {
       if (s !== session) return null
-      const msg = err instanceof Error ? err.message : String(err)
-      lastError.value = msg
+      lastError.value = err instanceof Error ? err.message : String(err)
+      if (!unreachable(err)) privateError.value = true
       return null
     }
   }
 
-  async function pushPrivateDoc(data: Record<string, unknown>, client: ApiClient = apiClient) {
+  /**
+   * Отправка личного документа по схеме общего (B2C-05): своё уходит с известной ревизией,
+   * 409 — слияние с копией сервера и повтор. Сбой сети оставляет правку неотправленной —
+   * движок досылает её следующим кругом; сбой сервера — «не сошлось» на бейдже.
+   */
+  async function syncPrivate(client: ApiClient = apiClient): Promise<void> {
+    // Синк уже идёт — дождаться: если правка всё ещё не ушла, отправить её этим вызовом.
+    if (privateInFlight) await privateInFlight
+    if (isDemo.value || privateInFlight || !privateUnsent.value) return
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+    const run = sendPrivate(client)
+    privateInFlight = run
+    try {
+      await run
+    } finally {
+      if (privateInFlight === run) privateInFlight = null
+    }
+  }
+
+  async function sendPrivate(client: ApiClient): Promise<void> {
+    if (privateTimer) clearTimeout(privateTimer)
+    privateTimer = null
     const s = session
     try {
-      const res = await client.pushPrivateDoc(privateRev.value, data)
-      if (s !== session) return res
-      privateDoc.value = res.data ?? data
-      privateRev.value = res.rev
-      privateUnsent.value = false
+      const result = await exchange(
+        {
+          doc: privateDoc,
+          rev: privateRev,
+          edits: () => privateEdits,
+          push: (rev, data) => client.pushPrivateDoc(rev, data),
+          merge: mergePrivateDocs,
+          replace: () => false,
+        },
+        s,
+        privateRev.value,
+        null,
+      )
+      if (result === 'stale') return
+      if (result === 'conflict') {
+        privateError.value = true
+        lastError.value = 'Не удалось согласовать версии личного документа после нескольких попыток'
+        return
+      }
+      privateError.value = false
+      if (result === 'sent') privateUnsent.value = false
+      else schedulePrivateSync(undefined, client)
       saveLocalState()
-      return res
     } catch (err) {
-      if (s !== session) throw err
-      const msg = err instanceof Error ? err.message : String(err)
-      lastError.value = msg
-      throw err
+      if (s !== session) return
+      lastError.value = err instanceof Error ? err.message : String(err)
+      if (!unreachable(err)) privateError.value = true
     }
+  }
+
+  /** Отправить личный документ `data` (выход с неотправленным, тесты) — тем же синком. */
+  async function pushPrivateDoc(data: Record<string, unknown>, client: ApiClient = apiClient) {
+    if (data !== privateDoc.value) {
+      privateEdits++
+      privateDoc.value = data
+    }
+    privateUnsent.value = true
+    await syncPrivate(client)
+    if (privateUnsent.value) throw new Error(lastError.value ?? 'личный документ не отправлен')
+  }
+
+  function schedulePrivateSync(delay = 1500, client: ApiClient = apiClient) {
+    if (isDemo.value) return
+    if (privateTimer) clearTimeout(privateTimer)
+    privateTimer = setTimeout(() => {
+      privateTimer = null
+      void syncPrivate(client)
+    }, delay)
   }
 
   function scheduleSync(delay = 1500, client: ApiClient = apiClient) {
@@ -730,10 +853,12 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   function mutatePrivateDoc(mutator: (data: Record<string, unknown>) => void) {
+    privateEdits++
     mutator(privateDoc.value)
     privateUnsent.value = true
     saveLocalState()
-    if (!isDemo.value) void pushPrivateDoc(privateDoc.value).catch(() => {})
+    // Сразу в сеть; идёт синк — он увидит правку и пошлёт её следующим кругом.
+    void syncPrivate()
   }
 
   /**
@@ -1440,8 +1565,10 @@ export const useFinanceStore = defineStore('finance', () => {
     privateDoc,
     privateRev,
     status,
+    syncStatus,
     unsent,
     privateUnsent,
+    privateError,
     hasUnsent,
     docHousehold,
     isDemo,
@@ -1481,6 +1608,7 @@ export const useFinanceStore = defineStore('finance', () => {
     pullHousehold,
     pullPrivateDoc,
     pushPrivateDoc,
+    syncPrivate,
     scheduleSync,
     setPerson,
     correctSalary,
