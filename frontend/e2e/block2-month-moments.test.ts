@@ -5,6 +5,7 @@ import { useAuthStore } from '../src/stores/auth'
 import { at, phone, screen, setOnline, type FakeServer } from './support/family'
 import { accountBalance, budgetAmounts, monthSummary, paidFor, salaryFree } from '../src/lib/finance'
 import { money } from '../src/lib/money'
+import type { Payment } from '../src/types/finance'
 import { authAs } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
 import Budget from '../src/views/Budget.vue'
@@ -262,6 +263,136 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       expect(a).toContain(money(summary.paid.amount))
       expect(a).toContain(money(summary.income))
       expect(a).toContain(`${summary.closest!.from}% → ${summary.closest!.to}%`)
+      expect(b).toBe(a)
+      expect(a).not.toMatch(/Ильяс|Аруна/)
+    })
+  })
+
+  /** Сценарии приёмки Блока 2 (браузер на стенде §6 — те же случаи, здесь — на двух сторах). */
+  describe('приёмка Блока 2', () => {
+    /** Своё хранилище телефона: Обзор читает ответ на вопрос конца месяца из localStorage. */
+    const storage = (init: Record<string, string> = {}) => {
+      const m = new Map(Object.entries(init))
+      return {
+        getItem: (k: string) => m.get(k) ?? null,
+        setItem: (k: string, v: string) => void m.set(k, String(v)),
+        removeItem: (k: string) => void m.delete(k),
+        clear: () => m.clear(),
+        key: (i: number) => [...m.keys()][i] ?? null,
+        get length() {
+          return m.size
+        },
+      }
+    }
+
+    it('RP-10: два телефона Ильяса жмут «Пришла» без сети — на сервере обе записи, на карте зачисление одно', async () => {
+      const A1 = await phone(server)
+      useAuthStore().setAuthData(authAs('member', 'a'))
+      const A2 = await phone(server)
+      useAuthStore().setAuthData(authAs('member', 'a'))
+
+      setOnline(false)
+      setActivePinia(A1.pinia)
+      const first = A1.store.markSalary('a', { accountId: 'card' })!
+      at('2026-09-10T04:05:00Z')
+      setActivePinia(A2.pinia)
+      const second = A2.store.markSalary('a', { accountId: 'card' })!
+      expect(second.id).not.toBe(first.id)
+      setOnline(true)
+      await A1.store.syncHousehold(A1.client)
+      await A2.store.syncHousehold(A2.client)
+      await A1.store.syncHousehold(A1.client)
+
+      expect(server.data.payments!.filter((p) => p.kind === 'salary' && !p.deletedAt)).toHaveLength(2)
+      for (const s of [A1.store, A2.store]) {
+        expect(s.accounts.find((x) => x.id === 'card')!.amount).toBe(1_700_000)
+        // Считается ранняя по моменту отметки.
+        expect(paidFor(s.payments, 'salary', 'a', '2026-09')!.id).toBe(first.id)
+      }
+      expect(await screen(A2.pinia, Overview, '/')).toContain('Аруна получит')
+    })
+
+    it('RP-11: окно по Алматы на стыке месяцев; ответ помнит устройство — на телефоне партнёра вопрос остаётся', async () => {
+      const A = await phone(server)
+      useAuthStore().setAuthData(authAs('member', 'a'))
+      const B = await phone(server)
+      useAuthStore().setAuthData(authAs('member', 'b'))
+
+      at('2026-09-30T18:00:00Z') // 30 сентября, 23:00 по Алматы
+      expect(await screen(A.pinia, Overview, '/')).toContain('Остались деньги с сентября?')
+      at('2026-09-30T19:30:00Z') // 1 октября, 00:30 по Алматы
+      expect(await screen(A.pinia, Overview, '/')).not.toContain('Остались деньги')
+
+      at('2026-09-28T07:00:00Z')
+      vi.stubGlobal('localStorage', storage({ ff_month_end: '2026-09' }))
+      expect(await screen(A.pinia, Overview, '/')).not.toContain('Остались деньги')
+      vi.stubGlobal('localStorage', storage())
+      expect(await screen(B.pinia, Overview, '/')).toContain('Остались деньги с сентября?')
+      // Ответ за сентябрь не гасит октябрь.
+      at('2026-10-29T07:00:00Z')
+      vi.stubGlobal('localStorage', storage({ ff_month_end: '2026-09' }))
+      expect(await screen(A.pinia, Overview, '/')).toContain('Остались деньги с октября?')
+    })
+
+    it('RP-13: дубль отметки, надгробие, чужой месяц, старая дата покупки — итог посчитан руками, у обоих одинаково', async () => {
+      const pay = (id: string, kind: Payment['kind'], targetId: string, period: string, amount: number, when: string, extra: Partial<Payment> = {}): Payment =>
+        ({ id, kind, targetId, period, amount, accountId: 'card', by: 'a', at: when, updatedAt: when, ...extra })
+      server.data.credits.push({
+        id: 'tv', name: 'Телевизор', note: '', principal: 20_000, principalSetAt: T0, annualRate: 0.24, payment: 20_400, day: 12, updatedAt: T0,
+      })
+      server.data.obligations.push({ id: 'nf', name: 'Netflix', note: '', day: 7, category: 'd4', versions: [{ from: '2000-01', amount: 5_000 }], updatedAt: T0 })
+      server.data.payments = [
+        pay('r1', 'obligation', 'rent', '2026-09', 220_000, '2026-09-05T06:00:00Z'),
+        pay('r2', 'obligation', 'rent', '2026-09', 220_000, '2026-09-05T09:00:00Z', { by: 'b' }),
+        pay('l9', 'credit', 'loan', '2026-09', 58_000, '2026-09-15T06:00:00Z', { principal: 30_500, by: 'b' }),
+        pay('l8', 'credit', 'loan', '2026-08', 58_000, '2026-08-15T06:00:00Z', { principal: 30_000 }),
+        pay('tv9', 'credit', 'tv', '2026-09', 20_400, '2026-09-12T06:00:00Z', { principal: 20_000, by: 'b' }),
+        pay('nf9', 'obligation', 'nf', '2026-09', 5_000, '2026-09-07T06:00:00Z', { deletedAt: '2026-09-07T07:00:00Z' }),
+        pay('sa', 'salary', 'a', '2026-09', 700_000, '2026-09-10T05:00:00Z'),
+        pay('sb', 'salary', 'b', '2026-09', 500_000, '2026-09-20T05:00:00Z', { by: 'b' }),
+        pay('pp', 'prepay', 'loan', '2026-09', 100_000, '2026-09-16T06:00:00Z', { principal: 100_000, saved: 45_000, mode: 'term', prevPayment: 58_000, newPayment: 58_000 }),
+      ]
+      server.data.goals[0].movements = [
+        { id: 'g8', date: '2026-08-10T06:00:00Z', amount: 50_000, by: 'a' },
+        { id: 'g9', date: '2026-09-10T06:00:00Z', amount: 150_000, by: 'a' },
+        { id: 'g9b', date: '2026-09-20T06:00:00Z', amount: -30_000, by: 'b' },
+      ]
+      server.data.goals[0].have = 270_000
+      server.data.goals.push({
+        id: 'car', name: 'Машина', need: 400_000, seed: 140_000, have: 220_000, monthly: 0, hue: 'teal', planPct: 0, updatedAt: T0,
+        movements: [{ id: 'c9', date: '2026-09-22T06:00:00Z', amount: 80_000, by: 'b' }],
+      })
+      server.data.wishlist = [
+        { id: 'w1', name: 'Пылесос', price: 35_000, by: 'a', addedOn: '2026-08-01', bought: true, boughtOn: '2026-09-18T06:00:00Z', updatedAt: T0 },
+        { id: 'w2', name: 'Чайник', price: 15_000, by: 'b', addedOn: '2026-08-01', bought: true, boughtOn: '12.09.2026', updatedAt: T0 },
+        { id: 'w3', name: 'Кресло', price: 99_000, by: 'b', addedOn: '2026-07-01', bought: true, boughtOn: '20.08.2026', updatedAt: T0 },
+        { id: 'w4', name: 'Диван', price: 1_000_000, by: 'a', addedOn: '2026-07-01', bought: false, boughtOn: null, updatedAt: T0 },
+      ]
+      at('2026-09-29T07:00:00Z')
+      const A = await phone(server)
+      useAuthStore().setAuthData(authAs('member', 'a'))
+      const B = await phone(server)
+      useAuthStore().setAuthData(authAs('member', 'b'))
+
+      // Руками: аренда 220 000 (дубль — раз) + кредит 58 000 + «Телевизор» 20 400; надгробие и август
+      // не в счёт; «Машина» 140 000 → 220 000 из 400 000; купили 35 000 + 15 000 (старая дата).
+      expect(monthSummary({ ...A.store.householdDoc, goals: A.store.goals, wishlist: A.store.wishlist }, '2026-09')).toEqual({
+        key: '2026-09',
+        paid: { count: 3, amount: 298_400 },
+        income: 1_200_000,
+        closed: [{ creditId: 'tv', name: 'Телевизор' }],
+        prepaid: { count: 1, amount: 100_000, saved: 45_000 },
+        toGoals: 230_000,
+        fromGoals: 30_000,
+        closest: { goalId: 'car', name: 'Машина', from: 35, to: 55 },
+        bought: { count: 2, amount: 50_000 },
+      })
+      const cardOf = (html: string) => html.slice(html.indexOf('Итог месяца'), html.indexOf('Итог августа'))
+      const a = cardOf(await screen(A.pinia, Overview, '/'))
+      const b = cardOf(await screen(B.pinia, Overview, '/'))
+      for (const text of [money(298_400), money(1_200_000), '«Телевизор»', money(45_000), money(230_000), money(30_000), '35% → 55%', money(50_000)]) {
+        expect(a).toContain(text)
+      }
       expect(b).toBe(a)
       expect(a).not.toMatch(/Ильяс|Аруна/)
     })
