@@ -5,7 +5,7 @@ import { useFinanceStore } from '../../src/stores/finance'
 import { renderScreen } from '../../src/test/screenState'
 import { ApiClient, ApiError } from '../../src/api/client'
 import type { SyncDoc } from '../../src/types/finance'
-import type { HouseholdDocResponse, ConflictResponse } from '../../src/types/api'
+import type { HouseholdDocResponse, ConflictResponse, OperationWire, StatementUploadResponse } from '../../src/types/api'
 
 /**
  * Стенд «двух телефонов» для e2e (ревью frontend Блока 2, Н-7): фейковый сервер общего
@@ -68,3 +68,34 @@ export async function screen(
 export const at = (iso: string) => vi.setSystemTime(new Date(iso))
 
 export const setOnline = (onLine: boolean) => vi.stubGlobal('navigator', { onLine })
+
+/**
+ * Фейк ручек выписок (B2C-06): записи загрузок — общие для семьи, операции — по владельцу,
+ * как `handlers/statements.go`. Один на семью; телефон получает свои методы через `statementsFor`.
+ */
+export type FakeStatements = {
+  uploads: (StatementUploadResponse & { user: string })[]
+  ops: Map<string, Map<string, OperationWire>>
+}
+
+export function fakeStatements(): FakeStatements {
+  return { uploads: [], ops: new Map() }
+}
+
+export function statementsFor(st: FakeStatements, user: string, slot: 'a' | 'b') {
+  return {
+    createStatementUpload: vi.fn(async (u: { bank: string; period_from: string; period_to: string; ops_count: number }) => {
+      const record = { id: `00000000-0000-4000-8000-${String(st.uploads.length + 1).padStart(12, '0')}`, slot, ...u, created_at: new Date().toISOString() }
+      st.uploads.unshift({ ...record, user })
+      return record
+    }),
+    listStatementUploads: vi.fn(async () => ({ uploads: st.uploads.map(({ user: _user, ...u }) => u) })),
+    upsertOperations: vi.fn(async (ops: OperationWire[]) => {
+      const mine = st.ops.get(user) ?? new Map<string, OperationWire>()
+      for (const o of ops) mine.set(o.id, JSON.parse(JSON.stringify(o)))
+      st.ops.set(user, mine)
+      return { upserted: ops.length }
+    }),
+    listOperations: vi.fn(async () => ({ operations: [...(st.ops.get(user)?.values() ?? [])], next: null })),
+  }
+}

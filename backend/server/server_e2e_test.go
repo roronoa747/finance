@@ -32,7 +32,7 @@ func TestLiveServerE2EFlow(t *testing.T) {
 	mockRepos := repository.NewMockRepositories()
 	mockRepos.Households.SetDocRepo(mockRepos.Docs)
 
-	runLiveServerE2EFlow(t, nil, mockRepos.Users, mockRepos.Households, mockRepos.Docs)
+	runLiveServerE2EFlow(t, nil, mockRepos.Users, mockRepos.Households, mockRepos.Docs, mockRepos.Statements)
 }
 
 // TestLiveServerE2EFlowPostgres runs the same flow against a real PostgreSQL.
@@ -43,7 +43,8 @@ func TestLiveServerE2EFlowPostgres(t *testing.T) {
 	runLiveServerE2EFlow(t, database,
 		repository.NewSQLUserRepository(database),
 		repository.NewSQLHouseholdRepository(database),
-		repository.NewSQLDocRepository(database))
+		repository.NewSQLDocRepository(database),
+		repository.NewSQLStatementRepository(database))
 }
 
 func runLiveServerE2EFlow(
@@ -52,6 +53,7 @@ func runLiveServerE2EFlow(
 	userRepo repository.UserRepository,
 	householdRepo repository.HouseholdRepository,
 	docRepo repository.DocRepository,
+	statementRepo repository.StatementRepository,
 ) {
 	cfg := &config.Config{
 		Port:       "8080",
@@ -61,7 +63,7 @@ func runLiveServerE2EFlow(
 	}
 	tokenService := auth.NewTokenService(cfg.JWTSecret, 24*time.Hour)
 
-	router := NewRouter(cfg, database, Repos{Users: userRepo, Households: householdRepo, Docs: docRepo}, tokenService, fx.NewClient())
+	router := NewRouter(cfg, database, Repos{Users: userRepo, Households: householdRepo, Docs: docRepo, Statements: statementRepo}, tokenService, fx.NewClient())
 	wantDBStatus := "disconnected"
 	if database != nil {
 		wantDBStatus = "connected"
@@ -423,6 +425,61 @@ func runLiveServerE2EFlow(
 		}
 	})
 
+	// Step 13b (B2C-06): выписки — запись загрузки видна семье, операции — только владельцу.
+	t.Run("Statements: upload, batch, cursor; partner sees the upload, not the operations", func(t *testing.T) {
+		resp, body := sendJSON(http.MethodPost, "/api/statements", map[string]any{
+			"bank": "kaspi", "period_from": "2026-06-26", "period_to": "2026-09-26", "ops_count": 2,
+		}, aliceToken)
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("upload: expected 201, got %d: %s", resp.StatusCode, string(body))
+		}
+		var upload models.StatementUpload
+		_ = json.Unmarshal(body, &upload)
+
+		ops := []map[string]any{
+			{"id": "0a0a0001", "bank": "kaspi", "date": "2026-09-20", "amount": -4200, "kind": "purchase", "merchant": "Magnum", "category_id": "sc_food", "internal": false, "upload_id": upload.ID},
+			{"id": "0a0a0002", "bank": "kaspi", "date": "2026-09-21", "amount": -15000, "kind": "transfer-out", "merchant": "Дана К.", "counterparty": "Дана К.", "category_id": "sc_people", "internal": false, "upload_id": upload.ID},
+		}
+		resp, body = sendJSON(http.MethodPost, "/api/operations/batch", map[string]any{"operations": ops}, aliceToken)
+		if resp.StatusCode != http.StatusOK || !bytes.Contains(body, []byte(`"upserted":2`)) {
+			t.Fatalf("batch: %d %s", resp.StatusCode, string(body))
+		}
+
+		type page struct {
+			Operations []models.Operation `json:"operations"`
+			Next       *time.Time         `json:"next"`
+		}
+		resp, body = sendJSON(http.MethodGet, "/api/operations?limit=1", nil, aliceToken)
+		var first page
+		_ = json.Unmarshal(body, &first)
+		if resp.StatusCode != http.StatusOK || len(first.Operations) != 2 || first.Next == nil {
+			// Лимит 1 посреди одного батча — страница дочитывает батч целиком.
+			t.Fatalf("first page: %d %s", resp.StatusCode, string(body))
+		}
+		_, body = sendJSON(http.MethodGet, "/api/operations?since="+first.Next.Format(time.RFC3339Nano), nil, aliceToken)
+		var second page
+		_ = json.Unmarshal(body, &second)
+		if len(second.Operations) != 0 || second.Next != nil {
+			t.Fatalf("second page must be empty: %s", string(body))
+		}
+
+		// Партнёр: загрузку видит (со слотом Алии), операций — нет.
+		resp, body = sendJSON(http.MethodGet, "/api/statements", nil, bobToken)
+		var list struct {
+			Uploads []models.StatementUpload `json:"uploads"`
+		}
+		_ = json.Unmarshal(body, &list)
+		if resp.StatusCode != http.StatusOK || len(list.Uploads) != 1 || list.Uploads[0].Slot != "a" || list.Uploads[0].OpsCount != 2 {
+			t.Fatalf("partner uploads: %d %s", resp.StatusCode, string(body))
+		}
+		_, body = sendJSON(http.MethodGet, "/api/operations", nil, bobToken)
+		var bobs page
+		_ = json.Unmarshal(body, &bobs)
+		if len(bobs.Operations) != 0 {
+			t.Fatalf("partner received Alice's operations: %s", string(body))
+		}
+	})
+
 	// Step 14: Security validations — Unauthenticated access blocked
 	t.Run("Unauthenticated requests return 401 Unauthorized", func(t *testing.T) {
 		resp, _ := sendJSON(http.MethodGet, "/api/auth/me", nil, "")
@@ -469,6 +526,14 @@ func runLiveServerE2EFlow(
 		}, viewerToken)
 		if pvResp.StatusCode != http.StatusOK {
 			t.Errorf("viewer expected 200 OK writing private doc, got %d: %s", pvResp.StatusCode, string(pvBody))
+		}
+
+		// Выписки (B2C-06): viewer видит записи загрузок семьи, но не загружает.
+		if resp, body := sendJSON(http.MethodGet, "/api/statements", nil, viewerToken); resp.StatusCode != http.StatusOK {
+			t.Errorf("viewer expected 200 listing uploads, got %d: %s", resp.StatusCode, string(body))
+		}
+		if resp, _ := sendJSON(http.MethodPost, "/api/operations/batch", map[string]any{"operations": []any{}}, viewerToken); resp.StatusCode != http.StatusForbidden {
+			t.Errorf("viewer expected 403 on operations batch, got %d", resp.StatusCode)
 		}
 	})
 }

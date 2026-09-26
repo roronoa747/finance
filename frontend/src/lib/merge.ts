@@ -144,9 +144,9 @@ function isIdList(v: unknown): v is WithId[] {
  * Ключи верхнего уровня, которых этот код не знает (правило 3). Знакомые — те,
  * что mergeDocs сливает явно (`known`): новый ключ достаточно добавить туда.
  */
-function mergeUnknownKeys(local: SyncDoc, remote: SyncDoc, known: SyncDoc): Record<string, unknown> {
-  const l = local as unknown as Record<string, unknown>
-  const r = remote as unknown as Record<string, unknown>
+function mergeUnknownKeys(local: object, remote: object, known: object): Record<string, unknown> {
+  const l = local as Record<string, unknown>
+  const r = remote as Record<string, unknown>
   const out: Record<string, unknown> = {}
   for (const key of new Set([...Object.keys(l), ...Object.keys(r)])) {
     if (key in known) continue
@@ -192,9 +192,28 @@ export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
     // сильнее «отменён». Два активных после офлайна остаются оба — активным считается
     // поздний (`activePlan`, Р-9).
     plans: mergeList(local.plans ?? [], remote.plans ?? [], (x) => x.id, mergePlan),
+    // Выписки (B2C-02): разделы трат — LWW по id; итог участника за период — запись с id
+    // `участник:вид:период:раздел`, её целиком заменяет свежий пересчёт (Р-21).
+    spendCategories: mergeList(local.spendCategories ?? [], remote.spendCategories ?? [], (x) => x.id),
+    spendTotals: mergeList(local.spendTotals ?? [], remote.spendTotals ?? [], (x) => x.id),
     // Метки равны (или их нет) — сброс один и тот же.
     ...(lr ? { resetAt: lr } : {}),
   }
+  return { ...mergeUnknownKeys(local, remote, known), ...known }
+}
+
+/**
+ * Личный документ участника (B2C-05): счета «только мои» и память продавцов (`merchantRules`,
+ * Р-22) с двух устройств одного человека. Те же правила, что у общего: записи с id — по id,
+ * LWW и надгробия; незнакомые ключи не теряются.
+ */
+export function mergePrivateDocs(
+  local: Record<string, unknown>,
+  remote: Record<string, unknown>,
+): Record<string, unknown> {
+  const list = (key: string) =>
+    mergeList((local[key] as WithId[] | undefined) ?? [], (remote[key] as WithId[] | undefined) ?? [], (x) => x.id)
+  const known = { accounts: list('accounts'), merchantRules: list('merchantRules') }
   return { ...mergeUnknownKeys(local, remote, known), ...known }
 }
 

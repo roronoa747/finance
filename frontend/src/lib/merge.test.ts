@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { mergeDocs, isEmptyDoc } from './merge'
+import { mergeDocs, mergePrivateDocs, isEmptyDoc } from './merge'
 import { accountBalance, activePlan, creditBalance, goalHave, paidFor, shiftedBase } from './finance'
 import type { SyncDoc, Goal, Obligation, Person, Category, Account, Credit, DebtPlan, Payment, WishItem } from '@/types/finance'
+import type { MerchantRule, SpendCategory, SpendTotal } from '@/lib/statements/types'
+import { defaultSyncDoc } from '@/stores/finance'
 
 function createEmptyDoc(): SyncDoc {
   return {
@@ -811,5 +813,92 @@ describe('PV-21: «Начать бюджет заново» — метка сб�
     expect(mergeDocs(merged, later)).toEqual(later)
     // Без меток ключ не появляется: документы без сброса — как раньше.
     expect('resetAt' in mergeDocs(before, before)).toBe(false)
+  })
+})
+
+describe('B2C-02: разделы трат и итоги по разделам при слиянии', () => {
+  const T1 = '2026-09-21T05:00:00.000Z'
+  const T2 = '2026-09-22T05:00:00.000Z'
+  const cat = (id: string, p: Partial<SpendCategory> = {}): SpendCategory => ({ id, name: id, hue: 'green', order: 1, updatedAt: T1, ...p })
+  const total = (id: string, p: Partial<SpendTotal> = {}): SpendTotal => ({
+    id, by: 'a', kind: 'week', period: '2026-W39', categoryId: 'sc_food', amount: 1000, ops: 1, updatedAt: T1, ...p,
+  })
+
+  it('сливаются по id: свежий пересчёт итога заменяет старый, разделы двух сторон — оба', () => {
+    const local: SyncDoc = { ...createEmptyDoc(), spendCategories: [cat('sc_food')], spendTotals: [total('a:week:2026-W39:sc_food')] }
+    const remote: SyncDoc = {
+      ...createEmptyDoc(),
+      spendCategories: [cat('sc_food', { name: 'Еда', updatedAt: T2 }), cat('sc_cafe')],
+      spendTotals: [total('a:week:2026-W39:sc_food', { amount: 2500, ops: 3, updatedAt: T2 }), total('b:week:2026-W39:sc_food', { by: 'b' })],
+    }
+    for (const merged of [mergeDocs(local, remote), mergeDocs(remote, local)]) {
+      const cats = [...merged.spendCategories!].sort((x, y) => x.id.localeCompare(y.id))
+      expect(cats.map((c) => [c.id, c.name])).toEqual([['sc_cafe', 'sc_cafe'], ['sc_food', 'Еда']])
+      const totals = [...merged.spendTotals!].sort((x, y) => x.id.localeCompare(y.id))
+      expect(totals.map((t) => [t.id, t.amount, t.ops])).toEqual([['a:week:2026-W39:sc_food', 2500, 3], ['b:week:2026-W39:sc_food', 1000, 1]])
+    }
+  })
+
+  it('надгробие раздела побеждает позднюю правку', () => {
+    const gone = cat('sc_fun', { deletedAt: T1 })
+    const renamed = cat('sc_fun', { name: 'Досуг', updatedAt: T2 })
+    for (const merged of [
+      mergeDocs({ ...createEmptyDoc(), spendCategories: [gone] }, { ...createEmptyDoc(), spendCategories: [renamed] }),
+      mergeDocs({ ...createEmptyDoc(), spendCategories: [renamed] }, { ...createEmptyDoc(), spendCategories: [gone] }),
+    ]) {
+      expect(merged.spendCategories![0].deletedAt).toBe(T1)
+    }
+  })
+
+  it('старый документ без ключей не ломается, а данные новой стороны не теряются', () => {
+    const fresh: SyncDoc = { ...createEmptyDoc(), spendTotals: [total('a:month:2026-09:sc_food', { kind: 'month', period: '2026-09' })] }
+    for (const merged of [mergeDocs(createEmptyDoc(), fresh), mergeDocs(fresh, createEmptyDoc())]) {
+      expect(merged.spendCategories).toEqual([])
+      expect(merged.spendTotals!.map((t) => t.id)).toEqual(['a:month:2026-09:sc_food'])
+    }
+  })
+
+  it('defaultSyncDoc() содержит оба ключа пустыми', () => {
+    expect(defaultSyncDoc()).toMatchObject({ spendCategories: [], spendTotals: [] })
+  })
+})
+
+describe('B2C-05: личный документ с двух устройств одного человека', () => {
+  const T1 = '2026-09-21T05:00:00.000Z'
+  const T2 = '2026-09-22T05:00:00.000Z'
+  const account = (id: string, p: Partial<Account> = {}) =>
+    ({ id, name: id, note: '', amount: 100_000, kind: 'card', updatedAt: T1, ...p }) as Account
+  const rule = (id: string, p: Partial<MerchantRule> = {}): MerchantRule =>
+    ({ id, match: { merchant: id }, to: { categoryId: 'sc_food' }, by: 'a', updatedAt: T1, ...p })
+
+  it('счета и правила объединяются по id; позднее — по времени правки', () => {
+    const phone = { accounts: [account('card')], merchantRules: [rule('magnum')] }
+    const laptop = {
+      accounts: [account('card', { name: 'Kaspi Gold', updatedAt: T2 }), account('cash')],
+      merchantRules: [rule('wolt', { to: { categoryId: 'sc_cafe' } })],
+    }
+    for (const merged of [mergePrivateDocs(phone, laptop), mergePrivateDocs(laptop, phone)]) {
+      const accounts = merged.accounts as Account[]
+      expect(accounts.map((a) => [a.id, a.name]).sort()).toEqual([['card', 'Kaspi Gold'], ['cash', 'cash']])
+      expect((merged.merchantRules as MerchantRule[]).map((r) => r.id).sort()).toEqual(['magnum', 'wolt'])
+    }
+  })
+
+  it('надгробие правила побеждает позднюю правку', () => {
+    const removed = { merchantRules: [rule('magnum', { deletedAt: T1 })] }
+    const edited = { merchantRules: [rule('magnum', { to: { categoryId: 'sc_home' }, updatedAt: T2 })] }
+    for (const merged of [mergePrivateDocs(removed, edited), mergePrivateDocs(edited, removed)]) {
+      expect((merged.merchantRules as MerchantRule[])[0].deletedAt).toBe(T1)
+    }
+  })
+
+  it('незнакомый ключ не теряется: список с id — по id, прочее — со стороны сервера', () => {
+    const local = { gifts: [{ id: 'g1', updatedAt: T1 }], note: 'телефон' }
+    const remote = { gifts: [{ id: 'g2', updatedAt: T1 }], note: 'сервер', accounts: [account('card')] }
+    const merged = mergePrivateDocs(local, remote)
+    expect((merged.gifts as { id: string }[]).map((g) => g.id).sort()).toEqual(['g1', 'g2'])
+    expect(merged.note).toBe('сервер')
+    expect((merged.accounts as Account[]).map((a) => a.id)).toEqual(['card'])
+    expect(mergePrivateDocs({}, {})).toEqual({ accounts: [], merchantRules: [] })
   })
 })

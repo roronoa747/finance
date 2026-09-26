@@ -1,4 +1,5 @@
 import type { AccentKey, CategoryKey, HueKey, ThemeChoice } from '@/lib/palette'
+import type { SpendCategory, SpendTotal } from '@/lib/statements/types'
 
 export type PersonId = 'a' | 'b' | 'c'
 
@@ -335,6 +336,10 @@ export type SyncDoc = {
   payments?: Payment[]
   /** Планы «Сначала долги» (PV-14). Документы до Блока 3 паритета приходят без ключа. */
   plans?: DebtPlan[]
+  /** Разделы трат выписок (B2C-02, Р-22) — не разделы бюджета d1…d5. До Блока 1 B2C — без ключа. */
+  spendCategories?: SpendCategory[]
+  /** Итоги трат участников по разделам за неделю и месяц (Р-21); операции — личные, на сервере. */
+  spendTotals?: SpendTotal[]
   /**
    * Когда закончили первичную настройку бюджета. Пустое значит, что показываем
    * мастер. Живёт в общем документе, а не в настройках устройства: второй

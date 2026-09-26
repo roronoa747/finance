@@ -17,6 +17,8 @@ const GoalDetail = () => import('@/views/GoalDetail.vue')
 const Deposit = () => import('@/views/Deposit.vue')
 const Ritual = () => import('@/views/Ritual.vue')
 const DebtPlan = () => import('@/views/DebtPlan.vue')
+// Выписки (B2C-07): pdf.js грузится ещё позже — только когда выбрали файл.
+const Statements = () => import('@/views/Statements.vue')
 
 export const routes: RouteRecordRaw[] = [
   {
@@ -75,6 +77,11 @@ export const routes: RouteRecordRaw[] = [
         path: 'plan',
         name: 'plan',
         component: DebtPlan,
+      },
+      {
+        path: 'statements',
+        name: 'statements',
+        component: Statements,
       },
     ],
   },

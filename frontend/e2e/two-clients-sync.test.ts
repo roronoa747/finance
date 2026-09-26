@@ -384,6 +384,58 @@ describe('e2e / MGV-14 — Сквозная приёмка: совместная
     expect(htmlOverviewB).toContain('Аруна')
   })
 
+  it('B2C-05: один человек, два устройства — личные правки офлайн обе на сервере; партнёр личного не видит', async () => {
+    const piniaPhone = createPinia()
+    const piniaLaptop = createPinia()
+    const piniaB = createPinia()
+    const phoneClient = createMockBackendClient('u-ilyas')
+    const laptopClient = createMockBackendClient('u-ilyas')
+    const clientB = createMockBackendClient('u-aruna')
+
+    setActivePinia(piniaPhone)
+    const phone = useFinanceStore()
+    await phone.pullPrivateDoc(phoneClient)
+    setActivePinia(piniaLaptop)
+    const laptop = useFinanceStore()
+    await laptop.pullPrivateDoc(laptopClient)
+
+    // Оба без сети: правки ложатся локально.
+    vi.stubGlobal('navigator', { onLine: false })
+    try {
+      setActivePinia(piniaPhone)
+      const magnum = phone.addMerchantRule({ match: { merchant: 'magnum' }, to: { categoryId: 'sc_food' } }, 'a')
+      setActivePinia(piniaLaptop)
+      const partner = laptop.addMerchantRule({ match: { counterparty: 'аруна к.' }, to: { internal: true } }, 'a')
+      laptop.addAccount({ name: 'Моя заначка', kind: 'cash', amount: 90_000 }, true)
+      expect(phone.privateUnsent && laptop.privateUnsent).toBe(true)
+
+      // Сеть вернулась: телефон первым, ноутбук получает 409 и сливает.
+      vi.stubGlobal('navigator', { onLine: true })
+      setActivePinia(piniaPhone)
+      await phone.syncPrivate(phoneClient)
+      setActivePinia(piniaLaptop)
+      await laptop.syncPrivate(laptopClient)
+
+      const onServer = serverPrivateDocs.get('u-ilyas')!.data
+      const ids = ((onServer.merchantRules as { id: string }[]) ?? []).map((r) => r.id).sort()
+      expect(ids).toEqual([magnum.id, partner.id].sort())
+      expect((onServer.accounts as Account[]).map((a) => a.name)).toEqual(['Моя заначка'])
+
+      // Телефон забирает сведённое; у партнёра ни правил, ни счетов Ильяса.
+      setActivePinia(piniaPhone)
+      await phone.pullPrivateDoc(phoneClient)
+      expect(phone.merchantRules.map((r) => r.id).sort()).toEqual(ids)
+      setActivePinia(piniaB)
+      const partnerStore = useFinanceStore()
+      await partnerStore.pullPrivateDoc(clientB)
+      expect(partnerStore.merchantRules).toEqual([])
+      expect(partnerStore.privateAccounts).toEqual([])
+      expect(JSON.stringify(serverHouseholdDoc.data)).not.toContain('magnum')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('RP-01: тап по «Еда и быт» без правки не затирает правку партнёра', async () => {
     serverHouseholdDoc.data.categories = [
       { key: 'd4', name: 'Еда и быт', note: '', amount: 150_000, updatedAt: '2026-01-01T00:00:00Z' },

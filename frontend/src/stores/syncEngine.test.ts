@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from './auth'
 import { useFinanceStore } from './finance'
+import { apiClient } from '@/api/client'
 import { startSyncEngine, resetSyncEngineForTests, BACKGROUND_SYNC_MS } from './syncEngine'
 
 // Окно и документ-заглушки: движок слушает события и таймер окна.
@@ -125,5 +126,75 @@ describe('startSyncEngine — правки партнёра без собств�
       expect(pull).not.toHaveBeenCalled()
       expect(sync).not.toHaveBeenCalled()
     }
+  })
+})
+
+describe('startSyncEngine — личный документ (B2C-05)', () => {
+  const storage = new Map<string, string>()
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => storage.set(k, String(v)),
+      removeItem: (k: string) => storage.delete(k),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    resetSyncEngineForTests()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('неудачный push личного (нет сети) досылается следующим кругом движка, а не ждёт правки', async () => {
+    signIn()
+    const finance = useFinanceStore()
+    vi.spyOn(finance, 'pullHousehold').mockResolvedValue(null)
+    vi.spyOn(finance, 'syncHousehold').mockResolvedValue()
+    const response = (rev: number, data: Record<string, unknown>) =>
+      ({ household_id: 'h1', user_id: 'u1', rev, data, updated_at: '2026-09-26T10:00:00Z' })
+    vi.spyOn(apiClient, 'getPrivateDoc').mockResolvedValue(response(0, {}))
+    const push = vi.spyOn(apiClient, 'pushPrivateDoc')
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockImplementation(async (rev, data) => response(rev + 1, data))
+    const { win, doc } = fakeEnv()
+    startSyncEngine(win, doc)
+    await vi.advanceTimersByTimeAsync(0)
+
+    finance.addMerchantRule({ match: { merchant: 'magnum' }, to: { categoryId: 'sc_food' } }, 'a')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(push).toHaveBeenCalledTimes(1)
+    expect(finance.privateUnsent).toBe(true)
+
+    win.dispatchEvent(new Event('online'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(push).toHaveBeenCalledTimes(2)
+    expect(finance.privateUnsent).toBe(false)
+    expect(finance.syncStatus).toBe('idle')
+  })
+
+  it('всё отправлено — круг движка забирает личный документ (правило со второго устройства)', async () => {
+    signIn()
+    const finance = useFinanceStore()
+    vi.spyOn(finance, 'pullHousehold').mockResolvedValue(null)
+    vi.spyOn(finance, 'syncHousehold').mockResolvedValue()
+    const laptopRule = { id: 'r-laptop', match: { merchant: 'wolt' }, to: { categoryId: 'sc_cafe' }, by: 'a', updatedAt: '2026-09-26T09:00:00Z' }
+    const get = vi.spyOn(apiClient, 'getPrivateDoc')
+      .mockResolvedValueOnce({ household_id: 'h1', user_id: 'u1', rev: 1, data: {}, updated_at: '' })
+      .mockResolvedValue({ household_id: 'h1', user_id: 'u1', rev: 2, data: { merchantRules: [laptopRule] }, updated_at: '' })
+    const { win, doc } = fakeEnv()
+    startSyncEngine(win, doc)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(finance.merchantRules).toHaveLength(0)
+
+    doc.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(get).toHaveBeenCalledTimes(2)
+    expect(finance.merchantRules.map((r) => r.id)).toEqual(['r-laptop'])
   })
 })

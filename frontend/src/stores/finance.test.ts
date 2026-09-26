@@ -2086,3 +2086,128 @@ describe('PV-19: «Уже накоплено» правит seed, история
     expect(store.goals[0]).toMatchObject({ seed: 190_000, have: 200_000 })
   })
 })
+
+describe('B2C-05: личный документ — слияние и синк как у общего', () => {
+  const storage = new Map<string, string>()
+  const flush = async () => {
+    for (let i = 0; i < 20; i++) await Promise.resolve()
+  }
+  const ok = (rev: number, data: Record<string, unknown>) =>
+    ({ household_id: 'h-1', user_id: 'u-1', rev, data: JSON.parse(JSON.stringify(data)), updated_at: '2026-09-26T10:00:00Z' })
+  const conflict = (rev: number, data: Record<string, unknown>) =>
+    new ApiError('conflict', 409, { error: 'conflict', server_doc: ok(rev, data) })
+  const ruleIds = (doc: Record<string, unknown>) =>
+    ((doc.merchantRules as { id: string }[] | undefined) ?? []).map((r) => r.id).sort()
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => storage.set(k, String(v)),
+      removeItem: (k: string) => storage.delete(k),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('409 на личном push → слияние с копией сервера и повтор; своя правка цела', async () => {
+    const serverRule = { id: 'r-laptop', match: { merchant: 'wolt' }, to: { categoryId: 'sc_cafe' }, by: 'a', updatedAt: '2026-09-26T09:00:00Z' }
+    const push = vi.spyOn(apiClient, 'pushPrivateDoc')
+      .mockRejectedValueOnce(conflict(5, { merchantRules: [serverRule], accounts: [] }))
+      .mockImplementation(async (rev, data) => ok(rev + 1, data))
+    const store = useFinanceStore()
+    const mine = store.addMerchantRule({ match: { merchant: 'magnum' }, to: { categoryId: 'sc_food' } }, 'a')
+    await flush()
+
+    expect(push).toHaveBeenCalledTimes(2)
+    expect(push.mock.calls[1][0]).toBe(5)
+    expect(ruleIds(push.mock.calls[1][1])).toEqual([mine.id, 'r-laptop'].sort())
+    expect(store.privateRev).toBe(6)
+    expect(store.privateUnsent).toBe(false)
+    expect(store.privateError).toBe(false)
+    expect(store.merchantRules.map((r) => r.id).sort()).toEqual([mine.id, 'r-laptop'].sort())
+  })
+
+  it('правка во время запроса не затирается ответом и уходит следом', async () => {
+    let release!: () => void
+    const first = new Promise<void>((resolve) => (release = resolve))
+    const push = vi.spyOn(apiClient, 'pushPrivateDoc').mockImplementation(async (rev, data) => {
+      if (push.mock.calls.length === 1) await first
+      return ok(rev + 1, data)
+    })
+    const store = useFinanceStore()
+    const r1 = store.addMerchantRule({ match: { merchant: 'magnum' }, to: { categoryId: 'sc_food' } }, 'a')
+    const r2 = store.addMerchantRule({ match: { merchant: 'wolt' }, to: { categoryId: 'sc_cafe' } }, 'a')
+    expect(push).toHaveBeenCalledTimes(1) // второй ждёт первый
+    release()
+    await flush()
+
+    expect(push).toHaveBeenCalledTimes(2)
+    expect(ruleIds(push.mock.calls[1][1])).toEqual([r1.id, r2.id].sort())
+    expect(push.mock.calls[1][0]).toBe(1)
+    expect(store.merchantRules.map((r) => r.id).sort()).toEqual([r1.id, r2.id].sort())
+    expect(store.privateUnsent).toBe(false)
+  })
+
+  it('без сети правка ждёт; сбой сервера — «не сошлось» на бейдже, удачный повтор его снимает', async () => {
+    const push = vi.spyOn(apiClient, 'pushPrivateDoc')
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new ApiError('boom', 500))
+      .mockImplementation(async (rev, data) => ok(rev + 1, data))
+    const store = useFinanceStore()
+    store.addMerchantRule({ match: { merchant: 'magnum' }, to: { categoryId: 'sc_food' } }, 'a')
+    await flush()
+    expect(store.privateUnsent).toBe(true)
+    expect(store.privateError).toBe(false)
+    expect(store.syncStatus).toBe('dirty')
+
+    await store.syncPrivate()
+    expect(store.privateError).toBe(true)
+    expect(store.syncStatus).toBe('error')
+
+    await store.syncPrivate()
+    expect(push).toHaveBeenCalledTimes(3)
+    expect(store.privateUnsent).toBe(false)
+    expect(store.syncStatus).toBe('idle')
+  })
+
+  it('pull при неотправленном — сливает, а не перекрывает, и досылает', async () => {
+    vi.spyOn(apiClient, 'pushPrivateDoc').mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    const store = useFinanceStore()
+    const mine = store.addMerchantRule({ match: { merchant: 'magnum' }, to: { categoryId: 'sc_food' } }, 'a')
+    await flush()
+    expect(store.privateUnsent).toBe(true)
+
+    const laptopRule = { id: 'r-laptop', match: { merchant: 'wolt' }, to: { categoryId: 'sc_cafe' }, by: 'a', updatedAt: '2026-09-26T09:00:00Z' }
+    const client = {
+      getPrivateDoc: vi.fn(async () => ok(3, { merchantRules: [laptopRule] })),
+      pushPrivateDoc: vi.fn(async (rev: number, data: Record<string, unknown>) => ok(rev + 1, data)),
+    } as unknown as ApiClient
+    await store.pullPrivateDoc(client)
+
+    expect(client.pushPrivateDoc).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(client.pushPrivateDoc).mock.calls[0][0]).toBe(3)
+    expect(store.merchantRules.map((r) => r.id).sort()).toEqual([mine.id, 'r-laptop'].sort())
+    expect(store.privateUnsent).toBe(false)
+    expect(store.privateRev).toBe(4)
+  })
+
+  it('правило на тот же продавец не множится; удалённое — надгробие', async () => {
+    vi.spyOn(apiClient, 'pushPrivateDoc').mockImplementation(async (rev, data) => ok(rev + 1, data))
+    const store = useFinanceStore()
+    const a = store.addMerchantRule({ match: { merchant: 'magnum' }, to: { categoryId: 'sc_food' } }, 'a')
+    const b = store.addMerchantRule({ match: { merchant: 'magnum' }, to: { categoryId: 'sc_home' } }, 'a')
+    expect(b.id).toBe(a.id)
+    expect(store.merchantRules).toHaveLength(1)
+    expect(store.merchantRules[0].to).toEqual({ categoryId: 'sc_home' })
+    store.removeMerchantRule(a.id)
+    expect(store.merchantRules).toHaveLength(0)
+    expect((store.privateDoc.merchantRules as { deletedAt?: string }[])[0].deletedAt).toBeTruthy()
+    await flush()
+  })
+})

@@ -22,7 +22,7 @@ const router = useRouter()
 const open = ref(false)
 const syncing = ref(false)
 
-const status = computed(() => financeStore.status)
+const status = computed(() => financeStore.syncStatus)
 const lastSyncedAt = computed(() => financeStore.lastSyncedAt)
 const lastError = computed(() => financeStore.lastError)
 const people = computed(() => financeStore.people)
@@ -60,7 +60,10 @@ const resetWarning = computed(() =>
 async function triggerManualSync() {
   syncing.value = true
   try {
-    await financeStore.syncHousehold()
+    await Promise.all([
+      financeStore.syncHousehold(),
+      financeStore.privateUnsent ? financeStore.syncPrivate() : financeStore.pullPrivateDoc(),
+    ])
   } finally {
     syncing.value = false
   }

@@ -6,6 +6,9 @@ import type {
   HouseholdDocResponse,
   PrivateDocResponse,
   ConflictResponse,
+  StatementUploadResponse,
+  OperationWire,
+  OperationsPage,
 } from '@/types/api'
 import type { SyncDoc } from '@/types/finance'
 
@@ -164,6 +167,33 @@ export class ApiClient {
       }
       throw err
     }
+  }
+
+  // Выписки (B2C-06): файл на сервер не уходит — только разобранные операции.
+  async createStatementUpload(data: {
+    bank: string
+    period_from: string
+    period_to: string
+    ops_count: number
+  }): Promise<StatementUploadResponse> {
+    return this.request<StatementUploadResponse>('/statements', { method: 'POST', body: JSON.stringify(data) })
+  }
+
+  async listStatementUploads(): Promise<{ uploads: StatementUploadResponse[] }> {
+    return this.request<{ uploads: StatementUploadResponse[] }>('/statements', { method: 'GET' })
+  }
+
+  async upsertOperations(operations: OperationWire[]): Promise<{ upserted: number }> {
+    return this.request<{ upserted: number }>('/operations/batch', {
+      method: 'POST',
+      body: JSON.stringify({ operations }),
+    })
+  }
+
+  async listOperations(since: string | null, limit: number): Promise<OperationsPage> {
+    const q = new URLSearchParams({ limit: String(limit) })
+    if (since) q.set('since', since)
+    return this.request<OperationsPage>(`/operations?${q}`, { method: 'GET' })
   }
 }
 

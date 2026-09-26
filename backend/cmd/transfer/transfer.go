@@ -106,7 +106,8 @@ func forward(ctx context.Context, tx *sql.Tx, opt options, out io.Writer) error 
 			return errors.New("schema app is not empty: rerun with -replace to overwrite it")
 		}
 		if _, err := tx.ExecContext(ctx, `TRUNCATE app.users, app.households, app.household_members,
-			app.household_docs, app.private_docs, app.household_invites`); err != nil {
+			app.household_docs, app.private_docs, app.household_invites,
+			app.statement_uploads, app.operations`); err != nil {
 			return fmt.Errorf("clear app: %w", err)
 		}
 		fmt.Fprintln(out, "app: cleared (-replace)")

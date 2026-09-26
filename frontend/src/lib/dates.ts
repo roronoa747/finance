@@ -111,6 +111,30 @@ export function today(d = new Date()): { day: number; key: string } {
   return { day: almaty(d).getUTCDate(), key: monthKey(d) }
 }
 
+const DAY_MS = 86_400_000
+const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10)
+
+/**
+ * ISO-неделя «2026-W39» (с понедельника; неделя года — та, где её четверг). Дата
+ * `YYYY-MM-DD` (строка выписки) — уже календарная; момент времени — по Алматы.
+ */
+export function weekKey(d: Date | string = new Date()): string {
+  const a = typeof d === 'string' ? new Date(`${d}T00:00:00Z`) : almaty(d)
+  const day = Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate())
+  const thursday = new Date(day + (3 - ((a.getUTCDay() + 6) % 7)) * DAY_MS)
+  const year = thursday.getUTCFullYear()
+  const week = 1 + Math.floor((thursday.getTime() - Date.UTC(year, 0, 1)) / DAY_MS / 7)
+  return `${year}-W${String(week).padStart(2, '0')}`
+}
+
+/** Понедельник и воскресенье ISO-недели, `YYYY-MM-DD`. */
+export function weekRange(key: string): { from: string; to: string } {
+  const [year, week] = key.split('-W').map(Number)
+  const jan4 = Date.UTC(year, 0, 4)
+  const monday = jan4 - ((new Date(jan4).getUTCDay() + 6) % 7) * DAY_MS + (week - 1) * 7 * DAY_MS
+  return { from: isoDay(monday), to: isoDay(monday + 6 * DAY_MS) }
+}
+
 /** День момента времени по Алматы, «5 сентября» — когда отметили оплату. */
 export function atLabel(iso: string): string {
   const d = today(new Date(iso))
