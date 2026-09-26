@@ -46,6 +46,7 @@ import type {
   Payment,
   WishItem,
 } from '@/types/finance'
+import type { MerchantRule } from '@/lib/statements/types'
 import { useAuthStore } from '@/stores/auth'
 import { DEFAULT_CATEGORY_NAMES, type CategoryKey, type HueKey } from '@/lib/palette'
 import type { ConflictResponse, HouseholdDocResponse } from '@/types/api'
@@ -63,6 +64,8 @@ export function defaultSyncDoc(): SyncDoc {
     // «Сбросить данные» обнулит отметки на сервере, только если ключ прислан.
     payments: [],
     plans: [],
+    spendCategories: [],
+    spendTotals: [],
     setupDoneAt: null,
   }
 }
@@ -156,6 +159,10 @@ export const useFinanceStore = defineStore('finance', () => {
   const householdAccounts = computed(() => (householdDoc.value.accounts || []).map(withBalance))
   const privateAccounts = computed(() => ((privateDoc.value.accounts as Account[]) || []).map(withBalance))
   const accounts = computed(() => [...householdAccounts.value, ...privateAccounts.value])
+  // Память «продавец → раздел» — в личном документе (Р-22): переводы людям не видны партнёру.
+  const merchantRules = computed(() =>
+    ((privateDoc.value.merchantRules as MerchantRule[] | undefined) ?? []).filter((r) => !r.deletedAt),
+  )
   const derivedCredits = (list: Credit[], pays: Payment[]) => list.map((c) => ({ ...c, principal: creditBalance(c, pays) }))
   const credits = computed(() => derivedCredits(householdDoc.value.credits || [], payments.value))
   const wishlist = computed(() => householdDoc.value.wishlist || [])
@@ -727,6 +734,33 @@ export const useFinanceStore = defineStore('finance', () => {
     privateUnsent.value = true
     saveLocalState()
     if (!isDemo.value) void pushPrivateDoc(privateDoc.value).catch(() => {})
+  }
+
+  /**
+   * Правило «продавец / получатель → раздел, внутренний, кому → что». Правило на то же
+   * совпадение не множится — правится его запись (LWW по id при слиянии).
+   */
+  function addMerchantRule(rule: Pick<MerchantRule, 'match' | 'to'>, by: PersonId): MerchantRule {
+    const t = new Date().toISOString()
+    const same = (r: MerchantRule) =>
+      r.match.merchant === rule.match.merchant && r.match.counterparty === rule.match.counterparty
+    const existing = merchantRules.value.find(same)
+    const record: MerchantRule = existing
+      ? { ...existing, to: rule.to, by, updatedAt: t }
+      : { id: Math.random().toString(36).slice(2, 10), match: rule.match, to: rule.to, by, updatedAt: t }
+    mutatePrivateDoc((doc) => {
+      const list = (doc.merchantRules as MerchantRule[] | undefined) ?? []
+      doc.merchantRules = existing ? list.map((r) => (r.id === record.id ? record : r)) : [...list, record]
+    })
+    return record
+  }
+
+  function removeMerchantRule(id: string) {
+    const t = new Date().toISOString()
+    mutatePrivateDoc((doc) => {
+      const list = (doc.merchantRules as MerchantRule[] | undefined) ?? []
+      doc.merchantRules = list.map((r) => (r.id === id ? { ...r, deletedAt: t, updatedAt: t } : r))
+    })
   }
 
   function addAccount(
@@ -1421,6 +1455,7 @@ export const useFinanceStore = defineStore('finance', () => {
     householdAccounts,
     privateAccounts,
     accounts,
+    merchantRules,
     credits,
     payments,
     wishlist,
@@ -1434,6 +1469,8 @@ export const useFinanceStore = defineStore('finance', () => {
     setHouseholdDoc,
     mutateHouseholdDoc,
     mutatePrivateDoc,
+    addMerchantRule,
+    removeMerchantRule,
     resetDoc,
     clearLocal,
     claimFor,

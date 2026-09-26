@@ -192,6 +192,10 @@ export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
     // сильнее «отменён». Два активных после офлайна остаются оба — активным считается
     // поздний (`activePlan`, Р-9).
     plans: mergeList(local.plans ?? [], remote.plans ?? [], (x) => x.id, mergePlan),
+    // Выписки (B2C-02): разделы трат — LWW по id; итог участника за период — запись с id
+    // `участник:вид:период:раздел`, её целиком заменяет свежий пересчёт (Р-21).
+    spendCategories: mergeList(local.spendCategories ?? [], remote.spendCategories ?? [], (x) => x.id),
+    spendTotals: mergeList(local.spendTotals ?? [], remote.spendTotals ?? [], (x) => x.id),
     // Метки равны (или их нет) — сброс один и тот же.
     ...(lr ? { resetAt: lr } : {}),
   }
