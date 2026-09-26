@@ -31,6 +31,7 @@ type Repos struct {
 	Users      repository.UserRepository
 	Households repository.HouseholdRepository
 	Docs       repository.DocRepository
+	Statements repository.StatementRepository
 }
 
 // NewHandler builds the API over database. A nil database means in-memory
@@ -42,6 +43,7 @@ func NewHandler(cfg *config.Config, database *sql.DB) (http.Handler, error) {
 			Users:      repository.NewSQLUserRepository(database),
 			Households: repository.NewSQLHouseholdRepository(database),
 			Docs:       repository.NewSQLDocRepository(database),
+			Statements: repository.NewSQLStatementRepository(database),
 		}
 	} else {
 		if cfg.IsProduction() {
@@ -50,7 +52,7 @@ func NewHandler(cfg *config.Config, database *sql.DB) (http.Handler, error) {
 		log.Println("using in-memory mock repositories (development mode)")
 		mocks := repository.NewMockRepositories()
 		mocks.Households.SetDocRepo(mocks.Docs)
-		repos = Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs}
+		repos = Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements}
 	}
 
 	tokens := auth.NewTokenService(cfg.JWTSecret, tokenTTL)
@@ -107,6 +109,7 @@ func NewRouter(
 	authHandler := handlers.NewAuthHandler(repos.Users, repos.Households, tokenService)
 	householdHandler := handlers.NewHouseholdHandler(repos.Households, tokenService)
 	syncHandler := handlers.NewSyncHandler(repos.Docs)
+	statementHandler := handlers.NewStatementHandler(repos.Statements)
 
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", handlers.HealthHandler(database))
@@ -127,6 +130,12 @@ func NewRouter(
 			protected.Post("/sync/household", syncHandler.PushHouseholdDoc)
 			protected.Get("/sync/private", syncHandler.GetPrivateDoc)
 			protected.Post("/sync/private", syncHandler.PushPrivateDoc)
+
+			// Выписки (B2C-06): записи загрузок — семье, операции — только владельцу.
+			protected.Post("/statements", statementHandler.CreateUpload)
+			protected.Get("/statements", statementHandler.ListUploads)
+			protected.Post("/operations/batch", statementHandler.UpsertOperations)
+			protected.Get("/operations", statementHandler.ListOperations)
 		})
 	})
 

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -19,13 +20,16 @@ type MockRepositories struct {
 	Users      *MockUserRepo
 	Households *MockHouseholdRepo
 	Docs       *MockDocRepo
+	Statements *MockStatementRepo
 }
 
 func NewMockRepositories() *MockRepositories {
+	households := NewMockHouseholdRepo()
 	return &MockRepositories{
 		Users:      NewMockUserRepo(),
-		Households: NewMockHouseholdRepo(),
+		Households: households,
 		Docs:       NewMockDocRepo(),
+		Statements: NewMockStatementRepo(households),
 	}
 }
 
@@ -476,4 +480,136 @@ func (m *MockDocRepo) PushPrivateDoc(ctx context.Context, householdID, userID st
 	}
 	m.privateDocs[householdID][userID] = newDoc
 	return newDoc, false, nil
+}
+
+// --- MockStatementRepo ---
+
+type mockUpload struct {
+	upload      models.StatementUpload
+	householdID string
+	userID      string
+}
+
+type mockOperation struct {
+	op          models.Operation
+	householdID string
+}
+
+// MockStatementRepo keeps uploads and operations in memory; like PostgreSQL, a
+// batch shares one updated_at and timestamps only move forward.
+type MockStatementRepo struct {
+	mu         sync.Mutex
+	households *MockHouseholdRepo
+	uploads    []mockUpload
+	ops        map[string]map[string]*mockOperation // userID -> id -> operation
+	lastStamp  time.Time
+}
+
+func NewMockStatementRepo(households *MockHouseholdRepo) *MockStatementRepo {
+	return &MockStatementRepo{households: households, ops: make(map[string]map[string]*mockOperation)}
+}
+
+func (m *MockStatementRepo) slotOf(ctx context.Context, householdID, userID string) string {
+	members, _ := m.households.GetMembers(ctx, householdID)
+	for _, member := range members {
+		if member.UserID == userID {
+			return member.Slot
+		}
+	}
+	return ""
+}
+
+func (m *MockStatementRepo) CreateUpload(ctx context.Context, householdID, userID string, in UploadInput) (*models.StatementUpload, error) {
+	slot := m.slotOf(ctx, householdID, userID)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u := models.StatementUpload{
+		ID:         uuid.New().String(),
+		Slot:       slot,
+		Bank:       in.Bank,
+		PeriodFrom: in.PeriodFrom,
+		PeriodTo:   in.PeriodTo,
+		OpsCount:   in.OpsCount,
+		CreatedAt:  m.stamp(),
+	}
+	m.uploads = append(m.uploads, mockUpload{upload: u, householdID: householdID, userID: userID})
+	return &u, nil
+}
+
+func (m *MockStatementRepo) ListUploads(ctx context.Context, householdID string, limit int) ([]models.StatementUpload, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []models.StatementUpload{}
+	for i := len(m.uploads) - 1; i >= 0 && len(out) < limit; i-- {
+		if m.uploads[i].householdID == householdID {
+			out = append(out, m.uploads[i].upload)
+		}
+	}
+	return out, nil
+}
+
+func (m *MockStatementRepo) UpsertOperations(ctx context.Context, userID, householdID string, ops []models.Operation) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ops = lastByID(ops)
+	now := m.stamp()
+	if m.ops[userID] == nil {
+		m.ops[userID] = make(map[string]*mockOperation)
+	}
+	for _, op := range ops {
+		op.UpdatedAt = now
+		if op.UploadID != nil && !m.ownsUpload(userID, *op.UploadID) {
+			op.UploadID = nil
+		}
+		if prev, ok := m.ops[userID][op.ID]; ok && op.UploadID == nil {
+			op.UploadID = prev.op.UploadID
+		}
+		m.ops[userID][op.ID] = &mockOperation{op: op, householdID: householdID}
+	}
+	return len(ops), nil
+}
+
+func (m *MockStatementRepo) ListOperations(ctx context.Context, userID string, since time.Time, limit int) ([]models.Operation, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	all := []models.Operation{}
+	for _, o := range m.ops[userID] {
+		if o.op.UpdatedAt.After(since) {
+			all = append(all, o.op)
+		}
+	}
+	sort.Slice(all, func(i, j int) bool {
+		if !all[i].UpdatedAt.Equal(all[j].UpdatedAt) {
+			return all[i].UpdatedAt.Before(all[j].UpdatedAt)
+		}
+		return all[i].ID < all[j].ID
+	})
+	if len(all) <= limit {
+		return all, nil
+	}
+	// A page does not end inside one updated_at (see StatementRepository).
+	end := limit
+	for end < len(all) && all[end].UpdatedAt.Equal(all[limit-1].UpdatedAt) {
+		end++
+	}
+	return all[:end], nil
+}
+
+func (m *MockStatementRepo) ownsUpload(userID, uploadID string) bool {
+	for _, u := range m.uploads {
+		if u.upload.ID == uploadID && u.userID == userID {
+			return true
+		}
+	}
+	return false
+}
+
+// stamp is a strictly increasing clock with PostgreSQL's microsecond precision.
+func (m *MockStatementRepo) stamp() time.Time {
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	if !now.After(m.lastStamp) {
+		now = m.lastStamp.Add(time.Microsecond)
+	}
+	m.lastStamp = now
+	return now
 }

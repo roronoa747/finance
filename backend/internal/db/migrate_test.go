@@ -2,6 +2,7 @@ package db_test
 
 import (
 	"context"
+	"io/fs"
 	"sync"
 	"testing"
 
@@ -42,8 +43,9 @@ func TestPostgresConcurrentMigrationsReleaseLock(t *testing.T) {
 	if err := database.QueryRowContext(ctx, `SELECT count(*) FROM app.schema_migrations`).Scan(&applied); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if applied != 1 {
-		t.Errorf("expected 1 applied migration, got %d", applied)
+	files, _ := fs.Glob(migrations.FS, "*.sql")
+	if applied != len(files) {
+		t.Errorf("expected %d applied migrations, got %d", len(files), applied)
 	}
 
 	var held int

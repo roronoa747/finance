@@ -60,7 +60,7 @@ func TestRouterServesFxRateFromStub(t *testing.T) {
 
 	mocks := repository.NewMockRepositories()
 	cfg := devConfig()
-	r := NewRouter(cfg, nil, Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs},
+	r := NewRouter(cfg, nil, Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements},
 		auth.NewTokenService(cfg.JWTSecret, time.Hour), fxClient)
 
 	rec := get(t, r, "/api/fx-rate") // public: no token

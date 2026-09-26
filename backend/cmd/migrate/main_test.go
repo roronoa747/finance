@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"testing"
 
 	"finance-backend/internal/testdb"
+	"finance-backend/migrations"
 )
 
 func TestRunRequiresDatabaseURL(t *testing.T) {
@@ -35,7 +37,9 @@ func TestPostgresMigrateTwiceIsIdempotent(t *testing.T) {
 	if err := database.QueryRowContext(ctx, `SELECT count(*) FROM information_schema.tables WHERE table_schema = 'app'`).Scan(&tables); err != nil {
 		t.Fatal(err)
 	}
-	if applied != 1 || tables != 7 {
-		t.Errorf("expected 1 migration and 7 tables, got %d and %d", applied, tables)
+	// 000001: 6 таблиц + schema_migrations; 000002 (выписки): statement_uploads, operations.
+	files, _ := fs.Glob(migrations.FS, "*.sql")
+	if applied != len(files) || tables != 9 {
+		t.Errorf("expected %d migrations and 9 tables, got %d and %d", len(files), applied, tables)
 	}
 }
