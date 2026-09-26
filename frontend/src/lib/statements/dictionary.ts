@@ -58,7 +58,8 @@ export const DICTIONARY: { test: RegExp; categoryId: string }[] = [
   { test: words('kaspi кредита', 'kaspi кредит', 'kaspi red', 'рассрочк*', 'кредит*', 'home credit', 'погашени*'), categoryId: 'sc_credit' },
   { test: words('beeline', 'билайн', 'kcell', 'activ', 'tele2', 'altel', 'izi', 'kazakhtelecom', 'казахтелеком', 'интернет'), categoryId: 'sc_telecom' },
   { test: words('netflix', 'netflix com', 'spotify', 'apple com', 'icloud', 'google one', 'google cloud', 'youtube', 'ivi', 'okko', 'megogo', 'openai', 'chatgpt', 'supabase', 'airalo'), categoryId: 'sc_subscriptions' },
-  { test: words('magnum', 'магнум', 'small', 'смолл', 'galmart', 'anvar', 'ramstore', 'metro', 'toimart', 'supermarket', 'супермаркет', 'minimarket', 'минимаркет', 'm mart', 'продукты', 'живая вода'), categoryId: 'sc_food' },
+  { test: words('yandex delivery', 'яндекс доставка'), categoryId: 'sc_shopping' },
+  { test: words('magnum', 'магнум', 'small', 'смолл', 'galmart', 'orken', 'оркен', 'anvar', 'ramstore', 'metro', 'toimart', 'supermarket', 'супермаркет', 'minimarket', 'минимаркет', 'm mart', 'продукты', 'живая вода'), categoryId: 'sc_food' },
   { test: words('coffee', 'кофе', 'kofeynya', 'кофейня', 'espresso', 'cafe', 'кафе', 'restoran', 'ресторан', 'kfc', 'mcdonalds', 'burger king', 'popeyes', 'starbucks', 'dodo pizza', 'pizza', 'пицц*', 'sushi', 'суши', 'shawarma', 'шаурм*', 'askhana', 'асхана', 'canteen', 'столов*'), categoryId: 'sc_cafe' },
   { test: words('onay', 'avtobys', 'lrt', 'автобус', 'проезд*', 'parking', 'парковк*', 'паркинг', 'azs', 'азс', 'helios', 'sinooil', 'qazaq oil', 'gazprom', 'kmg'), categoryId: 'sc_transport' },
   { test: words('aviata', 'air astana', 'flyarystan', 'scat', 'hotel', 'hote', 'отель', 'booking', 'airbnb', 'chocotravel', 'temir zholy'), categoryId: 'sc_travel' },
@@ -71,4 +72,7 @@ export const DICTIONARY: { test: RegExp; categoryId: string }[] = [
   // Наличные и комиссии по названию — если банк отдал их обычной строкой.
   { test: words('банкомат', 'atm'), categoryId: 'sc_cash' },
   { test: words('комисси*'), categoryId: 'sc_fees' },
+  // Запасное (замер B2C-08): «… MARKET», «MAGAZIN …» в Казахстане — почти всегда продукты
+  // у дома. Последним — частные записи выше (Kaspi Magazin — покупки) побеждают.
+  { test: words('market', 'маркет', 'magazin', 'магазин'), categoryId: 'sc_food' },
 ]

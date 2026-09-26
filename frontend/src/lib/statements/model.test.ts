@@ -124,6 +124,17 @@ describe('categorize', () => {
     expect(categorize(op({ merchant: 'IP ZHANSAYA KOSTANAY KZ' }), []).categoryId).toBeNull()
   })
 
+  it('пополнение словаря по замеру B2C-08: сети, сервисы и запасное «маркет/магазин»', () => {
+    expect(categorize(op({ merchant: 'ORKEN ASTANA Q. KZ' }), []).categoryId).toBe('sc_food')
+    expect(categorize(op({ merchant: 'Оркен' }), []).categoryId).toBe('sc_food')
+    expect(categorize(op({ merchant: 'YANDEX.DELIVERY ALMATY KZ' }), []).categoryId).toBe('sc_shopping')
+    expect(categorize(op({ merchant: 'KOSMOS MARKET ASTANA KZ' }), []).categoryId).toBe('sc_food')
+    expect(categorize(op({ merchant: 'Магазин у дома' }), []).categoryId).toBe('sc_food')
+    // Частное сильнее запасного.
+    expect(categorize(op({ merchant: 'TOO "KASPI MAGAZIN"' }), []).categoryId).toBe('sc_shopping')
+    expect(categorize(op({ merchant: 'IP ZHANSAYA KOSTANAY KZ' }), []).categoryId).toBeNull()
+  })
+
   it('кириллица целым словом: «аптек…» узнаётся, «кино» внутри слова — нет', () => {
     expect(categorize(op({ merchant: 'Аптека Жансая' }), []).categoryId).toBe('sc_health')
     expect(categorize(op({ merchant: 'Кинотеатр' }), []).categoryId).toBeNull()
