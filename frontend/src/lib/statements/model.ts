@@ -355,3 +355,8 @@ export function picture(totals: SpendTotal[], week: string, month: string): Pict
   }
   return [...rows.values()].sort((a, b) => b.month - a.month || b.week - a.week)
 }
+
+/** Строка «Всего» картины: траты семьи за неделю и за месяц. */
+export function pictureTotal(rows: PictureRow[]): { week: number; month: number } {
+  return rows.reduce((s, r) => ({ week: s.week + r.week, month: s.month + r.month }), { week: 0, month: 0 })
+}

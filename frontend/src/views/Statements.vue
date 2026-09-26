@@ -9,7 +9,7 @@ import { useOperationsStore, type DraftFile } from '@/stores/operations'
 import { money } from '@/lib/money'
 import { monthKey, monthTitle, weekKey, weekRange } from '@/lib/dates'
 import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
-import { draftSummary, partnerHints, picture, unknownGroups, type UnknownGroup } from '@/lib/statements/model'
+import { draftSummary, partnerHints, picture, pictureTotal, unknownGroups, type UnknownGroup } from '@/lib/statements/model'
 import { parseStatement, StatementFormatError } from '@/lib/statements/parsers'
 import type { MerchantRule } from '@/lib/statements/types'
 import type { PersonId } from '@/types/finance'
@@ -54,7 +54,7 @@ const hints = computed(() => partnerHints(store.draftOps, finance.people, me.val
 const week = weekKey()
 const month = monthKey()
 const rows = computed(() => picture(finance.householdDoc.spendTotals ?? [], week, month))
-const totals = computed(() => rows.value.reduce((s, r) => ({ week: s.week + r.week, month: s.month + r.month }), { week: 0, month: 0 }))
+const totals = computed(() => pictureTotal(rows.value))
 const missing = computed(() => {
   const { from, to } = weekRange(week)
   return finance.people

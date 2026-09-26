@@ -13,6 +13,7 @@ import {
   partnerHints,
   periodsOf,
   picture,
+  pictureTotal,
   sanitize,
   seedSpendCategories,
   spendTotals,
@@ -314,5 +315,13 @@ describe('функции экрана выписок (B2C-07)', () => {
       t('a:month:2026-09:sc_cafe', 0), t('a:month:2026-08:sc_cafe', 900),
     ], '2026-W39', '2026-09')
     expect(rows).toEqual([{ categoryId: 'sc_food', week: 1500, month: 4000 }])
+  })
+
+  it('pictureTotal — «Всего» за неделю и месяц по строкам картины', () => {
+    expect(pictureTotal([
+      { categoryId: 'sc_food', week: 1500, month: 4000 },
+      { categoryId: 'sc_cafe', week: 0, month: 900 },
+    ])).toEqual({ week: 1500, month: 4900 })
+    expect(pictureTotal([])).toEqual({ week: 0, month: 0 })
   })
 })
