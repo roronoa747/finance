@@ -286,9 +286,13 @@ function confirm() {
     }
     const acc = fromAccount.value ? financeStore.accounts.find((a) => a.id === fromAccount.value) : undefined
     if (acc && toGoals.value > 0) financeStore.shiftAccountAmount(acc.id, -toGoals.value)
-    doneNote.value = toGoals.value
-      ? `В цели отложено ${money(toGoals.value)}${acc ? ` со счёта «${acc.name}»` : ''} — взносы видны в истории целей. Ежемесячные взносы не менялись.`
-      : 'Цели не тронуты, ежемесячные взносы не менялись.'
+    // Досрочку Ритуал не вносит (вне скоупа RP-10) — прямо говорим, где её внести.
+    const prepay = (alloc.value.credit ?? 0) + (alloc.value.plan ?? 0)
+    doneNote.value =
+      (toGoals.value
+        ? `В цели отложено ${money(toGoals.value)}${acc ? ` со счёта «${acc.name}»` : ''} — взносы видны в истории целей. Ежемесячные взносы не менялись.`
+        : 'Цели не тронуты, ежемесячные взносы не менялись.') +
+      (prepay ? ` Досрочку ${money(prepay)} внесите в «Капитале» — здесь она не вносится.` : '')
   } else {
     for (const g of goals.value) {
       const extra = alloc.value[g.id] ?? 0

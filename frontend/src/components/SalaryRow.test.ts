@@ -174,4 +174,17 @@ describe('RP-10: «Пришла зарплата» (SSR)', () => {
     // Запись зарплаты не тронута.
     expect(paidFor(store.payments, 'salary', 'a', '2026-09')?.amount).toBe(700_000)
   })
+
+  it('Ритуал: доля на досрочку не вносится — «Решение записано» говорит, где её внести', async () => {
+    family('member', 'a', [salary()])
+    const store = useFinanceStore()
+    const html = await renderScreen(Ritual, '/ritual?from=salary&person=a&period=2026-09', undefined, [
+      screenMixin({}, (s) => {
+        s.alloc = { credit: 50_000 }
+        ;(s.confirm as () => void)()
+      }),
+    ])
+    expect(html).toContain(`Досрочку ${money(50_000)} внесите в «Капитале» — здесь она не вносится.`)
+    expect(store.payments.filter((p) => p.kind === 'prepay')).toEqual([])
+  })
 })
