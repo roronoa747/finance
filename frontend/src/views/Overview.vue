@@ -9,7 +9,6 @@ import {
 } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { authErrorText } from '@/lib/authErrors'
 import { money, plain, pct } from '@/lib/money'
 import { monthKey, monthIn, monthFrom, dayLabel } from '@/lib/dates'
 import {
@@ -26,6 +25,7 @@ import {
   untilPayday,
 } from '@/lib/finance'
 import { cn, plural } from '@/lib/utils'
+import { useInvite } from '@/components/useInvite'
 import Card from '@/components/kit/Card.vue'
 import Section from '@/components/kit/Section.vue'
 import Callout from '@/components/kit/Callout.vue'
@@ -152,34 +152,7 @@ function cancelSub() {
 }
 
 // Баннер приглашения
-const inviteCode = ref<string | null>(null)
-const inviteBusy = ref(false)
-const inviteError = ref('')
-const copied = ref(false)
-
-async function makeInvite() {
-  inviteBusy.value = true
-  inviteError.value = ''
-  try {
-    const res = await authStore.createInvite()
-    inviteCode.value = res.code
-  } catch (e) {
-    inviteError.value = authErrorText(e instanceof Error ? e.message : String(e), 'invite')
-  } finally {
-    inviteBusy.value = false
-  }
-}
-
-async function copyInvite() {
-  if (!inviteCode.value) return
-  try {
-    await navigator.clipboard.writeText(inviteCode.value)
-    copied.value = true
-    setTimeout(() => {
-      copied.value = false
-    }, 2000)
-  } catch {}
-}
+const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: makeInvite, copy: copyInvite } = useInvite()
 </script>
 
 <template>

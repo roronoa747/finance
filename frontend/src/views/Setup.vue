@@ -4,11 +4,11 @@ import { useRouter } from 'vue-router'
 import { PhArrowLeft, PhCopy, PhUserPlus } from '@phosphor-icons/vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
-import { authErrorText } from '@/lib/authErrors'
 import { parseMoney, money, ratePct } from '@/lib/money'
 import { liveGoals, liveObligations } from '@/lib/finance'
 import { setupCreditRate, setupGoalMonthly, setupPlan, type SetupForm, type SetupSkips } from '@/lib/setup'
 import { HUES, HUE_KEYS, type HueKey } from '@/lib/palette'
+import { useInvite } from '@/components/useInvite'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Field from '@/components/kit/Field.vue'
@@ -74,10 +74,7 @@ const goalMonths = ref('24')
 const goalHue = ref<HueKey>('green')
 
 // Step 5: Invite
-const inviteCode = ref<string | null>(null)
-const inviteError = ref('')
-const inviteBusy = ref(false)
-const copied = ref(false)
+const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: handleMakeInvite, copy: handleCopy } = useInvite()
 
 const form = computed<SetupForm>(() => ({
   tenure: tenure.value,
@@ -126,32 +123,6 @@ function next() {
 function back() {
   if (currentStepIndex.value > 0) {
     currentStepIndex.value--
-  }
-}
-
-async function handleMakeInvite() {
-  inviteBusy.value = true
-  inviteError.value = ''
-  try {
-    const res = await authStore.createInvite()
-    inviteCode.value = res.code
-  } catch (err) {
-    inviteError.value = authErrorText(err instanceof Error ? err.message : String(err), 'invite')
-  } finally {
-    inviteBusy.value = false
-  }
-}
-
-async function handleCopy() {
-  if (!inviteCode.value) return
-  try {
-    await navigator.clipboard.writeText(inviteCode.value)
-    copied.value = true
-    setTimeout(() => {
-      copied.value = false
-    }, 2000)
-  } catch {
-    // clipboard might be blocked
   }
 }
 

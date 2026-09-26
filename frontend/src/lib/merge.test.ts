@@ -751,3 +751,49 @@ describe('PV-19: правка «Уже накоплено» против офл�
     }
   })
 })
+
+describe('PV-21: «Начать бюджет заново» — метка сброса resetAt', () => {
+  const T = '2026-09-26T08:00:00.000Z'
+  const goal = (id: string, name: string): Goal => ({
+    id, name, need: 1_000_000, seed: 0, have: 0, monthly: 0, hue: 'teal', planPct: 0, movements: [], updatedAt: '2026-09-20T10:00:00.000Z',
+  })
+  // Телефон B до сброса: полный документ, настройка пройдена.
+  const before: SyncDoc = {
+    ...createEmptyDoc(),
+    people: [{ id: 'b', name: 'Аруна', salary: 400_000, payday: 5, updatedAt: '2026-09-20T10:00:00.000Z' } as SyncDoc['people'][number]],
+    goals: [goal('old', 'Отпуск')],
+    setupDoneAt: '2026-09-01T00:00:00.000Z',
+  }
+
+  it('пустой документ после сброса — не «пустой сервер»: его не перезаписывают своим', () => {
+    expect(isEmptyDoc({ ...createEmptyDoc(), resetAt: T })).toBe(false)
+  })
+
+  it('сброс побеждает старый документ целиком, в обе стороны: стёртое не возвращается, мастер снова', () => {
+    const reset: SyncDoc = { ...createEmptyDoc(), resetAt: T }
+    for (const merged of [mergeDocs(before, reset), mergeDocs(reset, before)]) {
+      expect(merged).toEqual(reset)
+      expect(merged.setupDoneAt).toBeNull()
+    }
+  })
+
+  it('A после сброса уже прошёл мастер — старые записи B не «воскресают» слиянием по id', () => {
+    const refilled: SyncDoc = { ...createEmptyDoc(), resetAt: T, goals: [goal('new', 'Машина')], setupDoneAt: '2026-09-26T08:05:00.000Z' }
+    for (const merged of [mergeDocs(before, refilled), mergeDocs(refilled, before)]) {
+      expect(merged.goals.map((g) => g.id)).toEqual(['new'])
+      expect(merged.people).toEqual([])
+    }
+  })
+
+  it('метки равны — обычное слияние, метка остаётся; позднее из двух сбросов сильнее', () => {
+    const a: SyncDoc = { ...createEmptyDoc(), resetAt: T, goals: [goal('a', 'Машина')] }
+    const b: SyncDoc = { ...createEmptyDoc(), resetAt: T, goals: [goal('b', 'Отпуск')] }
+    const merged = mergeDocs(a, b)
+    expect(merged.goals.map((g) => g.id).sort()).toEqual(['a', 'b'])
+    expect(merged.resetAt).toBe(T)
+    const later: SyncDoc = { ...createEmptyDoc(), resetAt: '2026-09-27T08:00:00.000Z' }
+    expect(mergeDocs(merged, later)).toEqual(later)
+    // Без меток ключ не появляется: документы без сброса — как раньше.
+    expect('resetAt' in mergeDocs(before, before)).toBe(false)
+  })
+})

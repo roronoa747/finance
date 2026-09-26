@@ -161,6 +161,14 @@ function mergeUnknownKeys(local: SyncDoc, remote: SyncDoc, known: SyncDoc): Reco
 }
 
 export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
+  // «Начать бюджет заново» (PV-21): то, что было до сброса, с документом после него не
+  // сливается — слияние по id вернуло бы стёртое, а `setupDoneAt` не снять. Сторона со
+  // свежей меткой сброса побеждает целиком (и офлайн-правки другой стороны до встречи с
+  // ним — «Стереть всё» отменить нельзя).
+  const lr = local.resetAt ?? ''
+  const rr = remote.resetAt ?? ''
+  if (lr !== rr) return lr > rr ? { ...local } : { ...remote }
+
   const known: SyncDoc = {
     // Настройку проходят один раз на семью: если хоть кто-то её закончил,
     // отменить это слиянием нельзя.
@@ -184,11 +192,16 @@ export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
     // сильнее «отменён». Два активных после офлайна остаются оба — активным считается
     // поздний (`activePlan`, Р-9).
     plans: mergeList(local.plans ?? [], remote.plans ?? [], (x) => x.id, mergePlan),
+    // Метки равны (или их нет) — сброс один и тот же.
+    ...(lr ? { resetAt: lr } : {}),
   }
   return { ...mergeUnknownKeys(local, remote, known), ...known }
 }
 
-/** Пустой ли документ на сервере — тогда заливаем своё, а не сливаем с ничем. */
+/**
+ * Пустой ли документ на сервере — тогда заливаем своё, а не сливаем с ничем. Пустота
+ * после «Начать бюджет заново» — не пустота: её не перезаписывают, с ней сливаются.
+ */
 export function isEmptyDoc(doc: Partial<SyncDoc> | null | undefined): boolean {
   if (!doc) return true
   return (
@@ -196,6 +209,7 @@ export function isEmptyDoc(doc: Partial<SyncDoc> | null | undefined): boolean {
     !doc.goals?.length &&
     !doc.categories?.length &&
     !doc.obligations?.length &&
-    !doc.setupDoneAt
+    !doc.setupDoneAt &&
+    !doc.resetAt
   )
 }

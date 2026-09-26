@@ -292,7 +292,8 @@ export const useFinanceStore = defineStore('finance', () => {
 
   function resetDoc() {
     localEdits++
-    householdDoc.value = defaultSyncDoc()
+    // Метка сброса: телефон партнёра не сольёт свой старый документ обратно (PV-21).
+    householdDoc.value = { ...defaultSyncDoc(), resetAt: new Date().toISOString() }
     forceReplace.value = true
     unsent.value = true
     status.value = 'dirty'
