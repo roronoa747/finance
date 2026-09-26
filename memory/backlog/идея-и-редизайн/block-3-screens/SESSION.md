@@ -35,7 +35,35 @@
   vet ./... && go test ./...` + PG-режим; корень `api/`; браузер по критериям каждого ТЗ.
 - Следующий шаг — `/critic идея-и-редизайн 3 ultracode`.
 
-**Факты кода после Блока 1** (заполняет критик Блока 1): —
+**Факты кода после Блока 1** (критик Блока 1, 2026-09-27; подробно — §6 индекса «После Блока 1»):
+
+- Экран выписок — `views/Statements.vue` (`/statements`, ленивый; pdf.js грузится при выборе
+  файла) → B2C-13 делает адрес `/week` с редиректом со `/statements`. Его тесты
+  (`views/Statements.test.ts`, `stores/operations.test.ts`, `e2e/b2c-block1-parser.test.ts`) —
+  **адаптировать, не удалять**.
+- Стор `stores/operations.ts`: `all` / `ops` (своя копия), `draft` → `draftOps` (правила +
+  пары внутренних), `answer(match, to)` (правило), `send()` (сначала `pull`, затем итоги
+  `writeTotals` и очередь), `recategorize(match, to)` (смена раздела задним числом), `pull`,
+  `flush`, `pendingCount`, `uploads`, `status` / `lastError` (в UI пока не выведены — хвост §4 →
+  B2C-21). Итоги в документ пишет только `writeTotals` — B2C-15/19 зовут её, а не пишут
+  `spendTotals` сами.
+- Чистые функции для экранов уже есть — **переиспользовать, не дублировать**: `picture(totals,
+  week, month)` (сумма обоих по разделам — основа `weekPicture` B2C-14), `unknownGroups(ops,
+  categoryId)`, `partnerHints`, `draftSummary`, `periodsOf`, `weekKey` / `weekRange`
+  (`lib/dates.ts`).
+- B2C-15: `MerchantRule.to` — союз `{ categoryId } | { internal: true } | { person }`, новый
+  вариант `{ payment }` добавить туда и в `fromRule` (`model.ts`); `applyRules` сравнивает только
+  `categoryId` и `internal`; `categorize` отдаёт `personLabel`, но его никто не хранит (хвост §4).
+  Платёж по Kaspi Кредиту — `transfer-out` «Оплата Kaspi Кредита» (раздел `sc_credit`); вид
+  `income` парсеры **не ставят** — зарплата ищется среди `transfer-in`.
+- B2C-19: операции одной выписки — `draft.files[].parsed.operations` (до отправки); повторяемость
+  — по `normalizeMerchant` / `normalizeCounterparty`.
+- B2C-21 (правила и разделы): `removeMerchantRule` — надгробие; **после удаления правила
+  `{ internal: true }` пересчитать `internal` от разбора** (парсер + `pairInternalTransfers`) —
+  `categorize` без правила оставляет текущее `op.internal`. `spendCategories` сеются один раз
+  (`seedSpendCategories`) при первой отправке.
+- **Не трогать нормализацию:** `sanitize` / `normalizeMerchant` входят в id операции — их правка
+  после деплоя Блока 1 удвоит повторные загрузки (словарь в id не входит).
 
 ---
 

@@ -1,11 +1,11 @@
-✅ |✅ |✅ |✅ |✅ |✅ |✅ |✅ |# Бэклог «Идея и редизайн» (B2C)
+# Бэклог «Идея и редизайн» (B2C)
 
 > **Статус:** в работе — Блок 0 🏁 (составитель, 2026-09-26: `развитие-приложения` и
 > `паритет-react-vue` закрыты по Р-2 и в архиве, `credits-flow` в архиве, хвосты — в §4,
 > `STATE.md`). Бэклог построен 2026-09-26: 9 блоков (0–8), 39 задач (B2C-01…B2C-39), режим **M**;
-> блоки 1, 3, 4, 6, 8 — **L**. Блок 1 🔄 — исполнитель ✅ 2026-09-26 (B2C-01…08); **Блок 6 открыт**
-> по Р-29 (замер B2C-08: 28,2 % строк, 15,7 % суммы; 57 % незнакомого — «ИП <фамилия>», см.
-> Handoff Блока 1). Следующий шаг — `/critic идея-и-редизайн 1 ultracode`.
+> блоки 1, 3, 4, 6, 8 — **L**. Блок 1 🔄 — исполнитель ✅ 2026-09-26 (B2C-01…08), критик ✅
+> 2026-09-27; **Блок 6 открыт** по Р-29 (замер B2C-08: 28,2 % строк, 15,7 % суммы; 57 % незнакомого
+> — «ИП <фамилия>», см. Handoff Блока 1). Следующий шаг — `/accept идея-и-редизайн 1 ultracode`.
 > Осталось: Блоки 1–8.
 
 Источник: `идея-и-редизайн-brief.md` (резюме интервью подтверждено владельцем 2026-09-26).
@@ -304,6 +304,9 @@ B2C-37…B2C-39 (Р-13, Р-18) · скоуп 14 «один план» → Бло
 | **Мульти-домохозяйства** и переключение активной семьи | `STATE.md` (ревью backend Н-11 MGV) | **После MVP** (не-скоуп брифа) |
 | `data` синка с `\u0000` или одиночным суррогатом → 500 (надо 400); клиент застревает в `error` | `STATE.md` (ревью backend Н-2 MGV) | **Блок 4 — B2C-26**: проверка данных в ручках синка — 400 |
 | **Уборка старого**: React `src/`, корневые `vite.config.ts`/`package.json`, таблицы React в `public`, пользователи Supabase Auth, Edge Function `fx-rate`, env Preview `mgv-block-6-prod`, `pwa-build.test.ts` читает `../../public/favicon.svg` | `STATE.md` (`migrate-go-vue` §4) | ⏳ **не решено** — остаётся в `STATE.md`: паритет закрыт (условие «эталон» снято), остаётся «не раньше 2026-10-08 и с „да“ владельца»; рекомендация — отдельная S-задача **до Блока 4** (проверка безопасности базы B2C-26 идёт по чистой базе) |
+| Очередь операций выписки: ответ 4xx на батче (это баг клиента — поля проверены на телефоне) держит очередь навсегда, каждый круг движка повторяет; экран пишет «отправятся при сети», статус стора операций (`status`/`lastError`) нигде не виден | критик Б1 (B2C-07, `stores/operations.ts` `flush`) | ⏳ не решено — рекомендация: **Блок 3 — B2C-21** (экран «Неделя» честно показывает сбой отправки) |
+| Повторная загрузка того же файла — новая запись `statement_uploads` (операции не удваиваются): «вторая выписка за 14 дней» (Р-16) посчитает повтор | критик Б1 (B2C-07) | ⏳ не решено — рекомендация: **Блок 4 — B2C-28** (считать загрузку с новыми операциями, а не запись) |
+| «Кому → что» запоминается правилом, но подпись нигде не видна: `applyRules` берёт только раздел (`sc_people`), `personLabel` теряется | критик Б1 (B2C-02/07) | ⏳ не решено — рекомендация: **Блок 3 — B2C-15/B2C-21** (подпись в «Неделе»; вид — дизайн Блока 2) |
 
 ## 5. Протокол
 
@@ -344,8 +347,9 @@ B2C-37…B2C-39 (Р-13, Р-18) · скоуп 14 «один план» → Бло
 
 ## 6. Технический контекст
 
-Факты, нужные двум и более задачам. Факт одной задачи — в её ТЗ. Актуально на 2026-09-26
-(после Блока 2 RP и Блока 5 PV); критик каждого блока дописывает сюда строку «после Блока N».
+Факты, нужные двум и более задачам. Факт одной задачи — в её ТЗ. Актуально на 2026-09-27
+(после Блока 1 B2C — раздел «После Блока 1» ниже); критик каждого блока дописывает сюда строку
+«после Блока N».
 
 **Где что лежит**
 - Прод: `family-finance-ff.vercel.app` (домен — B2C-26), Vercel, регион функций `icn1`
@@ -395,9 +399,10 @@ B2C-37…B2C-39 (Р-13, Р-18) · скоуп 14 «один план» → Бло
   новая запись с новым id.
 - Стор `frontend/src/stores/finance.ts`: `mutateHouseholdDoc(fn)` / `mutatePrivateDoc(fn)` —
   единственный путь правки (`dirty`, `localStorage`, `scheduleSync`); `syncHousehold` (GET →
-  `mergeDocs` → push, до 4 попыток на 409, `unsent`, `forceReplace`), `pullHousehold`,
-  `pullPrivateDoc` (сервер поверх локального), `pushPrivateDoc` (без слияния, 409 → ошибка — до
-  B2C-05); `privateDoc` — `Record<string, unknown>` (сейчас `accounts`); геттеры `credits` /
+  `mergeDocs` → push, до 4 попыток на 409, `unsent`, `forceReplace`), `pullHousehold`; личный
+  документ — тем же циклом `exchange` (B2C-05): `syncPrivate`, `pullPrivateDoc` (при
+  неотправленном сливает `mergePrivateDocs`), бейдж — `syncStatus` (общий + личный);
+  `privateDoc` — `Record<string, unknown>` (`accounts`, `merchantRules`); геттеры `credits` /
   `accounts` / `householdAccounts` — производные остатки (никогда не звать `creditBalance` /
   `accountBalance` на их результате); демо (`isDemo`) — без запросов. Движок
   `stores/syncEngine.ts`: `startSyncEngine` — `online`, `focus`, `visibilitychange`, интервал
@@ -482,6 +487,38 @@ B2C-37…B2C-39 (Р-13, Р-18) · скоуп 14 «один план» → Бло
   `node_modules`, Chrome `channel: 'chrome'`; скрипты стенда — в scratchpad, в репо не кладутся.
   Мутационные проверки — на снимке (`git worktree`), не в рабочем дереве, пока идёт браузер.
 
+**После Блока 1 (выписки; критик, 2026-09-27)**
+- `frontend/src/lib/statements/`: `types.ts` (`Operation`, `SpendCategory`, `MerchantRule`,
+  `SpendTotal`, `ParsedStatement`), `model.ts` (`sanitize`, `normalizeMerchant`, `fingerprint` /
+  `assignIds`, `categorize` / `applyRules`, `pairInternalTransfers`, `matchPerson`, `spendTotals`,
+  `periodsOf`, `draftSummary`, `unknownGroups`, `partnerHints`, `picture`, `seedSpendCategories`),
+  `dictionary.ts` (17 разделов `sc_*`, `UNKNOWN_CATEGORY` = `_unknown`, `KIND_CATEGORY`,
+  `DICTIONARY`), `pdf.ts` (`pdfToRows`, `groupItems`), `parsers/` (`detectBank`,
+  `parseStatement`, `StatementFormatError`). Фикстуры — **синтетика** (`scripts/statement-
+  fixtures.mjs`, в git ничего из настоящих выписок); замер — `corpus.test.ts` по `STATEMENTS_DIR`.
+- **Id операции — контракт:** `fingerprint` берёт `normalizeMerchant` (а через него `sanitize`,
+  `PLACE_TAILS`, `LEGAL_FORMS`). Их правка после деплоя меняет id уже загруженных строк —
+  повторная загрузка удвоит операции. Словарь `DICTIONARY` в id не входит — пополнять можно.
+- Доход по выписке: вид `income` парсеры не ставят (зарплаты в корпусе нет); приходы от людей —
+  `transfer-in` с `counterparty` («Имя Ф.»), со своих карт — `transfer-in` без него; платёж по
+  Kaspi Кредиту / Red — `transfer-out` «Оплата Kaspi Кредита» (раздел `sc_credit` по словарю).
+- `categorize`: правило ставит и снимает `internal`; без правила `op.internal` остаётся, как было.
+  Удаление правила `{ internal: true }` (B2C-21) должно пересчитывать `internal` от разбора
+  (парсер + `pairInternalTransfers`), а не от текущего значения операции.
+- Стор `stores/operations.ts` (`useOperationsStore`): копия `ff_operations` принадлежит
+  `семья:пользователь` (другой вход или выход — стирается); `pending` — очередь, досыл движком
+  синка; `pull` — по курсору с запасом 60 с; `send` — pull → итоги → очередь; `recategorize`;
+  `uploads`; `draft` / `draftOps`. Итоги `spendTotals` пишет только `writeTotals` (пустой раздел
+  обнуляется, не удаляется). Экран — `views/Statements.vue` (`/statements`, ленивый; pdf.js — по
+  выбору файла); входы — «+» (не у viewer) и Ритуал.
+- Go: `app.statement_uploads`, `app.operations` (`000002`, CHECK на 6+ цифр и длину),
+  `Repos.Statements`; ручки `POST/GET /api/statements`, `POST /api/operations/batch`, `GET
+  /api/operations?since&limit` (страница не рвёт батч одного `updated_at`); хелперы `member` /
+  `caller` / `errorJSON` — в `handlers/statements.go`.
+- PWA: воркер pdf.js (`.mjs`, 1,3 МБ) **не в прекэше** (решение критика Б1): выписку всё равно
+  скачивают из банка по сети, 1,3 МБ — каждой установке, оболочки Блоков 7–8 встраивают файлы
+  сами. Разбор без сети при первом открытии — нет; отправка без сети — да.
+
 **Грабли среды**
 - **Preview Vercel не использовать для проверки Go** без отдельного «да» владельца: env Preview
   прошлого бэклога смотрел в живую базу; ветка без env → функция отвечает 500 «server is not
@@ -495,3 +532,8 @@ B2C-37…B2C-39 (Р-13, Р-18) · скоуп 14 «один план» → Бло
   JWKS, FCM, Gemini) — с таймаутами заметно ниже.
 - Секрет-хук ловит слова «password»/«пароль» с двоеточием и значением даже в тестах и доках —
   строки собирать из частей, значения не писать.
+- Машина владельца (после Блока 1): Go 1.27 в `C:\Program Files\Go\bin` (в bash — `export
+  PATH="/c/Program Files/Go/bin:$PATH"`); Postgres — Docker `ff-b2c-pg` (строки —
+  `memory/secrets/local-pg.md`; Docker Desktop запускать заранее — поднимается минутами);
+  `core.autocrlf=true` → `e2e/pwa-build` «иконка» падает локально (CRLF), в CI зелёный;
+  `python` в bash — заглушка Microsoft Store.
