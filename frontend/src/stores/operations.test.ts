@@ -215,17 +215,26 @@ describe('stores/operations — курсор, семья, демо', () => {
       id: (0x1000000 + i).toString(16), bank: 'kaspi', date: '2026-09-01', amount: -1, kind: 'purchase',
       merchant: 'Magnum', category_id: 'sc_food', internal: false,
     })
+    const T1 = '2026-09-26T10:00:00.000001Z'
+    const T2 = '2026-09-26T10:05:00.000002Z'
     vi.mocked(calls.listOperations)
-      .mockResolvedValueOnce({ operations: Array.from({ length: PULL_LIMIT }, (_, i) => wire(i)), next: 'T1' })
-      .mockResolvedValueOnce({ operations: [wire(PULL_LIMIT)], next: 'T2' })
+      .mockResolvedValueOnce({ operations: Array.from({ length: PULL_LIMIT }, (_, i) => wire(i)), next: T1 })
+      .mockResolvedValueOnce({ operations: [wire(PULL_LIMIT)], next: T2 })
       .mockResolvedValueOnce({ operations: [], next: null })
     await store.pull(client)
-    expect(vi.mocked(calls.listOperations).mock.calls.map((c) => c[0])).toEqual([null, 'T1'])
+    expect(vi.mocked(calls.listOperations).mock.calls.map((c) => c[0])).toEqual([null, T1])
     expect(store.all).toHaveLength(PULL_LIMIT + 1)
-    expect(store.cursor).toBe('T2')
+    expect(store.cursor).toBe(T2)
+    // Следующий pull — с запасом в минуту (транзакция, закоммиченная позже); пустой ответ
+    // курсор назад не двигает.
     await store.pull(client)
-    expect(vi.mocked(calls.listOperations).mock.calls[2][0]).toBe('T2')
-    expect(store.cursor).toBe('T2')
+    expect(vi.mocked(calls.listOperations).mock.calls[2][0]).toBe('2026-09-26T10:04:00.000Z')
+    expect(store.cursor).toBe(T2)
+    // Запас вернул уже известную строку и новую — копия по id, без дублей; курсор — вперёд.
+    vi.mocked(calls.listOperations).mockResolvedValueOnce({ operations: [wire(PULL_LIMIT), wire(PULL_LIMIT + 1)], next: '2026-09-26T10:06:00Z' })
+    await store.pull(client)
+    expect(store.all).toHaveLength(PULL_LIMIT + 2)
+    expect(store.cursor).toBe('2026-09-26T10:06:00Z')
   })
 
   it('вход в другую семью и выход стирают операции, курсор и очередь', async () => {

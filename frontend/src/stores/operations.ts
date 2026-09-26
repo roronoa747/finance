@@ -28,6 +28,12 @@ const KEYS = [KEY_OPS, KEY_CURSOR, KEY_PENDING, KEY_DEMO_UPLOADS]
 export const BATCH_SIZE = 500
 /** Страница GET /api/operations. */
 export const PULL_LIMIT = 2000
+/**
+ * Курсор — `updated_at` = начало транзакции на сервере: загрузка, начатая раньше, может
+ * закоммититься позже соседней и встать «за» курсор. Первый запрос берёт с запасом; повтор
+ * строк безвреден — копия пишется по id.
+ */
+export const CURSOR_OVERLAP_MS = 60_000
 
 export type UploadInput = { bank: string; period_from: string; period_to: string; ops_count: number }
 
@@ -312,11 +318,14 @@ export const useOperationsStore = defineStore('operations', () => {
     await flush(client)
     if (offline() || pending.value.length) return
     try {
+      // Строка, давшая курсор, попадает в запас — значит, next непустой страницы не раньше
+      // курсора; пустая страница курсор не двигает (назад он не уезжает).
       let since = cursor.value
+      let from = since && new Date(Date.parse(since) - CURSOR_OVERLAP_MS).toISOString()
       for (;;) {
-        const page = await client.listOperations(since, PULL_LIMIT)
+        const page = await client.listOperations(from, PULL_LIMIT)
         for (const w of page.operations) ops.value[w.id] = fromWire(w)
-        if (page.next) since = page.next
+        if (page.next) since = from = page.next
         if (page.operations.length < PULL_LIMIT) break
       }
       cursor.value = since
