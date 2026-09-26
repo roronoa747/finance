@@ -1,5 +1,6 @@
 import { useAuthStore } from './auth'
 import { useFinanceStore, DEMO_HOUSEHOLD } from './finance'
+import { useOperationsStore } from './operations'
 
 /** Как часто ловить правки партнёра, пока приложение открыто. */
 export const BACKGROUND_SYNC_MS = 60_000
@@ -36,6 +37,9 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
     if (finance.status === 'idle') void finance.pullHousehold()
     else void finance.syncHousehold()
     syncPrivate()
+    // Операции выписки, не ушедшие без сети (B2C-07), — тем же кругом.
+    const operations = useOperationsStore()
+    if (operations.pendingCount) void operations.flush()
   }
 
   win.addEventListener('online', sync)

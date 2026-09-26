@@ -251,3 +251,104 @@ export function seedSpendCategories(doc: SyncDoc, at = new Date().toISOString())
   doc.spendCategories = DEFAULT_SPEND_CATEGORIES.map((c) => ({ ...c, updatedAt: at }))
   return true
 }
+
+/** Недели и месяцы, которых касаются операции, — их итоги пересчитываются (Р-21). */
+export function periodsOf(ops: Operation[]): { kind: SpendTotal['kind']; period: string }[] {
+  const out = new Map<string, { kind: SpendTotal['kind']; period: string }>()
+  for (const op of ops) {
+    for (const kind of ['week', 'month'] as const) {
+      const period = periodOf(op.date, kind)
+      out.set(`${kind}:${period}`, { kind, period })
+    }
+  }
+  return [...out.values()]
+}
+
+/** Итоги предпросмотра: сколько операций, сколько уже было, списания, поступления, внутренние. */
+export function draftSummary(ops: Operation[], known: (id: string) => boolean) {
+  let spent = 0
+  let received = 0
+  let internal = 0
+  for (const op of ops) {
+    if (op.internal) internal += Math.abs(op.amount)
+    else if (op.amount < 0) spent += -op.amount
+    else received += op.amount
+  }
+  return { total: ops.length, already: ops.filter((op) => known(op.id)).length, spent, received, internal }
+}
+
+export interface UnknownGroup {
+  /** Совпадение для правила — продавец или получатель, нормализованный. */
+  match: MerchantRule['match']
+  /** Как напечатал банк (первая операция группы). */
+  label: string
+  count: number
+  amount: number
+}
+
+/**
+ * Траты раздела (по умолчанию — незнакомые, раздел не узнан), сгруппированные по продавцу
+ * или получателю, — по сумме. Для вопросов разбора и смены раздела задним числом.
+ */
+export function unknownGroups(ops: Operation[], categoryId: string | null = null): UnknownGroup[] {
+  const groups = new Map<string, UnknownGroup>()
+  for (const op of ops) {
+    if (op.amount >= 0 || op.internal || op.categoryId !== categoryId) continue
+    const match = op.counterparty
+      ? { counterparty: normalizeCounterparty(op.counterparty) }
+      : { merchant: normalizeMerchant(op.merchant) }
+    const key = JSON.stringify(match)
+    const g = groups.get(key) ?? { match, label: op.counterparty ?? op.merchant, count: 0, amount: 0 }
+    g.count += 1
+    g.amount += -op.amount
+    groups.set(key, g)
+  }
+  return [...groups.values()].sort((a, b) => b.amount - a.amount || a.label.localeCompare(b.label))
+}
+
+/**
+ * «Это перевод партнёру?» (Р-5): получатели и отправители, чьё имя совпадает с другим
+ * участником семьи, пока правила о них нет.
+ */
+export function partnerHints(
+  ops: Operation[],
+  people: Person[],
+  me: PersonId,
+  rules: MerchantRule[],
+): { counterparty: string; label: string; person: PersonId }[] {
+  const out = new Map<string, { counterparty: string; label: string; person: PersonId }>()
+  const others = people.filter((p) => p.id !== me)
+  for (const op of ops) {
+    if (!op.counterparty || op.internal) continue
+    const who = normalizeCounterparty(op.counterparty)
+    if (out.has(who) || rules.some((r) => !r.deletedAt && r.match.counterparty === who)) continue
+    const person = matchPerson(op.counterparty, others)
+    if (person) out.set(who, { counterparty: who, label: op.counterparty, person })
+  }
+  return [...out.values()]
+}
+
+export interface PictureRow {
+  categoryId: string
+  week: number
+  month: number
+}
+
+/**
+ * Простая картина (B2C-07): траты семьи по разделам за неделю и месяц — сумма итогов всех
+ * участников. Порядок — по сумме месяца; нулевые строки не показываются.
+ */
+export function picture(totals: SpendTotal[], week: string, month: string): PictureRow[] {
+  const rows = new Map<string, PictureRow>()
+  for (const t of totals) {
+    if (t.deletedAt || !t.amount) continue
+    const inWeek = t.kind === 'week' && t.period === week
+    const inMonth = t.kind === 'month' && t.period === month
+    if (!inWeek && !inMonth) continue
+    const row = rows.get(t.categoryId) ?? { categoryId: t.categoryId, week: 0, month: 0 }
+    if (inWeek) row.week += t.amount
+    else row.month += t.amount
+    rows.set(t.categoryId, row)
+  }
+  return [...rows.values()].sort((a, b) => b.month - a.month || b.week - a.week)
+}

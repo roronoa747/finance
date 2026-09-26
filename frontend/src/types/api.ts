@@ -65,3 +65,35 @@ export interface ConflictResponse<T = HouseholdDocResponse | PrivateDocResponse>
   error: string
   server_doc: T
 }
+
+/** Запись загрузки выписки (B2C-06): видна семье. */
+export interface StatementUploadResponse {
+  id: string
+  slot: 'a' | 'b' | 'c' | ''
+  bank: string
+  period_from: string
+  period_to: string
+  ops_count: number
+  created_at: string
+}
+
+/** Операция на проводе (B2C-06) — личная, только своя. */
+export interface OperationWire {
+  id: string
+  bank: string
+  date: string
+  amount: number
+  kind: string
+  merchant: string
+  counterparty?: string | null
+  note?: string | null
+  category_id: string | null
+  internal: boolean
+  upload_id?: string | null
+  updated_at?: string
+}
+
+export interface OperationsPage {
+  operations: OperationWire[]
+  next: string | null
+}

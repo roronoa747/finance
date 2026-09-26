@@ -86,6 +86,11 @@ const LOCAL_KEYS = [
   STORAGE_KEY_PRIV_REV,
   STORAGE_KEY_UNSENT,
   STORAGE_KEY_DOC_HOUSEHOLD,
+  // Операции выписок (stores/operations.ts, B2C-07) — личные: выход стирает и их.
+  'ff_operations',
+  'ff_operations_cursor',
+  'ff_operations_pending',
+  'ff_statement_uploads_demo',
 ]
 
 function readStorage<T>(key: string, fallback: T): T {

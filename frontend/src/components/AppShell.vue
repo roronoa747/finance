@@ -15,8 +15,10 @@ import {
   PhReceipt,
   PhCreditCard,
   PhX,
+  PhFileArrowUp,
 } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
+import { useAuthStore } from '@/stores/auth'
 import { monthTitle, monthKey } from '@/lib/dates'
 import SyncBadge from '@/components/SyncBadge.vue'
 import AppearancePanel from '@/components/AppearancePanel.vue'
@@ -25,6 +27,7 @@ import Row from '@/components/kit/Row.vue'
 const route = useRoute()
 const router = useRouter()
 const financeStore = useFinanceStore()
+const authStore = useAuthStore()
 
 const addOpen = ref(false)
 const themeOpen = ref(false)
@@ -203,6 +206,16 @@ function onSparkleClick() {
         </div>
 
         <div class="flex flex-col divide-y divide-line">
+          <Row
+            v-if="!authStore.isViewer"
+            title="Загрузить выписку"
+            note="Kaspi или Freedom — траты недели по разделам"
+            clickable
+            @click="navigateAndClose('/statements')"
+          >
+            <template #icon><PhFileArrowUp :size="16" class="text-brand" /></template>
+          </Row>
+
           <Row
             v-if="memberCount < 2"
             title="Пригласить партнёра"
