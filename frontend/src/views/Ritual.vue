@@ -24,6 +24,7 @@ import {
   planMandatory,
   prepayOutcome,
   planPrepays,
+  progressMoments,
   salaryFree,
   stepDue,
 } from '@/lib/finance'
@@ -71,6 +72,21 @@ const salary = computed(() => {
   return { record, total: salaryFree(free, people.value, record) }
 })
 
+/**
+ * Закрытый долг (RP-12): `?from=credit&credit=<id>` — освободился его платёж, каждый месяц.
+ * Сумма — из момента прогресса (`progressMoments`, кредиты — из документа). Платёж долга из
+ * активного плана «Сначала долги» уже идёт в следующий долг — раскладывать нечего.
+ */
+const closed = computed(() => {
+  if (query('from') !== 'credit') return null
+  const m = progressMoments({
+    credits: financeStore.householdDoc.credits,
+    goals: financeStore.goals,
+    payments: financeStore.payments,
+  }).find((x) => x.kind === 'closed' && x.creditId === query('credit'))
+  return m?.kind === 'closed' ? { ...m, inPlan: !!financeStore.activePlan?.creditIds.includes(m.creditId) } : null
+})
+
 /** Остаток месяца (RP-11): `?from=rest&amount=50000&period=2026-09` — сумма, которую назвали. */
 const rest = computed(() => {
   if (query('from') !== 'rest') return null
@@ -86,6 +102,7 @@ const once = computed(() => !!salary.value || !!rest.value)
 
 const total = computed(() => {
   if (query('from') === 'salary') return salary.value?.total ?? 0
+  if (query('from') === 'credit') return closed.value && !closed.value.inPlan ? closed.value.freed : 0
   if (rest.value) return rest.value.amount
   return freed.value?.change ? Math.abs(freed.value.change.delta) : 0
 })
@@ -95,6 +112,11 @@ const empty = computed(() => {
     return salary.value
       ? 'Свободного в этой зарплате нет: всё уже расписано планом месяца.'
       : 'Эта зарплата пока не отмечена — раскладывать нечего.'
+  }
+  if (query('from') === 'credit') {
+    return closed.value?.inPlan
+      ? 'Платёж этого долга уже идёт в следующий долг по плану «Сначала долги».'
+      : 'Этот долг ещё не закрыт — освободившегося платежа нет.'
   }
   if (rest.value) return 'Остатка нет — раскладывать нечего.'
   return 'Сейчас нет запланированных изменений, которые высвобождают деньги. Событие появится само, когда у обязательства будет версия с будущей датой и меньшей суммой.'
@@ -306,6 +328,9 @@ function home() {
       Решение записано
     </div>
     <p v-if="once" class="max-w-[38ch] text-[14px] leading-relaxed text-ink-2 num">{{ doneNote }}</p>
+    <p v-else-if="closed" class="max-w-[38ch] text-[14px] leading-relaxed text-ink-2">
+      Взносы по целям увеличены — платёж «{{ closed.name }}» теперь работает на цели.
+    </p>
     <p v-else-if="freed?.change" class="max-w-[38ch] text-[14px] leading-relaxed text-ink-2">
       Взносы по целям увеличены с {{ monthFrom(freed.change.from) }}. Когда появятся
       два аккаунта, это же решение уйдёт {{ people[1]?.name || 'партнёру' }} на подтверждение — с окном 72 часа на
@@ -336,6 +361,9 @@ function home() {
     </p>
     <p v-else-if="rest" class="px-0.5 text-[13px] leading-relaxed text-ink-2 num">
       Остаток {{ monthFrom(rest.period, false) }} — {{ money(total) }}. Разложим его, пока он незаметно не разошёлся.
+    </p>
+    <p v-else-if="closed" class="px-0.5 text-[13px] leading-relaxed text-ink-2 num">
+      «{{ closed.name }}» закрыт — освободилось {{ money(total) }} в месяц. Решим, куда они пойдут дальше.
     </p>
 
     <div class="flex items-baseline justify-between rounded-[14px] bg-brand-soft px-4 py-3.5">
@@ -400,6 +428,9 @@ function home() {
 
     <p v-if="once" class="px-0.5 text-[12.5px] leading-relaxed text-ink-3">
       Решение разовое: отложенное ляжет в цели сейчас, ежемесячные взносы не изменятся.
+    </p>
+    <p v-else-if="closed" class="px-0.5 text-[12.5px] leading-relaxed text-ink-3">
+      Пока решения нет, платёж закрытого долга остаётся в «Свободно».
     </p>
     <p v-else-if="freed?.change" class="px-0.5 text-[12.5px] leading-relaxed text-ink-3">
       Пока решения нет, эти деньги не попадают в «свободно потратить». {{ freed.o.name }} снизится с

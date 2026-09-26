@@ -4,10 +4,10 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money } from '@/lib/money'
 import { accountBalance } from '@/lib/finance'
-import type { SyncDoc } from '@/types/finance'
+import type { Payment, SyncDoc } from '@/types/finance'
 import Overview from './Overview.vue'
 import Ritual from './Ritual.vue'
-import { authAs, planFamilyDoc } from '@/test/planFamily'
+import { authAs, planFamilyDoc, planOf } from '@/test/planFamily'
 import { renderScreen, screenMixin } from '@/test/screenState'
 
 /**
@@ -112,6 +112,91 @@ describe('Блок 2: моменты месяца (SSR)', () => {
       expect(trip.movements.map((m) => [m.amount, m.note])).toEqual([[55_000, 'из остатка месяца']])
       expect(trip.monthly).toBe(40_000)
       expect(accountBalance(store.householdDoc.accounts[0], store.payments)).toBe(2_000_000 - 55_000)
+    })
+  })
+
+  describe('RP-12 — моменты прогресса', () => {
+    // Рассрочка закрыта последним платежом 20 000; «Отпуск» (нужно 3 000 000) прошёл половину;
+    // досрочка в «Кредит» сэкономила 12 345.
+    const pay = (p: Partial<Payment> & Pick<Payment, 'id'>): Payment => ({
+      kind: 'credit', targetId: 'inst', period: '2026-09', amount: 20_000, principal: 20_000, accountId: 'card',
+      by: 'b', at: '2026-09-25T05:00:00.000Z', updatedAt: '2026-09-25T05:00:00.000Z', ...p,
+    })
+    const moments = (): Partial<SyncDoc> => {
+      const base = planFamilyDoc()
+      return {
+        credits: base.credits.map((c) => (c.id === 'inst' ? { ...c, principal: 20_000 } : c)),
+        goals: base.goals.map((g) =>
+          g.id === 'trip'
+            ? { ...g, movements: [{ id: 'm1', date: '2026-09-12T05:00:00.000Z', amount: 1_500_000, by: 'a' as const }], have: 1_550_000 }
+            : g,
+        ),
+        payments: [
+          pay({ id: 'close' }),
+          pay({ id: 'pre', kind: 'prepay', targetId: 'loan', amount: 100_000, principal: 100_000, saved: 12_345, at: '2026-09-05T05:00:00.000Z' }),
+        ],
+      }
+    }
+    const section = (html: string) => html.slice(html.indexOf('История семьи'))
+
+    it('Обзор: «История семьи» — строка на момент, новые первыми, без имён, значков и серий', async () => {
+      family('member', 'a', moments())
+      const html = section(await renderScreen(Overview, '/'))
+      const text = html.replace(/<[^>]*>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
+      expect(text).toContain('«Рассрочка» закрыт')
+      expect(text).toContain(`25 сентября · освободилось ${money(20_000)} в месяц`)
+      expect(text).toContain('«Отпуск»: собрали половину')
+      expect(text).toContain(`Не отдадим банку ${money(12_345)}`)
+      expect(text).toContain('5 сентября · досрочка в «Кредит»')
+      expect(text.indexOf('«Рассрочка» закрыт')).toBeLessThan(text.indexOf('«Отпуск»: собрали половину'))
+      expect(text.indexOf('«Отпуск»: собрали половину')).toBeLessThan(text.indexOf('Не отдадим банку'))
+      expect(text).not.toMatch(/Ильяс|Аруна|серия|подряд|🎉|🏆/)
+      // Строка закрытого долга — кнопка (ведёт в раскладку), остальные — нет.
+      const rows = html.split('border-b border-line last:border-b-0')
+      expect(rows.find((r) => r.includes('закрыт'))).toContain('<button')
+      expect(rows.find((r) => r.includes('собрали половину'))).not.toContain('<button')
+    })
+
+    it('Обзор: снятие закрывшей отметки убирает момент; нет моментов — нет раздела', async () => {
+      const doc = moments()
+      family('member', 'a', { ...doc, payments: doc.payments!.map((p) => (p.id === 'close' ? { ...p, deletedAt: '2026-09-26T00:00:00.000Z' } : p)) })
+      const html = await renderScreen(Overview, '/')
+      expect(html).not.toContain('«Рассрочка» закрыт')
+      setActivePinia(createPinia())
+      family()
+      expect(await renderScreen(Overview, '/')).not.toContain('История семьи')
+    })
+
+    it('viewer видит историю, но строка закрытого долга в раскладку не ведёт; долг из плана — на экран плана', async () => {
+      family('viewer', 'b', moments())
+      const rows = section(await renderScreen(Overview, '/')).split('border-b border-line last:border-b-0')
+      expect(rows.find((r) => r.includes('закрыт'))).not.toContain('<button')
+
+      setActivePinia(createPinia())
+      family('member', 'a', { ...moments(), plans: [planOf({ creditIds: ['cc', 'loan', 'inst'] })] })
+      const html = await renderScreen(Overview, '/')
+      expect(section(html)).toContain('его платёж идёт в следующий долг по плану')
+      expect(await renderScreen(Ritual, '/ritual?from=credit&credit=inst')).toContain('уже идёт в следующий долг по плану')
+    })
+
+    it('Ритуал «освободилось N ₸»: сумма — платёж закрытого долга, решение прибавляет ежемесячные взносы', async () => {
+      const store = family('member', 'a', moments())
+      const html = await renderScreen(Ritual, '/ritual?from=credit&credit=inst')
+      expect(html).toContain(`Куда направить ${money(20_000)}`)
+      expect(html).toContain(`«Рассрочка» закрыт — освободилось ${money(20_000)} в месяц`)
+      expect(html).toContain('платёж закрытого долга остаётся в «Свободно»')
+      expect(await renderScreen(Ritual, '/ritual?from=credit&credit=loan')).toContain('Этот долг ещё не закрыт')
+
+      const done = await renderScreen(Ritual, '/ritual?from=credit&credit=inst', undefined, [
+        screenMixin({}, (s) => {
+          s.alloc = { car: 20_000 }
+          ;(s.confirm as () => void)()
+        }),
+      ])
+      expect(done).toContain('платёж «Рассрочка» теперь работает на цели')
+      const car = store.goals.find((g) => g.id === 'car')!
+      expect(car.monthly).toBe(60_000 + 20_000)
+      expect(car.movements).toEqual([])
     })
   })
 })

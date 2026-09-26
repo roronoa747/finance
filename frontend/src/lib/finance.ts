@@ -1509,6 +1509,73 @@ export function monthEndAsk(answered: string | null, now = today()): boolean {
   return now.day > daysInMonth(now.key) - MONTH_END_DAYS && answered !== now.key;
 }
 
+/* ---------------- моменты прогресса (RP-12) ---------------- */
+
+/** Момент прогресса семьи — одна спокойная строка истории на Обзоре (Р-21). */
+export type Moment =
+  /** Долг закрыт: его платёж освободился. */
+  | { kind: 'closed'; id: string; at: string; creditId: string; name: string; freed: number }
+  /** Цель прошла половину. */
+  | { kind: 'half'; id: string; at: string; goalId: string; name: string }
+  /** Досрочка: столько процентов не отдадим банку (снимок записи, RP-08). */
+  | { kind: 'saved'; id: string; at: string; creditId: string; name: string; saved: number };
+
+/**
+ * Моменты прогресса (Р-21) — выводятся из уже записанного, в документ ничего не пишется:
+ * снятая отметка или взнос убирают свой момент сами. Новые — первыми.
+ *
+ * - **Долг закрыт** — запись (отметка или досрочка после сверки остатка, в порядке `at`),
+ *   на которой тело по записям дошло до остатка сверки. Поэтому кредиты — **из документа**
+ *   (база сверки `principal`), а не производные: у производного закрытого остаток 0, и
+ *   какая запись его обнулила, уже не видно. Освободился платёж кредита.
+ * - **Половина цели** — взнос, на котором накопленное (seed + взносы по дате) пересекло
+ *   половину нужной суммы. Один момент на цель: последнее пересечение вверх, и только пока
+ *   цель не ниже половины — снятие ниже половины момент убирает, новое пересечение даёт
+ *   один момент с новой датой. Цель, начатая с половины и выше, момента не даёт.
+ * - **Досрочка сэкономила** — каждая живая досрочка живого кредита со снимком `saved`.
+ */
+export function progressMoments(state: { credits?: Credit[]; goals?: Goal[]; payments?: Payment[] }): Moment[] {
+  const counted = countedPayments(state.payments ?? []);
+  const out: Moment[] = [];
+
+  for (const c of liveCredits(state.credits ?? [])) {
+    const own = counted
+      .filter((p) => p.targetId === c.id && (p.kind === 'credit' || p.kind === 'prepay') && afterAnchor(p, c.principalSetAt))
+      .sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id));
+    let left = c.principal;
+    for (const p of left > 0 ? own : []) {
+      left -= p.principal ?? 0;
+      if (left <= 0) {
+        out.push({ kind: 'closed', id: `closed:${c.id}`, at: p.at, creditId: c.id, name: c.name, freed: c.payment });
+        break;
+      }
+    }
+    for (const p of counted) {
+      if (p.kind === 'prepay' && p.targetId === c.id && (p.saved ?? 0) > 0) {
+        out.push({ kind: 'saved', id: `saved:${p.id}`, at: p.at, creditId: c.id, name: c.name, saved: p.saved! });
+      }
+    }
+  }
+
+  for (const g of liveGoals(state.goals ?? [])) {
+    if (!(g.need > 0)) continue;
+    const half = g.need / 2;
+    let sum = g.seed ?? 0;
+    let crossed: string | null = null;
+    const moves = [...(g.movements ?? [])].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+    for (const m of moves) {
+      const before = Math.max(0, sum);
+      sum += m.amount;
+      const after = Math.max(0, sum);
+      if (before < half && after >= half) crossed = m.date;
+      else if (after < half) crossed = null;
+    }
+    if (crossed) out.push({ kind: 'half', id: `half:${g.id}`, at: crossed, goalId: g.id, name: g.name });
+  }
+
+  return out.sort((a, b) => b.at.localeCompare(a.at) || a.id.localeCompare(b.id));
+}
+
 /** Подсчёт ликвидных средств на картах и счетах. */
 export function liquidCash(liquidAccounts: Account[]): number {
   return liveAccounts(liquidAccounts)

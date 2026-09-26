@@ -81,6 +81,7 @@ import {
   SALARY_EARLY_DAYS,
   monthEndAsk,
   MONTH_END_DAYS,
+  progressMoments,
   type PlanState,
 } from './finance'
 import { plain, money, moneyShort, parseMoney, pct, ratePct } from './money'
@@ -2114,6 +2115,103 @@ describe('RP-11 — вопрос в конце месяца', () => {
   it('день — по Алматы: 27 сентября 20:00 UTC — уже 28-е, вопрос есть', () => {
     expect(monthEndAsk(null, today(new Date('2026-09-27T18:30:00Z')))).toBe(false)
     expect(monthEndAsk(null, today(new Date('2026-09-27T19:30:00Z')))).toBe(true)
+  })
+})
+
+describe('RP-12 — моменты прогресса', () => {
+  const T0 = '2026-08-01T00:00:00Z'
+  const rec = (p: Partial<Payment> & Pick<Payment, 'id' | 'at'>): Payment => ({
+    kind: 'credit',
+    targetId: 'small',
+    period: '2026-09',
+    amount: 50_000,
+    principal: 50_000,
+    accountId: 'card',
+    by: 'a',
+    updatedAt: p.at,
+    ...p,
+  })
+  // Маленький беспроцентный долг: два платежа по 50 000.
+  const small: Credit = { id: 'small', name: 'Рассрочка', note: '', principal: 100_000, principalSetAt: T0, annualRate: 0, payment: 50_000, day: 15, updatedAt: T0 }
+  const sep = rec({ id: 'p9', period: '2026-09', at: '2026-09-15T05:00:00Z' })
+  const oct = rec({ id: 'p10', period: '2026-10', at: '2026-10-15T05:00:00Z' })
+  const goal = (movements: { id: string; date: string; amount: number }[], p: Partial<Goal> = {}): Goal => ({
+    id: 'trip', name: 'Отпуск', need: 1_000_000, seed: 100_000, have: 0, monthly: 50_000, hue: 'teal', planPct: 0,
+    movements: movements.map((m) => ({ ...m, by: 'a' as const })), updatedAt: T0, ...p,
+  })
+
+  it('закрытие кредита последней отметкой — момент с датой закрывшей записи и освободившимся платежом', () => {
+    expect(progressMoments({ credits: [small], payments: [sep] })).toEqual([])
+    expect(progressMoments({ credits: [small], payments: [sep, oct] })).toEqual([
+      { kind: 'closed', id: 'closed:small', at: oct.at, creditId: 'small', name: 'Рассрочка', freed: 50_000 },
+    ])
+    // Производный остаток сходится: долг закрыт.
+    expect(creditBalance(small, [sep, oct])).toBe(0)
+  })
+
+  it('снятие закрывшей отметки — момента нет; двойная отметка с другого телефона — один момент', () => {
+    expect(progressMoments({ credits: [small], payments: [sep, { ...oct, deletedAt: '2026-10-16T00:00:00Z' }] })).toEqual([])
+    const twin = rec({ id: 'p10b', period: '2026-10', at: '2026-10-15T05:02:00Z', by: 'b' })
+    const moments = progressMoments({ credits: [small], payments: [sep, oct, twin] })
+    expect(moments.map((m) => [m.id, m.at])).toEqual([['closed:small', oct.at]])
+  })
+
+  it('сверка остатка — база: отметки до сверки не считаются; закрыла досрочка — момент на ней и её экономия', () => {
+    // Остаток 50 000 ввели руками после сентябрьского платежа: закрывает октябрьский.
+    const anchored = { ...small, principal: 50_000, principalSetAt: '2026-09-20T00:00:00Z' }
+    expect(progressMoments({ credits: [anchored], payments: [sep, oct] }).map((m) => m.at)).toEqual([oct.at])
+    // Долг закрыт досрочкой в сентябре: момент закрытия и строка экономии.
+    const loan: Credit = { ...small, id: 'loan', name: 'Кредит', annualRate: 0.24, principal: 200_000 }
+    const pre = rec({ id: 'pp', kind: 'prepay', targetId: 'loan', amount: 200_000, principal: 200_000, saved: 18_000, at: '2026-09-20T05:00:00Z' })
+    expect(progressMoments({ credits: [loan], payments: [pre] })).toEqual([
+      { kind: 'closed', id: 'closed:loan', at: pre.at, creditId: 'loan', name: 'Кредит', freed: 50_000 },
+      { kind: 'saved', id: 'saved:pp', at: pre.at, creditId: 'loan', name: 'Кредит', saved: 18_000 },
+    ])
+  })
+
+  it('экономия — у каждой живой досрочки живого кредита; удалённый кредит и снятая досрочка — без строки', () => {
+    const loan: Credit = { ...small, id: 'loan', name: 'Кредит', annualRate: 0.33, principal: 1_000_000 }
+    const p1 = rec({ id: 'a1', kind: 'prepay', targetId: 'loan', amount: 100_000, principal: 100_000, saved: 40_000, at: '2026-09-01T05:00:00Z' })
+    const p2 = rec({ id: 'a2', kind: 'prepay', targetId: 'loan', amount: 50_000, principal: 50_000, saved: 15_000, at: '2026-09-10T05:00:00Z' })
+    expect(progressMoments({ credits: [loan], payments: [p1, p2] }).map((m) => [m.kind, m.at])).toEqual([
+      ['saved', p2.at],
+      ['saved', p1.at],
+    ])
+    expect(progressMoments({ credits: [loan], payments: [p1, { ...p2, deletedAt: T0 }] })).toHaveLength(1)
+    expect(progressMoments({ credits: [{ ...loan, deletedAt: T0 }], payments: [p1, p2] })).toEqual([])
+    // Итог строк экономии — тот же, что у счётчика «сэкономили» (RP-08).
+    const sum = progressMoments({ credits: [loan], payments: [p1, p2] }).reduce((a, m) => a + (m.kind === 'saved' ? m.saved : 0), 0)
+    expect(sum).toBe(prepaySaved([p1, p2], [loan]))
+  })
+
+  it('половина цели — ровно на пересекающем взносе; ниже половины — момента нет, новое пересечение — один момент', () => {
+    // seed 100 000 + 300 000 = 400 000 < 500 000; + 200 000 = 600 000 — пересёк.
+    const m1 = { id: 'm1', date: '2026-08-10T05:00:00Z', amount: 300_000 }
+    const m2 = { id: 'm2', date: '2026-09-10T05:00:00Z', amount: 200_000 }
+    expect(progressMoments({ goals: [goal([m1])] })).toEqual([])
+    expect(progressMoments({ goals: [goal([m2, m1])] })).toEqual([
+      { kind: 'half', id: 'half:trip', at: m2.date, goalId: 'trip', name: 'Отпуск' },
+    ])
+    // Сняли 150 000 — 450 000, ниже половины: момента нет.
+    const out = { id: 'm3', date: '2026-09-12T05:00:00Z', amount: -150_000 }
+    expect(progressMoments({ goals: [goal([m1, m2, out])] })).toEqual([])
+    // Снова 100 000 — 550 000: один момент, с датой нового пересечения (правило: последнее
+    // пересечение вверх, пока цель не ниже половины).
+    const back = { id: 'm4', date: '2026-09-20T05:00:00Z', amount: 100_000 }
+    expect(progressMoments({ goals: [goal([m1, m2, out, back])] }).map((m) => [m.id, m.at])).toEqual([['half:trip', back.date]])
+    // Снятие, после которого цель осталась выше половины, момент не трогает.
+    const small2 = { id: 'm5', date: '2026-09-25T05:00:00Z', amount: -20_000 }
+    expect(progressMoments({ goals: [goal([m1, m2, out, back, small2])] }).map((m) => m.at)).toEqual([back.date])
+  })
+
+  it('цель, начатая с половины, удалённая и без суммы — без момента; порядок — новые первыми', () => {
+    const m = { id: 'm1', date: '2026-09-01T05:00:00Z', amount: 100_000 }
+    expect(progressMoments({ goals: [goal([m], { seed: 600_000 })] })).toEqual([])
+    expect(progressMoments({ goals: [goal([{ ...m, amount: 500_000 }], { deletedAt: T0 })] })).toEqual([])
+    expect(progressMoments({ goals: [goal([{ ...m, amount: 500_000 }], { need: 0 })] })).toEqual([])
+    const half = goal([{ ...m, amount: 500_000, date: '2026-10-01T05:00:00Z' }])
+    const list = progressMoments({ credits: [small], goals: [half], payments: [sep, oct] })
+    expect(list.map((x) => x.kind)).toEqual(['closed', 'half'])
   })
 })
 

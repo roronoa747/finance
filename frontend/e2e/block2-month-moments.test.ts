@@ -159,13 +159,48 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       expect(B.store.accounts.find((x) => x.id === 'card')!.amount).toBe(940_000)
     })
 
-    it('1 октября вопроса нет; 29 октября — снова', async () => {
+    it('1 октября вопроса нет; 29 октября — снова (RP-11)', async () => {
       at('2026-10-01T07:00:00Z')
       const A = await phone(server)
       useAuthStore().setAuthData(authAs('member', 'a'))
       expect(await screen(A.pinia, Overview, '/')).not.toContain('Остались деньги')
       at('2026-10-29T07:00:00Z')
       expect(await screen(A.pinia, Overview, '/')).toContain('Остались деньги с октября?')
+    })
+  })
+
+  describe('RP-12 — моменты прогресса', () => {
+    it('B закрывает маленький долг последним «Оплатил» → строка у обоих, ведёт в «освободилось»; снятие убирает', async () => {
+      server.data.credits.push({
+        id: 'tv', name: 'Телевизор', note: '', principal: 30_000, principalSetAt: T0, annualRate: 0, payment: 30_000, day: 12, updatedAt: T0,
+      })
+      at('2026-09-12T06:00:00Z')
+      const A = await phone(server)
+      useAuthStore().setAuthData(authAs('member', 'a'))
+      const B = await phone(server)
+      useAuthStore().setAuthData(authAs('member', 'b'))
+
+      setActivePinia(B.pinia)
+      B.store.markPaid('credit', 'tv', 'b', { accountId: 'card' })
+      expect(B.store.credits.find((c) => c.id === 'tv')!.principal).toBe(0)
+      await B.store.syncHousehold(B.client)
+      await A.store.syncHousehold(A.client)
+
+      const overview = await screen(A.pinia, Overview, '/')
+      expect(overview).toContain('«Телевизор» закрыт')
+      expect(overview).toContain(`12 сентября · освободилось ${money(30_000)} в месяц`)
+      const ritual = await screen(A.pinia, Ritual, '/ritual?from=credit&credit=tv')
+      expect(ritual).toContain(`Куда направить ${money(30_000)}`)
+
+      // Ошиблись — сняли отметку: долг снова открыт, момента нет ни у кого.
+      setActivePinia(B.pinia)
+      B.store.unmarkPaid('credit', 'tv', '2026-09')
+      await B.store.syncHousehold(B.client)
+      await A.store.syncHousehold(A.client)
+      expect(await screen(A.pinia, Overview, '/')).not.toContain('«Телевизор» закрыт')
+      expect(await screen(A.pinia, Ritual, '/ritual?from=credit&credit=tv')).toContain('Этот долг ещё не закрыт')
+      // В документе — только записи оплат: моменты не пишутся.
+      expect(Object.keys(server.data).filter((k) => /moment|history/i.test(k))).toEqual([])
     })
   })
 })

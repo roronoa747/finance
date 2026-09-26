@@ -10,7 +10,7 @@ import {
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain, pct, parseMoney } from '@/lib/money'
-import { monthKey, monthIn, monthFrom, dayLabel } from '@/lib/dates'
+import { monthKey, monthIn, monthFrom, dayLabel, atLabel } from '@/lib/dates'
 import {
   amountAt,
   budgetAmounts,
@@ -21,6 +21,7 @@ import {
   monthDues,
   monthEndAsk,
   nextChange,
+  progressMoments,
   nextObligationDue,
   salaryAt,
   salaryOpen,
@@ -33,6 +34,7 @@ import Section from '@/components/kit/Section.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Field from '@/components/kit/Field.vue'
 import NumField from '@/components/kit/NumField.vue'
+import Row from '@/components/kit/Row.vue'
 import Hero from '@/components/kit/Hero.vue'
 import Button from '@/components/ui/Button.vue'
 import Bar, { type Seg } from '@/components/Bar.vue'
@@ -144,6 +146,36 @@ const salaryHere = computed(() => {
   if (!info || authStore.isViewer || authStore.slot !== info.who.id) return false
   return salaryOpen(info.who, financeStore.payments, info.key)
 })
+
+// История семьи (RP-12): моменты прогресса выводятся из записанного — кредиты из документа
+// (база сверки), см. `progressMoments`. Без имён: кто внёс, не показываем.
+const HISTORY_ROWS = 5
+const history = computed(() =>
+  progressMoments({
+    credits: financeStore.householdDoc.credits,
+    goals: financeStore.goals,
+    payments: financeStore.payments,
+  })
+    .slice(0, HISTORY_ROWS)
+    .map((m) => {
+      const when = atLabel(m.at)
+      if (m.kind === 'half') return { id: m.id, title: `«${m.name}»: собрали половину`, note: when, to: null }
+      if (m.kind === 'saved') {
+        return { id: m.id, title: `Не отдадим банку ${money(m.saved)}`, note: `${when} · досрочка в «${m.name}»`, to: null }
+      }
+      // Платёж долга из плана «Сначала долги» уже идёт в следующий долг — решать нечего.
+      const inPlan = !!financeStore.activePlan?.creditIds.includes(m.creditId)
+      return {
+        id: m.id,
+        title: `«${m.name}» закрыт`,
+        note: inPlan
+          ? `${when} · его платёж идёт в следующий долг по плану`
+          : `${when} · освободилось ${money(m.freed)} в месяц`,
+        // Раскладка — решение: viewer его не принимает (Р-13).
+        to: authStore.isViewer ? null : inPlan ? '/plan' : `/ritual?from=credit&credit=${m.creditId}`,
+      }
+    }),
+)
 
 // Вопрос в конце месяца (RP-11): «Остались деньги?» → раскладка остатка. Ответ помнит
 // устройство — месяц ответа в localStorage, документ не трогается: партнёра спросят на его
@@ -474,5 +506,20 @@ const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: ma
         </span>
       </RouterLink>
     </div>
+
+    <!-- История семьи (RP-12): одна спокойная строка на момент -->
+    <template v-if="history.length">
+      <Section title="История семьи" />
+      <Card flush>
+        <Row
+          v-for="h in history"
+          :key="h.id"
+          :title="h.title"
+          :note="h.note"
+          :clickable="!!h.to"
+          @click="h.to && router.push(h.to)"
+        />
+      </Card>
+    </template>
   </div>
 </template>
