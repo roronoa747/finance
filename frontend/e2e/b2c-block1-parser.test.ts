@@ -7,7 +7,10 @@ import { useOperationsStore } from '../src/stores/operations'
 import { parseStatement } from '../src/lib/statements/parsers'
 import { picture } from '../src/lib/statements/model'
 import type { Operation } from '../src/lib/statements/types'
-import { backend, fakeServer, fakeStatements, setOnline, statementsFor, type FakeServer, type FakeStatements } from './support/family'
+import { fromWire } from '../src/stores/operations'
+import type { OperationWire } from '../src/types/api'
+import Statements from '../src/views/Statements.vue'
+import { backend, fakeServer, fakeStatements, screen, setOnline, statementsFor, type FakeServer, type FakeStatements } from './support/family'
 import kaspi01 from '../src/lib/statements/fixtures/kaspi-01.rows.json'
 import kaspi02 from '../src/lib/statements/fixtures/kaspi-02.rows.json'
 import freedom01 from '../src/lib/statements/fixtures/freedom-01.rows.json'
@@ -20,14 +23,14 @@ const storage = new Map<string, string>()
 
 type Phone = { pinia: Pinia; client: ApiClient; user: string }
 
-async function phone(server: FakeServer, st: FakeStatements, slot: 'a' | 'b'): Promise<Phone> {
+async function phone(server: FakeServer, st: FakeStatements, slot: 'a' | 'b', role: 'member' | 'viewer' = 'member'): Promise<Phone> {
   const pinia = createPinia()
   setActivePinia(pinia)
   const user = `u-${slot}`
   useAuthStore().setAuthData({
     token: `t-${slot}`, user: { id: user, email: `${slot}@family.kz`, created_at: '' },
     household: { id: 'h-family', name: 'Семья', created_by: 'u-a', created_at: '' },
-    member: { household_id: 'h-family', user_id: user, slot, display_name: slot, role: 'member', joined_at: '' },
+    member: { household_id: 'h-family', user_id: user, slot, display_name: slot, role, joined_at: '' },
   })
   const client = { ...backend(server), ...statementsFor(st, user, slot) } as unknown as ApiClient
   const finance = useFinanceStore()
@@ -47,6 +50,7 @@ async function upload(p: Phone, rows: typeof kaspi01) {
 
 const spent = (ops: Operation[], month: string) =>
   ops.filter((o) => o.amount < 0 && !o.internal && o.date.startsWith(month)).reduce((s, o) => s - o.amount, 0)
+const fromServer = (ws: OperationWire[]) => ws.map(fromWire)
 
 describe('e2e / B2C Блок 1 — выписка: разбор на телефоне, личные операции, итоги семье', () => {
   let server: FakeServer
@@ -137,5 +141,42 @@ describe('e2e / B2C Блок 1 — выписка: разбор на телеф�
     expect(opsA2.pendingCount).toBe(0)
     expect(st.uploads).toHaveLength(4)
     expect(st.ops.get('u-a')?.size).toBe(81)
+  })
+
+  // Приёмка Блока 1 (2026-09-27): правка критика «итоги со второго устройства» и роли на стенде.
+  it('одно лицо — два устройства: итоги из всех операций периода; viewer видит загрузки и итоги, операций и кнопки нет', async () => {
+    // Телефон A загружает Kaspi за июль.
+    const A1 = await phone(server, st, 'a')
+    await upload(A1, kaspi01)
+    // Ноутбук того же человека: своей копии на диске нет (другое устройство).
+    for (const k of [...storage.keys()]) if (k.startsWith('ff_operations')) storage.delete(k)
+    const A2 = await phone(server, st, 'a')
+    setActivePinia(A2.pinia)
+    expect(useOperationsStore().all).toEqual([])
+
+    // С ноутбука — Freedom (другой банк, те же месяцы): итоги A = траты ВСЕХ его операций.
+    await upload(A2, freedom01)
+    const serverOps = [...st.ops.get('u-a')!.values()]
+    expect(serverOps).toHaveLength(60 + 42)
+    const onServer = (month: string) =>
+      spent(fromServer(serverOps), month)
+    const docTotal = (month: string) =>
+      server.data.spendTotals!.filter((t) => t.by === 'a' && t.kind === 'month' && t.period === month).reduce((s, t) => s + t.amount, 0)
+    expect(docTotal('2025-07')).toBe(onServer('2025-07'))
+    expect(docTotal('2025-07')).toBeGreaterThan(spent(fromServer(serverOps.filter((o) => o.bank === 'kaspi')), '2025-07'))
+
+    // Viewer семьи: итоги и запись загрузки видит, операций не тянет, кнопки загрузки нет.
+    const V = await phone(server, st, 'b', 'viewer')
+    setActivePinia(V.pinia)
+    expect(useFinanceStore().householdDoc.spendTotals?.filter((t) => t.by === 'a').length).toBeGreaterThan(0)
+    const opsV = useOperationsStore()
+    await opsV.loadUploads(V.client)
+    await opsV.pull(V.client)
+    expect(opsV.uploads.map((u) => [u.slot, u.bank])).toEqual([['a', 'freedom'], ['a', 'kaspi']])
+    expect(V.client.listOperations).not.toHaveBeenCalled()
+    expect(opsV.all).toEqual([])
+    const html = await screen(V.pinia, Statements, '/statements')
+    expect(html).not.toContain('Загрузить выписку')
+    expect(html).toContain('Kaspi')
   })
 })
