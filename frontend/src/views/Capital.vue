@@ -1048,7 +1048,7 @@ watch(queryModalOpen, (open) => {
 
     <!-- МОДАЛКА: Группа подписок — название, флаг, подписки -->
     <Sheet :open="!!activeGroup" :title="activeGroup?.name ?? ''" @close="selectedGroupId = null">
-      <template v-if="activeGroup">
+      <template v-if="activeGroup" #default="{ close }">
         <Field label="Название">
           <Input
             :default-value="activeGroup.name"
@@ -1104,7 +1104,7 @@ watch(queryModalOpen, (open) => {
           />
         </Field>
 
-        <Button class="w-full mb-3" @click="selectedGroupId = null">Готово</Button>
+        <Button class="w-full mb-3" @click="close">Готово</Button>
 
         <DangerZone
           label="Удалить группу"
