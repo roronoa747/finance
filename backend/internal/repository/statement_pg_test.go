@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 
@@ -155,6 +156,44 @@ func TestPostgresStatementsCursorNeverSplitsABatch(t *testing.T) {
 	rest, _ := f.repo.ListOperations(ctx, f.aliceID, first[len(first)-1].UpdatedAt, 2)
 	if len(rest) != 1 || rest[0].ID != "cccc0006" {
 		t.Fatalf("second page: %+v", rest)
+	}
+}
+
+func TestPostgresStatementsMultiChunkBatch(t *testing.T) {
+	f := newStatementFixture(t)
+	ctx := context.Background()
+	// 1201 строка = три куска по upsertChunk; последняя — дубль строки из первого куска
+	// с новой суммой: побеждает поздняя, в базе 1200 строк.
+	batch := make([]models.Operation, 0, 1201)
+	for i := range 1200 {
+		batch = append(batch, pgOp(fmt.Sprintf("%08x", i), -int64(i+1)))
+	}
+	batch = append(batch, pgOp(fmt.Sprintf("%08x", 10), -99999))
+	n, err := f.repo.UpsertOperations(ctx, f.aliceID, f.householdID, batch)
+	if err != nil || n != 1200 {
+		t.Fatalf("upsert: %d, %v", n, err)
+	}
+	// Один батч — одна транзакция — один updated_at: страница с limit=1 отдаёт все строки.
+	page, err := f.repo.ListOperations(ctx, f.aliceID, time.Time{}, 1)
+	if err != nil || len(page) != 1200 {
+		t.Fatalf("page: %d rows, %v", len(page), err)
+	}
+	for _, op := range page {
+		if !op.UpdatedAt.Equal(page[0].UpdatedAt) {
+			t.Fatalf("updated_at differs inside one batch: %s vs %s", op.UpdatedAt, page[0].UpdatedAt)
+		}
+		var i int64
+		if _, err := fmt.Sscanf(op.ID, "%x", &i); err != nil {
+			t.Fatalf("id %q: %v", op.ID, err)
+		}
+		want := -(i + 1)
+		if i == 10 {
+			want = -99999
+		}
+		// Номера параметров второго и третьего кусков сдвинуты верно: у каждой строки своя сумма.
+		if op.Amount != want {
+			t.Fatalf("operation %s: amount %d, want %d", op.ID, op.Amount, want)
+		}
 	}
 }
 
