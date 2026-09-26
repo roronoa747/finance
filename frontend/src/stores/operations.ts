@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
+import { OPERATIONS_STORAGE_KEYS, readStorage, writeStorage } from '@/lib/storage'
 import {
   applyRules,
   pairInternalTransfers,
@@ -18,11 +19,8 @@ import type { PersonId } from '@/types/finance'
 // загрузок семьи и черновик разбора. Файл выписки разбирается на телефоне и никуда не уходит
 // (Р-4): на сервер идут только записи загрузок и операции без ФИО и номеров (Р-23).
 
-const KEY_OPS = 'ff_operations'
-const KEY_CURSOR = 'ff_operations_cursor'
-const KEY_PENDING = 'ff_operations_pending'
-const KEY_DEMO_UPLOADS = 'ff_statement_uploads_demo'
-const KEYS = [KEY_OPS, KEY_CURSOR, KEY_PENDING, KEY_DEMO_UPLOADS]
+const { ops: KEY_OPS, cursor: KEY_CURSOR, pending: KEY_PENDING, demoUploads: KEY_DEMO_UPLOADS } = OPERATIONS_STORAGE_KEYS
+const KEYS = Object.values(OPERATIONS_STORAGE_KEYS)
 
 /** Операций в одном POST /api/operations/batch (сервер принимает до 2000). */
 export const BATCH_SIZE = 500
@@ -54,24 +52,6 @@ export interface Draft {
   files: DraftFile[]
   /** Файлы, которые не удалось разобрать: имя и спокойное объяснение. */
   errors: { name: string; message: string }[]
-}
-
-function read<T>(key: string, fallback: T): T {
-  try {
-    if (typeof localStorage === 'undefined') return fallback
-    const raw = localStorage.getItem(key)
-    return raw ? (JSON.parse(raw) as T) : fallback
-  } catch {
-    return fallback
-  }
-}
-
-function write(key: string, value: unknown) {
-  try {
-    if (typeof localStorage !== 'undefined') localStorage.setItem(key, JSON.stringify(value))
-  } catch (e) {
-    console.error('Ошибка записи операций:', e)
-  }
 }
 
 export function toWire(op: Operation): OperationWire {
@@ -116,13 +96,13 @@ export const useOperationsStore = defineStore('operations', () => {
   // Копия принадлежит человеку в семье документа: другая семья, другой вход или выход —
   // всё стирается (операции личные, Р-5: на общем телефоне партнёр их не увидит).
   const ownerKey = () => (finance.docHousehold && auth.user ? `${finance.docHousehold}:${auth.user.id}` : null)
-  const saved = read<{ owner: string | null; ops: Record<string, Operation> }>(KEY_OPS, { owner: null, ops: {} })
+  const saved = readStorage<{ owner: string | null; ops: Record<string, Operation> }>(KEY_OPS, { owner: null, ops: {} })
   const owner = ref<string | null>(ownerKey())
   const fresh = saved.owner !== null && saved.owner === owner.value
   const ops = ref<Record<string, Operation>>(fresh ? saved.ops : {})
-  const cursor = ref<string | null>(fresh ? read<string | null>(KEY_CURSOR, null) : null)
-  const pending = ref<PendingJob[]>(fresh ? read<PendingJob[]>(KEY_PENDING, []) : [])
-  const demoUploads = ref<StatementUploadResponse[]>(fresh ? read<StatementUploadResponse[]>(KEY_DEMO_UPLOADS, []) : [])
+  const cursor = ref<string | null>(fresh ? readStorage<string | null>(KEY_CURSOR, null) : null)
+  const pending = ref<PendingJob[]>(fresh ? readStorage<PendingJob[]>(KEY_PENDING, []) : [])
+  const demoUploads = ref<StatementUploadResponse[]>(fresh ? readStorage<StatementUploadResponse[]>(KEY_DEMO_UPLOADS, []) : [])
   const serverUploads = ref<StatementUploadResponse[]>([])
   const status = ref<'idle' | 'sending' | 'offline' | 'error'>('idle')
   const lastError = ref<string | null>(null)
@@ -136,10 +116,10 @@ export const useOperationsStore = defineStore('operations', () => {
   const pendingCount = computed(() => pending.value.reduce((n, j) => n + j.ops.length, 0))
 
   function save() {
-    write(KEY_OPS, { owner: owner.value, ops: ops.value })
-    write(KEY_CURSOR, cursor.value)
-    write(KEY_PENDING, pending.value)
-    write(KEY_DEMO_UPLOADS, demoUploads.value)
+    writeStorage(KEY_OPS, { owner: owner.value, ops: ops.value })
+    writeStorage(KEY_CURSOR, cursor.value)
+    writeStorage(KEY_PENDING, pending.value)
+    writeStorage(KEY_DEMO_UPLOADS, demoUploads.value)
   }
 
   function clear(key: string | null = null) {

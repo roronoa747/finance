@@ -3,6 +3,7 @@ import { ref, computed, type Ref } from 'vue'
 import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { mergeDocs, mergePrivateDocs, isEmptyDoc } from '@/lib/merge'
 import { monthKey } from '@/lib/dates'
+import { OPERATIONS_STORAGE_KEYS, readStorage } from '@/lib/storage'
 import {
   accountBalance,
   activePlan as pickActivePlan,
@@ -87,21 +88,8 @@ const LOCAL_KEYS = [
   STORAGE_KEY_UNSENT,
   STORAGE_KEY_DOC_HOUSEHOLD,
   // Операции выписок (stores/operations.ts, B2C-07) — личные: выход стирает и их.
-  'ff_operations',
-  'ff_operations_cursor',
-  'ff_operations_pending',
-  'ff_statement_uploads_demo',
+  ...Object.values(OPERATIONS_STORAGE_KEYS),
 ]
-
-function readStorage<T>(key: string, fallback: T): T {
-  try {
-    if (typeof localStorage === 'undefined') return fallback
-    const raw = localStorage.getItem(key)
-    return raw ? (JSON.parse(raw) as T) : fallback
-  } catch {
-    return fallback
-  }
-}
 
 // Запрос не дошёл до сервера (fetch бросил не ApiError) — это «нет сети», а не «не
 // сошлось». navigator.onLine на это не годится: после перезагрузки без сети и в сети
