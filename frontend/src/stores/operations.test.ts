@@ -4,7 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { apiClient, type ApiClient } from '@/api/client'
 import { useAuthStore, DEMO_TOKEN } from './auth'
 import { useFinanceStore } from './finance'
-import { BATCH_SIZE, PULL_LIMIT, useOperationsStore } from './operations'
+import { BATCH_SIZE, PULL_LIMIT, toWire, useOperationsStore } from './operations'
 import { assignIds } from '@/lib/statements/model'
 import { parseStatement } from '@/lib/statements/parsers'
 import type { Operation, ParsedStatement } from '@/lib/statements/types'
@@ -121,6 +121,31 @@ describe('stores/operations — отправка выписки', () => {
     expect(store.all).toHaveLength(60)
     expect(server.ops.size).toBe(60)
     expect(JSON.stringify(july().map((t) => [t.id, t.amount, t.ops]))).toBe(before)
+  })
+
+  it('перед итогами забирает свои операции со второго устройства; двойное «Отправить» — одна отправка', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const finance = useFinanceStore()
+    const { client, calls } = fakeServer()
+    // Со второго устройства уже ушла покупка в июле — в этой копии её ещё нет.
+    const [other] = assignIds([
+      { bank: 'freedom', date: '2025-07-10', amount: -7_000, kind: 'purchase', merchant: 'Magnum', categoryId: 'sc_food', internal: false },
+    ])
+    calls.listOperations.mockResolvedValueOnce({
+      operations: [{ ...toWire(other), updated_at: '2026-09-26T10:00:00Z' }],
+      next: '2026-09-26T10:00:00Z',
+    })
+    store.setDraft(draftOf(kaspi()))
+    await Promise.all([store.send(client), store.send(client)])
+
+    expect(calls.createStatementUpload).toHaveBeenCalledTimes(1)
+    expect(store.ops[other.id]).toBeDefined()
+    const julySum = (finance.householdDoc.spendTotals ?? [])
+      .filter((t) => t.id.startsWith('a:month:2025-07:'))
+      .reduce((s, t) => s + t.amount, 0)
+    expect(julySum).toBe(spentIn(store.all, '2025-07'))
+    expect(julySum).toBe(spentIn(kaspi().operations, '2025-07') + 7_000)
   })
 
   it('без сети: итоги сразу, операции — в очереди (и на диске); сеть вернулась — досылаются', async () => {

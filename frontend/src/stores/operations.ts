@@ -216,6 +216,10 @@ export const useOperationsStore = defineStore('operations', () => {
   async function send(client: ApiClient = apiClient) {
     const d = draft.value
     if (!d) return
+    // Итоги — из всех своих операций периода: сначала забрать загруженное со второго
+    // устройства, иначе устаревшая копия затрёт полные итоги (LWW по id). Без сети — что есть.
+    await pull(client)
+    if (draft.value !== d) return // второе нажатие, пока ждали сеть
     if (!finance.householdDoc.spendCategories?.length) finance.mutateHouseholdDoc((doc) => void seedSpendCategories(doc))
 
     const fresh = draftOps.value
