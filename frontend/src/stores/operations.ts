@@ -163,11 +163,16 @@ export const useOperationsStore = defineStore('operations', () => {
     if (key !== owner.value) clear(key)
   })
 
-  /** Черновик разбора: операции с правилами семьи и парами внутренних переводов. */
+  /**
+   * Черновик разбора: операции с правилами семьи и парами внутренних переводов. Пересекающиеся
+   * выписки одного банка дают общие операции с одинаковыми id — каждая считается один раз.
+   */
   const draftOps = computed<Operation[]>(() => {
     if (!draft.value) return []
-    const raw = draft.value.files.flatMap((f) => f.parsed.operations)
-    const ids = new Set(raw.map((o) => o.id))
+    const byId = new Map<string, Operation>()
+    for (const f of draft.value.files) for (const o of f.parsed.operations) if (!byId.has(o.id)) byId.set(o.id, o)
+    const raw = [...byId.values()]
+    const ids = new Set(byId.keys())
     const withRules = applyRules(raw, finance.merchantRules)
     const others = all.value.filter((o) => !ids.has(o.id))
     return pairInternalTransfers([...withRules, ...others]).slice(0, withRules.length)
@@ -244,13 +249,16 @@ export const useOperationsStore = defineStore('operations', () => {
         })
       }
     } else {
+      // Операция общая для нескольких файлов уходит один раз — с первой загрузкой, где встретилась.
+      const queued = new Set<string>()
       for (const f of d.files) {
         const own = new Set(f.parsed.operations.map((o) => o.id))
         pending.value.push({
           key: newKey(),
           upload: { bank: f.parsed.bank, period_from: f.parsed.from, period_to: f.parsed.to, ops_count: own.size },
-          ops: fresh.filter((o) => own.has(o.id)),
+          ops: fresh.filter((o) => own.has(o.id) && !queued.has(o.id)),
         })
+        for (const id of own) queued.add(id)
       }
       if (changed.length) pending.value.push({ key: newKey(), ops: changed })
     }

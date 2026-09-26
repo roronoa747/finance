@@ -5,7 +5,7 @@ import { apiClient, type ApiClient } from '@/api/client'
 import { useAuthStore, DEMO_TOKEN } from './auth'
 import { useFinanceStore } from './finance'
 import { BATCH_SIZE, PULL_LIMIT, toWire, useOperationsStore } from './operations'
-import { assignIds } from '@/lib/statements/model'
+import { assignIds, draftSummary } from '@/lib/statements/model'
 import { parseStatement } from '@/lib/statements/parsers'
 import type { Operation, ParsedStatement } from '@/lib/statements/types'
 import type { OperationsPage, OperationWire, StatementUploadResponse } from '@/types/api'
@@ -91,6 +91,24 @@ describe('stores/operations — отправка выписки', () => {
     expect(store.pending).toEqual([])
     expect(store.uploads.map((u) => u.bank)).toEqual(['kaspi'])
     expect(store.draft).toBeNull()
+  })
+
+  it('пересекающиеся выписки в одном выборе: сводка как у одной, операция уходит один раз', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const { client, server, calls } = fakeServer()
+    store.setDraft(draftOf(kaspi()))
+    const single = draftSummary(store.draftOps, () => false)
+    store.setDraft([...draftOf(kaspi()), { name: 'та же.pdf', parsed: kaspi() }])
+    expect(store.draftOps).toHaveLength(60)
+    expect(draftSummary(store.draftOps, () => false)).toEqual(single)
+
+    await store.send(client)
+    // Обе записи загрузок — со своим числом операций; второй батч пустой и не отправляется.
+    expect(calls.createStatementUpload).toHaveBeenCalledTimes(2)
+    expect(calls.createStatementUpload.mock.calls.map(([u]) => u.ops_count)).toEqual([60, 60])
+    expect(server.batches).toEqual([60])
+    expect(store.pending).toEqual([])
   })
 
   it('итоги — в общем документе по id, из всех своих операций периода; повторная отправка не удваивает', async () => {
