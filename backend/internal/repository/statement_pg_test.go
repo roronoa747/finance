@@ -68,6 +68,13 @@ func TestPostgresStatementsMigrationRerun(t *testing.T) {
 	if tables != 0 {
 		t.Fatalf("migration created %d tables in public", tables)
 	}
+	// Внешние ключи, не покрытые ключом, — с индексами (конвенция 000001): каскад удаления без полного скана.
+	for _, name := range []string{"statement_uploads_user_idx", "operations_household_idx", "operations_upload_idx"} {
+		var found int
+		if err := f.db.QueryRow(`SELECT count(*) FROM pg_indexes WHERE schemaname = 'app' AND indexname = $1`, name).Scan(&found); err != nil || found != 1 {
+			t.Errorf("index %s: %d, %v", name, found, err)
+		}
+	}
 }
 
 func TestPostgresStatementsUploadsAndOperations(t *testing.T) {

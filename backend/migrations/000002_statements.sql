@@ -17,6 +17,9 @@ CREATE TABLE IF NOT EXISTS app.statement_uploads (
 );
 
 CREATE INDEX IF NOT EXISTS statement_uploads_household_idx ON app.statement_uploads (household_id, created_at);
+-- Foreign keys not covered by a key get an index (as in 000001): deleting a user
+-- or a household cascades here without a full scan.
+CREATE INDEX IF NOT EXISTS statement_uploads_user_idx ON app.statement_uploads (user_id);
 
 CREATE TABLE IF NOT EXISTS app.operations (
     user_id UUID NOT NULL REFERENCES app.users(id) ON DELETE CASCADE,
@@ -39,3 +42,7 @@ CREATE TABLE IF NOT EXISTS app.operations (
 
 -- The client pulls its own operations by an updated_at cursor.
 CREATE INDEX IF NOT EXISTS operations_user_updated_idx ON app.operations (user_id, updated_at, id);
+-- Deleting an upload sets upload_id to NULL in its operations: without an index
+-- that is a scan of every user's operations per deleted upload.
+CREATE INDEX IF NOT EXISTS operations_household_idx ON app.operations (household_id);
+CREATE INDEX IF NOT EXISTS operations_upload_idx ON app.operations (upload_id);
