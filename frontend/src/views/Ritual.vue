@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { PhMinus, PhPlus, PhX } from '@phosphor-icons/vue'
 import Button from '@/components/ui/Button.vue'
+import AccountChoice from '@/components/AccountChoice.vue'
 import { money, plain } from '@/lib/money'
 import {
   goalMonths,
+  budgetAmounts,
   creditOutlook,
   emergencyCoverage,
   amountAt,
@@ -16,19 +18,25 @@ import {
   lumpPlan,
   nextChange,
   NO_SAVING,
+  paidFor,
+  payableAccounts,
   planMandatory,
   prepayOutcome,
   planPrepays,
+  salaryFree,
   stepDue,
 } from '@/lib/finance'
 import { monthAfter, monthFrom, monthFromAfter, monthInAfter, monthKey } from '@/lib/dates'
 import { useFinanceStore } from '@/stores/finance'
+import { useAuthStore } from '@/stores/auth'
 import { cn, plural, sentence } from '@/lib/utils'
 
 const STEP = 10_000
 
+const route = useRoute()
 const router = useRouter()
 const financeStore = useFinanceStore()
+const authStore = useAuthStore()
 
 const key = computed(() => monthKey())
 const people = computed(() => financeStore.people)
@@ -36,19 +44,73 @@ const goals = computed(() => liveGoals(financeStore.goals))
 const credits = computed(() => liveCredits(financeStore.credits))
 const obligations = computed(() => liveObligations(financeStore.obligations))
 
+/** Параметр адреса: откуда деньги раскладки. */
+const query = (name: string) => {
+  const v = route.query[name]
+  return typeof v === 'string' ? v : ''
+}
+
+/** Освободившийся платёж обязательства — источник без параметров, как было. */
 const freed = computed(() =>
   obligations.value
     .map((o) => ({ o, change: nextChange(o, key.value) }))
     .find((x) => x.change && x.change.delta < 0),
 )
 
-const total = computed(() => (freed.value?.change ? Math.abs(freed.value.change.delta) : 0))
+/**
+ * Пришедшая зарплата (RP-10): `?from=salary&person=a&period=2026-09`. Сумма — доля
+ * свободного месяца, приходящаяся на неё (finance.ts `salaryFree`); кредиты — производные,
+ * как на Обзоре.
+ */
+const salary = computed(() => {
+  if (query('from') !== 'salary') return null
+  const record = paidFor(financeStore.payments, 'salary', query('person'), query('period'))
+  if (!record) return null
+  const free = budgetAmounts({ ...financeStore.householdDoc, credits: financeStore.credits }).d5
+  return { record, total: salaryFree(free, people.value, record) }
+})
+
+/**
+ * Разовая сумма этого месяца (зарплата): решение — разовые взносы в цели, ежемесячные не
+ * меняются. Освободившийся платёж повторяется каждый месяц: решение прибавляет
+ * ежемесячные взносы.
+ */
+const once = computed(() => query('from') === 'salary')
+
+const total = computed(() =>
+  once.value ? (salary.value?.total ?? 0) : freed.value?.change ? Math.abs(freed.value.change.delta) : 0,
+)
+
+const empty = computed(() => {
+  if (query('from') === 'salary') {
+    return salary.value
+      ? 'Свободного в этой зарплате нет: всё уже расписано планом месяца.'
+      : 'Эта зарплата пока не отмечена — раскладывать нечего.'
+  }
+  return 'Сейчас нет запланированных изменений, которые высвобождают деньги. Событие появится само, когда у обязательства будет версия с будущей датой и меньшей суммой.'
+})
 
 const alloc = ref<Record<string, number>>({})
 const done = ref(false)
+const doneNote = ref('')
 
 const used = computed(() => Object.values(alloc.value).reduce((a, v) => a + v, 0))
 const left = computed(() => total.value - used.value)
+/** Сколько разложено по целям — у разового решения это взносы со счёта. */
+const toGoals = computed(() => goals.value.reduce((a, g) => a + (alloc.value[g.id] ?? 0), 0))
+
+/**
+ * Откуда отложить разовые взносы: по умолчанию — счёт, куда пришла зарплата (Р-5);
+ * «не двигать» — взносы только в целях, как без счёта в окне цели.
+ */
+const picked = ref<string | null | undefined>(undefined)
+const fromAccount = computed<string | null | undefined>({
+  get: () => (picked.value !== undefined ? picked.value : (salary.value?.record.accountId ?? null)),
+  set: (v) => {
+    picked.value = v
+  },
+})
+const accountChoices = computed(() => payableAccounts(financeStore.accounts))
 // Месяц списаний — тот же, что у шага плана (подушка в Ритуале есть только с планом).
 const mandatory = computed(() => planMandatory(financeStore.planState(), key.value))
 // Досрочка — в самый дорогой открытый долг с процентами, не в первый по порядку.
@@ -60,10 +122,12 @@ const plan = computed(() => financeStore.activePlan)
 const step = computed(() => financeStore.planStepNow())
 const paused = computed(() => financeStore.pausedGoalIds)
 
+// Шаг — 10 000; последний забирает остаток, иначе сумма не кратная шагу (доля зарплаты)
+// не раскладывалась бы до нуля и подтвердить было бы нельзя.
 function set(id: string, delta: number) {
   const cur = alloc.value[id] ?? 0
-  if (delta > 0 && left.value < STEP) return
-  alloc.value = { ...alloc.value, [id]: Math.max(0, cur + delta) }
+  const d = delta > 0 ? Math.min(delta, left.value) : delta
+  if (d > 0 || cur > 0) alloc.value = { ...alloc.value, [id]: Math.max(0, cur + d) }
 }
 
 function effectForGoal(goalId: string, extra: number) {
@@ -71,6 +135,13 @@ function effectForGoal(goalId: string, extra: number) {
   if (!g) return ''
   const remaining = Math.max(0, g.need - g.have)
   const base = goalMonths(remaining, g.monthly)
+  if (once.value && extra) {
+    // Разовый взнос: остаток цели меньше, ежемесячный взнос тот же.
+    if (extra >= remaining) return 'Цель соберётся целиком'
+    const now = goalMonths(remaining - extra, g.monthly)
+    if (!Number.isFinite(base) || now === base) return `Останется собрать ${money(remaining - extra)}`
+    return `${monthAfter(now - 1)} вместо ${monthFromAfter(base - 1)}. Быстрее на ${base - now} мес.`
+  }
   if (!extra) return `Сейчас закрывается в ${monthInAfter(base - 1)}`
   const now = goalMonths(remaining, g.monthly + extra)
   return `${monthAfter(now - 1)} вместо ${monthFromAfter(base - 1)}. Быстрее на ${base - now} мес.`
@@ -85,7 +156,7 @@ function effectForCredit(extra: number) {
     if (!now.closes) return `Сейчас: ${NO_SAVING}`
     return `Сейчас: ${now.months} ${plural(now.months, 'платёж', 'платежа', 'платежей')}, переплата ${money(now.overpay)}`
   }
-  const p = prepayOutcome(credit.value, extra, 'monthly')
+  const p = prepayOutcome(credit.value, extra, once.value ? 'once' : 'monthly')
   if (!p) return sentence(NO_SAVING)
   return `Закроется за ${p.monthsAfter} мес. вместо ${p.monthsNow}. Переплата меньше на ${money(p.saved)}`
 }
@@ -115,12 +186,14 @@ function effectForPlan(extra: number) {
 
 /** Цель на паузе ради плана (Р-9): её взнос, и добавка тоже, уходит в досрочку до конца плана. */
 function effectForPaused(extra: number) {
+  if (extra && once.value) return `На паузе ради плана: ${money(extra)} лягут в цель сейчас, её взнос пока идёт в досрочку`
   return extra
     ? `На паузе ради плана: +${money(extra)} пойдут в досрочку, цель ускорится после плана`
     : 'На паузе ради плана: её взнос сейчас идёт в досрочку'
 }
 
 function effectForLife(extra: number) {
+  if (extra && once.value) return `${money(extra)} на себя в этом месяце. Цели при этом не двигаются вперёд.`
   return extra
     ? `${money(extra)} в месяц на себя. Цели при этом не двигаются вперёд.`
     : 'Не ускорит цели — и это нормальный выбор, если он осознанный.'
@@ -144,7 +217,7 @@ const pots = computed(() => [
     name: g.name,
     effect: (x: number) =>
       cushion.value && g.id === cushion.value.id
-        ? `Через год покроет ${emergencyCoverage(g.have + (g.monthly + x) * 12, mandatory.value)
+        ? `Через год покроет ${emergencyCoverage(g.have + g.monthly * 12 + (once.value ? x : x * 12), mandatory.value)
             .toFixed(1)
             .replace('.', ',')} мес. расходов`
         : paused.value.has(g.id)
@@ -162,27 +235,46 @@ const pots = computed(() => [
 ])
 
 function confirm() {
-  for (const g of goals.value) {
-    const extra = alloc.value[g.id] ?? 0
-    if (extra > 0) {
-      financeStore.setGoalMonthly(g.id, g.monthly + extra)
+  if (once.value) {
+    // Разовое решение: взносы в цели сейчас и сдвиг остатка выбранного счёта — как взнос в
+    // окне цели. Досрочка и «качество жизни» не записываются (вне скоупа RP-10).
+    const by = authStore.slot ?? 'a'
+    for (const g of goals.value) {
+      const extra = alloc.value[g.id] ?? 0
+      if (extra > 0) financeStore.contribute(g.id, extra, by, 'из зарплаты')
+    }
+    const acc = fromAccount.value ? financeStore.accounts.find((a) => a.id === fromAccount.value) : undefined
+    if (acc && toGoals.value > 0) financeStore.shiftAccountAmount(acc.id, -toGoals.value)
+    doneNote.value = toGoals.value
+      ? `В цели отложено ${money(toGoals.value)}${acc ? ` со счёта «${acc.name}»` : ''} — взносы видны в истории целей. Ежемесячные взносы не менялись.`
+      : 'Цели не тронуты, ежемесячные взносы не менялись.'
+  } else {
+    for (const g of goals.value) {
+      const extra = alloc.value[g.id] ?? 0
+      if (extra > 0) {
+        financeStore.setGoalMonthly(g.id, g.monthly + extra)
+      }
     }
   }
   void financeStore.syncHousehold()
   done.value = true
 }
+
+// После разового решения назад в раскладку не вернуться: второе подтверждение отложило бы
+// те же деньги ещё раз.
+function home() {
+  if (once.value) void router.replace('/')
+  else void router.push('/')
+}
 </script>
 
 <template>
-  <!-- СОСТОЯНИЕ 1: НЕТ ВЫСВОБОЖДЕНИЯ -->
+  <!-- СОСТОЯНИЕ 1: РАСКЛАДЫВАТЬ НЕЧЕГО -->
   <div
-    v-if="!freed?.change"
+    v-if="total <= 0 && !done"
     class="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center"
   >
-    <p class="text-[14px] text-ink-2">
-      Сейчас нет запланированных изменений, которые высвобождают деньги. Событие появится
-      само, когда у обязательства будет версия с будущей датой и меньшей суммой.
-    </p>
+    <p class="text-[14px] text-ink-2">{{ empty }}</p>
     <Button variant="outline" @click="router.push('/')">На главную</Button>
   </div>
 
@@ -194,12 +286,13 @@ function confirm() {
     <div class="font-display text-[22px] font-semibold tracking-[-0.02em] text-ink">
       Решение записано
     </div>
-    <p class="max-w-[38ch] text-[14px] leading-relaxed text-ink-2">
+    <p v-if="once" class="max-w-[38ch] text-[14px] leading-relaxed text-ink-2 num">{{ doneNote }}</p>
+    <p v-else-if="freed?.change" class="max-w-[38ch] text-[14px] leading-relaxed text-ink-2">
       Взносы по целям увеличены с {{ monthFrom(freed.change.from) }}. Когда появятся
       два аккаунта, это же решение уйдёт {{ people[1]?.name || 'партнёру' }} на подтверждение — с окном 72 часа на
       «вернуть на обсуждение», а не с блокировкой.
     </p>
-    <Button @click="router.push('/')">На главную</Button>
+    <Button @click="home">На главную</Button>
   </div>
 
   <!-- СОСТОЯНИЕ 3: АКТИВНЫЙ РИТУАЛ РАСПРЕДЕЛЕНИЯ -->
@@ -217,6 +310,11 @@ function confirm() {
         Куда направить {{ money(total) }}
       </h2>
     </div>
+
+    <p v-if="salary" class="px-0.5 text-[13px] leading-relaxed text-ink-2 num">
+      Зарплата пришла — {{ money(salary.record.amount) }}. Свободно из неё {{ money(total) }}: остальное
+      уже расписано планом месяца.
+    </p>
 
     <div class="flex items-baseline justify-between rounded-[14px] bg-brand-soft px-4 py-3.5">
       <span class="text-[13px] text-ink-2">Осталось распределить</span>
@@ -257,7 +355,7 @@ function confirm() {
           <button
             type="button"
             aria-label="Прибавить"
-            :disabled="left < STEP"
+            :disabled="left <= 0"
             class="grid size-[30px] place-items-center rounded-[9px] border border-line bg-surface-2 text-ink-2 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed"
             @click="set(p.id, STEP)"
           >
@@ -270,7 +368,18 @@ function confirm() {
       </div>
     </div>
 
-    <p class="px-0.5 text-[12.5px] leading-relaxed text-ink-3">
+    <AccountChoice
+      v-if="once && toGoals > 0"
+      v-model="fromAccount"
+      :accounts="accountChoices"
+      label="Откуда отложить в цели"
+      none="Не двигать остаток счёта"
+    />
+
+    <p v-if="once" class="px-0.5 text-[12.5px] leading-relaxed text-ink-3">
+      Решение разовое: отложенное ляжет в цели сейчас, ежемесячные взносы не изменятся.
+    </p>
+    <p v-else-if="freed?.change" class="px-0.5 text-[12.5px] leading-relaxed text-ink-3">
       Пока решения нет, эти деньги не попадают в «свободно потратить». {{ freed.o.name }} снизится с
       {{ plain(amountAt(freed.o, key)) }} до {{ plain(freed.change.amount) }} ₸ с
       {{ monthFrom(freed.change.from) }}.

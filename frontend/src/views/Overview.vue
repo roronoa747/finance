@@ -22,6 +22,7 @@ import {
   nextChange,
   nextObligationDue,
   salaryAt,
+  salaryOpen,
   untilPayday,
 } from '@/lib/finance'
 import { cn, plural } from '@/lib/utils'
@@ -35,6 +36,7 @@ import Bar, { type Seg } from '@/components/Bar.vue'
 import Legend, { type LegendItem } from '@/components/Legend.vue'
 import Ring from '@/components/Ring.vue'
 import PaidRow from '@/components/PaidRow.vue'
+import SalaryRow from '@/components/SalaryRow.vue'
 
 const router = useRouter()
 const financeStore = useFinanceStore()
@@ -130,6 +132,14 @@ const paydayInfo = computed(() => {
     accounts: financeStore.householdAccounts,
     payments: financeStore.payments,
   })
+})
+
+// «Пришла зарплата» (RP-10): ближайшая зарплата — своя, и её день настал или близко.
+// Тогда карточка видна и без списаний до неё — на ней кнопка.
+const salaryHere = computed(() => {
+  const info = paydayInfo.value
+  if (!info || authStore.isViewer || authStore.slot !== info.who.id) return false
+  return salaryOpen(info.who, financeStore.payments, info.key)
 })
 
 // «Оставить?» (Р-20): один вопрос за раз, спокойно; отвечает участник, не viewer
@@ -260,7 +270,7 @@ const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: ma
     </Callout>
 
     <!-- Блок «До зарплаты» -->
-    <template v-if="paydayInfo && (paydayInfo.due.length || paydayInfo.paid.length)">
+    <template v-if="paydayInfo && (paydayInfo.due.length || paydayInfo.paid.length || salaryHere)">
       <Section title="До зарплаты" />
       <Card>
         <div class="flex items-baseline gap-2">
@@ -274,6 +284,7 @@ const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: ma
         <div class="mt-0.5 text-[13px] text-ink-2">
           {{ paydayInfo.who.name }} получит {{ money(paydayInfo.income) }}
         </div>
+        <SalaryRow v-if="salaryHere" button :person-id="paydayInfo.who.id" :period="paydayInfo.key" />
 
         <div class="mt-3 border-t border-line pt-3">
           <div class="flex items-baseline">

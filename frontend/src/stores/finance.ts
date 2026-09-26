@@ -23,10 +23,12 @@ import {
   planForecast,
   planLumpTakes,
   planStep,
+  salaryAt,
   settlePlans,
   stepDue,
   shiftedBase,
   type LumpMode,
+  type MonthlyKind,
   type PlanState,
   type PlanStep,
   type ScheduledKind,
@@ -964,6 +966,33 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   /**
+   * «Пришла зарплата» (Р-18): запись-зачисление того же списка, что «Оплатил» (Р-7) —
+   * цель — участник, период — месяц её дня (по умолчанию — этот), сумма по умолчанию —
+   * оклад месяца (премия — правкой), счёт — тот, куда она пришла в прошлый раз (Р-5).
+   * Остаток счёта растёт из записи (finance.ts `accountBalance`). Отмеченный месяц
+   * второй записи не получает. Возвращает запись или null, если участника нет.
+   */
+  function markSalary(
+    personId: PersonId,
+    opts: { period?: string; amount?: number; accountId?: string | null } = {},
+  ): Payment | null {
+    const p = people.value.find((x) => x.id === personId && !x.deletedAt)
+    if (!p) return null
+    const period = opts.period ?? monthKey()
+    const existing = paidFor(payments.value, 'salary', personId, period)
+    if (existing) return existing
+    const record = newPayment(
+      { kind: 'salary', targetId: personId, period, amount: opts.amount ?? salaryAt(p, period), by: personId },
+      opts.accountId,
+    )
+    mutateHouseholdDoc((doc) => {
+      if (!doc.payments) doc.payments = []
+      doc.payments.push(record)
+    })
+    return record
+  }
+
+  /**
    * Новая запись отметки: id, момент и счёт. Счёт по умолчанию — прошлой оплаты
    * этой цели (Р-5); оплат не было — «не списывать»: без выбора деньги не двигаются.
    * `at` — когда оплатили: по умолчанию сейчас, у правки — момент исправляемой.
@@ -1000,7 +1029,7 @@ export const useFinanceStore = defineStore('finance', () => {
    * счёт, долг к прежнему остатку. Кроме записи, которую уже покрыла ручная сверка
    * остатка (до якоря): она и так не двигала остаток.
    */
-  function unmarkPaid(kind: ScheduledKind, targetId: string, period: string) {
+  function unmarkPaid(kind: MonthlyKind, targetId: string, period: string) {
     if (!paidFor(payments.value, kind, targetId, period)) return
     const t = new Date().toISOString()
     mutateHouseholdDoc((doc) => buryPair(doc, samePair({ kind, targetId, period }), t))
@@ -1433,6 +1462,7 @@ export const useFinanceStore = defineStore('finance', () => {
     updateCredit,
     removeCredit,
     markPaid,
+    markSalary,
     unmarkPaid,
     editPaid,
     applyPrepayment,

@@ -39,6 +39,7 @@ import Bar from '@/components/Bar.vue'
 import Legend from '@/components/Legend.vue'
 import SalaryDialog from '@/components/SalaryDialog.vue'
 import PaidRow from '@/components/PaidRow.vue'
+import SalaryRow from '@/components/SalaryRow.vue'
 
 const DERIVED_NOTE: Record<string, string> = {
   d1: 'сумма обязательств по жилью',
@@ -70,6 +71,8 @@ interface EventItem {
   estimate?: boolean
   /** Платёж по графику — отмечается «Оплатил». */
   pay?: ScheduledKind
+  /** Зарплата участника — отмечается «Пришла» (RP-10). */
+  salary?: PersonId
   open: () => void
 }
 
@@ -126,6 +129,7 @@ const events = computed<EventItem[]>(() => {
       value: salaryAt(p, key.value),
       color: `var(--p${p.id})`,
       income: true,
+      salary: p.id,
       open: () => {
         salaryFor.value = p.id
       },
@@ -413,6 +417,14 @@ function handleD4Commit(text: string) {
               <PhArrowDown :size="15" weight="bold" />
             </template>
           </PaidRow>
+          <SalaryRow
+            v-else-if="e.salary"
+            :person-id="e.salary"
+            :period="key"
+            :note="e.note"
+            clickable
+            @open="e.open"
+          />
           <Row
             v-else
             :accent="e.color"
@@ -512,6 +524,14 @@ function handleD4Commit(text: string) {
               <PhArrowDown :size="15" weight="bold" />
             </template>
           </PaidRow>
+          <SalaryRow
+            v-else-if="e.salary"
+            :person-id="e.salary"
+            :period="key"
+            :note="`${dayLabel(e.day, key)} · ${e.note}`"
+            clickable
+            @open="e.open"
+          />
           <Row
             v-else
             :accent="e.color"

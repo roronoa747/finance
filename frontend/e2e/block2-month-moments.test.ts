@@ -1,0 +1,134 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { setActivePinia } from 'pinia'
+import { defaultSyncDoc } from '../src/stores/finance'
+import { useAuthStore } from '../src/stores/auth'
+import { at, phone, screen, setOnline, type FakeServer } from './support/family'
+import { accountBalance, budgetAmounts, paidFor, salaryFree } from '../src/lib/finance'
+import { money } from '../src/lib/money'
+import { authAs } from '../src/test/planFamily'
+import Budget from '../src/views/Budget.vue'
+import Overview from '../src/views/Overview.vue'
+import Ritual from '../src/views/Ritual.vue'
+
+/**
+ * Блок 2 развития: моменты месяца. Два телефона — два стора Pinia на одном фейковом
+ * сервере с ревизиями и 409 (`support/family`).
+ */
+describe('e2e / Блок 2 — моменты месяца на двух телефонах', () => {
+  let server: FakeServer
+  const T0 = '2026-09-01T00:00:00.000Z'
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    at('2026-09-10T04:00:00Z') // 10 сентября, 9:00 по Алматы — день зарплаты Ильяса
+    setOnline(true)
+    server = {
+      rev: 1,
+      data: {
+        ...defaultSyncDoc(),
+        setupDoneAt: T0,
+        people: [
+          { id: 'a', name: 'Ильяс', salary: 700_000, payday: 10, updatedAt: T0 },
+          { id: 'b', name: 'Аруна', salary: 500_000, payday: 20, updatedAt: T0 },
+        ],
+        categories: [{ key: 'd4', name: 'Еда и быт', note: '', amount: 300_000, updatedAt: T0 }],
+        accounts: [
+          { id: 'card', name: 'Kaspi Gold', note: '', amount: 1_000_000, amountSetAt: T0, kind: 'card', updatedAt: T0 },
+          { id: 'halyk', name: 'Halyk', note: '', amount: 200_000, amountSetAt: T0, kind: 'card', updatedAt: T0 },
+        ],
+        obligations: [
+          { id: 'rent', name: 'Аренда', note: '', day: 5, category: 'd1', versions: [{ from: '2000-01', amount: 220_000 }], updatedAt: T0 },
+        ],
+        goals: [
+          { id: 'trip', name: 'Отпуск', need: 1_000_000, seed: 100_000, have: 100_000, monthly: 50_000, hue: 'teal', planPct: 0, movements: [], updatedAt: T0 },
+        ],
+        credits: [
+          { id: 'loan', name: 'Кредит', note: '', principal: 1_000_000, principalSetAt: T0, annualRate: 0.33, payment: 58_000, day: 15, updatedAt: T0 },
+        ],
+      },
+    }
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  describe('RP-10 — «Пришла зарплата»', () => {
+    it('A: «Пришла» → карта выросла, раскладка с суммой из finance.ts; B после синка видит зачисление, кнопка — только у себя', async () => {
+      const A = await phone(server)
+      useAuthStore().setAuthData(authAs('member', 'a'))
+      const B = await phone(server)
+      useAuthStore().setAuthData(authAs('member', 'b'))
+
+      // Ильяс отмечает впервые — счёт выбирает в листе (Kaspi Gold), сумма — оклад.
+      setActivePinia(A.pinia)
+      const record = A.store.markSalary('a', { accountId: 'card' })!
+      expect(record).toMatchObject({ kind: 'salary', targetId: 'a', period: '2026-09', amount: 700_000, accountId: 'card', by: 'a' })
+      expect(A.store.accounts.find((x) => x.id === 'card')!.amount).toBe(1_700_000)
+      // Повторное нажатие (или второй телефон до синка) второй записи не пишет.
+      expect(A.store.markSalary('a')!.id).toBe(record.id)
+
+      // Раскладка: сумма — доля свободного на эту зарплату.
+      const free = budgetAmounts({ ...A.store.householdDoc, credits: A.store.credits }).d5
+      const total = salaryFree(free, A.store.people, record)
+      expect(total).toBe(Math.round((free * 700_000) / 1_200_000))
+      const ritual = await screen(A.pinia, Ritual, '/ritual?from=salary&person=a&period=2026-09')
+      expect(ritual).toContain(`Куда направить ${money(total)}`)
+
+      await A.store.syncHousehold(A.client)
+      await B.store.syncHousehold(B.client)
+      expect(B.store.accounts.find((x) => x.id === 'card')!.amount).toBe(1_700_000)
+      expect(paidFor(B.store.payments, 'salary', 'a', '2026-09')?.id).toBe(record.id)
+
+      // У Аруны строка Ильяса — отметка без кнопок; своей зарплаты кнопка ещё рано (20-го).
+      const list = await screen(B.pinia, Budget, '/budget', { initialView: 'list' })
+      const row = (title: string) => list.split('border-b border-line last:border-b-0').find((c) => c.includes(`>${title}<`)) ?? ''
+      expect(row('Зарплата · Ильяс')).toContain('пришла 10 сентября · Kaspi Gold')
+      expect(row('Зарплата · Ильяс')).not.toMatch(/>\s*Пришла\s*<\/button>/)
+      expect(row('Зарплата · Аруна')).not.toMatch(/>\s*Пришла\s*<\/button>/)
+
+      // «До зарплаты» у обоих переключилось на Аруну.
+      const overview = await screen(B.pinia, Overview, '/')
+      expect(overview).toContain('Аруна получит')
+    })
+
+    it('следующая зарплата — на счёт прошлой одним нажатием; снятие возвращает; премия — правкой', async () => {
+      const A = await phone(server)
+      useAuthStore().setAuthData(authAs('member', 'a'))
+      A.store.markSalary('a', { accountId: 'halyk' })
+      at('2026-10-09T04:00:00Z')
+      // Октябрь: счёт не передан — берётся прошлый (Р-5).
+      const oct = A.store.markSalary('a', { period: '2026-10' })!
+      expect(oct.accountId).toBe('halyk')
+      expect(A.store.accounts.find((x) => x.id === 'halyk')!.amount).toBe(200_000 + 1_400_000)
+
+      // Премия: правка суммы — новая запись с тем же моментом.
+      const bonus = A.store.editPaid(oct, { amount: 900_000, accountId: 'halyk' })!
+      expect(bonus.at).toBe(oct.at)
+      expect(A.store.accounts.find((x) => x.id === 'halyk')!.amount).toBe(200_000 + 700_000 + 900_000)
+
+      A.store.unmarkPaid('salary', 'a', '2026-10')
+      expect(paidFor(A.store.payments, 'salary', 'a', '2026-10')).toBeNull()
+      expect(accountBalance(A.store.householdDoc.accounts[1], A.store.payments)).toBe(900_000)
+    })
+
+    it('офлайн: обе зарплаты отмечены на своих телефонах без сети — после синка обе на карте', async () => {
+      const A = await phone(server)
+      const B = await phone(server)
+      setOnline(false)
+      setActivePinia(A.pinia)
+      A.store.markSalary('a', { accountId: 'card' })
+      at('2026-09-20T04:00:00Z')
+      setActivePinia(B.pinia)
+      B.store.markSalary('b', { accountId: 'card' })
+      setOnline(true)
+      await A.store.syncHousehold(A.client)
+      await B.store.syncHousehold(B.client)
+      await A.store.syncHousehold(A.client)
+      for (const s of [A.store, B.store]) {
+        expect(s.accounts.find((x) => x.id === 'card')!.amount).toBe(1_000_000 + 700_000 + 500_000)
+      }
+    })
+  })
+})

@@ -1004,6 +1004,8 @@ export const netWorth = (accounts: Account[], credits: Credit[], goals: Goal[] =
 
 /** Что можно отметить по графику. Досрочка — не платёж графика, а отдельный взнос. */
 export type ScheduledKind = 'obligation' | 'credit'
+/** Отметка за месяц — одна на пару (цель, месяц): платёж по графику или зарплата (RP-10). */
+export type MonthlyKind = ScheduledKind | 'salary'
 
 /**
  * Очередной платёж кредита: сколько уйдёт в проценты и сколько в тело (Р-4).
@@ -1085,7 +1087,7 @@ export function countedPayments(payments: Payment[] = []): Payment[] {
 /** Отметка, по которой платёж за месяц считается оплаченным; null — не отмечен. */
 export function paidFor(
   payments: Payment[] = [],
-  kind: ScheduledKind,
+  kind: MonthlyKind,
   targetId: string,
   period: string,
 ): Payment | null {
@@ -1102,11 +1104,15 @@ export function paidFor(
  */
 export const afterAnchor = (p: Payment, anchor?: string | null) => !anchor || p.at >= anchor
 
-/** Остаток счёта: база минус списания по отметкам после сверки. */
+/**
+ * Остаток счёта: база минус списания и плюс зарплаты по отметкам после сверки.
+ * Зарплата (RP-10) — зачисление; знак записи — только здесь: `shiftedBase` и стор
+ * берут остаток отсюда.
+ */
 export function accountBalance(a: Account, payments: Payment[] = []): number {
   return countedPayments(payments)
     .filter((p) => p.accountId === a.id && afterAnchor(p, a.amountSetAt))
-    .reduce((left, p) => left - p.amount, a.amount)
+    .reduce((left, p) => (p.kind === 'salary' ? left + p.amount : left - p.amount), a.amount)
 }
 
 /**
@@ -1367,7 +1373,8 @@ export const duesTotal = (dues: MonthDue[]) => dues.reduce((a, d) => a + d.amoun
  * месяце в «заплатить» не входит: деньги уже ушли со счёта, иначе вычлись бы
  * дважды (Р-5, честный остаток). Оно возвращается отдельно (`paid`, сумма — из
  * отметки), чтобы экран показал его оплаченным, а не молча потерял. Закрытый
- * кредит платежа не ждёт.
+ * кредит платежа не ждёт. Зарплата, отмеченная «пришла» (RP-10), уже не «до»: блок
+ * смотрит на следующую.
  */
 export function untilPayday(
   state: {
@@ -1388,15 +1395,18 @@ export function untilPayday(
   const key = now.key;
   const days = daysInMonth(key);
 
-  const ahead = people
-    .filter((p) => p.payday >= now.day)
-    .sort((a, b) => a.payday - b.payday)[0];
-  const wrapped = [...people].sort((a, b) => a.payday - b.payday)[0];
-  const who = ahead ?? wrapped;
-  if (!who) return null;
+  // Ближайшая непришедшая зарплата: этого месяца — с сегодняшнего дня, затем следующего.
+  const slots = [
+    ...people.filter((p) => p.payday >= now.day).map((p) => ({ p, k: key, inDays: p.payday - now.day })),
+    ...people.map((p) => ({ p, k: addMonths(key, 1), inDays: days - now.day + p.payday })),
+  ].sort((a, b) => a.inDays - b.inDays);
+  const slot = slots.find((s) => !paidFor(payments, 'salary', s.p.id, s.k));
+  if (!slot) return null;
 
-  const nextKey = ahead ? key : addMonths(key, 1);
-  const inDays = ahead ? who.payday - now.day : days - now.day + who.payday;
+  const who = slot.p;
+  const ahead = slot.k === key;
+  const nextKey = slot.k;
+  const inDays = slot.inDays;
 
   const itemsOf = (k: string) =>
     monthDues({ obligations, credits, payments }, k).map((d) => ({
@@ -1439,6 +1449,46 @@ export function untilPayday(
     onAccounts,
     shortfall: onAccounts - dueTotal,
   };
+}
+
+/* ---------------- «Пришла зарплата» (RP-10) ---------------- */
+
+/**
+ * За сколько дней до дня зарплаты её уже можно отметить «пришла»: деньги приходят
+ * раньше, когда день выпадает на выходной или праздник.
+ */
+export const SALARY_EARLY_DAYS = 3;
+
+/**
+ * Ждёт ли зарплата участника за месяц `period` отметки «пришла» сейчас: не отмечена, и
+ * её день настал или до него не больше SALARY_EARLY_DAYS. Зарплата этого месяца после
+ * своего дня ждёт до конца месяца — неотмеченная нейтральна, как платёж (Р-3);
+ * следующего — только в окне перед днём (зарплата 1-го числа — в конце этого месяца).
+ * День 31-го в коротком месяце — его последний день. Календарь — Алматы (Р-30).
+ */
+export function salaryOpen(p: Person, payments: Payment[], period: string, now = today()): boolean {
+  if (paidFor(payments, 'salary', p.id, period)) return false;
+  const day = Math.min(p.payday, daysInMonth(period));
+  if (period === now.key) return now.day >= day - SALARY_EARLY_DAYS;
+  if (period === addMonths(now.key, 1)) return daysInMonth(now.key) - now.day + day <= SALARY_EARLY_DAYS;
+  return false;
+}
+
+/**
+ * Сколько из пришедшей зарплаты свободно — сумма раскладки в Ритуале (RP-10 п. 3).
+ *
+ * План месяца построен на окладах, поэтому свободный остаток месяца (`free` —
+ * `budgetAmounts(...).d5`) делится между зарплатами пропорционально окладам: каждая
+ * несёт свою долю обязательств и взносов. Разница пришедшего с окладом — премия или
+ * недоплата — целиком ложится на свободное: обязательства от неё не меняются. Меньше
+ * нуля не бывает (план не сходится — раскладывать нечего); целые тенге.
+ */
+export function salaryFree(free: number, people: Person[], record: Pick<Payment, 'targetId' | 'period' | 'amount'>): number {
+  const p = (people || []).find((x) => alive(x) && x.id === record.targetId);
+  const base = p ? salaryAt(p, record.period) : 0;
+  const income = totalIncome(people, record.period);
+  const share = income > 0 ? (free * base) / income : 0;
+  return Math.max(0, Math.round(share + record.amount - base));
 }
 
 /** Подсчёт ликвидных средств на картах и счетах. */

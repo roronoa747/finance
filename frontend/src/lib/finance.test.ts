@@ -76,6 +76,9 @@ import {
   planSchedule,
   endedPlan,
   budgetLines,
+  salaryOpen,
+  salaryFree,
+  SALARY_EARLY_DAYS,
   type PlanState,
 } from './finance'
 import { plain, money, moneyShort, parseMoney, pct, ratePct } from './money'
@@ -1948,3 +1951,142 @@ describe('PV-14 — план «Сначала долги»: модель и ра
     })
   })
 })
+
+describe('RP-10 — «Пришла зарплата»', () => {
+  const T0 = '2026-09-01T00:00:00Z'
+  const salary = (p: Partial<Payment> & Pick<Payment, 'id'>): Payment => ({
+    kind: 'salary',
+    targetId: 'a',
+    period: '2026-09',
+    amount: 700_000,
+    accountId: 'card',
+    by: 'a',
+    at: '2026-09-10T04:00:00Z',
+    updatedAt: '2026-09-10T04:00:00Z',
+    ...p,
+  })
+  const card: Account = { id: 'card', name: 'Kaspi', note: '', amount: 500_000, amountSetAt: T0, kind: 'card', updatedAt: T0 }
+  const ilyas: Person = { id: 'a', name: 'Ильяс', salary: 700_000, payday: 10, updatedAt: T0 }
+  const aruna: Person = { id: 'b', name: 'Аруна', salary: 500_000, payday: 20, updatedAt: T0 }
+  const rentMark: Payment = { ...salary({ id: 'r' }), kind: 'obligation', targetId: 'rent', amount: 220_000 }
+
+  it('зачисление: производный остаток счёта растёт, списания рядом вычитаются', () => {
+    expect(accountBalance(card, [salary({ id: 's1' })])).toBe(1_200_000)
+    expect(accountBalance(card, [salary({ id: 's1' }), rentMark])).toBe(980_000)
+    // «Не зачислять» и чужой счёт остаток не двигают.
+    expect(accountBalance(card, [salary({ id: 's1', accountId: null })])).toBe(500_000)
+    expect(accountBalance(card, [salary({ id: 's1', accountId: 'halyk' })])).toBe(500_000)
+    // Зарплата до ручной сверки уже в введённой сумме — второй раз не прибавляется.
+    expect(accountBalance({ ...card, amountSetAt: '2026-09-11T00:00:00Z' }, [salary({ id: 's1' })])).toBe(500_000)
+  })
+
+  it('повтор с другого устройства не удваивает: считается ранняя из пары (участник, месяц)', () => {
+    const phoneA = salary({ id: 's1', at: '2026-09-10T04:00:00Z' })
+    const phoneB = salary({ id: 's2', at: '2026-09-10T04:05:00Z', amount: 900_000 })
+    expect(accountBalance(card, [phoneB, phoneA])).toBe(1_200_000)
+    expect(paidFor([phoneB, phoneA], 'salary', 'a', '2026-09')?.id).toBe('s1')
+    // Зарплата другого месяца и другого участника — свои пары.
+    const oct = salary({ id: 's3', period: '2026-10', at: '2026-10-10T04:00:00Z' })
+    const b = salary({ id: 's4', targetId: 'b', amount: 500_000, at: '2026-09-20T04:00:00Z' })
+    expect(accountBalance(card, [phoneA, phoneB, oct, b])).toBe(500_000 + 700_000 * 2 + 500_000)
+    // Отметка обязательства с таким же targetId зарплатой не считается.
+    expect(paidFor([{ ...rentMark, targetId: 'a' }], 'salary', 'a', '2026-09')).toBeNull()
+  })
+
+  it('снятие возвращает: надгробие на пару — остаток к прежнему; сдвиг берёт остаток с зарплатой', () => {
+    const s = salary({ id: 's1' })
+    const gone = { ...s, deletedAt: '2026-09-11T00:00:00Z' }
+    expect(accountBalance(card, [gone])).toBe(500_000)
+    expect(paidFor([gone], 'salary', 'a', '2026-09')).toBeNull()
+    // Остаток не уводится ниже нуля — видимый считается с зачислением.
+    const empty = { ...card, amount: 0 }
+    expect(shiftedBase(empty, [s], -900_000)).toBe(-700_000)
+    expect(accountBalance({ ...empty, amount: shiftedBase(empty, [s], -900_000) }, [s])).toBe(0)
+  })
+
+  it('счёт по умолчанию — куда зарплата пришла в прошлый раз (Р-5); «не зачислять» тоже помнится', () => {
+    const accounts = [card, { ...card, id: 'halyk', name: 'Halyk' }]
+    expect(lastAccountFor([], 'a', accounts)).toBeUndefined()
+    const aug = salary({ id: 's0', period: '2026-08', accountId: 'halyk', at: '2026-08-10T04:00:00Z' })
+    expect(lastAccountFor([aug], 'a', accounts)).toBe('halyk')
+    expect(lastAccountFor([aug, salary({ id: 's1', accountId: null })], 'a', accounts)).toBeNull()
+    // Зарплата партнёра на выбор не влияет.
+    expect(lastAccountFor([aug, salary({ id: 's2', targetId: 'b', accountId: 'card' })], 'a', accounts)).toBe('halyk')
+  })
+
+  it('кнопка открыта с окна перед днём зарплаты до конца месяца; отмеченная — закрыта', () => {
+    const sep = (day: number) => ({ day, key: '2026-09' })
+    expect(SALARY_EARLY_DAYS).toBe(3)
+    expect(salaryOpen(ilyas, [], '2026-09', sep(6))).toBe(false)
+    expect(salaryOpen(ilyas, [], '2026-09', sep(7))).toBe(true)
+    expect(salaryOpen(ilyas, [], '2026-09', sep(10))).toBe(true)
+    // После дня — ждёт до конца месяца, без упрёка.
+    expect(salaryOpen(ilyas, [], '2026-09', sep(30))).toBe(true)
+    expect(salaryOpen(ilyas, [salary({ id: 's1' })], '2026-09', sep(10))).toBe(false)
+    // Снятая — снова открыта.
+    expect(salaryOpen(ilyas, [salary({ id: 's1', deletedAt: T0 })], '2026-09', sep(10))).toBe(true)
+    // Прошлый месяц и далёкий следующий — нет.
+    expect(salaryOpen(ilyas, [], '2026-08', sep(1))).toBe(false)
+    expect(salaryOpen(ilyas, [], '2026-10', sep(10))).toBe(false)
+    // Зарплата 1-го числа: в конце прошлого месяца — окно следующего (30 сентября — за 1 день).
+    const first = { ...ilyas, payday: 1 }
+    expect(salaryOpen(first, [], '2026-10', sep(27))).toBe(false)
+    expect(salaryOpen(first, [], '2026-10', sep(28))).toBe(true)
+    expect(salaryOpen(first, [], '2026-10', sep(30))).toBe(true)
+    // 31-е в сентябре — 30-е: окно с 27-го.
+    const last = { ...ilyas, payday: 31 }
+    expect(salaryOpen(last, [], '2026-09', sep(26))).toBe(false)
+    expect(salaryOpen(last, [], '2026-09', sep(27))).toBe(true)
+  })
+
+  it('доля свободного на зарплату: пропорционально окладам, премия — целиком в свободное, не меньше нуля', () => {
+    const people = [ilyas, aruna]
+    // Свободно 120 000 при доходе 1 200 000: на 700 000 — 70 000, на 500 000 — 50 000.
+    expect(salaryFree(120_000, people, salary({ id: 's1' }))).toBe(70_000)
+    expect(salaryFree(120_000, people, salary({ id: 's2', targetId: 'b', amount: 500_000 }))).toBe(50_000)
+    // Доли в сумме — всё свободное месяца.
+    expect(
+      salaryFree(120_000, people, salary({ id: 's1' })) + salaryFree(120_000, people, salary({ id: 's2', targetId: 'b', amount: 500_000 })),
+    ).toBe(120_000)
+    // Премия 200 000 — вся свободна; недоплата уменьшает долю.
+    expect(salaryFree(120_000, people, salary({ id: 's1', amount: 900_000 }))).toBe(270_000)
+    expect(salaryFree(120_000, people, salary({ id: 's1', amount: 650_000 }))).toBe(20_000)
+    // План не сходится — раскладывать нечего (премия сначала закрывает недостачу).
+    expect(salaryFree(-60_000, people, salary({ id: 's1' }))).toBe(0)
+    expect(salaryFree(-60_000, people, salary({ id: 's1', amount: 800_000 }))).toBe(65_000)
+    // Оклад месяца — по версиям; дробь округляется до тенге.
+    const raised = { ...ilyas, salaryVersions: [{ from: '2026-09', amount: 800_000 }] }
+    expect(salaryFree(100_001, [raised, aruna], salary({ id: 's1', amount: 800_000 }))).toBe(Math.round((100_001 * 800_000) / 1_300_000))
+    // Одиночка — вся свободная часть его.
+    expect(salaryFree(120_000, [ilyas], salary({ id: 's1' }))).toBe(120_000)
+  })
+
+  it('«до зарплаты» после отметки переключается на следующую зарплату', () => {
+    const people = [ilyas, aruna]
+    const now = { day: 9, key: '2026-09' }
+    const before = untilPayday({ people, accounts: [card] }, now)!
+    expect([before.who.id, before.key, before.inDays]).toEqual(['a', '2026-09', 1])
+
+    // Ильяс отметил раньше дня — ближайшая теперь у Аруны.
+    const a = salary({ id: 's1', at: '2026-09-09T04:00:00Z' })
+    const next = untilPayday({ people, accounts: [card], payments: [a] }, now)!
+    expect([next.who.id, next.key, next.inDays]).toEqual(['b', '2026-09', 11])
+
+    // Обе пришли — следующая через месяц.
+    const b = salary({ id: 's2', targetId: 'b', amount: 500_000, at: '2026-09-09T05:00:00Z' })
+    const oct = untilPayday({ people, payments: [a, b] }, now)!
+    expect([oct.who.id, oct.key, oct.inDays]).toEqual(['a', '2026-10', 31])
+
+    // Снятие возвращает «до зарплаты» к Ильясу.
+    expect(untilPayday({ people, payments: [{ ...a, deletedAt: T0 }, b] }, now)!.who.id).toBe('a')
+
+    // Зарплата 1-го, отмеченная 29 сентября за октябрь, — дальше зарплата Аруны 20 октября.
+    const first = { ...ilyas, payday: 1 }
+    const late = { day: 29, key: '2026-09' }
+    expect(untilPayday({ people: [first, aruna] }, late)!.key).toBe('2026-10')
+    const early = salary({ id: 's5', period: '2026-10', at: '2026-09-29T04:00:00Z' })
+    const after = untilPayday({ people: [first, aruna], payments: [early] }, late)!
+    expect([after.who.id, after.key, after.inDays]).toEqual(['b', '2026-10', 21])
+  })
+})
+
