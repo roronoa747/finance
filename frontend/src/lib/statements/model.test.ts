@@ -5,15 +5,20 @@ import {
   applyRules,
   assignIds,
   categorize,
+  draftSummary,
   fingerprint,
   matchPerson,
   normalizeMerchant,
   pairInternalTransfers,
+  partnerHints,
+  periodsOf,
+  picture,
   sanitize,
   seedSpendCategories,
   spendTotals,
+  unknownGroups,
 } from './model'
-import type { MerchantRule, Operation } from './types'
+import type { MerchantRule, Operation, SpendTotal } from './types'
 
 const T = '2026-09-20T10:00:00.000Z'
 let seq = 0
@@ -237,5 +242,53 @@ describe('seedSpendCategories', () => {
     expect(doc.spendCategories?.[0]).toEqual({ ...DEFAULT_SPEND_CATEGORIES[0], updatedAt: T })
     expect(seedSpendCategories(doc, '2027-01-01T00:00:00Z')).toBe(false)
     expect(doc.spendCategories?.[0].updatedAt).toBe(T)
+  })
+})
+
+describe('функции экрана выписок (B2C-07)', () => {
+  it('periodsOf — недели и месяцы без повторов', () => {
+    const got = periodsOf([op({ date: '2026-09-27' }), op({ date: '2026-09-28' }), op({ date: '2026-09-28' })])
+    expect(got).toEqual([
+      { kind: 'week', period: '2026-W39' }, { kind: 'month', period: '2026-09' }, { kind: 'week', period: '2026-W40' },
+    ])
+  })
+
+  it('draftSummary — списания, поступления, внутренние, «уже были»', () => {
+    const ops = [op({ id: 'x1', amount: -500 }), op({ id: 'x2', amount: 900 }), op({ id: 'x3', amount: -300, internal: true })]
+    expect(draftSummary(ops, (id) => id === 'x1')).toEqual({ total: 3, already: 1, spent: 500, received: 900, internal: 300 })
+  })
+
+  it('unknownGroups — по продавцу и получателю, по сумме; раздел задним числом', () => {
+    const ops = [
+      op({ merchant: 'IP ZHANSAYA ALMATY KZ', amount: -100 }),
+      op({ merchant: 'IP ZHANSAYA ASTANA KZ', amount: -200 }),
+      op({ kind: 'transfer-out', merchant: 'Дана К.', counterparty: 'Дана К.', amount: -5000 }),
+      op({ merchant: 'Magnum', amount: -700, categoryId: 'sc_food' }),
+      op({ merchant: 'Возврат', amount: 400 }),
+    ]
+    expect(unknownGroups(ops)).toEqual([
+      { match: { counterparty: 'дана к.' }, label: 'Дана К.', count: 1, amount: 5000 },
+      { match: { merchant: 'zhansaya' }, label: 'IP ZHANSAYA ALMATY KZ', count: 2, amount: 300 },
+    ])
+    expect(unknownGroups(ops, 'sc_food').map((g) => g.label)).toEqual(['Magnum'])
+  })
+
+  it('partnerHints — другой участник по имени, пока правила нет', () => {
+    const people = [{ id: 'a', name: 'Алихан', updatedAt: T }, { id: 'b', name: 'Дана', updatedAt: T }] as Person[]
+    const ops = [op({ kind: 'transfer-out', counterparty: 'Дана К.' }), op({ kind: 'transfer-in', counterparty: 'Алихан С.' })]
+    expect(partnerHints(ops, people, 'a', [])).toEqual([{ counterparty: 'дана к.', label: 'Дана К.', person: 'b' }])
+    expect(partnerHints(ops, people, 'a', [rule({ match: { counterparty: 'дана к.' }, to: { internal: true } })])).toEqual([])
+  })
+
+  it('picture — сумма обоих участников, неделя и месяц, нулевые не показываются', () => {
+    const t = (id: string, amount: number) => {
+      const [by, kind, period, categoryId] = id.split(':')
+      return { id, by, kind, period, categoryId, amount, ops: 1, updatedAt: T } as SpendTotal
+    }
+    const rows = picture([
+      t('a:week:2026-W39:sc_food', 1000), t('b:week:2026-W39:sc_food', 500), t('a:month:2026-09:sc_food', 4000),
+      t('a:month:2026-09:sc_cafe', 0), t('a:month:2026-08:sc_cafe', 900),
+    ], '2026-W39', '2026-09')
+    expect(rows).toEqual([{ categoryId: 'sc_food', week: 1500, month: 4000 }])
   })
 })
