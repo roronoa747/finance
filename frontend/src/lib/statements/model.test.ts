@@ -61,6 +61,13 @@ describe('sanitize', () => {
     expect(sanitize('  a \n  b\t c ')).toBe('a b c')
     expect(sanitize('x'.repeat(200))).toHaveLength(120)
   })
+
+  it('удаляет управляющие символы: NUL не доходит до сервера, разорванный номер уходит целиком', () => {
+    expect(sanitize('MAGNUM\u0000 ALMATY\u0001')).toBe('MAGNUM ALMATY')
+    expect(sanitize('12345\u00006789')).toBe('')
+    expect(sanitize('a\tb\rc')).toBe('a b c')
+    expect(normalizeMerchant('MAGNUM\u0000 ALMATY')).toBe('magnum')
+  })
 })
 
 describe('normalizeMerchant', () => {

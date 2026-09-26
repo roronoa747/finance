@@ -23,9 +23,12 @@ export function shortenFullNames(text: string): string {
 /**
  * Приватность текста выписки (Р-23): IBAN целиком и длинные цифры (номера карт, счетов, ИИН,
  * договоров) убираются, полные ФИО сокращаются до «Имя Ф.»; пробелы схлопнуты, ≤ 120 знаков.
+ * Управляющие символы (pdf.js отдаёт их на неизвестных глифах) — первыми: пробельные становятся
+ * пробелом, остальные удаляются — номер, разорванный NUL, склеивается и уходит целиком.
  */
 export function sanitize(text: string): string {
-  const numbers = text.replace(/KZ[0-9A-Z]{18}/g, '').replace(/\d{6,}/g, '')
+  const printable = text.replace(/\p{Cc}/gu, (c) => (/\s/.test(c) ? ' ' : ''))
+  const numbers = printable.replace(/KZ[0-9A-Z]{18}/g, '').replace(/\d{6,}/g, '')
   return shortenFullNames(numbers).replace(/\s+/g, ' ').trim().slice(0, 120).trim()
 }
 
