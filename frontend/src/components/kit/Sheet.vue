@@ -152,10 +152,11 @@ onUnmounted(() => {
           </button>
         </div>
 
-        <slot />
+        <!-- close — «Готово» окна закрывает так же, как крестик: сначала уводит фокус из поля. -->
+        <slot :close="close" />
 
         <div v-if="$slots.footer" class="mt-1">
-          <slot name="footer" />
+          <slot name="footer" :close="close" />
         </div>
       </div>
     </div>

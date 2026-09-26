@@ -1230,3 +1230,39 @@ describe('PV-17 (Р-8): график в окне кредита — с шага�
     expect(store.status).toBe('idle')
   })
 })
+
+describe('PV-23 п. 9: строка кредита 0% — «без процентов» (React Capital.tsx:156)', () => {
+  const storage = new Map<string, string>()
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('рассрочка под 0% — «без процентов · N платежей»; кредит с процентами — «ГЭСВ …»', async () => {
+    const store = useFinanceStore()
+    const T = '2026-09-01T00:00:00.000Z'
+    store.setHouseholdDoc(
+      {
+        ...planFamilyDoc(),
+        credits: [
+          { id: 'phone', name: 'Телефон', note: 'рассрочка', principal: 200_000, principalSetAt: T, annualRate: 0, payment: 20_000, day: 25, updatedAt: T },
+          { id: 'loan', name: 'Кредит', note: '', principal: 1_000_000, principalSetAt: T, annualRate: 0.25, payment: 60_000, day: 12, updatedAt: T },
+        ],
+      },
+      1,
+    )
+    const html = (await renderScreen(Capital, '/capital')).replace(/\s+/g, ' ')
+    expect(html).toContain('без процентов · 10 платежей')
+    expect(html).toContain('ГЭСВ 25')
+    expect(html).not.toMatch(/>\s*рассрочка ·/)
+  })
+})

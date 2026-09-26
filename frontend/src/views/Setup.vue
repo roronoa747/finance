@@ -7,12 +7,13 @@ import { useFinanceStore } from '@/stores/finance'
 import { parseMoney, money, ratePct } from '@/lib/money'
 import { liveGoals, liveObligations } from '@/lib/finance'
 import { setupCreditRate, setupGoalMonthly, setupPlan, type SetupForm, type SetupSkips } from '@/lib/setup'
-import { HUES, HUE_KEYS, type HueKey } from '@/lib/palette'
+import type { HueKey } from '@/lib/palette'
 import { useInvite } from '@/components/useInvite'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Field from '@/components/kit/Field.vue'
 import NumField from '@/components/kit/NumField.vue'
+import HuePicker from '@/components/goals/HuePicker.vue'
 import Segmented from '@/components/kit/Segmented.vue'
 
 type Step = 'income' | 'housing' | 'credit' | 'goal' | 'invite'
@@ -208,21 +209,21 @@ function finish() {
         <template v-if="step === 'income'">
           {{
             joining
-              ? 'Жильё и цели партнёр уже завёл. От вас нужна только зарплата.'
-              : 'Оклад без бонусов. Нерегулярные премии добавим отдельно.'
+              ? 'Жильё и цели партнёр уже завёл. От вас нужна только зарплата — без неё бюджет посчитает долю неверно.'
+              : 'Оклад без бонусов. Нерегулярные премии добавим отдельно — они не должны попадать в план месяца.'
           }}
         </template>
         <template v-else-if="step === 'housing'">
-          Самая большая статья у большинства пар. С неё считается подушка безопасности.
+          Самая большая статья у большинства пар. С неё считается и доля жилья в доходе, и подушка.
         </template>
         <template v-else-if="step === 'credit'">
-          Если есть — приложение покажет переплату и экономию от досрочного погашения.
+          Если есть — приложение посчитает переплату и покажет, что даст досрочное погашение.
         </template>
         <template v-else-if="step === 'goal'">
-          Одной цели достаточно. Приложение посчитает, сколько откладывать в месяц.
+          Одной цели достаточно, остальные добавите позже. Приложение посчитает, сколько откладывать в месяц.
         </template>
         <template v-else-if="step === 'invite'">
-          Бюджет общий: у второго будет свой вход, а цели и покупки — одни на двоих.
+          Бюджет общий: у второго будет свой вход, свои цвета и свой доход, а цели и покупки — одни на двоих.
         </template>
       </p>
     </div>
@@ -240,6 +241,10 @@ function finish() {
         <Field label="День зарплаты (1–28)">
           <NumField v-model="payday" kind="int" placeholder="10" />
         </Field>
+        <p class="text-[12.5px] leading-relaxed text-ink-3">
+          День нужен, чтобы календарь показал провал между вашей зарплатой и зарплатой партнёра —
+          когда платежи уже прошли, а деньги ещё не пришли.
+        </p>
       </div>
 
       <!-- Step 2: Housing -->
@@ -260,14 +265,18 @@ function finish() {
         <Field label="День платежа">
           <NumField v-model="housingDay" kind="int" placeholder="5" />
         </Field>
-        <Field label="Коммуналка в месяц, ₸ (примерно)">
+        <Field label="Коммуналка в месяц, ₸ — примерно">
           <NumField v-model="utilitiesAmount" placeholder="22 000" />
         </Field>
+        <p class="text-[12.5px] leading-relaxed text-ink-3">
+          Коммуналку приложение будет помечать как оценку: она плавает по сезонам, и выдавать её
+          за точную цифру нечестно.
+        </p>
       </div>
 
       <!-- Step 3: Credit -->
       <div v-else-if="step === 'credit'" class="flex flex-col gap-2">
-        <Field label="Есть действующий кредит или рассрочка?">
+        <Field label="Есть кредит?">
           <Segmented
             v-model="hasCredit"
             :options="[
@@ -330,7 +339,7 @@ function finish() {
 
       <!-- Step 4: Goal -->
       <div v-else-if="step === 'goal'" class="flex flex-col gap-2">
-        <Field label="Название цели">
+        <Field label="Название">
           <Input v-model="goalName" placeholder="Первая квартира" />
         </Field>
         <Field label="Сколько нужно, ₸">
@@ -339,25 +348,10 @@ function finish() {
         <Field label="Уже накоплено, ₸">
           <NumField v-model="goalHave" placeholder="0" />
         </Field>
-        <Field label="За сколько месяцев хотите накопить">
+        <Field label="За сколько месяцев хотите успеть">
           <NumField v-model="goalMonths" kind="int" placeholder="24" />
         </Field>
-        <Field label="Цвет">
-          <div class="flex flex-wrap gap-2">
-            <button
-              v-for="h in HUE_KEYS"
-              :key="h"
-              type="button"
-              :aria-label="HUES[h].label"
-              :class="[
-                'size-7 rounded-xl border-2 transition-all cursor-pointer',
-                goalHue === h ? 'border-ink scale-105 shadow-xs' : 'border-transparent',
-              ]"
-              :style="{ background: HUES[h].light }"
-              @click="goalHue = h"
-            />
-          </div>
-        </Field>
+        <HuePicker v-model="goalHue" />
         <div v-if="calculatedGoalMonthly > 0" class="rounded-xl border border-brand bg-brand-soft p-3.5">
           <span class="text-[12.5px] text-ink-2">Откладывать в месяц</span>
           <div class="font-display text-[21px] font-semibold num text-ink">
@@ -385,16 +379,18 @@ function finish() {
             </button>
           </div>
           <p class="text-[12.5px] leading-relaxed text-ink-2 max-w-[280px]">
-            Продиктуйте его партнёру. Он войдёт по коду и присоединится к вашей семье.
+            Продиктуйте его партнёру. Он открывает тот же адрес, регистрируется и выбирает
+            «По коду». Код действует две недели и срабатывает один раз.
           </p>
-          <span v-if="copied" class="text-[12px] font-medium text-brand">Скопировано в буфер</span>
+          <span v-if="copied" class="text-[12px] font-medium text-brand">Скопировано</span>
         </template>
         <template v-else>
           <p class="text-[13px] leading-relaxed text-ink-2">
-            Создадим короткий код — его удобно продиктовать вслух. Код действует две недели.
+            Создадим короткий код — его удобно продиктовать вслух, не пересылая ничего в
+            переписке.
           </p>
           <Button class="w-full" :disabled="inviteBusy" @click="handleMakeInvite">
-            {{ inviteBusy ? 'Создаём…' : 'Создать код приглашения' }}
+            {{ inviteBusy ? 'Минуту…' : 'Создать код' }}
           </Button>
           <p v-if="inviteError" role="alert" class="text-[12.5px] text-warn">{{ inviteError }}</p>
         </template>

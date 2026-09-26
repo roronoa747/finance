@@ -140,7 +140,7 @@ function creditSub(c: Credit): string | undefined {
 
 /** Строка кредита: ставка, сколько платежей и следующий платёж — в долг и банку (Р-8). */
 function creditNote(c: Credit): string {
-  const head = `${c.annualRate > 0 ? 'ГЭСВ ' + ratePct(c.annualRate, 1) : 'рассрочка'} · ${paymentsLeft(c)}`
+  const head = `${c.annualRate > 0 ? 'ГЭСВ ' + ratePct(c.annualRate, 1) : 'без процентов'} · ${paymentsLeft(c)}`
   const due = nextCreditDue(c, financeStore.payments)
   if (!due) return head
   const split = paymentSplit(null, c, due.amount)

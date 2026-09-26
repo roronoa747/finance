@@ -74,3 +74,23 @@ describe('PV-19: GoalSheet в DOM — закрытие окна не теряе�
     expect(store.goals.find((g) => g.id === 'trip')!.name).toBe('Отпуск в Турции')
   })
 })
+
+describe('PV-23 (хвосты Б4): «Готово» через close() кита; взноса в окне нет', () => {
+  it('«Уже накоплено» набрано, фокус в поле, «Готово» без смены фокуса — seed записан, окно закрыто', async () => {
+    const { store, goalId, field } = await openTrip()
+    const have = field('Уже накоплено')
+    await type(have, '120 000')
+    expect(document.activeElement).toBe(have)
+    ;[...document.querySelectorAll<HTMLElement>('[role="dialog"] button')].find((b) => b.textContent?.trim() === 'Готово')!.click()
+    await nextTick()
+    expect(goalId.value).toBeNull()
+    expect(store.goals.find((g) => g.id === 'trip')!).toMatchObject({ seed: 110_000, have: 120_000 })
+  })
+
+  it('«Откладывать в месяц» — только на экране цели, в окне правки поля нет (как React)', async () => {
+    await openTrip()
+    const labels = [...document.querySelectorAll('[role="dialog"] label')].map((l) => l.textContent ?? '')
+    expect(labels.some((t) => t.includes('Откладывать в месяц'))).toBe(false)
+    expect(labels.some((t) => t.includes('Уже накоплено'))).toBe(true)
+  })
+})

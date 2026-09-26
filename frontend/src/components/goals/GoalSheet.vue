@@ -18,8 +18,9 @@ import Input from '@/components/ui/Input.vue'
 
 /**
  * Правка цели (React `EditGoalDialog`, `src/screens/GoalDetail.tsx:230-319`): каждое поле
- * пишется по уходу из него, цвет — сразу; закрыть окно фоном или крестиком — ничего не
- * потерять. «Уже накоплено» правит seed (`updateGoal`): история взносов остаётся.
+ * пишется по уходу из него, цвет — сразу; закрыть окно фоном, крестиком или «Готово» —
+ * ничего не потерять. «Уже накоплено» правит seed (`updateGoal`): история взносов остаётся.
+ * «Откладывать в месяц» — на экране цели, как React (в окне его нет).
  */
 const props = defineProps<{ goalId: string | null }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'removed'): void }>()
@@ -47,10 +48,6 @@ function onHave(text: string) {
   const v = parseMoney(text)
   if (v >= 0 && v !== goal.value?.have) edit({ have: v })
 }
-function onMonthly(text: string) {
-  const v = parseMoney(text)
-  if (v > 0 && v !== goal.value?.monthly) edit({ monthly: v })
-}
 function onHue(hue: HueKey) {
   edit({ hue })
 }
@@ -65,7 +62,7 @@ function remove() {
     <template #mark>
       <SavedMark :on="saved" />
     </template>
-    <template v-if="goal">
+    <template v-if="goal" #default="{ close }">
       <Field label="Название">
         <Input :default-value="goal.name" class="mb-3" @blur="onName" />
       </Field>
@@ -79,13 +76,10 @@ function remove() {
         Взносы ({{ goal.movements.length }}) останутся в истории: правится только та часть,
         с которой цель завели.
       </p>
-      <Field label="Откладывать в месяц, ₸">
-        <NumFieldBlur :initial="plain(goal.monthly)" class="mb-3" @commit="onMonthly" />
-      </Field>
 
       <HuePicker :model-value="goal.hue" @update:model-value="onHue" />
 
-      <Button class="mb-3 w-full" @click="emit('close')">Готово</Button>
+      <Button class="mb-3 w-full" @click="close">Готово</Button>
 
       <DangerZone
         label="Удалить цель"

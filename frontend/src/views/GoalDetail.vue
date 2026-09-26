@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 import { useRouter, useRoute, RouterLink } from 'vue-router'
 import { PhArrowLeft, PhPencilSimple, PhPlus, PhMinus } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
@@ -108,6 +108,16 @@ const depositAmount = ref('')
 const depositBy = ref<PersonId>('a')
 const depositAccountId = ref<string>('')
 const depositNote = ref('')
+// Сумма — сразу под пальцем (React `autoFocus`): лист вставляется после открытия, атрибут не сработал бы.
+const depositAmountRef = ref<HTMLElement | null>(null)
+watch(openDepositModal, (open) => {
+  if (open) void nextTick(() => depositAmountRef.value?.querySelector('input')?.focus())
+})
+
+// История — новые сверху по дате: слияние хранит «новые первыми», взнос дописывается в конец.
+const history = computed(() =>
+  [...(goal.value?.movements ?? [])].sort((a, b) => b.date.localeCompare(a.date)),
+)
 
 function applyDeposit() {
   const v = parseMoney(depositAmount.value)
@@ -274,7 +284,7 @@ const openEditModal = ref(false)
     <Section title="История цели" />
     <Card flush>
       <div
-        v-for="m in (goal.movements || []).slice().reverse()"
+        v-for="m in history"
         :key="m.id"
         class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0"
       >
@@ -306,12 +316,18 @@ const openEditModal = ref(false)
     <!-- Окно: Пополнить / Снять -->
     <Sheet
       :open="openDepositModal"
-      :title="depositOperation === 'deposit' ? 'Пополнить цель' : 'Снять средства'"
+      :title="depositOperation === 'deposit' ? `Пополнить «${goal.name}»` : 'Снять средства'"
       @close="openDepositModal = false"
     >
-      <Field label="Сумма, ₸">
-        <NumField v-model="depositAmount" placeholder="10 000" class="mb-3" />
-      </Field>
+      <div ref="depositAmountRef">
+        <Field label="Сумма, ₸">
+          <NumField
+            v-model="depositAmount"
+            :placeholder="depositOperation === 'deposit' ? plain(goal.monthly) : '10 000'"
+            class="mb-3"
+          />
+        </Field>
+      </div>
 
       <Field v-if="accounts.length > 0" :label="depositOperation === 'deposit' ? 'Списать со счёта (опционально)' : 'Зачислить на счёт (опционально)'">
         <Select
@@ -333,7 +349,7 @@ const openEditModal = ref(false)
       </Field>
 
       <Button :disabled="parseMoney(depositAmount) <= 0" class="w-full mt-2" @click="applyDeposit">
-        {{ depositOperation === 'deposit' ? 'Пополнить' : 'Снять' }}
+        {{ depositOperation === 'deposit' ? 'Внести' : 'Снять' }}
       </Button>
     </Sheet>
 

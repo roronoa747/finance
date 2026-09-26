@@ -1,6 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
+import { hintPosition } from './hintPosition'
 
+/**
+ * Знак вопроса с пояснением (React `kit.tsx:340-399`). Окно — `position: fixed` под знаком,
+ * прижато к краям экрана (`hintPosition`); закрывается нажатием мимо, Escape и прокруткой:
+ * закреплённое на экране, при прокрутке оно осталось бы висеть в стороне от своего знака.
+ */
 withDefaults(
   defineProps<{
     label?: string
@@ -10,37 +16,46 @@ withDefaults(
   },
 )
 
-const open = ref(false)
+const at = ref<{ left: number; top: number; width: number } | null>(null)
 const boxRef = ref<HTMLElement | null>(null)
 
-function toggle() {
-  open.value = !open.value
+function toggle(e: MouseEvent) {
+  if (at.value) {
+    at.value = null
+    return
+  }
+  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  at.value = hintPosition(r, window.innerWidth)
 }
 
-function onClickOutside(e: MouseEvent) {
-  if (boxRef.value && !boxRef.value.contains(e.target as Node)) {
-    open.value = false
-  }
+function onPointerDown(e: Event) {
+  if (!boxRef.value?.contains(e.target as Node)) at.value = null
 }
 
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape') {
-    open.value = false
-  }
+  if (e.key === 'Escape') at.value = null
 }
 
-onMounted(() => {
-  if (typeof document !== 'undefined') {
-    document.addEventListener('pointerdown', onClickOutside)
-    document.addEventListener('keydown', onKeydown)
-  }
-})
+function hide() {
+  at.value = null
+}
+
+// Слушатели — только пока окно открыто.
+function listen(on: boolean) {
+  const doc = on ? document.addEventListener.bind(document) : document.removeEventListener.bind(document)
+  doc('pointerdown', onPointerDown)
+  doc('keydown', onKeydown)
+  if (on) window.addEventListener('scroll', hide, true)
+  else window.removeEventListener('scroll', hide, true)
+}
+
+watch(
+  () => !!at.value,
+  (open) => listen(open),
+)
 
 onUnmounted(() => {
-  if (typeof document !== 'undefined') {
-    document.removeEventListener('pointerdown', onClickOutside)
-    document.removeEventListener('keydown', onKeydown)
-  }
+  if (at.value) listen(false)
 })
 </script>
 
@@ -49,16 +64,22 @@ onUnmounted(() => {
     <button
       type="button"
       :aria-label="label"
-      class="grid size-4.5 place-items-center rounded-full border border-line bg-surface-2 text-[11px] font-semibold text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
+      :aria-expanded="!!at"
+      :class="[
+        'grid size-4.5 place-items-center rounded-full border bg-surface-2 text-[11px] font-semibold hover:bg-surface-3 hover:text-ink cursor-pointer',
+        at ? 'border-brand text-brand' : 'border-line text-ink-3',
+      ]"
       @click="toggle"
     >
       ?
     </button>
-    <div
-      v-if="open"
-      class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-50 w-64 max-w-[85vw] rounded-xl border border-line bg-surface p-3 text-[12px] leading-relaxed text-ink-2 shadow-xl"
+    <span
+      v-if="at"
+      role="note"
+      :style="{ left: `${at.left}px`, top: `${at.top}px`, width: `${at.width}px` }"
+      class="fixed z-50 rounded-xl border border-line bg-surface p-3 text-[12px] font-normal leading-relaxed text-ink-2 shadow-lift"
     >
       <slot />
-    </div>
+    </span>
   </span>
 </template>

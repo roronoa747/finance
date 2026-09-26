@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { PhArrowLeft } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
@@ -10,6 +10,7 @@ import Card from '@/components/kit/Card.vue'
 import Field from '@/components/kit/Field.vue'
 import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
 import SavedMark from '@/components/kit/SavedMark.vue'
+import { useSavedMark } from '@/components/kit/useSavedMark'
 import Segmented from '@/components/kit/Segmented.vue'
 import Callout from '@/components/kit/Callout.vue'
 import DangerZone from '@/components/kit/DangerZone.vue'
@@ -30,7 +31,8 @@ const removeWarning = computed(() => {
   return `Вклад исчезнет${isPrivate ? '' : ' у обоих участников'} вместе с условиями. Отменить нельзя.`
 })
 
-const saved = ref(false)
+// «Сохранено» — по `updatedAt` записи: горит, когда правка легла в документ, и гаснет (PV-23 п. 3).
+const saved = useSavedMark(() => account.value?.id, () => account.value?.updatedAt)
 
 const depositData = computed(() => account.value?.deposit)
 
@@ -53,7 +55,6 @@ function onNameBlur(e: Event) {
   const v = (e.target as HTMLInputElement).value.trim()
   if (account.value && v && v !== account.value.name) {
     financeStore.updateAccount(account.value.id, { name: v })
-    saved.value = true
   }
 }
 
@@ -61,14 +62,12 @@ function onNoteBlur(e: Event) {
   const v = (e.target as HTMLInputElement).value.trim()
   if (account.value && v !== account.value.note) {
     financeStore.updateAccount(account.value.id, { note: v })
-    saved.value = true
   }
 }
 
 function onAmountCommit(text: string) {
   if (account.value) {
     financeStore.setAccountAmount(account.value.id, parseMoney(text))
-    saved.value = true
   }
 }
 
@@ -77,7 +76,6 @@ function onRateCommit(text: string) {
     const v = parseFloat(text.replace(',', '.').replace(/[^\d.]/g, ''))
     if (Number.isFinite(v)) {
       financeStore.setDeposit(account.value.id, { annualRate: v / 100 })
-      saved.value = true
     }
   }
 }
@@ -85,21 +83,18 @@ function onRateCommit(text: string) {
 function onMonthlyTopUpCommit(text: string) {
   if (account.value) {
     financeStore.setDeposit(account.value.id, { monthlyTopUp: parseMoney(text) })
-    saved.value = true
   }
 }
 
 function onMonthsCommit(text: string) {
   if (account.value) {
     financeStore.setDeposit(account.value.id, { months: Math.max(1, parseMoney(text)) })
-    saved.value = true
   }
 }
 
 function onCapitalizeChange(v: string) {
   if (account.value) {
     financeStore.setDeposit(account.value.id, { capitalize: v === 'yes' })
-    saved.value = true
   }
 }
 </script>

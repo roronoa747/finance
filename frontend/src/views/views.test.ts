@@ -205,6 +205,29 @@ describe('views/Access & Setup — Бизнес-сценарии экранов 
     expect(html).toContain('Дальше')
   })
 
+  it('PV-23 п. 1: пояснения и подзаголовки мастера как React, «Есть кредит?», цвет цели — ряд кита', async () => {
+    const { default: Setup } = await import('./Setup.vue')
+    const at = async (i: number) =>
+      (await renderScreen(Setup, '/setup', undefined, [screenMixin({ currentStepIndex: i })])).replace(/\s+/g, ' ')
+    const income = await at(0)
+    expect(income).toContain('День нужен, чтобы календарь показал провал между вашей зарплатой и зарплатой партнёра — когда платежи уже прошли, а деньги ещё не пришли.')
+    expect(income).toContain('Оклад без бонусов. Нерегулярные премии добавим отдельно — они не должны попадать в план месяца.')
+    const housing = await at(1)
+    expect(housing).toContain('Коммуналка в месяц, ₸ — примерно')
+    expect(housing).toContain('Коммуналку приложение будет помечать как оценку: она плавает по сезонам, и выдавать её за точную цифру нечестно.')
+    expect(housing).toContain('С неё считается и доля жилья в доходе, и подушка.')
+    const credit = await at(2)
+    expect(credit).toContain('Есть кредит?')
+    expect(credit).toContain('Если есть — приложение посчитает переплату и покажет, что даст досрочное погашение.')
+    const goal = await at(3)
+    expect(goal).toContain('Одной цели достаточно, остальные добавите позже.')
+    expect(goal).toContain('role="group" aria-label="Цвет"')
+    const invite = await at(4)
+    expect(invite).toContain('Создадим короткий код — его удобно продиктовать вслух, не пересылая ничего в переписке.')
+    const code = (await renderScreen(Setup, '/setup', undefined, [screenMixin({ currentStepIndex: 4, inviteCode: 'K7Q2M9' })])).replace(/\s+/g, ' ')
+    expect(code).toContain('Код действует две недели и срабатывает один раз.')
+  })
+
   it('PV-06: удалённая цель и удалённое обязательство не делают семью «настроенной» — полный мастер из 5 шагов', async () => {
     const { createSSRApp } = await import('vue')
     const { renderToString } = await import('vue/server-renderer')
@@ -276,7 +299,7 @@ describe('views/Access & Setup — Бизнес-сценарии экранов 
       await vm.handleMakeInvite()
       const html = await render({ inviteError: vm.inviteError })
       expect(html).toContain('Не получилось связаться с сервером. Попробуйте ещё раз.')
-      expect(html).toContain('Создать код приглашения')
+      expect(html).toContain('Создать код')
       expect(warn).toHaveBeenCalled()
       warn.mockRestore()
     })

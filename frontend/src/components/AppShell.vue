@@ -36,8 +36,11 @@ const title = computed(() => {
   const p = route.path
   if (p === '/') return monthTitle(monthKey())
   if (p.startsWith('/budget')) return 'Бюджет'
-  if (p.startsWith('/goals')) return 'Цели и покупки'
-  if (p.startsWith('/capital')) return 'Капитал'
+  // Список — по точному пути, экран одной записи — своё имя (React `AppShell.tsx:36-38`).
+  if (p === '/goals') return 'Цели и покупки'
+  if (p.startsWith('/goals/')) return 'Цель'
+  if (p === '/capital') return 'Капитал'
+  if (p.startsWith('/capital/')) return 'Вклад'
   if (p.startsWith('/ritual')) return 'Ритуал'
   if (p.startsWith('/plan')) return 'План'
   return 'Family Finance'
