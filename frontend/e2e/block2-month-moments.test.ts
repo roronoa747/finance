@@ -114,6 +114,28 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       expect(accountBalance(A.store.householdDoc.accounts[1], A.store.payments)).toBe(900_000)
     })
 
+    it('сверка остатка после зачисления: правка и снятие этой зарплаты остаток не двигают (якорь, как у платежей)', async () => {
+      const A = await phone(server)
+      useAuthStore().setAuthData(authAs('member', 'a'))
+      const card = () => A.store.accounts.find((x) => x.id === 'card')!.amount
+      const rec = A.store.markSalary('a', { accountId: 'card' })!
+      expect(card()).toBe(1_700_000)
+
+      // Назавтра сверили с банком: зарплата уже во введённой сумме.
+      at('2026-09-11T04:00:00Z')
+      A.store.setAccountAmount('card', 1_650_000)
+      expect(card()).toBe(1_650_000)
+
+      // Премию дописали правкой — момент прежний, до сверки: второй раз не прибавляется.
+      const bonus = A.store.editPaid(rec, { amount: 900_000, accountId: 'card' })!
+      expect(bonus.at).toBe(rec.at)
+      expect(card()).toBe(1_650_000)
+      // Снятие тоже не трогает сверенный остаток.
+      A.store.unmarkPaid('salary', 'a', '2026-09')
+      expect(paidFor(A.store.payments, 'salary', 'a', '2026-09')).toBeNull()
+      expect(card()).toBe(1_650_000)
+    })
+
     it('офлайн: обе зарплаты отмечены на своих телефонах без сети — после синка обе на карте', async () => {
       const A = await phone(server)
       const B = await phone(server)

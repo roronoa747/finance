@@ -1464,10 +1464,11 @@ export const SALARY_EARLY_DAYS = 3;
  * её день настал или до него не больше SALARY_EARLY_DAYS. Зарплата этого месяца после
  * своего дня ждёт до конца месяца — неотмеченная нейтральна, как платёж (Р-3);
  * следующего — только в окне перед днём (зарплата 1-го числа — в конце этого месяца).
- * День 31-го в коротком месяце — его последний день. Календарь — Алматы (Р-30).
+ * День 31-го в коротком месяце — его последний день. Календарь — Алматы (Р-30). Оклада
+ * в месяце нет — отмечать нечего (как «Оплатил» при сумме 0): одно нажатие записало бы «+0».
  */
 export function salaryOpen(p: Person, payments: Payment[], period: string, now = today()): boolean {
-  if (paidFor(payments, 'salary', p.id, period)) return false;
+  if (salaryAt(p, period) <= 0 || paidFor(payments, 'salary', p.id, period)) return false;
   const day = Math.min(p.payday, daysInMonth(period));
   if (period === now.key) return now.day >= day - SALARY_EARLY_DAYS;
   if (period === addMonths(now.key, 1)) return daysInMonth(now.key) - now.day + day <= SALARY_EARLY_DAYS;
@@ -1652,8 +1653,8 @@ export function monthSummary(
       else fromGoals -= m.amount;
     }
     if (!moves.length || !(g.need > 0)) continue;
-    const before = goalHave(g.seed, (g.movements ?? []).filter((m) => monthKey(new Date(m.date)) < key));
-    const after = goalHave(g.seed, (g.movements ?? []).filter((m) => monthKey(new Date(m.date)) <= key));
+    const before = goalHaveBefore(g, key);
+    const after = goalHaveBefore(g, addMonths(key, 1));
     const share = Math.min(1, after / g.need);
     if (share > closestHave) {
       closestHave = share;

@@ -2043,6 +2043,10 @@ describe('RP-10 — «Пришла зарплата»', () => {
     const last = { ...ilyas, payday: 31 }
     expect(salaryOpen(last, [], '2026-09', sep(26))).toBe(false)
     expect(salaryOpen(last, [], '2026-09', sep(27))).toBe(true)
+    // Оклада в месяце нет (декрет — версия 0) — отмечать нечего, как «Оплатил» при сумме 0.
+    const leave = { ...ilyas, salaryVersions: [{ from: '2026-09', amount: 0 }] }
+    expect(salaryOpen(leave, [], '2026-09', sep(10))).toBe(false)
+    expect(salaryOpen({ ...ilyas, salary: 0 }, [], '2026-09', sep(10))).toBe(false)
   })
 
   it('доля свободного на зарплату: пропорционально окладам, премия — целиком в свободное, не меньше нуля', () => {
@@ -2115,7 +2119,7 @@ describe('RP-11 — вопрос в конце месяца', () => {
     expect(monthEndAsk(null, { day: 26, key: '2027-02' })).toBe(true)
   })
 
-  it('день — по Алматы: 27 сентября 20:00 UTC — уже 28-е, вопрос есть', () => {
+  it('день — по Алматы: 27 сентября 19:30 UTC — уже 28-е, вопрос есть', () => {
     expect(monthEndAsk(null, today(new Date('2026-09-27T18:30:00Z')))).toBe(false)
     expect(monthEndAsk(null, today(new Date('2026-09-27T19:30:00Z')))).toBe(true)
   })
