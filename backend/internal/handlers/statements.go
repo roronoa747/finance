@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -122,6 +123,7 @@ func (h *StatementHandler) CreateUpload(w http.ResponseWriter, r *http.Request) 
 		Bank: req.Bank, PeriodFrom: req.PeriodFrom, PeriodTo: req.PeriodTo, OpsCount: req.OpsCount,
 	})
 	if err != nil {
+		log.Printf("statements: create upload: %v", err)
 		errorJSON(w, http.StatusInternalServerError, "failed to save statement upload")
 		return
 	}
@@ -136,6 +138,7 @@ func (h *StatementHandler) ListUploads(w http.ResponseWriter, r *http.Request) {
 	}
 	uploads, err := h.repo.ListUploads(r.Context(), householdID, maxListUploads)
 	if err != nil {
+		log.Printf("statements: list uploads: %v", err)
 		errorJSON(w, http.StatusInternalServerError, "failed to list statement uploads")
 		return
 	}
@@ -208,6 +211,7 @@ func (h *StatementHandler) UpsertOperations(w http.ResponseWriter, r *http.Reque
 	}
 	n, err := h.repo.UpsertOperations(r.Context(), userID, householdID, req.Operations)
 	if err != nil {
+		log.Printf("statements: upsert operations: %v", err)
 		errorJSON(w, http.StatusInternalServerError, "failed to save operations")
 		return
 	}
@@ -242,6 +246,7 @@ func (h *StatementHandler) ListOperations(w http.ResponseWriter, r *http.Request
 	}
 	ops, err := h.repo.ListOperations(r.Context(), userID, since, limit)
 	if err != nil {
+		log.Printf("statements: list operations: %v", err)
 		errorJSON(w, http.StatusInternalServerError, "failed to list operations")
 		return
 	}
