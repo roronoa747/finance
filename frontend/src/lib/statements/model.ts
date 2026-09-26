@@ -5,11 +5,11 @@ import type { MerchantRule, Operation, SpendTotal } from './types'
 
 // Модель операций выписки (B2C-02): чистые функции, деньги — целые тенге.
 
-const PATRONYMIC = '(?:вич|вна|ұлы|улы|қызы|кызы|оглы)'
-/** «Фамилия Имя Отчество» (Freedom печатает у переводов) — и заглавными. */
+const PATRONYMIC = '(?:вич|вна|ична|ұлы|улы|қызы|кызы|оглы)'
+/** «Фамилия Имя Отчество» (Freedom печатает у переводов) — и заглавными; фамилия бывает двойной. */
 const FULL_NAME = new RegExp(
-  `(?<!\\p{L})(\\p{Lu}\\p{Ll}+) (\\p{Lu}\\p{Ll}+) \\p{Lu}\\p{Ll}+${PATRONYMIC}(?!\\p{L})` +
-    `|(?<!\\p{L})(\\p{Lu}{2,}) (\\p{Lu}{2,}) \\p{Lu}{2,}${PATRONYMIC.toUpperCase()}(?!\\p{L})`,
+  `(?<![\\p{L}-])(\\p{Lu}\\p{Ll}+(?:-\\p{Lu}\\p{Ll}+)?) (\\p{Lu}\\p{Ll}+) \\p{Lu}\\p{Ll}+${PATRONYMIC}(?!\\p{L})` +
+    `|(?<![\\p{L}-])(\\p{Lu}{2,}(?:-\\p{Lu}{2,})?) (\\p{Lu}{2,}) \\p{Lu}{2,}${PATRONYMIC.toUpperCase()}(?!\\p{L})`,
   'gu',
 )
 
