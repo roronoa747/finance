@@ -16,6 +16,12 @@ const FOOTER = /^Подлинность справки/
 /** «Дана К.» в начале деталей перевода (полное ФИО `sanitize` уже сократил) + остальное. */
 const PERSON_LEAD = /^(\p{Lu}\p{Ll}+(?: \p{Lu}\p{Ll}+)? \p{Lu}\.)(?:\s*\.)?\s*(.*)$/u
 /**
+ * ФИО, которое `sanitize` не узнал (отчество без известного окончания, «Серік ұлы» отдельным
+ * словом, без отчества): у Freedom после ФИО отправителя всегда « .» — опора на неё, а не на
+ * окончания. «Фамилия Имя [Отчество] .» в начале деталей → «Имя Ф.» (Р-23).
+ */
+const FULL_NAME_LEAD = /^(\p{Lu}\p{Ll}+(?:-\p{Lu}\p{Ll}+)?) (\p{Lu}\p{Ll}+)(?: \p{Lu}\p{Ll}+(?: \p{Ll}+)?)? \./u
+/**
  * Внутри блока строки стоят не дальше шага 12,7 pt, между блоками — от 19 pt (CORPUS.md):
  * зазор от 16 pt начинает новую операцию.
  */
@@ -95,7 +101,7 @@ function tableRows(rows: PdfRow[]): TableRow[] {
  * начало ячейки, разорванной между страницами (CORPUS.md): оно уходит в начало первой
  * операции следующей страницы.
  */
-function assemble(table: TableRow[]): Block[] {
+function assemble(table: TableRow[]): { blocks: Block[]; lost: number } {
   const groups: TableRow[][] = []
   for (const r of table) {
     const last = groups[groups.length - 1]?.at(-1)
@@ -105,12 +111,17 @@ function assemble(table: TableRow[]): Block[] {
 
   const blocks: Block[] = []
   let carried: Cell[] = []
+  let lost = 0
   groups.forEach((group, i) => {
     const page = group[0].row.page
     const dated = group.filter((r) => r.date)
     if (!dated.length) {
-      if (groups[i + 1]?.[0].row.page !== page) carried = [...carried, ...group.flatMap((r) => r.cells)]
-      else logSkipped('freedom', group[0].row)
+      const next = groups[i + 1]?.[0].row.page
+      if (next !== undefined && next !== page) carried = [...carried, ...group.flatMap((r) => r.cells)]
+      else {
+        lost++
+        logSkipped('freedom', group[0].row)
+      }
       return
     }
     const own = dated.map((r) => ({ row: r.row, date: r.date!, cells: [] as Cell[] }))
@@ -122,7 +133,7 @@ function assemble(table: TableRow[]): Block[] {
     carried = []
     blocks.push(...own)
   })
-  return blocks
+  return { blocks, lost }
 }
 
 /** «Операция» → вид. Детали уточняют переводы: своя конвертация — внутренняя. */
@@ -155,17 +166,18 @@ export function parseFreedom(rows: PdfRow[]): ParsedStatement {
   const period = rows.map(rowText).map((t) => PERIOD.exec(t)).find(Boolean)
   if (!period || !findHeader(rows, HEADER)) throw new StatementFormatError('empty')
 
-  const blocks = assemble(tableRows(rows))
+  const { blocks, lost } = assemble(tableRows(rows))
   const text = (b: Block, col: Col) => b.cells.filter((c) => c.col === col).map((c) => c.text).join(' ')
 
-  let skipped = 0
+  // Кусок таблицы без даты, который не перенос между страницами, — неразобранная строка.
+  let skipped = lost
   let skippedForeign = 0
   const operations: Omit<Operation, 'id'>[] = []
   for (const b of blocks) {
     const m = AMOUNT.exec(text(b, Col.Amount))
     const currency = text(b, Col.Currency)
     const name = text(b, Col.Op)
-    const details = sanitize(text(b, Col.Details))
+    const details = sanitize(text(b, Col.Details)).replace(FULL_NAME_LEAD, (_, surname: string, name: string) => `${name} ${surname[0]}.`)
     if (!m || !name) {
       skipped++
       logSkipped('freedom', b.row)

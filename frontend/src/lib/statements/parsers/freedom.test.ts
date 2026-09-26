@@ -109,6 +109,22 @@ describe('гвард результата (Р-23)', () => {
     }
   })
 
+  it('ФИО отправителя с любым отчеством или без него — «Имя Ф.» по точке после ФИО', () => {
+    const cases: [string, string][] = [
+      ['Кенесова Дана Кузьминична .', 'Дана К.'],
+      ['Кенесова Дана .', 'Дана К.'],
+      ['Сапаров Алихан Серік ұлы .', 'Алихан С.'],
+      ['Иванова-Петрова Дана Фоминична .', 'Дана И.'],
+    ]
+    for (const [printed, short] of cases) {
+      const rows: PdfRow[] = structuredClone(freedom01)
+      for (const r of rows) for (const c of r.cells) if (c.text === 'Кенесова Дана Маратовна .') c.text = printed
+      const op = find(parseFreedom(rows).operations, { date: '2025-07-22', amount: 60_000 })[0]
+      expect(op).toMatchObject({ kind: 'transfer-in', merchant: short, counterparty: short, note: 'Пополнение · Безвозмездный перевод' })
+      expect([op.merchant, op.counterparty, op.note].join(' ')).not.toMatch(/Кенесова|Сапаров|Иванова|Петрова|ична|ұлы/)
+    }
+  })
+
   it('номер договора и IBAN в деталях вычищаются', () => {
     const rows: PdfRow[] = structuredClone(freedom01)
     for (const r of rows) {
@@ -135,6 +151,14 @@ describe('ошибки', () => {
     const res = parseFreedom(rows)
     expect(res.skipped).toBe(3)
     expect(res.skippedForeign).toBe(2)
+    expect(res.operations).toHaveLength(20)
+  })
+
+  it('кусок таблицы без даты посреди страницы — в skipped, а не пропадает молча', () => {
+    const rows: PdfRow[] = structuredClone(freedom02)
+    rows.find((r) => r.cells[0].text === '26.08.2025')!.cells[0].text = '26.08.2O25'
+    const res = parseFreedom(rows)
+    expect(res.skipped).toBe(3)
     expect(res.operations).toHaveLength(20)
   })
 })
