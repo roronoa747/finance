@@ -73,4 +73,6 @@ export interface ParsedStatement {
   from: string
   to: string
   operations: Operation[]
+  /** Строки таблицы, которые не удалось разобрать (в разработке — в консоль). */
+  skipped: number
 }
