@@ -17,6 +17,7 @@ import {
   liveObligations,
   lumpPlan,
   nextChange,
+  lastAccountFor,
   NO_SAVING,
   paidFor,
   payableAccounts,
@@ -70,16 +71,24 @@ const salary = computed(() => {
   return { record, total: salaryFree(free, people.value, record) }
 })
 
-/**
- * Разовая сумма этого месяца (зарплата): решение — разовые взносы в цели, ежемесячные не
- * меняются. Освободившийся платёж повторяется каждый месяц: решение прибавляет
- * ежемесячные взносы.
- */
-const once = computed(() => query('from') === 'salary')
+/** Остаток месяца (RP-11): `?from=rest&amount=50000&period=2026-09` — сумма, которую назвали. */
+const rest = computed(() => {
+  if (query('from') !== 'rest') return null
+  return { amount: Math.max(0, Math.round(Number(query('amount')) || 0)), period: query('period') || key.value }
+})
 
-const total = computed(() =>
-  once.value ? (salary.value?.total ?? 0) : freed.value?.change ? Math.abs(freed.value.change.delta) : 0,
-)
+/**
+ * Разовая сумма этого месяца (зарплата, остаток): решение — разовые взносы в цели,
+ * ежемесячные не меняются. Освободившийся платёж повторяется каждый месяц: решение
+ * прибавляет ежемесячные взносы.
+ */
+const once = computed(() => !!salary.value || !!rest.value)
+
+const total = computed(() => {
+  if (query('from') === 'salary') return salary.value?.total ?? 0
+  if (rest.value) return rest.value.amount
+  return freed.value?.change ? Math.abs(freed.value.change.delta) : 0
+})
 
 const empty = computed(() => {
   if (query('from') === 'salary') {
@@ -87,6 +96,7 @@ const empty = computed(() => {
       ? 'Свободного в этой зарплате нет: всё уже расписано планом месяца.'
       : 'Эта зарплата пока не отмечена — раскладывать нечего.'
   }
+  if (rest.value) return 'Остатка нет — раскладывать нечего.'
   return 'Сейчас нет запланированных изменений, которые высвобождают деньги. Событие появится само, когда у обязательства будет версия с будущей датой и меньшей суммой.'
 })
 
@@ -100,16 +110,23 @@ const left = computed(() => total.value - used.value)
 const toGoals = computed(() => goals.value.reduce((a, g) => a + (alloc.value[g.id] ?? 0), 0))
 
 /**
- * Откуда отложить разовые взносы: по умолчанию — счёт, куда пришла зарплата (Р-5);
- * «не двигать» — взносы только в целях, как без счёта в окне цели.
+ * Откуда отложить разовые взносы: по умолчанию — счёт, куда пришла зарплата (Р-5), у
+ * остатка — куда приходит своя зарплата; не знаем — спросить (undefined). «Не двигать» —
+ * взносы только в целях, как без счёта в окне цели.
  */
 const picked = ref<string | null | undefined>(undefined)
 const fromAccount = computed<string | null | undefined>({
-  get: () => (picked.value !== undefined ? picked.value : (salary.value?.record.accountId ?? null)),
+  get: () => {
+    if (picked.value !== undefined) return picked.value
+    if (salary.value) return salary.value.record.accountId
+    return authStore.slot ? lastAccountFor(financeStore.payments, authStore.slot, financeStore.accounts) : undefined
+  },
   set: (v) => {
     picked.value = v
   },
 })
+/** Разовые взносы без выбранного счёта не записываются: деньги посчитались бы дважды. */
+const needAccount = computed(() => once.value && toGoals.value > 0 && fromAccount.value === undefined)
 const accountChoices = computed(() => payableAccounts(financeStore.accounts))
 // Месяц списаний — тот же, что у шага плана (подушка в Ритуале есть только с планом).
 const mandatory = computed(() => planMandatory(financeStore.planState(), key.value))
@@ -238,10 +255,12 @@ function confirm() {
   if (once.value) {
     // Разовое решение: взносы в цели сейчас и сдвиг остатка выбранного счёта — как взнос в
     // окне цели. Досрочка и «качество жизни» не записываются (вне скоупа RP-10).
+    if (needAccount.value) return
     const by = authStore.slot ?? 'a'
+    const note = rest.value ? 'из остатка месяца' : 'из зарплаты'
     for (const g of goals.value) {
       const extra = alloc.value[g.id] ?? 0
-      if (extra > 0) financeStore.contribute(g.id, extra, by, 'из зарплаты')
+      if (extra > 0) financeStore.contribute(g.id, extra, by, note)
     }
     const acc = fromAccount.value ? financeStore.accounts.find((a) => a.id === fromAccount.value) : undefined
     if (acc && toGoals.value > 0) financeStore.shiftAccountAmount(acc.id, -toGoals.value)
@@ -315,6 +334,9 @@ function home() {
       Зарплата пришла — {{ money(salary.record.amount) }}. Свободно из неё {{ money(total) }}: остальное
       уже расписано планом месяца.
     </p>
+    <p v-else-if="rest" class="px-0.5 text-[13px] leading-relaxed text-ink-2 num">
+      Остаток {{ monthFrom(rest.period, false) }} — {{ money(total) }}. Разложим его, пока он незаметно не разошёлся.
+    </p>
 
     <div class="flex items-baseline justify-between rounded-[14px] bg-brand-soft px-4 py-3.5">
       <span class="text-[13px] text-ink-2">Осталось распределить</span>
@@ -385,8 +407,8 @@ function home() {
       {{ monthFrom(freed.change.from) }}.
     </p>
 
-    <Button class="mb-2 w-full" :disabled="left !== 0" @click="confirm">
-      {{ left === 0 ? 'Подтвердить распределение' : `Осталось ${money(left)}` }}
+    <Button class="mb-2 w-full" :disabled="left !== 0 || needAccount" @click="confirm">
+      {{ left !== 0 ? `Осталось ${money(left)}` : needAccount ? 'Выберите, откуда отложить' : 'Подтвердить распределение' }}
     </Button>
   </div>
 </template>

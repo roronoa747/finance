@@ -1491,6 +1491,24 @@ export function salaryFree(free: number, people: Person[], record: Pick<Payment,
   return Math.max(0, Math.round(share + record.amount - base));
 }
 
+/* ---------------- вопрос в конце месяца (RP-11) ---------------- */
+
+/**
+ * Сколько последних дней месяца Обзор спрашивает «Остались деньги?»: три дня — успеть
+ * до 1-го числа, когда месяц закрывается, и не спрашивать раньше, пока остаток ещё
+ * нужен на жизнь.
+ */
+export const MONTH_END_DAYS = 3;
+
+/**
+ * Показывать ли вопрос об остатке месяца (Р-19): последние MONTH_END_DAYS дней месяца по
+ * Алматы (Р-30), и за этот месяц ещё не ответили. `answered` — месяц последнего ответа
+ * («распределить», «всё ушло» или «не сейчас»); новый месяц спрашивает снова.
+ */
+export function monthEndAsk(answered: string | null, now = today()): boolean {
+  return now.day > daysInMonth(now.key) - MONTH_END_DAYS && answered !== now.key;
+}
+
 /** Подсчёт ликвидных средств на картах и счетах. */
 export function liquidCash(liquidAccounts: Account[]): number {
   return liveAccounts(liquidAccounts)

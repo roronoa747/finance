@@ -79,6 +79,8 @@ import {
   salaryOpen,
   salaryFree,
   SALARY_EARLY_DAYS,
+  monthEndAsk,
+  MONTH_END_DAYS,
   type PlanState,
 } from './finance'
 import { plain, money, moneyShort, parseMoney, pct, ratePct } from './money'
@@ -2087,6 +2089,31 @@ describe('RP-10 — «Пришла зарплата»', () => {
     const early = salary({ id: 's5', period: '2026-10', at: '2026-09-29T04:00:00Z' })
     const after = untilPayday({ people: [first, aruna], payments: [early] }, late)!
     expect([after.who.id, after.key, after.inDays]).toEqual(['b', '2026-10', 21])
+  })
+})
+
+describe('RP-11 — вопрос в конце месяца', () => {
+  it('последние MONTH_END_DAYS дней — да; середина — нет; после ответа — нет; новый месяц — снова в его конце', () => {
+    expect(MONTH_END_DAYS).toBe(3)
+    // Сентябрь — 30 дней: спрашиваем 28, 29, 30.
+    expect(monthEndAsk(null, { day: 15, key: '2026-09' })).toBe(false)
+    expect(monthEndAsk(null, { day: 27, key: '2026-09' })).toBe(false)
+    expect(monthEndAsk(null, { day: 28, key: '2026-09' })).toBe(true)
+    expect(monthEndAsk(null, { day: 30, key: '2026-09' })).toBe(true)
+    // Ответили (или «не сейчас») в сентябре — до конца сентября не спрашиваем.
+    expect(monthEndAsk('2026-09', { day: 29, key: '2026-09' })).toBe(false)
+    // Октябрь — 31 день: с 29-го, прошлый ответ не мешает.
+    expect(monthEndAsk('2026-09', { day: 1, key: '2026-10' })).toBe(false)
+    expect(monthEndAsk('2026-09', { day: 28, key: '2026-10' })).toBe(false)
+    expect(monthEndAsk('2026-09', { day: 29, key: '2026-10' })).toBe(true)
+    // Февраль 2027 — 28 дней: с 26-го.
+    expect(monthEndAsk(null, { day: 25, key: '2027-02' })).toBe(false)
+    expect(monthEndAsk(null, { day: 26, key: '2027-02' })).toBe(true)
+  })
+
+  it('день — по Алматы: 27 сентября 20:00 UTC — уже 28-е, вопрос есть', () => {
+    expect(monthEndAsk(null, today(new Date('2026-09-27T18:30:00Z')))).toBe(false)
+    expect(monthEndAsk(null, today(new Date('2026-09-27T19:30:00Z')))).toBe(true)
   })
 })
 

@@ -9,7 +9,7 @@ import {
 } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { money, plain, pct } from '@/lib/money'
+import { money, plain, pct, parseMoney } from '@/lib/money'
 import { monthKey, monthIn, monthFrom, dayLabel } from '@/lib/dates'
 import {
   amountAt,
@@ -19,6 +19,7 @@ import {
   liveGoals,
   liveObligations,
   monthDues,
+  monthEndAsk,
   nextChange,
   nextObligationDue,
   salaryAt,
@@ -30,6 +31,8 @@ import { useInvite } from '@/components/useInvite'
 import Card from '@/components/kit/Card.vue'
 import Section from '@/components/kit/Section.vue'
 import Callout from '@/components/kit/Callout.vue'
+import Field from '@/components/kit/Field.vue'
+import NumField from '@/components/kit/NumField.vue'
 import Hero from '@/components/kit/Hero.vue'
 import Button from '@/components/ui/Button.vue'
 import Bar, { type Seg } from '@/components/Bar.vue'
@@ -142,6 +145,37 @@ const salaryHere = computed(() => {
   return salaryOpen(info.who, financeStore.payments, info.key)
 })
 
+// Вопрос в конце месяца (RP-11): «Остались деньги?» → раскладка остатка. Ответ помнит
+// устройство — месяц ответа в localStorage, документ не трогается: партнёра спросят на его
+// телефоне, у него могут остаться свои деньги. Отвечает участник, не viewer.
+const MONTH_END_KEY = 'ff_month_end'
+function readAnswered(): string | null {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage.getItem(MONTH_END_KEY)
+  } catch {
+    return null
+  }
+}
+const answered = ref(readAnswered())
+const restAsk = computed(() => !authStore.isViewer && monthEndAsk(answered.value))
+const restText = ref('')
+
+function answerRest() {
+  answered.value = key.value
+  try {
+    localStorage.setItem(MONTH_END_KEY, key.value)
+  } catch {
+    // Хранилище недоступно — спросим ещё раз, это не страшно.
+  }
+}
+
+function distributeRest() {
+  const amount = parseMoney(restText.value)
+  if (amount <= 0) return
+  answerRest()
+  void router.push(`/ritual?from=rest&amount=${amount}&period=${key.value}`)
+}
+
 // «Оставить?» (Р-20): один вопрос за раз, спокойно; отвечает участник, не viewer
 const keepAsk = computed(() => (authStore.isViewer ? null : (keepQuestions(financeStore.obligations)[0] ?? null)))
 const keepRenewal = computed(() =>
@@ -251,6 +285,26 @@ const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: ma
         Распределить
       </button>
     </div>
+
+    <!-- Вопрос в конце месяца (RP-11) -->
+    <Card v-if="restAsk">
+      <div class="text-[12.5px] text-ink-3">Месяц заканчивается</div>
+      <div class="mt-0.5 font-display text-[17px] font-semibold tracking-[-0.01em] text-ink">
+        Остались деньги с {{ monthFrom(key, false) }}?
+      </div>
+      <p class="mb-3 mt-1 text-[13px] leading-relaxed text-ink-2">
+        Если на картах что-то осталось, разложим это сейчас — в цели или на досрочку, пока оно
+        незаметно не разошлось.
+      </p>
+      <Field label="Сколько осталось, ₸">
+        <NumField v-model="restText" />
+      </Field>
+      <Button class="w-full" :disabled="parseMoney(restText) <= 0" @click="distributeRest">Распределить</Button>
+      <div class="mt-2 flex gap-2">
+        <Button variant="outline" class="flex-1 bg-surface-2" @click="answerRest">Всё ушло</Button>
+        <Button variant="outline" class="flex-1 bg-surface-2" @click="answerRest">Не сейчас</Button>
+      </div>
+    </Card>
 
     <!-- Предупреждение: план не сходится -->
     <Callout v-if="free < 0" title="План пока не сходится">

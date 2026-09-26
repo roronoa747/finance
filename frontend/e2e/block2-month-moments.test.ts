@@ -6,6 +6,7 @@ import { at, phone, screen, setOnline, type FakeServer } from './support/family'
 import { accountBalance, budgetAmounts, paidFor, salaryFree } from '../src/lib/finance'
 import { money } from '../src/lib/money'
 import { authAs } from '../src/test/planFamily'
+import { screenMixin } from '../src/test/screenState'
 import Budget from '../src/views/Budget.vue'
 import Overview from '../src/views/Overview.vue'
 import Ritual from '../src/views/Ritual.vue'
@@ -129,6 +130,42 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       for (const s of [A.store, B.store]) {
         expect(s.accounts.find((x) => x.id === 'card')!.amount).toBe(1_000_000 + 700_000 + 500_000)
       }
+    })
+  })
+
+  describe('RP-11 — вопрос в конце месяца', () => {
+    it('28 сентября: вопрос у обоих; A раскладывает остаток в цель со счёта — B видит взнос и остаток карты', async () => {
+      at('2026-09-28T07:00:00Z')
+      const A = await phone(server)
+      useAuthStore().setAuthData(authAs('member', 'a'))
+      const B = await phone(server)
+      useAuthStore().setAuthData(authAs('member', 'b'))
+      expect(await screen(A.pinia, Overview, '/')).toContain('Остались деньги с сентября?')
+      expect(await screen(B.pinia, Overview, '/')).toContain('Остались деньги с сентября?')
+
+      const done = await screen(A.pinia, Ritual, '/ritual?from=rest&amount=80000&period=2026-09', undefined, [
+        screenMixin({}, (s) => {
+          s.alloc = { trip: 60_000, life: 20_000 }
+          s.fromAccount = 'card'
+          ;(s.confirm as () => void)()
+        }),
+      ])
+      expect(done).toContain(`В цели отложено ${money(60_000)} со счёта «Kaspi Gold»`)
+      await A.store.syncHousehold(A.client)
+      await B.store.syncHousehold(B.client)
+      const trip = B.store.goals.find((g) => g.id === 'trip')!
+      expect(trip.have).toBe(160_000)
+      expect(trip.monthly).toBe(50_000)
+      expect(B.store.accounts.find((x) => x.id === 'card')!.amount).toBe(940_000)
+    })
+
+    it('1 октября вопроса нет; 29 октября — снова', async () => {
+      at('2026-10-01T07:00:00Z')
+      const A = await phone(server)
+      useAuthStore().setAuthData(authAs('member', 'a'))
+      expect(await screen(A.pinia, Overview, '/')).not.toContain('Остались деньги')
+      at('2026-10-29T07:00:00Z')
+      expect(await screen(A.pinia, Overview, '/')).toContain('Остались деньги с октября?')
     })
   })
 })
