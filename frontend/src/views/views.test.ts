@@ -2,8 +2,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
-import { apiClient } from '@/api/client'
+import type { Component } from 'vue'
+import { apiClient, ApiError } from '@/api/client'
 import { hasBudgetData } from '@/lib/finance'
+import { renderScreen, screenMixin } from '@/test/screenState'
 
 describe('views/Access & Setup — Бизнес-сценарии экранов авторизации и настройки', () => {
   const storageMap = new Map<string, string>()
@@ -233,5 +235,50 @@ describe('views/Access & Setup — Бизнес-сценарии экранов 
     html = await render()
     expect(html).toContain('Добавьте свой доход')
     expect(bars(html)).toBe(1)
+  })
+
+  describe('PV-20: ошибка сервера — русским текстом на экране', () => {
+    /** Экран в SSR и его setupState: SSR не нажимает, поэтому действие зовём сами и рендерим итог. */
+    async function screen(view: Component, path: string, action: string, state: Record<string, unknown>) {
+      let vm: Record<string, any> = {}
+      // Смесь глобальная — берём состояние только компонента с нужным действием, не кнопки внутри.
+      const grab = { created(this: any) { if (action in this.$.setupState) vm = this.$.setupState } }
+      await renderScreen(view, path, undefined, [screenMixin(state), grab])
+      return { vm, render: (more: Record<string, unknown>) => renderScreen(view, path, undefined, [screenMixin({ ...state, ...more })]) }
+    }
+
+    it('Access: неверный пароль, короткий пароль, код без входа — тексты из таблицы, не английский', async () => {
+      const { default: Access } = await import('./Access.vue')
+      vi.spyOn(apiClient, 'login').mockRejectedValue(new ApiError('invalid email or password', 401))
+      vi.spyOn(apiClient, 'register').mockRejectedValue(new ApiError('password must be at least 6 characters long', 400))
+      vi.spyOn(apiClient, 'joinHousehold').mockRejectedValue(new ApiError('unauthorized', 401))
+      const cases = [
+        [{ mode: 'login', email: 'a@b.kz', pass: 'wrong1' }, 'Почта или пароль не подходят.'],
+        [{ mode: 'register', email: 'a@b.kz', pass: '123', displayName: 'Ильяс' }, 'Пароль слишком короткий: нужно хотя бы 6 символов.'],
+        [{ mode: 'join', inviteCode: 'ABC123', displayName: 'Аруна' }, 'Чтобы войти по коду, сначала войдите в аккаунт.'],
+      ] as const
+      for (const [state, text] of cases) {
+        const { vm, render } = await screen(Access, '/access', 'submit', state)
+        await vm.submit()
+        expect(vm.errorMessage).toBe(text)
+        const html = await render({ errorMessage: vm.errorMessage })
+        expect(html).toContain(text)
+        expect(html).not.toMatch(/invalid email|password must|unauthorized/i)
+      }
+    })
+
+    it('Setup, шаг приглашения: ошибка создания кода — текстом под кнопкой', async () => {
+      const { default: Setup } = await import('./Setup.vue')
+      vi.spyOn(apiClient, 'createInvite').mockRejectedValue(new ApiError('HTTP error 500 Internal Server Error', 500))
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const { vm, render } = await screen(Setup, '/setup', 'handleMakeInvite', { currentStepIndex: 4 })
+      expect(vm.step).toBe('invite')
+      await vm.handleMakeInvite()
+      const html = await render({ inviteError: vm.inviteError })
+      expect(html).toContain('Не получилось связаться с сервером. Попробуйте ещё раз.')
+      expect(html).toContain('Создать код приглашения')
+      expect(warn).toHaveBeenCalled()
+      warn.mockRestore()
+    })
   })
 })

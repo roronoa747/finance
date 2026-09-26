@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { PhArrowLeft, PhCopy, PhUserPlus } from '@phosphor-icons/vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
+import { authErrorText } from '@/lib/authErrors'
 import { parseMoney, money, ratePct } from '@/lib/money'
 import { liveGoals, liveObligations } from '@/lib/finance'
 import { setupCreditRate, setupGoalMonthly, setupPlan, type SetupForm, type SetupSkips } from '@/lib/setup'
@@ -74,6 +75,7 @@ const goalHue = ref<HueKey>('green')
 
 // Step 5: Invite
 const inviteCode = ref<string | null>(null)
+const inviteError = ref('')
 const inviteBusy = ref(false)
 const copied = ref(false)
 
@@ -129,11 +131,12 @@ function back() {
 
 async function handleMakeInvite() {
   inviteBusy.value = true
+  inviteError.value = ''
   try {
     const res = await authStore.createInvite()
     inviteCode.value = res.code
   } catch (err) {
-    console.error('Ошибка создания инвайта:', err)
+    inviteError.value = authErrorText(err instanceof Error ? err.message : String(err), 'invite')
   } finally {
     inviteBusy.value = false
   }
@@ -422,6 +425,7 @@ function finish() {
           <Button class="w-full" :disabled="inviteBusy" @click="handleMakeInvite">
             {{ inviteBusy ? 'Создаём…' : 'Создать код приглашения' }}
           </Button>
+          <p v-if="inviteError" role="alert" class="text-[12.5px] text-warn">{{ inviteError }}</p>
         </template>
       </div>
     </div>

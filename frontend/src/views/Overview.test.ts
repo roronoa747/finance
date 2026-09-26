@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useFinanceStore } from '@/stores/finance'
+import { useAuthStore } from '@/stores/auth'
+import { apiClient, ApiError } from '@/api/client'
 import {
   budgetAmounts,
   netWorth,
@@ -10,7 +12,7 @@ import {
   untilPayday,
 } from '@/lib/finance'
 import { planFamilyDoc, planOf } from '@/test/planFamily'
-import { renderScreen } from '@/test/screenState'
+import { renderScreen, screenMixin } from '@/test/screenState'
 import Overview from './Overview.vue'
 
 describe('views/Overview.vue — Финансовые показатели, капитал и подушка безопасности', () => {
@@ -418,5 +420,46 @@ describe('PV-15: сегменты Обзора — «Досрочно по пл�
     expect(sum(await renderScreen(Overview, '/'), [...names, 'Досрочно по плану'])).toBe(income)
     store.setHouseholdDoc(planFamilyDoc({ categories, obligations: [] }), 3)
     expect(legend(await renderScreen(Overview, '/'), 'Жильё')).toBeNull()
+  })
+})
+
+describe('PV-20: баннер приглашения — ошибка текстом, viewer не видит', () => {
+  const T0 = '2026-09-01T00:00:00.000Z'
+  const as = (role: 'member' | 'viewer') =>
+    useAuthStore().setAuthData({
+      token: 't',
+      user: { id: 'u-b', email: 'b@example.com', created_at: T0 },
+      household: { id: 'h-1', name: 'Семья', created_by: 'u-a', created_at: T0 },
+      member: { household_id: 'h-1', user_id: 'u-b', slot: 'b', display_name: 'Аруна', role, joined_at: T0 },
+    })
+
+  beforeEach(() => {
+    const map = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => map.set(k, String(v)),
+      removeItem: (k: string) => map.delete(k),
+      clear: () => map.clear(),
+    })
+    setActivePinia(createPinia())
+  })
+
+  it('viewer: один в people — баннера «Пригласите партнёра» нет (сервер ответил бы 403)', async () => {
+    as('viewer')
+    expect(await renderScreen(Overview, '/')).not.toContain('Пригласите партнёра')
+    as('member')
+    expect(await renderScreen(Overview, '/')).toContain('Пригласите партнёра')
+  })
+
+  it('member: код не создан — русский текст под кнопкой, а не console.error', async () => {
+    as('member')
+    vi.spyOn(apiClient, 'createInvite').mockRejectedValue(new ApiError('unauthorized', 401))
+    let vm: Record<string, any> = {}
+    const grab = { created(this: any) { if ('makeInvite' in this.$.setupState) vm = this.$.setupState } }
+    await renderScreen(Overview, '/', undefined, [grab])
+    await vm.makeInvite()
+    const html = await renderScreen(Overview, '/', undefined, [screenMixin({ inviteError: vm.inviteError })])
+    expect(html).toContain('Вход истёк. Выйдите и войдите заново.')
+    expect(html).not.toContain('unauthorized')
   })
 })

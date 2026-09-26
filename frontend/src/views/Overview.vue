@@ -9,6 +9,7 @@ import {
 } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
+import { authErrorText } from '@/lib/authErrors'
 import { money, plain, pct } from '@/lib/money'
 import { monthKey, monthIn, monthFrom, dayLabel } from '@/lib/dates'
 import {
@@ -153,15 +154,17 @@ function cancelSub() {
 // Баннер приглашения
 const inviteCode = ref<string | null>(null)
 const inviteBusy = ref(false)
+const inviteError = ref('')
 const copied = ref(false)
 
 async function makeInvite() {
   inviteBusy.value = true
+  inviteError.value = ''
   try {
     const res = await authStore.createInvite()
     inviteCode.value = res.code
   } catch (e) {
-    console.error(e)
+    inviteError.value = authErrorText(e instanceof Error ? e.message : String(e), 'invite')
   } finally {
     inviteBusy.value = false
   }
@@ -181,9 +184,9 @@ async function copyInvite() {
 
 <template>
   <div class="flex flex-col gap-3.5 pt-1 text-left">
-    <!-- Invite Partner Banner (if single member) -->
+    <!-- Invite Partner Banner (if single member; viewer код не создаёт — сервер ответит 403) -->
     <div
-      v-if="people.length < 2"
+      v-if="people.length < 2 && !authStore.isViewer"
       class="rounded-[18px] border border-brand bg-surface p-4"
     >
       <div class="flex items-start gap-3">
@@ -212,9 +215,14 @@ async function copyInvite() {
             Скопировано
           </p>
         </template>
-        <Button v-else class="w-full" :disabled="inviteBusy" @click="makeInvite">
-          {{ inviteBusy ? 'Минуту…' : 'Создать код приглашения' }}
-        </Button>
+        <template v-else>
+          <Button class="w-full" :disabled="inviteBusy" @click="makeInvite">
+            {{ inviteBusy ? 'Минуту…' : 'Создать код приглашения' }}
+          </Button>
+          <p v-if="inviteError" role="alert" class="mt-1.5 text-center text-[12.5px] text-warn">
+            {{ inviteError }}
+          </p>
+        </template>
       </div>
     </div>
 
