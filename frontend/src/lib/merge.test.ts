@@ -463,6 +463,22 @@ describe('RP-06: отметки оплат при слиянии', () => {
     }
   })
 
+  it('RP-10: две офлайн-зарплаты с двух телефонов — обе зачислены; одна зарплата с двух — один раз', () => {
+    const salary = (id: string, p: Partial<Payment>) =>
+      mark(id, { kind: 'salary', targetId: 'a', amount: 700_000, at: '2026-09-10T04:00:00Z', ...p })
+    const a: SyncDoc = { ...base, payments: [salary('sa', {})] }
+    const b: SyncDoc = { ...base, payments: [salary('sb', { targetId: 'b', amount: 500_000, by: 'b' })] }
+    for (const doc of [mergeDocs(a, b), mergeDocs(b, a)]) {
+      expect(ids(doc)).toEqual(['sa', 'sb'])
+      expect(accountBalance(doc.accounts[0], doc.payments)).toBe(1_000_000 + 700_000 + 500_000)
+    }
+    // Ильяс отметил свою зарплату на двух телефонах офлайн — зачислена один раз, ранней записью.
+    const twice = mergeDocs(a, { ...base, payments: [salary('sa2', { at: '2026-09-10T04:07:00Z', amount: 900_000 })] })
+    expect(ids(twice)).toEqual(['sa', 'sa2'])
+    expect(accountBalance(twice.accounts[0], twice.payments)).toBe(1_700_000)
+    expect(paidFor(twice.payments, 'salary', 'a', '2026-09')?.id).toBe('sa')
+  })
+
   it('документ без payments (до Блока 1) сливается с новым; слияние идемпотентно', () => {
     const old = { ...createEmptyDoc(), accounts: [card] }
     const fresh: SyncDoc = { ...base, payments: [mark('r1', {})] }

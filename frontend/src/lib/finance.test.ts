@@ -76,13 +76,22 @@ import {
   planSchedule,
   endedPlan,
   budgetLines,
+  salaryOpen,
+  salaryFree,
+  SALARY_EARLY_DAYS,
+  monthEndAsk,
+  MONTH_END_DAYS,
+  progressMoments,
+  monthSummary,
+  summaryMonth,
+  SUMMARY_FIRST_DAYS,
   type PlanState,
 } from './finance'
 import { plain, money, moneyShort, parseMoney, pct, ratePct } from './money'
 import { clean, caretAt, sigBefore } from './num'
 import { plural } from './utils'
 import { monthKey, parseMonthKey, addMonths, daysInMonth, leadingBlanks, today, atLabel } from '@/lib/dates'
-import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person } from '@/types/finance'
+import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, WishItem } from '@/types/finance'
 import { DEFAULT_CATEGORY_NAMES } from '@/lib/palette'
 
 describe('finance.ts — аннуитет и кредитные расчёты', () => {
@@ -1948,3 +1957,367 @@ describe('PV-14 — план «Сначала долги»: модель и ра
     })
   })
 })
+
+describe('RP-10 — «Пришла зарплата»', () => {
+  const T0 = '2026-09-01T00:00:00Z'
+  const salary = (p: Partial<Payment> & Pick<Payment, 'id'>): Payment => ({
+    kind: 'salary',
+    targetId: 'a',
+    period: '2026-09',
+    amount: 700_000,
+    accountId: 'card',
+    by: 'a',
+    at: '2026-09-10T04:00:00Z',
+    updatedAt: '2026-09-10T04:00:00Z',
+    ...p,
+  })
+  const card: Account = { id: 'card', name: 'Kaspi', note: '', amount: 500_000, amountSetAt: T0, kind: 'card', updatedAt: T0 }
+  const ilyas: Person = { id: 'a', name: 'Ильяс', salary: 700_000, payday: 10, updatedAt: T0 }
+  const aruna: Person = { id: 'b', name: 'Аруна', salary: 500_000, payday: 20, updatedAt: T0 }
+  const rentMark: Payment = { ...salary({ id: 'r' }), kind: 'obligation', targetId: 'rent', amount: 220_000 }
+
+  it('зачисление: производный остаток счёта растёт, списания рядом вычитаются', () => {
+    expect(accountBalance(card, [salary({ id: 's1' })])).toBe(1_200_000)
+    expect(accountBalance(card, [salary({ id: 's1' }), rentMark])).toBe(980_000)
+    // «Не зачислять» и чужой счёт остаток не двигают.
+    expect(accountBalance(card, [salary({ id: 's1', accountId: null })])).toBe(500_000)
+    expect(accountBalance(card, [salary({ id: 's1', accountId: 'halyk' })])).toBe(500_000)
+    // Зарплата до ручной сверки уже в введённой сумме — второй раз не прибавляется.
+    expect(accountBalance({ ...card, amountSetAt: '2026-09-11T00:00:00Z' }, [salary({ id: 's1' })])).toBe(500_000)
+  })
+
+  it('повтор с другого устройства не удваивает: считается ранняя из пары (участник, месяц)', () => {
+    const phoneA = salary({ id: 's1', at: '2026-09-10T04:00:00Z' })
+    const phoneB = salary({ id: 's2', at: '2026-09-10T04:05:00Z', amount: 900_000 })
+    expect(accountBalance(card, [phoneB, phoneA])).toBe(1_200_000)
+    expect(paidFor([phoneB, phoneA], 'salary', 'a', '2026-09')?.id).toBe('s1')
+    // Зарплата другого месяца и другого участника — свои пары.
+    const oct = salary({ id: 's3', period: '2026-10', at: '2026-10-10T04:00:00Z' })
+    const b = salary({ id: 's4', targetId: 'b', amount: 500_000, at: '2026-09-20T04:00:00Z' })
+    expect(accountBalance(card, [phoneA, phoneB, oct, b])).toBe(500_000 + 700_000 * 2 + 500_000)
+    // Отметка обязательства с таким же targetId зарплатой не считается.
+    expect(paidFor([{ ...rentMark, targetId: 'a' }], 'salary', 'a', '2026-09')).toBeNull()
+  })
+
+  it('снятие возвращает: надгробие на пару — остаток к прежнему; сдвиг берёт остаток с зарплатой', () => {
+    const s = salary({ id: 's1' })
+    const gone = { ...s, deletedAt: '2026-09-11T00:00:00Z' }
+    expect(accountBalance(card, [gone])).toBe(500_000)
+    expect(paidFor([gone], 'salary', 'a', '2026-09')).toBeNull()
+    // Остаток не уводится ниже нуля — видимый считается с зачислением.
+    const empty = { ...card, amount: 0 }
+    expect(shiftedBase(empty, [s], -900_000)).toBe(-700_000)
+    expect(accountBalance({ ...empty, amount: shiftedBase(empty, [s], -900_000) }, [s])).toBe(0)
+  })
+
+  it('счёт по умолчанию — куда зарплата пришла в прошлый раз (Р-5); «не зачислять» тоже помнится', () => {
+    const accounts = [card, { ...card, id: 'halyk', name: 'Halyk' }]
+    expect(lastAccountFor([], 'a', accounts)).toBeUndefined()
+    const aug = salary({ id: 's0', period: '2026-08', accountId: 'halyk', at: '2026-08-10T04:00:00Z' })
+    expect(lastAccountFor([aug], 'a', accounts)).toBe('halyk')
+    expect(lastAccountFor([aug, salary({ id: 's1', accountId: null })], 'a', accounts)).toBeNull()
+    // Зарплата партнёра на выбор не влияет.
+    expect(lastAccountFor([aug, salary({ id: 's2', targetId: 'b', accountId: 'card' })], 'a', accounts)).toBe('halyk')
+  })
+
+  it('кнопка открыта с окна перед днём зарплаты до конца месяца; отмеченная — закрыта', () => {
+    const sep = (day: number) => ({ day, key: '2026-09' })
+    expect(SALARY_EARLY_DAYS).toBe(3)
+    expect(salaryOpen(ilyas, [], '2026-09', sep(6))).toBe(false)
+    expect(salaryOpen(ilyas, [], '2026-09', sep(7))).toBe(true)
+    expect(salaryOpen(ilyas, [], '2026-09', sep(10))).toBe(true)
+    // После дня — ждёт до конца месяца, без упрёка.
+    expect(salaryOpen(ilyas, [], '2026-09', sep(30))).toBe(true)
+    expect(salaryOpen(ilyas, [salary({ id: 's1' })], '2026-09', sep(10))).toBe(false)
+    // Снятая — снова открыта.
+    expect(salaryOpen(ilyas, [salary({ id: 's1', deletedAt: T0 })], '2026-09', sep(10))).toBe(true)
+    // Прошлый месяц и далёкий следующий — нет.
+    expect(salaryOpen(ilyas, [], '2026-08', sep(1))).toBe(false)
+    expect(salaryOpen(ilyas, [], '2026-10', sep(10))).toBe(false)
+    // Зарплата 1-го числа: в конце прошлого месяца — окно следующего (30 сентября — за 1 день).
+    const first = { ...ilyas, payday: 1 }
+    expect(salaryOpen(first, [], '2026-10', sep(27))).toBe(false)
+    expect(salaryOpen(first, [], '2026-10', sep(28))).toBe(true)
+    expect(salaryOpen(first, [], '2026-10', sep(30))).toBe(true)
+    // 31-е в сентябре — 30-е: окно с 27-го.
+    const last = { ...ilyas, payday: 31 }
+    expect(salaryOpen(last, [], '2026-09', sep(26))).toBe(false)
+    expect(salaryOpen(last, [], '2026-09', sep(27))).toBe(true)
+    // Оклада в месяце нет (декрет — версия 0) — отмечать нечего, как «Оплатил» при сумме 0.
+    const leave = { ...ilyas, salaryVersions: [{ from: '2026-09', amount: 0 }] }
+    expect(salaryOpen(leave, [], '2026-09', sep(10))).toBe(false)
+    expect(salaryOpen({ ...ilyas, salary: 0 }, [], '2026-09', sep(10))).toBe(false)
+  })
+
+  it('доля свободного на зарплату: пропорционально окладам, премия — целиком в свободное, не меньше нуля', () => {
+    const people = [ilyas, aruna]
+    // Свободно 120 000 при доходе 1 200 000: на 700 000 — 70 000, на 500 000 — 50 000.
+    expect(salaryFree(120_000, people, salary({ id: 's1' }))).toBe(70_000)
+    expect(salaryFree(120_000, people, salary({ id: 's2', targetId: 'b', amount: 500_000 }))).toBe(50_000)
+    // Доли в сумме — всё свободное месяца.
+    expect(
+      salaryFree(120_000, people, salary({ id: 's1' })) + salaryFree(120_000, people, salary({ id: 's2', targetId: 'b', amount: 500_000 })),
+    ).toBe(120_000)
+    // Премия 200 000 — вся свободна; недоплата уменьшает долю.
+    expect(salaryFree(120_000, people, salary({ id: 's1', amount: 900_000 }))).toBe(270_000)
+    expect(salaryFree(120_000, people, salary({ id: 's1', amount: 650_000 }))).toBe(20_000)
+    // План не сходится — раскладывать нечего (премия сначала закрывает недостачу).
+    expect(salaryFree(-60_000, people, salary({ id: 's1' }))).toBe(0)
+    expect(salaryFree(-60_000, people, salary({ id: 's1', amount: 800_000 }))).toBe(65_000)
+    // Оклад месяца — по версиям; дробь округляется до тенге.
+    const raised = { ...ilyas, salaryVersions: [{ from: '2026-09', amount: 800_000 }] }
+    expect(salaryFree(100_001, [raised, aruna], salary({ id: 's1', amount: 800_000 }))).toBe(Math.round((100_001 * 800_000) / 1_300_000))
+    // Одиночка — вся свободная часть его.
+    expect(salaryFree(120_000, [ilyas], salary({ id: 's1' }))).toBe(120_000)
+  })
+
+  it('«до зарплаты» после отметки переключается на следующую зарплату', () => {
+    const people = [ilyas, aruna]
+    const now = { day: 9, key: '2026-09' }
+    const before = untilPayday({ people, accounts: [card] }, now)!
+    expect([before.who.id, before.key, before.inDays]).toEqual(['a', '2026-09', 1])
+
+    // Ильяс отметил раньше дня — ближайшая теперь у Аруны.
+    const a = salary({ id: 's1', at: '2026-09-09T04:00:00Z' })
+    const next = untilPayday({ people, accounts: [card], payments: [a] }, now)!
+    expect([next.who.id, next.key, next.inDays]).toEqual(['b', '2026-09', 11])
+
+    // Обе пришли — следующая через месяц.
+    const b = salary({ id: 's2', targetId: 'b', amount: 500_000, at: '2026-09-09T05:00:00Z' })
+    const oct = untilPayday({ people, payments: [a, b] }, now)!
+    expect([oct.who.id, oct.key, oct.inDays]).toEqual(['a', '2026-10', 31])
+
+    // Снятие возвращает «до зарплаты» к Ильясу.
+    expect(untilPayday({ people, payments: [{ ...a, deletedAt: T0 }, b] }, now)!.who.id).toBe('a')
+
+    // Зарплата 1-го, отмеченная 29 сентября за октябрь, — дальше зарплата Аруны 20 октября.
+    const first = { ...ilyas, payday: 1 }
+    const late = { day: 29, key: '2026-09' }
+    expect(untilPayday({ people: [first, aruna] }, late)!.key).toBe('2026-10')
+    const early = salary({ id: 's5', period: '2026-10', at: '2026-09-29T04:00:00Z' })
+    const after = untilPayday({ people: [first, aruna], payments: [early] }, late)!
+    expect([after.who.id, after.key, after.inDays]).toEqual(['b', '2026-10', 21])
+  })
+})
+
+describe('RP-11 — вопрос в конце месяца', () => {
+  it('последние MONTH_END_DAYS дней — да; середина — нет; после ответа — нет; новый месяц — снова в его конце', () => {
+    expect(MONTH_END_DAYS).toBe(3)
+    // Сентябрь — 30 дней: спрашиваем 28, 29, 30.
+    expect(monthEndAsk(null, { day: 15, key: '2026-09' })).toBe(false)
+    expect(monthEndAsk(null, { day: 27, key: '2026-09' })).toBe(false)
+    expect(monthEndAsk(null, { day: 28, key: '2026-09' })).toBe(true)
+    expect(monthEndAsk(null, { day: 30, key: '2026-09' })).toBe(true)
+    // Ответили (или «не сейчас») в сентябре — до конца сентября не спрашиваем.
+    expect(monthEndAsk('2026-09', { day: 29, key: '2026-09' })).toBe(false)
+    // Октябрь — 31 день: с 29-го, прошлый ответ не мешает.
+    expect(monthEndAsk('2026-09', { day: 1, key: '2026-10' })).toBe(false)
+    expect(monthEndAsk('2026-09', { day: 28, key: '2026-10' })).toBe(false)
+    expect(monthEndAsk('2026-09', { day: 29, key: '2026-10' })).toBe(true)
+    // Февраль 2027 — 28 дней: с 26-го.
+    expect(monthEndAsk(null, { day: 25, key: '2027-02' })).toBe(false)
+    expect(monthEndAsk(null, { day: 26, key: '2027-02' })).toBe(true)
+  })
+
+  it('день — по Алматы: 27 сентября 19:30 UTC — уже 28-е, вопрос есть', () => {
+    expect(monthEndAsk(null, today(new Date('2026-09-27T18:30:00Z')))).toBe(false)
+    expect(monthEndAsk(null, today(new Date('2026-09-27T19:30:00Z')))).toBe(true)
+  })
+})
+
+describe('RP-12 — моменты прогресса', () => {
+  const T0 = '2026-08-01T00:00:00Z'
+  const rec = (p: Partial<Payment> & Pick<Payment, 'id' | 'at'>): Payment => ({
+    kind: 'credit',
+    targetId: 'small',
+    period: '2026-09',
+    amount: 50_000,
+    principal: 50_000,
+    accountId: 'card',
+    by: 'a',
+    updatedAt: p.at,
+    ...p,
+  })
+  // Маленький беспроцентный долг: два платежа по 50 000.
+  const small: Credit = { id: 'small', name: 'Рассрочка', note: '', principal: 100_000, principalSetAt: T0, annualRate: 0, payment: 50_000, day: 15, updatedAt: T0 }
+  const sep = rec({ id: 'p9', period: '2026-09', at: '2026-09-15T05:00:00Z' })
+  const oct = rec({ id: 'p10', period: '2026-10', at: '2026-10-15T05:00:00Z' })
+  const goal = (movements: { id: string; date: string; amount: number }[], p: Partial<Goal> = {}): Goal => ({
+    id: 'trip', name: 'Отпуск', need: 1_000_000, seed: 100_000, have: 0, monthly: 50_000, hue: 'teal', planPct: 0,
+    movements: movements.map((m) => ({ ...m, by: 'a' as const })), updatedAt: T0, ...p,
+  })
+
+  it('закрытие кредита последней отметкой — момент с датой закрывшей записи и освободившимся платежом', () => {
+    expect(progressMoments({ credits: [small], payments: [sep] })).toEqual([])
+    expect(progressMoments({ credits: [small], payments: [sep, oct] })).toEqual([
+      { kind: 'closed', id: 'closed:small', at: oct.at, creditId: 'small', name: 'Рассрочка', freed: 50_000 },
+    ])
+    // Производный остаток сходится: долг закрыт.
+    expect(creditBalance(small, [sep, oct])).toBe(0)
+  })
+
+  it('снятие закрывшей отметки — момента нет; двойная отметка с другого телефона — один момент', () => {
+    expect(progressMoments({ credits: [small], payments: [sep, { ...oct, deletedAt: '2026-10-16T00:00:00Z' }] })).toEqual([])
+    const twin = rec({ id: 'p10b', period: '2026-10', at: '2026-10-15T05:02:00Z', by: 'b' })
+    const moments = progressMoments({ credits: [small], payments: [sep, oct, twin] })
+    expect(moments.map((m) => [m.id, m.at])).toEqual([['closed:small', oct.at]])
+  })
+
+  it('сверка остатка — база: отметки до сверки не считаются; закрыла досрочка — момент на ней и её экономия', () => {
+    // Остаток 50 000 ввели руками после сентябрьского платежа: закрывает октябрьский.
+    const anchored = { ...small, principal: 50_000, principalSetAt: '2026-09-20T00:00:00Z' }
+    expect(progressMoments({ credits: [anchored], payments: [sep, oct] }).map((m) => m.at)).toEqual([oct.at])
+    // Долг закрыт досрочкой в сентябре: момент закрытия и строка экономии.
+    const loan: Credit = { ...small, id: 'loan', name: 'Кредит', annualRate: 0.24, principal: 200_000 }
+    const pre = rec({ id: 'pp', kind: 'prepay', targetId: 'loan', amount: 200_000, principal: 200_000, saved: 18_000, at: '2026-09-20T05:00:00Z' })
+    expect(progressMoments({ credits: [loan], payments: [pre] })).toEqual([
+      { kind: 'closed', id: 'closed:loan', at: pre.at, creditId: 'loan', name: 'Кредит', freed: 50_000 },
+      { kind: 'saved', id: 'saved:pp', at: pre.at, creditId: 'loan', name: 'Кредит', saved: 18_000 },
+    ])
+  })
+
+  it('экономия — у каждой живой досрочки живого кредита; удалённый кредит и снятая досрочка — без строки', () => {
+    const loan: Credit = { ...small, id: 'loan', name: 'Кредит', annualRate: 0.33, principal: 1_000_000 }
+    const p1 = rec({ id: 'a1', kind: 'prepay', targetId: 'loan', amount: 100_000, principal: 100_000, saved: 40_000, at: '2026-09-01T05:00:00Z' })
+    const p2 = rec({ id: 'a2', kind: 'prepay', targetId: 'loan', amount: 50_000, principal: 50_000, saved: 15_000, at: '2026-09-10T05:00:00Z' })
+    expect(progressMoments({ credits: [loan], payments: [p1, p2] }).map((m) => [m.kind, m.at])).toEqual([
+      ['saved', p2.at],
+      ['saved', p1.at],
+    ])
+    expect(progressMoments({ credits: [loan], payments: [p1, { ...p2, deletedAt: T0 }] })).toHaveLength(1)
+    expect(progressMoments({ credits: [{ ...loan, deletedAt: T0 }], payments: [p1, p2] })).toEqual([])
+    // Итог строк экономии — тот же, что у счётчика «сэкономили» (RP-08).
+    const sum = progressMoments({ credits: [loan], payments: [p1, p2] }).reduce((a, m) => a + (m.kind === 'saved' ? m.saved : 0), 0)
+    expect(sum).toBe(prepaySaved([p1, p2], [loan]))
+  })
+
+  it('половина цели — ровно на пересекающем взносе; ниже половины — момента нет, новое пересечение — один момент', () => {
+    // seed 100 000 + 300 000 = 400 000 < 500 000; + 200 000 = 600 000 — пересёк.
+    const m1 = { id: 'm1', date: '2026-08-10T05:00:00Z', amount: 300_000 }
+    const m2 = { id: 'm2', date: '2026-09-10T05:00:00Z', amount: 200_000 }
+    expect(progressMoments({ goals: [goal([m1])] })).toEqual([])
+    expect(progressMoments({ goals: [goal([m2, m1])] })).toEqual([
+      { kind: 'half', id: 'half:trip', at: m2.date, goalId: 'trip', name: 'Отпуск' },
+    ])
+    // Сняли 150 000 — 450 000, ниже половины: момента нет.
+    const out = { id: 'm3', date: '2026-09-12T05:00:00Z', amount: -150_000 }
+    expect(progressMoments({ goals: [goal([m1, m2, out])] })).toEqual([])
+    // Снова 100 000 — 550 000: один момент, с датой нового пересечения (правило: последнее
+    // пересечение вверх, пока цель не ниже половины).
+    const back = { id: 'm4', date: '2026-09-20T05:00:00Z', amount: 100_000 }
+    expect(progressMoments({ goals: [goal([m1, m2, out, back])] }).map((m) => [m.id, m.at])).toEqual([['half:trip', back.date]])
+    // Снятие, после которого цель осталась выше половины, момент не трогает.
+    const small2 = { id: 'm5', date: '2026-09-25T05:00:00Z', amount: -20_000 }
+    expect(progressMoments({ goals: [goal([m1, m2, out, back, small2])] }).map((m) => m.at)).toEqual([back.date])
+  })
+
+  it('цель, начатая с половины, удалённая и без суммы — без момента; порядок — новые первыми', () => {
+    const m = { id: 'm1', date: '2026-09-01T05:00:00Z', amount: 100_000 }
+    expect(progressMoments({ goals: [goal([m], { seed: 600_000 })] })).toEqual([])
+    expect(progressMoments({ goals: [goal([{ ...m, amount: 500_000 }], { deletedAt: T0 })] })).toEqual([])
+    expect(progressMoments({ goals: [goal([{ ...m, amount: 500_000 }], { need: 0 })] })).toEqual([])
+    const half = goal([{ ...m, amount: 500_000, date: '2026-10-01T05:00:00Z' }])
+    const list = progressMoments({ credits: [small], goals: [half], payments: [sep, oct] })
+    expect(list.map((x) => x.kind)).toEqual(['closed', 'half'])
+  })
+})
+
+describe('RP-13 — итог месяца на двоих', () => {
+  const T0 = '2026-08-01T00:00:00Z'
+  const rec = (p: Partial<Payment> & Pick<Payment, 'id' | 'kind' | 'targetId' | 'amount'>): Payment => ({
+    period: '2026-09', accountId: 'card', by: 'a', at: '2026-09-10T05:00:00Z', updatedAt: '2026-09-10T05:00:00Z', ...p,
+  })
+  const loan: Credit = { id: 'loan', name: 'Кредит', note: '', principal: 1_000_000, principalSetAt: T0, annualRate: 0.33, payment: 58_000, day: 15, updatedAt: T0 }
+  const tv: Credit = { id: 'tv', name: 'Телевизор', note: '', principal: 30_000, principalSetAt: T0, annualRate: 0, payment: 30_000, day: 12, updatedAt: T0 }
+  const gone: Credit = { ...loan, id: 'gone', deletedAt: T0 }
+  const payments: Payment[] = [
+    rec({ id: 'rent9', kind: 'obligation', targetId: 'rent', amount: 220_000 }),
+    rec({ id: 'rent9b', kind: 'obligation', targetId: 'rent', amount: 220_000, by: 'b', at: '2026-09-10T06:00:00Z' }),
+    rec({ id: 'loan9', kind: 'credit', targetId: 'loan', amount: 58_000, principal: 30_500 }),
+    rec({ id: 'tv9', kind: 'credit', targetId: 'tv', amount: 30_000, principal: 30_000, by: 'b', at: '2026-09-12T05:00:00Z' }),
+    rec({ id: 'rent8', kind: 'obligation', targetId: 'rent', amount: 220_000, period: '2026-08', at: '2026-08-05T05:00:00Z' }),
+    rec({ id: 'net9', kind: 'obligation', targetId: 'net', amount: 10_000, deletedAt: '2026-09-11T00:00:00Z' }),
+    rec({ id: 'sa', kind: 'salary', targetId: 'a', amount: 700_000 }),
+    rec({ id: 'sb', kind: 'salary', targetId: 'b', amount: 500_000, by: 'b', at: '2026-09-20T05:00:00Z' }),
+    rec({ id: 'pre', kind: 'prepay', targetId: 'loan', amount: 100_000, principal: 100_000, saved: 40_000 }),
+    rec({ id: 'preGone', kind: 'prepay', targetId: 'gone', amount: 50_000, principal: 50_000, saved: 9_000 }),
+  ]
+  const mv = (id: string, date: string, amount: number, by: 'a' | 'b' = 'a') => ({ id, date, amount, by })
+  const trip: Goal = {
+    id: 'trip', name: 'Отпуск', need: 1_000_000, seed: 100_000, have: 0, monthly: 50_000, hue: 'teal', planPct: 0, updatedAt: T0,
+    movements: [
+      mv('t8', '2026-08-10T05:00:00Z', 300_000),
+      mv('t9', '2026-09-10T05:00:00Z', 200_000, 'b'),
+      mv('t9out', '2026-09-15T05:00:00Z', -50_000),
+      mv('t10', '2026-10-01T05:00:00Z', 400_000),
+    ],
+  }
+  const car: Goal = { ...trip, id: 'car', name: 'Машина', need: 2_000_000, seed: 0, movements: [mv('c9', '2026-09-20T05:00:00Z', 100_000)] }
+  const wish = (id: string, price: number, p: Partial<WishItem>): WishItem => ({
+    id, name: id, price, by: 'a', addedOn: T0, bought: true, boughtOn: '2026-09-14T05:00:00Z', updatedAt: T0, ...p,
+  })
+  const wishlist = [
+    wish('pylesos', 50_000, {}),
+    wish('old', 30_000, { boughtOn: '12.09.2026' }),
+    wish('aug', 70_000, { boughtOn: '2026-08-20T05:00:00Z' }),
+    wish('later', 90_000, { bought: false, boughtOn: null }),
+    wish('deleted', 80_000, { deletedAt: T0 }),
+  ]
+  const state = { credits: [loan, tv, gone], goals: [trip, car], payments, wishlist }
+
+  it('итог на наборе записей и взносов: оплачено, пришло, закрыто, досрочки, цели, покупки', () => {
+    expect(monthSummary(state, '2026-09')).toEqual({
+      key: '2026-09',
+      // Аренда (двойная — один раз), кредит, последний платёж «Телевизора»; снятая — нет.
+      paid: { count: 3, amount: 220_000 + 58_000 + 30_000 },
+      income: 1_200_000,
+      closed: [{ creditId: 'tv', name: 'Телевизор' }],
+      // Досрочка удалённого кредита не считается — как в счётчике «сэкономили».
+      prepaid: { count: 1, amount: 100_000, saved: 40_000 },
+      toGoals: 200_000 + 100_000,
+      fromGoals: 50_000,
+      // «Отпуск»: 400 000 → 550 000 из 1 000 000; «Машина» — 5%: ближе всех «Отпуск».
+      closest: { goalId: 'trip', name: 'Отпуск', from: 40, to: 55 },
+      // ISO и старый «dd.mm.yyyy»; августовская, некупленная и удалённая — нет.
+      bought: { count: 2, amount: 80_000 },
+    })
+  })
+
+  it('записи другого месяца не попадают; пустой месяц — нули', () => {
+    const aug = monthSummary(state, '2026-08')
+    expect(aug.paid).toEqual({ count: 1, amount: 220_000 })
+    expect(aug.income).toBe(0)
+    expect(aug.closed).toEqual([])
+    expect(aug.toGoals).toBe(300_000)
+    expect(aug.closest).toEqual({ goalId: 'trip', name: 'Отпуск', from: 10, to: 40 })
+    expect(aug.bought).toEqual({ count: 1, amount: 70_000 })
+    const nov = monthSummary(state, '2026-11')
+    expect(nov).toEqual({
+      key: '2026-11', paid: { count: 0, amount: 0 }, income: 0, closed: [], prepaid: { count: 0, amount: 0, saved: 0 },
+      toGoals: 0, fromGoals: 0, closest: null, bought: { count: 0, amount: 0 },
+    })
+  })
+
+  it('надгробия не считаются: снятая закрывшая отметка — долг не закрыт, платёж не оплачен', () => {
+    const undone = payments.map((p) => (p.id === 'tv9' ? { ...p, deletedAt: '2026-09-13T00:00:00Z' } : p))
+    const s = monthSummary({ ...state, payments: undone }, '2026-09')
+    expect(s.closed).toEqual([])
+    expect(s.paid).toEqual({ count: 2, amount: 278_000 })
+  })
+
+  it('нет полей по участникам: кто платил и вносил, в итог не выходит', () => {
+    const json = JSON.stringify(monthSummary(state, '2026-09'))
+    expect(json).not.toMatch(/"by"|"a"|"b"|Ильяс|Аруна|person/)
+  })
+
+  it('окно карточки: последние дни месяца — этот месяц, первые SUMMARY_FIRST_DAYS — прошлый, середина — нет', () => {
+    expect(SUMMARY_FIRST_DAYS).toBe(5)
+    expect(summaryMonth({ day: 28, key: '2026-09' })).toBe('2026-09')
+    expect(summaryMonth({ day: 27, key: '2026-09' })).toBeNull()
+    expect(summaryMonth({ day: 1, key: '2026-10' })).toBe('2026-09')
+    expect(summaryMonth({ day: 5, key: '2026-10' })).toBe('2026-09')
+    expect(summaryMonth({ day: 6, key: '2026-10' })).toBeNull()
+    expect(summaryMonth({ day: 3, key: '2027-01' })).toBe('2026-12')
+  })
+})
+

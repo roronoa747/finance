@@ -1004,6 +1004,8 @@ export const netWorth = (accounts: Account[], credits: Credit[], goals: Goal[] =
 
 /** Что можно отметить по графику. Досрочка — не платёж графика, а отдельный взнос. */
 export type ScheduledKind = 'obligation' | 'credit'
+/** Отметка за месяц — одна на пару (цель, месяц): платёж по графику или зарплата (RP-10). */
+export type MonthlyKind = ScheduledKind | 'salary'
 
 /**
  * Очередной платёж кредита: сколько уйдёт в проценты и сколько в тело (Р-4).
@@ -1085,7 +1087,7 @@ export function countedPayments(payments: Payment[] = []): Payment[] {
 /** Отметка, по которой платёж за месяц считается оплаченным; null — не отмечен. */
 export function paidFor(
   payments: Payment[] = [],
-  kind: ScheduledKind,
+  kind: MonthlyKind,
   targetId: string,
   period: string,
 ): Payment | null {
@@ -1102,11 +1104,15 @@ export function paidFor(
  */
 export const afterAnchor = (p: Payment, anchor?: string | null) => !anchor || p.at >= anchor
 
-/** Остаток счёта: база минус списания по отметкам после сверки. */
+/**
+ * Остаток счёта: база минус списания и плюс зарплаты по отметкам после сверки.
+ * Зарплата (RP-10) — зачисление; знак записи — только здесь: `shiftedBase` и стор
+ * берут остаток отсюда.
+ */
 export function accountBalance(a: Account, payments: Payment[] = []): number {
   return countedPayments(payments)
     .filter((p) => p.accountId === a.id && afterAnchor(p, a.amountSetAt))
-    .reduce((left, p) => left - p.amount, a.amount)
+    .reduce((left, p) => (p.kind === 'salary' ? left + p.amount : left - p.amount), a.amount)
 }
 
 /**
@@ -1367,7 +1373,8 @@ export const duesTotal = (dues: MonthDue[]) => dues.reduce((a, d) => a + d.amoun
  * месяце в «заплатить» не входит: деньги уже ушли со счёта, иначе вычлись бы
  * дважды (Р-5, честный остаток). Оно возвращается отдельно (`paid`, сумма — из
  * отметки), чтобы экран показал его оплаченным, а не молча потерял. Закрытый
- * кредит платежа не ждёт.
+ * кредит платежа не ждёт. Зарплата, отмеченная «пришла» (RP-10), уже не «до»: блок
+ * смотрит на следующую.
  */
 export function untilPayday(
   state: {
@@ -1388,15 +1395,18 @@ export function untilPayday(
   const key = now.key;
   const days = daysInMonth(key);
 
-  const ahead = people
-    .filter((p) => p.payday >= now.day)
-    .sort((a, b) => a.payday - b.payday)[0];
-  const wrapped = [...people].sort((a, b) => a.payday - b.payday)[0];
-  const who = ahead ?? wrapped;
-  if (!who) return null;
+  // Ближайшая непришедшая зарплата: этого месяца — с сегодняшнего дня, затем следующего.
+  const slots = [
+    ...people.filter((p) => p.payday >= now.day).map((p) => ({ p, k: key, inDays: p.payday - now.day })),
+    ...people.map((p) => ({ p, k: addMonths(key, 1), inDays: days - now.day + p.payday })),
+  ].sort((a, b) => a.inDays - b.inDays);
+  const slot = slots.find((s) => !paidFor(payments, 'salary', s.p.id, s.k));
+  if (!slot) return null;
 
-  const nextKey = ahead ? key : addMonths(key, 1);
-  const inDays = ahead ? who.payday - now.day : days - now.day + who.payday;
+  const who = slot.p;
+  const ahead = slot.k === key;
+  const nextKey = slot.k;
+  const inDays = slot.inDays;
 
   const itemsOf = (k: string) =>
     monthDues({ obligations, credits, payments }, k).map((d) => ({
@@ -1438,6 +1448,239 @@ export function untilPayday(
     knowsCash: accounts.length > 0,
     onAccounts,
     shortfall: onAccounts - dueTotal,
+  };
+}
+
+/* ---------------- «Пришла зарплата» (RP-10) ---------------- */
+
+/**
+ * За сколько дней до дня зарплаты её уже можно отметить «пришла»: деньги приходят
+ * раньше, когда день выпадает на выходной или праздник.
+ */
+export const SALARY_EARLY_DAYS = 3;
+
+/**
+ * Ждёт ли зарплата участника за месяц `period` отметки «пришла» сейчас: не отмечена, и
+ * её день настал или до него не больше SALARY_EARLY_DAYS. Зарплата этого месяца после
+ * своего дня ждёт до конца месяца — неотмеченная нейтральна, как платёж (Р-3);
+ * следующего — только в окне перед днём (зарплата 1-го числа — в конце этого месяца).
+ * День 31-го в коротком месяце — его последний день. Календарь — Алматы (Р-30). Оклада
+ * в месяце нет — отмечать нечего (как «Оплатил» при сумме 0): одно нажатие записало бы «+0».
+ */
+export function salaryOpen(p: Person, payments: Payment[], period: string, now = today()): boolean {
+  if (salaryAt(p, period) <= 0 || paidFor(payments, 'salary', p.id, period)) return false;
+  const day = Math.min(p.payday, daysInMonth(period));
+  if (period === now.key) return now.day >= day - SALARY_EARLY_DAYS;
+  if (period === addMonths(now.key, 1)) return daysInMonth(now.key) - now.day + day <= SALARY_EARLY_DAYS;
+  return false;
+}
+
+/**
+ * Сколько из пришедшей зарплаты свободно — сумма раскладки в Ритуале (RP-10 п. 3).
+ *
+ * План месяца построен на окладах, поэтому свободный остаток месяца (`free` —
+ * `budgetAmounts(...).d5`) делится между зарплатами пропорционально окладам: каждая
+ * несёт свою долю обязательств и взносов. Разница пришедшего с окладом — премия или
+ * недоплата — целиком ложится на свободное: обязательства от неё не меняются. Меньше
+ * нуля не бывает (план не сходится — раскладывать нечего); целые тенге.
+ */
+export function salaryFree(free: number, people: Person[], record: Pick<Payment, 'targetId' | 'period' | 'amount'>): number {
+  const p = (people || []).find((x) => alive(x) && x.id === record.targetId);
+  const base = p ? salaryAt(p, record.period) : 0;
+  const income = totalIncome(people, record.period);
+  const share = income > 0 ? (free * base) / income : 0;
+  return Math.max(0, Math.round(share + record.amount - base));
+}
+
+/* ---------------- вопрос в конце месяца (RP-11) ---------------- */
+
+/**
+ * Сколько последних дней месяца Обзор спрашивает «Остались деньги?»: три дня — успеть
+ * до 1-го числа, когда месяц закрывается, и не спрашивать раньше, пока остаток ещё
+ * нужен на жизнь.
+ */
+export const MONTH_END_DAYS = 3;
+
+/**
+ * Показывать ли вопрос об остатке месяца (Р-19): последние MONTH_END_DAYS дней месяца по
+ * Алматы (Р-30), и за этот месяц ещё не ответили. `answered` — месяц последнего ответа
+ * («распределить», «всё ушло» или «не сейчас»); новый месяц спрашивает снова.
+ */
+export function monthEndAsk(answered: string | null, now = today()): boolean {
+  return now.day > daysInMonth(now.key) - MONTH_END_DAYS && answered !== now.key;
+}
+
+/* ---------------- моменты прогресса (RP-12) ---------------- */
+
+/** Момент прогресса семьи — одна спокойная строка истории на Обзоре (Р-21). */
+export type Moment =
+  /** Долг закрыт: его платёж освободился. */
+  | { kind: 'closed'; id: string; at: string; creditId: string; name: string; freed: number }
+  /** Цель прошла половину. */
+  | { kind: 'half'; id: string; at: string; goalId: string; name: string }
+  /** Досрочка: столько процентов не отдадим банку (снимок записи, RP-08). */
+  | { kind: 'saved'; id: string; at: string; creditId: string; name: string; saved: number };
+
+/**
+ * Моменты прогресса (Р-21) — выводятся из уже записанного, в документ ничего не пишется:
+ * снятая отметка или взнос убирают свой момент сами. Новые — первыми.
+ *
+ * - **Долг закрыт** — запись (отметка или досрочка после сверки остатка, в порядке `at`),
+ *   на которой тело по записям дошло до остатка сверки. Поэтому кредиты — **из документа**
+ *   (база сверки `principal`), а не производные: у производного закрытого остаток 0, и
+ *   какая запись его обнулила, уже не видно. Освободился платёж кредита.
+ * - **Половина цели** — взнос, на котором накопленное (seed + взносы по дате) пересекло
+ *   половину нужной суммы. Один момент на цель: последнее пересечение вверх, и только пока
+ *   цель не ниже половины — снятие ниже половины момент убирает, новое пересечение даёт
+ *   один момент с новой датой. Цель, начатая с половины и выше, момента не даёт.
+ * - **Досрочка сэкономила** — каждая живая досрочка живого кредита со снимком `saved`.
+ */
+export function progressMoments(state: { credits?: Credit[]; goals?: Goal[]; payments?: Payment[] }): Moment[] {
+  const counted = countedPayments(state.payments ?? []);
+  const out: Moment[] = [];
+
+  for (const c of liveCredits(state.credits ?? [])) {
+    const own = counted
+      .filter((p) => p.targetId === c.id && (p.kind === 'credit' || p.kind === 'prepay') && afterAnchor(p, c.principalSetAt))
+      .sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id));
+    let left = c.principal;
+    for (const p of left > 0 ? own : []) {
+      left -= p.principal ?? 0;
+      if (left <= 0) {
+        out.push({ kind: 'closed', id: `closed:${c.id}`, at: p.at, creditId: c.id, name: c.name, freed: c.payment });
+        break;
+      }
+    }
+    for (const p of counted) {
+      if (p.kind === 'prepay' && p.targetId === c.id && (p.saved ?? 0) > 0) {
+        out.push({ kind: 'saved', id: `saved:${p.id}`, at: p.at, creditId: c.id, name: c.name, saved: p.saved! });
+      }
+    }
+  }
+
+  for (const g of liveGoals(state.goals ?? [])) {
+    if (!(g.need > 0)) continue;
+    const half = g.need / 2;
+    let sum = g.seed ?? 0;
+    let crossed: string | null = null;
+    const moves = [...(g.movements ?? [])].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+    for (const m of moves) {
+      const before = Math.max(0, sum);
+      sum += m.amount;
+      const after = Math.max(0, sum);
+      if (before < half && after >= half) crossed = m.date;
+      else if (after < half) crossed = null;
+    }
+    if (crossed) out.push({ kind: 'half', id: `half:${g.id}`, at: crossed, goalId: g.id, name: g.name });
+  }
+
+  return out.sort((a, b) => b.at.localeCompare(a.at) || a.id.localeCompare(b.id));
+}
+
+/* ---------------- итог месяца на двоих (RP-13) ---------------- */
+
+/** Сколько первых дней месяца Обзор ещё показывает итог прошлого. */
+export const SUMMARY_FIRST_DAYS = 5;
+
+/**
+ * За какой месяц показать итог сейчас (Р-22): в последние MONTH_END_DAYS дней — за этот
+ * (он почти прожит), в первые SUMMARY_FIRST_DAYS дней — за прошлый (он только закончился);
+ * в остальные дни — null, карточки нет. Календарь — Алматы.
+ */
+export function summaryMonth(now = today()): string | null {
+  if (now.day > daysInMonth(now.key) - MONTH_END_DAYS) return now.key;
+  if (now.day <= SUMMARY_FIRST_DAYS) return addMonths(now.key, -1);
+  return null;
+}
+
+/** Ключ месяца даты покупки: ISO или «dd.mm.yyyy» старых записей из прода. */
+function boughtMonth(on: string | null | undefined): string | null {
+  if (!on) return null;
+  const old = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(on);
+  if (old) return `${old[3]}-${old[2]}`;
+  const d = new Date(on);
+  return Number.isNaN(d.getTime()) ? null : monthKey(d);
+}
+
+/** Итог месяца «мы» — без полей по участникам (Р-22). Суммы — целые тенге. */
+export type MonthSummary = {
+  key: string;
+  /** Платежи по графику (обязательства и кредиты), отмеченные за этот месяц. */
+  paid: { count: number; amount: number };
+  /** Зарплаты, отмеченные «пришла» за этот месяц, — вместе. */
+  income: number;
+  /** Долги, закрытые в этом месяце. */
+  closed: { creditId: string; name: string }[];
+  /** Досрочки месяца: сколько внесли и сколько процентов не отдадим банку. */
+  prepaid: { count: number; amount: number; saved: number };
+  /** Взносы в цели за месяц и снятия из них. */
+  toGoals: number;
+  fromGoals: number;
+  /**
+   * Приближение к желаниям: цель, ближе всех к сумме среди тех, где в этом месяце было
+   * движение, — сколько процентов собрано на начало и на конец месяца (целые, до 100).
+   */
+  closest: { goalId: string; name: string; from: number; to: number } | null;
+  /** Купленное из списка покупок в этом месяце. */
+  bought: { count: number; amount: number };
+};
+
+/**
+ * Итог месяца на двоих (Р-22): что оплатили, что закрыли, сколько отложили и насколько
+ * приблизились к желаниям. Считает только записанное, в документ не пишет. Месяц записи
+ * оплаты — её `period` (как у отметок), взноса и закрытия долга — дата по Алматы, покупки
+ * — `boughtOn`. Надгробия не считаются; двойная отметка — один раз (`countedPayments`).
+ * Кредиты — из документа, как у `progressMoments`. Кто платил и вносил — не разрезается.
+ */
+export function monthSummary(
+  state: { credits?: Credit[]; goals?: Goal[]; payments?: Payment[]; wishlist?: WishItem[] },
+  key: string,
+): MonthSummary {
+  const records = countedPayments(state.payments ?? []).filter((p) => p.period === key);
+  const scheduled = records.filter((p) => p.kind === 'obligation' || p.kind === 'credit');
+  const liveIds = new Set(liveCredits(state.credits ?? []).map((c) => c.id));
+  const prepays = records.filter((p) => p.kind === 'prepay' && liveIds.has(p.targetId));
+
+  const inMonth = (iso: string) => monthKey(new Date(iso)) === key;
+  let toGoals = 0;
+  let fromGoals = 0;
+  let closest: MonthSummary['closest'] = null;
+  let closestHave = -1;
+  for (const g of liveGoals(state.goals ?? [])) {
+    const moves = (g.movements ?? []).filter((m) => inMonth(m.date));
+    for (const m of moves) {
+      if (m.amount > 0) toGoals += m.amount;
+      else fromGoals -= m.amount;
+    }
+    if (!moves.length || !(g.need > 0)) continue;
+    const before = goalHaveBefore(g, key);
+    const after = goalHaveBefore(g, addMonths(key, 1));
+    const share = Math.min(1, after / g.need);
+    if (share > closestHave) {
+      closestHave = share;
+      const pct = (have: number) => Math.round(Math.min(1, have / g.need) * 100);
+      closest = { goalId: g.id, name: g.name, from: pct(before), to: pct(after) };
+    }
+  }
+
+  const bought = liveWishlist(state.wishlist ?? []).filter((w) => w.bought && boughtMonth(w.boughtOn) === key);
+
+  return {
+    key,
+    paid: { count: scheduled.length, amount: scheduled.reduce((a, p) => a + p.amount, 0) },
+    income: records.filter((p) => p.kind === 'salary').reduce((a, p) => a + p.amount, 0),
+    closed: progressMoments({ credits: state.credits, payments: state.payments })
+      .filter((m): m is Extract<Moment, { kind: 'closed' }> => m.kind === 'closed' && inMonth(m.at))
+      .map((m) => ({ creditId: m.creditId, name: m.name })),
+    prepaid: {
+      count: prepays.length,
+      amount: prepays.reduce((a, p) => a + p.amount, 0),
+      saved: prepays.reduce((a, p) => a + (p.saved ?? 0), 0),
+    },
+    toGoals,
+    fromGoals,
+    closest,
+    bought: { count: bought.length, amount: bought.reduce((a, w) => a + w.price, 0) },
   };
 }
 

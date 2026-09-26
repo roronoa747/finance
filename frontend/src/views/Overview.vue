@@ -9,8 +9,8 @@ import {
 } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { money, plain, pct } from '@/lib/money'
-import { monthKey, monthIn, monthFrom, dayLabel } from '@/lib/dates'
+import { money, plain, pct, parseMoney } from '@/lib/money'
+import { monthKey, monthIn, monthFrom, dayLabel, atLabel } from '@/lib/dates'
 import {
   amountAt,
   budgetAmounts,
@@ -19,9 +19,13 @@ import {
   liveGoals,
   liveObligations,
   monthDues,
+  monthEndAsk,
   nextChange,
+  progressMoments,
   nextObligationDue,
   salaryAt,
+  salaryOpen,
+  summaryMonth,
   untilPayday,
 } from '@/lib/finance'
 import { cn, plural } from '@/lib/utils'
@@ -29,12 +33,17 @@ import { useInvite } from '@/components/useInvite'
 import Card from '@/components/kit/Card.vue'
 import Section from '@/components/kit/Section.vue'
 import Callout from '@/components/kit/Callout.vue'
+import Field from '@/components/kit/Field.vue'
+import NumField from '@/components/kit/NumField.vue'
+import Row from '@/components/kit/Row.vue'
 import Hero from '@/components/kit/Hero.vue'
 import Button from '@/components/ui/Button.vue'
 import Bar, { type Seg } from '@/components/Bar.vue'
 import Legend, { type LegendItem } from '@/components/Legend.vue'
 import Ring from '@/components/Ring.vue'
 import PaidRow from '@/components/PaidRow.vue'
+import SalaryRow from '@/components/SalaryRow.vue'
+import MonthSummaryCard from '@/components/MonthSummaryCard.vue'
 
 const router = useRouter()
 const financeStore = useFinanceStore()
@@ -131,6 +140,78 @@ const paydayInfo = computed(() => {
     payments: financeStore.payments,
   })
 })
+
+// «Пришла зарплата» (RP-10): ближайшая зарплата — своя, и её день настал или близко.
+// Тогда карточка видна и без списаний до неё — на ней кнопка.
+const salaryHere = computed(() => {
+  const info = paydayInfo.value
+  if (!info || authStore.isViewer || authStore.slot !== info.who.id) return false
+  return salaryOpen(info.who, financeStore.payments, info.key)
+})
+
+// История семьи (RP-12): моменты прогресса выводятся из записанного — кредиты из документа
+// (база сверки), см. `progressMoments`. Без имён: кто внёс, не показываем.
+const HISTORY_ROWS = 5
+const history = computed(() =>
+  progressMoments({
+    credits: financeStore.householdDoc.credits,
+    goals: financeStore.goals,
+    payments: financeStore.payments,
+  })
+    .slice(0, HISTORY_ROWS)
+    .map((m) => {
+      const when = atLabel(m.at)
+      if (m.kind === 'half') return { id: m.id, title: `«${m.name}»: собрали половину`, note: when, to: null }
+      if (m.kind === 'saved') {
+        return { id: m.id, title: `Не отдадим банку ${money(m.saved)}`, note: `${when} · досрочка в «${m.name}»`, to: null }
+      }
+      // Платёж долга из плана «Сначала долги» уже идёт в следующий долг — решать нечего.
+      const inPlan = !!financeStore.activePlan?.creditIds.includes(m.creditId)
+      return {
+        id: m.id,
+        title: `«${m.name}» закрыт`,
+        note: inPlan
+          ? `${when} · его платёж идёт в следующий долг по плану`
+          : `${when} · освободилось ${money(m.freed)} в месяц`,
+        // Раскладка — решение: viewer его не принимает (Р-13).
+        to: authStore.isViewer ? null : inPlan ? '/plan' : `/ritual?from=credit&credit=${m.creditId}`,
+      }
+    }),
+)
+
+// Итог месяца (RP-13): за какой месяц — `summaryMonth` (конец этого, начало следующего).
+const summaryKey = computed(() => summaryMonth())
+
+// Вопрос в конце месяца (RP-11): «Остались деньги?» → раскладка остатка. Ответ помнит
+// устройство — месяц ответа в localStorage, документ не трогается: партнёра спросят на его
+// телефоне, у него могут остаться свои деньги. Отвечает участник, не viewer.
+const MONTH_END_KEY = 'ff_month_end'
+function readAnswered(): string | null {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage.getItem(MONTH_END_KEY)
+  } catch {
+    return null
+  }
+}
+const answered = ref(readAnswered())
+const restAsk = computed(() => !authStore.isViewer && monthEndAsk(answered.value))
+const restText = ref('')
+
+function answerRest() {
+  answered.value = key.value
+  try {
+    localStorage.setItem(MONTH_END_KEY, key.value)
+  } catch {
+    // Хранилище недоступно — спросим ещё раз, это не страшно.
+  }
+}
+
+function distributeRest() {
+  const amount = parseMoney(restText.value)
+  if (amount <= 0) return
+  answerRest()
+  void router.push(`/ritual?from=rest&amount=${amount}&period=${key.value}`)
+}
 
 // «Оставить?» (Р-20): один вопрос за раз, спокойно; отвечает участник, не viewer
 const keepAsk = computed(() => (authStore.isViewer ? null : (keepQuestions(financeStore.obligations)[0] ?? null)))
@@ -242,6 +323,29 @@ const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: ma
       </button>
     </div>
 
+    <!-- Вопрос в конце месяца (RP-11) -->
+    <Card v-if="restAsk">
+      <div class="text-[12.5px] text-ink-3">Месяц заканчивается</div>
+      <div class="mt-0.5 font-display text-[17px] font-semibold tracking-[-0.01em] text-ink">
+        Остались деньги с {{ monthFrom(key, false) }}?
+      </div>
+      <p class="mb-3 mt-1 text-[13px] leading-relaxed text-ink-2">
+        Если на картах что-то осталось, разложим это сейчас — в цели или на досрочку, пока оно
+        незаметно не разошлось.
+      </p>
+      <Field label="Сколько осталось, ₸">
+        <NumField v-model="restText" />
+      </Field>
+      <Button class="w-full" :disabled="parseMoney(restText) <= 0" @click="distributeRest">Распределить</Button>
+      <div class="mt-2 flex gap-2">
+        <Button variant="outline" class="flex-1 bg-surface-2" @click="answerRest">Всё ушло</Button>
+        <Button variant="outline" class="flex-1 bg-surface-2" @click="answerRest">Не сейчас</Button>
+      </div>
+    </Card>
+
+    <!-- Итог месяца на двоих (RP-13): конец месяца и первые дни следующего -->
+    <MonthSummaryCard v-if="summaryKey" :month="summaryKey" />
+
     <!-- Предупреждение: план не сходится -->
     <Callout v-if="free < 0" title="План пока не сходится">
       Расписано на {{ money(-free) }} больше, чем приходит.
@@ -260,7 +364,7 @@ const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: ma
     </Callout>
 
     <!-- Блок «До зарплаты» -->
-    <template v-if="paydayInfo && (paydayInfo.due.length || paydayInfo.paid.length)">
+    <template v-if="paydayInfo && (paydayInfo.due.length || paydayInfo.paid.length || salaryHere)">
       <Section title="До зарплаты" />
       <Card>
         <div class="flex items-baseline gap-2">
@@ -274,6 +378,7 @@ const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: ma
         <div class="mt-0.5 text-[13px] text-ink-2">
           {{ paydayInfo.who.name }} получит {{ money(paydayInfo.income) }}
         </div>
+        <SalaryRow v-if="salaryHere" button :person-id="paydayInfo.who.id" :period="paydayInfo.key" />
 
         <div class="mt-3 border-t border-line pt-3">
           <div class="flex items-baseline">
@@ -409,5 +514,20 @@ const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: ma
         </span>
       </RouterLink>
     </div>
+
+    <!-- История семьи (RP-12): одна спокойная строка на момент -->
+    <template v-if="history.length">
+      <Section title="История семьи" />
+      <Card flush>
+        <Row
+          v-for="h in history"
+          :key="h.id"
+          :title="h.title"
+          :note="h.note"
+          :clickable="!!h.to"
+          @click="h.to && router.push(h.to)"
+        />
+      </Card>
+    </template>
   </div>
 </template>
