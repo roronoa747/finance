@@ -32,6 +32,20 @@ describe('sanitize', () => {
     expect(sanitize('На карту Банк*0166')).toBe('На карту Банк*0166')
   })
 
+  it('IBAN — целиком, а не только его длинные цифры', () => {
+    expect(sanitize('на счет KZ00551Z000000000KZT. По договору')).toBe('на счет . По договору')
+    expect(sanitize('счет KZ00722C000000000000')).toBe('счет')
+  })
+
+  it('полное ФИО → «Имя Ф.» (и заглавными); «Имя Ф.» и продавцы не трогаются', () => {
+    expect(sanitize('Кенесова Дана Маратовна . Безвозмездный перевод')).toBe('Дана К. . Безвозмездный перевод')
+    expect(sanitize('Сапаров Алихан Болатұлы')).toBe('Алихан С.')
+    expect(sanitize('САПАРОВ АЛИХАН СЕРИКОВИЧ')).toBe('Алихан С.')
+    expect(sanitize('Дана К. Безвозмездный перевод')).toBe('Дана К. Безвозмездный перевод')
+    expect(sanitize('IP ASANOVA A.B. ASTANA KZ')).toBe('IP ASANOVA A.B. ASTANA KZ')
+    expect(sanitize('Центральная мечеть Иванович')).toBe('Центральная мечеть Иванович')
+  })
+
   it('схлопывает пробелы и обрезает до 120 символов', () => {
     expect(sanitize('  a \n  b\t c ')).toBe('a b c')
     expect(sanitize('x'.repeat(200))).toHaveLength(120)

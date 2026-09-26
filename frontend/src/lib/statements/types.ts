@@ -75,4 +75,6 @@ export interface ParsedStatement {
   operations: Operation[]
   /** Строки таблицы, которые не удалось разобрать (в разработке — в консоль). */
   skipped: number
+  /** Из них — операции в валюте без суммы в тенге (валюты — не-скоуп, B2C-04). */
+  skippedForeign?: number
 }

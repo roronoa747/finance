@@ -5,9 +5,28 @@ import type { MerchantRule, Operation, SpendTotal } from './types'
 
 // Модель операций выписки (B2C-02): чистые функции, деньги — целые тенге.
 
-/** Длинные цифры — номера карт, счетов, ИИН, договоров (Р-23): в результат не попадают. */
+const PATRONYMIC = '(?:вич|вна|ұлы|улы|қызы|кызы|оглы)'
+/** «Фамилия Имя Отчество» (Freedom печатает у переводов) — и заглавными. */
+const FULL_NAME = new RegExp(
+  `(?<!\\p{L})(\\p{Lu}\\p{Ll}+) (\\p{Lu}\\p{Ll}+) \\p{Lu}\\p{Ll}+${PATRONYMIC}(?!\\p{L})` +
+    `|(?<!\\p{L})(\\p{Lu}{2,}) (\\p{Lu}{2,}) \\p{Lu}{2,}${PATRONYMIC.toUpperCase()}(?!\\p{L})`,
+  'gu',
+)
+
+/** Полное ФИО → «Имя Ф.», как банк печатает получателя (Р-23). */
+export function shortenFullNames(text: string): string {
+  return text.replace(FULL_NAME, (_, s: string, f: string, S: string, F: string) =>
+    s ? `${f} ${s[0]}.` : `${F[0]}${F.slice(1).toLowerCase()} ${S[0]}.`,
+  )
+}
+
+/**
+ * Приватность текста выписки (Р-23): IBAN целиком и длинные цифры (номера карт, счетов, ИИН,
+ * договоров) убираются, полные ФИО сокращаются до «Имя Ф.»; пробелы схлопнуты, ≤ 120 знаков.
+ */
 export function sanitize(text: string): string {
-  return text.replace(/\d{6,}/g, '').replace(/\s+/g, ' ').trim().slice(0, 120).trim()
+  const numbers = text.replace(/KZ[0-9A-Z]{18}/g, '').replace(/\d{6,}/g, '')
+  return shortenFullNames(numbers).replace(/\s+/g, ' ').trim().slice(0, 120).trim()
 }
 
 /** Правовая форма в начале названия: «ТОО», «ИП», «IP»… — шум для сравнения. */

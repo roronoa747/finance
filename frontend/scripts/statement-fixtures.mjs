@@ -412,6 +412,7 @@ const freedom02 = freedom({
     ['10.08.2025', -5300, 'KZT', PURCHASE, 'BIOSFERA PHARMACY ASTANA KZ'],
     ['05.08.2025', -1830, 'KZT', PURCHASE, 'GLOVO ALMATY KZ'],
     ['03.08.2025', -120000, 'KZT', TRANSFER, 'Перевод с карты на карту'],
+    ['02.08.2025', -9576, 'KZT', 'Платеж', ['ТОО "Arbuz Group (Арбуз Груп)" За', 'оплату билета/услугу/продукты', '/товар заказ Arbuz'], { splitAcrossPages: true, amountDy: -4 }],
     ['01.08.2025', -2170, 'KZT', PURCHASE, ['SMALL SUPERMARKET AST1 ALMATY', 'KZ']],
     ['31.07.2025', -2800, 'KZT', PURCHASE, 'COFFEE BOOM ASTANA KZ'],
     ['28.07.2025', -9990, 'KZT', PURCHASE, 'Google One Mountain View US'],
