@@ -735,3 +735,60 @@ describe('PV-19: цель — окно правки, взнос полем, да
     expect(html).toContain(money(40_000))
   })
 })
+
+describe('PV-23: окно пополнения и «История цели» (SSR GoalDetail)', () => {
+  const storage = new Map<string, string>()
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+    useAuthStore().setAuthData(authAs('member'))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('пополнение — как React: «Пополнить «Отпуск»», placeholder — взнос цели, «Внести»; у «Снять» — свои', async () => {
+    const store = useFinanceStore()
+    store.setHouseholdDoc(planFamilyDoc(), 1)
+    const monthly = store.goals.find((g) => g.id === 'trip')!.monthly
+    const add = await renderScreen(GoalDetail, '/goals/trip', undefined, [screenMixin({ openDepositModal: true })])
+    expect(add).toContain('Пополнить «Отпуск»')
+    expect(add).toContain(`placeholder="${plain(monthly)}"`)
+    expect(add).toMatch(/<button[^>]*>\s*Внести\s*<\/button>/)
+
+    const take = await renderScreen(GoalDetail, '/goals/trip', undefined, [
+      screenMixin({ openDepositModal: true, depositOperation: 'withdraw' }),
+    ])
+    expect(take).toContain('Снять средства')
+    expect(take).not.toMatch(/>\s*Внести\s*</)
+  })
+
+  it('«История цели» — новые сверху и на слитом документе (новые первыми), и после взноса (дописан в конец)', async () => {
+    const store = useFinanceStore()
+    const old = { id: 'm-old', date: '2026-09-01T10:00:00.000Z', amount: 11_000, by: 'a' as const }
+    const mid = { id: 'm-mid', date: '2026-09-10T10:00:00.000Z', amount: 22_000, by: 'b' as const }
+    // Порядок после mergeGoal — новые первыми.
+    store.setHouseholdDoc(planFamilyDoc(), 1)
+    store.mutateHouseholdDoc((doc) => {
+      doc.goals.find((g) => g.id === 'trip')!.movements = [mid, old]
+    })
+    const order = (html: string) =>
+      [11_000, 22_000, 33_000].map((a) => html.indexOf(`+${plain(a)} ₸`)).filter((i) => i >= 0)
+    let html = await renderScreen(GoalDetail, '/goals/trip')
+    const [iOld, iMid] = order(html)
+    expect(iMid).toBeLessThan(iOld)
+
+    // Новый взнос дописывается в конец списка — на экране он сверху.
+    store.contribute('trip', 33_000, 'a')
+    html = await renderScreen(GoalDetail, '/goals/trip')
+    const at = (a: number) => html.indexOf(`+${plain(a)} ₸`)
+    expect(at(33_000)).toBeLessThan(at(22_000))
+    expect(at(22_000)).toBeLessThan(at(11_000))
+  })
+})

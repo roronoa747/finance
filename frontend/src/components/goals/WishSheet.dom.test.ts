@@ -98,3 +98,19 @@ describe('PV-18: WishSheet в DOM', () => {
     expect(wishId.value).toBeNull()
   })
 })
+
+describe('PV-23 (хвост приёмки Б4): «Готово» закрывает через close() кита', () => {
+  it('цена набрана, фокус в поле, «Готово» нажата без смены фокуса — цена записана, окно закрыто', async () => {
+    const { wishId, field, button, pan } = await openPan()
+    const price = field('Цена, ₸')
+    price.focus()
+    price.value = '25 000'
+    price.dispatchEvent(new Event('input', { bubbles: true }))
+    await nextTick()
+    expect(document.activeElement).toBe(price)
+    button('Готово').click()
+    await nextTick()
+    expect(pan().price).toBe(25_000)
+    expect(wishId.value).toBeNull()
+  })
+})

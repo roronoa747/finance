@@ -10,10 +10,13 @@ import Overview from '@/views/Overview.vue'
 import Budget from '@/views/Budget.vue'
 import Capital from '@/views/Capital.vue'
 import Goals from '@/views/Goals.vue'
-import GoalDetail from '@/views/GoalDetail.vue'
-import Deposit from '@/views/Deposit.vue'
-import Ritual from '@/views/Ritual.vue'
-import DebtPlan from '@/views/DebtPlan.vue'
+
+// Редкие экраны — отдельными чанками (Н-9 ревью Блока 3): главный чанк без них меньше 500 kB.
+// Предкэш PWA (`generateSW`) берёт все чанки — офлайн они открываются так же.
+const GoalDetail = () => import('@/views/GoalDetail.vue')
+const Deposit = () => import('@/views/Deposit.vue')
+const Ritual = () => import('@/views/Ritual.vue')
+const DebtPlan = () => import('@/views/DebtPlan.vue')
 
 export const routes: RouteRecordRaw[] = [
   {

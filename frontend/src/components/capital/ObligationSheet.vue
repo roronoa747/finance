@@ -155,7 +155,7 @@ function planObligation() {
     <template #mark>
       <SavedMark :on="obligationSaved" />
     </template>
-    <template v-if="activeObligation">
+    <template v-if="activeObligation" #default="{ close }">
       <div v-if="obligationDue" class="mb-3 rounded-xl border border-line px-3">
         <PaidRow
           dense
@@ -334,7 +334,7 @@ function planObligation() {
         </div>
       </template>
 
-      <Button class="w-full mb-3" @click="emit('close')">Готово</Button>
+      <Button class="w-full mb-3" @click="close">Готово</Button>
 
       <DangerZone
         v-if="!authStore.isViewer"

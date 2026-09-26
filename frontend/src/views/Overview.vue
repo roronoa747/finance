@@ -25,6 +25,7 @@ import {
   untilPayday,
 } from '@/lib/finance'
 import { cn, plural } from '@/lib/utils'
+import { useInvite } from '@/components/useInvite'
 import Card from '@/components/kit/Card.vue'
 import Section from '@/components/kit/Section.vue'
 import Callout from '@/components/kit/Callout.vue'
@@ -151,39 +152,14 @@ function cancelSub() {
 }
 
 // Баннер приглашения
-const inviteCode = ref<string | null>(null)
-const inviteBusy = ref(false)
-const copied = ref(false)
-
-async function makeInvite() {
-  inviteBusy.value = true
-  try {
-    const res = await authStore.createInvite()
-    inviteCode.value = res.code
-  } catch (e) {
-    console.error(e)
-  } finally {
-    inviteBusy.value = false
-  }
-}
-
-async function copyInvite() {
-  if (!inviteCode.value) return
-  try {
-    await navigator.clipboard.writeText(inviteCode.value)
-    copied.value = true
-    setTimeout(() => {
-      copied.value = false
-    }, 2000)
-  } catch {}
-}
+const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: makeInvite, copy: copyInvite } = useInvite()
 </script>
 
 <template>
   <div class="flex flex-col gap-3.5 pt-1 text-left">
-    <!-- Invite Partner Banner (if single member) -->
+    <!-- Invite Partner Banner (if single member; viewer код не создаёт — сервер ответит 403) -->
     <div
-      v-if="people.length < 2"
+      v-if="people.length < 2 && !authStore.isViewer"
       class="rounded-[18px] border border-brand bg-surface p-4"
     >
       <div class="flex items-start gap-3">
@@ -212,9 +188,14 @@ async function copyInvite() {
             Скопировано
           </p>
         </template>
-        <Button v-else class="w-full" :disabled="inviteBusy" @click="makeInvite">
-          {{ inviteBusy ? 'Минуту…' : 'Создать код приглашения' }}
-        </Button>
+        <template v-else>
+          <Button class="w-full" :disabled="inviteBusy" @click="makeInvite">
+            {{ inviteBusy ? 'Минуту…' : 'Создать код приглашения' }}
+          </Button>
+          <p v-if="inviteError" role="alert" class="mt-1.5 text-center text-[12.5px] text-warn">
+            {{ inviteError }}
+          </p>
+        </template>
       </div>
     </div>
 

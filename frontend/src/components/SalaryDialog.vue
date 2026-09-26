@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { money, plain, parseMoney } from '@/lib/money'
 import { monthKey, monthTitle, monthFrom, addMonths } from '@/lib/dates'
@@ -10,10 +10,11 @@ import Field from '@/components/kit/Field.vue'
 import NumField from '@/components/kit/NumField.vue'
 import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
 import SavedMark from '@/components/kit/SavedMark.vue'
+import Select from '@/components/kit/Select.vue'
+import Sheet from '@/components/kit/Sheet.vue'
 import { useSavedMark } from '@/components/kit/useSavedMark'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
-import { PhX } from '@phosphor-icons/vue'
 
 const props = defineProps<{
   id: PersonId | null
@@ -60,7 +61,9 @@ watch(
 )
 
 const current = computed(() => (person.value ? salaryAt(person.value, key.value) : 0))
-const months = computed(() => Array.from({ length: 13 }, (_, i) => addMonths(key.value, i)))
+const months = computed(() =>
+  Array.from({ length: 13 }, (_, i) => addMonths(key.value, i)).map((m) => ({ value: m, label: monthTitle(m) })),
+)
 const planned = computed(() => parseMoney(newAmount.value))
 const delta = computed(() => (planned.value > 0 ? planned.value - current.value : 0))
 const history = computed(() =>
@@ -91,6 +94,13 @@ function onPaydayCommit(text: string) {
   }
 }
 
+// «Новый оклад» — сразу под пальцем (React `Budget.tsx:426-427` `autoFocus`), как PV-11.
+const planRef = ref<HTMLElement | null>(null)
+function startPlanning() {
+  planning.value = true
+  void nextTick(() => planRef.value?.querySelector('input')?.focus())
+}
+
 function handlePlanSubmit() {
   if (!person.value || planned.value <= 0) return
   financeStore.amendSalary(
@@ -104,49 +114,12 @@ function handlePlanSubmit() {
   reason.value = ''
 }
 
-function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape') {
-    emit('close')
-  }
-}
-
-onMounted(() => {
-  if (typeof document !== 'undefined') {
-    document.addEventListener('keydown', onKeydown)
-  }
-})
-
-onUnmounted(() => {
-  if (typeof document !== 'undefined') {
-    document.removeEventListener('keydown', onKeydown)
-  }
-})
 </script>
 
 <template>
-  <div
-    v-if="person"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
-    @click.self="emit('close')"
-  >
-    <div
-      class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-2xl border border-line bg-surface p-5 shadow-2xl text-left"
-    >
-      <div class="mb-4 flex items-center justify-between">
-        <h3 class="flex items-center gap-2 font-display text-[17px] font-semibold text-ink">
-          {{ person.name }}
-          <SavedMark :on="saved" />
-        </h3>
-        <button
-          type="button"
-          aria-label="Закрыть"
-          class="grid size-7 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
-          @click="emit('close')"
-        >
-          <PhX :size="16" />
-        </button>
-      </div>
-
+  <Sheet :open="!!person" :title="person?.name ?? ''" @close="emit('close')">
+    <template #mark><SavedMark :on="saved" /></template>
+    <template v-if="person">
       <Field label="Имя">
         <Input v-model="personName" @blur="onNameBlur" />
       </Field>
@@ -164,23 +137,18 @@ onUnmounted(() => {
       </Field>
 
       <div v-if="!planning" class="mb-3">
-        <Button variant="outline" class="w-full bg-surface-2" @click="planning = true">
+        <Button variant="outline" class="w-full bg-surface-2" @click="startPlanning">
           Запланировать изменение
         </Button>
       </div>
 
-      <div v-else class="mb-3 rounded-xl border border-brand p-3.5">
+      <div v-else ref="planRef" class="mb-3 rounded-xl border border-brand p-3.5">
         <Field label="Новый оклад, ₸">
           <NumField v-model="newAmount" :placeholder="plain(current)" />
         </Field>
 
         <Field label="С какого месяца">
-          <select
-            v-model="fromMonth"
-            class="w-full rounded-md border border-input bg-surface-2 px-3 py-2 text-sm text-ink outline-none"
-          >
-            <option v-for="m in months" :key="m" :value="m">{{ monthTitle(m) }}</option>
-          </select>
+          <Select v-model="fromMonth" :options="months" />
         </Field>
 
         <Field label="Причина">
@@ -228,6 +196,6 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
-    </div>
-  </div>
+    </template>
+  </Sheet>
 </template>

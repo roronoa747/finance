@@ -405,6 +405,35 @@ describe('stores/finance.ts — Pinia хранилище казны и синх�
     expect(store.householdRev).toBe(2)
     expect(store.status).toBe('dirty')
   })
+
+  it('PV-21: resetAll шлёт полный пустой документ с меткой сброса — поверх серверного, без слияния', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-26T08:00:00Z'))
+    try {
+      const store = useFinanceStore()
+      store.mutateHouseholdDoc((doc) => {
+        doc.people.push(person('a', 'Ильяс'))
+      })
+      const server = { ...defaultSyncDoc(), people: [person('a', 'Ильяс'), person('b', 'Аруна')], setupDoneAt: '2026-09-01T00:00:00Z' }
+      const client = {
+        getHouseholdDoc: vi.fn().mockResolvedValue(serverResponse(5, server)),
+        pushHouseholdDoc: vi.fn(async (rev: number, data: SyncDoc) => serverResponse(rev + 1, JSON.parse(JSON.stringify(data)))),
+      } as unknown as ApiClient
+
+      store.resetAll()
+      expect(store.forceReplace).toBe(true)
+      await store.syncHousehold(client)
+
+      const sent = vi.mocked(client.pushHouseholdDoc).mock.calls[0][1]
+      // Все ключи документа — пустыми: сервер хранит ключи, которых нет в push (RP-03).
+      expect(sent).toEqual({ ...defaultSyncDoc(), resetAt: '2026-09-26T08:00:00.000Z' })
+      expect(sent).toMatchObject({ payments: [], plans: [], setupDoneAt: null })
+      expect(store.forceReplace).toBe(false)
+      expect(store.setupDone).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
   describe('RP-01: правка тем же значением ничего не пишет', () => {
     const T0 = '2026-09-20T10:00:00Z'
     function loadClean(store: ReturnType<typeof useFinanceStore>) {
@@ -1751,6 +1780,7 @@ describe('PV-14: план «Сначала долги» в сторе', () => {
     choose(store)
     store.resetDoc()
     expect(store.householdDoc.plans).toEqual([])
+    expect(store.householdDoc.resetAt).toBeTruthy()
   })
 
   describe('settlePlan после правок долгов (критик Блока 3)', () => {
@@ -2007,11 +2037,23 @@ describe('PV-19: «Уже накоплено» правит seed, история
     const movements = JSON.parse(JSON.stringify(store.goals[0].movements))
     at('2026-09-24T08:00:00Z')
     store.updateGoal(id, { have: 120_000 })
-    expect(store.goals[0]).toMatchObject({ seed: 70_000, have: 120_000, updatedAt: '2026-09-24T08:00:00.000Z' })
+    expect(store.goals[0]).toMatchObject({
+      seed: 70_000, have: 120_000, updatedAt: '2026-09-24T08:00:00.000Z', seedSetAt: '2026-09-24T08:00:00.000Z',
+    })
     expect(store.goals[0].movements).toEqual(movements)
-    // Следующий взнос — от нового seed, а не от старого.
+    // Следующий взнос — от нового seed, а не от старого; якорь seed взнос не двигает.
+    at('2026-09-24T09:00:00Z')
     store.contribute(id, 10_000, 'a')
-    expect(store.goals[0].have).toBe(130_000)
+    expect(store.goals[0]).toMatchObject({ have: 130_000, seedSetAt: '2026-09-24T08:00:00.000Z' })
+  })
+
+  it('якорь seedSetAt ставит только смена seed: название, взнос и создание его не ставят', () => {
+    const { store, id } = goalWithMovements()
+    store.updateGoal(id, { name: 'Отпуск в Турции', monthly: 73_000 })
+    expect(store.goals[0].seedSetAt).toBeUndefined()
+    // «Уже накоплено» = нынешнее накопленное — seed тот же, якоря нет.
+    store.updateGoal(id, { have: 150_000 })
+    expect(store.goals[0].seedSetAt).toBeUndefined()
   })
 
   it('have меньше суммы взносов → seed 0, have = Σ взносов', () => {

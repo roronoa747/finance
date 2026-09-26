@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { PhSparkle } from '@phosphor-icons/vue'
 import { useAuthStore, DEMO_TOKEN } from '@/stores/auth'
 import { useFinanceStore, DEMO_HOUSEHOLD } from '@/stores/finance'
+import { authErrorText } from '@/lib/authErrors'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Segmented from '@/components/kit/Segmented.vue'
@@ -114,16 +115,7 @@ async function submit() {
       }
     }
   } catch (err: unknown) {
-    const raw = err instanceof Error ? err.message : String(err)
-    if (/invalid credentials|unauthorized/i.test(raw)) {
-      errorMessage.value = 'Неверная почта или пароль'
-    } else if (/already exists|duplicate/i.test(raw)) {
-      errorMessage.value = 'Пользователь с такой почтой уже зарегистрирован'
-    } else if (/invalid or expired invite code/i.test(raw)) {
-      errorMessage.value = 'Код приглашения недействителен или истёк'
-    } else {
-      errorMessage.value = raw
-    }
+    errorMessage.value = authErrorText(err instanceof Error ? err.message : String(err), mode.value)
   } finally {
     busy.value = false
   }

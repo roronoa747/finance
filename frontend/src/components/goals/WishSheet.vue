@@ -59,7 +59,7 @@ function remove() {
     <template #mark>
       <SavedMark :on="saved" />
     </template>
-    <template v-if="wish">
+    <template v-if="wish" #default="{ close }">
       <Field label="Что покупаем">
         <Input :default-value="wish.name" class="mb-3" @blur="onName" />
       </Field>
@@ -83,7 +83,7 @@ function remove() {
         />
       </Field>
 
-      <Button class="mb-3 w-full" @click="emit('close')">Готово</Button>
+      <Button class="mb-3 w-full" @click="close">Готово</Button>
 
       <DangerZone
         label="Удалить из списка"

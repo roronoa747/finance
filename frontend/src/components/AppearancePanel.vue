@@ -1,10 +1,20 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { ACCENTS, ACCENT_KEYS, type AccentKey, type ThemeChoice } from '@/lib/palette'
-import { readAccent, readThemeChoice, setAccent, setThemeChoice } from '@/lib/theme'
+import { ref, computed, watch } from 'vue'
+import {
+  ACCENTS,
+  ACCENT_KEYS,
+  DEFAULT_CATEGORY_NAMES,
+  categoryName,
+  type AccentKey,
+  type CategoryKey,
+  type HueKey,
+  type ThemeChoice,
+} from '@/lib/palette'
+import { readAccent, readCategoryHues, readThemeChoice, setAccent, setCategoryHue, setThemeChoice } from '@/lib/theme'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import Segmented from '@/components/kit/Segmented.vue'
+import HuePicker from '@/components/goals/HuePicker.vue'
 import Input from '@/components/ui/Input.vue'
 import Button from '@/components/ui/Button.vue'
 import Callout from '@/components/kit/Callout.vue'
@@ -17,8 +27,16 @@ const router = useRouter()
 // Тема применена ещё в main.ts; панель только показывает и меняет выбор.
 const currentTheme = ref<ThemeChoice>(readThemeChoice())
 const currentAccent = ref<AccentKey>(readAccent())
+const categoryHues = ref(readCategoryHues())
+// Разделы во Vue заводятся лениво — ряд есть у всех пяти, имя незаведённого — запасное.
+const CATEGORY_KEYS = Object.keys(DEFAULT_CATEGORY_NAMES) as CategoryKey[]
 
-const userName = ref(authStore.member?.display_name || authStore.user?.email?.split('@')[0] || '')
+// Имя — из документа (React `AppearancePanel.tsx:45-64`): переименование в зарплатах видно здесь.
+const myName = computed(() => financeStore.people.find((p) => p.id === authStore.slot)?.name ?? '')
+const userName = ref(myName.value)
+watch(myName, (name) => {
+  userName.value = name
+})
 
 function updateTheme(th: ThemeChoice) {
   currentTheme.value = th
@@ -30,10 +48,19 @@ function updateAccent(acc: AccentKey) {
   setAccent(acc)
 }
 
+function updateCategoryHue(key: CategoryKey, hue: HueKey) {
+  categoryHues.value = { ...categoryHues.value, [key]: hue }
+  setCategoryHue(key, hue)
+}
+
+// Пустое имя не пишется — в поле возвращается прежнее.
 function saveName() {
   const trimmed = userName.value.trim()
-  if (!trimmed || !authStore.slot) return
-  financeStore.setPerson(authStore.slot, { name: trimmed })
+  if (!trimmed) {
+    userName.value = myName.value
+    return
+  }
+  if (authStore.slot && trimmed !== myName.value) financeStore.setPerson(authStore.slot, { name: trimmed })
 }
 
 // Выход при неотправленных правках сначала спрашивает (RP-04): 'ask' — предложить
@@ -84,7 +111,8 @@ function leave(choice: 'keep' | 'discard') {
         @blur="saveName"
       />
       <p class="mt-1 text-[12px] leading-relaxed text-ink-3">
-        Так вас видит партнёр на полосе доходов, в покупках и во взносах.
+        Так вас видит партнёр — на полосе доходов, в покупках и во взносах.
+        По умолчанию подставляется начало адреса почты.
       </p>
     </div>
 
@@ -113,6 +141,7 @@ function leave(choice: 'keep' | 'discard') {
           :key="k"
           type="button"
           :aria-label="ACCENTS[k].label"
+          :aria-pressed="currentAccent === k"
           :title="ACCENTS[k].label"
           :class="[
             'size-7 rounded-xl border-2 transition-all cursor-pointer',
@@ -122,6 +151,23 @@ function leave(choice: 'keep' | 'discard') {
           @click="updateAccent(k)"
         />
       </div>
+    </div>
+
+    <div>
+      <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-3">
+        Цвета разделов
+      </div>
+      <HuePicker
+        v-for="key in CATEGORY_KEYS"
+        :key="key"
+        :label="categoryName(financeStore.categories, key)"
+        :model-value="categoryHues[key]"
+        @update:model-value="(hue) => updateCategoryHue(key, hue)"
+      />
+      <p class="text-[12px] leading-relaxed text-ink-3">
+        Каждый цвет задан парой значений — для светлой и тёмной темы. Свободного выбора HEX нет
+        намеренно: так нельзя получить сочетание, которое станет нечитаемым при смене темы.
+      </p>
     </div>
 
     <div v-if="authStore.isDemo" class="flex flex-col gap-2 pt-3 border-t border-line">

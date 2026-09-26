@@ -3,8 +3,11 @@ import { HUES, HUE_KEYS, type HueKey } from '@/lib/palette'
 import { cn } from '@/lib/utils'
 import Field from '@/components/kit/Field.vue'
 
-/** «Цвет» цели — в окне создания (`Goals.vue`) и правки (`GoalSheet`); выбранный — `aria-pressed`. */
-defineProps<{ modelValue: HueKey }>()
+/**
+ * Ряд образцов оттенков, выбранный — `aria-pressed`: «Цвет» цели в окнах создания
+ * (`Goals.vue`) и правки (`GoalSheet`), «Цвета разделов» в «Оформлении» (подпись — имя раздела).
+ */
+withDefaults(defineProps<{ modelValue: HueKey; label?: string }>(), { label: 'Цвет' })
 
 const emit = defineEmits<{
   (e: 'update:modelValue', val: HueKey): void
@@ -12,7 +15,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <Field label="Цвет" group>
+  <Field :label="label" group>
     <div class="flex flex-wrap gap-2 mb-3">
       <button
         v-for="h in HUE_KEYS"

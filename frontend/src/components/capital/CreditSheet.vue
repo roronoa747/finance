@@ -115,7 +115,7 @@ watch(
     <template #mark>
       <SavedMark :on="creditSaved" />
     </template>
-    <template v-if="activeCredit">
+    <template v-if="activeCredit" #default="{ close }">
       <div v-if="creditDue" class="mb-3 rounded-xl border border-line px-3">
         <PaidRow
           dense
@@ -223,7 +223,7 @@ watch(
         </div>
       </template>
 
-      <Button class="mb-3 w-full" @click="emit('close')">Готово</Button>
+      <Button class="mb-3 w-full" @click="close">Готово</Button>
 
       <DangerZone
         v-if="!authStore.isViewer"

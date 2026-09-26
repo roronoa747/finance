@@ -70,7 +70,7 @@ const accountRemoveWarning = computed(() => {
       <SavedMark :on="accountSaved" />
     </template>
     <!-- Viewer видит цифры, но не правит (Р-12, матрица §3) -->
-    <template v-if="activeAccount && authStore.isViewer">
+    <template v-if="activeAccount && authStore.isViewer" #default="{ close }">
       <div class="mb-3 rounded-xl border border-line bg-surface-2 p-3 text-[13px] flex flex-col gap-1.5">
         <div v-if="activeAccount.currency" class="flex justify-between">
           <span class="text-ink-2">Сумма в {{ activeAccount.currency }}</span>
@@ -81,9 +81,9 @@ const accountRemoveWarning = computed(() => {
           <b class="num text-ink">{{ money(activeAccount.amount) }}</b>
         </div>
       </div>
-      <Button class="w-full" @click="emit('close')">Готово</Button>
+      <Button class="w-full" @click="close">Готово</Button>
     </template>
-    <template v-else-if="activeAccount">
+    <template v-else-if="activeAccount" #default="{ close }">
       <Field label="Название">
         <Input :default-value="activeAccount.name" class="mb-3" @blur="onAccountNameBlur" />
       </Field>
@@ -116,7 +116,7 @@ const accountRemoveWarning = computed(() => {
         <Input :default-value="activeAccount.note" class="mb-3" @blur="onAccountNoteBlur" />
       </Field>
 
-      <Button class="w-full mb-3" @click="emit('close')">
+      <Button class="w-full mb-3" @click="close">
         Готово
       </Button>
 

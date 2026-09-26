@@ -9,14 +9,30 @@
  * и на `/setup`, а не только когда открыта панель «Оформление».
  */
 import { ref } from 'vue'
-import { ACCENT_KEYS, applyTheme, resolveDark, type AccentKey, type ThemeChoice } from '@/lib/palette'
+import {
+  ACCENT_KEYS,
+  HUE_KEYS,
+  applyTheme,
+  resolveDark,
+  type AccentKey,
+  type CategoryKey,
+  type HueKey,
+  type ThemeChoice,
+} from '@/lib/palette'
 
 const THEME_KEY = 'ff_theme'
 const ACCENT_KEY = 'ff_accent'
+const CATEGORY_HUES_KEY = 'ff_category_hues'
 const THEMES: ThemeChoice[] = ['auto', 'light', 'dark']
 
-/** Цвета разделов пока зашиты — «Цвета разделов» подключит PV-22. */
-const CATEGORIES = { d1: 'blue', d2: 'brick', d3: 'green', d4: 'ochre', d5: 'steel' } as const
+/** Цвета разделов по умолчанию (React `defaultSettings.categories`). */
+export const DEFAULT_CATEGORY_HUES: Readonly<Record<CategoryKey, HueKey>> = {
+  d1: 'blue',
+  d2: 'brick',
+  d3: 'green',
+  d4: 'ochre',
+  d5: 'steel',
+}
 
 /** Тёмная ли тема прямо сейчас — для inline-цветов в SVG. В Node — false. */
 export const isDark = ref(false)
@@ -49,10 +65,31 @@ export function readAccent(): AccentKey {
   return v && ACCENT_KEYS.includes(v as AccentKey) ? (v as AccentKey) : 'emerald'
 }
 
-/** Применяет выбранные тему и акцент к документу и обновляет `isDark`. */
+/**
+ * «Цвета разделов» устройства (PV-22, Р-20). Сломанная или чужая запись — дефолт по
+ * каждому разделу отдельно: один испорченный ключ не сбрасывает остальные.
+ */
+export function readCategoryHues(): Record<CategoryKey, HueKey> {
+  const out = { ...DEFAULT_CATEGORY_HUES }
+  let saved: unknown = null
+  try {
+    saved = JSON.parse(read(CATEGORY_HUES_KEY) ?? 'null')
+  } catch {
+    return out
+  }
+  if (saved && typeof saved === 'object') {
+    for (const key of Object.keys(out) as CategoryKey[]) {
+      const hue = (saved as Record<string, unknown>)[key]
+      if (HUE_KEYS.includes(hue as HueKey)) out[key] = hue as HueKey
+    }
+  }
+  return out
+}
+
+/** Применяет выбранные тему, акцент и цвета разделов к документу и обновляет `isDark`. */
 export function applyCurrentPalette() {
   const theme = readThemeChoice()
-  applyTheme({ theme, accent: readAccent(), categories: CATEGORIES })
+  applyTheme({ theme, accent: readAccent(), categories: readCategoryHues() })
   isDark.value = resolveDark(theme)
 }
 
@@ -63,6 +100,11 @@ export function setThemeChoice(theme: ThemeChoice) {
 
 export function setAccent(accent: AccentKey) {
   write(ACCENT_KEY, accent)
+  applyCurrentPalette()
+}
+
+export function setCategoryHue(key: CategoryKey, hue: HueKey) {
+  write(CATEGORY_HUES_KEY, JSON.stringify({ ...readCategoryHues(), [key]: hue }))
   applyCurrentPalette()
 }
 

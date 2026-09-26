@@ -723,4 +723,77 @@ describe('PV-19: правка «Уже накоплено» против офл�
       expect(g.have).toBe(goalHave(g.seed, g.movements))
     }
   })
+
+  it('хвост Б4: B вносит офлайн ПОЗЖЕ правки A — seed_A держит якорь seedSetAt, have = seed_A + Σ', () => {
+    const TA = '2026-09-21T10:00:00.000Z'
+    const a = doc({ ...base, seed: 70_000, seedSetAt: TA, have: 120_000, updatedAt: TA })
+    // B не видел правки A: старый seed, взнос двигает updatedAt цели — B выигрывает запись.
+    const m2 = { id: 'm2', date: '2026-09-21T11:00:00.000Z', amount: 30_000, by: 'b' as const }
+    const b = doc({ ...base, have: 180_000, movements: [...base.movements, m2], updatedAt: m2.date })
+    for (const merged of [mergeDocs(a, b), mergeDocs(b, a)]) {
+      const g = merged.goals[0]
+      expect(g.updatedAt).toBe(m2.date)
+      expect(g.seed).toBe(70_000)
+      expect(g.seedSetAt).toBe(TA)
+      expect(g.have).toBe(70_000 + 50_000 + 30_000)
+      // Повторное слияние с B (без якоря) правку не откатывает.
+      expect(mergeDocs(merged, b).goals[0].seed).toBe(70_000)
+    }
+  })
+
+  it('обе правили «Уже накоплено» — seed стороны с поздним якорем, даже если запись выиграла другая', () => {
+    const a = doc({ ...base, seed: 70_000, seedSetAt: '2026-09-21T10:00:00.000Z', have: 120_000, updatedAt: '2026-09-21T12:00:00.000Z' })
+    const b = doc({ ...base, seed: 20_000, seedSetAt: '2026-09-21T11:00:00.000Z', have: 70_000, updatedAt: '2026-09-21T11:00:00.000Z' })
+    for (const merged of [mergeDocs(a, b), mergeDocs(b, a)]) {
+      expect(merged.goals[0].seed).toBe(20_000)
+      expect(merged.goals[0].seedSetAt).toBe('2026-09-21T11:00:00.000Z')
+      expect(merged.goals[0].have).toBe(70_000)
+    }
+  })
+})
+
+describe('PV-21: «Начать бюджет заново» — метка сброса resetAt', () => {
+  const T = '2026-09-26T08:00:00.000Z'
+  const goal = (id: string, name: string): Goal => ({
+    id, name, need: 1_000_000, seed: 0, have: 0, monthly: 0, hue: 'teal', planPct: 0, movements: [], updatedAt: '2026-09-20T10:00:00.000Z',
+  })
+  // Телефон B до сброса: полный документ, настройка пройдена.
+  const before: SyncDoc = {
+    ...createEmptyDoc(),
+    people: [{ id: 'b', name: 'Аруна', salary: 400_000, payday: 5, updatedAt: '2026-09-20T10:00:00.000Z' } as SyncDoc['people'][number]],
+    goals: [goal('old', 'Отпуск')],
+    setupDoneAt: '2026-09-01T00:00:00.000Z',
+  }
+
+  it('пустой документ после сброса — не «пустой сервер»: его не перезаписывают своим', () => {
+    expect(isEmptyDoc({ ...createEmptyDoc(), resetAt: T })).toBe(false)
+  })
+
+  it('сброс побеждает старый документ целиком, в обе стороны: стёртое не возвращается, мастер снова', () => {
+    const reset: SyncDoc = { ...createEmptyDoc(), resetAt: T }
+    for (const merged of [mergeDocs(before, reset), mergeDocs(reset, before)]) {
+      expect(merged).toEqual(reset)
+      expect(merged.setupDoneAt).toBeNull()
+    }
+  })
+
+  it('A после сброса уже прошёл мастер — старые записи B не «воскресают» слиянием по id', () => {
+    const refilled: SyncDoc = { ...createEmptyDoc(), resetAt: T, goals: [goal('new', 'Машина')], setupDoneAt: '2026-09-26T08:05:00.000Z' }
+    for (const merged of [mergeDocs(before, refilled), mergeDocs(refilled, before)]) {
+      expect(merged.goals.map((g) => g.id)).toEqual(['new'])
+      expect(merged.people).toEqual([])
+    }
+  })
+
+  it('метки равны — обычное слияние, метка остаётся; позднее из двух сбросов сильнее', () => {
+    const a: SyncDoc = { ...createEmptyDoc(), resetAt: T, goals: [goal('a', 'Машина')] }
+    const b: SyncDoc = { ...createEmptyDoc(), resetAt: T, goals: [goal('b', 'Отпуск')] }
+    const merged = mergeDocs(a, b)
+    expect(merged.goals.map((g) => g.id).sort()).toEqual(['a', 'b'])
+    expect(merged.resetAt).toBe(T)
+    const later: SyncDoc = { ...createEmptyDoc(), resetAt: '2026-09-27T08:00:00.000Z' }
+    expect(mergeDocs(merged, later)).toEqual(later)
+    // Без меток ключ не появляется: документы без сброса — как раньше.
+    expect('resetAt' in mergeDocs(before, before)).toBe(false)
+  })
 })

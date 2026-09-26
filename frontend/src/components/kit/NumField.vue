@@ -36,6 +36,8 @@ function onInput(e: Event) {
   const next = clean(raw, props.kind, props.modelValue)
   const nextCaret = caretAt(next, sig)
 
+  // Набрали букву — модель та же, и Vue поле не перерисует: мусор убираем сами.
+  if (el.value !== next) el.value = next
   emit('update:modelValue', next)
 
   void nextTick(() => {
