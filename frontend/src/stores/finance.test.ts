@@ -2007,11 +2007,23 @@ describe('PV-19: «Уже накоплено» правит seed, история
     const movements = JSON.parse(JSON.stringify(store.goals[0].movements))
     at('2026-09-24T08:00:00Z')
     store.updateGoal(id, { have: 120_000 })
-    expect(store.goals[0]).toMatchObject({ seed: 70_000, have: 120_000, updatedAt: '2026-09-24T08:00:00.000Z' })
+    expect(store.goals[0]).toMatchObject({
+      seed: 70_000, have: 120_000, updatedAt: '2026-09-24T08:00:00.000Z', seedSetAt: '2026-09-24T08:00:00.000Z',
+    })
     expect(store.goals[0].movements).toEqual(movements)
-    // Следующий взнос — от нового seed, а не от старого.
+    // Следующий взнос — от нового seed, а не от старого; якорь seed взнос не двигает.
+    at('2026-09-24T09:00:00Z')
     store.contribute(id, 10_000, 'a')
-    expect(store.goals[0].have).toBe(130_000)
+    expect(store.goals[0]).toMatchObject({ have: 130_000, seedSetAt: '2026-09-24T08:00:00.000Z' })
+  })
+
+  it('якорь seedSetAt ставит только смена seed: название, взнос и создание его не ставят', () => {
+    const { store, id } = goalWithMovements()
+    store.updateGoal(id, { name: 'Отпуск в Турции', monthly: 73_000 })
+    expect(store.goals[0].seedSetAt).toBeUndefined()
+    // «Уже накоплено» = нынешнее накопленное — seed тот же, якоря нет.
+    store.updateGoal(id, { have: 150_000 })
+    expect(store.goals[0].seedSetAt).toBeUndefined()
   })
 
   it('have меньше суммы взносов → seed 0, have = Σ взносов', () => {

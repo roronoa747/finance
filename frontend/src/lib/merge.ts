@@ -88,9 +88,16 @@ function mergeGoal(winner: Goal, a: Goal, b: Goal): Goal {
   const movements = unionById(a.movements ?? [], b.movements ?? []).sort((x, y) =>
     y.date.localeCompare(x.date),
   )
-  const seed = winner.seed ?? a.seed ?? b.seed ?? 0
+  // seed — со стороны, где его позже правили руками (якорь seedSetAt): поздний взнос
+  // партнёра выигрывает запись, но правку «Уже накоплено» не откатывает. Без якоря
+  // (или при равных) — у победителя, как было.
+  const sa = a.seedSetAt ?? ''
+  const sb = b.seedSetAt ?? ''
+  const side = sa === sb ? winner : sa > sb ? a : b
+  const seed = side.seed ?? winner.seed ?? a.seed ?? b.seed ?? 0
   return {
     ...winner,
+    ...(side.seedSetAt != null ? { seedSetAt: side.seedSetAt } : {}),
     seed,
     movements,
     // Пересчёт из объединённого списка — единственный способ не потерять взнос.

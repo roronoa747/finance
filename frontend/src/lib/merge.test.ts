@@ -723,4 +723,31 @@ describe('PV-19: правка «Уже накоплено» против офл�
       expect(g.have).toBe(goalHave(g.seed, g.movements))
     }
   })
+
+  it('хвост Б4: B вносит офлайн ПОЗЖЕ правки A — seed_A держит якорь seedSetAt, have = seed_A + Σ', () => {
+    const TA = '2026-09-21T10:00:00.000Z'
+    const a = doc({ ...base, seed: 70_000, seedSetAt: TA, have: 120_000, updatedAt: TA })
+    // B не видел правки A: старый seed, взнос двигает updatedAt цели — B выигрывает запись.
+    const m2 = { id: 'm2', date: '2026-09-21T11:00:00.000Z', amount: 30_000, by: 'b' as const }
+    const b = doc({ ...base, have: 180_000, movements: [...base.movements, m2], updatedAt: m2.date })
+    for (const merged of [mergeDocs(a, b), mergeDocs(b, a)]) {
+      const g = merged.goals[0]
+      expect(g.updatedAt).toBe(m2.date)
+      expect(g.seed).toBe(70_000)
+      expect(g.seedSetAt).toBe(TA)
+      expect(g.have).toBe(70_000 + 50_000 + 30_000)
+      // Повторное слияние с B (без якоря) правку не откатывает.
+      expect(mergeDocs(merged, b).goals[0].seed).toBe(70_000)
+    }
+  })
+
+  it('обе правили «Уже накоплено» — seed стороны с поздним якорем, даже если запись выиграла другая', () => {
+    const a = doc({ ...base, seed: 70_000, seedSetAt: '2026-09-21T10:00:00.000Z', have: 120_000, updatedAt: '2026-09-21T12:00:00.000Z' })
+    const b = doc({ ...base, seed: 20_000, seedSetAt: '2026-09-21T11:00:00.000Z', have: 70_000, updatedAt: '2026-09-21T11:00:00.000Z' })
+    for (const merged of [mergeDocs(a, b), mergeDocs(b, a)]) {
+      expect(merged.goals[0].seed).toBe(20_000)
+      expect(merged.goals[0].seedSetAt).toBe('2026-09-21T11:00:00.000Z')
+      expect(merged.goals[0].have).toBe(70_000)
+    }
+  })
 })

@@ -1280,9 +1280,12 @@ export const useFinanceStore = defineStore('finance', () => {
       next = { ...rest, seed, have: goalHave(seed, cur.movements) }
     }
     if (unchanged(cur, next)) return
+    const t = new Date().toISOString()
+    // Якорь ручной правки seed — слияние возьмёт его, а не seed позднего взноса партнёра.
+    if (next.seed !== undefined && next.seed !== cur.seed) next = { ...next, seedSetAt: t }
     mutateHouseholdDoc((doc) => {
       const g = (doc.goals || []).find((x) => x.id === id)
-      if (g) Object.assign(g, next, { updatedAt: new Date().toISOString() })
+      if (g) Object.assign(g, next, { updatedAt: t })
     })
   }
 
