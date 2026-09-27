@@ -292,7 +292,7 @@ onMounted(() => {
       <EmptyState
         v-if="!hasUploads"
         title="Картины недели пока нет"
-        text="Загрузите первую выписку из Kaspi или Freedom — разбор займёт пару секунд, файл останется на телефоне."
+        text="Загрузите первую выписку — картина появится здесь."
       >
         <Button v-if="canEdit" @click="router.push('/week?upload=1')"><PhFileArrowUp /> Загрузить выписку</Button>
       </EmptyState>

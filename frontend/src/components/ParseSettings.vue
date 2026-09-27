@@ -7,6 +7,7 @@ import { DEFAULT_SPEND_CATEGORIES } from '@/lib/statements/dictionary'
 import type { MerchantRule } from '@/lib/statements/types'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
+import Hint from '@/components/kit/Hint.vue'
 import { cn } from '@/lib/utils'
 
 /**
@@ -81,8 +82,11 @@ function ruleTarget(r: MerchantRule) {
     </div>
 
     <div>
-      <div class="type-section text-ink-3">Память разбора</div>
-      <p class="mt-1 text-[13px] text-ink-2">Ответы на вопросы разбора — только ваши. Убрать правило — следующие выписки спросят снова, свои операции пересчитаются.</p>
+      <!-- Пояснение — в подсказке, не абзацем (правило интерфейса, критик Блока 3). -->
+      <div class="flex items-center gap-1.5 type-section text-ink-3">
+        Память разбора
+        <Hint>Ответы на вопросы разбора — только ваши, партнёр их не видит. «Убрать» — следующие выписки спросят снова, свои операции пересчитаются.</Hint>
+      </div>
       <div v-if="rules.length" class="mt-2 flex flex-col">
         <div v-for="r in rules" :key="r.id" class="flex items-center gap-3 border-t border-line py-2.5 first:border-t-0">
           <div class="min-w-0 flex-1">

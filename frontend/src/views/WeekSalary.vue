@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { PhMinus, PhPlus, PhX } from '@phosphor-icons/vue'
 import Button from '@/components/ui/Button.vue'
 import AccountChoice from '@/components/AccountChoice.vue'
@@ -379,13 +379,6 @@ function home() {
   >
     <p class="text-[14px] text-ink-2">{{ empty }}</p>
     <Button variant="outline" @click="router.push('/')">На главную</Button>
-    <RouterLink
-      to="/week"
-      class="mt-2 w-full max-w-[340px] rounded-2xl border border-line bg-surface p-3.5 text-left transition-colors hover:bg-surface-2"
-    >
-      <b class="block text-[14px] font-semibold text-ink">Выписки недели</b>
-      <span class="text-[12.5px] text-ink-2">Загрузить выписку и посмотреть траты по разделам</span>
-    </RouterLink>
   </div>
 
   <!-- СОСТОЯНИЕ 2: РЕШЕНИЕ ЗАПИСАНО -->
@@ -501,10 +494,8 @@ function home() {
       none="Не двигать остаток счёта"
     />
 
-    <p v-if="once" class="px-0.5 text-[12.5px] leading-relaxed text-ink-3">
-      Решение разовое: отложенное ляжет в цели сейчас, ежемесячные взносы не изменятся.
-    </p>
-    <p v-else-if="closed" class="px-0.5 text-[12.5px] leading-relaxed text-ink-3">
+    <!-- Разовое решение пояснений не требует: под каждой корзиной уже одна строка эффекта (правило интерфейса). -->
+    <p v-if="closed" class="px-0.5 text-[12.5px] leading-relaxed text-ink-3">
       Пока решения нет, платёж закрытого долга остаётся в «Свободно».
     </p>
     <p v-else-if="freed?.change" class="px-0.5 text-[12.5px] leading-relaxed text-ink-3">
@@ -512,14 +503,6 @@ function home() {
       {{ plain(amountAt(freed.o, key)) }} до {{ plain(freed.change.amount) }} ₸ с
       {{ monthFrom(freed.change.from) }}.
     </p>
-
-    <RouterLink
-      to="/week"
-      class="rounded-2xl border border-line bg-surface p-3.5 text-left transition-colors hover:bg-surface-2"
-    >
-      <b class="block text-[14px] font-semibold text-ink">Выписки недели</b>
-      <span class="text-[12.5px] text-ink-2">Загрузить выписку и посмотреть траты по разделам</span>
-    </RouterLink>
 
     <Button class="mb-2 w-full" :disabled="left !== 0 || needAccount" @click="confirm">
       {{ left !== 0 ? `Осталось ${money(left)}` : needAccount ? 'Выберите, откуда отложить' : 'Подтвердить распределение' }}

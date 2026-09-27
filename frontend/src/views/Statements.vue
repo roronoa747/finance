@@ -471,7 +471,7 @@ onMounted(() => {
         :unknown-share="pic.unknownShare"
         :rows="5"
       />
-      <EmptyState v-else title="Картины недели пока нет" text="Загрузите первую выписку из Kaspi или Freedom — разбор займёт пару секунд, файл останется на телефоне." />
+      <EmptyState v-else title="Картины недели пока нет" text="Загрузите первую выписку — картина появится здесь." />
       <p v-if="hasUploads && missing.length" class="px-1 text-[12.5px] text-ink-3">За эту неделю без выписки {{ missing.join(', ') }}.</p>
 
       <!-- Разделы за неделю и месяц: раскрытие — свои продавцы и раздел задним числом -->

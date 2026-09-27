@@ -91,7 +91,7 @@ describe('views/Dreams.vue — главный «Мечты» (B2C-14)', () => {
     const html = await renderScreen(Dreams, '/')
     expect(html).toContain('Эта неделя · 14–20 сентября')
     expect(html).toContain('Картины недели пока нет')
-    expect(html).toContain('Загрузите первую выписку из Kaspi или Freedom — разбор займёт пару секунд, файл останется на телефоне.')
+    expect(html).toContain('Загрузите первую выписку — картина появится здесь.')
     expect(html).toContain('Загрузить выписку')
     expect(html).toContain('Свободно до конца месяца')
     expect(html).toContain('появится после первой выписки')
