@@ -38,8 +38,13 @@ const joining = computed(() => {
   )
 })
 
+// Ответы пишутся при переходе на шаг кода, а не последней кнопкой: там человек уходит отправлять
+// код, iOS может выгрузить вкладку (или придёт новая версия PWA) — перезагрузка теряла всё введённое.
+// После записи семья «настроена» (`joining`), но шаг кода должен остаться.
+const saved = ref(false)
+
 const steps = computed<Step[]>(() => {
-  if (joining.value) return ['income']
+  if (joining.value && !saved.value) return ['income']
   return ['income', 'housing', 'credit', 'goal', 'invite']
 })
 
@@ -115,6 +120,7 @@ const calculatedGoalMonthly = computed(() => setupGoalMonthly(form.value))
 
 function next() {
   if (currentStepIndex.value < steps.value.length - 1) {
+    if (steps.value[currentStepIndex.value + 1] === 'invite') save()
     currentStepIndex.value++
   } else {
     finish()
@@ -128,6 +134,13 @@ function back() {
 }
 
 function finish() {
+  if (!saved.value) save()
+  void router.push('/')
+}
+
+/** Записывает ответы мастера один раз и помечает семью настроенной. */
+function save() {
+  if (saved.value) return
   // Решение принимается до записи: первая же запись сделала бы семью «настроенной».
   const isJoining = joining.value
 
@@ -156,10 +169,10 @@ function finish() {
     }
   }
 
-  // 5. Завершение
+  // 5. Семья настроена — дальше перезагрузка ведёт на Обзор, а не в начало мастера
   financeStore.finishSetup()
+  saved.value = true
   void financeStore.syncHousehold()
-  void router.push('/')
 }
 </script>
 
@@ -167,8 +180,9 @@ function finish() {
   <div class="mx-auto flex min-h-dvh w-full max-w-[440px] flex-col px-5 pb-6 pt-5 text-left">
     <!-- Header with progress bar -->
     <div class="mb-5 flex items-center gap-3">
+      <!-- На шаге кода ответы уже записаны — назад не пускаем, чтобы не записать их дважды. -->
       <button
-        v-if="currentStepIndex > 0"
+        v-if="currentStepIndex > 0 && !saved"
         type="button"
         aria-label="Назад"
         class="text-ink-2 hover:text-ink cursor-pointer"
