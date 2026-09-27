@@ -437,6 +437,45 @@ describe('PV-15: пауза целей ради плана (SSR)', () => {
     expect(free).not.toContain('На паузе ради плана')
     expect(free).not.toContain('Подушка плана')
   })
+
+  // Владелец, 2026-09-27 (критик Блока 3): автор — один раз, на фото и ссылкой; поверх фото —
+  // только маленькая кнопка смены; «Убрать фото» — в окне выбора; «Сделать главной» — в карточке.
+  it('герой цели: автор один раз ссылкой на фото, кнопка «Сменить фото» вместо чипов, «Сделать главной» в карточке, у главной — тег', async () => {
+    const store = useFinanceStore()
+    const doc = planFamilyDoc()
+    const credit = { author: 'Matthew Skinner', url: 'https://unsplash.com/@matthewskinner' }
+    doc.goals = doc.goals.map((g) => (g.id === 'trip' ? { ...g, photoId: 'ph-1', photoCredit: credit, template: 'japan' } : g.id === 'car' ? { ...g, main: true } : g))
+    store.setHouseholdDoc(doc, 1)
+
+    const trip = await renderScreen(GoalDetail, '/goals/trip')
+    expect(trip.match(/Фото: Matthew Skinner/g)).toHaveLength(1)
+    expect(trip).toContain(`href="${credit.url}"`)
+    expect(trip).not.toContain('/ Unsplash')
+    expect(trip).toContain('aria-label="Сменить фото"')
+    expect(trip).not.toContain('Другое фото')
+    expect(trip).not.toContain('Убрать фото')
+    expect(trip).toContain('Сделать главной')
+    expect(trip).not.toContain('>главная<')
+
+    const car = await renderScreen(GoalDetail, '/goals/car')
+    expect(car).toContain('главная')
+    expect(car).not.toContain('Сделать главной')
+    expect(car).not.toContain('Сменить фото')
+    expect(car).toContain('Добавить фото')
+
+    // Окно выбора фото у цели с фото — с тихим «Убрать фото».
+    const picker = await renderScreen(GoalDetail, '/goals/trip', undefined, [screenMixin({ pickerOpen: true })])
+    expect(picker).toContain('Убрать фото')
+
+    // Viewer — без кнопок правки героя.
+    setActivePinia(createPinia())
+    useAuthStore().setAuthData(authAs('viewer'))
+    useFinanceStore().setHouseholdDoc(doc, 1)
+    const viewer = await renderScreen(GoalDetail, '/goals/trip')
+    expect(viewer).not.toContain('Сменить фото')
+    expect(viewer).not.toContain('Сделать главной')
+    expect(viewer.match(/Фото: Matthew Skinner/g)).toHaveLength(1)
+  })
 })
 
 describe('PV-18: покупки — правка, «Уже купили», viewer (SSR)', () => {

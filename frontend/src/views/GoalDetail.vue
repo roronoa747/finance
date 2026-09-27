@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue'
 import { useRouter, useRoute, RouterLink } from 'vue-router'
-import { PhArrowLeft, PhPencilSimple, PhPlus, PhMinus, PhShareNetwork } from '@phosphor-icons/vue'
+import { PhArrowLeft, PhCamera, PhPencilSimple, PhPlus, PhMinus, PhShareNetwork } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, pct, plain, parseMoney, ratePct } from '@/lib/money'
@@ -180,6 +180,7 @@ async function onFile(file: File) {
 
 /** Убрать фото: сначала из документа (партнёр перестаёт видеть), затем с сервера. */
 async function removePhoto() {
+  pickerOpen.value = false
   const g = goal.value
   if (!g?.photoId) return
   const id = g.photoId
@@ -231,7 +232,9 @@ function share() {
       </button>
     </div>
 
-    <!-- Фото-герой (B2C-17): картинка шаблона или своя, автор — у мечты (Р-28). -->
+    <!-- Фото-герой (B2C-17): картинка шаблона или своя; автор — один раз, на фото, ссылкой (Р-28).
+         Поверх картинки — только маленькая кнопка смены фото (владелец, 2026-09-27: крупные чипы
+         закрывали фото); «Убрать фото» — в окне выбора, «Сделать главной» — в карточке ниже. -->
     <DreamHero
       :title="goal.name"
       :percent="progress"
@@ -240,24 +243,43 @@ function share() {
       :done-month="doneMonth ? monthIn(doneMonth) : null"
       :src="photoSrc"
       :author="goal.photoCredit?.author"
+      :author-url="goal.photoCredit?.url"
       size="goal"
     >
-      <template v-if="canEdit" #actions>
-        <Chip quiet @click="pickerOpen = true">{{ goal.photoId ? 'Другое фото' : 'Добавить фото' }}</Chip>
-        <Chip v-if="goal.photoId" quiet @click="removePhoto">Убрать фото</Chip>
-        <Chip v-if="!isMain" quiet @click="financeStore.setMainGoal(goal.id)">Сделать главной</Chip>
+      <template v-if="canEdit && goal.photoId" #corner>
+        <button
+          type="button"
+          aria-label="Сменить фото"
+          class="grid size-[34px] place-items-center rounded-full bg-photo-scrim text-on-photo cursor-pointer"
+          @click="pickerOpen = true"
+        >
+          <PhCamera :size="18" />
+        </button>
+      </template>
+      <template v-if="canEdit && !goal.photoId" #actions>
+        <Chip quiet @click="pickerOpen = true"><PhCamera /> Добавить фото</Chip>
       </template>
     </DreamHero>
-    <p v-if="goal.photoCredit" class="px-1 text-[12px] text-ink-3">
-      Фото: <a :href="goal.photoCredit.url" target="_blank" rel="noreferrer noopener" class="text-brand">{{ goal.photoCredit.author }}</a> / Unsplash
-    </p>
     <Callout v-if="photoNote" tone="neutral" icon="info">{{ photoNote }}</Callout>
-    <PhotoPicker :open="pickerOpen" title="Фото мечты" :selected="goal.template" :skippable="false" @close="pickerOpen = false" @template="onTemplate" @file="onFile" />
+    <PhotoPicker
+      :open="pickerOpen"
+      title="Фото мечты"
+      :selected="goal.template"
+      :skippable="false"
+      :removable="!!goal.photoId"
+      @close="pickerOpen = false"
+      @template="onTemplate"
+      @file="onFile"
+      @remove="removePhoto"
+    />
 
     <Card>
       <div class="flex items-start justify-between gap-3">
         <h2 class="type-h2 text-ink">{{ doneTitle }}</h2>
         <Tag v-if="isMain" tone="brand">главная</Tag>
+        <button v-else-if="canEdit" type="button" class="shrink-0 pt-1 text-[12.5px] font-medium text-brand cursor-pointer" @click="financeStore.setMainGoal(goal.id)">
+          Сделать главной
+        </button>
       </div>
       <p class="mt-1 text-[13.5px] text-ink-2">{{ doneLine }}</p>
 

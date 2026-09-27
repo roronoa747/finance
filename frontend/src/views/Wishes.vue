@@ -193,7 +193,8 @@ const openGift = ref(false)
     </Card>
 
     <Callout v-if="wishPhotoNote" tone="neutral" icon="info">{{ wishPhotoNote }}</Callout>
-    <Button v-if="canEdit" variant="secondary" class="w-full" @click="openWishModal = true">
+    <!-- Главное действие экрана — одна брендовая кнопка (правило интерфейса, критик Блока 3). -->
+    <Button v-if="canEdit" class="w-full" @click="openWishModal = true">
       <PhPlus :size="16" weight="bold" /> Добавить покупку
     </Button>
 

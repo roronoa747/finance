@@ -17,6 +17,8 @@ const props = withDefaults(
     percent?: number
     src?: string | null
     author?: string | null
+    /** Профиль автора на Unsplash (Р-28: имя и ссылка) — подпись становится ссылкой. */
+    authorUrl?: string | null
     haveAmount?: number
     needAmount?: number
     /** «мае 2027» — уже в предложном падеже (`monthIn`). */
@@ -28,7 +30,7 @@ const props = withDefaults(
     /** Пустое состояние с кнопкой «Выбрать мечту»; у viewer кнопки нет. */
     canPick?: boolean
   }>(),
-  { percent: 0, size: 'main', empty: false, src: null, author: null, doneMonth: null, canPick: true },
+  { percent: 0, size: 'main', empty: false, src: null, author: null, authorUrl: null, doneMonth: null, canPick: true },
 )
 
 const emit = defineEmits<{ (e: 'pick'): void }>()
@@ -64,7 +66,13 @@ const line2 = computed(() => {
   >
     <img v-if="src" :src="src" alt="" class="absolute inset-0 -z-20 size-full object-cover" />
     <div v-if="src" class="absolute inset-x-0 bottom-0 top-[35%] -z-10 photo-scrim" aria-hidden="true" />
-    <div v-if="author" class="absolute right-4 top-3 text-[11px]" :class="src ? 'opacity-75' : 'text-ink-3'">Фото: {{ author }}</div>
+    <!-- Автор — один раз, на самом фото (владелец, 2026-09-27); ссылка на профиль — требование Unsplash. -->
+    <div v-if="author" class="absolute right-4 top-3 text-[11px]" :class="src ? 'opacity-75' : 'text-ink-3'">
+      <a v-if="authorUrl" :href="authorUrl" target="_blank" rel="noreferrer noopener" class="underline-offset-2 hover:underline" @click.stop>Фото: {{ author }}</a>
+      <template v-else>Фото: {{ author }}</template>
+    </div>
+    <!-- Угол слева — одна маленькая кнопка (сменить фото), чтобы действия не закрывали картинку. -->
+    <div v-if="$slots.corner" class="absolute left-3 top-3"><slot name="corner" /></div>
 
     <template v-if="size !== 'preview'">
       <div class="text-[14px] font-medium" :class="src ? 'opacity-85' : 'text-ink-3'">До мечты</div>

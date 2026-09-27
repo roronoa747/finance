@@ -10,7 +10,6 @@ import { GOAL_TEMPLATES, GOAL_TYPES, TRAVEL_DIRECTIONS, templateImageUrl, type G
 import { attachFile, attachTemplate } from '@/lib/photos/goalPhoto'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
-import Callout from '@/components/kit/Callout.vue'
 import Chip from '@/components/kit/Chip.vue'
 import DreamHero from '@/components/kit/DreamHero.vue'
 import Field from '@/components/kit/Field.vue'
@@ -133,9 +132,7 @@ async function create() {
           <Chip quiet :on="template?.id === 'travel'" @click="pickDirection(byType('travel'))">Своё</Chip>
         </div>
       </template>
-      <Callout tone="neutral" icon="info">
-        Фото — Unsplash, автор сохраняется и показывается у мечты. Картинка сжимается на телефоне до ~100 КБ.
-      </Callout>
+      <!-- Механика (Unsplash, сжатие) на экране не объясняется — автор виден на фото (правило интерфейса). -->
       <div class="mt-auto flex flex-col gap-2 pt-2">
         <Button size="lg" class="w-full" :disabled="!template" @click="next">Дальше</Button>
         <Button variant="ghost" class="w-full" @click="skip">Пока без мечты</Button>

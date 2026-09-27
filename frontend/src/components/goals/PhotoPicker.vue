@@ -2,7 +2,6 @@
 import { computed, ref, watch } from 'vue'
 import { GOAL_TEMPLATES, GOAL_TYPES, TRAVEL_DIRECTIONS, templateImageUrl, type GoalTemplate, type GoalTemplateType } from '@/lib/goalTemplates'
 import Button from '@/components/ui/Button.vue'
-import Callout from '@/components/kit/Callout.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import TemplateTile from '@/components/kit/TemplateTile.vue'
 import Chip from '@/components/kit/Chip.vue'
@@ -21,8 +20,10 @@ const props = withDefaults(
     selected?: string | null
     /** Можно пропустить (цель без картинки). */
     skippable?: boolean
+    /** Фото уже есть — показать тихое «Убрать фото» (действия не лежат поверх картинки). */
+    removable?: boolean
   }>(),
-  { title: 'На что копим?', selected: null, skippable: true },
+  { title: 'На что копим?', selected: null, skippable: true, removable: false },
 )
 
 const emit = defineEmits<{
@@ -30,6 +31,7 @@ const emit = defineEmits<{
   (e: 'template', t: GoalTemplate): void
   (e: 'file', f: File): void
   (e: 'skip'): void
+  (e: 'remove'): void
 }>()
 
 const byType = (type: GoalTemplateType) => GOAL_TEMPLATES.find((t) => t.id === type)!
@@ -91,13 +93,11 @@ function onFile(e: Event) {
         </div>
       </template>
 
-      <Callout tone="neutral" icon="info">
-        Фото — Unsplash, автор сохраняется и показывается у мечты. Картинка сжимается на телефоне до ~100 КБ.
-      </Callout>
       <p v-if="picked" class="px-1 text-[12px] text-ink-3">Фото: {{ picked.photo.author }} / Unsplash</p>
 
       <Button size="lg" class="w-full" :disabled="!picked" @click="confirm">Выбрать это</Button>
       <Button v-if="skippable" variant="ghost" class="w-full" @click="emit('skip')">Пропустить</Button>
+      <Button v-if="removable" variant="ghost" class="w-full" @click="emit('remove')">Убрать фото</Button>
     </div>
   </Sheet>
 </template>
