@@ -1,4 +1,4 @@
-import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem } from '@/types/finance'
+import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation } from '@/types/finance'
 import type { SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY, plannedElsewhere } from '@/lib/statements/dictionary'
 import { addMonths, dayLabel, daysInMonth, monthFrom, monthKey, parseMonthKey, today, weekRange } from '@/lib/dates'
@@ -1644,6 +1644,16 @@ export type MonthSummary = {
   /** Купленное из списка покупок в этом месяце. */
   bought: { count: number; amount: number };
 };
+
+/** Записанная раскладка источника за период (B2C-21): живая, последняя по времени; нет — null. */
+export function allocationFor(
+  list: Allocation[] | undefined,
+  src: { source: Allocation['source']; sourceId: string; period: string },
+): Allocation | null {
+  const own = (list ?? []).filter((a) => !a.deletedAt && a.source === src.source && a.sourceId === src.sourceId && a.period === src.period)
+  if (!own.length) return null
+  return own.reduce((best, a) => (a.at > best.at ? a : best))
+}
 
 /**
  * Подписки, от которых отказались в месяце (B2C-20 «утечки»): обязательства с надгробием

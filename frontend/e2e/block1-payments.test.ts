@@ -19,6 +19,7 @@ import { plural } from '../src/lib/utils'
 import Budget from '../src/views/Budget.vue'
 import Dreams from '../src/views/Dreams.vue'
 import Money from '../src/views/Money.vue'
+import History from '../src/views/History.vue'
 import Capital from '../src/views/Capital.vue'
 
 /**
@@ -107,20 +108,20 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     const B = await phone(server)
 
     setActivePinia(A.pinia)
-    expect(await screen(A.pinia, Money, '/money')).toContain('Оплатил')
+    expect(await screen(A.pinia, History, '/money/history')).toContain('Оплатил')
 
     // Одно нажатие = то, что делает кнопка: счёт прошлой оплаты, сумма по графику.
     at('2026-09-24T08:00:00Z')
     expect(lastAccountFor(A.store.payments, 'rent', A.store.accounts)).toBe('card')
     A.store.markPaid('obligation', 'rent', 'a', { period: '2026-09', accountId: 'card' })
 
-    const shownA = await screen(A.pinia, Money, '/money')
+    const shownA = await screen(A.pinia, History, '/money/history')
     expect(shownA).toContain(`оплачено · дальше 5 октября · ${plain(220_000)} ₸`)
     expect(A.store.accounts[0].amount).toBe(780_000)
 
     await A.store.syncHousehold(A.client)
     await B.store.pullHousehold(B.client)
-    const shownB = await screen(B.pinia, Money, '/money')
+    const shownB = await screen(B.pinia, History, '/money/history')
     expect(shownB).toContain(`оплачено · дальше 5 октября · ${plain(220_000)} ₸`)
     expect(await screen(B.pinia, Capital, '/capital')).toContain(money(780_000))
   })
@@ -431,12 +432,12 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
   it('приёмка: «Впереди» — оплачен только ранний платёж → он уходит ниже неоплаченного позднего', async () => {
     const A = await phone(server)
     const ahead = (html: string) => html.slice(html.indexOf('Впереди'))
-    const before = ahead(await screen(A.pinia, Money, '/money'))
+    const before = ahead(await screen(A.pinia, History, '/money/history'))
     expect(before.indexOf('Аренда')).toBeLessThan(before.indexOf('Кредит')) // по дню: 5-е раньше 15-го
 
     setActivePinia(A.pinia)
     A.store.markPaid('obligation', 'rent', 'a', { period: '2026-09', accountId: 'card' })
-    const after = ahead(await screen(A.pinia, Money, '/money'))
+    const after = ahead(await screen(A.pinia, History, '/money/history'))
     expect(after.indexOf('Кредит')).toBeLessThan(after.indexOf('Аренда'))
     expect(after).toContain(`оплачено · дальше 5 октября · ${plain(220_000)} ₸`)
   })

@@ -62,6 +62,7 @@ import {
   creditMonthPayment,
   activePlan,
   pausedGoals,
+  allocationFor,
   cancelledSubscriptions,
   closerWish,
   contributionStreak,
@@ -102,7 +103,7 @@ import { plain, money, moneyShort, parseMoney, pct, ratePct } from './money'
 import { clean, caretAt, sigBefore } from './num'
 import { plural } from './utils'
 import { monthKey, parseMonthKey, addMonths, daysInMonth, leadingBlanks, today, atLabel } from '@/lib/dates'
-import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, WishItem } from '@/types/finance'
+import type { Account, Allocation, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, WishItem } from '@/types/finance'
 import { DEFAULT_CATEGORY_NAMES } from '@/lib/palette'
 
 describe('finance.ts — аннуитет и кредитные расчёты', () => {
@@ -2580,5 +2581,28 @@ describe('B2C-20: отказ от подписок за месяц', () => {
     expect(cancelledSubscriptions(list, '2026-09').map((o) => o.id)).toEqual(['netflix', 'ivi'])
     expect(cancelledSubscriptions(list, '2026-10').map((o) => o.id)).toEqual(['spotify'])
     expect(cancelledSubscriptions([], '2026-09')).toEqual([])
+  })
+})
+
+describe('B2C-21: записанная раскладка', () => {
+  const alloc = (id: string, extra: Partial<Allocation> = {}): Allocation => ({
+    id, source: 'salary', sourceId: 'a', period: '2026-09', by: 'a', at: '2026-09-10T05:00:00.000Z', total: 100_000,
+    parts: [{ target: 'trip', amount: 100_000 }], updatedAt: '2026-09-10T05:00:00.000Z', ...extra,
+  })
+
+  it('allocationFor: по источнику, id и периоду; надгробие не считается; из двух — последняя по времени', () => {
+    const list = [
+      alloc('a1'),
+      alloc('a2', { at: '2026-09-11T05:00:00.000Z', parts: [{ target: 'car', amount: 100_000 }] }),
+      alloc('gone', { at: '2026-09-12T05:00:00.000Z', deletedAt: '2026-09-12T06:00:00.000Z' }),
+      alloc('b', { sourceId: 'b' }),
+      alloc('rest', { source: 'rest', sourceId: '2026-09' }),
+      alloc('aug', { period: '2026-08' }),
+    ]
+    expect(allocationFor(list, { source: 'salary', sourceId: 'a', period: '2026-09' })?.id).toBe('a2')
+    expect(allocationFor(list, { source: 'salary', sourceId: 'b', period: '2026-09' })?.id).toBe('b')
+    expect(allocationFor(list, { source: 'rest', sourceId: '2026-09', period: '2026-09' })?.id).toBe('rest')
+    expect(allocationFor(list, { source: 'freed', sourceId: 'tv', period: '2026-09' })).toBeNull()
+    expect(allocationFor(undefined, { source: 'salary', sourceId: 'a', period: '2026-09' })).toBeNull()
   })
 })

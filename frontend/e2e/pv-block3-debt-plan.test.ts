@@ -8,7 +8,7 @@ import GoalDetail from '../src/views/GoalDetail.vue'
 import Budget from '../src/views/Budget.vue'
 import DebtPlan from '../src/views/DebtPlan.vue'
 import Capital from '../src/views/Capital.vue'
-import Ritual from '../src/views/Ritual.vue'
+import WeekSalary from '../src/views/WeekSalary.vue'
 import { plain } from '../src/lib/money'
 import { useAuthStore } from '../src/stores/auth'
 import { authAs } from '../src/test/planFamily'
@@ -435,7 +435,7 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
 
       // Не хватает 73 000 — из 100 000 плана в подушку 73 000.
       expect(planStep(plan, B.store.planState(), '2026-09')).toEqual({ kind: 'cushion', goalId: 'cushion', amount: 73_000, missing: 73_000 })
-      const ritual = await screen(B.pinia, Ritual, '/ritual')
+      const ritual = await screen(B.pinia, WeekSalary, '/ritual')
       expect(ritual).toContain(`Сначала подушка: до месяца обязательных списаний не хватает ${money(73_000)}.`)
       // Корзина подушки — первой.
       expect(ritual.indexOf('>Подушка<')).toBeGreaterThan(-1)
@@ -467,7 +467,7 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
       expect(prepayPlan).toMatch(button('Внести по плану'))
       expect(between(prepayPlan, 'Шаг этого месяца', 'Выигрыш')).toContain(money(amount))
       expect(prepayPlan).toContain('досрочно в «Кредитка» — самый дорогой долг')
-      const ritualA = await screen(A.pinia, Ritual, '/ritual')
+      const ritualA = await screen(A.pinia, WeekSalary, '/ritual')
       expect(ritualA).not.toContain('Сначала подушка')
       expect(ritualA).toContain(`Шаг плана — ${money(amount)} в «Кредитка»`)
       expect(await screen(A.pinia, Capital, '/capital')).toContain(`шаг плана: ${plain(amount)} ₸ в сентябре 2026`)

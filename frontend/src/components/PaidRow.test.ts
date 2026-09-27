@@ -13,6 +13,7 @@ import PaidRow from './PaidRow.vue'
 import Capital from '@/views/Capital.vue'
 import Dreams from '@/views/Dreams.vue'
 import Money from '@/views/Money.vue'
+import History from '@/views/History.vue'
 import Budget from '@/views/Budget.vue'
 import { screenMixin } from '@/test/screenState'
 
@@ -147,23 +148,24 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     const ahead = (html: string) => html.slice(html.indexOf('Впереди'))
 
     const before = await page(Money, '/money')
-    // Кредит 15-го раньше аренды 28-го.
-    expect(ahead(before).indexOf('Кредит')).toBeLessThan(ahead(before).indexOf('Аренда'))
+    // Кредит 15-го раньше аренды 28-го («Впереди» — на /money/history, B2C-21).
+    const aheadBefore = ahead(await page(History, '/money/history'))
+    expect(aheadBefore.indexOf('Кредит')).toBeLessThan(aheadBefore.indexOf('Аренда'))
     expect(before).toContain(`Списаний до неё`)
     expect(before).toContain(money(220_000))
 
     // Оплачен только ранний платёж (кредит 15-го) — он уходит под аренду 28-го.
     store.markPaid('credit', 'loan', 'a', { accountId: 'card' })
-    const creditPaid = await page(Money, '/money')
+    const creditPaid = await page(History, '/money/history')
     expect(ahead(creditPaid).indexOf('Аренда')).toBeLessThan(ahead(creditPaid).indexOf('Кредит'))
     expect(ahead(creditPaid)).toContain('оплачено · дальше')
 
     store.markPaid('obligation', 'rent', 'a', { accountId: 'card' })
-    const after = await page(Money, '/money')
+    const after = ahead(await page(History, '/money/history'))
     // Оплачено всё — снова по дню.
-    expect(ahead(after).indexOf('Кредит')).toBeLessThan(ahead(after).indexOf('Аренда'))
+    expect(after.indexOf('Кредит')).toBeLessThan(after.indexOf('Аренда'))
     // Всё оплачено: до зарплаты списывать нечего, на счетах — остаток из отметок.
-    expect(after).toContain(`На счетах ${plain(722_000)} ₸`)
+    expect(await page(Money, '/money')).toContain(`На счетах ${plain(722_000)} ₸`)
     expect(after).toContain(money(0))
   })
 
@@ -224,7 +226,7 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     // Отмеченный — тоже со знаком, сумма из отметки.
     store.markPaid('obligation', 'rent', 'a', { amount: 225_000, accountId: 'card' })
     expect(await page(Budget, '/budget', { initialView: 'list' })).toContain(`−${plain(225_000)}`)
-    const overview = await page(Money, '/money')
+    const overview = await page(History, '/money/history')
     expect(overview).toContain(money(58_000))
     expect(overview).not.toContain(`−${plain(58_000)}`)
   })
@@ -351,7 +353,7 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
       setActivePinia(createPinia())
       family(role, [netflix])
       const dreams = await page(Dreams, '/')
-      const overview = await page(Money, '/money')
+      const overview = await page(History, '/money/history')
       const budget = await page(Budget, '/budget', { initialView: 'list' })
       // Платежи на месте у обоих — пропадают только кнопки.
       expect(overview).toContain('Впереди')

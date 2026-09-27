@@ -424,6 +424,8 @@ const groupCandidates = computed(() =>
 /* ------------------ Анализ долгов (DebtAdvice) ------------------ */
 // «Открыть калькулятор» с экрана плана — сразу на вкладке «Копить или гасить».
 const adviceView = ref<'order' | 'strategy'>(route.query.advice === 'strategy' ? 'strategy' : props.initialAdvice)
+// Калькулятор «копить или гасить» — за «подробнее» (DESIGN.md §3, B2C-21); позвали явно — открыт сразу.
+const calcOpen = ref(adviceView.value === 'strategy')
 const rankedDebts = computed(() =>
   costliestCredits(credits.value).map((c) => ({ credit: c, cost: creditOutlook(c) })),
 )
@@ -569,7 +571,7 @@ watch(queryModalOpen, (open) => {
       </div>
     </Card>
 
-    <Button variant="outline" class="w-full bg-surface-2" @click="accountOpen = true">
+    <Button v-if="!authStore.isViewer" variant="outline" class="w-full bg-surface-2" @click="accountOpen = true">
       <PhPlus :size="16" weight="bold" /> Добавить счёт или накопления
     </Button>
 
@@ -664,13 +666,13 @@ watch(queryModalOpen, (open) => {
     </p>
 
     <div class="flex flex-col gap-2">
-      <Button variant="outline" class="w-full bg-surface-2" @click="addObligationOpen = true">
+      <Button v-if="!authStore.isViewer" variant="outline" class="w-full bg-surface-2" @click="addObligationOpen = true">
         <PhPlus :size="16" weight="bold" /> Подписка или услуга
       </Button>
-      <Button variant="outline" class="w-full bg-surface-2" @click="addDebtOpen = true">
+      <Button v-if="!authStore.isViewer" variant="outline" class="w-full bg-surface-2" @click="addDebtOpen = true">
         <PhPlus :size="16" weight="bold" /> Долг или рассрочка
       </Button>
-      <Button variant="outline" class="w-full bg-surface-2" @click="addGroupOpen = true">
+      <Button v-if="!authStore.isViewer" variant="outline" class="w-full bg-surface-2" @click="addGroupOpen = true">
         <PhFolderSimple :size="16" /> Группа подписок
       </Button>
     </div>
@@ -752,7 +754,8 @@ watch(queryModalOpen, (open) => {
           </Button>
         </div>
 
-        <!-- Копить или гасить -->
+        <!-- Копить или гасить — за «подробнее» (B2C-21) -->
+        <Button v-else-if="!calcOpen" variant="ghost" class="w-full" @click="calcOpen = true">Подробнее: копить или гасить</Button>
         <StrategyCompare
           v-else
           :credits="openCredits(credits)"

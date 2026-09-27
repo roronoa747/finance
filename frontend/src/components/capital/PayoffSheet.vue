@@ -26,7 +26,7 @@ import { cn, plural, sentence } from '@/lib/utils'
 import Field from '@/components/kit/Field.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Segmented from '@/components/kit/Segmented.vue'
-import Select from '@/components/kit/Select.vue'
+import AccountChoice from '@/components/AccountChoice.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Button from '@/components/ui/Button.vue'
 
@@ -72,7 +72,8 @@ const ladder = computed(() => (activePayoffCredit.value ? payoffLadder(activePay
 /* ------------------ Применить досрочку (RP-08) ------------------ */
 const applyMode = ref<LumpMode>('term')
 // '' — счёт не выбран, 'none' — «не списывать», иначе id счёта.
-const applyAccount = ref('')
+// Счёт списания — как у взносов и отметок (`AccountChoice`): не выбран (undefined), «только отметить» (null) или id.
+const applyAccount = ref<string | null | undefined>(undefined)
 const applyDone = ref<Payment | null>(null)
 const removingPrepay = ref<string | null>(null)
 
@@ -110,7 +111,7 @@ watch(
     applyDone.value = null
     removingPrepay.value = null
     const last = id ? lastAccountFor(financeStore.payments, id, financeStore.accounts) : undefined
-    applyAccount.value = last === undefined ? '' : (last ?? 'none')
+    applyAccount.value = last
   },
   { immediate: true },
 )
@@ -130,11 +131,11 @@ function prepayUndoNote(p: Payment): string {
 
 function applyPrepay() {
   const c = activePayoffCredit.value
-  if (!c || !applyPlan.value || !applyAccount.value) return
+  if (!c || !applyPlan.value || applyAccount.value === undefined) return
   applyDone.value = financeStore.applyPrepayment(c.id, authStore.slot ?? 'a', {
     amount: parseMoney(payoffAmount.value),
     mode: applyMode.value,
-    accountId: applyAccount.value === 'none' ? null : applyAccount.value,
+    accountId: applyAccount.value ?? null,
     ...(planPending.value && stepPlan.value ? { planId: stepPlan.value.id } : {}),
   })
   payoffAmount.value = ''
@@ -259,16 +260,8 @@ function applyPrepay() {
         <div v-else class="mb-3 rounded-xl bg-brand-soft px-3 py-2 text-[13px] text-ink-2">
           Не отдадим банку <b class="num text-brand">{{ money(applyPlan.saved) }}</b>
         </div>
-        <Field label="Откуда списать">
-          <Select v-model="applyAccount">
-            <option value="" disabled>Выберите счёт…</option>
-            <option v-for="a in payAccounts" :key="a.id" :value="a.id">
-              {{ a.name }} · {{ money(a.amount) }}
-            </option>
-            <option value="none">Не списывать — только отметить</option>
-          </Select>
-        </Field>
-        <Button class="w-full" :disabled="!applyAccount" @click="applyPrepay">Применить досрочку</Button>
+        <AccountChoice v-model="applyAccount" :accounts="payAccounts" label="Откуда списать" />
+        <Button class="w-full" :disabled="applyAccount === undefined" @click="applyPrepay">Применить досрочку</Button>
       </div>
 
       <div

@@ -27,8 +27,10 @@ import {
   progressMoments,
   salaryFree,
   stepDue,
+  allocationFor,
+  closerWish,
 } from '@/lib/finance'
-import { monthAfter, monthFrom, monthFromAfter, monthInAfter, monthKey } from '@/lib/dates'
+import { atLabel, monthAfter, monthFrom, monthFromAfter, monthInAfter, monthKey } from '@/lib/dates'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { cn, plural, sentence } from '@/lib/utils'
@@ -99,6 +101,25 @@ const rest = computed(() => {
  * прибавляет ежемесячные взносы.
  */
 const once = computed(() => !!salary.value || !!rest.value)
+
+/** Источник раскладки — ключ записи решения (B2C-21): второй заход и партнёр видят записанное. */
+const srcKey = computed(() => {
+  if (salary.value) return { source: 'salary' as const, sourceId: query('person'), period: query('period') || key.value }
+  if (rest.value) return { source: 'rest' as const, sourceId: rest.value.period, period: rest.value.period }
+  if (closed.value) return { source: 'freed' as const, sourceId: closed.value.creditId, period: key.value }
+  if (freed.value?.change) return { source: 'freed' as const, sourceId: freed.value.o.id, period: freed.value.change.from }
+  return null
+})
+const recorded = computed(() => (srcKey.value ? allocationFor(financeStore.allocations, srcKey.value) : null))
+function partName(target: string) {
+  if (target === 'life') return 'Качество жизни'
+  if (target.startsWith('prepay:')) return `Досрочно в «${financeStore.credits.find((c) => c.id === target.slice(7))?.name ?? 'долг'}»`
+  return goals.value.find((g) => g.id === target)?.name ?? 'Цель'
+}
+const recordedParts = computed(() => (recorded.value?.parts ?? []).map((p) => ({ ...p, name: partName(p.target) })))
+const recordedBy = computed(() => people.value.find((p) => p.id === recorded.value?.by)?.name ?? 'участник')
+/** «Это приближает» (B2C-18 п. 4): какое желание становится ближе от этой суммы. */
+const closer = computed(() => closerWish(financeStore.wishlist, total.value, once.value ? 'once' : 'monthly'))
 
 const total = computed(() => {
   if (query('from') === 'salary') return salary.value?.total ?? 0
@@ -286,13 +307,22 @@ function confirm() {
     }
     const acc = fromAccount.value ? financeStore.accounts.find((a) => a.id === fromAccount.value) : undefined
     if (acc && toGoals.value > 0) financeStore.shiftAccountAmount(acc.id, -toGoals.value)
-    // Досрочку Ритуал не вносит (вне скоупа RP-10) — прямо говорим, где её внести.
+    // Досрочка из раскладки (B2C-21) — запись `prepay` со счёта раскладки в самый дорогой долг;
+    // с планом «Сначала долги» — с его id, как шаг плана.
     const prepay = (alloc.value.credit ?? 0) + (alloc.value.plan ?? 0)
+    if (prepay > 0 && credit.value) {
+      financeStore.applyPrepayment(credit.value.id, by, {
+        amount: prepay,
+        mode: 'term',
+        accountId: fromAccount.value ?? null,
+        ...(plan.value ? { planId: plan.value.id } : {}),
+      })
+    }
     doneNote.value =
       (toGoals.value
         ? `В цели отложено ${money(toGoals.value)}${acc ? ` со счёта «${acc.name}»` : ''} — взносы видны в истории целей. Ежемесячные взносы не менялись.`
         : 'Цели не тронуты, ежемесячные взносы не менялись.') +
-      (prepay ? ` Досрочку ${money(prepay)} внесите в «Капитале» — здесь она не вносится.` : '')
+      (prepay && credit.value ? ` Досрочка ${money(prepay)} внесена в «${credit.value.name}».` : '')
   } else {
     for (const g of goals.value) {
       const extra = alloc.value[g.id] ?? 0
@@ -300,6 +330,17 @@ function confirm() {
         financeStore.setGoalMonthly(g.id, g.monthly + extra)
       }
     }
+  }
+  // Решение записано (B2C-21): партнёр и повторный заход увидят его, а не раскладку заново.
+  if (srcKey.value) {
+    financeStore.recordAllocation({
+      ...srcKey.value,
+      by: authStore.slot ?? 'a',
+      total: total.value,
+      parts: Object.entries(alloc.value)
+        .filter(([, v]) => v > 0)
+        .map(([id, amount]) => ({ target: id === 'credit' || id === 'plan' ? `prepay:${credit.value?.id ?? ''}` : id, amount })),
+    })
   }
   void financeStore.syncHousehold()
   done.value = true
@@ -314,9 +355,26 @@ function home() {
 </script>
 
 <template>
+  <!-- СОСТОЯНИЕ 0: УЖЕ РАЗЛОЖЕНО (B2C-21) — запись видят оба, второй раз не раскладываем -->
+  <div v-if="recorded && !done" class="flex flex-col gap-3 pt-1 text-left">
+    <div class="rounded-card border border-card-border bg-surface p-5">
+      <div class="type-section text-ink-3">Уже разложено</div>
+      <h2 class="mt-1 type-h2 text-ink">{{ money(recorded.total) }}</h2>
+      <p class="mt-1 text-[13px] text-ink-2">{{ recordedBy }} · {{ atLabel(recorded.at) }}</p>
+      <div class="mt-3 flex flex-col">
+        <div v-for="p in recordedParts" :key="p.target" class="flex items-baseline justify-between gap-3 border-t border-line py-2 first:border-t-0">
+          <span class="text-[14px] text-ink">{{ p.name }}</span>
+          <b class="num text-[14px] text-ink">{{ money(p.amount) }}</b>
+        </div>
+      </div>
+      <p class="mt-3 text-[12.5px] leading-relaxed text-ink-3">Решение записано — второй раз те же деньги не раскладываются.</p>
+    </div>
+    <Button variant="outline" class="w-full" @click="router.push('/')">На главную</Button>
+  </div>
+
   <!-- СОСТОЯНИЕ 1: РАСКЛАДЫВАТЬ НЕЧЕГО -->
   <div
-    v-if="total <= 0 && !done"
+    v-else-if="total <= 0 && !done"
     class="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center"
   >
     <p class="text-[14px] text-ink-2">{{ empty }}</p>
@@ -375,6 +433,12 @@ function home() {
     </p>
     <p v-else-if="closed" class="px-0.5 text-[13px] leading-relaxed text-ink-2 num">
       «{{ closed.name }}» закрыт — освободилось {{ money(total) }} в месяц. Решим, куда они пойдут дальше.
+    </p>
+
+    <!-- «Это приближает» (B2C-18 п. 4) -->
+    <p v-if="closer" class="px-0.5 text-[13px] leading-relaxed text-ink-2 num">
+      Это приближает: «{{ closer.wish.name }}» —
+      {{ closer.covers ? (once ? 'хватит целиком' : `хватит целиком, через ${closer.months} мес.`) : once ? `ближе на ${money(closer.closer)}` : `через ${closer.months} мес.` }}.
     </p>
 
     <div class="flex items-baseline justify-between rounded-[14px] bg-brand-soft px-4 py-3.5">

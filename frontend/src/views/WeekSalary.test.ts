@@ -15,12 +15,13 @@ import {
 } from '@/lib/finance'
 import { monthKey } from '@/lib/dates'
 import { money } from '@/lib/money'
-import Ritual from './Ritual.vue'
+import WeekSalary from './WeekSalary.vue'
 import type { Credit, Obligation, SyncDoc } from '@/types/finance'
-import { T0, planFamilyDoc, planOf } from '@/test/planFamily'
+import { T0, authAs, planFamilyDoc, planOf } from '@/test/planFamily'
+import { useAuthStore } from '@/stores/auth'
 import { renderScreen, screenMixin } from '@/test/screenState'
 
-describe('views/Ritual.vue — Высвобождение средств и сценарии ритуала', () => {
+describe('views/WeekSalary.vue — Высвобождение средств и сценарии ритуала', () => {
   const storageMap = new Map<string, string>()
   const mockLocalStorage = {
     getItem: (key: string) => storageMap.get(key) ?? null,
@@ -113,7 +114,7 @@ describe('views/Ritual.vue — Высвобождение средств и сц
     ]
 
     const router = createAppRouter(createMemoryHistory())
-    const app = createSSRApp(Ritual)
+    const app = createSSRApp(WeekSalary)
     app.use(router)
 
     const html = await renderToString(app)
@@ -165,7 +166,7 @@ describe('views/Ritual.vue — Высвобождение средств и сц
     ]
 
     const router = createAppRouter(createMemoryHistory())
-    const app = createSSRApp(Ritual)
+    const app = createSSRApp(WeekSalary)
     app.use(router)
 
     const html = await renderToString(app)
@@ -245,7 +246,7 @@ describe('PV-01 — Ритуал: досрочка в самый дорогой 
   }
 
   async function render() {
-    const app = createSSRApp(Ritual)
+    const app = createSSRApp(WeekSalary)
     app.use(createAppRouter(createMemoryHistory()))
     return renderToString(app)
   }
@@ -287,7 +288,7 @@ describe('PV-01 — Ритуал: досрочка в самый дорогой 
     store.householdDoc.credits = [{ ...bank, id: 'bad', name: 'Кредитка', annualRate: 0.6, payment: 40_000 }]
     const html = await render()
     expect(html).toContain('Сейчас: при текущем платеже долг не закрывается — экономию не считаем')
-    const withExtra = await renderScreen(Ritual, '/ritual', undefined, [screenMixin({ alloc: { credit: 10_000 } })])
+    const withExtra = await renderScreen(WeekSalary, '/ritual', undefined, [screenMixin({ alloc: { credit: 10_000 } })])
     expect(withExtra).toContain('При текущем платеже долг не закрывается — экономию не считаем')
     for (const h of [html, withExtra]) expect(h).not.toMatch(/Infinity|∞|NaN/)
   })
@@ -323,7 +324,7 @@ describe('PV-16: шаг плана в Ритуале (SSR)', () => {
 
   it('с планом — корзина «Досрочно по плану» с суммой шага и эффектом lumpPlan, «Досрочно по кредиту» нет', async () => {
     const store = family({ plans: [planOf()] })
-    const html = await renderScreen(Ritual, '/ritual')
+    const html = await renderScreen(WeekSalary, '/ritual')
     expect(html).toContain('>Досрочно по плану<')
     expect(html).not.toContain('Досрочно по кредиту')
     const cc = store.credits.find((c) => c.id === 'cc')!
@@ -338,7 +339,7 @@ describe('PV-16: шаг плана в Ритуале (SSR)', () => {
 
   it('без плана — цель «Подушка» по названию не особенная, корзина — «Досрочно по кредиту»', async () => {
     family()
-    const html = await renderScreen(Ritual, '/ritual')
+    const html = await renderScreen(WeekSalary, '/ritual')
     expect(html).not.toContain('Через год покроет')
     expect(html).toContain('>Досрочно по кредиту<')
     expect(html).not.toContain('Досрочно по плану')
@@ -346,7 +347,7 @@ describe('PV-16: шаг плана в Ритуале (SSR)', () => {
 
   it('шаг — подушка: «Сначала подушка: … не хватает N ₸», её корзина первой', async () => {
     family({ plans: [planOf()], goals: withCushion(100_000) })
-    const html = await renderScreen(Ritual, '/ritual')
+    const html = await renderScreen(WeekSalary, '/ritual')
     // Месяц списаний 220 000 + 58 000 + 25 000 + 20 000 = 323 000; в подушке 100 000.
     expect(html).toContain(`Сначала подушка: до месяца обязательных списаний не хватает ${money(223_000)}.`)
     const first = ['>Подушка<', '>Отпуск<', '>Машина<'].map((n) => html.indexOf(n))
@@ -356,7 +357,7 @@ describe('PV-16: шаг плана в Ритуале (SSR)', () => {
 
   it('подушка — цель плана по id, а не по названию: план с подушкой «Отпуск» — «покроет» у «Отпуска», не у «Подушки»', async () => {
     family({ plans: [planOf({ cushionGoalId: 'trip' })] })
-    const html = await renderScreen(Ritual, '/ritual')
+    const html = await renderScreen(WeekSalary, '/ritual')
     // Корзина — от своего названия до названия следующей.
     const names = ['Подушка', 'Отпуск', 'Машина', 'Досрочно по плану'].map((n) => html.indexOf(`>${n}<`))
     const pot = (name: string) => {
@@ -369,7 +370,7 @@ describe('PV-16: шаг плана в Ритуале (SSR)', () => {
 
   it('корзина подушки меряет тем же месяцем списаний, что и шаг плана (planMandatory)', async () => {
     const store = family({ plans: [planOf()] })
-    const html = await renderScreen(Ritual, '/ritual')
+    const html = await renderScreen(WeekSalary, '/ritual')
     const g = store.goals.find((x) => x.id === 'cushion')!
     const month = planMandatory(store.planState(), '2026-09')
     expect(month).toBe(323_000)
@@ -379,7 +380,7 @@ describe('PV-16: шаг плана в Ритуале (SSR)', () => {
 
   it('цель на паузе не обещает «быстрее»: её взнос и добавка уходят в досрочку', async () => {
     family({ plans: [planOf()] })
-    const html = await renderScreen(Ritual, '/ritual', undefined, [screenMixin({ alloc: { trip: 10_000 } })])
+    const html = await renderScreen(WeekSalary, '/ritual', undefined, [screenMixin({ alloc: { trip: 10_000 } })])
     const trip = html.slice(html.indexOf('>Отпуск<'), html.indexOf('>Машина<'))
     expect(trip).toContain(`На паузе ради плана: +${money(10_000)} пойдут в досрочку, цель ускорится после плана`)
     expect(trip).not.toContain('Быстрее')
@@ -391,16 +392,81 @@ describe('PV-16: шаг плана в Ритуале (SSR)', () => {
     const left = store.credits.find((c) => c.id === 'cc')!.principal
     store.applyPrepayment('cc', 'a', { amount: left, mode: 'term', accountId: 'card', planId: 'plan' })
     expect(store.credits.find((c) => c.id === 'cc')!.principal).toBe(0)
-    const html = await renderScreen(Ritual, '/ritual')
+    const html = await renderScreen(WeekSalary, '/ritual')
     expect(html).toContain(`Шаг этого месяца внесён — ${money(left)} в «Кредитка»`)
   })
 
   it('confirm пишет только цели: досрочки по плану Ритуал не вносит', async () => {
     const store = family({ plans: [planOf()] })
-    await renderScreen(Ritual, '/ritual', undefined, [
+    await renderScreen(WeekSalary, '/ritual', undefined, [
       screenMixin({ alloc: { plan: 10_000, trip: 10_000 } }, (s) => (s.confirm as () => void)()),
     ])
     expect(store.payments).toEqual([])
     expect(store.goals.find((g) => g.id === 'trip')!.monthly).toBe(50_000)
+  })
+})
+
+describe('B2C-21: раскладка записана — второй заход и партнёр видят решение', () => {
+  const storage = new Map<string, string>()
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  function family(role: 'member' | 'viewer' = 'member', slot: 'a' | 'b' = 'a') {
+    useAuthStore().setAuthData(authAs(role, slot))
+    const store = useFinanceStore()
+    store.setHouseholdDoc(planFamilyDoc({ wishlist: [{ id: 'w1', name: 'Робот-пылесос', price: 90_000, by: 'a', addedOn: T0, bought: false, updatedAt: T0 }] }), 1)
+    store.markSalary('a', { period: '2026-09', amount: 700_000, accountId: 'card' })
+    return store
+  }
+  const path = '/week/salary?from=salary&person=a&period=2026-09'
+
+  it('«Подтвердить» пишет allocations (цели, досрочка) и «это приближает» видно до решения; второй заход — «Уже разложено» с частями, автор и время', async () => {
+    const store = family()
+    const before = await renderScreen(WeekSalary, path)
+    expect(before).toContain('Это приближает: «Робот-пылесос»')
+    expect(before).not.toContain('Уже разложено')
+
+    await renderScreen(WeekSalary, path, undefined, [
+      screenMixin({}, (s) => {
+        const left = (s.total as number)
+        s.alloc = { trip: 50_000, credit: 20_000, life: left - 70_000 }
+        s.picked = 'card'
+        ;(s.confirm as () => void)()
+      }),
+    ])
+    expect(store.allocations).toHaveLength(1)
+    const rec = store.allocations[0]
+    expect(rec).toMatchObject({ source: 'salary', sourceId: 'a', period: '2026-09', by: 'a' })
+    expect(rec.parts).toEqual(expect.arrayContaining([{ target: 'trip', amount: 50_000 }, { target: 'prepay:cc', amount: 20_000 }]))
+    expect(store.goals.find((g) => g.id === 'trip')!.have).toBe(100_000)
+    expect(store.payments.find((p) => p.kind === 'prepay')).toMatchObject({ targetId: 'cc', amount: 20_000, accountId: 'card' })
+
+    const again = await renderScreen(WeekSalary, path)
+    expect(again).toContain('Уже разложено')
+    expect(again).toContain('Отпуск')
+    expect(again).toContain('Досрочно в «Кредитка»')
+    expect(again).toContain('Качество жизни')
+    expect(again).toContain('Ильяс · ')
+    expect(again).toContain('второй раз те же деньги не раскладываются')
+    expect(again).not.toContain('Подтвердить распределение')
+
+    // Партнёр видит то же решение, а не раскладку.
+    setActivePinia(createPinia())
+    const b = family('member', 'b')
+    b.setHouseholdDoc({ ...store.householdDoc }, 2)
+    const partner = await renderScreen(WeekSalary, path)
+    expect(partner).toContain('Уже разложено')
+    expect(partner).not.toContain('Осталось распределить')
   })
 })

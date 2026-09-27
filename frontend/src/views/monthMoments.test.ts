@@ -6,8 +6,8 @@ import { money } from '@/lib/money'
 import { accountBalance } from '@/lib/finance'
 import type { Payment, SyncDoc } from '@/types/finance'
 import Dreams from './Dreams.vue'
-import Money from './Money.vue'
-import Ritual from './Ritual.vue'
+import History from './History.vue'
+import WeekSalary from './WeekSalary.vue'
 import { authAs, planFamilyDoc, planOf } from '@/test/planFamily'
 import { renderScreen, screenMixin } from '@/test/screenState'
 
@@ -85,14 +85,14 @@ describe('Блок 2: моменты месяца (SSR)', () => {
 
     it('Ритуал с остатком: сумма из адреса, подпись без упрёка; взнос в цель только со счётом', async () => {
       const store = family()
-      const html = await renderScreen(Ritual, '/ritual?from=rest&amount=55000&period=2026-09')
+      const html = await renderScreen(WeekSalary, '/ritual?from=rest&amount=55000&period=2026-09')
       expect(html).toContain(`Куда направить ${money(55_000)}`)
       expect(html).toContain(`Остаток сентября — ${money(55_000)}`)
       expect(html).toContain('Решение разовое')
-      expect(await renderScreen(Ritual, '/ritual?from=rest&amount=0&period=2026-09')).toContain('Остатка нет')
+      expect(await renderScreen(WeekSalary, '/ritual?from=rest&amount=0&period=2026-09')).toContain('Остатка нет')
 
       // Своих зарплат ещё не отмечали — счёт не угадать: без выбора ничего не пишется.
-      const blocked = await renderScreen(Ritual, '/ritual?from=rest&amount=55000&period=2026-09', undefined, [
+      const blocked = await renderScreen(WeekSalary, '/ritual?from=rest&amount=55000&period=2026-09', undefined, [
         screenMixin({}, (s) => {
           s.alloc = { trip: 55_000 }
           ;(s.confirm as () => void)()
@@ -101,7 +101,7 @@ describe('Блок 2: моменты месяца (SSR)', () => {
       expect(blocked).toContain('Выберите, откуда отложить')
       expect(store.goals.find((g) => g.id === 'trip')!.movements).toEqual([])
 
-      const done = await renderScreen(Ritual, '/ritual?from=rest&amount=55000&period=2026-09', undefined, [
+      const done = await renderScreen(WeekSalary, '/ritual?from=rest&amount=55000&period=2026-09', undefined, [
         screenMixin({}, (s) => {
           s.alloc = { trip: 55_000 }
           s.fromAccount = 'card'
@@ -142,7 +142,7 @@ describe('Блок 2: моменты месяца (SSR)', () => {
 
     it('«Деньги»: «История семьи» — строка на момент, новые первыми, без имён, значков и серий', async () => {
       family('member', 'a', moments())
-      const html = section(await renderScreen(Money, '/money'))
+      const html = section(await renderScreen(History, '/money/history'))
       const text = html.replace(/<[^>]*>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
       expect(text).toContain('«Рассрочка» закрыт')
       expect(text).toContain(`25 сентября · освободилось ${money(20_000)} в месяц`)
@@ -161,34 +161,34 @@ describe('Блок 2: моменты месяца (SSR)', () => {
     it('«Деньги»: снятие закрывшей отметки убирает момент; нет моментов — нет раздела', async () => {
       const doc = moments()
       family('member', 'a', { ...doc, payments: doc.payments!.map((p) => (p.id === 'close' ? { ...p, deletedAt: '2026-09-26T00:00:00.000Z' } : p)) })
-      const html = await renderScreen(Money, '/money')
+      const html = await renderScreen(History, '/money/history')
       expect(html).not.toContain('«Рассрочка» закрыт')
       setActivePinia(createPinia())
       family()
-      expect(await renderScreen(Money, '/money')).not.toContain('История семьи')
+      expect(await renderScreen(History, '/money/history')).not.toContain('История семьи')
     })
 
     it('viewer видит историю, но строка закрытого долга в раскладку не ведёт; долг из плана — на экран плана', async () => {
       family('viewer', 'b', moments())
-      const rows = section(await renderScreen(Money, '/money')).split('border-b border-line last:border-b-0')
+      const rows = section(await renderScreen(History, '/money/history')).split('border-b border-line last:border-b-0')
       expect(rows.find((r) => r.includes('закрыт'))).not.toContain('<button')
 
       setActivePinia(createPinia())
       family('member', 'a', { ...moments(), plans: [planOf({ creditIds: ['cc', 'loan', 'inst'] })] })
-      const html = await renderScreen(Money, '/money')
+      const html = await renderScreen(History, '/money/history')
       expect(section(html)).toContain('его платёж идёт в следующий долг по плану')
-      expect(await renderScreen(Ritual, '/ritual?from=credit&credit=inst')).toContain('уже идёт в следующий долг по плану')
+      expect(await renderScreen(WeekSalary, '/ritual?from=credit&credit=inst')).toContain('уже идёт в следующий долг по плану')
     })
 
     it('Ритуал «освободилось N ₸»: сумма — платёж закрытого долга, решение прибавляет ежемесячные взносы', async () => {
       const store = family('member', 'a', moments())
-      const html = await renderScreen(Ritual, '/ritual?from=credit&credit=inst')
+      const html = await renderScreen(WeekSalary, '/ritual?from=credit&credit=inst')
       expect(html).toContain(`Куда направить ${money(20_000)}`)
       expect(html).toContain(`«Рассрочка» закрыт — освободилось ${money(20_000)} в месяц`)
       expect(html).toContain('платёж закрытого долга остаётся в «Свободно»')
-      expect(await renderScreen(Ritual, '/ritual?from=credit&credit=loan')).toContain('Этот долг ещё не закрыт')
+      expect(await renderScreen(WeekSalary, '/ritual?from=credit&credit=loan')).toContain('Этот долг ещё не закрыт')
 
-      const done = await renderScreen(Ritual, '/ritual?from=credit&credit=inst', undefined, [
+      const done = await renderScreen(WeekSalary, '/ritual?from=credit&credit=inst', undefined, [
         screenMixin({}, (s) => {
           s.alloc = { car: 20_000 }
           ;(s.confirm as () => void)()
@@ -225,7 +225,7 @@ describe('Блок 2: моменты месяца (SSR)', () => {
 
     it('в конце месяца — «Наш сентябрь» с цифрами finance.ts; в середине — нет; в первые дни октября — сентябрь', async () => {
       family('member', 'a', september())
-      const t = text(card(await renderScreen(Money, '/money')))
+      const t = text(card(await renderScreen(History, '/money/history')))
       expect(t).toContain('Наш сентябрь')
       expect(t).toContain(`Оплатили 2 платежа ${money(278_000)}`)
       expect(t).toContain(`Пришло зарплатой ${money(1_200_000)}`)
@@ -235,20 +235,20 @@ describe('Блок 2: моменты месяца (SSR)', () => {
       expect(t).toContain('Итог августа')
 
       vi.setSystemTime(new Date('2026-09-20T07:00:00Z'))
-      expect(await renderScreen(Money, '/money')).not.toContain('Итог месяца')
+      expect(await renderScreen(History, '/money/history')).not.toContain('Итог месяца')
       vi.setSystemTime(new Date('2026-10-03T07:00:00Z'))
-      expect(text(card(await renderScreen(Money, '/money')))).toContain('Наш сентябрь')
+      expect(text(card(await renderScreen(History, '/money/history')))).toContain('Наш сентябрь')
     })
 
     it('оба участника и viewer видят один и тот же итог — без имён и сравнений', async () => {
       family('member', 'a', september())
-      const a = card(await renderScreen(Money, '/money'))
+      const a = card(await renderScreen(History, '/money/history'))
       setActivePinia(createPinia())
       family('member', 'b', september())
-      const b = card(await renderScreen(Money, '/money'))
+      const b = card(await renderScreen(History, '/money/history'))
       setActivePinia(createPinia())
       family('viewer', 'b', september())
-      const v = card(await renderScreen(Money, '/money'))
+      const v = card(await renderScreen(History, '/money/history'))
       expect(a).not.toBe('')
       expect(b).toBe(a)
       expect(v).toBe(a)
@@ -257,7 +257,7 @@ describe('Блок 2: моменты месяца (SSR)', () => {
 
     it('месяц раньше — в той же карточке; пустой месяц — спокойная строка', async () => {
       family('member', 'a', september())
-      const html = await renderScreen(Money, '/money', undefined, [screenMixin({ earlier: true })])
+      const html = await renderScreen(History, '/money/history', undefined, [screenMixin({ earlier: true })])
       const t = text(card(html))
       expect(t).toContain('Наш август')
       expect(t).toContain('В августе отметок пока нет.')

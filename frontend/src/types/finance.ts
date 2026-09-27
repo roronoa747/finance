@@ -360,6 +360,25 @@ export type DebtPlan = Tracked & {
 
 /** Документ, который ездит между устройствами. Настройки оформления в него не входят: */
 /** тема и цвета — дело устройства, партнёр не должен перекрашивать чужое приложение. */
+/** Часть раскладки: цель (`goalId`), досрочка (`prepay:<creditId>`) или «качество жизни» (`life`). */
+export type AllocationPart = { target: string; amount: number }
+
+/**
+ * Раскладка разовой суммы (B2C-21): зарплата (`sourceId` — участник), остаток месяца (`sourceId` —
+ * месяц) или освободившийся платёж (`sourceId` — кредит или обязательство) за период. Решение
+ * записано — по этому же источнику и периоду второй раз не раскладываем.
+ */
+export type Allocation = Tracked & {
+  id: string
+  source: 'salary' | 'rest' | 'freed'
+  sourceId: string
+  period: string
+  by: PersonId
+  at: string
+  total: number
+  parts: AllocationPart[]
+}
+
 export type SyncDoc = {
   people: Person[]
   categories: Category[]
@@ -376,6 +395,8 @@ export type SyncDoc = {
   spendCategories?: SpendCategory[]
   /** Итоги трат участников по разделам за неделю и месяц (Р-21); операции — личные, на сервере. */
   spendTotals?: SpendTotal[]
+  /** Записанные раскладки разовых сумм (B2C-21): второй заход и партнёр видят решение, а не раскладывают снова. */
+  allocations?: Allocation[]
   /**
    * Когда закончили первичную настройку бюджета. Пустое значит, что показываем
    * мастер. Живёт в общем документе, а не в настройках устройства: второй

@@ -320,6 +320,32 @@ export const useOperationsStore = defineStore('operations', () => {
     await flush(client)
   }
 
+  /**
+   * Снять правило (B2C-21): свои операции пересчитываются без него; после правила «между своими»
+   * признак `internal` берётся заново от пар переводов (`categorize` без правила его не трогает).
+   */
+  async function forgetRule(rule: MerchantRule, client: ApiClient = apiClient) {
+    finance.removeMerchantRule(rule.id)
+    const hit = new Set(
+      all.value
+        .filter((o) => {
+          const m = ruleMatchOf(o)
+          return m.merchant === rule.match.merchant && m.counterparty === rule.match.counterparty
+        })
+        .map((o) => o.id),
+    )
+    if (!hit.size) return
+    const base = 'internal' in rule.to ? all.value.map((o) => (hit.has(o.id) ? { ...o, internal: false } : o)) : all.value
+    const next = applyRules(pairInternalTransfers(base), finance.merchantRules)
+    const changed = next.filter((o, i) => o.categoryId !== all.value[i].categoryId || o.internal !== all.value[i].internal)
+    if (!changed.length) return
+    remember(changed)
+    writeTotals(periodsOf(changed))
+    if (!demo.value) pending.value.push({ key: newKey(), ops: changed })
+    save()
+    await flush(client)
+  }
+
   /** Досылает очередь: запись загрузки, затем операции кусками; после каждого шага — на диск. */
   async function flush(client: ApiClient = apiClient): Promise<void> {
     if (demo.value || !pending.value.length) return
@@ -420,6 +446,7 @@ export const useOperationsStore = defineStore('operations', () => {
     answer,
     send,
     recategorize,
+    forgetRule,
     flush,
     pull,
     loadUploads,

@@ -15,7 +15,7 @@ import {
 import { monthKey } from '../src/lib/dates'
 import { money } from '../src/lib/money'
 import Budget from '../src/views/Budget.vue'
-import Ritual from '../src/views/Ritual.vue'
+import WeekSalary from '../src/views/WeekSalary.vue'
 
 describe('e2e / block-4 — Сквозной сценарий Бюджета (План, Календарь, Список) и Ритуала высвобождения', () => {
   const storageMap = new Map<string, string>()
@@ -169,7 +169,7 @@ describe('e2e / block-4 — Сквозной сценарий Бюджета (П
     await router.push('/week/salary')
     expect(router.currentRoute.value.path).toBe('/week/salary')
 
-    const appRitualEmpty = createSSRApp(Ritual)
+    const appRitualEmpty = createSSRApp(WeekSalary)
     appRitualEmpty.use(router)
     const htmlRitualEmpty = await renderToString(appRitualEmpty)
     expect(htmlRitualEmpty).toContain('Сейчас нет запланированных изменений, которые высвобождают деньги')
@@ -185,7 +185,7 @@ describe('e2e / block-4 — Сквозной сценарий Бюджета (П
     expect(freed?.delta).toBe(-50_000)
 
     // Рендер активного экрана ритуала
-    const appRitualActive = createSSRApp(Ritual)
+    const appRitualActive = createSSRApp(WeekSalary)
     appRitualActive.use(router)
     const htmlRitualActive = await renderToString(appRitualActive)
     expect(htmlRitualActive).toContain('Куда направить 50 000 ₸')

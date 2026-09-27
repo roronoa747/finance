@@ -12,6 +12,7 @@ import {
 } from '@/lib/finance'
 import { renderScreen } from '@/test/screenState'
 import Money from './Money.vue'
+import History from './History.vue'
 
 describe('views/Money.vue — финансовые показатели (расчёты бывшего Обзора, B2C-14)', () => {
   const storageMap = new Map<string, string>()
@@ -234,7 +235,7 @@ describe('views/Money.vue — финансовые показатели (рас�
   })
 
 
-  it('рендерит «Деньги» (SSR): входы второго уровня, «Впереди» с платежами месяца и ссылка на календарь', async () => {
+  it('рендерит «Деньги» (SSR): входы второго уровня; «Впереди» с платежами месяца и ссылка на календарь — на /money/history (B2C-21)', async () => {
     useAuthStore().setAuthData({
       token: 't',
       user: { id: 'u-a', email: 'a@example.com', created_at: '' },
@@ -249,8 +250,11 @@ describe('views/Money.vue — финансовые показатели (рас�
     store.householdDoc.accounts = [{ id: 'acc-1', name: 'Kaspi Gold', note: '', kind: 'card', amount: 500_000, updatedAt: '' }]
 
     const html = await renderScreen(Money, '/money')
-    for (const t of ['Бюджет', 'Капитал', 'План «Сначала долги»', 'Впереди', 'Календарь', 'Аренда квартиры']) expect(html).toContain(t)
-    expect(html).toContain('href="/money/budget"')
+    for (const t of ['Бюджет', 'Капитал', 'План «Сначала долги»', 'История и итоги']) expect(html).toContain(t)
+    expect(html).not.toContain('Впереди')
+    const history = await renderScreen(History, '/money/history')
+    for (const t of ['Впереди', 'Календарь', 'Аренда квартиры']) expect(history).toContain(t)
+    expect(history).toContain('href="/money/budget"')
     // Прежнего героя «Свободно в …» и легенды здесь нет — они на главном и в Бюджете (B2C-14).
     expect(html).not.toContain('Свободно в')
     expect(html).not.toContain('распределено')

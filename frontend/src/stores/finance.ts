@@ -49,6 +49,7 @@ import type {
   Payment,
   WishItem,
   Gift,
+  Allocation,
 } from '@/types/finance'
 import type { MerchantRule } from '@/lib/statements/types'
 import { useAuthStore } from '@/stores/auth'
@@ -1561,6 +1562,28 @@ export const useFinanceStore = defineStore('finance', () => {
   /* ---------------- подарки-сюрпризы (B2C-18) — личный документ ---------------- */
   const gifts = computed(() => ((privateDoc.value.gifts as Gift[] | undefined) ?? []).filter((g) => !g.deletedAt))
 
+  /** Имя и цвет раздела трат (B2C-21): правится в настройках разбора, у обоих. */
+  function updateSpendCategory(id: string, patch: { name?: string; slot?: number | null }) {
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      const c = (doc.spendCategories ?? []).find((x) => x.id === id)
+      if (c) Object.assign(c, patch, { updatedAt: t })
+    })
+  }
+
+  /* ---------- раскладки (B2C-21) ---------- */
+  const allocations = computed(() => (householdDoc.value.allocations ?? []).filter((a) => !a.deletedAt))
+
+  /** Решение раскладки — в общий документ: партнёр и второй заход видят его, а не раскладывают снова. */
+  function recordAllocation(a: Omit<Allocation, 'id' | 'at' | 'updatedAt' | 'deletedAt'>): Allocation {
+    const t = new Date().toISOString()
+    const record: Allocation = { ...a, id: Math.random().toString(36).slice(2, 10), at: t, updatedAt: t }
+    mutateHouseholdDoc((doc) => {
+      doc.allocations = [...(doc.allocations ?? []), record]
+    })
+    return record
+  }
+
   function addGift(g: { forSlot: PersonId; name: string; price: number; photoId?: string | null }): Gift {
     const t = new Date().toISOString()
     const gift: Gift = { id: Math.random().toString(36).slice(2, 10), forSlot: g.forSlot, name: g.name, price: g.price, photoId: g.photoId ?? null, bought: false, updatedAt: t }
@@ -1651,6 +1674,7 @@ export const useFinanceStore = defineStore('finance', () => {
     payments,
     wishlist,
     gifts,
+    allocations,
     setupDone,
     plans,
     activePlan,
@@ -1710,6 +1734,8 @@ export const useFinanceStore = defineStore('finance', () => {
     contribute,
     withdraw,
     addWish,
+    recordAllocation,
+    updateSpendCategory,
     addGift,
     updateGift,
     removeGift,

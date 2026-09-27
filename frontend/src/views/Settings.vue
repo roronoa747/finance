@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import AppearancePanel from '@/components/AppearancePanel.vue'
+import ParseSettings from '@/components/ParseSettings.vue'
 import SyncBadge from '@/components/SyncBadge.vue'
 import Avatar from '@/components/kit/Avatar.vue'
 import Card from '@/components/kit/Card.vue'
@@ -26,6 +27,12 @@ const joined = (slot: string) => (slot === me.value ? (authStore.isViewer ? 'в�
     <Card>
       <h2 class="type-h3 mb-3 text-ink">Оформление</h2>
       <AppearancePanel />
+    </Card>
+
+    <!-- Разбор выписок (B2C-21): разделы трат и память разбора; viewer выписок не грузит -->
+    <Card v-if="!authStore.isViewer">
+      <h2 class="type-h3 mb-3 text-ink">Разбор выписок</h2>
+      <ParseSettings />
     </Card>
 
     <Card>

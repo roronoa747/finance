@@ -12,7 +12,7 @@ import { HUES } from '../src/lib/palette'
 import { isDark } from '../src/lib/theme'
 import { money, plain } from '../src/lib/money'
 import Budget from '../src/views/Budget.vue'
-import Ritual from '../src/views/Ritual.vue'
+import WeekSalary from '../src/views/WeekSalary.vue'
 import Capital from '../src/views/Capital.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
 import Deposit from '../src/views/Deposit.vue'
@@ -157,7 +157,7 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
     expect(budgetBefore).toContain(money(738_320))
     expect(budgetBefore).toContain(money(141_680))
     // Досрочка — в самый дорогой открытый (40%), а не в первую по документу рассрочку.
-    expect(await screen(A.pinia, Ritual, '/ritual')).toContain(`Сейчас: 13 платежей, переплата ${money(70_967)}`)
+    expect(await screen(A.pinia, WeekSalary, '/ritual')).toContain(`Сейчас: 13 платежей, переплата ${money(70_967)}`)
 
     at('2026-09-25T05:00:00Z')
     A.store.applyPrepayment('cc', 'a', { amount: 300_000, mode: 'term', accountId: 'card' })
@@ -171,7 +171,7 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
       expect(budget).toContain(money(111_680))
       expect(budget).not.toContain(money(141_680))
       expect(budget).toContain(money(768_320))
-      const ritual = await screen(P.pinia, Ritual, '/ritual')
+      const ritual = await screen(P.pinia, WeekSalary, '/ritual')
       expect(ritual).toContain(`Сейчас: 12 платежей, переплата ${money(100_160)}`)
       const capital = await screen(P.pinia, Capital, '/capital', { initialAdvice: 'strategy' })
       // Строка закрытого остаётся, в калькулятор он не входит: подушка 332 000, выигрыш 48 987.

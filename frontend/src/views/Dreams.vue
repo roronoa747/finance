@@ -5,6 +5,7 @@ import { PhCamera, PhFileArrowUp } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
+import { MONTH_END_KEY } from '@/lib/storage'
 import { pct } from '@/lib/money'
 import { MONTHS_GEN, monthIn, monthKey, weekKey } from '@/lib/dates'
 import {
@@ -146,7 +147,6 @@ const freeNote = computed(() => {
 })
 
 /* ---------- ближайшее решение ---------- */
-const MONTH_END_KEY = 'ff_month_end'
 function readAnswered(): string | null {
   try {
     return typeof localStorage === 'undefined' ? null : localStorage.getItem(MONTH_END_KEY)

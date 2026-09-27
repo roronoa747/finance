@@ -216,8 +216,11 @@ function startDemoMode() {
     const at = new Date().toISOString()
     const total = (by: 'a' | 'b', kind: SpendTotal['kind'], period: string, categoryId: string, amount: number, ops: number): SpendTotal => ({ id: `${by}:${kind}:${period}:${categoryId}`, by, kind, period, categoryId, amount, ops, updatedAt: at })
     const week = weekKey()
+    const prevWeek = weekKey(new Date(Date.now() - 7 * 86_400_000))
     const month = monthKey()
     doc.spendTotals = [
+      total('a', 'week', prevWeek, 'sc_food', 71_000, 11), total('b', 'week', prevWeek, 'sc_food', 24_000, 5), total('a', 'week', prevWeek, 'sc_cafe', 19_000, 4),
+      total('a', 'week', prevWeek, 'sc_transport', 12_000, 9), total('a', 'week', prevWeek, '_unknown', 6_000, 1),
       total('a', 'week', week, 'sc_food', 62_000, 9), total('b', 'week', week, 'sc_food', 20_000, 4), total('a', 'week', week, 'sc_cafe', 28_000, 6),
       total('a', 'week', week, 'sc_transport', 9_000, 7), total('b', 'week', week, 'sc_shopping', 34_000, 2), total('a', 'week', week, '_unknown', 10_000, 1),
       total('a', 'month', month, 'sc_food', 184_000, 26), total('b', 'month', month, 'sc_food', 40_000, 8), total('a', 'month', month, 'sc_cafe', 61_000, 14),

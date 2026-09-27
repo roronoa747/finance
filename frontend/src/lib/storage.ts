@@ -5,6 +5,9 @@
  * Ключи личной копии операций выписок (`stores/operations.ts`, B2C-07). Выход стирает и их
  * (`LOCAL_KEYS` в `stores/finance.ts`), даже если стор операций ещё не создан.
  */
+/** Ответ «остались деньги?» на месяц (Р-19) — на устройстве; читают «Мечты» и «Неделя». */
+export const MONTH_END_KEY = 'ff_month_end'
+
 export const OPERATIONS_STORAGE_KEYS = {
   ops: 'ff_operations',
   cursor: 'ff_operations_cursor',

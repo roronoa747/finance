@@ -17,7 +17,8 @@ import Wishes from '@/views/Wishes.vue'
 // Предкэш PWA (`generateSW`) берёт все чанки — офлайн они открываются так же.
 const GoalDetail = () => import('@/views/GoalDetail.vue')
 const Deposit = () => import('@/views/Deposit.vue')
-const Ritual = () => import('@/views/Ritual.vue')
+// Раскладка зарплаты, остатка и освободившихся денег (бывший Ритуал; B2C-21).
+const WeekSalary = () => import('@/views/WeekSalary.vue')
 const DebtPlan = () => import('@/views/DebtPlan.vue')
 // Выписки (B2C-07): pdf.js грузится ещё позже — только когда выбрали файл.
 const Statements = () => import('@/views/Statements.vue')
@@ -25,6 +26,8 @@ const Statements = () => import('@/views/Statements.vue')
 const GoalNew = () => import('@/views/GoalNew.vue')
 // Первый запуск (B2C-19): один раз на семью — отдельным чанком.
 const Start = () => import('@/views/Start.vue')
+// «История и итоги» (B2C-21): итог месяца, «Впереди», моменты семьи.
+const History = () => import('@/views/History.vue')
 
 /**
  * Карта маршрутов Блока 3 (DESIGN.md §2, B2C-13): вкладки «Мечты» `/` · «Неделя» `/week` ·
@@ -58,12 +61,13 @@ export const routes: RouteRecordRaw[] = [
     children: [
       { path: '', name: 'dreams', component: Dreams },
       { path: 'week', name: 'week', component: Statements },
-      { path: 'week/salary', name: 'week-salary', component: Ritual },
+      { path: 'week/salary', name: 'week-salary', component: WeekSalary },
       { path: 'money', name: 'money', component: Money },
       { path: 'money/budget', name: 'budget', component: Budget },
       { path: 'money/capital', name: 'capital', component: Capital },
       { path: 'money/capital/:id', name: 'deposit', component: Deposit },
       { path: 'money/plan', name: 'plan', component: DebtPlan },
+      { path: 'money/history', name: 'history', component: History },
       { path: 'goals/new', name: 'goal-new', component: GoalNew },
       // Желания по людям (B2C-18): общий список и список участника — один экран.
       { path: 'wishes', name: 'wishes', component: Wishes },

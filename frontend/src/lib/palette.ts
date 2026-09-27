@@ -91,11 +91,13 @@ const SPEND_SLOT_BY_ID: Record<string, number> = {
   sc_other: 12,
 }
 
-export function spendSlot(category: { id: string; order: number }): number {
+export function spendSlot(category: { id: string; order: number; slot?: number | null }): number {
+  // Выбранный семьёй слот (B2C-21) сильнее таблицы §4 и порядка.
+  if (category.slot && category.slot >= 1 && category.slot <= SPEND_SLOTS) return Math.round(category.slot)
   return SPEND_SLOT_BY_ID[category.id] ?? ((Math.max(1, Math.round(category.order)) - 1) % SPEND_SLOTS) + 1
 }
 
 /** CSS-значение цвета раздела трат — токен, не литерал: `var(--s3)` / `var(--s-unknown)`. */
-export function spendColor(category: { id: string; order: number } | null): string {
+export function spendColor(category: { id: string; order: number; slot?: number | null } | null): string {
   return category ? `var(--s${spendSlot(category)})` : 'var(--s-unknown)'
 }

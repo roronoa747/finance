@@ -51,6 +51,7 @@ const header = computed<{ title: string; sub?: string }>(() => {
   if (p === '/money/capital') return { title: 'Капитал', sub: 'счета и долги семьи' }
   if (p.startsWith('/money/capital/')) return { title: 'Вклад' }
   if (p.startsWith('/money/plan')) return { title: 'План' }
+  if (p === '/money/history') return { title: 'История', sub: 'итог месяца и моменты семьи' }
   if (p === '/goals/new') return { title: 'Новая мечта' }
   if (p.startsWith('/goals/')) {
     // Имя цели заголовком (g4 «Экран цели»): «главная мечта · Ильяс и Дана».

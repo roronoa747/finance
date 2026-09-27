@@ -196,6 +196,8 @@ export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
     // `участник:вид:период:раздел`, её целиком заменяет свежий пересчёт (Р-21).
     spendCategories: mergeList(local.spendCategories ?? [], remote.spendCategories ?? [], (x) => x.id),
     spendTotals: mergeList(local.spendTotals ?? [], remote.spendTotals ?? [], (x) => x.id),
+    // Раскладки (B2C-21): по id, надгробия как у всех.
+    allocations: mergeList(local.allocations ?? [], remote.allocations ?? [], (x) => x.id),
     // Метки равны (или их нет) — сброс один и тот же.
     ...(lr ? { resetAt: lr } : {}),
   }

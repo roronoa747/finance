@@ -58,8 +58,9 @@ describe('views/Statements.vue', () => {
     signIn()
     const html = text(await renderScreen(Statements, '/statements'))
     expect(html).toContain('Загрузить выписку')
-    expect(html).toContain('Файл остаётся на телефоне')
-    expect(html).toContain('Загрузите выписку — здесь появятся траты')
+    expect(html).toContain('Ваша выписка ещё не загружена')
+    expect(html).toContain('файл никуда не уходит')
+    expect(html).toContain('Картины недели пока нет')
     expect(html).not.toContain('Загрузки')
   })
 
