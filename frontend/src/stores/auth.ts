@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { apiClient, ApiError } from '@/api/client'
 import type { User, Household, HouseholdMember } from '@/types/api'
+import { releasePhotos } from '@/lib/photos/store'
 import { useFinanceStore } from './finance'
 
 function getItem(key: string): string | null {
@@ -65,6 +66,8 @@ export const useAuthStore = defineStore('auth', () => {
     removeItem('ff_user')
     removeItem('ff_household')
     removeItem('ff_member')
+    // Object URL фото семьи — не для следующего входа (B2C-17).
+    releasePhotos()
   }
 
   async function register(data: {

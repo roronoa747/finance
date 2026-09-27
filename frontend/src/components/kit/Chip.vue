@@ -15,7 +15,8 @@ withDefaults(
   { on: false, quiet: false, sw: null, disabled: false },
 )
 
-const emit = defineEmits<{ (e: 'click'): void }>()
+// Событие наружу — с MouseEvent: родитель может остановить всплытие (`@click.stop` внутри героя).
+const emit = defineEmits<{ (e: 'click', ev: MouseEvent): void }>()
 </script>
 
 <template>
@@ -33,7 +34,7 @@ const emit = defineEmits<{ (e: 'click'): void }>()
             : 'border-transparent bg-surface-3 text-ink hover:bg-surface-2',
       )
     "
-    @click="emit('click')"
+    @click="emit('click', $event)"
   >
     <i v-if="sw" class="size-2 shrink-0 rounded-full" :style="{ background: sw }" aria-hidden="true" />
     <slot />

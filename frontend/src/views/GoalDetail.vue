@@ -36,8 +36,16 @@ import Callout from '@/components/kit/Callout.vue'
 import { useSavedMark } from '@/components/kit/useSavedMark'
 import Ring from '@/components/Ring.vue'
 import GoalSheet from '@/components/goals/GoalSheet.vue'
+import PhotoPicker from '@/components/goals/PhotoPicker.vue'
+import DreamHero from '@/components/kit/DreamHero.vue'
+import Chip from '@/components/kit/Chip.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
+import { pct } from '@/lib/money'
+import type { GoalTemplate } from '@/lib/goalTemplates'
+import { attachFile, attachTemplate } from '@/lib/photos/goalPhoto'
+import { deletePhoto } from '@/lib/photos/store'
+import { usePhoto } from '@/lib/photos/usePhoto'
 
 type Mode = 'date' | 'amount'
 const mode = ref<Mode>('date')
@@ -141,6 +149,35 @@ function applyDeposit() {
 /* ------------------ Редактирование цели ------------------ */
 // Поля окна пишутся сами по уходу из поля (`GoalSheet`); viewer окна не открывает (Р-12).
 const openEditModal = ref(false)
+
+/* ------------------ Фото цели (B2C-17) ------------------ */
+const photoSrc = usePhoto(() => goal.value?.photoId)
+const pickerOpen = ref(false)
+const photoNote = ref<string | null>(null)
+
+async function onTemplate(t: GoalTemplate) {
+  pickerOpen.value = false
+  if (!goal.value) return
+  const result = await attachTemplate(financeStore, goal.value.id, t)
+  photoNote.value = result === 'uploaded' ? null : 'Картинка появится при сети.'
+}
+
+async function onFile(file: File) {
+  pickerOpen.value = false
+  if (!goal.value) return
+  const ok = await attachFile(financeStore, goal.value.id, file)
+  photoNote.value = ok ? null : 'Фото не загрузилось — попробуйте при сети.'
+}
+
+/** Убрать фото: сначала из документа (партнёр перестаёт видеть), затем с сервера. */
+async function removePhoto() {
+  const g = goal.value
+  if (!g?.photoId) return
+  const id = g.photoId
+  financeStore.setGoalPhoto(g.id, null)
+  financeStore.updateGoal(g.id, { template: null })
+  await deletePhoto(id).catch(() => {})
+}
 </script>
 
 <template>
@@ -159,6 +196,28 @@ const openEditModal = ref(false)
     >
       <PhArrowLeft :size="15" /> Все цели
     </button>
+
+    <!-- Фото-герой (B2C-17): картинка шаблона или своя, автор — у мечты (Р-28). -->
+    <DreamHero
+      :title="goal.name"
+      :percent="pct(goal.have, goal.need)"
+      :have-amount="goal.have"
+      :need-amount="goal.need"
+      :done-month="doneMonth ? monthIn(doneMonth) : null"
+      :src="photoSrc"
+      :author="goal.photoCredit?.author"
+      size="goal"
+    >
+      <template v-if="!authStore.isViewer" #actions>
+        <Chip quiet @click="pickerOpen = true">{{ goal.photoId ? 'Другое фото' : 'Добавить фото' }}</Chip>
+        <Chip v-if="goal.photoId" quiet @click="removePhoto">Убрать фото</Chip>
+      </template>
+    </DreamHero>
+    <p v-if="goal.photoCredit" class="px-1 text-[12px] text-ink-3">
+      Фото: <a :href="goal.photoCredit.url" target="_blank" rel="noreferrer noopener" class="text-brand">{{ goal.photoCredit.author }}</a> / Unsplash
+    </p>
+    <Callout v-if="photoNote" tone="neutral" icon="info">{{ photoNote }}</Callout>
+    <PhotoPicker :open="pickerOpen" title="Фото мечты" :selected="goal.template" :skippable="false" @close="pickerOpen = false" @template="onTemplate" @file="onFile" />
 
     <Card>
       <div class="mb-4 flex items-center gap-3.5">

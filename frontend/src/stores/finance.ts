@@ -14,6 +14,7 @@ import {
   creditSplit,
   endedPlan,
   goalHave,
+  liveGoals,
   mainGoal,
   lastAccountFor,
   lumpPlan,
@@ -738,10 +739,14 @@ export const useFinanceStore = defineStore('finance', () => {
     have?: number;
     monthly: number;
     hue: HueKey;
-  }) {
+    /** Шаблон и главная мечта (B2C-17/18); первая цель семьи — главная. */
+    template?: string | null;
+    main?: boolean;
+  }): string {
     const id = Math.random().toString(36).slice(2, 10);
     const t = new Date().toISOString();
     const have = g.have ?? 0;
+    const main = g.main ?? liveGoals(goals.value).length === 0;
     mutateHouseholdDoc((doc) => {
       doc.goals.push({
         id,
@@ -754,8 +759,20 @@ export const useFinanceStore = defineStore('finance', () => {
         planPct: g.need > 0 ? Math.min(1, have / g.need) : 0,
         movements: [],
         updatedAt: t,
+        ...(g.template ? { template: g.template } : {}),
+        ...(main ? { main: true } : {}),
       });
     });
+    return id;
+  }
+
+  /** Фото цели (B2C-17): id на сервере и автор картинки шаблона; null — фото убрали. */
+  function setGoalPhoto(id: string, photoId: string | null, credit: { author: string; url: string } | null = null) {
+    updateGoal(id, { photoId, photoCredit: photoId ? credit : null })
+  }
+
+  function setWishPhoto(id: string, photoId: string | null) {
+    updateWish(id, { photoId })
   }
 
   function setCategoryAmount(key: CategoryKey, amount: number) {
@@ -1649,6 +1666,8 @@ export const useFinanceStore = defineStore('finance', () => {
     settlePlan,
     addGoal,
     updateGoal,
+    setGoalPhoto,
+    setWishPhoto,
     removeGoal,
     setMainGoal,
     contribute,

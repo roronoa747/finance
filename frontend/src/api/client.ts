@@ -195,6 +195,30 @@ export class ApiClient {
     if (since) q.set('since', since)
     return this.request<OperationsPage>(`/operations?${q}`, { method: 'GET' })
   }
+
+  // Фото целей и желаний (B2C-16/17): байты — телом запроса, тип — заголовком.
+  async uploadPhoto(blob: Blob, hidden = false): Promise<{ id: string }> {
+    return this.request<{ id: string }>(`/photos${hidden ? '?hidden=1' : ''}`, {
+      method: 'POST',
+      body: blob,
+      headers: { 'Content-Type': blob.type || 'image/webp' },
+    })
+  }
+
+  /** Байты фото; null — нет такого (404: чужое, скрытое или удалено). */
+  async getPhoto(id: string): Promise<Blob | null> {
+    const headers = new Headers()
+    const token = this.getToken()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const res = await this.fetchFn(`${this.baseUrl}/photos/${encodeURIComponent(id)}`, { method: 'GET', headers })
+    if (res.status === 404) return null
+    if (!res.ok) throw new ApiError(`HTTP error ${res.status} ${res.statusText}`, res.status)
+    return res.blob()
+  }
+
+  async deletePhoto(id: string): Promise<void> {
+    await this.request<unknown>(`/photos/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
 }
 
 export const apiClient = new ApiClient()

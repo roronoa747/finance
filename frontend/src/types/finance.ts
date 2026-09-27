@@ -108,6 +108,12 @@ export type Goal = Tracked & {
    * `updatedAt` вместе с ней; при двух отмеченных экран берёт позднюю (`mainGoal`).
    */
   main?: boolean
+  /** Фото цели на сервере (B2C-16/17): в документе только id; null — фото убрали. */
+  photoId?: string | null
+  /** Автор картинки шаблона (Unsplash, Р-28) — показывается у мечты; своё фото — null. */
+  photoCredit?: { author: string; url: string } | null
+  /** Шаблон, из которого сделана цель (`lib/goalTemplates`); без `photoId` — картинка ещё не загружена. */
+  template?: string | null
 }
 
 export type WishItem = Tracked & {
@@ -119,6 +125,8 @@ export type WishItem = Tracked & {
   url?: string
   bought: boolean
   boughtOn?: string | null
+  /** Фото желания на сервере (B2C-17). */
+  photoId?: string | null
 }
 
 /**

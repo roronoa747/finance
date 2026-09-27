@@ -21,6 +21,10 @@ import {
 } from '@/lib/finance'
 import { unknownGroups } from '@/lib/statements/model'
 import { plural } from '@/lib/utils'
+import { GOAL_TEMPLATES, type GoalTemplate } from '@/lib/goalTemplates'
+import { attachFile, attachTemplate, retryTemplatePhotos } from '@/lib/photos/goalPhoto'
+import { usePhoto, usePhotos } from '@/lib/photos/usePhoto'
+import PhotoPicker from '@/components/goals/PhotoPicker.vue'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/kit/Card.vue'
 import Callout from '@/components/kit/Callout.vue'
@@ -73,6 +77,26 @@ function openGoal(id: string) {
 }
 function newGoal() {
   void router.push('/goals/new')
+}
+
+/* ---------- фото (B2C-17) ---------- */
+const heroSrc = usePhoto(() => main.value?.photoId)
+const tileSrc = usePhotos(() => others.value.map((g) => g.photoId))
+const pickerOpen = ref(false)
+const photoNote = ref<string | null>(null)
+
+async function onTemplate(t: GoalTemplate) {
+  pickerOpen.value = false
+  if (!main.value) return
+  const result = await attachTemplate(financeStore, main.value.id, t)
+  photoNote.value = result === 'uploaded' ? null : 'Картинка появится при сети.'
+}
+
+async function onFile(file: File) {
+  pickerOpen.value = false
+  if (!main.value) return
+  const ok = await attachFile(financeStore, main.value.id, file)
+  photoNote.value = ok ? null : 'Фото не загрузилось — попробуйте при сети.'
 }
 
 /* ---------- неделя ---------- */
@@ -194,6 +218,8 @@ const cardActions = computed(() => {
 
 onMounted(() => {
   void ops.loadUploads()
+  // Цели с шаблоном без картинки (заведены офлайн) — дозагрузить при сети (Р-28).
+  void retryTemplatePhotos(financeStore, GOAL_TEMPLATES)
 })
 </script>
 
@@ -207,23 +233,44 @@ onMounted(() => {
       :have-amount="main.have"
       :need-amount="main.need"
       :done-month="heroMonth"
+      :src="heroSrc"
+      :author="main.photoCredit?.author"
       role="link"
       tabindex="0"
       class="cursor-pointer"
       @click="openGoal(main.id)"
       @keydown.enter="openGoal(main.id)"
     >
-      <template v-if="canEdit" #actions>
-        <Chip quiet @click.stop="openGoal(main.id)"><PhCamera /> Добавить фото</Chip>
+      <template v-if="canEdit && !main.photoId" #actions>
+        <Chip quiet @click.stop="pickerOpen = true"><PhCamera /> Добавить фото</Chip>
       </template>
     </DreamHero>
     <DreamHero v-else empty :can-pick="canEdit" @pick="newGoal" />
+    <Callout v-if="photoNote" tone="neutral" icon="info">{{ photoNote }}</Callout>
 
     <!-- Плитки других мечт -->
     <div v-if="others.length || (main && canEdit)" class="grid grid-cols-3 gap-2.5">
-      <DreamTile v-for="g in others" :key="g.id" :name="g.name" :percent="pct(g.have, g.need)" @click="openGoal(g.id)" />
+      <DreamTile
+        v-for="g in others"
+        :key="g.id"
+        :name="g.name"
+        :percent="pct(g.have, g.need)"
+        :src="g.photoId ? tileSrc[g.photoId] : null"
+        @click="openGoal(g.id)"
+      />
       <DreamTile v-if="canEdit" add @click="newGoal" />
     </div>
+
+    <PhotoPicker
+      v-if="main"
+      :open="pickerOpen"
+      title="Фото мечты"
+      :selected="main.template"
+      :skippable="false"
+      @close="pickerOpen = false"
+      @template="onTemplate"
+      @file="onFile"
+    />
 
     <!-- Картина недели -->
     <div class="mt-2 px-1 type-section">{{ weekTitle }}</div>
