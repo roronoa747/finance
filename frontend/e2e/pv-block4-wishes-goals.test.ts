@@ -110,7 +110,9 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       await on(B).store.syncHousehold(B.client)
       // `mergeList` дописывает незнакомую запись в конец (React `store/merge.ts:38-60` — так же).
       expect(B.store.wishlist.find((w) => w.name === 'Утюг')).toMatchObject({ addedOn: '2026-09-24T07:00:00.000Z' })
-      expect(await screen(B.pinia, Wishes, '/wishes')).toContain('Ильяс · 24 сентября')
+      // Автор и дата — в окне покупки (галерея показывает фото, название, цену).
+      const iron = B.store.wishlist.find((w) => w.name === 'Утюг')!
+      expect(await screen(B.pinia, Wishes, '/wishes', undefined, [screenMixin({ editWishId: iron.id })])).toContain('Ильяс · 24 сентября')
     })
   })
 
@@ -231,7 +233,8 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       expect(wishV).toContain(`>${plain(15_000)}</span>`)
       expect(wishV).toContain(money(198_000))
       expect(wishV).toContain('Ильяс · куплено 24 сентября')
-      expect(wishV).toContain('Аруна · 24.09.2026')
+      // Автор и дата — в окне покупки; viewer его не открывает: плитка — не кнопка.
+      expect(wishV).not.toMatch(/<button[^>]*data-wish="kettle"/)
       expect(wishV).not.toContain('aria-label="Отметить купленным"')
       expect(wishV).not.toContain('aria-label="Вернуть в список"')
       expect(wishV).not.toMatch(/Добавить покупку/)

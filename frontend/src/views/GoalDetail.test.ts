@@ -491,11 +491,13 @@ describe('PV-18: покупки — правка, «Уже купили», viewe
     wish({ id: 'iron', name: 'Утюг', price: 25_000, bought: true, boughtOn: '2026-08-05T15:00:00.000Z' }),
   ]
 
-  it('списки React: подпись с датой, цена без ₸, «Уже купили» с итогом, «Вернуть в список»', async () => {
+  it('галерея: плитки с ценой без ₸, автор и дата — в окне покупки, «Уже купили» с итогом, «Вернуть в список»', async () => {
     family('member', list())
     const html = await renderScreen(Wishes, '/wishes')
-    expect(html).toContain('Ильяс · 10 сентября')
-    expect(html).toContain('Аруна · 24.09.2026')
+    // Автор и дата — в окне покупки, не на плитке (галерея: фото, название, цена).
+    expect(html).not.toContain('Ильяс · 10 сентября')
+    expect(await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ editWishId: 'pan' })])).toContain('Ильяс · 10 сентября')
+    expect(await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ editWishId: 'old' })])).toContain('Аруна · 24.09.2026')
     expect(html).toContain(`>${plain(18_000)}</span>`)
     expect(html).toContain('aria-label="Отметить купленным"')
     expect(html).toContain('Добавить покупку')
@@ -564,14 +566,17 @@ describe('PV-18: покупки — правка, «Уже купили», viewe
     expect(html).not.toContain('Вернуть в список')
     expect(html).not.toContain('Добавить покупку')
     expect(html).not.toContain('role="dialog"')
-    // Строка — не кнопка: нажимать нечего.
-    expect(html).toContain('<div class="min-w-0 flex-1 text-left"><b class="block truncate text-[14.5px] font-medium text-ink">Сковорода</b>')
+    // Плитка — не кнопка: нажимать нечего.
+    expect(html).toMatch(/<div[^>]*data-wish="pan"/)
+    expect(html).not.toMatch(/<button[^>]*data-wish="pan"/)
   })
 
-  it('member: строка покупки — кнопка правки', async () => {
+  it('member: плитка покупки — кнопка правки, ссылка в магазин — поверх плитки', async () => {
     family('member', list())
     const html = await renderScreen(Wishes, '/wishes')
-    expect(html).toContain('<button type="button" class="min-w-0 flex-1 text-left cursor-pointer"><b class="block truncate text-[14.5px] font-medium text-ink">Сковорода</b>')
+    expect(html).toMatch(/<button type="button"[^>]*data-wish="pan"/)
+    expect(html).toContain('aria-label="Открыть ссылку"')
+    expect(html).toContain('href="https://kaspi.kz/p"')
   })
 })
 

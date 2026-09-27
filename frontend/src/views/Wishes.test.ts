@@ -265,3 +265,50 @@ describe('views/Wishes.vue — фото желаний (Р-9, B2C-18, SSR)', () 
     expect(viewer).not.toContain('accept="image/*"')
   })
 })
+
+describe('views/Wishes.vue — галерея и список с переключателем (владелец 2026-09-27)', () => {
+  beforeEach(() => {
+    stubStorage()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  const list = () => [
+    wish({ id: 'pan', name: 'Сковорода', price: 18_000, url: 'https://kaspi.kz/p', photoId: 'ph-1' }),
+    wish({ id: 'vac', name: 'Пылесос', price: 180_000, by: 'b', bought: true, boughtOn: '2026-09-20T15:00:00.000Z' }),
+  ]
+
+  it('по умолчанию галерея: плитки без автора и даты, переключатель «Галереей» нажат; «Списком» — строки с автором и датой, ссылкой и картинкой; выбор — на устройстве', async () => {
+    family('member', 'a', { wishlist: list() })
+    const grid = await renderScreen(Wishes, '/wishes')
+    expect(grid).toMatch(/aria-label="Галереей" aria-pressed="true"/)
+    expect(grid).toMatch(/<button type="button"[^>]*data-wish="pan"/)
+    expect(grid).not.toContain('Ильяс · 10 сентября')
+    expect(grid).toContain('Аруна · куплено 20 сентября')
+
+    const rows = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ view: 'list' })])
+    expect(rows).toMatch(/aria-label="Списком" aria-pressed="true"/)
+    expect(rows).toContain('Ильяс · 10 сентября')
+    expect(rows).toContain('Аруна · куплено 20 сентября')
+    expect(rows).toContain('line-through">Пылесос<')
+    expect(rows).toContain('aria-label="Открыть ссылку"')
+    expect(rows).toContain('data-photo')
+    expect(rows).toMatch(/<button type="button"[^>]*data-wish="pan"/)
+    expect(rows).toContain('aria-label="Отметить купленным"')
+    expect(rows).toContain('aria-label="Вернуть в список"')
+
+    // Выбор запоминается: setView пишет ключ, новый рендер читает его.
+    await renderScreen(Wishes, '/wishes', undefined, [screenMixin({}, (s) => (s.setView as (v: string) => void)('list'))])
+    expect(storage.get('ff_wishes_view')).toBe('"list"')
+    expect(await renderScreen(Wishes, '/wishes')).toMatch(/aria-label="Списком" aria-pressed="true"/)
+
+    // Viewer: и в списке строка — не кнопка.
+    setActivePinia(createPinia())
+    family('viewer', 'a', { wishlist: list() })
+    const viewer = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ view: 'list' })])
+    expect(viewer).toMatch(/<div[^>]*data-wish="pan"/)
+    expect(viewer).not.toContain('aria-label="Отметить купленным"')
+  })
+})

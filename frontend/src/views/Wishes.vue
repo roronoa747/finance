@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { PhCheck, PhGift, PhLink, PhPlus, PhShoppingBag } from '@phosphor-icons/vue'
+import { PhCheck, PhGift, PhListBullets, PhPlus, PhSquaresFour } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain, parseMoney } from '@/lib/money'
@@ -10,6 +10,7 @@ import { liveWishlist } from '@/lib/finance'
 import { compressImage } from '@/lib/photos/compress'
 import { uploadPhoto } from '@/lib/photos/store'
 import { usePhotos } from '@/lib/photos/usePhoto'
+import { readStorage, writeStorage } from '@/lib/storage'
 import type { PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
 
@@ -24,9 +25,10 @@ import NumField from '@/components/kit/NumField.vue'
 import Section from '@/components/kit/Section.vue'
 import Segmented from '@/components/kit/Segmented.vue'
 import Sheet from '@/components/kit/Sheet.vue'
-import Tag from '@/components/kit/Tag.vue'
 import GiftSheet from '@/components/goals/GiftSheet.vue'
+import WishRow from '@/components/goals/WishRow.vue'
 import WishSheet from '@/components/goals/WishSheet.vue'
+import WishTile from '@/components/goals/WishTile.vue'
 
 /**
  * «Желания» (DESIGN.md §2 g4 «Желания по людям», «Подарок-сюрприз»; B2C-18): вкладки участников и
@@ -81,6 +83,14 @@ const wishBy = ref<PersonId>(me.value ?? 'a')
 const editWishId = ref<string | null>(null)
 /** Последняя отмеченная покупка и её номер среди купленных — на момент отметки. */
 const justBought = ref<{ name: string; n: number } | null>(null)
+
+// Галерея или список (владелец 2026-09-27): галерея по умолчанию, выбор — на устройстве.
+const VIEW_KEY = 'ff_wishes_view'
+const view = ref<'grid' | 'list'>(readStorage<'grid' | 'list'>(VIEW_KEY, 'grid') === 'list' ? 'list' : 'grid')
+function setView(v: 'grid' | 'list') {
+  view.value = v
+  writeStorage(VIEW_KEY, v)
+}
 
 // Фото желания (Р-9): картинка вместо текста — в строке и в окне; сжимается на телефоне, `photoId` у обоих.
 const wishSrc = usePhotos(() => wishlist.value.map((w) => w.photoId))
@@ -142,53 +152,52 @@ const openGift = ref(false)
       через год будет видно, куда уходили деньги на быт.
     </Callout>
 
-    <Card flush>
-      <div
+    <!-- Галерея или список (владелец 2026-09-27); viewer — плитки и строки без действий (Р-12) -->
+    <div class="-mb-1.5 flex items-center justify-end gap-1">
+      <button
+        type="button"
+        aria-label="Галереей"
+        :aria-pressed="view === 'grid'"
+        :class="cn('grid size-8 place-items-center rounded-lg cursor-pointer', view === 'grid' ? 'bg-surface-3 text-ink' : 'text-ink-3')"
+        @click="setView('grid')"
+      >
+        <PhSquaresFour :size="18" />
+      </button>
+      <button
+        type="button"
+        aria-label="Списком"
+        :aria-pressed="view === 'list'"
+        :class="cn('grid size-8 place-items-center rounded-lg cursor-pointer', view === 'list' ? 'bg-surface-3 text-ink' : 'text-ink-3')"
+        @click="setView('list')"
+      >
+        <PhListBullets :size="18" />
+      </button>
+    </div>
+    <div v-if="activeWish.length && view === 'grid'" class="grid grid-cols-2 gap-2.5">
+      <WishTile
         v-for="w in activeWish"
         :key="w.id"
-        class="flex items-center gap-3 border-b border-line px-3.5 py-3 last:border-b-0"
-      >
-        <!-- Viewer видит список, но не правит (Р-12, матрица §3): ни галочки, ни кнопки строки -->
-        <button
-          v-if="canEdit"
-          type="button"
-          aria-label="Отметить купленным"
-          class="grid size-[26px] shrink-0 place-items-center rounded-lg border-[1.5px] border-line-strong text-transparent hover:border-brand hover:text-brand cursor-pointer"
-          @click="markBought(w.id, w.name)"
-        >
-          <PhCheck :size="14" weight="bold" />
-        </button>
-        <IconBox v-else><PhShoppingBag :size="18" /></IconBox>
-        <div v-if="w.photoId" class="size-11 shrink-0 overflow-hidden rounded-inner bg-surface-3" data-photo>
-          <img v-if="wishSrc[w.photoId]" :src="wishSrc[w.photoId] ?? undefined" alt="" class="size-full object-cover" />
-        </div>
-        <!-- Ссылка вынесена из нажимаемой области: ссылка внутри кнопки — невалидная разметка. -->
-        <component
-          :is="canEdit ? 'button' : 'div'"
-          :type="canEdit ? 'button' : undefined"
-          :class="cn('min-w-0 flex-1 text-left', canEdit && 'cursor-pointer')"
-          @click="canEdit && (editWishId = w.id)"
-        >
-          <b class="block truncate text-[14.5px] font-medium text-ink">{{ w.name }}</b>
-          <span class="mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-3">
-            <i class="size-[7px] shrink-0 rounded-full" :style="{ background: `var(--p${w.by})` }" />
-            {{ nameOf(w.by) }} · {{ wishDate(w.addedOn) }}
-          </span>
-        </component>
-        <a
-          v-if="w.url"
-          :href="w.url"
-          target="_blank"
-          rel="noreferrer noopener"
-          class="inline-flex shrink-0 items-center gap-1 rounded-pill border border-line px-2 py-0.5 text-[11.5px] text-brand"
-        >
-          <PhLink :size="10" /> ссылка
-        </a>
-        <span class="shrink-0 text-[14px] font-semibold num text-ink">{{ plain(w.price) }}</span>
-      </div>
-      <div v-if="!activeWish.length" class="px-4 py-6 text-center text-[13px] text-ink-3">
-        Список пуст
-      </div>
+        :wish="w"
+        :src="w.photoId ? (wishSrc[w.photoId] ?? null) : null"
+        :can-edit="canEdit"
+        @open="editWishId = w.id"
+        @toggle="markBought(w.id, w.name)"
+      />
+    </div>
+    <Card v-else-if="activeWish.length" flush>
+      <WishRow
+        v-for="w in activeWish"
+        :key="w.id"
+        :wish="w"
+        :src="w.photoId ? (wishSrc[w.photoId] ?? null) : null"
+        :can-edit="canEdit"
+        :meta="`${nameOf(w.by)} · ${wishDate(w.addedOn)}`"
+        @open="editWishId = w.id"
+        @toggle="markBought(w.id, w.name)"
+      />
+    </Card>
+    <Card v-else flush>
+      <div class="px-4 py-6 text-center text-[13px] text-ink-3">Список пуст</div>
     </Card>
 
     <Callout v-if="wishPhotoNote" tone="neutral" icon="info">{{ wishPhotoNote }}</Callout>
@@ -232,37 +241,34 @@ const openGift = ref(false)
         <span class="text-[13px] text-ink-3 num">{{ money(boughtSum) }}</span>
       </template>
     </Section>
-    <Card flush>
-      <div
+    <div v-if="boughtWish.length && view === 'grid'" class="grid grid-cols-2 gap-2.5">
+      <WishTile
         v-for="w in boughtWish"
         :key="w.id"
-        class="flex items-center gap-3 border-b border-line px-3.5 py-3 last:border-b-0"
-      >
-        <button
-          v-if="canEdit"
-          type="button"
-          aria-label="Вернуть в список"
-          class="grid size-[26px] shrink-0 place-items-center rounded-lg border-[1.5px] border-brand bg-brand text-brand-ink cursor-pointer"
-          @click="financeStore.toggleBought(w.id)"
-        >
-          <PhCheck :size="14" weight="bold" />
-        </button>
-        <Tag v-else tone="ok">купили</Tag>
-        <div v-if="w.photoId" class="size-11 shrink-0 overflow-hidden rounded-inner bg-surface-3 opacity-70" data-photo>
-          <img v-if="wishSrc[w.photoId]" :src="wishSrc[w.photoId] ?? undefined" alt="" class="size-full object-cover" />
-        </div>
-        <div class="min-w-0 flex-1">
-          <b class="block text-[14.5px] font-medium text-ink-3 line-through">{{ w.name }}</b>
-          <div class="mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-3">
-            <i class="size-[7px] shrink-0 rounded-full" :style="{ background: `var(--p${w.by})` }" />
-            {{ nameOf(w.by) }} · куплено {{ wishDate(w.boughtOn) }}
-          </div>
-        </div>
-        <span class="shrink-0 text-[14px] font-semibold text-ink-3 num">{{ plain(w.price) }}</span>
-      </div>
-      <div v-if="!boughtWish.length" class="px-4 py-6 text-center text-[13px] text-ink-3">
-        Пока ничего
-      </div>
+        :wish="w"
+        :src="w.photoId ? (wishSrc[w.photoId] ?? null) : null"
+        :can-edit="canEdit"
+        bought
+        :meta="`${nameOf(w.by)} · куплено ${wishDate(w.boughtOn)}`"
+        @open="editWishId = w.id"
+        @toggle="financeStore.toggleBought(w.id)"
+      />
+    </div>
+    <Card v-else-if="boughtWish.length" flush>
+      <WishRow
+        v-for="w in boughtWish"
+        :key="w.id"
+        :wish="w"
+        :src="w.photoId ? (wishSrc[w.photoId] ?? null) : null"
+        :can-edit="canEdit"
+        bought
+        :meta="`${nameOf(w.by)} · куплено ${wishDate(w.boughtOn)}`"
+        @open="editWishId = w.id"
+        @toggle="financeStore.toggleBought(w.id)"
+      />
+    </Card>
+    <Card v-else flush>
+      <div class="px-4 py-6 text-center text-[13px] text-ink-3">Пока ничего</div>
     </Card>
 
     <WishSheet :wish-id="canEdit ? editWishId : null" @close="editWishId = null" />

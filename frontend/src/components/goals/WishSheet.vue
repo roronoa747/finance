@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { PhLink } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { plain, parseMoney } from '@/lib/money'
+import { atLabel } from '@/lib/dates'
 import { liveWishlist } from '@/lib/finance'
 import { compressImage } from '@/lib/photos/compress'
 import { deletePhoto, uploadPhoto } from '@/lib/photos/store'
@@ -32,6 +34,9 @@ const financeStore = useFinanceStore()
 const people = computed(() => financeStore.people)
 
 const wish = computed(() => liveWishlist(financeStore.wishlist).find((w) => w.id === props.wishId))
+// Кто и когда добавил — здесь, а не на плитке (плитка — фото, название, цена).
+const wishDate = (s: string | null | undefined) => (!s ? '' : /^\d{4}-\d{2}-\d{2}/.test(s) ? atLabel(s) : s)
+const meta = computed(() => (wish.value ? `${people.value.find((p) => p.id === wish.value!.by)?.name ?? 'Участник'} · ${wishDate(wish.value.addedOn)}` : ''))
 const saved = useSavedMark(
   () => wish.value?.id,
   () => wish.value?.updatedAt,
@@ -113,6 +118,17 @@ function remove() {
         <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFile" />
       </div>
       <Callout v-if="photoNote" tone="neutral" icon="info" class="mb-3">{{ photoNote }}</Callout>
+      <p class="mb-3 type-meta">{{ meta }}</p>
+      <!-- Ссылка в магазин — заметной кнопкой, а не строкой -->
+      <a
+        v-if="wish.url"
+        :href="wish.url"
+        target="_blank"
+        rel="noreferrer noopener"
+        class="mb-3 flex h-12 w-full items-center justify-center gap-2 rounded-pill bg-surface-3 text-[15px] font-semibold text-ink"
+      >
+        <PhLink :size="16" /> Открыть ссылку
+      </a>
 
       <Field label="Что покупаем">
         <Input :default-value="wish.name" class="mb-3" @blur="onName" />
