@@ -7,6 +7,9 @@ import { useAuthStore } from '@/stores/auth'
 import { money, plain, parseMoney } from '@/lib/money'
 import { atLabel } from '@/lib/dates'
 import { liveWishlist } from '@/lib/finance'
+import { compressImage } from '@/lib/photos/compress'
+import { uploadPhoto } from '@/lib/photos/store'
+import { usePhotos } from '@/lib/photos/usePhoto'
 import type { PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
 
@@ -14,6 +17,7 @@ import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Card from '@/components/kit/Card.vue'
+import Chip from '@/components/kit/Chip.vue'
 import Field from '@/components/kit/Field.vue'
 import IconBox from '@/components/kit/IconBox.vue'
 import NumField from '@/components/kit/NumField.vue'
@@ -78,9 +82,20 @@ const editWishId = ref<string | null>(null)
 /** Последняя отмеченная покупка и её номер среди купленных — на момент отметки. */
 const justBought = ref<{ name: string; n: number } | null>(null)
 
-function createWish() {
+// Фото желания (Р-9): картинка вместо текста — в строке и в окне; сжимается на телефоне, `photoId` у обоих.
+const wishSrc = usePhotos(() => wishlist.value.map((w) => w.photoId))
+const wishFile = ref<File | null>(null)
+const wishFileInput = ref<HTMLInputElement | null>(null)
+const wishPhotoNote = ref<string | null>(null)
+function onWishFile(e: Event) {
+  const input = e.target as HTMLInputElement
+  wishFile.value = input.files?.[0] ?? null
+  input.value = ''
+}
+
+async function createWish() {
   if (!wishName.value.trim()) return
-  financeStore.addWish({
+  const id = financeStore.addWish({
     name: wishName.value.trim(),
     price: parseMoney(wishPrice.value),
     // Список участника — от своего имени (ТЗ п. 3); «Общие» — с выбором «Кто добавил» (PV-18).
@@ -88,10 +103,22 @@ function createWish() {
     url: wishUrl.value.trim() || undefined,
     list: tab.value,
   })
+  const file = wishFile.value
   wishName.value = ''
   wishPrice.value = ''
   wishUrl.value = ''
+  wishFile.value = null
+  wishPhotoNote.value = null
   openWishModal.value = false
+  // Запись — сразу, фото — следом: без сети желание останется без картинки, добавить можно в окне правки.
+  if (file && !financeStore.isDemo) {
+    try {
+      const { blob } = await compressImage(file)
+      financeStore.setWishPhoto(id, await uploadPhoto(blob))
+    } catch {
+      wishPhotoNote.value = 'Фото не загрузилось — добавьте его в окне покупки при сети.'
+    }
+  }
 }
 
 // Номер — до отметки: в React `bought.length + 1` считался уже после неё и был на один больше.
@@ -132,6 +159,9 @@ const openGift = ref(false)
           <PhCheck :size="14" weight="bold" />
         </button>
         <IconBox v-else><PhShoppingBag :size="18" /></IconBox>
+        <div v-if="w.photoId" class="size-11 shrink-0 overflow-hidden rounded-inner bg-surface-3" data-photo>
+          <img v-if="wishSrc[w.photoId]" :src="wishSrc[w.photoId] ?? undefined" alt="" class="size-full object-cover" />
+        </div>
         <!-- Ссылка вынесена из нажимаемой области: ссылка внутри кнопки — невалидная разметка. -->
         <component
           :is="canEdit ? 'button' : 'div'"
@@ -161,6 +191,7 @@ const openGift = ref(false)
       </div>
     </Card>
 
+    <Callout v-if="wishPhotoNote" tone="neutral" icon="info">{{ wishPhotoNote }}</Callout>
     <Button v-if="canEdit" variant="secondary" class="w-full" @click="openWishModal = true">
       <PhPlus :size="16" weight="bold" /> Добавить покупку
     </Button>
@@ -217,6 +248,9 @@ const openGift = ref(false)
           <PhCheck :size="14" weight="bold" />
         </button>
         <Tag v-else tone="ok">купили</Tag>
+        <div v-if="w.photoId" class="size-11 shrink-0 overflow-hidden rounded-inner bg-surface-3 opacity-70" data-photo>
+          <img v-if="wishSrc[w.photoId]" :src="wishSrc[w.photoId] ?? undefined" alt="" class="size-full object-cover" />
+        </div>
         <div class="min-w-0 flex-1">
           <b class="block text-[14.5px] font-medium text-ink-3 line-through">{{ w.name }}</b>
           <div class="mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-3">
@@ -235,6 +269,12 @@ const openGift = ref(false)
 
     <!-- Окно: Покупка в дом (React `Goals.tsx:284-305`) -->
     <Sheet :open="openWishModal && canEdit" title="Покупка в дом" @close="openWishModal = false">
+      <!-- Фото — первым: желание узнаётся по картинке (Р-9); в демо сервера нет -->
+      <div v-if="!financeStore.isDemo" class="mb-3 flex flex-wrap items-center gap-2">
+        <Chip quiet @click="wishFileInput?.click()">{{ wishFile ? 'Другое фото' : 'Фото' }}</Chip>
+        <span v-if="wishFile" class="text-[12px] text-ink-3">{{ wishFile.name }}</span>
+        <input ref="wishFileInput" type="file" accept="image/*" class="hidden" @change="onWishFile" />
+      </div>
       <Field label="Что покупаем">
         <Input v-model="wishName" placeholder="Например, сковорода" class="mb-3" />
       </Field>

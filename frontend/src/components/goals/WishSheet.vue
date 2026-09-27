@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { plain, parseMoney } from '@/lib/money'
 import { liveWishlist } from '@/lib/finance'
+import { compressImage } from '@/lib/photos/compress'
+import { deletePhoto, uploadPhoto } from '@/lib/photos/store'
+import { usePhoto } from '@/lib/photos/usePhoto'
 import type { PersonId } from '@/types/finance'
 
+import Callout from '@/components/kit/Callout.vue'
+import Chip from '@/components/kit/Chip.vue'
 import Field from '@/components/kit/Field.vue'
 import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
 import SavedMark from '@/components/kit/SavedMark.vue'
@@ -18,6 +23,7 @@ import Input from '@/components/ui/Input.vue'
 /**
  * Правка покупки (React `WishDialog`, `src/screens/Goals.tsx:317-388`): поля пишутся по
  * уходу из поля, удаление — внутри и спрашивает. Удалил партнёр — окно закрылось.
+ * Фото желания (Р-9, B2C-18): сжимается на телефоне, `WishItem.photoId` — у обоих.
  */
 const props = defineProps<{ wishId: string | null }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -30,6 +36,41 @@ const saved = useSavedMark(
   () => wish.value?.id,
   () => wish.value?.updatedAt,
 )
+
+/* ---------- фото ---------- */
+const photoSrc = usePhoto(() => wish.value?.photoId)
+const fileInput = ref<HTMLInputElement | null>(null)
+const photoBusy = ref(false)
+const photoNote = ref<string | null>(null)
+
+async function onFile(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  const w = wish.value
+  if (!file || !w || financeStore.isDemo) return
+  photoBusy.value = true
+  photoNote.value = null
+  try {
+    const { blob } = await compressImage(file)
+    const id = await uploadPhoto(blob)
+    const old = w.photoId
+    financeStore.setWishPhoto(w.id, id)
+    if (old) await deletePhoto(old).catch(() => {})
+  } catch {
+    photoNote.value = 'Фото не загрузилось — попробуйте при сети.'
+  } finally {
+    photoBusy.value = false
+  }
+}
+
+async function removePhoto() {
+  const w = wish.value
+  if (!w?.photoId) return
+  const id = w.photoId
+  financeStore.setWishPhoto(w.id, null)
+  await deletePhoto(id).catch(() => {})
+}
 
 function onName(e: Event) {
   const v = (e.target as HTMLInputElement).value.trim()
@@ -60,6 +101,19 @@ function remove() {
       <SavedMark :on="saved" />
     </template>
     <template v-if="wish" #default="{ close }">
+      <!-- Фото — первым: желание узнаётся по картинке, а не по тексту -->
+      <div class="mb-3 flex items-center gap-3">
+        <div class="size-[72px] shrink-0 overflow-hidden rounded-inner bg-surface-3">
+          <img v-if="photoSrc" :src="photoSrc" alt="" class="size-full object-cover" />
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <Chip v-if="!financeStore.isDemo" quiet :disabled="photoBusy" @click="fileInput?.click()">{{ wish.photoId ? 'Другое фото' : 'Фото' }}</Chip>
+          <Chip v-if="wish.photoId" quiet @click="removePhoto">Убрать фото</Chip>
+        </div>
+        <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFile" />
+      </div>
+      <Callout v-if="photoNote" tone="neutral" icon="info" class="mb-3">{{ photoNote }}</Callout>
+
       <Field label="Что покупаем">
         <Input :default-value="wish.name" class="mb-3" @blur="onName" />
       </Field>

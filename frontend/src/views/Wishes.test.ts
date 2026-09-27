@@ -230,3 +230,38 @@ describe('views/GoalNew.vue — «Новая мечта» (B2C-18, SSR)', () => 
     expect(disabled(html, 'Готово — к мечте')).toBe(true)
   })
 })
+
+describe('views/Wishes.vue — фото желаний (Р-9, B2C-18, SSR)', () => {
+  beforeEach(() => {
+    stubStorage()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('строка с фото — место под картинку; окно покупки — чип «Фото» и выбор файла; viewer — без них; в демо чипа нет', async () => {
+    const store = family('member', 'a', { wishlist: [wish({ id: 'lamp', name: 'Лампа', price: 9_000, photoId: 'ph-1' }), wish({ id: 'pan', name: 'Сковорода', price: 18_000 })] })
+    const html = await renderScreen(Wishes, '/wishes')
+    expect((html.match(/data-photo/g) ?? []).length).toBe(1)
+    const sheet = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ openWishModal: true })])
+    expect(sheet).toMatch(/<button[^>]*>(?:s|<!---->)*Фото(?:s|<!---->)*</)
+    expect(sheet).toContain('accept="image/*"')
+    // Правка: чипы «Другое фото» / «Убрать фото» у желания с фото, «Фото» — без.
+    const edit = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ editWishId: 'lamp' })])
+    expect(edit).toContain('Другое фото')
+    expect(edit).toContain('Убрать фото')
+    expect(await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ editWishId: 'pan' })])).not.toContain('Убрать фото')
+    // Запись фото — у обоих через документ.
+    store.setWishPhoto('pan', 'ph-2')
+    expect(store.wishlist.find((w) => w.id === 'pan')!.photoId).toBe('ph-2')
+    expect((await renderScreen(Wishes, '/wishes')).match(/data-photo/g)).toHaveLength(2)
+
+    setActivePinia(createPinia())
+    stubStorage()
+    family('viewer', 'a', { wishlist: [wish({ id: 'lamp', name: 'Лампа', price: 9_000, photoId: 'ph-1' })] })
+    const viewer = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ openWishModal: true, editWishId: 'lamp' })])
+    expect(viewer).toContain('data-photo')
+    expect(viewer).not.toContain('accept="image/*"')
+  })
+})

@@ -1557,6 +1557,7 @@ export const useFinanceStore = defineStore('finance', () => {
       if (!doc.wishlist) doc.wishlist = []
       doc.wishlist.unshift(item)
     })
+    return item.id
   }
 
   /* ---------------- подарки-сюрпризы (B2C-18) — личный документ ---------------- */
