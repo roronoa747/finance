@@ -768,3 +768,37 @@ describe('PV-23: окно пополнения и «История цели» (S
     expect(at(22_000)).toBeLessThan(at(11_000))
   })
 })
+
+describe('B2C-20: карточка для сторис на экране цели (SSR)', () => {
+  const storage = new Map<string, string>()
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+    useAuthStore().setAuthData(authAs('viewer'))
+    useFinanceStore().setHouseholdDoc(planFamilyDoc(), 1)
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('«Поделиться» есть и у viewer; лист открыт — предпросмотр, «Сохранить», «Без сумм»; /share/:id → ?share=1 открывает сразу', async () => {
+    const closed = await renderScreen(GoalDetail, '/goals/trip')
+    expect(closed).toContain('Поделиться')
+    expect(closed).not.toContain('Карточка для сторис')
+
+    const open = await renderScreen(GoalDetail, '/goals/trip', undefined, [screenMixin({ storyOpen: true })])
+    expect(open).toContain('Карточка для сторис')
+    expect(open).toContain('aria-label="Предпросмотр карточки"')
+    expect(open).toContain('Без сумм — только процент, имя мечты и месяц.')
+    expect(open).toContain('Сохранить')
+
+    const viaRoute = await renderScreen(GoalDetail, '/goals/trip?share=1')
+    expect(viaRoute).toContain('Карточка для сторис')
+  })
+})

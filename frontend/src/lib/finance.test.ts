@@ -62,6 +62,7 @@ import {
   creditMonthPayment,
   activePlan,
   pausedGoals,
+  cancelledSubscriptions,
   closerWish,
   contributionStreak,
   movementMonth,
@@ -2556,5 +2557,28 @@ describe('B2C-18: «это приближает» и месяц взноса п�
     expect(monthsBetween('2026-09', '2028-08')).toBe(23)
     expect(monthsBetween('2026-09', '2026-09')).toBe(0)
     expect(monthsBetween('2026-09', '2026-01')).toBe(0)
+  })
+})
+
+describe('B2C-20: отказ от подписок за месяц', () => {
+  const T = '2026-09-01T00:00:00.000Z'
+  const ob = (id: string, extra: Partial<Obligation> = {}): Obligation => ({
+    id, name: id, note: '', day: 5, category: 'd4', versions: [{ from: '2000-01', amount: 3_990 }], updatedAt: T, ...extra,
+  })
+
+  it('cancelledSubscriptions: надгробие этого месяца по Алматы у подписки группы или раздела «быт»; жильё, кредиты, группы и живые — нет', () => {
+    const list = [
+      ob('netflix', { deletedAt: '2026-09-10T10:00:00.000Z' }),
+      ob('ivi', { category: 'd1', parentId: 'grp', deletedAt: '2026-09-12T10:00:00.000Z' }),
+      // 30 сентября 22:00 UTC — уже 1 октября по Алматы.
+      ob('spotify', { deletedAt: '2026-09-30T20:00:00.000Z' }),
+      ob('rent', { category: 'd1', deletedAt: '2026-09-15T10:00:00.000Z' }),
+      ob('loan', { category: 'd2', deletedAt: '2026-09-15T10:00:00.000Z' }),
+      ob('grp', { group: true, deletedAt: '2026-09-15T10:00:00.000Z' }),
+      ob('yandex'),
+    ]
+    expect(cancelledSubscriptions(list, '2026-09').map((o) => o.id)).toEqual(['netflix', 'ivi'])
+    expect(cancelledSubscriptions(list, '2026-10').map((o) => o.id)).toEqual(['spotify'])
+    expect(cancelledSubscriptions([], '2026-09')).toEqual([])
   })
 })

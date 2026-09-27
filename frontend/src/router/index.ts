@@ -69,6 +69,8 @@ export const routes: RouteRecordRaw[] = [
       { path: 'wishes', name: 'wishes', component: Wishes },
       { path: 'people/:slot', name: 'person', component: Wishes },
       { path: 'goals/:id', name: 'goal-detail', component: GoalDetail },
+      // Карточка сторис (DESIGN.md §2, B2C-20) — лист на экране цели.
+      { path: 'share/:goalId', redirect: (to) => ({ path: `/goals/${String(to.params.goalId)}`, query: { share: '1' } }) },
       { path: 'settings', name: 'settings', component: Settings },
       // Старые адреса (до Блока 3).
       { path: 'budget', redirect: '/money/budget' },

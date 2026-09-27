@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { PhShareNetwork } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { money } from '@/lib/money'
 import { MONTHS_NOM, addMonths, monthFrom, monthIn, parseMonthKey } from '@/lib/dates'
-import { monthSummary } from '@/lib/finance'
+import { cancelledSubscriptions, monthSummary } from '@/lib/finance'
 import { plural } from '@/lib/utils'
 import Card from '@/components/kit/Card.vue'
+import Button from '@/components/ui/Button.vue'
+import StorySheet from '@/components/goals/StorySheet.vue'
 
 /**
  * «Наш <месяц>» (RP-13, Р-22) — итог месяца на двоих: что оплатили, что закрыли, сколько
@@ -41,6 +44,10 @@ const summary = computed(() =>
   ),
 )
 
+// «Утечки» (B2C-20): подписки с надгробием этого месяца — из документа, живые их не видят.
+const cancelled = computed(() => cancelledSubscriptions(finance.householdDoc.obligations, key.value))
+const storyOpen = ref(false)
+
 const lines = computed(() => {
   const s = summary.value
   const out: { label: string; value: string; note?: string }[] = []
@@ -66,6 +73,10 @@ const lines = computed(() => {
       label: `Купили из списка: ${s.bought.count} ${plural(s.bought.count, 'покупка', 'покупки', 'покупок')}`,
       value: money(s.bought.amount),
     })
+  }
+  if (cancelled.value.length) {
+    const n = cancelled.value.length
+    out.push({ label: `Отказались от ${n} ${plural(n, 'подписки', 'подписок', 'подписок')}`, value: cancelled.value.map((o) => `«${o.name}»`).join(', ') })
   }
   return out
 })
@@ -94,6 +105,12 @@ const lines = computed(() => {
     </p>
 
     <slot />
+
+    <!-- Карточка «утечек» для сторис (B2C-20): только число подписок, без сумм -->
+    <template v-if="cancelled.length">
+      <Button variant="secondary" size="sm" class="mt-3" @click="storyOpen = true"><PhShareNetwork :size="15" /> Поделиться</Button>
+      <StorySheet :open="storyOpen" kind="leaks" :data="{ count: cancelled.length }" :src="null" @close="storyOpen = false" />
+    </template>
 
     <button
       type="button"

@@ -23,7 +23,7 @@ import { addMonths, atLabel, monthIn, monthKey, monthTitle, MONTHS_NOM, parseMon
 import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
 import { plural } from '@/lib/utils'
-import type { GoalTemplate } from '@/lib/goalTemplates'
+import { templateById, templateImageUrl, type GoalTemplate } from '@/lib/goalTemplates'
 import { attachFile, attachTemplate } from '@/lib/photos/goalPhoto'
 import { deletePhoto } from '@/lib/photos/store'
 import { usePhoto } from '@/lib/photos/usePhoto'
@@ -47,6 +47,7 @@ import Tag from '@/components/kit/Tag.vue'
 import { useSavedMark } from '@/components/kit/useSavedMark'
 import GoalSheet from '@/components/goals/GoalSheet.vue'
 import PhotoPicker from '@/components/goals/PhotoPicker.vue'
+import StorySheet from '@/components/goals/StorySheet.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 
@@ -187,9 +188,18 @@ async function removePhoto() {
   await deletePhoto(id).catch(() => {})
 }
 
-/** «Поделиться» — карточка сторис (B2C-20). */
+/* ------------------ Карточка для сторис (B2C-20) ------------------ */
+// `/share/:goalId` из DESIGN.md §2 — редирект сюда с `?share=1`: лист открывается сразу.
+const storyOpen = ref(route.query.share === '1')
+// Фото мечты; без загруженного — картинка шаблона с CDN (CORS открыт); без шаблона — фон без фото.
+const storySrc = computed(() => {
+  if (photoSrc.value) return photoSrc.value
+  const t = templateById(goal.value?.template)
+  return t ? templateImageUrl(t, 1080) : null
+})
+const storyData = computed(() => ({ percent: progress.value, goalName: goal.value?.name, doneMonth: doneMonth.value ? monthIn(doneMonth.value) : null }))
 function share() {
-  void router.push(`/share/${goalId.value}`)
+  storyOpen.value = true
 }
 </script>
 
@@ -399,6 +409,9 @@ function share() {
         {{ depositOperation === 'deposit' ? 'Внести' : 'Снять' }}
       </Button>
     </Sheet>
+
+    <!-- Карточка для сторис (B2C-20): без сумм -->
+    <StorySheet :open="storyOpen" kind="goal" :data="storyData" :src="storySrc" @close="storyOpen = false" />
 
     <!-- Окно: Изменить цель -->
     <GoalSheet
