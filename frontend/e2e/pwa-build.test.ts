@@ -63,3 +63,18 @@ describe.skipIf(!built)('PWA-сборка заменяет React-PWA (MGV-17)', 
     expect(html).toContain('family=Golos+Text')
   })
 })
+
+describe.skipIf(!built)('pdf.js в сборке — legacy (выписка на iPhone)', () => {
+  // Обычная сборка pdf.js зовёт Promise.try, Uint8Array#toHex, Math.sumPrecise без полифиллов —
+  // Safari на iPhone их не знает, и настоящая выписка «не читается» (смоук владельца Блока 1 B2C).
+  it('воркер и библиотека несут полифиллы новых API', () => {
+    const assets = readdirSync(resolve(dist, 'assets'))
+    const read = (f: string) => readFileSync(resolve(dist, 'assets', f), 'utf-8')
+    const worker = assets.filter((f) => /^pdf\.worker.*\.mjs$/.test(f))
+    expect(worker).toHaveLength(1)
+    expect(read(worker[0])).toContain('sumPrecise:function sumPrecise')
+    const lib = assets.filter((f) => /^pdf-.*\.js$/.test(f)).map(read).join('\n')
+    expect(lib).toMatch(/\{try:function\(/)
+    expect(lib).toMatch(/getOrInsertComputed:function\(/)
+  })
+})

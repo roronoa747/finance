@@ -59,15 +59,17 @@ let pdfjs: Promise<Pdfjs> | null = null
 
 const NODE_BUILD = 'pdfjs-dist/legacy/build/pdf.mjs'
 
-// Выбор сборки pdf.js — только здесь. Браузер: обычная сборка ленивым чанком, worker —
-// файл пакета (URL от Vite). Node (скрипты, тесты): legacy-сборка — читает текст без
-// canvas и без worker-URL; спецификатор в переменной, чтобы Vite не тянул её в сборку.
+// Выбор сборки pdf.js — только здесь. Везде legacy: обычная сборка зовёт новые API без
+// полифиллов (`Math.sumPrecise` при разборе встроенных шрифтов, `Map#getOrInsertComputed`) —
+// Safari на iPhone их не знает, и настоящая выписка «не читается». Браузер: ленивым чанком,
+// worker — файл пакета (URL от Vite). Node (скрипты, тесты): без canvas и без worker-URL;
+// спецификатор в переменной, чтобы Vite не тянул эту ветку в сборку.
 function loadPdfjs(): Promise<Pdfjs> {
   pdfjs ??= typeof window === 'undefined'
     ? import(/* @vite-ignore */ NODE_BUILD)
     : Promise.all([
-        import('pdfjs-dist'),
-        import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
+        import('pdfjs-dist/legacy/build/pdf.mjs'),
+        import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'),
       ]).then(([lib, worker]) => {
         lib.GlobalWorkerOptions.workerSrc = worker.default
         return lib
