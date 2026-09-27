@@ -1,13 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { ACCENTS, HUES } from './palette'
+import { HUES } from './palette'
 import {
   applyCurrentPalette,
   DEFAULT_CATEGORY_HUES,
   isDark,
-  readAccent,
   readCategoryHues,
   readThemeChoice,
-  setAccent,
   setCategoryHue,
   setThemeChoice,
   watchSystemTheme,
@@ -77,18 +75,14 @@ describe('PV-08: тема на старте и «Авто» следит за т
     expect(isDark.value).toBe(true)
   })
 
-  it('акцент применяется на старте; выбор пишется в localStorage и сразу применяется', () => {
+  it('B2C-12: акцента больше нет — старый ff_accent не трогает --brand; цвета разделов — дефолт по теме', () => {
     storage.set('ff_accent', 'cobalt')
     applyCurrentPalette()
-    expect(props.get('--brand')).toBe(ACCENTS.cobalt.light)
+    expect(props.has('--brand')).toBe(false)
 
     setThemeChoice('dark')
     expect(storage.get('ff_theme')).toBe('dark')
-    expect(props.get('--brand')).toBe(ACCENTS.cobalt.dark)
-
-    setAccent('plum')
-    expect(storage.get('ff_accent')).toBe('plum')
-    expect(props.get('--brand')).toBe(ACCENTS.plum.dark)
+    expect(props.has('--brand')).toBe(false)
     // Цвета разделов — дефолт, пока их не выбирали (PV-22).
     expect(props.get('--d1')).toBe(HUES.blue.dark)
   })
@@ -114,7 +108,7 @@ describe('PV-08: тема на старте и «Авто» следит за т
     expect(system.listeners).toEqual([])
   })
 
-  it('сломанный localStorage (бросает) — дефолт «Авто» и изумрудный, без исключения', () => {
+  it('сломанный localStorage (бросает) — дефолт «Авто», без исключения', () => {
     vi.stubGlobal('localStorage', {
       getItem: () => {
         throw new Error('SecurityError')
@@ -124,21 +118,16 @@ describe('PV-08: тема на старте и «Авто» следит за т
       },
     })
     expect(readThemeChoice()).toBe('auto')
-    expect(readAccent()).toBe('emerald')
     expect(() => setThemeChoice('dark')).not.toThrow()
     expect(() => applyCurrentPalette()).not.toThrow()
   })
 
   it('мусор в хранилище — дефолт', () => {
     storage.set('ff_theme', 'sepia')
-    storage.set('ff_accent', 'neon')
     expect(readThemeChoice()).toBe('auto')
-    expect(readAccent()).toBe('emerald')
-    // Имена из прототипа объекта — тоже мусор, а не акцент (критик).
+    // Имена из прототипа объекта — тоже мусор (критик).
     for (const junk of ['toString', 'constructor', '__proto__']) {
-      storage.set('ff_accent', junk)
       storage.set('ff_theme', junk)
-      expect(readAccent()).toBe('emerald')
       expect(readThemeChoice()).toBe('auto')
     }
   })

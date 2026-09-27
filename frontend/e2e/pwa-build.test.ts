@@ -17,8 +17,8 @@ describe.skipIf(!built)('PWA-сборка заменяет React-PWA (MGV-17)', 
       start_url: '/',
       scope: '/',
       display: 'standalone',
-      background_color: '#E9EDEC',
-      theme_color: '#0A6B57',
+      background_color: '#F3EEE6',
+      theme_color: '#B4562F',
     })
     expect(manifest.icons).toEqual([
       { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml' },
@@ -57,10 +57,12 @@ describe.skipIf(!built)('PWA-сборка заменяет React-PWA (MGV-17)', 
     expect(icon).toBe(reactIcon)
   })
 
-  it('шрифты Onest и Golos Text подключены, как в React', () => {
+  it('шрифты Piazzolla и Golos Text подключены (DESIGN.md §4), Onest убран', () => {
     const html = readFileSync(resolve(dist, 'index.html'), 'utf-8')
-    expect(html).toContain('fonts.googleapis.com/css2?family=Onest')
+    expect(html).toContain('fonts.googleapis.com/css2?family=Piazzolla')
     expect(html).toContain('family=Golos+Text')
+    expect(html).toContain('display=swap')
+    expect(html).not.toContain('Onest')
   })
 })
 

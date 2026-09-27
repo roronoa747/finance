@@ -2,26 +2,17 @@
  * Тема живёт в одном месте (перенос React `useThemeSync` / `useIsDark`): сюда
  * стекаются выбор на устройстве и системная настройка, отсюда цвета попадают в
  * DOM. Оформление — дело устройства (Р-20): `localStorage`, в общий документ не
- * попадает.
+ * попадает. Акцента пользователя больше нет (B2C-12): бренд один, старый ключ
+ * `ff_accent` в хранилище просто не читается.
  *
  * На уровне модуля ничего не выполняется и `window` не трогается: SSR-тесты
  * идут в Node. Применяет тему `main.ts` до `mount` — она есть и на `/access`,
- * и на `/setup`, а не только когда открыта панель «Оформление».
+ * и на `/start`, а не только когда открыты Настройки.
  */
 import { ref } from 'vue'
-import {
-  ACCENT_KEYS,
-  HUE_KEYS,
-  applyTheme,
-  resolveDark,
-  type AccentKey,
-  type CategoryKey,
-  type HueKey,
-  type ThemeChoice,
-} from '@/lib/palette'
+import { HUE_KEYS, applyTheme, resolveDark, type CategoryKey, type HueKey, type ThemeChoice } from '@/lib/palette'
 
 const THEME_KEY = 'ff_theme'
-const ACCENT_KEY = 'ff_accent'
 const CATEGORY_HUES_KEY = 'ff_category_hues'
 const THEMES: ThemeChoice[] = ['auto', 'light', 'dark']
 
@@ -59,12 +50,6 @@ export function readThemeChoice(): ThemeChoice {
   return v && THEMES.includes(v) ? v : 'auto'
 }
 
-export function readAccent(): AccentKey {
-  const v = read(ACCENT_KEY)
-  // Список, а не `in`: имена из прототипа объекта («toString») — не акцент.
-  return v && ACCENT_KEYS.includes(v as AccentKey) ? (v as AccentKey) : 'emerald'
-}
-
 /**
  * «Цвета разделов» устройства (PV-22, Р-20). Сломанная или чужая запись — дефолт по
  * каждому разделу отдельно: один испорченный ключ не сбрасывает остальные.
@@ -86,20 +71,15 @@ export function readCategoryHues(): Record<CategoryKey, HueKey> {
   return out
 }
 
-/** Применяет выбранные тему, акцент и цвета разделов к документу и обновляет `isDark`. */
+/** Применяет выбранные тему и цвета разделов к документу и обновляет `isDark`. */
 export function applyCurrentPalette() {
   const theme = readThemeChoice()
-  applyTheme({ theme, accent: readAccent(), categories: readCategoryHues() })
+  applyTheme({ theme, categories: readCategoryHues() })
   isDark.value = resolveDark(theme)
 }
 
 export function setThemeChoice(theme: ThemeChoice) {
   write(THEME_KEY, theme)
-  applyCurrentPalette()
-}
-
-export function setAccent(accent: AccentKey) {
-  write(ACCENT_KEY, accent)
   applyCurrentPalette()
 }
 

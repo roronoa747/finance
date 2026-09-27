@@ -3,7 +3,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { renderScreen, screenMixin } from '@/test/screenState'
-import { ACCENTS, HUES } from '@/lib/palette'
+import { HUES } from '@/lib/palette'
 import type { PersonId } from '@/types/finance'
 import AppearancePanel from './AppearancePanel.vue'
 
@@ -59,8 +59,8 @@ describe('PV-22: «Оформление» — имя без отката, «Цв
     expect(html.replace(/\s+/g, ' ')).toContain(
       'Каждый цвет задан парой значений — для светлой и тёмной темы. Свободного выбора HEX нет намеренно: так нельзя получить сочетание, которое станет нечитаемым при смене темы.',
     )
-    // Акцент тоже помечает выбранный.
-    expect(html).toContain(`aria-label="${ACCENTS.emerald.label}" aria-pressed="true"`)
+    // Акцента пользователя нет — бренд один (B2C-12, DESIGN.md §3).
+    expect(html).not.toContain('Основной цвет')
   })
 
   it('saveName: пустое — прежнее имя в поле, запись не идёт; то же имя — не пишется; новое — setPerson', async () => {

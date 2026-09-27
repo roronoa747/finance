@@ -1,4 +1,4 @@
-import type { AccentKey, CategoryKey, HueKey, ThemeChoice } from '@/lib/palette'
+import type { CategoryKey, HueKey, ThemeChoice } from '@/lib/palette'
 import type { SpendCategory, SpendTotal } from '@/lib/statements/types'
 
 export type PersonId = 'a' | 'b' | 'c'
@@ -368,7 +368,6 @@ export type Membership = {
 
 export type Settings = {
   theme: ThemeChoice
-  accent: AccentKey
   categories: Record<CategoryKey, HueKey>
   inflation: number
 }

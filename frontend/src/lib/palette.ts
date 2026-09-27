@@ -3,6 +3,9 @@
  * Свободного выбора HEX нет намеренно: любой выбранный вариант уже проверен
  * на контраст в обеих темах, поэтому «невидимый в тёмной теме» элемент
  * получить невозможно.
+ *
+ * Бренд один — «глина» из `style.css`; акцент пользователя убран (DESIGN.md §3,
+ * B2C-12). Разделы трат выписок красятся токенами `--s1…--s12` (`spendColor`).
  */
 
 export type HueKey = 'blue' | 'teal' | 'green' | 'ochre' | 'brick' | 'plum' | 'indigo' | 'steel'
@@ -19,59 +22,6 @@ export const HUES: Record<HueKey, { light: string; dark: string; label: string }
 }
 
 export const HUE_KEYS = Object.keys(HUES) as HueKey[]
-
-export type AccentKey = 'emerald' | 'cobalt' | 'graphite' | 'copper' | 'indigo' | 'plum'
-
-type Accent = {
-  label: string
-  light: string
-  dark: string
-  lightInk: string
-  darkInk: string
-  lightSoft: string
-  darkSoft: string
-}
-
-export const ACCENTS: Record<AccentKey, Accent> = {
-  emerald: {
-    label: 'Изумруд',
-    light: '#0A6B57', dark: '#17B98C',
-    lightInk: '#FFFFFF', darkInk: '#04201A',
-    lightSoft: '#DCEDE7', darkSoft: '#0F312A',
-  },
-  cobalt: {
-    label: 'Кобальт',
-    light: '#1B4FA8', dark: '#6FA8FF',
-    lightInk: '#FFFFFF', darkInk: '#04162E',
-    lightSoft: '#DDE7F8', darkSoft: '#102338',
-  },
-  graphite: {
-    label: 'Графит',
-    light: '#3A4A52', dark: '#A6BAC3',
-    lightInk: '#FFFFFF', darkInk: '#0B1417',
-    lightSoft: '#E2E8EA', darkSoft: '#1B2529',
-  },
-  copper: {
-    label: 'Медь',
-    light: '#8A5320', dark: '#E0A45E',
-    lightInk: '#FFFFFF', darkInk: '#231303',
-    lightSoft: '#F6E8D8', darkSoft: '#2C1F0E',
-  },
-  indigo: {
-    label: 'Индиго',
-    light: '#4B3FA8', dark: '#A79BFF',
-    lightInk: '#FFFFFF', darkInk: '#100A2E',
-    lightSoft: '#E4E1F7', darkSoft: '#1B1836',
-  },
-  plum: {
-    label: 'Слива',
-    light: '#8A2E58', dark: '#F088B0',
-    lightInk: '#FFFFFF', darkInk: '#2A0A18',
-    lightSoft: '#F7E0E9', darkSoft: '#2E1520',
-  },
-}
-
-export const ACCENT_KEYS = Object.keys(ACCENTS) as AccentKey[]
 
 export type ThemeChoice = 'auto' | 'light' | 'dark'
 export type CategoryKey = 'd1' | 'd2' | 'd3' | 'd4' | 'd5'
@@ -102,19 +52,10 @@ export function resolveDark(choice: ThemeChoice): boolean {
 }
 
 /** Единственное место, где цвета попадают в DOM. */
-export function applyTheme(opts: {
-  theme: ThemeChoice
-  accent: AccentKey
-  categories: Record<CategoryKey, HueKey>
-}) {
+export function applyTheme(opts: { theme: ThemeChoice; categories: Record<CategoryKey, HueKey> }) {
   const root = document.documentElement
   const dark = resolveDark(opts.theme)
   root.classList.toggle('dark', dark)
-
-  const a = ACCENTS[opts.accent]
-  root.style.setProperty('--brand', dark ? a.dark : a.light)
-  root.style.setProperty('--brand-ink', dark ? a.darkInk : a.lightInk)
-  root.style.setProperty('--brand-soft', dark ? a.darkSoft : a.lightSoft)
 
   for (const [key, hue] of Object.entries(opts.categories)) {
     const h = HUES[hue as HueKey]
@@ -125,4 +66,36 @@ export function applyTheme(opts: {
 /** Цвет оттенка для текущей темы — для inline-заливок в SVG. */
 export function hueColor(hue: HueKey, dark: boolean): string {
   return dark ? HUES[hue].dark : HUES[hue].light
+}
+
+/** Сколько оттенков у разделов трат в `style.css` (`--s1…--s12`). */
+export const SPEND_SLOTS = 12
+
+/**
+ * Раздел трат → оттенок `--sN` (DESIGN.md §4): у разделов стартового словаря — свой номер
+ * из таблицы, у остальных 17 и у заведённых семьёй — по кругу от `order`. `null` —
+ * «не разобрано» (`--s-unknown`).
+ */
+const SPEND_SLOT_BY_ID: Record<string, number> = {
+  sc_food: 1,
+  sc_cafe: 2,
+  sc_transport: 3,
+  sc_subscriptions: 4,
+  sc_health: 5,
+  sc_shopping: 6,
+  sc_fun: 7,
+  sc_home: 8,
+  sc_people: 9,
+  sc_credit: 10,
+  sc_utilities: 11,
+  sc_other: 12,
+}
+
+export function spendSlot(category: { id: string; order: number }): number {
+  return SPEND_SLOT_BY_ID[category.id] ?? ((Math.max(1, Math.round(category.order)) - 1) % SPEND_SLOTS) + 1
+}
+
+/** CSS-значение цвета раздела трат — токен, не литерал: `var(--s3)` / `var(--s-unknown)`. */
+export function spendColor(category: { id: string; order: number } | null): string {
+  return category ? `var(--s${spendSlot(category)})` : 'var(--s-unknown)'
 }

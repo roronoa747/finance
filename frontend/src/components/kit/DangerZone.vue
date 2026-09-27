@@ -22,7 +22,7 @@ const confirm = ref(false)
 
 <template>
   <div class="mt-1 border-t border-line pt-3">
-    <div v-if="confirm" class="rounded-xl border border-destructive-line bg-destructive-soft p-3">
+    <div v-if="confirm" class="rounded-inner border border-destructive-line bg-destructive-soft p-3">
       <div class="mb-2 flex gap-2">
         <svg
           width="16"
@@ -54,7 +54,7 @@ const confirm = ref(false)
     <button
       v-else
       type="button"
-      class="flex w-full items-center justify-center gap-1.5 rounded-xl border border-destructive-line bg-destructive-soft px-4 py-2.5 text-[13px] font-medium text-destructive active:translate-y-px cursor-pointer"
+      class="flex w-full items-center justify-center gap-1.5 rounded-pill border border-destructive-line bg-destructive-soft px-4 py-2.5 text-[13px] font-medium text-destructive active:translate-y-px cursor-pointer"
       @click="confirm = true"
     >
       {{ label }}

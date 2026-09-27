@@ -1,16 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import {
-  ACCENTS,
-  ACCENT_KEYS,
-  DEFAULT_CATEGORY_NAMES,
-  categoryName,
-  type AccentKey,
-  type CategoryKey,
-  type HueKey,
-  type ThemeChoice,
-} from '@/lib/palette'
-import { readAccent, readCategoryHues, readThemeChoice, setAccent, setCategoryHue, setThemeChoice } from '@/lib/theme'
+import { DEFAULT_CATEGORY_NAMES, categoryName, type CategoryKey, type HueKey, type ThemeChoice } from '@/lib/palette'
+import { readCategoryHues, readThemeChoice, setCategoryHue, setThemeChoice } from '@/lib/theme'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import Segmented from '@/components/kit/Segmented.vue'
@@ -24,9 +15,9 @@ const authStore = useAuthStore()
 const financeStore = useFinanceStore()
 const router = useRouter()
 
-// Тема применена ещё в main.ts; панель только показывает и меняет выбор.
+// Тема применена ещё в main.ts; панель только показывает и меняет выбор. Акцента
+// пользователя нет — бренд один (DESIGN.md §3, B2C-12).
 const currentTheme = ref<ThemeChoice>(readThemeChoice())
-const currentAccent = ref<AccentKey>(readAccent())
 const categoryHues = ref(readCategoryHues())
 // Разделы во Vue заводятся лениво — ряд есть у всех пяти, имя незаведённого — запасное.
 const CATEGORY_KEYS = Object.keys(DEFAULT_CATEGORY_NAMES) as CategoryKey[]
@@ -41,11 +32,6 @@ watch(myName, (name) => {
 function updateTheme(th: ThemeChoice) {
   currentTheme.value = th
   setThemeChoice(th)
-}
-
-function updateAccent(acc: AccentKey) {
-  currentAccent.value = acc
-  setAccent(acc)
 }
 
 function updateCategoryHue(key: CategoryKey, hue: HueKey) {
@@ -129,28 +115,6 @@ function leave(choice: 'keep' | 'discard') {
         ]"
         @update:model-value="updateTheme"
       />
-    </div>
-
-    <div>
-      <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-3">
-        Основной цвет
-      </div>
-      <div class="flex flex-wrap gap-2">
-        <button
-          v-for="k in ACCENT_KEYS"
-          :key="k"
-          type="button"
-          :aria-label="ACCENTS[k].label"
-          :aria-pressed="currentAccent === k"
-          :title="ACCENTS[k].label"
-          :class="[
-            'size-7 rounded-xl border-2 transition-all cursor-pointer',
-            currentAccent === k ? 'border-ink scale-105 shadow-xs' : 'border-transparent hover:scale-105',
-          ]"
-          :style="{ background: ACCENTS[k].light }"
-          @click="updateAccent(k)"
-        />
-      </div>
     </div>
 
     <div>

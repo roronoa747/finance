@@ -3,50 +3,82 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ---------------------------------------------------------------
-   Единственный источник цвета. Ни один компонент не имеет права
-   писать литеральный цвет — только токен отсюда.
+   Единственный источник цвета — направление А «Тёплый альбом»
+   (memory/backlog/идея-и-редизайн/block-2-design/DESIGN.md §4, перенос
+   mockups/tokens.css). Ни один компонент не имеет права писать литеральный
+   цвет — только токен отсюда.
    Пары light/dark обязаны существовать обе: если добавляешь токен
-   в :root, добавь его и в .dark, иначе элемент пропадёт при смене темы.
+   в :root, добавь его и в .dark (гвард — style.tokens.test.ts), иначе
+   элемент пропадёт при смене темы.
 ---------------------------------------------------------------- */
 :root {
-  --canvas: #e9edec;
-  --surface: #ffffff;
-  --surface-2: #f5f8f7;
-  --surface-3: #e7ecea;
-  --line: #dbe2e0;
-  --line-strong: #c2ccc9;
-  --ink: #0d1512;
-  --ink-2: #495653;
-  --ink-3: #616d6a;
+  --canvas: #f3eee6;
+  --surface: #fffdf9;
+  --surface-2: #f0eae0;
+  --surface-3: #e6ded2;
+  --line: #e2d9cb;
+  --line-strong: #cdbfad;
+  /* Рамка карточки: в тёмной теме тон вместо линии. */
+  --card-border: var(--line);
+  --ink: #1e1a16;
+  --ink-2: #5a524a;
+  --ink-3: #857a6f;
 
-  /* Бренд — меняется пользователем в «Оформлении» */
-  --brand: #0a6b57;
-  --brand-ink: #ffffff;
-  --brand-soft: #dcede7;
+  /* Бренд один — «глина»; акцент пользователя убран (DESIGN.md §3). */
+  --brand: #b4562f;
+  --brand-ink: #fffdf9;
+  --brand-soft: #f7e4d9;
+
+  /* «Свободно», поступления, «готово». */
+  --ok: #3e7a5b;
+  --ok-soft: #dfeee4;
+  --warn: #8a5a00;
+  --warn-soft: #f8ebd0;
+  --warn-line: #e4c48b;
+  --gold: #a3782a;
+  --gold-soft: #f5ead2;
+  --destructive: #a6392b;
+  --destructive-foreground: #fffdf9;
+  --destructive-soft: #f8e0dc;
+  --destructive-line: #efc3bb;
 
   /* Участники */
-  --pa: #1e4fd1;
-  --pb: #b0295a;
+  --pa: #3b5da8;
+  --pb: #a9456a;
+  --dot-ink: var(--on-photo);
 
-  /* Разделы бюджета — меняются пользователем */
+  /* Разделы бюджета d1…d5 — меняются пользователем (второй уровень). */
   --d1: #3b62b8;
   --d2: #b4523c;
   --d3: #2e7d4f;
   --d4: #8a6d3b;
   --d5: #5a6c78;
 
-  --warn: #7a5200;
-  --warn-soft: #faf0d9;
-  --warn-line: #e0c489;
-  --gold: #8a6d1c;
-  --gold-soft: #f5edd6;
-  --track: #e3e8e6;
-  --dot-ink: #ffffff;
+  /* Разделы трат выписок — 12 оттенков на 17 разделов + «не разобрано». */
+  --s1: #c2703f;
+  --s2: #8c6d3f;
+  --s3: #5b7fa6;
+  --s4: #7a6a9e;
+  --s5: #4f8a6b;
+  --s6: #b0587a;
+  --s7: #6a8e9c;
+  --s8: #a47c3b;
+  --s9: #7d7f5a;
+  --s10: #8e5b4c;
+  --s11: #5f6f86;
+  --s12: #9a9385;
+  --s-unknown: #cfc7ba;
 
-  --shadow-1: 0 1px 2px rgb(13 21 18 / 0.06), 0 8px 24px rgb(13 21 18 / 0.06);
-  --shadow-2: 0 2px 6px rgb(13 21 18 / 0.1), 0 18px 48px rgb(13 21 18 / 0.14);
-  /* Затемнение под окном (kit/Sheet) */
-  --scrim: rgb(13 21 18 / 0.4);
+  --track: #e6ded2;
+  --on-photo: #ffffff;
+  /* Затемнение под окном (kit/Sheet) и нижний градиент на фото. */
+  --scrim: rgb(30 26 22 / 0.45);
+  --photo-scrim: rgb(24 18 14 / 0.78);
+
+  /* Тени в экранах не используются (тон вместо тени); --shadow-sheet — только у листа. */
+  --shadow-1: 0 1px 2px rgb(30 26 22 / 0.06), 0 8px 24px rgb(30 26 22 / 0.06);
+  --shadow-2: 0 2px 6px rgb(30 26 22 / 0.1), 0 18px 48px rgb(30 26 22 / 0.14);
+  --shadow-sheet: 0 -8px 40px rgb(30 26 22 / 0.18);
 
   /* --- мост в shadcn/ui --- */
   --background: var(--canvas);
@@ -63,33 +95,43 @@
   --muted-foreground: var(--ink-3);
   --accent: var(--surface-3);
   --accent-foreground: var(--ink);
-  --destructive: #9e2020;
-  --destructive-foreground: #ffffff;
-  --destructive-soft: #fbe9e9;
-  --destructive-line: #ecc4c4;
   --border: var(--line);
   --input: var(--line);
   --ring: var(--brand);
-  --radius: 0.75rem;
+  --radius: var(--r-inner);
 }
 
 .dark {
-  --canvas: #0a100e;
-  --surface: #131a18;
-  --surface-2: #1a2321;
-  --surface-3: #232d2b;
-  --line: #26312f;
-  --line-strong: #38443f;
-  --ink: #e7edeb;
-  --ink-2: #a5b1ad;
-  --ink-3: #88958f;
+  --canvas: #17130f;
+  --surface: #201b17;
+  --surface-2: #2a241f;
+  --surface-3: #352e27;
+  --line: #3a322b;
+  --line-strong: #4e4438;
+  --card-border: transparent;
+  --ink: #f3ede4;
+  --ink-2: #b7aca0;
+  --ink-3: #8e8478;
 
-  --brand: #17b98c;
-  --brand-ink: #04201a;
-  --brand-soft: #0f312a;
+  --brand: #e58a62;
+  --brand-ink: #2a1208;
+  --brand-soft: #3c2418;
 
-  --pa: #7ca2ff;
-  --pb: #ff87ac;
+  --ok: #7fc29a;
+  --ok-soft: #1f2e25;
+  --warn: #e7b96a;
+  --warn-soft: #2c2416;
+  --warn-line: #4a3d20;
+  --gold: #d9b46a;
+  --gold-soft: #2c2517;
+  --destructive: #ff8f7c;
+  --destructive-foreground: #17130f;
+  --destructive-soft: #3a1f1b;
+  --destructive-line: #5a2f28;
+
+  --pa: #8fafff;
+  --pb: #ff8fb4;
+  --dot-ink: var(--on-photo);
 
   --d1: #7fa5f0;
   --d2: #f0917a;
@@ -97,22 +139,41 @@
   --d4: #d8b372;
   --d5: #9fb3be;
 
-  --warn: #e7b96a;
-  --warn-soft: #2a2317;
-  --warn-line: #4a3d20;
-  --gold: #d9b65c;
-  --gold-soft: #2a2517;
-  --track: #26312f;
-  --dot-ink: #0a100e;
+  --s1: #e0946a;
+  --s2: #c9a36a;
+  --s3: #8fb0da;
+  --s4: #a99ad0;
+  --s5: #7cbf9a;
+  --s6: #e08aab;
+  --s7: #93bfcf;
+  --s8: #d4aa66;
+  --s9: #aeb07e;
+  --s10: #c4877a;
+  --s11: #93a4c2;
+  --s12: #b8b0a2;
+  --s-unknown: #5a5148;
+
+  --track: #352e27;
+  --on-photo: #ffffff;
+  --scrim: rgb(0 0 0 / 0.6);
+  --photo-scrim: rgb(0 0 0 / 0.78);
 
   --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.35);
   --shadow-2: 0 2px 8px rgb(0 0 0 / 0.5), 0 20px 56px rgb(0 0 0 / 0.55);
-  --scrim: rgb(0 0 0 / 0.6);
+  --shadow-sheet: 0 -8px 40px rgb(0 0 0 / 0.5);
+}
 
-  --destructive: #ff8b7a;
-  --destructive-foreground: #0a100e;
-  --destructive-soft: #2a1614;
-  --destructive-line: #52302b;
+/* Размеры — одни для обеих тем (DESIGN.md §4): радиусы и отступы. */
+:root {
+  --r-hero: 28px;
+  --r-card: 24px;
+  --r-tile: 20px;
+  --r-inner: 14px;
+  --r-pill: 999px;
+  --sp-page: 16px;
+  --sp-card: 20px;
+  --sp-gap: 12px;
+  --sp-section: 28px;
 }
 
 @theme inline {
@@ -122,12 +183,15 @@
   --color-surface-3: var(--surface-3);
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
+  --color-card-border: var(--card-border);
   --color-ink: var(--ink);
   --color-ink-2: var(--ink-2);
   --color-ink-3: var(--ink-3);
   --color-brand: var(--brand);
   --color-brand-ink: var(--brand-ink);
   --color-brand-soft: var(--brand-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
   --color-pa: var(--pa);
   --color-pb: var(--pb);
   --color-d1: var(--d1);
@@ -135,6 +199,19 @@
   --color-d3: var(--d3);
   --color-d4: var(--d4);
   --color-d5: var(--d5);
+  --color-s1: var(--s1);
+  --color-s2: var(--s2);
+  --color-s3: var(--s3);
+  --color-s4: var(--s4);
+  --color-s5: var(--s5);
+  --color-s6: var(--s6);
+  --color-s7: var(--s7);
+  --color-s8: var(--s8);
+  --color-s9: var(--s9);
+  --color-s10: var(--s10);
+  --color-s11: var(--s11);
+  --color-s12: var(--s12);
+  --color-s-unknown: var(--s-unknown);
   --color-warn: var(--warn);
   --color-warn-soft: var(--warn-soft);
   --color-warn-line: var(--warn-line);
@@ -142,7 +219,9 @@
   --color-gold-soft: var(--gold-soft);
   --color-track: var(--track);
   --color-dot-ink: var(--dot-ink);
+  --color-on-photo: var(--on-photo);
   --color-scrim: var(--scrim);
+  --color-photo-scrim: var(--photo-scrim);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -166,11 +245,18 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
-  --font-display: 'Onest', 'Golos Text', system-ui, sans-serif;
+  --font-display: 'Piazzolla', 'Georgia', serif;
   --font-sans: 'Golos Text', 'Segoe UI', system-ui, sans-serif;
+
+  --radius-hero: var(--r-hero);
+  --radius-card: var(--r-card);
+  --radius-tile: var(--r-tile);
+  --radius-inner: var(--r-inner);
+  --radius-pill: var(--r-pill);
 
   --shadow-card: var(--shadow-1);
   --shadow-lift: var(--shadow-2);
+  --shadow-sheet: var(--shadow-sheet);
 }
 
 @layer base {
@@ -203,8 +289,98 @@
   }
 }
 
+/* ---------------------------------------------------------------
+   Типографика (DESIGN.md §4): классы вместо инлайновых размеров в экранах.
+   Display — Piazzolla (заголовки, процент мечты, большие суммы); текст и
+   деньги в строках — Golos Text.
+---------------------------------------------------------------- */
 @utility num {
   font-variant-numeric: tabular-nums lining-nums;
+}
+@utility money {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-weight: 600;
+}
+/* Заголовок экрана 30/1.05 */
+@utility type-h1 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 30px;
+  line-height: 1.05;
+  letter-spacing: -0.005em;
+}
+/* Заголовок карточки решения, h2 22/1.15 */
+@utility type-h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 22px;
+  line-height: 1.15;
+}
+/* h2 первого запуска 28 */
+@utility type-h2-lg {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 28px;
+  line-height: 1.1;
+}
+/* Заголовок листа — Piazzolla 24 */
+@utility type-sheet {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 24px;
+  line-height: 1.1;
+}
+@utility type-h3 {
+  font-weight: 600;
+  font-size: 17px;
+  line-height: 1.3;
+}
+/* Процент героя 76/0.95 */
+@utility type-percent {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 76px;
+  line-height: 0.95;
+  letter-spacing: -0.01em;
+}
+/* Большая сумма 44/1, md — 32 */
+@utility type-big {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+@utility type-big-md {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 32px;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+/* «Реально.» на старте 56 */
+@utility type-word {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 56px;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+/* Подпись секции 13/600, верхний регистр, трекинг 0.02em */
+@utility type-section {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+@utility type-meta {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+/* Нижний градиент на фото: 0 → --photo-scrim с 35 % высоты (герой), 40 % (плитка). */
+@utility photo-scrim {
+  background: linear-gradient(to bottom, transparent, var(--photo-scrim));
 }
 
 @media (prefers-reduced-motion: reduce) {
