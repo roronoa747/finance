@@ -145,7 +145,19 @@ const openGift = ref(false)
 
 <template>
   <div class="flex flex-col gap-3.5 pt-1">
-    <Segmented v-if="tabs.length > 1" v-model="tab" :options="tabs" />
+    <!-- Вкладки участников и один переключатель вида в той же строке (владелец: отдельная строка — шум) -->
+    <div class="flex items-center gap-2">
+      <Segmented v-if="tabs.length > 1" v-model="tab" :options="tabs" class="min-w-0 flex-1" />
+      <button
+        type="button"
+        :aria-label="view === 'grid' ? 'Списком' : 'Галереей'"
+        class="grid size-10 shrink-0 place-items-center rounded-pill bg-surface-3 text-ink-2 cursor-pointer hover:text-ink"
+        @click="setView(view === 'grid' ? 'list' : 'grid')"
+      >
+        <PhListBullets v-if="view === 'grid'" :size="18" />
+        <PhSquaresFour v-else :size="18" />
+      </button>
+    </div>
 
     <Callout v-if="justBought" tone="ok" :title="`Куплено — ${justBought.name}`">
       Это {{ justBought.n }}-я покупка в дом. Вещь переехала в историю с датой и автором —
@@ -153,26 +165,6 @@ const openGift = ref(false)
     </Callout>
 
     <!-- Галерея или список (владелец 2026-09-27); viewer — плитки и строки без действий (Р-12) -->
-    <div class="-mb-1.5 flex items-center justify-end gap-1">
-      <button
-        type="button"
-        aria-label="Галереей"
-        :aria-pressed="view === 'grid'"
-        :class="cn('grid size-8 place-items-center rounded-lg cursor-pointer', view === 'grid' ? 'bg-surface-3 text-ink' : 'text-ink-3')"
-        @click="setView('grid')"
-      >
-        <PhSquaresFour :size="18" />
-      </button>
-      <button
-        type="button"
-        aria-label="Списком"
-        :aria-pressed="view === 'list'"
-        :class="cn('grid size-8 place-items-center rounded-lg cursor-pointer', view === 'list' ? 'bg-surface-3 text-ink' : 'text-ink-3')"
-        @click="setView('list')"
-      >
-        <PhListBullets :size="18" />
-      </button>
-    </div>
     <div v-if="activeWish.length && view === 'grid'" class="grid grid-cols-2 gap-2.5">
       <WishTile
         v-for="w in activeWish"

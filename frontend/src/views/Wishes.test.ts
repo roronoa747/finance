@@ -280,16 +280,18 @@ describe('views/Wishes.vue — галерея и список с переклю�
     wish({ id: 'vac', name: 'Пылесос', price: 180_000, by: 'b', bought: true, boughtOn: '2026-09-20T15:00:00.000Z' }),
   ]
 
-  it('по умолчанию галерея: плитки без автора и даты, переключатель «Галереей» нажат; «Списком» — строки с автором и датой, ссылкой и картинкой; выбор — на устройстве', async () => {
+  it('по умолчанию галерея: плитки без автора и даты, одна кнопка «Списком» в строке вкладок; в списке — строки с автором и датой, ссылкой и картинкой, кнопка «Галереей»; выбор — на устройстве', async () => {
     family('member', 'a', { wishlist: list() })
     const grid = await renderScreen(Wishes, '/wishes')
-    expect(grid).toMatch(/aria-label="Галереей" aria-pressed="true"/)
+    expect(grid).toContain('aria-label="Списком"')
+    expect(grid).not.toContain('aria-label="Галереей"')
     expect(grid).toMatch(/<button type="button"[^>]*data-wish="pan"/)
     expect(grid).not.toContain('Ильяс · 10 сентября')
     expect(grid).toContain('Аруна · куплено 20 сентября')
 
     const rows = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ view: 'list' })])
-    expect(rows).toMatch(/aria-label="Списком" aria-pressed="true"/)
+    expect(rows).toContain('aria-label="Галереей"')
+    expect(rows).not.toContain('aria-label="Списком"')
     expect(rows).toContain('Ильяс · 10 сентября')
     expect(rows).toContain('Аруна · куплено 20 сентября')
     expect(rows).toContain('line-through">Пылесос<')
@@ -302,7 +304,7 @@ describe('views/Wishes.vue — галерея и список с переклю�
     // Выбор запоминается: setView пишет ключ, новый рендер читает его.
     await renderScreen(Wishes, '/wishes', undefined, [screenMixin({}, (s) => (s.setView as (v: string) => void)('list'))])
     expect(storage.get('ff_wishes_view')).toBe('"list"')
-    expect(await renderScreen(Wishes, '/wishes')).toMatch(/aria-label="Списком" aria-pressed="true"/)
+    expect(await renderScreen(Wishes, '/wishes')).toContain('aria-label="Галереей"')
 
     // Viewer: и в списке строка — не кнопка.
     setActivePinia(createPinia())
