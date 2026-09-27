@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Family Finance — макеты B2C</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+  /* хром галереи (не часть дизайна приложения) */
+  body { margin: 0; background: #e6e1d8; color: #1e1a16; font-family: 'Golos Text', system-ui, sans-serif; }
+  main { padding: 24px 32px 80px; }
+  header.top { padding: 24px 32px 0; }
+  header.top h1 { font-family: 'Piazzolla', serif; font-size: 34px; margin: 0 0 6px; }
+  header.top p { margin: 0; color: #5a524a; max-width: 900px; }
+  section.group { background: #f1ede6; border-radius: 28px; padding: 28px 32px 36px; margin-top: 28px; }
+  section.group h2 { font-family: 'Piazzolla', serif; font-size: 28px; margin: 0 0 4px; }
+  section.group .note { background: transparent; padding: 0 0 20px; color: #5a524a; font-size: 14px; max-width: 1100px; }
+  .grid { display: flex; flex-wrap: wrap; gap: 28px 24px; align-items: flex-start; }
+  .pair { display: flex; gap: 12px; align-items: flex-start; }
+  .pair figure { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+  .pair figcaption { font-size: 12px; color: #857a6f; padding-left: 8px; }
+  .pair figcaption b { color: #1e1a16; font-weight: 600; }
+  .phone { box-shadow: 0 2px 6px rgb(30 26 22 / 0.08), 0 20px 50px rgb(30 26 22 / 0.14); }
+  .story-wrap { width: 270px; height: 480px; overflow: hidden; border-radius: 24px; box-shadow: 0 20px 50px rgb(30 26 22 / 0.14); }
+  .story-wrap .story { transform: scale(0.25); transform-origin: 0 0; }
+  .desk-wrap { width: 1280px; max-width: 100%; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 50px rgb(30 26 22 / 0.14); }
+  .screen { display: none; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Family Finance — макеты B2C · направление А «Тёплый альбом»</h1>
+  <p>Блок 2, B2C-10. Каждый экран — в светлой и тёмной теме, рамка iPhone 393 px. Токены и кит — <code>tokens.css</code> (будущий <code>style.css</code>). Суммы — правдоподобные, не реальные. Фото — Picsum/Unsplash с авторами (DESIGN.md §1.1).</p>
+</header>
+<main>
+
+<!-- ===================== ГРУППА 1: навигация и главный «Мечты» ===================== -->
+<section class="group" id="g1-dreams">
+  <h2>1 · Главный «Мечты» и навигация</h2>
+  <p class="note">Герой — фото цели и одна цифра; под ним другие мечты, картина недели по разделам (обе выписки), «Свободно до конца месяца» по факту, ближайшее решение. Вкладки: Мечты · Неделя · Деньги · «+». Состояния: без выписки партнёра, нет цели, цель без фото, ещё нет выписок, лист «+».</p>
+  <div class="grid">
+
+    <div class="screen" data-title="Мечты — главный" data-tab="dreams">
+      <div class="topbar"><div><h1>Мечты</h1><div class="sub">Сентябрь · Ильяс и Дана</div></div><div class="right"><div class="avatars"><span class="avatar a">И</span><span class="avatar b">Д</span></div><span class="icon-box" data-icon="gear"></span></div></div>
+      <div class="hero"><img src="https://picsum.photos/id/195/800/1000" alt=""><div class="label">До мечты</div><div class="big num">62 %</div><div class="line2">Япония · 1 116 000 из 1 800 000 ₸ · будет вашей в мае 2027</div><div class="bar"><i style="width:62%"></i></div></div>
+      <div class="tiles">
+        <div class="tile"><img src="https://picsum.photos/id/1071/400/500" alt=""><div class="pct num">18 %</div><div class="name">Машина</div></div>
+        <div class="tile"><img src="https://picsum.photos/id/163/400/500" alt=""><div class="pct num">40 %</div><div class="name">Кухня</div></div>
+        <div class="tile add"><span data-icon="plus"></span><span class="small">Новая мечта</span></div>
+      </div>
+      <div class="section-title">ЭТА НЕДЕЛЯ · 15–21 СЕНТЯБРЯ</div>
+      <div class="card">
+        <div class="between"><span class="h3 money">184 000 ₸</span><span class="tag ok">по выпискам обоих</span></div>
+        <div class="stack"><i style="width:34%;background:var(--s1)"></i><i style="width:15%;background:var(--s2)"></i><i style="width:10%;background:var(--s8)"></i><i style="width:8%;background:var(--s3)"></i><i style="width:11%;background:var(--s12)"></i><i style="width:22%;background:var(--s-unknown)"></i></div>
+        <div class="list">
+          <div class="item"><span class="dot" style="background:var(--s1)"></span><span class="grow name">Продукты</span><span class="amount money">62 000 ₸</span></div>
+          <div class="item"><span class="dot" style="background:var(--s2)"></span><span class="grow name">Кафе и рестораны</span><span class="amount money">28 000 ₸</span></div>
+          <div class="item"><span class="dot" style="background:var(--s8)"></span><span class="grow name">Дом и быт</span><span class="amount money">18 000 ₸</span></div>
+          <div class="item"><span class="dot" style="background:var(--s3)"></span><span class="grow name">Транспорт</span><span class="amount money">14 000 ₸</span></div>
+        </div>
+        <div class="between small muted"><span>ещё 5 разделов · не разобрано 40 000 ₸</span><span class="link">Неделя →</span></div>
+      </div>
+      <div class="card">
+        <div class="small muted">СВОБОДНО ДО КОНЦА МЕСЯЦА</div>
+        <div class="big-number money">236 000 ₸</div>
+        <div class="small muted-2">по факту выписок обоих · 9 дней до зарплаты Ильяса</div>
+        <div class="bar"><i style="width:38%;background:var(--ok)"></i></div>
+      </div>
+      <div class="decision">
+        <div class="q">Похоже, это платёж по Автокредиту — отметить?</div>
+        <div class="meta">95 000 ₸ · 12 сентября · Kaspi Gold</div>
+        <div class="btn-row"><span class="btn">Да, отметить</span><span class="btn secondary">Нет</span><span class="btn ghost">Потом</span></div>
+      </div>
+    </div>
+
+    <div class="screen" data-title="Мечты — без выписки Даны" data-tab="dreams">
+      <div class="topbar"><div><h1>Мечты</h1><div class="sub">Сентябрь · Ильяс и Дана</div></div><div class="right"><div class="avatars"><span class="avatar a">И</span><span class="avatar b">Д</span></div><span class="icon-box" data-icon="gear"></span></div></div>
+      <div class="hero"><img src="https://picsum.photos/id/195/800/1000" alt=""><div class="label">До мечты</div><div class="big num">62 %</div><div class="line2">Япония · будет вашей в мае 2027</div><div class="bar"><i style="width:62%"></i></div></div>
+      <div class="section-title">ЭТА НЕДЕЛЯ · 15–21 СЕНТЯБРЯ</div>
+      <div class="card">
+        <div class="between"><span class="h3 money">121 000 ₸</span><span class="tag">без выписки Даны</span></div>
+        <div class="stack"><i style="width:40%;background:var(--s1)"></i><i style="width:18%;background:var(--s2)"></i><i style="width:12%;background:var(--s3)"></i><i style="width:30%;background:var(--s-unknown)"></i></div>
+        <div class="list">
+          <div class="item"><span class="dot" style="background:var(--s1)"></span><span class="grow name">Продукты</span><span class="amount money">48 000 ₸</span></div>
+          <div class="item"><span class="dot" style="background:var(--s2)"></span><span class="grow name">Кафе и рестораны</span><span class="amount money">22 000 ₸</span></div>
+          <div class="item"><span class="dot" style="background:var(--s3)"></span><span class="grow name">Транспорт</span><span class="amount money">14 000 ₸</span></div>
+        </div>
+        <div class="note"><span data-icon="bell"></span><span>Напомним Дане в воскресенье в 21:00. Картина недели дополнится сама.</span></div>
+      </div>
+      <div class="card">
+        <div class="small muted">СВОБОДНО ДО КОНЦА МЕСЯЦА</div>
+        <div class="big-number money">236 000 ₸</div>
+        <div class="small muted-2">пока по выписке Ильяса · уточнится, когда Дана загрузит</div>
+        <div class="bar"><i style="width:38%;background:var(--ok)"></i></div>
+      </div>
+    </div>
+
+    <div class="screen" data-title="Мечты — нет цели" data-tab="dreams">
+      <div class="topbar"><div><h1>Мечты</h1><div class="sub">Сентябрь · Ильяс</div></div><div class="right"><div class="avatars"><span class="avatar a">И</span></div><span class="icon-box" data-icon="gear"></span></div></div>
+      <div class="hero empty"><div class="h2">На что копим?</div><p class="muted-2">Одна мечта с фото — и этот экран покажет, сколько до неё осталось.</p><span class="btn">Выбрать мечту</span></div>
+      <div class="section-title">ЭТА НЕДЕЛЯ · 15–21 СЕНТЯБРЯ</div>
+      <div class="card">
+        <div class="between"><span class="h3 money">121 000 ₸</span><span class="tag ok">по выписке</span></div>
+        <div class="stack"><i style="width:40%;background:var(--s1)"></i><i style="width:18%;background:var(--s2)"></i><i style="width:12%;background:var(--s3)"></i><i style="width:30%;background:var(--s-unknown)"></i></div>
+        <div class="list">
+          <div class="item"><span class="dot" style="background:var(--s1)"></span><span class="grow name">Продукты</span><span class="amount money">48 000 ₸</span></div>
+          <div class="item"><span class="dot" style="background:var(--s2)"></span><span class="grow name">Кафе и рестораны</span><span class="amount money">22 000 ₸</span></div>
+        </div>
+      </div>
+      <div class="card"><div class="small muted">СВОБОДНО ДО КОНЦА МЕСЯЦА</div><div class="big-number money">236 000 ₸</div><div class="small muted-2">по факту выписки · 9 дней до зарплаты</div><div class="bar"><i style="width:38%;background:var(--ok)"></i></div></div>
+    </div>
+
+    <div class="screen" data-title="Мечты — цель без фото" data-tab="dreams">
+      <div class="topbar"><div><h1>Мечты</h1><div class="sub">Сентябрь · Ильяс и Дана</div></div><div class="right"><div class="avatars"><span class="avatar a">И</span><span class="avatar b">Д</span></div><span class="icon-box" data-icon="gear"></span></div></div>
+      <div class="hero no-photo"><div class="label muted">До мечты</div><div class="big num">62 %</div><div class="line2 muted-2">Япония · 1 116 000 из 1 800 000 ₸ · будет вашей в мае 2027</div><div class="bar"><i style="width:62%"></i></div><div class="btn-row" style="margin-top:14px"><span class="chip quiet"><span data-icon="camera"></span>Добавить фото</span></div></div>
+      <div class="tiles">
+        <div class="tile plain"><div class="pct num">18 %</div><div class="name muted-2">Машина</div></div>
+        <div class="tile add"><span data-icon="plus"></span><span class="small">Новая мечта</span></div>
+      </div>
+      <div class="section-title">ЭТА НЕДЕЛЯ · 15–21 СЕНТЯБРЯ</div>
+      <div class="card"><div class="between"><span class="h3 money">184 000 ₸</span><span class="tag ok">по выпискам обоих</span></div><div class="stack"><i style="width:34%;background:var(--s1)"></i><i style="width:15%;background:var(--s2)"></i><i style="width:10%;background:var(--s8)"></i><i style="width:8%;background:var(--s3)"></i><i style="width:11%;background:var(--s12)"></i><i style="width:22%;background:var(--s-unknown)"></i></div></div>
+    </div>
+
+    <div class="screen" data-title="Мечты — ещё нет выписок" data-tab="dreams">
+      <div class="topbar"><div><h1>Мечты</h1><div class="sub">Сентябрь · Ильяс и Дана</div></div><div class="right"><div class="avatars"><span class="avatar a">И</span><span class="avatar b">Д</span></div><span class="icon-box" data-icon="gear"></span></div></div>
+      <div class="hero"><img src="https://picsum.photos/id/195/800/1000" alt=""><div class="label">До мечты</div><div class="big num">62 %</div><div class="line2">Япония · будет вашей в мае 2027</div><div class="bar"><i style="width:62%"></i></div></div>
+      <div class="card">
+        <div class="empty-state"><div class="display">Картины недели пока нет</div><p>Загрузите первую выписку из Kaspi или Freedom — разбор займёт пару секунд, файл останется на телефоне.</p><span class="btn"><span data-icon="upload"></span>Загрузить выписку</span></div>
+      </div>
+      <div class="card"><div class="small muted">СВОБОДНО ДО КОНЦА МЕСЯЦА</div><div class="big-number money muted">—</div><div class="small muted-2">появится после первой выписки</div></div>
+    </div>
+
+    <div class="screen" data-title="Лист «+»" data-tab="dreams">
+      <div class="topbar"><div><h1>Мечты</h1><div class="sub">Сентябрь · Ильяс и Дана</div></div><div class="right"><div class="avatars"><span class="avatar a">И</span><span class="avatar b">Д</span></div><span class="icon-box" data-icon="gear"></span></div></div>
+      <div class="hero"><img src="https://picsum.photos/id/195/800/1000" alt=""><div class="label">До мечты</div><div class="big num">62 %</div><div class="line2">Япония · будет вашей в мае 2027</div><div class="bar"><i style="width:62%"></i></div></div>
+      <div class="card"><div class="between"><span class="h3 money">184 000 ₸</span><span class="tag ok">по выпискам обоих</span></div><div class="stack"><i style="width:34%;background:var(--s1)"></i><i style="width:15%;background:var(--s2)"></i><i style="width:10%;background:var(--s8)"></i><i style="width:8%;background:var(--s3)"></i><i style="width:33%;background:var(--s-unknown)"></i></div></div>
+      <div class="sheet-scrim"></div>
+      <div class="sheet">
+        <div class="grip"></div>
+        <div class="between"><span class="title">Добавить</span><span class="icon-box" data-icon="x"></span></div>
+        <div class="list">
+          <div class="item"><span class="icon-box" data-icon="doc"></span><div class="grow"><div class="name">Загрузить выписку</div><div class="meta">Kaspi или Freedom — траты недели по разделам</div></div><span class="chevron" data-icon="chevron"></span></div>
+          <div class="item"><span class="icon-box" data-icon="heart"></span><div class="grow"><div class="name">Новая мечта</div><div class="meta">фото, сумма и срок</div></div><span class="chevron" data-icon="chevron"></span></div>
+          <div class="item"><span class="icon-box" data-icon="bag"></span><div class="grow"><div class="name">Покупка в список желаний</div><div class="meta">себе, партнёру или сюрприз</div></div><span class="chevron" data-icon="chevron"></span></div>
+          <div class="item"><span class="icon-box" data-icon="coins"></span><div class="grow"><div class="name">Внеплановый доход</div><div class="meta">премия, подарок, возврат</div></div><span class="chevron" data-icon="chevron"></span></div>
+          <div class="item"><span class="icon-box" data-icon="repeat"></span><div class="grow"><div class="name">Обязательство или подписка</div><div class="meta">аренда, связь, страховка</div></div><span class="chevron" data-icon="chevron"></span></div>
+          <div class="item"><span class="icon-box" data-icon="card"></span><div class="grow"><div class="name">Кредит или рассрочка</div><div class="meta">долг, платёж, график</div></div><span class="chevron" data-icon="chevron"></span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ===================== ГРУППА 2: «Неделя» ===================== -->
+<section class="group" id="g2-week">
+  <h2>2 · «Неделя» — загрузка, разбор, решения по одному</h2>
+  <p class="note">До загрузки (напоминание и кнопка) → предпросмотр разбора → карточки «одно решение за раз» (незнакомый продавец с чипами разделов, платёж по кредиту, зарплата, подписка) → итог недели → «пришла зарплата — разложить». Прогресс «N из 6», «Потом» и «Пропустить все» всегда рядом.</p>
+  <div class="grid">
+
+    <div class="screen" data-title="Неделя — до загрузки" data-tab="week">
+      <div class="topbar"><div><h1>Неделя</h1><div class="sub">15–21 сентября</div></div><div class="right"><span class="icon-box" data-icon="bell"></span></div></div>
+      <div class="note brand"><span data-icon="bell"></span><span>Воскресенье, 21:00 — время выписки. Напоминание придёт обоим.</span></div>
+      <div class="card">
+        <div class="empty-state"><div class="display">Ваша выписка ещё не загружена</div><p>PDF из приложения Kaspi или Freedom. Разбор на телефоне, файл никуда не уходит.</p><span class="btn"><span data-icon="upload"></span>Загрузить выписку</span><span class="btn ghost">Ввести вручную</span></div>
+      </div>
+      <div class="card tight">
+        <div class="list"><div class="item"><span class="avatar b" style="width:34px;height:34px">Д</span><div class="grow"><div class="name">Дана загрузила</div><div class="meta">Freedom · 1–21 сентября · 212 операций</div></div><span class="tag ok">готово</span></div></div>
+      </div>
+      <div class="section-title">ПРОШЛЫЕ НЕДЕЛИ</div>
+      <div class="card tight">
+        <div class="list">
+          <div class="item"><div class="grow"><div class="name">8–14 сентября</div><div class="meta">обе выписки</div></div><span class="amount money">209 000 ₸</span><span class="chevron" data-icon="chevron"></span></div>
+          <div class="item"><div class="grow"><div class="name">1–7 сентября</div><div class="meta">обе выписки</div></div><span class="amount money">176 000 ₸</span><span class="chevron" data-icon="chevron"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="screen" data-title="Разбор — предпросмотр">
+      <div class="topbar"><div class="rowline"><span class="icon-box" data-icon="back"></span><div><h1>Разбор</h1><div class="sub">Kaspi Gold · 1–21 сентября</div></div></div></div>
+      <div class="card">
+        <div class="between"><span class="h3">345 операций</span><span class="tag neutral">12 уже были</span></div>
+        <div class="list">
+          <div class="item"><span class="grow name">Списания</span><span class="amount money">612 000 ₸</span></div>
+          <div class="item"><span class="grow name">Поступления</span><span class="amount money pos">1 250 000 ₸</span></div>
+          <div class="item"><div class="grow"><div class="name">Между своими</div><div class="meta">переводы на депозит и на карту Даны — не траты</div></div><span class="amount money muted">180 000 ₸</span></div>
+          <div class="item"><div class="grow"><div class="name">В валюте — 3</div><div class="meta">их пока не считаем</div></div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="h3">Это перевод партнёру?</div>
+        <p class="muted-2">«Дана К.» — похоже на Дану. Тогда переводы между вами — не траты.</p>
+        <div class="chips"><span class="chip on"><span data-icon="check"></span>Да, это Дана</span><span class="chip">Нет</span></div>
+      </div>
+      <div class="note"><span data-icon="info"></span><span>Дальше — 6 коротких вопросов: незнакомые продавцы, платёж по кредиту, зарплата, подписка. Каждый можно отложить.</span></div>
+      <span class="btn block big">Дальше</span>
+      <span class="btn ghost block">Отмена</span>
+    </div>
+
+    <div class="screen" data-title="Решение — незнакомый продавец">
+      <div class="topbar"><div class="rowline"><span class="icon-box" data-icon="back"></span><div><h1>Разбор</h1><div class="sub">1 из 6</div></div></div><div class="right"><span class="btn ghost small">Пропустить все</span></div></div>
+      <div class="decision">
+        <div class="progress"><div class="bar"><i style="width:16%"></i></div><span>1 из 6</span></div>
+        <div class="q">ИП Сериков — куда отнести?</div>
+        <div class="meta">4 раза · 23 400 ₸ · последний — 19 сентября</div>
+        <div class="chips">
+          <span class="chip"><span class="sw" style="background:var(--s1)"></span>Продукты</span>
+          <span class="chip"><span class="sw" style="background:var(--s2)"></span>Кафе и рестораны</span>
+          <span class="chip"><span class="sw" style="background:var(--s8)"></span>Дом и быт</span>
+          <span class="chip"><span class="sw" style="background:var(--s3)"></span>Транспорт</span>
+          <span class="chip"><span class="sw" style="background:var(--s5)"></span>Здоровье и аптеки</span>
+          <span class="chip"><span class="sw" style="background:var(--s6)"></span>Одежда и покупки</span>
+          <span class="chip quiet">Ещё 11 ▾</span>
+        </div>
+        <div class="chips"><span class="chip quiet"><span data-icon="users"></span>Кому → что</span><span class="chip quiet"><span data-icon="repeat"></span>Между своими</span></div>
+        <div class="btn-row"><span class="btn ghost">Потом</span></div>
+      </div>
+      <div class="note ok"><span data-icon="check"></span><span>Ответ запомним — следующие выписки разложатся сами. Снять можно в «Неделе».</span></div>
+      <div class="section-title">ЧАСТЫЕ — ПЕРВЫМИ</div>
+      <div class="card tight"><div class="op"><span class="logo" style="background:var(--s12)">ИП</span><div class="grow"><div class="merchant">ИП Сериков</div><div class="cat">19 сент · 6 800 ₸ · 14 сент · 5 200 ₸ · 9 сент · 6 400 ₸ · 3 сент · 5 000 ₸</div></div></div></div>
+    </div>
+
+    <div class="screen" data-title="Решение — платёж по кредиту">
+      <div class="topbar"><div class="rowline"><span class="icon-box" data-icon="back"></span><div><h1>Разбор</h1><div class="sub">2 из 6</div></div></div><div class="right"><span class="btn ghost small">Пропустить все</span></div></div>
+      <div class="decision">
+        <div class="progress"><div class="bar"><i style="width:33%"></i></div><span>2 из 6</span></div>
+        <div class="q">Похоже, это платёж по Автокредиту — отметить?</div>
+        <div class="meta">95 000 ₸ · 12 сентября · «Оплата Kaspi Кредита»</div>
+        <div class="inner"><div class="between"><span class="name">Автокредит</span><span class="small muted">23-й платёж из 60</span></div><div class="small muted-2" style="margin-top:4px">в долг 66 500 ₸ · банку 28 500 ₸ · остаток 1 800 000 ₸</div></div>
+        <div class="btn-row"><span class="btn">Да, отметить</span><span class="btn secondary">Нет, это другое</span><span class="btn ghost">Потом</span></div>
+      </div>
+      <div class="note"><span data-icon="info"></span><span>«Да» запомним по названию: дальше платёж отметится сам, а вы увидите его в «Деньгах».</span></div>
+    </div>
+
+    <div class="screen" data-title="Решение — зарплата">
+      <div class="topbar"><div class="rowline"><span class="icon-box" data-icon="back"></span><div><h1>Разбор</h1><div class="sub">3 из 6</div></div></div><div class="right"><span class="btn ghost small">Пропустить все</span></div></div>
+      <div class="decision">
+        <div class="progress"><div class="bar"><i style="width:50%"></i></div><span>3 из 6</span></div>
+        <div class="q">Это зарплата Ильяса?</div>
+        <div class="meta">750 000 ₸ · 10 сентября · поступление</div>
+        <div class="chips"><span class="chip on"><span data-icon="check"></span>Да, зарплата</span><span class="chip">Разовый доход</span><span class="chip">Перевод от человека</span></div>
+        <div class="btn-row"><span class="btn">Дальше</span><span class="btn ghost">Потом</span></div>
+      </div>
+      <div class="note ok"><span data-icon="check"></span><span>Зарплату запомним по дате и сумме. Разложить её по обязательному, мечте и свободному предложим в итоге недели.</span></div>
+    </div>
+
+    <div class="screen" data-title="Решение — подписка">
+      <div class="topbar"><div class="rowline"><span class="icon-box" data-icon="back"></span><div><h1>Разбор</h1><div class="sub">4 из 6</div></div></div><div class="right"><span class="btn ghost small">Пропустить все</span></div></div>
+      <div class="decision">
+        <div class="progress"><div class="bar"><i style="width:66%"></i></div><span>4 из 6</span></div>
+        <div class="q">Оставить подписку Яндекс Плюс?</div>
+        <div class="meta">4 990 ₸ · каждый месяц · третий месяц подряд</div>
+        <div class="inner"><div class="name">За год — 59 880 ₸</div><div class="small muted-2" style="margin-top:2px">это 3 % пути до Японии</div></div>
+        <div class="btn-row"><span class="btn">Оставить</span><span class="btn secondary">Отписаться</span><span class="btn ghost">Подумать</span></div>
+      </div>
+      <div class="note"><span data-icon="info"></span><span>«Отписаться» — напомним отменить в приложении банка; следующий раз спросим, если спишется снова.</span></div>
+    </div>
+
+    <div class="screen" data-title="Неделя — итог" data-tab="week">
+      <div class="topbar"><div><h1>Неделя</h1><div class="sub">15–21 сентября · обе выписки</div></div><div class="right"><span class="icon-box" data-icon="share"></span></div></div>
+      <div class="card">
+        <div class="between"><span class="h3 money">184 000 ₸</span><span class="tag ok">на 12 % меньше прошлой</span></div>
+        <div class="stack"><i style="width:34%;background:var(--s1)"></i><i style="width:15%;background:var(--s2)"></i><i style="width:10%;background:var(--s8)"></i><i style="width:8%;background:var(--s3)"></i><i style="width:7%;background:var(--s5)"></i><i style="width:5%;background:var(--s4)"></i><i style="width:21%;background:var(--s-unknown)"></i></div>
+        <div class="list">
+          <div class="item"><span class="dot" style="background:var(--s1)"></span><span class="grow name">Продукты</span><span class="amount money">62 000 ₸</span></div>
+          <div class="item"><span class="dot" style="background:var(--s2)"></span><span class="grow name">Кафе и рестораны</span><span class="amount money">28 000 ₸</span></div>
+          <div class="item"><span class="dot" style="background:var(--s8)"></span><span class="grow name">Дом и быт</span><span class="amount money">18 000 ₸</span></div>
+          <div class="item"><span class="dot" style="background:var(--s3)"></span><span class="grow name">Транспорт</span><span class="amount money">14 000 ₸</span></div>
+          <div class="item"><span class="dot" style="background:var(--s5)"></span><span class="grow name">Здоровье и аптеки</span><span class="amount money">12 000 ₸</span></div>
+          <div class="item"><span class="dot" style="background:var(--s4)"></span><span class="grow name">Подписки</span><span class="amount money">9 990 ₸</span></div>
+          <div class="item"><span class="dot" style="background:var(--s-unknown)"></span><div class="grow"><div class="name">Не разобрано</div><div class="meta">2 продавца · разобрать</div></div><span class="amount money">40 000 ₸</span><span class="chevron" data-icon="chevron"></span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="between"><span class="h3">Япония</span><span class="tag brand">+45 000 ₸ за неделю</span></div>
+        <div class="bar"><i style="width:62%"></i></div>
+        <div class="small muted-2">62 % · будет вашей в мае 2027 — на месяц раньше, чем неделю назад</div>
+      </div>
+      <div class="decision">
+        <div class="q">Пришла зарплата Ильяса — разложить?</div>
+        <div class="meta">750 000 ₸ · 10 сентября</div>
+        <div class="btn-row"><span class="btn">Разложить</span><span class="btn ghost">Позже</span></div>
+      </div>
+    </div>
+
+    <div class="screen" data-title="Раскладка зарплаты">
+      <div class="topbar"><div class="rowline"><span class="icon-box" data-icon="back"></span><div><h1>Разложим</h1><div class="sub">зарплата Ильяса · 10 сентября</div></div></div></div>
+      <div class="big-number money">750 000 ₸</div>
+      <div class="card">
+        <div class="list">
+          <div class="item"><div class="grow"><div class="name">Обязательное</div><div class="meta">Автокредит, аренда, коммуналка</div><div class="bar" style="margin-top:8px"><i style="width:51%;background:var(--s12)"></i></div></div><span class="amount money">380 000 ₸</span></div>
+          <div class="item"><div class="grow"><div class="name">В мечту</div><div class="meta">Япония · будет на 2 недели ближе</div><div class="bar" style="margin-top:8px"><i style="width:20%"></i></div></div><span class="amount money">150 000 ₸</span></div>
+          <div class="item"><div class="grow"><div class="name">Свободно</div><div class="meta">до 10 октября</div><div class="bar" style="margin-top:8px"><i style="width:29%;background:var(--ok)"></i></div></div><span class="amount money">220 000 ₸</span></div>
+        </div>
+      </div>
+      <div class="note"><span data-icon="info"></span><span>Как в прошлом месяце. Доли можно изменить — запомним на следующий раз.</span></div>
+      <span class="btn block big">Разложить так</span>
+      <span class="btn ghost block">Изменить доли</span>
+    </div>
+
+  </div>
+</section>
+
+<!-- ===================== ГРУППА 3: первый запуск ===================== -->
+<section class="group" id="g3-firstrun">
+  <h2>3 · Первый запуск — из выписки, без мастера</h2>
+  <p class="note">Старт → Google → «с кем» → первая выписка (или «введу вручную») → вопросы по одному → картина месяца → «на что копим» (шаблон + срок) → главный. Пять шагов с полосой прогресса; ответы пишутся на каждом шаге.</p>
+  <div class="grid">
+
+    <div class="screen" data-title="Старт — вход">
+      <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:16px;padding:24px 4px">
+        <div class="hero" style="min-height:300px"><img src="https://picsum.photos/id/195/800/1000" alt=""><div class="label">До мечты</div><div class="big num">62 %</div><div class="line2">Япония · будет вашей в мае 2027</div><div class="bar"><i style="width:62%"></i></div></div>
+        <div class="display" style="font-size:56px;line-height:1;margin-top:8px">Реально.</div>
+        <p class="muted-2" style="font-size:17px">Фото цели и одна цифра — сколько до неё.</p>
+      </div>
+      <span class="btn google block big"><span data-icon="google"></span>Продолжить с Google</span>
+      <span class="btn ghost block">Попробовать без регистрации</span>
+      <p class="small muted" style="text-align:center">Бесплатно · выписка остаётся на телефоне · <u>политика</u></p>
+    </div>
+
+    <div class="screen" data-title="Шаг 1 — с кем">
+      <div class="stepper"><div class="bar"><i style="width:20%"></i></div><span>1 из 5</span></div>
+      <div class="h2" style="font-size:28px;margin-top:8px">С кем ведём?</div>
+      <p class="muted-2">Один человек — тоже семья. Партнёр может присоединиться позже.</p>
+      <div class="card tight" style="border-color:var(--brand)"><div class="between"><div><div class="name">Один</div><div class="meta">свои выписки, свои мечты</div></div><span class="tag brand"><span data-icon="check"></span></span></div></div>
+      <div class="card tight"><div class="between"><div><div class="name">Создать семью</div><div class="meta">приглашу партнёра по коду</div></div><span class="chevron" data-icon="chevron"></span></div></div>
+      <div class="card tight"><div class="between"><div><div class="name">По коду</div><div class="meta">у партнёра уже есть семья</div></div><span class="chevron" data-icon="chevron"></span></div><div class="field"><div class="input placeholder">FF-····</div></div></div>
+      <div style="flex:1"></div>
+      <span class="btn block big">Дальше</span>
+    </div>
+
+    <div class="screen" data-title="Шаг 2 — первая выписка">
+      <div class="stepper"><div class="bar"><i style="width:40%"></i></div><span>2 из 5</span></div>
+      <div class="h2" style="font-size:28px;margin-top:8px">Загрузите первую выписку</div>
+      <p class="muted-2">Приложение само найдёт зарплату, кредиты и подписки — вы только подтвердите.</p>
+      <div class="card tight">
+        <div class="list">
+          <div class="item"><span class="op logo" style="background:#c0392b;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;color:#fff;font-weight:700;font-size:12px">K</span><div class="grow"><div class="name">Kaspi</div><div class="meta">Мой банк → Выписка → PDF → Поделиться</div></div></div>
+          <div class="item"><span class="op logo" style="background:#2e7d4f;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;color:#fff;font-weight:700;font-size:12px">F</span><div class="grow"><div class="name">Freedom</div><div class="meta">Счёт → Выписка → за 3 месяца → PDF</div></div></div>
+        </div>
+      </div>
+      <div class="note"><span data-icon="lock"></span><span>Файл разбирается на телефоне и никуда не уходит. На сервер попадают только продавец, дата, сумма и раздел — без номеров и ФИО.</span></div>
+      <div style="flex:1"></div>
+      <span class="btn block big"><span data-icon="upload"></span>Выбрать файл</span>
+      <span class="btn ghost block">Введу вручную</span>
+    </div>
+
+    <div class="screen" data-title="Шаг 3 — вопросы по одному">
+      <div class="stepper"><div class="bar"><i style="width:60%"></i></div><span>3 из 5</span></div>
+      <div class="h2" style="font-size:28px;margin-top:8px">Нашли 6 повторяющихся</div>
+      <p class="muted-2">Подтвердите по одному — дальше отметим сами.</p>
+      <div class="decision">
+        <div class="progress"><div class="bar"><i style="width:16%"></i></div><span>1 из 6</span></div>
+        <div class="q">Это ваш доход?</div>
+        <div class="meta">750 000 ₸ · 10 августа и 10 сентября · регулярно</div>
+        <div class="chips"><span class="chip on"><span data-icon="check"></span>Да, зарплата</span><span class="chip">Нет</span></div>
+        <div class="btn-row"><span class="btn">Дальше</span><span class="btn ghost">Потом</span></div>
+      </div>
+      <div class="card tight"><div class="list">
+        <div class="item"><div class="grow"><div class="name muted-2">Аренда квартиры?</div><div class="meta">220 000 ₸ · 5 числа</div></div></div>
+        <div class="item"><div class="grow"><div class="name muted-2">Платёж по кредиту?</div><div class="meta">95 000 ₸ · 12 числа</div></div></div>
+        <div class="item"><div class="grow"><div class="name muted-2">Подписка?</div><div class="meta">4 990 ₸ · ежемесячно</div></div></div>
+      </div></div>
+    </div>
+
+    <div class="screen" data-title="Шаг 4 — картина месяца">
+      <div class="stepper"><div class="bar"><i style="width:80%"></i></div><span>4 из 5</span></div>
+      <div class="h2" style="font-size:28px;margin-top:8px">Ваш сентябрь</div>
+      <div class="card">
+        <div class="between"><span class="h3 money">612 000 ₸</span><span class="tag neutral">траты</span></div>
+        <div class="stack"><i style="width:30%;background:var(--s1)"></i><i style="width:14%;background:var(--s2)"></i><i style="width:36%;background:var(--s12)"></i><i style="width:8%;background:var(--s3)"></i><i style="width:12%;background:var(--s-unknown)"></i></div>
+        <div class="list">
+          <div class="item"><span class="dot" style="background:var(--s12)"></span><span class="grow name">Аренда</span><span class="amount money">220 000 ₸</span></div>
+          <div class="item"><span class="dot" style="background:var(--s1)"></span><span class="grow name">Продукты</span><span class="amount money">184 000 ₸</span></div>
+          <div class="item"><span class="dot" style="background:var(--s2)"></span><span class="grow name">Кафе и рестораны</span><span class="amount money">86 000 ₸</span></div>
+          <div class="item"><span class="dot" style="background:var(--s3)"></span><span class="grow name">Транспорт</span><span class="amount money">48 000 ₸</span></div>
+          <div class="item"><span class="dot" style="background:var(--s-unknown)"></span><span class="grow name">Не разобрано</span><span class="amount money">74 000 ₸</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="between"><span class="name">Доход</span><span class="amount money pos">750 000 ₸</span></div>
+        <div class="between"><span class="name">Обязательное</span><span class="amount money">380 000 ₸</span></div>
+        <div class="between"><span class="name">Свободно в месяц</span><span class="amount money" style="color:var(--ok)">≈ 220 000 ₸</span></div>
+        <p class="small muted">Из свободного и складывается мечта — дальше выберем её.</p>
+      </div>
+      <div style="flex:1"></div>
+      <span class="btn block big">Дальше</span>
+    </div>
+
+    <div class="screen" data-title="Шаг 5 — на что копим">
+      <div class="stepper"><div class="bar"><i style="width:100%"></i></div><span>5 из 5</span></div>
+      <div class="h2" style="font-size:28px;margin-top:8px">На что копим?</div>
+      <div class="tiles"><div class="tile"><img src="https://picsum.photos/id/1071/400/500" alt=""><div class="name">Машина</div></div><div class="tile"><img src="https://picsum.photos/id/163/400/500" alt=""><div class="name">Квартира</div></div><div class="tile" style="outline:3px solid var(--brand);outline-offset:-3px"><img src="https://picsum.photos/id/195/400/500" alt=""><div class="name">Путешествие</div></div></div>
+      <div class="tiles"><div class="tile"><img src="https://picsum.photos/id/180/400/500" alt=""><div class="name">Техника</div></div><div class="tile"><img src="https://picsum.photos/id/177/400/500" alt=""><div class="name">Здоровье</div></div><div class="tile add"><span data-icon="camera"></span><span class="small">Своё фото</span></div></div>
+      <div class="section-title">КУДА</div>
+      <div class="chips"><span class="chip on">Япония</span><span class="chip">Турция</span><span class="chip">Грузия</span><span class="chip">Дубай</span><span class="chip">Бали</span><span class="chip">Италия</span><span class="chip quiet">Своё</span></div>
+      <div style="flex:1"></div>
+      <span class="btn block big">Дальше</span>
+      <span class="btn ghost block">Пока без мечты</span>
+    </div>
+
+    <div class="screen" data-title="Шаг 5 — сумма и срок">
+      <div class="topbar"><div class="rowline"><span class="icon-box" data-icon="back"></span><div><h1>Япония</h1><div class="sub">фото — Matthew Skinner, Unsplash</div></div></div></div>
+      <div class="hero" style="min-height:180px"><img src="https://picsum.photos/id/195/800/600" alt=""><div class="line2">Путешествие · Япония</div></div>
+      <div class="field"><label>Сколько нужно</label><div class="input focus money">1 800 000 ₸</div></div>
+      <div class="field"><label>Когда</label><div class="segmented"><span>6 мес</span><span class="on">12 мес</span><span>18 мес</span><span>свой</span></div></div>
+      <div class="inner"><div class="between"><span class="name">По 150 000 ₸ в месяц</span><span class="tag ok">реально</span></div><div class="small muted-2" style="margin-top:4px">при свободных ≈ 220 000 ₸ · будет вашей в мае 2027</div></div>
+      <div style="flex:1"></div>
+      <span class="btn block big">Готово — к мечте</span>
+    </div>
+
+  </div>
+</section>
+
+<!-- ===================== ГРУППА 4: мечты подробно ===================== -->
+<section class="group" id="g4-goals">
+  <h2>4 · Мечты подробно</h2>
+  <p class="note">Экран цели (фото, прогресс, «будет вашей в», взносы, «поделиться»), выбор фото шаблона с автором (Р-28), список желаний по людям, скрытый подарок (виден только автору).</p>
+  <div class="grid">
+
+    <div class="screen" data-title="Экран цели">
+      <div class="topbar"><div class="rowline"><span class="icon-box" data-icon="back"></span><div><h1>Япония</h1><div class="sub">главная мечта · Ильяс и Дана</div></div></div><div class="right"><span class="icon-box" data-icon="pen"></span></div></div>
+      <div class="hero" style="min-height:380px"><img src="https://picsum.photos/id/195/800/1000" alt=""><div class="label">До мечты</div><div class="big num">62 %</div><div class="line2">1 116 000 из 1 800 000 ₸</div><div class="bar"><i style="width:62%"></i></div></div>
+      <div class="card">
+        <div class="h2">Будет вашей в мае 2027</div>
+        <p class="muted-2">по 150 000 ₸ в месяц · осталось 5 взносов · на месяц раньше плана</p>
+        <div class="btn-row"><span class="btn">Пополнить</span><span class="btn secondary"><span data-icon="share"></span>Поделиться</span></div>
+      </div>
+      <div class="section-title">ВЗНОСЫ</div>
+      <div class="card tight"><div class="list">
+        <div class="item"><span class="avatar a" style="width:34px;height:34px">И</span><div class="grow"><div class="name">Сентябрь</div><div class="meta">из зарплаты · 10 сентября</div></div><span class="amount money pos">+150 000 ₸</span></div>
+        <div class="item"><span class="avatar b" style="width:34px;height:34px">Д</span><div class="grow"><div class="name">Август</div><div class="meta">из зарплаты · 20 августа</div></div><span class="amount money pos">+150 000 ₸</span></div>
+        <div class="item"><span class="avatar a" style="width:34px;height:34px">И</span><div class="grow"><div class="name">Июль</div><div class="meta">премия</div></div><span class="amount money pos">+120 000 ₸</span></div>
+      </div></div>
+      <p class="small muted" style="text-align:center">Сумма, срок, фото и пауза — по карандашу вверху</p>
+    </div>
+
+    <div class="screen" data-title="Новая мечта — фото шаблона">
+      <div class="topbar"><div class="rowline"><span class="icon-box" data-icon="back"></span><div><h1>Фото</h1><div class="sub">Путешествие · Япония</div></div></div><div class="right"><span class="btn ghost small">Пропустить</span></div></div>
+      <div class="tiles"><div class="tile" style="outline:3px solid var(--brand);outline-offset:-3px"><img src="https://picsum.photos/id/195/400/500" alt=""><div class="name">M. Skinner</div></div><div class="tile"><img src="https://picsum.photos/id/164/400/500" alt=""><div class="name">L. Nguyen</div></div><div class="tile"><img src="https://picsum.photos/id/1067/400/500" alt=""><div class="name">K. Young</div></div></div>
+      <div class="tiles"><div class="tile"><img src="https://picsum.photos/id/1029/400/500" alt=""><div class="name">f. marriage</div></div><div class="tile"><img src="https://picsum.photos/id/1044/400/500" alt=""><div class="name">S. Carter</div></div><div class="tile"><img src="https://picsum.photos/id/122/400/500" alt=""><div class="name">V. Sherbakov</div></div></div>
+      <div class="note"><span data-icon="image"></span><span>Фото — Unsplash, автор сохраняется и показывается у мечты. Картинка сжимается на телефоне до ~100 КБ.</span></div>
+      <span class="btn secondary block"><span data-icon="camera"></span>Своё фото</span>
+      <div style="flex:1"></div>
+      <span class="btn block big">Выбрать это</span>
+    </div>
+
+    <div class="screen" data-title="Желания по людям">
+      <div class="topbar"><div><h1>Желания</h1><div class="sub">не мечты — покупки поменьше</div></div><div class="right"><span class="icon-box" data-icon="plus"></span></div></div>
+      <div class="segmented"><span class="on">Ильяс</span><span>Дана</span><span>Общие</span></div>
+      <div class="card tight"><div class="list">
+        <div class="item"><span class="icon-box" data-icon="bag"></span><div class="grow"><div class="name">Наушники</div><div class="meta">когда свободно &gt; 100 000</div></div><span class="amount money">89 000 ₸</span></div>
+        <div class="item"><span class="icon-box" data-icon="bag"></span><div class="grow"><div class="name">Кроссовки для бега</div><div class="meta">осень</div></div><span class="amount money">45 000 ₸</span></div>
+        <div class="item"><span class="icon-box" data-icon="check"></span><div class="grow"><div class="name muted">Книги</div><div class="meta">куплено 3 сентября</div></div><span class="tag ok">купили</span></div>
+      </div></div>
+      <div class="section-title">СЮРПРИЗЫ ДЛЯ ДАНЫ</div>
+      <div class="card tight" style="border-style:dashed">
+        <div class="note"><span data-icon="eyeoff"></span><span>Видно только вам. Дана этот список не увидит — ни здесь, ни в итогах.</span></div>
+        <div class="list">
+          <div class="item"><span class="icon-box" data-icon="gift"></span><div class="grow"><div class="name">Билеты на концерт</div><div class="meta">к дню рождения · 14 октября</div></div><span class="amount money">36 000 ₸</span></div>
+        </div>
+        <span class="btn secondary"><span data-icon="plus"></span>Сюрприз</span>
+      </div>
+    </div>
+
+    <div class="screen" data-title="Подарок-сюрприз">
+      <div class="topbar"><div><h1>Желания</h1><div class="sub">не мечты — покупки поменьше</div></div><div class="right"><span class="icon-box" data-icon="plus"></span></div></div>
+      <div class="segmented"><span class="on">Ильяс</span><span>Дана</span><span>Общие</span></div>
+      <div class="card tight"><div class="list"><div class="item"><span class="icon-box" data-icon="bag"></span><div class="grow"><div class="name">Наушники</div><div class="meta">когда свободно &gt; 100 000</div></div><span class="amount money">89 000 ₸</span></div></div></div>
+      <div class="sheet-scrim"></div>
+      <div class="sheet">
+        <div class="grip"></div>
+        <div class="between"><span class="title">Сюрприз для Даны</span><span class="icon-box" data-icon="x"></span></div>
+        <div class="note"><span data-icon="eyeoff"></span><span>Дана не увидит — только вы.</span></div>
+        <div class="field"><label>Что</label><div class="input focus">Билеты на концерт</div></div>
+        <div class="field"><label>Сколько</label><div class="input money">36 000 ₸</div></div>
+        <div class="field"><label>К дате</label><div class="input placeholder">14 октября · день рождения</div></div>
+        <span class="btn block big">Добавить</span>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ===================== ГРУППА 5: карточка сторис ===================== -->
+<section class="group" id="g5-story">
+  <h2>5 · Карточка для сторис — 1080 × 1920, без сумм</h2>
+  <p class="note">Фото цели, «62 % до Японии», имя приложения; сумм нет никогда (Р-10). Показана в масштабе 0,25.</p>
+  <div class="grid">
+    <div class="single">
+      <div class="story-wrap"><div class="story">
+        <img src="https://picsum.photos/id/195/1080/1920" alt="">
+        <div class="app">Family Finance</div>
+        <div class="label">До мечты</div>
+        <div class="big num">62 %</div>
+        <div class="line2">Япония · будет нашей в мае 2027</div>
+        <div class="bar"><i style="width:62%"></i></div>
+      </div></div>
+      <p class="small" style="color:#857a6f;padding-left:8px;margin-top:8px"><b style="color:#1e1a16">Сторис</b> · 1080×1920, фото + процент + имя, сумм нет</p>
+    </div>
+    <div class="single">
+      <div class="story-wrap"><div class="story" style="background:#17130f">
+        <img src="https://picsum.photos/id/180/1080/1920" alt="">
+        <div class="app">Family Finance</div>
+        <div class="label">За месяц</div>
+        <div class="big num" style="font-size:220px">−3</div>
+        <div class="line2">подписки, без которых можно</div>
+      </div></div>
+      <p class="small" style="color:#857a6f;padding-left:8px;margin-top:8px"><b style="color:#1e1a16">Сторис — утечки</b> · «отказались от 3 подписок», сумм нет</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== ГРУППА 6: «Деньги» — второй уровень ===================== -->
+<section class="group" id="g6-money">
+  <h2>6 · «Деньги» — второй уровень</h2>
+  <p class="note">Вход-список (Бюджет, Капитал, План, Вклад, Операции) и один экран внутри — Капитал — в новом стиле; остальные экраны второго уровня переносятся на кит без перерисовки (DESIGN.md §3).</p>
+  <div class="grid">
+
+    <div class="screen" data-title="Деньги — вход" data-tab="money">
+      <div class="topbar"><div><h1>Деньги</h1><div class="sub">Сентябрь · Ильяс и Дана</div></div><div class="right"><div class="avatars"><span class="avatar a">И</span><span class="avatar b">Д</span></div></div></div>
+      <div class="card"><div class="between"><div><div class="small muted">СВОБОДНО ДО КОНЦА МЕСЯЦА</div><div class="big-number md money">236 000 ₸</div></div><div style="text-align:right"><div class="small muted">до зарплаты</div><div class="h3">9 дней</div></div></div><div class="bar"><i style="width:38%;background:var(--ok)"></i></div></div>
+      <div class="card tight"><div class="list">
+        <div class="item"><span class="icon-box" data-icon="money"></span><div class="grow"><div class="name">Бюджет</div><div class="meta">доход 1 200 000 · обязательное 380 000 · календарь платежей</div></div><span class="chevron" data-icon="chevron"></span></div>
+        <div class="item"><span class="icon-box" data-icon="coins"></span><div class="grow"><div class="name">Капитал</div><div class="meta">счета и долги · чистых 480 000 ₸</div></div><span class="chevron" data-icon="chevron"></span></div>
+        <div class="item"><span class="icon-box" data-icon="calendar"></span><div class="grow"><div class="name">План «Сначала долги»</div><div class="meta">шаг 3 из 8 · Автокредит закроется в марте 2028</div></div><span class="chevron" data-icon="chevron"></span></div>
+        <div class="item"><span class="icon-box" data-icon="repeat"></span><div class="grow"><div class="name">Вклад</div><div class="meta">калькулятор: копить или гасить</div></div><span class="chevron" data-icon="chevron"></span></div>
+        <div class="item"><span class="icon-box" data-icon="doc"></span><div class="grow"><div class="name">Мои операции</div><div class="meta">по выпискам · только вам · 557 за 3 месяца</div></div><span class="chevron" data-icon="chevron"></span></div>
+      </div></div>
+      <div class="section-title">ВПЕРЕДИ</div>
+      <div class="card tight"><div class="list">
+        <div class="item"><div class="grow"><div class="name">Аренда квартиры</div><div class="meta">5 октября · Дана</div></div><span class="amount money">220 000 ₸</span></div>
+        <div class="item"><div class="grow"><div class="name">Зарплата Ильяса</div><div class="meta">10 октября</div></div><span class="amount money pos">+750 000 ₸</span></div>
+        <div class="item"><div class="grow"><div class="name">Автокредит</div><div class="meta">12 октября · 24-й из 60</div></div><span class="amount money">95 000 ₸</span></div>
+      </div></div>
+    </div>
+
+    <div class="screen" data-title="Капитал" data-tab="money">
+      <div class="topbar"><div class="rowline"><span class="icon-box" data-icon="back"></span><div><h1>Капитал</h1><div class="sub">счета и долги семьи</div></div></div></div>
+      <div class="card">
+        <div class="small muted">ЧИСТЫЙ КАПИТАЛ</div>
+        <div class="big-number money">480 000 ₸</div>
+        <div class="list">
+          <div class="item"><span class="grow name">На счетах</span><span class="amount money">1 680 000 ₸</span></div>
+          <div class="item"><span class="grow name">Накоплено по мечтам</span><span class="amount money">600 000 ₸</span></div>
+          <div class="item"><span class="grow name">Долги</span><span class="amount money" style="color:var(--destructive)">−1 800 000 ₸</span></div>
+        </div>
+      </div>
+      <div class="section-title">ГДЕ ЛЕЖАТ ДЕНЬГИ</div>
+      <div class="card tight"><div class="list">
+        <div class="item"><span class="icon-box" data-icon="card"></span><div class="grow"><div class="name">Kaspi Gold</div><div class="meta">карта · Ильяс</div></div><span class="amount money">480 000 ₸</span><span class="chevron" data-icon="chevron"></span></div>
+        <div class="item"><span class="icon-box" data-icon="coins"></span><div class="grow"><div class="name">Депозит Kaspi</div><div class="meta">14 % · общий</div></div><span class="amount money">1 200 000 ₸</span><span class="chevron" data-icon="chevron"></span></div>
+      </div><span class="btn ghost" style="align-self:flex-start"><span data-icon="plus"></span>Счёт или накопление</span></div>
+      <div class="section-title">ОБЯЗАТЕЛЬСТВА</div>
+      <div class="card tight"><div class="list">
+        <div class="item"><span class="icon-box" data-icon="card"></span><div class="grow"><div class="name">Автокредит</div><div class="meta">23 из 60 · платёж 95 000 · переплата 356 947</div></div><span class="amount money">1 800 000 ₸</span><span class="chevron" data-icon="chevron"></span></div>
+        <div class="item"><span class="icon-box" data-icon="repeat"></span><div class="grow"><div class="name">Аренда квартиры</div><div class="meta">ежемесячно · 5 числа</div></div><span class="amount money">220 000 ₸</span><span class="chevron" data-icon="chevron"></span></div>
+        <div class="item"><span class="icon-box" data-icon="repeat"></span><div class="grow"><div class="name">Коммуналка</div><div class="meta">оценка</div></div><span class="amount money">30 000 ₸</span><span class="chevron" data-icon="chevron"></span></div>
+      </div></div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ===================== ГРУППА 7: настройки ===================== -->
+<section class="group" id="g7-settings">
+  <h2>7 · Настройки</h2>
+  <p class="note">Оформление, имя, напоминание (день и час — семьи), «с кем» и код партнёра, политика, удаление аккаунта вместе с данными. «Советника» нет.</p>
+  <div class="grid">
+
+    <div class="screen" data-title="Настройки">
+      <div class="topbar"><div class="rowline"><span class="icon-box" data-icon="back"></span><div><h1>Настройки</h1><div class="sub">Ильяс · ilyas@…</div></div></div></div>
+      <div class="card">
+        <div class="h3">Оформление</div>
+        <div class="segmented"><span>Авто</span><span class="on">Светлая</span><span>Тёмная</span></div>
+        <div class="field"><label>Имя</label><div class="input">Ильяс</div></div>
+      </div>
+      <div class="card">
+        <div class="h3">Напоминание о выписке</div>
+        <p class="small muted-2">Придёт обоим. День и час — общие для семьи.</p>
+        <div class="chips"><span class="chip">Пн</span><span class="chip">Вт</span><span class="chip">Ср</span><span class="chip">Чт</span><span class="chip">Пт</span><span class="chip">Сб</span><span class="chip on">Вс</span></div>
+        <div class="between"><span class="name">Время</span><span class="chip">21:00</span></div>
+        <div class="between"><span class="name">Push на этом телефоне</span><span class="toggle on"></span></div>
+      </div>
+      <div class="card">
+        <div class="h3">С кем</div>
+        <div class="list">
+          <div class="item"><span class="avatar a" style="width:34px;height:34px">И</span><div class="grow"><div class="name">Ильяс</div><div class="meta">вы · участник</div></div></div>
+          <div class="item"><span class="avatar b" style="width:34px;height:34px">Д</span><div class="grow"><div class="name">Дана</div><div class="meta">участник · с 3 сентября</div></div></div>
+        </div>
+        <div class="between"><span class="small muted-2">Код для партнёра</span><span class="chip quiet">FF-7K2M · копировать</span></div>
+      </div>
+      <div class="card tight"><div class="list">
+        <div class="item"><span class="icon-box" data-icon="lock"></span><div class="grow"><div class="name">Политика конфиденциальности</div><div class="meta">что хранится и что нет</div></div><span class="chevron" data-icon="chevron"></span></div>
+        <div class="item"><span class="icon-box" data-icon="user"></span><div class="grow"><div class="name">Выйти</div><div class="meta">данные останутся в семье</div></div></div>
+      </div></div>
+      <div class="card tight" style="border-color:var(--destructive-soft)"><div class="list">
+        <div class="item"><span class="icon-box" style="background:var(--destructive-soft);color:var(--destructive)" data-icon="trash"></span><div class="grow"><div class="name" style="color:var(--destructive)">Удалить аккаунт и данные</div><div class="meta">операции, мечты и фото — безвозвратно</div></div></div>
+      </div></div>
+      <p class="small muted" style="text-align:center">Family Finance · версия 2.0</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ===================== ГРУППА 8: лэндинг ===================== -->
+<section class="group" id="g8-landing">
+  <h2>8 · Лэндинг «/» — телефон и десктоп</h2>
+  <p class="note">Фраза-идея «Реально.», три образа (мечта · свобода · утечки), «Попробовать» (демо) и «Начать» (Google), для кого, приватность. Механика — только в пояснениях.</p>
+  <div class="grid">
+
+    <div class="screen" data-title="Лэндинг — телефон">
+      <div class="landing">
+        <div class="nav"><span class="logo">Family Finance</span><span class="btn small" style="padding:9px 16px">Начать</span></div>
+        <div class="hero-l">
+          <div>
+            <div class="word">Реально.</div>
+            <p class="lead">Фото цели и одна цифра — сколько до неё. Для пар и одиночек.</p>
+            <div class="cta"><span class="btn big"><span data-icon="google"></span>Начать с Google</span><span class="btn secondary big">Попробовать</span></div>
+            <p class="fine">Бесплатно. Без карты. Выписка остаётся на телефоне.</p>
+          </div>
+          <div class="hero" style="min-height:360px"><img src="https://picsum.photos/id/195/800/1000" alt=""><div class="label">До мечты</div><div class="big num">62 %</div><div class="line2">Япония · будет вашей в мае 2027</div><div class="bar"><i style="width:62%"></i></div></div>
+        </div>
+        <div class="three">
+          <div class="img-card"><img src="https://picsum.photos/id/1015/800/600" alt=""><div class="t">Мечта</div><div class="d">Одна цель с фото — и всегда видно, сколько до неё.</div></div>
+          <div class="img-card"><img src="https://picsum.photos/id/1057/800/600" alt=""><div class="t">Свобода</div><div class="d">«Свободно до конца месяца» — по факту, а не по плану.</div></div>
+          <div class="img-card"><img src="https://picsum.photos/id/180/800/600" alt=""><div class="t">Утечки</div><div class="d">Подписки и проценты — спросим об одной за раз.</div></div>
+        </div>
+        <div class="band">
+          <div><h2>Для двоих. Или для одного.</h2><p>Партнёр видит итоги по разделам — до тенге. Ваши операции остаются у вас. Один человек — тоже семья.</p></div>
+          <div><h2>Файл не покидает телефон.</h2><p>PDF из Kaspi или Freedom разбирается на месте. На сервере — продавец, дата, сумма и раздел. Удалить всё — одной кнопкой.</p></div>
+        </div>
+        <footer><span>© Family Finance, 2026</span><span>Политика · Контакты</span></footer>
+      </div>
+    </div>
+
+    <div class="single">
+      <div class="desk-wrap"><div class="desktop landing">
+        <div class="nav"><span class="logo">Family Finance</span><div class="links"><span>Как это работает</span><span>Приватность</span><span class="btn" style="padding:10px 18px">Начать</span></div></div>
+        <div class="hero-l">
+          <div>
+            <div class="word">Реально.</div>
+            <p class="lead">Фото цели и одна цифра — сколько до неё. Для пар и одиночек в Казахстане.</p>
+            <div class="cta"><span class="btn big"><span data-icon="google"></span>Начать с Google</span><span class="btn secondary big">Попробовать</span></div>
+            <p class="fine">Бесплатно. Без карты. Выписка остаётся на телефоне.</p>
+          </div>
+          <div class="hero" style="min-height:560px"><img src="https://picsum.photos/id/195/900/1100" alt=""><div class="label">До мечты</div><div class="big num" style="font-size:110px">62 %</div><div class="line2" style="font-size:18px">Япония · 1 116 000 из 1 800 000 ₸ · будет вашей в мае 2027</div><div class="bar"><i style="width:62%"></i></div></div>
+        </div>
+        <div class="three">
+          <div class="img-card"><img src="https://picsum.photos/id/1015/800/600" alt=""><div class="t">Мечта</div><div class="d">Одна цель с фото — и всегда видно, сколько до неё.</div></div>
+          <div class="img-card"><img src="https://picsum.photos/id/1057/800/600" alt=""><div class="t">Свобода</div><div class="d">«Свободно до конца месяца» — по факту, а не по плану.</div></div>
+          <div class="img-card"><img src="https://picsum.photos/id/180/800/600" alt=""><div class="t">Утечки</div><div class="d">Подписки и проценты — спросим об одной за раз.</div></div>
+        </div>
+        <div class="band">
+          <div><h2>Для двоих. Или для одного.</h2><p>Партнёр видит итоги по разделам — до тенге. Ваши операции остаются у вас. Один человек — тоже семья.</p></div>
+          <div><h2>Файл не покидает телефон.</h2><p>PDF из Kaspi или Freedom разбирается на месте. На сервере — продавец, дата, сумма и раздел, без номеров и ФИО. Удалить всё — одной кнопкой.</p></div>
+        </div>
+        <footer><span>© Family Finance, 2026 · Казахстан</span><span>Политика конфиденциальности · Контакты</span></footer>
+      </div></div>
+      <p class="small" style="color:#857a6f;padding-left:8px;margin-top:8px"><b style="color:#1e1a16">Лэндинг — десктоп</b> · 1280 px, светлая (тёмная — по системной теме, те же токены)</p>
+    </div>
+
+  </div>
+</section>
+
+</main>
+
+<script>
+// ---- иконки (24×24, штрих 1.8) ----
+const ICONS = {
+  heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+  week: '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  money: '<rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 15h3"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  gear: '<path d="M4 7h9M18 7h2M4 17h5M13 17h7"/><circle cx="15.5" cy="7" r="2.2"/><circle cx="10.5" cy="17" r="2.2"/>',
+  chevron: '<path d="M9 6l6 6-6 6"/>',
+  back: '<path d="M15 6l-6 6 6 6"/>',
+  share: '<path d="M12 3v12M8 7l4-4 4 4M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>',
+  upload: '<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>',
+  check: '<path d="M5 12l5 5L20 7"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  camera: '<rect x="3" y="7" width="18" height="13" rx="3"/><circle cx="12" cy="13.5" r="3.5"/><path d="M8.5 7L10 4h4l1.5 3"/>',
+  lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  bell: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4l2-2M10 21h4"/>',
+  users: '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20a6 6 0 0 1 12 0M15 20a4.5 4.5 0 0 1 7 0"/>',
+  image: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 16l5-5 4 4 3-3 6 6"/><circle cx="16" cy="9" r="1.5"/>',
+  trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  doc: '<path d="M7 3h7l5 5v13H7V3zM14 3v5h5M9.5 13h5M9.5 17h5"/>',
+  coins: '<circle cx="9" cy="10" r="5"/><path d="M13.5 8.4A5 5 0 1 1 11.4 17"/>',
+  repeat: '<path d="M17 2l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3"/>',
+  card: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/>',
+  gift: '<rect x="3" y="9" width="18" height="12" rx="2"/><path d="M12 9v12M3 14h18M12 9c-2-4-6-3.5-6-1.5S9 9 12 9zM12 9c2-4 6-3.5 6-1.5S15 9 12 9z"/>',
+  bag: '<path d="M6 8h12l1 13H5L6 8zM9 8V6a3 3 0 0 1 6 0v2"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  google: '<text x="12" y="17" text-anchor="middle" font-size="17" font-weight="700" font-family="Arial, sans-serif" fill="currentColor" stroke="none">G</text>',
+  pen: '<path d="M4 20l4-1L19 8l-3-3L5 16l-1 4z"/>',
+  eyeoff: '<path d="M3 3l18 18M10.6 10.6A2 2 0 0 0 13.4 13.4M6.5 6.7C4 8.2 2 12 2 12s3.5 6 10 6c1.7 0 3.2-.4 4.5-1M9.7 5.2C10.4 5 11.2 5 12 5c6.5 0 10 7 10 7s-.9 1.6-2.5 3.2"/>',
+  calendar: '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+};
+const svg = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[n] || ''}</svg>`;
+const TABS = [['dreams', 'heart', 'Мечты'], ['week', 'week', 'Неделя'], ['money', 'money', 'Деньги']];
+
+function buildPhone(screen, theme) {
+  const p = document.createElement('div');
+  p.className = 'phone'; p.dataset.theme = theme;
+  p.innerHTML = `<div class="status"><span>9:41</span><span class="pill"></span><span style="font-size:12px">●●● ▮</span></div>`;
+  const body = screen.cloneNode(true);
+  body.classList.remove('screen'); body.classList.add('body'); body.style.display = '';
+  const tab = screen.dataset.tab;
+  if (tab) body.classList.add('with-tabs');
+  p.appendChild(body);
+  if (tab) {
+    const nav = document.createElement('nav'); nav.className = 'tabs';
+    nav.innerHTML = '<div class="bar-bg"></div>' + TABS.map(([id, ic, label]) => `<div class="tab${id === tab ? ' on' : ''}">${svg(ic)}<span>${label}</span></div>`).join('') + `<div class="plus">${svg('plus')}</div>`;
+    p.appendChild(nav);
+  }
+  return p;
+}
+
+document.querySelectorAll('.screen').forEach((screen) => {
+  const pair = document.createElement('div'); pair.className = 'pair';
+  for (const theme of ['light', 'dark']) {
+    const fig = document.createElement('figure');
+    fig.appendChild(buildPhone(screen, theme));
+    const cap = document.createElement('figcaption');
+    cap.innerHTML = `<b>${screen.dataset.title}</b> · ${theme === 'light' ? 'светлая' : 'тёмная'}`;
+    fig.appendChild(cap);
+    pair.appendChild(fig);
+  }
+  screen.replaceWith(pair);
+});
+document.querySelectorAll('[data-icon]').forEach((el) => { el.innerHTML = svg(el.dataset.icon); });
+</script>
+</body>
+</html>
