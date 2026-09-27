@@ -1,6 +1,8 @@
 // Ступень «файл → строки» (Р-23): текст PDF-выписки → строки таблицы.
 // Файл разбирается на устройстве и никуда не уходит (Р-4).
 
+import type { PDFPageProxy } from 'pdfjs-dist'
+
 /** Ячейка строки: левый край текста и сам текст (без пробелов по краям). */
 export interface PdfCell {
   x: number
@@ -85,8 +87,7 @@ export async function pdfToRows(data: ArrayBuffer): Promise<PdfRow[]> {
     const doc = await task.promise
     const items: PdfItem[] = []
     for (let page = 1; page <= doc.numPages; page++) {
-      const content = await (await doc.getPage(page)).getTextContent()
-      for (const item of content.items) {
+      for (const item of await pageText(await doc.getPage(page))) {
         if (!('str' in item)) continue
         items.push({ page, x: item.transform[4], y: item.transform[5], text: item.str })
       }
@@ -94,5 +95,22 @@ export async function pdfToRows(data: ArrayBuffer): Promise<PdfRow[]> {
     return groupItems(items)
   } finally {
     await task.destroy()
+  }
+}
+
+type TextItems = Awaited<ReturnType<PDFPageProxy['getTextContent']>>['items']
+
+/**
+ * Текст страницы через `reader.read()`, а не `getTextContent`: тот перебирает ReadableStream
+ * `for await`, а Safari на iPhone асинхронный перебор потоков не умеет — «undefined is not a
+ * function (near '...e of t...')», полифиллов на это в legacy-сборке нет.
+ */
+async function pageText(page: PDFPageProxy): Promise<TextItems> {
+  const reader = page.streamTextContent().getReader()
+  const items: TextItems = []
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) return items
+    items.push(...(value as { items: TextItems }).items)
   }
 }
