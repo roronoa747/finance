@@ -21,6 +21,7 @@ type MockRepositories struct {
 	Households *MockHouseholdRepo
 	Docs       *MockDocRepo
 	Statements *MockStatementRepo
+	Photos     *MockPhotoRepo
 }
 
 func NewMockRepositories() *MockRepositories {
@@ -30,6 +31,7 @@ func NewMockRepositories() *MockRepositories {
 		Households: households,
 		Docs:       NewMockDocRepo(),
 		Statements: NewMockStatementRepo(households),
+		Photos:     NewMockPhotoRepo(),
 	}
 }
 
@@ -612,4 +614,60 @@ func (m *MockStatementRepo) stamp() time.Time {
 	}
 	m.lastStamp = now
 	return now
+}
+
+// --- MockPhotoRepo ---
+
+type mockPhoto struct {
+	photo models.Photo
+	data  []byte
+}
+
+// MockPhotoRepo keeps photos in memory (B2C-16).
+type MockPhotoRepo struct {
+	mu     sync.Mutex
+	photos map[string]*mockPhoto
+}
+
+func NewMockPhotoRepo() *MockPhotoRepo {
+	return &MockPhotoRepo{photos: make(map[string]*mockPhoto)}
+}
+
+func (m *MockPhotoRepo) Create(ctx context.Context, householdID, userID string, in PhotoInput) (*models.Photo, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	p := models.Photo{
+		ID: uuid.New().String(), HouseholdID: householdID, UserID: userID, Hidden: in.Hidden,
+		ContentType: in.ContentType, Size: len(in.Data), CreatedAt: time.Now().UTC(),
+	}
+	m.photos[p.ID] = &mockPhoto{photo: p, data: append([]byte(nil), in.Data...)}
+	return &p, nil
+}
+
+func (m *MockPhotoRepo) Get(ctx context.Context, id string) (*models.Photo, []byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	p, ok := m.photos[id]
+	if !ok {
+		return nil, nil, ErrPhotoNotFound
+	}
+	photo := p.photo
+	return &photo, append([]byte(nil), p.data...), nil
+}
+
+func (m *MockPhotoRepo) Delete(ctx context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.photos[id]; !ok {
+		return ErrPhotoNotFound
+	}
+	delete(m.photos, id)
+	return nil
+}
+
+// Count is for tests: how many photos are stored.
+func (m *MockPhotoRepo) Count() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.photos)
 }
