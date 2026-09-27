@@ -112,11 +112,13 @@ async function pick(e: Event) {
   const ok: DraftFile[] = []
   const errors: Draft['errors'] = []
   try {
-    // pdf.js — ленивым чанком, только когда выбрали файл.
-    const { pdfToRows } = await import('@/lib/statements/pdf')
     for (const f of files) {
-      let stage = 'pdf.js'
+      let stage = 'загрузка'
       try {
+        // pdf.js — ленивым чанком, только когда выбрали файл; сбой загрузки чанка (вышла новая
+        // версия, старого чанка на сервере нет) — тоже ошибка файла, а не тишина.
+        const { pdfToRows } = await import('@/lib/statements/pdf')
+        stage = 'pdf.js'
         const rows = await pdfToRows(await f.arrayBuffer())
         stage = 'разбор'
         ok.push({ name: f.name, parsed: parseStatement(rows) })
