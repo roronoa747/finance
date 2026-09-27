@@ -434,7 +434,7 @@ describe('PV-15: пауза целей ради плана (SSR)', () => {
     expect(html).toContain('На паузе ради плана')
     expect(html).toContain(`Взнос ${money(40_000)} идёт в досрочку самого дорогого долга — так семья отдаст банку`)
     expect(html).toContain('Цель возобновится сама, когда долги с процентами закроются, или когда вы отмените план.')
-    expect(html).toContain('href="/plan"')
+    expect(html).toContain('href="/money/plan"')
     expect(html).toContain('после плана')
     expect(store.householdDoc.goals.find((g) => g.id === 'trip')!.monthly).toBe(40_000)
     expect(store.status).toBe('idle')

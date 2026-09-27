@@ -150,7 +150,7 @@ const events = computed<EventItem[]>(() => {
       income: false,
       pay: d.kind,
       open: () => {
-        void router.push(`/capital?${d.kind}=${d.targetId}`)
+        void router.push(`/money/capital?${d.kind}=${d.targetId}`)
       },
     })),
     {
@@ -162,7 +162,7 @@ const events = computed<EventItem[]>(() => {
       color: 'var(--d3)',
       income: false,
       open: () => {
-        void router.push('/goals')
+        void router.push('/goals/new')
       },
     },
   ]
@@ -179,7 +179,7 @@ const events = computed<EventItem[]>(() => {
       color: plan.color,
       income: false,
       open: () => {
-        void router.push('/plan')
+        void router.push('/money/plan')
       },
     })
   }

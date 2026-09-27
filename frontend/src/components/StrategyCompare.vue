@@ -319,7 +319,7 @@ const stepLine = computed(() => {
     <div v-if="plan" class="mt-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3">
       <div class="text-[13.5px] font-medium text-ink">План выбран в {{ monthIn(planStartMonth(plan)) }}</div>
       <div class="mt-0.5 text-[12.5px] text-ink-2 num">{{ stepLine }}</div>
-      <RouterLink to="/plan" class="mt-1.5 inline-block text-[13px] font-medium text-brand">Открыть план →</RouterLink>
+      <RouterLink to="/money/plan" class="mt-1.5 inline-block text-[13px] font-medium text-brand">Открыть план →</RouterLink>
     </div>
 
     <!-- Выбрать этот план (Р-4, Р-7) -->
@@ -351,7 +351,7 @@ const stepLine = computed(() => {
       <!-- Р-7: подушки нет — план предлагает её завести. -->
       <Callout v-if="cushionGoalId === null" title="Заведите цель-подушку — план начнёт с неё" class="mb-3">
         Месяц обязательных списаний на отдельной цели: пока её нет, первая поломка вернёт
-        вас на кредитную карту. <RouterLink to="/goals" class="font-medium text-brand">Завести цель</RouterLink>
+        вас на кредитную карту. <RouterLink to="/goals/new" class="font-medium text-brand">Завести цель</RouterLink>
       </Callout>
 
       <Button v-if="canChoose" class="w-full" :disabled="!draftExtra" @click="choose">Выбрать этот план</Button>

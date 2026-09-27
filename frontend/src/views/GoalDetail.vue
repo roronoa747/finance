@@ -146,7 +146,7 @@ const openEditModal = ref(false)
 <template>
   <div v-if="!goal" class="pt-6 text-center text-[14px] text-ink-3">
     Цель не найдена.
-    <button class="text-brand font-medium cursor-pointer" @click="router.push('/goals')">
+    <button class="text-brand font-medium cursor-pointer" @click="router.push('/')">
       К списку
     </button>
   </div>
@@ -155,7 +155,7 @@ const openEditModal = ref(false)
     <button
       type="button"
       class="flex items-center gap-1.5 self-start text-[13px] text-ink-2 hover:text-ink cursor-pointer"
-      @click="router.push('/goals')"
+      @click="router.push('/')"
     >
       <PhArrowLeft :size="15" /> Все цели
     </button>
@@ -221,11 +221,11 @@ const openEditModal = ref(false)
     <Callout v-if="paused" title="На паузе ради плана">
       Взнос {{ money(goal.monthly) }} идёт в досрочку самого дорогого долга — так семья отдаст банку
       меньше. Цель возобновится сама, когда долги с процентами закроются, или когда вы отмените план.
-      <RouterLink to="/plan" class="font-medium text-brand">Открыть план</RouterLink>
+      <RouterLink to="/money/plan" class="font-medium text-brand">Открыть план</RouterLink>
     </Callout>
     <Callout v-else-if="planCushion" tone="good" title="Подушка плана: взносы продолжаются">
       Пока в ней меньше месяца обязательных списаний, шаг плана — пополнить её.
-      <RouterLink to="/plan" class="font-medium text-brand">Открыть план</RouterLink>
+      <RouterLink to="/money/plan" class="font-medium text-brand">Открыть план</RouterLink>
     </Callout>
 
     <div class="flex gap-2">
@@ -357,7 +357,7 @@ const openEditModal = ref(false)
     <GoalSheet
       :goal-id="openEditModal && !authStore.isViewer ? goal.id : null"
       @close="openEditModal = false"
-      @removed="router.push('/goals')"
+      @removed="router.push('/')"
     />
   </div>
 </template>

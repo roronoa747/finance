@@ -243,7 +243,7 @@ const justDone = computed(() => {
           Сравните «копим как сейчас» и «сначала долги» в калькуляторе и выберите план — он поведёт
           семью месяц за месяцем.
         </p>
-        <RouterLink to="/capital?advice=strategy" class="mt-2 inline-block text-[13px] font-medium text-brand">
+        <RouterLink to="/money/capital?advice=strategy" class="mt-2 inline-block text-[13px] font-medium text-brand">
           Открыть калькулятор →
         </RouterLink>
       </Card>

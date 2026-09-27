@@ -448,7 +448,7 @@ const plan = computed(() => financeStore.activePlan)
 const planNow = computed(() => financeStore.planStepNow())
 
 function choosePlan(opts: { keptGoalIds: string[]; cushionGoalId: string | null; months: 12 | 24 | 36; lump: number }) {
-  if (financeStore.choosePlan(opts, authStore.slot ?? 'a')) void router.push('/plan')
+  if (financeStore.choosePlan(opts, authStore.slot ?? 'a')) void router.push('/money/plan')
 }
 
 /** Шаг плана в строке его кредита (PV-16, Р-6): вместо `credits[0]` — долг, который план гасит сейчас. */
@@ -549,7 +549,7 @@ watch(queryModalOpen, (open) => {
         :value="money(a.amount)"
         :sub="a.deposit ? 'условия вклада' : undefined"
         clickable
-        @click="a.deposit ? router.push(`/capital/${a.id}`) : (selectedAccountId = a.id)"
+        @click="a.deposit ? router.push(`/money/capital/${a.id}`) : (selectedAccountId = a.id)"
       >
         <template #icon>
           <PhBank v-if="a.kind === 'deposit'" :size="17" />

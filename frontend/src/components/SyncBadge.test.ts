@@ -86,8 +86,9 @@ describe('PV-21: шторка синка (Б-18)', () => {
     const store = useFinanceStore()
     store.householdDoc.people = [person('a', 'Ильяс'), person('b', 'Аруна')]
     const confirm = await sheet({ confirm: true })
+    // Хвост PV (B2C-13): личный документ сброс не трогает — текст обещает только общие счета.
     expect(confirm.replace(/\s+/g, ' ')).toContain(
-      'Сотрутся доходы, цели, покупки, обязательства и счета — у обоих участников и в облаке. Отменить будет нельзя.',
+      'Сотрутся общие счета, доходы, цели, покупки и обязательства — у обоих участников и в облаке. Личные счета останутся. Отменить будет нельзя.',
     )
     expect(confirm).toContain('Стереть всё')
     expect(confirm).toContain('Отмена')

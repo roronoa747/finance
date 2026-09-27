@@ -241,8 +241,9 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       member: { household_id: 'h-family', user_id: 'u', slot: 'a', display_name: 'Ильяс', role: 'member', joined_at: T0 },
     })
     const router = createAppRouter(createMemoryHistory())
-    await router.push('/capital?add=debt')
-    expect(router.currentRoute.value.fullPath).toBe('/capital?add=debt')
+    // Адреса Капитала — /money/capital (B2C-13), параметры окон те же.
+    await router.push('/money/capital?add=debt')
+    expect(router.currentRoute.value.fullPath).toBe('/money/capital?add=debt')
     const screenA = mountLive(A.pinia, router)
     expect(screenA.addDebtOpen).toBe(true)
 
@@ -250,17 +251,17 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     let next = navigated()
     screenA.addDebtOpen = false
     await next
-    expect(router.currentRoute.value.fullPath).toBe('/capital')
+    expect(router.currentRoute.value.fullPath).toBe('/money/capital')
 
     // Второй «+ Кредит или рассрочка» — новый переход, форма снова открыта.
-    await router.push('/capital?add=debt')
+    await router.push('/money/capital?add=debt')
     await nextTick()
     expect(screenA.addDebtOpen).toBe(true)
 
     // Строка Бюджета → кредит; из него — калькулятор: адрес держится, пока открыто хоть одно окно.
     screenA.addDebtOpen = false
     await navigated()
-    await router.push('/capital?credit=loan')
+    await router.push('/money/capital?credit=loan')
     await nextTick()
     expect(screenA.selectedCreditId).toBe('loan')
     screenA.payoffCreditId = 'loan'
@@ -270,8 +271,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     next = navigated()
     screenA.payoffCreditId = null
     await next
-    expect(router.currentRoute.value.fullPath).toBe('/capital')
-    await router.push('/capital?credit=loan')
+    expect(router.currentRoute.value.fullPath).toBe('/money/capital')
+    await router.push('/money/capital?credit=loan')
     await nextTick()
     expect(screenA.selectedCreditId).toBe('loan')
 
@@ -280,8 +281,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     next = navigated()
     A.store.removeCredit('loan')
     await next
-    expect(router.currentRoute.value.fullPath).toBe('/capital')
-    await router.push('/capital?add=debt')
+    expect(router.currentRoute.value.fullPath).toBe('/money/capital')
+    await router.push('/money/capital?add=debt')
     await nextTick()
     expect(screenA.addDebtOpen).toBe(true)
   })
@@ -299,7 +300,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     expect(A.store.credits[0].principal).toBe(0)
 
     const router = createAppRouter(createMemoryHistory())
-    await router.push('/capital?credit=loan')
+    await router.push('/money/capital?credit=loan')
     const capitalA = mountLive(A.pinia, router)
     // Окно кредита — `CreditSheet` (Н-3): открытый кредит берёт у экрана.
     const screenA = mountLive(A.pinia, router, { view: CreditSheet, props: () => ({ creditId: capitalA.selectedCreditId }) })

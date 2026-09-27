@@ -85,7 +85,7 @@ function openMark(amount: number, account: string | null | undefined) {
 function mark(amount: number, accountId: string | null) {
   finance.markSalary(props.personId, { period: props.period, amount, accountId })
   sheet.value = null
-  void router.push(`/ritual?from=salary&person=${props.personId}&period=${props.period}`)
+  void router.push(`/week/salary?from=salary&person=${props.personId}&period=${props.period}`)
 }
 
 /** Главный путь — одно нажатие. Лист — если счёт спросить не у кого. */

@@ -102,7 +102,7 @@ function onCapitalizeChange(v: string) {
 <template>
   <div v-if="!account || !depositData" class="pt-6 text-center text-[14px] text-ink-3">
     Вклад не найден.
-    <button class="text-brand font-medium cursor-pointer" @click="router.push('/capital')">
+    <button class="text-brand font-medium cursor-pointer" @click="router.push('/money/capital')">
       К капиталу
     </button>
   </div>
@@ -111,7 +111,7 @@ function onCapitalizeChange(v: string) {
     <button
       type="button"
       class="flex items-center gap-1.5 self-start text-[13px] text-ink-2 hover:text-ink cursor-pointer"
-      @click="router.push('/capital')"
+      @click="router.push('/money/capital')"
     >
       <PhArrowLeft :size="15" /> Капитал
     </button>
@@ -175,7 +175,7 @@ function onCapitalizeChange(v: string) {
       <DangerZone
         label="Удалить вклад"
         :warning="removeWarning"
-        @confirm="() => { financeStore.removeAccount(account!.id); router.push('/capital') }"
+        @confirm="() => { financeStore.removeAccount(account!.id); router.push('/money/capital') }"
       />
     </Card>
 

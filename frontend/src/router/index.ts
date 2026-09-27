@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory, createMemoryHistory, type RouteRecordRaw } from 'vue-router'
+import { createRouter, createWebHistory, createMemoryHistory, type RouteRecordRaw, type RouteLocationRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { hasBudgetData } from '@/lib/finance'
@@ -10,6 +10,8 @@ import Overview from '@/views/Overview.vue'
 import Budget from '@/views/Budget.vue'
 import Capital from '@/views/Capital.vue'
 import Goals from '@/views/Goals.vue'
+import Money from '@/views/Money.vue'
+import Settings from '@/views/Settings.vue'
 
 // Редкие экраны — отдельными чанками (Н-9 ревью Блока 3): главный чанк без них меньше 500 kB.
 // Предкэш PWA (`generateSW`) берёт все чанки — офлайн они открываются так же.
@@ -19,6 +21,16 @@ const Ritual = () => import('@/views/Ritual.vue')
 const DebtPlan = () => import('@/views/DebtPlan.vue')
 // Выписки (B2C-07): pdf.js грузится ещё позже — только когда выбрали файл.
 const Statements = () => import('@/views/Statements.vue')
+
+/**
+ * Карта маршрутов Блока 3 (DESIGN.md §2, B2C-13): вкладки «Мечты» `/` · «Неделя» `/week` ·
+ * «Деньги» `/money`, второй уровень под `/money/*`, `/settings`. Старые адреса установленных
+ * PWA и ссылок — редиректы с сохранением query (`/capital?credit=x` → `/money/capital?credit=x`).
+ * `/ritual` без параметров — «Неделя»; с параметрами (раскладка зарплаты, остатка, освободившихся
+ * денег) — `/week/salary`, где до B2C-21 живёт прежний экран.
+ */
+const ritualRedirect = (to: { query: Record<string, unknown> }): RouteLocationRaw =>
+  Object.keys(to.query).length ? { path: '/week/salary', query: to.query as Record<string, string> } : '/week'
 
 export const routes: RouteRecordRaw[] = [
   {
@@ -38,51 +50,27 @@ export const routes: RouteRecordRaw[] = [
     component: AppShell,
     meta: { requiresAuth: true },
     children: [
-      {
-        path: '',
-        name: 'overview',
-        component: Overview,
-      },
-      {
-        path: 'budget',
-        name: 'budget',
-        component: Budget,
-      },
-      {
-        path: 'goals',
-        name: 'goals',
-        component: Goals,
-      },
-      {
-        path: 'goals/:id',
-        name: 'goal-detail',
-        component: GoalDetail,
-      },
-      {
-        path: 'capital',
-        name: 'capital',
-        component: Capital,
-      },
-      {
-        path: 'capital/:id',
-        name: 'deposit',
-        component: Deposit,
-      },
-      {
-        path: 'ritual',
-        name: 'ritual',
-        component: Ritual,
-      },
-      {
-        path: 'plan',
-        name: 'plan',
-        component: DebtPlan,
-      },
-      {
-        path: 'statements',
-        name: 'statements',
-        component: Statements,
-      },
+      { path: '', name: 'dreams', component: Overview },
+      { path: 'week', name: 'week', component: Statements },
+      { path: 'week/salary', name: 'week-salary', component: Ritual },
+      { path: 'money', name: 'money', component: Money },
+      { path: 'money/budget', name: 'budget', component: Budget },
+      { path: 'money/capital', name: 'capital', component: Capital },
+      { path: 'money/capital/:id', name: 'deposit', component: Deposit },
+      { path: 'money/plan', name: 'plan', component: DebtPlan },
+      // До B2C-18: список целей и покупок (`Goals.vue`) — по адресам «Новая мечта» и «Желания».
+      { path: 'goals/new', name: 'goal-new', component: Goals },
+      { path: 'wishes', name: 'wishes', component: Goals },
+      { path: 'goals/:id', name: 'goal-detail', component: GoalDetail },
+      { path: 'settings', name: 'settings', component: Settings },
+      // Старые адреса (до Блока 3).
+      { path: 'budget', redirect: '/money/budget' },
+      { path: 'capital', redirect: '/money/capital' },
+      { path: 'capital/:id', redirect: (to) => ({ path: `/money/capital/${String(to.params.id)}`, query: to.query }) },
+      { path: 'goals', redirect: '/' },
+      { path: 'ritual', redirect: ritualRedirect },
+      { path: 'plan', redirect: '/money/plan' },
+      { path: 'statements', redirect: '/week' },
     ],
   },
   {

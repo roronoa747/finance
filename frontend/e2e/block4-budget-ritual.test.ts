@@ -106,9 +106,9 @@ describe('e2e / block-4 — Сквозной сценарий Бюджета (П
       { key: 'd5', name: 'Свободно', note: '', amount: 630_000, updatedAt: '' },
     ]
 
-    // 2. Переход на экран «Бюджет» (/budget)
+    // 2. Переход на экран «Бюджет» (/money/budget; старый /budget — редирект, B2C-13)
     await router.push('/budget')
-    expect(router.currentRoute.value.path).toBe('/budget')
+    expect(router.currentRoute.value.path).toBe('/money/budget')
 
     // 3. Проверка режима «План»
     let amounts = budgetAmounts(financeStore.householdDoc)
@@ -164,10 +164,10 @@ describe('e2e / block-4 — Сквозной сценарий Бюджета (П
     expect(htmlList).toContain('Зарплата · Ильяс')
     expect(htmlList).toContain('Зарплата · Динара')
 
-    // 8. Сценарий Ритуала (/ritual):
+    // 8. Сценарий раскладки (бывший /ritual → /week/salary, B2C-13):
     // А) Нет запланированного снижения
-    await router.push('/ritual')
-    expect(router.currentRoute.value.path).toBe('/ritual')
+    await router.push('/week/salary')
+    expect(router.currentRoute.value.path).toBe('/week/salary')
 
     const appRitualEmpty = createSSRApp(Ritual)
     appRitualEmpty.use(router)

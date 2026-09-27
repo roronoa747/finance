@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { PhFileArrowUp } from '@phosphor-icons/vue'
 import Button from '@/components/ui/Button.vue'
 import Select from '@/components/kit/Select.vue'
@@ -22,6 +23,7 @@ import type { PersonId } from '@/types/finance'
 const auth = useAuthStore()
 const finance = useFinanceStore()
 const store = useOperationsStore()
+const route = useRoute()
 
 const BANKS: Record<string, string> = { kaspi: 'Kaspi', freedom: 'Freedom' }
 const INTERNAL = '__internal'
@@ -31,6 +33,7 @@ const canUpload = computed(() => !auth.isViewer)
 const me = computed<PersonId>(() => auth.slot ?? 'a')
 const reading = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
+const uploadBox = ref<HTMLElement | null>(null)
 const openCategory = ref<string | null>(null)
 /** Группа, для которой вводят «кому → что», и сам текст. */
 const personFor = ref<string | null>(null)
@@ -143,6 +146,9 @@ async function pick(e: Event) {
 onMounted(() => {
   void store.loadUploads()
   void store.pull()
+  // «Загрузить выписку» из листа «+» (`/week?upload=1`, B2C-13): окно выбора файла браузер
+  // открывает только по нажатию — подводим к кнопке и ставим на неё фокус.
+  if (route.query.upload === '1') uploadBox.value?.querySelector('button')?.focus()
 })
 </script>
 
@@ -226,10 +232,12 @@ onMounted(() => {
     <template v-else>
       <template v-if="canUpload">
         <input ref="fileInput" type="file" accept="application/pdf,.pdf" multiple class="hidden" @change="pick" />
-        <Button class="w-full" :disabled="reading" @click="fileInput?.click()">
-          <PhFileArrowUp :size="16" />
-          {{ reading ? 'Читаем выписку…' : 'Загрузить выписку' }}
-        </Button>
+        <div ref="uploadBox">
+          <Button class="w-full" :disabled="reading" @click="fileInput?.click()">
+            <PhFileArrowUp :size="16" />
+            {{ reading ? 'Читаем выписку…' : 'Загрузить выписку' }}
+          </Button>
+        </div>
         <p class="-mt-2 px-0.5 text-[12px] text-ink-3">PDF из приложения Kaspi или Freedom. Файл остаётся на телефоне.</p>
       </template>
       <p v-if="store.pendingCount" class="rounded-xl border border-line bg-surface-2 p-3 text-[13px] text-ink-2">

@@ -322,7 +322,7 @@ function home() {
     <p class="text-[14px] text-ink-2">{{ empty }}</p>
     <Button variant="outline" @click="router.push('/')">На главную</Button>
     <RouterLink
-      to="/statements"
+      to="/week"
       class="mt-2 w-full max-w-[340px] rounded-2xl border border-line bg-surface p-3.5 text-left transition-colors hover:bg-surface-2"
     >
       <b class="block text-[14px] font-semibold text-ink">Выписки недели</b>
@@ -450,7 +450,7 @@ function home() {
     </p>
 
     <RouterLink
-      to="/statements"
+      to="/week"
       class="rounded-2xl border border-line bg-surface p-3.5 text-left transition-colors hover:bg-surface-2"
     >
       <b class="block text-[14px] font-semibold text-ink">Выписки недели</b>

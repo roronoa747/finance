@@ -14,6 +14,22 @@ describe('router/index.ts — Навигационные гарды и защи�
     clear: () => storageMap.clear(),
   }
 
+  function signIn() {
+    useAuthStore().setAuthData({
+      token: 'tok-123',
+      user: { id: 'u1', email: 'test@example.com', created_at: '' },
+      household: { id: 'h1', name: 'Family', created_by: 'u1', created_at: '' },
+      member: {
+        household_id: 'h1',
+        user_id: 'u1',
+        slot: 'a',
+        display_name: 'Ильяс',
+        role: 'member',
+        joined_at: '',
+      },
+    })
+  }
+
   beforeEach(() => {
     vi.stubGlobal('localStorage', mockLocalStorage)
     mockLocalStorage.clear()
@@ -28,7 +44,7 @@ describe('router/index.ts — Навигационные гарды и защи�
     await router.push('/')
     expect(router.currentRoute.value.path).toBe('/access')
 
-    await router.push('/budget')
+    await router.push('/money/budget')
     expect(router.currentRoute.value.path).toBe('/access')
 
     await router.push('/setup')
@@ -43,50 +59,22 @@ describe('router/index.ts — Навигационные гарды и защи�
 
   it('авторизованный пользователь без завершённой настройки перенаправляется на /setup', async () => {
     const router = createAppRouter(createMemoryHistory())
-    const authStore = useAuthStore()
+    signIn()
     const financeStore = useFinanceStore()
-
-    authStore.setAuthData({
-      token: 'tok-123',
-      user: { id: 'u1', email: 'test@example.com', created_at: '' },
-      household: { id: 'h1', name: 'Family', created_by: 'u1', created_at: '' },
-      member: {
-        household_id: 'h1',
-        user_id: 'u1',
-        slot: 'a',
-        display_name: 'Ильяс',
-        role: 'member',
-        joined_at: '',
-      },
-    })
-    expect(authStore.isAuthenticated).toBe(true)
+    expect(useAuthStore().isAuthenticated).toBe(true)
     expect(financeStore.setupDone).toBe(false)
 
     await router.push('/')
     expect(router.currentRoute.value.path).toBe('/setup')
 
-    await router.push('/budget')
+    await router.push('/money/budget')
     expect(router.currentRoute.value.path).toBe('/setup')
   })
 
   it('авторизованный пользователь при попытке зайти на /access отправляется в приложение', async () => {
     const router = createAppRouter(createMemoryHistory())
-    const authStore = useAuthStore()
+    signIn()
     const financeStore = useFinanceStore()
-
-    authStore.setAuthData({
-      token: 'tok-123',
-      user: { id: 'u1', email: 'test@example.com', created_at: '' },
-      household: { id: 'h1', name: 'Family', created_by: 'u1', created_at: '' },
-      member: {
-        household_id: 'h1',
-        user_id: 'u1',
-        slot: 'a',
-        display_name: 'Ильяс',
-        role: 'member',
-        joined_at: '',
-      },
-    })
 
     // 1. Если настройка не завершена -> /setup
     await router.push('/access')
@@ -100,36 +88,38 @@ describe('router/index.ts — Навигационные гарды и защи�
     expect(router.currentRoute.value.path).toBe('/')
   })
 
-  it('авторизованный пользователь с завершённым бюджетом имеет доступ к / и вкладкам', async () => {
+  it('авторизованный пользователь с завершённым бюджетом имеет доступ к / и вкладкам «Неделя», «Деньги», второму уровню и настройкам', async () => {
     const router = createAppRouter(createMemoryHistory())
-    const authStore = useAuthStore()
-    const financeStore = useFinanceStore()
+    signIn()
+    useFinanceStore().finishSetup()
 
-    authStore.setAuthData({
-      token: 'tok-123',
-      user: { id: 'u1', email: 'test@example.com', created_at: '' },
-      household: { id: 'h1', name: 'Family', created_by: 'u1', created_at: '' },
-      member: {
-        household_id: 'h1',
-        user_id: 'u1',
-        slot: 'a',
-        display_name: 'Ильяс',
-        role: 'member',
-        joined_at: '',
-      },
+    for (const path of ['/', '/week', '/week/salary', '/money', '/money/budget', '/money/capital', '/money/capital/x', '/money/plan', '/goals/x', '/goals/new', '/wishes', '/settings']) {
+      await router.push(path)
+      expect(router.currentRoute.value.path).toBe(path)
+    }
+  })
+
+  describe('B2C-13: старые адреса установленных PWA — редиректы с сохранением параметров', () => {
+    it.each([
+      ['/budget', '/money/budget'],
+      ['/capital', '/money/capital'],
+      ['/capital?credit=loan', '/money/capital?credit=loan'],
+      ['/capital?add=debt', '/money/capital?add=debt'],
+      ['/capital/acc-depo', '/money/capital/acc-depo'],
+      ['/goals', '/'],
+      ['/goals/g-japan', '/goals/g-japan'],
+      ['/ritual', '/week'],
+      ['/ritual?from=salary&person=a&period=2026-09', '/week/salary?from=salary&person=a&period=2026-09'],
+      ['/ritual?from=rest&amount=80000&period=2026-09', '/week/salary?from=rest&amount=80000&period=2026-09'],
+      ['/plan', '/money/plan'],
+      ['/statements', '/week'],
+      ['/nothing-here', '/'],
+    ])('%s → %s', async (from, to) => {
+      const router = createAppRouter(createMemoryHistory())
+      signIn()
+      useFinanceStore().finishSetup()
+      await router.push(from)
+      expect(router.currentRoute.value.fullPath).toBe(to)
     })
-    financeStore.finishSetup()
-
-    await router.push('/')
-    expect(router.currentRoute.value.path).toBe('/')
-
-    await router.push('/budget')
-    expect(router.currentRoute.value.path).toBe('/budget')
-
-    await router.push('/goals')
-    expect(router.currentRoute.value.path).toBe('/goals')
-
-    await router.push('/capital')
-    expect(router.currentRoute.value.path).toBe('/capital')
   })
 })

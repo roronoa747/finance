@@ -2,52 +2,66 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter, RouterLink, RouterView } from 'vue-router'
 import {
-  PhHouse,
-  PhChartBar,
-  PhPlus,
-  PhTarget,
-  PhVault,
-  PhPaintBrush,
-  PhSparkle,
-  PhUserPlus,
-  PhTrendUp,
-  PhShoppingBag,
-  PhReceipt,
-  PhCreditCard,
-  PhX,
+  PhHeart,
+  PhCalendarBlank,
+  PhWallet,
+  PhGearSix,
   PhFileArrowUp,
+  PhShoppingBag,
+  PhCoins,
+  PhRepeat,
+  PhCreditCard,
 } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { monthTitle, monthKey } from '@/lib/dates'
+import { monthKey, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
 import SyncBadge from '@/components/SyncBadge.vue'
-import AppearancePanel from '@/components/AppearancePanel.vue'
+import Avatar from '@/components/kit/Avatar.vue'
+import IconBox from '@/components/kit/IconBox.vue'
 import Row from '@/components/kit/Row.vue'
+import Sheet from '@/components/kit/Sheet.vue'
+import Tabs from '@/components/kit/Tabs.vue'
 
+/**
+ * Оболочка (DESIGN.md §2, §5; B2C-13): шапка `.topbar` — заголовок экрана Piazzolla 30 с
+ * подписью, аватары участников (точка при «не сошлось» — `SyncBadge` compact), шестерёнка →
+ * `/settings`; капсула вкладок «Мечты · Неделя · Деньги» и «+»; лист «+» на `Sheet` — шесть
+ * действий, у viewer только «Покупка в список желаний». «Советника» нет.
+ */
 const route = useRoute()
 const router = useRouter()
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
 
 const addOpen = ref(false)
-const themeOpen = ref(false)
 
-const people = computed(() => financeStore.people)
-const memberCount = computed(() => people.value.length)
+const people = computed(() => financeStore.people.filter((p) => !p.deletedAt))
+const names = computed(() => people.value.map((p) => p.name).join(' и '))
+const monthName = computed(() => MONTHS_NOM[parseMonthKey(monthKey()).month])
 
-const title = computed(() => {
+/** Заголовок и подпись шапки по маршруту (DESIGN.md §6 «Заголовки экранов»). */
+const header = computed<{ title: string; sub?: string }>(() => {
   const p = route.path
-  if (p === '/') return monthTitle(monthKey())
-  if (p.startsWith('/budget')) return 'Бюджет'
-  // Список — по точному пути, экран одной записи — своё имя (React `AppShell.tsx:36-38`).
-  if (p === '/goals') return 'Цели и покупки'
-  if (p.startsWith('/goals/')) return 'Цель'
-  if (p === '/capital') return 'Капитал'
-  if (p.startsWith('/capital/')) return 'Вклад'
-  if (p.startsWith('/ritual')) return 'Ритуал'
-  if (p.startsWith('/plan')) return 'План'
-  return 'Family Finance'
+  if (p === '/') return { title: 'Мечты', sub: `${monthName.value} · ${names.value}` }
+  if (p === '/week/salary') return { title: 'Разложим' }
+  if (p.startsWith('/week')) return { title: 'Неделя' }
+  if (p === '/money') return { title: 'Деньги', sub: `${monthName.value} · ${names.value}` }
+  if (p.startsWith('/money/budget')) return { title: 'Бюджет' }
+  if (p === '/money/capital') return { title: 'Капитал', sub: 'счета и долги семьи' }
+  if (p.startsWith('/money/capital/')) return { title: 'Вклад' }
+  if (p.startsWith('/money/plan')) return { title: 'План' }
+  if (p === '/goals/new') return { title: 'Новая мечта' }
+  if (p.startsWith('/goals/')) return { title: 'Цель' }
+  if (p === '/wishes') return { title: 'Желания', sub: 'не мечты — покупки поменьше' }
+  if (p === '/settings') return { title: 'Настройки' }
+  return { title: 'Family Finance' }
 })
+
+const tabs = computed(() => [
+  { to: '/', label: 'Мечты', icon: PhHeart, active: route.path === '/' || route.path.startsWith('/goals') || route.path === '/wishes' },
+  { to: '/week', label: 'Неделя', icon: PhCalendarBlank, active: route.path.startsWith('/week') },
+  { to: '/money', label: 'Деньги', icon: PhWallet, active: route.path.startsWith('/money') },
+])
 
 // Прокручивается не окно, а <main>: новый экран открывается сверху, а не на прокрутке
 // прошлого (после «Выбрать этот план» шаг месяца был за верхом экрана). По path, не
@@ -61,238 +75,58 @@ watch(
   { flush: 'post' },
 )
 
+/** Лист «+» (DESIGN.md §2): порядок действий — как в макете; viewer — только желания. */
+const actions = computed(() => {
+  const edit = !authStore.isViewer
+  return [
+    edit && { to: '/week?upload=1', title: 'Загрузить выписку', note: 'Kaspi или Freedom — траты недели по разделам', icon: PhFileArrowUp },
+    edit && { to: '/goals/new', title: 'Новая мечта', note: 'фото, сумма и срок', icon: PhHeart },
+    { to: '/wishes', title: 'Покупка в список желаний', note: 'себе, партнёру или сюрприз', icon: PhShoppingBag },
+    edit && { to: '/money/capital?income=1', title: 'Внеплановый доход', note: 'премия, подарок, возврат', icon: PhCoins },
+    edit && { to: '/money/capital?add=payment', title: 'Обязательство или подписка', note: 'аренда, связь, страховка', icon: PhRepeat },
+    edit && { to: '/money/capital?add=debt', title: 'Кредит или рассрочка', note: 'долг, платёж, график', icon: PhCreditCard },
+  ].filter((a): a is Exclude<typeof a, false> => Boolean(a))
+})
+
 function navigateAndClose(to: string) {
   addOpen.value = false
   void router.push(to)
-}
-function onSparkleClick() {
-  if (typeof window !== 'undefined') {
-    window.alert('ИИ-советник появится в продуктовом обновлении после подключения аналитики.')
-  }
 }
 </script>
 
 <template>
   <div
-    class="mx-auto flex h-dvh w-full max-w-[520px] flex-col overflow-hidden bg-canvas md:my-8 md:h-[860px] md:max-w-[420px] md:rounded-[42px] md:border md:border-line-strong md:shadow-2xl text-left"
+    class="mx-auto flex h-dvh w-full max-w-[520px] flex-col overflow-hidden bg-canvas text-left md:my-8 md:h-[860px] md:max-w-[420px] md:rounded-[42px] md:border md:border-line-strong"
   >
-    <!-- Top Header -->
-    <header class="flex shrink-0 items-center gap-3 bg-canvas px-4 pb-3 pt-4 border-b border-line/40">
-      <!-- Avatars -->
-      <div class="flex items-center">
-        <template v-if="people.length">
-          <span
-            v-for="(p, i) in people"
-            :key="p.id"
-            class="grid size-7 place-items-center rounded-full border-2 border-canvas text-[12px] font-semibold text-dot-ink shadow-xs"
-            :style="{ background: `var(--p${p.id})`, marginLeft: i ? '-9px' : '0' }"
-            :title="p.name"
-          >
-            {{ p.name.slice(0, 1) }}
-          </span>
-        </template>
-        <span
-          v-else
-          class="grid size-7 place-items-center rounded-full border-2 border-canvas bg-brand text-[12px] font-semibold text-brand-ink"
-        >
-          FF
-        </span>
+    <header class="flex shrink-0 items-center justify-between gap-3 px-5 pb-2 pt-4">
+      <div class="min-w-0">
+        <h1 class="type-h1 truncate text-ink">{{ header.title }}</h1>
+        <div v-if="header.sub" class="mt-0.5 truncate type-meta">{{ header.sub }}</div>
       </div>
-
-      <!-- Title & SyncBadge -->
-      <div class="mr-auto min-w-0">
-        <div class="truncate font-display text-[16px] font-semibold leading-tight text-ink">
-          {{ title }}
+      <div class="flex shrink-0 items-center gap-2.5">
+        <SyncBadge compact />
+        <!-- Аватары: до B2C-18 без действия; точка при «не сошлось» — внутри SyncBadge compact. -->
+        <div v-if="people.length" class="flex" aria-hidden="true">
+          <Avatar v-for="(p, i) in people" :key="p.id" :id="p.id" :name="p.name" :class="i ? '-ml-2' : ''" />
         </div>
-        <SyncBadge />
+        <RouterLink to="/settings" aria-label="Настройки" class="rounded-[12px]">
+          <IconBox><PhGearSix :size="20" /></IconBox>
+        </RouterLink>
       </div>
-
-      <!-- Header actions -->
-      <button
-        type="button"
-        aria-label="Оформление"
-        class="grid size-[34px] place-items-center rounded-xl text-ink-2 hover:bg-surface-3 hover:text-ink transition-colors cursor-pointer"
-        @click="themeOpen = true"
-      >
-        <PhPaintBrush :size="18" />
-      </button>
-
-      <button
-        type="button"
-        aria-label="Советник"
-        class="grid size-[34px] place-items-center rounded-xl text-ink-2 hover:bg-surface-3 hover:text-ink transition-colors cursor-pointer"
-        @click="onSparkleClick"
-      >
-        <PhSparkle :size="18" />
-      </button>
     </header>
 
-    <!-- Main Content Area -->
     <main ref="mainEl" class="flex-1 overflow-y-auto px-4 pb-6 [overscroll-behavior:contain]">
       <RouterView />
     </main>
 
-    <!-- Bottom Navigation Bar -->
-    <nav class="grid shrink-0 grid-cols-5 border-t border-line bg-surface px-1 py-1.5 shadow-xs select-none">
-      <!-- Tab: Обзор -->
-      <RouterLink
-        to="/"
-        class="flex flex-col items-center justify-center gap-0.5 px-0.5 transition-colors cursor-pointer"
-        :class="route.path === '/' ? 'text-brand font-semibold' : 'text-ink-3 hover:text-ink'"
-      >
-        <PhHouse :size="20" :weight="route.path === '/' ? 'fill' : 'regular'" />
-        <span class="text-[10.5px]">Обзор</span>
-      </RouterLink>
+    <Tabs :items="tabs" plus-label="Добавить" @plus="addOpen = true" />
 
-      <!-- Tab: Бюджет -->
-      <RouterLink
-        to="/budget"
-        class="flex flex-col items-center justify-center gap-0.5 px-0.5 transition-colors cursor-pointer"
-        :class="route.path.startsWith('/budget') ? 'text-brand font-semibold' : 'text-ink-3 hover:text-ink'"
-      >
-        <PhChartBar :size="20" :weight="route.path.startsWith('/budget') ? 'fill' : 'regular'" />
-        <span class="text-[10.5px]">Бюджет</span>
-      </RouterLink>
-
-      <!-- Center Plus Button -->
-      <div class="flex items-center justify-center">
-        <button
-          type="button"
-          aria-label="Добавить"
-          class="grid size-9 place-items-center rounded-xl bg-brand text-brand-ink transition-transform active:scale-95 shadow-xs cursor-pointer"
-          @click="addOpen = true"
-        >
-          <PhPlus :size="19" weight="bold" />
-        </button>
+    <Sheet :open="addOpen" title="Добавить" @close="addOpen = false">
+      <div class="flex flex-col">
+        <Row v-for="a in actions" :key="a.to" :title="a.title" :note="a.note" clickable dense @click="navigateAndClose(a.to)">
+          <template #icon><component :is="a.icon" :size="18" /></template>
+        </Row>
       </div>
-
-      <!-- Tab: Цели -->
-      <RouterLink
-        to="/goals"
-        class="flex flex-col items-center justify-center gap-0.5 px-0.5 transition-colors cursor-pointer"
-        :class="route.path.startsWith('/goals') ? 'text-brand font-semibold' : 'text-ink-3 hover:text-ink'"
-      >
-        <PhTarget :size="20" :weight="route.path.startsWith('/goals') ? 'fill' : 'regular'" />
-        <span class="text-[10.5px]">Цели</span>
-      </RouterLink>
-
-      <!-- Tab: Капитал -->
-      <RouterLink
-        to="/capital"
-        class="flex flex-col items-center justify-center gap-0.5 px-0.5 transition-colors cursor-pointer"
-        :class="route.path.startsWith('/capital') ? 'text-brand font-semibold' : 'text-ink-3 hover:text-ink'"
-      >
-        <PhVault :size="20" :weight="route.path.startsWith('/capital') ? 'fill' : 'regular'" />
-        <span class="text-[10.5px]">Капитал</span>
-      </RouterLink>
-    </nav>
-
-    <!-- Quick Add Drawer / Modal -->
-    <div
-      v-if="addOpen"
-      class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-xs transition-opacity"
-      @click.self="addOpen = false"
-    >
-      <div class="w-full max-w-[440px] rounded-t-3xl border border-line bg-surface p-4 pb-8 shadow-2xl">
-        <div class="mb-3 flex items-center justify-between px-1">
-          <h3 class="font-display text-[17px] font-semibold text-ink">Добавить</h3>
-          <button
-            type="button"
-            class="grid size-8 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
-            @click="addOpen = false"
-          >
-            <PhX :size="16" />
-          </button>
-        </div>
-
-        <div class="flex flex-col divide-y divide-line">
-          <Row
-            v-if="!authStore.isViewer"
-            title="Загрузить выписку"
-            note="Kaspi или Freedom — траты недели по разделам"
-            clickable
-            @click="navigateAndClose('/statements')"
-          >
-            <template #icon><PhFileArrowUp :size="16" class="text-brand" /></template>
-          </Row>
-
-          <Row
-            v-if="memberCount < 2"
-            title="Пригласить партнёра"
-            note="код для второго участника"
-            clickable
-            @click="navigateAndClose('/')"
-          >
-            <template #icon><PhUserPlus :size="16" class="text-brand" /></template>
-          </Row>
-
-          <Row
-            title="Внеплановый доход"
-            note="премия, подарок, возврат"
-            clickable
-            @click="navigateAndClose('/capital?income=1')"
-          >
-            <template #icon><PhTrendUp :size="16" class="text-brand" /></template>
-          </Row>
-
-          <Row
-            title="Пополнить цель"
-            note="взнос в накопления"
-            clickable
-            @click="navigateAndClose('/goals')"
-          >
-            <template #icon><PhTarget :size="16" class="text-brand" /></template>
-          </Row>
-
-          <Row
-            title="Покупка в дом"
-            note="в семейный список желаний"
-            clickable
-            @click="navigateAndClose('/goals?tab=wish')"
-          >
-            <template #icon><PhShoppingBag :size="16" class="text-brand" /></template>
-          </Row>
-
-          <Row
-            title="Подписка или обязательство"
-            note="связь, страховка, абонемент"
-            clickable
-            @click="navigateAndClose('/capital?add=payment')"
-          >
-            <template #icon><PhReceipt :size="16" class="text-brand" /></template>
-          </Row>
-
-          <Row
-            title="Кредит или рассрочка"
-            note="долг, рассрочка, график"
-            clickable
-            @click="navigateAndClose('/capital?add=debt')"
-          >
-            <template #icon><PhCreditCard :size="16" class="text-brand" /></template>
-          </Row>
-        </div>
-      </div>
-    </div>
-
-    <!-- Appearance Drawer / Modal -->
-    <div
-      v-if="themeOpen"
-      class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-xs transition-opacity"
-      @click.self="themeOpen = false"
-    >
-      <div class="w-full max-w-[440px] max-h-[85dvh] overflow-y-auto rounded-t-3xl border border-line bg-surface p-5 pb-8 shadow-2xl">
-        <div class="mb-3 flex items-center justify-between">
-          <h3 class="font-display text-[17px] font-semibold text-ink">Оформление</h3>
-          <button
-            type="button"
-            class="grid size-8 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
-            @click="themeOpen = false"
-          >
-            <PhX :size="16" />
-          </button>
-        </div>
-        <AppearancePanel />
-      </div>
-    </div>
+    </Sheet>
   </div>
 </template>

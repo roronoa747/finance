@@ -210,7 +210,7 @@ function distributeRest() {
   const amount = parseMoney(restText.value)
   if (amount <= 0) return
   answerRest()
-  void router.push(`/ritual?from=rest&amount=${amount}&period=${key.value}`)
+  void router.push(`/week/salary?from=rest&amount=${amount}&period=${key.value}`)
 }
 
 // «Оставить?» (Р-20): один вопрос за раз, спокойно; отвечает участник, не viewer
@@ -317,7 +317,7 @@ const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: ma
       <button
         type="button"
         class="w-full rounded-xl bg-brand px-4 py-2.5 text-[14px] font-semibold text-brand-ink active:translate-y-px cursor-pointer"
-        @click="router.push('/ritual')"
+        @click="router.push('/week/salary?from=freed')"
       >
         Распределить
       </button>
@@ -452,7 +452,7 @@ const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: ma
     <!-- Секция «Впереди» -->
     <Section title="Впереди">
       <template #action>
-        <RouterLink to="/budget" class="text-[13px] text-brand hover:underline">Календарь</RouterLink>
+        <RouterLink to="/money/budget" class="text-[13px] text-brand hover:underline">Календарь</RouterLink>
       </template>
     </Section>
 
@@ -478,7 +478,7 @@ const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: ma
     <!-- Секция «Цели» -->
     <Section title="Цели">
       <template #action>
-        <RouterLink to="/goals" class="text-[13px] text-brand hover:underline">Все</RouterLink>
+        <RouterLink to="/wishes" class="text-[13px] text-brand hover:underline">Все</RouterLink>
       </template>
     </Section>
 
@@ -503,7 +503,7 @@ const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: ma
 
       <RouterLink
         v-if="!goals.length"
-        to="/goals"
+        to="/goals/new"
         class="flex w-full items-center gap-3 rounded-2xl border border-dashed border-line-strong bg-surface px-4 py-4"
       >
         <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-3 text-ink-2">
