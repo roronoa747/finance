@@ -7,7 +7,7 @@ import { apiClient, ApiError } from '@/api/client'
 import { hasBudgetData } from '@/lib/finance'
 import { renderScreen, screenMixin } from '@/test/screenState'
 
-describe('views/Access & Setup — Бизнес-сценарии экранов авторизации и настройки', () => {
+describe('views/Access & Start — сценарии входа и первого запуска', () => {
   const storageMap = new Map<string, string>()
   const mockLocalStorage = {
     getItem: (key: string) => storageMap.get(key) ?? null,
@@ -52,7 +52,7 @@ describe('views/Access & Setup — Бизнес-сценарии экранов 
     expect(financeStore.setupDone).toBe(false)
   })
 
-  it('сценарий пошагового мастера настройки (Setup.vue): сохранение человека, жилья, кредита и цели', () => {
+  it('записи первого запуска — стор: человек, жильё, кредит, цель, setupDoneAt', () => {
     const financeStore = useFinanceStore()
     expect(financeStore.setupDone).toBe(false)
 
@@ -186,80 +186,6 @@ describe('views/Access & Setup — Бизнес-сценарии экранов 
     expect(html).toContain('Попробовать в демо-режиме без регистрации')
   })
 
-  it('компонентный рендер Setup.vue: проверка отображения шага 1 (доход), полей ввода и кнопки продолжения', async () => {
-    const { createSSRApp } = await import('vue')
-    const { renderToString } = await import('vue/server-renderer')
-    const { createMemoryHistory } = await import('vue-router')
-    const { createAppRouter } = await import('@/router')
-    const { default: Setup } = await import('./Setup.vue')
-
-    const router = createAppRouter(createMemoryHistory())
-    const app = createSSRApp(Setup)
-    app.use(router)
-
-    const html = await renderToString(app)
-    expect(html).toContain('Начнём с дохода')
-    expect(html).toContain('Как вас зовут')
-    expect(html).toContain('Зарплата в месяц, ₸')
-    expect(html).toContain('День зарплаты (1–28)')
-    expect(html).toContain('Дальше')
-  })
-
-  it('PV-23 п. 1: пояснения и подзаголовки мастера как React, «Есть кредит?», цвет цели — ряд кита', async () => {
-    const { default: Setup } = await import('./Setup.vue')
-    const at = async (i: number) =>
-      (await renderScreen(Setup, '/setup', undefined, [screenMixin({ currentStepIndex: i })])).replace(/\s+/g, ' ')
-    const income = await at(0)
-    expect(income).toContain('День нужен, чтобы календарь показал провал между вашей зарплатой и зарплатой партнёра — когда платежи уже прошли, а деньги ещё не пришли.')
-    expect(income).toContain('Оклад без бонусов. Нерегулярные премии добавим отдельно — они не должны попадать в план месяца.')
-    const housing = await at(1)
-    expect(housing).toContain('Коммуналка в месяц, ₸ — примерно')
-    expect(housing).toContain('Коммуналку приложение будет помечать как оценку: она плавает по сезонам, и выдавать её за точную цифру нечестно.')
-    expect(housing).toContain('С неё считается и доля жилья в доходе, и подушка.')
-    const credit = await at(2)
-    expect(credit).toContain('Есть кредит?')
-    expect(credit).toContain('Если есть — приложение посчитает переплату и покажет, что даст досрочное погашение.')
-    const goal = await at(3)
-    expect(goal).toContain('Одной цели достаточно, остальные добавите позже.')
-    expect(goal).toContain('role="group" aria-label="Цвет"')
-    const invite = await at(4)
-    expect(invite).toContain('Создадим короткий код — его удобно продиктовать вслух, не пересылая ничего в переписке.')
-    const code = (await renderScreen(Setup, '/setup', undefined, [screenMixin({ currentStepIndex: 4, inviteCode: 'K7Q2M9' })])).replace(/\s+/g, ' ')
-    expect(code).toContain('Код действует две недели и срабатывает один раз.')
-  })
-
-  it('PV-06: удалённая цель и удалённое обязательство не делают семью «настроенной» — полный мастер из 5 шагов', async () => {
-    const { createSSRApp } = await import('vue')
-    const { renderToString } = await import('vue/server-renderer')
-    const { createMemoryHistory } = await import('vue-router')
-    const { createAppRouter } = await import('@/router')
-    const { default: Setup } = await import('./Setup.vue')
-    const render = () => {
-      const app = createSSRApp(Setup)
-      app.use(createAppRouter(createMemoryHistory()))
-      return renderToString(app)
-    }
-    const bars = (html: string) => html.match(/h-\[3px\] flex-1 rounded-full/g)?.length ?? 0
-
-    const store = useFinanceStore()
-    const T = '2026-09-01T00:00:00Z'
-    store.householdDoc.goals = [
-      { id: 'g', name: 'Старая', need: 1, seed: 0, have: 0, monthly: 0, hue: 'teal', planPct: 0, movements: [], updatedAt: T, deletedAt: T },
-    ]
-    store.householdDoc.obligations = [
-      { id: 'o', name: 'Старая аренда', note: '', day: 5, category: 'd1', versions: [{ from: '2026-01', amount: 1 }], updatedAt: T, deletedAt: T },
-    ]
-    let html = await render()
-    expect(html).toContain('Начнём с дохода')
-    expect(bars(html)).toBe(5)
-
-    // Живая цель — партнёр уже настроил: только доход.
-    store.householdDoc.goals = [{ ...store.householdDoc.goals[0], deletedAt: null }]
-    html = await render()
-    expect(html).toContain('Добавьте свой доход')
-    expect(bars(html)).toBe(1)
-  })
-
   describe('PV-20: ошибка сервера — русским текстом на экране', () => {
     /** Экран в SSR и его setupState: SSR не нажимает, поэтому действие зовём сами и рендерим итог. */
     async function screen(view: Component, path: string, action: string, state: Record<string, unknown>) {
@@ -290,11 +216,11 @@ describe('views/Access & Setup — Бизнес-сценарии экранов 
       }
     })
 
-    it('Setup, шаг приглашения: ошибка создания кода — текстом под кнопкой', async () => {
-      const { default: Setup } = await import('./Setup.vue')
+    it('Start, шаг приглашения (B2C-19): ошибка создания кода — текстом под кнопкой', async () => {
+      const { default: Start } = await import('./Start.vue')
       vi.spyOn(apiClient, 'createInvite').mockRejectedValue(new ApiError('HTTP error 500 Internal Server Error', 500))
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      const { vm, render } = await screen(Setup, '/setup', 'handleMakeInvite', { currentStepIndex: 4 })
+      const { vm, render } = await screen(Start, '/start/invite', 'handleMakeInvite', {})
       expect(vm.step).toBe('invite')
       await vm.handleMakeInvite()
       const html = await render({ inviteError: vm.inviteError })

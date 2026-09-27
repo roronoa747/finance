@@ -25,10 +25,15 @@ import TemplateTile from '@/components/kit/TemplateTile.vue'
  * цель семьи — главная (стор). Тот же экран — из «+» и из первого запуска (`?next=`).
  * Картинка грузится после создания (`lib/photos/goalPhoto`), офлайн — при следующей сети.
  */
+/** Куда идти после мечты: первый запуск (B2C-19) рендерит экран внутри себя и задаёт следующий шаг. */
+const props = defineProps<{ next?: string }>()
+
 const route = useRoute()
 const router = useRouter()
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
+
+const nextPath = () => props.next ?? (route.query.next ? String(route.query.next) : null)
 
 const step = ref<'pick' | 'form'>('pick')
 const template = ref<GoalTemplate | null>(null)
@@ -86,7 +91,7 @@ function next() {
   step.value = 'form'
 }
 function skip() {
-  void router.push(String(route.query.next ?? '/'))
+  void router.push(nextPath() ?? '/')
 }
 
 async function create() {
@@ -98,8 +103,7 @@ async function create() {
     hue: template.value?.hue ?? 'blue',
     template: template.value?.id ?? null,
   })
-  const to = String(route.query.next ?? `/goals/${id}`)
-  await router.push(to)
+  await router.push(nextPath() ?? `/goals/${id}`)
   // Картинка — после перехода: цель уже есть, фото догрузится (или при следующей сети).
   if (ownFile.value) void attachFile(financeStore, id, ownFile.value)
   else if (template.value) void attachTemplate(financeStore, id, template.value)

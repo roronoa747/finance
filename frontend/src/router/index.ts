@@ -2,9 +2,9 @@ import { createRouter, createWebHistory, createMemoryHistory, type RouteRecordRa
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { hasBudgetData } from '@/lib/finance'
+import { landingPath } from '@/router/landing'
 
 import Access from '@/views/Access.vue'
-import Setup from '@/views/Setup.vue'
 import AppShell from '@/components/AppShell.vue'
 import Dreams from '@/views/Dreams.vue'
 import Budget from '@/views/Budget.vue'
@@ -23,6 +23,8 @@ const DebtPlan = () => import('@/views/DebtPlan.vue')
 const Statements = () => import('@/views/Statements.vue')
 // Новая мечта (B2C-18): шаблоны с картинками — редкий экран, отдельным чанком.
 const GoalNew = () => import('@/views/GoalNew.vue')
+// Первый запуск (B2C-19): один раз на семью — отдельным чанком.
+const Start = () => import('@/views/Start.vue')
 
 /**
  * Карта маршрутов Блока 3 (DESIGN.md §2, B2C-13): вкладки «Мечты» `/` · «Неделя» `/week` ·
@@ -42,11 +44,13 @@ export const routes: RouteRecordRaw[] = [
     meta: { public: true },
   },
   {
-    path: '/setup',
-    name: 'setup',
-    component: Setup,
+    path: '/start/:step?',
+    name: 'start',
+    component: Start,
     meta: { requiresAuth: true },
   },
+  // Мастер настройки (до Блока 3) — теперь первый запуск из выписки.
+  { path: '/setup', redirect: '/start' },
   {
     path: '/',
     component: AppShell,
@@ -96,10 +100,7 @@ export function createAppRouter(history = typeof window !== 'undefined' ? create
 
     // 1. Публичный маршрут /access
     if (to.path === '/access') {
-      if (isAuthed) {
-        const isReady = financeStore.setupDone || hasBudgetData(financeStore.householdDoc)
-        return next(isReady ? '/' : '/setup')
-      }
+      if (isAuthed) return next(landingPath(authStore, financeStore))
       return next()
     }
 
@@ -108,15 +109,15 @@ export function createAppRouter(history = typeof window !== 'undefined' ? create
       return next({ path: '/access', query: to.query })
     }
 
-    // 3. Если авторизован, проверяем прохождение настройки
+    // 3. Первый запуск (`landingPath`): семья без данных — только `/start`; семья с данными, но не
+    // настроенная (ответы посреди потока) — и `/start`, и главный; настроенной семье `/start` открыт
+    // участнику без своей записи (партнёр по коду), остальным — главный. Viewer — мимо.
+    const onStart = to.path === '/start' || to.path.startsWith('/start/')
+    const landing = landingPath(authStore, financeStore)
     const setupCompleted = financeStore.setupDone || hasBudgetData(financeStore.householdDoc)
 
-    if (to.path !== '/setup' && !setupCompleted) {
-      return next('/setup')
-    }
-    if (to.path === '/setup' && setupCompleted) {
-      return next('/')
-    }
+    if (!onStart && landing === '/start' && !setupCompleted) return next('/start')
+    if (onStart && landing !== '/start') return next('/')
 
     next()
   })

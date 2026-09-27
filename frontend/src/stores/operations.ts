@@ -383,6 +383,13 @@ export const useOperationsStore = defineStore('operations', () => {
     }
   }
 
+  /** Демо-пример (B2C-19 п. 4): записи загрузок обоих, чтобы главный показывал картину недели. */
+  function seedDemoUploads(list: StatementUploadResponse[]) {
+    if (!demo.value) return
+    demoUploads.value = list
+    save()
+  }
+
   async function loadUploads(client: ApiClient = apiClient) {
     if (demo.value) return
     try {
@@ -416,6 +423,7 @@ export const useOperationsStore = defineStore('operations', () => {
     flush,
     pull,
     loadUploads,
+    seedDemoUploads,
     clear,
   }
 })

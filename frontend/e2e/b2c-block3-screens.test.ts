@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import type { ApiClient } from '../src/api/client'
 import { useAuthStore } from '../src/stores/auth'
-import { useFinanceStore } from '../src/stores/finance'
+import { defaultSyncDoc, useFinanceStore } from '../src/stores/finance'
 import { useOperationsStore } from '../src/stores/operations'
 import { apiClient } from '../src/api/client'
 import { assignIds } from '../src/lib/statements/model'
@@ -10,7 +10,7 @@ import type { Operation, ParsedStatement } from '../src/lib/statements/types'
 import Money from '../src/views/Money.vue'
 import Statements from '../src/views/Statements.vue'
 import { money } from '../src/lib/money'
-import { budgetAmounts, duesTotal, monthDues } from '../src/lib/finance'
+import { budgetAmounts, creditBalance, duesTotal, monthDues } from '../src/lib/finance'
 import { planFamilyDoc, T0 } from '../src/test/planFamily'
 import type { SyncDoc } from '../src/types/finance'
 import type { SpendTotal } from '../src/lib/statements/types'
@@ -19,8 +19,13 @@ import Dreams from '../src/views/Dreams.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
 import Wishes from '../src/views/Wishes.vue'
 import { templateById } from '../src/lib/goalTemplates'
+import type { PdfRow } from '../src/lib/statements/pdf'
+import { parseStatement } from '../src/lib/statements/parsers'
+import { landingPath } from '../src/router/landing'
+import Start from '../src/views/Start.vue'
 import { attachTemplate } from '../src/lib/photos/goalPhoto'
 import { photoUrl, releasePhotos, uploadPhoto } from '../src/lib/photos/store'
+import { screenMixin } from '../src/test/screenState'
 import { at, backend, fakePrivate, fakeServer, fakeStatements, privateFor, screen, statementsFor, type FakePrivate, type FakeServer, type FakeStatements } from './support/family'
 
 /**
@@ -333,5 +338,124 @@ describe('e2e / B2C Блок 3 — часть 3: мечта из шаблона 
     expect(await photoUrl(giftPhoto, B.client)).toBeNull()
     expect(await screen(B.pinia, Wishes, '/people/b')).not.toContain('Наушники')
     expect(await screen(B.pinia, Wishes, '/people/a')).not.toContain('Наушники')
+  })
+})
+
+describe('e2e / B2C Блок 3 — часть 4: первый запуск из выписки (B2C-19, Р-7)', () => {
+  const storage = new Map<string, string>()
+  let server: FakeServer
+  let st: FakeStatements
+  const fixtures = import.meta.glob<PdfRow[]>('../src/lib/statements/fixtures/*.rows.json', { eager: true, import: 'default' })
+  const kaspi = (name: string) => parseStatement(fixtures[`../src/lib/statements/fixtures/${name}.rows.json`])
+
+  async function upload(p: Phone, parsed: ParsedStatement) {
+    setActivePinia(p.pinia)
+    const ops = useOperationsStore()
+    ops.setDraft([{ name: 'выписка.pdf', parsed }])
+    await ops.send(p.client)
+    await useFinanceStore().syncHousehold(p.client)
+    return ops
+  }
+  const act = (name: string, state: Record<string, unknown> = {}) => screenMixin(state, (s) => (s[name] as () => void)())
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => storage.set(k, String(v)),
+      removeItem: (k: string) => storage.delete(k),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    vi.useFakeTimers()
+    // Выписка за 26.06–26.07.2025 загружена 27 июля: платежи июля — этого месяца, отмечаются сразу.
+    at('2025-07-27T07:00:00Z')
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 0, json: async () => ({}), text: async () => '' })))
+    server = fakeServer(defaultSyncDoc())
+    st = fakeStatements()
+    vi.spyOn(apiClient, 'pushPrivateDoc').mockRejectedValue(new TypeError('fetch failed'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('новая семья: выписка Kaspi → 7 вопросов → документ (оклад, кредит с остатком и отметкой июля, «Kaspi Red» обязательством, подписка), картина июля, мечта main, setupDoneAt; партнёр по коду — свои шаги → people[b]', async () => {
+    const A = await phone(server, st, 'a')
+    expect(A.store.setupDone).toBe(false)
+    await upload(A, kaspi('kaspi-01'))
+    // Один телефон — как после «Отправить»: своя копия операций и итоги в документе.
+    expect(useOperationsStore().all).toHaveLength(60)
+    expect(server.data.spendTotals!.some((t) => t.by === 'a' && t.kind === 'month' && t.period === '2025-07')).toBe(true)
+
+    const q1 = await screen(A.pinia, Start, '/start/questions')
+    expect(q1).toContain('Нашли 7 повторяющихся')
+    expect(q1).toContain('Это ваш доход?')
+    await screen(A.pinia, Start, '/start/questions', undefined, [act('answerIncome')])
+    expect(A.store.people).toEqual([expect.objectContaining({ id: 'a', salary: 120_000, payday: 24 })])
+
+    // Кредит с остатком: платёж июля из выписки отмечен «из выписки», остаток — минус тело (ставка 0).
+    await screen(A.pinia, Start, '/start/questions', undefined, [act('answerRecurring', { creditPrincipal: '1 200 000' })])
+    // Кредиты стора — производные: остаток в документе 1 200 000, видимый — минус тело июльского платежа.
+    const credit = A.store.credits[0]
+    expect(A.store.householdDoc.credits[0]).toMatchObject({ name: 'Оплата Kaspi Кредита', principal: 1_200_000, payment: 151_790, day: 24, annualRate: 0 })
+    expect(A.store.payments).toEqual([expect.objectContaining({ kind: 'credit', targetId: credit.id, period: '2025-07', amount: 151_790, source: 'statement' })])
+    expect(credit.principal).toBe(1_200_000 - 151_790)
+    expect(creditBalance(A.store.householdDoc.credits[0], A.store.payments)).toBe(1_200_000 - 151_790)
+    expect(A.store.merchantRules[0].to).toEqual({ payment: { kind: 'credit', targetId: credit.id, categoryId: 'sc_credit' } })
+
+    // «Kaspi Red» без остатка — обязательство «Кредиты», июль отмечен; подписка — быт.
+    await screen(A.pinia, Start, '/start/questions', undefined, [act('answerRecurring')])
+    await screen(A.pinia, Start, '/start/questions', undefined, [act('answerRecurring')])
+    const red = A.store.obligations.find((o) => o.name === 'Оплата Kaspi Red')!
+    expect(red.category).toBe('d2')
+    expect(A.store.payments.find((p) => p.targetId === red.id)).toMatchObject({ kind: 'obligation', period: '2025-07', amount: 45_000, source: 'statement' })
+    expect(A.store.obligations.find((o) => o.name === 'Яндекс Плюс')).toMatchObject({ category: 'd4' })
+    await screen(A.pinia, Start, '/start/questions', undefined, [act('skipRest')])
+
+    // Картина июля — итоги своей выписки; «Свободно в месяц» — по плану (доход минус кредит, Red и подписка).
+    const month = await screen(A.pinia, Start, '/start/month')
+    const mine = A.store.householdDoc.spendTotals!.filter((t) => t.by === 'a' && t.kind === 'month' && t.period === '2025-07')
+    expect(month).toContain('Ваш июль')
+    expect(month).toContain(money(mine.reduce((s, t) => s + t.amount, 0)))
+    expect(month).toContain(money(budgetAmounts({ ...A.store.householdDoc, credits: A.store.credits }).d5))
+
+    // Мечта — main; «Позже» — семья настроена, участник отмечен; всё на сервере.
+    await screen(A.pinia, Start, '/start/dream', undefined, [
+      screenMixin({ step: 'form', template: templateById('car'), name: 'Машина', needText: '3 000 000', term: '18' }, (s) => void (s.create as () => Promise<void>)()),
+    ])
+    expect(A.store.goals[0]).toMatchObject({ name: 'Машина', main: true, template: 'car' })
+    await screen(A.pinia, Start, '/start/invite', undefined, [act('finish')])
+    expect(A.store.setupDone).toBe(true)
+    expect(A.store.people[0].onboardedAt).toBe('2025-07-27T07:00:00.000Z')
+    await A.store.syncHousehold(A.client)
+    expect(server.data.setupDoneAt).toBeTruthy()
+    expect(server.data.goals[0].main).toBe(true)
+
+    // Партнёр по коду: семья настроена, записи b нет → /start; своя выписка, свой доход, «Готово».
+    // Свой телефон: без ответов и операций A в хранилище (A дальше живёт в памяти стора).
+    storage.clear()
+    const B = await phone(server, st, 'b')
+    expect(landingPath(useAuthStore(), B.store)).toBe('/start')
+    await upload(B, kaspi('kaspi-02'))
+    const qb = await screen(B.pinia, Start, '/start/questions')
+    expect(qb).toContain('2 из 2')
+    expect(qb).toContain(`${money(160_000)} · 12-го`)
+    await screen(B.pinia, Start, '/start/questions', undefined, [act('answerIncome')])
+    await screen(B.pinia, Start, '/start/questions', undefined, [act('finish')])
+    await B.store.syncHousehold(B.client)
+    await A.store.pullHousehold(A.client)
+    expect(A.store.people.find((p) => p.id === 'b')).toMatchObject({ salary: 160_000, payday: 12, onboardedAt: expect.any(String) })
+    expect(A.store.setupDone).toBe(true)
+    expect(landingPath({ slot: 'b', isViewer: false }, B.store)).toBe('/')
+  })
+
+  it('«Введу вручную»: оклад и день без выписки — участник записан, итогов нет, дальше — к мечте', async () => {
+    const A = await phone(server, st, 'a')
+    await screen(A.pinia, Start, '/start', undefined, [act('manualNext', { manual: true, manualSalary: '500 000', manualPayday: '5' })])
+    expect(A.store.people).toEqual([expect.objectContaining({ id: 'a', salary: 500_000, payday: 5 })])
+    expect(A.store.householdDoc.spendTotals ?? []).toEqual([])
+    expect(await screen(A.pinia, Start, '/start/dream')).toContain('На что копим?')
   })
 })

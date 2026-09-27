@@ -47,7 +47,7 @@ describe('router/index.ts — Навигационные гарды и защи�
     await router.push('/money/budget')
     expect(router.currentRoute.value.path).toBe('/access')
 
-    await router.push('/setup')
+    await router.push('/start')
     expect(router.currentRoute.value.path).toBe('/access')
   })
 
@@ -57,7 +57,7 @@ describe('router/index.ts — Навигационные гарды и защи�
     expect(router.currentRoute.value.path).toBe('/access')
   })
 
-  it('авторизованный пользователь без завершённой настройки перенаправляется на /setup', async () => {
+  it('авторизованный пользователь без завершённой настройки перенаправляется на /start', async () => {
     const router = createAppRouter(createMemoryHistory())
     signIn()
     const financeStore = useFinanceStore()
@@ -65,10 +65,14 @@ describe('router/index.ts — Навигационные гарды и защи�
     expect(financeStore.setupDone).toBe(false)
 
     await router.push('/')
-    expect(router.currentRoute.value.path).toBe('/setup')
+    expect(router.currentRoute.value.path).toBe('/start')
 
     await router.push('/money/budget')
-    expect(router.currentRoute.value.path).toBe('/setup')
+    expect(router.currentRoute.value.path).toBe('/start')
+
+    // Старый адрес мастера — на первый запуск.
+    await router.push('/setup')
+    expect(router.currentRoute.value.path).toBe('/start')
   })
 
   it('авторизованный пользователь при попытке зайти на /access отправляется в приложение', async () => {
@@ -76,12 +80,13 @@ describe('router/index.ts — Навигационные гарды и защи�
     signIn()
     const financeStore = useFinanceStore()
 
-    // 1. Если настройка не завершена -> /setup
+    // 1. Если настройка не завершена -> /start
     await router.push('/access')
-    expect(router.currentRoute.value.path).toBe('/setup')
+    expect(router.currentRoute.value.path).toBe('/start')
 
-    // 2. Если настройка завершена -> /
+    // 2. Если настройка завершена и участник записан -> / (без своей записи был бы /start — партнёр по коду, B2C-19)
     financeStore.finishSetup()
+    financeStore.setPerson('a', { name: 'Ильяс', salary: 700_000, payday: 10 })
     expect(financeStore.setupDone).toBe(true)
 
     await router.push('/access')

@@ -676,6 +676,7 @@ export const useFinanceStore = defineStore('finance', () => {
         updatedAt: t,
       });
     });
+    return id;
   }
 
   /** Группа подписок со свободным названием (Р-20): сама не платёж, суммы нет. */
@@ -732,6 +733,7 @@ export const useFinanceStore = defineStore('finance', () => {
         updatedAt: t,
       });
     });
+    return id;
   }
 
   function addGoal(g: {

@@ -8,7 +8,6 @@ import { useFinanceStore, defaultSyncDoc } from '../src/stores/finance'
 import { at, phone, screen, setOnline, type FakeServer } from './support/family'
 import type { SyncDoc } from '../src/types/finance'
 import { liveGoals, liveObligations, openCredits } from '../src/lib/finance'
-import { setupPlan, type SetupForm } from '../src/lib/setup'
 import { HUES } from '../src/lib/palette'
 import { isDark } from '../src/lib/theme'
 import { money, plain } from '../src/lib/money'
@@ -251,24 +250,8 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
     expect(html).toContain('считать деньги модели не доверяем.')
   })
 
-  it('PV-06: мастер — «Пропустить» и «Пока без цели» не пишут введённое, «Дальше» после возврата пишет', () => {
-    const base: SetupForm = {
-      tenure: 'rent', housing: '220 000', housingDay: '5', utilities: '',
-      hasCredit: 'yes', creditPrincipal: '1 000 000', creditPayment: '10 000', creditRateMode: 'term', creditRate: '', creditTerm: '12', creditDay: '12',
-      goalName: 'Машина', goalNeed: '3 000 000', goalHave: '', goalMonths: '', goalHue: 'teal',
-    }
-    // Семья C стенда: жильё «Пропустить», кредит с несходящимся графиком «Дальше», цель «Пока без цели».
-    const c = setupPlan(base, { housing: true, credit: false, goal: true })
-    expect(c.housing).toBeUndefined()
-    expect(c.goal).toBeUndefined()
-    expect(c.credit?.credit.annualRate).toBe(0) // запись не блокируется: рассрочка без процентов
-    // Семья D: «Пропустить» → «Назад» → «Дальше» (флаг снят), кредит 18% «Пропустить», цель «Дальше».
-    const d = setupPlan({ ...base, creditPayment: '91 680' }, { housing: false, credit: true, goal: false })
-    expect(d.housing?.obligations).toEqual([expect.objectContaining({ name: 'Аренда', amount: 220_000, category: 'd1' })])
-    expect(d.housing?.d1).toBe(220_000)
-    expect(d.credit).toBeUndefined()
-    expect(d.goal?.goal.name).toBe('Машина')
-  })
+  // PV-06 (мастер: «Пропустить» не пишет введённое) снят вместе с мастером — первый запуск из выписки
+  // пишет только подтверждённые ответы (B2C-19, `Start.test.ts`, e2e часть 4).
 
   it('PV-08: тёмная тема — «Ритм цели» тёмным оттенком цели (кольца списка ушли с плитками «Мечт», B2C-18)', async () => {
     const A = await phone(server)
