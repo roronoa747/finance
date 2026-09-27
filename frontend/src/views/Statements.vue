@@ -5,7 +5,7 @@ import Button from '@/components/ui/Button.vue'
 import Select from '@/components/kit/Select.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
-import { useOperationsStore, type DraftFile } from '@/stores/operations'
+import { useOperationsStore, type Draft, type DraftFile } from '@/stores/operations'
 import { money } from '@/lib/money'
 import { monthKey, monthTitle, weekKey, weekRange } from '@/lib/dates'
 import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
@@ -110,21 +110,25 @@ async function pick(e: Event) {
   if (!files.length) return
   reading.value = true
   const ok: DraftFile[] = []
-  const errors: { name: string; message: string }[] = []
+  const errors: Draft['errors'] = []
   try {
     // pdf.js — ленивым чанком, только когда выбрали файл.
     const { pdfToRows } = await import('@/lib/statements/pdf')
     for (const f of files) {
+      let stage = 'pdf.js'
       try {
-        ok.push({ name: f.name, parsed: parseStatement(await pdfToRows(await f.arrayBuffer())) })
+        const rows = await pdfToRows(await f.arrayBuffer())
+        stage = 'разбор'
+        ok.push({ name: f.name, parsed: parseStatement(rows) })
       } catch (err) {
-        const message =
-          err instanceof StatementFormatError && err.code === 'empty'
-            ? 'В файле не нашлось операций'
-            : err instanceof StatementFormatError
-              ? 'Пока понимаю выписки Kaspi и Freedom'
-              : 'Не получилось прочитать файл'
-        errors.push({ name: f.name, message })
+        if (err instanceof StatementFormatError) {
+          errors.push({ name: f.name, message: err.code === 'empty' ? 'В файле не нашлось операций' : 'Пока понимаю выписки Kaspi и Freedom' })
+          continue
+        }
+        // Тип и текст ошибки движка или pdf.js — без содержимого выписки.
+        console.error('Разбор выписки:', err)
+        const detail = `${stage} — ${err instanceof Error ? `${err.name}: ${err.message}` : String(err)}`.slice(0, 160)
+        errors.push({ name: f.name, message: 'Не получилось прочитать файл', detail })
       }
     }
     store.setDraft(ok, errors)
@@ -168,6 +172,7 @@ onMounted(() => {
         class="rounded-xl border border-warn-line bg-warn-soft p-3 text-[13px] text-ink-2"
       >
         {{ e.name }}: {{ e.message }}
+        <span v-if="e.detail" class="mt-1 block break-all text-[11.5px] text-ink-3">{{ e.detail }}</span>
       </p>
 
       <template v-if="store.draftOps.length">

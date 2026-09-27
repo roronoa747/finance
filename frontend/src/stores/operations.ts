@@ -50,8 +50,11 @@ export interface DraftFile {
 
 export interface Draft {
   files: DraftFile[]
-  /** Файлы, которые не удалось разобрать: имя и спокойное объяснение. */
-  errors: { name: string; message: string }[]
+  /**
+   * Файлы, которые не удалось разобрать: имя и спокойное объяснение; `detail` — этап и текст
+   * технической ошибки (консоли на телефоне нет — причину видно на скриншоте).
+   */
+  errors: { name: string; message: string; detail?: string }[]
 }
 
 export function toWire(op: Operation): OperationWire {
