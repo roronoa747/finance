@@ -136,9 +136,14 @@ const weekUnknown = computed(() => {
   const groups = unknownGroups(ops.all.filter((o) => weekKey(o.date) === week.value))
   return { count: groups.length, amount: groups.reduce((a, g) => a + g.amount, 0) }
 })
+// Ждущие сопоставления (B2C-15) — первое даёт вопрос карточке, остальные — счётчиком.
+const firstMatch = computed(() => {
+  const list = ops.pendingMatches
+  return list.length ? { count: list.length, question: list[0].question, meta: list[0].meta } : null
+})
 const decision = computed<Decision | null>(() =>
   canEdit.value
-    ? nextDecision(state.value, { me: authStore.slot, unknown: weekUnknown.value, answeredMonthEnd: answered.value })
+    ? nextDecision(state.value, { me: authStore.slot, unknown: weekUnknown.value, match: firstMatch.value, answeredMonthEnd: answered.value })
     : null,
 )
 // «Потом» / «Подумать» — до следующего открытия; ответ «не сейчас» на «остались деньги?» — до конца месяца.

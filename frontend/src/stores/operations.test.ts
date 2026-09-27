@@ -10,6 +10,7 @@ import { parseStatement } from '@/lib/statements/parsers'
 import type { Operation, ParsedStatement } from '@/lib/statements/types'
 import type { OperationsPage, OperationWire, StatementUploadResponse } from '@/types/api'
 import kaspi01 from '@/lib/statements/fixtures/kaspi-01.rows.json'
+import { planFamilyDoc } from '@/test/planFamily'
 
 const storage = new Map<string, string>()
 
@@ -314,5 +315,103 @@ describe('stores/operations — курсор, семья, демо', () => {
     for (const m of Object.values(demo.calls)) expect(m).not.toHaveBeenCalled()
     expect(store.uploads.map((u) => [u.bank, u.ops_count])).toEqual([['kaspi', 60]])
     expect(useFinanceStore().householdDoc.spendTotals?.length).toBeGreaterThan(0)
+  })
+})
+
+describe('stores/operations — сопоставление с отметками (Р-6, B2C-15)', () => {
+  const op = (date: string, amount: number, merchant: string): Omit<Operation, 'id'> => ({
+    bank: 'kaspi', date, amount, kind: amount < 0 ? 'purchase' : 'transfer-in', merchant, categoryId: null, internal: false,
+  })
+  const statement = (from: string, to: string, ...list: Omit<Operation, 'id'>[]): ParsedStatement => ({
+    bank: 'kaspi', from, to, operations: assignIds(list), skipped: 0,
+  })
+
+  function family() {
+    signIn('a')
+    // Ильяс a / Аруна b, аренда 220 000 5-го, кредит 58 000 15-го (33 %), карта Kaspi Gold.
+    useFinanceStore().setHouseholdDoc(planFamilyDoc(), 1)
+    vi.setSystemTime(new Date('2026-09-20T07:00:00Z'))
+    return useFinanceStore()
+  }
+
+  it('«да»: запись payments с источником «выписка» и id операции, сумма операции, счёт не списывается; правило «это платёж по …»; раздел операции — плановый; остаток кредита — минус тело', async () => {
+    const finance = family()
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    store.setDraft(draftOf(statement('2026-09-01', '2026-09-20', op('2026-09-14', -58_000, 'Оплата Kaspi Кредита'), op('2026-09-06', -220_000, 'PEREVOD ARENDA'), op('2026-09-11', 700_000, 'ТОО Работодатель'))))
+    await store.send(client)
+    expect(store.lastAutoMarked).toBe(0)
+    expect(store.pendingMatches.map((c) => [c.kind, c.targetId, c.period])).toEqual([
+      ['credit', 'loan', '2026-09'],
+      ['obligation', 'rent', '2026-09'],
+      ['salary', 'a', '2026-09'],
+    ])
+
+    const credit = store.pendingMatches[0]
+    await store.acceptMatch(credit, client)
+    const record = finance.payments.find((p) => p.kind === 'credit')!
+    expect(record).toMatchObject({ targetId: 'loan', period: '2026-09', amount: 58_000, accountId: null, source: 'statement', opId: credit.opId, by: 'a' })
+    // 1 000 000 × 0,33 / 12 = 27 500 банку, 30 500 в долг.
+    expect(record.principal).toBe(30_500)
+    expect(finance.credits.find((c) => c.id === 'loan')!.principal).toBe(969_500)
+    expect(finance.merchantRules.map((r) => r.to)).toEqual([{ payment: { kind: 'credit', targetId: 'loan', categoryId: 'sc_credit' } }])
+    expect(store.all.find((o) => o.id === credit.opId)!.categoryId).toBe('sc_credit')
+    expect(finance.householdDoc.spendTotals!.find((t) => t.id === 'a:month:2026-09:sc_credit')?.amount).toBe(58_000)
+    expect(store.pendingMatches.map((c) => c.kind)).toEqual(['obligation', 'salary'])
+
+    // «Нет» — на этот месяц, на устройстве; правила нет.
+    store.declineMatch(store.pendingMatches[0])
+    expect(store.pendingMatches.map((c) => c.kind)).toEqual(['salary'])
+    expect(JSON.parse(storage.get('ff_match_declined')!)).toEqual(['obligation:rent:2026-09'])
+    expect(finance.merchantRules).toHaveLength(1)
+
+    // «Да, зарплата» — запись зачисления от участника, правило по получателю.
+    await store.acceptMatch(store.pendingMatches[0], client)
+    expect(finance.payments.find((p) => p.kind === 'salary')).toMatchObject({ targetId: 'a', amount: 700_000, source: 'statement', accountId: null })
+    expect(finance.merchantRules.find((r) => 'payment' in r.to && r.to.payment.kind === 'salary')?.to).toEqual({ payment: { kind: 'salary', targetId: 'a', categoryId: null } })
+    expect(store.pendingMatches).toEqual([])
+  })
+
+  it('повтор того же файла — второй отметки нет; следующий месяц отмечается сам по правилу; «снять» не предлагает снова', async () => {
+    const finance = family()
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    const september = statement('2026-09-01', '2026-09-20', op('2026-09-14', -58_000, 'Оплата Kaspi Кредита'))
+    store.setDraft(draftOf(september))
+    await store.send(client)
+    await store.acceptMatch(store.pendingMatches[0], client)
+    expect(finance.payments.filter((p) => !p.deletedAt)).toHaveLength(1)
+
+    // Тот же файл ещё раз: операция та же (тот же id) — пара «кредит · сентябрь» уже отмечена.
+    store.setDraft(draftOf(september))
+    expect(store.draftAutoMatches).toEqual([])
+    await store.send(client)
+    expect(store.lastAutoMarked).toBe(0)
+    expect(finance.payments.filter((p) => !p.deletedAt)).toHaveLength(1)
+    expect(store.pendingMatches).toEqual([])
+
+    // Октябрь: строка по правилу отмечается сама — «Отмечено по выписке: 1».
+    vi.setSystemTime(new Date('2026-10-16T07:00:00Z'))
+    store.setDraft(draftOf(statement('2026-10-01', '2026-10-16', op('2026-10-15', -58_000, 'Оплата Kaspi Кредита'))))
+    expect(store.draftAutoMatches.map((c) => [c.period, c.confidence])).toEqual([['2026-10', 'rule']])
+    await store.send(client)
+    expect(store.lastAutoMarked).toBe(1)
+    const october = finance.payments.find((p) => p.period === '2026-10')!
+    expect(october).toMatchObject({ kind: 'credit', targetId: 'loan', source: 'statement', amount: 58_000 })
+    expect(store.pendingMatches).toEqual([])
+
+    // Снять отметку — как сейчас: надгробие; операция остаётся в разделе кредитов, снова не предлагается.
+    finance.unmarkPaid('credit', 'loan', '2026-10')
+    expect(finance.payments.find((p) => p.period === '2026-10' && !p.deletedAt)).toBeUndefined()
+    expect(store.pendingMatches).toEqual([])
+    expect(store.all.find((o) => o.id === october.opId)!.categoryId).toBe('sc_credit')
+    expect(finance.merchantRules.filter((r) => !r.deletedAt)).toHaveLength(1)
+  })
+
+  it('viewer предложений не получает', async () => {
+    signIn('b', 'viewer')
+    useFinanceStore().setHouseholdDoc(planFamilyDoc(), 1)
+    const store = useOperationsStore()
+    expect(store.pendingMatches).toEqual([])
   })
 })

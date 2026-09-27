@@ -8,9 +8,11 @@ import {
   applyRules,
   pairInternalTransfers,
   periodsOf,
+  ruleMatchOf,
   seedSpendCategories,
   spendTotals,
 } from '@/lib/statements/model'
+import { matchCandidates, matchKey, recentOperations, type MatchCandidate } from '@/lib/statements/matching'
 import type { MerchantRule, Operation, ParsedStatement } from '@/lib/statements/types'
 import type { OperationWire, StatementUploadResponse } from '@/types/api'
 import type { PersonId } from '@/types/finance'
@@ -18,8 +20,10 @@ import type { PersonId } from '@/types/finance'
 // Операции выписок (B2C-07): личная копия своих операций, очередь неотправленного, записи
 // загрузок семьи и черновик разбора. Файл выписки разбирается на телефоне и никуда не уходит
 // (Р-4): на сервер идут только записи загрузок и операции без ФИО и номеров (Р-23).
+// Сопоставление с отметками (Р-6, B2C-15): предложения — `matchCandidates`, «да» — запись
+// `payments` с источником «выписка» и правило «это платёж по …», «нет» — на месяц на устройстве.
 
-const { ops: KEY_OPS, cursor: KEY_CURSOR, pending: KEY_PENDING, demoUploads: KEY_DEMO_UPLOADS } = OPERATIONS_STORAGE_KEYS
+const { ops: KEY_OPS, cursor: KEY_CURSOR, pending: KEY_PENDING, demoUploads: KEY_DEMO_UPLOADS, declined: KEY_DECLINED } = OPERATIONS_STORAGE_KEYS
 const KEYS = Object.values(OPERATIONS_STORAGE_KEYS)
 
 /** Операций в одном POST /api/operations/batch (сервер принимает до 2000). */
@@ -106,10 +110,13 @@ export const useOperationsStore = defineStore('operations', () => {
   const cursor = ref<string | null>(fresh ? readStorage<string | null>(KEY_CURSOR, null) : null)
   const pending = ref<PendingJob[]>(fresh ? readStorage<PendingJob[]>(KEY_PENDING, []) : [])
   const demoUploads = ref<StatementUploadResponse[]>(fresh ? readStorage<StatementUploadResponse[]>(KEY_DEMO_UPLOADS, []) : [])
+  const declined = ref<string[]>(fresh ? readStorage<string[]>(KEY_DECLINED, []) : [])
   const serverUploads = ref<StatementUploadResponse[]>([])
   const status = ref<'idle' | 'sending' | 'offline' | 'error'>('idle')
   const lastError = ref<string | null>(null)
   const draft = ref<Draft | null>(null)
+  /** Сколько строк последней отправки отметилось по правилам («Отмечено по выписке: N»). */
+  const lastAutoMarked = ref(0)
   let flushing: Promise<void> | null = null
 
   const demo = computed(() => auth.isDemo || finance.isDemo)
@@ -118,11 +125,57 @@ export const useOperationsStore = defineStore('operations', () => {
   const all = computed(() => Object.values(ops.value))
   const pendingCount = computed(() => pending.value.reduce((n, j) => n + j.ops.length, 0))
 
+  /* ---------- сопоставление с отметками (B2C-15) ---------- */
+  const matchState = () => ({ obligations: finance.obligations, credits: finance.credits, people: finance.people, payments: finance.payments })
+  /** Предложения по своим операциям этого и прошлого месяца — только те, что ждут ответа. */
+  const pendingMatches = computed<MatchCandidate[]>(() =>
+    auth.isViewer
+      ? []
+      : matchCandidates(recentOperations(all.value), matchState(), finance.merchantRules).filter(
+          (c) => c.confidence !== 'rule' && !declined.value.includes(matchKey(c)),
+        ),
+  )
+  /** Строки черновика, которые отметятся сами при отправке — по правилам семьи. */
+  const draftAutoMatches = computed(() => matchCandidates(draftOps.value, matchState(), finance.merchantRules).filter((c) => c.confidence === 'rule'))
+
+  /** Запись отметки по строке выписки: сумма операции, «не списывать» — выписка уже факт (Р-6). */
+  function markByOperation(c: MatchCandidate, op: Operation) {
+    const opts = { period: c.period, amount: Math.abs(op.amount), accountId: null, source: 'statement' as const, opId: op.id }
+    return c.kind === 'salary' ? finance.markSalary(c.targetId as PersonId, opts) : finance.markPaid(c.kind, c.targetId, me(), opts)
+  }
+
+  /** «Да, отметить»: запись + правило «это платёж по …» по продавцу или получателю (раздел — плановый). */
+  async function acceptMatch(c: MatchCandidate, client: ApiClient = apiClient) {
+    const op = ops.value[c.opId]
+    if (!op) return
+    markByOperation(c, op)
+    await recategorize(ruleMatchOf(op), { payment: { kind: c.kind, targetId: c.targetId, categoryId: c.categoryId } }, client)
+  }
+
+  /** «Нет, это другое»: помнится на этот месяц на устройстве, правилом не становится. */
+  function declineMatch(c: MatchCandidate) {
+    const k = matchKey(c)
+    if (!declined.value.includes(k)) declined.value = [...declined.value, k]
+    save()
+  }
+
+  /** Автоотметка по правилам среди только что отправленных строк; сколько отметилось. */
+  function autoMark(list: Operation[]): number {
+    let n = 0
+    for (const c of matchCandidates(list, matchState(), finance.merchantRules)) {
+      if (c.confidence !== 'rule') continue
+      const op = list.find((o) => o.id === c.opId)
+      if (op && markByOperation(c, op)) n += 1
+    }
+    return n
+  }
+
   function save() {
     writeStorage(KEY_OPS, { owner: owner.value, ops: ops.value })
     writeStorage(KEY_CURSOR, cursor.value)
     writeStorage(KEY_PENDING, pending.value)
     writeStorage(KEY_DEMO_UPLOADS, demoUploads.value)
+    writeStorage(KEY_DECLINED, declined.value)
   }
 
   function clear(key: string | null = null) {
@@ -131,8 +184,10 @@ export const useOperationsStore = defineStore('operations', () => {
     cursor.value = null
     pending.value = []
     demoUploads.value = []
+    declined.value = []
     serverUploads.value = []
     draft.value = null
+    lastAutoMarked.value = 0
     status.value = 'idle'
     lastError.value = null
     try {
@@ -223,6 +278,8 @@ export const useOperationsStore = defineStore('operations', () => {
     const changed = paired.slice(fresh.length).filter((o) => o.internal !== ops.value[o.id]?.internal)
     remember([...fresh, ...changed])
     writeTotals(periodsOf([...fresh, ...changed]))
+    // Правила «это платёж по …» отмечают платежи сами (Р-6); отмеченный месяц второй записи не получает.
+    lastAutoMarked.value = autoMark(fresh)
 
     if (demo.value) {
       for (const f of d.files) {
@@ -346,6 +403,11 @@ export const useOperationsStore = defineStore('operations', () => {
     lastError,
     draft,
     draftOps,
+    pendingMatches,
+    draftAutoMatches,
+    lastAutoMarked,
+    acceptMatch,
+    declineMatch,
     setDraft,
     cancelDraft,
     answer,

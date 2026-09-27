@@ -2343,7 +2343,8 @@ export function nextDecision(
   ctx: {
     me: PersonId | undefined
     unknown?: { count: number; amount: number }
-    matches?: number
+    /** Первое ждущее сопоставление (B2C-15): его вопрос и сколько их всего. */
+    match?: { count: number; question: string; meta: string } | null
     answeredMonthEnd?: string | null
     now?: { day: number; key: string }
   },
@@ -2362,12 +2363,12 @@ export function nextDecision(
     }
   }
 
-  const matches = ctx.matches ?? 0
-  if (matches > 0) {
+  const match = ctx.match
+  if (match && match.count > 0) {
     return {
       kind: 'match',
-      question: matches === 1 ? 'Похоже, нашли платёж по графику — отметить?' : `Похоже, нашли ${matches} ${plural(matches, 'платёж', 'платежа', 'платежей')} по графику — отметить?`,
-      meta: 'по выписке этой недели',
+      question: match.question,
+      meta: match.count > 1 ? `${match.meta} · ещё ${match.count - 1}` : match.meta,
       to: '/week',
       actions: { primary: 'Посмотреть', ghost: 'Потом' },
     }

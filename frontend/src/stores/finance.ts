@@ -1082,7 +1082,7 @@ export const useFinanceStore = defineStore('finance', () => {
     kind: ScheduledKind,
     targetId: string,
     by: PersonId,
-    opts: { period?: string; amount?: number; accountId?: string | null } = {},
+    opts: { period?: string; amount?: number; accountId?: string | null; source?: Payment['source']; opId?: string } = {},
   ): Payment | null {
     let period: string | undefined
     let amount: number
@@ -1107,7 +1107,7 @@ export const useFinanceStore = defineStore('finance', () => {
     if (existing) return existing
 
     const record = newPayment(
-      { kind, targetId, period, amount, ...(principal === undefined ? {} : { principal }), by },
+      { kind, targetId, period, amount, ...(principal === undefined ? {} : { principal }), by, ...sourceOf(opts) },
       opts.accountId,
     )
     mutateHouseholdDoc((doc) => {
@@ -1118,6 +1118,10 @@ export const useFinanceStore = defineStore('finance', () => {
     return record
   }
 
+  /** Источник отметки (B2C-15): по строке выписки — с id операции; руками — без полей. */
+  const sourceOf = (opts: { source?: Payment['source']; opId?: string }): Pick<Payment, 'source' | 'opId'> =>
+    opts.source === 'statement' ? { source: 'statement', ...(opts.opId ? { opId: opts.opId } : {}) } : {}
+
   /**
    * «Пришла зарплата» (Р-18): запись-зачисление того же списка, что «Оплатил» (Р-7) —
    * цель — участник, период — месяц её дня (по умолчанию — этот), сумма по умолчанию —
@@ -1127,7 +1131,7 @@ export const useFinanceStore = defineStore('finance', () => {
    */
   function markSalary(
     personId: PersonId,
-    opts: { period?: string; amount?: number; accountId?: string | null } = {},
+    opts: { period?: string; amount?: number; accountId?: string | null; source?: Payment['source']; opId?: string } = {},
   ): Payment | null {
     const p = people.value.find((x) => x.id === personId && !x.deletedAt)
     if (!p) return null
@@ -1135,7 +1139,7 @@ export const useFinanceStore = defineStore('finance', () => {
     const existing = paidFor(payments.value, 'salary', personId, period)
     if (existing) return existing
     const record = newPayment(
-      { kind: 'salary', targetId: personId, period, amount: opts.amount ?? salaryAt(p, period), by: personId },
+      { kind: 'salary', targetId: personId, period, amount: opts.amount ?? salaryAt(p, period), by: personId, ...sourceOf(opts) },
       opts.accountId,
     )
     mutateHouseholdDoc((doc) => {

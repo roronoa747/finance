@@ -1,7 +1,7 @@
 import { weekKey } from '@/lib/dates'
 import type { Person, PersonId, SyncDoc } from '@/types/finance'
 import { DEFAULT_SPEND_CATEGORIES, DICTIONARY, KIND_CATEGORY, UNKNOWN_CATEGORY } from './dictionary'
-import type { MerchantRule, Operation, SpendTotal } from './types'
+import type { MerchantRule, Operation, PaymentRule, SpendTotal } from './types'
 
 // Модель операций выписки (B2C-02): чистые функции, деньги — целые тенге.
 
@@ -119,6 +119,8 @@ export interface Categorized {
   internal: boolean
   /** «Кому → что»: подпись перевода человеку из правила. */
   personLabel?: string
+  /** Правило «это платёж по …» (B2C-15): строка отмечает платёж сама. */
+  payment?: PaymentRule
 }
 
 const liveRules = (rules: MerchantRule[]) => rules.filter((r) => !r.deletedAt)
@@ -128,11 +130,30 @@ function latest(rules: MerchantRule[]): MerchantRule | undefined {
   return rules.reduce<MerchantRule | undefined>((best, r) => (!best || r.updatedAt > best.updatedAt ? r : best), undefined)
 }
 
-function fromRule(rule: MerchantRule): Categorized {
+/** Раздел из правила; правило платежа без раздела — null: раздел берётся по словарю. */
+function fromRule(rule: MerchantRule): Categorized | null {
   const to = rule.to
   if ('internal' in to) return { categoryId: null, internal: true }
   if ('person' in to) return { categoryId: 'sc_people', internal: false, personLabel: to.person }
+  if ('payment' in to) return to.payment.categoryId ? { categoryId: to.payment.categoryId, internal: false, payment: to.payment } : null
   return { categoryId: to.categoryId, internal: false }
+}
+
+/** Правило семьи для операции: по получателю, затем по продавцу; последнее по правке. */
+export function ruleFor(op: Pick<Operation, 'merchant' | 'counterparty'>, rules: MerchantRule[]): MerchantRule | undefined {
+  const live = liveRules(rules)
+  if (op.counterparty) {
+    const who = normalizeCounterparty(op.counterparty)
+    const rule = latest(live.filter((r) => r.match.counterparty === who))
+    if (rule) return rule
+  }
+  const merchant = normalizeMerchant(op.merchant)
+  return latest(live.filter((r) => r.match.merchant === merchant))
+}
+
+/** Совпадение для правила по операции: получатель, если он есть, иначе продавец. */
+export function ruleMatchOf(op: Pick<Operation, 'merchant' | 'counterparty'>): MerchantRule['match'] {
+  return op.counterparty ? { counterparty: normalizeCounterparty(op.counterparty) } : { merchant: normalizeMerchant(op.merchant) }
 }
 
 /**
@@ -146,23 +167,19 @@ export function categorize(
   rules: MerchantRule[],
   dictionary = DICTIONARY,
 ): Categorized {
-  const live = liveRules(rules)
-  if (op.counterparty) {
-    const who = normalizeCounterparty(op.counterparty)
-    const rule = latest(live.filter((r) => r.match.counterparty === who))
-    if (rule) return fromRule(rule)
-  }
-  const merchant = normalizeMerchant(op.merchant)
-  const rule = latest(live.filter((r) => r.match.merchant === merchant))
-  if (rule) return fromRule(rule)
+  const rule = ruleFor(op, rules)
+  const byRule = rule ? fromRule(rule) : null
+  if (byRule) return byRule
+  const payment = rule && 'payment' in rule.to ? { payment: rule.to.payment } : {}
 
   // Приходы и внутренние в траты не входят — раскладывать нечего.
-  if (op.amount >= 0 || op.internal) return { categoryId: null, internal: op.internal }
-  if (op.kind === 'transfer-out' && op.counterparty) return { categoryId: 'sc_people', internal: false }
+  if (op.amount >= 0 || op.internal) return { categoryId: null, internal: op.internal, ...payment }
+  if (op.kind === 'transfer-out' && op.counterparty) return { categoryId: 'sc_people', internal: false, ...payment }
   const byKind = KIND_CATEGORY[op.kind]
-  if (byKind) return { categoryId: byKind, internal: false }
+  if (byKind) return { categoryId: byKind, internal: false, ...payment }
+  const merchant = normalizeMerchant(op.merchant)
   const hit = dictionary.find((d) => d.test.test(merchant))
-  return { categoryId: hit?.categoryId ?? null, internal: false }
+  return { categoryId: hit?.categoryId ?? null, internal: false, ...payment }
 }
 
 /** Пересчёт всех операций после нового правила. */

@@ -4,6 +4,10 @@ import { useRoute } from 'vue-router'
 import { PhFileArrowUp } from '@phosphor-icons/vue'
 import Button from '@/components/ui/Button.vue'
 import Select from '@/components/kit/Select.vue'
+import DecisionCard from '@/components/kit/DecisionCard.vue'
+import Callout from '@/components/kit/Callout.vue'
+import type { MatchCandidate } from '@/lib/statements/matching'
+import { matchKey } from '@/lib/statements/matching'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore, type Draft, type DraftFile } from '@/stores/operations'
@@ -73,6 +77,19 @@ const openGroups = computed(() =>
 )
 
 const groupKey = (g: UnknownGroup) => JSON.stringify(g.match)
+
+// Сопоставление с отметками (Р-6, B2C-15): карточки по одной; «Потом» — до следующего открытия.
+const deferredMatches = ref<string[]>([])
+const matchQueue = computed(() => store.pendingMatches.filter((c) => !deferredMatches.value.includes(matchKey(c))))
+const match = computed<MatchCandidate | null>(() => (canUpload.value ? (matchQueue.value[0] ?? null) : null))
+const matchActions = computed(() =>
+  match.value?.kind === 'salary'
+    ? { primary: 'Да, зарплата', secondary: 'Нет', ghost: 'Потом' }
+    : { primary: 'Да, отметить', secondary: 'Нет, это другое', ghost: 'Потом' },
+)
+function deferMatch(c: MatchCandidate) {
+  deferredMatches.value = [...deferredMatches.value, matchKey(c)]
+}
 const options = (g: UnknownGroup) => [
   { value: '', label: 'Раздел…' },
   ...categories.value.map((c) => ({ value: c.id, label: c.name })),
@@ -189,6 +206,9 @@ onMounted(() => {
           <p v-if="summary.already" class="mt-1 text-[12.5px] text-ink-3">
             {{ summary.already === summary.total ? `Все ${summary.total} уже были — ничего не удвоится` : `Из них уже были: ${summary.already}` }}
           </p>
+          <p v-if="store.draftAutoMatches.length" class="mt-1 text-[12.5px] text-ink-3">
+            Отметится по выписке: {{ store.draftAutoMatches.length }} — платежи, которые вы уже подтверждали.
+          </p>
           <div class="mt-2 flex justify-between"><span class="text-ink-2">Списания</span><span class="num text-ink">{{ money(summary.spent) }}</span></div>
           <div class="flex justify-between"><span class="text-ink-2">Поступления</span><span class="num text-ink">{{ money(summary.received) }}</span></div>
           <div class="flex justify-between"><span class="text-ink-2">Между своими</span><span class="num text-ink-3">{{ money(summary.internal) }}</span></div>
@@ -243,6 +263,25 @@ onMounted(() => {
       <p v-if="store.pendingCount" class="rounded-xl border border-line bg-surface-2 p-3 text-[13px] text-ink-2">
         {{ store.pendingCount }} операций отправятся при сети. Итоги уже посчитаны.
       </p>
+      <Callout v-if="store.lastAutoMarked" tone="ok">
+        Отмечено по выписке: {{ store.lastAutoMarked }} — снять можно в «Деньгах».
+      </Callout>
+
+      <!-- Сопоставление с отметками (Р-6): одно решение за раз -->
+      <DecisionCard
+        v-if="match"
+        :question="match.question"
+        :meta="match.meta"
+        :progress="matchQueue.length > 1 ? { n: 1, k: matchQueue.length } : null"
+        :actions="matchActions"
+        @primary="store.acceptMatch(match)"
+        @secondary="store.declineMatch(match)"
+        @ghost="deferMatch(match)"
+      >
+        <template #inner>
+          {{ match.kind === 'salary' ? 'Зарплату запомним по получателю: дальше отметится сама.' : '«Да» запомним по названию: дальше платёж отметится сам, а вы увидите его в «Деньгах».' }}
+        </template>
+      </DecisionCard>
 
       <div v-if="rows.length" class="rounded-2xl border border-line bg-surface">
         <div class="grid grid-cols-[1fr_auto_auto] gap-x-3 border-b border-line px-3.5 py-2 text-[12px] text-ink-3">

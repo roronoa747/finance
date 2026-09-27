@@ -4,6 +4,11 @@ import type { ApiClient } from '../src/api/client'
 import { useAuthStore } from '../src/stores/auth'
 import { useFinanceStore } from '../src/stores/finance'
 import { useOperationsStore } from '../src/stores/operations'
+import { apiClient } from '../src/api/client'
+import { assignIds } from '../src/lib/statements/model'
+import type { Operation, ParsedStatement } from '../src/lib/statements/types'
+import Money from '../src/views/Money.vue'
+import Statements from '../src/views/Statements.vue'
 import { money } from '../src/lib/money'
 import { budgetAmounts, duesTotal, monthDues } from '../src/lib/finance'
 import { planFamilyDoc, T0 } from '../src/test/planFamily'
@@ -18,7 +23,7 @@ import { at, backend, fakeServer, fakeStatements, screen, statementsFor, type Fa
  * планом и итогами выписок — процент героя, «Свободно» по факту (посчитано руками), карточка
  * решения ведёт на «Неделю». Части 2–5 — B2C-15, B2C-18, B2C-19, B2C-21.
  */
-type Phone = { pinia: Pinia; client: ApiClient; user: string }
+type Phone = { pinia: Pinia; client: ApiClient; user: string; store: ReturnType<typeof useFinanceStore> }
 
 async function phone(server: FakeServer, st: FakeStatements, slot: 'a' | 'b', role: 'member' | 'viewer' = 'member'): Promise<Phone> {
   const pinia = createPinia()
@@ -36,7 +41,7 @@ async function phone(server: FakeServer, st: FakeStatements, slot: 'a' | 'b', ro
   const ops = useOperationsStore()
   await ops.loadUploads(client)
   await ops.pull(client)
-  return { pinia, client, user }
+  return { pinia, client, user, store: finance }
 }
 
 const total = (by: 'a' | 'b', kind: 'week' | 'month', period: string, categoryId: string, amount: number): SpendTotal => ({
@@ -139,5 +144,95 @@ describe('e2e / B2C Блок 3 — часть 1: главный «Мечты» (
     expect(htmlV).toContain(money(483_000))
     expect(htmlV).not.toContain('Пришла зарплата')
     expect(htmlV).not.toContain('Новая мечта')
+  })
+})
+
+describe('e2e / B2C Блок 3 — часть 2: сопоставление выписки с отметками (B2C-15, Р-6)', () => {
+  const storage = new Map<string, string>()
+  let server: FakeServer
+  let st: FakeStatements
+
+  const op = (date: string, amount: number, merchant: string): Omit<Operation, 'id'> => ({
+    bank: 'kaspi', date, amount, kind: amount < 0 ? 'purchase' : 'transfer-in', merchant, categoryId: null, internal: false,
+  })
+  const statement = (from: string, to: string, ...list: Omit<Operation, 'id'>[]): ParsedStatement => ({ bank: 'kaspi', from, to, operations: assignIds(list), skipped: 0 })
+
+  async function upload(p: Phone, parsed: ParsedStatement) {
+    setActivePinia(p.pinia)
+    const ops = useOperationsStore()
+    ops.setDraft([{ name: 'выписка.pdf', parsed }])
+    await ops.send(p.client)
+    await useFinanceStore().syncHousehold(p.client)
+    return ops
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => storage.set(k, String(v)),
+      removeItem: (k: string) => storage.delete(k),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    vi.useFakeTimers()
+    at('2026-09-20T07:00:00Z')
+    // Кредит семьи — «Автокредит» 58 000 15-го под 33 %, остаток 1 000 000.
+    const doc = planFamilyDoc()
+    doc.credits = doc.credits.map((c) => (c.id === 'loan' ? { ...c, name: 'Автокредит' } : c))
+    server = fakeServer(doc)
+    st = fakeStatements()
+    vi.spyOn(apiClient, 'pushPrivateDoc').mockImplementation(async (rev, data) => ({ household_id: 'h-family', user_id: 'u-a', rev: rev + 1, data, updated_at: '' }))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('A: «похоже, платёж по Автокредиту — отметить?» → «да» → у B отметка «из выписки», остаток минус тело; следующий месяц — само; «снять» у B — у A не предлагается снова, трата в картине', async () => {
+    const A = await phone(server, st, 'a')
+    const B = await phone(server, st, 'b')
+
+    // Сентябрь: выписка Ильяса с платежом по кредиту.
+    const opsA = await upload(A, statement('2026-09-01', '2026-09-20', op('2026-09-14', -58_000, 'Оплата Kaspi Кредита')))
+    const week = await screen(A.pinia, Statements, '/week')
+    expect(week).toContain('Похоже, это платёж по Автокредит — отметить?')
+    expect(opsA.pendingMatches).toHaveLength(1)
+    // На главном — та же карточка первой (незнакомых нет: продавец узнан словарём).
+    expect(await screen(A.pinia, Dreams, '/')).toContain('Похоже, это платёж по Автокредит — отметить?')
+
+    await opsA.acceptMatch(opsA.pendingMatches[0], A.client)
+    await A.store.syncHousehold(A.client)
+    await B.store.pullHousehold(B.client)
+    const paidB = B.store.payments.find((p) => p.kind === 'credit' && !p.deletedAt)!
+    expect(paidB).toMatchObject({ targetId: 'loan', period: '2026-09', amount: 58_000, source: 'statement', accountId: null })
+    // creditSplit(1 000 000, 33 %, 58 000): банку 27 500, в долг 30 500.
+    expect(B.store.credits.find((c) => c.id === 'loan')!.principal).toBe(969_500)
+    const moneyB = await screen(B.pinia, Money, '/money')
+    expect(moneyB).toContain('оплачено')
+    expect(moneyB).toContain('из выписки')
+    // Правило — в личном документе A, партнёру не уезжает.
+    expect(A.store.merchantRules).toHaveLength(1)
+    expect(B.store.merchantRules).toHaveLength(0)
+
+    // Октябрь: тот же продавец — отметилось само.
+    at('2026-10-16T07:00:00Z')
+    await upload(A, statement('2026-10-01', '2026-10-16', op('2026-10-15', -58_000, 'Оплата Kaspi Кредита')))
+    expect(opsA.lastAutoMarked).toBe(1)
+    await B.store.pullHousehold(B.client)
+    const october = B.store.payments.find((p) => p.period === '2026-10' && !p.deletedAt)!
+    expect(october).toMatchObject({ kind: 'credit', targetId: 'loan', source: 'statement' })
+
+    // B снимает отметку → у A после синка платёж не отмечен, снова не предлагается, трата в картине недели.
+    setActivePinia(B.pinia)
+    B.store.unmarkPaid('credit', 'loan', '2026-10')
+    await B.store.syncHousehold(B.client)
+    await A.store.pullHousehold(A.client)
+    expect(A.store.payments.find((p) => p.period === '2026-10' && !p.deletedAt)).toBeUndefined()
+    setActivePinia(A.pinia)
+    expect(opsA.pendingMatches).toEqual([])
+    const totals = A.store.householdDoc.spendTotals!.filter((t) => t.by === 'a' && t.period === '2026-10' && t.kind === 'month')
+    expect(totals.map((t) => [t.categoryId, t.amount])).toEqual([['sc_credit', 58_000]])
   })
 })

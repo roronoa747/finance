@@ -50,11 +50,22 @@ export type SpendCategory = Tracked & {
  * Память семьи (Р-22): «продавец → раздел», «кому → что», «это внутренний перевод».
  * Живёт в личном документе — переводы людям не утекают партнёру.
  */
+/**
+ * Правило «это платёж по <цели>» (Р-6, B2C-15): строка выписки с таким продавцом или получателем
+ * отмечает платёж обязательства, кредита или зарплату участника сама; `categoryId` — раздел трат
+ * операции (кредиты, аренда, коммуналка — `plannedElsewhere`), null — раздел по словарю.
+ */
+export type PaymentRule = {
+  kind: 'obligation' | 'credit' | 'salary'
+  targetId: string
+  categoryId?: string | null
+}
+
 export type MerchantRule = Tracked & {
   id: string
   /** Нормализованные: `normalizeMerchant` / `normalizeCounterparty`. */
   match: { merchant?: string; counterparty?: string }
-  to: { categoryId: string } | { internal: true } | { person: string }
+  to: { categoryId: string } | { internal: true } | { person: string } | { payment: PaymentRule }
   by: PersonId
 }
 

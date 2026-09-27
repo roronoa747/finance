@@ -101,6 +101,25 @@ describe('views/Statements.vue', () => {
     expect(html).not.toContain('Загрузить выписку')
   })
 
+  it('B2C-15: карточка сопоставления по одному — «Похоже, это платёж по … — отметить?», три действия; viewer её не видит', async () => {
+    signIn()
+    const finance = useFinanceStore()
+    finance.householdDoc.credits = [{ id: 'loan', name: 'Автокредит', note: '', principal: 1_000_000, annualRate: 0.33, payment: 58_000, day: 15, updatedAt: '' }]
+    const store = useOperationsStore()
+    store.ops['op-1'] = { id: 'op-1', bank: 'kaspi', date: '2026-09-14', amount: -58_000, kind: 'purchase', merchant: 'Оплата Kaspi Кредита', categoryId: 'sc_credit', internal: false }
+    const html = await renderScreen(Statements, '/week')
+    expect(html).toContain('Похоже, это платёж по Автокредит — отметить?')
+    expect(html).toContain('14 сентября · «Оплата Kaspi Кредита»')
+    for (const t of ['Да, отметить', 'Нет, это другое', 'Потом']) expect(html).toContain(t)
+    expect(html).toContain('«Да» запомним по названию')
+
+    setActivePinia(createPinia())
+    signIn('viewer')
+    useFinanceStore().householdDoc.credits = finance.householdDoc.credits
+    useOperationsStore().ops['op-1'] = store.ops['op-1']
+    expect(await renderScreen(Statements, '/week')).not.toContain('отметить?')
+  })
+
   it('повтор того же файла — «все N уже были»', async () => {
     signIn()
     const store = useOperationsStore()

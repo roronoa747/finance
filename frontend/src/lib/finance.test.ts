@@ -2439,12 +2439,14 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
 
     it('порядок: незнакомые → сопоставления → зарплата → подписка → конец месяца → шаг плана → null', () => {
       const ctx = { me: 'a' as const, now }
-      const unknown = nextDecision(base, { ...ctx, unknown: { count: 3, amount: 23_400 }, matches: 2 })
+      const first = { count: 2, question: 'Похоже, это платёж по Кредиту — отметить?', meta: `${money(58_000)} · 15 сентября` }
+      const unknown = nextDecision(base, { ...ctx, unknown: { count: 3, amount: 23_400 }, match: first })
       expect(unknown).toMatchObject({ kind: 'unknown', question: 'Не разобрано: 3 продавца', to: '/week', actions: { primary: 'Разобрать', ghost: 'Потом' } })
       expect(unknown?.meta).toContain(money(23_400))
 
-      const match = nextDecision(base, { ...ctx, matches: 2 })
-      expect(match).toMatchObject({ kind: 'match', question: 'Похоже, нашли 2 платежа по графику — отметить?', to: '/week' })
+      const match = nextDecision(base, { ...ctx, match: first })
+      expect(match).toMatchObject({ kind: 'match', question: first.question, meta: `${first.meta} · ещё 1`, to: '/week' })
+      expect(nextDecision(base, { ...ctx, match: { ...first, count: 1 } })?.meta).toBe(first.meta)
 
       // 17 сентября: ближайшая зарплата — Даны 20-го, до неё 3 дня → «пришла?» у Даны; у Ильяса
       // (его 10-е давно прошло) вопроса нет — как на прежнем Обзоре.

@@ -10,6 +10,8 @@ export const OPERATIONS_STORAGE_KEYS = {
   cursor: 'ff_operations_cursor',
   pending: 'ff_operations_pending',
   demoUploads: 'ff_statement_uploads_demo',
+  /** «Нет, это другое» на предложение сопоставления — на этот месяц (B2C-15). */
+  declined: 'ff_match_declined',
 } as const
 
 export function readStorage<T>(key: string, fallback: T): T {
