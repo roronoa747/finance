@@ -86,7 +86,13 @@ import {
   summaryMonth,
   SUMMARY_FIRST_DAYS,
   type PlanState,
+  mainGoal,
+  weekPicture,
+  freeByFact,
+  nextDecision,
 } from './finance'
+import type { SpendCategory, SpendTotal } from '@/lib/statements/types'
+import { DEFAULT_SPEND_CATEGORIES } from '@/lib/statements/dictionary'
 import { plain, money, moneyShort, parseMoney, pct, ratePct } from './money'
 import { clean, caretAt, sigBefore } from './num'
 import { plural } from './utils'
@@ -2318,6 +2324,188 @@ describe('RP-13 — итог месяца на двоих', () => {
     expect(summaryMonth({ day: 5, key: '2026-10' })).toBe('2026-09')
     expect(summaryMonth({ day: 6, key: '2026-10' })).toBeNull()
     expect(summaryMonth({ day: 3, key: '2027-01' })).toBe('2026-12')
+  })
+})
+
+describe('B2C-14 — главный «Мечты»: главная мечта, картина недели, «Свободно по факту», ближайшее решение', () => {
+  const T = '2026-09-01T00:00:00.000Z'
+  const goal = (id: string, name: string, extra: Partial<Goal> = {}): Goal => ({
+    id, name, need: 1_000_000, seed: 100_000, have: 100_000, monthly: 50_000, hue: 'teal', planPct: 0, movements: [], updatedAt: T, ...extra,
+  })
+  const people: Person[] = [
+    { id: 'a', name: 'Ильяс', salary: 700_000, payday: 10, updatedAt: T },
+    { id: 'b', name: 'Дана', salary: 500_000, payday: 20, updatedAt: T },
+  ]
+  const total = (by: 'a' | 'b', kind: 'week' | 'month', period: string, categoryId: string, amount: number): SpendTotal => ({
+    id: `${by}:${kind}:${period}:${categoryId}`, by, kind, period, categoryId, amount, ops: 1, updatedAt: T,
+  })
+  const categories: SpendCategory[] = DEFAULT_SPEND_CATEGORIES.map((c) => ({ ...c, updatedAt: T }))
+  const rent: Obligation = { id: 'rent', name: 'Аренда', note: '', day: 5, category: 'd1', versions: [{ from: '2000-01', amount: 220_000 }], updatedAt: T }
+  const loan: Credit = { id: 'loan', name: 'Кредит', note: '', principal: 1_000_000, annualRate: 0.33, payment: 58_000, day: 15, updatedAt: T }
+  const now = { day: 17, key: '2026-09' }
+
+  describe('mainGoal', () => {
+    it('две отмеченные — с поздним updatedAt; без пометки — первая живая; удалённая не в счёт; пусто — null', () => {
+      const a = goal('a', 'A', { main: true, updatedAt: '2026-09-02T00:00:00.000Z' })
+      const b = goal('b', 'B', { main: true, updatedAt: '2026-09-03T00:00:00.000Z' })
+      expect(mainGoal([a, b])?.id).toBe('b')
+      expect(mainGoal([goal('x', 'X'), goal('y', 'Y')])?.id).toBe('x')
+      expect(mainGoal([goal('x', 'X', { deletedAt: T }), goal('y', 'Y')])?.id).toBe('y')
+      expect(mainGoal([goal('x', 'X', { main: true, deletedAt: T }), goal('y', 'Y')])?.id).toBe('y')
+      expect(mainGoal([])).toBeNull()
+    })
+  })
+
+  describe('weekPicture', () => {
+    it('двое: сумма обоих по разделам, доли, «не разобрано» отдельно, один без загрузки за неделю', () => {
+      const totals = [
+        total('a', 'week', '2026-W38', 'sc_food', 60_000),
+        total('b', 'week', '2026-W38', 'sc_food', 20_000),
+        total('a', 'week', '2026-W38', 'sc_cafe', 10_000),
+        total('a', 'week', '2026-W38', '_unknown', 10_000),
+        total('a', 'week', '2026-W37', 'sc_food', 999_999), // другая неделя
+        total('a', 'month', '2026-09', 'sc_food', 999_999), // месяц — не неделя
+      ]
+      const uploads = [{ slot: 'a', period_from: '2026-09-01', period_to: '2026-09-15' }, { slot: 'b', period_from: '2026-08-01', period_to: '2026-08-31' }]
+      const p = weekPicture(totals, categories, people, '2026-W38', uploads)
+      expect(p.range).toEqual({ from: '2026-09-14', to: '2026-09-20' })
+      expect(p.total).toBe(100_000)
+      expect(p.rows.map((r) => [r.categoryId, r.name, r.amount, r.share, r.color])).toEqual([
+        ['sc_food', 'Продукты', 80_000, 0.8, 'var(--s1)'],
+        ['sc_cafe', 'Кафе и рестораны', 10_000, 0.1, 'var(--s2)'],
+      ])
+      expect(p.unknown).toBe(10_000)
+      expect(p.unknownShare).toBe(0.1)
+      expect(p.uploaded.map((x) => x.id)).toEqual(['a'])
+      expect(p.missing.map((x) => x.name)).toEqual(['Дана'])
+    })
+
+    it('пусто — нули без исключений; имя раздела семьи — из документа', () => {
+      const p = weekPicture([], [], people, '2026-W38')
+      expect(p.total).toBe(0)
+      expect(p.rows).toEqual([])
+      expect(p.missing.length).toBe(2)
+      const named = weekPicture([total('a', 'week', '2026-W38', 'sc_food', 1)], [{ ...categories[0], name: 'Еда' }], people, '2026-W38')
+      expect(named.rows[0].name).toBe('Еда')
+      expect(named.rows[0].share).toBe(1)
+    })
+  })
+
+  describe('freeByFact', () => {
+    const state = { people, obligations: [rent], credits: [loan], goals: [goal('g', 'Цель')], categories: [], payments: [] as Payment[] }
+    const uploads = [{ slot: 'a', period_from: '2026-09-01', period_to: '2026-09-17' }]
+
+    it('по факту: доход − платежи месяца − взносы − траты, кроме разделов, уже учтённых планом', () => {
+      const totals = [
+        total('a', 'month', '2026-09', 'sc_food', 150_000),
+        total('b', 'month', '2026-09', 'sc_food', 50_000),
+        total('a', 'month', '2026-09', 'sc_credit', 58_000), // уже в monthDues — не вычитается
+        total('a', 'month', '2026-09', 'sc_utilities', 30_000), // тоже
+        total('a', 'month', '2026-09', '_unknown', 20_000), // не разобрано — трата
+        total('a', 'month', '2026-08', 'sc_food', 999_999), // другой месяц
+        total('a', 'week', '2026-W38', 'sc_food', 999_999), // неделя — не месяц
+      ]
+      const f = freeByFact(state, totals, categories, '2026-09', uploads)
+      // 1 200 000 − (220 000 + 58 000) − 50 000 − (150 000 + 50 000 + 20 000) = 652 000
+      expect(f).toMatchObject({ byFact: true, income: 1_200_000, dues: 278_000, goals: 50_000, spent: 220_000, amount: 652_000 })
+      expect(f.share).toBeCloseTo(652_000 / 1_200_000, 6)
+    })
+
+    it('отметка учтена один раз: оплаченная аренда 225 000 — из отметки, в тратах выписки её раздел не вычитается', () => {
+      const paid: Payment = { id: 'p', kind: 'obligation', targetId: 'rent', period: '2026-09', amount: 225_000, accountId: null, by: 'a', at: T, updatedAt: T }
+      const totals = [total('a', 'month', '2026-09', 'sc_rent', 225_000), total('a', 'month', '2026-09', 'sc_food', 100_000)]
+      const f = freeByFact({ ...state, payments: [paid] }, totals, categories, '2026-09', uploads)
+      expect(f.dues).toBe(225_000 + 58_000)
+      expect(f.spent).toBe(100_000)
+      expect(f.amount).toBe(1_200_000 - 283_000 - 50_000 - 100_000)
+    })
+
+    it('без загрузок за месяц — план (budgetAmounts.free) с byFact: false; флаг документа сильнее словаря', () => {
+      const totals = [total('a', 'month', '2026-09', 'sc_food', 150_000)]
+      const plan = freeByFact(state, totals, categories, '2026-09', [{ slot: 'a', period_from: '2026-08-01', period_to: '2026-08-31' }])
+      expect(plan.byFact).toBe(false)
+      expect(plan.amount).toBe(budgetAmounts(state).d5)
+      // Семья сняла флаг у кредитов — их траты снова считаются по факту.
+      const own = categories.map((c) => (c.id === 'sc_credit' ? { ...c, plannedElsewhere: false } : c))
+      const f = freeByFact(state, [total('a', 'month', '2026-09', 'sc_credit', 58_000)], own, '2026-09', uploads)
+      expect(f.spent).toBe(58_000)
+      expect(freeByFact(state, [total('a', 'month', '2026-09', 'sc_credit', 58_000)], [], '2026-09', uploads).spent).toBe(0)
+    })
+  })
+
+  describe('nextDecision', () => {
+    const base = { people, obligations: [rent], credits: [loan], goals: [goal('g', 'Япония', { need: 1_800_000, have: 1_116_000 })], payments: [] as Payment[] }
+    const sub: Obligation = { id: 'nf', name: 'Netflix', note: '', day: 3, category: 'd4', versions: [{ from: '2000-01', amount: 4_990 }], updatedAt: T }
+
+    it('порядок: незнакомые → сопоставления → зарплата → подписка → конец месяца → шаг плана → null', () => {
+      const ctx = { me: 'a' as const, now }
+      const unknown = nextDecision(base, { ...ctx, unknown: { count: 3, amount: 23_400 }, matches: 2 })
+      expect(unknown).toMatchObject({ kind: 'unknown', question: 'Не разобрано: 3 продавца', to: '/week', actions: { primary: 'Разобрать', ghost: 'Потом' } })
+      expect(unknown?.meta).toContain(money(23_400))
+
+      const match = nextDecision(base, { ...ctx, matches: 2 })
+      expect(match).toMatchObject({ kind: 'match', question: 'Похоже, нашли 2 платежа по графику — отметить?', to: '/week' })
+
+      // 17 сентября: ближайшая зарплата — Даны 20-го, до неё 3 дня → «пришла?» у Даны; у Ильяса
+      // (его 10-е давно прошло) вопроса нет — как на прежнем Обзоре.
+      const salary = nextDecision(base, { ...ctx, me: 'b' })
+      expect(salary).toMatchObject({ kind: 'salary', question: 'Пришла зарплата Дана?', meta: `${money(500_000)} · 20 сентября`, to: '/money' })
+      expect(salary?.salary).toMatchObject({ period: '2026-09' })
+      expect(nextDecision(base, ctx)).toBeNull()
+
+      // Подписка без keptAt — «оставить?», с расчётом «за год» и долей пути до мечты.
+      const keep = nextDecision({ ...base, obligations: [rent, sub] }, ctx)
+      expect(keep).toMatchObject({ kind: 'keep', question: 'Оставить подписку Netflix?', meta: `${money(4_990)} · каждый месяц`, to: null })
+      expect(keep?.inner).toBe(`За год — ${money(59_880)} · это 9 % пути до Япония`)
+      expect(keep?.actions).toEqual({ primary: 'Оставить', secondary: 'Отписаться', ghost: 'Подумать' })
+      expect(keep?.obligation?.id).toBe('nf')
+
+      // Конец месяца: 28-е, ответа нет — вопрос; ответили — нет.
+      const end = { day: 28, key: '2026-09' }
+      const rest = nextDecision(base, { me: 'a', now: end })
+      expect(rest).toMatchObject({ kind: 'monthEnd', question: 'Остались деньги с сентября?', to: '/week?rest=1', actions: { primary: 'Разложить', ghost: 'Не сейчас' } })
+      expect(nextDecision(base, { me: 'a', now: end, answeredMonthEnd: '2026-09' })).toBeNull()
+    })
+
+    it('шаг плана «Сначала долги» — последним; viewer не участник — me пустой, зарплаты нет', () => {
+      const plan: DebtPlan = {
+        id: 'p', status: 'active', by: 'a', startedAt: '2026-09-01T05:00:00.000Z', endedAt: null, keptGoalIds: [], cushionGoalId: null,
+        creditIds: ['loan'], months: 24, lump: 0, forecast: { gain: 0, savedInterest: 0, debtFreeMonth: null }, result: null, updatedAt: T,
+      }
+      const d = nextDecision({ ...base, plans: [plan] }, { me: 'a', now })
+      expect(d?.kind).toBe('plan')
+      expect(d?.question).toMatch(/^Внести по плану .* в «Кредит»\?$/)
+      expect(d?.to).toBe('/money/plan')
+      expect(nextDecision(base, { me: undefined, now })).toBeNull()
+    })
+  })
+
+  describe('untilPayday — хвосты RP', () => {
+    it('день 31 в сентябре — 30-е, «31 сентября» не бывает', () => {
+      const p: Person = { id: 'a', name: 'Ильяс', salary: 500_000, payday: 31, updatedAt: T }
+      const r = untilPayday({ people: [p] }, { day: 20, key: '2026-09' })!
+      expect(r.day).toBe(30)
+      expect(r.inDays).toBe(10)
+      expect(r.key).toBe('2026-09')
+    })
+
+    it('ближайшие зарплаты отмечены заранее — блок смотрит на три месяца вперёд', () => {
+      const p: Person = { id: 'a', name: 'Ильяс', salary: 500_000, payday: 10, updatedAt: T }
+      const paid = (period: string): Payment => ({ id: period, kind: 'salary', targetId: 'a', period, amount: 500_000, accountId: null, by: 'a', at: T, updatedAt: T })
+      const r = untilPayday({ people: [p], payments: [paid('2026-10'), paid('2026-11')] }, { day: 20, key: '2026-09' })!
+      expect(r.key).toBe('2026-12')
+      // 10 дней до конца сентября + октябрь 31 + ноябрь 30 + 10 = 81.
+      expect(r.inDays).toBe(81)
+      expect(untilPayday({ people: [p], payments: [paid('2026-10'), paid('2026-11'), paid('2026-12')] }, { day: 20, key: '2026-09' })).toBeNull()
+    })
+
+    it('платежи в окне: до дня зарплаты через месяц — этот месяц с сегодня, следующий до дня', () => {
+      const p: Person = { id: 'a', name: 'Ильяс', salary: 500_000, payday: 10, updatedAt: T }
+      const r = untilPayday({ people: [p], obligations: [rent], credits: [loan] }, { day: 20, key: '2026-09' })!
+      expect(r.key).toBe('2026-10')
+      expect(r.due.map((d) => [d.name, d.when, d.id])).toEqual([['Аренда', '2026-10', 'rent@next']])
+      expect(r.dueTotal).toBe(220_000)
+    })
   })
 })
 

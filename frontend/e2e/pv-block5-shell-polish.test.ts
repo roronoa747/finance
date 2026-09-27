@@ -5,7 +5,7 @@ import { defaultSyncDoc } from '../src/stores/finance'
 import { useAuthStore } from '../src/stores/auth'
 import type { SyncDoc } from '../src/types/finance'
 import Access from '../src/views/Access.vue'
-import Overview from '../src/views/Overview.vue'
+import Dreams from '../src/views/Dreams.vue'
 import Budget from '../src/views/Budget.vue'
 import Capital from '../src/views/Capital.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
@@ -165,8 +165,7 @@ describe('e2e / PV Блок 5 — оболочка на двух телефон�
       vi.stubGlobal('fetch', vi.fn(async () => goReply(403, 'only full members can create invites')))
       const text = 'Код может создать только участник с правом правки — у вас только просмотр.'
 
-      const ov = await act(A.pinia, Overview, '/', 'makeInvite')
-      expect(await screen(A.pinia, Overview, '/', undefined, [screenMixin({ inviteError: ov.inviteError })])).toContain(text)
+      // Баннера приглашения на главном больше нет (B2C-14) — код создаётся в шторке синка.
       const sheet = await act(A.pinia, SyncBadge, '/budget', 'makeInvite', { open: true })
       const html = await screen(A.pinia, SyncBadge, '/budget', undefined, [screenMixin({ open: true, inviteError: sheet.inviteError })])
       expect(html).toContain('Пригласить второго')
@@ -176,7 +175,7 @@ describe('e2e / PV Блок 5 — оболочка на двух телефон�
       const V = await phone(server)
       on(V)
       useAuthStore().setAuthData(authAs('viewer', 'a'))
-      expect(await screen(V.pinia, Overview, '/')).not.toContain('Создать код приглашения')
+      expect(await screen(V.pinia, Dreams, '/')).not.toContain('Создать код приглашения')
       const vSheet = await screen(V.pinia, SyncBadge, '/budget', undefined, [screenMixin({ open: true })])
       expect(vSheet).toContain('только просмотр')
       expect(vSheet).not.toContain('Пригласить второго')

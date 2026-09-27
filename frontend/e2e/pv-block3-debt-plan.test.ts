@@ -7,7 +7,6 @@ import type { Goal, Payment, SyncDoc } from '../src/types/finance'
 import Goals from '../src/views/Goals.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
 import Budget from '../src/views/Budget.vue'
-import Overview from '../src/views/Overview.vue'
 import DebtPlan from '../src/views/DebtPlan.vue'
 import Capital from '../src/views/Capital.vue'
 import Ritual from '../src/views/Ritual.vue'
@@ -127,8 +126,6 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
 
       const budget = await screen(B.pinia, Budget, '/budget')
       expect(amountAfter(budget, '>Досрочно по плану</div>')).toBe(100_000)
-      const overview = await screen(B.pinia, Overview, '/')
-      expect(amountAfter(overview, '>Досрочно по плану</span>')).toBe(100_000)
       expect(budgetAmounts({ ...B.store.householdDoc, credits: B.store.credits }).d5).toBe(freeBefore)
       expect(await screen(B.pinia, DebtPlan, '/plan')).toContain('План «Сначала долги»')
 

@@ -22,7 +22,8 @@ import {
 } from '../src/lib/finance'
 import { money, plain } from '../src/lib/money'
 import Capital from '../src/views/Capital.vue'
-import Overview from '../src/views/Overview.vue'
+import Dreams from '../src/views/Dreams.vue'
+import Money from '../src/views/Money.vue'
 import Budget from '../src/views/Budget.vue'
 import PaidRow from '../src/components/PaidRow.vue'
 import DangerZone from '../src/components/kit/DangerZone.vue'
@@ -144,7 +145,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     setActivePinia(B.pinia)
     await B.store.pullHousehold(B.client)
     // «До зарплаты» (до 10 октября): коммуналка 8 октября — с «оценкой», её «Оплатил» откроет лист с суммой.
-    const overview = await screen(B.pinia, Overview, '/')
+    const overview = await screen(B.pinia, Money, '/money')
     const until = overview.slice(overview.indexOf('Коммуналка'))
     expect(until.slice(0, until.indexOf('Оплатил'))).toContain('оценка')
 
@@ -421,15 +422,15 @@ describe('e2e / Блок 2 паритета — правка денег на д�
 
       // «Оставить?» (RP-09): только что заведённое в этом квартале не спрашиваем…
       expect(keepQuestions(B.store.obligations)).toEqual([])
-      expect(await page(B.pinia, Overview, '/')).not.toContain('Оставить «')
+      expect(await page(B.pinia, Dreams, '/')).not.toContain('Оставить подписку')
       // …с нового квартала второй телефон спрашивает про подписку «Интернет» — не про
       // «Свет» (оценка) и не про аренду (жильё).
       at('2026-10-02T04:00:00Z')
       expect(keepQuestions(B.store.obligations).map((o) => o.name)).toEqual(['Интернет'])
-      const overview = await page(B.pinia, Overview, '/')
-      expect(overview).toContain('Оставить «Интернет»?')
-      expect(overview).toContain(`${money(6_990)} в месяц`)
-      expect(overview).not.toContain('Оставить «Свет»?')
+      const overview = await page(B.pinia, Dreams, '/')
+      expect(overview).toContain('Оставить подписку Интернет?')
+      expect(overview).toContain(`${money(6_990)} · каждый месяц`)
+      expect(overview).not.toContain('Оставить подписку Свет?')
     })
 
     it('приёмка: PV-11 — план суммы на A: у второго «История суммы» — две строки с причиной, в месяц перехода «станет с» → «с»; viewer видит историю без полей', async () => {
@@ -475,7 +476,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(modal).not.toContain('Удалить обязательство')
       expect(modal).not.toContain('<input')
       // Обзор второго — событие «освободится» из того же плана.
-      expect(await page(B.pinia, Overview, '/')).toContain(`Освободится ${money(20_000)} в месяц`)
+      expect(await page(B.pinia, Money, '/money')).toContain(`Освободится ${money(20_000)} в месяц`)
 
       // Ноябрь: план наступил — строка «с ноября», сумма сейчас 200 000.
       at('2026-11-02T04:00:00Z')

@@ -12,7 +12,7 @@ import { setupPlan, type SetupForm } from '../src/lib/setup'
 import { HUES } from '../src/lib/palette'
 import { isDark } from '../src/lib/theme'
 import { money, plain } from '../src/lib/money'
-import Overview from '../src/views/Overview.vue'
+import Goals from '../src/views/Goals.vue'
 import Budget from '../src/views/Budget.vue'
 import Ritual from '../src/views/Ritual.vue'
 import Capital from '../src/views/Capital.vue'
@@ -155,8 +155,8 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
     const A = await phone(server)
     const B = await phone(server)
 
-    expect(await screen(A.pinia, Overview, '/')).toContain(money(738_320))
     const budgetBefore = await screen(A.pinia, Budget, '/budget')
+    expect(budgetBefore).toContain(money(738_320))
     expect(budgetBefore).toContain(money(141_680))
     // Досрочка — в самый дорогой открытый (40%), а не в первую по документу рассрочку.
     expect(await screen(A.pinia, Ritual, '/ritual')).toContain(`Сейчас: 13 платежей, переплата ${money(70_967)}`)
@@ -168,10 +168,8 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
     await B.store.pullHousehold(B.client)
 
     for (const P of [A, B]) {
-      const overview = await screen(P.pinia, Overview, '/')
-      expect(overview).toContain(money(768_320))
-      expect(overview).not.toContain(money(738_320))
       const budget = await screen(P.pinia, Budget, '/budget')
+      expect(budget).not.toContain(money(738_320))
       expect(budget).toContain(money(111_680))
       expect(budget).not.toContain(money(141_680))
       expect(budget).toContain(money(768_320))
@@ -273,15 +271,15 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
     expect(d.goal?.goal.name).toBe('Машина')
   })
 
-  it('PV-08: тёмная тема — кольца Обзора тёмными оттенками целей', async () => {
+  it('PV-08: тёмная тема — кольца списка целей тёмными оттенками целей', async () => {
     const A = await phone(server)
     isDark.value = true
-    const dark = await screen(A.pinia, Overview, '/')
+    const dark = await screen(A.pinia, Goals, '/wishes')
     expect(dark).toContain(`stroke="${HUES.blue.dark}"`)
     expect(dark).toContain(`stroke="${HUES.plum.dark}"`)
     expect(dark).not.toContain(`stroke="${HUES.blue.light}"`)
     isDark.value = false
-    const light = await screen(A.pinia, Overview, '/')
+    const light = await screen(A.pinia, Goals, '/wishes')
     expect(light).toContain(`stroke="${HUES.blue.light}"`)
   })
 })

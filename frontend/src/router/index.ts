@@ -6,7 +6,7 @@ import { hasBudgetData } from '@/lib/finance'
 import Access from '@/views/Access.vue'
 import Setup from '@/views/Setup.vue'
 import AppShell from '@/components/AppShell.vue'
-import Overview from '@/views/Overview.vue'
+import Dreams from '@/views/Dreams.vue'
 import Budget from '@/views/Budget.vue'
 import Capital from '@/views/Capital.vue'
 import Goals from '@/views/Goals.vue'
@@ -50,7 +50,7 @@ export const routes: RouteRecordRaw[] = [
     component: AppShell,
     meta: { requiresAuth: true },
     children: [
-      { path: '', name: 'dreams', component: Overview },
+      { path: '', name: 'dreams', component: Dreams },
       { path: 'week', name: 'week', component: Statements },
       { path: 'week/salary', name: 'week-salary', component: Ritual },
       { path: 'money', name: 'money', component: Money },

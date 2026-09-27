@@ -5,25 +5,36 @@ import type { OperationKind, SpendCategory } from './types'
 
 export const UNKNOWN_CATEGORY = '_unknown'
 
+// `plannedElsewhere` (B2C-14): раздел уже стоит в плане месяца обязательством или кредитом —
+// «Свободно по факту» его траты из выписок не вычитает второй раз.
 export const DEFAULT_SPEND_CATEGORIES: Omit<SpendCategory, 'updatedAt'>[] = [
   { id: 'sc_food', name: 'Продукты', hue: 'green', order: 1 },
   { id: 'sc_cafe', name: 'Кафе и рестораны', hue: 'ochre', order: 2 },
   { id: 'sc_transport', name: 'Транспорт', hue: 'blue', order: 3 },
-  { id: 'sc_telecom', name: 'Связь и интернет', hue: 'steel', order: 4 },
-  { id: 'sc_subscriptions', name: 'Подписки', hue: 'indigo', order: 5 },
+  { id: 'sc_telecom', name: 'Связь и интернет', hue: 'steel', order: 4, plannedElsewhere: true },
+  { id: 'sc_subscriptions', name: 'Подписки', hue: 'indigo', order: 5, plannedElsewhere: true },
   { id: 'sc_health', name: 'Здоровье и аптеки', hue: 'teal', order: 6 },
   { id: 'sc_home', name: 'Дом и быт', hue: 'brick', order: 7 },
   { id: 'sc_shopping', name: 'Одежда и покупки', hue: 'plum', order: 8 },
   { id: 'sc_fun', name: 'Развлечения', hue: 'ochre', order: 9 },
   { id: 'sc_people', name: 'Переводы людям', hue: 'teal', order: 10 },
-  { id: 'sc_credit', name: 'Кредиты и рассрочки', hue: 'brick', order: 11 },
-  { id: 'sc_utilities', name: 'Коммуналка', hue: 'steel', order: 12 },
+  { id: 'sc_credit', name: 'Кредиты и рассрочки', hue: 'brick', order: 11, plannedElsewhere: true },
+  { id: 'sc_utilities', name: 'Коммуналка', hue: 'steel', order: 12, plannedElsewhere: true },
   { id: 'sc_education', name: 'Образование', hue: 'indigo', order: 13 },
   { id: 'sc_travel', name: 'Путешествия', hue: 'blue', order: 14 },
   { id: 'sc_cash', name: 'Наличные', hue: 'green', order: 15 },
   { id: 'sc_fees', name: 'Комиссии', hue: 'plum', order: 16 },
   { id: 'sc_other', name: 'Прочее', hue: 'steel', order: 17 },
+  // Аренда платится переводом — по названию не узнаётся; раздел ставит сопоставление (B2C-15).
+  { id: 'sc_rent', name: 'Аренда', hue: 'ochre', order: 18, plannedElsewhere: true },
 ]
+
+/** Учтён ли раздел планом месяца: поле документа, а без него — дефолт словаря по id. */
+export function plannedElsewhere(categoryId: string, categories: Pick<SpendCategory, 'id' | 'plannedElsewhere'>[]): boolean {
+  const own = categories.find((c) => c.id === categoryId)
+  if (own?.plannedElsewhere !== undefined) return own.plannedElsewhere
+  return DEFAULT_SPEND_CATEGORIES.find((c) => c.id === categoryId)?.plannedElsewhere ?? false
+}
 
 /** Вид операции сам говорит о разделе — продавец не нужен. */
 export const KIND_CATEGORY: Partial<Record<OperationKind, string>> = {

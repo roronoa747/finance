@@ -12,7 +12,8 @@ import { netWorth, goalMonths, nextChange } from '../src/lib/finance'
 import { monthKey } from '../src/lib/dates'
 import { plain, parseMoney } from '../src/lib/money'
 import { numChanged } from '../src/lib/num'
-import Overview from '../src/views/Overview.vue'
+import Dreams from '../src/views/Dreams.vue'
+import Money from '../src/views/Money.vue'
 import Capital from '../src/views/Capital.vue'
 
 describe('e2e / MGV-14 — Сквозная приёмка: совместная работа двух клиентов и синхронизация', () => {
@@ -373,15 +374,15 @@ describe('e2e / MGV-14 — Сквозная приёмка: совместная
     expect(htmlCapitalB).toContain('Общий Kaspi Депозит')
     expect(htmlCapitalB).not.toContain('Личная заначка Ильяса')
 
-    // Рендер Overview.vue у обоих
-    const appOverviewB = createSSRApp(Overview)
-    appOverviewB.use(router)
+    // Главный «Мечты» (B2C-14) — цель героем; «Деньги» — вход в Капитал
+    const appDreamsB = createSSRApp(Dreams)
+    appDreamsB.use(router)
     await router.push('/')
-    const htmlOverviewB = await renderToString(appOverviewB)
-    expect(htmlOverviewB).toContain('Капитал')
-    expect(htmlOverviewB).toContain('Семейный отпуск в горах')
-    expect(htmlOverviewB).toContain('Ильяс')
-    expect(htmlOverviewB).toContain('Аруна')
+    expect(await renderToString(appDreamsB)).toContain('Семейный отпуск в горах')
+    const appMoneyB = createSSRApp(Money)
+    appMoneyB.use(router)
+    await router.push('/money')
+    expect(await renderToString(appMoneyB)).toContain('Капитал')
   })
 
   it('B2C-05: один человек, два устройства — личные правки офлайн обе на сервере; партнёр личного не видит', async () => {

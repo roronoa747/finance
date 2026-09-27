@@ -5,7 +5,8 @@ import { useAuthStore } from '@/stores/auth'
 import { money } from '@/lib/money'
 import { accountBalance } from '@/lib/finance'
 import type { Payment, SyncDoc } from '@/types/finance'
-import Overview from './Overview.vue'
+import Dreams from './Dreams.vue'
+import Money from './Money.vue'
 import Ritual from './Ritual.vue'
 import { authAs, planFamilyDoc, planOf } from '@/test/planFamily'
 import { renderScreen, screenMixin } from '@/test/screenState'
@@ -41,44 +42,44 @@ describe('Блок 2: моменты месяца (SSR)', () => {
   }
 
   describe('RP-11 — вопрос в конце месяца', () => {
-    it('Обзор: карточка есть в последние дни месяца, нет в середине, нет у viewer', async () => {
+    it('главный: карточка решения есть в последние дни месяца, нет в середине, нет у viewer (B2C-14)', async () => {
       family()
-      const html = await renderScreen(Overview, '/')
+      const html = await renderScreen(Dreams, '/')
       expect(html).toContain('Остались деньги с сентября?')
-      expect(html).toMatch(/>\s*Всё ушло\s*</)
+      expect(html).toMatch(/>\s*Разложить\s*</)
       expect(html).toMatch(/>\s*Не сейчас\s*</)
 
       vi.setSystemTime(new Date('2026-09-20T07:00:00Z'))
-      expect(await renderScreen(Overview, '/')).not.toContain('Остались деньги')
+      expect(await renderScreen(Dreams, '/')).not.toContain('Остались деньги')
 
       vi.setSystemTime(new Date('2026-09-28T07:00:00Z'))
       setActivePinia(createPinia())
       family('viewer')
-      expect(await renderScreen(Overview, '/')).not.toContain('Остались деньги')
+      expect(await renderScreen(Dreams, '/')).not.toContain('Остались деньги')
     })
 
     it('ответ помнится на устройстве до конца месяца; в конце следующего — снова', async () => {
       family()
       let vm: Record<string, any> = {}
       const grab = { created(this: any) { if ('answerRest' in this.$.setupState) vm = this.$.setupState } }
-      await renderScreen(Overview, '/', undefined, [grab])
+      await renderScreen(Dreams, '/', undefined, [grab])
       vm.answerRest()
       expect(storage.get('ff_month_end')).toBe('2026-09')
-      expect(await renderScreen(Overview, '/')).not.toContain('Остались деньги')
+      expect(await renderScreen(Dreams, '/')).not.toContain('Остались деньги')
       // Документ не тронут: партнёра спросят на его телефоне.
       expect(useFinanceStore().unsent).toBe(false)
 
       vi.setSystemTime(new Date('2026-10-29T07:00:00Z'))
-      expect(await renderScreen(Overview, '/')).toContain('Остались деньги с октября?')
+      expect(await renderScreen(Dreams, '/')).toContain('Остались деньги с октября?')
     })
 
-    it('«Распределить» с суммой — ответ записан и раскладка остатка этой суммой', async () => {
+    it('«Не сейчас» на карточке — ответ записан на устройстве; «Разложить» ведёт в «Неделю» (сумма — там, B2C-21)', async () => {
       family()
       let vm: Record<string, any> = {}
-      const grab = { created(this: any) { if ('distributeRest' in this.$.setupState) vm = this.$.setupState } }
-      await renderScreen(Overview, '/', undefined, [grab])
-      vm.restText = '55 000'
-      vm.distributeRest()
+      const grab = { created(this: any) { if ('onGhost' in this.$.setupState) vm = this.$.setupState } }
+      await renderScreen(Dreams, '/', undefined, [grab])
+      expect(vm.shown?.to).toBe('/week?rest=1')
+      vm.onGhost()
       expect(storage.get('ff_month_end')).toBe('2026-09')
     })
 
@@ -139,9 +140,9 @@ describe('Блок 2: моменты месяца (SSR)', () => {
     }
     const section = (html: string) => html.slice(html.indexOf('История семьи'))
 
-    it('Обзор: «История семьи» — строка на момент, новые первыми, без имён, значков и серий', async () => {
+    it('«Деньги»: «История семьи» — строка на момент, новые первыми, без имён, значков и серий', async () => {
       family('member', 'a', moments())
-      const html = section(await renderScreen(Overview, '/'))
+      const html = section(await renderScreen(Money, '/money'))
       const text = html.replace(/<[^>]*>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
       expect(text).toContain('«Рассрочка» закрыт')
       expect(text).toContain(`25 сентября · освободилось ${money(20_000)} в месяц`)
@@ -157,24 +158,24 @@ describe('Блок 2: моменты месяца (SSR)', () => {
       expect(rows.find((r) => r.includes('собрали половину'))).not.toContain('<button')
     })
 
-    it('Обзор: снятие закрывшей отметки убирает момент; нет моментов — нет раздела', async () => {
+    it('«Деньги»: снятие закрывшей отметки убирает момент; нет моментов — нет раздела', async () => {
       const doc = moments()
       family('member', 'a', { ...doc, payments: doc.payments!.map((p) => (p.id === 'close' ? { ...p, deletedAt: '2026-09-26T00:00:00.000Z' } : p)) })
-      const html = await renderScreen(Overview, '/')
+      const html = await renderScreen(Money, '/money')
       expect(html).not.toContain('«Рассрочка» закрыт')
       setActivePinia(createPinia())
       family()
-      expect(await renderScreen(Overview, '/')).not.toContain('История семьи')
+      expect(await renderScreen(Money, '/money')).not.toContain('История семьи')
     })
 
     it('viewer видит историю, но строка закрытого долга в раскладку не ведёт; долг из плана — на экран плана', async () => {
       family('viewer', 'b', moments())
-      const rows = section(await renderScreen(Overview, '/')).split('border-b border-line last:border-b-0')
+      const rows = section(await renderScreen(Money, '/money')).split('border-b border-line last:border-b-0')
       expect(rows.find((r) => r.includes('закрыт'))).not.toContain('<button')
 
       setActivePinia(createPinia())
       family('member', 'a', { ...moments(), plans: [planOf({ creditIds: ['cc', 'loan', 'inst'] })] })
-      const html = await renderScreen(Overview, '/')
+      const html = await renderScreen(Money, '/money')
       expect(section(html)).toContain('его платёж идёт в следующий долг по плану')
       expect(await renderScreen(Ritual, '/ritual?from=credit&credit=inst')).toContain('уже идёт в следующий долг по плану')
     })
@@ -224,7 +225,7 @@ describe('Блок 2: моменты месяца (SSR)', () => {
 
     it('в конце месяца — «Наш сентябрь» с цифрами finance.ts; в середине — нет; в первые дни октября — сентябрь', async () => {
       family('member', 'a', september())
-      const t = text(card(await renderScreen(Overview, '/')))
+      const t = text(card(await renderScreen(Money, '/money')))
       expect(t).toContain('Наш сентябрь')
       expect(t).toContain(`Оплатили 2 платежа ${money(278_000)}`)
       expect(t).toContain(`Пришло зарплатой ${money(1_200_000)}`)
@@ -234,20 +235,20 @@ describe('Блок 2: моменты месяца (SSR)', () => {
       expect(t).toContain('Итог августа')
 
       vi.setSystemTime(new Date('2026-09-20T07:00:00Z'))
-      expect(await renderScreen(Overview, '/')).not.toContain('Итог месяца')
+      expect(await renderScreen(Money, '/money')).not.toContain('Итог месяца')
       vi.setSystemTime(new Date('2026-10-03T07:00:00Z'))
-      expect(text(card(await renderScreen(Overview, '/')))).toContain('Наш сентябрь')
+      expect(text(card(await renderScreen(Money, '/money')))).toContain('Наш сентябрь')
     })
 
     it('оба участника и viewer видят один и тот же итог — без имён и сравнений', async () => {
       family('member', 'a', september())
-      const a = card(await renderScreen(Overview, '/'))
+      const a = card(await renderScreen(Money, '/money'))
       setActivePinia(createPinia())
       family('member', 'b', september())
-      const b = card(await renderScreen(Overview, '/'))
+      const b = card(await renderScreen(Money, '/money'))
       setActivePinia(createPinia())
       family('viewer', 'b', september())
-      const v = card(await renderScreen(Overview, '/'))
+      const v = card(await renderScreen(Money, '/money'))
       expect(a).not.toBe('')
       expect(b).toBe(a)
       expect(v).toBe(a)
@@ -256,7 +257,7 @@ describe('Блок 2: моменты месяца (SSR)', () => {
 
     it('месяц раньше — в той же карточке; пустой месяц — спокойная строка', async () => {
       family('member', 'a', september())
-      const html = await renderScreen(Overview, '/', undefined, [screenMixin({ earlier: true })])
+      const html = await renderScreen(Money, '/money', undefined, [screenMixin({ earlier: true })])
       const t = text(card(html))
       expect(t).toContain('Наш август')
       expect(t).toContain('В августе отметок пока нет.')

@@ -9,7 +9,8 @@ import type { Payment } from '../src/types/finance'
 import { authAs } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
 import Budget from '../src/views/Budget.vue'
-import Overview from '../src/views/Overview.vue'
+import Dreams from '../src/views/Dreams.vue'
+import Money from '../src/views/Money.vue'
 import Ritual from '../src/views/Ritual.vue'
 
 /**
@@ -91,7 +92,7 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       expect(row('Зарплата · Аруна')).not.toMatch(/>\s*Пришла\s*<\/button>/)
 
       // «До зарплаты» у обоих переключилось на Аруну.
-      const overview = await screen(B.pinia, Overview, '/')
+      const overview = await screen(B.pinia, Money, '/money')
       expect(overview).toContain('Аруна получит')
     })
 
@@ -163,8 +164,8 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       useAuthStore().setAuthData(authAs('member', 'a'))
       const B = await phone(server)
       useAuthStore().setAuthData(authAs('member', 'b'))
-      expect(await screen(A.pinia, Overview, '/')).toContain('Остались деньги с сентября?')
-      expect(await screen(B.pinia, Overview, '/')).toContain('Остались деньги с сентября?')
+      expect(await screen(A.pinia, Dreams, '/')).toContain('Остались деньги с сентября?')
+      expect(await screen(B.pinia, Dreams, '/')).toContain('Остались деньги с сентября?')
 
       const done = await screen(A.pinia, Ritual, '/ritual?from=rest&amount=80000&period=2026-09', undefined, [
         screenMixin({}, (s) => {
@@ -186,9 +187,9 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       at('2026-10-01T07:00:00Z')
       const A = await phone(server)
       useAuthStore().setAuthData(authAs('member', 'a'))
-      expect(await screen(A.pinia, Overview, '/')).not.toContain('Остались деньги')
+      expect(await screen(A.pinia, Dreams, '/')).not.toContain('Остались деньги')
       at('2026-10-29T07:00:00Z')
-      expect(await screen(A.pinia, Overview, '/')).toContain('Остались деньги с октября?')
+      expect(await screen(A.pinia, Dreams, '/')).toContain('Остались деньги с октября?')
     })
   })
 
@@ -209,7 +210,7 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       await B.store.syncHousehold(B.client)
       await A.store.syncHousehold(A.client)
 
-      const overview = await screen(A.pinia, Overview, '/')
+      const overview = await screen(A.pinia, Money, '/money')
       expect(overview).toContain('«Телевизор» закрыт')
       expect(overview).toContain(`12 сентября · освободилось ${money(30_000)} в месяц`)
       const ritual = await screen(A.pinia, Ritual, '/ritual?from=credit&credit=tv')
@@ -220,7 +221,7 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       B.store.unmarkPaid('credit', 'tv', '2026-09')
       await B.store.syncHousehold(B.client)
       await A.store.syncHousehold(A.client)
-      expect(await screen(A.pinia, Overview, '/')).not.toContain('«Телевизор» закрыт')
+      expect(await screen(A.pinia, Money, '/money')).not.toContain('«Телевизор» закрыт')
       expect(await screen(A.pinia, Ritual, '/ritual?from=credit&credit=tv')).toContain('Этот долг ещё не закрыт')
       // В документе — только записи оплат: моменты не пишутся.
       expect(Object.keys(server.data).filter((k) => /moment|history/i.test(k))).toEqual([])
@@ -257,8 +258,8 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       expect(summary.toGoals).toBe(150_000)
 
       const cardOf = (html: string) => html.slice(html.indexOf('Итог месяца'), html.indexOf('Итог августа'))
-      const a = cardOf(await screen(A.pinia, Overview, '/'))
-      const b = cardOf(await screen(B.pinia, Overview, '/'))
+      const a = cardOf(await screen(A.pinia, Money, '/money'))
+      const b = cardOf(await screen(B.pinia, Money, '/money'))
       expect(a).toContain('Наш сентябрь')
       expect(a).toContain(money(summary.paid.amount))
       expect(a).toContain(money(summary.income))
@@ -309,7 +310,7 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
         // Считается ранняя по моменту отметки.
         expect(paidFor(s.payments, 'salary', 'a', '2026-09')!.id).toBe(first.id)
       }
-      expect(await screen(A2.pinia, Overview, '/')).toContain('Аруна получит')
+      expect(await screen(A2.pinia, Money, '/money')).toContain('Аруна получит')
     })
 
     it('RP-11: окно по Алматы на стыке месяцев; ответ помнит устройство — на телефоне партнёра вопрос остаётся', async () => {
@@ -319,19 +320,19 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       useAuthStore().setAuthData(authAs('member', 'b'))
 
       at('2026-09-30T18:00:00Z') // 30 сентября, 23:00 по Алматы
-      expect(await screen(A.pinia, Overview, '/')).toContain('Остались деньги с сентября?')
+      expect(await screen(A.pinia, Dreams, '/')).toContain('Остались деньги с сентября?')
       at('2026-09-30T19:30:00Z') // 1 октября, 00:30 по Алматы
-      expect(await screen(A.pinia, Overview, '/')).not.toContain('Остались деньги')
+      expect(await screen(A.pinia, Dreams, '/')).not.toContain('Остались деньги')
 
       at('2026-09-28T07:00:00Z')
       vi.stubGlobal('localStorage', storage({ ff_month_end: '2026-09' }))
-      expect(await screen(A.pinia, Overview, '/')).not.toContain('Остались деньги')
+      expect(await screen(A.pinia, Dreams, '/')).not.toContain('Остались деньги')
       vi.stubGlobal('localStorage', storage())
-      expect(await screen(B.pinia, Overview, '/')).toContain('Остались деньги с сентября?')
+      expect(await screen(B.pinia, Dreams, '/')).toContain('Остались деньги с сентября?')
       // Ответ за сентябрь не гасит октябрь.
       at('2026-10-29T07:00:00Z')
       vi.stubGlobal('localStorage', storage({ ff_month_end: '2026-09' }))
-      expect(await screen(A.pinia, Overview, '/')).toContain('Остались деньги с октября?')
+      expect(await screen(A.pinia, Dreams, '/')).toContain('Остались деньги с октября?')
     })
 
     it('RP-13: дубль отметки, надгробие, чужой месяц, старая дата покупки — итог посчитан руками, у обоих одинаково', async () => {
@@ -388,8 +389,8 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
         bought: { count: 2, amount: 50_000 },
       })
       const cardOf = (html: string) => html.slice(html.indexOf('Итог месяца'), html.indexOf('Итог августа'))
-      const a = cardOf(await screen(A.pinia, Overview, '/'))
-      const b = cardOf(await screen(B.pinia, Overview, '/'))
+      const a = cardOf(await screen(A.pinia, Money, '/money'))
+      const b = cardOf(await screen(B.pinia, Money, '/money'))
       for (const text of [money(298_400), money(1_200_000), '«Телевизор»', money(45_000), money(230_000), money(30_000), '35% → 55%', money(50_000)]) {
         expect(a).toContain(text)
       }

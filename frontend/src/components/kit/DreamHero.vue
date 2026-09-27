@@ -25,8 +25,10 @@ const props = withDefaults(
     line?: string
     size?: 'main' | 'goal' | 'preview'
     empty?: boolean
+    /** Пустое состояние с кнопкой «Выбрать мечту»; у viewer кнопки нет. */
+    canPick?: boolean
   }>(),
-  { percent: 0, size: 'main', empty: false, src: null, author: null, doneMonth: null },
+  { percent: 0, size: 'main', empty: false, src: null, author: null, doneMonth: null, canPick: true },
 )
 
 const emit = defineEmits<{ (e: 'pick'): void }>()
@@ -52,7 +54,7 @@ const line2 = computed(() => {
   >
     <h2 class="type-h2">На что копим?</h2>
     <p class="text-ink-2">Одна мечта с фото — и этот экран покажет, сколько до неё осталось.</p>
-    <div><Button @click="emit('pick')">Выбрать мечту</Button></div>
+    <div v-if="canPick"><Button @click="emit('pick')">Выбрать мечту</Button></div>
   </section>
 
   <section

@@ -1,6 +1,10 @@
 import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem } from '@/types/finance'
-import { addMonths, daysInMonth, monthKey, parseMonthKey, today } from '@/lib/dates'
-import { categoryName } from '@/lib/palette'
+import type { SpendCategory, SpendTotal } from '@/lib/statements/types'
+import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY, plannedElsewhere } from '@/lib/statements/dictionary'
+import { addMonths, dayLabel, daysInMonth, monthFrom, monthKey, parseMonthKey, today, weekRange } from '@/lib/dates'
+import { categoryName, spendColor } from '@/lib/palette'
+import { money } from '@/lib/money'
+import { plural } from '@/lib/utils'
 /**
  * Расчётное ядро. Чистые функции: ни сети, ни состояния, ни ИИ.
  *
@@ -1366,6 +1370,9 @@ export function monthDues(
 /** Итог платежей месяца — сумма строк. */
 export const duesTotal = (dues: MonthDue[]) => dues.reduce((a, d) => a + d.amount, 0)
 
+/** Сколько месяцев вперёд «до зарплаты» ищет непришедшую зарплату (хвост RP: отмеченные заранее). */
+export const PAYDAY_HORIZON = 3;
+
 /**
  * До зарплаты: когда придут деньги и что нужно заплатить до этого.
  *
@@ -1374,7 +1381,9 @@ export const duesTotal = (dues: MonthDue[]) => dues.reduce((a, d) => a + d.amoun
  * дважды (Р-5, честный остаток). Оно возвращается отдельно (`paid`, сумма — из
  * отметки), чтобы экран показал его оплаченным, а не молча потерял. Закрытый
  * кредит платежа не ждёт. Зарплата, отмеченная «пришла» (RP-10), уже не «до»: блок
- * смотрит на следующую.
+ * смотрит на следующую — в окне PAYDAY_HORIZON месяцев (хвост RP: все ближайшие
+ * отмечены заранее — блок не пропадает). День 31-го в коротком месяце — его
+ * последний день (хвост RP: «31 сентября»).
  */
 export function untilPayday(
   state: {
@@ -1386,25 +1395,35 @@ export function untilPayday(
   },
   now = today(),
 ) {
-  const people = state.people || [];
+  const people = (state.people || []).filter(alive);
   const obligations = state.obligations || [];
   const credits = state.credits || [];
   const accountsList = state.accounts || [];
   const payments = state.payments || [];
 
   const key = now.key;
-  const days = daysInMonth(key);
+  const dayIn = (k: string, p: Person) => Math.min(p.payday, daysInMonth(k));
 
-  // Ближайшая непришедшая зарплата: этого месяца — с сегодняшнего дня, затем следующего.
-  const slots = [
-    ...people.filter((p) => p.payday >= now.day).map((p) => ({ p, k: key, inDays: p.payday - now.day })),
-    ...people.map((p) => ({ p, k: addMonths(key, 1), inDays: days - now.day + p.payday })),
-  ].sort((a, b) => a.inDays - b.inDays);
+  // Ближайшая непришедшая зарплата: этого месяца — с сегодняшнего дня, затем следующих.
+  const slots: { p: Person; k: string; inDays: number; day: number }[] = [];
+  let passed = daysInMonth(key) - now.day;
+  for (let i = 0; i <= PAYDAY_HORIZON; i++) {
+    const k = addMonths(key, i);
+    for (const p of people) {
+      const day = dayIn(k, p);
+      if (i === 0) {
+        if (day >= now.day) slots.push({ p, k, inDays: day - now.day, day });
+      } else {
+        slots.push({ p, k, inDays: passed + day, day });
+      }
+    }
+    if (i > 0) passed += daysInMonth(k);
+  }
+  slots.sort((a, b) => a.inDays - b.inDays);
   const slot = slots.find((s) => !paidFor(payments, 'salary', s.p.id, s.k));
   if (!slot) return null;
 
   const who = slot.p;
-  const ahead = slot.k === key;
   const nextKey = slot.k;
   const inDays = slot.inDays;
 
@@ -1420,14 +1439,15 @@ export function untilPayday(
       paid: d.paid,
     }));
 
-  const inWindow = ahead
-    ? itemsOf(key).filter((x) => x.day >= now.day && x.day <= who.payday)
-    : [
-        ...itemsOf(key).filter((x) => x.day >= now.day),
-        ...itemsOf(nextKey)
-          .filter((x) => x.day <= who.payday)
-          .map((x) => ({ ...x, id: x.id + '@next' })),
-      ];
+  // Платежи от сегодня до дня зарплаты: этот месяц с сегодняшнего числа, промежуточные
+  // месяцы целиком, месяц зарплаты — до её дня.
+  const inWindow: ReturnType<typeof itemsOf> = [];
+  for (let k = key, i = 0; k <= nextKey; k = addMonths(k, 1), i++) {
+    const items = itemsOf(k)
+      .filter((x) => (k !== key || x.day >= now.day) && (k !== nextKey || x.day <= slot.day))
+      .map((x) => (i ? { ...x, id: `${x.id}@next${i > 1 ? i : ''}` } : x));
+    inWindow.push(...items);
+  }
   inWindow.sort((a, b) => a.when.localeCompare(b.when) || a.day - b.day);
   const due = inWindow.filter((x) => !x.paid);
   const paid = inWindow.filter((x) => x.paid);
@@ -1440,7 +1460,7 @@ export function untilPayday(
     who,
     income: salaryAt(who, nextKey),
     inDays,
-    day: who.payday,
+    day: slot.day,
     key: nextKey,
     due,
     paid,
@@ -2138,4 +2158,277 @@ export function planSchedule(
   const months = monthly > 0 ? Math.min(SCHEDULE_CAP, Math.ceil(target.principal / monthly) + 1) : 0
   for (let i = 1; i <= months; i++) extra.push({ period: addMonths(key, i), amount: monthly })
   return { creditId: target.id, rows: creditSchedule(target, payments, { from: key, extra }) }
+}
+
+/* ---------------- главный экран «Мечты» (Р-8, B2C-14) ---------------- */
+
+/**
+ * Главная мечта — герой главного экрана: живая цель с `main`; отмечены две (слияние двух
+ * телефонов) — с поздним `updatedAt`; пометки нет — первая живая. null — целей нет.
+ */
+export function mainGoal(goals: Goal[]): Goal | null {
+  const live = liveGoals(goals)
+  const marked = live.filter((g) => g.main).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  return marked[0] ?? live[0] ?? null
+}
+
+export type WeekPictureRow = {
+  categoryId: string
+  name: string
+  /** Сумма обоих участников за неделю, целые тенге. */
+  amount: number
+  /** Доля от трат недели, 0…1. */
+  share: number
+  /** Токен цвета раздела (`spendColor`). */
+  color: string
+}
+
+export type WeekPicture = {
+  /** Понедельник и воскресенье недели, `YYYY-MM-DD`. */
+  range: { from: string; to: string }
+  /** Траты обоих за неделю, включая не разобранное. */
+  total: number
+  /** Разделы по убыванию суммы, без «не разобрано». */
+  rows: WeekPictureRow[]
+  unknown: number
+  unknownShare: number
+  /** Кто загрузил выписку, покрывающую неделю, и кто нет. */
+  uploaded: Person[]
+  missing: Person[]
+}
+
+/** Загрузка выписки, как её отдаёт сервер: чья и за какой период. */
+export type UploadPeriod = { slot: string; period_from: string; period_to: string }
+
+/** Имя раздела трат: как назвала семья, иначе из словаря, иначе «Прочее». */
+export function spendCategoryName(categories: Pick<SpendCategory, 'id' | 'name'>[], id: string): string {
+  if (id === UNKNOWN_CATEGORY) return 'Не разобрано'
+  return categories.find((c) => c.id === id)?.name ?? DEFAULT_SPEND_CATEGORIES.find((c) => c.id === id)?.name ?? 'Прочее'
+}
+
+/**
+ * Картина недели (Р-8): траты обоих по разделам за ISO-неделю `week` — сумма недельных
+ * итогов всех участников (`spendTotals`), доли от общей суммы; «не разобрано» — отдельно.
+ * Кто без выписки — по загрузкам семьи, покрывающим хотя бы день недели.
+ */
+export function weekPicture(
+  totals: SpendTotal[],
+  categories: SpendCategory[],
+  people: Person[],
+  week: string,
+  uploads: UploadPeriod[] = [],
+): WeekPicture {
+  const range = weekRange(week)
+  const sums = new Map<string, number>()
+  for (const t of totals) {
+    if (t.deletedAt || t.kind !== 'week' || t.period !== week || t.amount <= 0) continue
+    sums.set(t.categoryId, (sums.get(t.categoryId) ?? 0) + t.amount)
+  }
+  const unknown = sums.get(UNKNOWN_CATEGORY) ?? 0
+  sums.delete(UNKNOWN_CATEGORY)
+  const total = unknown + [...sums.values()].reduce((a, x) => a + x, 0)
+  const live = categories.filter(alive)
+  const rows: WeekPictureRow[] = [...sums]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([categoryId, amount]) => {
+      const cat = live.find((c) => c.id === categoryId) ?? DEFAULT_SPEND_CATEGORIES.find((c) => c.id === categoryId) ?? null
+      return {
+        categoryId,
+        name: spendCategoryName(live, categoryId),
+        amount,
+        share: total > 0 ? amount / total : 0,
+        color: spendColor(cat),
+      }
+    })
+  const covers = (u: UploadPeriod) => u.period_to >= range.from && u.period_from <= range.to
+  const alivePeople = people.filter(alive)
+  const uploaded = alivePeople.filter((p) => uploads.some((u) => u.slot === p.id && covers(u)))
+  const missing = alivePeople.filter((p) => !uploaded.includes(p))
+  return { range, total, rows, unknown, unknownShare: total > 0 ? unknown / total : 0, uploaded, missing }
+}
+
+export type FreeByFact = {
+  /** «Свободно до конца месяца», целые тенге; может быть меньше нуля. */
+  amount: number
+  /** true — по факту выписок; false — по плану (за месяц ни одной загрузки). */
+  byFact: boolean
+  income: number
+  /** Обязательства и кредиты месяца по плану (с учётом отметок). */
+  dues: number
+  /** Взносы в цели по плану (и досрочки по плану «Сначала долги»). */
+  goals: number
+  /** Траты по выпискам обоих за месяц, кроме разделов, уже учтённых планом. */
+  spent: number
+  /** Доля свободного от дохода, 0…1 — полоса карточки. */
+  share: number
+}
+
+/**
+ * «Свободно до конца месяца» по факту выписок обоих (Р-8): доход месяца − обязательства и
+ * кредиты по плану (`monthDues`, отметки учтены один раз — сумма из отметки) − взносы в
+ * цели по плану − траты по выпискам за месяц, кроме разделов `plannedElsewhere` (кредиты,
+ * коммуналка, аренда, подписки — они уже в `monthDues`). Ни одной загрузки за месяц —
+ * план (`budgetAmounts.free`) с `byFact: false`.
+ */
+export function freeByFact(
+  state: {
+    categories?: Category[]
+    obligations?: Obligation[]
+    credits?: Credit[]
+    goals?: Goal[]
+    people?: Person[]
+    payments?: Payment[]
+    plans?: DebtPlan[]
+  },
+  totals: SpendTotal[],
+  spendCategories: SpendCategory[],
+  key: string,
+  uploads: UploadPeriod[] = [],
+): FreeByFact {
+  const income = totalIncome(state.people ?? [], key)
+  const share = (amount: number) => (income > 0 ? Math.max(0, Math.min(1, amount / income)) : 0)
+  const monthStart = `${key}-01`
+  const monthEnd = `${key}-${String(daysInMonth(key)).padStart(2, '0')}`
+  const hasUpload = uploads.some((u) => u.period_to >= monthStart && u.period_from <= monthEnd)
+  const amounts = budgetAmounts(state)
+  if (!hasUpload) {
+    return { amount: amounts.d5, byFact: false, income, dues: amounts.d1 + amounts.d2, goals: amounts.d3 + amounts.planExtra, spent: 0, share: share(amounts.d5) }
+  }
+  const dues = duesTotal(monthDues(state, key))
+  const goals = amounts.d3 + amounts.planExtra
+  const live = spendCategories.filter(alive)
+  const spent = totals
+    .filter((t) => !t.deletedAt && t.kind === 'month' && t.period === key && t.amount > 0)
+    .filter((t) => t.categoryId === UNKNOWN_CATEGORY || !plannedElsewhere(t.categoryId, live))
+    .reduce((a, t) => a + t.amount, 0)
+  const amount = income - dues - goals - spent
+  return { amount, byFact: true, income, dues, goals, spent, share: share(amount) }
+}
+
+export type DecisionKind = 'unknown' | 'match' | 'salary' | 'keep' | 'monthEnd' | 'plan'
+
+/** Ближайшее решение недели на главном: одна карточка, тексты DESIGN.md §6 и маршрут. */
+export type Decision = {
+  kind: DecisionKind
+  question: string
+  meta: string
+  /** Строка внутренней карточки (детали) — если есть. */
+  inner?: string
+  /** Куда ведёт главное действие; null — решение принимается на месте (стор). */
+  to: string | null
+  actions: { primary: string; secondary?: string; ghost?: string }
+  /** Подписка вопроса «оставить?». */
+  obligation?: Obligation
+  /** Участник и месяц зарплаты «пришла?». */
+  salary?: { person: Person; period: string }
+  /** Шаг плана «Сначала долги». */
+  step?: PlanStep
+}
+
+/**
+ * Что решить первым (Р-8): незнакомые продавцы недели → ждущие сопоставления (B2C-15) →
+ * своя зарплата «пришла?» (`salaryOpen`) → «оставить подписку?» (`keepQuestions`) →
+ * «остались деньги?» (`monthEndAsk`) → шаг плана (`stepDue`) → null. Только для участника
+ * с правом правки (viewer решений не принимает — Р-13); `me` — его слот.
+ */
+export function nextDecision(
+  state: {
+    people?: Person[]
+    obligations?: Obligation[]
+    credits?: Credit[]
+    goals?: Goal[]
+    payments?: Payment[]
+    plans?: DebtPlan[]
+  },
+  ctx: {
+    me: PersonId | undefined
+    unknown?: { count: number; amount: number }
+    matches?: number
+    answeredMonthEnd?: string | null
+    now?: { day: number; key: string }
+  },
+): Decision | null {
+  const now = ctx.now ?? today()
+  const payments = state.payments ?? []
+
+  const unknown = ctx.unknown ?? { count: 0, amount: 0 }
+  if (unknown.count > 0) {
+    return {
+      kind: 'unknown',
+      question: `Не разобрано: ${unknown.count} ${plural(unknown.count, 'продавец', 'продавца', 'продавцов')}`,
+      meta: `${money(unknown.amount)} за неделю · куда отнести?`,
+      to: '/week',
+      actions: { primary: 'Разобрать', ghost: 'Потом' },
+    }
+  }
+
+  const matches = ctx.matches ?? 0
+  if (matches > 0) {
+    return {
+      kind: 'match',
+      question: matches === 1 ? 'Похоже, нашли платёж по графику — отметить?' : `Похоже, нашли ${matches} ${plural(matches, 'платёж', 'платежа', 'платежей')} по графику — отметить?`,
+      meta: 'по выписке этой недели',
+      to: '/week',
+      actions: { primary: 'Посмотреть', ghost: 'Потом' },
+    }
+  }
+
+  // «Пришла?» — как на прежнем Обзоре (RP-10): ближайшая непришедшая зарплата — своя, и её
+  // день настал или близко (`salaryOpen`); зарплата, чей день давно прошёл, не спрашивается.
+  const near = ctx.me ? untilPayday(state, now) : null
+  if (near && near.who.id === ctx.me && salaryOpen(near.who, payments, near.key, now)) {
+    return {
+      kind: 'salary',
+      question: `Пришла зарплата ${near.who.name}?`,
+      meta: `${money(near.income)} · ${dayLabel(near.day, near.key)}`,
+      to: '/money',
+      actions: { primary: 'Пришла', ghost: 'Потом' },
+      salary: { person: near.who, period: near.key },
+    }
+  }
+
+  const keep = keepQuestions(state.obligations ?? [], new Date(Date.UTC(parseMonthKey(now.key).year, parseMonthKey(now.key).month, now.day, 12)))[0]
+  if (keep) {
+    const renewal = keep.every === 'year' ? nextObligationDue(keep, payments, now) : null
+    const monthly = renewal ? null : amountAt(keep, now.key)
+    const yearly = renewal ? renewal.amount : (monthly ?? 0) * 12
+    const goal = mainGoal(state.goals ?? [])
+    const remaining = goal ? Math.max(0, goal.need - goal.have) : 0
+    const pathPct = remaining > 0 ? Math.round((yearly / remaining) * 100) : 0
+    return {
+      kind: 'keep',
+      question: `Оставить подписку ${keep.name}?`,
+      meta: renewal ? `${money(renewal.amount)} · в год · продлится ${dayLabel(renewal.day, renewal.period)}` : `${money(monthly ?? 0)} · каждый месяц`,
+      inner: `За год — ${money(yearly)}${goal && pathPct > 0 ? ` · это ${pathPct} % пути до ${goal.name}` : ''}`,
+      to: null,
+      actions: { primary: 'Оставить', secondary: 'Отписаться', ghost: 'Подумать' },
+      obligation: keep,
+    }
+  }
+
+  if (monthEndAsk(ctx.answeredMonthEnd ?? null, now)) {
+    return {
+      kind: 'monthEnd',
+      question: `Остались деньги с ${monthFrom(now.key, false)}?`,
+      meta: 'Месяц заканчивается — разложим остаток в мечту или на досрочку',
+      to: '/week?rest=1',
+      actions: { primary: 'Разложить', ghost: 'Не сейчас' },
+    }
+  }
+
+  const plan = activePlan(state.plans ?? [])
+  const step = plan ? stepDue(planStep(plan, { goals: state.goals, credits: state.credits, obligations: state.obligations, payments }, now.key)) : null
+  if (step) {
+    const credit = (state.credits ?? []).find((c) => c.id === step.creditId)
+    return {
+      kind: 'plan',
+      question: `Внести по плану ${money(step.amount)}${credit ? ` в «${credit.name}»` : ''}?`,
+      meta: 'шаг месяца плана «Сначала долги»',
+      to: '/money/plan',
+      actions: { primary: 'Открыть план', ghost: 'Потом' },
+      step,
+    }
+  }
+
+  return null
 }

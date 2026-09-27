@@ -14,6 +14,7 @@ import {
   creditSplit,
   endedPlan,
   goalHave,
+  mainGoal,
   lastAccountFor,
   lumpPlan,
   nextCreditDue,
@@ -1481,6 +1482,19 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
+  /** Главная мечта (Р-8, B2C-14): пометка одной цели, у остальных снимается — LWW по цели. */
+  function setMainGoal(id: string) {
+    if (mainGoal(goals.value)?.id === id && goals.value.find((g) => g.id === id)?.main) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      for (const g of doc.goals || []) {
+        if (g.deletedAt) continue
+        if (g.id === id) Object.assign(g, { main: true, updatedAt: t })
+        else if (g.main) Object.assign(g, { main: false, updatedAt: t })
+      }
+    })
+  }
+
   function contribute(id: string, amount: number, by: PersonId, note?: string) {
     const t = new Date().toISOString()
     const mid = Math.random().toString(36).slice(2, 10)
@@ -1632,6 +1646,7 @@ export const useFinanceStore = defineStore('finance', () => {
     addGoal,
     updateGoal,
     removeGoal,
+    setMainGoal,
     contribute,
     withdraw,
     addWish,

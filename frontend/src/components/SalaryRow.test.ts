@@ -6,7 +6,7 @@ import { money, plain } from '@/lib/money'
 import { accountBalance, budgetAmounts, paidFor, salaryFree } from '@/lib/finance'
 import type { Payment } from '@/types/finance'
 import Budget from '@/views/Budget.vue'
-import Overview from '@/views/Overview.vue'
+import Money from '@/views/Money.vue'
 import Ritual from '@/views/Ritual.vue'
 import { authAs, planFamilyDoc } from '@/test/planFamily'
 import { renderScreen, screenMixin } from '@/test/screenState'
@@ -103,25 +103,25 @@ describe('RP-10: «Пришла зарплата» (SSR)', () => {
     expect(theirs).not.toContain('подробнее')
   })
 
-  it('Обзор: «Пришла зарплата» в «До зарплаты» — у того, чья зарплата ближайшая; после отметки — следующая', async () => {
+  it('«Деньги»: «Пришла зарплата» в «До зарплаты» — у того, чья зарплата ближайшая; после отметки — следующая', async () => {
     vi.setSystemTime(new Date('2026-09-09T07:00:00Z')) // завтра зарплата Ильяса, списаний до неё нет
     family('member', 'a')
-    const mine = await renderScreen(Overview, '/')
+    const mine = await renderScreen(Money, '/money')
     expect(mine).toContain('До зарплаты')
     expect(mine).toMatch(/>\s*Пришла зарплата\s*</)
 
     setActivePinia(createPinia())
     family('member', 'b')
-    expect(await renderScreen(Overview, '/')).not.toMatch(/Пришла зарплата/)
+    expect(await renderScreen(Money, '/money')).not.toMatch(/Пришла зарплата/)
 
     setActivePinia(createPinia())
     family('viewer', 'a')
-    expect(await renderScreen(Overview, '/')).not.toMatch(/Пришла зарплата/)
+    expect(await renderScreen(Money, '/money')).not.toMatch(/Пришла зарплата/)
 
     // Отметили раньше дня — «До зарплаты» смотрит на зарплату Аруны 20-го.
     setActivePinia(createPinia())
     family('member', 'a', [salary({ at: '2026-09-09T04:00:00.000Z' })])
-    const after = await renderScreen(Overview, '/')
+    const after = await renderScreen(Money, '/money')
     expect(after).toContain('Аруна получит')
     expect(after).not.toMatch(/Пришла зарплата/)
   })
@@ -129,7 +129,7 @@ describe('RP-10: «Пришла зарплата» (SSR)', () => {
   it('Обзор: за 4 дня до дня кнопки нет', async () => {
     vi.setSystemTime(new Date('2026-09-06T07:00:00Z'))
     family('member', 'a')
-    expect(await renderScreen(Overview, '/')).not.toMatch(/Пришла зарплата/)
+    expect(await renderScreen(Money, '/money')).not.toMatch(/Пришла зарплата/)
   })
 
   it('Ритуал с источником «зарплата»: сумма — доля свободного из finance.ts, подпись зарплаты', async () => {

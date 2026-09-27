@@ -103,6 +103,11 @@ export type Goal = Tracked & {
    * «уже накоплено» нигде бы не учитывалось и капитал уходил бы в минус.
    */
   accountId?: string | null
+  /**
+   * Главная мечта — герой главного экрана (Р-8, B2C-14). Поле цели: сливается LWW по
+   * `updatedAt` вместе с ней; при двух отмеченных экран берёт позднюю (`mainGoal`).
+   */
+  main?: boolean
 }
 
 export type WishItem = Tracked & {
