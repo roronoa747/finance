@@ -19,7 +19,9 @@ export type StoryData = {
 export type StoryTexts = { kind: StoryKind; app: string; label: string; big: string; line: string; percent: number | null }
 
 const APP = 'Family Finance'
-const NO_PHOTO_BG = '#EDE6DB'
+// Карточка от темы не зависит (§7), а canvas CSS-переменных не читает: значение токена
+// `--surface-3` светлой темы из style.css (текст — `--ink` / `--on-photo` там же).
+const NO_PHOTO_BG = '#e6ded2'
 const INK = '30,26,22'
 const WHITE = '255,255,255'
 
@@ -30,6 +32,8 @@ export function withoutMoney(text: string): string {
   return text
     .replace(/\d[\d\s  ]*\s*₸/gu, '')
     .replace(/₸/g, '')
+    // «1,8 млн», «800 тыс.», «300000 тг» — тоже деньги (критик Блока 3).
+    .replace(/\d+(?:[.,]\d+)?\s*(?:млн|тыс|тенге|тг)\.?(?=\s|$|[,.!?])/giu, '')
     .replace(/\d{1,3}(?:[\s  ]\d{3})+/g, '')
     .replace(/\d{5,}/g, '')
     .replace(/\s{2,}/g, ' ')

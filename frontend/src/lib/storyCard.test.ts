@@ -29,6 +29,11 @@ describe('storyCard — тексты', () => {
     expect(withoutMoney('Квартира за 6000000')).toBe('Квартира за')
     expect(withoutMoney('Накопить 1 800 000 на Японию')).toBe('Накопить на Японию')
     expect(withoutMoney('Япония 2027')).toBe('Япония 2027')
+    // «млн» / «тыс» / «тг» — тоже деньги (критик Блока 3).
+    expect(withoutMoney('Машина 1,8 млн')).toBe('Машина')
+    expect(withoutMoney('Дом за 45 млн ₸')).toBe('Дом за')
+    expect(withoutMoney('Телефон 800 тыс.')).toBe('Телефон')
+    expect(withoutMoney('Ремонт 300000 тг')).toBe('Ремонт')
     expect(withoutMoney('₸ и ещё ₸')).toBe('и ещё')
     const t = storyText('goal', { percent: 62, goalName: 'Дом 25 000 000 ₸ · 2028', doneMonth: 'марте 2028' })
     expect(t.line).toBe('Дом · 2028 · будет нашей в марте 2028')
@@ -108,7 +113,8 @@ describe('storyCard — композиция', () => {
   it('без фото: фон --surface-3 светлой темы и ink-текст; длинное имя ужимается до ширины поля; у утечек полосы нет', () => {
     const { ctx, calls } = recorder()
     drawStory(ctx, null, storyText('goal', { percent: 10, goalName: 'Очень длинное название мечты о доме у моря', doneMonth: 'мае 2027' }))
-    expect(calls.find((c) => c.fn === 'fillRect')).toMatchObject({ fillStyle: '#EDE6DB', args: [0, 0, 1080, 1920] })
+    // Значение `--surface-3` светлой темы из style.css (canvas переменных не читает).
+    expect(calls.find((c) => c.fn === 'fillRect')).toMatchObject({ fillStyle: '#e6ded2', args: [0, 0, 1080, 1920] })
     expect(calls.some((c) => c.fn === 'drawImage')).toBe(false)
     const line = calls.filter((c) => c.fn === 'fillText').at(-1)!
     expect(String(line.fillStyle)).toBe('rgb(30,26,22)')

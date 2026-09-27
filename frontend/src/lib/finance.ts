@@ -1657,11 +1657,12 @@ export function allocationFor(
 
 /**
  * Подписки, от которых отказались в месяце (B2C-20 «утечки»): обязательства с надгробием
- * этого месяца (по Алматы) из группы подписок или раздела «быт» (d4 — туда же кладёт
- * подписки первый запуск). Жильё и кредиты не подписки. Для сторис берётся только число.
+ * этого месяца (по Алматы) из группы подписок или подписки раздела «быт» (`isSubscription`:
+ * d4 с точной суммой — туда же кладёт подписки первый запуск; оценка «быта» — не подписка).
+ * Жильё и кредиты не подписки. Для сторис берётся только число.
  */
 export function cancelledSubscriptions(obligations: Obligation[], key: string): Obligation[] {
-  return (obligations || []).filter((o) => !o.group && !!o.deletedAt && movementMonth(o.deletedAt) === key && (!!o.parentId || o.category === 'd4'))
+  return (obligations || []).filter((o) => !o.group && !!o.deletedAt && movementMonth(o.deletedAt) === key && (!!o.parentId || isSubscription(o)))
 }
 
 /**

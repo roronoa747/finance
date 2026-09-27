@@ -2576,6 +2576,8 @@ describe('B2C-20: отказ от подписок за месяц', () => {
       ob('rent', { category: 'd1', deletedAt: '2026-09-15T10:00:00.000Z' }),
       ob('loan', { category: 'd2', deletedAt: '2026-09-15T10:00:00.000Z' }),
       ob('grp', { group: true, deletedAt: '2026-09-15T10:00:00.000Z' }),
+      // Оценка «быта» (продукты «около») — не подписка, хоть и d4 (критик Блока 3).
+      ob('food', { estimate: true, deletedAt: '2026-09-15T10:00:00.000Z' }),
       ob('yandex'),
     ]
     expect(cancelledSubscriptions(list, '2026-09').map((o) => o.id)).toEqual(['netflix', 'ivi'])
