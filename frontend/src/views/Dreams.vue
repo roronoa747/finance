@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, RouterLink } from 'vue-router'
 import { PhCamera, PhFileArrowUp } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
@@ -260,6 +260,7 @@ onMounted(() => {
       />
       <DreamTile v-if="canEdit" add @click="newGoal" />
     </div>
+    <RouterLink to="/wishes" class="px-1 text-[13px] font-semibold text-brand">Желания →</RouterLink>
 
     <PhotoPicker
       v-if="main"

@@ -1720,9 +1720,12 @@ export function cushionMonths(liquidAccounts: Account[], monthlyMandatory: numbe
 /**
  * Подсчёт серии месяцев регулярных взносов в цели.
  */
+/** Месяц взноса — по Алматы (хвост RP, B2C-18): ISO-дата вечером 30-го по Алматы — ещё этот месяц. */
+export const movementMonth = (date: string) => (/^\d{4}-\d{2}-\d{2}T/.test(date) ? monthKey(new Date(date)) : date.slice(0, 7))
+
 export function contributionStreak(movements: { date: string; amount: number }[]): number {
   const months = new Set(
-    movements.filter((m) => m.amount > 0).map((m) => m.date.slice(0, 7)),
+    movements.filter((m) => m.amount > 0).map((m) => movementMonth(m.date)),
   )
   if (!months.size) return 0
 
@@ -1735,6 +1738,44 @@ export function contributionStreak(movements: { date: string; amount: number }[]
     cursor = addMonths(cursor, -1)
   }
   return streak
+}
+
+/** Сколько месяцев от `from` до `to` («2026-09» → «2027-05» = 8); отрицательное — 0. */
+export function monthsBetween(from: string, to: string): number {
+  const a = parseMonthKey(from)
+  const b = parseMonthKey(to)
+  return Math.max(0, (b.year - a.year) * 12 + (b.month - a.month))
+}
+
+export type CloserWish = {
+  wish: WishItem
+  /** На сколько ближе: сумма покрывает цену целиком (`covers`) или её часть, ₸. */
+  closer: number
+  covers: boolean
+  /** Ежемесячно: через сколько месяцев покупка (сумма ≥ цена — 1). */
+  months?: number
+}
+
+/**
+ * «Это приближает» (B2C-18, Р-9 RP): какое некупленное желание с ценой становится ближе от
+ * суммы — разовой (`once`: самое дорогое, что покрывается целиком, иначе самое дешёвое — на
+ * его долю) или ежемесячной (`monthly`: самое дешёвое, через `months` месяцев). null — нечего
+ * приблизить: сумма 0, желаний с ценой нет или все куплены.
+ */
+export function closerWish(wishes: WishItem[], amount: number, mode: 'once' | 'monthly'): CloserWish | null {
+  if (amount <= 0) return null
+  const open = liveWishlist(wishes).filter((w) => !w.bought && w.price > 0).sort((a, b) => a.price - b.price)
+  if (!open.length) return null
+  if (mode === 'monthly') {
+    const wish = open[0]
+    return { wish, closer: Math.min(amount, wish.price), covers: amount >= wish.price, months: Math.max(1, Math.ceil(wish.price / amount)) }
+  }
+  const covered = open.filter((w) => w.price <= amount)
+  if (covered.length) {
+    const wish = covered[covered.length - 1]
+    return { wish, closer: wish.price, covers: true }
+  }
+  return { wish: open[0], closer: amount, covers: false }
 }
 
 /* ---------------- выбранный план «Сначала долги» (PV-14) ---------------- */

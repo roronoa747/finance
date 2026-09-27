@@ -16,7 +16,12 @@ import type { SyncDoc } from '../src/types/finance'
 import type { SpendTotal } from '../src/lib/statements/types'
 import type { OperationWire } from '../src/types/api'
 import Dreams from '../src/views/Dreams.vue'
-import { at, backend, fakeServer, fakeStatements, screen, statementsFor, type FakeServer, type FakeStatements } from './support/family'
+import GoalDetail from '../src/views/GoalDetail.vue'
+import Wishes from '../src/views/Wishes.vue'
+import { templateById } from '../src/lib/goalTemplates'
+import { attachTemplate } from '../src/lib/photos/goalPhoto'
+import { photoUrl, releasePhotos, uploadPhoto } from '../src/lib/photos/store'
+import { at, backend, fakePrivate, fakeServer, fakeStatements, privateFor, screen, statementsFor, type FakePrivate, type FakeServer, type FakeStatements } from './support/family'
 
 /**
  * Приёмка Блока 3 B2C — экраны и лёгкий флоу. Часть 1 (B2C-14): главный «Мечты» у семьи с
@@ -25,7 +30,7 @@ import { at, backend, fakeServer, fakeStatements, screen, statementsFor, type Fa
  */
 type Phone = { pinia: Pinia; client: ApiClient; user: string; store: ReturnType<typeof useFinanceStore> }
 
-async function phone(server: FakeServer, st: FakeStatements, slot: 'a' | 'b', role: 'member' | 'viewer' = 'member'): Promise<Phone> {
+async function phone(server: FakeServer, st: FakeStatements, slot: 'a' | 'b', role: 'member' | 'viewer' = 'member', pv?: FakePrivate): Promise<Phone> {
   const pinia = createPinia()
   setActivePinia(pinia)
   const user = `u-${slot}`
@@ -34,7 +39,7 @@ async function phone(server: FakeServer, st: FakeStatements, slot: 'a' | 'b', ro
     household: { id: 'h-family', name: 'Семья', created_by: 'u-a', created_at: '' },
     member: { household_id: 'h-family', user_id: user, slot, display_name: slot, role, joined_at: '' },
   })
-  const client = { ...backend(server), ...statementsFor(st, user, slot) } as unknown as ApiClient
+  const client = { ...backend(server), ...statementsFor(st, user, slot), ...(pv ? privateFor(pv, user) : {}) } as unknown as ApiClient
   const finance = useFinanceStore()
   finance.claimFor('h-family')
   await finance.pullHousehold(client)
@@ -234,5 +239,99 @@ describe('e2e / B2C Блок 3 — часть 2: сопоставление вы
     expect(opsA.pendingMatches).toEqual([])
     const totals = A.store.householdDoc.spendTotals!.filter((t) => t.by === 'a' && t.period === '2026-10' && t.kind === 'month')
     expect(totals.map((t) => [t.categoryId, t.amount])).toEqual([['sc_credit', 58_000]])
+  })
+})
+
+describe('e2e / B2C Блок 3 — часть 3: мечта из шаблона с фото у партнёра, сюрприз — только у автора (B2C-18)', () => {
+  const storage = new Map<string, string>()
+  let server: FakeServer
+  let st: FakeStatements
+  let pv: FakePrivate
+  const bytes = (n: number, fill: number) => new Uint8Array(n).fill(fill)
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => storage.set(k, String(v)),
+      removeItem: (k: string) => storage.delete(k),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    vi.useFakeTimers()
+    at('2026-09-24T07:00:00Z')
+    vi.spyOn(URL, 'createObjectURL').mockImplementation((b) => `blob:${(b as Blob).size}`)
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    server = fakeServer(planFamilyDoc())
+    st = fakeStatements()
+    pv = fakePrivate()
+    // Личный документ уходит глобальным клиентом (`mutatePrivateDoc`) — здесь сети нет: правка
+    // остаётся неотправленной до явного `syncPrivate` клиентом телефона.
+    vi.spyOn(apiClient, 'pushPrivateDoc').mockRejectedValue(new TypeError('fetch failed'))
+  })
+
+  afterEach(() => {
+    releasePhotos()
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('A заводит «Японию» из шаблона → у B цель с фото и автором; сюрприз A для Аруны — в документе B нет, фото для B — 404, автору отдаётся', async () => {
+    const A = await phone(server, st, 'a', 'member', pv)
+    const B = await phone(server, st, 'b', 'member', pv)
+
+    // Мечта из шаблона: картинка «скачана», сжата и загружена клиентом A.
+    setActivePinia(A.pinia)
+    const japan = templateById('japan')!
+    const id = A.store.addGoal({ name: japan.name, need: 1_800_000, monthly: 150_000, hue: japan.hue, template: japan.id })
+    const fetched: string[] = []
+    const result = await attachTemplate(A.store, id, japan, {
+      fetch: async (url) => {
+        fetched.push(url)
+        return { ok: true, blob: async () => new Blob([bytes(300_000, 1)], { type: 'image/jpeg' }) }
+      },
+      compress: async () => ({ blob: new Blob([bytes(90_000, 2)], { type: 'image/webp' }) }),
+      upload: (blob) => uploadPhoto(blob, {}, A.client),
+      online: () => true,
+    })
+    expect(result).toBe('uploaded')
+    expect(fetched[0]).toContain('images.unsplash.com/')
+    const goalA = A.store.goals.find((g) => g.id === id)!
+    expect(goalA.photoId).toMatch(/^00000000-0000-4000-8000-/)
+    expect(goalA.photoCredit).toEqual({ author: 'Matthew Skinner', url: 'https://unsplash.com/photos/t05kfHeygbE' })
+    expect(pv.photos.get(goalA.photoId!)).toMatchObject({ user: 'u-a', hidden: false, type: 'image/webp' })
+    await A.store.syncHousehold(A.client)
+
+    // B: та же цель; фото семьи открывается его клиентом; на экране цели — автор и взнос.
+    await B.store.pullHousehold(B.client)
+    const goalB = B.store.goals.find((g) => g.id === id)!
+    expect(goalB).toMatchObject({ name: 'Япония', template: 'japan', photoId: goalA.photoId, photoCredit: goalA.photoCredit })
+    expect(await photoUrl(goalB.photoId!, B.client)).toBe('blob:90000')
+    const screenB = await screen(B.pinia, GoalDetail, `/goals/${id}`)
+    expect(screenB).toContain('Япония')
+    expect(screenB).toContain('Matthew Skinner')
+    expect(screenB).toContain(`по ${money(150_000)} в месяц · осталось 12 взносов`)
+    expect(screenB).toContain('Сделать главной')
+
+    // Сюрприз A для Аруны: фото скрытое, запись — в личном документе A.
+    setActivePinia(A.pinia)
+    const giftPhoto = await uploadPhoto(new Blob([bytes(50_000, 3)], { type: 'image/webp' }), { hidden: true }, A.client)
+    A.store.addGift({ forSlot: 'b', name: 'Наушники', price: 90_000, photoId: giftPhoto })
+    await A.store.syncPrivate(A.client)
+    expect(pv.docs.get('u-a')!.data.gifts).toHaveLength(1)
+    const wishesA = await screen(A.pinia, Wishes, '/people/b')
+    expect(wishesA).toContain('Сюрпризы для Аруна')
+    expect(wishesA).toContain('Наушники')
+    // Автору его скрытое фото отдаётся. Кэш картинок — на телефоне: у B он свой.
+    expect(await photoUrl(giftPhoto, A.client)).toBe('blob:50000')
+    releasePhotos()
+
+    // B: свой личный документ без записи; скрытое фото партнёра — 404 → null.
+    await B.store.pullPrivateDoc(B.client)
+    expect(B.store.gifts).toEqual([])
+    expect(pv.docs.get('u-b')).toBeUndefined()
+    expect(await photoUrl(giftPhoto, B.client)).toBeNull()
+    expect(await screen(B.pinia, Wishes, '/people/b')).not.toContain('Наушники')
+    expect(await screen(B.pinia, Wishes, '/people/a')).not.toContain('Наушники')
   })
 })

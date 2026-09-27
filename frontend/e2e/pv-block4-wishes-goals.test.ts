@@ -6,7 +6,7 @@ import { liveWishlist, planForecast } from '../src/lib/finance'
 import { money, plain } from '../src/lib/money'
 import { addMonths, monthIn, monthKey } from '../src/lib/dates'
 import type { SyncDoc, WishItem } from '../src/types/finance'
-import Goals from '../src/views/Goals.vue'
+import Wishes from '../src/views/Wishes.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
 import DebtPlan from '../src/views/DebtPlan.vue'
 import Budget from '../src/views/Budget.vue'
@@ -65,7 +65,7 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       await A.store.syncHousehold(A.client)
       await on(B).store.syncHousehold(B.client)
       expect(B.store.wishlist.find((w) => w.id === 'pan')).toMatchObject({ name: 'Сковорода Tefal', price: 21_000 })
-      const seen = await screen(B.pinia, Goals, '/goals?tab=wish')
+      const seen = await screen(B.pinia, Wishes, '/wishes')
       expect(seen).toContain('Сковорода Tefal')
       expect(seen).toContain(`>${plain(21_000)}</span>`)
 
@@ -74,7 +74,7 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       await B.store.syncHousehold(B.client)
       await on(A).store.syncHousehold(A.client)
       expect(A.store.wishlist.find((w) => w.id === 'vac')).toMatchObject({ bought: false, boughtOn: null })
-      const back = await screen(A.pinia, Goals, '/goals?tab=wish')
+      const back = await screen(A.pinia, Wishes, '/wishes')
       const active = back.slice(0, back.indexOf('Уже купили'))
       expect(active).toContain('Пылесос')
       expect(back).toContain('Пока ничего')
@@ -92,7 +92,7 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
 
       const live = liveWishlist(B.store.wishlist)
       expect(live.map((w) => w.id)).not.toContain('kettle')
-      const html = await screen(B.pinia, Goals, '/goals?tab=wish')
+      const html = await screen(B.pinia, Wishes, '/wishes')
       expect(html).not.toContain('Чайник')
       const bought = live.filter((w) => w.bought)
       expect(bought.map((w) => w.id).sort()).toEqual(['pan', 'vac'])
@@ -110,21 +110,22 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       await on(B).store.syncHousehold(B.client)
       // `mergeList` дописывает незнакомую запись в конец (React `store/merge.ts:38-60` — так же).
       expect(B.store.wishlist.find((w) => w.name === 'Утюг')).toMatchObject({ addedOn: '2026-09-24T07:00:00.000Z' })
-      expect(await screen(B.pinia, Goals, '/goals?tab=wish')).toContain('Ильяс · 24 сентября')
+      expect(await screen(B.pinia, Wishes, '/wishes')).toContain('Ильяс · 24 сентября')
     })
   })
 
   describe('PV-19 — цель', () => {
-    const ring = (have: number, need: number) => `stroke-dasharray="${((have / need) * 2 * Math.PI * 34).toFixed(1)} `
+    /** Процент в фото-герое цели (B2C-18): кольца больше нет. */
+    const percent = (have: number, need: number) => `${Math.round((have / need) * 100)}\u00a0%`
 
-    it('A правит «Уже накоплено» → у B сумма и кольцо обновились, история взносов на месте', async () => {
+    it('A правит «Уже накоплено» → у B сумма и процент обновились, история взносов на месте', async () => {
       server.data.goals = [
         { id: 'trip', name: 'Отпуск', need: 1_000_000, seed: 100_000, have: 150_000, monthly: 50_000, hue: 'teal', planPct: 0,
           movements: [{ id: 'm1', date: '2026-09-05T06:00:00.000Z', amount: 50_000, by: 'b' }], updatedAt: T0 },
       ]
       const A = await phone(server)
       const B = await phone(server)
-      expect(await screen(B.pinia, GoalDetail, '/goals/trip')).toContain(ring(150_000, 1_000_000))
+      expect(await screen(B.pinia, GoalDetail, '/goals/trip')).toContain(percent(150_000, 1_000_000))
 
       at('2026-09-24T08:00:00Z')
       on(A).store.updateGoal('trip', { have: 400_000 })
@@ -134,8 +135,8 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       expect(B.store.goals[0]).toMatchObject({ seed: 350_000, have: 400_000 })
       expect(B.store.goals[0].movements.map((m) => m.id)).toEqual(['m1'])
       const html = await screen(B.pinia, GoalDetail, '/goals/trip')
-      expect(html).toContain(`${plain(400_000)} из ${plain(1_000_000)} ₸`)
-      expect(html).toContain(ring(400_000, 1_000_000))
+      expect(html).toContain(`${plain(400_000)} из ${money(1_000_000)}`)
+      expect(html).toContain(percent(400_000, 1_000_000))
       expect(html).toContain(`+${plain(50_000)} ₸`)
     })
 
@@ -155,7 +156,7 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       const html = await screen(B.pinia, GoalDetail, '/goals/trip')
       expect(html).toContain(money(73_000))
       // 900 000 при 73 000 в месяц — 13 взносов с сентября: сентябрь 2027.
-      expect(html).toContain('Цель закроется в сентябре 2027')
+      expect(html).toContain('Будет вашей в сентябре 2027')
       expect(html).not.toContain('type="range"')
     })
   })
@@ -189,7 +190,7 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       for (const p of [A, B]) {
         const car = await screen(p.pinia, GoalDetail, '/goals/car')
         expect(car).toContain('На паузе ради плана')
-        expect(car).toContain(`Цель закроется в ${monthIn(addMonths(free, 47))}`)
+        expect(car).toContain(`Будет вашей в ${monthIn(addMonths(free, 47))}`)
         expect(car).toContain('после плана')
       }
 
@@ -205,7 +206,7 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       const free2 = debtFree(B)
       expect(free2 <= free).toBe(true)
       expect(await screen(B.pinia, DebtPlan, '/plan')).toContain(`долги с процентами закроются в ${monthIn(free2)}`)
-      expect(await screen(B.pinia, GoalDetail, '/goals/car')).toContain(`Цель закроется в ${monthIn(addMonths(free2, 40))}`)
+      expect(await screen(B.pinia, GoalDetail, '/goals/car')).toContain(`Будет вашей в ${monthIn(addMonths(free2, 40))}`)
     })
 
     it('viewer: правки A в покупках и цели видны — итог, даты, «Уже накоплено»; ни галочек, ни «Вернуть», ни «Добавить покупку», ни карандаша, ни поля взноса', async () => {
@@ -225,7 +226,7 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       await A.store.syncHousehold(A.client)
       await on(V).store.pullHousehold(V.client)
 
-      const wishV = await screen(V.pinia, Goals, '/goals?tab=wish')
+      const wishV = await screen(V.pinia, Wishes, '/wishes')
       expect(wishV).toContain('Чайник Bosch')
       expect(wishV).toContain(`>${plain(15_000)}</span>`)
       expect(wishV).toContain(money(198_000))
@@ -238,7 +239,7 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       expect(wishV).not.toMatch(/<button[^>]*>\s*<b[^>]*>Чайник Bosch</)
 
       const goalV = await screen(V.pinia, GoalDetail, '/goals/trip')
-      expect(goalV).toContain(`${plain(400_000)} из ${plain(1_000_000)} ₸`)
+      expect(goalV).toContain(`${plain(400_000)} из ${money(1_000_000)}`)
       expect(goalV).toContain(`+${plain(50_000)} ₸`)
       expect(goalV).not.toContain('aria-label="Изменить цель"')
       expect(goalV).not.toContain('Откладывать в месяц, ₸')
@@ -269,7 +270,7 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       // Состав, а не порядок: порядок истории после слияния — хвост приёмки Блока 4 (§4).
       expect(B.store.goals[0].movements.map((m) => m.amount).sort()).toEqual([30_000, 50_000])
       const html = await screen(B.pinia, GoalDetail, '/goals/trip')
-      expect(html).toContain(`${plain(80_000)} из ${plain(1_000_000)} ₸`)
+      expect(html).toContain(`${plain(80_000)} из ${money(1_000_000)}`)
       expect(html).toContain(`+${plain(30_000)} ₸`)
     })
   })

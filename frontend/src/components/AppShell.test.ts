@@ -53,6 +53,7 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     ['/goals/x', 'Цель'],
     ['/goals/new', 'Новая мечта'],
     ['/wishes', 'Желания'],
+    ['/people/a', 'Желания'],
     ['/settings', 'Настройки'],
   ])('%s → «%s» (DESIGN.md §6)', async (path, expected) => {
     expect(await title(path)).toBe(expected)
@@ -63,6 +64,9 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     expect(html).toContain('Сентябрь · Ильяс и Дана')
     expect(html).toContain('background:var(--pa)')
     expect(html).toContain('background:var(--pb)')
+    // Аватары ведут на список желаний участника (B2C-18).
+    expect(html).toContain('href="/people/a"')
+    expect(html).toContain('href="/people/b"')
     expect(html).toMatch(/<a[^>]*aria-label="Настройки"[^>]*href="\/settings"|<a[^>]*href="\/settings"[^>]*aria-label="Настройки"/)
     expect(html).not.toContain('Советник')
     expect(html).not.toContain('aria-label="Оформление"')

@@ -213,7 +213,8 @@ export function mergePrivateDocs(
 ): Record<string, unknown> {
   const list = (key: string) =>
     mergeList((local[key] as WithId[] | undefined) ?? [], (remote[key] as WithId[] | undefined) ?? [], (x) => x.id)
-  const known = { accounts: list('accounts'), merchantRules: list('merchantRules') }
+  // gifts — подарки-сюрпризы (B2C-18): в личном документе, адресат их не видит.
+  const known = { accounts: list('accounts'), merchantRules: list('merchantRules'), gifts: list('gifts') }
   return { ...mergeUnknownKeys(local, remote, known), ...known }
 }
 

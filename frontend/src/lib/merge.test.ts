@@ -892,13 +892,14 @@ describe('B2C-05: личный документ с двух устройств �
     }
   })
 
-  it('незнакомый ключ не теряется: список с id — по id, прочее — со стороны сервера', () => {
-    const local = { gifts: [{ id: 'g1', updatedAt: T1 }], note: 'телефон' }
-    const remote = { gifts: [{ id: 'g2', updatedAt: T1 }], note: 'сервер', accounts: [account('card')] }
+  it('незнакомый ключ не теряется: список с id — по id, прочее — со стороны сервера; gifts — известный список (B2C-18)', () => {
+    const local = { gifts: [{ id: 'g1', updatedAt: T1 }], tags: [{ id: 't1', updatedAt: T1 }], note: 'телефон' }
+    const remote = { gifts: [{ id: 'g2', updatedAt: T1 }], tags: [{ id: 't2', updatedAt: T1 }], note: 'сервер', accounts: [account('card')] }
     const merged = mergePrivateDocs(local, remote)
     expect((merged.gifts as { id: string }[]).map((g) => g.id).sort()).toEqual(['g1', 'g2'])
+    expect((merged.tags as { id: string }[]).map((t) => t.id).sort()).toEqual(['t1', 't2'])
     expect(merged.note).toBe('сервер')
     expect((merged.accounts as Account[]).map((a) => a.id)).toEqual(['card'])
-    expect(mergePrivateDocs({}, {})).toEqual({ accounts: [], merchantRules: [] })
+    expect(mergePrivateDocs({}, {})).toEqual({ accounts: [], merchantRules: [], gifts: [] })
   })
 })

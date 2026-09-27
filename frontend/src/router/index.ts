@@ -9,9 +9,9 @@ import AppShell from '@/components/AppShell.vue'
 import Dreams from '@/views/Dreams.vue'
 import Budget from '@/views/Budget.vue'
 import Capital from '@/views/Capital.vue'
-import Goals from '@/views/Goals.vue'
 import Money from '@/views/Money.vue'
 import Settings from '@/views/Settings.vue'
+import Wishes from '@/views/Wishes.vue'
 
 // Редкие экраны — отдельными чанками (Н-9 ревью Блока 3): главный чанк без них меньше 500 kB.
 // Предкэш PWA (`generateSW`) берёт все чанки — офлайн они открываются так же.
@@ -21,6 +21,8 @@ const Ritual = () => import('@/views/Ritual.vue')
 const DebtPlan = () => import('@/views/DebtPlan.vue')
 // Выписки (B2C-07): pdf.js грузится ещё позже — только когда выбрали файл.
 const Statements = () => import('@/views/Statements.vue')
+// Новая мечта (B2C-18): шаблоны с картинками — редкий экран, отдельным чанком.
+const GoalNew = () => import('@/views/GoalNew.vue')
 
 /**
  * Карта маршрутов Блока 3 (DESIGN.md §2, B2C-13): вкладки «Мечты» `/` · «Неделя» `/week` ·
@@ -58,9 +60,10 @@ export const routes: RouteRecordRaw[] = [
       { path: 'money/capital', name: 'capital', component: Capital },
       { path: 'money/capital/:id', name: 'deposit', component: Deposit },
       { path: 'money/plan', name: 'plan', component: DebtPlan },
-      // До B2C-18: список целей и покупок (`Goals.vue`) — по адресам «Новая мечта» и «Желания».
-      { path: 'goals/new', name: 'goal-new', component: Goals },
-      { path: 'wishes', name: 'wishes', component: Goals },
+      { path: 'goals/new', name: 'goal-new', component: GoalNew },
+      // Желания по людям (B2C-18): общий список и список участника — один экран.
+      { path: 'wishes', name: 'wishes', component: Wishes },
+      { path: 'people/:slot', name: 'person', component: Wishes },
       { path: 'goals/:id', name: 'goal-detail', component: GoalDetail },
       { path: 'settings', name: 'settings', component: Settings },
       // Старые адреса (до Блока 3).

@@ -64,6 +64,7 @@ describe('views/Dreams.vue — главный «Мечты» (B2C-14)', () => {
     expect(html).toContain('Отпуск')
     expect(html).toContain('13 %')
     expect(html).toContain('Новая мечта')
+    expect(html).toContain('href="/wishes"')
     // Цвет — только токены.
     expect(html).not.toMatch(/#[0-9a-f]{3,6}\b|rgb\(/i)
     expect(html).toContain('bg-surface-3')

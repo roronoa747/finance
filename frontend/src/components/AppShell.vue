@@ -15,6 +15,7 @@ import {
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { monthKey, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
+import { liveGoals, mainGoal } from '@/lib/finance'
 import SyncBadge from '@/components/SyncBadge.vue'
 import Avatar from '@/components/kit/Avatar.vue'
 import IconBox from '@/components/kit/IconBox.vue'
@@ -51,8 +52,13 @@ const header = computed<{ title: string; sub?: string }>(() => {
   if (p.startsWith('/money/capital/')) return { title: 'Вклад' }
   if (p.startsWith('/money/plan')) return { title: 'План' }
   if (p === '/goals/new') return { title: 'Новая мечта' }
-  if (p.startsWith('/goals/')) return { title: 'Цель' }
-  if (p === '/wishes') return { title: 'Желания', sub: 'не мечты — покупки поменьше' }
+  if (p.startsWith('/goals/')) {
+    // Имя цели заголовком (g4 «Экран цели»): «главная мечта · Ильяс и Дана».
+    const goal = liveGoals(financeStore.goals).find((g) => g.id === route.params.id)
+    const main = mainGoal(financeStore.goals)?.id === goal?.id
+    return goal ? { title: goal.name, sub: `${main ? 'главная мечта' : 'мечта'} · ${names.value}` } : { title: 'Цель' }
+  }
+  if (p === '/wishes' || p.startsWith('/people/')) return { title: 'Желания', sub: 'не мечты — покупки поменьше' }
   if (p === '/settings') return { title: 'Настройки' }
   return { title: 'Family Finance' }
 })
@@ -105,9 +111,11 @@ function navigateAndClose(to: string) {
       </div>
       <div class="flex shrink-0 items-center gap-2.5">
         <SyncBadge compact />
-        <!-- Аватары: до B2C-18 без действия; точка при «не сошлось» — внутри SyncBadge compact. -->
-        <div v-if="people.length" class="flex" aria-hidden="true">
-          <Avatar v-for="(p, i) in people" :key="p.id" :id="p.id" :name="p.name" :class="i ? '-ml-2' : ''" />
+        <!-- Аватары ведут на список желаний участника (B2C-18); точка при «не сошлось» — SyncBadge compact. -->
+        <div v-if="people.length" class="flex">
+          <RouterLink v-for="(p, i) in people" :key="p.id" :to="`/people/${p.id}`" :aria-label="`Желания · ${p.name}`" class="rounded-full" :class="i ? '-ml-2' : ''">
+            <Avatar :id="p.id" :name="p.name" />
+          </RouterLink>
         </div>
         <RouterLink to="/settings" aria-label="Настройки" class="rounded-[12px]">
           <IconBox><PhGearSix :size="20" /></IconBox>

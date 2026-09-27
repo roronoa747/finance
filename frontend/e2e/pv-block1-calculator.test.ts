@@ -12,7 +12,6 @@ import { setupPlan, type SetupForm } from '../src/lib/setup'
 import { HUES } from '../src/lib/palette'
 import { isDark } from '../src/lib/theme'
 import { money, plain } from '../src/lib/money'
-import Goals from '../src/views/Goals.vue'
 import Budget from '../src/views/Budget.vue'
 import Ritual from '../src/views/Ritual.vue'
 import Capital from '../src/views/Capital.vue'
@@ -210,7 +209,7 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
     const B = await phone(server)
     const kid = (p: typeof A) => p.store.goals.find((g) => g.id === 'kid')!
 
-    expect(await screen(A.pinia, GoalDetail, '/goals/kid')).toContain(`около ${money(2_633_568)}`) // 34 мес.
+    expect(await screen(A.pinia, GoalDetail, '/goals/kid')).toContain(`около ${money(2_612_338)}`) // 34 взноса → к месяцу закрытия 33 мес. (B2C-18)
 
     // A снимает 500 000 из 300 000, B в это время офлайн пополняет на 100 000.
     at('2026-09-25T05:00:00Z')
@@ -230,14 +229,14 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
       expect(kid(P).have).toBe(0)
       expect(kid(P).movements.map((m) => m.amount).sort((x, y) => x - y)).toEqual([-500_000, 100_000])
       const detail = await screen(P.pinia, GoalDetail, '/goals/kid')
-      expect(detail).toContain(`0 из ${plain(2_000_000)} ₸`)
+      expect(detail).toContain(`0 из ${money(2_000_000)}`)
       expect(detail).toContain('Цель дорожает вместе с рынком')
       expect(detail).toContain('10,2%')
-      expect(detail).toContain(`около ${money(2_764_619)}`) // 2 000 000 / 50 000 = 40 мес.
+      expect(detail).toContain(`около ${money(2_742_333)}`) // 2 000 000 / 50 000 = 40 взносов → 39 мес.
       expect(detail).not.toContain('Дисциплина накоплений')
     }
     expect(server.data.goals.find((g) => g.id === 'kid')?.have).toBe(0)
-    expect(await screen(A.pinia, GoalDetail, '/goals/flat')).toContain(`около ${money(7_964_911)}`) // 35 мес.
+    expect(await screen(A.pinia, GoalDetail, '/goals/flat')).toContain(`около ${money(7_900_704)}`) // 35 взносов → 34 мес.
   })
 
   it('PV-05: вклад — инфляция 10,2% и вторая плашка React', async () => {
@@ -271,15 +270,17 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
     expect(d.goal?.goal.name).toBe('Машина')
   })
 
-  it('PV-08: тёмная тема — кольца списка целей тёмными оттенками целей', async () => {
+  it('PV-08: тёмная тема — «Ритм цели» тёмным оттенком цели (кольца списка ушли с плитками «Мечт», B2C-18)', async () => {
     const A = await phone(server)
+    setActivePinia(A.pinia)
+    A.store.contribute('flat', 10_000, 'a')
+    A.store.contribute('kid', 10_000, 'b')
     isDark.value = true
-    const dark = await screen(A.pinia, Goals, '/wishes')
-    expect(dark).toContain(`stroke="${HUES.blue.dark}"`)
-    expect(dark).toContain(`stroke="${HUES.plum.dark}"`)
-    expect(dark).not.toContain(`stroke="${HUES.blue.light}"`)
+    const dark = await screen(A.pinia, GoalDetail, '/goals/flat')
+    expect(dark).toContain(`background:${HUES.blue.dark}`)
+    expect(dark).not.toContain(HUES.blue.light)
+    expect(await screen(A.pinia, GoalDetail, '/goals/kid')).toContain(`background:${HUES.plum.dark}`)
     isDark.value = false
-    const light = await screen(A.pinia, Goals, '/wishes')
-    expect(light).toContain(`stroke="${HUES.blue.light}"`)
+    expect(await screen(A.pinia, GoalDetail, '/goals/flat')).toContain(`background:${HUES.blue.light}`)
   })
 })

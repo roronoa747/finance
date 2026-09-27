@@ -120,6 +120,7 @@ export type WishItem = Tracked & {
   id: string
   name: string
   price: number
+  /** Кто добавил. */
   by: PersonId
   addedOn: string
   url?: string
@@ -127,6 +128,22 @@ export type WishItem = Tracked & {
   boughtOn?: string | null
   /** Фото желания на сервере (B2C-17). */
   photoId?: string | null
+  /** Чей список (B2C-18): участник или «общие»; записи до Блока 3 — список добавившего (`by`). */
+  list?: PersonId | 'all'
+}
+
+/**
+ * Подарок-сюрприз (Р-9/Р-10 RP, B2C-18): живёт в личном документе автора (`privateDoc.gifts`),
+ * адресат его не видит ни в списках, ни в итогах; фото — со скрытым признаком (только автору).
+ */
+export type Gift = Tracked & {
+  id: string
+  forSlot: PersonId
+  name: string
+  price: number
+  photoId?: string | null
+  bought: boolean
+  boughtOn?: string | null
 }
 
 /**

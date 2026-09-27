@@ -93,7 +93,7 @@ describe('router/index.ts — Навигационные гарды и защи�
     signIn()
     useFinanceStore().finishSetup()
 
-    for (const path of ['/', '/week', '/week/salary', '/money', '/money/budget', '/money/capital', '/money/capital/x', '/money/plan', '/goals/x', '/goals/new', '/wishes', '/settings']) {
+    for (const path of ['/', '/week', '/week/salary', '/money', '/money/budget', '/money/capital', '/money/capital/x', '/money/plan', '/goals/x', '/goals/new', '/wishes', '/people/a', '/settings']) {
       await router.push(path)
       expect(router.currentRoute.value.path).toBe(path)
     }

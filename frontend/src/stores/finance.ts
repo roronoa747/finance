@@ -48,6 +48,7 @@ import type {
   Obligation,
   Payment,
   WishItem,
+  Gift,
 } from '@/types/finance'
 import type { MerchantRule } from '@/lib/statements/types'
 import { useAuthStore } from '@/stores/auth'
@@ -1536,7 +1537,7 @@ export const useFinanceStore = defineStore('finance', () => {
 
   // Покупки в дом (React `useStore.ts:280-311`). Даты — ISO, а не «сегодня» как в React:
   // показ — `atLabel`; старые строки `dd.mm.yyyy` из прода экран показывает как есть.
-  function addWish(w: { name: string; price: number; by: PersonId; url?: string }) {
+  function addWish(w: { name: string; price: number; by: PersonId; url?: string; list?: PersonId | 'all' }) {
     const t = new Date().toISOString()
     const item: WishItem = {
       id: Math.random().toString(36).slice(2, 10),
@@ -1547,11 +1548,44 @@ export const useFinanceStore = defineStore('finance', () => {
       bought: false,
       addedOn: t,
       updatedAt: t,
+      ...(w.list ? { list: w.list } : {}),
     }
     mutateHouseholdDoc((doc) => {
       if (!doc.wishlist) doc.wishlist = []
       doc.wishlist.unshift(item)
     })
+  }
+
+  /* ---------------- подарки-сюрпризы (B2C-18) — личный документ ---------------- */
+  const gifts = computed(() => ((privateDoc.value.gifts as Gift[] | undefined) ?? []).filter((g) => !g.deletedAt))
+
+  function addGift(g: { forSlot: PersonId; name: string; price: number; photoId?: string | null }): Gift {
+    const t = new Date().toISOString()
+    const gift: Gift = { id: Math.random().toString(36).slice(2, 10), forSlot: g.forSlot, name: g.name, price: g.price, photoId: g.photoId ?? null, bought: false, updatedAt: t }
+    mutatePrivateDoc((doc) => {
+      doc.gifts = [gift, ...((doc.gifts as Gift[] | undefined) ?? [])]
+    })
+    return gift
+  }
+
+  function updateGift(id: string, patch: Partial<Gift>) {
+    if (unchanged(gifts.value.find((g) => g.id === id), patch)) return
+    const t = new Date().toISOString()
+    mutatePrivateDoc((doc) => {
+      doc.gifts = ((doc.gifts as Gift[] | undefined) ?? []).map((g) => (g.id === id ? { ...g, ...patch, updatedAt: t } : g))
+    })
+  }
+
+  function removeGift(id: string) {
+    const t = new Date().toISOString()
+    mutatePrivateDoc((doc) => {
+      doc.gifts = ((doc.gifts as Gift[] | undefined) ?? []).map((g) => (g.id === id ? { ...g, deletedAt: t, updatedAt: t } : g))
+    })
+  }
+
+  function toggleGiftBought(id: string) {
+    const g = gifts.value.find((x) => x.id === id)
+    if (g) updateGift(id, { bought: !g.bought, boughtOn: g.bought ? null : new Date().toISOString() })
   }
 
   function updateWish(id: string, patch: Partial<WishItem>) {
@@ -1614,6 +1648,7 @@ export const useFinanceStore = defineStore('finance', () => {
     credits,
     payments,
     wishlist,
+    gifts,
     setupDone,
     plans,
     activePlan,
@@ -1673,6 +1708,10 @@ export const useFinanceStore = defineStore('finance', () => {
     contribute,
     withdraw,
     addWish,
+    addGift,
+    updateGift,
+    removeGift,
+    toggleGiftBought,
     updateWish,
     removeWish,
     toggleBought,

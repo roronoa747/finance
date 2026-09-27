@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue'
 import { useRouter, useRoute, RouterLink } from 'vue-router'
-import { PhArrowLeft, PhPencilSimple, PhPlus, PhMinus } from '@phosphor-icons/vue'
+import { PhArrowLeft, PhPencilSimple, PhPlus, PhMinus, PhShareNetwork } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { money, plain, parseMoney, ratePct } from '@/lib/money'
+import { money, pct, plain, parseMoney, ratePct } from '@/lib/money'
 import {
   INFLATION,
   contributionStreak,
@@ -13,43 +13,49 @@ import {
   goalMonthly,
   indexedNeed,
   liveGoals,
+  mainGoal,
+  monthsBetween,
+  movementMonth,
   payableAccounts,
   planForecast,
 } from '@/lib/finance'
-import { addMonths, monthIn, monthKey, monthTitle } from '@/lib/dates'
+import { addMonths, atLabel, monthIn, monthKey, monthTitle, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
 import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
+import { plural } from '@/lib/utils'
+import type { GoalTemplate } from '@/lib/goalTemplates'
+import { attachFile, attachTemplate } from '@/lib/photos/goalPhoto'
+import { deletePhoto } from '@/lib/photos/store'
+import { usePhoto } from '@/lib/photos/usePhoto'
 import type { PersonId } from '@/types/finance'
 
+import Avatar from '@/components/kit/Avatar.vue'
 import Card from '@/components/kit/Card.vue'
-import Section from '@/components/kit/Section.vue'
+import Callout from '@/components/kit/Callout.vue'
+import Chip from '@/components/kit/Chip.vue'
+import DreamHero from '@/components/kit/DreamHero.vue'
 import Field from '@/components/kit/Field.vue'
 import Hint from '@/components/kit/Hint.vue'
 import NumField from '@/components/kit/NumField.vue'
 import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
 import SavedMark from '@/components/kit/SavedMark.vue'
+import Section from '@/components/kit/Section.vue'
 import Segmented from '@/components/kit/Segmented.vue'
 import Select from '@/components/kit/Select.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Tag from '@/components/kit/Tag.vue'
-import Callout from '@/components/kit/Callout.vue'
 import { useSavedMark } from '@/components/kit/useSavedMark'
-import Ring from '@/components/Ring.vue'
 import GoalSheet from '@/components/goals/GoalSheet.vue'
 import PhotoPicker from '@/components/goals/PhotoPicker.vue'
-import DreamHero from '@/components/kit/DreamHero.vue'
-import Chip from '@/components/kit/Chip.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
-import { pct } from '@/lib/money'
-import type { GoalTemplate } from '@/lib/goalTemplates'
-import { attachFile, attachTemplate } from '@/lib/photos/goalPhoto'
-import { deletePhoto } from '@/lib/photos/store'
-import { usePhoto } from '@/lib/photos/usePhoto'
 
-type Mode = 'date' | 'amount'
-const mode = ref<Mode>('date')
-
+/**
+ * Экран цели (DESIGN.md §2 g4 «Экран цели»; B2C-18): фото-герой с процентом, «Будет вашей в …»
+ * со взносом и числом взносов, «Пополнить» / «Поделиться» (B2C-20) / «Сделать главной», взносы
+ * с аватарами, правка по карандашу (`GoalSheet`), viewer — без форм. Хвосты: месяц взноса и серия —
+ * по Алматы (`movementMonth`), цена «дорожает» — до месяца закрытия (после плана — позже).
+ */
 const router = useRouter()
 const route = useRoute()
 const financeStore = useFinanceStore()
@@ -60,6 +66,8 @@ const goalId = computed(() => route.params.id as string)
 // надгробие, а счёт списался бы.
 const goal = computed(() => liveGoals(financeStore.goals).find((g) => g.id === goalId.value))
 const people = computed(() => financeStore.people)
+const canEdit = computed(() => !authStore.isViewer)
+const isMain = computed(() => mainGoal(financeStore.goals)?.id === goalId.value)
 // Пополнение и снятие двигают тенговую базу счёта: валютный счёт пересчитал бы её по
 // курсу при следующей правке и молча потерял сдвиг. Удалённые счета — тоже не сюда.
 const accounts = computed(() => payableAccounts(financeStore.accounts))
@@ -71,20 +79,21 @@ const planCushion = computed(() => !!plan.value && plan.value.cushionGoalId === 
 
 const remaining = computed(() => (goal.value ? Math.max(0, goal.value.need - goal.value.have) : 0))
 const months = computed(() => (goal.value ? goalMonths(remaining.value, goal.value.monthly) : 1))
-const progress = computed(() => (goal.value && goal.value.need > 0 ? goal.value.have / goal.value.need : 0))
-// Заливка «Ритма цели» — оттенок цели для текущей темы.
-const rhythmColor = computed(() => (goal.value ? hueColor(goal.value.hue, isDark.value) : ''))
-// Во сколько обойдётся та же цель к сроку, если она дорожает вместе с рынком; взнос 0 — прогноза нет.
-const indexed = computed(() => (goal.value ? indexedNeed(goal.value.need, months.value) : null))
+const progress = computed(() => (goal.value ? pct(goal.value.have, goal.value.need) : 0))
 
 // Цель на паузе стоит, пока план не закроет долги с процентами (Н-8 ревью Блока 3): дата —
 // от месяца без процентных долгов по прогнозу плана; не закрываются — месяца нет.
 const forecast = computed(() => (paused.value && plan.value ? planForecast(plan.value, financeStore.planState(), monthKey()) : null))
 const doneMonth = computed(() => goalDoneMonth(months.value, monthKey(), forecast.value ?? undefined))
-const doneTitle = computed(() => (doneMonth.value ? monthTitle(doneMonth.value) : paused.value ? 'После плана' : '—'))
-const doneLine = computed(() =>
-  doneMonth.value ? `Цель закроется в ${monthIn(doneMonth.value)}` : paused.value ? 'Цель закроется после плана' : '',
-)
+const doneTitle = computed(() => (doneMonth.value ? `Будет вашей в ${monthIn(doneMonth.value)}` : paused.value ? 'После плана' : 'Взнос не задан'))
+const doneLine = computed(() => {
+  if (!goal.value) return ''
+  if (remaining.value <= 0) return 'Накоплено — мечта ваша'
+  if (!Number.isFinite(months.value)) return 'Задайте взнос — и появится дата'
+  return `по ${money(goal.value.monthly)} в месяц · осталось ${months.value} ${plural(months.value, 'взнос', 'взноса', 'взносов')}${paused.value && doneMonth.value ? ' · после плана' : ''}`
+})
+// Во сколько обойдётся та же цель к сроку (хвост PV: горизонт — до месяца закрытия, у паузы — позже).
+const indexed = computed(() => (goal.value && doneMonth.value ? indexedNeed(goal.value.need, monthsBetween(monthKey(), doneMonth.value)) : null))
 
 /* ------------------ Взнос полем (исключение из Р-2, владелец 2026-09-25) ------------------ */
 // «Сохранено» — по самому взносу, а не по updatedAt цели: пополнение тоже меняет цель, но
@@ -98,10 +107,10 @@ function onMonthly(text: string) {
   if (goal.value && v > 0 && v !== goal.value.monthly) financeStore.setGoalMonthly(goal.value.id, v)
 }
 
+/* ------------------ Ритм (месяцы по Алматы) ------------------ */
+const rhythmColor = computed(() => (goal.value ? hueColor(goal.value.hue, isDark.value) : ''))
 const streak = computed(() => (goal.value ? contributionStreak(goal.value.movements || []) : 0))
-const filled = computed(() =>
-  new Set((goal.value?.movements || []).filter((m) => m.amount > 0).map((m) => m.date.slice(0, 7))),
-)
+const filled = computed(() => new Set((goal.value?.movements || []).filter((m) => m.amount > 0).map((m) => movementMonth(m.date))))
 const last12 = computed(() =>
   Array.from({ length: 12 }, (_, i) => {
     const k = addMonths(monthKey(), i - 11)
@@ -113,7 +122,7 @@ const last12 = computed(() =>
 const openDepositModal = ref(false)
 const depositOperation = ref<'deposit' | 'withdraw'>('deposit')
 const depositAmount = ref('')
-const depositBy = ref<PersonId>('a')
+const depositBy = ref<PersonId>(authStore.slot ?? 'a')
 const depositAccountId = ref<string>('')
 const depositNote = ref('')
 // Сумма — сразу под пальцем (React `autoFocus`): лист вставляется после открытия, атрибут не сработал бы.
@@ -123,9 +132,8 @@ watch(openDepositModal, (open) => {
 })
 
 // История — новые сверху по дате: слияние хранит «новые первыми», взнос дописывается в конец.
-const history = computed(() =>
-  [...(goal.value?.movements ?? [])].sort((a, b) => b.date.localeCompare(a.date)),
-)
+const history = computed(() => [...(goal.value?.movements ?? [])].sort((a, b) => b.date.localeCompare(a.date)))
+const monthOf = (iso: string) => MONTHS_NOM[parseMonthKey(movementMonth(iso)).month]
 
 function applyDeposit() {
   const v = parseMoney(depositAmount.value)
@@ -178,6 +186,11 @@ async function removePhoto() {
   financeStore.updateGoal(g.id, { template: null })
   await deletePhoto(id).catch(() => {})
 }
+
+/** «Поделиться» — карточка сторис (B2C-20). */
+function share() {
+  void router.push(`/share/${goalId.value}`)
+}
 </script>
 
 <template>
@@ -188,19 +201,30 @@ async function removePhoto() {
     </button>
   </div>
 
-  <div v-else class="flex flex-col gap-3.5 pt-1">
-    <button
-      type="button"
-      class="flex items-center gap-1.5 self-start text-[13px] text-ink-2 hover:text-ink cursor-pointer"
-      @click="router.push('/')"
-    >
-      <PhArrowLeft :size="15" /> Все цели
-    </button>
+  <div v-else class="flex flex-col gap-3 pt-1 text-left">
+    <div class="flex items-center justify-between">
+      <button
+        type="button"
+        class="flex items-center gap-1.5 text-[13px] text-ink-2 hover:text-ink cursor-pointer"
+        @click="router.push('/')"
+      >
+        <PhArrowLeft :size="15" /> Все мечты
+      </button>
+      <button
+        v-if="canEdit"
+        type="button"
+        aria-label="Изменить цель"
+        class="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-surface-2 text-ink-2 hover:bg-surface-3 hover:text-ink cursor-pointer"
+        @click="openEditModal = true"
+      >
+        <PhPencilSimple :size="18" />
+      </button>
+    </div>
 
     <!-- Фото-герой (B2C-17): картинка шаблона или своя, автор — у мечты (Р-28). -->
     <DreamHero
       :title="goal.name"
-      :percent="pct(goal.have, goal.need)"
+      :percent="progress"
       :have-amount="goal.have"
       :need-amount="goal.need"
       :done-month="doneMonth ? monthIn(doneMonth) : null"
@@ -208,9 +232,10 @@ async function removePhoto() {
       :author="goal.photoCredit?.author"
       size="goal"
     >
-      <template v-if="!authStore.isViewer" #actions>
+      <template v-if="canEdit" #actions>
         <Chip quiet @click="pickerOpen = true">{{ goal.photoId ? 'Другое фото' : 'Добавить фото' }}</Chip>
         <Chip v-if="goal.photoId" quiet @click="removePhoto">Убрать фото</Chip>
+        <Chip v-if="!isMain" quiet @click="financeStore.setMainGoal(goal.id)">Сделать главной</Chip>
       </template>
     </DreamHero>
     <p v-if="goal.photoCredit" class="px-1 text-[12px] text-ink-3">
@@ -220,50 +245,14 @@ async function removePhoto() {
     <PhotoPicker :open="pickerOpen" title="Фото мечты" :selected="goal.template" :skippable="false" @close="pickerOpen = false" @template="onTemplate" @file="onFile" />
 
     <Card>
-      <div class="mb-4 flex items-center gap-3.5">
-        <Ring :progress="progress" :plan="goal.planPct" :hue="goal.hue" :size="58" />
-        <div class="min-w-0 flex-1">
-          <div class="truncate font-display text-[18px] font-semibold tracking-[-0.01em] text-ink">
-            {{ goal.name }}
-          </div>
-          <div class="text-[13px] text-ink-3 num">
-            {{ plain(goal.have) }} из {{ plain(goal.need) }} ₸
-          </div>
-        </div>
-        <button
-          v-if="!authStore.isViewer"
-          type="button"
-          aria-label="Изменить цель"
-          class="grid size-9 shrink-0 place-items-center rounded-xl border border-line text-ink-2 hover:bg-surface-2 hover:text-ink cursor-pointer"
-          @click="openEditModal = true"
-        >
-          <PhPencilSimple :size="17" />
-        </button>
+      <div class="flex items-start justify-between gap-3">
+        <h2 class="type-h2 text-ink">{{ doneTitle }}</h2>
+        <Tag v-if="isMain" tone="brand">главная</Tag>
       </div>
-
-      <Segmented
-        v-model="mode"
-        :options="[
-          { value: 'date', label: 'Считаем от даты' },
-          { value: 'amount', label: 'Считаем от суммы' },
-        ]"
-      />
-
-      <div class="pb-1.5 pt-5 text-center">
-        <div class="text-[12.5px] tracking-[0.03em] text-ink-3">
-          {{ mode === 'date' ? 'Откладывать в месяц' : 'Цель будет достигнута' }}
-        </div>
-        <div class="mt-1 font-display text-[32px] font-semibold leading-tight tracking-[-0.025em] num text-ink">
-          {{ mode === 'date' ? money(goal.monthly) : doneTitle }}
-        </div>
-        <div class="mt-1.5 text-[13px] text-ink-2">
-          {{ mode === 'date' ? doneLine : `При взносе ${money(goal.monthly)} в месяц · ${months} мес.` }}
-        </div>
-        <div v-if="paused && doneMonth" class="text-[12px] text-ink-3">после плана</div>
-      </div>
+      <p class="mt-1 text-[13.5px] text-ink-2">{{ doneLine }}</p>
 
       <!-- Взнос вводится числом, а не ползунком (исключение из Р-2, владелец 2026-09-25). Viewer — только сумма. -->
-      <div v-if="!authStore.isViewer" class="mt-4">
+      <div v-if="canEdit" class="mt-4">
         <div class="-mb-3.5 flex justify-end">
           <SavedMark :on="monthlySaved" />
         </div>
@@ -271,9 +260,31 @@ async function removePhoto() {
           <NumFieldBlur :initial="plain(goal.monthly)" @commit="onMonthly" />
         </Field>
       </div>
-
-      <div class="mt-3 border-t border-line pt-3 text-[12.5px] text-ink-2">
+      <p v-if="remaining > 0" class="text-[12.5px] text-ink-2">
         Чтобы успеть за год, нужно {{ money(goalMonthly(remaining, 12)) }} в месяц.
+      </p>
+
+      <div class="mt-3 flex flex-wrap gap-2">
+        <Button
+          v-if="canEdit"
+          @click="
+            depositOperation = 'deposit';
+            openDepositModal = true;
+          "
+        >
+          <PhPlus :size="16" weight="bold" /> Пополнить
+        </Button>
+        <Button variant="secondary" @click="share"><PhShareNetwork :size="16" /> Поделиться</Button>
+        <Button
+          v-if="canEdit"
+          variant="ghost"
+          @click="
+            depositOperation = 'withdraw';
+            openDepositModal = true;
+          "
+        >
+          <PhMinus :size="16" weight="bold" /> Снять
+        </Button>
       </div>
     </Card>
 
@@ -287,30 +298,8 @@ async function removePhoto() {
       <RouterLink to="/money/plan" class="font-medium text-brand">Открыть план</RouterLink>
     </Callout>
 
-    <div class="flex gap-2">
-      <Button
-        class="flex-1"
-        @click="
-          depositOperation = 'deposit';
-          openDepositModal = true;
-        "
-      >
-        <PhPlus :size="16" weight="bold" /> Пополнить
-      </Button>
-      <Button
-        variant="outline"
-        class="flex-1 bg-surface-2"
-        @click="
-          depositOperation = 'withdraw';
-          openDepositModal = true;
-        "
-      >
-        <PhMinus :size="16" weight="bold" /> Снять
-      </Button>
-    </div>
-
-    <Callout v-if="indexed !== null" title="Цель дорожает вместе с рынком">
-      При инфляции {{ ratePct(INFLATION, 1) }} в год к моменту достижения
+    <Callout v-if="indexed !== null" tone="neutral" title="Цель дорожает вместе с рынком">
+      При инфляции {{ ratePct(INFLATION, 1) }} в год к {{ doneMonth ? monthIn(doneMonth) : 'сроку' }}
       такая же покупка будет стоить около {{ money(indexed) }}. Расчёт выше — в сегодняшних деньгах.
     </Callout>
 
@@ -339,29 +328,28 @@ async function removePhoto() {
       </div>
     </Card>
 
-    <!-- История взносов -->
-    <Section title="История цели" />
+    <!-- Взносы -->
+    <Section title="Взносы" />
     <Card flush>
       <div
         v-for="m in history"
         :key="m.id"
         class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0"
       >
-        <i class="size-2 shrink-0 rounded-full" :style="{ background: `var(--p${m.by})` }" />
+        <Avatar :id="m.by" :name="people.find((p) => p.id === m.by)?.name || 'Участник'" :size="34" />
         <div class="min-w-0 flex-1 text-left">
           <b class="block text-[14.5px] font-medium text-ink">
-            {{ m.amount > 0 ? 'Пополнение' : 'Снятие' }}
+            {{ m.amount > 0 ? monthOf(m.date) : 'Снятие' }}
           </b>
           <span class="block text-[12.5px] text-ink-3">
-            {{ new Date(m.date).toLocaleDateString('ru-RU') }} ·
-            {{ people.find((p) => p.id === m.by)?.name || 'Участник' }}
+            {{ atLabel(m.date) }} · {{ people.find((p) => p.id === m.by)?.name || 'Участник' }}
             <span v-if="m.note">· {{ m.note }}</span>
           </span>
         </div>
         <span
           :class="[
             'shrink-0 text-[14.5px] font-semibold num',
-            m.amount > 0 ? 'text-brand' : 'text-ink-2',
+            m.amount > 0 ? 'text-ok' : 'text-ink-2',
           ]"
         >
           {{ m.amount > 0 ? '+' : '−' }}{{ plain(Math.abs(m.amount)) }} ₸
@@ -414,7 +402,7 @@ async function removePhoto() {
 
     <!-- Окно: Изменить цель -->
     <GoalSheet
-      :goal-id="openEditModal && !authStore.isViewer ? goal.id : null"
+      :goal-id="openEditModal && canEdit ? goal.id : null"
       @close="openEditModal = false"
       @removed="router.push('/')"
     />

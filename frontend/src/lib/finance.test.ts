@@ -62,6 +62,10 @@ import {
   creditMonthPayment,
   activePlan,
   pausedGoals,
+  closerWish,
+  contributionStreak,
+  movementMonth,
+  monthsBetween,
   planExtra,
   planStep,
   planForecast,
@@ -2511,3 +2515,46 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
   })
 })
 
+
+describe('B2C-18: «это приближает» и месяц взноса по Алматы', () => {
+  const T = '2026-09-01T00:00:00.000Z'
+  const wish = (id: string, price: number, extra: Partial<WishItem> = {}): WishItem => ({ id, name: id, price, by: 'a', addedOn: T, bought: false, updatedAt: T, ...extra })
+
+  it('closerWish разово: купленные, удалённые и без цены не участвуют; самое дорогое из покрываемых, иначе самое дешёвое — частично', () => {
+    const wishes = [wish('bought', 20_000, { bought: true }), wish('free', 0), wish('kettle', 30_000), wish('robot', 120_000), wish('gone', 10_000, { deletedAt: T })]
+    expect(closerWish(wishes, 40_000, 'once')).toEqual({ wish: wishes[2], closer: 30_000, covers: true })
+    expect(closerWish(wishes, 150_000, 'once')).toEqual({ wish: wishes[3], closer: 120_000, covers: true })
+    expect(closerWish(wishes, 20_000, 'once')).toEqual({ wish: wishes[2], closer: 20_000, covers: false })
+    expect(closerWish(wishes, 0, 'once')).toBeNull()
+    expect(closerWish([wishes[0], wishes[1], wishes[4]], 50_000, 'once')).toBeNull()
+  })
+
+  it('closerWish ежемесячно: самое дешёвое и через сколько месяцев', () => {
+    const wishes = [wish('robot', 120_000), wish('kettle', 30_000)]
+    expect(closerWish(wishes, 25_000, 'monthly')).toEqual({ wish: wishes[1], closer: 25_000, covers: false, months: 2 })
+    expect(closerWish(wishes, 30_000, 'monthly')).toEqual({ wish: wishes[1], closer: 30_000, covers: true, months: 1 })
+  })
+
+  it('movementMonth и серия — по Алматы: взнос 30 сентября 20:00 UTC — это уже 1 октября', () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date('2026-10-01T00:00:00Z')) // 05:00 1 октября по Алматы
+      expect(movementMonth('2026-09-30T20:00:00.000Z')).toBe('2026-10')
+      expect(movementMonth('2026-09-30T18:00:00.000Z')).toBe('2026-09')
+      expect(movementMonth('2026-09-30')).toBe('2026-09')
+      const late = { id: 'm1', date: '2026-09-30T20:00:00.000Z', amount: 10_000, by: 'a' as const }
+      const august = { id: 'm2', date: '2026-08-15T10:00:00.000Z', amount: 10_000, by: 'a' as const }
+      // По UTC это были бы сентябрь и август подряд — серия 2; по Алматы сентября нет — серия 1.
+      expect(contributionStreak([late, august])).toBe(1)
+      expect(contributionStreak([late, { ...august, id: 'm3', date: '2026-09-10T10:00:00.000Z' }, august])).toBe(3)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('monthsBetween: месяцев от одного ключа до другого, назад — 0', () => {
+    expect(monthsBetween('2026-09', '2028-08')).toBe(23)
+    expect(monthsBetween('2026-09', '2026-09')).toBe(0)
+    expect(monthsBetween('2026-09', '2026-01')).toBe(0)
+  })
+})
