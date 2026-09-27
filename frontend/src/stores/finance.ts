@@ -3,7 +3,7 @@ import { ref, computed, type Ref } from 'vue'
 import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { mergeDocs, mergePrivateDocs, isEmptyDoc } from '@/lib/merge'
 import { monthKey } from '@/lib/dates'
-import { OPERATIONS_STORAGE_KEYS, readStorage } from '@/lib/storage'
+import { OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, readStorage } from '@/lib/storage'
 import {
   accountBalance,
   activePlan as pickActivePlan,
@@ -93,6 +93,8 @@ const LOCAL_KEYS = [
   STORAGE_KEY_DOC_HOUSEHOLD,
   // Операции выписок (stores/operations.ts, B2C-07) — личные: выход стирает и их.
   ...Object.values(OPERATIONS_STORAGE_KEYS),
+  // Показанные вопросы первого запуска (B2C-19): другой пользователь на этом телефоне — свои вопросы.
+  START_ANSWERED_KEY,
 ]
 
 // Запрос не дошёл до сервера (fetch бросил не ApiError) — это «нет сети», а не «не

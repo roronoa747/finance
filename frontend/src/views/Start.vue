@@ -13,7 +13,7 @@ import { budgetAmounts, spendCategoryName } from '@/lib/finance'
 import { money, parseMoney, plain } from '@/lib/money'
 import { monthKey, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
 import { spendColor } from '@/lib/palette'
-import { readStorage, writeStorage } from '@/lib/storage'
+import { START_ANSWERED_KEY, readStorage, writeStorage } from '@/lib/storage'
 import { useInvite } from '@/components/useInvite'
 import type { PersonId } from '@/types/finance'
 import GoalNew from '@/views/GoalNew.vue'
@@ -23,6 +23,7 @@ import Chip from '@/components/kit/Chip.vue'
 import DecisionCard from '@/components/kit/DecisionCard.vue'
 import Field from '@/components/kit/Field.vue'
 import FreeCard from '@/components/kit/FreeCard.vue'
+import Hint from '@/components/kit/Hint.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Stepper from '@/components/kit/Stepper.vue'
 import WeekCard, { type WeekSegment } from '@/components/kit/WeekCard.vue'
@@ -35,7 +36,7 @@ import WeekCard, { type WeekSegment } from '@/components/kit/WeekCard.vue'
  * выписка и вопросы про себя. Ничего не считается здесь: `firstRun.ts`, `finance.ts`.
  */
 type Step = 'upload' | 'questions' | 'month' | 'dream' | 'invite'
-const KEY_ANSWERED = 'ff_start_answered'
+const KEY_ANSWERED = START_ANSWERED_KEY
 
 const route = useRoute()
 const router = useRouter()
@@ -318,8 +319,9 @@ const plural = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'повторя�
     <!-- Шаг 1: выписка -->
     <template v-if="step === 'upload'">
       <template v-if="!manual">
+        <!-- Одна строка + подсказка (правило интерфейса: пояснение длиннее строки — в Hint). -->
         <Callout tone="neutral" icon="lock">
-          Файл разбирается на телефоне и никуда не уходит. На сервер попадают только продавец, дата, сумма и раздел — без номеров и ФИО.
+          <span class="inline-flex items-center gap-1.5">Файл остаётся на телефоне <Hint>На сервер попадают только продавец, дата, сумма и раздел — без номеров и ФИО.</Hint></span>
         </Callout>
         <Callout v-for="e in errors" :key="e.name" tone="warn">
           {{ e.name }}: {{ e.message }}<span v-if="e.detail" class="block text-[12px] text-ink-3">{{ e.detail }}</span>
@@ -341,7 +343,7 @@ const plural = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'повторя�
         <Field label="День зарплаты (1–28)">
           <NumField v-model="manualPayday" kind="int" placeholder="10" />
         </Field>
-        <p class="text-[12.5px] leading-relaxed text-ink-3">Оклад без бонусов — премии добавите отдельно, чтобы они не попадали в план месяца.</p>
+        <p class="text-[12.5px] leading-relaxed text-ink-3">Оклад без премий.</p>
         <div class="mt-auto flex flex-col gap-2 pt-2">
           <Button size="lg" class="w-full" :disabled="parseMoney(manualSalary) <= 0" @click="manualNext">Дальше</Button>
           <Button variant="ghost" class="w-full" @click="manual = false">Лучше загружу выписку</Button>
@@ -413,20 +415,20 @@ const plural = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'повторя�
               <PhCopy :size="18" class="text-ink-3" />
             </button>
           </div>
-          <p class="max-w-[280px] text-[12.5px] leading-relaxed text-ink-2">
-            Продиктуйте его партнёру. Он открывает тот же адрес, регистрируется и выбирает «По коду». Код действует две недели и срабатывает один раз.
+          <p class="inline-flex max-w-[280px] items-center gap-1.5 text-[12.5px] leading-relaxed text-ink-2">
+            Продиктуйте партнёру — он выберет «По коду» <Hint>Партнёр открывает тот же адрес, регистрируется и выбирает «По коду». Код действует две недели и срабатывает один раз.</Hint>
           </p>
           <span v-if="copied" class="text-[12px] font-medium text-brand">Скопировано</span>
         </template>
         <template v-else>
-          <p class="text-[13px] leading-relaxed text-ink-2">Создадим короткий код — его удобно продиктовать вслух, не пересылая ничего в переписке.</p>
+          <p class="text-[13px] leading-relaxed text-ink-2">Короткий код — продиктовать вслух.</p>
           <Button class="w-full" :disabled="inviteBusy" @click="handleMakeInvite">{{ inviteBusy ? 'Минуту…' : 'Создать код' }}</Button>
           <p v-if="inviteError" role="alert" class="text-[12.5px] text-warn">{{ inviteError }}</p>
         </template>
       </div>
       <div class="mt-auto flex flex-col gap-2 pt-2">
         <Button size="lg" class="w-full" @click="finish">{{ inviteCode ? 'Готово' : 'Позже' }}</Button>
-        <p v-if="!inviteCode" class="text-center text-[12px] text-ink-3">Один человек — тоже семья. Партнёр может присоединиться позже — код есть в настройках.</p>
+        <p v-if="!inviteCode" class="text-center text-[12px] text-ink-3">Один человек — тоже семья. Код есть и в настройках.</p>
       </div>
     </template>
   </div>

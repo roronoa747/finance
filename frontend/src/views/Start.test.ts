@@ -69,7 +69,10 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     expect(html).toContain('Загрузите первую выписку')
     expect(html).toContain('Приложение само найдёт зарплату, кредиты и подписки — вы только подтвердите.')
     expect(html).toContain('1 из 5')
-    expect(html).toContain('Файл разбирается на телефоне и никуда не уходит.')
+    // Одна строка, подробности — в подсказке (правило интерфейса, критик Блока 3).
+    expect(html).toContain('Файл остаётся на телефоне')
+    expect(html).toContain('aria-label="Пояснение"')
+    expect(html).not.toContain('никуда не уходит')
     expect(html).toContain('Выбрать файл')
     expect(html).toContain('Введу вручную')
     expect(html).toContain('accept="application/pdf,.pdf"')

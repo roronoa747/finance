@@ -8,6 +8,9 @@
 /** Ответ «остались деньги?» на месяц (Р-19) — на устройстве; читают «Мечты» и «Неделя». */
 export const MONTH_END_KEY = 'ff_month_end'
 
+/** Показанные вопросы первого запуска (B2C-19) — на устройстве; выход стирает (`LOCAL_KEYS`). */
+export const START_ANSWERED_KEY = 'ff_start_answered'
+
 export const OPERATIONS_STORAGE_KEYS = {
   ops: 'ff_operations',
   cursor: 'ff_operations_cursor',
