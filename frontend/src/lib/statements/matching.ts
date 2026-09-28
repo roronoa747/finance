@@ -1,6 +1,6 @@
 import type { Credit, Obligation, Payment, Person, PersonId } from '@/types/finance'
 import type { MerchantRule, Operation, PaymentRule } from './types'
-import { ruleFor } from './model'
+import { dayNumber, ruleFor } from './model'
 import { amountAt, creditDueAmount, dueIn, isSubscription, liveCredits, liveObligations, paidFor, salaryAt } from '@/lib/finance'
 import { addMonths, dayLabel, daysInMonth, monthKey } from '@/lib/dates'
 import { money } from '@/lib/money'
@@ -44,8 +44,6 @@ export const DAY_WINDOW = 5
 /** Окно дат вокруг дня зарплаты, дней. */
 export const SALARY_WINDOW = 7
 
-const DAY_MS = 86_400_000
-const dayNo = (date: string) => Date.parse(`${date}T00:00:00Z`) / DAY_MS
 const within = (actual: number, expected: number, tolerance: number) => expected > 0 && Math.abs(actual - expected) <= expected * tolerance
 
 /** Ближайший к дате операции месяц с днём платежа `day` и расстояние до него в днях. */
@@ -54,7 +52,7 @@ export function nearestPeriod(date: string, day: number): { period: string; gap:
   let best = { period: month, gap: Infinity }
   for (const period of [addMonths(month, -1), month, addMonths(month, 1)]) {
     const d = Math.min(day, daysInMonth(period))
-    const gap = Math.abs(dayNo(date) - dayNo(`${period}-${String(d).padStart(2, '0')}`))
+    const gap = Math.abs(dayNumber(date) - dayNumber(`${period}-${String(d).padStart(2, '0')}`))
     if (gap < best.gap) best = { period, gap }
   }
   return best

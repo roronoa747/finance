@@ -60,7 +60,8 @@ const KIND_BY_CATEGORY: Record<string, RecurringKind> = {
   sc_subscriptions: 'subscription',
 }
 
-const BUDGET_BY_KIND: Record<RecurringKind, RecurringCandidate['budget']> = {
+/** Раздел бюджета по виду регулярного платежа; `Start` берёт его же, когда вид меняют чипом. */
+export const BUDGET_BY_KIND: Record<RecurringKind, RecurringCandidate['budget']> = {
   credit: 'd2',
   rent: 'd1',
   utilities: 'd1',

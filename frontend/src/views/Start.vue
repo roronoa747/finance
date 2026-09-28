@@ -7,7 +7,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore, type Draft, type DraftFile } from '@/stores/operations'
 import { readStatementFiles } from '@/lib/statements/read'
 import { ruleFor, ruleMatchOf } from '@/lib/statements/model'
-import { firstRunQuestions, paymentOpOfMonth, salaryOpOfMonth, type IncomeCandidate, type RecurringCandidate, type RecurringKind } from '@/lib/statements/firstRun'
+import { BUDGET_BY_KIND, firstRunQuestions, paymentOpOfMonth, salaryOpOfMonth, type IncomeCandidate, type RecurringCandidate, type RecurringKind } from '@/lib/statements/firstRun'
 import { matchCandidates, matchCategory, operationAt } from '@/lib/statements/matching'
 import type { Operation } from '@/lib/statements/types'
 import { budgetAmounts, spendRows } from '@/lib/finance'
@@ -16,6 +16,7 @@ import { monthKey, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
 import { START_ANSWERED_KEY, readStorage, writeStorage } from '@/lib/storage'
 import { useInvite } from '@/components/useInvite'
 import type { PersonId } from '@/types/finance'
+import { plural } from '@/lib/utils'
 import GoalNew from '@/views/GoalNew.vue'
 import Button from '@/components/ui/Button.vue'
 import Callout from '@/components/kit/Callout.vue'
@@ -177,7 +178,6 @@ const KINDS: { value: RecurringKind; label: string }[] = [
   { value: 'obligation', label: 'Другое регулярное' },
 ]
 const KIND_NAME: Record<RecurringKind, string | null> = { credit: null, rent: 'Аренда', utilities: 'Коммуналка', subscription: null, obligation: null }
-const KIND_BUDGET: Record<RecurringKind, 'd1' | 'd2' | 'd4'> = { credit: 'd2', rent: 'd1', utilities: 'd1', subscription: 'd4', obligation: 'd4' }
 
 const incomeMeta = (c: IncomeCandidate) => `${money(c.amount)} · ${c.day}-го · ${c.name}${c.count > 1 ? ` · ${c.count} раз` : ''}`
 const recurringMeta = (c: RecurringCandidate) => `${money(c.amount)} · примерно ${c.day}-го${c.count > 1 ? ` · ${c.count} раз за период` : ''}`
@@ -234,7 +234,7 @@ function answerRecurring(save = true) {
     } else {
       const name = KIND_NAME[kind] ?? c.name
       const note = kind === 'credit' ? 'платёж по кредиту — остаток и ставку уточните в Капитале' : name !== c.name ? c.name : ''
-      target = { kind: 'obligation', id: financeStore.addObligation({ name, note, day: c.day, category: KIND_BUDGET[kind], amount: c.amount, estimate: kind === 'utilities' }) }
+      target = { kind: 'obligation', id: financeStore.addObligation({ name, note, day: c.day, category: BUDGET_BY_KIND[kind], amount: c.amount, estimate: kind === 'utilities' }) }
     }
     const op = ops.all.find((o) => o.id === c.opIds[0])
     if (op) {
@@ -301,12 +301,11 @@ const titles: Record<Step, { title: string; sub: string }> = {
 }
 const title = computed(() => {
   if (step.value === 'upload') return joining.value ? 'Загрузите свою выписку' : titles.upload.title
-  if (step.value === 'questions') return current.value ? `Нашли ${questions.value.length} ${plural(questions.value.length)}` : 'Доход'
+  if (step.value === 'questions') return current.value ? `Нашли ${questions.value.length} ${plural(questions.value.length, 'повторяющийся', 'повторяющихся', 'повторяющихся')}` : 'Доход'
   if (step.value === 'month') return `Ваш ${monthName.value}`
   return titles[step.value].title
 })
 const sub = computed(() => (step.value === 'questions' && !current.value ? 'В выписке зарплата не нашлась — впишите её.' : titles[step.value].sub))
-const plural = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'повторяющийся' : 'повторяющихся')
 </script>
 
 <template>

@@ -220,7 +220,8 @@ export function applyRules(
 }
 
 const DAY_MS = 86_400_000
-const dayNumber = (date: string) => Date.parse(`${date}T00:00:00Z`) / DAY_MS
+/** Дата `YYYY-MM-DD` → номер дня (UTC): разность — расстояние в днях. */
+export const dayNumber = (date: string) => Date.parse(`${date}T00:00:00Z`) / DAY_MS
 
 /**
  * Переводы между своими банками (Р-5): списание без получателя в одном банке и приход без
