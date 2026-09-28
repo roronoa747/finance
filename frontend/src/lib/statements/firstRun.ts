@@ -3,8 +3,9 @@ import { categorize, normalizeCounterparty, normalizeMerchant } from './model'
 
 /**
  * Первый запуск из выписки (Р-7, B2C-19): по операциям одной выписки приложение само находит
- * доход и повторяющиеся списания и спрашивает по одному — не больше `QUESTION_LIMIT` вопросов,
- * остальное — позже в «Неделе». Чистые функции: денег не считают, только группируют.
+ * доход и повторяющиеся списания и спрашивает по одному — не больше `QUESTION_LIMIT` вопросов;
+ * повторы за лимитом пока нигде не спрашиваются (хвост §4 индекса, критик Б3). Чистые функции:
+ * денег не считают, только группируют.
  */
 export const QUESTION_LIMIT = 7
 
@@ -145,7 +146,7 @@ export function firstRunQuestions(ops: Operation[], limit = QUESTION_LIMIT): Fir
   return out
 }
 
-/** Сколько повторов осталось за лимитом — «остальное позже в Неделе». */
+/** Сколько повторов осталось за лимитом первого запуска. */
 export function beyondLimit(ops: Operation[], limit = QUESTION_LIMIT): number {
   const total = (detectIncome(ops).length ? 1 : 0) + detectRecurring(ops).length
   return Math.max(0, total - limit)

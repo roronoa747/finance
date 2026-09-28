@@ -9,7 +9,7 @@ import { assignIds } from '../src/lib/statements/model'
 import type { Operation, ParsedStatement } from '../src/lib/statements/types'
 import History from '../src/views/History.vue'
 import Statements from '../src/views/Statements.vue'
-import { money } from '../src/lib/money'
+import { money, plain } from '../src/lib/money'
 import { budgetAmounts, creditBalance, duesTotal, monthDues } from '../src/lib/finance'
 import { planFamilyDoc, T0 } from '../src/test/planFamily'
 import type { SyncDoc } from '../src/types/finance'
@@ -315,7 +315,8 @@ describe('e2e / B2C Блок 3 — часть 3: мечта из шаблона 
     expect(goalB).toMatchObject({ name: 'Япония', template: 'japan', photoId: goalA.photoId, photoCredit: goalA.photoCredit })
     expect(await photoUrl(goalB.photoId!, B.client)).toBe('blob:90000')
     const screenB = await screen(B.pinia, GoalDetail, `/goals/${id}`)
-    expect(screenB).toContain('Япония')
+    // Имя цели — в шапке оболочки (screen() её не рисует); в герое — «накоплено из нужно» (правило 12, критик Б3).
+    expect(screenB).toContain(`${plain(goalB.have)} из ${money(goalB.need)}`)
     expect(screenB).toContain('Matthew Skinner')
     expect(screenB).toContain(`по ${money(150_000)} в месяц · осталось 12 взносов`)
     expect(screenB).toContain('Сделать главной')
@@ -397,14 +398,14 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     await screen(A.pinia, Start, '/start/questions', undefined, [act('answerIncome')])
     expect(A.store.people).toEqual([expect.objectContaining({ id: 'a', salary: 120_000, payday: 24 })])
 
-    // Кредит с остатком: платёж июля из выписки отмечен «из выписки», остаток — минус тело (ставка 0).
+    // Кредит с остатком: платёж июля из выписки отмечен «из выписки» с датой операции — до сверки
+    // остатка, поэтому введённый остаток (уже без июльского платежа) второй раз не уменьшается (критик Б3).
     await screen(A.pinia, Start, '/start/questions', undefined, [act('answerRecurring', { creditPrincipal: '1 200 000' })])
-    // Кредиты стора — производные: остаток в документе 1 200 000, видимый — минус тело июльского платежа.
     const credit = A.store.credits[0]
     expect(A.store.householdDoc.credits[0]).toMatchObject({ name: 'Оплата Kaspi Кредита', principal: 1_200_000, payment: 151_790, day: 24, annualRate: 0 })
     expect(A.store.payments).toEqual([expect.objectContaining({ kind: 'credit', targetId: credit.id, period: '2025-07', amount: 151_790, source: 'statement' })])
-    expect(credit.principal).toBe(1_200_000 - 151_790)
-    expect(creditBalance(A.store.householdDoc.credits[0], A.store.payments)).toBe(1_200_000 - 151_790)
+    expect(credit.principal).toBe(1_200_000)
+    expect(creditBalance(A.store.householdDoc.credits[0], A.store.payments)).toBe(1_200_000)
     expect(A.store.merchantRules[0].to).toEqual({ payment: { kind: 'credit', targetId: credit.id, categoryId: 'sc_credit' } })
 
     // «Kaspi Red» без остатка — обязательство «Кредиты», июль отмечен; подписка — быт.

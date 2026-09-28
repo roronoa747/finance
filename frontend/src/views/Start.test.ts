@@ -5,8 +5,11 @@ import { useAuthStore } from '@/stores/auth'
 import type { PdfRow } from '@/lib/statements/pdf'
 import { parseStatement } from '@/lib/statements/parsers'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
+import { applyRules, periodOf, spendTotals, unknownGroups } from '@/lib/statements/model'
+import { beyondLimit } from '@/lib/statements/firstRun'
 import { OPERATIONS_STORAGE_KEYS, writeStorage } from '@/lib/storage'
-import { budgetAmounts } from '@/lib/finance'
+import { budgetAmounts, freeByFact, paidFor } from '@/lib/finance'
+import { useOperationsStore } from '@/stores/operations'
 import { money, plain } from '@/lib/money'
 import { templateById } from '@/lib/goalTemplates'
 import { T0, authAs, planFamilyDoc } from '@/test/planFamily'
@@ -48,6 +51,15 @@ function seedOps(ops: Operation[], user = 'u-a') {
 
 const act = (name: string, state: Record<string, unknown> = {}) => screenMixin(state, (s) => (s[name] as () => void)())
 const answered = () => JSON.parse(storage.get('ff_start_answered') ?? '[]') as string[]
+
+/** Строка выписки; раздел — по словарю, как после разбора. */
+const op = (id: string, date: string, amount: number, merchant: string, kind: Operation['kind'] = 'purchase'): Operation => ({
+  id, bank: 'kaspi', date, amount, kind, merchant, categoryId: null, internal: false,
+})
+const parsed = (list: Operation[]) => applyRules(list, [])
+/** Тексты брендовых кнопок (`variant` default) — правило 12: одна главная на экране. */
+const brandButtons = (html: string) =>
+  [...html.matchAll(/<button[^>]*class="(?:[^"]*\s)?bg-brand\s[^"]*"[^>]*>([\s\S]*?)<\/button>/g)].map((m) => m[1].replace(/<[^>]+>/g, '').trim())
 
 describe('views/Start.vue — первый запуск из выписки (B2C-19, SSR)', () => {
   beforeEach(() => {
@@ -110,6 +122,17 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     expect(html).toContain('Да, это зарплата')
   })
 
+  it('повторы за лимитом: обещания «позже, в «Неделе»» нет — спросить о них потом негде (хвост §4)', async () => {
+    family()
+    const ops = [...kaspiOps(), ...parsed([op('f1', '2025-06-28', -15_000, 'Фитнес Клуб'), op('f2', '2025-07-28', -15_000, 'Фитнес Клуб')])]
+    expect(beyondLimit(ops)).toBeGreaterThan(0)
+    seedOps(ops)
+    const html = await renderScreen(Start, '/start/questions')
+    expect(html).toContain('Нашли 7 повторяющихся')
+    expect(html).not.toContain('Ещё ')
+    expect(html).not.toContain('в «Неделе»')
+  })
+
   it('ответы пишут документ: доход (с правкой суммы), кредит с остатком, «Kaspi Red» без остатка — обязательство «Кредиты», подписка — быт; «нет» ничего не пишет; правила — в личном документе', async () => {
     const store = family()
     seedOps(kaspiOps())
@@ -153,7 +176,7 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     expect(store.merchantRules).toHaveLength(before.rules)
     expect(answered()).toHaveLength(5)
 
-    // «Потом» — остальные позже в «Неделе»; всё отвечено — «Дальше».
+    // «Потом» — остальные закрыты без записи; всё отвечено — «Дальше».
     await renderScreen(Start, '/start/questions', undefined, [act('skipRest')])
     expect(answered()).toHaveLength(7)
     const done = await renderScreen(Start, '/start/questions')
@@ -173,7 +196,9 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     expect(first).not.toContain('Это ваш доход?')
     await renderScreen(Start, '/start/questions', undefined, [act('skipRest')])
     const form = await renderScreen(Start, '/start/questions')
-    expect(form).toContain('В выписке зарплата не нашлась')
+    // Подпись — одна строка (правило 12).
+    expect(form).toContain('В выписке зарплата не нашлась — впишите её.')
+    expect(form).not.toContain('план месяца не сложится')
     expect(form).toContain('>Зарплата в месяц, ₸</span>')
     await renderScreen(Start, '/start/questions', undefined, [act('manualAfterQuestions', { manualSalary: '400 000', manualPayday: '3' })])
     expect(store.people[0]).toMatchObject({ salary: 400_000, payday: 3 })
@@ -213,11 +238,17 @@ describe('views/Start.vue — первый запуск из выписки (B2C
 
     const invite = await renderScreen(Start, '/start/invite')
     expect(invite).toContain('Пригласите партнёра')
+    expect(invite).toContain('Мечты и покупки — одни на двоих.')
+    expect(invite).not.toContain('Бюджет общий')
     expect(invite).toContain('5 из 5')
     expect(invite).toContain('Создать код')
     expect(invite).toContain('Позже')
     expect(invite).toContain('Один человек — тоже семья.')
-    expect(await renderScreen(Start, '/start/invite', undefined, [screenMixin({ inviteCode: 'K7Q2M9' })])).toContain('Готово')
+    // Одна брендовая кнопка: до кода — «Создать код» («Позже» тихая), с кодом — «Готово».
+    expect(brandButtons(invite)).toEqual(['Создать код'])
+    const withCode = await renderScreen(Start, '/start/invite', undefined, [screenMixin({ inviteCode: 'K7Q2M9' })])
+    expect(withCode).toContain('Готово')
+    expect(brandButtons(withCode)).toEqual(['Готово'])
     expect(store.setupDone).toBe(false)
     await renderScreen(Start, '/start/invite', undefined, [act('finish')])
     expect(store.setupDone).toBe(true)
@@ -238,5 +269,84 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     expect(store.people.find((p) => p.id === 'b')?.onboardedAt).toBe('2026-09-24T07:00:00.000Z')
     expect(store.householdDoc.setupDoneAt).toBe(base.setupDoneAt)
     expect(store.goals).toHaveLength(3)
+  })
+
+  it('отметки месяца — суммой, id и днём операции этого месяца: зарплата с премией (оклад остаётся окладом), кредит с введённым остатком 1 200 000 — остаток не уменьшается второй раз', async () => {
+    const store = family()
+    seedOps(
+      parsed([
+        op('s8', '2026-08-10', 450_000, 'Зарплата ТОО Ромашка', 'income'),
+        op('s9', '2026-09-10', 510_000, 'Зарплата ТОО Ромашка', 'income'),
+        op('c8', '2026-08-05', -151_790, 'Оплата Kaspi Кредита'),
+        // Сегодняшняя строка (полдень по Алматы — это «сейчас»): и она встаёт до сверки остатка.
+        op('c9', '2026-09-24', -152_000, 'Оплата Kaspi Кредита'),
+      ]),
+    )
+    await renderScreen(Start, '/start/questions', undefined, [act('answerIncome', { incomeSalary: '450 000' })])
+    expect(store.people[0]).toMatchObject({ salary: 450_000, payday: 10 })
+    // Пришло 510 000 (премия) — запись суммой операции: разница ляжет на свободное.
+    expect(paidFor(store.payments, 'salary', 'a', '2026-09')).toMatchObject({ amount: 510_000, opId: 's9', source: 'statement', at: '2026-09-10T07:00:00.000Z' })
+
+    expect(await renderScreen(Start, '/start/questions')).toContain('Оплата Kaspi Кредита — это что?')
+    await renderScreen(Start, '/start/questions', undefined, [act('answerRecurring', { creditPrincipal: '1 200 000' })])
+    const credit = store.credits[0]
+    expect(store.householdDoc.credits[0]).toMatchObject({ principal: 1_200_000, payment: 151_790, day: 5 })
+    // Остаток «если знаете» — уже после сентябрьского платежа: отметка днём операции стоит до сверки.
+    expect(credit.principal).toBe(1_200_000)
+    const paid = paidFor(store.payments, 'credit', credit.id, '2026-09')!
+    expect(paid).toMatchObject({ amount: 152_000, opId: 'c9', source: 'statement' })
+    expect(paid.at < store.householdDoc.credits[0].principalSetAt!).toBe(true)
+  })
+
+  it('«Записать → Аренда»: операции — в «Аренде», а не «не разобрано»; «Свободно по факту» вычитает аренду один раз; «Неделя» не спрашивает; правило платежа на месте', async () => {
+    const rent = parsed([op('r8', '2026-08-05', -220_000, 'PEREVOD ARENDA', 'transfer-out'), op('r9', '2026-09-05', -220_000, 'PEREVOD ARENDA', 'transfer-out')])
+    // Аренду по названию не узнать — после отправки она «не разобрано».
+    expect(rent.map((o) => o.categoryId)).toEqual([null, null])
+    const store = family('member', 'a', {
+      ...defaultSyncDoc(),
+      people: [{ id: 'a', name: 'Ильяс', salary: 600_000, payday: 10, updatedAt: T0 }],
+      spendTotals: spendTotals(rent, 'a', 'month', '2026-09', T0),
+    })
+    seedOps(rent)
+    expect(await renderScreen(Start, '/start/questions')).toContain('PEREVOD ARENDA — это что?')
+    await renderScreen(Start, '/start/questions', undefined, [act('answerRecurring', { recurringKind: 'rent' })])
+
+    const rentOb = store.obligations[0]
+    expect(rentOb).toMatchObject({ name: 'Аренда', category: 'd1', note: 'PEREVOD ARENDA' })
+    expect(store.merchantRules).toHaveLength(1)
+    expect(store.merchantRules[0].to).toEqual({ payment: { kind: 'obligation', targetId: rentOb.id, categoryId: 'sc_rent' } })
+    const all = useOperationsStore().all
+    expect(all.map((o) => o.categoryId)).toEqual(['sc_rent', 'sc_rent'])
+    expect(unknownGroups(all.filter((o) => periodOf(o.date, 'month') === '2026-09'))).toEqual([])
+    expect(paidFor(store.payments, 'obligation', rentOb.id, '2026-09')).toMatchObject({ amount: 220_000, opId: 'r9', at: '2026-09-05T07:00:00.000Z' })
+
+    const uploads = [{ slot: 'a', period_from: '2026-08-01', period_to: '2026-09-23' }]
+    const doc = store.householdDoc
+    const free = freeByFact({ ...doc, credits: store.credits }, doc.spendTotals ?? [], doc.spendCategories ?? [], '2026-09', uploads)
+    expect(free).toMatchObject({ byFact: true, dues: 220_000, spent: 0, amount: 600_000 - 220_000 })
+    expect(useOperationsStore().pendingMatches).toEqual([])
+  })
+
+  it('партнёр по коду: повторы, которые сопоставляются с арендой и кредитом семьи, не спрашиваются — «Записать» не заведёт второе такое же', async () => {
+    const base = planFamilyDoc()
+    const store = family('member', 'b', { ...base, people: [base.people[0]] })
+    seedOps(
+      parsed([
+        op('r8', '2026-08-05', -220_000, 'PEREVOD ARENDA', 'transfer-out'),
+        op('r9', '2026-09-05', -220_000, 'PEREVOD ARENDA', 'transfer-out'),
+        op('l9', '2026-09-15', -58_000, 'Оплата Kaspi Кредита'),
+        op('y9', '2026-09-03', -3_990, 'Яндекс Плюс'),
+      ]),
+      'u-b',
+    )
+    const html = await renderScreen(Start, '/start/questions')
+    expect(html).toContain('Нашли 1 повторяющийся')
+    expect(html).toContain('Яндекс Плюс — это что?')
+    expect(html).toContain('1 из 1')
+    expect(html).not.toContain('PEREVOD ARENDA')
+    expect(html).not.toContain('Оплата Kaspi Кредита')
+    await renderScreen(Start, '/start/questions', undefined, [act('answerRecurring')])
+    expect(store.obligations.map((o) => o.name)).toEqual(['Аренда', 'Яндекс Плюс'])
+    expect(store.householdDoc.credits.map((c) => c.name)).toEqual(['Кредит', 'Кредитка', 'Рассрочка'])
   })
 })

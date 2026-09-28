@@ -4,6 +4,7 @@ import { createMemoryHistory } from 'vue-router'
 import { createAppRouter } from './index'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
+import { authAs, planFamilyDoc } from '@/test/planFamily'
 
 describe('router/index.ts — Навигационные гарды и защита маршрутов', () => {
   const storageMap = new Map<string, string>()
@@ -99,6 +100,27 @@ describe('router/index.ts — Навигационные гарды и защи�
     useFinanceStore().finishSetup()
 
     for (const path of ['/', '/week', '/week/salary', '/money', '/money/budget', '/money/capital', '/money/capital/x', '/money/plan', '/goals/x', '/goals/new', '/wishes', '/people/a', '/settings']) {
+      await router.push(path)
+      expect(router.currentRoute.value.path).toBe(path)
+    }
+  })
+
+  it('viewer: экраны-формы (раскладка денег, новая мечта) по прямому адресу и старой ссылке ведут на главный', async () => {
+    useAuthStore().setAuthData(authAs('viewer', 'b'))
+    useFinanceStore().setHouseholdDoc(planFamilyDoc(), 1)
+    const router = createAppRouter(createMemoryHistory())
+    for (const path of [
+      '/week/salary?from=rest&amount=1&period=2026-09',
+      '/week/salary',
+      '/goals/new',
+      '/ritual?from=salary&person=a&period=2026-09',
+    ]) {
+      await router.push('/week')
+      await router.push(path)
+      expect(router.currentRoute.value.fullPath).toBe('/')
+    }
+    // Остальное viewer смотрит как есть.
+    for (const path of ['/week', '/money/capital', '/goals/cushion', '/wishes']) {
       await router.push(path)
       expect(router.currentRoute.value.path).toBe(path)
     }

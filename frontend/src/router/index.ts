@@ -61,14 +61,16 @@ export const routes: RouteRecordRaw[] = [
     children: [
       { path: '', name: 'dreams', component: Dreams },
       { path: 'week', name: 'week', component: Statements },
-      { path: 'week/salary', name: 'week-salary', component: WeekSalary },
+      // `memberOnly` — экран-форма: viewer уходит на главный (Р-12, «viewer — без форм»), в том числе
+      // со старой ссылки `/ritual?…` и закладки.
+      { path: 'week/salary', name: 'week-salary', component: WeekSalary, meta: { memberOnly: true } },
       { path: 'money', name: 'money', component: Money },
       { path: 'money/budget', name: 'budget', component: Budget },
       { path: 'money/capital', name: 'capital', component: Capital },
       { path: 'money/capital/:id', name: 'deposit', component: Deposit },
       { path: 'money/plan', name: 'plan', component: DebtPlan },
       { path: 'money/history', name: 'history', component: History },
-      { path: 'goals/new', name: 'goal-new', component: GoalNew },
+      { path: 'goals/new', name: 'goal-new', component: GoalNew, meta: { memberOnly: true } },
       // Желания по людям (B2C-18): общий список и список участника — один экран.
       { path: 'wishes', name: 'wishes', component: Wishes },
       { path: 'people/:slot', name: 'person', component: Wishes },
@@ -115,15 +117,22 @@ export function createAppRouter(history = typeof window !== 'undefined' ? create
       return next({ path: '/access', query: to.query })
     }
 
-    // 3. Первый запуск (`landingPath`): семья без данных — только `/start`; семья с данными, но не
+    // 3. Экраны-формы (раскладка денег, новая мечта) — только участнику.
+    if (to.meta.memberOnly && authStore.isViewer) return next('/')
+
+    // 4. Первый запуск (`landingPath`): семья без данных — только `/start`; семья с данными, но не
     // настроенная (ответы посреди потока) — и `/start`, и главный; настроенной семье `/start` открыт
-    // участнику без своей записи (партнёр по коду), остальным — главный. Viewer — мимо.
+    // участнику без своей записи (партнёр по коду) и участнику посреди своего запуска (доход уже
+    // записан, `onboardedAt` ещё нет — перезагрузка на вопросах их не теряет), остальным — главный.
+    // Viewer — мимо.
     const onStart = to.path === '/start' || to.path.startsWith('/start/')
     const landing = landingPath(authStore, financeStore)
     const setupCompleted = financeStore.setupDone || hasBudgetData(financeStore.householdDoc)
+    const me = financeStore.people.find((p) => p.id === authStore.slot)
+    const joining = financeStore.setupDone && !authStore.isViewer && !!me && !me.onboardedAt
 
     if (!onStart && landing === '/start' && !setupCompleted) return next('/start')
-    if (onStart && landing !== '/start') return next('/')
+    if (onStart && landing !== '/start' && !joining) return next('/')
 
     next()
   })

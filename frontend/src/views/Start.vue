@@ -7,7 +7,9 @@ import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore, type Draft, type DraftFile } from '@/stores/operations'
 import { parseStatement, StatementFormatError } from '@/lib/statements/parsers'
 import { ruleFor, ruleMatchOf, periodOf } from '@/lib/statements/model'
-import { beyondLimit, firstRunQuestions, type IncomeCandidate, type RecurringCandidate, type RecurringKind } from '@/lib/statements/firstRun'
+import { firstRunQuestions, type IncomeCandidate, type RecurringCandidate, type RecurringKind } from '@/lib/statements/firstRun'
+import { matchCandidates, matchCategory, operationAt } from '@/lib/statements/matching'
+import type { Operation } from '@/lib/statements/types'
 import { budgetAmounts, spendRows } from '@/lib/finance'
 import { money, parseMoney, plain } from '@/lib/money'
 import { monthKey, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
@@ -134,7 +136,19 @@ function markAnswered(key: string) {
   writeStorage(KEY_ANSWERED, answered.value)
 }
 
-const questions = computed(() => firstRunQuestions(ops.all))
+const groupOps = (ids: string[]) => ids.map((id) => ops.all.find((o) => o.id === id)).filter((o): o is Operation => !!o)
+/** Операция группы в этом месяце — её сумма, id и день идут в отметку «из выписки» (как у B2C-15). */
+const thisMonthOp = (ids: string[]) => groupOps(ids).find((o) => periodOf(o.date, 'month') === monthKey())
+/**
+ * Повтор, который сопоставляется с обязательством или кредитом семьи (партнёр платит аренду,
+ * заведённую первым участником), — не вопрос: «Записать» завёл бы второе такое же; отметку по
+ * свежим строкам предложит «Неделя». Отвеченный остаётся в счёте «n из k».
+ */
+const inFamily = (c: RecurringCandidate) =>
+  matchCandidates(groupOps(c.opIds), { obligations: financeStore.obligations, credits: financeStore.credits }, []).length > 0
+const questions = computed(() =>
+  firstRunQuestions(ops.all).filter((q) => q.type === 'income' || answered.value.includes(q.candidate.key) || !inFamily(q.candidate)),
+)
 const pending = computed(() =>
   questions.value.filter((q) => {
     const key = q.type === 'income' ? 'income' : q.candidate.key
@@ -146,7 +160,6 @@ const pending = computed(() =>
 )
 const current = computed(() => pending.value[0] ?? null)
 const progress = computed(() => ({ n: questions.value.length - pending.value.length + 1, k: questions.value.length }))
-const later = computed(() => beyondLimit(ops.all))
 
 const me = computed(() => financeStore.people.find((p) => p.id === slot.value))
 const salaryKnown = computed(() => (me.value?.salary ?? 0) > 0)
@@ -180,12 +193,14 @@ const KINDS: { value: RecurringKind; label: string }[] = [
 ]
 const KIND_NAME: Record<RecurringKind, string | null> = { credit: null, rent: 'Аренда', utilities: 'Коммуналка', subscription: null, obligation: null }
 const KIND_BUDGET: Record<RecurringKind, 'd1' | 'd2' | 'd4'> = { credit: 'd2', rent: 'd1', utilities: 'd1', subscription: 'd4', obligation: 'd4' }
-const KIND_SPEND: Record<RecurringKind, string | null> = { credit: 'sc_credit', rent: 'sc_rent', utilities: 'sc_utilities', subscription: null, obligation: null }
 
 const incomeMeta = (c: IncomeCandidate) => `${money(c.amount)} · ${c.day}-го · ${c.name}${c.count > 1 ? ` · ${c.count} раз` : ''}`
 const recurringMeta = (c: RecurringCandidate) => `${money(c.amount)} · примерно ${c.day}-го${c.count > 1 ? ` · ${c.count} раз за период` : ''}`
 
-/** «Да, это зарплата»: оклад и день — в участника; правило — когда отправитель назван или приход регулярный. */
+/**
+ * «Да, это зарплата»: оклад и день — в участника; правило — когда отправитель назван или приход
+ * регулярный. Отметка месяца — суммой и днём пришедшей операции (премия ложится на свободное).
+ */
 function answerIncome(yes = true) {
   const q = current.value
   if (!q || q.type !== 'income') return
@@ -195,8 +210,10 @@ function answerIncome(yes = true) {
     financeStore.setPerson(slot.value, { name: knownName.value, salary, payday: clampDay(incomePayday.value, q.candidate.day) })
     const op = ops.all.find((o) => o.id === q.candidate.opIds[0])
     if (op && (op.counterparty || q.candidate.regular)) {
+      // Правило зарплаты без раздела — пересчитывать операции нечего.
       ops.answer(ruleMatchOf(op), { payment: { kind: 'salary', targetId: slot.value } })
-      if (periodOf(op.date, 'month') === monthKey()) financeStore.markSalary(slot.value, { period: monthKey(), amount: salary, source: 'statement', opId: op.id })
+      const cur = thisMonthOp(q.candidate.opIds)
+      if (cur) financeStore.markSalary(slot.value, { period: monthKey(), amount: Math.abs(cur.amount), source: 'statement', opId: cur.id, at: operationAt(cur.date) })
     }
   }
   markAnswered('income')
@@ -207,13 +224,18 @@ function answerIncome(yes = true) {
  * «Записать»: кредит с известным остатком — кредит (ставка 0 — «по сроку», уточнят в Капитале);
  * без остатка — обязательство раздела «Кредиты» (кредит с остатком 0 платежа не ждёт). Аренда и
  * коммуналка — жильё, подписки и прочее регулярное — быт. Правило «это платёж по …» отмечает
- * следующие выписки само (Р-6); платёж этого месяца отмечается сразу.
+ * следующие выписки само (Р-6) и сразу переносит операции группы в плановый раздел
+ * (`recategorize`, как «Да, отметить» в «Неделе»): «Свободно по факту» не вычтет их второй раз.
+ * Платёж этого месяца отмечается суммой и днём операции — до введённого остатка кредита, так что
+ * остаток он второй раз не уменьшает.
  */
 function answerRecurring(save = true) {
   const q = current.value
   if (!q || q.type !== 'recurring') return
   const c = q.candidate
   if (save) {
+    // Отметка — не позже этого мгновения: сегодняшняя строка выписки встаёт до сверки остатка ниже.
+    const before = Date.now() - 1
     const kind = recurringKind.value
     const principal = kind === 'credit' ? parseMoney(creditPrincipal.value) : 0
     let target: { kind: 'obligation' | 'credit'; id: string }
@@ -226,16 +248,17 @@ function answerRecurring(save = true) {
     }
     const op = ops.all.find((o) => o.id === c.opIds[0])
     if (op) {
-      ops.answer(ruleMatchOf(op), { payment: { kind: target.kind, targetId: target.id, categoryId: KIND_SPEND[kind] ?? c.categoryId } })
-      const period = periodOf(op.date, 'month')
-      if (period === monthKey()) financeStore.markPaid(target.kind, target.id, slot.value, { period, amount: c.amount, source: 'statement', opId: op.id })
+      const goal = target.kind === 'credit' ? financeStore.credits.find((x) => x.id === target.id) : financeStore.obligations.find((x) => x.id === target.id)
+      void ops.recategorize(ruleMatchOf(op), { payment: { kind: target.kind, targetId: target.id, categoryId: goal ? matchCategory(target.kind, goal) : null } })
+      const cur = thisMonthOp(c.opIds)
+      if (cur) financeStore.markPaid(target.kind, target.id, slot.value, { period: monthKey(), amount: Math.abs(cur.amount), source: 'statement', opId: cur.id, at: operationAt(cur.date, before) })
     }
   }
   markAnswered(c.key)
   advance()
 }
 
-/** «Потом»: остальные вопросы — позже в «Неделе». */
+/** «Потом»: остальные вопросы закрыты без записи. */
 function skipRest() {
   for (const q of pending.value) markAnswered(q.type === 'income' ? 'income' : q.candidate.key)
   advance()
@@ -284,7 +307,7 @@ const titles: Record<Step, { title: string; sub: string }> = {
   questions: { title: 'Нашли повторяющиеся', sub: 'Подтвердите по одному — дальше отметим сами.' },
   month: { title: 'Ваш месяц', sub: '' },
   dream: { title: '', sub: '' },
-  invite: { title: 'Пригласите партнёра', sub: 'Бюджет общий: у второго будет свой вход и свой доход, а мечты и покупки — одни на двоих.' },
+  invite: { title: 'Пригласите партнёра', sub: 'Мечты и покупки — одни на двоих.' },
 }
 const title = computed(() => {
   if (step.value === 'upload') return joining.value ? 'Загрузите свою выписку' : titles.upload.title
@@ -292,7 +315,7 @@ const title = computed(() => {
   if (step.value === 'month') return `Ваш ${monthName.value}`
   return titles[step.value].title
 })
-const sub = computed(() => (step.value === 'questions' && !current.value ? 'В выписке зарплата не нашлась — впишите, без неё план месяца не сложится.' : titles[step.value].sub))
+const sub = computed(() => (step.value === 'questions' && !current.value ? 'В выписке зарплата не нашлась — впишите её.' : titles[step.value].sub))
 const plural = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'повторяющийся' : 'повторяющихся')
 </script>
 
@@ -361,7 +384,6 @@ const plural = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'повторя�
             <Field label="Остаток долга, ₸ — если знаете"><NumField v-model="creditPrincipal" placeholder="можно позже, в Капитале" /></Field>
           </template>
         </DecisionCard>
-        <p v-if="later > 0" class="text-[12.5px] text-ink-3">Ещё {{ later }} — позже, в «Неделе».</p>
       </template>
       <template v-else-if="!salaryKnown">
         <Field label="Зарплата в месяц, ₸">
@@ -416,7 +438,8 @@ const plural = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'повторя�
         </template>
       </div>
       <div class="mt-auto flex flex-col gap-2 pt-2">
-        <Button size="lg" class="w-full" @click="finish">{{ inviteCode ? 'Готово' : 'Позже' }}</Button>
+        <!-- Одна брендовая кнопка (правило 12): до кода главная — «Создать код», «Позже» — тихая. -->
+        <Button size="lg" class="w-full" :variant="inviteCode ? 'default' : 'ghost'" @click="finish">{{ inviteCode ? 'Готово' : 'Позже' }}</Button>
         <p v-if="!inviteCode" class="text-center text-[12px] text-ink-3">Один человек — тоже семья. Код есть и в настройках.</p>
       </div>
     </template>

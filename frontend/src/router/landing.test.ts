@@ -74,7 +74,7 @@ describe('router/landing — первый запуск', () => {
     expect(viewer.currentRoute.value.path).toBe('/')
   })
 
-  it('гард: настроенная семья — /start открыт партнёру без записи и закрыт участнику с записью; /access ведёт по landingPath', async () => {
+  it('гард: настроенная семья — /start открыт партнёру без записи и закрыт участнику, прошедшему свой запуск; /access ведёт по landingPath', async () => {
     family('member', 'b', withoutB())
     const partner = createAppRouter(createMemoryHistory())
     await partner.push('/start')
@@ -85,11 +85,38 @@ describe('router/landing — первый запуск', () => {
     expect(partner.currentRoute.value.path).toBe('/start')
 
     setActivePinia(createPinia())
-    family('member', 'a', planFamilyDoc())
+    const done = planFamilyDoc()
+    done.people = done.people.map((p) => ({ ...p, onboardedAt: '2026-09-02T07:00:00.000Z' }))
+    family('member', 'a', done)
     const member = createAppRouter(createMemoryHistory())
     await member.push('/start')
     expect(member.currentRoute.value.path).toBe('/')
     await member.push('/access')
     expect(member.currentRoute.value.path).toBe('/')
+  })
+
+  it('гард: партнёр посреди своего запуска (доход записан, onboardedAt нет) после перезагрузки остаётся на вопросах; прошёл — главный', async () => {
+    const finance = family('member', 'b', withoutB())
+    await createAppRouter(createMemoryHistory()).push('/start/questions')
+    // «Да, это зарплата» — запись участника есть, запуск ещё не закончен.
+    finance.setPerson('b', { name: 'Аруна', salary: 500_000, payday: 20 })
+    const reloaded = createAppRouter(createMemoryHistory())
+    await reloaded.push('/start/questions')
+    expect(reloaded.currentRoute.value.path).toBe('/start/questions')
+    // Главный тоже открыт — landingPath уже «/».
+    await reloaded.push('/')
+    expect(reloaded.currentRoute.value.path).toBe('/')
+
+    // «Готово» — onboardedAt: /start закрыт.
+    finance.setPerson('b', { onboardedAt: '2026-09-24T07:00:00.000Z' })
+    await reloaded.push('/start/questions')
+    expect(reloaded.currentRoute.value.path).toBe('/')
+
+    // Viewer без onboardedAt на /start не остаётся.
+    setActivePinia(createPinia())
+    family('viewer', 'b', planFamilyDoc())
+    const viewer = createAppRouter(createMemoryHistory())
+    await viewer.push('/start/questions')
+    expect(viewer.currentRoute.value.path).toBe('/')
   })
 })
