@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore, DEMO_TOKEN } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { renderScreen } from '@/test/screenState'
 import type { PersonId } from '@/types/finance'
@@ -79,6 +79,17 @@ describe('B2C-13: /settings и /money (SSR)', () => {
 
     setActivePinia(createPinia())
     signIn('viewer', 'a')
+    solo()
+    expect(await renderScreen(Settings, '/settings')).not.toContain('Пригласить партнёра')
+
+    // Демо: сервера нет — код не создаётся (иначе запрос к /api; критик возврата).
+    setActivePinia(createPinia())
+    useAuthStore().setAuthData({
+      token: DEMO_TOKEN,
+      user: { id: 'demo-user-1', email: 'demo@family.local', created_at: T0 },
+      household: { id: 'demo-household-1', name: 'Демо Семья', created_by: 'demo-user-1', created_at: T0 },
+      member: { household_id: 'demo-household-1', user_id: 'demo-user-1', slot: 'a', display_name: 'Вы', role: 'member', joined_at: T0 },
+    })
     solo()
     expect(await renderScreen(Settings, '/settings')).not.toContain('Пригласить партнёра')
   })
