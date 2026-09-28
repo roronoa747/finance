@@ -1,17 +1,17 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { PhArrowsClockwise, PhCheck, PhCloudSlash, PhCopy, PhWarning } from '@phosphor-icons/vue'
+import { PhArrowsClockwise, PhCheck, PhCloudSlash, PhWarning } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { useInvite } from '@/components/useInvite'
 import Button from '@/components/ui/Button.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import DangerZone from '@/components/kit/DangerZone.vue'
 
 /**
  * Состояние синхронизации словами и шторка по нему (React `SyncBadge.tsx`, Б-18): дата
- * обмена, участники, приглашение второго, пояснение про офлайн и «Начать бюджет заново».
+ * обмена, участники, пояснение про офлайн и «Начать бюджет заново». Приглашение второго — в
+ * «С кем» Настроек (`useInvite`, приёмка Блока 3 п. 8), не здесь.
  * «Выйти» — в «Оформлении» (PV-21 п. 6). Участники — из `people` документа: ручки
  * участников с ролями у Go нет (Р-15), поэтому «только просмотр» — только у себя.
  */
@@ -54,10 +54,6 @@ const label = computed(() => {
       return 'синхронизировано'
   }
 })
-
-const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: makeInvite, copy: copyInvite } = useInvite()
-// Код создаёт только участник с правом правки (viewer получит 403), в демо сервера нет.
-const canInvite = computed(() => people.value.length < 2 && !authStore.isViewer && !authStore.isDemo)
 
 // Личный документ (свои счета, память продавцов) сброс не трогает — хвост PV, B2C-13.
 const resetWarning = computed(() =>
@@ -168,28 +164,6 @@ function startOver() {
           <div class="mt-0.5 font-semibold text-ink">{{ authStore.household.name }}</div>
         </div>
 
-        <div v-if="canInvite" class="rounded-xl border border-brand bg-brand-soft px-3.5 py-3">
-          <b class="block text-[13.5px] font-semibold text-ink">Пригласить второго</b>
-          <p class="mt-1 text-[12.5px] leading-relaxed text-ink-2">
-            Код действует две недели и срабатывает один раз. Его удобно продиктовать вслух.
-          </p>
-          <button
-            v-if="inviteCode"
-            type="button"
-            class="mt-2.5 flex w-full items-center justify-center gap-2 rounded-xl border border-brand bg-surface py-2.5 font-display text-[20px] font-semibold tracking-[0.16em] num text-ink cursor-pointer"
-            @click="copyInvite"
-          >
-            {{ inviteCode }}
-            <PhCopy :size="15" class="text-ink-3" />
-          </button>
-          <Button v-else class="mt-2.5 w-full" :disabled="inviteBusy" @click="makeInvite">
-            {{ inviteBusy ? 'Минуту…' : 'Создать код' }}
-          </Button>
-          <p v-if="inviteError" role="alert" class="mt-1.5 text-center text-[12.5px] text-warn">
-            {{ inviteError }}
-          </p>
-          <p v-if="copied" class="mt-1.5 text-center text-[12px] text-brand">Скопировано</p>
-        </div>
 
         <Button
           v-if="!authStore.isDemo"

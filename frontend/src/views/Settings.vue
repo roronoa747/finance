@@ -25,9 +25,8 @@ const people = computed(() => financeStore.people.filter((p) => !p.deletedAt))
 const me = computed(() => authStore.slot)
 const joined = (slot: string) => (slot === me.value ? (authStore.isViewer ? 'вы · только просмотр' : 'вы · участник') : 'участник')
 
-const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: makeInvite, copy: copyInvite } = useInvite()
-// Как в шторке синка: код создаёт участник с правом правки (viewer получил бы 403), в демо сервера нет.
-const canInvite = computed(() => people.value.length < 2 && !authStore.isViewer && !authStore.isDemo)
+// Дом приглашения (приёмка Блока 3 п. 8): код создаёт участник с правом правки, в демо сервера нет.
+const { code: inviteCode, canInvite, busy: inviteBusy, error: inviteError, copied, make: makeInvite, copy: copyInvite } = useInvite()
 </script>
 
 <template>

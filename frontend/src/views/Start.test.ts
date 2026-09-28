@@ -16,6 +16,7 @@ import { T0, authAs, planFamilyDoc } from '@/test/planFamily'
 import { renderScreen, screenMixin } from '@/test/screenState'
 import type { SyncDoc } from '@/types/finance'
 import Start from './Start.vue'
+import { useInvite } from '@/components/useInvite'
 
 /**
  * Первый запуск из выписки (B2C-19, SSR): каждый шаг, «введу вручную», вопросы на фикстуре
@@ -248,7 +249,10 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     expect(invite).toContain('Один человек — тоже семья.')
     // Одна брендовая кнопка: до кода — «Создать код» («Позже» тихая), с кодом — «Готово».
     expect(brandButtons(invite)).toEqual(['Создать код'])
-    const withCode = await renderScreen(Start, '/start/invite', undefined, [screenMixin({ inviteCode: 'K7Q2M9' })])
+    // Код общий на сессию и семью (`useInvite`, Н-11): создан — виден и шагу первого запуска.
+    vi.spyOn(useAuthStore(), 'createInvite').mockResolvedValue({ code: 'K7Q2M9' } as never)
+    await useInvite().make()
+    const withCode = await renderScreen(Start, '/start/invite')
     expect(withCode).toContain('Готово')
     expect(brandButtons(withCode)).toEqual(['Готово'])
     expect(store.setupDone).toBe(false)
