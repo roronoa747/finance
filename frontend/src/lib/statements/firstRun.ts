@@ -1,6 +1,6 @@
 import type { Operation } from './types'
 import { categorize, normalizeCounterparty, normalizeMerchant } from './model'
-import { AMOUNT_TOLERANCE, ESTIMATE_TOLERANCE, SALARY_TOLERANCE } from './matching'
+import { AMOUNT_TOLERANCE, SALARY_TOLERANCE } from './matching'
 
 /**
  * Первый запуск из выписки (Р-7, B2C-19): по операциям одной выписки приложение само находит
@@ -135,12 +135,14 @@ export function salaryOpOfMonth(ops: Operation[], salary: number, month: string)
 
 /**
  * Операция, которой первый запуск отмечает платёж месяца по «Записать» (возврат приёмки 2 п. 2):
- * списание в допуске суммы, ближайшее к ней — ±2 %, у оценки (коммуналка) ±30 %, как вопрос
- * «Недели» и правило платежа. Такого нет — месяц не отмечается: под «Переводом с карты на карту»
+ * списание в допуске суммы, ближайшее к ней — ±2 %, как правило платежа (`ruleHit`); у оценки
+ * (коммуналка) — ближайшее списание месяца любой суммы, как у правила (зимой уходит за 30 %):
+ * иначе строка вне допуска ушла бы в плановый раздел правилом, а месяц остался бы «не оплачен»
+ * (критик возврата 2). Такого нет — месяц не отмечается: под «Переводом с карты на карту»
  * Freedom первая строка месяца — любой перевод (2 000 при обязательстве 15 000).
  */
 export function paymentOpOfMonth(ops: Operation[], amount: number, month: string, estimate = false): Operation | undefined {
-  return closestOfMonth(ops, amount, month, estimate ? ESTIMATE_TOLERANCE : AMOUNT_TOLERANCE, -1)
+  return closestOfMonth(ops, amount, month, estimate ? Infinity : AMOUNT_TOLERANCE, -1)
 }
 
 /**

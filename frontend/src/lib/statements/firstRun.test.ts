@@ -58,7 +58,7 @@ describe('firstRun — отметка зарплаты месяца (возвр�
     expect(salaryOpOfMonth(list, 30_000, '2026-10')).toBeUndefined()
   })
 
-  it('возврат приёмки 2 п. 2: paymentOpOfMonth — списание месяца в допуске суммы (±2 %, оценка ±30 %), ближайшее; первая строка месяца — не платёж', () => {
+  it('возврат приёмки 2 п. 2: paymentOpOfMonth — списание месяца в допуске суммы (±2 %, как правило), ближайшее; оценка — ближайшее любой суммы; первая строка месяца — не платёж', () => {
     // «Перевод с карты на карту» Freedom: все переводы одним названием, обязательство — 15 000.
     const list = assignIds([
       op('2026-09-03', -2_000, 'Перевод с карты на карту', { kind: 'transfer-out' }),
@@ -67,14 +67,21 @@ describe('firstRun — отметка зарплаты месяца (возвр�
       op('2026-09-21', -14_990, 'Перевод с карты на карту', { kind: 'transfer-out' }),
       op('2026-08-20', -15_000, 'Перевод с карты на карту', { kind: 'transfer-out' }),
       op('2026-09-25', 15_000, 'Перевод с карты на карту', { kind: 'transfer-in' }),
+      op('2026-09-22', -15_900, 'Перевод с карты на карту', { kind: 'transfer-out' }),
     ])
     expect(paymentOpOfMonth(list, 15_000, '2026-09')?.amount).toBe(-14_990)
     expect(paymentOpOfMonth(list.slice(0, 2), 15_000, '2026-09')).toBeUndefined()
     expect(paymentOpOfMonth(list, 2_540, '2026-09')).toBeUndefined()
     expect(paymentOpOfMonth(list, 15_000, '2026-10')).toBeUndefined()
-    // Приход той же суммы — не платёж; коммуналка-оценка — ±30 %.
-    expect(paymentOpOfMonth(list.slice(5), 15_000, '2026-09')).toBeUndefined()
+    // Допуск — ровно ±2 %, как у правила платежа (критик возврата 2): 15 900 (+6 %) — не платёж 15 000.
+    expect(paymentOpOfMonth(list.slice(6), 15_000, '2026-09')).toBeUndefined()
+    // Приход той же суммы — не платёж.
+    expect(paymentOpOfMonth(list.slice(5, 6), 15_000, '2026-09')).toBeUndefined()
+    // Коммуналка-оценка: ближайшее списание месяца любой суммы — как правило платежа (`ruleHit`), иначе строка вне
+    // допуска ушла бы в плановый раздел, а месяц остался бы «не оплачен» (критик возврата 2).
     expect(paymentOpOfMonth(list, 12_000, '2026-09', true)?.amount).toBe(-14_990)
+    expect(paymentOpOfMonth(list, 9_500, '2026-09', true)?.amount).toBe(-14_990)
+    expect(paymentOpOfMonth(list.slice(6), 15_000, '2026-09', true)?.amount).toBe(-15_900)
     expect(paymentOpOfMonth(list, 12_000, '2026-09')).toBeUndefined()
   })
 })

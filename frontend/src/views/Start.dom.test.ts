@@ -70,6 +70,8 @@ async function openQuestions() {
       op('c9', '2026-09-05', -151_790, 'Оплата Kaspi Кредита'),
       op('r8', '2026-08-03', -220_000, 'PEREVOD ARENDA', 'transfer-out'),
       op('r9', '2026-09-03', -220_000, 'PEREVOD ARENDA', 'transfer-out'),
+      op('k8', '2026-08-20', -45_000, 'Оплата Kaspi Red'),
+      op('k9', '2026-09-20', -45_000, 'Оплата Kaspi Red'),
     ],
     [],
   )
@@ -91,7 +93,7 @@ async function openQuestions() {
     await nextTick()
     await nextTick()
   }
-  return { finance, pull }
+  return { finance, store, pull }
 }
 
 const page = () => document.body.textContent ?? ''
@@ -139,5 +141,27 @@ describe('views/Start.vue — синк посреди вопроса не сти
     await click(button('Записать'))
     expect(finance.householdDoc.credits).toEqual([expect.objectContaining({ name: 'Оплата Kaspi Кредита', principal: 1_200_000, rateUnknown: true, payment: 151_790 })])
     expect(finance.obligations.map((o) => o.name)).toEqual(['Аренда'])
+
+    // Следующий вопрос-кредит: поля сброшены — остаток 1 200 000 не переезжает в Kaspi Red, «Записать» без остатка — обязательство.
+    expect(page()).toContain('Оплата Kaspi Red — это что?')
+    expect(field('Остаток долга, ₸ — если знаете').value).toBe('')
+    await click(button('Записать'))
+    expect(finance.householdDoc.credits).toHaveLength(1)
+    expect(finance.obligations.map((o) => o.name)).toEqual(['Аренда', 'Оплата Kaspi Red'])
+  })
+
+  it('критик возврата 2: вторая выписка меняет кандидата дохода — поля обновляются (ключ дохода — с отправителем), «Да» пишет нового', async () => {
+    const { finance, store } = await openQuestions()
+    expect(page()).toContain('ТОО Ромашка')
+    expect(field('Оклад, ₸').value).toBe(plain(300_000))
+    // Загружена Freedom с большим регулярным приходом — кандидат дохода теперь ТОО Лютик 500 000 · 25-го.
+    for (const o of applyRules([op('l8', '2026-08-25', 500_000, 'Зарплата ТОО Лютик', 'income'), op('l9', '2026-09-25', 500_000, 'Зарплата ТОО Лютик', 'income')], [])) store.ops[o.id] = o
+    await nextTick()
+    await nextTick()
+    expect(page()).toContain('ТОО Лютик')
+    expect(field('Оклад, ₸').value).toBe(plain(500_000))
+    expect(field('День').value).toBe('25')
+    await click(button('Да, это зарплата'))
+    expect(finance.people.find((p) => p.id === 'a')).toMatchObject({ salary: 500_000, payday: 25 })
   })
 })
