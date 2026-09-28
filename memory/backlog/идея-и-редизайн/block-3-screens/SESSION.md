@@ -516,7 +516,8 @@ B2C-15; п. 2, 3 — B2C-21; п. 4, 7 — B2C-19; п. 6 — B2C-17; п. 8 — B2
   накопленный e2e-набор входит сюда, `pwa-build` тоже зелёный. Go: `go build/vet/test -count=1 ./...` ✅; корень
   `api/` ✅; **PG-режим с обоими DSN** (`''` и `&binary_parameters=yes`, Postgres 16) ✅ — 19 тестов `Postgres*`, в том
   числе `TestPostgresPhotosMigrationAndBytes`, `TestPostgresPhotosCascade` и `TestLiveServerE2EFlowPostgres`. **CI** —
-  ветка запушена с «да» владельца: `ci-backend` #36393430253 ✅, `ci-frontend` #36393430338 ✅.
+  ветка запушена с «да» владельца: `ci-backend` #36393430253 ✅, `ci-frontend` #36393430338 ✅; с частью 6 e2e (`fb0ae5c`) —
+  `ci-frontend` #36396863399 ✅.
 - **Новый сценарий в e2e** (`1b80845`) — часть 6 `frontend/e2e/b2c-block3-screens.test.ts`. Повторная загрузка той же
   выписки не удваивает операции (ни локальные, ни на сервере), отметки и итоги. «Остались деньги?» → раскладка
   остатка записью `rest` → вопрос больше не задаётся ни A, ни партнёру (главный и «Неделя»), у B — «Уже
