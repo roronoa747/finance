@@ -76,29 +76,8 @@
   --photo-scrim: rgb(24 18 14 / 0.78);
 
   /* Тени в экранах не используются (тон вместо тени); --shadow-sheet — только у листа. */
-  --shadow-1: 0 1px 2px rgb(30 26 22 / 0.06), 0 8px 24px rgb(30 26 22 / 0.06);
   --shadow-2: 0 2px 6px rgb(30 26 22 / 0.1), 0 18px 48px rgb(30 26 22 / 0.14);
   --shadow-sheet: 0 -8px 40px rgb(30 26 22 / 0.18);
-
-  /* --- мост в shadcn/ui --- */
-  --background: var(--canvas);
-  --foreground: var(--ink);
-  --card: var(--surface);
-  --card-foreground: var(--ink);
-  --popover: var(--surface);
-  --popover-foreground: var(--ink);
-  --primary: var(--brand);
-  --primary-foreground: var(--brand-ink);
-  --secondary: var(--surface-3);
-  --secondary-foreground: var(--ink);
-  --muted: var(--surface-2);
-  --muted-foreground: var(--ink-3);
-  --accent: var(--surface-3);
-  --accent-foreground: var(--ink);
-  --border: var(--line);
-  --input: var(--line);
-  --ring: var(--brand);
-  --radius: var(--r-inner);
 }
 
 .dark {
@@ -158,22 +137,17 @@
   --scrim: rgb(0 0 0 / 0.6);
   --photo-scrim: rgb(0 0 0 / 0.78);
 
-  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.35);
   --shadow-2: 0 2px 8px rgb(0 0 0 / 0.5), 0 20px 56px rgb(0 0 0 / 0.55);
   --shadow-sheet: 0 -8px 40px rgb(0 0 0 / 0.5);
 }
 
-/* Размеры — одни для обеих тем (DESIGN.md §4): радиусы и отступы. */
+/* Размеры — одни для обеих тем (DESIGN.md §4): радиусы. */
 :root {
   --r-hero: 28px;
   --r-card: 24px;
   --r-tile: 20px;
   --r-inner: 14px;
   --r-pill: 999px;
-  --sp-page: 16px;
-  --sp-card: 20px;
-  --sp-gap: 12px;
-  --sp-section: 28px;
 }
 
 @theme inline {
@@ -223,27 +197,10 @@
   --color-scrim: var(--scrim);
   --color-photo-scrim: var(--photo-scrim);
 
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-destructive-soft: var(--destructive-soft);
   --color-destructive-line: var(--destructive-line);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
 
   --font-display: 'Piazzolla', 'Georgia', serif;
   --font-sans: 'Golos Text', 'Segoe UI', system-ui, sans-serif;
@@ -254,7 +211,6 @@
   --radius-inner: var(--r-inner);
   --radius-pill: var(--r-pill);
 
-  --shadow-card: var(--shadow-1);
   --shadow-lift: var(--shadow-2);
   --shadow-sheet: var(--shadow-sheet);
 }
@@ -355,14 +311,6 @@
   font-family: var(--font-display);
   font-weight: 500;
   font-size: 32px;
-  line-height: 1;
-  letter-spacing: -0.01em;
-}
-/* «Реально.» на старте 56 */
-@utility type-word {
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 56px;
   line-height: 1;
   letter-spacing: -0.01em;
 }

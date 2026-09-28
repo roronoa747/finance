@@ -5,7 +5,7 @@ import { cva, type VariantProps } from 'class-variance-authority'
  * экране — `default` (бренд), вторичные — `secondary` (`--surface-3`) и `ghost` (текстом).
  */
 export const buttonVariants = cva(
-  'inline-flex shrink-0 items-center justify-center gap-2 rounded-pill text-[15px] font-semibold whitespace-nowrap transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*=\'size-\'])]:size-[18px] cursor-pointer select-none',
+  'inline-flex shrink-0 items-center justify-center gap-2 rounded-pill text-[15px] font-semibold whitespace-nowrap transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-brand/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*=\'size-\'])]:size-[18px] cursor-pointer select-none',
   {
     variants: {
       variant: {
