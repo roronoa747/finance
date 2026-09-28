@@ -77,7 +77,7 @@ func member(w http.ResponseWriter, r *http.Request) (string, string, bool) {
 		return "", "", false
 	}
 	if role, _ := auth.GetRole(r.Context()); role != "member" {
-		errorJSON(w, http.StatusForbidden, "forbidden: only members can use statements")
+		errorJSON(w, http.StatusForbidden, "forbidden: only members can change data")
 		return "", "", false
 	}
 	return householdID, userID, true

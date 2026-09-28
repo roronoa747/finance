@@ -482,7 +482,7 @@ func runLiveServerE2EFlow(
 		}
 	})
 
-	// Step 13c (B2C-16): фото — байты семье, скрытое только автору (404), viewer не загружает.
+	// Step 13c (B2C-16): фото — байты семье, скрытое только автору (404); viewer не загружает — шаг 15.
 	t.Run("Photos: upload and serve; hidden — author only; partner sees the shared one", func(t *testing.T) {
 		sendBytes := func(path, token, contentType string, body []byte) (*http.Response, []byte) {
 			req, err := http.NewRequest(http.MethodPost, ts.URL+path, bytes.NewReader(body))
@@ -532,6 +532,12 @@ func runLiveServerE2EFlow(
 		}
 		if resp, _ := sendJSON(http.MethodGet, "/api/photos/"+gift.ID, nil, aliceToken); resp.StatusCode != http.StatusOK {
 			t.Fatalf("author hidden: expected 200, got %d", resp.StatusCode)
+		}
+		// Другая запись того же id (urn:uuid:) — 404 до базы: Postgres её не принимает (было 500).
+		for _, method := range []string{http.MethodGet, http.MethodDelete} {
+			if resp, body := sendJSON(method, "/api/photos/urn:uuid:"+shared.ID, nil, aliceToken); resp.StatusCode != http.StatusNotFound {
+				t.Fatalf("%s urn:uuid: id: expected 404, got %d: %s", method, resp.StatusCode, string(body))
+			}
 		}
 		// Партнёр удаляет общее (цель общая), скрытое — не может (404).
 		if resp, _ := sendJSON(http.MethodDelete, "/api/photos/"+gift.ID, nil, bobToken); resp.StatusCode != http.StatusNotFound {
@@ -599,6 +605,13 @@ func runLiveServerE2EFlow(
 		}
 		if resp, _ := sendJSON(http.MethodPost, "/api/operations/batch", map[string]any{"operations": []any{}}, viewerToken); resp.StatusCode != http.StatusForbidden {
 			t.Errorf("viewer expected 403 on operations batch, got %d", resp.StatusCode)
+		}
+		// Фото (B2C-16): viewer не загружает и не удаляет — роль проверяется до тела и id.
+		if resp, _ := sendJSON(http.MethodPost, "/api/photos", nil, viewerToken); resp.StatusCode != http.StatusForbidden {
+			t.Errorf("viewer expected 403 on photo upload, got %d", resp.StatusCode)
+		}
+		if resp, _ := sendJSON(http.MethodDelete, "/api/photos/00000000-0000-4000-8000-000000000000", nil, viewerToken); resp.StatusCode != http.StatusForbidden {
+			t.Errorf("viewer expected 403 on photo delete, got %d", resp.StatusCode)
 		}
 	})
 }

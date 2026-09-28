@@ -2,14 +2,17 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"finance-backend/internal/auth"
+	"finance-backend/internal/models"
 	"finance-backend/internal/repository"
 )
 
@@ -32,7 +35,20 @@ func jpegBytes(n int) []byte {
 
 type photosApp struct {
 	statementsApp
-	repo *repository.MockPhotoRepo
+	repo    *repository.MockPhotoRepo
+	lookups *photoLookups
+}
+
+// photoLookups counts reads of the repository: an id the database would reject
+// must be answered before it gets there.
+type photoLookups struct {
+	repository.PhotoRepository
+	n int
+}
+
+func (p *photoLookups) Get(ctx context.Context, id string) (*models.Photo, []byte, error) {
+	p.n++
+	return p.PhotoRepository.Get(ctx, id)
 }
 
 func setupPhotosApp(t *testing.T) photosApp {
@@ -40,7 +56,8 @@ func setupPhotosApp(t *testing.T) photosApp {
 	repos := repository.NewMockRepositories()
 	repos.Households.SetDocRepo(repos.Docs)
 	tokens := auth.NewTokenService("photos-test-signing-key", 2*time.Hour)
-	h := NewPhotoHandler(repos.Photos)
+	lookups := &photoLookups{PhotoRepository: repos.Photos}
+	h := NewPhotoHandler(lookups)
 
 	r := chi.NewRouter()
 	r.Route("/api", func(api chi.Router) {
@@ -77,7 +94,8 @@ func setupPhotosApp(t *testing.T) photosApp {
 			viewer:   token(v.ID, family.ID, "viewer", "c"),
 			stranger: token(s.ID, other.ID, "member", "a"),
 		},
-		repo: repos.Photos,
+		repo:    repos.Photos,
+		lookups: lookups,
 	}
 }
 
@@ -146,7 +164,7 @@ func TestPhotosGetFamilyHiddenAndHeaders(t *testing.T) {
 	app := setupPhotosApp(t)
 	pic := webpBytes(1500)
 	shared := decode[struct{ ID string }](t, app.upload(t, app.alice, "image/webp", pic, false)).ID
-	gift := decode[struct{ ID string }](t, app.upload(t, app.alice, "image/webp", jpegOrWebp(pic), true)).ID
+	gift := decode[struct{ ID string }](t, app.upload(t, app.alice, "image/webp", pic, true)).ID
 
 	// Своя семья — байт в байт, участник, партнёр и viewer; заголовки кэша и nosniff.
 	for name, token := range map[string]string{"author": app.alice, "partner": app.bob, "viewer": app.viewer} {
@@ -183,9 +201,20 @@ func TestPhotosGetFamilyHiddenAndHeaders(t *testing.T) {
 			t.Fatalf("id %q: want 404, got %d", id, rec.Code)
 		}
 	}
+	// Другая запись того же uuid (urn:uuid:, скобки, без дефисов) — 404 до запроса в базу:
+	// uuid.Validate её принимает, а Postgres на urn:uuid: отвечал ошибкой (500).
+	before := app.lookups.n
+	for _, id := range []string{"urn:uuid:" + shared, "{" + shared + "}", strings.ReplaceAll(shared, "-", "")} {
+		for _, method := range []string{http.MethodGet, http.MethodDelete} {
+			if rec := app.do(t, method, "/api/photos/"+id, app.alice, nil); rec.Code != http.StatusNotFound {
+				t.Fatalf("%s %q: want 404, got %d", method, id, rec.Code)
+			}
+		}
+	}
+	if app.lookups.n != before {
+		t.Fatalf("non-canonical ids reached the repository %d times", app.lookups.n-before)
+	}
 }
-
-func jpegOrWebp(b []byte) []byte { return b }
 
 func TestPhotosDeleteRules(t *testing.T) {
 	app := setupPhotosApp(t)

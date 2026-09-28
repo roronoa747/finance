@@ -11,7 +11,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"finance-backend/internal/auth"
 	"finance-backend/internal/repository"
 )
 
@@ -84,7 +83,7 @@ func (h *PhotoHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	if uuid.Validate(id) != nil {
+	if !canonicalUUID(id) {
 		errorJSON(w, http.StatusNotFound, "photo not found")
 		return
 	}
@@ -111,16 +110,12 @@ func (h *PhotoHandler) Get(w http.ResponseWriter, r *http.Request) {
 // hidden — any member of the family (a goal is shared, its picture too); a
 // viewer never (403); a hidden photo of someone else — 404 like Get.
 func (h *PhotoHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	householdID, userID, ok := caller(w, r)
+	householdID, userID, ok := member(w, r)
 	if !ok {
 		return
 	}
-	if role, _ := auth.GetRole(r.Context()); role != "member" {
-		errorJSON(w, http.StatusForbidden, "forbidden: only members can delete photos")
-		return
-	}
 	id := chi.URLParam(r, "id")
-	if uuid.Validate(id) != nil {
+	if !canonicalUUID(id) {
 		errorJSON(w, http.StatusNotFound, "photo not found")
 		return
 	}
@@ -140,4 +135,11 @@ func (h *PhotoHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// canonicalUUID accepts only the 36-character form: uuid.Validate also takes
+// urn:uuid:…, {…} and hex without hyphens, and Postgres fails on urn:uuid:
+// (500 instead of 404) — one photo would also answer at several URLs.
+func canonicalUUID(id string) bool {
+	return len(id) == 36 && uuid.Validate(id) == nil
 }
