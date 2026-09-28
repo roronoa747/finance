@@ -434,14 +434,22 @@ export const useOperationsStore = defineStore('operations', () => {
       // курсора; пустая страница курсор не двигает (назад он не уезжает).
       let since = cursor.value
       let from = since && new Date(Date.parse(since) - CURSOR_OVERLAP_MS).toISOString()
+      const got: string[] = []
       for (;;) {
         const page = await client.listOperations(from, PULL_LIMIT)
-        for (const w of page.operations) ops.value[w.id] = fromWire(w)
+        for (const w of page.operations) {
+          ops.value[w.id] = fromWire(w)
+          got.push(w.id)
+        }
         if (page.next) since = from = page.next
         if (page.operations.length < PULL_LIMIT) break
       }
       cursor.value = since
       save()
+      // Копия на сервере старше снятия отметки (снял партнёр, пока этот телефон спал; новый вход) —
+      // наблюдатель `released` уже отработал на пустом списке: такие операции снова трата (критик возврата).
+      const stale = new Set(got.filter((id) => released.value.has(id)))
+      if (stale.size) await settleReleased(stale, client)
     } catch (err) {
       lastError.value = err instanceof Error ? err.message : String(err)
     }

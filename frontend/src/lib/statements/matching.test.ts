@@ -133,6 +133,8 @@ describe('matchCandidates', () => {
     // Месяц отметили снова вручную — операция и есть этот платёж.
     const manual: Payment = { ...paid, id: 'p3', source: 'manual', opId: undefined }
     expect([...releasedOps([{ ...paid, deletedAt: T }, manual])]).toEqual([])
+    // Месяц отметила другая строка выписки: платёж — она, снятая остаётся тратой (критик возврата).
+    expect([...releasedOps([{ ...paid, deletedAt: T }, { ...paid, id: 'p4', opId: 'op2' }])]).toEqual(['op1'])
   })
 
   it('operationAt: полдень дня операции по Алматы в ISO UTC, не позже «сейчас»', () => {

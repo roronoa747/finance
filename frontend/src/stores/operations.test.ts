@@ -456,6 +456,68 @@ describe('stores/operations — сопоставление с отметками
     expect(free()).toBe(before)
   })
 
+  it('критик возврата: копия операции с сервера старше снятия отметки (новый вход) — после pull снова трата, итоги переписаны', async () => {
+    const finance = family()
+    const { server, client, calls } = fakeServer()
+    let store = useOperationsStore()
+    store.setDraft(draftOf(statement('2026-09-01', '2026-09-20', op('2026-09-14', -58_000, 'ИП Жолдасбеков'))))
+    await store.send(client)
+    const id = store.all[0].id
+    await store.acceptMatch(store.pendingMatches[0], client)
+    expect(server.ops.get(id)!.category_id).toBe('sc_credit')
+
+    // Новый вход: документы — с надгробием отметки (снял партнёр), копии операций на телефоне нет.
+    const doc = JSON.parse(JSON.stringify(finance.householdDoc))
+    const priv = JSON.parse(JSON.stringify(finance.privateDoc))
+    setActivePinia(createPinia())
+    storage.clear()
+    signIn('a')
+    const again = useFinanceStore()
+    again.setHouseholdDoc(doc, 1)
+    again.privateDoc = priv
+    again.unmarkPaid('credit', 'loan', '2026-09')
+    store = useOperationsStore()
+    expect(store.all).toEqual([])
+
+    vi.mocked(calls.listOperations).mockResolvedValueOnce({ operations: [...server.ops.values()], next: null })
+    await store.pull(client)
+    expect(store.ops[id].categoryId).toBeNull()
+    const month = Object.fromEntries((again.householdDoc.spendTotals ?? []).filter((t) => t.id.startsWith('a:month:2026-09:')).map((t) => [t.categoryId, t.amount]))
+    expect(month).toEqual({ sc_credit: 0, _unknown: 58_000 })
+    expect(server.ops.get(id)!.category_id).toBeNull()
+  })
+
+  it('критик возврата: «снял ошибочное — принял верное» — снятая строка остаётся тратой; пересчёт по другому правилу и снятие правила её не возвращают', async () => {
+    const finance = family()
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    const september = statement('2026-09-01', '2026-09-20', op('2026-09-14', -58_000, 'ИП Жолдасбеков'), op('2026-09-15', -58_000, 'Оплата Kaspi Кредита'))
+    store.setDraft(draftOf(september))
+    await store.send(client)
+    const wrong = store.all.find((o) => o.merchant === 'ИП Жолдасбеков')!.id
+    const month = () => Object.fromEntries((finance.householdDoc.spendTotals ?? []).filter((t) => t.id.startsWith('a:month:2026-09:')).map((t) => [t.categoryId, t.amount]))
+
+    // «Да» на ИП (ошибка) → снять: строка снова трата.
+    await store.acceptMatch(store.pendingMatches.find((c) => c.opId === wrong)!, client)
+    finance.unmarkPaid('credit', 'loan', '2026-09')
+    await nextTick()
+    expect(store.ops[wrong].categoryId).toBeNull()
+
+    // Настоящий платёж по кредиту отмечает тот же месяц — снятая строка ИП от этого не становится платежом.
+    await store.acceptMatch(store.pendingMatches.find((c) => c.opId !== wrong)!, client)
+    await nextTick()
+    expect(finance.payments.filter((p) => !p.deletedAt).map((p) => p.opId)).not.toContain(wrong)
+    expect(store.ops[wrong].categoryId).toBeNull()
+    expect(month()).toEqual({ sc_credit: 58_000, _unknown: 58_000 })
+
+    // Любой пересчёт по правилам (ответ «Что это?» о другом продавце, снятие правила) держит её в тратах.
+    await store.recategorize({ merchant: normalizeMerchant('Magnum') }, { categoryId: 'sc_food' }, client)
+    expect(store.ops[wrong].categoryId).toBeNull()
+    await store.forgetRule(finance.merchantRules.find((r) => !r.deletedAt && r.match.merchant === normalizeMerchant('Magnum'))!, client)
+    expect(store.ops[wrong].categoryId).toBeNull()
+    expect(month()).toEqual({ sc_credit: 58_000, _unknown: 58_000 })
+  })
+
   it('две строки одного продавца: «Да» на одну отмечает оба месяца — вторая по новому правилу, с датой операции', async () => {
     const finance = family()
     const { client } = fakeServer()

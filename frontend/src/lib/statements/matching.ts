@@ -193,12 +193,14 @@ export function operationAt(date: string, now = Date.now()): string {
  * операцией нет и месяц той пары снова не отмечен. Им правило платежа раздел не ставит
  * (`applyRules`), и они возвращаются в траты. Правка отметки (`editPaid`) переносит `opId` в новую
  * запись — операция не освобождается; месяц отметили снова вручную — операция и есть этот платёж.
+ * Месяц отметила другая строка выписки («снял ошибочное — принял верное») — платёж она, снятая
+ * остаётся тратой (критик возврата Блока 3).
  */
 export function releasedOps(payments: Payment[]): Set<string> {
   const pair = (p: Payment) => `${p.kind}:${p.targetId}:${p.period}`
   const live = payments.filter((p) => !p.deletedAt)
   const linked = new Set(live.map((p) => p.opId).filter((id): id is string => !!id))
-  const paid = new Set(live.map(pair))
+  const paid = new Set(live.filter((p) => !p.opId).map(pair))
   const out = new Set<string>()
   for (const p of payments) if (p.deletedAt && p.opId && !linked.has(p.opId) && !paid.has(pair(p))) out.add(p.opId)
   return out
