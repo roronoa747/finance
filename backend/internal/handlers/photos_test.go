@@ -158,6 +158,30 @@ func TestPhotosUploadRolesAndValidation(t *testing.T) {
 	if rec := app.upload(t, "", "image/webp", pic, false); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("anonymous: want 401, got %d", rec.Code)
 	}
+
+	// Флаг сюрприза — строго 0|1: ?hidden=true не должен молча открыть подарок партнёру.
+	before := app.repo.Count()
+	for _, v := range []string{"true", "yes", "on", "2", "TRUE"} {
+		req := httptest.NewRequest(http.MethodPost, "/api/photos?hidden="+v, bytes.NewReader(pic))
+		req.Header.Set("Authorization", "Bearer "+app.alice)
+		req.Header.Set("Content-Type", "image/webp")
+		rec := httptest.NewRecorder()
+		app.router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("hidden=%s: want 400, got %d %s", v, rec.Code, rec.Body.String())
+		}
+	}
+	if app.repo.Count() != before {
+		t.Fatalf("hidden=true must store nothing: %d → %d", before, app.repo.Count())
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/photos?hidden=0", bytes.NewReader(pic))
+	req.Header.Set("Authorization", "Bearer "+app.alice)
+	req.Header.Set("Content-Type", "image/webp")
+	rec = httptest.NewRecorder()
+	app.router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated || decode[struct{ Hidden bool }](t, rec).Hidden {
+		t.Fatalf("hidden=0: want 201 not hidden, got %d %s", rec.Code, rec.Body.String())
+	}
 }
 
 func TestPhotosGetFamilyHiddenAndHeaders(t *testing.T) {

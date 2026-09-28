@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"finance-backend/internal/models"
 	"finance-backend/internal/repository"
 )
 
@@ -65,7 +66,17 @@ func (h *PhotoHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		errorJSON(w, http.StatusBadRequest, "body is not a "+contentType+" image")
 		return
 	}
-	hidden := r.URL.Query().Get("hidden") == "1"
+	// A surprise stays private only on an exact "1": anything but ""/"0"/"1" is
+	// rejected, so ?hidden=true never silently shows a gift to the partner.
+	var hidden bool
+	switch r.URL.Query().Get("hidden") {
+	case "", "0":
+	case "1":
+		hidden = true
+	default:
+		errorJSON(w, http.StatusBadRequest, "hidden must be 0 or 1")
+		return
+	}
 	photo, err := h.repo.Create(r.Context(), householdID, userID, repository.PhotoInput{Hidden: hidden, ContentType: contentType, Data: data})
 	if err != nil {
 		log.Printf("photos: create: %v", err)
@@ -93,7 +104,7 @@ func (h *PhotoHandler) Get(w http.ResponseWriter, r *http.Request) {
 		errorJSON(w, http.StatusInternalServerError, "failed to load photo")
 		return
 	}
-	if err != nil || photo.HouseholdID != householdID || (photo.Hidden && photo.UserID != userID) {
+	if err != nil || !visibleTo(photo, householdID, userID) {
 		errorJSON(w, http.StatusNotFound, "photo not found")
 		return
 	}
@@ -125,7 +136,7 @@ func (h *PhotoHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		errorJSON(w, http.StatusInternalServerError, "failed to load photo")
 		return
 	}
-	if err != nil || photo.HouseholdID != householdID || (photo.Hidden && photo.UserID != userID) {
+	if err != nil || !visibleTo(photo, householdID, userID) {
 		errorJSON(w, http.StatusNotFound, "photo not found")
 		return
 	}
@@ -135,6 +146,12 @@ func (h *PhotoHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// visibleTo — the privacy rule of a photo, one for reading and deleting: own
+// family only, and a hidden photo (a surprise) — its author only.
+func visibleTo(photo *models.Photo, householdID, userID string) bool {
+	return photo.HouseholdID == householdID && (!photo.Hidden || photo.UserID == userID)
 }
 
 // canonicalUUID accepts only the 36-character form: uuid.Validate also takes
