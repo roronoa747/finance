@@ -7,6 +7,7 @@ import { authAs, planFamilyDoc, planOf } from '@/test/planFamily'
 import { money, plain } from '@/lib/money'
 import Capital from './Capital.vue'
 import {
+  closerWish,
   netWorth,
   prepayment,
   lumpSum,
@@ -552,6 +553,51 @@ describe('PV-10: модалка кредита и калькулятор дос�
     expect(html.slice(html.indexOf('role="dialog"'))).not.toContain('долг не закрывается')
     // Окно нужно закрытому долгу ради «Снять» у досрочки, закрывшей его.
     expect(html).toContain('Применённые досрочки')
+  })
+
+  it('«Что гасить первым»: на виду имя и ставка самого дорогого долга, цифры и расчёты — за «Подробнее» (правило 12, B2C-21 п. 2)', async () => {
+    await family()
+    const html = await render('/capital')
+    const order = html.slice(html.indexOf('Самая дорогая ставка'))
+    expect(order).toContain('Кредитка')
+    expect(order).toContain('36,0%')
+    expect(order).toMatch(/>\s*Подробнее\s*<\/button>/)
+    for (const t of ['Проценты в месяц', 'Доля платежа в проценты', 'Долг не закрывается', 'Больше половины платежа', 'Посчитать на свою сумму']) {
+      expect(html).not.toContain(t)
+    }
+
+    const open = await render('/capital', { orderOpen: true })
+    for (const t of ['Проценты в месяц', 'Доля платежа в проценты', 'Долг не закрывается', 'Посчитать на свою сумму']) {
+      expect(open).toContain(t)
+    }
+    expect(open.slice(open.indexOf('Самая дорогая ставка'))).not.toMatch(/>\s*Подробнее\s*<\/button>/)
+  })
+
+  it('участник: кнопки добавления на экране, ?add=debt / ?add=payment / ?income=1 открывают формы', async () => {
+    await family()
+    const html = await render('/capital')
+    for (const t of ['Добавить счёт или накопления', 'Подписка или услуга', 'Долг или рассрочка', 'Группа подписок']) {
+      expect(html).toContain(t)
+    }
+    expect(await render('/capital?add=debt')).toContain('Знаю ставку')
+    expect(await render('/capital?add=payment')).toContain('Регулярный платёж')
+    expect(await render('/capital?income=1')).toContain('Внеплановый доход')
+  })
+
+  it('viewer: Капитал без форм — кнопок добавления нет, старые закладки ?add=… и ?income=1 форм не открывают (B2C-21)', async () => {
+    await family('viewer')
+    const html = await render('/capital')
+    for (const t of ['Добавить счёт или накопления', 'Подписка или услуга', 'Долг или рассрочка', 'Группа подписок']) {
+      expect(html).not.toContain(t)
+    }
+    for (const path of ['/capital?add=debt', '/capital?add=payment', '/capital?income=1']) {
+      const page = await render(path)
+      expect(page, path).not.toContain('<input')
+      expect(page, path).not.toContain('role="dialog"')
+      expect(page, path).not.toContain('Знаю ставку')
+      expect(page, path).not.toContain('Регулярный платёж')
+      expect(page, path).not.toContain('Внеплановый доход')
+    }
   })
 })
 
@@ -1200,6 +1246,41 @@ describe('PV-16: шаг плана в строке кредита (SSR)', () => 
     expect(html).not.toContain('Шаг плана —')
     expect(store.payments.find((p) => p.kind === 'prepay')).toMatchObject({ targetId: 'loan', amount: 50_000 })
     expect(store.payments.find((p) => p.kind === 'prepay')!.planId).toBeUndefined()
+  })
+
+  it('досрочка применена — одна строка «Это приближает: «желание» …» от того, что не отдадим банку (closerWish, ТЗ B2C-18 п. 4)', async () => {
+    useAuthStore().setAuthData(authAs('member'))
+    const T = '2026-09-01T00:00:00.000Z'
+    const wish = (id: string, name: string, price: number, bought = false) =>
+      ({ id, name, price, by: 'a' as const, addedOn: T, bought, updatedAt: T })
+    const store = useFinanceStore()
+    store.setHouseholdDoc(
+      planFamilyDoc({ wishlist: [wish('buds', 'Наушники', 30_000), wish('sofa', 'Диван', 900_000), wish('old', 'Куплено', 10_000, true)] }),
+      1,
+    )
+    const apply = [
+      screenMixin({ payoffCreditId: 'loan' }),
+      screenMixin({ payoffMode: 'once', payoffAmount: '50 000', applyAccount: 'card' }, (s) => (s.applyPrepay as () => void)()),
+    ]
+    const html = (await renderScreen(Capital, '/capital', undefined, apply)).replace(/\s+/g, ' ')
+    const rec = store.payments.find((p) => p.kind === 'prepay')!
+    expect(rec.saved).toBeGreaterThan(0)
+    const c = closerWish(store.wishlist, rec.saved!, 'once')!
+    expect(c.wish.id).not.toBe('old')
+    const line = `Это приближает: «${c.wish.name}» — ${c.covers ? 'хватит целиком' : `ближе на ${money(c.closer)}`}.`
+    expect(html).toContain(line)
+    expect(html.split('Это приближает').length - 1).toBe(1)
+
+    // Желаний с ценой нет — строки нет, итог досрочки прежний.
+    setActivePinia(createPinia())
+    useAuthStore().setAuthData(authAs('member'))
+    useFinanceStore().setHouseholdDoc(planFamilyDoc(), 1)
+    const bare = await renderScreen(Capital, '/capital', undefined, [
+      screenMixin({ payoffCreditId: 'loan' }),
+      screenMixin({ payoffMode: 'once', payoffAmount: '50 000', applyAccount: 'card' }, (s) => (s.applyPrepay as () => void)()),
+    ])
+    expect(bare).toContain('Досрочка применена')
+    expect(bare).not.toContain('Это приближает')
   })
 })
 

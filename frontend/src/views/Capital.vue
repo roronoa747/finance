@@ -169,16 +169,20 @@ const extraIncomeOpen = ref(false)
 const addGroupOpen = ref(false)
 const selectedGroupId = ref<string | null>(null)
 
-// Окна открываются и по адресу: «+» в шапке, строки Бюджета и Обзора.
+// Окна открываются и по адресу: «+» в шапке, строки Бюджета и Обзора. Формы добавления —
+// только участнику: у viewer старая закладка ?add=… / ?income=1 формы не открывает (запись
+// ушла бы в локальный документ, а сервер её не примет).
 watch(
   () => route.query,
   (q) => {
-    if (q.add === 'debt') addDebtOpen.value = true
-    if (q.add === 'payment') addObligationOpen.value = true
+    if (!authStore.isViewer) {
+      if (q.add === 'debt') addDebtOpen.value = true
+      if (q.add === 'payment') addObligationOpen.value = true
+      if (q.income === '1') extraIncomeOpen.value = true
+    }
     if (typeof q.credit === 'string') selectedCreditId.value = q.credit
     if (typeof q.obligation === 'string') selectedObligationId.value = q.obligation
     if (typeof q.payoff === 'string') payoffCreditId.value = q.payoff
-    if (q.income === '1') extraIncomeOpen.value = true
   },
   { immediate: true },
 )
@@ -426,6 +430,9 @@ const groupCandidates = computed(() =>
 const adviceView = ref<'order' | 'strategy'>(route.query.advice === 'strategy' ? 'strategy' : props.initialAdvice)
 // Калькулятор «копить или гасить» — за «подробнее» (DESIGN.md §3, B2C-21); позвали явно — открыт сразу.
 const calcOpen = ref(adviceView.value === 'strategy')
+// «Какой первым»: на виду имя и ставка самого дорогого долга, цифры переплаты и расчёт добавки —
+// за «Подробнее» (правило 12, ТЗ B2C-21 п. 2).
+const orderOpen = ref(false)
 const rankedDebts = computed(() =>
   costliestCredits(credits.value).map((c) => ({ credit: c, cost: creditOutlook(c) })),
 )
@@ -693,65 +700,68 @@ watch(queryModalOpen, (open) => {
 
         <div v-if="adviceView === 'order'">
           <div class="text-[13px] text-ink-2">Самая дорогая ставка</div>
-          <div class="font-display text-[19px] font-semibold tracking-[-0.02em] text-ink">
-            {{ worstDebt.credit.name }}
+          <div class="flex items-baseline justify-between gap-3">
+            <div class="min-w-0 truncate font-display text-[19px] font-semibold tracking-[-0.02em] text-ink">
+              {{ worstDebt.credit.name }}
+            </div>
+            <b class="num shrink-0 text-[15px] text-ink">{{ ratePct(worstDebt.credit.annualRate, 1) }}</b>
           </div>
 
-          <div class="mt-3 flex flex-col gap-1.5 border-t border-line pt-3 text-[13px]">
-            <div class="flex justify-between">
-              <span class="text-ink-2">Ставка</span>
-              <b class="num text-ink">{{ ratePct(worstDebt.credit.annualRate, 1) }}</b>
+          <!-- Цифры и расчёты — за «Подробнее», свёрнуты (правило 12, ТЗ B2C-21 п. 2) -->
+          <Button v-if="!orderOpen" variant="ghost" class="mt-2 w-full" @click="orderOpen = true">Подробнее</Button>
+          <template v-else>
+            <div class="mt-3 flex flex-col gap-1.5 border-t border-line pt-3 text-[13px]">
+              <div class="flex justify-between">
+                <span class="text-ink-2">Проценты в месяц</span>
+                <b class="num text-warn">{{ money(worstDebt.cost.monthlyInterest) }}</b>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-ink-2">Доля платежа в проценты</span>
+                <b class="num text-ink">{{ worstDebt.cost.sharePct }}%</b>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-ink-2">
+                  {{ worstDebt.cost.closes ? 'Переплата до конца' : 'Долг не закрывается' }}
+                </span>
+                <b class="num text-warn">
+                  {{
+                    worstDebt.cost.closes
+                      ? money(worstDebt.cost.overpay)
+                      : 'платёж меньше процентов'
+                  }}
+                </b>
+              </div>
             </div>
-            <div class="flex justify-between">
-              <span class="text-ink-2">Проценты в месяц</span>
-              <b class="num text-warn">{{ money(worstDebt.cost.monthlyInterest) }}</b>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-ink-2">Доля платежа в проценты</span>
-              <b class="num text-ink">{{ worstDebt.cost.sharePct }}%</b>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-ink-2">
-                {{ worstDebt.cost.closes ? 'Переплата до конца' : 'Долг не закрывается' }}
-              </span>
-              <b class="num text-warn">
-                {{
-                  worstDebt.cost.closes
-                    ? money(worstDebt.cost.overpay)
-                    : 'платёж меньше процентов'
-                }}
-              </b>
-            </div>
-          </div>
 
-          <p class="mt-3 text-[12.5px] leading-relaxed text-ink-3">
-            {{
-              worstDebt.cost.sharePct >= 50
-                ? 'Больше половины платежа уходит в проценты, поэтому остаток почти не двигается. Такой долг выгоднее закрыть раньше остальных, даже если он самый маленький.'
-                : 'Здесь самая высокая ставка из ваших долгов, поэтому каждый лишний тенге, внесённый сюда, экономит больше, чем в любом другом.'
-            }}
-          </p>
+            <p class="mt-3 text-[12.5px] leading-relaxed text-ink-3">
+              {{
+                worstDebt.cost.sharePct >= 50
+                  ? 'Больше половины платежа уходит в проценты, поэтому остаток почти не двигается. Такой долг выгоднее закрыть раньше остальных, даже если он самый маленький.'
+                  : 'Здесь самая высокая ставка из ваших долгов, поэтому каждый лишний тенге, внесённый сюда, экономит больше, чем в любом другом.'
+              }}
+            </p>
 
-          <div
-            v-if="worstGain && worstHalfExtra"
-            class="mt-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3"
-          >
-            <div class="text-[12.5px] text-ink-2">Половину переплаты снимает добавка в</div>
-            <div class="mt-1 font-display text-[19px] font-semibold tracking-[-0.02em] num text-brand">
-              {{ money(worstHalfExtra) }} в месяц
+            <div
+              v-if="worstGain && worstHalfExtra"
+              class="mt-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3"
+            >
+              <div class="text-[12.5px] text-ink-2">Половину переплаты снимает добавка в</div>
+              <div class="mt-1 font-display text-[19px] font-semibold tracking-[-0.02em] num text-brand">
+                {{ money(worstHalfExtra) }} в месяц
+              </div>
+              <div class="mt-0.5 text-[13px] text-ink-2 num">
+                это минус {{ worstGain.monthsSaved }} мес. и экономия {{ money(worstGain.saved) }}
+              </div>
             </div>
-            <div class="mt-0.5 text-[13px] text-ink-2 num">
-              это минус {{ worstGain.monthsSaved }} мес. и экономия {{ money(worstGain.saved) }}
-            </div>
-          </div>
 
-          <Button
-            variant="outline"
-            class="mt-3 w-full bg-surface-2"
-            @click="payoffCreditId = worstDebt.credit.id"
-          >
-            Посчитать на свою сумму
-          </Button>
+            <Button
+              variant="outline"
+              class="mt-3 w-full bg-surface-2"
+              @click="payoffCreditId = worstDebt.credit.id"
+            >
+              Посчитать на свою сумму
+            </Button>
+          </template>
         </div>
 
         <!-- Копить или гасить — за «подробнее» (B2C-21) -->

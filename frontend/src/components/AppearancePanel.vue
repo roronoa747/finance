@@ -87,8 +87,9 @@ function leave(choice: 'keep' | 'discard') {
 
 <template>
   <div class="flex flex-col gap-4 text-left">
-    <div>
-      <div class="mb-1 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-3">
+    <!-- Имя пишется в общий документ — у viewer поля нет (его запись сервер не примет). -->
+    <div v-if="!authStore.isViewer">
+      <div class="mb-1.5 type-section">
         Ваше имя
       </div>
       <Input
@@ -96,14 +97,11 @@ function leave(choice: 'keep' | 'discard') {
         placeholder="Имя"
         @blur="saveName"
       />
-      <p class="mt-1 text-[12px] leading-relaxed text-ink-3">
-        Так вас видит партнёр — на полосе доходов, в покупках и во взносах.
-        По умолчанию подставляется начало адреса почты.
-      </p>
+      <p class="mt-1 type-meta">Так вас видит партнёр</p>
     </div>
 
     <div>
-      <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-3">
+      <div class="mb-1.5 type-section">
         Тема
       </div>
       <Segmented
@@ -118,7 +116,7 @@ function leave(choice: 'keep' | 'discard') {
     </div>
 
     <div>
-      <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-3">
+      <div class="mb-1.5 type-section">
         Цвета разделов
       </div>
       <HuePicker
@@ -128,10 +126,6 @@ function leave(choice: 'keep' | 'discard') {
         :model-value="categoryHues[key]"
         @update:model-value="(hue) => updateCategoryHue(key, hue)"
       />
-      <p class="text-[12px] leading-relaxed text-ink-3">
-        Каждый цвет задан парой значений — для светлой и тёмной темы. Свободного выбора HEX нет
-        намеренно: так нельзя получить сочетание, которое станет нечитаемым при смене темы.
-      </p>
     </div>
 
     <div v-if="authStore.isDemo" class="flex flex-col gap-2 pt-3 border-t border-line">

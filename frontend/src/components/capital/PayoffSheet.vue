@@ -6,6 +6,7 @@ import { money, plain, parseMoney } from '@/lib/money'
 import { atLabel } from '@/lib/dates'
 import {
   afterAnchor,
+  closerWish,
   creditOutlook,
   halfOverpayExtra,
   lastAccountFor,
@@ -76,6 +77,9 @@ const applyMode = ref<LumpMode>('term')
 const applyAccount = ref<string | null | undefined>(undefined)
 const applyDone = ref<Payment | null>(null)
 const removingPrepay = ref<string | null>(null)
+// «Это приближает» (ТЗ B2C-18 п. 4): что из желаний ближе на то, что не отдадим банку, — одна строка,
+// как в раскладке зарплаты (WeekSalary). Экономии нет или желаний с ценой нет — строки нет.
+const closer = computed(() => (applyDone.value ? closerWish(financeStore.wishlist, applyDone.value.saved ?? 0, 'once') : null))
 
 const applyPlan = computed(() => {
   const c = activePayoffCredit.value
@@ -270,6 +274,9 @@ function applyPrepay() {
       >
         Досрочка применена<template v-if="(applyDone.saved ?? 0) > 0">: не отдадим банку
         <b class="num text-brand">{{ money(applyDone.saved ?? 0) }}</b></template>.
+        <div v-if="closer" class="mt-1 num">
+          Это приближает: «{{ closer.wish.name }}» — {{ closer.covers ? 'хватит целиком' : `ближе на ${money(closer.closer)}` }}.
+        </div>
       </div>
 
       <div v-if="creditPrepays.length > 0" class="mb-3">

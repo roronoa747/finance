@@ -8,7 +8,7 @@ import { assignIds, ruleMatchOf, seedSpendCategories } from '@/lib/statements/mo
 import type { Operation } from '@/lib/statements/types'
 import { spendColor } from '@/lib/palette'
 import { authAs, planFamilyDoc } from '@/test/planFamily'
-import { renderScreen } from '@/test/screenState'
+import { renderScreen, screenMixin } from '@/test/screenState'
 import ParseSettings from './ParseSettings.vue'
 
 /**
@@ -53,8 +53,9 @@ describe('components/ParseSettings.vue', () => {
     const store = family()
     const html = await renderScreen(ParseSettings, '/settings')
     expect(html).toContain('value="Продукты"')
-    expect(html).toContain('aria-label="Цвет раздела Продукты"')
-    expect((html.match(/aria-label="Цвет \d+"/g) ?? []).length).toBeGreaterThanOrEqual(12 * 10)
+    // Палитры свёрнуты (правило 12): у раздела — одна точка-кнопка, кнопок «Цвет N» нет.
+    expect(html).toMatch(/aria-label="Цвет раздела Продукты" aria-expanded="false"/)
+    expect(html).not.toMatch(/aria-label="Цвет \d+"/)
     expect(html).not.toMatch(/#[0-9a-f]{6}/i)
 
     store.updateSpendCategory('sc_food', { name: 'Еда', slot: 7 })
@@ -63,7 +64,26 @@ describe('components/ParseSettings.vue', () => {
     expect(spendColor(food)).toBe('var(--s7)')
     const after = await renderScreen(ParseSettings, '/settings')
     expect(after).toContain('value="Еда"')
-    expect(after).toMatch(/aria-label="Цвет 7" aria-pressed="true"/)
+    // Точка раздела — тот же токен, что даёт spendColor.
+    const dot = after.slice(after.indexOf('aria-label="Цвет раздела Еда"')).split('</button>')[0]
+    expect(dot).toContain('background:var(--s7)')
+  })
+
+  it('палитра раздела раскрывается нажатием на точку — одна; выбор цвета пишет слот и сворачивает', async () => {
+    const store = family()
+    let vm: Record<string, any> = {}
+    const grab = { created(this: any) { if ('pickSlot' in this.$.setupState) vm = this.$.setupState } }
+    const open = await renderScreen(ParseSettings, '/settings', undefined, [screenMixin({ openColor: 'sc_food' }), grab])
+    expect((open.match(/aria-label="Цвет \d+"/g) ?? []).length).toBe(12)
+    expect(open).toContain('aria-label="Палитра раздела Продукты"')
+    expect(open).toMatch(/aria-label="Цвет раздела Продукты" aria-expanded="true"/)
+    expect(open).toMatch(/aria-label="Цвет \d+" aria-pressed="true"/)
+
+    vm.pickSlot('sc_food', 7)
+    expect(store.householdDoc.spendCategories!.find((c) => c.id === 'sc_food')).toMatchObject({ slot: 7 })
+    expect(vm.openColor).toBeNull()
+    const reopened = await renderScreen(ParseSettings, '/settings', undefined, [screenMixin({ openColor: 'sc_food' })])
+    expect(reopened).toMatch(/aria-label="Цвет 7" aria-pressed="true"/)
   })
 
   it('правила: строка «продавец → раздел», «кому → что», «между своими», «платёж по …»; «Убрать» снимает правило и пересчитывает свои операции', async () => {

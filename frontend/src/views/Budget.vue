@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { PhArrowDown, PhArrowUp } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
+import { useAuthStore } from '@/stores/auth'
 import { money, plain, pct, parseMoney } from '@/lib/money'
 import {
   WEEKDAYS,
@@ -82,6 +83,7 @@ const selected = ref(today().day)
 
 const router = useRouter()
 const financeStore = useFinanceStore()
+const authStore = useAuthStore()
 
 const key = computed(() => monthKey())
 const people = computed(() => financeStore.people)
@@ -161,8 +163,9 @@ const events = computed<EventItem[]>(() => {
       value: amounts.value.d3,
       color: 'var(--d3)',
       income: false,
+      // Viewer форму мечты не открывает (маршрут memberOnly) — ему мечты на главном (критик Блока 3).
       open: () => {
-        void router.push('/goals/new')
+        void router.push(authStore.isViewer ? '/' : '/goals/new')
       },
     },
   ]

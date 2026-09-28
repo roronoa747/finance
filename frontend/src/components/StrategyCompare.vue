@@ -351,7 +351,7 @@ const stepLine = computed(() => {
       <!-- Р-7: подушки нет — план предлагает её завести. -->
       <Callout v-if="cushionGoalId === null" title="Заведите цель-подушку — план начнёт с неё" class="mb-3">
         Месяц обязательных списаний на отдельной цели: пока её нет, первая поломка вернёт
-        вас на кредитную карту. <RouterLink to="/goals/new" class="font-medium text-brand">Завести цель</RouterLink>
+        вас на кредитную карту. <RouterLink v-if="canChoose" to="/goals/new" class="font-medium text-brand">Завести цель</RouterLink>
       </Callout>
 
       <Button v-if="canChoose" class="w-full" :disabled="!draftExtra" @click="choose">Выбрать этот план</Button>
