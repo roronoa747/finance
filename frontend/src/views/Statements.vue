@@ -200,7 +200,7 @@ const allocate = computed(() =>
 // Тексты и «за год» — `keepCard`, как на главном: у годовой — цена продления, «N % пути до мечты».
 const deferredKeep = ref<string[]>([])
 const keep = computed(() =>
-  canUpload.value && !match.value && !unknownCard.value && !allocate.value && !salaryHere.value && !restFirst.value
+  canUpload.value && !ahead.value && !restFirst.value
     ? (keepQuestions(finance.obligations).find((o) => !deferredKeep.value.includes(o.id)) ?? null)
     : null,
 )
@@ -227,8 +227,7 @@ function onKeep(action: 'keep' | 'cancel' | 'later') {
 // 5. «Остались деньги?» — последние дни месяца (ответ — `answeredMonthEnd` выше).
 const monthEnd = computed(
   () =>
-    restFirst.value ||
-    (canUpload.value && !match.value && !unknownCard.value && !allocate.value && !salaryHere.value && !keep.value && monthEndAsk(answeredMonthEnd.value)),
+    restFirst.value || (canUpload.value && !ahead.value && !keep.value && monthEndAsk(answeredMonthEnd.value)),
 )
 const restAmount = ref('')
 function answerRest(go: boolean) {
@@ -247,7 +246,27 @@ const salaryHere = computed(() =>
     ? null
     : salaryAsk({ people: finance.people, obligations: finance.obligations, credits: finance.credits, payments: finance.payments }, auth.slot),
 )
-const salaryQuiet = computed(() => !!(match.value || unknownCard.value))
+
+/**
+ * Решения раньше подписки и «Остались деньги?» — те ждут, пока эти не решены (порядок главного).
+ */
+const ahead = computed(() => !!(match.value || unknownCard.value || allocate.value || salaryHere.value))
+/**
+ * Главное на экране (правило 12, ревью Блока 3 Н-22) — первое по порядку экрана: сопоставление →
+ * незнакомый продавец → «разложить?» → «Пришла зарплата?» → подписка → «Остались деньги?» →
+ * загрузка своей выписки. Брендовая кнопка и брендовая рамка — только у него; у разбора продавца
+ * ответ — чипы, брендовой кнопки на экране нет. Новое решение дописывается сюда, а не в условия.
+ */
+const lead = computed<'match' | 'unknown' | 'allocate' | 'salary' | 'keep' | 'monthEnd' | 'upload' | null>(() => {
+  if (match.value) return 'match'
+  if (unknownCard.value) return 'unknown'
+  if (allocate.value) return 'allocate'
+  if (salaryHere.value) return 'salary'
+  if (keep.value) return 'keep'
+  if (monthEnd.value) return 'monthEnd'
+  return canUpload.value && !mineThisWeek.value ? 'upload' : null
+})
+const salaryQuiet = computed(() => lead.value !== 'salary')
 
 /* ---------- ответы разбора ---------- */
 const options = (g: UnknownGroup) => [
@@ -390,11 +409,11 @@ onMounted(() => {
       <template v-if="canUpload">
         <input ref="fileInput" type="file" accept="application/pdf,.pdf" multiple class="hidden" @change="pick" />
         <div ref="uploadBox">
-          <Card v-if="!mineThisWeek" tight class="border-brand">
+          <Card v-if="!mineThisWeek" tight :class="lead === 'upload' ? 'border-brand' : undefined">
             <b class="block text-[15px] font-semibold text-ink">Ваша выписка ещё не загружена</b>
             <p class="mt-0.5 text-[13px] text-ink-2">PDF из приложения Kaspi или Freedom. Разбор на телефоне, файл никуда не уходит.</p>
-            <!-- Ниже карточка решения со своей главной кнопкой — загрузка тихая (одна брендовая на экране) -->
-            <Button class="mt-3 w-full" :variant="match || allocate || keep || monthEnd || salaryHere ? 'secondary' : 'default'" :disabled="reading" @click="fileInput?.click()">
+            <!-- Ниже карточка решения — загрузка тихая: брендовое только у главного (`lead`) -->
+            <Button class="mt-3 w-full" :variant="lead === 'upload' ? 'default' : 'secondary'" :disabled="reading" @click="fileInput?.click()">
               <PhFileArrowUp :size="16" />
               {{ reading ? 'Читаем выписку…' : 'Загрузить выписку' }}
             </Button>

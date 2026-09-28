@@ -234,3 +234,60 @@ describe('возврат приёмки 2 п. 3, 4: одна карточка о
     expect(page()).not.toContain('разложить?')
   })
 })
+
+describe('ревью Блока 3 Н-22 (правило 12): брендовая кнопка и брендовая рамка — только у главного на экране', () => {
+  const brandButtons = () => [...document.querySelectorAll('button')].filter((b) => b.className.includes('bg-brand ')).map((b) => b.textContent?.trim())
+  const brandFrames = () => document.querySelectorAll('.border-brand').length
+  /** Незнакомый продавец месяца — карточка разбора «куда отнести?» (ответ — чипы). */
+  const unknownOp = (store: ReturnType<typeof useOperationsStore>) => {
+    store.ops['op-u'] = { id: 'op-u', bank: 'kaspi', date: '2026-09-08', amount: -7_500, kind: 'purchase', merchant: 'ИП ЖАНСАЯ', categoryId: null, internal: false }
+  }
+
+  it('сопоставление + «Пришла зарплата?» + своя выписка не загружена — брендовая одна («Да, отметить»), рамок у тихих карточек нет', async () => {
+    vi.setSystemTime(new Date('2026-09-10T07:00:00Z'))
+    await openWeek((finance) => {
+      finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000 }
+    })
+    await vi.waitFor(() => expect(page()).toContain(QUESTION))
+    expect(page()).toContain('Пришла зарплата Алихан?')
+    expect(page()).toContain('Ваша выписка ещё не загружена')
+    expect(brandButtons()).toEqual(['Да, отметить'])
+    expect(brandFrames()).toBe(0)
+  })
+
+  it('разбор продавца + «Пришла зарплата?» — ответ чипами: брендовых кнопок и рамок нет, загрузка и зарплата тихие', async () => {
+    vi.setSystemTime(new Date('2026-09-10T07:00:00Z'))
+    await openWeek((finance, store) => {
+      finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000 }
+      finance.householdDoc.credits = []
+      delete store.ops['op-1']
+      unknownOp(store)
+    })
+    await vi.waitFor(() => expect(page()).toContain('ИП ЖАНСАЯ — куда отнести?'))
+    expect(page()).toContain('Пришла зарплата Алихан?')
+    expect(brandButtons()).toEqual([])
+    expect(brandFrames()).toBe(0)
+  })
+
+  it('«Пришла зарплата?» одна — брендовая у неё; загрузка тихая и без рамки', async () => {
+    vi.setSystemTime(new Date('2026-09-10T07:00:00Z'))
+    await openWeek((finance, store) => {
+      finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000 }
+      finance.householdDoc.credits = []
+      delete store.ops['op-1']
+    })
+    expect(page()).toContain('Пришла зарплата Алихан?')
+    expect(page()).toContain('Ваша выписка ещё не загружена')
+    expect(brandButtons()).toEqual(['Пришла зарплата'])
+    expect(brandFrames()).toBe(0)
+  })
+
+  it('решений нет — главное «Загрузить выписку»: брендовая кнопка и рамка у карточки загрузки', async () => {
+    await openWeek((finance, store) => {
+      finance.householdDoc.credits = []
+      delete store.ops['op-1']
+    })
+    expect(brandButtons()).toEqual(['Загрузить выписку'])
+    expect(brandFrames()).toBe(1)
+  })
+})
