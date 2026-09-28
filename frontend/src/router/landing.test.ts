@@ -49,6 +49,25 @@ describe('router/landing — первый запуск', () => {
     expect(landingPath(auth, finance)).toBe('/')
   })
 
+  // PV-06 (ушёл вместе с мастером; ревью Блока 3 Н-13): надгробия — не данные. Иначе семья с
+  // удалённой целью и удалённым обязательством миновала бы первый запуск.
+  it('landingPath: семья только с надгробиями (удалённая цель и удалённое обязательство) → /start', () => {
+    const auth = useAuthStore()
+    const plan = planFamilyDoc()
+    const tomb = { deletedAt: '2026-09-20T07:00:00.000Z' }
+    const finance = family('member', 'a', {
+      ...defaultSyncDoc(),
+      setupDoneAt: null,
+      people: [{ ...plan.people[0], salary: 0, onboardedAt: '2026-09-24T07:00:00.000Z' }],
+      goals: [{ ...plan.goals[0], ...tomb }],
+      obligations: [{ ...plan.obligations[0], ...tomb }],
+    })
+    expect(landingPath(auth, finance)).toBe('/start')
+    // Та же семья с живой целью — данные есть, участник отмечен: главный.
+    finance.setHouseholdDoc({ ...finance.householdDoc, goals: [plan.goals[0]] }, 2)
+    expect(landingPath(auth, finance)).toBe('/')
+  })
+
   it('гард: без данных всё ведёт на /start, /setup — тоже; viewer без данных остаётся на главном', async () => {
     family('member', 'a', defaultSyncDoc())
     const router = createAppRouter(createMemoryHistory())

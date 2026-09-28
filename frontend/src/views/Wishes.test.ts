@@ -209,6 +209,24 @@ describe('views/GoalNew.vue — «Новая мечта» (B2C-18, SSR)', () => 
     expect(custom).toContain(`будет вашей в ${monthIn(addMonths('2026-09', 23))}`)
   })
 
+  // Ревью Блока 3 Н-13: «реально» — только когда взнос укладывается в свободное по плану (d5).
+  it('взнос больше свободного по плану — «реально» нет; ровно свободное — есть', async () => {
+    const store = family()
+    const free = budgetAmounts({ ...store.householdDoc, credits: store.credits }).d5
+    expect(free).toBeGreaterThan(0)
+    const over = await renderScreen(GoalNew, '/goals/new', undefined, [
+      screenMixin({ step: 'form', template: templateById('japan'), name: 'Япония', needText: String((free + 1) * 12), term: '12' }),
+    ])
+    expect(over).toContain(`По ${money(free + 1)} в месяц`)
+    expect(over).not.toContain('реально')
+
+    const edge = await renderScreen(GoalNew, '/goals/new', undefined, [
+      screenMixin({ step: 'form', template: templateById('japan'), name: 'Япония', needText: String(free * 12), term: '12' }),
+    ])
+    expect(edge).toContain(`По ${money(free)} в месяц`)
+    expect(edge).toContain('реально')
+  })
+
   it('«Готово — к мечте»: цель со взносом, шаблоном и цветом шаблона; у семьи с целями — не главная, первая цель семьи — главная', async () => {
     const store = family()
     // Нажатие дожидается и загрузки картинки: хвост действия стора иначе сменил бы активную Pinia следующего теста.
