@@ -32,6 +32,7 @@ import {
   allocationFor,
   closerWish,
   goalRemaining,
+  allocationRoom,
 } from '@/lib/finance'
 import { atLabel, monthAfter, monthFrom, monthFromAfter, monthInAfter, monthKey } from '@/lib/dates'
 import { useFinanceStore } from '@/stores/finance'
@@ -155,12 +156,19 @@ const alloc = ref<Record<string, number>>({})
 const done = ref(false)
 const doneNote = ref('')
 
-const used = computed(() => Object.values(alloc.value).reduce((a, v) => a + v, 0))
-const left = computed(() => total.value - used.value)
-/** Сколько разложено по целям — у разового решения это взносы со счёта. */
-const toGoals = computed(() => goals.value.reduce((a, g) => a + (alloc.value[g.id] ?? 0), 0))
-/** Корзина досрочки (по кредиту или по плану — на экране одна из двух): у разового решения — со счёта. */
-const prepayTotal = computed(() => (alloc.value.credit ?? 0) + (alloc.value.plan ?? 0))
+// Итоги раскладки и потолки корзин считает finance.ts (правило 6): разложено, осталось, по целям,
+// досрочка (по кредиту или по плану — на экране одна из двух; у разового решения — со счёта).
+const split = computed(() =>
+  allocationRoom(alloc.value, {
+    total: total.value,
+    goalIds: goals.value.map((g) => g.id),
+    once: once.value,
+    principal: credit.value?.principal,
+  }),
+)
+const left = computed(() => split.value.left)
+const toGoals = computed(() => split.value.toGoals)
+const prepayTotal = computed(() => split.value.prepay)
 
 /**
  * Откуда отложить разовые взносы и внести досрочку: по умолчанию — счёт, куда пришла зарплата
@@ -197,16 +205,8 @@ const plan = computed(() => financeStore.activePlan)
 const step = computed(() => financeStore.planStepNow())
 const paused = computed(() => financeStore.pausedGoalIds)
 
-/**
- * Сколько ещё можно положить в корзину: не больше нераспределённого, а разовую досрочку — и не
- * больше остатка долга (лишнее не внеслось бы, но числилось бы в записи и в итоге).
- */
-function room(id: string) {
-  const c = credit.value
-  // Обе корзины досрочки («по кредиту» и «по плану») платят один долг — потолок на их сумму.
-  const cap = once.value && (id === 'credit' || id === 'plan') && c ? c.principal - prepayTotal.value : Infinity
-  return Math.max(0, Math.min(left.value, cap))
-}
+/** Сколько ещё можно положить в корзину — `allocationRoom` (потолок разовой досрочки — остаток долга). */
+const room = (id: string) => split.value.room(id)
 
 // Шаг — 10 000; последний забирает остаток, иначе сумма не кратная шагу (доля зарплаты)
 // не раскладывалась бы до нуля и подтвердить было бы нельзя.

@@ -107,6 +107,7 @@ import {
   weekTag,
   wishTotal,
   cushionInYear,
+  allocationRoom,
 } from './finance'
 import type { SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { DEFAULT_SPEND_CATEGORIES } from '@/lib/statements/dictionary'
@@ -2722,6 +2723,20 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(cushionInYear(cushion, 100_000, true)).toBe(1_000_000)
       expect(cushionInYear(cushion, 100_000, false)).toBe(2_100_000)
       expect(cushionInYear(cushion, 0, false)).toBe(900_000)
+    })
+
+    it('allocationRoom — итоги раскладки; разовая досрочка не больше остатка долга на обе корзины', () => {
+      const r = allocationRoom({ g1: 100_000, g2: 50_000, credit: 30_000 }, { total: 400_000, goalIds: ['g1', 'g2'], once: true, principal: 80_000 })
+      expect([r.used, r.left, r.toGoals, r.prepay]).toEqual([180_000, 220_000, 150_000, 30_000])
+      // Потолок досрочки — остаток долга минус уже положенное в обе корзины («по кредиту» и «по плану»).
+      expect(r.room('credit')).toBe(50_000)
+      expect(r.room('plan')).toBe(50_000)
+      expect(r.room('g1')).toBe(220_000)
+      // Ежемесячное решение — долг не потолок; без долга — тоже.
+      expect(allocationRoom({ credit: 30_000 }, { total: 400_000, goalIds: [], once: false, principal: 80_000 }).room('credit')).toBe(370_000)
+      expect(allocationRoom({}, { total: 400_000, goalIds: [], once: true }).room('credit')).toBe(400_000)
+      // Разложено больше суммы — места нет, не отрицательное.
+      expect(allocationRoom({ g1: 500_000 }, { total: 400_000, goalIds: ['g1'], once: true }).room('g1')).toBe(0)
     })
   })
 

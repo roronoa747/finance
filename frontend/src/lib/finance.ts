@@ -261,6 +261,41 @@ export function cushionInYear(goal: Pick<Goal, 'have' | 'monthly'>, extra: numbe
   return goal.have + goal.monthly * 12 + (once ? extra : extra * 12)
 }
 
+/** Раскладка суммы по корзинам (`allocationRoom`): итоги и сколько ещё влезает в корзину. */
+export interface AllocationRoom {
+  /** Разложено по всем корзинам. */
+  used: number
+  /** Осталось разложить: `total − used`. */
+  left: number
+  /** Разложено по целям — у разового решения это взносы со счёта. */
+  toGoals: number
+  /** Корзины досрочки («по кредиту» `credit` и «по плану» `plan`) — платят один долг. */
+  prepay: number
+  /** Сколько ещё можно положить в корзину `id`. */
+  room: (id: string) => number
+}
+
+/**
+ * Раскладка зарплаты, остатка или освободившихся денег (`WeekSalary`, B2C-21): не больше
+ * нераспределённого, а разовую досрочку — и не больше остатка долга `principal` (лишнее не
+ * внеслось бы, но числилось бы в записи и в итоге). Потолок — на сумму обеих корзин досрочки.
+ */
+export function allocationRoom(
+  parts: Record<string, number>,
+  opts: { total: number; goalIds: readonly string[]; once: boolean; principal?: number },
+): AllocationRoom {
+  const used = Object.values(parts).reduce((a, v) => a + v, 0)
+  const left = opts.total - used
+  const toGoals = opts.goalIds.reduce((a, id) => a + (parts[id] ?? 0), 0)
+  const prepay = (parts.credit ?? 0) + (parts.plan ?? 0)
+  const room = (id: string) => {
+    const cap =
+      opts.once && (id === 'credit' || id === 'plan') && opts.principal !== undefined ? opts.principal - prepay : Infinity
+    return Math.max(0, Math.min(left, cap))
+  }
+  return { used, left, toGoals, prepay, room }
+}
+
 /**
  * Во что обходится долг прямо сейчас.
  *
