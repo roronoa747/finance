@@ -7,8 +7,6 @@ import { landingPath } from '@/router/landing'
 import Access from '@/views/Access.vue'
 import AppShell from '@/components/AppShell.vue'
 import Dreams from '@/views/Dreams.vue'
-import Budget from '@/views/Budget.vue'
-import Capital from '@/views/Capital.vue'
 import Money from '@/views/Money.vue'
 import Settings from '@/views/Settings.vue'
 import Wishes from '@/views/Wishes.vue'
@@ -16,6 +14,9 @@ import Wishes from '@/views/Wishes.vue'
 // Редкие экраны — отдельными чанками (Н-9 ревью Блока 3): главный чанк без них меньше 500 kB.
 // Предкэш PWA (`generateSW`) берёт все чанки — офлайн они открываются так же.
 const GoalDetail = () => import('@/views/GoalDetail.vue')
+// Бюджет и Капитал — второй уровень «Денег» (B2C-21): стартовый чанк без них на ~28 КБ gzip легче.
+const Budget = () => import('@/views/Budget.vue')
+const Capital = () => import('@/views/Capital.vue')
 const Deposit = () => import('@/views/Deposit.vue')
 // Раскладка зарплаты, остатка и освободившихся денег (бывший Ритуал; B2C-21).
 const WeekSalary = () => import('@/views/WeekSalary.vue')
