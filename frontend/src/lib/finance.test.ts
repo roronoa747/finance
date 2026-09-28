@@ -94,6 +94,10 @@ import {
   type PlanState,
   mainGoal,
   weekPicture,
+  spendRows,
+  weekVersusPrev,
+  subscriptionYearly,
+  goalRemaining,
   freeByFact,
   nextDecision,
 } from './finance'
@@ -2394,6 +2398,43 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       const named = weekPicture([total('a', 'week', '2026-W38', 'sc_food', 1)], [{ ...categories[0], name: 'Еда' }], people, '2026-W38')
       expect(named.rows[0].name).toBe('Еда')
       expect(named.rows[0].share).toBe(1)
+    })
+  })
+
+  // Критик Блока 3: суммы картины, «на N % прошлой», «за год» и остаток цели — из finance.ts, не из экранов.
+  describe('spendRows · weekVersusPrev · subscriptionYearly · goalRemaining', () => {
+    it('spendRows: месяц одного участника — только его итоги, «не разобрано» отдельно, доли от общей', () => {
+      const totals = [
+        total('a', 'month', '2026-08', 'sc_food', 90_000),
+        total('a', 'month', '2026-08', '_unknown', 10_000),
+        total('b', 'month', '2026-08', 'sc_food', 500_000), // партнёр — не в картине Ильяса
+        total('a', 'month', '2026-09', 'sc_food', 7), // другой месяц
+        total('a', 'week', '2026-W35', 'sc_food', 7), // неделя — не месяц
+        { ...total('a', 'month', '2026-08', 'sc_cafe', 40_000), deletedAt: T },
+      ]
+      const r = spendRows(totals, categories, { kind: 'month', period: '2026-08', by: 'a' })
+      expect(r.total).toBe(100_000)
+      expect(r.rows.map((x) => [x.categoryId, x.amount, x.share])).toEqual([['sc_food', 90_000, 0.9]])
+      expect(r.unknown).toBe(10_000)
+      expect(r.unknownShare).toBe(0.1)
+      expect(spendRows(totals, categories, { kind: 'month', period: '2026-08' }).total).toBe(600_000)
+    })
+
+    it('weekVersusPrev: целый процент к прошлой неделе обоих; одной недели нет — null', () => {
+      const totals = [total('a', 'week', '2026-W38', 'sc_food', 60_000), total('b', 'week', '2026-W38', '_unknown', 20_000), total('a', 'week', '2026-W37', 'sc_food', 100_000)]
+      expect(weekVersusPrev(totals, '2026-W38', '2026-W37')).toEqual({ delta: -20 })
+      expect(weekVersusPrev(totals, '2026-W37', '2026-W38')).toEqual({ delta: 25 })
+      expect(weekVersusPrev(totals, '2026-W38', '2026-W36')).toBeNull()
+      expect(weekVersusPrev([], '2026-W38', '2026-W37')).toBeNull()
+    })
+
+    it('subscriptionYearly: ежемесячная ×12, годовая — как есть; goalRemaining: не меньше нуля', () => {
+      const monthly: Obligation = { ...rent, id: 'nf', versions: [{ from: '2000-01', amount: 4_990 }] }
+      const yearly: Obligation = { ...rent, id: 'ic', every: 'year', month: 3, versions: [{ from: '2000-01', amount: 11_990 }] }
+      expect(subscriptionYearly(monthly, '2026-09')).toBe(59_880)
+      expect(subscriptionYearly(yearly, '2026-09')).toBe(11_990)
+      expect(goalRemaining({ need: 1_800_000, have: 540_000 })).toBe(1_260_000)
+      expect(goalRemaining({ need: 100, have: 250 })).toBe(0)
     })
   })
 
