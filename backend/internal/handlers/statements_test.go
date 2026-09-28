@@ -209,6 +209,9 @@ func TestOperationsValidation(t *testing.T) {
 		"id too short":              with("id", "abc"),
 		"unknown bank":              with("bank", "halyk"),
 		"upload_id not uuid":        with("upload_id", "not-a-uuid"),
+		// uuid.Validate принимает urn:uuid: и {…}, Postgres на urn:uuid: падал — батч уходил в 500.
+		"upload_id urn":    with("upload_id", "urn:uuid:00000000-0000-4000-8000-000000000000"),
+		"upload_id braces": with("upload_id", "{00000000-0000-4000-8000-000000000000}"),
 		// Postgres text не хранит NUL — без проверки батч падал в 500.
 		"NUL in merchant":    with("merchant", "MAGNUM\x00 ALMATY"),
 		"NUL in category_id": with("category_id", "sc_food\x00"),

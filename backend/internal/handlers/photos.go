@@ -9,7 +9,6 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 
 	"finance-backend/internal/models"
 	"finance-backend/internal/repository"
@@ -152,11 +151,4 @@ func (h *PhotoHandler) Delete(w http.ResponseWriter, r *http.Request) {
 // family only, and a hidden photo (a surprise) — its author only.
 func visibleTo(photo *models.Photo, householdID, userID string) bool {
 	return photo.HouseholdID == householdID && (!photo.Hidden || photo.UserID == userID)
-}
-
-// canonicalUUID accepts only the 36-character form: uuid.Validate also takes
-// urn:uuid:…, {…} and hex without hyphens, and Postgres fails on urn:uuid:
-// (500 instead of 404) — one photo would also answer at several URLs.
-func canonicalUUID(id string) bool {
-	return len(id) == 36 && uuid.Validate(id) == nil
 }
