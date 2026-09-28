@@ -278,7 +278,7 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     seedOps(
       parsed([
         op('s8', '2026-08-10', 450_000, 'Зарплата ТОО Ромашка', 'income'),
-        op('s9', '2026-09-10', 510_000, 'Зарплата ТОО Ромашка', 'income'),
+        op('s9', '2026-09-10', 490_000, 'Зарплата ТОО Ромашка', 'income'),
         op('c8', '2026-08-05', -151_790, 'Оплата Kaspi Кредита'),
         // Сегодняшняя строка (полдень по Алматы — это «сейчас»): и она встаёт до сверки остатка.
         op('c9', '2026-09-24', -152_000, 'Оплата Kaspi Кредита'),
@@ -286,8 +286,8 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     )
     await renderScreen(Start, '/start/questions', undefined, [act('answerIncome', { incomeSalary: '450 000' })])
     expect(store.people[0]).toMatchObject({ salary: 450_000, payday: 10 })
-    // Пришло 510 000 (премия) — запись суммой операции: разница ляжет на свободное.
-    expect(paidFor(store.payments, 'salary', 'a', '2026-09')).toMatchObject({ amount: 510_000, opId: 's9', source: 'statement', at: '2026-09-10T07:00:00.000Z' })
+    // Пришло 490 000 (премия в допуске оклада ±10 %) — запись суммой операции: разница ляжет на свободное.
+    expect(paidFor(store.payments, 'salary', 'a', '2026-09')).toMatchObject({ amount: 490_000, opId: 's9', source: 'statement', at: '2026-09-10T07:00:00.000Z' })
 
     expect(await renderScreen(Start, '/start/questions')).toContain('Оплата Kaspi Кредита — это что?')
     await renderScreen(Start, '/start/questions', undefined, [act('answerRecurring', { creditPrincipal: '1 200 000' })])
@@ -298,6 +298,23 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     const paid = paidFor(store.payments, 'credit', credit.id, '2026-09')!
     expect(paid).toMatchObject({ amount: 152_000, opId: 'c9', source: 'statement' })
     expect(paid.at < store.householdDoc.credits[0].principalSetAt!).toBe(true)
+  })
+
+  it('возврат приёмки п. 7: зарплату месяца отмечает только приход в допуске оклада — мелкий перевод того же отправителя месяц не отмечает', async () => {
+    const store = family()
+    // Оклад 30 000 (июль и август), а в сентябре от того же отправителя пришли только 4 700.
+    seedOps(
+      parsed([
+        op('j', '2026-07-12', 30_000, 'Зарплата ТОО Ромашка', 'income'),
+        op('a', '2026-08-12', 30_000, 'Зарплата ТОО Ромашка', 'income'),
+        op('s', '2026-09-03', 4_700, 'Зарплата ТОО Ромашка', 'income'),
+      ]),
+    )
+    await renderScreen(Start, '/start/questions', undefined, [act('answerIncome', { incomeSalary: '30 000' })])
+    expect(store.people[0]).toMatchObject({ salary: 30_000, payday: 12 })
+    // Правило зарплаты есть (приход регулярный), а отметки сентября — нет: 4 700 — не зарплата.
+    expect(store.merchantRules.map((r) => r.to)).toEqual([{ payment: { kind: 'salary', targetId: 'a' } }])
+    expect(paidFor(store.payments, 'salary', 'a', '2026-09')).toBeNull()
   })
 
   it('«Записать → Аренда»: операции — в «Аренде», а не «не разобрано»; «Свободно по факту» вычитает аренду один раз; «Неделя» не спрашивает; правило платежа на месте', async () => {

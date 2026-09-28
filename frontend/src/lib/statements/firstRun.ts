@@ -1,5 +1,6 @@
 import type { Operation } from './types'
 import { categorize, normalizeCounterparty, normalizeMerchant } from './model'
+import { SALARY_TOLERANCE } from './matching'
 
 /**
  * Первый запуск из выписки (Р-7, B2C-19): по операциям одной выписки приложение само находит
@@ -108,6 +109,23 @@ export function detectIncome(ops: Operation[]): IncomeCandidate[] {
     out.push({ key, name: list[0].counterparty ?? list[0].merchant, amount: typical, day: median(days), count: list.length, regular, opIds: list.map((o) => o.id) })
   }
   return out.sort((a, b) => Number(b.regular) - Number(a.regular) || b.amount - a.amount)
+}
+
+/**
+ * Операция, которой первый запуск отмечает зарплату месяца (возврат приёмки п. 7): приход
+ * отправителя в месяце `month` в допуске оклада (`SALARY_TOLERANCE`, как правило зарплаты в
+ * «Неделе»), ближайший к окладу. Такого нет (в этом месяце от него только мелкий перевод) — месяц
+ * не отмечается: иначе отметка и история врали бы суммой.
+ */
+export function salaryOpOfMonth(ops: Operation[], salary: number, month: string): Operation | undefined {
+  let best: Operation | undefined
+  for (const o of ops) {
+    if (o.amount <= 0 || !o.date.startsWith(month)) continue
+    const gap = Math.abs(o.amount - salary)
+    if (gap > salary * SALARY_TOLERANCE) continue
+    if (!best || gap < Math.abs(best.amount - salary)) best = o
+  }
+  return best
 }
 
 /**

@@ -3,7 +3,7 @@ import type { PdfRow } from './pdf'
 import { parseStatement } from './parsers'
 import { assignIds } from './model'
 import type { Operation } from './types'
-import { QUESTION_LIMIT, beyondLimit, detectIncome, detectRecurring, firstRunQuestions } from './firstRun'
+import { QUESTION_LIMIT, beyondLimit, detectIncome, detectRecurring, firstRunQuestions, salaryOpOfMonth } from './firstRun'
 
 /**
  * Первый запуск из выписки (B2C-19): доход по регулярности и размеру, повторы по продавцу и
@@ -41,6 +41,21 @@ describe('firstRun — доход', () => {
 
   it('без приходов — пусто', () => {
     expect(detectIncome(assignIds([op('2026-09-01', -1_000, 'Magnum')]))).toEqual([])
+  })
+})
+
+describe('firstRun — отметка зарплаты месяца (возврат приёмки п. 7)', () => {
+  it('salaryOpOfMonth: приход месяца в допуске оклада ±10 %, ближайший к окладу; вне допуска и чужой месяц — нет', () => {
+    const list = assignIds([
+      { bank: 'kaspi', date: '2026-09-03', amount: 4_700, kind: 'income', merchant: 'ТОО', categoryId: null, internal: false },
+      { bank: 'kaspi', date: '2026-09-12', amount: 32_500, kind: 'income', merchant: 'ТОО', categoryId: null, internal: false },
+      { bank: 'kaspi', date: '2026-09-20', amount: 29_000, kind: 'income', merchant: 'ТОО', categoryId: null, internal: false },
+      { bank: 'kaspi', date: '2026-08-12', amount: 30_000, kind: 'income', merchant: 'ТОО', categoryId: null, internal: false },
+    ])
+    expect(salaryOpOfMonth(list, 30_000, '2026-09')?.amount).toBe(29_000)
+    expect(salaryOpOfMonth(list.slice(0, 1), 30_000, '2026-09')).toBeUndefined()
+    expect(salaryOpOfMonth(list, 20_000, '2026-09')).toBeUndefined()
+    expect(salaryOpOfMonth(list, 30_000, '2026-10')).toBeUndefined()
   })
 })
 

@@ -7,7 +7,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore, type Draft, type DraftFile } from '@/stores/operations'
 import { parseStatement, StatementFormatError } from '@/lib/statements/parsers'
 import { ruleFor, ruleMatchOf, periodOf } from '@/lib/statements/model'
-import { firstRunQuestions, type IncomeCandidate, type RecurringCandidate, type RecurringKind } from '@/lib/statements/firstRun'
+import { firstRunQuestions, salaryOpOfMonth, type IncomeCandidate, type RecurringCandidate, type RecurringKind } from '@/lib/statements/firstRun'
 import { matchCandidates, matchCategory, operationAt } from '@/lib/statements/matching'
 import type { Operation } from '@/lib/statements/types'
 import { budgetAmounts, spendRows } from '@/lib/finance'
@@ -199,7 +199,8 @@ const recurringMeta = (c: RecurringCandidate) => `${money(c.amount)} · прим
 
 /**
  * «Да, это зарплата»: оклад и день — в участника; правило — когда отправитель назван или приход
- * регулярный. Отметка месяца — суммой и днём пришедшей операции (премия ложится на свободное).
+ * регулярный. Отметка месяца — суммой и днём пришедшей операции в допуске оклада (премия в пределах
+ * допуска ложится на свободное; `salaryOpOfMonth`), иначе месяц не отмечается.
  */
 function answerIncome(yes = true) {
   const q = current.value
@@ -212,7 +213,9 @@ function answerIncome(yes = true) {
     if (op && (op.counterparty || q.candidate.regular)) {
       // Правило зарплаты без раздела — пересчитывать операции нечего.
       ops.answer(ruleMatchOf(op), { payment: { kind: 'salary', targetId: slot.value } })
-      const cur = thisMonthOp(q.candidate.opIds)
+      // Отметка — только приходом в допуске оклада (как правило «Недели»): мелкий перевод того же
+      // отправителя в этом месяце — не зарплата, месяц остаётся неотмеченным.
+      const cur = salaryOpOfMonth(groupOps(q.candidate.opIds), salary, monthKey())
       if (cur) financeStore.markSalary(slot.value, { period: monthKey(), amount: Math.abs(cur.amount), source: 'statement', opId: cur.id, at: operationAt(cur.date) })
     }
   }
