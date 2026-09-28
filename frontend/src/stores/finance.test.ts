@@ -11,6 +11,7 @@ import {
   goalHave,
   liveWishlist,
   lumpPlan,
+  mainGoal,
   nextObligationDue,
   pausedGoals,
   planForecast,
@@ -1221,6 +1222,20 @@ describe('RP-06: отметки оплат в сторе', () => {
       expect(store.payments.filter((p) => !p.deletedAt)).toHaveLength(2)
     })
 
+    it('отметка из выписки: смена счёта сохраняет источник и строку операции (пометка «из выписки» остаётся)', () => {
+      const { store, card, rent } = family()
+      const rec = store.markPaid('obligation', rent, 'a', { accountId: null, source: 'statement', opId: 'op1' })!
+      at('2026-09-24T09:00:00Z')
+      const next = store.editPaid(rec, { amount: 220_000, accountId: card })!
+      expect(next).toMatchObject({ accountId: card, source: 'statement', opId: 'op1', at: rec.at })
+      // Ручная отметка источника не получает.
+      at('2026-10-05T05:00:00Z')
+      const manual = store.markPaid('obligation', rent, 'a', { accountId: card })!
+      const edited = store.editPaid(manual, { amount: 221_000, accountId: card })!
+      expect(edited.source).toBeUndefined()
+      expect(edited.opId).toBeUndefined()
+    })
+
     it('досрочку правкой отметки не поправить — null, ничего не пишется', () => {
       const { store, card, loan } = family()
       const rec = store.applyPrepayment(loan, 'a', { amount: 100_000, mode: 'term', accountId: card })!
@@ -1230,6 +1245,20 @@ describe('RP-06: отметки оплат в сторе', () => {
       expect(JSON.stringify(store.householdDoc)).toBe(before)
       expect(store.credits[0].principal).toBe(900_000)
     })
+  })
+
+  it('at: отметка с моментом операции — до сверки остатка долг и счёт не двигает; без at — сейчас', () => {
+    const { store, card, loan } = family()
+    // Остаток кредита введён 24.09 (addCredit — якорь); платёж по выписке прошёл 14.09.
+    const rec = store.markPaid('credit', loan, 'a', { accountId: null, source: 'statement', opId: 'op1', at: '2026-09-14T07:00:00.000Z' })!
+    expect(rec).toMatchObject({ period: '2026-09', at: '2026-09-14T07:00:00.000Z', updatedAt: '2026-09-24T08:00:00.000Z' })
+    expect(store.credits[0].principal).toBe(1_000_000)
+    // Зарплата с моментом операции; без at — сейчас.
+    store.setPerson('a', { name: 'Ильяс', salary: 700_000, payday: 10 })
+    expect(store.markSalary('a', { period: '2026-09', accountId: card, at: '2026-09-10T07:00:00.000Z' })!.at).toBe('2026-09-10T07:00:00.000Z')
+    expect(balance(store, card)).toBe(1_000_000) // до сверки карты (24.09) — остаток уже её учёл
+    store.setPerson('b', { name: 'Аруна', salary: 500_000, payday: 20 })
+    expect(store.markSalary('b', { period: '2026-09', accountId: card })!.at).toBe('2026-09-24T08:00:00.000Z')
   })
 
   it('кредит «оплатил» другой суммой (70 000): проценты по графику, остальное в тело', () => {
@@ -1311,6 +1340,54 @@ describe('PV-04: накопленное в цели не уходит в мин�
     // Слияние с самим собой (как второй телефон после синка) — то же число.
     const merged = mergeDocs(JSON.parse(JSON.stringify(store.householdDoc)), JSON.parse(JSON.stringify(store.householdDoc)))
     expect(merged.goals[0].have).toBe(30_000)
+  })
+})
+
+describe('B2C-14: setMainGoal — главная мечта одна, у остальных снимается (LWW по цели)', () => {
+  const storage = new Map<string, string>()
+  const T = '2026-09-01T00:00:00.000Z'
+  const goal = (id: string, extra: Partial<Goal> = {}): Goal => ({
+    id, name: id, need: 1_000_000, seed: 0, have: 0, monthly: 0, hue: 'teal', planPct: 0, movements: [], updatedAt: T, ...extra,
+  })
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('b становится главной, у a пометка снята; обе с updatedAt сейчас; удалённая c не трогается; повтор ничего не пишет', () => {
+    const store = useFinanceStore()
+    store.setHouseholdDoc({ ...defaultSyncDoc(), goals: [goal('a', { main: true }), goal('b'), goal('c', { main: true, deletedAt: T })] }, 1)
+    expect(mainGoal(store.goals)?.id).toBe('a')
+
+    store.setMainGoal('b')
+    const byId = (id: string) => store.householdDoc.goals.find((g) => g.id === id)!
+    expect(byId('b')).toMatchObject({ main: true, updatedAt: '2026-09-24T07:00:00.000Z' })
+    expect(byId('a')).toMatchObject({ main: false, updatedAt: '2026-09-24T07:00:00.000Z' })
+    expect(byId('c')).toMatchObject({ main: true, updatedAt: T, deletedAt: T })
+    expect(mainGoal(store.goals)?.id).toBe('b')
+    expect(store.unsent).toBe(true)
+
+    // Та же главная ещё раз — документ не меняется, неотправленного нет.
+    store.setHouseholdDoc(store.householdDoc, 2)
+    expect(store.unsent).toBe(false)
+    const before = JSON.stringify(store.householdDoc)
+    vi.setSystemTime(new Date('2026-09-24T08:00:00Z'))
+    store.setMainGoal('b')
+    expect(JSON.stringify(store.householdDoc)).toBe(before)
+    expect(store.unsent).toBe(false)
   })
 })
 

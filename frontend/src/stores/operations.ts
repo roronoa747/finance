@@ -12,7 +12,7 @@ import {
   seedSpendCategories,
   spendTotals,
 } from '@/lib/statements/model'
-import { matchCandidates, matchKey, recentOperations, type MatchCandidate } from '@/lib/statements/matching'
+import { matchCandidates, matchKey, operationAt, recentOperations, type MatchCandidate } from '@/lib/statements/matching'
 import type { MerchantRule, Operation, ParsedStatement } from '@/lib/statements/types'
 import type { OperationWire, StatementUploadResponse } from '@/types/api'
 import type { PersonId } from '@/types/finance'
@@ -138,18 +138,35 @@ export const useOperationsStore = defineStore('operations', () => {
   /** Строки черновика, которые отметятся сами при отправке — по правилам семьи. */
   const draftAutoMatches = computed(() => matchCandidates(draftOps.value, matchState(), finance.merchantRules).filter((c) => c.confidence === 'rule'))
 
-  /** Запись отметки по строке выписки: сумма операции, «не списывать» — выписка уже факт (Р-6). */
+  /**
+   * Запись отметки по строке выписки: сумма операции, «не списывать» — выписка уже факт (Р-6);
+   * момент — день операции (`operationAt`): платёж до сверки остатка его второй раз не уменьшает.
+   */
   function markByOperation(c: MatchCandidate, op: Operation) {
-    const opts = { period: c.period, amount: Math.abs(op.amount), accountId: null, source: 'statement' as const, opId: op.id }
+    const opts = { period: c.period, amount: Math.abs(op.amount), accountId: null, source: 'statement' as const, opId: op.id, at: operationAt(op.date) }
     return c.kind === 'salary' ? finance.markSalary(c.targetId as PersonId, opts) : finance.markPaid(c.kind, c.targetId, me(), opts)
   }
 
-  /** «Да, отметить»: запись + правило «это платёж по …» по продавцу или получателю (раздел — плановый). */
+  /**
+   * «Да, отметить»: запись + правило «это платёж по …» по продавцу или получателю (раздел — плановый).
+   * Остальные строки того же продавца этого и прошлого месяца по новому правилу стали «rule» — из
+   * вопросов они ушли, поэтому отмечаются сразу (те, что прошли проверку суммы правила); сколько —
+   * прибавляется к «Отмечено по выписке». Правило пишется до первого ожидания в `recategorize`, так
+   * что отметка не ждёт сети.
+   */
   async function acceptMatch(c: MatchCandidate, client: ApiClient = apiClient) {
     const op = ops.value[c.opId]
     if (!op) return
     markByOperation(c, op)
-    await recategorize(ruleMatchOf(op), { payment: { kind: c.kind, targetId: c.targetId, categoryId: c.categoryId } }, client)
+    const match = ruleMatchOf(op)
+    const saving = recategorize(match, { payment: { kind: c.kind, targetId: c.targetId, categoryId: c.categoryId } }, client)
+    const same = recentOperations(all.value).filter((o) => {
+      const m = ruleMatchOf(o)
+      return m.merchant === match.merchant && m.counterparty === match.counterparty
+    })
+    const n = autoMark(same)
+    if (n) lastAutoMarked.value += n
+    await saving
   }
 
   /** «Нет, это другое»: помнится на этот месяц на устройстве, правилом не становится. */

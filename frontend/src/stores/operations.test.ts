@@ -408,6 +408,65 @@ describe('stores/operations — сопоставление с отметками
     expect(finance.merchantRules.filter((r) => !r.deletedAt)).toHaveLength(1)
   })
 
+  it('две строки одного продавца: «Да» на одну отмечает оба месяца — вторая по новому правилу, с датой операции', async () => {
+    const finance = family()
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    store.setDraft(draftOf(statement('2026-08-01', '2026-09-20', op('2026-08-14', -58_000, 'Оплата Kaspi Кредита'), op('2026-09-14', -58_000, 'Оплата Kaspi Кредита'))))
+    await store.send(client)
+    expect(store.pendingMatches.map((c) => c.period).sort()).toEqual(['2026-08', '2026-09'])
+
+    await store.acceptMatch(store.pendingMatches.find((c) => c.period === '2026-09')!, client)
+    const live = finance.payments.filter((p) => !p.deletedAt && p.kind === 'credit')
+    expect(live.map((p) => [p.period, p.amount, p.source, p.at]).sort()).toEqual([
+      ['2026-08', 58_000, 'statement', '2026-08-14T07:00:00.000Z'],
+      ['2026-09', 58_000, 'statement', '2026-09-14T07:00:00.000Z'],
+    ])
+    expect(new Set(live.map((p) => p.opId)).size).toBe(2)
+    expect(store.lastAutoMarked).toBe(1)
+    expect(store.pendingMatches).toEqual([])
+    // Остаток сверен 1 сентября (principalSetAt): августовский платёж он уже учёл — минус только сентябрь.
+    expect(finance.credits.find((c) => c.id === 'loan')!.principal).toBe(969_500)
+  })
+
+  it('отметка из выписки — с моментом операции: строка до сверки остатка кредита его не двигает', async () => {
+    const finance = family()
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    // 19 сентября остаток сверен с банком: 900 000 — платёж 14-го в нём уже учтён.
+    vi.setSystemTime(new Date('2026-09-19T07:00:00Z'))
+    finance.updateCredit('loan', { principal: 900_000 })
+    vi.setSystemTime(new Date('2026-09-20T07:00:00Z'))
+    store.setDraft(draftOf(statement('2026-09-01', '2026-09-20', op('2026-09-14', -58_000, 'Оплата Kaspi Кредита'))))
+    await store.send(client)
+    await store.acceptMatch(store.pendingMatches[0], client)
+
+    expect(finance.payments.find((p) => p.kind === 'credit')).toMatchObject({ period: '2026-09', at: '2026-09-14T07:00:00.000Z', source: 'statement' })
+    expect(finance.credits.find((c) => c.id === 'loan')!.principal).toBe(900_000)
+  })
+
+  it('правило зарплаты не отмечает месяц мелким пополнением тем же продавцом — ждёт настоящую зарплату', async () => {
+    const finance = family()
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    store.setDraft(draftOf(statement('2026-09-01', '2026-09-20', op('2026-09-10', 700_000, 'С карты другого банка'))))
+    await store.send(client)
+    await store.acceptMatch(store.pendingMatches[0], client)
+    expect(finance.payments.filter((p) => p.kind === 'salary').map((p) => p.period)).toEqual(['2026-09'])
+
+    // Октябрь: сначала пополнение 5 000 — не зарплата; потом 700 000 — отмечается само.
+    vi.setSystemTime(new Date('2026-10-05T07:00:00Z'))
+    store.setDraft(draftOf(statement('2026-10-01', '2026-10-05', op('2026-10-05', 5_000, 'С карты другого банка'))))
+    await store.send(client)
+    expect(store.lastAutoMarked).toBe(0)
+    expect(finance.payments.find((p) => p.kind === 'salary' && p.period === '2026-10')).toBeUndefined()
+    vi.setSystemTime(new Date('2026-10-12T07:00:00Z'))
+    store.setDraft(draftOf(statement('2026-10-06', '2026-10-12', op('2026-10-10', 700_000, 'С карты другого банка'))))
+    await store.send(client)
+    expect(store.lastAutoMarked).toBe(1)
+    expect(finance.payments.find((p) => p.kind === 'salary' && p.period === '2026-10')).toMatchObject({ amount: 700_000, source: 'statement' })
+  })
+
   it('viewer предложений не получает', async () => {
     signIn('b', 'viewer')
     useFinanceStore().setHouseholdDoc(planFamilyDoc(), 1)

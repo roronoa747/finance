@@ -103,7 +103,11 @@ export function matchCandidates(
       if (!best || c.score < best.score) best = c
     }
 
-    // Правило семьи — без вопроса.
+    // Правило семьи — без вопроса, но только «такая» строка (Р-6): знак и сумма в допуске. Под
+    // одним продавцом у Kaspi идут и зарплата, и мелкие пополнения «С карты другого банка», и
+    // платежи всех кредитов — иначе месяц отметился бы чужой суммой. Обязательство по сумме не
+    // ограничено (оценка коммуналки зимой уходит за 30 %), окна дат нет (поздний платёж — тоже
+    // платёж). Не прошедшая строка идёт к эвристикам ниже и может стать вопросом.
     const rule = ruleFor(op, rules)
     if (rule && 'payment' in rule.to) {
       const { kind, targetId, categoryId } = rule.to.payment
@@ -112,7 +116,15 @@ export function matchCandidates(
       if (target) {
         const day = kind === 'salary' ? (target as Person).payday : (target as Obligation | Credit).day
         const { period } = nearestPeriod(op.date, day)
-        consider({ opId: op.id, kind, targetId, period, amount, confidence: 'rule', categoryId: categoryId ?? matchCategory(kind, target), ...text(kind, target.name, op), score: -1 })
+        const fits =
+          kind === 'salary'
+            ? op.amount > 0 && within(amount, salaryAt(target as Person, period), SALARY_TOLERANCE)
+            : kind === 'credit'
+              ? op.amount < 0 && (within(amount, creditDueAmount(target as Credit), AMOUNT_TOLERANCE) || amount === (target as Credit).payment)
+              : op.amount < 0
+        if (fits) {
+          consider({ opId: op.id, kind, targetId, period, amount, confidence: 'rule', categoryId: categoryId ?? matchCategory(kind, target), ...text(kind, target.name, op), score: -1 })
+        }
       }
     }
 
@@ -160,6 +172,16 @@ export function matchCandidates(
     }
   }
   return out
+}
+
+/**
+ * Момент отметки по строке выписки (`Payment.at`): полдень дня операции по Алматы, ISO UTC, как
+ * остальные `at`; не позже «сейчас» — строка выписки не из будущего. Отметка с моментом «сейчас»
+ * встала бы после сверки остатка кредита (`principalSetAt`) и уменьшила бы долг ещё раз на
+ * платёж, который сверенный остаток уже учёл (первый запуск, выписка за прошлые месяцы).
+ */
+export function operationAt(date: string, now = Date.now()): string {
+  return new Date(Math.min(Date.parse(`${date}T12:00:00+05:00`), now)).toISOString()
 }
 
 /** Операции недавних месяцев — только их есть смысл сопоставлять (этот и прошлый месяц). */

@@ -1099,13 +1099,15 @@ export const useFinanceStore = defineStore('finance', () => {
    * оплаты этой цели (оплат не было — «не списывать»: деньги без выбора счёта не
    * двигаются); всё это можно передать явно. Тело кредита считает finance.ts от
    * остатка на сейчас — в записи снимок. Отмеченный месяц второй записи не получает.
+   * `at` — когда деньги ушли (по строке выписки — день операции, `operationAt`); по умолчанию
+   * сейчас. Запись до сверки остатка (`principalSetAt`, `amountSetAt`) его не двигает.
    * Возвращает запись, по которой месяц оплачен, или null, если платить нечего.
    */
   function markPaid(
     kind: ScheduledKind,
     targetId: string,
     by: PersonId,
-    opts: { period?: string; amount?: number; accountId?: string | null; source?: Payment['source']; opId?: string } = {},
+    opts: { period?: string; amount?: number; accountId?: string | null; source?: Payment['source']; opId?: string; at?: string } = {},
   ): Payment | null {
     let period: string | undefined
     let amount: number
@@ -1132,6 +1134,7 @@ export const useFinanceStore = defineStore('finance', () => {
     const record = newPayment(
       { kind, targetId, period, amount, ...(principal === undefined ? {} : { principal }), by, ...sourceOf(opts) },
       opts.accountId,
+      opts.at,
     )
     mutateHouseholdDoc((doc) => {
       if (!doc.payments) doc.payments = []
@@ -1150,11 +1153,11 @@ export const useFinanceStore = defineStore('finance', () => {
    * цель — участник, период — месяц её дня (по умолчанию — этот), сумма по умолчанию —
    * оклад месяца (премия — правкой), счёт — тот, куда она пришла в прошлый раз (Р-5).
    * Остаток счёта растёт из записи (finance.ts `accountBalance`). Отмеченный месяц
-   * второй записи не получает. Возвращает запись или null, если участника нет.
+   * второй записи не получает. `at` — как у `markPaid`. Возвращает запись или null, если участника нет.
    */
   function markSalary(
     personId: PersonId,
-    opts: { period?: string; amount?: number; accountId?: string | null; source?: Payment['source']; opId?: string } = {},
+    opts: { period?: string; amount?: number; accountId?: string | null; source?: Payment['source']; opId?: string; at?: string } = {},
   ): Payment | null {
     const p = people.value.find((x) => x.id === personId && !x.deletedAt)
     if (!p) return null
@@ -1164,6 +1167,7 @@ export const useFinanceStore = defineStore('finance', () => {
     const record = newPayment(
       { kind: 'salary', targetId: personId, period, amount: opts.amount ?? salaryAt(p, period), by: personId, ...sourceOf(opts) },
       opts.accountId,
+      opts.at,
     )
     mutateHouseholdDoc((doc) => {
       if (!doc.payments) doc.payments = []
@@ -1238,9 +1242,10 @@ export const useFinanceStore = defineStore('finance', () => {
       amount = split.amount
       principal = split.body
     }
+    // Источник и строка выписки — те же: правка счёта пометку «из выписки» не снимает (B2C-15).
     const { kind, targetId, period, by } = record
     const next = newPayment(
-      { kind, targetId, period, amount, ...(principal === undefined ? {} : { principal }), by },
+      { kind, targetId, period, amount, ...(principal === undefined ? {} : { principal }), by, ...sourceOf(record) },
       opts.accountId,
       record.at,
     )

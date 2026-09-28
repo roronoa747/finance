@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchCandidates, matchCategory, matchKey, nearestPeriod, recentOperations } from './matching'
+import { matchCandidates, matchCategory, matchKey, nearestPeriod, operationAt, recentOperations } from './matching'
 import { assignIds, normalizeMerchant } from './model'
 import type { MerchantRule, Operation } from './types'
 import type { Credit, Obligation, Payment, Person } from '@/types/finance'
@@ -89,6 +89,37 @@ describe('matchCandidates', () => {
     expect(out[0]).toMatchObject({ kind: 'credit', targetId: 'loan', period: '2026-10', confidence: 'rule', categoryId: 'sc_credit' })
     expect(out[1]).toMatchObject({ kind: 'obligation', targetId: 'nf', confidence: 'likely', subscription: true, categoryId: 'sc_subscriptions' })
     expect(matchKey(out[0])).toBe('credit:loan:2026-10')
+  })
+
+  it('правило отмечает только «такую» строку: зарплата — приход в допуске оклада, кредит — сумма своего платежа; обязательство — любой суммой списания', () => {
+    const rule = (merchant: string, payment: { kind: 'salary' | 'credit' | 'obligation'; targetId: string }): MerchantRule => ({
+      id: merchant, match: { merchant: normalizeMerchant(merchant) }, to: { payment: { ...payment, categoryId: null } }, by: 'a', updatedAt: T,
+    })
+    const cc: Credit = { id: 'cc', name: 'Кредитка', note: '', principal: 300_000, annualRate: 0.4, payment: 25_000, day: 22, updatedAt: T }
+    const two = { ...state, credits: [loan, cc] }
+    const rules = [
+      rule('С карты другого банка', { kind: 'salary', targetId: 'a' }),
+      rule('Оплата Kaspi Кредита', { kind: 'credit', targetId: 'loan' }),
+      rule('PEREVOD ARENDA', { kind: 'obligation', targetId: 'rent' }),
+    ]
+    const at = (list: ReturnType<typeof ops>) => matchCandidates(list, two, rules).map((c) => [c.kind, c.targetId, c.period, c.confidence])
+
+    // Зарплата по правилу: 700 000 — отмечается сама; пополнение 5 000 тем же продавцом — не зарплата
+    // (и не вопрос); исходящий перевод тому же продавцу — тоже нет.
+    expect(at(ops(op('2026-10-12', 700_000, 'С карты другого банка')))).toEqual([['salary', 'a', '2026-10', 'rule']])
+    expect(at(ops(op('2026-10-05', 5_000, 'С карты другого банка')))).toEqual([])
+    expect(at(ops(op('2026-10-10', -700_000, 'С карты другого банка')))).toEqual([])
+    // Кредит по правилу: строка другого кредита (25 000, 22-го) — не платёж Автокредита, а вопрос про Кредитку.
+    expect(at(ops(op('2026-09-14', -58_000, 'Оплата Kaspi Кредита')))).toEqual([['credit', 'loan', '2026-09', 'rule']])
+    expect(at(ops(op('2026-09-22', -25_000, 'Оплата Kaspi Кредита')))).toEqual([['credit', 'cc', '2026-09', 'likely']])
+    // Обязательство по правилу суммой не ограничено (оценка плавает), приход — не платёж.
+    expect(at(ops(op('2026-09-06', -300_000, 'PEREVOD ARENDA')))).toEqual([['obligation', 'rent', '2026-09', 'rule']])
+    expect(at(ops(op('2026-09-06', 220_000, 'PEREVOD ARENDA')))).toEqual([])
+  })
+
+  it('operationAt: полдень дня операции по Алматы в ISO UTC, не позже «сейчас»', () => {
+    expect(operationAt('2026-09-14', Date.parse('2026-09-20T07:00:00Z'))).toBe('2026-09-14T07:00:00.000Z')
+    expect(operationAt('2026-09-20', Date.parse('2026-09-20T03:00:00Z'))).toBe('2026-09-20T03:00:00.000Z')
   })
 
   it('nearestPeriod, matchCategory, recentOperations', () => {
