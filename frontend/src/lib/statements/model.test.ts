@@ -184,6 +184,25 @@ describe('categorize', () => {
     expect(applyRules(once, [r]).map((o) => o.categoryId)).toEqual(['sc_cafe', 'sc_cafe', 'sc_food'])
   })
 
+  it('возврат приёмки 2 п. 2: правило платежа ставит плановый раздел только «таким» строкам (`fits`), остальные — по словарю или незнакомое', () => {
+    const ops = [
+      op({ merchant: 'Перевод с карты на карту', amount: -15_000, kind: 'transfer-out' }),
+      op({ merchant: 'Перевод с карты на карту', amount: -280_000, kind: 'transfer-out' }),
+      op({ merchant: 'Magnum Cash&Carry', amount: -2_700 }),
+      op({ merchant: 'Magnum Cash&Carry', amount: -9_400 }),
+    ]
+    const rules = [
+      rule({ match: { merchant: normalizeMerchant('Перевод с карты на карту') }, to: { payment: { kind: 'obligation', targetId: 'p2p', categoryId: 'sc_subscriptions' } } }),
+      rule({ match: { merchant: normalizeMerchant('Magnum Cash&Carry') }, to: { payment: { kind: 'obligation', targetId: 'lunch', categoryId: 'sc_subscriptions' } } }),
+    ]
+    const expected: Record<string, number> = { p2p: 15_000, lunch: 2_700 }
+    const fits = (o: Operation, p: { targetId: string }) => Math.abs(o.amount) === expected[p.targetId]
+    expect(applyRules(ops, rules, DICTIONARY, undefined, fits).map((o) => o.categoryId)).toEqual(['sc_subscriptions', null, 'sc_subscriptions', 'sc_food'])
+    expect(categorize(ops[1], rules, DICTIONARY, fits)).toMatchObject({ categoryId: null, internal: false })
+    // Без проверки — прежнее поведение (весь продавец в плановом разделе): проверку передаёт стор операций.
+    expect(applyRules(ops, rules).map((o) => o.categoryId)).toEqual(['sc_subscriptions', 'sc_subscriptions', 'sc_subscriptions', 'sc_subscriptions'])
+  })
+
   it('словарь — данные: у каждой записи раздел из набора по умолчанию', () => {
     const ids = new Set(DEFAULT_SPEND_CATEGORIES.map((c) => c.id))
     for (const d of DICTIONARY) expect(ids.has(d.categoryId)).toBe(true)

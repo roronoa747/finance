@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchCandidates, matchCategory, matchKey, nearestPeriod, operationAt, recentOperations, releasedOps } from './matching'
+import { matchCandidates, matchCategory, matchKey, nearestPeriod, operationAt, paymentFits, recentOperations, releasedOps, ruleHit } from './matching'
 import { assignIds, normalizeMerchant } from './model'
 import type { MerchantRule, Operation } from './types'
 import type { Credit, Obligation, Payment, Person } from '@/types/finance'
@@ -96,7 +96,7 @@ describe('matchCandidates', () => {
     expect(matchKey(out[0])).toBe('credit:loan:2026-10')
   })
 
-  it('правило отмечает только «такую» строку: зарплата — приход в допуске оклада, кредит — сумма своего платежа; обязательство — любой суммой списания', () => {
+  it('правило отмечает только «такую» строку: зарплата — приход в допуске оклада, кредит — сумма своего платежа, обязательство — ±2 % суммы месяца, оценка — любой суммой списания', () => {
     const rule = (merchant: string, payment: { kind: 'salary' | 'credit' | 'obligation'; targetId: string }): MerchantRule => ({
       id: merchant, match: { merchant: normalizeMerchant(merchant) }, to: { payment: { ...payment, categoryId: null } }, by: 'a', updatedAt: T,
     })
@@ -106,6 +106,7 @@ describe('matchCandidates', () => {
       rule('С карты другого банка', { kind: 'salary', targetId: 'a' }),
       rule('Оплата Kaspi Кредита', { kind: 'credit', targetId: 'loan' }),
       rule('PEREVOD ARENDA', { kind: 'obligation', targetId: 'rent' }),
+      rule('ALSECO', { kind: 'obligation', targetId: 'util' }),
     ]
     const at = (list: ReturnType<typeof ops>, me: 'a' | 'b' = 'a') => matchCandidates(list, two, rules, me).map((c) => [c.kind, c.targetId, c.period, c.confidence])
 
@@ -119,9 +120,35 @@ describe('matchCandidates', () => {
     // Кредит по правилу: строка другого кредита (25 000, 22-го) — не платёж Автокредита, а вопрос про Кредитку.
     expect(at(ops(op('2026-09-14', -58_000, 'Оплата Kaspi Кредита')))).toEqual([['credit', 'loan', '2026-09', 'rule']])
     expect(at(ops(op('2026-09-22', -25_000, 'Оплата Kaspi Кредита')))).toEqual([['credit', 'cc', '2026-09', 'likely']])
-    // Обязательство по правилу суммой не ограничено (оценка плавает), приход — не платёж.
-    expect(at(ops(op('2026-09-06', -300_000, 'PEREVOD ARENDA')))).toEqual([['obligation', 'rent', '2026-09', 'rule']])
+    // Обязательство с точной суммой — ±2 % (возврат приёмки 2 п. 2): под «Переводом с карты на карту»
+    // Freedom идут все переводы подряд, 300 000 — не аренда 220 000; поздний платёж — тоже платёж.
+    expect(at(ops(op('2026-09-06', -223_000, 'PEREVOD ARENDA')))).toEqual([['obligation', 'rent', '2026-09', 'rule']])
+    expect(at(ops(op('2026-09-06', -300_000, 'PEREVOD ARENDA')))).toEqual([])
+    expect(at(ops(op('2026-09-20', -2_000, 'PEREVOD ARENDA')))).toEqual([])
+    expect(at(ops(op('2026-09-28', -220_000, 'PEREVOD ARENDA')))).toEqual([['obligation', 'rent', '2026-10', 'rule']])
+    // Оценка (коммуналка) суммой не ограничена — зимой уходит за 30 %; приход — не платёж.
+    expect(at(ops(op('2026-09-16', -52_000, 'ALSECO')))).toEqual([['obligation', 'util', '2026-09', 'rule']])
     expect(at(ops(op('2026-09-06', 220_000, 'PEREVOD ARENDA')))).toEqual([])
+  })
+
+  it('ruleHit и paymentFits — одна проверка для отметки и раздела: сумма месяца по версиям, кредит и закрытый, нет цели — нет', () => {
+    const pay = (kind: 'obligation' | 'credit', targetId: string) => ({ kind, targetId, categoryId: null })
+    const [row] = ops(op('2026-09-06', -250_000, 'PEREVOD ARENDA'))
+    // Аренда подорожала с сентября: сентябрь сверяется с 250 000, август — с 220 000.
+    const raised = { ...rent, versions: [...rent.versions, { from: '2026-09', amount: 250_000 }] }
+    const targets = { obligations: [raised], credits: [loan], people: [] }
+    expect(ruleHit(row, pay('obligation', 'rent'), targets)).toMatchObject({ target: { id: 'rent' }, period: '2026-09' })
+    expect(ruleHit(ops(op('2026-08-06', -250_000, 'PEREVOD ARENDA'))[0], pay('obligation', 'rent'), targets)).toBeNull()
+    expect(ruleHit(row, pay('obligation', 'gone'), targets)).toBeNull()
+
+    // paymentFits — для раздела: кредит закрыт последним платежом — строка всё равно его платёж.
+    const closed = { ...loan, principal: 0 }
+    const fits = paymentFits({ obligations: [rent], credits: [closed] })
+    expect(fits(ops(op('2026-09-14', -58_000, 'K'))[0], pay('credit', 'loan'))).toBe(true)
+    expect(fits(ops(op('2026-09-14', -5_000, 'K'))[0], pay('credit', 'loan'))).toBe(false)
+    expect(fits(ops(op('2026-09-05', -220_000, 'A'))[0], pay('obligation', 'rent'))).toBe(true)
+    expect(fits(ops(op('2026-09-05', -15_000, 'A'))[0], pay('obligation', 'rent'))).toBe(false)
+    expect(paymentFits({ obligations: [{ ...rent, deletedAt: T }] })(ops(op('2026-09-05', -220_000, 'A'))[0], pay('obligation', 'rent'))).toBe(false)
   })
 
   it('releasedOps: снятая отметка с id операции освобождает её; правка отметки и повторная отметка месяца — нет', () => {

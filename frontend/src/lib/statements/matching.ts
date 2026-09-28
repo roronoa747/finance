@@ -71,6 +71,48 @@ export function matchCategory(kind: MatchKind, target: Obligation | Credit | Per
   return null
 }
 
+/** Цели правил платежа: обязательства, кредиты, участники (для зарплаты). */
+type RuleTargets = { obligations: Obligation[]; credits: Credit[]; people: Person[] }
+
+/**
+ * «Такая» строка правила «это платёж по …» (Р-6: «дальше *такие* строки отмечаются сами»): знак и
+ * сумма в допуске — зарплата ±10 % оклада, кредит ±2 % `creditDueAmount` или ровно платёж,
+ * обязательство ±2 % суммы месяца; оценка (коммуналка) суммой не ограничена — зимой уходит за
+ * 30 %. Окна дат нет: поздний платёж — тоже платёж. Под одним продавцом идут и зарплата, и мелкие
+ * пополнения, и платежи всех кредитов Kaspi, а «Перевод с карты на карту» Freedom — все переводы
+ * подряд. Нет цели или строка не такая — null.
+ */
+export function ruleHit(op: Operation, payment: PaymentRule, targets: RuleTargets): { target: Obligation | Credit | Person; period: string } | null {
+  const amount = Math.abs(op.amount)
+  if (payment.kind === 'salary') {
+    const p = targets.people.find((x) => x.id === payment.targetId)
+    if (!p || op.amount <= 0) return null
+    const { period } = nearestPeriod(op.date, p.payday)
+    return within(amount, salaryAt(p, period), SALARY_TOLERANCE) ? { target: p, period } : null
+  }
+  if (op.amount >= 0) return null
+  if (payment.kind === 'credit') {
+    const c = targets.credits.find((x) => x.id === payment.targetId)
+    if (!c || !(within(amount, creditDueAmount(c), AMOUNT_TOLERANCE) || amount === c.payment)) return null
+    return { target: c, period: nearestPeriod(op.date, c.day).period }
+  }
+  const o = targets.obligations.find((x) => x.id === payment.targetId)
+  if (!o) return null
+  const { period } = nearestPeriod(op.date, o.day)
+  return o.estimate || within(amount, amountAt(o, period), AMOUNT_TOLERANCE) ? { target: o, period } : null
+}
+
+/**
+ * Проверка для `applyRules` (возврат приёмки 2 п. 2): плановый раздел правила платежа — только
+ * «таким» строкам (`ruleHit`), остальные строки продавца — траты по словарю или незнакомое. Иначе
+ * правило на «Перевод с карты на карту» 15 000 убирало из «Свободно» все переводы месяца. Кредит —
+ * и закрытый: его последний платёж остаётся в плане месяца.
+ */
+export function paymentFits(state: { obligations?: Obligation[]; credits?: Credit[] }): (op: Operation, payment: PaymentRule) => boolean {
+  const targets = { obligations: liveObligations(state.obligations ?? []), credits: liveCredits(state.credits ?? []), people: [] }
+  return (op, payment) => ruleHit(op, payment, targets) !== null
+}
+
 const key = (c: Pick<MatchCandidate, 'kind' | 'targetId' | 'period'>) => `${c.kind}:${c.targetId}:${c.period}`
 
 /** Ключ решения «нет» на этот месяц — помнит устройство (стор). */
@@ -107,29 +149,14 @@ export function matchCandidates(
       if (!best || c.score < best.score) best = c
     }
 
-    // Правило семьи — без вопроса, но только «такая» строка (Р-6): знак и сумма в допуске. Под
-    // одним продавцом у Kaspi идут и зарплата, и мелкие пополнения «С карты другого банка», и
-    // платежи всех кредитов — иначе месяц отметился бы чужой суммой. Обязательство по сумме не
-    // ограничено (оценка коммуналки зимой уходит за 30 %), окна дат нет (поздний платёж — тоже
-    // платёж). Не прошедшая строка идёт к эвристикам ниже и может стать вопросом.
+    // Правило семьи — без вопроса, но только «такая» строка (`ruleHit`: знак и сумма в допуске),
+    // иначе месяц отметился бы чужой суммой. Не прошедшая строка идёт к эвристикам ниже и может
+    // стать вопросом.
     const rule = ruleFor(op, rules)
-    if (rule && 'payment' in rule.to) {
+    const hit = rule && 'payment' in rule.to ? ruleHit(op, rule.to.payment, { obligations, credits, people }) : null
+    if (rule && 'payment' in rule.to && hit) {
       const { kind, targetId, categoryId } = rule.to.payment
-      const target =
-        kind === 'salary' ? people.find((p) => p.id === targetId) : kind === 'credit' ? credits.find((c) => c.id === targetId) : obligations.find((o) => o.id === targetId)
-      if (target) {
-        const day = kind === 'salary' ? (target as Person).payday : (target as Obligation | Credit).day
-        const { period } = nearestPeriod(op.date, day)
-        const fits =
-          kind === 'salary'
-            ? op.amount > 0 && within(amount, salaryAt(target as Person, period), SALARY_TOLERANCE)
-            : kind === 'credit'
-              ? op.amount < 0 && (within(amount, creditDueAmount(target as Credit), AMOUNT_TOLERANCE) || amount === (target as Credit).payment)
-              : op.amount < 0
-        if (fits) {
-          consider({ opId: op.id, kind, targetId, period, amount, confidence: 'rule', categoryId: categoryId ?? matchCategory(kind, target), ...text(kind, target.name, op), score: -1 })
-        }
-      }
+      consider({ opId: op.id, kind, targetId, period: hit.period, amount, confidence: 'rule', categoryId: categoryId ?? matchCategory(kind, hit.target), ...text(kind, hit.target.name, op), score: -1 })
     }
 
     if (!best && op.amount < 0) {

@@ -518,6 +518,39 @@ describe('stores/operations — сопоставление с отметками
     expect(month()).toEqual({ sc_credit: 58_000, _unknown: 58_000 })
   })
 
+  it('возврат приёмки 2 п. 2: правило платежа на «Перевод с карты на карту» — плановый раздел и отметки только строкам в допуске суммы; «Свободно» меньше не на все переводы', async () => {
+    const finance = family()
+    const p2p = finance.addObligation({ name: 'Переводы', day: 20, category: 'd4', amount: 15_000 })
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    // Freedom печатает все переводы без получателя одним названием: 15 000 — обязательство, остальное — траты.
+    const transfer = (date: string, amount: number) => ({ ...op(date, amount, 'Перевод с карты на карту'), kind: 'transfer-out' as const })
+    store.setDraft(draftOf(statement('2026-08-01', '2026-09-20',
+      transfer('2026-08-19', -40_000), transfer('2026-08-20', -15_000),
+      transfer('2026-09-03', -2_000), transfer('2026-09-12', -280_000), transfer('2026-09-20', -15_000),
+    )))
+    await store.send(client)
+    const idOf = (date: string) => store.all.find((o) => o.date === date)!.id
+    const free = () =>
+      freeByFact({ ...finance.householdDoc, credits: finance.credits }, finance.householdDoc.spendTotals ?? [], finance.householdDoc.spendCategories ?? [], '2026-09', [
+        { slot: 'a', period_from: '2026-08-01', period_to: '2026-09-20' },
+      ]).amount
+    const before = free()
+
+    // «Да» на сентябрьские 15 000: правило по продавцу; август отмечается сам — строкой 15 000, не 40 000.
+    await store.acceptMatch(store.pendingMatches.find((c) => c.targetId === p2p && c.period === '2026-09')!, client)
+    expect(finance.payments.filter((p) => !p.deletedAt).map((p) => [p.period, p.amount, p.opId])).toEqual([
+      ['2026-09', 15_000, idOf('2026-09-20')],
+      ['2026-08', 15_000, idOf('2026-08-20')],
+    ])
+    // Плановый раздел — только двум строкам 15 000; 2 000, 280 000 и 40 000 остаются тратами.
+    expect(store.all.map((o) => [o.date, o.categoryId])).toEqual([
+      ['2026-08-19', null], ['2026-08-20', 'sc_subscriptions'], ['2026-09-03', null], ['2026-09-12', null], ['2026-09-20', 'sc_subscriptions'],
+    ])
+    // Сентябрь: 15 000 больше не вычитается дважды (план и трата) — «Свободно» больше ровно на него, а не на 297 000.
+    expect(free()).toBe(before + 15_000)
+  })
+
   it('две строки одного продавца: «Да» на одну отмечает оба месяца — вторая по новому правилу, с датой операции', async () => {
     const finance = family()
     const { client } = fakeServer()

@@ -130,12 +130,21 @@ function latest(rules: MerchantRule[]): MerchantRule | undefined {
   return rules.reduce<MerchantRule | undefined>((best, r) => (!best || r.updatedAt > best.updatedAt ? r : best), undefined)
 }
 
-/** Раздел из правила; правило платежа без раздела — null: раздел берётся по словарю. */
-function fromRule(rule: MerchantRule): Categorized | null {
+/**
+ * Строка — «такая» для правила платежа (`matching.ts` `paymentFits`: знак и сумма в допуске).
+ * Без проверки плановый раздел получает каждая строка продавца.
+ */
+export type PaymentFits = (op: Operation, payment: PaymentRule) => boolean
+
+/**
+ * Раздел из правила; правило платежа без раздела или строка не «такая» (`fits`) — null: раздел
+ * берётся по словарю, как без правила (возврат приёмки 2 п. 2).
+ */
+function fromRule(rule: MerchantRule, op: Operation, fits?: PaymentFits): Categorized | null {
   const to = rule.to
   if ('internal' in to) return { categoryId: null, internal: true }
   if ('person' in to) return { categoryId: 'sc_people', internal: false, personLabel: to.person }
-  if ('payment' in to) return to.payment.categoryId ? { categoryId: to.payment.categoryId, internal: false, payment: to.payment } : null
+  if ('payment' in to) return to.payment.categoryId && (!fits || fits(op, to.payment)) ? { categoryId: to.payment.categoryId, internal: false, payment: to.payment } : null
   return { categoryId: to.categoryId, internal: false }
 }
 
@@ -166,9 +175,10 @@ export function categorize(
   op: Operation,
   rules: MerchantRule[],
   dictionary = DICTIONARY,
+  fits?: PaymentFits,
 ): Categorized {
   const rule = ruleFor(op, rules)
-  const byRule = rule ? fromRule(rule) : null
+  const byRule = rule ? fromRule(rule, op, fits) : null
   if (byRule) return byRule
   const payment = rule && 'payment' in rule.to ? { payment: rule.to.payment } : {}
 
@@ -188,11 +198,18 @@ const NONE: ReadonlySet<string> = new Set()
  * Пересчёт всех операций после нового правила. `released` — операции, чья отметка из выписки
  * снята (`releasedOps`, B2C-15 п. 3): правило «это платёж по …» им раздел не ставит — операция
  * возвращается в траты (раздел по словарю или виду), само правило остаётся для новых строк.
+ * `fits` — плановый раздел правила платежа только «таким» строкам (`paymentFits`).
  */
-export function applyRules(ops: Operation[], rules: MerchantRule[], dictionary = DICTIONARY, released: ReadonlySet<string> = NONE): Operation[] {
+export function applyRules(
+  ops: Operation[],
+  rules: MerchantRule[],
+  dictionary = DICTIONARY,
+  released: ReadonlySet<string> = NONE,
+  fits?: PaymentFits,
+): Operation[] {
   const unpaid = released.size ? rules.filter((r) => !('payment' in r.to)) : rules
   return ops.map((op) => {
-    const { categoryId, internal } = categorize(op, released.has(op.id) ? unpaid : rules, dictionary)
+    const { categoryId, internal } = categorize(op, released.has(op.id) ? unpaid : rules, dictionary, fits)
     return categoryId === op.categoryId && internal === op.internal ? op : { ...op, categoryId, internal }
   })
 }
