@@ -539,3 +539,97 @@ describe('e2e / B2C Блок 3 — часть 5: раскладка записа
     expect(await screen(B.pinia, WeekSalary, '/week/salary?from=rest&amount=40000&period=2026-09')).toContain('Осталось распределить')
   })
 })
+
+describe('e2e / B2C Блок 3 — часть 6 (приёмка): повтор выписки ничего не удваивает; остаток месяца разложен — вопрос закрыт у обоих', () => {
+  const storage = new Map<string, string>()
+  let server: FakeServer
+  let st: FakeStatements
+
+  const op = (date: string, amount: number, merchant: string): Omit<Operation, 'id'> => ({
+    bank: 'kaspi', date, amount, kind: 'purchase', merchant, categoryId: null, internal: false,
+  })
+  const statement = (...list: Omit<Operation, 'id'>[]): ParsedStatement => ({ bank: 'kaspi', from: '2026-09-01', to: '2026-09-28', operations: assignIds(list), skipped: 0 })
+
+  async function upload(p: Phone, parsed: ParsedStatement) {
+    setActivePinia(p.pinia)
+    const ops = useOperationsStore()
+    ops.setDraft([{ name: 'выписка.pdf', parsed }])
+    await ops.send(p.client)
+    await useFinanceStore().syncHousehold(p.client)
+    return ops
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => storage.set(k, String(v)),
+      removeItem: (k: string) => storage.delete(k),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    vi.useFakeTimers()
+    at('2026-09-29T07:00:00Z') // последние дни сентября — «Остались деньги?»
+    const doc = planFamilyDoc()
+    doc.credits = doc.credits.map((c) => (c.id === 'loan' ? { ...c, name: 'Автокредит' } : c))
+    server = fakeServer(doc)
+    st = fakeStatements()
+    vi.spyOn(apiClient, 'pushPrivateDoc').mockImplementation(async (rev, data) => ({ household_id: 'h-family', user_id: 'u-a', rev: rev + 1, data, updated_at: '' }))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('A: выписка → «да» платежу по кредиту; та же выписка ещё раз — операций, отметок и итогов не прибавилось; «Остались деньги?» 100 000 → «Отпуск» со счёта → запись rest; вопрос больше не задаётся ни A, ни B (главный и «Неделя»), у B — «Уже разложено»', async () => {
+    const A = await phone(server, st, 'a')
+    const B = await phone(server, st, 'b')
+    const parsed = statement(op('2026-09-14', -58_000, 'Оплата Kaspi Кредита'), op('2026-09-20', -12_500, 'Magnum'))
+    const alive = <T extends { deletedAt?: string | null }>(xs: T[]) => xs.filter((x) => !x.deletedAt)
+    const monthTotals = () => alive(A.store.householdDoc.spendTotals ?? []).filter((t) => t.by === 'a' && t.kind === 'month' && t.period === '2026-09').map((t) => [t.categoryId, t.amount])
+
+    const opsA = await upload(A, parsed)
+    await opsA.acceptMatch(opsA.pendingMatches[0], A.client)
+    await A.store.syncHousehold(A.client)
+    const once = { ops: opsA.all.length, server: st.ops.get('u-a')!.size, payments: alive(A.store.payments).length, totals: monthTotals() }
+    expect(once).toMatchObject({ ops: 2, server: 2, payments: 1 })
+
+    // Повтор того же файла (человек загрузил выписку дважды): ничего не удвоилось, вопрос не вернулся.
+    await upload(A, parsed)
+    expect(opsA.all.length).toBe(once.ops)
+    expect(st.ops.get('u-a')!.size).toBe(once.server)
+    expect(alive(A.store.payments)).toHaveLength(once.payments)
+    expect(monthTotals()).toEqual(once.totals)
+    expect(opsA.pendingMatches).toEqual([])
+
+    // «Остались деньги?» — карточкой первой по «Разложить» с главного.
+    expect(await screen(A.pinia, Statements, '/week?rest=1')).toContain('Остались деньги?')
+    const path = '/week/salary?from=rest&amount=100000&period=2026-09'
+    await screen(A.pinia, WeekSalary, path, undefined, [
+      screenMixin({}, (s) => {
+        s.alloc = { trip: 100_000 }
+        s.picked = 'card'
+        ;(s.confirm as () => void)()
+      }),
+    ])
+    expect(A.store.allocations).toHaveLength(1)
+    expect(A.store.allocations[0]).toMatchObject({ source: 'rest', sourceId: '2026-09', period: '2026-09', by: 'a', parts: [{ target: 'trip', amount: 100_000 }] })
+    expect(A.store.goals.find((g) => g.id === 'trip')!.have).toBe(150_000)
+    expect(await screen(A.pinia, Statements, '/week?rest=1')).not.toContain('Остались деньги?')
+
+    // B: вопрос закрыт записью семьи, а не ответом на телефоне A.
+    await A.store.syncHousehold(A.client)
+    await B.store.pullHousehold(B.client)
+    expect(await screen(B.pinia, Statements, '/week?rest=1')).not.toContain('Остались деньги?')
+    expect(await screen(B.pinia, Dreams, '/')).not.toContain('Остались деньги?')
+    const partner = await screen(B.pinia, WeekSalary, path)
+    expect(partner).toContain('Уже разложено')
+    expect(partner).not.toContain('Осталось распределить')
+
+    // Повтор выписки после раскладки её не трогает.
+    await upload(A, parsed)
+    expect(A.store.allocations).toHaveLength(1)
+    expect(A.store.goals.find((g) => g.id === 'trip')!.have).toBe(150_000)
+  })
+})
