@@ -148,8 +148,10 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     expect(q2).toContain('2 из 7')
     expect(q2).toMatch(/<button[^>]*aria-pressed="true"[^>]*>(?:\s|<!---->)*Кредит(?:\s|<!---->)*</)
     expect(q2).toContain('Остаток долга, ₸ — если знаете')
+    // Возврат приёмки п. 4: ставку выписка не знает — одна строка в карточке, у кредита признак «неизвестна».
+    expect(q2).toContain('Ставку уточните потом в Капитале.')
     await renderScreen(Start, '/start/questions', undefined, [act('answerRecurring', { creditPrincipal: '1 200 000' })])
-    expect(store.credits).toEqual([expect.objectContaining({ name: 'Оплата Kaspi Кредита', principal: 1_200_000, annualRate: 0, payment: 151_790, day: 24 })])
+    expect(store.credits).toEqual([expect.objectContaining({ name: 'Оплата Kaspi Кредита', principal: 1_200_000, annualRate: 0, rateUnknown: true, payment: 151_790, day: 24 })])
     expect(store.merchantRules[0].to).toEqual({ payment: { kind: 'credit', targetId: store.credits[0].id, categoryId: 'sc_credit' } })
     // Июль 2025 — не этот месяц: отметки нет.
     expect(store.payments).toEqual([])

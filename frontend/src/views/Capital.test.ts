@@ -518,6 +518,39 @@ describe('PV-10: модалка кредита и калькулятор дос�
     expect(closed).not.toMatch(/>переплата /)
   })
 
+  it('возврат приёмки п. 4: кредит из выписки без ставки — «ставку уточните» в строке, листе, совете и калькуляторе; не «без процентов», не «переплата 0»', async () => {
+    const { plain } = await import('@/lib/money')
+    const { strategyInputs } = await import('@/lib/finance')
+    const store = await family()
+    // Как пишет первый запуск (B2C-19): остаток и платёж из выписки известны, ставка — нет.
+    const id = store.addCredit({ name: 'Оплата Kaspi Кредита', note: 'из выписки', principal: 1_200_000, annualRate: 0, rateUnknown: true, payment: 151_790, day: 24 })
+    const html = await render('/capital')
+    expect(html).toContain(`из выписки · ставку уточните · платёж ${plain(151_790)} ₸`)
+    expect(html).not.toContain('без процентов')
+    // Переплата в строке — только у «Кредита» (у «Кредитки» долг не закрывается), у кредита без ставки её нет.
+    expect(html.match(/>переплата /g)).toHaveLength(1)
+    expect(html.slice(html.indexOf('Самая дорогая ставка'))).toContain('Ставку «Оплата Kaspi Кредита» уточните — тогда сравним.')
+
+    // «Копить или гасить»: долг без ставки — не беспроцентный.
+    const inputs = strategyInputs({ credits: store.credits, goals: [], obligations: [], key: '2026-09', kept: [], cushion: false, useSaved: false })
+    expect(inputs.interestFree).toEqual([])
+    expect(inputs.unknownRate.map((c) => c.id)).toEqual([id])
+    const calc = await render('/capital?advice=strategy')
+    expect(calc).not.toContain('Беспроцентные долги')
+    expect(calc).toContain('Ставку «Оплата Kaspi Кредита» уточните — пока считаем без неё.')
+
+    // Лист: вместо «Платежей осталось / Переплата 0» — одна строка, поле ставки пустое с подсказкой.
+    const sheet = await render(`/capital?credit=${id}`)
+    expect(sheet).toContain('Ставку уточните — без неё срок и переплату не посчитать.')
+    expect(sheet).not.toContain('Платежей осталось')
+    expect(sheet).toContain('placeholder="уточните в договоре"')
+    expect(sheet).not.toContain('value="0,0"')
+
+    // Настоящая рассрочка 0 % без признака — по-прежнему «без процентов».
+    store.addCredit({ name: 'Рассрочка', principal: 240_000, annualRate: 0, payment: 20_000, day: 25 })
+    expect(await render('/capital')).toContain('без процентов · 12 платежей')
+  })
+
   it('калькулятор: подсказка поля — первый чип, чип «половина переплаты», лесенка «Отдача падает» с пояснением', async () => {
     const { money, plain } = await import('@/lib/money')
     const { halfOverpayExtra } = await import('@/lib/finance')

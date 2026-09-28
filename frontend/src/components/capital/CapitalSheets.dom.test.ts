@@ -91,6 +91,30 @@ describe('Критик Блока 5: «Готово» в окнах Капита
     expect(nameOf(store)).toBe('Новое имя')
   })
 
+  it('возврат приёмки п. 4: кредит из выписки — ставку назвали в листе, признак «неизвестна» снят, выводы появились', async () => {
+    const { pinia, store } = family()
+    const id = store.addCredit({ name: 'Оплата Kaspi Кредита', note: 'из выписки', principal: 1_200_000, annualRate: 0, rateUnknown: true, payment: 151_790, day: 24 })
+    const open = ref<string | null>(id)
+    mount(pinia, () => h(CreditSheet, { creditId: open.value, onClose: () => (open.value = null) }))
+    await nextTick()
+    const dialog = () => document.querySelector('[role="dialog"]')!.textContent!
+    expect(dialog()).toContain('Ставку уточните')
+    expect(dialog()).not.toContain('Платежей осталось')
+
+    const rate = field('Ставка (ГЭСВ)')
+    expect(rate.value).toBe('')
+    rate.focus()
+    rate.value = '36'
+    rate.dispatchEvent(new Event('input', { bubbles: true }))
+    rate.blur()
+    await nextTick()
+    const credit = store.credits.find((c) => c.id === id)!
+    expect(credit.annualRate).toBe(0.36)
+    expect(credit.rateUnknown).toBeNull()
+    expect(dialog()).toContain('Платежей осталось')
+    expect(dialog()).not.toContain('Ставку уточните')
+  })
+
   it('группа подписок (окно в Капитале): «Название» и «Готово» — записано, окно закрыто', async () => {
     const { pinia, store } = family()
     const router = createRouter({ history: createMemoryHistory(), routes })

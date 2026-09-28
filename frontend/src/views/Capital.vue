@@ -134,14 +134,19 @@ function paymentsLeft(c: Credit): string {
 
 /** «переплата 123 456» под суммой строки — только у долга, который закрывается с переплатой. */
 function creditSub(c: Credit): string | undefined {
+  if (c.rateUnknown) return undefined
   const out = creditOutlook(c)
   return out.closes && out.overpay > 0 ? `переплата ${plain(out.overpay)}` : undefined
 }
 
-/** Строка кредита: ставка, сколько платежей и следующий платёж — в долг и банку (Р-8). */
+/**
+ * Строка кредита: ставка, сколько платежей и следующий платёж — в долг и банку (Р-8). Ставку не
+ * знаем (кредит из выписки) — «ставку уточните» и только платёж: срок и доля банку без ставки врут.
+ */
 function creditNote(c: Credit): string {
-  const head = `${c.annualRate > 0 ? 'ГЭСВ ' + ratePct(c.annualRate, 1) : 'без процентов'} · ${paymentsLeft(c)}`
   const due = nextCreditDue(c, financeStore.payments)
+  if (c.rateUnknown) return [c.note, 'ставку уточните', due ? `платёж ${plain(due.amount)} ₸` : ''].filter(Boolean).join(' · ')
+  const head = `${c.annualRate > 0 ? 'ГЭСВ ' + ratePct(c.annualRate, 1) : 'без процентов'} · ${paymentsLeft(c)}`
   if (!due) return head
   const split = paymentSplit(null, c, due.amount)
   return `${head} · платёж ${plain(due.amount)} ₸: в долг ${plain(split.body)}, банку ${plain(split.interest)}`
@@ -437,6 +442,8 @@ const rankedDebts = computed(() =>
   costliestCredits(credits.value).map((c) => ({ credit: c, cost: creditOutlook(c) })),
 )
 const worstDebt = computed(() => rankedDebts.value[0] || null)
+// Долги без ставки (кредит из выписки, B2C-19) в сравнение не входят — просим уточнить, а не молчим.
+const unknownRate = computed(() => openCredits(credits.value).filter((c) => c.rateUnknown))
 const worstHalfExtra = computed(() =>
   worstDebt.value
     ? halfOverpayExtra(
@@ -706,6 +713,9 @@ watch(queryModalOpen, (open) => {
             </div>
             <b class="num shrink-0 text-[15px] text-ink">{{ ratePct(worstDebt.credit.annualRate, 1) }}</b>
           </div>
+          <p v-if="unknownRate.length" class="mt-1 text-[12.5px] text-ink-3">
+            Ставку {{ unknownRate.map((c) => `«${c.name}»`).join(', ') }} уточните — тогда сравним.
+          </p>
 
           <!-- Цифры и расчёты — за «Подробнее», свёрнуты (правило 12, ТЗ B2C-21 п. 2) -->
           <Button v-if="!orderOpen" variant="ghost" class="mt-2 w-full" @click="orderOpen = true">Подробнее</Button>

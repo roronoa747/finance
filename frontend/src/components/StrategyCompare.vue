@@ -314,6 +314,9 @@ const stepLine = computed(() => {
       гасятся: они ничего не стоят, а внесённые раньше срока деньги просто перестают быть
       доступными.
     </p>
+    <p v-if="inputs.unknownRate.length > 0" class="text-[12px] leading-relaxed text-ink-3">
+      Ставку {{ inputs.unknownRate.map((c) => `«${c.name}»`).join(', ') }} уточните — пока считаем без неё.
+    </p>
 
     <!-- Активный план — его карточка вместо выбора (PV-15) -->
     <div v-if="plan" class="mt-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3">

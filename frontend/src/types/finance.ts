@@ -257,6 +257,11 @@ export type Credit = Tracked & {
   principalSetAt?: string | null
   /** ГЭСВ — годовая эффективная ставка вознаграждения из договора. */
   annualRate: number
+  /**
+   * Ставку не знаем (кредит из выписки в первом запуске, B2C-19): `annualRate` — 0 до уточнения, но
+   * это не рассрочка — экраны пишут «ставку уточните», а не «без процентов». Правка ставки снимает (null).
+   */
+  rateUnknown?: boolean | null
   payment: number
   day: number
 }

@@ -441,7 +441,7 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     // остатка, поэтому введённый остаток (уже без июльского платежа) второй раз не уменьшается (критик Б3).
     await screen(A.pinia, Start, '/start/questions', undefined, [act('answerRecurring', { creditPrincipal: '1 200 000' })])
     const credit = A.store.credits[0]
-    expect(A.store.householdDoc.credits[0]).toMatchObject({ name: 'Оплата Kaspi Кредита', principal: 1_200_000, payment: 151_790, day: 24, annualRate: 0 })
+    expect(A.store.householdDoc.credits[0]).toMatchObject({ name: 'Оплата Kaspi Кредита', principal: 1_200_000, payment: 151_790, day: 24, annualRate: 0, rateUnknown: true })
     expect(A.store.payments).toEqual([expect.objectContaining({ kind: 'credit', targetId: credit.id, period: '2025-07', amount: 151_790, source: 'statement' })])
     expect(credit.principal).toBe(1_200_000)
     expect(creditBalance(A.store.householdDoc.credits[0], A.store.payments)).toBe(1_200_000)

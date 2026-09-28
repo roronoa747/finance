@@ -718,6 +718,8 @@ export const useFinanceStore = defineStore('finance', () => {
     note?: string;
     principal: number;
     annualRate: number;
+    /** Ставку не знаем — кредит из выписки (B2C-19): «ставку уточните», не «без процентов». */
+    rateUnknown?: boolean;
     payment: number;
     day: number;
   }) {
@@ -731,6 +733,7 @@ export const useFinanceStore = defineStore('finance', () => {
         principal: c.principal,
         principalSetAt: t,
         annualRate: c.annualRate,
+        ...(c.rateUnknown ? { rateUnknown: true } : {}),
         payment: c.payment,
         day: c.day,
         updatedAt: t,

@@ -221,7 +221,8 @@ function answerIncome(yes = true) {
 }
 
 /**
- * «Записать»: кредит с известным остатком — кредит (ставка 0 — «по сроку», уточнят в Капитале);
+ * «Записать»: кредит с известным остатком — кредит со ставкой «неизвестна» (`rateUnknown`: Капитал
+ * пишет «ставку уточните», а не «без процентов»);
  * без остатка — обязательство раздела «Кредиты» (кредит с остатком 0 платежа не ждёт). Аренда и
  * коммуналка — жильё, подписки и прочее регулярное — быт. Правило «это платёж по …» отмечает
  * следующие выписки само (Р-6) и сразу переносит операции группы в плановый раздел
@@ -240,7 +241,7 @@ function answerRecurring(save = true) {
     const principal = kind === 'credit' ? parseMoney(creditPrincipal.value) : 0
     let target: { kind: 'obligation' | 'credit'; id: string }
     if (kind === 'credit' && principal > 0) {
-      target = { kind: 'credit', id: financeStore.addCredit({ name: c.name, note: 'из выписки', principal, annualRate: 0, payment: c.amount, day: c.day }) }
+      target = { kind: 'credit', id: financeStore.addCredit({ name: c.name, note: 'из выписки', principal, annualRate: 0, rateUnknown: true, payment: c.amount, day: c.day }) }
     } else {
       const name = KIND_NAME[kind] ?? c.name
       const note = kind === 'credit' ? 'платёж по кредиту — остаток и ставку уточните в Капитале' : name !== c.name ? c.name : ''
@@ -382,6 +383,7 @@ const plural = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'повторя�
           </template>
           <template v-if="recurringKind === 'credit'" #inner>
             <Field label="Остаток долга, ₸ — если знаете"><NumField v-model="creditPrincipal" placeholder="можно позже, в Капитале" /></Field>
+            <p class="text-[12px] text-ink-3">Ставку уточните потом в Капитале.</p>
           </template>
         </DecisionCard>
       </template>

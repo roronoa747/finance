@@ -671,6 +671,8 @@ export type StrategyInputs = {
   lump: number
   /** Беспроцентные долги с остатком — досрочно не гасятся. */
   interestFree: Credit[]
+  /** Долги, чью ставку не знаем (`rateUnknown`, кредит из выписки) — не беспроцентные: ставку уточнить. */
+  unknownRate: Credit[]
   /** Сколько взносов в месяц «Сначала долги» направляет в долги. */
   redirected: number
 }
@@ -721,7 +723,8 @@ export function strategyInputs(opts: {
     buffer,
     spare,
     lump: opts.useSaved ? spare : 0,
-    interestFree: credits.filter((c) => c.annualRate === 0 && c.principal > 0),
+    interestFree: credits.filter((c) => c.annualRate === 0 && !c.rateUnknown && c.principal > 0),
+    unknownRate: credits.filter((c) => !!c.rateUnknown),
     redirected: saving - keep,
   }
 }
