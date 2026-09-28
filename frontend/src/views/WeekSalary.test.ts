@@ -119,6 +119,8 @@ describe('views/WeekSalary.vue — Высвобождение средств и 
 
     const html = await renderToString(app)
     expect(html).toContain('Сейчас нет запланированных изменений, которые высвобождают деньги')
+    // Правило 12 (критик Блока 3): второе предложение про «версию с будущей датой» снято.
+    expect(html).not.toContain('Событие появится само')
     expect(html).toContain('На главную')
   })
 

@@ -9,14 +9,16 @@ import {
   goalMonths,
   budgetAmounts,
   creditOutlook,
+  cushionInYear,
   emergencyCoverage,
   amountAt,
   costliestCredits,
+  freedChange,
   liveCredits,
   liveGoals,
   liveObligations,
   lumpPlan,
-  nextChange,
+  movementMonth,
   lastAccountFor,
   NO_SAVING,
   paidFor,
@@ -55,11 +57,13 @@ const query = (name: string) => {
   return typeof v === 'string' ? v : ''
 }
 
-/** Освободившийся платёж обязательства — источник без параметров, как было. */
+/**
+ * Освободившийся платёж обязательства — `?from=freed` («Деньги») или без параметров, как было.
+ * Сумма в месяц — `freedChange` (у годового — двенадцатая часть разницы). У зарплаты, остатка
+ * и закрытого долга его нет: иначе они показали бы чужое «Уже разложено» и абзац обязательства.
+ */
 const freed = computed(() =>
-  obligations.value
-    .map((o) => ({ o, change: nextChange(o, key.value) }))
-    .find((x) => x.change && x.change.delta < 0),
+  ['salary', 'rest', 'credit'].includes(query('from')) ? null : freedChange(obligations.value, key.value),
 )
 
 /**
@@ -107,8 +111,10 @@ const once = computed(() => !!salary.value || !!rest.value)
 const srcKey = computed(() => {
   if (salary.value) return { source: 'salary' as const, sourceId: query('person'), period: query('period') || key.value }
   if (rest.value) return { source: 'rest' as const, sourceId: rest.value.period, period: rest.value.period }
-  if (closed.value) return { source: 'freed' as const, sourceId: closed.value.creditId, period: key.value }
-  if (freed.value?.change) return { source: 'freed' as const, sourceId: freed.value.o.id, period: freed.value.change.from }
+  // Долг закрывается один раз — период записи — месяц закрытия, а не текущий: иначе в следующем
+  // месяце раскладка открылась бы снова и ежемесячный взнос вырос бы второй раз.
+  if (closed.value) return { source: 'freed' as const, sourceId: closed.value.creditId, period: movementMonth(closed.value.at) }
+  if (freed.value) return { source: 'freed' as const, sourceId: freed.value.o.id, period: freed.value.change.from }
   return null
 })
 const recorded = computed(() => (srcKey.value ? allocationFor(financeStore.allocations, srcKey.value) : null))
@@ -126,7 +132,7 @@ const total = computed(() => {
   if (query('from') === 'salary') return salary.value?.total ?? 0
   if (query('from') === 'credit') return closed.value && !closed.value.inPlan ? closed.value.freed : 0
   if (rest.value) return rest.value.amount
-  return freed.value?.change ? Math.abs(freed.value.change.delta) : 0
+  return freed.value?.monthly ?? 0
 })
 
 const empty = computed(() => {
@@ -141,7 +147,7 @@ const empty = computed(() => {
       : 'Этот долг ещё не закрыт — освободившегося платежа нет.'
   }
   if (rest.value) return 'Остатка нет — раскладывать нечего.'
-  return 'Сейчас нет запланированных изменений, которые высвобождают деньги. Событие появится само, когда у обязательства будет версия с будущей датой и меньшей суммой.'
+  return 'Сейчас нет запланированных изменений, которые высвобождают деньги.'
 })
 
 const alloc = ref<Record<string, number>>({})
@@ -152,11 +158,13 @@ const used = computed(() => Object.values(alloc.value).reduce((a, v) => a + v, 0
 const left = computed(() => total.value - used.value)
 /** Сколько разложено по целям — у разового решения это взносы со счёта. */
 const toGoals = computed(() => goals.value.reduce((a, g) => a + (alloc.value[g.id] ?? 0), 0))
+/** Корзина досрочки (по кредиту или по плану — на экране одна из двух): у разового решения — со счёта. */
+const prepayTotal = computed(() => (alloc.value.credit ?? 0) + (alloc.value.plan ?? 0))
 
 /**
- * Откуда отложить разовые взносы: по умолчанию — счёт, куда пришла зарплата (Р-5), у
- * остатка — куда приходит своя зарплата; не знаем — спросить (undefined). «Не двигать» —
- * взносы только в целях, как без счёта в окне цели.
+ * Откуда отложить разовые взносы и внести досрочку: по умолчанию — счёт, куда пришла зарплата
+ * (Р-5), у остатка — куда приходит своя зарплата; не знаем — спросить (undefined). «Не
+ * двигать» — взносы только в целях, как без счёта в окне цели.
  */
 const picked = ref<string | null | undefined>(undefined)
 const fromAccount = computed<string | null | undefined>({
@@ -169,8 +177,13 @@ const fromAccount = computed<string | null | undefined>({
     picked.value = v
   },
 })
-/** Разовые взносы без выбранного счёта не записываются: деньги посчитались бы дважды. */
-const needAccount = computed(() => once.value && toGoals.value > 0 && fromAccount.value === undefined)
+/**
+ * Разовые взносы и досрочка без выбранного счёта не записываются: деньги посчитались бы
+ * дважды (долг меньше, а на счёте те же деньги).
+ */
+const needAccount = computed(
+  () => once.value && (toGoals.value > 0 || prepayTotal.value > 0) && fromAccount.value === undefined,
+)
 const accountChoices = computed(() => payableAccounts(financeStore.accounts))
 // Месяц списаний — тот же, что у шага плана (подушка в Ритуале есть только с планом).
 const mandatory = computed(() => planMandatory(financeStore.planState(), key.value))
@@ -183,11 +196,22 @@ const plan = computed(() => financeStore.activePlan)
 const step = computed(() => financeStore.planStepNow())
 const paused = computed(() => financeStore.pausedGoalIds)
 
+/**
+ * Сколько ещё можно положить в корзину: не больше нераспределённого, а разовую досрочку — и не
+ * больше остатка долга (лишнее не внеслось бы, но числилось бы в записи и в итоге).
+ */
+function room(id: string) {
+  const c = credit.value
+  // Обе корзины досрочки («по кредиту» и «по плану») платят один долг — потолок на их сумму.
+  const cap = once.value && (id === 'credit' || id === 'plan') && c ? c.principal - prepayTotal.value : Infinity
+  return Math.max(0, Math.min(left.value, cap))
+}
+
 // Шаг — 10 000; последний забирает остаток, иначе сумма не кратная шагу (доля зарплаты)
 // не раскладывалась бы до нуля и подтвердить было бы нельзя.
 function set(id: string, delta: number) {
   const cur = alloc.value[id] ?? 0
-  const d = delta > 0 ? Math.min(delta, left.value) : delta
+  const d = delta > 0 ? Math.min(delta, room(id)) : delta
   if (d > 0 || cur > 0) alloc.value = { ...alloc.value, [id]: Math.max(0, cur + d) }
 }
 
@@ -236,7 +260,8 @@ function effectForPlan(extra: number) {
     return `Шаг этого месяца внесён — ${money(s.amount)} в ${[...new Set(names)].join(' и ')}`
   }
   if (s.kind === 'cushion' && !extra) return `Шаг плана в этом месяце — подушка; досрочка в «${c.name}» — следующим шагом`
-  const base = stepDue(s)?.amount ?? 0
+  // Разовая добавка вносится сама, шаг плана — своей кнопкой: эффект — только от добавки.
+  const base = once.value && extra ? 0 : (stepDue(s)?.amount ?? 0)
   const head = base ? `Шаг плана — ${money(base + extra)} в «${c.name}»` : `${money(extra)} в «${c.name}»`
   const lp = lumpPlan(c.principal, c.annualRate, c.payment, base + extra, 'term')
   if (!lp) return ''
@@ -278,7 +303,7 @@ const pots = computed(() => [
     name: g.name,
     effect: (x: number) =>
       cushion.value && g.id === cushion.value.id
-        ? `Через год покроет ${emergencyCoverage(g.have + g.monthly * 12 + (once.value ? x : x * 12), mandatory.value)
+        ? `Через год покроет ${emergencyCoverage(cushionInYear(g, x, once.value), mandatory.value)
             .toFixed(1)
             .replace('.', ',')} мес. расходов`
         : paused.value.has(g.id)
@@ -296,9 +321,15 @@ const pots = computed(() => [
 ])
 
 function confirm() {
+  // Долг и шаг плана — до записи: досрочка, закрывшая самый дорогой долг, сдвинула бы `credit`
+  // на следующий, а внесённая — шаг месяца.
+  const c = credit.value
+  const stepApplied = step.value?.kind === 'prepay' && !!step.value.applied
+  // Сколько досрочки внесено на деле (`lumpPlan`: не больше остатка долга) — в итог и запись.
+  let prepaid = 0
   if (once.value) {
     // Разовое решение: взносы в цели сейчас и сдвиг остатка выбранного счёта — как взнос в
-    // окне цели. Досрочка и «качество жизни» не записываются (вне скоупа RP-10).
+    // окне цели. «Качество жизни» не записывается (вне скоупа RP-10).
     if (needAccount.value) return
     const by = authStore.slot ?? 'a'
     const note = rest.value ? 'из остатка месяца' : 'из зарплаты'
@@ -308,22 +339,23 @@ function confirm() {
     }
     const acc = fromAccount.value ? financeStore.accounts.find((a) => a.id === fromAccount.value) : undefined
     if (acc && toGoals.value > 0) financeStore.shiftAccountAmount(acc.id, -toGoals.value)
-    // Досрочка из раскладки (B2C-21) — запись `prepay` со счёта раскладки в самый дорогой долг;
-    // с планом «Сначала долги» — с его id, как шаг плана.
-    const prepay = (alloc.value.credit ?? 0) + (alloc.value.plan ?? 0)
-    if (prepay > 0 && credit.value) {
-      financeStore.applyPrepayment(credit.value.id, by, {
-        amount: prepay,
+    // Досрочка из раскладки (B2C-21) — запись `prepay` со счёта раскладки в самый дорогой долг.
+    // Досрочкой плана «Сначала долги» (с его id) она считается, только если шаг месяца уже
+    // внесён: иначе разовая добавка закрыла бы шаг (и подушку) частичной суммой.
+    if (prepayTotal.value > 0 && c) {
+      const rec = financeStore.applyPrepayment(c.id, by, {
+        amount: prepayTotal.value,
         mode: 'term',
-        accountId: fromAccount.value ?? null,
-        ...(plan.value ? { planId: plan.value.id } : {}),
+        accountId: fromAccount.value,
+        ...(plan.value && stepApplied ? { planId: plan.value.id } : {}),
       })
+      prepaid = rec?.amount ?? 0
     }
     doneNote.value =
       (toGoals.value
         ? `В цели отложено ${money(toGoals.value)}${acc ? ` со счёта «${acc.name}»` : ''} — взносы видны в истории целей. Ежемесячные взносы не менялись.`
         : 'Цели не тронуты, ежемесячные взносы не менялись.') +
-      (prepay && credit.value ? ` Досрочка ${money(prepay)} внесена в «${credit.value.name}».` : '')
+      (prepaid && c ? ` Досрочка ${money(prepaid)} внесена в «${c.name}».` : '')
   } else {
     for (const g of goals.value) {
       const extra = alloc.value[g.id] ?? 0
@@ -339,8 +371,12 @@ function confirm() {
       by: authStore.slot ?? 'a',
       total: total.value,
       parts: Object.entries(alloc.value)
-        .filter(([, v]) => v > 0)
-        .map(([id, amount]) => ({ target: id === 'credit' || id === 'plan' ? `prepay:${credit.value?.id ?? ''}` : id, amount })),
+        .map(([id, amount]) =>
+          id === 'credit' || id === 'plan'
+            ? { target: `prepay:${c?.id ?? ''}`, amount: once.value ? prepaid : amount }
+            : { target: id, amount },
+        )
+        .filter((p) => p.amount > 0),
     })
   }
   void financeStore.syncHousehold()
@@ -394,10 +430,8 @@ function home() {
     <p v-else-if="closed" class="max-w-[38ch] text-[14px] leading-relaxed text-ink-2">
       Взносы по целям увеличены — платёж «{{ closed.name }}» теперь работает на цели.
     </p>
-    <p v-else-if="freed?.change" class="max-w-[38ch] text-[14px] leading-relaxed text-ink-2">
-      Взносы по целям увеличены с {{ monthFrom(freed.change.from) }}. Когда появятся
-      два аккаунта, это же решение уйдёт {{ people[1]?.name || 'партнёру' }} на подтверждение — с окном 72 часа на
-      «вернуть на обсуждение», а не с блокировкой.
+    <p v-else-if="freed" class="max-w-[38ch] text-[14px] leading-relaxed text-ink-2">
+      Взносы по целям увеличены с {{ monthFrom(freed.change.from) }}.
     </p>
     <Button @click="home">На главную</Button>
   </div>
@@ -419,8 +453,7 @@ function home() {
     </div>
 
     <p v-if="salary" class="px-0.5 text-[13px] leading-relaxed text-ink-2 num">
-      Зарплата пришла — {{ money(salary.record.amount) }}. Свободно из неё {{ money(total) }}: остальное
-      уже расписано планом месяца.
+      Зарплата пришла — {{ money(salary.record.amount) }} · свободно {{ money(total) }}
     </p>
     <p v-else-if="rest" class="px-0.5 text-[13px] leading-relaxed text-ink-2 num">
       Остаток {{ monthFrom(rest.period, false) }} — {{ money(total) }}. Разложим его, пока он незаметно не разошёлся.
@@ -474,7 +507,7 @@ function home() {
           <button
             type="button"
             aria-label="Прибавить"
-            :disabled="left <= 0"
+            :disabled="room(p.id) <= 0"
             class="grid size-[30px] place-items-center rounded-[9px] border border-line bg-surface-2 text-ink-2 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed"
             @click="set(p.id, STEP)"
           >
@@ -488,10 +521,10 @@ function home() {
     </div>
 
     <AccountChoice
-      v-if="once && toGoals > 0"
+      v-if="once && (toGoals > 0 || prepayTotal > 0)"
       v-model="fromAccount"
       :accounts="accountChoices"
-      label="Откуда отложить в цели"
+      :label="toGoals > 0 ? 'Откуда отложить в цели' : 'Откуда внести досрочку'"
       none="Не двигать остаток счёта"
     />
 
@@ -499,7 +532,7 @@ function home() {
     <p v-if="closed" class="px-0.5 text-[12.5px] leading-relaxed text-ink-3">
       Пока решения нет, платёж закрытого долга остаётся в «Свободно».
     </p>
-    <p v-else-if="freed?.change" class="px-0.5 text-[12.5px] leading-relaxed text-ink-3">
+    <p v-else-if="freed" class="px-0.5 text-[12.5px] leading-relaxed text-ink-3">
       Пока решения нет, эти деньги не попадают в «свободно потратить». {{ freed.o.name }} снизится с
       {{ plain(amountAt(freed.o, key)) }} до {{ plain(freed.change.amount) }} ₸ с
       {{ monthFrom(freed.change.from) }}.
