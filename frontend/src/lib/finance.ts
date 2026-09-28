@@ -254,6 +254,14 @@ export function emergencyCoverage(saved: number, mandatoryMonthly: number): numb
 }
 
 /**
+ * Подушка через год при раскладке `extra` («Через год покроет N мес. расходов»): накоплено +
+ * взнос ×12 + добавка — разом (`once`) или каждый месяц (×12). Целые тенге.
+ */
+export function cushionInYear(goal: Pick<Goal, 'have' | 'monthly'>, extra: number, once: boolean): number {
+  return goal.have + goal.monthly * 12 + (once ? extra : extra * 12)
+}
+
+/**
  * Во что обходится долг прямо сейчас.
  *
  * Смысл в доле платежа, уходящей в проценты. Человек сравнивает долги по
@@ -763,6 +771,8 @@ export const liveAccounts = (list: Account[]) => (list || []).filter(alive);
 /** Счета, с которых списывают платежи: живые, в тенге (валюта платежей — не-скоуп, Р-1). */
 export const payableAccounts = (list: Account[]) => liveAccounts(list).filter((a) => (a.currency ?? 'KZT') === 'KZT');
 export const liveWishlist = (list: WishItem[]) => (list || []).filter(alive);
+/** Сумма цен списка желаний (итог «Куплено» на «Желаниях»), целые тенге; какие желания — решает экран. */
+export const wishTotal = (list: Pick<WishItem, 'price'>[]) => list.reduce((a, w) => a + w.price, 0);
 
 /** Сколько осталось до цели, целые тенге; накоплено больше нужного — 0 (одно место вместо четырёх экранов). */
 export const goalRemaining = (g: Pick<Goal, 'need' | 'have'>) => Math.max(0, g.need - g.have);
@@ -811,6 +821,32 @@ export function nextChange(o: Obligation, key = monthKey()) {
   if (!future.length) return null;
   const current = amountAt(o, key);
   return { ...future[0], delta: future[0].amount - current };
+}
+
+export type FreedChange = {
+  o: Obligation;
+  change: NonNullable<ReturnType<typeof nextChange>>;
+  /** Сколько освободится в месяц, целые тенге: у годового — двенадцатая часть разницы. */
+  monthly: number;
+  /** Сколько освободится за год: у годового — сама разница, у ежемесячного — ×12. */
+  yearly: number;
+};
+
+/**
+ * Событие «освободится N ₸ в месяц» («Деньги», раскладка `?from=freed`): первое обязательство
+ * списка, чья ближайшая новая сумма меньше текущей. Годовое — по реальной доле, как
+ * `plannedChange` (`memory/decisions/r2-exceptions-pv-block2.md` п. 2: 60 000 → 48 000 —
+ * 1 000 в месяц и 12 000 за год, а не 12 000 и 144 000); версия с нулём (конец платежа) —
+ * освобождается вся сумма. null — снижений впереди нет.
+ */
+export function freedChange(list: Obligation[], key = monthKey()): FreedChange | null {
+  for (const o of list) {
+    const change = nextChange(o, key);
+    if (!change || change.delta >= 0) continue;
+    const d = -change.delta;
+    return o.every === 'year' ? { o, change, monthly: yearShare(d), yearly: d } : { o, change, monthly: d, yearly: d * 12 };
+  }
+  return null;
 }
 
 /* ---------------- группы подписок и «оставить?» (RP-09) ---------------- */
@@ -2328,6 +2364,17 @@ export function weekPicture(
   return { range, total, rows, unknown, unknownShare, uploaded, missing }
 }
 
+/**
+ * Тег картины недели (главный и «Неделя» — один текст): кто-то загрузил, а кто-то нет —
+ * «без выписки <имена>»; загрузили все — «по выпискам обоих» (один участник — «по выписке»);
+ * никто — null. `peopleCount` — живые участники семьи.
+ */
+export function weekTag(pic: Pick<WeekPicture, 'uploaded' | 'missing'>, peopleCount: number): { text: string; tone: 'ok' | 'warn' } | null {
+  if (pic.missing.length && pic.uploaded.length) return { text: `без выписки ${pic.missing.map((p) => p.name).join(' и ')}`, tone: 'warn' }
+  if (pic.uploaded.length) return { text: peopleCount > 1 ? 'по выпискам обоих' : 'по выписке', tone: 'ok' }
+  return null
+}
+
 /** Итог недели против прошлой (DESIGN.md §6 «на N % меньше/больше прошлой»), целый процент; null — одной из недель нет. */
 export function weekVersusPrev(totals: SpendTotal[], week: string, prevWeek: string): { delta: number } | null {
   const sum = (key: string) => spendRows(totals, [], { kind: 'week', period: key }).total
@@ -2339,6 +2386,36 @@ export function weekVersusPrev(totals: SpendTotal[], week: string, prevWeek: str
 
 /** Подписка за год для карточки «оставить?»: годовая — как есть, ежемесячная — ×12. */
 export const subscriptionYearly = (o: Obligation, key: string) => amountAt(o, key) * (o.every === 'year' ? 1 : 12)
+
+/**
+ * Карточка «Оставить подписку?» (DESIGN.md §6) — одна на главном (`nextDecision`) и на «Неделе».
+ * Годовая — цена продления (`nextObligationDue`: новая версия с месяца продления, а не текущая)
+ * и его день; продления впереди нет — сумма года как есть. Ежемесячная — сумма месяца, за год ×12.
+ * «За год — X · это N % пути до <главная мечта>» (остаток мечты `goalRemaining`; мечты нет или
+ * она собрана — без хвоста).
+ */
+export function keepCard(
+  keep: Obligation,
+  goals: Goal[],
+  payments: Payment[],
+  now: { day: number; key: string } = today(),
+): { question: string; meta: string; inner: string } {
+  const renewal = keep.every === 'year' ? nextObligationDue(keep, payments, now) : null
+  const yearly = renewal ? renewal.amount : subscriptionYearly(keep, now.key)
+  const goal = mainGoal(goals)
+  const remaining = goal ? goalRemaining(goal) : 0
+  const pathPct = remaining > 0 ? Math.round((yearly / remaining) * 100) : 0
+  const meta = renewal
+    ? `${money(renewal.amount)} · в год · продлится ${dayLabel(renewal.day, renewal.period)}`
+    : keep.every === 'year'
+      ? `${money(yearly)} · в год`
+      : `${money(amountAt(keep, now.key))} · каждый месяц`
+  return {
+    question: `Оставить подписку ${keep.name}?`,
+    meta,
+    inner: `За год — ${money(yearly)}${goal && pathPct > 0 ? ` · это ${pathPct} % пути до ${goal.name}` : ''}`,
+  }
+}
 
 export type FreeByFact = {
   /** «Свободно до конца месяца», целые тенге; может быть меньше нуля. */
@@ -2475,7 +2552,8 @@ export function nextDecision(
       kind: 'salary',
       question: `Пришла зарплата ${near.who.name}?`,
       meta: `${money(near.income)} · ${dayLabel(near.day, near.key)}`,
-      to: '/money',
+      // Карточка «Пришла зарплата — разложить?» живёт на «Неделе» (DESIGN §3): «Пришла» — туда.
+      to: '/week',
       actions: { primary: 'Пришла', ghost: 'Потом' },
       salary: { person: near.who, period: near.key },
     }
@@ -2483,17 +2561,9 @@ export function nextDecision(
 
   const keep = keepQuestions(state.obligations ?? [], new Date(Date.UTC(parseMonthKey(now.key).year, parseMonthKey(now.key).month, now.day, 12)))[0]
   if (keep) {
-    const renewal = keep.every === 'year' ? nextObligationDue(keep, payments, now) : null
-    const monthly = renewal ? null : amountAt(keep, now.key)
-    const yearly = renewal ? renewal.amount : (monthly ?? 0) * 12
-    const goal = mainGoal(state.goals ?? [])
-    const remaining = goal ? goalRemaining(goal) : 0
-    const pathPct = remaining > 0 ? Math.round((yearly / remaining) * 100) : 0
     return {
       kind: 'keep',
-      question: `Оставить подписку ${keep.name}?`,
-      meta: renewal ? `${money(renewal.amount)} · в год · продлится ${dayLabel(renewal.day, renewal.period)}` : `${money(monthly ?? 0)} · каждый месяц`,
-      inner: `За год — ${money(yearly)}${goal && pathPct > 0 ? ` · это ${pathPct} % пути до ${goal.name}` : ''}`,
+      ...keepCard(keep, state.goals ?? [], payments, now),
       to: null,
       actions: { primary: 'Оставить', secondary: 'Отписаться', ghost: 'Подумать' },
       obligation: keep,

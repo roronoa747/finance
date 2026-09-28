@@ -100,6 +100,11 @@ import {
   goalRemaining,
   freeByFact,
   nextDecision,
+  keepCard,
+  freedChange,
+  weekTag,
+  wishTotal,
+  cushionInYear,
 } from './finance'
 import type { SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { DEFAULT_SPEND_CATEGORIES } from '@/lib/statements/dictionary'
@@ -2498,7 +2503,8 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       // 17 сентября: ближайшая зарплата — Даны 20-го, до неё 3 дня → «пришла?» у Даны; у Ильяса
       // (его 10-е давно прошло) вопроса нет — как на прежнем Обзоре.
       const salary = nextDecision(base, { ...ctx, me: 'b' })
-      expect(salary).toMatchObject({ kind: 'salary', question: 'Пришла зарплата Дана?', meta: `${money(500_000)} · 20 сентября`, to: '/money' })
+      // «Пришла» ведёт на «Неделю»: там карточка «Пришла зарплата — разложить?» (критик Блока 3, правило 12).
+      expect(salary).toMatchObject({ kind: 'salary', question: 'Пришла зарплата Дана?', meta: `${money(500_000)} · 20 сентября`, to: '/week' })
       expect(salary?.salary).toMatchObject({ period: '2026-09' })
       expect(nextDecision(base, ctx)).toBeNull()
 
@@ -2526,6 +2532,80 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(d?.question).toMatch(/^Внести по плану .* в «Кредит»\?$/)
       expect(d?.to).toBe('/money/plan')
       expect(nextDecision(base, { me: undefined, now })).toBeNull()
+    })
+  })
+
+  // Критик Блока 3: карточки и суммы, которые экраны собирали сами, — одна функция ядра на всех.
+  describe('keepCard · freedChange · weekTag · wishTotal · cushionInYear', () => {
+    const japan = goal('g', 'Япония', { need: 1_800_000, have: 1_116_000 }) // до мечты 684 000
+    const netflix: Obligation = { id: 'nf', name: 'Netflix', note: '', day: 3, category: 'd4', versions: [{ from: '2000-01', amount: 4_990 }], updatedAt: T }
+    // Годовая, продление 5 октября; с октября — 12 000 вместо 10 000 (фикстура PaidRow.test «Иви»).
+    const ivi: Obligation = {
+      id: 'ivi', name: 'Иви', note: '', day: 5, category: 'd4', every: 'year', month: 10,
+      versions: [{ from: '2000-01', amount: 10_000 }, { from: '2026-10', amount: 12_000 }], updatedAt: T,
+    }
+    const sep25 = { day: 25, key: '2026-09' }
+
+    it('keepCard, ежемесячная: сумма месяца, за год ×12, доля пути до главной мечты', () => {
+      expect(keepCard(netflix, [japan], [], sep25)).toEqual({
+        question: 'Оставить подписку Netflix?',
+        meta: `${money(4_990)} · каждый месяц`,
+        inner: `За год — ${money(59_880)} · это 9 % пути до Япония`,
+      })
+      // Мечты нет или она уже собрана — «за год» без хвоста.
+      expect(keepCard(netflix, [], [], sep25).inner).toBe(`За год — ${money(59_880)}`)
+      expect(keepCard(netflix, [goal('g', 'Япония', { need: 100, have: 100 })], [], sep25).inner).toBe(`За год — ${money(59_880)}`)
+    })
+
+    it('keepCard, годовая: цена продления из новой версии, а не текущая — и в meta, и «за год»', () => {
+      const card = keepCard(ivi, [japan], [], sep25)
+      expect(card.meta).toBe(`${money(12_000)} · в год · продлится 5 октября`)
+      expect(card.inner).toBe(`За год — ${money(12_000)} · это 2 % пути до Япония`)
+      expect(JSON.stringify(card)).not.toContain(money(10_000))
+      // Главный берёт ту же карточку.
+      const d = nextDecision({ people, goals: [japan], obligations: [ivi], payments: [] }, { me: 'a', now: sep25 })
+      expect(d).toMatchObject({ kind: 'keep', ...card })
+    })
+
+    it('keepCard, годовая без продления впереди: сумма года как есть, не ×12 и не «каждый месяц»', () => {
+      const ending: Obligation = { ...ivi, versions: [{ from: '2000-01', amount: 11_990 }, { from: '2026-10', amount: 0 }] }
+      expect(keepCard(ending, [], [], sep25)).toMatchObject({ meta: `${money(11_990)} · в год`, inner: `За год — ${money(11_990)}` })
+    })
+
+    it('freedChange: годовое — доля в месяц и разница за год; ежемесячное — разница и ×12; первое снижение списка', () => {
+      const insurance: Obligation = { ...rent, id: 'ins', name: 'Страховка', every: 'year', month: 3, versions: [{ from: '2000-01', amount: 60_000 }, { from: '2027-01', amount: 48_000 }] }
+      const flat: Obligation = { ...rent, id: 'flat', versions: [{ from: '2000-01', amount: 300_000 }, { from: '2026-11', amount: 220_000 }] }
+      const up: Obligation = { ...rent, id: 'up', versions: [{ from: '2000-01', amount: 10_000 }, { from: '2026-10', amount: 12_000 }] }
+
+      const y = freedChange([up, insurance, flat], '2026-09')
+      expect(y).toMatchObject({ o: { id: 'ins' }, monthly: 1_000, yearly: 12_000, change: { from: '2027-01', amount: 48_000, delta: -12_000 } })
+      expect(freedChange([flat], '2026-09')).toMatchObject({ o: { id: 'flat' }, monthly: 80_000, yearly: 960_000, change: { from: '2026-11' } })
+      // Годовое заканчивается (версия с нулём) — освобождается вся сумма.
+      const ends: Obligation = { ...insurance, versions: [{ from: '2000-01', amount: 60_000 }, { from: '2027-01', amount: 0 }] }
+      expect(freedChange([ends], '2026-09')).toMatchObject({ monthly: 5_000, yearly: 60_000 })
+      // Рост и неизменные — не «освободится».
+      expect(freedChange([up, rent], '2026-09')).toBeNull()
+      expect(freedChange([], '2026-09')).toBeNull()
+    })
+
+    it('weekTag: один без выписки — «без выписки <имя>», оба — «по выпискам обоих», один участник — «по выписке», никто — null', () => {
+      const uploads = [{ slot: 'a', period_from: '2026-09-01', period_to: '2026-09-30' }]
+      expect(weekTag(weekPicture([], categories, people, '2026-W38', uploads), 2)).toEqual({ text: 'без выписки Дана', tone: 'warn' })
+      const both = [...uploads, { slot: 'b', period_from: '2026-09-14', period_to: '2026-09-14' }]
+      expect(weekTag(weekPicture([], categories, people, '2026-W38', both), 2)).toEqual({ text: 'по выпискам обоих', tone: 'ok' })
+      expect(weekTag(weekPicture([], categories, [people[0]], '2026-W38', uploads), 1)).toEqual({ text: 'по выписке', tone: 'ok' })
+      expect(weekTag(weekPicture([], categories, people, '2026-W38'), 2)).toBeNull()
+      const three: Person[] = [...people, { id: 'c', name: 'Аружан', salary: 0, payday: 1, updatedAt: T }]
+      expect(weekTag(weekPicture([], categories, three, '2026-W38', uploads), 3)?.text).toBe('без выписки Дана и Аружан')
+    })
+
+    it('wishTotal — сумма цен; cushionInYear — накоплено + взнос ×12 + добавка разом или ×12', () => {
+      expect(wishTotal([{ price: 120_000 }, { price: 35_500 }])).toBe(155_500)
+      expect(wishTotal([])).toBe(0)
+      const cushion = { have: 300_000, monthly: 50_000 }
+      expect(cushionInYear(cushion, 100_000, true)).toBe(1_000_000)
+      expect(cushionInYear(cushion, 100_000, false)).toBe(2_100_000)
+      expect(cushionInYear(cushion, 0, false)).toBe(900_000)
     })
   })
 

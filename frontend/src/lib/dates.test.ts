@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { weekKey, weekRange } from './dates'
+import { addedLabel, weekKey, weekRange, weekRangeLabel } from './dates'
 
 describe('weekKey — ISO-неделя по Алматы', () => {
   afterEach(() => vi.useRealTimers())
@@ -44,5 +44,26 @@ describe('weekRange', () => {
         expect(weekKey(day)).toBe(key)
       }
     }
+  })
+})
+
+describe('weekRangeLabel — заголовок недели на главном и «Неделе»', () => {
+  it('один месяц — «21–27 сентября»; на стыке месяцев и лет — обе половины', () => {
+    expect(weekRangeLabel(weekRange('2026-W39'))).toBe('21–27 сентября')
+    expect(weekRangeLabel({ from: '2026-09-28', to: '2026-10-04' })).toBe('28 сентября – 4 октября')
+    expect(weekRangeLabel(weekRange('2026-W01'))).toBe('29 декабря – 4 января')
+  })
+})
+
+describe('addedLabel — когда добавили или купили желание', () => {
+  it('ISO — день по Алматы; старая строка из прода — как есть; пусто — пустая строка', () => {
+    expect(addedLabel('2026-09-24T10:00:00.000Z')).toBe('24 сентября')
+    // 20:00 UTC 30 сентября — в Алматы уже 1 октября.
+    expect(addedLabel('2026-09-30T20:00:00.000Z')).toBe('1 октября')
+    expect(addedLabel('2026-09-05')).toBe('5 сентября')
+    expect(addedLabel('24.09.2026')).toBe('24.09.2026')
+    expect(addedLabel('')).toBe('')
+    expect(addedLabel(null)).toBe('')
+    expect(addedLabel(undefined)).toBe('')
   })
 })
