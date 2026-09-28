@@ -8,6 +8,7 @@ import { parseStatement } from '@/lib/statements/parsers'
 import { DEFAULT_SPEND_CATEGORIES } from '@/lib/statements/dictionary'
 import type { Operation } from '@/lib/statements/types'
 import { money } from '@/lib/money'
+import { nextDecision } from '@/lib/finance'
 import { MONTH_END_KEY } from '@/lib/storage'
 import { renderScreen, screenMixin } from '@/test/screenState'
 import type { StatementUploadResponse } from '@/types/api'
@@ -288,6 +289,11 @@ describe('views/Statements.vue — решения по одному и итог 
     expect(brand(raw)).toEqual(['Пришла зарплата'])
 
     expect(text(raw)).not.toContain('Оставить подписку')
+    // Н-23: карточка — DecisionCard (вопрос type-h2, как у соседних решений), тексты — решения «salary» главного.
+    const d = nextDecision({ people: finance.people, obligations: finance.obligations, payments: finance.payments }, { me: 'a' })
+    expect(d?.kind).toBe('salary')
+    expect(raw).toMatch(new RegExp(`<h2 class="type-h2 text-ink">${d!.question.replace('?', '\\?')}</h2>`))
+    expect(raw).toContain(d!.meta)
 
     // Отмечена — очередь дальше, как на главном: подписка, затем «Остались деньги?»; брендовая одна.
     finance.markSalary('a', { period: '2026-10', amount: 500_000, accountId: null })

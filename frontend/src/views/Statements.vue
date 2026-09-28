@@ -34,6 +34,7 @@ import {
   allocationFor,
   keepCard,
   monthEndCard,
+  salaryCard,
   keepQuestions,
   monthEndAsk,
   salaryAllocationPath,
@@ -477,12 +478,10 @@ onMounted(() => {
         </template>
       </DecisionCard>
 
-      <!-- Пришла зарплата? (RP-10) — вопрос о приходе, как решение «salary» на главном; раскладка — после отметки -->
-      <Card v-if="salaryHere" class="border-brand">
-        <h3 class="type-h3 text-ink">Пришла зарплата {{ salaryHere.who.name }}?</h3>
-        <p class="mt-0.5 text-[13px] text-ink-2">{{ money(salaryHere.income) }} · {{ dayLabel(salaryHere.day, salaryHere.key) }}</p>
+      <!-- Пришла зарплата? (RP-10) — вопрос о приходе, тексты решения «salary» главного; кнопка и лист «ещё» — в SalaryRow -->
+      <DecisionCard v-if="salaryHere" v-bind="salaryCard(salaryHere)">
         <SalaryRow button :quiet="salaryQuiet" :person-id="salaryHere.who.id" :period="salaryHere.key" />
-      </Card>
+      </DecisionCard>
 
       <!-- Итог недели -->
       <WeekCard

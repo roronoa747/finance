@@ -1797,6 +1797,15 @@ export function salaryToAllocate(
 }
 
 /** Тексты карточки «разложить?» — одни на главном и в «Неделе» (как `keepCard`). */
+/**
+ * «Пришла зарплата <имя>?» (RP-10) — тексты карточки ближайшей зарплаты (`salaryAsk`), одни на
+ * главном и в «Неделе» (ревью Блока 3, Н-23).
+ */
+export const salaryCard = (near: { who: Person; income: number; day: number; key: string }) => ({
+  question: `Пришла зарплата ${near.who.name}?`,
+  meta: `${money(near.income)} · ${dayLabel(near.day, near.key)}`,
+})
+
 export const allocateCard = (u: { person: Person; record: Payment; free: number }) => ({
   question: `Пришла зарплата ${u.person.name} — разложить?`,
   meta: `${money(u.record.amount)} · свободно ${money(u.free)}`,
@@ -2701,8 +2710,7 @@ export function nextDecision(
   if (near) {
     return {
       kind: 'salary',
-      question: `Пришла зарплата ${near.who.name}?`,
-      meta: `${money(near.income)} · ${dayLabel(near.day, near.key)}`,
+      ...salaryCard(near),
       // Карточка «Пришла зарплата <имя>?» с отметкой живёт на «Неделе» (DESIGN §3): «Пришла» — туда.
       to: '/week',
       actions: { primary: 'Пришла', ghost: 'Потом' },
