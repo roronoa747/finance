@@ -630,6 +630,32 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     expect({ a: await free(A), b: await free(B) }).toEqual(before)
   })
 
+  it('возврат приёмки 3 п. 1: новая семья — Go отдаёт документ `{}`; фоновый pull (focus) до выписки не ломает первый запуск: «Да, это зарплата», «Записать», «Введу вручную» пишут в документ', async () => {
+    // Документ новой семьи на сервере Go — `data '{}'` (household_repo.go), не полный.
+    server = fakeServer({} as SyncDoc)
+    const A = await phone(server, st, 'a')
+    // Ушёл в приложение банка за PDF и вернулся: focus → pull того же пустого документа.
+    await A.store.pullHousehold(A.client)
+    expect(A.store.householdDoc).toMatchObject({ people: [], obligations: [], credits: [], payments: [] })
+    await upload(A, kaspi('kaspi-01'))
+    await screen(A.pinia, Start, '/start/questions', undefined, [act('answerIncome')])
+    expect(A.store.people).toEqual([expect.objectContaining({ id: 'a', salary: 120_000, payday: 24 })])
+    await screen(A.pinia, Start, '/start/questions', undefined, [act('answerRecurring', { creditPrincipal: '1 200 000' })])
+    await screen(A.pinia, Start, '/start/questions', undefined, [act('answerRecurring')])
+    expect(A.store.credits.map((c) => c.name)).toEqual(['Оплата Kaspi Кредита'])
+    expect(A.store.obligations.map((o) => o.name)).toEqual(['Оплата Kaspi Red'])
+    await A.store.syncHousehold(A.client)
+    expect(server.data.people).toEqual([expect.objectContaining({ id: 'a', salary: 120_000 })])
+
+    // «Введу вручную» на том же пустом документе.
+    storage.clear()
+    server = fakeServer({} as SyncDoc)
+    const M = await phone(server, st, 'a')
+    await M.store.pullHousehold(M.client)
+    await screen(M.pinia, Start, '/start', undefined, [act('manualNext', { manual: true, manualSalary: '500 000', manualPayday: '5' })])
+    expect(M.store.people).toEqual([expect.objectContaining({ id: 'a', salary: 500_000, payday: 5 })])
+  })
+
   it('«Введу вручную»: оклад и день без выписки — участник записан, итогов нет, дальше — к мечте', async () => {
     const A = await phone(server, st, 'a')
     await screen(A.pinia, Start, '/start', undefined, [act('manualNext', { manual: true, manualSalary: '500 000', manualPayday: '5' })])

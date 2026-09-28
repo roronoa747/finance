@@ -264,6 +264,28 @@ describe('stores/finance.ts — Pinia хранилище казны и синх�
     expect(mockClient.pushHouseholdDoc).not.toHaveBeenCalled()
   })
 
+  // Возврат приёмки 3: Go создаёт документ новой семьи `{}`; фоновый pull (focus, 60 с) до
+  // выписки клал его как есть — первый запуск падал на `doc.people.find`/`obligations.push`.
+  it('pullHousehold: пустой документ новой семьи `{}` дополняется умолчаниями — правки работают', async () => {
+    const store = useFinanceStore()
+    const client = {
+      getHouseholdDoc: vi.fn().mockResolvedValue({ household_id: 'h-new', rev: 1, data: {}, updated_at: '' }),
+      pushHouseholdDoc: vi.fn(),
+    } as unknown as ApiClient
+    await store.pullHousehold(client)
+    expect(store.householdDoc.people).toEqual([])
+    expect(store.householdDoc.obligations).toEqual([])
+    store.setPerson('a', { name: 'Ильяс', salary: 350_000, payday: 10 })
+    store.addObligation({ name: 'Аренда', day: 5, category: 'd1', amount: 180_000 })
+    store.markSalary('a', { period: '2026-09', amount: 350_000, source: 'statement' })
+    expect(store.people.map((p) => p.salary)).toEqual([350_000])
+    expect(store.householdDoc.obligations.map((o) => o.name)).toEqual(['Аренда'])
+    // Перезагрузка: документ, сохранённый на телефоне пустым, тоже с умолчаниями.
+    storageMap.set('ff_household_doc', '{}')
+    setActivePinia(createPinia())
+    expect(useFinanceStore().householdDoc.people).toEqual([])
+  })
+
   it('pullPrivateDoc и pushPrivateDoc работают с изолированным личным кошельком', async () => {
     const store = useFinanceStore()
     const mockClient = {

@@ -75,6 +75,14 @@ export function defaultSyncDoc(): SyncDoc {
   }
 }
 
+/**
+ * Документ с сервера или с телефона — с ключами умолчаний: Go создаёт документ новой семьи
+ * пустым `{}` (возврат приёмки 3), а правки пишут в `doc.people`/`doc.obligations` без проверок.
+ */
+function withDefaults(doc: SyncDoc): SyncDoc {
+  return { ...defaultSyncDoc(), ...doc }
+}
+
 /** Семья демо-режима: её документ не уходит на сервер (Р-32). */
 export const DEMO_HOUSEHOLD = 'demo-household-1'
 
@@ -111,7 +119,7 @@ function unchanged<T extends object>(cur: T | undefined, patch: Partial<T>): boo
 }
 
 export const useFinanceStore = defineStore('finance', () => {
-  const householdDoc = ref<SyncDoc>(readStorage<SyncDoc>(STORAGE_KEY_DOC, defaultSyncDoc()))
+  const householdDoc = ref<SyncDoc>(withDefaults(readStorage<SyncDoc>(STORAGE_KEY_DOC, defaultSyncDoc())))
   const householdRev = ref<number>(readStorage<number>(STORAGE_KEY_REV, 0))
 
   const privateDoc = ref<Record<string, unknown>>(
@@ -488,7 +496,7 @@ export const useFinanceStore = defineStore('finance', () => {
           householdDoc.value = mergeDocs(householdDoc.value, serverDoc.data)
           if (unsent.value) scheduleSync(undefined, client)
         } else {
-          householdDoc.value = serverDoc.data
+          householdDoc.value = withDefaults(serverDoc.data)
           householdRev.value = serverDoc.rev
           status.value = 'idle'
         }
