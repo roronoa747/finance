@@ -29,7 +29,7 @@ const emit = defineEmits<{
 
 <template>
   <section class="flex flex-col gap-3.5 rounded-card border border-card-border bg-surface p-5 text-left" aria-live="polite">
-    <div v-if="progress" class="flex items-center gap-2.5 text-[13px] text-ink-3">
+    <div v-if="progress" class="type-meta flex items-center gap-2.5">
       <ProgressBar :value="progress.k ? progress.n / progress.k : 0" :height="4" class="flex-1" />
       <span class="num shrink-0">{{ progress.n }} из {{ progress.k }}</span>
     </div>
