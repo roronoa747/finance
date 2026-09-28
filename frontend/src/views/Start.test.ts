@@ -346,6 +346,41 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     expect(useOperationsStore().pendingMatches).toEqual([])
   })
 
+  it('возврат приёмки 2 п. 2: «Записать» на «Перевод с карты на карту» (переводы разных сумм) — месяц отмечен строкой в допуске, плановый раздел только ей; «Свободно» не прыгает на сумму переводов', async () => {
+    // Freedom печатает все переводы без получателя одним названием; повтор — 15 000 около 19–20-го.
+    const transfer = (id: string, date: string, amount: number) => op(id, date, amount, 'Перевод с карты на карту', 'transfer-out')
+    const list = parsed([
+      transfer('t7', '2026-07-20', -15_000), transfer('a1', '2026-08-19', -40_000), transfer('a2', '2026-08-20', -15_000),
+      transfer('s1', '2026-09-03', -2_000), transfer('s2', '2026-09-12', -280_000), transfer('s3', '2026-09-20', -15_200),
+    ])
+    const store = family('member', 'a', {
+      ...defaultSyncDoc(),
+      people: [{ id: 'a', name: 'Ильяс', salary: 600_000, payday: 10, updatedAt: T0 }],
+      spendTotals: spendTotals(list, 'a', 'month', '2026-09', T0),
+    })
+    seedOps(list)
+    const uploads = [{ slot: 'a', period_from: '2026-07-01', period_to: '2026-09-23' }]
+    const free = () => freeByFact({ ...store.householdDoc, credits: store.credits }, store.householdDoc.spendTotals ?? [], store.householdDoc.spendCategories ?? [], '2026-09', uploads)
+    const before = free()
+    expect(before).toMatchObject({ byFact: true, dues: 0, spent: 297_200, amount: 302_800 })
+
+    const html = await renderScreen(Start, '/start/questions')
+    expect(html).toContain('Перевод с карты на карту — это что?')
+    expect(html).toContain(`${money(15_000)} · примерно 19-го · 6 раз за период`)
+    // «Записать» с выбранным «Другое регулярное» (главная кнопка карточки).
+    await renderScreen(Start, '/start/questions', undefined, [act('answerRecurring')])
+    const ob = store.obligations[0]
+    expect(ob).toMatchObject({ name: 'Перевод с карты на карту', category: 'd4' })
+    // Сентябрь отмечен строкой 15 200 (±2 %), а не первой строкой месяца 2 000.
+    expect(paidFor(store.payments, 'obligation', ob.id, '2026-09')).toMatchObject({ amount: 15_200, opId: 's3' })
+    // Плановый раздел — только строкам в допуске; 2 000, 280 000 и 40 000 — по-прежнему траты.
+    expect(Object.fromEntries(useOperationsStore().all.map((o) => [o.id, o.categoryId]))).toEqual({
+      t7: 'sc_subscriptions', a1: null, a2: 'sc_subscriptions', s1: null, s2: null, s3: 'sc_subscriptions',
+    })
+    // «Свободно»: 15 200 было тратой — стало платежом месяца; траты 2 000 и 280 000 остались. Сумма та же.
+    expect(free()).toMatchObject({ dues: 15_200, spent: 282_000, amount: before.amount })
+  })
+
   it('партнёр по коду: повторы, которые сопоставляются с арендой и кредитом семьи, не спрашиваются — «Записать» не заведёт второе такое же', async () => {
     const base = planFamilyDoc()
     const store = family('member', 'b', { ...base, people: [base.people[0]] })

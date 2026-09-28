@@ -6,8 +6,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore, type Draft, type DraftFile } from '@/stores/operations'
 import { parseStatement, StatementFormatError } from '@/lib/statements/parsers'
-import { ruleFor, ruleMatchOf, periodOf } from '@/lib/statements/model'
-import { firstRunQuestions, salaryOpOfMonth, type IncomeCandidate, type RecurringCandidate, type RecurringKind } from '@/lib/statements/firstRun'
+import { ruleFor, ruleMatchOf } from '@/lib/statements/model'
+import { firstRunQuestions, paymentOpOfMonth, salaryOpOfMonth, type IncomeCandidate, type RecurringCandidate, type RecurringKind } from '@/lib/statements/firstRun'
 import { matchCandidates, matchCategory, operationAt } from '@/lib/statements/matching'
 import type { Operation } from '@/lib/statements/types'
 import { budgetAmounts, spendRows } from '@/lib/finance'
@@ -137,8 +137,6 @@ function markAnswered(key: string) {
 }
 
 const groupOps = (ids: string[]) => ids.map((id) => ops.all.find((o) => o.id === id)).filter((o): o is Operation => !!o)
-/** Операция группы в этом месяце — её сумма, id и день идут в отметку «из выписки» (как у B2C-15). */
-const thisMonthOp = (ids: string[]) => groupOps(ids).find((o) => periodOf(o.date, 'month') === monthKey())
 /**
  * Повтор, который сопоставляется с обязательством или кредитом семьи (партнёр платит аренду,
  * заведённую первым участником), — не вопрос: «Записать» завёл бы второе такое же; отметку по
@@ -235,8 +233,9 @@ function answerIncome(yes = true) {
  * коммуналка — жильё, подписки и прочее регулярное — быт. Правило «это платёж по …» отмечает
  * следующие выписки само (Р-6) и сразу переносит операции группы в плановый раздел
  * (`recategorize`, как «Да, отметить» в «Неделе»): «Свободно по факту» не вычтет их второй раз.
- * Платёж этого месяца отмечается суммой и днём операции — до введённого остатка кредита, так что
- * остаток он второй раз не уменьшает.
+ * Платёж этого месяца отмечается суммой и днём операции в допуске суммы (`paymentOpOfMonth`, как
+ * правило платежа), до введённого остатка кредита — остаток он второй раз не уменьшает; строки в
+ * допуске нет — месяц не отмечается.
  */
 function answerRecurring(save = true) {
   const q = current.value
@@ -259,7 +258,7 @@ function answerRecurring(save = true) {
     if (op) {
       const goal = target.kind === 'credit' ? financeStore.credits.find((x) => x.id === target.id) : financeStore.obligations.find((x) => x.id === target.id)
       void ops.recategorize(ruleMatchOf(op), { payment: { kind: target.kind, targetId: target.id, categoryId: goal ? matchCategory(target.kind, goal) : null } })
-      const cur = thisMonthOp(c.opIds)
+      const cur = paymentOpOfMonth(groupOps(c.opIds), c.amount, monthKey(), kind === 'utilities')
       if (cur) financeStore.markPaid(target.kind, target.id, slot.value, { period: monthKey(), amount: Math.abs(cur.amount), source: 'statement', opId: cur.id, at: operationAt(cur.date, before) })
     }
   }

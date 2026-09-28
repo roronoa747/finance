@@ -493,6 +493,63 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     expect(landingPath({ slot: 'b', isViewer: false }, B.store)).toBe('/')
   })
 
+  it('возврат приёмки 2 п. 2: партнёр B — первый запуск на фикстуре Freedom; «Записать» на «Перевод с карты на карту» (переводы разных сумм) — «Свободно» у A и B не прыгает на сумму переводов', async () => {
+    server = fakeServer({ ...defaultSyncDoc(), people: [{ id: 'a', name: 'Ильяс', salary: 600_000, payday: 10, updatedAt: T0 }], setupDoneAt: T0 })
+    const A = await phone(server, st, 'a')
+    storage.clear()
+    const B = await phone(server, st, 'b')
+    // Обезличенная выписка Freedom (июль 2025: переводы 2 000, 11 000, 50 000 одним названием) и ещё два
+    // перевода по 15 000 около 20-го — повтор, о котором спросит первый запуск.
+    const base = kaspi('freedom-01')
+    const transfer = (date: string, amount: number): Omit<Operation, 'id'> => ({
+      bank: 'freedom', date, amount, kind: 'transfer-out', merchant: 'Перевод с карты на карту', categoryId: null, internal: false,
+    })
+    const julyTransfers = base.operations.filter((o) => o.merchant === 'Перевод с карты на карту' && o.amount < 0 && o.date.startsWith('2025-07'))
+    expect(julyTransfers.map((o) => o.amount).sort((x, y) => x - y)).toEqual([-50_000, -11_000, -2_000])
+    const parsed: ParsedStatement = {
+      ...base,
+      operations: assignIds([...base.operations.map(({ id: _id, ...o }) => o), transfer('2025-06-20', -15_000), transfer('2025-07-20', -15_000)]),
+    }
+    await upload(B, parsed)
+    const free = async (p: Phone) => {
+      setActivePinia(p.pinia)
+      const f = useFinanceStore()
+      await f.pullHousehold(p.client)
+      await useOperationsStore().loadUploads(p.client)
+      const doc = f.householdDoc
+      return freeByFact({ ...doc, credits: f.credits }, doc.spendTotals ?? [], doc.spendCategories ?? [], '2025-07', useOperationsStore().uploads).amount
+    }
+
+    // До вопроса о переводах — ответы по умолчанию (доход, крупные повторы); «Свободно» — до и после «Записать».
+    setActivePinia(B.pinia)
+    for (let i = 0; i < 7; i++) {
+      const html = await screen(B.pinia, Start, '/start/questions')
+      if (html.includes('Перевод с карты на карту — это что?')) break
+      await screen(B.pinia, Start, '/start/questions', undefined, [act(html.includes('Это ваш доход?') ? 'answerIncome' : 'answerRecurring', {})])
+    }
+    const q = await screen(B.pinia, Start, '/start/questions')
+    expect(q).toContain('Перевод с карты на карту — это что?')
+    expect(q).toContain(`${money(15_000)} · примерно`)
+    await B.store.syncHousehold(B.client)
+    const before = { a: await free(A), b: await free(B) }
+    setActivePinia(B.pinia)
+    // «Записать» с «Другое регулярное» — главная кнопка карточки.
+    await screen(B.pinia, Start, '/start/questions', undefined, [act('answerRecurring')])
+    const ob = B.store.obligations.find((o) => o.name === 'Перевод с карты на карту')!
+    expect(ob).toMatchObject({ category: 'd4' })
+    // Июль отмечен переводом 15 000, а не первой строкой месяца.
+    expect(B.store.payments.filter((p) => p.targetId === ob.id && !p.deletedAt)).toEqual([expect.objectContaining({ period: '2025-07', amount: 15_000, source: 'statement' })])
+    await B.store.syncHousehold(B.client)
+
+    // «Свободно» июля у обоих: 15 000 было тратой — стало платежом месяца; 2 000, 11 000 и 50 000 — траты.
+    expect({ a: await free(A), b: await free(B) }).toEqual(before)
+    setActivePinia(B.pinia)
+    const transfers = useOperationsStore().all.filter((o) => o.merchant === 'Перевод с карты на карту' && o.amount < 0 && o.date.startsWith('2025-07'))
+    expect(transfers.map((o) => [o.amount, o.categoryId]).sort((x, y) => Number(x[0]) - Number(y[0]))).toEqual([
+      [-50_000, null], [-15_000, 'sc_subscriptions'], [-11_000, null], [-2_000, null],
+    ])
+  })
+
   it('«Введу вручную»: оклад и день без выписки — участник записан, итогов нет, дальше — к мечте', async () => {
     const A = await phone(server, st, 'a')
     await screen(A.pinia, Start, '/start', undefined, [act('manualNext', { manual: true, manualSalary: '500 000', manualPayday: '5' })])

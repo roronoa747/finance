@@ -1,6 +1,6 @@
 import type { Operation } from './types'
 import { categorize, normalizeCounterparty, normalizeMerchant } from './model'
-import { SALARY_TOLERANCE } from './matching'
+import { AMOUNT_TOLERANCE, ESTIMATE_TOLERANCE, SALARY_TOLERANCE } from './matching'
 
 /**
  * Первый запуск из выписки (Р-7, B2C-19): по операциям одной выписки приложение само находит
@@ -111,6 +111,18 @@ export function detectIncome(ops: Operation[]): IncomeCandidate[] {
   return out.sort((a, b) => Number(b.regular) - Number(a.regular) || b.amount - a.amount)
 }
 
+/** Операция месяца `month` со знаком `sign` в допуске суммы `amount`, ближайшая к ней. */
+function closestOfMonth(ops: Operation[], amount: number, month: string, tolerance: number, sign: 1 | -1): Operation | undefined {
+  let best: Operation | undefined
+  for (const o of ops) {
+    if (Math.sign(o.amount) !== sign || !o.date.startsWith(month)) continue
+    const gap = Math.abs(Math.abs(o.amount) - amount)
+    if (gap > amount * tolerance) continue
+    if (!best || gap < Math.abs(Math.abs(best.amount) - amount)) best = o
+  }
+  return best
+}
+
 /**
  * Операция, которой первый запуск отмечает зарплату месяца (возврат приёмки п. 7): приход
  * отправителя в месяце `month` в допуске оклада (`SALARY_TOLERANCE`, как правило зарплаты в
@@ -118,14 +130,17 @@ export function detectIncome(ops: Operation[]): IncomeCandidate[] {
  * не отмечается: иначе отметка и история врали бы суммой.
  */
 export function salaryOpOfMonth(ops: Operation[], salary: number, month: string): Operation | undefined {
-  let best: Operation | undefined
-  for (const o of ops) {
-    if (o.amount <= 0 || !o.date.startsWith(month)) continue
-    const gap = Math.abs(o.amount - salary)
-    if (gap > salary * SALARY_TOLERANCE) continue
-    if (!best || gap < Math.abs(best.amount - salary)) best = o
-  }
-  return best
+  return closestOfMonth(ops, salary, month, SALARY_TOLERANCE, 1)
+}
+
+/**
+ * Операция, которой первый запуск отмечает платёж месяца по «Записать» (возврат приёмки 2 п. 2):
+ * списание в допуске суммы, ближайшее к ней — ±2 %, у оценки (коммуналка) ±30 %, как вопрос
+ * «Недели» и правило платежа. Такого нет — месяц не отмечается: под «Переводом с карты на карту»
+ * Freedom первая строка месяца — любой перевод (2 000 при обязательстве 15 000).
+ */
+export function paymentOpOfMonth(ops: Operation[], amount: number, month: string, estimate = false): Operation | undefined {
+  return closestOfMonth(ops, amount, month, estimate ? ESTIMATE_TOLERANCE : AMOUNT_TOLERANCE, -1)
 }
 
 /**
