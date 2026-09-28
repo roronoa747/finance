@@ -147,6 +147,17 @@ describe('components/MarkSheet в DOM', () => {
     expect(seen.marked).toEqual([])
   })
 
+  it('критик возврата: кредит без ставки (из первого запуска) — в отмеченном нет «Из них … банку 0»', async () => {
+    const { pinia, store } = family()
+    const id = store.addCredit({ name: 'Оплата Kaspi Кредита', note: 'из выписки', principal: 1_200_000, annualRate: 0, rateUnknown: true, payment: 151_790, day: 24 })
+    store.markPaid('credit', id, 'a', { period: '2026-09', amount: 151_790, accountId: null, source: 'statement', opId: 'op-k' })
+    await mount(pinia, { open: 'paid', kind: 'credit', targetId: id, period: '2026-09', title: 'Оплата Kaspi Кредита' })
+    const text = dialog().textContent!
+    expect(text).toContain('из выписки')
+    expect(text).not.toContain('Из них')
+    expect(text).not.toContain('банку')
+  })
+
   it('«Снять отметку» → что вернётся → «Снять» — unmarkPaid: месяц снова не оплачен', async () => {
     const { pinia, store } = family()
     store.markPaid('obligation', 'rent', 'a', { period: '2026-09', accountId: 'card' })

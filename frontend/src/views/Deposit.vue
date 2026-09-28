@@ -4,7 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { PhArrowLeft } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { money, plain, parseMoney, ratePct } from '@/lib/money'
+import { money, plain, parseMoney, rateField, ratePct } from '@/lib/money'
 import { INFLATION, deposit as calcDeposit, realRate } from '@/lib/finance'
 
 import Card from '@/components/kit/Card.vue'
@@ -74,12 +74,6 @@ function onAmountCommit(text: string) {
     financeStore.setAccountAmount(account.value.id, parseMoney(text))
   }
 }
-
-/**
- * Ставка в поле — проценты до сотых без хвоста двоичной дроби: 0,14 × 100 в JS — 14,000000000000002
- * (хвост §4, приёмка Блока 3). Сотые остаются: у вкладов бывает 14,25 %.
- */
-const rateField = (r: number) => String(Math.round(r * 10_000) / 100).replace('.', ',')
 
 function onRateCommit(text: string) {
   if (account.value) {

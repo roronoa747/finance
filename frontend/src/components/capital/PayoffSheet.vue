@@ -43,7 +43,8 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
 
-const activePayoffCredit = computed(() => liveCredits(financeStore.credits).find((c) => c.id === props.creditId))
+// Кредит без ставки (B2C-19) калькулятор не открывает и по адресу `?payoff=`: срок и экономия с нулём врут.
+const activePayoffCredit = computed(() => liveCredits(financeStore.credits).find((c) => c.id === props.creditId && !c.rateUnknown))
 // Досрочка — тенговая сумма: у валютного счёта тенге по курсу, и следующая правка курса
 // или суммы в валюте молча стёрла бы сдвиг.
 const payAccounts = computed(() => payableAccounts(financeStore.accounts))

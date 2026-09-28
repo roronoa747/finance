@@ -2,7 +2,7 @@
 import { ref, computed, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { money, plain, parseMoney, ratePct } from '@/lib/money'
+import { money, plain, parseMoney, rateField, ratePct } from '@/lib/money'
 import { dayLabel, monthKey } from '@/lib/dates'
 import { creditOutlook, creditSchedule, creditTotals, liveCredits, nextCreditDue, planSchedule, type Due } from '@/lib/finance'
 import type { Credit } from '@/types/finance'
@@ -53,8 +53,6 @@ const activeSchedule = computed(() => {
   const withPlan = plan ? planSchedule(plan, financeStore.planState(), monthKey()) : null
   return withPlan?.creditId === c.id ? withPlan.rows : creditSchedule(c, financeStore.payments)
 })
-/** Ставка в поле правки — как в React: проценты с одним знаком. */
-const rateText = (r: number) => (r * 100).toFixed(1).replace('.', ',')
 
 // Поля пишутся по уходу из поля (React `CreditDialog`); остаток — только явным полем:
 // это сверка с банком, она ставит якорь (RP-06).
@@ -129,7 +127,7 @@ watch(
       </div>
 
       <p
-        v-if="activeCreditTotals && activeCreditTotals.count > 0"
+        v-if="activeCreditTotals && activeCreditTotals.count > 0 && !activeCredit.rateUnknown"
         class="-mt-1 mb-3 px-1 text-[12.5px] leading-relaxed text-ink-2 num"
       >
         За всё время: в долг {{ money(activeCreditTotals.body) }}, банку {{ money(activeCreditTotals.interest) }}
@@ -171,7 +169,7 @@ watch(
         </Field>
         <Field label="Ставка (ГЭСВ), % годовых">
           <NumFieldBlur
-            :initial="activeCredit.rateUnknown ? '' : rateText(activeCredit.annualRate)"
+            :initial="activeCredit.rateUnknown ? '' : rateField(activeCredit.annualRate)"
             kind="rate"
             :placeholder="activeCredit.rateUnknown ? 'уточните в договоре' : ''"
             class="mb-3"
@@ -183,7 +181,8 @@ watch(
         </Field>
       </template>
 
-      <Button variant="outline" class="mb-3 w-full bg-surface-2" @click="emit('payoff', activeCredit.id)">
+      <!-- Без ставки калькулятор досрочки показал бы «переплата 0 · экономия 0» (B2C-19) -->
+      <Button v-if="!activeCredit.rateUnknown" variant="outline" class="mb-3 w-full bg-surface-2" @click="emit('payoff', activeCredit.id)">
         Посчитать досрочное погашение
       </Button>
 

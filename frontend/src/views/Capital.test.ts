@@ -436,7 +436,7 @@ describe('PV-10: модалка кредита и калькулятор дос�
       expect(html).toContain(`>${label}</span>`)
     }
     expect(html).toContain(`value="${plain(1_000_000)}"`)
-    expect(html).toContain('value="33,0"')
+    expect(html).toContain('value="33"')
     expect(html).toContain('value="15"')
     const out = creditOutlook({ principal: 1_000_000, annualRate: 0.33, payment: 58_000 })
     expect(html).toContain('Платежей осталось')
@@ -544,7 +544,14 @@ describe('PV-10: модалка кредита и калькулятор дос�
     expect(sheet).toContain('Ставку уточните — без неё срок и переплату не посчитать.')
     expect(sheet).not.toContain('Платежей осталось')
     expect(sheet).toContain('placeholder="уточните в договоре"')
-    expect(sheet).not.toContain('value="0,0"')
+    expect(sheet).not.toMatch(/value="0(,0)?"/)
+    // Критик возврата: ни «банку 0» в строке платежа и «За всё время», ни калькулятора досрочки с «переплата 0».
+    store.markPaid('credit', id, 'a', { period: '2026-08', amount: 151_790, accountId: null, source: 'statement' })
+    const marked = await render(`/capital?credit=${id}`)
+    expect(marked).not.toMatch(/банку(\s|<[^>]*>)*0/)
+    expect(marked).not.toContain('За всё время')
+    expect(marked).not.toContain('Посчитать досрочное погашение')
+    expect(await render(`/capital?payoff=${id}`)).not.toContain('Досрочное погашение')
 
     // Настоящая рассрочка 0 % без признака — по-прежнему «без процентов».
     store.addCredit({ name: 'Рассрочка', principal: 240_000, annualRate: 0, payment: 20_000, day: 25 })

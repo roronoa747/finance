@@ -112,7 +112,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     // Следующий платёж — в новый день (сентябрь оплачен, дальше октябрь).
     expect(nextCreditDue(B.store.credits[0], B.store.payments)).toMatchObject({ period: '2026-10', day: 20 })
     const capitalB = await screen(B.pinia, Capital, '/capital?credit=loan')
-    expect(capitalB).toContain('value="25,0"')
+    expect(capitalB).toContain('value="25"')
     expect(capitalB).toContain('Платёж 20 октября')
 
     // Сверка с банком на втором телефоне — новая база и якорь; отметка до якоря в ней.

@@ -43,3 +43,9 @@ export function pct(part: number, whole: number): number {
 export function ratePct(r: number, digits = 2): string {
   return (r * 100).toFixed(digits).replace('.', ',') + '%'
 }
+
+/**
+ * Ставка в поле ввода — проценты до сотых без хвоста двоичной дроби и лишних нулей: 0.14 → «14»
+ * (0,14 × 100 в JS — 14,000000000000002), 0.1425 → «14,25». Вклад и кредит (хвост §4, приёмка Блока 3).
+ */
+export const rateField = (r: number) => String(Math.round(r * 10_000) / 100).replace('.', ',')

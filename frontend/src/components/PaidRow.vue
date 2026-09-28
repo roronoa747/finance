@@ -75,8 +75,8 @@ const due = computed(() => {
 /** Сумма в строке: у отмеченного — из отметки. */
 const shown = computed(() => (record.value ? record.value.amount : due.value))
 
-/** Кредит: сколько из суммы в долг и сколько банку — у отмеченного по записи (Р-8). */
-const split = computed(() => (credit.value && shown.value > 0 ? paymentSplit(record.value, credit.value, due.value) : null))
+/** Кредит: сколько из суммы в долг и сколько банку — у отмеченного по записи (Р-8); без ставки «банку 0» врёт (B2C-19). */
+const split = computed(() => (credit.value && !credit.value.rateUnknown && shown.value > 0 ? paymentSplit(record.value, credit.value, due.value) : null))
 
 /** Следующий неоплаченный платёж после этого месяца. */
 const next = computed(() => {
