@@ -5,7 +5,7 @@ import { apiClient, type ApiClient } from '@/api/client'
 import { useAuthStore, DEMO_TOKEN } from './auth'
 import { useFinanceStore } from './finance'
 import { BATCH_SIZE, PULL_LIMIT, toWire, useOperationsStore } from './operations'
-import { assignIds, draftSummary } from '@/lib/statements/model'
+import { assignIds, draftSummary, normalizeMerchant } from '@/lib/statements/model'
 import { parseStatement } from '@/lib/statements/parsers'
 import type { Operation, ParsedStatement } from '@/lib/statements/types'
 import type { OperationsPage, OperationWire, StatementUploadResponse } from '@/types/api'
@@ -465,6 +465,25 @@ describe('stores/operations — сопоставление с отметками
     await store.send(client)
     expect(store.lastAutoMarked).toBe(1)
     expect(finance.payments.find((p) => p.kind === 'salary' && p.period === '2026-10')).toMatchObject({ amount: 700_000, source: 'statement' })
+  })
+
+  it('возврат приёмки п. 1: выписка A не предлагает и не отмечает зарплату партнёра — ни вопросом, ни старым правилом', async () => {
+    const finance = family()
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    // 500 000 20-го — ровно оклад Аруны (b), у Ильяса (a) 700 000 10-го: на телефоне A вопроса нет.
+    store.setDraft(draftOf(statement('2026-09-01', '2026-09-20', op('2026-09-20', 500_000, 'С карты другого банка'))))
+    await store.send(client)
+    expect(store.pendingMatches).toEqual([])
+
+    // Правило «это зарплата Аруны», записанное в личный документ A до правки, месяц B не закрывает.
+    finance.addMerchantRule({ match: { merchant: normalizeMerchant('С карты другого банка') }, to: { payment: { kind: 'salary', targetId: 'b' } } }, 'a')
+    vi.setSystemTime(new Date('2026-10-20T07:00:00Z'))
+    store.setDraft(draftOf(statement('2026-10-01', '2026-10-20', op('2026-10-20', 500_000, 'С карты другого банка'))))
+    expect(store.draftAutoMatches).toEqual([])
+    await store.send(client)
+    expect(store.lastAutoMarked).toBe(0)
+    expect(finance.payments.filter((p) => p.kind === 'salary')).toEqual([])
   })
 
   it('viewer предложений не получает', async () => {

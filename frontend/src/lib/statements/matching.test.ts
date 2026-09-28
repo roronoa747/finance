@@ -52,19 +52,24 @@ describe('matchCandidates', () => {
     expect(matchCandidates(ops(op('2026-09-15', -58_000, 'K')), { ...state, credits: [small] }, [])[0]?.kind).toBe('credit')
   })
 
-  it('зарплата: приход ≈ оклад участника ±10 % в окне ±7 дней от дня; вопрос «Это зарплата <имя>?»', () => {
+  it('зарплата — только своя (слот владельца телефона): приход ≈ оклад ±10 % в окне ±7 дней от дня; вопрос «Это зарплата <имя>?»', () => {
     const list = ops(
       op('2026-09-11', 700_000, 'ТОО Работодатель'),
       op('2026-09-19', 460_000, 'ТОО Другой'), // Дана 500 000 −8 %
       op('2026-09-30', 700_000, 'ТОО Работодатель'), // далеко от 10-го (и от 10 октября)
       op('2026-09-11', 700_000, 'ИП', { kind: 'purchase' }), // приход не переводом — не зарплата
     )
-    const out = matchCandidates(list, state, [])
-    expect(out.map((c) => [c.kind, c.targetId, c.period])).toEqual([
-      ['salary', 'a', '2026-09'],
-      ['salary', 'b', '2026-09'],
-    ])
-    expect(out[0]).toMatchObject({ question: 'Это зарплата Ильяс?', meta: `${money(700_000)} · 11 сентября · поступление`, categoryId: null })
+    const at = (me?: 'a' | 'b') => matchCandidates(list, state, [], me).map((c) => [c.kind, c.targetId, c.period])
+    // Выписка Ильяса предлагает только его зарплату; приход 460 000 похож на оклад Даны, но её месяц
+    // отмечает она сама своей выпиской (RP-10) — иначе её «Пришла зарплата» пропала бы.
+    expect(at('a')).toEqual([['salary', 'a', '2026-09']])
+    expect(at('b')).toEqual([['salary', 'b', '2026-09']])
+    expect(at()).toEqual([])
+    expect(matchCandidates(list, state, [], 'a')[0]).toMatchObject({ question: 'Это зарплата Ильяс?', meta: `${money(700_000)} · 11 сентября · поступление`, categoryId: null })
+
+    // Оклады близки: свой приход в день зарплаты партнёра — всё равно своя зарплата, а не его.
+    const close = { ...state, people: [{ ...people[0], salary: 490_000, payday: 18 }, people[1]] }
+    expect(matchCandidates(ops(op('2026-09-20', 500_000, 'ТОО Работодатель')), close, [], 'a').map((c) => [c.kind, c.targetId])).toEqual([['salary', 'a']])
   })
 
   it('уже отмеченный месяц — без предложения; одна операция — одно предложение; одна пара «цель · месяц» — одно; внутренние и привязанные — мимо', () => {
@@ -102,13 +107,15 @@ describe('matchCandidates', () => {
       rule('Оплата Kaspi Кредита', { kind: 'credit', targetId: 'loan' }),
       rule('PEREVOD ARENDA', { kind: 'obligation', targetId: 'rent' }),
     ]
-    const at = (list: ReturnType<typeof ops>) => matchCandidates(list, two, rules).map((c) => [c.kind, c.targetId, c.period, c.confidence])
+    const at = (list: ReturnType<typeof ops>, me: 'a' | 'b' = 'a') => matchCandidates(list, two, rules, me).map((c) => [c.kind, c.targetId, c.period, c.confidence])
 
     // Зарплата по правилу: 700 000 — отмечается сама; пополнение 5 000 тем же продавцом — не зарплата
     // (и не вопрос); исходящий перевод тому же продавцу — тоже нет.
     expect(at(ops(op('2026-10-12', 700_000, 'С карты другого банка')))).toEqual([['salary', 'a', '2026-10', 'rule']])
     expect(at(ops(op('2026-10-05', 5_000, 'С карты другого банка')))).toEqual([])
     expect(at(ops(op('2026-10-10', -700_000, 'С карты другого банка')))).toEqual([])
+    // Правило «это зарплата Ильяса» на телефоне Даны не применяется: чужую зарплату не отмечаем.
+    expect(at(ops(op('2026-10-12', 700_000, 'С карты другого банка')), 'b')).toEqual([])
     // Кредит по правилу: строка другого кредита (25 000, 22-го) — не платёж Автокредита, а вопрос про Кредитку.
     expect(at(ops(op('2026-09-14', -58_000, 'Оплата Kaspi Кредита')))).toEqual([['credit', 'loan', '2026-09', 'rule']])
     expect(at(ops(op('2026-09-22', -25_000, 'Оплата Kaspi Кредита')))).toEqual([['credit', 'cc', '2026-09', 'likely']])

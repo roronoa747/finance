@@ -131,12 +131,12 @@ export const useOperationsStore = defineStore('operations', () => {
   const pendingMatches = computed<MatchCandidate[]>(() =>
     auth.isViewer
       ? []
-      : matchCandidates(recentOperations(all.value), matchState(), finance.merchantRules).filter(
+      : matchCandidates(recentOperations(all.value), matchState(), finance.merchantRules, me()).filter(
           (c) => c.confidence !== 'rule' && !declined.value.includes(matchKey(c)),
         ),
   )
   /** Строки черновика, которые отметятся сами при отправке — по правилам семьи. */
-  const draftAutoMatches = computed(() => matchCandidates(draftOps.value, matchState(), finance.merchantRules).filter((c) => c.confidence === 'rule'))
+  const draftAutoMatches = computed(() => matchCandidates(draftOps.value, matchState(), finance.merchantRules, me()).filter((c) => c.confidence === 'rule'))
 
   /**
    * Запись отметки по строке выписки: сумма операции, «не списывать» — выписка уже факт (Р-6);
@@ -179,7 +179,7 @@ export const useOperationsStore = defineStore('operations', () => {
   /** Автоотметка по правилам среди только что отправленных строк; сколько отметилось. */
   function autoMark(list: Operation[]): number {
     let n = 0
-    for (const c of matchCandidates(list, matchState(), finance.merchantRules)) {
+    for (const c of matchCandidates(list, matchState(), finance.merchantRules, me())) {
       if (c.confidence !== 'rule') continue
       const op = list.find((o) => o.id === c.opId)
       if (op && markByOperation(c, op)) n += 1

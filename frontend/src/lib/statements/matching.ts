@@ -1,4 +1,4 @@
-import type { Credit, Obligation, Payment, Person } from '@/types/finance'
+import type { Credit, Obligation, Payment, Person, PersonId } from '@/types/finance'
 import type { MerchantRule, Operation, PaymentRule } from './types'
 import { ruleFor } from './model'
 import { amountAt, creditDueAmount, dueIn, isSubscription, liveCredits, liveObligations, paidFor, salaryAt } from '@/lib/finance'
@@ -10,7 +10,9 @@ import { money } from '@/lib/money'
  * отметить?», «это зарплата Ильяса?». Чистые функции: предложения считаются здесь, запись
  * `payments` и правило пишет стор. Одна операция — не больше одного предложения (лучшее);
  * одна пара «цель · месяц» — не больше одного; отмеченный месяц и операции, уже привязанные к
- * отметке (`Payment.opId`, в том числе снятой), пропускаются.
+ * отметке (`Payment.opId`, в том числе снятой), пропускаются. Зарплату отмечает только сам
+ * участник (RP-10: «каждый отмечает свою»): кандидаты и правила зарплаты — только для `me`,
+ * слота владельца телефона (выписка — его); без `me` зарплата не предлагается.
  */
 export type MatchKind = PaymentRule['kind']
 
@@ -78,11 +80,13 @@ export function matchCandidates(
   ops: Operation[],
   state: { obligations?: Obligation[]; credits?: Credit[]; people?: Person[]; payments?: Payment[] },
   rules: MerchantRule[],
+  me?: PersonId,
 ): MatchCandidate[] {
   const payments = state.payments ?? []
   const obligations = liveObligations(state.obligations ?? [])
   const credits = liveCredits(state.credits ?? []).filter((c) => c.principal > 0)
-  const people = (state.people ?? []).filter((p) => !p.deletedAt)
+  // Чужая зарплата — не кандидат и правилом не применяется: иначе приход A закрыл бы месяц B.
+  const people = (state.people ?? []).filter((p) => !p.deletedAt && p.id === me)
   const linked = new Set(payments.map((p) => p.opId).filter((id): id is string => !!id))
   const taken = new Set<string>()
   const out: MatchCandidate[] = []
