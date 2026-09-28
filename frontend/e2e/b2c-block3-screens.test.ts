@@ -781,3 +781,146 @@ describe('e2e / B2C Блок 3 — часть 7 (возврат приёмки �
     expect(await screen(A.pinia, Statements, '/week')).not.toContain('разложить?')
   })
 })
+
+describe('e2e / B2C Блок 3 — часть 8 (повторная приёмка): у каждого телефона — только своя зарплата; «снял ошибочное — принял верное» видно партнёру', () => {
+  const storage = new Map<string, string>()
+  let server: FakeServer
+  let st: FakeStatements
+
+  const op = (date: string, amount: number, merchant: string): Omit<Operation, 'id'> => ({
+    bank: 'kaspi', date, amount, kind: amount < 0 ? 'purchase' : 'transfer-in', merchant, categoryId: null, internal: false,
+  })
+  const statement = (from: string, to: string, ...list: Omit<Operation, 'id'>[]): ParsedStatement => ({ bank: 'kaspi', from, to, operations: assignIds(list), skipped: 0 })
+
+  async function upload(p: Phone, parsed: ParsedStatement) {
+    setActivePinia(p.pinia)
+    const ops = useOperationsStore()
+    ops.setDraft([{ name: 'выписка.pdf', parsed }])
+    await ops.send(p.client)
+    await useFinanceStore().syncHousehold(p.client)
+    return ops
+  }
+
+  const salaries = (p: Phone) => p.store.payments.filter((x) => x.kind === 'salary' && !x.deletedAt).map((x) => [x.targetId, x.period, x.source]).sort()
+  const paymentRules = (p: Phone) =>
+    p.store.merchantRules.flatMap((r) => ('payment' in r.to && !r.deletedAt ? [[r.to.payment.kind, r.to.payment.targetId]] : []))
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => storage.set(k, String(v)),
+      removeItem: (k: string) => storage.delete(k),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    vi.useFakeTimers()
+    at('2026-09-20T07:00:00Z') // день зарплаты Аруны (500 000, 20-го); у Ильяса — 700 000, 10-го
+    server = fakeServer(planFamilyDoc())
+    st = fakeStatements()
+    vi.spyOn(apiClient, 'pushPrivateDoc').mockImplementation(async (rev, data) => ({ household_id: 'h-family', user_id: 'u-a', rev: rev + 1, data, updated_at: '' }))
+    // Наблюдатель снятых отметок досылает копию глобальным клиентом — у стенда его нет: «нет сети»,
+    // очередь остаётся и уходит клиентом телефона при следующей отправке.
+    vi.spyOn(apiClient, 'upsertOperations').mockRejectedValue(new TypeError('Failed to fetch'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('п. 1: в выписке каждого есть приход ≈ оклад партнёра — телефон спрашивает только о своей; «да» у обоих — две свои отметки и свои правила', async () => {
+    const A = await phone(server, st, 'a')
+    const B = await phone(server, st, 'b')
+    // Оба загрузили до ответов: иначе отметка A закрыла бы месяц и ошибка «чужой кандидат» не была бы видна.
+    const opsA = await upload(A, statement('2026-09-01', '2026-09-20', op('2026-09-10', 700_000, 'ТОО Работодатель'), op('2026-09-20', 500_000, 'Аруна Б.')))
+    const opsB = await upload(B, statement('2026-09-01', '2026-09-20', op('2026-09-10', 700_000, 'Ильяс А.'), op('2026-09-19', 500_000, 'ТОО Школа')))
+
+    setActivePinia(A.pinia)
+    expect(opsA.pendingMatches.map((c) => [c.kind, c.targetId, c.period])).toEqual([['salary', 'a', '2026-09']])
+    const weekA = await screen(A.pinia, Statements, '/week')
+    expect(weekA).toContain('Это зарплата Ильяс?')
+    expect(weekA).not.toContain('Это зарплата Аруна?')
+    setActivePinia(B.pinia)
+    expect(opsB.pendingMatches.map((c) => [c.kind, c.targetId, c.period])).toEqual([['salary', 'b', '2026-09']])
+    const weekB = await screen(B.pinia, Statements, '/week')
+    expect(weekB).toContain('Это зарплата Аруна?')
+    expect(weekB).not.toContain('Это зарплата Ильяс?')
+
+    // A отвечает «да» первым — месяц Аруны остаётся открытым, ей есть что отметить.
+    setActivePinia(A.pinia)
+    await opsA.acceptMatch(opsA.pendingMatches[0], A.client)
+    await A.store.syncHousehold(A.client)
+    expect(paymentRules(A)).toEqual([['salary', 'a']])
+    await B.store.pullHousehold(B.client)
+    expect(salaries(B)).toEqual([['a', '2026-09', 'statement']])
+    setActivePinia(B.pinia)
+    expect(opsB.pendingMatches.map((c) => [c.kind, c.targetId])).toEqual([['salary', 'b']])
+
+    await opsB.acceptMatch(opsB.pendingMatches[0], B.client)
+    await B.store.syncHousehold(B.client)
+    expect(paymentRules(B)).toEqual([['salary', 'b']])
+    await A.store.pullHousehold(A.client)
+    expect(salaries(A)).toEqual([['a', '2026-09', 'statement'], ['b', '2026-09', 'statement']])
+    // Приход партнёра в выписке A так и остался приходом: ни отметки, ни правила на него.
+    expect(A.store.payments.filter((x) => x.kind === 'salary' && x.targetId === 'b').map((x) => x.opId)).toEqual([opsB.all.find((o) => o.merchant === 'ТОО Школа')!.id])
+  })
+
+  it('критик возврата (1): аренда — «да» на ошибочную строку → «Снять отметку» → «да» на верную того же месяца; ошибочная остаётся тратой у A, на сервере и в «Свободно» партнёра', async () => {
+    const A = await phone(server, st, 'a')
+    const B = await phone(server, st, 'b')
+    const freeB = async () => {
+      setActivePinia(B.pinia)
+      await B.store.pullHousehold(B.client)
+      const ops = useOperationsStore()
+      await ops.loadUploads(B.client)
+      const doc = B.store.householdDoc
+      return freeByFact({ ...doc, credits: B.store.credits }, doc.spendTotals ?? [], doc.spendCategories ?? [], '2026-09', ops.uploads).amount
+    }
+    const monthA = () => Object.fromEntries(B.store.householdDoc.spendTotals!.filter((t) => t.id.startsWith('a:month:2026-09:')).map((t) => [t.categoryId, t.amount]))
+
+    // Аренда 220 000 5-го. Первая строка — долг другу той же суммой (ошибочная), вторая — аренда.
+    const parsed = statement('2026-09-01', '2026-09-20', op('2026-09-04', -220_000, 'ИП Ахметов'), op('2026-09-05', -221_000, 'ИП Жолдасбеков'))
+    const opsA = await upload(A, parsed)
+    const wrong = opsA.all.find((o) => o.merchant === 'ИП Ахметов')!
+    const right = opsA.all.find((o) => o.merchant === 'ИП Жолдасбеков')!
+    expect([wrong.categoryId, right.categoryId]).toEqual([null, null])
+    expect(opsA.pendingMatches.map((c) => [c.opId, c.kind, c.targetId, c.period])).toEqual([[wrong.id, 'obligation', 'rent', '2026-09']])
+    const free0 = await freeB()
+
+    // «Да» на ошибочную: месяц аренды оплачен её суммой, она — в плановом разделе.
+    setActivePinia(A.pinia)
+    await opsA.acceptMatch(opsA.pendingMatches[0], A.client)
+    await A.store.syncHousehold(A.client)
+    const free1 = await freeB()
+    expect(free1).toBe(free0 + 220_000)
+    expect(monthA()).toEqual({ sc_rent: 220_000, _unknown: 221_000 })
+
+    // «Снять отметку» → ошибочная снова трата, вопрос — о следующей строке того же месяца.
+    setActivePinia(A.pinia)
+    A.store.unmarkPaid('obligation', 'rent', '2026-09')
+    await nextTick()
+    expect(opsA.all.find((o) => o.id === wrong.id)!.categoryId).toBeNull()
+    expect(opsA.pendingMatches.map((c) => [c.opId, c.targetId, c.period])).toEqual([[right.id, 'rent', '2026-09']])
+
+    // «Да» на верную: платёж — она; ошибочная остаётся тратой (правило её продавца не снято — ТЗ).
+    await opsA.acceptMatch(opsA.pendingMatches[0], A.client)
+    await opsA.flush(A.client)
+    await A.store.syncHousehold(A.client)
+    expect(A.store.payments.filter((x) => x.kind === 'obligation' && !x.deletedAt).map((x) => [x.targetId, x.amount, x.opId])).toEqual([['rent', 221_000, right.id]])
+    expect(Object.fromEntries(opsA.all.map((o) => [o.merchant, o.categoryId]))).toEqual({ 'ИП Ахметов': null, 'ИП Жолдасбеков': 'sc_rent' })
+    expect(st.ops.get('u-a')!.get(wrong.id)!.category_id).toBeNull()
+    expect(st.ops.get('u-a')!.get(right.id)!.category_id).toBe('sc_rent')
+    // Партнёр: аренда оплачена верной строкой, ошибочная вычтена тратой — «Свободно» как при первой
+    // отметке (со старым releasedOps ошибочная ушла бы в аренду и «Свободно» выросло бы на 220 000).
+    const free3 = await freeB()
+    expect(monthA()).toEqual({ sc_rent: 221_000, _unknown: 220_000 })
+    expect(free3).toBe(free1)
+    expect(await screen(B.pinia, Dreams, '/')).toContain(money(free3))
+
+    // Повтор той же выписки ничего не возвращает в аренду.
+    await upload(A, parsed)
+    expect(Object.fromEntries(opsA.all.map((o) => [o.merchant, o.categoryId]))).toEqual({ 'ИП Ахметов': null, 'ИП Жолдасбеков': 'sc_rent' })
+    expect(await freeB()).toBe(free1)
+  })
+})
