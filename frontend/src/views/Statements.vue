@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PhFileArrowUp } from '@phosphor-icons/vue'
 import Button from '@/components/ui/Button.vue'
+import { buttonVariants } from '@/components/ui/button'
 import Input from '@/components/ui/Input.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Card from '@/components/kit/Card.vue'
@@ -21,14 +22,27 @@ import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore, type Draft, type DraftFile } from '@/stores/operations'
 import { money, parseMoney } from '@/lib/money'
-import { MONTHS_GEN, monthKey, monthTitle, weekKey, weekRange } from '@/lib/dates'
+import { cn } from '@/lib/utils'
+import { dayLabel, monthFrom, monthKey, monthTitle, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
 import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import { draftSummary, partnerHints, picture, pictureTotal, ruleMatchOf, unknownGroups, type UnknownGroup } from '@/lib/statements/model'
 import { parseStatement, StatementFormatError } from '@/lib/statements/parsers'
 import type { MerchantRule } from '@/lib/statements/types'
 import type { PersonId } from '@/types/finance'
-import { amountAt, keepQuestions, monthEndAsk, salaryOpen, spendRows, subscriptionYearly, untilPayday, weekPicture, weekVersusPrev } from '@/lib/finance'
-import { MONTH_END_KEY, readStorage, writeStorage } from '@/lib/storage'
+import {
+  allocationFor,
+  keepCard,
+  keepQuestions,
+  monthEndAsk,
+  salaryOpen,
+  spendCategoryName,
+  spendRows,
+  untilPayday,
+  weekPicture,
+  weekTag,
+  weekVersusPrev,
+} from '@/lib/finance'
+import { readMonthEnd, writeMonthEnd } from '@/lib/storage'
 
 /**
  * «Неделя» (DESIGN.md §2 g2, §3; B2C-07 → B2C-21): что за неделя и кто загрузил, загрузка и
@@ -61,12 +75,10 @@ const categories = computed(() => {
   const list = finance.householdDoc.spendCategories?.filter((c) => !c.deletedAt)
   return (list?.length ? list : DEFAULT_SPEND_CATEGORIES).slice().sort((a, b) => a.order - b.order)
 })
-const categoryName = (id: string) =>
-  id === UNKNOWN_CATEGORY ? 'Не разобрано' : (categories.value.find((c) => c.id === id)?.name ?? 'Прочее')
+const categoryName = (id: string) => spendCategoryName(categories.value, id)
 const people = computed(() => finance.people.filter((p) => !p.deletedAt))
 const personName = (slot: string) => people.value.find((p) => p.id === slot)?.name ?? 'Участник'
 const shortDate = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`
-const names = (list: { name: string }[]) => list.map((p) => p.name).join(' и ')
 
 /* ---------- черновик (предпросмотр) ---------- */
 const summary = computed(() => draftSummary(store.draftOps, (id) => id in store.ops))
@@ -81,16 +93,9 @@ const spendTotals = computed(() => finance.householdDoc.spendTotals ?? [])
 const spendCategories = computed(() => finance.householdDoc.spendCategories ?? [])
 const pic = computed(() => weekPicture(spendTotals.value, spendCategories.value, people.value, week, store.uploads))
 const hasUploads = computed(() => store.uploads.length > 0)
-const dayOf = (iso: string) => Number(iso.slice(8, 10))
-const genOf = (iso: string) => MONTHS_GEN[Number(iso.slice(5, 7)) - 1]
-const rangeLabel = (r: { from: string; to: string }) => (genOf(r.from) === genOf(r.to) ? `${dayOf(r.from)}–${dayOf(r.to)} ${genOf(r.to)}` : `${dayOf(r.from)} ${genOf(r.from)} – ${dayOf(r.to)} ${genOf(r.to)}`)
-const weekTitle = computed(() => `Эта неделя · ${rangeLabel(pic.value.range)}`)
-const weekTag = computed<{ text: string; tone: 'ok' | 'warn' } | null>(() => {
-  const p = pic.value
-  if (p.missing.length && p.uploaded.length) return { text: `без выписки ${names(p.missing)}`, tone: 'warn' }
-  if (p.uploaded.length) return { text: people.value.length > 1 ? 'по выпискам обоих' : 'по выписке', tone: 'ok' }
-  return null
-})
+// Шапка и тег недели — те же, что на главном (`weekRangeLabel`, `weekTag`).
+const weekTitle = computed(() => `Эта неделя · ${weekRangeLabel(pic.value.range)}`)
+const picTag = computed(() => weekTag(pic.value, people.value.length))
 const weekSegments = computed(() => pic.value.rows.map((r) => ({ id: r.categoryId, name: r.name, amount: r.amount, share: r.share, color: r.color })))
 // Итог недели против прошлой (§6): «на N % меньше прошлой» / «больше».
 const weekTotalOf = (key: string) => spendRows(spendTotals.value, [], { kind: 'week', period: key }).total
@@ -108,6 +113,7 @@ const mineThisWeek = computed(() => {
   return store.uploads.some((u) => u.slot === me.value && u.period_to >= from && u.period_from <= to)
 })
 // Разделы за неделю и месяц по итогам обоих (B2C-07): раскрытие — свои продавцы раздела и раздел задним числом.
+// Таблица — за «Подробнее» (правило 12: расчёты свёрнуты, `<details>` как у цели), главный поток — итог недели.
 const rows = computed(() => picture(spendTotals.value, week, month))
 const totals = computed(() => pictureTotal(rows.value))
 const monthOps = computed(() => store.all.filter((o) => o.date.startsWith(month)))
@@ -118,17 +124,26 @@ const openGroups = computed(() =>
 const pastWeeks = computed(() =>
   [1, 2, 3, 4]
     .map((i) => weekKey(new Date(Date.now() - i * 7 * 86_400_000)))
-    .map((key) => ({ key, label: rangeLabel(weekRange(key)), total: weekTotalOf(key) }))
+    .map((key) => ({ key, label: weekRangeLabel(weekRange(key)), total: weekTotalOf(key) }))
     .filter((w) => w.total > 0),
 )
 
 /* ---------- решения по одному ---------- */
 const groupKey = (g: UnknownGroup) => JSON.stringify(g.match)
 
+// «Остались деньги?» (Р-19): ответ — до конца месяца, на устройстве; раскладка остатка месяца
+// в общем документе (её ключ — на семью) — тоже ответ: партнёр второй раз не спрашивается.
+const answeredLocal = ref<string | null>(readMonthEnd())
+const answeredMonthEnd = computed(() =>
+  allocationFor(finance.allocations, { source: 'rest', sourceId: month, period: month }) ? month : answeredLocal.value,
+)
+// «Разложить» с главного (`/week?rest=1`) — карточка остатка первой; после ответа — обычная очередь.
+const restFirst = computed(() => route.query.rest === '1' && canUpload.value && monthEndAsk(answeredMonthEnd.value))
+
 // 1. Сопоставления с отметками (Р-6, B2C-15).
 const deferredMatches = ref<string[]>([])
 const matchQueue = computed(() => store.pendingMatches.filter((c) => !deferredMatches.value.includes(matchKey(c))))
-const match = computed<MatchCandidate | null>(() => (canUpload.value ? (matchQueue.value[0] ?? null) : null))
+const match = computed<MatchCandidate | null>(() => (canUpload.value && !restFirst.value ? (matchQueue.value[0] ?? null) : null))
 const matchActions = computed(() =>
   match.value?.kind === 'salary'
     ? { primary: 'Да, зарплата', secondary: 'Нет', ghost: 'Потом' }
@@ -142,7 +157,7 @@ function deferMatch(c: MatchCandidate) {
 const deferredUnknown = ref<string[]>([])
 const skipUnknown = ref(false)
 const unknownQueue = computed(() => (canUpload.value && !skipUnknown.value ? unknownGroups(monthOps.value).filter((g) => !deferredUnknown.value.includes(groupKey(g))) : []))
-const unknownCard = computed(() => (match.value ? null : (unknownQueue.value[0] ?? null)))
+const unknownCard = computed(() => (match.value || restFirst.value ? null : (unknownQueue.value[0] ?? null)))
 const unknownTotal = computed(() => unknownGroups(monthOps.value).length)
 const moreChips = ref(false)
 const chipCategories = computed(() => (moreChips.value ? categories.value : categories.value.slice(0, TOP_CHIPS)))
@@ -155,7 +170,7 @@ const lastDate = (g: UnknownGroup) => {
     .map((o) => o.date)
     .sort()
     .at(-1)
-  return last ? `${dayOf(last)} ${genOf(last)}` : ''
+  return last ? dayLabel(Number(last.slice(8, 10)), last.slice(0, 7)) : ''
 }
 const unknownMeta = (g: UnknownGroup) => `${g.count} раз · ${money(g.amount)}${lastDate(g) ? ` · последний — ${lastDate(g)}` : ''}`
 function deferUnknown(g: UnknownGroup) {
@@ -164,8 +179,14 @@ function deferUnknown(g: UnknownGroup) {
 }
 
 // 3. «Оставить подписку?» (Р-20) — по правилам keepQuestions; «Подумать» — до следующего открытия.
+// Тексты и «за год» — `keepCard`, как на главном: у годовой — цена продления, «N % пути до мечты».
 const deferredKeep = ref<string[]>([])
-const keep = computed(() => (canUpload.value && !match.value && !unknownCard.value ? (keepQuestions(finance.obligations).find((o) => !deferredKeep.value.includes(o.id)) ?? null) : null))
+const keep = computed(() =>
+  canUpload.value && !match.value && !unknownCard.value && !restFirst.value
+    ? (keepQuestions(finance.obligations).find((o) => !deferredKeep.value.includes(o.id)) ?? null)
+    : null,
+)
+const keepText = computed(() => (keep.value ? keepCard(keep.value, finance.goals, finance.payments) : null))
 const cancelling = ref(false)
 function onKeep(action: 'keep' | 'cancel' | 'later') {
   const o = keep.value
@@ -185,13 +206,14 @@ function onKeep(action: 'keep' | 'cancel' | 'later') {
   cancelling.value = false
 }
 
-// 4. «Остались деньги?» (Р-19) — последние дни месяца; ответ — до конца месяца, на устройстве.
-const answeredMonthEnd = ref<string | null>(readStorage<string | null>(MONTH_END_KEY, null))
-const monthEnd = computed(() => canUpload.value && !match.value && !unknownCard.value && !keep.value && monthEndAsk(answeredMonthEnd.value))
+// 4. «Остались деньги?» — последние дни месяца (ответ — `answeredMonthEnd` выше).
+const monthEnd = computed(
+  () => restFirst.value || (canUpload.value && !match.value && !unknownCard.value && !keep.value && monthEndAsk(answeredMonthEnd.value)),
+)
 const restAmount = ref('')
 function answerRest(go: boolean) {
-  answeredMonthEnd.value = month
-  writeStorage(MONTH_END_KEY, month)
+  answeredLocal.value = month
+  writeMonthEnd(month)
   const amount = parseMoney(restAmount.value)
   if (go && amount > 0) void router.push(`/week/salary?from=rest&amount=${amount}&period=${month}`)
 }
@@ -321,12 +343,14 @@ onMounted(() => {
           <div class="flex justify-between"><span class="text-ink-2">Между своими</span><span class="num text-ink-3">{{ money(summary.internal) }}</span></div>
         </Card>
 
+        <!-- Подсказка о партнёре (DESIGN.md §6) — тихие кнопки: главная в разборе одна, «Отправить» -->
         <DecisionCard
           v-for="h in hints"
           :key="h.counterparty"
-          :question="`«${h.label}» — это ${personName(h.person)}? Переводы между вами не считаются тратами.`"
-          :actions="{ primary: `Да, это ${personName(h.person)}`, ghost: 'Нет' }"
-          @primary="store.answer({ counterparty: h.counterparty }, { internal: true })"
+          question="Это перевод партнёру?"
+          :meta="`«${h.label}» — похоже, это ${personName(h.person)}. Тогда переводы между вами — не траты.`"
+          :actions="{ secondary: `Да, это ${personName(h.person)}`, ghost: 'Нет' }"
+          @secondary="store.answer({ counterparty: h.counterparty }, { internal: true })"
           @ghost="dismissedHints = [...dismissedHints, h.counterparty]"
         />
 
@@ -345,7 +369,7 @@ onMounted(() => {
               </div>
             </div>
           </Card>
-          <p class="px-1 text-[12px] text-ink-3">Можно пропустить — останется «не разобрано». Ответ запомним — следующие выписки разложатся сами.</p>
+          <p class="px-1 text-[12px] text-ink-3">Можно пропустить — останется «не разобрано».</p>
         </template>
       </template>
 
@@ -358,8 +382,8 @@ onMounted(() => {
     <!-- НЕДЕЛЯ -->
     <template v-else>
       <Section :title="weekTitle">
-        <template v-if="weekTag" #action>
-          <Tag :tone="weekTag.tone">{{ weekTag.text }}</Tag>
+        <template v-if="picTag" #action>
+          <Tag :tone="picTag.tone">{{ picTag.text }}</Tag>
         </template>
       </Section>
 
@@ -370,7 +394,8 @@ onMounted(() => {
           <Card v-if="!mineThisWeek" tight class="border-brand">
             <b class="block text-[15px] font-semibold text-ink">Ваша выписка ещё не загружена</b>
             <p class="mt-0.5 text-[13px] text-ink-2">PDF из приложения Kaspi или Freedom. Разбор на телефоне, файл никуда не уходит.</p>
-            <Button class="mt-3 w-full" :disabled="reading" @click="fileInput?.click()">
+            <!-- Ниже карточка решения со своей главной кнопкой — загрузка тихая (одна брендовая на экране) -->
+            <Button class="mt-3 w-full" :variant="match || keep || monthEnd ? 'secondary' : 'default'" :disabled="reading" @click="fileInput?.click()">
               <PhFileArrowUp :size="16" />
               {{ reading ? 'Читаем выписку…' : 'Загрузить выписку' }}
             </Button>
@@ -397,11 +422,7 @@ onMounted(() => {
         @primary="store.acceptMatch(match)"
         @secondary="store.declineMatch(match)"
         @ghost="deferMatch(match)"
-      >
-        <template #inner>
-          {{ match.kind === 'salary' ? 'Зарплату запомним по получателю: дальше отметится сама.' : '«Да» запомним по названию: дальше платёж отметится сам, а вы увидите его в «Деньгах».' }}
-        </template>
-      </DecisionCard>
+      />
 
       <DecisionCard
         v-else-if="unknownCard"
@@ -428,21 +449,21 @@ onMounted(() => {
       </DecisionCard>
 
       <DecisionCard
-        v-else-if="keep"
-        :question="`Оставить подписку «${keep.name}»?`"
-        :meta="`${money(amountAt(keep, month))} · ${keep.every === 'year' ? 'раз в год' : 'каждый месяц'}`"
+        v-else-if="keep && keepText"
+        :question="keepText.question"
+        :meta="keepText.meta"
         :actions="cancelling ? { primary: 'Отменить подписку', ghost: 'Не сейчас' } : { primary: 'Оставить', secondary: 'Отписаться', ghost: 'Подумать' }"
         @primary="onKeep(cancelling ? 'cancel' : 'keep')"
         @secondary="onKeep('cancel')"
         @ghost="cancelling ? (cancelling = false) : onKeep('later')"
       >
-        <template #inner>За год — {{ money(subscriptionYearly(keep, month)) }}</template>
+        <template #inner>{{ keepText.inner }}</template>
       </DecisionCard>
 
       <DecisionCard
         v-else-if="monthEnd"
         question="Остались деньги?"
-        :meta="`Конец ${monthTitle(month).split(' ')[0].toLowerCase()} — остаток разложим в мечты`"
+        :meta="`Конец ${monthFrom(month, false)} — остаток разложим в мечты`"
         :actions="{ primary: 'Разложить', ghost: 'Нет' }"
         :disabled="false"
         @primary="answerRest(true)"
@@ -473,10 +494,10 @@ onMounted(() => {
       <EmptyState v-else title="Картины недели пока нет" text="Загрузите первую выписку — картина появится здесь." />
       <p v-if="hasUploads && missing.length" class="px-1 text-[12.5px] text-ink-3">За эту неделю без выписки {{ missing.join(', ') }}.</p>
 
-      <!-- Разделы за неделю и месяц: раскрытие — свои продавцы и раздел задним числом -->
-      <template v-if="rows.length">
-        <Section title="По разделам" />
-        <Card flush>
+      <!-- Разделы за неделю и месяц — за «Подробнее» (правило 12); раскрытие — свои продавцы и раздел задним числом -->
+      <details v-if="rows.length">
+        <summary :class="cn(buttonVariants({ variant: 'ghost' }), 'flex w-full list-none [&::-webkit-details-marker]:hidden')">Подробнее: по разделам</summary>
+        <Card flush class="mt-2">
           <div class="grid grid-cols-[1fr_auto_auto] gap-x-3 border-b border-line px-3.5 py-2 text-[12px] text-ink-3">
             <span>Раздел</span><span class="w-[86px] text-right">Неделя</span><span class="w-[96px] text-right">{{ monthTitle(month).split(' ')[0] }}</span>
           </div>
@@ -511,7 +532,7 @@ onMounted(() => {
             <span class="w-[96px] text-right num text-ink">{{ money(totals.month) }}</span>
           </div>
         </Card>
-      </template>
+      </details>
 
       <!-- Прошлые недели -->
       <template v-if="pastWeeks.length">
