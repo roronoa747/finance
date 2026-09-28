@@ -51,10 +51,12 @@ describe.skipIf(!built)('PWA-сборка заменяет React-PWA (MGV-17)', 
     expect(js).toContain('getRegistration')
   })
 
-  it('иконка — привычная иконка React-PWA', () => {
+  it('иконка в цвет бренда: заливка = theme_color манифеста (направление А, B2C-12)', () => {
+    // Сверка с React-эталоном ушла вместе с паритетом React→Vue (прод на Go + Vue с 2026-09-24).
     const icon = readFileSync(resolve(dist, 'favicon.svg'), 'utf-8')
-    const reactIcon = readFileSync(resolve(import.meta.dirname, '../../public/favicon.svg'), 'utf-8')
-    expect(icon).toBe(reactIcon)
+    const manifest = JSON.parse(readFileSync(resolve(dist, 'manifest.webmanifest'), 'utf-8'))
+    const fill = /<rect width="64" height="64" rx="14" fill="(#[0-9A-Fa-f]{6})"/.exec(icon)?.[1]
+    expect(fill?.toUpperCase()).toBe(manifest.theme_color.toUpperCase())
   })
 
   it('шрифты Piazzolla и Golos Text подключены (DESIGN.md §4), Onest убран', () => {
