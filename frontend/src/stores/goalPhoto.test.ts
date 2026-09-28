@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useFinanceStore, DEMO_HOUSEHOLD } from './finance'
-import { GOAL_TEMPLATES, templateById } from '@/lib/goalTemplates'
+import { GOAL_TEMPLATES, templateById, templateCredit, templateImageUrl } from '@/lib/goalTemplates'
 import { attachFile, attachTemplate, retryTemplatePhotos, type PhotoDeps } from '@/lib/photos/goalPhoto'
 
 /** Фото цели в сторе и оркестрация «шаблон → скачать → сжать → загрузить» (B2C-17). */
@@ -61,10 +61,10 @@ describe('stores/finance — фото цели и шаблоны', () => {
     const id = store.addGoal({ name: 'Мечта', need: 1_000_000, monthly: 50_000, hue: 'blue' })
     const d = deps()
     expect(await attachTemplate(store, id, templateById('japan')!, d)).toBe('uploaded')
-    expect(d.fetched).toEqual(['https://images.unsplash.com/21/string-lights.JPG?w=1200&q=80&fm=jpg&fit=crop'])
+    expect(d.fetched).toEqual([templateImageUrl(templateById('japan')!, 1200)])
     expect(d.uploaded[0].size).toBeLessThanOrEqual(150 * 1024)
     expect(store.goals.find((g) => g.id === id)).toMatchObject({
-      template: 'japan', hue: 'plum', photoId: 'ph-1', photoCredit: { author: 'Matthew Skinner', url: 'https://unsplash.com/photos/t05kfHeygbE' },
+      template: 'japan', hue: 'plum', photoId: 'ph-1', photoCredit: templateCredit(templateById('japan')!),
     })
   })
 
@@ -84,7 +84,7 @@ describe('stores/finance — фото цели и шаблоны', () => {
 
     const online = deps()
     expect(await retryTemplatePhotos(store, GOAL_TEMPLATES, online)).toBe(1)
-    expect(store.goals.find((g) => g.id === id)).toMatchObject({ photoId: 'ph-1', photoCredit: { author: 'Andrew Ridley' } })
+    expect(store.goals.find((g) => g.id === id)).toMatchObject({ photoId: 'ph-1', photoCredit: templateCredit(templateById('bali')!) })
     // Уже с картинкой — повторно не грузится.
     expect(await retryTemplatePhotos(store, GOAL_TEMPLATES, online)).toBe(0)
     expect(online.uploaded).toHaveLength(1)

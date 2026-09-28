@@ -19,7 +19,7 @@ import type { OperationWire } from '../src/types/api'
 import Dreams from '../src/views/Dreams.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
 import Wishes from '../src/views/Wishes.vue'
-import { templateById } from '../src/lib/goalTemplates'
+import { templateById, templateCredit } from '../src/lib/goalTemplates'
 import type { PdfRow } from '../src/lib/statements/pdf'
 import { parseStatement } from '../src/lib/statements/parsers'
 import { landingPath } from '../src/router/landing'
@@ -344,7 +344,7 @@ describe('e2e / B2C Блок 3 — часть 3: мечта из шаблона 
     expect(fetched[0]).toContain('images.unsplash.com/')
     const goalA = A.store.goals.find((g) => g.id === id)!
     expect(goalA.photoId).toMatch(/^00000000-0000-4000-8000-/)
-    expect(goalA.photoCredit).toEqual({ author: 'Matthew Skinner', url: 'https://unsplash.com/photos/t05kfHeygbE' })
+    expect(goalA.photoCredit).toEqual(templateCredit(templateById('japan')!))
     expect(pv.photos.get(goalA.photoId!)).toMatchObject({ user: 'u-a', hidden: false, type: 'image/webp' })
     await A.store.syncHousehold(A.client)
 
@@ -356,7 +356,7 @@ describe('e2e / B2C Блок 3 — часть 3: мечта из шаблона 
     const screenB = await screen(B.pinia, GoalDetail, `/goals/${id}`)
     // Имя цели — в шапке оболочки (screen() её не рисует); в герое — «накоплено из нужно» (правило 12, критик Б3).
     expect(screenB).toContain(`${plain(goalB.have)} из ${money(goalB.need)}`)
-    expect(screenB).toContain('Matthew Skinner')
+    expect(screenB).toContain(templateById('japan')!.photo.author)
     expect(screenB).toContain(`по ${money(150_000)} в месяц · осталось 12 взносов`)
     expect(screenB).toContain('Сделать главной')
 

@@ -199,7 +199,7 @@ describe('views/GoalNew.vue — «Новая мечта» (B2C-18, SSR)', () => 
     expect(html).toContain(`при свободных ≈ ${money(free)}`)
     expect(html).toContain(`будет вашей в ${monthIn(addMonths('2026-09', 11))}`)
     expect(html).toContain('Путешествие · Япония')
-    expect(html).toContain('Matthew Skinner')
+    expect(html).toContain(templateById('japan')!.photo.author)
     expect(html).toContain('Готово — к мечте')
 
     const custom = await renderScreen(GoalNew, '/goals/new', undefined, [
