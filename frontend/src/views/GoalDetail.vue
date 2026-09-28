@@ -165,18 +165,27 @@ const photoSrc = usePhoto(() => goal.value?.photoId)
 const pickerOpen = ref(false)
 const photoNote = ref<string | null>(null)
 
+// Замена фото: новое загружено и записано — прежнее удаляется с сервера, иначе байты остаются сиротой (критик Блока 3).
+function dropReplaced(old: string | null | undefined) {
+  if (old && goal.value?.photoId !== old) void deletePhoto(old).catch(() => {})
+}
+
 async function onTemplate(t: GoalTemplate) {
   pickerOpen.value = false
   if (!goal.value) return
+  const old = goal.value.photoId
   const result = await attachTemplate(financeStore, goal.value.id, t)
   photoNote.value = result === 'uploaded' ? null : 'Картинка появится при сети.'
+  if (result === 'uploaded') dropReplaced(old)
 }
 
 async function onFile(file: File) {
   pickerOpen.value = false
   if (!goal.value) return
+  const old = goal.value.photoId
   const ok = await attachFile(financeStore, goal.value.id, file)
   photoNote.value = ok ? null : 'Фото не загрузилось — попробуйте при сети.'
+  if (ok) dropReplaced(old)
 }
 
 /** Убрать фото: сначала из документа (партнёр перестаёт видеть), затем с сервера. */
