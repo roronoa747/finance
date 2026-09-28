@@ -10,6 +10,7 @@ import Budget from '../src/views/Budget.vue'
 import Capital from '../src/views/Capital.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
 import SyncBadge from '../src/components/SyncBadge.vue'
+import Settings from '../src/views/Settings.vue'
 import AppearancePanel from '../src/components/AppearancePanel.vue'
 import { authAs } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
@@ -157,7 +158,7 @@ describe('e2e / PV Блок 5 — оболочка на двух телефон�
       expect(warn.mock.calls.map((c) => String(c[1]))).toEqual(['HTTP error 502 Bad Gateway', 'Failed to fetch'])
     })
 
-    it('Б-14: одиночка — 403 создания кода текстом под кнопкой на Обзоре и в шторке синка; viewer не видит ни баннера, ни приглашения, ни «Начать бюджет заново»', async () => {
+    it('Б-14: одиночка — 403 создания кода текстом под кнопкой в «С кем» Настроек; viewer не видит ни баннера, ни приглашения, ни «Начать бюджет заново»', async () => {
       server.data.people = server.data.people.slice(0, 1)
       const A = await phone(server)
       on(A)
@@ -165,12 +166,14 @@ describe('e2e / PV Блок 5 — оболочка на двух телефон�
       vi.stubGlobal('fetch', vi.fn(async () => goReply(403, 'only full members can create invites')))
       const text = 'Код может создать только участник с правом правки — у вас только просмотр.'
 
-      // Баннера приглашения на главном больше нет (B2C-14) — код создаётся в шторке синка.
-      const sheet = await act(A.pinia, SyncBadge, '/budget', 'makeInvite', { open: true })
-      const html = await screen(A.pinia, SyncBadge, '/budget', undefined, [screenMixin({ open: true, inviteError: sheet.inviteError })])
-      expect(html).toContain('Пригласить второго')
+      // Баннера приглашения на главном больше нет (B2C-14); дом приглашения — «С кем» в Настройках
+      // (приёмка Блока 3 п. 8), из шторки синка блок ушёл (ревью Блока 3, Н-11).
+      const settings = await act(A.pinia, Settings, '/settings', 'makeInvite')
+      const html = await screen(A.pinia, Settings, '/settings', undefined, [screenMixin({ inviteError: settings.inviteError })])
+      expect(html).toContain('Пригласить партнёра')
       expect(html).toContain(text)
       expect(visible(html)).not.toMatch(ENGLISH)
+      expect(await screen(A.pinia, SyncBadge, '/budget', undefined, [screenMixin({ open: true })])).not.toContain('Пригласить второго')
 
       const V = await phone(server)
       on(V)
@@ -180,6 +183,7 @@ describe('e2e / PV Блок 5 — оболочка на двух телефон�
       expect(vSheet).toContain('только просмотр')
       expect(vSheet).not.toContain('Пригласить второго')
       expect(vSheet).not.toContain('Начать бюджет заново')
+      expect(await screen(V.pinia, Settings, '/settings')).not.toContain('Пригласить партнёра')
     })
 
     it('Б-18: у B неотправленная офлайн-правка, A стёр всё → сеть у B: сброс сильнее — сервер и B пусты, B в мастере, покупка B не «воскресла»', async () => {
