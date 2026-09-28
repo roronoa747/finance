@@ -7,7 +7,7 @@ import { startSyncEngine } from './stores/syncEngine'
 import { watchServiceWorkerUpdates } from './lib/pwa'
 import { applyCurrentPalette, watchSystemTheme } from './lib/theme'
 
-// Тема — до монтирования: на /access и /setup тоже, без вспышки светлой.
+// Тема — до монтирования: на /access и /start тоже, без вспышки светлой.
 applyCurrentPalette()
 watchSystemTheme()
 

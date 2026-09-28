@@ -4,8 +4,8 @@ import { cn } from '@/lib/utils'
 import Field from '@/components/kit/Field.vue'
 
 /**
- * Ряд образцов оттенков, выбранный — `aria-pressed`: «Цвет» цели в окнах создания
- * (`Goals.vue`) и правки (`GoalSheet`), «Цвета разделов» в «Оформлении» (подпись — имя раздела).
+ * Ряд образцов оттенков, выбранный — `aria-pressed`: «Цвет» цели в окне правки
+ * (`GoalSheet`), «Цвета разделов» в «Оформлении» (подпись — имя раздела).
  */
 withDefaults(defineProps<{ modelValue: HueKey; label?: string }>(), { label: 'Цвет' })
 

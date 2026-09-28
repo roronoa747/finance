@@ -35,7 +35,7 @@ const History = () => import('@/views/History.vue')
  * «Деньги» `/money`, второй уровень под `/money/*`, `/settings`. Старые адреса установленных
  * PWA и ссылок — редиректы с сохранением query (`/capital?credit=x` → `/money/capital?credit=x`).
  * `/ritual` без параметров — «Неделя»; с параметрами (раскладка зарплаты, остатка, освободившихся
- * денег) — `/week/salary`, где до B2C-21 живёт прежний экран.
+ * денег) — `/week/salary` (раскладка `WeekSalary`, B2C-21).
  */
 const ritualRedirect = (to: { query: Record<string, unknown> }): RouteLocationRaw =>
   Object.keys(to.query).length ? { path: '/week/salary', query: to.query as Record<string, string> } : '/week'
