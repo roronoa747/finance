@@ -141,7 +141,8 @@ describe('RP-10: «Пришла зарплата» (SSR)', () => {
     const html = await renderScreen(WeekSalary, '/ritual?from=salary&person=a&period=2026-09')
     expect(html).toContain(`Куда направить ${money(total)}`)
     expect(html).toContain(`Зарплата пришла — ${money(700_000)}`)
-    expect(html).toContain('Решение разовое')
+    // Абзац «Решение разовое…» снят по правилу 12 (критик Блока 3).
+    expect(html).not.toContain('Решение разовое')
     expect(html).not.toContain('Сейчас нет запланированных изменений')
 
     // Без отметки раскладывать нечего; без параметров — прежний источник.

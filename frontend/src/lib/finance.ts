@@ -764,6 +764,9 @@ export const liveAccounts = (list: Account[]) => (list || []).filter(alive);
 export const payableAccounts = (list: Account[]) => liveAccounts(list).filter((a) => (a.currency ?? 'KZT') === 'KZT');
 export const liveWishlist = (list: WishItem[]) => (list || []).filter(alive);
 
+/** Сколько осталось до цели, целые тенге; накоплено больше нужного — 0 (одно место вместо четырёх экранов). */
+export const goalRemaining = (g: Pick<Goal, 'need' | 'have'>) => Math.max(0, g.need - g.have);
+
 /** Валюта в тенге по курсу — целые тенге. Единственное место, где сумма умножается на курс. */
 export const fxToTenge = (foreignAmount: number, rate: number) => Math.round(foreignAmount * rate);
 
@@ -2267,22 +2270,22 @@ export function spendCategoryName(categories: Pick<SpendCategory, 'id' | 'name'>
   return categories.find((c) => c.id === id)?.name ?? DEFAULT_SPEND_CATEGORIES.find((c) => c.id === id)?.name ?? 'Прочее'
 }
 
+export type SpendRows = { total: number; rows: WeekPictureRow[]; unknown: number; unknownShare: number }
+
 /**
- * Картина недели (Р-8): траты обоих по разделам за ISO-неделю `week` — сумма недельных
- * итогов всех участников (`spendTotals`), доли от общей суммы; «не разобрано» — отдельно.
- * Кто без выписки — по загрузкам семьи, покрывающим хотя бы день недели.
+ * Строки картины по разделам из итогов `spendTotals` за период — неделя или месяц, все
+ * участники или один (`by`): суммы, доли от общей, «не разобрано» отдельно. Ядро `weekPicture`
+ * и картины месяца первого запуска (`Start`): экраны сами не суммируют.
  */
-export function weekPicture(
+export function spendRows(
   totals: SpendTotal[],
   categories: SpendCategory[],
-  people: Person[],
-  week: string,
-  uploads: UploadPeriod[] = [],
-): WeekPicture {
-  const range = weekRange(week)
+  where: { kind: 'week' | 'month'; period: string; by?: PersonId },
+): SpendRows {
   const sums = new Map<string, number>()
   for (const t of totals) {
-    if (t.deletedAt || t.kind !== 'week' || t.period !== week || t.amount <= 0) continue
+    if (t.deletedAt || t.kind !== where.kind || t.period !== where.period || t.amount <= 0) continue
+    if (where.by && t.by !== where.by) continue
     sums.set(t.categoryId, (sums.get(t.categoryId) ?? 0) + t.amount)
   }
   const unknown = sums.get(UNKNOWN_CATEGORY) ?? 0
@@ -2301,12 +2304,41 @@ export function weekPicture(
         color: spendColor(cat),
       }
     })
+  return { total, rows, unknown, unknownShare: total > 0 ? unknown / total : 0 }
+}
+
+/**
+ * Картина недели (Р-8): траты обоих по разделам за ISO-неделю `week` — сумма недельных
+ * итогов всех участников (`spendTotals`), доли от общей суммы; «не разобрано» — отдельно.
+ * Кто без выписки — по загрузкам семьи, покрывающим хотя бы день недели.
+ */
+export function weekPicture(
+  totals: SpendTotal[],
+  categories: SpendCategory[],
+  people: Person[],
+  week: string,
+  uploads: UploadPeriod[] = [],
+): WeekPicture {
+  const range = weekRange(week)
+  const { total, rows, unknown, unknownShare } = spendRows(totals, categories, { kind: 'week', period: week })
   const covers = (u: UploadPeriod) => u.period_to >= range.from && u.period_from <= range.to
   const alivePeople = people.filter(alive)
   const uploaded = alivePeople.filter((p) => uploads.some((u) => u.slot === p.id && covers(u)))
   const missing = alivePeople.filter((p) => !uploaded.includes(p))
-  return { range, total, rows, unknown, unknownShare: total > 0 ? unknown / total : 0, uploaded, missing }
+  return { range, total, rows, unknown, unknownShare, uploaded, missing }
 }
+
+/** Итог недели против прошлой (DESIGN.md §6 «на N % меньше/больше прошлой»), целый процент; null — одной из недель нет. */
+export function weekVersusPrev(totals: SpendTotal[], week: string, prevWeek: string): { delta: number } | null {
+  const sum = (key: string) => spendRows(totals, [], { kind: 'week', period: key }).total
+  const now = sum(week)
+  const prev = sum(prevWeek)
+  if (!prev || !now) return null
+  return { delta: Math.round(((now - prev) / prev) * 100) }
+}
+
+/** Подписка за год для карточки «оставить?»: годовая — как есть, ежемесячная — ×12. */
+export const subscriptionYearly = (o: Obligation, key: string) => amountAt(o, key) * (o.every === 'year' ? 1 : 12)
 
 export type FreeByFact = {
   /** «Свободно до конца месяца», целые тенге; может быть меньше нуля. */
@@ -2455,7 +2487,7 @@ export function nextDecision(
     const monthly = renewal ? null : amountAt(keep, now.key)
     const yearly = renewal ? renewal.amount : (monthly ?? 0) * 12
     const goal = mainGoal(state.goals ?? [])
-    const remaining = goal ? Math.max(0, goal.need - goal.have) : 0
+    const remaining = goal ? goalRemaining(goal) : 0
     const pathPct = remaining > 0 ? Math.round((yearly / remaining) * 100) : 0
     return {
       kind: 'keep',

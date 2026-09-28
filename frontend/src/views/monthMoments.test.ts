@@ -88,7 +88,8 @@ describe('Блок 2: моменты месяца (SSR)', () => {
       const html = await renderScreen(WeekSalary, '/ritual?from=rest&amount=55000&period=2026-09')
       expect(html).toContain(`Куда направить ${money(55_000)}`)
       expect(html).toContain(`Остаток сентября — ${money(55_000)}`)
-      expect(html).toContain('Решение разовое')
+      // Абзац «Решение разовое…» снят по правилу 12 (критик Блока 3): эффект — строкой под каждой корзиной.
+      expect(html).not.toContain('Решение разовое')
       expect(await renderScreen(WeekSalary, '/ritual?from=rest&amount=0&period=2026-09')).toContain('Остатка нет')
 
       // Своих зарплат ещё не отмечали — счёт не угадать: без выбора ничего не пишется.

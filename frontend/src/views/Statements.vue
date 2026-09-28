@@ -27,7 +27,7 @@ import { draftSummary, partnerHints, picture, pictureTotal, ruleMatchOf, unknown
 import { parseStatement, StatementFormatError } from '@/lib/statements/parsers'
 import type { MerchantRule } from '@/lib/statements/types'
 import type { PersonId } from '@/types/finance'
-import { amountAt, keepQuestions, monthEndAsk, salaryOpen, untilPayday, weekPicture } from '@/lib/finance'
+import { amountAt, keepQuestions, monthEndAsk, salaryOpen, spendRows, subscriptionYearly, untilPayday, weekPicture, weekVersusPrev } from '@/lib/finance'
 import { MONTH_END_KEY, readStorage, writeStorage } from '@/lib/storage'
 
 /**
@@ -93,13 +93,12 @@ const weekTag = computed<{ text: string; tone: 'ok' | 'warn' } | null>(() => {
 })
 const weekSegments = computed(() => pic.value.rows.map((r) => ({ id: r.categoryId, name: r.name, amount: r.amount, share: r.share, color: r.color })))
 // Итог недели против прошлой (§6): «на N % меньше прошлой» / «больше».
-const weekTotalOf = (key: string) => spendTotals.value.filter((t) => t.kind === 'week' && t.period === key && !t.deletedAt).reduce((a, t) => a + t.amount, 0)
+const weekTotalOf = (key: string) => spendRows(spendTotals.value, [], { kind: 'week', period: key }).total
 const prevWeek = weekKey(new Date(Date.now() - 7 * 86_400_000))
 const versusPrev = computed<{ text: string; tone: 'ok' | 'warn' | 'neutral' } | null>(() => {
-  const prev = weekTotalOf(prevWeek)
-  const now = pic.value.total
-  if (!prev || !now) return null
-  const delta = Math.round(((now - prev) / prev) * 100)
+  const vs = weekVersusPrev(spendTotals.value, week, prevWeek)
+  if (!vs) return null
+  const { delta } = vs
   if (delta === 0) return { text: 'как на прошлой', tone: 'neutral' }
   return delta < 0 ? { text: `на ${-delta} % меньше прошлой`, tone: 'ok' } : { text: `на ${delta} % больше прошлой`, tone: 'warn' }
 })
@@ -437,7 +436,7 @@ onMounted(() => {
         @secondary="onKeep('cancel')"
         @ghost="cancelling ? (cancelling = false) : onKeep('later')"
       >
-        <template #inner>За год — {{ money(amountAt(keep, month) * (keep.every === 'year' ? 1 : 12)) }}</template>
+        <template #inner>За год — {{ money(subscriptionYearly(keep, month)) }}</template>
       </DecisionCard>
 
       <DecisionCard

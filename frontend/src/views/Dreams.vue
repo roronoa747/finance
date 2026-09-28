@@ -12,6 +12,7 @@ import {
   freeByFact,
   goalDoneMonth,
   goalMonths,
+  goalRemaining,
   liveGoals,
   mainGoal,
   nextDecision,
@@ -69,7 +70,7 @@ const heroMonth = computed(() => {
   if (!g) return null
   const paused = financeStore.pausedGoalIds.has(g.id)
   const forecast = paused && financeStore.activePlan ? planForecast(financeStore.activePlan, financeStore.planState(), key.value) : undefined
-  const done = goalDoneMonth(goalMonths(Math.max(0, g.need - g.have), g.monthly), key.value, forecast)
+  const done = goalDoneMonth(goalMonths(goalRemaining(g), g.monthly), key.value, forecast)
   return done ? monthIn(done) : null
 })
 

@@ -7,12 +7,10 @@ import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore, type Draft, type DraftFile } from '@/stores/operations'
 import { parseStatement, StatementFormatError } from '@/lib/statements/parsers'
 import { ruleFor, ruleMatchOf, periodOf } from '@/lib/statements/model'
-import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import { beyondLimit, firstRunQuestions, type IncomeCandidate, type RecurringCandidate, type RecurringKind } from '@/lib/statements/firstRun'
-import { budgetAmounts, spendCategoryName } from '@/lib/finance'
+import { budgetAmounts, spendRows } from '@/lib/finance'
 import { money, parseMoney, plain } from '@/lib/money'
 import { monthKey, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
-import { spendColor } from '@/lib/palette'
 import { START_ANSWERED_KEY, readStorage, writeStorage } from '@/lib/storage'
 import { useInvite } from '@/components/useInvite'
 import type { PersonId } from '@/types/finance'
@@ -265,18 +263,9 @@ const myTotals = computed(() => (financeStore.householdDoc.spendTotals ?? []).fi
 const pictureMonth = computed(() => myTotals.value.map((t) => t.period).sort().pop() ?? monthKey())
 const monthName = computed(() => MONTHS_NOM[parseMonthKey(pictureMonth.value).month].toLowerCase())
 const spendCategories = computed(() => financeStore.householdDoc.spendCategories ?? [])
-const pictureRows = computed(() => myTotals.value.filter((t) => t.period === pictureMonth.value))
-const pictureTotal = computed(() => pictureRows.value.reduce((a, t) => a + t.amount, 0))
-const segments = computed<WeekSegment[]>(() =>
-  pictureRows.value
-    .filter((t) => t.categoryId !== UNKNOWN_CATEGORY)
-    .sort((a, b) => b.amount - a.amount)
-    .map((t) => {
-      const cat = spendCategories.value.find((c) => c.id === t.categoryId) ?? DEFAULT_SPEND_CATEGORIES.find((c) => c.id === t.categoryId) ?? null
-      return { id: t.categoryId, name: spendCategoryName(spendCategories.value, t.categoryId), amount: t.amount, share: pictureTotal.value ? t.amount / pictureTotal.value : 0, color: spendColor(cat) }
-    }),
-)
-const unknown = computed(() => pictureRows.value.find((t) => t.categoryId === UNKNOWN_CATEGORY)?.amount ?? 0)
+// Суммы и доли — `spendRows` (finance.ts), экран только раскладывает строки в полосу.
+const picture = computed(() => spendRows(financeStore.householdDoc.spendTotals ?? [], spendCategories.value, { kind: 'month', period: pictureMonth.value, by: slot.value }))
+const segments = computed<WeekSegment[]>(() => picture.value.rows.map((r) => ({ id: r.categoryId, name: r.name, amount: r.amount, share: r.share, color: r.color })))
 const free = computed(() => budgetAmounts({ ...financeStore.householdDoc, credits: financeStore.credits }).d5)
 
 /* ------------------ Шаг 5: партнёр ------------------ */
@@ -393,7 +382,7 @@ const plural = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'повторя�
 
     <!-- Шаг 3: картина месяца -->
     <template v-else-if="step === 'month'">
-      <WeekCard :total="pictureTotal" :segments="segments" :unknown="unknown" :unknown-share="pictureTotal ? unknown / pictureTotal : 0" :rows="5" />
+      <WeekCard :total="picture.total" :segments="segments" :unknown="picture.unknown" :unknown-share="picture.unknownShare" :rows="5" />
       <FreeCard :amount="free" label="Свободно в месяц" note="Из свободного и складывается мечта — дальше выберем её." size="md" />
       <div class="mt-auto pt-2">
         <Button size="lg" class="w-full" @click="go('dream')">Дальше</Button>

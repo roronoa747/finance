@@ -29,6 +29,7 @@ import {
   stepDue,
   allocationFor,
   closerWish,
+  goalRemaining,
 } from '@/lib/finance'
 import { atLabel, monthAfter, monthFrom, monthFromAfter, monthInAfter, monthKey } from '@/lib/dates'
 import { useFinanceStore } from '@/stores/finance'
@@ -193,7 +194,7 @@ function set(id: string, delta: number) {
 function effectForGoal(goalId: string, extra: number) {
   const g = goals.value.find((x) => x.id === goalId)
   if (!g) return ''
-  const remaining = Math.max(0, g.need - g.have)
+  const remaining = goalRemaining(g)
   const base = goalMonths(remaining, g.monthly)
   if (once.value && extra) {
     // Разовый взнос: остаток цели меньше, ежемесячный взнос тот же.

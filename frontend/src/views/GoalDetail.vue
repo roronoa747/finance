@@ -11,6 +11,7 @@ import {
   goalDoneMonth,
   goalMonths,
   goalMonthly,
+  goalRemaining,
   indexedNeed,
   liveGoals,
   mainGoal,
@@ -78,7 +79,7 @@ const plan = computed(() => financeStore.activePlan)
 const paused = computed(() => financeStore.pausedGoalIds.has(goalId.value))
 const planCushion = computed(() => !!plan.value && plan.value.cushionGoalId === goalId.value)
 
-const remaining = computed(() => (goal.value ? Math.max(0, goal.value.need - goal.value.have) : 0))
+const remaining = computed(() => (goal.value ? goalRemaining(goal.value) : 0))
 const months = computed(() => (goal.value ? goalMonths(remaining.value, goal.value.monthly) : 1))
 const progress = computed(() => (goal.value ? pct(goal.value.have, goal.value.need) : 0))
 
