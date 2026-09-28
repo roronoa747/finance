@@ -57,12 +57,13 @@
   Хвост RP «старт всегда полный синк» (B2C-25) — `syncEngine.ts` без изменений в Блоке 3.
 - **`/settings`** (`views/Settings.vue`): карточки «Оформление» (`AppearancePanel`), «Разбор выписок»
   (`ParseSettings`, только member), «С кем» (участники `people` с `joined`, `SyncBadge` — шторка с
-  «Пригласить» / «Начать бюджет заново»). B2C-25 добавляет сюда «Удалить аккаунт» и вход Google;
-  B2C-23 — «по коду» через ручку участников (сейчас `useInvite` + `Access` режим `join`).
+  «Пригласить» / «Начать бюджет заново»); с возврата приёмки в «С кем» и своя строка «Пригласить партнёра» →
+  «Создать код» → «Код для партнёра» (`useInvite`; нет у viewer, в демо и в семье из двух). B2C-25 добавляет сюда
+  «Удалить аккаунт» и вход Google; B2C-23 — «по коду» через ручку участников (сейчас `useInvite` + `Access` режим `join`).
 - **Документ:** новые ключи `SyncDoc.allocations[]` (в `known` mergeDocs), поля `Goal.main /
   photoId / photoCredit / template`, `WishItem.photoId / list`, `Payment.source / opId`,
   `SpendCategory.plannedElsewhere / slot`, `MerchantRule.to.payment` (личный документ),
-  `privateDoc.gifts[]` (`mergePrivateDocs`). Удаление аккаунта (B2C-24): личные данные
+  `privateDoc.gifts[]` (`mergePrivateDocs`), `Credit.rateUnknown` (кредит из первого запуска, `null` снимает). Удаление аккаунта (B2C-24): личные данные
   пользователя — `private_docs`, `operations`, `statement_uploads`, **`photos` (FK `user_id`
   CASCADE, миграция `000003`)**; семейные — `household_docs`, `household_members`, `invites`,
   `photos` по `household_id`. `cmd/migrate` ждёт **10 таблиц** — B2C-22…24 повышают счётчик.
@@ -77,8 +78,10 @@
   раскладывал деньги по прямому адресу); удаление аккаунта — любому вошедшему, включая viewer (§3). **B2C-25:** личный документ привязан к семье, не к человеку — на общем телефоне после
   «Войти заново» чужой пользователь получает неотправленное (хвост §4 → B2C-25: `ff_private_owner`).
 - **Стор операций** (`stores/operations.ts`): + `pendingMatches`, `acceptMatch`, `declineMatch`,
-  `forgetRule`, `seedDemoUploads`, `lastAutoMarked`; копия `ff_operations` привязана к
-  `семья:пользователь`. Метрика B2C-28: «загрузил выписку» — `send()`; «завершил первый запуск» —
+  `forgetRule`, `seedDemoUploads`, `lastAutoMarked`, `settleReleased` (снятая отметка из выписки → операция снова
+  трата: наблюдатель `releasedOps(payments)` и после каждого `pull`); копия `ff_operations` привязана к
+  `семья:пользователь`. **B2C-25 «старт с pull»:** звать и `ops.pull` — карточки главного (сопоставления, незнакомые)
+  на новом устройстве сейчас ждут захода на «Неделю» (хвост §4), а снятые отметки дочиняются уже в `pull`. Метрика B2C-28: «загрузил выписку» — `send()`; «завершил первый запуск» —
   `Start.vue finish()` → `finishSetup()` / `onboardedAt`; «дошёл до цели» — `GoalNew create`;
   «завершил неделю» — `WeekSalary confirm()` (`recordAllocation`).
 - **Демо** (`Access.vue startDemoMode`): документ с `spendCategories`, итогами обоих за неделю и
