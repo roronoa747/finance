@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { HUES, HUE_KEYS, resolveDark, hueColor, applyTheme, prefersDark, spendColor, spendSlot, SPEND_SLOTS } from './palette'
+import { HUES, HUE_KEYS, resolveDark, hueColor, applyTheme, prefersDark, spendColor, spendSlot, SPEND_SLOTS, personColor } from './palette'
 import { DEFAULT_SPEND_CATEGORIES } from './statements/dictionary'
 
 describe('palette.ts — цветовая система и темы оформления', () => {
@@ -81,5 +81,11 @@ describe('palette.ts — цветовая система и темы оформ�
         expect(spendColor(c)).not.toMatch(/#|rgb/)
       }
     })
+  })
+
+  it('personColor: a/b — токены --pa/--pb, третий слот — --ink-3 (токена --pc нет)', () => {
+    expect(personColor('a')).toBe('var(--pa)')
+    expect(personColor('b')).toBe('var(--pb)')
+    expect(personColor('c')).toBe('var(--ink-3)')
   })
 })

@@ -8,6 +8,8 @@
  * B2C-12). Разделы трат выписок красятся токенами `--s1…--s12` (`spendColor`).
  */
 
+import type { PersonId } from '@/types/finance'
+
 export type HueKey = 'blue' | 'teal' | 'green' | 'ochre' | 'brick' | 'plum' | 'indigo' | 'steel'
 
 export const HUES: Record<HueKey, { light: string; dark: string; label: string }> = {
@@ -100,4 +102,9 @@ export function spendSlot(category: { id: string; order: number; slot?: number |
 /** CSS-значение цвета раздела трат — токен, не литерал: `var(--s3)` / `var(--s-unknown)`. */
 export function spendColor(category: { id: string; order: number; slot?: number | null } | null): string {
   return category ? `var(--s${spendSlot(category)})` : 'var(--s-unknown)'
+}
+
+/** Цвет участника — токен: `a`/`b` — `--pa`/`--pb`, у третьего слота (`c`, обычно viewer) своего токена нет — `--ink-3`. */
+export function personColor(id: PersonId): string {
+  return id === 'c' ? 'var(--ink-3)' : `var(--p${id})`
 }
