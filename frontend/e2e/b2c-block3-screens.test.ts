@@ -766,15 +766,18 @@ describe('e2e / B2C Блок 3 — часть 7 (возврат приёмки �
     const d = await decision(A)
     expect(d).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата Ильяс — разложить?', to: october })
     expect(await screen(A.pinia, Statements, '/week')).toContain('Пришла зарплата Ильяс — разложить?')
-    await allocateAll(A, october)
-    expect(A.store.allocations.map((a) => a.period).sort()).toEqual(['2026-09', '2026-10'])
-    expect((await decision(A))?.kind).not.toBe('allocate')
-    expect(await screen(A.pinia, Statements, '/week')).not.toContain('разложить?')
 
-    // Партнёр: зарплату Ильяса не раскладывает и о ней не спрашивается.
+    // Партнёр — пока октябрьская Ильяса не разложена: её не раскладывает и о ней не спрашивается
+    // (после раскладки A проверка не отличила бы фильтр «своя» от «разложено» — критик возврата).
     await A.store.syncHousehold(A.client)
     await B.store.pullHousehold(B.client)
     expect((await decision(B))?.kind).not.toBe('allocate')
     expect(await screen(B.pinia, Statements, '/week')).not.toContain('Пришла зарплата Ильяс — разложить?')
+
+    setActivePinia(A.pinia)
+    await allocateAll(A, october)
+    expect(A.store.allocations.map((a) => a.period).sort()).toEqual(['2026-09', '2026-10'])
+    expect((await decision(A))?.kind).not.toBe('allocate')
+    expect(await screen(A.pinia, Statements, '/week')).not.toContain('разложить?')
   })
 })

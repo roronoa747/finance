@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { accountBalance, emergencyCoverage, lumpPlan, planMandatory, stepDue } from '@/lib/finance'
+import { accountBalance, budgetAmounts, emergencyCoverage, lumpPlan, planMandatory, salaryFree, stepDue } from '@/lib/finance'
 import { monthFrom } from '@/lib/dates'
 import { money } from '@/lib/money'
 import WeekSalary from './WeekSalary.vue'
@@ -56,6 +56,25 @@ describe('WeekSalary — денежные ветки раскладки', () => 
     id: 'ob-rent', name: 'Аренда квартиры', note: '', day: 5, category: 'd1', updatedAt: T0,
     versions: [{ from: '2026-01', amount: 250_000 }, { from: '2027-06', amount: 200_000 }],
   }
+
+  it('критик возврата: зарплата прошлого месяца раскладывается по плану её месяца — сентябрьская прибавка к августовской не приписывается', async () => {
+    const doc = planFamilyDoc()
+    doc.people = doc.people.map((p) => (p.id === 'a' ? { ...p, salaryVersions: [{ from: '2026-09', amount: 800_000 }] } : p))
+    useAuthStore().setAuthData(authAs('member', 'a'))
+    const store = useFinanceStore()
+    store.setHouseholdDoc(doc, 1)
+    store.markSalary('a', { period: '2026-08', amount: 700_000, accountId: 'card' })
+    const record = store.payments.find((p) => p.kind === 'salary' && p.period === '2026-08')!
+    let total = -1
+    await renderScreen(WeekSalary, '/week/salary?from=salary&person=a&period=2026-08', undefined, [
+      screenMixin({}, (s) => {
+        total = s.total as number
+      }),
+    ])
+    const state = { ...store.householdDoc, credits: store.credits }
+    expect(total).toBe(salaryFree(budgetAmounts(state, '2026-08').d5, store.people, record))
+    expect(total).toBeLessThan(salaryFree(budgetAmounts(state, '2026-09').d5, store.people, record))
+  })
 
   describe('money-1: разовая досрочка и шаг плана «Сначала долги»', () => {
     it('шаг месяца не внесён — досрочка из зарплаты без id плана: шаг остаётся к оплате, цели на паузе не тронуты; эффект — от добавки', async () => {

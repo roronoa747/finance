@@ -75,7 +75,8 @@ const salary = computed(() => {
   if (query('from') !== 'salary') return null
   const record = paidFor(financeStore.payments, 'salary', query('person'), query('period'))
   if (!record) return null
-  const free = budgetAmounts({ ...financeStore.householdDoc, credits: financeStore.credits }).d5
+  // План месяца этой зарплаты — у пришедшей за прошлый месяц свой оклад и свои платежи.
+  const free = budgetAmounts({ ...financeStore.householdDoc, credits: financeStore.credits }, record.period).d5
   return { record, total: salaryFree(free, people.value, record) }
 })
 

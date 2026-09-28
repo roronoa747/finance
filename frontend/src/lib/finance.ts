@@ -969,6 +969,7 @@ export function hasBudgetData(state: {
  * С активным планом «Сначала долги» (PV-14) взносы целей на паузе и платежи
  * закрытых долгов плана уходят из «Взносов в цели» и «Свободно» в отдельную строку
  * `planExtra` — «Досрочно по плану». «Свободно» от выбора плана не меняется.
+ * `key` — месяц плана (по умолчанию этот): раскладка зарплаты прошлого месяца считает его план.
  */
 export function budgetAmounts(state: {
   categories?: Category[];
@@ -978,8 +979,7 @@ export function budgetAmounts(state: {
   people?: Person[];
   payments?: Payment[];
   plans?: DebtPlan[];
-}) {
-  const key = monthKey();
+}, key = monthKey()) {
   const obligations = state.obligations || [];
   const credits = state.credits || [];
   const goalsList = state.goals || [];
@@ -1707,7 +1707,10 @@ export const salaryAllocationPath = (person: PersonId, period: string) => `/week
  * конкретного месяца (лист отметки) или найти свою последнюю — этого или прошлого месяца (карточка
  * «Недели» и `nextDecision`). Только `source: 'statement'`: ручные отметки до записи раскладок
  * (`allocations`, B2C-21) раскладывал старый Ритуал без записи — карточка предложила бы их второй раз.
- * Нужна запись раскладки (`allocationFor` пуст) и свободное в этой зарплате (`salaryFree` > 0).
+ * Нужна запись раскладки (`allocationFor` пуст) и свободное в этой зарплате (`salaryFree` > 0) — по
+ * плану её месяца. Прошлый месяц — только пока зарплата этого не ждёт отметки (`salaryOpen`): иначе
+ * старая неразложенная заслонила бы «Пришла?» этого месяца; пришедшая раньше срока зарплата
+ * следующего месяца (день 1-го, пришла 29-го) — сразу (критик возврата Блока 3).
  */
 export function salaryToAllocate(
   state: {
@@ -1729,12 +1732,19 @@ export function salaryToAllocate(
   const person = people.find((p) => alive(p) && p.id === me)
   if (!person) return null
   const payments = state.payments ?? []
-  const found = record ?? [now.key, addMonths(now.key, -1)].map((k) => paidFor(payments, 'salary', me, k)).find(Boolean)
+  const months = [addMonths(now.key, 1), now.key, ...(salaryOpen(person, payments, now.key, now) ? [] : [addMonths(now.key, -1)])]
+  const found = record ?? months.map((k) => paidFor(payments, 'salary', me, k)).find(Boolean)
   if (!found || found.kind !== 'salary' || found.targetId !== me || found.source !== 'statement') return null
   if (allocationFor(state.allocations, { source: 'salary', sourceId: me, period: found.period })) return null
-  const free = salaryFree(budgetAmounts(state).d5, people, found)
+  const free = salaryFree(budgetAmounts(state, found.period).d5, people, found)
   return free > 0 ? { person, period: found.period, record: found, free } : null
 }
+
+/** Тексты карточки «разложить?» — одни на главном и в «Неделе» (как `keepCard`). */
+export const allocateCard = (u: { person: Person; record: Payment; free: number }) => ({
+  question: `Пришла зарплата ${u.person.name} — разложить?`,
+  meta: `${money(u.record.amount)} · свободно ${money(u.free)}`,
+})
 
 /**
  * Подписки, от которых отказались в месяце (B2C-20 «утечки»): обязательства с надгробием
@@ -2593,8 +2603,7 @@ export function nextDecision(
   if (unallocated) {
     return {
       kind: 'allocate',
-      question: `Пришла зарплата ${unallocated.person.name} — разложить?`,
-      meta: `${money(unallocated.record.amount)} · свободно ${money(unallocated.free)}`,
+      ...allocateCard(unallocated),
       to: salaryAllocationPath(unallocated.person.id, unallocated.period),
       actions: { primary: 'Разложить', ghost: 'Позже' },
       salary: { person: unallocated.person, period: unallocated.period },

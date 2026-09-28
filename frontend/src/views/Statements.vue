@@ -30,6 +30,7 @@ import { parseStatement, StatementFormatError } from '@/lib/statements/parsers'
 import type { MerchantRule } from '@/lib/statements/types'
 import type { PersonId } from '@/types/finance'
 import {
+  allocateCard,
   allocationFor,
   keepCard,
   keepQuestions,
@@ -466,8 +467,7 @@ onMounted(() => {
 
       <DecisionCard
         v-else-if="allocate"
-        :question="`Пришла зарплата ${allocate.person.name} — разложить?`"
-        :meta="`${money(allocate.record.amount)} · свободно ${money(allocate.free)}`"
+        v-bind="allocateCard(allocate)"
         :actions="{ primary: 'Разложить', ghost: 'Позже' }"
         @primary="router.push(salaryAllocationPath(allocate.person.id, allocate.period))"
         @ghost="allocateLater = true"

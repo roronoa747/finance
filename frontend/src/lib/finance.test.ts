@@ -2532,7 +2532,7 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
 
       const found = salaryToAllocate(paid(stmt('a', '2026-09')), 'a', now)!
       expect(found).toMatchObject({ period: '2026-09', person: { id: 'a' } })
-      expect(found.free).toBe(salaryFree(budgetAmounts(base).d5, people, found.record))
+      expect(found.free).toBe(salaryFree(budgetAmounts(base, '2026-09').d5, people, found.record))
       expect(found.free).toBeGreaterThan(0)
       // Раньше «пришла?», шагов и подписок; после сопоставлений (их «Да, зарплата» и ведёт сюда).
       expect(nextDecision(paid(stmt('a', '2026-09')), { me: 'a', now })).toMatchObject({
@@ -2542,8 +2542,21 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(nextDecision(paid(stmt('a', '2026-09')), { me: 'a', now, match: { count: 1, question: 'Q', meta: 'M' } })?.kind).toBe('match')
 
       // Прошлый месяц (в начале следующего ещё не разложили) — да; позапрошлый — нет.
-      expect(salaryToAllocate(paid(stmt('a', '2026-08')), 'a', now)?.period).toBe('2026-08')
-      expect(salaryToAllocate(paid(stmt('a', '2026-07')), 'a', now)).toBeNull()
+      const early = { day: 3, key: '2026-09' }
+      expect(salaryToAllocate(paid(stmt('a', '2026-08')), 'a', early)?.period).toBe('2026-08')
+      expect(salaryToAllocate(paid(stmt('a', '2026-07')), 'a', early)).toBeNull()
+      // Критик возврата: зарплата этого месяца ждёт отметки (день настал) — старая августовская «Пришла?» не заслоняет.
+      const payday = { day: 10, key: '2026-09' }
+      expect(salaryToAllocate(paid(stmt('a', '2026-08')), 'a', payday)).toBeNull()
+      expect(nextDecision(paid(stmt('a', '2026-08')), { me: 'a', now: payday })).toMatchObject({ kind: 'salary', salary: { period: '2026-09' } })
+      // Пришла раньше срока за следующий месяц (день 1-го, 29-го) — «разложить?» сразу, не с 1-го.
+      const firstDay = { ...base, people: people.map((p) => (p.id === 'a' ? { ...p, payday: 1 } : p)) }
+      expect(salaryToAllocate({ ...firstDay, payments: [stmt('a', '2026-10')] }, 'a', { day: 29, key: '2026-09' })?.period).toBe('2026-10')
+      // Свободное прошлой зарплаты — по плану её месяца: сентябрьская прибавка к августовской не приписывается.
+      const raised = { ...base, people: people.map((p) => (p.id === 'a' ? { ...p, salaryVersions: [{ from: '2026-09', amount: 800_000 }] } : p)) }
+      const august = salaryToAllocate({ ...raised, payments: [stmt('a', '2026-08')] }, 'a', early)!
+      expect(august.free).toBe(salaryFree(budgetAmounts(raised, '2026-08').d5, raised.people, august.record))
+      expect(august.free).toBeLessThan(salaryFree(budgetAmounts(raised, '2026-09').d5, raised.people, august.record))
       // Чужая зарплата; ручная отметка («Пришла» сама ведёт на раскладку, старые ручные раскладывал Ритуал без записи).
       expect(salaryToAllocate(paid(stmt('b', '2026-09')), 'a', now)).toBeNull()
       expect(salaryToAllocate(paid(stmt('a', '2026-09', { source: 'manual', opId: undefined })), 'a', now)).toBeNull()
