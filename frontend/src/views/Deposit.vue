@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { PhArrowLeft } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
+import { useAuthStore } from '@/stores/auth'
 import { money, plain, parseMoney, ratePct } from '@/lib/money'
 import { INFLATION, deposit as calcDeposit, realRate } from '@/lib/finance'
 
@@ -20,6 +21,8 @@ import Input from '@/components/ui/Input.vue'
 const router = useRouter()
 const route = useRoute()
 const financeStore = useFinanceStore()
+// Viewer видит условия вклада цифрами, но не правит и не удаляет (Р-13, матрица §3; возврат приёмки п. 3).
+const authStore = useAuthStore()
 
 const accountId = computed(() => route.params.id as string)
 const account = computed(() =>
@@ -123,61 +126,91 @@ function onCapitalizeChange(v: string) {
         <SavedMark :on="saved" />
       </div>
 
-      <Field label="Название">
-        <Input :default-value="account.name" class="mb-3" @blur="onNameBlur" />
-      </Field>
+      <!-- Viewer: цифры без полей и без «Удалить вклад» — как в окне счёта Капитала -->
+      <div v-if="authStore.isViewer" class="flex flex-col gap-1.5 rounded-xl border border-line bg-surface-2 p-3 text-[13px]">
+        <div v-if="account.note" class="flex justify-between gap-3">
+          <span class="text-ink-2">Примечание</span>
+          <b class="truncate text-ink">{{ account.note }}</b>
+        </div>
+        <div class="flex justify-between gap-3">
+          <span class="text-ink-2">Сумма на счёте</span>
+          <b class="num text-ink">{{ money(account.amount) }}</b>
+        </div>
+        <div class="flex justify-between gap-3">
+          <span class="text-ink-2">Ставка</span>
+          <b class="num text-ink">{{ ratePct(depositData.annualRate, 1) }} годовых</b>
+        </div>
+        <div class="flex justify-between gap-3">
+          <span class="text-ink-2">Пополнение в месяц</span>
+          <b class="num text-ink">{{ money(depositData.monthlyTopUp) }}</b>
+        </div>
+        <div class="flex justify-between gap-3">
+          <span class="text-ink-2">Срок</span>
+          <b class="num text-ink">{{ depositData.months }} мес.</b>
+        </div>
+        <div class="flex justify-between gap-3">
+          <span class="text-ink-2">Капитализация</span>
+          <b class="text-ink">{{ depositData.capitalize ? 'ежемесячно' : 'в конце срока' }}</b>
+        </div>
+      </div>
 
-      <Field label="Примечание">
-        <Input :default-value="account.note" class="mb-3" @blur="onNoteBlur" />
-      </Field>
+      <template v-else>
+        <Field label="Название">
+          <Input :default-value="account.name" class="mb-3" @blur="onNameBlur" />
+        </Field>
 
-      <Field label="Сумма на счёте, ₸">
-        <NumFieldBlur :initial="plain(account.amount)" class="mb-3" @commit="onAmountCommit" />
-      </Field>
+        <Field label="Примечание">
+          <Input :default-value="account.note" class="mb-3" @blur="onNoteBlur" />
+        </Field>
 
-      <Field label="Ставка, % годовых">
-        <NumFieldBlur
-          :initial="(depositData.annualRate * 100).toString().replace('.', ',')"
-          kind="rate"
-          class="mb-3"
-          @commit="onRateCommit"
+        <Field label="Сумма на счёте, ₸">
+          <NumFieldBlur :initial="plain(account.amount)" class="mb-3" @commit="onAmountCommit" />
+        </Field>
+
+        <Field label="Ставка, % годовых">
+          <NumFieldBlur
+            :initial="(depositData.annualRate * 100).toString().replace('.', ',')"
+            kind="rate"
+            class="mb-3"
+            @commit="onRateCommit"
+          />
+        </Field>
+
+        <Field label="Пополнение в месяц, ₸">
+          <NumFieldBlur
+            :initial="plain(depositData.monthlyTopUp)"
+            class="mb-3"
+            @commit="onMonthlyTopUpCommit"
+          />
+        </Field>
+
+        <Field label="Срок, месяцев">
+          <NumFieldBlur
+            :initial="String(depositData.months)"
+            kind="int"
+            class="mb-3"
+            @commit="onMonthsCommit"
+          />
+        </Field>
+
+        <Field label="Капитализация">
+          <Segmented
+            :model-value="depositData.capitalize ? 'yes' : 'no'"
+            :options="[
+              { value: 'yes', label: 'Ежемесячно' },
+              { value: 'no', label: 'В конце срока' },
+            ]"
+            class="mb-3"
+            @update:model-value="onCapitalizeChange"
+          />
+        </Field>
+
+        <DangerZone
+          label="Удалить вклад"
+          :warning="removeWarning"
+          @confirm="() => { financeStore.removeAccount(account!.id); router.push('/money/capital') }"
         />
-      </Field>
-
-      <Field label="Пополнение в месяц, ₸">
-        <NumFieldBlur
-          :initial="plain(depositData.monthlyTopUp)"
-          class="mb-3"
-          @commit="onMonthlyTopUpCommit"
-        />
-      </Field>
-
-      <Field label="Срок, месяцев">
-        <NumFieldBlur
-          :initial="String(depositData.months)"
-          kind="int"
-          class="mb-3"
-          @commit="onMonthsCommit"
-        />
-      </Field>
-
-      <Field label="Капитализация">
-        <Segmented
-          :model-value="depositData.capitalize ? 'yes' : 'no'"
-          :options="[
-            { value: 'yes', label: 'Ежемесячно' },
-            { value: 'no', label: 'В конце срока' },
-          ]"
-          class="mb-3"
-          @update:model-value="onCapitalizeChange"
-        />
-      </Field>
-
-      <DangerZone
-        label="Удалить вклад"
-        :warning="removeWarning"
-        @confirm="() => { financeStore.removeAccount(account!.id); router.push('/money/capital') }"
-      />
+      </template>
     </Card>
 
     <!-- Итоговые показатели вклада -->

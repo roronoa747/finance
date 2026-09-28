@@ -5,6 +5,8 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { routes } from '@/router'
 import { useFinanceStore, defaultSyncDoc } from '@/stores/finance'
+import { useAuthStore } from '@/stores/auth'
+import { authAs } from '@/test/planFamily'
 import Deposit from './Deposit.vue'
 
 /**
@@ -31,9 +33,10 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function openDeposit() {
+async function openDeposit(role?: 'member' | 'viewer') {
   const pinia = createPinia()
   setActivePinia(pinia)
+  if (role) useAuthStore().setAuthData(authAs(role))
   const store = useFinanceStore()
   store.setHouseholdDoc(
     {
@@ -94,5 +97,22 @@ describe('PV-23 п. 3: «Сохранено» на вкладе', () => {
     await edit(field('Сумма на счёте'), '1 000 000')
     expect(JSON.stringify(store.householdDoc)).toBe(before)
     expect(mark()).toBe('')
+  })
+})
+
+describe('возврат приёмки п. 3: viewer на вкладе', () => {
+  it('viewer видит условия цифрами — без полей и без «Удалить вклад»; участник — поля и удаление на месте', async () => {
+    await openDeposit('viewer')
+    const text = document.body.textContent ?? ''
+    expect(document.querySelectorAll('input')).toHaveLength(0)
+    expect(text).not.toContain('Удалить вклад')
+    for (const t of ['Сумма на счёте', 'Пополнение в месяц', '12 мес.', 'ежемесячно', 'Будет на счёте через 12 мес.']) expect(text).toContain(t)
+    expect(text).toMatch(/14,0\s?% годовых/)
+
+    app?.unmount()
+    document.body.innerHTML = ''
+    await openDeposit('member')
+    expect(document.querySelectorAll('input').length).toBeGreaterThan(0)
+    expect(document.body.textContent).toContain('Удалить вклад')
   })
 })

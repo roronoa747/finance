@@ -287,6 +287,41 @@ describe('views/Budget.vue — План, Календарь, Список и о�
     expect(htmlList).toContain('Взносы в цели')
   })
 
+  it('возврат приёмки п. 3: viewer — строки участников без окна оклада (ни в «Плане», ни в календаре), «Еда и быт» текстом; участник — как было', async () => {
+    const { useAuthStore } = await import('@/stores/auth')
+    const { authAs } = await import('@/test/planFamily')
+    const family = () => {
+      const store = useFinanceStore()
+      store.householdDoc.people = [
+        { id: 'a', name: 'Ильяс', salary: 600_000, payday: 10, updatedAt: '' },
+        { id: 'b', name: 'Динара', salary: 400_000, payday: 20, updatedAt: '' },
+      ]
+      store.householdDoc.categories = [{ key: 'd4', name: 'Еда и быт', note: '', amount: 250_000, updatedAt: '' }]
+    }
+    // Окно оклада открыто «нажатием»: у участника — SalaryDialog с полями; у viewer — ничего.
+    const opened = (s: Record<string, unknown>) => {
+      ;(s.events as { salary?: string; open: () => void }[]).find((e) => e.salary)!.open()
+    }
+
+    useAuthStore().setAuthData(authAs('member'))
+    family()
+    const member = await renderScreen(Budget, '/money/budget', undefined, [screenMixin({}, opened)])
+    expect(member).toMatch(/<input[^>]*aria-label="Еда и быт"/)
+    expect(member).toMatch(/<button type="button"[^>]*>(?:(?!<\/button>).)*Ильяс · 10 числа/s)
+    expect(member).toContain('Запланировать изменение')
+
+    setActivePinia(createPinia())
+    useAuthStore().setAuthData(authAs('viewer', 'b'))
+    family()
+    const viewer = await renderScreen(Budget, '/money/budget', undefined, [screenMixin({}, opened)])
+    expect(viewer).not.toMatch(/<input[^>]*aria-label="Еда и быт"/)
+    expect(viewer).toContain(money(250_000))
+    expect(viewer).not.toMatch(/<button type="button"[^>]*>(?:(?!<\/button>).)*Ильяс · 10 числа/s)
+    expect(viewer).toContain('Ильяс · 10 числа')
+    expect(viewer).not.toContain('Запланировать изменение')
+    expect(viewer).not.toContain('<input')
+  })
+
   it('компонентный рендер SalaryDialog.vue отображает имя, текущий оклад и элементы управления', async () => {
     const store = useFinanceStore()
     store.householdDoc.people = [
