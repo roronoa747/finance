@@ -23,7 +23,7 @@ import {
 import { addMonths, atLabel, monthIn, monthKey, monthTitle, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
 import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
-import { plural } from '@/lib/utils'
+import { cn, plural } from '@/lib/utils'
 import { templateById, templateImageUrl, type GoalTemplate } from '@/lib/goalTemplates'
 import { attachFile, attachTemplate } from '@/lib/photos/goalPhoto'
 import { deletePhoto } from '@/lib/photos/store'
@@ -50,13 +50,16 @@ import GoalSheet from '@/components/goals/GoalSheet.vue'
 import PhotoPicker from '@/components/goals/PhotoPicker.vue'
 import StorySheet from '@/components/goals/StorySheet.vue'
 import Button from '@/components/ui/Button.vue'
+import { buttonVariants } from '@/components/ui/button'
 import Input from '@/components/ui/Input.vue'
 
 /**
- * Экран цели (DESIGN.md §2 g4 «Экран цели»; B2C-18): фото-герой с процентом, «Будет вашей в …»
- * со взносом и числом взносов, «Пополнить» / «Поделиться» (B2C-20) / «Сделать главной», взносы
- * с аватарами, правка по карандашу (`GoalSheet`), viewer — без форм. Хвосты: месяц взноса и серия —
- * по Алматы (`movementMonth`), цена «дорожает» — до месяца закрытия (после плана — позже).
+ * Экран цели (DESIGN.md §2 g4 «Экран цели»; B2C-18): фото-герой с процентом и «накоплено из
+ * нужно» (имя — в шапке, месяц — в карточке ниже), «Будет вашей в …» со взносом и числом
+ * взносов, «Пополнить» / «Поделиться» (B2C-20) / «Сделать главной», взносы с аватарами, правка
+ * по карандашу (`GoalSheet`), viewer — без форм. Расчёты («за год», «дорожает», ритм) — за
+ * свёрнутым «Подробнее» (правило 12). Хвосты: месяц взноса и серия — по Алматы
+ * (`movementMonth`), цена «дорожает» — до месяца закрытия (после плана — позже).
  */
 const router = useRouter()
 const route = useRoute()
@@ -164,6 +167,15 @@ const openEditModal = ref(false)
 const photoSrc = usePhoto(() => goal.value?.photoId)
 const pickerOpen = ref(false)
 const photoNote = ref<string | null>(null)
+// «Новая мечта» уходит сюда до загрузки фото; не загрузилось — заметка приходит в адресе (`?photo=`).
+watch(
+  () => route.query.photo,
+  (p) => {
+    if (p === 'failed') photoNote.value = 'Фото не загрузилось — добавьте его ещё раз.'
+    else if (p === 'later' && !goal.value?.photoId) photoNote.value = 'Картинка появится при сети.'
+  },
+  { immediate: true },
+)
 
 // Замена фото: новое загружено и записано — прежнее удаляется с сервера, иначе байты остаются сиротой (критик Блока 3).
 function dropReplaced(old: string | null | undefined) {
@@ -175,7 +187,8 @@ async function onTemplate(t: GoalTemplate) {
   if (!goal.value) return
   const old = goal.value.photoId
   const result = await attachTemplate(financeStore, goal.value.id, t)
-  photoNote.value = result === 'uploaded' ? null : 'Картинка появится при сети.'
+  // Замена не загрузилась — у цели всё прежнее (`offline`); цель без фото ждёт сети с шаблоном.
+  photoNote.value = result === 'uploaded' ? null : result === 'offline' ? 'Нет сети — фото не сменилось.' : 'Картинка появится при сети.'
   if (result === 'uploaded') dropReplaced(old)
 }
 
@@ -244,13 +257,11 @@ function share() {
 
     <!-- Фото-герой (B2C-17): картинка шаблона или своя; автор — один раз, на фото, ссылкой (Р-28).
          Поверх картинки — только маленькая кнопка смены фото (владелец, 2026-09-27: крупные чипы
-         закрывали фото); «Убрать фото» — в окне выбора, «Сделать главной» — в карточке ниже. -->
+         закрывали фото); «Убрать фото» — в окне выбора, «Сделать главной» — в карточке ниже.
+         Строка — только «накоплено из нужно» (макет g4): имя уже в шапке, месяц — в карточке. -->
     <DreamHero
-      :title="goal.name"
       :percent="progress"
-      :have-amount="goal.have"
-      :need-amount="goal.need"
-      :done-month="doneMonth ? monthIn(doneMonth) : null"
+      :line="`${plain(goal.have)} из ${money(goal.need)}`"
       :src="photoSrc"
       :author="goal.photoCredit?.author"
       :author-url="goal.photoCredit?.url"
@@ -302,9 +313,6 @@ function share() {
           <NumFieldBlur :initial="plain(goal.monthly)" @commit="onMonthly" />
         </Field>
       </div>
-      <p v-if="remaining > 0" class="text-[12.5px] text-ink-2">
-        Чтобы успеть за год, нужно {{ money(goalMonthly(remaining, 12)) }} в месяц.
-      </p>
 
       <div class="mt-3 flex flex-wrap gap-2">
         <Button
@@ -335,40 +343,50 @@ function share() {
       меньше. Цель возобновится сама, когда долги с процентами закроются, или когда вы отмените план.
       <RouterLink to="/money/plan" class="font-medium text-brand">Открыть план</RouterLink>
     </Callout>
-    <Callout v-else-if="planCushion" tone="good" title="Подушка плана: взносы продолжаются">
+    <Callout v-else-if="planCushion" tone="ok" title="Подушка плана: взносы продолжаются">
       Пока в ней меньше месяца обязательных списаний, шаг плана — пополнить её.
       <RouterLink to="/money/plan" class="font-medium text-brand">Открыть план</RouterLink>
     </Callout>
 
-    <Callout v-if="indexed !== null" tone="neutral" title="Цель дорожает вместе с рынком">
-      При инфляции {{ ratePct(INFLATION, 1) }} в год к {{ doneMonth ? monthIn(doneMonth) : 'сроку' }}
-      такая же покупка будет стоить около {{ money(indexed) }}. Расчёт выше — в сегодняшних деньгах.
-    </Callout>
+    <!-- Расчёты и график — за «Подробнее», по умолчанию свёрнуты (правило 12; в макете g4 их нет) -->
+    <details>
+      <summary :class="cn(buttonVariants({ variant: 'ghost' }), 'flex w-full list-none [&::-webkit-details-marker]:hidden')">Подробнее</summary>
+      <div class="mt-2 flex flex-col gap-3">
+        <p v-if="remaining > 0" class="px-1 text-[13px] text-ink-2">
+          Чтобы успеть за год, нужно {{ money(goalMonthly(remaining, 12)) }} в месяц.
+        </p>
 
-    <!-- Ритм цели -->
-    <Section title="Ритм цели" />
-    <Card>
-      <div class="mb-3 flex items-center gap-2.5">
-        <b class="text-[14.5px] font-semibold text-ink">Пополняем без пропусков</b>
-        <Hint>
-          {{
-            streak > 0
-              ? 'Считается по взносам именно в эту цель, а не по общему плану.'
-              : 'Закрасится, как только появится первый взнос в эту цель.'
-          }}
-        </Hint>
-        <Tag v-if="streak > 0" tone="gold">{{ streak }} мес.</Tag>
+        <Callout v-if="indexed !== null" tone="neutral" title="Цель дорожает вместе с рынком">
+          При инфляции {{ ratePct(INFLATION, 1) }} в год {{ doneMonth ? `в ${monthIn(doneMonth)}` : 'к сроку' }}
+          такая же покупка будет стоить около {{ money(indexed) }}. Расчёт выше — в сегодняшних деньгах.
+        </Callout>
+
+        <!-- Ритм цели -->
+        <Section title="Ритм цели" />
+        <Card>
+          <div class="mb-3 flex items-center gap-2.5">
+            <b class="text-[14.5px] font-semibold text-ink">Пополняем без пропусков</b>
+            <Hint>
+              {{
+                streak > 0
+                  ? 'Считается по взносам именно в эту цель, а не по общему плану.'
+                  : 'Закрасится, как только появится первый взнос в эту цель.'
+              }}
+            </Hint>
+            <Tag v-if="streak > 0" tone="gold">{{ streak }} мес.</Tag>
+          </div>
+          <div class="flex gap-1.5">
+            <i
+              v-for="m in last12"
+              :key="m.key"
+              :title="m.label"
+              class="h-[20px] flex-1 rounded transition-colors"
+              :style="{ background: m.filled ? rhythmColor : 'var(--track)' }"
+            />
+          </div>
+        </Card>
       </div>
-      <div class="flex gap-1.5">
-        <i
-          v-for="m in last12"
-          :key="m.key"
-          :title="m.label"
-          class="h-[20px] flex-1 rounded transition-colors"
-          :style="{ background: m.filled ? rhythmColor : 'var(--track)' }"
-        />
-      </div>
-    </Card>
+    </details>
 
     <!-- Взносы -->
     <Section title="Взносы" />

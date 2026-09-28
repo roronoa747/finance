@@ -18,7 +18,7 @@ import {
 } from '@/lib/finance'
 import { money, plain, ratePct } from '@/lib/money'
 import { addMonths, monthIn, monthKey } from '@/lib/dates'
-import { GOAL_TYPES } from '@/lib/goalTemplates'
+import { GOAL_TEMPLATES, GOAL_TYPES } from '@/lib/goalTemplates'
 import { HUES } from '@/lib/palette'
 import { T0, authAs, planFamilyDoc, planOf } from '@/test/planFamily'
 import { renderScreen, screenMixin } from '@/test/screenState'
@@ -198,20 +198,37 @@ describe('views/GoalDetail.vue, GoalNew.vue, Wishes.vue, Deposit.vue — цел�
     const app = createSSRApp(GoalDetail)
     app.use(router)
 
-    const html = await renderToString(app)
-    expect(html).toContain('Автомобиль')
+    const html = (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
+    // Герой — «накоплено из нужно», как в макете g4: имя уже в шапке, месяц — в карточке ниже (критик Блока 3).
+    expect(html).toContain(`${plain(1_500_000)} из ${money(5_000_000)}`)
+    expect(html).not.toContain('Автомобиль ·')
+    expect(html.match(/будет вашей в/gi)).toHaveLength(1)
     expect(html).not.toContain('Дисциплина накоплений')
     // Остаток 3 500 000 взносом 150 000 — 24 взноса, последний через 23 месяца: горизонт цены — до месяца закрытия (B2C-18).
     const done = goalDoneMonth(goalMonths(3_500_000, 150_000), monthKey())!
     expect(monthsBetween(monthKey(), done)).toBe(23)
     const indexed = indexedNeed(5_000_000, 23)
     expect(html).toContain('Цель дорожает вместе с рынком')
+    // Предложный падеж: «в мае 2027», а не «к мае 2027».
     expect(html).toContain(
-      `При инфляции 10,2% в год к ${monthIn(done)} такая же покупка будет стоить около ${money(indexed!)}. Расчёт выше — в сегодняшних деньгах.`,
+      `При инфляции 10,2% в год в ${monthIn(done)} такая же покупка будет стоить около ${money(indexed!)}. Расчёт выше — в сегодняшних деньгах.`,
     )
+    expect(html).not.toContain(`к ${monthIn(done)}`)
     expect(html).toContain('Ритм цели')
     expect(html).toContain('Взносы')
     expect(html).not.toContain('История цели')
+
+    // Расчёты и график — в одном свёрнутом «Подробнее» (правило 12): до него их нет, «Взносы» — после.
+    const start = html.indexOf('<details>')
+    const end = html.indexOf('</details>')
+    expect(start).toBeGreaterThan(0)
+    expect(html.slice(start, end)).toMatch(/<summary[^>]*>Подробнее<\/summary>/)
+    for (const text of ['Чтобы успеть за год, нужно', 'Цель дорожает вместе с рынком', 'Ритм цели', 'Пополняем без пропусков']) {
+      expect(html.slice(start, end)).toContain(text)
+      expect(html.slice(0, start)).not.toContain(text)
+    }
+    expect(html.slice(end)).toContain('Взносы')
+    expect(html.slice(0, start)).toContain('Пополнить')
   })
 
   it('тёмная тема: «Ритм цели» — тёмный оттенок цели (PV-08); кольца нет — процент в фото-герое (B2C-18)', async () => {
@@ -264,7 +281,7 @@ describe('views/GoalDetail.vue, GoalNew.vue, Wishes.vue, Deposit.vue — цел�
     app.use(router)
 
     const html = await renderToString(app)
-    expect(html).toContain('Когда-нибудь')
+    expect(html).toContain(`${plain(100_000)} из ${money(1_000_000)}`)
     expect(html).not.toContain('Цель дорожает вместе с рынком')
   })
 
@@ -336,17 +353,15 @@ describe('views/GoalDetail.vue, GoalNew.vue, Wishes.vue, Deposit.vue — цел�
     expect(html).toContain('Ваши взносы')
     expect(html).toContain('Заработал банк')
 
-    // PV-05: инфляция 10,2% из общей константы и обе плашки React.
+    // PV-05: инфляция 10,2% из общей константы. Правило 12 (критик Блока 3): реальная доходность —
+    // одна строка, пояснение — в подсказке; плашки про формулу и «ИИ-советника» нет.
     const eff = deposit({ principal: 1_000_000, annualRate: 0.14, months: 12, monthlyTopUp: 0, capitalize: true }).effectiveRate
     const text = html.replace(/<!--[^>]*-->/g, '')
-    expect(text).toContain('Реальная доходность ниже той, что на витрине')
-    expect(text).toContain(
-      `При инфляции 10,2% эффективная ставка ${ratePct(eff, 1)} оставляет примерно ${ratePct(realRate(eff, INFLATION), 1)} настоящих. Это не повод не копить — это повод не путать номинал с доходом.`,
-    )
-    expect(text).toContain('Проценты считает приложение, а не банк')
-    expect(text).toContain(
-      'Формула аннуитета и капитализации работает офлайн, на ваших цифрах. Когда появится ИИ-советник, он получит уже посчитанный результат и будет только объяснять его словами — считать деньги модели не доверяем.',
-    )
+    expect(text).toMatch(new RegExp(`Реально ≈ ${ratePct(realRate(eff, INFLATION), 1)} с учётом инфляции\\s*<span[^>]*>\\s*<button[^>]*aria-label="Пояснение"`))
+    expect(realRate(eff, INFLATION)).toBeLessThan(realRate(eff, 0.08))
+    for (const gone of ['Реальная доходность ниже той, что на витрине', 'Проценты считает приложение, а не банк', 'ИИ-советник', 'Формула аннуитета']) {
+      expect(text).not.toContain(gone)
+    }
   })
 
   it('рендерит Wishes.vue по /wishes: покупка и «Добавить покупку»', async () => {
@@ -532,14 +547,16 @@ describe('PV-18: покупки — правка, «Уже купили», viewe
     wish({ id: 'iron', name: 'Утюг', price: 25_000, bought: true, boughtOn: '2026-08-05T15:00:00.000Z' }),
   ]
 
-  it('галерея: плитки с ценой без ₸, автор и дата — в окне покупки, «Уже купили» с итогом, «Вернуть в список»', async () => {
+  it('галерея: плитки с ценой в ₸, автор и дата — в окне покупки, «Уже купили» с итогом, «Вернуть в список»', async () => {
     family('member', list())
     const html = await renderScreen(Wishes, '/wishes')
     // Автор и дата — в окне покупки, не на плитке (галерея: фото, название, цена).
     expect(html).not.toContain('Ильяс · 10 сентября')
     expect(await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ editWishId: 'pan' })])).toContain('Ильяс · 10 сентября')
     expect(await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ editWishId: 'old' })])).toContain('Аруна · 24.09.2026')
-    expect(html).toContain(`>${plain(18_000)}</span>`)
+    // Цена — деньгами с « ₸», как везде (DESIGN §1.2; критик Блока 3).
+    expect(html).toContain(`>${money(18_000)}</span>`)
+    expect(html).not.toContain(`>${plain(18_000)}</span>`)
     expect(html).toContain('aria-label="Отметить купленным"')
     expect(html).toContain('Добавить покупку')
     expect(html).toContain('Уже купили')
@@ -561,13 +578,15 @@ describe('PV-18: покупки — правка, «Уже купили», viewe
     expect(html).not.toContain(money(0))
   })
 
-  it('отметили купленным — карточка React с номером покупки, строка ушла в «Уже купили»', async () => {
+  it('отметили купленным — одна строка «Куплено — …» без абзаца, строка ушла в «Уже купили»', async () => {
     const store = family('member', list())
     const html = await renderScreen(Wishes, '/wishes', undefined, [
       screenMixin({}, (s) => (s.markBought as (id: string, name: string) => void)('pan', 'Сковорода')),
     ])
     expect(html).toContain('Куплено — Сковорода')
-    expect(html).toContain('Это 3-я покупка в дом. Вещь переехала в историю с датой и автором — через год будет видно, куда уходили деньги на быт.')
+    // Правило 12 и личные списки (критик Блока 3): ни «покупки в дом», ни «денег на быт».
+    expect(html).not.toContain('покупка в дом')
+    expect(html).not.toContain('на быт')
     expect(store.wishlist.find((w) => w.id === 'pan')).toMatchObject({ bought: true, boughtOn: '2026-09-24T07:00:00.000Z' })
     expect(html).toContain(money(223_000))
   })
@@ -585,10 +604,11 @@ describe('PV-18: покупки — правка, «Уже купили», viewe
     expect(html).toContain('Удалить из списка')
   })
 
-  it('окно создания — тексты React', async () => {
+  it('окно создания — «Новое желание», поля React', async () => {
     family()
     const html = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ openWishModal: true })])
-    expect(html).toContain('Покупка в дом')
+    expect(html).toContain('Новое желание')
+    expect(html).not.toContain('Покупка в дом')
     expect(html).toContain('placeholder="Например, сковорода"')
     expect(html).toContain('placeholder="18 000"')
     expect(html).toContain('placeholder="можно оставить пустым"')
@@ -846,5 +866,52 @@ describe('B2C-20: карточка для сторис на экране цел�
 
     const viaRoute = await renderScreen(GoalDetail, '/goals/trip?share=1')
     expect(viaRoute).toContain('Карточка для сторис')
+  })
+})
+
+describe('экран цели — заметки о фото (критик Блока 3, SSR)', () => {
+  const storage = new Map<string, string>()
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    useAuthStore().setAuthData(authAs('member'))
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('«Новая мечта» передала в адресе: ?photo=failed — «добавьте ещё раз», ?photo=later — «появится при сети», пока фото нет', async () => {
+    const store = useFinanceStore()
+    store.setHouseholdDoc(planFamilyDoc(), 1)
+    expect(await renderScreen(GoalDetail, '/goals/trip?photo=failed')).toContain('Фото не загрузилось — добавьте его ещё раз.')
+    expect(await renderScreen(GoalDetail, '/goals/trip?photo=later')).toContain('Картинка появится при сети.')
+    const clean = await renderScreen(GoalDetail, '/goals/trip')
+    expect(clean).not.toContain('Фото не загрузилось')
+    expect(clean).not.toContain('появится при сети')
+    // Картинка уже пришла — «появится» не пишем.
+    store.setGoalPhoto('trip', 'ph-1', null)
+    expect(await renderScreen(GoalDetail, '/goals/trip?photo=later')).not.toContain('появится при сети')
+  })
+
+  it('смена фото на шаблон без сети — «Нет сети — фото не сменилось.», у цели прежние фото, шаблон и цвет', async () => {
+    const store = useFinanceStore()
+    const doc = planFamilyDoc()
+    doc.goals = doc.goals.map((g) => (g.id === 'trip' ? { ...g, photoId: 'ph-old', photoCredit: null, template: 'japan', hue: 'plum' } : g))
+    store.setHouseholdDoc(doc, 1)
+    vi.stubGlobal('navigator', { onLine: false })
+    let box: { state: Record<string, unknown> } | null = null
+    await renderScreen(GoalDetail, '/goals/trip', undefined, [
+      screenMixin({}, (s) => {
+        void s.onTemplate
+        box = { state: s }
+      }),
+    ])
+    await (box!.state.onTemplate as (t: unknown) => Promise<void>)(GOAL_TEMPLATES.find((t) => t.id === 'car')!)
+    expect(box!.state.photoNote).toBe('Нет сети — фото не сменилось.')
+    expect(store.goals.find((g) => g.id === 'trip')).toMatchObject({ photoId: 'ph-old', template: 'japan', hue: 'plum' })
   })
 })

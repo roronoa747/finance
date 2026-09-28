@@ -234,7 +234,7 @@ const justDone = computed(() => {
     </template>
 
     <template v-else>
-      <Callout v-if="justDone" tone="good" title="Долги с процентами закрыты — цели возобновились">
+      <Callout v-if="justDone" tone="ok" title="Долги с процентами закрыты — цели возобновились">
         Сэкономили {{ money(savedOf(justDone)) }} процентов.
       </Callout>
       <Card>

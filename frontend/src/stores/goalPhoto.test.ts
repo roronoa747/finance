@@ -99,6 +99,57 @@ describe('stores/finance — фото цели и шаблоны', () => {
     expect(demo.goals.find((g) => g.id === demoId)).toMatchObject({ template: 'car' })
   })
 
+  // Критик Блока 3: смена фото на шаблон без сети подменяла шаблон и цвет, а картинка оставалась
+  // прежней навсегда — дозагрузка цели с фото пропускает.
+  it('замена фото на шаблон без сети или при сбое: шаблон, цвет и фото прежние — «offline»; с сетью — всё новое', async () => {
+    const store = useFinanceStore()
+    store.claimFor('h1')
+    const id = store.addGoal({ name: 'Мечта', need: 1_000_000, monthly: 50_000, hue: 'plum', template: 'japan' })
+    store.setGoalPhoto(id, 'ph-old', { author: 'Matthew Skinner', url: 'https://unsplash.com/photos/t05kfHeygbE' })
+    const goal = () => store.goals.find((g) => g.id === id)!
+    const before = { template: 'japan', hue: 'plum', photoId: 'ph-old', photoCredit: { author: 'Matthew Skinner' } }
+
+    expect(await attachTemplate(store, id, templateById('car')!, deps({ online: () => false }))).toBe('offline')
+    expect(goal()).toMatchObject(before)
+    const broken = deps({ fetch: async () => ({ ok: false, blob: async () => new Blob() }) })
+    expect(await attachTemplate(store, id, templateById('car')!, broken)).toBe('offline')
+    expect(goal()).toMatchObject(before)
+    // Дозагрузке тут нечего делать: у цели своё фото, отложенного шаблона нет.
+    expect(await retryTemplatePhotos(store, GOAL_TEMPLATES, deps())).toBe(0)
+
+    const online = deps()
+    expect(await attachTemplate(store, id, templateById('car')!, online)).toBe('uploaded')
+    expect(goal()).toMatchObject({ template: 'car', hue: 'steel', photoId: 'ph-1', photoCredit: { author: templateById('car')!.photo.author } })
+  })
+
+  it('одна загрузка шаблона на цель: дозагрузка, пока «Новая мечта» ещё грузит, — без второго фото; после — снова можно', async () => {
+    const store = useFinanceStore()
+    store.claimFor('h1')
+    const id = store.addGoal({ name: 'Мечта', need: 1_000_000, monthly: 50_000, hue: 'blue' })
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    const slow = deps({
+      fetch: async () => {
+        await gate
+        return { ok: true, blob: async () => new Blob([new Uint8Array(10)], { type: 'image/jpeg' }) }
+      },
+    })
+    const first = attachTemplate(store, id, templateById('japan')!, slow)
+    // Шаблон записан сразу — дозагрузка видит цель без фото, но картинка уже грузится.
+    const retry = retryTemplatePhotos(store, GOAL_TEMPLATES, slow)
+    release()
+    expect(await first).toBe('uploaded')
+    expect(await retry).toBe(0)
+    expect(slow.uploaded).toHaveLength(1)
+    expect(store.goals.find((g) => g.id === id)!.photoId).toBe('ph-1')
+
+    // Загрузка закончилась — другая цель (и эта же позже) грузится как обычно.
+    const other = store.addGoal({ name: 'Вторая', need: 1_000_000, monthly: 50_000, hue: 'blue' })
+    const online = deps()
+    expect(await attachTemplate(store, other, templateById('car')!, online)).toBe('uploaded')
+    expect(online.uploaded).toHaveLength(1)
+  })
+
   it('attachFile: своё фото — сжато и загружено без автора; шаблон снимается', async () => {
     const store = useFinanceStore()
     store.claimFor('h1')

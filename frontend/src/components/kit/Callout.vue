@@ -6,13 +6,12 @@ import { cn } from '@/lib/utils'
 /**
  * Заметка `.note` (DESIGN.md §5): мягкий фон без рамки, иконка 18 px. Тон — `neutral`
  * (пояснение), `brand` (подсказка приложения), `ok` (готово, запомнили), `warn`
- * (внимание). `good` — прежнее имя `ok`, экраны до Блока 3 его ещё зовут. Заголовок
- * не обязателен: одна фраза — обычный вид заметки.
+ * (внимание). Заголовок не обязателен: одна фраза — обычный вид заметки.
  */
 const props = withDefaults(
   defineProps<{
     title?: string
-    tone?: 'warn' | 'good' | 'ok' | 'brand' | 'neutral'
+    tone?: 'warn' | 'ok' | 'brand' | 'neutral'
     /** Иконка: по умолчанию — по тону. */
     icon?: 'info' | 'check' | 'bell' | 'lock' | 'warn' | 'none'
     class?: HTMLAttributes['class']
@@ -28,14 +27,13 @@ const TONES = {
   neutral: 'bg-surface-2 text-ink-2',
   brand: 'bg-brand-soft text-brand',
   ok: 'bg-ok-soft text-ok',
-  good: 'bg-ok-soft text-ok',
   warn: 'bg-warn-soft text-warn',
 } as const
 
 const ICONS = { info: PhInfo, check: PhCheck, bell: PhBell, lock: PhLock, warn: PhWarningCircle } as const
 
 const icon = computed(() => {
-  const key = props.icon ?? (props.tone === 'ok' || props.tone === 'good' ? 'check' : props.tone === 'warn' ? 'warn' : 'info')
+  const key = props.icon ?? (props.tone === 'ok' ? 'check' : props.tone === 'warn' ? 'warn' : 'info')
   return key === 'none' ? null : ICONS[key]
 })
 </script>

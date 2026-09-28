@@ -4,9 +4,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { PhCheck, PhGift, PhListBullets, PhPlus, PhSquaresFour } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { money, plain, parseMoney } from '@/lib/money'
-import { atLabel } from '@/lib/dates'
-import { liveWishlist } from '@/lib/finance'
+import { money, parseMoney } from '@/lib/money'
+import { addedLabel } from '@/lib/dates'
+import { liveWishlist, wishTotal } from '@/lib/finance'
 import { compressImage } from '@/lib/photos/compress'
 import { uploadPhoto } from '@/lib/photos/store'
 import { usePhotos } from '@/lib/photos/usePhoto'
@@ -64,16 +64,10 @@ const wishlist = computed(() => liveWishlist(financeStore.wishlist))
 const shown = computed(() => (tab.value === 'all' ? wishlist.value : wishlist.value.filter((w) => (w.list ?? w.by) === tab.value)))
 const activeWish = computed(() => shown.value.filter((w) => !w.bought))
 const boughtWish = computed(() => shown.value.filter((w) => w.bought))
-const boughtSum = computed(() => boughtWish.value.reduce((a, w) => a + w.price, 0))
+const boughtSum = computed(() => wishTotal(boughtWish.value))
 
 function nameOf(id: PersonId) {
   return people.value.find((p) => p.id === id)?.name || 'Участник'
-}
-
-/** Новые даты — ISO («5 сентября»); старые строки из прода (`24.09.2026`) — как есть. */
-function wishDate(s: string | null | undefined) {
-  if (!s) return ''
-  return /^\d{4}-\d{2}-\d{2}/.test(s) ? atLabel(s) : s
 }
 
 /* ------------------ Покупки ------------------ */
@@ -83,8 +77,8 @@ const wishPrice = ref('')
 const wishUrl = ref('')
 const wishBy = ref<PersonId>(me.value ?? 'a')
 const editWishId = ref<string | null>(null)
-/** Последняя отмеченная покупка и её номер среди купленных — на момент отметки. */
-const justBought = ref<{ name: string; n: number } | null>(null)
+/** Название последней отмеченной покупки — для «Куплено — …». */
+const justBought = ref<string | null>(null)
 
 // Галерея или список (владелец 2026-09-27): галерея по умолчанию, выбор — на устройстве.
 const VIEW_KEY = 'ff_wishes_view'
@@ -127,9 +121,8 @@ async function createWish() {
   }
 }
 
-// Номер — до отметки: в React `bought.length + 1` считался уже после неё и был на один больше.
 function markBought(id: string, itemName: string) {
-  justBought.value = { name: itemName, n: boughtWish.value.length + 1 }
+  justBought.value = itemName
   financeStore.toggleBought(id)
 }
 
@@ -157,10 +150,8 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
       </button>
     </div>
 
-    <Callout v-if="justBought" tone="ok" :title="`Куплено — ${justBought.name}`">
-      Это {{ justBought.n }}-я покупка в дом. Вещь переехала в историю с датой и автором —
-      через год будет видно, куда уходили деньги на быт.
-    </Callout>
+    <!-- Одна строка без абзаца (правило 12): вещь видна ниже, в «Уже купили» -->
+    <Callout v-if="justBought" tone="ok" :title="`Куплено — ${justBought}`" />
 
     <!-- Галерея или список (владелец 2026-09-27); viewer — плитки и строки без действий (Р-12) -->
     <div v-if="activeWish.length && view === 'grid'" class="grid grid-cols-2 gap-2.5">
@@ -181,7 +172,7 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
         :wish="w"
         :src="w.photoId ? (wishSrc[w.photoId] ?? null) : null"
         :can-edit="canEdit"
-        :meta="`${nameOf(w.by)} · ${wishDate(w.addedOn)}`"
+        :meta="`${nameOf(w.by)} · ${addedLabel(w.addedOn)}`"
         @open="editWishId = w.id"
         @toggle="markBought(w.id, w.name)"
       />
@@ -209,9 +200,9 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
             <IconBox v-else><PhGift :size="18" /></IconBox>
             <div class="min-w-0 flex-1">
               <div class="truncate font-medium" :class="g.bought ? 'text-ink-3 line-through' : 'text-ink'">{{ g.name }}</div>
-              <div class="type-meta">{{ g.bought ? `куплено ${wishDate(g.boughtOn)}` : 'сюрприз' }}</div>
+              <div class="type-meta">{{ g.bought ? `куплено ${addedLabel(g.boughtOn)}` : 'сюрприз' }}</div>
             </div>
-            <span class="shrink-0 text-[14px] font-semibold num" :class="g.bought ? 'text-ink-3' : 'text-ink'">{{ plain(g.price) }}</span>
+            <span class="shrink-0 text-[14px] font-semibold num" :class="g.bought ? 'text-ink-3' : 'text-ink'">{{ money(g.price) }}</span>
             <button
               type="button"
               :aria-label="g.bought ? 'Вернуть сюрприз в список' : 'Сюрприз куплен'"
@@ -241,7 +232,7 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
         :src="w.photoId ? (wishSrc[w.photoId] ?? null) : null"
         :can-edit="canEdit"
         bought
-        :meta="`${nameOf(w.by)} · куплено ${wishDate(w.boughtOn)}`"
+        :meta="`${nameOf(w.by)} · куплено ${addedLabel(w.boughtOn)}`"
         @open="editWishId = w.id"
         @toggle="financeStore.toggleBought(w.id)"
       />
@@ -254,7 +245,7 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
         :src="w.photoId ? (wishSrc[w.photoId] ?? null) : null"
         :can-edit="canEdit"
         bought
-        :meta="`${nameOf(w.by)} · куплено ${wishDate(w.boughtOn)}`"
+        :meta="`${nameOf(w.by)} · куплено ${addedLabel(w.boughtOn)}`"
         @open="editWishId = w.id"
         @toggle="financeStore.toggleBought(w.id)"
       />
@@ -265,8 +256,8 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
 
     <WishSheet :wish-id="canEdit ? editWishId : null" @close="editWishId = null" />
 
-    <!-- Окно: Покупка в дом (React `Goals.tsx:284-305`) -->
-    <Sheet :open="openWishModal && canEdit" title="Покупка в дом" @close="openWishModal = false">
+    <!-- Окно: новое желание в список вкладки (React `Goals.tsx:284-305`) -->
+    <Sheet :open="openWishModal && canEdit" title="Новое желание" @close="openWishModal = false">
       <!-- Фото — первым: желание узнаётся по картинке (Р-9); в демо сервера нет -->
       <PhotoSlot v-if="!financeStore.isDemo" class="mb-3" :file="wishFile" removable @file="wishFile = $event" @remove="wishFile = null" />
       <Field label="Что покупаем">

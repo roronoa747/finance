@@ -13,6 +13,7 @@ import SavedMark from '@/components/kit/SavedMark.vue'
 import { useSavedMark } from '@/components/kit/useSavedMark'
 import Segmented from '@/components/kit/Segmented.vue'
 import Callout from '@/components/kit/Callout.vue'
+import Hint from '@/components/kit/Hint.vue'
 import DangerZone from '@/components/kit/DangerZone.vue'
 import Input from '@/components/ui/Input.vue'
 
@@ -204,18 +205,16 @@ function onCapitalizeChange(v: string) {
       </div>
     </Card>
 
-    <template v-if="calcResult">
-      <Callout title="Реальная доходность ниже той, что на витрине">
-        При инфляции {{ ratePct(INFLATION, 1) }} эффективная ставка
-        {{ ratePct(calcResult.effectiveRate, 1) }} оставляет примерно {{ ratePct(realEffective, 1) }} настоящих.
-        Это не повод не копить — это повод не путать номинал с доходом.
-      </Callout>
-
-      <Callout title="Проценты считает приложение, а не банк">
-        Формула аннуитета и капитализации работает офлайн, на ваших цифрах. Когда появится
-        ИИ-советник, он получит уже посчитанный результат и будет только объяснять его словами —
-        считать деньги модели не доверяем.
-      </Callout>
-    </template>
+    <!-- Реальная доходность — одна строка, пояснение в подсказке (правило 12); механика расчёта не объясняется -->
+    <Callout v-if="calcResult" tone="neutral" icon="none">
+      <span class="inline-flex items-center gap-2">
+        Реально ≈ {{ ratePct(realEffective, 1) }} с учётом инфляции
+        <Hint>
+          При инфляции {{ ratePct(INFLATION, 1) }} эффективная ставка {{ ratePct(calcResult.effectiveRate, 1) }}
+          оставляет примерно {{ ratePct(realEffective, 1) }} настоящих. Это не повод не копить — это повод не
+          путать номинал с доходом.
+        </Hint>
+      </span>
+    </Callout>
   </div>
 </template>

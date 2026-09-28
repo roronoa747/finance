@@ -2,9 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
+import type { Router } from 'vue-router'
 import type { SyncDoc, WishItem } from '@/types/finance'
-import { budgetAmounts } from '@/lib/finance'
-import { money, plain } from '@/lib/money'
+import { budgetAmounts, goalDoneMonth } from '@/lib/finance'
+import { money } from '@/lib/money'
 import { addMonths, monthIn } from '@/lib/dates'
 import { GOAL_TYPES, TRAVEL_DIRECTIONS, templateById } from '@/lib/goalTemplates'
 import { T0, authAs, planFamilyDoc } from '@/test/planFamily'
@@ -83,7 +84,8 @@ describe('views/Wishes.vue — желания по людям и сюрприз�
     expect(html).toContain('Сюрпризы для Аруна')
     expect(html).toContain('Видно только вам')
     expect(html).toContain('Наушники')
-    expect(html).toContain(plain(90_000))
+    // Цена сюрприза — деньгами с « ₸» (DESIGN §1.2; критик Блока 3).
+    expect(html).toContain(`>${money(90_000)}</span>`)
     expect(html).toContain('aria-label="Сюрприз куплен"')
     expect(html).toContain('Сюрприз')
 
@@ -129,7 +131,7 @@ describe('views/Wishes.vue — желания по людям и сюрприз�
   it('добавить на вкладке участника — в его список от своего имени, без «Кто добавил»; на «Общие» — с выбором', async () => {
     const store = family('member', 'a', { wishlist: [] })
     const sheet = await renderScreen(Wishes, '/people/b', undefined, [screenMixin({ openWishModal: true })])
-    expect(sheet).toContain('Покупка в дом')
+    expect(sheet).toContain('Новое желание')
     expect(sheet).not.toContain('aria-label="Кто добавил"')
     await renderScreen(Wishes, '/people/b', undefined, [
       screenMixin({ wishName: 'Плед', wishPrice: '9 000', wishBy: 'b' }, (s) => (s.createWish as () => void)()),
@@ -209,9 +211,8 @@ describe('views/GoalNew.vue — «Новая мечта» (B2C-18, SSR)', () => 
 
   it('«Готово — к мечте»: цель со взносом, шаблоном и цветом шаблона; у семьи с целями — не главная, первая цель семьи — главная', async () => {
     const store = family()
-    await renderScreen(GoalNew, '/goals/new', undefined, [
-      screenMixin({ step: 'form', template: templateById('japan'), name: 'Япония', needText: '1 800 000', term: '12' }, (s) => void (s.create as () => Promise<void>)()),
-    ])
+    // Нажатие дожидается и загрузки картинки: хвост действия стора иначе сменил бы активную Pinia следующего теста.
+    await createAndLand({ step: 'form', template: templateById('japan'), name: 'Япония', needText: '1 800 000', term: '12' })
     const goal = store.goals.find((g) => g.name === 'Япония')!
     expect(goal).toMatchObject({ need: 1_800_000, have: 0, monthly: 150_000, hue: 'plum', template: 'japan' })
     expect(goal.main).toBeUndefined()
@@ -219,9 +220,7 @@ describe('views/GoalNew.vue — «Новая мечта» (B2C-18, SSR)', () => 
     stubStorage()
     setActivePinia(createPinia())
     const fresh = family('member', 'a', { goals: [] })
-    await renderScreen(GoalNew, '/goals/new', undefined, [
-      screenMixin({ step: 'form', template: templateById('car'), name: 'Машина', needText: '3 000 000', term: '18' }, (s) => void (s.create as () => Promise<void>)()),
-    ])
+    await createAndLand({ step: 'form', template: templateById('car'), name: 'Машина', needText: '3 000 000', term: '18' })
     expect(fresh.goals[0]).toMatchObject({ name: 'Машина', main: true, template: 'car', hue: 'steel', monthly: 166_667 })
   })
 
@@ -231,6 +230,74 @@ describe('views/GoalNew.vue — «Новая мечта» (B2C-18, SSR)', () => 
       screenMixin({ step: 'form', template: templateById('japan'), name: 'Япония', needText: '1 800 000' }),
     ])
     expect(disabled(html, 'Готово — к мечте')).toBe(true)
+  })
+
+  /** Нажать «Готово — к мечте» и дождаться загрузки фото; куда пришёл экран. */
+  async function createAndLand(state: Record<string, unknown>, props?: Record<string, unknown>) {
+    let box: { create: () => Promise<void>; router: Router } | null = null
+    await renderScreen(GoalNew, '/goals/new', props, [
+      screenMixin(state, (s) => {
+        box = { create: s.create as () => Promise<void>, router: s.router as Router }
+      }),
+    ])
+    await box!.create()
+    return box!.router.currentRoute.value
+  }
+
+  // Критик Блока 3: экран уходил на цель до загрузки, и своё фото без сети молча терялось.
+  it('фото не загрузилось — экран цели узнаёт из адреса: своё — ?photo=failed, шаблон — ?photo=later; первый запуск — без заметки', async () => {
+    const store = family()
+    vi.stubGlobal('navigator', { onLine: false })
+    const own = await createAndLand({ step: 'form', name: 'Дом', needText: '1 000 000', ownFile: new File(['x'], 'home.jpg', { type: 'image/jpeg' }) })
+    const home = store.goals.find((g) => g.name === 'Дом')!
+    expect(own.path).toBe(`/goals/${home.id}`)
+    expect(own.query.photo).toBe('failed')
+    expect(home.photoId).toBeUndefined()
+
+    const tpl = await createAndLand({ step: 'form', template: templateById('japan'), name: 'Япония', needText: '1 800 000' })
+    expect(tpl.path).toBe(`/goals/${store.goals.find((g) => g.name === 'Япония')!.id}`)
+    expect(tpl.query.photo).toBe('later')
+
+    const first = await createAndLand({ step: 'form', name: 'Дача', needText: '900 000', ownFile: new File(['x'], 'dacha.jpg', { type: 'image/jpeg' }) }, { next: '/start/invite' })
+    expect(first.path).toBe('/start/invite')
+    expect(first.query.photo).toBeUndefined()
+  })
+
+  it('превью своего фото освобождается: выбор типа и новый файл отпускают прежний object URL', async () => {
+    family()
+    const revoked: string[] = []
+    const created: string[] = []
+    const urls = { create: URL.createObjectURL, revoke: URL.revokeObjectURL }
+    Object.assign(URL, {
+      createObjectURL: () => {
+        created.push(`blob:${created.length + 1}`)
+        return created[created.length - 1]
+      },
+      revokeObjectURL: (u: string) => revoked.push(u),
+    })
+    try {
+      await renderScreen(GoalNew, '/goals/new', undefined, [
+        screenMixin({ ownPreview: 'blob:old' }, (s) => {
+          const file = new File(['x'], 'a.jpg', { type: 'image/jpeg' })
+          ;(s.onFile as (e: unknown) => void)({ target: { files: [file], value: '' } })
+          expect(revoked).toEqual(['blob:old'])
+          expect(s.ownPreview).toBe('blob:1')
+          ;(s.pickType as (t: string) => void)('car')
+          expect(revoked).toEqual(['blob:old', 'blob:1'])
+          expect(s.ownPreview).toBeNull()
+        }),
+      ])
+    } finally {
+      Object.assign(URL, { createObjectURL: urls.create, revokeObjectURL: urls.revoke })
+    }
+  })
+
+  it('«будет вашей в …» — та же дата, что у экрана цели (goalDoneMonth)', async () => {
+    family()
+    const html = await renderScreen(GoalNew, '/goals/new', undefined, [
+      screenMixin({ step: 'form', template: templateById('car'), name: 'Машина', needText: '3 000 000', term: '18' }),
+    ])
+    expect(html).toContain(`будет вашей в ${monthIn(goalDoneMonth(18, '2026-09')!)}`)
   })
 })
 
@@ -303,6 +370,7 @@ describe('views/Wishes.vue — галерея и список с переклю�
     expect(rows).toContain('Аруна · куплено 20 сентября')
     expect(rows).toContain('line-through">Пылесос<')
     expect(rows).toContain('aria-label="Открыть ссылку"')
+    expect(rows).toContain(`>${money(18_000)}</span>`)
     expect(rows).toContain('data-photo')
     expect(rows).toMatch(/<button type="button"[^>]*data-wish="pan"/)
     expect(rows).toContain('aria-label="Отметить купленным"')

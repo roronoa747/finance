@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { PhLink } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { plain, parseMoney } from '@/lib/money'
-import { atLabel } from '@/lib/dates'
+import { addedLabel } from '@/lib/dates'
 import { liveWishlist } from '@/lib/finance'
 import { compressImage } from '@/lib/photos/compress'
 import { deletePhoto, uploadPhoto } from '@/lib/photos/store'
@@ -35,8 +35,7 @@ const people = computed(() => financeStore.people)
 
 const wish = computed(() => liveWishlist(financeStore.wishlist).find((w) => w.id === props.wishId))
 // Кто и когда добавил — здесь, а не на плитке (плитка — фото, название, цена).
-const wishDate = (s: string | null | undefined) => (!s ? '' : /^\d{4}-\d{2}-\d{2}/.test(s) ? atLabel(s) : s)
-const meta = computed(() => (wish.value ? `${people.value.find((p) => p.id === wish.value!.by)?.name ?? 'Участник'} · ${wishDate(wish.value.addedOn)}` : ''))
+const meta = computed(() => (wish.value ? `${people.value.find((p) => p.id === wish.value!.by)?.name ?? 'Участник'} · ${addedLabel(wish.value.addedOn)}` : ''))
 const saved = useSavedMark(
   () => wish.value?.id,
   () => wish.value?.updatedAt,

@@ -9,6 +9,8 @@ import { uploadPhoto } from './store'
  * заводится без картинки), картинка — скачать → сжать → загрузить → `photoId` и автор. Без
  * сети или при сбое остаётся `template` без `photoId` — дозагрузка при следующем открытии
  * с сетью (`retryTemplatePhotos`). В демо сервера нет — картинок нет, только шаблон и цвет.
+ * Замена фото на шаблон (у цели уже есть `photoId`) пишет шаблон и цвет только после
+ * загрузки: дозагрузка цели с фото не трогает, и отложенный шаблон остался бы без картинки.
  */
 export type GoalPhotoStore = {
   goals: Goal[]
@@ -31,9 +33,16 @@ const defaults = (): PhotoDeps => ({
   online: () => typeof navigator === 'undefined' || navigator.onLine !== false,
 })
 
-/** Скачать картинку шаблона, сжать и загрузить как фото цели. */
+/**
+ * Цели, чья картинка шаблона уже грузится: вторая загрузка той же цели (дозагрузка «Мечт»,
+ * пока «Новая мечта» ещё грузит) сделала бы второе фото, а первое осталось бы сиротой.
+ */
+const inFlight = new Set<string>()
+
+/** Скачать картинку шаблона, сжать и загрузить как фото цели; цель уже грузится — false. */
 async function uploadTemplate(store: GoalPhotoStore, goalId: string, t: GoalTemplate, deps: PhotoDeps): Promise<boolean> {
-  if (store.isDemo || !deps.online()) return false
+  if (store.isDemo || !deps.online() || inFlight.has(goalId)) return false
+  inFlight.add(goalId)
   try {
     const res = await deps.fetch(templateImageUrl(t))
     if (!res.ok) return false
@@ -43,13 +52,26 @@ async function uploadTemplate(store: GoalPhotoStore, goalId: string, t: GoalTemp
     return true
   } catch {
     return false
+  } finally {
+    inFlight.delete(goalId)
   }
 }
 
-/** Выбран шаблон: цель получает его сразу, картинка — при сети. */
-export async function attachTemplate(store: GoalPhotoStore, goalId: string, t: GoalTemplate, deps: PhotoDeps = defaults()): Promise<'uploaded' | 'deferred'> {
-  store.updateGoal(goalId, { template: t.id, hue: t.hue })
-  return (await uploadTemplate(store, goalId, t, deps)) ? 'uploaded' : 'deferred'
+/**
+ * Выбран шаблон. Цель без фото получает его сразу, картинка — при сети (`deferred`). Цель с
+ * фото меняет шаблон и цвет только вместе с картинкой; не загрузилось — всё прежнее (`offline`).
+ */
+export async function attachTemplate(
+  store: GoalPhotoStore,
+  goalId: string,
+  t: GoalTemplate,
+  deps: PhotoDeps = defaults(),
+): Promise<'uploaded' | 'deferred' | 'offline'> {
+  const replacing = !!store.goals.find((g) => g.id === goalId)?.photoId
+  if (!replacing) store.updateGoal(goalId, { template: t.id, hue: t.hue })
+  if (!(await uploadTemplate(store, goalId, t, deps))) return replacing ? 'offline' : 'deferred'
+  if (replacing) store.updateGoal(goalId, { template: t.id, hue: t.hue })
+  return 'uploaded'
 }
 
 /** Своё фото из галереи или камеры: сжать и загрузить; автора нет. */

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { PhCheck, PhLink, PhShoppingBag } from '@phosphor-icons/vue'
-import { plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import { cn } from '@/lib/utils'
 import type { WishItem } from '@/types/finance'
 import IconBox from '@/components/kit/IconBox.vue'
@@ -66,6 +66,6 @@ const emit = defineEmits<{ (e: 'open'): void; (e: 'toggle'): void }>()
     >
       <PhLink :size="10" /> ссылка
     </a>
-    <span :class="cn('shrink-0 text-[14px] font-semibold num', bought ? 'text-ink-3' : 'text-ink')">{{ plain(wish.price) }}</span>
+    <span :class="cn('shrink-0 text-[14px] font-semibold num', bought ? 'text-ink-3' : 'text-ink')">{{ money(wish.price) }}</span>
   </div>
 </template>

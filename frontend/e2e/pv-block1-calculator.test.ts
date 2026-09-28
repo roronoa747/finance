@@ -238,16 +238,14 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
     expect(await screen(A.pinia, GoalDetail, '/goals/flat')).toContain(`около ${money(7_900_704)}`) // 35 взносов → 34 мес.
   })
 
-  it('PV-05: вклад — инфляция 10,2% и вторая плашка React', async () => {
+  // Критик Б3 (правило 12): плашки про инфляцию и «ИИ-советника» свёрнуты в одну строку с подсказкой.
+  it('PV-05: вклад — инфляция 10,2%, реальная доходность одной строкой', async () => {
     const A = await phone(server)
     const html = await screen(A.pinia, Deposit, '/capital/dep')
     // 14% с ежемесячной капитализацией = 14,9% эффективных; (1,149 / 1,102) − 1 = 4,3% (при 8% было бы 6,4%).
-    expect(html).toContain('При инфляции 10,2% эффективная ставка')
-    expect(html).toContain('14,9%')
-    expect(html).toContain('4,3%')
-    expect(html).toContain('это повод не путать номинал с доходом.')
-    expect(html).toContain('Проценты считает приложение, а не банк')
-    expect(html).toContain('считать деньги модели не доверяем.')
+    expect(html).toContain('Реально ≈ 4,3% с учётом инфляции')
+    expect(html).not.toContain('ИИ-советник')
+    expect(html).not.toContain('Проценты считает приложение, а не банк')
   })
 
   // PV-06 (мастер: «Пропустить» не пишет введённое) снят вместе с мастером — первый запуск из выписки

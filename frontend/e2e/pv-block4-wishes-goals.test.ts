@@ -67,7 +67,7 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       expect(B.store.wishlist.find((w) => w.id === 'pan')).toMatchObject({ name: 'Сковорода Tefal', price: 21_000 })
       const seen = await screen(B.pinia, Wishes, '/wishes')
       expect(seen).toContain('Сковорода Tefal')
-      expect(seen).toContain(`>${plain(21_000)}</span>`)
+      expect(seen).toContain(`>${money(21_000)}</span>`)
 
       at('2026-09-24T09:00:00Z')
       B.store.toggleBought('vac')
@@ -230,7 +230,7 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
 
       const wishV = await screen(V.pinia, Wishes, '/wishes')
       expect(wishV).toContain('Чайник Bosch')
-      expect(wishV).toContain(`>${plain(15_000)}</span>`)
+      expect(wishV).toContain(`>${money(15_000)}</span>`)
       expect(wishV).toContain(money(198_000))
       expect(wishV).toContain('Ильяс · куплено 24 сентября')
       // Автор и дата — в окне покупки; viewer его не открывает: плитка — не кнопка.

@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, parseMoney } from '@/lib/money'
-import { addMonths, monthIn, monthKey } from '@/lib/dates'
-import { budgetAmounts, goalMonthly } from '@/lib/finance'
+import { monthIn, monthKey } from '@/lib/dates'
+import { budgetAmounts, goalDoneMonth, goalMonthly } from '@/lib/finance'
 import { GOAL_TEMPLATES, GOAL_TYPES, TRAVEL_DIRECTIONS, templateImageUrl, type GoalTemplate } from '@/lib/goalTemplates'
 import { attachFile, attachTemplate } from '@/lib/photos/goalPhoto'
 import Button from '@/components/ui/Button.vue'
@@ -22,7 +22,8 @@ import TemplateTile from '@/components/kit/TemplateTile.vue'
  * «Новая мечта» (DESIGN.md §2 g3 «На что копим», «Сумма и срок»; B2C-18): шаблон или своё фото →
  * название → сумма → срок → взнос считается (`goalMonthly`), «будет вашей в …» → цель. Первая
  * цель семьи — главная (стор). Тот же экран — из «+» и из первого запуска (`?next=`).
- * Картинка грузится после создания (`lib/photos/goalPhoto`), офлайн — при следующей сети.
+ * Картинка грузится после создания (`lib/photos/goalPhoto`), офлайн — при следующей сети; не
+ * загрузилась — экран цели узнаёт об этом из адреса (`?photo=failed|later`), в первом запуске — нет.
  */
 /** Куда идти после мечты: первый запуск (B2C-19) рендерит экран внутри себя и задаёт следующий шаг. */
 const props = defineProps<{ next?: string }>()
@@ -55,7 +56,8 @@ const customMonths = ref('24')
 const need = computed(() => parseMoney(needText.value))
 const months = computed(() => (term.value === 'custom' ? Math.max(1, parseMoney(customMonths.value) || 1) : Number(term.value)))
 const monthly = computed(() => (need.value > 0 ? goalMonthly(need.value, months.value) : 0))
-const doneMonth = computed(() => monthIn(addMonths(monthKey(), months.value - 1)))
+// Та же дата, что покажут экран цели и герой (`goalDoneMonth`); срок здесь всегда конечен.
+const doneMonth = computed(() => monthIn(goalDoneMonth(months.value, monthKey())!))
 // «Реально» — взнос укладывается в свободное по плану месяца.
 const free = computed(() => budgetAmounts({ ...financeStore.householdDoc, credits: financeStore.credits }).d5)
 const realistic = computed(() => monthly.value > 0 && monthly.value <= free.value)
@@ -65,11 +67,18 @@ const directions = computed(() => (pickedType.value === 'travel' ? TRAVEL_DIRECT
 const byType = (type: GoalTemplate['type']) => GOAL_TEMPLATES.find((t) => t.id === type)!
 const previewSrc = computed(() => ownPreview.value ?? (template.value ? templateImageUrl(template.value, 800) : null))
 
+/** Превью своего фото — object URL: освобождается при смене выбора и уходе с экрана. */
+function dropPreview() {
+  if (ownPreview.value) URL.revokeObjectURL(ownPreview.value)
+  ownPreview.value = null
+}
+onBeforeUnmount(dropPreview)
+
 function pickType(type: GoalTemplate['type']) {
   pickedType.value = type
   template.value = byType(type)
   ownFile.value = null
-  ownPreview.value = null
+  dropPreview()
 }
 function pickDirection(t: GoalTemplate) {
   template.value = t
@@ -82,6 +91,7 @@ function onFile(e: Event) {
   ownFile.value = file
   template.value = null
   pickedType.value = null
+  dropPreview()
   ownPreview.value = typeof URL !== 'undefined' && 'createObjectURL' in URL ? URL.createObjectURL(file) : null
   next()
 }
@@ -95,17 +105,24 @@ function skip() {
 
 async function create() {
   if (!canCreate.value) return
+  const file = ownFile.value
+  const tpl = template.value
   const id = financeStore.addGoal({
     name: name.value.trim(),
     need: need.value,
     monthly: monthly.value,
-    hue: template.value?.hue ?? 'blue',
-    template: template.value?.id ?? null,
+    hue: tpl?.hue ?? 'blue',
+    template: tpl?.id ?? null,
   })
-  await router.push(nextPath() ?? `/goals/${id}`)
-  // Картинка — после перехода: цель уже есть, фото догрузится (или при следующей сети).
-  if (ownFile.value) void attachFile(financeStore, id, ownFile.value)
-  else if (template.value) void attachTemplate(financeStore, id, template.value)
+  const next = nextPath()
+  const here = `/goals/${id}`
+  await router.push(next ?? here)
+  // Картинка — после перехода: цель уже есть, фото догрузится (шаблон — и при следующей сети).
+  const done = file ? await attachFile(financeStore, id, file) : tpl ? (await attachTemplate(financeStore, id, tpl)) === 'uploaded' : true
+  // Не загрузилось — экран цели скажет об этом (своё фото само не догрузится); первый запуск и
+  // демо (сервера нет) — без заметки.
+  if (done || next || financeStore.isDemo || router.currentRoute.value.path !== here) return
+  await router.replace({ path: here, query: { photo: file ? 'failed' : 'later' } })
 }
 </script>
 

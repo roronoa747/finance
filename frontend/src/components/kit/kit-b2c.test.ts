@@ -262,11 +262,14 @@ describe('OpRow / Tabs / Toggle / EmptyState / ScreenHeader / Avatar / Tag / Car
     expect(await render(Card, {}, { default: () => 'x' })).toContain('p-5')
   })
 
-  it('Callout — тона neutral/brand/ok/warn и прежний good, иконка по тону или своя', async () => {
+  it('Callout — тона neutral/brand/ok/warn (у «готово» одно имя — ok), иконка по тону или своя', async () => {
     expect(await render(Callout, { tone: 'neutral' }, { default: () => 'x' })).toContain('bg-surface-2')
     expect(await render(Callout, { tone: 'brand' }, { default: () => 'x' })).toContain('bg-brand-soft text-brand')
-    expect(await render(Callout, { tone: 'ok' }, { default: () => 'x' })).toContain('bg-ok-soft')
-    expect(await render(Callout, { tone: 'good' }, { default: () => 'x' })).toContain('bg-ok-soft')
+    const ok = await render(Callout, { tone: 'ok' }, { default: () => 'x' })
+    expect(ok).toContain('bg-ok-soft text-ok')
+    // Иконка «готово» — галочка по тону, как если бы её задали явно.
+    expect(ok).toBe(await render(Callout, { tone: 'ok', icon: 'check' }, { default: () => 'x' }))
+    expect(ok).not.toBe(await render(Callout, { tone: 'ok', icon: 'info' }, { default: () => 'x' }))
     const warn = await render(Callout, { title: 'Не всё ушло' }, { default: () => 'x' })
     expect(warn).toContain('bg-warn-soft')
     expect(warn).toContain('Не всё ушло')
