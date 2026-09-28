@@ -2594,6 +2594,24 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(salaryAsk(state, undefined, { day: 10, key: '2026-09' })).toBeNull()
     })
 
+    it('критик возврата 2: день зарплаты 1-го — «Пришла?» октября с 28 сентября по 1 октября, сентябрьская неразложенная прячется только на эти дни, со 2-го снова «разложить?»', () => {
+      const september: Payment = {
+        id: 's-a-09', kind: 'salary', targetId: 'a', period: '2026-09', amount: 700_000, accountId: null, by: 'a', at: T, updatedAt: T, source: 'statement', opId: 'op-a-09',
+      }
+      const state = { ...base, people: people.map((p) => (p.id === 'a' ? { ...p, payday: 1 } : p)), payments: [september] }
+      const at = (key: string, day: number) => {
+        const d = nextDecision(state, { me: 'a', now: { day, key }, answeredMonthEnd: key })
+        return `${d?.kind}:${d?.salary?.period}`
+      }
+      expect([26, 27].map((d) => at('2026-09', d))).toEqual(['allocate:2026-09', 'allocate:2026-09'])
+      expect([28, 29, 30].map((d) => at('2026-09', d))).toEqual(['salary:2026-10', 'salary:2026-10', 'salary:2026-10'])
+      expect(at('2026-10', 1)).toBe('salary:2026-10')
+      expect([2, 3, 4].map((d) => at('2026-10', d))).toEqual(['allocate:2026-09', 'allocate:2026-09', 'allocate:2026-09'])
+      // Месяц перед спрашиваемым не ищется — и в «Неделе» карточка одна.
+      expect(salaryToAllocate(state, 'a', { day: 29, key: '2026-09' })).toBeNull()
+      expect(salaryToAllocate(state, 'a', { day: 2, key: '2026-10' })?.period).toBe('2026-09')
+    })
+
     it('шаг плана «Сначала долги» — последним; viewer не участник — me пустой, зарплаты нет', () => {
       const plan: DebtPlan = {
         id: 'p', status: 'active', by: 'a', startedAt: '2026-09-01T05:00:00.000Z', endedAt: null, keptGoalIds: [], cushionGoalId: null,

@@ -6,7 +6,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain } from '@/lib/money'
 import { monthKey, monthFrom, dayLabel } from '@/lib/dates'
-import { amountAt, freedChange, liveAccounts, liveObligations, salaryOpen, untilPayday } from '@/lib/finance'
+import { amountAt, freedChange, liveAccounts, liveObligations, salaryAsk, untilPayday } from '@/lib/finance'
 import { cn, plural } from '@/lib/utils'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/kit/Card.vue'
@@ -50,12 +50,12 @@ const paydayInfo = computed(() =>
   }),
 )
 
-// «Пришла зарплата» (RP-10): ближайшая зарплата — своя, и её день настал или близко.
-const salaryHere = computed(() => {
-  const info = paydayInfo.value
-  if (!info || authStore.isViewer || authStore.slot !== info.who.id) return false
-  return salaryOpen(info.who, financeStore.payments, info.key)
-})
+// «Пришла зарплата» (RP-10): то же условие, что у главного и «Недели» (`salaryAsk`).
+const salaryHere = computed(
+  () =>
+    !authStore.isViewer &&
+    !!salaryAsk({ people: financeStore.people, obligations: financeStore.obligations, credits: financeStore.credits, payments: financeStore.payments }, authStore.slot),
+)
 </script>
 
 <template>

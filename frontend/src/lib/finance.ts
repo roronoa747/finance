@@ -1723,8 +1723,8 @@ export const salaryAllocationPath = (person: PersonId, period: string) => `/week
  * «Недели» и `nextDecision`). Только `source: 'statement'`: ручные отметки до записи раскладок
  * (`allocations`, B2C-21) раскладывал старый Ритуал без записи — карточка предложила бы их второй раз.
  * Нужна запись раскладки (`allocationFor` пуст) и свободное в этой зарплате (`salaryFree` > 0) — по
- * плану её месяца. Прошлый месяц не ищется, только пока «Пришла?» этого месяца действительно
- * спрашивается (`salaryAsk`, как у главного): иначе старая неразложенная заслонила бы его. После дня
+ * плану её месяца. Месяц перед спрашиваемым «Пришла?» не ищется, только пока она действительно
+ * спрашивается (`salaryAsk`, как у главного): иначе старая неразложенная заслонила бы её. После дня
  * зарплаты «Пришла?» уже не спрашивается — прошлая неразложенная снова здесь (возврат приёмки 2 п. 3:
  * выписку грузят после дня зарплаты, и с 13-го по конец месяца зарплата терялась). Пришедшая раньше
  * срока зарплата следующего месяца (день 1-го, пришла 29-го) — сразу (критик возврата Блока 3).
@@ -1749,8 +1749,11 @@ export function salaryToAllocate(
   const person = people.find((p) => alive(p) && p.id === me)
   if (!person) return null
   const payments = state.payments ?? []
-  const asking = salaryAsk(state, me, now)?.key === now.key
-  const months = [addMonths(now.key, 1), now.key, ...(asking ? [] : [addMonths(now.key, -1)])]
+  // Пока спрашивается «Пришла?», месяц перед спрашиваемым не ищется: у дня зарплаты 1–3 окно
+  // «Пришла?» октября открыто с 28 сентября — иначе карточка скакала бы 30-го → 1-го → 2-го.
+  const asked = salaryAsk(state, me, now)
+  const hidden = asked ? addMonths(asked.key, -1) : null
+  const months = [addMonths(now.key, 1), now.key, addMonths(now.key, -1)].filter((k) => k !== hidden)
   const found = record ?? months.map((k) => paidFor(payments, 'salary', me, k)).find(Boolean)
   if (!found || found.kind !== 'salary' || found.targetId !== me || found.source !== 'statement') return null
   if (allocationFor(state.allocations, { source: 'salary', sourceId: me, period: found.period })) return null
@@ -2567,7 +2570,7 @@ export type Decision = {
 
 /**
  * Что решить первым (Р-8): незнакомые продавцы недели → ждущие сопоставления (B2C-15) →
- * своя зарплата из выписки не разложена (`salaryToAllocate`) → своя зарплата «пришла?» (`salaryOpen`) → «оставить подписку?» (`keepQuestions`) →
+ * своя зарплата из выписки не разложена (`salaryToAllocate`) → своя зарплата «пришла?» (`salaryAsk`) → «оставить подписку?» (`keepQuestions`) →
  * «остались деньги?» (`monthEndAsk`) → шаг плана (`stepDue`) → null. Только для участника
  * с правом правки (viewer решений не принимает — Р-13); `me` — его слот.
  */

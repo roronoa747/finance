@@ -261,6 +261,30 @@ describe('views/Money.vue — финансовые показатели (рас�
     expect(html).not.toContain('распределено')
   })
 
+  it('критик возврата 2: «Пришла зарплата» в «Деньгах» — по тому же условию, что главный и «Неделя» (salaryAsk): в день зарплаты своя есть, чужая и отмеченная — нет', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-25T07:00:00Z')) // 25 сентября, Алматы
+    try {
+      useAuthStore().setAuthData({
+        token: 't',
+        user: { id: 'u-a', email: 'a@example.com', created_at: '' },
+        household: { id: 'h-1', name: 'Family', created_by: 'u-a', created_at: '' },
+        member: { household_id: 'h-1', user_id: 'u-a', slot: 'a', display_name: 'Ильяс', role: 'member', joined_at: '' },
+      })
+      const store = useFinanceStore()
+      store.householdDoc.people = [
+        { id: 'a', name: 'Ильяс', salary: 700_000, payday: 25, updatedAt: '' },
+        { id: 'b', name: 'Аруна', salary: 500_000, payday: 28, updatedAt: '' },
+      ]
+      expect(await renderScreen(Money, '/money')).toContain('Пришла зарплата')
+      // Своя отмечена — ближайшая теперь чужая (28-го): кнопки нет.
+      store.markSalary('a', { period: '2026-09', amount: 700_000, accountId: null })
+      expect(await renderScreen(Money, '/money')).not.toContain('Пришла зарплата')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('«Освободится»: сумма из freedChange (годовое — доля в месяц и разница за год), пояснение — одной строкой, без Callout о переезде; «До зарплаты» — без абзацев (критик Блока 3)', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-09-17T07:00:00Z')) // 17 сентября, Алматы

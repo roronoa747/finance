@@ -164,29 +164,44 @@ describe('возврат приёмки п. 2: зарплата, отмечен�
 })
 
 describe('возврат приёмки 2 п. 3, 4: одна карточка о зарплате, у неотмеченной — вопрос о приходе', () => {
-  it('день зарплаты, отметки нет — «Пришла зарплата Алихан?» (как решение на главном), кнопка «Пришла зарплата»; «разложить?» — только у раскладки', async () => {
+  it('день зарплаты, отметки нет — «Пришла зарплата Алихан?» (как решение на главном); «Пришла зарплата» отмечает приход и ведёт на раскладку; «разложить?» — только у раскладки', async () => {
     vi.setSystemTime(new Date('2026-09-10T07:00:00Z'))
-    await openWeek((finance, store) => {
+    const { finance, router } = await openWeek((finance, store) => {
       finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000 }
       finance.householdDoc.credits = []
       delete store.ops['op-1']
+      // Прошлая отметка без счёта — счёт спрашивать не у кого, кнопка отмечает одним нажатием.
+      finance.markSalary('a', { period: '2026-08', amount: 500_000, accountId: null })
     })
     expect(page()).toContain('Пришла зарплата Алихан?')
     expect(page()).toContain('10 сентября')
     expect(page()).not.toContain('разложить?')
-    expect(button('Пришла зарплата')).toBeTruthy()
+    await tap('Пришла зарплата')
+    const mine = finance.payments.filter((p) => !p.deletedAt && p.period === '2026-09')
+    expect(mine).toEqual([expect.objectContaining({ kind: 'salary', targetId: 'a', amount: 500_000, accountId: null })])
+    expect(mine[0].opId).toBeUndefined()
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/week/salary?from=salary&person=a&period=2026-09'))
   })
 
-  it('зарплата сентября из выписки не разложена, а «Пришла?» октября уже спрашивается (день 1-го, 29-е) — на «Неделе» одна карточка «разложить?»', async () => {
-    vi.setSystemTime(new Date('2026-09-29T07:00:00Z'))
-    await openWeek((finance, store) => {
+  it('день зарплаты 1-го: пока спрашивается «Пришла?» октября (с 28 сентября), неразложенная сентябрьская прячется — одна карточка; со 2 октября — снова «разложить?»', async () => {
+    const setup = (finance: ReturnType<typeof useFinanceStore>, store: ReturnType<typeof useOperationsStore>) => {
       finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000, payday: 1 }
       finance.householdDoc.credits = []
       delete store.ops['op-1']
       finance.markSalary('a', { period: '2026-09', amount: 500_000, accountId: null, source: 'statement', opId: 'op-9', at: '2026-09-01T07:00:00.000Z' })
-    })
+    }
+    vi.setSystemTime(new Date('2026-09-29T07:00:00Z'))
+    await openWeek(setup)
+    expect(page()).toContain('Пришла зарплата Алихан?')
+    expect(page()).not.toContain('разложить?')
+    expect(page().split('Пришла зарплата Алихан').length - 1).toBe(1)
+
+    app?.unmount()
+    document.body.innerHTML = ''
+    vi.setSystemTime(new Date('2026-10-02T07:00:00Z'))
+    await openWeek(setup)
     expect(page()).toContain('Пришла зарплата Алихан — разложить?')
     expect(page()).not.toContain('Пришла зарплата Алихан?')
-    expect(page().split('Пришла зарплата').length - 1).toBe(1)
+    expect(page().split('Пришла зарплата Алихан').length - 1).toBe(1)
   })
 })
