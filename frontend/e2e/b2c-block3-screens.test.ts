@@ -550,6 +550,86 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     ])
   })
 
+  it('третья приёмка (критик возврата 2): после «Записать» переводов у B — «куда отнести?» → раздел ложится «остальным» в правило платежа; «Свободно» у A и B то же; повтор выписки отмечает июнь 15 000 сам, остальные переводы — в разделе', async () => {
+    server = fakeServer({ ...defaultSyncDoc(), people: [{ id: 'a', name: 'Ильяс', salary: 600_000, payday: 10, updatedAt: T0 }], setupDoneAt: T0 })
+    const A = await phone(server, st, 'a')
+    storage.clear()
+    const B = await phone(server, st, 'b')
+    const base = kaspi('freedom-01')
+    const transfer = (date: string, amount: number): Omit<Operation, 'id'> => ({
+      bank: 'freedom', date, amount, kind: 'transfer-out', merchant: 'Перевод с карты на карту', categoryId: null, internal: false,
+    })
+    const parsed: ParsedStatement = {
+      ...base,
+      operations: assignIds([...base.operations.map(({ id: _id, ...o }) => o), transfer('2025-06-20', -15_000), transfer('2025-07-20', -15_000)]),
+    }
+    await upload(B, parsed)
+    const free = async (p: Phone) => {
+      setActivePinia(p.pinia)
+      const f = useFinanceStore()
+      await f.pullHousehold(p.client)
+      await useOperationsStore().loadUploads(p.client)
+      const doc = f.householdDoc
+      return freeByFact({ ...doc, credits: f.credits }, doc.spendTotals ?? [], doc.spendCategories ?? [], '2025-07', useOperationsStore().uploads).amount
+    }
+
+    // Первый запуск B: ответы по умолчанию до вопроса о переводах, «Записать» — обязательство 15 000.
+    setActivePinia(B.pinia)
+    for (let i = 0; i < 7; i++) {
+      const html = await screen(B.pinia, Start, '/start/questions')
+      if (html.includes('Перевод с карты на карту — это что?')) break
+      await screen(B.pinia, Start, '/start/questions', undefined, [act(html.includes('Это ваш доход?') ? 'answerIncome' : 'answerRecurring', {})])
+    }
+    await screen(B.pinia, Start, '/start/questions', undefined, [act('answerRecurring')])
+    const ob = B.store.obligations.find((o) => o.name === 'Перевод с карты на карту')!
+    await B.store.syncHousehold(B.client)
+    const before = { a: await free(A), b: await free(B) }
+
+    // «Неделя» B: переводы не той суммы — незнакомые; ответ разделом не заменяет правило платежа.
+    setActivePinia(B.pinia)
+    const ops = useOperationsStore()
+    // Сопоставления — первыми (порядок Р-8): «Нет» на каждое, дальше — незнакомое.
+    for (const c of [...ops.pendingMatches]) ops.declineMatch(c)
+    // Переводы не той суммы — в очереди «куда отнести?»; ответ — чип раздела (как нажатие на карточке).
+    type Group = { label: string }
+    let queued: string[] = []
+    await screen(B.pinia, Statements, '/week', undefined, [
+      screenMixin({}, (s) => {
+        const queue = s.unknownQueue as Group[]
+        queued = queue.map((g) => g.label)
+        ;(s.choose as (g: Group, v: string, r: boolean) => void)(queue.find((g) => g.label === 'Перевод с карты на карту')!, 'sc_people', true)
+      }),
+    ])
+    expect(queued).toContain('Перевод с карты на карту')
+    await vi.runOnlyPendingTimersAsync()
+    await ops.flush(B.client)
+    const rule = () => B.store.merchantRules.filter((r) => !r.deletedAt && r.match.merchant === 'перевод с карты на карту')
+    expect(rule().map((r) => r.to)).toEqual([{ payment: { kind: 'obligation', targetId: ob.id, categoryId: 'sc_subscriptions', restCategoryId: 'sc_people' } }])
+    await screen(B.pinia, Statements, '/week', undefined, [screenMixin({}, (s) => void (queued = (s.unknownQueue as Group[]).map((g) => g.label)))])
+    expect(queued).not.toContain('Перевод с карты на карту')
+    const julyTransfers = () => ops.all
+      .filter((o) => o.merchant === 'Перевод с карты на карту' && o.amount < 0 && o.date.startsWith('2025-07'))
+      .map((o) => [o.amount, o.categoryId]).sort((x, y) => Number(x[0]) - Number(y[0]))
+    expect(julyTransfers()).toEqual([[-50_000, 'sc_people'], [-15_000, 'sc_subscriptions'], [-11_000, 'sc_people'], [-2_000, 'sc_people']])
+    await B.store.syncHousehold(B.client)
+    // Переводы людям — такая же трата, как незнакомое: «Свободно» не меняется ни у кого.
+    expect({ a: await free(A), b: await free(B) }).toEqual(before)
+
+    // Повтор той же выписки: июнь 15 000 отмечен правилом сам, июль — не второй раз; операций не прибавилось.
+    setActivePinia(B.pinia)
+    const count = ops.all.length
+    ops.setDraft([{ name: 'выписка.pdf', parsed }])
+    await ops.send(B.client)
+    await B.store.syncHousehold(B.client)
+    expect(ops.lastAutoMarked).toBe(1)
+    expect(ops.all).toHaveLength(count)
+    const marks = B.store.payments.filter((p) => p.targetId === ob.id && !p.deletedAt).map((p) => [p.period, p.amount, p.source]).sort()
+    expect(marks).toEqual([['2025-06', 15_000, 'statement'], ['2025-07', 15_000, 'statement']])
+    expect(julyTransfers()).toEqual([[-50_000, 'sc_people'], [-15_000, 'sc_subscriptions'], [-11_000, 'sc_people'], [-2_000, 'sc_people']])
+    expect(rule()).toHaveLength(1)
+    expect({ a: await free(A), b: await free(B) }).toEqual(before)
+  })
+
   it('«Введу вручную»: оклад и день без выписки — участник записан, итогов нет, дальше — к мечте', async () => {
     const A = await phone(server, st, 'a')
     await screen(A.pinia, Start, '/start', undefined, [act('manualNext', { manual: true, manualSalary: '500 000', manualPayday: '5' })])
