@@ -12,6 +12,7 @@ import type { OperationsPage, OperationWire, StatementUploadResponse } from '@/t
 import kaspi01 from '@/lib/statements/fixtures/kaspi-01.rows.json'
 import { planFamilyDoc } from '@/test/planFamily'
 import { freeByFact } from '@/lib/finance'
+import { readMonthEnd, writeMonthEnd } from '@/lib/storage'
 
 const storage = new Map<string, string>()
 
@@ -288,6 +289,14 @@ describe('stores/operations — курсор, семья, демо', () => {
 
     useFinanceStore().clearLocal()
     for (const k of ['ff_operations', 'ff_operations_cursor', 'ff_operations_pending']) expect(storage.has(k)).toBe(false)
+  })
+
+  it('выход стирает ответ «остались деньги?»: следующий вход на телефоне получит свой вопрос', () => {
+    signIn()
+    writeMonthEnd('2026-09')
+    expect(readMonthEnd()).toBe('2026-09')
+    useFinanceStore().clearLocal()
+    expect(readMonthEnd()).toBeNull()
   })
 
   it('копия чужой семьи на диске при старте не подхватывается', () => {
