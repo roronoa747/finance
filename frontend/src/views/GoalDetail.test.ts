@@ -18,7 +18,7 @@ import {
 } from '@/lib/finance'
 import { money, plain, ratePct } from '@/lib/money'
 import { addMonths, monthIn, monthKey } from '@/lib/dates'
-import { GOAL_TEMPLATES, GOAL_TYPES } from '@/lib/goalTemplates'
+import { GOAL_TEMPLATES, GOAL_TYPES, templateById } from '@/lib/goalTemplates'
 import { HUES } from '@/lib/palette'
 import { T0, authAs, planFamilyDoc, planOf } from '@/test/planFamily'
 import { renderScreen, screenMixin } from '@/test/screenState'
@@ -483,6 +483,8 @@ describe('PV-15: пауза целей ради плана (SSR)', () => {
     expect(picker).toContain('Убрать фото')
     // Выбранный шаблон с автором: в окне строки «Фото: … / Unsplash» нет — автор только на фото героя.
     expect(picker.match(/Matthew Skinner/g)).toHaveLength(1)
+    // Автор выбранного шаблона («Япония» после возврата приёмки — другой) в окне тоже не печатается (критик возврата).
+    expect(picker).not.toContain(templateById('japan')!.photo.author)
 
     // Viewer — без кнопок правки героя.
     setActivePinia(createPinia())
