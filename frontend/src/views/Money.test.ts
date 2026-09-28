@@ -285,6 +285,32 @@ describe('views/Money.vue — финансовые показатели (рас�
     }
   })
 
+  it('критик возврата 3 (правило 12): «Освободится» и «Пришла зарплата» на одном экране — брендовая одна («Распределить»), без события — брендовая «Пришла зарплата»', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-17T07:00:00Z')) // 17 сентября, Алматы — день зарплаты
+    try {
+      useAuthStore().setAuthData({
+        token: 't',
+        user: { id: 'u-a', email: 'a@example.com', created_at: '' },
+        household: { id: 'h-1', name: 'Family', created_by: 'u-a', created_at: '' },
+        member: { household_id: 'h-1', user_id: 'u-a', slot: 'a', display_name: 'Ильяс', role: 'member', joined_at: '' },
+      })
+      const store = useFinanceStore()
+      store.householdDoc.people = [{ id: 'a', name: 'Ильяс', salary: 700_000, payday: 17, updatedAt: '' }]
+      const brand = (html: string) =>
+        [...html.matchAll(/<button[^>]*class="[^"]*bg-brand text-brand-ink[^"]*"[^>]*>([\s\S]*?)<\/button>/g)].map((x) => x[1].replace(/<[^>]+>/g, '').trim())
+      expect(brand(await renderScreen(Money, '/money'))).toEqual(['Пришла зарплата'])
+      store.householdDoc.obligations = [
+        { id: 'rent', name: 'Аренда', note: '', day: 20, category: 'd1', versions: [{ from: '2026-01', amount: 300_000 }, { from: '2026-10', amount: 220_000 }], updatedAt: '' },
+      ]
+      const html = await renderScreen(Money, '/money')
+      expect(html).toContain('Пришла зарплата')
+      expect(brand(html)).toEqual(['Распределить'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('«Освободится»: сумма из freedChange (годовое — доля в месяц и разница за год), пояснение — одной строкой, без Callout о переезде; «До зарплаты» — без абзацев (критик Блока 3)', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-09-17T07:00:00Z')) // 17 сентября, Алматы

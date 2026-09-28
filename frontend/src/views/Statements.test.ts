@@ -266,6 +266,34 @@ describe('views/Statements.vue — решения по одному и итог 
     expect(await renderScreen(Statements, '/week')).toContain('Остались деньги?')
   })
 
+  it('критик возврата 3 (правило 12): «Пришла зарплата?» — в порядке главного, раньше подписки и «Остались деньги?»; брендовая кнопка на экране одна', async () => {
+    // День зарплаты 1-го: 29 сентября спрашивается «Пришла?» октября и «Остались деньги?» сентября.
+    vi.setSystemTime(new Date('2026-09-29T07:00:00Z'))
+    signIn()
+    const finance = useFinanceStore()
+    finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000, payday: 1 }
+    finance.householdDoc.obligations = [netflix]
+    let raw = await renderScreen(Statements, '/week')
+    expect(text(raw)).toContain('Пришла зарплата Алихан?')
+    expect(text(raw)).not.toContain('Остались деньги?')
+    // Своей выписки нет — «Загрузить выписку» тихая; главная — «Пришла зарплата».
+    expect(text(raw)).toContain('Загрузить выписку')
+    expect(brand(raw)).toEqual(['Пришла зарплата'])
+
+    expect(text(raw)).not.toContain('Оставить подписку')
+
+    // Отмечена — очередь дальше, как на главном: подписка, затем «Остались деньги?»; брендовая одна.
+    finance.markSalary('a', { period: '2026-10', amount: 500_000, accountId: null })
+    raw = await renderScreen(Statements, '/week')
+    expect(text(raw)).not.toContain('Пришла зарплата Алихан?')
+    expect(text(raw)).toContain('Оставить подписку Netflix?')
+    expect(brand(raw)).toEqual(['Оставить'])
+    finance.householdDoc.obligations = []
+    raw = await renderScreen(Statements, '/week')
+    expect(text(raw)).toContain('Остались деньги?')
+    expect(brand(raw)).toEqual(['Разложить'])
+  })
+
   it('«Остались деньги?»: остаток месяца уже разложил партнёр (раскладка rest в общем документе) — не спрашиваем', async () => {
     vi.setSystemTime(new Date('2026-09-29T07:00:00Z'))
     signIn()

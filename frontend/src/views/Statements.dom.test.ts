@@ -187,6 +187,18 @@ describe('возврат приёмки 2 п. 3, 4: одна карточка о
     await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/week/salary?from=salary&person=a&period=2026-09'))
   })
 
+  it('критик возврата 3 (правило 12): при карточке сопоставления «Пришла зарплата» тихая — брендовая на экране одна', async () => {
+    vi.setSystemTime(new Date('2026-09-10T07:00:00Z'))
+    await openWeek((finance) => {
+      finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000 }
+    })
+    await vi.waitFor(() => expect(page()).toContain(QUESTION))
+    expect(page()).toContain('Пришла зарплата Алихан?')
+    const brandButtons = [...document.querySelectorAll('button')].filter((b) => b.className.includes('bg-brand ')).map((b) => b.textContent?.trim())
+    expect(brandButtons).toHaveLength(1)
+    expect(button('Пришла зарплата')!.className).not.toContain('bg-brand ')
+  })
+
   it('день зарплаты 1-го: пока спрашивается «Пришла?» октября (с 28 сентября), неразложенная сентябрьская прячется — одна карточка; со 2 октября — снова «разложить?»', async () => {
     const setup = (finance: ReturnType<typeof useFinanceStore>, store: ReturnType<typeof useOperationsStore>) => {
       finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000, payday: 1 }

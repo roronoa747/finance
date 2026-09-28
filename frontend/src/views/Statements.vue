@@ -198,7 +198,7 @@ const allocate = computed(() =>
 // Тексты и «за год» — `keepCard`, как на главном: у годовой — цена продления, «N % пути до мечты».
 const deferredKeep = ref<string[]>([])
 const keep = computed(() =>
-  canUpload.value && !match.value && !unknownCard.value && !allocate.value && !restFirst.value
+  canUpload.value && !match.value && !unknownCard.value && !allocate.value && !salaryHere.value && !restFirst.value
     ? (keepQuestions(finance.obligations).find((o) => !deferredKeep.value.includes(o.id)) ?? null)
     : null,
 )
@@ -224,7 +224,9 @@ function onKeep(action: 'keep' | 'cancel' | 'later') {
 
 // 5. «Остались деньги?» — последние дни месяца (ответ — `answeredMonthEnd` выше).
 const monthEnd = computed(
-  () => restFirst.value || (canUpload.value && !match.value && !unknownCard.value && !allocate.value && !keep.value && monthEndAsk(answeredMonthEnd.value)),
+  () =>
+    restFirst.value ||
+    (canUpload.value && !match.value && !unknownCard.value && !allocate.value && !salaryHere.value && !keep.value && monthEndAsk(answeredMonthEnd.value)),
 )
 const restAmount = ref('')
 function answerRest(go: boolean) {
@@ -236,11 +238,14 @@ function answerRest(go: boolean) {
 
 // «Пришла зарплата <имя>?» (RP-10): ближайшая зарплата — своя, её день настал или близко (`salaryAsk`,
 // как на главном). Не вместе с «разложить?»: одна карточка о зарплате за раз (возврат приёмки 2 п. 3).
+// Порядок — как у `nextDecision`: после «разложить?», раньше подписки и «Остались деньги?» (они ждут
+// отметки); сопоставление и разбор — раньше неё, при них кнопка тихая (правило 12: одна брендовая).
 const salaryHere = computed(() =>
-  auth.isViewer || allocate.value
+  auth.isViewer || allocate.value || restFirst.value
     ? null
     : salaryAsk({ people: finance.people, obligations: finance.obligations, credits: finance.credits, payments: finance.payments }, auth.slot),
 )
+const salaryQuiet = computed(() => !!(match.value || unknownCard.value))
 
 /* ---------- ответы разбора ---------- */
 const options = (g: UnknownGroup) => [
@@ -409,7 +414,7 @@ onMounted(() => {
             <b class="block text-[15px] font-semibold text-ink">Ваша выписка ещё не загружена</b>
             <p class="mt-0.5 text-[13px] text-ink-2">PDF из приложения Kaspi или Freedom. Разбор на телефоне, файл никуда не уходит.</p>
             <!-- Ниже карточка решения со своей главной кнопкой — загрузка тихая (одна брендовая на экране) -->
-            <Button class="mt-3 w-full" :variant="match || allocate || keep || monthEnd ? 'secondary' : 'default'" :disabled="reading" @click="fileInput?.click()">
+            <Button class="mt-3 w-full" :variant="match || allocate || keep || monthEnd || salaryHere ? 'secondary' : 'default'" :disabled="reading" @click="fileInput?.click()">
               <PhFileArrowUp :size="16" />
               {{ reading ? 'Читаем выписку…' : 'Загрузить выписку' }}
             </Button>
@@ -500,7 +505,7 @@ onMounted(() => {
       <Card v-if="salaryHere" class="border-brand">
         <h3 class="type-h3 text-ink">Пришла зарплата {{ salaryHere.who.name }}?</h3>
         <p class="mt-0.5 text-[13px] text-ink-2">{{ money(salaryHere.income) }} · {{ dayLabel(salaryHere.day, salaryHere.key) }}</p>
-        <SalaryRow button :person-id="salaryHere.who.id" :period="salaryHere.key" />
+        <SalaryRow button :quiet="salaryQuiet" :person-id="salaryHere.who.id" :period="salaryHere.key" />
       </Card>
 
       <!-- Итог недели -->

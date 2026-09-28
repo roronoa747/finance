@@ -32,6 +32,8 @@ const props = defineProps<{
   dense?: boolean
   /** Только кнопка «Пришла зарплата», без строки — карточка «До зарплаты». */
   button?: boolean
+  /** Кнопка тихая: на экране уже есть главное действие (правило 12 — одна брендовая). */
+  quiet?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -104,7 +106,7 @@ function openMore() {
 
 <template>
   <template v-if="button">
-    <Button v-if="canMark" class="mt-3 w-full" @click="tap">
+    <Button v-if="canMark" :variant="quiet ? 'secondary' : 'default'" class="mt-3 w-full" @click="tap">
       Пришла зарплата
     </Button>
     <button

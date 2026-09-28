@@ -93,7 +93,7 @@ const salaryHere = computed(
         <div class="mt-0.5 text-[13px] text-ink-2">
           {{ paydayInfo.who.name }} получит {{ money(paydayInfo.income) }}
         </div>
-        <SalaryRow v-if="salaryHere" button :person-id="paydayInfo.who.id" :period="paydayInfo.key" />
+        <SalaryRow v-if="salaryHere" button :quiet="!!freed" :person-id="paydayInfo.who.id" :period="paydayInfo.key" />
 
         <div class="mt-3 border-t border-line pt-3">
           <div class="flex items-baseline">
