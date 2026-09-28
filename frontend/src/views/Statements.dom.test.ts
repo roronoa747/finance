@@ -176,6 +176,10 @@ describe('возврат приёмки 2 п. 3, 4: одна карточка о
     expect(page()).toContain('Пришла зарплата Алихан?')
     expect(page()).toContain('10 сентября')
     expect(page()).not.toContain('разложить?')
+    // Возврат приёмки 3 п. 3 (правило 12): главная кнопка карточки — брендовая, не серая.
+    const main = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Пришла зарплата')!
+    expect(main.className).toContain('bg-brand')
+    expect(main.className).not.toContain('bg-surface-3')
     await tap('Пришла зарплата')
     const mine = finance.payments.filter((p) => !p.deletedAt && p.period === '2026-09')
     expect(mine).toEqual([expect.objectContaining({ kind: 'salary', targetId: 'a', amount: 500_000, accountId: null })])

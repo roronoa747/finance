@@ -104,7 +104,7 @@ function openMore() {
 
 <template>
   <template v-if="button">
-    <Button v-if="canMark" variant="secondary" class="mt-3 w-full" @click="tap">
+    <Button v-if="canMark" class="mt-3 w-full" @click="tap">
       Пришла зарплата
     </Button>
     <button
