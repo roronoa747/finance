@@ -2612,6 +2612,32 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(salaryToAllocate(state, 'a', { day: 2, key: '2026-10' })?.period).toBe('2026-09')
     })
 
+    it('возврат приёмки 3 п. 2: день зарплаты 1–3, неразложенные август и сентябрь — пока спрашивается «Пришла?» октября, «разложить?» не показывается ни за один прошлый месяц; главный, «Неделя» и «Деньги» — одно', () => {
+      const mark = (period: string): Payment => ({
+        id: `s-a-${period}`, kind: 'salary', targetId: 'a', period, amount: 700_000, accountId: null, by: 'a', at: T, updatedAt: T, source: 'statement', opId: `op-${period}`,
+      })
+      const days = [['2026-09', 27], ['2026-09', 28], ['2026-09', 29], ['2026-09', 30], ['2026-10', 1], ['2026-10', 2], ['2026-10', 3], ['2026-10', 4]] as const
+      const scan = (payday: number) => {
+        const state = { ...base, people: people.map((p) => (p.id === 'a' ? { ...p, payday } : p)), payments: [mark('2026-08'), mark('2026-09')] }
+        return days.map(([key, day]) => {
+          const now = { day, key }
+          const d = nextDecision(state, { me: 'a', now, answeredMonthEnd: key })
+          const asked = salaryAsk(state, 'a', now)
+          const allocate = salaryToAllocate(state, 'a', now)
+          // «Неделя»: «Пришла?» — при salaryAsk и без «разложить?»; «Деньги»: «Пришла зарплата» — при salaryAsk.
+          expect(!!asked && !allocate).toBe(!!asked)
+          expect(d?.kind === 'salary').toBe(!!asked)
+          return `${d?.kind}:${d?.salary?.period}`
+        })
+      }
+      const A = 'allocate:2026-09'
+      const S = 'salary:2026-10'
+      // День 1: окно «Пришла?» — 28.09–01.10; день 2 — 29.09–02.10; день 3 — 30.09–03.10. Август не всплывает никогда.
+      expect(scan(1)).toEqual([A, S, S, S, S, A, A, A])
+      expect(scan(2)).toEqual([A, A, S, S, S, S, A, A])
+      expect(scan(3)).toEqual([A, A, A, S, S, S, S, A])
+    })
+
     it('шаг плана «Сначала долги» — последним; viewer не участник — me пустой, зарплаты нет', () => {
       const plan: DebtPlan = {
         id: 'p', status: 'active', by: 'a', startedAt: '2026-09-01T05:00:00.000Z', endedAt: null, keptGoalIds: [], cushionGoalId: null,

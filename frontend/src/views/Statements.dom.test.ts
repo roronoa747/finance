@@ -204,4 +204,17 @@ describe('возврат приёмки 2 п. 3, 4: одна карточка о
     expect(page()).not.toContain('Пришла зарплата Алихан?')
     expect(page().split('Пришла зарплата Алихан').length - 1).toBe(1)
   })
+
+  it('возврат приёмки 3 п. 2: день зарплаты 2-го, неразложенные август и сентябрь — 30 сентября «Пришла зарплата Алихан?», «разложить?» августа не заслоняет', async () => {
+    vi.setSystemTime(new Date('2026-09-30T07:00:00Z'))
+    await openWeek((finance, store) => {
+      finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000, payday: 2 }
+      finance.householdDoc.credits = []
+      delete store.ops['op-1']
+      finance.markSalary('a', { period: '2026-08', amount: 500_000, accountId: null, source: 'statement', opId: 'op-8', at: '2026-08-02T07:00:00.000Z' })
+      finance.markSalary('a', { period: '2026-09', amount: 500_000, accountId: null, source: 'statement', opId: 'op-9', at: '2026-09-02T07:00:00.000Z' })
+    })
+    expect(page()).toContain('Пришла зарплата Алихан?')
+    expect(page()).not.toContain('разложить?')
+  })
 })

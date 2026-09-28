@@ -1723,7 +1723,7 @@ export const salaryAllocationPath = (person: PersonId, period: string) => `/week
  * «Недели» и `nextDecision`). Только `source: 'statement'`: ручные отметки до записи раскладок
  * (`allocations`, B2C-21) раскладывал старый Ритуал без записи — карточка предложила бы их второй раз.
  * Нужна запись раскладки (`allocationFor` пуст) и свободное в этой зарплате (`salaryFree` > 0) — по
- * плану её месяца. Месяц перед спрашиваемым «Пришла?» не ищется, только пока она действительно
+ * плану её месяца. Месяцы до спрашиваемой «Пришла?» не ищутся, только пока она действительно
  * спрашивается (`salaryAsk`, как у главного): иначе старая неразложенная заслонила бы её. После дня
  * зарплаты «Пришла?» уже не спрашивается — прошлая неразложенная снова здесь (возврат приёмки 2 п. 3:
  * выписку грузят после дня зарплаты, и с 13-го по конец месяца зарплата терялась). Пришедшая раньше
@@ -1749,11 +1749,11 @@ export function salaryToAllocate(
   const person = people.find((p) => alive(p) && p.id === me)
   if (!person) return null
   const payments = state.payments ?? []
-  // Пока спрашивается «Пришла?», месяц перед спрашиваемым не ищется: у дня зарплаты 1–3 окно
-  // «Пришла?» октября открыто с 28 сентября — иначе карточка скакала бы 30-го → 1-го → 2-го.
+  // Пока спрашивается «Пришла?», месяцы до спрашиваемого не ищутся — ни один: у дня зарплаты 1–3
+  // окно «Пришла?» октября открыто с 28 сентября, и неразложенные сентябрь и август заслонили бы её
+  // (возврат приёмки 3 п. 2) — карточка скакала бы по дням, главный, «Неделя» и «Деньги» расходились.
   const asked = salaryAsk(state, me, now)
-  const hidden = asked ? addMonths(asked.key, -1) : null
-  const months = [addMonths(now.key, 1), now.key, addMonths(now.key, -1)].filter((k) => k !== hidden)
+  const months = [addMonths(now.key, 1), now.key, addMonths(now.key, -1)].filter((k) => !asked || k > asked.key)
   const found = record ?? months.map((k) => paidFor(payments, 'salary', me, k)).find(Boolean)
   if (!found || found.kind !== 'salary' || found.targetId !== me || found.source !== 'statement') return null
   if (allocationFor(state.allocations, { source: 'salary', sourceId: me, period: found.period })) return null
