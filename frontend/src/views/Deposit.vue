@@ -75,6 +75,12 @@ function onAmountCommit(text: string) {
   }
 }
 
+/**
+ * Ставка в поле — проценты до сотых без хвоста двоичной дроби: 0,14 × 100 в JS — 14,000000000000002
+ * (хвост §4, приёмка Блока 3). Сотые остаются: у вкладов бывает 14,25 %.
+ */
+const rateField = (r: number) => String(Math.round(r * 10_000) / 100).replace('.', ',')
+
 function onRateCommit(text: string) {
   if (account.value) {
     const v = parseFloat(text.replace(',', '.').replace(/[^\d.]/g, ''))
@@ -169,7 +175,7 @@ function onCapitalizeChange(v: string) {
 
         <Field label="Ставка, % годовых">
           <NumFieldBlur
-            :initial="(depositData.annualRate * 100).toString().replace('.', ',')"
+            :initial="rateField(depositData.annualRate)"
             kind="rate"
             class="mb-3"
             @commit="onRateCommit"

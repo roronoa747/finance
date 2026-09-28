@@ -116,3 +116,16 @@ describe('возврат приёмки п. 3: viewer на вкладе', () => 
     expect(document.body.textContent).toContain('Удалить вклад')
   })
 })
+
+describe('хвост §4 (приёмка Блока 3): ставка вклада в поле', () => {
+  it('14 % — «14», а не «14,000000000000002»; сотые остаются; уход из поля без правки ничего не пишет', async () => {
+    const { store, field } = await openDeposit()
+    expect(field('Ставка').value).toBe('14')
+    const before = JSON.stringify(store.householdDoc)
+    await edit(field('Ставка'), '14')
+    expect(JSON.stringify(store.householdDoc)).toBe(before)
+    await edit(field('Ставка'), '14,25')
+    expect(store.accounts[0].deposit?.annualRate).toBeCloseTo(0.1425, 10)
+    expect(field('Ставка').value).toBe('14,25')
+  })
+})
