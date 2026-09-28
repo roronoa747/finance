@@ -231,6 +231,12 @@ describe('views/Statements.vue — решения по одному и итог 
     // Своей выписки нет — «Загрузить выписку» тихая, главная — «Оставить».
     expect(html).toContain('Загрузить выписку')
     expect(brand(raw)).toEqual(['Оставить'])
+
+    // «Отписаться» — предупреждение главного: отключить в самом сервисе нужно отдельно (Н-4).
+    const cancel = text(await renderScreen(Statements, '/week', undefined, [screenMixin({ cancelling: true })]))
+    expect(cancel).toContain('Подписка уйдёт из бюджета и планов у вас обоих. Отключить её в самом сервисе нужно отдельно.')
+    expect(cancel).toContain('Отменить подписку')
+    expect(cancel).not.toContain('За год —')
   })
 
   it('«Оставить?» у годовой: цена продления из новой версии, а не текущая — как на главном', async () => {
@@ -244,26 +250,27 @@ describe('views/Statements.vue — решения по одному и итог 
     expect(html).not.toContain(m(10_000))
   })
 
-  it('«Остались деньги?» в последние дни месяца: «Конец сентября», одна главная кнопка; ответ — сырым ключом месяца', async () => {
+  it('«Остались деньги с сентября?» в последние дни месяца — тексты главного (Н-4), одна главная кнопка; ответ — сырым ключом месяца', async () => {
     vi.setSystemTime(new Date('2026-09-29T07:00:00Z'))
     signIn()
     const raw = await renderScreen(Statements, '/week')
     const html = text(raw)
-    expect(html).toContain('Остались деньги?')
-    expect(html).toContain('Конец сентября — остаток разложим в мечты')
-    expect(html).not.toContain('Конец сентябрь')
+    expect(html).toContain('Остались деньги с')
+    expect(html).toContain('Остались деньги с сентября?')
+    expect(html).toContain('Месяц заканчивается — разложим остаток в мечту или на досрочку')
+    expect(html).toContain('Не сейчас')
     expect(brand(raw)).toEqual(['Разложить'])
 
-    // «Нет» — ответ до конца месяца в формате главного («2026-09», не JSON): карточка уходит.
+    // «Не сейчас» — ответ до конца месяца в формате главного («2026-09», не JSON): карточка уходит.
     const answered = await renderScreen(Statements, '/week', undefined, [screenMixin({}, (s) => (s.answerRest as (go: boolean) => void)(false))])
     expect(storage.get(MONTH_END_KEY)).toBe('2026-09')
-    expect(answered).not.toContain('Остались деньги?')
-    expect(await renderScreen(Statements, '/week')).not.toContain('Остались деньги?')
+    expect(answered).not.toContain('Остались деньги с')
+    expect(await renderScreen(Statements, '/week')).not.toContain('Остались деньги с')
     // Запись «Недели» до критика (JSON) тоже читается как ответ; прошлый месяц — не ответ.
     storage.set(MONTH_END_KEY, '"2026-09"')
-    expect(await renderScreen(Statements, '/week')).not.toContain('Остались деньги?')
+    expect(await renderScreen(Statements, '/week')).not.toContain('Остались деньги с')
     storage.set(MONTH_END_KEY, '2026-08')
-    expect(await renderScreen(Statements, '/week')).toContain('Остались деньги?')
+    expect(await renderScreen(Statements, '/week')).toContain('Остались деньги с')
   })
 
   it('критик возврата 3 (правило 12): «Пришла зарплата?» — в порядке главного, раньше подписки и «Остались деньги?»; брендовая кнопка на экране одна', async () => {
@@ -275,7 +282,7 @@ describe('views/Statements.vue — решения по одному и итог 
     finance.householdDoc.obligations = [netflix]
     let raw = await renderScreen(Statements, '/week')
     expect(text(raw)).toContain('Пришла зарплата Алихан?')
-    expect(text(raw)).not.toContain('Остались деньги?')
+    expect(text(raw)).not.toContain('Остались деньги с')
     // Своей выписки нет — «Загрузить выписку» тихая; главная — «Пришла зарплата».
     expect(text(raw)).toContain('Загрузить выписку')
     expect(brand(raw)).toEqual(['Пришла зарплата'])
@@ -290,7 +297,7 @@ describe('views/Statements.vue — решения по одному и итог 
     expect(brand(raw)).toEqual(['Оставить'])
     finance.householdDoc.obligations = []
     raw = await renderScreen(Statements, '/week')
-    expect(text(raw)).toContain('Остались деньги?')
+    expect(text(raw)).toContain('Остались деньги с')
     expect(brand(raw)).toEqual(['Разложить'])
   })
 
@@ -299,10 +306,10 @@ describe('views/Statements.vue — решения по одному и итог 
     signIn()
     const finance = useFinanceStore()
     finance.householdDoc.allocations = [restOf('2026-08')]
-    expect(await renderScreen(Statements, '/week')).toContain('Остались деньги?')
+    expect(await renderScreen(Statements, '/week')).toContain('Остались деньги с')
     finance.householdDoc.allocations = [restOf('2026-08'), restOf('2026-09')]
-    expect(await renderScreen(Statements, '/week')).not.toContain('Остались деньги?')
-    expect(await renderScreen(Statements, '/week?rest=1')).not.toContain('Остались деньги?')
+    expect(await renderScreen(Statements, '/week')).not.toContain('Остались деньги с')
+    expect(await renderScreen(Statements, '/week?rest=1')).not.toContain('Остались деньги с')
   })
 
   it('/week?rest=1 («Разложить» с главного) — «Остались деньги?» первой, очередь — после ответа', async () => {
@@ -313,10 +320,10 @@ describe('views/Statements.vue — решения по одному и итог 
     useFinanceStore().householdDoc.obligations = [netflix]
     const queue = text(await renderScreen(Statements, '/week'))
     expect(queue).toContain('IP ASANOVA — куда отнести?')
-    expect(queue).not.toContain('Остались деньги?')
+    expect(queue).not.toContain('Остались деньги с')
 
     const rest = text(await renderScreen(Statements, '/week?rest=1'))
-    expect(rest).toContain('Остались деньги?')
+    expect(rest).toContain('Остались деньги с')
     expect(rest).not.toContain('куда отнести?')
     expect(rest).not.toContain('Оставить подписку')
 
@@ -324,7 +331,7 @@ describe('views/Statements.vue — решения по одному и итог 
     storage.set(MONTH_END_KEY, '2026-09')
     const after = text(await renderScreen(Statements, '/week?rest=1'))
     expect(after).toContain('IP ASANOVA — куда отнести?')
-    expect(after).not.toContain('Остались деньги?')
+    expect(after).not.toContain('Остались деньги с')
   })
 
   it('итог недели: «на N % меньше прошлой», прошлые недели; «Отмечено по выписке: N»', async () => {

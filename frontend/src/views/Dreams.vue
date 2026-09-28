@@ -197,7 +197,7 @@ function onGhost() {
 const cardActions = computed<Decision['actions'] | null>(() => {
   const d = shown.value
   if (!d) return null
-  if (d.kind === 'keep' && cancelling.value) return { primary: 'Отменить подписку', ghost: 'Не сейчас' }
+  if (d.cancel && cancelling.value) return d.cancel.actions
   return d.actions
 })
 
@@ -302,9 +302,7 @@ onMounted(refresh)
       @secondary="onSecondary"
       @ghost="onGhost"
     >
-      <template v-if="shown.kind === 'keep' && cancelling" #inner>
-        Подписка уйдёт из бюджета и планов у вас обоих. Отключить её в самом сервисе нужно отдельно.
-      </template>
+      <template v-if="shown.cancel && cancelling" #inner>{{ shown.cancel.inner }}</template>
       <template v-else-if="shown.inner" #inner>{{ shown.inner }}</template>
       <!-- Пустой герой держит единственную брендовую «Выбрать мечту» (правило 12): ответы решения — тихие. -->
       <template v-if="!main && cardActions" #actions>

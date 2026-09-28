@@ -23,7 +23,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
 import { money, parseMoney } from '@/lib/money'
 import { cn } from '@/lib/utils'
-import { dayLabel, monthFrom, monthKey, monthTitle, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
+import { dayLabel, monthKey, monthTitle, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
 import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import { draftSummary, partnerHints, picture, pictureTotal, ruleMatchOf, unknownGroups, type UnknownGroup } from '@/lib/statements/model'
 import { readStatementFiles } from '@/lib/statements/read'
@@ -33,6 +33,7 @@ import {
   allocateCard,
   allocationFor,
   keepCard,
+  monthEndCard,
   keepQuestions,
   monthEndAsk,
   salaryAllocationPath,
@@ -457,20 +458,17 @@ onMounted(() => {
         v-else-if="keep && keepText"
         :question="keepText.question"
         :meta="keepText.meta"
-        :actions="cancelling ? { primary: 'Отменить подписку', ghost: 'Не сейчас' } : { primary: 'Оставить', secondary: 'Отписаться', ghost: 'Подумать' }"
+        :actions="cancelling ? keepText.cancel.actions : keepText.actions"
         @primary="onKeep(cancelling ? 'cancel' : 'keep')"
         @secondary="onKeep('cancel')"
         @ghost="cancelling ? (cancelling = false) : onKeep('later')"
       >
-        <template #inner>{{ keepText.inner }}</template>
+        <template #inner>{{ cancelling ? keepText.cancel.inner : keepText.inner }}</template>
       </DecisionCard>
 
       <DecisionCard
         v-else-if="monthEnd"
-        question="Остались деньги?"
-        :meta="`Конец ${monthFrom(month, false)} — остаток разложим в мечты`"
-        :actions="{ primary: 'Разложить', ghost: 'Нет' }"
-        :disabled="false"
+        v-bind="monthEndCard(month)"
         @primary="answerRest(true)"
         @ghost="answerRest(false)"
       >

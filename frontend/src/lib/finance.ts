@@ -2507,7 +2507,7 @@ export function keepCard(
   goals: Goal[],
   payments: Payment[],
   now: { day: number; key: string } = today(),
-): { question: string; meta: string; inner: string } {
+): KeepCard {
   const renewal = keep.every === 'year' ? nextObligationDue(keep, payments, now) : null
   const yearly = renewal ? renewal.amount : subscriptionYearly(keep, now.key)
   const goal = mainGoal(goals)
@@ -2522,8 +2522,35 @@ export function keepCard(
     question: `Оставить подписку ${keep.name}?`,
     meta,
     inner: `За год — ${money(yearly)}${goal && pathPct > 0 ? ` · это ${pathPct} % пути до ${goal.name}` : ''}`,
+    actions: { primary: 'Оставить', secondary: 'Отписаться', ghost: 'Подумать' },
+    cancel: KEEP_CANCEL,
   }
 }
+
+/** Шаг «Отписаться» карточки подписки — одинаково на главном и в «Неделе» (ревью Блока 3, Н-4). */
+const KEEP_CANCEL = {
+  inner: 'Подписка уйдёт из бюджета и планов у вас обоих. Отключить её в самом сервисе нужно отдельно.',
+  actions: { primary: 'Отменить подписку', ghost: 'Не сейчас' },
+}
+
+/** Карточка «оставить подписку?» (`keepCard`): вопрос, детали, ответы и шаг отмены. */
+export type KeepCard = {
+  question: string
+  meta: string
+  inner: string
+  actions: { primary: string; secondary: string; ghost: string }
+  cancel: { inner: string; actions: { primary: string; ghost: string } }
+}
+
+/**
+ * «Остались деньги?» (Р-19) — тексты карточки конца месяца `key`, одни на главном и в «Неделе»
+ * (ревью Блока 3, Н-4; в DESIGN §6 их нет — вариант главного).
+ */
+export const monthEndCard = (key: string) => ({
+  question: `Остались деньги с ${monthFrom(key, false)}?`,
+  meta: 'Месяц заканчивается — разложим остаток в мечту или на досрочку',
+  actions: { primary: 'Разложить', ghost: 'Не сейчас' },
+})
 
 export type FreeByFact = {
   /** «Свободно до конца месяца», целые тенге; может быть меньше нуля. */
@@ -2595,6 +2622,8 @@ export type Decision = {
   /** Куда ведёт главное действие; null — решение принимается на месте (стор). */
   to: string | null
   actions: { primary: string; secondary?: string; ghost?: string }
+  /** Шаг «Отписаться» вопроса «оставить?» (`keepCard`). */
+  cancel?: KeepCard['cancel']
   /** Подписка вопроса «оставить?». */
   obligation?: Obligation
   /** Участник и месяц зарплаты «пришла?». */
@@ -2687,19 +2716,12 @@ export function nextDecision(
       kind: 'keep',
       ...keepCard(keep, state.goals ?? [], payments, now),
       to: null,
-      actions: { primary: 'Оставить', secondary: 'Отписаться', ghost: 'Подумать' },
       obligation: keep,
     }
   }
 
   if (monthEndAsk(ctx.answeredMonthEnd ?? null, now)) {
-    return {
-      kind: 'monthEnd',
-      question: `Остались деньги с ${monthFrom(now.key, false)}?`,
-      meta: 'Месяц заканчивается — разложим остаток в мечту или на досрочку',
-      to: '/week?rest=1',
-      actions: { primary: 'Разложить', ghost: 'Не сейчас' },
-    }
+    return { kind: 'monthEnd', ...monthEndCard(now.key), to: '/week?rest=1' }
   }
 
   const plan = activePlan(state.plans ?? [])

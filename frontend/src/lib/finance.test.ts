@@ -86,6 +86,7 @@ import {
   salaryFree,
   SALARY_EARLY_DAYS,
   monthEndAsk,
+  monthEndCard,
   MONTH_END_DAYS,
   progressMoments,
   monthSummary,
@@ -2522,6 +2523,8 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       const end = { day: 28, key: '2026-09' }
       const rest = nextDecision(base, { me: 'a', now: end })
       expect(rest).toMatchObject({ kind: 'monthEnd', question: 'Остались деньги с сентября?', to: '/week?rest=1', actions: { primary: 'Разложить', ghost: 'Не сейчас' } })
+      // «Неделя» берёт те же тексты (ревью Блока 3, Н-4).
+      expect(rest).toMatchObject(monthEndCard('2026-09'))
       expect(nextDecision(base, { me: 'a', now: end, answeredMonthEnd: '2026-09' })).toBeNull()
     })
 
@@ -2668,6 +2671,12 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
         question: 'Оставить подписку Netflix?',
         meta: `${money(4_990)} · каждый месяц`,
         inner: `За год — ${money(59_880)} · это 9 % пути до Япония`,
+        actions: { primary: 'Оставить', secondary: 'Отписаться', ghost: 'Подумать' },
+        // Шаг «Отписаться» — один текст на главном и в «Неделе» (ревью Блока 3, Н-4).
+        cancel: {
+          inner: 'Подписка уйдёт из бюджета и планов у вас обоих. Отключить её в самом сервисе нужно отдельно.',
+          actions: { primary: 'Отменить подписку', ghost: 'Не сейчас' },
+        },
       })
       // Мечты нет или она уже собрана — «за год» без хвоста.
       expect(keepCard(netflix, [], [], sep25).inner).toBe(`За год — ${money(59_880)}`)
