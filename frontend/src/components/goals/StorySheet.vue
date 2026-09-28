@@ -75,7 +75,7 @@ async function save() {
 <template>
   <Sheet :open="open" :title="title" @close="emit('close')">
     <div class="flex flex-col items-center gap-3">
-      <canvas ref="canvas" width="1080" height="1920" class="h-auto w-[270px] rounded-[24px] bg-surface-3 shadow-sheet" aria-label="Предпросмотр карточки" />
+      <canvas ref="canvas" width="1080" height="1920" class="h-auto w-[270px] rounded-card bg-surface-3 shadow-sheet" aria-label="Предпросмотр карточки" />
       <p class="text-center text-[12.5px] text-ink-3">
         {{ kind === 'goal' ? 'Без сумм — только процент, имя мечты и месяц.' : 'Без сумм — только число подписок.' }}
       </p>

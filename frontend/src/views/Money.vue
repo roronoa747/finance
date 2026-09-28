@@ -86,7 +86,7 @@ const salaryHere = computed(
           <span class="type-h3 text-ink">
             {{ paydayInfo.inDays === 0 ? 'Сегодня' : `Через ${paydayInfo.inDays} ${plural(paydayInfo.inDays, 'день', 'дня', 'дней')}` }}
           </span>
-          <span class="ml-auto text-[13px] text-ink-3">
+          <span class="ml-auto type-meta">
             {{ dayLabel(paydayInfo.day, paydayInfo.key) }}
           </span>
         </div>

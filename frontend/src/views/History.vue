@@ -81,7 +81,7 @@ const history = computed(() =>
   <div class="flex flex-col gap-3 pt-1 text-left">
     <!-- Итог месяца на двоих (RP-13) — источник карточки «утечек» (B2C-20) -->
     <MonthSummaryCard v-if="summaryKey" :month="summaryKey" />
-    <p v-else class="px-1 text-[13px] text-ink-3">Итоги месяца появятся в его последние дни.</p>
+    <p v-else class="px-1 type-meta">Итоги месяца появятся в его последние дни.</p>
 
     <!-- Секция «Впереди» -->
     <Section title="Впереди">
@@ -106,7 +106,7 @@ const history = computed(() =>
           <PhClock :size="17" />
         </template>
       </PaidRow>
-      <p v-if="!upcoming.length" class="px-4 py-3 text-[13px] text-ink-3">В этом месяце платежей по графику нет.</p>
+      <p v-if="!upcoming.length" class="px-4 py-3 type-meta">В этом месяце платежей по графику нет.</p>
     </Card>
 
     <!-- История семьи (RP-12): одна спокойная строка на момент; нет моментов — нет раздела -->

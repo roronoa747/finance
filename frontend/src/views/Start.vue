@@ -20,6 +20,7 @@ import { plural } from '@/lib/utils'
 import GoalNew from '@/views/GoalNew.vue'
 import Button from '@/components/ui/Button.vue'
 import Callout from '@/components/kit/Callout.vue'
+import Card from '@/components/kit/Card.vue'
 import Chip from '@/components/kit/Chip.vue'
 import DecisionCard from '@/components/kit/DecisionCard.vue'
 import Field from '@/components/kit/Field.vue'
@@ -406,12 +407,12 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
 
     <!-- Шаг 5: партнёр -->
     <template v-else-if="step === 'invite'">
-      <div class="flex flex-col items-center gap-4 rounded-card border border-card-border bg-surface p-6 text-center">
+      <Card class="flex flex-col items-center gap-4 p-6 text-center">
         <span class="grid size-12 place-items-center rounded-2xl bg-brand-soft text-brand"><PhUserPlus :size="24" /></span>
         <template v-if="inviteCode">
           <div>
             <div class="text-[13px] text-ink-2">Код приглашения</div>
-            <button type="button" class="mt-1 flex items-center justify-center gap-2 font-display text-[28px] font-semibold tracking-[0.14em] num text-ink cursor-pointer" @click="handleCopy">
+            <button type="button" class="mt-1 flex items-center justify-center gap-2 type-h2-lg tracking-[0.14em] num text-ink cursor-pointer" @click="handleCopy">
               {{ inviteCode }}
               <PhCopy :size="18" class="text-ink-3" />
             </button>
@@ -426,7 +427,7 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
           <Button class="w-full" :disabled="inviteBusy" @click="handleMakeInvite">{{ inviteBusy ? 'Минуту…' : 'Создать код' }}</Button>
           <p v-if="inviteError" role="alert" class="text-[12.5px] text-warn">{{ inviteError }}</p>
         </template>
-      </div>
+      </Card>
       <div class="mt-auto flex flex-col gap-2 pt-2">
         <!-- Одна брендовая кнопка (правило 12): до кода главная — «Создать код», «Позже» — тихая. -->
         <Button size="lg" class="w-full" :variant="inviteCode ? 'default' : 'ghost'" @click="finish">{{ inviteCode ? 'Готово' : 'Позже' }}</Button>

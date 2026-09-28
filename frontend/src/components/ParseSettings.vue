@@ -111,7 +111,7 @@ function ruleTarget(r: MerchantRule) {
           <Button variant="ghost" size="sm" :aria-label="`Убрать правило ${ruleMatch(r)}`" @click="ops.forgetRule(r)">Убрать</Button>
         </div>
       </div>
-      <p v-else class="mt-2 text-[13px] text-ink-3">Правил пока нет.</p>
+      <p v-else class="mt-2 type-meta">Правил пока нет.</p>
     </div>
   </div>
 </template>

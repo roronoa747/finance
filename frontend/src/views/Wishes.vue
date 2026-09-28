@@ -178,7 +178,7 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
       />
     </Card>
     <Card v-else flush>
-      <div class="px-4 py-6 text-center text-[13px] text-ink-3">Список пуст</div>
+      <div class="px-4 py-6 text-center type-meta">Список пуст</div>
     </Card>
 
     <Callout v-if="wishPhotoNote" tone="neutral" icon="info">{{ wishPhotoNote }}</Callout>
@@ -212,7 +212,7 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
               <PhCheck :size="14" weight="bold" />
             </button>
           </div>
-          <p v-if="!giftsFor.length" class="py-2 text-[13px] text-ink-3">Пока ни одного сюрприза.</p>
+          <p v-if="!giftsFor.length" class="py-2 type-meta">Пока ни одного сюрприза.</p>
         </div>
         <Button variant="secondary" class="mt-2 self-start" size="sm" @click="openGift = true"><PhPlus :size="14" weight="bold" /> Сюрприз</Button>
       </Card>
@@ -221,7 +221,7 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
 
     <Section title="Уже купили">
       <template v-if="boughtWish.length" #action>
-        <span class="text-[13px] text-ink-3 num">{{ money(boughtSum) }}</span>
+        <span class="type-meta num">{{ money(boughtSum) }}</span>
       </template>
     </Section>
     <div v-if="boughtWish.length && view === 'grid'" class="grid grid-cols-2 gap-2.5">
@@ -251,7 +251,7 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
       />
     </Card>
     <Card v-else flush>
-      <div class="px-4 py-6 text-center text-[13px] text-ink-3">Пока ничего</div>
+      <div class="px-4 py-6 text-center type-meta">Пока ничего</div>
     </Card>
 
     <WishSheet :wish-id="canEdit ? editWishId : null" @close="editWishId = null" />

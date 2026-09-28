@@ -62,7 +62,7 @@ const footer = computed(() => {
       </div>
     </div>
     <slot />
-    <div v-if="footer || link" class="flex items-center justify-between gap-3 text-[13px] text-ink-3">
+    <div v-if="footer || link" class="flex items-center justify-between gap-3 type-meta">
       <span class="min-w-0 truncate">{{ footer }}</span>
       <RouterLink v-if="link" :to="link.to" class="shrink-0 font-semibold text-brand">{{ link.text }}</RouterLink>
     </div>

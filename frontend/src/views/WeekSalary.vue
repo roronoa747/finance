@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { PhMinus, PhPlus, PhX } from '@phosphor-icons/vue'
 import Button from '@/components/ui/Button.vue'
 import AccountChoice from '@/components/AccountChoice.vue'
+import Card from '@/components/kit/Card.vue'
 import { money, plain } from '@/lib/money'
 import {
   goalMonths,
@@ -395,7 +396,7 @@ function home() {
 <template>
   <!-- СОСТОЯНИЕ 0: УЖЕ РАЗЛОЖЕНО (B2C-21) — запись видят оба, второй раз не раскладываем -->
   <div v-if="recorded && !done" class="flex flex-col gap-3 pt-1 text-left">
-    <div class="rounded-card border border-card-border bg-surface p-5">
+    <Card>
       <div class="type-section text-ink-3">Уже разложено</div>
       <h2 class="mt-1 type-h2 text-ink">{{ money(recorded.total) }}</h2>
       <p class="mt-1 text-[13px] text-ink-2">{{ recordedBy }} · {{ atLabel(recorded.at) }}</p>
@@ -406,7 +407,7 @@ function home() {
         </div>
       </div>
       <p class="mt-3 text-[12.5px] leading-relaxed text-ink-3">Решение записано — второй раз те же деньги не раскладываются.</p>
-    </div>
+    </Card>
     <Button variant="outline" class="w-full" @click="router.push('/')">На главную</Button>
   </div>
 
@@ -424,7 +425,7 @@ function home() {
     v-else-if="done"
     class="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center"
   >
-    <div class="font-display text-[22px] font-semibold tracking-[-0.02em] text-ink">
+    <div class="type-h2 tracking-[-0.02em] text-ink">
       Решение записано
     </div>
     <p v-if="once" class="max-w-[38ch] text-[14px] leading-relaxed text-ink-2 num">{{ doneNote }}</p>
@@ -448,7 +449,7 @@ function home() {
       >
         <PhX :size="19" />
       </button>
-      <h2 class="font-display text-[17px] font-semibold tracking-[-0.01em] text-ink">
+      <h2 class="type-h3 tracking-[-0.01em] text-ink">
         Куда направить {{ money(total) }}
       </h2>
     </div>
@@ -471,7 +472,7 @@ function home() {
 
     <div class="flex items-baseline justify-between rounded-[14px] bg-brand-soft px-4 py-3.5">
       <span class="text-[13px] text-ink-2">Осталось распределить</span>
-      <span class="font-display text-[22px] font-semibold tracking-[-0.02em] text-brand num">
+      <span class="type-h2 tracking-[-0.02em] text-brand num">
         {{ money(left) }}
       </span>
     </div>
