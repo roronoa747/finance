@@ -885,13 +885,30 @@ export const useFinanceStore = defineStore('finance', () => {
    * Правило «продавец / получатель → раздел, внутренний, кому → что». Правило на то же
    * совпадение не множится — правится его запись (LWW по id при слиянии).
    */
+  /**
+   * Новое назначение поверх прежнего у того же продавца (одно правило на совпадение). Правило
+   * платежа и раздел не стирают друг друга (критик возврата 2): ответ «куда отнести?» о продавце
+   * с правилом платежа — раздел «остальных» строк (`restCategoryId`, не «таких» для платежа); «Да,
+   * отметить» у продавца с разделом — платёж, прежний раздел остаётся остальным строкам. «Между
+   * своими» и «кому → что» заменяют правило целиком: семья сказала, что все переводы этому
+   * продавцу — не платёж.
+   */
+  function mergeRuleTarget(prev: MerchantRule['to'], next: MerchantRule['to']): MerchantRule['to'] {
+    if ('payment' in prev && 'categoryId' in next) return { payment: { ...prev.payment, restCategoryId: next.categoryId } }
+    if ('payment' in next && next.payment.restCategoryId === undefined) {
+      const rest = 'payment' in prev ? prev.payment.restCategoryId : 'categoryId' in prev ? prev.categoryId : undefined
+      if (rest !== undefined) return { payment: { ...next.payment, restCategoryId: rest } }
+    }
+    return next
+  }
+
   function addMerchantRule(rule: Pick<MerchantRule, 'match' | 'to'>, by: PersonId): MerchantRule {
     const t = new Date().toISOString()
     const same = (r: MerchantRule) =>
       r.match.merchant === rule.match.merchant && r.match.counterparty === rule.match.counterparty
     const existing = merchantRules.value.find(same)
     const record: MerchantRule = existing
-      ? { ...existing, to: rule.to, by, updatedAt: t }
+      ? { ...existing, to: mergeRuleTarget(existing.to, rule.to), by, updatedAt: t }
       : { id: Math.random().toString(36).slice(2, 10), match: rule.match, to: rule.to, by, updatedAt: t }
     mutatePrivateDoc((doc) => {
       const list = (doc.merchantRules as MerchantRule[] | undefined) ?? []

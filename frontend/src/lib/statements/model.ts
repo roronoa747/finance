@@ -137,14 +137,19 @@ function latest(rules: MerchantRule[]): MerchantRule | undefined {
 export type PaymentFits = (op: Operation, payment: PaymentRule) => boolean
 
 /**
- * Раздел из правила; правило платежа без раздела или строка не «такая» (`fits`) — null: раздел
- * берётся по словарю, как без правила (возврат приёмки 2 п. 2).
+ * Раздел из правила; правило платежа без раздела — null: раздел берётся по словарю, как без
+ * правила. Строка не «такая» для правила платежа (`fits`, возврат приёмки 2 п. 2) — раздел
+ * «остальных» строк `restCategoryId` (ответ «куда отнести?» о том же продавце), нет его — null.
  */
 function fromRule(rule: MerchantRule, op: Operation, fits?: PaymentFits): Categorized | null {
   const to = rule.to
   if ('internal' in to) return { categoryId: null, internal: true }
   if ('person' in to) return { categoryId: 'sc_people', internal: false, personLabel: to.person }
-  if ('payment' in to) return to.payment.categoryId && (!fits || fits(op, to.payment)) ? { categoryId: to.payment.categoryId, internal: false, payment: to.payment } : null
+  if ('payment' in to) {
+    const p = to.payment
+    if (fits && !fits(op, p)) return p.restCategoryId ? { categoryId: p.restCategoryId, internal: false, payment: p } : null
+    return p.categoryId ? { categoryId: p.categoryId, internal: false, payment: p } : null
+  }
   return { categoryId: to.categoryId, internal: false }
 }
 

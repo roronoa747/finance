@@ -100,13 +100,15 @@ describe('components/ParseSettings.vue', () => {
     opsStore.answer(coffee, { categoryId: 'sc_food' })
     opsStore.answer(dana, { internal: true })
     opsStore.answer(loan, { payment: { kind: 'credit', targetId: 'loan', categoryId: 'sc_credit' } })
+    // «Куда отнести?» о том же продавце — раздел остальных строк внутри правила платежа, не замена (критик возврата 2).
+    opsStore.answer(loan, { categoryId: 'sc_food' })
     expect(store.merchantRules).toHaveLength(3)
 
     const html = await renderScreen(ParseSettings, '/settings')
     expect(html).toContain(`«${coffee.merchant}»`)
     expect(html).toContain('Продукты')
     expect(html).toContain('между своими')
-    expect(html).toContain('платёж по «Кредит»')
+    expect(html).toContain('платёж по «Кредит» · остальное — Продукты')
     expect(html).toContain(`aria-label="Убрать правило «${coffee.merchant}»"`)
 
     // Операция под правилом «между своими»: после снятия — снова трата, раздел по словарю (перевод человеку).

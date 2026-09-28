@@ -149,6 +149,14 @@ describe('matchCandidates', () => {
     expect(fits(ops(op('2026-09-05', -220_000, 'A'))[0], pay('obligation', 'rent'))).toBe(true)
     expect(fits(ops(op('2026-09-05', -15_000, 'A'))[0], pay('obligation', 'rent'))).toBe(false)
     expect(paymentFits({ obligations: [{ ...rent, deletedAt: T }] })(ops(op('2026-09-05', -220_000, 'A'))[0], pay('obligation', 'rent'))).toBe(false)
+
+    // Годовое — только в свой месяц (`dueIn`, критик возврата 2): страховка 120 000 в марте; та же сумма тем же
+    // переводом в сентябре — не платёж за март и не плановый раздел.
+    const insurance = ob('ins', 'Страховка', 120_000, 10, { every: 'year', month: 3 })
+    const yearly = { obligations: [insurance], credits: [], people: [] }
+    expect(ruleHit(ops(op('2026-03-10', -120_000, 'INS'))[0], pay('obligation', 'ins'), yearly)).toMatchObject({ target: { id: 'ins' }, period: '2026-03' })
+    expect(ruleHit(ops(op('2026-09-10', -120_000, 'INS'))[0], pay('obligation', 'ins'), yearly)).toBeNull()
+    expect(paymentFits({ obligations: [insurance] })(ops(op('2026-09-10', -120_000, 'INS'))[0], pay('obligation', 'ins'))).toBe(false)
   })
 
   it('releasedOps: снятая отметка с id операции освобождает её; правка отметки и повторная отметка месяца — нет', () => {

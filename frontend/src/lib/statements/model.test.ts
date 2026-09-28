@@ -199,6 +199,9 @@ describe('categorize', () => {
     const fits = (o: Operation, p: { targetId: string }) => Math.abs(o.amount) === expected[p.targetId]
     expect(applyRules(ops, rules, DICTIONARY, undefined, fits).map((o) => o.categoryId)).toEqual(['sc_subscriptions', null, 'sc_subscriptions', 'sc_food'])
     expect(categorize(ops[1], rules, DICTIONARY, fits)).toMatchObject({ categoryId: null, internal: false })
+    // Раздел «остальных» строк внутри правила платежа (критик возврата 2): не «такая» строка — туда, «такая» — плановый.
+    const withRest = [{ ...rules[0], to: { payment: { kind: 'obligation' as const, targetId: 'p2p', categoryId: 'sc_subscriptions', restCategoryId: 'sc_people' } } }, rules[1]]
+    expect(applyRules(ops, withRest, DICTIONARY, undefined, fits).map((o) => o.categoryId)).toEqual(['sc_subscriptions', 'sc_people', 'sc_subscriptions', 'sc_food'])
     // Без проверки — прежнее поведение (весь продавец в плановом разделе): проверку передаёт стор операций.
     expect(applyRules(ops, rules).map((o) => o.categoryId)).toEqual(['sc_subscriptions', 'sc_subscriptions', 'sc_subscriptions', 'sc_subscriptions'])
   })

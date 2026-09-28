@@ -55,7 +55,7 @@ function ruleTarget(r: MerchantRule) {
         : p.kind === 'credit'
           ? `«${finance.credits.find((c) => c.id === p.targetId)?.name ?? 'долг'}»`
           : `«${finance.obligations.find((o) => o.id === p.targetId)?.name ?? 'платёж'}»`
-    return `платёж по ${name}`
+    return p.restCategoryId ? `платёж по ${name} · остальное — ${categoryName(p.restCategoryId)}` : `платёж по ${name}`
   }
   return categoryName(to.categoryId)
 }

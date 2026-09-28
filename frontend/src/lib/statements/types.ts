@@ -61,6 +61,12 @@ export type PaymentRule = {
   kind: 'obligation' | 'credit' | 'salary'
   targetId: string
   categoryId?: string | null
+  /**
+   * Раздел «остальных» строк продавца — тех, что не «такие» для правила (знак и сумма вне допуска,
+   * `paymentFits`): ответ «куда отнести?» о таком продавце ложится сюда, а не заменяет правило
+   * платежа (критик возврата 2). Нет — по словарю или незнакомое.
+   */
+  restCategoryId?: string | null
 }
 
 export type MerchantRule = Tracked & {

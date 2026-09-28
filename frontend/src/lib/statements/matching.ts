@@ -77,8 +77,8 @@ type RuleTargets = { obligations: Obligation[]; credits: Credit[]; people: Perso
 /**
  * «Такая» строка правила «это платёж по …» (Р-6: «дальше *такие* строки отмечаются сами»): знак и
  * сумма в допуске — зарплата ±10 % оклада, кредит ±2 % `creditDueAmount` или ровно платёж,
- * обязательство ±2 % суммы месяца; оценка (коммуналка) суммой не ограничена — зимой уходит за
- * 30 %. Окна дат нет: поздний платёж — тоже платёж. Под одним продавцом идут и зарплата, и мелкие
+ * обязательство ±2 % суммы месяца в должный месяц (`dueIn`); оценка (коммуналка) суммой не
+ * ограничена — зимой уходит за 30 %. Окна дат нет: поздний платёж — тоже платёж. Под одним продавцом идут и зарплата, и мелкие
  * пополнения, и платежи всех кредитов Kaspi, а «Перевод с карты на карту» Freedom — все переводы
  * подряд. Нет цели или строка не такая — null.
  */
@@ -99,6 +99,9 @@ export function ruleHit(op: Operation, payment: PaymentRule, targets: RuleTarget
   const o = targets.obligations.find((x) => x.id === payment.targetId)
   if (!o) return null
   const { period } = nearestPeriod(op.date, o.day)
+  // Годовое — только в свой месяц (`dueIn`, как эвристика ниже): другая страховка тем же переводом
+  // в сентябре — не платёж за март (критик возврата 2).
+  if (!dueIn(o, period)) return null
   return o.estimate || within(amount, amountAt(o, period), AMOUNT_TOLERANCE) ? { target: o, period } : null
 }
 

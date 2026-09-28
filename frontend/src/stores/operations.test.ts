@@ -551,6 +551,59 @@ describe('stores/operations — сопоставление с отметками
     expect(free()).toBe(before + 15_000)
   })
 
+  it('критик возврата 2: ответ «куда отнести?» о продавце с правилом платежа — раздел остальных строк, правило платежа живо; следующая выписка отмечает 15 000 сама, остальное — в тот раздел', async () => {
+    const finance = family()
+    const p2p = finance.addObligation({ name: 'Переводы', day: 20, category: 'd4', amount: 15_000 })
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    const transfer = (date: string, amount: number) => ({ ...op(date, amount, 'Перевод с карты на карту'), kind: 'transfer-out' as const })
+    store.setDraft(draftOf(statement('2026-08-01', '2026-09-20',
+      transfer('2026-08-19', -40_000), transfer('2026-08-20', -15_000),
+      transfer('2026-09-03', -2_000), transfer('2026-09-12', -280_000), transfer('2026-09-20', -15_000),
+    )))
+    await store.send(client)
+    const match = { merchant: normalizeMerchant('Перевод с карты на карту') }
+    const month = (key: string) => Object.fromEntries((finance.householdDoc.spendTotals ?? []).filter((t) => t.id.startsWith(`a:month:${key}:`) && t.amount).map((t) => [t.categoryId, t.amount]))
+    const free = () =>
+      freeByFact({ ...finance.householdDoc, credits: finance.credits }, finance.householdDoc.spendTotals ?? [], finance.householdDoc.spendCategories ?? [], '2026-09', [
+        { slot: 'a', period_from: '2026-08-01', period_to: '2026-09-20' },
+      ]).amount
+    await store.acceptMatch(store.pendingMatches.find((c) => c.targetId === p2p && c.period === '2026-09')!, client)
+    const after = free()
+    expect(month('2026-09')).toEqual({ _unknown: 282_000, sc_subscriptions: 15_000 })
+
+    // «Перевод с карты на карту — куда отнести?» → «Переводы людям»: правило платежа остаётся, раздел — остальным строкам.
+    await store.recategorize(match, { categoryId: 'sc_people' }, client)
+    const rules = finance.merchantRules.filter((r) => !r.deletedAt)
+    expect(rules).toHaveLength(1)
+    expect(rules[0].to).toEqual({ payment: { kind: 'obligation', targetId: p2p, categoryId: 'sc_subscriptions', restCategoryId: 'sc_people' } })
+    expect(store.all.map((o) => o.categoryId)).toEqual(['sc_people', 'sc_subscriptions', 'sc_people', 'sc_people', 'sc_subscriptions'])
+    expect(month('2026-09')).toEqual({ sc_people: 282_000, sc_subscriptions: 15_000 })
+    // «Свободно» не меняется: платёж по-прежнему один раз (план), 282 000 — траты как и были.
+    expect(free()).toBe(after)
+
+    // Октябрьская выписка: 15 000 отмечается само по правилу, 2 000 — сразу в «Переводы людям», вопросов нет.
+    vi.setSystemTime(new Date('2026-10-20T07:00:00Z'))
+    store.setDraft(draftOf(statement('2026-10-01', '2026-10-20', transfer('2026-10-03', -2_000), transfer('2026-10-20', -15_000))))
+    expect(store.draftOps.map((o) => o.categoryId)).toEqual(['sc_people', 'sc_subscriptions'])
+    expect(store.draftAutoMatches.map((c) => [c.period, c.confidence])).toEqual([['2026-10', 'rule']])
+    await store.send(client)
+    expect(store.lastAutoMarked).toBe(1)
+    expect(finance.payments.filter((p) => !p.deletedAt && p.period === '2026-10')).toEqual([expect.objectContaining({ targetId: p2p, amount: 15_000, source: 'statement' })])
+    expect(store.pendingMatches).toHaveLength(0)
+    expect(month('2026-10')).toEqual({ sc_people: 2_000, sc_subscriptions: 15_000 })
+
+    // И наоборот: раздел был раньше, «Да, отметить» его не стирает — прежний раздел остаётся остальным строкам;
+    // «между своими» заменяет правило целиком (все переводы продавца — не платёж).
+    const magnum = { merchant: normalizeMerchant('Magnum') }
+    store.answer(magnum, { categoryId: 'sc_food' })
+    store.answer(magnum, { payment: { kind: 'obligation', targetId: 'lunch', categoryId: 'sc_subscriptions' } })
+    const rule = () => finance.merchantRules.find((r) => !r.deletedAt && r.match.merchant === magnum.merchant)!.to
+    expect(rule()).toEqual({ payment: { kind: 'obligation', targetId: 'lunch', categoryId: 'sc_subscriptions', restCategoryId: 'sc_food' } })
+    store.answer(magnum, { internal: true })
+    expect(rule()).toEqual({ internal: true })
+  })
+
   it('две строки одного продавца: «Да» на одну отмечает оба месяца — вторая по новому правилу, с датой операции', async () => {
     const finance = family()
     const { client } = fakeServer()
