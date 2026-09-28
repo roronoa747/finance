@@ -588,9 +588,11 @@ describe('e2e / B2C Блок 3 — часть 5: раскладка записа
     const B = await phone(server, st, 'b')
     const path = '/week/salary?from=salary&person=a&period=2026-09'
 
-    // «Пришла зарплата» — на «Неделе» (карточка) и в «Деньгах»; отметка — со счёта.
+    // «Пришла зарплата» — на «Неделе» (карточка-вопрос о приходе, возврат приёмки 2 п. 4) и в «Деньгах»; отметка — со счёта.
     setActivePinia(A.pinia)
-    expect(await screen(A.pinia, Statements, '/week')).toContain('Пришла зарплата Ильяс — разложить?')
+    const week = await screen(A.pinia, Statements, '/week')
+    expect(week).toContain('Пришла зарплата Ильяс?')
+    expect(week).not.toContain('разложить?')
     A.store.markSalary('a', { period: '2026-09', amount: 700_000, accountId: 'card' })
     const before = await screen(A.pinia, WeekSalary, path)
     expect(before).toContain('Осталось распределить')
@@ -836,6 +838,39 @@ describe('e2e / B2C Блок 3 — часть 7 (возврат приёмки �
     expect(A.store.allocations.map((a) => a.period).sort()).toEqual(['2026-09', '2026-10'])
     expect((await decision(A))?.kind).not.toBe('allocate')
     expect(await screen(A.pinia, Statements, '/week')).not.toContain('разложить?')
+  })
+
+  it('возврат приёмки 2 п. 3: выписка после дня зарплаты — «Да, зарплата» за август 13 сентября → ушёл с раскладки → «разложить?» на главном и в «Неделе» и 13-го, и 27-го', async () => {
+    // Сентябрьской зарплаты в выписке нет (день 10-й прошёл), вопрос «Это зарплата?» — об августовской.
+    at('2026-09-13T07:00:00Z')
+    const A = await phone(server, st, 'a')
+    await upload(A, statement('2026-08-01', '2026-09-13', op('2026-08-10', 700_000, 'ТОО Работодатель'), op('2026-09-05', -3_500, 'Magnum')))
+    expect(await screen(A.pinia, Statements, '/week')).toContain('Это зарплата Ильяс?')
+    let router: any = null
+    await screen(A.pinia, Statements, '/week', undefined, [
+      {
+        created(this: any) {
+          const s = this.$.setupState
+          if (!('acceptMatch' in s) || router) return
+          router = this.$router
+          s.acceptMatch(s.match)
+        },
+      },
+    ])
+    const august = '/week/salary?from=salary&person=a&period=2026-08'
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe(august))
+    expect(A.store.payments.find((p) => p.kind === 'salary')).toMatchObject({ period: '2026-08', source: 'statement' })
+
+    // Не разложил — ушёл («Закрыть»): августовская ждёт на главном и в «Неделе», пока «Пришла?» сентября не спрашивается.
+    for (const day of ['2026-09-13', '2026-09-27']) {
+      at(`${day}T07:00:00Z`)
+      expect(await decision(A)).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата Ильяс — разложить?', to: august })
+      const week = await screen(A.pinia, Statements, '/week')
+      expect(week).toContain('Пришла зарплата Ильяс — разложить?')
+      expect(week).not.toContain('Пришла зарплата Ильяс?')
+    }
+    await allocateAll(A, august)
+    expect((await decision(A))?.kind).not.toBe('allocate')
   })
 })
 

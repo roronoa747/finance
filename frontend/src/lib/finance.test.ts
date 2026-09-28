@@ -100,6 +100,7 @@ import {
   goalRemaining,
   freeByFact,
   nextDecision,
+  salaryAsk,
   salaryToAllocate,
   keepCard,
   freedChange,
@@ -2504,7 +2505,7 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       // 17 сентября: ближайшая зарплата — Даны 20-го, до неё 3 дня → «пришла?» у Даны; у Ильяса
       // (его 10-е давно прошло) вопроса нет — как на прежнем Обзоре.
       const salary = nextDecision(base, { ...ctx, me: 'b' })
-      // «Пришла» ведёт на «Неделю»: там карточка «Пришла зарплата — разложить?» (критик Блока 3, правило 12).
+      // «Пришла» ведёт на «Неделю»: там карточка «Пришла зарплата <имя>?» с отметкой (критик Блока 3, правило 12).
       expect(salary).toMatchObject({ kind: 'salary', question: 'Пришла зарплата Дана?', meta: `${money(500_000)} · 20 сентября`, to: '/week' })
       expect(salary?.salary).toMatchObject({ period: '2026-09' })
       expect(nextDecision(base, ctx)).toBeNull()
@@ -2568,6 +2569,29 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       const heavy = { ...paid(stmt('a', '2026-09')), obligations: [{ ...rent, versions: [{ from: '2000-01', amount: 5_000_000 }] }] }
       expect(salaryToAllocate(heavy, 'a', now)).toBeNull()
       expect(salaryToAllocate(paid(stmt('a', '2026-09')), undefined, now)).toBeNull()
+    })
+
+    it('возврат приёмки 2 п. 3: неразложенная августовская из выписки — «разложить?» весь сентябрь, кроме дней «Пришла?» (7–10-е при дне 10); после дня зарплаты не теряется', () => {
+      const august: Payment = {
+        id: 's-a-08', kind: 'salary', targetId: 'a', period: '2026-08', amount: 700_000, accountId: null, by: 'a', at: T, updatedAt: T, source: 'statement', opId: 'op-a-08',
+      }
+      const state = { ...base, payments: [august] }
+      // Выписку грузят после дня зарплаты: 11 и 27 сентября августовская ещё ждёт раскладки.
+      for (const day of [11, 27]) {
+        expect(salaryToAllocate(state, 'a', { day, key: '2026-09' })?.period).toBe('2026-08')
+        expect(nextDecision(state, { me: 'a', now: { day, key: '2026-09' } })).toMatchObject({ kind: 'allocate', salary: { period: '2026-08' } })
+      }
+      // Скан месяца: «разложить?» августа — до окна «Пришла?», «Пришла?» — с 7-го по день зарплаты, затем снова августа.
+      const kinds = Array.from({ length: 30 }, (_, i) => {
+        const d = nextDecision(state, { me: 'a', now: { day: i + 1, key: '2026-09' }, answeredMonthEnd: '2026-09' })
+        return `${d?.kind}:${d?.salary?.period}`
+      })
+      expect(kinds).toEqual(Array.from({ length: 30 }, (_, i) => (i + 1 >= 7 && i + 1 <= 10 ? 'salary:2026-09' : 'allocate:2026-08')))
+      // Одно условие «Пришла?» для главного и раскладки: salaryAsk.
+      expect(salaryAsk(state, 'a', { day: 10, key: '2026-09' })?.key).toBe('2026-09')
+      expect(salaryAsk(state, 'a', { day: 11, key: '2026-09' })).toBeNull()
+      expect(salaryAsk(state, 'b', { day: 18, key: '2026-09' })?.key).toBe('2026-09')
+      expect(salaryAsk(state, undefined, { day: 10, key: '2026-09' })).toBeNull()
     })
 
     it('шаг плана «Сначала долги» — последним; viewer не участник — me пустой, зарплаты нет', () => {

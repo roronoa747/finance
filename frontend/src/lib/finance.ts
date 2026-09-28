@@ -1538,6 +1538,21 @@ export function salaryOpen(p: Person, payments: Payment[], period: string, now =
 }
 
 /**
+ * «Пришла зарплата <имя>?» спрашивается сейчас (RP-10): ближайшая непришедшая зарплата
+ * (`untilPayday`) — своя, и её день настал или близко (`salaryOpen`). Зарплата, чей день прошёл,
+ * не спрашивается: `untilPayday` смотрит уже на следующую. Одно условие для главного
+ * (`nextDecision`), «Недели» и `salaryToAllocate` — иначе они расходятся по дням месяца.
+ */
+export function salaryAsk(
+  state: { people?: Person[]; obligations?: Obligation[]; credits?: Credit[]; accounts?: Account[]; payments?: Payment[] },
+  me: PersonId | undefined,
+  now = today(),
+): NonNullable<ReturnType<typeof untilPayday>> | null {
+  const near = me ? untilPayday(state, now) : null;
+  return near && near.who.id === me && salaryOpen(near.who, state.payments ?? [], near.key, now) ? near : null;
+}
+
+/**
  * Сколько из пришедшей зарплаты свободно — сумма раскладки в Ритуале (RP-10 п. 3).
  *
  * План месяца построен на окладах, поэтому свободный остаток месяца (`free` —
@@ -1708,9 +1723,11 @@ export const salaryAllocationPath = (person: PersonId, period: string) => `/week
  * «Недели» и `nextDecision`). Только `source: 'statement'`: ручные отметки до записи раскладок
  * (`allocations`, B2C-21) раскладывал старый Ритуал без записи — карточка предложила бы их второй раз.
  * Нужна запись раскладки (`allocationFor` пуст) и свободное в этой зарплате (`salaryFree` > 0) — по
- * плану её месяца. Прошлый месяц — только пока зарплата этого не ждёт отметки (`salaryOpen`): иначе
- * старая неразложенная заслонила бы «Пришла?» этого месяца; пришедшая раньше срока зарплата
- * следующего месяца (день 1-го, пришла 29-го) — сразу (критик возврата Блока 3).
+ * плану её месяца. Прошлый месяц не ищется, только пока «Пришла?» этого месяца действительно
+ * спрашивается (`salaryAsk`, как у главного): иначе старая неразложенная заслонила бы его. После дня
+ * зарплаты «Пришла?» уже не спрашивается — прошлая неразложенная снова здесь (возврат приёмки 2 п. 3:
+ * выписку грузят после дня зарплаты, и с 13-го по конец месяца зарплата терялась). Пришедшая раньше
+ * срока зарплата следующего месяца (день 1-го, пришла 29-го) — сразу (критик возврата Блока 3).
  */
 export function salaryToAllocate(
   state: {
@@ -1732,7 +1749,8 @@ export function salaryToAllocate(
   const person = people.find((p) => alive(p) && p.id === me)
   if (!person) return null
   const payments = state.payments ?? []
-  const months = [addMonths(now.key, 1), now.key, ...(salaryOpen(person, payments, now.key, now) ? [] : [addMonths(now.key, -1)])]
+  const asking = salaryAsk(state, me, now)?.key === now.key
+  const months = [addMonths(now.key, 1), now.key, ...(asking ? [] : [addMonths(now.key, -1)])]
   const found = record ?? months.map((k) => paidFor(payments, 'salary', me, k)).find(Boolean)
   if (!found || found.kind !== 'salary' || found.targetId !== me || found.source !== 'statement') return null
   if (allocationFor(state.allocations, { source: 'salary', sourceId: me, period: found.period })) return null
@@ -2611,14 +2629,14 @@ export function nextDecision(
   }
 
   // «Пришла?» — как на прежнем Обзоре (RP-10): ближайшая непришедшая зарплата — своя, и её
-  // день настал или близко (`salaryOpen`); зарплата, чей день давно прошёл, не спрашивается.
-  const near = ctx.me ? untilPayday(state, now) : null
-  if (near && near.who.id === ctx.me && salaryOpen(near.who, payments, near.key, now)) {
+  // день настал или близко; зарплата, чей день давно прошёл, не спрашивается (`salaryAsk`).
+  const near = salaryAsk(state, ctx.me, now)
+  if (near) {
     return {
       kind: 'salary',
       question: `Пришла зарплата ${near.who.name}?`,
       meta: `${money(near.income)} · ${dayLabel(near.day, near.key)}`,
-      // Карточка «Пришла зарплата — разложить?» живёт на «Неделе» (DESIGN §3): «Пришла» — туда.
+      // Карточка «Пришла зарплата <имя>?» с отметкой живёт на «Неделе» (DESIGN §3): «Пришла» — туда.
       to: '/week',
       actions: { primary: 'Пришла', ghost: 'Потом' },
       salary: { person: near.who, period: near.key },

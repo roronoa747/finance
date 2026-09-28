@@ -36,11 +36,10 @@ import {
   keepQuestions,
   monthEndAsk,
   salaryAllocationPath,
-  salaryOpen,
+  salaryAsk,
   salaryToAllocate,
   spendCategoryName,
   spendRows,
-  untilPayday,
   weekPicture,
   weekTag,
   weekVersusPrev,
@@ -50,7 +49,7 @@ import { readMonthEnd, writeMonthEnd } from '@/lib/storage'
 /**
  * «Неделя» (DESIGN.md §2 g2, §3; B2C-07 → B2C-21): что за неделя и кто загрузил, загрузка и
  * предпросмотр, решения по одному (сопоставления Р-6, незнакомые продавцы, «оставить подписку?»,
- * «остались деньги?»), «пришла зарплата — разложить?» → `/week/salary`, итог недели по выпискам
+ * «остались деньги?», «пришла зарплата?», «разложить?» → `/week/salary`), итог недели по выпискам
  * обоих, «без выписки <имя>», разделы за неделю и месяц, прошлые недели, загрузки семьи. Файл
  * разбирается на телефоне и никуда не уходит (Р-4); считает `finance.ts` / `lib/statements`.
  */
@@ -235,15 +234,13 @@ function answerRest(go: boolean) {
   if (go && amount > 0) void router.push(`/week/salary?from=rest&amount=${amount}&period=${month}`)
 }
 
-// «Пришла зарплата <имя> — разложить?» (RP-10): ближайшая зарплата — своя, её день настал или близко.
-const paydayInfo = computed(() =>
-  untilPayday({ people: finance.people, obligations: finance.obligations, credits: finance.credits, accounts: finance.householdAccounts, payments: finance.payments }),
+// «Пришла зарплата <имя>?» (RP-10): ближайшая зарплата — своя, её день настал или близко (`salaryAsk`,
+// как на главном). Не вместе с «разложить?»: одна карточка о зарплате за раз (возврат приёмки 2 п. 3).
+const salaryHere = computed(() =>
+  auth.isViewer || allocate.value
+    ? null
+    : salaryAsk({ people: finance.people, obligations: finance.obligations, credits: finance.credits, payments: finance.payments }, auth.slot),
 )
-const salaryHere = computed(() => {
-  const info = paydayInfo.value
-  if (!info || auth.isViewer || auth.slot !== info.who.id) return false
-  return salaryOpen(info.who, finance.payments, info.key)
-})
 
 /* ---------- ответы разбора ---------- */
 const options = (g: UnknownGroup) => [
@@ -499,11 +496,11 @@ onMounted(() => {
         </template>
       </DecisionCard>
 
-      <!-- Пришла зарплата — разложить (RP-10) -->
-      <Card v-if="salaryHere && paydayInfo" class="border-brand">
-        <h3 class="type-h3 text-ink">Пришла зарплата {{ paydayInfo.who.name }} — разложить?</h3>
-        <p class="mt-0.5 text-[13px] text-ink-2">{{ money(paydayInfo.income) }} · отметьте — и разложим свободное по мечтам.</p>
-        <SalaryRow button :person-id="paydayInfo.who.id" :period="paydayInfo.key" />
+      <!-- Пришла зарплата? (RP-10) — вопрос о приходе, как решение «salary» на главном; раскладка — после отметки -->
+      <Card v-if="salaryHere" class="border-brand">
+        <h3 class="type-h3 text-ink">Пришла зарплата {{ salaryHere.who.name }}?</h3>
+        <p class="mt-0.5 text-[13px] text-ink-2">{{ money(salaryHere.income) }} · {{ dayLabel(salaryHere.day, salaryHere.key) }}</p>
+        <SalaryRow button :person-id="salaryHere.who.id" :period="salaryHere.key" />
       </Card>
 
       <!-- Итог недели -->

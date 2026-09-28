@@ -162,3 +162,31 @@ describe('возврат приёмки п. 2: зарплата, отмечен�
     expect(page()).not.toContain('разложить?')
   })
 })
+
+describe('возврат приёмки 2 п. 3, 4: одна карточка о зарплате, у неотмеченной — вопрос о приходе', () => {
+  it('день зарплаты, отметки нет — «Пришла зарплата Алихан?» (как решение на главном), кнопка «Пришла зарплата»; «разложить?» — только у раскладки', async () => {
+    vi.setSystemTime(new Date('2026-09-10T07:00:00Z'))
+    await openWeek((finance, store) => {
+      finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000 }
+      finance.householdDoc.credits = []
+      delete store.ops['op-1']
+    })
+    expect(page()).toContain('Пришла зарплата Алихан?')
+    expect(page()).toContain('10 сентября')
+    expect(page()).not.toContain('разложить?')
+    expect(button('Пришла зарплата')).toBeTruthy()
+  })
+
+  it('зарплата сентября из выписки не разложена, а «Пришла?» октября уже спрашивается (день 1-го, 29-е) — на «Неделе» одна карточка «разложить?»', async () => {
+    vi.setSystemTime(new Date('2026-09-29T07:00:00Z'))
+    await openWeek((finance, store) => {
+      finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000, payday: 1 }
+      finance.householdDoc.credits = []
+      delete store.ops['op-1']
+      finance.markSalary('a', { period: '2026-09', amount: 500_000, accountId: null, source: 'statement', opId: 'op-9', at: '2026-09-01T07:00:00.000Z' })
+    })
+    expect(page()).toContain('Пришла зарплата Алихан — разложить?')
+    expect(page()).not.toContain('Пришла зарплата Алихан?')
+    expect(page().split('Пришла зарплата').length - 1).toBe(1)
+  })
+})
