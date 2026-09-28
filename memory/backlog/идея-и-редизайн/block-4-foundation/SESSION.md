@@ -62,7 +62,7 @@
   «Удалить аккаунт» и вход Google; B2C-23 — «по коду» через ручку участников (сейчас `useInvite` + `Access` режим `join`).
 - **Документ:** новые ключи `SyncDoc.allocations[]` (в `known` mergeDocs), поля `Goal.main /
   photoId / photoCredit / template`, `WishItem.photoId / list`, `Payment.source / opId`,
-  `SpendCategory.plannedElsewhere / slot`, `MerchantRule.to.payment` (личный документ),
+  `SpendCategory.plannedElsewhere / slot`, `MerchantRule.to.payment` (личный документ; `restCategoryId` — раздел не «таких» строк продавца, критик возврата 2),
   `privateDoc.gifts[]` (`mergePrivateDocs`), `Credit.rateUnknown` (кредит из первого запуска, `null` снимает). Удаление аккаунта (B2C-24): личные данные
   пользователя — `private_docs`, `operations`, `statement_uploads`, **`photos` (FK `user_id`
   CASCADE, миграция `000003`)**; семейные — `household_docs`, `household_members`, `invites`,
