@@ -11,9 +11,9 @@ import type { Operation, ParsedStatement } from '../src/lib/statements/types'
 import History from '../src/views/History.vue'
 import Statements from '../src/views/Statements.vue'
 import { money, plain } from '../src/lib/money'
-import { budgetAmounts, creditBalance, duesTotal, freeByFact, monthDues } from '../src/lib/finance'
+import { budgetAmounts, creditBalance, duesTotal, freeByFact, monthDues, salaryAsk } from '../src/lib/finance'
 import { planFamilyDoc, T0 } from '../src/test/planFamily'
-import type { SyncDoc } from '../src/types/finance'
+import type { Payment, SyncDoc } from '../src/types/finance'
 import type { SpendTotal } from '../src/lib/statements/types'
 import type { OperationWire } from '../src/types/api'
 import Dreams from '../src/views/Dreams.vue'
@@ -25,6 +25,7 @@ import { parseStatement } from '../src/lib/statements/parsers'
 import { landingPath } from '../src/router/landing'
 import Start from '../src/views/Start.vue'
 import WeekSalary from '../src/views/WeekSalary.vue'
+import Money from '../src/views/Money.vue'
 import { attachTemplate } from '../src/lib/photos/goalPhoto'
 import { photoUrl, releasePhotos, uploadPhoto } from '../src/lib/photos/store'
 import { screenMixin } from '../src/test/screenState'
@@ -1121,4 +1122,97 @@ describe('e2e / B2C Блок 3 — часть 8 (повторная приёмк
     expect(Object.fromEntries(opsA.all.map((o) => [o.merchant, o.categoryId]))).toEqual({ 'ИП Ахметов': null, 'ИП Жолдасбеков': 'sc_rent' })
     expect(await freeB()).toBe(free1)
   })
+})
+
+describe('e2e / B2C Блок 3 — часть 9 (четвёртая приёмка): день зарплаты 1–3, два неразложенных месяца — главный, «Неделя» и «Деньги» спрашивают одно', () => {
+  const storage = new Map<string, string>()
+
+  /** Зарплата Ильяса за месяц, отмеченная по выписке («Да, зарплата» или правило), — раскладки нет. */
+  const fromStatement = (period: string): Payment => ({
+    id: `s-a-${period}`, kind: 'salary', targetId: 'a', period, amount: 700_000, accountId: null, by: 'a', at: T0, updatedAt: T0, source: 'statement', opId: `op-${period}`,
+  })
+  const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;| /g, ' ').replace(/\s+/g, ' ')
+  /** Брендовые кнопки экрана (вариант default, `bg-brand`) — правило 12: главная кнопка одна. */
+  const brand = (html: string) =>
+    [...html.matchAll(/<button[^>]*class="[^"]*\bbg-brand\b[^"]*"[^>]*>([\s\S]*?)<\/button>/g)].map((x) => text(x[1]).trim())
+  /** Кнопки «Пришла зарплата» экрана (любого варианта). */
+  const salaryButtons = (html: string) =>
+    [...html.matchAll(/<button[^>]*>([\s\S]*?)<\/button>/g)].map((x) => text(x[1]).trim()).filter((t) => t === 'Пришла зарплата')
+
+  async function decision(p: Phone) {
+    let vm: Record<string, any> = {}
+    const grab = { created(this: any) { if ('onPrimary' in this.$.setupState) vm = this.$.setupState } }
+    const html = await screen(p.pinia, Dreams, '/', undefined, [grab])
+    return { html, shown: vm.shown as { kind: string; to: string | null; question: string } | null }
+  }
+
+  // Окно «Пришла?» октябрьской зарплаты (`salaryOpen`: за SALARY_EARLY_DAYS = 3 дня до дня, до дня включительно).
+  const windows: Record<number, string[]> = {
+    1: ['2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01'],
+    2: ['2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02'],
+    3: ['2026-09-30', '2026-10-01', '2026-10-02', '2026-10-03'],
+  }
+  const days = ['2026-09-27', '2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04']
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => storage.set(k, String(v)),
+      removeItem: (k: string) => storage.delete(k),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    vi.useFakeTimers()
+    at('2026-09-27T07:00:00Z')
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  for (const payday of [1, 2, 3]) {
+    it(`день зарплаты ${payday}: скан 27.09–04.10 — в окне «Пришла?» октября везде «Пришла зарплата Ильяс?» без «разложить?» (ни август, ни сентябрь), на «Неделе» одна брендовая; вне окна — «разложить?» сентября, в «Деньгах» нет «Пришла зарплата»`, async () => {
+      const doc = planFamilyDoc()
+      const server = fakeServer({
+        ...doc,
+        people: doc.people.map((p) => (p.id === 'a' ? { ...p, payday } : p)),
+        payments: [fromStatement('2026-08'), fromStatement('2026-09')],
+      })
+      const A = await phone(server, fakeStatements(), 'a')
+      const september = '/week/salary?from=salary&person=a&period=2026-09'
+      const seen: string[] = []
+
+      for (const day of days) {
+        at(`${day}T07:00:00Z`) // 12:00 по Алматы
+        const asked = windows[payday].includes(day)
+        const now = { key: day.slice(0, 7), day: Number(day.slice(8)) }
+        // Окно теста — то же, что спрашивает ядро (salaryAsk — одно условие главного, «Недели» и «Деньги»).
+        expect(salaryAsk(A.store.householdDoc, 'a', now)?.key ?? null, `${day}: salaryAsk`).toBe(asked ? '2026-10' : null)
+
+        const home = await decision(A)
+        const week = await screen(A.pinia, Statements, '/week')
+        const moneyHtml = await screen(A.pinia, Money, '/money')
+
+        if (asked) {
+          expect(home.shown, `${day}: главный`).toMatchObject({ kind: 'salary', question: 'Пришла зарплата Ильяс?', to: '/week' })
+          for (const [name, html] of [['главный', home.html], ['«Неделя»', week], ['«Деньги»', moneyHtml]] as const) {
+            expect(text(html), `${day}: ${name} — без «разложить?»`).not.toContain('разложить?')
+          }
+          expect(text(week), `${day}: «Неделя»`).toContain('Пришла зарплата Ильяс?')
+          expect(brand(week), `${day}: «Неделя» — одна брендовая`).toEqual(['Пришла зарплата'])
+          expect(salaryButtons(moneyHtml), `${day}: «Деньги»`).toEqual(['Пришла зарплата'])
+        } else {
+          expect(home.shown, `${day}: главный`).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата Ильяс — разложить?', to: september })
+          expect(text(week), `${day}: «Неделя»`).toContain('Пришла зарплата Ильяс — разложить?')
+          expect(text(week), `${day}: «Неделя»`).not.toContain('Пришла зарплата Ильяс?')
+          expect(salaryButtons(moneyHtml), `${day}: «Деньги»`).toEqual([])
+        }
+        seen.push(`${day.slice(5)}:${home.shown?.kind}`)
+      }
+      // Одно решение за раз и без скачков: окно — сплошное, август не всплывает ни разу.
+      expect(seen.filter((s) => s.endsWith('salary'))).toHaveLength(4)
+    })
+  }
 })
