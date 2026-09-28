@@ -5,7 +5,7 @@ import { PhCopy, PhFileArrowUp, PhUserPlus } from '@phosphor-icons/vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore, type Draft, type DraftFile } from '@/stores/operations'
-import { parseStatement, StatementFormatError } from '@/lib/statements/parsers'
+import { readStatementFiles } from '@/lib/statements/read'
 import { ruleFor, ruleMatchOf } from '@/lib/statements/model'
 import { firstRunQuestions, paymentOpOfMonth, salaryOpOfMonth, type IncomeCandidate, type RecurringCandidate, type RecurringKind } from '@/lib/statements/firstRun'
 import { matchCandidates, matchCategory, operationAt } from '@/lib/statements/matching'
@@ -80,27 +80,8 @@ async function pick(e: Event) {
   const files = [...(input.files ?? [])]
   if (!files.length) return
   reading.value = true
-  const ok: DraftFile[] = []
-  const failed: Draft['errors'] = []
   try {
-    for (const f of files) {
-      let stage = 'загрузка'
-      try {
-        const { pdfToRows } = await import('@/lib/statements/pdf')
-        stage = 'pdf.js'
-        const rows = await pdfToRows(await f.arrayBuffer())
-        stage = 'разбор'
-        ok.push({ name: f.name, parsed: parseStatement(rows) })
-      } catch (err) {
-        if (err instanceof StatementFormatError) {
-          failed.push({ name: f.name, message: err.code === 'empty' ? 'В файле не нашлось операций' : 'Пока понимаю выписки Kaspi и Freedom' })
-          continue
-        }
-        console.error('Разбор выписки:', err)
-        const detail = `${stage} — ${err instanceof Error ? `${err.name}: ${err.message}` : String(err)}`.slice(0, 160)
-        failed.push({ name: f.name, message: 'Не получилось прочитать файл', detail })
-      }
-    }
+    const { ok, errors: failed } = await readStatementFiles(files)
     errors.value = failed
     if (ok.length) await uploadParsed(ok)
   } finally {

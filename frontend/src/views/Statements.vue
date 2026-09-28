@@ -20,13 +20,13 @@ import type { MatchCandidate } from '@/lib/statements/matching'
 import { matchKey } from '@/lib/statements/matching'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
-import { useOperationsStore, type Draft, type DraftFile } from '@/stores/operations'
+import { useOperationsStore } from '@/stores/operations'
 import { money, parseMoney } from '@/lib/money'
 import { cn } from '@/lib/utils'
 import { dayLabel, monthFrom, monthKey, monthTitle, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
 import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import { draftSummary, partnerHints, picture, pictureTotal, ruleMatchOf, unknownGroups, type UnknownGroup } from '@/lib/statements/model'
-import { parseStatement, StatementFormatError } from '@/lib/statements/parsers'
+import { readStatementFiles } from '@/lib/statements/read'
 import type { MerchantRule } from '@/lib/statements/types'
 import type { PersonId } from '@/types/finance'
 import {
@@ -288,30 +288,8 @@ async function pick(e: Event) {
   const files = [...(input.files ?? [])]
   if (!files.length) return
   reading.value = true
-  const ok: DraftFile[] = []
-  const errors: Draft['errors'] = []
   try {
-    for (const f of files) {
-      let stage = 'загрузка'
-      try {
-        // pdf.js — ленивым чанком, только когда выбрали файл; сбой загрузки чанка (вышла новая
-        // версия, старого чанка на сервере нет) — тоже ошибка файла, а не тишина.
-        const { pdfToRows } = await import('@/lib/statements/pdf')
-        stage = 'pdf.js'
-        const rows = await pdfToRows(await f.arrayBuffer())
-        stage = 'разбор'
-        ok.push({ name: f.name, parsed: parseStatement(rows) })
-      } catch (err) {
-        if (err instanceof StatementFormatError) {
-          errors.push({ name: f.name, message: err.code === 'empty' ? 'В файле не нашлось операций' : 'Пока понимаю выписки Kaspi и Freedom' })
-          continue
-        }
-        // Тип и текст ошибки движка или pdf.js — без содержимого выписки.
-        console.error('Разбор выписки:', err)
-        const detail = `${stage} — ${err instanceof Error ? `${err.name}: ${err.message}` : String(err)}`.slice(0, 160)
-        errors.push({ name: f.name, message: 'Не получилось прочитать файл', detail })
-      }
-    }
+    const { ok, errors } = await readStatementFiles(files)
     store.setDraft(ok, errors)
   } finally {
     reading.value = false
