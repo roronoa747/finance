@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import type { ApiClient } from '../src/api/client'
 import { useAuthStore } from '../src/stores/auth'
@@ -10,7 +11,7 @@ import type { Operation, ParsedStatement } from '../src/lib/statements/types'
 import History from '../src/views/History.vue'
 import Statements from '../src/views/Statements.vue'
 import { money, plain } from '../src/lib/money'
-import { budgetAmounts, creditBalance, duesTotal, monthDues } from '../src/lib/finance'
+import { budgetAmounts, creditBalance, duesTotal, freeByFact, monthDues } from '../src/lib/finance'
 import { planFamilyDoc, T0 } from '../src/test/planFamily'
 import type { SyncDoc } from '../src/types/finance'
 import type { SpendTotal } from '../src/lib/statements/types'
@@ -236,7 +237,8 @@ describe('e2e / B2C Блок 3 — часть 2: сопоставление вы
     const october = B.store.payments.find((p) => p.period === '2026-10' && !p.deletedAt)!
     expect(october).toMatchObject({ kind: 'credit', targetId: 'loan', source: 'statement' })
 
-    // B снимает отметку → у A после синка платёж не отмечен, снова не предлагается, трата в картине недели.
+    // B снимает отметку → у A после синка платёж не отмечен, снова не предлагается. «Оплата Kaspi Кредита»
+    // и без правила — кредит по словарю: раздел тот же (продавец не из словаря — следующий сценарий).
     setActivePinia(B.pinia)
     B.store.unmarkPaid('credit', 'loan', '2026-10')
     await B.store.syncHousehold(B.client)
@@ -246,6 +248,43 @@ describe('e2e / B2C Блок 3 — часть 2: сопоставление вы
     expect(opsA.pendingMatches).toEqual([])
     const totals = A.store.householdDoc.spendTotals!.filter((t) => t.by === 'a' && t.period === '2026-10' && t.kind === 'month')
     expect(totals.map((t) => [t.categoryId, t.amount])).toEqual([['sc_credit', 58_000]])
+  })
+
+  it('возврат приёмки п. 5: аренда переводом ИП (не из словаря) — «да» у A → трата в плановом разделе; «снять» у B → у A после синка итогов снова трата, «Свободно» у B меньше на её сумму', async () => {
+    const A = await phone(server, st, 'a')
+    const B = await phone(server, st, 'b')
+    const opsA = await upload(A, statement('2026-09-01', '2026-09-20', op('2026-09-05', -220_000, 'ИП Жолдасбеков')))
+    expect(opsA.all.map((o) => o.categoryId)).toEqual([null])
+    expect(opsA.pendingMatches.map((c) => [c.kind, c.targetId, c.period])).toEqual([['obligation', 'rent', '2026-09']])
+    await opsA.acceptMatch(opsA.pendingMatches[0], A.client)
+    await A.store.syncHousehold(A.client)
+
+    const monthA = (p: Phone) => Object.fromEntries(p.store.householdDoc.spendTotals!.filter((t) => t.id.startsWith('a:month:2026-09:')).map((t) => [t.categoryId, t.amount]))
+    const freeB = async () => {
+      setActivePinia(B.pinia)
+      await B.store.pullHousehold(B.client)
+      const ops = useOperationsStore()
+      await ops.loadUploads(B.client)
+      const doc = B.store.householdDoc
+      return freeByFact({ ...doc, credits: B.store.credits }, doc.spendTotals ?? [], doc.spendCategories ?? [], '2026-09', ops.uploads).amount
+    }
+    const before = await freeB()
+    expect(monthA(B)).toEqual({ sc_rent: 220_000, _unknown: 0 })
+
+    // B снимает отметку аренды: платёж снова в плане месяца.
+    B.store.unmarkPaid('obligation', 'rent', '2026-09')
+    await B.store.syncHousehold(B.client)
+    // У A после синка операция снова трата — итоги переписаны и уехали партнёру.
+    await A.store.pullHousehold(A.client)
+    setActivePinia(A.pinia)
+    await nextTick()
+    expect(opsA.all.map((o) => o.categoryId)).toEqual([null])
+    expect(opsA.pendingMatches).toEqual([])
+    await A.store.syncHousehold(A.client)
+    const after = await freeB()
+    expect(monthA(B)).toEqual({ sc_rent: 0, _unknown: 220_000 })
+    expect(after).toBe(before - 220_000)
+    expect(await screen(B.pinia, Dreams, '/')).toContain(money(after))
   })
 })
 

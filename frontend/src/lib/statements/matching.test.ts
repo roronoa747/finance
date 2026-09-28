@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchCandidates, matchCategory, matchKey, nearestPeriod, operationAt, recentOperations } from './matching'
+import { matchCandidates, matchCategory, matchKey, nearestPeriod, operationAt, recentOperations, releasedOps } from './matching'
 import { assignIds, normalizeMerchant } from './model'
 import type { MerchantRule, Operation } from './types'
 import type { Credit, Obligation, Payment, Person } from '@/types/finance'
@@ -122,6 +122,17 @@ describe('matchCandidates', () => {
     // Обязательство по правилу суммой не ограничено (оценка плавает), приход — не платёж.
     expect(at(ops(op('2026-09-06', -300_000, 'PEREVOD ARENDA')))).toEqual([['obligation', 'rent', '2026-09', 'rule']])
     expect(at(ops(op('2026-09-06', 220_000, 'PEREVOD ARENDA')))).toEqual([])
+  })
+
+  it('releasedOps: снятая отметка с id операции освобождает её; правка отметки и повторная отметка месяца — нет', () => {
+    const paid: Payment = { id: 'p1', kind: 'credit', targetId: 'loan', period: '2026-09', amount: 58_000, accountId: null, by: 'a', at: T, updatedAt: T, source: 'statement', opId: 'op1' }
+    expect([...releasedOps([paid])]).toEqual([])
+    expect([...releasedOps([{ ...paid, deletedAt: T }])]).toEqual(['op1'])
+    // «Другая сумма или счёт» (editPaid): надгробие + новая запись с тем же opId.
+    expect([...releasedOps([{ ...paid, deletedAt: T }, { ...paid, id: 'p2', amount: 60_000 }])]).toEqual([])
+    // Месяц отметили снова вручную — операция и есть этот платёж.
+    const manual: Payment = { ...paid, id: 'p3', source: 'manual', opId: undefined }
+    expect([...releasedOps([{ ...paid, deletedAt: T }, manual])]).toEqual([])
   })
 
   it('operationAt: полдень дня операции по Алматы в ISO UTC, не позже «сейчас»', () => {

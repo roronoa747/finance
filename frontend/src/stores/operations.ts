@@ -12,7 +12,7 @@ import {
   seedSpendCategories,
   spendTotals,
 } from '@/lib/statements/model'
-import { matchCandidates, matchKey, operationAt, recentOperations, type MatchCandidate } from '@/lib/statements/matching'
+import { matchCandidates, matchKey, operationAt, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
 import type { MerchantRule, Operation, ParsedStatement } from '@/lib/statements/types'
 import type { OperationWire, StatementUploadResponse } from '@/types/api'
 import type { PersonId } from '@/types/finance'
@@ -135,6 +135,8 @@ export const useOperationsStore = defineStore('operations', () => {
           (c) => c.confidence !== 'rule' && !declined.value.includes(matchKey(c)),
         ),
   )
+  /** Операции со снятой отметкой из выписки (у себя или у партнёра): правило платежа им раздел не ставит. */
+  const released = computed(() => releasedOps(finance.payments))
   /** Строки черновика, которые отметятся сами при отправке — по правилам семьи. */
   const draftAutoMatches = computed(() => matchCandidates(draftOps.value, matchState(), finance.merchantRules, me()).filter((c) => c.confidence === 'rule'))
 
@@ -228,7 +230,7 @@ export const useOperationsStore = defineStore('operations', () => {
     for (const f of draft.value.files) for (const o of f.parsed.operations) if (!byId.has(o.id)) byId.set(o.id, o)
     const raw = [...byId.values()]
     const ids = new Set(byId.keys())
-    const withRules = applyRules(raw, finance.merchantRules)
+    const withRules = applyRules(raw, finance.merchantRules, undefined, released.value)
     const others = all.value.filter((o) => !ids.has(o.id))
     return pairInternalTransfers([...withRules, ...others]).slice(0, withRules.length)
   })
@@ -327,7 +329,7 @@ export const useOperationsStore = defineStore('operations', () => {
   /** Смена раздела задним числом: правило + пересчёт своих операций и итогов их периодов. */
   async function recategorize(match: MerchantRule['match'], to: MerchantRule['to'], client: ApiClient = apiClient) {
     answer(match, to)
-    const next = applyRules(all.value, finance.merchantRules)
+    const next = applyRules(all.value, finance.merchantRules, undefined, released.value)
     const changed = next.filter((o, i) => o !== all.value[i])
     if (!changed.length) return
     remember(changed)
@@ -353,8 +355,27 @@ export const useOperationsStore = defineStore('operations', () => {
     )
     if (!hit.size) return
     const base = 'internal' in rule.to ? all.value.map((o) => (hit.has(o.id) ? { ...o, internal: false } : o)) : all.value
-    const next = applyRules(pairInternalTransfers(base), finance.merchantRules)
+    const next = applyRules(pairInternalTransfers(base), finance.merchantRules, undefined, released.value)
     const changed = next.filter((o, i) => o.categoryId !== all.value[i].categoryId || o.internal !== all.value[i].internal)
+    if (!changed.length) return
+    remember(changed)
+    writeTotals(periodsOf(changed))
+    if (!demo.value) pending.value.push({ key: newKey(), ops: changed })
+    save()
+    await flush(client)
+  }
+
+  /**
+   * Снятая отметка из выписки — здесь или у партнёра, пришла синком (B2C-15 п. 3): операция
+   * возвращается в траты — раздел без правила платежа, итоги её периодов переписываются, копия на
+   * сервере — тоже; месяц отметили снова — обратно в плановый раздел. `ids` — операции, чей признак
+   * мог измениться.
+   */
+  async function settleReleased(ids: Set<string>, client: ApiClient = apiClient) {
+    const list = all.value.filter((o) => ids.has(o.id))
+    if (!list.length) return
+    const next = applyRules(list, finance.merchantRules, undefined, released.value)
+    const changed = next.filter((o, i) => o !== list[i])
     if (!changed.length) return
     remember(changed)
     writeTotals(periodsOf(changed))
@@ -442,6 +463,13 @@ export const useOperationsStore = defineStore('operations', () => {
     }
   }
 
+  // Сразу при старте — и операции, отметку которых сняли до этой правки (или пока телефон спал).
+  watch(
+    () => [...released.value].sort().join(' '),
+    (now, before) => void settleReleased(new Set([...now.split(' '), ...(before ?? '').split(' ')].filter(Boolean))),
+    { immediate: true },
+  )
+
   return {
     ops,
     all,
@@ -464,6 +492,7 @@ export const useOperationsStore = defineStore('operations', () => {
     send,
     recategorize,
     forgetRule,
+    settleReleased,
     flush,
     pull,
     loadUploads,

@@ -182,10 +182,17 @@ export function categorize(
   return { categoryId: hit?.categoryId ?? null, internal: false, ...payment }
 }
 
-/** Пересчёт всех операций после нового правила. */
-export function applyRules(ops: Operation[], rules: MerchantRule[], dictionary = DICTIONARY): Operation[] {
+const NONE: ReadonlySet<string> = new Set()
+
+/**
+ * Пересчёт всех операций после нового правила. `released` — операции, чья отметка из выписки
+ * снята (`releasedOps`, B2C-15 п. 3): правило «это платёж по …» им раздел не ставит — операция
+ * возвращается в траты (раздел по словарю или виду), само правило остаётся для новых строк.
+ */
+export function applyRules(ops: Operation[], rules: MerchantRule[], dictionary = DICTIONARY, released: ReadonlySet<string> = NONE): Operation[] {
+  const unpaid = released.size ? rules.filter((r) => !('payment' in r.to)) : rules
   return ops.map((op) => {
-    const { categoryId, internal } = categorize(op, rules, dictionary)
+    const { categoryId, internal } = categorize(op, released.has(op.id) ? unpaid : rules, dictionary)
     return categoryId === op.categoryId && internal === op.internal ? op : { ...op, categoryId, internal }
   })
 }

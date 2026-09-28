@@ -11,6 +11,7 @@ import type { Operation, ParsedStatement } from '@/lib/statements/types'
 import type { OperationsPage, OperationWire, StatementUploadResponse } from '@/types/api'
 import kaspi01 from '@/lib/statements/fixtures/kaspi-01.rows.json'
 import { planFamilyDoc } from '@/test/planFamily'
+import { freeByFact } from '@/lib/finance'
 
 const storage = new Map<string, string>()
 
@@ -400,12 +401,59 @@ describe('stores/operations — сопоставление с отметками
     expect(october).toMatchObject({ kind: 'credit', targetId: 'loan', source: 'statement', amount: 58_000 })
     expect(store.pendingMatches).toEqual([])
 
-    // Снять отметку — как сейчас: надгробие; операция остаётся в разделе кредитов, снова не предлагается.
+    // Снять отметку — надгробие; снова не предлагается. «Оплата Kaspi Кредита» и без правила — кредит по
+    // словарю, поэтому раздел тот же (продавец не из словаря возвращается в траты — тест ниже).
     finance.unmarkPaid('credit', 'loan', '2026-10')
+    await nextTick()
     expect(finance.payments.find((p) => p.period === '2026-10' && !p.deletedAt)).toBeUndefined()
     expect(store.pendingMatches).toEqual([])
     expect(store.all.find((o) => o.id === october.opId)!.categoryId).toBe('sc_credit')
     expect(finance.merchantRules.filter((r) => !r.deletedAt)).toHaveLength(1)
+  })
+
+  it('возврат приёмки п. 5: «Снять отметку» возвращает операцию в траты — итоги переписаны, «Свободно» меньше на её сумму; повтор выписки не возвращает её в кредиты; месяц отметили снова — обратно', async () => {
+    const finance = family()
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    // Кредит платится переводом ИП — продавца нет в словаре: плановый раздел даёт только правило платежа.
+    const september = statement('2026-09-01', '2026-09-20', op('2026-09-14', -58_000, 'ИП Жолдасбеков'))
+    store.setDraft(draftOf(september))
+    await store.send(client)
+    const id = store.all[0].id
+    await store.acceptMatch(store.pendingMatches[0], client)
+    const month = () => Object.fromEntries((finance.householdDoc.spendTotals ?? []).filter((t) => t.id.startsWith('a:month:2026-09:')).map((t) => [t.categoryId, t.amount]))
+    const free = () =>
+      freeByFact({ ...finance.householdDoc, credits: finance.credits }, finance.householdDoc.spendTotals ?? [], finance.householdDoc.spendCategories ?? [], '2026-09', [
+        { slot: 'a', period_from: '2026-09-01', period_to: '2026-09-20' },
+      ]).amount
+
+    // До: трата в разделе кредитов — «Свободно» её не вычитает, платёж уже в платежах месяца.
+    expect(store.ops[id].categoryId).toBe('sc_credit')
+    expect(month()).toEqual({ sc_credit: 58_000, _unknown: 0 })
+    const before = free()
+
+    // Снять: платёж снова в плане месяца, а операция — снова трата (раздел по словарю: незнакомое).
+    finance.unmarkPaid('credit', 'loan', '2026-09')
+    await nextTick()
+    expect(store.ops[id].categoryId).toBeNull()
+    expect(month()).toEqual({ sc_credit: 0, _unknown: 58_000 })
+    expect(free()).toBe(before - 58_000)
+    // Правило не удаляется (снять — в настройках разбора), строка снова не предлагается; на сервер — новый раздел.
+    expect(finance.merchantRules).toHaveLength(1)
+    expect(store.pendingMatches).toEqual([])
+    expect(store.pending.flatMap((j) => j.ops).find((o) => o.id === id)?.categoryId).toBeNull()
+
+    // Та же выписка ещё раз: операция остаётся тратой, месяц сам не отмечается.
+    store.setDraft(draftOf(september))
+    await store.send(client)
+    expect(store.lastAutoMarked).toBe(0)
+    expect(store.ops[id].categoryId).toBeNull()
+
+    // Месяц отметили снова вручную — эта операция и есть платёж: обратно в кредиты, «Свободно» как было.
+    finance.markPaid('credit', 'loan', 'a', { period: '2026-09', amount: 58_000, accountId: null })
+    await nextTick()
+    expect(store.ops[id].categoryId).toBe('sc_credit')
+    expect(free()).toBe(before)
   })
 
   it('две строки одного продавца: «Да» на одну отмечает оба месяца — вторая по новому правилу, с датой операции', async () => {

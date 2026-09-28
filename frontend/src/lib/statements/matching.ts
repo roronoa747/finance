@@ -188,6 +188,22 @@ export function operationAt(date: string, now = Date.now()): string {
   return new Date(Math.min(Date.parse(`${date}T12:00:00+05:00`), now)).toISOString()
 }
 
+/**
+ * Операции со снятой отметкой (B2C-15 п. 3): запись с `opId` — надгробие, живой записи с этой
+ * операцией нет и месяц той пары снова не отмечен. Им правило платежа раздел не ставит
+ * (`applyRules`), и они возвращаются в траты. Правка отметки (`editPaid`) переносит `opId` в новую
+ * запись — операция не освобождается; месяц отметили снова вручную — операция и есть этот платёж.
+ */
+export function releasedOps(payments: Payment[]): Set<string> {
+  const pair = (p: Payment) => `${p.kind}:${p.targetId}:${p.period}`
+  const live = payments.filter((p) => !p.deletedAt)
+  const linked = new Set(live.map((p) => p.opId).filter((id): id is string => !!id))
+  const paid = new Set(live.map(pair))
+  const out = new Set<string>()
+  for (const p of payments) if (p.deletedAt && p.opId && !linked.has(p.opId) && !paid.has(pair(p))) out.add(p.opId)
+  return out
+}
+
 /** Операции недавних месяцев — только их есть смысл сопоставлять (этот и прошлый месяц). */
 export function recentOperations(ops: Operation[], now = monthKey()): Operation[] {
   const from = `${addMonths(now, -1)}-01`
