@@ -164,3 +164,45 @@ describe('components/MarkSheet в DOM', () => {
     expect(seen.marked).toEqual([])
   })
 })
+
+describe('возврат приёмки п. 2: «Разложить» в листе пришедшей по выписке зарплаты', () => {
+  async function paidSheet(pinia: ReturnType<typeof createPinia>) {
+    const seen = { allocate: 0, close: 0 }
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app = createApp({
+      render: () =>
+        h(MarkSheet, {
+          open: 'paid', kind: 'salary', targetId: 'a', period: '2026-09', title: 'Зарплата · Ильяс',
+          onClose: () => void seen.close++,
+          onAllocate: () => void seen.allocate++,
+        }),
+    })
+    app.use(pinia)
+    app.mount(root)
+    await nextTick()
+    return seen
+  }
+  const has = (text: string) => buttons().some((b) => b.textContent?.trim() === text)
+
+  it('из выписки и не разложена — «Разложить» закрывает лист и зовёт раскладку; ручная отметка и записанная раскладка — без кнопки', async () => {
+    const { pinia, store } = family()
+    store.markSalary('a', { period: '2026-09', amount: 700_000, accountId: null, source: 'statement', opId: 'op-9', at: '2026-09-10T07:00:00.000Z' })
+    const seen = await paidSheet(pinia)
+    expect(has('Разложить')).toBe(true)
+    await press(button('Разложить'))
+    expect(seen).toEqual({ allocate: 1, close: 1 })
+
+    store.recordAllocation({ source: 'salary', sourceId: 'a', period: '2026-09', by: 'a', total: 100_000, parts: [{ target: 'life', amount: 100_000 }] })
+    await nextTick()
+    expect(has('Разложить')).toBe(false)
+
+    app?.unmount()
+    document.body.innerHTML = ''
+    const manual = family()
+    manual.store.markSalary('a', { period: '2026-09', amount: 700_000, accountId: 'card' })
+    await paidSheet(manual.pinia)
+    expect(has('Другая сумма или счёт')).toBe(true)
+    expect(has('Разложить')).toBe(false)
+  })
+})

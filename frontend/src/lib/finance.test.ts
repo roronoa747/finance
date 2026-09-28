@@ -100,6 +100,7 @@ import {
   goalRemaining,
   freeByFact,
   nextDecision,
+  salaryToAllocate,
   keepCard,
   freedChange,
   weekTag,
@@ -2520,6 +2521,40 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       const rest = nextDecision(base, { me: 'a', now: end })
       expect(rest).toMatchObject({ kind: 'monthEnd', question: 'Остались деньги с сентября?', to: '/week?rest=1', actions: { primary: 'Разложить', ghost: 'Не сейчас' } })
       expect(nextDecision(base, { me: 'a', now: end, answeredMonthEnd: '2026-09' })).toBeNull()
+    })
+
+    it('возврат приёмки п. 2: своя зарплата из выписки без записи раскладки → «Пришла зарплата <имя> — разложить?» → раскладка; прошлый месяц — тоже; чужая, ручная, разложенная, без свободного — нет', () => {
+      const stmt = (who: 'a' | 'b', period: string, extra: Partial<Payment> = {}): Payment => ({
+        id: `s-${who}-${period}`, kind: 'salary', targetId: who, period, amount: who === 'a' ? 700_000 : 500_000, accountId: null, by: who, at: T, updatedAt: T,
+        source: 'statement', opId: `op-${who}-${period}`, ...extra,
+      })
+      const paid = (...payments: Payment[]) => ({ ...base, payments })
+
+      const found = salaryToAllocate(paid(stmt('a', '2026-09')), 'a', now)!
+      expect(found).toMatchObject({ period: '2026-09', person: { id: 'a' } })
+      expect(found.free).toBe(salaryFree(budgetAmounts(base).d5, people, found.record))
+      expect(found.free).toBeGreaterThan(0)
+      // Раньше «пришла?», шагов и подписок; после сопоставлений (их «Да, зарплата» и ведёт сюда).
+      expect(nextDecision(paid(stmt('a', '2026-09')), { me: 'a', now })).toMatchObject({
+        kind: 'allocate', question: 'Пришла зарплата Ильяс — разложить?', meta: `${money(700_000)} · свободно ${money(found.free)}`,
+        to: '/week/salary?from=salary&person=a&period=2026-09', actions: { primary: 'Разложить', ghost: 'Позже' },
+      })
+      expect(nextDecision(paid(stmt('a', '2026-09')), { me: 'a', now, match: { count: 1, question: 'Q', meta: 'M' } })?.kind).toBe('match')
+
+      // Прошлый месяц (в начале следующего ещё не разложили) — да; позапрошлый — нет.
+      expect(salaryToAllocate(paid(stmt('a', '2026-08')), 'a', now)?.period).toBe('2026-08')
+      expect(salaryToAllocate(paid(stmt('a', '2026-07')), 'a', now)).toBeNull()
+      // Чужая зарплата; ручная отметка («Пришла» сама ведёт на раскладку, старые ручные раскладывал Ритуал без записи).
+      expect(salaryToAllocate(paid(stmt('b', '2026-09')), 'a', now)).toBeNull()
+      expect(salaryToAllocate(paid(stmt('a', '2026-09', { source: 'manual', opId: undefined })), 'a', now)).toBeNull()
+      // Раскладка записана — второй раз не спрашиваем.
+      const done: Allocation = { id: 'al', source: 'salary', sourceId: 'a', period: '2026-09', by: 'a', at: T, total: 100_000, parts: [{ target: 'life', amount: 100_000 }], updatedAt: T }
+      expect(salaryToAllocate({ ...paid(stmt('a', '2026-09')), allocations: [done] }, 'a', now)).toBeNull()
+      expect(nextDecision({ ...paid(stmt('a', '2026-09')), allocations: [done] }, { me: 'a', now })?.kind).not.toBe('allocate')
+      // Свободного нет — раскладывать нечего.
+      const heavy = { ...paid(stmt('a', '2026-09')), obligations: [{ ...rent, versions: [{ from: '2000-01', amount: 5_000_000 }] }] }
+      expect(salaryToAllocate(heavy, 'a', now)).toBeNull()
+      expect(salaryToAllocate(paid(stmt('a', '2026-09')), undefined, now)).toBeNull()
     })
 
     it('шаг плана «Сначала долги» — последним; viewer не участник — me пустой, зарплаты нет', () => {

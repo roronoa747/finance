@@ -14,6 +14,7 @@ import {
   payableAccounts,
   paymentSplit,
   salaryAt,
+  salaryToAllocate,
   type MonthlyKind,
   type ScheduledKind,
 } from '@/lib/finance'
@@ -52,6 +53,8 @@ const emit = defineEmits<{
   (e: 'close'): void
   /** Отметка записана (не правка) — родитель может повести дальше (раскладка зарплаты). */
   (e: 'marked', record: Payment): void
+  /** «Разложить» у пришедшей по выписке и не разложенной зарплаты — родитель ведёт на раскладку. */
+  (e: 'allocate'): void
 }>()
 
 const finance = useFinanceStore()
@@ -63,6 +66,10 @@ const credit = computed(() => (props.kind === 'credit' ? finance.credits.find((c
 const person = computed(() => (salary.value ? finance.people.find((p) => p.id === props.targetId && !p.deletedAt) : undefined))
 
 const record = computed(() => paidFor(finance.payments, props.kind, props.targetId, props.period))
+/** Своя зарплата, отмеченная по выписке, без записи раскладки — «Разложить» (возврат приёмки п. 2). */
+const canAllocate = computed(
+  () => salary.value && !!record.value && !!salaryToAllocate({ ...finance.householdDoc, credits: finance.credits }, auth.slot, undefined, record.value),
+)
 
 /** Сколько платить (у зарплаты — оклад) за этот месяц по графику. */
 const due = computed(() => {
@@ -203,6 +210,7 @@ const unmarkNote = computed(() => {
         </div>
       </div>
       <div v-else class="flex flex-col gap-2">
+        <Button v-if="canAllocate" class="w-full" @click="emit('close'); emit('allocate')">Разложить</Button>
         <Button variant="secondary" class="w-full" @click="editFromRecord">Другая сумма или счёт</Button>
         <Button variant="secondary" class="w-full" @click="confirmUnmark = true">Снять отметку</Button>
       </div>

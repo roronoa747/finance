@@ -672,3 +672,109 @@ describe('e2e / B2C Блок 3 — часть 6 (приёмка): повтор �
     expect(A.store.goals.find((g) => g.id === 'trip')!.have).toBe(150_000)
   })
 })
+
+describe('e2e / B2C Блок 3 — часть 7 (возврат приёмки п. 2): зарплата, отмеченная по выписке, раскладывается — от карточки сопоставления и от автоотметки', () => {
+  const storage = new Map<string, string>()
+  let server: FakeServer
+  let st: FakeStatements
+
+  const op = (date: string, amount: number, merchant: string): Omit<Operation, 'id'> => ({
+    bank: 'kaspi', date, amount, kind: amount < 0 ? 'purchase' : 'transfer-in', merchant, categoryId: null, internal: false,
+  })
+  const statement = (from: string, to: string, ...list: Omit<Operation, 'id'>[]): ParsedStatement => ({ bank: 'kaspi', from, to, operations: assignIds(list), skipped: 0 })
+
+  async function upload(p: Phone, parsed: ParsedStatement) {
+    setActivePinia(p.pinia)
+    const ops = useOperationsStore()
+    ops.setDraft([{ name: 'выписка.pdf', parsed }])
+    await ops.send(p.client)
+    return ops
+  }
+
+  /** Раскладка на экране: всё свободное — в «Отпуск» (без счёта: зарплата из выписки не зачислена), «Подтвердить». */
+  async function allocateAll(p: Phone, path: string) {
+    const html = await screen(p.pinia, WeekSalary, path)
+    expect(html).toContain('Осталось распределить')
+    await screen(p.pinia, WeekSalary, path, undefined, [
+      screenMixin({}, (s) => {
+        s.alloc = { trip: s.total as number }
+        ;(s.confirm as () => void)()
+      }),
+    ])
+  }
+
+  /** Решение главного экрана (как в части 1): kind и адрес. */
+  async function decision(p: Phone) {
+    let vm: Record<string, any> = {}
+    const grab = { created(this: any) { if ('onPrimary' in this.$.setupState) vm = this.$.setupState } }
+    await screen(p.pinia, Dreams, '/', undefined, [grab])
+    return vm.shown as { kind: string; to: string | null; question: string } | null
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => storage.set(k, String(v)),
+      removeItem: (k: string) => storage.delete(k),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    vi.useFakeTimers()
+    at('2026-09-10T07:00:00Z') // день зарплаты Ильяса (700 000, 10-го)
+    server = fakeServer(planFamilyDoc())
+    st = fakeStatements()
+    vi.spyOn(apiClient, 'pushPrivateDoc').mockImplementation(async (rev, data) => ({ household_id: 'h-family', user_id: 'u-a', rev: rev + 1, data, updated_at: '' }))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('сентябрь: «Да, зарплата» → сразу раскладка → запись; октябрь: правило отмечает само → на главном и в «Неделе» «разложить?» → раскладка → вопрос закрыт; партнёру чужая зарплата не предлагается', async () => {
+    const A = await phone(server, st, 'a')
+    const B = await phone(server, st, 'b')
+    const september = '/week/salary?from=salary&person=a&period=2026-09'
+
+    // Сентябрь: выписка с зарплатой — вопрос «Это зарплата Ильяс?»; «Да, зарплата» ведёт на раскладку.
+    const opsA = await upload(A, statement('2026-09-01', '2026-09-10', op('2026-09-10', 700_000, 'ТОО Работодатель')))
+    expect(await screen(A.pinia, Statements, '/week')).toContain('Это зарплата Ильяс?')
+    let router: any = null
+    await screen(A.pinia, Statements, '/week', undefined, [
+      {
+        created(this: any) {
+          const s = this.$.setupState
+          if (!('acceptMatch' in s) || router) return
+          router = this.$router
+          s.acceptMatch(s.match)
+        },
+      },
+    ])
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe(september))
+    expect(A.store.payments.find((p) => p.kind === 'salary')).toMatchObject({ targetId: 'a', period: '2026-09', source: 'statement', accountId: null })
+    expect(opsA.pendingMatches).toEqual([])
+    await allocateAll(A, september)
+    expect(A.store.allocations).toEqual([expect.objectContaining({ source: 'salary', sourceId: 'a', period: '2026-09' })])
+    expect((await decision(A))?.kind).not.toBe('allocate')
+
+    // Октябрь: та же строка — правило отмечает зарплату само, раскладки ещё нет.
+    at('2026-10-10T07:00:00Z')
+    await upload(A, statement('2026-10-01', '2026-10-10', op('2026-10-10', 700_000, 'ТОО Работодатель')))
+    expect(opsA.lastAutoMarked).toBe(1)
+    const october = '/week/salary?from=salary&person=a&period=2026-10'
+    const d = await decision(A)
+    expect(d).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата Ильяс — разложить?', to: october })
+    expect(await screen(A.pinia, Statements, '/week')).toContain('Пришла зарплата Ильяс — разложить?')
+    await allocateAll(A, october)
+    expect(A.store.allocations.map((a) => a.period).sort()).toEqual(['2026-09', '2026-10'])
+    expect((await decision(A))?.kind).not.toBe('allocate')
+    expect(await screen(A.pinia, Statements, '/week')).not.toContain('разложить?')
+
+    // Партнёр: зарплату Ильяса не раскладывает и о ней не спрашивается.
+    await A.store.syncHousehold(A.client)
+    await B.store.pullHousehold(B.client)
+    expect((await decision(B))?.kind).not.toBe('allocate')
+    expect(await screen(B.pinia, Statements, '/week')).not.toContain('Пришла зарплата Ильяс — разложить?')
+  })
+})

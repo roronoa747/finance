@@ -42,7 +42,7 @@ afterEach(() => {
 })
 
 /** «Неделя» участника: кредит 58 000 пятнадцатого и строка выписки «Оплата Kaspi Кредита» 14 сентября. */
-async function openWeek() {
+async function openWeek(setup?: (finance: ReturnType<typeof useFinanceStore>, store: ReturnType<typeof useOperationsStore>) => void) {
   const pinia = createPinia()
   setActivePinia(pinia)
   useAuthStore().setAuthData({
@@ -59,6 +59,7 @@ async function openWeek() {
   finance.householdDoc.credits = [{ id: 'loan', name: 'Автокредит', note: '', principal: 1_000_000, annualRate: 0.33, payment: 58_000, day: 15, updatedAt: '' }]
   const store = useOperationsStore()
   store.ops['op-1'] = { id: 'op-1', bank: 'kaspi', date: '2026-09-14', amount: -58_000, kind: 'purchase', merchant: 'Оплата Kaspi Кредита', categoryId: 'sc_credit', internal: false }
+  setup?.(finance, store)
 
   const router = createRouter({ history: createMemoryHistory(), routes })
   await router.push('/week')
@@ -70,7 +71,7 @@ async function openWeek() {
   app.use(router)
   app.mount(root)
   await nextTick()
-  return { finance, store }
+  return { finance, store, router }
 }
 
 const button = (label: string) => [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === label)
@@ -111,5 +112,53 @@ describe('B2C-15: карточка сопоставления на «Недел�
     expect(finance.payments.filter((p) => !p.deletedAt)).toHaveLength(0)
     expect(store.pendingMatches).toHaveLength(1)
     expect(page()).not.toContain(QUESTION)
+  })
+})
+
+describe('возврат приёмки п. 2: зарплата, отмеченная по выписке, раскладывается', () => {
+  // Оклад Алихана 500 000 десятого; приход 500 000 десятого сентября; кредита в этих сценариях нет.
+  const salaryDay = (finance: ReturnType<typeof useFinanceStore>, store: ReturnType<typeof useOperationsStore>) => {
+    finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000 }
+    finance.householdDoc.credits = []
+    delete store.ops['op-1']
+    store.ops['op-2'] = { id: 'op-2', bank: 'kaspi', date: '2026-09-10', amount: 500_000, kind: 'transfer-in', merchant: 'ТОО Работодатель', categoryId: null, internal: false }
+  }
+  const ALLOCATE = '/week/salary?from=salary&person=a&period=2026-09'
+
+  it('«Да, зарплата» на карточке сопоставления — отметка из выписки и сразу раскладка', async () => {
+    const { finance, router } = await openWeek(salaryDay)
+    expect(page()).toContain('Это зарплата Алихан?')
+    await tap('Да, зарплата')
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe(ALLOCATE))
+    expect(finance.payments.filter((p) => !p.deletedAt)).toEqual([expect.objectContaining({ kind: 'salary', targetId: 'a', period: '2026-09', source: 'statement', opId: 'op-2' })])
+  })
+
+  it('отмеченная по выписке (правило при загрузке) и не разложенная — карточка «разложить?» → раскладка; записанная раскладка и ручная отметка карточки не дают', async () => {
+    const { router } = await openWeek((finance, store) => {
+      salaryDay(finance, store)
+      finance.markSalary('a', { period: '2026-09', amount: 500_000, accountId: null, source: 'statement', opId: 'op-2', at: '2026-09-10T07:00:00.000Z' })
+    })
+    expect(page()).toContain('Пришла зарплата Алихан — разложить?')
+    await tap('Разложить')
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe(ALLOCATE))
+
+    // Раскладка записана — вопроса нет.
+    app?.unmount()
+    document.body.innerHTML = ''
+    await openWeek((finance, store) => {
+      salaryDay(finance, store)
+      finance.markSalary('a', { period: '2026-09', amount: 500_000, accountId: null, source: 'statement', opId: 'op-2', at: '2026-09-10T07:00:00.000Z' })
+      finance.recordAllocation({ source: 'salary', sourceId: 'a', period: '2026-09', by: 'a', total: 100_000, parts: [{ target: 'life', amount: 100_000 }] })
+    })
+    expect(page()).not.toContain('разложить?')
+
+    // Ручная отметка («Пришла») ведёт на раскладку сама — карточки нет (старые ручные отметки уже разложены Ритуалом).
+    app?.unmount()
+    document.body.innerHTML = ''
+    await openWeek((finance, store) => {
+      salaryDay(finance, store)
+      finance.markSalary('a', { period: '2026-09', amount: 500_000, accountId: null })
+    })
+    expect(page()).not.toContain('разложить?')
   })
 })

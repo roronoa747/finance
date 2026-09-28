@@ -6,7 +6,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { plain } from '@/lib/money'
 import { atLabel } from '@/lib/dates'
-import { lastAccountFor, paidFor, salaryAt, salaryOpen } from '@/lib/finance'
+import { lastAccountFor, paidFor, salaryAllocationPath, salaryAt, salaryOpen } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
 import Row from '@/components/kit/Row.vue'
@@ -78,7 +78,7 @@ function openMark(amount: number, account: string | null | undefined) {
 
 /** После отметки — раскладка свободного (бывший Ритуал). */
 function toAllocation() {
-  void router.push(`/week/salary?from=salary&person=${props.personId}&period=${props.period}`)
+  void router.push(salaryAllocationPath(props.personId, props.period))
 }
 
 function mark(amount: number, accountId: string | null) {
@@ -182,5 +182,6 @@ function openMore() {
     :first-time="firstTime"
     @close="sheet = null"
     @marked="toAllocation"
+    @allocate="toAllocation"
   />
 </template>

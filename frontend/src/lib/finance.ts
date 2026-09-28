@@ -1697,6 +1697,45 @@ export function allocationFor(
   return own.reduce((best, a) => (a.at > best.at ? a : best))
 }
 
+/** Адрес раскладки пришедшей зарплаты (бывший Ритуал) — один для карточки, листа отметки и `SalaryRow`. */
+export const salaryAllocationPath = (person: PersonId, period: string) => `/week/salary?from=salary&person=${person}&period=${period}`
+
+/**
+ * Зарплата, отмеченная по выписке, которую ещё не разложили (B2C-21 п. 1, возврат приёмки Блока 3
+ * п. 2): у ручного «Пришла» переход на раскладку сразу после отметки, а «Да, зарплата» из выписки и
+ * автоотметка по правилу раскладку не открывали — она была недостижима. Можно отметить `record`
+ * конкретного месяца (лист отметки) или найти свою последнюю — этого или прошлого месяца (карточка
+ * «Недели» и `nextDecision`). Только `source: 'statement'`: ручные отметки до записи раскладок
+ * (`allocations`, B2C-21) раскладывал старый Ритуал без записи — карточка предложила бы их второй раз.
+ * Нужна запись раскладки (`allocationFor` пуст) и свободное в этой зарплате (`salaryFree` > 0).
+ */
+export function salaryToAllocate(
+  state: {
+    categories?: Category[]
+    obligations?: Obligation[]
+    credits?: Credit[]
+    goals?: Goal[]
+    people?: Person[]
+    payments?: Payment[]
+    plans?: DebtPlan[]
+    allocations?: Allocation[]
+  },
+  me: PersonId | undefined,
+  now = today(),
+  record?: Payment | null,
+): { person: Person; period: string; record: Payment; free: number } | null {
+  if (!me) return null
+  const people = state.people ?? []
+  const person = people.find((p) => alive(p) && p.id === me)
+  if (!person) return null
+  const payments = state.payments ?? []
+  const found = record ?? [now.key, addMonths(now.key, -1)].map((k) => paidFor(payments, 'salary', me, k)).find(Boolean)
+  if (!found || found.kind !== 'salary' || found.targetId !== me || found.source !== 'statement') return null
+  if (allocationFor(state.allocations, { source: 'salary', sourceId: me, period: found.period })) return null
+  const free = salaryFree(budgetAmounts(state).d5, people, found)
+  return free > 0 ? { person, period: found.period, record: found, free } : null
+}
+
 /**
  * Подписки, от которых отказались в месяце (B2C-20 «утечки»): обязательства с надгробием
  * этого месяца (по Алматы) из группы подписок или подписки раздела «быт» (`isSubscription`:
@@ -2478,7 +2517,7 @@ export function freeByFact(
   return { amount, byFact: true, income, dues, goals, spent, share: share(amount) }
 }
 
-export type DecisionKind = 'unknown' | 'match' | 'salary' | 'keep' | 'monthEnd' | 'plan'
+export type DecisionKind = 'unknown' | 'match' | 'allocate' | 'salary' | 'keep' | 'monthEnd' | 'plan'
 
 /** Ближайшее решение недели на главном: одна карточка, тексты DESIGN.md §6 и маршрут. */
 export type Decision = {
@@ -2500,18 +2539,20 @@ export type Decision = {
 
 /**
  * Что решить первым (Р-8): незнакомые продавцы недели → ждущие сопоставления (B2C-15) →
- * своя зарплата «пришла?» (`salaryOpen`) → «оставить подписку?» (`keepQuestions`) →
+ * своя зарплата из выписки не разложена (`salaryToAllocate`) → своя зарплата «пришла?» (`salaryOpen`) → «оставить подписку?» (`keepQuestions`) →
  * «остались деньги?» (`monthEndAsk`) → шаг плана (`stepDue`) → null. Только для участника
  * с правом правки (viewer решений не принимает — Р-13); `me` — его слот.
  */
 export function nextDecision(
   state: {
+    categories?: Category[]
     people?: Person[]
     obligations?: Obligation[]
     credits?: Credit[]
     goals?: Goal[]
     payments?: Payment[]
     plans?: DebtPlan[]
+    allocations?: Allocation[]
   },
   ctx: {
     me: PersonId | undefined
@@ -2544,6 +2585,19 @@ export function nextDecision(
       meta: match.count > 1 ? `${match.meta} · ещё ${match.count - 1}` : match.meta,
       to: '/week',
       actions: { primary: 'Посмотреть', ghost: 'Потом' },
+    }
+  }
+
+  // Зарплата пришла по выписке («Да, зарплата» или правило) и не разложена — раскладка (возврат приёмки п. 2).
+  const unallocated = salaryToAllocate(state, ctx.me, now)
+  if (unallocated) {
+    return {
+      kind: 'allocate',
+      question: `Пришла зарплата ${unallocated.person.name} — разложить?`,
+      meta: `${money(unallocated.record.amount)} · свободно ${money(unallocated.free)}`,
+      to: salaryAllocationPath(unallocated.person.id, unallocated.period),
+      actions: { primary: 'Разложить', ghost: 'Позже' },
+      salary: { person: unallocated.person, period: unallocated.period },
     }
   }
 

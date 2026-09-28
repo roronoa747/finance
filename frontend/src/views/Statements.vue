@@ -34,7 +34,9 @@ import {
   keepCard,
   keepQuestions,
   monthEndAsk,
+  salaryAllocationPath,
   salaryOpen,
+  salaryToAllocate,
   spendCategoryName,
   spendRows,
   untilPayday,
@@ -152,6 +154,11 @@ const matchActions = computed(() =>
 function deferMatch(c: MatchCandidate) {
   deferredMatches.value = [...deferredMatches.value, matchKey(c)]
 }
+/** «Да»: отметка и правило; «Да, зарплата» — сразу раскладка, как после ручного «Пришла» (B2C-21 п. 1). */
+function acceptMatch(c: MatchCandidate) {
+  void store.acceptMatch(c)
+  if (c.kind === 'salary') void router.push(salaryAllocationPath(c.targetId as PersonId, c.period))
+}
 
 // 2. Незнакомые продавцы месяца — по одному; чипы разделов, «Ещё N», «Кому → что», «Между своими».
 const deferredUnknown = ref<string[]>([])
@@ -178,11 +185,20 @@ function deferUnknown(g: UnknownGroup) {
   personFor.value = null
 }
 
-// 3. «Оставить подписку?» (Р-20) — по правилам keepQuestions; «Подумать» — до следующего открытия.
+// 3. Зарплата пришла по выписке (автоотметка по правилу, «Да» без перехода) и не разложена —
+// «разложить?» (возврат приёмки п. 2); «Позже» — до следующего открытия.
+const allocateLater = ref(false)
+const allocate = computed(() =>
+  canUpload.value && !match.value && !unknownCard.value && !restFirst.value && !allocateLater.value
+    ? salaryToAllocate({ ...finance.householdDoc, credits: finance.credits }, auth.slot)
+    : null,
+)
+
+// 4. «Оставить подписку?» (Р-20) — по правилам keepQuestions; «Подумать» — до следующего открытия.
 // Тексты и «за год» — `keepCard`, как на главном: у годовой — цена продления, «N % пути до мечты».
 const deferredKeep = ref<string[]>([])
 const keep = computed(() =>
-  canUpload.value && !match.value && !unknownCard.value && !restFirst.value
+  canUpload.value && !match.value && !unknownCard.value && !allocate.value && !restFirst.value
     ? (keepQuestions(finance.obligations).find((o) => !deferredKeep.value.includes(o.id)) ?? null)
     : null,
 )
@@ -206,9 +222,9 @@ function onKeep(action: 'keep' | 'cancel' | 'later') {
   cancelling.value = false
 }
 
-// 4. «Остались деньги?» — последние дни месяца (ответ — `answeredMonthEnd` выше).
+// 5. «Остались деньги?» — последние дни месяца (ответ — `answeredMonthEnd` выше).
 const monthEnd = computed(
-  () => restFirst.value || (canUpload.value && !match.value && !unknownCard.value && !keep.value && monthEndAsk(answeredMonthEnd.value)),
+  () => restFirst.value || (canUpload.value && !match.value && !unknownCard.value && !allocate.value && !keep.value && monthEndAsk(answeredMonthEnd.value)),
 )
 const restAmount = ref('')
 function answerRest(go: boolean) {
@@ -395,7 +411,7 @@ onMounted(() => {
             <b class="block text-[15px] font-semibold text-ink">Ваша выписка ещё не загружена</b>
             <p class="mt-0.5 text-[13px] text-ink-2">PDF из приложения Kaspi или Freedom. Разбор на телефоне, файл никуда не уходит.</p>
             <!-- Ниже карточка решения со своей главной кнопкой — загрузка тихая (одна брендовая на экране) -->
-            <Button class="mt-3 w-full" :variant="match || keep || monthEnd ? 'secondary' : 'default'" :disabled="reading" @click="fileInput?.click()">
+            <Button class="mt-3 w-full" :variant="match || allocate || keep || monthEnd ? 'secondary' : 'default'" :disabled="reading" @click="fileInput?.click()">
               <PhFileArrowUp :size="16" />
               {{ reading ? 'Читаем выписку…' : 'Загрузить выписку' }}
             </Button>
@@ -419,7 +435,7 @@ onMounted(() => {
         :meta="match.meta"
         :progress="matchQueue.length > 1 ? { n: 1, k: matchQueue.length } : null"
         :actions="matchActions"
-        @primary="store.acceptMatch(match)"
+        @primary="acceptMatch(match)"
         @secondary="store.declineMatch(match)"
         @ghost="deferMatch(match)"
       />
@@ -447,6 +463,15 @@ onMounted(() => {
         </template>
         <p class="text-[12px] text-ink-3">Ответ запомним — следующие выписки разложатся сами. Снять можно в настройках.</p>
       </DecisionCard>
+
+      <DecisionCard
+        v-else-if="allocate"
+        :question="`Пришла зарплата ${allocate.person.name} — разложить?`"
+        :meta="`${money(allocate.record.amount)} · свободно ${money(allocate.free)}`"
+        :actions="{ primary: 'Разложить', ghost: 'Позже' }"
+        @primary="router.push(salaryAllocationPath(allocate.person.id, allocate.period))"
+        @ghost="allocateLater = true"
+      />
 
       <DecisionCard
         v-else-if="keep && keepText"
