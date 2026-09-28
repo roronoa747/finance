@@ -78,12 +78,12 @@ async function triggerManualSync() {
   }
 }
 
-// React показывает мастер сам (`SetupGate`); у Vue гейт мастера — в роутере, поэтому переход явный.
+// После сброса — первый запуск из выписки (`/start`, B2C-19); гейт в роутере, поэтому переход явный.
 function startOver() {
   financeStore.resetAll()
   open.value = false
   void financeStore.syncHousehold()
-  void router.replace('/setup')
+  void router.replace('/start')
 }
 </script>
 

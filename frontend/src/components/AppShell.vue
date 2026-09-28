@@ -27,7 +27,8 @@ import Tabs from '@/components/kit/Tabs.vue'
  * Оболочка (DESIGN.md §2, §5; B2C-13): шапка `.topbar` — заголовок экрана Piazzolla 30 с
  * подписью, аватары участников (точка при «не сошлось» — `SyncBadge` compact), шестерёнка →
  * `/settings`; капсула вкладок «Мечты · Неделя · Деньги» и «+»; лист «+» на `Sheet` — шесть
- * действий, у viewer только «Покупка в список желаний». «Советника» нет.
+ * действий; у viewer «+» нет вовсе (ТЗ B2C-13 п. 3: лист без действий правки — а добавить
+ * покупку viewer тоже не может, критик Блока 3). «Советника» нет.
  */
 const route = useRoute()
 const router = useRouter()
@@ -65,7 +66,7 @@ const header = computed<{ title: string; sub?: string }>(() => {
 })
 
 const tabs = computed(() => [
-  { to: '/', label: 'Мечты', icon: PhHeart, active: route.path === '/' || route.path.startsWith('/goals') || route.path === '/wishes' },
+  { to: '/', label: 'Мечты', icon: PhHeart, active: route.path === '/' || route.path.startsWith('/goals') || route.path === '/wishes' || route.path.startsWith('/people/') },
   { to: '/week', label: 'Неделя', icon: PhCalendarBlank, active: route.path.startsWith('/week') },
   { to: '/money', label: 'Деньги', icon: PhWallet, active: route.path.startsWith('/money') },
 ])
@@ -82,13 +83,13 @@ watch(
   { flush: 'post' },
 )
 
-/** Лист «+» (DESIGN.md §2): порядок действий — как в макете; viewer — только желания. */
+/** Лист «+» (DESIGN.md §2): порядок действий — как в макете; у viewer кнопки «+» нет. */
 const actions = computed(() => {
   const edit = !authStore.isViewer
   return [
     edit && { to: '/week?upload=1', title: 'Загрузить выписку', note: 'Kaspi или Freedom — траты недели по разделам', icon: PhFileArrowUp },
     edit && { to: '/goals/new', title: 'Новая мечта', note: 'фото, сумма и срок', icon: PhHeart },
-    { to: '/wishes', title: 'Покупка в список желаний', note: 'себе, партнёру или сюрприз', icon: PhShoppingBag },
+    edit && { to: '/wishes', title: 'Покупка в список желаний', note: 'себе, партнёру или сюрприз', icon: PhShoppingBag },
     edit && { to: '/money/capital?income=1', title: 'Внеплановый доход', note: 'премия, подарок, возврат', icon: PhCoins },
     edit && { to: '/money/capital?add=payment', title: 'Обязательство или подписка', note: 'аренда, связь, страховка', icon: PhRepeat },
     edit && { to: '/money/capital?add=debt', title: 'Кредит или рассрочка', note: 'долг, платёж, график', icon: PhCreditCard },
@@ -111,7 +112,8 @@ function navigateAndClose(to: string) {
         <div v-if="header.sub" class="mt-0.5 truncate type-meta">{{ header.sub }}</div>
       </div>
       <div class="flex shrink-0 items-center gap-2.5">
-        <SyncBadge compact />
+        <!-- Место под бейдж зарезервировано: в покое он пуст, но аватары не прыгают на каждой записи. -->
+        <div class="size-[38px] shrink-0"><SyncBadge compact /></div>
         <!-- Аватары ведут на список желаний участника (B2C-18); точка при «не сошлось» — SyncBadge compact. -->
         <div v-if="people.length" class="flex">
           <RouterLink v-for="(p, i) in people" :key="p.id" :to="`/people/${p.id}`" :aria-label="`Желания · ${p.name}`" class="rounded-full" :class="i ? '-ml-2' : ''">
@@ -128,7 +130,7 @@ function navigateAndClose(to: string) {
       <RouterView />
     </main>
 
-    <Tabs :items="tabs" plus-label="Добавить" @plus="addOpen = true" />
+    <Tabs :items="tabs" :plus="!authStore.isViewer" plus-label="Добавить" @plus="addOpen = true" />
 
     <Sheet :open="addOpen" title="Добавить" @close="addOpen = false">
       <div class="flex flex-col">
