@@ -6,11 +6,10 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain } from '@/lib/money'
 import { monthKey, monthFrom, dayLabel } from '@/lib/dates'
-import { amountAt, liveAccounts, liveObligations, nextChange, salaryOpen, untilPayday } from '@/lib/finance'
+import { amountAt, freedChange, liveAccounts, liveObligations, salaryOpen, untilPayday } from '@/lib/finance'
 import { cn, plural } from '@/lib/utils'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/kit/Card.vue'
-import Callout from '@/components/kit/Callout.vue'
 import Row from '@/components/kit/Row.vue'
 import Section from '@/components/kit/Section.vue'
 import PaidRow from '@/components/PaidRow.vue'
@@ -37,10 +36,8 @@ const entries = computed(() => [
   { to: '/money/history', title: 'История и итоги', note: 'итог месяца, что впереди, моменты семьи', icon: PhClockCounterClockwise },
 ])
 
-// Событие «освободится N ₸»
-const freed = computed(() =>
-  obligations.value.map((o) => ({ o, change: nextChange(o, key.value) })).find((x) => x.change && x.change.delta < 0),
-)
+// Событие «освободится N ₸»: у годового — доля в месяц и разница за год (`freedChange`).
+const freed = computed(() => freedChange(obligations.value, key.value))
 
 // «До зарплаты»: остатки общих счетов и долгов — из отметок, как их отдаёт стор
 const paydayInfo = computed(() =>
@@ -72,18 +69,13 @@ const salaryHere = computed(() => {
     </Card>
 
     <!-- Событие высвобождения средств -->
-    <Card v-if="freed && freed.change" class="border-brand">
+    <Card v-if="freed" class="border-brand">
       <div class="type-section text-brand">С {{ monthFrom(freed.change.from, false) }}</div>
-      <h3 class="mt-1 type-h2 text-ink">Освободится {{ money(Math.abs(freed.change.delta)) }} в месяц</h3>
-      <p class="mb-3.5 mt-1 text-[13px] text-ink-2">
-        {{ freed.o.name }} снизится с {{ plain(amountAt(freed.o, key)) }} до {{ plain(freed.change.amount) }} ₸.
-        За год это {{ money(Math.abs(freed.change.delta) * 12) }} — решите заранее, куда они пойдут.
+      <h3 class="mt-1 type-h2 text-ink">Освободится {{ money(freed.monthly) }} в месяц</h3>
+      <p class="mb-3.5 mt-1 text-[13px] text-ink-2 num">
+        {{ freed.o.name }}: {{ plain(amountAt(freed.o, key)) }} → {{ plain(freed.change.amount) }} ₸ · {{ money(freed.yearly) }} за год
       </p>
       <Button v-if="!authStore.isViewer" class="w-full" @click="router.push('/week/salary?from=freed')">Распределить</Button>
-      <Callout tone="neutral" class="mt-3" title="Перед экономией будет пик">
-        В месяц переезда платятся депозит, комиссия и перевозка — сверх обычных расходов. Экономия начнётся только со
-        следующего месяца, и приложение не будет делать вид, что это не так.
-      </Callout>
     </Card>
 
     <!-- Блок «До зарплаты» -->
@@ -134,13 +126,10 @@ const salaryHere = computed(() => {
           {{
             paydayInfo.shortfall >= 0
               ? `На счетах ${plain(paydayInfo.onAccounts)} ₸ — хватает, остаётся ${plain(paydayInfo.shortfall)} ₸.`
-              : `На счетах ${plain(paydayInfo.onAccounts)} ₸ — не хватает ${plain(-paydayInfo.shortfall)} ₸. Перенесите платёж или возьмите из накоплений, но решите это сейчас, а не в день списания.`
+              : `На счетах ${plain(paydayInfo.onAccounts)} ₸ — не хватает ${plain(-paydayInfo.shortfall)} ₸.`
           }}
         </div>
-        <p v-else class="mt-3 text-[12.5px] leading-relaxed text-ink-3">
-          Хватит ли этого, приложение не знает: остаток на картах не заведён. Добавьте счёт в «Капитале» — и здесь
-          появится ответ вместо списка.
-        </p>
+        <p v-else class="mt-3 text-[12.5px] leading-relaxed text-ink-3">Добавьте счёт в «Капитале» — покажем, хватит ли.</p>
       </Card>
     </template>
   </div>

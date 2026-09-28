@@ -5,10 +5,11 @@ import { PhCamera, PhFileArrowUp } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
-import { MONTH_END_KEY } from '@/lib/storage'
+import { readMonthEnd, writeMonthEnd } from '@/lib/storage'
 import { pct } from '@/lib/money'
-import { MONTHS_GEN, monthIn, monthKey, weekKey } from '@/lib/dates'
+import { monthIn, monthKey, weekKey, weekRangeLabel } from '@/lib/dates'
 import {
+  allocationFor,
   freeByFact,
   goalDoneMonth,
   goalMonths,
@@ -19,9 +20,10 @@ import {
   planForecast,
   untilPayday,
   weekPicture,
+  weekTag,
   type Decision,
 } from '@/lib/finance'
-import { unknownGroups } from '@/lib/statements/model'
+import { unknownSummary } from '@/lib/statements/model'
 import { plural } from '@/lib/utils'
 import { GOAL_TEMPLATES, type GoalTemplate } from '@/lib/goalTemplates'
 import { attachFile, attachTemplate, retryTemplatePhotos } from '@/lib/photos/goalPhoto'
@@ -106,19 +108,8 @@ const spendTotals = computed(() => financeStore.householdDoc.spendTotals ?? [])
 const spendCategories = computed(() => financeStore.householdDoc.spendCategories ?? [])
 const picture = computed(() => weekPicture(spendTotals.value, spendCategories.value, people.value, week.value, ops.uploads))
 const hasUploads = computed(() => ops.uploads.length > 0)
-const weekTitle = computed(() => {
-  const { from, to } = picture.value.range
-  const day = (iso: string) => Number(iso.slice(8, 10))
-  const gen = (iso: string) => MONTHS_GEN[Number(iso.slice(5, 7)) - 1]
-  const range = gen(from) === gen(to) ? `${day(from)}–${day(to)} ${gen(to)}` : `${day(from)} ${gen(from)} – ${day(to)} ${gen(to)}`
-  return `Эта неделя · ${range}`
-})
-const weekTag = computed<{ text: string; tone: 'ok' | 'warn' } | null>(() => {
-  const p = picture.value
-  if (p.missing.length && p.uploaded.length) return { text: `без выписки ${names(p.missing)}`, tone: 'warn' }
-  if (p.uploaded.length) return { text: people.value.length > 1 ? 'по выпискам обоих' : 'по выписке', tone: 'ok' }
-  return null
-})
+const weekTitle = computed(() => `Эта неделя · ${weekRangeLabel(picture.value.range)}`)
+const tag = computed(() => weekTag(picture.value, people.value.length))
 const weekSegments = computed(() => picture.value.rows.map((r) => ({ id: r.categoryId, name: r.name, amount: r.amount, share: r.share, color: r.color })))
 
 /* ---------- свободно ---------- */
@@ -148,19 +139,11 @@ const freeNote = computed(() => {
 })
 
 /* ---------- ближайшее решение ---------- */
-function readAnswered(): string | null {
-  try {
-    return typeof localStorage === 'undefined' ? null : localStorage.getItem(MONTH_END_KEY)
-  } catch {
-    return null
-  }
-}
-const answered = ref(readAnswered())
+const answered = ref(readMonthEnd())
+// Остаток месяца уже разложен (запись семьи, B2C-21) — вопрос отвечен и на телефоне партнёра.
+const restDone = computed(() => !!allocationFor(financeStore.allocations, { source: 'rest', sourceId: key.value, period: key.value }))
 // Незнакомые продавцы этой недели — из своих операций (у партнёра свои, в его телефоне).
-const weekUnknown = computed(() => {
-  const groups = unknownGroups(ops.all.filter((o) => weekKey(o.date) === week.value))
-  return { count: groups.length, amount: groups.reduce((a, g) => a + g.amount, 0) }
-})
+const weekUnknown = computed(() => unknownSummary(ops.all, week.value))
 // Ждущие сопоставления (B2C-15) — первое даёт вопрос карточке, остальные — счётчиком.
 const firstMatch = computed(() => {
   const list = ops.pendingMatches
@@ -168,7 +151,12 @@ const firstMatch = computed(() => {
 })
 const decision = computed<Decision | null>(() =>
   canEdit.value
-    ? nextDecision(state.value, { me: authStore.slot, unknown: weekUnknown.value, match: firstMatch.value, answeredMonthEnd: answered.value })
+    ? nextDecision(state.value, {
+        me: authStore.slot,
+        unknown: weekUnknown.value,
+        match: firstMatch.value,
+        answeredMonthEnd: restDone.value ? key.value : answered.value,
+      })
     : null,
 )
 // «Потом» / «Подумать» — до следующего открытия; ответ «не сейчас» на «остались деньги?» — до конца месяца.
@@ -179,11 +167,7 @@ const cancelling = ref(false)
 
 function answerRest() {
   answered.value = key.value
-  try {
-    localStorage.setItem(MONTH_END_KEY, key.value)
-  } catch {
-    // Хранилище недоступно — спросим ещё раз, это не страшно.
-  }
+  writeMonthEnd(key.value)
 }
 
 function onPrimary() {
@@ -210,18 +194,20 @@ function onGhost() {
   if (d.kind === 'monthEnd') answerRest()
   else deferred.value = decisionKey(d)
 }
-const cardActions = computed(() => {
+const cardActions = computed<Decision['actions'] | null>(() => {
   const d = shown.value
   if (!d) return null
   if (d.kind === 'keep' && cancelling.value) return { primary: 'Отменить подписку', ghost: 'Не сейчас' }
   return d.actions
 })
 
-onMounted(() => {
+/** Открытие экрана: загрузки выписок; цели с шаблоном без картинки (заведены офлайн) — дозагрузить при сети (Р-28). */
+function refresh() {
   void ops.loadUploads()
-  // Цели с шаблоном без картинки (заведены офлайн) — дозагрузить при сети (Р-28).
-  void retryTemplatePhotos(financeStore, GOAL_TEMPLATES)
-})
+  // Фото пишет только участник: у viewer загрузка кончилась бы 403, а картинка Unsplash качалась бы зря.
+  if (canEdit.value) void retryTemplatePhotos(financeStore, GOAL_TEMPLATES)
+}
+onMounted(refresh)
 </script>
 
 <template>
@@ -279,7 +265,7 @@ onMounted(() => {
     <WeekCard
       v-if="picture.uploaded.length"
       :total="picture.total"
-      :tag="weekTag"
+      :tag="tag"
       :segments="weekSegments"
       :unknown="picture.unknown"
       :unknown-share="picture.unknownShare"
@@ -289,15 +275,16 @@ onMounted(() => {
         Картина недели дополнится, когда {{ names(picture.missing) }} загрузит выписку.
       </Callout>
     </WeekCard>
+    <!-- Брендовая кнопка экрана — у героя или у решения (правило 12): загрузка здесь тихая. -->
     <Card v-else>
       <EmptyState
         v-if="!hasUploads"
         title="Картины недели пока нет"
         text="Загрузите первую выписку — картина появится здесь."
       >
-        <Button v-if="canEdit" @click="router.push('/week?upload=1')"><PhFileArrowUp /> Загрузить выписку</Button>
+        <Button v-if="canEdit" variant="secondary" @click="router.push('/week?upload=1')"><PhFileArrowUp /> Загрузить выписку</Button>
       </EmptyState>
-      <EmptyState v-else title="Выписки за эту неделю ещё нет" text="Загрузите её — картина недели появится здесь.">
+      <EmptyState v-else title="Неделя пока пустая" text="Загрузите выписку — картина недели появится здесь.">
         <Button v-if="canEdit" variant="secondary" @click="router.push('/week?upload=1')"><PhFileArrowUp /> Загрузить выписку</Button>
       </EmptyState>
     </Card>
@@ -319,6 +306,12 @@ onMounted(() => {
         Подписка уйдёт из бюджета и планов у вас обоих. Отключить её в самом сервисе нужно отдельно.
       </template>
       <template v-else-if="shown.inner" #inner>{{ shown.inner }}</template>
+      <!-- Пустой герой держит единственную брендовую «Выбрать мечту» (правило 12): ответы решения — тихие. -->
+      <template v-if="!main && cardActions" #actions>
+        <Button variant="secondary" @click="onPrimary">{{ cardActions.primary }}</Button>
+        <Button v-if="cardActions.secondary" variant="secondary" @click="onSecondary">{{ cardActions.secondary }}</Button>
+        <Button v-if="cardActions.ghost" variant="ghost" class="px-2.5" @click="onGhost">{{ cardActions.ghost }}</Button>
+      </template>
     </DecisionCard>
   </div>
 </template>

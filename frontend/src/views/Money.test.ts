@@ -10,6 +10,7 @@ import {
   nextChange,
   untilPayday,
 } from '@/lib/finance'
+import { money, plain } from '@/lib/money'
 import { renderScreen } from '@/test/screenState'
 import Money from './Money.vue'
 import History from './History.vue'
@@ -258,5 +259,51 @@ describe('views/Money.vue — финансовые показатели (рас�
     // Прежнего героя «Свободно в …» и легенды здесь нет — они на главном и в Бюджете (B2C-14).
     expect(html).not.toContain('Свободно в')
     expect(html).not.toContain('распределено')
+  })
+
+  it('«Освободится»: сумма из freedChange (годовое — доля в месяц и разница за год), пояснение — одной строкой, без Callout о переезде; «До зарплаты» — без абзацев (критик Блока 3)', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-17T07:00:00Z')) // 17 сентября, Алматы
+    try {
+      useAuthStore().setAuthData({
+        token: 't',
+        user: { id: 'u-a', email: 'a@example.com', created_at: '' },
+        household: { id: 'h-1', name: 'Family', created_by: 'u-a', created_at: '' },
+        member: { household_id: 'h-1', user_id: 'u-a', slot: 'a', display_name: 'Ильяс', role: 'member', joined_at: '' },
+      })
+      const store = useFinanceStore()
+      store.householdDoc.people = [{ id: 'a', name: 'Ильяс', salary: 700_000, payday: 25, updatedAt: '' }]
+      // Страховка раз в год 60 000, с октября — 48 000: в месяц освобождается 1 000, за год — 12 000 (а не 12 000 и 144 000).
+      store.householdDoc.obligations = [
+        {
+          id: 'ins', name: 'Страховка', note: '', day: 5, month: 3, every: 'year', category: 'd1',
+          versions: [{ from: '2026-01', amount: 60_000 }, { from: '2026-10', amount: 48_000 }], updatedAt: '',
+        },
+        { id: 'net', name: 'Интернет', note: '', day: 20, category: 'd1', versions: [{ from: '2026-01', amount: 10_000 }], updatedAt: '' },
+      ]
+      let html = await renderScreen(Money, '/money')
+      expect(html).toContain('С октября')
+      expect(html).toContain(`Освободится ${money(1_000)} в месяц`)
+      expect(html).toContain(`Страховка: ${plain(60_000)} → ${plain(48_000)} ₸ · ${money(12_000)} за год`)
+      expect(html).not.toContain(money(144_000))
+      expect(html).not.toContain('Перед экономией')
+      expect(html).not.toContain('переезд')
+      // Счёта нет — одна строка вместо абзаца.
+      expect(html).toContain('Добавьте счёт в «Капитале» — покажем, хватит ли.')
+      expect(html).not.toContain('приложение не знает')
+
+      // Ежемесячное 300 000 → 220 000: 80 000 в месяц, 960 000 за год. На карте меньше списаний — одна фраза.
+      store.householdDoc.obligations = [
+        { id: 'rent', name: 'Аренда', note: '', day: 20, category: 'd1', versions: [{ from: '2026-01', amount: 300_000 }, { from: '2026-10', amount: 220_000 }], updatedAt: '' },
+      ]
+      store.householdDoc.accounts = [{ id: 'card', name: 'Kaspi Gold', note: '', kind: 'card', amount: 100_000, updatedAt: '' }]
+      html = await renderScreen(Money, '/money')
+      expect(html).toContain(`Освободится ${money(80_000)} в месяц`)
+      expect(html).toContain(`Аренда: ${plain(300_000)} → ${plain(220_000)} ₸ · ${money(960_000)} за год`)
+      expect(html).toContain(`На счетах ${plain(100_000)} ₸ — не хватает ${plain(200_000)} ₸.`)
+      expect(html).not.toContain('Перенесите платёж')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

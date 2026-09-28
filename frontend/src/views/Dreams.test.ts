@@ -5,11 +5,22 @@ import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
 import { apiClient } from '@/api/client'
 import { money } from '@/lib/money'
-import type { SyncDoc } from '@/types/finance'
-import type { SpendTotal } from '@/lib/statements/types'
+import { OPERATIONS_STORAGE_KEYS, writeStorage } from '@/lib/storage'
+import type { Allocation, SyncDoc } from '@/types/finance'
+import type { Operation, SpendTotal } from '@/lib/statements/types'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
 import { renderScreen } from '@/test/screenState'
 import Dreams from './Dreams.vue'
+
+// Дозагрузка шаблонных фото — счётчик вызовов вместо сети (Unsplash и сервер фото).
+const retried = vi.hoisted(() => ({ n: 0 }))
+vi.mock('@/lib/photos/goalPhoto', async (orig) => ({
+  ...(await orig<typeof import('@/lib/photos/goalPhoto')>()),
+  retryTemplatePhotos: async () => {
+    retried.n += 1
+    return 0
+  },
+}))
 
 /**
  * Главный «Мечты» (B2C-14, SSR): герой, плитки, картина недели, «Свободно» по факту, решение.
@@ -163,5 +174,92 @@ describe('views/Dreams.vue — главный «Мечты» (B2C-14)', () => {
     expect(viewer).not.toContain('Новая мечта')
     expect(viewer).not.toContain('Добавить фото')
     expect(viewer).toContain('До мечты')
+  })
+
+  /* ---------- критик Блока 3 ---------- */
+
+  /** Тексты брендовых кнопок (`bg-brand`) на экране. */
+  const brandButtons = (html: string) =>
+    [...html.matchAll(/<button[^>]*\bbg-brand text-brand-ink[^>]*>([\s\S]*?)<\/button>/g)].map((m) => m[1].replace(/<[^>]*>/g, '').trim())
+
+  it('одна брендовая кнопка на экране (правило 12): без мечты — «Выбрать мечту», ответы решения и загрузка тихие; с мечтой — ответ решения', async () => {
+    // Аруна, 17-е, зарплата 20-го — решение «Пришла?»; выписок нет; мечты нет.
+    await family('member', 'b', { goals: [] })
+    const empty = await renderScreen(Dreams, '/')
+    expect(empty).toContain('Пришла зарплата Аруна?')
+    expect(empty).toContain('Загрузить выписку')
+    expect(brandButtons(empty)).toEqual(['Выбрать мечту'])
+    expect(empty).toMatch(/<button[^>]*bg-surface-3[^>]*>\s*Пришла\s*</)
+
+    setActivePinia(createPinia())
+    await family('member', 'b', withMain())
+    expect(brandButtons(await renderScreen(Dreams, '/'))).toEqual(['Пришла'])
+  })
+
+  it('выписки есть, но не за эту неделю: «Неделя пока пустая» — без механики в заголовке', async () => {
+    const old = { ...upload('a', 'u1'), period_to: '2026-09-10' }
+    await family('member', 'a', withMain(), [old])
+    const html = await renderScreen(Dreams, '/')
+    expect(html).toContain('Неделя пока пустая')
+    expect(html).toContain('Загрузите выписку — картина недели появится здесь.')
+    expect(html).not.toContain('Выписки за эту неделю')
+    expect(html).not.toContain('Картины недели пока нет')
+  })
+
+  it('«Остались деньги?» отвечен, если остаток месяца уже разложен семьёй (партнёр не вводит сумму второй раз); ответ «Недели» в JSON-виде тоже читается', async () => {
+    vi.setSystemTime(new Date('2026-09-28T07:00:00Z')) // 28 сентября, Алматы
+    const rest = (period: string, extra: Partial<Allocation> = {}): Allocation => ({
+      id: `rest-${period}`, source: 'rest', sourceId: period, period, by: 'b', at: T0, total: 50_000, parts: [{ target: 'trip', amount: 50_000 }], updatedAt: T0, ...extra,
+    })
+    await family('member', 'a', { allocations: [rest('2026-08')] })
+    expect(await renderScreen(Dreams, '/')).toContain('Остались деньги с сентября?')
+
+    setActivePinia(createPinia())
+    await family('member', 'a', { allocations: [rest('2026-09', { deletedAt: T0 })] })
+    expect(await renderScreen(Dreams, '/')).toContain('Остались деньги с сентября?')
+
+    setActivePinia(createPinia())
+    await family('member', 'a', { allocations: [rest('2026-09')] })
+    expect(await renderScreen(Dreams, '/')).not.toContain('Остались деньги')
+
+    // Ответ на /week, записанный прежним JSON-видом ('"2026-09"'), главный тоже понимает (readMonthEnd).
+    setActivePinia(createPinia())
+    storage.set('ff_month_end', '"2026-09"')
+    await family('member', 'a')
+    expect(await renderScreen(Dreams, '/')).not.toContain('Остались деньги')
+  })
+
+  it('решение «Не разобрано» — незнакомые продавцы только этой недели, сумма из ядра (unknownSummary)', async () => {
+    const op = (id: string, date: string, amount: number, merchant: string, categoryId: string | null = null): Operation => ({
+      id, bank: 'kaspi', date, amount, kind: 'purchase', merchant, categoryId, internal: false,
+    })
+    // Неделя 14–20 сентября: SHOP A дважды (3 000 + 4 000) и CAFE B 5 000 — два продавца, 12 000.
+    // Прошлая неделя и узнанные траты не считаются.
+    const list = [
+      op('o1', '2026-09-15', -3_000, 'SHOP A'),
+      op('o2', '2026-09-16', -4_000, 'SHOP A'),
+      op('o3', '2026-09-16', -5_000, 'CAFE B'),
+      op('o4', '2026-09-10', -9_000, 'OLD C'),
+      op('o5', '2026-09-15', -20_000, 'MAGNUM', 'sc_food'),
+    ]
+    writeStorage(OPERATIONS_STORAGE_KEYS.ops, { owner: 'h-family:u-a', ops: Object.fromEntries(list.map((o) => [o.id, o])) })
+    useFinanceStore().claimFor('h-family')
+    await family('member', 'a', withMain())
+    const html = await renderScreen(Dreams, '/')
+    expect(html).toContain('Не разобрано: 2 продавца')
+    expect(html).toContain(`${money(12_000)} за неделю`)
+  })
+
+  it('открытие главного: шаблонные фото дозагружает только участник — у viewer ни Unsplash, ни 403 от сервера фото', async () => {
+    for (const role of ['viewer', 'member'] as const) {
+      setActivePinia(createPinia())
+      await family(role, 'b', withMain())
+      let vm: Record<string, any> = {}
+      const grab = { created(this: any) { if ('refresh' in this.$.setupState) vm = this.$.setupState } }
+      await renderScreen(Dreams, '/', undefined, [grab])
+      retried.n = 0
+      vm.refresh()
+      expect(retried.n).toBe(role === 'member' ? 1 : 0)
+    }
   })
 })
