@@ -64,6 +64,25 @@ describe('B2C-13: /settings и /money (SSR)', () => {
     expect(html).toContain('вы · только просмотр')
   })
 
+  it('возврат приёмки п. 8: одиночке «Пригласить партнёра» прямо в «С кем»; семье из двух и viewer — нет', async () => {
+    const solo = () => {
+      useFinanceStore().householdDoc.people = [{ id: 'a', name: 'Асель', salary: 400_000, payday: 5, updatedAt: T0 }]
+    }
+    // Семья из двух (beforeEach) — приглашать некого.
+    expect(await renderScreen(Settings, '/settings')).not.toContain('Пригласить партнёра')
+
+    solo()
+    const html = await renderScreen(Settings, '/settings')
+    const withWhom = html.slice(html.indexOf('С кем'))
+    expect(withWhom).toContain('Пригласить партнёра')
+    expect(withWhom).toContain('Создать код')
+
+    setActivePinia(createPinia())
+    signIn('viewer', 'a')
+    solo()
+    expect(await renderScreen(Settings, '/settings')).not.toContain('Пригласить партнёра')
+  })
+
   it('«Деньги»: входы второго уровня — Бюджет, Капитал, План', async () => {
     const html = await renderScreen(Money, '/money')
     for (const t of ['Бюджет', 'Капитал', 'План «Сначала долги»']) expect(html).toContain(t)
