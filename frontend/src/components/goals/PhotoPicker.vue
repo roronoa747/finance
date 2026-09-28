@@ -93,8 +93,7 @@ function onFile(e: Event) {
         </div>
       </template>
 
-      <p v-if="picked" class="px-1 text-[12px] text-ink-3">Фото: {{ picked.photo.author }} / Unsplash</p>
-
+      <!-- Автор — один раз, на самом фото героя после выбора (владелец): здесь строкой не повторяем. -->
       <Button size="lg" class="w-full" :disabled="!picked" @click="confirm">Выбрать это</Button>
       <Button v-if="skippable" variant="ghost" class="w-full" @click="emit('skip')">Пропустить</Button>
       <Button v-if="removable" variant="ghost" class="w-full" @click="emit('remove')">Убрать фото</Button>

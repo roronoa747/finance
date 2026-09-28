@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { PhCheck, PhGift, PhListBullets, PhPlus, PhSquaresFour } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
@@ -18,7 +18,6 @@ import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Card from '@/components/kit/Card.vue'
-import Chip from '@/components/kit/Chip.vue'
 import Field from '@/components/kit/Field.vue'
 import IconBox from '@/components/kit/IconBox.vue'
 import NumField from '@/components/kit/NumField.vue'
@@ -29,6 +28,7 @@ import GiftSheet from '@/components/goals/GiftSheet.vue'
 import WishRow from '@/components/goals/WishRow.vue'
 import WishSheet from '@/components/goals/WishSheet.vue'
 import WishTile from '@/components/goals/WishTile.vue'
+import PhotoSlot from '@/components/goals/PhotoSlot.vue'
 
 /**
  * «Желания» (DESIGN.md §2 g4 «Желания по людям», «Подарок-сюрприз»; B2C-18): вкладки участников и
@@ -39,6 +39,7 @@ import WishTile from '@/components/goals/WishTile.vue'
 type Tab = PersonId | 'all'
 
 const route = useRoute()
+const router = useRouter()
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
 
@@ -47,13 +48,14 @@ const me = computed(() => authStore.slot)
 const canEdit = computed(() => !authStore.isViewer)
 
 const slotOf = (v: unknown): Tab => (v === 'a' || v === 'b' || v === 'c' ? v : 'all')
-const tab = ref<Tab>(slotOf(route.params.slot ?? route.query.tab))
-watch(
-  () => [route.params.slot, route.query.tab] as const,
-  ([slot, q]) => {
-    tab.value = slotOf(slot ?? q)
+// Вкладка живёт в адресе (`/people/:slot`, «Общие» — `/wishes`): аватар в шапке и перезагрузка
+// открывают её же (критик Блока 3: локальная вкладка терялась и не давала повторно нажать аватар).
+const tab = computed<Tab>({
+  get: () => slotOf(route.params.slot ?? route.query.tab),
+  set: (v) => {
+    void router.replace(v === 'all' ? '/wishes' : `/people/${v}`)
   },
-)
+})
 const tabs = computed(() => [...people.value.map((p) => ({ value: p.id as Tab, label: p.name })), { value: 'all' as Tab, label: 'Общие' }])
 const person = computed(() => people.value.find((p) => p.id === tab.value))
 
@@ -95,13 +97,7 @@ function setView(v: 'grid' | 'list') {
 // Фото желания (Р-9): картинка вместо текста — в строке и в окне; сжимается на телефоне, `photoId` у обоих.
 const wishSrc = usePhotos(() => wishlist.value.map((w) => w.photoId))
 const wishFile = ref<File | null>(null)
-const wishFileInput = ref<HTMLInputElement | null>(null)
 const wishPhotoNote = ref<string | null>(null)
-function onWishFile(e: Event) {
-  const input = e.target as HTMLInputElement
-  wishFile.value = input.files?.[0] ?? null
-  input.value = ''
-}
 
 async function createWish() {
   if (!wishName.value.trim()) return
@@ -141,6 +137,8 @@ function markBought(id: string, itemName: string) {
 const giftsFor = computed(() => (person.value && person.value.id !== me.value ? financeStore.gifts.filter((g) => g.forSlot === person.value!.id) : []))
 const showGifts = computed(() => canEdit.value && !!person.value && person.value.id !== me.value)
 const openGift = ref(false)
+// Фото сюрприза — скрытое, сервер отдаёт его только автору; показываем в строке (критик Блока 3: грузилось, но не показывалось).
+const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
 </script>
 
 <template>
@@ -207,7 +205,8 @@ const openGift = ref(false)
         </Callout>
         <div class="flex flex-col">
           <div v-for="g in giftsFor" :key="g.id" class="flex items-center gap-3 border-t border-line py-2.5 first:border-t-0">
-            <IconBox><PhGift :size="18" /></IconBox>
+            <img v-if="g.photoId && giftSrc[g.photoId]" :src="giftSrc[g.photoId]!" alt="" class="size-[38px] shrink-0 rounded-[12px] object-cover" />
+            <IconBox v-else><PhGift :size="18" /></IconBox>
             <div class="min-w-0 flex-1">
               <div class="truncate font-medium" :class="g.bought ? 'text-ink-3 line-through' : 'text-ink'">{{ g.name }}</div>
               <div class="type-meta">{{ g.bought ? `куплено ${wishDate(g.boughtOn)}` : 'сюрприз' }}</div>
@@ -269,11 +268,7 @@ const openGift = ref(false)
     <!-- Окно: Покупка в дом (React `Goals.tsx:284-305`) -->
     <Sheet :open="openWishModal && canEdit" title="Покупка в дом" @close="openWishModal = false">
       <!-- Фото — первым: желание узнаётся по картинке (Р-9); в демо сервера нет -->
-      <div v-if="!financeStore.isDemo" class="mb-3 flex flex-wrap items-center gap-2">
-        <Chip quiet @click="wishFileInput?.click()">{{ wishFile ? 'Другое фото' : 'Фото' }}</Chip>
-        <span v-if="wishFile" class="text-[12px] text-ink-3">{{ wishFile.name }}</span>
-        <input ref="wishFileInput" type="file" accept="image/*" class="hidden" @change="onWishFile" />
-      </div>
+      <PhotoSlot v-if="!financeStore.isDemo" class="mb-3" :file="wishFile" removable @file="wishFile = $event" @remove="wishFile = null" />
       <Field label="Что покупаем">
         <Input v-model="wishName" placeholder="Например, сковорода" class="mb-3" />
       </Field>

@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { plain, parseMoney } from '@/lib/money'
 import { liveGoals } from '@/lib/finance'
+import { deletePhoto } from '@/lib/photos/store'
 import type { HueKey } from '@/lib/palette'
 import type { Goal } from '@/types/finance'
 
@@ -52,7 +53,12 @@ function onHue(hue: HueKey) {
   edit({ hue })
 }
 function remove() {
-  if (goal.value) financeStore.removeGoal(goal.value.id)
+  const g = goal.value
+  if (g) {
+    // Фото мечты на сервере — вместе с целью (критик Блока 3; своё фото или картинка шаблона).
+    if (g.photoId) void deletePhoto(g.photoId).catch(() => {})
+    financeStore.removeGoal(g.id)
+  }
   emit('removed')
 }
 </script>

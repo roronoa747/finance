@@ -466,6 +466,8 @@ describe('PV-15: пауза целей ради плана (SSR)', () => {
     // Окно выбора фото у цели с фото — с тихим «Убрать фото».
     const picker = await renderScreen(GoalDetail, '/goals/trip', undefined, [screenMixin({ pickerOpen: true })])
     expect(picker).toContain('Убрать фото')
+    // Выбранный шаблон с автором: в окне строки «Фото: … / Unsplash» нет — автор только на фото героя.
+    expect(picker.match(/Matthew Skinner/g)).toHaveLength(1)
 
     // Viewer — без кнопок правки героя.
     setActivePinia(createPinia())

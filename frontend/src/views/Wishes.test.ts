@@ -99,6 +99,9 @@ describe('views/Wishes.vue — желания по людям и сюрприз�
     const author = family('member', 'a', { wishlist: list() })
     author.addGift({ forSlot: 'b', name: 'Наушники', price: 90_000 })
     expect(author.gifts).toHaveLength(1)
+    // Сюрприз — только в личном документе: в общем его имени нет (критик Блока 3).
+    expect(JSON.stringify(author.householdDoc)).not.toContain('Наушники')
+    expect(JSON.stringify(author.privateDoc)).toContain('Наушники')
     // Телефон Аруны — другое устройство: общий документ тот же, личный — свой.
     stubStorage()
     setActivePinia(createPinia())
@@ -245,13 +248,17 @@ describe('views/Wishes.vue — фото желаний (Р-9, B2C-18, SSR)', () 
     const html = await renderScreen(Wishes, '/wishes')
     expect((html.match(/data-photo/g) ?? []).length).toBe(1)
     const sheet = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ openWishModal: true })])
-    expect(sheet).toMatch(/<button[^>]*>(?:s|<!---->)*Фото(?:s|<!---->)*</)
+    expect(sheet).toContain('>Фото</span>')
     expect(sheet).toContain('accept="image/*"')
-    // Правка: чипы «Другое фото» / «Убрать фото» у желания с фото, «Фото» — без.
+    // Правка (владелец 2026-09-28: кнопки не больше фото): фото крупно, «Сменить» и «Убрать» —
+    // маленькие иконки в углах, без чипов-надписей; без фото — пунктирная плитка «Фото».
     const edit = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ editWishId: 'lamp' })])
-    expect(edit).toContain('Другое фото')
-    expect(edit).toContain('Убрать фото')
-    expect(await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ editWishId: 'pan' })])).not.toContain('Убрать фото')
+    expect(edit).toContain('aria-label="Сменить фото"')
+    expect(edit).toContain('aria-label="Убрать фото"')
+    expect(edit).not.toContain('Другое фото')
+    const bare = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ editWishId: 'pan' })])
+    expect(bare).not.toContain('Убрать фото')
+    expect(bare).toContain('>Фото</span>')
     // Запись фото — у обоих через документ.
     store.setWishPhoto('pan', 'ph-2')
     expect(store.wishlist.find((w) => w.id === 'pan')!.photoId).toBe('ph-2')

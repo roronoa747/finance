@@ -11,8 +11,8 @@ import { usePhoto } from '@/lib/photos/usePhoto'
 import type { PersonId } from '@/types/finance'
 
 import Callout from '@/components/kit/Callout.vue'
-import Chip from '@/components/kit/Chip.vue'
 import Field from '@/components/kit/Field.vue'
+import PhotoSlot from '@/components/goals/PhotoSlot.vue'
 import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
 import SavedMark from '@/components/kit/SavedMark.vue'
 import Segmented from '@/components/kit/Segmented.vue'
@@ -44,14 +44,10 @@ const saved = useSavedMark(
 
 /* ---------- фото ---------- */
 const photoSrc = usePhoto(() => wish.value?.photoId)
-const fileInput = ref<HTMLInputElement | null>(null)
 const photoBusy = ref(false)
 const photoNote = ref<string | null>(null)
 
-async function onFile(e: Event) {
-  const input = e.target as HTMLInputElement
-  const file = input.files?.[0]
-  input.value = ''
+async function onFile(file: File) {
   const w = wish.value
   if (!file || !w || financeStore.isDemo) return
   photoBusy.value = true
@@ -95,7 +91,12 @@ function onBy(by: PersonId) {
   if (wish.value) financeStore.updateWish(wish.value.id, { by })
 }
 function remove() {
-  if (wish.value) financeStore.removeWish(wish.value.id)
+  const w = wish.value
+  if (w) {
+    // Фото на сервере — вместе с желанием, иначе байты остаются сиротой (критик Блока 3).
+    if (w.photoId) void deletePhoto(w.photoId).catch(() => {})
+    financeStore.removeWish(w.id)
+  }
   emit('close')
 }
 </script>
@@ -106,17 +107,17 @@ function remove() {
       <SavedMark :on="saved" />
     </template>
     <template v-if="wish" #default="{ close }">
-      <!-- Фото — первым: желание узнаётся по картинке, а не по тексту -->
-      <div class="mb-3 flex items-center gap-3">
-        <div class="size-[72px] shrink-0 overflow-hidden rounded-inner bg-surface-3">
-          <img v-if="photoSrc" :src="photoSrc" alt="" class="size-full object-cover" />
-        </div>
-        <div class="flex flex-wrap gap-2">
-          <Chip v-if="!financeStore.isDemo" quiet :disabled="photoBusy" @click="fileInput?.click()">{{ wish.photoId ? 'Другое фото' : 'Фото' }}</Chip>
-          <Chip v-if="wish.photoId" quiet @click="removePhoto">Убрать фото</Chip>
-        </div>
-        <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFile" />
-      </div>
+      <!-- Фото — первым и крупно: желание узнаётся по картинке; сменить/убрать — маленькие кнопки в углах -->
+      <PhotoSlot
+        v-if="!financeStore.isDemo"
+        class="mb-3"
+        :src="photoSrc"
+        :present="!!wish.photoId"
+        :busy="photoBusy"
+        :removable="!!wish.photoId"
+        @file="onFile"
+        @remove="removePhoto"
+      />
       <Callout v-if="photoNote" tone="neutral" icon="info" class="mb-3">{{ photoNote }}</Callout>
       <p class="mb-3 type-meta">{{ meta }}</p>
       <!-- Ссылка в магазин — заметной кнопкой, а не строкой -->
