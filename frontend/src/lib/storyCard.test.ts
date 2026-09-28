@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { STORY_SIZE, drawStory, layoutStory, storyText, withoutMoney, type StoryContext } from './storyCard'
 
+// Светлые токены — из style.css (ревью Блока 3 Н-14): смена токена не разъедется с карточкой молча.
+// CSS в Vitest приходит пустым — читается через node:fs, как в `style.tokens.test.ts`.
+type NodeFs = { readFileSync(path: URL, encoding: string): string }
+const fs = (await import(/* @vite-ignore */ `node:${'fs'}`)) as unknown as NodeFs
+const lightRoot = fs.readFileSync(new URL('../style.css', import.meta.url), 'utf-8').match(/:root\s*\{([^}]*)\}/)?.[1] ?? ''
+const lightToken = (name: string) => new RegExp(`${name}\\s*:\\s*([^;]+);`).exec(lightRoot)![1].trim()
+const rgbOfHex = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(',')
+
 /**
  * Карточка для сторис (B2C-20, Р-10): тексты, гвард сумм, композиция по DESIGN.md §7 и
  * рисование записывающей заглушкой — ни одной суммы на карточке.
@@ -114,10 +122,10 @@ describe('storyCard — композиция', () => {
     const { ctx, calls } = recorder()
     drawStory(ctx, null, storyText('goal', { percent: 10, goalName: 'Очень длинное название мечты о доме у моря', doneMonth: 'мае 2027' }))
     // Значение `--surface-3` светлой темы из style.css (canvas переменных не читает).
-    expect(calls.find((c) => c.fn === 'fillRect')).toMatchObject({ fillStyle: '#e6ded2', args: [0, 0, 1080, 1920] })
+    expect(calls.find((c) => c.fn === 'fillRect')).toMatchObject({ fillStyle: lightToken('--surface-3'), args: [0, 0, 1080, 1920] })
     expect(calls.some((c) => c.fn === 'drawImage')).toBe(false)
     const line = calls.filter((c) => c.fn === 'fillText').at(-1)!
-    expect(String(line.fillStyle)).toBe('rgb(30,26,22)')
+    expect(String(line.fillStyle)).toBe(`rgb(${rgbOfHex(lightToken('--ink'))})`)
     expect(line.font).not.toBe('500 56px "Golos Text"')
     expect(Number(/(\d+)px/.exec(line.font)![1])).toBeLessThan(56)
 
