@@ -165,13 +165,18 @@ const me = computed(() => financeStore.people.find((p) => p.id === slot.value))
 const salaryKnown = computed(() => (me.value?.salary ?? 0) > 0)
 
 // Поля карточки — от текущего вопроса: сумма и день дохода правятся, у кредита — остаток «если знаете».
+// Сбрасываются только при смене вопроса (ключ), а не при новом объекте: вопросы пересобираются при
+// каждой подмене документа — синк после ответа, возврат в приложение, фоновый круг — и стирали бы
+// введённый остаток, выбранный чип и исправленный оклад (возврат приёмки 2 п. 1).
 const incomeSalary = ref('')
 const incomePayday = ref('')
 const recurringKind = ref<RecurringKind>('obligation')
 const creditPrincipal = ref('')
+const questionKey = computed(() => (current.value ? (current.value.type === 'income' ? 'income' : current.value.candidate.key) : null))
 watch(
-  current,
-  (q) => {
+  questionKey,
+  () => {
+    const q = current.value
     if (!q) return
     if (q.type === 'income') {
       incomeSalary.value = plain(q.candidate.amount)
