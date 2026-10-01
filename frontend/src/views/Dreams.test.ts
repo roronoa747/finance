@@ -28,6 +28,7 @@ vi.mock('@/lib/photos/goalPhoto', async (orig) => ({
  * 1 200 000). «Сейчас» — четверг 17 сентября 2026 (ISO-неделя W38, 14–20 сентября).
  */
 const NOW = '2026-09-17T07:00:00Z'
+const NBSP = ' '
 const total = (by: 'a' | 'b', kind: 'week' | 'month', period: string, categoryId: string, amount: number): SpendTotal => ({
   id: `${by}:${kind}:${period}:${categoryId}`, by, kind, period, categoryId, amount, ops: 1, updatedAt: T0,
 })
@@ -69,13 +70,16 @@ describe('views/Dreams.vue — главный «Мечты» (B2C-14)', () => {
     // Машина: 200 000 из 3 000 000 → 7 %; по 60 000 в месяц — 47 взносов → июль 2030.
     expect(html).toContain('До мечты')
     expect(html).toContain('7 %')
-    expect(html).toContain(`Машина · 200 000 из ${money(3_000_000)} · будет вашей в июле 2030`)
+    // «·» держится за предыдущее слово, месяц с годом — одним куском (смоук владельца, п. 4).
+    expect(html).toContain(`Машина${NBSP}· 200 000 из ${money(3_000_000)}${NBSP}· будет вашей в июле${NBSP}2030`)
     expect(html).toContain('Добавить фото')
     expect(html).toContain('Подушка')
     expect(html).toContain('Отпуск')
     expect(html).toContain('13 %')
     expect(html).toContain('Новая мечта')
-    expect(html).toContain('href="/wishes"')
+    // «Желания» — плитка того же ряда, а не ссылка отдельной строкой (смоук владельца, п. 5).
+    expect(html).toContain('>Желания<')
+    expect(html).not.toContain('Желания →')
     // Цвет — только токены.
     expect(html).not.toMatch(/#[0-9a-f]{3,6}\b|rgb\(/i)
     expect(html).toContain('bg-surface-3')
@@ -83,7 +87,7 @@ describe('views/Dreams.vue — главный «Мечты» (B2C-14)', () => {
 
   it('без пометки главная — первая живая; без целей — «На что копим?» с кнопкой, у viewer — без кнопки', async () => {
     await family()
-    expect(await renderScreen(Dreams, '/')).toContain('Подушка · 400 000 из')
+    expect(await renderScreen(Dreams, '/')).toContain(`Подушка${NBSP}· 400 000 из`)
     setActivePinia(createPinia())
     await family('member', 'a', { goals: [] })
     const empty = await renderScreen(Dreams, '/')
@@ -132,11 +136,11 @@ describe('views/Dreams.vue — главный «Мечты» (B2C-14)', () => {
     // 58 000, кредитка 25 000, рассрочка 20 000) − взносы в цели 130 000 − траты по выписке 224 000
     // (продукты 184 000 + не разобрано 40 000; кредит 58 000 уже в плане — не вычитается) = 523 000.
     expect(html).toContain(money(523_000))
-    expect(html).toContain('пока по выписке Ильяс · уточнится, когда Аруна загрузит')
+    expect(html).toContain(`пока по выписке Ильяс${NBSP}· уточнится, когда Аруна загрузит`)
     expect(html).toContain('aria-valuenow="44"') // 523 000 / 1 200 000
   })
 
-  it('обе выписки: «по выпискам обоих», сумма обоих по разделу, «по факту выписок обоих · 3 дня до зарплаты · Аруна»', async () => {
+  it('обе выписки: «по выпискам обоих», сумма обоих по разделу, «по факту выписок обоих · 3 дня до зарплаты»', async () => {
     const totals = [
       total('a', 'week', '2026-W38', 'sc_food', 62_000),
       total('b', 'week', '2026-W38', 'sc_food', 20_000),
@@ -150,7 +154,9 @@ describe('views/Dreams.vue — главный «Мечты» (B2C-14)', () => {
     expect(html).not.toContain('без выписки')
     // 1 200 000 − 323 000 − 130 000 − 224 000 = 523 000
     expect(html).toContain(money(523_000))
-    expect(html).toContain('по факту выписок обоих · 3 дня до зарплаты · Аруна')
+    // Без «· Аруна» в конце: имя без падежа переносилось отдельной строкой с точки (смоук владельца).
+    expect(html).toContain(`по факту выписок обоих${NBSP}· 3${NBSP}дня до зарплаты`)
+    expect(html).not.toContain('до зарплаты · Аруна')
   })
 
   it('решение: ближайшая своя зарплата «пришла?» у Аруны (20-е, через 3 дня), у Ильяса решений нет; у viewer карточки и «Новой мечты» нет', async () => {
