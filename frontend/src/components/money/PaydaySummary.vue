@@ -85,7 +85,7 @@ const salaryHere = computed(
         :title="d.name"
         :note="dayLabel(d.day, d.when)"
       />
-      <SalaryRow dense :person-id="info.who.id" :period="info.key" :note="`${dayLabel(info.day, info.key)} · ${info.who.name}`" />
+      <SalaryRow dense :person-id="info.who.id" :period="info.key" :note="dayLabel(info.day, info.key)" />
     </div>
   </Sheet>
 </template>

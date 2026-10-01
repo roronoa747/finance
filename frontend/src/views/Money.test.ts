@@ -305,6 +305,8 @@ describe('views/Money.vue — финансовые показатели (рас�
       // Лист «До зарплаты» — те же строки с «Оплатил» и строка зарплаты.
       const sheet = text(dialog(await renderScreen(Money, '/money', undefined, [screenMixin({ open: true })])))
       for (const t of ['До зарплаты', 'Кредит', 'Оплатил', 'Аруна']) expect(sheet).toContain(t)
+      // Критик: имя — в названии строки зарплаты, в подписи только дата (было «Зарплата · Аруна … · Аруна»).
+      expect(sheet.match(/Аруна/g)).toHaveLength(1)
       store.markPaid('credit', 'loan', 'a', { period: '2026-09', accountId: 'card' })
       html = text(await renderScreen(Money, '/money'))
       expect(html).toContain('Списаний нет')
