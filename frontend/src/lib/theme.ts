@@ -10,20 +10,10 @@
  * и на `/start`, а не только когда открыты Настройки.
  */
 import { ref } from 'vue'
-import { HUE_KEYS, applyTheme, resolveDark, type CategoryKey, type HueKey, type ThemeChoice } from '@/lib/palette'
+import { applyTheme, resolveDark, type ThemeChoice } from '@/lib/palette'
 
 const THEME_KEY = 'ff_theme'
-const CATEGORY_HUES_KEY = 'ff_category_hues'
 const THEMES: ThemeChoice[] = ['auto', 'light', 'dark']
-
-/** Цвета разделов по умолчанию (React `defaultSettings.categories`). */
-export const DEFAULT_CATEGORY_HUES: Readonly<Record<CategoryKey, HueKey>> = {
-  d1: 'blue',
-  d2: 'brick',
-  d3: 'green',
-  d4: 'ochre',
-  d5: 'steel',
-}
 
 /** Тёмная ли тема прямо сейчас — для inline-цветов в SVG. В Node — false. */
 export const isDark = ref(false)
@@ -51,40 +41,17 @@ export function readThemeChoice(): ThemeChoice {
 }
 
 /**
- * «Цвета разделов» устройства (PV-22, Р-20). Сломанная или чужая запись — дефолт по
- * каждому разделу отдельно: один испорченный ключ не сбрасывает остальные.
+ * Применяет выбранную тему к документу и обновляет `isDark`. «Цвета разделов» бюджета
+ * (PV-22) сняты вместе с «Бюджетом» (Р-33): старый ключ `ff_category_hues` просто не читается.
  */
-export function readCategoryHues(): Record<CategoryKey, HueKey> {
-  const out = { ...DEFAULT_CATEGORY_HUES }
-  let saved: unknown = null
-  try {
-    saved = JSON.parse(read(CATEGORY_HUES_KEY) ?? 'null')
-  } catch {
-    return out
-  }
-  if (saved && typeof saved === 'object') {
-    for (const key of Object.keys(out) as CategoryKey[]) {
-      const hue = (saved as Record<string, unknown>)[key]
-      if (HUE_KEYS.includes(hue as HueKey)) out[key] = hue as HueKey
-    }
-  }
-  return out
-}
-
-/** Применяет выбранные тему и цвета разделов к документу и обновляет `isDark`. */
 export function applyCurrentPalette() {
   const theme = readThemeChoice()
-  applyTheme({ theme, categories: readCategoryHues() })
+  applyTheme({ theme })
   isDark.value = resolveDark(theme)
 }
 
 export function setThemeChoice(theme: ThemeChoice) {
   write(THEME_KEY, theme)
-  applyCurrentPalette()
-}
-
-export function setCategoryHue(key: CategoryKey, hue: HueKey) {
-  write(CATEGORY_HUES_KEY, JSON.stringify({ ...readCategoryHues(), [key]: hue }))
   applyCurrentPalette()
 }
 

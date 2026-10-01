@@ -53,16 +53,12 @@ export function resolveDark(choice: ThemeChoice): boolean {
   return choice === 'dark' || (choice === 'auto' && prefersDark())
 }
 
-/** Единственное место, где цвета попадают в DOM. */
-export function applyTheme(opts: { theme: ThemeChoice; categories: Record<CategoryKey, HueKey> }) {
-  const root = document.documentElement
-  const dark = resolveDark(opts.theme)
-  root.classList.toggle('dark', dark)
-
-  for (const [key, hue] of Object.entries(opts.categories)) {
-    const h = HUES[hue as HueKey]
-    root.style.setProperty(`--${key}`, dark ? h.dark : h.light)
-  }
+/**
+ * Единственное место, где тема попадает в DOM: класс `dark` на `<html>`. Цвета разделов
+ * бюджета (`--d1…--d5`) больше не пишутся — их последний читатель, «Бюджет», убран в Р-33.
+ */
+export function applyTheme(opts: { theme: ThemeChoice }) {
+  document.documentElement.classList.toggle('dark', resolveDark(opts.theme))
 }
 
 /** Цвет оттенка для текущей темы — для inline-заливок в SVG. */

@@ -51,13 +51,12 @@ describe('B2C-13: /settings и /money (SSR)', () => {
     // Напоминание и удаление аккаунта — Блоки 5 и 4: секций нет.
     expect(html).not.toContain('Напоминание')
     expect(html).not.toContain('Удалить аккаунт')
-    // Возврат смоука (g7, правило 12): порядок «Оформление» → «С кем» → выход; цвета разделов и разбор
-    // выписок — свёрнуты (<details> без open), выход — своей карточкой после «С кем».
+    // Возврат смоука (g7, правило 12): порядок «Оформление» → «С кем» → выход; разбор выписок — свёрнут
+    // (<details> без open), выход — своей карточкой после «С кем». «Цвета разделов» сняты (клинап Б9, Р-33).
     expect(html.indexOf('Оформление')).toBeLessThan(html.indexOf('С кем'))
     expect(html.indexOf('С кем')).toBeLessThan(html.indexOf('Выйти из аккаунта'))
     expect(html).not.toContain('<details open')
-    const colors = html.slice(html.lastIndexOf('<details', html.indexOf('Цвета разделов')), html.indexOf('Цвета разделов'))
-    expect(colors).toContain('<summary')
+    expect(html).not.toContain('Цвета разделов')
     const parse = html.slice(html.lastIndexOf('<details', html.indexOf('Разбор выписок')), html.indexOf('Разбор выписок'))
     expect(parse).toContain('<summary')
   })

@@ -49,13 +49,6 @@
   --pb: #a9456a;
   --dot-ink: var(--on-photo);
 
-  /* Разделы бюджета d1…d5 — меняются пользователем (второй уровень). */
-  --d1: #3b62b8;
-  --d2: #b4523c;
-  --d3: #2e7d4f;
-  --d4: #8a6d3b;
-  --d5: #5a6c78;
-
   /* Разделы трат выписок — 12 оттенков на 17 разделов + «не разобрано». */
   --s1: #c2703f;
   --s2: #8c6d3f;
@@ -114,12 +107,6 @@
   --pb: #ff8fb4;
   --dot-ink: var(--on-photo);
 
-  --d1: #7fa5f0;
-  --d2: #f0917a;
-  --d3: #5cc98a;
-  --d4: #d8b372;
-  --d5: #9fb3be;
-
   --s1: #e0946a;
   --s2: #c9a36a;
   --s3: #8fb0da;
@@ -170,11 +157,6 @@
   --color-ok-soft: var(--ok-soft);
   --color-pa: var(--pa);
   --color-pb: var(--pb);
-  --color-d1: var(--d1);
-  --color-d2: var(--d2);
-  --color-d3: var(--d3);
-  --color-d4: var(--d4);
-  --color-d5: var(--d5);
   --color-s1: var(--s1);
   --color-s2: var(--s2);
   --color-s3: var(--s3);

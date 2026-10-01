@@ -1,19 +1,17 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { DEFAULT_CATEGORY_NAMES, categoryName, type CategoryKey, type HueKey, type ThemeChoice } from '@/lib/palette'
-import { readCategoryHues, readThemeChoice, setCategoryHue, setThemeChoice } from '@/lib/theme'
+import type { ThemeChoice } from '@/lib/palette'
+import { readThemeChoice, setThemeChoice } from '@/lib/theme'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import Segmented from '@/components/kit/Segmented.vue'
-import HuePicker from '@/components/goals/HuePicker.vue'
 import Input from '@/components/ui/Input.vue'
 import Button from '@/components/ui/Button.vue'
 import Callout from '@/components/kit/Callout.vue'
 import { useRouter } from 'vue-router'
-import { PhCaretDown } from '@phosphor-icons/vue'
 
 /**
- * Оформление устройства (тема, цвета разделов бюджета) и имя; внизу — выход или «Создать семью» из демо.
+ * Оформление устройства (тема) и имя; внизу — выход или «Создать семью» из демо.
  * `section` — только одна часть: в Настройках они в разных карточках (g7 «Оформление» и «Выйти»);
  * без него — всё вместе.
  */
@@ -26,9 +24,6 @@ const router = useRouter()
 // Тема применена ещё в main.ts; панель только показывает и меняет выбор. Акцента
 // пользователя нет — бренд один (DESIGN.md §3, B2C-12).
 const currentTheme = ref<ThemeChoice>(readThemeChoice())
-const categoryHues = ref(readCategoryHues())
-// Разделы во Vue заводятся лениво — ряд есть у всех пяти, имя незаведённого — запасное.
-const CATEGORY_KEYS = Object.keys(DEFAULT_CATEGORY_NAMES) as CategoryKey[]
 
 // Имя — из документа (React `AppearancePanel.tsx:45-64`): переименование в зарплатах видно здесь.
 const myName = computed(() => financeStore.people.find((p) => p.id === authStore.slot)?.name ?? '')
@@ -40,11 +35,6 @@ watch(myName, (name) => {
 function updateTheme(th: ThemeChoice) {
   currentTheme.value = th
   setThemeChoice(th)
-}
-
-function updateCategoryHue(key: CategoryKey, hue: HueKey) {
-  categoryHues.value = { ...categoryHues.value, [key]: hue }
-  setCategoryHue(key, hue)
 }
 
 // Пустое имя не пишется — в поле возвращается прежнее.
@@ -123,23 +113,6 @@ function leave(choice: 'keep' | 'discard') {
         @update:model-value="updateTheme"
       />
     </div>
-
-    <!-- Цвета разделов бюджета — свёрнуты (правило 12: сложное скрыто; в макете g7 их нет). -->
-    <details>
-      <summary class="flex cursor-pointer list-none items-center justify-between [&::-webkit-details-marker]:hidden">
-        <div class="mb-1.5 type-section">
-          Цвета разделов
-        </div>
-        <PhCaretDown :size="16" class="mb-1.5 text-ink-3" />
-      </summary>
-      <HuePicker
-        v-for="key in CATEGORY_KEYS"
-        :key="key"
-        :label="categoryName(financeStore.categories, key)"
-        :model-value="categoryHues[key]"
-        @update:model-value="(hue) => updateCategoryHue(key, hue)"
-      />
-    </details>
     </template>
 
     <template v-if="props.section !== 'look'">
