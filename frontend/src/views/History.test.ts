@@ -35,20 +35,18 @@ describe('views/History.vue и входы «Деньги» (B2C-21, SSR)', () =>
     return store
   }
 
-  it('«Деньги»: входы — Бюджет, Капитал, План, вклад по счёту, «История и итоги»; «Впереди» — здесь (g6), истории нет', async () => {
+  it('«Деньги» (пивот 3, Р-31): квадраты Капитал · План · История вместо меню входов; вклад и платежи — в Капитале; истории на нём нет', async () => {
     const store = family()
     store.addAccount({ name: 'Kaspi Депозит', kind: 'deposit', amount: 1_000_000, deposit: { annualRate: 0.14, months: 12, monthlyTopUp: 0, capitalize: true } })
     const html = await renderScreen(Money, '/money')
-    for (const t of ['Бюджет', 'Капитал', 'План «Сначала долги»', 'Вклад · Kaspi Депозит', 'История и итоги']) expect(html).toContain(t)
-    // Возврат смоука: «Впереди» переехал из «Истории» в «Деньги» (макет g6, DESIGN.md §3).
-    expect(html).toContain('Впереди')
-    expect(html).toContain('href="/money/budget"')
+    for (const t of ['>Капитал</b>', '>План</b>', '>История</b>', 'Kaspi Депозит']) expect(html).toContain(t)
+    for (const gone of ['Бюджет', 'План «Сначала долги»', 'Вклад · Kaspi Депозит', 'История и итоги', 'Впереди', 'href="/money/budget"']) expect(html).not.toContain(gone)
     for (const t of ['Аренда', 'Кредит', 'Кредитка', 'Рассрочка']) expect(html).toContain(t)
     expect(html).not.toContain('История семьи')
     expect(html).not.toContain('Итог месяца')
   })
 
-  it('/money/history: итог — только в конце месяца; моментов нет — раздела нет; «Впереди» — в «Деньгах»', async () => {
+  it('/money/history: итог — только в конце месяца; моментов нет — раздела нет; «Впереди» здесь нет', async () => {
     family()
     const mid = await renderScreen(History, '/money/history')
     expect(mid).not.toContain('Впереди')

@@ -25,6 +25,7 @@ import { landingPath } from '../src/router/landing'
 import Start from '../src/views/Start.vue'
 import WeekSalary from '../src/views/WeekSalary.vue'
 import Money from '../src/views/Money.vue'
+import Budget from '../src/views/Budget.vue'
 import { attachTemplate } from '../src/lib/photos/goalPhoto'
 import { photoUrl, releasePhotos, uploadPhoto } from '../src/lib/photos/store'
 
@@ -225,8 +226,8 @@ describe('e2e / B2C Блок 3 — часть 2: сопоставление вы
     expect(paidB).toMatchObject({ targetId: 'loan', period: '2026-09', amount: 58_000, source: 'statement', accountId: null })
     // creditSplit(1 000 000, 33 %, 58 000): банку 27 500, в долг 30 500.
     expect(B.store.credits.find((c) => c.id === 'loan')!.principal).toBe(969_500)
-    // Отметки платежей месяца — «Впереди» в «Деньгах» (g6; возврат смоука перенёс его из «Истории»).
-    const moneyB = await screen(B.pinia, Money, '/money')
+    // Отметки платежей месяца: «Впереди» ушёл (пивот 3, Р-32), до «Платежей» Капитала (B2C-42) — список Бюджета.
+    const moneyB = await screen(B.pinia, Budget, '/money', { initialView: 'list' })
     expect(moneyB).toContain('оплачено')
     expect(moneyB).toContain('из выписки')
     // Правило — в личном документе A, партнёру не уезжает.

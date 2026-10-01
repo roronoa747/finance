@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { createMemoryHistory } from 'vue-router'
-import { createAppRouter } from './index'
+import { createAppRouter, routes } from './index'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { authAs, planFamilyDoc } from '@/test/planFamily'
@@ -99,7 +99,7 @@ describe('router/index.ts — Навигационные гарды и защи�
     signIn()
     useFinanceStore().finishSetup()
 
-    for (const path of ['/', '/week', '/week/salary', '/money', '/money/budget', '/money/capital', '/money/capital/x', '/money/plan', '/goals/x', '/goals/new', '/wishes', '/people/a', '/settings']) {
+    for (const path of ['/', '/week', '/week/salary', '/money', '/money/plan', '/money/history', '/goals/x', '/goals/new', '/wishes', '/people/a', '/settings']) {
       await router.push(path)
       expect(router.currentRoute.value.path).toBe(path)
     }
@@ -120,7 +120,7 @@ describe('router/index.ts — Навигационные гарды и защи�
       expect(router.currentRoute.value.fullPath).toBe('/')
     }
     // Остальное viewer смотрит как есть.
-    for (const path of ['/week', '/money/capital', '/goals/cushion', '/wishes']) {
+    for (const path of ['/week', '/money', '/money/plan', '/money/history', '/goals/cushion', '/wishes']) {
       await router.push(path)
       expect(router.currentRoute.value.path).toBe(path)
     }
@@ -128,11 +128,20 @@ describe('router/index.ts — Навигационные гарды и защи�
 
   describe('B2C-13: старые адреса установленных PWA — редиректы с сохранением параметров', () => {
     it.each([
-      ['/budget', '/money/budget'],
-      ['/capital', '/money/capital'],
-      ['/capital?credit=loan', '/money/capital?credit=loan'],
-      ['/capital?add=debt', '/money/capital?add=debt'],
-      ['/capital/acc-depo', '/money/capital/acc-depo'],
+      // Пивот 3 (Р-31): Бюджет и Капитал — квадрат «Капитал» `/money`, окна — те же ключи query.
+      ['/budget', '/money'],
+      ['/capital', '/money'],
+      ['/capital?credit=loan', '/money?credit=loan'],
+      ['/capital?add=debt', '/money?add=debt'],
+      ['/capital/acc-depo', '/money?account=acc-depo'],
+      ['/money/budget', '/money'],
+      ['/money/capital', '/money'],
+      ['/money/capital?add=debt', '/money?add=debt'],
+      ['/money/capital?income=1', '/money?income=1'],
+      ['/money/capital?advice=strategy', '/money?advice=strategy'],
+      ['/money/capital/x', '/money?account=x'],
+      ['/money/plan', '/money/plan'],
+      ['/money/history', '/money/history'],
       ['/goals', '/'],
       ['/goals/g-japan', '/goals/g-japan'],
       ['/ritual', '/week'],
@@ -147,6 +156,24 @@ describe('router/index.ts — Навигационные гарды и защи�
       useFinanceStore().finishSetup()
       await router.push(from)
       expect(router.currentRoute.value.fullPath).toBe(to)
+    })
+
+    it('квадраты «Денег» — один маршрут и один экран `Money` (ленивый чанк), квадрат — параметр адреса', async () => {
+      const router = createAppRouter(createMemoryHistory())
+      signIn()
+      useFinanceStore().finishSetup()
+      const records = new Set<unknown>()
+      for (const [path, square] of [['/money', undefined], ['/money/plan', 'plan'], ['/money/history', 'history']] as const) {
+        await router.push(path)
+        const r = router.currentRoute.value
+        expect(r.name).toBe('money')
+        expect(r.params.square || undefined).toBe(square)
+        records.add(r.matched.at(-1)!.components!.default)
+      }
+      expect(records.size).toBe(1)
+      // Ленивый: в описании маршрута — загрузчик `() => import(...)`, а не сам компонент.
+      const shell = routes.find((r) => r.path === '/')!
+      expect(typeof shell.children!.find((r) => r.name === 'money')!.component).toBe('function')
     })
   })
 })

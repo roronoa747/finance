@@ -106,9 +106,9 @@ describe('e2e / block-4 — Сквозной сценарий Бюджета (П
       { key: 'd5', name: 'Свободно', note: '', amount: 630_000, updatedAt: '' },
     ]
 
-    // 2. Переход на экран «Бюджет» (/money/budget; старый /budget — редирект, B2C-13)
+    // 2. Старый адрес Бюджета — квадрат «Капитал» «Денег» (пивот 3, Р-31); экран Бюджета рендерится сам до B2C-45
     await router.push('/budget')
-    expect(router.currentRoute.value.path).toBe('/money/budget')
+    expect(router.currentRoute.value.path).toBe('/money')
 
     // 3. Проверка режима «План»
     let amounts = budgetAmounts(financeStore.householdDoc)

@@ -38,7 +38,7 @@ describe('views/DebtPlan.vue — экран плана «Сначала долг
       family({ plans: [] })
       const html = await renderScreen(DebtPlan, '/plan')
       expect(html).toContain('Плана нет')
-      expect(html).toContain('href="/money/capital?advice=strategy"')
+      expect(html).toContain('href="/money?advice=strategy"')
       expect(html).not.toMatch(cancelButton)
     })
 

@@ -15,7 +15,7 @@ import Dreams from '@/views/Dreams.vue'
 import Money from '@/views/Money.vue'
 import History from '@/views/History.vue'
 import Budget from '@/views/Budget.vue'
-import { screenMixin } from '@/test/screenState'
+import { renderScreen, screenMixin } from '@/test/screenState'
 
 describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
   const storage = new Map<string, string>()
@@ -143,29 +143,35 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     expect(html).toContain('Оплатил')
   })
 
-  // Возврат смоука (g6): «Впереди» — в «Деньгах» (переехал из «Истории»), блок «До зарплаты» стал
-  // «до зарплаты N дней» в карточке «Свободно» и строкой «хватит ли» под «Впереди».
-  it('«Деньги»: «Впереди» — оплаченное уходит вниз с отметкой; под списком — хватит ли на счетах', async () => {
-    const store = family()
-    const ahead = (html: string) => html.slice(html.indexOf('Впереди'))
+  // Пивот 3 (Р-32): «Впереди» заменила сводка «До зарплаты» — её лист держит те же строки «Оплатил»
+  // от сегодня до зарплаты (24 сентября → 10 октября); полный список месяца — «Платежи» (B2C-42).
+  /** Лист «До зарплаты» открыт; текст листа — отдельно от экрана (в SSR лист рендерится на месте). */
+  async function paydaySheet() {
+    const html = await renderScreen(Money, '/money', undefined, [screenMixin({ open: true })])
+    expect(html).toContain('role="dialog"')
+    // Лист — внутри сводки, сразу за ним — квадраты «Денег».
+    const at = html.indexOf('role="dialog"')
+    return { screen: html.slice(0, at), sheet: html.slice(at, html.indexOf('aria-label="Деньги"', at)) }
+  }
 
-    // Кредит 15-го раньше аренды 28-го.
-    const aheadBefore = ahead(await page(Money, '/money'))
-    expect(aheadBefore.indexOf('Кредит')).toBeLessThan(aheadBefore.indexOf('Аренда'))
-    expect(aheadBefore).toContain(money(58_000))
+  it('«Деньги», лист «До зарплаты»: строки с «Оплатил», оплаченное уходит вниз с отметкой; сводка — сколько и хватит ли', async () => {
+    const store = family('member', [sub('net', 'Интернет', 10_000, { category: 'd1', day: 30 })])
 
-    // Оплачен только ранний платёж (кредит 15-го) — он уходит под аренду 28-го.
-    store.markPaid('credit', 'loan', 'a', { accountId: 'card' })
-    const creditPaid = await page(Money, '/money')
-    expect(ahead(creditPaid).indexOf('Аренда')).toBeLessThan(ahead(creditPaid).indexOf('Кредит'))
-    expect(ahead(creditPaid)).toContain('оплачено · дальше')
+    // Аренда 28-го раньше интернета 30-го; кредит 15-го уже прошёл — не «до зарплаты».
+    const before = await paydaySheet()
+    expect(before.sheet.indexOf('Аренда')).toBeLessThan(before.sheet.indexOf('Интернет'))
+    expect(before.sheet).toContain(money(220_000))
+    expect(before.sheet.match(/Оплатил/g)).toHaveLength(2)
+    expect(before.sheet).not.toContain('Кредит')
+    expect(before.screen).toContain(`2 списания · ${plain(230_000)} ₸ · остаётся ${plain(770_000)} ₸`)
 
+    // Оплачен ранний платёж (аренда 28-го) — он уходит под интернет 30-го, с отметкой.
     store.markPaid('obligation', 'rent', 'a', { accountId: 'card' })
-    const after = ahead(await page(Money, '/money'))
-    // Оплачено всё — снова по дню.
-    expect(after.indexOf('Кредит')).toBeLessThan(after.indexOf('Аренда'))
-    // Всё оплачено: на счетах — остаток из отметок.
-    expect(after).toContain(`На счетах ${plain(722_000)} ₸`)
+    const paid = await paydaySheet()
+    expect(paid.sheet.indexOf('Интернет')).toBeLessThan(paid.sheet.indexOf('Аренда'))
+    expect(paid.sheet).toContain('оплачено · дальше')
+    // Деньги уже ушли с карты (1 000 000 − 220 000): в сумму «до зарплаты» аренда не входит второй раз.
+    expect(paid.screen).toContain(`1 списание · ${plain(10_000)} ₸ · остаётся ${plain(770_000)} ₸`)
     expect(await page(History, '/money/history')).not.toContain('Впереди')
   })
 
@@ -226,9 +232,10 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     // Отмеченный — тоже со знаком, сумма из отметки.
     store.markPaid('obligation', 'rent', 'a', { amount: 225_000, accountId: 'card' })
     expect(await page(Budget, '/budget', { initialView: 'list' })).toContain(`−${plain(225_000)}`)
-    const overview = await page(Money, '/money')
-    expect(overview).toContain(money(58_000))
-    expect(overview).not.toContain(`−${plain(58_000)}`)
+    // Лист «До зарплаты» «Денег» — сумма с ₸, без минуса (как было во «Впереди»).
+    const { sheet } = await paydaySheet()
+    expect(sheet).toContain(money(225_000))
+    expect(sheet).not.toContain(`−${plain(225_000)}`)
   })
 
   /* ---------------- критик dfc7ab0: группы, viewer, оценка, «оставить?» ---------------- */
@@ -353,12 +360,13 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
       setActivePinia(createPinia())
       family(role, [netflix])
       const dreams = await page(Dreams, '/')
-      const overview = await page(Money, '/money')
+      // «Деньги» — лист «До зарплаты» (пивот 3): аренда 28-го в нём у обоих.
+      const overview = (await paydaySheet()).sheet
       const budget = await page(Budget, '/budget', { initialView: 'list' })
       // Платежи на месте у обоих — пропадают только кнопки.
-      expect(overview).toContain('Впереди')
-      expect(overview).toContain('Netflix')
+      expect(overview).toContain('Аренда')
       expect(budget).toContain('Аренда')
+      expect(budget).toContain('Netflix')
       if (role === 'member') {
         expect(dreams).toContain('Оставить подписку Netflix?')
         expect(overview).toContain('Оплатил')
@@ -381,9 +389,8 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     // Контроль: у аренды признака нет.
     expect(await row(rent)).not.toMatch(/>оценка</)
 
-    const overview = await page(Money, '/money')
-    // Возврат смоука: блок «До зарплаты» стал списком «Впереди» (g6).
-    const payday = overview.slice(overview.indexOf('Впереди'))
+    // Пивот 3: лист «До зарплаты» «Денег» — те же строки, что были во «Впереди».
+    const payday = (await paydaySheet()).sheet
     expect(payday).toContain('Коммуналка')
     expect(payday).toMatch(/Коммуналка[\s\S]*?>оценка</)
     // Аренда (28-е) в том же блоке идёт после коммуналки (26-е) — и без признака.

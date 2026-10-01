@@ -1,19 +1,24 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
+import { useOperationsStore } from '@/stores/operations'
+import { apiClient } from '@/api/client'
 import {
   budgetAmounts,
+  freeByFact,
   netWorth,
   cushionMonths,
   liquidCash,
   nextChange,
   untilPayday,
 } from '@/lib/finance'
-import { money, plain } from '@/lib/money'
-import { renderScreen } from '@/test/screenState'
+import { money, pct, plain } from '@/lib/money'
+import type { SyncDoc } from '@/types/finance'
+import type { SpendTotal } from '@/lib/statements/types'
+import { authAs, planFamilyDoc, planOf, T0 } from '@/test/planFamily'
+import { renderScreen, screenMixin } from '@/test/screenState'
 import Money from './Money.vue'
-import History from './History.vue'
 
 describe('views/Money.vue — финансовые показатели (расчёты бывшего Обзора, B2C-14)', () => {
   const storageMap = new Map<string, string>()
@@ -236,38 +241,157 @@ describe('views/Money.vue — финансовые показатели (рас�
   })
 
 
-  it('рендерит «Деньги» (SSR, g6): «Свободно до конца месяца · до зарплаты N дней», входы с цифрой одной строкой, «Впереди» с платежами месяца и ссылкой на календарь', async () => {
-    useAuthStore().setAuthData({
-      token: 't',
-      user: { id: 'u-a', email: 'a@example.com', created_at: '' },
-      household: { id: 'h-1', name: 'Family', created_by: 'u-a', created_at: '' },
-      member: { household_id: 'h-1', user_id: 'u-a', slot: 'a', display_name: 'Ильяс', role: 'member', joined_at: '' },
+  describe('пивот 3 (B2C-41): «Деньги» — сводка «До зарплаты», три квадрата, виджеты Доход · Еда и быт · Долги', () => {
+    const total = (by: 'a' | 'b', period: string, categoryId: string, amount: number): SpendTotal => ({
+      id: `${by}:month:${period}:${categoryId}`, by, kind: 'month', period, categoryId, amount, ops: 1, updatedAt: T0,
     })
-    const store = useFinanceStore()
-    store.householdDoc.people = [{ id: 'a', name: 'Ильяс', salary: 700_000, payday: 10, updatedAt: '' }]
-    store.householdDoc.obligations = [
-      { id: 'ob-rent', name: 'Аренда квартиры', note: 'ежемесячно', day: 5, category: 'd1', versions: [{ from: '2026-01', amount: 200_000 }], updatedAt: '' },
-    ]
-    store.householdDoc.accounts = [{ id: 'acc-1', name: 'Kaspi Gold', note: '', kind: 'card', amount: 500_000, updatedAt: '' }]
+    const upload = { id: 'u1', slot: 'a' as const, bank: 'kaspi', period_from: '2026-09-01', period_to: '2026-09-11', ops_count: 10, created_at: T0 }
+    // Текст как его видит человек: теги — пробел, переводы строк и пробелы шаблона схлопнуты (NBSP сумм остаются).
+    const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
+    // Лист в SSR рендерится на месте (без Teleport) — его текст отдельно от экрана.
+    const dialog = (html: string) => {
+      expect(html).toContain('role="dialog"')
+      // Лист — внутри сводки, сразу за ним — квадраты «Денег».
+      const at = html.indexOf('role="dialog"')
+      return html.slice(at, html.indexOf('aria-label="Деньги"', at))
+    }
+    const squares = (html: string) => {
+      const at = html.indexOf('aria-label="Деньги"')
+      return html.slice(at, html.indexOf('</div>', at))
+    }
 
-    const html = await renderScreen(Money, '/money')
-    for (const t of ['Бюджет', 'Капитал', 'План «Сначала долги»', 'История и итоги']) expect(html).toContain(t)
-    // Возврат смоука (смоук владельца, п. 6): карточка «Свободно» первой, справа — «до зарплаты»; выписок нет — «—».
-    expect(html).toContain('Свободно до конца месяца')
-    expect(html).toContain('до зарплаты')
-    expect(html.indexOf('Свободно до конца месяца')).toBeLessThan(html.indexOf('Бюджет'))
-    // Подписи входов — данные одной строкой, а не описание экрана.
-    expect(html).toContain(`доход ${plain(700_000)} · план и календарь платежей`)
-    expect(html).toContain(`счета и долги · чистых ${money(500_000)}`)
-    expect(html).not.toContain('план месяца, календарь платежей, список')
-    // «Впереди» — здесь (§3: список «Впереди» — второй уровень «Деньги»), с «Оплатил» и календарём.
-    for (const t of ['Впереди', 'Календарь', 'Аренда квартиры', 'Оплатил', 'Зарплата']) expect(html).toContain(t)
-    expect(html).toContain('href="/money/budget"')
-    const history = await renderScreen(History, '/money/history')
-    expect(history).not.toContain('Впереди')
-    // Прежнего героя «Свободно в …» и легенды здесь нет — они на главном и в Бюджете (B2C-14).
-    expect(html).not.toContain('Свободно в')
-    expect(html).not.toContain('распределено')
+    // Семья `planFamilyDoc`: Ильяс 700 000 (10-го), Аруна 500 000 (20-го), аренда 220 000 (5-го), три долга
+    // (15-го, 22-го, 25-го), еда и быт 150 000. «Сейчас» — 12 сентября: до зарплаты Аруны 8 дней.
+    async function family(role: 'member' | 'viewer' = 'member', extra: Partial<SyncDoc> = {}, uploads: (typeof upload)[] = []) {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-09-12T07:00:00Z'))
+      setActivePinia(createPinia())
+      useAuthStore().setAuthData(authAs(role, 'a'))
+      useFinanceStore().setHouseholdDoc(planFamilyDoc(extra), 1)
+      vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads })
+      await useOperationsStore().loadUploads()
+      return useFinanceStore()
+    }
+    afterEach(() => {
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    })
+
+    it('сводка: дни до зарплаты, K списаний и сумма — из untilPayday, «хватает» и остаток; «Оплатил» уменьшает K и сумму', async () => {
+      const store = await family()
+      const p = untilPayday({ people: store.people, obligations: store.obligations, credits: store.credits, accounts: store.householdAccounts, payments: store.payments })!
+      expect(p.inDays).toBe(8)
+      expect(p.due.map((d) => d.name)).toEqual(['Кредит'])
+      expect(p.dueTotal).toBe(58_000)
+      let html = text(await renderScreen(Money, '/money'))
+      expect(html).toContain('До зарплаты 8 дней')
+      expect(html).toContain(`1 списание · ${plain(58_000)} ₸ · остаётся ${plain(p.shortfall)} ₸`)
+      expect(html).toContain('хватает')
+      // «Впереди», меню входов и «Свободно до конца месяца» ушли (Р-31, Р-32).
+      for (const gone of ['Впереди', 'Календарь', 'История и итоги', 'Свободно до конца месяца']) expect(html).not.toContain(gone)
+      // Лист «До зарплаты» — те же строки с «Оплатил» и строка зарплаты.
+      const sheet = text(dialog(await renderScreen(Money, '/money', undefined, [screenMixin({ open: true })])))
+      for (const t of ['До зарплаты', 'Кредит', 'Оплатил', 'Аруна']) expect(sheet).toContain(t)
+      store.markPaid('credit', 'loan', 'a', { period: '2026-09', accountId: 'card' })
+      html = text(await renderScreen(Money, '/money'))
+      expect(html).toContain('Списаний нет')
+      expect(html).not.toContain('1 списание')
+    })
+
+    it('сводка: на счетах меньше — «не хватает N ₸»; счетов нет — «Добавьте счёт»; оклада нет ни у кого — карточки нет', async () => {
+      await family('member', { accounts: [{ id: 'card', name: 'Kaspi Gold', note: '', amount: 20_000, amountSetAt: T0, kind: 'card', updatedAt: T0 }] })
+      let html = text(await renderScreen(Money, '/money'))
+      expect(html).toContain(`не хватает ${plain(38_000)} ₸`)
+      expect(html).not.toContain('остаётся')
+      await family('member', { accounts: [] })
+      html = text(await renderScreen(Money, '/money'))
+      expect(html).toContain('Добавьте счёт — покажем, хватит ли')
+      expect(html).not.toContain('хватает')
+      await family('member', { people: planFamilyDoc().people.map((x) => ({ ...x, salary: 0 })) })
+      html = text(await renderScreen(Money, '/money'))
+      expect(html).not.toContain('До зарплаты')
+    })
+
+    it('квадраты: Капитал — чистых коротко, План — три состояния, История — «отметки» без операций; активный — по адресу', async () => {
+      const store = await family()
+      const worth = netWorth(store.accounts, store.credits, store.goals)
+      let html = await renderScreen(Money, '/money')
+      expect(text(squares(html))).toContain(`Капитал ${plain(worth)}`)
+      expect(text(squares(html))).toContain('План гасить первым')
+      expect(text(squares(html))).toContain('История отметки')
+      expect(squares(html).match(/aria-current="page"/g)).toHaveLength(1)
+      expect(squares(html)).toMatch(/aria-current="page"[^>]*>\s*<b[^>]*>Капитал/)
+      store.householdDoc.plans = [planOf()]
+      html = await renderScreen(Money, '/money/plan')
+      expect(text(squares(html))).toContain('План сначала долги')
+      expect(squares(html)).toMatch(/aria-current="page"[^>]*>\s*<b[^>]*>План/)
+      // Сводка и виджеты — только у Капитала.
+      expect(html).not.toContain('До зарплаты')
+      expect(html).not.toContain('обязательное')
+      store.householdDoc.plans = []
+      store.householdDoc.credits = []
+      html = await renderScreen(Money, '/money/history')
+      expect(text(squares(html))).toContain('План долгов нет')
+      expect(squares(html)).toMatch(/aria-current="page"[^>]*>\s*<b[^>]*>История/)
+    })
+
+    it('«Доход»: оклады, нагрузка = доля жилья и кредитов (формула Бюджета), доли в легенде, строки участников с днём', async () => {
+      const store = await family()
+      const a = budgetAmounts({ ...store.householdDoc, credits: store.credits })
+      expect(a).toMatchObject({ d1: 220_000, d2: 103_000, d3: 130_000, d4: 150_000, d5: 597_000, income: 1_200_000 })
+      const html = text(await renderScreen(Money, '/money'))
+      expect(html).toContain(money(1_200_000))
+      expect(html).toContain(`нагрузка ${pct(a.d1 + a.d2, a.income)} %`)
+      expect(html).toContain('нагрузка 27 %')
+      for (const t of ['обязательное 27 %', 'мечты 11 %', 'еда и быт 13 %', 'свободно 50 %']) expect(html).toContain(t)
+      expect(html).toContain(`Ильяс 10-го ${money(700_000)}`)
+      expect(html).toContain(`Аруна 20-го ${money(500_000)}`)
+      expect(html).not.toContain('План не сходится')
+    })
+
+    it('«Еда и быт»: факт — траты по выпискам без разделов плана (= вычитаемое «Свободно»), план — база d4; без загрузок — «—» без тега', async () => {
+      const totals = [total('a', '2026-09', 'sc_food', 90_000), total('b', '2026-09', 'sc_cafe', 30_000), total('a', '2026-09', 'sc_credit', 58_000)]
+      const store = await family('member', { spendTotals: totals }, [upload])
+      const fact = freeByFact({ ...store.householdDoc, credits: store.credits }, totals, store.householdDoc.spendCategories ?? [], '2026-09', [upload]).spent
+      expect(fact).toBe(120_000)
+      const html = text(await renderScreen(Money, '/money'))
+      expect(html).toContain(`${money(fact)} план ${plain(150_000)}`)
+      expect(html).toContain('по выпискам 80 %')
+      await family('member', { spendTotals: totals }, [])
+      const none = text(await renderScreen(Money, '/money'))
+      expect(none).toContain(`— план ${plain(150_000)}`)
+      expect(none).not.toContain('по выпискам')
+    })
+
+    it('«Долги»: остаток красным, «в сентябре оплачено N из M» растёт после «Оплатил», «чистых» = netWorth; без долгов — «Долгов нет»', async () => {
+      const store = await family()
+      let html = text(await renderScreen(Money, '/money'))
+      expect(html).toContain(`−${money(1_540_000)}`)
+      expect(html).toContain('в сентябре оплачено 0 из 3')
+      expect(html).toContain(`чистых ${money(netWorth(store.accounts, store.credits, store.goals))}`)
+      store.markPaid('credit', 'loan', 'a', { period: '2026-09', accountId: 'card' })
+      html = text(await renderScreen(Money, '/money'))
+      expect(html).toContain('в сентябре оплачено 1 из 3')
+      // «Чистый капитал» карточкой больше нет — он строкой в «Долгах» (Р-33).
+      expect(html).not.toContain('Чистый капитал')
+      store.householdDoc.credits = []
+      html = text(await renderScreen(Money, '/money'))
+      expect(html).toContain('Долгов нет')
+      expect(html).not.toContain('оплачено')
+    })
+
+    it('viewer: оклады и план «Еды и быта» — текстом, без кнопок; в листе «До зарплаты» нет «Оплатил»', async () => {
+      await family('viewer')
+      const html = await renderScreen(Money, '/money')
+      expect(text(html)).toContain(`план ${plain(150_000)}`)
+      expect(html).not.toMatch(/<button[^>]*>\s*план/)
+      expect(html).not.toMatch(/<button[^>]*>\s*<span[^>]*title="Ильяс"/)
+      expect(html).toMatch(/<div[^>]*>\s*<span[^>]*title="Ильяс"/)
+      const sheet = text(dialog(await renderScreen(Money, '/money', undefined, [screenMixin({ open: true })])))
+      expect(sheet).toContain('Кредит')
+      expect(sheet).not.toContain('Оплатил')
+      expect(sheet).not.toContain('Пришла зарплата')
+    })
   })
 
   it('критик возврата 2: «Пришла зарплата» в «Деньгах» — по тому же условию, что главный и «Неделя» (salaryAsk): в день зарплаты своя есть, чужая и отмеченная — нет', async () => {
@@ -348,7 +472,7 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(html).not.toContain('Перед экономией')
       expect(html).not.toContain('переезд')
       // Счёта нет — одна строка вместо абзаца.
-      expect(html).toContain('Добавьте счёт в «Капитале» — покажем, хватит ли.')
+      expect(html).toContain('Добавьте счёт — покажем, хватит ли')
       expect(html).not.toContain('приложение не знает')
 
       // Ежемесячное 300 000 → 220 000: 80 000 в месяц, 960 000 за год. На карте меньше списаний — одна фраза.
@@ -359,7 +483,8 @@ describe('views/Money.vue — финансовые показатели (рас�
       html = await renderScreen(Money, '/money')
       expect(html).toContain(`Освободится ${money(80_000)} в месяц`)
       expect(html).toContain(`Аренда: ${plain(300_000)} → ${plain(220_000)} ₸ · ${money(960_000)} за год`)
-      expect(html).toContain(`На счетах ${plain(100_000)} ₸ — не хватает ${plain(200_000)} ₸.`)
+      // Сводка «До зарплаты» (пивот 3): аренда 300 000 до 25-го, на счетах 100 000 — тег «не хватает».
+      expect(html).toContain(`не хватает ${plain(200_000)} ₸`)
       expect(html).not.toContain('Перенесите платёж')
     } finally {
       vi.useRealTimers()

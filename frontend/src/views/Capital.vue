@@ -74,6 +74,11 @@ const props = withDefaults(
     initialAdvice?: 'order' | 'strategy'
     /** Стартовые поля формы долга — для SSR-тестов (форма открывается по ?add=debt). */
     initialDebt?: { mode?: 'none' | 'rate' | 'term'; principal?: string; payment?: string; term?: string }
+    /**
+     * Внутри «Денег» (пивот 3, до B2C-42): списки и окна Капитала под виджетами; «Чистый капитал»
+     * карточкой не показывается — он в виджете «Долги».
+     */
+    embedded?: boolean
   }>(),
   { initialAdvice: 'order' },
 )
@@ -187,6 +192,8 @@ watch(
     }
     if (typeof q.credit === 'string') selectedCreditId.value = q.credit
     if (typeof q.obligation === 'string') selectedObligationId.value = q.obligation
+    // Счёт и вклад — лист счёта (старый адрес `/money/capital/:id` → `/money?account=:id`).
+    if (typeof q.account === 'string') selectedAccountId.value = q.account
     if (typeof q.payoff === 'string') payoffCreditId.value = q.payoff
   },
   { immediate: true },
@@ -490,7 +497,7 @@ function changePlanMode(c: Credit) {
 
 /* ------------------ Окна по адресу (Б-15) ------------------ */
 /** Параметры адреса, которыми открываются окна. */
-const QUERY_KEYS = ['add', 'income', 'credit', 'obligation', 'payoff']
+const QUERY_KEYS = ['add', 'income', 'credit', 'obligation', 'payoff', 'account']
 const queryModalOpen = computed(
   () =>
     addDebtOpen.value ||
@@ -500,7 +507,8 @@ const queryModalOpen = computed(
     // но id остаётся — адрес тогда не очистился бы никогда. Окна — в `components/capital/`
     // и ищут запись среди тех же живых кредитов и обязательств.
     credits.value.some((c) => c.id === selectedCreditId.value || c.id === payoffCreditId.value) ||
-    obligations.value.some((o) => o.id === selectedObligationId.value),
+    obligations.value.some((o) => o.id === selectedObligationId.value) ||
+    accounts.value.some((a) => a.id === selectedAccountId.value),
 )
 // Все такие окна закрылись — адрес очищается (React `setParams({}, { replace: true })`),
 // каким бы путём их ни закрыли: крестик, фон, Escape, «Готово», запись формы. Иначе
@@ -516,7 +524,7 @@ watch(queryModalOpen, (open) => {
 <template>
   <div class="flex flex-col gap-3.5 pt-1">
     <!-- Чистый капитал (g6 «Капитал»): подпись секции, большая сумма, строки «На счетах · Накоплено по мечтам · Долги» -->
-    <Card>
+    <Card v-if="!embedded">
       <div class="flex items-center gap-1.5 type-section">
         Чистый капитал
         <Hint>
@@ -565,7 +573,7 @@ watch(queryModalOpen, (open) => {
         :value="money(a.amount)"
         :sub="a.deposit ? 'условия вклада' : undefined"
         clickable
-        @click="a.deposit ? router.push(`/money/capital/${a.id}`) : (selectedAccountId = a.id)"
+        @click="selectedAccountId = a.id"
       >
         <template #icon>
           <PhBank v-if="a.kind === 'deposit'" :size="17" />

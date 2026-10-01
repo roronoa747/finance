@@ -92,8 +92,8 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       expect(row('Зарплата · Ильяс')).not.toMatch(/>\s*Пришла\s*<\/button>/)
       expect(row('Зарплата · Аруна')).not.toMatch(/>\s*Пришла\s*<\/button>/)
 
-      // Ближайшая зарплата у обоих — Аруны: строка «Впереди» в «Деньгах» (g6; блок «До зарплаты» — возврат смоука).
-      const overview = await screen(B.pinia, Money, '/money')
+      // Ближайшая зарплата у обоих — Аруны: строка листа сводки «До зарплаты» в «Деньгах» (пивот 3, Р-32).
+      const overview = await screen(B.pinia, Money, '/money', undefined, [screenMixin({ open: true })])
       expect(overview).toContain('Зарплата · Аруна')
     })
 
@@ -311,7 +311,7 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
         // Считается ранняя по моменту отметки.
         expect(paidFor(s.payments, 'salary', 'a', '2026-09')!.id).toBe(first.id)
       }
-      expect(await screen(A2.pinia, Money, '/money')).toContain('Зарплата · Аруна')
+      expect(await screen(A2.pinia, Money, '/money', undefined, [screenMixin({ open: true })])).toContain('Зарплата · Аруна')
     })
 
     it('RP-11: окно по Алматы на стыке месяцев; ответ помнит устройство — на телефоне партнёра вопрос остаётся', async () => {

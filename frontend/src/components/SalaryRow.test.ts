@@ -103,12 +103,12 @@ describe('RP-10: «Пришла зарплата» (SSR)', () => {
     expect(theirs).not.toContain('подробнее')
   })
 
-  // Возврат смоука (g6): «до зарплаты N дней» — в карточке «Свободно», кнопка — под ней; ближайшая зарплата — строкой «Впереди».
-  it('«Деньги»: «Пришла зарплата» под «до зарплаты» — у того, чья зарплата ближайшая; после отметки — следующая', async () => {
+  // Пивот 3 (Р-32, Р-39): «Пришла зарплата» — в сводке «До зарплаты N дней»; ближайшая зарплата — строкой её листа.
+  it('«Деньги»: «Пришла зарплата» в сводке «До зарплаты» — у того, чья зарплата ближайшая; после отметки — следующая', async () => {
     vi.setSystemTime(new Date('2026-09-09T07:00:00Z')) // завтра зарплата Ильяса, списаний до неё нет
     family('member', 'a')
     const mine = await renderScreen(Money, '/money')
-    expect(mine).toContain('до зарплаты')
+    expect(mine).toContain('До зарплаты 1 день')
     expect(mine).toMatch(/>\s*Пришла зарплата\s*</)
 
     setActivePinia(createPinia())
@@ -122,8 +122,9 @@ describe('RP-10: «Пришла зарплата» (SSR)', () => {
     // Отметили раньше дня — «До зарплаты» смотрит на зарплату Аруны 20-го.
     setActivePinia(createPinia())
     family('member', 'a', [salary({ at: '2026-09-09T04:00:00.000Z' })])
-    const after = await renderScreen(Money, '/money')
-    expect(after).toContain('Зарплата · Аруна')
+    const after = await renderScreen(Money, '/money', undefined, [screenMixin({ open: true })])
+    expect(after).toContain('До зарплаты 11 дней')
+    expect(after.slice(after.indexOf('role="dialog"'))).toContain('Зарплата · Аруна')
     expect(after).not.toMatch(/Пришла зарплата/)
   })
 

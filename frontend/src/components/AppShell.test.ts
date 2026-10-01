@@ -46,10 +46,9 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     ['/week', 'Неделя'],
     ['/week/salary', 'Разложим'],
     ['/money', 'Деньги'],
-    ['/money/budget', 'Бюджет'],
-    ['/money/capital', 'Капитал'],
-    ['/money/capital/x', 'Вклад'],
-    ['/money/plan', 'План'],
+    // «Деньги» — один экран с квадратами (пивот 3, Р-31): шапка одна на все три.
+    ['/money/plan', 'Деньги'],
+    ['/money/history', 'Деньги'],
     ['/goals/x', 'Цель'],
     ['/goals/new', 'Новая мечта'],
     ['/wishes', 'Желания'],
@@ -76,14 +75,19 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
   })
 
   it('шапка по макетам (возврат смоука): «Деньги» — аватары без шестерёнки; «Неделя» — даты в подписи, без аватаров; вложенные — «назад» без аватаров', async () => {
-    const money = await renderScreen(AppShell, '/money')
-    expect(money).toContain('href="/people/a"')
-    expect(money).not.toContain('aria-label="Настройки"')
+    // Квадраты «Денег» — корни, как сама вкладка (пивот 3): подпись месяца, аватары, без «назад».
+    for (const path of ['/money', '/money/plan', '/money/history']) {
+      const money = await renderScreen(AppShell, path)
+      expect(money).toContain('Сентябрь · Ильяс и Дана')
+      expect(money).toContain('href="/people/a"')
+      expect(money).not.toContain('aria-label="Настройки"')
+      expect(money).not.toContain('aria-label="Назад"')
+    }
     const week = await renderScreen(AppShell, '/week')
     expect(week).toContain('14–20 сентября')
     expect(week).not.toContain('href="/people/a"')
     expect(week).not.toContain('aria-label="Настройки"')
-    for (const path of ['/money/capital', '/goals/x', '/settings']) {
+    for (const path of ['/goals/new', '/goals/x', '/settings']) {
       const html = await renderScreen(AppShell, path)
       expect(html).toContain('aria-label="Назад"')
       expect(html).not.toContain('href="/people/a"')
@@ -105,7 +109,8 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     }
     expect(await active('/')).toBe('/')
     expect(await active('/week')).toBe('/week')
-    expect(await active('/money/capital')).toBe('/money')
+    expect(await active('/money/plan')).toBe('/money')
+    expect(await active('/money/history')).toBe('/money')
     // Возврат смоука: в макетах g2/g4/g7 у цели, желаний, настроек и раскладки нижней навигации нет — путь назад в шапке.
     for (const path of ['/goals/x', '/people/a', '/wishes', '/settings', '/week/salary']) {
       const html = await renderScreen(AppShell, path)

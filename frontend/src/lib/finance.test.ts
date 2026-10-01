@@ -100,6 +100,10 @@ import {
   subscriptionYearly,
   goalRemaining,
   freeByFact,
+  monthSpentByFact,
+  incomeSplit,
+  livingPlanFact,
+  debtsSummary,
   nextDecision,
   salaryAsk,
   salaryToAllocate,
@@ -2486,6 +2490,84 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       const f = freeByFact(state, [total('a', 'month', '2026-09', 'sc_credit', 58_000)], own, '2026-09', uploads)
       expect(f.spent).toBe(58_000)
       expect(freeByFact(state, [total('a', 'month', '2026-09', 'sc_credit', 58_000)], [], '2026-09', uploads).spent).toBe(0)
+    })
+  })
+
+  describe('«Деньги» (пивот 3, B2C-41): факт трат, доли дохода, «Еда и быт», долги, до зарплаты', () => {
+    const state = { people, obligations: [rent], credits: [loan], goals: [goal('g', 'Цель')], categories: [], payments: [] as Payment[] }
+    const uploads = [{ slot: 'a', period_from: '2026-09-01', period_to: '2026-09-17' }]
+    const totals = [
+      total('a', 'month', '2026-09', 'sc_food', 150_000),
+      total('b', 'month', '2026-09', 'sc_cafe', 50_000),
+      total('a', 'month', '2026-09', 'sc_credit', 58_000),
+      total('a', 'month', '2026-09', 'sc_rent', 220_000),
+      total('a', 'month', '2026-09', '_unknown', 20_000),
+      total('a', 'week', '2026-W38', 'sc_food', 999_999),
+    ]
+
+    it('monthSpentByFact — то самое, что вычитает freeByFact: план − факт = «Свободно»; без загрузок — null', () => {
+      const spent = monthSpentByFact(totals, categories, '2026-09', uploads)
+      expect(spent).toBe(150_000 + 50_000 + 20_000)
+      const f = freeByFact(state, totals, categories, '2026-09', uploads)
+      expect(f.spent).toBe(spent)
+      expect(f.income - f.dues - f.goals - spent!).toBe(f.amount)
+      // Флаг семьи сильнее словаря — в обоих местах одинаково.
+      const own = categories.map((c) => (c.id === 'sc_rent' ? { ...c, plannedElsewhere: false } : c))
+      expect(monthSpentByFact(totals, own, '2026-09', uploads)).toBe(freeByFact(state, totals, own, '2026-09', uploads).spent)
+      expect(monthSpentByFact(totals, categories, '2026-09', [{ slot: 'a', period_from: '2026-08-01', period_to: '2026-08-31' }])).toBeNull()
+      expect(monthSpentByFact([], categories, '2026-09', uploads)).toBe(0)
+    })
+
+    it('incomeSplit: нагрузка = доля жилья и кредитов (формула «вместе с жильём»), доли — проценты Бюджета, свободно не меньше 0', () => {
+      const a = { d1: 220_000, d2: 103_000, d3: 130_000, d4: 150_000, d5: 597_000, income: 1_200_000, planExtra: 0 }
+      const s = incomeSplit(a)
+      expect(s.load).toBe(27)
+      expect(s.load).toBe(pct(a.d1 + a.d2, a.income))
+      expect(s.parts.map((p) => [p.key, p.amount, p.pct])).toEqual([
+        ['must', 323_000, 27],
+        ['dreams', 130_000, 11],
+        ['living', 150_000, 13],
+        ['free', 597_000, 50],
+      ])
+      expect(s.parts[0].share).toBeCloseTo(323_000 / 1_200_000, 6)
+      expect(s.overplanned).toBe(0)
+      // С планом «Сначала долги» досрочка — в «мечтах»; расписано больше дохода — свободно 0 и «не сходится».
+      const over = incomeSplit({ ...a, d3: 100_000, planExtra: 30_000, d4: 800_000, d5: -53_000 })
+      expect(over.parts.find((p) => p.key === 'dreams')!.amount).toBe(130_000)
+      expect(over.parts.find((p) => p.key === 'free')).toMatchObject({ amount: 0, pct: 0, share: 0 })
+      expect(over.overplanned).toBe(53_000)
+      expect(incomeSplit({ ...a, income: 0 })).toMatchObject({ load: 0 })
+    })
+
+    it('livingPlanFact: план — база раздела d4, факт — monthSpentByFact, проценты факта от плана; нет загрузок — факта и процента нет', () => {
+      const cats = [{ key: 'd4' as const, name: 'Еда и быт', note: '', amount: 300_000, updatedAt: T }]
+      expect(livingPlanFact(cats, totals, categories, '2026-09', uploads)).toEqual({ plan: 300_000, spent: 220_000, pct: 73, share: 220_000 / 300_000, over: false })
+      expect(livingPlanFact(cats, totals, categories, '2026-09', [])).toEqual({ plan: 300_000, spent: null, pct: null, share: 0, over: false })
+      const small = [{ ...cats[0], amount: 200_000 }]
+      expect(livingPlanFact(small, totals, categories, '2026-09', uploads)).toMatchObject({ pct: 110, share: 1, over: true })
+      expect(livingPlanFact([], totals, categories, '2026-09', uploads)).toMatchObject({ plan: 0, spent: 220_000, pct: null })
+    })
+
+    it('debtsSummary: остаток живых кредитов и «оплачено N из M» из monthDues — после «Оплатил» N растёт', () => {
+      const cc: Credit = { ...loan, id: 'cc', name: 'Кредитка', principal: 300_000, payment: 25_000, day: 22 }
+      const s = { credits: [loan, cc], payments: [] as Payment[] }
+      expect(debtsSummary(s, '2026-09')).toEqual({ total: loan.principal + 300_000, open: true, paid: 0, count: 2 })
+      const paid: Payment = { id: 'p', kind: 'credit', targetId: 'loan', period: '2026-09', amount: 58_000, accountId: null, by: 'a', at: T, updatedAt: T }
+      expect(debtsSummary({ ...s, payments: [paid] }, '2026-09')).toMatchObject({ paid: 1, count: 2 })
+      expect(debtsSummary({ credits: [{ ...loan, principal: 0 }], payments: [] }, '2026-09')).toMatchObject({ total: 0, open: false })
+      expect(debtsSummary({ credits: [], payments: [] }, '2026-09')).toEqual({ total: 0, open: false, paid: 0, count: 0 })
+    })
+
+    it('untilPayday: список платежей до зарплаты — сводка «K списаний · сумма»: сумма списка = dueTotal, оплаченное — отдельно', () => {
+      const p = untilPayday({ people, obligations: [rent], credits: [loan], accounts: [], payments: [] }, { day: 3, key: '2026-09' })!
+      expect(p.due.length).toBeGreaterThan(0)
+      expect(p.due.reduce((a, x) => a + x.value, 0)).toBe(p.dueTotal)
+      const first = p.due[0]
+      const paid: Payment = { id: 'p', kind: first.kind, targetId: first.targetId, period: first.when, amount: first.value, accountId: null, by: 'a', at: T, updatedAt: T }
+      const after = untilPayday({ people, obligations: [rent], credits: [loan], accounts: [], payments: [paid] }, { day: 3, key: '2026-09' })!
+      expect(after.due).toHaveLength(p.due.length - 1)
+      expect(after.dueTotal).toBe(p.dueTotal - first.value)
+      expect(after.paid.map((x) => x.targetId)).toContain(first.targetId)
     })
   })
 

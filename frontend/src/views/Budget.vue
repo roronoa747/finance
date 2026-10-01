@@ -153,7 +153,7 @@ const events = computed<EventItem[]>(() => {
       income: false,
       pay: d.kind,
       open: () => {
-        void router.push(`/money/capital?${d.kind}=${d.targetId}`)
+        void router.push(`/money?${d.kind}=${d.targetId}`)
       },
     })),
     {

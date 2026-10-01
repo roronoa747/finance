@@ -68,8 +68,8 @@ const draftSub = computed(() => {
   return `${[...new Set(files.map((f) => BANKS[f.parsed.bank] ?? f.parsed.bank))].join(', ')} · ${weekRangeLabel({ from, to })}`
 })
 
-/** Вкладки — корни; остальное — вложенные экраны со стрелкой «назад» (g2, g4, g6, g7). */
-const ROOTS = ['/', '/week', '/money']
+/** Вкладки — корни (у «Денег» — все три квадрата, пивот 3); остальное — вложенные экраны со стрелкой «назад». */
+const ROOTS = ['/', '/week', '/money', '/money/plan', '/money/history']
 const isRoot = computed(() => ROOTS.includes(route.path))
 /** Экраны-потоки без нижней навигации (в макетах — без вкладок): цель, желания, настройки, раскладка. */
 const noTabs = computed(() => {
@@ -96,12 +96,8 @@ const header = computed<{ title: string; sub?: string }>(() => {
     return { title: 'Разложим', sub }
   }
   if (p.startsWith('/week')) return ops.draft ? { title: 'Разбор', sub: draftSub.value } : { title: 'Неделя', sub: weekSub.value }
-  if (p === '/money') return { title: 'Деньги', sub: `${monthName.value} · ${names.value}` }
-  if (p.startsWith('/money/budget')) return { title: 'Бюджет' }
-  if (p === '/money/capital') return { title: 'Капитал', sub: 'счета и долги семьи' }
-  if (p.startsWith('/money/capital/')) return { title: 'Вклад' }
-  if (p.startsWith('/money/plan')) return { title: 'План' }
-  if (p === '/money/history') return { title: 'История', sub: 'итог месяца и моменты семьи' }
+  // «Деньги» — один экран с тремя квадратами (пивот 3, Р-31): шапка одна на все.
+  if (p === '/money' || p.startsWith('/money/')) return { title: 'Деньги', sub: `${monthName.value} · ${names.value}` }
   if (p === '/goals/new') return { title: 'Новая мечта' }
   if (p.startsWith('/goals/')) {
     // Имя цели заголовком (g4 «Экран цели»): «главная мечта · Ильяс и Дана».
@@ -144,9 +140,9 @@ const actions = computed(() => {
     edit && { to: '/week?upload=1', title: 'Загрузить выписку', note: 'Kaspi или Freedom — траты недели по разделам', icon: PhFileArrowUp },
     edit && { to: '/goals/new', title: 'Новая мечта', note: 'фото, сумма и срок', icon: PhHeart },
     edit && { to: '/wishes', title: 'Покупка в список желаний', note: 'себе, партнёру или сюрприз', icon: PhShoppingBag },
-    edit && { to: '/money/capital?income=1', title: 'Внеплановый доход', note: 'премия, подарок, возврат', icon: PhCoins },
-    edit && { to: '/money/capital?add=payment', title: 'Обязательство или подписка', note: 'аренда, связь, страховка', icon: PhRepeat },
-    edit && { to: '/money/capital?add=debt', title: 'Кредит или рассрочка', note: 'долг, платёж, график', icon: PhCreditCard },
+    edit && { to: '/money?income=1', title: 'Внеплановый доход', note: 'премия, подарок, возврат', icon: PhCoins },
+    edit && { to: '/money?add=payment', title: 'Обязательство или подписка', note: 'аренда, связь, страховка', icon: PhRepeat },
+    edit && { to: '/money?add=debt', title: 'Кредит или рассрочка', note: 'долг, платёж, график', icon: PhCreditCard },
   ].filter((a): a is Exclude<typeof a, false> => Boolean(a))
 })
 

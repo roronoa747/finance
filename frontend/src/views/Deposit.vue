@@ -24,7 +24,8 @@ const financeStore = useFinanceStore()
 // Viewer видит условия вклада цифрами, но не правит и не удаляет (Р-13, матрица §3; возврат приёмки п. 3).
 const authStore = useAuthStore()
 
-const accountId = computed(() => route.params.id as string)
+// Старый адрес `/money/capital/:id` ведёт на `/money?account=:id` (пивот 3); экран уходит в B2C-45.
+const accountId = computed(() => (route.params.id ?? route.query.account) as string)
 const account = computed(() =>
   financeStore.accounts.find((a) => a.id === accountId.value),
 )
@@ -106,7 +107,7 @@ function onCapitalizeChange(v: string) {
 <template>
   <div v-if="!account || !depositData" class="pt-6 text-center text-[14px] text-ink-3">
     Вклад не найден.
-    <button class="text-brand font-medium cursor-pointer" @click="router.push('/money/capital')">
+    <button class="text-brand font-medium cursor-pointer" @click="router.push('/money')">
       К капиталу
     </button>
   </div>
@@ -115,7 +116,7 @@ function onCapitalizeChange(v: string) {
     <button
       type="button"
       class="flex items-center gap-1.5 self-start text-[13px] text-ink-2 hover:text-ink cursor-pointer"
-      @click="router.push('/money/capital')"
+      @click="router.push('/money')"
     >
       <PhArrowLeft :size="15" /> Капитал
     </button>
@@ -208,7 +209,7 @@ function onCapitalizeChange(v: string) {
         <DangerZone
           label="Удалить вклад"
           :warning="removeWarning"
-          @confirm="() => { financeStore.removeAccount(account!.id); router.push('/money/capital') }"
+          @confirm="() => { financeStore.removeAccount(account!.id); router.push('/money') }"
         />
       </template>
     </Card>

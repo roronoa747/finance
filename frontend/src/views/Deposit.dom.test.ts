@@ -50,8 +50,10 @@ async function openDeposit(role?: 'member' | 'viewer') {
     },
     1,
   )
-  const router = createRouter({ history: createMemoryHistory(), routes })
-  await router.push('/capital/dep')
+  // Экран вклада ушёл с адреса (пивот 3: `/money/capital/:id` → лист счёта в «Деньгах», B2C-42);
+  // до его удаления в B2C-45 проверяется на своём маршруте.
+  const router = createRouter({ history: createMemoryHistory(), routes: [...routes, { path: '/test/deposit/:id', component: Deposit }] })
+  await router.push('/test/deposit/dep')
   await router.isReady()
   const root = document.createElement('div')
   document.body.appendChild(root)

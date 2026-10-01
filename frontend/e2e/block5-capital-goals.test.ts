@@ -169,10 +169,11 @@ describe('e2e / block-5 — Сквозной сценарий Капитала, 
     expect(realYield).toBeCloseTo(0.0555, 3)
 
     // 7. Проверка роутера и навигации без PlaceholderView (адреса Блока 3, старые — редиректы; B2C-13)
+    // Пивот 3 (Р-31): Капитал — квадрат `/money`, окна — те же ключи query; вклад — лист счёта `?account=`.
     await router.push('/capital')
-    expect(router.currentRoute.value.path).toBe('/money/capital')
+    expect(router.currentRoute.value.path).toBe('/money')
 
-    await router.push('/money/capital?income=1')
+    await router.push('/money?income=1')
     expect(router.currentRoute.value.query.income).toBe('1')
 
     await router.push('/goals')
@@ -185,6 +186,6 @@ describe('e2e / block-5 — Сквозной сценарий Капитала, 
     expect(router.currentRoute.value.path).toBe('/goals/g-japan')
 
     await router.push('/capital/acc-depo')
-    expect(router.currentRoute.value.path).toBe('/money/capital/acc-depo')
+    expect(router.currentRoute.value.fullPath).toBe('/money?account=acc-depo')
   })
 })
