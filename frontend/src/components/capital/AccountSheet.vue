@@ -207,10 +207,6 @@ const accountRemoveWarning = computed(() => {
             <span class="text-ink-2">Ваши взносы</span>
             <b class="num text-ink">{{ money(calcResult.contributed) }}</b>
           </div>
-          <div class="flex justify-between gap-3">
-            <span class="text-ink-2">Заработал банк</span>
-            <b class="num text-brand">{{ money(Math.round(calcResult.interest)) }}</b>
-          </div>
           <div class="flex items-center gap-2 border-t border-line pt-2 text-ink-2">
             Реально ≈ {{ ratePct(realEffective, 1) }} с учётом инфляции
             <Hint>
