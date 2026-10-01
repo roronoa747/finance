@@ -1053,8 +1053,11 @@ export const goalSavings = (goals: Goal[]) =>
     .filter((g) => !g.accountId)
     .reduce((a, g) => a + Math.max(0, g.have), 0);
 
+/** Сумма строк с `amount` в тенге: живые счета (итог «Счетов»), досрочки месяца и т. п. — одно правило. */
+export const amountTotal = (list: { amount: number }[]) => list.reduce((a, x) => a + x.amount, 0);
+
 export const netWorth = (accounts: Account[], credits: Credit[], goals: Goal[] = []) =>
-  liveAccounts(accounts).reduce((a, x) => a + x.amount, 0) +
+  amountTotal(liveAccounts(accounts)) +
   goalSavings(goals) -
   liveCredits(credits).reduce((a, c) => a + c.principal, 0);
 

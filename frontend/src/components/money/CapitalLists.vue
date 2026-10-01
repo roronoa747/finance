@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { money, plain, rateField } from '@/lib/money'
 import { monthKey } from '@/lib/dates'
 import {
+  amountTotal,
   duesTotal,
   groupChildren,
   groupTotal,
@@ -55,7 +56,7 @@ const groups = computed(() => liveGroups(financeStore.obligations))
 
 /* ------------------ Счета ------------------ */
 // Сумма счёта всегда в тенге (валютный — по своему курсу), итог — их сумма.
-const accountsTotal = computed(() => accounts.value.reduce((a, x) => a + x.amount, 0))
+const accountsTotal = computed(() => amountTotal(accounts.value))
 const KIND_LABEL: Record<Account['kind'], string> = { card: 'карта', cash: 'наличные', envelope: 'конверт', deposit: 'вклад' }
 
 function accountMeta(a: Account): string {

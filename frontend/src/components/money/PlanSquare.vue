@@ -8,6 +8,7 @@ import { money, plain, ratePct } from '@/lib/money'
 import { MONTHS_GEN, monthIn, monthKey, monthShort, monthTitle, parseMonthKey } from '@/lib/dates'
 import {
   NO_SAVING,
+  amountTotal,
   budgetInterest,
   debtAdvice,
   liveCredits,
@@ -251,7 +252,7 @@ function changeMode() {
             <span class="num text-right">{{ stepText }}</span>
           </div>
           <p v-if="showStep && step && step.kind === 'prepay' && !step.applied" class="mt-0.5 text-[12.5px] num">
-            в «{{ creditName(step.creditId) }}»<template v-if="monthPaid.length">; уже внесено {{ money(monthPaid.reduce((a, p) => a + p.amount, 0)) }} — «{{ creditName(monthPaid.at(-1)!.targetId) }}» закрыт</template>
+            в «{{ creditName(step.creditId) }}»<template v-if="monthPaid.length">; уже внесено {{ money(amountTotal(monthPaid)) }} — «{{ creditName(monthPaid.at(-1)!.targetId) }}» закрыт</template>
           </p>
           <p v-for="p in step && step.kind === 'prepay' && step.applied ? monthPaid : []" :key="p.id" class="mt-0.5 text-[12.5px] num">
             {{ money(p.amount) }} в «{{ creditName(p.targetId) }}»
