@@ -43,7 +43,7 @@ function commit(text: string) {
 <template>
   <Card tight class="flex flex-col gap-2">
     <div class="flex items-center justify-between gap-3">
-      <span class="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[0.04em] text-ink-3">
+      <span class="flex items-center gap-1.5 type-label">
         Еда и быт
         <Hint label="Откуда эти суммы">
           Факт — траты по выпискам обоих за месяц, кроме кредитов, аренды, связи и подписок: они в
@@ -53,7 +53,7 @@ function commit(text: string) {
       <Tag v-if="living.pct !== null" :tone="living.over ? 'warn' : 'ok'" class="num">по выпискам {{ living.pct }} %</Tag>
     </div>
     <div class="flex items-center justify-between gap-3">
-      <span class="font-num text-[24px] font-bold leading-[1.05] tracking-[-0.01em] num text-ink">{{ living.spent === null ? '—' : money(living.spent) }}</span>
+      <span class="type-num text-[24px] num text-ink">{{ living.spent === null ? '—' : money(living.spent) }}</span>
       <button v-if="!authStore.isViewer" type="button" class="type-meta num cursor-pointer" @click="editing = true">план {{ plain(living.plan) }}</button>
       <span v-else class="type-meta num">план {{ plain(living.plan) }}</span>
     </div>

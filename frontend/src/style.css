@@ -316,6 +316,22 @@
   font-size: 13px;
   color: var(--ink-3);
 }
+/* Подпись виджета «Денег» 12/600, верхний регистр, трекинг 0.04em (макет pivot-3) */
+@utility type-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+/* Крупная цифра виджета 28/1.05 (на 24 — `text-[24px]` поверх) */
+@utility type-num {
+  font-family: var(--font-num);
+  font-weight: 700;
+  font-size: 28px;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+}
 /* Нижний градиент на фото: 0 → --photo-scrim с 35 % высоты (герой), 40 % (плитка). */
 @utility photo-scrim {
   background: linear-gradient(to bottom, transparent, var(--photo-scrim));

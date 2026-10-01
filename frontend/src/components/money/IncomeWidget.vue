@@ -40,7 +40,7 @@ const parts = computed(() => split.value.parts.map((p) => ({ ...p, ...LABEL[p.ke
 <template>
   <Card tight class="flex flex-col gap-2">
     <div class="flex items-center justify-between gap-3">
-      <span class="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[0.04em] text-ink-3">
+      <span class="flex items-center gap-1.5 type-label">
         Доход
         <Hint>
           Нагрузка — кредиты и жильё: до 30 % по кредитам комфортно, до 50 % вместе с жильём — ориентир для
@@ -49,7 +49,7 @@ const parts = computed(() => split.value.parts.map((p) => ({ ...p, ...LABEL[p.ke
       </span>
       <Tag v-if="split.income > 0" class="num">нагрузка {{ split.load }} %</Tag>
     </div>
-    <div class="font-num text-[28px] font-bold leading-[1.05] tracking-[-0.01em] num text-ink">{{ money(split.income) }}</div>
+    <div class="type-num num text-ink">{{ money(split.income) }}</div>
     <template v-if="split.income > 0">
       <StackBar :segments="parts.map((p) => ({ key: p.key, share: p.share, color: p.color }))" />
       <div class="flex flex-wrap gap-x-3 gap-y-1.5 text-[12.5px] text-ink-2">

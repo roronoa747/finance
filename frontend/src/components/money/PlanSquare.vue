@@ -188,7 +188,7 @@ function changeMode() {
     <!-- Самая дорогая ставка -->
     <Card tight class="flex flex-col gap-2">
       <div class="flex items-center justify-between gap-3">
-        <span class="text-[12px] font-semibold uppercase tracking-[0.04em] text-ink-3">Самая дорогая ставка</span>
+        <span class="type-label">Самая дорогая ставка</span>
         <Tag v-if="worst" class="num">{{ ratePct(worst.credit.annualRate, 0).replace('%', ' %') }}</Tag>
       </div>
       <template v-if="worst">

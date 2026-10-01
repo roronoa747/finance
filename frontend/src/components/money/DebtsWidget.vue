@@ -23,14 +23,14 @@ const worth = computed(() => netWorth(liveAccounts(financeStore.accounts), liveC
 <template>
   <Card tight class="flex flex-col gap-2">
     <div class="flex items-center justify-between gap-3">
-      <span class="text-[12px] font-semibold uppercase tracking-[0.04em] text-ink-3">Долги</span>
+      <span class="type-label">Долги</span>
       <Tag v-if="debts.count" :tone="debts.paid === debts.count ? 'ok' : 'neutral'" class="num">
         в {{ monthIn(key, false) }} оплачено {{ debts.paid }} из {{ debts.count }}
       </Tag>
     </div>
     <div class="flex items-center justify-between gap-3">
-      <span v-if="debts.open" class="font-num text-[28px] font-bold leading-[1.05] tracking-[-0.01em] num text-destructive">−{{ money(debts.total) }}</span>
-      <span v-else class="font-num text-[24px] font-bold leading-[1.05] tracking-[-0.01em] text-ok">Долгов нет</span>
+      <span v-if="debts.open" class="type-num num text-destructive">−{{ money(debts.total) }}</span>
+      <span v-else class="type-num text-[24px] text-ok">Долгов нет</span>
       <span class="flex items-center gap-1 type-meta num">
         чистых {{ money(worth) }}
         <Hint>Всё, что есть, минус всё, что должны.</Hint>
