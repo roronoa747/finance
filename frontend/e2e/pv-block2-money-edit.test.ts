@@ -501,8 +501,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       // (остальные лежат на «Сейфе»); долг 1 000 000 → капитал 500 000.
       const before = await page(B.pinia, Capital, '/capital')
       expect(moneyAfter(before, 'Чистый капитал')).toBe(money(500_000))
-      expect(moneyAfter(before, 'На всех счетах')).toBe(money(1_300_000))
-      expect(moneyAfter(before, 'Накоплено по целям')).toBe(money(200_000))
+      expect(moneyAfter(before, 'На счетах')).toBe(money(1_300_000))
+      expect(moneyAfter(before, 'Накоплено по мечтам')).toBe(money(200_000))
 
       // «Удалить счёт» в окне «Сейфа» на A: текст React с обеими целями на нём.
       at('2026-09-24T08:00:00Z')
@@ -527,8 +527,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(netWorth(B.store.accounts, B.store.credits, B.store.goals)).toBe(750_000)
       const after = await page(B.pinia, Capital, '/capital')
       expect(moneyAfter(after, 'Чистый капитал')).toBe(money(750_000))
-      expect(moneyAfter(after, 'На всех счетах')).toBe(money(1_000_000))
-      expect(moneyAfter(after, 'Накоплено по целям')).toBe(money(750_000))
+      expect(moneyAfter(after, 'На счетах')).toBe(money(1_000_000))
+      expect(moneyAfter(after, 'Накоплено по мечтам')).toBe(money(750_000))
       expect(after).not.toContain('Сейф')
     })
 
@@ -567,7 +567,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(row).not.toContain(money(512_340))
       expect(row).not.toContain(money(479_260))
       // 1 000 000 на карте + 640 771.
-      expect(moneyAfter(capital, 'На всех счетах')).toBe(money(1_640_771))
+      expect(moneyAfter(capital, 'На счетах')).toBe(money(1_640_771))
       const modal = await page(B.pinia, Capital, '/capital', { state: { selectedAccountId: 'usd' } })
       expect(modal).toContain(`value="${plain(1_337)}"`)
       expect(modal).toContain('value="479,26"')

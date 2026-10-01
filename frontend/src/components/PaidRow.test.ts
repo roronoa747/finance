@@ -143,30 +143,30 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     expect(html).toContain('Оплатил')
   })
 
-  it('Обзор: «Впереди» — оплаченное уходит вниз с отметкой; «До зарплаты» — без оплаченного в сумме', async () => {
+  // Возврат смоука (g6): «Впереди» — в «Деньгах» (переехал из «Истории»), блок «До зарплаты» стал
+  // «до зарплаты N дней» в карточке «Свободно» и строкой «хватит ли» под «Впереди».
+  it('«Деньги»: «Впереди» — оплаченное уходит вниз с отметкой; под списком — хватит ли на счетах', async () => {
     const store = family()
     const ahead = (html: string) => html.slice(html.indexOf('Впереди'))
 
-    const before = await page(Money, '/money')
-    // Кредит 15-го раньше аренды 28-го («Впереди» — на /money/history, B2C-21).
-    const aheadBefore = ahead(await page(History, '/money/history'))
+    // Кредит 15-го раньше аренды 28-го.
+    const aheadBefore = ahead(await page(Money, '/money'))
     expect(aheadBefore.indexOf('Кредит')).toBeLessThan(aheadBefore.indexOf('Аренда'))
-    expect(before).toContain(`Списаний до неё`)
-    expect(before).toContain(money(220_000))
+    expect(aheadBefore).toContain(money(58_000))
 
     // Оплачен только ранний платёж (кредит 15-го) — он уходит под аренду 28-го.
     store.markPaid('credit', 'loan', 'a', { accountId: 'card' })
-    const creditPaid = await page(History, '/money/history')
+    const creditPaid = await page(Money, '/money')
     expect(ahead(creditPaid).indexOf('Аренда')).toBeLessThan(ahead(creditPaid).indexOf('Кредит'))
     expect(ahead(creditPaid)).toContain('оплачено · дальше')
 
     store.markPaid('obligation', 'rent', 'a', { accountId: 'card' })
-    const after = ahead(await page(History, '/money/history'))
+    const after = ahead(await page(Money, '/money'))
     // Оплачено всё — снова по дню.
     expect(after.indexOf('Кредит')).toBeLessThan(after.indexOf('Аренда'))
-    // Всё оплачено: до зарплаты списывать нечего, на счетах — остаток из отметок.
-    expect(await page(Money, '/money')).toContain(`На счетах ${plain(722_000)} ₸`)
-    expect(after).toContain(money(0))
+    // Всё оплачено: на счетах — остаток из отметок.
+    expect(after).toContain(`На счетах ${plain(722_000)} ₸`)
+    expect(await page(History, '/money/history')).not.toContain('Впереди')
   })
 
   it('Бюджет, список: «Оплатил» у платежей по графику, у зарплат — нет', async () => {
@@ -217,7 +217,7 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     expect(sheet).toContain(`в долг ${plain(32_500)} · банку ${plain(27_500)}`)
   })
 
-  it('PV-09: в Бюджете платёж — «−N», как соседние строки; на Обзоре — сумма с ₸', async () => {
+  it('PV-09: в Бюджете платёж — «−N», как соседние строки; в «Деньгах» («Впереди») — сумма с ₸', async () => {
     const store = family()
     const budget = await page(Budget, '/budget', { initialView: 'list' })
     expect(budget).toContain(`−${plain(220_000)}`)
@@ -226,7 +226,7 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     // Отмеченный — тоже со знаком, сумма из отметки.
     store.markPaid('obligation', 'rent', 'a', { amount: 225_000, accountId: 'card' })
     expect(await page(Budget, '/budget', { initialView: 'list' })).toContain(`−${plain(225_000)}`)
-    const overview = await page(History, '/money/history')
+    const overview = await page(Money, '/money')
     expect(overview).toContain(money(58_000))
     expect(overview).not.toContain(`−${plain(58_000)}`)
   })
@@ -353,7 +353,7 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
       setActivePinia(createPinia())
       family(role, [netflix])
       const dreams = await page(Dreams, '/')
-      const overview = await page(History, '/money/history')
+      const overview = await page(Money, '/money')
       const budget = await page(Budget, '/budget', { initialView: 'list' })
       // Платежи на месте у обоих — пропадают только кнопки.
       expect(overview).toContain('Впереди')
@@ -371,7 +371,7 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     }
   })
 
-  it('оценочное обязательство: «оценка» из самого обязательства — в строке без пропа и в «До зарплаты»', async () => {
+  it('оценочное обязательство: «оценка» из самого обязательства — в строке без пропа и во «Впереди» «Денег»', async () => {
     const util = sub('util', 'Коммуналка', 35_000, { category: 'd3', day: 26, estimate: true })
     family('member', [util])
     const utilRow = { kind: 'obligation', targetId: 'util', period: '2026-09', title: 'Коммуналка', note: '26 сентября' }
@@ -382,7 +382,8 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     expect(await row(rent)).not.toMatch(/>оценка</)
 
     const overview = await page(Money, '/money')
-    const payday = overview.slice(overview.indexOf('До зарплаты'), overview.indexOf('Впереди'))
+    // Возврат смоука: блок «До зарплаты» стал списком «Впереди» (g6).
+    const payday = overview.slice(overview.indexOf('Впереди'))
     expect(payday).toContain('Коммуналка')
     expect(payday).toMatch(/Коммуналка[\s\S]*?>оценка</)
     // Аренда (28-е) в том же блоке идёт после коммуналки (26-е) — и без признака.

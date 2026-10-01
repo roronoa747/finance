@@ -175,6 +175,11 @@ describe('views/WeekSalary.vue — Высвобождение средств и 
 
     expect(html).toContain('Куда направить')
     expect(html).toContain(money(50_000))
+    // Возврат смоука (g2 «Раскладка зарплаты»): «назад» и «Разложим» — в шапке оболочки; сумма — крупно,
+    // своей кнопки «Закрыть» и строки-заголовка под шапкой нет; корзины — строками одной карточки.
+    expect(html).toMatch(/<h2[^>]*type-big[^>]*>[^<]*50 000 ₸/)
+    expect(html).not.toContain('aria-label="Закрыть"')
+    expect(html.match(/rounded-card/g)?.length).toBeGreaterThanOrEqual(1)
     expect(html).toContain('Осталось распределить')
     expect(html).toContain('Отпуск')
     expect(html).toContain('Досрочно по кредиту')

@@ -236,7 +236,7 @@ describe('views/Money.vue — финансовые показатели (рас�
   })
 
 
-  it('рендерит «Деньги» (SSR): входы второго уровня; «Впереди» с платежами месяца и ссылка на календарь — на /money/history (B2C-21)', async () => {
+  it('рендерит «Деньги» (SSR, g6): «Свободно до конца месяца · до зарплаты N дней», входы с цифрой одной строкой, «Впереди» с платежами месяца и ссылкой на календарь', async () => {
     useAuthStore().setAuthData({
       token: 't',
       user: { id: 'u-a', email: 'a@example.com', created_at: '' },
@@ -252,10 +252,19 @@ describe('views/Money.vue — финансовые показатели (рас�
 
     const html = await renderScreen(Money, '/money')
     for (const t of ['Бюджет', 'Капитал', 'План «Сначала долги»', 'История и итоги']) expect(html).toContain(t)
-    expect(html).not.toContain('Впереди')
+    // Возврат смоука (смоук владельца, п. 6): карточка «Свободно» первой, справа — «до зарплаты»; выписок нет — «—».
+    expect(html).toContain('Свободно до конца месяца')
+    expect(html).toContain('до зарплаты')
+    expect(html.indexOf('Свободно до конца месяца')).toBeLessThan(html.indexOf('Бюджет'))
+    // Подписи входов — данные одной строкой, а не описание экрана.
+    expect(html).toContain(`доход ${plain(700_000)} · план и календарь платежей`)
+    expect(html).toContain(`счета и долги · чистых ${money(500_000)}`)
+    expect(html).not.toContain('план месяца, календарь платежей, список')
+    // «Впереди» — здесь (§3: список «Впереди» — второй уровень «Деньги»), с «Оплатил» и календарём.
+    for (const t of ['Впереди', 'Календарь', 'Аренда квартиры', 'Оплатил', 'Зарплата']) expect(html).toContain(t)
+    expect(html).toContain('href="/money/budget"')
     const history = await renderScreen(History, '/money/history')
-    for (const t of ['Впереди', 'Календарь', 'Аренда квартиры']) expect(history).toContain(t)
-    expect(history).toContain('href="/money/budget"')
+    expect(history).not.toContain('Впереди')
     // Прежнего героя «Свободно в …» и легенды здесь нет — они на главном и в Бюджете (B2C-14).
     expect(html).not.toContain('Свободно в')
     expect(html).not.toContain('распределено')

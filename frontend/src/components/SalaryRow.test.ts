@@ -103,11 +103,12 @@ describe('RP-10: «Пришла зарплата» (SSR)', () => {
     expect(theirs).not.toContain('подробнее')
   })
 
-  it('«Деньги»: «Пришла зарплата» в «До зарплаты» — у того, чья зарплата ближайшая; после отметки — следующая', async () => {
+  // Возврат смоука (g6): «до зарплаты N дней» — в карточке «Свободно», кнопка — под ней; ближайшая зарплата — строкой «Впереди».
+  it('«Деньги»: «Пришла зарплата» под «до зарплаты» — у того, чья зарплата ближайшая; после отметки — следующая', async () => {
     vi.setSystemTime(new Date('2026-09-09T07:00:00Z')) // завтра зарплата Ильяса, списаний до неё нет
     family('member', 'a')
     const mine = await renderScreen(Money, '/money')
-    expect(mine).toContain('До зарплаты')
+    expect(mine).toContain('до зарплаты')
     expect(mine).toMatch(/>\s*Пришла зарплата\s*</)
 
     setActivePinia(createPinia())
@@ -122,7 +123,7 @@ describe('RP-10: «Пришла зарплата» (SSR)', () => {
     setActivePinia(createPinia())
     family('member', 'a', [salary({ at: '2026-09-09T04:00:00.000Z' })])
     const after = await renderScreen(Money, '/money')
-    expect(after).toContain('Аруна получит')
+    expect(after).toContain('Зарплата · Аруна')
     expect(after).not.toMatch(/Пришла зарплата/)
   })
 

@@ -13,13 +13,13 @@ import {
   nextObligationDue,
   paidFor,
   prepaySaved,
+  untilPayday,
 } from '../src/lib/finance'
 import { money, plain } from '../src/lib/money'
 import { plural } from '../src/lib/utils'
 import Budget from '../src/views/Budget.vue'
 import Dreams from '../src/views/Dreams.vue'
 import Money from '../src/views/Money.vue'
-import History from '../src/views/History.vue'
 import Capital from '../src/views/Capital.vue'
 
 /**
@@ -108,20 +108,20 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     const B = await phone(server)
 
     setActivePinia(A.pinia)
-    expect(await screen(A.pinia, History, '/money/history')).toContain('Оплатил')
+    expect(await screen(A.pinia, Money, '/money')).toContain('Оплатил')
 
     // Одно нажатие = то, что делает кнопка: счёт прошлой оплаты, сумма по графику.
     at('2026-09-24T08:00:00Z')
     expect(lastAccountFor(A.store.payments, 'rent', A.store.accounts)).toBe('card')
     A.store.markPaid('obligation', 'rent', 'a', { period: '2026-09', accountId: 'card' })
 
-    const shownA = await screen(A.pinia, History, '/money/history')
+    const shownA = await screen(A.pinia, Money, '/money')
     expect(shownA).toContain(`оплачено · дальше 5 октября · ${plain(220_000)} ₸`)
     expect(A.store.accounts[0].amount).toBe(780_000)
 
     await A.store.syncHousehold(A.client)
     await B.store.pullHousehold(B.client)
-    const shownB = await screen(B.pinia, History, '/money/history')
+    const shownB = await screen(B.pinia, Money, '/money')
     expect(shownB).toContain(`оплачено · дальше 5 октября · ${plain(220_000)} ₸`)
     expect(await screen(B.pinia, Capital, '/capital')).toContain(money(780_000))
   })
@@ -416,8 +416,10 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     expect(budget).toContain(money(478_011)) // Свободно в сентябре
     expect(Math.round(budgetAmounts({ ...A.store.householdDoc, credits: A.store.credits }).d4)).toBe(308_989) // Еда и быт (экран округляет money())
     const overview = await screen(A.pinia, Money, '/money')
-    expect(overview).toContain('Через 16 дней')
-    expect(overview).toContain(money(324_990)) // Списаний до неё
+    // Возврат смоука (g6): «до зарплаты 16 дней» — в карточке «Свободно»; сумма списаний до неё на экране больше не
+    // печатается (блок «До зарплаты» стал списком «Впереди») — сверяем её расчётом, которым экран показывал.
+    expect(overview).toContain('16 дней')
+    expect(untilPayday({ ...A.store.householdDoc, credits: A.store.credits, accounts: A.store.householdAccounts })?.dueTotal).toBe(324_990)
     expect(overview).toContain(`На счетах ${plain(1_000_000)} ₸ — хватает, остаётся ${plain(675_010)} ₸.`)
     const capital = await screen(A.pinia, Capital, '/capital')
     expect(capital).toContain(money(2_600_000)) // Чистый капитал
@@ -432,12 +434,12 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
   it('приёмка: «Впереди» — оплачен только ранний платёж → он уходит ниже неоплаченного позднего', async () => {
     const A = await phone(server)
     const ahead = (html: string) => html.slice(html.indexOf('Впереди'))
-    const before = ahead(await screen(A.pinia, History, '/money/history'))
+    const before = ahead(await screen(A.pinia, Money, '/money'))
     expect(before.indexOf('Аренда')).toBeLessThan(before.indexOf('Кредит')) // по дню: 5-е раньше 15-го
 
     setActivePinia(A.pinia)
     A.store.markPaid('obligation', 'rent', 'a', { period: '2026-09', accountId: 'card' })
-    const after = ahead(await screen(A.pinia, History, '/money/history'))
+    const after = ahead(await screen(A.pinia, Money, '/money'))
     expect(after.indexOf('Кредит')).toBeLessThan(after.indexOf('Аренда'))
     expect(after).toContain(`оплачено · дальше 5 октября · ${plain(220_000)} ₸`)
   })

@@ -10,6 +10,14 @@ import Input from '@/components/ui/Input.vue'
 import Button from '@/components/ui/Button.vue'
 import Callout from '@/components/kit/Callout.vue'
 import { useRouter } from 'vue-router'
+import { PhCaretDown } from '@phosphor-icons/vue'
+
+/**
+ * Оформление устройства (тема, цвета разделов бюджета) и имя; внизу — выход или «Создать семью» из демо.
+ * `section` — только одна часть: в Настройках они в разных карточках (g7 «Оформление» и «Выйти»);
+ * без него — всё вместе.
+ */
+const props = defineProps<{ section?: 'look' | 'account' }>()
 
 const authStore = useAuthStore()
 const financeStore = useFinanceStore()
@@ -87,6 +95,7 @@ function leave(choice: 'keep' | 'discard') {
 
 <template>
   <div class="flex flex-col gap-4 text-left">
+    <template v-if="props.section !== 'account'">
     <!-- Имя пишется в общий документ — у viewer поля нет (его запись сервер не примет). -->
     <div v-if="!authStore.isViewer">
       <div class="mb-1.5 type-section">
@@ -115,10 +124,14 @@ function leave(choice: 'keep' | 'discard') {
       />
     </div>
 
-    <div>
-      <div class="mb-1.5 type-section">
-        Цвета разделов
-      </div>
+    <!-- Цвета разделов бюджета — свёрнуты (правило 12: сложное скрыто; в макете g7 их нет). -->
+    <details>
+      <summary class="flex cursor-pointer list-none items-center justify-between [&::-webkit-details-marker]:hidden">
+        <div class="mb-1.5 type-section">
+          Цвета разделов
+        </div>
+        <PhCaretDown :size="16" class="mb-1.5 text-ink-3" />
+      </summary>
       <HuePicker
         v-for="key in CATEGORY_KEYS"
         :key="key"
@@ -126,16 +139,19 @@ function leave(choice: 'keep' | 'discard') {
         :model-value="categoryHues[key]"
         @update:model-value="(hue) => updateCategoryHue(key, hue)"
       />
-    </div>
+    </details>
+    </template>
 
-    <div v-if="authStore.isDemo" class="flex flex-col gap-2 pt-3 border-t border-line">
+    <template v-if="props.section !== 'look'">
+
+    <div v-if="authStore.isDemo" class="flex flex-col gap-2" :class="props.section ? '' : 'pt-3 border-t border-line'">
       <p class="text-[12.5px] leading-relaxed text-ink-2">
         Это демо: всё живёт только на этом телефоне. Создайте семью — и заполненное можно будет взять с
         собой.
       </p>
       <Button class="w-full" @click="leaveDemo">Создать семью или войти</Button>
     </div>
-    <div v-else class="pt-3 border-t border-line">
+    <div v-else :class="props.section ? '' : 'pt-3 border-t border-line'">
       <Button
         v-if="!leaving"
         variant="ghost"
@@ -172,5 +188,6 @@ function leave(choice: 'keep' | 'discard') {
         <Button variant="ghost" class="w-full" :disabled="sending" @click="leaving = null">Остаться</Button>
       </div>
     </div>
+    </template>
   </div>
 </template>

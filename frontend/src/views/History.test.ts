@@ -35,22 +35,23 @@ describe('views/History.vue и входы «Деньги» (B2C-21, SSR)', () =>
     return store
   }
 
-  it('«Деньги»: входы — Бюджет, Капитал, План, вклад по счёту, «История и итоги»; «Впереди» и истории здесь нет', async () => {
+  it('«Деньги»: входы — Бюджет, Капитал, План, вклад по счёту, «История и итоги»; «Впереди» — здесь (g6), истории нет', async () => {
     const store = family()
     store.addAccount({ name: 'Kaspi Депозит', kind: 'deposit', amount: 1_000_000, deposit: { annualRate: 0.14, months: 12, monthlyTopUp: 0, capitalize: true } })
     const html = await renderScreen(Money, '/money')
     for (const t of ['Бюджет', 'Капитал', 'План «Сначала долги»', 'Вклад · Kaspi Депозит', 'История и итоги']) expect(html).toContain(t)
-    expect(html).not.toContain('Впереди')
+    // Возврат смоука: «Впереди» переехал из «Истории» в «Деньги» (макет g6, DESIGN.md §3).
+    expect(html).toContain('Впереди')
+    expect(html).toContain('href="/money/budget"')
+    for (const t of ['Аренда', 'Кредит', 'Кредитка', 'Рассрочка']) expect(html).toContain(t)
     expect(html).not.toContain('История семьи')
     expect(html).not.toContain('Итог месяца')
   })
 
-  it('/money/history: «Впереди» с платежами месяца и ссылкой на календарь; итог — только в конце месяца; моментов нет — раздела нет', async () => {
+  it('/money/history: итог — только в конце месяца; моментов нет — раздела нет; «Впереди» — в «Деньгах»', async () => {
     family()
     const mid = await renderScreen(History, '/money/history')
-    expect(mid).toContain('Впереди')
-    expect(mid).toContain('href="/money/budget"')
-    for (const t of ['Аренда', 'Кредит', 'Кредитка', 'Рассрочка']) expect(mid).toContain(t)
+    expect(mid).not.toContain('Впереди')
     expect(mid).toContain('Итоги месяца появятся в его последние дни.')
     expect(mid).not.toContain('Наш сентябрь')
     expect(mid).not.toContain('История семьи')

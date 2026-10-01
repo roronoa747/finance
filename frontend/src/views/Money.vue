@@ -1,39 +1,54 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted } from 'vue'
+import { useRouter, RouterLink } from 'vue-router'
 import { PhChartBar, PhCoins, PhCalendarBlank, PhClockCounterClockwise, PhPiggyBank } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
+import { useOperationsStore } from '@/stores/operations'
 import { money, plain } from '@/lib/money'
 import { monthKey, monthFrom, dayLabel } from '@/lib/dates'
-import { amountAt, freedChange, liveAccounts, liveObligations, salaryAsk, untilPayday } from '@/lib/finance'
-import { cn, plural } from '@/lib/utils'
+import { amountAt, budgetAmounts, freeByFact, freedChange, liveAccounts, liveCredits, liveGoals, liveObligations, monthDues, netWorth, salaryAsk, untilPayday } from '@/lib/finance'
+import { plural } from '@/lib/utils'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/kit/Card.vue'
+import FreeCard from '@/components/kit/FreeCard.vue'
 import Row from '@/components/kit/Row.vue'
 import Section from '@/components/kit/Section.vue'
 import PaidRow from '@/components/PaidRow.vue'
 import SalaryRow from '@/components/SalaryRow.vue'
 
 /**
- * «Деньги» — вход на второй уровень (DESIGN.md §2 g6, §3; B2C-13, B2C-21): входы — Бюджет,
- * Капитал, План «Сначала долги», вклады, «История и итоги»; событие «освободится N ₸» и
- * «До зарплаты» с отметками. «Впереди», итог месяца и история семьи — `/money/history`.
+ * «Деньги» — вход на второй уровень (DESIGN.md §2 g6 «Деньги — вход», §3; B2C-13, B2C-21): сверху
+ * «Свободно до конца месяца» и «до зарплаты N дней» (как на главном — `freeByFact`, `untilPayday`),
+ * «Пришла зарплата» под ними; входы — Бюджет, Капитал, План «Сначала долги», вклады, «История и
+ * итоги» с цифрой одной строкой; событие «освободится N ₸»; «Впереди» — платежи месяца с «Оплатил»
+ * и зарплата (§3: список «Впереди» — второй уровень «Деньги»). Ничего не считается здесь.
  */
 const router = useRouter()
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
+const ops = useOperationsStore()
 
 const key = computed(() => monthKey())
 const obligations = computed(() => liveObligations(financeStore.obligations))
 
+/* ---------- «Свободно до конца месяца» — то же, что на главном ---------- */
+const state = computed(() => ({ ...financeStore.householdDoc, credits: financeStore.credits }))
+const free = computed(() =>
+  freeByFact(state.value, financeStore.householdDoc.spendTotals ?? [], financeStore.householdDoc.spendCategories ?? [], key.value, ops.uploads),
+)
+const hasUploads = computed(() => ops.uploads.length > 0)
+
+/* ---------- входы: одна строка данных у каждого (g6) ---------- */
+const amounts = computed(() => budgetAmounts(state.value, key.value))
+const worth = computed(() => netWorth(liveAccounts(financeStore.accounts), liveCredits(financeStore.credits), liveGoals(financeStore.goals)))
 const deposits = computed(() => liveAccounts(financeStore.accounts).filter((a) => a.kind === 'deposit'))
 const entries = computed(() => [
-  { to: '/money/budget', title: 'Бюджет', note: 'план месяца, календарь платежей, список', icon: PhChartBar },
-  { to: '/money/capital', title: 'Капитал', note: 'счета, обязательства, кредиты', icon: PhCoins },
-  { to: '/money/plan', title: 'План «Сначала долги»', note: 'шаги месяца и прогноз', icon: PhCalendarBlank },
+  { to: '/money/budget', title: 'Бюджет', note: `доход ${plain(amounts.value.income)} · план и календарь платежей`, icon: PhChartBar },
+  { to: '/money/capital', title: 'Капитал', note: `счета и долги · чистых ${money(worth.value)}`, icon: PhCoins },
+  { to: '/money/plan', title: 'План «Сначала долги»', note: financeStore.activePlan ? 'идёт · шаг месяца и прогноз' : 'что гасить первым', icon: PhCalendarBlank },
   ...deposits.value.map((a) => ({ to: `/money/capital/${a.id}`, title: `Вклад · ${a.name}`, note: `${money(a.amount)} · проценты и график`, icon: PhPiggyBank })),
-  { to: '/money/history', title: 'История и итоги', note: 'итог месяца, что впереди, моменты семьи', icon: PhClockCounterClockwise },
+  { to: '/money/history', title: 'История и итоги', note: 'итог месяца и моменты семьи', icon: PhClockCounterClockwise },
 ])
 
 // Событие «освободится N ₸»: у годового — доля в месяц и разница за год (`freedChange`).
@@ -56,10 +71,37 @@ const salaryHere = computed(
     !authStore.isViewer &&
     !!salaryAsk({ people: financeStore.people, obligations: financeStore.obligations, credits: financeStore.credits, payments: financeStore.payments }, authStore.slot),
 )
+
+/* ---------- «Впереди»: платежи месяца и ближайшая зарплата по дню (g6) ---------- */
+// Оплаченное — не предстоящее, уходит вниз с отметкой (правило finance.ts, как было в «Истории»).
+const upcoming = computed(() => {
+  const dues = monthDues({ obligations: financeStore.obligations, credits: financeStore.credits, payments: financeStore.payments }, key.value).map((d) => ({
+    type: 'due' as const,
+    id: d.targetId,
+    kind: d.kind,
+    name: d.name,
+    day: d.day,
+    paid: d.paid,
+  }))
+  const p = paydayInfo.value
+  const salary = p && p.key === key.value ? [{ type: 'salary' as const, id: `salary-${p.who.id}`, day: p.day, paid: false }] : []
+  return [...dues, ...salary].sort((a, b) => Number(a.paid) - Number(b.paid) || a.day - b.day)
+})
+
+onMounted(() => void ops.loadUploads())
 </script>
 
 <template>
   <div class="flex flex-col gap-3 pt-1 text-left">
+    <!-- Свободно до конца месяца · до зарплаты N дней (g6) -->
+    <FreeCard :amount="hasUploads ? free.amount : null" :share="hasUploads ? free.share : null" size="md">
+      <template v-if="paydayInfo" #aside>
+        <div class="type-meta">до зарплаты</div>
+        <div class="type-h3 text-ink">{{ paydayInfo.inDays === 0 ? 'сегодня' : `${paydayInfo.inDays} ${plural(paydayInfo.inDays, 'день', 'дня', 'дней')}` }}</div>
+      </template>
+      <SalaryRow v-if="salaryHere && paydayInfo" button :quiet="!!freed" :person-id="paydayInfo.who.id" :period="paydayInfo.key" />
+    </FreeCard>
+
     <Card tight>
       <div class="flex flex-col">
         <Row v-for="e in entries" :key="e.to" :title="e.title" :note="e.note" clickable dense @click="router.push(e.to)">
@@ -78,58 +120,32 @@ const salaryHere = computed(
       <Button v-if="!authStore.isViewer" class="w-full" @click="router.push('/week/salary?from=freed')">Распределить</Button>
     </Card>
 
-    <!-- Блок «До зарплаты» -->
-    <template v-if="paydayInfo && (paydayInfo.due.length || paydayInfo.paid.length || salaryHere)">
-      <Section title="До зарплаты" />
-      <Card>
-        <div class="flex items-baseline gap-2">
-          <span class="type-h3 text-ink">
-            {{ paydayInfo.inDays === 0 ? 'Сегодня' : `Через ${paydayInfo.inDays} ${plural(paydayInfo.inDays, 'день', 'дня', 'дней')}` }}
-          </span>
-          <span class="ml-auto type-meta">
-            {{ dayLabel(paydayInfo.day, paydayInfo.key) }}
-          </span>
-        </div>
-        <div class="mt-0.5 text-[13px] text-ink-2">
-          {{ paydayInfo.who.name }} получит {{ money(paydayInfo.income) }}
-        </div>
-        <SalaryRow v-if="salaryHere" button :quiet="!!freed" :person-id="paydayInfo.who.id" :period="paydayInfo.key" />
-
-        <div class="mt-3 border-t border-line pt-3">
-          <div class="flex items-baseline">
-            <span class="text-[13px] text-ink-2">Списаний до неё</span>
-            <b class="ml-auto num text-[14.5px] text-ink">{{ money(paydayInfo.dueTotal) }}</b>
-          </div>
-          <div class="mt-1 flex flex-col">
-            <PaidRow
-              v-for="d in [...paydayInfo.due, ...paydayInfo.paid]"
-              :key="d.id"
-              dense
-              :kind="d.kind"
-              :target-id="d.targetId"
-              :period="d.when"
-              :title="d.name"
-              :note="dayLabel(d.day, d.when)"
-            />
-          </div>
-        </div>
-
-        <div
-          v-if="paydayInfo.knowsCash"
-          :class="
-            cn(
-              'mt-3 rounded-inner px-3.5 py-3 text-[12.5px] leading-relaxed',
-              paydayInfo.shortfall >= 0 ? 'bg-brand-soft text-ink-2' : 'bg-warn-soft text-ink-2',
-            )
-          "
-        >
+    <!-- Впереди (g6): платежи месяца с отметкой оплаты и зарплата; хватит ли до зарплаты — строкой внизу -->
+    <template v-if="upcoming.length">
+      <Section title="Впереди">
+        <template #action>
+          <RouterLink to="/money/budget" class="text-[13px] font-semibold text-brand">Календарь</RouterLink>
+        </template>
+      </Section>
+      <Card flush>
+        <template v-for="u in upcoming" :key="u.id">
+          <SalaryRow
+            v-if="u.type === 'salary' && paydayInfo"
+            :person-id="paydayInfo.who.id"
+            :period="paydayInfo.key"
+            :note="`${dayLabel(paydayInfo.day, paydayInfo.key)} · ${paydayInfo.who.name}`"
+          />
+          <!-- Строка g6: название, дата, сумма и кнопка отметки — без иконки и шеврона, чтобы название не сжималось. -->
+          <PaidRow v-else-if="u.type === 'due'" :kind="u.kind" :target-id="u.id" :period="key" :title="u.name" :note="dayLabel(u.day, key)" />
+        </template>
+        <p v-if="paydayInfo?.knowsCash" class="border-t border-line px-4 py-3 type-meta">
           {{
             paydayInfo.shortfall >= 0
               ? `На счетах ${plain(paydayInfo.onAccounts)} ₸ — хватает, остаётся ${plain(paydayInfo.shortfall)} ₸.`
               : `На счетах ${plain(paydayInfo.onAccounts)} ₸ — не хватает ${plain(-paydayInfo.shortfall)} ₸.`
           }}
-        </div>
-        <p v-else class="mt-3 text-[12.5px] leading-relaxed text-ink-3">Добавьте счёт в «Капитале» — покажем, хватит ли.</p>
+        </p>
+        <p v-else-if="paydayInfo" class="border-t border-line px-4 py-3 type-meta">Добавьте счёт в «Капитале» — покажем, хватит ли.</p>
       </Card>
     </template>
   </div>

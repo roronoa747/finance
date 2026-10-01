@@ -515,35 +515,35 @@ watch(queryModalOpen, (open) => {
 
 <template>
   <div class="flex flex-col gap-3.5 pt-1">
-    <!-- Чистый капитал (Net Worth) -->
+    <!-- Чистый капитал (g6 «Капитал»): подпись секции, большая сумма, строки «На счетах · Накоплено по мечтам · Долги» -->
     <Card>
-      <div class="flex items-center gap-1.5 text-[13px] text-ink-2">
+      <div class="flex items-center gap-1.5 type-section">
         Чистый капитал
         <Hint>
           Всё, что есть, минус всё, что должны. Личные счета и накопления по целям тоже считаются:
           это ваши деньги, даже если отдельный счёт под них не заведён.
         </Hint>
       </div>
-      <div class="font-display text-[30px] font-semibold tracking-[-0.025em] num text-ink">
+      <div class="mt-2 type-big num text-ink">
         {{ money(totalNetWorth) }}
       </div>
 
-      <div class="mt-3 flex flex-col gap-1.5 border-t border-line pt-3 text-[13px]">
-        <div v-if="accounts.length > 0" class="flex justify-between">
-          <span class="text-ink-2">На всех счетах</span>
-          <b class="num text-ink">{{ money(totalAccountsAmount) }}</b>
+      <div class="mt-3 flex flex-col">
+        <div v-if="accounts.length > 0" class="flex items-center justify-between gap-3 border-t border-line py-3 first:border-t-0 first:pt-0 last:pb-0">
+          <span class="font-medium text-ink">На счетах</span>
+          <span class="money whitespace-nowrap text-ink">{{ money(totalAccountsAmount) }}</span>
         </div>
-        <div v-if="privateAccounts.length > 0" class="flex justify-between text-ink-3">
-          <span class="text-ink-3">Семья / Личный кошелёк</span>
-          <b class="num text-ink-2">{{ money(totalHouseholdAmount) }} / {{ money(totalPrivateAmount) }}</b>
+        <div v-if="privateAccounts.length > 0" class="-mt-2 flex items-center justify-between gap-3 pb-3 type-meta">
+          <span>Семья / Личный кошелёк</span>
+          <span class="num">{{ money(totalHouseholdAmount) }} / {{ money(totalPrivateAmount) }}</span>
         </div>
-        <div v-if="totalSaved > 0" class="flex justify-between">
-          <span class="text-ink-2">Накоплено по целям</span>
-          <b class="num text-ink">{{ money(totalSaved) }}</b>
+        <div v-if="totalSaved > 0" class="flex items-center justify-between gap-3 border-t border-line py-3 first:border-t-0 first:pt-0 last:pb-0">
+          <span class="font-medium text-ink">Накоплено по мечтам</span>
+          <span class="money whitespace-nowrap text-ink">{{ money(totalSaved) }}</span>
         </div>
-        <div v-if="credits.length > 0" class="flex justify-between">
-          <span class="text-ink-2">Долги</span>
-          <b class="num text-warn">−{{ plain(totalDebts) }} ₸</b>
+        <div v-if="credits.length > 0" class="flex items-center justify-between gap-3 border-t border-line py-3 first:border-t-0 first:pt-0 last:pb-0">
+          <span class="font-medium text-ink">Долги</span>
+          <span class="money whitespace-nowrap text-destructive">−{{ plain(totalDebts) }} ₸</span>
         </div>
       </div>
     </Card>
@@ -583,11 +583,13 @@ watch(queryModalOpen, (open) => {
       <div v-if="!accounts.length" class="px-4 py-6 text-center text-[13px] text-ink-3">
         Счетов пока нет
       </div>
+      <!-- Добавление — тихой кнопкой внутри карточки (g6 «+ Счёт или накопление»): главное на экране — цифры. -->
+      <div v-if="!authStore.isViewer" class="border-t border-line px-2 py-1.5">
+        <Button variant="ghost" class="px-2.5" @click="accountOpen = true">
+          <PhPlus :size="16" weight="bold" /> Добавить счёт или накопления
+        </Button>
+      </div>
     </Card>
-
-    <Button v-if="!authStore.isViewer" variant="outline" class="w-full bg-surface-2" @click="accountOpen = true">
-      <PhPlus :size="16" weight="bold" /> Добавить счёт или накопления
-    </Button>
 
     <!-- Обязательства и кредиты -->
     <Section title="Обязательства" />
@@ -672,24 +674,24 @@ watch(queryModalOpen, (open) => {
       >
         Обязательств пока нет
       </div>
+      <!-- Добавление — тихими кнопками внутри карточки, как у счетов (в макете g6 — через «+»). -->
+      <div v-if="!authStore.isViewer" class="flex flex-wrap border-t border-line px-2 py-1.5">
+        <Button variant="ghost" class="px-2.5" @click="addObligationOpen = true">
+          <PhPlus :size="16" weight="bold" /> Подписка или услуга
+        </Button>
+        <Button variant="ghost" class="px-2.5" @click="addDebtOpen = true">
+          <PhPlus :size="16" weight="bold" /> Долг или рассрочка
+        </Button>
+        <Button variant="ghost" class="px-2.5" @click="addGroupOpen = true">
+          <PhFolderSimple :size="16" /> Группа подписок
+        </Button>
+      </div>
     </Card>
 
     <p v-if="totalPrepaySaved > 0" class="-mt-1 px-1 text-[12.5px] text-ink-2">
       Досрочками уже сэкономили на процентах
       <b class="num text-brand">{{ money(totalPrepaySaved) }}</b>
     </p>
-
-    <div class="flex flex-col gap-2">
-      <Button v-if="!authStore.isViewer" variant="outline" class="w-full bg-surface-2" @click="addObligationOpen = true">
-        <PhPlus :size="16" weight="bold" /> Подписка или услуга
-      </Button>
-      <Button v-if="!authStore.isViewer" variant="outline" class="w-full bg-surface-2" @click="addDebtOpen = true">
-        <PhPlus :size="16" weight="bold" /> Долг или рассрочка
-      </Button>
-      <Button v-if="!authStore.isViewer" variant="outline" class="w-full bg-surface-2" @click="addGroupOpen = true">
-        <PhFolderSimple :size="16" /> Группа подписок
-      </Button>
-    </div>
 
     <!-- Советник: Что гасить первым & Досрочка -->
     <template v-if="worstDebt">

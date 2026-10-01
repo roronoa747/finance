@@ -619,6 +619,16 @@ describe('PV-10: модалка кредита и калькулятор дос�
     for (const t of ['Добавить счёт или накопления', 'Подписка или услуга', 'Долг или рассрочка', 'Группа подписок']) {
       expect(html).toContain(t)
     }
+    // Возврат смоука (g6): добавление — тихими кнопками внутри карточек, а не тремя крупными плашками под списком.
+    for (const t of ['Добавить счёт или накопления', 'Подписка или услуга', 'Долг или рассрочка', 'Группа подписок']) {
+      const btn = html.slice(html.lastIndexOf('<button', html.indexOf(t)), html.indexOf(t))
+      expect(btn, t).toContain('text-ink-2 hover:bg-surface-2') // вариант ghost
+      expect(btn, t).not.toContain('w-full')
+    }
+    // Подписи карточки «Чистый капитал» — по DESIGN.md §6.
+    expect(html).toContain('>На счетах<')
+    expect(html).not.toContain('Накоплено по целям')
+    expect(html).not.toContain('На всех счетах')
     expect(await render('/capital?add=debt')).toContain('Знаю ставку')
     expect(await render('/capital?add=payment')).toContain('Регулярный платёж')
     expect(await render('/capital?income=1')).toContain('Внеплановый доход')

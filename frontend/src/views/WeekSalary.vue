@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { PhMinus, PhPlus, PhX } from '@phosphor-icons/vue'
+import { PhMinus, PhPlus } from '@phosphor-icons/vue'
 import Button from '@/components/ui/Button.vue'
 import AccountChoice from '@/components/AccountChoice.vue'
 import Card from '@/components/kit/Card.vue'
@@ -38,7 +38,7 @@ import {
 import { atLabel, monthAfter, monthFrom, monthFromAfter, monthInAfter, monthKey } from '@/lib/dates'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { cn, plural, sentence } from '@/lib/utils'
+import { plural, sentence } from '@/lib/utils'
 
 const STEP = 10_000
 
@@ -440,19 +440,8 @@ function home() {
 
   <!-- СОСТОЯНИЕ 3: АКТИВНЫЙ РИТУАЛ РАСПРЕДЕЛЕНИЯ -->
   <div v-else class="flex flex-col gap-3 pt-1 text-left">
-    <div class="flex items-center gap-3">
-      <button
-        type="button"
-        aria-label="Закрыть"
-        class="grid size-[34px] place-items-center rounded-[10px] text-ink-2 hover:bg-surface-3 transition-colors cursor-pointer"
-        @click="router.push('/')"
-      >
-        <PhX :size="19" />
-      </button>
-      <h2 class="type-h3 tracking-[-0.01em] text-ink">
-        Куда направить {{ money(total) }}
-      </h2>
-    </div>
+    <!-- g2 «Раскладка зарплаты»: «назад» и «Разложим» — в шапке, сумма — крупно под ней. -->
+    <h2 class="px-1 type-big num text-ink" :aria-label="`Куда направить ${money(total)}`">{{ money(total) }}</h2>
 
     <p v-if="salary" class="px-0.5 text-[13px] leading-relaxed text-ink-2 num">
       Зарплата пришла — {{ money(salary.record.amount) }} · свободно {{ money(total) }}
@@ -481,18 +470,15 @@ function home() {
       Сначала подушка: до месяца обязательных списаний не хватает {{ money(step.missing) }}.
     </p>
 
+    <!-- Корзины — строками одной карточки (g2: «Обязательное · В мечту · Свободно» в одной карточке). -->
+    <Card class="flex flex-col">
     <div
       v-for="p in pots"
       :key="p.id"
-      :class="
-        cn(
-          'rounded-2xl border bg-surface p-3.5 transition-colors',
-          (alloc[p.id] ?? 0) > 0 ? 'border-brand' : 'border-line',
-        )
-      "
+      class="border-t border-line py-3 first:border-t-0 first:pt-0 last:pb-0"
     >
       <div class="flex items-center gap-3">
-        <b class="flex-1 text-[14.5px] font-semibold text-ink">{{ p.name }}</b>
+        <b class="flex-1 font-medium" :class="(alloc[p.id] ?? 0) > 0 ? 'text-brand' : 'text-ink'">{{ p.name }}</b>
         <div class="flex items-center gap-1.5">
           <button
             type="button"
@@ -517,10 +503,11 @@ function home() {
           </button>
         </div>
       </div>
-      <div class="mt-2.5 border-t border-line pt-2.5 text-[12.5px] leading-snug text-ink-2">
+      <div class="mt-1 type-meta leading-snug">
         {{ p.effect(alloc[p.id] ?? 0) }}
       </div>
     </div>
+    </Card>
 
     <AccountChoice
       v-if="once && (toGoals > 0 || prepayTotal > 0)"
