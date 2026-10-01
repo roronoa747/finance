@@ -177,6 +177,8 @@ describe('e2e / B2C Блок 1 — выписка: разбор на телеф�
     expect(opsV.all).toEqual([])
     const html = await screen(V.pinia, Statements, '/statements')
     expect(html).not.toContain('Загрузить выписку')
-    expect(html).toContain('Kaspi')
+    // Выписки июля 2025 эту неделю не закрывают: «Неделя» показывает загрузки только этой недели
+    // (g2 «<имя> загрузил», возврат смоука) — у viewer пустое состояние, запись загрузки — выше, в сторе.
+    expect(html).toContain('Картины недели пока нет')
   })
 })
