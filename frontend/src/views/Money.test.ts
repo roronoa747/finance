@@ -631,6 +631,18 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(h.indexOf('Сентябрь 2026 — Октябрь 2026')).toBeLessThan(h.indexOf('Август 2026: отменён'))
     })
 
+    it('критик: план закрыл последний долг — «Долгов нет», но поздравление и прошлые планы на месте (как в прежнем экране плана)', async () => {
+      const done = planOf({ status: 'done', endedAt: '2026-10-19T05:00:00.000Z', result: { savedInterest: 0 } })
+      const closed = planFamilyDoc().credits.map((c) => ({ ...c, principal: 0 }))
+      await plan({ plans: [done], credits: closed, payments: [prepay({})] }, 'member', '2026-10-20T07:00:00Z')
+      const t = text(await renderScreen(Money, '/money/plan'))
+      expect(t).toContain('Долгов нет')
+      expect(t).toContain('Долги с процентами закрыты — цели возобновились')
+      expect(t).toContain('Прошлые планы')
+      expect(t).toContain(`Сентябрь 2026 — Октябрь 2026: сэкономили ${money(9_000)} процентов`)
+      expect(t).not.toContain('Самая дорогая ставка')
+    })
+
     it('Р-11: долг не закрывается — прогноз «экономию не считаем», без «Переплата A → B»', async () => {
       const store = await plan()
       store.updateCredit('cc', { payment: 5_000 })

@@ -124,7 +124,8 @@ const justDone = computed(() => {
 })
 
 /** Свёрнутая строка карточки (макет: «Копить или гасить?», «Шаги по месяцам» — слева, стрелка вниз). */
-const FOLD = 'flex w-full cursor-pointer list-none items-center justify-between gap-3 border-t border-line pt-3 text-[15px] font-semibold text-ink [&::-webkit-details-marker]:hidden'
+const FOLD_ROW = 'flex w-full cursor-pointer list-none items-center justify-between gap-3 text-[15px] font-semibold text-ink [&::-webkit-details-marker]:hidden'
+const FOLD = `${FOLD_ROW} border-t border-line pt-3`
 
 /* ------------------ Переключатель ------------------ */
 const compareOpen = ref(false)
@@ -160,12 +161,24 @@ function changeMode() {
 </script>
 
 <template>
-  <EmptyState v-if="!open.length && !plan" title="Долгов нет" />
+  <!-- План закрыл последний долг: поздравление и прошлые планы видны и без долгов (как в прежнем экране плана) -->
+  <Callout v-if="justDone" tone="ok" title="Долги с процентами закрыты — цели возобновились">
+    Сэкономили {{ money(savedOf(justDone)) }} процентов.
+  </Callout>
+
+  <template v-if="!open.length && !plan">
+    <EmptyState title="Долгов нет" />
+    <Card v-if="history.length" tight>
+      <details>
+        <summary :class="FOLD_ROW">Прошлые планы<PhCaretDown :size="16" class="shrink-0 text-ink-3" /></summary>
+        <div class="mt-2 flex flex-col gap-1.5 text-[12.5px] text-ink-2 num">
+          <div v-for="p in history" :key="p.id">{{ historyLine(p) }}</div>
+        </div>
+      </details>
+    </Card>
+  </template>
 
   <template v-else>
-    <Callout v-if="justDone" tone="ok" title="Долги с процентами закрыты — цели возобновились">
-      Сэкономили {{ money(savedOf(justDone)) }} процентов.
-    </Callout>
 
     <!-- Самая дорогая ставка -->
     <Card tight class="flex flex-col gap-2">
