@@ -502,7 +502,7 @@ onMounted(() => {
         :is="pic.uploaded.length ? WeekCard : Card"
         v-if="pic.uploaded.length || rows.length"
         v-bind="pic.uploaded.length ? weekCardProps : {}"
-        @unknown="reviewUnknown"
+        v-on="pic.uploaded.length ? { unknown: reviewUnknown } : {}"
       >
         <details v-if="rows.length" :class="pic.uploaded.length ? 'border-t border-line pt-3' : ''">
           <summary class="flex cursor-pointer list-none items-center justify-between gap-3 text-[14px] font-medium text-ink-2 [&::-webkit-details-marker]:hidden">
