@@ -36,7 +36,7 @@ describe('PV-22: «Оформление» — имя без отката (Б-19)
   })
 
   it('имя — из people[slot], подпись — одна строка (правило 12), подписи секций — type-section', async () => {
-    const html = await renderScreen(AppearancePanel, '/')
+    const html = await renderScreen(AppearancePanel, '/', { section: 'look' })
     expect(html).toMatch(/<input[^>]*value="Ильяс"/)
     expect(html).not.toMatch(/value="ilyas"/)
     expect(html).toContain('<p class="mt-1 type-meta">Так вас видит партнёр</p>')
@@ -49,7 +49,7 @@ describe('PV-22: «Оформление» — имя без отката (Б-19)
   it('viewer: поля «Ваше имя» нет — имя пишется в общий документ, а его запись сервер не примет', async () => {
     setActivePinia(createPinia())
     signIn('c', 'viewer')
-    const html = await renderScreen(AppearancePanel, '/')
+    const html = await renderScreen(AppearancePanel, '/', { section: 'look' })
     expect(html).not.toContain('Ваше имя')
     expect(html).not.toContain('placeholder="Имя"')
     // Остальное «Оформление» — дело устройства, viewer его видит.
@@ -57,7 +57,7 @@ describe('PV-22: «Оформление» — имя без отката (Б-19)
   })
 
   it('клинап Б9 (Н-1): «Цвета разделов» нет — их красил только «Бюджет» (Р-33)', async () => {
-    const html = await renderScreen(AppearancePanel, '/')
+    const html = await renderScreen(AppearancePanel, '/', { section: 'look' })
     expect(html).not.toContain('Цвета разделов')
     expect(html).not.toContain('role="group"')
     expect(html).not.toContain('<details')
@@ -67,7 +67,7 @@ describe('PV-22: «Оформление» — имя без отката (Б-19)
     const store = useFinanceStore()
     let vm: Record<string, any> = {}
     const grab = { created(this: any) { if ('saveName' in this.$.setupState) vm = this.$.setupState } }
-    await renderScreen(AppearancePanel, '/', undefined, [grab])
+    await renderScreen(AppearancePanel, '/', { section: 'look' }, [grab])
     const setPerson = vi.spyOn(store, 'setPerson')
 
     vm.userName = '   '

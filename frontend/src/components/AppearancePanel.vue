@@ -12,10 +12,9 @@ import { useRouter } from 'vue-router'
 
 /**
  * Оформление устройства (тема) и имя; внизу — выход или «Создать семью» из демо.
- * `section` — только одна часть: в Настройках они в разных карточках (g7 «Оформление» и «Выйти»);
- * без него — всё вместе.
+ * `section` — какая часть: в Настройках они в разных карточках (g7 «Оформление» и «Выйти»).
  */
-const props = defineProps<{ section?: 'look' | 'account' }>()
+const props = defineProps<{ section: 'look' | 'account' }>()
 
 const authStore = useAuthStore()
 const financeStore = useFinanceStore()
@@ -85,7 +84,7 @@ function leave(choice: 'keep' | 'discard') {
 
 <template>
   <div class="flex flex-col gap-4 text-left">
-    <template v-if="props.section !== 'account'">
+    <template v-if="props.section === 'look'">
     <!-- Имя пишется в общий документ — у viewer поля нет (его запись сервер не примет). -->
     <div v-if="!authStore.isViewer">
       <div class="mb-1.5 type-section">
@@ -115,16 +114,16 @@ function leave(choice: 'keep' | 'discard') {
     </div>
     </template>
 
-    <template v-if="props.section !== 'look'">
+    <template v-else>
 
-    <div v-if="authStore.isDemo" class="flex flex-col gap-2" :class="props.section ? '' : 'pt-3 border-t border-line'">
+    <div v-if="authStore.isDemo" class="flex flex-col gap-2">
       <p class="text-[12.5px] leading-relaxed text-ink-2">
         Это демо: всё живёт только на этом телефоне. Создайте семью — и заполненное можно будет взять с
         собой.
       </p>
       <Button class="w-full" @click="leaveDemo">Создать семью или войти</Button>
     </div>
-    <div v-else :class="props.section ? '' : 'pt-3 border-t border-line'">
+    <div v-else>
       <Button
         v-if="!leaving"
         variant="ghost"
