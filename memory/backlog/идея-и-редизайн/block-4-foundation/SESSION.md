@@ -46,9 +46,11 @@
 
 - **Маршруты** (`router/index.ts`): `/access` (public) · `/start/:step?` (первый запуск, ленивый) ·
   `/setup` → `/start` · дети `AppShell`: `/` Dreams, `/week` Statements, `/week/salary` WeekSalary,
-  `/money`, `/money/{budget,capital,capital/:id,plan,history}`, `/goals/new`, `/goals/:id`,
-  `/share/:goalId` → `/goals/:id?share=1`, `/wishes`, `/people/:slot`, `/settings`; старые пути —
-  редиректы с query. Гард `beforeEach`: без входа → `/access?…`; куда после входа —
+  `/money`, `/money/plan`, `/money/history` (пивот 3, Блок 9: один ленивый экран `Money` с квадратами
+  Капитал · План · История; `/money/budget`, `/money/capital` → `/money` с query, `/money/capital/:id` →
+  `/money?account=:id`; экранов Бюджета, Капитала, плана, вклада и «Истории и итогов» больше нет), `/goals/new`,
+  `/goals/:id`, `/share/:goalId` → `/goals/:id?share=1`, `/wishes`, `/people/:slot`, `/settings`; старые пути —
+  редиректы с query (§6 индекса «После Блока 9»). Гард `beforeEach`: без входа → `/access?…`; куда после входа —
   **`router/landing.ts` `landingPath(auth, finance)`**: viewer → `/`; семья без данных → `/start`;
   посреди первого запуска (данные есть, у участника нет `onboardedAt`) — и `/start`, и главный;
   настроенная семья — `/start` только участнику без своей записи в `people` (партнёр по коду).
@@ -89,7 +91,9 @@
   «завершил неделю» — `WeekSalary confirm()` (`recordAllocation`).
 - **Демо** (`Access.vue startDemoMode`): документ с `spendCategories`, итогами обоих за неделю и
   месяц, записями загрузок (`ops.seedDemoUploads`), главной мечтой `g-trip` («Поездка в Японию»,
-  шаблон `japan`, без фото — сервера нет); `adoptDemo` при регистрации — B2C-27 переосмысляет
+  шаблон `japan`, без фото — сервера нет); с Блока 9 — ещё мечта «Машина», вклад с условиями, активный план,
+  отметки прошлого и этого месяца и свои операции (`ops.seedDemoOperations`) — «Деньги» в трёх квадратах с
+  данными; лэндинг B2C-27 может показывать их как есть; `adoptDemo` при регистрации — B2C-27 переосмысляет
   вместе с лэндингом. Демо не ходит в `/api` (в т.ч. фото: `usePhoto` → `photoUrl` → 404/сбой → null).
 - **Кит и правила интерфейса:** экраны — на `components/kit/*` (DreamHero, DecisionCard, WeekCard,
   FreeCard, Chip, Tabs, ScreenHeader, EmptyState, Hint …); новые экраны Блока 4 (`Access`/«с кем»/
