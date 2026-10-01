@@ -89,6 +89,11 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     expect(html).toContain('Выбрать файл')
     expect(html).toContain('Введу вручную')
     expect(html).toContain('accept="application/pdf,.pdf"')
+    // Возврат смоука (g3 «Шаг 2 — первая выписка»): откуда взять PDF — карточкой банков, цвет — токенами.
+    expect(html).toContain('Мой банк → Выписка → PDF → Поделиться')
+    expect(html).toContain('Счёт → Выписка → за 3 месяца → PDF')
+    expect(html).toContain('bg-destructive')
+    expect(html).not.toMatch(/#[0-9a-f]{6}/i)
 
     setActivePinia(createPinia())
     family('member', 'b', { ...planFamilyDoc(), people: [planFamilyDoc().people[0]] })
