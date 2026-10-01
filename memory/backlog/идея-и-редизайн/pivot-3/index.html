@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<!-- Копия артефакта claude.ai; оригинал — страница в чате владельца 2026-10-01. Скрипты/шрифты — как в артефакте. -->
+<title>Family Finance без лишнего</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Piazzolla:opsz,wght@8..30,500;8..30,600&family=Golos+Text:wght@400;500;600;700&display=swap">
+<style>
+/* Одна колонка разделов; экраны телефона — рядами с горизонтальным свайпом; липкая панель «шрифт · палитра · тема». */
+:root{
+  /* страница */
+  --pg-bg:#e7e4dd; --pg-fg:#1f1b17; --pg-mute:#6c655c; --pg-line:#d2cdc3; --pg-card:#f4f2ed; --pg-accent:#b4562f; --pg-accent-soft:#f1e0d5;
+  /* приложение — «Тёплый альбом» (DESIGN.md §4) */
+  --canvas:#f3eee6; --surface:#fffdf9; --surface-2:#f0eae0; --surface-3:#e6ded2; --line:#e2d9cb; --line-strong:#cdbfad; --card-border:var(--line);
+  --ink:#1e1a16; --ink-2:#5a524a; --ink-3:#857a6f; --brand:#b4562f; --brand-ink:#fffdf9; --brand-soft:#f7e4d9;
+  --ok:#3e7a5b; --ok-soft:#dfeee4; --warn:#8a5a00; --warn-soft:#f8ebd0; --destructive:#a6392b;
+  --pa:#3b5da8; --pb:#a9456a; --track:#e6ded2; --on-photo:#ffffff; --scrim:rgb(30 26 22 / .45); --photo-scrim:rgb(24 18 14 / .78);
+  --s1:#c2703f; --s2:#8c6d3f; --s3:#5b7fa6; --s4:#7a6a9e; --s5:#4f8a6b; --s8:#a47c3b; --s12:#9a9385; --s-unknown:#cfc7ba;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --pg-bg:#141210; --pg-fg:#ebe6dd; --pg-mute:#9a9185; --pg-line:#2b2722; --pg-card:#1d1a16; --pg-accent:#e58a62; --pg-accent-soft:#3a2418;
+    --canvas:#17130f; --surface:#201b17; --surface-2:#2a241f; --surface-3:#352e27; --line:#3a322b; --line-strong:#4e4438; --card-border:transparent;
+    --ink:#f3ede4; --ink-2:#b7aca0; --ink-3:#8e8478; --brand:#e58a62; --brand-ink:#2a1208; --brand-soft:#3c2418;
+    --ok:#7fc29a; --ok-soft:#1f2e25; --warn:#e7b96a; --warn-soft:#2c2416; --destructive:#ff8f7c;
+    --pa:#8fafff; --pb:#ff8fb4; --track:#352e27; --scrim:rgb(0 0 0 / .6); --photo-scrim:rgb(0 0 0 / .78);
+    --s1:#e0946a; --s2:#c9a36a; --s3:#8fb0da; --s4:#a99ad0; --s5:#7cbf9a; --s8:#d4aa66; --s12:#b8b0a2; --s-unknown:#5a5148;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --pg-bg:#141210; --pg-fg:#ebe6dd; --pg-mute:#9a9185; --pg-line:#2b2722; --pg-card:#1d1a16; --pg-accent:#e58a62; --pg-accent-soft:#3a2418;
+  --canvas:#17130f; --surface:#201b17; --surface-2:#2a241f; --surface-3:#352e27; --line:#3a322b; --line-strong:#4e4438; --card-border:transparent;
+  --ink:#f3ede4; --ink-2:#b7aca0; --ink-3:#8e8478; --brand:#e58a62; --brand-ink:#2a1208; --brand-soft:#3c2418;
+  --ok:#7fc29a; --ok-soft:#1f2e25; --warn:#e7b96a; --warn-soft:#2c2416; --destructive:#ff8f7c;
+  --pa:#8fafff; --pb:#ff8fb4; --track:#352e27; --scrim:rgb(0 0 0 / .6); --photo-scrim:rgb(0 0 0 / .78);
+  --s1:#e0946a; --s2:#c9a36a; --s3:#8fb0da; --s4:#a99ad0; --s5:#7cbf9a; --s8:#d4aa66; --s12:#b8b0a2; --s-unknown:#5a5148;
+  color-scheme:dark;
+}
+/* Нейтральная палитра приложения — те же роли, без кремового тона; бренд тот же. */
+[data-pal="neutral"]{
+  --canvas:#f2f2f0; --surface:#ffffff; --surface-2:#f1f1ef; --surface-3:#e7e7e3; --line:#e3e3df; --line-strong:#cfcfca;
+  --ink:#19191b; --ink-2:#57575b; --ink-3:#86868b; --track:#e6e6e2; --brand-soft:#f6e6dd; --s-unknown:#d3d3ce;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) [data-pal="neutral"]{
+    --canvas:#121214; --surface:#1c1c1f; --surface-2:#26262a; --surface-3:#313136; --line:#36363b; --line-strong:#4a4a50;
+    --ink:#f1f1ee; --ink-2:#b4b4b0; --ink-3:#8a8a86; --track:#313136; --brand-soft:#3a2418; --s-unknown:#55555a;
+  }
+}
+:root[data-theme="dark"] [data-pal="neutral"]{
+  --canvas:#121214; --surface:#1c1c1f; --surface-2:#26262a; --surface-3:#313136; --line:#36363b; --line-strong:#4a4a50;
+  --ink:#f1f1ee; --ink-2:#b4b4b0; --ink-3:#8a8a86; --track:#313136; --brand-soft:#3a2418; --s-unknown:#55555a;
+}
+/* Шрифтовые системы: --fd заголовки, --fs текст, --fn крупные цифры. */
+.f1{ --fd:'Piazzolla',Georgia,'Times New Roman',serif; --fs:'Golos Text','Segoe UI',system-ui,sans-serif; --fn:var(--fd); --wd:600; --ls:-.005em; --big-w:500; --big-size:74px; --num-w:500; }
+.f2{ --fd:'Golos Text','Segoe UI',system-ui,sans-serif; --fs:var(--fd); --fn:var(--fd); --wd:700; --ls:-.02em; --big-w:700; --big-size:64px; --num-w:700; }
+.f3{ --fd:-apple-system,BlinkMacSystemFont,'SF Pro Display',system-ui,'Segoe UI',Roboto,sans-serif; --fs:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,'Segoe UI',Roboto,sans-serif; --fn:ui-rounded,-apple-system,BlinkMacSystemFont,system-ui,'Segoe UI',Roboto,sans-serif; --wd:700; --ls:-.02em; --big-w:700; --big-size:64px; --num-w:700; }
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--pg-bg);color:var(--pg-fg);font-family:'Golos Text','Segoe UI',system-ui,sans-serif;font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding-block:20px 60px;padding-inline:16px}
+h1,h2,h3{margin:0;text-wrap:balance}
+p{margin:0}
+.hd h1{font-family:'Piazzolla',Georgia,serif;font-weight:600;font-size:30px;line-height:1.1;letter-spacing:-.005em}
+.hd p{color:var(--pg-mute);max-width:62ch;margin-top:8px}
+.ctl{position:sticky;top:env(safe-area-inset-top,0px);z-index:10;background:color-mix(in srgb,var(--pg-bg) 88%,transparent);backdrop-filter:blur(10px);margin:16px -16px 0;padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px 14px;border-bottom:1px solid var(--pg-line)}
+.seg{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--pg-mute)}
+.seg .lbl{letter-spacing:.04em;text-transform:uppercase;font-weight:600;margin-right:2px}
+.seg button{font:inherit;font-size:13px;border:1px solid var(--pg-line);background:var(--pg-card);color:var(--pg-fg);border-radius:999px;padding:5px 11px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--pg-fg);color:var(--pg-bg);border-color:var(--pg-fg)}
+.seg button:focus-visible{outline:2px solid var(--pg-accent);outline-offset:2px}
+section.s{margin-top:40px}
+section.s>h2{font-family:'Piazzolla',Georgia,serif;font-weight:600;font-size:24px;line-height:1.15;letter-spacing:-.005em}
+section.s>.lead{color:var(--pg-mute);max-width:64ch;margin-top:6px}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--pg-accent);margin-bottom:6px}
+.phones{display:flex;gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;margin:18px -16px 0;padding:4px 16px 10px;scrollbar-width:none}
+.phones::-webkit-scrollbar{display:none}
+.fig{flex:0 0 min(390px,calc(100vw - 48px));scroll-snap-align:start;display:flex;flex-direction:column;gap:8px;min-width:0}
+.fig figcaption{font-size:13px;color:var(--pg-mute);padding:0 6px}
+.fig figcaption b{color:var(--pg-fg);font-weight:600}
+.notes{margin-top:14px;display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.note{background:var(--pg-card);border:1px solid var(--pg-line);border-radius:14px;padding:12px 14px;font-size:14px}
+.note b{display:block;font-weight:600;margin-bottom:2px}
+.dups{margin-top:14px;display:flex;flex-direction:column;gap:8px}
+.dup{display:grid;grid-template-columns:minmax(120px,1fr) 2fr;gap:8px 12px;align-items:baseline;padding:10px 0;border-top:1px solid var(--pg-line)}
+.dup:first-child{border-top:0}
+.dup .what{font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12.5px;padding:3px 9px;border-radius:999px;background:var(--pg-card);border:1px solid var(--pg-line);color:var(--pg-mute);white-space:nowrap}
+.chip.hot{border-color:var(--pg-accent);color:var(--pg-accent);background:var(--pg-accent-soft)}
+.flow{display:flex;flex-wrap:wrap;gap:6px 4px;align-items:center;margin-top:12px}
+.flow .st{background:var(--pg-card);border:1px solid var(--pg-line);border-radius:999px;padding:6px 12px;font-size:13.5px}
+.flow .ar{color:var(--pg-mute);padding:0 2px}
+.tbl{margin-top:16px;overflow-x:auto;border:1px solid var(--pg-line);border-radius:14px;background:var(--pg-card)}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:13.5px}
+th,td{text-align:left;padding:9px 12px;border-top:1px solid var(--pg-line);vertical-align:top}
+th{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--pg-mute);border-top:0}
+td:first-child{font-weight:600;white-space:nowrap}
+.same{color:var(--pg-mute)}
+.counts{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.count{background:var(--pg-card);border:1px solid var(--pg-line);border-radius:14px;padding:10px 14px;min-width:120px}
+.count b{display:block;font-family:'Piazzolla',Georgia,serif;font-size:30px;font-weight:500;line-height:1}
+.count span{font-size:12.5px;color:var(--pg-mute)}
+.rec{margin-top:16px;background:var(--pg-card);border:1px solid var(--pg-line);border-left:3px solid var(--pg-accent);border-radius:14px;padding:16px 18px;max-width:72ch}
+.rec ol{margin:8px 0 0;padding-left:20px}
+.rec li{margin-top:4px}
+.ic{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+/* ---------- экран телефона ---------- */
+.phone{position:relative;width:100%;height:800px;overflow:hidden;border-radius:34px;border:1px solid var(--pg-line);background:var(--canvas);color:var(--ink);font-family:var(--fs);font-size:15px;line-height:1.45;display:flex;flex-direction:column;gap:12px;padding:16px 16px 0}
+.phone .num{font-variant-numeric:tabular-nums lining-nums}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 2px 0}
+.topbar h1{font-family:var(--fd);font-weight:var(--wd);font-size:28px;line-height:1.05;letter-spacing:var(--ls)}
+.topbar .l{display:flex;align-items:center;gap:10px;min-width:0}
+.topbar .sub{font-size:13px;color:var(--ink-3);margin-top:2px}
+.topbar .r{display:flex;align-items:center;gap:8px;flex:none}
+.avatars{display:flex}
+.avatar{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:600;border:2px solid var(--canvas)}
+.avatar.a{background:var(--pa)} .avatar.b{background:var(--pb);margin-left:-8px}
+.ibox{width:38px;height:38px;border-radius:12px;background:var(--surface-2);display:grid;place-items:center;color:var(--ink-2);flex:none}
+.ibox.brand{background:var(--brand-soft);color:var(--brand)}
+.card{background:var(--surface);border:1px solid var(--card-border);border-radius:22px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.sec{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);margin:4px 4px -4px;display:flex;justify-content:space-between;align-items:baseline}
+.sec .tot{font-size:12px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--ink-3)}
+.list{display:flex;flex-direction:column}
+.row{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.row:first-child{border-top:0;padding-top:0} .row:last-child{padding-bottom:0}
+.row .grow{flex:1;min-width:0}
+.name{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta{font-size:13px;color:var(--ink-3)}
+.amt{font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.amt.pos{color:var(--ok)} .amt.neg{color:var(--destructive)} .amt.mute{color:var(--ink-3);font-weight:500}
+.chev{color:var(--ink-3)} .chev .ic{width:16px;height:16px}
+.dot{width:9px;height:9px;border-radius:50%;flex:none}
+.sw{width:9px;height:9px;border-radius:50%;flex:none;display:inline-block;margin-right:6px;vertical-align:1px}
+.tag{display:inline-flex;align-items:center;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:500;background:var(--warn-soft);color:var(--warn);white-space:nowrap}
+.tag.ok{background:var(--ok-soft);color:var(--ok)} .tag.brand{background:var(--brand-soft);color:var(--brand)} .tag.n{background:var(--surface-3);color:var(--ink-2)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:999px;padding:12px 18px;font-weight:600;font-size:15px;background:var(--brand);color:var(--brand-ink);white-space:nowrap}
+.btn.sec{background:var(--surface-3);color:var(--ink)} .btn.ghost{background:transparent;color:var(--ink-2);padding-inline:10px} .btn.sm{padding:8px 14px;font-size:14px}
+.btns{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.between{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.h3{font-weight:600;font-size:17px}
+.bar{height:6px;border-radius:3px;background:var(--track);overflow:hidden} .bar i{display:block;height:100%;border-radius:3px;background:var(--brand)}
+.stack{display:flex;gap:2px;height:10px} .stack i{display:block;border-radius:2px}
+.hero{position:relative;border-radius:26px;overflow:hidden;min-height:360px;display:flex;flex-direction:column;justify-content:flex-end;padding:18px;color:var(--on-photo);isolation:isolate;background:linear-gradient(160deg,#6a5546,#2a211c)}
+.hero.short{min-height:280px}
+.hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2}
+.hero::after{content:'';position:absolute;inset:35% 0 0;background:linear-gradient(to bottom,transparent,var(--photo-scrim));z-index:-1}
+.hero .lbl{font-size:14px;font-weight:500;opacity:.85}
+.hero .big{font-family:var(--fn);font-weight:var(--big-w);font-size:var(--big-size);line-height:.95;letter-spacing:-.01em;margin:4px 0 8px}
+.hero .line{font-size:15px;opacity:.92}
+.hero .bar{background:rgb(255 255 255 / .3);margin-top:12px;height:4px} .hero .bar i{background:#fff}
+.free{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;background:var(--surface);border:1px solid var(--card-border);border-radius:22px;padding:14px 16px}
+.free .k{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3)}
+.free .v{font-family:var(--fn);font-weight:var(--num-w);font-size:30px;line-height:1.05;letter-spacing:-.01em;margin-top:4px}
+.free .d{text-align:right;font-size:13px;color:var(--ink-3)} .free .d b{display:block;font-weight:600;color:var(--ink);font-size:15px}
+.tiles{display:flex;gap:10px}
+.tile{position:relative;flex:1 1 0;min-width:0;height:140px;border-radius:20px;overflow:hidden;color:var(--on-photo);padding:12px;display:flex;flex-direction:column;justify-content:flex-end;isolation:isolate;background:var(--surface-3)}
+.tile img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2}
+.tile::after{content:'';position:absolute;inset:40% 0 0;background:linear-gradient(to bottom,transparent,var(--photo-scrim));z-index:-1}
+.tile .pct{font-family:var(--fn);font-weight:var(--num-w);font-size:24px;line-height:1}
+.tile .nm{font-size:12px;opacity:.9;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile.add{background:var(--surface);border:1px dashed var(--line-strong);color:var(--ink-2);justify-content:center;align-items:center;text-align:center;gap:6px;font-size:13px} .tile.add::after{display:none}
+.decision{background:var(--surface);border:1px solid var(--card-border);border-radius:22px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.decision .q{font-family:var(--fd);font-weight:var(--wd);font-size:21px;line-height:1.15;letter-spacing:var(--ls)}
+.decision .meta{font-size:14px}
+.wish{display:flex;align-items:center;gap:12px}
+.wish img{width:40px;height:40px;border-radius:12px;object-fit:cover;flex:none}
+.tabs{position:absolute;left:0;right:0;bottom:0;height:86px;padding:8px 16px 20px;background:linear-gradient(to top,var(--canvas) 70%,transparent);display:flex;align-items:center;gap:6px}
+.tabs .cap{position:absolute;left:16px;right:16px;top:8px;height:58px;border-radius:29px;background:var(--surface);border:1px solid var(--card-border)}
+.tabs .t{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;font-weight:500;color:var(--ink-3)}
+.tabs .t.on{color:var(--ink)} .tabs .t .ic{width:22px;height:22px}
+.tabs .plus{position:relative;width:46px;height:46px;border-radius:50%;background:var(--brand);color:var(--brand-ink);display:grid;place-items:center;margin:0 4px 0 2px;flex:none}
+.fab{position:absolute;right:16px;bottom:20px;width:54px;height:54px;border-radius:50%;background:var(--brand);color:var(--brand-ink);display:grid;place-items:center;z-index:2}
+.fab .ic{width:24px;height:24px}
+.scrim{position:absolute;inset:0;background:var(--scrim);z-index:3}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:4;background:var(--surface);border-radius:26px 26px 0 0;padding:12px 18px 28px;display:flex;flex-direction:column;gap:12px;box-shadow:0 -8px 40px rgb(0 0 0 / .18)}
+.sheet .grip{width:36px;height:4px;border-radius:2px;background:var(--line-strong);margin:0 auto 2px}
+.sheet .title{font-family:var(--fd);font-weight:var(--wd);font-size:23px;letter-spacing:var(--ls)}
+.sheet .bignum{font-family:var(--fn);font-weight:var(--num-w);font-size:40px;line-height:1;letter-spacing:-.01em}
+.toggle{width:40px;height:24px;border-radius:12px;background:var(--brand);position:relative;flex:none}
+.toggle::after{content:'';position:absolute;top:3px;right:3px;width:18px;height:18px;border-radius:50%;background:var(--surface)}
+.fold{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid var(--line);font-weight:500}
+.fold .ic{width:16px;height:16px;color:var(--ink-3)}
+.inner{background:var(--surface-2);border-radius:14px;padding:10px 12px;font-size:13px;color:var(--ink-2)}
+.pill{display:inline-flex;gap:6px;align-items:center;font-size:12px;color:var(--ink-3);background:var(--surface-2);border-radius:999px;padding:4px 10px}
+/* «Деньги» целиком: сводка, три квадрата, виджеты, история */
+.squares{display:flex;gap:8px}
+.sq{flex:1 1 0;min-width:0;background:var(--surface);border:1px solid var(--card-border);border-radius:16px;padding:10px 12px;display:flex;flex-direction:column;gap:1px}
+.sq b{font-weight:600;font-size:14px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sq small{font-size:11.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sq.on{background:var(--brand-soft);border-color:var(--brand)} .sq.on b{color:var(--brand)} .sq.on small{color:var(--brand);opacity:.8}
+.w .k{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3)}
+.w .v{font-family:var(--fn);font-weight:var(--num-w);font-size:28px;line-height:1.05;letter-spacing:-.01em}
+.w .v.neg{color:var(--destructive)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12.5px;color:var(--ink-2)}
+.legend .sw{margin-right:5px}
+.pf{display:flex;flex-direction:column;gap:4px;padding:9px 0;border-top:1px solid var(--line)}
+.pf:first-child{border-top:0;padding-top:0}
+.pf .t{display:flex;justify-content:space-between;gap:10px;font-size:14px}
+.pf .t b{font-weight:500}
+.pf .t span{color:var(--ink-3);font-size:13px;white-space:nowrap}
+.pf .bar{height:8px;border-radius:4px}
+.pf .bar i{background:var(--ok)} .pf.over .bar i{background:var(--destructive)}
+.day{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);margin:6px 4px -4px}
+.op .logo{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;font-weight:700;font-size:12px;color:#fff;flex:none}
+.op .cat{font-size:12.5px;color:var(--ink-3);display:flex;align-items:center;gap:6px}
+.cchips{display:flex;gap:6px;overflow:hidden}
+.cchip{border-radius:999px;padding:7px 12px;font-size:13px;font-weight:500;background:var(--surface-3);color:var(--ink);white-space:nowrap}
+.cchip.on{background:var(--brand-soft);color:var(--brand);border:1px solid var(--brand);padding:6px 11px}
+@media (prefers-reduced-motion: reduce){ *{scroll-behavior:auto !important} }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-gear" viewBox="0 0 24 24"><path d="M4 7h9M18 7h2M4 17h5M13 17h7"/><circle cx="15.5" cy="7" r="2.2"/><circle cx="10.5" cy="17" r="2.2"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+<symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+<symbol id="i-back" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+<symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></symbol>
+<symbol id="i-week" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+<symbol id="i-money" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 15h3"/></symbol>
+<symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></symbol>
+<symbol id="i-camera" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="3"/><circle cx="12" cy="13.5" r="3.5"/><path d="M8.5 7L10 4h4l1.5 3"/></symbol>
+<symbol id="i-bag" viewBox="0 0 24 24"><path d="M6 8h12l1 13H5L6 8zM9 8V6a3 3 0 0 1 6 0v2"/></symbol>
+<symbol id="i-card" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/></symbol>
+<symbol id="i-coins" viewBox="0 0 24 24"><circle cx="9" cy="10" r="5"/><path d="M13.5 8.4A5 5 0 1 1 11.4 17"/></symbol>
+</defs></svg>
+
+<div class="wrap">
+<header class="hd">
+  <h1>Family Finance без лишнего</h1>
+  <p>Текущее предложение: три вкладки Мечты · Неделя · Деньги. Сейчас разбираем «Деньги»; «Неделя» и «Мечты» — следующими шагами. Экраны в ширину телефона, ряды листаются вбок. Переключатели меняют шрифт, палитру и тему.</p>
+</header>
+
+<div class="ctl" role="group" aria-label="Переключатели">
+  <div class="seg" data-ctl="font"><span class="lbl">Шрифт</span><button type="button" id="font-1" data-v="f1" aria-pressed="true">Сейчас</button><button type="button" id="font-2" data-v="f2" aria-pressed="false">Один шрифт</button><button type="button" id="font-3" data-v="f3" aria-pressed="false">Системный</button></div>
+  <div class="seg" data-ctl="pal"><span class="lbl">Палитра</span><button type="button" id="pal-warm" data-v="warm" aria-pressed="true">Тёплая</button><button type="button" id="pal-neutral" data-v="neutral" aria-pressed="false">Нейтральная</button></div>
+  <div class="seg" data-ctl="theme"><span class="lbl">Тема</span><button type="button" id="theme-auto" data-v="auto" aria-pressed="true">Авто</button><button type="button" id="theme-light" data-v="light" aria-pressed="false">Светлая</button><button type="button" id="theme-dark" data-v="dark" aria-pressed="false">Тёмная</button></div>
+</div>
+
+<main id="all" class="f1" data-pal="warm">
+
+<!-- ================= ДЕНЬГИ ЦЕЛИКОМ ================= -->
+<section class="s" id="money">
+  <div class="eyebrow">Сейчас разбираем</div>
+  <h2>Капитал · План · История</h2>
+  <p class="lead">Сверху сводка вместо «Впереди». Все платежи — одним списком в Капитале. План — долги: что гасить первым и «Сначала долги» вместе. История — что было.</p>
+  <div class="phones">
+
+    <figure class="fig">
+      <div class="phone">
+        <div class="topbar"><div class="l"><div><h1>Деньги</h1><div class="sub">Сентябрь · Ильяс и Дана</div></div></div><div class="r"><span class="avatars"><span class="avatar a">И</span><span class="avatar b">Д</span></span></div></div>
+        <div class="card" style="gap:4px"><div class="between"><span class="h3">До зарплаты 9 дней</span><span class="tag ok">хватает</span></div><div class="meta num">3 списания · 324&nbsp;990&nbsp;₸ · остаётся 155&nbsp;010&nbsp;₸</div></div>
+        <div class="squares"><div class="sq on"><b>Капитал</b><small class="num">480&nbsp;000</small></div><div class="sq"><b>План</b><small>сначала долги</small></div><div class="sq"><b>История</b><small class="num">41 операция</small></div></div>
+        <div class="card w" style="gap:8px">
+          <div class="between"><span class="k">Доход</span><span class="tag n">нагрузка 30 %</span></div>
+          <div class="v num">1&nbsp;200&nbsp;000&nbsp;₸</div>
+          <div class="stack"><i style="width:30%;background:var(--s12)"></i><i style="width:18%;background:var(--brand)"></i><i style="width:25%;background:var(--s1)"></i><i style="width:27%;background:var(--ok)"></i></div>
+          <div class="legend"><span><i class="sw" style="background:var(--s12)"></i>обязательное 30 %</span><span><i class="sw" style="background:var(--brand)"></i>мечты 18 %</span><span><i class="sw" style="background:var(--s1)"></i>еда и быт 25 %</span><span><i class="sw" style="background:var(--ok)"></i>свободно 27 %</span></div>
+          <div class="list" style="margin-top:4px">
+            <div class="row"><span class="avatar a">И</span><div class="grow"><div class="name">Ильяс</div><div class="meta">10-го</div></div><span class="amt">750&nbsp;000&nbsp;₸</span><span class="chev"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+            <div class="row"><span class="avatar b" style="margin:0">Д</span><div class="grow"><div class="name">Дана</div><div class="meta">20-го</div></div><span class="amt">450&nbsp;000&nbsp;₸</span><span class="chev"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+          </div>
+        </div>
+        <div class="card w" style="gap:8px">
+          <div class="between"><span class="k">Еда и быт</span><span class="tag ok">по выпискам 61 %</span></div>
+          <div class="between"><span class="v num" style="font-size:24px">184&nbsp;000&nbsp;₸</span><span class="meta num">план 300&nbsp;000</span></div>
+          <div class="bar"><i style="width:61%;background:var(--ok)"></i></div>
+        </div>
+        <div class="card w" style="gap:8px">
+          <div class="between"><span class="k">Долги</span><span class="tag ok">в сентябре оплачено 1 из 1</span></div>
+          <div class="between"><span class="v num neg">−1&nbsp;800&nbsp;000&nbsp;₸</span><span class="meta num">чистых 480&nbsp;000&nbsp;₸</span></div>
+        </div>
+        <div class="sec"><span>Счета</span><span class="tot num">1&nbsp;680&nbsp;000&nbsp;₸</span></div>
+        <div class="card"><div class="list">
+          <div class="row"><span class="ibox"><svg class="ic"><use href="#i-card"/></svg></span><div class="grow"><div class="name">Kaspi Gold</div><div class="meta">карта · Ильяс</div></div><span class="amt">480&nbsp;000&nbsp;₸</span><span class="chev"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+          <div class="row"><span class="ibox"><svg class="ic"><use href="#i-coins"/></svg></span><div class="grow"><div class="name">Депозит Kaspi</div><div class="meta">14 % · общий</div></div><span class="amt">1&nbsp;200&nbsp;000&nbsp;₸</span><span class="chev"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+        </div></div>
+        <div class="sec"><span>Платежи</span><span class="tot num">359&nbsp;980 в месяц</span></div>
+        <div class="card"><div class="list">
+          <div class="row"><div class="grow"><div class="name">Аренда квартиры</div><div class="meta">5-го · Дана</div></div><span class="amt">220&nbsp;000&nbsp;₸</span><span class="btn sec sm">Оплатил</span></div>
+          <div class="row"><div class="grow"><div class="name">Автокредит</div><div class="meta">12-го · оплачено</div></div><span class="amt mute">95&nbsp;000&nbsp;₸</span><span class="tag ok"><svg class="ic" style="width:14px;height:14px"><use href="#i-check"/></svg></span></div>
+          <div class="row"><div class="grow"><div class="name">Коммуналка</div><div class="meta">≈ оценка</div></div><span class="amt">30&nbsp;000&nbsp;₸</span><span class="btn sec sm">Оплатил</span></div>
+          <div class="row"><div class="grow"><div class="name">Подписки</div><div class="meta">3</div></div><span class="amt">14&nbsp;980&nbsp;₸</span><span class="chev"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+        </div></div>
+        <nav class="tabs"><div class="cap"></div><span class="t"><svg class="ic"><use href="#i-heart"/></svg>Мечты</span><span class="t"><svg class="ic"><use href="#i-week"/></svg>Неделя</span><span class="t on"><svg class="ic"><use href="#i-money"/></svg>Деньги</span><span class="plus"><svg class="ic"><use href="#i-plus"/></svg></span></nav>
+      </div>
+      <figcaption><b>Капитал.</b> Сводка, три виджета (доход с долями, еда и быт план и факт, долги с покрытием), два списка: Счета и Платежи. Это бывшие Бюджет и Капитал в одном.</figcaption>
+    </figure>
+
+    <figure class="fig">
+      <div class="phone">
+        <div class="topbar"><div class="l"><div><h1>Деньги</h1><div class="sub">Сентябрь · Ильяс и Дана</div></div></div><div class="r"><span class="avatars"><span class="avatar a">И</span><span class="avatar b">Д</span></span></div></div>
+        <div class="squares"><div class="sq"><b>Капитал</b><small class="num">480&nbsp;000</small></div><div class="sq on"><b>План</b><small>сначала долги</small></div><div class="sq"><b>История</b><small class="num">41 операция</small></div></div>
+        <div class="card w" style="gap:8px">
+          <div class="between"><span class="k">Самая дорогая ставка</span><span class="tag n">19 %</span></div>
+          <div class="between"><span class="h3">Автокредит</span><span class="amt num">1&nbsp;800&nbsp;000&nbsp;₸</span></div>
+          <div class="meta num">процентов в месяц 28&nbsp;500 · переплата до конца 356&nbsp;947</div>
+        </div>
+        <div class="card" style="gap:10px">
+          <div class="between"><span class="h3">Сначала долги</span><span class="toggle"></span></div>
+          <div class="inner"><div class="between"><b style="color:var(--ink)">Шаг сентября</b><span class="num">60&nbsp;000&nbsp;₸ досрочно</span></div><div style="margin-top:4px">Закроется в марте 2028, на 14 месяцев раньше. Переплата 356&nbsp;947 → 210&nbsp;000&nbsp;₸. Уже сэкономили 46&nbsp;000&nbsp;₸.</div></div>
+          <div class="btns"><span class="btn">Шаг сделан</span><span class="btn ghost">Изменить режим</span></div>
+          <div class="list">
+            <div class="row"><div class="grow"><div class="name">Цели на паузе</div><div class="meta">Машина · взнос идёт в долг</div></div><span class="chev"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+          </div>
+          <div class="fold">Копить или гасить?<svg class="ic"><use href="#i-down"/></svg></div>
+          <div class="fold">Шаги по месяцам<svg class="ic"><use href="#i-down"/></svg></div>
+        </div>
+        <nav class="tabs"><div class="cap"></div><span class="t"><svg class="ic"><use href="#i-heart"/></svg>Мечты</span><span class="t"><svg class="ic"><use href="#i-week"/></svg>Неделя</span><span class="t on"><svg class="ic"><use href="#i-money"/></svg>Деньги</span><span class="plus"><svg class="ic"><use href="#i-plus"/></svg></span></nav>
+      </div>
+      <figcaption><b>План.</b> «Что гасить первым» и план «Сначала долги» на одном экране: ставка, шаг месяца, прогноз. Сравнение и график — свёрнуты.</figcaption>
+    </figure>
+
+    <figure class="fig">
+      <div class="phone">
+        <div class="topbar"><div class="l"><div><h1>Деньги</h1><div class="sub">Сентябрь · Ильяс и Дана</div></div></div><div class="r"><span class="avatars"><span class="avatar a">И</span><span class="avatar b">Д</span></span></div></div>
+        <div class="squares"><div class="sq"><b>Капитал</b><small class="num">480&nbsp;000</small></div><div class="sq"><b>План</b><small>сначала долги</small></div><div class="sq on"><b>История</b><small class="num">41 операция</small></div></div>
+        <div class="cchips"><span class="cchip on">Всё</span><span class="cchip">Операции</span><span class="cchip">Отметки</span><span class="cchip">Продукты</span><span class="cchip">Кафе</span></div>
+        <div class="card" style="gap:0"><div class="row"><div class="grow"><div class="name">Наш август</div><div class="meta">итог месяца · поделиться</div></div><span class="chev"><svg class="ic"><use href="#i-chev"/></svg></span></div></div>
+        <div class="day">24 сентября</div>
+        <div class="card" style="gap:0"><div class="list">
+          <div class="row op"><span class="logo" style="background:var(--s1)">ИП</span><div class="grow"><div class="name">ИП Сериков</div><div class="cat"><i class="sw" style="background:var(--s1);margin:0"></i>Продукты</div></div><span class="amt">−6&nbsp;800&nbsp;₸</span></div>
+          <div class="row op"><span class="logo" style="background:var(--s4)">Я</span><div class="grow"><div class="name">Яндекс Плюс</div><div class="cat"><i class="sw" style="background:var(--s4);margin:0"></i>Подписки</div></div><span class="amt">−4&nbsp;990&nbsp;₸</span></div>
+        </div></div>
+        <div class="day">20 сентября</div>
+        <div class="card" style="gap:0"><div class="list">
+          <div class="row"><span class="avatar b" style="margin:0">Д</span><div class="grow"><div class="name">Зарплата Даны</div><div class="meta">пришла · отметка</div></div><span class="amt pos">+450&nbsp;000&nbsp;₸</span></div>
+          <div class="row op"><span class="logo" style="background:var(--s1)">M</span><div class="grow"><div class="name">Magnum</div><div class="cat"><i class="sw" style="background:var(--s1);margin:0"></i>Продукты</div></div><span class="amt">−12&nbsp;400&nbsp;₸</span></div>
+        </div></div>
+        <div class="day">12 сентября</div>
+        <div class="card" style="gap:0"><div class="list">
+          <div class="row"><span class="ibox"><svg class="ic"><use href="#i-card"/></svg></span><div class="grow"><div class="name">Автокредит</div><div class="meta">оплачено · Ильяс · из выписки</div></div><span class="amt">−95&nbsp;000&nbsp;₸</span></div>
+          <div class="row op"><span class="logo" style="background:var(--s12)">→</span><div class="grow"><div class="name">На депозит</div><div class="cat">между своими · не трата</div></div><span class="amt mute">200&nbsp;000&nbsp;₸</span></div>
+        </div></div>
+        <nav class="tabs"><div class="cap"></div><span class="t"><svg class="ic"><use href="#i-heart"/></svg>Мечты</span><span class="t"><svg class="ic"><use href="#i-week"/></svg>Неделя</span><span class="t on"><svg class="ic"><use href="#i-money"/></svg>Деньги</span><span class="plus"><svg class="ic"><use href="#i-plus"/></svg></span></nav>
+      </div>
+      <figcaption><b>История.</b> По дням: операции из выписок, отметки (пришла, оплачено), итог месяца. Партнёр видит отметки и итоги, не ваши покупки.</figcaption>
+    </figure>
+
+  </div>
+</section>
+
+
+<section class="s" id="next">
+  <div class="eyebrow">Следующие шаги</div>
+  <h2>Мечты и Неделя</h2>
+  <p class="lead">Пока как нарисовано в первом круге: мечта с одной цифрой «свободно» на главном, решения и неделя на «Неделе». Разберём после «Денег».</p>
+  <div class="phones">
+<figure class="fig">
+      <div class="phone">
+        <div class="topbar"><div class="l"><div><h1>Мечты</h1><div class="sub">Сентябрь · Ильяс и Дана</div></div></div><div class="r"><span class="avatars"><span class="avatar a">И</span><span class="avatar b">Д</span></span><span class="ibox"><svg class="ic"><use href="#i-gear"/></svg></span></div></div>
+        <div class="hero"><img src="img/japan.jpg" alt=""><div class="lbl">До мечты</div><div class="big num">62&nbsp;%</div><div class="line">Япония&nbsp;· 1&nbsp;116&nbsp;000 из 1&nbsp;800&nbsp;000&nbsp;₸&nbsp;· май&nbsp;2027</div><div class="bar"><i style="width:62%"></i></div></div>
+        <div class="free"><div><div class="k">Свободно до конца месяца</div><div class="v num">236&nbsp;000&nbsp;₸</div></div><div class="d">до зарплаты<b>9 дней</b></div></div>
+        <div class="tiles"><div class="tile"><img src="img/car.jpg" alt=""><div class="pct num">18&nbsp;%</div><div class="nm">Машина</div></div><div class="tile"><img src="img/kitchen.jpg" alt=""><div class="pct num">40&nbsp;%</div><div class="nm">Кухня</div></div><div class="tile add"><svg class="ic"><use href="#i-plus"/></svg>Новая мечта</div></div>
+        <div class="sec"><span>Желания</span><span class="tot">все 5 →</span></div>
+        <div class="card"><div class="list">
+          <div class="row wish"><img src="img/w1.jpg" alt=""><div class="grow"><div class="name">Наушники</div><div class="meta">Ильяс · когда свободно &gt; 100 000</div></div><span class="amt">89&nbsp;000&nbsp;₸</span></div>
+          <div class="row wish"><img src="img/w2.jpg" alt=""><div class="grow"><div class="name">Кроссовки</div><div class="meta">Дана · осень</div></div><span class="amt">45&nbsp;000&nbsp;₸</span></div>
+        </div></div>
+        <nav class="tabs"><div class="cap"></div><span class="t on"><svg class="ic"><use href="#i-heart"/></svg>Мечты</span><span class="t"><svg class="ic"><use href="#i-week"/></svg>Неделя</span><span class="t"><svg class="ic"><use href="#i-money"/></svg>Деньги</span><span class="plus"><svg class="ic"><use href="#i-plus"/></svg></span></nav>
+      </div>
+      <figcaption><b>Мечты.</b> Герой, одна цифра «свободно», другие мечты и желания. Ни картины недели, ни решений: они на «Неделе».</figcaption>
+    </figure>
+<figure class="fig">
+      <div class="phone">
+        <div class="topbar"><div class="l"><div><h1>Неделя</h1><div class="sub">15–21 сентября · обе выписки</div></div></div></div>
+        <div class="decision"><div class="q">Похоже, это платёж по Автокредиту — отметить?</div><div class="meta">95&nbsp;000&nbsp;₸ · 12 сентября · Kaspi Gold</div><div class="btns"><span class="btn">Да, отметить</span><span class="btn sec">Нет</span><span class="btn ghost">Потом</span></div></div>
+        <div class="card">
+          <div class="between"><span class="h3 num">184&nbsp;000&nbsp;₸</span><span class="tag ok">на 12 % меньше прошлой</span></div>
+          <div class="stack"><i style="width:34%;background:var(--s1)"></i><i style="width:15%;background:var(--s2)"></i><i style="width:10%;background:var(--s8)"></i><i style="width:8%;background:var(--s3)"></i><i style="width:11%;background:var(--s12)"></i><i style="width:22%;background:var(--s-unknown)"></i></div>
+          <div class="list">
+            <div class="row"><span class="dot" style="background:var(--s1)"></span><span class="grow name">Продукты</span><span class="amt">62&nbsp;000&nbsp;₸</span></div>
+            <div class="row"><span class="dot" style="background:var(--s2)"></span><span class="grow name">Кафе и рестораны</span><span class="amt">28&nbsp;000&nbsp;₸</span></div>
+            <div class="row"><span class="dot" style="background:var(--s8)"></span><span class="grow name">Дом и быт</span><span class="amt">18&nbsp;000&nbsp;₸</span></div>
+            <div class="row"><span class="dot" style="background:var(--s-unknown)"></span><div class="grow"><div class="name">Не разобрано</div><div class="meta">2 продавца · разобрать</div></div><span class="amt">40&nbsp;000&nbsp;₸</span><span class="chev"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+          </div>
+        </div>
+        <div class="sec"><span>Впереди</span><span class="tot">сентябрь</span></div>
+        <div class="card"><div class="list">
+          <div class="row"><div class="grow"><div class="name">Аренда квартиры</div><div class="meta">5 октября</div></div><span class="amt">220&nbsp;000&nbsp;₸</span><span class="btn sec sm">Оплатил</span></div>
+          <div class="row"><div class="grow"><div class="name">Зарплата Ильяса</div><div class="meta">10 октября</div></div><span class="amt pos">+750&nbsp;000&nbsp;₸</span></div>
+          <div class="row"><div class="grow"><div class="name">Автокредит</div><div class="meta">12 октября · 24-й из 60</div></div><span class="amt">95&nbsp;000&nbsp;₸</span><span class="btn sec sm">Оплатил</span></div>
+        </div></div>
+        <div class="sec"><span>Прошлые недели</span></div>
+        <div class="card"><div class="list">
+          <div class="row"><div class="grow"><div class="name">8–14 сентября</div><div class="meta">обе выписки</div></div><span class="amt">209&nbsp;000&nbsp;₸</span></div>
+        </div></div>
+        <nav class="tabs"><div class="cap"></div><span class="t"><svg class="ic"><use href="#i-heart"/></svg>Мечты</span><span class="t on"><svg class="ic"><use href="#i-week"/></svg>Неделя</span><span class="t"><svg class="ic"><use href="#i-money"/></svg>Деньги</span><span class="plus"><svg class="ic"><use href="#i-plus"/></svg></span></nav>
+      </div>
+      <figcaption><b>Неделя.</b> Одно решение, картина недели, что впереди с «Оплатил», прошлые недели. Всё, что привязано ко времени, здесь.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ================= ШРИФТ ================= -->
+<section class="s" id="fonts">
+  <div class="eyebrow">Шрифт</div>
+  <h2>Один экран, три набора</h2>
+  <p class="lead">Переключатель наверху меняет шрифт на всех экранах. Здесь три набора рядом, чтобы сравнить вплотную. Сетка, цвета и тексты одни и те же.</p>
+  <div class="phones">
+
+    <figure class="fig f1">
+      <div class="phone">
+        <div class="topbar"><div class="l"><div><h1>Мечты</h1><div class="sub">Сентябрь · Ильяс и Дана</div></div></div><div class="r"><span class="avatars"><span class="avatar a">И</span><span class="avatar b">Д</span></span><span class="ibox"><svg class="ic"><use href="#i-gear"/></svg></span></div></div>
+        <div class="hero"><img src="img/japan.jpg" alt=""><div class="lbl">До мечты</div><div class="big num">62&nbsp;%</div><div class="line">Япония&nbsp;· 1&nbsp;116&nbsp;000 из 1&nbsp;800&nbsp;000&nbsp;₸&nbsp;· май&nbsp;2027</div><div class="bar"><i style="width:62%"></i></div></div>
+        <div class="free"><div><div class="k">Свободно до конца месяца</div><div class="v num">236&nbsp;000&nbsp;₸</div></div><div class="d">до зарплаты<b>9 дней</b></div></div>
+        <div class="decision"><div class="q">Похоже, это платёж по Автокредиту — отметить?</div><div class="meta">95&nbsp;000&nbsp;₸ · 12 сентября · Kaspi Gold</div><div class="btns"><span class="btn">Да, отметить</span><span class="btn sec">Нет</span><span class="btn ghost">Потом</span></div></div>
+        <nav class="tabs"><div class="cap"></div><span class="t on"><svg class="ic"><use href="#i-heart"/></svg>Мечты</span><span class="t"><svg class="ic"><use href="#i-week"/></svg>Неделя</span><span class="t"><svg class="ic"><use href="#i-money"/></svg>Деньги</span><span class="plus"><svg class="ic"><use href="#i-plus"/></svg></span></nav>
+      </div>
+      <figcaption><b>1 · Сейчас.</b> Piazzolla для заголовков и цифр, Golos Text для текста. Заметно, «журнально», цифры с засечками.</figcaption>
+    </figure>
+
+    <figure class="fig f2">
+      <div class="phone">
+        <div class="topbar"><div class="l"><div><h1>Мечты</h1><div class="sub">Сентябрь · Ильяс и Дана</div></div></div><div class="r"><span class="avatars"><span class="avatar a">И</span><span class="avatar b">Д</span></span><span class="ibox"><svg class="ic"><use href="#i-gear"/></svg></span></div></div>
+        <div class="hero"><img src="img/japan.jpg" alt=""><div class="lbl">До мечты</div><div class="big num">62&nbsp;%</div><div class="line">Япония&nbsp;· 1&nbsp;116&nbsp;000 из 1&nbsp;800&nbsp;000&nbsp;₸&nbsp;· май&nbsp;2027</div><div class="bar"><i style="width:62%"></i></div></div>
+        <div class="free"><div><div class="k">Свободно до конца месяца</div><div class="v num">236&nbsp;000&nbsp;₸</div></div><div class="d">до зарплаты<b>9 дней</b></div></div>
+        <div class="decision"><div class="q">Похоже, это платёж по Автокредиту — отметить?</div><div class="meta">95&nbsp;000&nbsp;₸ · 12 сентября · Kaspi Gold</div><div class="btns"><span class="btn">Да, отметить</span><span class="btn sec">Нет</span><span class="btn ghost">Потом</span></div></div>
+        <nav class="tabs"><div class="cap"></div><span class="t on"><svg class="ic"><use href="#i-heart"/></svg>Мечты</span><span class="t"><svg class="ic"><use href="#i-week"/></svg>Неделя</span><span class="t"><svg class="ic"><use href="#i-money"/></svg>Деньги</span><span class="plus"><svg class="ic"><use href="#i-plus"/></svg></span></nav>
+      </div>
+      <figcaption><b>2 · Один шрифт.</b> Golos Text везде, заголовки жирнее и плотнее. Тише, цифры ровнее.</figcaption>
+    </figure>
+
+    <figure class="fig f3">
+      <div class="phone">
+        <div class="topbar"><div class="l"><div><h1>Мечты</h1><div class="sub">Сентябрь · Ильяс и Дана</div></div></div><div class="r"><span class="avatars"><span class="avatar a">И</span><span class="avatar b">Д</span></span><span class="ibox"><svg class="ic"><use href="#i-gear"/></svg></span></div></div>
+        <div class="hero"><img src="img/japan.jpg" alt=""><div class="lbl">До мечты</div><div class="big num">62&nbsp;%</div><div class="line">Япония&nbsp;· 1&nbsp;116&nbsp;000 из 1&nbsp;800&nbsp;000&nbsp;₸&nbsp;· май&nbsp;2027</div><div class="bar"><i style="width:62%"></i></div></div>
+        <div class="free"><div><div class="k">Свободно до конца месяца</div><div class="v num">236&nbsp;000&nbsp;₸</div></div><div class="d">до зарплаты<b>9 дней</b></div></div>
+        <div class="decision"><div class="q">Похоже, это платёж по Автокредиту — отметить?</div><div class="meta">95&nbsp;000&nbsp;₸ · 12 сентября · Kaspi Gold</div><div class="btns"><span class="btn">Да, отметить</span><span class="btn sec">Нет</span><span class="btn ghost">Потом</span></div></div>
+        <nav class="tabs"><div class="cap"></div><span class="t on"><svg class="ic"><use href="#i-heart"/></svg>Мечты</span><span class="t"><svg class="ic"><use href="#i-week"/></svg>Неделя</span><span class="t"><svg class="ic"><use href="#i-money"/></svg>Деньги</span><span class="plus"><svg class="ic"><use href="#i-plus"/></svg></span></nav>
+      </div>
+      <figcaption><b>3 · Системный.</b> Шрифт самого iPhone (SF), крупные цифры скруглённые. Как у банков, ничего не грузится. На компьютере вместо него системный шрифт Windows.</figcaption>
+    </figure>
+
+  </div>
+</section>
+
+</main>
+</div>
+
+<script>
+(function(){
+  var all = document.getElementById('all');
+  var root = document.documentElement;
+  function read(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+  function write(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
+  function press(group, v){
+    document.querySelectorAll('[data-ctl="'+group+'"] button').forEach(function(b){ b.setAttribute('aria-pressed', String(b.dataset.v === v)); });
+  }
+  function apply(group, v){
+    if (group === 'font') { all.classList.remove('f1','f2','f3'); all.classList.add(v); }
+    if (group === 'pal') { all.setAttribute('data-pal', v); }
+    if (group === 'theme') { if (v === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', v); }
+    press(group, v);
+    write('ff-simplify-'+group, v);
+  }
+  document.querySelectorAll('.seg').forEach(function(seg){
+    var group = seg.dataset.ctl;
+    seg.querySelectorAll('button').forEach(function(b){ b.addEventListener('click', function(){ apply(group, b.dataset.v); }); });
+    var saved = read('ff-simplify-'+group);
+    if (saved && seg.querySelector('[data-v="'+saved+'"]')) apply(group, saved);
+  });
+})();
+</script>
+
+</body>
+</html>
