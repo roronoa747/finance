@@ -32,7 +32,6 @@ import {
   simulateStrategy,
   strategyGain,
   strategyInputs,
-  type PlanStep,
 } from '@/lib/finance'
 import type { Credit, DebtPlan, Goal, Obligation, Payment } from '@/types/finance'
 import { cn, sentence } from '@/lib/utils'
@@ -56,8 +55,6 @@ const props = defineProps<{
   initial?: { months?: Horizon; kept?: string[]; cushion?: boolean; useSaved?: boolean; cushionGoalId?: string | null }
   /** Активный план семьи: вместо выбора — его карточка. */
   plan?: DebtPlan | null
-  /** Шаг активного плана в этом месяце (`planStep` от стора). */
-  step?: PlanStep | null
   /** Участник, а не viewer: может выбрать план (Р-12). */
   canChoose?: boolean
 }>()
@@ -192,14 +189,6 @@ function choose() {
     lump: planLump.value,
   })
 }
-
-/** Шаг активного плана в карточке — без упрёка, одной строкой. */
-const stepLine = computed(() => {
-  const s = props.step
-  if (!s || s.kind === 'done') return 'долги с процентами закрыты'
-  if (s.kind === 'cushion') return `шаг этого месяца — подушка, ${money(s.amount)}`
-  return s.applied ? `шаг этого месяца внесён · ${money(s.amount)}` : `шаг этого месяца ${money(s.amount)}`
-})
 </script>
 
 <template>
@@ -318,10 +307,9 @@ const stepLine = computed(() => {
       Ставку {{ inputs.unknownRate.map((c) => `«${c.name}»`).join(', ') }} уточните — пока считаем без неё.
     </p>
 
-    <!-- Активный план — его карточка вместо выбора (PV-15); сам план — в том же квадрате «План» -->
-    <div v-if="plan" class="mt-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3">
-      <div class="text-[13.5px] font-medium text-ink">План выбран в {{ monthIn(planStartMonth(plan)) }}</div>
-      <div class="mt-0.5 text-[12.5px] text-ink-2 num">{{ stepLine }}</div>
+    <!-- Активный план — строка вместо выбора (PV-15); шаг месяца — в том же квадрате «План» выше, не повторяется -->
+    <div v-if="plan" class="mt-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3 text-[13.5px] font-medium text-ink">
+      План выбран в {{ monthIn(planStartMonth(plan)) }}
     </div>
 
     <!-- Выбрать этот план (Р-4, Р-7) -->

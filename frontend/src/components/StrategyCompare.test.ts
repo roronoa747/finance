@@ -248,11 +248,10 @@ describe('PV-15: «Выбрать этот план» в калькулятор�
     expect(text(html)).toContain('Первым гасится «Кредитка»')
   })
 
-  it('с активным планом — карточка «План выбран» с шагом, без ссылки на план (пивот 3: план — тот же квадрат), выбора нет', async () => {
-    const step = { kind: 'prepay', creditId: 'card', amount: 100_000, period: '2026-09', applied: null }
-    const html = await render({ plan, step })
+  it('с активным планом — строка «План выбран», без шага (критик Блока 9: шаг — выше в том же квадрате) и без ссылки на план, выбора нет', async () => {
+    const html = await render({ plan })
     expect(text(html)).toContain('План выбран в сентябре 2026')
-    expect(text(html)).toContain(`шаг этого месяца ${money(100_000)}`)
+    expect(text(html)).not.toContain('шаг этого месяца')
     expect(html).not.toContain('href="/money/plan"')
     expect(html).not.toMatch(/>\s*Выбрать этот план\s*</)
     expect(html).not.toContain('type="radio"')

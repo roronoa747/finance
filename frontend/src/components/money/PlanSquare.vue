@@ -292,7 +292,6 @@ function changeMode() {
             :month-key="key"
             :payments="financeStore.payments"
             :plan="plan"
-            :step="step"
             :can-choose="!authStore.isViewer"
             @choose="choosePlan"
           />
