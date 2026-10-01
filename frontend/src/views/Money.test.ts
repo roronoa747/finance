@@ -571,8 +571,10 @@ describe('views/Money.vue — финансовые показатели (рас�
       const o = planOutlook(store.activePlan!, store.planState(), '2026-09')
       expect(o.monthsSooner).toBeGreaterThan(0)
       expect(t).toContain(
-        `Закроется в ${monthIn(o.debtFreeMonth!)}, на ${o.monthsSooner} мес. раньше. Переплата ${plain(o.overpayWithout!)} → ${money(o.overpayWith!)}. Уже сэкономили ${money(0)}.`,
+        `Закроется в ${monthIn(o.debtFreeMonth!)}, на ${o.monthsSooner} мес. раньше. Переплата ${plain(o.overpayWithout!)} → ${money(o.overpayWith!)}.`,
       )
+      // До первой досрочки — без «Уже сэкономили 0 ₸» (ревью frontend Б9, Н-9; правило 12).
+      expect(t).not.toContain('Уже сэкономили')
       expect(t).toContain('Цели на паузе Отпуск, Машина · взнос идёт в долг')
       expect(t).toContain('Подушка плана Подушка')
       expect(html).toMatch(stepButton)

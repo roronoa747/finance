@@ -88,14 +88,18 @@ const stepText = computed(() => {
   return `${money(s.amount)} досрочно`
 })
 
-/** Прогноз одной строкой: срок, на сколько раньше, переплата без плана → с ним, уже сэкономили. */
+/**
+ * Прогноз одной строкой: срок, на сколько раньше, переплата без плана → с ним, уже сэкономили.
+ * До первой досрочки «Уже сэкономили 0 ₸» не печатается: ноль ничего не сообщает (правило 12).
+ */
 const forecastText = computed(() => {
   const o = outlook.value
   if (!o) return ''
-  const saved = `Уже сэкономили ${money(fact.value?.savedInterest ?? 0)}.`
-  if (o.monthsSooner === null || o.debtFreeMonth === null) return `Прогноз: ${NO_SAVING}. ${saved}`
+  const savedInterest = fact.value?.savedInterest ?? 0
+  const saved = savedInterest > 0 ? ` Уже сэкономили ${money(savedInterest)}.` : ''
+  if (o.monthsSooner === null || o.debtFreeMonth === null) return `Прогноз: ${NO_SAVING}.${saved}`
   const sooner = o.monthsSooner > 0 ? `, на ${o.monthsSooner} мес. раньше` : ''
-  return `Закроется в ${monthIn(o.debtFreeMonth)}${sooner}. Переплата ${plain(o.overpayWithout!)} → ${money(o.overpayWith!)}. ${saved}`
+  return `Закроется в ${monthIn(o.debtFreeMonth)}${sooner}. Переплата ${plain(o.overpayWithout!)} → ${money(o.overpayWith!)}.${saved}`
 })
 
 /* ------------------ Шаги по месяцам и история (Р-39) ------------------ */

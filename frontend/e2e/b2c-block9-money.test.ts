@@ -129,7 +129,9 @@ describe('e2e / B2C Блок 9 — «Деньги без лишнего» на �
     const before = await screen(B.pinia, Money, '/money/plan')
     expect(before).toMatch(/role="switch" aria-checked="true"/)
     expect(text(before)).toContain(`Шаг сентября ${money(100_000)} досрочно`)
-    expect(text(before)).toContain(`Уже сэкономили ${money(0)}.`)
+    // До первой досрочки строка прогноза без «Уже сэкономили 0 ₸» (ревью frontend Б9, Н-9).
+    expect(text(before)).toContain('Переплата')
+    expect(text(before)).not.toContain('Уже сэкономили')
 
     // «Шаг сделан» у A — досрочка 100 000 в кредитку с карты, с id плана.
     await screen(A.pinia, Money, '/money/plan', undefined, [screenMixin({}, (s) => (s.tap as () => void)())])
