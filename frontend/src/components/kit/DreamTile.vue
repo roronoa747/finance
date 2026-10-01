@@ -3,7 +3,10 @@ import { PhPlus } from '@phosphor-icons/vue'
 
 /**
  * Плитка мечты (DESIGN.md §5): три в ряд, высота 150, радиус 20; фото или `plain`
- * (`--surface-3`), процент Piazzolla 26 и имя с многоточием. Вариант `add` — «Новая мечта».
+ * (`--surface-3`), процент Piazzolla 26 и имя с многоточием. Вариант `add` — «Новая мечта»;
+ * `link` — переход того же ряда (`name` — подпись, `meta` — строка под ней, иконка — слот `icon`):
+ * «Желания» под героем вместо отдельной ссылки (возврат смоука).
+ * Ширина — у ряда (`flex-1` по умолчанию; ряд с прокруткой задаёт `basis` сам).
  */
 withDefaults(
   defineProps<{
@@ -11,8 +14,10 @@ withDefaults(
     percent?: number
     src?: string | null
     add?: boolean
+    link?: boolean
+    meta?: string
   }>(),
-  { name: '', src: null, add: false },
+  { name: '', src: null, add: false, link: false, meta: '' },
 )
 
 const emit = defineEmits<{ (e: 'click'): void }>()
@@ -25,9 +30,11 @@ const emit = defineEmits<{ (e: 'click'): void }>()
     :class="
       add
         ? 'items-center justify-center gap-1.5 border border-dashed border-line-strong bg-surface text-center text-ink-2'
-        : src
-          ? 'justify-end text-on-photo'
-          : 'justify-end bg-surface-3 text-ink'
+        : link
+          ? 'items-center justify-center gap-1.5 border border-card-border bg-surface text-center text-ink'
+          : src
+            ? 'justify-end text-on-photo'
+            : 'justify-end bg-surface-3 text-ink'
     "
     :aria-label="add ? 'Новая мечта' : undefined"
     @click="emit('click')"
@@ -35,6 +42,11 @@ const emit = defineEmits<{ (e: 'click'): void }>()
     <template v-if="add">
       <PhPlus :size="20" />
       <span class="text-[13px]">Новая мечта</span>
+    </template>
+    <template v-else-if="link">
+      <span class="grid size-[38px] place-items-center rounded-[12px] bg-surface-2 text-ink-2 [&_svg]:size-5"><slot name="icon" /></span>
+      <span class="text-[13px] font-medium">{{ name }}</span>
+      <span v-if="meta" class="-mt-1 text-[12px] text-ink-3">{{ meta }}</span>
     </template>
     <template v-else>
       <img v-if="src" :src="src" alt="" class="absolute inset-0 -z-20 size-full object-cover" />

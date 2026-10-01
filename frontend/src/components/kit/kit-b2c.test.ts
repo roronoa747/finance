@@ -50,7 +50,9 @@ describe('DreamHero', () => {
     })
     expect(html).toContain('До мечты')
     expect(html).toContain(pctText(62))
-    expect(html).toContain(`Япония · 1${NBSP}116${NBSP}000 из 1${NBSP}800${NBSP}000${NBSP}₸ · будет вашей в мае 2027`)
+    // «·» держится за предыдущее слово, месяц с годом — одним куском: строка не начинается с точки (смоук владельца, п. 4).
+    expect(html).toContain(`Япония${NBSP}· 1${NBSP}116${NBSP}000 из 1${NBSP}800${NBSP}000${NBSP}₸${NBSP}· будет вашей в мае${NBSP}2027`)
+    expect(html).not.toContain(' · ')
     expect(html).toContain('src="blob:photo"')
     expect(html).toContain('photo-scrim')
     expect(html).toContain('text-on-photo')
@@ -89,6 +91,16 @@ describe('DreamTile / TemplateTile', () => {
     expect(tile).toContain('h-[150px]')
     expect(await render(DreamTile, { name: 'Машина', percent: 18 })).toContain('bg-surface-3')
     expect(await render(DreamTile, { add: true })).toContain('Новая мечта')
+  })
+
+  it('link — переход в том же ряду (возврат смоука: «Желания» вместо отдельной ссылки): подпись, строка, иконка слотом', async () => {
+    const html = await render(DreamTile, { link: true, name: 'Желания', meta: '3 в списке' }, { icon: () => h(PhHeart) })
+    expect(html).toContain('Желания')
+    expect(html).toContain('3 в списке')
+    expect(html).toContain('<svg')
+    expect(html).toContain('border-card-border')
+    expect(html).not.toContain('border-dashed')
+    expect(html).not.toContain('%')
   })
 
   it('шаблон: выбранный — обводка бренда и aria-pressed; камера — «Своё фото»', async () => {
@@ -145,6 +157,27 @@ describe('WeekCard / FreeCard', () => {
     expect(html).toContain('Напомним Дане в воскресенье в 21:00.')
   })
 
+  it('unknownRow — «Не разобрано» строкой списка с подписью и шевроном (g2 «Неделя — итог»), в подвале его нет; без action — не кнопка', async () => {
+    const html = await render(WeekCard, {
+      total: 184_000,
+      segments,
+      rows: segments.length,
+      unknown: 40_000,
+      unknownShare: 0.21,
+      unknownRow: { meta: '2 продавца · разобрать', action: true },
+    })
+    expect(html).toContain('Здоровье')
+    expect(html).toContain('Подписки')
+    expect(html).toContain('Не разобрано')
+    expect(html).toContain('2 продавца · разобрать')
+    expect(html).toContain(`40${NBSP}000${NBSP}₸`)
+    expect(html).not.toContain('не разобрано 40')
+    expect(html).toMatch(/<button[^>]*type="button"[^>]*>\s*<i[^>]*bg-s-unknown/)
+    const still = await render(WeekCard, { total: 184_000, segments, rows: segments.length, unknown: 40_000, unknownShare: 0.21, unknownRow: {} })
+    expect(still).toContain('Не разобрано')
+    expect(still).not.toContain('<button')
+  })
+
   it('FreeCard: сумма и подпись, полоса --ok; null — «—» без полосы; md — 32', async () => {
     const html = await render(FreeCard, { amount: 236_000, note: 'по факту выписок обоих · 9 дней до зарплаты Ильяса', share: 0.38 })
     expect(html).toContain('Свободно до конца месяца')
@@ -156,6 +189,10 @@ describe('WeekCard / FreeCard', () => {
     expect(none).toContain('—')
     expect(none).not.toContain('role="progressbar"')
     expect(await render(FreeCard, { amount: 1, size: 'md' })).toContain('type-big-md')
+    // Справа — «до зарплаты / 9 дней» в «Деньгах» (g6).
+    const aside = await render(FreeCard, { amount: 236_000, size: 'md' }, { aside: () => 'до зарплаты 9 дней' })
+    expect(aside).toContain('до зарплаты 9 дней')
+    expect(aside).toContain('text-right')
   })
 })
 

@@ -39,13 +39,15 @@ const HEIGHT = { main: 'min-h-[440px]', goal: 'min-h-[380px]', preview: 'min-h-[
 
 const pct = computed(() => Math.max(0, Math.min(100, Math.round(props.percent))))
 
+// Разделитель «·» держится за предыдущее слово (неразрывный пробел перед ним): строка никогда не
+// начинается с точки (смоук владельца, п. 4); месяц и год — одним куском.
 const line2 = computed(() => {
   if (props.line !== undefined) return props.line
   const parts: string[] = []
   if (props.title) parts.push(props.title)
   if (props.haveAmount !== undefined && props.needAmount !== undefined) parts.push(`${money(props.haveAmount).replace(/\s₸$/u, '')} из ${money(props.needAmount)}`)
-  if (props.doneMonth) parts.push(`будет вашей в ${props.doneMonth}`)
-  return parts.join(' · ')
+  if (props.doneMonth) parts.push(`будет вашей в ${props.doneMonth.replace(/ /g, ' ')}`)
+  return parts.join(' · ')
 })
 </script>
 
