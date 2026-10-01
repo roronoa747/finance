@@ -1,0 +1,31 @@
+#!/bin/sh
+# Гвард секретов (включается: git config core.hooksPath memory/process/hooks).
+# Блокирует: (1) staged-файлы из каталога secrets/ на любом уровне (кроме его
+# README.md) — даже через `git add -f`; (2) секрето-подобные строки в добавляемом
+# контенте (пароль/DSN с кредами/токен/ключ).
+# Осознанный обход — git commit --no-verify — НЕ использовать для секретов:
+# значение обязано жить в secrets/ или env, в доке — только имя/ссылка.
+
+fail=0
+
+staged_secrets=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '(^|/)secrets/' | grep -vE '(^|/)secrets/README\.md$')
+if [ -n "$staged_secrets" ]; then
+  echo "БЛОК: в коммит попали файлы из secrets/ (они не версионируются):" >&2
+  echo "$staged_secrets" | sed 's/^/  /' >&2
+  fail=1
+fi
+
+patterns='postgres(ql)?://[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+@'
+patterns="$patterns|-----BEGIN [A-Z ]*PRIVATE KEY-----"
+patterns="$patterns|Bearer [A-Za-z0-9_.~+/-]{20,}"
+patterns="$patterns|(password|passwd|парол[ья])"'[`"'"'"' ]*[:=][`"'"'"' ]*[A-Za-z0-9]'
+patterns="$patterns|(api[_-]?key|secret[_-]?key|access[_-]?token)"'[`"'"'"' ]*[:=][`"'"'"' ]*[A-Za-z0-9]{12,}'
+
+hits=$(git diff --cached -U0 --diff-filter=ACMR | grep -E '^\+' | grep -vE '^\+\+\+' | grep -iE "$patterns")
+if [ -n "$hits" ]; then
+  echo "БЛОК: в диффе строки, похожие на секреты. Значение → secrets/, в док — ссылка/имя переменной:" >&2
+  echo "$hits" | head -10 | sed 's/^/  /' >&2
+  fail=1
+fi
+
+exit $fail
