@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { spendColor } from '@/lib/palette'
-import { DEFAULT_SPEND_CATEGORIES } from '@/lib/statements/dictionary'
+import { liveSpendCategories } from '@/lib/finance'
 import type { MerchantRule } from '@/lib/statements/types'
 import Chip from '@/components/kit/Chip.vue'
 import Button from '@/components/ui/Button.vue'
@@ -19,10 +19,7 @@ const emit = defineEmits<{ (e: 'choose', to: MerchantRule['to']): void }>()
 
 const TOP_CHIPS = 6
 const finance = useFinanceStore()
-const categories = computed(() => {
-  const list = finance.householdDoc.spendCategories?.filter((c) => !c.deletedAt)
-  return (list?.length ? list : DEFAULT_SPEND_CATEGORIES).slice().sort((a, b) => a.order - b.order)
-})
+const categories = computed(() => liveSpendCategories(finance.householdDoc.spendCategories))
 const more = ref(false)
 const shown = computed(() => (more.value ? categories.value : categories.value.slice(0, TOP_CHIPS)))
 const personOpen = ref(false)

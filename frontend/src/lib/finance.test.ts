@@ -53,6 +53,7 @@ import {
   budgetAmounts,
   openCredits,
   overpayNoPlan,
+  liveSpendCategories,
   costliestCredits,
   dueIn,
   groupTotal,
@@ -3026,5 +3027,23 @@ describe('B2C-44: лента «Истории»', () => {
     expect(historyCategories(ops, ['2026-09', '2026-08'])).toEqual(['sc_fun', '_unknown', 'sc_food'])
     expect(historyStart({ ops, payments: [mark('m', '2026-07-03T05:00:00.000Z')] })).toBe('2026-07')
     expect(historyStart({ ops: [] })).toBeNull()
+  })
+})
+
+describe('ревью frontend Б9, Н-3: liveSpendCategories — один список разделов трат на три места', () => {
+  const T = '2026-09-01T00:00:00.000Z'
+  it('живые разделы семьи по order; удалённые — нет; пусто или все удалены — стартовый словарь по order', () => {
+    const own: SpendCategory[] = [
+      { id: 'b', name: 'Бэ', hue: 'blue', order: 2, updatedAt: T },
+      { id: 'a', name: 'А', hue: 'green', order: 1, updatedAt: T },
+      { id: 'x', name: 'Удалён', hue: 'plum', order: 0, updatedAt: T, deletedAt: T },
+    ]
+    expect(liveSpendCategories(own).map((c) => c.id)).toEqual(['a', 'b'])
+    // Список семьи не меняется на месте (сортируется копия).
+    expect(own.map((c) => c.id)).toEqual(['b', 'a', 'x'])
+    const dict = DEFAULT_SPEND_CATEGORIES.slice().sort((a, b) => a.order - b.order).map((c) => c.id)
+    expect(liveSpendCategories(undefined).map((c) => c.id)).toEqual(dict)
+    expect(liveSpendCategories([]).map((c) => c.id)).toEqual(dict)
+    expect(liveSpendCategories([own[2]]).map((c) => c.id)).toEqual(dict)
   })
 })

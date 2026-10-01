@@ -14,13 +14,14 @@ import {
   historyStart,
   monthSummary,
   progressMoments,
+  liveSpendCategories,
   salaryAllocationPath,
   spendCategoryName,
   summaryMonth,
   type HistoryItem,
 } from '@/lib/finance'
 import { spendColor } from '@/lib/palette'
-import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
+import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import { ruleMatchOf } from '@/lib/statements/model'
 import type { MerchantRule, Operation } from '@/lib/statements/types'
 import type { Payment } from '@/types/finance'
@@ -64,10 +65,7 @@ const earlier = () => months.value.push(addMonths(months.value[months.value.leng
 /* ------------------ Фильтр ------------------ */
 type Filter = 'all' | 'ops' | 'marks' | string
 const filter = ref<Filter>('all')
-const spendCategories = computed(() => {
-  const list = financeStore.householdDoc.spendCategories?.filter((c) => !c.deletedAt)
-  return list?.length ? list : DEFAULT_SPEND_CATEGORIES
-})
+const spendCategories = computed(() => liveSpendCategories(financeStore.householdDoc.spendCategories))
 const categoryOf = (id: string | null) => spendCategories.value.find((c) => c.id === id) ?? null
 const chips = computed(() =>
   historyCategories(ops.all, months.value).map((id) => ({ id, name: spendCategoryName(spendCategories.value, id) })),

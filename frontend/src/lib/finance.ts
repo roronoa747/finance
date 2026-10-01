@@ -2522,6 +2522,15 @@ export type WeekPicture = {
 /** Загрузка выписки, как её отдаёт сервер: чья и за какой период. */
 export type UploadPeriod = { slot: string; period_from: string; period_to: string }
 
+/**
+ * Живые разделы трат семьи по `order`; пока семья их не завела — стартовый словарь. Один
+ * список для «куда отнести?», чипов «Истории» и «Недели» (ревью frontend Б9, Н-3).
+ */
+export function liveSpendCategories(list: SpendCategory[] | undefined): Omit<SpendCategory, 'updatedAt'>[] {
+  const live = list?.filter((c) => !c.deletedAt)
+  return (live?.length ? live : DEFAULT_SPEND_CATEGORIES).slice().sort((a, b) => a.order - b.order)
+}
+
 /** Имя раздела трат: как назвала семья, иначе из словаря, иначе «Прочее». */
 export function spendCategoryName(categories: Pick<SpendCategory, 'id' | 'name'>[], id: string): string {
   if (id === UNKNOWN_CATEGORY) return 'Не разобрано'

@@ -24,7 +24,7 @@ import { useOperationsStore } from '@/stores/operations'
 import { money, parseMoney } from '@/lib/money'
 import { plural } from '@/lib/utils'
 import { dayLabel, monthKey, monthTitle, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
-import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
+import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import { draftSummary, partnerHints, picture, pictureTotal, ruleMatchOf, unknownGroups, type UnknownGroup } from '@/lib/statements/model'
 import { readStatementFiles } from '@/lib/statements/read'
 import type { MerchantRule } from '@/lib/statements/types'
@@ -40,6 +40,7 @@ import {
   salaryAllocationPath,
   salaryAsk,
   salaryToAllocate,
+  liveSpendCategories,
   spendCategoryName,
   spendRows,
   weekPicture,
@@ -74,10 +75,7 @@ const openCategory = ref<string | null>(null)
 const personFor = ref<string | null>(null)
 const personText = ref('')
 
-const categories = computed(() => {
-  const list = finance.householdDoc.spendCategories?.filter((c) => !c.deletedAt)
-  return (list?.length ? list : DEFAULT_SPEND_CATEGORIES).slice().sort((a, b) => a.order - b.order)
-})
+const categories = computed(() => liveSpendCategories(finance.householdDoc.spendCategories))
 const categoryName = (id: string) => spendCategoryName(categories.value, id)
 const people = computed(() => finance.people.filter((p) => !p.deletedAt))
 const personName = (slot: string) => people.value.find((p) => p.id === slot)?.name ?? 'Участник'
