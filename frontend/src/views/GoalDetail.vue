@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue'
 import { useRouter, useRoute, RouterLink } from 'vue-router'
-import { PhArrowLeft, PhCamera, PhPencilSimple, PhPlus, PhMinus, PhShareNetwork } from '@phosphor-icons/vue'
+import { PhCamera, PhPencilSimple, PhMinus, PhShareNetwork } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, pct, plain, parseMoney, ratePct } from '@/lib/money'
@@ -36,6 +36,7 @@ import Callout from '@/components/kit/Callout.vue'
 import Chip from '@/components/kit/Chip.vue'
 import DreamHero from '@/components/kit/DreamHero.vue'
 import Field from '@/components/kit/Field.vue'
+import HeaderActions from '@/components/kit/HeaderActions.vue'
 import Hint from '@/components/kit/Hint.vue'
 import NumField from '@/components/kit/NumField.vue'
 import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
@@ -236,16 +237,9 @@ function share() {
   </div>
 
   <div v-else class="flex flex-col gap-3 pt-1 text-left">
-    <div class="flex items-center justify-between">
+    <!-- «Назад» и имя — в шапке оболочки; карандаш — справа в ней (g4 «Экран цели»). -->
+    <HeaderActions v-if="canEdit">
       <button
-        type="button"
-        class="flex items-center gap-1.5 text-[13px] text-ink-2 hover:text-ink cursor-pointer"
-        @click="router.push('/')"
-      >
-        <PhArrowLeft :size="15" /> Все мечты
-      </button>
-      <button
-        v-if="canEdit"
         type="button"
         aria-label="Изменить цель"
         class="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-surface-2 text-ink-2 hover:bg-surface-3 hover:text-ink cursor-pointer"
@@ -253,7 +247,7 @@ function share() {
       >
         <PhPencilSimple :size="18" />
       </button>
-    </div>
+    </HeaderActions>
 
     <!-- Фото-герой (B2C-17): картинка шаблона или своя; автор — один раз, на фото, ссылкой (Р-28).
          Поверх картинки — только маленькая кнопка смены фото (владелец, 2026-09-27: крупные чипы
@@ -294,27 +288,17 @@ function share() {
       @remove="removePhoto"
     />
 
+    <!-- Карточка g4: месяц, строка взноса и две кнопки; «главная мечта» — в подписи шапки. -->
     <Card>
       <div class="flex items-start justify-between gap-3">
         <h2 class="type-h2 text-ink">{{ doneTitle }}</h2>
-        <Tag v-if="isMain" tone="brand">главная</Tag>
-        <button v-else-if="canEdit" type="button" class="shrink-0 pt-1 text-[12.5px] font-medium text-brand cursor-pointer" @click="financeStore.setMainGoal(goal.id)">
+        <button v-if="canEdit && !isMain" type="button" class="shrink-0 pt-1 text-[12.5px] font-medium text-brand cursor-pointer" @click="financeStore.setMainGoal(goal.id)">
           Сделать главной
         </button>
       </div>
-      <p class="mt-1 text-[13.5px] text-ink-2">{{ doneLine }}</p>
+      <p class="mt-1.5 text-[15px] text-ink-2">{{ doneLine }}</p>
 
-      <!-- Взнос вводится числом, а не ползунком (исключение из Р-2, владелец 2026-09-25). Viewer — только сумма. -->
-      <div v-if="canEdit" class="mt-4">
-        <div class="-mb-3.5 flex justify-end">
-          <SavedMark :on="monthlySaved" />
-        </div>
-        <Field label="Откладывать в месяц, ₸">
-          <NumFieldBlur :initial="plain(goal.monthly)" @commit="onMonthly" />
-        </Field>
-      </div>
-
-      <div class="mt-3 flex flex-wrap gap-2">
+      <div class="mt-3.5 flex flex-wrap gap-2">
         <Button
           v-if="canEdit"
           @click="
@@ -322,19 +306,9 @@ function share() {
             openDepositModal = true;
           "
         >
-          <PhPlus :size="16" weight="bold" /> Пополнить
+          Пополнить
         </Button>
         <Button variant="secondary" @click="share"><PhShareNetwork :size="16" /> Поделиться</Button>
-        <Button
-          v-if="canEdit"
-          variant="ghost"
-          @click="
-            depositOperation = 'withdraw';
-            openDepositModal = true;
-          "
-        >
-          <PhMinus :size="16" weight="bold" /> Снять
-        </Button>
       </div>
     </Card>
 
@@ -348,10 +322,30 @@ function share() {
       <RouterLink to="/money/plan" class="font-medium text-brand">Открыть план</RouterLink>
     </Callout>
 
-    <!-- Расчёты и график — за «Подробнее», по умолчанию свёрнуты (правило 12; в макете g4 их нет) -->
+    <!-- Взнос полем, «Снять», расчёты и график — за «Подробнее», по умолчанию свёрнуты (правило 12; в макете g4 их нет) -->
     <details>
       <summary :class="cn(buttonVariants({ variant: 'ghost' }), 'flex w-full list-none [&::-webkit-details-marker]:hidden')">Подробнее</summary>
       <div class="mt-2 flex flex-col gap-3">
+        <!-- Взнос вводится числом, а не ползунком (исключение из Р-2, владелец 2026-09-25). Viewer — только сумма. -->
+        <Card v-if="canEdit">
+          <div class="-mb-3.5 flex justify-end">
+            <SavedMark :on="monthlySaved" />
+          </div>
+          <Field label="Откладывать в месяц, ₸">
+            <NumFieldBlur :initial="plain(goal.monthly)" @commit="onMonthly" />
+          </Field>
+          <Button
+            variant="ghost"
+            class="mt-2 px-2.5"
+            @click="
+              depositOperation = 'withdraw';
+              openDepositModal = true;
+            "
+          >
+            <PhMinus :size="16" weight="bold" /> Снять
+          </Button>
+        </Card>
+
         <p v-if="remaining > 0" class="px-1 text-[13px] text-ink-2">
           Чтобы успеть за год, нужно {{ money(goalMonthly(remaining, 12)) }} в месяц.
         </p>

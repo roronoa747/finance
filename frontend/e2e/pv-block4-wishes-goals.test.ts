@@ -75,9 +75,9 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       await on(A).store.syncHousehold(A.client)
       expect(A.store.wishlist.find((w) => w.id === 'vac')).toMatchObject({ bought: false, boughtOn: null })
       const back = await screen(A.pinia, Wishes, '/wishes')
-      const active = back.slice(0, back.indexOf('Уже купили'))
-      expect(active).toContain('Пылесос')
-      expect(back).toContain('Пока ничего')
+      // Купленного не осталось — секции «Уже купили» нет (возврат смоука, правило 12), Пылесос — в активных.
+      expect(back).toContain('Пылесос')
+      expect(back).not.toContain('Уже купили')
     })
 
     it('A удаляет покупку и отмечает другую купленной → у B её нет, итог «Уже купили» = сумма цен купленных', async () => {
