@@ -1401,3 +1401,24 @@ app.household_members SET role='viewer'`. Скрипты, логи, снимки
    SESSION «клинап ✅»; §4 `00-backlog.md` — Блок 3 **🏁** (строка блока и индекс); `STATE.md` — Production, откат
    `dpl_wFeVjtvoSB9dvVm2RutE52Gfkn9U` (без Блока 3), следующий шаг `/worker идея-и-редизайн 4 ultrathink`. Разбор для
    владельца (режим наставника).
+
+#### Уточнение к промпту деплоя — проверка прод-БД 2026-10-01 (читать до шага 2)
+
+Сессия на другом компьютере (только чтение, `SELECT` через `lib/pq` по `memory/secrets/supabase-db.md`): прод-БД —
+Supabase `tpkyopaovfdkcmdhauws` (живая: 5 пользователей, 2 семьи, документ правился 2026-10-01). Факты и что меняется:
+
+- **`000002` Блока 1 в проде НЕ применена.** `app.schema_migrations` — только `000001_init.sql` (2026-09-24); таблиц
+  `app.statement_uploads` и `app.operations` нет. В Блоке 1 SQL-проверка после миграции осталась «открыто у
+  владельца» и не сделана. Следствие на проде: разбор и итоги `spendTotals` (общий документ) работают, отправка
+  операций и список загрузок — нет; операции ждут в очереди `pending` на телефонах (`ff_operations`). **До миграции на
+  телефонах не выходить из аккаунта** — выход стирает очередь.
+- **Шаг 2 применит две миграции:** ждать `applied migration: 000002_statements.sql`, затем `applied migration:
+  000003_photos.sql` и `migrate: schema app is up to date`. Обе только добавляют (Р-19). Сразу после — SQL-проверка
+  Блока 1 (`block-1-parser/SESSION.md`, запрос с `000002_statements.sql`, ждём `000002_statements.sql`, 3, 0) и
+  `SELECT version FROM app.schema_migrations ORDER BY 1` — три строки.
+- **Смоук (шаг 4) +1 пункт:** после перезапуска PWA очередь операций досылается — экран выписок без «отправятся при
+  сети», список загрузок семьи не пустой.
+- **Пароль прод-БД засвечен** (2026-10-01 попал в текст чата той сессии) → после зелёного смоука, с «да» владельца:
+  Supabase → Project Settings → Database → Reset database password → обновить `DATABASE_URL` (Production, sensitive,
+  пулер 6543 + `binary_parameters=yes`) в Vercel → Redeploy Production → `/api/health` = `"db":"connected"` → обновить
+  обе строки в `memory/secrets/supabase-db.md`. Между сбросом и редеплоем прод без базы — делать подряд, минуты.
