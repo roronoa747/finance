@@ -26,7 +26,7 @@ import GoalDetail from './GoalDetail.vue'
 import GoalNew from './GoalNew.vue'
 import Wishes from './Wishes.vue'
 
-describe('views/GoalDetail.vue, GoalNew.vue, Wishes.vue, Deposit.vue — цели, депозиты и желания', () => {
+describe('views/GoalDetail.vue, GoalNew.vue, Wishes.vue, лист вклада — цели, депозиты и желания', () => {
   const storageMap = new Map<string, string>()
   const mockLocalStorage = {
     getItem: (key: string) => storageMap.get(key) ?? null,
@@ -316,7 +316,7 @@ describe('views/GoalDetail.vue, GoalNew.vue, Wishes.vue, Deposit.vue — цел�
     expect(html).not.toContain('Старая карта (')
   })
 
-  it('рендерит Deposit.vue для счета с депозитными условиями', async () => {
+  it('лист счёта-вклада (пивот 3, B2C-42): старый адрес вклада — расчёт в листе', async () => {
     const store = useFinanceStore()
     store.addAccount({
       name: 'Kaspi Депозит',
@@ -333,17 +333,16 @@ describe('views/GoalDetail.vue, GoalNew.vue, Wishes.vue, Deposit.vue — цел�
 
     const { createSSRApp } = await import('vue')
     const { renderToString } = await import('vue/server-renderer')
-    const { createRouter, createMemoryHistory } = await import('vue-router')
-    const Deposit = (await import('./Deposit.vue')).default
+    const { createMemoryHistory } = await import('vue-router')
+    const { createAppRouter } = await import('@/router')
+    const Money = (await import('./Money.vue')).default
 
-    const router = createRouter({
-      history: createMemoryHistory(),
-      routes: [{ path: '/capital/:id', component: Deposit }],
-    })
-    await router.push(`/capital/${accId}`)
+    // Пивот 3 (B2C-42): экрана вклада нет — старый адрес открывает лист счёта с «Расчётом вклада».
+    const router = createAppRouter(createMemoryHistory())
+    await router.push(`/money/capital/${accId}`)
     await router.isReady()
 
-    const app = createSSRApp(Deposit)
+    const app = createSSRApp(Money)
     app.use(router)
 
     const html = await renderToString(app)

@@ -10,11 +10,8 @@ import { money, plain } from '@/lib/money'
 import { groupTotal } from '@/lib/finance'
 import type { Obligation } from '@/types/finance'
 import PaidRow from './PaidRow.vue'
-import Capital from '@/views/Capital.vue'
 import Dreams from '@/views/Dreams.vue'
 import Money from '@/views/Money.vue'
-import History from '@/views/History.vue'
-import Budget from '@/views/Budget.vue'
 import { renderScreen, screenMixin } from '@/test/screenState'
 
 describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
@@ -116,29 +113,29 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     expect(html).not.toContain('подробнее')
   })
 
-  it('модалка кредита в Капитале: отметка уменьшает остаток, снятие возвращает', async () => {
+  it('лист кредита из «Платежей»: отметка уменьшает остаток, снятие возвращает', async () => {
     const store = family()
-    const before = await page(Capital, '/capital?credit=loan')
+    const before = await page(Money, '/money?credit=loan')
     expect(before).toContain('Остаток долга')
     expect(before).toContain(money(1_000_000))
     expect(before).toContain('Платёж 15 сентября')
     expect(before).toContain('Другая сумма или счёт')
 
     store.markPaid('credit', 'loan', 'a', { period: '2026-09', accountId: 'card' })
-    const after = await page(Capital, '/capital?credit=loan')
+    const after = await page(Money, '/money?credit=loan')
     expect(after).toContain(money(969_500))
     // Открытая заново модалка предлагает уже следующий платёж.
     expect(after).toContain('Платёж 15 октября')
 
     store.unmarkPaid('credit', 'loan', '2026-09')
-    const back = await page(Capital, '/capital?credit=loan')
+    const back = await page(Money, '/money?credit=loan')
     expect(back).toContain(money(1_000_000))
     expect(back).toContain('Платёж 15 сентября')
   })
 
   it('модалка обязательства: «Оплатил» рядом с суммой', async () => {
     family()
-    const html = await page(Capital, '/capital?obligation=rent')
+    const html = await page(Money, '/money?obligation=rent')
     expect(html).toContain('Платёж 28 сентября')
     expect(html).toContain('Оплатил')
   })
@@ -172,14 +169,17 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     expect(paid.sheet).toContain('оплачено · дальше')
     // Деньги уже ушли с карты (1 000 000 − 220 000): в сумму «до зарплаты» аренда не входит второй раз.
     expect(paid.screen).toContain(`1 списание · ${plain(10_000)} ₸ · остаётся ${plain(770_000)} ₸`)
-    expect(await page(History, '/money/history')).not.toContain('Впереди')
+    expect(await page(Money, '/money/history')).not.toContain('Впереди')
   })
 
-  it('Бюджет, список: «Оплатил» у платежей по графику, у зарплат — нет', async () => {
+  /** Секция «Платежи» Капитала (B2C-42) — список месяца с «Оплатил». */
+  const payments = (html: string) => html.slice(html.indexOf('>Платежи<'))
+
+  it('«Платежи» (пивот 3, вместо списка Бюджета): «Оплатил» у платежей по графику, зарплат в списке нет', async () => {
     family()
-    const html = await page(Budget, '/budget', { initialView: 'list' })
-    expect(html.match(/Оплатил/g)).toHaveLength(2)
-    expect(html).toContain('Зарплата · Ильяс')
+    const html = payments(await page(Money, '/money'))
+    expect(html.match(/>\s*Оплатил\s*</g)).toHaveLength(2)
+    expect(html).not.toContain('Зарплата')
   })
 
   it('PV-09: строка на kit/Row — отклик и шеврон у кликабельной, «Оплатил» вне кнопки строки', async () => {
@@ -223,15 +223,14 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     expect(sheet).toContain(`в долг ${plain(32_500)} · банку ${plain(27_500)}`)
   })
 
-  it('PV-09: в Бюджете платёж — «−N», как соседние строки; в «Деньгах» («Впереди») — сумма с ₸', async () => {
+  it('PV-09: в «Платежах» и листе «До зарплаты» — сумма с ₸ без минуса; у отмеченного — из отметки', async () => {
     const store = family()
-    const budget = await page(Budget, '/budget', { initialView: 'list' })
-    expect(budget).toContain(`−${plain(220_000)}`)
-    expect(budget).toContain(`−${plain(58_000)}`)
-    expect(budget).toContain(`+${plain(700_000)}`)
-    // Отмеченный — тоже со знаком, сумма из отметки.
+    const list = payments(await page(Money, '/money'))
+    expect(list).toContain(money(220_000))
+    expect(list).toContain(money(58_000))
+    expect(list).not.toContain(`−${plain(220_000)}`)
     store.markPaid('obligation', 'rent', 'a', { amount: 225_000, accountId: 'card' })
-    expect(await page(Budget, '/budget', { initialView: 'list' })).toContain(`−${plain(225_000)}`)
+    expect(payments(await page(Money, '/money'))).toContain(money(225_000))
     // Лист «До зарплаты» «Денег» — сумма с ₸, без минуса (как было во «Впереди»).
     const { sheet } = await paydaySheet()
     expect(sheet).toContain(money(225_000))
@@ -252,43 +251,36 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
   async function capitalWith(path: string, state: Record<string, unknown>) {
     const router = createAppRouter(createMemoryHistory())
     await router.push(path)
-    const app = createSSRApp(Capital)
+    const app = createSSRApp(Money)
     app.use(router)
     // Поля калькулятора — в его окне (`PayoffSheet`, Н-3), не в самом экране.
     app.mixin(screenMixin(state))
     return renderToString(app)
   }
 
-  it('RP-09: SSR-рендер Капитала — группа с итогом, подписки под ней, годовая «в год»', async () => {
+  it('RP-09: «Платежи» — группа строкой с числом подписок и итогом в месяц; подписки — в её листе, годовая «раз в год · в марте»', async () => {
     const netflix = sub('netflix', 'Netflix', 4_990, { parentId: 'fun' })
     const icloud = sub('icloud', 'iCloud', 11_990, { parentId: 'fun', every: 'year', month: 3 })
     const store = family('member', [fun, netflix, icloud])
-    const html = await page(Capital, '/capital')
+    const html = payments(await page(Money, '/money'))
 
     // 4 990 + 11 990 / 12 = 5 989,17 → 5 989: итог группы из finance.ts.
     const total = groupTotal(fun, store.obligations, '2026-09')
     expect(total).toBe(5_989)
     const groupRow = html.slice(html.indexOf('Досуг'), html.indexOf('</button>', html.indexOf('Досуг')))
-    expect(groupRow).toContain('2 подписки')
+    expect(groupRow).toMatch(/>2</)
     expect(groupRow).toContain(money(total))
-    expect(groupRow).toContain('в месяц')
-
-    // Подписки — только под группой (в отступе после её строки), каждая по разу.
-    const group = html.indexOf('Досуг')
-    const nest = html.indexOf('pl-6', group)
-    expect(group).toBeGreaterThan(-1)
-    expect(nest).toBeGreaterThan(group)
-    for (const name of ['Netflix', 'iCloud']) {
-      expect(html.split(name)).toHaveLength(2)
-      expect(html.indexOf(name)).toBeGreaterThan(nest)
-    }
-    const netflixRow = html.slice(html.indexOf('Netflix'), html.indexOf('iCloud'))
+    // Подписки группы — не в списке, а в листе группы.
+    expect(html).not.toContain('Netflix')
+    const sheet = await renderScreen(Money, '/money', undefined, [screenMixin({ selectedGroupId: 'fun' })])
+    const dialog = sheet.slice(sheet.indexOf('role="dialog"'))
+    expect(dialog).toContain(`${money(total)} в месяц`)
+    const netflixRow = dialog.slice(dialog.indexOf('Netflix'), dialog.indexOf('iCloud'))
     expect(netflixRow).toContain(money(4_990))
-    expect(netflixRow).toContain('в месяц')
-    const icloudRow = html.slice(html.indexOf('iCloud'), html.indexOf('</button>', html.indexOf('iCloud')))
+    expect(netflixRow).toContain('Оплатил')
+    const icloudRow = dialog.slice(dialog.indexOf('iCloud'), dialog.indexOf('</button>', dialog.indexOf('iCloud')))
     expect(icloudRow).toContain(money(11_990))
-    expect(icloudRow).toContain('раз в год')
-    expect(icloudRow).toMatch(/>в год</)
+    expect(icloudRow).toContain('раз в год · в марте')
   })
 
   it('viewer: в модалке досрочки нет «Снять» и «Применить досрочку»; участник их видит', async () => {
@@ -297,7 +289,7 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
       setActivePinia(createPinia())
       const store = family(role)
       expect(store.applyPrepayment('loan', 'a', { amount: 50_000, mode: 'term', accountId: 'card' })).not.toBeNull()
-      const html = await capitalWith('/capital?payoff=loan', state)
+      const html = await capitalWith('/money?payoff=loan', state)
       // Досрочку видят оба — запись общая.
       expect(html).toContain('Досрочное погашение')
       expect(html).toContain('Применённые досрочки')
@@ -317,7 +309,7 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
   it('снятие досрочки обещает только то, что вернёт стор: «Не списывать» — без счёта; платёж — пока его не меняли; после сверки — без счёта и остатка', async () => {
     const store = family()
     const undo = async (id: string) => {
-      const html = await capitalWith('/capital?payoff=loan', { removingPrepay: id })
+      const html = await capitalWith('/money?payoff=loan', { removingPrepay: id })
       const at = html.indexOf('Досрочка уйдёт')
       expect(at).toBeGreaterThan(-1)
       return html.slice(at, html.indexOf('</p>', at))
@@ -353,7 +345,7 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     expect(reconciled).not.toContain('остаток долга')
   })
 
-  it('viewer: на главном нет «Оставить?», в «Деньгах» нет «Оплатил», в Бюджете (список) нет «Оплатил»; участник их видит', async () => {
+  it('viewer: на главном нет «Оставить?», в «Деньгах» (лист «До зарплаты» и «Платежи») нет «Оплатил»; участник их видит', async () => {
     // Ежемесячная подписка без keptAt — участника о ней спросили бы.
     const netflix = sub('netflix', 'Netflix', 4_990)
     for (const role of ['member', 'viewer'] as const) {
@@ -362,7 +354,7 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
       const dreams = await page(Dreams, '/')
       // «Деньги» — лист «До зарплаты» (пивот 3): аренда 28-го в нём у обоих.
       const overview = (await paydaySheet()).sheet
-      const budget = await page(Budget, '/budget', { initialView: 'list' })
+      const budget = payments(await page(Money, '/money'))
       // Платежи на месте у обоих — пропадают только кнопки.
       expect(overview).toContain('Аренда')
       expect(budget).toContain('Аренда')

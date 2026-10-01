@@ -467,6 +467,13 @@ export const useOperationsStore = defineStore('operations', () => {
     save()
   }
 
+  /** Демо-пример (пивот 3, B2C-45): свои операции для «Истории» — только в демо, на сервер не уходят. */
+  function seedDemoOperations(list: Operation[]) {
+    if (!demo.value) return
+    remember(list)
+    save()
+  }
+
   async function loadUploads(client: ApiClient = apiClient) {
     if (demo.value) return
     try {
@@ -510,6 +517,7 @@ export const useOperationsStore = defineStore('operations', () => {
     pull,
     loadUploads,
     seedDemoUploads,
+    seedDemoOperations,
     clear,
   }
 })

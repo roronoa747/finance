@@ -6,8 +6,7 @@ import { useAuthStore } from '../src/stores/auth'
 import type { SyncDoc } from '../src/types/finance'
 import Access from '../src/views/Access.vue'
 import Dreams from '../src/views/Dreams.vue'
-import Budget from '../src/views/Budget.vue'
-import Capital from '../src/views/Capital.vue'
+import Money from '../src/views/Money.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
 import SyncBadge from '../src/components/SyncBadge.vue'
 import Settings from '../src/views/Settings.vue'
@@ -220,7 +219,8 @@ describe('e2e / PV Блок 5 — оболочка на двух телефон�
       await act(A.pinia, AppearancePanel, '/budget', 'saveName', { userName: '  Ильяс М ' })
       await A.store.syncHousehold(A.client)
       await on(B).store.syncHousehold(B.client)
-      expect(await screen(B.pinia, Budget, '/budget')).toContain('Ильяс М · 10 числа')
+      const income = (await screen(B.pinia, Money, '/money')).replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
+      expect(income).toContain('Ильяс М 10-го')
       expect(await screen(B.pinia, SyncBadge, '/budget', undefined, [screenMixin({ open: true })])).toContain('Ильяс М')
 
       at('2026-09-26T07:20:00Z')
@@ -230,14 +230,15 @@ describe('e2e / PV Блок 5 — оболочка на двух телефон�
       expect(A.store.householdDoc.people.find((p) => p.id === 'a')).toMatchObject({ name: 'Ильяс М', updatedAt: '2026-09-26T07:10:00.000Z' })
     })
 
-    it('Б-22: мелочи глазами второго телефона — рассрочка 0% «без процентов», окно пополнения «Пополнить «Отпуск»» с взносом цели в подсказке и «Внести»', async () => {
+    it('Б-22: мелочи глазами второго телефона — рассрочка 0% в листе кредита — 10 платежей, окно пополнения «Пополнить «Отпуск»» с взносом цели в подсказке и «Внести»', async () => {
       server.data.credits = [
         { id: 'inst', name: 'Телефон', note: 'рассрочка', principal: 200_000, principalSetAt: T0, annualRate: 0, payment: 20_000, day: 25, updatedAt: T0 },
       ]
       const B = await phone(server)
 
-      const cap = await screen(B.pinia, Capital, '/capital')
-      expect(cap).toMatch(/без процентов · 10 платежей/)
+      // Пивот 3 (B2C-42): ставка и срок — в листе кредита; у рассрочки 0 % — «Платежей осталось 10».
+      const cap = await screen(B.pinia, Money, '/money?credit=inst')
+      expect(cap).toMatch(/Платежей осталось<\/span>\s*<b[^>]*>10</)
       const goal = await screen(B.pinia, GoalDetail, '/goals/trip', undefined, [screenMixin({ openDepositModal: true, depositOperation: 'deposit' })])
       expect(goal).toContain('Пополнить «Отпуск»')
       expect(goal).toMatch(/placeholder="50[\s  ]000"/)

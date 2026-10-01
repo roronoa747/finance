@@ -11,7 +11,7 @@ import Settings from './Settings.vue'
  * Второй уровень «Деньги» (B2C-21): вход — список; «История и итоги» — «Впереди», итог месяца и
  * моменты семьи; настройки — «Разбор выписок» (viewer без него).
  */
-describe('views/History.vue и входы «Деньги» (B2C-21, SSR)', () => {
+describe('«Деньги»: квадраты и «История» (B2C-21 → пивот 3, SSR)', () => {
   const storage = new Map<string, string>()
   beforeEach(() => {
     vi.stubGlobal('localStorage', {

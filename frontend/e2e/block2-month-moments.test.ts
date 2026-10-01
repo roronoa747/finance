@@ -8,7 +8,6 @@ import { money } from '../src/lib/money'
 import type { Payment } from '../src/types/finance'
 import { authAs } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
-import Budget from '../src/views/Budget.vue'
 import Dreams from '../src/views/Dreams.vue'
 import Money from '../src/views/Money.vue'
 import WeekSalary from '../src/views/WeekSalary.vue'
@@ -84,12 +83,10 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       expect(B.store.accounts.find((x) => x.id === 'card')!.amount).toBe(1_700_000)
       expect(paidFor(B.store.payments, 'salary', 'a', '2026-09')?.id).toBe(record.id)
 
-      // У Аруны строка Ильяса — отметка без кнопок; своей зарплаты кнопка ещё рано (20-го).
-      const list = await screen(B.pinia, Budget, '/budget', { initialView: 'list' })
-      const row = (title: string) => list.split('border-b border-line last:border-b-0').find((c) => c.includes(`>${title}<`)) ?? ''
-      expect(row('Зарплата · Ильяс')).toContain('пришла 10 сентября · Kaspi Gold')
-      expect(row('Зарплата · Ильяс')).not.toMatch(/>\s*Пришла\s*<\/button>/)
-      expect(row('Зарплата · Аруна')).not.toMatch(/>\s*Пришла\s*<\/button>/)
+      // У Аруны зарплата Ильяса — отметкой в «Истории» (пивот 3, B2C-44; списка Бюджета нет), без кнопок.
+      const history = (await screen(B.pinia, Money, '/money/history')).replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
+      expect(history).toContain(`Зарплата · Ильяс пришла · отметка +${money(700_000)}`)
+      expect(history).not.toContain('Пришла зарплата')
 
       // Ближайшая зарплата у обоих — Аруны: строка листа сводки «До зарплаты» в «Деньгах» (пивот 3, Р-32).
       const overview = await screen(B.pinia, Money, '/money', undefined, [screenMixin({ open: true })])

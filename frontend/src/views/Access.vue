@@ -8,7 +8,7 @@ import { useOperationsStore } from '@/stores/operations'
 import { landingPath } from '@/router/landing'
 import { seedSpendCategories } from '@/lib/statements/model'
 import { monthKey, weekKey } from '@/lib/dates'
-import type { SpendTotal } from '@/lib/statements/types'
+import type { Operation, SpendTotal } from '@/lib/statements/types'
 import { authErrorText } from '@/lib/authErrors'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
@@ -206,10 +206,26 @@ function startDemoMode() {
         main: true,
         updatedAt: new Date().toISOString(),
       },
+      // Вторая мечта — её взнос план «Сначала долги» направляет в автокредит (квадрат «План», пивот 3).
+      {
+        id: 'g-car',
+        name: 'Машина',
+        need: 6_000_000,
+        seed: 900_000,
+        have: 900_000,
+        monthly: 60_000,
+        hue: 'blue',
+        planPct: 0,
+        movements: [],
+        updatedAt: new Date().toISOString(),
+      },
     ]
     doc.accounts = [
       { id: 'acc-kaspi', name: 'Kaspi Gold', note: '', kind: 'card', amount: 480_000, updatedAt: new Date().toISOString() },
-      { id: 'acc-dep', name: 'Депозит Kaspi', note: '', kind: 'deposit', amount: 1_200_000, updatedAt: new Date().toISOString() },
+      {
+        id: 'acc-dep', name: 'Депозит Kaspi', note: '', kind: 'deposit', amount: 1_200_000, updatedAt: new Date().toISOString(),
+        deposit: { annualRate: 0.14, months: 12, monthlyTopUp: 0, capitalize: true },
+      },
     ]
     // Итоги выписок обоих за эту неделю и месяц (B2C-19 п. 4): главный сразу с картиной недели и «Свободно» по факту.
     seedSpendCategories(doc)
@@ -228,13 +244,45 @@ function startDemoMode() {
       total('a', 'month', month, '_unknown', 40_000, 3),
     ]
   })
-  // Записи загрузок демо — когда стор операций уже переключился на демо-семью (watch по владельцу).
+  // «Деньги» в демо — все три квадрата с данными (пивот 3, B2C-45): план «Сначала долги» (машина на
+  // паузе ради автокредита) и отметки месяца — аренда оплачена Аруной, зарплата Ильяса пришла.
+  financeStore.choosePlan({ keptGoalIds: ['g-trip'], cushionGoalId: null, months: 24, lump: 0 }, 'a')
+  financeStore.markPaid('obligation', 'ob-rent', 'b', { accountId: 'acc-kaspi' })
+  financeStore.markSalary('a', { accountId: 'acc-kaspi' })
+  // Записи загрузок и свои операции демо — когда стор операций уже переключился на демо-семью (watch по владельцу).
   void nextTick().then(() => {
     const today = new Date().toISOString().slice(0, 10)
     const from = `${monthKey()}-01`
-    useOperationsStore().seedDemoUploads([
+    const ops = useOperationsStore()
+    ops.seedDemoUploads([
       { id: 'demo-upload-a', slot: 'a', bank: 'kaspi', period_from: from, period_to: today, ops_count: 41, created_at: new Date().toISOString() },
       { id: 'demo-upload-b', slot: 'b', bank: 'kaspi', period_from: from, period_to: today, ops_count: 12, created_at: new Date().toISOString() },
+    ])
+    // До двух недель своих операций: пять разделов, продавцы из словаря, один перевод между своими.
+    // Все — в этом месяце (в его первые дни — плотнее), чтобы «История» демо не начиналась с «Раньше».
+    const span = Math.min(13, new Date().getDate() - 1)
+    const day = (ago: number) => new Date(Date.now() - Math.round((ago * span) / 13) * 86_400_000).toISOString().slice(0, 10)
+    const op = (n: number, ago: number, amount: number, merchant: string, categoryId: string | null, extra: Partial<Operation> = {}): Operation => ({
+      id: `demo-op-${n}`, bank: 'kaspi', date: day(ago), amount, kind: 'purchase', merchant, categoryId, internal: false, ...extra,
+    })
+    ops.seedDemoOperations([
+      op(1, 0, -6_800, 'ИП Сериков', 'sc_food'),
+      op(2, 0, -4_990, 'Яндекс Плюс', 'sc_subscriptions'),
+      op(3, 1, -2_400, 'Coffee Boom', 'sc_cafe'),
+      op(4, 2, -12_400, 'Magnum', 'sc_food'),
+      op(5, 2, -1_800, 'Yandex Go', 'sc_transport'),
+      op(6, 3, -18_500, 'Del Papa', 'sc_cafe'),
+      op(7, 4, -9_300, 'Small', 'sc_food'),
+      op(8, 5, -200_000, 'На депозит', null, { kind: 'transfer-out', internal: true }),
+      op(9, 6, -2_100, 'Yandex Go', 'sc_transport'),
+      op(10, 7, -21_700, 'Magnum', 'sc_food'),
+      op(11, 8, -34_000, 'Sulpak', 'sc_shopping'),
+      op(12, 9, -3_900, 'Coffee Boom', 'sc_cafe'),
+      op(13, 10, -7_600, 'ИП Абенова', null),
+      op(14, 11, -15_200, 'Small', 'sc_food'),
+      op(15, 12, -1_500, 'Yandex Go', 'sc_transport'),
+      op(16, 13, -8_900, 'Magnum', 'sc_food'),
+      op(17, 13, -5_500, 'Del Papa', 'sc_cafe'),
     ])
   })
   void router.push('/')

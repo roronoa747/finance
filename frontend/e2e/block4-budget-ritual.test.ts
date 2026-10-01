@@ -14,10 +14,10 @@ import {
 } from '../src/lib/finance'
 import { monthKey } from '../src/lib/dates'
 import { money } from '../src/lib/money'
-import Budget from '../src/views/Budget.vue'
+import Money from '../src/views/Money.vue'
 import WeekSalary from '../src/views/WeekSalary.vue'
 
-describe('e2e / block-4 — Сквозной сценарий Бюджета (План, Календарь, Список) и Ритуала высвобождения', () => {
+describe('e2e / block-4 — Сквозной сценарий бюджета («Деньги»: Доход, Платежи) и Ритуала высвобождения', () => {
   const storageMap = new Map<string, string>()
   const mockLocalStorage = {
     getItem: (key: string) => storageMap.get(key) ?? null,
@@ -106,7 +106,7 @@ describe('e2e / block-4 — Сквозной сценарий Бюджета (П
       { key: 'd5', name: 'Свободно', note: '', amount: 630_000, updatedAt: '' },
     ]
 
-    // 2. Старый адрес Бюджета — квадрат «Капитал» «Денег» (пивот 3, Р-31); экран Бюджета рендерится сам до B2C-45
+    // 2. Старый адрес Бюджета — квадрат «Капитал» «Денег» (пивот 3, Р-31); экрана Бюджета нет (B2C-45)
     await router.push('/budget')
     expect(router.currentRoute.value.path).toBe('/money')
 
@@ -119,16 +119,17 @@ describe('e2e / block-4 — Сквозной сценарий Бюджета (П
     expect(amounts.d4).toBe(200_000)
     expect(amounts.d5).toBe(630_000) // 1 200 000 - (250k + 70k + 50k + 200k) = 630 000
 
-    // Рендер режима «План»
-    const appPlan = createSSRApp(Budget, { initialView: 'plan' })
+    // Бывший режим «План» — виджет «Доход» «Денег» (Р-33): оклады, доли, нагрузка; свободный остаток —
+    // долей «свободно 53 %» (630 000 из 1 200 000), сумма — budgetAmounts выше.
+    const appPlan = createSSRApp(Money)
     appPlan.use(router)
-    const htmlPlan = await renderToString(appPlan)
-    expect(htmlPlan).toContain('Доход семьи · оклады без бонусов')
+    const htmlPlan = (await renderToString(appPlan)).replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
     expect(htmlPlan).toContain(money(1_200_000))
     expect(htmlPlan).toContain('Ильяс')
     expect(htmlPlan).toContain('Динара')
-    expect(htmlPlan).toContain('Куда уходит')
-    expect(htmlPlan).toContain(money(630_000)) // Свободный остаток
+    expect(htmlPlan).toContain('свободно 53 %')
+    // Нагрузка — жильё и кредиты (250 000 + 70 000) из 1 200 000 = 27 % (бывшая «Нагрузка на доход» календаря).
+    expect(htmlPlan).toContain('нагрузка 27 %')
 
     // 4. Изменение лимита статьи «Еда и быт» (d4)
     financeStore.setCategoryAmount('d4', 280_000)
@@ -147,22 +148,14 @@ describe('e2e / block-4 — Сквозной сценарий Бюджета (П
     expect(change?.amount).toBe(900_000)
     expect(change?.delta).toBe(150_000)
 
-    // 6. Проверка режима «Календарь»
-    const appCalendar = createSSRApp(Budget, { initialView: 'calendar' })
-    appCalendar.use(router)
-    const htmlCalendar = await renderToString(appCalendar)
-    expect(htmlCalendar).toContain('Отложено')
-    expect(htmlCalendar).toContain('На обязательства')
-    expect(htmlCalendar).toContain('Нагрузка на доход')
-
-    // 7. Проверка режима «Список»
-    const appList = createSSRApp(Budget, { initialView: 'list' })
+    // 6–7. Календарь ушёл (Р-39), список платежей — «Платежи» Капитала (Р-32); зарплаты — строками «Дохода».
+    const appList = createSSRApp(Money)
     appList.use(router)
     const htmlList = await renderToString(appList)
-    expect(htmlList).toContain('Аренда квартиры')
-    expect(htmlList).toContain('Автокредит')
-    expect(htmlList).toContain('Зарплата · Ильяс')
-    expect(htmlList).toContain('Зарплата · Динара')
+    const payments = htmlList.slice(htmlList.indexOf('>Платежи<'))
+    expect(payments).toContain('Аренда квартиры')
+    expect(payments).toContain('Автокредит')
+    expect(htmlList).toContain(money(750_000))
 
     // 8. Сценарий раскладки (бывший /ritual → /week/salary, B2C-13):
     // А) Нет запланированного снижения

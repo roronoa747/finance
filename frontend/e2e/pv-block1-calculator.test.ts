@@ -8,11 +8,10 @@ import { useFinanceStore, defaultSyncDoc } from '../src/stores/finance'
 import { at, phone, screen, setOnline, type FakeServer } from './support/family'
 import { screenMixin } from '../src/test/screenState'
 import type { SyncDoc } from '../src/types/finance'
-import { liveGoals, liveObligations, openCredits } from '../src/lib/finance'
+import { budgetAmounts, liveGoals, liveObligations, openCredits } from '../src/lib/finance'
 import { HUES } from '../src/lib/palette'
 import { isDark } from '../src/lib/theme'
 import { money, plain } from '../src/lib/money'
-import Budget from '../src/views/Budget.vue'
 import WeekSalary from '../src/views/WeekSalary.vue'
 import Money from '../src/views/Money.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
@@ -153,9 +152,10 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
     const A = await phone(server)
     const B = await phone(server)
 
-    const budgetBefore = await screen(A.pinia, Budget, '/budget')
-    expect(budgetBefore).toContain(money(738_320))
-    expect(budgetBefore).toContain(money(141_680))
+    // «Свободно» (d5) и «Кредиты» (d2) — budgetAmounts, которые печатал Бюджет (пивот 3: доли — в «Доходе»).
+    const plan = (P: typeof A) => budgetAmounts({ ...P.store.householdDoc, credits: P.store.credits })
+    expect(Math.round(plan(A).d5)).toBe(738_320)
+    expect(plan(A).d2).toBe(141_680)
     // Досрочка — в самый дорогой открытый (40%), а не в первую по документу рассрочку.
     expect(await screen(A.pinia, WeekSalary, '/ritual')).toContain(`Сейчас: 13 платежей, переплата ${money(70_967)}`)
 
@@ -166,11 +166,8 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
     await B.store.pullHousehold(B.client)
 
     for (const P of [A, B]) {
-      const budget = await screen(P.pinia, Budget, '/budget')
-      expect(budget).not.toContain(money(738_320))
-      expect(budget).toContain(money(111_680))
-      expect(budget).not.toContain(money(141_680))
-      expect(budget).toContain(money(768_320))
+      expect(plan(P).d2).toBe(111_680)
+      expect(Math.round(plan(P).d5)).toBe(768_320)
       const ritual = await screen(P.pinia, WeekSalary, '/ritual')
       expect(ritual).toContain(`Сейчас: 12 платежей, переплата ${money(100_160)}`)
       const capital = await screen(P.pinia, Money, '/money/plan')

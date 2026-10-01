@@ -17,7 +17,6 @@ import {
   untilPayday,
 } from '../src/lib/finance'
 import { money, plain } from '../src/lib/money'
-import Budget from '../src/views/Budget.vue'
 import Dreams from '../src/views/Dreams.vue'
 import Money from '../src/views/Money.vue'
 
@@ -110,8 +109,9 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     const B = await phone(server)
 
     setActivePinia(A.pinia)
-    // Отметки платежей месяца: «Впереди» ушёл (пивот 3, Р-32), до «Платежей» Капитала (B2C-42) — список Бюджета.
-    const list = (P: typeof A) => screen(P.pinia, Budget, '/money', { initialView: 'list' })
+    // Отметки платежей месяца — «Платежи» Капитала (пивот 3, Р-32, B2C-42); следующий платёж — в листе платежа.
+    const list = (P: typeof A) => screen(P.pinia, Money, '/money')
+    const sheet = (P: typeof A) => screen(P.pinia, Money, '/money?obligation=rent')
     expect(await list(A)).toContain('Оплатил')
 
     // Одно нажатие = то, что делает кнопка: счёт прошлой оплаты, сумма по графику.
@@ -119,14 +119,18 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     expect(lastAccountFor(A.store.payments, 'rent', A.store.accounts)).toBe('card')
     A.store.markPaid('obligation', 'rent', 'a', { period: '2026-09', accountId: 'card' })
 
-    const shownA = await list(A)
-    expect(shownA).toContain(`оплачено · дальше 5 октября · ${plain(220_000)} ₸`)
+    expect(await list(A)).toContain('5-го · оплачено')
+    const shownA = await sheet(A)
+    // Лист платежа после отметки предлагает следующий — 5 октября, по графику.
+    expect(shownA).toContain('Платёж 5 октября')
+    expect(shownA).toContain(money(220_000))
     expect(A.store.accounts[0].amount).toBe(780_000)
 
     await A.store.syncHousehold(A.client)
     await B.store.pullHousehold(B.client)
-    const shownB = await list(B)
-    expect(shownB).toContain(`оплачено · дальше 5 октября · ${plain(220_000)} ₸`)
+    expect(await list(B)).toContain('5-го · оплачено')
+    const shownB = await sheet(B)
+    expect(shownB).toContain('Платёж 5 октября')
     expect(await screen(B.pinia, Money, '/money')).toContain(money(780_000))
   })
 
@@ -416,10 +420,10 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     at('2026-09-24T18:00:00Z')
     const A = await phone(server)
 
-    // «Свободно» по плану и «Еда и быт» — в Бюджете (B2C-14: главный показывает «Свободно» по факту выписок).
-    const budget = await screen(A.pinia, Budget, '/money/budget')
-    expect(budget).toContain(money(478_011)) // Свободно в сентябре
-    expect(Math.round(budgetAmounts({ ...A.store.householdDoc, credits: A.store.credits }).d4)).toBe(308_989) // Еда и быт (экран округляет money())
+    // «Свободно» по плану — доля в «Доходе», «Еда и быт» — планом виджета (пивот 3, Р-33; Бюджета нет).
+    const plan = budgetAmounts({ ...A.store.householdDoc, credits: A.store.credits })
+    expect(Math.round(plan.d5)).toBe(478_011) // Свободно в сентябре (экран округляет)
+    expect(Math.round(plan.d4)).toBe(308_989) // Еда и быт
     const overview = await screen(A.pinia, Money, '/money')
     // Пивот 3 (Р-32): сводка «До зарплаты» снова печатает сумму списаний до неё — ту же, что считал клиент Блока 0.
     const payday = untilPayday({ ...A.store.householdDoc, credits: A.store.credits, accounts: A.store.householdAccounts })!

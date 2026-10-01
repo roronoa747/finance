@@ -69,6 +69,14 @@ describe.skipIf(!built)('PWA-сборка заменяет React-PWA (MGV-17)', 
     expect(css).toContain('ui-rounded')
     for (const bad of ['fonts.gstatic', 'Piazzolla', 'Golos', '@font-face']) expect(css).not.toContain(bad)
   })
+
+  it('пивот 3 (B2C-45): чанков пяти удалённых экранов нет, «Деньги» — свой чанк, главный — меньше 500 КБ (порог Vite)', () => {
+    const js = readdirSync(resolve(dist, 'assets')).filter((f) => f.endsWith('.js'))
+    for (const gone of ['Budget-', 'Capital-', 'DebtPlan-', 'Deposit-', 'History-']) expect(js.filter((f) => f.startsWith(gone)), gone).toEqual([])
+    expect(js.some((f) => f.startsWith('Money-'))).toBe(true)
+    const main = js.filter((f) => f.startsWith('index-')).map((f) => readFileSync(resolve(dist, 'assets', f)).length)
+    expect(Math.max(...main)).toBeLessThan(500 * 1024)
+  })
 })
 
 describe.skipIf(!built)('pdf.js в сборке — legacy (выписка на iPhone)', () => {

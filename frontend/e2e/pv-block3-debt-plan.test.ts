@@ -5,7 +5,6 @@ import { activePlan, budgetAmounts, planForecast, planMonths, planOutlook, planS
 import { money } from '../src/lib/money'
 import type { Goal, Payment, SyncDoc } from '../src/types/finance'
 import GoalDetail from '../src/views/GoalDetail.vue'
-import Budget from '../src/views/Budget.vue'
 import Money from '../src/views/Money.vue'
 import WeekSalary from '../src/views/WeekSalary.vue'
 import { plain } from '../src/lib/money'
@@ -102,14 +101,6 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
   })
 
   describe('PV-15 — выбор плана и пауза целей', () => {
-    /** Строка «Куда уходит» / легенды: сумма после названия. */
-    const amountAfter = (html: string, label: string) => {
-      const at = html.indexOf(label)
-      if (at < 0) return null
-      const m = html.slice(at + label.length).match(/(\d[\d\s\u00a0\u202f]*?)[\s\u00a0\u202f]*₸/)
-      return m ? Number(m[1].replace(/\D/g, '')) : null
-    }
-
     it('A выбирает план → у B цели на паузе и «Досрочно по плану», «Свободно» прежнее; A отменяет → у B всё вернулось', async () => {
       const A = await phone(server)
       const B = await phone(server)
@@ -124,8 +115,8 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
       expect(await pausedOn(B, 'cushion')).toBe(false)
       expect(await screen(B.pinia, GoalDetail, '/goals/car')).toContain(`Взнос ${money(60_000)} идёт в досрочку`)
 
-      const budget = await screen(B.pinia, Budget, '/budget')
-      expect(amountAfter(budget, '>Досрочно по плану</div>')).toBe(100_000)
+      // «Досрочно по плану» — шаг месяца квадрата «План» (Бюджета нет, B2C-45).
+      expect(await screen(B.pinia, Money, '/money/plan')).toContain(`${money(100_000)} досрочно`)
       expect(budgetAmounts({ ...B.store.householdDoc, credits: B.store.credits }).d5).toBe(freeBefore)
       expect(planOn(await screen(B.pinia, Money, '/money/plan'))).toBe(true)
 
@@ -134,7 +125,6 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
       await A.store.syncHousehold(A.client)
       await on(B).store.pullHousehold(B.client)
       expect(await pausedOn(B, 'trip')).toBe(false)
-      expect(await screen(B.pinia, Budget, '/budget')).not.toContain('Досрочно по плану')
       expect(planOn(await screen(B.pinia, Money, '/money/plan'))).toBe(false)
       expect(B.store.plans).toHaveLength(1)
       expect(B.store.plans[0].status).toBe('cancelled')
@@ -208,7 +198,6 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
         expect(plan).toContain('Долги с процентами закрыты — цели возобновились')
         expect(plan).toContain(`Сентябрь 2026: сэкономили ${money(step.saved ?? 0)} процентов`)
       }
-      expect(await screen(A.pinia, Budget, '/budget')).not.toContain('Досрочно по плану')
     })
   })
 
@@ -243,7 +232,7 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
     it('критерий брифа: A выбрал план → у B пауза и «Досрочно по плану» → шаг одним нажатием → факт у обоих → отмена → история; повторный выбор в том же месяце шаг не повторяет', async () => {
       const A = await phone(server)
       const B = await phone(server)
-      const freeBefore = amountAfter(await screen(B.pinia, Budget, '/budget'), '>Свободно</div>')
+      const freeBefore = budgetAmounts({ ...B.store.householdDoc, credits: B.store.credits }).d5
       expect(freeBefore).toBeGreaterThan(0)
 
       // A выбирает план с подушкой — у B после синка отпуск и машина на паузе, подушка — нет.
@@ -255,9 +244,8 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
       expect(await pausedOn(B, 'car')).toBe(true)
       expect(await pausedOn(B, 'cushion')).toBe(false)
       // «Досрочно по плану» — взносы пауз (40 000 + 60 000); «Свободно» прежнее.
-      const budget = await screen(B.pinia, Budget, '/budget')
-      expect(amountAfter(budget, '>Досрочно по плану</div>')).toBe(100_000)
-      expect(amountAfter(budget, '>Свободно</div>')).toBe(freeBefore)
+      expect(await screen(B.pinia, Money, '/money/plan')).toContain(`${money(100_000)} досрочно`)
+      expect(budgetAmounts({ ...B.store.householdDoc, credits: B.store.credits }).d5).toBe(freeBefore)
 
       // Кредитку A уже оплачивал с карты — «Внести по плану» на экране плана без листа счёта.
       on(A).store.markPaid('credit', 'cc', 'a', { accountId: 'card' })
@@ -299,9 +287,7 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
       await A.store.syncHousehold(A.client)
       await on(B).store.pullHousehold(B.client)
       expect(await pausedOn(B, 'trip')).toBe(false)
-      const budgetAfter = await screen(B.pinia, Budget, '/budget')
-      expect(budgetAfter).not.toContain('Досрочно по плану')
-      expect(amountAfter(budgetAfter, '>Свободно</div>')).toBe(freeBefore)
+      expect(budgetAmounts({ ...B.store.householdDoc, credits: B.store.credits }).d5).toBe(freeBefore)
       const cancelled = await screen(B.pinia, Money, '/money/plan')
       expect(planOn(cancelled)).toBe(false)
       expect(cancelled).toContain(`Сентябрь 2026: отменён, сэкономили ${money(saved)}`)

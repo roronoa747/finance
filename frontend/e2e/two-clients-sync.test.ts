@@ -14,7 +14,6 @@ import { plain, parseMoney } from '../src/lib/money'
 import { numChanged } from '../src/lib/num'
 import Dreams from '../src/views/Dreams.vue'
 import Money from '../src/views/Money.vue'
-import Capital from '../src/views/Capital.vue'
 
 describe('e2e / MGV-14 — Сквозная приёмка: совместная работа двух клиентов и синхронизация', () => {
   const storageMapA = new Map<string, string>()
@@ -352,24 +351,24 @@ describe('e2e / MGV-14 — Сквозная приёмка: совместная
     // -------------------------------------------------------------------------
     const router = createAppRouter()
 
-    // Рендер Capital.vue у Ильяса
+    // «Деньги» → Капитал у Ильяса: «чистых» в «Долгах», счета — в «Счетах» (пивот 3, B2C-42)
     setActivePinia(piniaA)
-    const appCapitalA = createSSRApp(Capital)
+    const appCapitalA = createSSRApp(Money)
     appCapitalA.use(router)
-    await router.push('/capital')
+    await router.push('/money')
     const htmlCapitalA = await renderToString(appCapitalA)
-    expect(htmlCapitalA).toContain('Чистый капитал')
+    expect(htmlCapitalA).toContain('чистых')
     expect(htmlCapitalA).toContain('Личная заначка Ильяса')
     expect(htmlCapitalA).toContain('Общий Kaspi Депозит')
     expect(htmlCapitalA).not.toContain('Личный счёт Аруны')
 
-    // Рендер Capital.vue у Аруны
+    // «Деньги» → Капитал у Аруны
     setActivePinia(piniaB)
-    const appCapitalB = createSSRApp(Capital)
+    const appCapitalB = createSSRApp(Money)
     appCapitalB.use(router)
-    await router.push('/capital')
+    await router.push('/money')
     const htmlCapitalB = await renderToString(appCapitalB)
-    expect(htmlCapitalB).toContain('Чистый капитал')
+    expect(htmlCapitalB).toContain('чистых')
     expect(htmlCapitalB).toContain('Личный счёт Аруны')
     expect(htmlCapitalB).toContain('Общий Kaspi Депозит')
     expect(htmlCapitalB).not.toContain('Личная заначка Ильяса')

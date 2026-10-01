@@ -24,7 +24,6 @@ import { money, plain } from '../src/lib/money'
 import CapitalLists from '../src/components/money/CapitalLists.vue'
 import Dreams from '../src/views/Dreams.vue'
 import Money from '../src/views/Money.vue'
-import Budget from '../src/views/Budget.vue'
 import PaidRow from '../src/components/PaidRow.vue'
 import DangerZone from '../src/components/kit/DangerZone.vue'
 import CreditSheet from '../src/components/capital/CreditSheet.vue'
@@ -403,11 +402,11 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(rentB()).toMatchObject({ day: 3, who: 'b' })
       // Сентябрь не оплачен — платёж этого месяца, но уже 3-го.
       expect(nextObligationDue(rentB(), B.store.payments)).toMatchObject({ period: '2026-09', day: 3 })
-      // Бюджет второго (список месяца): аренда 3 сентября, а не 5-го.
-      const list = await page(B.pinia, Budget, '/budget', { props: { initialView: 'list' } })
+      // «Платежи» второго (B2C-42): аренда 3-го, а не 5-го.
+      const list = await page(B.pinia, Money, '/money')
       const rentRow = between(list, 'Аренда', 'Оплатил')
-      expect(rentRow).toContain('3 сентября')
-      expect(rentRow).not.toContain('5 сентября')
+      expect(rentRow).toContain('3-го')
+      expect(rentRow).not.toContain('5-го')
       // Капитал второго: у аренды хозяйка в подписи; в окне «Чьё это» нажата Аруна.
       expect(between(await page(B.pinia, Money, '/money'), 'Аренда', '</button>')).toContain('Аруна')
       expect(await page(B.pinia, Money, '/money?obligation=rent')).toMatch(pressed('Аруна'))
@@ -575,12 +574,19 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(modal).toContain(`В капитале счёт стоит как ${money(640_771)} — по этому курсу.`)
     })
 
-    it('приёмка: PV-13 — отметки и досрочка на двух телефонах: «За всё время», проценты в Бюджете, строка кредита, график = остаток', async () => {
+    /** «Проценты банку по всем долгам N в месяц» — квадрат «План» (B2C-43; было «из них проценты банку» Бюджета). */
+    const interest = async (pinia: Pinia) => {
+      const html = await page(pinia, Money, '/money/plan')
+      const at = html.indexOf('Проценты банку по всем долгам')
+      return html.slice(at, html.indexOf('</div>', at))
+    }
+
+    it('приёмка: PV-13 — отметки и досрочка на двух телефонах: «За всё время», проценты банку в «Плане», график = остаток', async () => {
       server.data.categories = categories
       const A = await phone(server)
       const B = await phone(server)
       // Проценты месяца — round(остаток × 33% / 12). До отметок: 1 000 000 → 27 500.
-      expect(await page(B.pinia, Budget, '/budget')).toContain(`из них проценты банку ${money(27_500)} в месяц`)
+      expect(await interest(B.pinia)).toContain(`${money(27_500)} в месяц`)
 
       // A: «Оплатил» за сентябрь — проценты 27 500, в долг 58 000 − 27 500 = 30 500.
       at('2026-09-24T08:00:00Z')
@@ -593,7 +599,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
         `За всё время: в долг ${money(30_500)}, банку ${money(27_500)} (1 платёж)`,
       )
       // 969 500 × 0,33 / 12 = 26 661,25 → 26 661.
-      expect(await page(B.pinia, Budget, '/budget')).toContain(`из них проценты банку ${money(26_661)} в месяц`)
+      expect(await interest(B.pinia)).toContain(`${money(26_661)} в месяц`)
 
       // B: разовая досрочка 100 000 в октябре, до октябрьской отметки — вся в тело;
       // остаток 969 500 − 100 000 = 869 500.
@@ -607,7 +613,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
         `За всё время: в долг ${money(130_500)}, банку ${money(27_500)} (2 платежа)`,
       )
       // 869 500 × 0,33 / 12 = 23 911,25 → 23 911.
-      expect(await page(A.pinia, Budget, '/budget')).toContain(`из них проценты банку ${money(23_911)} в месяц`)
+      expect(await interest(A.pinia)).toContain(`${money(23_911)} в месяц`)
 
       // График на обоих: Σ «в долг» = остаток 869 500 — досрочка октября уже в остатке и
       // второй раз не вычитается. Строк до закрытия n = −ln(1 − P·i/A) / ln(1 + i),
@@ -661,11 +667,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(due).toContain(`в долг ${plain(35_026)}`)
       expect(due).toContain(`банку ${plain(22_974)}`)
       expect(between(await page(B.pinia, Money, '/money'), 'Кредит', '</button>')).not.toContain('в долг')
-      // Бюджет второго: проценты месяца 22 974; «Оплатил» октября — по записи 34 089 / 23 911.
-      expect(await page(B.pinia, Budget, '/budget')).toContain(`из них проценты банку ${money(22_974)} в месяц`)
-      const loanRow = between(await page(B.pinia, Budget, '/budget', { props: { initialView: 'list' } }), 'Кредит', '</button>')
-      expect(loanRow).toContain(`в долг ${plain(34_089)}`)
-      expect(loanRow).toContain(`банку ${plain(23_911)}`)
+      // Проценты месяца второго — 22 974; «Оплатил» октября по записи 34 089 / 23 911 — строка графика `oct` выше.
+      expect(await interest(B.pinia)).toContain(`${money(22_974)} в месяц`)
     })
 
     it('приёмка: PV-10 — правка платежа на A: у второго ни якоря, ни нового остатка; «долг не закрывается» в окне и калькуляторе; возврат платежа — выводы', async () => {

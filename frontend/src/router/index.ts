@@ -36,6 +36,15 @@ const Start = () => import('@/views/Start.vue')
 const ritualRedirect = (to: { query: Record<string, unknown> }): RouteLocationRaw =>
   Object.keys(to.query).length ? { path: '/week/salary', query: to.query as Record<string, string> } : '/week'
 
+/**
+ * Бюджет и Капитал до пивота 3 — квадрат «Капитал» с теми же ключами окон; закладка калькулятора
+ * «Копить или гасить» (`?advice=strategy`) — квадрат «План», где он теперь живёт (B2C-43).
+ */
+const capitalRedirect = (to: { query: Record<string, unknown> }): RouteLocationRaw => {
+  const { advice, ...query } = to.query as Record<string, string>
+  return advice === 'strategy' ? { path: '/money/plan', query } : { path: '/money', query }
+}
+
 /** Экран счёта или вклада — лист счёта в «Деньгах» (пивот 3). */
 const accountRedirect = (to: { params: Record<string, unknown>; query: Record<string, unknown> }): RouteLocationRaw => ({
   path: '/money',
@@ -71,7 +80,7 @@ export const routes: RouteRecordRaw[] = [
       { path: 'money/:square(plan|history)?', name: 'money', component: Money },
       // Бюджет и Капитал до пивота 3 — теперь квадрат «Капитал»; окна — те же ключи query.
       { path: 'money/budget', redirect: (to) => ({ path: '/money', query: to.query }) },
-      { path: 'money/capital', redirect: (to) => ({ path: '/money', query: to.query }) },
+      { path: 'money/capital', redirect: capitalRedirect },
       { path: 'money/capital/:id', redirect: accountRedirect },
       { path: 'goals/new', name: 'goal-new', component: GoalNew, meta: { memberOnly: true } },
       // Желания по людям (B2C-18): общий список и список участника — один экран.
@@ -83,7 +92,7 @@ export const routes: RouteRecordRaw[] = [
       { path: 'settings', name: 'settings', component: Settings },
       // Старые адреса (до Блока 3).
       { path: 'budget', redirect: '/money' },
-      { path: 'capital', redirect: (to) => ({ path: '/money', query: to.query }) },
+      { path: 'capital', redirect: capitalRedirect },
       { path: 'capital/:id', redirect: accountRedirect },
       { path: 'goals', redirect: '/' },
       { path: 'ritual', redirect: ritualRedirect },
