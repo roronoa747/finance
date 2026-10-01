@@ -2280,22 +2280,38 @@ export function planForecast(plan: DebtPlan, state: PlanState, key: string): Pla
 }
 
 /**
+ * Переплата банку «без плана» — сумма «переплаты до конца» (`creditOutlook`) открытых долгов при
+ * нынешних платежах: то же число, что у карточки «Самая дорогая ставка» (ревью frontend Б9, Н-2).
+ * null — какой-то долг при нынешнем платеже не закрывается (Р-11).
+ */
+export function overpayNoPlan(credits: Credit[]): number | null {
+  let total = 0
+  for (const c of openCredits(credits)) {
+    const o = creditOutlook(c)
+    if (!o.closes) return null
+    total += o.overpay
+  }
+  return total
+}
+
+/**
  * Прогноз плана одной строкой квадрата «План» (пивот 3, Р-34): те же два прогона, что у
  * `planForecast`, — когда закроются долги с планом, на сколько месяцев раньше, чем без него, и
- * переплата банку без плана → с планом (от нынешних остатков, целые тенге). null у срока —
- * без плана или с ним долг не закрывается (Р-11).
+ * переплата банку без плана → с планом (от нынешних остатков, целые тенге). «Без плана» —
+ * `overpayNoPlan` (одно число с карточкой ставки), «с планом» — оно минус экономия
+ * `planForecast`. null у срока — без плана или с ним долг не закрывается (Р-11).
  */
 export function planOutlook(plan: DebtPlan, state: PlanState, key: string) {
   const { a, b } = planRuns(plan, state, key)
-  const comparable = a.debtFreeMonth !== null && b.debtFreeMonth !== null
-  const without = Math.round(a.interestTotal)
-  // «С планом» — без плана минус экономия `planForecast`: разница строки сходится с ней до тенге.
+  const without = overpayNoPlan(state.credits ?? [])
+  const comparable = a.debtFreeMonth !== null && b.debtFreeMonth !== null && without !== null
+  // Разница строки «без → с» сходится с экономией `planForecast` до тенге.
   const saved = Math.max(0, Math.round(a.interestTotal - b.interestTotal))
   return {
     debtFreeMonth: b.debtFreeMonth === null ? null : addMonths(key, b.debtFreeMonth),
     monthsSooner: comparable ? Math.max(0, a.debtFreeMonth! - b.debtFreeMonth!) : null,
     overpayWithout: comparable ? without : null,
-    overpayWith: comparable ? without - saved : null,
+    overpayWith: comparable ? Math.max(0, without! - saved) : null,
   }
 }
 

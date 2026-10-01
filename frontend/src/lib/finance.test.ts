@@ -52,6 +52,7 @@ import {
   prepaySaved,
   budgetAmounts,
   openCredits,
+  overpayNoPlan,
   costliestCredits,
   dueIn,
   groupTotal,
@@ -1999,6 +2000,24 @@ describe('PV-14 — план «Сначала долги»: модель и ра
     const stuck = planOutlook(p, state({ credits: credits({ cc: { payment: 5_000 } }) }), '2026-09')
     expect(planForecast(p, state({ credits: credits({ cc: { payment: 5_000 } }) }), '2026-09').savedInterest).toBeNull()
     expect(stuck).toMatchObject({ monthsSooner: null, overpayWithout: null, overpayWith: null })
+  })
+
+  it('ревью frontend Б9, Н-2: «Переплата A» прогноза = «переплата до конца» карточки ставки (creditOutlook), без второго счёта', () => {
+    // Один долг: число прогноза — ровно число карточки «Самая дорогая ставка».
+    const one = [credit('cc', { principal: 300_000, annualRate: 0.4, payment: 25_000, day: 22 })]
+    const st1 = state({ cushionHave: 400_000, credits: one })
+    const o1 = planOutlook(plan(), st1, '2026-09')
+    expect(o1.overpayWithout).toBe(creditOutlook(st1.credits![0]).overpay)
+    expect(o1.overpayWithout).toBe(debtAdvice(st1.credits!).worstDebt!.cost.overpay)
+    expect(o1.overpayWithout! - o1.overpayWith!).toBe(planForecast(plan(), st1, '2026-09').savedInterest)
+    // Несколько долгов — сумма по открытым; закрытые и 0 % ничего не добавляют.
+    const st = state({ cushionHave: 400_000 })
+    const sum = openCredits(st.credits!).reduce((a, c) => a + creditOutlook(c).overpay, 0)
+    expect(overpayNoPlan(st.credits!)).toBe(sum)
+    expect(planOutlook(plan(), st, '2026-09').overpayWithout).toBe(sum)
+    expect(overpayNoPlan([...st.credits!, credit('done', { principal: 0 })])).toBe(sum)
+    // Платёж меньше процентов — числа нет (Р-11).
+    expect(overpayNoPlan(credits({ cc: { payment: 5_000 } }))).toBeNull()
   })
 })
 
