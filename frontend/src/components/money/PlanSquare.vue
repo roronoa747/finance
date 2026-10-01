@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { PhCaretDown } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain, ratePct } from '@/lib/money'
@@ -121,6 +122,9 @@ const justDone = computed(() => {
   const last = history.value[0]
   return !plan.value && last?.status === 'done' && endMonth(last) === key.value ? last : null
 })
+
+/** Свёрнутая строка карточки (макет: «Копить или гасить?», «Шаги по месяцам» — слева, стрелка вниз). */
+const FOLD = 'flex w-full cursor-pointer list-none items-center justify-between gap-3 border-t border-line pt-3 text-[15px] font-semibold text-ink [&::-webkit-details-marker]:hidden'
 
 /* ------------------ Переключатель ------------------ */
 const compareOpen = ref(false)
@@ -265,7 +269,7 @@ function changeMode() {
 
       <!-- Свёрнутое: сравнение и шаги по месяцам -->
       <details ref="compareEl" :open="compareOpen || undefined" @toggle="(e: Event) => (compareOpen = (e.target as HTMLDetailsElement).open)">
-        <summary :class="cn(buttonVariants({ variant: 'ghost' }), 'flex w-full list-none [&::-webkit-details-marker]:hidden')">Копить или гасить?</summary>
+        <summary :class="FOLD">Копить или гасить?<PhCaretDown :size="16" class="shrink-0 text-ink-3" /></summary>
         <div class="mt-2">
           <StrategyCompare
             :credits="open"
@@ -282,7 +286,7 @@ function changeMode() {
       </details>
 
       <details v-if="plan || history.length">
-        <summary :class="cn(buttonVariants({ variant: 'ghost' }), 'flex w-full list-none [&::-webkit-details-marker]:hidden')">Шаги по месяцам</summary>
+        <summary :class="FOLD">Шаги по месяцам<PhCaretDown :size="16" class="shrink-0 text-ink-3" /></summary>
         <div class="mt-2 flex flex-col gap-3 text-[12.5px]">
           <div v-if="plan" class="grid grid-cols-[auto_1fr_1fr_auto] items-baseline gap-x-3 gap-y-1.5 num">
             <span class="text-ink-3">Месяц</span>

@@ -7,7 +7,7 @@ import { useFinanceStore, DEMO_HOUSEHOLD } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
 import { landingPath } from '@/router/landing'
 import { seedSpendCategories } from '@/lib/statements/model'
-import { monthKey, weekKey } from '@/lib/dates'
+import { addMonths, monthKey, weekKey } from '@/lib/dates'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
 import { authErrorText } from '@/lib/authErrors'
 import Button from '@/components/ui/Button.vue'
@@ -247,6 +247,10 @@ function startDemoMode() {
   // «Деньги» в демо — все три квадрата с данными (пивот 3, B2C-45): план «Сначала долги» (машина на
   // паузе ради автокредита) и отметки месяца — аренда оплачена Аруной, зарплата Ильяса пришла.
   financeStore.choosePlan({ keptGoalIds: ['g-trip'], cushionGoalId: null, months: 24, lump: 0 }, 'a')
+  // Прошлый месяц тоже с отметками — у «Истории» есть итог «Наш <месяц>» и в начале месяца.
+  const prev = addMonths(monthKey(), -1)
+  financeStore.markPaid('obligation', 'ob-rent', 'b', { period: prev, accountId: null, at: `${prev}-05T05:00:00.000Z` })
+  financeStore.markSalary('a', { period: prev, accountId: null, at: `${prev}-10T05:00:00.000Z` })
   financeStore.markPaid('obligation', 'ob-rent', 'b', { accountId: 'acc-kaspi' })
   financeStore.markSalary('a', { accountId: 'acc-kaspi' })
   // Записи загрузок и свои операции демо — когда стор операций уже переключился на демо-семью (watch по владельцу).
