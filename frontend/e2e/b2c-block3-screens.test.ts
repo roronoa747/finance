@@ -601,7 +601,7 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
       screenMixin({}, (s) => {
         const queue = s.unknownQueue as Group[]
         queued = queue.map((g) => g.label)
-        ;(s.choose as (g: Group, v: string, r: boolean) => void)(queue.find((g) => g.label === 'Перевод с карты на карту')!, 'sc_people', true)
+        ;(s.choose as (g: Group, v: string) => void)(queue.find((g) => g.label === 'Перевод с карты на карту')!, 'sc_people')
       }),
     ])
     expect(queued).toContain('Перевод с карты на карту')

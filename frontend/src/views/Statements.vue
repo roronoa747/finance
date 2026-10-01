@@ -308,16 +308,15 @@ function ruleTarget(value: string): MerchantRule['to'] | null {
   return { categoryId: value }
 }
 
-function choose(g: UnknownGroup, value: string, retro = false) {
+/** Ответ в «Разделах за месяц» — всегда задним числом (ответ разбора — `answerUnknown`). */
+function choose(g: UnknownGroup, value: string) {
   if (value === PERSON) {
     personFor.value = groupKey(g)
     personText.value = ''
     return
   }
   const to = ruleTarget(value)
-  if (!to) return
-  if (retro) void store.recategorize(g.match, to)
-  else store.answer(g.match, to)
+  if (to) void store.recategorize(g.match, to)
 }
 
 /** Ответ карточки незнакомого продавца: в разборе — до отправки, в неделе — задним числом. */
@@ -326,12 +325,10 @@ function answerUnknown(g: UnknownGroup, to: MerchantRule['to']) {
   else void store.recategorize(g.match, to)
 }
 
-function savePerson(g: UnknownGroup, retro = false) {
+function savePerson(g: UnknownGroup) {
   const what = personText.value.trim()
   if (!what) return
-  const to = { person: what }
-  if (retro) void store.recategorize(g.match, to)
-  else store.answer(g.match, to)
+  void store.recategorize(g.match, { person: what })
   personFor.value = null
 }
 
@@ -533,10 +530,10 @@ onMounted(() => {
                   <span class="min-w-0 truncate text-ink">{{ g.label }}</span>
                   <span class="shrink-0 num text-ink-3">{{ money(g.amount) }}</span>
                 </div>
-                <Select v-if="canUpload" model-value="" :options="options(g)" @update:model-value="(v) => choose(g, v, true)" />
+                <Select v-if="canUpload" model-value="" :options="options(g)" @update:model-value="(v) => choose(g, v)" />
                 <div v-if="personFor === groupKey(g)" class="mt-2 flex gap-2">
                   <Input v-model="personText" placeholder="например, няня" class="min-w-0 flex-1" />
-                  <Button size="sm" @click="savePerson(g, true)">Запомнить</Button>
+                  <Button size="sm" @click="savePerson(g)">Запомнить</Button>
                 </div>
               </div>
             </div>
