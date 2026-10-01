@@ -128,7 +128,7 @@ onUnmounted(() => {
       @pointerdown="onScrimDown"
       @click.self="onScrimClick"
     >
-      <!-- Лист снизу (DESIGN.md §5): грип, радиус 28, тень только у листа, заголовок Piazzolla 24. -->
+      <!-- Лист снизу (DESIGN.md §5): грип, радиус 28, тень только у листа, заголовок 24. -->
       <div
         ref="card"
         role="dialog"

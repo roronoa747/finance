@@ -3,31 +3,33 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ---------------------------------------------------------------
-   Единственный источник цвета — направление А «Тёплый альбом»
-   (memory/backlog/идея-и-редизайн/block-2-design/DESIGN.md §4, перенос
-   mockups/tokens.css). Ни один компонент не имеет права писать литеральный
-   цвет — только токен отсюда.
+   Единственный источник цвета и шрифта. Пивот 3 (Р-36,
+   memory/decisions/pivot-3-money-fonts.md): палитра нейтральная, шрифт
+   системный (SF на iPhone, крупные цифры — ui-rounded); бренд «глина»,
+   участники и разделы трат — из направления А (DESIGN.md §4). Эталон —
+   pivot-3/index.html (.f3, [data-pal="neutral"]). Ни один компонент не
+   имеет права писать литеральный цвет — только токен отсюда.
    Пары light/dark обязаны существовать обе: если добавляешь токен
    в :root, добавь его и в .dark (гвард — style.tokens.test.ts), иначе
    элемент пропадёт при смене темы.
 ---------------------------------------------------------------- */
 :root {
-  --canvas: #f3eee6;
-  --surface: #fffdf9;
-  --surface-2: #f0eae0;
-  --surface-3: #e6ded2;
-  --line: #e2d9cb;
-  --line-strong: #cdbfad;
+  --canvas: #f2f2f0;
+  --surface: #ffffff;
+  --surface-2: #f1f1ef;
+  --surface-3: #e7e7e3;
+  --line: #e3e3df;
+  --line-strong: #cfcfca;
   /* Рамка карточки: в тёмной теме тон вместо линии. */
   --card-border: var(--line);
-  --ink: #1e1a16;
-  --ink-2: #5a524a;
-  --ink-3: #857a6f;
+  --ink: #19191b;
+  --ink-2: #57575b;
+  --ink-3: #86868b;
 
   /* Бренд один — «глина»; акцент пользователя убран (DESIGN.md §3). */
   --brand: #b4562f;
   --brand-ink: #fffdf9;
-  --brand-soft: #f7e4d9;
+  --brand-soft: #f6e6dd;
 
   /* «Свободно», поступления, «готово». */
   --ok: #3e7a5b;
@@ -67,9 +69,9 @@
   --s10: #8e5b4c;
   --s11: #5f6f86;
   --s12: #9a9385;
-  --s-unknown: #cfc7ba;
+  --s-unknown: #d3d3ce;
 
-  --track: #e6ded2;
+  --track: #e6e6e2;
   --on-photo: #ffffff;
   /* Затемнение под окном (kit/Sheet) и нижний градиент на фото. */
   --scrim: rgb(30 26 22 / 0.45);
@@ -81,20 +83,20 @@
 }
 
 .dark {
-  --canvas: #17130f;
-  --surface: #201b17;
-  --surface-2: #2a241f;
-  --surface-3: #352e27;
-  --line: #3a322b;
-  --line-strong: #4e4438;
+  --canvas: #121214;
+  --surface: #1c1c1f;
+  --surface-2: #26262a;
+  --surface-3: #313136;
+  --line: #36363b;
+  --line-strong: #4a4a50;
   --card-border: transparent;
-  --ink: #f3ede4;
-  --ink-2: #b7aca0;
-  --ink-3: #8e8478;
+  --ink: #f1f1ee;
+  --ink-2: #b4b4b0;
+  --ink-3: #8a8a86;
 
   --brand: #e58a62;
   --brand-ink: #2a1208;
-  --brand-soft: #3c2418;
+  --brand-soft: #3a2418;
 
   --ok: #7fc29a;
   --ok-soft: #1f2e25;
@@ -130,9 +132,9 @@
   --s10: #c4877a;
   --s11: #93a4c2;
   --s12: #b8b0a2;
-  --s-unknown: #5a5148;
+  --s-unknown: #55555a;
 
-  --track: #352e27;
+  --track: #313136;
   --on-photo: #ffffff;
   --scrim: rgb(0 0 0 / 0.6);
   --photo-scrim: rgb(0 0 0 / 0.78);
@@ -202,8 +204,10 @@
   --color-destructive-soft: var(--destructive-soft);
   --color-destructive-line: var(--destructive-line);
 
-  --font-display: 'Piazzolla', 'Georgia', serif;
-  --font-sans: 'Golos Text', 'Segoe UI', system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, 'Segoe UI', Roboto, sans-serif;
+  /* Крупные цифры: скруглённый системный (на Windows ui-rounded нет — Segoe UI). */
+  --font-num: ui-rounded, -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', Roboto, sans-serif;
 
   --radius-hero: var(--r-hero);
   --radius-card: var(--r-card);
@@ -246,9 +250,10 @@
 }
 
 /* ---------------------------------------------------------------
-   Типографика (DESIGN.md §4): классы вместо инлайновых размеров в экранах.
-   Display — Piazzolla (заголовки, процент мечты, большие суммы); текст и
-   деньги в строках — Golos Text.
+   Типографика (DESIGN.md §4, пивот 3 — Р-36): классы вместо инлайновых
+   размеров в экранах. Заголовки — системный display 700, трекинг -0.02em;
+   процент мечты и большие суммы — --font-num (ui-rounded) 700; текст —
+   системный.
 ---------------------------------------------------------------- */
 @utility num {
   font-variant-numeric: tabular-nums lining-nums;
@@ -260,56 +265,59 @@
 /* Заголовок экрана 30/1.05 */
 @utility type-h1 {
   font-family: var(--font-display);
-  font-weight: 600;
+  font-weight: 700;
   font-size: 30px;
   line-height: 1.05;
-  letter-spacing: -0.005em;
+  letter-spacing: -0.02em;
 }
 /* Заголовок карточки решения, h2 22/1.15 */
 @utility type-h2 {
   font-family: var(--font-display);
-  font-weight: 600;
+  font-weight: 700;
   font-size: 22px;
   line-height: 1.15;
+  letter-spacing: -0.02em;
 }
 /* h2 первого запуска 28 */
 @utility type-h2-lg {
   font-family: var(--font-display);
-  font-weight: 600;
+  font-weight: 700;
   font-size: 28px;
   line-height: 1.1;
+  letter-spacing: -0.02em;
 }
-/* Заголовок листа — Piazzolla 24 */
+/* Заголовок листа 24 */
 @utility type-sheet {
   font-family: var(--font-display);
-  font-weight: 600;
+  font-weight: 700;
   font-size: 24px;
   line-height: 1.1;
+  letter-spacing: -0.02em;
 }
 @utility type-h3 {
   font-weight: 600;
   font-size: 17px;
   line-height: 1.3;
 }
-/* Процент героя 76/0.95 */
+/* Процент героя 64/0.95 */
 @utility type-percent {
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-size: 76px;
+  font-family: var(--font-num);
+  font-weight: 700;
+  font-size: 64px;
   line-height: 0.95;
   letter-spacing: -0.01em;
 }
 /* Большая сумма 44/1, md — 32 */
 @utility type-big {
-  font-family: var(--font-display);
-  font-weight: 500;
+  font-family: var(--font-num);
+  font-weight: 700;
   font-size: 44px;
   line-height: 1;
   letter-spacing: -0.01em;
 }
 @utility type-big-md {
-  font-family: var(--font-display);
-  font-weight: 500;
+  font-family: var(--font-num);
+  font-weight: 700;
   font-size: 32px;
   line-height: 1;
   letter-spacing: -0.01em;

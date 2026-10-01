@@ -40,9 +40,9 @@ describe('style.css — пары токенов light/dark', () => {
     expect(theme.get('--shadow-sheet')).toBe('var(--shadow-sheet)')
   })
 
-  it('направление А: холст, бренд «глина», разделы трат s1…s12 и «не разобрано», рамка карточки прозрачна в тёмной', () => {
-    expect(root.get('--canvas')).toBe('#f3eee6')
-    expect(dark.get('--canvas')).toBe('#17130f')
+  it('пивот 3 (Р-36): нейтральный холст, бренд «глина» прежний, разделы трат s1…s12 и «не разобрано», рамка карточки прозрачна в тёмной', () => {
+    expect(root.get('--canvas')).toBe('#f2f2f0')
+    expect(dark.get('--canvas')).toBe('#121214')
     expect(root.get('--brand')).toBe('#b4562f')
     expect(dark.get('--brand')).toBe('#e58a62')
     for (let i = 1; i <= 12; i++) {
@@ -52,7 +52,27 @@ describe('style.css — пары токенов light/dark', () => {
     expect(root.has('--s-unknown')).toBe(true)
     expect(root.get('--card-border')).toBe('var(--line)')
     expect(dark.get('--card-border')).toBe('transparent')
-    expect(theme.get('--font-display')).toContain('Piazzolla')
-    expect(css).not.toContain('Onest')
+    // Бренд, участники и разделы трат пивот не трогает.
+    expect(root.get('--pa')).toBe('#3b5da8')
+    expect(root.get('--pb')).toBe('#a9456a')
+    expect(root.get('--s1')).toBe('#c2703f')
+    expect(dark.get('--s12')).toBe('#b8b0a2')
+  })
+
+  it('пивот 3 (Р-36): шрифт системный, крупные цифры — ui-rounded, Google Fonts нет', () => {
+    expect(theme.get('--font-display')).toMatch(/^-apple-system/)
+    expect(theme.get('--font-sans')).toMatch(/^-apple-system/)
+    expect(theme.get('--font-num')).toMatch(/^ui-rounded/)
+    const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf-8')
+    for (const bad of ['Piazzolla', 'Golos', 'Onest', 'fonts.googleapis']) {
+      expect(css).not.toContain(bad)
+      expect(html).not.toContain(bad)
+    }
+    // Крупные цифры (процент героя, большие суммы) — на --font-num, вес 700.
+    for (const u of ['type-percent', 'type-big', 'type-big-md']) {
+      const body = css.match(new RegExp(`@utility ${u} \\{([^}]*)\\}`))?.[1] ?? ''
+      expect(body).toContain('font-family: var(--font-num)')
+      expect(body).toContain('font-weight: 700')
+    }
   })
 })

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** Пустое состояние (DESIGN.md §6): заголовок Piazzolla 22, одна фраза, действия в слоте. */
+/** Пустое состояние (DESIGN.md §6): заголовок 22, одна фраза, действия в слоте. */
 defineProps<{
   title: string
   text?: string

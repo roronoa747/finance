@@ -2,7 +2,7 @@
 import { type HTMLAttributes } from 'vue'
 import { cn } from '@/lib/utils'
 
-/** Малая цифра с подписью — внутренняя карточка (радиус `--r-inner`); деньги — Golos Text 600. */
+/** Малая цифра с подписью — внутренняя карточка (радиус `--r-inner`); деньги — текстовый шрифт 600. */
 defineProps<{
   label: string
   value: string

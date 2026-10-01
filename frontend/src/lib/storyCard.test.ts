@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { STORY_SIZE, drawStory, layoutStory, storyText, withoutMoney, type StoryContext } from './storyCard'
+import { STORY_SIZE, drawStory, layoutStory, lineFont, storyText, withoutMoney, type StoryContext } from './storyCard'
 
 // Светлые токены — из style.css (ревью Блока 3 Н-14): смена токена не разъедется с карточкой молча.
 // CSS в Vitest приходит пустым — читается через node:fs, как в `style.tokens.test.ts`.
 type NodeFs = { readFileSync(path: URL, encoding: string): string }
 const fs = (await import(/* @vite-ignore */ `node:${'fs'}`)) as unknown as NodeFs
-const lightRoot = fs.readFileSync(new URL('../style.css', import.meta.url), 'utf-8').match(/:root\s*\{([^}]*)\}/)?.[1] ?? ''
+const css = fs.readFileSync(new URL('../style.css', import.meta.url), 'utf-8')
+const lightRoot = css.match(/:root\s*\{([^}]*)\}/)?.[1] ?? ''
+// Шрифты — системные стеки из `@theme inline` (пивот 3, Р-36): карточка не разъедется со style.css.
+const themeFont = (name: string) => new RegExp(`${name}\\s*:\\s*([^;]+);`).exec(css)![1].trim()
+const DISPLAY = themeFont('--font-display')
+const TEXT = themeFont('--font-sans')
+const NUM = themeFont('--font-num')
 const lightToken = (name: string) => new RegExp(`${name}\\s*:\\s*([^;]+);`).exec(lightRoot)![1].trim()
 const rgbOfHex = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(',')
 
@@ -53,13 +59,14 @@ describe('storyCard — тексты', () => {
 })
 
 describe('storyCard — композиция', () => {
-  it('layoutStory 1080 × 1920: поля 96, имя приложения 96/96, процент Piazzolla 300, строка Golos 56, полоса 12 внизу с полями', () => {
+  it('layoutStory 1080 × 1920: поля 96, имя приложения 96/96, процент системный скруглённый 700 / 300, строка 56 (пивот 3), полоса 12 внизу с полями', () => {
     const l = layoutStory('goal')
     expect(l).toMatchObject({ width: 1080, height: 1920, margin: 96 })
-    expect(l.app).toMatchObject({ x: 96, y: 140, font: '600 44px Piazzolla', alpha: 0.95 })
-    expect(l.label.font).toBe('500 40px "Golos Text"')
-    expect(l.big).toMatchObject({ font: '500 300px Piazzolla', size: 300, lineHeight: 0.9 })
-    expect(l.line).toMatchObject({ font: '500 56px "Golos Text"', maxWidth: 888 })
+    expect(l.app).toMatchObject({ x: 96, y: 140, font: `700 44px ${DISPLAY}`, alpha: 0.95 })
+    expect(l.label.font).toBe(`500 40px ${TEXT}`)
+    expect(l.big).toMatchObject({ font: `700 300px ${NUM}`, size: 300, lineHeight: 0.9 })
+    expect(l.line).toMatchObject({ font: lineFont(56), maxWidth: 888 })
+    for (const font of [l.app.font, l.label.font, l.big.font, l.line.font]) expect(font).not.toMatch(/Piazzolla|Golos/)
     expect(l.bar).toEqual({ x: 96, y: 1812, width: 888, height: 12, radius: 6 })
     expect(l.gradient).toMatchObject({ from: 576, to: 1920, color: 'rgba(24,18,14,0.82)' })
     // Снизу вверх: полоса → строка → процент → подпись, всё выше нижнего поля.
@@ -75,7 +82,7 @@ describe('storyCard — композиция', () => {
     expect(leaks.bar).toBeNull()
     const half = layoutStory('goal', { width: 540, height: 960 })
     expect(half).toMatchObject({ margin: 48 })
-    expect(half.app).toMatchObject({ x: 48, y: 70, font: '600 22px Piazzolla' })
+    expect(half.app).toMatchObject({ x: 48, y: 70, font: `700 22px ${DISPLAY}` })
     expect(half.bar).toEqual({ x: 48, y: 906, width: 444, height: 6, radius: 3 })
     expect(STORY_SIZE).toEqual({ width: 1080, height: 1920 })
   })
@@ -108,7 +115,7 @@ describe('storyCard — композиция', () => {
     const printed = calls.filter((c) => c.fn === 'fillText').map((c) => [c.args[0], c.fillStyle, c.font])
     expect(printed.map((p) => p[0])).toEqual(['Family Finance', 'До мечты', '62 %', 'Япония · будет нашей в мае 2027'])
     expect(printed.every((p) => String(p[1]).startsWith('rgb') && String(p[1]).includes('255,255,255'))).toBe(true)
-    expect(printed.map((p) => p[2])).toEqual(['600 44px Piazzolla', '500 40px "Golos Text"', '500 300px Piazzolla', '500 56px "Golos Text"'])
+    expect(printed.map((p) => p[2])).toEqual([`700 44px ${DISPLAY}`, `500 40px ${TEXT}`, `700 300px ${NUM}`, lineFont(56)])
     for (const p of printed) expect(String(p[0])).not.toMatch(/₸|\d{1,3}(?:[\s ]\d{3})+/)
     // Полоса: подложка 30 % и заполнение на 62 % ширины.
     const bars = calls.filter((c) => c.fn === 'roundRect').map((c) => c.args)
@@ -126,7 +133,7 @@ describe('storyCard — композиция', () => {
     expect(calls.some((c) => c.fn === 'drawImage')).toBe(false)
     const line = calls.filter((c) => c.fn === 'fillText').at(-1)!
     expect(String(line.fillStyle)).toBe(`rgb(${rgbOfHex(lightToken('--ink'))})`)
-    expect(line.font).not.toBe('500 56px "Golos Text"')
+    expect(line.font).not.toBe(lineFont(56))
     expect(Number(/(\d+)px/.exec(line.font)![1])).toBeLessThan(56)
 
     const leaks = recorder()

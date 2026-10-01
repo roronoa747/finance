@@ -26,7 +26,7 @@ import Sheet from '@/components/kit/Sheet.vue'
 import Tabs from '@/components/kit/Tabs.vue'
 
 /**
- * Оболочка (DESIGN.md §2, §5; B2C-13): шапка `.topbar` — заголовок экрана Piazzolla 30 с
+ * Оболочка (DESIGN.md §2, §5; B2C-13): шапка `.topbar` — заголовок экрана 30 (системный, пивот 3) с
  * подписью, аватары участников (точка при «не сошлось» — `SyncBadge` compact), шестерёнка →
  * `/settings`; капсула вкладок «Мечты · Неделя · Деньги» и «+»; лист «+» на `Sheet` — шесть
  * действий; у viewer «+» нет вовсе (ТЗ B2C-13 п. 3: лист без действий правки — а добавить

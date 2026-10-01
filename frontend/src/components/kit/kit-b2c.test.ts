@@ -197,7 +197,7 @@ describe('WeekCard / FreeCard', () => {
 })
 
 describe('DecisionCard / Chip / Stepper', () => {
-  it('вопрос Piazzolla, детали, прогресс «2 из 6», внутренняя карточка, три кнопки', async () => {
+  it('вопрос заголовочным шрифтом, детали, прогресс «2 из 6», внутренняя карточка, три кнопки', async () => {
     const html = await render(
       DecisionCard,
       {

@@ -3,7 +3,7 @@ import { PhPlus } from '@phosphor-icons/vue'
 
 /**
  * Плитка мечты (DESIGN.md §5): три в ряд, высота 150, радиус 20; фото или `plain`
- * (`--surface-3`), процент Piazzolla 26 и имя с многоточием. Вариант `add` — «Новая мечта»;
+ * (`--surface-3`), процент 26 (--font-num 700) и имя с многоточием. Вариант `add` — «Новая мечта»;
  * `link` — переход того же ряда (`name` — подпись, `meta` — строка под ней, иконка — слот `icon`):
  * «Желания» под героем вместо отдельной ссылки (возврат смоука).
  * Ширина — у ряда (`flex-1` по умолчанию; ряд с прокруткой задаёт `basis` сам).
@@ -51,7 +51,7 @@ const emit = defineEmits<{ (e: 'click'): void }>()
     <template v-else>
       <img v-if="src" :src="src" alt="" class="absolute inset-0 -z-20 size-full object-cover" />
       <div v-if="src" class="absolute inset-x-0 bottom-0 top-[40%] -z-10 photo-scrim" aria-hidden="true" />
-      <div v-if="percent !== undefined" class="font-display text-[26px] font-medium leading-none num">{{ Math.round(percent) }}&nbsp;%</div>
+      <div v-if="percent !== undefined" class="font-num text-[26px] font-bold leading-none num">{{ Math.round(percent) }}&nbsp;%</div>
       <div class="mt-0.5 w-full truncate text-[12px]" :class="src ? 'opacity-90' : 'text-ink-2'">{{ name }}</div>
     </template>
   </button>

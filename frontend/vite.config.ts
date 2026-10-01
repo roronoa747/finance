@@ -25,7 +25,7 @@ export default defineConfig({
         start_url: '/',
         display: 'standalone',
         // Холст и бренд направления А (DESIGN.md §4, B2C-12).
-        background_color: '#F3EEE6',
+        background_color: '#F2F2F0',
         theme_color: '#B4562F',
         icons: [
           { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml' },

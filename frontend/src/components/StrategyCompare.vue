@@ -250,7 +250,7 @@ const stepLine = computed(() => {
         <div class="text-[12.5px] text-ink-2">
           {{ gain >= 0 ? 'Сначала долги выгоднее на' : 'Копить выгоднее на' }}
         </div>
-        <div class="font-display text-[22px] font-semibold tracking-[-0.02em] num text-ink">
+        <div class="font-num text-[22px] font-bold tracking-[-0.01em] num text-ink">
           {{ money(Math.abs(gain)) }}
         </div>
         <div class="text-[12.5px] text-ink-3">

@@ -17,7 +17,7 @@ describe.skipIf(!built)('PWA-сборка заменяет React-PWA (MGV-17)', 
       start_url: '/',
       scope: '/',
       display: 'standalone',
-      background_color: '#F3EEE6',
+      background_color: '#F2F2F0',
       theme_color: '#B4562F',
     })
     expect(manifest.icons).toEqual([
@@ -59,12 +59,15 @@ describe.skipIf(!built)('PWA-сборка заменяет React-PWA (MGV-17)', 
     expect(fill?.toUpperCase()).toBe(manifest.theme_color.toUpperCase())
   })
 
-  it('шрифты Piazzolla и Golos Text подключены (DESIGN.md §4), Onest убран', () => {
+  it('шрифт системный (пивот 3, Р-36): ни Google Fonts, ни веб-шрифтов в сборке', () => {
     const html = readFileSync(resolve(dist, 'index.html'), 'utf-8')
-    expect(html).toContain('fonts.googleapis.com/css2?family=Piazzolla')
-    expect(html).toContain('family=Golos+Text')
-    expect(html).toContain('display=swap')
-    expect(html).not.toContain('Onest')
+    for (const bad of ['fonts.googleapis', 'fonts.gstatic', 'Piazzolla', 'Golos', 'Onest']) expect(html).not.toContain(bad)
+    const css = readdirSync(resolve(dist, 'assets'))
+      .filter((f) => f.endsWith('.css'))
+      .map((f) => readFileSync(resolve(dist, 'assets', f), 'utf-8'))
+      .join('\n')
+    expect(css).toContain('ui-rounded')
+    for (const bad of ['fonts.gstatic', 'Piazzolla', 'Golos', '@font-face']) expect(css).not.toContain(bad)
   })
 })
 
