@@ -586,6 +586,8 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(done).not.toContain('Изменить режим')
       expect(done).toContain(`Уже сэкономили ${money(planFact(st.activePlan!, st.payments, st.credits).savedInterest)}.`)
       expect(planFact(st.activePlan!, st.payments, st.credits).savedInterest).toBe(9_000)
+      // Критик (Р-38): при плане сэкономленное — одно число строкой прогноза; «Досрочками уже сэкономили» в «Подробнее» — без плана.
+      expect(done).not.toContain('Досрочками уже сэкономили')
     })
 
     it('шаг закрыл кредитку, сумма месяца не вся — второй шаг в «Кредит» с «уже внесено»', async () => {

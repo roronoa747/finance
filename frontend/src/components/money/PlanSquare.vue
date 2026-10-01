@@ -213,7 +213,8 @@ function changeMode() {
             <span class="text-ink-2">Проценты банку по всем долгам</span>
             <b class="num text-ink">{{ money(interestAll) }} в месяц</b>
           </div>
-          <div v-if="savedAll > 0" class="flex justify-between">
+          <!-- При плане сэкономленное — одним числом в строке прогноза, второго рядом нет -->
+          <div v-if="!plan && savedAll > 0" class="flex justify-between">
             <span class="text-ink-2">Досрочками уже сэкономили</span>
             <b class="num text-brand">{{ money(savedAll) }}</b>
           </div>
