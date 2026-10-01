@@ -74,11 +74,6 @@ const props = withDefaults(
     initialAdvice?: 'order' | 'strategy'
     /** Стартовые поля формы долга — для SSR-тестов (форма открывается по ?add=debt). */
     initialDebt?: { mode?: 'none' | 'rate' | 'term'; principal?: string; payment?: string; term?: string }
-    /**
-     * Внутри «Денег» (пивот 3, до B2C-42): списки и окна Капитала под виджетами; «Чистый капитал»
-     * карточкой не показывается — он в виджете «Долги».
-     */
-    embedded?: boolean
   }>(),
   { initialAdvice: 'order' },
 )
@@ -524,7 +519,7 @@ watch(queryModalOpen, (open) => {
 <template>
   <div class="flex flex-col gap-3.5 pt-1">
     <!-- Чистый капитал (g6 «Капитал»): подпись секции, большая сумма, строки «На счетах · Накоплено по мечтам · Долги» -->
-    <Card v-if="!embedded">
+    <Card>
       <div class="flex items-center gap-1.5 type-section">
         Чистый капитал
         <Hint>

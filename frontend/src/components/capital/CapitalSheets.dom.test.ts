@@ -10,7 +10,7 @@ import type { Obligation } from '@/types/finance'
 import AccountSheet from './AccountSheet.vue'
 import CreditSheet from './CreditSheet.vue'
 import ObligationSheet from './ObligationSheet.vue'
-import Capital from '@/views/Capital.vue'
+import Money from '@/views/Money.vue'
 
 /**
  * Хвост Блока 5 (критик): «Готово» в окнах Капитала закрывает через `close()` кита, как
@@ -115,12 +115,12 @@ describe('Критик Блока 5: «Готово» в окнах Капита
     expect(dialog()).not.toContain('Ставку уточните')
   })
 
-  it('группа подписок (окно в Капитале): «Название» и «Готово» — записано, окно закрыто', async () => {
+  it('группа подписок (лист из «Платежей»): «Название» и «Готово» — записано, окно закрыто', async () => {
     const { pinia, store } = family()
     const router = createRouter({ history: createMemoryHistory(), routes })
-    await router.push('/capital')
+    await router.push('/money')
     await router.isReady()
-    mount(pinia, () => h(Capital), router)
+    mount(pinia, () => h(Money), router)
     await nextTick()
     ;[...document.querySelectorAll<HTMLElement>('button, [role="button"]')].find((b) => b.textContent?.includes('Подписки'))!.click()
     await nextTick()

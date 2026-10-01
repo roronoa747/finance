@@ -14,10 +14,9 @@ import PaydaySummary from '@/components/money/PaydaySummary.vue'
 import IncomeWidget from '@/components/money/IncomeWidget.vue'
 import LivingWidget from '@/components/money/LivingWidget.vue'
 import DebtsWidget from '@/components/money/DebtsWidget.vue'
+import CapitalLists from '@/components/money/CapitalLists.vue'
 
-// Списки и окна Капитала (счета, платежи, кредиты, формы по ?add=…) — до B2C-42; «План» и
-// «История» — прежние экраны внутри квадратов до B2C-43 и B2C-44 (ТЗ B2C-41, «Вне скоупа»).
-const CapitalLists = defineAsyncComponent(() => import('@/views/Capital.vue'))
+// «План» и «История» — прежние экраны внутри квадратов до B2C-43 и B2C-44 (ТЗ B2C-41, «Вне скоупа»).
 const PlanSquare = defineAsyncComponent(() => import('@/views/DebtPlan.vue'))
 const HistorySquare = defineAsyncComponent(() => import('@/views/History.vue'))
 
@@ -25,7 +24,7 @@ const HistorySquare = defineAsyncComponent(() => import('@/views/History.vue'))
  * «Деньги» — один экран (пивот 3, Р-31; `pivot-3/index.html` `#money`): квадраты Капитал · План ·
  * История по адресу `/money`, `/money/plan`, `/money/history`. У Капитала сверху сводка «До
  * зарплаты» (Р-32), под квадратами — «Освободится» (до разбора «Неделя», Р-39) и виджеты Доход ·
- * Еда и быт · Долги (Р-33). Ничего не считается здесь — только `finance.ts`.
+ * Еда и быт · Долги (Р-33), под ними — «Счета» и «Платежи» (Р-32). Ничего не считается здесь — только `finance.ts`.
  */
 const route = useRoute()
 const router = useRouter()
@@ -64,7 +63,7 @@ onMounted(() => void ops.loadUploads())
       <LivingWidget />
       <DebtsWidget />
 
-      <CapitalLists embedded />
+      <CapitalLists />
     </template>
 
     <PlanSquare v-else-if="square === 'plan'" />

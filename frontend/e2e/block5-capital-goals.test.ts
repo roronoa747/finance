@@ -153,7 +153,7 @@ describe('e2e / block-5 — Сквозной сценарий Капитала, 
     // Стор отдаёт счёт копией с остатком из отметок (RP-06) — перечитываем.
     expect(financeStore.householdAccounts.find((a) => a.id === kaspiAcc.id)!.amount).toBe(400_000)
 
-    // 6. Сложный процент с капитализацией (Deposit.vue, MGV-13)
+    // 6. Сложный процент с капитализацией (расчёт вклада в листе счёта, MGV-13)
     const depositCalc = deposit({
       principal: 1_000_000,
       annualRate: 0.14,

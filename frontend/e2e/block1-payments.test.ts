@@ -17,11 +17,12 @@ import {
   untilPayday,
 } from '../src/lib/finance'
 import { money, plain } from '../src/lib/money'
-import { plural } from '../src/lib/utils'
 import Budget from '../src/views/Budget.vue'
 import Dreams from '../src/views/Dreams.vue'
 import Money from '../src/views/Money.vue'
-import Capital from '../src/views/Capital.vue'
+
+/** Текст как его видит человек: теги — пробел, пробелы шаблона схлопнуты (NBSP сумм остаются). */
+const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
 
 /**
  * Блок 1 развития: «Оплатил», досрочка, подписки. Два телефона — два стора Pinia
@@ -126,7 +127,7 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     await B.store.pullHousehold(B.client)
     const shownB = await list(B)
     expect(shownB).toContain(`оплачено · дальше 5 октября · ${plain(220_000)} ₸`)
-    expect(await screen(B.pinia, Capital, '/capital')).toContain(money(780_000))
+    expect(await screen(B.pinia, Money, '/money')).toContain(money(780_000))
   })
 
   it('RP-08: досрочка «сократить срок» меняет остаток и срок, показывает сэкономленное — у обоих, до тенге', async () => {
@@ -144,12 +145,10 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
       expect(p.store.credits[0].principal).toBe(plan.left)
       expect(p.store.accounts[0].amount).toBe(800_000)
       expect(prepaySaved(p.store.payments, p.store.credits)).toBe(plan.saved)
-      const capital = await screen(p.pinia, Capital, '/capital')
-      expect(capital).toContain(money(800_000))
-      expect(capital).toContain(`${plan.months} ${plural(plan.months, 'платёж', 'платежа', 'платежей')}`)
-      expect(capital).toContain('Досрочками уже сэкономили на процентах')
-      expect(capital).toContain(money(plan.saved))
-      const payoff = await screen(p.pinia, Capital, '/capital?payoff=loan')
+      expect(await screen(p.pinia, Money, '/money')).toContain(money(800_000))
+      // Пивот 3 (B2C-42): срок — в листе кредита, строка «Платежей» его не печатает.
+      expect(text(await screen(p.pinia, Money, '/money?credit=loan'))).toContain(`Платежей осталось ${plan.months}`)
+      const payoff = await screen(p.pinia, Money, '/money?payoff=loan')
       expect(payoff).toContain('Применённые досрочки')
       expect(payoff).toContain('сократили срок')
     }
@@ -196,13 +195,14 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     await A.store.pullHousehold(A.client)
     overview = await screen(A.pinia, Dreams, '/')
     expect(overview).not.toContain('Оставить подписку')
-    const capital = await screen(A.pinia, Capital, '/capital')
+    const capital = await screen(A.pinia, Money, '/money')
     expect(capital).not.toContain('Netflix')
-    // Группа видна с подписками и итогом; годовая — «в год».
-    expect(capital).toContain('Рабочие')
-    expect(capital).toContain('1 подписка · рабочие')
-    expect(capital).toContain('Slack')
-    expect(capital).toContain('в год')
+    // Группа — строкой с числом подписок и итогом, подписки — в её листе (пивот 3, B2C-42);
+    // годовая не в свой месяц — «раз в год · в октябре», без «Оплатил».
+    expect(text(capital)).toContain(`Рабочие 1 · рабочие ${money(3_000)}`)
+    expect(capital).not.toContain('Slack')
+    expect(text(await screen(A.pinia, Money, '/money', undefined, [screenMixin({ selectedGroupId: 'work' })]))).toContain('Slack')
+    expect(text(capital)).toContain(`iCloud раз в год · в октябре ${money(11_990)}`)
 
     // Бюджет месяца от группировки не изменился.
     const doc = A.store.householdDoc
@@ -425,10 +425,12 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     expect(overview).toContain('До зарплаты 16 дней')
     expect(overview).toContain(`${payday.due.length} списания · ${plain(324_990)} ₸ · остаётся ${plain(675_010)} ₸`)
     expect(overview).toContain('хватает')
-    const capital = await screen(A.pinia, Capital, '/capital')
-    expect(capital).toContain(money(2_600_000)) // Чистый капитал
-    expect(capital).toContain('24 платежа')
-    expect(capital).toContain(`переплата ${plain(374_102)}`)
+    const capital = await screen(A.pinia, Money, '/money')
+    expect(capital).toContain(`чистых ${money(2_600_000)}`) // Чистый капитал — строкой в «Долгах» (Р-33)
+    // Срок и переплата — в листе кредита (пивот 3, B2C-42).
+    const loan = text(await screen(A.pinia, Money, '/money?credit=loan'))
+    expect(loan).toContain('Платежей осталось 24')
+    expect(loan).toContain(`Переплата до конца ${money(374_102)}`)
     // Открытие ничего не пишет: ни отметок, ни якорей, ни push.
     expect(A.store.payments).toEqual([])
     expect(A.store.accounts.find((a) => a.id === 'card')?.amount).toBe(1_000_000)
@@ -527,7 +529,6 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     expect(B.store.credits[0].principal).toBe(700_000)
     expect(B.store.accounts[0].amount).toBe(700_000)
     expect(prepaySaved(B.store.payments, B.store.credits)).toBe(181_913)
-    expect(await screen(B.pinia, Capital, '/capital')).toContain(money(181_913))
 
     setActivePinia(B.pinia)
     at('2026-09-24T09:00:00Z')
