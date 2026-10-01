@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, inject, onBeforeUnmount, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
@@ -124,12 +124,16 @@ async function create() {
   if (done || next || financeStore.isDemo || router.currentRoute.value.path !== here) return
   await router.replace({ path: here, query: { photo: file ? 'failed' : 'later' } })
 }
+
+// Внутри AppShell (/goals/new) шапка экрана уже есть; в первом запуске (/start/dream) — нет.
+const inShell = inject<boolean>('ff-shell-actions', false)
 </script>
 
 <template>
   <div class="flex flex-col gap-3 pt-1 text-left">
     <template v-if="step === 'pick'">
-      <h2 class="type-h2-lg text-ink">На что копим?</h2>
+      <!-- В оболочке заголовок «Новая мечта» уже в шапке — второй заголовок подряд не нужен (возврат смоука); в первом запуске это заголовок шага. -->
+      <h2 v-if="!inShell" class="type-h2-lg text-ink">На что копим?</h2>
       <div class="grid grid-cols-3 gap-2.5">
         <TemplateTile
           v-for="k in GOAL_TYPES"

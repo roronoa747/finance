@@ -90,6 +90,10 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
       expect(html).not.toContain('aria-label="Настройки"')
     }
     expect(await renderScreen(AppShell, '/settings')).toContain('Ильяс · a@example.com')
+    // «Новая мечта» в шапке — без второго заголовка «На что копим?» под ней (он — заголовок шага первого запуска).
+    const fresh = await renderScreen(AppShell, '/goals/new')
+    expect(fresh).toContain('>Новая мечта</h1>')
+    expect(fresh).not.toContain('На что копим?')
   })
 
   it('вкладки «Мечты · Неделя · Деньги» + «+»: активная — aria-current; экраны-потоки (цель, желания, настройки, раскладка) — без вкладок, как в макетах', async () => {
