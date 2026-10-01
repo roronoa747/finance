@@ -148,6 +148,8 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
       expect(await screen(p.pinia, Money, '/money')).toContain(money(800_000))
       // Пивот 3 (B2C-42): срок — в листе кредита, строка «Платежей» его не печатает.
       expect(text(await screen(p.pinia, Money, '/money?credit=loan'))).toContain(`Платежей осталось ${plan.months}`)
+      // Сэкономленное досрочками — в «Подробнее» квадрата «План» (Р-34, B2C-43).
+      expect(text(await screen(p.pinia, Money, '/money/plan'))).toContain(`Досрочками уже сэкономили ${money(plan.saved)}`)
       const payoff = await screen(p.pinia, Money, '/money?payoff=loan')
       expect(payoff).toContain('Применённые досрочки')
       expect(payoff).toContain('сократили срок')
@@ -529,6 +531,7 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     expect(B.store.credits[0].principal).toBe(700_000)
     expect(B.store.accounts[0].amount).toBe(700_000)
     expect(prepaySaved(B.store.payments, B.store.credits)).toBe(181_913)
+    expect(text(await screen(B.pinia, Money, '/money/plan'))).toContain(`Досрочками уже сэкономили ${money(181_913)}`)
 
     setActivePinia(B.pinia)
     at('2026-09-24T09:00:00Z')

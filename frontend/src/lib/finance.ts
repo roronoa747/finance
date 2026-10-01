@@ -1266,6 +1266,22 @@ export function creditTotals(payments: Payment[], creditId: string) {
 export const budgetInterest = (credits: Credit[]) =>
   openCredits(credits).reduce((a, c) => a + creditSplit(c.principal, c.annualRate, c.payment).interest, 0)
 
+/**
+ * «Что гасить первым» (квадрат «План», пивот 3, Р-34; бывшая секция Капитала): долги с процентами
+ * по `costliestCredits` с выводами `creditOutlook`, самый дорогой — первым; добавка в месяц,
+ * снимающая половину его переплаты, и что она даёт (`prepayOutcome`). Долги без ставки (кредит из
+ * выписки, B2C-19) не ранжируются — их просим уточнить. Кредиты — производные.
+ */
+export function debtAdvice(credits: Credit[]) {
+  const rankedDebts = costliestCredits(credits).map((c) => ({ credit: c, cost: creditOutlook(c) }))
+  const worstDebt = rankedDebts[0] ?? null
+  const worstHalfExtra = worstDebt
+    ? halfOverpayExtra(worstDebt.credit.principal, worstDebt.credit.annualRate, worstDebt.credit.payment)
+    : null
+  const worstGain = worstDebt && worstHalfExtra ? prepayOutcome(worstDebt.credit, worstHalfExtra, 'monthly') : null
+  return { rankedDebts, worstDebt, worstHalfExtra, worstGain, unknownRate: openCredits(credits).filter((c) => c.rateUnknown) }
+}
+
 export type ScheduleRow = {
   period: string
   /** Число месяца; платёж 31-го в коротком месяце — в его последний день. */
@@ -2205,6 +2221,39 @@ export function planStep(plan: DebtPlan, state: PlanState, key: string): PlanSte
  * месяца старта не было. Дата без долгов сдвигается сама.
  */
 export function planForecast(plan: DebtPlan, state: PlanState, key: string): PlanForecast {
+  const { a, b } = planRuns(plan, state, key)
+  // Долг, который не закрывается, копит проценты все 600 месяцев симуляции — разность таких
+  // сумм не экономия, а шум (Р-11: «экономию не считаем»).
+  const comparable = a.debtFreeMonth !== null && b.debtFreeMonth !== null
+  return {
+    gain: strategyGain(a, b),
+    savedInterest: comparable ? Math.max(0, Math.round(a.interestTotal - b.interestTotal)) : null,
+    debtFreeMonth: b.debtFreeMonth === null ? null : addMonths(key, b.debtFreeMonth),
+  }
+}
+
+/**
+ * Прогноз плана одной строкой квадрата «План» (пивот 3, Р-34): те же два прогона, что у
+ * `planForecast`, — когда закроются долги с планом, на сколько месяцев раньше, чем без него, и
+ * переплата банку без плана → с планом (от нынешних остатков, целые тенге). null у срока —
+ * без плана или с ним долг не закрывается (Р-11).
+ */
+export function planOutlook(plan: DebtPlan, state: PlanState, key: string) {
+  const { a, b } = planRuns(plan, state, key)
+  const comparable = a.debtFreeMonth !== null && b.debtFreeMonth !== null
+  const without = Math.round(a.interestTotal)
+  // «С планом» — без плана минус экономия `planForecast`: разница строки сходится с ней до тенге.
+  const saved = Math.max(0, Math.round(a.interestTotal - b.interestTotal))
+  return {
+    debtFreeMonth: b.debtFreeMonth === null ? null : addMonths(key, b.debtFreeMonth),
+    monthsSooner: comparable ? Math.max(0, a.debtFreeMonth! - b.debtFreeMonth!) : null,
+    overpayWithout: comparable ? without : null,
+    overpayWith: comparable ? without - saved : null,
+  }
+}
+
+/** Два прогона прогноза плана: «копим как сейчас» (`a`) и план (`b`) на нынешних остатках. */
+function planRuns(plan: DebtPlan, state: PlanState, key: string) {
   const credits = state.credits ?? []
   const payments = state.payments ?? []
   const inputs = strategyInputs({
@@ -2223,14 +2272,7 @@ export function planForecast(plan: DebtPlan, state: PlanState, key: string): Pla
   const base = { debts: inputs.debts, saving: inputs.saving + released, keep: inputs.keep, start: inputs.start, months: plan.months }
   const a = simulateStrategy({ ...base, payDebts: false })
   const b = simulateStrategy({ ...base, payDebts: true, lump, buffer })
-  // Долг, который не закрывается, копит проценты все 600 месяцев симуляции — разность таких
-  // сумм не экономия, а шум (Р-11: «экономию не считаем»).
-  const comparable = a.debtFreeMonth !== null && b.debtFreeMonth !== null
-  return {
-    gain: strategyGain(a, b),
-    savedInterest: comparable ? Math.max(0, Math.round(a.interestTotal - b.interestTotal)) : null,
-    debtFreeMonth: b.debtFreeMonth === null ? null : addMonths(key, b.debtFreeMonth),
-  }
+  return { a, b }
 }
 
 /** Факт плана (Р-6): досрочки с его id — сэкономленные проценты и шаги по порядку. */

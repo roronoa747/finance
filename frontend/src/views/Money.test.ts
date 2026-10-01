@@ -6,17 +6,22 @@ import { useOperationsStore } from '@/stores/operations'
 import { apiClient } from '@/api/client'
 import {
   budgetAmounts,
+  budgetInterest,
+  debtAdvice,
   duesTotal,
   freeByFact,
   monthDues,
   netWorth,
+  planFact,
+  planOutlook,
   cushionMonths,
   liquidCash,
   nextChange,
   untilPayday,
 } from '@/lib/finance'
 import { money, pct, plain } from '@/lib/money'
-import type { Obligation, SyncDoc } from '@/types/finance'
+import { monthIn } from '@/lib/dates'
+import type { Obligation, Payment, SyncDoc } from '@/types/finance'
 import type { SpendTotal } from '@/lib/statements/types'
 import { authAs, planFamilyDoc, planOf, T0 } from '@/test/planFamily'
 import { renderScreen, screenMixin } from '@/test/screenState'
@@ -493,6 +498,166 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(sheet).toContain('Кредит')
       expect(sheet).not.toContain('Оплатил')
       expect(sheet).not.toContain('Пришла зарплата')
+    })
+  })
+
+  describe('B2C-43: квадрат «План» — самая дорогая ставка и «Сначала долги» (перенос DebtPlan.test и «Что гасить первым»)', () => {
+    const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
+    const stepButton = />\s*Шаг сделан\s*</
+    const prepay = (p: Partial<Payment>): Payment => ({
+      id: 'p1', kind: 'prepay', targetId: 'cc', period: '2026-09', amount: 100_000, principal: 100_000, accountId: 'card',
+      by: 'a', at: '2026-09-20T05:00:00.000Z', updatedAt: '2026-09-20T05:00:00.000Z', saved: 9_000, mode: 'term', planId: 'plan', ...p,
+    })
+    const plan = async (extra: Partial<SyncDoc> = {}, role: 'member' | 'viewer' = 'member', now = '2026-09-24T07:00:00Z') => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date(now))
+      setActivePinia(createPinia())
+      useAuthStore().setAuthData(authAs(role, 'a'))
+      useFinanceStore().setHouseholdDoc(planFamilyDoc({ plans: [planOf()], ...extra }), 1)
+      return useFinanceStore()
+    }
+    afterEach(() => vi.useRealTimers())
+
+    it('«Самая дорогая ставка»: тег ставки, долг и остаток, проценты в месяц и переплата = debtAdvice; цифры и абзац — в свёрнутом «Подробнее»', async () => {
+      const store = await plan({ plans: [] })
+      const { worstDebt, worstHalfExtra, worstGain } = debtAdvice(store.credits)
+      const html = await renderScreen(Money, '/money/plan')
+      const card = text(html.slice(html.indexOf('Самая дорогая ставка'), html.indexOf('Подробнее')))
+      expect(card).toContain('Самая дорогая ставка 40 %')
+      expect(card).toContain(`Кредитка ${money(300_000)}`)
+      expect(card).toContain(`процентов в месяц ${plain(10_000)} · переплата до конца ${plain(worstDebt!.cost.overpay)}`)
+      const more = html.slice(html.indexOf('Подробнее'))
+      expect(more).toMatch(/<details[^>]*>\s*<summary/)
+      expect(html).not.toMatch(/<details[^>]* open/)
+      const t = text(more)
+      expect(t).toContain('Доля платежа в проценты 40%')
+      expect(t).toContain(`Проценты банку по всем долгам ${money(budgetInterest(store.credits))} в месяц`)
+      expect(t).toContain(`Половину переплаты снимает добавка ${money(worstHalfExtra!)} в месяц`)
+      expect(t).toContain(`это минус ${worstGain!.monthsSaved} мес. и экономия ${money(worstGain!.saved)}`)
+      expect(t).toContain('Посчитать на свою сумму')
+    })
+
+    it('без ставки — «уточните»; долгов нет — «Долгов нет» вместо обеих карточек', async () => {
+      const store = await plan({ plans: [] })
+      store.addCredit({ name: 'Оплата Kaspi Кредита', note: 'из выписки', principal: 1_200_000, annualRate: 0, rateUnknown: true, payment: 151_790, day: 24 })
+      expect(text(await renderScreen(Money, '/money/plan'))).toContain('Ставку «Оплата Kaspi Кредита» уточните — тогда сравним.')
+      await plan({ plans: [], credits: [] })
+      const none = text(await renderScreen(Money, '/money/plan'))
+      expect(none).toContain('Долгов нет')
+      expect(none).not.toContain('Самая дорогая ставка')
+      expect(none).not.toContain('Сначала долги')
+    })
+
+    it('без плана — переключатель выключен, «Копить или гасить?» свёрнуто с выбором плана внутри', async () => {
+      await plan({ plans: [] })
+      const html = await renderScreen(Money, '/money/plan')
+      expect(html).toMatch(/role="switch" aria-checked="false"/)
+      expect(html).not.toMatch(/role="switch"[^>]*\sdisabled(=""|\s|>)/)
+      expect(text(html)).toContain('Копить или гасить?')
+      expect(html).toMatch(/>\s*Выбрать этот план\s*</)
+      expect(html).not.toMatch(stepButton)
+    })
+
+    it('план: переключатель включён, шаг месяца, прогноз одной строкой от planOutlook, «Уже сэкономили» = planFact, цели на паузе, подушка; «Шаг сделан» и «Изменить режим»', async () => {
+      const store = await plan()
+      const html = await renderScreen(Money, '/money/plan')
+      const t = text(html)
+      expect(html).toMatch(/role="switch" aria-checked="true"/)
+      expect(t).toContain(`Шаг сентября ${money(100_000)} досрочно`)
+      expect(t).toContain('в «Кредитка»')
+      const o = planOutlook(store.activePlan!, store.planState(), '2026-09')
+      expect(o.monthsSooner).toBeGreaterThan(0)
+      expect(t).toContain(
+        `Закроется в ${monthIn(o.debtFreeMonth!)}, на ${o.monthsSooner} мес. раньше. Переплата ${plain(o.overpayWithout!)} → ${money(o.overpayWith!)}. Уже сэкономили ${money(0)}.`,
+      )
+      expect(t).toContain('Цели на паузе Отпуск, Машина · взнос идёт в долг')
+      expect(t).toContain('Подушка плана Подушка')
+      expect(html).toMatch(stepButton)
+      expect(html).toMatch(/class="[^"]*bg-brand text-brand-ink[^"]*"[^>]*>\s*Шаг сделан/)
+      expect(t).toContain('Изменить режим')
+      // Шаг внесён — «внесено по плану», досрочка строкой, кнопок нет; «Уже сэкономили» — живой planFact.
+      await plan({ payments: [prepay({})] })
+      const st = useFinanceStore()
+      const done = text(await renderScreen(Money, '/money/plan'))
+      expect(done).toContain(`внесено по плану · ${money(100_000)}`)
+      expect(done).toContain(`${money(100_000)} в «Кредитка»`)
+      expect(done).not.toContain('Шаг сделан')
+      expect(done).not.toContain('Изменить режим')
+      expect(done).toContain(`Уже сэкономили ${money(planFact(st.activePlan!, st.payments, st.credits).savedInterest)}.`)
+      expect(planFact(st.activePlan!, st.payments, st.credits).savedInterest).toBe(9_000)
+    })
+
+    it('шаг закрыл кредитку, сумма месяца не вся — второй шаг в «Кредит» с «уже внесено»', async () => {
+      const credits = planFamilyDoc().credits.map((c) => (c.id === 'cc' ? { ...c, principal: 20_000 } : c))
+      await plan({ credits, payments: [prepay({ amount: 20_000, principal: 20_000 })] })
+      const t = text(await renderScreen(Money, '/money/plan'))
+      expect(t).toContain(`${money(100_667)} досрочно`)
+      expect(t).toContain(`в «Кредит»; уже внесено ${money(20_000)} — «Кредитка» закрыт`)
+    })
+
+    it('шаг — подушка: «сначала подушка: не хватает N» и «Пополнить подушку»; без взносов на паузе — шага нет', async () => {
+      const goals = planFamilyDoc().goals.map((g) => (g.id === 'cushion' ? { ...g, have: 100_000, seed: 100_000 } : g))
+      await plan({ goals })
+      const html = await renderScreen(Money, '/money/plan')
+      expect(text(html)).toContain(`сначала подушка: не хватает ${money(223_000)}`)
+      expect(html).toMatch(/>\s*Пополнить подушку\s*</)
+      expect(html).not.toMatch(stepButton)
+      await plan({ plans: [planOf({ keptGoalIds: ['trip', 'car'] })] })
+      const none = await renderScreen(Money, '/money/plan')
+      expect(text(none)).not.toContain('Шаг сентября')
+      expect(none).not.toMatch(stepButton)
+    })
+
+    it('пропущенный месяц — одна строка без упрёка; «Шаги по месяцам» — план и факт, пауза целей, ожидание при выборе, история планов', async () => {
+      const store = await plan({}, 'member', '2026-10-15T07:00:00Z')
+      const t = text(await renderScreen(Money, '/money/plan'))
+      expect(t).toContain('В сентябре досрочки не было — план пересчитан от факта.')
+      expect(t).not.toMatch(/пропустил|просроч|не внесли|забыли/i)
+      const months = t.slice(t.indexOf('Шаги по месяцам'))
+      expect(months).toContain(`сен 2026 ${money(100_000)} — —`)
+      expect(months).toContain(`окт 2026 ${money(100_000)} — Кредитка`)
+      expect(months).toContain(`«Отпуск»: ${money(80_000)} не внесено, дата сдвинулась на 2 мес.`)
+      expect(months).toContain(`При выборе ожидали: не отдадим банку ${money(180_000)}`)
+      expect(store.activePlan?.forecast.savedInterest).toBe(180_000)
+      // История — живой итог (досрочка партнёра после отмены), новые сверху; план закрыт в этом месяце — Callout.
+      const done = planOf({ status: 'done', endedAt: '2026-10-19T05:00:00.000Z', result: { savedInterest: 0 } })
+      const old = planOf({ id: 'old', status: 'cancelled', startedAt: '2026-08-05T05:00:00.000Z', endedAt: '2026-08-20T05:00:00.000Z', result: { savedInterest: 0 } })
+      await plan({ plans: [old, done], payments: [prepay({})] }, 'member', '2026-10-20T07:00:00Z')
+      const h = text(await renderScreen(Money, '/money/plan'))
+      expect(h).toContain('Долги с процентами закрыты — цели возобновились')
+      expect(h).toContain(`Сентябрь 2026 — Октябрь 2026: сэкономили ${money(9_000)} процентов`)
+      expect(h).toContain(`Август 2026: отменён, сэкономили ${money(0)}`)
+      expect(h.indexOf('Сентябрь 2026 — Октябрь 2026')).toBeLessThan(h.indexOf('Август 2026: отменён'))
+    })
+
+    it('Р-11: долг не закрывается — прогноз «экономию не считаем», без «Переплата A → B»', async () => {
+      const store = await plan()
+      store.updateCredit('cc', { payment: 5_000 })
+      store.updateCredit('loan', { payment: 20_000 })
+      const t = text(await renderScreen(Money, '/money/plan'))
+      expect(t).toContain('Прогноз: при текущем платеже долг не закрывается — экономию не считаем.')
+      expect(t).not.toContain('Переплата')
+    })
+
+    it('viewer: переключатель неактивен, шаг и прогноз видны, ни «Шаг сделан», ни «Изменить режим», ни «Выбрать этот план»', async () => {
+      await plan({}, 'viewer')
+      const html = await renderScreen(Money, '/money/plan')
+      expect(html).toMatch(/role="switch" aria-checked="true"[^>]*\sdisabled(=""|\s|>)/)
+      expect(text(html)).toContain(`Шаг сентября ${money(100_000)} досрочно`)
+      expect(html).not.toMatch(stepButton)
+      expect(html).not.toContain('Изменить режим')
+      expect(html).not.toMatch(/>\s*Выбрать этот план\s*</)
+    })
+
+    it('«Шаг сделан» одним нажатием: досрочка шага со счёта прошлой оплаты (PlanStepAction)', async () => {
+      const store = await plan()
+      store.markPaid('credit', 'cc', 'a', { accountId: 'card' })
+      const card = store.accounts[0].amount
+      await renderScreen(Money, '/money/plan', undefined, [screenMixin({}, (st) => (st.tap as () => void)())])
+      expect(store.payments.filter((p) => p.kind === 'prepay')).toEqual([
+        expect.objectContaining({ targetId: 'cc', amount: 100_000, planId: 'plan', accountId: 'card', mode: 'term' }),
+      ])
+      expect(store.accounts[0].amount).toBe(card - 100_000)
     })
   })
 

@@ -71,6 +71,8 @@ import {
   planExtra,
   planStep,
   planForecast,
+  planOutlook,
+  debtAdvice,
   planFact,
   planMonths,
   planMonthSum,
@@ -1984,6 +1986,41 @@ describe('PV-14 — план «Сначала долги»: модель и ра
     it('взнос на весь остаток закрывает долг: left 0, months 0', () => {
       expect(lumpPlan(1_000_000, 0.36, 25_000, 1_500_000, 'term')).toMatchObject({ paid: 1_000_000, left: 0, months: 0, payment: 0, saved: 0 })
     })
+  })
+
+  it('B2C-43 (Р-34): debtAdvice — самая дорогая ставка первой (бывшее «Что гасить первым» Капитала), 0 % и без ставки не ранжируются', () => {
+    const list = [...credits(), credit('st', { principal: 1_200_000, annualRate: 0, rateUnknown: true, payment: 151_790 })]
+    const a = debtAdvice(list)
+    expect(a.rankedDebts.map((d) => d.credit.id)).toEqual(['cc', 'loan'])
+    expect(a.unknownRate.map((c) => c.id)).toEqual(['st'])
+    // Кредитка 300 000 под 40 %: проценты 10 000 в месяц — 40 % платежа 25 000; переплата — из creditOutlook.
+    expect(a.worstDebt?.cost).toMatchObject({ closes: true, monthlyInterest: 10_000, sharePct: 40 })
+    expect(a.worstDebt?.cost).toEqual(creditOutlook({ principal: 300_000, annualRate: 0.4, payment: 25_000 }))
+    expect(a.worstHalfExtra).toBe(halfOverpayExtra(300_000, 0.4, 25_000))
+    expect(a.worstHalfExtra).toBeGreaterThan(0)
+    expect(a.worstGain).toEqual(prepayOutcome({ principal: 300_000, annualRate: 0.4, payment: 25_000 }, a.worstHalfExtra!, 'monthly'))
+    // Платёж меньше процентов — «долг не закрывается», добавки нет.
+    const stuck = debtAdvice([credit('x', { principal: 1_000_000, annualRate: 0.36, payment: 20_000 })])
+    expect(stuck.worstDebt?.cost.closes).toBe(false)
+    expect(stuck.worstHalfExtra).toBeNull()
+    expect(stuck.worstGain).toBeNull()
+    // Долгов с процентами нет.
+    expect(debtAdvice([credit('inst', { annualRate: 0 })])).toMatchObject({ rankedDebts: [], worstDebt: null, worstGain: null })
+  })
+
+  it('B2C-43: planOutlook — те же прогоны, что planForecast: срок с планом, на сколько раньше, переплата «без → с» сходится с экономией до тенге', () => {
+    const p = plan()
+    const st = state({ cushionHave: 400_000 })
+    const forecast = planForecast(p, st, '2026-09')
+    const o = planOutlook(p, st, '2026-09')
+    expect(o.debtFreeMonth).toBe(forecast.debtFreeMonth)
+    expect(o.overpayWithout! - o.overpayWith!).toBe(forecast.savedInterest)
+    expect(o.overpayWith!).toBeGreaterThan(0)
+    expect(o.monthsSooner).toBeGreaterThan(0)
+    // Долг не закрывается ни с планом, ни без — чисел нет (Р-11).
+    const stuck = planOutlook(p, state({ credits: credits({ cc: { payment: 5_000 } }) }), '2026-09')
+    expect(planForecast(p, state({ credits: credits({ cc: { payment: 5_000 } }) }), '2026-09').savedInterest).toBeNull()
+    expect(stuck).toMatchObject({ monthsSooner: null, overpayWithout: null, overpayWith: null })
   })
 })
 

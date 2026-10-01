@@ -6,6 +6,7 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 import { routes } from '../src/router'
 import { useFinanceStore, defaultSyncDoc } from '../src/stores/finance'
 import { at, phone, screen, setOnline, type FakeServer } from './support/family'
+import { screenMixin } from '../src/test/screenState'
 import type { SyncDoc } from '../src/types/finance'
 import { liveGoals, liveObligations, openCredits } from '../src/lib/finance'
 import { HUES } from '../src/lib/palette'
@@ -13,9 +14,8 @@ import { isDark } from '../src/lib/theme'
 import { money, plain } from '../src/lib/money'
 import Budget from '../src/views/Budget.vue'
 import WeekSalary from '../src/views/WeekSalary.vue'
-import Capital from '../src/views/Capital.vue'
+import Money from '../src/views/Money.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
-import Deposit from '../src/views/Deposit.vue'
 import StrategyCompare from '../src/components/StrategyCompare.vue'
 
 /**
@@ -111,7 +111,7 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
   it('PV-02: калькулятор — семь элементов и числа React до тенге на каждом переключении', async () => {
     const A = await phone(server)
 
-    const capital = await screen(A.pinia, Capital, '/capital', { initialAdvice: 'strategy' })
+    const capital = await screen(A.pinia, Money, '/money/plan')
     // Текст подсказки открывается по «?» — он проверен в браузере, в SSR она закрыта.
     expect(capital).toContain('Одинаковые траты, разный порядок')
     expect(capital).toContain('Горизонт')
@@ -173,9 +173,10 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
       expect(budget).toContain(money(768_320))
       const ritual = await screen(P.pinia, WeekSalary, '/ritual')
       expect(ritual).toContain(`Сейчас: 12 платежей, переплата ${money(100_160)}`)
-      const capital = await screen(P.pinia, Capital, '/capital', { initialAdvice: 'strategy' })
-      // Строка закрытого остаётся, в калькулятор он не входит: подушка 332 000, выигрыш 48 987.
-      expect(capital).toContain('Кредитка')
+      const capital = await screen(P.pinia, Money, '/money/plan')
+      // Закрытый досрочкой долг платежа не ждёт — в «Платежах» его нет (B2C-42); в калькулятор он не входит:
+      // подушка 332 000, выигрыш 48 987.
+      expect(await screen(P.pinia, Money, '/money')).not.toContain('Кредитка')
       expect(capital).toContain(`Сначала подушка — ${money(332_000)}`)
       expect(capital).toMatch(column('Копим как сейчас', 11_020_320, 0, 100_160, 'через 12 мес.'))
       expect(capital).toMatch(column('Сначала долги', 11_069_307, 0, 51_173, 'через 5 мес.'))
@@ -186,9 +187,9 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
   it('PV-03: форма долга — расхождение словами и цифрами, ставка «по сроку» 18,0%', async () => {
     const A = await phone(server)
     const form = (payment: string) =>
-      screen(A.pinia, Capital, '/capital?add=debt', {
-        initialDebt: { mode: 'term', principal: '1 000 000', payment, term: '12' },
-      })
+      screen(A.pinia, Money, '/money?add=debt', undefined, [
+        screenMixin({ debtMode: 'term', debtPrincipal: '1 000 000', debtPayment: payment, debtTerm: '12' }),
+      ])
 
     const bad = await form('10 000')
     for (const t of ['Без них', 'Знаю ставку', 'Знаю срок', 'Сколько платежей осталось', 'День платежа']) expect(bad).toContain(t)
@@ -241,7 +242,8 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
   // Критик Б3 (правило 12): плашки про инфляцию и «ИИ-советника» свёрнуты в одну строку с подсказкой.
   it('PV-05: вклад — инфляция 10,2%, реальная доходность одной строкой', async () => {
     const A = await phone(server)
-    const html = await screen(A.pinia, Deposit, '/capital/dep')
+    // Вклад — лист счёта (B2C-42), расчёт свёрнут, но в SSR на месте.
+    const html = await screen(A.pinia, Money, '/money?account=dep')
     // 14% с ежемесячной капитализацией = 14,9% эффективных; (1,149 / 1,102) − 1 = 4,3% (при 8% было бы 6,4%).
     expect(html).toContain('Реально ≈ 4,3% с учётом инфляции')
     expect(html).not.toContain('ИИ-советник')

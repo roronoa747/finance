@@ -15,9 +15,9 @@ import IncomeWidget from '@/components/money/IncomeWidget.vue'
 import LivingWidget from '@/components/money/LivingWidget.vue'
 import DebtsWidget from '@/components/money/DebtsWidget.vue'
 import CapitalLists from '@/components/money/CapitalLists.vue'
+import PlanSquare from '@/components/money/PlanSquare.vue'
 
-// «План» и «История» — прежние экраны внутри квадратов до B2C-43 и B2C-44 (ТЗ B2C-41, «Вне скоупа»).
-const PlanSquare = defineAsyncComponent(() => import('@/views/DebtPlan.vue'))
+// «История» — прежний экран внутри квадрата до B2C-44 (ТЗ B2C-41, «Вне скоупа»).
 const HistorySquare = defineAsyncComponent(() => import('@/views/History.vue'))
 
 /**

@@ -318,11 +318,10 @@ const stepLine = computed(() => {
       Ставку {{ inputs.unknownRate.map((c) => `«${c.name}»`).join(', ') }} уточните — пока считаем без неё.
     </p>
 
-    <!-- Активный план — его карточка вместо выбора (PV-15) -->
+    <!-- Активный план — его карточка вместо выбора (PV-15); сам план — в том же квадрате «План» -->
     <div v-if="plan" class="mt-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3">
       <div class="text-[13.5px] font-medium text-ink">План выбран в {{ monthIn(planStartMonth(plan)) }}</div>
       <div class="mt-0.5 text-[12.5px] text-ink-2 num">{{ stepLine }}</div>
-      <RouterLink to="/money/plan" class="mt-1.5 inline-block text-[13px] font-medium text-brand">Открыть план →</RouterLink>
     </div>
 
     <!-- Выбрать этот план (Р-4, Р-7) -->
