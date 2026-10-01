@@ -86,7 +86,6 @@ import {
   pauseMissed,
   planSchedule,
   endedPlan,
-  budgetLines,
   salaryOpen,
   salaryFree,
   SALARY_EARLY_DAYS,
@@ -125,8 +124,7 @@ import { plain, money, moneyShort, parseMoney, pct, ratePct } from './money'
 import { clean, caretAt, sigBefore } from './num'
 import { plural } from './utils'
 import { monthKey, parseMonthKey, addMonths, daysInMonth, leadingBlanks, today, atLabel } from '@/lib/dates'
-import type { Account, Allocation, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, WishItem } from '@/types/finance'
-import { DEFAULT_CATEGORY_NAMES } from '@/lib/palette'
+import type { Account, Allocation, Credit, DebtPlan, Goal, Obligation, Payment, Person, WishItem } from '@/types/finance'
 
 describe('finance.ts — аннуитет и кредитные расчёты', () => {
   it('annuityPayment — корректный расчёт платежа при нулевой и положительной ставке', () => {
@@ -1628,27 +1626,6 @@ describe('PV-14 — план «Сначала долги»: модель и ра
     ])
     const applied = state({ cushionHave: 400_000, payments: [prepay('p1', { planId: 'plan', amount: 150_000, principal: 150_000 })] })
     expect(planForecast(plan({ lump: 50_000 }), applied, '2026-09')).toEqual(planForecast(plan(), applied, '2026-09'))
-  })
-
-  it('budgetLines: строки по ключам d1–d4, имя семьи или запасное; «Досрочно по плану» — сразу после целей', () => {
-    const cats: Category[] = [
-      { key: 'd2', name: 'Долги', note: '', amount: 0, updatedAt: T0 },
-      { key: 'd4', name: 'Еда и быт', note: '', amount: 150_000, updatedAt: T0 },
-    ]
-    const amounts = { d1: 220_000, d2: 0, d3: 30_000, d4: 150_000, d5: 0, income: 0, planExtra: 100_000, planCushion: false }
-    expect(budgetLines(cats, amounts)).toEqual([
-      { key: 'd1', name: DEFAULT_CATEGORY_NAMES.d1, amount: 220_000 },
-      { key: 'd2', name: 'Долги', amount: 0 },
-      { key: 'd3', name: DEFAULT_CATEGORY_NAMES.d3, amount: 30_000 },
-      { key: 'plan', name: 'Досрочно по плану', amount: 100_000 },
-      { key: 'd4', name: 'Еда и быт', amount: 150_000 },
-    ])
-    // Раздела нет и суммы нет — строки нет; плана нет — строки плана нет.
-    expect(budgetLines([], { ...amounts, d1: 0, planExtra: 0 }).map((l) => l.key)).toEqual(['d3', 'd4'])
-    // Н-4: пока план набирает подушку — строка называется по фазе, сумма та же.
-    expect(budgetLines(cats, { ...amounts, planCushion: true }).find((l) => l.key === 'plan')).toEqual({
-      key: 'plan', name: 'По плану — в подушку', amount: 100_000,
-    })
   })
 
   it('Н-4: budgetAmounts знает фазу подушки — шаг плана «подушка»; подушка полна — нет', () => {

@@ -189,10 +189,6 @@ describe('WeekCard / FreeCard', () => {
     expect(none).toContain('—')
     expect(none).not.toContain('role="progressbar"')
     expect(await render(FreeCard, { amount: 1, size: 'md' })).toContain('type-big-md')
-    // Справа — «до зарплаты / 9 дней» в «Деньгах» (g6).
-    const aside = await render(FreeCard, { amount: 236_000, size: 'md' }, { aside: () => 'до зарплаты 9 дней' })
-    expect(aside).toContain('до зарплаты 9 дней')
-    expect(aside).toContain('text-right')
   })
 })
 

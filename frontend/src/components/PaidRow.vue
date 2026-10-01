@@ -35,15 +35,12 @@ const props = defineProps<{
   title: string
   /** Подпись неоплаченного: дата, частота. */
   note?: string
-  accent?: string
   /** Строка ведёт дальше: нажатие мимо кнопки — событие open. */
   clickable?: boolean
   /** Под строкой — «Другая сумма или счёт» (модалки Капитала). */
   more?: boolean
   /** Без боковых отступов — строка внутри карточки. */
   dense?: boolean
-  /** Расход в списке Бюджета — «−N», как соседние строки. */
-  minus?: boolean
   /**
    * Строка списка «Платежи» (пивот 3, макет): у оплаченного — та же подпись и «оплачено», без
    * «дальше», остатка и долей «в долг · банку» — они в листе кредита.
@@ -124,7 +121,7 @@ function openMore() {
 </script>
 
 <template>
-  <Row :title="title" :accent="accent" :clickable="clickable" :dense="dense" :muted="!!record" @click="clickable && emit('open')">
+  <Row :title="title" :clickable="clickable" :dense="dense" :muted="!!record" @click="clickable && emit('open')">
     <template v-if="$slots.icon" #icon>
       <slot name="icon" />
     </template>
@@ -146,7 +143,7 @@ function openMore() {
 
     <template #value>
       <span :class="cn('block text-[14.5px] font-semibold num', record ? 'text-ink-3' : 'text-ink')">
-        {{ minus ? `−${plain(shown)}` : money(shown) }}
+        {{ money(shown) }}
       </span>
       <span v-if="estimate && !record && !compact" class="block text-[12px] text-ink-3">оценка</span>
       <template v-if="split">

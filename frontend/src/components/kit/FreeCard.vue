@@ -23,15 +23,9 @@ withDefaults(
 
 <template>
   <Card>
-    <!-- Справа — слот `aside` («до зарплаты / 9 дней» в «Деньгах», g6). -->
-    <div class="flex items-start justify-between gap-3">
-      <div class="min-w-0">
-        <div class="type-section">{{ label }}</div>
-        <div class="mt-2 num" :class="[size === 'md' ? 'type-big-md' : 'type-big', amount === null ? 'text-ink-3' : 'text-ink']">
-          {{ amount === null ? '—' : money(amount) }}
-        </div>
-      </div>
-      <div v-if="$slots.aside" class="shrink-0 text-right"><slot name="aside" /></div>
+    <div class="type-section">{{ label }}</div>
+    <div class="mt-2 num" :class="[size === 'md' ? 'type-big-md' : 'type-big', amount === null ? 'text-ink-3' : 'text-ink']">
+      {{ amount === null ? '—' : money(amount) }}
     </div>
     <div v-if="note" class="mt-1.5 text-[13px] text-ink-2">{{ note }}</div>
     <ProgressBar v-if="amount !== null && share !== null" :value="share" tone="ok" class="mt-3" />

@@ -2,7 +2,7 @@ import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Pe
 import type { Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY, plannedElsewhere } from '@/lib/statements/dictionary'
 import { addMonths, dayLabel, daysInMonth, monthFrom, monthKey, parseMonthKey, today, weekRange } from '@/lib/dates'
-import { categoryName, spendColor } from '@/lib/palette'
+import { spendColor } from '@/lib/palette'
 import { money, pct } from '@/lib/money'
 import { plural } from '@/lib/utils'
 /**
@@ -1046,29 +1046,6 @@ export function budgetAmounts(state: {
   const free = income - housing - debts - goals - living - extra;
 
   return { d1: housing, d2: debts, d3: goals, d4: living, d5: free, income, planExtra: extra, planCushion };
-}
-
-export type BudgetLine = { key: 'd1' | 'd2' | 'd3' | 'plan' | 'd4'; name: string; amount: number }
-
-/**
- * Строки «Куда уходит» Бюджета (PV-15 п. 7) — по ключам d1–d4, а не
- * по заведённым разделам: строка есть, если раздел заведён или в нём есть сумма; имя —
- * семьи или запасное. Раздел в документ не пишется (пустой раздел со свежим updatedAt
- * затёр бы сумму партнёра). С планом — «Досрочно по плану» сразу после целей, а пока
- * план набирает подушку — «По плану — в подушку» (Р-7).
- */
-export function budgetLines(categories: Category[], amounts: ReturnType<typeof budgetAmounts>): BudgetLine[] {
-  const out: BudgetLine[] = []
-  for (const key of ['d1', 'd2', 'd3', 'plan', 'd4'] as const) {
-    if (key === 'plan') {
-      const name = amounts.planCushion ? 'По плану — в подушку' : 'Досрочно по плану'
-      if (amounts.planExtra > 0) out.push({ key, name, amount: amounts.planExtra })
-      continue
-    }
-    if (!categories.some((c) => c.key === key) && amounts[key] <= 0) continue
-    out.push({ key, name: categoryName(categories, key), amount: amounts[key] })
-  }
-  return out
 }
 
 export const goalSavings = (goals: Goal[]) =>

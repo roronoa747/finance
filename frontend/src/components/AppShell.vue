@@ -81,7 +81,7 @@ const noTabs = computed(() => {
 function goBack() {
   const p = route.path
   if (typeof window !== 'undefined' && window.history.state?.back) router.back()
-  else void router.push(p.startsWith('/money/') ? '/money' : p.startsWith('/week') ? '/week' : '/')
+  else void router.push(p.startsWith('/week') ? '/week' : '/')
 }
 
 /** Заголовок и подпись шапки по маршруту (DESIGN.md §6 «Заголовки экранов»). */
