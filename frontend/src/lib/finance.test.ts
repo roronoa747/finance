@@ -123,7 +123,7 @@ import { DEFAULT_SPEND_CATEGORIES } from '@/lib/statements/dictionary'
 import { plain, money, moneyShort, parseMoney, pct, ratePct } from './money'
 import { clean, caretAt, sigBefore } from './num'
 import { plural } from './utils'
-import { monthKey, parseMonthKey, addMonths, daysInMonth, leadingBlanks, today, atLabel } from '@/lib/dates'
+import { monthKey, parseMonthKey, addMonths, daysInMonth, today, atLabel } from '@/lib/dates'
 import type { Account, Allocation, Credit, DebtPlan, Goal, Obligation, Payment, Person, WishItem } from '@/types/finance'
 
 describe('finance.ts — аннуитет и кредитные расчёты', () => {
@@ -320,14 +320,13 @@ describe('money.ts & num.ts & dates.ts — форматирование и па�
     expect(caretAt(clean('12000', 'money'), 2)).toBe(2)
   })
 
-  it('dates.ts даты и календарь', () => {
+  it('dates.ts даты', () => {
     expect(monthKey(new Date(2026, 8, 1))).toBe('2026-09')
     const { year, month } = parseMonthKey('2026-09')
     expect(year).toBe(2026)
     expect(month).toBe(8)
     expect(addMonths('2026-09', 3)).toBe('2026-12')
     expect(daysInMonth('2026-02')).toBe(28)
-    expect(leadingBlanks('2026-09')).toBeGreaterThanOrEqual(0)
   })
 })
 
@@ -1628,12 +1627,11 @@ describe('PV-14 — план «Сначала долги»: модель и ра
     expect(planForecast(plan({ lump: 50_000 }), applied, '2026-09')).toEqual(planForecast(plan(), applied, '2026-09'))
   })
 
-  it('Н-4: budgetAmounts знает фазу подушки — шаг плана «подушка»; подушка полна — нет', () => {
+  it('Н-4: budgetAmounts в фазе подушки — деньги плана в planExtra (поле planCushion снято в клинапе Б9: без потребителей)', () => {
     const base = { people, obligations: [rent], credits: state().credits, payments: [], plans: [plan()] }
     const thin = budgetAmounts({ ...base, goals: goals(150_000) })
-    expect(thin).toMatchObject({ planCushion: true, planExtra: 100_000 })
-    expect(budgetAmounts({ ...base, goals: goals(400_000) }).planCushion).toBe(false)
-    expect(budgetAmounts({ ...base, goals: goals(150_000), plans: [] }).planCushion).toBe(false)
+    expect(thin).toMatchObject({ planExtra: 100_000 })
+    expect(thin).not.toHaveProperty('planCushion')
   })
 
   it('хвост 6: «План и факт» в фазе подушки — месяцы подушки не пропуски, текущий — не «0 ₸»', () => {

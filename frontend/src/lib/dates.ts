@@ -14,8 +14,6 @@ export const MONTHS_PRE = [
   'июле', 'августе', 'сентябре', 'октябре', 'ноябре', 'декабре',
 ]
 
-export const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
-
 /**
  * Календарь приложения — по Алматы (Р-30): фиксированный UTC+5, как `almaty` в
  * backend/internal/fx. «Сегодня» и месяц одинаковы на любом телефоне, в каком бы
@@ -93,12 +91,6 @@ export function monthFromAfter(n: number, from = monthKey()): string {
 export function daysInMonth(key: string): number {
   const { year, month } = parseMonthKey(key)
   return new Date(year, month + 1, 0).getDate()
-}
-
-/** Сколько пустых клеток перед 1-м числом в сетке с понедельника. */
-export function leadingBlanks(key: string): number {
-  const { year, month } = parseMonthKey(key)
-  return (new Date(year, month, 1).getDay() + 6) % 7
 }
 
 /** «5 сентября» */

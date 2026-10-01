@@ -1039,13 +1039,11 @@ export function budgetAmounts(state: {
     .filter((g) => !paused.has(g.id))
     .reduce((a, g) => a + g.monthly, 0);
   const extra = plan ? planExtra(plan, goalsList, credits, payments, key) : 0;
-  // Фаза подушки (Р-7): деньги плана кладутся в подушку — строка называется по фазе (Н-4).
-  const planCushion = !!plan && planStep(plan, { goals: goalsList, credits, obligations, payments }, key).kind === 'cushion';
   const living = (categories.find((c) => c.key === 'd4')?.amount ?? 0) + other;
   const income = totalIncome(people, key);
   const free = income - housing - debts - goals - living - extra;
 
-  return { d1: housing, d2: debts, d3: goals, d4: living, d5: free, income, planExtra: extra, planCushion };
+  return { d1: housing, d2: debts, d3: goals, d4: living, d5: free, income, planExtra: extra };
 }
 
 export const goalSavings = (goals: Goal[]) =>
