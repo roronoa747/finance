@@ -22,6 +22,7 @@ import {
 import { money, pct, plain } from '@/lib/money'
 import { monthIn } from '@/lib/dates'
 import type { Obligation, Payment, SyncDoc } from '@/types/finance'
+import type { Operation } from '@/lib/statements/types'
 import type { SpendTotal } from '@/lib/statements/types'
 import { authAs, planFamilyDoc, planOf, T0 } from '@/test/planFamily'
 import { renderScreen, screenMixin } from '@/test/screenState'
@@ -658,6 +659,104 @@ describe('views/Money.vue — финансовые показатели (рас�
         expect.objectContaining({ targetId: 'cc', amount: 100_000, planId: 'plan', accountId: 'card', mode: 'term' }),
       ])
       expect(store.accounts[0].amount).toBe(card - 100_000)
+    })
+  })
+
+  describe('B2C-44: квадрат «История» — свои операции, отметки, итог и моменты по дням', () => {
+    const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
+    /** Лента: от чипов фильтра до конца экрана. */
+    const squares = (html: string) => html.slice(html.indexOf('aria-label="Деньги"'), html.indexOf('</div>', html.indexOf('aria-label="Деньги"')))
+    const feed = (html: string) => text(html.slice(html.indexOf('>', html.indexOf('aria-label="Фильтр"')) + 1))
+    const op = (id: string, date: string, amount: number, merchant: string, p: Partial<Operation> = {}): Operation => ({
+      id, bank: 'kaspi', date, amount, kind: 'purchase', merchant, categoryId: null, internal: false, ...p,
+    })
+    const ops = [
+      op('o1', '2026-09-24', -6_800, 'ИП Сериков', { categoryId: 'sc_food' }),
+      op('o2', '2026-09-24', -4_990, 'Яндекс Плюс', { categoryId: 'sc_subscriptions' }),
+      op('o3', '2026-09-20', -12_400, 'Magnum', { categoryId: 'sc_food' }),
+      op('o4', '2026-09-12', -200_000, 'На депозит', { kind: 'transfer-out', internal: true }),
+      op('o5', '2026-09-11', -3_000, 'Непонятно ТОО'),
+      op('o6', '2026-08-30', -9_000, 'Magnum', { categoryId: 'sc_food' }),
+    ]
+    const history = async (role: 'member' | 'viewer' = 'member', now = '2026-09-25T07:00:00Z', list = ops) => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date(now))
+      setActivePinia(createPinia())
+      useAuthStore().setAuthData(authAs(role, 'a'))
+      const store = useFinanceStore()
+      // Аруна отметила аренду 20 сентября (с выписки).
+      const rent: Payment = { id: 'pr', kind: 'obligation', targetId: 'rent', period: '2026-09', amount: 220_000, accountId: 'card', by: 'b', at: '2026-09-20T05:00:00.000Z', updatedAt: '2026-09-20T05:00:00.000Z', source: 'statement' }
+      store.setHouseholdDoc(planFamilyDoc({ payments: [rent] }), 1)
+      // Стор операций у viewer пуст: сервер отдаёт только свои (Р-5).
+      if (role === 'member') for (const o of list) useOperationsStore().ops[o.id] = o
+      return store
+    }
+    afterEach(() => vi.useRealTimers())
+
+    it('лента по дням, новые сверху: операции с разделом и знаком, «между своими» без знака; прошлый месяц — только после «Раньше»', async () => {
+      await history()
+      const t = feed(await renderScreen(Money, '/money/history'))
+      const days = ['24 сентября', '20 сентября', '12 сентября', '11 сентября']
+      expect(days.map((d) => t.indexOf(d)).every((i, k, a) => i >= 0 && (k === 0 || i > a[k - 1]))).toBe(true)
+      expect(t).toContain(`ИП ИП Сериков Продукты −${money(6_800)}`)
+      expect(t).toContain(`На депозит между своими · не трата ${money(200_000)}`)
+      expect(t).not.toContain(`−${money(200_000)}`)
+      expect(t).toContain(`Н Непонятно ТОО Не разобрано −${money(3_000)}`)
+      expect(t).not.toContain('30 августа')
+      expect(t).toContain('Раньше')
+      const more = feed(await renderScreen(Money, '/money/history', undefined, [screenMixin({ months: ['2026-09', '2026-08'] })]))
+      expect(more).toContain(`30 августа M Magnum Продукты −${money(9_000)}`)
+      expect(more).not.toContain('Раньше')
+    })
+
+    it('отметка — «оплачено · кто · из выписки» со знаком; чипы: Всё, Операции, Отметки, разделы по сумме трат, «Не разобрано»; фильтр «Отметки» — только отметки', async () => {
+      await history()
+      const html = await renderScreen(Money, '/money/history')
+      const t = feed(html)
+      expect(t).toContain(`Аренда оплачено · Аруна · из выписки −${money(220_000)}`)
+      // Продукты 19 200 > Подписки 4 990 > Не разобрано 3 000; между своими — не трата.
+      expect(t).toMatch(/^ ?Всё Операции Отметки Продукты Подписки Не разобрано /)
+      const marks = feed(await renderScreen(Money, '/money/history', undefined, [screenMixin({ filter: 'marks' })]))
+      expect(marks).toContain('Аренда оплачено')
+      expect(marks).not.toContain('Magnum')
+      const food = feed(await renderScreen(Money, '/money/history', undefined, [screenMixin({ filter: 'sc_food' })]))
+      expect(food).toContain('Magnum')
+      expect(food).not.toContain('Яндекс Плюс')
+      expect(food).not.toContain('Аренда оплачено')
+    })
+
+    it('итог месяца строкой: в середине месяца — прошлый, в последние дни — этот; лист — карточка «Наш <месяц>»', async () => {
+      await history('member', '2026-09-29T07:00:00Z')
+      const end = await renderScreen(Money, '/money/history')
+      expect(text(end)).toContain('Наш сентябрь итог месяца · поделиться')
+      const sheet = text(await renderScreen(Money, '/money/history', undefined, [screenMixin({ summaryOpen: true })]))
+      expect(sheet).toContain(`Оплатили 1 платёж ${money(220_000)}`)
+      // 15 октября: итог сентября строкой, хотя «сейчас» не конец месяца.
+      await history('member', '2026-10-15T07:00:00Z')
+      expect(text(await renderScreen(Money, '/money/history'))).toContain('Наш сентябрь итог месяца · поделиться')
+    })
+
+    it('viewer: операций нет (они у владельца), отметки и итог видны; ни «Загрузить выписку», ни нажатий на операции', async () => {
+      await history('viewer')
+      const html = await renderScreen(Money, '/money/history')
+      const t = feed(html)
+      expect(t).toContain('Аренда оплачено · Аруна')
+      expect(t).not.toContain('Magnum')
+      expect(html).not.toContain('Загрузить выписку')
+      // Пусто у viewer — без кнопки загрузки.
+      vi.setSystemTime(new Date('2026-11-25T07:00:00Z'))
+      const empty = await renderScreen(Money, '/money/history')
+      expect(text(empty)).toContain('Пока пусто')
+      expect(empty).not.toContain('Загрузить выписку')
+    })
+
+    it('пусто у участника — «Пока пусто» и тихая «Загрузить выписку»; подпись квадрата — число своих операций месяца', async () => {
+      await history('member', '2026-11-25T07:00:00Z')
+      const html = await renderScreen(Money, '/money/history')
+      expect(text(html)).toContain('Пока пусто')
+      expect(html).toMatch(/>\s*Загрузить выписку\s*</)
+      await history()
+      expect(text(squares(await renderScreen(Money, '/money/history')))).toContain('История 5 операций')
     })
   })
 

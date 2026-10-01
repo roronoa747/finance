@@ -7,7 +7,6 @@ import Input from '@/components/ui/Input.vue'
 import Avatar from '@/components/kit/Avatar.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Card from '@/components/kit/Card.vue'
-import Chip from '@/components/kit/Chip.vue'
 import DecisionCard from '@/components/kit/DecisionCard.vue'
 import EmptyState from '@/components/kit/EmptyState.vue'
 import NumField from '@/components/kit/NumField.vue'
@@ -16,13 +15,13 @@ import Select from '@/components/kit/Select.vue'
 import Tag from '@/components/kit/Tag.vue'
 import WeekCard from '@/components/kit/WeekCard.vue'
 import SalaryRow from '@/components/SalaryRow.vue'
+import CategoryChips from '@/components/CategoryChips.vue'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import { matchKey } from '@/lib/statements/matching'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
 import { money, parseMoney } from '@/lib/money'
-import { spendColor } from '@/lib/palette'
 import { plural } from '@/lib/utils'
 import { dayLabel, monthKey, monthTitle, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
 import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
@@ -65,7 +64,6 @@ const router = useRouter()
 const BANKS: Record<string, string> = { kaspi: 'Kaspi', freedom: 'Freedom' }
 const INTERNAL = '__internal'
 const PERSON = '__person'
-const TOP_CHIPS = 6
 
 const canUpload = computed(() => !auth.isViewer)
 const me = computed<PersonId>(() => auth.slot ?? 'a')
@@ -200,8 +198,6 @@ function reviewUnknown() {
   deferredUnknown.value = []
   document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' })
 }
-const moreChips = ref(false)
-const chipCategories = computed(() => (moreChips.value ? categories.value : categories.value.slice(0, TOP_CHIPS)))
 const lastDate = (g: UnknownGroup) => {
   const last = monthOps.value
     .filter((o) => {
@@ -324,7 +320,12 @@ function choose(g: UnknownGroup, value: string, retro = false) {
   if (!to) return
   if (retro) void store.recategorize(g.match, to)
   else store.answer(g.match, to)
-  moreChips.value = false
+}
+
+/** Ответ карточки незнакомого продавца: в разборе — до отправки, в неделе — задним числом. */
+function answerUnknown(g: UnknownGroup, to: MerchantRule['to']) {
+  if (store.draft) store.answer(g.match, to)
+  else void store.recategorize(g.match, to)
 }
 
 function savePerson(g: UnknownGroup, retro = false) {
@@ -452,18 +453,7 @@ onMounted(() => {
       @ghost="deferUnknown(unknownCard)"
       @secondary="skipUnknown = true"
     >
-      <template #chips>
-        <Chip v-for="c in chipCategories" :key="c.id" :sw="spendColor(c)" @click="choose(unknownCard, c.id, !store.draft)">{{ c.name }}</Chip>
-        <Chip v-if="!moreChips && categories.length > TOP_CHIPS" quiet @click="moreChips = true">Ещё {{ categories.length - TOP_CHIPS }} ▾</Chip>
-        <Chip v-if="unknownCard.match.counterparty" quiet @click="choose(unknownCard, PERSON, !store.draft)">Кому → что</Chip>
-        <Chip quiet @click="choose(unknownCard, INTERNAL, !store.draft)">Между своими</Chip>
-      </template>
-      <template v-if="personFor === groupKey(unknownCard)" #inner>
-        <div class="flex gap-2">
-          <Input v-model="personText" placeholder="например, няня" class="min-w-0 flex-1" />
-          <Button size="sm" @click="savePerson(unknownCard, !store.draft)">Запомнить</Button>
-        </div>
-      </template>
+      <CategoryChips :key="groupKey(unknownCard)" :counterparty="!!unknownCard.match.counterparty" @choose="(to) => answerUnknown(unknownCard!, to)" />
       <p class="text-[12px] text-ink-3">Ответ запомним — следующие выписки разложатся сами. Снять можно в настройках.</p>
     </DecisionCard>
 

@@ -72,6 +72,9 @@ import {
   planStep,
   planForecast,
   planOutlook,
+  historyFeed,
+  historyCategories,
+  historyStart,
   debtAdvice,
   planFact,
   planMonths,
@@ -2986,5 +2989,48 @@ describe('B2C-21: записанная раскладка', () => {
     expect(allocationFor(list, { source: 'rest', sourceId: '2026-09', period: '2026-09' })?.id).toBe('rest')
     expect(allocationFor(list, { source: 'freed', sourceId: 'tv', period: '2026-09' })).toBeNull()
     expect(allocationFor(undefined, { source: 'salary', sourceId: 'a', period: '2026-09' })).toBeNull()
+  })
+})
+
+describe('B2C-44: лента «Истории»', () => {
+  const T0 = '2026-09-01T00:00:00.000Z'
+  const op = (id: string, date: string, amount: number, p: Record<string, unknown> = {}) =>
+    ({ id, bank: 'kaspi', date, amount, kind: 'purchase', merchant: id, categoryId: null, internal: false, ...p }) as never
+  const mark = (id: string, at: string, p: Partial<Payment> = {}): Payment => ({
+    id, kind: 'obligation', targetId: 'rent', period: '2026-09', amount: 220_000, accountId: 'card', by: 'a', at, updatedAt: at, ...p,
+  })
+
+  it('historyFeed: дни новые сверху, отметка — по дню Алматы (30 сентября 20:00 UTC — 1 октября), удалённая не видна, «не отдадим банку» не повторяется', () => {
+    const feed = historyFeed(
+      {
+        ops: [op('a', '2026-09-24', -6_800), op('b', '2026-09-30', -1_000), op('old', '2026-08-31', -5)],
+        payments: [mark('m1', '2026-09-30T20:00:00.000Z'), mark('m2', '2026-09-24T05:00:00.000Z', { deletedAt: T0, kind: 'credit', targetId: 'x' })],
+        moments: [
+          { kind: 'half', id: 'h', at: '2026-09-24T09:00:00.000Z', goalId: 'g', name: 'Отпуск' },
+          { kind: 'saved', id: 's', at: '2026-09-24T09:00:00.000Z', creditId: 'c', name: 'Кредит', saved: 1 },
+        ],
+      },
+      ['2026-09'],
+    )
+    expect(feed.map((d) => [d.day, d.items.map((x) => x.id)])).toEqual([
+      ['2026-09-30', ['b']],
+      ['2026-09-24', ['h', 'a']],
+    ])
+    expect(historyFeed({ ops: [], payments: [mark('m1', '2026-09-30T20:00:00.000Z')] }, ['2026-10'])[0].day).toBe('2026-10-01')
+  })
+
+  it('historyCategories: траты по убыванию суммы, неразобранное — _unknown, поступления и «между своими» — нет; historyStart — самый ранний месяц', () => {
+    const ops = [
+      op('a', '2026-09-24', -6_800, { categoryId: 'sc_food' }),
+      op('b', '2026-09-20', -12_400, { categoryId: 'sc_food' }),
+      op('c', '2026-09-20', -30_000),
+      op('d', '2026-09-12', -200_000, { internal: true }),
+      op('e', '2026-09-10', 700_000, { categoryId: 'sc_income' }),
+      op('f', '2026-08-10', -99_000, { categoryId: 'sc_fun' }),
+    ]
+    expect(historyCategories(ops, ['2026-09'])).toEqual(['_unknown', 'sc_food'])
+    expect(historyCategories(ops, ['2026-09', '2026-08'])).toEqual(['sc_fun', '_unknown', 'sc_food'])
+    expect(historyStart({ ops, payments: [mark('m', '2026-07-03T05:00:00.000Z')] })).toBe('2026-07')
+    expect(historyStart({ ops: [] })).toBeNull()
   })
 })

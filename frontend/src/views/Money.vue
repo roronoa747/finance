@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
@@ -16,9 +16,8 @@ import LivingWidget from '@/components/money/LivingWidget.vue'
 import DebtsWidget from '@/components/money/DebtsWidget.vue'
 import CapitalLists from '@/components/money/CapitalLists.vue'
 import PlanSquare from '@/components/money/PlanSquare.vue'
+import HistorySquare from '@/components/money/HistorySquare.vue'
 
-// «История» — прежний экран внутри квадрата до B2C-44 (ТЗ B2C-41, «Вне скоупа»).
-const HistorySquare = defineAsyncComponent(() => import('@/views/History.vue'))
 
 /**
  * «Деньги» — один экран (пивот 3, Р-31; `pivot-3/index.html` `#money`): квадраты Капитал · План ·

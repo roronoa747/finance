@@ -244,12 +244,12 @@ describe('DecisionCard / Chip / Stepper', () => {
 })
 
 describe('OpRow / Tabs / Toggle / EmptyState / ScreenHeader / Avatar / Tag / Card', () => {
-  it('строка операции: буква на цвете раздела, раздел, списание без знака, поступление «+» зелёным, не разобрано — s-unknown', async () => {
+  it('строка операции: буква на цвете раздела, раздел, списание «−» (пивот 3, макет «Истории»), поступление «+» зелёным, не разобрано — s-unknown; между своими — без знака, тихо', async () => {
     const neg = await render(OpRow, { merchant: 'ИП Сериков', category: { name: 'Продукты', color: 'var(--s1)' }, amount: -6_800, date: '19 сент' })
     expect(neg).toContain('>И<')
     expect(neg).toContain('background:var(--s1)')
     expect(neg).toContain('Продукты · 19 сент')
-    expect(neg).toContain(`6${NBSP}800${NBSP}₸`)
+    expect(neg).toContain(`−6${NBSP}800${NBSP}₸`)
     expect(neg).not.toContain('text-ok')
     const pos = await render(OpRow, { merchant: 'Зарплата', amount: 750_000, clickable: true })
     expect(pos).toContain(`+750${NBSP}000${NBSP}₸`)
@@ -257,6 +257,10 @@ describe('OpRow / Tabs / Toggle / EmptyState / ScreenHeader / Avatar / Tag / Car
     expect(pos).toContain('Не разобрано')
     expect(pos).toContain('var(--s-unknown)')
     expect(pos).toMatch(/^<button/)
+    const own = await render(OpRow, { merchant: 'На депозит', amount: -200_000, muted: true })
+    expect(own).toContain(`>200${NBSP}000${NBSP}₸<`)
+    expect(own).toContain('text-ink-3')
+    expect(own).not.toContain('−')
   })
 
   it('вкладки: три ссылки, активная — aria-current="page", «+» с именем; без plus кнопки нет', async () => {

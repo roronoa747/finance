@@ -1,5 +1,5 @@
 import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation } from '@/types/finance'
-import type { SpendCategory, SpendTotal } from '@/lib/statements/types'
+import type { Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY, plannedElsewhere } from '@/lib/statements/dictionary'
 import { addMonths, dayLabel, daysInMonth, monthFrom, monthKey, parseMonthKey, today, weekRange } from '@/lib/dates'
 import { categoryName, spendColor } from '@/lib/palette'
@@ -1894,6 +1894,75 @@ export function monthSummary(
     closest,
     bought: { count: bought.length, amount: bought.reduce((a, w) => a + w.price, 0) },
   };
+}
+
+/** Итог месяца есть что показать: отметки, зарплата, закрытые долги, досрочки, движения целей, покупки. */
+export function hasMonthSummary(s: MonthSummary): boolean {
+  return !!(s.paid.count || s.income || s.closed.length || s.prepaid.count || s.toGoals || s.fromGoals || s.bought.count);
+}
+
+/* ---------------- «История» (пивот 3, Р-35, B2C-44) ---------------- */
+
+/** Строка ленты «Истории»: своя операция выписки, отметка семьи или момент прогресса. */
+export type HistoryItem =
+  | { kind: 'op'; id: string; at: string; op: Operation }
+  | { kind: 'mark'; id: string; at: string; payment: Payment }
+  | { kind: 'moment'; id: string; at: string; moment: Moment };
+
+/** День по Алматы «YYYY-MM-DD» для отметки и момента (их `at` — ISO). */
+const isoDay = (iso: string) => {
+  const d = today(new Date(iso));
+  return `${d.key}-${String(d.day).padStart(2, '0')}`;
+};
+
+/**
+ * Лента «Истории» по дням за месяцы `months` (новые сверху): свои операции (Р-5: стор отдаёт только
+ * свои), отметки семьи (оплата, досрочка, зарплата — `countedPayments`) и моменты «собрали
+ * половину» / «закрыт». Момент «не отдадим банку» не повторяется — его несёт строка досрочки.
+ * День операции — её дата, отметки и момента — день `at` по Алматы.
+ */
+export function historyFeed(
+  state: { ops: Operation[]; payments?: Payment[]; moments?: Moment[] },
+  months: string[],
+): { day: string; items: HistoryItem[] }[] {
+  const inPeriod = (day: string) => months.includes(day.slice(0, 7));
+  const items: (HistoryItem & { day: string })[] = [
+    ...state.ops.filter((o) => inPeriod(o.date)).map((op) => ({ kind: 'op' as const, id: op.id, at: `${op.date}T00:00:00`, day: op.date, op })),
+    ...countedPayments(state.payments ?? []).map((payment) => ({ kind: 'mark' as const, id: payment.id, at: payment.at, day: isoDay(payment.at), payment })),
+    ...(state.moments ?? [])
+      .filter((m) => m.kind !== 'saved')
+      .map((moment) => ({ kind: 'moment' as const, id: moment.id, at: moment.at, day: isoDay(moment.at), moment })),
+  ].filter((x) => inPeriod(x.day));
+  const days = new Map<string, HistoryItem[]>();
+  for (const x of items.sort((a, b) => b.day.localeCompare(a.day) || b.at.localeCompare(a.at))) {
+    const { day, ...item } = x;
+    days.set(day, [...(days.get(day) ?? []), item as HistoryItem]);
+  }
+  return [...days].map(([day, list]) => ({ day, items: list }));
+}
+
+/** Самый ранний месяц, за который «Истории» есть что показать (кнопка «Раньше»); null — ничего нет. */
+export function historyStart(state: { ops: Operation[]; payments?: Payment[]; moments?: Moment[] }): string | null {
+  const months = [
+    ...state.ops.map((o) => o.date.slice(0, 7)),
+    ...countedPayments(state.payments ?? []).map((p) => isoDay(p.at).slice(0, 7)),
+    ...(state.moments ?? []).filter((m) => m.kind !== 'saved').map((m) => isoDay(m.at).slice(0, 7)),
+  ];
+  return months.length ? months.sort()[0] : null;
+}
+
+/**
+ * Разделы трат в своих операциях месяцев `months` — по убыванию суммы (чипы фильтра «Истории»);
+ * неразобранное — `UNKNOWN_CATEGORY`. Траты — списания не между своими.
+ */
+export function historyCategories(ops: Operation[], months: string[]): string[] {
+  const sums = new Map<string, number>();
+  for (const o of ops) {
+    if (o.internal || o.amount >= 0 || !months.includes(o.date.slice(0, 7))) continue;
+    const id = o.categoryId ?? UNKNOWN_CATEGORY;
+    sums.set(id, (sums.get(id) ?? 0) - o.amount);
+  }
+  return [...sums].sort((a, b) => b[1] - a[1]).map(([id]) => id);
 }
 
 /** Подсчёт ликвидных средств на картах и счетах. */
