@@ -1,7 +1,7 @@
 import { weekKey } from '@/lib/dates'
 import type { Person, PersonId, SyncDoc } from '@/types/finance'
 import { DEFAULT_SPEND_CATEGORIES, DICTIONARY, KIND_CATEGORY, UNKNOWN_CATEGORY } from './dictionary'
-import type { MerchantRule, Operation, SpendTotal } from './types'
+import type { MerchantRule, Operation, PaymentRule, SpendTotal } from './types'
 
 // Модель операций выписки (B2C-02): чистые функции, деньги — целые тенге.
 
@@ -119,6 +119,8 @@ export interface Categorized {
   internal: boolean
   /** «Кому → что»: подпись перевода человеку из правила. */
   personLabel?: string
+  /** Правило «это платёж по …» (B2C-15): строка отмечает платёж сама. */
+  payment?: PaymentRule
 }
 
 const liveRules = (rules: MerchantRule[]) => rules.filter((r) => !r.deletedAt)
@@ -128,11 +130,44 @@ function latest(rules: MerchantRule[]): MerchantRule | undefined {
   return rules.reduce<MerchantRule | undefined>((best, r) => (!best || r.updatedAt > best.updatedAt ? r : best), undefined)
 }
 
-function fromRule(rule: MerchantRule): Categorized {
+/**
+ * Строка — «такая» для правила платежа (`matching.ts` `paymentFits`: знак и сумма в допуске).
+ * Без проверки плановый раздел получает каждая строка продавца.
+ */
+export type PaymentFits = (op: Operation, payment: PaymentRule) => boolean
+
+/**
+ * Раздел из правила; правило платежа без раздела — null: раздел берётся по словарю, как без
+ * правила. Строка не «такая» для правила платежа (`fits`, возврат приёмки 2 п. 2) — раздел
+ * «остальных» строк `restCategoryId` (ответ «куда отнести?» о том же продавце), нет его — null.
+ */
+function fromRule(rule: MerchantRule, op: Operation, fits?: PaymentFits): Categorized | null {
   const to = rule.to
   if ('internal' in to) return { categoryId: null, internal: true }
   if ('person' in to) return { categoryId: 'sc_people', internal: false, personLabel: to.person }
+  if ('payment' in to) {
+    const p = to.payment
+    if (fits && !fits(op, p)) return p.restCategoryId ? { categoryId: p.restCategoryId, internal: false, payment: p } : null
+    return p.categoryId ? { categoryId: p.categoryId, internal: false, payment: p } : null
+  }
   return { categoryId: to.categoryId, internal: false }
+}
+
+/** Правило семьи для операции: по получателю, затем по продавцу; последнее по правке. */
+export function ruleFor(op: Pick<Operation, 'merchant' | 'counterparty'>, rules: MerchantRule[]): MerchantRule | undefined {
+  const live = liveRules(rules)
+  if (op.counterparty) {
+    const who = normalizeCounterparty(op.counterparty)
+    const rule = latest(live.filter((r) => r.match.counterparty === who))
+    if (rule) return rule
+  }
+  const merchant = normalizeMerchant(op.merchant)
+  return latest(live.filter((r) => r.match.merchant === merchant))
+}
+
+/** Совпадение для правила по операции: получатель, если он есть, иначе продавец. */
+export function ruleMatchOf(op: Pick<Operation, 'merchant' | 'counterparty'>): MerchantRule['match'] {
+  return op.counterparty ? { counterparty: normalizeCounterparty(op.counterparty) } : { merchant: normalizeMerchant(op.merchant) }
 }
 
 /**
@@ -145,36 +180,48 @@ export function categorize(
   op: Operation,
   rules: MerchantRule[],
   dictionary = DICTIONARY,
+  fits?: PaymentFits,
 ): Categorized {
-  const live = liveRules(rules)
-  if (op.counterparty) {
-    const who = normalizeCounterparty(op.counterparty)
-    const rule = latest(live.filter((r) => r.match.counterparty === who))
-    if (rule) return fromRule(rule)
-  }
-  const merchant = normalizeMerchant(op.merchant)
-  const rule = latest(live.filter((r) => r.match.merchant === merchant))
-  if (rule) return fromRule(rule)
+  const rule = ruleFor(op, rules)
+  const byRule = rule ? fromRule(rule, op, fits) : null
+  if (byRule) return byRule
+  const payment = rule && 'payment' in rule.to ? { payment: rule.to.payment } : {}
 
   // Приходы и внутренние в траты не входят — раскладывать нечего.
-  if (op.amount >= 0 || op.internal) return { categoryId: null, internal: op.internal }
-  if (op.kind === 'transfer-out' && op.counterparty) return { categoryId: 'sc_people', internal: false }
+  if (op.amount >= 0 || op.internal) return { categoryId: null, internal: op.internal, ...payment }
+  if (op.kind === 'transfer-out' && op.counterparty) return { categoryId: 'sc_people', internal: false, ...payment }
   const byKind = KIND_CATEGORY[op.kind]
-  if (byKind) return { categoryId: byKind, internal: false }
+  if (byKind) return { categoryId: byKind, internal: false, ...payment }
+  const merchant = normalizeMerchant(op.merchant)
   const hit = dictionary.find((d) => d.test.test(merchant))
-  return { categoryId: hit?.categoryId ?? null, internal: false }
+  return { categoryId: hit?.categoryId ?? null, internal: false, ...payment }
 }
 
-/** Пересчёт всех операций после нового правила. */
-export function applyRules(ops: Operation[], rules: MerchantRule[], dictionary = DICTIONARY): Operation[] {
+const NONE: ReadonlySet<string> = new Set()
+
+/**
+ * Пересчёт всех операций после нового правила. `released` — операции, чья отметка из выписки
+ * снята (`releasedOps`, B2C-15 п. 3): правило «это платёж по …» им раздел не ставит — операция
+ * возвращается в траты (раздел по словарю или виду), само правило остаётся для новых строк.
+ * `fits` — плановый раздел правила платежа только «таким» строкам (`paymentFits`).
+ */
+export function applyRules(
+  ops: Operation[],
+  rules: MerchantRule[],
+  dictionary = DICTIONARY,
+  released: ReadonlySet<string> = NONE,
+  fits?: PaymentFits,
+): Operation[] {
+  const unpaid = released.size ? rules.filter((r) => !('payment' in r.to)) : rules
   return ops.map((op) => {
-    const { categoryId, internal } = categorize(op, rules, dictionary)
+    const { categoryId, internal } = categorize(op, released.has(op.id) ? unpaid : rules, dictionary, fits)
     return categoryId === op.categoryId && internal === op.internal ? op : { ...op, categoryId, internal }
   })
 }
 
 const DAY_MS = 86_400_000
-const dayNumber = (date: string) => Date.parse(`${date}T00:00:00Z`) / DAY_MS
+/** Дата `YYYY-MM-DD` → номер дня (UTC): разность — расстояние в днях. */
+export const dayNumber = (date: string) => Date.parse(`${date}T00:00:00Z`) / DAY_MS
 
 /**
  * Переводы между своими банками (Р-5): списание без получателя в одном банке и приход без
@@ -307,6 +354,16 @@ export function unknownGroups(ops: Operation[], categoryId: string | null = null
     groups.set(key, g)
   }
   return [...groups.values()].sort((a, b) => b.amount - a.amount || a.label.localeCompare(b.label))
+}
+
+/**
+ * Незнакомые траты (`unknownGroups`) одной ISO-недели `week` — или всех операций, если неделя
+ * не задана: сколько продавцов и на какую сумму (целые тенге). Карточка «Не разобрано: N
+ * продавцов · X за неделю» на главном (`nextDecision`).
+ */
+export function unknownSummary(ops: Operation[], week?: string): { count: number; amount: number } {
+  const groups = unknownGroups(week ? ops.filter((o) => weekKey(o.date) === week) : ops)
+  return { count: groups.length, amount: groups.reduce((a, g) => a + g.amount, 0) }
 }
 
 /**

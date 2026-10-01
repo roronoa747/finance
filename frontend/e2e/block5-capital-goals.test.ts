@@ -168,23 +168,23 @@ describe('e2e / block-5 — Сквозной сценарий Капитала, 
     const realYield = realRate(0.14, 0.08)
     expect(realYield).toBeCloseTo(0.0555, 3)
 
-    // 7. Проверка роутера и навигации без PlaceholderView
+    // 7. Проверка роутера и навигации без PlaceholderView (адреса Блока 3, старые — редиректы; B2C-13)
     await router.push('/capital')
-    expect(router.currentRoute.value.path).toBe('/capital')
+    expect(router.currentRoute.value.path).toBe('/money/capital')
 
-    await router.push('/capital?income=1')
+    await router.push('/money/capital?income=1')
     expect(router.currentRoute.value.query.income).toBe('1')
 
     await router.push('/goals')
-    expect(router.currentRoute.value.path).toBe('/goals')
+    expect(router.currentRoute.value.path).toBe('/')
 
-    await router.push('/goals?tab=wish')
+    await router.push('/wishes?tab=wish')
     expect(router.currentRoute.value.query.tab).toBe('wish')
 
     await router.push('/goals/g-japan')
     expect(router.currentRoute.value.path).toBe('/goals/g-japan')
 
     await router.push('/capital/acc-depo')
-    expect(router.currentRoute.value.path).toBe('/capital/acc-depo')
+    expect(router.currentRoute.value.path).toBe('/money/capital/acc-depo')
   })
 })

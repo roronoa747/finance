@@ -32,7 +32,7 @@ func TestLiveServerE2EFlow(t *testing.T) {
 	mockRepos := repository.NewMockRepositories()
 	mockRepos.Households.SetDocRepo(mockRepos.Docs)
 
-	runLiveServerE2EFlow(t, nil, mockRepos.Users, mockRepos.Households, mockRepos.Docs, mockRepos.Statements)
+	runLiveServerE2EFlow(t, nil, mockRepos.Users, mockRepos.Households, mockRepos.Docs, mockRepos.Statements, mockRepos.Photos)
 }
 
 // TestLiveServerE2EFlowPostgres runs the same flow against a real PostgreSQL.
@@ -44,7 +44,8 @@ func TestLiveServerE2EFlowPostgres(t *testing.T) {
 		repository.NewSQLUserRepository(database),
 		repository.NewSQLHouseholdRepository(database),
 		repository.NewSQLDocRepository(database),
-		repository.NewSQLStatementRepository(database))
+		repository.NewSQLStatementRepository(database),
+		repository.NewSQLPhotoRepository(database))
 }
 
 func runLiveServerE2EFlow(
@@ -54,6 +55,7 @@ func runLiveServerE2EFlow(
 	householdRepo repository.HouseholdRepository,
 	docRepo repository.DocRepository,
 	statementRepo repository.StatementRepository,
+	photoRepo repository.PhotoRepository,
 ) {
 	cfg := &config.Config{
 		Port:       "8080",
@@ -63,7 +65,7 @@ func runLiveServerE2EFlow(
 	}
 	tokenService := auth.NewTokenService(cfg.JWTSecret, 24*time.Hour)
 
-	router := NewRouter(cfg, database, Repos{Users: userRepo, Households: householdRepo, Docs: docRepo, Statements: statementRepo}, tokenService, fx.NewClient())
+	router := NewRouter(cfg, database, Repos{Users: userRepo, Households: householdRepo, Docs: docRepo, Statements: statementRepo, Photos: photoRepo}, tokenService, fx.NewClient())
 	wantDBStatus := "disconnected"
 	if database != nil {
 		wantDBStatus = "connected"
@@ -480,6 +482,75 @@ func runLiveServerE2EFlow(
 		}
 	})
 
+	// Step 13c (B2C-16): фото — байты семье, скрытое только автору (404); viewer не загружает — шаг 15.
+	t.Run("Photos: upload and serve; hidden — author only; partner sees the shared one", func(t *testing.T) {
+		sendBytes := func(path, token, contentType string, body []byte) (*http.Response, []byte) {
+			req, err := http.NewRequest(http.MethodPost, ts.URL+path, bytes.NewReader(body))
+			if err != nil {
+				t.Fatalf("build photo request: %v", err)
+			}
+			req.Header.Set("Content-Type", contentType)
+			req.Header.Set("Authorization", "Bearer "+token)
+			resp, err := client.Do(req)
+			if err != nil {
+				t.Fatalf("photo request failed: %v", err)
+			}
+			defer resp.Body.Close()
+			data, _ := io.ReadAll(resp.Body)
+			return resp, data
+		}
+		pic := make([]byte, 3000)
+		copy(pic, "RIFF\x00\x00\x00\x00WEBPVP8 ")
+		for i := 12; i < len(pic); i++ {
+			pic[i] = byte(i % 256)
+		}
+		resp, body := sendBytes("/api/photos", aliceToken, "image/webp", pic)
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("upload: expected 201, got %d: %s", resp.StatusCode, string(body))
+		}
+		var shared struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(body, &shared)
+		resp, body = sendBytes("/api/photos?hidden=1", aliceToken, "image/webp", pic)
+		var gift struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(body, &gift)
+		if resp.StatusCode != http.StatusCreated || gift.ID == "" {
+			t.Fatalf("hidden upload: %d %s", resp.StatusCode, string(body))
+		}
+
+		// Партнёр: общее фото байт в байт с заголовками, скрытое — 404.
+		resp, body = sendJSON(http.MethodGet, "/api/photos/"+shared.ID, nil, bobToken)
+		if resp.StatusCode != http.StatusOK || !bytes.Equal(body, pic) || resp.Header.Get("Content-Type") != "image/webp" ||
+			resp.Header.Get("Cache-Control") != "private, max-age=31536000, immutable" || resp.Header.Get("X-Content-Type-Options") != "nosniff" {
+			t.Fatalf("partner get: %d %v (bytes equal: %v)", resp.StatusCode, resp.Header, bytes.Equal(body, pic))
+		}
+		if resp, _ := sendJSON(http.MethodGet, "/api/photos/"+gift.ID, nil, bobToken); resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("partner hidden: expected 404, got %d", resp.StatusCode)
+		}
+		if resp, _ := sendJSON(http.MethodGet, "/api/photos/"+gift.ID, nil, aliceToken); resp.StatusCode != http.StatusOK {
+			t.Fatalf("author hidden: expected 200, got %d", resp.StatusCode)
+		}
+		// Другая запись того же id (urn:uuid:) — 404 до базы: Postgres её не принимает (было 500).
+		for _, method := range []string{http.MethodGet, http.MethodDelete} {
+			if resp, body := sendJSON(method, "/api/photos/urn:uuid:"+shared.ID, nil, aliceToken); resp.StatusCode != http.StatusNotFound {
+				t.Fatalf("%s urn:uuid: id: expected 404, got %d: %s", method, resp.StatusCode, string(body))
+			}
+		}
+		// Партнёр удаляет общее (цель общая), скрытое — не может (404).
+		if resp, _ := sendJSON(http.MethodDelete, "/api/photos/"+gift.ID, nil, bobToken); resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("partner delete hidden: expected 404, got %d", resp.StatusCode)
+		}
+		if resp, _ := sendJSON(http.MethodDelete, "/api/photos/"+shared.ID, nil, bobToken); resp.StatusCode != http.StatusNoContent {
+			t.Fatalf("partner delete shared: expected 204, got %d", resp.StatusCode)
+		}
+		if resp, _ := sendJSON(http.MethodGet, "/api/photos/"+shared.ID, nil, aliceToken); resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("deleted photo: expected 404, got %d", resp.StatusCode)
+		}
+	})
+
 	// Step 14: Security validations — Unauthenticated access blocked
 	t.Run("Unauthenticated requests return 401 Unauthorized", func(t *testing.T) {
 		resp, _ := sendJSON(http.MethodGet, "/api/auth/me", nil, "")
@@ -534,6 +605,13 @@ func runLiveServerE2EFlow(
 		}
 		if resp, _ := sendJSON(http.MethodPost, "/api/operations/batch", map[string]any{"operations": []any{}}, viewerToken); resp.StatusCode != http.StatusForbidden {
 			t.Errorf("viewer expected 403 on operations batch, got %d", resp.StatusCode)
+		}
+		// Фото (B2C-16): viewer не загружает и не удаляет — роль проверяется до тела и id.
+		if resp, _ := sendJSON(http.MethodPost, "/api/photos", nil, viewerToken); resp.StatusCode != http.StatusForbidden {
+			t.Errorf("viewer expected 403 on photo upload, got %d", resp.StatusCode)
+		}
+		if resp, _ := sendJSON(http.MethodDelete, "/api/photos/00000000-0000-4000-8000-000000000000", nil, viewerToken); resp.StatusCode != http.StatusForbidden {
+			t.Errorf("viewer expected 403 on photo delete, got %d", resp.StatusCode)
 		}
 	})
 }

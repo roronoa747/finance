@@ -17,6 +17,12 @@
 
 Блок-специфика:
 
+- **Сначала — пивот 2** (бриф, раздел «Пивот 2 … порядок и ступени», 2026-09-27): после 🏁 Блока 3
+  идут `/brief идея-и-редизайн` (дополнение по вопросам 17–32) и `/backlog` (блок «Ступени»); вопрос
+  29 решает, встаёт ли «Ступени» **перед** Блоком 4. Блок 4 задевают вопросы 17 (заголовок лэндинга
+  и имя — B2C-27), 24 («Попробовать» = своя выписка без аккаунта — B2C-27, перенос демо), 27 (закон
+  о персональных данных РК — где живёт база; «расчёт, не совет» — политика B2C-26). Исполнитель
+  начинает с новых Р- в §2 индекса; ТЗ, которые они меняют, правит составитель, не исполнитель.
 - Ветка `b2c-block-4-foundation` от `main` (после деплоя Блока 3). Push — с согласия; `main` и
   прод-БД не трогать (миграции `000004`–`000006` в прод — клинап).
 - Задачи по порядку: B2C-22 (Go) → B2C-23 (Go) → B2C-24 (Go) → B2C-25 → B2C-26 → B2C-27 →
@@ -33,7 +39,63 @@
 - Верификация — стандарт §6 + браузер по критериям ТЗ; Lighthouse для лэндинга.
 - Следующий шаг — `/critic идея-и-редизайн 4 ultracode`.
 
-**Факты кода после Блока 3** (заполняет критик Блока 3): —
+**Факты кода после Блока 3** (критик Блока 3, 2026-09-27; подробно — §6 индекса «После Блока 3»):
+
+- **Маршруты** (`router/index.ts`): `/access` (public) · `/start/:step?` (первый запуск, ленивый) ·
+  `/setup` → `/start` · дети `AppShell`: `/` Dreams, `/week` Statements, `/week/salary` WeekSalary,
+  `/money`, `/money/{budget,capital,capital/:id,plan,history}`, `/goals/new`, `/goals/:id`,
+  `/share/:goalId` → `/goals/:id?share=1`, `/wishes`, `/people/:slot`, `/settings`; старые пути —
+  редиректы с query. Гард `beforeEach`: без входа → `/access?…`; куда после входа —
+  **`router/landing.ts` `landingPath(auth, finance)`**: viewer → `/`; семья без данных → `/start`;
+  посреди первого запуска (данные есть, у участника нет `onboardedAt`) — и `/start`, и главный;
+  настроенная семья — `/start` только участнику без своей записи в `people` (партнёр по коду).
+  B2C-25 ставит Google и «с кем» **перед** `landingPath`, не вместо: `Access.vue` уже переходит по нему.
+- **Выход и устройство:** `stores/auth.ts` `clearAuth()` зовёт `releasePhotos()`; `LOCAL_KEYS` в
+  `stores/finance.ts` — что стирает выход (документы и rev, `unsent`, `ff_doc_household`,
+  `OPERATIONS_STORAGE_KEYS` включая `declined`, `START_ANSWERED_KEY`); остаются на устройстве
+  осознанно: `MONTH_END_KEY` (`lib/storage.ts`), `ff_wishes_view` (Wishes.vue), тема/палитра.
+  Хвост RP «старт всегда полный синк» (B2C-25) — `syncEngine.ts` без изменений в Блоке 3.
+- **`/settings`** (`views/Settings.vue`): карточки «Оформление» (`AppearancePanel`), «Разбор выписок»
+  (`ParseSettings`, только member), «С кем» (участники `people` с `joined`, `SyncBadge` — шторка с
+  «Пригласить» / «Начать бюджет заново»); с возврата приёмки в «С кем» и своя строка «Пригласить партнёра» →
+  «Создать код» → «Код для партнёра» (`useInvite`; нет у viewer, в демо и в семье из двух). B2C-25 добавляет сюда
+  «Удалить аккаунт» и вход Google; B2C-23 — «по коду» через ручку участников (сейчас `useInvite` + `Access` режим `join`).
+- **Документ:** новые ключи `SyncDoc.allocations[]` (в `known` mergeDocs), поля `Goal.main /
+  photoId / photoCredit / template`, `WishItem.photoId / list`, `Payment.source / opId`,
+  `SpendCategory.plannedElsewhere / slot`, `MerchantRule.to.payment` (личный документ; `restCategoryId` — раздел не «таких» строк продавца, критик возврата 2),
+  `privateDoc.gifts[]` (`mergePrivateDocs`), `Credit.rateUnknown` (кредит из первого запуска, `null` снимает). Удаление аккаунта (B2C-24): личные данные
+  пользователя — `private_docs`, `operations`, `statement_uploads`, **`photos` (FK `user_id`
+  CASCADE, миграция `000003`)**; семейные — `household_docs`, `household_members`, `invites`,
+  `photos` по `household_id`. `cmd/migrate` ждёт **10 таблиц** — B2C-22…24 повышают счётчик.
+- **Фото:** Go `POST/GET/DELETE /api/photos` (`handlers/photos.go`, `Repos.Photos`); клиент
+  `api/client.ts` `uploadPhoto/getPhoto/deletePhoto` (токен в заголовке), `lib/photos/store.ts`
+  (`photoUrl` — object URL с кэшем на модуль, `releasePhotos`). Удаление цели/желания и замена фото
+  чистят прежнее; сброс «Начать заново» и сюрпризы — нет (хвост §4). **B2C-24:** удаление аккаунта
+  снимает фото пользователя каскадом (`user_id`), фото семьи — по `household_id`. **B2C-26:** потолок фото
+  на семью (хвост §4, ручка без лимита числа/объёма). Id фото не канонический uuid — 404 до базы.
+- **Права на клиенте:** экраны-формы помечены `meta.memberOnly` в `router/index.ts` (viewer → `/`);
+  права новых экранов Блока 4 — маршрутом (`meta`), а не только скрытой кнопкой (критик Б3: viewer
+  раскладывал деньги по прямому адресу); удаление аккаунта — любому вошедшему, включая viewer (§3). **B2C-25:** личный документ привязан к семье, не к человеку — на общем телефоне после
+  «Войти заново» чужой пользователь получает неотправленное (хвост §4 → B2C-25: `ff_private_owner`).
+- **Стор операций** (`stores/operations.ts`): + `pendingMatches`, `acceptMatch`, `declineMatch`,
+  `forgetRule`, `seedDemoUploads`, `lastAutoMarked`, `settleReleased` (снятая отметка из выписки → операция снова
+  трата: наблюдатель `releasedOps(payments)` и после каждого `pull`); копия `ff_operations` привязана к
+  `семья:пользователь`. **B2C-25 «старт с pull»:** звать и `ops.pull` — карточки главного (сопоставления, незнакомые)
+  на новом устройстве сейчас ждут захода на «Неделю» (хвост §4), а снятые отметки дочиняются уже в `pull`. Метрика B2C-28: «загрузил выписку» — `send()`; «завершил первый запуск» —
+  `Start.vue finish()` → `finishSetup()` / `onboardedAt`; «дошёл до цели» — `GoalNew create`;
+  «завершил неделю» — `WeekSalary confirm()` (`recordAllocation`).
+- **Демо** (`Access.vue startDemoMode`): документ с `spendCategories`, итогами обоих за неделю и
+  месяц, записями загрузок (`ops.seedDemoUploads`), главной мечтой `g-trip` («Поездка в Японию»,
+  шаблон `japan`, без фото — сервера нет); `adoptDemo` при регистрации — B2C-27 переосмысляет
+  вместе с лэндингом. Демо не ходит в `/api` (в т.ч. фото: `usePhoto` → `photoUrl` → 404/сбой → null).
+- **Кит и правила интерфейса:** экраны — на `components/kit/*` (DreamHero, DecisionCard, WeekCard,
+  FreeCard, Chip, Tabs, ScreenHeader, EmptyState, Hint …); новые экраны Блока 4 (`Access`/«с кем»/
+  лэндинг/удаление) — по **CLAUDE.md п. 12** (одно действие, текст ≤ строки, пояснения в `Hint`,
+  механика не в заголовках) — критик Блока 3 снял абзацы с Start/Week/GoalNew, не повторять; на экране
+  одна брендовая кнопка (`Button` default), остальное `secondary`/`ghost`; расчёты — за «Подробнее».
+- **Среда:** Playwright в node-скриптах — `import pw from 'file:///C:/Users/SW/finance/node_modules/playwright-core/index.js'`
+  (CommonJS, Windows требует `file://`); Vite на `:5174` (`--port 5174 --strictPort`); стенд Go +
+  Postgres — §6 «Верификация» и «Грабли». Следующая миграция — `000004`.
 
 ---
 

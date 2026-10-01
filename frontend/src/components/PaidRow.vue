@@ -3,35 +3,29 @@ import { computed, ref } from 'vue'
 import { PhCheck } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { money, plain, parseMoney } from '@/lib/money'
-import { addMonths, atLabel, dayLabel } from '@/lib/dates'
+import { money, plain } from '@/lib/money'
+import { addMonths, dayLabel } from '@/lib/dates'
 import {
-  afterAnchor,
   amountAt,
   creditDueAmount,
   lastAccountFor,
   nextCreditDue,
   nextObligationDue,
   paidFor,
-  payableAccounts,
   paymentSplit,
   type ScheduledKind,
 } from '@/lib/finance'
 import { cn } from '@/lib/utils'
-import Field from '@/components/kit/Field.vue'
 import Row from '@/components/kit/Row.vue'
-import Sheet from '@/components/kit/Sheet.vue'
-import NumField from '@/components/kit/NumField.vue'
-import Button from '@/components/ui/Button.vue'
-import AccountChoice from '@/components/AccountChoice.vue'
+import MarkSheet from '@/components/MarkSheet.vue'
 
 /**
  * «Оплатил» — одна строка для всего, что платится по графику (Р-3): обязательства
  * и кредита, везде, где платёж виден. Одно нажатие отмечает месяц суммой по графику
  * со счёта прошлой оплаты (Р-5). Другая сумма, другой счёт и «не списывать» — в
- * листе, который открывается только для исключений: первая оплата (счёт спросить
- * один раз), сумма-оценка, правка отмеченного. Неотмеченный платёж нейтрален в любой
- * день — без красного и «просрочено».
+ * листе (`MarkSheet`, B2C-15), который открывается только для исключений: первая оплата
+ * (счёт спросить один раз), сумма-оценка, правка отмеченного. Неотмеченный платёж
+ * нейтрален в любой день — без красного и «просрочено».
  */
 const props = defineProps<{
   kind: ScheduledKind
@@ -81,8 +75,8 @@ const due = computed(() => {
 /** Сумма в строке: у отмеченного — из отметки. */
 const shown = computed(() => (record.value ? record.value.amount : due.value))
 
-/** Кредит: сколько из суммы в долг и сколько банку — у отмеченного по записи (Р-8). */
-const split = computed(() => (credit.value && shown.value > 0 ? paymentSplit(record.value, credit.value, due.value) : null))
+/** Кредит: сколько из суммы в долг и сколько банку — у отмеченного по записи (Р-8); без ставки «банку 0» врёт (B2C-19). */
+const split = computed(() => (credit.value && !credit.value.rateUnknown && shown.value > 0 ? paymentSplit(record.value, credit.value, due.value) : null))
 
 /** Следующий неоплаченный платёж после этого месяца. */
 const next = computed(() => {
@@ -95,29 +89,15 @@ const next = computed(() => {
 // Viewer видит отметки, но не ставит их (Р-13): сервер и так отверг бы push.
 const canMark = computed(() => !auth.isViewer)
 
-const paidOn = computed(() => (record.value ? atLabel(record.value.at) : ''))
-
-const fromAccount = computed(() => {
-  const id = record.value?.accountId
-  if (id === null || id === undefined) return 'не списано'
-  // Личный счёт партнёра на этом телефоне не виден.
-  return finance.accounts.find((a) => a.id === id)?.name ?? 'личный счёт'
-})
-
-/** Счета, с которых можно списать: платежи в тенге (валюта платежей — не-скоуп). */
-const choices = computed(() => payableAccounts(finance.accounts))
-
 const sheet = ref<'mark' | 'paid' | null>(null)
-const amountText = ref('')
+const markAmount = ref(0)
 // undefined — счёт ещё не выбран; null — «не списывать».
-const chosen = ref<string | null | undefined>(undefined)
+const markAccount = ref<string | null | undefined>(undefined)
 const firstTime = ref(false)
-const confirmUnmark = ref(false)
 
 function openMark(amount: number, account: string | null | undefined) {
-  amountText.value = plain(amount)
-  chosen.value = account
-  confirmUnmark.value = false
+  markAmount.value = amount
+  markAccount.value = account
   sheet.value = 'mark'
 }
 
@@ -134,30 +114,6 @@ function openMore() {
   firstTime.value = last === undefined
   openMark(due.value, last)
 }
-
-function confirmMark() {
-  const amount = parseMoney(amountText.value)
-  if (chosen.value === undefined || amount <= 0) return
-  // Правка отмеченного — новая запись с тем же моментом оплаты (стор, Р-7).
-  if (record.value) finance.editPaid(record.value, { amount, accountId: chosen.value })
-  else finance.markPaid(props.kind, props.targetId, auth.slot ?? 'a', { period: props.period, amount, accountId: chosen.value })
-  sheet.value = null
-}
-
-function unmark() {
-  finance.unmarkPaid(props.kind, props.targetId, props.period)
-  sheet.value = null
-}
-
-// Отметка до ручной сверки остатка в нём уже учтена: снятие её не вернёт — не обещаем.
-const unmarkNote = computed(() => {
-  const r = record.value
-  const parts = ['Платёж снова станет неоплаченным']
-  const acc = r?.accountId ? finance.accounts.find((a) => a.id === r.accountId) : undefined
-  if (r?.accountId && (!acc || afterAnchor(r, acc.amountSetAt))) parts.push('деньги вернутся на счёт')
-  if (r && credit.value && afterAnchor(r, credit.value.principalSetAt)) parts.push('остаток долга — к прежнему')
-  return parts.join(', ') + '.'
-})
 </script>
 
 <template>
@@ -169,7 +125,7 @@ const unmarkNote = computed(() => {
     <template #note>
       <template v-if="record">
         <span class="block text-[12.5px] text-ink-3">
-          оплачено{{ next ? ` · дальше ${dayLabel(next.day, next.period)} · ${plain(next.amount)} ₸` : '' }}
+          оплачено{{ next ? ` · дальше ${dayLabel(next.day, next.period)} · ${plain(next.amount)} ₸` : '' }}{{ record.source === 'statement' ? ' · из выписки' : '' }}
         </span>
         <span v-if="credit" class="block text-[12.5px] text-ink-3 num">
           {{ credit.principal > 0 ? `остаток ${plain(credit.principal)} ₸` : 'долг закрыт' }}
@@ -209,7 +165,7 @@ const unmarkNote = computed(() => {
       <button
         v-else
         type="button"
-        class="shrink-0 rounded-lg border border-line-strong bg-surface-2 px-2.5 py-1.5 text-[12.5px] font-medium text-ink active:translate-y-px cursor-pointer"
+        class="shrink-0 rounded-pill border border-line-strong bg-surface-2 px-3 py-1.5 text-[12.5px] font-medium text-ink active:translate-y-px cursor-pointer"
         @click="tap"
       >
         Оплатил
@@ -226,70 +182,15 @@ const unmarkNote = computed(() => {
     </button>
   </Row>
 
-  <Sheet :open="sheet !== null" :title="title" :z="60" @close="sheet = null">
-    <template v-if="sheet === 'paid' && record">
-      <div class="mb-3 flex flex-col gap-1.5 rounded-xl border border-line bg-surface-2 p-3 text-[13px]">
-        <div class="flex justify-between gap-3">
-          <span class="text-ink-2">Оплачено</span>
-          <b class="num text-ink">{{ paidOn }}</b>
-        </div>
-        <div class="flex justify-between gap-3">
-          <span class="text-ink-2">Сумма</span>
-          <b class="num text-ink">{{ money(record.amount) }}</b>
-        </div>
-        <div v-if="split" class="flex justify-between gap-3">
-          <span class="text-ink-2">Из них</span>
-          <b class="num text-ink">в долг {{ plain(split.body) }} · банку {{ plain(split.interest) }}</b>
-        </div>
-        <div class="flex justify-between gap-3">
-          <span class="text-ink-2">Счёт</span>
-          <b class="truncate text-ink">{{ fromAccount }}</b>
-        </div>
-        <div v-if="next" class="flex justify-between gap-3">
-          <span class="text-ink-2">Следующий платёж</span>
-          <b class="num text-ink">{{ dayLabel(next.day, next.period) }} · {{ money(next.amount) }}</b>
-        </div>
-        <div v-if="credit" class="flex justify-between gap-3">
-          <span class="text-ink-2">Остаток долга</span>
-          <b class="num text-ink">{{ money(credit.principal) }}</b>
-        </div>
-      </div>
-
-      <div v-if="confirmUnmark" class="rounded-xl border border-line bg-surface-2 p-3">
-        <p class="mb-2 text-[12.5px] leading-relaxed text-ink-2">{{ unmarkNote }}</p>
-        <div class="flex gap-2">
-          <Button variant="outline" class="flex-1 bg-surface" @click="confirmUnmark = false">Отмена</Button>
-          <Button class="flex-1" @click="unmark">Снять</Button>
-        </div>
-      </div>
-      <div v-else class="flex flex-col gap-2">
-        <Button variant="outline" class="w-full bg-surface-2" @click="openMark(record.amount, record.accountId)">
-          Другая сумма или счёт
-        </Button>
-        <Button variant="outline" class="w-full bg-surface-2" @click="confirmUnmark = true">
-          Снять отметку
-        </Button>
-      </div>
-    </template>
-
-    <template v-else-if="sheet === 'mark'">
-      <Field label="Сумма, ₸">
-        <NumField v-model="amountText" />
-      </Field>
-
-      <AccountChoice v-model="chosen" :accounts="choices">
-        <p v-if="firstTime" class="text-[12px] leading-relaxed text-ink-3">
-          Спрашиваем один раз: дальше этот платёж отметится одним нажатием с того же счёта.
-        </p>
-      </AccountChoice>
-
-      <Button
-        class="w-full"
-        :disabled="chosen === undefined || parseMoney(amountText) <= 0"
-        @click="confirmMark"
-      >
-        {{ record ? 'Сохранить' : 'Отметить оплату' }}
-      </Button>
-    </template>
-  </Sheet>
+  <MarkSheet
+    :open="sheet"
+    :kind="kind"
+    :target-id="targetId"
+    :period="period"
+    :title="title"
+    :amount="markAmount"
+    :account="markAccount"
+    :first-time="firstTime"
+    @close="sheet = null"
+  />
 </template>

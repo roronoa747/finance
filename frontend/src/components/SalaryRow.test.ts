@@ -6,8 +6,8 @@ import { money, plain } from '@/lib/money'
 import { accountBalance, budgetAmounts, paidFor, salaryFree } from '@/lib/finance'
 import type { Payment } from '@/types/finance'
 import Budget from '@/views/Budget.vue'
-import Overview from '@/views/Overview.vue'
-import Ritual from '@/views/Ritual.vue'
+import Money from '@/views/Money.vue'
+import WeekSalary from '@/views/WeekSalary.vue'
 import { authAs, planFamilyDoc } from '@/test/planFamily'
 import { renderScreen, screenMixin } from '@/test/screenState'
 
@@ -103,25 +103,25 @@ describe('RP-10: «Пришла зарплата» (SSR)', () => {
     expect(theirs).not.toContain('подробнее')
   })
 
-  it('Обзор: «Пришла зарплата» в «До зарплаты» — у того, чья зарплата ближайшая; после отметки — следующая', async () => {
+  it('«Деньги»: «Пришла зарплата» в «До зарплаты» — у того, чья зарплата ближайшая; после отметки — следующая', async () => {
     vi.setSystemTime(new Date('2026-09-09T07:00:00Z')) // завтра зарплата Ильяса, списаний до неё нет
     family('member', 'a')
-    const mine = await renderScreen(Overview, '/')
+    const mine = await renderScreen(Money, '/money')
     expect(mine).toContain('До зарплаты')
     expect(mine).toMatch(/>\s*Пришла зарплата\s*</)
 
     setActivePinia(createPinia())
     family('member', 'b')
-    expect(await renderScreen(Overview, '/')).not.toMatch(/Пришла зарплата/)
+    expect(await renderScreen(Money, '/money')).not.toMatch(/Пришла зарплата/)
 
     setActivePinia(createPinia())
     family('viewer', 'a')
-    expect(await renderScreen(Overview, '/')).not.toMatch(/Пришла зарплата/)
+    expect(await renderScreen(Money, '/money')).not.toMatch(/Пришла зарплата/)
 
     // Отметили раньше дня — «До зарплаты» смотрит на зарплату Аруны 20-го.
     setActivePinia(createPinia())
     family('member', 'a', [salary({ at: '2026-09-09T04:00:00.000Z' })])
-    const after = await renderScreen(Overview, '/')
+    const after = await renderScreen(Money, '/money')
     expect(after).toContain('Аруна получит')
     expect(after).not.toMatch(/Пришла зарплата/)
   })
@@ -129,7 +129,7 @@ describe('RP-10: «Пришла зарплата» (SSR)', () => {
   it('Обзор: за 4 дня до дня кнопки нет', async () => {
     vi.setSystemTime(new Date('2026-09-06T07:00:00Z'))
     family('member', 'a')
-    expect(await renderScreen(Overview, '/')).not.toMatch(/Пришла зарплата/)
+    expect(await renderScreen(Money, '/money')).not.toMatch(/Пришла зарплата/)
   })
 
   it('Ритуал с источником «зарплата»: сумма — доля свободного из finance.ts, подпись зарплаты', async () => {
@@ -138,26 +138,27 @@ describe('RP-10: «Пришла зарплата» (SSR)', () => {
     const free = budgetAmounts({ ...store.householdDoc, credits: store.credits }).d5
     const total = salaryFree(free, store.people, salary())
     expect(total).toBeGreaterThan(0)
-    const html = await renderScreen(Ritual, '/ritual?from=salary&person=a&period=2026-09')
+    const html = await renderScreen(WeekSalary, '/ritual?from=salary&person=a&period=2026-09')
     expect(html).toContain(`Куда направить ${money(total)}`)
     expect(html).toContain(`Зарплата пришла — ${money(700_000)}`)
-    expect(html).toContain('Решение разовое')
+    // Абзац «Решение разовое…» снят по правилу 12 (критик Блока 3).
+    expect(html).not.toContain('Решение разовое')
     expect(html).not.toContain('Сейчас нет запланированных изменений')
 
     // Без отметки раскладывать нечего; без параметров — прежний источник.
     setActivePinia(createPinia())
     family('member', 'a')
-    expect(await renderScreen(Ritual, '/ritual?from=salary&person=a&period=2026-09')).toContain(
+    expect(await renderScreen(WeekSalary, '/ritual?from=salary&person=a&period=2026-09')).toContain(
       'Эта зарплата пока не отмечена',
     )
-    expect(await renderScreen(Ritual, '/ritual')).toContain('Сейчас нет запланированных изменений')
+    expect(await renderScreen(WeekSalary, '/ritual')).toContain('Сейчас нет запланированных изменений')
   })
 
   it('Ритуал: разовое решение — взнос в цель и сдвиг счёта зарплаты, ежемесячный взнос прежний', async () => {
     family('member', 'a', [salary()])
     const store = useFinanceStore()
     const monthly = store.goals.find((g) => g.id === 'trip')!.monthly
-    const html = await renderScreen(Ritual, '/ritual?from=salary&person=a&period=2026-09', undefined, [
+    const html = await renderScreen(WeekSalary, '/ritual?from=salary&person=a&period=2026-09', undefined, [
       screenMixin({}, (s) => {
         s.alloc = { trip: 100_000 }
         ;(s.confirm as () => void)()
@@ -175,16 +176,18 @@ describe('RP-10: «Пришла зарплата» (SSR)', () => {
     expect(paidFor(store.payments, 'salary', 'a', '2026-09')?.amount).toBe(700_000)
   })
 
-  it('Ритуал: доля на досрочку не вносится — «Решение записано» говорит, где её внести', async () => {
+  it('Раскладка: доля на досрочку вносится записью prepay и решение записано (B2C-21)', async () => {
     family('member', 'a', [salary()])
     const store = useFinanceStore()
-    const html = await renderScreen(Ritual, '/ritual?from=salary&person=a&period=2026-09', undefined, [
+    const html = await renderScreen(WeekSalary, '/ritual?from=salary&person=a&period=2026-09', undefined, [
       screenMixin({}, (s) => {
         s.alloc = { credit: 50_000 }
         ;(s.confirm as () => void)()
       }),
     ])
-    expect(html).toContain(`Досрочку ${money(50_000)} внесите в «Капитале» — здесь она не вносится.`)
-    expect(store.payments.filter((p) => p.kind === 'prepay')).toEqual([])
+    expect(html).toContain(`Досрочка ${money(50_000)} внесена в «`)
+    expect(store.payments.filter((p) => p.kind === 'prepay')).toHaveLength(1)
+    expect(store.allocations).toHaveLength(1)
+    expect(store.allocations[0]).toMatchObject({ source: 'salary', sourceId: 'a', period: '2026-09', parts: [{ target: expect.stringMatching(/^prepay:/), amount: 50_000 }] })
   })
 })

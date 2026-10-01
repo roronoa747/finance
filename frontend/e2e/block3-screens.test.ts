@@ -28,7 +28,7 @@ describe('e2e / block-3 — Сквозной сценарий навигации
     router = createAppRouter()
   })
 
-  it('сквозной сценарий: неавторизованный вход -> регистрация -> прохождение мастера Setup -> экран Overview -> присоединение партнёра', async () => {
+  it('сквозной сценарий: неавторизованный вход -> регистрация -> первый запуск (записи как после ответов /start) -> экран Overview -> присоединение партнёра', async () => {
     const authStore = useAuthStore()
     const financeStore = useFinanceStore()
 
@@ -52,11 +52,11 @@ describe('e2e / block-3 — Сквозной сценарий навигации
     })
     expect(authStore.isAuthenticated).toBe(true)
 
-    // 3. После входа без настроенного бюджета роутер перенаправляет на /setup
+    // 3. После входа без настроенного бюджета роутер перенаправляет на первый запуск (B2C-19)
     await router.push('/')
-    expect(router.currentRoute.value.path).toBe('/setup')
+    expect(router.currentRoute.value.path).toBe('/start')
 
-    // 4. Прохождение мастера первоначальной настройки (Setup)
+    // 4. Ответы первого запуска — те же записи стора, что пишет Start.vue
     // Шаг 1: Доход
     financeStore.setPerson('a', {
       name: 'Ильяс',

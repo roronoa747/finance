@@ -32,6 +32,7 @@ type Repos struct {
 	Households repository.HouseholdRepository
 	Docs       repository.DocRepository
 	Statements repository.StatementRepository
+	Photos     repository.PhotoRepository
 }
 
 // NewHandler builds the API over database. A nil database means in-memory
@@ -44,6 +45,7 @@ func NewHandler(cfg *config.Config, database *sql.DB) (http.Handler, error) {
 			Households: repository.NewSQLHouseholdRepository(database),
 			Docs:       repository.NewSQLDocRepository(database),
 			Statements: repository.NewSQLStatementRepository(database),
+			Photos:     repository.NewSQLPhotoRepository(database),
 		}
 	} else {
 		if cfg.IsProduction() {
@@ -52,7 +54,7 @@ func NewHandler(cfg *config.Config, database *sql.DB) (http.Handler, error) {
 		log.Println("using in-memory mock repositories (development mode)")
 		mocks := repository.NewMockRepositories()
 		mocks.Households.SetDocRepo(mocks.Docs)
-		repos = Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements}
+		repos = Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos}
 	}
 
 	tokens := auth.NewTokenService(cfg.JWTSecret, tokenTTL)
@@ -110,6 +112,7 @@ func NewRouter(
 	householdHandler := handlers.NewHouseholdHandler(repos.Households, tokenService)
 	syncHandler := handlers.NewSyncHandler(repos.Docs)
 	statementHandler := handlers.NewStatementHandler(repos.Statements)
+	photoHandler := handlers.NewPhotoHandler(repos.Photos)
 
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", handlers.HealthHandler(database))
@@ -136,6 +139,11 @@ func NewRouter(
 			protected.Get("/statements", statementHandler.ListUploads)
 			protected.Post("/operations/batch", statementHandler.UpsertOperations)
 			protected.Get("/operations", statementHandler.ListOperations)
+
+			// Фото целей и желаний (B2C-16): байты в Postgres; скрытое — только автору (404).
+			protected.Post("/photos", photoHandler.Upload)
+			protected.Get("/photos/{id}", photoHandler.Get)
+			protected.Delete("/photos/{id}", photoHandler.Delete)
 		})
 	})
 

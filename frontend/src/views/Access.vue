@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { PhSparkle } from '@phosphor-icons/vue'
 import { useAuthStore, DEMO_TOKEN } from '@/stores/auth'
 import { useFinanceStore, DEMO_HOUSEHOLD } from '@/stores/finance'
+import { useOperationsStore } from '@/stores/operations'
+import { landingPath } from '@/router/landing'
+import { seedSpendCategories } from '@/lib/statements/model'
+import { monthKey, weekKey } from '@/lib/dates'
+import type { SpendTotal } from '@/lib/statements/types'
 import { authErrorText } from '@/lib/authErrors'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
@@ -58,7 +63,7 @@ async function answerDemo(take: boolean) {
     if (take) await financeStore.adoptDemo(household.id, displayName.value.trim())
     else financeStore.startNewFamily(household.id)
     askDemo.value = false
-    await router.push(financeStore.setupDone ? '/' : '/setup')
+    await router.push(landingPath(authStore, financeStore))
   } finally {
     busy.value = false
   }
@@ -76,11 +81,7 @@ async function submit() {
       }
       await authStore.login({ email: email.value.trim(), ['pass' + 'word']: pass.value } as any)
       await enterHousehold()
-      if (financeStore.setupDone) {
-        await router.push('/')
-      } else {
-        await router.push('/setup')
-      }
+      await router.push(landingPath(authStore, financeStore))
     } else if (mode.value === 'register') {
       if (!email.value.trim() || !pass.value || !displayName.value.trim()) {
         errorMessage.value = 'Заполните все обязательные поля'
@@ -97,7 +98,7 @@ async function submit() {
         return
       }
       if (authStore.household) financeStore.startNewFamily(authStore.household.id)
-      await router.push('/setup')
+      await router.push('/start')
     } else if (mode.value === 'join') {
       if (!inviteCode.value.trim() || !displayName.value.trim()) {
         errorMessage.value = 'Укажите код приглашения и ваше имя'
@@ -108,11 +109,7 @@ async function submit() {
         display_name: displayName.value.trim(),
       })
       await enterHousehold()
-      if (financeStore.setupDone) {
-        await router.push('/')
-      } else {
-        await router.push('/setup')
-      }
+      await router.push(landingPath(authStore, financeStore))
     }
   } catch (err: unknown) {
     errorMessage.value = authErrorText(err instanceof Error ? err.message : String(err), mode.value)
@@ -150,8 +147,8 @@ function startDemoMode() {
   financeStore.mutateHouseholdDoc((doc) => {
     doc.setupDoneAt = new Date().toISOString()
     doc.people = [
-      { id: 'a', name: 'Ильяс', salary: 750_000, payday: 10, updatedAt: new Date().toISOString() },
-      { id: 'b', name: 'Аруна', salary: 450_000, payday: 20, updatedAt: new Date().toISOString() },
+      { id: 'a', name: 'Ильяс', salary: 750_000, payday: 10, onboardedAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'b', name: 'Аруна', salary: 450_000, payday: 20, onboardedAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
     ]
     doc.categories = [
       { key: 'd1', name: 'Жильё', note: 'аренда и коммуналка', amount: 250_000, updatedAt: new Date().toISOString() },
@@ -201,9 +198,12 @@ function startDemoMode() {
         seed: 600_000,
         have: 600_000,
         monthly: 100_000,
-        hue: 'teal',
+        hue: 'plum',
         planPct: 0.3,
         movements: [],
+        // Главная мечта с шаблоном без фото (B2C-19 п. 4): в демо сервера нет — картинок нет.
+        template: 'japan',
+        main: true,
         updatedAt: new Date().toISOString(),
       },
     ]
@@ -211,6 +211,31 @@ function startDemoMode() {
       { id: 'acc-kaspi', name: 'Kaspi Gold', note: '', kind: 'card', amount: 480_000, updatedAt: new Date().toISOString() },
       { id: 'acc-dep', name: 'Депозит Kaspi', note: '', kind: 'deposit', amount: 1_200_000, updatedAt: new Date().toISOString() },
     ]
+    // Итоги выписок обоих за эту неделю и месяц (B2C-19 п. 4): главный сразу с картиной недели и «Свободно» по факту.
+    seedSpendCategories(doc)
+    const at = new Date().toISOString()
+    const total = (by: 'a' | 'b', kind: SpendTotal['kind'], period: string, categoryId: string, amount: number, ops: number): SpendTotal => ({ id: `${by}:${kind}:${period}:${categoryId}`, by, kind, period, categoryId, amount, ops, updatedAt: at })
+    const week = weekKey()
+    const prevWeek = weekKey(new Date(Date.now() - 7 * 86_400_000))
+    const month = monthKey()
+    doc.spendTotals = [
+      total('a', 'week', prevWeek, 'sc_food', 71_000, 11), total('b', 'week', prevWeek, 'sc_food', 24_000, 5), total('a', 'week', prevWeek, 'sc_cafe', 19_000, 4),
+      total('a', 'week', prevWeek, 'sc_transport', 12_000, 9), total('a', 'week', prevWeek, '_unknown', 6_000, 1),
+      total('a', 'week', week, 'sc_food', 62_000, 9), total('b', 'week', week, 'sc_food', 20_000, 4), total('a', 'week', week, 'sc_cafe', 28_000, 6),
+      total('a', 'week', week, 'sc_transport', 9_000, 7), total('b', 'week', week, 'sc_shopping', 34_000, 2), total('a', 'week', week, '_unknown', 10_000, 1),
+      total('a', 'month', month, 'sc_food', 184_000, 26), total('b', 'month', month, 'sc_food', 40_000, 8), total('a', 'month', month, 'sc_cafe', 61_000, 14),
+      total('a', 'month', month, 'sc_transport', 23_000, 18), total('b', 'month', month, 'sc_shopping', 34_000, 2), total('a', 'month', month, 'sc_credit', 95_000, 1),
+      total('a', 'month', month, '_unknown', 40_000, 3),
+    ]
+  })
+  // Записи загрузок демо — когда стор операций уже переключился на демо-семью (watch по владельцу).
+  void nextTick().then(() => {
+    const today = new Date().toISOString().slice(0, 10)
+    const from = `${monthKey()}-01`
+    useOperationsStore().seedDemoUploads([
+      { id: 'demo-upload-a', slot: 'a', bank: 'kaspi', period_from: from, period_to: today, ops_count: 41, created_at: new Date().toISOString() },
+      { id: 'demo-upload-b', slot: 'b', bank: 'kaspi', period_from: from, period_to: today, ops_count: 12, created_at: new Date().toISOString() },
+    ])
   })
   void router.push('/')
 }

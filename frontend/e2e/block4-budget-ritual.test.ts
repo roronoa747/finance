@@ -15,7 +15,7 @@ import {
 import { monthKey } from '../src/lib/dates'
 import { money } from '../src/lib/money'
 import Budget from '../src/views/Budget.vue'
-import Ritual from '../src/views/Ritual.vue'
+import WeekSalary from '../src/views/WeekSalary.vue'
 
 describe('e2e / block-4 — Сквозной сценарий Бюджета (План, Календарь, Список) и Ритуала высвобождения', () => {
   const storageMap = new Map<string, string>()
@@ -106,9 +106,9 @@ describe('e2e / block-4 — Сквозной сценарий Бюджета (П
       { key: 'd5', name: 'Свободно', note: '', amount: 630_000, updatedAt: '' },
     ]
 
-    // 2. Переход на экран «Бюджет» (/budget)
+    // 2. Переход на экран «Бюджет» (/money/budget; старый /budget — редирект, B2C-13)
     await router.push('/budget')
-    expect(router.currentRoute.value.path).toBe('/budget')
+    expect(router.currentRoute.value.path).toBe('/money/budget')
 
     // 3. Проверка режима «План»
     let amounts = budgetAmounts(financeStore.householdDoc)
@@ -164,12 +164,12 @@ describe('e2e / block-4 — Сквозной сценарий Бюджета (П
     expect(htmlList).toContain('Зарплата · Ильяс')
     expect(htmlList).toContain('Зарплата · Динара')
 
-    // 8. Сценарий Ритуала (/ritual):
+    // 8. Сценарий раскладки (бывший /ritual → /week/salary, B2C-13):
     // А) Нет запланированного снижения
-    await router.push('/ritual')
-    expect(router.currentRoute.value.path).toBe('/ritual')
+    await router.push('/week/salary')
+    expect(router.currentRoute.value.path).toBe('/week/salary')
 
-    const appRitualEmpty = createSSRApp(Ritual)
+    const appRitualEmpty = createSSRApp(WeekSalary)
     appRitualEmpty.use(router)
     const htmlRitualEmpty = await renderToString(appRitualEmpty)
     expect(htmlRitualEmpty).toContain('Сейчас нет запланированных изменений, которые высвобождают деньги')
@@ -185,7 +185,7 @@ describe('e2e / block-4 — Сквозной сценарий Бюджета (П
     expect(freed?.delta).toBe(-50_000)
 
     // Рендер активного экрана ритуала
-    const appRitualActive = createSSRApp(Ritual)
+    const appRitualActive = createSSRApp(WeekSalary)
     appRitualActive.use(router)
     const htmlRitualActive = await renderToString(appRitualActive)
     expect(htmlRitualActive).toContain('Куда направить 50 000 ₸')

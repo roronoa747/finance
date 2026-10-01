@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { PhArrowDown, PhArrowUp } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
+import { useAuthStore } from '@/stores/auth'
 import { money, plain, pct, parseMoney } from '@/lib/money'
 import {
   WEEKDAYS,
@@ -82,6 +83,7 @@ const selected = ref(today().day)
 
 const router = useRouter()
 const financeStore = useFinanceStore()
+const authStore = useAuthStore()
 
 const key = computed(() => monthKey())
 const people = computed(() => financeStore.people)
@@ -130,8 +132,9 @@ const events = computed<EventItem[]>(() => {
       color: `var(--p${p.id})`,
       income: true,
       salary: p.id,
+      // Оклад, день и имя правит участник; viewer их только видит (возврат приёмки п. 3).
       open: () => {
-        salaryFor.value = p.id
+        if (!authStore.isViewer) salaryFor.value = p.id
       },
     })),
     // Платежи месяца — одно правило finance.ts; сумма отмеченного — из отметки.
@@ -150,7 +153,7 @@ const events = computed<EventItem[]>(() => {
       income: false,
       pay: d.kind,
       open: () => {
-        void router.push(`/capital?${d.kind}=${d.targetId}`)
+        void router.push(`/money/capital?${d.kind}=${d.targetId}`)
       },
     })),
     {
@@ -161,8 +164,9 @@ const events = computed<EventItem[]>(() => {
       value: amounts.value.d3,
       color: 'var(--d3)',
       income: false,
+      // Viewer форму мечты не открывает (маршрут memberOnly) — ему мечты на главном (критик Блока 3).
       open: () => {
-        void router.push('/goals')
+        void router.push(authStore.isViewer ? '/' : '/goals/new')
       },
     },
   ]
@@ -179,7 +183,7 @@ const events = computed<EventItem[]>(() => {
       color: plan.color,
       income: false,
       open: () => {
-        void router.push('/plan')
+        void router.push('/money/plan')
       },
     })
   }
@@ -225,12 +229,14 @@ function handleD4Commit(text: string) {
           "
         />
         <div class="mt-3.5 flex flex-col gap-3">
-          <button
+          <!-- Viewer: строка без действия — окно оклада и имени не открывается (возврат приёмки п. 3) -->
+          <component
+            :is="authStore.isViewer ? 'div' : 'button'"
             v-for="p in people"
             :key="p.id"
-            type="button"
-            class="flex w-full items-center gap-2.5 rounded-lg py-1 text-left hover:bg-surface-2 transition-colors cursor-pointer"
-            @click="salaryFor = p.id"
+            v-bind="authStore.isViewer ? {} : { type: 'button' }"
+            :class="['flex w-full items-center gap-2.5 rounded-lg py-1 text-left', !authStore.isViewer && 'hover:bg-surface-2 transition-colors cursor-pointer']"
+            @click="!authStore.isViewer && (salaryFor = p.id)"
           >
             <i class="size-2.5 shrink-0 rounded-[3px]" :style="{ background: `var(--p${p.id})` }" />
             <span class="min-w-0 flex-1">
@@ -249,7 +255,7 @@ function handleD4Commit(text: string) {
                 {{ pct(salaryAt(p, key), income) }}%
               </span>
             </span>
-          </button>
+          </component>
         </div>
         <p v-if="people.length > 1" class="mt-3 border-t border-line pt-3 text-[12.5px] text-ink-3">
           Зарплаты приходят в разные дни, поэтому месяц закрывается 1-го числа, а не в день получки.
@@ -279,7 +285,7 @@ function handleD4Commit(text: string) {
               </div>
             </div>
             <div class="text-right">
-              <div v-if="c.key !== 'd4'" class="text-[15px] font-semibold num text-ink">
+              <div v-if="c.key !== 'd4' || authStore.isViewer" class="text-[15px] font-semibold num text-ink">
                 {{ money(c.amount) }}
               </div>
               <div v-else>
@@ -422,7 +428,7 @@ function handleD4Commit(text: string) {
             :person-id="e.salary"
             :period="key"
             :note="e.note"
-            clickable
+            :clickable="!authStore.isViewer"
             @open="e.open"
           />
           <Row
@@ -529,7 +535,7 @@ function handleD4Commit(text: string) {
             :person-id="e.salary"
             :period="key"
             :note="`${dayLabel(e.day, key)} · ${e.note}`"
-            clickable
+            :clickable="!authStore.isViewer"
             @open="e.open"
           />
           <Row
@@ -558,7 +564,7 @@ function handleD4Commit(text: string) {
       </Card>
     </template>
 
-    <SalaryDialog :id="salaryFor" @close="salaryFor = null" />
+    <SalaryDialog v-if="!authStore.isViewer" :id="salaryFor" @close="salaryFor = null" />
 
     <div class="pb-2 text-center text-[12px] text-ink-3">{{ monthTitle(key) }}</div>
   </div>

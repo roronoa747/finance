@@ -77,7 +77,7 @@ func member(w http.ResponseWriter, r *http.Request) (string, string, bool) {
 		return "", "", false
 	}
 	if role, _ := auth.GetRole(r.Context()); role != "member" {
-		errorJSON(w, http.StatusForbidden, "forbidden: only members can use statements")
+		errorJSON(w, http.StatusForbidden, "forbidden: only members can change data")
 		return "", "", false
 	}
 	return householdID, userID, true
@@ -91,6 +91,13 @@ func caller(w http.ResponseWriter, r *http.Request) (string, string, bool) {
 		return "", "", false
 	}
 	return householdID, userID, true
+}
+
+// canonicalUUID accepts only the 36-character form: uuid.Validate also takes
+// urn:uuid:…, {…} and hex without hyphens, and Postgres fails on urn:uuid:
+// (a 500 instead of a 400/404) — one photo would also answer at several URLs.
+func canonicalUUID(id string) bool {
+	return len(id) == 36 && uuid.Validate(id) == nil
 }
 
 func validDate(s string) bool {
@@ -167,7 +174,7 @@ func validateOperation(op models.Operation) string {
 		return "purchase without merchant"
 	case op.CategoryID != nil && utf8.RuneCountInString(*op.CategoryID) > maxCategoryRunes:
 		return "category_id too long"
-	case op.UploadID != nil && uuid.Validate(*op.UploadID) != nil:
+	case op.UploadID != nil && !canonicalUUID(*op.UploadID):
 		return "invalid upload_id"
 	}
 	for _, s := range []string{op.Merchant, text(op.Counterparty), text(op.Note)} {

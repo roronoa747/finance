@@ -3,6 +3,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from './auth'
 import { apiClient } from '@/api/client'
 import type { AuthResponse, MeResponse } from '@/types/api'
+import { cachedPhotos, photoUrl } from '@/lib/photos/store'
 
 describe('stores/auth.ts — Pinia хранилище авторизации и домохозяйства', () => {
   const storageMap = new Map<string, string>()
@@ -79,6 +80,25 @@ describe('stores/auth.ts — Pinia хранилище авторизации и 
     expect(auth.token).toBeNull()
     expect(auth.user).toBeNull()
     expect(mockLocalStorage.getItem('ff_auth_token')).toBeNull()
+  })
+
+  // Ревью Блока 3 Н-13: object URL фото семьи не переживают выход (B2C-17) — e2e зовёт releasePhotos руками.
+  it('logout освобождает кэш фото: cachedPhotos() === 0', async () => {
+    const auth = useAuthStore()
+    auth.setAuthData({
+      token: 'tok-1',
+      user: { id: 'u1', email: 'a@b.c', created_at: '' },
+      household: { id: 'h1', name: 'H', created_by: 'u1', created_at: '' },
+      member: { household_id: 'h1', user_id: 'u1', slot: 'a', display_name: 'Ильяс', role: 'member', joined_at: '' },
+    })
+    const client = { getPhoto: vi.fn(async () => new Blob(['img'], { type: 'image/jpeg' })) } as unknown as typeof apiClient
+    await photoUrl('ph-1', client)
+    await photoUrl('ph-2', client)
+    expect(cachedPhotos()).toBe(2)
+
+    expect(auth.logout()).toBe(true)
+
+    expect(cachedPhotos()).toBe(0)
   })
 
   it('fetchMe обновляет данные текущего пользователя', async () => {

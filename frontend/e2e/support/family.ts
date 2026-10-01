@@ -42,6 +42,48 @@ export function backend(server: FakeServer): ApiClient {
   } as unknown as ApiClient
 }
 
+/**
+ * Фейк личных документов и фото (B2C-18): личный документ — свой у каждого пользователя
+ * (`sync.go` private), фото — семьи, скрытое отдаёт только автору, чужое скрытое — 404
+ * (`handlers/photos.go`). Один на семью; телефон получает свои методы через `privateFor`.
+ */
+export type FakePrivate = {
+  docs: Map<string, { rev: number; data: Record<string, unknown> }>
+  photos: Map<string, { user: string; hidden: boolean; bytes: ArrayBuffer; type: string }>
+}
+
+export function fakePrivate(): FakePrivate {
+  return { docs: new Map(), photos: new Map() }
+}
+
+export function privateFor(pv: FakePrivate, user: string) {
+  const own = () => pv.docs.get(user) ?? { rev: 0, data: {} }
+  const snapshot = () => ({ household_id: 'h-family', user_id: user, rev: own().rev, data: JSON.parse(JSON.stringify(own().data)), updated_at: new Date().toISOString() })
+  return {
+    getPrivateDoc: vi.fn(async () => snapshot()),
+    pushPrivateDoc: vi.fn(async (rev: number, data: Record<string, unknown>) => {
+      if (rev !== own().rev) throw new ApiError('conflict', 409, { error: 'conflict', server_doc: snapshot() })
+      pv.docs.set(user, { rev: rev + 1, data: JSON.parse(JSON.stringify(data)) })
+      return snapshot()
+    }),
+    uploadPhoto: vi.fn(async (blob: Blob, hidden = false) => {
+      const id = `00000000-0000-4000-8000-${String(pv.photos.size + 1).padStart(12, '0')}`
+      pv.photos.set(id, { user, hidden, bytes: await blob.arrayBuffer(), type: blob.type })
+      return { id }
+    }),
+    getPhoto: vi.fn(async (id: string) => {
+      const p = pv.photos.get(id)
+      if (!p || (p.hidden && p.user !== user)) return null
+      return new Blob([p.bytes], { type: p.type })
+    }),
+    deletePhoto: vi.fn(async (id: string) => {
+      const p = pv.photos.get(id)
+      if (!p || (p.hidden && p.user !== user)) throw new ApiError('not found', 404)
+      pv.photos.delete(id)
+    }),
+  }
+}
+
 /** Телефон: свой стор, свой клиент; документ уже скачан с сервера. */
 export async function phone(server: FakeServer) {
   const pinia = createPinia()

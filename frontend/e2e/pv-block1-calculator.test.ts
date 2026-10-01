@@ -8,13 +8,11 @@ import { useFinanceStore, defaultSyncDoc } from '../src/stores/finance'
 import { at, phone, screen, setOnline, type FakeServer } from './support/family'
 import type { SyncDoc } from '../src/types/finance'
 import { liveGoals, liveObligations, openCredits } from '../src/lib/finance'
-import { setupPlan, type SetupForm } from '../src/lib/setup'
 import { HUES } from '../src/lib/palette'
 import { isDark } from '../src/lib/theme'
 import { money, plain } from '../src/lib/money'
-import Overview from '../src/views/Overview.vue'
 import Budget from '../src/views/Budget.vue'
-import Ritual from '../src/views/Ritual.vue'
+import WeekSalary from '../src/views/WeekSalary.vue'
 import Capital from '../src/views/Capital.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
 import Deposit from '../src/views/Deposit.vue'
@@ -155,11 +153,11 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
     const A = await phone(server)
     const B = await phone(server)
 
-    expect(await screen(A.pinia, Overview, '/')).toContain(money(738_320))
     const budgetBefore = await screen(A.pinia, Budget, '/budget')
+    expect(budgetBefore).toContain(money(738_320))
     expect(budgetBefore).toContain(money(141_680))
     // Досрочка — в самый дорогой открытый (40%), а не в первую по документу рассрочку.
-    expect(await screen(A.pinia, Ritual, '/ritual')).toContain(`Сейчас: 13 платежей, переплата ${money(70_967)}`)
+    expect(await screen(A.pinia, WeekSalary, '/ritual')).toContain(`Сейчас: 13 платежей, переплата ${money(70_967)}`)
 
     at('2026-09-25T05:00:00Z')
     A.store.applyPrepayment('cc', 'a', { amount: 300_000, mode: 'term', accountId: 'card' })
@@ -168,14 +166,12 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
     await B.store.pullHousehold(B.client)
 
     for (const P of [A, B]) {
-      const overview = await screen(P.pinia, Overview, '/')
-      expect(overview).toContain(money(768_320))
-      expect(overview).not.toContain(money(738_320))
       const budget = await screen(P.pinia, Budget, '/budget')
+      expect(budget).not.toContain(money(738_320))
       expect(budget).toContain(money(111_680))
       expect(budget).not.toContain(money(141_680))
       expect(budget).toContain(money(768_320))
-      const ritual = await screen(P.pinia, Ritual, '/ritual')
+      const ritual = await screen(P.pinia, WeekSalary, '/ritual')
       expect(ritual).toContain(`Сейчас: 12 платежей, переплата ${money(100_160)}`)
       const capital = await screen(P.pinia, Capital, '/capital', { initialAdvice: 'strategy' })
       // Строка закрытого остаётся, в калькулятор он не входит: подушка 332 000, выигрыш 48 987.
@@ -212,7 +208,7 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
     const B = await phone(server)
     const kid = (p: typeof A) => p.store.goals.find((g) => g.id === 'kid')!
 
-    expect(await screen(A.pinia, GoalDetail, '/goals/kid')).toContain(`около ${money(2_633_568)}`) // 34 мес.
+    expect(await screen(A.pinia, GoalDetail, '/goals/kid')).toContain(`около ${money(2_612_338)}`) // 34 взноса → к месяцу закрытия 33 мес. (B2C-18)
 
     // A снимает 500 000 из 300 000, B в это время офлайн пополняет на 100 000.
     at('2026-09-25T05:00:00Z')
@@ -232,56 +228,40 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
       expect(kid(P).have).toBe(0)
       expect(kid(P).movements.map((m) => m.amount).sort((x, y) => x - y)).toEqual([-500_000, 100_000])
       const detail = await screen(P.pinia, GoalDetail, '/goals/kid')
-      expect(detail).toContain(`0 из ${plain(2_000_000)} ₸`)
+      expect(detail).toContain(`0 из ${money(2_000_000)}`)
       expect(detail).toContain('Цель дорожает вместе с рынком')
       expect(detail).toContain('10,2%')
-      expect(detail).toContain(`около ${money(2_764_619)}`) // 2 000 000 / 50 000 = 40 мес.
+      expect(detail).toContain(`около ${money(2_742_333)}`) // 2 000 000 / 50 000 = 40 взносов → 39 мес.
       expect(detail).not.toContain('Дисциплина накоплений')
     }
     expect(server.data.goals.find((g) => g.id === 'kid')?.have).toBe(0)
-    expect(await screen(A.pinia, GoalDetail, '/goals/flat')).toContain(`около ${money(7_964_911)}`) // 35 мес.
+    expect(await screen(A.pinia, GoalDetail, '/goals/flat')).toContain(`около ${money(7_900_704)}`) // 35 взносов → 34 мес.
   })
 
-  it('PV-05: вклад — инфляция 10,2% и вторая плашка React', async () => {
+  // Критик Б3 (правило 12): плашки про инфляцию и «ИИ-советника» свёрнуты в одну строку с подсказкой.
+  it('PV-05: вклад — инфляция 10,2%, реальная доходность одной строкой', async () => {
     const A = await phone(server)
     const html = await screen(A.pinia, Deposit, '/capital/dep')
     // 14% с ежемесячной капитализацией = 14,9% эффективных; (1,149 / 1,102) − 1 = 4,3% (при 8% было бы 6,4%).
-    expect(html).toContain('При инфляции 10,2% эффективная ставка')
-    expect(html).toContain('14,9%')
-    expect(html).toContain('4,3%')
-    expect(html).toContain('это повод не путать номинал с доходом.')
-    expect(html).toContain('Проценты считает приложение, а не банк')
-    expect(html).toContain('считать деньги модели не доверяем.')
+    expect(html).toContain('Реально ≈ 4,3% с учётом инфляции')
+    expect(html).not.toContain('ИИ-советник')
+    expect(html).not.toContain('Проценты считает приложение, а не банк')
   })
 
-  it('PV-06: мастер — «Пропустить» и «Пока без цели» не пишут введённое, «Дальше» после возврата пишет', () => {
-    const base: SetupForm = {
-      tenure: 'rent', housing: '220 000', housingDay: '5', utilities: '',
-      hasCredit: 'yes', creditPrincipal: '1 000 000', creditPayment: '10 000', creditRateMode: 'term', creditRate: '', creditTerm: '12', creditDay: '12',
-      goalName: 'Машина', goalNeed: '3 000 000', goalHave: '', goalMonths: '', goalHue: 'teal',
-    }
-    // Семья C стенда: жильё «Пропустить», кредит с несходящимся графиком «Дальше», цель «Пока без цели».
-    const c = setupPlan(base, { housing: true, credit: false, goal: true })
-    expect(c.housing).toBeUndefined()
-    expect(c.goal).toBeUndefined()
-    expect(c.credit?.credit.annualRate).toBe(0) // запись не блокируется: рассрочка без процентов
-    // Семья D: «Пропустить» → «Назад» → «Дальше» (флаг снят), кредит 18% «Пропустить», цель «Дальше».
-    const d = setupPlan({ ...base, creditPayment: '91 680' }, { housing: false, credit: true, goal: false })
-    expect(d.housing?.obligations).toEqual([expect.objectContaining({ name: 'Аренда', amount: 220_000, category: 'd1' })])
-    expect(d.housing?.d1).toBe(220_000)
-    expect(d.credit).toBeUndefined()
-    expect(d.goal?.goal.name).toBe('Машина')
-  })
+  // PV-06 (мастер: «Пропустить» не пишет введённое) снят вместе с мастером — первый запуск из выписки
+  // пишет только подтверждённые ответы (B2C-19, `Start.test.ts`, e2e часть 4).
 
-  it('PV-08: тёмная тема — кольца Обзора тёмными оттенками целей', async () => {
+  it('PV-08: тёмная тема — «Ритм цели» тёмным оттенком цели (кольца списка ушли с плитками «Мечт», B2C-18)', async () => {
     const A = await phone(server)
+    setActivePinia(A.pinia)
+    A.store.contribute('flat', 10_000, 'a')
+    A.store.contribute('kid', 10_000, 'b')
     isDark.value = true
-    const dark = await screen(A.pinia, Overview, '/')
-    expect(dark).toContain(`stroke="${HUES.blue.dark}"`)
-    expect(dark).toContain(`stroke="${HUES.plum.dark}"`)
-    expect(dark).not.toContain(`stroke="${HUES.blue.light}"`)
+    const dark = await screen(A.pinia, GoalDetail, '/goals/flat')
+    expect(dark).toContain(`background:${HUES.blue.dark}`)
+    expect(dark).not.toContain(HUES.blue.light)
+    expect(await screen(A.pinia, GoalDetail, '/goals/kid')).toContain(`background:${HUES.plum.dark}`)
     isDark.value = false
-    const light = await screen(A.pinia, Overview, '/')
-    expect(light).toContain(`stroke="${HUES.blue.light}"`)
+    expect(await screen(A.pinia, GoalDetail, '/goals/flat')).toContain(`background:${HUES.blue.light}`)
   })
 })

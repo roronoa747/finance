@@ -77,7 +77,7 @@ onUnmounted(() => {
       v-if="at"
       role="note"
       :style="{ left: `${at.left}px`, top: `${at.top}px`, width: `${at.width}px` }"
-      class="fixed z-50 rounded-xl border border-line bg-surface p-3 text-[12px] font-normal leading-relaxed text-ink-2 shadow-lift"
+      class="fixed z-50 rounded-inner border border-line bg-surface p-3 text-[12px] font-normal leading-relaxed text-ink-2 shadow-lift"
     >
       <slot />
     </span>

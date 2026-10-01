@@ -2,7 +2,7 @@
 import { ref, computed, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { money, plain, parseMoney, ratePct } from '@/lib/money'
+import { money, plain, parseMoney, rateField, ratePct } from '@/lib/money'
 import { dayLabel, monthKey } from '@/lib/dates'
 import { creditOutlook, creditSchedule, creditTotals, liveCredits, nextCreditDue, planSchedule, type Due } from '@/lib/finance'
 import type { Credit } from '@/types/finance'
@@ -53,8 +53,6 @@ const activeSchedule = computed(() => {
   const withPlan = plan ? planSchedule(plan, financeStore.planState(), monthKey()) : null
   return withPlan?.creditId === c.id ? withPlan.rows : creditSchedule(c, financeStore.payments)
 })
-/** Ставка в поле правки — как в React: проценты с одним знаком. */
-const rateText = (r: number) => (r * 100).toFixed(1).replace('.', ',')
 
 // Поля пишутся по уходу из поля (React `CreditDialog`); остаток — только явным полем:
 // это сверка с банком, она ставит якорь (RP-06).
@@ -79,8 +77,8 @@ function onCreditPayment(text: string) {
 }
 function onCreditRate(text: string) {
   const v = parseFloat(text.replace(',', '.'))
-  // Ноль законен: рассрочка без процентов.
-  if (Number.isFinite(v) && v >= 0) editCredit({ annualRate: v / 100 })
+  // Ноль законен: рассрочка без процентов. Ставку назвали — она больше не «неизвестна» (B2C-19).
+  if (Number.isFinite(v) && v >= 0) editCredit({ annualRate: v / 100, ...(activeCredit.value?.rateUnknown ? { rateUnknown: null } : {}) })
 }
 function onCreditDay(text: string) {
   const v = Math.min(28, Math.max(1, parseMoney(text) || 1))
@@ -129,7 +127,7 @@ watch(
       </div>
 
       <p
-        v-if="activeCreditTotals && activeCreditTotals.count > 0"
+        v-if="activeCreditTotals && activeCreditTotals.count > 0 && !activeCredit.rateUnknown"
         class="-mt-1 mb-3 px-1 text-[12.5px] leading-relaxed text-ink-2 num"
       >
         За всё время: в долг {{ money(activeCreditTotals.body) }}, банку {{ money(activeCreditTotals.interest) }}
@@ -152,7 +150,7 @@ watch(
         </div>
         <div class="flex justify-between">
           <span class="text-ink-2">Ставка (ГЭСВ)</span>
-          <b class="num text-ink">{{ ratePct(activeCredit.annualRate, 1) }}</b>
+          <b class="num text-ink">{{ activeCredit.rateUnknown ? 'уточните' : ratePct(activeCredit.annualRate, 1) }}</b>
         </div>
         <div class="flex justify-between">
           <span class="text-ink-2">День платежа</span>
@@ -170,14 +168,21 @@ watch(
           <NumFieldBlur :initial="plain(activeCredit.payment)" class="mb-3" @commit="onCreditPayment" />
         </Field>
         <Field label="Ставка (ГЭСВ), % годовых">
-          <NumFieldBlur :initial="rateText(activeCredit.annualRate)" kind="rate" class="mb-3" @commit="onCreditRate" />
+          <NumFieldBlur
+            :initial="activeCredit.rateUnknown ? '' : rateField(activeCredit.annualRate)"
+            kind="rate"
+            :placeholder="activeCredit.rateUnknown ? 'уточните в договоре' : ''"
+            class="mb-3"
+            @commit="onCreditRate"
+          />
         </Field>
         <Field label="День платежа">
           <NumFieldBlur :initial="String(activeCredit.day)" kind="int" class="mb-3" @commit="onCreditDay" />
         </Field>
       </template>
 
-      <Button variant="outline" class="mb-3 w-full bg-surface-2" @click="emit('payoff', activeCredit.id)">
+      <!-- Без ставки калькулятор досрочки показал бы «переплата 0 · экономия 0» (B2C-19) -->
+      <Button v-if="!activeCredit.rateUnknown" variant="outline" class="mb-3 w-full bg-surface-2" @click="emit('payoff', activeCredit.id)">
         Посчитать досрочное погашение
       </Button>
 
@@ -185,8 +190,15 @@ watch(
         <Input :default-value="activeCredit.note" class="mb-3" @blur="onCreditNoteBlur" />
       </Field>
 
-      <!-- Закрытый долг (остаток 0) выводов не ждёт: строка «Оплатил» уже говорит «долг закрыт». -->
-      <template v-if="activeCredit.principal > 0 && activeCreditOutlook">
+      <!-- Закрытый долг (остаток 0) выводов не ждёт: строка «Оплатил» уже говорит «долг закрыт».
+           Ставку не знаем (кредит из выписки) — срок и переплата с нулём врут: вместо них одна строка. -->
+      <p
+        v-if="activeCredit.rateUnknown && activeCredit.principal > 0"
+        class="mb-3 rounded-xl border border-warn-line bg-warn-soft px-3.5 py-3 text-[12.5px] text-ink-2"
+      >
+        Ставку уточните — без неё срок и переплату не посчитать.
+      </p>
+      <template v-else-if="activeCredit.principal > 0 && activeCreditOutlook">
         <div
           v-if="activeCreditOutlook.closes"
           class="mb-3 rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-[13px]"

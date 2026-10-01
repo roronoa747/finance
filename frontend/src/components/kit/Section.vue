@@ -1,12 +1,13 @@
 <script setup lang="ts">
+/** Подпись секции (DESIGN.md §4): 13/600, верхний регистр, трекинг 0.02em, `--ink-3`. */
 defineProps<{
   title: string
 }>()
 </script>
 
 <template>
-  <div class="mt-2.5 mb-1 flex items-baseline justify-between px-0.5">
-    <h2 class="font-display text-[13px] font-semibold uppercase tracking-[0.06em] text-ink-3">
+  <div class="mt-3 mb-1 flex items-baseline justify-between px-1">
+    <h2 class="type-section">
       {{ title }}
     </h2>
     <div>

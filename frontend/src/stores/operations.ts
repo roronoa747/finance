@@ -8,9 +8,11 @@ import {
   applyRules,
   pairInternalTransfers,
   periodsOf,
+  ruleMatchOf,
   seedSpendCategories,
   spendTotals,
 } from '@/lib/statements/model'
+import { matchCandidates, matchKey, operationAt, paymentFits, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
 import type { MerchantRule, Operation, ParsedStatement } from '@/lib/statements/types'
 import type { OperationWire, StatementUploadResponse } from '@/types/api'
 import type { PersonId } from '@/types/finance'
@@ -18,8 +20,10 @@ import type { PersonId } from '@/types/finance'
 // Операции выписок (B2C-07): личная копия своих операций, очередь неотправленного, записи
 // загрузок семьи и черновик разбора. Файл выписки разбирается на телефоне и никуда не уходит
 // (Р-4): на сервер идут только записи загрузок и операции без ФИО и номеров (Р-23).
+// Сопоставление с отметками (Р-6, B2C-15): предложения — `matchCandidates`, «да» — запись
+// `payments` с источником «выписка» и правило «это платёж по …», «нет» — на месяц на устройстве.
 
-const { ops: KEY_OPS, cursor: KEY_CURSOR, pending: KEY_PENDING, demoUploads: KEY_DEMO_UPLOADS } = OPERATIONS_STORAGE_KEYS
+const { ops: KEY_OPS, cursor: KEY_CURSOR, pending: KEY_PENDING, demoUploads: KEY_DEMO_UPLOADS, declined: KEY_DECLINED } = OPERATIONS_STORAGE_KEYS
 const KEYS = Object.values(OPERATIONS_STORAGE_KEYS)
 
 /** Операций в одном POST /api/operations/batch (сервер принимает до 2000). */
@@ -106,10 +110,13 @@ export const useOperationsStore = defineStore('operations', () => {
   const cursor = ref<string | null>(fresh ? readStorage<string | null>(KEY_CURSOR, null) : null)
   const pending = ref<PendingJob[]>(fresh ? readStorage<PendingJob[]>(KEY_PENDING, []) : [])
   const demoUploads = ref<StatementUploadResponse[]>(fresh ? readStorage<StatementUploadResponse[]>(KEY_DEMO_UPLOADS, []) : [])
+  const declined = ref<string[]>(fresh ? readStorage<string[]>(KEY_DECLINED, []) : [])
   const serverUploads = ref<StatementUploadResponse[]>([])
   const status = ref<'idle' | 'sending' | 'offline' | 'error'>('idle')
   const lastError = ref<string | null>(null)
   const draft = ref<Draft | null>(null)
+  /** Сколько строк последней отправки отметилось по правилам («Отмечено по выписке: N»). */
+  const lastAutoMarked = ref(0)
   let flushing: Promise<void> | null = null
 
   const demo = computed(() => auth.isDemo || finance.isDemo)
@@ -118,11 +125,81 @@ export const useOperationsStore = defineStore('operations', () => {
   const all = computed(() => Object.values(ops.value))
   const pendingCount = computed(() => pending.value.reduce((n, j) => n + j.ops.length, 0))
 
+  /* ---------- сопоставление с отметками (B2C-15) ---------- */
+  const matchState = () => ({ obligations: finance.obligations, credits: finance.credits, people: finance.people, payments: finance.payments })
+  /** Предложения по своим операциям этого и прошлого месяца — только те, что ждут ответа. */
+  const pendingMatches = computed<MatchCandidate[]>(() =>
+    auth.isViewer
+      ? []
+      : matchCandidates(recentOperations(all.value), matchState(), finance.merchantRules, me()).filter(
+          (c) => c.confidence !== 'rule' && !declined.value.includes(matchKey(c)),
+        ),
+  )
+  /** Операции со снятой отметкой из выписки (у себя или у партнёра): правило платежа им раздел не ставит. */
+  const released = computed(() => releasedOps(finance.payments))
+  /**
+   * Правила семьи к операциям: снятым отметкам — без правила платежа, плановый раздел — только
+   * «таким» строкам правила платежа (знак и сумма в допуске, `paymentFits`).
+   */
+  const reapply = (list: Operation[]) => applyRules(list, finance.merchantRules, undefined, released.value, paymentFits(matchState()))
+  /** Строки черновика, которые отметятся сами при отправке — по правилам семьи. */
+  const draftAutoMatches = computed(() => matchCandidates(draftOps.value, matchState(), finance.merchantRules, me()).filter((c) => c.confidence === 'rule'))
+
+  /**
+   * Запись отметки по строке выписки: сумма операции, «не списывать» — выписка уже факт (Р-6);
+   * момент — день операции (`operationAt`): платёж до сверки остатка его второй раз не уменьшает.
+   */
+  function markByOperation(c: MatchCandidate, op: Operation) {
+    const opts = { period: c.period, amount: Math.abs(op.amount), accountId: null, source: 'statement' as const, opId: op.id, at: operationAt(op.date) }
+    return c.kind === 'salary' ? finance.markSalary(c.targetId as PersonId, opts) : finance.markPaid(c.kind, c.targetId, me(), opts)
+  }
+
+  /**
+   * «Да, отметить»: запись + правило «это платёж по …» по продавцу или получателю (раздел — плановый).
+   * Остальные строки того же продавца этого и прошлого месяца по новому правилу стали «rule» — из
+   * вопросов они ушли, поэтому отмечаются сразу (те, что прошли проверку суммы правила); сколько —
+   * прибавляется к «Отмечено по выписке». Правило пишется до первого ожидания в `recategorize`, так
+   * что отметка не ждёт сети.
+   */
+  async function acceptMatch(c: MatchCandidate, client: ApiClient = apiClient) {
+    const op = ops.value[c.opId]
+    if (!op) return
+    markByOperation(c, op)
+    const match = ruleMatchOf(op)
+    const saving = recategorize(match, { payment: { kind: c.kind, targetId: c.targetId, categoryId: c.categoryId } }, client)
+    const same = recentOperations(all.value).filter((o) => {
+      const m = ruleMatchOf(o)
+      return m.merchant === match.merchant && m.counterparty === match.counterparty
+    })
+    const n = autoMark(same)
+    if (n) lastAutoMarked.value += n
+    await saving
+  }
+
+  /** «Нет, это другое»: помнится на этот месяц на устройстве, правилом не становится. */
+  function declineMatch(c: MatchCandidate) {
+    const k = matchKey(c)
+    if (!declined.value.includes(k)) declined.value = [...declined.value, k]
+    save()
+  }
+
+  /** Автоотметка по правилам среди только что отправленных строк; сколько отметилось. */
+  function autoMark(list: Operation[]): number {
+    let n = 0
+    for (const c of matchCandidates(list, matchState(), finance.merchantRules, me())) {
+      if (c.confidence !== 'rule') continue
+      const op = list.find((o) => o.id === c.opId)
+      if (op && markByOperation(c, op)) n += 1
+    }
+    return n
+  }
+
   function save() {
     writeStorage(KEY_OPS, { owner: owner.value, ops: ops.value })
     writeStorage(KEY_CURSOR, cursor.value)
     writeStorage(KEY_PENDING, pending.value)
     writeStorage(KEY_DEMO_UPLOADS, demoUploads.value)
+    writeStorage(KEY_DECLINED, declined.value)
   }
 
   function clear(key: string | null = null) {
@@ -131,8 +208,10 @@ export const useOperationsStore = defineStore('operations', () => {
     cursor.value = null
     pending.value = []
     demoUploads.value = []
+    declined.value = []
     serverUploads.value = []
     draft.value = null
+    lastAutoMarked.value = 0
     status.value = 'idle'
     lastError.value = null
     try {
@@ -156,7 +235,7 @@ export const useOperationsStore = defineStore('operations', () => {
     for (const f of draft.value.files) for (const o of f.parsed.operations) if (!byId.has(o.id)) byId.set(o.id, o)
     const raw = [...byId.values()]
     const ids = new Set(byId.keys())
-    const withRules = applyRules(raw, finance.merchantRules)
+    const withRules = reapply(raw)
     const others = all.value.filter((o) => !ids.has(o.id))
     return pairInternalTransfers([...withRules, ...others]).slice(0, withRules.length)
   })
@@ -223,6 +302,8 @@ export const useOperationsStore = defineStore('operations', () => {
     const changed = paired.slice(fresh.length).filter((o) => o.internal !== ops.value[o.id]?.internal)
     remember([...fresh, ...changed])
     writeTotals(periodsOf([...fresh, ...changed]))
+    // Правила «это платёж по …» отмечают платежи сами (Р-6); отмеченный месяц второй записи не получает.
+    lastAutoMarked.value = autoMark(fresh)
 
     if (demo.value) {
       for (const f of d.files) {
@@ -253,8 +334,53 @@ export const useOperationsStore = defineStore('operations', () => {
   /** Смена раздела задним числом: правило + пересчёт своих операций и итогов их периодов. */
   async function recategorize(match: MerchantRule['match'], to: MerchantRule['to'], client: ApiClient = apiClient) {
     answer(match, to)
-    const next = applyRules(all.value, finance.merchantRules)
+    const next = reapply(all.value)
     const changed = next.filter((o, i) => o !== all.value[i])
+    if (!changed.length) return
+    remember(changed)
+    writeTotals(periodsOf(changed))
+    if (!demo.value) pending.value.push({ key: newKey(), ops: changed })
+    save()
+    await flush(client)
+  }
+
+  /**
+   * Снять правило (B2C-21): свои операции пересчитываются без него; после правила «между своими»
+   * признак `internal` берётся заново от пар переводов (`categorize` без правила его не трогает).
+   */
+  async function forgetRule(rule: MerchantRule, client: ApiClient = apiClient) {
+    finance.removeMerchantRule(rule.id)
+    const hit = new Set(
+      all.value
+        .filter((o) => {
+          const m = ruleMatchOf(o)
+          return m.merchant === rule.match.merchant && m.counterparty === rule.match.counterparty
+        })
+        .map((o) => o.id),
+    )
+    if (!hit.size) return
+    const base = 'internal' in rule.to ? all.value.map((o) => (hit.has(o.id) ? { ...o, internal: false } : o)) : all.value
+    const next = reapply(pairInternalTransfers(base))
+    const changed = next.filter((o, i) => o.categoryId !== all.value[i].categoryId || o.internal !== all.value[i].internal)
+    if (!changed.length) return
+    remember(changed)
+    writeTotals(periodsOf(changed))
+    if (!demo.value) pending.value.push({ key: newKey(), ops: changed })
+    save()
+    await flush(client)
+  }
+
+  /**
+   * Снятая отметка из выписки — здесь или у партнёра, пришла синком (B2C-15 п. 3): операция
+   * возвращается в траты — раздел без правила платежа, итоги её периодов переписываются, копия на
+   * сервере — тоже; месяц отметили снова — обратно в плановый раздел. `ids` — операции, чей признак
+   * мог измениться.
+   */
+  async function settleReleased(ids: Set<string>, client: ApiClient = apiClient) {
+    const list = all.value.filter((o) => ids.has(o.id))
+    if (!list.length) return
+    const next = reapply(list)
+    const changed = next.filter((o, i) => o !== list[i])
     if (!changed.length) return
     remember(changed)
     writeTotals(periodsOf(changed))
@@ -313,17 +439,32 @@ export const useOperationsStore = defineStore('operations', () => {
       // курсора; пустая страница курсор не двигает (назад он не уезжает).
       let since = cursor.value
       let from = since && new Date(Date.parse(since) - CURSOR_OVERLAP_MS).toISOString()
+      const got: string[] = []
       for (;;) {
         const page = await client.listOperations(from, PULL_LIMIT)
-        for (const w of page.operations) ops.value[w.id] = fromWire(w)
+        for (const w of page.operations) {
+          ops.value[w.id] = fromWire(w)
+          got.push(w.id)
+        }
         if (page.next) since = from = page.next
         if (page.operations.length < PULL_LIMIT) break
       }
       cursor.value = since
       save()
+      // Копия на сервере старше снятия отметки (снял партнёр, пока этот телефон спал; новый вход) —
+      // наблюдатель `released` уже отработал на пустом списке: такие операции снова трата (критик возврата).
+      const stale = new Set(got.filter((id) => released.value.has(id)))
+      if (stale.size) await settleReleased(stale, client)
     } catch (err) {
       lastError.value = err instanceof Error ? err.message : String(err)
     }
+  }
+
+  /** Демо-пример (B2C-19 п. 4): записи загрузок обоих, чтобы главный показывал картину недели. */
+  function seedDemoUploads(list: StatementUploadResponse[]) {
+    if (!demo.value) return
+    demoUploads.value = list
+    save()
   }
 
   async function loadUploads(client: ApiClient = apiClient) {
@@ -334,6 +475,13 @@ export const useOperationsStore = defineStore('operations', () => {
       lastError.value = err instanceof Error ? err.message : String(err)
     }
   }
+
+  // Сразу при старте — и операции, отметку которых сняли до этой правки (или пока телефон спал).
+  watch(
+    () => [...released.value].sort().join(' '),
+    (now, before) => void settleReleased(new Set([...now.split(' '), ...(before ?? '').split(' ')].filter(Boolean))),
+    { immediate: true },
+  )
 
   return {
     ops,
@@ -346,14 +494,22 @@ export const useOperationsStore = defineStore('operations', () => {
     lastError,
     draft,
     draftOps,
+    pendingMatches,
+    draftAutoMatches,
+    lastAutoMarked,
+    acceptMatch,
+    declineMatch,
     setDraft,
     cancelDraft,
     answer,
     send,
     recategorize,
+    forgetRule,
+    settleReleased,
     flush,
     pull,
     loadUploads,
+    seedDemoUploads,
     clear,
   }
 })

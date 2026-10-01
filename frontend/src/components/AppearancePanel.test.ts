@@ -3,19 +3,19 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { renderScreen, screenMixin } from '@/test/screenState'
-import { ACCENTS, HUES } from '@/lib/palette'
+import { HUES } from '@/lib/palette'
 import type { PersonId } from '@/types/finance'
 import AppearancePanel from './AppearancePanel.vue'
 
 const T0 = '2026-09-01T00:00:00.000Z'
 
-function signIn(slot: PersonId = 'a') {
+function signIn(slot: PersonId = 'a', role: 'member' | 'viewer' = 'member') {
   useAuthStore().setAuthData({
     token: 't',
     user: { id: `u-${slot}`, email: 'ilyas@example.com', created_at: T0 },
     household: { id: 'h-1', name: 'Наш бюджет', created_by: 'u-a', created_at: T0 },
     // Имя аккаунта нарочно другое: источник — документ, а не аккаунт.
-    member: { household_id: 'h-1', user_id: `u-${slot}`, slot, display_name: 'ilyas', role: 'member', joined_at: T0 },
+    member: { household_id: 'h-1', user_id: `u-${slot}`, slot, display_name: 'ilyas', role, joined_at: T0 },
   })
 }
 
@@ -35,16 +35,29 @@ describe('PV-22: «Оформление» — имя без отката, «Цв
     useFinanceStore().householdDoc.people = [{ id: 'a', name: 'Ильяс', salary: 700_000, payday: 10, updatedAt: T0 }]
   })
 
-  it('имя — из people[slot], подпись React', async () => {
+  it('имя — из people[slot], подпись — одна строка (правило 12), подписи секций — type-section', async () => {
     const html = await renderScreen(AppearancePanel, '/')
     expect(html).toMatch(/<input[^>]*value="Ильяс"/)
     expect(html).not.toMatch(/value="ilyas"/)
-    expect(html.replace(/\s+/g, ' ')).toContain(
-      'Так вас видит партнёр — на полосе доходов, в покупках и во взносах. По умолчанию подставляется начало адреса почты.',
-    )
+    expect(html).toContain('<p class="mt-1 type-meta">Так вас видит партнёр</p>')
+    expect(html).not.toContain('По умолчанию подставляется')
+    for (const label of ['Ваше имя', 'Тема', 'Цвета разделов']) {
+      expect(html.replace(/\s+/g, ' ')).toContain(`<div class="mb-1.5 type-section"> ${label} </div>`)
+    }
   })
 
-  it('«Цвета разделов»: ряд у всех пяти разделов с именами (заведённое — из документа), выбранный — aria-pressed; примечание дословно', async () => {
+  it('viewer: поля «Ваше имя» нет — имя пишется в общий документ, а его запись сервер не примет', async () => {
+    setActivePinia(createPinia())
+    signIn('c', 'viewer')
+    const html = await renderScreen(AppearancePanel, '/')
+    expect(html).not.toContain('Ваше имя')
+    expect(html).not.toContain('placeholder="Имя"')
+    // Остальное «Оформление» — дело устройства, viewer его видит.
+    expect(html).toContain('Тема')
+    expect(html).toContain('Цвета разделов')
+  })
+
+  it('«Цвета разделов»: ряд у всех пяти разделов с именами (заведённое — из документа), выбранный — aria-pressed; без абзаца про HEX', async () => {
     useFinanceStore().householdDoc.categories = [{ key: 'd1', name: 'Квартира', note: '', amount: 0, updatedAt: T0 }]
     storage.set('ff_category_hues', JSON.stringify({ d1: 'plum' }))
     const html = await renderScreen(AppearancePanel, '/')
@@ -56,11 +69,10 @@ describe('PV-22: «Оформление» — имя без отката, «Цв
     const row = (name: string) => html.slice(html.indexOf(`aria-label="${name}"`)).split('role="group"')[0]
     expect(row('Квартира')).toContain(`aria-label="${HUES.plum.label}" aria-pressed="true"`)
     expect(row('Кредиты')).toContain(`aria-label="${HUES.brick.label}" aria-pressed="true"`)
-    expect(html.replace(/\s+/g, ' ')).toContain(
-      'Каждый цвет задан парой значений — для светлой и тёмной темы. Свободного выбора HEX нет намеренно: так нельзя получить сочетание, которое станет нечитаемым при смене темы.',
-    )
-    // Акцент тоже помечает выбранный.
-    expect(html).toContain(`aria-label="${ACCENTS.emerald.label}" aria-pressed="true"`)
+    // Механика дизайна (пары светлой и тёмной темы, HEX) — не для человека (правило 12).
+    expect(html).not.toContain('HEX')
+    // Акцента пользователя нет — бренд один (B2C-12, DESIGN.md §3).
+    expect(html).not.toContain('Основной цвет')
   })
 
   it('saveName: пустое — прежнее имя в поле, запись не идёт; то же имя — не пишется; новое — setPerson', async () => {

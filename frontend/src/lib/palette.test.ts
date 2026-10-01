@@ -1,14 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import {
-  HUES,
-  HUE_KEYS,
-  ACCENTS,
-  ACCENT_KEYS,
-  resolveDark,
-  hueColor,
-  applyTheme,
-  prefersDark,
-} from './palette'
+import { HUES, HUE_KEYS, resolveDark, hueColor, applyTheme, prefersDark, spendColor, spendSlot, SPEND_SLOTS, personColor } from './palette'
+import { DEFAULT_SPEND_CATEGORIES } from './statements/dictionary'
 
 describe('palette.ts — цветовая система и темы оформления', () => {
   it('все оттенки HUES имеют валидные пары light и dark HEX цветов', () => {
@@ -18,19 +10,6 @@ describe('palette.ts — цветовая система и темы оформ�
       expect(hue.light).toMatch(/^#[0-9A-Fa-f]{6}$/)
       expect(hue.dark).toMatch(/^#[0-9A-Fa-f]{6}$/)
       expect(hue.label).toBeTruthy()
-    }
-  })
-
-  it('все акценты ACCENTS имеют валидные контрастные токены текста и фона', () => {
-    expect(ACCENT_KEYS.length).toBeGreaterThan(0)
-    for (const key of ACCENT_KEYS) {
-      const acc = ACCENTS[key]
-      expect(acc.light).toMatch(/^#[0-9A-Fa-f]{6}$/)
-      expect(acc.dark).toMatch(/^#[0-9A-Fa-f]{6}$/)
-      expect(acc.lightInk).toMatch(/^#[0-9A-Fa-f]{6}$/)
-      expect(acc.darkInk).toMatch(/^#[0-9A-Fa-f]{6}$/)
-      expect(acc.lightSoft).toMatch(/^#[0-9A-Fa-f]{6}$/)
-      expect(acc.darkSoft).toMatch(/^#[0-9A-Fa-f]{6}$/)
     }
   })
 
@@ -50,7 +29,7 @@ describe('palette.ts — цветовая система и темы оформ�
     expect(hueColor('green', true)).toBe(HUES.green.dark)
   })
 
-  it('applyTheme применяет CSS переменные к root элементу', () => {
+  it('applyTheme ставит класс dark и цвета разделов бюджета; бренд не трогает (акцента нет — B2C-12)', () => {
     const mockRoot = {
       classList: {
         toggle: vi.fn(),
@@ -64,7 +43,6 @@ describe('palette.ts — цветовая система и темы оформ�
 
     applyTheme({
       theme: 'dark',
-      accent: 'emerald',
       categories: {
         d1: 'blue',
         d2: 'brick',
@@ -75,7 +53,39 @@ describe('palette.ts — цветовая система и темы оформ�
     })
 
     expect(mockRoot.classList.toggle).toHaveBeenCalledWith('dark', true)
-    expect(mockRoot.style.setProperty).toHaveBeenCalledWith('--brand', ACCENTS.emerald.dark)
     expect(mockRoot.style.setProperty).toHaveBeenCalledWith('--d1', HUES.blue.dark)
+    expect(mockRoot.style.setProperty).not.toHaveBeenCalledWith('--brand', expect.anything())
+    vi.unstubAllGlobals()
+  })
+
+  describe('B2C-12: цвета разделов трат — токены --s1…--s12 (DESIGN.md §4)', () => {
+    const byId = Object.fromEntries(DEFAULT_SPEND_CATEGORIES.map((c) => [c.id, c]))
+
+    it('разделы словаря — по таблице: Продукты s1, Кафе s2, Дом и быт s8, Развлечения s7, Прочее s12', () => {
+      expect(spendColor(byId.sc_food)).toBe('var(--s1)')
+      expect(spendColor(byId.sc_cafe)).toBe('var(--s2)')
+      expect(spendColor(byId.sc_home)).toBe('var(--s8)')
+      expect(spendColor(byId.sc_fun)).toBe('var(--s7)')
+      expect(spendColor(byId.sc_other)).toBe('var(--s12)')
+    })
+
+    it('раздел семьи без номера — по кругу от order; «не разобрано» — --s-unknown; литералов цвета нет', () => {
+      expect(spendColor({ id: 'sc_x', order: 13 })).toBe('var(--s1)')
+      expect(spendColor({ id: 'sc_y', order: 24 })).toBe('var(--s12)')
+      expect(spendColor({ id: 'sc_z', order: 0 })).toBe('var(--s1)')
+      expect(spendColor(null)).toBe('var(--s-unknown)')
+      for (const c of DEFAULT_SPEND_CATEGORIES) {
+        const slot = spendSlot(c)
+        expect(slot).toBeGreaterThanOrEqual(1)
+        expect(slot).toBeLessThanOrEqual(SPEND_SLOTS)
+        expect(spendColor(c)).not.toMatch(/#|rgb/)
+      }
+    })
+  })
+
+  it('personColor: a/b — токены --pa/--pb, третий слот — --ink-3 (токена --pc нет)', () => {
+    expect(personColor('a')).toBe('var(--pa)')
+    expect(personColor('b')).toBe('var(--pb)')
+    expect(personColor('c')).toBe('var(--ink-3)')
   })
 })

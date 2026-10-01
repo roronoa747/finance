@@ -11,7 +11,9 @@ import { groupTotal } from '@/lib/finance'
 import type { Obligation } from '@/types/finance'
 import PaidRow from './PaidRow.vue'
 import Capital from '@/views/Capital.vue'
-import Overview from '@/views/Overview.vue'
+import Dreams from '@/views/Dreams.vue'
+import Money from '@/views/Money.vue'
+import History from '@/views/History.vue'
 import Budget from '@/views/Budget.vue'
 import { screenMixin } from '@/test/screenState'
 
@@ -145,24 +147,25 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     const store = family()
     const ahead = (html: string) => html.slice(html.indexOf('Впереди'))
 
-    const before = await page(Overview, '/')
-    // Кредит 15-го раньше аренды 28-го.
-    expect(ahead(before).indexOf('Кредит')).toBeLessThan(ahead(before).indexOf('Аренда'))
+    const before = await page(Money, '/money')
+    // Кредит 15-го раньше аренды 28-го («Впереди» — на /money/history, B2C-21).
+    const aheadBefore = ahead(await page(History, '/money/history'))
+    expect(aheadBefore.indexOf('Кредит')).toBeLessThan(aheadBefore.indexOf('Аренда'))
     expect(before).toContain(`Списаний до неё`)
     expect(before).toContain(money(220_000))
 
     // Оплачен только ранний платёж (кредит 15-го) — он уходит под аренду 28-го.
     store.markPaid('credit', 'loan', 'a', { accountId: 'card' })
-    const creditPaid = await page(Overview, '/')
+    const creditPaid = await page(History, '/money/history')
     expect(ahead(creditPaid).indexOf('Аренда')).toBeLessThan(ahead(creditPaid).indexOf('Кредит'))
     expect(ahead(creditPaid)).toContain('оплачено · дальше')
 
     store.markPaid('obligation', 'rent', 'a', { accountId: 'card' })
-    const after = await page(Overview, '/')
+    const after = ahead(await page(History, '/money/history'))
     // Оплачено всё — снова по дню.
-    expect(ahead(after).indexOf('Кредит')).toBeLessThan(ahead(after).indexOf('Аренда'))
+    expect(after.indexOf('Кредит')).toBeLessThan(after.indexOf('Аренда'))
     // Всё оплачено: до зарплаты списывать нечего, на счетах — остаток из отметок.
-    expect(after).toContain(`На счетах ${plain(722_000)} ₸`)
+    expect(await page(Money, '/money')).toContain(`На счетах ${plain(722_000)} ₸`)
     expect(after).toContain(money(0))
   })
 
@@ -223,7 +226,7 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     // Отмеченный — тоже со знаком, сумма из отметки.
     store.markPaid('obligation', 'rent', 'a', { amount: 225_000, accountId: 'card' })
     expect(await page(Budget, '/budget', { initialView: 'list' })).toContain(`−${plain(225_000)}`)
-    const overview = await page(Overview, '/')
+    const overview = await page(History, '/money/history')
     expect(overview).toContain(money(58_000))
     expect(overview).not.toContain(`−${plain(58_000)}`)
   })
@@ -343,24 +346,25 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     expect(reconciled).not.toContain('остаток долга')
   })
 
-  it('viewer: на Обзоре нет «Оставить?» и «Оплатил», в Бюджете (список) нет «Оплатил»; участник их видит', async () => {
+  it('viewer: на главном нет «Оставить?», в «Деньгах» нет «Оплатил», в Бюджете (список) нет «Оплатил»; участник их видит', async () => {
     // Ежемесячная подписка без keptAt — участника о ней спросили бы.
     const netflix = sub('netflix', 'Netflix', 4_990)
     for (const role of ['member', 'viewer'] as const) {
       setActivePinia(createPinia())
       family(role, [netflix])
-      const overview = await page(Overview, '/')
+      const dreams = await page(Dreams, '/')
+      const overview = await page(History, '/money/history')
       const budget = await page(Budget, '/budget', { initialView: 'list' })
       // Платежи на месте у обоих — пропадают только кнопки.
       expect(overview).toContain('Впереди')
       expect(overview).toContain('Netflix')
       expect(budget).toContain('Аренда')
       if (role === 'member') {
-        expect(overview).toContain('Оставить «Netflix»?')
+        expect(dreams).toContain('Оставить подписку Netflix?')
         expect(overview).toContain('Оплатил')
         expect(budget).toContain('Оплатил')
       } else {
-        expect(overview).not.toContain('Оставить «')
+        expect(dreams).not.toContain('Оставить подписку')
         expect(overview).not.toContain('Оплатил')
         expect(budget).not.toContain('Оплатил')
       }
@@ -377,7 +381,7 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     // Контроль: у аренды признака нет.
     expect(await row(rent)).not.toMatch(/>оценка</)
 
-    const overview = await page(Overview, '/')
+    const overview = await page(Money, '/money')
     const payday = overview.slice(overview.indexOf('До зарплаты'), overview.indexOf('Впереди'))
     expect(payday).toContain('Коммуналка')
     expect(payday).toMatch(/Коммуналка[\s\S]*?>оценка</)
@@ -395,13 +399,10 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     })
     family('member', [yearly])
     vi.setSystemTime(new Date('2026-09-25T07:00:00Z')) // 25 сентября, Алматы: до продления 10 дней
-    const html = await page(Overview, '/')
-    const start = html.indexOf('Продлится')
-    expect(start).toBeGreaterThan(-1)
-    const card = html.slice(start, html.indexOf('Впереди', start))
-    expect(card).toContain('Продлится 5 октября')
-    expect(card).toContain('Оставить «Иви»?')
-    expect(card).toContain(`${money(12_000)} в год`)
+    // Карточка решения на главном (B2C-14): сумма продления из новой версии.
+    const card = await page(Dreams, '/')
+    expect(card).toContain('Оставить подписку Иви?')
+    expect(card).toContain(`${money(12_000)} · в год · продлится 5 октября`)
     expect(card).not.toContain(money(10_000))
   })
 })

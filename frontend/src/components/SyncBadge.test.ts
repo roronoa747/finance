@@ -72,13 +72,12 @@ describe('PV-21: шторка синка (Б-18)', () => {
     expect(html).not.toContain('Начать бюджет заново')
   })
 
-  it('один в бюджете — «Пригласить второго» с текстом React и «Создать код»', async () => {
+  it('один в бюджете — приглашения в шторке нет: его дом — «С кем» в Настройках (ревью Блока 3, Н-11)', async () => {
     signIn('member')
     useFinanceStore().householdDoc.people = [person('a', 'Ильяс')]
     const html = await sheet()
-    expect(html).toContain('Пригласить второго')
-    expect(html).toContain('Код действует две недели и срабатывает один раз. Его удобно продиктовать вслух.')
-    expect(html).toContain('Создать код')
+    expect(html).not.toContain('Пригласить второго')
+    expect(html).not.toContain('Создать код')
   })
 
   it('«Начать бюджет заново»: подтверждение с текстом React, «Стереть всё» — пустой документ с меткой, шторка закрыта', async () => {
@@ -86,8 +85,9 @@ describe('PV-21: шторка синка (Б-18)', () => {
     const store = useFinanceStore()
     store.householdDoc.people = [person('a', 'Ильяс'), person('b', 'Аруна')]
     const confirm = await sheet({ confirm: true })
+    // Хвост PV (B2C-13): личный документ сброс не трогает — текст обещает только общие счета.
     expect(confirm.replace(/\s+/g, ' ')).toContain(
-      'Сотрутся доходы, цели, покупки, обязательства и счета — у обоих участников и в облаке. Отменить будет нельзя.',
+      'Сотрутся общие счета, доходы, цели, покупки и обязательства — у обоих участников и в облаке. Личные счета останутся. Отменить будет нельзя.',
     )
     expect(confirm).toContain('Стереть всё')
     expect(confirm).toContain('Отмена')

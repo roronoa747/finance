@@ -8,10 +8,12 @@
  */
 
 const NBSP = ' '
+/** Типографский минус (U+2212): у локали и `toFixed` — дефис, в макетах и рядом (`−` + `plain(abs)`) — «−». */
+const MINUS = '−'
 
-/** 1050000 → «1 050 000» */
+/** 1050000 → «1 050 000», −5000 → «−5 000» */
 export function plain(v: number): string {
-  return Math.round(v).toLocaleString('ru-RU').replace(/[\s  ]/g, NBSP)
+  return Math.round(v).toLocaleString('ru-RU').replace(/[\s  ]/g, NBSP).replace('-', MINUS)
 }
 
 /** 1050000 → «1 050 000 ₸» */
@@ -22,14 +24,14 @@ export function money(v: number): string {
 /** Компактно для тесных мест: 1234567 → «1,2 млн ₸» */
 export function moneyShort(v: number): string {
   const a = Math.abs(v)
-  if (a >= 1_000_000) return (v / 1_000_000).toFixed(1).replace('.', ',') + NBSP + 'млн' + NBSP + '₸'
-  if (a >= 100_000) return Math.round(v / 1000) + NBSP + 'тыс.' + NBSP + '₸'
+  if (a >= 1_000_000) return (v / 1_000_000).toFixed(1).replace('.', ',').replace('-', MINUS) + NBSP + 'млн' + NBSP + '₸'
+  if (a >= 100_000) return String(Math.round(v / 1000)).replace('-', MINUS) + NBSP + 'тыс.' + NBSP + '₸'
   return money(v)
 }
 
-/** «1 050 000 ₸», «1050000», «1 050 000» → 1050000 */
+/** «1 050 000 ₸», «1050000», «1 050 000» → 1050000; «−5 000» и «-5 000» → −5000 */
 export function parseMoney(s: string): number {
-  const n = parseInt(String(s).replace(/[^\d-]/g, ''), 10)
+  const n = parseInt(String(s).replace(MINUS, '-').replace(/[^\d-]/g, ''), 10)
   return Number.isFinite(n) ? n : 0
 }
 
@@ -43,3 +45,9 @@ export function pct(part: number, whole: number): number {
 export function ratePct(r: number, digits = 2): string {
   return (r * 100).toFixed(digits).replace('.', ',') + '%'
 }
+
+/**
+ * Ставка в поле ввода — проценты до сотых без хвоста двоичной дроби и лишних нулей: 0.14 → «14»
+ * (0,14 × 100 в JS — 14,000000000000002), 0.1425 → «14,25». Вклад и кредит (хвост §4, приёмка Блока 3).
+ */
+export const rateField = (r: number) => String(Math.round(r * 10_000) / 100).replace('.', ',')

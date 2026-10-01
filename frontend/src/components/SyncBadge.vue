@@ -1,20 +1,27 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { PhArrowsClockwise, PhCheck, PhCloudSlash, PhCopy, PhWarning } from '@phosphor-icons/vue'
+import { PhArrowsClockwise, PhCheck, PhCloudSlash, PhWarning } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { useInvite } from '@/components/useInvite'
 import Button from '@/components/ui/Button.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import DangerZone from '@/components/kit/DangerZone.vue'
 
 /**
  * Состояние синхронизации словами и шторка по нему (React `SyncBadge.tsx`, Б-18): дата
- * обмена, участники, приглашение второго, пояснение про офлайн и «Начать бюджет заново».
+ * обмена, участники, пояснение про офлайн и «Начать бюджет заново». Приглашение второго — в
+ * «С кем» Настроек (`useInvite`, приёмка Блока 3 п. 8), не здесь.
  * «Выйти» — в «Оформлении» (PV-21 п. 6). Участники — из `people` документа: ручки
  * участников с ролями у Go нет (Р-15), поэтому «только просмотр» — только у себя.
  */
+/**
+ * `compact` (шапка оболочки, B2C-13): только точка-иконка, и только когда есть что сказать —
+ * обмен идёт, ждёт отправки, нет сети или «не сошлось»; в покое и в демо шапка чистая.
+ * Полный вид с подписью — в Настройках.
+ */
+const props = withDefaults(defineProps<{ compact?: boolean }>(), { compact: false })
+
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
 const router = useRouter()
@@ -29,6 +36,7 @@ const people = computed(() => financeStore.people)
 const me = computed(() => authStore.slot)
 
 const isBad = computed(() => status.value === 'error' || status.value === 'conflict')
+const quiet = computed(() => props.compact && (authStore.isDemo || status.value === 'idle'))
 
 const label = computed(() => {
   switch (status.value) {
@@ -47,14 +55,11 @@ const label = computed(() => {
   }
 })
 
-const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: makeInvite, copy: copyInvite } = useInvite()
-// Код создаёт только участник с правом правки (viewer получит 403), в демо сервера нет.
-const canInvite = computed(() => people.value.length < 2 && !authStore.isViewer && !authStore.isDemo)
-
+// Личный документ (свои счета, память продавцов) сброс не трогает — хвост PV, B2C-13.
 const resetWarning = computed(() =>
   authStore.isDemo
     ? 'Сотрутся доходы, цели, покупки, обязательства и счета демо на этом телефоне. Отменить будет нельзя.'
-    : 'Сотрутся доходы, цели, покупки, обязательства и счета — у обоих участников и в облаке. Отменить будет нельзя.',
+    : 'Сотрутся общие счета, доходы, цели, покупки и обязательства — у обоих участников и в облаке. Личные счета останутся. Отменить будет нельзя.',
 )
 
 async function triggerManualSync() {
@@ -69,21 +74,23 @@ async function triggerManualSync() {
   }
 }
 
-// React показывает мастер сам (`SetupGate`); у Vue гейт мастера — в роутере, поэтому переход явный.
+// После сброса — первый запуск из выписки (`/start`, B2C-19); гейт в роутере, поэтому переход явный.
 function startOver() {
   financeStore.resetAll()
   open.value = false
   void financeStore.syncHousehold()
-  void router.replace('/setup')
+  void router.replace('/start')
 }
 </script>
 
 <template>
   <div>
     <button
+      v-if="!quiet"
       type="button"
       :class="[
-        'flex items-center gap-1.5 text-[12px] font-medium transition-colors cursor-pointer',
+        'flex items-center gap-1.5 font-medium transition-colors cursor-pointer',
+        compact ? 'grid size-[38px] place-items-center rounded-[12px] bg-surface-2' : 'text-[12px]',
         authStore.isDemo
           ? 'text-ink-3 hover:text-ink-2'
           : isBad
@@ -93,17 +100,18 @@ function startOver() {
               : 'text-brand',
       ]"
       :title="authStore.isDemo ? 'Демо живёт только на этом телефоне' : lastError || label"
+      :aria-label="compact ? `Обмен: ${label}` : undefined"
       @click="open = true"
     >
       <!-- Демо к серверу не ходит (Р-32): статуса синхронизации у него нет. -->
       <template v-if="authStore.isDemo">демо</template>
       <template v-else>
-        <PhArrowsClockwise v-if="status === 'syncing'" :size="13" class="animate-spin" />
-        <PhWarning v-else-if="isBad" :size="13" />
-        <PhCloudSlash v-else-if="status === 'offline'" :size="13" />
-        <PhArrowsClockwise v-else-if="status === 'dirty'" :size="13" />
+        <PhArrowsClockwise v-if="status === 'syncing'" :size="compact ? 18 : 13" class="animate-spin" />
+        <PhWarning v-else-if="isBad" :size="compact ? 18 : 13" />
+        <PhCloudSlash v-else-if="status === 'offline'" :size="compact ? 18 : 13" />
+        <PhArrowsClockwise v-else-if="status === 'dirty'" :size="compact ? 18 : 13" />
         <PhCheck v-else :size="13" />
-        <span>{{ label }}</span>
+        <span v-if="!compact">{{ label }}</span>
       </template>
     </button>
 
@@ -156,28 +164,6 @@ function startOver() {
           <div class="mt-0.5 font-semibold text-ink">{{ authStore.household.name }}</div>
         </div>
 
-        <div v-if="canInvite" class="rounded-xl border border-brand bg-brand-soft px-3.5 py-3">
-          <b class="block text-[13.5px] font-semibold text-ink">Пригласить второго</b>
-          <p class="mt-1 text-[12.5px] leading-relaxed text-ink-2">
-            Код действует две недели и срабатывает один раз. Его удобно продиктовать вслух.
-          </p>
-          <button
-            v-if="inviteCode"
-            type="button"
-            class="mt-2.5 flex w-full items-center justify-center gap-2 rounded-xl border border-brand bg-surface py-2.5 font-display text-[20px] font-semibold tracking-[0.16em] num text-ink cursor-pointer"
-            @click="copyInvite"
-          >
-            {{ inviteCode }}
-            <PhCopy :size="15" class="text-ink-3" />
-          </button>
-          <Button v-else class="mt-2.5 w-full" :disabled="inviteBusy" @click="makeInvite">
-            {{ inviteBusy ? 'Минуту…' : 'Создать код' }}
-          </Button>
-          <p v-if="inviteError" role="alert" class="mt-1.5 text-center text-[12.5px] text-warn">
-            {{ inviteError }}
-          </p>
-          <p v-if="copied" class="mt-1.5 text-center text-[12px] text-brand">Скопировано</p>
-        </div>
 
         <Button
           v-if="!authStore.isDemo"

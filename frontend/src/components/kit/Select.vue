@@ -29,7 +29,7 @@ function onChange(e: Event) {
   <select
     :value="modelValue"
     :disabled="disabled"
-    class="w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[14px] text-ink disabled:opacity-50"
+    class="w-full rounded-inner border border-transparent bg-surface-2 px-3.5 py-3 text-[15px] text-ink outline-none focus-visible:border-brand disabled:opacity-50"
     @change="onChange"
   >
     <slot>

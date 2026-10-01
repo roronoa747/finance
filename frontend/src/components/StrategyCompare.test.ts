@@ -181,7 +181,7 @@ describe('PV-15: «Выбрать этот план» в калькулятор�
     expect(html.match(/type="radio"/g)).toHaveLength(goals.length + 1)
     expect(html).toContain('Без подушки')
     expect(html).toContain('Заведите цель-подушку — план начнёт с неё')
-    expect(html).toContain('href="/goals"')
+    expect(html).toContain('href="/goals/new"')
     expect(html).toMatch(/>\s*Выбрать этот план\s*</)
     const t = text(html)
     // Подушки нет — на паузе обе цели: 100 000 + 50 000; первый долг — самый дорогой, шаг — их сумма.
@@ -253,7 +253,7 @@ describe('PV-15: «Выбрать этот план» в калькулятор�
     const html = await render({ plan, step })
     expect(text(html)).toContain('План выбран в сентябре 2026')
     expect(text(html)).toContain(`шаг этого месяца ${money(100_000)}`)
-    expect(html).toContain('href="/plan"')
+    expect(html).toContain('href="/money/plan"')
     expect(html).not.toMatch(/>\s*Выбрать этот план\s*</)
     expect(html).not.toContain('type="radio"')
   })

@@ -22,7 +22,8 @@ import {
 } from '../src/lib/finance'
 import { money, plain } from '../src/lib/money'
 import Capital from '../src/views/Capital.vue'
-import Overview from '../src/views/Overview.vue'
+import Dreams from '../src/views/Dreams.vue'
+import Money from '../src/views/Money.vue'
 import Budget from '../src/views/Budget.vue'
 import PaidRow from '../src/components/PaidRow.vue'
 import DangerZone from '../src/components/kit/DangerZone.vue'
@@ -111,7 +112,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     // Следующий платёж — в новый день (сентябрь оплачен, дальше октябрь).
     expect(nextCreditDue(B.store.credits[0], B.store.payments)).toMatchObject({ period: '2026-10', day: 20 })
     const capitalB = await screen(B.pinia, Capital, '/capital?credit=loan')
-    expect(capitalB).toContain('value="25,0"')
+    expect(capitalB).toContain('value="25"')
     expect(capitalB).toContain('Платёж 20 октября')
 
     // Сверка с банком на втором телефоне — новая база и якорь; отметка до якоря в ней.
@@ -144,7 +145,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     setActivePinia(B.pinia)
     await B.store.pullHousehold(B.client)
     // «До зарплаты» (до 10 октября): коммуналка 8 октября — с «оценкой», её «Оплатил» откроет лист с суммой.
-    const overview = await screen(B.pinia, Overview, '/')
+    const overview = await screen(B.pinia, Money, '/money')
     const until = overview.slice(overview.indexOf('Коммуналка'))
     expect(until.slice(0, until.indexOf('Оплатил'))).toContain('оценка')
 
@@ -241,8 +242,9 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       member: { household_id: 'h-family', user_id: 'u', slot: 'a', display_name: 'Ильяс', role: 'member', joined_at: T0 },
     })
     const router = createAppRouter(createMemoryHistory())
-    await router.push('/capital?add=debt')
-    expect(router.currentRoute.value.fullPath).toBe('/capital?add=debt')
+    // Адреса Капитала — /money/capital (B2C-13), параметры окон те же.
+    await router.push('/money/capital?add=debt')
+    expect(router.currentRoute.value.fullPath).toBe('/money/capital?add=debt')
     const screenA = mountLive(A.pinia, router)
     expect(screenA.addDebtOpen).toBe(true)
 
@@ -250,17 +252,17 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     let next = navigated()
     screenA.addDebtOpen = false
     await next
-    expect(router.currentRoute.value.fullPath).toBe('/capital')
+    expect(router.currentRoute.value.fullPath).toBe('/money/capital')
 
     // Второй «+ Кредит или рассрочка» — новый переход, форма снова открыта.
-    await router.push('/capital?add=debt')
+    await router.push('/money/capital?add=debt')
     await nextTick()
     expect(screenA.addDebtOpen).toBe(true)
 
     // Строка Бюджета → кредит; из него — калькулятор: адрес держится, пока открыто хоть одно окно.
     screenA.addDebtOpen = false
     await navigated()
-    await router.push('/capital?credit=loan')
+    await router.push('/money/capital?credit=loan')
     await nextTick()
     expect(screenA.selectedCreditId).toBe('loan')
     screenA.payoffCreditId = 'loan'
@@ -270,8 +272,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     next = navigated()
     screenA.payoffCreditId = null
     await next
-    expect(router.currentRoute.value.fullPath).toBe('/capital')
-    await router.push('/capital?credit=loan')
+    expect(router.currentRoute.value.fullPath).toBe('/money/capital')
+    await router.push('/money/capital?credit=loan')
     await nextTick()
     expect(screenA.selectedCreditId).toBe('loan')
 
@@ -280,8 +282,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     next = navigated()
     A.store.removeCredit('loan')
     await next
-    expect(router.currentRoute.value.fullPath).toBe('/capital')
-    await router.push('/capital?add=debt')
+    expect(router.currentRoute.value.fullPath).toBe('/money/capital')
+    await router.push('/money/capital?add=debt')
     await nextTick()
     expect(screenA.addDebtOpen).toBe(true)
   })
@@ -299,7 +301,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     expect(A.store.credits[0].principal).toBe(0)
 
     const router = createAppRouter(createMemoryHistory())
-    await router.push('/capital?credit=loan')
+    await router.push('/money/capital?credit=loan')
     const capitalA = mountLive(A.pinia, router)
     // Окно кредита — `CreditSheet` (Н-3): открытый кредит берёт у экрана.
     const screenA = mountLive(A.pinia, router, { view: CreditSheet, props: () => ({ creditId: capitalA.selectedCreditId }) })
@@ -420,15 +422,15 @@ describe('e2e / Блок 2 паритета — правка денег на д�
 
       // «Оставить?» (RP-09): только что заведённое в этом квартале не спрашиваем…
       expect(keepQuestions(B.store.obligations)).toEqual([])
-      expect(await page(B.pinia, Overview, '/')).not.toContain('Оставить «')
+      expect(await page(B.pinia, Dreams, '/')).not.toContain('Оставить подписку')
       // …с нового квартала второй телефон спрашивает про подписку «Интернет» — не про
       // «Свет» (оценка) и не про аренду (жильё).
       at('2026-10-02T04:00:00Z')
       expect(keepQuestions(B.store.obligations).map((o) => o.name)).toEqual(['Интернет'])
-      const overview = await page(B.pinia, Overview, '/')
-      expect(overview).toContain('Оставить «Интернет»?')
-      expect(overview).toContain(`${money(6_990)} в месяц`)
-      expect(overview).not.toContain('Оставить «Свет»?')
+      const overview = await page(B.pinia, Dreams, '/')
+      expect(overview).toContain('Оставить подписку Интернет?')
+      expect(overview).toContain(`${money(6_990)} · каждый месяц`)
+      expect(overview).not.toContain('Оставить подписку Свет?')
     })
 
     it('приёмка: PV-11 — план суммы на A: у второго «История суммы» — две строки с причиной, в месяц перехода «станет с» → «с»; viewer видит историю без полей', async () => {
@@ -474,7 +476,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(modal).not.toContain('Удалить обязательство')
       expect(modal).not.toContain('<input')
       // Обзор второго — событие «освободится» из того же плана.
-      expect(await page(B.pinia, Overview, '/')).toContain(`Освободится ${money(20_000)} в месяц`)
+      expect(await page(B.pinia, Money, '/money')).toContain(`Освободится ${money(20_000)} в месяц`)
 
       // Ноябрь: план наступил — строка «с ноября», сумма сейчас 200 000.
       at('2026-11-02T04:00:00Z')

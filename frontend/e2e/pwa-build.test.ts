@@ -17,8 +17,8 @@ describe.skipIf(!built)('PWA-сборка заменяет React-PWA (MGV-17)', 
       start_url: '/',
       scope: '/',
       display: 'standalone',
-      background_color: '#E9EDEC',
-      theme_color: '#0A6B57',
+      background_color: '#F3EEE6',
+      theme_color: '#B4562F',
     })
     expect(manifest.icons).toEqual([
       { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml' },
@@ -51,16 +51,20 @@ describe.skipIf(!built)('PWA-сборка заменяет React-PWA (MGV-17)', 
     expect(js).toContain('getRegistration')
   })
 
-  it('иконка — привычная иконка React-PWA', () => {
+  it('иконка в цвет бренда: заливка = theme_color манифеста (направление А, B2C-12)', () => {
+    // Сверка с React-эталоном ушла вместе с паритетом React→Vue (прод на Go + Vue с 2026-09-24).
     const icon = readFileSync(resolve(dist, 'favicon.svg'), 'utf-8')
-    const reactIcon = readFileSync(resolve(import.meta.dirname, '../../public/favicon.svg'), 'utf-8')
-    expect(icon).toBe(reactIcon)
+    const manifest = JSON.parse(readFileSync(resolve(dist, 'manifest.webmanifest'), 'utf-8'))
+    const fill = /<rect width="64" height="64" rx="14" fill="(#[0-9A-Fa-f]{6})"/.exec(icon)?.[1]
+    expect(fill?.toUpperCase()).toBe(manifest.theme_color.toUpperCase())
   })
 
-  it('шрифты Onest и Golos Text подключены, как в React', () => {
+  it('шрифты Piazzolla и Golos Text подключены (DESIGN.md §4), Onest убран', () => {
     const html = readFileSync(resolve(dist, 'index.html'), 'utf-8')
-    expect(html).toContain('fonts.googleapis.com/css2?family=Onest')
+    expect(html).toContain('fonts.googleapis.com/css2?family=Piazzolla')
     expect(html).toContain('family=Golos+Text')
+    expect(html).toContain('display=swap')
+    expect(html).not.toContain('Onest')
   })
 })
 

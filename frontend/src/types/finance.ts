@@ -1,4 +1,4 @@
-import type { AccentKey, CategoryKey, HueKey, ThemeChoice } from '@/lib/palette'
+import type { CategoryKey, HueKey, ThemeChoice } from '@/lib/palette'
 import type { SpendCategory, SpendTotal } from '@/lib/statements/types'
 
 export type PersonId = 'a' | 'b' | 'c'
@@ -103,15 +103,45 @@ export type Goal = Tracked & {
    * «уже накоплено» нигде бы не учитывалось и капитал уходил бы в минус.
    */
   accountId?: string | null
+  /**
+   * Главная мечта — герой главного экрана (Р-8, B2C-14). Поле цели: сливается LWW по
+   * `updatedAt` вместе с ней; при двух отмеченных экран берёт позднюю (`mainGoal`).
+   */
+  main?: boolean
+  /** Фото цели на сервере (B2C-16/17): в документе только id; null — фото убрали. */
+  photoId?: string | null
+  /** Автор картинки шаблона (Unsplash, Р-28) — показывается у мечты; своё фото — null. */
+  photoCredit?: { author: string; url: string } | null
+  /** Шаблон, из которого сделана цель (`lib/goalTemplates`); без `photoId` — картинка ещё не загружена. */
+  template?: string | null
 }
 
 export type WishItem = Tracked & {
   id: string
   name: string
   price: number
+  /** Кто добавил. */
   by: PersonId
   addedOn: string
   url?: string
+  bought: boolean
+  boughtOn?: string | null
+  /** Фото желания на сервере (B2C-17). */
+  photoId?: string | null
+  /** Чей список (B2C-18): участник или «общие»; записи до Блока 3 — список добавившего (`by`). */
+  list?: PersonId | 'all'
+}
+
+/**
+ * Подарок-сюрприз (Р-9/Р-10 RP, B2C-18): живёт в личном документе автора (`privateDoc.gifts`),
+ * адресат его не видит ни в списках, ни в итогах; фото — со скрытым признаком (только автору).
+ */
+export type Gift = Tracked & {
+  id: string
+  forSlot: PersonId
+  name: string
+  price: number
+  photoId?: string | null
   bought: boolean
   boughtOn?: string | null
 }
@@ -227,6 +257,11 @@ export type Credit = Tracked & {
   principalSetAt?: string | null
   /** ГЭСВ — годовая эффективная ставка вознаграждения из договора. */
   annualRate: number
+  /**
+   * Ставку не знаем (кредит из выписки в первом запуске, B2C-19): `annualRate` — 0 до уточнения, но
+   * это не рассрочка — экраны пишут «ставку уточните», а не «без процентов». Правка ставки снимает (null).
+   */
+  rateUnknown?: boolean | null
   payment: number
   day: number
 }
@@ -279,6 +314,12 @@ export type Payment = Tracked & {
   newPayment?: number
   /** Досрочка по выбранному плану «Сначала долги» (PV-14): id плана. */
   planId?: string
+  /**
+   * Откуда отметка (Р-6, B2C-15): руками («Оплатил» / «Пришла») или по строке выписки —
+   * тогда `opId` — id операции (личной; партнёр видит только пометку источника).
+   */
+  source?: 'manual' | 'statement'
+  opId?: string
 }
 
 /** Прогноз плана: выигрыш к горизонту, сэкономленные проценты, месяц без процентных долгов. */
@@ -322,6 +363,25 @@ export type DebtPlan = Tracked & {
   result?: { savedInterest: number } | null
 }
 
+/** Часть раскладки: цель (`goalId`), досрочка (`prepay:<creditId>`) или «качество жизни» (`life`). */
+export type AllocationPart = { target: string; amount: number }
+
+/**
+ * Раскладка разовой суммы (B2C-21): зарплата (`sourceId` — участник), остаток месяца (`sourceId` —
+ * месяц) или освободившийся платёж (`sourceId` — кредит или обязательство) за период. Решение
+ * записано — по этому же источнику и периоду второй раз не раскладываем.
+ */
+export type Allocation = Tracked & {
+  id: string
+  source: 'salary' | 'rest' | 'freed'
+  sourceId: string
+  period: string
+  by: PersonId
+  at: string
+  total: number
+  parts: AllocationPart[]
+}
+
 /** Документ, который ездит между устройствами. Настройки оформления в него не входят: */
 /** тема и цвета — дело устройства, партнёр не должен перекрашивать чужое приложение. */
 export type SyncDoc = {
@@ -340,9 +400,11 @@ export type SyncDoc = {
   spendCategories?: SpendCategory[]
   /** Итоги трат участников по разделам за неделю и месяц (Р-21); операции — личные, на сервере. */
   spendTotals?: SpendTotal[]
+  /** Записанные раскладки разовых сумм (B2C-21): второй заход и партнёр видят решение, а не раскладывают снова. */
+  allocations?: Allocation[]
   /**
    * Когда закончили первичную настройку бюджета. Пустое значит, что показываем
-   * мастер. Живёт в общем документе, а не в настройках устройства: второй
+   * первый запуск (`/start`). Живёт в общем документе, а не в настройках устройства: второй
    * участник, зайдя со своего телефона, не должен снова проходить настройку
    * жилья и кредитов — у него будет только свой короткий шаг про доход.
    */
@@ -368,7 +430,6 @@ export type Membership = {
 
 export type Settings = {
   theme: ThemeChoice
-  accent: AccentKey
   categories: Record<CategoryKey, HueKey>
   inflation: number
 }

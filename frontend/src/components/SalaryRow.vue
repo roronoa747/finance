@@ -4,24 +4,21 @@ import { useRouter } from 'vue-router'
 import { PhArrowUp, PhCheck } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { money, plain, parseMoney } from '@/lib/money'
+import { plain } from '@/lib/money'
 import { atLabel } from '@/lib/dates'
-import { afterAnchor, lastAccountFor, paidFor, payableAccounts, salaryAt, salaryOpen } from '@/lib/finance'
+import { lastAccountFor, paidFor, salaryAllocationPath, salaryAt, salaryOpen } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
-import Field from '@/components/kit/Field.vue'
 import Row from '@/components/kit/Row.vue'
-import Sheet from '@/components/kit/Sheet.vue'
-import NumField from '@/components/kit/NumField.vue'
 import Button from '@/components/ui/Button.vue'
-import AccountChoice from '@/components/AccountChoice.vue'
+import MarkSheet from '@/components/MarkSheet.vue'
 
 /**
  * «Пришла зарплата» (RP-10, Р-18) — зеркало «Оплатил» для зачисления. Отмечает свою
  * зарплату только сам участник (`member.slot`), viewer не отмечает (Р-13); партнёр видит
  * отметку после синка. Одно нажатие — оклад месяца на счёт, куда зарплата пришла в
- * прошлый раз (Р-5); лист — только для исключений: первая отметка (счёт спросить один
- * раз), премия, правка и снятие. После отметки — раскладка свободного в `/ritual`.
+ * прошлый раз (Р-5); лист (`MarkSheet`, B2C-15) — только для исключений: первая отметка
+ * (счёт спросить один раз), премия, правка и снятие. После отметки — раскладка свободного.
  */
 const props = defineProps<{
   personId: PersonId
@@ -33,8 +30,10 @@ const props = defineProps<{
   clickable?: boolean
   /** Без боковых отступов — строка внутри карточки. */
   dense?: boolean
-  /** Только кнопка «Пришла зарплата», без строки — карточка «До зарплаты» на Обзоре. */
+  /** Только кнопка «Пришла зарплата», без строки — карточка «До зарплаты». */
   button?: boolean
+  /** Кнопка тихая: на экране уже есть главное действие (правило 12 — одна брендовая). */
+  quiet?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -65,27 +64,29 @@ const toAccount = computed(() => {
   return finance.accounts.find((a) => a.id === id)?.name ?? 'личный счёт'
 })
 
-/** Счета, куда можно зачислить: в тенге (валюта зарплаты — не-скоуп, Р-1). */
-const choices = computed(() => payableAccounts(finance.accounts))
+const title = computed(() => `Зарплата · ${person.value?.name ?? ''}`)
 
 const sheet = ref<'mark' | 'paid' | null>(null)
-const amountText = ref('')
+const markAmount = ref(0)
 // undefined — счёт ещё не выбран; null — «не зачислять».
-const chosen = ref<string | null | undefined>(undefined)
+const markAccount = ref<string | null | undefined>(undefined)
 const firstTime = ref(false)
-const confirmUnmark = ref(false)
 
 function openMark(amount: number, account: string | null | undefined) {
-  amountText.value = plain(amount)
-  chosen.value = account
-  confirmUnmark.value = false
+  markAmount.value = amount
+  markAccount.value = account
   sheet.value = 'mark'
+}
+
+/** После отметки — раскладка свободного (бывший Ритуал). */
+function toAllocation() {
+  void router.push(salaryAllocationPath(props.personId, props.period))
 }
 
 function mark(amount: number, accountId: string | null) {
   finance.markSalary(props.personId, { period: props.period, amount, accountId })
   sheet.value = null
-  void router.push(`/ritual?from=salary&person=${props.personId}&period=${props.period}`)
+  toAllocation()
 }
 
 /** Главный путь — одно нажатие. Лист — если счёт спросить не у кого. */
@@ -101,34 +102,11 @@ function openMore() {
   firstTime.value = last === undefined
   openMark(due.value, last)
 }
-
-function confirmMark() {
-  const amount = parseMoney(amountText.value)
-  if (chosen.value === undefined || amount <= 0) return
-  // Правка отмеченной — новая запись с тем же моментом (стор, Р-7); раскладка уже была.
-  if (record.value) {
-    finance.editPaid(record.value, { amount, accountId: chosen.value })
-    sheet.value = null
-  } else mark(amount, chosen.value)
-}
-
-function unmark() {
-  finance.unmarkPaid('salary', props.personId, props.period)
-  sheet.value = null
-}
-
-// Отметка до ручной сверки остатка в нём уже учтена: снятие остаток не тронет — не обещаем.
-const unmarkNote = computed(() => {
-  const r = record.value
-  const acc = r?.accountId ? finance.accounts.find((a) => a.id === r.accountId) : undefined
-  const back = !!r?.accountId && (!acc || afterAnchor(r, acc.amountSetAt))
-  return `Зарплата снова станет неотмеченной${back ? ', сумма уйдёт со счёта' : ''}.`
-})
 </script>
 
 <template>
   <template v-if="button">
-    <Button v-if="canMark" variant="outline" class="mt-3 w-full bg-surface-2" @click="tap">
+    <Button v-if="canMark" :variant="quiet ? 'secondary' : 'default'" class="mt-3 w-full" @click="tap">
       Пришла зарплата
     </Button>
     <button
@@ -143,7 +121,7 @@ const unmarkNote = computed(() => {
 
   <Row
     v-else
-    :title="`Зарплата · ${person?.name ?? ''}`"
+    :title="title"
     :accent="`var(--p${personId})`"
     :clickable="clickable"
     :dense="dense"
@@ -156,7 +134,7 @@ const unmarkNote = computed(() => {
 
     <template #note>
       <span v-if="record" class="block text-[12.5px] text-ink-3">
-        пришла {{ atLabel(record.at) }} · {{ toAccount }}
+        пришла {{ atLabel(record.at) }} · {{ toAccount }}{{ record.source === 'statement' ? ' · из выписки' : '' }}
       </span>
       <span v-else-if="note" class="block text-[12.5px] text-ink-3">{{ note }}</span>
     </template>
@@ -187,7 +165,7 @@ const unmarkNote = computed(() => {
       <button
         v-else
         type="button"
-        class="shrink-0 rounded-lg border border-line-strong bg-surface-2 px-2.5 py-1.5 text-[12.5px] font-medium text-ink active:translate-y-px cursor-pointer"
+        class="shrink-0 rounded-pill border border-line-strong bg-surface-2 px-3 py-1.5 text-[12.5px] font-medium text-ink active:translate-y-px cursor-pointer"
         @click="tap"
       >
         Пришла
@@ -195,61 +173,17 @@ const unmarkNote = computed(() => {
     </template>
   </Row>
 
-  <Sheet :open="sheet !== null" :title="`Зарплата · ${person?.name ?? ''}`" :z="60" @close="sheet = null">
-    <template v-if="sheet === 'paid' && record">
-      <div class="mb-3 flex flex-col gap-1.5 rounded-xl border border-line bg-surface-2 p-3 text-[13px]">
-        <div class="flex justify-between gap-3">
-          <span class="text-ink-2">Пришла</span>
-          <b class="num text-ink">{{ atLabel(record.at) }}</b>
-        </div>
-        <div class="flex justify-between gap-3">
-          <span class="text-ink-2">Сумма</span>
-          <b class="num text-ink">{{ money(record.amount) }}</b>
-        </div>
-        <div class="flex justify-between gap-3">
-          <span class="text-ink-2">Счёт</span>
-          <b class="truncate text-ink">{{ toAccount }}</b>
-        </div>
-      </div>
-
-      <div v-if="confirmUnmark" class="rounded-xl border border-line bg-surface-2 p-3">
-        <p class="mb-2 text-[12.5px] leading-relaxed text-ink-2">{{ unmarkNote }}</p>
-        <div class="flex gap-2">
-          <Button variant="outline" class="flex-1 bg-surface" @click="confirmUnmark = false">Отмена</Button>
-          <Button class="flex-1" @click="unmark">Снять</Button>
-        </div>
-      </div>
-      <div v-else class="flex flex-col gap-2">
-        <Button variant="outline" class="w-full bg-surface-2" @click="openMark(record.amount, record.accountId)">
-          Другая сумма или счёт
-        </Button>
-        <Button variant="outline" class="w-full bg-surface-2" @click="confirmUnmark = true">
-          Снять отметку
-        </Button>
-      </div>
-    </template>
-
-    <template v-else-if="sheet === 'mark'">
-      <Field label="Сумма, ₸">
-        <NumField v-model="amountText" />
-        <span class="text-[12px] leading-relaxed text-ink-3">
-          Оклад месяца — {{ money(due) }}. С премией впишите всю сумму: премия целиком ляжет в свободное.
-        </span>
-      </Field>
-
-      <AccountChoice v-model="chosen" :accounts="choices" label="На какой счёт" none="Не зачислять — только отметить">
-        <p v-if="firstTime" class="text-[12px] leading-relaxed text-ink-3">
-          Спрашиваем один раз: дальше зарплата отметится одним нажатием на тот же счёт.
-        </p>
-      </AccountChoice>
-
-      <Button
-        class="w-full"
-        :disabled="chosen === undefined || parseMoney(amountText) <= 0"
-        @click="confirmMark"
-      >
-        {{ record ? 'Сохранить' : 'Отметить зарплату' }}
-      </Button>
-    </template>
-  </Sheet>
+  <MarkSheet
+    :open="sheet"
+    kind="salary"
+    :target-id="personId"
+    :period="period"
+    :title="title"
+    :amount="markAmount"
+    :account="markAccount"
+    :first-time="firstTime"
+    @close="sheet = null"
+    @marked="toAllocation"
+    @allocate="toAllocation"
+  />
 </template>

@@ -3,7 +3,7 @@ import { ref, computed, type Ref } from 'vue'
 import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { mergeDocs, mergePrivateDocs, isEmptyDoc } from '@/lib/merge'
 import { monthKey } from '@/lib/dates'
-import { OPERATIONS_STORAGE_KEYS, readStorage } from '@/lib/storage'
+import { MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, readStorage } from '@/lib/storage'
 import {
   accountBalance,
   activePlan as pickActivePlan,
@@ -14,6 +14,8 @@ import {
   creditSplit,
   endedPlan,
   goalHave,
+  liveGoals,
+  mainGoal,
   lastAccountFor,
   lumpPlan,
   nextCreditDue,
@@ -46,6 +48,8 @@ import type {
   Obligation,
   Payment,
   WishItem,
+  Gift,
+  Allocation,
 } from '@/types/finance'
 import type { MerchantRule } from '@/lib/statements/types'
 import { useAuthStore } from '@/stores/auth'
@@ -71,6 +75,14 @@ export function defaultSyncDoc(): SyncDoc {
   }
 }
 
+/**
+ * Документ с сервера или с телефона — с ключами умолчаний: Go создаёт документ новой семьи
+ * пустым `{}` (возврат приёмки 3), а правки пишут в `doc.people`/`doc.obligations` без проверок.
+ */
+function withDefaults(doc: SyncDoc): SyncDoc {
+  return { ...defaultSyncDoc(), ...doc }
+}
+
 /** Семья демо-режима: её документ не уходит на сервер (Р-32). */
 export const DEMO_HOUSEHOLD = 'demo-household-1'
 
@@ -89,6 +101,10 @@ const LOCAL_KEYS = [
   STORAGE_KEY_DOC_HOUSEHOLD,
   // Операции выписок (stores/operations.ts, B2C-07) — личные: выход стирает и их.
   ...Object.values(OPERATIONS_STORAGE_KEYS),
+  // Показанные вопросы первого запуска (B2C-19): другой пользователь на этом телефоне — свои вопросы.
+  START_ANSWERED_KEY,
+  // Ответ «остались деньги?» на месяц (Р-19): следующий вход на этом телефоне — свой вопрос.
+  MONTH_END_KEY,
 ]
 
 // Запрос не дошёл до сервера (fetch бросил не ApiError) — это «нет сети», а не «не
@@ -105,7 +121,7 @@ function unchanged<T extends object>(cur: T | undefined, patch: Partial<T>): boo
 }
 
 export const useFinanceStore = defineStore('finance', () => {
-  const householdDoc = ref<SyncDoc>(readStorage<SyncDoc>(STORAGE_KEY_DOC, defaultSyncDoc()))
+  const householdDoc = ref<SyncDoc>(withDefaults(readStorage<SyncDoc>(STORAGE_KEY_DOC, defaultSyncDoc())))
   const householdRev = ref<number>(readStorage<number>(STORAGE_KEY_REV, 0))
 
   const privateDoc = ref<Record<string, unknown>>(
@@ -482,7 +498,7 @@ export const useFinanceStore = defineStore('finance', () => {
           householdDoc.value = mergeDocs(householdDoc.value, serverDoc.data)
           if (unsent.value) scheduleSync(undefined, client)
         } else {
-          householdDoc.value = serverDoc.data
+          householdDoc.value = withDefaults(serverDoc.data)
           householdRev.value = serverDoc.rev
           status.value = 'idle'
         }
@@ -673,6 +689,7 @@ export const useFinanceStore = defineStore('finance', () => {
         updatedAt: t,
       });
     });
+    return id;
   }
 
   /** Группа подписок со свободным названием (Р-20): сама не платёж, суммы нет. */
@@ -711,6 +728,8 @@ export const useFinanceStore = defineStore('finance', () => {
     note?: string;
     principal: number;
     annualRate: number;
+    /** Ставку не знаем — кредит из выписки (B2C-19): «ставку уточните», не «без процентов». */
+    rateUnknown?: boolean;
     payment: number;
     day: number;
   }) {
@@ -724,11 +743,13 @@ export const useFinanceStore = defineStore('finance', () => {
         principal: c.principal,
         principalSetAt: t,
         annualRate: c.annualRate,
+        ...(c.rateUnknown ? { rateUnknown: true } : {}),
         payment: c.payment,
         day: c.day,
         updatedAt: t,
       });
     });
+    return id;
   }
 
   function addGoal(g: {
@@ -737,10 +758,14 @@ export const useFinanceStore = defineStore('finance', () => {
     have?: number;
     monthly: number;
     hue: HueKey;
-  }) {
+    /** Шаблон и главная мечта (B2C-17/18); первая цель семьи — главная. */
+    template?: string | null;
+    main?: boolean;
+  }): string {
     const id = Math.random().toString(36).slice(2, 10);
     const t = new Date().toISOString();
     const have = g.have ?? 0;
+    const main = g.main ?? liveGoals(goals.value).length === 0;
     mutateHouseholdDoc((doc) => {
       doc.goals.push({
         id,
@@ -753,8 +778,20 @@ export const useFinanceStore = defineStore('finance', () => {
         planPct: g.need > 0 ? Math.min(1, have / g.need) : 0,
         movements: [],
         updatedAt: t,
+        ...(g.template ? { template: g.template } : {}),
+        ...(main ? { main: true } : {}),
       });
     });
+    return id;
+  }
+
+  /** Фото цели (B2C-17): id на сервере и автор картинки шаблона; null — фото убрали. */
+  function setGoalPhoto(id: string, photoId: string | null, credit: { author: string; url: string } | null = null) {
+    updateGoal(id, { photoId, photoCredit: photoId ? credit : null })
+  }
+
+  function setWishPhoto(id: string, photoId: string | null) {
+    updateWish(id, { photoId })
   }
 
   function setCategoryAmount(key: CategoryKey, amount: number) {
@@ -858,13 +895,30 @@ export const useFinanceStore = defineStore('finance', () => {
    * Правило «продавец / получатель → раздел, внутренний, кому → что». Правило на то же
    * совпадение не множится — правится его запись (LWW по id при слиянии).
    */
+  /**
+   * Новое назначение поверх прежнего у того же продавца (одно правило на совпадение). Правило
+   * платежа и раздел не стирают друг друга (критик возврата 2): ответ «куда отнести?» о продавце
+   * с правилом платежа — раздел «остальных» строк (`restCategoryId`, не «таких» для платежа); «Да,
+   * отметить» у продавца с разделом — платёж, прежний раздел остаётся остальным строкам. «Между
+   * своими» и «кому → что» заменяют правило целиком: семья сказала, что все переводы этому
+   * продавцу — не платёж.
+   */
+  function mergeRuleTarget(prev: MerchantRule['to'], next: MerchantRule['to']): MerchantRule['to'] {
+    if ('payment' in prev && 'categoryId' in next) return { payment: { ...prev.payment, restCategoryId: next.categoryId } }
+    if ('payment' in next && next.payment.restCategoryId === undefined) {
+      const rest = 'payment' in prev ? prev.payment.restCategoryId : 'categoryId' in prev ? prev.categoryId : undefined
+      if (rest !== undefined) return { payment: { ...next.payment, restCategoryId: rest } }
+    }
+    return next
+  }
+
   function addMerchantRule(rule: Pick<MerchantRule, 'match' | 'to'>, by: PersonId): MerchantRule {
     const t = new Date().toISOString()
     const same = (r: MerchantRule) =>
       r.match.merchant === rule.match.merchant && r.match.counterparty === rule.match.counterparty
     const existing = merchantRules.value.find(same)
     const record: MerchantRule = existing
-      ? { ...existing, to: rule.to, by, updatedAt: t }
+      ? { ...existing, to: mergeRuleTarget(existing.to, rule.to), by, updatedAt: t }
       : { id: Math.random().toString(36).slice(2, 10), match: rule.match, to: rule.to, by, updatedAt: t }
     mutatePrivateDoc((doc) => {
       const list = (doc.merchantRules as MerchantRule[] | undefined) ?? []
@@ -1075,13 +1129,15 @@ export const useFinanceStore = defineStore('finance', () => {
    * оплаты этой цели (оплат не было — «не списывать»: деньги без выбора счёта не
    * двигаются); всё это можно передать явно. Тело кредита считает finance.ts от
    * остатка на сейчас — в записи снимок. Отмеченный месяц второй записи не получает.
+   * `at` — когда деньги ушли (по строке выписки — день операции, `operationAt`); по умолчанию
+   * сейчас. Запись до сверки остатка (`principalSetAt`, `amountSetAt`) его не двигает.
    * Возвращает запись, по которой месяц оплачен, или null, если платить нечего.
    */
   function markPaid(
     kind: ScheduledKind,
     targetId: string,
     by: PersonId,
-    opts: { period?: string; amount?: number; accountId?: string | null } = {},
+    opts: { period?: string; amount?: number; accountId?: string | null; source?: Payment['source']; opId?: string; at?: string } = {},
   ): Payment | null {
     let period: string | undefined
     let amount: number
@@ -1106,8 +1162,9 @@ export const useFinanceStore = defineStore('finance', () => {
     if (existing) return existing
 
     const record = newPayment(
-      { kind, targetId, period, amount, ...(principal === undefined ? {} : { principal }), by },
+      { kind, targetId, period, amount, ...(principal === undefined ? {} : { principal }), by, ...sourceOf(opts) },
       opts.accountId,
+      opts.at,
     )
     mutateHouseholdDoc((doc) => {
       if (!doc.payments) doc.payments = []
@@ -1117,16 +1174,20 @@ export const useFinanceStore = defineStore('finance', () => {
     return record
   }
 
+  /** Источник отметки (B2C-15): по строке выписки — с id операции; руками — без полей. */
+  const sourceOf = (opts: { source?: Payment['source']; opId?: string }): Pick<Payment, 'source' | 'opId'> =>
+    opts.source === 'statement' ? { source: 'statement', ...(opts.opId ? { opId: opts.opId } : {}) } : {}
+
   /**
    * «Пришла зарплата» (Р-18): запись-зачисление того же списка, что «Оплатил» (Р-7) —
    * цель — участник, период — месяц её дня (по умолчанию — этот), сумма по умолчанию —
    * оклад месяца (премия — правкой), счёт — тот, куда она пришла в прошлый раз (Р-5).
    * Остаток счёта растёт из записи (finance.ts `accountBalance`). Отмеченный месяц
-   * второй записи не получает. Возвращает запись или null, если участника нет.
+   * второй записи не получает. `at` — как у `markPaid`. Возвращает запись или null, если участника нет.
    */
   function markSalary(
     personId: PersonId,
-    opts: { period?: string; amount?: number; accountId?: string | null } = {},
+    opts: { period?: string; amount?: number; accountId?: string | null; source?: Payment['source']; opId?: string; at?: string } = {},
   ): Payment | null {
     const p = people.value.find((x) => x.id === personId && !x.deletedAt)
     if (!p) return null
@@ -1134,8 +1195,9 @@ export const useFinanceStore = defineStore('finance', () => {
     const existing = paidFor(payments.value, 'salary', personId, period)
     if (existing) return existing
     const record = newPayment(
-      { kind: 'salary', targetId: personId, period, amount: opts.amount ?? salaryAt(p, period), by: personId },
+      { kind: 'salary', targetId: personId, period, amount: opts.amount ?? salaryAt(p, period), by: personId, ...sourceOf(opts) },
       opts.accountId,
+      opts.at,
     )
     mutateHouseholdDoc((doc) => {
       if (!doc.payments) doc.payments = []
@@ -1210,9 +1272,10 @@ export const useFinanceStore = defineStore('finance', () => {
       amount = split.amount
       principal = split.body
     }
+    // Источник и строка выписки — те же: правка счёта пометку «из выписки» не снимает (B2C-15).
     const { kind, targetId, period, by } = record
     const next = newPayment(
-      { kind, targetId, period, amount, ...(principal === undefined ? {} : { principal }), by },
+      { kind, targetId, period, amount, ...(principal === undefined ? {} : { principal }), by, ...sourceOf(record) },
       opts.accountId,
       record.at,
     )
@@ -1481,6 +1544,19 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
+  /** Главная мечта (Р-8, B2C-14): пометка одной цели, у остальных снимается — LWW по цели. */
+  function setMainGoal(id: string) {
+    if (mainGoal(goals.value)?.id === id && goals.value.find((g) => g.id === id)?.main) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      for (const g of doc.goals || []) {
+        if (g.deletedAt) continue
+        if (g.id === id) Object.assign(g, { main: true, updatedAt: t })
+        else if (g.main) Object.assign(g, { main: false, updatedAt: t })
+      }
+    })
+  }
+
   function contribute(id: string, amount: number, by: PersonId, note?: string) {
     const t = new Date().toISOString()
     const mid = Math.random().toString(36).slice(2, 10)
@@ -1501,7 +1577,7 @@ export const useFinanceStore = defineStore('finance', () => {
 
   // Покупки в дом (React `useStore.ts:280-311`). Даты — ISO, а не «сегодня» как в React:
   // показ — `atLabel`; старые строки `dd.mm.yyyy` из прода экран показывает как есть.
-  function addWish(w: { name: string; price: number; by: PersonId; url?: string }) {
+  function addWish(w: { name: string; price: number; by: PersonId; url?: string; list?: PersonId | 'all' }) {
     const t = new Date().toISOString()
     const item: WishItem = {
       id: Math.random().toString(36).slice(2, 10),
@@ -1512,11 +1588,67 @@ export const useFinanceStore = defineStore('finance', () => {
       bought: false,
       addedOn: t,
       updatedAt: t,
+      ...(w.list ? { list: w.list } : {}),
     }
     mutateHouseholdDoc((doc) => {
       if (!doc.wishlist) doc.wishlist = []
       doc.wishlist.unshift(item)
     })
+    return item.id
+  }
+
+  /* ---------------- подарки-сюрпризы (B2C-18) — личный документ ---------------- */
+  const gifts = computed(() => ((privateDoc.value.gifts as Gift[] | undefined) ?? []).filter((g) => !g.deletedAt))
+
+  /** Имя и цвет раздела трат (B2C-21): правится в настройках разбора, у обоих. */
+  function updateSpendCategory(id: string, patch: { name?: string; slot?: number | null }) {
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      const c = (doc.spendCategories ?? []).find((x) => x.id === id)
+      if (c) Object.assign(c, patch, { updatedAt: t })
+    })
+  }
+
+  /* ---------- раскладки (B2C-21) ---------- */
+  const allocations = computed(() => (householdDoc.value.allocations ?? []).filter((a) => !a.deletedAt))
+
+  /** Решение раскладки — в общий документ: партнёр и второй заход видят его, а не раскладывают снова. */
+  function recordAllocation(a: Omit<Allocation, 'id' | 'at' | 'updatedAt' | 'deletedAt'>): Allocation {
+    const t = new Date().toISOString()
+    const record: Allocation = { ...a, id: Math.random().toString(36).slice(2, 10), at: t, updatedAt: t }
+    mutateHouseholdDoc((doc) => {
+      doc.allocations = [...(doc.allocations ?? []), record]
+    })
+    return record
+  }
+
+  function addGift(g: { forSlot: PersonId; name: string; price: number; photoId?: string | null }): Gift {
+    const t = new Date().toISOString()
+    const gift: Gift = { id: Math.random().toString(36).slice(2, 10), forSlot: g.forSlot, name: g.name, price: g.price, photoId: g.photoId ?? null, bought: false, updatedAt: t }
+    mutatePrivateDoc((doc) => {
+      doc.gifts = [gift, ...((doc.gifts as Gift[] | undefined) ?? [])]
+    })
+    return gift
+  }
+
+  function updateGift(id: string, patch: Partial<Gift>) {
+    if (unchanged(gifts.value.find((g) => g.id === id), patch)) return
+    const t = new Date().toISOString()
+    mutatePrivateDoc((doc) => {
+      doc.gifts = ((doc.gifts as Gift[] | undefined) ?? []).map((g) => (g.id === id ? { ...g, ...patch, updatedAt: t } : g))
+    })
+  }
+
+  function removeGift(id: string) {
+    const t = new Date().toISOString()
+    mutatePrivateDoc((doc) => {
+      doc.gifts = ((doc.gifts as Gift[] | undefined) ?? []).map((g) => (g.id === id ? { ...g, deletedAt: t, updatedAt: t } : g))
+    })
+  }
+
+  function toggleGiftBought(id: string) {
+    const g = gifts.value.find((x) => x.id === id)
+    if (g) updateGift(id, { bought: !g.bought, boughtOn: g.bought ? null : new Date().toISOString() })
   }
 
   function updateWish(id: string, patch: Partial<WishItem>) {
@@ -1579,6 +1711,8 @@ export const useFinanceStore = defineStore('finance', () => {
     credits,
     payments,
     wishlist,
+    gifts,
+    allocations,
     setupDone,
     plans,
     activePlan,
@@ -1631,10 +1765,19 @@ export const useFinanceStore = defineStore('finance', () => {
     settlePlan,
     addGoal,
     updateGoal,
+    setGoalPhoto,
+    setWishPhoto,
     removeGoal,
+    setMainGoal,
     contribute,
     withdraw,
     addWish,
+    recordAllocation,
+    updateSpendCategory,
+    addGift,
+    updateGift,
+    removeGift,
+    toggleGiftBought,
     updateWish,
     removeWish,
     toggleBought,

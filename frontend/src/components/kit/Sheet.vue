@@ -128,27 +128,29 @@ onUnmounted(() => {
       @pointerdown="onScrimDown"
       @click.self="onScrimClick"
     >
+      <!-- Лист снизу (DESIGN.md §5): грип, радиус 28, тень только у листа, заголовок Piazzolla 24. -->
       <div
         ref="card"
         role="dialog"
         aria-modal="true"
         :aria-labelledby="titleId"
         tabindex="-1"
-        class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-t-3xl border border-line bg-surface p-5 pb-8 text-left shadow-lift outline-none sm:rounded-2xl sm:pb-5"
+        class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-t-[28px] bg-surface px-5 pb-9 pt-3 text-left shadow-sheet outline-none sm:rounded-card sm:pb-5"
       >
+        <div class="mx-auto mb-3 h-1 w-9 rounded-full bg-line-strong" aria-hidden="true" />
         <div class="mb-4 flex items-center justify-between gap-3">
           <!-- Отметка рядом с заголовком, а не внутри: имя окна и заголовок — только title. -->
           <div class="flex min-w-0 items-center gap-2">
-            <h3 :id="titleId" class="min-w-0 font-display text-[17px] font-semibold text-ink">{{ title }}</h3>
+            <h3 :id="titleId" class="min-w-0 type-sheet text-ink">{{ title }}</h3>
             <slot name="mark" />
           </div>
           <button
             type="button"
             aria-label="Закрыть"
-            class="grid size-7 shrink-0 place-items-center rounded-lg text-ink-3 hover:bg-surface-3 hover:text-ink cursor-pointer"
+            class="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-surface-2 text-ink-2 hover:bg-surface-3 hover:text-ink cursor-pointer"
             @click="close"
           >
-            <PhX :size="16" />
+            <PhX :size="18" />
           </button>
         </div>
 

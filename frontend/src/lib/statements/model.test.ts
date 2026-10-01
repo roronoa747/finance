@@ -18,6 +18,7 @@ import {
   seedSpendCategories,
   spendTotals,
   unknownGroups,
+  unknownSummary,
 } from './model'
 import type { MerchantRule, Operation, SpendTotal } from './types'
 
@@ -183,6 +184,28 @@ describe('categorize', () => {
     expect(applyRules(once, [r]).map((o) => o.categoryId)).toEqual(['sc_cafe', 'sc_cafe', 'sc_food'])
   })
 
+  it('возврат приёмки 2 п. 2: правило платежа ставит плановый раздел только «таким» строкам (`fits`), остальные — по словарю или незнакомое', () => {
+    const ops = [
+      op({ merchant: 'Перевод с карты на карту', amount: -15_000, kind: 'transfer-out' }),
+      op({ merchant: 'Перевод с карты на карту', amount: -280_000, kind: 'transfer-out' }),
+      op({ merchant: 'Magnum Cash&Carry', amount: -2_700 }),
+      op({ merchant: 'Magnum Cash&Carry', amount: -9_400 }),
+    ]
+    const rules = [
+      rule({ match: { merchant: normalizeMerchant('Перевод с карты на карту') }, to: { payment: { kind: 'obligation', targetId: 'p2p', categoryId: 'sc_subscriptions' } } }),
+      rule({ match: { merchant: normalizeMerchant('Magnum Cash&Carry') }, to: { payment: { kind: 'obligation', targetId: 'lunch', categoryId: 'sc_subscriptions' } } }),
+    ]
+    const expected: Record<string, number> = { p2p: 15_000, lunch: 2_700 }
+    const fits = (o: Operation, p: { targetId: string }) => Math.abs(o.amount) === expected[p.targetId]
+    expect(applyRules(ops, rules, DICTIONARY, undefined, fits).map((o) => o.categoryId)).toEqual(['sc_subscriptions', null, 'sc_subscriptions', 'sc_food'])
+    expect(categorize(ops[1], rules, DICTIONARY, fits)).toMatchObject({ categoryId: null, internal: false })
+    // Раздел «остальных» строк внутри правила платежа (критик возврата 2): не «такая» строка — туда, «такая» — плановый.
+    const withRest = [{ ...rules[0], to: { payment: { kind: 'obligation' as const, targetId: 'p2p', categoryId: 'sc_subscriptions', restCategoryId: 'sc_people' } } }, rules[1]]
+    expect(applyRules(ops, withRest, DICTIONARY, undefined, fits).map((o) => o.categoryId)).toEqual(['sc_subscriptions', 'sc_people', 'sc_subscriptions', 'sc_food'])
+    // Без проверки — прежнее поведение (весь продавец в плановом разделе): проверку передаёт стор операций.
+    expect(applyRules(ops, rules).map((o) => o.categoryId)).toEqual(['sc_subscriptions', 'sc_subscriptions', 'sc_subscriptions', 'sc_subscriptions'])
+  })
+
   it('словарь — данные: у каждой записи раздел из набора по умолчанию', () => {
     const ids = new Set(DEFAULT_SPEND_CATEGORIES.map((c) => c.id))
     for (const d of DICTIONARY) expect(ids.has(d.categoryId)).toBe(true)
@@ -296,6 +319,20 @@ describe('функции экрана выписок (B2C-07)', () => {
       { match: { merchant: 'zhansaya' }, label: 'IP ZHANSAYA ALMATY KZ', count: 2, amount: 300 },
     ])
     expect(unknownGroups(ops, 'sc_food').map((g) => g.label)).toEqual(['Magnum'])
+  })
+
+  it('unknownSummary — продавцы и сумма незнакомых за неделю (карточка «Не разобрано» на главном)', () => {
+    const ops = [
+      op({ date: '2026-09-21', merchant: 'IP ZHANSAYA ALMATY KZ', amount: -100 }),
+      op({ date: '2026-09-27', merchant: 'IP ZHANSAYA ASTANA KZ', amount: -200 }),
+      op({ date: '2026-09-22', kind: 'transfer-out', merchant: 'Дана К.', counterparty: 'Дана К.', amount: -5000 }),
+      op({ date: '2026-09-28', merchant: 'Kiosk', amount: -9000 }), // следующая неделя
+      op({ date: '2026-09-23', merchant: 'Magnum', amount: -700, categoryId: 'sc_food' }), // знакомый
+      op({ date: '2026-09-23', merchant: 'Перевод себе', amount: -800, internal: true }),
+    ]
+    expect(unknownSummary(ops, '2026-W39')).toEqual({ count: 2, amount: 5300 })
+    expect(unknownSummary(ops)).toEqual({ count: 3, amount: 14_300 })
+    expect(unknownSummary([], '2026-W39')).toEqual({ count: 0, amount: 0 })
   })
 
   it('partnerHints — другой участник по имени, пока правила нет', () => {

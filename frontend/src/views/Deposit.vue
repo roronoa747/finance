@@ -3,7 +3,8 @@ import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { PhArrowLeft } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
-import { money, plain, parseMoney, ratePct } from '@/lib/money'
+import { useAuthStore } from '@/stores/auth'
+import { money, plain, parseMoney, rateField, ratePct } from '@/lib/money'
 import { INFLATION, deposit as calcDeposit, realRate } from '@/lib/finance'
 
 import Card from '@/components/kit/Card.vue'
@@ -13,12 +14,15 @@ import SavedMark from '@/components/kit/SavedMark.vue'
 import { useSavedMark } from '@/components/kit/useSavedMark'
 import Segmented from '@/components/kit/Segmented.vue'
 import Callout from '@/components/kit/Callout.vue'
+import Hint from '@/components/kit/Hint.vue'
 import DangerZone from '@/components/kit/DangerZone.vue'
 import Input from '@/components/ui/Input.vue'
 
 const router = useRouter()
 const route = useRoute()
 const financeStore = useFinanceStore()
+// Viewer видит условия вклада цифрами, но не правит и не удаляет (Р-13, матрица §3; возврат приёмки п. 3).
+const authStore = useAuthStore()
 
 const accountId = computed(() => route.params.id as string)
 const account = computed(() =>
@@ -102,7 +106,7 @@ function onCapitalizeChange(v: string) {
 <template>
   <div v-if="!account || !depositData" class="pt-6 text-center text-[14px] text-ink-3">
     Вклад не найден.
-    <button class="text-brand font-medium cursor-pointer" @click="router.push('/capital')">
+    <button class="text-brand font-medium cursor-pointer" @click="router.push('/money/capital')">
       К капиталу
     </button>
   </div>
@@ -111,7 +115,7 @@ function onCapitalizeChange(v: string) {
     <button
       type="button"
       class="flex items-center gap-1.5 self-start text-[13px] text-ink-2 hover:text-ink cursor-pointer"
-      @click="router.push('/capital')"
+      @click="router.push('/money/capital')"
     >
       <PhArrowLeft :size="15" /> Капитал
     </button>
@@ -122,61 +126,91 @@ function onCapitalizeChange(v: string) {
         <SavedMark :on="saved" />
       </div>
 
-      <Field label="Название">
-        <Input :default-value="account.name" class="mb-3" @blur="onNameBlur" />
-      </Field>
+      <!-- Viewer: цифры без полей и без «Удалить вклад» — как в окне счёта Капитала -->
+      <div v-if="authStore.isViewer" class="flex flex-col gap-1.5 rounded-xl border border-line bg-surface-2 p-3 text-[13px]">
+        <div v-if="account.note" class="flex justify-between gap-3">
+          <span class="text-ink-2">Примечание</span>
+          <b class="truncate text-ink">{{ account.note }}</b>
+        </div>
+        <div class="flex justify-between gap-3">
+          <span class="text-ink-2">Сумма на счёте</span>
+          <b class="num text-ink">{{ money(account.amount) }}</b>
+        </div>
+        <div class="flex justify-between gap-3">
+          <span class="text-ink-2">Ставка</span>
+          <b class="num text-ink">{{ ratePct(depositData.annualRate, 1) }} годовых</b>
+        </div>
+        <div class="flex justify-between gap-3">
+          <span class="text-ink-2">Пополнение в месяц</span>
+          <b class="num text-ink">{{ money(depositData.monthlyTopUp) }}</b>
+        </div>
+        <div class="flex justify-between gap-3">
+          <span class="text-ink-2">Срок</span>
+          <b class="num text-ink">{{ depositData.months }} мес.</b>
+        </div>
+        <div class="flex justify-between gap-3">
+          <span class="text-ink-2">Капитализация</span>
+          <b class="text-ink">{{ depositData.capitalize ? 'ежемесячно' : 'в конце срока' }}</b>
+        </div>
+      </div>
 
-      <Field label="Примечание">
-        <Input :default-value="account.note" class="mb-3" @blur="onNoteBlur" />
-      </Field>
+      <template v-else>
+        <Field label="Название">
+          <Input :default-value="account.name" class="mb-3" @blur="onNameBlur" />
+        </Field>
 
-      <Field label="Сумма на счёте, ₸">
-        <NumFieldBlur :initial="plain(account.amount)" class="mb-3" @commit="onAmountCommit" />
-      </Field>
+        <Field label="Примечание">
+          <Input :default-value="account.note" class="mb-3" @blur="onNoteBlur" />
+        </Field>
 
-      <Field label="Ставка, % годовых">
-        <NumFieldBlur
-          :initial="(depositData.annualRate * 100).toString().replace('.', ',')"
-          kind="rate"
-          class="mb-3"
-          @commit="onRateCommit"
+        <Field label="Сумма на счёте, ₸">
+          <NumFieldBlur :initial="plain(account.amount)" class="mb-3" @commit="onAmountCommit" />
+        </Field>
+
+        <Field label="Ставка, % годовых">
+          <NumFieldBlur
+            :initial="rateField(depositData.annualRate)"
+            kind="rate"
+            class="mb-3"
+            @commit="onRateCommit"
+          />
+        </Field>
+
+        <Field label="Пополнение в месяц, ₸">
+          <NumFieldBlur
+            :initial="plain(depositData.monthlyTopUp)"
+            class="mb-3"
+            @commit="onMonthlyTopUpCommit"
+          />
+        </Field>
+
+        <Field label="Срок, месяцев">
+          <NumFieldBlur
+            :initial="String(depositData.months)"
+            kind="int"
+            class="mb-3"
+            @commit="onMonthsCommit"
+          />
+        </Field>
+
+        <Field label="Капитализация">
+          <Segmented
+            :model-value="depositData.capitalize ? 'yes' : 'no'"
+            :options="[
+              { value: 'yes', label: 'Ежемесячно' },
+              { value: 'no', label: 'В конце срока' },
+            ]"
+            class="mb-3"
+            @update:model-value="onCapitalizeChange"
+          />
+        </Field>
+
+        <DangerZone
+          label="Удалить вклад"
+          :warning="removeWarning"
+          @confirm="() => { financeStore.removeAccount(account!.id); router.push('/money/capital') }"
         />
-      </Field>
-
-      <Field label="Пополнение в месяц, ₸">
-        <NumFieldBlur
-          :initial="plain(depositData.monthlyTopUp)"
-          class="mb-3"
-          @commit="onMonthlyTopUpCommit"
-        />
-      </Field>
-
-      <Field label="Срок, месяцев">
-        <NumFieldBlur
-          :initial="String(depositData.months)"
-          kind="int"
-          class="mb-3"
-          @commit="onMonthsCommit"
-        />
-      </Field>
-
-      <Field label="Капитализация">
-        <Segmented
-          :model-value="depositData.capitalize ? 'yes' : 'no'"
-          :options="[
-            { value: 'yes', label: 'Ежемесячно' },
-            { value: 'no', label: 'В конце срока' },
-          ]"
-          class="mb-3"
-          @update:model-value="onCapitalizeChange"
-        />
-      </Field>
-
-      <DangerZone
-        label="Удалить вклад"
-        :warning="removeWarning"
-        @confirm="() => { financeStore.removeAccount(account!.id); router.push('/capital') }"
-      />
+      </template>
     </Card>
 
     <!-- Итоговые показатели вклада -->
@@ -204,18 +238,16 @@ function onCapitalizeChange(v: string) {
       </div>
     </Card>
 
-    <template v-if="calcResult">
-      <Callout title="Реальная доходность ниже той, что на витрине">
-        При инфляции {{ ratePct(INFLATION, 1) }} эффективная ставка
-        {{ ratePct(calcResult.effectiveRate, 1) }} оставляет примерно {{ ratePct(realEffective, 1) }} настоящих.
-        Это не повод не копить — это повод не путать номинал с доходом.
-      </Callout>
-
-      <Callout title="Проценты считает приложение, а не банк">
-        Формула аннуитета и капитализации работает офлайн, на ваших цифрах. Когда появится
-        ИИ-советник, он получит уже посчитанный результат и будет только объяснять его словами —
-        считать деньги модели не доверяем.
-      </Callout>
-    </template>
+    <!-- Реальная доходность — одна строка, пояснение в подсказке (правило 12); механика расчёта не объясняется -->
+    <Callout v-if="calcResult" tone="neutral" icon="none">
+      <span class="inline-flex items-center gap-2">
+        Реально ≈ {{ ratePct(realEffective, 1) }} с учётом инфляции
+        <Hint>
+          При инфляции {{ ratePct(INFLATION, 1) }} эффективная ставка {{ ratePct(calcResult.effectiveRate, 1) }}
+          оставляет примерно {{ ratePct(realEffective, 1) }} настоящих. Это не повод не копить — это повод не
+          путать номинал с доходом.
+        </Hint>
+      </span>
+    </Callout>
   </div>
 </template>

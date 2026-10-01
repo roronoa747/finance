@@ -140,3 +140,22 @@ export function atLabel(iso: string): string {
   const d = today(new Date(iso))
   return dayLabel(d.day, d.key)
 }
+
+/**
+ * Диапазон недели для заголовка «Эта неделя · 21–27 сентября» (главный и «Неделя»): один
+ * месяц — «21–27 сентября», на стыке — «29 сентября – 5 октября».
+ */
+export function weekRangeLabel(r: { from: string; to: string }): string {
+  const day = (iso: string) => Number(iso.slice(8, 10))
+  const gen = (iso: string) => MONTHS_GEN[Number(iso.slice(5, 7)) - 1]
+  return gen(r.from) === gen(r.to) ? `${day(r.from)}–${day(r.to)} ${gen(r.to)}` : `${day(r.from)} ${gen(r.from)} – ${day(r.to)} ${gen(r.to)}`
+}
+
+/**
+ * Когда добавили или купили желание: новые даты — ISO, «5 сентября» по Алматы; старые строки
+ * из прода (`24.09.2026`) — как есть; пусто — ''.
+ */
+export function addedLabel(s: string | null | undefined): string {
+  if (!s) return ''
+  return /^\d{4}-\d{2}-\d{2}/.test(s) ? atLabel(s) : s
+}

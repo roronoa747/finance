@@ -6,6 +6,7 @@ import { money, plain, parseMoney } from '@/lib/money'
 import { atLabel } from '@/lib/dates'
 import {
   afterAnchor,
+  closerWish,
   creditOutlook,
   halfOverpayExtra,
   lastAccountFor,
@@ -26,7 +27,7 @@ import { cn, plural, sentence } from '@/lib/utils'
 import Field from '@/components/kit/Field.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Segmented from '@/components/kit/Segmented.vue'
-import Select from '@/components/kit/Select.vue'
+import AccountChoice from '@/components/AccountChoice.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Button from '@/components/ui/Button.vue'
 
@@ -42,7 +43,8 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
 
-const activePayoffCredit = computed(() => liveCredits(financeStore.credits).find((c) => c.id === props.creditId))
+// Кредит без ставки (B2C-19) калькулятор не открывает и по адресу `?payoff=`: срок и экономия с нулём врут.
+const activePayoffCredit = computed(() => liveCredits(financeStore.credits).find((c) => c.id === props.creditId && !c.rateUnknown))
 // Досрочка — тенговая сумма: у валютного счёта тенге по курсу, и следующая правка курса
 // или суммы в валюте молча стёрла бы сдвиг.
 const payAccounts = computed(() => payableAccounts(financeStore.accounts))
@@ -72,9 +74,13 @@ const ladder = computed(() => (activePayoffCredit.value ? payoffLadder(activePay
 /* ------------------ Применить досрочку (RP-08) ------------------ */
 const applyMode = ref<LumpMode>('term')
 // '' — счёт не выбран, 'none' — «не списывать», иначе id счёта.
-const applyAccount = ref('')
+// Счёт списания — как у взносов и отметок (`AccountChoice`): не выбран (undefined), «только отметить» (null) или id.
+const applyAccount = ref<string | null | undefined>(undefined)
 const applyDone = ref<Payment | null>(null)
 const removingPrepay = ref<string | null>(null)
+// «Это приближает» (ТЗ B2C-18 п. 4): что из желаний ближе на то, что не отдадим банку, — одна строка,
+// как в раскладке зарплаты (WeekSalary). Экономии нет или желаний с ценой нет — строки нет.
+const closer = computed(() => (applyDone.value ? closerWish(financeStore.wishlist, applyDone.value.saved ?? 0, 'once') : null))
 
 const applyPlan = computed(() => {
   const c = activePayoffCredit.value
@@ -110,7 +116,7 @@ watch(
     applyDone.value = null
     removingPrepay.value = null
     const last = id ? lastAccountFor(financeStore.payments, id, financeStore.accounts) : undefined
-    applyAccount.value = last === undefined ? '' : (last ?? 'none')
+    applyAccount.value = last
   },
   { immediate: true },
 )
@@ -130,11 +136,11 @@ function prepayUndoNote(p: Payment): string {
 
 function applyPrepay() {
   const c = activePayoffCredit.value
-  if (!c || !applyPlan.value || !applyAccount.value) return
+  if (!c || !applyPlan.value || applyAccount.value === undefined) return
   applyDone.value = financeStore.applyPrepayment(c.id, authStore.slot ?? 'a', {
     amount: parseMoney(payoffAmount.value),
     mode: applyMode.value,
-    accountId: applyAccount.value === 'none' ? null : applyAccount.value,
+    accountId: applyAccount.value ?? null,
     ...(planPending.value && stepPlan.value ? { planId: stepPlan.value.id } : {}),
   })
   payoffAmount.value = ''
@@ -259,16 +265,8 @@ function applyPrepay() {
         <div v-else class="mb-3 rounded-xl bg-brand-soft px-3 py-2 text-[13px] text-ink-2">
           Не отдадим банку <b class="num text-brand">{{ money(applyPlan.saved) }}</b>
         </div>
-        <Field label="Откуда списать">
-          <Select v-model="applyAccount">
-            <option value="" disabled>Выберите счёт…</option>
-            <option v-for="a in payAccounts" :key="a.id" :value="a.id">
-              {{ a.name }} · {{ money(a.amount) }}
-            </option>
-            <option value="none">Не списывать — только отметить</option>
-          </Select>
-        </Field>
-        <Button class="w-full" :disabled="!applyAccount" @click="applyPrepay">Применить досрочку</Button>
+        <AccountChoice v-model="applyAccount" :accounts="payAccounts" label="Откуда списать" />
+        <Button class="w-full" :disabled="applyAccount === undefined" @click="applyPrepay">Применить досрочку</Button>
       </div>
 
       <div
@@ -277,6 +275,9 @@ function applyPrepay() {
       >
         Досрочка применена<template v-if="(applyDone.saved ?? 0) > 0">: не отдадим банку
         <b class="num text-brand">{{ money(applyDone.saved ?? 0) }}</b></template>.
+        <div v-if="closer" class="mt-1 num">
+          Это приближает: «{{ closer.wish.name }}» — {{ closer.covers ? 'хватит целиком' : `ближе на ${money(closer.closer)}` }}.
+        </div>
       </div>
 
       <div v-if="creditPrepays.length > 0" class="mb-3">
