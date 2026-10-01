@@ -9,8 +9,8 @@ import { useFinanceStore } from '../src/stores/finance'
 import { useOperationsStore } from '../src/stores/operations'
 import { assignIds } from '../src/lib/statements/model'
 import type { Operation, ParsedStatement } from '../src/lib/statements/types'
-import { money, plain } from '../src/lib/money'
-import { freeByFact, planFact, untilPayday } from '../src/lib/finance'
+import { money, pct, plain } from '../src/lib/money'
+import { deposit, freeByFact, planFact, untilPayday } from '../src/lib/finance'
 import { planFamilyDoc, T0 } from '../src/test/planFamily'
 import type { Payment } from '../src/types/finance'
 import { screenMixin } from '../src/test/screenState'
@@ -20,7 +20,8 @@ import { at, backend, fakeServer, fakeStatements, screen, statementsFor, type Fa
 /**
  * Приёмка Блока 9 (пивот 3, «Деньги без лишнего»): два телефона на фейковом сервере. Часть 1 — сводка
  * «До зарплаты» и «Оплатил» из «Платежей»; часть 2 — квадрат «План»; часть 3 — «История» (раздел
- * задним числом, партнёр видит отметку, но не операцию); часть 4 — права viewer; часть 5 — старые адреса.
+ * задним числом, партнёр видит отметку, но не операцию); часть 4 — права viewer; часть 5 — старые адреса;
+ * части 6–7 — сценарии приёмки со стенда (план «Еды и быта» у партнёра, лист вклада по адресу).
  * Нажатия — обработчиками компонентов (`screenMixin`), как в браузере; браузерная проверка — стенд §6.
  */
 type Phone = { pinia: Pinia; client: ApiClient; store: ReturnType<typeof useFinanceStore> }
@@ -202,6 +203,41 @@ describe('e2e / B2C Блок 9 — «Деньги без лишнего» на �
       expect(html, path).not.toMatch(/>\s*Выбрать этот план\s*</)
       if (path === '/money/plan') expect(html).toMatch(/role="switch" aria-checked="true"[^>]*\sdisabled(=""|\s|>)/)
     }
+  })
+
+  it('часть 6 (приёмка) — план «Еды и быта» из листа виден партнёру; доли «Дохода» = прежний Бюджет', async () => {
+    const A = await phone(server, st, 'a')
+    const B = await phone(server, st, 'b')
+    const before = text(await screen(A.pinia, Money, '/money'))
+    // Нагрузка — жильё 220 000 + кредиты 103 000 от дохода 1 200 000 (формула «вместе с жильём» Бюджета).
+    expect(before).toContain(`нагрузка ${pct(220_000 + 58_000 + 25_000 + 20_000, 1_200_000)} %`)
+    expect(before).toContain(`еда и быт ${pct(150_000, 1_200_000)} %`)
+
+    // A правит план в листе виджета (поле `NumFieldBlur` → `commit`).
+    const editLiving: ComponentOptions = {
+      created() {
+        const s = this.$.setupState
+        if ('living' in s && 'commit' in s) (s.commit as (t: string) => void)('222 000')
+      },
+    }
+    await screen(A.pinia, Money, '/money', undefined, [editLiving])
+    await sync(A, B)
+    const b = text(await screen(B.pinia, Money, '/money'))
+    expect(b).toContain(`план ${plain(222_000)}`)
+    expect(b).toContain(`еда и быт ${pct(222_000, 1_200_000)} %`)
+  })
+
+  it('часть 7 (приёмка) — лист вклада по адресу: условия и расчёт `deposit()`', async () => {
+    const dep = { annualRate: 0.14, months: 12, monthlyTopUp: 50_000, capitalize: true }
+    server.data.accounts = [...server.data.accounts, { id: 'dep', name: 'Депозит', note: '', amount: 1_200_000, amountSetAt: T0, kind: 'deposit', updatedAt: T0, deposit: dep }]
+    const A = await phone(server, st, 'a')
+    const r = deposit({ principal: 1_200_000, ...dep })
+    const html = text(await screen(A.pinia, Money, '/money?account=dep'))
+    expect(html).toContain('Депозит 14 % · общий')
+    expect(html).toContain(`Будет на счёте через 12 мес. ${money(Math.round(r.future))}`)
+    expect(html).toContain(`Начислено процентов ${money(Math.round(r.interest))}`)
+    expect(html).toContain(`Ваши взносы ${money(r.contributed)}`)
+    expect(html).not.toContain('Заработал банк')
   })
 
   it('часть 5 — старые адреса с query ведут в квадраты и листы', async () => {
