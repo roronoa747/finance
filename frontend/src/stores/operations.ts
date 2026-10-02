@@ -467,10 +467,15 @@ export const useOperationsStore = defineStore('operations', () => {
     save()
   }
 
-  /** Демо-пример (пивот 3, B2C-45): свои операции для «Истории» — только в демо, на сервер не уходят. */
+  /**
+   * Демо-пример (пивот 3, B2C-45): свои операции для «Истории» — только в демо, на сервер не уходят. Итоги
+   * недель и месяцев — из них же, тем же `writeTotals`, что при «Отправить» (B2C-52, Р-50): «Неделя» и
+   * «История» демо сходятся.
+   */
   function seedDemoOperations(list: Operation[]) {
     if (!demo.value) return
     remember(list)
+    writeTotals(periodsOf(list))
     save()
   }
 
