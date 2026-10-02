@@ -15,15 +15,16 @@ export function reducedMotion(): boolean {
 
 /**
  * Полоса растёт от нуля при появлении: в SSR и при «уменьшить движение» — сразу `true`
- * (ширина конечная); в браузере — `false` до второго кадра, чтобы пустая полоса успела
- * нарисоваться и переход `width` пошёл от нуля (как `.fill` макета).
+ * (ширина конечная); в браузере полоса рождается пустой и становится полной на втором кадре —
+ * переход `width` идёт от нуля (как `.fill` макета). Пустой — с первой вставки, не из `onMounted`:
+ * оболочка в том же цикле пишет `scrollTop` (пересчёт стилей), и полная ширина успевала стать
+ * «прошлой» — переход шёл 100 → 0 → 100 и был не виден.
  */
 export function useGrow(): Ref<boolean> {
-  const grown = ref(true)
+  const grown = ref(reducedMotion())
   let raf = 0
   onMounted(() => {
-    if (reducedMotion()) return
-    grown.value = false
+    if (grown.value) return
     raf = requestAnimationFrame(() => {
       raf = requestAnimationFrame(() => {
         grown.value = true
