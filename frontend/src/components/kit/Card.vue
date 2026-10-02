@@ -25,7 +25,7 @@ const props = withDefaults(
   <div
     :class="
       cn(
-        'rounded-card border border-card-border bg-surface',
+        'fx-in rounded-card border border-card-border bg-surface',
         flush ? 'overflow-hidden p-0' : tight ? 'p-4' : 'p-5',
         props.class,
         props.className,

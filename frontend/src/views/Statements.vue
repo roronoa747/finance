@@ -565,7 +565,7 @@ onMounted(() => {
       <template v-if="pastWeeks.length">
         <Section title="Прошлые недели" />
         <Card tight>
-          <div v-for="w in pastWeeks" :key="w.key" class="flex items-center gap-3 border-t border-line py-3 first:border-t-0 first:pt-0 last:pb-0">
+          <div v-for="(w, i) in pastWeeks" :key="w.key" class="fx-in flex items-center gap-3 border-t border-line py-3 first:border-t-0 first:pt-0 last:pb-0" :style="{ '--i': i }">
             <span class="min-w-0 flex-1">
               <span class="block font-medium text-ink">{{ w.label }}</span>
               <span v-if="w.meta" class="block type-meta">{{ w.meta }}</span>

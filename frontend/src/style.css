@@ -140,6 +140,14 @@
   --r-tile: 20px;
   --r-inner: 14px;
   --r-pill: 999px;
+
+  /* Движение (пивот 3, Р-45, макет dreams-week.html «2 · Живо»): нажатие, появление, лист;
+     бег цифр и полосы — --motion-fill (≤ 1 с, `kit/CountUp`, `lib/motion.ts`). */
+  --motion-fast: 150ms;
+  --motion-base: 320ms;
+  --motion-slow: 400ms;
+  --motion-fill: 900ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 @theme inline {
@@ -340,11 +348,58 @@
   background: linear-gradient(to bottom, transparent, var(--photo-scrim));
 }
 
+/* ---------------------------------------------------------------
+   Движение (Р-45): отклик нажатия, появление, строки по очереди, лист.
+   Только transform и opacity — без сдвига разметки.
+---------------------------------------------------------------- */
+@keyframes fx-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes fx-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes fx-sheet {
+  from {
+    transform: translateY(24px);
+    opacity: 0.6;
+  }
+}
+/* Нажатие: сжатие 0.97 (макет `.press`); цвет фона и текста — тем же переходом. */
+@utility press {
+  transition-property: transform, color, background-color, border-color, opacity;
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--ease-out);
+  &:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+}
+/* Появление снизу; строки списка — по очереди: `style="--i: N"`, задержка 40 мс × N (не больше 6). */
+@utility fx-in {
+  animation: fx-in var(--motion-base) var(--ease-out) both;
+  animation-delay: calc(min(var(--i, 0), 6) * 40ms);
+}
+/* Смена экрана и затемнение листа — только прозрачность. */
+@utility fx-fade {
+  animation: fx-fade var(--motion-fast) var(--ease-out) both;
+}
+@utility fx-sheet {
+  animation: fx-sheet var(--motion-base) var(--ease-out) both;
+}
+
+/* «Уменьшить движение» выключает всё, включая задержки по очереди; JS-бег цифр и полос
+   слушает то же правило сам (`lib/motion.ts`). */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
   }
 }

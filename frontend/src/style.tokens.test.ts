@@ -87,6 +87,21 @@ describe('style.css — пары токенов light/dark', () => {
     }
   })
 
+  it('пивот 3 (Р-45): токены движения 150–400 мс, полосы ≤ 1 с; «уменьшить движение» гасит анимации, переходы и задержки', () => {
+    const sizes = tokens(css.match(/:root\s*\{([^}]*--motion-fast[^}]*)\}/)?.[1] ?? '')
+    const ms = (k: string) => parseInt(sizes.get(k) ?? '', 10)
+    expect(ms('--motion-fast')).toBeGreaterThanOrEqual(150)
+    expect(ms('--motion-base')).toBeLessThanOrEqual(400)
+    expect(ms('--motion-slow')).toBeLessThanOrEqual(400)
+    expect(ms('--motion-fill')).toBeLessThanOrEqual(1000)
+    expect(sizes.get('--ease-out')).toMatch(/^cubic-bezier\(/)
+    for (const u of ['press', 'fx-in', 'fx-fade', 'fx-sheet']) expect(css).toContain(`@utility ${u} {`)
+    const reduce = css.match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? ''
+    for (const rule of ['animation-duration', 'animation-delay', 'transition-duration', 'transition-delay']) {
+      expect(reduce).toContain(`${rule}:`)
+    }
+  })
+
   it('пивот 3 (Р-36): шрифт системный, крупные цифры — ui-rounded, Google Fonts нет', () => {
     expect(theme.get('--font-display')).toMatch(/^-apple-system/)
     expect(theme.get('--font-sans')).toMatch(/^-apple-system/)

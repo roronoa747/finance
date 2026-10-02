@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router'
 import { money } from '@/lib/money'
 import { plural } from '@/lib/utils'
 import Card from './Card.vue'
+import CountUp from './CountUp.vue'
 import StackBar from './StackBar.vue'
 import Tag from './Tag.vue'
 
@@ -52,7 +53,7 @@ const footer = computed(() => {
 <template>
   <Card class="flex flex-col gap-3">
     <div class="flex items-center justify-between gap-3">
-      <span class="type-h3 money text-ink">{{ money(total) }}</span>
+      <span class="type-h3 money text-ink"><CountUp :value="total" :format="money" /></span>
       <Tag v-if="tag" :tone="tag.tone">{{ tag.text }}</Tag>
     </div>
     <StackBar v-if="stack.length" :segments="stack" />

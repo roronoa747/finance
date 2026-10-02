@@ -123,7 +123,7 @@ onUnmounted(() => {
   <Teleport to="body" :disabled="inline">
     <div
       v-if="open"
-      class="fixed inset-0 flex items-end justify-center bg-scrim backdrop-blur-xs sm:items-center sm:p-4"
+      class="fx-fade fixed inset-0 flex items-end justify-center bg-scrim backdrop-blur-xs sm:items-center sm:p-4"
       :style="{ zIndex: z }"
       @pointerdown="onScrimDown"
       @click.self="onScrimClick"
@@ -135,7 +135,7 @@ onUnmounted(() => {
         aria-modal="true"
         :aria-labelledby="titleId"
         tabindex="-1"
-        class="max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-t-[28px] bg-surface px-5 pb-9 pt-3 text-left shadow-sheet outline-none sm:rounded-card sm:pb-5"
+        class="fx-sheet max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-t-[28px] bg-surface px-5 pb-9 pt-3 text-left shadow-sheet outline-none sm:rounded-card sm:pb-5"
       >
         <div class="mx-auto mb-3 h-1 w-9 rounded-full bg-line-strong" aria-hidden="true" />
         <div class="mb-4 flex items-center justify-between gap-3">

@@ -51,7 +51,7 @@ const squares = computed(() => [
         :aria-current="route.path === s.to ? 'page' : undefined"
         :class="
           cn(
-            'flex w-full min-w-0 flex-col gap-px rounded-[16px] border px-3 py-2.5 text-left cursor-pointer',
+            'press flex w-full min-w-0 flex-col gap-px rounded-[16px] border px-3 py-2.5 text-left cursor-pointer',
             route.path === s.to ? 'border-brand bg-brand-soft' : 'border-card-border bg-surface',
           )
         "

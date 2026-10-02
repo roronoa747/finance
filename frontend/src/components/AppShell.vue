@@ -195,7 +195,13 @@ function navigateAndClose(to: string) {
     <!-- Капсула вкладок парит над контентом (макет pivot-3 `.tabs`): снизу запас 96 px, чтобы последняя карточка
          докручивалась из-под неё. -->
     <main ref="mainEl" :class="['flex-1 overflow-y-auto px-4 [overscroll-behavior:contain]', noTabs ? 'pb-6' : 'pb-24']">
-      <RouterView />
+      <!-- Смена экрана — короткое проявление (Р-45); ключ — имя маршрута: квадраты «Денег» и цели
+           между собой экран не пересоздают. Шапка и капсула вкладок вне — не прыгают. -->
+      <RouterView v-slot="{ Component, route: r }">
+        <div :key="String(r.name ?? r.path)" class="fx-fade">
+          <component :is="Component" />
+        </div>
+      </RouterView>
     </main>
 
     <Tabs v-if="!noTabs" :items="tabs" :plus="!authStore.isViewer" plus-label="Добавить" @plus="addOpen = true" />
