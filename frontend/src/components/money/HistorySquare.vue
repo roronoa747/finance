@@ -8,6 +8,8 @@ import { useOperationsStore } from '@/stores/operations'
 import { money } from '@/lib/money'
 import { MONTHS_NOM, addMonths, dayLabel, monthKey, parseMonthKey } from '@/lib/dates'
 import {
+  ARTICLE_NAMES,
+  breakdownPath,
   hasMonthSummary,
   historyCategories,
   historyFeed,
@@ -15,16 +17,17 @@ import {
   monthSummary,
   progressMoments,
   liveSpendCategories,
-  salaryAllocationPath,
+  recordedBreakdown,
+  salaryBreakdownPath,
   spendCategoryName,
   summaryMonth,
   type HistoryItem,
 } from '@/lib/finance'
-import { spendColor } from '@/lib/palette'
+import { ARTICLE_COLORS, spendColor } from '@/lib/palette'
 import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import { ruleMatchOf } from '@/lib/statements/model'
 import type { MerchantRule, Operation } from '@/lib/statements/types'
-import type { Payment } from '@/types/finance'
+import type { Allocation, Payment } from '@/types/finance'
 
 import Avatar from '@/components/kit/Avatar.vue'
 import Card from '@/components/kit/Card.vue'
@@ -56,7 +59,7 @@ const canEdit = computed(() => !authStore.isViewer)
 /* ------------------ Период и лента ------------------ */
 const months = ref<string[]>([key.value])
 const moments = computed(() => progressMoments({ credits: financeStore.householdDoc.credits, goals: financeStore.goals, payments: financeStore.payments }))
-const source = computed(() => ({ ops: ops.all, payments: financeStore.payments, moments: moments.value }))
+const source = computed(() => ({ ops: ops.all, payments: financeStore.payments, moments: moments.value, allocations: financeStore.allocations }))
 const feed = computed(() => historyFeed(source.value, months.value))
 const start = computed(() => historyStart(source.value))
 const canEarlier = computed(() => !!start.value && start.value < months.value[months.value.length - 1])
@@ -77,7 +80,7 @@ const shown = computed(() =>
       items: d.items.filter((x) => {
         if (filter.value === 'all') return true
         if (filter.value === 'ops') return x.kind === 'op'
-        if (filter.value === 'marks') return x.kind === 'mark'
+        if (filter.value === 'marks') return x.kind === 'mark' || x.kind === 'breakdown'
         return x.kind === 'op' && !x.op.internal && x.op.amount < 0 && (x.op.categoryId ?? UNKNOWN_CATEGORY) === filter.value
       }),
     }))
@@ -133,8 +136,29 @@ function momentLine(x: Extract<HistoryItem, { kind: 'moment' }>) {
     title: `«${m.name}» закрыт`,
     note: inPlan ? 'его платёж идёт в следующий долг по плану' : `освободилось ${money(m.freed)} в месяц`,
     // Раскладка — решение: viewer его не принимает (Р-13).
-    to: canEdit.value ? (inPlan ? '/money/plan' : `/week/salary?from=credit&credit=${m.creditId}`) : null,
+    to: canEdit.value ? (inPlan ? '/money/plan' : breakdownPath({ from: 'credit', credit: m.creditId })) : null,
   }
+}
+
+/** Разбор (B2C-58): откуда деньги и части по статьям в порядке плана; нажатие — записанный разбор. */
+function breakdownLine(a: Allocation) {
+  const from = a.source === 'salary' ? `зарплата · ${personName(a.sourceId)}` : a.source === 'rest' ? 'остаток месяца' : 'каждый месяц'
+  const to =
+    a.source === 'salary'
+      ? salaryBreakdownPath(a.sourceId as 'a', a.period)
+      : a.source === 'rest'
+        ? breakdownPath({ from: 'rest', amount: a.total, period: a.period })
+        : null
+  const by = a.source === 'salary' && a.by === a.sourceId ? '' : ` · ${personName(a.by)}`
+  return { note: `${from}${by}`, to, parts: recordedBreakdown(a, financeStore.moneyArticles.map((x) => x.id)).parts }
+}
+/** Строки разбора ленты — один расчёт на запись, шаблон только читает (ревью frontend Б11, Н-8). */
+const breakdownLines = computed(
+  () => new Map(shown.value.flatMap((d) => d.items).flatMap((x) => (x.kind === 'breakdown' ? [[x.allocation.id, breakdownLine(x.allocation)] as const] : []))),
+)
+function openBreakdown(id: string) {
+  const to = breakdownLines.value.get(id)?.to
+  if (to) void router.push(to)
 }
 
 /* ------------------ Листы ------------------ */
@@ -199,6 +223,24 @@ const markOpen = ref<Payment | null>(null)
             <span class="block text-[14.5px] font-semibold num" :class="markLine(x.payment).plus ? 'text-ok' : 'text-ink'">{{ markLine(x.payment).value }}</span>
           </template>
         </Row>
+        <template v-else-if="x.kind === 'breakdown'">
+          <Row
+            dense
+            title="Разложено"
+            :note="breakdownLines.get(x.allocation.id)!.note"
+            :clickable="!!breakdownLines.get(x.allocation.id)!.to"
+            @click="openBreakdown(x.allocation.id)"
+          >
+            <template #value>
+              <span class="block text-[14.5px] font-semibold num text-ink">{{ money(x.allocation.total) }}</span>
+            </template>
+          </Row>
+          <div v-for="p in breakdownLines.get(x.allocation.id)!.parts" :key="p.key" class="flex items-center gap-2.5 pb-1.5 pl-[46px] text-[13px] text-ink-2">
+            <i class="size-2 shrink-0 rounded-full" :style="{ background: ARTICLE_COLORS[p.key] }" aria-hidden="true" />
+            <span class="flex-1">{{ ARTICLE_NAMES[p.key] }}</span>
+            <span class="num">{{ money(p.amount) }}</span>
+          </div>
+        </template>
         <Row
           v-else
           dense
@@ -241,6 +283,6 @@ const markOpen = ref<Payment | null>(null)
     :period="markOpen.period"
     :title="markOpen.kind === 'salary' ? `Зарплата · ${personName(markOpen.targetId)}` : targetName(markOpen)"
     @close="markOpen = null"
-    @allocate="router.push(salaryAllocationPath(markOpen!.targetId as 'a', markOpen!.period))"
+    @allocate="router.push(salaryBreakdownPath(markOpen!.targetId as 'a', markOpen!.period))"
   />
 </template>

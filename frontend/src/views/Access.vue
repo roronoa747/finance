@@ -8,6 +8,7 @@ import { useOperationsStore } from '@/stores/operations'
 import { landingPath } from '@/router/landing'
 import { seedSpendCategories } from '@/lib/statements/model'
 import { addMonths, monthKey, weekKey } from '@/lib/dates'
+import { breakdownWith, monthBreakdown } from '@/lib/finance'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
 import { authErrorText } from '@/lib/authErrors'
 import Button from '@/components/ui/Button.vue'
@@ -219,6 +220,19 @@ function startDemoMode() {
         movements: [],
         updatedAt: new Date().toISOString(),
       },
+      // Копилка «Запаса» и «Подушки» (Блок 11, Р-66): запас собран наполовину.
+      {
+        id: 'g-pot',
+        name: 'Подушка',
+        need: 1_500_000,
+        seed: 150_000,
+        have: 150_000,
+        monthly: 0,
+        hue: 'teal',
+        planPct: 0,
+        movements: [],
+        updatedAt: new Date().toISOString(),
+      },
       {
         id: 'g-sofa',
         name: 'Новый диван',
@@ -245,6 +259,12 @@ function startDemoMode() {
         deposit: { annualRate: 0.14, months: 12, monthlyTopUp: 0, capitalize: true },
       },
     ]
+    // «Ваш порядок» пройден (Блок 11, Р-55): статьи по умолчанию, суммы «Жизни», «Трат» и ступеней, копилка — «Подушка».
+    const now = new Date().toISOString()
+    doc.moneyArticles = (
+      [['must'], ['life', 180_000], ['reserve', 50_000], ['debts', 40_000], ['cushion', 30_000], ['dreams'], ['spend', 100_000]] as const
+    ).map(([id, amount], i) => ({ id, order: i + 1, on: true, ...(amount === undefined ? {} : { amount }), updatedAt: now }))
+    doc.moneySettings = { reserveMonths: 1, cushionMonths: 3, costlyRate: 0, potGoalId: 'g-pot', orderedAt: now, updatedAt: now }
     // Итоги выписки Аруны (B2C-19 п. 4): своих операций у неё в демо нет — итоги руками. Итоги Ильяса — из его
     // демо-операций ниже, той же функцией, что при «Отправить» (B2C-52).
     seedSpendCategories(doc)
@@ -267,7 +287,21 @@ function startDemoMode() {
   financeStore.markPaid('obligation', 'ob-rent', 'b', { period: prev, accountId: null, at: `${prev}-05T05:00:00.000Z` })
   financeStore.markSalary('a', { period: prev, accountId: null, at: `${prev}-10T05:00:00.000Z` })
   financeStore.markPaid('obligation', 'ob-rent', 'b', { accountId: 'acc-kaspi' })
-  financeStore.markSalary('a', { accountId: 'acc-kaspi' })
+  // Разбор прошлого месяца записан — карточка говорит «как в <прошлом месяце>»; части считает finance.ts.
+  const before = monthBreakdown(
+    { ...financeStore.householdDoc, credits: financeStore.credits },
+    { key: prev, totals: [], spendCategories: [], uploads: [] },
+    { from: 'salary', person: 'a', period: prev },
+  )
+  if (before) {
+    const parts = breakdownWith(before, []).effects.parts
+    const at = `${prev}-10T06:00:00.000Z`
+    financeStore.mutateHouseholdDoc((doc) => {
+      doc.allocations = [...(doc.allocations ?? []), { id: 'demo-breakdown-prev', kind: 'breakdown', ...before.record, by: 'a', total: before.amount, parts, at, updatedAt: at }]
+    })
+  }
+  // Зарплата Ильяса пришла сегодня по выписке и не разобрана — на «Неделе» «Пришла зарплата · как обычно».
+  financeStore.markSalary('a', { accountId: 'acc-kaspi', source: 'statement', opId: 'demo-salary' })
   // Записи загрузок и свои операции демо — когда стор операций уже переключился на демо-семью (watch по владельцу).
   void nextTick().then(() => {
     // Две недели своих операций (0…13 дней назад): у этой и прошлой недели есть траты — у карточки недели

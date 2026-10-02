@@ -36,6 +36,24 @@ export function plannedElsewhere(categoryId: string, categories: Pick<SpendCateg
   return DEFAULT_SPEND_CATEGORIES.find((c) => c.id === categoryId)?.plannedElsewhere ?? false
 }
 
+/** Разделы статьи «Траты» по умолчанию (B2C-54, Р-56); остальные несоставные — «Жизнь». */
+export const SPEND_ARTICLE_CATEGORIES = ['sc_cafe', 'sc_shopping', 'sc_fun', 'sc_travel']
+
+/**
+ * Статья разбора раздела (B2C-54): поле документа, а без него — умолчание: учтённый планом
+ * раздел (`plannedElsewhere`) — «Обязательное», кафе, покупки, развлечения, путешествия —
+ * «Траты», остальное (и `sc_other`, и незнакомое) — «Жизнь».
+ */
+export function spendArticle(
+  categoryId: string,
+  categories: Pick<SpendCategory, 'id' | 'plannedElsewhere' | 'article'>[],
+): 'must' | 'life' | 'spend' {
+  const own = categories.find((c) => c.id === categoryId)
+  if (own?.article) return own.article
+  if (plannedElsewhere(categoryId, categories)) return 'must'
+  return SPEND_ARTICLE_CATEGORIES.includes(categoryId) ? 'spend' : 'life'
+}
+
 /** Вид операции сам говорит о разделе — продавец не нужен. */
 export const KIND_CATEGORY: Partial<Record<OperationKind, string>> = {
   cash: 'sc_cash',

@@ -15,8 +15,9 @@ import Wishes from '@/views/Wishes.vue'
 const GoalDetail = () => import('@/views/GoalDetail.vue')
 // «Деньги» (пивот 3, Р-31): один экран — сводка и квадраты Капитал · План · История — одним чанком.
 const Money = () => import('@/views/Money.vue')
-// Раскладка зарплаты, остатка и освободившихся денег (бывший Ритуал; B2C-21).
-const WeekSalary = () => import('@/views/WeekSalary.vue')
+// Разбор зарплаты по статьям (Блок 11): «Ваш порядок» — редкий экран, отдельным чанком.
+const YourOrder = () => import('@/views/YourOrder.vue')
+const Breakdown = () => import('@/views/Breakdown.vue')
 // Выписки (B2C-07): pdf.js грузится ещё позже — только когда выбрали файл.
 const Statements = () => import('@/views/Statements.vue')
 // Новая мечта (B2C-18): шаблоны с картинками — редкий экран, отдельным чанком.
@@ -31,10 +32,10 @@ const Start = () => import('@/views/Start.vue')
  * редиректы с сохранением query (`/money/capital?credit=x` → `/money?credit=x`; счёт и вклад
  * `/money/capital/:id` → `/money?account=:id`).
  * `/ritual` без параметров — «Неделя»; с параметрами (раскладка зарплаты, остатка, освободившихся
- * денег) — `/week/salary` (раскладка `WeekSalary`, B2C-21).
+ * денег) — разбор `/week/breakdown` с теми же параметрами (B2C-58).
  */
 const ritualRedirect = (to: { query: Record<string, unknown> }): RouteLocationRaw =>
-  Object.keys(to.query).length ? { path: '/week/salary', query: to.query as Record<string, string> } : '/week'
+  Object.keys(to.query).length ? { path: '/week/breakdown', query: to.query as Record<string, string> } : '/week'
 
 /**
  * Бюджет и Капитал до пивота 3 — квадрат «Капитал» с теми же ключами окон; закладка калькулятора
@@ -73,9 +74,13 @@ export const routes: RouteRecordRaw[] = [
     children: [
       { path: '', name: 'dreams', component: Dreams },
       { path: 'week', name: 'week', component: Statements },
-      // `memberOnly` — экран-форма: viewer уходит на главный (Р-12, «viewer — без форм»), в том числе
-      // со старой ссылки `/ritual?…` и закладки.
-      { path: 'week/salary', name: 'week-salary', component: WeekSalary, meta: { memberOnly: true } },
+      // Раскладка (B2C-21) заменена разбором (Р-52): старый адрес с теми же параметрами — на разбор
+      // (без параметров — освободившийся платёж, как было у раскладки).
+      { path: 'week/salary', redirect: (to) => ({ path: '/week/breakdown', query: to.query }) },
+      // «Ваш порядок» (B2C-56): статьи разбора и пороги — один раз; viewer — в разбор.
+      { path: 'week/order', name: 'week-order', component: YourOrder, meta: { memberOnly: true, viewerTo: '/week/breakdown' } },
+      // Разбор зарплаты кольцом (B2C-57): те же параметры, что у раскладки; viewer смотрит.
+      { path: 'week/breakdown', name: 'week-breakdown', component: Breakdown },
       // Квадрат — по адресу; переключение — `router.replace` (назад — на прошлую вкладку).
       { path: 'money/:square(plan|history)?', name: 'money', component: Money },
       // Бюджет и Капитал до пивота 3 — теперь квадрат «Капитал»; окна — те же ключи query.
@@ -129,8 +134,11 @@ export function createAppRouter(history = typeof window !== 'undefined' ? create
       return next({ path: '/access', query: to.query })
     }
 
-    // 3. Экраны-формы (раскладка денег, новая мечта) — только участнику.
-    if (to.meta.memberOnly && authStore.isViewer) return next('/')
+    // 3. Экраны-формы («Ваш порядок», новая мечта) — только участнику.
+    // «Ваш порядок» — viewer видит разбор, но не меняет (Р-63): прямой адрес — назад в разбор.
+    if (to.meta.memberOnly && authStore.isViewer) {
+      return next(typeof to.meta.viewerTo === 'string' ? { path: to.meta.viewerTo, query: to.query } : '/')
+    }
 
     // 4. Первый запуск (`landingPath`): семья без данных — только `/start`; семья с данными, но не
     // настроенная (ответы посреди потока) — и `/start`, и главный; настроенной семье `/start` открыт

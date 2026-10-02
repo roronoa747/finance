@@ -923,3 +923,50 @@ describe('B2C-21: раскладки в общем документе', () => {
     expect(mergeDocs(defaultSyncDoc(), defaultSyncDoc()).allocations).toEqual([])
   })
 })
+
+describe('B2C-54: план разбора в общем документе', () => {
+  const T1 = '2026-10-01T05:00:00.000Z'
+  const T2 = '2026-10-02T05:00:00.000Z'
+  const art = (id: 'life' | 'spend' | 'reserve', amount: number, updatedAt: string, extra = {}) => ({
+    id, order: 1, on: true, amount, updatedAt, ...extra,
+  })
+  const settings = (reserveMonths: number, updatedAt: string) => ({ reserveMonths, cushionMonths: 3, costlyRate: 0, updatedAt })
+
+  it('moneyArticles — по id: свои и партнёра вместе, поздняя правка побеждает, надгробие сильнее', () => {
+    const local = { ...defaultSyncDoc(), moneyArticles: [art('life', 200_000, T2), art('spend', 50_000, T1)] }
+    const remote = {
+      ...defaultSyncDoc(),
+      moneyArticles: [art('life', 150_000, T1), art('reserve', 30_000, T1), art('spend', 60_000, T2, { deletedAt: T2 })],
+    }
+    const merged = mergeDocs(local, remote)
+    const by = (id: string) => merged.moneyArticles!.find((a) => a.id === id)!
+    expect(merged.moneyArticles!.map((a) => a.id).sort()).toEqual(['life', 'reserve', 'spend'])
+    expect(by('life').amount).toBe(200_000)
+    expect(by('reserve').amount).toBe(30_000)
+    expect(by('spend').deletedAt).toBe(T2)
+    const sorted = (d: SyncDoc) => [...d.moneyArticles!].sort((a, b) => a.id.localeCompare(b.id))
+    expect(sorted(mergeDocs(remote, local))).toEqual(sorted(merged))
+  })
+
+  it('moneySettings — целиком по позднему updatedAt; нет с одной стороны — другая; документы без ключа — null', () => {
+    const local = { ...defaultSyncDoc(), moneySettings: settings(1, T1) }
+    const remote = { ...defaultSyncDoc(), moneySettings: settings(2, T2) }
+    expect(mergeDocs(local, remote).moneySettings).toEqual(settings(2, T2))
+    expect(mergeDocs(remote, local).moneySettings).toEqual(settings(2, T2))
+    expect(mergeDocs(local, defaultSyncDoc()).moneySettings).toEqual(settings(1, T1))
+    expect(mergeDocs(defaultSyncDoc(), defaultSyncDoc()).moneySettings).toBeNull()
+    expect(mergeDocs(defaultSyncDoc(), defaultSyncDoc()).moneyArticles).toEqual([])
+    // Равные метки — выбор детерминирован, слияние коммутативно.
+    const tie = { ...defaultSyncDoc(), moneySettings: settings(3, T1) }
+    expect(mergeDocs(local, tie).moneySettings).toEqual(mergeDocs(tie, local).moneySettings)
+  })
+
+  it('старый клиент (без ключей в known) не теряет новые ключи — mergeUnknownKeys', () => {
+    // Документ старого клиента: ключей разбора у него нет; сервер их уже несёт.
+    const old = createEmptyDoc()
+    const server = { ...createEmptyDoc(), moneyArticles: [art('life', 200_000, T1)], moneySettings: settings(1, T1) }
+    const merged = mergeDocs(old, server)
+    expect(merged.moneyArticles).toEqual(server.moneyArticles)
+    expect(merged.moneySettings).toEqual(server.moneySettings)
+  })
+})

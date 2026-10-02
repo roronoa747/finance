@@ -79,7 +79,7 @@ const applyAccount = ref<string | null | undefined>(undefined)
 const applyDone = ref<Payment | null>(null)
 const removingPrepay = ref<string | null>(null)
 // «Это приближает» (ТЗ B2C-18 п. 4): что из желаний ближе на то, что не отдадим банку, — одна строка,
-// как в раскладке зарплаты (WeekSalary). Экономии нет или желаний с ценой нет — строки нет.
+// как было в прежней раскладке зарплаты. Экономии нет или желаний с ценой нет — строки нет.
 const closer = computed(() => (applyDone.value ? closerWish(financeStore.wishlist, applyDone.value.saved ?? 0, 'once') : null))
 
 const applyPlan = computed(() => {

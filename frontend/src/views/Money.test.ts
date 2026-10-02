@@ -364,14 +364,16 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(squares(html)).toMatch(/aria-current="page"[^>]*>\s*<b[^>]*>История/)
     })
 
-    it('«Доход»: оклады, нагрузка = доля жилья и кредитов (формула Бюджета), доли в легенде, строки участников с днём', async () => {
+    it('«Доход»: оклады, нагрузка словом по доле жилья и кредитов (B2C-59), доли в легенде, строки участников с днём', async () => {
       const store = await family()
       const a = budgetAmounts({ ...store.householdDoc, credits: store.credits })
       expect(a).toMatchObject({ d1: 220_000, d2: 103_000, d3: 130_000, d4: 150_000, d5: 597_000, income: 1_200_000 })
       const html = text(await renderScreen(Money, '/money'))
       expect(html).toContain(money(1_200_000))
-      expect(html).toContain(`нагрузка ${pct(a.d1 + a.d2, a.income)} %`)
-      expect(html).toContain('нагрузка 27 %')
+      // (220 000 + 103 000) / 1 200 000 = 27 % — до 29 % включительно нагрузка низкая.
+      expect(pct(a.d1 + a.d2, a.income)).toBe(27)
+      expect(html).toContain('нагрузка низкая')
+      expect(html).not.toContain('нагрузка 27 %')
       for (const t of ['обязательное 27 %', 'мечты 11 %', 'траты 13 %', 'остаток по плану 50 %']) expect(html).toContain(t)
       // B2C-51 (Р-47): «Свободно» с числом — только на «Мечтах»; доля та же (`incomeSplit`), слово — «остаток по плану».
       expect(html.toLowerCase()).not.toContain('свободно')
@@ -380,21 +382,20 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(html).not.toContain('План не сходится')
     })
 
-    it('«Траты» (бывший «Еда и быт», владелец 2026-10-02): факт — траты по выпискам без разделов плана (= вычитаемое «Свободно»), план — база d4; без загрузок — «—» без тега', async () => {
+    it('«Траты» (B2C-59): факт — траты по выпискам без разделов плана (= вычитаемое «Свободно»), «из» — план «Жизни» и «Трат», тег — раздел выше ориентира; без загрузок — «—» без тега', async () => {
       const totals = [total('a', '2026-09', 'sc_food', 90_000), total('b', '2026-09', 'sc_cafe', 30_000), total('a', '2026-09', 'sc_credit', 58_000)]
       const store = await family('member', { spendTotals: totals }, [upload])
       const fact = freeByFact({ ...store.householdDoc, credits: store.credits }, totals, store.householdDoc.spendCategories ?? [], '2026-09', [upload]).spent
       expect(fact).toBe(120_000)
       const html = text(await renderScreen(Money, '/money'))
-      expect(html).toContain(`${money(fact)} план ${plain(150_000)}`)
-      expect(html).toContain('по выпискам 80 %')
-      // Название виджета и доли — «Траты» / «траты»; прежнего «Еда и быт» на Капитале нет.
-      expect(html).toMatch(/Траты \? по выпискам 80 %/)
+      expect(html).toContain(`${money(fact)} из ${plain(150_000)}`)
+      // Доли: продукты 90 000 / 120 000 = 75 % (ориентир 61 %, +14), кафе 30 000 / 120 000 = 25 % (ориентир 4 %, +21) — сильнее всех кафе.
+      expect(html).toContain('Траты кафе и рестораны выше нормы')
       expect(html).not.toMatch(/еда и быт/i)
       await family('member', { spendTotals: totals }, [])
       const none = text(await renderScreen(Money, '/money'))
-      expect(none).toContain(`— план ${plain(150_000)}`)
-      expect(none).not.toContain('по выпискам')
+      expect(none).toContain(`— из ${plain(150_000)}`)
+      expect(none).not.toMatch(/выше нормы|в норме/)
     })
 
     it('«Долги»: остаток красным, «в сентябре оплачено N из M» растёт после «Оплатил», «чистых» нет (оно в квадрате); без долгов — «Долгов нет»', async () => {
@@ -412,7 +413,7 @@ describe('views/Money.vue — финансовые показатели (рас�
       store.householdDoc.credits = []
       html = text(await renderScreen(Money, '/money'))
       expect(html).toContain('Долгов нет')
-      expect(html).not.toContain('оплачено')
+      expect(html).not.toContain('в сентябре оплачено')
     })
 
     describe('B2C-42: «Счета» и «Платежи» одним списком, листы', () => {
@@ -440,7 +441,7 @@ describe('views/Money.vue — финансовые показатели (рас�
         expect(html).toContain('Добавить счёт')
       })
 
-      it('«Платежи»: по дню, итог = duesTotal(monthDues), оплаченное на месте с ✓ без «Оплатил», годовое не в свой месяц — без кнопки, группа — «Подписки · N»', async () => {
+      it('«Платежи»: по дню, тег «N из M оплачено» (B2C-59), оплаченное на месте с ✓ без «Оплатил», годовое не в свой месяц — без кнопки, группа — «Подписки · N»', async () => {
         const subs = (id: string, extra: Partial<Obligation>): Obligation => ({ id, name: id, note: '', day: 3, category: 'd4', versions: [{ from: '2000-01', amount: 4_990 }], updatedAt: T0, ...extra })
         const store = await family('member', {
           obligations: [
@@ -458,7 +459,9 @@ describe('views/Money.vue — финансовые показатели (рас�
         expect(duesTotal(dues)).toBe(360_980)
         const html = await renderScreen(Money, '/money')
         const list = payments(html)
-        expect(list).toContain(`Платежи ${plain(360_980)} в месяц`)
+        // Аренда, Netflix, Яндекс, коммуналка, три кредита — 7 платежей, оплачен Кредит.
+        expect(dues).toHaveLength(7)
+        expect(list).toContain('Платежи 1 из 7 оплачено')
         const order = ['Страховка', 'Аренда', 'Коммуналка', 'Кредит ', 'Кредитка', 'Рассрочка', 'Подписки 2']
         expect(order.map((n) => list.indexOf(n))).toEqual([...order.map((n) => list.indexOf(n))].sort((a, b) => a - b))
         expect(list).toContain(`Аренда 5-го ${money(220_000)} Оплатил`)
@@ -513,8 +516,9 @@ describe('views/Money.vue — финансовые показатели (рас�
     it('viewer: оклады и план «Трат» — текстом, без кнопок; в листе «До зарплаты» нет «Оплатил»', async () => {
       await family('viewer')
       const html = await renderScreen(Money, '/money')
-      expect(text(html)).toContain(`план ${plain(150_000)}`)
-      expect(html).not.toMatch(/<button[^>]*>\s*план/)
+      expect(text(html)).toContain(`из ${plain(150_000)}`)
+      // Лист «Траты» viewer открывает, но сумм «Жизни» и «Трат» не правит.
+      expect(html).not.toContain('Жизнь — в месяц')
       expect(html).not.toMatch(/<button[^>]*>\s*<span[^>]*title="Ильяс"/)
       expect(html).toMatch(/<div[^>]*>\s*<span[^>]*title="Ильяс"/)
       const sheet = text(dialog(await renderScreen(Money, '/money', undefined, [screenMixin({ open: true })])))

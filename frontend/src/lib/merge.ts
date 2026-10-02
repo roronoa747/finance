@@ -131,6 +131,18 @@ function mergeObligation(winner: Obligation, a: Obligation, b: Obligation): Obli
   }
 }
 
+/**
+ * Объект настроек целиком (B2C-54 `moneySettings`): поздний `updatedAt` побеждает, нет с одной
+ * стороны — берётся другая. При равных метках и разном содержимом — детерминированно по
+ * содержимому, чтобы слияние оставалось коммутативным.
+ */
+function newerObject<T extends Tracked>(a: T | null | undefined, b: T | null | undefined): T | null {
+  if (!a) return b ?? null
+  if (!b) return a
+  if (ts(a) !== ts(b)) return ts(b) > ts(a) ? b : a
+  return JSON.stringify(a) >= JSON.stringify(b) ? a : b
+}
+
 type WithId = Tracked & { id: string }
 
 function isIdList(v: unknown): v is WithId[] {
@@ -198,6 +210,9 @@ export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
     spendTotals: mergeList(local.spendTotals ?? [], remote.spendTotals ?? [], (x) => x.id),
     // Раскладки (B2C-21): по id, надгробия как у всех.
     allocations: mergeList(local.allocations ?? [], remote.allocations ?? [], (x) => x.id),
+    // План разбора (B2C-54): статьи — по id (LWW, надгробия); пороги — один объект, поздний целиком.
+    moneyArticles: mergeList(local.moneyArticles ?? [], remote.moneyArticles ?? [], (x) => x.id),
+    moneySettings: newerObject(local.moneySettings, remote.moneySettings),
     // Метки равны (или их нет) — сброс один и тот же.
     ...(lr ? { resetAt: lr } : {}),
   }

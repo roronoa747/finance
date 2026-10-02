@@ -13,6 +13,7 @@ import Row from '@/components/kit/Row.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Tag from '@/components/kit/Tag.vue'
 import WeekTotal from '@/components/kit/WeekTotal.vue'
+import StackBar from '@/components/kit/StackBar.vue'
 import SalaryRow from '@/components/SalaryRow.vue'
 import CategoryChips from '@/components/CategoryChips.vue'
 import type { MatchCandidate } from '@/lib/statements/matching'
@@ -26,10 +27,14 @@ import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import { draftSummary, partnerHints, picture, pictureTotal, ruleMatchOf, unknownGroups, type UnknownGroup } from '@/lib/statements/model'
 import { readStatementFiles } from '@/lib/statements/read'
 import type { MerchantRule } from '@/lib/statements/types'
-import type { PersonId } from '@/types/finance'
+import type { ArticleKey, PersonId } from '@/types/finance'
 import {
+  breakdownAccount,
+  breakdownMoves,
+  breakdownPath,
+  breakdownWith,
   decisionQueue,
-  salaryAllocationPath,
+  ringShares,
   type Decision,
   liveSpendCategories,
   spendCategoryName,
@@ -39,6 +44,7 @@ import {
   weekVersusPrev,
 } from '@/lib/finance'
 import { readMonthEnd, writeMonthEnd } from '@/lib/storage'
+import { ARTICLE_COLORS } from '@/lib/palette'
 
 /**
  * «Неделя» — ритуал (пивот 3, Р-43; макет `pivot-3/dreams-week.html` «А · Ритуал»): итог недели обоих
@@ -157,6 +163,9 @@ const queue = computed(() =>
       matches: store.draft ? [] : store.pendingMatches,
       unknown: unknownList.value,
       answeredMonthEnd: answeredLocal.value,
+      totals: spendTotals.value,
+      spendCategories: spendCategories.value,
+      uploads: store.uploads,
     },
   ).filter((d) => !deferred.value.includes(d.key) && (!store.draft || d.kind === 'unknown')),
 )
@@ -167,7 +176,7 @@ const defer = (d: Decision) => {
 }
 
 // «N из M»: M — все решения, что были в очереди с открытия экрана (или начала разбора), — не тает при
-// ответе; новые (например, «разложить?» после «Да, зарплата») её увеличивают. N — сколько позади + 1.
+// ответе; новые (например, «Пришла зарплата» после «Да, зарплата») её увеличивают. N — сколько позади + 1.
 const seen = ref<string[]>([])
 watch(
   [() => queue.value.map((d) => d.key), () => !!store.draft],
@@ -179,11 +188,42 @@ watch(
 )
 const progress = computed(() => (seen.value.length > 1 ? { n: seen.value.length - queue.value.length + 1, k: seen.value.length } : null))
 
-/** «Да»: отметка и правило; «Да, зарплата» — сразу раскладка, как после ручного «Пришла» (B2C-21 п. 1). */
+/** «Да»: отметка и правило; «Да, зарплата» — следующей карточкой «Пришла зарплата» (B2C-58: разбор одним нажатием). */
 function acceptMatch(c: MatchCandidate) {
   void store.acceptMatch(c)
-  if (c.kind === 'salary') void router.push(salaryAllocationPath(c.targetId as PersonId, c.period))
 }
+
+/**
+ * «Пришла зарплата» (Р-55, B2C-58): «Разложить как обычно» пишет разбор той же дорогой, что «Разложить» на
+ * кольце (`layBreakdown`), и карточка коротко показывает «Разложено». Счёт — как у кольца; не выбран, а
+ * деньги уходят со счёта — кольцо, там его спросят.
+ */
+const justLaid = ref<{ total: number; rest: number } | null>(null)
+function layUsual(d: Decision) {
+  const u = d.usual
+  if (!u || !d.salary) return
+  const off = u.articles.filter((a) => !a.on).map((a) => a.key)
+  const source = { from: 'salary' as const, person: d.salary.person.id, period: d.salary.period }
+  const accountId = breakdownAccount(finance.payments, source, auth.slot, finance.accounts)
+  if (accountId === undefined && breakdownMoves(u.mode, breakdownWith(u, off).effects)) {
+    if (d.to) void router.push(d.to)
+    return
+  }
+  finance.layBreakdown(u, off, { by: auth.slot ?? 'a', accountId, note: 'из зарплаты' })
+  void finance.syncHousehold()
+  justLaid.value = { total: u.amount, rest: u.fill.rest }
+  setTimeout(() => (justLaid.value = null), 2400)
+}
+/** Полоса статей карточки: что получит каждая статья из этой зарплаты, хвост — остаток дорожкой (`StackBar`, макет). */
+const usualSegments = (d: Decision) =>
+  d.usual
+    ? ringShares<ArticleKey | 'rest'>(
+        [...d.usual.articles.map((a) => ({ key: a.key, amount: d.usual!.fill.given[a.key] })), { key: 'rest', amount: d.usual.fill.rest }],
+        d.usual.amount,
+      )
+        .filter((x) => x.share > 0)
+        .map((x) => ({ ...x, color: x.key === 'rest' ? 'var(--track)' : ARTICLE_COLORS[x.key] }))
+    : []
 
 /** Ответ карточки незнакомого продавца: в разборе — до отправки, в неделе — задним числом. */
 function answerUnknown(g: UnknownGroup, to: MerchantRule['to']) {
@@ -211,7 +251,7 @@ function answerRest(go: boolean) {
   answeredLocal.value = month
   writeMonthEnd(month)
   const amount = parseMoney(restAmount.value)
-  if (go && amount > 0) void router.push(`/week/salary?from=rest&amount=${amount}&period=${month}`)
+  if (go && amount > 0) void router.push(breakdownPath({ from: 'rest', amount, period: month }))
 }
 
 /** Главное действие экрана (правило 12): первое решение, иначе — загрузка своей выписки. */
@@ -229,6 +269,7 @@ function onPrimary(d: Decision) {
   if (d.kind === 'match' && d.match) acceptMatch(d.match)
   else if (d.kind === 'keep') onKeep(d, cancelling.value ? 'cancel' : 'keep')
   else if (d.kind === 'monthEnd') answerRest(true)
+  else if (d.kind === 'allocate' && d.usual) layUsual(d)
   else if (d.to) void router.push(d.to)
 }
 function onSecondary(d: Decision) {
@@ -239,6 +280,7 @@ function onSecondary(d: Decision) {
 function onGhost(d: Decision) {
   if (d.kind === 'keep' && cancelling.value) cancelling.value = false
   else if (d.kind === 'monthEnd') answerRest(false)
+  else if (d.kind === 'allocate' && d.usual && d.to) void router.push(d.to)
   else defer(d)
 }
 
@@ -329,13 +371,21 @@ onMounted(() => {
       <Card v-else-if="!canUpload"><EmptyState title="Картины недели пока нет" /></Card>
     </template>
 
+    <!-- «Разложить как обычно» — коротко «Разложено» на месте карточки -->
+    <Card v-if="justLaid" class="fx-in flex flex-col gap-1 border-ok" aria-live="polite">
+      <span class="type-label">Разложено</span>
+      <span class="type-big-md num text-ink">{{ money(justLaid.total) }}</span>
+      <span class="type-meta num">остаётся {{ money(justLaid.rest) }}</span>
+    </Card>
+
     <!-- Одно решение за раз (Р-43): первое из очереди `decisionQueue`; в разборе — продавцы черновика -->
     <DecisionCard
-      v-if="decision"
+      v-else-if="decision"
       :key="decision.key"
       lead
+      :eyebrow="decision.kind === 'allocate'"
       :question="decision.question"
-      :meta="decision.meta"
+      :meta="decision.kind === 'allocate' ? '' : decision.meta"
       :progress="progress"
       :actions="decisionActions"
       @primary="onPrimary(decision)"
@@ -347,6 +397,21 @@ onMounted(() => {
         <NumField v-model="restAmount" placeholder="50 000" aria-label="Сколько осталось, ₸" />
       </template>
       <CategoryChips v-if="decision.group" :counterparty="!!decision.group.match.counterparty" @choose="(to) => answerUnknown(decision!.group!, to)" />
+      <!-- «Пришла зарплата» (макет, вопрос 2): сумма, полоса статей, «как в <месяце> · останется N ₸» -->
+      <template v-if="decision.kind === 'allocate'">
+        <span class="-mt-2.5 type-big num text-ink">{{ money(decision.amount ?? 0) }}</span>
+        <StackBar v-if="decision.usual" :segments="usualSegments(decision)" />
+        <p class="text-[14px] text-ink-3">
+          <template v-if="decision.usual">{{ decision.lead }} · <b :class="['num font-semibold', decision.usual.fill.short > 0 ? 'text-destructive' : 'text-ok']">{{ decision.outcome }}</b></template>
+          <template v-else>{{ decision.meta }}</template>
+        </p>
+      </template>
+      <template v-if="decision.kind === 'allocate'" #actions>
+        <div class="flex w-full flex-col gap-1.5">
+          <Button class="w-full" @click="onPrimary(decision!)">{{ decision.actions.primary }}</Button>
+          <Button variant="ghost" class="w-full" @click="onGhost(decision!)">{{ decision.actions.ghost }}</Button>
+        </div>
+      </template>
       <!-- «Пришла» и лист «ещё» — SalaryRow (RP-10) -->
       <SalaryRow v-if="decision.kind === 'salary' && decision.salary" button :person-id="decision.salary.person.id" :period="decision.salary.period" />
     </DecisionCard>

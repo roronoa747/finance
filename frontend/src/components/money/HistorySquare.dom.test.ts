@@ -81,3 +81,46 @@ describe('B2C-44: «куда отнести?» из «Истории»', () => {
     expect(document.body.textContent).not.toContain('Не разобрано')
   })
 })
+
+describe('B2C-58: разбор в «Истории»', () => {
+  it('строка «Разложено» — откуда и кто, части по статьям; нажатие — записанный разбор (ревью frontend Б11, Н-8)', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    useAuthStore().setAuthData(authAs('member'))
+    const finance = useFinanceStore()
+    // Зарплату Ильяса разобрала Аруна: Жизнь 150 000, Мечты 50 000.
+    finance.setHouseholdDoc(
+      planFamilyDoc({
+        allocations: [
+          {
+            id: 'r1', kind: 'breakdown', source: 'salary', sourceId: 'a', period: '2026-09', by: 'b',
+            at: '2026-09-12T07:00:00.000Z', updatedAt: '2026-09-12T07:00:00.000Z', total: 200_000,
+            parts: [{ target: 'dreams', amount: 50_000 }, { target: 'life', amount: 150_000 }],
+          },
+        ],
+      }),
+      1,
+    )
+    const router = createRouter({ history: createMemoryHistory(), routes })
+    await router.push('/money/history')
+    await router.isReady()
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app = createApp(HistorySquare)
+    app.use(pinia)
+    app.use(router)
+    app.mount(root)
+    await nextTick()
+
+    const row = [...document.querySelectorAll<HTMLElement>('button')].find((x) => x.textContent?.includes('Разложено'))!
+    expect(row.textContent).toContain('зарплата · Ильяс · Аруна')
+    // Части — в порядке плана: Жизнь, потом Мечты.
+    const text = (document.body.textContent ?? '').replace(/\s+/g, ' ')
+    expect(text.indexOf('Жизнь')).toBeGreaterThan(-1)
+    expect(text.indexOf('Жизнь')).toBeLessThan(text.indexOf('Мечты'))
+    const push = vi.spyOn(router, 'push')
+    row.click()
+    await nextTick()
+    expect(push).toHaveBeenCalledWith('/week/breakdown?from=salary&person=a&period=2026-09')
+  })
+})

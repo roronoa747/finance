@@ -1,11 +1,13 @@
-import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation } from '@/types/finance'
+import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
 import type { Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
-import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY, plannedElsewhere } from '@/lib/statements/dictionary'
-import { addMonths, dayLabel, daysInMonth, monthFrom, monthKey, parseMonthKey, today, weekRange } from '@/lib/dates'
+import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY, plannedElsewhere, spendArticle } from '@/lib/statements/dictionary'
+import { STAT_NORMS } from '@/lib/statements/norms'
+import { addMonths, dayLabel, daysInMonth, monthFrom, monthIn, monthKey, parseMonthKey, today, weekRange } from '@/lib/dates'
 import { spendColor } from '@/lib/palette'
-import { money, pct } from '@/lib/money'
+import { money, pct, ratePct } from '@/lib/money'
+import { plural } from '@/lib/utils'
 /**
  * Расчётное ядро. Чистые функции: ни сети, ни состояния, ни ИИ.
  *
@@ -246,55 +248,6 @@ export function emergencyTarget(opts: {
   const deficit = Math.max(0, opts.mandatoryMonthly - opts.partnerIncome)
   const scenario = deficit * opts.scenarioMonths
   return Math.max(floor, scenario)
-}
-
-/** Во сколько месяцев расходов обходится накопленная подушка. */
-export function emergencyCoverage(saved: number, mandatoryMonthly: number): number {
-  if (!mandatoryMonthly) return 0
-  return saved / mandatoryMonthly
-}
-
-/**
- * Подушка через год при раскладке `extra` («Через год покроет N мес. расходов»): накоплено +
- * взнос ×12 + добавка — разом (`once`) или каждый месяц (×12). Целые тенге.
- */
-export function cushionInYear(goal: Pick<Goal, 'have' | 'monthly'>, extra: number, once: boolean): number {
-  return goal.have + goal.monthly * 12 + (once ? extra : extra * 12)
-}
-
-/** Раскладка суммы по корзинам (`allocationRoom`): итоги и сколько ещё влезает в корзину. */
-export interface AllocationRoom {
-  /** Разложено по всем корзинам. */
-  used: number
-  /** Осталось разложить: `total − used`. */
-  left: number
-  /** Разложено по целям — у разового решения это взносы со счёта. */
-  toGoals: number
-  /** Корзины досрочки («по кредиту» `credit` и «по плану» `plan`) — платят один долг. */
-  prepay: number
-  /** Сколько ещё можно положить в корзину `id`. */
-  room: (id: string) => number
-}
-
-/**
- * Раскладка зарплаты, остатка или освободившихся денег (`WeekSalary`, B2C-21): не больше
- * нераспределённого, а разовую досрочку — и не больше остатка долга `principal` (лишнее не
- * внеслось бы, но числилось бы в записи и в итоге). Потолок — на сумму обеих корзин досрочки.
- */
-export function allocationRoom(
-  parts: Record<string, number>,
-  opts: { total: number; goalIds: readonly string[]; once: boolean; principal?: number },
-): AllocationRoom {
-  const used = Object.values(parts).reduce((a, v) => a + v, 0)
-  const left = opts.total - used
-  const toGoals = opts.goalIds.reduce((a, id) => a + (parts[id] ?? 0), 0)
-  const prepay = (parts.credit ?? 0) + (parts.plan ?? 0)
-  const room = (id: string) => {
-    const cap =
-      opts.once && (id === 'credit' || id === 'plan') && opts.principal !== undefined ? opts.principal - prepay : Infinity
-    return Math.max(0, Math.min(left, cap))
-  }
-  return { used, left, toGoals, prepay, room }
 }
 
 /**
@@ -784,7 +737,7 @@ export const liveGroups = (list: Obligation[]) => (list || []).filter((o) => ali
 export const liveCredits = (list: Credit[]) => (list || []).filter(alive);
 /**
  * Открытые кредиты — живые, по которым ещё есть что платить. Закрытый (остаток 0,
- * строка остаётся с «долг закрыт») не входит ни в стратегию, ни в раскладку (`WeekSalary`), ни в
+ * строка остаётся с «долг закрыт») не входит ни в стратегию, ни в разбор (`breakdownArticles`), ни в
  * план. В бюджете месяца его платёж ещё есть, если долг закрыли плановым «Оплатил»
  * этого месяца — деньги ушли в этом месяце (`creditMonthPayment`, PV-14 п. 5);
  * закрытый досрочкой выпадает сразу (PV-01).
@@ -872,7 +825,7 @@ export type FreedChange = {
 };
 
 /**
- * Событие «освободится N ₸ в месяц» («Деньги», раскладка `?from=freed`): первое обязательство
+ * Событие «освободится N ₸ в месяц» («Деньги», разбор `?from=freed`): первое обязательство
  * списка, чья ближайшая новая сумма меньше текущей. Годовое — по реальной доле, как
  * `plannedChange` (`memory/decisions/r2-exceptions-pv-block2.md` п. 2: 60 000 → 48 000 —
  * 1 000 в месяц и 12 000 за год, а не 12 000 и 144 000); версия с нулём (конец платежа) —
@@ -997,6 +950,59 @@ export function hasBudgetData(state: {
   );
 }
 
+/* ---------------- статьи разбора (Блок 11) ---------------- */
+
+/** Порядок статей по умолчанию (Р-56) — ступени. */
+export const ARTICLE_ORDER: ArticleKey[] = ['must', 'life', 'reserve', 'debts', 'cushion', 'dreams', 'spend']
+
+export const ARTICLE_NAMES: Record<ArticleKey, string> = {
+  must: 'Обязательное',
+  life: 'Жизнь',
+  reserve: 'Запас',
+  debts: 'Дорогие долги',
+  cushion: 'Подушка',
+  dreams: 'Мечты',
+  spend: 'Траты',
+}
+
+/** Пороги по умолчанию (B2C-54 п. 3): запас — месяц трат, подушка — 3 месяца, дорогой — любой процентный. */
+export const DEFAULT_MONEY_SETTINGS = { reserveMonths: 1, cushionMonths: 3, costlyRate: 0 } as const
+
+/**
+ * План статей семьи (B2C-54): записи документа поверх умолчаний — порядок и `on` по Р-56,
+ * «Жизнь» — сумма раздела d4 (как планировали до Блока 11), «Траты», «Запас», «Подушка»,
+ * «Дорогие долги» — 0. Удалённая запись — снова умолчание. По `order`.
+ */
+export function moneyArticlesOf(doc: { moneyArticles?: MoneyArticle[]; categories?: Category[] }): MoneyArticle[] {
+  const own = new Map((doc.moneyArticles ?? []).filter(alive).map((a) => [a.id, a]))
+  const d4 = (doc.categories ?? []).find((c) => c.key === 'd4')?.amount ?? 0
+  return ARTICLE_ORDER.map((id, i): MoneyArticle => {
+    const base: MoneyArticle = {
+      id,
+      order: i + 1,
+      on: true,
+      updatedAt: '',
+      ...(id === 'must' || id === 'dreams' ? {} : { amount: id === 'life' ? d4 : 0 }),
+    }
+    return { ...base, ...own.get(id) }
+  }).sort((a, b) => a.order - b.order || ARTICLE_ORDER.indexOf(a.id) - ARTICLE_ORDER.indexOf(b.id))
+}
+
+/** Пороги ступеней семьи с умолчаниями (B2C-54). */
+export function moneySettingsOf(doc: { moneySettings?: MoneySettings | null }): MoneySettings {
+  return { ...DEFAULT_MONEY_SETTINGS, potGoalId: null, orderedAt: null, updatedAt: '', ...(doc.moneySettings ?? {}) }
+}
+
+/**
+ * Сумма месяца «Жизни» и «Трат» — одна правда раздела d4 (B2C-54 п. 4): с заведёнными статьями —
+ * их суммы (выключенная — 0), без статей — `d4.amount`, как до Блока 11.
+ */
+export function livingPlan(doc: { moneyArticles?: MoneyArticle[]; categories?: Category[] }): number {
+  return moneyArticlesOf(doc)
+    .filter((a) => (a.id === 'life' || a.id === 'spend') && a.on)
+    .reduce((s, a) => s + (a.amount ?? 0), 0)
+}
+
 /**
  * Суммы по 5 разделам бюджета. Кредиты — производные (геттер стора): платёж
  * закрытого кредита в «Кредиты» не входит и освобождает «Свободно» — кроме месяца,
@@ -1015,6 +1021,7 @@ export function budgetAmounts(state: {
   people?: Person[];
   payments?: Payment[];
   plans?: DebtPlan[];
+  moneyArticles?: MoneyArticle[];
 }, key = monthKey()) {
   const obligations = state.obligations || [];
   const credits = state.credits || [];
@@ -1040,7 +1047,7 @@ export function budgetAmounts(state: {
     .filter((g) => !paused.has(g.id))
     .reduce((a, g) => a + g.monthly, 0);
   const extra = plan ? planExtra(plan, goalsList, credits, payments, key) : 0;
-  const living = (categories.find((c) => c.key === 'd4')?.amount ?? 0) + other;
+  const living = livingPlan({ categories, moneyArticles: state.moneyArticles }) + other;
   const income = totalIncome(people, key);
   const free = income - housing - debts - goals - living - extra;
 
@@ -1582,23 +1589,6 @@ export function salaryAsk(
   return near && near.who.id === me && salaryOpen(near.who, state.payments ?? [], near.key, now) ? near : null;
 }
 
-/**
- * Сколько из пришедшей зарплаты свободно — сумма раскладки зарплаты (`WeekSalary`, RP-10 п. 3).
- *
- * План месяца построен на окладах, поэтому свободный остаток месяца (`free` —
- * `budgetAmounts(...).d5`) делится между зарплатами пропорционально окладам: каждая
- * несёт свою долю обязательств и взносов. Разница пришедшего с окладом — премия или
- * недоплата — целиком ложится на свободное: обязательства от неё не меняются. Меньше
- * нуля не бывает (план не сходится — раскладывать нечего); целые тенге.
- */
-export function salaryFree(free: number, people: Person[], record: Pick<Payment, 'targetId' | 'period' | 'amount'>): number {
-  const p = (people || []).find((x) => alive(x) && x.id === record.targetId);
-  const base = p ? salaryAt(p, record.period) : 0;
-  const income = totalIncome(people, record.period);
-  const share = income > 0 ? (free * base) / income : 0;
-  return Math.max(0, Math.round(share + record.amount - base));
-}
-
 /* ---------------- вопрос в конце месяца (RP-11) ---------------- */
 
 /**
@@ -1742,41 +1732,49 @@ export function allocationFor(
   return own.reduce((best, a) => (a.at > best.at ? a : best))
 }
 
-/** Адрес раскладки пришедшей зарплаты (бывший Ритуал) — один для карточки, листа отметки и `SalaryRow`. */
-export const salaryAllocationPath = (person: PersonId, period: string) => `/week/salary?from=salary&person=${person}&period=${period}`
+/**
+ * Адрес разбора (B2C-58): параметры источника — как у прежней раскладки (её старый адрес —
+ * редирект сюда, `router/index.ts`). Один для очереди, листа отметки, `SalaryRow`, «Денег» и «Истории».
+ */
+const withQuery = (path: string, query: Record<string, string | number>) =>
+  `${path}?${Object.entries(query).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&')}`
+
+export const breakdownPath = (query: Record<string, string | number>) => withQuery('/week/breakdown', query)
+
+/** «Ваш порядок» с источником разбора (B2C-56): «Готово» вернёт в разбор с теми же параметрами. */
+export const orderPath = (query: Record<string, string | number>) => withQuery('/week/order', query)
+
+/** Разбор пришедшей зарплаты участника за месяц. */
+export const salaryBreakdownPath = (person: PersonId, period: string) => breakdownPath({ from: 'salary', person, period })
 
 /**
- * Зарплата, отмеченная по выписке, которую ещё не разложили (B2C-21 п. 1, возврат приёмки Блока 3
- * п. 2): у ручного «Пришла» переход на раскладку сразу после отметки, а «Да, зарплата» из выписки и
- * автоотметка по правилу раскладку не открывали — она была недостижима. Можно отметить `record`
+ * Зарплата, отмеченная по выписке, которую ещё не разобрали (B2C-21 п. 1, возврат приёмки Блока 3
+ * п. 2; B2C-58): у ручного «Пришла» переход на разбор сразу после отметки, а «Да, зарплата» из выписки и
+ * автоотметка по правилу его не открывают — без карточки он был бы недостижим. Можно отметить `record`
  * конкретного месяца (лист отметки) или найти свою последнюю — этого или прошлого месяца (очередь
  * «Недели» `decisionQueue`). Только `source: 'statement'`: ручные отметки до записи раскладок
- * (`allocations`, B2C-21) раскладывал прежний Ритуал (до `WeekSalary`) без записи — карточка предложила бы их второй раз.
- * Нужна запись раскладки (`allocationFor` пуст) и свободное в этой зарплате (`salaryFree` > 0) — по
- * плану её месяца. Месяцы до спрашиваемой «Пришла?» не ищутся, только пока она действительно
- * спрашивается (`salaryAsk`, как у главного): иначе старая неразложенная заслонила бы её. После дня
- * зарплаты «Пришла?» уже не спрашивается — прошлая неразложенная снова здесь (возврат приёмки 2 п. 3:
- * выписку грузят после дня зарплаты, и с 13-го по конец месяца зарплата терялась). Пришедшая раньше
- * срока зарплата следующего месяца (день 1-го, пришла 29-го) — сразу (критик возврата Блока 3).
+ * (`allocations`, B2C-21) раскладывал прежний Ритуал без записи — карточка предложила бы их второй раз.
+ * Нужны сумма отметки и отсутствие записи разбора/раскладки (`allocationFor`). Месяцы до спрашиваемой
+ * «Пришла?» не ищутся, только пока она действительно спрашивается (`salaryAsk`, как у главного): иначе
+ * старая неразобранная заслонила бы её. После дня зарплаты «Пришла?» уже не спрашивается — прошлая
+ * неразобранная снова здесь (возврат приёмки 2 п. 3: выписку грузят после дня зарплаты, и с 13-го по
+ * конец месяца зарплата терялась). Пришедшая раньше срока зарплата следующего месяца (день 1-го, пришла
+ * 29-го) — сразу (критик возврата Блока 3).
  */
 export function salaryToAllocate(
   state: {
-    categories?: Category[]
     obligations?: Obligation[]
     credits?: Credit[]
-    goals?: Goal[]
     people?: Person[]
     payments?: Payment[]
-    plans?: DebtPlan[]
     allocations?: Allocation[]
   },
   me: PersonId | undefined,
   now = today(),
   record?: Payment | null,
-): { person: Person; period: string; record: Payment; free: number } | null {
+): { person: Person; period: string; record: Payment } | null {
   if (!me) return null
-  const people = state.people ?? []
-  const person = people.find((p) => alive(p) && p.id === me)
+  const person = (state.people ?? []).find((p) => alive(p) && p.id === me)
   if (!person) return null
   const payments = state.payments ?? []
   // Пока спрашивается «Пришла?», месяцы до спрашиваемого не ищутся — ни один: у дня зарплаты 1–3
@@ -1785,13 +1783,11 @@ export function salaryToAllocate(
   const asked = salaryAsk(state, me, now)
   const months = [addMonths(now.key, 1), now.key, addMonths(now.key, -1)].filter((k) => !asked || k > asked.key)
   const found = record ?? months.map((k) => paidFor(payments, 'salary', me, k)).find(Boolean)
-  if (!found || found.kind !== 'salary' || found.targetId !== me || found.source !== 'statement') return null
+  if (!found || found.kind !== 'salary' || found.targetId !== me || found.source !== 'statement' || found.amount <= 0) return null
   if (allocationFor(state.allocations, { source: 'salary', sourceId: me, period: found.period })) return null
-  const free = salaryFree(budgetAmounts(state, found.period).d5, people, found)
-  return free > 0 ? { person, period: found.period, record: found, free } : null
+  return { person, period: found.period, record: found }
 }
 
-/** Тексты карточки «разложить?» — одни на главном и в «Неделе» (как `keepCard`). */
 /**
  * «Пришла зарплата <имя>?» (RP-10) — тексты карточки ближайшей зарплаты (`salaryAsk`), одни на
  * главном и в «Неделе» (ревью Блока 3, Н-23).
@@ -1799,11 +1795,6 @@ export function salaryToAllocate(
 export const salaryCard = (near: { who: Person; income: number; day: number; key: string }) => ({
   question: `Пришла зарплата ${near.who.name}?`,
   meta: `${money(near.income)} · ${dayLabel(near.day, near.key)}`,
-})
-
-export const allocateCard = (u: { person: Person; record: Payment; free: number }) => ({
-  question: `Пришла зарплата ${u.person.name} — разложить?`,
-  meta: `${money(u.record.amount)} · к раскладке ${money(u.free)}`,
 })
 
 /** «Освободится N ₸ в месяц» — один текст для очереди «Недели» и карточки «Денег» (ревью Блока 10, Н-4). */
@@ -1889,7 +1880,10 @@ export function hasMonthSummary(s: MonthSummary): boolean {
 export type HistoryItem =
   | { kind: 'op'; id: string; at: string; op: Operation }
   | { kind: 'mark'; id: string; at: string; payment: Payment }
-  | { kind: 'moment'; id: string; at: string; moment: Moment };
+  | { kind: 'moment'; id: string; at: string; moment: Moment }
+  | { kind: 'breakdown'; id: string; at: string; allocation: Allocation };
+
+const breakdownRecords = (list: Allocation[] | undefined) => (list ?? []).filter((a) => !a.deletedAt && a.kind === 'breakdown')
 
 /** День по Алматы «YYYY-MM-DD» для отметки и момента (их `at` — ISO). */
 const isoDay = (iso: string) => {
@@ -1904,7 +1898,7 @@ const isoDay = (iso: string) => {
  * День операции — её дата, отметки и момента — день `at` по Алматы.
  */
 export function historyFeed(
-  state: { ops: Operation[]; payments?: Payment[]; moments?: Moment[] },
+  state: { ops: Operation[]; payments?: Payment[]; moments?: Moment[]; allocations?: Allocation[] },
   months: string[],
 ): { day: string; items: HistoryItem[] }[] {
   const inPeriod = (day: string) => months.includes(day.slice(0, 7));
@@ -1914,6 +1908,8 @@ export function historyFeed(
     ...(state.moments ?? [])
       .filter((m) => m.kind !== 'saved')
       .map((moment) => ({ kind: 'moment' as const, id: moment.id, at: moment.at, day: isoDay(moment.at), moment })),
+    // Разбор (B2C-58) — строкой с частями по статьям; записи прежней раскладки (без `kind`) не показывались и не показываются (Р-65).
+    ...breakdownRecords(state.allocations).map((allocation) => ({ kind: 'breakdown' as const, id: allocation.id, at: allocation.at, day: isoDay(allocation.at), allocation })),
   ].filter((x) => inPeriod(x.day));
   const days = new Map<string, HistoryItem[]>();
   for (const x of items.sort((a, b) => b.day.localeCompare(a.day) || b.at.localeCompare(a.at))) {
@@ -1924,8 +1920,9 @@ export function historyFeed(
 }
 
 /** Самый ранний месяц, за который «Истории» есть что показать (кнопка «Раньше»); null — ничего нет. */
-export function historyStart(state: { ops: Operation[]; payments?: Payment[]; moments?: Moment[] }): string | null {
+export function historyStart(state: { ops: Operation[]; payments?: Payment[]; moments?: Moment[]; allocations?: Allocation[] }): string | null {
   const months = [
+    ...breakdownRecords(state.allocations).map((a) => isoDay(a.at).slice(0, 7)),
     ...state.ops.map((o) => o.date.slice(0, 7)),
     ...countedPayments(state.payments ?? []).map((p) => isoDay(p.at).slice(0, 7)),
     ...(state.moments ?? []).filter((m) => m.kind !== 'saved').map((m) => isoDay(m.at).slice(0, 7)),
@@ -2212,14 +2209,14 @@ export type PlanStep =
 
 /**
  * Шаг-досрочка, который ждёт оплаты: не внесён и не пустой; иначе null. Одно правило
- * для кнопки «Внести по плану», строки кредита, раскладки (`WeekSalary`), окна досрочки и графика плана.
+ * для кнопки «Внести по плану», строки кредита, окна досрочки и графика плана.
  */
 export const stepDue = (step: PlanStep | null | undefined) =>
   step?.kind === 'prepay' && !step.applied && step.amount > 0 ? step : null
 
 /**
  * Месяц обязательных списаний — как у калькулятора (`strategyInputs`): им меряют
- * подушку и шаг плана, и корзина подушки раскладки (`WeekSalary`).
+ * подушку и шаг плана (`planStep`).
  */
 export const planMandatory = (state: PlanState, key: string) =>
   strategyInputs({
@@ -2737,9 +2734,7 @@ export function freeByFact(
  * `null` — за месяц ни одной загрузки: факта нет, а не «потрачено 0».
  */
 export function monthSpentByFact(totals: SpendTotal[], spendCategories: SpendCategory[], key: string, uploads: UploadPeriod[] = []): number | null {
-  const monthStart = `${key}-01`
-  const monthEnd = `${key}-${String(daysInMonth(key)).padStart(2, '0')}`
-  if (!uploads.some((u) => u.period_to >= monthStart && u.period_from <= monthEnd)) return null
+  if (!monthUploaded(key, uploads)) return null
   const live = spendCategories.filter(alive)
   return totals
     .filter((t) => !t.deletedAt && t.kind === 'month' && t.period === key && t.amount > 0)
@@ -2771,18 +2766,18 @@ export function incomeSplit(a: Pick<ReturnType<typeof budgetAmounts>, 'd1' | 'd2
 }
 
 /**
- * Виджет «Траты» (Р-33; бывший «Еда и быт»): план — база раздела d4 (то, что задаёт семья; прочие обязательства
- * раздела — в «Платежах»), факт — `monthSpentByFact` (`null` — за месяц нет загрузок). `pct` —
- * факт от плана (тег «по выпискам N %»), `share` — для полосы 0…1, `over` — перерасход.
+ * Виджет «Траты» (Р-33; бывший «Еда и быт»): план — статьи разбора «Жизнь» + «Траты» (`livingPlan`, B2C-59; без
+ * статей — база раздела d4, как раньше), факт — `monthSpentByFact` (`null` — за месяц нет загрузок). `pct` —
+ * факт от плана, `share` — для полосы 0…1, `over` — перерасход.
  */
 export function livingPlanFact(
-  categories: Category[],
+  doc: { moneyArticles?: MoneyArticle[]; categories?: Category[] },
   totals: SpendTotal[],
   spendCategories: SpendCategory[],
   key: string,
   uploads: UploadPeriod[] = [],
 ) {
-  const plan = categories.find((c) => c.key === 'd4')?.amount ?? 0
+  const plan = livingPlan(doc)
   const spent = monthSpentByFact(totals, spendCategories, key, uploads)
   return {
     plan,
@@ -2809,6 +2804,114 @@ export function debtsSummary(state: { credits?: Credit[]; payments?: Payment[] }
   }
 }
 
+/* ---------------- строки-статусы виджетов «Денег» и доли трат (B2C-59, Р-57, Р-59) ---------------- */
+
+export type StatusTag = { text: string; tone: 'ok' | 'neutral' | 'warn' }
+
+/**
+ * Нагрузка словом (тег «Дохода»): доля жилья и кредитов в доходе, целые проценты (`incomeSplit().load`).
+ * Пороги — дефолт составителя: до 29 % — низкая, 30–50 % — средняя, от 51 % — высокая.
+ */
+export const LOAD_LEVELS: { upTo: number; text: string; tone: StatusTag['tone'] }[] = [
+  { upTo: 29, text: 'нагрузка низкая', tone: 'ok' },
+  { upTo: 50, text: 'нагрузка средняя', tone: 'neutral' },
+  { upTo: Infinity, text: 'нагрузка высокая', tone: 'warn' },
+]
+export const loadTag = (load: number): StatusTag => {
+  const l = LOAD_LEVELS.find((x) => load <= x.upTo)!
+  return { text: l.text, tone: l.tone }
+}
+
+/** «N из M оплачено» (тег «Платежей»): платежи месяца (`monthDues`) и их отметки; платежей нет — null. */
+export function duesTag(dues: Pick<MonthDue, 'paid'>[]): StatusTag | null {
+  if (!dues.length) return null
+  const paid = dues.filter((d) => d.paid).length
+  return { text: `${paid} из ${dues.length} оплачено`, tone: paid === dues.length ? 'ok' : 'neutral' }
+}
+
+export type SpendShare = { categoryId: string; amount: number; share: number }
+
+/**
+ * Доли разделов месяца (лист «Траты»): сумма раздела от трат месяца по выпискам обоих (`monthSpentByFact`:
+ * без разделов, учтённых планом; «не разобрано» — в базе, но строкой не идёт). Целые проценты, по убыванию;
+ * округление не выводит сумму за 100 (лишний процент снимается с самой большой доли). null — загрузок нет.
+ */
+export function spendShares(totals: SpendTotal[], spendCategories: SpendCategory[], key: string, uploads: UploadPeriod[] = []): SpendShare[] | null {
+  const base = monthSpentByFact(totals, spendCategories, key, uploads)
+  if (base === null) return null
+  const live = spendCategories.filter(alive)
+  const by = new Map<string, number>()
+  for (const t of totals) {
+    if (t.deletedAt || t.kind !== 'month' || t.period !== key || t.amount <= 0) continue
+    if (t.categoryId === UNKNOWN_CATEGORY || plannedElsewhere(t.categoryId, live)) continue
+    by.set(t.categoryId, (by.get(t.categoryId) ?? 0) + t.amount)
+  }
+  const rows = [...by]
+    .map(([categoryId, amount]) => ({ categoryId, amount, share: pct(amount, base) }))
+    .sort((a, b) => b.amount - a.amount)
+  let over = rows.reduce((a, r) => a + r.share, 0) - 100
+  for (let i = 0; over > 0 && i < rows.length; i++) {
+    const take = Math.min(over, rows[i].share)
+    rows[i].share -= take
+    over -= take
+  }
+  return rows
+}
+
+/** Месяц покрыт выписками целиком: есть загрузка на его первый и на последний день. */
+const monthCovered = (key: string, uploads: UploadPeriod[]) => {
+  const first = `${key}-01`
+  const last = `${key}-${String(daysInMonth(key)).padStart(2, '0')}`
+  return uploads.some((u) => u.period_from <= first && u.period_to >= first) && uploads.some((u) => u.period_from <= last && u.period_to >= last)
+}
+
+/** Сколько полных месяцев выписок нужно, чтобы ориентиром стало своё среднее (Р-57). */
+export const OWN_NORM_MONTHS = 3
+
+/**
+ * Ориентир долей (Р-57): после трёх полных месяцев с выписками перед `key` — своё среднее долей разделов
+ * за эти месяцы (раздел, которого в месяце не было, — 0 %; целые проценты, нулевые — без черты), иначе
+ * — таблица статистики РК (`STAT_NORMS`).
+ */
+export function spendNorms(
+  totals: SpendTotal[],
+  spendCategories: SpendCategory[],
+  uploads: UploadPeriod[],
+  key: string,
+): { from: 'own' | 'stat'; norms: Record<string, number> } {
+  const months = Array.from({ length: OWN_NORM_MONTHS }, (_, i) => addMonths(key, -(i + 1)))
+  if (!months.every((m) => monthCovered(m, uploads))) return { from: 'stat', norms: STAT_NORMS }
+  const sums = new Map<string, number>()
+  for (const m of months) for (const r of spendShares(totals, spendCategories, m, uploads) ?? []) sums.set(r.categoryId, (sums.get(r.categoryId) ?? 0) + r.share)
+  const norms = Object.fromEntries([...sums].map(([id, s]) => [id, Math.round(s / months.length)] as const).filter(([, s]) => s > 0))
+  return { from: 'own', norms }
+}
+
+/** Насколько доля должна превысить ориентир, чтобы раздел считался «выше нормы» (п. п., дефолт исполнителя). */
+export const NORM_SLACK = 3
+
+/**
+ * Тег «Трат»: раздел с наибольшим превышением ориентира — «продукты выше нормы» (превышение — больше
+ * `NORM_SLACK` п. п.), иначе «в норме»; без выписок за месяц — null. `worst` — для строки под суммой
+ * (макет: «Продукты 31 %, обычно ~22 %»).
+ */
+export function spendStatus(
+  shares: SpendShare[] | null,
+  norms: Record<string, number>,
+  spendCategories: Pick<SpendCategory, 'id' | 'name'>[],
+): (StatusTag & { worst?: { name: string; share: number; norm: number } }) | null {
+  if (!shares) return null
+  const worst = shares
+    .filter((r) => r.categoryId in norms)
+    .map((r) => ({ id: r.categoryId, over: r.share - norms[r.categoryId] }))
+    .filter((x) => x.over > NORM_SLACK)
+    .sort((a, b) => b.over - a.over)[0]
+  if (!worst) return { text: 'в норме', tone: 'ok' }
+  const name = spendCategoryName(spendCategories, worst.id)
+  const share = shares.find((r) => r.categoryId === worst.id)!.share
+  return { text: `${name.toLowerCase()} выше нормы`, tone: 'warn', worst: { name, share, norm: norms[worst.id] } }
+}
+
 export type DecisionKind = 'match' | 'unknown' | 'keep' | 'allocate' | 'salary' | 'freed' | 'monthEnd'
 
 /** Решение очереди «Недели» (`decisionQueue`): тексты DESIGN.md §6, ключ и данные для ответа на месте. */
@@ -2827,7 +2930,7 @@ export type Decision = {
   cancel?: KeepCard['cancel']
   /** Подписка вопроса «оставить?». */
   obligation?: Obligation
-  /** Участник и месяц зарплаты «пришла?» / «разложить?». */
+  /** Участник и месяц зарплаты «пришла?» / «Пришла зарплата». */
   salary?: { person: Person; period: string }
   /** Ждущее сопоставление операции с отметкой (Р-6). */
   match?: MatchCandidate
@@ -2835,29 +2938,27 @@ export type Decision = {
   group?: UnknownGroup
   /** Снижение обязательства «освободится N ₸». */
   freed?: FreedChange
+  /** «Пришла зарплата · как обычно» (Р-55): разбор, как в прошлый раз; null — плана ещё нет. */
+  usual?: AsUsual | null
+  /** Части `meta` карточки «как обычно» (`usualCard`): «Как в сентябре» и «останется N ₸» / «не хватает N ₸». */
+  lead?: string
+  outcome?: string
+  /** Сумма пришедшей зарплаты карточки «Пришла зарплата». */
+  amount?: number
 }
 
 /**
  * Очередь решений «Недели» (Р-43) — одна на экран: сопоставления (по одному на каждое ждущее) →
  * незнакомые продавцы (по одному на группу; группы ищет экран — месяц или черновик, `last` — дата
- * последней операции) → «оставить подписку?» (`keepQuestions`) → зарплата: «разложить?»
- * (`salaryToAllocate`), иначе «пришла?» (`salaryAsk`) — одна карточка о зарплате за раз → «освободится
- * N ₸» (`freedChange`, пока раскладка не записана) → «остались деньги?» (`monthEndAsk`, без раскладки
- * остатка). Шаг плана — в квадрате «План» (Р-34), не здесь. Новых расчётов нет (Р-50): это прежние проверки по порядку.
+ * последней операции) → «оставить подписку?» (`keepQuestions`) → зарплата: «Пришла зарплата»
+ * (`salaryToAllocate`; с планом — «как обычно» по `asUsual`, B2C-58), иначе «пришла?» (`salaryAsk`) — одна
+ * карточка о зарплате за раз → «освободится N ₸» (`freedChange`, пока разбор не записан) → «остались
+ * деньги?» (`monthEndAsk`, без разбора остатка). Шаг плана — в квадрате «План» (Р-34), не здесь. Новых расчётов нет (Р-50): это прежние проверки по порядку.
  * Отложенные («Потом») убирает экран. Viewer (`canEdit` false) решений не видит (Р-50); без своего слота (`me`)
  * нет только решений о своей зарплате — как было у «Недели».
  */
 export function decisionQueue(
-  state: {
-    categories?: Category[]
-    people?: Person[]
-    obligations?: Obligation[]
-    credits?: Credit[]
-    goals?: Goal[]
-    payments?: Payment[]
-    plans?: DebtPlan[]
-    allocations?: Allocation[]
-  },
+  state: BreakdownState,
   ctx: {
     me: PersonId | undefined
     canEdit?: boolean
@@ -2865,6 +2966,10 @@ export function decisionQueue(
     unknown?: (UnknownGroup & { last?: string })[]
     answeredMonthEnd?: string | null
     now?: { day: number; key: string }
+    /** Выписки месяца — для разбора «как обычно» (статусы статей), как у экрана разбора. */
+    totals?: SpendTotal[]
+    spendCategories?: SpendCategory[]
+    uploads?: UploadPeriod[]
   },
 ): Decision[] {
   if (ctx.canEdit === false) return []
@@ -2902,17 +3007,24 @@ export function decisionQueue(
     out.push({ kind: 'keep', key: `keep:${o.id}`, ...keepCard(o, state.goals ?? [], payments, now), to: null, obligation: o })
   }
 
-  // Зарплата пришла по выписке и не разложена — «разложить?»; иначе «пришла?» (возврат приёмки 2 п. 3: одна о зарплате).
+  // Зарплата пришла по выписке и не разобрана — «Пришла зарплата»; иначе «пришла?» (возврат приёмки 2 п. 3: одна о зарплате).
+  // С планом — «как обычно» одним нажатием и тихое «Изменить» (кольцо); без плана — «Разложить» → «Ваш порядок» (Р-55).
   const unallocated = salaryToAllocate(state, ctx.me, now)
   const near = unallocated ? null : salaryAsk(state, ctx.me, now)
   if (unallocated) {
+    const { person, period, record } = unallocated
+    const bctx = { totals: ctx.totals ?? [], spendCategories: ctx.spendCategories ?? [], uploads: ctx.uploads ?? [] }
+    const usual = asUsual(state, bctx, person.id, period)
+    const path = salaryBreakdownPath(person.id, period)
     out.push({
       kind: 'allocate',
-      key: `allocate:${unallocated.person.id}:${unallocated.period}`,
-      ...allocateCard(unallocated),
-      to: salaryAllocationPath(unallocated.person.id, unallocated.period),
-      actions: { primary: 'Разложить', ghost: 'Позже' },
-      salary: { person: unallocated.person, period: unallocated.period },
+      key: `allocate:${person.id}:${period}`,
+      ...(usual ? usualCard(usual) : { question: 'Пришла зарплата', meta: 'Сначала — ваш порядок' }),
+      to: usual ? path : orderPath({ from: 'salary', person: person.id, period }),
+      actions: usual ? { primary: 'Разложить как обычно', ghost: 'Изменить' } : { primary: 'Разложить', ghost: 'Позже' },
+      salary: { person, period },
+      usual,
+      amount: record.amount,
     })
   } else if (near) {
     // «Пришла» и лист «ещё» — `SalaryRow` на месте (RP-10).
@@ -2927,7 +3039,7 @@ export function decisionQueue(
       key: `freed:${freed.o.id}:${freed.change.from}`,
       question: freedQuestion(freed),
       meta: `${freed.o.name} · с ${monthFrom(freed.change.from, false)}`,
-      to: '/week/salary?from=freed',
+      to: breakdownPath({ from: 'freed' }),
       actions: { primary: 'Распределить', ghost: 'Потом' },
       freed,
     })
@@ -2940,4 +3052,585 @@ export function decisionQueue(
   }
 
   return out
+}
+
+/* ---------------- разбор зарплаты по статьям (Блок 11, Р-51…Р-56, Р-63…Р-66) ---------------- */
+
+/** Короткая подпись статьи в «Ваш порядок» (макет, вопрос 2): что в ней и какой порог. */
+export function orderLine(key: ArticleKey, settings: Pick<MoneySettings, 'reserveMonths' | 'cushionMonths' | 'costlyRate'>): string {
+  const months = (n: number) => `${n} ${plural(n, 'месяц', 'месяца', 'месяцев')}`
+  switch (key) {
+    case 'must':
+      return 'аренда, кредиты, коммуналка'
+    case 'life':
+      return 'еда и быт'
+    case 'reserve':
+      return `${months(settings.reserveMonths)} трат`
+    case 'debts':
+      return settings.costlyRate > 0 ? `дороже ${settings.costlyRate} %` : 'кредитка, рассрочки с %'
+    case 'cushion':
+      return months(settings.cushionMonths)
+    case 'dreams':
+      return 'цели со сроком'
+    case 'spend':
+      return 'кафе, себе, развлечения'
+  }
+}
+
+/** Из чего считается разбор: документ семьи; кредиты — производные остатки, как их отдаёт стор. */
+export type BreakdownState = {
+  people?: Person[]
+  categories?: Category[]
+  obligations?: Obligation[]
+  credits?: Credit[]
+  goals?: Goal[]
+  payments?: Payment[]
+  plans?: DebtPlan[]
+  allocations?: Allocation[]
+  moneyArticles?: MoneyArticle[]
+  moneySettings?: MoneySettings | null
+}
+
+export type BreakdownCtx = {
+  /** Месяц разбора. */
+  key: string
+  totals: SpendTotal[]
+  spendCategories: SpendCategory[]
+  uploads: UploadPeriod[]
+  /** Уже закрыто записями разбора этого месяца, по статьям (Р-54: вторая зарплата докрывает). */
+  covered?: Partial<ArticleAmounts>
+  /**
+   * Деньги сверх месяца — остаток, освободившееся, закрытый долг (Р-65): статьи от «Запаса» и ниже,
+   * нужда — до порога копилки, остатка долга и целей, без суммы месяца.
+   */
+  extra?: boolean
+}
+
+/** Статья разбора месяца: сколько ей нужно (`need`), короткий статус, куда идут деньги. */
+export type BreakdownArticle = {
+  key: ArticleKey
+  name: string
+  /** Включена в плане (Р-53: в разборе переключается на один раз). */
+  on: boolean
+  /** Сколько статье нужно в этом месяце, целые тенге, ≥ 0. */
+  need: number
+  status: string
+  /** Нечего закрывать (нет долгов, целей, нуль без плана, ступень закрыта) — не показывается (Р-65). */
+  empty: boolean
+  /** «Мечты»: цели по порядку (главная первой) и сколько каждой можно дать. */
+  goals?: { goalId: string; cap: number }[]
+  /** «Дорогие долги»: самый дорогой долг; `planId` — досрочка шагом плана «Сначала долги» (Р-66). */
+  creditId?: string
+  planId?: string
+  /** «Запас» и «Подушка»: цель-копилка (null — заводится при первом «Разложить») и её порог. */
+  potGoalId?: string | null
+  potLine?: number
+  /** Сколько статье осталось закрыть в этом разборе: `need − covered` (`monthBreakdown`) — сумма выключенной статьи. */
+  left?: number
+}
+
+export type ArticleAmounts = Record<ArticleKey, number>
+
+const zeroArticles = (): ArticleAmounts => ({ must: 0, life: 0, reserve: 0, debts: 0, cushion: 0, dreams: 0, spend: 0 })
+
+/** Статьи, которых нет у денег сверх месяца (Р-65): платежи, «Жизнь» и «Траты» закрывает зарплата. */
+const MONTH_ONLY: ArticleKey[] = ['must', 'life', 'spend']
+
+const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1)
+
+/** «0,6» — сколько месяцев покрывает копилка, десятые вниз; только для строки статуса. */
+const monthsShare = (have: number, month: number) =>
+  String(Math.floor((have / month) * 10) / 10).replace('.', ',')
+
+const ofMonths = (n: number) => `${n} ${plural(n, 'месяца', 'месяцев', 'месяцев')}`
+
+/** Есть ли за месяц хоть одна загрузка выписки — иначе факта нет, а не «потрачено 0». */
+const monthUploaded = (key: string, uploads: UploadPeriod[]) => {
+  const monthStart = `${key}-01`
+  const monthEnd = `${key}-${String(daysInMonth(key)).padStart(2, '0')}`
+  return uploads.some((u) => u.period_to >= monthStart && u.period_from <= monthEnd)
+}
+
+/**
+ * Траты месяца по выпискам обоих по статьям разделов (B2C-55 п. 4): те же строки, что у
+ * `monthSpentByFact` (раздел, учтённый планом, не входит), разложенные по статье раздела
+ * (`spendArticle`); незнакомое — в «Жизнь». `life + spend` = `monthSpentByFact`. null — загрузок нет.
+ */
+export function articleFact(
+  totals: SpendTotal[],
+  spendCategories: SpendCategory[],
+  key: string,
+  uploads: UploadPeriod[] = [],
+): { life: number; spend: number } | null {
+  if (!monthUploaded(key, uploads)) return null
+  const live = spendCategories.filter(alive)
+  const out = { life: 0, spend: 0 }
+  for (const t of totals) {
+    if (t.deletedAt || t.kind !== 'month' || t.period !== key || t.amount <= 0) continue
+    if (t.categoryId === UNKNOWN_CATEGORY) {
+      out.life += t.amount
+      continue
+    }
+    if (plannedElsewhere(t.categoryId, live)) continue
+    if (spendArticle(t.categoryId, live) === 'spend') out.spend += t.amount
+    else out.life += t.amount
+  }
+  return out
+}
+
+/**
+ * Статьи месяца по порядку плана (B2C-55 п. 1): нужда, статус, цели и долг статьи.
+ *
+ * - «Обязательное» — платежи месяца (`monthDues`, отметки учтены суммой отметки).
+ * - «Жизнь», «Траты» — сумма статьи; статус — факт по выпискам (`articleFact`).
+ * - «Запас» — копилка до `reserveMonths × (Жизнь + Траты)`, не больше взноса статьи; «Подушка» —
+ *   та же копилка дальше, до `cushionMonths × (Обязательное + Жизнь)`. Копилка считается от начала
+ *   месяца: записанное разбором этого месяца (`covered`) из её накопленного вычитается, иначе
+ *   вторая зарплата увидела бы порог ближе и недодала. С планом «Сначала долги» и его подушкой
+ *   «Подушка» — шаг плана `cushion` (Р-66).
+ * - «Дорогие долги» — без плана взнос статьи в самый дорогой долг со ставкой не ниже `costlyRate`;
+ *   с планом — сумма месяца плана за вычетом уже внесённых досрочек плана (`planPrepays`): шаг не
+ *   удваивается, а недовнесённое первой зарплатой докрывает вторая.
+ * - «Мечты» — взносы целей (`monthly`, не больше остатка), кроме копилки и целей на паузе плана.
+ */
+export function breakdownArticles(state: BreakdownState, ctx: BreakdownCtx): BreakdownArticle[] {
+  const { key } = ctx
+  const covered = { ...zeroArticles(), ...ctx.covered }
+  const list = moneyArticlesOf(state)
+  const settings = moneySettingsOf(state)
+  const plan = activePlan(state.plans ?? [])
+  const goals = liveGoals(state.goals ?? [])
+  const credits = state.credits ?? []
+  const amountOf = (k: ArticleKey) => list.find((a) => a.id === k)?.amount ?? 0
+  const onOf = (k: ArticleKey) => list.find((a) => a.id === k)?.on ?? true
+
+  // Обязательное.
+  const dues = monthDues(state, key)
+  const must = duesTotal(dues)
+  const obNames = dues.filter((d) => d.kind === 'obligation').map((d) => lowerFirst(d.name))
+  const crDues = dues.filter((d) => d.kind === 'credit')
+  const crPart =
+    crDues.length === 1 ? [crDues[0].name] : crDues.length > 1 ? [`${crDues.length} ${plural(crDues.length, 'кредит', 'кредита', 'кредитов')}`] : []
+  const mustStatus = [...obNames.slice(0, 2), ...crPart, ...(obNames.length > 2 ? [`ещё ${obNames.length - 2}`] : [])].join(', ')
+
+  // Жизнь и Траты.
+  const life = amountOf('life')
+  const spend = amountOf('spend')
+  const fact = articleFact(ctx.totals, ctx.spendCategories, key, ctx.uploads)
+
+  // Копилка «Запаса» и «Подушки» — цель-подушка плана, иначе своя (Р-66); от начала месяца.
+  const pot = goals.find((g) => g.id === plan?.cushionGoalId) ?? goals.find((g) => g.id === settings.potGoalId) ?? null
+  const potHave = Math.max(0, Math.max(0, pot?.have ?? 0) - covered.reserve - covered.cushion)
+  const reserveLine = settings.reserveMonths * (life + spend)
+  const cushionLine = settings.cushionMonths * (must + life)
+  const potLine = Math.max(reserveLine, cushionLine)
+  const reserveGap = Math.max(0, reserveLine - potHave)
+  const reserveNeed = ctx.extra ? reserveGap : Math.min(amountOf('reserve'), reserveGap)
+  const reserveStatus =
+    reserveLine > 0 && reserveGap === 0
+      ? 'закрыт'
+      : life + spend > 0
+        ? `есть ${monthsShare(potHave, life + spend)} из ${ofMonths(settings.reserveMonths)}`
+        : ''
+  const cushionGap = Math.max(0, cushionLine - potHave - (onOf('reserve') ? reserveNeed : 0))
+  const cushionShare = must + life > 0 ? `${monthsShare(potHave, must + life)} из ${ofMonths(settings.cushionMonths)}` : ''
+
+  // План «Сначала долги» — от копилки начала месяца, как и «Подушка».
+  const planState = pot ? { ...state, goals: (state.goals ?? []).map((g) => (g.id === pot.id ? { ...g, have: potHave } : g)) } : state
+  const step = plan ? planStep(plan, planState, key) : null
+  const planCushion = !!plan && !!pot && plan.cushionGoalId === pot.id
+
+  let cushion: { need: number; status: string }
+  if (planCushion) {
+    cushion =
+      step?.kind === 'cushion'
+        ? { need: ctx.extra ? cushionGap : step.amount, status: 'по плану «Сначала долги»' }
+        : { need: 0, status: cushionGap === 0 && cushionLine > 0 ? 'закрыт' : 'по плану — после долгов' }
+  } else {
+    const need = ctx.extra ? cushionGap : Math.min(amountOf('cushion'), cushionGap)
+    cushion = { need, status: cushionLine > 0 && cushionGap === 0 ? 'закрыт' : cushionShare }
+  }
+
+  let debts: { need: number; status: string; creditId?: string; planId?: string }
+  if (plan) {
+    const target = costliestCredits(credits)[0]
+    if (!step || step.kind === 'done' || !target) debts = { need: 0, status: 'долгов с процентами нет' }
+    else if (step.kind === 'cushion') debts = { need: 0, status: 'по плану — сначала подушка' }
+    else {
+      const paid = amountTotal(planPrepays(state.payments, key))
+      const left = Math.max(0, Math.min(planMonthSum(plan, planState, key) - paid, target.principal))
+      debts = ctx.extra
+        ? { need: target.principal, status: `${target.name} · ${ratePct(target.annualRate, 0)}`, creditId: target.id }
+        : { need: covered.debts + left, status: `по плану · ${target.name}`, creditId: target.id, planId: plan.id }
+    }
+  } else {
+    // Ставка — доля годовых (0,34), порог — целые проценты: сравнение в сотых долях процента.
+    const target = costliestCredits(credits).find((c) => Math.round(c.annualRate * 10_000) >= settings.costlyRate * 100)
+    debts = target
+      ? {
+          need: ctx.extra ? target.principal : Math.min(amountOf('debts'), target.principal + covered.debts),
+          status: `${target.name} · ${ratePct(target.annualRate, 0)}`,
+          creditId: target.id,
+        }
+      : { need: 0, status: 'дорогих долгов нет' }
+  }
+
+  // Мечты: главная первой; копилка и цели на паузе плана — не здесь.
+  const paused = new Set(plan ? pausedGoals(plan, goals).map((g) => g.id) : [])
+  const main = mainGoal(goals)
+  const dreamGoals = goals
+    .filter((g) => g.id !== pot?.id && !paused.has(g.id) && goalRemaining(g) > 0 && (ctx.extra || g.monthly > 0))
+    .sort((a, b) => Number(b.id === main?.id) - Number(a.id === main?.id))
+  const caps = dreamGoals.map((g) => ({ goalId: g.id, cap: ctx.extra ? goalRemaining(g) : Math.min(g.monthly, goalRemaining(g)) }))
+  const head = dreamGoals[0]
+  const headDone = head && head.monthly > 0 ? goalDoneMonth(goalMonths(goalRemaining(head), head.monthly), key) : null
+  const dreamsStatus = head
+    ? headDone
+      ? `${head.name} · в ${monthIn(headDone, headDone.slice(0, 4) !== key.slice(0, 4))}`
+      : head.name
+    : 'целей нет'
+
+  const rows: Record<ArticleKey, Omit<BreakdownArticle, 'key' | 'name' | 'on' | 'empty'>> = {
+    must: { need: must, status: mustStatus },
+    life: { need: life, status: fact ? `по выпискам ${money(fact.life)}` : 'еда, быт, транспорт' },
+    reserve: { need: reserveNeed, status: reserveStatus, potGoalId: pot?.id ?? null, potLine },
+    debts,
+    cushion: { ...cushion, potGoalId: pot?.id ?? null, potLine },
+    dreams: { need: amountTotal(caps.map((c) => ({ amount: c.cap }))), status: dreamsStatus, goals: caps },
+    spend: { need: spend, status: fact ? `по выпискам ${money(fact.spend)}` : 'кафе, себе, развлечения' },
+  }
+  return list
+    .filter((a) => !ctx.extra || !MONTH_ONLY.includes(a.id))
+    .map((a) => {
+      const need = Math.max(0, rows[a.id].need)
+      return { key: a.id, name: ARTICLE_NAMES[a.id], on: a.on, ...rows[a.id], need, empty: need === 0 }
+    })
+}
+
+export type BreakdownFill = {
+  /** Сколько этой суммы получает статья. */
+  given: ArticleAmounts
+  /** Остаток суммы после включённых статей, ≥ 0; `Σ given + rest = amount`. */
+  rest: number
+  /** Недозакрытые статьи, которые докроет ещё не разобранная зарплата месяца (Р-54). */
+  waiting: ArticleKey[]
+  /** Сколько не хватает семье до всех включённых статей с учётом ещё не разобранных зарплат (Р-65). */
+  short: number
+}
+
+/**
+ * Закрытие по порядку (Р-54): каждая включённая статья получает `min(need − covered, остаток)`.
+ * `expected` — зарплаты месяца, ещё не разобранные (пришедшие — суммой отметки, нет — окладом):
+ * статьи, которые они докроют, — `waiting`, на что не хватит и им — `short`.
+ */
+export function breakdownFill(
+  articles: Pick<BreakdownArticle, 'key' | 'on' | 'need' | 'empty'>[],
+  amount: number,
+  covered: Partial<ArticleAmounts> = {},
+  expected = 0,
+): BreakdownFill {
+  const given = zeroArticles()
+  const live = articles.filter((a) => a.on && !a.empty)
+  let left = Math.max(0, amount)
+  for (const a of live) {
+    const g = Math.min(Math.max(0, a.need - (covered[a.key] ?? 0)), left)
+    given[a.key] = g
+    left -= g
+  }
+  const waiting: ArticleKey[] = []
+  let later = Math.max(0, expected)
+  let short = 0
+  for (const a of live) {
+    let miss = Math.max(0, a.need - (covered[a.key] ?? 0) - given[a.key])
+    if (miss > 0 && later > 0) {
+      waiting.push(a.key)
+      const t = Math.min(miss, later)
+      later -= t
+      miss -= t
+    }
+    short += miss
+  }
+  return { given, rest: left, waiting, short }
+}
+
+/** Откуда деньги разбора — параметры адреса (как у бывшей раскладки). */
+export type BreakdownSource =
+  | { from: 'salary'; person: PersonId; period: string }
+  | { from: 'rest'; amount: number; period: string }
+  | { from: 'freed' }
+  | { from: 'credit'; creditId: string }
+  /** План месяца без пришедшей зарплаты (нажатие на «Доход», B2C-58): статьи на сумму окладов — смотреть, не раскладывать. */
+  | { from: 'plan' }
+
+export type MonthBreakdown = {
+  /** Месяц, чьи статьи закрываются. */
+  key: string
+  /** Ключ записи (`allocationFor`): второй заход и партнёр видят записанное. */
+  record: { source: Allocation['source']; sourceId: string; period: string }
+  /** Сумма разбора: пришедшая зарплата (сумма отметки), остаток, освободившееся в месяц. */
+  amount: number
+  /** Разовая (взносы сейчас) или каждый месяц (рост взносов) — Р-65. */
+  mode: 'once' | 'monthly'
+  /** Статьи, которым есть что закрывать, по порядку (выключенные в плане — тоже, выключенными). */
+  articles: BreakdownArticle[]
+  covered: ArticleAmounts
+  /** Ещё не разобранные зарплаты месяца и чьи они. */
+  expected: number
+  waitingFor: PersonId[]
+  recorded: Allocation | null
+  /** Закрытие по плану статей (`on` плана). */
+  fill: BreakdownFill
+}
+
+/**
+ * Экранная сводка разбора для источника (B2C-55 п. 3). Зарплата — один разбор на семью (Р-54):
+ * записи разбора этого месяца закрывают статьи (`covered`), зарплаты, ещё не разобранные, —
+ * `expected`. Остаток месяца, освободившийся платёж и закрытый долг — деньги сверх месяца
+ * (Р-65, `extra`). null — разбирать нечего: зарплата не отмечена, снижения нет, долг не закрыт.
+ * `rawCredits` — кредиты документа (база сверки) для «долг закрыт»: моменты прогресса выводятся
+ * из отметок поверх базы, производные остатки для этого не годятся.
+ */
+export function monthBreakdown(
+  state: BreakdownState,
+  ctx: Omit<BreakdownCtx, 'covered' | 'extra'> & { rawCredits?: Credit[] },
+  source: BreakdownSource,
+): MonthBreakdown | null {
+  const people = (state.people ?? []).filter(alive)
+  let key = ctx.key
+  let amount = 0
+  let mode: MonthBreakdown['mode'] = 'once'
+  let record: MonthBreakdown['record']
+  if (source.from === 'salary') {
+    const paid = paidFor(state.payments, 'salary', source.person, source.period)
+    if (!paid) return null
+    key = source.period
+    amount = paid.amount
+    record = { source: 'salary', sourceId: source.person, period: source.period }
+  } else if (source.from === 'rest') {
+    key = source.period
+    amount = Math.max(0, Math.round(source.amount))
+    record = { source: 'rest', sourceId: source.period, period: source.period }
+  } else if (source.from === 'plan') {
+    amount = totalIncome(people, key)
+    // Записи у плана нет: ключ не совпадает ни с одним источником.
+    record = { source: 'salary', sourceId: 'plan', period: key }
+  } else if (source.from === 'freed') {
+    const freed = freedChange(liveObligations(state.obligations ?? []), key)
+    if (!freed) return null
+    amount = freed.monthly
+    mode = 'monthly'
+    record = { source: 'freed', sourceId: freed.o.id, period: freed.change.from }
+  } else {
+    const creditId = source.creditId
+    const m = progressMoments({ credits: ctx.rawCredits ?? state.credits, payments: state.payments }).find(
+      (x): x is Extract<Moment, { kind: 'closed' }> => x.kind === 'closed' && x.creditId === creditId,
+    )
+    if (!m) return null
+    // Платёж долга из активного плана уже идёт в следующий долг — разбирать нечего.
+    amount = activePlan(state.plans ?? [])?.creditIds.includes(m.creditId) ? 0 : m.freed
+    mode = 'monthly'
+    // Долг закрывается один раз: период записи — месяц закрытия, иначе через месяц разбор открылся бы снова.
+    record = { source: 'freed', sourceId: m.creditId, period: movementMonth(m.at) }
+  }
+
+  const covered = zeroArticles()
+  let expected = 0
+  const waitingFor: PersonId[] = []
+  if (source.from === 'salary') {
+    for (const a of state.allocations ?? []) {
+      if (a.deletedAt || a.kind !== 'breakdown' || a.source !== 'salary' || a.period !== key || a.sourceId === source.person) continue
+      for (const p of a.parts) if (p.target in covered) covered[p.target as ArticleKey] += p.amount
+    }
+    for (const p of people) {
+      if (p.id === source.person || salaryAt(p, key) <= 0) continue
+      if (allocationFor(state.allocations, { source: 'salary', sourceId: p.id, period: key })) continue
+      expected += paidFor(state.payments, 'salary', p.id, key)?.amount ?? salaryAt(p, key)
+      waitingFor.push(p.id)
+    }
+  }
+
+  const all = breakdownArticles(state, { ...ctx, key, covered, extra: source.from !== 'salary' && source.from !== 'plan' })
+  const articles = all.map((a) => ({ ...a, left: a.need - covered[a.key] })).filter((a) => !a.empty && a.left > 0)
+  return {
+    key,
+    record,
+    amount,
+    mode,
+    articles,
+    covered,
+    expected,
+    waitingFor,
+    recorded: allocationFor(state.allocations, record),
+    fill: breakdownFill(articles, amount, covered, expected),
+  }
+}
+
+/** Разбор «как обычно»: сводка месяца, выключенные статьи и месяц прошлой записи. */
+export type AsUsual = MonthBreakdown & { last: string | null; off: ArticleKey[] }
+
+/**
+ * Карточка «Пришла зарплата · как в <прошлом месяце>» (Р-55, B2C-55 п. 3): своя пришедшая и не
+ * разложенная зарплата месяца `period` (месяц находит `salaryToAllocate`), статьи — как
+ * в прошлой записи разбора участника (выключенные там — выключены), нет её — план. null — плана нет
+ * («Ваш порядок» не пройден — первый разбор начинается с него), зарплата не пришла или уже разложена.
+ */
+export function asUsual(
+  state: BreakdownState,
+  ctx: Omit<BreakdownCtx, 'covered' | 'extra' | 'key'>,
+  me: PersonId | undefined,
+  period: string,
+): AsUsual | null {
+  if (!me || !moneySettingsOf(state).orderedAt) return null
+  const paid = paidFor(state.payments, 'salary', me, period)
+  if (!paid) return null
+  const mb = monthBreakdown(state, { ...ctx, key: paid.period }, { from: 'salary', person: me, period: paid.period })
+  if (!mb || mb.recorded || mb.amount <= 0) return null
+  const prev = (state.allocations ?? [])
+    .filter((a) => !a.deletedAt && a.kind === 'breakdown' && a.source === 'salary' && a.sourceId === me && a.period < paid.period)
+    .sort((a, b) => b.period.localeCompare(a.period) || b.at.localeCompare(a.at))[0]
+  const planOff = mb.articles.filter((a) => !a.on).map((a) => a.key)
+  const off = [...new Set([...planOff, ...(prev?.off ?? [])])]
+  const { articles, fill } = breakdownWith(mb, off)
+  return { ...mb, articles, fill, last: prev?.period ?? null, off: prev?.off ?? [] }
+}
+
+/**
+ * Тексты карточки «Пришла зарплата» (макет, вопрос 2): «Как в сентябре · останется N ₸». `lead` и `outcome` —
+ * части `meta` по отдельности: экран красит итог (нехватка — красным), не разрезая строку.
+ */
+export function usualCard(u: Pick<AsUsual, 'last' | 'fill'>) {
+  const lead = u.last ? `Как в ${monthIn(u.last, false)}` : 'По вашему порядку'
+  const outcome = u.fill.short > 0 ? `не хватает ${money(u.fill.short)}` : `останется ${money(u.fill.rest)}`
+  return { question: 'Пришла зарплата', meta: `${lead} · ${outcome}`, lead, outcome }
+}
+
+export type BreakdownEffects = {
+  /** Взносы сейчас: в цели и в копилку (`goalId: null` — копилку надо завести, `need` — её порог). */
+  contributions: { goalId: string | null; amount: number; need?: number }[]
+  /** Досрочка в самый дорогой долг; `planId` — шагом плана «Сначала долги». */
+  prepay: { creditId: string; amount: number; planId?: string } | null
+  /** Каждый месяц: рост взносов целей. */
+  monthly: { goalId: string; add: number }[]
+  /** Каждый месяц: рост взноса статьи (Запас, Подушка, Дорогие долги). */
+  articleAdds: { key: ArticleKey; add: number }[]
+  /** Части записи — по статьям, только ненулевые. */
+  parts: AllocationPart[]
+}
+
+/**
+ * Что записать (B2C-55 п. 5) — стор только исполняет. «Мечты» — по целям в порядке статьи, каждой
+ * не больше её `cap` (взнос месяца), остаток — главной; «Запас» и «Подушка» — одним взносом в
+ * копилку; «Дорогие долги» — досрочкой. Деньги «Обязательного», «Жизни» и «Трат» остаются на
+ * счёте — только части записи. Каждый месяц (`monthly`) — те же доли ростом взносов. `covered` — уже
+ * записанное разбором этого месяца (Р-54): «Мечты» первой зарплаты заняли взносы целей в том же порядке —
+ * вторая докрывает следующие цели, а не даёт главной второй взнос.
+ */
+export function breakdownEffects(
+  given: ArticleAmounts,
+  articles: BreakdownArticle[],
+  mode: 'once' | 'monthly',
+  covered: Partial<ArticleAmounts> = {},
+): BreakdownEffects {
+  const by = (k: ArticleKey) => articles.find((a) => a.key === k)
+  const goals = by('dreams')?.goals ?? []
+  const dreams = goals.map((g) => ({ goalId: g.goalId, amount: 0 }))
+  let done = Math.max(0, covered.dreams ?? 0)
+  let left = given.dreams
+  goals.forEach((g, i) => {
+    const taken = Math.min(g.cap, done)
+    done -= taken
+    const x = Math.min(g.cap - taken, left)
+    dreams[i].amount = x
+    left -= x
+  })
+  if (left > 0 && dreams.length) dreams[0].amount += left
+  const toDreams = dreams.filter((d) => d.amount > 0)
+  const parts = articles.filter((a) => given[a.key] > 0).map((a) => ({ target: a.key, amount: given[a.key] }))
+  if (mode === 'monthly') {
+    return {
+      contributions: [],
+      prepay: null,
+      monthly: toDreams.map((d) => ({ goalId: d.goalId, add: d.amount })),
+      articleAdds: (['reserve', 'debts', 'cushion'] as const).filter((k) => given[k] > 0).map((k) => ({ key: k, add: given[k] })),
+      parts,
+    }
+  }
+  const potArticle = by('reserve') ?? by('cushion')
+  const toPot = given.reserve + given.cushion
+  const debts = by('debts')
+  const potId = potArticle?.potGoalId ?? null
+  return {
+    contributions: [
+      ...toDreams,
+      ...(toPot > 0 ? [{ goalId: potId, amount: toPot, ...(potId ? {} : { need: potArticle?.potLine ?? toPot }) }] : []),
+    ],
+    prepay:
+      given.debts > 0 && debts?.creditId
+        ? { creditId: debts.creditId, amount: given.debts, ...(debts.planId ? { planId: debts.planId } : {}) }
+        : null,
+    monthly: [],
+    articleAdds: [],
+    parts,
+  }
+}
+
+/**
+ * Разбор с выключенными на этот раз статьями (B2C-57, B2C-58): статьи, закрытие и что записать — одна
+ * дорога для кольца («Разложить») и карточки «как обычно», поэтому они пишут одно и то же. `off` —
+ * только статьи этого разбора (для записи).
+ */
+export function breakdownWith(mb: MonthBreakdown, off: ArticleKey[]) {
+  const articles = mb.articles.map((a) => ({ ...a, on: !off.includes(a.key) }))
+  const fill = breakdownFill(articles, mb.amount, mb.covered, mb.expected)
+  return {
+    articles,
+    fill,
+    effects: breakdownEffects(fill.given, articles, mb.mode, mb.covered),
+    off: off.filter((k) => articles.some((a) => a.key === k)),
+  }
+}
+
+/**
+ * Куда ведёт нажатие на «Доход» (B2C-58): разбор последней пришедшей в этом месяце зарплаты, иначе — план
+ * месяца (`from=plan`, без кнопки).
+ */
+export function incomeBreakdownPath(payments: Payment[], key: string): string {
+  const last = payments
+    .filter((p) => !p.deletedAt && p.kind === 'salary' && p.period === key)
+    .sort((a, b) => b.at.localeCompare(a.at))[0]
+  return last ? salaryBreakdownPath(last.targetId as PersonId, key) : breakdownPath({ from: 'plan' })
+}
+
+/** Разовый разбор двигает деньги со счёта (взносы, досрочка) — нужен счёт. */
+export const breakdownMoves = (mode: MonthBreakdown['mode'], fx: Pick<BreakdownEffects, 'contributions' | 'prepay'>) =>
+  mode === 'once' && (fx.contributions.length > 0 || !!fx.prepay)
+
+/** Счёт разбора по умолчанию: счёт отметки зарплаты, иначе последний счёт участника; undefined — спросить. */
+export function breakdownAccount(
+  payments: Payment[],
+  source: BreakdownSource,
+  slot: PersonId | null | undefined,
+  accounts: Account[],
+): string | null | undefined {
+  if (source.from === 'salary') {
+    const rec = paidFor(payments, 'salary', source.person, source.period)
+    if (rec && rec.accountId !== undefined) return rec.accountId
+  }
+  return slot ? lastAccountFor(payments, slot, accounts) : undefined
+}
+
+/**
+ * Доли кольца разбора (B2C-57): сектор статьи — её сумма от всей суммы, по порядку; хвост до
+ * круга — «Остаётся». Тот же вид долей 0…1, что у `StackBar`.
+ */
+export function ringShares<K extends string = ArticleKey>(parts: { key: K; amount: number }[], total: number): { key: K; share: number }[] {
+  return parts.map((p) => ({ key: p.key, share: total > 0 ? Math.max(0, p.amount) / total : 0 }))
+}
+
+/** Записанный разбор (`kind: 'breakdown'`): части по статьям в порядке плана и что осталось. */
+export function recordedBreakdown(rec: Pick<Allocation, 'parts' | 'total'>, order: ArticleKey[] = ARTICLE_ORDER) {
+  const parts = order
+    .map((key) => ({ key, amount: rec.parts.filter((p) => p.target === key).reduce((s, p) => s + p.amount, 0) }))
+    .filter((p) => p.amount > 0)
+  return { parts, rest: Math.max(0, rec.total - parts.reduce((s, p) => s + p.amount, 0)) }
 }

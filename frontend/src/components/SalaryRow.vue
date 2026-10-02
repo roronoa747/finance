@@ -6,7 +6,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { plain } from '@/lib/money'
 import { atLabel } from '@/lib/dates'
-import { lastAccountFor, paidFor, salaryAllocationPath, salaryAt, salaryOpen } from '@/lib/finance'
+import { lastAccountFor, paidFor, salaryAt, salaryBreakdownPath, salaryOpen } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
 import Row from '@/components/kit/Row.vue'
@@ -18,7 +18,7 @@ import MarkSheet from '@/components/MarkSheet.vue'
  * зарплату только сам участник (`member.slot`), viewer не отмечает (Р-13); партнёр видит
  * отметку после синка. Одно нажатие — оклад месяца на счёт, куда зарплата пришла в
  * прошлый раз (Р-5); лист (`MarkSheet`, B2C-15) — только для исключений: первая отметка
- * (счёт спросить один раз), премия, правка и снятие. После отметки — раскладка свободного.
+ * (счёт спросить один раз), премия, правка и снятие. После отметки — разбор этой зарплаты.
  */
 const props = defineProps<{
   personId: PersonId
@@ -78,9 +78,9 @@ function openMark(amount: number, account: string | null | undefined) {
   sheet.value = 'mark'
 }
 
-/** После отметки — раскладка свободного (бывший Ритуал). */
+/** После отметки — разбор этой зарплаты (B2C-58). */
 function toAllocation() {
-  void router.push(salaryAllocationPath(props.personId, props.period))
+  void router.push(salaryBreakdownPath(props.personId, props.period))
 }
 
 function mark(amount: number, accountId: string | null) {

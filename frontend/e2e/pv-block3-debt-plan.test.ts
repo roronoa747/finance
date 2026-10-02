@@ -6,7 +6,7 @@ import { money } from '../src/lib/money'
 import type { Goal, Payment, SyncDoc } from '../src/types/finance'
 import GoalDetail from '../src/views/GoalDetail.vue'
 import Money from '../src/views/Money.vue'
-import WeekSalary from '../src/views/WeekSalary.vue'
+import Breakdown from '../src/views/Breakdown.vue'
 import { plain } from '../src/lib/money'
 import { useAuthStore } from '../src/stores/auth'
 import { authAs } from '../src/test/planFamily'
@@ -16,6 +16,10 @@ import { at, fakeServer, phone, screen, setOnline, type FakeServer } from './sup
 /** Цель на паузе ради плана — на экране цели: список целей теперь плитки «Мечт» без тега (B2C-18). */
 /** Квадрат «План» (пивот 3, B2C-43): план включён — переключатель «Сначала долги». */
 const planOn = (html: string) => /role="switch" aria-checked="true"/.test(html)
+/** Разбор остатка с открытой статьёй «Дорогие долги» (B2C-58): её статус — какой долг досрочка закрывает первым. */
+const debtsCard = (p: { pinia: Pinia }) =>
+  screen(p.pinia, Breakdown, '/week/breakdown?from=rest&amount=100000&period=2026-09', undefined, [screenMixin({ picked: 'debts' })])
+
 const pausedOn = async (p: { pinia: Pinia }, id: string) => (await screen(p.pinia, GoalDetail, `/goals/${id}`)).includes('На паузе ради плана')
 
 /**
@@ -421,12 +425,15 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
 
       // Не хватает 73 000 — из 100 000 плана в подушку 73 000.
       expect(planStep(plan, B.store.planState(), '2026-09')).toEqual({ kind: 'cushion', goalId: 'cushion', amount: 73_000, missing: 73_000 })
-      const ritual = await screen(B.pinia, WeekSalary, '/ritual')
-      expect(ritual).toContain(`Сначала подушка: до месяца обязательных списаний не хватает ${money(73_000)}.`)
-      // Корзина подушки — первой.
-      expect(ritual.indexOf('>Подушка<')).toBeGreaterThan(-1)
-      expect(ritual.indexOf('>Подушка<')).toBeLessThan(ritual.indexOf('>Отпуск<'))
-      expect(ritual).toContain('Шаг плана в этом месяце — подушка; досрочка в «Кредитка» — следующим шагом')
+      // Разбор (B2C-58, Р-66): при шаге «подушка» «Дорогим долгам» нечего закрывать — статьи нет (Р-65), «Подушка» — по плану.
+      const ritual = await debtsCard(B)
+      expect(ritual).not.toContain('data-chip="debts"')
+      const cushionCard = await screen(B.pinia, Breakdown, '/week/breakdown?from=rest&amount=100000&period=2026-09', undefined, [screenMixin({ picked: 'cushion' })])
+      expect(cushionCard).toContain('по плану «Сначала долги»')
+      // (прежний Ритуал: «Сначала подушка: не хватает N» — теперь сумма шага в «Деньги · План» ниже)
+      // Цели плана на паузе — «Мечт» в разборе нет, деньги сверх месяца идут в «Подушку».
+      expect(cushionCard).toContain('data-chip="cushion"')
+      expect(cushionCard).not.toContain('data-chip="dreams"')
       const cushionPlan = await screen(B.pinia, Money, '/money/plan')
       expect(cushionPlan).toContain(`сначала подушка: не хватает ${money(73_000)}`)
       expect(cushionPlan).toContain('Подушка плана')
@@ -451,9 +458,9 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
       expect(prepayPlan).toMatch(button('Шаг сделан'))
       expect(between(prepayPlan, 'Шаг сентября', 'Копить или гасить?')).toContain(`${money(amount)} досрочно`)
       expect(prepayPlan).toContain('в «Кредитка»')
-      const ritualA = await screen(A.pinia, WeekSalary, '/ritual')
-      expect(ritualA).not.toContain('Сначала подушка')
-      expect(ritualA).toContain(`Шаг плана — ${money(amount)} в «Кредитка»`)
+      const ritualA = await debtsCard(A)
+      expect(ritualA).not.toContain('сначала подушка')
+      expect(ritualA).toContain('Кредитка · 40%')
     })
 
     it('пропуск месяца: план с июля, шаг июля внесён, август пропущен — в сентябре строка без упрёка, шаг — сумма одного месяца', async () => {

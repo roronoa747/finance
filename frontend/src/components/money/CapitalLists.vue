@@ -8,7 +8,7 @@ import { money, plain, rateField } from '@/lib/money'
 import { monthKey } from '@/lib/dates'
 import {
   amountTotal,
-  duesTotal,
+  duesTag,
   groupChildren,
   groupTotal,
   liveAccounts,
@@ -23,6 +23,7 @@ import Card from '@/components/kit/Card.vue'
 import Row from '@/components/kit/Row.vue'
 import Section from '@/components/kit/Section.vue'
 import Sheet from '@/components/kit/Sheet.vue'
+import Tag from '@/components/kit/Tag.vue'
 import Button from '@/components/ui/Button.vue'
 import AccountSheet from '@/components/capital/AccountSheet.vue'
 import CreditSheet from '@/components/capital/CreditSheet.vue'
@@ -37,7 +38,7 @@ import PaymentLine from '@/components/money/PaymentLine.vue'
 
 /**
  * Списки Капитала (пивот 3, Р-32; макет `pivot-3/index.html`, «Капитал» под виджетами): «Счета» с
- * итогом и «Платежи» — один список по дню с «Оплатил», итог месяца = `duesTotal(monthDues)`. Всё
+ * итогом и «Платежи» — один список по дню с «Оплатил», тег «N из M оплачено» (`duesTag`, B2C-59). Всё
  * остальное — в листах: счёт (и вклад), кредит, обязательство, группа подписок, формы добавления.
  * Листы открываются и по адресу (`?account=`, `?credit=`, `?obligation=`, `?payoff=`, `?add=`,
  * `?income=1`) — «+» оболочки и старые ссылки; формы добавления — только участнику.
@@ -66,8 +67,9 @@ function accountMeta(a: Account): string {
 }
 
 /* ------------------ Платежи ------------------ */
-const duesSum = computed(() =>
-  duesTotal(monthDues({ obligations: financeStore.obligations, credits: financeStore.credits, payments: financeStore.payments }, key.value)),
+// Строка-статус (B2C-59, Р-59): «N из M оплачено» за месяц; сумма месяца — в строках ниже.
+const duesStatus = computed(() =>
+  duesTag(monthDues({ obligations: financeStore.obligations, credits: financeStore.credits, payments: financeStore.payments }, key.value)),
 )
 
 type Line = { id: string; day: number; item: { kind: 'credit'; credit: Credit } | { kind: 'obligation'; obligation: Obligation } }
@@ -191,7 +193,7 @@ watch(queryModalOpen, (open) => {
   <!-- Платежи: один список по дню, «Оплатил» — здесь -->
   <Section title="Платежи">
     <template #action>
-      <span class="text-[13px] font-semibold text-ink-3 num">{{ plain(duesSum) }} в месяц</span>
+      <Tag v-if="duesStatus" :tone="duesStatus.tone">{{ duesStatus.text }}</Tag>
     </template>
   </Section>
   <Card flush>

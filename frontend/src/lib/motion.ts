@@ -7,6 +7,11 @@ import { onBeforeUnmount, onMounted, ref, type Ref } from 'vue'
  */
 export const FILL_MS = 900
 
+/** Кольцо разбора (Р-53) — те же значения, что `--motion-ring`, `--motion-ring-step`, `--motion-ring-shrink`. */
+export const RING_MS = 420
+export const RING_STEP_MS = 160
+export const RING_SHRINK_MS = 500
+
 /** «Уменьшить движение» включено — или окна нет (SSR): числа и полосы сразу конечные. */
 export function reducedMotion(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true

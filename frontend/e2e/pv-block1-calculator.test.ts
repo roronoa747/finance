@@ -12,7 +12,7 @@ import { budgetAmounts, liveGoals, liveObligations, openCredits } from '../src/l
 import { HUES } from '../src/lib/palette'
 import { isDark } from '../src/lib/theme'
 import { money, plain } from '../src/lib/money'
-import WeekSalary from '../src/views/WeekSalary.vue'
+import Breakdown from '../src/views/Breakdown.vue'
 import Money from '../src/views/Money.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
 import StrategyCompare from '../src/components/StrategyCompare.vue'
@@ -48,7 +48,11 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
   }
 
   /** Колонка калькулятора как её видит человек: накоплено, долг, проценты, срок. */
-  const column = (title: string, savings: number, debt: number, interest: number, free: string) =>
+  /** Разбор остатка с открытой статьёй «Дорогие долги» (B2C-58): её статус — какой долг досрочка закрывает первым. */
+const debtsCard = (p: { pinia: Pinia }) =>
+  screen(p.pinia, Breakdown, '/week/breakdown?from=rest&amount=100000&period=2026-09', undefined, [screenMixin({ picked: 'debts' })])
+
+const column = (title: string, savings: number, debt: number, interest: number, free: string) =>
     new RegExp(
       [title, 'накоплено', money(savings), 'долг', money(debt), 'процентов банку', money(interest), 'без процентных долгов', free]
         .map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
@@ -157,7 +161,7 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
     expect(Math.round(plan(A).d5)).toBe(738_320)
     expect(plan(A).d2).toBe(141_680)
     // Досрочка — в самый дорогой открытый (40%), а не в первую по документу рассрочку.
-    expect(await screen(A.pinia, WeekSalary, '/ritual')).toContain(`Сейчас: 13 платежей, переплата ${money(70_967)}`)
+    expect(await debtsCard(A)).toContain('Кредитка · 40%')
 
     at('2026-09-25T05:00:00Z')
     A.store.applyPrepayment('cc', 'a', { amount: 300_000, mode: 'term', accountId: 'card' })
@@ -168,8 +172,11 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
     for (const P of [A, B]) {
       expect(plan(P).d2).toBe(111_680)
       expect(Math.round(plan(P).d5)).toBe(768_320)
-      const ritual = await screen(P.pinia, WeekSalary, '/ritual')
-      expect(ritual).toContain(`Сейчас: 12 платежей, переплата ${money(100_160)}`)
+      const ritual = await debtsCard(P)
+      // Закрытая Кредитка — не цель досрочки: следующий по ставке — «Банк».
+      expect(ritual).toContain('Банк · 18%')
+      expect(ritual).not.toContain('Кредитка')
+      // (прежний Ритуал печатал «12 платежей, переплата» — расчёт остался в калькуляторе ниже)
       const capital = await screen(P.pinia, Money, '/money/plan')
       // Закрытый досрочкой долг платежа не ждёт — в «Платежах» его нет (B2C-42); в калькулятор он не входит:
       // подушка 332 000, выигрыш 48 987.
