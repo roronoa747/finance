@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { FILL_MS } from '@/lib/motion'
 
 /**
  * Гвард токенов (B2C-12, Р-19): каждый цвет из `:root` есть в `.dark` и наоборот, и у каждого
@@ -94,6 +95,8 @@ describe('style.css — пары токенов light/dark', () => {
     expect(ms('--motion-base')).toBeLessThanOrEqual(400)
     expect(ms('--motion-slow')).toBeLessThanOrEqual(400)
     expect(ms('--motion-fill')).toBeLessThanOrEqual(1000)
+    // Бег цифр (`CountUp`, JS) и рост полос (CSS) — одна длительность (ревью Блока 10, Н-6).
+    expect(ms('--motion-fill')).toBe(FILL_MS)
     expect(sizes.get('--ease-out')).toMatch(/^cubic-bezier\(/)
     for (const u of ['press', 'fx-in', 'fx-fade', 'fx-sheet']) expect(css).toContain(`@utility ${u} {`)
     // Заполнение после анимации не держит transform — иначе `fixed` окна `Hint` внутри карточки уезжает (критик Б10).
