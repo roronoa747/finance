@@ -3513,15 +3513,25 @@ export type BreakdownEffects = {
  * Что записать (B2C-55 п. 5) — стор только исполняет. «Мечты» — по целям в порядке статьи, каждой
  * не больше её `cap` (взнос месяца), остаток — главной; «Запас» и «Подушка» — одним взносом в
  * копилку; «Дорогие долги» — досрочкой. Деньги «Обязательного», «Жизни» и «Трат» остаются на
- * счёте — только части записи. Каждый месяц (`monthly`) — те же доли ростом взносов.
+ * счёте — только части записи. Каждый месяц (`monthly`) — те же доли ростом взносов. `covered` — уже
+ * записанное разбором этого месяца (Р-54): «Мечты» первой зарплаты заняли взносы целей в том же порядке —
+ * вторая докрывает следующие цели, а не даёт главной второй взнос.
  */
-export function breakdownEffects(given: ArticleAmounts, articles: BreakdownArticle[], mode: 'once' | 'monthly'): BreakdownEffects {
+export function breakdownEffects(
+  given: ArticleAmounts,
+  articles: BreakdownArticle[],
+  mode: 'once' | 'monthly',
+  covered: Partial<ArticleAmounts> = {},
+): BreakdownEffects {
   const by = (k: ArticleKey) => articles.find((a) => a.key === k)
   const goals = by('dreams')?.goals ?? []
   const dreams = goals.map((g) => ({ goalId: g.goalId, amount: 0 }))
+  let done = Math.max(0, covered.dreams ?? 0)
   let left = given.dreams
   goals.forEach((g, i) => {
-    const x = Math.min(g.cap, left)
+    const taken = Math.min(g.cap, done)
+    done -= taken
+    const x = Math.min(g.cap - taken, left)
     dreams[i].amount = x
     left -= x
   })
@@ -3567,7 +3577,7 @@ export function breakdownWith(mb: MonthBreakdown, off: ArticleKey[]) {
   return {
     articles,
     fill,
-    effects: breakdownEffects(fill.given, articles, mb.mode),
+    effects: breakdownEffects(fill.given, articles, mb.mode, mb.covered),
     off: off.filter((k) => articles.some((a) => a.key === k)),
   }
 }

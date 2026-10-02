@@ -3442,6 +3442,36 @@ describe('B2C-55: разбор зарплаты по статьям — ручн
     expect(monthly.articleAdds).toEqual([{ key: 'reserve', add: 10_000 }, { key: 'debts', add: 5_000 }])
   })
 
+  it('критик: вторая зарплата докрывает Мечты тем целям, которым первая взнос не дала', () => {
+    // Япония (главная) 25 000/мес, Диван 30 000/мес — Мечты 55 000; Траты выключены. Ильяс 625 000:
+    // до Мечт 300 000 + 150 000 + 50 000 + 60 000 + 40 000 = 600 000, Мечтам — 25 000 (Японии).
+    // Аруне Мечт остаётся 30 000 — недоданное Дивану, а не второй взнос Японии.
+    const sofa = goal('sofa', 'Диван', 500_000, 0, 30_000)
+    const two = family({
+      people: [person('a', 625_000, 10), person('b', 450_000, 20)],
+      payments: [salary('a', 625_000)],
+      goals: [goal('trip', 'Япония', 2_000_000, 600_000, 25_000, { main: true }), sofa, goal('pot', 'Подушка', 1_000_000, 114_000, 0)],
+      moneyArticles: [article('life', 150_000), article('reserve', 50_000), article('debts', 60_000), article('cushion', 40_000), article('spend', 40_000, false)],
+    })
+    const first = monthBreakdown(two, ctx, { from: 'salary', person: 'a', period: K })!
+    const w1 = breakdownWith(first, ['spend'])
+    expect(w1.fill.given.dreams).toBe(25_000) // 625 000 − 600 000
+    expect(w1.effects.contributions.filter((c) => c.goalId !== 'pot')).toEqual([{ goalId: 'trip', amount: 25_000 }])
+    const rec: Allocation = { id: 'r1', kind: 'breakdown', ...first.record, by: 'a', at: T, updatedAt: T, total: 625_000, parts: w1.effects.parts, off: ['spend'] }
+    const after = {
+      ...two,
+      payments: [salary('a', 625_000), salary('b', 450_000)],
+      goals: [goal('trip', 'Япония', 2_000_000, 625_000, 25_000, { main: true }), sofa, goal('pot', 'Подушка', 1_000_000, 204_000, 0)],
+      credits: [card(240_000)],
+      allocations: [rec],
+    }
+    const second = monthBreakdown(after, ctx, { from: 'salary', person: 'b', period: K })!
+    const w2 = breakdownWith(second, ['spend'])
+    // Мечтам осталось 55 000 − 25 000 = 30 000 — всё Дивану, Япония свой взнос месяца уже получила.
+    expect(w2.fill.given.dreams).toBe(30_000)
+    expect(w2.effects.contributions).toEqual([{ goalId: 'sofa', amount: 30_000 }])
+  })
+
   it('свойства: Σ given + rest = amount, всё целое, нужды ≥ 0 — на ряде сумм', () => {
     const d = family()
     const articles = breakdownArticles(d, ctx)

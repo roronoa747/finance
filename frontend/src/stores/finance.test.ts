@@ -2382,4 +2382,34 @@ describe('B2C-54: план разбора в сторе', () => {
     expect(cats.find((c) => c.id === 'sc_food')).toMatchObject({ article: 'spend', updatedAt: NOW })
     expect(cats.find((c) => c.id === 'sc_cafe')!.article).toBeUndefined()
   })
+
+  it('критик: applyBreakdown — копилки нет → заводится «Подушка»; досрочка больше долга — часть записи по внесённому', () => {
+    const store = useFinanceStore()
+    const card: Credit = { id: 'card', name: 'Kaspi Red', note: '', principal: 30_000, annualRate: 0.34, payment: 20_000, day: 15, updatedAt: '2026-09-01T00:00:00.000Z' }
+    store.setHouseholdDoc({ ...defaultSyncDoc(), credits: [card] }, 1)
+    const rec = store.applyBreakdown({
+      record: { source: 'salary', sourceId: 'a', period: '2026-10' },
+      total: 200_000,
+      mode: 'once',
+      effects: {
+        contributions: [{ goalId: null, amount: 40_000, need: 190_000 }],
+        prepay: { creditId: 'card', amount: 50_000 },
+        monthly: [],
+        articleAdds: [],
+        parts: [{ target: 'reserve', amount: 40_000 }, { target: 'debts', amount: 50_000 }],
+      },
+      off: [],
+      by: 'a',
+      accountId: null,
+      note: 'из зарплаты',
+    })
+    const pot = store.goals.find((g) => g.name === 'Подушка')!
+    expect(pot.need).toBe(190_000)
+    expect(pot.main).toBeFalsy()
+    expect(pot.have).toBe(40_000)
+    expect(store.moneySettings.potGoalId).toBe(pot.id)
+    // Долга было 30 000 — внесено 30 000, а не 50 000; 20 000 остаются остатком разбора.
+    expect(store.credits.find((c) => c.id === 'card')!.principal).toBe(0)
+    expect(rec).toMatchObject({ kind: 'breakdown', total: 200_000, parts: [{ target: 'reserve', amount: 40_000 }, { target: 'debts', amount: 30_000 }] })
+  })
 })
