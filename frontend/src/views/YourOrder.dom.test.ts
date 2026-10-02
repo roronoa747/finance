@@ -7,6 +7,9 @@ import { routes } from '@/router'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { authAs, planFamilyDoc } from '@/test/planFamily'
+import { apiClient } from '@/api/client'
+import { money } from '@/lib/money'
+import type { SyncDoc } from '@/types/finance'
 import YourOrder from './YourOrder.vue'
 
 /**
@@ -32,13 +35,13 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function open(path = '/week/order') {
+async function open(path = '/week/order', extra: Partial<SyncDoc> = {}) {
   const pinia = createPinia()
   setActivePinia(pinia)
   useAuthStore().setAuthData(authAs('member', 'a'))
   const finance = useFinanceStore()
   finance.claimFor('h-family')
-  finance.setHouseholdDoc(planFamilyDoc(), 1)
+  finance.setHouseholdDoc(planFamilyDoc(extra), 1)
   const router = createRouter({ history: createMemoryHistory(), routes })
   await router.push(path)
   await router.isReady()
@@ -98,5 +101,20 @@ describe('B2C-56: перестановка статей', () => {
     await nextTick()
     expect(finance.moneySettings.orderedAt).toBe(NOW)
     expect(replace).toHaveBeenCalledWith({ path: '/week/breakdown', query: { from: 'salary', person: 'a', period: '2026-10' } })
+  })
+})
+
+describe('ревью frontend Б11, Н-3: открытый напрямую «Ваш порядок»', () => {
+  it('сам подтягивает загрузки выписок — в листе «Жизни» подсказка «по выпискам прошлого месяца»', async () => {
+    const uploads = vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({
+      uploads: [{ id: 'u1', slot: 'a', bank: 'kaspi', period_from: '2026-09-01', period_to: '2026-09-30', ops_count: 3, created_at: NOW }],
+    })
+    await open('/week/order', {
+      spendTotals: [{ id: 'a:month:2026-09:sc_food', by: 'a', kind: 'month', period: '2026-09', categoryId: 'sc_food', amount: 64_000, ops: 3, updatedAt: NOW }],
+    })
+    expect(uploads).toHaveBeenCalled()
+    ;(document.querySelector('[data-article="life"] button') as HTMLButtonElement).click()
+    await vi.waitFor(() => expect(document.body.textContent).toContain(`по выпискам прошлого месяца ${money(64_000)}`))
+    uploads.mockRestore()
   })
 })

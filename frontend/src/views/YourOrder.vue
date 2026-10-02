@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/kit/Card.vue'
@@ -26,6 +26,8 @@ const route = useRoute()
 const router = useRouter()
 const financeStore = useFinanceStore()
 const ops = useOperationsStore()
+// Подсказка «по выпискам прошлого месяца» — по загрузкам выписок: экран открывают и напрямую (ссылка, перезапуск), как кольцо.
+onMounted(() => void ops.loadUploads())
 
 const settings = computed(() => financeStore.moneySettings)
 const byId = computed(() => new Map(financeStore.moneyArticles.map((a) => [a.id, a])))
