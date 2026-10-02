@@ -368,9 +368,11 @@ onMounted(() => {
       </template>
 
       <!-- Свёрнутые строки (макет: «Разделы за месяц ›», «Прошлые недели ›») — подробности в листе -->
-      <Card v-if="rows.length || pastWeeks.length" flush>
-        <Row v-if="rows.length" :title="`Разделы за ${monthTitle(month).split(' ')[0].toLowerCase()}`" clickable @click="sheet = 'sections'" />
-        <Row v-if="pastWeeks.length" title="Прошлые недели" clickable @click="sheet = 'past'" />
+      <Card v-if="rows.length" flush>
+        <Row :title="`Разделы за ${monthTitle(month).split(' ')[0].toLowerCase()}`" clickable @click="sheet = 'sections'" />
+      </Card>
+      <Card v-if="pastWeeks.length" flush>
+        <Row title="Прошлые недели" clickable @click="sheet = 'past'" />
       </Card>
     </template>
 
