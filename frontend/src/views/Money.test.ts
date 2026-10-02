@@ -262,7 +262,7 @@ describe('views/Money.vue — финансовые показатели (рас�
   })
 
 
-  describe('пивот 3 (B2C-41): «Деньги» — сводка «До зарплаты», три квадрата, виджеты Доход · Еда и быт · Долги', () => {
+  describe('пивот 3 (B2C-41): «Деньги» — сводка «До зарплаты», три квадрата, виджеты Доход · Траты · Долги', () => {
     const total = (by: 'a' | 'b', period: string, categoryId: string, amount: number): SpendTotal => ({
       id: `${by}:month:${period}:${categoryId}`, by, kind: 'month', period, categoryId, amount, ops: 1, updatedAt: T0,
     })
@@ -372,13 +372,13 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(html).toContain(money(1_200_000))
       expect(html).toContain(`нагрузка ${pct(a.d1 + a.d2, a.income)} %`)
       expect(html).toContain('нагрузка 27 %')
-      for (const t of ['обязательное 27 %', 'мечты 11 %', 'еда и быт 13 %', 'свободно 50 %']) expect(html).toContain(t)
+      for (const t of ['обязательное 27 %', 'мечты 11 %', 'траты 13 %', 'свободно 50 %']) expect(html).toContain(t)
       expect(html).toContain(`Ильяс 10-го ${money(700_000)}`)
       expect(html).toContain(`Аруна 20-го ${money(500_000)}`)
       expect(html).not.toContain('План не сходится')
     })
 
-    it('«Еда и быт»: факт — траты по выпискам без разделов плана (= вычитаемое «Свободно»), план — база d4; без загрузок — «—» без тега', async () => {
+    it('«Траты» (бывший «Еда и быт», владелец 2026-10-02): факт — траты по выпискам без разделов плана (= вычитаемое «Свободно»), план — база d4; без загрузок — «—» без тега', async () => {
       const totals = [total('a', '2026-09', 'sc_food', 90_000), total('b', '2026-09', 'sc_cafe', 30_000), total('a', '2026-09', 'sc_credit', 58_000)]
       const store = await family('member', { spendTotals: totals }, [upload])
       const fact = freeByFact({ ...store.householdDoc, credits: store.credits }, totals, store.householdDoc.spendCategories ?? [], '2026-09', [upload]).spent
@@ -386,6 +386,9 @@ describe('views/Money.vue — финансовые показатели (рас�
       const html = text(await renderScreen(Money, '/money'))
       expect(html).toContain(`${money(fact)} план ${plain(150_000)}`)
       expect(html).toContain('по выпискам 80 %')
+      // Название виджета и доли — «Траты» / «траты»; прежнего «Еда и быт» на Капитале нет.
+      expect(html).toMatch(/Траты \? по выпискам 80 %/)
+      expect(html).not.toMatch(/еда и быт/i)
       await family('member', { spendTotals: totals }, [])
       const none = text(await renderScreen(Money, '/money'))
       expect(none).toContain(`— план ${plain(150_000)}`)
@@ -505,7 +508,7 @@ describe('views/Money.vue — финансовые показатели (рас�
       })
     })
 
-    it('viewer: оклады и план «Еды и быта» — текстом, без кнопок; в листе «До зарплаты» нет «Оплатил»', async () => {
+    it('viewer: оклады и план «Трат» — текстом, без кнопок; в листе «До зарплаты» нет «Оплатил»', async () => {
       await family('viewer')
       const html = await renderScreen(Money, '/money')
       expect(text(html)).toContain(`план ${plain(150_000)}`)

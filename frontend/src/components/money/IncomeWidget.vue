@@ -16,7 +16,7 @@ import SalaryDialog from '@/components/SalaryDialog.vue'
 
 /**
  * Виджет «Доход» (пивот 3, Р-33; `pivot-3/index.html`): сумма окладов месяца, тег «нагрузка N %»
- * (жильё и кредиты в доходе), полоса долей обязательное · мечты · еда и быт · свободно с легендой
+ * (жильё и кредиты в доходе), полоса долей обязательное · мечты · траты · свободно с легендой
  * и строки участников — нажатие открывает оклад и день (`SalaryDialog`, как в прежнем Бюджете;
  * viewer — строка без нажатия). Всё считает `incomeSplit` (`finance.ts`).
  */
@@ -31,7 +31,7 @@ const people = computed(() => financeStore.people.filter((p) => !p.deletedAt))
 const LABEL: Record<IncomePartKey, { name: string; color: string }> = {
   must: { name: 'обязательное', color: 'var(--s12)' },
   dreams: { name: 'мечты', color: 'var(--brand)' },
-  living: { name: 'еда и быт', color: 'var(--s1)' },
+  living: { name: 'траты', color: 'var(--s1)' },
   free: { name: 'свободно', color: 'var(--ok)' },
 }
 const parts = computed(() => split.value.parts.map((p) => ({ ...p, ...LABEL[p.key] })))

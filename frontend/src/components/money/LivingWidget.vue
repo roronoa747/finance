@@ -15,7 +15,8 @@ import Sheet from '@/components/kit/Sheet.vue'
 import Tag from '@/components/kit/Tag.vue'
 
 /**
- * Виджет «Еда и быт» (пивот 3, Р-33, Р-38): факт — траты по выпискам обоих за месяц без разделов,
+ * Виджет «Траты» (пивот 3, Р-33, Р-38; до 2026-10-02 — «Еда и быт», переименован владельцем без смены
+ * расчёта): факт — траты по выпискам обоих за месяц без разделов,
  * учтённых планом (та же сумма, что вычитает «Свободно», — `monthSpentByFact`), план — база
  * раздела, как в прежнем Бюджете: правится в листе по нажатию на «план» (viewer — только текст).
  * Нет загрузок за месяц — факт «—», тега нет.
@@ -44,7 +45,7 @@ function commit(text: string) {
   <Card tight class="flex flex-col gap-2">
     <div class="flex items-center justify-between gap-3">
       <span class="flex items-center gap-1.5 type-label">
-        Еда и быт
+        Траты
         <Hint label="Откуда эти суммы">
           Факт — траты по выпискам обоих за месяц, кроме кредитов, аренды, связи и подписок: они в
           платежах. План — сумма, которую вы задаёте сами.
@@ -62,9 +63,9 @@ function commit(text: string) {
     </div>
   </Card>
 
-  <Sheet v-if="!authStore.isViewer" :open="editing" title="Еда и быт" @close="editing = false">
+  <Sheet v-if="!authStore.isViewer" :open="editing" title="Траты" @close="editing = false">
     <Field label="План на месяц">
-      <NumFieldBlur :initial="plain(living.plan)" aria-label="Еда и быт — план на месяц" class-name="bg-surface-2" @commit="commit" />
+      <NumFieldBlur :initial="plain(living.plan)" aria-label="Траты — план на месяц" class-name="bg-surface-2" @commit="commit" />
     </Field>
   </Sheet>
 </template>
