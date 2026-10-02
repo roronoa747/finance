@@ -24,9 +24,9 @@ export default defineConfig({
         lang: 'ru',
         start_url: '/',
         display: 'standalone',
-        // Холст и бренд направления А (DESIGN.md §4, B2C-12).
+        // Холст направления А (DESIGN.md §4): заставка и строка сверху — цвет фона, не бренда (B2C-53).
         background_color: '#F2F2F0',
-        theme_color: '#B4562F',
+        theme_color: '#F2F2F0',
         icons: [
           { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml' },
           { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'maskable' },

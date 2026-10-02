@@ -12,6 +12,10 @@ describe('PV-08: тема на старте и «Авто» следит за т
   let classes: Set<string>
   let system: { matches: boolean; listeners: (() => void)[] }
   const props = new Map<string, string>()
+  let metas: { content: string; setAttribute(k: string, v: string): void }[]
+  const meta = () => ({ content: '', setAttribute(_: string, v: string) { this.content = v } })
+  /** Цвет строки сверху: оба мета-тега theme-color несут одно значение. */
+  const bar = () => [...new Set(metas.map((m) => m.content))].join('|')
 
   /** Телефон переключил системную тему. */
   function flipSystem(dark: boolean) {
@@ -23,6 +27,7 @@ describe('PV-08: тема на старте и «Авто» следит за т
     storage.clear()
     props.clear()
     classes = new Set()
+    metas = [meta(), meta()]
     system = { matches: false, listeners: [] }
     vi.stubGlobal('localStorage', {
       getItem: (k: string) => storage.get(k) ?? null,
@@ -34,7 +39,12 @@ describe('PV-08: тема на старте и «Авто» следит за т
         classList: { toggle: (c: string, on: boolean) => (on ? classes.add(c) : classes.delete(c)) },
         style: { setProperty: (k: string, v: string) => props.set(k, v) },
       },
+      querySelectorAll: () => metas,
     })
+    // --canvas «вычисляется» по классу dark — так строка сверху видна в тестах темы (B2C-53).
+    vi.stubGlobal('getComputedStyle', () => ({
+      getPropertyValue: (k: string) => (k === '--canvas' ? (classes.has('dark') ? 'canvas-dark' : 'canvas-light') : ''),
+    }))
     vi.stubGlobal('window', {
       matchMedia: () => ({
         get matches() {
@@ -85,22 +95,27 @@ describe('PV-08: тема на старте и «Авто» следит за т
     expect(props.size).toBe(0)
   })
 
-  it('системная смена под «Авто» переключает класс и isDark в обе стороны, под «Светлой» — нет', () => {
+  it('системная смена под «Авто» переключает класс, isDark и строку сверху в обе стороны, под «Светлой» — нет', () => {
     const stop = watchSystemTheme()
     applyCurrentPalette()
     expect(classes.has('dark')).toBe(false)
 
+    expect(bar()).toBe('canvas-light')
+
     flipSystem(true)
     expect(classes.has('dark')).toBe(true)
     expect(isDark.value).toBe(true)
+    expect(bar()).toBe('canvas-dark')
     flipSystem(false)
     expect(classes.has('dark')).toBe(false)
     expect(isDark.value).toBe(false)
+    expect(bar()).toBe('canvas-light')
 
     setThemeChoice('light')
     flipSystem(true)
     expect(classes.has('dark')).toBe(false)
     expect(isDark.value).toBe(false)
+    expect(bar()).toBe('canvas-light')
 
     stop()
     expect(system.listeners).toEqual([])
