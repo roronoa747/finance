@@ -468,7 +468,7 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     expect(A.store.obligations.find((o) => o.name === 'Яндекс Плюс')).toMatchObject({ category: 'd4' })
     await screen(A.pinia, Start, '/start/questions', undefined, [act('skipRest')])
 
-    // Картина июля — итоги своей выписки; «Свободно в месяц» — по плану (доход минус кредит, Red и подписка).
+    // Картина июля — итоги своей выписки; «Остаток по плану» (доход минус кредит, Red и подписка).
     const month = await screen(A.pinia, Start, '/start/month')
     const mine = A.store.householdDoc.spendTotals!.filter((t) => t.by === 'a' && t.kind === 'month' && t.period === '2025-07')
     expect(month).toContain('Ваш июль')

@@ -170,7 +170,7 @@ function handlePlanSubmit() {
           </template>
           <template v-else>
             С {{ monthFrom(fromMonth) }} доход снизится на <b>{{ money(-delta) }}</b> в месяц.
-            Свободный остаток пересчитается сам.
+            Остаток по плану пересчитается сам.
           </template>
         </div>
 

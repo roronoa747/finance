@@ -1803,7 +1803,7 @@ export const salaryCard = (near: { who: Person; income: number; day: number; key
 
 export const allocateCard = (u: { person: Person; record: Payment; free: number }) => ({
   question: `Пришла зарплата ${u.person.name} — разложить?`,
-  meta: `${money(u.record.amount)} · свободно ${money(u.free)}`,
+  meta: `${money(u.record.amount)} · к раскладке ${money(u.free)}`,
 })
 
 /**

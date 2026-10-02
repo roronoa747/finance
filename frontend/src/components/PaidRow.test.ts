@@ -160,7 +160,7 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     expect(before.sheet).toContain(money(220_000))
     expect(before.sheet.match(/Оплатил/g)).toHaveLength(2)
     expect(before.sheet).not.toContain('Кредит')
-    expect(before.screen).toContain(`2 списания · ${plain(230_000)} ₸ · остаётся ${plain(770_000)} ₸`)
+    expect(before.screen).toContain(`2 списания · ${plain(230_000)} ₸ · останется на счетах ${plain(770_000)} ₸`)
 
     // Оплачен ранний платёж (аренда 28-го) — он уходит под интернет 30-го, с отметкой.
     store.markPaid('obligation', 'rent', 'a', { accountId: 'card' })
@@ -168,7 +168,7 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     expect(paid.sheet.indexOf('Интернет')).toBeLessThan(paid.sheet.indexOf('Аренда'))
     expect(paid.sheet).toContain('оплачено · дальше')
     // Деньги уже ушли с карты (1 000 000 − 220 000): в сумму «до зарплаты» аренда не входит второй раз.
-    expect(paid.screen).toContain(`1 списание · ${plain(10_000)} ₸ · остаётся ${plain(770_000)} ₸`)
+    expect(paid.screen).toContain(`1 списание · ${plain(10_000)} ₸ · останется на счетах ${plain(770_000)} ₸`)
     expect(await page(Money, '/money/history')).not.toContain('Впереди')
   })
 

@@ -17,7 +17,7 @@ withDefaults(
     label?: string
     size?: 'lg' | 'md'
   }>(),
-  { note: '', share: null, label: 'Свободно до конца месяца', size: 'lg' },
+  { note: '', share: null, label: 'Остаток по плану', size: 'lg' },
 )
 </script>
 

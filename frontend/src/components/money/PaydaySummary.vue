@@ -48,7 +48,7 @@ const meta = computed(() => {
   if (!p) return ''
   const k = p.due.length
   const head = k ? `${k} ${plural(k, 'списание', 'списания', 'списаний')} · ${plain(p.dueTotal)} ₸` : 'Списаний нет'
-  return p.knowsCash && p.shortfall >= 0 ? `${head} · остаётся ${plain(p.shortfall)} ₸` : head
+  return p.knowsCash && p.shortfall >= 0 ? `${head} · останется на счетах ${plain(p.shortfall)} ₸` : head
 })
 
 const salaryHere = computed(

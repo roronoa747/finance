@@ -212,7 +212,7 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     expect(store.people[0]).toMatchObject({ salary: 400_000, payday: 3 })
   })
 
-  it('шаг 3: «Ваш июль» — месяц выписки, картина по разделам с «не разобрано», «Свободно в месяц» по плану', async () => {
+  it('шаг 3: «Ваш июль» — месяц выписки, картина по разделам с «не разобрано», «Остаток по плану»', async () => {
     const total = (categoryId: string, amount: number): SpendTotal => ({ id: `a:month:2025-07:${categoryId}`, by: 'a', kind: 'month', period: '2025-07', categoryId, amount, ops: 3, updatedAt: T0 })
     const store = family('member', 'a', {
       ...defaultSyncDoc(),
@@ -227,10 +227,10 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     expect(html).toContain('Кредиты и рассрочки')
     expect(html).toContain('Продукты')
     expect(html).toContain(`не разобрано ${money(5_000)}`)
-    expect(html).toContain('Свободно в месяц')
+    expect(html).toContain('Остаток по плану')
     expect(html).toContain(money(budgetAmounts({ ...store.householdDoc, credits: store.credits }).d5))
     expect(html).toContain(money(555_000))
-    expect(html).toContain('Из свободного и складывается мечта — дальше выберем её.')
+    expect(html).toContain('Из него и складывается мечта — дальше выберем её.')
   })
 
   it('шаг 4 — «На что копим?» внутри первого запуска («4 из 5»); шаг 5 — код партнёра; «Позже» ставит setupDoneAt и onboardedAt', async () => {

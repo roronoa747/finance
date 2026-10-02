@@ -429,7 +429,7 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     const payday = untilPayday({ ...A.store.householdDoc, credits: A.store.credits, accounts: A.store.householdAccounts })!
     expect(payday.dueTotal).toBe(324_990)
     expect(overview).toContain('До зарплаты 16 дней')
-    expect(overview).toContain(`${payday.due.length} списания · ${plain(324_990)} ₸ · остаётся ${plain(675_010)} ₸`)
+    expect(overview).toContain(`${payday.due.length} списания · ${plain(324_990)} ₸ · останется на счетах ${plain(675_010)} ₸`)
     expect(overview).toContain('хватает')
     const capital = await screen(A.pinia, Money, '/money')
     // Чистый капитал — подписью квадрата «Капитал» (Р-33; «чистых» в «Долгах» убран — владелец 2026-10-02).

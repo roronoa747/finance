@@ -186,7 +186,7 @@ describe('views/GoalNew.vue — «Новая мечта» (B2C-18, SSR)', () => 
     expect(disabled(html, 'Дальше')).toBe(false)
   })
 
-  it('шаг «Сумма и срок»: взнос считается, «реально» при свободных плана, «будет вашей в …»; свой срок — числом', async () => {
+  it('шаг «Сумма и срок»: взнос считается, «реально» при остатке плана, «будет вашей в …»; свой срок — числом', async () => {
     const store = family()
     const free = budgetAmounts({ ...store.householdDoc, credits: store.credits }).d5
     expect(free).toBeGreaterThanOrEqual(150_000)
@@ -196,7 +196,7 @@ describe('views/GoalNew.vue — «Новая мечта» (B2C-18, SSR)', () => 
     expect(html).toContain('value="Япония"')
     expect(html).toContain(`По ${money(150_000)} в месяц`)
     expect(html).toContain('реально')
-    expect(html).toContain(`при свободных ≈ ${money(free)}`)
+    expect(html).toContain(`при остатке ≈ ${money(free)}`)
     expect(html).toContain(`будет вашей в ${monthIn(addMonths('2026-09', 11))}`)
     expect(html).toContain('Путешествие · Япония')
     expect(html).toContain(templateById('japan')!.photo.author)

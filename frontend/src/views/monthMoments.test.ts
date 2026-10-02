@@ -179,7 +179,7 @@ describe('Блок 2: моменты месяца (SSR)', () => {
       const html = await renderScreen(WeekSalary, '/ritual?from=credit&credit=inst')
       expect(html).toContain(`Куда направить ${money(20_000)}`)
       expect(html).toContain(`«Рассрочка» закрыт — освободилось ${money(20_000)} в месяц`)
-      expect(html).toContain('платёж закрытого долга остаётся в «Свободно»')
+      expect(html).toContain('платёж закрытого долга остаётся в остатке по плану')
       expect(await renderScreen(WeekSalary, '/ritual?from=credit&credit=loan')).toContain('Этот долг ещё не закрыт')
 
       const done = await renderScreen(WeekSalary, '/ritual?from=credit&credit=inst', undefined, [

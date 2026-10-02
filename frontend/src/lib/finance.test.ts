@@ -2714,7 +2714,7 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(found.free).toBeGreaterThan(0)
       // Раньше «пришла?», шагов и подписок; после сопоставлений (их «Да, зарплата» и ведёт сюда).
       expect(first(paid(stmt('a', '2026-09')), { me: 'a', now })).toMatchObject({
-        kind: 'allocate', question: 'Пришла зарплата Ильяс — разложить?', meta: `${money(700_000)} · свободно ${money(found.free)}`,
+        kind: 'allocate', question: 'Пришла зарплата Ильяс — разложить?', meta: `${money(700_000)} · к раскладке ${money(found.free)}`,
         to: '/week/salary?from=salary&person=a&period=2026-09', actions: { primary: 'Разложить', ghost: 'Позже' },
       })
       expect(first(paid(stmt('a', '2026-09')), { me: 'a', now, matches: [candidate('salary', 'a')] })?.kind).toBe('match')
