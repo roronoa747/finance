@@ -76,7 +76,7 @@ const isRoot = computed(() => ROOTS.includes(route.path) && !(route.path === '/w
 const noTabs = computed(() => {
   const p = route.path
   return (
-    p.startsWith('/goals/') || p === '/wishes' || p.startsWith('/people/') || p === '/settings' || p === '/week/salary' || p === '/week/order'
+    p.startsWith('/goals/') || p === '/wishes' || p.startsWith('/people/') || p === '/settings' || p === '/week/salary' || p === '/week/order' || p === '/week/breakdown'
   )
 })
 
@@ -93,12 +93,12 @@ function goBack() {
 const header = computed<{ title: string; sub?: string }>(() => {
   const p = route.path
   if (p === '/') return { title: 'Мечты', sub: `${monthName.value} · ${names.value}` }
-  if (p === '/week/salary') {
+  if (p === '/week/salary' || p === '/week/breakdown') {
     // g2 «Раскладка зарплаты»: подпись — откуда деньги.
     const from = route.query.from
     const who = people.value.find((x) => x.id === route.query.person)?.name
     const sub = from === 'salary' ? (who ? `зарплата · ${who}` : 'зарплата') : from === 'rest' ? 'остаток месяца' : from === 'credit' ? 'закрытый долг' : 'освободившийся платёж'
-    return { title: 'Разложим', sub }
+    return { title: p === '/week/breakdown' ? 'Разбор' : 'Разложим', sub }
   }
   if (p === '/week/order') return { title: 'Ваш порядок' }
   if (p.startsWith('/week')) return ops.draft ? { title: 'Разбор', sub: draftSub.value } : { title: 'Неделя', sub: weekSub.value }

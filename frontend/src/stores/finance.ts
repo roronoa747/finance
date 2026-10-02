@@ -37,6 +37,7 @@ import {
   type PlanState,
   type PlanStep,
   type ScheduledKind,
+  type BreakdownEffects,
 } from '@/lib/finance'
 import type {
   SyncDoc,
@@ -1693,6 +1694,59 @@ export const useFinanceStore = defineStore('finance', () => {
     return record
   }
 
+  /**
+   * «Разложить» (B2C-57, Р-53): исполняет то, что посчитал `breakdownEffects`, теми же правками, что
+   * прежняя раскладка, и пишет запись разбора. Разово — взносы в цели и копилку (нет копилки —
+   * заводится «Подушка», Р-66), сдвиг остатка выбранного счёта на взносы, досрочка (шагом плана,
+   * если это шаг плана); часть «Дорогих долгов» — внесённое на деле (не больше остатка долга).
+   * Каждый месяц — рост взносов целей и статей.
+   */
+  function applyBreakdown(o: {
+    record: Pick<Allocation, 'source' | 'sourceId' | 'period'>
+    total: number
+    mode: 'once' | 'monthly'
+    effects: BreakdownEffects
+    off: ArticleKey[]
+    by: PersonId
+    accountId?: string | null
+    note: string
+  }): Allocation {
+    let parts = o.effects.parts.slice()
+    if (o.mode === 'once') {
+      let toGoals = 0
+      for (const c of o.effects.contributions) {
+        let goalId = c.goalId
+        if (!goalId) {
+          goalId = addGoal({ name: 'Подушка', need: c.need ?? c.amount, monthly: 0, hue: 'teal', main: false })
+          setMoneySettings({ potGoalId: goalId })
+        }
+        contribute(goalId, c.amount, o.by, o.note)
+        toGoals += c.amount
+      }
+      if (o.accountId && toGoals > 0) shiftAccountAmount(o.accountId, -toGoals)
+      const pp = o.effects.prepay
+      if (pp) {
+        const rec = applyPrepayment(pp.creditId, o.by, {
+          amount: pp.amount,
+          mode: 'term',
+          accountId: o.accountId ?? null,
+          ...(pp.planId ? { planId: pp.planId } : {}),
+        })
+        const paid = rec?.amount ?? 0
+        if (paid !== pp.amount) parts = parts.map((p) => (p.target === 'debts' ? { ...p, amount: paid } : p)).filter((p) => p.amount > 0)
+      }
+    } else {
+      for (const m of o.effects.monthly) {
+        const g = goals.value.find((x) => x.id === m.goalId && !x.deletedAt)
+        if (g) setGoalMonthly(g.id, g.monthly + m.add)
+      }
+      for (const a of o.effects.articleAdds) {
+        setArticle(a.key, { amount: (moneyArticles.value.find((x) => x.id === a.key)?.amount ?? 0) + a.add })
+      }
+    }
+    return recordAllocation({ ...o.record, kind: 'breakdown', by: o.by, total: o.total, parts, ...(o.off.length ? { off: o.off } : {}) })
+  }
+
   function addGift(g: { forSlot: PersonId; name: string; price: number; photoId?: string | null }): Gift {
     const t = new Date().toISOString()
     const gift: Gift = { id: Math.random().toString(36).slice(2, 10), forSlot: g.forSlot, name: g.name, price: g.price, photoId: g.photoId ?? null, bought: false, updatedAt: t }
@@ -1844,6 +1898,7 @@ export const useFinanceStore = defineStore('finance', () => {
     withdraw,
     addWish,
     recordAllocation,
+    applyBreakdown,
     moneyArticles,
     moneySettings,
     setArticle,

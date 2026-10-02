@@ -3485,3 +3485,19 @@ export function breakdownEffects(given: ArticleAmounts, articles: BreakdownArtic
     parts,
   }
 }
+
+/**
+ * Доли кольца разбора (B2C-57): сектор статьи — её сумма от всей суммы, по порядку; хвост до
+ * круга — «Остаётся». Тот же вид долей 0…1, что у `StackBar`.
+ */
+export function ringShares(parts: { key: ArticleKey; amount: number }[], total: number): { key: ArticleKey; share: number }[] {
+  return parts.map((p) => ({ key: p.key, share: total > 0 ? Math.max(0, p.amount) / total : 0 }))
+}
+
+/** Записанный разбор (`kind: 'breakdown'`): части по статьям в порядке плана и что осталось. */
+export function recordedBreakdown(rec: Pick<Allocation, 'parts' | 'total'>, order: ArticleKey[] = ARTICLE_ORDER) {
+  const parts = order
+    .map((key) => ({ key, amount: rec.parts.filter((p) => p.target === key).reduce((s, p) => s + p.amount, 0) }))
+    .filter((p) => p.amount > 0)
+  return { parts, rest: Math.max(0, rec.total - parts.reduce((s, p) => s + p.amount, 0)) }
+}

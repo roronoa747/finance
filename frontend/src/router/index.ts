@@ -19,6 +19,7 @@ const Money = () => import('@/views/Money.vue')
 const WeekSalary = () => import('@/views/WeekSalary.vue')
 // Разбор зарплаты по статьям (Блок 11): «Ваш порядок» — редкий экран, отдельным чанком.
 const YourOrder = () => import('@/views/YourOrder.vue')
+const Breakdown = () => import('@/views/Breakdown.vue')
 // Выписки (B2C-07): pdf.js грузится ещё позже — только когда выбрали файл.
 const Statements = () => import('@/views/Statements.vue')
 // Новая мечта (B2C-18): шаблоны с картинками — редкий экран, отдельным чанком.
@@ -80,6 +81,8 @@ export const routes: RouteRecordRaw[] = [
       { path: 'week/salary', name: 'week-salary', component: WeekSalary, meta: { memberOnly: true } },
       // «Ваш порядок» (B2C-56): статьи разбора и пороги — один раз; viewer — в разбор.
       { path: 'week/order', name: 'week-order', component: YourOrder, meta: { memberOnly: true, viewerTo: '/week/breakdown' } },
+      // Разбор зарплаты кольцом (B2C-57): те же параметры, что у раскладки; viewer смотрит.
+      { path: 'week/breakdown', name: 'week-breakdown', component: Breakdown },
       // Квадрат — по адресу; переключение — `router.replace` (назад — на прошлую вкладку).
       { path: 'money/:square(plan|history)?', name: 'money', component: Money },
       // Бюджет и Капитал до пивота 3 — теперь квадрат «Капитал»; окна — те же ключи query.

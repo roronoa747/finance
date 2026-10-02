@@ -75,6 +75,8 @@
      --shadow-2 (`shadow-lift`) — у парящего: подсказка, капсула вкладок. */
   --shadow-2: 0 2px 6px rgb(30 26 22 / 0.1), 0 18px 48px rgb(30 26 22 / 0.14);
   --shadow-sheet: 0 -8px 40px rgb(30 26 22 / 0.18);
+  /* Тень под кольцом разбора (макет money-breakdown.html, Р-53). */
+  --shadow-ring: 0 10px 24px -6px rgb(0 0 0 / 0.28), 0 24px 48px -16px rgb(0 0 0 / 0.22);
 }
 
 .dark {
@@ -131,6 +133,7 @@
 
   --shadow-2: 0 2px 8px rgb(0 0 0 / 0.5), 0 20px 56px rgb(0 0 0 / 0.55);
   --shadow-sheet: 0 -8px 40px rgb(0 0 0 / 0.5);
+  --shadow-ring: 0 10px 24px -6px rgb(0 0 0 / 0.28), 0 24px 48px -16px rgb(0 0 0 / 0.22);
 }
 
 /* Размеры — одни для обеих тем (DESIGN.md §4): радиусы. */
@@ -147,6 +150,11 @@
   --motion-base: 320ms;
   --motion-fill: 900ms;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* Кольцо разбора (Блок 11, Р-53): сектор растёт ~0,4 с, следующий — через ~0,16 с; выключенная статья
+     сжимается ~0,5 с (`kit/BreakdownRing`, `lib/motion.ts` RING_*). */
+  --motion-ring: 420ms;
+  --motion-ring-step: 160ms;
+  --motion-ring-shrink: 500ms;
 }
 
 @theme inline {
@@ -209,6 +217,7 @@
 
   --shadow-lift: var(--shadow-2);
   --shadow-sheet: var(--shadow-sheet);
+  --shadow-ring: var(--shadow-ring);
 }
 
 @layer base {
