@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { PhCheck } from '@phosphor-icons/vue'
 import Button from '@/components/ui/Button.vue'
 import ProgressBar from '@/components/kit/ProgressBar.vue'
 import CategoryChips from '@/components/CategoryChips.vue'
 import { amountTotal } from '@/lib/finance'
+import { reducedMotion } from '@/lib/motion'
 import { money } from '@/lib/money'
 import { plural } from '@/lib/utils'
 import type { UnknownGroup } from '@/lib/statements/model'
@@ -40,6 +41,17 @@ const allPicked = computed(() => chosen.value.length === props.groups.length)
 // «Кому → что» — только когда все отмеченные — переводы людям.
 const people = computed(() => chosen.value.every((g) => !!g.match.counterparty))
 
+// Первая отметка — док «куда?» встаёт снизу: пачка поднимается к верху экрана, чтобы строки не ушли под него.
+const card = ref<HTMLElement | null>(null)
+watch(
+  () => chosen.value.length > 0,
+  async (on) => {
+    if (!on) return
+    await nextTick()
+    card.value?.scrollIntoView?.({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' })
+  },
+)
+
 const isOn = (g: UnknownGroup) => picked.value.includes(keyOf(g))
 function toggle(g: UnknownGroup) {
   const k = keyOf(g)
@@ -60,7 +72,7 @@ function choose(to: MerchantRule['to']) {
 
 <template>
   <div class="flex flex-col gap-3">
-    <section class="fx-in flex flex-col gap-3 rounded-card border border-brand bg-surface p-5 text-left" aria-live="polite">
+    <section ref="card" class="fx-in flex scroll-mt-2 flex-col gap-3 rounded-card border border-brand bg-surface p-5 text-left" aria-live="polite">
       <div v-if="progress" class="type-meta flex items-center gap-2.5">
         <ProgressBar :value="progress.k ? progress.n / progress.k : 0" :height="4" class="flex-1" />
         <span class="num shrink-0">{{ progress.n }} из {{ progress.k }}</span>
@@ -110,7 +122,7 @@ function choose(to: MerchantRule['to']) {
     <!-- Отмечено ≥ 1 — «куда?» прилипает над капсулой вкладок, пока пачка на экране (макет `.dock`); отступ под капсулу — `pb-24` у `main`. -->
     <div v-if="chosen.length" class="fx-in sticky -bottom-6 z-[5] -mx-4 flex flex-col gap-2 px-4 pb-8 pt-7" :style="{ background: 'linear-gradient(to bottom, transparent, var(--canvas) 24px)' }">
       <span class="text-center type-meta num">Выбрано {{ chosen.length }} · {{ money(amountTotal(chosen)) }}</span>
-      <CategoryChips forgot :counterparty="people" @choose="choose" />
+      <CategoryChips forgot :top="3" :counterparty="people" @choose="choose" />
     </div>
   </div>
 </template>
