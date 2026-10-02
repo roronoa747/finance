@@ -179,17 +179,14 @@ describe('WeekCard / FreeCard (первый запуск)', () => {
     expect(five).toContain('ещё 1 раздел')
   })
 
-  it('FreeCard: сумма и подпись, полоса --ok; null — «—» без полосы; md — 32', async () => {
-    const html = await render(FreeCard, { amount: 236_000, note: 'по факту выписок обоих · 9 дней до зарплаты Ильяса', share: 0.38 })
+  it('FreeCard: «Остаток по плану» крупно (type-big-md) и подпись; без полосы', async () => {
+    const html = await render(FreeCard, { amount: 236_000, note: 'Из него и складывается мечта — дальше выберем её.' })
     expect(html).toContain('Остаток по плану')
     expect(html).toContain(`236${NBSP}000${NBSP}₸`)
-    expect(html).toContain('9 дней до зарплаты Ильяса')
-    expect(html).toContain('bg-ok')
-    expect(html).toContain('type-big')
-    const none = await render(FreeCard, { amount: null, note: 'появится после первой выписки' })
-    expect(none).toContain('—')
-    expect(none).not.toContain('role="progressbar"')
-    expect(await render(FreeCard, { amount: 1, size: 'md' })).toContain('type-big-md')
+    expect(html).toContain('Из него и складывается мечта')
+    expect(html).toContain('type-big-md')
+    expect(html).not.toContain('role="progressbar"')
+    expect(html).not.toContain('Свободно')
   })
 })
 

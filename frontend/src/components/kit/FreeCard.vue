@@ -1,34 +1,25 @@
 <script setup lang="ts">
 import { money } from '@/lib/money'
 import Card from './Card.vue'
-import ProgressBar from './ProgressBar.vue'
 
 /**
- * «Свободно до конца месяца» (DESIGN.md §5): сумма 44 (`md` — 32, цифры --font-num), подпись
- * («по факту выписок обоих · N дней до зарплаты»), полоса `--ok`. `amount: null` — «—» до
- * первой выписки. Сумму и долю считает `freeByFact` (`finance.ts`).
+ * Остаток по плану на первом запуске (DESIGN.md §5, B2C-51): подпись секции, сумма 32 (цифры
+ * --font-num) и строка под ней. Сумму считает `finance.ts`; «Свободно» — только на «Мечтах».
  */
 withDefaults(
   defineProps<{
-    amount: number | null
+    amount: number
     note?: string
-    /** Доля свободного от дохода месяца, 0…1 — длина полосы. */
-    share?: number | null
     label?: string
-    size?: 'lg' | 'md'
   }>(),
-  { note: '', share: null, label: 'Остаток по плану', size: 'lg' },
+  { note: '', label: 'Остаток по плану' },
 )
 </script>
 
 <template>
   <Card>
     <div class="type-section">{{ label }}</div>
-    <div class="mt-2 num" :class="[size === 'md' ? 'type-big-md' : 'type-big', amount === null ? 'text-ink-3' : 'text-ink']">
-      {{ amount === null ? '—' : money(amount) }}
-    </div>
+    <div class="mt-2 num type-big-md text-ink">{{ money(amount) }}</div>
     <div v-if="note" class="mt-1.5 text-[13px] text-ink-2">{{ note }}</div>
-    <ProgressBar v-if="amount !== null && share !== null" :value="share" tone="ok" class="mt-3" />
-    <slot />
   </Card>
 </template>
