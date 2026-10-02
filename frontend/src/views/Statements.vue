@@ -21,7 +21,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
 import { money, parseMoney } from '@/lib/money'
 import { plural } from '@/lib/utils'
-import { monthKey, monthTitle, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
+import { MONTHS_NOM, monthKey, parseMonthKey, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
 import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import { draftSummary, partnerHints, picture, pictureTotal, ruleMatchOf, unknownGroups, type UnknownGroup } from '@/lib/statements/model'
 import { readStatementFiles } from '@/lib/statements/read'
@@ -75,6 +75,8 @@ const hints = computed(() => partnerHints(store.draftOps, finance.people, me.val
 /* ---------- неделя и месяц ---------- */
 const week = weekKey()
 const month = monthKey()
+// «Сентябрь» — заголовок колонки листа, «за сентябрь» — строка и лист «Разделы».
+const monthName = MONTHS_NOM[parseMonthKey(month).month]
 const spendTotals = computed(() => finance.householdDoc.spendTotals ?? [])
 const spendCategories = computed(() => finance.householdDoc.spendCategories ?? [])
 const pic = computed(() => weekPicture(spendTotals.value, spendCategories.value, people.value, week, store.uploads))
@@ -370,7 +372,7 @@ onMounted(() => {
 
       <!-- Свёрнутые строки (макет: «Разделы за месяц ›», «Прошлые недели ›») — подробности в листе -->
       <Card v-if="rows.length" flush>
-        <Row :title="`Разделы за ${monthTitle(month).split(' ')[0].toLowerCase()}`" clickable @click="sheet = 'sections'" />
+        <Row :title="`Разделы за ${monthName.toLowerCase()}`" clickable @click="sheet = 'sections'" />
       </Card>
       <Card v-if="pastWeeks.length" flush>
         <Row title="Прошлые недели" clickable @click="sheet = 'past'" />
@@ -378,10 +380,10 @@ onMounted(() => {
     </template>
 
     <!-- Разделы за неделю и месяц: раскрытие раздела — свои продавцы и раздел задним числом (CategoryChips) -->
-    <Sheet :open="sheet === 'sections'" :title="`Разделы за ${monthTitle(month).split(' ')[0].toLowerCase()}`" @close="sheet = null">
+    <Sheet :open="sheet === 'sections'" :title="`Разделы за ${monthName.toLowerCase()}`" @close="sheet = null">
       <div class="-mx-5">
         <div class="grid grid-cols-[1fr_auto_auto] gap-x-3 border-b border-line px-5 py-2 text-[12px] text-ink-3">
-          <span>Раздел</span><span class="w-[86px] text-right">Неделя</span><span class="w-[96px] text-right">{{ monthTitle(month).split(' ')[0] }}</span>
+          <span>Раздел</span><span class="w-[86px] text-right">Неделя</span><span class="w-[96px] text-right">{{ monthName }}</span>
         </div>
         <template v-for="r in rows" :key="r.categoryId">
           <button
