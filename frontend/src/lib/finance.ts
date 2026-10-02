@@ -1,4 +1,4 @@
-import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation } from '@/types/finance'
+import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation, ArticleKey, MoneyArticle, MoneySettings } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
 import type { Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
@@ -997,6 +997,59 @@ export function hasBudgetData(state: {
   );
 }
 
+/* ---------------- статьи разбора (Блок 11) ---------------- */
+
+/** Порядок статей по умолчанию (Р-56) — ступени. */
+export const ARTICLE_ORDER: ArticleKey[] = ['must', 'life', 'reserve', 'debts', 'cushion', 'dreams', 'spend']
+
+export const ARTICLE_NAMES: Record<ArticleKey, string> = {
+  must: 'Обязательное',
+  life: 'Жизнь',
+  reserve: 'Запас',
+  debts: 'Дорогие долги',
+  cushion: 'Подушка',
+  dreams: 'Мечты',
+  spend: 'Траты',
+}
+
+/** Пороги по умолчанию (B2C-54 п. 3): запас — месяц трат, подушка — 3 месяца, дорогой — любой процентный. */
+export const DEFAULT_MONEY_SETTINGS = { reserveMonths: 1, cushionMonths: 3, costlyRate: 0 } as const
+
+/**
+ * План статей семьи (B2C-54): записи документа поверх умолчаний — порядок и `on` по Р-56,
+ * «Жизнь» — сумма раздела d4 (как планировали до Блока 11), «Траты», «Запас», «Подушка»,
+ * «Дорогие долги» — 0. Удалённая запись — снова умолчание. По `order`.
+ */
+export function moneyArticlesOf(doc: { moneyArticles?: MoneyArticle[]; categories?: Category[] }): MoneyArticle[] {
+  const own = new Map((doc.moneyArticles ?? []).filter(alive).map((a) => [a.id, a]))
+  const d4 = (doc.categories ?? []).find((c) => c.key === 'd4')?.amount ?? 0
+  return ARTICLE_ORDER.map((id, i): MoneyArticle => {
+    const base: MoneyArticle = {
+      id,
+      order: i + 1,
+      on: true,
+      updatedAt: '',
+      ...(id === 'must' || id === 'dreams' ? {} : { amount: id === 'life' ? d4 : 0 }),
+    }
+    return { ...base, ...own.get(id) }
+  }).sort((a, b) => a.order - b.order || ARTICLE_ORDER.indexOf(a.id) - ARTICLE_ORDER.indexOf(b.id))
+}
+
+/** Пороги ступеней семьи с умолчаниями (B2C-54). */
+export function moneySettingsOf(doc: { moneySettings?: MoneySettings | null }): MoneySettings {
+  return { ...DEFAULT_MONEY_SETTINGS, potGoalId: null, orderedAt: null, updatedAt: '', ...(doc.moneySettings ?? {}) }
+}
+
+/**
+ * Сумма месяца «Жизни» и «Трат» — одна правда раздела d4 (B2C-54 п. 4): с заведёнными статьями —
+ * их суммы (выключенная — 0), без статей — `d4.amount`, как до Блока 11.
+ */
+export function livingPlan(doc: { moneyArticles?: MoneyArticle[]; categories?: Category[] }): number {
+  return moneyArticlesOf(doc)
+    .filter((a) => (a.id === 'life' || a.id === 'spend') && a.on)
+    .reduce((s, a) => s + (a.amount ?? 0), 0)
+}
+
 /**
  * Суммы по 5 разделам бюджета. Кредиты — производные (геттер стора): платёж
  * закрытого кредита в «Кредиты» не входит и освобождает «Свободно» — кроме месяца,
@@ -1015,6 +1068,7 @@ export function budgetAmounts(state: {
   people?: Person[];
   payments?: Payment[];
   plans?: DebtPlan[];
+  moneyArticles?: MoneyArticle[];
 }, key = monthKey()) {
   const obligations = state.obligations || [];
   const credits = state.credits || [];
@@ -1040,7 +1094,7 @@ export function budgetAmounts(state: {
     .filter((g) => !paused.has(g.id))
     .reduce((a, g) => a + g.monthly, 0);
   const extra = plan ? planExtra(plan, goalsList, credits, payments, key) : 0;
-  const living = (categories.find((c) => c.key === 'd4')?.amount ?? 0) + other;
+  const living = livingPlan({ categories, moneyArticles: state.moneyArticles }) + other;
   const income = totalIncome(people, key);
   const free = income - housing - debts - goals - living - extra;
 

@@ -363,8 +363,44 @@ export type DebtPlan = Tracked & {
   result?: { savedInterest: number } | null
 }
 
-/** Часть раскладки: цель (`goalId`), досрочка (`prepay:<creditId>`) или «качество жизни» (`life`). */
+/**
+ * Часть раскладки: цель (`goalId`), досрочка (`prepay:<creditId>`) или «качество жизни» (`life`).
+ * У записи разбора (`kind: 'breakdown'`) — статья (`ArticleKey`).
+ */
 export type AllocationPart = { target: string; amount: number }
+
+/**
+ * Статья разбора зарплаты (Р-51, Р-56): порядок по умолчанию — Обязательное → Жизнь → Запас →
+ * Дорогие долги → Подушка → Мечты → Траты. Ступени — это и есть порядок статей.
+ */
+export type ArticleKey = 'must' | 'life' | 'reserve' | 'debts' | 'cushion' | 'dreams' | 'spend'
+
+/**
+ * Статья плана разбора (B2C-54, Р-68): одна запись на статью, LWW по `id`. `amount` — целые
+ * тенге: у «Жизни» и «Трат» — сумма месяца, у «Запаса», «Подушки», «Дорогих долгов» — взнос
+ * месяца без плана «Сначала долги»; у «Обязательного» и «Мечт» суммы нет — они выводятся из
+ * платежей месяца и взносов целей.
+ */
+export type MoneyArticle = Tracked & {
+  id: ArticleKey
+  order: number
+  on: boolean
+  amount?: number
+}
+
+/**
+ * Пороги ступеней (B2C-54, Р-55, Р-66) — один объект на семью, целиком по позднему `updatedAt`.
+ * Месяцы — целые; `costlyRate` — целые проценты годовых: долг «дорогой» при ставке не ниже.
+ */
+export type MoneySettings = Tracked & {
+  reserveMonths: number
+  cushionMonths: number
+  costlyRate: number
+  /** Цель-копилка «Запаса» и «Подушки» (Р-66); нет — создаётся при первом «Разложить». */
+  potGoalId?: string | null
+  /** Когда пройден «Ваш порядок»; null — первый разбор начинается с него (Р-55). */
+  orderedAt?: string | null
+}
 
 /**
  * Раскладка разовой суммы (B2C-21): зарплата (`sourceId` — участник), остаток месяца (`sourceId` —
@@ -374,6 +410,13 @@ export type AllocationPart = { target: string; amount: number }
 export type Allocation = Tracked & {
   id: string
   source: 'salary' | 'rest' | 'freed'
+  /**
+   * Запись разбора (B2C-54, Р-65): `parts` — по статьям (`target` = `ArticleKey`). Старые записи
+   * без `kind` — раскладка по целям, читаются как были.
+   */
+  kind?: 'breakdown'
+  /** Статьи, выключенные в этом разборе: «как обычно» в следующем месяце их не включает (Р-55). */
+  off?: ArticleKey[]
   sourceId: string
   period: string
   by: PersonId
@@ -402,6 +445,10 @@ export type SyncDoc = {
   spendTotals?: SpendTotal[]
   /** Записанные раскладки разовых сумм (B2C-21): второй заход и партнёр видят решение, а не раскладывают снова. */
   allocations?: Allocation[]
+  /** План разбора зарплаты по статьям (B2C-54, Р-68). До Блока 11 — без ключа: умолчания `moneyArticlesOf`. */
+  moneyArticles?: MoneyArticle[]
+  /** Пороги ступеней и «Ваш порядок пройден» (B2C-54). До Блока 11 — без ключа. */
+  moneySettings?: MoneySettings | null
   /**
    * Когда закончили первичную настройку бюджета. Пустое значит, что показываем
    * первый запуск (`/start`). Живёт в общем документе, а не в настройках устройства: второй

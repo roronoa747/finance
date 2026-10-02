@@ -123,15 +123,17 @@ import {
   wishTotal,
   cushionInYear,
   allocationRoom,
+  moneyArticlesOf,
+  moneySettingsOf,
 } from './finance'
 import type { SpendCategory, SpendTotal } from '@/lib/statements/types'
 import type { MatchCandidate } from '@/lib/statements/matching'
-import { DEFAULT_SPEND_CATEGORIES } from '@/lib/statements/dictionary'
+import { DEFAULT_SPEND_CATEGORIES, spendArticle } from '@/lib/statements/dictionary'
 import { plain, money, moneyShort, parseMoney, pct, ratePct } from './money'
 import { clean, caretAt, sigBefore } from './num'
 import { plural } from './utils'
 import { monthKey, parseMonthKey, addMonths, daysInMonth, today, atLabel } from '@/lib/dates'
-import type { Account, Allocation, Credit, DebtPlan, Goal, Obligation, Payment, Person, WishItem } from '@/types/finance'
+import type { Account, Allocation, Credit, DebtPlan, Goal, MoneyArticle, Obligation, Payment, Person, SyncDoc, WishItem } from '@/types/finance'
 
 describe('finance.ts — аннуитет и кредитные расчёты', () => {
   it('annuityPayment — корректный расчёт платежа при нулевой и положительной ставке', () => {
@@ -3102,5 +3104,86 @@ describe('ревью frontend Б9, Н-3: liveSpendCategories — один спи
     expect(liveSpendCategories(undefined).map((c) => c.id)).toEqual(dict)
     expect(liveSpendCategories([]).map((c) => c.id)).toEqual(dict)
     expect(liveSpendCategories([own[2]]).map((c) => c.id)).toEqual(dict)
+  })
+})
+
+describe('B2C-54: статьи разбора — умолчания и одна сумма «жизнь + траты»', () => {
+  const T = '2026-10-01T00:00:00.000Z'
+  // Документ как демо (Access.vue): оклады 750 000 + 450 000, аренда 220 000 + коммуналка 30 000,
+  // автокредит 95 000 в месяц, цели 100 000 + 60 000 + 30 000, «Еда и быт» (d4) 280 000.
+  const demo = (extra: Partial<SyncDoc> = {}): SyncDoc => ({
+    people: [
+      { id: 'a', name: 'Ильяс', salary: 750_000, payday: 10, updatedAt: T },
+      { id: 'b', name: 'Аруна', salary: 450_000, payday: 20, updatedAt: T },
+    ],
+    categories: [{ key: 'd4', name: 'Еда и быт', note: '', amount: 280_000, updatedAt: T }],
+    obligations: [
+      { id: 'ob-rent', name: 'Аренда', note: '', day: 5, category: 'd1', versions: [{ from: '2026-01', amount: 220_000 }], updatedAt: T },
+      { id: 'ob-util', name: 'Коммуналка', note: '', day: 15, category: 'd1', estimate: true, versions: [{ from: '2026-01', amount: 30_000 }], updatedAt: T },
+    ],
+    credits: [{ id: 'cr-car', name: 'Автокредит', note: '', principal: 1_800_000, annualRate: 0.19, payment: 95_000, day: 18, updatedAt: T }],
+    goals: [
+      { id: 'g1', name: 'Япония', need: 2_000_000, seed: 600_000, have: 600_000, monthly: 100_000, hue: 'plum', planPct: 0, movements: [], updatedAt: T },
+      { id: 'g2', name: 'Машина', need: 6_000_000, seed: 900_000, have: 900_000, monthly: 60_000, hue: 'blue', planPct: 0, movements: [], updatedAt: T },
+      { id: 'g3', name: 'Диван', need: 450_000, seed: 120_000, have: 120_000, monthly: 30_000, hue: 'ochre', planPct: 0, movements: [], updatedAt: T },
+    ],
+    wishlist: [],
+    accounts: [],
+    setupDoneAt: T,
+    ...extra,
+  })
+
+  it('без статей — те же числа, что до Блока 11 (снимок: d4 = 280 000, свободно 385 000)', () => {
+    // 1 200 000 − 250 000 жильё − 95 000 кредит − 190 000 цели − 280 000 «Еда и быт» = 385 000.
+    expect(budgetAmounts(demo(), '2026-10')).toEqual({ d1: 250_000, d2: 95_000, d3: 190_000, d4: 280_000, d5: 385_000, income: 1_200_000, planExtra: 0 })
+  })
+
+  it('со статьями — d4 = «Жизнь» + «Траты»; выключенная — 0; d4.amount больше не участвует', () => {
+    const articles = (spendOn: boolean): MoneyArticle[] => [
+      { id: 'life', order: 2, on: true, amount: 200_000, updatedAt: T },
+      { id: 'spend', order: 7, on: spendOn, amount: 60_000, updatedAt: T },
+    ]
+    // 200 000 + 60 000 = 260 000; свободно 1 200 000 − 250 000 − 95 000 − 190 000 − 260 000 = 405 000.
+    expect(budgetAmounts(demo({ moneyArticles: articles(true) }), '2026-10')).toMatchObject({ d4: 260_000, d5: 405_000 })
+    // «Траты» выключены: d4 = 200 000, свободно 465 000.
+    expect(budgetAmounts(demo({ moneyArticles: articles(false) }), '2026-10')).toMatchObject({ d4: 200_000, d5: 465_000 })
+    // Только «Траты» заведены — «Жизнь» по умолчанию = d4.amount 280 000: d4 = 340 000.
+    expect(budgetAmounts(demo({ moneyArticles: [articles(true)[1]] }), '2026-10')).toMatchObject({ d4: 340_000 })
+  })
+
+  it('moneyArticlesOf — порядок и суммы по умолчанию (Р-56), запись документа сильнее, удалённая — снова умолчание', () => {
+    const list = moneyArticlesOf(demo())
+    expect(list.map((a) => [a.id, a.order, a.on, a.amount])).toEqual([
+      ['must', 1, true, undefined],
+      ['life', 2, true, 280_000],
+      ['reserve', 3, true, 0],
+      ['debts', 4, true, 0],
+      ['cushion', 5, true, 0],
+      ['dreams', 6, true, undefined],
+      ['spend', 7, true, 0],
+    ])
+    const moved = moneyArticlesOf(demo({
+      moneyArticles: [
+        { id: 'debts', order: 3, on: true, amount: 50_000, updatedAt: T },
+        { id: 'reserve', order: 4, on: false, amount: 10_000, updatedAt: T },
+        { id: 'spend', order: 1, on: true, amount: 1, updatedAt: T, deletedAt: T },
+      ],
+    }))
+    expect(moved.map((a) => a.id)).toEqual(['must', 'life', 'debts', 'reserve', 'cushion', 'dreams', 'spend'])
+    expect(moved.find((a) => a.id === 'reserve')).toMatchObject({ on: false, amount: 10_000 })
+    expect(moved.find((a) => a.id === 'spend')!.amount).toBe(0)
+    expect(moneySettingsOf({})).toMatchObject({ reserveMonths: 1, cushionMonths: 3, costlyRate: 0, potGoalId: null, orderedAt: null })
+  })
+
+  it('spendArticle — умолчание словаря; поле документа сильнее умолчания', () => {
+    expect(spendArticle('sc_rent', [])).toBe('must')
+    expect(spendArticle('sc_utilities', [])).toBe('must')
+    expect(spendArticle('sc_cafe', [])).toBe('spend')
+    expect(spendArticle('sc_travel', [])).toBe('spend')
+    expect(spendArticle('sc_food', [])).toBe('life')
+    expect(spendArticle('sc_other', [])).toBe('life')
+    expect(spendArticle('_unknown', [])).toBe('life')
+    expect(spendArticle('sc_cafe', [{ id: 'sc_cafe', article: 'life' }])).toBe('life')
+    expect(spendArticle('sc_food', [{ id: 'sc_food', article: 'spend' }])).toBe('spend')
   })
 })

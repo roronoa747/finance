@@ -16,6 +16,8 @@ import {
   goalHave,
   liveGoals,
   mainGoal,
+  moneyArticlesOf,
+  moneySettingsOf,
   lastAccountFor,
   lumpPlan,
   nextCreditDue,
@@ -50,8 +52,13 @@ import type {
   WishItem,
   Gift,
   Allocation,
+  ArticleKey,
+  MoneyArticle,
+  MoneySettings,
 } from '@/types/finance'
 import type { MerchantRule } from '@/lib/statements/types'
+import { spendArticle } from '@/lib/statements/dictionary'
+import { seedSpendCategories } from '@/lib/statements/model'
 import { useAuthStore } from '@/stores/auth'
 import { DEFAULT_CATEGORY_NAMES, type CategoryKey, type HueKey } from '@/lib/palette'
 import type { ConflictResponse, HouseholdDocResponse } from '@/types/api'
@@ -71,6 +78,9 @@ export function defaultSyncDoc(): SyncDoc {
     plans: [],
     spendCategories: [],
     spendTotals: [],
+    // План разбора (B2C-54): пустой — умолчания `moneyArticlesOf` / `moneySettingsOf`.
+    moneyArticles: [],
+    moneySettings: null,
     setupDoneAt: null,
   }
 }
@@ -1609,6 +1619,67 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
+  /* ---------- план разбора (B2C-54) ---------- */
+  /** Статьи с умолчаниями, по `order`. */
+  const moneyArticles = computed(() => moneyArticlesOf(householdDoc.value))
+  const moneySettings = computed(() => moneySettingsOf(householdDoc.value))
+
+  /**
+   * Правка статьи: запись документа заводится из умолчания (порядок, `on`, сумма) — партнёр
+   * получает то же, что видно здесь. Правка без изменений не пишется (см. `unchanged`).
+   */
+  function setArticle(id: ArticleKey, patch: Partial<Pick<MoneyArticle, 'order' | 'on' | 'amount'>>) {
+    const cur = moneyArticles.value.find((a) => a.id === id)
+    if (!cur || unchanged(cur, patch)) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      const list = (doc.moneyArticles ??= [])
+      const own = list.find((a) => a.id === id)
+      if (own) Object.assign(own, patch, { deletedAt: null, updatedAt: t })
+      else list.push({ ...cur, ...patch, updatedAt: t })
+    })
+  }
+
+  /** Новый порядок статей (`ids` сверху вниз): пишутся только статьи, чей номер поменялся. */
+  function reorderArticles(ids: ArticleKey[]) {
+    const moved = ids
+      .map((id, i) => ({ id, order: i + 1 }))
+      .filter(({ id, order }) => moneyArticles.value.find((a) => a.id === id)?.order !== order)
+    if (!moved.length) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      const list = (doc.moneyArticles ??= [])
+      for (const { id, order } of moved) {
+        const own = list.find((a) => a.id === id)
+        if (own) Object.assign(own, { order, deletedAt: null, updatedAt: t })
+        else list.push({ ...moneyArticles.value.find((a) => a.id === id)!, order, updatedAt: t })
+      }
+    })
+  }
+
+  /** Пороги ступеней, копилка, «Ваш порядок пройден» — один объект, целиком с новой меткой. */
+  function setMoneySettings(patch: Partial<Omit<MoneySettings, 'updatedAt' | 'deletedAt'>>) {
+    if (unchanged(moneySettings.value, patch)) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      doc.moneySettings = { ...moneySettingsOf(doc), ...patch, updatedAt: t }
+    })
+  }
+
+  /**
+   * Статья раздела выписки (Р-56): «Жизнь» или «Траты». Разделы, которых семья ещё не завела,
+   * сеются стартовым словарём целиком — иначе один раздел заслонил бы остальные.
+   */
+  function setSpendArticle(categoryId: string, article: 'must' | 'life' | 'spend') {
+    if (spendArticle(categoryId, householdDoc.value.spendCategories ?? []) === article) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      seedSpendCategories(doc, t)
+      const c = (doc.spendCategories ?? []).find((x) => x.id === categoryId)
+      if (c) Object.assign(c, { article, updatedAt: t })
+    })
+  }
+
   /* ---------- раскладки (B2C-21) ---------- */
   const allocations = computed(() => (householdDoc.value.allocations ?? []).filter((a) => !a.deletedAt))
 
@@ -1773,6 +1844,12 @@ export const useFinanceStore = defineStore('finance', () => {
     withdraw,
     addWish,
     recordAllocation,
+    moneyArticles,
+    moneySettings,
+    setArticle,
+    reorderArticles,
+    setMoneySettings,
+    setSpendArticle,
     updateSpendCategory,
     addGift,
     updateGift,
