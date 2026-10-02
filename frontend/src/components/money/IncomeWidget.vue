@@ -6,7 +6,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money } from '@/lib/money'
 import { monthFrom, monthKey } from '@/lib/dates'
-import { budgetAmounts, incomeBreakdownPath, incomeSplit, nextSalaryChange, salaryAt, type IncomePartKey } from '@/lib/finance'
+import { budgetAmounts, incomeBreakdownPath, incomeSplit, loadTag, nextSalaryChange, salaryAt, type IncomePartKey } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
 import Avatar from '@/components/kit/Avatar.vue'
 import Card from '@/components/kit/Card.vue'
@@ -16,7 +16,7 @@ import Tag from '@/components/kit/Tag.vue'
 import SalaryDialog from '@/components/SalaryDialog.vue'
 
 /**
- * Виджет «Доход» (пивот 3, Р-33; `pivot-3/index.html`): сумма окладов месяца, тег «нагрузка N %»
+ * Виджет «Доход» (пивот 3, Р-33; `pivot-3/index.html`): сумма окладов месяца, тег нагрузки словом (B2C-59, `loadTag`; проценты — в подсказке)
  * (жильё и кредиты в доходе), полоса долей обязательное · мечты · траты · свободно с легендой
  * и строки участников — нажатие открывает оклад и день (`SalaryDialog`, как в прежнем Бюджете;
  * viewer — строка без нажатия). Всё считает `incomeSplit` (`finance.ts`). Нажатие на заголовок и сумму —
@@ -45,12 +45,9 @@ const parts = computed(() => split.value.parts.map((p) => ({ ...p, ...LABEL[p.ke
     <div class="flex items-center justify-between gap-3">
       <span class="flex items-center gap-1.5 type-label">
         Доход
-        <Hint>
-          Нагрузка — кредиты и жильё: до 30 % по кредитам комфортно, до 50 % вместе с жильём — ориентир для
-          пары. Зарплаты приходят в разные дни, месяц закрывается 1-го.
-        </Hint>
+        <Hint>Кредиты и жильё — {{ split.load }} % дохода. До 30 % — низкая нагрузка, до 50 % — средняя.</Hint>
       </span>
-      <Tag v-if="split.income > 0" class="num">нагрузка {{ split.load }} %</Tag>
+      <Tag v-if="split.income > 0" :tone="loadTag(split.load).tone">{{ loadTag(split.load).text }}</Tag>
     </div>
     <!-- Сумма — вход в разбор месяца (B2C-58): последняя пришедшая зарплата, иначе план -->
     <button

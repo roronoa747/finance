@@ -129,7 +129,7 @@ describe('e2e / block-4 — Сквозной сценарий бюджета («
     expect(htmlPlan).toContain('Динара')
     expect(htmlPlan).toContain('остаток по плану 53 %')
     // Нагрузка — жильё и кредиты (250 000 + 70 000) из 1 200 000 = 27 % (бывшая «Нагрузка на доход» календаря).
-    expect(htmlPlan).toContain('нагрузка 27 %')
+    expect(htmlPlan).toContain('нагрузка низкая')
 
     // 4. Изменение лимита статьи «Еда и быт» (d4)
     financeStore.setCategoryAmount('d4', 280_000)

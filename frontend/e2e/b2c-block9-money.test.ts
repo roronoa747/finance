@@ -212,20 +212,23 @@ describe('e2e / B2C Блок 9 — «Деньги без лишнего» на �
     const B = await phone(server, st, 'b')
     const before = text(await screen(A.pinia, Money, '/money'))
     // Нагрузка — жильё 220 000 + кредиты 103 000 от дохода 1 200 000 (формула «вместе с жильём» Бюджета).
-    expect(before).toContain(`нагрузка ${pct(220_000 + 58_000 + 25_000 + 20_000, 1_200_000)} %`)
+    // 27 % — словом (B2C-59): низкая.
+    expect(pct(220_000 + 58_000 + 25_000 + 20_000, 1_200_000)).toBe(27)
+    expect(before).toContain('нагрузка низкая')
     expect(before).toContain(`траты ${pct(150_000, 1_200_000)} %`)
 
-    // A правит план в листе виджета (поле `NumFieldBlur` → `commit`).
+    // A правит план в листе виджета (B2C-59: поля «Жизнь» и «Траты» → `commit`): «Траты» — так, чтобы вместе с «Жизнью» вышло 222 000.
+    const life = A.store.moneyArticles.find((a) => a.id === 'life')!.amount ?? 0
     const editLiving: ComponentOptions = {
       created() {
         const s = this.$.setupState
-        if ('living' in s && 'commit' in s) (s.commit as (t: string) => void)('222 000')
+        if ('living' in s && 'commit' in s) (s.commit as (id: string, t: string) => void)('spend', String(222_000 - life))
       },
     }
     await screen(A.pinia, Money, '/money', undefined, [editLiving])
     await sync(A, B)
     const b = text(await screen(B.pinia, Money, '/money'))
-    expect(b).toContain(`план ${plain(222_000)}`)
+    expect(b).toContain(`из ${plain(222_000)}`)
     expect(b).toContain(`траты ${pct(222_000, 1_200_000)} %`)
   })
 

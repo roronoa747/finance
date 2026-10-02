@@ -133,7 +133,13 @@ import {
   type BreakdownFill,
   type BreakdownState,
   type UploadPeriod,
+  duesTag,
+  loadTag,
+  spendNorms,
+  spendShares,
+  spendStatus,
 } from './finance'
+import { STAT_NORMS } from '@/lib/statements/norms'
 import { planOf } from '@/test/planFamily'
 import type { SpendCategory, SpendTotal } from '@/lib/statements/types'
 import type { MatchCandidate } from '@/lib/statements/matching'
@@ -2564,13 +2570,13 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(incomeSplit({ ...a, income: 0 })).toMatchObject({ load: 0 })
     })
 
-    it('livingPlanFact: план — база раздела d4, факт — monthSpentByFact, проценты факта от плана; нет загрузок — факта и процента нет', () => {
+    it('livingPlanFact: план — «Жизнь» + «Траты» (без статей — база d4), факт — monthSpentByFact, проценты факта от плана; нет загрузок — факта и процента нет', () => {
       const cats = [{ key: 'd4' as const, name: 'Еда и быт', note: '', amount: 300_000, updatedAt: T }]
-      expect(livingPlanFact(cats, totals, categories, '2026-09', uploads)).toEqual({ plan: 300_000, spent: 220_000, pct: 73, share: 220_000 / 300_000, over: false })
-      expect(livingPlanFact(cats, totals, categories, '2026-09', [])).toEqual({ plan: 300_000, spent: null, pct: null, share: 0, over: false })
+      expect(livingPlanFact({ categories: cats }, totals, categories, '2026-09', uploads)).toEqual({ plan: 300_000, spent: 220_000, pct: 73, share: 220_000 / 300_000, over: false })
+      expect(livingPlanFact({ categories: cats }, totals, categories, '2026-09', [])).toEqual({ plan: 300_000, spent: null, pct: null, share: 0, over: false })
       const small = [{ ...cats[0], amount: 200_000 }]
-      expect(livingPlanFact(small, totals, categories, '2026-09', uploads)).toMatchObject({ pct: 110, share: 1, over: true })
-      expect(livingPlanFact([], totals, categories, '2026-09', uploads)).toMatchObject({ plan: 0, spent: 220_000, pct: null })
+      expect(livingPlanFact({ categories: small }, totals, categories, '2026-09', uploads)).toMatchObject({ pct: 110, share: 1, over: true })
+      expect(livingPlanFact({ categories: [] }, totals, categories, '2026-09', uploads)).toMatchObject({ plan: 0, spent: 220_000, pct: null })
     })
 
     it('debtsSummary: остаток живых кредитов и «оплачено N из M» из monthDues — после «Оплатил» N растёт', () => {
@@ -3444,5 +3450,75 @@ describe('B2C-55: разбор зарплаты по статьям — ручн
       expect(Object.values(f.given).reduce((s, x) => s + x, 0) + f.rest).toBe(amount)
       expect(integers(f)).toBe(true)
     }
+  })
+})
+
+describe('B2C-59: строки-статусы «Денег», доли трат и ориентир — ручной расчёт', () => {
+  const T = '2026-10-01T00:00:00.000Z'
+  const tot = (period: string, categoryId: string, amount: number, by: 'a' | 'b' = 'a'): SpendTotal => ({
+    id: `${by}:month:${period}:${categoryId}`, by, kind: 'month', period, categoryId, amount, ops: 1, updatedAt: T,
+  })
+  const up = (from: string, to: string) => ({ slot: 'a', period_from: from, period_to: to })
+
+  it('нагрузка словом: 29 % — низкая, 30 и 50 % — средняя, 51 % — высокая', () => {
+    expect(loadTag(0)).toEqual({ text: 'нагрузка низкая', tone: 'ok' })
+    expect(loadTag(29).text).toBe('нагрузка низкая')
+    expect(loadTag(30)).toEqual({ text: 'нагрузка средняя', tone: 'neutral' })
+    expect(loadTag(50).text).toBe('нагрузка средняя')
+    expect(loadTag(51)).toEqual({ text: 'нагрузка высокая', tone: 'warn' })
+  })
+
+  it('«N из M оплачено»: отметки месяца; всё оплачено — ok; платежей нет — null', () => {
+    expect(duesTag([{ paid: true }, { paid: false }, { paid: false }])).toEqual({ text: '1 из 3 оплачено', tone: 'neutral' })
+    expect(duesTag([{ paid: true }, { paid: true }])).toEqual({ text: '2 из 2 оплачено', tone: 'ok' })
+    expect(duesTag([])).toBeNull()
+  })
+
+  it('доли месяца: от трат без разделов плана, «не разобрано» — в базе без строки; целые, сумма ≤ 100', () => {
+    const uploads = [up('2026-10-01', '2026-10-12')]
+    // База: продукты 60 000 + кафе 30 000 + не разобрано 10 000 = 100 000 (аренда — в плане, не входит).
+    const totals = [tot('2026-10', 'sc_food', 60_000), tot('2026-10', 'sc_cafe', 30_000), tot('2026-10', '_unknown', 10_000), tot('2026-10', 'sc_rent', 250_000)]
+    expect(spendShares(totals, [], '2026-10', uploads)).toEqual([
+      { categoryId: 'sc_food', amount: 60_000, share: 60 },
+      { categoryId: 'sc_cafe', amount: 30_000, share: 30 },
+    ])
+    expect(spendShares(totals, [], '2026-10', [])).toBeNull()
+    // 790 + 105 + 105 = 1000: 79 + 11 (10,5 вверх) + 11 = 101 → лишний процент снимается с самой большой: 78.
+    const round = spendShares([tot('2026-10', 'sc_food', 790), tot('2026-10', 'sc_cafe', 105), tot('2026-10', 'sc_fun', 105)], [], '2026-10', uploads)!
+    expect(round.map((r) => r.share)).toEqual([78, 11, 11])
+    for (const rows of [round, spendShares(totals, [], '2026-10', uploads)!]) {
+      expect(rows.every((r) => Number.isInteger(r.share))).toBe(true)
+      expect(rows.reduce((a, r) => a + r.share, 0)).toBeLessThanOrEqual(100)
+    }
+  })
+
+  it('ориентир: 2 полных месяца выписок — таблица статистики; 3 — своё среднее', () => {
+    const totals = [
+      // Июль: продукты 60 %, кафе 40 %. Август: 70 / 30. Сентябрь: 50 / 30 / развлечения 20.
+      tot('2026-07', 'sc_food', 60_000), tot('2026-07', 'sc_cafe', 40_000),
+      tot('2026-08', 'sc_food', 70_000), tot('2026-08', 'sc_cafe', 30_000),
+      tot('2026-09', 'sc_food', 50_000), tot('2026-09', 'sc_cafe', 30_000), tot('2026-09', 'sc_fun', 20_000),
+    ]
+    expect(spendNorms(totals, [], [up('2026-08-01', '2026-09-30')], '2026-10')).toEqual({ from: 'stat', norms: STAT_NORMS })
+    // Июль начат не с 1-го — месяц не полный.
+    expect(spendNorms(totals, [], [up('2026-07-02', '2026-09-30')], '2026-10').from).toBe('stat')
+    // Продукты (60 + 70 + 50) / 3 = 60; кафе (40 + 30 + 30) / 3 = 33,3 → 33; развлечения 20 / 3 = 6,7 → 7.
+    expect(spendNorms(totals, [], [up('2026-07-01', '2026-08-31'), up('2026-09-01', '2026-09-30')], '2026-10')).toEqual({
+      from: 'own',
+      norms: { sc_food: 60, sc_cafe: 33, sc_fun: 7 },
+    })
+  })
+
+  it('статус «Трат»: наибольшее превышение ориентира (больше 3 п. п.), иначе «в норме»; без выписок — null', () => {
+    const norms = { sc_food: 30, sc_cafe: 10 }
+    const row = (categoryId: string, share: number) => ({ categoryId, amount: share * 1_000, share })
+    // Продукты +10, кафе +15 — кафе.
+    expect(spendStatus([row('sc_food', 40), row('sc_cafe', 25)], norms, [])).toEqual({ text: 'кафе и рестораны выше нормы', tone: 'warn' })
+    expect(spendStatus([row('sc_food', 40), row('sc_cafe', 12)], norms, [])).toEqual({ text: 'продукты выше нормы', tone: 'warn' })
+    // +3 — ещё норма; раздела без ориентира статус не касается.
+    expect(spendStatus([row('sc_food', 33), row('sc_people', 60)], norms, [])).toEqual({ text: 'в норме', tone: 'ok' })
+    // Имя — как назвала семья.
+    expect(spendStatus([row('sc_food', 40)], norms, [{ id: 'sc_food', name: 'Еда' }])!.text).toBe('еда выше нормы')
+    expect(spendStatus(null, norms, [])).toBeNull()
   })
 })
