@@ -80,10 +80,12 @@ async function onFile(file: File) {
 }
 
 /* ---------- «Свободно · до зарплаты» (Р-42, Р-47: одно число — по факту выписок) ---------- */
-const hasUploads = computed(() => ops.uploads.length > 0)
 const free = computed(() =>
   freeByFact(state.value, financeStore.householdDoc.spendTotals ?? [], financeStore.householdDoc.spendCategories ?? [], key.value, ops.uploads),
 )
+// Выписки за этот месяц нет (в начале месяца — только прошлые) — `freeByFact` отдаёт остаток по плану: это
+// число «Дохода», под словом «Свободно» его не показываем (Р-47).
+const hasUploads = computed(() => free.value.byFact)
 const payday = computed(() =>
   untilPayday({
     people: financeStore.people,
@@ -93,7 +95,7 @@ const payday = computed(() =>
     payments: financeStore.payments,
   }),
 )
-// До первой выписки числа «Свободно» нет — строка держит только «До зарплаты N дней».
+// До выписки за месяц числа «Свободно» нет — строка держит только «До зарплаты N дней».
 const paydayText = computed(() => {
   const p = payday.value
   if (!p) return ''

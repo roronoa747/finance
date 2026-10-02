@@ -129,6 +129,14 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
     expect(html).toContain(`До зарплаты 3${NBSP}дня`)
   })
 
+  it('выписки только за прошлый месяц — числа «Свободно» нет: freeByFact без факта отдаёт «остаток по плану» (Р-47, критик Б10)', async () => {
+    const august = { ...upload('a', 'u0'), period_from: '2026-08-01', period_to: '2026-08-31' }
+    await family('member', 'a', withMain(), [august])
+    const html = await renderScreen(Dreams, '/')
+    expect(html).not.toContain('Свободно')
+    expect(html).toContain(`До зарплаты 3${NBSP}дня`)
+  })
+
   it('«Желания» — первые три некупленных: фото-плашка, «сумма · чьё», тихая «Открыть»; «Все N» = некупленных → /wishes', async () => {
     await family('member', 'a', { ...withMain(), wishlist: WISHES })
     const html = await renderScreen(Dreams, '/')
