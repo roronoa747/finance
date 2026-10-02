@@ -18,7 +18,6 @@ import {
   seedSpendCategories,
   spendTotals,
   unknownGroups,
-  unknownSummary,
 } from './model'
 import type { MerchantRule, Operation, SpendTotal } from './types'
 
@@ -321,19 +320,6 @@ describe('функции экрана выписок (B2C-07)', () => {
     expect(unknownGroups(ops, 'sc_food').map((g) => g.label)).toEqual(['Magnum'])
   })
 
-  it('unknownSummary — продавцы и сумма незнакомых за неделю (карточка «Не разобрано» на главном)', () => {
-    const ops = [
-      op({ date: '2026-09-21', merchant: 'IP ZHANSAYA ALMATY KZ', amount: -100 }),
-      op({ date: '2026-09-27', merchant: 'IP ZHANSAYA ASTANA KZ', amount: -200 }),
-      op({ date: '2026-09-22', kind: 'transfer-out', merchant: 'Дана К.', counterparty: 'Дана К.', amount: -5000 }),
-      op({ date: '2026-09-28', merchant: 'Kiosk', amount: -9000 }), // следующая неделя
-      op({ date: '2026-09-23', merchant: 'Magnum', amount: -700, categoryId: 'sc_food' }), // знакомый
-      op({ date: '2026-09-23', merchant: 'Перевод себе', amount: -800, internal: true }),
-    ]
-    expect(unknownSummary(ops, '2026-W39')).toEqual({ count: 2, amount: 5300 })
-    expect(unknownSummary(ops)).toEqual({ count: 3, amount: 14_300 })
-    expect(unknownSummary([], '2026-W39')).toEqual({ count: 0, amount: 0 })
-  })
 
   it('partnerHints — другой участник по имени, пока правила нет', () => {
     const people = [{ id: 'a', name: 'Алихан', updatedAt: T }, { id: 'b', name: 'Дана', updatedAt: T }] as Person[]

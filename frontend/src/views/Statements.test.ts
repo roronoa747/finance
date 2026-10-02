@@ -8,7 +8,7 @@ import { parseStatement } from '@/lib/statements/parsers'
 import { DEFAULT_SPEND_CATEGORIES } from '@/lib/statements/dictionary'
 import type { Operation } from '@/lib/statements/types'
 import { money } from '@/lib/money'
-import { nextDecision } from '@/lib/finance'
+import { decisionQueue } from '@/lib/finance'
 import { MONTH_END_KEY } from '@/lib/storage'
 import { renderScreen, screenMixin } from '@/test/screenState'
 import type { StatementUploadResponse } from '@/types/api'
@@ -286,37 +286,64 @@ describe('views/Statements.vue — решения по одному и итог 
     expect(await renderScreen(Statements, '/week')).toContain('Остались деньги с')
   })
 
-  it('критик возврата 3 (правило 12): «Пришла зарплата?» — в порядке главного, раньше подписки и «Остались деньги?»; брендовая кнопка на экране одна', async () => {
-    // День зарплаты 1-го: 29 сентября спрашивается «Пришла?» октября и «Остались деньги?» сентября.
+  it('B2C-49: одна очередь Р-43 — подписка → «Пришла зарплата?» → «Остались деньги?»; на экране одно решение и одна брендовая кнопка', async () => {
+    // День зарплаты 1-го: 29 сентября спрашиваются подписка, «Пришла?» октября и «Остались деньги?» сентября.
     vi.setSystemTime(new Date('2026-09-29T07:00:00Z'))
     signIn()
     const finance = useFinanceStore()
     finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000, payday: 1 }
-    finance.householdDoc.obligations = [netflix]
+    finance.householdDoc.obligations = [{ ...netflix }] // копия: «оставить» ниже пишет keptAt в объект
+    const queue = () => decisionQueue({ ...finance.householdDoc, credits: finance.credits }, { me: 'a' })
+    expect(queue().map((d) => d.kind)).toEqual(['keep', 'salary', 'monthEnd'])
+
     let raw = await renderScreen(Statements, '/week')
-    expect(text(raw)).toContain('Пришла зарплата Алихан?')
+    expect(text(raw)).toContain('Оставить подписку Netflix?')
+    expect(text(raw)).not.toContain('Пришла зарплата Алихан?')
     expect(text(raw)).not.toContain('Остались деньги с')
-    // Своей выписки нет — «Загрузить выписку» тихая; главная — «Пришла зарплата».
+    expect(text(raw)).toContain('1 из 3')
+    // Своей выписки нет — «Загрузить выписку» тихая; главная — «Оставить».
     expect(text(raw)).toContain('Загрузить выписку')
+    expect(brand(raw)).toEqual(['Оставить'])
+    expect(raw.match(/<h2 class="type-h2 text-ink">/g)).toHaveLength(1)
+
+    // Ответили «оставить» — «Пришла?»: тексты `salaryCard` (DecisionCard, вопрос type-h2).
+    finance.keepSubscription('nf')
+    raw = await renderScreen(Statements, '/week')
+    const d = queue()[0]
+    expect(d.kind).toBe('salary')
+    expect(raw).toMatch(new RegExp(`<h2 class="type-h2 text-ink">${d.question.replace('?', '\\?')}</h2>`))
+    expect(raw).toContain(d.meta)
     expect(brand(raw)).toEqual(['Пришла зарплата'])
 
-    expect(text(raw)).not.toContain('Оставить подписку')
-    // Н-23: карточка — DecisionCard (вопрос type-h2, как у соседних решений), тексты — решения «salary» главного.
-    const d = nextDecision({ people: finance.people, obligations: finance.obligations, payments: finance.payments }, { me: 'a' })
-    expect(d?.kind).toBe('salary')
-    expect(raw).toMatch(new RegExp(`<h2 class="type-h2 text-ink">${d!.question.replace('?', '\\?')}</h2>`))
-    expect(raw).toContain(d!.meta)
-
-    // Отмечена — очередь дальше, как на главном: подписка, затем «Остались деньги?»; брендовая одна.
+    // Отмечена — «Остались деньги?».
     finance.markSalary('a', { period: '2026-10', amount: 500_000, accountId: null })
     raw = await renderScreen(Statements, '/week')
     expect(text(raw)).not.toContain('Пришла зарплата Алихан?')
-    expect(text(raw)).toContain('Оставить подписку Netflix?')
-    expect(brand(raw)).toEqual(['Оставить'])
-    finance.householdDoc.obligations = []
-    raw = await renderScreen(Statements, '/week')
     expect(text(raw)).toContain('Остались деньги с')
     expect(brand(raw)).toEqual(['Разложить'])
+  })
+
+  it('B2C-49: продавец месяца раньше подписки и остатка; «Освободится N ₸» — в очереди с «Распределить», сумма — как в «Деньгах»', async () => {
+    vi.setSystemTime(new Date('2026-09-29T07:00:00Z'))
+    signIn()
+    useOperationsStore().ops.o1 = op('o1', '2026-09-10', -7_000, 'IP ASANOVA')
+    const finance = useFinanceStore()
+    finance.householdDoc.obligations = [netflix]
+    let html = text(await renderScreen(Statements, '/week'))
+    expect(html).toContain('IP ASANOVA — куда отнести?')
+    expect(html).toContain('1 из 3')
+    expect(html).not.toContain('Оставить подписку')
+    expect(html).not.toContain('Остались деньги с')
+
+    // Освободится: аренда 220 000 → 180 000 с ноября — 40 000 ₸ в месяц, «Распределить».
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+    finance.householdDoc.obligations = [{ id: 'flat', name: 'Квартира', note: '', day: 5, category: 'd1', versions: [{ from: '2000-01', amount: 220_000 }, { from: '2026-11', amount: 180_000 }], updatedAt: T }]
+    useOperationsStore().ops = {}
+    const raw = await renderScreen(Statements, '/week')
+    html = text(raw)
+    expect(html).toContain(`Освободится ${m(40_000)} в месяц`)
+    expect(html).toContain('Квартира · с ноября')
+    expect(brand(raw)).toEqual(['Распределить'])
   })
 
   it('«Остались деньги?»: остаток месяца уже разложил партнёр (раскладка rest в общем документе) — не спрашиваем', async () => {
@@ -327,29 +354,6 @@ describe('views/Statements.vue — решения по одному и итог 
     expect(await renderScreen(Statements, '/week')).toContain('Остались деньги с')
     finance.householdDoc.allocations = [restOf('2026-08'), restOf('2026-09')]
     expect(await renderScreen(Statements, '/week')).not.toContain('Остались деньги с')
-    expect(await renderScreen(Statements, '/week?rest=1')).not.toContain('Остались деньги с')
-  })
-
-  it('/week?rest=1 («Разложить» с главного) — «Остались деньги?» первой, очередь — после ответа', async () => {
-    vi.setSystemTime(new Date('2026-09-29T07:00:00Z'))
-    signIn()
-    // Незнакомая трата 10 сентября (не этой недели) и подписка — обе стоят в очереди раньше остатка.
-    useOperationsStore().ops.o1 = op('o1', '2026-09-10', -7_000, 'IP ASANOVA')
-    useFinanceStore().householdDoc.obligations = [netflix]
-    const queue = text(await renderScreen(Statements, '/week'))
-    expect(queue).toContain('IP ASANOVA — куда отнести?')
-    expect(queue).not.toContain('Остались деньги с')
-
-    const rest = text(await renderScreen(Statements, '/week?rest=1'))
-    expect(rest).toContain('Остались деньги с')
-    expect(rest).not.toContain('куда отнести?')
-    expect(rest).not.toContain('Оставить подписку')
-
-    // Ответили — адрес тот же, а первой снова очередь.
-    storage.set(MONTH_END_KEY, '2026-09')
-    const after = text(await renderScreen(Statements, '/week?rest=1'))
-    expect(after).toContain('IP ASANOVA — куда отнести?')
-    expect(after).not.toContain('Остались деньги с')
   })
 
   it('итог недели: «на N % меньше прошлой», прошлые недели; «Отмечено по выписке: N»', async () => {
@@ -370,7 +374,7 @@ describe('views/Statements.vue — решения по одному и итог 
     expect(html).toContain('Отмечено по выписке: 1')
   })
 
-  it('итог недели по макету g2: все разделы и «Не разобрано · N продавцов · разобрать» строкой карточки; загрузки нет без «+»', async () => {
+  it('итог недели по макету g2: все разделы и «Не разобрано» — сумма недели обоих без «N продавцов» (разбор — в очереди); загрузки нет без «+»', async () => {
     signIn()
     const finance = useFinanceStore()
     const t = (categoryId: string, amount: number) => ({ id: `a:week:2026-W39:${categoryId}`, by: 'a' as const, kind: 'week' as const, period: '2026-W39', categoryId, amount, ops: 1, updatedAt: '' })
@@ -385,7 +389,8 @@ describe('views/Statements.vue — решения по одному и итог 
     const html = text(raw)
     // Шесть разделов — все строками (на главном — первые четыре).
     for (const name of ['Продукты', 'Кафе и рестораны', 'Транспорт', 'Здоровье и аптеки', 'Дом и быт', 'Одежда и покупки']) expect(html).toContain(name)
-    expect(html).toContain(`Не разобрано 2 продавца · разобрать ${m(4_000)}`)
+    expect(html).toContain(`Не разобрано ${m(4_000)}`)
+    expect(html).not.toContain('продавца')
     expect(html).not.toContain('ещё ')
     expect(html).not.toContain('Подробнее: по разделам')
     expect(html).not.toContain('Загрузить выписку')

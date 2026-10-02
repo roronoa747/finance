@@ -357,16 +357,6 @@ export function unknownGroups(ops: Operation[], categoryId: string | null = null
 }
 
 /**
- * Незнакомые траты (`unknownGroups`) одной ISO-недели `week` — или всех операций, если неделя
- * не задана: сколько продавцов и на какую сумму (целые тенге). Карточка «Не разобрано: N
- * продавцов · X за неделю» на главном (`nextDecision`).
- */
-export function unknownSummary(ops: Operation[], week?: string): { count: number; amount: number } {
-  const groups = unknownGroups(week ? ops.filter((o) => weekKey(o.date) === week) : ops)
-  return { count: groups.length, amount: groups.reduce((a, g) => a + g.amount, 0) }
-}
-
-/**
  * «Это перевод партнёру?» (Р-5): получатели и отправители, чьё имя совпадает с другим
  * участником семьи, пока правила о них нет.
  */

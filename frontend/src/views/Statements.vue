@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PhCaretDown, PhFileArrowUp } from '@phosphor-icons/vue'
 import Button from '@/components/ui/Button.vue'
@@ -17,29 +17,21 @@ import WeekCard from '@/components/kit/WeekCard.vue'
 import SalaryRow from '@/components/SalaryRow.vue'
 import CategoryChips from '@/components/CategoryChips.vue'
 import type { MatchCandidate } from '@/lib/statements/matching'
-import { matchKey } from '@/lib/statements/matching'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
 import { money, parseMoney } from '@/lib/money'
 import { plural } from '@/lib/utils'
-import { dayLabel, monthKey, monthTitle, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
+import { monthKey, monthTitle, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
 import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import { draftSummary, partnerHints, picture, pictureTotal, ruleMatchOf, unknownGroups, type UnknownGroup } from '@/lib/statements/model'
 import { readStatementFiles } from '@/lib/statements/read'
 import type { MerchantRule } from '@/lib/statements/types'
 import type { PersonId } from '@/types/finance'
 import {
-  allocateCard,
-  allocationFor,
-  keepCard,
-  monthEndCard,
-  salaryCard,
-  keepQuestions,
-  monthEndAsk,
+  decisionQueue,
   salaryAllocationPath,
-  salaryAsk,
-  salaryToAllocate,
+  type Decision,
   liveSpendCategories,
   spendCategoryName,
   spendRows,
@@ -82,7 +74,6 @@ const personName = (slot: string) => people.value.find((p) => p.id === slot)?.na
 
 /* ---------- черновик (предпросмотр) ---------- */
 const summary = computed(() => draftSummary(store.draftOps, (id) => id in store.ops))
-const unknown = computed(() => unknownGroups(store.draftOps))
 const dismissedHints = ref<string[]>([])
 const hints = computed(() => partnerHints(store.draftOps, finance.people, me.value, finance.merchantRules).filter((h) => !dismissedHints.value.includes(h.counterparty)))
 
@@ -108,6 +99,16 @@ const mineThisWeek = computed(() => {
   const { from, to } = pic.value.range
   return store.uploads.some((u) => u.slot === me.value && u.period_to >= from && u.period_from <= to)
 })
+/** Карточка итога недели: все разделы (g2), «Не разобрано» — сумма недели обоих (разбор — в очереди решений). */
+const weekCardProps = computed(() => ({
+  total: pic.value.total,
+  tag: versusPrev.value,
+  segments: weekSegments.value,
+  unknown: pic.value.unknown,
+  unknownShare: pic.value.unknownShare,
+  rows: weekSegments.value.length,
+  unknownRow: {},
+}))
 // Разделы за неделю и месяц по итогам обоих (B2C-07): раскрытие — свои продавцы раздела и раздел задним числом.
 // Таблица — за «Подробнее» (правило 12: расчёты свёрнуты, `<details>` как у цели), главный поток — итог недели.
 const rows = computed(() => picture(spendTotals.value, week, month))
@@ -141,63 +142,14 @@ const foreign = computed(() => (store.draft?.files ?? []).reduce((a, f) => a + (
 /* ---------- решения по одному ---------- */
 const groupKey = (g: UnknownGroup) => JSON.stringify(g.match)
 
-// «Остались деньги?» (Р-19): ответ — до конца месяца, на устройстве; раскладка остатка месяца
-// в общем документе (её ключ — на семью) — тоже ответ: партнёр второй раз не спрашивается.
+// «Остались деньги?» (Р-19): ответ — до конца месяца, на устройстве (раскладку остатка семьи проверяет очередь).
 const answeredLocal = ref<string | null>(readMonthEnd())
-const answeredMonthEnd = computed(() =>
-  allocationFor(finance.allocations, { source: 'rest', sourceId: month, period: month }) ? month : answeredLocal.value,
-)
-// «Разложить» с главного (`/week?rest=1`) — карточка остатка первой; после ответа — обычная очередь.
-const restFirst = computed(() => route.query.rest === '1' && canUpload.value && monthEndAsk(answeredMonthEnd.value))
 
-// 1. Сопоставления с отметками (Р-6, B2C-15).
-const deferredMatches = ref<string[]>([])
-const matchQueue = computed(() => store.pendingMatches.filter((c) => !deferredMatches.value.includes(matchKey(c))))
-const match = computed<MatchCandidate | null>(() => (canUpload.value && !restFirst.value ? (matchQueue.value[0] ?? null) : null))
-const matchActions = computed(() =>
-  match.value?.kind === 'salary'
-    ? { primary: 'Да, зарплата', secondary: 'Нет', ghost: 'Потом' }
-    : { primary: 'Да, отметить', secondary: 'Нет, это другое', ghost: 'Потом' },
-)
-function deferMatch(c: MatchCandidate) {
-  deferredMatches.value = [...deferredMatches.value, matchKey(c)]
-}
-/** «Да»: отметка и правило; «Да, зарплата» — сразу раскладка, как после ручного «Пришла» (B2C-21 п. 1). */
-function acceptMatch(c: MatchCandidate) {
-  void store.acceptMatch(c)
-  if (c.kind === 'salary') void router.push(salaryAllocationPath(c.targetId as PersonId, c.period))
-}
-
-// 2. Незнакомые продавцы — по одному; чипы разделов, «Ещё N», «Кому → что», «Между своими». В разборе —
-// продавцы черновика (ответ — правило до отправки, g2 «Решение — незнакомый продавец»), иначе — месяца
-// (раздел задним числом).
-const deferredUnknown = ref<string[]>([])
-const skipUnknown = ref(false)
-const unknownList = computed(() => (store.draft ? unknown.value : unknownGroups(monthOps.value)))
-const unknownQueue = computed(() => (canUpload.value && !skipUnknown.value ? unknownList.value.filter((g) => !deferredUnknown.value.includes(groupKey(g))) : []))
-const unknownCard = computed(() => (!store.draft && (match.value || restFirst.value) ? null : (unknownQueue.value[0] ?? null)))
-const unknownTotal = computed(() => unknownList.value.length)
-/** Карточка итога недели: все разделы (g2), «Не разобрано» строкой со своими продавцами месяца — «разобрать». */
-const weekCardProps = computed(() => ({
-  total: pic.value.total,
-  tag: versusPrev.value,
-  segments: weekSegments.value,
-  unknown: pic.value.unknown,
-  unknownShare: pic.value.unknownShare,
-  rows: weekSegments.value.length,
-  unknownRow:
-    canUpload.value && unknownTotal.value
-      ? { meta: `${unknownTotal.value} ${plural(unknownTotal.value, 'продавец', 'продавца', 'продавцов')} · разобрать`, action: true }
-      : {},
-}))
-/** «Не разобрано · разобрать» в карточке недели: снова показать отложенные — карточка решения вверху экрана. */
-function reviewUnknown() {
-  skipUnknown.value = false
-  deferredUnknown.value = []
-  document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' })
-}
-const lastDate = (g: UnknownGroup) => {
-  const last = monthOps.value
+// Незнакомые продавцы: в разборе — черновик (ответ — правило до отправки), иначе — месяц (раздел задним числом).
+// «Последний — <дата>» — из тех же операций, что и группы (хвост (а) критика Б9).
+const unknownOps = computed(() => (store.draft ? store.draftOps : monthOps.value))
+const lastOf = (g: UnknownGroup) =>
+  unknownOps.value
     .filter((o) => {
       const m = ruleMatchOf(o)
       return m.merchant === g.match.merchant && m.counterparty === g.match.counterparty
@@ -205,41 +157,63 @@ const lastDate = (g: UnknownGroup) => {
     .map((o) => o.date)
     .sort()
     .at(-1)
-  return last ? dayLabel(Number(last.slice(8, 10)), last.slice(0, 7)) : ''
-}
-const unknownMeta = (g: UnknownGroup) => `${g.count} раз · ${money(g.amount)}${lastDate(g) ? ` · последний — ${lastDate(g)}` : ''}`
-function deferUnknown(g: UnknownGroup) {
-  deferredUnknown.value = [...deferredUnknown.value, groupKey(g)]
-  personFor.value = null
+const skipUnknown = ref(false)
+const unknownList = computed(() => (skipUnknown.value ? [] : unknownGroups(unknownOps.value).map((g) => ({ ...g, last: lastOf(g) }))))
+
+/**
+ * Одна очередь (Р-43, `decisionQueue`): сопоставление → продавец → подписка → зарплата → «освободится» →
+ * «остались деньги?»; на экране — первое неотложенное. В разборе — только продавцы черновика.
+ * «Потом» / «Позже» / «Подумать» — до следующего открытия экрана.
+ */
+const deferred = ref<string[]>([])
+const queue = computed(() =>
+  decisionQueue(
+    { ...finance.householdDoc, credits: finance.credits },
+    {
+      me: auth.slot,
+      canEdit: canUpload.value,
+      matches: store.draft ? [] : store.pendingMatches,
+      unknown: unknownList.value,
+      answeredMonthEnd: answeredLocal.value,
+    },
+  ).filter((d) => !deferred.value.includes(d.key) && (!store.draft || d.kind === 'unknown')),
+)
+const decision = computed(() => queue.value[0] ?? null)
+const defer = (d: Decision) => {
+  deferred.value = [...deferred.value, d.key]
+  cancelling.value = false
 }
 
-// 3. Зарплата пришла по выписке (автоотметка по правилу, «Да» без перехода) и не разложена —
-// «разложить?» (возврат приёмки п. 2); «Позже» — до следующего открытия.
-const allocateLater = ref(false)
-const allocate = computed(() =>
-  canUpload.value && !match.value && !unknownCard.value && !restFirst.value && !allocateLater.value
-    ? salaryToAllocate({ ...finance.householdDoc, credits: finance.credits }, auth.slot)
-    : null,
+// «N из M»: M — все решения, что были в очереди с открытия экрана (или начала разбора), — не тает при
+// ответе; новые (например, «разложить?» после «Да, зарплата») её увеличивают. N — сколько позади + 1.
+const seen = ref<string[]>([])
+watch(
+  [() => queue.value.map((d) => d.key), () => !!store.draft],
+  ([keys, draft], prev) => {
+    const base = prev && prev[1] !== draft ? [] : seen.value
+    seen.value = [...base, ...keys.filter((k) => !base.includes(k))]
+  },
+  { immediate: true },
 )
+const progress = computed(() => (seen.value.length > 1 ? { n: seen.value.length - queue.value.length + 1, k: seen.value.length } : null))
 
-// 4. «Оставить подписку?» (Р-20) — по правилам keepQuestions; «Подумать» — до следующего открытия.
-// Тексты и «за год» — `keepCard`, как на главном: у годовой — цена продления, «N % пути до мечты».
-const deferredKeep = ref<string[]>([])
-const keep = computed(() =>
-  canUpload.value && !ahead.value && !restFirst.value
-    ? (keepQuestions(finance.obligations).find((o) => !deferredKeep.value.includes(o.id)) ?? null)
-    : null,
-)
-const keepText = computed(() => (keep.value ? keepCard(keep.value, finance.goals, finance.payments) : null))
+/** «Да»: отметка и правило; «Да, зарплата» — сразу раскладка, как после ручного «Пришла» (B2C-21 п. 1). */
+function acceptMatch(c: MatchCandidate) {
+  void store.acceptMatch(c)
+  if (c.kind === 'salary') void router.push(salaryAllocationPath(c.targetId as PersonId, c.period))
+}
+
+/** Ответ карточки незнакомого продавца: в разборе — до отправки, в неделе — задним числом. */
+function answerUnknown(g: UnknownGroup, to: MerchantRule['to']) {
+  if (store.draft) store.answer(g.match, to)
+  else void store.recategorize(g.match, to)
+}
+
+// «Оставить подписку?» (Р-20): «Отписаться» — шаг подтверждения (`keepCard().cancel`).
 const cancelling = ref(false)
-function onKeep(action: 'keep' | 'cancel' | 'later') {
-  const o = keep.value
+function onKeep(d: Decision, action: 'keep' | 'cancel') {
+  const o = d.obligation
   if (!o) return
-  if (action === 'later') {
-    deferredKeep.value = [...deferredKeep.value, o.id]
-    cancelling.value = false
-    return
-  }
   if (action === 'cancel') {
     if (!cancelling.value) {
       cancelling.value = true
@@ -250,11 +224,6 @@ function onKeep(action: 'keep' | 'cancel' | 'later') {
   cancelling.value = false
 }
 
-// 5. «Остались деньги?» — последние дни месяца (ответ — `answeredMonthEnd` выше).
-const monthEnd = computed(
-  () =>
-    restFirst.value || (canUpload.value && !ahead.value && !keep.value && monthEndAsk(answeredMonthEnd.value)),
-)
 const restAmount = ref('')
 function answerRest(go: boolean) {
   answeredLocal.value = month
@@ -263,36 +232,33 @@ function answerRest(go: boolean) {
   if (go && amount > 0) void router.push(`/week/salary?from=rest&amount=${amount}&period=${month}`)
 }
 
-// «Пришла зарплата <имя>?» (RP-10): ближайшая зарплата — своя, её день настал или близко (`salaryAsk`,
-// как на главном). Не вместе с «разложить?»: одна карточка о зарплате за раз (возврат приёмки 2 п. 3).
-// Порядок — как у `nextDecision`: после «разложить?», раньше подписки и «Остались деньги?» (они ждут
-// отметки); сопоставление и разбор — раньше неё, при них кнопка тихая (правило 12: одна брендовая).
-const salaryHere = computed(() =>
-  auth.isViewer || allocate.value || restFirst.value
-    ? null
-    : salaryAsk({ people: finance.people, obligations: finance.obligations, credits: finance.credits, payments: finance.payments }, auth.slot),
-)
+/** Главное действие экрана (правило 12): первое решение, иначе — загрузка своей выписки. */
+const uploadLead = computed(() => !decision.value)
 
-/**
- * Решения раньше подписки и «Остались деньги?» — те ждут, пока эти не решены (порядок главного).
- */
-const ahead = computed(() => !!(match.value || unknownCard.value || allocate.value || salaryHere.value))
-/**
- * Главное на экране (правило 12, ревью Блока 3 Н-22) — первое по порядку экрана: сопоставление →
- * незнакомый продавец → «разложить?» → «Пришла зарплата?» → подписка → «Остались деньги?» →
- * загрузка своей выписки. Брендовая кнопка и брендовая рамка — только у него; у разбора продавца
- * ответ — чипы, брендовой кнопки на экране нет. Новое решение дописывается сюда, а не в условия.
- */
-const lead = computed<'match' | 'unknown' | 'allocate' | 'salary' | 'keep' | 'monthEnd' | 'upload' | null>(() => {
-  if (match.value) return 'match'
-  if (unknownCard.value) return 'unknown'
-  if (allocate.value) return 'allocate'
-  if (salaryHere.value) return 'salary'
-  if (keep.value) return 'keep'
-  if (monthEnd.value) return 'monthEnd'
-  return canUpload.value && !mineThisWeek.value ? 'upload' : null
+// Ответы карточки: у продавца — чипы и тихая «Пропустить все» (ещё продавцы в очереди), у подписки — шаг отмены.
+const decisionActions = computed(() => {
+  const d = decision.value
+  if (!d) return null
+  if (d.kind === 'keep' && cancelling.value) return d.cancel?.actions ?? null
+  if (d.kind === 'unknown') return { ...d.actions, secondary: queue.value.filter((x) => x.kind === 'unknown').length > 1 ? 'Пропустить все' : undefined }
+  return d.actions
 })
-const salaryQuiet = computed(() => lead.value !== 'salary')
+function onPrimary(d: Decision) {
+  if (d.kind === 'match' && d.match) acceptMatch(d.match)
+  else if (d.kind === 'keep') onKeep(d, cancelling.value ? 'cancel' : 'keep')
+  else if (d.kind === 'monthEnd') answerRest(true)
+  else if (d.to) void router.push(d.to)
+}
+function onSecondary(d: Decision) {
+  if (d.kind === 'match' && d.match) void store.declineMatch(d.match)
+  else if (d.kind === 'keep') onKeep(d, 'cancel')
+  else if (d.kind === 'unknown') skipUnknown.value = true
+}
+function onGhost(d: Decision) {
+  if (d.kind === 'keep' && cancelling.value) cancelling.value = false
+  else if (d.kind === 'monthEnd') answerRest(false)
+  else defer(d)
+}
 
 /* ---------- ответы разбора ---------- */
 const options = (g: UnknownGroup) => [
@@ -319,12 +285,6 @@ function choose(g: UnknownGroup, value: string) {
   if (to) void store.recategorize(g.match, to)
 }
 
-/** Ответ карточки незнакомого продавца: в разборе — до отправки, в неделе — задним числом. */
-function answerUnknown(g: UnknownGroup, to: MerchantRule['to']) {
-  if (store.draft) store.answer(g.match, to)
-  else void store.recategorize(g.match, to)
-}
-
 function savePerson(g: UnknownGroup) {
   const what = personText.value.trim()
   if (!what) return
@@ -340,7 +300,7 @@ async function pick(e: Event) {
   try {
     const { ok, errors } = await readStatementFiles(files)
     store.setDraft(ok, errors)
-    deferredUnknown.value = []
+    deferred.value = []
     skipUnknown.value = false
     // Пришли из «+» — после выбора файла адрес обычный: в итоге недели загрузки снова нет.
     if (route.query.upload === '1') void router.replace('/week')
@@ -411,10 +371,10 @@ onMounted(() => {
       <template v-if="canUpload">
         <input ref="fileInput" type="file" accept="application/pdf,.pdf" multiple class="hidden" @change="pick" />
         <div v-if="showUpload" ref="uploadBox">
-          <Card :class="lead === 'upload' ? 'border-brand' : undefined">
+          <Card :class="uploadLead ? 'border-brand' : undefined">
             <EmptyState :title="mineThisWeek ? 'Ещё одна выписка' : 'Ваша выписка ещё не загружена'" text="PDF из приложения Kaspi или Freedom. Разбор на телефоне, файл никуда не уходит.">
-              <!-- Ниже карточка решения — загрузка тихая: брендовое только у главного (`lead`) -->
-              <Button :variant="lead === 'upload' || (mineThisWeek && !lead) ? 'default' : 'secondary'" :disabled="reading" @click="fileInput?.click()">
+              <!-- При решении загрузка тихая: брендовое только у главного -->
+              <Button :variant="uploadLead ? 'default' : 'secondary'" :disabled="reading" @click="fileInput?.click()">
                 <PhFileArrowUp :size="16" />
                 {{ reading ? 'Читаем выписку…' : 'Загрузить выписку' }}
               </Button>
@@ -424,32 +384,31 @@ onMounted(() => {
       </template>
       <Callout v-if="store.pendingCount" tone="neutral">{{ store.pendingCount }} операций отправятся при сети. Итоги уже посчитаны.</Callout>
       <Callout v-if="store.lastAutoMarked" tone="ok">Отмечено по выписке: {{ store.lastAutoMarked }} — снять можно в «Деньгах».</Callout>
-
-      <!-- Решения по одному (DESIGN.md §5): сопоставление → незнакомый продавец → подписка → остаток месяца -->
-      <DecisionCard
-        v-if="match"
-        :question="match.question"
-        :meta="match.meta"
-        :progress="matchQueue.length > 1 ? { n: 1, k: matchQueue.length } : null"
-        :actions="matchActions"
-        @primary="acceptMatch(match)"
-        @secondary="store.declineMatch(match)"
-        @ghost="deferMatch(match)"
-      />
     </template>
 
-    <!-- Незнакомый продавец — одна карточка за раз (g2 «Решение — незнакомый продавец»): в разборе — до отправки, в неделе — задним числом -->
+    <!-- Одно решение за раз (Р-43): первое из очереди `decisionQueue`; в разборе — продавцы черновика -->
     <DecisionCard
-      v-if="unknownCard"
-      :question="`${unknownCard.label} — куда отнести?`"
-      :meta="unknownMeta(unknownCard)"
-      :progress="unknownTotal > 1 ? { n: unknownTotal - unknownQueue.length + 1, k: unknownTotal } : null"
-      :actions="{ ghost: 'Потом', secondary: unknownQueue.length > 1 ? 'Пропустить все' : undefined }"
-      @ghost="deferUnknown(unknownCard)"
-      @secondary="skipUnknown = true"
+      v-if="decision"
+      :key="decision.key"
+      lead
+      :question="decision.question"
+      :meta="decision.meta"
+      :progress="progress"
+      :actions="decisionActions"
+      @primary="onPrimary(decision)"
+      @secondary="onSecondary(decision)"
+      @ghost="onGhost(decision)"
     >
-      <CategoryChips :key="groupKey(unknownCard)" :counterparty="!!unknownCard.match.counterparty" @choose="(to) => answerUnknown(unknownCard!, to)" />
-      <p class="text-[12px] text-ink-3">Ответ запомним — следующие выписки разложатся сами. Снять можно в настройках.</p>
+      <template v-if="decision.kind === 'keep'" #inner>{{ cancelling ? decision.cancel?.inner : decision.inner }}</template>
+      <template v-else-if="decision.kind === 'monthEnd'" #inner>
+        <NumField v-model="restAmount" placeholder="50 000" aria-label="Сколько осталось, ₸" />
+      </template>
+      <template v-if="decision.group">
+        <CategoryChips :counterparty="!!decision.group.match.counterparty" @choose="(to) => answerUnknown(decision!.group!, to)" />
+        <p class="text-[12px] text-ink-3">Ответ запомним — следующие выписки разложатся сами. Снять можно в настройках.</p>
+      </template>
+      <!-- «Пришла» и лист «ещё» — SalaryRow (RP-10) -->
+      <SalaryRow v-if="decision.kind === 'salary' && decision.salary" button :person-id="decision.salary.person.id" :period="decision.salary.period" />
     </DecisionCard>
 
     <!-- Разбор: одна брендовая «Отправить» и тихая «Отмена» (g2: «Дальше» / «Отмена») -->
@@ -459,42 +418,6 @@ onMounted(() => {
     </div>
 
     <template v-else>
-      <DecisionCard
-        v-if="!unknownCard && allocate"
-        v-bind="allocateCard(allocate)"
-        :actions="{ primary: 'Разложить', ghost: 'Позже' }"
-        @primary="router.push(salaryAllocationPath(allocate.person.id, allocate.period))"
-        @ghost="allocateLater = true"
-      />
-
-      <DecisionCard
-        v-else-if="keep && keepText"
-        :question="keepText.question"
-        :meta="keepText.meta"
-        :actions="cancelling ? keepText.cancel.actions : keepText.actions"
-        @primary="onKeep(cancelling ? 'cancel' : 'keep')"
-        @secondary="onKeep('cancel')"
-        @ghost="cancelling ? (cancelling = false) : onKeep('later')"
-      >
-        <template #inner>{{ cancelling ? keepText.cancel.inner : keepText.inner }}</template>
-      </DecisionCard>
-
-      <DecisionCard
-        v-else-if="monthEnd"
-        v-bind="monthEndCard(month)"
-        @primary="answerRest(true)"
-        @ghost="answerRest(false)"
-      >
-        <template #inner>
-          <NumField v-model="restAmount" placeholder="50 000" aria-label="Сколько осталось, ₸" />
-        </template>
-      </DecisionCard>
-
-      <!-- Пришла зарплата? (RP-10) — вопрос о приходе, тексты решения «salary» главного; кнопка и лист «ещё» — в SalaryRow -->
-      <DecisionCard v-if="salaryHere" v-bind="salaryCard(salaryHere)">
-        <SalaryRow button :quiet="salaryQuiet" :person-id="salaryHere.who.id" :period="salaryHere.key" />
-      </DecisionCard>
-
       <!-- Итог недели -->
       <!-- Итог недели (g2 «Неделя — итог»): все разделы и «Не разобрано» строкой; разделы за месяц с продавцами —
            свёрнуты внутри той же карточки (правило 12). За неделю никто не загружал — карточки итога нет (без «0 ₸»). -->
@@ -502,7 +425,6 @@ onMounted(() => {
         :is="pic.uploaded.length ? WeekCard : Card"
         v-if="pic.uploaded.length || rows.length"
         v-bind="pic.uploaded.length ? weekCardProps : {}"
-        v-on="pic.uploaded.length ? { unknown: reviewUnknown } : {}"
       >
         <details v-if="rows.length" :class="pic.uploaded.length ? 'border-t border-line pt-3' : ''">
           <summary class="flex cursor-pointer list-none items-center justify-between gap-3 text-[14px] font-medium text-ink-2 [&::-webkit-details-marker]:hidden">

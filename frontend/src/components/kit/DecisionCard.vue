@@ -16,8 +16,10 @@ withDefaults(
     progress?: { n: number; k: number } | null
     actions?: { primary?: string; secondary?: string; ghost?: string } | null
     disabled?: boolean
+    /** Главное действие экрана (правило 12): рамка `--brand`, как у карточки решения макета «А · Ритуал». */
+    lead?: boolean
   }>(),
-  { meta: '', progress: null, actions: null, disabled: false },
+  { meta: '', progress: null, actions: null, disabled: false, lead: false },
 )
 
 const emit = defineEmits<{
@@ -28,7 +30,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <section class="flex flex-col gap-3.5 rounded-card border border-card-border bg-surface p-5 text-left" aria-live="polite">
+  <section class="flex flex-col gap-3.5 rounded-card border bg-surface p-5 text-left" :class="lead ? 'border-brand' : 'border-card-border'" aria-live="polite">
     <div v-if="progress" class="type-meta flex items-center gap-2.5">
       <ProgressBar :value="progress.k ? progress.n / progress.k : 0" :height="4" class="flex-1" />
       <span class="num shrink-0">{{ progress.n }} из {{ progress.k }}</span>

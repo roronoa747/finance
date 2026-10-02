@@ -10,7 +10,7 @@ import { assignIds } from '../src/lib/statements/model'
 import type { Operation, ParsedStatement } from '../src/lib/statements/types'
 import Statements from '../src/views/Statements.vue'
 import { money, plain } from '../src/lib/money'
-import { allocateCard, budgetAmounts, creditBalance, duesTotal, freeByFact, monthDues, salaryAllocationPath, salaryAsk } from '../src/lib/finance'
+import { budgetAmounts, creditBalance, duesTotal, freeByFact, monthDues, salaryAsk, type Decision } from '../src/lib/finance'
 import { planFamilyDoc, T0 } from '../src/test/planFamily'
 import type { Payment, SyncDoc } from '../src/types/finance'
 import type { SpendTotal } from '../src/lib/statements/types'
@@ -59,16 +59,17 @@ async function phone(server: FakeServer, st: FakeStatements, slot: 'a' | 'b', ro
 }
 
 /**
- * Первое решение «Недели» (пивот 3, Р-42/Р-43: на «Мечтах» решений нет) — `lead` экрана; у «разложить?»
- * — вопрос карточки и адрес раскладки.
+ * Первое решение «Недели» (пивот 3, Р-42/Р-43: на «Мечтах» решений нет) — первое в очереди экрана
+ * (`decisionQueue`, B2C-49); у «разложить?» — вопрос карточки и адрес раскладки.
  */
 async function weekDecision(p: Phone) {
   let vm: Record<string, any> = {}
-  const grab = { created(this: any) { if ('lead' in this.$.setupState) vm = this.$.setupState } }
+  const grab = { created(this: any) { if ('decision' in this.$.setupState) vm = this.$.setupState } }
   await screen(p.pinia, Statements, '/week', undefined, [grab])
-  if (!vm.lead) return null
-  const a = vm.allocate
-  return { kind: vm.lead as string, question: a ? allocateCard(a).question : undefined, to: a ? salaryAllocationPath(a.person.id, a.period) : undefined }
+  const d = vm.decision as Decision | null | undefined
+  if (!d) return null
+  const allocate = d.kind === 'allocate'
+  return { kind: d.kind as string, question: allocate ? d.question : undefined, to: allocate ? d.to : undefined, match: d.match }
 }
 
 const total = (by: 'a' | 'b', kind: 'week' | 'month', period: string, categoryId: string, amount: number): SpendTotal => ({
@@ -604,9 +605,9 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     let queued: string[] = []
     await screen(B.pinia, Statements, '/week', undefined, [
       screenMixin({}, (s) => {
-        const queue = s.unknownQueue as Group[]
+        const queue = (s.queue as Decision[]).filter((d) => d.kind === 'unknown').map((d) => d.group as Group)
         queued = queue.map((g) => g.label)
-        ;(s.choose as (g: Group, v: string) => void)(queue.find((g) => g.label === 'Перевод с карты на карту')!, 'sc_people')
+        ;(s.answerUnknown as (g: Group, to: { categoryId: string }) => void)(queue.find((g) => g.label === 'Перевод с карты на карту')!, { categoryId: 'sc_people' })
       }),
     ])
     expect(queued).toContain('Перевод с карты на карту')
@@ -614,7 +615,7 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     await ops.flush(B.client)
     const rule = () => B.store.merchantRules.filter((r) => !r.deletedAt && r.match.merchant === 'перевод с карты на карту')
     expect(rule().map((r) => r.to)).toEqual([{ payment: { kind: 'obligation', targetId: ob.id, categoryId: 'sc_subscriptions', restCategoryId: 'sc_people' } }])
-    await screen(B.pinia, Statements, '/week', undefined, [screenMixin({}, (s) => void (queued = (s.unknownQueue as Group[]).map((g) => g.label)))])
+    await screen(B.pinia, Statements, '/week', undefined, [screenMixin({}, (s) => void (queued = (s.queue as Decision[]).filter((d) => d.kind === 'unknown').map((d) => (d.group as Group).label)))])
     expect(queued).not.toContain('Перевод с карты на карту')
     const julyTransfers = () => ops.all
       .filter((o) => o.merchant === 'Перевод с карты на карту' && o.amount < 0 && o.date.startsWith('2025-07'))
@@ -915,7 +916,7 @@ describe('e2e / B2C Блок 3 — часть 7 (возврат приёмки �
           const s = this.$.setupState
           if (!('acceptMatch' in s) || router) return
           router = this.$router
-          s.acceptMatch(s.match)
+          s.acceptMatch(s.decision.match)
         },
       },
     ])
@@ -962,7 +963,7 @@ describe('e2e / B2C Блок 3 — часть 7 (возврат приёмки �
           const s = this.$.setupState
           if (!('acceptMatch' in s) || router) return
           router = this.$router
-          s.acceptMatch(s.match)
+          s.acceptMatch(s.decision.match)
         },
       },
     ])

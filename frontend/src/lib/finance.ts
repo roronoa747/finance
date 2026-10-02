@@ -1,10 +1,11 @@
 import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation } from '@/types/finance'
+import type { MatchCandidate } from '@/lib/statements/matching'
+import type { UnknownGroup } from '@/lib/statements/model'
 import type { Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY, plannedElsewhere } from '@/lib/statements/dictionary'
 import { addMonths, dayLabel, daysInMonth, monthFrom, monthKey, parseMonthKey, today, weekRange } from '@/lib/dates'
 import { spendColor } from '@/lib/palette'
 import { money, pct } from '@/lib/money'
-import { plural } from '@/lib/utils'
 /**
  * Расчётное ядро. Чистые функции: ни сети, ни состояния, ни ИИ.
  *
@@ -1569,8 +1570,8 @@ export function salaryOpen(p: Person, payments: Payment[], period: string, now =
 /**
  * «Пришла зарплата <имя>?» спрашивается сейчас (RP-10): ближайшая непришедшая зарплата
  * (`untilPayday`) — своя, и её день настал или близко (`salaryOpen`). Зарплата, чей день прошёл,
- * не спрашивается: `untilPayday` смотрит уже на следующую. Одно условие для главного
- * (`nextDecision`), «Недели» и `salaryToAllocate` — иначе они расходятся по дням месяца.
+ * не спрашивается: `untilPayday` смотрит уже на следующую. Одно условие для очереди
+ * «Недели» (`decisionQueue`), «Денег» и `salaryToAllocate` — иначе они расходятся по дням месяца.
  */
 export function salaryAsk(
   state: { people?: Person[]; obligations?: Obligation[]; credits?: Credit[]; accounts?: Account[]; payments?: Payment[] },
@@ -1748,8 +1749,8 @@ export const salaryAllocationPath = (person: PersonId, period: string) => `/week
  * Зарплата, отмеченная по выписке, которую ещё не разложили (B2C-21 п. 1, возврат приёмки Блока 3
  * п. 2): у ручного «Пришла» переход на раскладку сразу после отметки, а «Да, зарплата» из выписки и
  * автоотметка по правилу раскладку не открывали — она была недостижима. Можно отметить `record`
- * конкретного месяца (лист отметки) или найти свою последнюю — этого или прошлого месяца (карточка
- * «Недели» и `nextDecision`). Только `source: 'statement'`: ручные отметки до записи раскладок
+ * конкретного месяца (лист отметки) или найти свою последнюю — этого или прошлого месяца (очередь
+ * «Недели» `decisionQueue`). Только `source: 'statement'`: ручные отметки до записи раскладок
  * (`allocations`, B2C-21) раскладывал прежний Ритуал (до `WeekSalary`) без записи — карточка предложила бы их второй раз.
  * Нужна запись раскладки (`allocationFor` пуст) и свободное в этой зарплате (`salaryFree` > 0) — по
  * плану её месяца. Месяцы до спрашиваемой «Пришла?» не ищутся, только пока она действительно
@@ -2619,7 +2620,7 @@ export function weekVersusPrev(totals: SpendTotal[], week: string, prevWeek: str
 export const subscriptionYearly = (o: Obligation, key: string) => amountAt(o, key) * (o.every === 'year' ? 1 : 12)
 
 /**
- * Карточка «Оставить подписку?» (DESIGN.md §6) — одна на главном (`nextDecision`) и на «Неделе».
+ * Карточка «Оставить подписку?» (DESIGN.md §6) — одна в очереди «Недели» (`decisionQueue`).
  * Годовая — цена продления (`nextObligationDue`: новая версия с месяца продления, а не текущая)
  * и его день; продления впереди нет — сумма года как есть. Ежемесячная — сумма месяца, за год ×12.
  * «За год — X · это N % пути до <главная мечта>» (остаток мечты `goalRemaining`; мечты нет или
@@ -2805,35 +2806,45 @@ export function debtsSummary(state: { credits?: Credit[]; payments?: Payment[] }
   }
 }
 
-export type DecisionKind = 'unknown' | 'match' | 'allocate' | 'salary' | 'keep' | 'monthEnd' | 'plan'
+export type DecisionKind = 'match' | 'unknown' | 'keep' | 'allocate' | 'salary' | 'freed' | 'monthEnd'
 
-/** Ближайшее решение недели на главном: одна карточка, тексты DESIGN.md §6 и маршрут. */
+/** Решение очереди «Недели» (`decisionQueue`): тексты DESIGN.md §6, ключ и данные для ответа на месте. */
 export type Decision = {
   kind: DecisionKind
+  /** Ключ решения — «Потом» откладывает его до следующего открытия, «N из M» считает по нему. */
+  key: string
   question: string
   meta: string
   /** Строка внутренней карточки (детали) — если есть. */
   inner?: string
-  /** Куда ведёт главное действие; null — решение принимается на месте (стор). */
+  /** Куда ведёт главное действие; null — ответ на месте (стор). */
   to: string | null
-  actions: { primary: string; secondary?: string; ghost?: string }
+  actions: { primary?: string; secondary?: string; ghost?: string }
   /** Шаг «Отписаться» вопроса «оставить?» (`keepCard`). */
   cancel?: KeepCard['cancel']
   /** Подписка вопроса «оставить?». */
   obligation?: Obligation
-  /** Участник и месяц зарплаты «пришла?». */
+  /** Участник и месяц зарплаты «пришла?» / «разложить?». */
   salary?: { person: Person; period: string }
-  /** Шаг плана «Сначала долги». */
-  step?: PlanStep
+  /** Ждущее сопоставление операции с отметкой (Р-6). */
+  match?: MatchCandidate
+  /** Незнакомый продавец. */
+  group?: UnknownGroup
+  /** Снижение обязательства «освободится N ₸». */
+  freed?: FreedChange
 }
 
 /**
- * Что решить первым (Р-8): незнакомые продавцы недели → ждущие сопоставления (B2C-15) →
- * своя зарплата из выписки не разложена (`salaryToAllocate`) → своя зарплата «пришла?» (`salaryAsk`) → «оставить подписку?» (`keepQuestions`) →
- * «остались деньги?» (`monthEndAsk`) → шаг плана (`stepDue`) → null. Только для участника
- * с правом правки (viewer решений не принимает — Р-13); `me` — его слот.
+ * Очередь решений «Недели» (Р-43) — одна на экран: сопоставления (по одному на каждое ждущее) →
+ * незнакомые продавцы (по одному на группу; группы ищет экран — месяц или черновик, `last` — дата
+ * последней операции) → «оставить подписку?» (`keepQuestions`) → зарплата: «разложить?»
+ * (`salaryToAllocate`), иначе «пришла?» (`salaryAsk`) — одна карточка о зарплате за раз → «освободится
+ * N ₸» (`freedChange`, пока раскладка не записана) → «остались деньги?» (`monthEndAsk`, без раскладки
+ * остатка). Шаг плана — в квадрате «План» (Р-34), не здесь. Новых расчётов нет (Р-50): это прежние проверки по порядку.
+ * Отложенные («Потом») убирает экран. Viewer (`canEdit` false) решений не видит (Р-50); без своего слота (`me`)
+ * нет только решений о своей зарплате — как было у «Недели».
  */
-export function nextDecision(
+export function decisionQueue(
   state: {
     categories?: Category[]
     people?: Person[]
@@ -2846,91 +2857,84 @@ export function nextDecision(
   },
   ctx: {
     me: PersonId | undefined
-    unknown?: { count: number; amount: number }
-    /** Первое ждущее сопоставление (B2C-15): его вопрос и сколько их всего. */
-    match?: { count: number; question: string; meta: string } | null
+    canEdit?: boolean
+    matches?: MatchCandidate[]
+    unknown?: (UnknownGroup & { last?: string })[]
     answeredMonthEnd?: string | null
     now?: { day: number; key: string }
   },
-): Decision | null {
+): Decision[] {
+  if (ctx.canEdit === false) return []
   const now = ctx.now ?? today()
   const payments = state.payments ?? []
+  const out: Decision[] = []
 
-  const unknown = ctx.unknown ?? { count: 0, amount: 0 }
-  if (unknown.count > 0) {
-    return {
-      kind: 'unknown',
-      question: `Не разобрано: ${unknown.count} ${plural(unknown.count, 'продавец', 'продавца', 'продавцов')}`,
-      meta: `${money(unknown.amount)} за неделю · куда отнести?`,
-      to: '/week',
-      actions: { primary: 'Разобрать', ghost: 'Потом' },
-    }
-  }
-
-  const match = ctx.match
-  if (match && match.count > 0) {
-    return {
+  for (const c of ctx.matches ?? []) {
+    out.push({
       kind: 'match',
-      question: match.question,
-      meta: match.count > 1 ? `${match.meta} · ещё ${match.count - 1}` : match.meta,
-      to: '/week',
-      actions: { primary: 'Посмотреть', ghost: 'Потом' },
-    }
+      key: `match:${c.kind}:${c.targetId}:${c.period}`,
+      question: c.question,
+      meta: c.meta,
+      to: null,
+      actions: c.kind === 'salary' ? { primary: 'Да, зарплата', secondary: 'Нет', ghost: 'Потом' } : { primary: 'Да, отметить', secondary: 'Нет, это другое', ghost: 'Потом' },
+      match: c,
+    })
   }
 
-  // Зарплата пришла по выписке («Да, зарплата» или правило) и не разложена — раскладка (возврат приёмки п. 2).
+  for (const g of ctx.unknown ?? []) {
+    const last = g.last ? ` · последний — ${dayLabel(Number(g.last.slice(8, 10)), g.last.slice(0, 7))}` : ''
+    out.push({
+      kind: 'unknown',
+      key: `unknown:${JSON.stringify(g.match)}`,
+      question: `${g.label} — куда отнести?`,
+      meta: `${g.count} раз · ${money(g.amount)}${last}`,
+      to: null,
+      actions: { ghost: 'Потом' },
+      group: g,
+    })
+  }
+
+  const { year, month } = parseMonthKey(now.key)
+  for (const o of keepQuestions(state.obligations ?? [], new Date(Date.UTC(year, month, now.day, 12)))) {
+    out.push({ kind: 'keep', key: `keep:${o.id}`, ...keepCard(o, state.goals ?? [], payments, now), to: null, obligation: o })
+  }
+
+  // Зарплата пришла по выписке и не разложена — «разложить?»; иначе «пришла?» (возврат приёмки 2 п. 3: одна о зарплате).
   const unallocated = salaryToAllocate(state, ctx.me, now)
+  const near = unallocated ? null : salaryAsk(state, ctx.me, now)
   if (unallocated) {
-    return {
+    out.push({
       kind: 'allocate',
+      key: `allocate:${unallocated.person.id}:${unallocated.period}`,
       ...allocateCard(unallocated),
       to: salaryAllocationPath(unallocated.person.id, unallocated.period),
       actions: { primary: 'Разложить', ghost: 'Позже' },
       salary: { person: unallocated.person, period: unallocated.period },
-    }
+    })
+  } else if (near) {
+    // «Пришла» и лист «ещё» — `SalaryRow` на месте (RP-10).
+    out.push({ kind: 'salary', key: `salary:${near.who.id}:${near.key}`, ...salaryCard(near), to: null, actions: {}, salary: { person: near.who, period: near.key } })
   }
 
-  // «Пришла?» — как на прежнем Обзоре (RP-10), теперь «Мечты» и «Неделя»: ближайшая непришедшая зарплата — своя, и её
-  // день настал или близко; зарплата, чей день давно прошёл, не спрашивается (`salaryAsk`).
-  const near = salaryAsk(state, ctx.me, now)
-  if (near) {
-    return {
-      kind: 'salary',
-      ...salaryCard(near),
-      // Карточка «Пришла зарплата <имя>?» с отметкой живёт на «Неделе» (DESIGN §3): «Пришла» — туда.
-      to: '/week',
-      actions: { primary: 'Пришла', ghost: 'Потом' },
-      salary: { person: near.who, period: near.key },
-    }
+  // «Освободится N ₸» — как карточка «Денег»; раскладка записана (`source: 'freed'`) — уже решено.
+  const freed = freedChange(liveObligations(state.obligations ?? []), now.key)
+  if (freed && !allocationFor(state.allocations, { source: 'freed', sourceId: freed.o.id, period: freed.change.from })) {
+    out.push({
+      kind: 'freed',
+      key: `freed:${freed.o.id}:${freed.change.from}`,
+      question: `Освободится ${money(freed.monthly)} в месяц`,
+      meta: `${freed.o.name} · с ${monthFrom(freed.change.from, false)}`,
+      to: '/week/salary?from=freed',
+      actions: { primary: 'Распределить', ghost: 'Потом' },
+      freed,
+    })
   }
 
-  const keep = keepQuestions(state.obligations ?? [], new Date(Date.UTC(parseMonthKey(now.key).year, parseMonthKey(now.key).month, now.day, 12)))[0]
-  if (keep) {
-    return {
-      kind: 'keep',
-      ...keepCard(keep, state.goals ?? [], payments, now),
-      to: null,
-      obligation: keep,
-    }
+  // Ответ — до конца месяца на устройстве (`answeredMonthEnd`); раскладка остатка — ответ семьи: партнёр второй раз не спрашивается.
+  const restDone = allocationFor(state.allocations, { source: 'rest', sourceId: now.key, period: now.key })
+  if (!restDone && monthEndAsk(ctx.answeredMonthEnd ?? null, now)) {
+    out.push({ kind: 'monthEnd', key: `monthEnd:${now.key}`, ...monthEndCard(now.key), to: null })
   }
 
-  if (monthEndAsk(ctx.answeredMonthEnd ?? null, now)) {
-    return { kind: 'monthEnd', ...monthEndCard(now.key), to: '/week?rest=1' }
-  }
-
-  const plan = activePlan(state.plans ?? [])
-  const step = plan ? stepDue(planStep(plan, { goals: state.goals, credits: state.credits, obligations: state.obligations, payments }, now.key)) : null
-  if (step) {
-    const credit = (state.credits ?? []).find((c) => c.id === step.creditId)
-    return {
-      kind: 'plan',
-      question: `Внести по плану ${money(step.amount)}${credit ? ` в «${credit.name}»` : ''}?`,
-      meta: 'шаг месяца плана «Сначала долги»',
-      to: '/money/plan',
-      actions: { primary: 'Открыть план', ghost: 'Потом' },
-      step,
-    }
-  }
-
-  return null
+  return out
 }
