@@ -134,7 +134,7 @@ export function createAppRouter(history = typeof window !== 'undefined' ? create
       return next({ path: '/access', query: to.query })
     }
 
-    // 3. Экраны-формы (раскладка денег, новая мечта) — только участнику.
+    // 3. Экраны-формы («Ваш порядок», новая мечта) — только участнику.
     // «Ваш порядок» — viewer видит разбор, но не меняет (Р-63): прямой адрес — назад в разбор.
     if (to.meta.memberOnly && authStore.isViewer) {
       return next(typeof to.meta.viewerTo === 'string' ? { path: to.meta.viewerTo, query: to.query } : '/')

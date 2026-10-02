@@ -1683,10 +1683,10 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
-  /* ---------- раскладки (B2C-21) ---------- */
+  /* ---------- записи разбора (B2C-21, Блок 11) ---------- */
   const allocations = computed(() => (householdDoc.value.allocations ?? []).filter((a) => !a.deletedAt))
 
-  /** Решение раскладки — в общий документ: партнёр и второй заход видят его, а не раскладывают снова. */
+  /** Решение разбора — в общий документ: партнёр и второй заход видят его, а не разбирают снова. */
   function recordAllocation(a: Omit<Allocation, 'id' | 'at' | 'updatedAt' | 'deletedAt'>): Allocation {
     const t = new Date().toISOString()
     const record: Allocation = { ...a, id: Math.random().toString(36).slice(2, 10), at: t, updatedAt: t }

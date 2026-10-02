@@ -51,9 +51,9 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (e: 'close'): void
-  /** Отметка записана (не правка) — родитель может повести дальше (раскладка зарплаты). */
+  /** Отметка записана (не правка) — родитель может повести дальше (разбор зарплаты). */
   (e: 'marked', record: Payment): void
-  /** «Разложить» у пришедшей по выписке и не разложенной зарплаты — родитель ведёт на раскладку. */
+  /** «Разложить» у пришедшей по выписке и не разложенной зарплаты — родитель ведёт на разбор. */
   (e: 'allocate'): void
 }>()
 
@@ -66,7 +66,7 @@ const credit = computed(() => (props.kind === 'credit' ? finance.credits.find((c
 const person = computed(() => (salary.value ? finance.people.find((p) => p.id === props.targetId && !p.deletedAt) : undefined))
 
 const record = computed(() => paidFor(finance.payments, props.kind, props.targetId, props.period))
-/** Своя зарплата, отмеченная по выписке, без записи раскладки — «Разложить» (возврат приёмки п. 2). */
+/** Своя зарплата, отмеченная по выписке, без записи разбора — «Разложить» (возврат приёмки п. 2). */
 const canAllocate = computed(
   () => salary.value && !!record.value && !!salaryToAllocate({ ...finance.householdDoc, credits: finance.credits }, auth.slot, undefined, record.value),
 )
