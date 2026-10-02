@@ -40,44 +40,42 @@ const noLiterals = (html: string) => {
 }
 
 describe('DreamHero', () => {
-  it('фото: «До мечты», процент, строка «Цель · накоплено из нужно · будет вашей в», полоса и автор', async () => {
-    const html = await render(DreamHero, {
-      title: 'Япония',
-      percent: 62,
-      src: 'blob:photo',
-      author: 'Matthew Skinner',
-      haveAmount: 1_116_000,
-      needAmount: 1_800_000,
-      doneMonth: 'мае 2027',
-    })
+  it('экран цели (умолчание): фото, «До мечты», процент, строка, полоса, автор-ссылка, угол — 380', async () => {
+    const html = await render(
+      DreamHero,
+      { line: '1 116 000 из 1 800 000 ₸', percent: 62, src: 'blob:photo', author: 'Matthew Skinner', authorUrl: 'https://unsplash.com/@m' },
+      { corner: () => h('button', { 'aria-label': 'Сменить фото' }) },
+    )
     expect(html).toContain('До мечты')
     expect(html).toContain(pctText(62))
-    // «·» держится за предыдущее слово, месяц с годом — одним куском: строка не начинается с точки (смоук владельца, п. 4).
-    expect(html).toContain(`Япония${NBSP}· 1${NBSP}116${NBSP}000 из 1${NBSP}800${NBSP}000${NBSP}₸${NBSP}· будет вашей в мае${NBSP}2027`)
-    expect(html).not.toContain(' · ')
+    expect(html).toContain('1 116 000 из 1 800 000 ₸')
     expect(html).toContain('src="blob:photo"')
     expect(html).toContain('photo-scrim')
     expect(html).toContain('text-on-photo')
+    expect(html).toContain('href="https://unsplash.com/@m"')
     expect(html).toContain('Фото: Matthew Skinner')
     expect(html).toContain('aria-valuenow="62"')
-    expect(html).toContain('min-h-[440px]')
+    expect(html).toContain('aria-label="Сменить фото"')
+    expect(html).toContain('min-h-[380px]')
+    expect(html).not.toContain('min-h-[440px]')
     noLiterals(html)
   })
 
-  it('без фото — surface-3 и ink-текст, слот действий («Добавить фото»); экран цели — 380, превью — без процента', async () => {
-    const html = await render(DreamHero, { title: 'Машина', percent: 18, size: 'goal' }, { actions: () => h('button', 'Добавить фото') })
+  it('без фото — surface-3 и ink-текст, слот действий («Добавить фото»); превью — 180, без процента и полосы', async () => {
+    const html = await render(DreamHero, { line: 'x', percent: 18 }, { actions: () => h('button', 'Добавить фото') })
     expect(html).toContain('bg-surface-3')
     expect(html).not.toContain('<img')
     expect(html).toContain('Добавить фото')
-    expect(html).toContain('min-h-[380px]')
-    const preview = await render(DreamHero, { title: 'Путешествие · Япония', size: 'preview', src: 'x' })
+    const preview = await render(DreamHero, { line: 'Путешествие · Япония', size: 'preview', src: 'x' })
+    expect(preview).toContain('min-h-[180px]')
     expect(preview).not.toContain('До мечты')
+    expect(preview).not.toContain('role="progressbar"')
     expect(preview).toContain('Путешествие · Япония')
   })
 
   it('процент обрезается 0…100', async () => {
-    expect(await render(DreamHero, { title: 'Х', percent: 140 })).toContain(pctText(100))
-    expect(await render(DreamHero, { title: 'Х', percent: -5 })).toContain(pctText(0))
+    expect(await render(DreamHero, { line: 'Х', percent: 140, size: 'goal' })).toContain(pctText(100))
+    expect(await render(DreamHero, { line: 'Х', percent: -5, size: 'goal' })).toContain(pctText(0))
   })
 })
 

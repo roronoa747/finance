@@ -363,9 +363,9 @@ Text — body 15/1.45, h3 17/600, кнопка 15/600, meta и chip 13–14, tag
 Настроек), `MonthSummaryCard` (на `Card`).
 
 **Новые (пропсы и состояния словами):**
-- `DreamHero` — фото (`src`, `author`), `percent`, `title`, `haveAmount`, `needAmount`,
-  `doneMonth`; состояния: `no-photo` (фон `--surface-3`, ink-текст, чип «Добавить фото»), `empty`
-  («На что копим?» + кнопка), высота 440 (главный) / 380 (экран цели) / 180 (превью).
+- `DreamHero` — герой цели (клинап Блока 10): готовая строка `line` (обязательна), фото (`src`,
+  `author`, `authorUrl`), `percent`; состояние `no-photo` (фон `--surface-3`, ink-текст, слот `actions` —
+  «Добавить фото»), слот `corner`; высота 380 (`goal`, умолчание) / 180 (`preview`, без процента и полосы).
 - `DreamTile` — фото или `plain`, `percent`, `name`; вариант `add` («Новая мечта»); три в ряд,
   150 высота, radius 20.
 - `WeekCard` — картина первого запуска (клинап Блока 10): `total`, `segments[]` (раздел, сумма,
