@@ -402,7 +402,7 @@ onMounted(() => {
         <span class="-mt-2.5 type-big num text-ink">{{ money(decision.amount ?? 0) }}</span>
         <StackBar v-if="decision.usual" :segments="usualSegments(decision)" />
         <p class="text-[14px] text-ink-3">
-          <template v-if="decision.usual">{{ decision.meta.split(' · ')[0] }} · <b :class="['num font-semibold', decision.usual.fill.short > 0 ? 'text-destructive' : 'text-ok']">{{ decision.meta.split(' · ')[1] }}</b></template>
+          <template v-if="decision.usual">{{ decision.lead }} · <b :class="['num font-semibold', decision.usual.fill.short > 0 ? 'text-destructive' : 'text-ok']">{{ decision.outcome }}</b></template>
           <template v-else>{{ decision.meta }}</template>
         </p>
       </template>

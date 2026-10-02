@@ -3358,9 +3358,15 @@ describe('B2C-55: разбор зарплаты по статьям — ручн
       const prevRec: Allocation = { id: 'p', kind: 'breakdown', source: 'salary', sourceId: 'a', period: '2026-09', by: 'a', at: '2026-09-10T05:00:00.000Z', updatedAt: T, total: 650_000, parts: [], off: ['spend'] }
       const usual = q(family({ payments: [stmt('a', 700_000)], allocations: [prevRec] }), 'a')!
       expect(usual.meta).toBe(`Как в сентябре · останется ${money(75_000)}`)
+      // Части — для экрана (итог красится отдельно, строку не режут; ревью frontend Б11, Н-1).
+      expect(usual).toMatchObject({ lead: 'Как в сентябре', outcome: `останется ${money(75_000)}` })
       expect(usual.usual!.articles.find((a) => a.key === 'spend')!.on).toBe(false)
       // Не хватает — так и пишем: 600 000 при статьях 665 000.
-      expect(q(family({ payments: [stmt('a', 600_000)] }), 'a')!.meta).toBe(`По вашему порядку · не хватает ${money(65_000)}`)
+      expect(q(family({ payments: [stmt('a', 600_000)] }), 'a')!).toMatchObject({
+        meta: `По вашему порядку · не хватает ${money(65_000)}`,
+        lead: 'По вашему порядку',
+        outcome: `не хватает ${money(65_000)}`,
+      })
     })
 
     it('без плана — «Разложить» ведёт в «Ваш порядок»; после записи — карточки нет', () => {

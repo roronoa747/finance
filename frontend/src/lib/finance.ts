@@ -1736,8 +1736,13 @@ export function allocationFor(
  * Адрес разбора (B2C-58): параметры источника — как у прежней раскладки (её старый адрес —
  * редирект сюда, `router/index.ts`). Один для очереди, листа отметки, `SalaryRow`, «Денег» и «Истории».
  */
-export const breakdownPath = (query: Record<string, string | number>) =>
-  `/week/breakdown?${Object.entries(query).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&')}`
+const withQuery = (path: string, query: Record<string, string | number>) =>
+  `${path}?${Object.entries(query).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&')}`
+
+export const breakdownPath = (query: Record<string, string | number>) => withQuery('/week/breakdown', query)
+
+/** «Ваш порядок» с источником разбора (B2C-56): «Готово» вернёт в разбор с теми же параметрами. */
+export const orderPath = (query: Record<string, string | number>) => withQuery('/week/order', query)
 
 /** Разбор пришедшей зарплаты участника за месяц. */
 export const salaryBreakdownPath = (person: PersonId, period: string) => breakdownPath({ from: 'salary', person, period })
@@ -2935,6 +2940,9 @@ export type Decision = {
   freed?: FreedChange
   /** «Пришла зарплата · как обычно» (Р-55): разбор, как в прошлый раз; null — плана ещё нет. */
   usual?: AsUsual | null
+  /** Части `meta` карточки «как обычно» (`usualCard`): «Как в сентябре» и «останется N ₸» / «не хватает N ₸». */
+  lead?: string
+  outcome?: string
   /** Сумма пришедшей зарплаты карточки «Пришла зарплата». */
   amount?: number
 }
@@ -3012,7 +3020,7 @@ export function decisionQueue(
       kind: 'allocate',
       key: `allocate:${person.id}:${period}`,
       ...(usual ? usualCard(usual) : { question: 'Пришла зарплата', meta: 'Сначала — ваш порядок' }),
-      to: usual ? path : `/week/order?${path.split('?')[1]}`,
+      to: usual ? path : orderPath({ from: 'salary', person: person.id, period }),
       actions: usual ? { primary: 'Разложить как обычно', ghost: 'Изменить' } : { primary: 'Разложить', ghost: 'Позже' },
       salary: { person, period },
       usual,
@@ -3490,11 +3498,15 @@ export function asUsual(
   return { ...mb, articles, fill, last: prev?.period ?? null, off: prev?.off ?? [] }
 }
 
-/** Тексты карточки «Пришла зарплата» (макет, вопрос 2): «Как в сентябре · останется N ₸». */
-export const usualCard = (u: Pick<AsUsual, 'last' | 'fill'>) => ({
-  question: 'Пришла зарплата',
-  meta: `${u.last ? `Как в ${monthIn(u.last, false)}` : 'По вашему порядку'} · ${u.fill.short > 0 ? `не хватает ${money(u.fill.short)}` : `останется ${money(u.fill.rest)}`}`,
-})
+/**
+ * Тексты карточки «Пришла зарплата» (макет, вопрос 2): «Как в сентябре · останется N ₸». `lead` и `outcome` —
+ * части `meta` по отдельности: экран красит итог (нехватка — красным), не разрезая строку.
+ */
+export function usualCard(u: Pick<AsUsual, 'last' | 'fill'>) {
+  const lead = u.last ? `Как в ${monthIn(u.last, false)}` : 'По вашему порядку'
+  const outcome = u.fill.short > 0 ? `не хватает ${money(u.fill.short)}` : `останется ${money(u.fill.rest)}`
+  return { question: 'Пришла зарплата', meta: `${lead} · ${outcome}`, lead, outcome }
+}
 
 export type BreakdownEffects = {
   /** Взносы сейчас: в цели и в копилку (`goalId: null` — копилку надо завести, `need` — её порог). */
