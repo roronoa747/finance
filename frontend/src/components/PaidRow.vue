@@ -35,15 +35,17 @@ const props = defineProps<{
   title: string
   /** Подпись неоплаченного: дата, частота. */
   note?: string
-  accent?: string
   /** Строка ведёт дальше: нажатие мимо кнопки — событие open. */
   clickable?: boolean
   /** Под строкой — «Другая сумма или счёт» (модалки Капитала). */
   more?: boolean
   /** Без боковых отступов — строка внутри карточки. */
   dense?: boolean
-  /** Расход в списке Бюджета — «−N», как соседние строки. */
-  minus?: boolean
+  /**
+   * Строка списка «Платежи» (пивот 3, макет): у оплаченного — та же подпись и «оплачено», без
+   * «дальше», остатка и долей «в долг · банку» — они в листе кредита.
+   */
+  compact?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -76,7 +78,9 @@ const due = computed(() => {
 const shown = computed(() => (record.value ? record.value.amount : due.value))
 
 /** Кредит: сколько из суммы в долг и сколько банку — у отмеченного по записи (Р-8); без ставки «банку 0» врёт (B2C-19). */
-const split = computed(() => (credit.value && !credit.value.rateUnknown && shown.value > 0 ? paymentSplit(record.value, credit.value, due.value) : null))
+const split = computed(() =>
+  !props.compact && credit.value && !credit.value.rateUnknown && shown.value > 0 ? paymentSplit(record.value, credit.value, due.value) : null,
+)
 
 /** Следующий неоплаченный платёж после этого месяца. */
 const next = computed(() => {
@@ -117,13 +121,16 @@ function openMore() {
 </script>
 
 <template>
-  <Row :title="title" :accent="accent" :clickable="clickable" :dense="dense" :muted="!!record" @click="clickable && emit('open')">
+  <Row :title="title" :clickable="clickable" :dense="dense" :muted="!!record" @click="clickable && emit('open')">
     <template v-if="$slots.icon" #icon>
       <slot name="icon" />
     </template>
 
     <template #note>
-      <template v-if="record">
+      <span v-if="record && compact" class="block text-[12.5px] text-ink-3">
+        {{ [note, 'оплачено', record.source === 'statement' ? 'из выписки' : ''].filter(Boolean).join(' · ') }}
+      </span>
+      <template v-else-if="record">
         <span class="block text-[12.5px] text-ink-3">
           оплачено{{ next ? ` · дальше ${dayLabel(next.day, next.period)} · ${plain(next.amount)} ₸` : '' }}{{ record.source === 'statement' ? ' · из выписки' : '' }}
         </span>
@@ -136,9 +143,9 @@ function openMore() {
 
     <template #value>
       <span :class="cn('block text-[14.5px] font-semibold num', record ? 'text-ink-3' : 'text-ink')">
-        {{ minus ? `−${plain(shown)}` : money(shown) }}
+        {{ money(shown) }}
       </span>
-      <span v-if="estimate && !record" class="block text-[12px] text-ink-3">оценка</span>
+      <span v-if="estimate && !record && !compact" class="block text-[12px] text-ink-3">оценка</span>
       <template v-if="split">
         <span class="block text-[11.5px] text-ink-3 num">в долг {{ plain(split.body) }}</span>
         <span class="block text-[11.5px] text-ink-3 num">банку {{ plain(split.interest) }}</span>

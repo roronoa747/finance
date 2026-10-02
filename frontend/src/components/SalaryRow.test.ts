@@ -5,7 +5,9 @@ import { useAuthStore } from '@/stores/auth'
 import { money, plain } from '@/lib/money'
 import { accountBalance, budgetAmounts, paidFor, salaryFree } from '@/lib/finance'
 import type { Payment } from '@/types/finance'
-import Budget from '@/views/Budget.vue'
+import { createSSRApp } from 'vue'
+import { renderToString } from 'vue/server-renderer'
+import SalaryRow from './SalaryRow.vue'
 import Money from '@/views/Money.vue'
 import WeekSalary from '@/views/WeekSalary.vue'
 import { authAs, planFamilyDoc } from '@/test/planFamily'
@@ -54,42 +56,41 @@ describe('RP-10: «Пришла зарплата» (SSR)', () => {
     useFinanceStore().setHouseholdDoc(planFamilyDoc({ payments }), 1)
   }
 
-  /** Строка списка по заголовку: от корня `Row` до следующего. */
-  const row = (html: string, title: string) =>
-    html.split('border-b border-line last:border-b-0').find((chunk) => chunk.includes(`>${title}<`)) ?? ''
+  /**
+   * Строка зарплаты участника за сентябрь — та же, что в листе «До зарплаты» и на «Неделе» (список
+   * Бюджета ушёл с пивотом 3, B2C-45).
+   */
+  const row = (id: 'a' | 'b') => renderToString(createSSRApp(SalaryRow, { personId: id, period: '2026-09', note: '10 сентября' }))
   const hasMark = (chunk: string) => />\s*Пришла\s*<\/button>/.test(chunk)
 
-  it('Бюджет: «Пришла» — только в строке своей зарплаты; viewer не видит ни одной', async () => {
+  it('строка зарплаты: «Пришла» — только в строке своей зарплаты; viewer не видит ни одной', async () => {
     family('member', 'a')
-    let html = await renderScreen(Budget, '/budget', { initialView: 'list' })
-    expect(hasMark(row(html, 'Зарплата · Ильяс'))).toBe(true)
-    expect(hasMark(row(html, 'Зарплата · Аруна'))).toBe(false)
+    expect(hasMark(await row('a'))).toBe(true)
+    expect(hasMark(await row('b'))).toBe(false)
 
     setActivePinia(createPinia())
     family('member', 'b')
-    html = await renderScreen(Budget, '/budget', { initialView: 'list' })
-    expect(hasMark(row(html, 'Зарплата · Ильяс'))).toBe(false)
-    expect(hasMark(row(html, 'Зарплата · Аруна'))).toBe(true)
+    expect(hasMark(await row('a'))).toBe(false)
+    expect(hasMark(await row('b'))).toBe(true)
 
     setActivePinia(createPinia())
     family('viewer', 'a')
-    html = await renderScreen(Budget, '/budget', { initialView: 'list' })
-    expect(hasMark(row(html, 'Зарплата · Ильяс'))).toBe(false)
-    expect(hasMark(row(html, 'Зарплата · Аруна'))).toBe(false)
+    expect(hasMark(await row('a'))).toBe(false)
+    expect(hasMark(await row('b'))).toBe(false)
   })
 
-  it('Бюджет: до окна кнопки нет; в окне за 3 дня — есть', async () => {
+  it('строка зарплаты: до окна кнопки нет; в окне за 3 дня — есть', async () => {
     vi.setSystemTime(new Date('2026-09-06T07:00:00Z'))
     family('member', 'a')
-    expect(hasMark(row(await renderScreen(Budget, '/budget', { initialView: 'list' }), 'Зарплата · Ильяс'))).toBe(false)
+    expect(hasMark(await row('a'))).toBe(false)
     vi.setSystemTime(new Date('2026-09-07T07:00:00Z'))
-    expect(hasMark(row(await renderScreen(Budget, '/budget', { initialView: 'list' }), 'Зарплата · Ильяс'))).toBe(true)
+    expect(hasMark(await row('a'))).toBe(true)
   })
 
-  it('Бюджет: отмеченная — сумма пришедшего, день и счёт; партнёру — отметка без кнопок', async () => {
+  it('строка зарплаты: отмеченная — сумма пришедшего, день и счёт; партнёру — отметка без кнопок', async () => {
     const bonus = salary({ amount: 900_000 })
     family('member', 'a', [bonus])
-    const mine = row(await renderScreen(Budget, '/budget', { initialView: 'list' }), 'Зарплата · Ильяс')
+    const mine = await row('a')
     expect(mine).toContain('пришла 10 сентября · Kaspi Gold')
     expect(mine).toContain(`+${plain(900_000)}`)
     expect(hasMark(mine)).toBe(false)
@@ -97,17 +98,18 @@ describe('RP-10: «Пришла зарплата» (SSR)', () => {
 
     setActivePinia(createPinia())
     family('member', 'b', [bonus])
-    const theirs = row(await renderScreen(Budget, '/budget', { initialView: 'list' }), 'Зарплата · Ильяс')
+    const theirs = await row('a')
     expect(theirs).toContain('пришла 10 сентября · Kaspi Gold')
     expect(theirs).toContain('aria-label="Пришла"')
     expect(theirs).not.toContain('подробнее')
   })
 
-  it('«Деньги»: «Пришла зарплата» в «До зарплаты» — у того, чья зарплата ближайшая; после отметки — следующая', async () => {
+  // Пивот 3 (Р-32, Р-39): «Пришла зарплата» — в сводке «До зарплаты N дней»; ближайшая зарплата — строкой её листа.
+  it('«Деньги»: «Пришла зарплата» в сводке «До зарплаты» — у того, чья зарплата ближайшая; после отметки — следующая', async () => {
     vi.setSystemTime(new Date('2026-09-09T07:00:00Z')) // завтра зарплата Ильяса, списаний до неё нет
     family('member', 'a')
     const mine = await renderScreen(Money, '/money')
-    expect(mine).toContain('До зарплаты')
+    expect(mine).toContain('До зарплаты 1 день')
     expect(mine).toMatch(/>\s*Пришла зарплата\s*</)
 
     setActivePinia(createPinia())
@@ -121,8 +123,9 @@ describe('RP-10: «Пришла зарплата» (SSR)', () => {
     // Отметили раньше дня — «До зарплаты» смотрит на зарплату Аруны 20-го.
     setActivePinia(createPinia())
     family('member', 'a', [salary({ at: '2026-09-09T04:00:00.000Z' })])
-    const after = await renderScreen(Money, '/money')
-    expect(after).toContain('Аруна получит')
+    const after = await renderScreen(Money, '/money', undefined, [screenMixin({ open: true })])
+    expect(after).toContain('До зарплаты 11 дней')
+    expect(after.slice(after.indexOf('role="dialog"'))).toContain('Зарплата · Аруна')
     expect(after).not.toMatch(/Пришла зарплата/)
   })
 

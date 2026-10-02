@@ -52,6 +52,8 @@ import {
   prepaySaved,
   budgetAmounts,
   openCredits,
+  overpayNoPlan,
+  liveSpendCategories,
   costliestCredits,
   dueIn,
   groupTotal,
@@ -71,6 +73,11 @@ import {
   planExtra,
   planStep,
   planForecast,
+  planOutlook,
+  historyFeed,
+  historyCategories,
+  historyStart,
+  debtAdvice,
   planFact,
   planMonths,
   planMonthSum,
@@ -81,7 +88,6 @@ import {
   pauseMissed,
   planSchedule,
   endedPlan,
-  budgetLines,
   salaryOpen,
   salaryFree,
   SALARY_EARLY_DAYS,
@@ -100,6 +106,10 @@ import {
   subscriptionYearly,
   goalRemaining,
   freeByFact,
+  monthSpentByFact,
+  incomeSplit,
+  livingPlanFact,
+  debtsSummary,
   nextDecision,
   salaryAsk,
   salaryToAllocate,
@@ -115,9 +125,8 @@ import { DEFAULT_SPEND_CATEGORIES } from '@/lib/statements/dictionary'
 import { plain, money, moneyShort, parseMoney, pct, ratePct } from './money'
 import { clean, caretAt, sigBefore } from './num'
 import { plural } from './utils'
-import { monthKey, parseMonthKey, addMonths, daysInMonth, leadingBlanks, today, atLabel } from '@/lib/dates'
-import type { Account, Allocation, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, WishItem } from '@/types/finance'
-import { DEFAULT_CATEGORY_NAMES } from '@/lib/palette'
+import { monthKey, parseMonthKey, addMonths, daysInMonth, today, atLabel } from '@/lib/dates'
+import type { Account, Allocation, Credit, DebtPlan, Goal, Obligation, Payment, Person, WishItem } from '@/types/finance'
 
 describe('finance.ts — аннуитет и кредитные расчёты', () => {
   it('annuityPayment — корректный расчёт платежа при нулевой и положительной ставке', () => {
@@ -313,14 +322,13 @@ describe('money.ts & num.ts & dates.ts — форматирование и па�
     expect(caretAt(clean('12000', 'money'), 2)).toBe(2)
   })
 
-  it('dates.ts даты и календарь', () => {
+  it('dates.ts даты', () => {
     expect(monthKey(new Date(2026, 8, 1))).toBe('2026-09')
     const { year, month } = parseMonthKey('2026-09')
     expect(year).toBe(2026)
     expect(month).toBe(8)
     expect(addMonths('2026-09', 3)).toBe('2026-12')
     expect(daysInMonth('2026-02')).toBe(28)
-    expect(leadingBlanks('2026-09')).toBeGreaterThanOrEqual(0)
   })
 })
 
@@ -1621,33 +1629,11 @@ describe('PV-14 — план «Сначала долги»: модель и ра
     expect(planForecast(plan({ lump: 50_000 }), applied, '2026-09')).toEqual(planForecast(plan(), applied, '2026-09'))
   })
 
-  it('budgetLines: строки по ключам d1–d4, имя семьи или запасное; «Досрочно по плану» — сразу после целей', () => {
-    const cats: Category[] = [
-      { key: 'd2', name: 'Долги', note: '', amount: 0, updatedAt: T0 },
-      { key: 'd4', name: 'Еда и быт', note: '', amount: 150_000, updatedAt: T0 },
-    ]
-    const amounts = { d1: 220_000, d2: 0, d3: 30_000, d4: 150_000, d5: 0, income: 0, planExtra: 100_000, planCushion: false }
-    expect(budgetLines(cats, amounts)).toEqual([
-      { key: 'd1', name: DEFAULT_CATEGORY_NAMES.d1, amount: 220_000 },
-      { key: 'd2', name: 'Долги', amount: 0 },
-      { key: 'd3', name: DEFAULT_CATEGORY_NAMES.d3, amount: 30_000 },
-      { key: 'plan', name: 'Досрочно по плану', amount: 100_000 },
-      { key: 'd4', name: 'Еда и быт', amount: 150_000 },
-    ])
-    // Раздела нет и суммы нет — строки нет; плана нет — строки плана нет.
-    expect(budgetLines([], { ...amounts, d1: 0, planExtra: 0 }).map((l) => l.key)).toEqual(['d3', 'd4'])
-    // Н-4: пока план набирает подушку — строка называется по фазе, сумма та же.
-    expect(budgetLines(cats, { ...amounts, planCushion: true }).find((l) => l.key === 'plan')).toEqual({
-      key: 'plan', name: 'По плану — в подушку', amount: 100_000,
-    })
-  })
-
-  it('Н-4: budgetAmounts знает фазу подушки — шаг плана «подушка»; подушка полна — нет', () => {
+  it('Н-4: budgetAmounts в фазе подушки — деньги плана в planExtra (поле planCushion снято в клинапе Б9: без потребителей)', () => {
     const base = { people, obligations: [rent], credits: state().credits, payments: [], plans: [plan()] }
     const thin = budgetAmounts({ ...base, goals: goals(150_000) })
-    expect(thin).toMatchObject({ planCushion: true, planExtra: 100_000 })
-    expect(budgetAmounts({ ...base, goals: goals(400_000) }).planCushion).toBe(false)
-    expect(budgetAmounts({ ...base, goals: goals(150_000), plans: [] }).planCushion).toBe(false)
+    expect(thin).toMatchObject({ planExtra: 100_000 })
+    expect(thin).not.toHaveProperty('planCushion')
   })
 
   it('хвост 6: «План и факт» в фазе подушки — месяцы подушки не пропуски, текущий — не «0 ₸»', () => {
@@ -1980,6 +1966,59 @@ describe('PV-14 — план «Сначала долги»: модель и ра
     it('взнос на весь остаток закрывает долг: left 0, months 0', () => {
       expect(lumpPlan(1_000_000, 0.36, 25_000, 1_500_000, 'term')).toMatchObject({ paid: 1_000_000, left: 0, months: 0, payment: 0, saved: 0 })
     })
+  })
+
+  it('B2C-43 (Р-34): debtAdvice — самая дорогая ставка первой (бывшее «Что гасить первым» Капитала), 0 % и без ставки не ранжируются', () => {
+    const list = [...credits(), credit('st', { principal: 1_200_000, annualRate: 0, rateUnknown: true, payment: 151_790 })]
+    const a = debtAdvice(list)
+    expect(a.rankedDebts.map((d) => d.credit.id)).toEqual(['cc', 'loan'])
+    expect(a.unknownRate.map((c) => c.id)).toEqual(['st'])
+    // Кредитка 300 000 под 40 %: проценты 10 000 в месяц — 40 % платежа 25 000; переплата — из creditOutlook.
+    expect(a.worstDebt?.cost).toMatchObject({ closes: true, monthlyInterest: 10_000, sharePct: 40 })
+    expect(a.worstDebt?.cost).toEqual(creditOutlook({ principal: 300_000, annualRate: 0.4, payment: 25_000 }))
+    expect(a.worstHalfExtra).toBe(halfOverpayExtra(300_000, 0.4, 25_000))
+    expect(a.worstHalfExtra).toBeGreaterThan(0)
+    expect(a.worstGain).toEqual(prepayOutcome({ principal: 300_000, annualRate: 0.4, payment: 25_000 }, a.worstHalfExtra!, 'monthly'))
+    // Платёж меньше процентов — «долг не закрывается», добавки нет.
+    const stuck = debtAdvice([credit('x', { principal: 1_000_000, annualRate: 0.36, payment: 20_000 })])
+    expect(stuck.worstDebt?.cost.closes).toBe(false)
+    expect(stuck.worstHalfExtra).toBeNull()
+    expect(stuck.worstGain).toBeNull()
+    // Долгов с процентами нет.
+    expect(debtAdvice([credit('inst', { annualRate: 0 })])).toMatchObject({ rankedDebts: [], worstDebt: null, worstGain: null })
+  })
+
+  it('B2C-43: planOutlook — те же прогоны, что planForecast: срок с планом, на сколько раньше, переплата «без → с» сходится с экономией до тенге', () => {
+    const p = plan()
+    const st = state({ cushionHave: 400_000 })
+    const forecast = planForecast(p, st, '2026-09')
+    const o = planOutlook(p, st, '2026-09')
+    expect(o.debtFreeMonth).toBe(forecast.debtFreeMonth)
+    expect(o.overpayWithout! - o.overpayWith!).toBe(forecast.savedInterest)
+    expect(o.overpayWith!).toBeGreaterThan(0)
+    expect(o.monthsSooner).toBeGreaterThan(0)
+    // Долг не закрывается ни с планом, ни без — чисел нет (Р-11).
+    const stuck = planOutlook(p, state({ credits: credits({ cc: { payment: 5_000 } }) }), '2026-09')
+    expect(planForecast(p, state({ credits: credits({ cc: { payment: 5_000 } }) }), '2026-09').savedInterest).toBeNull()
+    expect(stuck).toMatchObject({ monthsSooner: null, overpayWithout: null, overpayWith: null })
+  })
+
+  it('ревью frontend Б9, Н-2: «Переплата A» прогноза = «переплата до конца» карточки ставки (creditOutlook), без второго счёта', () => {
+    // Один долг: число прогноза — ровно число карточки «Самая дорогая ставка».
+    const one = [credit('cc', { principal: 300_000, annualRate: 0.4, payment: 25_000, day: 22 })]
+    const st1 = state({ cushionHave: 400_000, credits: one })
+    const o1 = planOutlook(plan(), st1, '2026-09')
+    expect(o1.overpayWithout).toBe(creditOutlook(st1.credits![0]).overpay)
+    expect(o1.overpayWithout).toBe(debtAdvice(st1.credits!).worstDebt!.cost.overpay)
+    expect(o1.overpayWithout! - o1.overpayWith!).toBe(planForecast(plan(), st1, '2026-09').savedInterest)
+    // Несколько долгов — сумма по открытым; закрытые и 0 % ничего не добавляют.
+    const st = state({ cushionHave: 400_000 })
+    const sum = openCredits(st.credits!).reduce((a, c) => a + creditOutlook(c).overpay, 0)
+    expect(overpayNoPlan(st.credits!)).toBe(sum)
+    expect(planOutlook(plan(), st, '2026-09').overpayWithout).toBe(sum)
+    expect(overpayNoPlan([...st.credits!, credit('done', { principal: 0 })])).toBe(sum)
+    // Платёж меньше процентов — числа нет (Р-11).
+    expect(overpayNoPlan(credits({ cc: { payment: 5_000 } }))).toBeNull()
   })
 })
 
@@ -2489,6 +2528,84 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
     })
   })
 
+  describe('«Деньги» (пивот 3, B2C-41): факт трат, доли дохода, «Еда и быт», долги, до зарплаты', () => {
+    const state = { people, obligations: [rent], credits: [loan], goals: [goal('g', 'Цель')], categories: [], payments: [] as Payment[] }
+    const uploads = [{ slot: 'a', period_from: '2026-09-01', period_to: '2026-09-17' }]
+    const totals = [
+      total('a', 'month', '2026-09', 'sc_food', 150_000),
+      total('b', 'month', '2026-09', 'sc_cafe', 50_000),
+      total('a', 'month', '2026-09', 'sc_credit', 58_000),
+      total('a', 'month', '2026-09', 'sc_rent', 220_000),
+      total('a', 'month', '2026-09', '_unknown', 20_000),
+      total('a', 'week', '2026-W38', 'sc_food', 999_999),
+    ]
+
+    it('monthSpentByFact — то самое, что вычитает freeByFact: план − факт = «Свободно»; без загрузок — null', () => {
+      const spent = monthSpentByFact(totals, categories, '2026-09', uploads)
+      expect(spent).toBe(150_000 + 50_000 + 20_000)
+      const f = freeByFact(state, totals, categories, '2026-09', uploads)
+      expect(f.spent).toBe(spent)
+      expect(f.income - f.dues - f.goals - spent!).toBe(f.amount)
+      // Флаг семьи сильнее словаря — в обоих местах одинаково.
+      const own = categories.map((c) => (c.id === 'sc_rent' ? { ...c, plannedElsewhere: false } : c))
+      expect(monthSpentByFact(totals, own, '2026-09', uploads)).toBe(freeByFact(state, totals, own, '2026-09', uploads).spent)
+      expect(monthSpentByFact(totals, categories, '2026-09', [{ slot: 'a', period_from: '2026-08-01', period_to: '2026-08-31' }])).toBeNull()
+      expect(monthSpentByFact([], categories, '2026-09', uploads)).toBe(0)
+    })
+
+    it('incomeSplit: нагрузка = доля жилья и кредитов (формула «вместе с жильём»), доли — проценты Бюджета, свободно не меньше 0', () => {
+      const a = { d1: 220_000, d2: 103_000, d3: 130_000, d4: 150_000, d5: 597_000, income: 1_200_000, planExtra: 0 }
+      const s = incomeSplit(a)
+      expect(s.load).toBe(27)
+      expect(s.load).toBe(pct(a.d1 + a.d2, a.income))
+      expect(s.parts.map((p) => [p.key, p.amount, p.pct])).toEqual([
+        ['must', 323_000, 27],
+        ['dreams', 130_000, 11],
+        ['living', 150_000, 13],
+        ['free', 597_000, 50],
+      ])
+      expect(s.parts[0].share).toBeCloseTo(323_000 / 1_200_000, 6)
+      expect(s.overplanned).toBe(0)
+      // С планом «Сначала долги» досрочка — в «мечтах»; расписано больше дохода — свободно 0 и «не сходится».
+      const over = incomeSplit({ ...a, d3: 100_000, planExtra: 30_000, d4: 800_000, d5: -53_000 })
+      expect(over.parts.find((p) => p.key === 'dreams')!.amount).toBe(130_000)
+      expect(over.parts.find((p) => p.key === 'free')).toMatchObject({ amount: 0, pct: 0, share: 0 })
+      expect(over.overplanned).toBe(53_000)
+      expect(incomeSplit({ ...a, income: 0 })).toMatchObject({ load: 0 })
+    })
+
+    it('livingPlanFact: план — база раздела d4, факт — monthSpentByFact, проценты факта от плана; нет загрузок — факта и процента нет', () => {
+      const cats = [{ key: 'd4' as const, name: 'Еда и быт', note: '', amount: 300_000, updatedAt: T }]
+      expect(livingPlanFact(cats, totals, categories, '2026-09', uploads)).toEqual({ plan: 300_000, spent: 220_000, pct: 73, share: 220_000 / 300_000, over: false })
+      expect(livingPlanFact(cats, totals, categories, '2026-09', [])).toEqual({ plan: 300_000, spent: null, pct: null, share: 0, over: false })
+      const small = [{ ...cats[0], amount: 200_000 }]
+      expect(livingPlanFact(small, totals, categories, '2026-09', uploads)).toMatchObject({ pct: 110, share: 1, over: true })
+      expect(livingPlanFact([], totals, categories, '2026-09', uploads)).toMatchObject({ plan: 0, spent: 220_000, pct: null })
+    })
+
+    it('debtsSummary: остаток живых кредитов и «оплачено N из M» из monthDues — после «Оплатил» N растёт', () => {
+      const cc: Credit = { ...loan, id: 'cc', name: 'Кредитка', principal: 300_000, payment: 25_000, day: 22 }
+      const s = { credits: [loan, cc], payments: [] as Payment[] }
+      expect(debtsSummary(s, '2026-09')).toEqual({ total: loan.principal + 300_000, open: true, paid: 0, count: 2 })
+      const paid: Payment = { id: 'p', kind: 'credit', targetId: 'loan', period: '2026-09', amount: 58_000, accountId: null, by: 'a', at: T, updatedAt: T }
+      expect(debtsSummary({ ...s, payments: [paid] }, '2026-09')).toMatchObject({ paid: 1, count: 2 })
+      expect(debtsSummary({ credits: [{ ...loan, principal: 0 }], payments: [] }, '2026-09')).toMatchObject({ total: 0, open: false })
+      expect(debtsSummary({ credits: [], payments: [] }, '2026-09')).toEqual({ total: 0, open: false, paid: 0, count: 0 })
+    })
+
+    it('untilPayday: список платежей до зарплаты — сводка «K списаний · сумма»: сумма списка = dueTotal, оплаченное — отдельно', () => {
+      const p = untilPayday({ people, obligations: [rent], credits: [loan], accounts: [], payments: [] }, { day: 3, key: '2026-09' })!
+      expect(p.due.length).toBeGreaterThan(0)
+      expect(p.due.reduce((a, x) => a + x.value, 0)).toBe(p.dueTotal)
+      const first = p.due[0]
+      const paid: Payment = { id: 'p', kind: first.kind, targetId: first.targetId, period: first.when, amount: first.value, accountId: null, by: 'a', at: T, updatedAt: T }
+      const after = untilPayday({ people, obligations: [rent], credits: [loan], accounts: [], payments: [paid] }, { day: 3, key: '2026-09' })!
+      expect(after.due).toHaveLength(p.due.length - 1)
+      expect(after.dueTotal).toBe(p.dueTotal - first.value)
+      expect(after.paid.map((x) => x.targetId)).toContain(first.targetId)
+    })
+  })
+
   describe('nextDecision', () => {
     const base = { people, obligations: [rent], credits: [loan], goals: [goal('g', 'Япония', { need: 1_800_000, have: 1_116_000 })], payments: [] as Payment[] }
     const sub: Obligation = { id: 'nf', name: 'Netflix', note: '', day: 3, category: 'd4', versions: [{ from: '2000-01', amount: 4_990 }], updatedAt: T }
@@ -2867,5 +2984,66 @@ describe('B2C-21: записанная раскладка', () => {
     expect(allocationFor(list, { source: 'rest', sourceId: '2026-09', period: '2026-09' })?.id).toBe('rest')
     expect(allocationFor(list, { source: 'freed', sourceId: 'tv', period: '2026-09' })).toBeNull()
     expect(allocationFor(undefined, { source: 'salary', sourceId: 'a', period: '2026-09' })).toBeNull()
+  })
+})
+
+describe('B2C-44: лента «Истории»', () => {
+  const T0 = '2026-09-01T00:00:00.000Z'
+  const op = (id: string, date: string, amount: number, p: Record<string, unknown> = {}) =>
+    ({ id, bank: 'kaspi', date, amount, kind: 'purchase', merchant: id, categoryId: null, internal: false, ...p }) as never
+  const mark = (id: string, at: string, p: Partial<Payment> = {}): Payment => ({
+    id, kind: 'obligation', targetId: 'rent', period: '2026-09', amount: 220_000, accountId: 'card', by: 'a', at, updatedAt: at, ...p,
+  })
+
+  it('historyFeed: дни новые сверху, отметка — по дню Алматы (30 сентября 20:00 UTC — 1 октября), удалённая не видна, «не отдадим банку» не повторяется', () => {
+    const feed = historyFeed(
+      {
+        ops: [op('a', '2026-09-24', -6_800), op('b', '2026-09-30', -1_000), op('old', '2026-08-31', -5)],
+        payments: [mark('m1', '2026-09-30T20:00:00.000Z'), mark('m2', '2026-09-24T05:00:00.000Z', { deletedAt: T0, kind: 'credit', targetId: 'x' })],
+        moments: [
+          { kind: 'half', id: 'h', at: '2026-09-24T09:00:00.000Z', goalId: 'g', name: 'Отпуск' },
+          { kind: 'saved', id: 's', at: '2026-09-24T09:00:00.000Z', creditId: 'c', name: 'Кредит', saved: 1 },
+        ],
+      },
+      ['2026-09'],
+    )
+    expect(feed.map((d) => [d.day, d.items.map((x) => x.id)])).toEqual([
+      ['2026-09-30', ['b']],
+      ['2026-09-24', ['h', 'a']],
+    ])
+    expect(historyFeed({ ops: [], payments: [mark('m1', '2026-09-30T20:00:00.000Z')] }, ['2026-10'])[0].day).toBe('2026-10-01')
+  })
+
+  it('historyCategories: траты по убыванию суммы, неразобранное — _unknown, поступления и «между своими» — нет; historyStart — самый ранний месяц', () => {
+    const ops = [
+      op('a', '2026-09-24', -6_800, { categoryId: 'sc_food' }),
+      op('b', '2026-09-20', -12_400, { categoryId: 'sc_food' }),
+      op('c', '2026-09-20', -30_000),
+      op('d', '2026-09-12', -200_000, { internal: true }),
+      op('e', '2026-09-10', 700_000, { categoryId: 'sc_income' }),
+      op('f', '2026-08-10', -99_000, { categoryId: 'sc_fun' }),
+    ]
+    expect(historyCategories(ops, ['2026-09'])).toEqual(['_unknown', 'sc_food'])
+    expect(historyCategories(ops, ['2026-09', '2026-08'])).toEqual(['sc_fun', '_unknown', 'sc_food'])
+    expect(historyStart({ ops, payments: [mark('m', '2026-07-03T05:00:00.000Z')] })).toBe('2026-07')
+    expect(historyStart({ ops: [] })).toBeNull()
+  })
+})
+
+describe('ревью frontend Б9, Н-3: liveSpendCategories — один список разделов трат на три места', () => {
+  const T = '2026-09-01T00:00:00.000Z'
+  it('живые разделы семьи по order; удалённые — нет; пусто или все удалены — стартовый словарь по order', () => {
+    const own: SpendCategory[] = [
+      { id: 'b', name: 'Бэ', hue: 'blue', order: 2, updatedAt: T },
+      { id: 'a', name: 'А', hue: 'green', order: 1, updatedAt: T },
+      { id: 'x', name: 'Удалён', hue: 'plum', order: 0, updatedAt: T, deletedAt: T },
+    ]
+    expect(liveSpendCategories(own).map((c) => c.id)).toEqual(['a', 'b'])
+    // Список семьи не меняется на месте (сортируется копия).
+    expect(own.map((c) => c.id)).toEqual(['b', 'a', 'x'])
+    const dict = DEFAULT_SPEND_CATEGORIES.slice().sort((a, b) => a.order - b.order).map((c) => c.id)
+    expect(liveSpendCategories(undefined).map((c) => c.id)).toEqual(dict)
+    expect(liveSpendCategories([]).map((c) => c.id)).toEqual(dict)
+    expect(liveSpendCategories([own[2]]).map((c) => c.id)).toEqual(dict)
   })
 })

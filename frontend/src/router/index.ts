@@ -7,38 +7,49 @@ import { landingPath } from '@/router/landing'
 import Access from '@/views/Access.vue'
 import AppShell from '@/components/AppShell.vue'
 import Dreams from '@/views/Dreams.vue'
-import Money from '@/views/Money.vue'
 import Settings from '@/views/Settings.vue'
 import Wishes from '@/views/Wishes.vue'
 
 // Редкие экраны — отдельными чанками (Н-9 ревью Блока 3): главный чанк без них меньше 500 kB.
 // Предкэш PWA (`generateSW`) берёт все чанки — офлайн они открываются так же.
 const GoalDetail = () => import('@/views/GoalDetail.vue')
-// Бюджет и Капитал — второй уровень «Денег» (B2C-21): стартовый чанк без них на ~28 КБ gzip легче.
-const Budget = () => import('@/views/Budget.vue')
-const Capital = () => import('@/views/Capital.vue')
-const Deposit = () => import('@/views/Deposit.vue')
+// «Деньги» (пивот 3, Р-31): один экран — сводка и квадраты Капитал · План · История — одним чанком.
+const Money = () => import('@/views/Money.vue')
 // Раскладка зарплаты, остатка и освободившихся денег (бывший Ритуал; B2C-21).
 const WeekSalary = () => import('@/views/WeekSalary.vue')
-const DebtPlan = () => import('@/views/DebtPlan.vue')
 // Выписки (B2C-07): pdf.js грузится ещё позже — только когда выбрали файл.
 const Statements = () => import('@/views/Statements.vue')
 // Новая мечта (B2C-18): шаблоны с картинками — редкий экран, отдельным чанком.
 const GoalNew = () => import('@/views/GoalNew.vue')
 // Первый запуск (B2C-19): один раз на семью — отдельным чанком.
 const Start = () => import('@/views/Start.vue')
-// «История и итоги» (B2C-21): итог месяца, «Впереди», моменты семьи.
-const History = () => import('@/views/History.vue')
 
 /**
  * Карта маршрутов Блока 3 (DESIGN.md §2, B2C-13): вкладки «Мечты» `/` · «Неделя» `/week` ·
- * «Деньги» `/money`, второй уровень под `/money/*`, `/settings`. Старые адреса установленных
- * PWA и ссылок — редиректы с сохранением query (`/capital?credit=x` → `/money/capital?credit=x`).
+ * «Деньги» `/money`, `/settings`. «Деньги» — один экран (пивот 3, Р-31): квадраты Капитал `/money`,
+ * План `/money/plan`, История `/money/history`. Старые адреса установленных PWA и ссылок —
+ * редиректы с сохранением query (`/money/capital?credit=x` → `/money?credit=x`; счёт и вклад
+ * `/money/capital/:id` → `/money?account=:id`).
  * `/ritual` без параметров — «Неделя»; с параметрами (раскладка зарплаты, остатка, освободившихся
  * денег) — `/week/salary` (раскладка `WeekSalary`, B2C-21).
  */
 const ritualRedirect = (to: { query: Record<string, unknown> }): RouteLocationRaw =>
   Object.keys(to.query).length ? { path: '/week/salary', query: to.query as Record<string, string> } : '/week'
+
+/**
+ * Бюджет и Капитал до пивота 3 — квадрат «Капитал» с теми же ключами окон; закладка калькулятора
+ * «Копить или гасить» (`?advice=strategy`) — квадрат «План», где он теперь живёт (B2C-43).
+ */
+const capitalRedirect = (to: { query: Record<string, unknown> }): RouteLocationRaw => {
+  const { advice, ...query } = to.query as Record<string, string>
+  return advice === 'strategy' ? { path: '/money/plan', query } : { path: '/money', query }
+}
+
+/** Экран счёта или вклада — лист счёта в «Деньгах» (пивот 3). */
+const accountRedirect = (to: { params: Record<string, unknown>; query: Record<string, unknown> }): RouteLocationRaw => ({
+  path: '/money',
+  query: { ...(to.query as Record<string, string>), account: String(to.params.id) },
+})
 
 export const routes: RouteRecordRaw[] = [
   {
@@ -65,12 +76,12 @@ export const routes: RouteRecordRaw[] = [
       // `memberOnly` — экран-форма: viewer уходит на главный (Р-12, «viewer — без форм»), в том числе
       // со старой ссылки `/ritual?…` и закладки.
       { path: 'week/salary', name: 'week-salary', component: WeekSalary, meta: { memberOnly: true } },
-      { path: 'money', name: 'money', component: Money },
-      { path: 'money/budget', name: 'budget', component: Budget },
-      { path: 'money/capital', name: 'capital', component: Capital },
-      { path: 'money/capital/:id', name: 'deposit', component: Deposit },
-      { path: 'money/plan', name: 'plan', component: DebtPlan },
-      { path: 'money/history', name: 'history', component: History },
+      // Квадрат — по адресу; переключение — `router.replace` (назад — на прошлую вкладку).
+      { path: 'money/:square(plan|history)?', name: 'money', component: Money },
+      // Бюджет и Капитал до пивота 3 — теперь квадрат «Капитал»; окна — те же ключи query.
+      { path: 'money/budget', redirect: (to) => ({ path: '/money', query: to.query }) },
+      { path: 'money/capital', redirect: capitalRedirect },
+      { path: 'money/capital/:id', redirect: accountRedirect },
       { path: 'goals/new', name: 'goal-new', component: GoalNew, meta: { memberOnly: true } },
       // Желания по людям (B2C-18): общий список и список участника — один экран.
       { path: 'wishes', name: 'wishes', component: Wishes },
@@ -80,9 +91,9 @@ export const routes: RouteRecordRaw[] = [
       { path: 'share/:goalId', redirect: (to) => ({ path: `/goals/${String(to.params.goalId)}`, query: { share: '1' } }) },
       { path: 'settings', name: 'settings', component: Settings },
       // Старые адреса (до Блока 3).
-      { path: 'budget', redirect: '/money/budget' },
-      { path: 'capital', redirect: '/money/capital' },
-      { path: 'capital/:id', redirect: (to) => ({ path: `/money/capital/${String(to.params.id)}`, query: to.query }) },
+      { path: 'budget', redirect: '/money' },
+      { path: 'capital', redirect: capitalRedirect },
+      { path: 'capital/:id', redirect: accountRedirect },
       { path: 'goals', redirect: '/' },
       { path: 'ritual', redirect: ritualRedirect },
       { path: 'plan', redirect: '/money/plan' },

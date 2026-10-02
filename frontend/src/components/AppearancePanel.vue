@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { DEFAULT_CATEGORY_NAMES, categoryName, type CategoryKey, type HueKey, type ThemeChoice } from '@/lib/palette'
-import { readCategoryHues, readThemeChoice, setCategoryHue, setThemeChoice } from '@/lib/theme'
+import type { ThemeChoice } from '@/lib/palette'
+import { readThemeChoice, setThemeChoice } from '@/lib/theme'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import Segmented from '@/components/kit/Segmented.vue'
-import HuePicker from '@/components/goals/HuePicker.vue'
 import Input from '@/components/ui/Input.vue'
 import Button from '@/components/ui/Button.vue'
 import Callout from '@/components/kit/Callout.vue'
 import { useRouter } from 'vue-router'
+
+/**
+ * Оформление устройства (тема) и имя; внизу — выход или «Создать семью» из демо.
+ * `section` — какая часть: в Настройках они в разных карточках (g7 «Оформление» и «Выйти»).
+ */
+const props = defineProps<{ section: 'look' | 'account' }>()
 
 const authStore = useAuthStore()
 const financeStore = useFinanceStore()
@@ -18,9 +23,6 @@ const router = useRouter()
 // Тема применена ещё в main.ts; панель только показывает и меняет выбор. Акцента
 // пользователя нет — бренд один (DESIGN.md §3, B2C-12).
 const currentTheme = ref<ThemeChoice>(readThemeChoice())
-const categoryHues = ref(readCategoryHues())
-// Разделы во Vue заводятся лениво — ряд есть у всех пяти, имя незаведённого — запасное.
-const CATEGORY_KEYS = Object.keys(DEFAULT_CATEGORY_NAMES) as CategoryKey[]
 
 // Имя — из документа (React `AppearancePanel.tsx:45-64`): переименование в зарплатах видно здесь.
 const myName = computed(() => financeStore.people.find((p) => p.id === authStore.slot)?.name ?? '')
@@ -32,11 +34,6 @@ watch(myName, (name) => {
 function updateTheme(th: ThemeChoice) {
   currentTheme.value = th
   setThemeChoice(th)
-}
-
-function updateCategoryHue(key: CategoryKey, hue: HueKey) {
-  categoryHues.value = { ...categoryHues.value, [key]: hue }
-  setCategoryHue(key, hue)
 }
 
 // Пустое имя не пишется — в поле возвращается прежнее.
@@ -87,6 +84,7 @@ function leave(choice: 'keep' | 'discard') {
 
 <template>
   <div class="flex flex-col gap-4 text-left">
+    <template v-if="props.section === 'look'">
     <!-- Имя пишется в общий документ — у viewer поля нет (его запись сервер не примет). -->
     <div v-if="!authStore.isViewer">
       <div class="mb-1.5 type-section">
@@ -114,28 +112,18 @@ function leave(choice: 'keep' | 'discard') {
         @update:model-value="updateTheme"
       />
     </div>
+    </template>
 
-    <div>
-      <div class="mb-1.5 type-section">
-        Цвета разделов
-      </div>
-      <HuePicker
-        v-for="key in CATEGORY_KEYS"
-        :key="key"
-        :label="categoryName(financeStore.categories, key)"
-        :model-value="categoryHues[key]"
-        @update:model-value="(hue) => updateCategoryHue(key, hue)"
-      />
-    </div>
+    <template v-else>
 
-    <div v-if="authStore.isDemo" class="flex flex-col gap-2 pt-3 border-t border-line">
+    <div v-if="authStore.isDemo" class="flex flex-col gap-2">
       <p class="text-[12.5px] leading-relaxed text-ink-2">
         Это демо: всё живёт только на этом телефоне. Создайте семью — и заполненное можно будет взять с
         собой.
       </p>
       <Button class="w-full" @click="leaveDemo">Создать семью или войти</Button>
     </div>
-    <div v-else class="pt-3 border-t border-line">
+    <div v-else>
       <Button
         v-if="!leaving"
         variant="ghost"
@@ -172,5 +160,6 @@ function leave(choice: 'keep' | 'discard') {
         <Button variant="ghost" class="w-full" :disabled="sending" @click="leaving = null">Остаться</Button>
       </div>
     </div>
+    </template>
   </div>
 </template>

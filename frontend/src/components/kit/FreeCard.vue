@@ -4,7 +4,7 @@ import Card from './Card.vue'
 import ProgressBar from './ProgressBar.vue'
 
 /**
- * «Свободно до конца месяца» (DESIGN.md §5): сумма Piazzolla 44 (`md` — 32), подпись
+ * «Свободно до конца месяца» (DESIGN.md §5): сумма 44 (`md` — 32, цифры --font-num), подпись
  * («по факту выписок обоих · N дней до зарплаты»), полоса `--ok`. `amount: null` — «—» до
  * первой выписки. Сумму и долю считает `freeByFact` (`finance.ts`).
  */

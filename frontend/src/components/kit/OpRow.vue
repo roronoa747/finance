@@ -15,8 +15,10 @@ withDefaults(
     date?: string
     letter?: string
     clickable?: boolean
+    /** Не трата (перевод между своими): сумма без знака, тихим цветом. */
+    muted?: boolean
   }>(),
-  { category: null, date: '', letter: '', clickable: false },
+  { category: null, date: '', letter: '', clickable: false, muted: false },
 )
 
 const emit = defineEmits<{ (e: 'click'): void }>()
@@ -44,6 +46,7 @@ const emit = defineEmits<{ (e: 'click'): void }>()
         <span class="truncate">{{ category?.name ?? 'Не разобрано' }}<template v-if="date"> · {{ date }}</template></span>
       </span>
     </span>
-    <span class="money whitespace-nowrap" :class="amount > 0 ? 'text-ok' : 'text-ink'">{{ amount > 0 ? '+' : '' }}{{ money(Math.abs(amount)) }}</span>
+    <span v-if="muted" class="money whitespace-nowrap text-ink-3">{{ money(Math.abs(amount)) }}</span>
+    <span v-else class="money whitespace-nowrap" :class="amount > 0 ? 'text-ok' : 'text-ink'">{{ amount > 0 ? '+' : '−' }}{{ money(Math.abs(amount)) }}</span>
   </component>
 </template>

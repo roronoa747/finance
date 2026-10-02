@@ -8,7 +8,6 @@ import { useOperationsStore } from '../src/stores/operations'
 import { apiClient } from '../src/api/client'
 import { assignIds } from '../src/lib/statements/model'
 import type { Operation, ParsedStatement } from '../src/lib/statements/types'
-import History from '../src/views/History.vue'
 import Statements from '../src/views/Statements.vue'
 import { money, plain } from '../src/lib/money'
 import { budgetAmounts, creditBalance, duesTotal, freeByFact, monthDues, salaryAsk } from '../src/lib/finance'
@@ -28,6 +27,8 @@ import WeekSalary from '../src/views/WeekSalary.vue'
 import Money from '../src/views/Money.vue'
 import { attachTemplate } from '../src/lib/photos/goalPhoto'
 import { photoUrl, releasePhotos, uploadPhoto } from '../src/lib/photos/store'
+
+const NBSP = ' '
 import { screenMixin } from '../src/test/screenState'
 import { at, backend, fakePrivate, fakeServer, fakeStatements, privateFor, screen, statementsFor, type FakePrivate, type FakeServer, type FakeStatements } from './support/family'
 
@@ -113,7 +114,8 @@ describe('e2e / B2C Блок 3 — часть 1: главный «Мечты» (
     // Герой: 200 000 / 3 000 000 = 7 %; по 60 000 в месяц — 47 взносов с сентября 2026 → июль 2030.
     expect(html).toContain('До мечты')
     expect(html).toContain('7 %')
-    expect(html).toContain(`Машина · 200 000 из ${money(3_000_000)} · будет вашей в июле 2030`)
+    // «·» держится за предыдущее слово, месяц с годом — одним куском (смоук владельца, п. 4).
+    expect(html).toContain(`Машина${NBSP}· 200 000 из ${money(3_000_000)}${NBSP}· будет вашей в июле${NBSP}2030`)
 
     // Неделя: 62 000 + 20 000 продукты, 28 000 кафе, 10 000 не разобрано = 120 000, обе выписки.
     expect(html).toContain('Эта неделя · 14–20 сентября')
@@ -131,7 +133,8 @@ describe('e2e / B2C Блок 3 — часть 1: главный «Мечты» (
     expect(duesTotal(monthDues(state, '2026-09'))).toBe(323_000)
     expect(budgetAmounts(state).d3).toBe(130_000)
     expect(html).toContain(money(483_000))
-    expect(html).toContain('по факту выписок обоих · 3 дня до зарплаты · Дана')
+    // Без «· Дана» в конце: имя без падежа переносилось отдельной строкой с точки (смоук владельца).
+    expect(html).toContain(`по факту выписок обоих${NBSP}· 3${NBSP}дня до зарплаты`)
 
     // Ближайшее решение — незнакомый продавец недели (10 000 ₸), ведёт на «Неделю».
     expect(html).toContain('Не разобрано: 1 продавец')
@@ -222,8 +225,8 @@ describe('e2e / B2C Блок 3 — часть 2: сопоставление вы
     expect(paidB).toMatchObject({ targetId: 'loan', period: '2026-09', amount: 58_000, source: 'statement', accountId: null })
     // creditSplit(1 000 000, 33 %, 58 000): банку 27 500, в долг 30 500.
     expect(B.store.credits.find((c) => c.id === 'loan')!.principal).toBe(969_500)
-    // Отметки платежей месяца — «Впереди» на /money/history (B2C-21).
-    const moneyB = await screen(B.pinia, History, '/money/history')
+    // Отметки платежей месяца — «Платежи» Капитала (пивот 3, Р-32, B2C-42): «12-го · оплачено · из выписки».
+    const moneyB = await screen(B.pinia, Money, '/money')
     expect(moneyB).toContain('оплачено')
     expect(moneyB).toContain('из выписки')
     // Правило — в личном документе A, партнёру не уезжает.
@@ -598,7 +601,7 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
       screenMixin({}, (s) => {
         const queue = s.unknownQueue as Group[]
         queued = queue.map((g) => g.label)
-        ;(s.choose as (g: Group, v: string, r: boolean) => void)(queue.find((g) => g.label === 'Перевод с карты на карту')!, 'sc_people', true)
+        ;(s.choose as (g: Group, v: string) => void)(queue.find((g) => g.label === 'Перевод с карты на карту')!, 'sc_people')
       }),
     ])
     expect(queued).toContain('Перевод с карты на карту')

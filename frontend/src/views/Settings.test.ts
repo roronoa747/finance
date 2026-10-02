@@ -51,6 +51,14 @@ describe('B2C-13: /settings и /money (SSR)', () => {
     // Напоминание и удаление аккаунта — Блоки 5 и 4: секций нет.
     expect(html).not.toContain('Напоминание')
     expect(html).not.toContain('Удалить аккаунт')
+    // Возврат смоука (g7, правило 12): порядок «Оформление» → «С кем» → выход; разбор выписок — свёрнут
+    // (<details> без open), выход — своей карточкой после «С кем». «Цвета разделов» сняты (клинап Б9, Р-33).
+    expect(html.indexOf('Оформление')).toBeLessThan(html.indexOf('С кем'))
+    expect(html.indexOf('С кем')).toBeLessThan(html.indexOf('Выйти из аккаунта'))
+    expect(html).not.toContain('<details open')
+    expect(html).not.toContain('Цвета разделов')
+    const parse = html.slice(html.lastIndexOf('<details', html.indexOf('Разбор выписок')), html.indexOf('Разбор выписок'))
+    expect(parse).toContain('<summary')
   })
 
   it('viewer: «вы · только просмотр»', async () => {
@@ -94,8 +102,9 @@ describe('B2C-13: /settings и /money (SSR)', () => {
     expect(await renderScreen(Settings, '/settings')).not.toContain('Пригласить партнёра')
   })
 
-  it('«Деньги»: входы второго уровня — Бюджет, Капитал, План', async () => {
+  it('«Деньги» (пивот 3): три квадрата Капитал · План · История вместо входов второго уровня', async () => {
     const html = await renderScreen(Money, '/money')
-    for (const t of ['Бюджет', 'Капитал', 'План «Сначала долги»']) expect(html).toContain(t)
+    for (const t of ['>Капитал</b>', '>План</b>', '>История</b>']) expect(html).toContain(t)
+    expect(html).not.toContain('План «Сначала долги»')
   })
 })

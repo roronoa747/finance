@@ -5,7 +5,7 @@ import { renderScreen, screenMixin } from '@/test/screenState'
 import { useAuthStore } from '@/stores/auth'
 import { authAs, planFamilyDoc, planOf } from '@/test/planFamily'
 import { money, plain } from '@/lib/money'
-import Capital from './Capital.vue'
+import Money from '@/views/Money.vue'
 import {
   closerWish,
   netWorth,
@@ -17,7 +17,11 @@ import {
   strategyInputs,
 } from '@/lib/finance'
 
-describe('views/Capital.vue — Счета, кредиты, досрочное погашение и капитал', () => {
+/**
+ * Перенос `views/Capital.test.ts` (пивот 3, B2C-45): экран Капитала стал «Счетами» и «Платежами» в «Деньгах»
+ * (`CapitalLists`), его листы и формы — те же; «Что гасить первым» и план — в квадрате «План».
+ */
+describe('«Деньги» → Капитал: счета, кредиты, досрочное погашение (бывший Capital.test)', () => {
   const storageMap = new Map<string, string>()
   const mockLocalStorage = {
     getItem: (key: string) => storageMap.get(key) ?? null,
@@ -158,7 +162,7 @@ describe('views/Capital.vue — Счета, кредиты, досрочное �
     expect(resB.net).toBeGreaterThan(resA.net)
   })
 
-  it('рендерит Capital.vue с карточкой капитала, списком счетов и кредитов (компонентный рендер)', async () => {
+  it('«Деньги»: чистых в квадрате «Капитал», «Счета» (личный — с пометкой) и «Платежи» с кредитом (компонентный рендер)', async () => {
     const store = useFinanceStore()
 
     store.addAccount({
@@ -183,27 +187,26 @@ describe('views/Capital.vue — Счета, кредиты, досрочное �
 
     const { createSSRApp } = await import('vue')
     const { renderToString } = await import('vue/server-renderer')
-    const { createRouter, createMemoryHistory } = await import('vue-router')
-    const Capital = (await import('./Capital.vue')).default
+    const { createMemoryHistory } = await import('vue-router')
+    const Money = (await import('@/views/Money.vue')).default
 
-    const router = createRouter({
-      history: createMemoryHistory(),
-      routes: [{ path: '/capital', component: Capital }],
-    })
+    const router = (await import('@/router')).createAppRouter(createMemoryHistory())
     await router.push('/capital')
     await router.isReady()
 
-    const app = createSSRApp(Capital)
+    const app = createSSRApp(Money)
     app.use(router)
 
     const html = await renderToString(app)
 
-    expect(html).toContain('Чистый капитал')
-    expect(html).toContain('Где лежат деньги')
+    // Пивот 3 (Р-33, B2C-42): капитал — подписью квадрата «Капитал» (владелец 2026-10-02), счета и платежи — двумя списками.
+    expect(html).toMatch(new RegExp(`>Капитал</b>(?:<!--[^>]*-->|\\s)*<small[^>]*>${plain(netWorth(store.accounts, store.credits, store.goals))}</small>`))
+    expect(html).not.toContain('чистых')
+    expect(html).toContain('>Счета<')
     expect(html).toContain('Основной Kaspi')
     expect(html).toContain('Секретная заначка')
-    expect(html).toContain('Личный')
-    expect(html).toContain('Обязательства')
+    expect(html).toContain('наличные · личный')
+    expect(html).toContain('>Платежи<')
     expect(html).toContain('Кредитная карта')
   })
 
@@ -219,17 +222,14 @@ describe('views/Capital.vue — Счета, кредиты, досрочное �
 
     const { createSSRApp } = await import('vue')
     const { renderToString } = await import('vue/server-renderer')
-    const { createRouter, createMemoryHistory } = await import('vue-router')
-    const Capital = (await import('./Capital.vue')).default
+    const { createMemoryHistory } = await import('vue-router')
+    const Money = (await import('@/views/Money.vue')).default
 
-    const router = createRouter({
-      history: createMemoryHistory(),
-      routes: [{ path: '/capital', component: Capital }],
-    })
+    const router = (await import('@/router')).createAppRouter(createMemoryHistory())
     await router.push('/capital?income=1')
     await router.isReady()
 
-    const app = createSSRApp(Capital)
+    const app = createSSRApp(Money)
     app.use(router)
 
     const html = await renderToString(app)
@@ -262,12 +262,12 @@ describe('PV-02: калькулятор в Капитале (SSR)', () => {
   async function render(props: Record<string, unknown> = {}) {
     const { createSSRApp } = await import('vue')
     const { renderToString } = await import('vue/server-renderer')
-    const { createRouter, createMemoryHistory } = await import('vue-router')
-    const Capital = (await import('./Capital.vue')).default
-    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/capital', component: Capital }] })
+    const { createMemoryHistory } = await import('vue-router')
+    const Money = (await import('@/views/Money.vue')).default
+    const router = (await import('@/router')).createAppRouter(createMemoryHistory())
     await router.push('/capital')
     await router.isReady()
-    const app = createSSRApp(Capital, props)
+    const app = createSSRApp(Money, props)
     app.use(router)
     return renderToString(app)
   }
@@ -281,7 +281,7 @@ describe('PV-02: калькулятор в Капитале (SSR)', () => {
     store.addCredit({ name: 'Банк', principal: 1_000_000, annualRate: 0.18, payment: 91_680, day: 20 })
     store.addGoal({ name: 'Квартира', need: 5_000_000, have: 400_000, monthly: 150_000, hue: 'teal' })
 
-    // По умолчанию — «Какой первым».
+    // Капитал калькулятора не показывает — он в квадрате «План» (B2C-43).
     expect(await render()).not.toContain('Одинаковые траты, разный порядок')
 
     // Кредитку закрыли досрочкой — в стратегии остаётся только «Банк».
@@ -289,7 +289,7 @@ describe('PV-02: калькулятор в Капитале (SSR)', () => {
     store.applyPrepayment(card, 'a', { amount: 300_000, mode: 'term', accountId: store.accounts[0].id })
     expect(store.credits[0].principal).toBe(0)
 
-    const html = await render({ initialAdvice: 'strategy' })
+    const html = await renderScreen(Money, '/money/plan')
     expect(html).toContain('Одинаковые траты, разный порядок')
     expect(html).toContain('Горизонт')
     const debts = [{ principal: 1_000_000, annualRate: 0.18, payment: 91_680 }]
@@ -315,18 +315,8 @@ describe('PV-03: форма долга — ставка из срока и ра�
     setActivePinia(createPinia())
   })
 
-  async function render(props: Record<string, unknown> = {}) {
-    const { createSSRApp } = await import('vue')
-    const { renderToString } = await import('vue/server-renderer')
-    const { createRouter, createMemoryHistory } = await import('vue-router')
-    const Capital = (await import('./Capital.vue')).default
-    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/capital', component: Capital }] })
-    await router.push('/capital?add=debt')
-    await router.isReady()
-    const app = createSSRApp(Capital, props)
-    app.use(router)
-    return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
-  }
+  /** Форма долга по `?add=debt`; поля — состоянием листа `NewDebtSheet`. */
+  const render = (state: Record<string, unknown> = {}) => renderScreen(Money, '/money?add=debt', undefined, [screenMixin(state)])
 
   it('по маршруту /capital?add=debt — переключатель React и текст «Без них»', async () => {
     const html = await render()
@@ -337,7 +327,7 @@ describe('PV-03: форма долга — ставка из срока и ра�
 
   it('«Знаю срок», 1 000 000 / 10 000 / 12 — предупреждение с числами и «Записать всё равно можно»', async () => {
     const { plain } = await import('@/lib/money')
-    const html = await render({ initialDebt: { mode: 'term', principal: '1 000 000', payment: '10 000', term: '12' } })
+    const html = await render({ debtMode: 'term', debtPrincipal: '1 000 000', debtPayment: '10 000', debtTerm: '12' })
     expect(html).toContain('Сколько платежей осталось')
     expect(html).toContain(
       `12 платежей по ${plain(10_000)} — это ${plain(120_000)} ₸, а остаток вы указали ${plain(1_000_000)} ₸. Не хватает ${plain(880_000)} ₸: похоже, платежей 100, а не 12.`,
@@ -349,7 +339,7 @@ describe('PV-03: форма долга — ставка из срока и ра�
   })
 
   it('«Знаю срок», 1 000 000 / 91 680 / 12 — «Ставка получается 18,0% годовых», предупреждения нет', async () => {
-    const html = await render({ initialDebt: { mode: 'term', principal: '1 000 000', payment: '91 680', term: '12' } })
+    const html = await render({ debtMode: 'term', debtPrincipal: '1 000 000', debtPayment: '91 680', debtTerm: '12' })
     expect(html).toContain('Ставка получается')
     expect(html).toContain('18,0% годовых')
     expect(html).not.toContain('Записать всё равно можно')
@@ -416,12 +406,12 @@ describe('PV-10: модалка кредита и калькулятор дос�
   async function render(path: string, state: Record<string, unknown> = {}) {
     const { createSSRApp } = await import('vue')
     const { renderToString } = await import('vue/server-renderer')
-    const { createRouter, createMemoryHistory } = await import('vue-router')
-    const Capital = (await import('./Capital.vue')).default
-    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/capital', component: Capital }] })
+    const { createMemoryHistory } = await import('vue-router')
+    const Money = (await import('@/views/Money.vue')).default
+    const router = (await import('@/router')).createAppRouter(createMemoryHistory())
     await router.push(path)
     await router.isReady()
-    const app = createSSRApp(Capital)
+    const app = createSSRApp(Money)
     app.use(router)
     app.mixin(screenMixin(state))
     return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
@@ -471,6 +461,45 @@ describe('PV-10: модалка кредита и калькулятор дос�
     expect(html).toContain('Платежей осталось')
   })
 
+  it('хвост критика Б9 (владелец 2026-10-02): закрытый досрочкой кредит — строка «Закрытые · 1» внизу «Платежей» → лист → лист кредита; без закрытых строки нет', async () => {
+    const closeOld = (store: ReturnType<typeof useFinanceStore>) => {
+      store.householdDoc.credits.push({ id: 'old', name: 'Старый кредит', note: '', principal: 120_000, principalSetAt: T0, annualRate: 0.2, payment: 20_000, day: 20, updatedAt: T0 })
+      store.householdDoc.payments = [
+        { id: 'pp', kind: 'prepay', targetId: 'old', period: '2026-09', amount: 120_000, principal: 120_000, accountId: 'card', by: 'a', at: '2026-09-03T05:00:00.000Z', updatedAt: '2026-09-03T05:00:00.000Z' },
+      ]
+    }
+    const view = (state: Record<string, unknown> = {}, act?: (s: Record<string, unknown>) => void) =>
+      renderScreen(Money, '/money', undefined, [screenMixin(state, act)])
+    const openOld = (s: Record<string, unknown>) => (s.openClosedCredit as (id: string) => void)('old')
+
+    // Закрытых нет — строки нет.
+    await family()
+    expect(await view()).not.toContain('Закрытые')
+
+    const store = await family()
+    closeOld(store)
+    expect(store.credits.find((c) => c.id === 'old')!.principal).toBe(0)
+    const html = await view()
+    const payments = html.slice(html.indexOf('>Платежи<'))
+    expect(payments).toMatch(/<button[^>]*>\s*<span>Закрытые · 1<\/span>/)
+    // В самом списке «Платежей» закрытого нет — только в листе.
+    expect(payments.slice(0, payments.indexOf('Закрытые · 1'))).not.toContain('Старый кредит')
+    const sheet = await view({ closedOpen: true })
+    expect(sheet).toContain('Старый кредит')
+    expect(sheet).toContain('долг закрыт')
+    // Строка листа → лист кредита (как по адресу ?credit=): удаление участнику.
+    const credit = await view({}, openOld)
+    expect(credit).toContain('Старый кредит')
+    expect(credit).toContain('Удалить кредит')
+
+    // Viewer: строка и лист видны, лист кредита — только чтение.
+    closeOld(await family('viewer'))
+    expect(await view()).toContain('Закрытые · 1')
+    const ro = await view({}, openOld)
+    expect(ro).toContain('Старый кредит')
+    expect(ro).not.toContain('Удалить кредит')
+  })
+
   it('калькулятор: «долг не закрывается» в шапке и подсказка без суммы', async () => {
     await family()
     const html = await render('/capital?payoff=card-debt')
@@ -496,46 +525,24 @@ describe('PV-10: модалка кредита и калькулятор дос�
     expect(html).not.toContain('NaN')
   })
 
-  it('строка кредита: «N платежей · переплата M»; платёж ≤ процентов — «долг не закрывается»; остаток 0 — «долг закрыт» (ревью Н-1)', async () => {
-    const { plain } = await import('@/lib/money')
-    const { plural } = await import('@/lib/utils')
-    const { creditOutlook } = await import('@/lib/finance')
-    const store = await family()
-    const out = creditOutlook({ principal: 1_000_000, annualRate: 0.33, payment: 58_000 })
-    const html = await render('/capital')
-    expect(html).toContain(`ГЭСВ 33,0% · ${out.months} ${plural(out.months, 'платёж', 'платежа', 'платежей')} · платёж`)
-    expect(html).toContain(`>переплата ${plain(out.overpay)}<`)
-    expect(html).toContain('ГЭСВ 36,0% · долг не закрывается · платёж')
-    expect(html).not.toContain('Infinity')
-    expect(html).not.toContain('∞')
-    // Переплата — только у долга, который закрывается.
-    expect(html.match(/>переплата /g)).toHaveLength(1)
-
-    store.applyPrepayment('loan', 'a', { amount: 1_000_000, mode: 'term', accountId: 'card' })
-    const closed = await render('/capital')
-    expect(closed).toContain('ГЭСВ 33,0% · долг закрыт<')
-    expect(closed).not.toContain('0 платежей')
-    expect(closed).not.toMatch(/>переплата /)
-  })
-
+  // Снят в B2C-45: в строке «Платежей» ставки, срока и переплаты нет (ТЗ B2C-42 п. 3); срок и переплата — в листе кредита, тесты PV-10 выше.
   it('возврат приёмки п. 4: кредит из выписки без ставки — «ставку уточните» в строке, листе, совете и калькуляторе; не «без процентов», не «переплата 0»', async () => {
-    const { plain } = await import('@/lib/money')
     const { strategyInputs } = await import('@/lib/finance')
     const store = await family()
     // Как пишет первый запуск (B2C-19): остаток и платёж из выписки известны, ставка — нет.
     const id = store.addCredit({ name: 'Оплата Kaspi Кредита', note: 'из выписки', principal: 1_200_000, annualRate: 0, rateUnknown: true, payment: 151_790, day: 24 })
     const html = await render('/capital')
-    expect(html).toContain(`из выписки · ставку уточните · платёж ${plain(151_790)} ₸`)
+    expect(html).toContain('24-го · ставку уточните')
     expect(html).not.toContain('без процентов')
-    // Переплата в строке — только у «Кредита» (у «Кредитки» долг не закрывается), у кредита без ставки её нет.
-    expect(html.match(/>переплата /g)).toHaveLength(1)
-    expect(html.slice(html.indexOf('Самая дорогая ставка'))).toContain('Ставку «Оплата Kaspi Кредита» уточните — тогда сравним.')
+    expect(html).not.toContain('переплата')
+    const plan = await render('/money/plan')
+    expect(plan.slice(plan.indexOf('Самая дорогая ставка'))).toContain('Ставку «Оплата Kaspi Кредита» уточните — тогда сравним.')
 
     // «Копить или гасить»: долг без ставки — не беспроцентный.
     const inputs = strategyInputs({ credits: store.credits, goals: [], obligations: [], key: '2026-09', kept: [], cushion: false, useSaved: false })
     expect(inputs.interestFree).toEqual([])
     expect(inputs.unknownRate.map((c) => c.id)).toEqual([id])
-    const calc = await render('/capital?advice=strategy')
+    const calc = await render('/money/plan')
     expect(calc).not.toContain('Беспроцентные долги')
     expect(calc).toContain('Ставку «Оплата Kaspi Кредита» уточните — пока считаем без неё.')
 
@@ -553,9 +560,6 @@ describe('PV-10: модалка кредита и калькулятор дос�
     expect(marked).not.toContain('Посчитать досрочное погашение')
     expect(await render(`/capital?payoff=${id}`)).not.toContain('Досрочное погашение')
 
-    // Настоящая рассрочка 0 % без признака — по-прежнему «без процентов».
-    store.addCredit({ name: 'Рассрочка', principal: 240_000, annualRate: 0, payment: 20_000, day: 25 })
-    expect(await render('/capital')).toContain('без процентов · 12 платежей')
   })
 
   it('калькулятор: подсказка поля — первый чип, чип «половина переплаты», лесенка «Отдача падает» с пояснением', async () => {
@@ -595,31 +599,22 @@ describe('PV-10: модалка кредита и калькулятор дос�
     expect(html).toContain('Применённые досрочки')
   })
 
-  it('«Что гасить первым»: на виду имя и ставка самого дорогого долга, цифры и расчёты — за «Подробнее» (правило 12, B2C-21 п. 2)', async () => {
-    await family()
-    const html = await render('/capital')
-    const order = html.slice(html.indexOf('Самая дорогая ставка'))
-    expect(order).toContain('Кредитка')
-    expect(order).toContain('36,0%')
-    expect(order).toMatch(/>\s*Подробнее\s*<\/button>/)
-    for (const t of ['Проценты в месяц', 'Доля платежа в проценты', 'Долг не закрывается', 'Больше половины платежа', 'Посчитать на свою сумму']) {
-      expect(html).not.toContain(t)
-    }
-
-    const open = await render('/capital', { orderOpen: true })
-    for (const t of ['Проценты в месяц', 'Доля платежа в проценты', 'Долг не закрывается', 'Посчитать на свою сумму']) {
-      expect(open).toContain(t)
-    }
-    expect(open.slice(open.indexOf('Самая дорогая ставка'))).not.toMatch(/>\s*Подробнее\s*<\/button>/)
-  })
-
+  // Снят в B2C-45: «Что гасить первым» — карточка «Самая дорогая ставка» квадрата «План», проверки — Money.test (B2C-43).
   it('участник: кнопки добавления на экране, ?add=debt / ?add=payment / ?income=1 открывают формы', async () => {
     await family()
-    const html = await render('/capital')
-    for (const t of ['Добавить счёт или накопления', 'Подписка или услуга', 'Долг или рассрочка', 'Группа подписок']) {
-      expect(html).toContain(t)
+    const html = await render('/money')
+    // Пивот 3 (B2C-42): тихие «+ Добавить счёт» под «Счетами» и «+ Добавить» под «Платежами» — ghost, не во всю ширину.
+    for (const t of [/Добавить счёт/, />\s*Добавить\s*</]) {
+      const at = html.search(t)
+      expect(at, String(t)).toBeGreaterThan(-1)
+      const btn = html.slice(html.lastIndexOf('<button', at), at)
+      expect(btn, String(t)).toContain('text-ink-2 hover:bg-surface-2')
+      expect(btn, String(t)).not.toContain('w-full')
     }
-    expect(await render('/capital?add=debt')).toContain('Знаю ставку')
+    // «+ Добавить» — выбор из трёх, дальше — форма.
+    const choose = await render('/money', { addOpen: true })
+    for (const t of ['Подписка или услуга', 'Долг или рассрочка', 'Группа подписок']) expect(choose).toContain(t)
+    expect(await render('/money?add=debt')).toContain('Знаю ставку')
     expect(await render('/capital?add=payment')).toContain('Регулярный платёж')
     expect(await render('/capital?income=1')).toContain('Внеплановый доход')
   })
@@ -703,12 +698,12 @@ describe('PV-11: форма платежа и модалка обязатель�
   async function render(path: string, state: Record<string, unknown> = {}, probe?: (s: Record<string, unknown>) => void) {
     const { createSSRApp } = await import('vue')
     const { renderToString } = await import('vue/server-renderer')
-    const { createRouter, createMemoryHistory } = await import('vue-router')
-    const Capital = (await import('./Capital.vue')).default
-    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/capital', component: Capital }] })
+    const { createMemoryHistory } = await import('vue-router')
+    const Money = (await import('@/views/Money.vue')).default
+    const router = (await import('@/router')).createAppRouter(createMemoryHistory())
     await router.push(path)
     await router.isReady()
-    const app = createSSRApp(Capital)
+    const app = createSSRApp(Money)
     app.use(router)
     app.mixin(screenMixin(state, probe))
     return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
@@ -891,12 +886,12 @@ describe('PV-12: счета — валютный, удаление, тексты
   async function render(path: string, state: Record<string, unknown> = {}, probe?: (s: Record<string, unknown>) => void) {
     const { createSSRApp } = await import('vue')
     const { renderToString } = await import('vue/server-renderer')
-    const { createRouter, createMemoryHistory } = await import('vue-router')
-    const Capital = (await import('./Capital.vue')).default
-    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/capital', component: Capital }] })
+    const { createMemoryHistory } = await import('vue-router')
+    const Money = (await import('@/views/Money.vue')).default
+    const router = (await import('@/router')).createAppRouter(createMemoryHistory())
     await router.push(path)
     await router.isReady()
-    const app = createSSRApp(Capital)
+    const app = createSSRApp(Money)
     app.use(router)
     app.mixin(screenMixin(state, probe))
     return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
@@ -960,23 +955,10 @@ describe('PV-12: счета — валютный, удаление, тексты
       'Счёт исчезнет. Отменить нельзя. Накопления по цели «Квартира» останутся на месте: они снова будут считаться отдельно, а не лежащими на этом счёте.',
     )
 
+    // Вклад — лист счёта (B2C-42): удаление «Удалить вклад» со своим текстом.
     const deposit = async (accountId: string) => {
-      const { createSSRApp } = await import('vue')
-      const { renderToString } = await import('vue/server-renderer')
-      const { createRouter, createMemoryHistory } = await import('vue-router')
-      const Deposit = (await import('./Deposit.vue')).default
-      const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/capital/:id', component: Deposit }] })
-      await router.push(`/capital/${accountId}`)
-      await router.isReady()
-      const app = createSSRApp(Deposit)
-      app.use(router)
       let text = ''
-      app.mixin({
-        created() {
-          if (this.$.parent === null) text = this.$.setupState.removeWarning as string
-        },
-      })
-      const html = await renderToString(app)
+      const html = await render('/money', { selectedAccountId: accountId }, (s) => (text = s.accountRemoveWarning as string))
       expect(html).toContain('Удалить вклад')
       return text
     }
@@ -1069,28 +1051,18 @@ describe('PV-13: разбивка и график в Капитале (SSR)', ()
   async function render(path: string, state: Record<string, unknown> = {}) {
     const { createSSRApp } = await import('vue')
     const { renderToString } = await import('vue/server-renderer')
-    const { createRouter, createMemoryHistory } = await import('vue-router')
-    const Capital = (await import('./Capital.vue')).default
-    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/capital', component: Capital }] })
+    const { createMemoryHistory } = await import('vue-router')
+    const Money = (await import('@/views/Money.vue')).default
+    const router = (await import('@/router')).createAppRouter(createMemoryHistory())
     await router.push(path)
     await router.isReady()
-    const app = createSSRApp(Capital)
+    const app = createSSRApp(Money)
     app.use(router)
     app.mixin(screenMixin(state))
     return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
   }
 
-  it('строка кредита: следующий платёж — в долг и банку; после отметки — следующий месяц от нового остатка', async () => {
-    const { plain } = await import('@/lib/money')
-    const { creditSplit } = await import('@/lib/finance')
-    const store = await family()
-    expect(await render('/capital')).toContain(`платёж ${plain(58_000)} ₸: в долг ${plain(30_500)}, банку ${plain(27_500)}`)
-
-    store.markPaid('credit', 'loan', 'a', { accountId: 'card' })
-    const next = creditSplit(969_500, 0.33, 58_000)
-    expect(await render('/capital')).toContain(`платёж ${plain(58_000)} ₸: в долг ${plain(next.body)}, банку ${plain(next.interest)}`)
-  })
-
+  // Снят в B2C-45: доли платежа в строке не печатаются (B2C-42); в листе — «модалка: За всё время» ниже и PaidRow.test PV-13.
   it('модалка: «За всё время» = creditTotals (с досрочкой); у досрочки — в долг и банку', async () => {
     const { money, plain } = await import('@/lib/money')
     const { creditTotals } = await import('@/lib/finance')
@@ -1133,7 +1105,7 @@ describe('PV-13: разбивка и график в Капитале (SSR)', ()
   })
 })
 
-describe('PV-16: шаг плана в строке кредита (SSR)', () => {
+describe('PV-16: план и досрочка шага — квадрат «План» (SSR)', () => {
   const storage = new Map<string, string>()
   beforeEach(() => {
     vi.stubGlobal('localStorage', {
@@ -1155,60 +1127,30 @@ describe('PV-16: шаг плана в строке кредита (SSR)', () => 
     return store
   }
   const button = />\s*Внести по плану\s*</
-  const row = (html: string, name: string) => {
-    const at = html.indexOf(`>${name}</span>`)
-    return html.slice(at, html.indexOf('</button>', at))
-  }
 
-  it('кредит плана — «шаг плана: N ₸ в сентябре 2026», «Внести по плану» и «Изменить режим»; другой — без подписи', async () => {
-    useAuthStore().setAuthData(authAs('member'))
-    family()
-    const html = await renderScreen(Capital, '/capital')
-    expect(row(html, 'Кредитка')).toContain(`шаг плана: ${plain(100_000)} ₸ в сентябре 2026`)
-    expect(row(html, 'Кредит')).not.toContain('шаг плана')
-    expect(html.match(new RegExp(button.source, 'g'))).toHaveLength(1)
-    expect(html).toContain('Изменить режим')
-  })
-
-  it('после applyPlanStep — «внесено по плану · N ₸ · дата», кнопки нет', async () => {
-    useAuthStore().setAuthData(authAs('member'))
-    const store = family()
-    store.applyPlanStep('a', { accountId: 'card' })
-    const html = await renderScreen(Capital, '/capital')
-    expect(row(html, 'Кредитка')).toContain(`внесено по плану · ${plain(100_000)} ₸ · 24 сентября`)
-    expect(html).not.toMatch(button)
-    expect(html).not.toContain('Изменить режим')
-  })
-
-  it('viewer — подпись шага видна, кнопок нет (Р-12)', async () => {
-    useAuthStore().setAuthData(authAs('viewer', 'b'))
-    family()
-    const html = await renderScreen(Capital, '/capital')
-    expect(row(html, 'Кредитка')).toContain('шаг плана')
-    expect(html).not.toMatch(button)
-    expect(html).not.toContain('Изменить режим')
-  })
-
+  // Снят в B2C-45: шаг плана в строке кредита ушёл в квадрат «План» (Р-34): Money.test «B2C-43», e2e pv-block3.
+  // Снят в B2C-45: то же — «внесено по плану» в квадрате «План».
+  // Снят в B2C-45: то же — viewer в квадрате «План» (Money.test «B2C-43»).
   it('на паузе нет взносов — подписи «шаг плана: 0 ₸» у кредита нет', async () => {
     useAuthStore().setAuthData(authAs('member'))
     useFinanceStore().setHouseholdDoc(planFamilyDoc({ plans: [planOf({ keptGoalIds: ['trip', 'car'] })] }), 1)
-    const html = await renderScreen(Capital, '/capital')
+    const html = await renderScreen(Money, '/capital')
     expect(html).not.toContain('шаг плана')
     expect(html).not.toMatch(button)
   })
 
-  it('калькулятор в Капитале: viewer выбора не видит; выбор участника — план в сторе, «вложить накопленное» без денег подушки', async () => {
+  it('калькулятор в «Плане»: viewer выбора не видит; выбор участника — план в сторе, «вложить накопленное» без денег подушки', async () => {
     const choice = /<button[^>]*>\s*Выбрать этот план\s*</
     const store = useFinanceStore()
     store.setHouseholdDoc(planFamilyDoc(), 1)
     useAuthStore().setAuthData(authAs('viewer', 'b'))
-    const viewer = await renderScreen(Capital, '/capital?advice=strategy')
+    const viewer = await renderScreen(Money, '/money/plan')
     expect(viewer).toContain('Подушка — какая цель?')
     expect(viewer).not.toMatch(choice)
 
     useAuthStore().setAuthData(authAs('member'))
-    expect(await renderScreen(Capital, '/capital?advice=strategy')).toMatch(choice)
-    await renderScreen(Capital, '/capital?advice=strategy', undefined, [
+    expect(await renderScreen(Money, '/money/plan')).toMatch(choice)
+    await renderScreen(Money, '/money/plan', undefined, [
       screenMixin({ cushion: false, useSaved: true, cushionGoalId: 'cushion' }, (s) => (s.choose as () => void)()),
     ])
     const plan = store.activePlan!
@@ -1223,15 +1165,15 @@ describe('PV-16: шаг плана в строке кредита (SSR)', () => 
   it('«Изменить режим» — окно досрочки разово на сумму шага; запись с id плана, «снизить платёж» — шаг внесён', async () => {
     useAuthStore().setAuthData(authAs('member'))
     const store = family()
-    const html = await renderScreen(Capital, '/capital', undefined, [
-      screenMixin({}, (s) => (s.changePlanMode as (c: unknown) => void)(store.credits.find((c) => c.id === 'cc'))),
+    const html = await renderScreen(Money, '/money/plan', undefined, [
+      screenMixin({}, (s) => (s.changeMode as () => void)()),
     ])
     expect(html).toContain(`Шаг плана — ${money(100_000)}.`)
     expect(html).toContain(`value="${plain(100_000)}"`)
     expect(html).toContain('Применить к кредиту')
 
-    await renderScreen(Capital, '/capital', undefined, [
-      screenMixin({}, (s) => (s.changePlanMode as (c: unknown) => void)(store.credits.find((c) => c.id === 'cc'))),
+    await renderScreen(Money, '/money/plan', undefined, [
+      screenMixin({}, (s) => (s.changeMode as () => void)()),
       screenMixin({ applyMode: 'payment', applyAccount: 'card' }, (s) => (s.applyPrepay as () => void)()),
     ])
     const rec = store.payments.find((p) => p.kind === 'prepay')!
@@ -1243,10 +1185,9 @@ describe('PV-16: шаг плана в строке кредита (SSR)', () => 
   it('окно досрочки плана: сняли досрочку шага — повторная снова по плану; партнёр внёс шаг, пока окно открыто, — запись без id плана', async () => {
     useAuthStore().setAuthData(authAs('member'))
     const store = family()
-    const cc = () => store.credits.find((c) => c.id === 'cc')
     // Одно и то же окно: применили, сняли, передумали насчёт режима (Р-10) и применили снова.
-    await renderScreen(Capital, '/capital', undefined, [
-      screenMixin({}, (s) => (s.changePlanMode as (c: unknown) => void)(cc())),
+    await renderScreen(Money, '/money/plan', undefined, [
+      screenMixin({}, (s) => (s.changeMode as () => void)()),
       screenMixin({ applyAccount: 'card' }, (s) => {
         const apply = s.applyPrepay as () => void
         apply()
@@ -1263,8 +1204,8 @@ describe('PV-16: шаг плана в строке кредита (SSR)', () => 
     store.removePrepayment(again[0].id)
 
     // Окно открыто, шаг вносит партнёр — «Применить» пишет обычную досрочку.
-    await renderScreen(Capital, '/capital', undefined, [
-      screenMixin({}, (s) => (s.changePlanMode as (c: unknown) => void)(cc())),
+    await renderScreen(Money, '/money/plan', undefined, [
+      screenMixin({}, (s) => (s.changeMode as () => void)()),
       screenMixin({ applyAccount: 'card' }, (s) => {
         const apply = s.applyPrepay as () => void
         store.applyPlanStep('b', { accountId: 'card' })
@@ -1279,7 +1220,7 @@ describe('PV-16: шаг плана в строке кредита (SSR)', () => 
   it('шаг плана не подставляется в окно досрочки другого кредита', async () => {
     useAuthStore().setAuthData(authAs('member'))
     const store = family()
-    const html = await renderScreen(Capital, '/capital', undefined, [
+    const html = await renderScreen(Money, '/money/plan', undefined, [
       screenMixin({ payoffPlan: { id: 'plan', amount: 100_000, creditId: 'cc' }, payoffCreditId: 'loan' }),
       screenMixin({ payoffMode: 'once', payoffAmount: '50 000', applyAccount: 'card' }, (s) => (s.applyPrepay as () => void)()),
     ])
@@ -1302,7 +1243,7 @@ describe('PV-16: шаг плана в строке кредита (SSR)', () => 
       screenMixin({ payoffCreditId: 'loan' }),
       screenMixin({ payoffMode: 'once', payoffAmount: '50 000', applyAccount: 'card' }, (s) => (s.applyPrepay as () => void)()),
     ]
-    const html = (await renderScreen(Capital, '/capital', undefined, apply)).replace(/\s+/g, ' ')
+    const html = (await renderScreen(Money, '/capital', undefined, apply)).replace(/\s+/g, ' ')
     const rec = store.payments.find((p) => p.kind === 'prepay')!
     expect(rec.saved).toBeGreaterThan(0)
     const c = closerWish(store.wishlist, rec.saved!, 'once')!
@@ -1315,7 +1256,7 @@ describe('PV-16: шаг плана в строке кредита (SSR)', () => 
     setActivePinia(createPinia())
     useAuthStore().setAuthData(authAs('member'))
     useFinanceStore().setHouseholdDoc(planFamilyDoc(), 1)
-    const bare = await renderScreen(Capital, '/capital', undefined, [
+    const bare = await renderScreen(Money, '/capital', undefined, [
       screenMixin({ payoffCreditId: 'loan' }),
       screenMixin({ payoffMode: 'once', payoffAmount: '50 000', applyAccount: 'card' }, (s) => (s.applyPrepay as () => void)()),
     ])
@@ -1343,47 +1284,13 @@ describe('PV-17 (Р-8): график в окне кредита — с шага�
   it('кредит плана — строки графика с досрочками шагов; другой кредит — без них', async () => {
     const store = useFinanceStore()
     store.setHouseholdDoc(planFamilyDoc({ plans: [planOf()] }), 1)
-    const cc = await renderScreen(Capital, '/capital?credit=cc', undefined, [screenMixin({ scheduleOpen: true })])
+    const cc = await renderScreen(Money, '/capital?credit=cc', undefined, [screenMixin({ scheduleOpen: true })])
     expect(cc).toContain(`досрочка ${plain(100_000)}`)
-    const loan = await renderScreen(Capital, '/capital?credit=loan', undefined, [screenMixin({ scheduleOpen: true })])
+    const loan = await renderScreen(Money, '/capital?credit=loan', undefined, [screenMixin({ scheduleOpen: true })])
     expect(loan).toContain('График платежей')
     expect(loan).not.toContain('досрочка ')
     expect(store.status).toBe('idle')
   })
 })
 
-describe('PV-23 п. 9: строка кредита 0% — «без процентов» (React Capital.tsx:156)', () => {
-  const storage = new Map<string, string>()
-  beforeEach(() => {
-    vi.stubGlobal('localStorage', {
-      getItem: (key: string) => storage.get(key) ?? null,
-      setItem: (key: string, val: string) => storage.set(key, String(val)),
-      removeItem: (key: string) => storage.delete(key),
-      clear: () => storage.clear(),
-    })
-    storage.clear()
-    setActivePinia(createPinia())
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
-  })
-  afterEach(() => vi.useRealTimers())
-
-  it('рассрочка под 0% — «без процентов · N платежей»; кредит с процентами — «ГЭСВ …»', async () => {
-    const store = useFinanceStore()
-    const T = '2026-09-01T00:00:00.000Z'
-    store.setHouseholdDoc(
-      {
-        ...planFamilyDoc(),
-        credits: [
-          { id: 'phone', name: 'Телефон', note: 'рассрочка', principal: 200_000, principalSetAt: T, annualRate: 0, payment: 20_000, day: 25, updatedAt: T },
-          { id: 'loan', name: 'Кредит', note: '', principal: 1_000_000, principalSetAt: T, annualRate: 0.25, payment: 60_000, day: 12, updatedAt: T },
-        ],
-      },
-      1,
-    )
-    const html = (await renderScreen(Capital, '/capital')).replace(/\s+/g, ' ')
-    expect(html).toContain('без процентов · 10 платежей')
-    expect(html).toContain('ГЭСВ 25')
-    expect(html).not.toMatch(/>\s*рассрочка ·/)
-  })
-})
+// PV-23 п. 9 («без процентов» в строке кредита) снят в B2C-45: ставки в строке «Платежей» нет.

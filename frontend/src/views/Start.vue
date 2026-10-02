@@ -293,6 +293,12 @@ function finish() {
   void router.push('/')
 }
 
+/** Где взять PDF (тексты макета g3); значок — первая буква на тоне банка из токенов. */
+const BANK_HOWTO = [
+  { name: 'Kaspi', path: 'Мой банк → Выписка → PDF → Поделиться', tone: 'bg-destructive' },
+  { name: 'Freedom', path: 'Счёт → Выписка → за 3 месяца → PDF', tone: 'bg-ok' },
+]
+
 const titles: Record<Step, { title: string; sub: string }> = {
   upload: { title: 'Загрузите первую выписку', sub: 'Приложение само найдёт зарплату, кредиты и подписки — вы только подтвердите.' },
   questions: { title: 'Нашли повторяющиеся', sub: 'Подтвердите по одному — дальше отметим сами.' },
@@ -321,6 +327,16 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
     <!-- Шаг 1: выписка -->
     <template v-if="step === 'upload'">
       <template v-if="!manual">
+        <!-- Откуда взять файл (g3 «Шаг 2 — первая выписка»): банк и путь в его приложении одной строкой. -->
+        <Card tight>
+          <div v-for="b in BANK_HOWTO" :key="b.name" class="flex items-center gap-3 border-t border-line py-3 first:border-t-0 first:pt-0 last:pb-0">
+            <span class="grid size-9 shrink-0 place-items-center rounded-[10px] text-[12px] font-bold text-on-photo" :class="b.tone" aria-hidden="true">{{ b.name[0] }}</span>
+            <span class="min-w-0">
+              <span class="block font-medium text-ink">{{ b.name }}</span>
+              <span class="block type-meta">{{ b.path }}</span>
+            </span>
+          </div>
+        </Card>
         <!-- Одна строка + подсказка (правило интерфейса: пояснение длиннее строки — в Hint). -->
         <Callout tone="neutral" icon="lock">
           <span class="inline-flex items-center gap-1.5">Файл остаётся на телефоне <Hint>На сервер попадают только продавец, дата, сумма и раздел — без номеров и ФИО.</Hint></span>
@@ -335,7 +351,6 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
             {{ reading ? 'Читаем выписку…' : 'Выбрать файл' }}
           </Button>
           <Button variant="ghost" class="w-full" @click="manual = true">Введу вручную</Button>
-          <p class="text-center text-[12px] text-ink-3">PDF из приложения Kaspi или Freedom.</p>
         </div>
       </template>
       <template v-else>

@@ -1,9 +1,9 @@
 import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation } from '@/types/finance'
-import type { SpendCategory, SpendTotal } from '@/lib/statements/types'
+import type { Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY, plannedElsewhere } from '@/lib/statements/dictionary'
 import { addMonths, dayLabel, daysInMonth, monthFrom, monthKey, parseMonthKey, today, weekRange } from '@/lib/dates'
-import { categoryName, spendColor } from '@/lib/palette'
-import { money } from '@/lib/money'
+import { spendColor } from '@/lib/palette'
+import { money, pct } from '@/lib/money'
 import { plural } from '@/lib/utils'
 /**
  * Расчётное ядро. Чистые функции: ни сети, ни состояния, ни ИИ.
@@ -1039,36 +1039,11 @@ export function budgetAmounts(state: {
     .filter((g) => !paused.has(g.id))
     .reduce((a, g) => a + g.monthly, 0);
   const extra = plan ? planExtra(plan, goalsList, credits, payments, key) : 0;
-  // Фаза подушки (Р-7): деньги плана кладутся в подушку — строка называется по фазе (Н-4).
-  const planCushion = !!plan && planStep(plan, { goals: goalsList, credits, obligations, payments }, key).kind === 'cushion';
   const living = (categories.find((c) => c.key === 'd4')?.amount ?? 0) + other;
   const income = totalIncome(people, key);
   const free = income - housing - debts - goals - living - extra;
 
-  return { d1: housing, d2: debts, d3: goals, d4: living, d5: free, income, planExtra: extra, planCushion };
-}
-
-export type BudgetLine = { key: 'd1' | 'd2' | 'd3' | 'plan' | 'd4'; name: string; amount: number }
-
-/**
- * Строки «Куда уходит» Бюджета (PV-15 п. 7) — по ключам d1–d4, а не
- * по заведённым разделам: строка есть, если раздел заведён или в нём есть сумма; имя —
- * семьи или запасное. Раздел в документ не пишется (пустой раздел со свежим updatedAt
- * затёр бы сумму партнёра). С планом — «Досрочно по плану» сразу после целей, а пока
- * план набирает подушку — «По плану — в подушку» (Р-7).
- */
-export function budgetLines(categories: Category[], amounts: ReturnType<typeof budgetAmounts>): BudgetLine[] {
-  const out: BudgetLine[] = []
-  for (const key of ['d1', 'd2', 'd3', 'plan', 'd4'] as const) {
-    if (key === 'plan') {
-      const name = amounts.planCushion ? 'По плану — в подушку' : 'Досрочно по плану'
-      if (amounts.planExtra > 0) out.push({ key, name, amount: amounts.planExtra })
-      continue
-    }
-    if (!categories.some((c) => c.key === key) && amounts[key] <= 0) continue
-    out.push({ key, name: categoryName(categories, key), amount: amounts[key] })
-  }
-  return out
+  return { d1: housing, d2: debts, d3: goals, d4: living, d5: free, income, planExtra: extra };
 }
 
 export const goalSavings = (goals: Goal[]) =>
@@ -1076,8 +1051,11 @@ export const goalSavings = (goals: Goal[]) =>
     .filter((g) => !g.accountId)
     .reduce((a, g) => a + Math.max(0, g.have), 0);
 
+/** Сумма строк с `amount` в тенге: живые счета (итог «Счетов»), досрочки месяца и т. п. — одно правило. */
+export const amountTotal = (list: { amount: number }[]) => list.reduce((a, x) => a + x.amount, 0);
+
 export const netWorth = (accounts: Account[], credits: Credit[], goals: Goal[] = []) =>
-  liveAccounts(accounts).reduce((a, x) => a + x.amount, 0) +
+  amountTotal(liveAccounts(accounts)) +
   goalSavings(goals) -
   liveCredits(credits).reduce((a, c) => a + c.principal, 0);
 
@@ -1265,6 +1243,22 @@ export function creditTotals(payments: Payment[], creditId: string) {
  */
 export const budgetInterest = (credits: Credit[]) =>
   openCredits(credits).reduce((a, c) => a + creditSplit(c.principal, c.annualRate, c.payment).interest, 0)
+
+/**
+ * «Что гасить первым» (квадрат «План», пивот 3, Р-34; бывшая секция Капитала): долги с процентами
+ * по `costliestCredits` с выводами `creditOutlook`, самый дорогой — первым; добавка в месяц,
+ * снимающая половину его переплаты, и что она даёт (`prepayOutcome`). Долги без ставки (кредит из
+ * выписки, B2C-19) не ранжируются — их просим уточнить. Кредиты — производные.
+ */
+export function debtAdvice(credits: Credit[]) {
+  const rankedDebts = costliestCredits(credits).map((c) => ({ credit: c, cost: creditOutlook(c) }))
+  const worstDebt = rankedDebts[0] ?? null
+  const worstHalfExtra = worstDebt
+    ? halfOverpayExtra(worstDebt.credit.principal, worstDebt.credit.annualRate, worstDebt.credit.payment)
+    : null
+  const worstGain = worstDebt && worstHalfExtra ? prepayOutcome(worstDebt.credit, worstHalfExtra, 'monthly') : null
+  return { rankedDebts, worstDebt, worstHalfExtra, worstGain, unknownRate: openCredits(credits).filter((c) => c.rateUnknown) }
+}
 
 export type ScheduleRow = {
   period: string
@@ -1880,6 +1874,75 @@ export function monthSummary(
   };
 }
 
+/** Итог месяца есть что показать: отметки, зарплата, закрытые долги, досрочки, движения целей, покупки. */
+export function hasMonthSummary(s: MonthSummary): boolean {
+  return !!(s.paid.count || s.income || s.closed.length || s.prepaid.count || s.toGoals || s.fromGoals || s.bought.count);
+}
+
+/* ---------------- «История» (пивот 3, Р-35, B2C-44) ---------------- */
+
+/** Строка ленты «Истории»: своя операция выписки, отметка семьи или момент прогресса. */
+export type HistoryItem =
+  | { kind: 'op'; id: string; at: string; op: Operation }
+  | { kind: 'mark'; id: string; at: string; payment: Payment }
+  | { kind: 'moment'; id: string; at: string; moment: Moment };
+
+/** День по Алматы «YYYY-MM-DD» для отметки и момента (их `at` — ISO). */
+const isoDay = (iso: string) => {
+  const d = today(new Date(iso));
+  return `${d.key}-${String(d.day).padStart(2, '0')}`;
+};
+
+/**
+ * Лента «Истории» по дням за месяцы `months` (новые сверху): свои операции (Р-5: стор отдаёт только
+ * свои), отметки семьи (оплата, досрочка, зарплата — `countedPayments`) и моменты «собрали
+ * половину» / «закрыт». Момент «не отдадим банку» не повторяется — его несёт строка досрочки.
+ * День операции — её дата, отметки и момента — день `at` по Алматы.
+ */
+export function historyFeed(
+  state: { ops: Operation[]; payments?: Payment[]; moments?: Moment[] },
+  months: string[],
+): { day: string; items: HistoryItem[] }[] {
+  const inPeriod = (day: string) => months.includes(day.slice(0, 7));
+  const items: (HistoryItem & { day: string })[] = [
+    ...state.ops.filter((o) => inPeriod(o.date)).map((op) => ({ kind: 'op' as const, id: op.id, at: `${op.date}T00:00:00`, day: op.date, op })),
+    ...countedPayments(state.payments ?? []).map((payment) => ({ kind: 'mark' as const, id: payment.id, at: payment.at, day: isoDay(payment.at), payment })),
+    ...(state.moments ?? [])
+      .filter((m) => m.kind !== 'saved')
+      .map((moment) => ({ kind: 'moment' as const, id: moment.id, at: moment.at, day: isoDay(moment.at), moment })),
+  ].filter((x) => inPeriod(x.day));
+  const days = new Map<string, HistoryItem[]>();
+  for (const x of items.sort((a, b) => b.day.localeCompare(a.day) || b.at.localeCompare(a.at))) {
+    const { day, ...item } = x;
+    days.set(day, [...(days.get(day) ?? []), item as HistoryItem]);
+  }
+  return [...days].map(([day, list]) => ({ day, items: list }));
+}
+
+/** Самый ранний месяц, за который «Истории» есть что показать (кнопка «Раньше»); null — ничего нет. */
+export function historyStart(state: { ops: Operation[]; payments?: Payment[]; moments?: Moment[] }): string | null {
+  const months = [
+    ...state.ops.map((o) => o.date.slice(0, 7)),
+    ...countedPayments(state.payments ?? []).map((p) => isoDay(p.at).slice(0, 7)),
+    ...(state.moments ?? []).filter((m) => m.kind !== 'saved').map((m) => isoDay(m.at).slice(0, 7)),
+  ];
+  return months.length ? months.sort()[0] : null;
+}
+
+/**
+ * Разделы трат в своих операциях месяцев `months` — по убыванию суммы (чипы фильтра «Истории»);
+ * неразобранное — `UNKNOWN_CATEGORY`. Траты — списания не между своими.
+ */
+export function historyCategories(ops: Operation[], months: string[]): string[] {
+  const sums = new Map<string, number>();
+  for (const o of ops) {
+    if (o.internal || o.amount >= 0 || !months.includes(o.date.slice(0, 7))) continue;
+    const id = o.categoryId ?? UNKNOWN_CATEGORY;
+    sums.set(id, (sums.get(id) ?? 0) - o.amount);
+  }
+  return [...sums].sort((a, b) => b[1] - a[1]).map(([id]) => id);
+}
+
 /** Подсчёт ликвидных средств на картах и счетах. */
 export function liquidCash(liquidAccounts: Account[]): number {
   return liveAccounts(liquidAccounts)
@@ -2205,6 +2268,55 @@ export function planStep(plan: DebtPlan, state: PlanState, key: string): PlanSte
  * месяца старта не было. Дата без долгов сдвигается сама.
  */
 export function planForecast(plan: DebtPlan, state: PlanState, key: string): PlanForecast {
+  const { a, b } = planRuns(plan, state, key)
+  // Долг, который не закрывается, копит проценты все 600 месяцев симуляции — разность таких
+  // сумм не экономия, а шум (Р-11: «экономию не считаем»).
+  const comparable = a.debtFreeMonth !== null && b.debtFreeMonth !== null
+  return {
+    gain: strategyGain(a, b),
+    savedInterest: comparable ? Math.max(0, Math.round(a.interestTotal - b.interestTotal)) : null,
+    debtFreeMonth: b.debtFreeMonth === null ? null : addMonths(key, b.debtFreeMonth),
+  }
+}
+
+/**
+ * Переплата банку «без плана» — сумма «переплаты до конца» (`creditOutlook`) открытых долгов при
+ * нынешних платежах: то же число, что у карточки «Самая дорогая ставка» (ревью frontend Б9, Н-2).
+ * null — какой-то долг при нынешнем платеже не закрывается (Р-11).
+ */
+export function overpayNoPlan(credits: Credit[]): number | null {
+  let total = 0
+  for (const c of openCredits(credits)) {
+    const o = creditOutlook(c)
+    if (!o.closes) return null
+    total += o.overpay
+  }
+  return total
+}
+
+/**
+ * Прогноз плана одной строкой квадрата «План» (пивот 3, Р-34): те же два прогона, что у
+ * `planForecast`, — когда закроются долги с планом, на сколько месяцев раньше, чем без него, и
+ * переплата банку без плана → с планом (от нынешних остатков, целые тенге). «Без плана» —
+ * `overpayNoPlan` (одно число с карточкой ставки), «с планом» — оно минус экономия
+ * `planForecast`. null у срока — без плана или с ним долг не закрывается (Р-11).
+ */
+export function planOutlook(plan: DebtPlan, state: PlanState, key: string) {
+  const { a, b } = planRuns(plan, state, key)
+  const without = overpayNoPlan(state.credits ?? [])
+  const comparable = a.debtFreeMonth !== null && b.debtFreeMonth !== null && without !== null
+  // Разница строки «без → с» сходится с экономией `planForecast` до тенге.
+  const saved = Math.max(0, Math.round(a.interestTotal - b.interestTotal))
+  return {
+    debtFreeMonth: b.debtFreeMonth === null ? null : addMonths(key, b.debtFreeMonth),
+    monthsSooner: comparable ? Math.max(0, a.debtFreeMonth! - b.debtFreeMonth!) : null,
+    overpayWithout: comparable ? without : null,
+    overpayWith: comparable ? Math.max(0, without! - saved) : null,
+  }
+}
+
+/** Два прогона прогноза плана: «копим как сейчас» (`a`) и план (`b`) на нынешних остатках. */
+function planRuns(plan: DebtPlan, state: PlanState, key: string) {
   const credits = state.credits ?? []
   const payments = state.payments ?? []
   const inputs = strategyInputs({
@@ -2223,14 +2335,7 @@ export function planForecast(plan: DebtPlan, state: PlanState, key: string): Pla
   const base = { debts: inputs.debts, saving: inputs.saving + released, keep: inputs.keep, start: inputs.start, months: plan.months }
   const a = simulateStrategy({ ...base, payDebts: false })
   const b = simulateStrategy({ ...base, payDebts: true, lump, buffer })
-  // Долг, который не закрывается, копит проценты все 600 месяцев симуляции — разность таких
-  // сумм не экономия, а шум (Р-11: «экономию не считаем»).
-  const comparable = a.debtFreeMonth !== null && b.debtFreeMonth !== null
-  return {
-    gain: strategyGain(a, b),
-    savedInterest: comparable ? Math.max(0, Math.round(a.interestTotal - b.interestTotal)) : null,
-    debtFreeMonth: b.debtFreeMonth === null ? null : addMonths(key, b.debtFreeMonth),
-  }
+  return { a, b }
 }
 
 /** Факт плана (Р-6): досрочки с его id — сэкономленные проценты и шаги по порядку. */
@@ -2417,6 +2522,15 @@ export type WeekPicture = {
 /** Загрузка выписки, как её отдаёт сервер: чья и за какой период. */
 export type UploadPeriod = { slot: string; period_from: string; period_to: string }
 
+/**
+ * Живые разделы трат семьи по `order`; пока семья их не завела — стартовый словарь. Один
+ * список для «куда отнести?», чипов «Истории» и «Недели» (ревью frontend Б9, Н-3).
+ */
+export function liveSpendCategories(list: SpendCategory[] | undefined): Omit<SpendCategory, 'updatedAt'>[] {
+  const live = list?.filter((c) => !c.deletedAt)
+  return (live?.length ? live : DEFAULT_SPEND_CATEGORIES).slice().sort((a, b) => a.order - b.order)
+}
+
 /** Имя раздела трат: как назвала семья, иначе из словаря, иначе «Прочее». */
 export function spendCategoryName(categories: Pick<SpendCategory, 'id' | 'name'>[], id: string): string {
   if (id === UNKNOWN_CATEGORY) return 'Не разобрано'
@@ -2601,22 +2715,94 @@ export function freeByFact(
 ): FreeByFact {
   const income = totalIncome(state.people ?? [], key)
   const share = (amount: number) => (income > 0 ? Math.max(0, Math.min(1, amount / income)) : 0)
-  const monthStart = `${key}-01`
-  const monthEnd = `${key}-${String(daysInMonth(key)).padStart(2, '0')}`
-  const hasUpload = uploads.some((u) => u.period_to >= monthStart && u.period_from <= monthEnd)
   const amounts = budgetAmounts(state)
-  if (!hasUpload) {
+  const spent = monthSpentByFact(totals, spendCategories, key, uploads)
+  if (spent === null) {
     return { amount: amounts.d5, byFact: false, income, dues: amounts.d1 + amounts.d2, goals: amounts.d3 + amounts.planExtra, spent: 0, share: share(amounts.d5) }
   }
   const dues = duesTotal(monthDues(state, key))
   const goals = amounts.d3 + amounts.planExtra
+  const amount = income - dues - goals - spent
+  return { amount, byFact: true, income, dues, goals, spent, share: share(amount) }
+}
+
+/**
+ * Траты месяца по выпискам обоих, кроме разделов, уже учтённых планом (`plannedElsewhere`:
+ * кредиты, коммуналка, аренда, подписки живут в `monthDues`). Одна функция на два места (Р-38):
+ * `freeByFact` вычитает её из плана, виджет «Траты» в «Деньгах» показывает её фактом.
+ * `null` — за месяц ни одной загрузки: факта нет, а не «потрачено 0».
+ */
+export function monthSpentByFact(totals: SpendTotal[], spendCategories: SpendCategory[], key: string, uploads: UploadPeriod[] = []): number | null {
+  const monthStart = `${key}-01`
+  const monthEnd = `${key}-${String(daysInMonth(key)).padStart(2, '0')}`
+  if (!uploads.some((u) => u.period_to >= monthStart && u.period_from <= monthEnd)) return null
   const live = spendCategories.filter(alive)
-  const spent = totals
+  return totals
     .filter((t) => !t.deletedAt && t.kind === 'month' && t.period === key && t.amount > 0)
     .filter((t) => t.categoryId === UNKNOWN_CATEGORY || !plannedElsewhere(t.categoryId, live))
     .reduce((a, t) => a + t.amount, 0)
-  const amount = income - dues - goals - spent
-  return { amount, byFact: true, income, dues, goals, spent, share: share(amount) }
+}
+
+export type IncomePartKey = 'must' | 'dreams' | 'living' | 'free'
+
+/**
+ * Виджет «Доход» в «Деньгах» (Р-33): доли дохода — обязательное (жильё и кредиты), мечты
+ * (взносы и досрочка по плану), траты (раздел d4), свободно (не меньше 0) — и нагрузка: доля жилья и
+ * кредитов в доходе (формула «вместе с жильём» прежнего Бюджета). `share` — доля 0…1 для полосы,
+ * `pct` — те же проценты, что печатал Бюджет. `overplanned` — на сколько расписано больше дохода.
+ */
+export function incomeSplit(a: Pick<ReturnType<typeof budgetAmounts>, 'd1' | 'd2' | 'd3' | 'd4' | 'd5' | 'income' | 'planExtra'>) {
+  const parts: { key: IncomePartKey; amount: number }[] = [
+    { key: 'must', amount: a.d1 + a.d2 },
+    { key: 'dreams', amount: a.d3 + a.planExtra },
+    { key: 'living', amount: a.d4 },
+    { key: 'free', amount: Math.max(0, a.d5) },
+  ]
+  return {
+    income: a.income,
+    load: pct(a.d1 + a.d2, a.income),
+    parts: parts.map((p) => ({ ...p, pct: pct(p.amount, a.income), share: a.income > 0 ? p.amount / a.income : 0 })),
+    overplanned: Math.max(0, -a.d5),
+  }
+}
+
+/**
+ * Виджет «Траты» (Р-33; бывший «Еда и быт»): план — база раздела d4 (то, что задаёт семья; прочие обязательства
+ * раздела — в «Платежах»), факт — `monthSpentByFact` (`null` — за месяц нет загрузок). `pct` —
+ * факт от плана (тег «по выпискам N %»), `share` — для полосы 0…1, `over` — перерасход.
+ */
+export function livingPlanFact(
+  categories: Category[],
+  totals: SpendTotal[],
+  spendCategories: SpendCategory[],
+  key: string,
+  uploads: UploadPeriod[] = [],
+) {
+  const plan = categories.find((c) => c.key === 'd4')?.amount ?? 0
+  const spent = monthSpentByFact(totals, spendCategories, key, uploads)
+  return {
+    plan,
+    spent,
+    pct: spent !== null && plan > 0 ? pct(spent, plan) : null,
+    share: spent !== null && plan > 0 ? Math.min(1, spent / plan) : 0,
+    over: spent !== null && spent > plan,
+  }
+}
+
+/**
+ * Виджет «Долги» (Р-33): остаток живых кредитов (сумма `principal`, как итог долгов Капитала) и
+ * «в <месяце> оплачено N из M» — платежи кредитов месяца из `monthDues` (Р-38). `open` — есть ли
+ * незакрытый долг (нет — «Долгов нет»). Кредиты — производные остатки, как их отдаёт стор.
+ */
+export function debtsSummary(state: { credits?: Credit[]; payments?: Payment[] }, key: string) {
+  const credits = liveCredits(state.credits ?? [])
+  const dues = monthDues({ credits: state.credits, payments: state.payments }, key).filter((d) => d.kind === 'credit')
+  return {
+    total: credits.reduce((a, c) => a + c.principal, 0),
+    open: credits.some((c) => c.principal > 0),
+    paid: dues.filter((d) => d.paid).length,
+    count: dues.length,
+  }
 }
 
 export type DecisionKind = 'unknown' | 'match' | 'allocate' | 'salary' | 'keep' | 'monthEnd' | 'plan'

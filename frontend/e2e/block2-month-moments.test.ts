@@ -8,10 +8,8 @@ import { money } from '../src/lib/money'
 import type { Payment } from '../src/types/finance'
 import { authAs } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
-import Budget from '../src/views/Budget.vue'
 import Dreams from '../src/views/Dreams.vue'
 import Money from '../src/views/Money.vue'
-import History from '../src/views/History.vue'
 import WeekSalary from '../src/views/WeekSalary.vue'
 
 /**
@@ -85,16 +83,14 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       expect(B.store.accounts.find((x) => x.id === 'card')!.amount).toBe(1_700_000)
       expect(paidFor(B.store.payments, 'salary', 'a', '2026-09')?.id).toBe(record.id)
 
-      // У Аруны строка Ильяса — отметка без кнопок; своей зарплаты кнопка ещё рано (20-го).
-      const list = await screen(B.pinia, Budget, '/budget', { initialView: 'list' })
-      const row = (title: string) => list.split('border-b border-line last:border-b-0').find((c) => c.includes(`>${title}<`)) ?? ''
-      expect(row('Зарплата · Ильяс')).toContain('пришла 10 сентября · Kaspi Gold')
-      expect(row('Зарплата · Ильяс')).not.toMatch(/>\s*Пришла\s*<\/button>/)
-      expect(row('Зарплата · Аруна')).not.toMatch(/>\s*Пришла\s*<\/button>/)
+      // У Аруны зарплата Ильяса — отметкой в «Истории» (пивот 3, B2C-44; списка Бюджета нет), без кнопок.
+      const history = (await screen(B.pinia, Money, '/money/history')).replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
+      expect(history).toContain(`Зарплата · Ильяс пришла · отметка +${money(700_000)}`)
+      expect(history).not.toContain('Пришла зарплата')
 
-      // «До зарплаты» у обоих переключилось на Аруну.
-      const overview = await screen(B.pinia, Money, '/money')
-      expect(overview).toContain('Аруна получит')
+      // Ближайшая зарплата у обоих — Аруны: строка листа сводки «До зарплаты» в «Деньгах» (пивот 3, Р-32).
+      const overview = await screen(B.pinia, Money, '/money', undefined, [screenMixin({ open: true })])
+      expect(overview).toContain('Зарплата · Аруна')
     })
 
     it('следующая зарплата — на счёт прошлой одним нажатием; снятие возвращает; премия — правкой', async () => {
@@ -211,9 +207,10 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       await B.store.syncHousehold(B.client)
       await A.store.syncHousehold(A.client)
 
-      const overview = await screen(A.pinia, History, '/money/history')
+      const overview = await screen(A.pinia, Money, '/money/history')
       expect(overview).toContain('«Телевизор» закрыт')
-      expect(overview).toContain(`12 сентября · освободилось ${money(30_000)} в месяц`)
+      // Квадрат «История» (B2C-44): день — подпись ленты, момент — строкой под ним.
+      expect(overview.replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')).toMatch(new RegExp(`12 сентября .*«Телевизор» закрыт освободилось ${money(30_000)} в месяц`))
       const ritual = await screen(A.pinia, WeekSalary, '/ritual?from=credit&credit=tv')
       expect(ritual).toContain(`Куда направить ${money(30_000)}`)
 
@@ -222,7 +219,7 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       B.store.unmarkPaid('credit', 'tv', '2026-09')
       await B.store.syncHousehold(B.client)
       await A.store.syncHousehold(A.client)
-      expect(await screen(A.pinia, History, '/money/history')).not.toContain('«Телевизор» закрыт')
+      expect(await screen(A.pinia, Money, '/money/history')).not.toContain('«Телевизор» закрыт')
       expect(await screen(A.pinia, WeekSalary, '/ritual?from=credit&credit=tv')).toContain('Этот долг ещё не закрыт')
       // В документе — только записи оплат: моменты не пишутся.
       expect(Object.keys(server.data).filter((k) => /moment|history/i.test(k))).toEqual([])
@@ -259,8 +256,8 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       expect(summary.toGoals).toBe(150_000)
 
       const cardOf = (html: string) => html.slice(html.indexOf('Итог месяца'), html.indexOf('Итог августа'))
-      const a = cardOf(await screen(A.pinia, History, '/money/history'))
-      const b = cardOf(await screen(B.pinia, History, '/money/history'))
+      const a = cardOf(await screen(A.pinia, Money, '/money/history', undefined, [screenMixin({ summaryOpen: true })]))
+      const b = cardOf(await screen(B.pinia, Money, '/money/history', undefined, [screenMixin({ summaryOpen: true })]))
       expect(a).toContain('Наш сентябрь')
       expect(a).toContain(money(summary.paid.amount))
       expect(a).toContain(money(summary.income))
@@ -311,7 +308,7 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
         // Считается ранняя по моменту отметки.
         expect(paidFor(s.payments, 'salary', 'a', '2026-09')!.id).toBe(first.id)
       }
-      expect(await screen(A2.pinia, Money, '/money')).toContain('Аруна получит')
+      expect(await screen(A2.pinia, Money, '/money', undefined, [screenMixin({ open: true })])).toContain('Зарплата · Аруна')
     })
 
     it('RP-11: окно по Алматы на стыке месяцев; ответ помнит устройство — на телефоне партнёра вопрос остаётся', async () => {
@@ -390,8 +387,8 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
         bought: { count: 2, amount: 50_000 },
       })
       const cardOf = (html: string) => html.slice(html.indexOf('Итог месяца'), html.indexOf('Итог августа'))
-      const a = cardOf(await screen(A.pinia, History, '/money/history'))
-      const b = cardOf(await screen(B.pinia, History, '/money/history'))
+      const a = cardOf(await screen(A.pinia, Money, '/money/history', undefined, [screenMixin({ summaryOpen: true })]))
+      const b = cardOf(await screen(B.pinia, Money, '/money/history', undefined, [screenMixin({ summaryOpen: true })]))
       for (const text of [money(298_400), money(1_200_000), '«Телевизор»', money(45_000), money(230_000), money(30_000), '35% → 55%', money(50_000)]) {
         expect(a).toContain(text)
       }

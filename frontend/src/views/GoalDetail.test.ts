@@ -26,7 +26,7 @@ import GoalDetail from './GoalDetail.vue'
 import GoalNew from './GoalNew.vue'
 import Wishes from './Wishes.vue'
 
-describe('views/GoalDetail.vue, GoalNew.vue, Wishes.vue, Deposit.vue — цели, депозиты и желания', () => {
+describe('views/GoalDetail.vue, GoalNew.vue, Wishes.vue, лист вклада — цели, депозиты и желания', () => {
   const storageMap = new Map<string, string>()
   const mockLocalStorage = {
     getItem: (key: string) => storageMap.get(key) ?? null,
@@ -316,7 +316,7 @@ describe('views/GoalDetail.vue, GoalNew.vue, Wishes.vue, Deposit.vue — цел�
     expect(html).not.toContain('Старая карта (')
   })
 
-  it('рендерит Deposit.vue для счета с депозитными условиями', async () => {
+  it('лист счёта-вклада (пивот 3, B2C-42): старый адрес вклада — расчёт в листе', async () => {
     const store = useFinanceStore()
     store.addAccount({
       name: 'Kaspi Депозит',
@@ -333,17 +333,16 @@ describe('views/GoalDetail.vue, GoalNew.vue, Wishes.vue, Deposit.vue — цел�
 
     const { createSSRApp } = await import('vue')
     const { renderToString } = await import('vue/server-renderer')
-    const { createRouter, createMemoryHistory } = await import('vue-router')
-    const Deposit = (await import('./Deposit.vue')).default
+    const { createMemoryHistory } = await import('vue-router')
+    const { createAppRouter } = await import('@/router')
+    const Money = (await import('./Money.vue')).default
 
-    const router = createRouter({
-      history: createMemoryHistory(),
-      routes: [{ path: '/capital/:id', component: Deposit }],
-    })
-    await router.push(`/capital/${accId}`)
+    // Пивот 3 (B2C-42): экрана вклада нет — старый адрес открывает лист счёта с «Расчётом вклада».
+    const router = createAppRouter(createMemoryHistory())
+    await router.push(`/money/capital/${accId}`)
     await router.isReady()
 
-    const app = createSSRApp(Deposit)
+    const app = createSSRApp(Money)
     app.use(router)
 
     const html = await renderToString(app)
@@ -351,7 +350,9 @@ describe('views/GoalDetail.vue, GoalNew.vue, Wishes.vue, Deposit.vue — цел�
     expect(html).toContain('Будет на счёте через 12 мес.')
     expect(html).toContain('Эффективная ставка')
     expect(html).toContain('Ваши взносы')
-    expect(html).toContain('Заработал банк')
+    expect(html).toContain('Начислено процентов')
+    // Критик Блока 9: «Заработал банк» повторял «Начислено процентов» тем же числом — строка одна.
+    expect(html).not.toContain('Заработал банк')
 
     // PV-05: инфляция 10,2% из общей константы. Правило 12 (критик Блока 3): реальная доходность —
     // одна строка, пояснение — в подсказке; плашки про формулу и «ИИ-советника» нет.
@@ -455,7 +456,7 @@ describe('PV-15: пауза целей ради плана (SSR)', () => {
 
   // Владелец, 2026-09-27 (критик Блока 3): автор — один раз, на фото и ссылкой; поверх фото —
   // только маленькая кнопка смены; «Убрать фото» — в окне выбора; «Сделать главной» — в карточке.
-  it('герой цели: автор один раз ссылкой на фото, кнопка «Сменить фото» вместо чипов, «Сделать главной» в карточке, у главной — тег', async () => {
+  it('герой цели: автор один раз ссылкой на фото, кнопка «Сменить фото» вместо чипов, «Сделать главной» в карточке, у главной — ни тега, ни кнопки («главная мечта» — в подписи шапки)', async () => {
     const store = useFinanceStore()
     const doc = planFamilyDoc()
     const credit = { author: 'Matthew Skinner', url: 'https://unsplash.com/@matthewskinner' }
@@ -473,7 +474,8 @@ describe('PV-15: пауза целей ради плана (SSR)', () => {
     expect(trip).not.toContain('>главная<')
 
     const car = await renderScreen(GoalDetail, '/goals/car')
-    expect(car).toContain('главная')
+    // Возврат смоука: тег «главная» в карточке дублировал подпись шапки «главная мечта · …» (g4) — убран.
+    expect(car).not.toContain('>главная<')
     expect(car).not.toContain('Сделать главной')
     expect(car).not.toContain('Сменить фото')
     expect(car).toContain('Добавить фото')
@@ -571,12 +573,14 @@ describe('PV-18: покупки — правка, «Уже купили», viewe
     expect(html).not.toContain('Список пуст')
   })
 
-  it('пусто: «Список пуст», «Уже купили» виден с «Пока ничего» и без итога', async () => {
+  // Возврат смоука (правило 12, g4): пустой «Уже купили» с «Пока ничего» был лишней секцией — нет купленного, нет секции.
+  it('пусто: «Список пуст» с кнопкой «Добавить покупку»; «Уже купили» без купленного не показывается', async () => {
     family()
     const html = await renderScreen(Wishes, '/wishes')
     expect(html).toContain('Список пуст')
-    expect(html).toContain('Уже купили')
-    expect(html).toContain('Пока ничего')
+    expect(html).toContain('Добавить покупку')
+    expect(html).not.toContain('Уже купили')
+    expect(html).not.toContain('Пока ничего')
     expect(html).not.toContain(money(0))
   })
 
@@ -718,6 +722,14 @@ describe('PV-19: цель — окно правки, взнос полем, да
     expect(html).toContain('>Откладывать в месяц, ₸</span>')
     expect(html).toContain(`value="${plain(40_000)}"`)
     expect(html).toContain('Чтобы успеть за год, нужно')
+    // Возврат смоука (g4, правило 12): в карточке — месяц, строка и «Пополнить» / «Поделиться»;
+    // поле взноса и «Снять» — под свёрнутым «Подробнее»; карандаш — в шапке (без оболочки — на месте).
+    const details = html.indexOf('<details')
+    expect(html.indexOf('Пополнить')).toBeLessThan(details)
+    expect(html.indexOf('>Откладывать в месяц, ₸</span>')).toBeGreaterThan(details)
+    expect(html.indexOf('Снять')).toBeGreaterThan(details)
+    expect(html).not.toContain('Все мечты')
+    expect(html).toContain('aria-label="Изменить цель"')
 
     for (const empty of ['0', '']) {
       await renderScreen(GoalDetail, '/goals/trip', undefined, [screenMixin({}, (s) => (s.onMonthly as (t: string) => void)(empty))])

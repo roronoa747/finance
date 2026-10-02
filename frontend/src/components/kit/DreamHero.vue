@@ -5,7 +5,7 @@ import Button from '@/components/ui/Button.vue'
 import ProgressBar from './ProgressBar.vue'
 
 /**
- * Герой мечты (DESIGN.md §5): фото во всю карточку, «До мечты», процент Piazzolla 76 и одна
+ * Герой мечты (DESIGN.md §5): фото во всю карточку, «До мечты», процент 64 (цифры --font-num) и одна
  * строка «<Цель> · <накоплено> из <нужно> ₸ · будет вашей в <месяц год>». Состояния:
  * без фото — `--surface-3` и ink-текст (слот `actions` — чип «Добавить фото»); `empty` —
  * «На что копим?» с кнопкой. Высота: главный 440, экран цели 380, превью 180.
@@ -39,13 +39,15 @@ const HEIGHT = { main: 'min-h-[440px]', goal: 'min-h-[380px]', preview: 'min-h-[
 
 const pct = computed(() => Math.max(0, Math.min(100, Math.round(props.percent))))
 
+// Разделитель «·» держится за предыдущее слово (неразрывный пробел перед ним): строка никогда не
+// начинается с точки (смоук владельца, п. 4); месяц и год — одним куском.
 const line2 = computed(() => {
   if (props.line !== undefined) return props.line
   const parts: string[] = []
   if (props.title) parts.push(props.title)
   if (props.haveAmount !== undefined && props.needAmount !== undefined) parts.push(`${money(props.haveAmount).replace(/\s₸$/u, '')} из ${money(props.needAmount)}`)
-  if (props.doneMonth) parts.push(`будет вашей в ${props.doneMonth}`)
-  return parts.join(' · ')
+  if (props.doneMonth) parts.push(`будет вашей в ${props.doneMonth.replace(/ /g, ' ')}`)
+  return parts.join(' · ')
 })
 </script>
 

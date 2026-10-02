@@ -18,6 +18,8 @@ import AccountChoice from '@/components/AccountChoice.vue'
 const props = defineProps<{
   /** Кнопка шире — на экране плана. */
   wide?: boolean
+  /** Главное действие квадрата «План» (пивот 3, правило 12): брендовая «Шаг сделан». */
+  primary?: boolean
 }>()
 
 const finance = useFinanceStore()
@@ -52,8 +54,9 @@ function confirm() {
 </script>
 
 <template>
+  <Button v-if="canPay && primary" class="flex-1" @click="tap">Шаг сделан</Button>
   <button
-    v-if="canPay"
+    v-else-if="canPay"
     type="button"
     :class="
       cn(

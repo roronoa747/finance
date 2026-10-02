@@ -21,8 +21,14 @@ export type StoryTexts = { kind: StoryKind; app: string; label: string; big: str
 const APP = 'Family Finance'
 // Карточка от темы не зависит (§7), а canvas CSS-переменных не читает: значение токена
 // `--surface-3` светлой темы из style.css (текст — `--ink` / `--on-photo` там же).
-const NO_PHOTO_BG = '#e6ded2'
-const INK = '30,26,22'
+const NO_PHOTO_BG = '#e7e7e3'
+const INK = '25,25,27'
+// Шрифты — системные стеки `--font-display` / `--font-num` / `--font-sans` из style.css (пивот 3, Р-36).
+const DISPLAY = "-apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, 'Segoe UI', Roboto, sans-serif"
+const NUM = "ui-rounded, -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', Roboto, sans-serif"
+const TEXT = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, 'Segoe UI', Roboto, sans-serif"
+/** Шрифт строки имени мечты — ужимается в `drawStory`. */
+export const lineFont = (size: number) => `500 ${size}px ${TEXT}`
 const WHITE = '255,255,255'
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
@@ -82,10 +88,10 @@ export function layoutStory(kind: StoryKind = 'goal', size: { width: number; hei
     height: h,
     margin: m,
     gradient: { from: 0.3 * h, to: h, color: 'rgba(24,18,14,0.82)' },
-    app: { x: m, y: m + 44 * k, font: `600 ${44 * k}px Piazzolla`, alpha: 0.95 },
-    label: { x: m, y: labelY, font: `500 ${40 * k}px "Golos Text"`, alpha: 0.9 },
-    big: { x: m, y: bigY, font: `500 ${bigSize}px Piazzolla`, size: bigSize, lineHeight: 0.9 },
-    line: { x: m, y: lineY, font: `500 ${lineSize}px "Golos Text"`, size: lineSize, maxWidth: w - 2 * m },
+    app: { x: m, y: m + 44 * k, font: `700 ${44 * k}px ${DISPLAY}`, alpha: 0.95 },
+    label: { x: m, y: labelY, font: `500 ${40 * k}px ${TEXT}`, alpha: 0.9 },
+    big: { x: m, y: bigY, font: `700 ${bigSize}px ${NUM}`, size: bigSize, lineHeight: 0.9 },
+    line: { x: m, y: lineY, font: lineFont(lineSize), size: lineSize, maxWidth: w - 2 * m },
     bar,
   }
 }
@@ -140,7 +146,7 @@ export function drawStory(ctx: StoryContext, image: StoryImage, texts: StoryText
   ctx.font = layout.line.font
   while (size > layout.line.size * 0.5 && ctx.measureText(texts.line).width > layout.line.maxWidth) {
     size -= 2
-    ctx.font = `500 ${size}px "Golos Text"`
+    ctx.font = lineFont(size)
   }
   ctx.fillText(texts.line, layout.line.x, layout.line.y)
 

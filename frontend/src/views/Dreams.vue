@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRouter, RouterLink } from 'vue-router'
-import { PhCamera, PhFileArrowUp } from '@phosphor-icons/vue'
+import { useRouter } from 'vue-router'
+import { PhCamera, PhFileArrowUp, PhShoppingBag } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
@@ -15,6 +15,7 @@ import {
   goalMonths,
   goalRemaining,
   liveGoals,
+  liveWishlist,
   mainGoal,
   nextDecision,
   planForecast,
@@ -76,6 +77,10 @@ const heroMonth = computed(() => {
   return done ? monthIn(done) : null
 })
 
+/** Плитка ряда: треть ширины без зазоров (`flex-grow` растягивает, когда плиток меньше трёх). */
+const TILE = 'shrink-0 basis-[calc((100%-20px)/3)] snap-start'
+const wishCount = computed(() => liveWishlist(financeStore.wishlist).filter((w) => !w.bought).length)
+
 function openGoal(id: string) {
   void router.push(`/goals/${id}`)
 }
@@ -123,18 +128,19 @@ const payday = computed(() =>
     payments: financeStore.payments,
   }),
 )
+// Без имени: «до зарплаты Ильяса» требует падежа, а «· Ильяс» в конце переносился отдельной строкой
+// (смоук владельца). «·» держится за предыдущее слово — строка не начинается с точки.
 const paydayNote = computed(() => {
   const p = payday.value
   if (!p) return ''
-  const who = people.value.length > 1 ? ` · ${p.who.name}` : ''
-  return p.inDays === 0 ? `сегодня зарплата${who}` : `${p.inDays} ${plural(p.inDays, 'день', 'дня', 'дней')} до зарплаты${who}`
+  return p.inDays === 0 ? 'сегодня зарплата' : `${p.inDays} ${plural(p.inDays, 'день', 'дня', 'дней')} до зарплаты`
 })
 const freeNote = computed(() => {
   const p = picture.value
-  const tail = paydayNote.value ? ` · ${paydayNote.value}` : ''
+  const tail = paydayNote.value ? ` · ${paydayNote.value}` : ''
   if (!hasUploads.value) return 'появится после первой выписки'
   if (!free.value.byFact) return `по плану${tail}`
-  if (p.missing.length && p.uploaded.length) return `пока по выписке ${names(p.uploaded)} · уточнится, когда ${names(p.missing)} загрузит`
+  if (p.missing.length && p.uploaded.length) return `пока по выписке ${names(p.uploaded)} · уточнится, когда ${names(p.missing)} загрузит`
   return `по факту ${people.value.length > 1 ? 'выписок обоих' : 'выписки'}${tail}`
 })
 
@@ -164,6 +170,8 @@ const deferred = ref<string | null>(null)
 const decisionKey = (d: Decision) => `${d.kind}:${d.obligation?.id ?? d.salary?.period ?? ''}`
 const shown = computed(() => (decision.value && deferred.value !== decisionKey(decision.value) ? decision.value : null))
 const cancelling = ref(false)
+// Загрузка недели — главное действие экрана, когда брендовой кнопки нет ни у пустого героя, ни у решения.
+const uploadQuiet = computed(() => !main.value || !!shown.value)
 
 function answerRest() {
   answered.value = key.value
@@ -235,19 +243,23 @@ onMounted(refresh)
     <DreamHero v-else empty :can-pick="canEdit" @pick="newGoal" />
     <Callout v-if="photoNote" tone="neutral" icon="info">{{ photoNote }}</Callout>
 
-    <!-- Плитки других мечт -->
-    <div v-if="others.length || (main && canEdit)" class="grid grid-cols-3 gap-2.5">
+    <!-- Плитки других мечт, «Новая мечта» и «Желания» одним рядом (g1): до трёх делят ширину,
+         больше — ряд прокручивается по трети экрана. -->
+    <div v-if="main" class="-mx-4 flex snap-x gap-2.5 overflow-x-auto px-4 [scrollbar-width:none]">
       <DreamTile
         v-for="g in others"
         :key="g.id"
         :name="g.name"
         :percent="pct(g.have, g.need)"
         :src="g.photoId ? tileSrc[g.photoId] : null"
+        :class="TILE"
         @click="openGoal(g.id)"
       />
-      <DreamTile v-if="canEdit" add @click="newGoal" />
+      <DreamTile v-if="canEdit" add :class="TILE" @click="newGoal" />
+      <DreamTile link name="Желания" :meta="wishCount ? `${wishCount} в списке` : ''" :class="TILE" @click="router.push('/wishes')">
+        <template #icon><PhShoppingBag /></template>
+      </DreamTile>
     </div>
-    <RouterLink to="/wishes" class="px-1 text-[13px] font-semibold text-brand">Желания →</RouterLink>
 
     <PhotoPicker
       v-if="main"
@@ -275,17 +287,17 @@ onMounted(refresh)
         Картина недели дополнится, когда {{ names(picture.missing) }} загрузит выписку.
       </Callout>
     </WeekCard>
-    <!-- Брендовая кнопка экрана — у героя или у решения (правило 12): загрузка здесь тихая. -->
+    <!-- Брендовая кнопка экрана одна (правило 12): загрузка брендовая, пока нет ни пустого героя, ни карточки решения (g1 «ещё нет выписок»). -->
     <Card v-else>
       <EmptyState
         v-if="!hasUploads"
         title="Картины недели пока нет"
         text="Загрузите первую выписку — картина появится здесь."
       >
-        <Button v-if="canEdit" variant="secondary" @click="router.push('/week?upload=1')"><PhFileArrowUp /> Загрузить выписку</Button>
+        <Button v-if="canEdit" :variant="uploadQuiet ? 'secondary' : 'default'" @click="router.push('/week?upload=1')"><PhFileArrowUp /> Загрузить выписку</Button>
       </EmptyState>
       <EmptyState v-else title="Неделя пока пустая" text="Загрузите выписку — картина недели появится здесь.">
-        <Button v-if="canEdit" variant="secondary" @click="router.push('/week?upload=1')"><PhFileArrowUp /> Загрузить выписку</Button>
+        <Button v-if="canEdit" :variant="uploadQuiet ? 'secondary' : 'default'" @click="router.push('/week?upload=1')"><PhFileArrowUp /> Загрузить выписку</Button>
       </EmptyState>
     </Card>
 

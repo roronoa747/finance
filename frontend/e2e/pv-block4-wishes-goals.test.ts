@@ -8,8 +8,7 @@ import { addMonths, monthIn, monthKey } from '../src/lib/dates'
 import type { SyncDoc, WishItem } from '../src/types/finance'
 import Wishes from '../src/views/Wishes.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
-import DebtPlan from '../src/views/DebtPlan.vue'
-import Budget from '../src/views/Budget.vue'
+import Money from '../src/views/Money.vue'
 import { authAs, planFamilyDoc, planOf } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
 import { at, fakeServer, phone, screen, setOnline, type FakeServer } from './support/family'
@@ -75,9 +74,9 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       await on(A).store.syncHousehold(A.client)
       expect(A.store.wishlist.find((w) => w.id === 'vac')).toMatchObject({ bought: false, boughtOn: null })
       const back = await screen(A.pinia, Wishes, '/wishes')
-      const active = back.slice(0, back.indexOf('Уже купили'))
-      expect(active).toContain('Пылесос')
-      expect(back).toContain('Пока ничего')
+      // Купленного не осталось — секции «Уже купили» нет (возврат смоука, правило 12), Пылесос — в активных.
+      expect(back).toContain('Пылесос')
+      expect(back).not.toContain('Уже купили')
     })
 
     it('A удаляет покупку и отмечает другую купленной → у B её нет, итог «Уже купили» = сумма цен купленных', async () => {
@@ -169,26 +168,19 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
    * «Уже накоплено» ниже взносов партнёра. Нажатия — обработчиками экранов (`screenMixin`).
    */
   describe('Приёмка Блока 4', () => {
-    /** Первая сумма «N ₸» после подписи. */
-    const amountAfter = (html: string, label: string) => {
-      const i = html.indexOf(label)
-      if (i < 0) return null
-      const m = html.slice(i + label.length).match(/(\d[\d\s  ]*?)[\s  ]*₸/)
-      return m ? Number(m[1].replace(/\D/g, '')) : null
-    }
     const button = (label: string) => new RegExp(`>\\s*${label}\\s*<`)
     /** Месяц без процентных долгов по живому прогнозу активного плана (как экран плана). */
     const debtFree = (p: Awaited<ReturnType<typeof phone>>) =>
       planForecast(p.store.activePlan!, on(p).store.planState(), monthKey()).debtFreeMonth!
 
-    it('цель на паузе: дата у обоих = «долги с процентами закроются в …» экрана плана + месяцы цели; A меняет взнос → у B сдвинулись и шаг плана, и дата', async () => {
+    it('цель на паузе: дата у обоих = «Закроется в …» квадрата «План» + месяцы цели; A меняет взнос → у B сдвинулись и шаг плана, и дата', async () => {
       server.data = planFamilyDoc({ plans: [planOf()] })
       const A = await phone(server)
       const B = await phone(server)
 
       // Машина: осталось 2 800 000, по 60 000 — 47 взносов с месяца после конца плана.
       const free = debtFree(B)
-      expect(await screen(B.pinia, DebtPlan, '/plan')).toContain(`долги с процентами закроются в ${monthIn(free)}`)
+      expect(await screen(B.pinia, Money, '/money/plan')).toContain(`Закроется в ${monthIn(free)}`)
       for (const p of [A, B]) {
         const car = await screen(p.pinia, GoalDetail, '/goals/car')
         expect(car).toContain('На паузе ради плана')
@@ -204,10 +196,11 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       ])
       await A.store.syncHousehold(A.client)
       await on(B).store.syncHousehold(B.client)
-      expect(amountAfter(await screen(B.pinia, Budget, '/budget'), '>Досрочно по плану</div>')).toBe(110_000)
+      // «Досрочно по плану» — шаг месяца квадрата «План» (Бюджета нет, B2C-45).
+      expect(await screen(B.pinia, Money, '/money/plan')).toContain(`${money(110_000)} досрочно`)
       const free2 = debtFree(B)
       expect(free2 <= free).toBe(true)
-      expect(await screen(B.pinia, DebtPlan, '/plan')).toContain(`долги с процентами закроются в ${monthIn(free2)}`)
+      expect(await screen(B.pinia, Money, '/money/plan')).toContain(`Закроется в ${monthIn(free2)}`)
       expect(await screen(B.pinia, GoalDetail, '/goals/car')).toContain(`Будет вашей в ${monthIn(addMonths(free2, 40))}`)
     })
 

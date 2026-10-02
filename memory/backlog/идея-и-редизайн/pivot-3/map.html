@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<!-- Копия артефакта claude.ai; оригинал — страница в чате владельца 2026-10-01. Скрипты/шрифты — как в артефакте. -->
+<title>Карта переноса экранов</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Piazzolla:opsz,wght@8..30,600&family=Golos+Text:wght@400;500;600;700&display=swap">
+<style>
+/* Документ-инвентарь: одна колонка, оглавление, по карточке на экран, внутри — строки «элемент → куда → статус». */
+:root{
+  --bg:#e8e5de; --fg:#1f1b17; --mute:#6c655c; --line:#d2cdc3; --card:#f4f2ed; --card2:#ebe8e1; --accent:#b4562f; --accent-soft:#f1e0d5;
+  --ok:#3e7a5b; --ok-soft:#dfeee4; --move:#3b5da8; --move-soft:#e1e8f7; --fold:#7a6a9e; --fold-soft:#ebe6f3; --drop:#a6392b; --drop-soft:#f8e0dc; --ask:#8a5a00; --ask-soft:#f8ebd0; --later:#6c655c; --later-soft:#e4e0d8;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#141210; --fg:#ebe6dd; --mute:#9a9185; --line:#2b2722; --card:#1d1a16; --card2:#262219; --accent:#e58a62; --accent-soft:#3a2418;
+    --ok:#7fc29a; --ok-soft:#1f2e25; --move:#8fafff; --move-soft:#1e2740; --fold:#b7a7e0; --fold-soft:#2a2438; --drop:#ff8f7c; --drop-soft:#3a1f1b; --ask:#e7b96a; --ask-soft:#2c2416; --later:#9a9185; --later-soft:#2a2620;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#141210; --fg:#ebe6dd; --mute:#9a9185; --line:#2b2722; --card:#1d1a16; --card2:#262219; --accent:#e58a62; --accent-soft:#3a2418;
+  --ok:#7fc29a; --ok-soft:#1f2e25; --move:#8fafff; --move-soft:#1e2740; --fold:#b7a7e0; --fold-soft:#2a2438; --drop:#ff8f7c; --drop-soft:#3a1f1b; --ask:#e7b96a; --ask-soft:#2c2416; --later:#9a9185; --later-soft:#2a2620;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:'Golos Text','Segoe UI',system-ui,sans-serif;font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:960px;margin:0 auto;padding-block:20px 60px;padding-inline:16px}
+h1,h2,h3{margin:0;text-wrap:balance}
+p{margin:0}
+.hd h1{font-family:'Piazzolla',Georgia,serif;font-weight:600;font-size:30px;line-height:1.1}
+.hd p{color:var(--mute);max-width:62ch;margin-top:8px}
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.st{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 10px;font-size:12.5px;font-weight:600;white-space:nowrap}
+.st.ok{background:var(--ok-soft);color:var(--ok)} .st.move{background:var(--move-soft);color:var(--move)} .st.fold{background:var(--fold-soft);color:var(--fold)} .st.drop{background:var(--drop-soft);color:var(--drop)} .st.ask{background:var(--ask-soft);color:var(--ask)} .st.later{background:var(--later-soft);color:var(--later)}
+.toc{margin-top:20px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.toc h2{font-size:13px;letter-spacing:.05em;text-transform:uppercase;color:var(--mute);font-weight:600}
+.toc ol{margin:8px 0 0;padding-left:20px;columns:2;column-gap:24px;font-size:14px}
+.toc li{break-inside:avoid;margin:2px 0}
+.toc a{color:var(--fg);text-decoration:none;border-bottom:1px solid var(--line)}
+.toc a:hover{border-color:var(--accent)}
+@media (max-width:640px){ .toc ol{columns:1} }
+.tree{margin-top:20px;background:var(--card);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:14px;padding:14px 16px}
+.tree h2{font-family:'Piazzolla',Georgia,serif;font-weight:600;font-size:22px;line-height:1.15}
+.tree p{color:var(--mute);margin-top:4px;max-width:64ch}
+.tree ul{margin:10px 0 0;padding-left:0;list-style:none;font-size:14.5px}
+.tree ul ul{padding-left:18px;border-left:1px solid var(--line);margin:4px 0 6px 6px}
+.tree li{padding:3px 0}
+.tree b{font-weight:600}
+.tree .m{color:var(--mute)}
+.sheets{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.sheets span{font-size:12.5px;padding:3px 9px;border-radius:999px;background:var(--card2);border:1px solid var(--line)}
+section.scr{margin-top:28px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;scroll-margin-top:12px}
+section.scr>h2{font-family:'Piazzolla',Georgia,serif;font-weight:600;font-size:22px;line-height:1.15}
+section.scr>.route{font-size:12.5px;color:var(--mute);margin-top:2px;font-variant-numeric:tabular-nums}
+section.scr>.sum{margin-top:8px;color:var(--mute);font-size:14px;max-width:70ch}
+.rows{margin-top:12px;display:flex;flex-direction:column}
+.row{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr) auto;gap:6px 14px;align-items:start;padding:10px 0;border-top:1px solid var(--line)}
+.row:first-child{border-top:0;padding-top:0}
+.row .el b{font-weight:600;display:block}
+.row .el small{display:block;color:var(--mute);font-size:13px;line-height:1.4}
+.row .to{font-size:14px;line-height:1.45}
+.row .to i{font-style:normal;color:var(--mute)}
+.row .st{justify-self:end}
+@media (max-width:640px){
+  .row{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"el st" "to to"}
+  .row .el{grid-area:el} .row .st{grid-area:st} .row .to{grid-area:to;padding-left:10px;border-left:2px solid var(--line)}
+}
+.group{margin-top:14px;font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--accent)}
+.group+.rows{margin-top:6px}
+.qs{margin-top:28px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
+.qs h2{font-family:'Piazzolla',Georgia,serif;font-weight:600;font-size:22px}
+.qs ol{margin:8px 0 0;padding-left:20px}
+.qs li{margin-top:8px}
+.qs li b{font-weight:600}
+.foot{margin-top:28px;color:var(--mute);font-size:13px}
+</style>
+
+<div class="wrap">
+<header class="hd">
+  <h1>Карта переноса экранов</h1>
+  <p>Каждый экран приложения как он есть сейчас на проде, каждый элемент на нём, и куда он уходит в новой структуре. Правило одно: одна вещь живёт в одном месте, вглубь только листы. Сначала «Деньги», как договорились; «Неделя» и «Мечты» перечислены целиком, но их разбираем следующими шагами.</p>
+  <div class="legend">
+    <span class="st ok">остаётся</span><span class="st move">переезжает</span><span class="st fold">в лист</span><span class="st drop">убираем, дубль</span><span class="st ask">решить</span><span class="st later">следующий шаг</span>
+  </div>
+</header>
+
+<div class="tree">
+  <h2>Что получается в «Деньгах»</h2>
+  <p>По вашему разбору и ответам: план по разделам не вводится, «Еда и быт» остаётся одной суммой; в «Истории» операции, отметки и итоги месяца.</p>
+  <ul>
+    <li><b>Сводка</b> <span class="m">· вместо списка «Впереди»: до зарплаты N дней, сколько списаний и на какую сумму, хватает ли на счетах</span></li>
+    <li><b>Капитал</b>
+      <ul>
+        <li>Виджет <b>Доход</b> <span class="m">· 1 200 000 в месяц, участники с днём, полоса «обязательное · мечты · свободно» в процентах; нагрузка на доход — это та же доля обязательного</span></li>
+        <li>Виджет <b>Долги</b> <span class="m">· остаток, платежей в этом месяце оплачено N из M, строка плана «Сначала долги» → лист «Долги»</span></li>
+        <li>Виджет <b>Чистый капитал</b> <span class="m">· на счетах, накоплено по мечтам, долги</span></li>
+        <li>Список <b>Счета</b> <span class="m">· строка → лист счёта (вклад внутри него)</span></li>
+        <li>Список <b>Обязательное</b> <span class="m">· аренда, кредиты, коммуналка, подписки группами; «Оплатил» только здесь; строка → лист</span></li>
+      </ul>
+    </li>
+    <li><b>Бюджет</b>
+      <ul>
+        <li>Виджет <b>План месяца</b> <span class="m">· доход, обязательное, в мечты, еда и быт (единственное поле), свободно по плану; у каждой строки % дохода; рядом факт по выпискам</span></li>
+        <li>Виджет <b>Разделы трат</b> <span class="m">· факт по выпискам за месяц и доли расходов в процентах; плана по разделам нет</span></li>
+      </ul>
+    </li>
+    <li><b>История</b> <span class="m">· лента по дням: свои операции из выписок, отметки семьи (оплачено, пришла зарплата), итог месяца, моменты (закрыт кредит, половина цели). Партнёр видит отметки и итоги, не ваши покупки</span></li>
+  </ul>
+  <p style="margin-top:10px">Листы (открываются из строк, экранами не являются):</p>
+  <div class="sheets"><span>Долги (план + что гасить первым)</span><span>Кредит</span><span>Досрочка</span><span>Обязательство</span><span>Группа подписок</span><span>Счёт (с вкладом)</span><span>Участник (оклад, день)</span><span>Отметка (оплатил / пришла)</span><span>Внеплановый доход</span><span>До зарплаты (список)</span></div>
+</div>
+
+<nav class="toc">
+  <h2>Экраны сейчас</h2>
+  <ol>
+    <li><a href="#money">Деньги</a></li>
+    <li><a href="#budget">Бюджет</a></li>
+    <li><a href="#capital">Капитал</a></li>
+    <li><a href="#capital-sheets">Листы Капитала</a></li>
+    <li><a href="#plan">План «Сначала долги»</a></li>
+    <li><a href="#deposit">Вклад</a></li>
+    <li><a href="#history">История и итоги</a></li>
+    <li><a href="#dreams">Мечты</a></li>
+    <li><a href="#week">Неделя</a></li>
+    <li><a href="#review">Разбор выписки</a></li>
+    <li><a href="#salary">Раскладка</a></li>
+    <li><a href="#goal">Цель</a></li>
+    <li><a href="#goal-new">Новая мечта</a></li>
+    <li><a href="#wishes">Желания</a></li>
+    <li><a href="#settings">Настройки</a></li>
+    <li><a href="#start">Первый запуск и вход</a></li>
+    <li><a href="#shell">Оболочка и лист «+»</a></li>
+  </ol>
+</nav>
+
+<!-- ============ ДЕНЬГИ ============ -->
+<section class="scr" id="money">
+  <h2>Деньги</h2>
+  <div class="route">/money · вход на второй уровень</div>
+  <p class="sum">Экран-меню со «Свободно» и списком «Впереди». Меню исчезает: вместо него сводка и три квадрата.</p>
+  <div class="rows">
+    <div class="row"><div class="el"><b>Свободно до конца месяца · до зарплаты N дней</b><small>по факту выписок обоих; полоса от дохода</small></div><div class="to">Главный «Мечты», одной строкой под героем. В Бюджете та же цифра показывается как «факт» рядом с планом</div><span class="st move">переезжает</span></div>
+    <div class="row"><div class="el"><b>Кнопка «Пришла зарплата»</b><small>в день зарплаты, у своей</small></div><div class="to">Решение на «Неделе». Как именно — на шаге «Неделя»</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Входы: Бюджет · Капитал · План · Вклад · История и итоги</b><small>строки с подписями</small></div><div class="to">Три квадрата Капитал · Бюджет · История; План и Вклад становятся листами</div><span class="st drop">убираем, дубль</span></div>
+    <div class="row"><div class="el"><b>«Освободится N ₸ в месяц» → Распределить</b><small>когда обязательство снижается с месяца</small></div><div class="to">Решение на «Неделе»</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Впереди: платежи месяца с «Оплатил», зарплата, «На счетах … хватает / не хватает»</b><small>оплаченное уходит вниз</small></div><div class="to">Сводка наверху «Денег»: «До зарплаты 9 дней · 3 списания · 324 990 ₸ · хватает, остаётся 155 010». Нажатие — лист «До зарплаты» с теми же строками. «Оплатил» — в списке «Обязательное» (Капитал)</div><span class="st move">переезжает</span></div>
+    <div class="row"><div class="el"><b>«Добавьте счёт в Капитале — покажем, хватит ли»</b><small>когда счетов нет</small></div><div class="to">Та же фраза в сводке</div><span class="st ok">остаётся</span></div>
+  </div>
+</section>
+
+<!-- ============ БЮДЖЕТ ============ -->
+<section class="scr" id="budget">
+  <h2>Бюджет</h2>
+  <div class="route">/money/budget · три вида: План · Календарь · Список</div>
+  <p class="sum">Экран уходит целиком. План становится квадратом «Бюджет», календарь схлопывается в сводку, список становится отметками в «Истории».</p>
+
+  <div class="group">Вид «План»</div>
+  <div class="rows">
+    <div class="row"><div class="el"><b>Доход семьи · оклады без бонусов</b><small>сумма, полоса по участникам, строки «Ильяс · 10 числа · 750 000 · 62 %»</small></div><div class="to">Капитал, виджет «Доход»: сумма, участники с днём; проценты по участникам — в строках</div><span class="st move">переезжает</span></div>
+    <div class="row"><div class="el"><b>Нажатие на участника → окно оклада</b><small>оклад, день, «запланировать изменение» с месяца; строка «с ноября — 800 000»</small></div><div class="to">Лист «Участник» из строки в виджете «Доход»; будущее изменение — строкой под именем, как сейчас</div><span class="st fold">в лист</span></div>
+    <div class="row"><div class="el"><b>Подпись «зарплаты приходят в разные дни, месяц закрывается 1-го»</b></div><div class="to">Абзац механики, правило 12: в подсказку (?) у виджета «Доход»</div><span class="st fold">в лист</span></div>
+    <div class="row"><div class="el"><b>Куда уходит: Жильё · Кредиты · Цели · Еда и быт · Свободно</b><small>суммы, «% дохода», подпись у каждой; «Досрочно по плану» / «в подушку» при плане</small></div><div class="to">Бюджет, виджет «План месяца»: те же строки с процентами. Жильё и кредиты вместе — «Обязательное» (как в Капитале), раскрывается по нажатию</div><span class="st move">переезжает</span></div>
+    <div class="row"><div class="el"><b>Поле «Еда и быт»</b><small>единственная сумма, которую вводят руками</small></div><div class="to">Бюджет, та же строка с полем. По вашему ответу — одна сумма, плана по разделам нет</div><span class="st move">переезжает</span></div>
+    <div class="row"><div class="el"><b>«из них проценты банку N в месяц»</b><small>под строкой кредитов</small></div><div class="to">Лист «Долги», строка «процентов в месяц»</div><span class="st fold">в лист</span></div>
+    <div class="row"><div class="el"><b>Подсказка «Откуда эти суммы»</b></div><div class="to">Та же подсказка у виджета «План месяца»</div><span class="st ok">остаётся</span></div>
+    <div class="row"><div class="el"><b>«План не сходится» — расписано больше, чем приходит</b></div><div class="to">Та же заметка под виджетом «План месяца»</div><span class="st ok">остаётся</span></div>
+  </div>
+
+  <div class="group">Вид «Календарь»</div>
+  <div class="rows">
+    <div class="row"><div class="el"><b>Плашки «Отложено» и «На обязательства»</b></div><div class="to">Те же суммы уже есть в «Плане месяца» (мечты, обязательное)</div><span class="st drop">убираем, дубль</span></div>
+    <div class="row"><div class="el"><b>Сетка месяца с точками по дням, легенда</b><small>Пн–Вс, 1–30, точки цветов участников и разделов</small></div><div class="to">Сводка «до зарплаты» заменяет календарь; ближайшие даты видны в списке «Обязательное» (день у каждой строки)</div><span class="st ask">решить</span></div>
+    <div class="row"><div class="el"><b>События выбранного дня</b><small>платёж с «Оплатил», зарплата с «Пришла», взнос в цель</small></div><div class="to">История: отметки по дням; будущие платежи — в «Обязательном»</div><span class="st move">переезжает</span></div>
+    <div class="row"><div class="el"><b>Нагрузка на доход</b><small>кредиты N %, вместе с жильём N %, полосы, ориентиры «до 30 % комфортно», «до 50 % для пары»</small></div><div class="to">Капитал, виджет «Доход»: тег «нагрузка 30 %» и полоса; ориентиры — в подсказке (?)</div><span class="st move">переезжает</span></div>
+  </div>
+
+  <div class="group">Вид «Список»</div>
+  <div class="rows">
+    <div class="row"><div class="el"><b>Все движения месяца</b><small>«−220 000 Аренда · 5 октября · Оплатил», «+750 000 Зарплата · Ильяс · Пришла», взносы в цели</small></div><div class="to">История: те же строки как отметки, по дням, вместе с операциями из выписок. Будущие (ещё не оплаченные) — в «Обязательном» и в сводке</div><span class="st move">переезжает</span></div>
+    <div class="row"><div class="el"><b>Подпись месяца внизу</b></div><div class="to">Месяц — в подписи шапки «Денег»</div><span class="st drop">убираем, дубль</span></div>
+  </div>
+</section>
+
+<!-- ============ КАПИТАЛ ============ -->
+<section class="scr" id="capital">
+  <h2>Капитал</h2>
+  <div class="route">/money/capital · самый длинный экран, 1 200 строк кода</div>
+  <p class="sum">Становится первым квадратом. Счета и обязательства остаются списками, советы и план уходят в лист «Долги».</p>
+
+  <div class="group">Чистый капитал</div>
+  <div class="rows">
+    <div class="row"><div class="el"><b>Чистый капитал (?) · сумма</b><small>подсказка «всё, что есть, минус всё, что должны»</small></div><div class="to">Капитал, виджет «Чистый капитал», подсказка та же</div><span class="st ok">остаётся</span></div>
+    <div class="row"><div class="el"><b>На счетах · Семья / Личный кошелёк · Накоплено по мечтам · Долги</b></div><div class="to">Те же строки в виджете; «семья / личный» — мелкой строкой под «На счетах»</div><span class="st ok">остаётся</span></div>
+  </div>
+
+  <div class="group">Где лежат деньги</div>
+  <div class="rows">
+    <div class="row"><div class="el"><b>Список счетов</b><small>карта, наличные, конверт, вклад; валюта и курс; тег «Личный»; у вклада «условия вклада»</small></div><div class="to">Капитал, список «Счета», строки те же</div><span class="st ok">остаётся</span></div>
+    <div class="row"><div class="el"><b>Нажатие на вклад → экран «Вклад»</b></div><div class="to">Лист счёта, см. раздел «Вклад» ниже</div><span class="st fold">в лист</span></div>
+    <div class="row"><div class="el"><b>Кнопка «Добавить счёт или накопления»</b></div><div class="to">Строка «+ добавить» внизу списка «Счета» и пункт в листе «+»</div><span class="st ok">остаётся</span></div>
+  </div>
+
+  <div class="group">Обязательства</div>
+  <div class="rows">
+    <div class="row"><div class="el"><b>Кредиты</b><small>«ГЭСВ 19 % · 23 платежа · платёж 95 000: в долг 66 500, банку 28 500», переплата, остаток</small></div><div class="to">Капитал, список «Обязательное», строка короче: «Автокредит · 12-го · оплачено»; ставка, доли и переплата — в листе кредита</div><span class="st ok">остаётся</span></div>
+    <div class="row"><div class="el"><b>Строка плана под кредитом · «Досрочка по плану» · «Изменить режим»</b></div><div class="to">Лист «Долги»: шаг месяца с кнопкой «Шаг сделан», режим</div><span class="st fold">в лист</span></div>
+    <div class="row"><div class="el"><b>Обязательства</b><small>«Аренда · ежемесячно · Дана», «Коммуналка · оценка», «раз в год»</small></div><div class="to">Капитал, список «Обязательное», те же строки с «Оплатил»</div><span class="st ok">остаётся</span></div>
+    <div class="row"><div class="el"><b>Группы подписок</b><small>«Досуг · 3 подписки · рабочие», подписки внутри</small></div><div class="to">Строка «Подписки · 3» → лист группы с подписками</div><span class="st fold">в лист</span></div>
+    <div class="row"><div class="el"><b>Кнопки «Подписка или услуга» · «Долг или рассрочка» · «Группа подписок»</b></div><div class="to">Строка «+ добавить» внизу списка (выбор из трёх) и пункты в листе «+»</div><span class="st ok">остаётся</span></div>
+    <div class="row"><div class="el"><b>«Досрочками уже сэкономили N на процентах»</b></div><div class="to">Лист «Долги», строка «уже сэкономили»</div><span class="st fold">в лист</span></div>
+  </div>
+
+  <div class="group">Что гасить первым</div>
+  <div class="rows">
+    <div class="row"><div class="el"><b>«Какой первым»: самая дорогая ставка, проценты в месяц, доля платежа в проценты, «половину переплаты снимает добавка N», Подробнее</b></div><div class="to">Лист «Долги», верхние строки: самая дорогая ставка, проценты в месяц; остальное под «Подробнее»</div><span class="st fold">в лист</span></div>
+    <div class="row"><div class="el"><b>«Копить или гасить»: сравнение «копим как сейчас» и «сначала долги», горизонт, подушка — какая цель, «Выбрать этот план»</b></div><div class="to">Лист «Долги», свёрнуто «Копить или гасить?»; «Выбрать этот план» = включить переключатель «Сначала долги»</div><span class="st fold">в лист</span></div>
+  </div>
+</section>
+
+<!-- ============ ЛИСТЫ КАПИТАЛА ============ -->
+<section class="scr" id="capital-sheets">
+  <h2>Листы Капитала</h2>
+  <div class="route">открываются из строк; код не меняется</div>
+  <div class="rows">
+    <div class="row"><div class="el"><b>Счёт</b><small>название, примечание, сумма, валюта и курс, «В капитале», удалить</small></div><div class="to">Тот же лист из списка «Счета»; у вклада внутри него поля и расчёт вклада</div><span class="st ok">остаётся</span></div>
+    <div class="row"><div class="el"><b>Кредит</b><small>«Платёж 12 октября» с Оплатил / Другая сумма или счёт; остаток, платёж, ставка, день, платежей осталось, переплата до конца, график платежей свёрнут, удалить</small></div><div class="to">Тот же лист из списка «Обязательное»</div><span class="st ok">остаётся</span></div>
+    <div class="row"><div class="el"><b>Досрочка</b><small>как вносите (к платежу / разом), сколько, откуда списать, «не отдадим банку», «платежей останется», применить</small></div><div class="to">Тот же лист из листа кредита и из листа «Долги» («Шаг сделан» — та же досрочка)</div><span class="st ok">остаётся</span></div>
+    <div class="row"><div class="el"><b>Обязательство</b><small>название, сумма сейчас, как часто, день, месяц списания, чьё, раздел бюджета, группа, история суммы, новая сумма с месяца и причина, удалить</small></div><div class="to">Тот же лист из списка «Обязательное»</div><span class="st ok">остаётся</span></div>
+    <div class="row"><div class="el"><b>Отметка (оплатил / пришла зарплата)</b><small>сумма, счёт, «из выписки», следующий платёж, снять отметку, «Разложить» у зарплаты</small></div><div class="to">Тот же лист с кнопок «Оплатил» в «Обязательном» и из решений «Недели»</div><span class="st ok">остаётся</span></div>
+    <div class="row"><div class="el"><b>Внеплановый доход</b><small>из «+»: сумма, на какой счёт</small></div><div class="to">Тот же лист из «+»</div><span class="st ok">остаётся</span></div>
+  </div>
+</section>
+
+<!-- ============ ПЛАН ============ -->
+<section class="scr" id="plan">
+  <h2>План «Сначала долги»</h2>
+  <div class="route">/money/plan · экран уходит целиком в лист «Долги»</div>
+  <div class="rows">
+    <div class="row"><div class="el"><b>Карточка «План выбран <дата>»</b></div><div class="to">Лист «Долги»: переключатель «Сначала долги · включён»</div><span class="st fold">в лист</span></div>
+    <div class="row"><div class="el"><b>Шаг этого месяца</b><small>«сначала подушка: не хватает N» / «внесено по плану» / «60 000 досрочно в Автокредит» с кнопкой «Досрочка по плану»</small></div><div class="to">Лист «Долги», блок «Шаг сентября» с кнопкой «Шаг сделан»</div><span class="st fold">в лист</span></div>
+    <div class="row"><div class="el"><b>«В <месяце> досрочки не было — план пересчитан от факта»</b></div><div class="to">Та же строка под шагом</div><span class="st fold">в лист</span></div>
+    <div class="row"><div class="el"><b>Выигрыш: ожидали при выборе · сейчас от факта · уже сэкономили</b></div><div class="to">Лист «Долги», одна строка прогноза «закроется в марте 2028, на 14 месяцев раньше, переплата 356 947 → 210 000» и «уже сэкономили»; «ожидали при выборе» — под «Подробнее»</div><span class="st fold">в лист</span></div>
+    <div class="row"><div class="el"><b>План и факт по месяцам</b><small>таблица месяц · план · факт · куда</small></div><div class="to">Лист «Долги», свёрнуто «Шаги по месяцам»</div><span class="st fold">в лист</span></div>
+    <div class="row"><div class="el"><b>Что не ушло в цели</b><small>цели на паузе: «не внесено N, дата сдвинулась на M мес.»; подушка плана</small></div><div class="to">Лист «Долги», строка «цели на паузе: Машина, Кухня»; то же видно на экране самой цели («На паузе ради плана»)</div><span class="st fold">в лист</span></div>
+    <div class="row"><div class="el"><b>График платежей долга с шагами плана</b><small>свёрнут</small></div><div class="to">Лист кредита уже показывает график; в «Долгах» не повторяем</div><span class="st drop">убираем, дубль</span></div>
+    <div class="row"><div class="el"><b>«Плана нет» → открыть калькулятор</b></div><div class="to">Лист «Долги» с выключенным переключателем и свёрнутым «Копить или гасить?»</div><span class="st fold">в лист</span></div>
+    <div class="row"><div class="el"><b>История планов</b><small>прошлые планы строками</small></div><div class="to">Оставить свёрнутой в листе «Долги» или убрать</div><span class="st ask">решить</span></div>
+    <div class="row"><div class="el"><b>Отменить план</b><small>с подтверждением</small></div><div class="to">Выключить переключатель «Сначала долги» с тем же подтверждением</div><span class="st fold">в лист</span></div>
+  </div>
+</section>
+
+<!-- ============ ВКЛАД ============ -->
+<section class="scr" id="deposit">
+  <h2>Вклад</h2>
+  <div class="route">/money/capital/:id · экран уходит в лист счёта</div>
+  <div class="rows">
+    <div class="row"><div class="el"><b>Поля: название, примечание, сумма, ставка, пополнение в месяц, срок, капитализация, удалить вклад</b></div><div class="to">Лист счёта (тот же, что у карты) с этими полями, когда счёт — вклад</div><span class="st fold">в лист</span></div>
+    <div class="row"><div class="el"><b>«Будет на счёте через N мес.» · проценты · эффективная ставка · взносы · заработал банк</b></div><div class="to">Лист счёта, свёрнуто «Расчёт вклада»</div><span class="st fold">в лист</span></div>
+    <div class="row"><div class="el"><b>«Реально ≈ N % с учётом инфляции» (?)</b></div><div class="to">Там же, под расчётом</div><span class="st fold">в лист</span></div>
+  </div>
+</section>
+
+<!-- ============ ИСТОРИЯ ============ -->
+<section class="scr" id="history">
+  <h2>История и итоги</h2>
+  <div class="route">/money/history · экран становится квадратом «История»</div>
+  <div class="rows">
+    <div class="row"><div class="el"><b>Итог месяца «Наш сентябрь»</b><small>строки итога, «Поделиться» (карточка «утечек»); в середине месяца «появится в последние дни»</small></div><div class="to">История: строка «Наш август · итог месяца» наверху ленты → карточка; в последние дни месяца — текущий</div><span class="st move">переезжает</span></div>
+    <div class="row"><div class="el"><b>История семьи: моменты</b><small>«собрали половину», «не отдадим банку N», «кредит закрыт» → раскладка или план</small></div><div class="to">История: те же события в ленте по дням, между операциями и отметками</div><span class="st move">переезжает</span></div>
+    <div class="row"><div class="el"><b>Мои операции</b><small>экрана не было (DESIGN.md §2 обещал); операции видны только в «Разделах за месяц» на «Неделе»</small></div><div class="to">История: свои операции из выписок по дням, фильтр по разделу чипами; раздел задним числом — нажатием на строку</div><span class="st move">переезжает</span></div>
+  </div>
+</section>
+
+<!-- ============ МЕЧТЫ ============ -->
+<section class="scr" id="dreams">
+  <h2>Мечты</h2>
+  <div class="route">/ · главный · разбираем третьим шагом, здесь только что уходит на «Неделю»</div>
+  <div class="rows">
+    <div class="row"><div class="el"><b>Шапка: «Мечты · Сентябрь · Ильяс и Дана», аватары, шестерёнка</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Герой: фото, «До мечты», %, «Япония · 1 116 000 из 1 800 000 · май 2027», полоса, автор, «Добавить фото»</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Плитки: другие мечты, «Новая мечта», «Желания»</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Картина недели: «Эта неделя · даты», сумма, тег, стопка, 4 раздела, «ещё N · не разобрано», «Неделя →», «дополнится, когда Дана загрузит»; пустая неделя с кнопкой</b></div><div class="to">«Неделя»: там та же карточка целиком. На главном не повторяем</div><span class="st move">переезжает</span></div>
+    <div class="row"><div class="el"><b>Свободно до конца месяца · полоса · «N дней до зарплаты»</b></div><div class="to">Остаётся на главном, одной строкой</div><span class="st ok">остаётся</span></div>
+    <div class="row"><div class="el"><b>Карточка решения</b><small>первое из очереди: незнакомые продавцы → сопоставление → пришла зарплата → подписка → остались деньги → шаг плана</small></div><div class="to">«Неделя»: там та же очередь. На главном не повторяем. Что из очереди остаётся — на шаге «Неделя»</div><span class="st move">переезжает</span></div>
+    <div class="row"><div class="el"><b>Лист выбора фото (шаблоны, своё фото)</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+  </div>
+</section>
+
+<!-- ============ НЕДЕЛЯ ============ -->
+<section class="scr" id="week">
+  <h2>Неделя</h2>
+  <div class="route">/week · разбираем вторым шагом; перечислено всё, чтобы ничего не потерять</div>
+  <div class="rows">
+    <div class="row"><div class="el"><b>Шапка: «Неделя · 15–21 сентября · обе выписки / без выписки Даны»</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Загрузка: «Ваша выписка ещё не загружена», кнопка; из «+» — «Ещё одна выписка»</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Заметки «N операций отправятся при сети», «Отмечено по выписке: N»</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Решение: «Похоже, это платёж по Автокредиту — отметить?» / «Это зарплата Ильяса?»</b><small>Да · Нет, это другое · Потом</small></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Решение: «ИП Сериков — куда отнести?»</b><small>чипы разделов, «Ещё N», «Кому → что», «Между своими», Потом, Пропустить все; «1 из N»</small></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Решение: «Пришла зарплата Ильяса — разложить?» · «Пришла зарплата Ильяса?» с кнопкой и «Другая сумма или счёт»</b></div><div class="to">Как есть; сюда же приходит кнопка из «Денег»</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Решение: «Оставить подписку Яндекс Плюс?»</b><small>за год, % пути до мечты; Оставить · Отписаться · Подумать</small></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Решение: «Остались деньги с сентября?»</b><small>поле суммы, Разложить · Не сейчас</small></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Итог недели: сумма, «на N % меньше прошлой», стопка, все разделы, «Не разобрано · N продавцов · разобрать»</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>«Разделы за сентябрь»: таблица неделя / месяц, продавцы раздела, смена раздела задним числом</b><small>свёрнуто в карточке итога</small></div><div class="to">Операции по разделам теперь есть в «Истории» (Деньги): здесь, возможно, лишнее</div><span class="st ask">решить</span></div>
+    <div class="row"><div class="el"><b>«Дана загрузила · Freedom · 1–21 сентября · 212 операций · готово»</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Прошлые недели: даты, чьи выписки, сумма</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+  </div>
+</section>
+
+<!-- ============ РАЗБОР ============ -->
+<section class="scr" id="review">
+  <h2>Разбор выписки</h2>
+  <div class="route">состояние «Недели» после выбора файла</div>
+  <div class="rows">
+    <div class="row"><div class="el"><b>Шапка «Разбор · Freedom · 26 июня – 26 сентября»</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Сводка: N операций, «M уже были», списания, поступления, между своими, отметится по выписке, в валюте</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>«Это перевод партнёру?» — Да, это Дана · Нет</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Незнакомые продавцы по одному (чипы), «1 из 55», Пропустить все</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Отправить · Отмена; ошибки чтения файла с причиной</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+  </div>
+</section>
+
+<!-- ============ РАСКЛАДКА ============ -->
+<section class="scr" id="salary">
+  <h2>Раскладка</h2>
+  <div class="route">/week/salary · из решений «пришла зарплата», «остались деньги», «освободилось», «кредит закрыт»</div>
+  <div class="rows">
+    <div class="row"><div class="el"><b>Сумма крупно, «Осталось распределить»</b></div><div class="to">Лист из решения, содержимое как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Корзины: цели · досрочно по кредиту · подушка · качество жизни, +/− по шагу, строка эффекта под каждой</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>«Это приближает: Наушники — через 2 мес.»</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Откуда отложить (выбор счёта) · Подтвердить распределение</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Состояния: «Уже разложено» (запись партнёра), «Раскладывать нечего», «Решение записано»</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+  </div>
+</section>
+
+<!-- ============ ЦЕЛЬ ============ -->
+<section class="scr" id="goal">
+  <h2>Цель</h2>
+  <div class="route">/goals/:id</div>
+  <div class="rows">
+    <div class="row"><div class="el"><b>Шапка: имя, «главная мечта · Ильяс и Дана», карандаш</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Герой: фото, %, «1 116 000 из 1 800 000», сменить фото</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>«Будет вашей в мае 2027» · по 150 000 в месяц · осталось N взносов · Пополнить · Поделиться · Сделать главной</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Подробнее: поле взноса, Снять, «за год нужно», «дорожает вместе с рынком», ритм (12 месяцев)</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Взносы: история с аватарами · «На паузе ради плана» / «Подушка плана»</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Листы: Пополнить / Снять (сумма, счёт, кто, примечание), Сторис, Изменить цель (название, нужно, накоплено, удалить)</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+  </div>
+</section>
+
+<!-- ============ НОВАЯ МЕЧТА ============ -->
+<section class="scr" id="goal-new">
+  <h2>Новая мечта</h2>
+  <div class="route">/goals/new · и шаг «На что копим?» первого запуска</div>
+  <div class="rows">
+    <div class="row"><div class="el"><b>Плитки: Машина · Квартира · Путешествие · Техника · Здоровье · Своё фото; направления чипами («Куда»)</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Дальше · Пока без мечты</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Шаг 2: превью с автором, Название, Сколько нужно, Когда (6 / 12 / 18 / свой), «По N в месяц · реально · при свободных ≈ · будет вашей в», Готово — к мечте</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+  </div>
+</section>
+
+<!-- ============ ЖЕЛАНИЯ ============ -->
+<section class="scr" id="wishes">
+  <h2>Желания</h2>
+  <div class="route">/wishes · /people/:slot</div>
+  <div class="rows">
+    <div class="row"><div class="el"><b>Вкладки участников и «Общие»; переключатель галерея / список</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Плитки или строки: фото, название, цена, «купили» галочкой; «+» в шапке</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Сюрпризы для <имя> (только автору): список, «+ Сюрприз»</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Уже купили с итогом</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+    <div class="row"><div class="el"><b>Листы: Новое желание (фото, что, цена, ссылка, кто добавил), Правка (удалить из списка), Сюрприз (что, сколько)</b></div><div class="to">Как есть</div><span class="st later">следующий шаг</span></div>
+  </div>
+</section>
+
+<!-- ============ НАСТРОЙКИ ============ -->
+<section class="scr" id="settings">
+  <h2>Настройки</h2>
+  <div class="route">/settings · не «Деньги», не трогаем</div>
+  <div class="rows">
+    <div class="row"><div class="el"><b>Оформление: имя, тема, цвета разделов бюджета (свёрнуто)</b></div><div class="to">Как есть</div><span class="st ok">остаётся</span></div>
+    <div class="row"><div class="el"><b>С кем: участники, код для партнёра, «Обмен между телефонами» → шторка (состояние, последний обмен, семья, «Начать бюджет заново»)</b></div><div class="to">Как есть</div><span class="st ok">остаётся</span></div>
+    <div class="row"><div class="el"><b>Разбор выписок (свёрнуто): разделы трат — названия и цвета; память разбора — правила, «Убрать»</b></div><div class="to">Как есть</div><span class="st ok">остаётся</span></div>
+    <div class="row"><div class="el"><b>Выйти из аккаунта / из демо «Создать семью или войти»</b></div><div class="to">Как есть</div><span class="st ok">остаётся</span></div>
+  </div>
+</section>
+
+<!-- ============ ПЕРВЫЙ ЗАПУСК ============ -->
+<section class="scr" id="start">
+  <h2>Первый запуск и вход</h2>
+  <div class="route">/start/* · /access · меняет Блок 4 (вход через Google), здесь не трогаем</div>
+  <div class="rows">
+    <div class="row"><div class="el"><b>Вход: почта, пароль, регистрация (имя, семья), по коду, «Попробовать в демо»</b></div><div class="to">Как есть до Блока 4</div><span class="st ok">остаётся</span></div>
+    <div class="row"><div class="el"><b>Шаг 1: карточка банков, Выбрать файл, Введу вручную (оклад, день)</b></div><div class="to">Как есть</div><span class="st ok">остаётся</span></div>
+    <div class="row"><div class="el"><b>Шаг 2: «Нашли N повторяющихся» — доход, повторы (кредит · аренда · коммуналка · подписка · другое)</b></div><div class="to">Как есть</div><span class="st ok">остаётся</span></div>
+    <div class="row"><div class="el"><b>Шаг 3: «Ваш сентябрь» — картина месяца и «Свободно в месяц»</b></div><div class="to">Как есть</div><span class="st ok">остаётся</span></div>
+    <div class="row"><div class="el"><b>Шаг 4: На что копим · Шаг 5: код партнёра</b></div><div class="to">Как есть</div><span class="st ok">остаётся</span></div>
+  </div>
+</section>
+
+<!-- ============ ОБОЛОЧКА ============ -->
+<section class="scr" id="shell">
+  <h2>Оболочка и лист «+»</h2>
+  <div class="route">шапка, вкладки, «+»</div>
+  <div class="rows">
+    <div class="row"><div class="el"><b>Вкладки Мечты · Неделя · Деньги · «+»</b></div><div class="to">Как есть</div><span class="st ok">остаётся</span></div>
+    <div class="row"><div class="el"><b>Шапка: аватары → желания участника, шестерёнка на главном, точка синка, «назад» у вложенных</b></div><div class="to">Как есть; у квадратов «Денег» шапка одна — «Деньги · Сентябрь»</div><span class="st ok">остаётся</span></div>
+    <div class="row"><div class="el"><b>Лист «+»: Загрузить выписку · Новая мечта · Покупка в список желаний · Внеплановый доход · Обязательство или подписка · Кредит или рассрочка</b></div><div class="to">Как есть; «Обязательство», «Кредит», «Внеплановый доход» открывают свои листы поверх «Денег»; счёт добавляется из списка «Счета»</div><span class="st ok">остаётся</span></div>
+  </div>
+</section>
+
+<section class="qs">
+  <h2>Что решить по «Деньгам»</h2>
+  <ol>
+    <li><b>Сетка календаря</b> (точки по дням) уходит совсем: сводка «до зарплаты» и дни в строках «Обязательного» её заменяют. Подтвердить.</li>
+    <li><b>История планов</b> (прошлые планы «Сначала долги»): свёрнутой строкой в листе «Долги» или убрать.</li>
+    <li><b>Нажатие на сводку «до зарплаты»</b>: лист со списком платежей до зарплаты (те же строки, что в «Обязательном») или просто прокрутка к списку «Обязательное».</li>
+    <li><b>«Разделы за месяц» на «Неделе»</b>: теперь операции по разделам есть в «Истории»; оставить обе или только «Историю». Можно отложить до шага «Неделя».</li>
+  </ol>
+</section>
+
+<p class="foot">Источник: экраны и листы на проде после Блока 3 (деплой 2026-10-01, возврат смоука). Новая структура — вариант А и ваш разбор «Денег» от 2026-10-01.</p>
+</div>
+
+</body>
+</html>

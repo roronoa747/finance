@@ -18,7 +18,9 @@ import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Card from '@/components/kit/Card.vue'
+import EmptyState from '@/components/kit/EmptyState.vue'
 import Field from '@/components/kit/Field.vue'
+import HeaderActions from '@/components/kit/HeaderActions.vue'
 import IconBox from '@/components/kit/IconBox.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Section from '@/components/kit/Section.vue'
@@ -177,15 +179,19 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
         @toggle="markBought(w.id, w.name)"
       />
     </Card>
-    <Card v-else flush>
-      <div class="px-4 py-6 text-center type-meta">Список пуст</div>
+    <Card v-else>
+      <EmptyState title="Список пуст">
+        <Button v-if="canEdit" @click="openWishModal = true"><PhPlus :size="16" weight="bold" /> Добавить покупку</Button>
+      </EmptyState>
     </Card>
 
     <Callout v-if="wishPhotoNote" tone="neutral" icon="info">{{ wishPhotoNote }}</Callout>
-    <!-- Главное действие экрана — одна брендовая кнопка (правило интерфейса, критик Блока 3). -->
-    <Button v-if="canEdit" class="w-full" @click="openWishModal = true">
-      <PhPlus :size="16" weight="bold" /> Добавить покупку
-    </Button>
+    <!-- «+» — справа в шапке (g4 «Желания по людям»), брендовым тоном: главное действие видно без чтения (правило 12). -->
+    <HeaderActions v-if="canEdit">
+      <button type="button" aria-label="Добавить покупку" class="rounded-[12px] cursor-pointer" @click="openWishModal = true">
+        <IconBox tone="brand"><PhPlus :size="20" /></IconBox>
+      </button>
+    </HeaderActions>
 
     <!-- Сюрпризы для адресата вкладки — видит только автор (личный документ) -->
     <template v-if="showGifts && person">
@@ -214,13 +220,14 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
           </div>
           <p v-if="!giftsFor.length" class="py-2 type-meta">Пока ни одного сюрприза.</p>
         </div>
-        <Button variant="secondary" class="mt-2 self-start" size="sm" @click="openGift = true"><PhPlus :size="14" weight="bold" /> Сюрприз</Button>
+        <Button variant="secondary" class="mt-2 w-full" @click="openGift = true"><PhPlus :size="16" weight="bold" /> Сюрприз</Button>
       </Card>
       <GiftSheet :open="openGift" :for-slot="person.id" :for-name="person.name" @close="openGift = false" />
     </template>
 
-    <Section title="Уже купили">
-      <template v-if="boughtWish.length" #action>
+    <!-- «Уже купили» — только когда есть что показать (правило 12: без пустых секций). -->
+    <Section v-if="boughtWish.length" title="Уже купили">
+      <template #action>
         <span class="type-meta num">{{ money(boughtSum) }}</span>
       </template>
     </Section>
@@ -249,9 +256,6 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
         @open="editWishId = w.id"
         @toggle="financeStore.toggleBought(w.id)"
       />
-    </Card>
-    <Card v-else flush>
-      <div class="px-4 py-6 text-center type-meta">Пока ничего</div>
     </Card>
 
     <WishSheet :wish-id="canEdit ? editWishId : null" @close="editWishId = null" />

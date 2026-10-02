@@ -3,7 +3,7 @@ import { PhCaretLeft } from '@phosphor-icons/vue'
 import { useRouter } from 'vue-router'
 
 /**
- * Шапка экрана `.topbar` (DESIGN.md §5): заголовок Piazzolla 30, подпись `--ink-3`, слева
+ * Шапка экрана `.topbar` (DESIGN.md §5): заголовок 30, подпись `--ink-3`, слева
  * кнопка «Назад» (`back` — адрес или `true` для шага назад), справа — слот `right`.
  */
 const props = defineProps<{

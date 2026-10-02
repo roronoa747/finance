@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { PhCopy } from '@phosphor-icons/vue'
+import { PhCaretDown, PhCopy } from '@phosphor-icons/vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useInvite } from '@/components/useInvite'
@@ -31,15 +31,10 @@ const { code: inviteCode, canInvite, busy: inviteBusy, error: inviteError, copie
 
 <template>
   <div class="flex flex-col gap-3 pt-1">
+    <!-- Порядок макета g7: «Оформление» → «С кем» → выход; разбор выписок — свёрнут (правило 12). -->
     <Card>
       <h2 class="type-h3 mb-3 text-ink">Оформление</h2>
-      <AppearancePanel />
-    </Card>
-
-    <!-- Разбор выписок (B2C-21): разделы трат и память разбора; viewer выписок не грузит -->
-    <Card v-if="!authStore.isViewer">
-      <h2 class="type-h3 mb-3 text-ink">Разбор выписок</h2>
-      <ParseSettings />
+      <AppearancePanel section="look" />
     </Card>
 
     <Card>
@@ -77,6 +72,24 @@ const { code: inviteCode, canInvite, busy: inviteBusy, error: inviteError, copie
         <span class="text-[14px] text-ink-2">Обмен между телефонами</span>
         <SyncBadge />
       </div>
+    </Card>
+
+    <!-- Разбор выписок (B2C-21): разделы трат и память разбора — свёрнуты; viewer выписок не грузит -->
+    <Card v-if="!authStore.isViewer" tight>
+      <details>
+        <summary class="flex cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden">
+          <span class="min-w-0 flex-1">
+            <span class="block type-h3 text-ink">Разбор выписок</span>
+            <span class="block type-meta">разделы трат и память ответов</span>
+          </span>
+          <PhCaretDown :size="16" class="shrink-0 text-ink-3" />
+        </summary>
+        <div class="mt-3 border-t border-line pt-3"><ParseSettings /></div>
+      </details>
+    </Card>
+
+    <Card tight>
+      <AppearancePanel section="account" />
     </Card>
   </div>
 </template>

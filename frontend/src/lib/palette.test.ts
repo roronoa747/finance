@@ -29,7 +29,7 @@ describe('palette.ts — цветовая система и темы оформ�
     expect(hueColor('green', true)).toBe(HUES.green.dark)
   })
 
-  it('applyTheme ставит класс dark и цвета разделов бюджета; бренд не трогает (акцента нет — B2C-12)', () => {
+  it('applyTheme ставит только класс dark: ни бренда (акцента нет — B2C-12), ни цветов разделов бюджета (Р-33)', () => {
     const mockRoot = {
       classList: {
         toggle: vi.fn(),
@@ -41,20 +41,10 @@ describe('palette.ts — цветовая система и темы оформ�
 
     vi.stubGlobal('document', { documentElement: mockRoot })
 
-    applyTheme({
-      theme: 'dark',
-      categories: {
-        d1: 'blue',
-        d2: 'brick',
-        d3: 'green',
-        d4: 'ochre',
-        d5: 'steel',
-      },
-    })
+    applyTheme({ theme: 'dark' })
 
     expect(mockRoot.classList.toggle).toHaveBeenCalledWith('dark', true)
-    expect(mockRoot.style.setProperty).toHaveBeenCalledWith('--d1', HUES.blue.dark)
-    expect(mockRoot.style.setProperty).not.toHaveBeenCalledWith('--brand', expect.anything())
+    expect(mockRoot.style.setProperty).not.toHaveBeenCalled()
     vi.unstubAllGlobals()
   })
 

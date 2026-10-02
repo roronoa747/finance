@@ -1,12 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { HUES } from './palette'
 import {
   applyCurrentPalette,
-  DEFAULT_CATEGORY_HUES,
   isDark,
-  readCategoryHues,
   readThemeChoice,
-  setCategoryHue,
   setThemeChoice,
   watchSystemTheme,
 } from './theme'
@@ -75,7 +71,7 @@ describe('PV-08: тема на старте и «Авто» следит за т
     expect(isDark.value).toBe(true)
   })
 
-  it('B2C-12: акцента больше нет — старый ff_accent не трогает --brand; цвета разделов — дефолт по теме', () => {
+  it('B2C-12: акцента больше нет — старый ff_accent не трогает --brand; цвета разделов (--d*) больше не пишутся', () => {
     storage.set('ff_accent', 'cobalt')
     applyCurrentPalette()
     expect(props.has('--brand')).toBe(false)
@@ -83,8 +79,10 @@ describe('PV-08: тема на старте и «Авто» следит за т
     setThemeChoice('dark')
     expect(storage.get('ff_theme')).toBe('dark')
     expect(props.has('--brand')).toBe(false)
-    // Цвета разделов — дефолт, пока их не выбирали (PV-22).
-    expect(props.get('--d1')).toBe(HUES.blue.dark)
+    // «Цвета разделов» (PV-22) сняты в клинапе Блока 9: их красил только «Бюджет» (Р-33).
+    storage.set('ff_category_hues', JSON.stringify({ d1: 'plum' }))
+    applyCurrentPalette()
+    expect(props.size).toBe(0)
   })
 
   it('системная смена под «Авто» переключает класс и isDark в обе стороны, под «Светлой» — нет', () => {
@@ -130,48 +128,5 @@ describe('PV-08: тема на старте и «Авто» следит за т
       storage.set('ff_theme', junk)
       expect(readThemeChoice()).toBe('auto')
     }
-  })
-
-  describe('PV-22: «Цвета разделов» — дело устройства (Р-20)', () => {
-    it('setCategoryHue(d2, blue) → --d2 светлой пары, в тёмной — тёмной; выбор в ff_category_hues, остальные — дефолт', () => {
-      applyCurrentPalette()
-      expect(props.get('--d2')).toBe(HUES.brick.light)
-
-      setCategoryHue('d2', 'blue')
-      expect(props.get('--d2')).toBe(HUES.blue.light)
-      expect(props.get('--d1')).toBe(HUES.blue.light)
-      expect(JSON.parse(storage.get('ff_category_hues')!)).toEqual({ ...DEFAULT_CATEGORY_HUES, d2: 'blue' })
-
-      setThemeChoice('dark')
-      expect(props.get('--d2')).toBe(HUES.blue.dark)
-      // После «перезагрузки» — снова из хранилища.
-      props.clear()
-      applyCurrentPalette()
-      expect(props.get('--d2')).toBe(HUES.blue.dark)
-      expect(readCategoryHues()).toEqual({ ...DEFAULT_CATEGORY_HUES, d2: 'blue' })
-    })
-
-    it('сломанный localStorage — дефолты, без исключения', () => {
-      vi.stubGlobal('localStorage', {
-        getItem: () => {
-          throw new Error('SecurityError')
-        },
-        setItem: () => {
-          throw new Error('QuotaExceededError')
-        },
-      })
-      expect(readCategoryHues()).toEqual(DEFAULT_CATEGORY_HUES)
-      expect(() => setCategoryHue('d1', 'plum')).not.toThrow()
-      expect(props.get('--d1')).toBe(HUES.blue.light)
-    })
-
-    it('мусор в хранилище — дефолт по каждому разделу отдельно', () => {
-      storage.set('ff_category_hues', '{not json')
-      expect(readCategoryHues()).toEqual(DEFAULT_CATEGORY_HUES)
-      storage.set('ff_category_hues', JSON.stringify({ d1: 'plum', d2: 'neon', d3: 'toString', d9: 'blue' }))
-      expect(readCategoryHues()).toEqual({ ...DEFAULT_CATEGORY_HUES, d1: 'plum' })
-      storage.set('ff_category_hues', '"blue"')
-      expect(readCategoryHues()).toEqual(DEFAULT_CATEGORY_HUES)
-    })
   })
 })
