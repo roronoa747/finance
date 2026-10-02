@@ -96,6 +96,10 @@ describe('style.css — пары токенов light/dark', () => {
     expect(ms('--motion-fill')).toBeLessThanOrEqual(1000)
     expect(sizes.get('--ease-out')).toMatch(/^cubic-bezier\(/)
     for (const u of ['press', 'fx-in', 'fx-fade', 'fx-sheet']) expect(css).toContain(`@utility ${u} {`)
+    // Заполнение после анимации не держит transform — иначе `fixed` окна `Hint` внутри карточки уезжает (критик Б10).
+    const fx = [...css.matchAll(/^\s*animation: fx-[\w-]+ .*$/gm)].map((m) => m[0])
+    expect(fx).toHaveLength(3)
+    for (const a of fx) expect(a).not.toMatch(/\b(both|forwards)\b/)
     const reduce = css.match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? ''
     for (const rule of ['animation-duration', 'animation-delay', 'transition-duration', 'transition-delay']) {
       expect(reduce).toContain(`${rule}:`)

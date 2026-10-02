@@ -350,7 +350,9 @@
 
 /* ---------------------------------------------------------------
    Движение (Р-45): отклик нажатия, появление, строки по очереди, лист.
-   Только transform и opacity — без сдвига разметки.
+   Только transform и opacity — без сдвига разметки. Заполнение — `backwards`, не `both`:
+   оставшийся после анимации transform делает карточку контейнером для `fixed`, и окно
+   подсказки (`Hint`) уезжает вниз под соседние карточки (критик Б10).
 ---------------------------------------------------------------- */
 @keyframes fx-in {
   from {
@@ -380,15 +382,15 @@
 }
 /* Появление снизу; строки списка — по очереди: `style="--i: N"`, задержка 40 мс × N (не больше 6). */
 @utility fx-in {
-  animation: fx-in var(--motion-base) var(--ease-out) both;
+  animation: fx-in var(--motion-base) var(--ease-out) backwards;
   animation-delay: calc(min(var(--i, 0), 6) * 40ms);
 }
 /* Смена экрана и затемнение листа — только прозрачность. */
 @utility fx-fade {
-  animation: fx-fade var(--motion-fast) var(--ease-out) both;
+  animation: fx-fade var(--motion-fast) var(--ease-out) backwards;
 }
 @utility fx-sheet {
-  animation: fx-sheet var(--motion-base) var(--ease-out) both;
+  animation: fx-sheet var(--motion-base) var(--ease-out) backwards;
 }
 
 /* «Уменьшить движение» выключает всё, включая задержки по очереди; JS-бег цифр и полос
