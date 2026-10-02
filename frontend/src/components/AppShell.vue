@@ -154,7 +154,7 @@ function navigateAndClose(to: string) {
 
 <template>
   <div
-    class="mx-auto flex h-dvh w-full max-w-[520px] flex-col overflow-hidden bg-canvas text-left md:my-8 md:h-[860px] md:max-w-[420px] md:rounded-[42px] md:border md:border-line-strong"
+    class="relative mx-auto flex h-dvh w-full max-w-[520px] flex-col overflow-hidden bg-canvas text-left md:my-8 md:h-[860px] md:max-w-[420px] md:rounded-[42px] md:border md:border-line-strong"
   >
     <header class="flex shrink-0 items-center justify-between gap-3 px-5 pb-2 pt-4">
       <div class="flex min-w-0 items-center gap-2.5">
@@ -192,7 +192,9 @@ function navigateAndClose(to: string) {
       </div>
     </header>
 
-    <main ref="mainEl" class="flex-1 overflow-y-auto px-4 pb-6 [overscroll-behavior:contain]">
+    <!-- Капсула вкладок парит над контентом (макет pivot-3 `.tabs`): снизу запас 96 px, чтобы последняя карточка
+         докручивалась из-под неё. -->
+    <main ref="mainEl" :class="['flex-1 overflow-y-auto px-4 [overscroll-behavior:contain]', noTabs ? 'pb-6' : 'pb-24']">
       <RouterView />
     </main>
 
