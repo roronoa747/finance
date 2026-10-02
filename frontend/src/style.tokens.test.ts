@@ -93,7 +93,6 @@ describe('style.css — пары токенов light/dark', () => {
     const ms = (k: string) => parseInt(sizes.get(k) ?? '', 10)
     expect(ms('--motion-fast')).toBeGreaterThanOrEqual(150)
     expect(ms('--motion-base')).toBeLessThanOrEqual(400)
-    expect(ms('--motion-slow')).toBeLessThanOrEqual(400)
     expect(ms('--motion-fill')).toBeLessThanOrEqual(1000)
     // Бег цифр (`CountUp`, JS) и рост полос (CSS) — одна длительность (ревью Блока 10, Н-6).
     expect(ms('--motion-fill')).toBe(FILL_MS)

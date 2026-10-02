@@ -141,11 +141,10 @@
   --r-inner: 14px;
   --r-pill: 999px;
 
-  /* Движение (пивот 3, Р-45, макет dreams-week.html «2 · Живо»): нажатие, появление, лист;
+  /* Движение (пивот 3, Р-45, макет dreams-week.html «2 · Живо»): нажатие, появление, лист, полосы;
      бег цифр и полосы — --motion-fill (≤ 1 с, `kit/CountUp`, `lib/motion.ts`). */
   --motion-fast: 150ms;
   --motion-base: 320ms;
-  --motion-slow: 400ms;
   --motion-fill: 900ms;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
