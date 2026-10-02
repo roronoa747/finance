@@ -472,3 +472,53 @@ describe('views/Statements.vue — решения по одному и итог 
     expect(html).toContain(`IP ASANOVA 2 раза ${m(5_000)}`)
   })
 })
+
+describe('B2C-62: карточка «Выписки» — галочки обоих за неделю', () => {
+  // Неделя 39 — 21–27 сентября; 22-е — вторник.
+  /** Заголовок и строки карточки (кнопка или div без вложенных блоков); карточки нет — ''. */
+  const section = (raw: string) => {
+    if (!raw.includes('>Выписки<')) return ''
+    const rows = [...raw.matchAll(/<(button|div)[^>]*gap-2\.5 py-2 text-left[^>]*>[\s\S]*?<\/\1>/g)].map((x) => x[0])
+    return ['Выписки', ...rows].join('\n')
+  }
+  const both: StatementUploadResponse[] = [
+    { id: 'u1', slot: 'a', bank: 'kaspi', period_from: '2026-09-01', period_to: '2026-09-23', ops_count: 30, created_at: '2026-09-22T06:00:00Z' },
+  ]
+
+  it('двое, загрузил только я: у меня галочка и «вт», у партнёра «ещё нет» (строка не кликабельна); даты недели — не в карточке', async () => {
+    signIn()
+    await useOperationsStore().loadUploads(uploadsClient(both))
+    const raw = await renderScreen(Statements, '/week')
+    const card = section(raw)
+    expect(text(card)).toMatch(/Выписки\s+А Алихан вт\s+Д Дана ещё нет/)
+    expect(card.match(/bg-ok/g)).toHaveLength(1)
+    expect(card).not.toContain('<button')
+    expect(text(card)).not.toContain('сентября')
+  })
+
+  it('своя «ещё нет» — кнопка загрузки; загрузили оба — две галочки, кнопок нет', async () => {
+    signIn()
+    const store = useOperationsStore()
+    await store.loadUploads(uploadsClient([{ ...both[0], slot: 'b' }]))
+    let card = section(await renderScreen(Statements, '/week'))
+    expect(text(card)).toMatch(/Алихан ещё нет\s+Д Дана вт/)
+    expect(card.match(/<button/g)).toHaveLength(1)
+    await store.loadUploads(uploadsClient([both[0], { ...both[0], id: 'u2', slot: 'b', created_at: '2026-09-24T03:00:00Z' }]))
+    card = section(await renderScreen(Statements, '/week'))
+    expect(text(card)).toMatch(/Алихан вт\s+Д Дана чт/)
+    expect(card.match(/bg-ok/g)).toHaveLength(2)
+    expect(card).not.toContain('<button')
+  })
+
+  it('один участник — карточки нет; viewer — карточка без действий', async () => {
+    signIn()
+    useFinanceStore().householdDoc.people = useFinanceStore().householdDoc.people.slice(0, 1)
+    expect(section(await renderScreen(Statements, '/week'))).toBe('')
+
+    setActivePinia(createPinia())
+    signIn('viewer')
+    const card = section(await renderScreen(Statements, '/week'))
+    expect(text(card)).toMatch(/Алихан ещё нет\s+Д Дана ещё нет/)
+    expect(card).not.toContain('<button')
+  })
+})

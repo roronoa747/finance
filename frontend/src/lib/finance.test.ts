@@ -99,6 +99,7 @@ import {
   type PlanState,
   mainGoal,
   weekPicture,
+  weekUploads,
   spendRows,
   weekVersusPrev,
   subscriptionYearly,
@@ -2432,6 +2433,20 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(p.unknownShare).toBe(0.1)
       expect(p.uploaded.map((x) => x.id)).toEqual(['a'])
       expect(p.missing.map((x) => x.name)).toEqual(['Дана'])
+    })
+
+    it('B2C-62 «Выписки»: перекрытие с неделей на границах (пн / вс), день — из записи загрузки по Алматы; последняя загрузка', () => {
+      // Неделя 38 — 14–20 сентября 2026.
+      const up = (slot: string, period_from: string, period_to: string, created_at?: string) => ({ slot, period_from, period_to, created_at })
+      const rows = (uploads: ReturnType<typeof up>[]) => weekUploads(people, '2026-W38', uploads).map((r) => [r.person.id, r.day])
+      // Кончилась в понедельник недели — есть; кончилась в воскресенье прошлой — нет.
+      expect(rows([up('a', '2026-09-01', '2026-09-14', '2026-09-15T05:00:00Z'), up('b', '2026-09-01', '2026-09-13', '2026-09-15T05:00:00Z')])).toEqual([['a', 'вт'], ['b', null]])
+      // Началась в воскресенье недели — есть; в понедельник следующей — нет.
+      expect(rows([up('a', '2026-09-20', '2026-09-30', '2026-09-30T05:00:00Z'), up('b', '2026-09-21', '2026-09-30')])).toEqual([['a', 'ср'], ['b', null]])
+      // День — по Алматы: 21:00 UTC понедельника — уже вторник; из двух загрузок — последняя.
+      expect(rows([up('a', '2026-09-01', '2026-09-16', '2026-09-14T21:00:00Z'), up('a', '2026-09-10', '2026-09-18', '2026-09-17T06:00:00Z'), up('b', '2026-09-14', '2026-09-20', '2026-09-14T21:00:00Z')])).toEqual([['a', 'чт'], ['b', 'вт']])
+      // Без даты загрузки — загружена, день пустой; удалённый участник — без строки.
+      expect(weekUploads([people[0], { ...people[1], deletedAt: T }], '2026-W38', [up('a', '2026-09-14', '2026-09-20')]).map((r) => [r.person.id, r.day])).toEqual([['a', '']])
     })
 
     it('пусто — нули без исключений; имя раздела семьи — из документа', () => {

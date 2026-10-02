@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { PhFileArrowUp } from '@phosphor-icons/vue'
+import { PhCheck, PhFileArrowUp } from '@phosphor-icons/vue'
 import Button from '@/components/ui/Button.vue'
+import Avatar from '@/components/kit/Avatar.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Card from '@/components/kit/Card.vue'
 import DecisionCard from '@/components/kit/DecisionCard.vue'
@@ -42,6 +43,7 @@ import {
   spendRows,
   weekPicture,
   weekTag,
+  weekUploads,
   weekVersusPrev,
 } from '@/lib/finance'
 import { readMonthEnd, writeMonthEnd } from '@/lib/storage'
@@ -90,10 +92,10 @@ const pic = computed(() => weekPicture(spendTotals.value, spendCategories.value,
 // Даты недели и чьи выписки — в подписи шапки (`AppShell`: `weekRangeLabel`, `weekTag`).
 const weekTotalOf = (key: string) => spendRows(spendTotals.value, [], { kind: 'week', period: key }).total
 const prevWeek = weekKey(new Date(Date.now() - 7 * 86_400_000))
-const mineThisWeek = computed(() => {
-  const { from, to } = pic.value.range
-  return store.uploads.some((u) => u.slot === me.value && u.period_to >= from && u.period_from <= to)
-})
+/** «Выписки» (Р-62): кто загрузил выписку за неделю и в какой день; своя «ещё нет» открывает загрузку, viewer — без действий. */
+const uploadRows = computed(() => weekUploads(people.value, week, store.uploads))
+const mineThisWeek = computed(() => uploadRows.value.some((r) => r.person.id === me.value && r.day !== null))
+const uploadsMine = (r: { person: { id: PersonId }; day: string | null }) => canUpload.value && r.person.id === me.value && r.day === null
 /** Карточка недели: подпись — даты недели, сумма и доли — `weekPicture`, чип — `weekVersusPrev`, «Не разобрано» — сумма недели обоих. */
 const weekTotalProps = computed(() => ({
   label: weekRangeLabel(pic.value.range),
@@ -352,6 +354,26 @@ onMounted(() => {
     <template v-else>
       <Callout v-if="store.pendingCount" tone="neutral">{{ store.pendingCount }} операций отправятся при сети. Итоги уже посчитаны.</Callout>
       <Callout v-if="store.lastAutoMarked" tone="ok">Отмечено по выписке: {{ store.lastAutoMarked }} — снять можно в «Деньгах».</Callout>
+      <!-- «Выписки» (Р-62, макет «А · Пачкой»): галочки обоих; даты недели — уже в шапке, в заголовок не дублируются. -->
+      <Card v-if="uploadRows.length > 1" class="flex flex-col">
+        <span class="type-label">Выписки</span>
+        <component
+          :is="uploadsMine(r) ? 'button' : 'div'"
+          v-for="(r, i) in uploadRows"
+          :key="r.person.id"
+          :type="uploadsMine(r) ? 'button' : undefined"
+          class="flex w-full items-center gap-2.5 py-2 text-left"
+          :class="[i && 'border-t border-line', uploadsMine(r) && 'cursor-pointer']"
+          @click="uploadsMine(r) && fileInput?.click()"
+        >
+          <span class="grid size-6 shrink-0 place-items-center rounded-[8px] border-2" :class="r.day !== null ? 'border-ok bg-ok text-brand-ink' : 'border-line-strong'" aria-hidden="true">
+            <PhCheck v-if="r.day !== null" :size="14" weight="bold" />
+          </span>
+          <Avatar :id="r.person.id" :name="r.person.name" />
+          <span class="min-w-0 flex-1 truncate text-ink">{{ r.person.name }}</span>
+          <span class="type-meta">{{ r.day ?? 'ещё нет' }}</span>
+        </component>
+      </Card>
       <!-- За неделю никто не загружал — карточки нет (без «0 ₸»); viewer видит пустое состояние, участник — загрузку ниже. -->
       <WeekTotal v-if="pic.uploaded.length" v-bind="weekTotalProps" />
       <Card v-else-if="!canUpload"><EmptyState title="Картины недели пока нет" /></Card>

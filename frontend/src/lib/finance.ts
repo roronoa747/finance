@@ -4,7 +4,7 @@ import type { UnknownGroup } from '@/lib/statements/model'
 import type { Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY, plannedElsewhere, spendArticle } from '@/lib/statements/dictionary'
 import { STAT_NORMS } from '@/lib/statements/norms'
-import { addMonths, dayLabel, daysInMonth, monthFrom, monthIn, monthKey, parseMonthKey, today, weekRange } from '@/lib/dates'
+import { addMonths, dayLabel, daysInMonth, monthFrom, monthIn, monthKey, parseMonthKey, today, weekdayShort, weekRange } from '@/lib/dates'
 import { spendColor } from '@/lib/palette'
 import { money, pct, ratePct } from '@/lib/money'
 import { plural } from '@/lib/utils'
@@ -2520,8 +2520,11 @@ export type WeekPicture = {
   missing: Person[]
 }
 
-/** Загрузка выписки, как её отдаёт сервер: чья и за какой период. */
-export type UploadPeriod = { slot: string; period_from: string; period_to: string }
+/** Загрузка выписки, как её отдаёт сервер: чья и за какой период (`created_at` — когда загрузили). */
+export type UploadPeriod = { slot: string; period_from: string; period_to: string; created_at?: string }
+
+/** Выписка за неделю есть, если её период перекрывает неделю хотя бы днём (`weekPicture`, «Выписки»). */
+const coversWeek = (u: UploadPeriod, range: { from: string; to: string }) => u.period_to >= range.from && u.period_from <= range.to
 
 /**
  * Живые разделы трат семьи по `order`; пока семья их не завела — стартовый словарь. Один
@@ -2589,9 +2592,8 @@ export function weekPicture(
 ): WeekPicture {
   const range = weekRange(week)
   const { total, rows, unknown, unknownShare } = spendRows(totals, categories, { kind: 'week', period: week })
-  const covers = (u: UploadPeriod) => u.period_to >= range.from && u.period_from <= range.to
   const alivePeople = people.filter(alive)
-  const uploaded = alivePeople.filter((p) => uploads.some((u) => u.slot === p.id && covers(u)))
+  const uploaded = alivePeople.filter((p) => uploads.some((u) => u.slot === p.id && coversWeek(u, range)))
   const missing = alivePeople.filter((p) => !uploaded.includes(p))
   return { range, total, rows, unknown, unknownShare, uploaded, missing }
 }
@@ -2605,6 +2607,19 @@ export function weekTag(pic: Pick<WeekPicture, 'uploaded' | 'missing'>, peopleCo
   if (pic.missing.length && pic.uploaded.length) return { text: `без выписки ${pic.missing.map((p) => p.name).join(' и ')}`, tone: 'warn' }
   if (pic.uploaded.length) return { text: peopleCount > 1 ? 'по выпискам обоих' : 'по выписке', tone: 'ok' }
   return null
+}
+
+/** Строка карточки «Выписки» (Р-62): загружена ли выписка за неделю и в какой день — последняя загрузка; нет — null. */
+export type WeekUploadRow = { person: Person; day: string | null }
+
+/** Карточка «Выписки · неделя» (Р-62) — по живым участникам, то же перекрытие периода с неделей, что `weekPicture`. */
+export function weekUploads(people: Person[], week: string, uploads: UploadPeriod[] = []): WeekUploadRow[] {
+  const range = weekRange(week)
+  return people.filter(alive).map((person) => {
+    const mine = uploads.filter((u) => u.slot === person.id && coversWeek(u, range))
+    const last = mine.map((u) => u.created_at ?? '').sort().at(-1)
+    return { person, day: mine.length ? weekdayShort(last) : null }
+  })
 }
 
 /** Итог недели против прошлой (DESIGN.md §6 «на N % меньше/больше прошлой»), целый процент; null — одной из недель нет. */
