@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { createSSRApp, h, type Component } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { createRouter, createMemoryHistory } from 'vue-router'
+import { createPinia } from 'pinia'
 import { PhHeart } from '@phosphor-icons/vue'
 import DreamHero from './DreamHero.vue'
 import DreamCenter from './DreamCenter.vue'
@@ -28,6 +29,8 @@ async function render(comp: Component, props: Record<string, unknown> = {}, slot
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:p(.*)*', component: { render: () => null } }] })
   const app = createSSRApp({ render: () => h(comp, props, slots) })
   app.use(router)
+  // Avatar берёт участника из документа (B2C-63) — стор пустой, кружок по слоту.
+  app.use(createPinia())
   return (await renderToString(app)).replace(/<!--[^>]*-->/g, '')
 }
 

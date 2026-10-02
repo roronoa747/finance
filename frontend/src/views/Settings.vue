@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { PhCaretDown, PhCopy } from '@phosphor-icons/vue'
+import { PhCaretDown, PhCaretRight, PhCopy } from '@phosphor-icons/vue'
+import { RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useInvite } from '@/components/useInvite'
@@ -13,7 +14,7 @@ import Button from '@/components/ui/Button.vue'
 
 /**
  * Настройки (DESIGN.md §2 g7; B2C-13): «Оформление» с именем прямо на экране
- * (`AppearancePanel`), «С кем» — участники, код для партнёра (DESIGN §6; первый запуск обещает
+ * (`AppearancePanel`), «С кем» — участники (своя строка — «Свой кружок», B2C-63), код для партнёра (DESIGN §6; первый запуск обещает
  * «Код есть и в настройках») и состояние обмена (шторка синка с «Начать бюджет заново»).
  * Напоминание о выписке — Блок 5, удаление аккаунта и политика — Блок 4: секции появятся своими
  * задачами.
@@ -23,6 +24,7 @@ const financeStore = useFinanceStore()
 
 const people = computed(() => financeStore.people.filter((p) => !p.deletedAt))
 const me = computed(() => authStore.slot)
+const canStyle = (slot: string) => slot === me.value && !authStore.isViewer
 const joined = (slot: string) => (slot === me.value ? (authStore.isViewer ? 'вы · только просмотр' : 'вы · участник') : 'участник')
 
 // Дом приглашения (приёмка Блока 3 п. 8): код создаёт участник с правом правки, в демо сервера нет.
@@ -40,13 +42,22 @@ const { code: inviteCode, canInvite, busy: inviteBusy, error: inviteError, copie
     <Card>
       <h2 class="type-h3 text-ink">С кем</h2>
       <div class="mt-2 flex flex-col">
-        <div v-for="p in people" :key="p.id" class="flex items-center gap-3 border-t border-line py-2.5 first:border-t-0 first:pt-0">
+        <!-- Своя строка у участника — «Свой кружок» (Р-61): смайлик и цвет; чужая и у viewer — без перехода. -->
+        <component
+          :is="canStyle(p.id) ? RouterLink : 'div'"
+          v-for="(p, i) in people"
+          :key="p.id"
+          v-bind="canStyle(p.id) ? { to: '/settings/me', 'aria-label': 'Свой кружок' } : {}"
+          class="flex items-center gap-3 py-2.5"
+          :class="i ? 'border-t border-line' : 'pt-0'"
+        >
           <Avatar :id="p.id" :name="p.name" :size="34" />
           <div class="min-w-0 flex-1">
             <div class="truncate font-medium text-ink">{{ p.name }}</div>
             <div class="type-meta">{{ joined(p.id) }}</div>
           </div>
-        </div>
+          <PhCaretRight v-if="canStyle(p.id)" :size="16" class="shrink-0 text-ink-3" />
+        </component>
         <p v-if="!people.length" class="text-[14px] text-ink-2">Участников пока нет.</p>
       </div>
       <div v-if="canInvite" class="mt-3 border-t border-line pt-3">

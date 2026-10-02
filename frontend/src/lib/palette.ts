@@ -8,7 +8,7 @@
  * B2C-12). Разделы трат выписок красятся токенами `--s1…--s12` (`spendColor`).
  */
 
-import type { ArticleKey, PersonId } from '@/types/finance'
+import type { ArticleKey, PersonColor, PersonId } from '@/types/finance'
 
 export type HueKey = 'blue' | 'teal' | 'green' | 'ochre' | 'brick' | 'plum' | 'indigo' | 'steel'
 
@@ -108,8 +108,18 @@ export function spendColor(category: { id: string; order: number; slot?: number 
   return category ? `var(--s${spendSlot(category)})` : 'var(--s-unknown)'
 }
 
-/** Цвет участника — токен: `a`/`b` — `--pa`/`--pb`, у третьего слота (`c`, обычно viewer) своего токена нет — `--ink-3`. */
-export function personColor(id: PersonId): string {
+/** Цвета кружка на выбор (Р-61, макет «Свой кружок»): ключи токенов, буква на каждом — ≥ 3:1 в обеих темах (гвард). */
+export const PERSON_COLORS: PersonColor[] = ['pa', 'pb', 's3', 's1', 's8', 's6']
+
+/** Смайлики кружка (макет «Свой кружок»); первым в выборе идёт буква имени. */
+export const PERSON_EMOJI = ['🦊', '🐻', '🌿', '⚡️', '🌙', '🍉', '🚀', '🐱', '☕️', '🎧', '🌸']
+
+/**
+ * Цвет участника — токен: выбранный (`color`, ключ из `PERSON_COLORS`), иначе по слоту: `a`/`b` — `--pa`/`--pb`,
+ * у третьего слота (`c`, обычно viewer) своего токена нет — `--ink-3`. Незнакомый ключ — по слоту.
+ */
+export function personColor(id: PersonId, color?: string | null): string {
+  if (color && (PERSON_COLORS as string[]).includes(color)) return `var(--${color})`
   return id === 'c' ? 'var(--ink-3)' : `var(--p${id})`
 }
 

@@ -76,7 +76,7 @@ const isRoot = computed(() => ROOTS.includes(route.path) && !(route.path === '/w
 const noTabs = computed(() => {
   const p = route.path
   return (
-    p.startsWith('/goals/') || p === '/wishes' || p.startsWith('/people/') || p === '/settings' || p === '/week/order' || p === '/week/breakdown'
+    p.startsWith('/goals/') || p === '/wishes' || p.startsWith('/people/') || p.startsWith('/settings') || p === '/week/order' || p === '/week/breakdown'
   )
 })
 
@@ -86,7 +86,7 @@ function goBack() {
   // «Назад» разбора — как «Отмена»: черновик сбрасывается, ничего не отправлено.
   if (p === '/week' && ops.draft) return ops.cancelDraft()
   if (typeof window !== 'undefined' && window.history.state?.back) router.back()
-  else void router.push(p.startsWith('/week') ? '/week' : '/')
+  else void router.push(p.startsWith('/week') ? '/week' : p === '/settings/me' ? '/settings' : '/')
 }
 
 /** Заголовок и подпись шапки по маршруту (DESIGN.md §6 «Заголовки экранов»). */
@@ -113,6 +113,7 @@ const header = computed<{ title: string; sub?: string }>(() => {
     return goal ? { title: goal.name, sub: `${main ? 'главная мечта' : 'мечта'} · ${names.value}` } : { title: 'Цель' }
   }
   if (p === '/wishes' || p.startsWith('/people/')) return { title: 'Желания', sub: 'не мечты — покупки поменьше' }
+  if (p === '/settings/me') return { title: 'Свой кружок' }
   if (p === '/settings') {
     // g7: «Ильяс · ilyas@…» — имя в семье и почта входа.
     const me = people.value.find((x) => x.id === authStore.slot)?.name

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
+import { createPinia } from 'pinia'
 import type { WishItem } from '@/types/finance'
 import WishRow from './WishRow.vue'
 
@@ -8,6 +9,7 @@ import WishRow from './WishRow.vue'
 async function render(by: WishItem['by']) {
   const wish: WishItem = { id: 'w1', name: 'Наушники', price: 45_000, by, addedOn: '2026-09-10', bought: false, updatedAt: '2026-09-10T00:00:00.000Z' }
   const app = createSSRApp({ render: () => h(WishRow, { wish, src: null, canEdit: false, meta: 'Гость · 10 сентября' }) })
+  app.use(createPinia())
   return renderToString(app)
 }
 

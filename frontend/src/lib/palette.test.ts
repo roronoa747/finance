@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { HUES, HUE_KEYS, resolveDark, hueColor, applyTheme, prefersDark, spendColor, spendSlot, SPEND_SLOTS, personColor } from './palette'
+import { HUES, HUE_KEYS, resolveDark, hueColor, applyTheme, prefersDark, spendColor, spendSlot, SPEND_SLOTS, personColor, PERSON_COLORS } from './palette'
 import { DEFAULT_SPEND_CATEGORIES } from './statements/dictionary'
 
 // Токены читаются из style.css текстом, как в style.tokens.test.ts (Vitest отдаёт CSS пустым).
@@ -123,5 +123,15 @@ describe('palette.ts — цветовая система и темы оформ�
     expect(personColor('a')).toBe('var(--pa)')
     expect(personColor('b')).toBe('var(--pb)')
     expect(personColor('c')).toBe('var(--ink-3)')
+  })
+
+  it('B2C-63 personColor: выбранный токен сильнее слота; без выбора и незнакомый ключ — слот', () => {
+    expect(PERSON_COLORS).toEqual(['pa', 'pb', 's3', 's1', 's8', 's6'])
+    expect(personColor('a', 's8')).toBe('var(--s8)')
+    expect(personColor('b', 'pa')).toBe('var(--pa)')
+    expect(personColor('c', 's1')).toBe('var(--s1)')
+    expect(personColor('a', null)).toBe('var(--pa)')
+    expect(personColor('b', 's2')).toBe('var(--pb)')
+    expect(personColor('a', '#ff0000')).toBe('var(--pa)')
   })
 })

@@ -970,3 +970,20 @@ describe('B2C-54: план разбора в общем документе', () 
     expect(merged.moneySettings).toEqual(server.moneySettings)
   })
 })
+
+describe('B2C-63: свой кружок — смайлик и цвет участника', () => {
+  const person = (p: Partial<Person> & { updatedAt: string }): Person => ({ id: 'a', name: 'Ильяс', salary: 700_000, payday: 10, ...p })
+
+  it('emoji и color приходят партнёру (LWW записи участника); снятый смайлик (null) — тоже', () => {
+    const partner: SyncDoc = { ...defaultSyncDoc(), people: [person({ updatedAt: '2026-10-01T00:00:00Z' }), person({ id: 'b', name: 'Аруна', updatedAt: '2026-10-01T00:00:00Z' })] }
+    const mine: SyncDoc = { ...partner, people: [person({ emoji: '🦊', color: 's8', updatedAt: '2026-10-03T00:00:00Z' }), partner.people[1]] }
+    const got = mergeDocs(partner, mine).people.find((p) => p.id === 'a')!
+    expect(got).toMatchObject({ emoji: '🦊', color: 's8' })
+    expect(mergeDocs(mine, partner).people.find((p) => p.id === 'a')).toMatchObject({ emoji: '🦊', color: 's8' })
+
+    const cleared: SyncDoc = { ...mine, people: [person({ emoji: null, color: 's8', updatedAt: '2026-10-04T00:00:00Z' }), partner.people[1]] }
+    expect(mergeDocs(mine, cleared).people.find((p) => p.id === 'a')).toMatchObject({ emoji: null, color: 's8' })
+    // Старый документ без полей — буква по слоту, как было.
+    expect(mergeDocs(partner, partner).people.find((p) => p.id === 'a')?.emoji).toBeUndefined()
+  })
+})
