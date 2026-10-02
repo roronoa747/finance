@@ -1,14 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { money } from '@/lib/money'
-import Button from '@/components/ui/Button.vue'
 import ProgressBar from './ProgressBar.vue'
 
 /**
  * Герой мечты (DESIGN.md §5): фото во всю карточку, «До мечты», процент 64 (цифры --font-num) и одна
  * строка «<Цель> · <накоплено> из <нужно> ₸ · будет вашей в <месяц год>». Состояния:
- * без фото — `--surface-3` и ink-текст (слот `actions` — чип «Добавить фото»); `empty` —
- * «На что копим?» с кнопкой. Высота: главный 440, экран цели 380, превью 180.
+ * без фото — `--surface-3` и ink-текст (слот `actions` — чип «Добавить фото»). Высота: 440, экран
+ * цели 380, превью 180. Главный «Мечты» — `DreamCenter` (пивот 3, Р-42).
  * Пропсы — данные: процент и месяц считает `finance.ts`.
  */
 const props = withDefaults(
@@ -26,14 +25,9 @@ const props = withDefaults(
     /** Своя вторая строка вместо собранной из сумм и месяца. */
     line?: string
     size?: 'main' | 'goal' | 'preview'
-    empty?: boolean
-    /** Пустое состояние с кнопкой «Выбрать мечту»; у viewer кнопки нет. */
-    canPick?: boolean
   }>(),
-  { percent: 0, size: 'main', empty: false, src: null, author: null, authorUrl: null, doneMonth: null, canPick: true },
+  { percent: 0, size: 'main', src: null, author: null, authorUrl: null, doneMonth: null },
 )
-
-const emit = defineEmits<{ (e: 'pick'): void }>()
 
 const HEIGHT = { main: 'min-h-[440px]', goal: 'min-h-[380px]', preview: 'min-h-[180px]' } as const
 
@@ -53,16 +47,6 @@ const line2 = computed(() => {
 
 <template>
   <section
-    v-if="empty"
-    class="flex min-h-[300px] flex-col justify-center gap-3 rounded-hero border border-dashed border-line-strong bg-surface p-5 text-left text-ink"
-  >
-    <h2 class="type-h2">На что копим?</h2>
-    <p class="text-ink-2">Одна мечта с фото — и этот экран покажет, сколько до неё осталось.</p>
-    <div v-if="canPick"><Button @click="emit('pick')">Выбрать мечту</Button></div>
-  </section>
-
-  <section
-    v-else
     class="relative isolate flex flex-col justify-end overflow-hidden rounded-hero p-5 text-left"
     :class="[HEIGHT[size], src ? 'text-on-photo' : 'bg-surface-3 text-ink']"
   >

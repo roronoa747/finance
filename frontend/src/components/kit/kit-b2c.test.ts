@@ -4,7 +4,8 @@ import { renderToString } from 'vue/server-renderer'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { PhHeart } from '@phosphor-icons/vue'
 import DreamHero from './DreamHero.vue'
-import DreamTile from './DreamTile.vue'
+import DreamCenter from './DreamCenter.vue'
+import ThumbRow from './ThumbRow.vue'
 import WeekCard from './WeekCard.vue'
 import FreeCard from './FreeCard.vue'
 import DecisionCard from './DecisionCard.vue'
@@ -73,36 +74,50 @@ describe('DreamHero', () => {
     expect(preview).toContain('Путешествие · Япония')
   })
 
-  it('empty — «На что копим?» с пояснением и кнопкой «Выбрать мечту»; процент обрезается 0…100', async () => {
-    const html = await render(DreamHero, { empty: true })
-    expect(html).toContain('На что копим?')
-    expect(html).toContain('Одна мечта с фото — и этот экран покажет, сколько до неё осталось.')
-    expect(html).toContain('Выбрать мечту')
+  it('процент обрезается 0…100', async () => {
     expect(await render(DreamHero, { title: 'Х', percent: 140 })).toContain(pctText(100))
     expect(await render(DreamHero, { title: 'Х', percent: -5 })).toContain(pctText(0))
   })
 })
 
-describe('DreamTile / TemplateTile', () => {
-  it('плитка: процент и имя с обрезкой; plain без фото; add — «Новая мечта»', async () => {
-    const tile = await render(DreamTile, { name: 'Путешествие в Юго-Восточную Азию', percent: 40, src: 'p' })
-    expect(tile).toContain(pctText(40))
-    expect(tile).toContain('truncate')
-    expect(tile).toContain('h-[150px]')
-    expect(await render(DreamTile, { name: 'Машина', percent: 18 })).toContain('bg-surface-3')
-    expect(await render(DreamTile, { add: true })).toContain('Новая мечта')
+describe('DreamCenter / ThumbRow (пивот 3, Р-42)', () => {
+  it('мечта по центру: фото 236 со скруглением 32, процент 40 (конечный в SSR), «название · месяц год» одним куском', async () => {
+    const html = await render(DreamCenter, { title: 'Япония', percent: 62, src: 'blob:p', month: 'май 2027', author: 'Matthew Skinner' })
+    expect(html).toContain('size-[236px]')
+    expect(html).toContain('rounded-[32px]')
+    expect(html).toContain('text-[40px]')
+    expect(html).toContain(pctText(62))
+    expect(html).toContain(`Япония${NBSP}· май${NBSP}2027`)
+    expect(html).toContain('Фото: Matthew Skinner')
+    expect(html).not.toContain('Выбрать мечту')
+    expect(await render(DreamCenter, { title: 'Машина', percent: 18 })).not.toContain('·')
+    expect(await render(DreamCenter, { title: 'Х', percent: 140 })).toContain(pctText(100))
+    noLiterals(html)
   })
 
-  it('link — переход в том же ряду (возврат смоука: «Желания» вместо отдельной ссылки): подпись, строка, иконка слотом', async () => {
-    const html = await render(DreamTile, { link: true, name: 'Желания', meta: '3 в списке' }, { icon: () => h(PhHeart) })
-    expect(html).toContain('Желания')
-    expect(html).toContain('3 в списке')
-    expect(html).toContain('<svg')
-    expect(html).toContain('border-card-border')
-    expect(html).not.toContain('border-dashed')
-    expect(html).not.toContain('%')
+  it('empty — «На что копим?» и одна брендовая «Выбрать мечту»; у viewer без кнопки', async () => {
+    const html = await render(DreamCenter, { empty: true })
+    expect(html).toContain('На что копим?')
+    expect(html).toContain('Выбрать мечту')
+    expect(html).toContain('bg-brand')
+    expect(await render(DreamCenter, { empty: true, canPick: false })).not.toContain('Выбрать мечту')
   })
 
+  it('строка: мини-фото 48 со скруглением 14, без фото — плашка оттенка; кнопкой — только `clickable`', async () => {
+    const goal = await render(ThumbRow, { title: 'Машина', tone: 'var(--s3)', clickable: true, index: 2 })
+    expect(goal).toContain('<button')
+    expect(goal).toContain('size-12')
+    expect(goal).toContain('rounded-[14px]')
+    expect(goal).toContain('background:var(--s3)')
+    expect(goal).toContain('--i:2')
+    const wish = await render(ThumbRow, { title: 'Наушники', src: 'blob:w' }, { end: () => h('button', 'Открыть') })
+    expect(wish).not.toMatch(/^<button/)
+    expect(wish).toContain('src="blob:w"')
+    expect(wish).toContain('Открыть')
+  })
+})
+
+describe('TemplateTile', () => {
   it('шаблон: выбранный — обводка бренда и aria-pressed; камера — «Своё фото»', async () => {
     const on = await render(TemplateTile, { name: 'Путешествие', src: 'p', selected: true })
     expect(on).toContain('aria-pressed="true"')

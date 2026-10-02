@@ -10,7 +10,7 @@ import { money, plain } from '@/lib/money'
 import { groupTotal } from '@/lib/finance'
 import type { Obligation } from '@/types/finance'
 import PaidRow from './PaidRow.vue'
-import Dreams from '@/views/Dreams.vue'
+import Statements from '@/views/Statements.vue'
 import Money from '@/views/Money.vue'
 import { renderScreen, screenMixin } from '@/test/screenState'
 
@@ -345,13 +345,13 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     expect(reconciled).not.toContain('остаток долга')
   })
 
-  it('viewer: на главном нет «Оставить?», в «Деньгах» (лист «До зарплаты» и «Платежи») нет «Оплатил»; участник их видит', async () => {
+  it('viewer: на «Неделе» нет «Оставить?», в «Деньгах» (лист «До зарплаты» и «Платежи») нет «Оплатил»; участник их видит', async () => {
     // Ежемесячная подписка без keptAt — участника о ней спросили бы.
     const netflix = sub('netflix', 'Netflix', 4_990)
     for (const role of ['member', 'viewer'] as const) {
       setActivePinia(createPinia())
       family(role, [netflix])
-      const dreams = await page(Dreams, '/')
+      const week = await page(Statements, '/week')
       // «Деньги» — лист «До зарплаты» (пивот 3): аренда 28-го в нём у обоих.
       const overview = (await paydaySheet()).sheet
       const budget = payments(await page(Money, '/money'))
@@ -360,11 +360,11 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
       expect(budget).toContain('Аренда')
       expect(budget).toContain('Netflix')
       if (role === 'member') {
-        expect(dreams).toContain('Оставить подписку Netflix?')
+        expect(week).toContain('Оставить подписку Netflix?')
         expect(overview).toContain('Оплатил')
         expect(budget).toContain('Оплатил')
       } else {
-        expect(dreams).not.toContain('Оставить подписку')
+        expect(week).not.toContain('Оставить подписку')
         expect(overview).not.toContain('Оплатил')
         expect(budget).not.toContain('Оплатил')
       }
@@ -399,8 +399,8 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     })
     family('member', [yearly])
     vi.setSystemTime(new Date('2026-09-25T07:00:00Z')) // 25 сентября, Алматы: до продления 10 дней
-    // Карточка решения на главном (B2C-14): сумма продления из новой версии.
-    const card = await page(Dreams, '/')
+    // Карточка решения на «Неделе» (пивот 3, Р-43): сумма продления из новой версии.
+    const card = await page(Statements, '/week')
     expect(card).toContain('Оставить подписку Иви?')
     expect(card).toContain(`${money(12_000)} · в год · продлится 5 октября`)
     expect(card).not.toContain(money(10_000))
