@@ -262,21 +262,22 @@ function startDemoMode() {
       { id: 'demo-upload-a', slot: 'a', bank: 'kaspi', period_from: from, period_to: today, ops_count: 19, created_at: new Date().toISOString() },
       { id: 'demo-upload-b', slot: 'b', bank: 'kaspi', period_from: from, period_to: today, ops_count: 12, created_at: new Date().toISOString() },
     ])
-    // Пять разделов, продавцы из словаря (суммы — вне окна оценки «Коммуналки» 21–39 тыс., иначе «платёж по
+    // Пять разделов, продавцы — только из словаря (иначе ответ на продавца, переразложив операции правилами,
+    // вернёт их в «не разобрано»; суммы — вне окна оценки «Коммуналки» 21–39 тыс., иначе «платёж по
     // Коммуналке?»), один перевод между своими и два незнакомых продавца сегодня —
     // на «Неделе» в любой день не меньше двух решений («ИП Абенова», «ИП Жумабаева»).
     const op = (n: number, ago: number, amount: number, merchant: string, categoryId: string | null, extra: Partial<Operation> = {}): Operation => ({
       id: `demo-op-${n}`, bank: 'kaspi', date: day(ago), amount, kind: 'purchase', merchant, categoryId, internal: false, ...extra,
     })
     ops.seedDemoOperations([
-      op(1, 0, -6_800, 'ИП Сериков', 'sc_food'),
+      op(1, 0, -6_800, 'Galmart', 'sc_food'),
       op(2, 0, -4_990, 'Яндекс Плюс', 'sc_subscriptions'),
       op(3, 0, -7_600, 'ИП Абенова', null),
       op(4, 1, -2_400, 'Coffee Boom', 'sc_cafe'),
       op(5, 0, -3_200, 'ИП Жумабаева', null),
       op(6, 2, -12_400, 'Magnum', 'sc_food'),
       op(7, 2, -1_800, 'Yandex Go', 'sc_transport'),
-      op(8, 3, -18_500, 'Del Papa', 'sc_cafe'),
+      op(8, 3, -18_500, 'Del Papa Cafe', 'sc_cafe'),
       op(9, 4, -9_300, 'Small', 'sc_food'),
       op(10, 0, -200_000, 'На депозит', null, { kind: 'transfer-out', internal: true }),
       op(11, 6, -2_100, 'Yandex Go', 'sc_transport'),
@@ -286,7 +287,7 @@ function startDemoMode() {
       op(15, 10, -15_200, 'Small', 'sc_food'),
       op(16, 11, -1_500, 'Yandex Go', 'sc_transport'),
       op(17, 12, -8_900, 'Magnum', 'sc_food'),
-      op(18, 13, -5_500, 'Del Papa', 'sc_cafe'),
+      op(18, 13, -5_500, 'Del Papa Cafe', 'sc_cafe'),
       op(19, 13, -9_800, 'Small', 'sc_food'),
     ])
   })

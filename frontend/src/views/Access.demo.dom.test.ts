@@ -11,7 +11,7 @@ import Statements from './Statements.vue'
 import Dreams from './Dreams.vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
-import { spendTotals } from '@/lib/statements/model'
+import { spendTotals, unknownGroups } from '@/lib/statements/model'
 import type { SpendTotal } from '@/lib/statements/types'
 import { monthKey, weekKey } from '@/lib/dates'
 import { weekPicture } from '@/lib/finance'
@@ -70,7 +70,7 @@ describe('B2C-45: демо — «Деньги» с данными во всех 
 
     const history = text(await renderScreen(Money, '/money/history'))
     expect(history).not.toContain('Пока пусто')
-    expect(history).toContain('ИП Сериков')
+    expect(history).toContain('Galmart')
     expect(history).toContain('между своими · не трата')
     expect(history).toContain('Аренда квартиры оплачено · Аруна')
     expect(history).toMatch(/Всё Операции Отметки /)
@@ -131,6 +131,13 @@ describe('B2C-52: демо — итоги из демо-операций той 
     const dreams = text(await renderScreen(Dreams, '/'))
     expect(dreams).toContain('Поездка в Японию')
     expect(dreams).toContain('Свободно')
+    // Разделы демо-операций — те, что дают словарь и правила: ответ на одного продавца раскладывает
+    // операции заново (`reapply`), и остальные не возвращаются в «не разобрано» (стенд B2C-52).
+    const abenova = unknownGroups(ops.all).find((g) => g.label === 'ИП Абенова')!
+    await ops.recategorize(abenova.match, { categoryId: 'sc_food' }).catch(() => {})
+    const after = weekPicture(finance.householdDoc.spendTotals!, finance.householdDoc.spendCategories!, finance.people, week, ops.uploads)
+    expect(after.unknown).toBe(3_200)
+    expect(after.total).toBe(pic.total)
     expect(fetch).not.toHaveBeenCalled()
   })
 })
