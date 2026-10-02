@@ -75,7 +75,9 @@ const isRoot = computed(() => ROOTS.includes(route.path) && !(route.path === '/w
 /** Экраны-потоки без нижней навигации (в макетах — без вкладок): цель, желания, настройки, раскладка. */
 const noTabs = computed(() => {
   const p = route.path
-  return p.startsWith('/goals/') || p === '/wishes' || p.startsWith('/people/') || p === '/settings' || p === '/week/salary'
+  return (
+    p.startsWith('/goals/') || p === '/wishes' || p.startsWith('/people/') || p === '/settings' || p === '/week/salary' || p === '/week/order'
+  )
 })
 
 /** «Назад»: по истории, а открытый по ссылке экран — к своему корню. */
@@ -98,6 +100,7 @@ const header = computed<{ title: string; sub?: string }>(() => {
     const sub = from === 'salary' ? (who ? `зарплата · ${who}` : 'зарплата') : from === 'rest' ? 'остаток месяца' : from === 'credit' ? 'закрытый долг' : 'освободившийся платёж'
     return { title: 'Разложим', sub }
   }
+  if (p === '/week/order') return { title: 'Ваш порядок' }
   if (p.startsWith('/week')) return ops.draft ? { title: 'Разбор', sub: draftSub.value } : { title: 'Неделя', sub: weekSub.value }
   // «Деньги» — один экран с тремя квадратами (пивот 3, Р-31): шапка одна на все.
   if (p === '/money' || p.startsWith('/money/')) return { title: 'Деньги', sub: `${monthName.value} · ${names.value}` }

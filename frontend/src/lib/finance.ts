@@ -2997,6 +2997,27 @@ export function decisionQueue(
 
 /* ---------------- разбор зарплаты по статьям (Блок 11, Р-51…Р-56, Р-63…Р-66) ---------------- */
 
+/** Короткая подпись статьи в «Ваш порядок» (макет, вопрос 2): что в ней и какой порог. */
+export function orderLine(key: ArticleKey, settings: Pick<MoneySettings, 'reserveMonths' | 'cushionMonths' | 'costlyRate'>): string {
+  const months = (n: number) => `${n} ${plural(n, 'месяц', 'месяца', 'месяцев')}`
+  switch (key) {
+    case 'must':
+      return 'аренда, кредиты, коммуналка'
+    case 'life':
+      return 'еда и быт'
+    case 'reserve':
+      return `${months(settings.reserveMonths)} трат`
+    case 'debts':
+      return settings.costlyRate > 0 ? `дороже ${settings.costlyRate} %` : 'кредитка, рассрочки с %'
+    case 'cushion':
+      return months(settings.cushionMonths)
+    case 'dreams':
+      return 'цели со сроком'
+    case 'spend':
+      return 'кафе, себе, развлечения'
+  }
+}
+
 /** Из чего считается разбор: документ семьи; кредиты — производные остатки, как их отдаёт стор. */
 export type BreakdownState = {
   people?: Person[]

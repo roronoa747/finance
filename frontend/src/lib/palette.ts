@@ -8,7 +8,7 @@
  * B2C-12). Разделы трат выписок красятся токенами `--s1…--s12` (`spendColor`).
  */
 
-import type { PersonId } from '@/types/finance'
+import type { ArticleKey, PersonId } from '@/types/finance'
 
 export type HueKey = 'blue' | 'teal' | 'green' | 'ochre' | 'brick' | 'plum' | 'indigo' | 'steel'
 
@@ -111,4 +111,19 @@ export function spendColor(category: { id: string; order: number; slot?: number 
 /** Цвет участника — токен: `a`/`b` — `--pa`/`--pb`, у третьего слота (`c`, обычно viewer) своего токена нет — `--ink-3`. */
 export function personColor(id: PersonId): string {
   return id === 'c' ? 'var(--ink-3)' : `var(--p${id})`
+}
+
+/**
+ * Цвет статьи разбора (B2C-57) — токен раздела, как в макете `money-breakdown.html`: Обязательное —
+ * `--s1`, Жизнь — `--s5`, Запас — `--s3`, Дорогие долги — `--s6`, Подушка — `--s8`, Мечты — `--s4`,
+ * Траты — `--s12`.
+ */
+export const ARTICLE_COLORS: Record<ArticleKey, string> = {
+  must: 'var(--s1)',
+  life: 'var(--s5)',
+  reserve: 'var(--s3)',
+  debts: 'var(--s6)',
+  cushion: 'var(--s8)',
+  dreams: 'var(--s4)',
+  spend: 'var(--s12)',
 }

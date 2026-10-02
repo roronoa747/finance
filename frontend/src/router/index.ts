@@ -17,6 +17,8 @@ const GoalDetail = () => import('@/views/GoalDetail.vue')
 const Money = () => import('@/views/Money.vue')
 // Раскладка зарплаты, остатка и освободившихся денег (бывший Ритуал; B2C-21).
 const WeekSalary = () => import('@/views/WeekSalary.vue')
+// Разбор зарплаты по статьям (Блок 11): «Ваш порядок» — редкий экран, отдельным чанком.
+const YourOrder = () => import('@/views/YourOrder.vue')
 // Выписки (B2C-07): pdf.js грузится ещё позже — только когда выбрали файл.
 const Statements = () => import('@/views/Statements.vue')
 // Новая мечта (B2C-18): шаблоны с картинками — редкий экран, отдельным чанком.
@@ -76,6 +78,8 @@ export const routes: RouteRecordRaw[] = [
       // `memberOnly` — экран-форма: viewer уходит на главный (Р-12, «viewer — без форм»), в том числе
       // со старой ссылки `/ritual?…` и закладки.
       { path: 'week/salary', name: 'week-salary', component: WeekSalary, meta: { memberOnly: true } },
+      // «Ваш порядок» (B2C-56): статьи разбора и пороги — один раз; viewer — в разбор.
+      { path: 'week/order', name: 'week-order', component: YourOrder, meta: { memberOnly: true, viewerTo: '/week/breakdown' } },
       // Квадрат — по адресу; переключение — `router.replace` (назад — на прошлую вкладку).
       { path: 'money/:square(plan|history)?', name: 'money', component: Money },
       // Бюджет и Капитал до пивота 3 — теперь квадрат «Капитал»; окна — те же ключи query.
@@ -130,7 +134,10 @@ export function createAppRouter(history = typeof window !== 'undefined' ? create
     }
 
     // 3. Экраны-формы (раскладка денег, новая мечта) — только участнику.
-    if (to.meta.memberOnly && authStore.isViewer) return next('/')
+    // «Ваш порядок» — viewer видит разбор, но не меняет (Р-63): прямой адрес — назад в разбор.
+    if (to.meta.memberOnly && authStore.isViewer) {
+      return next(typeof to.meta.viewerTo === 'string' ? { path: to.meta.viewerTo, query: to.query } : '/')
+    }
 
     // 4. Первый запуск (`landingPath`): семья без данных — только `/start`; семья с данными, но не
     // настроенная (ответы посреди потока) — и `/start`, и главный; настроенной семье `/start` открыт
