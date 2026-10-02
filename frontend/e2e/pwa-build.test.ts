@@ -7,6 +7,31 @@ import { resolve } from 'node:path'
 const dist = resolve(import.meta.dirname, '../dist')
 const built = existsSync(resolve(dist, 'index.html'))
 
+// Цвета — из токенов style.css (правило 6 CLAUDE.md): фон экрана и бренд светлой / тёмной темы.
+const css = readFileSync(resolve(import.meta.dirname, '../src/style.css'), 'utf-8')
+const token = (selector: RegExp, name: string) =>
+  new RegExp(`${name}\\s*:\\s*(#[0-9a-f]{6})\\s*;`, 'i').exec(css.match(selector)?.[1] ?? '')?.[1].toUpperCase()
+const LIGHT = /:root\s*\{([^}]*)\}/
+const DARK = /\.dark\s*\{([^}]*)\}/
+
+describe('B2C-53: строка сверху — цвет фона, бренд — только в style.css и иконке', () => {
+  it('в index.html и vite.config.ts нет бренда #B4562F', () => {
+    for (const f of ['../index.html', '../vite.config.ts']) {
+      expect(readFileSync(resolve(import.meta.dirname, f), 'utf-8').toUpperCase(), f).not.toContain('#B4562F')
+    }
+  })
+
+  it('index.html: два theme-color по системной теме — --canvas светлой и тёмной', () => {
+    const html = readFileSync(resolve(import.meta.dirname, '../index.html'), 'utf-8')
+    const metas = [...html.matchAll(/<meta name="theme-color" media="\(prefers-color-scheme: (light|dark)\)" content="(#[0-9a-f]{6})"/gi)]
+    expect(Object.fromEntries(metas.map((m) => [m[1], m[2].toUpperCase()]))).toEqual({
+      light: token(LIGHT, '--canvas'),
+      dark: token(DARK, '--canvas'),
+    })
+    expect(html.match(/name="theme-color"/g)).toHaveLength(2)
+  })
+})
+
 describe.skipIf(!built)('PWA-сборка заменяет React-PWA (MGV-17)', () => {
   it('манифест совпадает с React-версией', () => {
     const manifest = JSON.parse(readFileSync(resolve(dist, 'manifest.webmanifest'), 'utf-8'))
@@ -17,9 +42,10 @@ describe.skipIf(!built)('PWA-сборка заменяет React-PWA (MGV-17)', 
       start_url: '/',
       scope: '/',
       display: 'standalone',
-      background_color: '#F2F2F0',
-      theme_color: '#B4562F',
     })
+    // Заставка и строка установленной PWA — светлый фон экрана, не бренд (B2C-53).
+    expect(manifest.background_color).toBe(token(LIGHT, '--canvas'))
+    expect(manifest.theme_color).toBe(token(LIGHT, '--canvas'))
     expect(manifest.icons).toEqual([
       { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml' },
       { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'maskable' },
@@ -51,12 +77,17 @@ describe.skipIf(!built)('PWA-сборка заменяет React-PWA (MGV-17)', 
     expect(js).toContain('getRegistration')
   })
 
-  it('иконка в цвет бренда: заливка = theme_color манифеста (направление А, B2C-12)', () => {
+  it('иконка в цвет бренда: заливка = --brand светлой темы (направление А, B2C-12); строка сверху — фон (B2C-53)', () => {
     // Сверка с React-эталоном ушла вместе с паритетом React→Vue (прод на Go + Vue с 2026-09-24).
     const icon = readFileSync(resolve(dist, 'favicon.svg'), 'utf-8')
-    const manifest = JSON.parse(readFileSync(resolve(dist, 'manifest.webmanifest'), 'utf-8'))
     const fill = /<rect width="64" height="64" rx="14" fill="(#[0-9A-Fa-f]{6})"/.exec(icon)?.[1]
-    expect(fill?.toUpperCase()).toBe(manifest.theme_color.toUpperCase())
+    expect(fill?.toUpperCase()).toBe(token(LIGHT, '--brand'))
+  })
+
+  it('собранный index.html несёт оба theme-color (B2C-53)', () => {
+    const html = readFileSync(resolve(dist, 'index.html'), 'utf-8')
+    expect(html).toContain(`media="(prefers-color-scheme: light)" content="${token(LIGHT, '--canvas')?.toLowerCase()}"`)
+    expect(html).toContain(`media="(prefers-color-scheme: dark)" content="${token(DARK, '--canvas')?.toLowerCase()}"`)
   })
 
   it('шрифт системный (пивот 3, Р-36): ни Google Fonts, ни веб-шрифтов в сборке', () => {

@@ -2,6 +2,13 @@ import { describe, it, expect, vi } from 'vitest'
 import { HUES, HUE_KEYS, resolveDark, hueColor, applyTheme, prefersDark, spendColor, spendSlot, SPEND_SLOTS, personColor } from './palette'
 import { DEFAULT_SPEND_CATEGORIES } from './statements/dictionary'
 
+// Токены читаются из style.css текстом, как в style.tokens.test.ts (Vitest отдаёт CSS пустым).
+type NodeFs = { readFileSync(path: URL, encoding: string): string }
+const fs = (await import(/* @vite-ignore */ `node:${'fs'}`)) as unknown as NodeFs
+const css = fs.readFileSync(new URL('../style.css', import.meta.url), 'utf-8')
+const canvasOf = (selector: RegExp) => /--canvas\s*:\s*([^;]+);/.exec(css.match(selector)?.[1] ?? '')?.[1].trim()
+const CANVAS = { light: canvasOf(/:root\s*\{([^}]*)\}/), dark: canvasOf(/\.dark\s*\{([^}]*)\}/) }
+
 describe('palette.ts — цветовая система и темы оформления', () => {
   it('все оттенки HUES имеют валидные пары light и dark HEX цветов', () => {
     expect(HUE_KEYS.length).toBeGreaterThan(0)
@@ -39,12 +46,51 @@ describe('palette.ts — цветовая система и темы оформ�
       },
     }
 
-    vi.stubGlobal('document', { documentElement: mockRoot })
+    vi.stubGlobal('document', { documentElement: mockRoot, querySelectorAll: () => [] })
+    vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => '' }))
 
     applyTheme({ theme: 'dark' })
 
     expect(mockRoot.classList.toggle).toHaveBeenCalledWith('dark', true)
     expect(mockRoot.style.setProperty).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  it('B2C-53: applyTheme красит строку сверху (оба theme-color) в --canvas своей темы — светлая, тёмная, авто', () => {
+    expect(CANVAS.light).toMatch(/^#[0-9a-f]{6}$/i)
+    expect(CANVAS.dark).toMatch(/^#[0-9a-f]{6}$/i)
+    expect(CANVAS.light).not.toBe(CANVAS.dark)
+
+    const classes = new Set<string>()
+    const metas = [{ content: CANVAS.light }, { content: CANVAS.dark }].map((m) => ({
+      ...m,
+      setAttribute(_: string, v: string) {
+        this.content = v
+      },
+    }))
+    let systemDark = false
+    vi.stubGlobal('document', {
+      documentElement: { classList: { toggle: (c: string, on: boolean) => (on ? classes.add(c) : classes.delete(c)) } },
+      querySelectorAll: (q: string) => (q === 'meta[name="theme-color"]' ? metas : []),
+    })
+    // Браузер вычисляет --canvas по классу dark на <html> — как .dark в style.css.
+    vi.stubGlobal('getComputedStyle', () => ({
+      getPropertyValue: (k: string) => (k === '--canvas' ? ` ${classes.has('dark') ? CANVAS.dark : CANVAS.light}` : ''),
+    }))
+    vi.stubGlobal('window', { matchMedia: () => ({ matches: systemDark }) })
+    const bar = () => metas.map((m) => m.content)
+
+    // Ручной выбор сильнее media мета-тегов: оба тега — цвет выбранной темы.
+    applyTheme({ theme: 'dark' })
+    expect(bar()).toEqual([CANVAS.dark, CANVAS.dark])
+    systemDark = true
+    applyTheme({ theme: 'light' })
+    expect(bar()).toEqual([CANVAS.light, CANVAS.light])
+    applyTheme({ theme: 'auto' })
+    expect(bar()).toEqual([CANVAS.dark, CANVAS.dark])
+    systemDark = false
+    applyTheme({ theme: 'auto' })
+    expect(bar()).toEqual([CANVAS.light, CANVAS.light])
     vi.unstubAllGlobals()
   })
 

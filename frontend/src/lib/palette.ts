@@ -56,9 +56,17 @@ export function resolveDark(choice: ThemeChoice): boolean {
 /**
  * Единственное место, где тема попадает в DOM: класс `dark` на `<html>`. Цвета разделов
  * бюджета (`--d1…--d5`) больше не пишутся — их последний читатель, «Бюджет», убран в Р-33.
+ *
+ * Строка сверху телефона (`theme-color`, B2C-53) — цвет фона выбранной темы: `--canvas`
+ * читается после смены класса, литерала цвета здесь нет. Оба мета-тега из `index.html`
+ * получают одно значение — ручной выбор сильнее их `media`.
  */
 export function applyTheme(opts: { theme: ThemeChoice }) {
-  document.documentElement.classList.toggle('dark', resolveDark(opts.theme))
+  const root = document.documentElement
+  root.classList.toggle('dark', resolveDark(opts.theme))
+  const canvas = getComputedStyle(root).getPropertyValue('--canvas').trim()
+  if (!canvas) return
+  for (const meta of document.querySelectorAll('meta[name="theme-color"]')) meta.setAttribute('content', canvas)
 }
 
 /** Цвет оттенка для текущей темы — для inline-заливок в SVG. */
