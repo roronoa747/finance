@@ -250,7 +250,11 @@ export const useOperationsStore = defineStore('operations', () => {
 
   /** Ответ на вопрос разбора — правило в личный документ (Р-22); черновик пересчитается сам. */
   function answer(match: MerchantRule['match'], to: MerchantRule['to']) {
-    finance.addMerchantRule({ match, to }, me())
+    answerAll([match], to)
+  }
+  /** Один ответ нескольким продавцам (пачка, Р-58) — правила одной правкой. */
+  function answerAll(matches: MerchantRule['match'][], to: MerchantRule['to']) {
+    finance.addMerchantRules(matches.map((match) => ({ match, to })), me())
   }
 
   /**
@@ -333,7 +337,11 @@ export const useOperationsStore = defineStore('operations', () => {
 
   /** Смена раздела задним числом: правило + пересчёт своих операций и итогов их периодов. */
   async function recategorize(match: MerchantRule['match'], to: MerchantRule['to'], client: ApiClient = apiClient) {
-    answer(match, to)
+    return recategorizeAll([match], to, client)
+  }
+  /** Пачкой (Р-58): все правила, один пересчёт, одни итоги и одна отправка. */
+  async function recategorizeAll(matches: MerchantRule['match'][], to: MerchantRule['to'], client: ApiClient = apiClient) {
+    answerAll(matches, to)
     const next = reapply(all.value)
     const changed = next.filter((o, i) => o !== all.value[i])
     if (!changed.length) return
@@ -514,8 +522,10 @@ export const useOperationsStore = defineStore('operations', () => {
     setDraft,
     cancelDraft,
     answer,
+    answerAll,
     send,
     recategorize,
+    recategorizeAll,
     forgetRule,
     settleReleased,
     flush,

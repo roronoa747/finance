@@ -323,7 +323,7 @@ describe('возврат приёмки 2 п. 3, 4: одна карточка о
 describe('ревью Блока 3 Н-22 (правило 12): брендовая кнопка и брендовая рамка — только у главного на экране', () => {
   const brandButtons = () => [...document.querySelectorAll('button')].filter((b) => b.className.includes('bg-brand ')).map((b) => b.textContent?.trim())
   const brandFrames = () => document.querySelectorAll('.border-brand').length
-  /** Незнакомый продавец месяца — карточка разбора «куда отнести?» (ответ — чипы). */
+  /** Незнакомый продавец месяца — пачка «Без раздела» (ответ — чипы). */
   const unknownOp = (store: ReturnType<typeof useOperationsStore>) => {
     store.ops['op-u'] = { id: 'op-u', bank: 'kaspi', date: '2026-09-08', amount: -7_500, kind: 'purchase', merchant: 'ИП ЖАНСАЯ', categoryId: null, internal: false }
   }
@@ -348,7 +348,7 @@ describe('ревью Блока 3 Н-22 (правило 12): брендовая 
       delete store.ops['op-1']
       unknownOp(store)
     })
-    await vi.waitFor(() => expect(page()).toContain('ИП ЖАНСАЯ — куда отнести?'))
+    await vi.waitFor(() => expect(page()).toContain('Без раздела · 1'))
     expect(page()).not.toContain('Пришла зарплата Алихан?')
     expect(brandButtons()).toEqual([])
     expect(brandFrames()).toBe(1)
@@ -388,7 +388,8 @@ describe('B2C-49: одно решение за раз, «N из M» растёт
     await vi.waitFor(() => expect(page()).toContain(QUESTION))
     expect(page()).toContain('1 из 3')
     await tap('Да, отметить')
-    expect(page()).toContain('ИП ЖАНСАЯ — куда отнести?')
+    expect(page()).toContain('Без раздела · 1')
+    expect(page()).toContain('ИП ЖАНСАЯ')
     expect(page()).toContain('2 из 3')
     expect(page()).not.toContain('1 из 2')
     await tap('Потом')
@@ -399,5 +400,67 @@ describe('B2C-49: одно решение за раз, «N из M» растёт
     expect(page()).not.toMatch(/\d из \d/)
     expect(document.querySelectorAll('h2.type-h2')).toHaveLength(0)
     expect([...document.querySelectorAll('button')].filter((b) => b.className.includes('bg-brand ')).map((b) => b.textContent?.trim())).toEqual(['Загрузить выписку'])
+  })
+})
+
+describe('B2C-61: незнакомые продавцы пачкой → правила разом', () => {
+  const sells: [string, number][] = [['ИП АХМЕТОВА', 5_000], ['ИП СЕЙТКАЛИ', 4_000], ['ИП КИМ', 3_000], ['ИП ОСПАНОВ', 2_000], ['ИП НУРЛАНОВА', 1_000]]
+  const openBatch = () =>
+    openWeek((finance, store) => {
+      finance.householdDoc.credits = []
+      delete store.ops['op-1']
+      sells.forEach(([merchant, amount], i) => (store.ops[`u${i}`] = { id: `u${i}`, bank: 'kaspi', date: '2026-09-2' + (i % 3), amount: -amount, kind: 'purchase', merchant, categoryId: null, internal: false }))
+    })
+  const row = (name: string) => [...document.querySelectorAll('button[aria-pressed]')].find((b) => b.textContent?.includes(name)) as HTMLButtonElement
+  const pick = async (...names: string[]) => {
+    for (const n of names) row(n).click()
+    await nextTick()
+  }
+  /** Ушедшие строки держит `TransitionGroup` до конца анимации — дождаться кадра. */
+  const settle = async () => {
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    vi.advanceTimersByTime(500)
+    await nextTick()
+  }
+  const rulesTo = (finance: ReturnType<typeof useFinanceStore>, categoryId: string) =>
+    finance.merchantRules.filter((r) => !r.deletedAt && 'categoryId' in r.to && r.to.categoryId === categoryId).map((r) => r.match.merchant).sort()
+
+  it('отметить 3 → «Выбрано 3 · сумма» → чип: три правила одной отправкой, итоги пересчитаны, строки ушли', async () => {
+    const { finance } = await openBatch()
+    await vi.waitFor(() => expect(page()).toContain('Без раздела · 5'))
+    // Без отмеченных — «куда?» нет.
+    expect(page()).not.toContain('Выбрано')
+    expect(button('Продукты')).toBeUndefined()
+    await pick('ИП АХМЕТОВА', 'ИП СЕЙТКАЛИ', 'ИП КИМ')
+    expect(row('ИП КИМ').getAttribute('aria-pressed')).toBe('true')
+    expect(page()).toMatch(/Выбрано 3 · 12\s000\s₸/)
+    await tap('Продукты')
+    expect(rulesTo(finance, 'sc_food')).toEqual(['ахметова', 'ким', 'сейткали'])
+    await vi.waitFor(() => expect(apiClient.upsertOperations).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(apiClient.upsertOperations).mock.calls[0][0]).toHaveLength(3)
+    const food = finance.householdDoc.spendTotals!.find((t) => t.kind === 'month' && t.period === '2026-09' && t.categoryId === 'sc_food')
+    expect(food?.amount).toBe(12_000)
+    await vi.waitFor(() => expect(page()).toContain('Без раздела · 2'))
+    await settle()
+    for (const n of ['ИП АХМЕТОВА', 'ИП СЕЙТКАЛИ', 'ИП КИМ', 'Выбрано']) expect(page()).not.toContain(n)
+  })
+
+  it('«Не помню» → правило «Прочее», продавец больше не спрашивается; «Выбрать все» → ответ всем, пачка уходит', async () => {
+    const { finance, store } = await openBatch()
+    await vi.waitFor(() => expect(page()).toContain('Без раздела · 5'))
+    await pick('ИП ОСПАНОВ')
+    await tap('Не помню')
+    expect(rulesTo(finance, 'sc_other')).toEqual(['оспанов'])
+    expect(store.ops.u3.categoryId).toBe('sc_other')
+    await vi.waitFor(() => expect(page()).toContain('Без раздела · 4'))
+    await settle()
+    expect(page()).not.toContain('ИП ОСПАНОВ')
+
+    await tap('Выбрать все')
+    expect(page()).toMatch(/Выбрано 4 · 13\s000\s₸/)
+    expect(button('Снять все')).toBeTruthy()
+    await tap('Между своими')
+    await vi.waitFor(() => expect(page()).not.toContain('Без раздела'))
+    expect(finance.merchantRules.filter((r) => !r.deletedAt && 'internal' in r.to)).toHaveLength(4)
   })
 })

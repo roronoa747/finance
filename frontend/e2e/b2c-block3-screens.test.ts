@@ -167,11 +167,12 @@ describe('e2e / B2C Блок 3 — часть 1: главный «Мечты» (
     for (const w of ['Эта неделя', 'Не разобрано', 'Пришла зарплата', money(120_000)]) expect(html).not.toContain(w)
 
     // «Неделя»: 62 000 + 20 000 продукты, 28 000 кафе, 10 000 не разобрано = 120 000; первое решение —
-    // незнакомый продавец недели (10 000 ₸).
+    // пачка незнакомых продавцов (10 000 ₸, Блок 12).
     const week = await screen(A.pinia, Statements, '/week')
     expect(week).toContain(money(120_000))
     expect(week).toContain(`Не разобрано · <span class="num">${money(10_000)}</span>`)
-    expect(week).toContain('IP SERIKOV — куда отнести?')
+    expect(week).toContain('Без раздела')
+    expect(week).toContain('IP SERIKOV')
     // Суммы разделов (82 000 продукты) — в листе «Разделы за сентябрь» (B2C-50, правило 12: таблица свёрнута).
     expect(await screen(A.pinia, Statements, '/week', undefined, [screenMixin({ sheet: 'sections' })])).toContain(money(82_000))
 
@@ -624,14 +625,14 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     const ops = useOperationsStore()
     // Сопоставления — первыми (порядок Р-8): «Нет» на каждое, дальше — незнакомое.
     for (const c of [...ops.pendingMatches]) ops.declineMatch(c)
-    // Переводы не той суммы — в очереди «куда отнести?»; ответ — чип раздела (как нажатие на карточке).
-    type Group = { label: string }
+    // Переводы не той суммы — в пачке «Без раздела»; ответ — чип раздела (как нажатие в пачке).
+    type Group = { label: string; match: { merchant?: string; counterparty?: string } }
     let queued: string[] = []
     await screen(B.pinia, Statements, '/week', undefined, [
       screenMixin({}, (s) => {
-        const queue = (s.queue as Decision[]).filter((d) => d.kind === 'unknown').map((d) => d.group as Group)
+        const queue = (s.queue as Decision[]).filter((d) => d.kind === 'unknownBatch').flatMap((d) => d.groups as Group[])
         queued = queue.map((g) => g.label)
-        ;(s.answerUnknown as (g: Group, to: { categoryId: string }) => void)(queue.find((g) => g.label === 'Перевод с карты на карту')!, { categoryId: 'sc_people' })
+        ;(s.answerBatch as (m: Group['match'][], to: { categoryId: string }) => void)([queue.find((g) => g.label === 'Перевод с карты на карту')!.match], { categoryId: 'sc_people' })
       }),
     ])
     expect(queued).toContain('Перевод с карты на карту')
@@ -639,7 +640,7 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     await ops.flush(B.client)
     const rule = () => B.store.merchantRules.filter((r) => !r.deletedAt && r.match.merchant === 'перевод с карты на карту')
     expect(rule().map((r) => r.to)).toEqual([{ payment: { kind: 'obligation', targetId: ob.id, categoryId: 'sc_subscriptions', restCategoryId: 'sc_people' } }])
-    await screen(B.pinia, Statements, '/week', undefined, [screenMixin({}, (s) => void (queued = (s.queue as Decision[]).filter((d) => d.kind === 'unknown').map((d) => (d.group as Group).label)))])
+    await screen(B.pinia, Statements, '/week', undefined, [screenMixin({}, (s) => void (queued = (s.queue as Decision[]).filter((d) => d.kind === 'unknownBatch').flatMap((d) => (d.groups as Group[]).map((g) => g.label))))])
     expect(queued).not.toContain('Перевод с карты на карту')
     const julyTransfers = () => ops.all
       .filter((o) => o.merchant === 'Перевод с карты на карту' && o.amount < 0 && o.date.startsWith('2025-07'))

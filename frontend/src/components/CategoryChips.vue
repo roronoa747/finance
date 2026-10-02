@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { spendColor } from '@/lib/palette'
 import { liveSpendCategories } from '@/lib/finance'
+import { OTHER_CATEGORY } from '@/lib/statements/dictionary'
 import type { MerchantRule } from '@/lib/statements/types'
 import Chip from '@/components/kit/Chip.vue'
 import Button from '@/components/ui/Button.vue'
@@ -11,10 +12,10 @@ import Input from '@/components/ui/Input.vue'
 /**
  * «Куда отнести?» — ответы на продавца одним набором (B2C-15/21; «Неделя» и «История»): чипы
  * разделов (первые шесть, «Ещё N ▾»), «Кому → что» (у перевода человеку — поле «что это»),
- * «Между своими». Ответ — правило `MerchantRule['to']`; что с ним делать (в разборе или задним
- * числом), решает родитель.
+ * «Между своими», у вопроса о продавце — «Не помню» (`forgot`: «Прочее», Р-58). Ответ — правило
+ * `MerchantRule['to']`; что с ним делать (в разборе или задним числом), решает родитель.
  */
-defineProps<{ counterparty?: boolean }>()
+defineProps<{ counterparty?: boolean; forgot?: boolean }>()
 const emit = defineEmits<{ (e: 'choose', to: MerchantRule['to']): void }>()
 
 const TOP_CHIPS = 6
@@ -43,6 +44,7 @@ function savePerson() {
       <Chip v-if="!more && categories.length > TOP_CHIPS" quiet @click="more = true">Ещё {{ categories.length - TOP_CHIPS }} ▾</Chip>
       <Chip v-if="counterparty" quiet @click="(personOpen = true), (personText = '')">Кому → что</Chip>
       <Chip quiet @click="choose({ internal: true })">Между своими</Chip>
+      <Chip v-if="forgot" quiet @click="choose({ categoryId: OTHER_CATEGORY })">Не помню</Chip>
     </div>
     <div v-if="personOpen" class="flex gap-2">
       <Input v-model="personText" placeholder="например, няня" class="min-w-0 flex-1" />

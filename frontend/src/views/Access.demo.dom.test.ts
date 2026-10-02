@@ -125,7 +125,7 @@ describe('B2C-52: демо — итоги из демо-операций той 
     expect(html).toContain(`${weekRangeLabel(pic.range)} ${text(money(pic.total))}`)
     expect(html).toMatch(/к прошлой|как на прошлой/)
     expect(html).toMatch(/1 из [2-9]/)
-    expect(html).toContain('— куда отнести?')
+    expect(html).toContain('Без раздела · ')
 
     // «Мечты»: главная мечта, строка «Свободно», цели и желания строками.
     const dreams = text(await renderScreen(Dreams, '/'))

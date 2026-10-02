@@ -2611,7 +2611,7 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       opId: `op-${targetId}`, kind, targetId, period: '2026-09', amount: 58_000, confidence: 'likely',
       question: `Похоже, это платёж по ${targetId} — отметить?`, meta: `${money(58_000)} · 15 сентября`, categoryId: null,
     })
-    const group = (label: string, amount: number, last?: string) => ({ match: { merchant: label.toLowerCase() }, label, count: 2, amount, last })
+    const group = (label: string, amount: number) => ({ match: { merchant: label.toLowerCase() }, label, count: 2, amount })
     /** Первое решение очереди — то, что «Неделя» показывает первым (бывшее ближайшее решение главного). */
     const first = (state: Parameters<typeof decisionQueue>[0], ctx: Parameters<typeof decisionQueue>[1]) => decisionQueue(state, ctx)[0] ?? null
     const kinds = (q: Decision[]) => q.map((d) => d.kind)
@@ -2629,36 +2629,37 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       const q = decisionQueue(state, {
         me: 'a', now: end,
         matches: [candidate('credit', 'loan'), candidate('obligation', 'rent')],
-        unknown: [group('ИП Абенова', 9_400, '2026-09-24'), group('Kiosk', 1_200)],
+        unknown: [group('Kiosk', 1_200), group('ИП Абенова', 9_400), group('ИП Ким', 3_300)],
       })
-      expect(kinds(q)).toEqual(['match', 'match', 'unknown', 'unknown', 'keep', 'allocate', 'freed', 'monthEnd'])
+      // Блок 12 (Р-58): все незнакомые — одна пачка на месте прежних «куда отнести?» по одному.
+      expect(kinds(q)).toEqual(['match', 'match', 'unknownBatch', 'keep', 'allocate', 'freed', 'monthEnd'])
       // Ключи разные — «Потом» и «N из M» считают по ним.
       expect(new Set(q.map((d) => d.key)).size).toBe(q.length)
 
       expect(q[0]).toMatchObject({ question: 'Похоже, это платёж по loan — отметить?', to: null, actions: { primary: 'Да, отметить', secondary: 'Нет, это другое', ghost: 'Потом' } })
       expect(q[0].match?.targetId).toBe('loan')
       expect(decisionQueue(base, { me: 'a', now, matches: [candidate('salary', 'a')] })[0].actions).toEqual({ primary: 'Да, зарплата', secondary: 'Нет', ghost: 'Потом' })
-      // Продавец: ответ — чипы, брендовой кнопки нет; «последний — <дата>» из переданной даты.
-      expect(q[2]).toMatchObject({ question: 'ИП Абенова — куда отнести?', meta: `2 раз · ${money(9_400)} · последний — 24 сентября`, actions: { ghost: 'Потом' } })
+      // Пачка: ответ — чипы, брендовой кнопки нет; группы — по сумме, сначала крупные; ключ постоянный («Потом» — всей пачке).
+      expect(q[2]).toMatchObject({ key: 'unknownBatch', question: 'Без раздела · 3', meta: money(13_900), to: null, actions: { ghost: 'Потом' } })
       expect(q[2].actions.primary).toBeUndefined()
-      expect(q[3].meta).toBe(`2 раз · ${money(1_200)}`)
-      expect(q[4]).toMatchObject({ kind: 'keep', ...keepCard(sub, base.goals, [stmt], end), to: null, obligation: { id: 'nf' } })
-      expect(q[5]).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата', to: '/week/order?from=salary&person=a&period=2026-09', actions: { primary: 'Разложить', ghost: 'Позже' }, usual: null, amount: 700_000 })
+      expect(q[2].groups!.map((g) => g.label)).toEqual(['ИП Абенова', 'ИП Ким', 'Kiosk'])
+      expect(q[3]).toMatchObject({ kind: 'keep', ...keepCard(sub, base.goals, [stmt], end), to: null, obligation: { id: 'nf' } })
+      expect(q[4]).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата', to: '/week/order?from=salary&person=a&period=2026-09', actions: { primary: 'Разложить', ghost: 'Позже' }, usual: null, amount: 700_000 })
       // «Освободится» — сумма та же, что у карточки «Денег» (`freedChange().monthly`), «Распределить» → разбор.
       const freed = freedChange(liveObligations(state.obligations), '2026-09')!
       expect(freedQuestion(freed)).toBe(`Освободится ${money(40_000)} в месяц`)
-      expect(q[6]).toMatchObject({ question: freedQuestion(freed), meta: 'Квартира · с ноября', to: '/week/breakdown?from=freed', actions: { primary: 'Распределить', ghost: 'Потом' } })
+      expect(q[5]).toMatchObject({ question: freedQuestion(freed), meta: 'Квартира · с ноября', to: '/week/breakdown?from=freed', actions: { primary: 'Распределить', ghost: 'Потом' } })
       expect(freed.monthly).toBe(40_000)
-      expect(q[7]).toMatchObject({ ...monthEndCard('2026-09'), to: null })
+      expect(q[6]).toMatchObject({ ...monthEndCard('2026-09'), to: null })
     })
 
     it('пусто: ничего не ждёт; viewer (`canEdit` false) — без решений; без своего слота — без решений о своей зарплате', () => {
       expect(decisionQueue(base, { me: 'a', now })).toEqual([])
       const all = { me: 'b' as const, now, matches: [candidate('credit', 'loan')], unknown: [group('Kiosk', 1_200)] }
       const state = { ...base, obligations: [rent, sub, cheaper] }
-      expect(kinds(decisionQueue(state, all))).toEqual(['match', 'unknown', 'keep', 'salary', 'freed'])
+      expect(kinds(decisionQueue(state, all))).toEqual(['match', 'unknownBatch', 'keep', 'salary', 'freed'])
       expect(decisionQueue(state, { ...all, canEdit: false })).toEqual([])
-      expect(kinds(decisionQueue(state, { ...all, me: undefined }))).toEqual(['match', 'unknown', 'keep', 'freed'])
+      expect(kinds(decisionQueue(state, { ...all, me: undefined }))).toEqual(['match', 'unknownBatch', 'keep', 'freed'])
     })
 
     it('каждое решение уходит после своей записи: отметка зарплаты, «оставить», ответ «остались деньги?», раскладка остатка и «освободится», ответ продавцу', () => {
@@ -2681,7 +2682,7 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       const spread: Allocation = { ...rest, id: 'f', source: 'freed', sourceId: 'flat', period: '2026-11' }
       expect(decisionQueue({ ...withFreed, allocations: [spread] }, { me: 'a', now })).toEqual([])
       // Продавец: ответ становится правилом — группы больше нет, экран её не передаёт.
-      expect(kinds(decisionQueue(base, { me: 'a', now, unknown: [group('Kiosk', 1_200)] }))).toEqual(['unknown'])
+      expect(kinds(decisionQueue(base, { me: 'a', now, unknown: [group('Kiosk', 1_200)] }))).toEqual(['unknownBatch'])
       expect(decisionQueue(base, { me: 'a', now, unknown: [] })).toEqual([])
     })
 

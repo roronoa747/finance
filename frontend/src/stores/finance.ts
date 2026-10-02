@@ -926,18 +926,25 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   function addMerchantRule(rule: Pick<MerchantRule, 'match' | 'to'>, by: PersonId): MerchantRule {
+    return addMerchantRules([rule], by)[0]
+  }
+
+  /** Несколько правил одной правкой личного документа — один синк (ответ пачкой, Р-58). */
+  function addMerchantRules(rules: Pick<MerchantRule, 'match' | 'to'>[], by: PersonId): MerchantRule[] {
     const t = new Date().toISOString()
-    const same = (r: MerchantRule) =>
-      r.match.merchant === rule.match.merchant && r.match.counterparty === rule.match.counterparty
-    const existing = merchantRules.value.find(same)
-    const record: MerchantRule = existing
-      ? { ...existing, to: mergeRuleTarget(existing.to, rule.to), by, updatedAt: t }
-      : { id: Math.random().toString(36).slice(2, 10), match: rule.match, to: rule.to, by, updatedAt: t }
-    mutatePrivateDoc((doc) => {
-      const list = (doc.merchantRules as MerchantRule[] | undefined) ?? []
-      doc.merchantRules = existing ? list.map((r) => (r.id === record.id ? record : r)) : [...list, record]
+    const records = rules.map((rule) => {
+      const existing = merchantRules.value.find((r) => r.match.merchant === rule.match.merchant && r.match.counterparty === rule.match.counterparty)
+      return existing
+        ? { ...existing, to: mergeRuleTarget(existing.to, rule.to), by, updatedAt: t }
+        : { id: Math.random().toString(36).slice(2, 10), match: rule.match, to: rule.to, by, updatedAt: t }
     })
-    return record
+    mutatePrivateDoc((doc) => {
+      const byId = new Map(records.map((r) => [r.id, r]))
+      const list = ((doc.merchantRules as MerchantRule[] | undefined) ?? []).map((r) => byId.get(r.id) ?? r)
+      const known = new Set(list.map((r) => r.id))
+      doc.merchantRules = [...list, ...records.filter((r) => !known.has(r.id))]
+    })
+    return records
   }
 
   function removeMerchantRule(id: string) {
@@ -1860,6 +1867,7 @@ export const useFinanceStore = defineStore('finance', () => {
     mutateHouseholdDoc,
     mutatePrivateDoc,
     addMerchantRule,
+    addMerchantRules,
     removeMerchantRule,
     resetDoc,
     clearLocal,

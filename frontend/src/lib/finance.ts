@@ -2912,7 +2912,7 @@ export function spendStatus(
   return { text: `${name.toLowerCase()} выше нормы`, tone: 'warn', worst: { name, share, norm: norms[worst.id] } }
 }
 
-export type DecisionKind = 'match' | 'unknown' | 'keep' | 'allocate' | 'salary' | 'freed' | 'monthEnd'
+export type DecisionKind = 'match' | 'unknownBatch' | 'keep' | 'allocate' | 'salary' | 'freed' | 'monthEnd'
 
 /** Решение очереди «Недели» (`decisionQueue`): тексты DESIGN.md §6, ключ и данные для ответа на месте. */
 export type Decision = {
@@ -2934,8 +2934,8 @@ export type Decision = {
   salary?: { person: Person; period: string }
   /** Ждущее сопоставление операции с отметкой (Р-6). */
   match?: MatchCandidate
-  /** Незнакомый продавец. */
-  group?: UnknownGroup
+  /** Незнакомые продавцы пачкой (Р-58) — по сумме, сначала крупные. */
+  groups?: UnknownGroup[]
   /** Снижение обязательства «освободится N ₸». */
   freed?: FreedChange
   /** «Пришла зарплата · как обычно» (Р-55): разбор, как в прошлый раз; null — плана ещё нет. */
@@ -2949,8 +2949,7 @@ export type Decision = {
 
 /**
  * Очередь решений «Недели» (Р-43) — одна на экран: сопоставления (по одному на каждое ждущее) →
- * незнакомые продавцы (по одному на группу; группы ищет экран — месяц или черновик, `last` — дата
- * последней операции) → «оставить подписку?» (`keepQuestions`) → зарплата: «Пришла зарплата»
+ * незнакомые продавцы — одной пачкой (Р-58; группы ищет экран — месяц или черновик) → «оставить подписку?» (`keepQuestions`) → зарплата: «Пришла зарплата»
  * (`salaryToAllocate`; с планом — «как обычно» по `asUsual`, B2C-58), иначе «пришла?» (`salaryAsk`) — одна
  * карточка о зарплате за раз → «освободится N ₸» (`freedChange`, пока разбор не записан) → «остались
  * деньги?» (`monthEndAsk`, без разбора остатка). Шаг плана — в квадрате «План» (Р-34), не здесь. Новых расчётов нет (Р-50): это прежние проверки по порядку.
@@ -2963,7 +2962,7 @@ export function decisionQueue(
     me: PersonId | undefined
     canEdit?: boolean
     matches?: MatchCandidate[]
-    unknown?: (UnknownGroup & { last?: string })[]
+    unknown?: UnknownGroup[]
     answeredMonthEnd?: string | null
     now?: { day: number; key: string }
     /** Выписки месяца — для разбора «как обычно» (статусы статей), как у экрана разбора. */
@@ -2989,16 +2988,17 @@ export function decisionQueue(
     })
   }
 
-  for (const g of ctx.unknown ?? []) {
-    const last = g.last ? ` · последний — ${dayLabel(Number(g.last.slice(8, 10)), g.last.slice(0, 7))}` : ''
+  // Все незнакомые — одно решение-пачка (Р-58): ключ постоянный — «Потом» откладывает всю пачку, «N из M» считает её одной.
+  const unknown = [...(ctx.unknown ?? [])].sort((a, b) => b.amount - a.amount)
+  if (unknown.length) {
     out.push({
-      kind: 'unknown',
-      key: `unknown:${JSON.stringify(g.match)}`,
-      question: `${g.label} — куда отнести?`,
-      meta: `${g.count} раз · ${money(g.amount)}${last}`,
+      kind: 'unknownBatch',
+      key: 'unknownBatch',
+      question: `Без раздела · ${unknown.length}`,
+      meta: money(amountTotal(unknown)),
       to: null,
       actions: { ghost: 'Потом' },
-      group: g,
+      groups: unknown,
     })
   }
 
