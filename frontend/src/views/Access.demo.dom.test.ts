@@ -131,6 +131,10 @@ describe('B2C-52: демо — итоги из демо-операций той 
     const dreams = text(await renderScreen(Dreams, '/'))
     expect(dreams).toContain('Поездка в Японию')
     expect(dreams).toContain('Свободно')
+    // Приёмка Б10: 2 цели кроме главной и 3 желания — у каждого участника и общее; пустых «добавить» нет.
+    expect(finance.householdDoc.goals.filter((g) => !g.main)).toHaveLength(2)
+    for (const w of ['Машина', 'Новый диван', 'Все 3', 'Кофемашина', 'общие', 'Велосипед', 'Ильяс', 'Сапоги', 'Аруна']) expect(dreams).toContain(w)
+    expect(dreams).not.toContain('+ Желание')
     // Разделы демо-операций — те, что дают словарь и правила: ответ на одного продавца раскладывает
     // операции заново (`reapply`), и остальные не возвращаются в «не разобрано» (стенд B2C-52).
     const abenova = unknownGroups(ops.all).find((g) => g.label === 'ИП Абенова')!

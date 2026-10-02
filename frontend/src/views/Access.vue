@@ -219,6 +219,24 @@ function startDemoMode() {
         movements: [],
         updatedAt: new Date().toISOString(),
       },
+      {
+        id: 'g-sofa',
+        name: 'Новый диван',
+        need: 450_000,
+        seed: 120_000,
+        have: 120_000,
+        monthly: 30_000,
+        hue: 'ochre',
+        planPct: 0,
+        movements: [],
+        updatedAt: new Date().toISOString(),
+      },
+    ]
+    // Желания «как в макете» (приёмка Б10): у каждого участника и общее; фото шаблонов в демо нет — плашка.
+    doc.wishlist = [
+      { id: 'w-coffee', name: 'Кофемашина', price: 180_000, by: 'a', list: 'all', bought: false, addedOn: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'w-bike', name: 'Велосипед', price: 230_000, by: 'a', list: 'a', bought: false, addedOn: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'w-boots', name: 'Сапоги', price: 65_000, by: 'b', list: 'b', bought: false, addedOn: new Date().toISOString(), updatedAt: new Date().toISOString() },
     ]
     doc.accounts = [
       { id: 'acc-kaspi', name: 'Kaspi Gold', note: '', kind: 'card', amount: 480_000, updatedAt: new Date().toISOString() },

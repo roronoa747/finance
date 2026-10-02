@@ -183,7 +183,7 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     for (const w of ['куда отнести', 'Загрузить выписку', '+ Новая', 'Добавить фото']) expect(dreams).not.toContain(w)
   })
 
-  it('часть 5 — демо: итоги недели Ильяса = spendTotals демо-операций; сумма недели = операции + итоги Аруны; два решения', async () => {
+  it('часть 5 — демо: итоги недели Ильяса = spendTotals демо-операций; сумма недели = операции + итоги Аруны; два решения; «Мечты» — 2 цели и 3 желания', async () => {
     const pinia = createPinia()
     await screen(pinia, Access, '/access', undefined, [screenMixin({}, (s) => (s.startDemoMode as () => void)())])
     await nextTick()
@@ -204,6 +204,10 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     expect(html).toContain('ИП Абенова — куда отнести?')
     // «История» демо — те же операции недели.
     expect(text(await screen(pinia, Money, '/money/history'))).toContain('ИП Абенова')
+    // «Мечты» демо «как в макете» (приёмка Б10): главная, 2 цели, желания обоих и общее.
+    const dreams = text(await screen(pinia, Dreams, '/'))
+    for (const w of ['Поездка в Японию', 'Машина', 'Новый диван', 'Все 3', 'общие', 'Ильяс', 'Аруна']) expect(dreams).toContain(w)
+    expect(dreams).not.toContain('+ Желание')
   })
 
   // Приёмка Блока 10: правило 12 на каждом шаге очереди и «Свободно» на стыке месяцев — на двух телефонах.
