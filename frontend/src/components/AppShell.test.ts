@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
+import { useOperationsStore } from '@/stores/operations'
 import { renderScreen, screenMixin } from '@/test/screenState'
 import type { PersonId } from '@/types/finance'
 import AppShell from './AppShell.vue'
@@ -72,6 +73,20 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     // Обмен в покое — шапка чистая (бейдж compact молчит).
     expect(html).not.toContain('Обмен:')
     expect(html).not.toContain('aria-label="Назад"')
+  })
+
+  it('B2C-50: «Разбор» выписки — «назад» слева; нажатие действует как «Отмена»: черновик сброшен, ничего не отправлено', async () => {
+    const ops = useOperationsStore()
+    ops.setDraft([{ name: 'выписка.pdf', parsed: { bank: 'kaspi', from: '2026-09-01', to: '2026-09-12', operations: [] } as never }])
+    const html = await renderScreen(AppShell, '/week')
+    expect(html).toContain('>Разбор</h1>')
+    expect(html).toContain('aria-label="Назад"')
+    const send = vi.spyOn(ops, 'send')
+    await renderScreen(AppShell, '/week', undefined, [screenMixin({}, (s) => (s.goBack as () => void)())])
+    expect(ops.draft).toBeNull()
+    expect(send).not.toHaveBeenCalled()
+    // Без черновика «Неделя» — корень, без «назад».
+    expect(await renderScreen(AppShell, '/week')).not.toContain('aria-label="Назад"')
   })
 
   it('шапка по макетам (возврат смоука): «Деньги» — аватары без шестерёнки; «Неделя» — даты в подписи, без аватаров; вложенные — «назад» без аватаров', async () => {

@@ -148,8 +148,10 @@ describe('e2e / B2C Блок 3 — часть 1: главный «Мечты» (
     // незнакомый продавец недели (10 000 ₸).
     const week = await screen(A.pinia, Statements, '/week')
     expect(week).toContain(money(120_000))
-    expect(week).toContain(money(82_000))
+    expect(week).toContain(`Не разобрано · <span class="num">${money(10_000)}</span>`)
     expect(week).toContain('IP SERIKOV — куда отнести?')
+    // Суммы разделов (82 000 продукты) — в листе «Разделы за сентябрь» (B2C-50, правило 12: таблица свёрнута).
+    expect(await screen(A.pinia, Statements, '/week', undefined, [screenMixin({ sheet: 'sections' })])).toContain(money(82_000))
 
     // У Даны незнакомых нет (операции личные) — её решение: зарплата 20-го через 3 дня → «пришла?».
     const B = await phone(server, st, 'b')

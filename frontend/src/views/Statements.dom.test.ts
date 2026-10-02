@@ -254,7 +254,7 @@ describe('ревью Блока 3 Н-22 (правило 12): брендовая 
     })
     await vi.waitFor(() => expect(page()).toContain(QUESTION))
     expect(page()).not.toContain('Пришла зарплата Алихан?')
-    expect(page()).toContain('Ваша выписка ещё не загружена')
+    expect(page()).toContain('Загрузить выписку')
     expect(brandButtons()).toEqual(['Да, отметить'])
     expect(brandFrames()).toBe(1)
   })
@@ -281,19 +281,19 @@ describe('ревью Блока 3 Н-22 (правило 12): брендовая 
       delete store.ops['op-1']
     })
     expect(page()).toContain('Пришла зарплата Алихан?')
-    expect(page()).toContain('Ваша выписка ещё не загружена')
+    expect(page()).toContain('Загрузить выписку')
     expect(brandButtons()).toEqual(['Пришла зарплата'])
     expect(brandFrames()).toBe(1)
     expect(document.querySelector('.border-brand')?.textContent).toContain('Пришла зарплата Алихан?')
   })
 
-  it('решений нет — главное «Загрузить выписку»: брендовая кнопка и рамка у карточки загрузки', async () => {
+  it('решений нет — главное «Загрузить выписку»: брендовая кнопка (B2C-50: компактный блок без карточки — рамок нет)', async () => {
     await openWeek((finance, store) => {
       finance.householdDoc.credits = []
       delete store.ops['op-1']
     })
     expect(brandButtons()).toEqual(['Загрузить выписку'])
-    expect(brandFrames()).toBe(1)
+    expect(brandFrames()).toBe(0)
   })
 })
 

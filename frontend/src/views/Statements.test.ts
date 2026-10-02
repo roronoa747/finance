@@ -8,7 +8,7 @@ import { parseStatement } from '@/lib/statements/parsers'
 import { DEFAULT_SPEND_CATEGORIES } from '@/lib/statements/dictionary'
 import type { Operation } from '@/lib/statements/types'
 import { money } from '@/lib/money'
-import { decisionQueue } from '@/lib/finance'
+import { decisionQueue, weekPicture } from '@/lib/finance'
 import { MONTH_END_KEY } from '@/lib/storage'
 import { renderScreen, screenMixin } from '@/test/screenState'
 import type { StatementUploadResponse } from '@/types/api'
@@ -81,16 +81,19 @@ afterEach(() => {
 })
 
 describe('views/Statements.vue', () => {
-  it('пусто: кнопка загрузки и приглашение, без таблицы', async () => {
+  it('пусто: одна брендовая «Загрузить выписку» и строка «PDF из Kaspi или Freedom», механика — в подсказке; без таблицы', async () => {
     signIn()
-    const html = text(await renderScreen(Statements, '/statements'))
-    expect(html).toContain('Загрузить выписку')
-    expect(html).toContain('Ваша выписка ещё не загружена')
-    expect(html).toContain('файл никуда не уходит')
-    // Возврат смоука (g2 «Неделя — до загрузки»): у участника — одна карточка загрузки, без второго пустого состояния и «0 ₸».
+    const raw = await renderScreen(Statements, '/statements')
+    const html = text(raw)
+    expect(brand(raw)).toEqual(['Загрузить выписку'])
+    expect(html).toContain('PDF из Kaspi или Freedom')
+    // Правило 12: абзаца механики нет — «файл никуда не уходит» только в подсказке `Hint` (?).
+    expect(html).not.toContain('Ваша выписка ещё не загружена')
+    expect(raw).toContain('aria-label="Пояснение"')
+    // Возврат смоука (g2 «Неделя — до загрузки»): у участника — без второго пустого состояния и «0 ₸».
     expect(html).not.toContain('Картины недели пока нет')
     expect(html).not.toContain(m(0))
-    expect(html).not.toContain('Загрузки')
+    expect(html).not.toContain('Разделы за')
   })
 
   it('картина недели и месяца по разделам обоих, загрузки семьи и «без выписки <имя>»', async () => {
@@ -112,19 +115,18 @@ describe('views/Statements.vue', () => {
     // Даты недели и «без выписки Дана» — в подписи шапки оболочки (AppShell.test); на экране — итог недели.
     expect(html).not.toContain('Эта неделя')
     expect(html).not.toContain('За эту неделю без выписки')
-    expect(html).toContain(m(20_000))
+    expect(html).toContain(`Итог недели ${m(20_000)}`)
     // Своя выписка за неделю есть — ни загрузки, ни списка загрузок (g2 «Неделя — итог»).
     expect(html).not.toContain('Загрузить выписку')
     expect(html).not.toContain('Алихан · Kaspi')
-    // Таблица по разделам — внутри карточки итога, свёрнутым <details> (смоук владельца, п. 3; правило 12).
-    const fold = raw.slice(raw.indexOf('<details'), raw.indexOf('</details>'))
-    expect(raw).not.toContain('<details open')
-    expect(raw.lastIndexOf('rounded-card', raw.indexOf('<details'))).toBeGreaterThan(-1)
-    expect(text(fold)).toContain('Разделы за сентябрь')
-    expect(text(fold)).toContain('Продукты 20 000 ₸ 80 000 ₸')
-    expect(text(fold)).toContain('Не разобрано — 4 000 ₸')
-    expect(text(fold)).toContain('Всего 20 000 ₸ 84 000 ₸')
-    expect(html.match(/Всего 20 000 ₸/g)).toHaveLength(1)
+    // Таблица по разделам — свёрнутой строкой «Разделы за сентябрь ›», сама — в листе (правило 12).
+    expect(html).toContain('Разделы за сентябрь')
+    expect(html).not.toContain('Всего')
+    const sheet = text(await renderScreen(Statements, '/statements', undefined, [screenMixin({ sheet: 'sections' })]))
+    expect(sheet).toContain('Продукты 20 000 ₸ 80 000 ₸')
+    expect(sheet).toContain('Не разобрано — 4 000 ₸')
+    expect(sheet).toContain('Всего 20 000 ₸ 84 000 ₸')
+    expect(sheet.match(/Всего 20 000 ₸/g)).toHaveLength(1)
   })
 
   it('предпросмотр: сводка, незнакомые с выбором раздела, подсказка о переводе партнёру', async () => {
@@ -183,14 +185,30 @@ describe('views/Statements.vue', () => {
     expect(text(await renderScreen(Statements, '/statements'))).toContain('60 операций все уже были')
   })
 
-  it('viewer видит, кто загрузил за неделю (g2: имя · банк · период · N операций · готово), но не кнопку загрузки', async () => {
+  it('viewer: карточка недели, «Разделы» и «Прошлые недели» — да; загрузки, решений и ответов в листе — нет (Р-50)', async () => {
     signIn('viewer')
-    await useOperationsStore().loadUploads(uploadsClient([
+    const finance = useFinanceStore()
+    const t = (period: string, categoryId: string, amount: number) => ({ id: `b:week:${period}:${categoryId}`, by: 'b' as const, kind: 'week' as const, period, categoryId, amount, ops: 1, updatedAt: '' })
+    finance.householdDoc.spendTotals = [t('2026-W39', 'sc_food', 9_000), t('2026-W38', 'sc_food', 6_000), { ...t('2026-09', 'sc_food', 15_000), id: 'm', kind: 'month' as const }]
+    finance.householdDoc.obligations = [netflix]
+    const store = useOperationsStore()
+    store.ops.o1 = op('o1', '2026-09-22', -9_000, 'IP ASANOVA', { categoryId: 'sc_food' })
+    await store.loadUploads(uploadsClient([
       { id: 'u1', slot: 'b', bank: 'freedom', period_from: '2026-09-01', period_to: '2026-09-26', ops_count: 40, created_at: '' },
     ]))
-    const html = text(await renderScreen(Statements, '/statements'))
+    const raw = await renderScreen(Statements, '/statements')
+    const html = text(raw)
+    expect(html).toContain(`Итог недели ${m(9_000)}`)
+    expect(html).toContain('Разделы за сентябрь')
+    expect(html).toContain('Прошлые недели')
     expect(html).not.toContain('Загрузить выписку')
-    expect(html).toContain('Дана Freedom · 1–26 сентября · 40 операций готово')
+    expect(html).not.toContain('Оставить подписку')
+    expect(raw).not.toContain('type-h2')
+    expect(brand(raw)).toEqual([])
+    // В листе разделов — суммы и продавцы, но не ответ задним числом (чипов нет).
+    const sheet = text(await renderScreen(Statements, '/statements', undefined, [screenMixin({ sheet: 'sections', openCategory: 'sc_food' })]))
+    expect(sheet).toContain('IP ASANOVA')
+    expect(sheet).not.toContain('Между своими')
   })
 
   it('демо: отправка без запросов, загрузка — локально', async () => {
@@ -210,7 +228,7 @@ describe('views/Statements.vue', () => {
     // Загрузка записана локально; выписка июня-июля эту неделю не закрывает — экран зовёт загрузить свою.
     expect(store.uploads).toHaveLength(1)
     expect(store.uploads[0]).toMatchObject({ ops_count: 60 })
-    expect(html).toContain('Ваша выписка ещё не загружена')
+    expect(html).toContain('Загрузить выписку')
   })
 })
 
@@ -356,46 +374,89 @@ describe('views/Statements.vue — решения по одному и итог 
     expect(await renderScreen(Statements, '/week')).not.toContain('Остались деньги с')
   })
 
-  it('итог недели: «на N % меньше прошлой», прошлые недели; «Отмечено по выписке: N»', async () => {
+  it('B2C-50: карточка недели — сумма = weekPicture().total, чип против прошлой (меньше/больше/как/нет); прошлые недели — в листе; «Отмечено по выписке: N»', async () => {
     signIn()
     const finance = useFinanceStore()
     const t = (period: string, amount: number) => ({ id: `a:week:${period}:sc_food`, by: 'a' as const, kind: 'week' as const, period, categoryId: 'sc_food', amount, ops: 1, updatedAt: '' })
-    finance.householdDoc.spendTotals = [t('2026-W39', 60_000), t('2026-W38', 80_000)]
     const store = useOperationsStore()
     await store.loadUploads(uploadsClient([
       { id: 'u1', slot: 'a', bank: 'kaspi', period_from: '2026-09-01', period_to: '2026-09-24', ops_count: 30, created_at: '' },
     ]))
     store.lastAutoMarked = 1
-    const html = text(await renderScreen(Statements, '/week'))
-    expect(html).toContain('на 25 % меньше прошлой')
-    expect(html).toContain('Прошлые недели')
-    // Прошлая неделя — даты, чьи выписки (g2 «обе выписки»; здесь — только Алихана), сумма.
-    expect(html).toContain(`14–20 сентября без выписки Дана ${m(80_000)}`)
+    const chip = async (now: number, prev: number | null) => {
+      finance.householdDoc.spendTotals = prev === null ? [t('2026-W39', now)] : [t('2026-W39', now), t('2026-W38', prev)]
+      return text(await renderScreen(Statements, '/week'))
+    }
+    const html = await chip(60_000, 80_000)
+    const pic = weekPicture(finance.householdDoc.spendTotals!, finance.householdDoc.spendCategories ?? [], finance.people, '2026-W39', store.uploads)
+    expect(pic.total).toBe(60_000)
+    expect(html).toContain(`Итог недели ${m(pic.total)} −25 % к прошлой`)
+    expect(await chip(90_000, 80_000)).toContain('+13 % к прошлой')
+    expect(await chip(80_000, 80_000)).toContain('как на прошлой')
+    expect(await chip(80_000, null)).not.toContain('к прошлой')
     expect(html).toContain('Отмечено по выписке: 1')
+    // «Прошлые недели» — строкой; даты, чьи выписки (здесь — только Алихана) и сумма — в листе.
+    finance.householdDoc.spendTotals = [t('2026-W39', 60_000), t('2026-W38', 80_000)]
+    expect(html).toContain('Прошлые недели')
+    expect(html).not.toContain('14–20 сентября')
+    const past = text(await renderScreen(Statements, '/week', undefined, [screenMixin({ sheet: 'past' })]))
+    expect(past).toContain(`14–20 сентября без выписки Дана ${m(80_000)}`)
   })
 
-  it('итог недели по макету g2: все разделы и «Не разобрано» — сумма недели обоих без «N продавцов» (разбор — в очереди); загрузки нет без «+»', async () => {
+  it('B2C-50: легенда — до 4 разделов + «ещё N», «Не разобрано · <сумма недели обоих>» без «N продавцов»; загрузки нет без «+»', async () => {
     signIn()
     const finance = useFinanceStore()
-    const t = (categoryId: string, amount: number) => ({ id: `a:week:2026-W39:${categoryId}`, by: 'a' as const, kind: 'week' as const, period: '2026-W39', categoryId, amount, ops: 1, updatedAt: '' })
-    finance.householdDoc.spendTotals = [t('sc_food', 30_000), t('sc_cafe', 9_000), t('sc_transport', 8_000), t('sc_health', 7_000), t('sc_home', 6_000), t('sc_shopping', 5_000), t('_unknown', 4_000)]
+    const t = (by: 'a' | 'b', categoryId: string, amount: number) => ({ id: `${by}:week:2026-W39:${categoryId}`, by, kind: 'week' as const, period: '2026-W39', categoryId, amount, ops: 1, updatedAt: '' })
+    finance.householdDoc.spendTotals = [
+      t('a', 'sc_food', 30_000), t('a', 'sc_cafe', 9_000), t('a', 'sc_transport', 8_000), t('a', 'sc_health', 7_000), t('a', 'sc_home', 6_000), t('a', 'sc_shopping', 5_000),
+      t('a', '_unknown', 4_000), t('b', '_unknown', 1_000),
+    ]
     const store = useOperationsStore()
     store.ops['u-1'] = op('u-1', '2026-09-22', -2_500, 'IP SERIKOV')
     store.ops['u-2'] = op('u-2', '2026-09-23', -1_500, 'IP ASANOVA')
     await store.loadUploads(uploadsClient([
       { id: 'u1', slot: 'a', bank: 'kaspi', period_from: '2026-09-01', period_to: '2026-09-24', ops_count: 30, created_at: '' },
     ]))
-    const raw = await renderScreen(Statements, '/week')
-    const html = text(raw)
-    // Шесть разделов — все строками (на главном — первые четыре).
-    for (const name of ['Продукты', 'Кафе и рестораны', 'Транспорт', 'Здоровье и аптеки', 'Дом и быт', 'Одежда и покупки']) expect(html).toContain(name)
-    expect(html).toContain(`Не разобрано ${m(4_000)}`)
+    const html = text(await renderScreen(Statements, '/week'))
+    for (const name of ['Продукты', 'Кафе и рестораны', 'Транспорт', 'Здоровье и аптеки']) expect(html).toContain(name)
+    expect(html).toContain('ещё 2 раздела')
+    expect(html).not.toContain('Дом и быт')
+    // «Не разобрано» — сумма недели обоих (4 000 + 1 000), разбор продавцов — в очереди решений.
+    expect(html).toContain(`Не разобрано · ${m(5_000)}`)
     expect(html).not.toContain('продавца')
-    expect(html).not.toContain('ещё ')
-    expect(html).not.toContain('Подробнее: по разделам')
+    expect(html).toContain('IP SERIKOV — куда отнести?')
     expect(html).not.toContain('Загрузить выписку')
-    expect(html).not.toContain('PDF из приложения')
-    // Из «+» (`?upload=1`) — карточка загрузки есть и при своей выписке.
+    // Из «+» (`?upload=1`) — загрузка есть и при своей выписке.
     expect(text(await renderScreen(Statements, '/week?upload=1'))).toContain('Загрузить выписку')
+  })
+
+  it('B2C-50: «Разделы за месяц» свёрнуты; раскрытие раздела — продавцы и ответ задним числом через CategoryChips, без <select>', async () => {
+    signIn()
+    const finance = useFinanceStore()
+    finance.householdDoc.spendTotals = [{ id: 'a:month:2026-09:_unknown', by: 'a', kind: 'month', period: '2026-09', categoryId: '_unknown', amount: 7_000, ops: 1, updatedAt: '' }]
+    useOperationsStore().ops.o1 = op('o1', '2026-09-10', -7_000, 'Перевод', { kind: 'transfer-out', counterparty: 'Айгуль С.' })
+    const closed = await renderScreen(Statements, '/week')
+    expect(text(closed)).toContain('Разделы за сентябрь')
+    expect(text(closed)).not.toContain('Всего')
+    const raw = await renderScreen(Statements, '/week', undefined, [screenMixin({ sheet: 'sections', openCategory: '_unknown' })])
+    const sheet = text(raw)
+    expect(sheet).toContain('Всего')
+    expect(sheet).toContain(`Айгуль С. ${m(7_000)}`)
+    // Получатель-человек: «Кому → что» и «Между своими» — те же чипы, что у карточки решения.
+    expect(sheet).toContain('Между своими')
+    expect(sheet).toContain('Кому → что')
+    expect(raw).not.toContain('<select')
+  })
+
+  it('B2C-50: в разборе «последний — <дата>» — по операциям черновика, а не по сохранённым', async () => {
+    signIn()
+    const store = useOperationsStore()
+    // Сохранённая операция того же продавца позже — разбор её не берёт.
+    store.ops.saved = op('saved', '2026-09-20', -1_000, 'IP ASANOVA')
+    store.setDraft([{ name: 'выписка.pdf', parsed: { bank: 'kaspi', from: '2026-09-01', to: '2026-09-12', operations: [op('d1', '2026-09-03', -2_000, 'IP ASANOVA'), op('d2', '2026-09-08', -3_000, 'IP ASANOVA')] } as never }])
+    const html = text(await renderScreen(Statements, '/week'))
+    expect(html).toContain('IP ASANOVA — куда отнести?')
+    expect(html).toContain(`2 раз · ${m(5_000)} · последний — 8 сентября`)
+    expect(html).not.toContain('последний — 20 сентября')
   })
 })

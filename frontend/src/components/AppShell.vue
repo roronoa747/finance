@@ -70,7 +70,8 @@ const draftSub = computed(() => {
 
 /** Вкладки — корни (у «Денег» — все три квадрата, пивот 3); остальное — вложенные экраны со стрелкой «назад». */
 const ROOTS = ['/', '/week', '/money', '/money/plan', '/money/history']
-const isRoot = computed(() => ROOTS.includes(route.path))
+// «Разбор» выписки живёт на /week, но корнем не считается: «назад» слева, как в g2 (хвост критика Б9).
+const isRoot = computed(() => ROOTS.includes(route.path) && !(route.path === '/week' && !!ops.draft))
 /** Экраны-потоки без нижней навигации (в макетах — без вкладок): цель, желания, настройки, раскладка. */
 const noTabs = computed(() => {
   const p = route.path
@@ -80,6 +81,8 @@ const noTabs = computed(() => {
 /** «Назад»: по истории, а открытый по ссылке экран — к своему корню. */
 function goBack() {
   const p = route.path
+  // «Назад» разбора — как «Отмена»: черновик сбрасывается, ничего не отправлено.
+  if (p === '/week' && ops.draft) return ops.cancelDraft()
   if (typeof window !== 'undefined' && window.history.state?.back) router.back()
   else void router.push(p.startsWith('/week') ? '/week' : '/')
 }
