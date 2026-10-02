@@ -99,25 +99,28 @@ describe('router/index.ts — Навигационные гарды и защи�
     signIn()
     useFinanceStore().finishSetup()
 
-    for (const path of ['/', '/week', '/week/salary', '/money', '/money/plan', '/money/history', '/goals/x', '/goals/new', '/wishes', '/people/a', '/settings']) {
+    for (const path of ['/', '/week', '/week/breakdown', '/week/order', '/money', '/money/plan', '/money/history', '/goals/x', '/goals/new', '/wishes', '/people/a', '/settings']) {
       await router.push(path)
       expect(router.currentRoute.value.path).toBe(path)
     }
   })
 
-  it('viewer: экраны-формы (раскладка денег, новая мечта) по прямому адресу и старой ссылке ведут на главный', async () => {
+  it('viewer: экраны-формы (новая мечта) по прямому адресу ведут на главный; старые ссылки раскладки — разбор (смотреть, B2C-58)', async () => {
     useAuthStore().setAuthData(authAs('viewer', 'b'))
     useFinanceStore().setHouseholdDoc(planFamilyDoc(), 1)
     const router = createAppRouter(createMemoryHistory())
-    for (const path of [
-      '/week/salary?from=rest&amount=1&period=2026-09',
-      '/week/salary',
-      '/goals/new',
-      '/ritual?from=salary&person=a&period=2026-09',
+    await router.push('/week')
+    await router.push('/goals/new')
+    expect(router.currentRoute.value.fullPath).toBe('/')
+    for (const [path, to] of [
+      ['/week/salary?from=rest&amount=1&period=2026-09', '/week/breakdown?from=rest&amount=1&period=2026-09'],
+      ['/ritual?from=salary&person=a&period=2026-09', '/week/breakdown?from=salary&person=a&period=2026-09'],
+      // «Ваш порядок» — только member: viewer — в разбор с тем же источником.
+      ['/week/order?from=salary&person=a&period=2026-09', '/week/breakdown?from=salary&person=a&period=2026-09'],
     ]) {
       await router.push('/week')
       await router.push(path)
-      expect(router.currentRoute.value.fullPath).toBe('/')
+      expect(router.currentRoute.value.fullPath).toBe(to)
     }
     // Остальное viewer смотрит как есть.
     for (const path of ['/week', '/money', '/money/plan', '/money/history', '/goals/cushion', '/wishes']) {
@@ -146,8 +149,14 @@ describe('router/index.ts — Навигационные гарды и защи�
       ['/goals', '/'],
       ['/goals/g-japan', '/goals/g-japan'],
       ['/ritual', '/week'],
-      ['/ritual?from=salary&person=a&period=2026-09', '/week/salary?from=salary&person=a&period=2026-09'],
-      ['/ritual?from=rest&amount=80000&period=2026-09', '/week/salary?from=rest&amount=80000&period=2026-09'],
+      ['/ritual?from=salary&person=a&period=2026-09', '/week/breakdown?from=salary&person=a&period=2026-09'],
+      ['/ritual?from=rest&amount=80000&period=2026-09', '/week/breakdown?from=rest&amount=80000&period=2026-09'],
+      // Раскладка заменена разбором (Р-52, B2C-58): все четыре источника — с теми же параметрами.
+      ['/week/salary?from=salary&person=a&period=2026-09', '/week/breakdown?from=salary&person=a&period=2026-09'],
+      ['/week/salary?from=rest&amount=80000&period=2026-09', '/week/breakdown?from=rest&amount=80000&period=2026-09'],
+      ['/week/salary?from=freed', '/week/breakdown?from=freed'],
+      ['/week/salary', '/week/breakdown'],
+      ['/week/salary?from=credit&credit=inst', '/week/breakdown?from=credit&credit=inst'],
       ['/plan', '/money/plan'],
       ['/statements', '/week'],
       ['/nothing-here', '/'],

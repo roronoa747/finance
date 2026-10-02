@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { PhCaretRight } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money } from '@/lib/money'
 import { monthFrom, monthKey } from '@/lib/dates'
-import { budgetAmounts, incomeSplit, nextSalaryChange, salaryAt, type IncomePartKey } from '@/lib/finance'
+import { budgetAmounts, incomeBreakdownPath, incomeSplit, nextSalaryChange, salaryAt, type IncomePartKey } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
 import Avatar from '@/components/kit/Avatar.vue'
 import Card from '@/components/kit/Card.vue'
@@ -18,10 +19,12 @@ import SalaryDialog from '@/components/SalaryDialog.vue'
  * Виджет «Доход» (пивот 3, Р-33; `pivot-3/index.html`): сумма окладов месяца, тег «нагрузка N %»
  * (жильё и кредиты в доходе), полоса долей обязательное · мечты · траты · свободно с легендой
  * и строки участников — нажатие открывает оклад и день (`SalaryDialog`, как в прежнем Бюджете;
- * viewer — строка без нажатия). Всё считает `incomeSplit` (`finance.ts`).
+ * viewer — строка без нажатия). Всё считает `incomeSplit` (`finance.ts`). Нажатие на заголовок и сумму —
+ * разбор последней пришедшей зарплаты месяца, иначе план месяца (B2C-58).
  */
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
+const router = useRouter()
 const salaryFor = ref<PersonId | null>(null)
 
 const key = computed(() => monthKey())
@@ -49,7 +52,16 @@ const parts = computed(() => split.value.parts.map((p) => ({ ...p, ...LABEL[p.ke
       </span>
       <Tag v-if="split.income > 0" class="num">нагрузка {{ split.load }} %</Tag>
     </div>
-    <div class="type-num num text-ink">{{ money(split.income) }}</div>
+    <!-- Сумма — вход в разбор месяца (B2C-58): последняя пришедшая зарплата, иначе план -->
+    <button
+      type="button"
+      class="press flex cursor-pointer items-center gap-1 self-start text-left"
+      aria-label="Разбор месяца"
+      @click="router.push(incomeBreakdownPath(financeStore.payments, key))"
+    >
+      <span class="type-num num text-ink">{{ money(split.income) }}</span>
+      <PhCaretRight :size="16" class="text-ink-3" />
+    </button>
     <template v-if="split.income > 0">
       <StackBar :segments="parts.map((p) => ({ key: p.key, share: p.share, color: p.color }))" />
       <div class="flex flex-wrap gap-x-3 gap-y-1.5 text-[12.5px] text-ink-2">

@@ -17,7 +17,6 @@ import {
   indexedNeed,
   INFLATION,
   emergencyTarget,
-  emergencyCoverage,
   debtCost,
   simulateStrategy,
   strategyInputs,
@@ -89,7 +88,6 @@ import {
   planSchedule,
   endedPlan,
   salaryOpen,
-  salaryFree,
   SALARY_EARLY_DAYS,
   monthEndAsk,
   monthEndCard,
@@ -121,12 +119,12 @@ import {
   freedQuestion,
   weekTag,
   wishTotal,
-  cushionInYear,
-  allocationRoom,
   moneyArticlesOf,
   moneySettingsOf,
   articleFact,
   asUsual,
+  breakdownWith,
+  incomeBreakdownPath,
   breakdownArticles,
   breakdownEffects,
   breakdownFill,
@@ -253,7 +251,7 @@ describe('finance.ts — депозиты, цели, подушка безопа
     expect(goalMonthly(1_000_000, 0)).toBe(1_000_000)
   })
 
-  it('emergencyTarget и emergencyCoverage — целевой размер и покрытие подушки', () => {
+  it('emergencyTarget — целевой размер подушки', () => {
     // Обязательные расходы 400 000, доход партнёра 250 000 (дефицит 150 000)
     // floor 3 месяца = 1 200 000; scenario 6 месяцев = 900 000 -> target = max(1.2M, 900k) = 1.2M
     const target = emergencyTarget({
@@ -263,10 +261,6 @@ describe('finance.ts — депозиты, цели, подушка безопа
       scenarioMonths: 6,
     })
     expect(target).toBe(1_200_000)
-
-    const coverage = emergencyCoverage(1_200_000, 400_000)
-    expect(coverage).toBe(3)
-    expect(emergencyCoverage(1_000_000, 0)).toBe(0)
   })
 
   it('debtCost — анализ стоимости долга', () => {
@@ -2131,28 +2125,6 @@ describe('RP-10 — «Пришла зарплата»', () => {
     expect(salaryOpen({ ...ilyas, salary: 0 }, [], '2026-09', sep(10))).toBe(false)
   })
 
-  it('доля свободного на зарплату: пропорционально окладам, премия — целиком в свободное, не меньше нуля', () => {
-    const people = [ilyas, aruna]
-    // Свободно 120 000 при доходе 1 200 000: на 700 000 — 70 000, на 500 000 — 50 000.
-    expect(salaryFree(120_000, people, salary({ id: 's1' }))).toBe(70_000)
-    expect(salaryFree(120_000, people, salary({ id: 's2', targetId: 'b', amount: 500_000 }))).toBe(50_000)
-    // Доли в сумме — всё свободное месяца.
-    expect(
-      salaryFree(120_000, people, salary({ id: 's1' })) + salaryFree(120_000, people, salary({ id: 's2', targetId: 'b', amount: 500_000 })),
-    ).toBe(120_000)
-    // Премия 200 000 — вся свободна; недоплата уменьшает долю.
-    expect(salaryFree(120_000, people, salary({ id: 's1', amount: 900_000 }))).toBe(270_000)
-    expect(salaryFree(120_000, people, salary({ id: 's1', amount: 650_000 }))).toBe(20_000)
-    // План не сходится — раскладывать нечего (премия сначала закрывает недостачу).
-    expect(salaryFree(-60_000, people, salary({ id: 's1' }))).toBe(0)
-    expect(salaryFree(-60_000, people, salary({ id: 's1', amount: 800_000 }))).toBe(65_000)
-    // Оклад месяца — по версиям; дробь округляется до тенге.
-    const raised = { ...ilyas, salaryVersions: [{ from: '2026-09', amount: 800_000 }] }
-    expect(salaryFree(100_001, [raised, aruna], salary({ id: 's1', amount: 800_000 }))).toBe(Math.round((100_001 * 800_000) / 1_300_000))
-    // Одиночка — вся свободная часть его.
-    expect(salaryFree(120_000, [ilyas], salary({ id: 's1' }))).toBe(120_000)
-  })
-
   it('«до зарплаты» после отметки переключается на следующую зарплату', () => {
     const people = [ilyas, aruna]
     const now = { day: 9, key: '2026-09' }
@@ -2640,7 +2612,7 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
 
     it('порядок Р-43 на фикстуре со всеми видами: сопоставления → продавцы → подписка → зарплата → освободится → остались деньги; шага плана нет', () => {
       // 28 сентября (последние три дня): у Даны (день 20-го) зарплата этого месяца прошла — «пришла?» не спрашивается,
-      // поэтому зарплата — «разложить?» из выписки Ильяса.
+      // поэтому зарплата — «Пришла зарплата» из выписки Ильяса (плана статей нет — «Разложить» ведёт в «Ваш порядок»).
       const end = { day: 28, key: '2026-09' }
       const stmt: Payment = { id: 's', kind: 'salary', targetId: 'a', period: '2026-09', amount: 700_000, accountId: null, by: 'a', at: T, updatedAt: T, source: 'statement', opId: 'op-s' }
       const plan: DebtPlan = {
@@ -2665,11 +2637,11 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(q[2].actions.primary).toBeUndefined()
       expect(q[3].meta).toBe(`2 раз · ${money(1_200)}`)
       expect(q[4]).toMatchObject({ kind: 'keep', ...keepCard(sub, base.goals, [stmt], end), to: null, obligation: { id: 'nf' } })
-      expect(q[5]).toMatchObject({ kind: 'allocate', to: '/week/salary?from=salary&person=a&period=2026-09', actions: { primary: 'Разложить', ghost: 'Позже' } })
-      // «Освободится» — сумма та же, что у карточки «Денег» (`freedChange().monthly`), «Распределить» → раскладка.
+      expect(q[5]).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата', to: '/week/order?from=salary&person=a&period=2026-09', actions: { primary: 'Разложить', ghost: 'Позже' }, usual: null, amount: 700_000 })
+      // «Освободится» — сумма та же, что у карточки «Денег» (`freedChange().monthly`), «Распределить» → разбор.
       const freed = freedChange(liveObligations(state.obligations), '2026-09')!
       expect(freedQuestion(freed)).toBe(`Освободится ${money(40_000)} в месяц`)
-      expect(q[6]).toMatchObject({ question: freedQuestion(freed), meta: 'Квартира · с ноября', to: '/week/salary?from=freed', actions: { primary: 'Распределить', ghost: 'Потом' } })
+      expect(q[6]).toMatchObject({ question: freedQuestion(freed), meta: 'Квартира · с ноября', to: '/week/breakdown?from=freed', actions: { primary: 'Распределить', ghost: 'Потом' } })
       expect(freed.monthly).toBe(40_000)
       expect(q[7]).toMatchObject({ ...monthEndCard('2026-09'), to: null })
     })
@@ -2716,7 +2688,7 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(first(base, { me: 'a', now })).toBeNull()
     })
 
-    it('возврат приёмки п. 2: своя зарплата из выписки без записи раскладки → «Пришла зарплата <имя> — разложить?» → раскладка; прошлый месяц — тоже; чужая, ручная, разложенная, без свободного — нет', () => {
+    it('возврат приёмки п. 2 (B2C-58): своя зарплата из выписки без записи разбора → «Пришла зарплата»; прошлый месяц — тоже; чужая, ручная, разложенная — нет', () => {
       const stmt = (who: 'a' | 'b', period: string, extra: Partial<Payment> = {}): Payment => ({
         id: `s-${who}-${period}`, kind: 'salary', targetId: who, period, amount: who === 'a' ? 700_000 : 500_000, accountId: null, by: who, at: T, updatedAt: T,
         source: 'statement', opId: `op-${who}-${period}`, ...extra,
@@ -2724,13 +2696,11 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       const paid = (...payments: Payment[]) => ({ ...base, payments })
 
       const found = salaryToAllocate(paid(stmt('a', '2026-09')), 'a', now)!
-      expect(found).toMatchObject({ period: '2026-09', person: { id: 'a' } })
-      expect(found.free).toBe(salaryFree(budgetAmounts(base, '2026-09').d5, people, found.record))
-      expect(found.free).toBeGreaterThan(0)
+      expect(found).toMatchObject({ period: '2026-09', person: { id: 'a' }, record: { amount: 700_000 } })
       // Раньше «пришла?», шагов и подписок; после сопоставлений (их «Да, зарплата» и ведёт сюда).
       expect(first(paid(stmt('a', '2026-09')), { me: 'a', now })).toMatchObject({
-        kind: 'allocate', question: 'Пришла зарплата Ильяс — разложить?', meta: `${money(700_000)} · к раскладке ${money(found.free)}`,
-        to: '/week/salary?from=salary&person=a&period=2026-09', actions: { primary: 'Разложить', ghost: 'Позже' },
+        kind: 'allocate', question: 'Пришла зарплата', meta: 'Сначала — ваш порядок', amount: 700_000,
+        to: '/week/order?from=salary&person=a&period=2026-09', actions: { primary: 'Разложить', ghost: 'Позже' },
       })
       expect(first(paid(stmt('a', '2026-09')), { me: 'a', now, matches: [candidate('salary', 'a')] })?.kind).toBe('match')
 
@@ -2745,11 +2715,6 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       // Пришла раньше срока за следующий месяц (день 1-го, 29-го) — «разложить?» сразу, не с 1-го.
       const firstDay = { ...base, people: people.map((p) => (p.id === 'a' ? { ...p, payday: 1 } : p)) }
       expect(salaryToAllocate({ ...firstDay, payments: [stmt('a', '2026-10')] }, 'a', { day: 29, key: '2026-09' })?.period).toBe('2026-10')
-      // Свободное прошлой зарплаты — по плану её месяца: сентябрьская прибавка к августовской не приписывается.
-      const raised = { ...base, people: people.map((p) => (p.id === 'a' ? { ...p, salaryVersions: [{ from: '2026-09', amount: 800_000 }] } : p)) }
-      const august = salaryToAllocate({ ...raised, payments: [stmt('a', '2026-08')] }, 'a', early)!
-      expect(august.free).toBe(salaryFree(budgetAmounts(raised, '2026-08').d5, raised.people, august.record))
-      expect(august.free).toBeLessThan(salaryFree(budgetAmounts(raised, '2026-09').d5, raised.people, august.record))
       // Чужая зарплата; ручная отметка («Пришла» сама ведёт на раскладку, старые ручные раскладывал Ритуал без записи).
       expect(salaryToAllocate(paid(stmt('b', '2026-09')), 'a', now)).toBeNull()
       expect(salaryToAllocate(paid(stmt('a', '2026-09', { source: 'manual', opId: undefined })), 'a', now)).toBeNull()
@@ -2757,9 +2722,10 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       const done: Allocation = { id: 'al', source: 'salary', sourceId: 'a', period: '2026-09', by: 'a', at: T, total: 100_000, parts: [{ target: 'life', amount: 100_000 }], updatedAt: T }
       expect(salaryToAllocate({ ...paid(stmt('a', '2026-09')), allocations: [done] }, 'a', now)).toBeNull()
       expect(first({ ...paid(stmt('a', '2026-09')), allocations: [done] }, { me: 'a', now })?.kind).not.toBe('allocate')
-      // Свободного нет — раскладывать нечего.
+      // Платежи больше зарплаты — разбор всё равно нужен (покажет «не хватает», Р-65); нулевая отметка — нечего.
       const heavy = { ...paid(stmt('a', '2026-09')), obligations: [{ ...rent, versions: [{ from: '2000-01', amount: 5_000_000 }] }] }
-      expect(salaryToAllocate(heavy, 'a', now)).toBeNull()
+      expect(salaryToAllocate(heavy, 'a', now)?.period).toBe('2026-09')
+      expect(salaryToAllocate(paid(stmt('a', '2026-09', { amount: 0 })), 'a', now)).toBeNull()
       expect(salaryToAllocate(paid(stmt('a', '2026-09')), undefined, now)).toBeNull()
     })
 
@@ -2843,7 +2809,7 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
   })
 
   // Критик Блока 3: карточки и суммы, которые экраны собирали сами, — одна функция ядра на всех.
-  describe('keepCard · freedChange · weekTag · wishTotal · cushionInYear', () => {
+  describe('keepCard · freedChange · weekTag · wishTotal', () => {
     const japan = goal('g', 'Япония', { need: 1_800_000, have: 1_116_000 }) // до мечты 684 000
     const netflix: Obligation = { id: 'nf', name: 'Netflix', note: '', day: 3, category: 'd4', versions: [{ from: '2000-01', amount: 4_990 }], updatedAt: T }
     // Годовая, продление 5 октября; с октября — 12 000 вместо 10 000 (фикстура PaidRow.test «Иви»).
@@ -2912,27 +2878,9 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(weekTag(weekPicture([], categories, three, '2026-W38', uploads), 3)?.text).toBe('без выписки Дана и Аружан')
     })
 
-    it('wishTotal — сумма цен; cushionInYear — накоплено + взнос ×12 + добавка разом или ×12', () => {
+    it('wishTotal — сумма цен', () => {
       expect(wishTotal([{ price: 120_000 }, { price: 35_500 }])).toBe(155_500)
       expect(wishTotal([])).toBe(0)
-      const cushion = { have: 300_000, monthly: 50_000 }
-      expect(cushionInYear(cushion, 100_000, true)).toBe(1_000_000)
-      expect(cushionInYear(cushion, 100_000, false)).toBe(2_100_000)
-      expect(cushionInYear(cushion, 0, false)).toBe(900_000)
-    })
-
-    it('allocationRoom — итоги раскладки; разовая досрочка не больше остатка долга на обе корзины', () => {
-      const r = allocationRoom({ g1: 100_000, g2: 50_000, credit: 30_000 }, { total: 400_000, goalIds: ['g1', 'g2'], once: true, principal: 80_000 })
-      expect([r.used, r.left, r.toGoals, r.prepay]).toEqual([180_000, 220_000, 150_000, 30_000])
-      // Потолок досрочки — остаток долга минус уже положенное в обе корзины («по кредиту» и «по плану»).
-      expect(r.room('credit')).toBe(50_000)
-      expect(r.room('plan')).toBe(50_000)
-      expect(r.room('g1')).toBe(220_000)
-      // Ежемесячное решение — долг не потолок; без долга — тоже.
-      expect(allocationRoom({ credit: 30_000 }, { total: 400_000, goalIds: [], once: false, principal: 80_000 }).room('credit')).toBe(370_000)
-      expect(allocationRoom({}, { total: 400_000, goalIds: [], once: true }).room('credit')).toBe(400_000)
-      // Разложено больше суммы — места нет, не отрицательное.
-      expect(allocationRoom({ g1: 500_000 }, { total: 400_000, goalIds: ['g1'], once: true }).room('g1')).toBe(0)
     })
   })
 
@@ -3385,6 +3333,78 @@ describe('B2C-55: разбор зарплаты по статьям — ручн
     const done: Allocation = { ...prevRec, id: 'd', period: K, off: [] }
     expect(asUsual(family({ allocations: [prevRec, done] }), ctx, 'a', now)).toBeNull()
     expect(asUsual(family({ payments: [] }), ctx, 'a', now)).toBeNull()
+  })
+
+  describe('B2C-58: карточка «Пришла зарплата» в очереди «Недели»', () => {
+    const now = { day: 12, key: K }
+    const stmt = (who: 'a' | 'b', amount: number): Payment => ({ ...salary(who, amount), source: 'statement', opId: `op-${who}` })
+    const q = (state: BreakdownState, me: 'a' | 'b') => decisionQueue(state, { me, now, answeredMonthEnd: K, ...ctx }).find((d) => d.kind === 'allocate') ?? null
+
+    it('несёт asUsual: остаток — ручной расчёт; как в прошлом месяце; «Изменить» — кольцо', () => {
+      const card = q(family({ payments: [stmt('a', 700_000)] }), 'a')!
+      // 700 000 − (300 000 + 150 000 + 50 000 + 60 000 + 40 000 + 25 000 + 40 000) = 35 000.
+      expect(card).toMatchObject({
+        question: 'Пришла зарплата', meta: `По вашему порядку · останется ${money(35_000)}`, amount: 700_000,
+        to: '/week/breakdown?from=salary&person=a&period=2026-10', actions: { primary: 'Разложить как обычно', ghost: 'Изменить' },
+      })
+      expect(card.usual!.fill.rest).toBe(35_000)
+      // В сентябре Траты были выключены — так же: 700 000 − 625 000 = 75 000.
+      const prevRec: Allocation = { id: 'p', kind: 'breakdown', source: 'salary', sourceId: 'a', period: '2026-09', by: 'a', at: '2026-09-10T05:00:00.000Z', updatedAt: T, total: 650_000, parts: [], off: ['spend'] }
+      const usual = q(family({ payments: [stmt('a', 700_000)], allocations: [prevRec] }), 'a')!
+      expect(usual.meta).toBe(`Как в сентябре · останется ${money(75_000)}`)
+      expect(usual.usual!.articles.find((a) => a.key === 'spend')!.on).toBe(false)
+      // Не хватает — так и пишем: 600 000 при статьях 665 000.
+      expect(q(family({ payments: [stmt('a', 600_000)] }), 'a')!.meta).toBe(`По вашему порядку · не хватает ${money(65_000)}`)
+    })
+
+    it('без плана — «Разложить» ведёт в «Ваш порядок»; после записи — карточки нет', () => {
+      const none = q(family({ payments: [stmt('a', 700_000)], moneySettings: null }), 'a')!
+      expect(none).toMatchObject({ usual: null, to: '/week/order?from=salary&person=a&period=2026-10', actions: { primary: 'Разложить', ghost: 'Позже' } })
+      const u = asUsual(family({ payments: [stmt('a', 700_000)] }), ctx, 'a', now)!
+      const w = breakdownWith(u, u.articles.filter((a) => !a.on).map((a) => a.key))
+      const rec: Allocation = { id: 'r', kind: 'breakdown', ...u.record, by: 'a', at: T, updatedAt: T, total: u.amount, parts: w.effects.parts }
+      expect(q(family({ payments: [stmt('a', 700_000)], allocations: [rec] }), 'a')).toBeNull()
+    })
+
+    it('партнёр после своей зарплаты — своя карточка, статьи закрыты первой (covered)', () => {
+      const two = family({ people: [person('a', 650_000, 10), person('b', 450_000, 20)], payments: [stmt('a', 650_000)] })
+      const first = asUsual(two, ctx, 'a', now)!
+      const rec: Allocation = { id: 'r1', kind: 'breakdown', ...first.record, by: 'a', at: T, updatedAt: T, total: 650_000, parts: breakdownWith(first, []).effects.parts }
+      const after = {
+        ...two,
+        payments: [stmt('a', 650_000), stmt('b', 450_000)],
+        goals: [goal('trip', 'Япония', 2_000_000, 625_000, 25_000, { main: true }), goal('pot', 'Подушка', 1_000_000, 204_000, 0)],
+        credits: [card(240_000)],
+        allocations: [rec],
+      }
+      const b = q(after, 'b')!
+      // Аруне 20-го: закрыто всё, кроме 15 000 Трат → 450 000 − 15 000 = 435 000.
+      expect(b.usual!.covered).toMatchObject({ must: 300_000, life: 150_000, reserve: 50_000, debts: 60_000, cushion: 40_000, dreams: 25_000, spend: 25_000 })
+      expect(b.usual!.fill.given.spend).toBe(15_000)
+      expect(b.meta).toBe(`По вашему порядку · останется ${money(435_000)}`)
+      expect(q(after, 'a')).toBeNull()
+    })
+
+    it('«как обычно» и кольцо с теми же статьями — одна запись (breakdownWith)', () => {
+      const state = family({ payments: [stmt('a', 700_000)] })
+      const u = asUsual(state, ctx, 'a', now)!
+      const ring = monthBreakdown(state, ctx, { from: 'salary', person: 'a', period: K })!
+      const off = u.articles.filter((a) => !a.on).map((a) => a.key)
+      expect(breakdownWith(ring, off)).toEqual(breakdownWith(u, off))
+      expect(breakdownWith(u, off).fill).toEqual(u.fill)
+    })
+
+    it('нажатие на «Доход»: разбор последней пришедшей зарплаты месяца, иначе план месяца', () => {
+      expect(incomeBreakdownPath([], K)).toBe('/week/breakdown?from=plan')
+      const a = salary('a', 650_000)
+      const b = { ...salary('b', 450_000), at: `${K}-20T05:00:00.000Z` }
+      expect(incomeBreakdownPath([a, b], K)).toBe('/week/breakdown?from=salary&person=b&period=2026-10')
+      expect(incomeBreakdownPath([a, { ...b, deletedAt: T }], K)).toBe('/week/breakdown?from=salary&person=a&period=2026-10')
+      // План месяца — статьи на сумму окладов, записи нет: 650 000 − 665 000 → не хватает 15 000.
+      const plan = monthBreakdown(family(), ctx, { from: 'plan' })!
+      expect(plan).toMatchObject({ amount: 650_000, recorded: null })
+      expect(plan.fill).toMatchObject({ rest: 0, short: 15_000 })
+    })
   })
 
   it('articleFact = monthSpentByFact на демо-итогах; без загрузок — null', () => {

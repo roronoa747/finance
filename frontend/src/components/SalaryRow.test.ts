@@ -3,19 +3,19 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain } from '@/lib/money'
-import { accountBalance, budgetAmounts, paidFor, salaryFree } from '@/lib/finance'
+import { accountBalance, breakdownWith, monthBreakdown, paidFor } from '@/lib/finance'
 import type { Payment } from '@/types/finance'
 import { createSSRApp } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import SalaryRow from './SalaryRow.vue'
 import Money from '@/views/Money.vue'
-import WeekSalary from '@/views/WeekSalary.vue'
+import Breakdown from '@/views/Breakdown.vue'
 import { authAs, planFamilyDoc } from '@/test/planFamily'
 import { renderScreen, screenMixin } from '@/test/screenState'
 
 /**
  * RP-10 «Пришла зарплата» в SSR: кнопка — только своему участнику и не viewer; отметку
- * видят оба; раскладка открывается с суммой из finance.ts. Семья — `planFamilyDoc`:
+ * видят оба; разбор открывается с суммой из finance.ts (B2C-58). Семья — `planFamilyDoc`:
  * Ильяс (a) — 10-го, 700 000; Аруна (b) — 20-го, 500 000; карта Kaspi Gold 2 000 000.
  */
 describe('RP-10: «Пришла зарплата» (SSR)', () => {
@@ -135,62 +135,49 @@ describe('RP-10: «Пришла зарплата» (SSR)', () => {
     expect(await renderScreen(Money, '/money')).not.toMatch(/Пришла зарплата/)
   })
 
-  it('Ритуал с источником «зарплата»: сумма — доля свободного из finance.ts, подпись зарплаты', async () => {
-    family('member', 'a', [salary()])
+  /** Разбор зарплаты Ильяса за сентябрь — те же числа, что у экрана (`finance.ts`). */
+  const breakdownOf = () => {
     const store = useFinanceStore()
-    const free = budgetAmounts({ ...store.householdDoc, credits: store.credits }).d5
-    const total = salaryFree(free, store.people, salary())
-    expect(total).toBeGreaterThan(0)
-    const html = await renderScreen(WeekSalary, '/ritual?from=salary&person=a&period=2026-09')
-    expect(html).toContain(`Куда направить ${money(total)}`)
-    expect(html).toContain(`Зарплата пришла — ${money(700_000)}`)
-    // Абзац «Решение разовое…» снят по правилу 12 (критик Блока 3).
-    expect(html).not.toContain('Решение разовое')
-    expect(html).not.toContain('Сейчас нет запланированных изменений')
+    const doc = store.householdDoc
+    return monthBreakdown(
+      { ...doc, credits: store.credits },
+      { key: '2026-09', totals: [], spendCategories: [], uploads: [], rawCredits: doc.credits },
+      { from: 'salary', person: 'a', period: '2026-09' },
+    )!
+  }
+  const path = '/week/breakdown?from=salary&person=a&period=2026-09'
 
-    // Без отметки раскладывать нечего; без параметров — прежний источник.
+  it('Разбор с источником «зарплата» (B2C-58): «Остаётся N из 700 000» — из finance.ts; без отметки — не отмечена', async () => {
+    family('member', 'a', [salary()])
+    const mb = breakdownOf()
+    const rest = breakdownWith(mb, mb.articles.filter((a) => !a.on).map((a) => a.key)).fill.rest
+    const html = await renderScreen(Breakdown, path)
+    expect(html).toContain(`Остаётся ${money(rest)} из ${money(700_000)}`)
+    expect(html).toContain('>Разложить<')
+
     setActivePinia(createPinia())
     family('member', 'a')
-    expect(await renderScreen(WeekSalary, '/ritual?from=salary&person=a&period=2026-09')).toContain(
-      'Эта зарплата пока не отмечена',
-    )
-    expect(await renderScreen(WeekSalary, '/ritual')).toContain('Сейчас нет запланированных изменений')
+    expect(await renderScreen(Breakdown, path)).toContain('Эта зарплата ещё не отмечена.')
+    // Старый адрес раскладки — тот же разбор (редирект с параметрами).
+    expect(await renderScreen(Breakdown, '/week/salary?from=salary&person=a&period=2026-09')).toContain('Эта зарплата ещё не отмечена.')
   })
 
-  it('Ритуал: разовое решение — взнос в цель и сдвиг счёта зарплаты, ежемесячный взнос прежний', async () => {
+  it('«Разложить»: взносы в цели со счёта зарплаты, досрочка записью prepay, запись разбора с частями', async () => {
     family('member', 'a', [salary()])
     const store = useFinanceStore()
-    const monthly = store.goals.find((g) => g.id === 'trip')!.monthly
-    const html = await renderScreen(WeekSalary, '/ritual?from=salary&person=a&period=2026-09', undefined, [
-      screenMixin({}, (s) => {
-        s.alloc = { trip: 100_000 }
-        ;(s.confirm as () => void)()
-      }),
-    ])
-    expect(html).toContain('Решение записано')
-    expect(html).toContain(`В цели отложено ${money(100_000)} со счёта «Kaspi Gold»`)
-    const trip = store.goals.find((g) => g.id === 'trip')!
-    expect(trip.monthly).toBe(monthly)
-    expect(trip.movements.map((m) => [m.amount, m.by, m.note])).toEqual([[100_000, 'a', 'из зарплаты']])
-    expect(trip.have).toBe(50_000 + 100_000)
-    const card = store.householdDoc.accounts[0]
-    expect(accountBalance(card, store.payments)).toBe(2_000_000 + 700_000 - 100_000)
-    // Запись зарплаты не тронута.
-    expect(paidFor(store.payments, 'salary', 'a', '2026-09')?.amount).toBe(700_000)
-  })
-
-  it('Раскладка: доля на досрочку вносится записью prepay и решение записано (B2C-21)', async () => {
-    family('member', 'a', [salary()])
-    const store = useFinanceStore()
-    const html = await renderScreen(WeekSalary, '/ritual?from=salary&person=a&period=2026-09', undefined, [
-      screenMixin({}, (s) => {
-        s.alloc = { credit: 50_000 }
-        ;(s.confirm as () => void)()
-      }),
-    ])
-    expect(html).toContain(`Досрочка ${money(50_000)} внесена в «`)
-    expect(store.payments.filter((p) => p.kind === 'prepay')).toHaveLength(1)
+    const mb = breakdownOf()
+    const w = breakdownWith(mb, mb.articles.filter((a) => !a.on).map((a) => a.key))
+    const toGoals = w.effects.contributions.reduce((a, c) => a + c.amount, 0)
+    expect(toGoals).toBeGreaterThan(0)
+    await renderScreen(Breakdown, path, undefined, [screenMixin({}, (s) => (s.lay as () => void)())])
     expect(store.allocations).toHaveLength(1)
-    expect(store.allocations[0]).toMatchObject({ source: 'salary', sourceId: 'a', period: '2026-09', parts: [{ target: expect.stringMatching(/^prepay:/), amount: 50_000 }] })
+    expect(store.allocations[0]).toMatchObject({ kind: 'breakdown', source: 'salary', sourceId: 'a', period: '2026-09', total: 700_000 })
+    expect(store.allocations[0].parts).toEqual(w.effects.parts)
+    // Деньги уходят со счёта, на который пришла зарплата; запись зарплаты не тронута.
+    const card = store.householdDoc.accounts[0]
+    const prepaid = store.payments.filter((p) => p.kind === 'prepay').reduce((a, p) => a + p.amount, 0)
+    expect(prepaid).toBe(w.effects.prepay?.amount ?? 0)
+    expect(accountBalance(card, store.payments)).toBe(2_000_000 + 700_000 - toGoals - prepaid)
+    expect(paidFor(store.payments, 'salary', 'a', '2026-09')?.amount).toBe(700_000)
   })
 })

@@ -45,7 +45,8 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
   it.each([
     ['/', 'Мечты'],
     ['/week', 'Неделя'],
-    ['/week/salary', 'Разложим'],
+    ['/week/breakdown', 'Разбор'],
+    ['/week/order', 'Ваш порядок'],
     ['/money', 'Деньги'],
     // «Деньги» — один экран с квадратами (пивот 3, Р-31): шапка одна на все три.
     ['/money/plan', 'Деньги'],
@@ -126,8 +127,8 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     expect(await active('/week')).toBe('/week')
     expect(await active('/money/plan')).toBe('/money')
     expect(await active('/money/history')).toBe('/money')
-    // Возврат смоука: в макетах g2/g4/g7 у цели, желаний, настроек и раскладки нижней навигации нет — путь назад в шапке.
-    for (const path of ['/goals/x', '/people/a', '/wishes', '/settings', '/week/salary']) {
+    // Возврат смоука: в макетах g2/g4/g7 у цели, желаний, настроек и разбора нижней навигации нет — путь назад в шапке.
+    for (const path of ['/goals/x', '/people/a', '/wishes', '/settings', '/week/breakdown', '/week/order']) {
       const html = await renderScreen(AppShell, path)
       expect(html).not.toContain('<nav')
       expect(html).toContain('aria-label="Назад"')

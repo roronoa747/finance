@@ -72,11 +72,11 @@ const draftSub = computed(() => {
 const ROOTS = ['/', '/week', '/money', '/money/plan', '/money/history']
 // «Разбор» выписки живёт на /week, но корнем не считается: «назад» слева, как в g2 (хвост критика Б9).
 const isRoot = computed(() => ROOTS.includes(route.path) && !(route.path === '/week' && !!ops.draft))
-/** Экраны-потоки без нижней навигации (в макетах — без вкладок): цель, желания, настройки, раскладка. */
+/** Экраны-потоки без нижней навигации (в макетах — без вкладок): цель, желания, настройки, разбор. */
 const noTabs = computed(() => {
   const p = route.path
   return (
-    p.startsWith('/goals/') || p === '/wishes' || p.startsWith('/people/') || p === '/settings' || p === '/week/salary' || p === '/week/order' || p === '/week/breakdown'
+    p.startsWith('/goals/') || p === '/wishes' || p.startsWith('/people/') || p === '/settings' || p === '/week/order' || p === '/week/breakdown'
   )
 })
 
@@ -93,12 +93,13 @@ function goBack() {
 const header = computed<{ title: string; sub?: string }>(() => {
   const p = route.path
   if (p === '/') return { title: 'Мечты', sub: `${monthName.value} · ${names.value}` }
-  if (p === '/week/salary' || p === '/week/breakdown') {
-    // g2 «Раскладка зарплаты»: подпись — откуда деньги.
+  if (p === '/week/breakdown') {
+    // Подпись — откуда деньги (как у бывшей раскладки, g2).
     const from = route.query.from
     const who = people.value.find((x) => x.id === route.query.person)?.name
-    const sub = from === 'salary' ? (who ? `зарплата · ${who}` : 'зарплата') : from === 'rest' ? 'остаток месяца' : from === 'credit' ? 'закрытый долг' : 'освободившийся платёж'
-    return { title: p === '/week/breakdown' ? 'Разбор' : 'Разложим', sub }
+    const sub =
+      from === 'salary' ? (who ? `зарплата · ${who}` : 'зарплата') : from === 'rest' ? 'остаток месяца' : from === 'credit' ? 'закрытый долг' : from === 'plan' ? 'план месяца' : 'освободившийся платёж'
+    return { title: 'Разбор', sub }
   }
   if (p === '/week/order') return { title: 'Ваш порядок' }
   if (p.startsWith('/week')) return ops.draft ? { title: 'Разбор', sub: draftSub.value } : { title: 'Неделя', sub: weekSub.value }

@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
 import { money, plain } from '@/lib/money'
 import { monthKey, monthFrom } from '@/lib/dates'
-import { amountAt, freedChange, freedQuestion, liveObligations } from '@/lib/finance'
+import { amountAt, breakdownPath, freedChange, freedQuestion, liveObligations } from '@/lib/finance'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/kit/Card.vue'
 import MoneySquares from '@/components/money/MoneySquares.vue'
@@ -55,7 +55,7 @@ onMounted(() => void ops.loadUploads())
         <p class="mb-3.5 mt-1 text-[13px] text-ink-2 num">
           {{ freed.o.name }}: {{ plain(amountAt(freed.o, key)) }} → {{ plain(freed.change.amount) }} ₸ · {{ money(freed.yearly) }} за год
         </p>
-        <Button v-if="!authStore.isViewer" class="w-full" @click="router.push('/week/salary?from=freed')">Распределить</Button>
+        <Button v-if="!authStore.isViewer" class="w-full" @click="router.push(breakdownPath({ from: 'freed' }))">Распределить</Button>
       </Card>
 
       <IncomeWidget />

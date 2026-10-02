@@ -37,7 +37,9 @@ import {
   type PlanState,
   type PlanStep,
   type ScheduledKind,
+  breakdownWith,
   type BreakdownEffects,
+  type MonthBreakdown,
 } from '@/lib/finance'
 import type {
   SyncDoc,
@@ -1747,6 +1749,15 @@ export const useFinanceStore = defineStore('finance', () => {
     return recordAllocation({ ...o.record, kind: 'breakdown', by: o.by, total: o.total, parts, ...(o.off.length ? { off: o.off } : {}) })
   }
 
+  /**
+   * Разобрать (B2C-58): кольцо «Разложить» и карточка «как обычно» — одной дорогой (`breakdownWith`),
+   * поэтому записи у них одинаковые при одинаковых статьях.
+   */
+  function layBreakdown(m: MonthBreakdown, off: ArticleKey[], o: { by: PersonId; accountId?: string | null; note: string }): Allocation {
+    const w = breakdownWith(m, off)
+    return applyBreakdown({ record: m.record, total: m.amount, mode: m.mode, effects: w.effects, off: w.off, ...o })
+  }
+
   function addGift(g: { forSlot: PersonId; name: string; price: number; photoId?: string | null }): Gift {
     const t = new Date().toISOString()
     const gift: Gift = { id: Math.random().toString(36).slice(2, 10), forSlot: g.forSlot, name: g.name, price: g.price, photoId: g.photoId ?? null, bought: false, updatedAt: t }
@@ -1899,6 +1910,7 @@ export const useFinanceStore = defineStore('finance', () => {
     addWish,
     recordAllocation,
     applyBreakdown,
+    layBreakdown,
     moneyArticles,
     moneySettings,
     setArticle,

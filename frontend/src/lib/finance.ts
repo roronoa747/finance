@@ -249,55 +249,6 @@ export function emergencyTarget(opts: {
   return Math.max(floor, scenario)
 }
 
-/** Во сколько месяцев расходов обходится накопленная подушка. */
-export function emergencyCoverage(saved: number, mandatoryMonthly: number): number {
-  if (!mandatoryMonthly) return 0
-  return saved / mandatoryMonthly
-}
-
-/**
- * Подушка через год при раскладке `extra` («Через год покроет N мес. расходов»): накоплено +
- * взнос ×12 + добавка — разом (`once`) или каждый месяц (×12). Целые тенге.
- */
-export function cushionInYear(goal: Pick<Goal, 'have' | 'monthly'>, extra: number, once: boolean): number {
-  return goal.have + goal.monthly * 12 + (once ? extra : extra * 12)
-}
-
-/** Раскладка суммы по корзинам (`allocationRoom`): итоги и сколько ещё влезает в корзину. */
-export interface AllocationRoom {
-  /** Разложено по всем корзинам. */
-  used: number
-  /** Осталось разложить: `total − used`. */
-  left: number
-  /** Разложено по целям — у разового решения это взносы со счёта. */
-  toGoals: number
-  /** Корзины досрочки («по кредиту» `credit` и «по плану» `plan`) — платят один долг. */
-  prepay: number
-  /** Сколько ещё можно положить в корзину `id`. */
-  room: (id: string) => number
-}
-
-/**
- * Раскладка зарплаты, остатка или освободившихся денег (`WeekSalary`, B2C-21): не больше
- * нераспределённого, а разовую досрочку — и не больше остатка долга `principal` (лишнее не
- * внеслось бы, но числилось бы в записи и в итоге). Потолок — на сумму обеих корзин досрочки.
- */
-export function allocationRoom(
-  parts: Record<string, number>,
-  opts: { total: number; goalIds: readonly string[]; once: boolean; principal?: number },
-): AllocationRoom {
-  const used = Object.values(parts).reduce((a, v) => a + v, 0)
-  const left = opts.total - used
-  const toGoals = opts.goalIds.reduce((a, id) => a + (parts[id] ?? 0), 0)
-  const prepay = (parts.credit ?? 0) + (parts.plan ?? 0)
-  const room = (id: string) => {
-    const cap =
-      opts.once && (id === 'credit' || id === 'plan') && opts.principal !== undefined ? opts.principal - prepay : Infinity
-    return Math.max(0, Math.min(left, cap))
-  }
-  return { used, left, toGoals, prepay, room }
-}
-
 /**
  * Во что обходится долг прямо сейчас.
  *
@@ -785,7 +736,7 @@ export const liveGroups = (list: Obligation[]) => (list || []).filter((o) => ali
 export const liveCredits = (list: Credit[]) => (list || []).filter(alive);
 /**
  * Открытые кредиты — живые, по которым ещё есть что платить. Закрытый (остаток 0,
- * строка остаётся с «долг закрыт») не входит ни в стратегию, ни в раскладку (`WeekSalary`), ни в
+ * строка остаётся с «долг закрыт») не входит ни в стратегию, ни в разбор (`breakdownArticles`), ни в
  * план. В бюджете месяца его платёж ещё есть, если долг закрыли плановым «Оплатил»
  * этого месяца — деньги ушли в этом месяце (`creditMonthPayment`, PV-14 п. 5);
  * закрытый досрочкой выпадает сразу (PV-01).
@@ -1637,23 +1588,6 @@ export function salaryAsk(
   return near && near.who.id === me && salaryOpen(near.who, state.payments ?? [], near.key, now) ? near : null;
 }
 
-/**
- * Сколько из пришедшей зарплаты свободно — сумма раскладки зарплаты (`WeekSalary`, RP-10 п. 3).
- *
- * План месяца построен на окладах, поэтому свободный остаток месяца (`free` —
- * `budgetAmounts(...).d5`) делится между зарплатами пропорционально окладам: каждая
- * несёт свою долю обязательств и взносов. Разница пришедшего с окладом — премия или
- * недоплата — целиком ложится на свободное: обязательства от неё не меняются. Меньше
- * нуля не бывает (план не сходится — раскладывать нечего); целые тенге.
- */
-export function salaryFree(free: number, people: Person[], record: Pick<Payment, 'targetId' | 'period' | 'amount'>): number {
-  const p = (people || []).find((x) => alive(x) && x.id === record.targetId);
-  const base = p ? salaryAt(p, record.period) : 0;
-  const income = totalIncome(people, record.period);
-  const share = income > 0 ? (free * base) / income : 0;
-  return Math.max(0, Math.round(share + record.amount - base));
-}
-
 /* ---------------- вопрос в конце месяца (RP-11) ---------------- */
 
 /**
@@ -1797,41 +1731,44 @@ export function allocationFor(
   return own.reduce((best, a) => (a.at > best.at ? a : best))
 }
 
-/** Адрес раскладки пришедшей зарплаты (бывший Ритуал) — один для карточки, листа отметки и `SalaryRow`. */
-export const salaryAllocationPath = (person: PersonId, period: string) => `/week/salary?from=salary&person=${person}&period=${period}`
+/**
+ * Адрес разбора (B2C-58): параметры источника — как у прежней раскладки (её старый адрес —
+ * редирект сюда, `router/index.ts`). Один для очереди, листа отметки, `SalaryRow`, «Денег» и «Истории».
+ */
+export const breakdownPath = (query: Record<string, string | number>) =>
+  `/week/breakdown?${Object.entries(query).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&')}`
+
+/** Разбор пришедшей зарплаты участника за месяц. */
+export const salaryBreakdownPath = (person: PersonId, period: string) => breakdownPath({ from: 'salary', person, period })
 
 /**
- * Зарплата, отмеченная по выписке, которую ещё не разложили (B2C-21 п. 1, возврат приёмки Блока 3
- * п. 2): у ручного «Пришла» переход на раскладку сразу после отметки, а «Да, зарплата» из выписки и
- * автоотметка по правилу раскладку не открывали — она была недостижима. Можно отметить `record`
+ * Зарплата, отмеченная по выписке, которую ещё не разобрали (B2C-21 п. 1, возврат приёмки Блока 3
+ * п. 2; B2C-58): у ручного «Пришла» переход на разбор сразу после отметки, а «Да, зарплата» из выписки и
+ * автоотметка по правилу его не открывают — без карточки он был бы недостижим. Можно отметить `record`
  * конкретного месяца (лист отметки) или найти свою последнюю — этого или прошлого месяца (очередь
  * «Недели» `decisionQueue`). Только `source: 'statement'`: ручные отметки до записи раскладок
- * (`allocations`, B2C-21) раскладывал прежний Ритуал (до `WeekSalary`) без записи — карточка предложила бы их второй раз.
- * Нужна запись раскладки (`allocationFor` пуст) и свободное в этой зарплате (`salaryFree` > 0) — по
- * плану её месяца. Месяцы до спрашиваемой «Пришла?» не ищутся, только пока она действительно
- * спрашивается (`salaryAsk`, как у главного): иначе старая неразложенная заслонила бы её. После дня
- * зарплаты «Пришла?» уже не спрашивается — прошлая неразложенная снова здесь (возврат приёмки 2 п. 3:
- * выписку грузят после дня зарплаты, и с 13-го по конец месяца зарплата терялась). Пришедшая раньше
- * срока зарплата следующего месяца (день 1-го, пришла 29-го) — сразу (критик возврата Блока 3).
+ * (`allocations`, B2C-21) раскладывал прежний Ритуал без записи — карточка предложила бы их второй раз.
+ * Нужны сумма отметки и отсутствие записи разбора/раскладки (`allocationFor`). Месяцы до спрашиваемой
+ * «Пришла?» не ищутся, только пока она действительно спрашивается (`salaryAsk`, как у главного): иначе
+ * старая неразобранная заслонила бы её. После дня зарплаты «Пришла?» уже не спрашивается — прошлая
+ * неразобранная снова здесь (возврат приёмки 2 п. 3: выписку грузят после дня зарплаты, и с 13-го по
+ * конец месяца зарплата терялась). Пришедшая раньше срока зарплата следующего месяца (день 1-го, пришла
+ * 29-го) — сразу (критик возврата Блока 3).
  */
 export function salaryToAllocate(
   state: {
-    categories?: Category[]
     obligations?: Obligation[]
     credits?: Credit[]
-    goals?: Goal[]
     people?: Person[]
     payments?: Payment[]
-    plans?: DebtPlan[]
     allocations?: Allocation[]
   },
   me: PersonId | undefined,
   now = today(),
   record?: Payment | null,
-): { person: Person; period: string; record: Payment; free: number } | null {
+): { person: Person; period: string; record: Payment } | null {
   if (!me) return null
-  const people = state.people ?? []
-  const person = people.find((p) => alive(p) && p.id === me)
+  const person = (state.people ?? []).find((p) => alive(p) && p.id === me)
   if (!person) return null
   const payments = state.payments ?? []
   // Пока спрашивается «Пришла?», месяцы до спрашиваемого не ищутся — ни один: у дня зарплаты 1–3
@@ -1840,13 +1777,11 @@ export function salaryToAllocate(
   const asked = salaryAsk(state, me, now)
   const months = [addMonths(now.key, 1), now.key, addMonths(now.key, -1)].filter((k) => !asked || k > asked.key)
   const found = record ?? months.map((k) => paidFor(payments, 'salary', me, k)).find(Boolean)
-  if (!found || found.kind !== 'salary' || found.targetId !== me || found.source !== 'statement') return null
+  if (!found || found.kind !== 'salary' || found.targetId !== me || found.source !== 'statement' || found.amount <= 0) return null
   if (allocationFor(state.allocations, { source: 'salary', sourceId: me, period: found.period })) return null
-  const free = salaryFree(budgetAmounts(state, found.period).d5, people, found)
-  return free > 0 ? { person, period: found.period, record: found, free } : null
+  return { person, period: found.period, record: found }
 }
 
-/** Тексты карточки «разложить?» — одни на главном и в «Неделе» (как `keepCard`). */
 /**
  * «Пришла зарплата <имя>?» (RP-10) — тексты карточки ближайшей зарплаты (`salaryAsk`), одни на
  * главном и в «Неделе» (ревью Блока 3, Н-23).
@@ -1854,11 +1789,6 @@ export function salaryToAllocate(
 export const salaryCard = (near: { who: Person; income: number; day: number; key: string }) => ({
   question: `Пришла зарплата ${near.who.name}?`,
   meta: `${money(near.income)} · ${dayLabel(near.day, near.key)}`,
-})
-
-export const allocateCard = (u: { person: Person; record: Payment; free: number }) => ({
-  question: `Пришла зарплата ${u.person.name} — разложить?`,
-  meta: `${money(u.record.amount)} · к раскладке ${money(u.free)}`,
 })
 
 /** «Освободится N ₸ в месяц» — один текст для очереди «Недели» и карточки «Денег» (ревью Блока 10, Н-4). */
@@ -1944,7 +1874,10 @@ export function hasMonthSummary(s: MonthSummary): boolean {
 export type HistoryItem =
   | { kind: 'op'; id: string; at: string; op: Operation }
   | { kind: 'mark'; id: string; at: string; payment: Payment }
-  | { kind: 'moment'; id: string; at: string; moment: Moment };
+  | { kind: 'moment'; id: string; at: string; moment: Moment }
+  | { kind: 'breakdown'; id: string; at: string; allocation: Allocation };
+
+const breakdownRecords = (list: Allocation[] | undefined) => (list ?? []).filter((a) => !a.deletedAt && a.kind === 'breakdown')
 
 /** День по Алматы «YYYY-MM-DD» для отметки и момента (их `at` — ISO). */
 const isoDay = (iso: string) => {
@@ -1959,7 +1892,7 @@ const isoDay = (iso: string) => {
  * День операции — её дата, отметки и момента — день `at` по Алматы.
  */
 export function historyFeed(
-  state: { ops: Operation[]; payments?: Payment[]; moments?: Moment[] },
+  state: { ops: Operation[]; payments?: Payment[]; moments?: Moment[]; allocations?: Allocation[] },
   months: string[],
 ): { day: string; items: HistoryItem[] }[] {
   const inPeriod = (day: string) => months.includes(day.slice(0, 7));
@@ -1969,6 +1902,8 @@ export function historyFeed(
     ...(state.moments ?? [])
       .filter((m) => m.kind !== 'saved')
       .map((moment) => ({ kind: 'moment' as const, id: moment.id, at: moment.at, day: isoDay(moment.at), moment })),
+    // Разбор (B2C-58) — строкой с частями по статьям; записи прежней раскладки (без `kind`) не показывались и не показываются (Р-65).
+    ...breakdownRecords(state.allocations).map((allocation) => ({ kind: 'breakdown' as const, id: allocation.id, at: allocation.at, day: isoDay(allocation.at), allocation })),
   ].filter((x) => inPeriod(x.day));
   const days = new Map<string, HistoryItem[]>();
   for (const x of items.sort((a, b) => b.day.localeCompare(a.day) || b.at.localeCompare(a.at))) {
@@ -1979,8 +1914,9 @@ export function historyFeed(
 }
 
 /** Самый ранний месяц, за который «Истории» есть что показать (кнопка «Раньше»); null — ничего нет. */
-export function historyStart(state: { ops: Operation[]; payments?: Payment[]; moments?: Moment[] }): string | null {
+export function historyStart(state: { ops: Operation[]; payments?: Payment[]; moments?: Moment[]; allocations?: Allocation[] }): string | null {
   const months = [
+    ...breakdownRecords(state.allocations).map((a) => isoDay(a.at).slice(0, 7)),
     ...state.ops.map((o) => o.date.slice(0, 7)),
     ...countedPayments(state.payments ?? []).map((p) => isoDay(p.at).slice(0, 7)),
     ...(state.moments ?? []).filter((m) => m.kind !== 'saved').map((m) => isoDay(m.at).slice(0, 7)),
@@ -2267,14 +2203,14 @@ export type PlanStep =
 
 /**
  * Шаг-досрочка, который ждёт оплаты: не внесён и не пустой; иначе null. Одно правило
- * для кнопки «Внести по плану», строки кредита, раскладки (`WeekSalary`), окна досрочки и графика плана.
+ * для кнопки «Внести по плану», строки кредита, окна досрочки и графика плана.
  */
 export const stepDue = (step: PlanStep | null | undefined) =>
   step?.kind === 'prepay' && !step.applied && step.amount > 0 ? step : null
 
 /**
  * Месяц обязательных списаний — как у калькулятора (`strategyInputs`): им меряют
- * подушку и шаг плана, и корзина подушки раскладки (`WeekSalary`).
+ * подушку и шаг плана (`planStep`).
  */
 export const planMandatory = (state: PlanState, key: string) =>
   strategyInputs({
@@ -2880,7 +2816,7 @@ export type Decision = {
   cancel?: KeepCard['cancel']
   /** Подписка вопроса «оставить?». */
   obligation?: Obligation
-  /** Участник и месяц зарплаты «пришла?» / «разложить?». */
+  /** Участник и месяц зарплаты «пришла?» / «Пришла зарплата». */
   salary?: { person: Person; period: string }
   /** Ждущее сопоставление операции с отметкой (Р-6). */
   match?: MatchCandidate
@@ -2888,29 +2824,24 @@ export type Decision = {
   group?: UnknownGroup
   /** Снижение обязательства «освободится N ₸». */
   freed?: FreedChange
+  /** «Пришла зарплата · как обычно» (Р-55): разбор, как в прошлый раз; null — плана ещё нет. */
+  usual?: AsUsual | null
+  /** Сумма пришедшей зарплаты карточки «Пришла зарплата». */
+  amount?: number
 }
 
 /**
  * Очередь решений «Недели» (Р-43) — одна на экран: сопоставления (по одному на каждое ждущее) →
  * незнакомые продавцы (по одному на группу; группы ищет экран — месяц или черновик, `last` — дата
- * последней операции) → «оставить подписку?» (`keepQuestions`) → зарплата: «разложить?»
- * (`salaryToAllocate`), иначе «пришла?» (`salaryAsk`) — одна карточка о зарплате за раз → «освободится
- * N ₸» (`freedChange`, пока раскладка не записана) → «остались деньги?» (`monthEndAsk`, без раскладки
- * остатка). Шаг плана — в квадрате «План» (Р-34), не здесь. Новых расчётов нет (Р-50): это прежние проверки по порядку.
+ * последней операции) → «оставить подписку?» (`keepQuestions`) → зарплата: «Пришла зарплата»
+ * (`salaryToAllocate`; с планом — «как обычно» по `asUsual`, B2C-58), иначе «пришла?» (`salaryAsk`) — одна
+ * карточка о зарплате за раз → «освободится N ₸» (`freedChange`, пока разбор не записан) → «остались
+ * деньги?» (`monthEndAsk`, без разбора остатка). Шаг плана — в квадрате «План» (Р-34), не здесь. Новых расчётов нет (Р-50): это прежние проверки по порядку.
  * Отложенные («Потом») убирает экран. Viewer (`canEdit` false) решений не видит (Р-50); без своего слота (`me`)
  * нет только решений о своей зарплате — как было у «Недели».
  */
 export function decisionQueue(
-  state: {
-    categories?: Category[]
-    people?: Person[]
-    obligations?: Obligation[]
-    credits?: Credit[]
-    goals?: Goal[]
-    payments?: Payment[]
-    plans?: DebtPlan[]
-    allocations?: Allocation[]
-  },
+  state: BreakdownState,
   ctx: {
     me: PersonId | undefined
     canEdit?: boolean
@@ -2918,6 +2849,10 @@ export function decisionQueue(
     unknown?: (UnknownGroup & { last?: string })[]
     answeredMonthEnd?: string | null
     now?: { day: number; key: string }
+    /** Выписки месяца — для разбора «как обычно» (статусы статей), как у экрана разбора. */
+    totals?: SpendTotal[]
+    spendCategories?: SpendCategory[]
+    uploads?: UploadPeriod[]
   },
 ): Decision[] {
   if (ctx.canEdit === false) return []
@@ -2955,17 +2890,24 @@ export function decisionQueue(
     out.push({ kind: 'keep', key: `keep:${o.id}`, ...keepCard(o, state.goals ?? [], payments, now), to: null, obligation: o })
   }
 
-  // Зарплата пришла по выписке и не разложена — «разложить?»; иначе «пришла?» (возврат приёмки 2 п. 3: одна о зарплате).
+  // Зарплата пришла по выписке и не разобрана — «Пришла зарплата»; иначе «пришла?» (возврат приёмки 2 п. 3: одна о зарплате).
+  // С планом — «как обычно» одним нажатием и тихое «Изменить» (кольцо); без плана — «Разложить» → «Ваш порядок» (Р-55).
   const unallocated = salaryToAllocate(state, ctx.me, now)
   const near = unallocated ? null : salaryAsk(state, ctx.me, now)
   if (unallocated) {
+    const { person, period, record } = unallocated
+    const bctx = { totals: ctx.totals ?? [], spendCategories: ctx.spendCategories ?? [], uploads: ctx.uploads ?? [] }
+    const usual = asUsual(state, bctx, person.id, now, period)
+    const path = salaryBreakdownPath(person.id, period)
     out.push({
       kind: 'allocate',
-      key: `allocate:${unallocated.person.id}:${unallocated.period}`,
-      ...allocateCard(unallocated),
-      to: salaryAllocationPath(unallocated.person.id, unallocated.period),
-      actions: { primary: 'Разложить', ghost: 'Позже' },
-      salary: { person: unallocated.person, period: unallocated.period },
+      key: `allocate:${person.id}:${period}`,
+      ...(usual ? usualCard(usual) : { question: 'Пришла зарплата', meta: 'Сначала — ваш порядок' }),
+      to: usual ? path : `/week/order?${path.split('?')[1]}`,
+      actions: usual ? { primary: 'Разложить как обычно', ghost: 'Изменить' } : { primary: 'Разложить', ghost: 'Позже' },
+      salary: { person, period },
+      usual,
+      amount: record.amount,
     })
   } else if (near) {
     // «Пришла» и лист «ещё» — `SalaryRow` на месте (RP-10).
@@ -2980,7 +2922,7 @@ export function decisionQueue(
       key: `freed:${freed.o.id}:${freed.change.from}`,
       question: freedQuestion(freed),
       meta: `${freed.o.name} · с ${monthFrom(freed.change.from, false)}`,
-      to: '/week/salary?from=freed',
+      to: breakdownPath({ from: 'freed' }),
       actions: { primary: 'Распределить', ghost: 'Потом' },
       freed,
     })
@@ -3294,12 +3236,14 @@ export function breakdownFill(
   return { given, rest: left, waiting, short }
 }
 
-/** Откуда деньги разбора — параметры адреса (как у бывшей раскладки `/week/salary`). */
+/** Откуда деньги разбора — параметры адреса (как у бывшей раскладки). */
 export type BreakdownSource =
   | { from: 'salary'; person: PersonId; period: string }
   | { from: 'rest'; amount: number; period: string }
   | { from: 'freed' }
   | { from: 'credit'; creditId: string }
+  /** План месяца без пришедшей зарплаты (нажатие на «Доход», B2C-58): статьи на сумму окладов — смотреть, не раскладывать. */
+  | { from: 'plan' }
 
 export type MonthBreakdown = {
   /** Месяц, чьи статьи закрываются. */
@@ -3349,6 +3293,10 @@ export function monthBreakdown(
     key = source.period
     amount = Math.max(0, Math.round(source.amount))
     record = { source: 'rest', sourceId: source.period, period: source.period }
+  } else if (source.from === 'plan') {
+    amount = totalIncome(people, key)
+    // Записи у плана нет: ключ не совпадает ни с одним источником.
+    record = { source: 'salary', sourceId: 'plan', period: key }
   } else if (source.from === 'freed') {
     const freed = freedChange(liveObligations(state.obligations ?? []), key)
     if (!freed) return null
@@ -3384,7 +3332,7 @@ export function monthBreakdown(
     }
   }
 
-  const all = breakdownArticles(state, { ...ctx, key, covered, extra: source.from !== 'salary' })
+  const all = breakdownArticles(state, { ...ctx, key, covered, extra: source.from !== 'salary' && source.from !== 'plan' })
   const articles = all.map((a) => ({ ...a, left: a.need - covered[a.key] })).filter((a) => !a.empty && a.left > 0)
   return {
     key,
@@ -3400,22 +3348,26 @@ export function monthBreakdown(
   }
 }
 
+/** Разбор «как обычно»: сводка месяца, выключенные статьи и месяц прошлой записи. */
+export type AsUsual = MonthBreakdown & { last: string | null; off: ArticleKey[] }
+
 /**
  * Карточка «Пришла зарплата · как в <прошлом месяце>» (Р-55, B2C-55 п. 3): своя пришедшая и не
  * разложенная зарплата (месяцы — как у `salaryToAllocate`: пока спрашивается «Пришла?», раньше не
- * ищем), статьи — как в прошлой записи разбора участника (выключенные там — выключены), нет её —
- * план. null — плана нет («Ваш порядок» не пройден — первый разбор начинается с него), зарплата не
- * пришла или уже разложена.
+ * ищем; `period` — месяц уже найденной зарплаты, очередь берёт его у `salaryToAllocate`), статьи — как
+ * в прошлой записи разбора участника (выключенные там — выключены), нет её — план. null — плана нет
+ * («Ваш порядок» не пройден — первый разбор начинается с него), зарплата не пришла или уже разложена.
  */
 export function asUsual(
   state: BreakdownState,
   ctx: Omit<BreakdownCtx, 'covered' | 'extra' | 'key'>,
   me: PersonId | undefined,
   now = today(),
-): (MonthBreakdown & { last: string | null; off: ArticleKey[] }) | null {
+  period?: string,
+): AsUsual | null {
   if (!me || !moneySettingsOf(state).orderedAt) return null
   const asked = salaryAsk(state, me, now)
-  const months = [addMonths(now.key, 1), now.key, addMonths(now.key, -1)].filter((k) => !asked || k > asked.key)
+  const months = period ? [period] : [addMonths(now.key, 1), now.key, addMonths(now.key, -1)].filter((k) => !asked || k > asked.key)
   const paid = months.map((k) => paidFor(state.payments, 'salary', me, k)).find(Boolean)
   if (!paid) return null
   const mb = monthBreakdown(state, { ...ctx, key: paid.period }, { from: 'salary', person: me, period: paid.period })
@@ -3423,10 +3375,17 @@ export function asUsual(
   const prev = (state.allocations ?? [])
     .filter((a) => !a.deletedAt && a.kind === 'breakdown' && a.source === 'salary' && a.sourceId === me && a.period < paid.period)
     .sort((a, b) => b.period.localeCompare(a.period) || b.at.localeCompare(a.at))[0]
-  const off = prev?.off ?? []
-  const articles = mb.articles.map((a) => ({ ...a, on: a.on && !off.includes(a.key) }))
-  return { ...mb, articles, fill: breakdownFill(articles, mb.amount, mb.covered, mb.expected), last: prev?.period ?? null, off }
+  const planOff = mb.articles.filter((a) => !a.on).map((a) => a.key)
+  const off = [...new Set([...planOff, ...(prev?.off ?? [])])]
+  const { articles, fill } = breakdownWith(mb, off)
+  return { ...mb, articles, fill, last: prev?.period ?? null, off: prev?.off ?? [] }
 }
+
+/** Тексты карточки «Пришла зарплата» (макет, вопрос 2): «Как в сентябре · останется N ₸». */
+export const usualCard = (u: Pick<AsUsual, 'last' | 'fill'>) => ({
+  question: 'Пришла зарплата',
+  meta: `${u.last ? `Как в ${monthIn(u.last, false)}` : 'По вашему порядку'} · ${u.fill.short > 0 ? `не хватает ${money(u.fill.short)}` : `останется ${money(u.fill.rest)}`}`,
+})
 
 export type BreakdownEffects = {
   /** Взносы сейчас: в цели и в копилку (`goalId: null` — копилку надо завести, `need` — её порог). */
@@ -3486,6 +3445,51 @@ export function breakdownEffects(given: ArticleAmounts, articles: BreakdownArtic
     articleAdds: [],
     parts,
   }
+}
+
+/**
+ * Разбор с выключенными на этот раз статьями (B2C-57, B2C-58): статьи, закрытие и что записать — одна
+ * дорога для кольца («Разложить») и карточки «как обычно», поэтому они пишут одно и то же. `off` —
+ * только статьи этого разбора (для записи).
+ */
+export function breakdownWith(mb: MonthBreakdown, off: ArticleKey[]) {
+  const articles = mb.articles.map((a) => ({ ...a, on: !off.includes(a.key) }))
+  const fill = breakdownFill(articles, mb.amount, mb.covered, mb.expected)
+  return {
+    articles,
+    fill,
+    effects: breakdownEffects(fill.given, articles, mb.mode),
+    off: off.filter((k) => articles.some((a) => a.key === k)),
+  }
+}
+
+/**
+ * Куда ведёт нажатие на «Доход» (B2C-58): разбор последней пришедшей в этом месяце зарплаты, иначе — план
+ * месяца (`from=plan`, без кнопки).
+ */
+export function incomeBreakdownPath(payments: Payment[], key: string): string {
+  const last = payments
+    .filter((p) => !p.deletedAt && p.kind === 'salary' && p.period === key)
+    .sort((a, b) => b.at.localeCompare(a.at))[0]
+  return last ? salaryBreakdownPath(last.targetId as PersonId, key) : breakdownPath({ from: 'plan' })
+}
+
+/** Разовый разбор двигает деньги со счёта (взносы, досрочка) — нужен счёт. */
+export const breakdownMoves = (mode: MonthBreakdown['mode'], fx: Pick<BreakdownEffects, 'contributions' | 'prepay'>) =>
+  mode === 'once' && (fx.contributions.length > 0 || !!fx.prepay)
+
+/** Счёт разбора по умолчанию: счёт отметки зарплаты, иначе последний счёт участника; undefined — спросить. */
+export function breakdownAccount(
+  payments: Payment[],
+  source: BreakdownSource,
+  slot: PersonId | null | undefined,
+  accounts: Account[],
+): string | null | undefined {
+  if (source.from === 'salary') {
+    const rec = paidFor(payments, 'salary', source.person, source.period)
+    if (rec && rec.accountId !== undefined) return rec.accountId
+  }
+  return slot ? lastAccountFor(payments, slot, accounts) : undefined
 }
 
 /**

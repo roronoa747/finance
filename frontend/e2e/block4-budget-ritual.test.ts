@@ -15,7 +15,7 @@ import {
 import { monthKey } from '../src/lib/dates'
 import { money } from '../src/lib/money'
 import Money from '../src/views/Money.vue'
-import WeekSalary from '../src/views/WeekSalary.vue'
+import Breakdown from '../src/views/Breakdown.vue'
 
 describe('e2e / block-4 — Сквозной сценарий бюджета («Деньги»: Доход, Платежи) и Ритуала высвобождения', () => {
   const storageMap = new Map<string, string>()
@@ -157,15 +157,15 @@ describe('e2e / block-4 — Сквозной сценарий бюджета («
     expect(payments).toContain('Автокредит')
     expect(htmlList).toContain(money(750_000))
 
-    // 8. Сценарий раскладки (бывший /ritual → /week/salary, B2C-13):
+    // 8. Разбор освободившихся денег (бывший /ritual → /week/salary → разбор, B2C-58):
     // А) Нет запланированного снижения
     await router.push('/week/salary')
-    expect(router.currentRoute.value.path).toBe('/week/salary')
+    expect(router.currentRoute.value.path).toBe('/week/breakdown')
 
-    const appRitualEmpty = createSSRApp(WeekSalary)
+    const appRitualEmpty = createSSRApp(Breakdown)
     appRitualEmpty.use(router)
     const htmlRitualEmpty = await renderToString(appRitualEmpty)
-    expect(htmlRitualEmpty).toContain('Сейчас нет запланированных изменений, которые высвобождают деньги')
+    expect(htmlRitualEmpty).toContain('Разбирать нечего.')
 
     // Б) Появляется будущее снижение аренды на 50 000 ₸
     financeStore.householdDoc.obligations[0].versions.push({
@@ -178,13 +178,14 @@ describe('e2e / block-4 — Сквозной сценарий бюджета («
     expect(freed?.delta).toBe(-50_000)
 
     // Рендер активного экрана ритуала
-    const appRitualActive = createSSRApp(WeekSalary)
+    const appRitualActive = createSSRApp(Breakdown)
     appRitualActive.use(router)
     const htmlRitualActive = await renderToString(appRitualActive)
-    expect(htmlRitualActive).toContain('Куда направить 50 000 ₸')
-    expect(htmlRitualActive).toContain('Отпуск в горах')
-    expect(htmlRitualActive).toContain('Досрочно по кредиту')
-    expect(htmlRitualActive).toContain('Качество жизни')
+    // Кольцо на освободившиеся 50 000 ₸ — статьи от «Запаса» (Р-65), «Мечты» среди них.
+    expect(htmlRitualActive).toContain(`из ${money(50_000)}`)
+    expect(htmlRitualActive).toContain('data-chip="dreams"')
+    expect(htmlRitualActive).not.toContain('data-chip="life"')
+    expect(htmlRitualActive).toMatch(/>\s*Разложить\s*</)
 
     // В) Распределение высвобожденных денег: 30 000 в цель, 20 000 на качество жизни
     const goalBefore = financeStore.goals[0]

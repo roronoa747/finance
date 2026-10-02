@@ -16,11 +16,10 @@ import { money } from '@/lib/money'
 import { ARTICLE_COLORS } from '@/lib/palette'
 import {
   ARTICLE_NAMES,
-  breakdownEffects,
-  breakdownFill,
-  lastAccountFor,
+  breakdownAccount,
+  breakdownMoves,
+  breakdownWith,
   monthBreakdown,
-  paidFor,
   payableAccounts,
   recordedBreakdown,
   ringShares,
@@ -41,6 +40,8 @@ const financeStore = useFinanceStore()
 const authStore = useAuthStore()
 const ops = useOperationsStore()
 const member = computed(() => !authStore.isViewer)
+/** План месяца (нажатие на «Доход» без пришедшей зарплаты) только показывается — как у viewer. */
+const canLay = computed(() => member.value && q('from') !== 'plan')
 
 const q = (name: string) => {
   const v = route.query[name]
@@ -53,6 +54,7 @@ const source = computed<BreakdownSource>(() => {
   if (from === 'salary') return { from, person: q('person') as PersonId, period: q('period') || monthKey() }
   if (from === 'rest') return { from, amount: Number(q('amount')) || 0, period: q('period') || monthKey() }
   if (from === 'credit') return { from, creditId: q('credit') }
+  if (from === 'plan') return { from }
   return { from: 'freed' }
 })
 
@@ -68,15 +70,16 @@ const recorded = computed(() => mb.value?.recorded ?? null)
 
 // Первый разбор начинается с «Ваш порядок» (Р-55): порядок не пройден — сначала он, с тем же источником.
 watchEffect(() => {
-  if (member.value && mb.value && !recorded.value && !financeStore.moneySettings.orderedAt) {
+  if (canLay.value && mb.value && !recorded.value && !financeStore.moneySettings.orderedAt) {
     void router.replace({ path: '/week/order', query: route.query })
   }
 })
 
 /** Статьи, выключенные на этот разбор; сначала — выключенные в плане. */
 const off = ref<ArticleKey[]>(mb.value?.articles.filter((a) => !a.on).map((a) => a.key) ?? [])
-const articles = computed(() => (mb.value?.articles ?? []).map((a) => ({ ...a, on: !off.value.includes(a.key) })))
-const fill = computed(() => (mb.value ? breakdownFill(articles.value, mb.value.amount, mb.value.covered, mb.value.expected) : null))
+const laid = computed(() => (mb.value ? breakdownWith(mb.value, off.value) : null))
+const articles = computed(() => laid.value?.articles ?? [])
+const fill = computed(() => laid.value?.fill ?? null)
 const segments = computed(() =>
   mb.value && fill.value
     ? ringShares(articles.value.map((a) => ({ key: a.key, amount: fill.value!.given[a.key] })), mb.value.amount).map((s) => ({
@@ -90,7 +93,7 @@ const picked = ref<ArticleKey | null>(null)
 const selected = computed(() => articles.value.find((a) => a.key === picked.value) ?? articles.value[0] ?? null)
 /** Первое нажатие выбирает статью, второе — выключает или включает (Р-53); viewer — только выбирает. */
 function tap(key: ArticleKey) {
-  if (selected.value?.key === key && member.value) toggle(key)
+  if (selected.value?.key === key && canLay.value) toggle(key)
   else picked.value = key
 }
 function toggle(key: ArticleKey) {
@@ -104,18 +107,12 @@ const selectedStatus = computed(() =>
 )
 
 /* ---------- счёт и «Разложить» ---------- */
-const effects = computed(() => (mb.value && fill.value ? breakdownEffects(fill.value.given, articles.value, mb.value.mode) : null))
 /** Деньги уходят со счёта: взносы и досрочка разового разбора. */
-const moves = computed(() => mb.value?.mode === 'once' && !!effects.value && (effects.value.contributions.length > 0 || !!effects.value.prepay))
+const moves = computed(() => !!mb.value && !!laid.value && breakdownMoves(mb.value.mode, laid.value.effects))
 const chosen = ref<string | null | undefined>(undefined)
 const account = computed<string | null | undefined>(() => {
   if (chosen.value !== undefined) return chosen.value
-  const s = source.value
-  if (s.from === 'salary') {
-    const rec = paidFor(financeStore.payments, 'salary', s.person, s.period)
-    if (rec && rec.accountId !== undefined) return rec.accountId
-  }
-  return authStore.slot ? lastAccountFor(financeStore.payments, authStore.slot, financeStore.accounts) : undefined
+  return breakdownAccount(financeStore.payments, source.value, authStore.slot, financeStore.accounts)
 })
 const accountName = computed(() =>
   account.value === null ? 'не двигать счёт' : (financeStore.accounts.find((a) => a.id === account.value)?.name ?? 'выбрать счёт'),
@@ -124,17 +121,12 @@ const accountOpen = ref(false)
 
 function lay() {
   const m = mb.value
-  if (!m || !effects.value || recorded.value) return
+  if (!m || !laid.value || recorded.value) return
   if (moves.value && account.value === undefined) {
     accountOpen.value = true
     return
   }
-  financeStore.applyBreakdown({
-    record: m.record,
-    total: m.amount,
-    mode: m.mode,
-    effects: effects.value,
-    off: off.value.filter((k) => articles.value.some((a) => a.key === k)),
+  financeStore.layBreakdown(m, off.value, {
     by: authStore.slot ?? 'a',
     accountId: account.value,
     note: source.value.from === 'rest' ? 'из остатка месяца' : 'из зарплаты',
@@ -191,7 +183,7 @@ const emptyText = computed(() => {
   </div>
 
   <!-- РАЗБОР -->
-  <div v-else :class="['flex flex-col gap-3 pt-1', member ? 'pb-28' : '']">
+  <div v-else :class="['flex flex-col gap-3 pt-1', canLay ? 'pb-28' : '']">
     <BreakdownRing :segments="segments" :label="`Остаётся ${money(fill.rest)} из ${money(mb.amount)}`">
       <span class="type-label">Остаётся</span>
       <span class="type-big-md num text-ink"><CountUp :value="fill.rest" :from="mb.amount" :format="money" /></span>
@@ -221,22 +213,22 @@ const emptyText = computed(() => {
     <Card v-if="selected" tight class="flex flex-col gap-2.5">
       <div class="flex items-center justify-between gap-3">
         <b class="text-[17px] text-ink">{{ selected.name }}</b>
-        <Toggle v-if="member" :model-value="selected.on" :label="selected.name" tone="ok" @update:model-value="toggle(selected.key)" />
+        <Toggle v-if="canLay" :model-value="selected.on" :label="selected.name" tone="ok" @update:model-value="toggle(selected.key)" />
       </div>
       <span :class="['type-big-md num', selected.on ? 'text-ink' : 'text-ink-3 line-through']">{{ money(selected.on ? fill.given[selected.key] : (selected.left ?? 0)) }}</span>
       <span class="type-meta">{{ selectedStatus }}</span>
     </Card>
 
-    <Button v-if="member" variant="ghost" size="sm" class="self-center" @click="router.push({ path: '/week/order', query: route.query })">Изменить порядок</Button>
+    <Button v-if="canLay" variant="ghost" size="sm" class="self-center" @click="router.push({ path: '/week/order', query: route.query })">Изменить порядок</Button>
 
     <!-- Док (макет `.dock`): главная кнопка прижата к низу экрана поверх прокрутки. -->
-    <div v-if="member" class="absolute inset-x-0 bottom-0 z-10 flex flex-col gap-1.5 bg-gradient-to-b from-transparent to-canvas to-30% px-4 pb-[18px] pt-3">
+    <div v-if="canLay" class="absolute inset-x-0 bottom-0 z-10 flex flex-col gap-1.5 bg-gradient-to-b from-transparent to-canvas to-30% px-4 pb-[18px] pt-3">
       <button v-if="moves" type="button" class="cursor-pointer self-center type-meta" @click="accountOpen = true">со счёта · {{ accountName }}</button>
       <Button class="w-full" @click="lay">Разложить</Button>
     </div>
   </div>
 
-  <Sheet v-if="member" :open="accountOpen" title="Со счёта" @close="accountOpen = false">
+  <Sheet v-if="canLay" :open="accountOpen" title="Со счёта" @close="accountOpen = false">
     <AccountChoice
       :model-value="account"
       :accounts="payableAccounts(financeStore.accounts)"
