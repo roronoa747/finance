@@ -284,7 +284,7 @@ describe('возврат приёмки 2 п. 3, 4: одна карточка о
     await openWeek(setup)
     expect(page()).toContain('Сначала — ваш порядок')
     expect(page()).not.toContain('Пришла зарплата Алихан?')
-    expect(document.querySelectorAll('h2.type-h2')).toHaveLength(1)
+    expect(document.querySelectorAll('section h2')).toHaveLength(1)
   })
 
   it('возврат приёмки 3 п. 2: день зарплаты 2-го, неразложенные август и сентябрь — 30 сентября «Пришла зарплата Алихан?», карточка августа не заслоняет', async () => {

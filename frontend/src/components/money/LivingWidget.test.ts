@@ -47,7 +47,7 @@ describe('B2C-59: виджеты «Денег» — статусы и лист �
     const living = text(await renderScreen(LivingWidget, '/money'))
     // Кафе +21 п. п. — больше, чем транспорт +8; продукты −1.
     expect(living).toContain('Траты кафе и рестораны выше нормы')
-    expect(living).toContain(`${money(100_000)} из ${plain(150_000)}`)
+    expect(living).toContain(`${money(100_000)} из ${plain(150_000)} · Кафе и рестораны 25 %, обычно ~4 %`)
     // Аренда и три кредита в сентябре, ничего не оплачено.
     expect(text(await renderScreen(CapitalLists, '/money'))).toContain('Платежи 0 из 4 оплачено')
   })
@@ -62,7 +62,7 @@ describe('B2C-59: виджеты «Денег» — статусы и лист �
   it('лист «Траты за сентябрь»: строки по убыванию доли, полоса и черта ориентира, подпись с подсказкой; правка — «Жизнь» и «Траты»', async () => {
     await family()
     const html = await renderScreen(LivingWidget, '/money', undefined, [screenMixin({ open: true })])
-    const t = text(html)
+    const t = text(html.slice(html.indexOf('role="dialog"')))
     expect(t).toContain('Траты за сентябрь')
     expect(t.indexOf('Продукты')).toBeLessThan(t.indexOf('Кафе и рестораны'))
     expect(t.indexOf('Кафе и рестораны')).toBeLessThan(t.indexOf('Транспорт'))

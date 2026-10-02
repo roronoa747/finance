@@ -27,7 +27,7 @@ import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import { draftSummary, partnerHints, picture, pictureTotal, ruleMatchOf, unknownGroups, type UnknownGroup } from '@/lib/statements/model'
 import { readStatementFiles } from '@/lib/statements/read'
 import type { MerchantRule } from '@/lib/statements/types'
-import type { PersonId } from '@/types/finance'
+import type { ArticleKey, PersonId } from '@/types/finance'
 import {
   breakdownAccount,
   breakdownMoves,
@@ -214,12 +214,15 @@ function layUsual(d: Decision) {
   justLaid.value = { total: u.amount, rest: u.fill.rest }
   setTimeout(() => (justLaid.value = null), 2400)
 }
-/** Полоса статей карточки: что получит каждая статья из этой зарплаты (`StackBar`, макет). */
+/** Полоса статей карточки: что получит каждая статья из этой зарплаты, хвост — остаток дорожкой (`StackBar`, макет). */
 const usualSegments = (d: Decision) =>
   d.usual
-    ? ringShares(d.usual.articles.map((a) => ({ key: a.key, amount: d.usual!.fill.given[a.key] })), d.usual.amount)
+    ? ringShares<ArticleKey | 'rest'>(
+        [...d.usual.articles.map((a) => ({ key: a.key, amount: d.usual!.fill.given[a.key] })), { key: 'rest', amount: d.usual.fill.rest }],
+        d.usual.amount,
+      )
         .filter((x) => x.share > 0)
-        .map((x) => ({ ...x, color: ARTICLE_COLORS[x.key] }))
+        .map((x) => ({ ...x, color: x.key === 'rest' ? 'var(--track)' : ARTICLE_COLORS[x.key] }))
     : []
 
 /** Ответ карточки незнакомого продавца: в разборе — до отправки, в неделе — задним числом. */
@@ -380,6 +383,7 @@ onMounted(() => {
       v-else-if="decision"
       :key="decision.key"
       lead
+      :eyebrow="decision.kind === 'allocate'"
       :question="decision.question"
       :meta="decision.kind === 'allocate' ? '' : decision.meta"
       :progress="progress"
@@ -395,7 +399,7 @@ onMounted(() => {
       <CategoryChips v-if="decision.group" :counterparty="!!decision.group.match.counterparty" @choose="(to) => answerUnknown(decision!.group!, to)" />
       <!-- «Пришла зарплата» (макет, вопрос 2): сумма, полоса статей, «как в <месяце> · останется N ₸» -->
       <template v-if="decision.kind === 'allocate'">
-        <span class="-mt-2 type-big num text-ink">{{ money(decision.amount ?? 0) }}</span>
+        <span class="-mt-2.5 type-big num text-ink">{{ money(decision.amount ?? 0) }}</span>
         <StackBar v-if="decision.usual" :segments="usualSegments(decision)" />
         <p class="text-[14px] text-ink-3">
           <template v-if="decision.usual">{{ decision.meta.split(' · ')[0] }} · <b :class="['num font-semibold', decision.usual.fill.short > 0 ? 'text-destructive' : 'text-ok']">{{ decision.meta.split(' · ')[1] }}</b></template>

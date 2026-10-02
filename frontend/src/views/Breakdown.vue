@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watchEffect } from 'vue'
+import { computed, onMounted, ref, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Button from '@/components/ui/Button.vue'
 import AccountChoice from '@/components/AccountChoice.vue'
@@ -40,6 +40,8 @@ const financeStore = useFinanceStore()
 const authStore = useAuthStore()
 const ops = useOperationsStore()
 const member = computed(() => !authStore.isViewer)
+// Факт «Жизни» и «Трат» — по загрузкам выписок: кольцо открывают и напрямую (история, ссылка), не только с «Недели».
+onMounted(() => void ops.loadUploads())
 /** План месяца (нажатие на «Доход» без пришедшей зарплаты) только показывается — как у viewer. */
 const canLay = computed(() => member.value && q('from') !== 'plan')
 

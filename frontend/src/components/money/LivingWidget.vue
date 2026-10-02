@@ -38,11 +38,14 @@ const shares = computed(() => spendShares(totals.value, docCategories.value, key
 const norms = computed(() => spendNorms(totals.value, docCategories.value, ops.uploads, key.value))
 const status = computed(() => spendStatus(shares.value, norms.value.norms, liveSpendCategories(docCategories.value)))
 
-/** Строки листа: цвет — токен раздела, ширина полосы и черта — в одной шкале (макет: половина дорожки ≈ 25 %). */
+/**
+ * Строки листа (доля 0 % — без строки): цвет — токен раздела, ширина полосы и черта — в одной шкале (макет:
+ * половина дорожки ≈ 25 %; самая длинная — с запасом, черта не упирается в край).
+ */
 const rows = computed(() => {
   const cats = liveSpendCategories(docCategories.value)
-  const list = shares.value ?? []
-  const scale = Math.max(50, ...list.map((r) => Math.max(r.share, norms.value.norms[r.categoryId] ?? 0)))
+  const list = (shares.value ?? []).filter((r) => r.share > 0)
+  const scale = Math.max(50, ...list.map((r) => Math.max(r.share, norms.value.norms[r.categoryId] ?? 0) * 1.1))
   return list.map((r) => ({
     ...r,
     name: spendCategoryName(cats, r.categoryId),
@@ -66,7 +69,7 @@ function commit(id: 'life' | 'spend', text: string) {
         <Tag v-if="status" :tone="status.tone">{{ status.text }}</Tag>
       </span>
       <span class="type-num text-[24px] num text-ink">{{ living.spent === null ? '—' : money(living.spent) }}</span>
-      <span class="type-meta num">из {{ plain(living.plan) }}</span>
+      <span class="type-meta num">из {{ plain(living.plan) }}<template v-if="status?.worst"> · {{ status.worst.name }} {{ status.worst.share }} %, обычно ~{{ status.worst.norm }} %</template></span>
     </button>
   </Card>
 

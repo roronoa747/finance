@@ -18,8 +18,10 @@ withDefaults(
     disabled?: boolean
     /** Главное действие экрана (правило 12): рамка `--brand`, как у карточки решения макета «А · Ритуал». */
     lead?: boolean
+    /** Вопрос — подписью (`type-label`), когда главное в карточке — число ниже (макет «как обычно», B2C-58). */
+    eyebrow?: boolean
   }>(),
-  { meta: '', progress: null, actions: null, disabled: false, lead: false },
+  { meta: '', progress: null, actions: null, disabled: false, lead: false, eyebrow: false },
 )
 
 const emit = defineEmits<{
@@ -35,7 +37,7 @@ const emit = defineEmits<{
       <ProgressBar :value="progress.k ? progress.n / progress.k : 0" :height="4" class="flex-1" />
       <span class="num shrink-0">{{ progress.n }} из {{ progress.k }}</span>
     </div>
-    <h2 class="type-h2 text-ink">{{ question }}</h2>
+    <h2 :class="eyebrow ? 'type-label' : 'type-h2 text-ink'">{{ question }}</h2>
     <p v-if="meta" class="text-[14px] text-ink-3">{{ meta }}</p>
     <div v-if="$slots.inner" class="rounded-inner bg-surface-2 px-3.5 py-3 text-[14px]">
       <slot name="inner" />

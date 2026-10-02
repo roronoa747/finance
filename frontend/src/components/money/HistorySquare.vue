@@ -149,7 +149,8 @@ function breakdownLine(a: Allocation) {
       : a.source === 'rest'
         ? breakdownPath({ from: 'rest', amount: a.total, period: a.period })
         : null
-  return { note: `${from} · ${personName(a.by)}`, to, parts: recordedBreakdown(a, financeStore.moneyArticles.map((x) => x.id)).parts }
+  const by = a.source === 'salary' && a.by === a.sourceId ? '' : ` · ${personName(a.by)}`
+  return { note: `${from}${by}`, to, parts: recordedBreakdown(a, financeStore.moneyArticles.map((x) => x.id)).parts }
 }
 
 /* ------------------ Листы ------------------ */

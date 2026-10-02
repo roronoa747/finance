@@ -2887,22 +2887,24 @@ export const NORM_SLACK = 3
 
 /**
  * Тег «Трат»: раздел с наибольшим превышением ориентира — «продукты выше нормы» (превышение — больше
- * `NORM_SLACK` п. п.), иначе «в норме»; без выписок за месяц — null.
+ * `NORM_SLACK` п. п.), иначе «в норме»; без выписок за месяц — null. `worst` — для строки под суммой
+ * (макет: «Продукты 31 %, обычно ~22 %»).
  */
 export function spendStatus(
   shares: SpendShare[] | null,
   norms: Record<string, number>,
   spendCategories: Pick<SpendCategory, 'id' | 'name'>[],
-): StatusTag | null {
+): (StatusTag & { worst?: { name: string; share: number; norm: number } }) | null {
   if (!shares) return null
   const worst = shares
     .filter((r) => r.categoryId in norms)
     .map((r) => ({ id: r.categoryId, over: r.share - norms[r.categoryId] }))
     .filter((x) => x.over > NORM_SLACK)
     .sort((a, b) => b.over - a.over)[0]
-  return worst
-    ? { text: `${spendCategoryName(spendCategories, worst.id).toLowerCase()} выше нормы`, tone: 'warn' }
-    : { text: 'в норме', tone: 'ok' }
+  if (!worst) return { text: 'в норме', tone: 'ok' }
+  const name = spendCategoryName(spendCategories, worst.id)
+  const share = shares.find((r) => r.categoryId === worst.id)!.share
+  return { text: `${name.toLowerCase()} выше нормы`, tone: 'warn', worst: { name, share, norm: norms[worst.id] } }
 }
 
 export type DecisionKind = 'match' | 'unknown' | 'keep' | 'allocate' | 'salary' | 'freed' | 'monthEnd'
@@ -3603,7 +3605,7 @@ export function breakdownAccount(
  * Доли кольца разбора (B2C-57): сектор статьи — её сумма от всей суммы, по порядку; хвост до
  * круга — «Остаётся». Тот же вид долей 0…1, что у `StackBar`.
  */
-export function ringShares(parts: { key: ArticleKey; amount: number }[], total: number): { key: ArticleKey; share: number }[] {
+export function ringShares<K extends string = ArticleKey>(parts: { key: K; amount: number }[], total: number): { key: K; share: number }[] {
   return parts.map((p) => ({ key: p.key, share: total > 0 ? Math.max(0, p.amount) / total : 0 }))
 }
 

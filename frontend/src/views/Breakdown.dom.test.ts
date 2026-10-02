@@ -6,6 +6,7 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 import { routes } from '@/router'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
+import { apiClient } from '@/api/client'
 import { money } from '@/lib/money'
 import type { SyncDoc } from '@/types/finance'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
@@ -77,6 +78,23 @@ const chip = (key: string) => document.querySelector(`[data-chip="${key}"]`) as 
 const button = (label: string) => [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === label)
 
 describe('B2C-57: разбор кольцом в браузере', () => {
+  it('B2C-60: открытое напрямую кольцо само подтягивает загрузки выписок — у «Жизни» факт «по выпискам», а не подсказка', async () => {
+    const uploads = vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({
+      uploads: [{ id: 'u1', slot: 'a', bank: 'kaspi', period_from: '2026-10-01', period_to: '2026-10-11', ops_count: 3, created_at: T0 }],
+    })
+    await open({
+      spendTotals: [{ id: 'a:month:2026-10:sc_food', by: 'a', kind: 'month', period: '2026-10', categoryId: 'sc_food', amount: 64_000, ops: 3, updatedAt: T0 }],
+    })
+    expect(uploads).toHaveBeenCalled()
+    await vi.waitFor(async () => {
+      chip('life').click()
+      await nextTick()
+      expect(document.body.textContent?.replace(/s+/g, ' ')).toContain(`по выпискам ${money(64_000).replace(/s+/g, ' ')}`)
+    })
+    uploads.mockRestore()
+  })
+
+
   it('первое нажатие на чип выбирает статью, второе — выключает: «Остаётся» 47 000 → 177 000', async () => {
     await open()
     expect(ring()).toContain(`Остаётся ${money(47_000)}`)

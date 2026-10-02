@@ -200,7 +200,8 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     expect(pic.total).toBe(opsWeek + aruna)
     const html = text(await screen(pinia, Statements, '/week'))
     expect(html).toContain(`${weekRangeLabel(pic.range)} ${text(money(pic.total))}`)
-    expect(html).toContain('1 из 2')
+    // Два продавца и «Пришла зарплата» Ильяса (Блок 11: зарплата демо пришла сегодня и не разобрана).
+    expect(html).toContain('1 из 3')
     expect(html).toContain('ИП Абенова — куда отнести?')
     // «История» демо — те же операции недели.
     expect(text(await screen(pinia, Money, '/money/history'))).toContain('ИП Абенова')

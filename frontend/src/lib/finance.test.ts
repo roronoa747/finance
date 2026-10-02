@@ -3513,8 +3513,10 @@ describe('B2C-59: строки-статусы «Денег», доли трат 
     const norms = { sc_food: 30, sc_cafe: 10 }
     const row = (categoryId: string, share: number) => ({ categoryId, amount: share * 1_000, share })
     // Продукты +10, кафе +15 — кафе.
-    expect(spendStatus([row('sc_food', 40), row('sc_cafe', 25)], norms, [])).toEqual({ text: 'кафе и рестораны выше нормы', tone: 'warn' })
-    expect(spendStatus([row('sc_food', 40), row('sc_cafe', 12)], norms, [])).toEqual({ text: 'продукты выше нормы', tone: 'warn' })
+    expect(spendStatus([row('sc_food', 40), row('sc_cafe', 25)], norms, [])).toEqual({
+      text: 'кафе и рестораны выше нормы', tone: 'warn', worst: { name: 'Кафе и рестораны', share: 25, norm: 10 },
+    })
+    expect(spendStatus([row('sc_food', 40), row('sc_cafe', 12)], norms, [])).toMatchObject({ text: 'продукты выше нормы', worst: { share: 40, norm: 30 } })
     // +3 — ещё норма; раздела без ориентира статус не касается.
     expect(spendStatus([row('sc_food', 33), row('sc_people', 60)], norms, [])).toEqual({ text: 'в норме', tone: 'ok' })
     // Имя — как назвала семья.
