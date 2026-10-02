@@ -9,6 +9,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
 import Statements from './Statements.vue'
+import type { Payment } from '@/types/finance'
 
 /**
  * B2C-15 «Тесты»: карточка решения → запись. Кнопки карточки сопоставления на «Неделе» ведут
@@ -208,6 +209,24 @@ describe('возврат приёмки п. 2 · B2C-58: зарплата, от�
     await tap('Изменить')
     await vi.waitFor(() => expect(second.router.currentRoute.value.fullPath).toBe(RING))
     expect(second.finance.allocations).toEqual([])
+  })
+
+  it('«как обычно» двигает деньги, а счёт неизвестен — не пишет, ведёт на кольцо (там спросят счёт)', async () => {
+    // Стор всегда пишет `accountId` (null — «не двигать»); без ключа отметка приходит только из документа
+    // старого клиента — страховка (ревью frontend Б11, Н-2). Прошлых счетов нет; «Запас» 50 000 — взнос в
+    // копилку, деньги уходят со счёта.
+    const { finance, router } = await openWeek((finance, store) => {
+      salaryDay(finance, store)
+      const legacy = { id: 'p-old', kind: 'salary', targetId: 'a', period: '2026-09', amount: 500_000, by: 'a', source: 'statement', opId: 'op-2', at: '2026-09-10T07:00:00.000Z', updatedAt: '' }
+      finance.householdDoc.payments = [legacy as unknown as Payment]
+      ordered(finance)
+      finance.householdDoc.moneyArticles!.push({ id: 'reserve', order: 3, on: true, amount: 50_000, updatedAt: '' })
+    })
+    expect(brandButtons()).toEqual(['Разложить как обычно'])
+    await tap('Разложить как обычно')
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe(RING))
+    expect(finance.allocations).toEqual([])
+    expect(page()).not.toContain('Разложено')
   })
 
   it('viewer — карточки нет', async () => {
