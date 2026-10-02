@@ -7,6 +7,8 @@ import { PhPlus } from '@phosphor-icons/vue'
  * Нижняя навигация (DESIGN.md §2, §5): одна капсула с вкладками и круглой кнопкой «+»
  * бренда справа. Активная вкладка — `aria-current="page"`, иконка залита. Снизу — 8 px: зону под
  * полоской «домой» iPhone уже оставляет сам (смоук владельца Блока 9 — 24 px съедали экран).
+ * Капсула парит над контентом (`absolute`, тень `shadow-lift`): карточки уходят под неё, серой
+ * полосы фона вокруг нет (решение владельца на смоуке Блока 9, 2026-10-02).
  */
 export type TabItem = { to: string; label: string; icon: Component; active: boolean }
 
@@ -23,8 +25,8 @@ const emit = defineEmits<{ (e: 'plus'): void }>()
 </script>
 
 <template>
-  <nav class="relative flex items-center gap-1 px-4 pb-2 pt-2.5 select-none" aria-label="Разделы">
-    <div class="absolute inset-x-4 top-2.5 h-[58px] rounded-pill border border-card-border bg-surface" aria-hidden="true" />
+  <nav class="absolute inset-x-0 bottom-0 z-10 flex items-center gap-1 px-4 pb-2 pt-2.5 select-none" aria-label="Разделы">
+    <div class="absolute inset-x-4 top-2.5 h-[58px] rounded-pill border border-card-border bg-surface shadow-lift" aria-hidden="true" />
     <RouterLink
       v-for="t in items"
       :key="t.to"
