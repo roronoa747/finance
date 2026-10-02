@@ -460,6 +460,45 @@ describe('PV-10: модалка кредита и калькулятор дос�
     expect(html).toContain('Платежей осталось')
   })
 
+  it('хвост критика Б9 (владелец 2026-10-02): закрытый досрочкой кредит — строка «Закрытые · 1» внизу «Платежей» → лист → лист кредита; без закрытых строки нет', async () => {
+    const closeOld = (store: ReturnType<typeof useFinanceStore>) => {
+      store.householdDoc.credits.push({ id: 'old', name: 'Старый кредит', note: '', principal: 120_000, principalSetAt: T0, annualRate: 0.2, payment: 20_000, day: 20, updatedAt: T0 })
+      store.householdDoc.payments = [
+        { id: 'pp', kind: 'prepay', targetId: 'old', period: '2026-09', amount: 120_000, principal: 120_000, accountId: 'card', by: 'a', at: '2026-09-03T05:00:00.000Z', updatedAt: '2026-09-03T05:00:00.000Z' },
+      ]
+    }
+    const view = (state: Record<string, unknown> = {}, act?: (s: Record<string, unknown>) => void) =>
+      renderScreen(Money, '/money', undefined, [screenMixin(state, act)])
+    const openOld = (s: Record<string, unknown>) => (s.openClosedCredit as (id: string) => void)('old')
+
+    // Закрытых нет — строки нет.
+    await family()
+    expect(await view()).not.toContain('Закрытые')
+
+    const store = await family()
+    closeOld(store)
+    expect(store.credits.find((c) => c.id === 'old')!.principal).toBe(0)
+    const html = await view()
+    const payments = html.slice(html.indexOf('>Платежи<'))
+    expect(payments).toMatch(/<button[^>]*>\s*<span>Закрытые · 1<\/span>/)
+    // В самом списке «Платежей» закрытого нет — только в листе.
+    expect(payments.slice(0, payments.indexOf('Закрытые · 1'))).not.toContain('Старый кредит')
+    const sheet = await view({ closedOpen: true })
+    expect(sheet).toContain('Старый кредит')
+    expect(sheet).toContain('долг закрыт')
+    // Строка листа → лист кредита (как по адресу ?credit=): удаление участнику.
+    const credit = await view({}, openOld)
+    expect(credit).toContain('Старый кредит')
+    expect(credit).toContain('Удалить кредит')
+
+    // Viewer: строка и лист видны, лист кредита — только чтение.
+    closeOld(await family('viewer'))
+    expect(await view()).toContain('Закрытые · 1')
+    const ro = await view({}, openOld)
+    expect(ro).toContain('Старый кредит')
+    expect(ro).not.toContain('Удалить кредит')
+  })
+
   it('калькулятор: «долг не закрывается» в шапке и подсказка без суммы', async () => {
     await family()
     const html = await render('/capital?payoff=card-debt')

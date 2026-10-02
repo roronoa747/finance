@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { PhBank, PhCoins, PhCreditCard, PhFolderSimple, PhPlus, PhWallet } from '@phosphor-icons/vue'
+import { PhBank, PhCaretRight, PhCoins, PhCreditCard, PhFolderSimple, PhPlus, PhWallet } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain, rateField } from '@/lib/money'
@@ -83,6 +83,15 @@ const lines = computed<Line[]>(() => {
     ...own.map((o): Line => ({ id: o.id, day: o.day, item: { kind: 'obligation', obligation: o } })),
   ].sort((a, b) => a.day - b.day)
 })
+
+// Закрытые кредиты (остаток 0, платежа в этом месяце нет) — тихой строкой внизу «Платежей» → лист
+// списком → лист кредита: история, график, удаление (решение владельца 2026-10-02, хвост критика Б9).
+const closed = computed(() => credits.value.filter((c) => c.principal <= 0 && !lines.value.some((l) => l.id === c.id)))
+const closedOpen = ref(false)
+function openClosedCredit(id: string) {
+  closedOpen.value = false
+  selectedCreditId.value = id
+}
 
 /* ------------------ Листы ------------------ */
 const selectedAccountId = ref<string | null>(null)
@@ -203,6 +212,15 @@ watch(queryModalOpen, (open) => {
       @click="selectedGroupId = g.id"
     />
     <div v-if="!lines.length && !groups.length" class="px-4 py-6 text-center text-[13px] text-ink-3">Платежей пока нет</div>
+    <button
+      v-if="closed.length"
+      type="button"
+      class="flex w-full cursor-pointer items-center justify-between gap-3 border-t border-line px-4 py-2.5 text-left text-[13px] text-ink-3 hover:bg-surface-2"
+      @click="closedOpen = true"
+    >
+      <span>Закрытые · {{ closed.length }}</span>
+      <PhCaretRight :size="14" class="shrink-0" />
+    </button>
     <div v-if="!authStore.isViewer" class="border-t border-line px-2 py-1.5">
       <Button variant="ghost" class="px-2.5" @click="addOpen = true">
         <PhPlus :size="16" weight="bold" /> Добавить
@@ -223,6 +241,13 @@ watch(queryModalOpen, (open) => {
         <PhFolderSimple :size="16" /> Группа подписок
       </Button>
     </div>
+  </Sheet>
+
+  <!-- Закрытые кредиты: строка → лист кредита (viewer — только чтение, как сам лист кредита) -->
+  <Sheet :open="closedOpen" title="Закрытые" @close="closedOpen = false">
+    <Card flush>
+      <Row v-for="c in closed" :key="c.id" :title="c.name" note="долг закрыт" clickable @click="openClosedCredit(c.id)" />
+    </Card>
   </Sheet>
 
   <AccountSheet :account-id="selectedAccountId" @close="selectedAccountId = null" />
