@@ -10,7 +10,7 @@ import { assignIds } from '../src/lib/statements/model'
 import type { Operation, ParsedStatement } from '../src/lib/statements/types'
 import Statements from '../src/views/Statements.vue'
 import { money, plain } from '../src/lib/money'
-import { budgetAmounts, creditBalance, duesTotal, freeByFact, monthDues, salaryAsk } from '../src/lib/finance'
+import { budgetAmounts, creditBalance, duesTotal, freeByFact, monthDues, salaryAsk, type Decision } from '../src/lib/finance'
 import { planFamilyDoc, T0 } from '../src/test/planFamily'
 import type { Payment, SyncDoc } from '../src/types/finance'
 import type { SpendTotal } from '../src/lib/statements/types'
@@ -56,6 +56,20 @@ async function phone(server: FakeServer, st: FakeStatements, slot: 'a' | 'b', ro
   await ops.loadUploads(client)
   await ops.pull(client)
   return { pinia, client, user, store: finance }
+}
+
+/**
+ * Первое решение «Недели» (пивот 3, Р-42/Р-43: на «Мечтах» решений нет) — первое в очереди экрана
+ * (`decisionQueue`, B2C-49); у «разложить?» — вопрос карточки и адрес раскладки.
+ */
+async function weekDecision(p: Phone) {
+  let vm: Record<string, any> = {}
+  const grab = { created(this: any) { if ('decision' in this.$.setupState) vm = this.$.setupState } }
+  await screen(p.pinia, Statements, '/week', undefined, [grab])
+  const d = vm.decision as Decision | null | undefined
+  if (!d) return null
+  const allocate = d.kind === 'allocate'
+  return { kind: d.kind as string, question: allocate ? d.question : undefined, to: allocate ? d.to : undefined, match: d.match }
 }
 
 const total = (by: 'a' | 'b', kind: 'week' | 'month', period: string, categoryId: string, amount: number): SpendTotal => ({
@@ -107,24 +121,17 @@ describe('e2e / B2C Блок 3 — часть 1: главный «Мечты» (
     vi.unstubAllGlobals()
   })
 
-  it('герой 7 % и «будет вашей в июле 2030»; картина недели по обоим; «Свободно» сходится с ручным расчётом; решение — незнакомый продавец → /week', async () => {
+  // Пивот 3 (B2C-48, Р-42/Р-43): «Мечты» — мечта по центру и одна строка «Свободно · до зарплаты»;
+  // картина недели и решения — на «Неделе». Суммы те же.
+  it('мечта 7 % · июль 2030; строка «Свободно» сходится с ручным расчётом; картина недели и решение — на «Неделе»', async () => {
     const A = await phone(server, st, 'a')
     const html = await screen(A.pinia, Dreams, '/')
 
-    // Герой: 200 000 / 3 000 000 = 7 %; по 60 000 в месяц — 47 взносов с сентября 2026 → июль 2030.
-    expect(html).toContain('До мечты')
-    expect(html).toContain('7 %')
-    // «·» держится за предыдущее слово, месяц с годом — одним куском (смоук владельца, п. 4).
-    expect(html).toContain(`Машина${NBSP}· 200 000 из ${money(3_000_000)}${NBSP}· будет вашей в июле${NBSP}2030`)
+    // Мечта: 200 000 / 3 000 000 = 7 %; по 60 000 в месяц — 47 взносов с сентября 2026 → июль 2030.
+    expect(html).toContain(`7${NBSP}%`)
+    expect(html).toContain(`Машина${NBSP}· июль${NBSP}2030`)
 
-    // Неделя: 62 000 + 20 000 продукты, 28 000 кафе, 10 000 не разобрано = 120 000, обе выписки.
-    expect(html).toContain('Эта неделя · 14–20 сентября')
-    expect(html).toContain(money(120_000))
-    expect(html).toContain('по выпискам обоих')
-    expect(html).toContain(money(82_000))
-    expect(html).toContain(`не разобрано ${money(10_000)}`)
-
-    // «Свободно до конца месяца» руками: доход 1 200 000 − платежи сентября (аренда 220 000 +
+    // «Свободно» руками: доход 1 200 000 − платежи сентября (аренда 220 000 +
     // кредит 58 000 + кредитка 25 000 + рассрочка 20 000 = 323 000) − взносы в цели 130 000 −
     // траты по выпискам (продукты 224 000 + не разобрано 40 000; кредит 58 000 уже в плане) = 483 000.
     setActivePinia(A.pinia)
@@ -133,33 +140,33 @@ describe('e2e / B2C Блок 3 — часть 1: главный «Мечты» (
     expect(duesTotal(monthDues(state, '2026-09'))).toBe(323_000)
     expect(budgetAmounts(state).d3).toBe(130_000)
     expect(html).toContain(money(483_000))
-    // Без «· Дана» в конце: имя без падежа переносилось отдельной строкой с точки (смоук владельца).
-    expect(html).toContain(`по факту выписок обоих${NBSP}· 3${NBSP}дня до зарплаты`)
+    expect(html).toContain(`${NBSP}· до зарплаты 3${NBSP}дня`)
+    // Недельного на «Мечтах» нет.
+    for (const w of ['Эта неделя', 'Не разобрано', 'Пришла зарплата', money(120_000)]) expect(html).not.toContain(w)
 
-    // Ближайшее решение — незнакомый продавец недели (10 000 ₸), ведёт на «Неделю».
-    expect(html).toContain('Не разобрано: 1 продавец')
-    expect(html).toContain(`${money(10_000)} за неделю`)
-    expect(html).toContain('>Разобрать<')
-    let vm: Record<string, any> = {}
-    const grab = { created(this: any) { if ('onPrimary' in this.$.setupState) vm = this.$.setupState } }
-    await screen(A.pinia, Dreams, '/', undefined, [grab])
-    expect(vm.shown?.kind).toBe('unknown')
-    expect(vm.shown?.to).toBe('/week')
+    // «Неделя»: 62 000 + 20 000 продукты, 28 000 кафе, 10 000 не разобрано = 120 000; первое решение —
+    // незнакомый продавец недели (10 000 ₸).
+    const week = await screen(A.pinia, Statements, '/week')
+    expect(week).toContain(money(120_000))
+    expect(week).toContain(`Не разобрано · <span class="num">${money(10_000)}</span>`)
+    expect(week).toContain('IP SERIKOV — куда отнести?')
+    // Суммы разделов (82 000 продукты) — в листе «Разделы за сентябрь» (B2C-50, правило 12: таблица свёрнута).
+    expect(await screen(A.pinia, Statements, '/week', undefined, [screenMixin({ sheet: 'sections' })])).toContain(money(82_000))
 
     // У Даны незнакомых нет (операции личные) — её решение: зарплата 20-го через 3 дня → «пришла?».
     const B = await phone(server, st, 'b')
     const htmlB = await screen(B.pinia, Dreams, '/')
     expect(htmlB).toContain(money(483_000))
-    expect(htmlB).not.toContain('Не разобрано:')
-    expect(htmlB).toContain('Пришла зарплата Дана?')
+    expect(htmlB).not.toContain('Пришла зарплата')
+    expect(await screen(B.pinia, Statements, '/week')).toContain('Пришла зарплата Дана?')
 
-    // viewer видит герой и цифры, но без решений и «Новой мечты».
+    // viewer видит мечту и цифры, но без решений и «+ Новая».
     const V = await phone(server, st, 'b', 'viewer')
     const htmlV = await screen(V.pinia, Dreams, '/')
-    expect(htmlV).toContain('7 %')
+    expect(htmlV).toContain(`7${NBSP}%`)
     expect(htmlV).toContain(money(483_000))
     expect(htmlV).not.toContain('Пришла зарплата')
-    expect(htmlV).not.toContain('Новая мечта')
+    expect(htmlV).not.toContain('+ Новая')
   })
 })
 
@@ -215,8 +222,9 @@ describe('e2e / B2C Блок 3 — часть 2: сопоставление вы
     const week = await screen(A.pinia, Statements, '/week')
     expect(week).toContain('Похоже, это платёж по Автокредит — отметить?')
     expect(opsA.pendingMatches).toHaveLength(1)
-    // На главном — та же карточка первой (незнакомых нет: продавец узнан словарём).
-    expect(await screen(A.pinia, Dreams, '/')).toContain('Похоже, это платёж по Автокредит — отметить?')
+    // Первое решение «Недели» — сопоставление (незнакомых нет: продавец узнан словарём); на «Мечтах» решений нет.
+    expect(await weekDecision(A)).toMatchObject({ kind: 'match' })
+    expect(await screen(A.pinia, Dreams, '/')).not.toContain('Похоже, это платёж')
 
     await opsA.acceptMatch(opsA.pendingMatches[0], A.client)
     await A.store.syncHousehold(A.client)
@@ -460,7 +468,7 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     expect(A.store.obligations.find((o) => o.name === 'Яндекс Плюс')).toMatchObject({ category: 'd4' })
     await screen(A.pinia, Start, '/start/questions', undefined, [act('skipRest')])
 
-    // Картина июля — итоги своей выписки; «Свободно в месяц» — по плану (доход минус кредит, Red и подписка).
+    // Картина июля — итоги своей выписки; «Остаток по плану» (доход минус кредит, Red и подписка).
     const month = await screen(A.pinia, Start, '/start/month')
     const mine = A.store.householdDoc.spendTotals!.filter((t) => t.by === 'a' && t.kind === 'month' && t.period === '2025-07')
     expect(month).toContain('Ваш июль')
@@ -599,9 +607,9 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     let queued: string[] = []
     await screen(B.pinia, Statements, '/week', undefined, [
       screenMixin({}, (s) => {
-        const queue = s.unknownQueue as Group[]
+        const queue = (s.queue as Decision[]).filter((d) => d.kind === 'unknown').map((d) => d.group as Group)
         queued = queue.map((g) => g.label)
-        ;(s.choose as (g: Group, v: string) => void)(queue.find((g) => g.label === 'Перевод с карты на карту')!, 'sc_people')
+        ;(s.answerUnknown as (g: Group, to: { categoryId: string }) => void)(queue.find((g) => g.label === 'Перевод с карты на карту')!, { categoryId: 'sc_people' })
       }),
     ])
     expect(queued).toContain('Перевод с карты на карту')
@@ -609,7 +617,7 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     await ops.flush(B.client)
     const rule = () => B.store.merchantRules.filter((r) => !r.deletedAt && r.match.merchant === 'перевод с карты на карту')
     expect(rule().map((r) => r.to)).toEqual([{ payment: { kind: 'obligation', targetId: ob.id, categoryId: 'sc_subscriptions', restCategoryId: 'sc_people' } }])
-    await screen(B.pinia, Statements, '/week', undefined, [screenMixin({}, (s) => void (queued = (s.unknownQueue as Group[]).map((g) => g.label)))])
+    await screen(B.pinia, Statements, '/week', undefined, [screenMixin({}, (s) => void (queued = (s.queue as Decision[]).filter((d) => d.kind === 'unknown').map((d) => (d.group as Group).label)))])
     expect(queued).not.toContain('Перевод с карты на карту')
     const julyTransfers = () => ops.all
       .filter((o) => o.merchant === 'Перевод с карты на карту' && o.amount < 0 && o.date.startsWith('2025-07'))
@@ -812,7 +820,7 @@ describe('e2e / B2C Блок 3 — часть 6 (приёмка): повтор �
     expect(opsA.pendingMatches).toEqual([])
 
     // «Остались деньги?» — карточкой первой по «Разложить» с главного.
-    expect(await screen(A.pinia, Statements, '/week?rest=1')).toContain('Остались деньги с')
+    expect(await screen(A.pinia, Statements, '/week')).toContain('Остались деньги с')
     const path = '/week/salary?from=rest&amount=100000&period=2026-09'
     await screen(A.pinia, WeekSalary, path, undefined, [
       screenMixin({}, (s) => {
@@ -824,12 +832,12 @@ describe('e2e / B2C Блок 3 — часть 6 (приёмка): повтор �
     expect(A.store.allocations).toHaveLength(1)
     expect(A.store.allocations[0]).toMatchObject({ source: 'rest', sourceId: '2026-09', period: '2026-09', by: 'a', parts: [{ target: 'trip', amount: 100_000 }] })
     expect(A.store.goals.find((g) => g.id === 'trip')!.have).toBe(150_000)
-    expect(await screen(A.pinia, Statements, '/week?rest=1')).not.toContain('Остались деньги с')
+    expect(await screen(A.pinia, Statements, '/week')).not.toContain('Остались деньги с')
 
     // B: вопрос закрыт записью семьи, а не ответом на телефоне A.
     await A.store.syncHousehold(A.client)
     await B.store.pullHousehold(B.client)
-    expect(await screen(B.pinia, Statements, '/week?rest=1')).not.toContain('Остались деньги с')
+    expect(await screen(B.pinia, Statements, '/week')).not.toContain('Остались деньги с')
     expect(await screen(B.pinia, Dreams, '/')).not.toContain('Остались деньги с')
     const partner = await screen(B.pinia, WeekSalary, path)
     expect(partner).toContain('Уже разложено')
@@ -872,13 +880,7 @@ describe('e2e / B2C Блок 3 — часть 7 (возврат приёмки �
     ])
   }
 
-  /** Решение главного экрана (как в части 1): kind и адрес. */
-  async function decision(p: Phone) {
-    let vm: Record<string, any> = {}
-    const grab = { created(this: any) { if ('onPrimary' in this.$.setupState) vm = this.$.setupState } }
-    await screen(p.pinia, Dreams, '/', undefined, [grab])
-    return vm.shown as { kind: string; to: string | null; question: string } | null
-  }
+  const decision = weekDecision
 
   beforeEach(() => {
     vi.stubGlobal('localStorage', {
@@ -916,7 +918,7 @@ describe('e2e / B2C Блок 3 — часть 7 (возврат приёмки �
           const s = this.$.setupState
           if (!('acceptMatch' in s) || router) return
           router = this.$router
-          s.acceptMatch(s.match)
+          s.acceptMatch(s.decision.match)
         },
       },
     ])
@@ -963,7 +965,7 @@ describe('e2e / B2C Блок 3 — часть 7 (возврат приёмки �
           const s = this.$.setupState
           if (!('acceptMatch' in s) || router) return
           router = this.$router
-          s.acceptMatch(s.match)
+          s.acceptMatch(s.decision.match)
         },
       },
     ])
@@ -1142,11 +1144,9 @@ describe('e2e / B2C Блок 3 — часть 9 (четвёртая приёмк
   const salaryButtons = (html: string) =>
     [...html.matchAll(/<button[^>]*>([\s\S]*?)<\/button>/g)].map((x) => text(x[1]).trim()).filter((t) => t === 'Пришла зарплата')
 
+  /** «Мечты» (без решений — пивот 3) и первое решение «Недели». */
   async function decision(p: Phone) {
-    let vm: Record<string, any> = {}
-    const grab = { created(this: any) { if ('onPrimary' in this.$.setupState) vm = this.$.setupState } }
-    const html = await screen(p.pinia, Dreams, '/', undefined, [grab])
-    return { html, shown: vm.shown as { kind: string; to: string | null; question: string } | null }
+    return { html: await screen(p.pinia, Dreams, '/'), shown: await weekDecision(p) }
   }
 
   // Окно «Пришла?» октябрьской зарплаты (`salaryOpen`: за SALARY_EARLY_DAYS = 3 дня до дня, до дня включительно).
@@ -1199,7 +1199,7 @@ describe('e2e / B2C Блок 3 — часть 9 (четвёртая приёмк
         const moneyHtml = await screen(A.pinia, Money, '/money')
 
         if (asked) {
-          expect(home.shown, `${day}: главный`).toMatchObject({ kind: 'salary', question: 'Пришла зарплата Ильяс?', to: '/week' })
+          expect(home.shown, `${day}: «Неделя»`).toMatchObject({ kind: 'salary' })
           for (const [name, html] of [['главный', home.html], ['«Неделя»', week], ['«Деньги»', moneyHtml]] as const) {
             expect(text(html), `${day}: ${name} — без «разложить?»`).not.toContain('разложить?')
           }
@@ -1207,7 +1207,7 @@ describe('e2e / B2C Блок 3 — часть 9 (четвёртая приёмк
           expect(brand(week), `${day}: «Неделя» — одна брендовая`).toEqual(['Пришла зарплата'])
           expect(salaryButtons(moneyHtml), `${day}: «Деньги»`).toEqual(['Пришла зарплата'])
         } else {
-          expect(home.shown, `${day}: главный`).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата Ильяс — разложить?', to: september })
+          expect(home.shown, `${day}: «Неделя»`).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата Ильяс — разложить?', to: september })
           expect(text(week), `${day}: «Неделя»`).toContain('Пришла зарплата Ильяс — разложить?')
           expect(text(week), `${day}: «Неделя»`).not.toContain('Пришла зарплата Ильяс?')
           expect(salaryButtons(moneyHtml), `${day}: «Деньги»`).toEqual([])

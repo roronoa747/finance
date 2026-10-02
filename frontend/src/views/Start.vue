@@ -411,7 +411,7 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
     <!-- Шаг 3: картина месяца -->
     <template v-else-if="step === 'month'">
       <WeekCard :total="picture.total" :segments="segments" :unknown="picture.unknown" :unknown-share="picture.unknownShare" :rows="5" />
-      <FreeCard :amount="free" label="Свободно в месяц" note="Из свободного и складывается мечта — дальше выберем её." size="md" />
+      <FreeCard :amount="free" note="Из него и складывается мечта — дальше выберем её." />
       <div class="mt-auto pt-2">
         <Button size="lg" class="w-full" @click="go('dream')">Дальше</Button>
       </div>

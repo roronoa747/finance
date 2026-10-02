@@ -308,7 +308,7 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(p.dueTotal).toBe(58_000)
       let html = text(await renderScreen(Money, '/money'))
       expect(html).toContain('До зарплаты 8 дней')
-      expect(html).toContain(`1 списание · ${plain(58_000)} ₸ · остаётся ${plain(p.shortfall)} ₸`)
+      expect(html).toContain(`1 списание · ${plain(58_000)} ₸ · останется на счетах ${plain(p.shortfall)} ₸`)
       expect(html).toContain('хватает')
       // «Впереди», меню входов и «Свободно до конца месяца» ушли (Р-31, Р-32).
       for (const gone of ['Впереди', 'Календарь', 'История и итоги', 'Свободно до конца месяца']) expect(html).not.toContain(gone)
@@ -372,7 +372,9 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(html).toContain(money(1_200_000))
       expect(html).toContain(`нагрузка ${pct(a.d1 + a.d2, a.income)} %`)
       expect(html).toContain('нагрузка 27 %')
-      for (const t of ['обязательное 27 %', 'мечты 11 %', 'траты 13 %', 'свободно 50 %']) expect(html).toContain(t)
+      for (const t of ['обязательное 27 %', 'мечты 11 %', 'траты 13 %', 'остаток по плану 50 %']) expect(html).toContain(t)
+      // B2C-51 (Р-47): «Свободно» с числом — только на «Мечтах»; доля та же (`incomeSplit`), слово — «остаток по плану».
+      expect(html.toLowerCase()).not.toContain('свободно')
       expect(html).toContain(`Ильяс 10-го ${money(700_000)}`)
       expect(html).toContain(`Аруна 20-го ${money(500_000)}`)
       expect(html).not.toContain('План не сходится')

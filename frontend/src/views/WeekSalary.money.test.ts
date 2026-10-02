@@ -259,7 +259,7 @@ describe('WeekSalary — денежные ветки раскладки', () => 
         total = s.total as number
       }),
     ])
-    expect(html).toContain(`Зарплата пришла — ${money(700_000)} · свободно ${money(total)}`)
+    expect(html).toContain(`Зарплата пришла — ${money(700_000)} · к раскладке ${money(total)}`)
     expect(html).not.toContain('Свободно из неё')
 
     const empty = await renderScreen(WeekSalary, '/week/salary')

@@ -22,7 +22,7 @@ const emit = defineEmits<{ (e: 'click'): void }>()
   <button
     type="button"
     :aria-pressed="selected"
-    class="relative isolate flex h-[150px] min-w-0 flex-1 flex-col overflow-hidden rounded-tile p-3 text-left transition-transform active:scale-[0.98] cursor-pointer"
+    class="relative isolate flex h-[150px] min-w-0 flex-1 flex-col overflow-hidden rounded-tile p-3 text-left press cursor-pointer"
     :class="[
       camera
         ? 'items-center justify-center gap-1.5 border border-dashed border-line-strong bg-surface text-center text-ink-2'

@@ -220,7 +220,7 @@ const unmarkNote = computed(() => {
       <Field label="Сумма, ₸">
         <NumField v-model="amountText" />
         <span v-if="salary" class="text-[12px] leading-relaxed text-ink-3">
-          Оклад месяца — {{ money(due) }}. С премией впишите всю сумму: премия целиком ляжет в свободное.
+          Оклад месяца — {{ money(due) }}. С премией впишите всю сумму: премия целиком ляжет в остаток.
         </span>
       </Field>
 

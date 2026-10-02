@@ -57,6 +57,17 @@ describe('*.vue — цвет только из токена (Н-14)', () => {
   })
 })
 
+describe('*.vue — нажатие только утилитой press (Р-45, ревью Блока 10 Н-5)', () => {
+  it('нет active:scale- — масштаб, длительность и «уменьшить движение» задаёт `press` в style.css', () => {
+    const hits = vueFiles().flatMap((f) =>
+      read(f)
+        .split('\n')
+        .flatMap((line, i) => (/\bactive:scale-/.test(line) ? [`${f}:${i + 1}: ${line.trim()}`] : [])),
+    )
+    expect(hits).toEqual([])
+  })
+})
+
 describe('lib/storyCard.ts — копии светлых токенов равны style.css (Н-14)', () => {
   const css = read('style.css')
   const root = new Map([...(css.match(/:root\s*\{([^}]*)\}/)?.[1] ?? '').matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]))

@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
 import { money, plain } from '@/lib/money'
 import { monthKey, monthFrom } from '@/lib/dates'
-import { amountAt, freedChange, liveObligations } from '@/lib/finance'
+import { amountAt, freedChange, freedQuestion, liveObligations } from '@/lib/finance'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/kit/Card.vue'
 import MoneySquares from '@/components/money/MoneySquares.vue'
@@ -51,7 +51,7 @@ onMounted(() => void ops.loadUploads())
       <!-- Событие высвобождения средств -->
       <Card v-if="freed" class="border-brand">
         <div class="type-section text-brand">С {{ monthFrom(freed.change.from, false) }}</div>
-        <h3 class="mt-1 type-h2 text-ink">Освободится {{ money(freed.monthly) }} в месяц</h3>
+        <h3 class="mt-1 type-h2 text-ink">{{ freedQuestion(freed) }}</h3>
         <p class="mb-3.5 mt-1 text-[13px] text-ink-2 num">
           {{ freed.o.name }}: {{ plain(amountAt(freed.o, key)) }} → {{ plain(freed.change.amount) }} ₸ · {{ money(freed.yearly) }} за год
         </p>

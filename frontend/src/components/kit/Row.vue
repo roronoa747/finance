@@ -55,9 +55,9 @@ function handleClick(e: MouseEvent) {
         :type="clickable ? 'button' : undefined"
         :class="
           cn(
-            'flex min-w-0 flex-1 items-center gap-3 text-left transition-colors',
+            'flex min-w-0 flex-1 items-center gap-3 text-left',
             dense ? 'py-2.5' : 'px-4 py-3',
-            clickable && 'hover:bg-surface-2 active:bg-surface-3 cursor-pointer',
+            clickable && 'press hover:bg-surface-2 active:bg-surface-3 cursor-pointer',
           )
         "
         @pointerdown="onPointerDown"

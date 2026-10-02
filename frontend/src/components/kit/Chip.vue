@@ -26,7 +26,7 @@ const emit = defineEmits<{ (e: 'click', ev: MouseEvent): void }>()
     :disabled="disabled"
     :class="
       cn(
-        'inline-flex items-center gap-1.5 rounded-pill border px-3.5 py-[9px] text-[14px] font-medium transition-colors cursor-pointer disabled:opacity-50 [&_svg]:size-[15px]',
+        'inline-flex items-center gap-1.5 rounded-pill border px-3.5 py-[9px] text-[14px] font-medium press cursor-pointer disabled:opacity-50 [&_svg]:size-[15px]',
         on
           ? 'border-brand bg-brand-soft text-brand'
           : quiet

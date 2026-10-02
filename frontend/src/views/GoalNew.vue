@@ -182,7 +182,7 @@ const inShell = inject<boolean>('ff-shell-actions', false)
           <span class="font-medium text-ink">По {{ money(monthly) }} в месяц</span>
           <Tag v-if="realistic" tone="ok">реально</Tag>
         </div>
-        <div class="mt-1 text-[13px] text-ink-2">при свободных ≈ {{ money(Math.max(0, free)) }} · будет вашей в {{ doneMonth }}</div>
+        <div class="mt-1 text-[13px] text-ink-2">при остатке ≈ {{ money(Math.max(0, free)) }} · будет вашей в {{ doneMonth }}</div>
       </div>
       <div class="mt-auto flex flex-col gap-2 pt-2">
         <Button size="lg" class="w-full" :disabled="!canCreate" @click="create">Готово — к мечте</Button>

@@ -22,7 +22,7 @@ import {
 } from '../src/lib/finance'
 import { money, plain } from '../src/lib/money'
 import CapitalLists from '../src/components/money/CapitalLists.vue'
-import Dreams from '../src/views/Dreams.vue'
+import Statements from '../src/views/Statements.vue'
 import Money from '../src/views/Money.vue'
 import PaidRow from '../src/components/PaidRow.vue'
 import DangerZone from '../src/components/kit/DangerZone.vue'
@@ -421,14 +421,14 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(shared).toContain(money(220_000))
       expect(shared).not.toContain('Аруна')
 
-      // «Оставить?» (RP-09): только что заведённое в этом квартале не спрашиваем…
+      // «Оставить?» (RP-09; карточка «Недели» — пивот 3, Р-43): только что заведённое в этом квартале не спрашиваем…
       expect(keepQuestions(B.store.obligations)).toEqual([])
-      expect(await page(B.pinia, Dreams, '/')).not.toContain('Оставить подписку')
+      expect(await page(B.pinia, Statements, '/week')).not.toContain('Оставить подписку')
       // …с нового квартала второй телефон спрашивает про подписку «Интернет» — не про
       // «Свет» (оценка) и не про аренду (жильё).
       at('2026-10-02T04:00:00Z')
       expect(keepQuestions(B.store.obligations).map((o) => o.name)).toEqual(['Интернет'])
-      const overview = await page(B.pinia, Dreams, '/')
+      const overview = await page(B.pinia, Statements, '/week')
       expect(overview).toContain('Оставить подписку Интернет?')
       expect(overview).toContain(`${money(6_990)} · каждый месяц`)
       expect(overview).not.toContain('Оставить подписку Свет?')

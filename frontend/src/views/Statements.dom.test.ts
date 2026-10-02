@@ -187,16 +187,20 @@ describe('возврат приёмки 2 п. 3, 4: одна карточка о
     await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/week/salary?from=salary&person=a&period=2026-09'))
   })
 
-  it('критик возврата 3 (правило 12): при карточке сопоставления «Пришла зарплата» тихая — брендовая на экране одна', async () => {
+  it('B2C-49: сопоставление раньше «Пришла зарплата?» — на экране одно решение, «1 из 2», брендовая одна; ответ → «2 из 2» — зарплата', async () => {
     vi.setSystemTime(new Date('2026-09-10T07:00:00Z'))
     await openWeek((finance) => {
       finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000 }
     })
     await vi.waitFor(() => expect(page()).toContain(QUESTION))
+    expect(page()).not.toContain('Пришла зарплата Алихан?')
+    expect(page()).toContain('1 из 2')
+    const brandButtons = () => [...document.querySelectorAll('button')].filter((b) => b.className.includes('bg-brand ')).map((b) => b.textContent?.trim())
+    expect(brandButtons()).toEqual(['Да, отметить'])
+    await tap('Да, отметить')
     expect(page()).toContain('Пришла зарплата Алихан?')
-    const brandButtons = [...document.querySelectorAll('button')].filter((b) => b.className.includes('bg-brand ')).map((b) => b.textContent?.trim())
-    expect(brandButtons).toHaveLength(1)
-    expect(button('Пришла зарплата')!.className).not.toContain('bg-brand ')
+    expect(page()).toContain('2 из 2')
+    expect(brandButtons()).toEqual(['Пришла зарплата'])
   })
 
   it('день зарплаты 1-го: пока спрашивается «Пришла?» октября (с 28 сентября), неразложенная сентябрьская прячется — одна карточка; со 2 октября — снова «разложить?»', async () => {
@@ -243,19 +247,19 @@ describe('ревью Блока 3 Н-22 (правило 12): брендовая 
     store.ops['op-u'] = { id: 'op-u', bank: 'kaspi', date: '2026-09-08', amount: -7_500, kind: 'purchase', merchant: 'ИП ЖАНСАЯ', categoryId: null, internal: false }
   }
 
-  it('сопоставление + «Пришла зарплата?» + своя выписка не загружена — брендовая одна («Да, отметить»), рамок у тихих карточек нет', async () => {
+  it('сопоставление + «Пришла зарплата?» + своя выписка не загружена — одно решение: брендовая и рамка у сопоставления, загрузка тихая', async () => {
     vi.setSystemTime(new Date('2026-09-10T07:00:00Z'))
     await openWeek((finance) => {
       finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000 }
     })
     await vi.waitFor(() => expect(page()).toContain(QUESTION))
-    expect(page()).toContain('Пришла зарплата Алихан?')
-    expect(page()).toContain('Ваша выписка ещё не загружена')
+    expect(page()).not.toContain('Пришла зарплата Алихан?')
+    expect(page()).toContain('Загрузить выписку')
     expect(brandButtons()).toEqual(['Да, отметить'])
-    expect(brandFrames()).toBe(0)
+    expect(brandFrames()).toBe(1)
   })
 
-  it('разбор продавца + «Пришла зарплата?» — ответ чипами: брендовых кнопок и рамок нет, загрузка и зарплата тихие', async () => {
+  it('разбор продавца + «Пришла зарплата?» — ответ чипами: брендовых кнопок нет, рамка у решения, загрузка тихая', async () => {
     vi.setSystemTime(new Date('2026-09-10T07:00:00Z'))
     await openWeek((finance, store) => {
       finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000 }
@@ -264,12 +268,12 @@ describe('ревью Блока 3 Н-22 (правило 12): брендовая 
       unknownOp(store)
     })
     await vi.waitFor(() => expect(page()).toContain('ИП ЖАНСАЯ — куда отнести?'))
-    expect(page()).toContain('Пришла зарплата Алихан?')
+    expect(page()).not.toContain('Пришла зарплата Алихан?')
     expect(brandButtons()).toEqual([])
-    expect(brandFrames()).toBe(0)
+    expect(brandFrames()).toBe(1)
   })
 
-  it('«Пришла зарплата?» одна — брендовая у неё; загрузка тихая и без рамки', async () => {
+  it('«Пришла зарплата?» одна — брендовая и рамка у неё; загрузка тихая', async () => {
     vi.setSystemTime(new Date('2026-09-10T07:00:00Z'))
     await openWeek((finance, store) => {
       finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000 }
@@ -277,17 +281,42 @@ describe('ревью Блока 3 Н-22 (правило 12): брендовая 
       delete store.ops['op-1']
     })
     expect(page()).toContain('Пришла зарплата Алихан?')
-    expect(page()).toContain('Ваша выписка ещё не загружена')
+    expect(page()).toContain('Загрузить выписку')
     expect(brandButtons()).toEqual(['Пришла зарплата'])
-    expect(brandFrames()).toBe(0)
+    expect(brandFrames()).toBe(1)
+    expect(document.querySelector('.border-brand')?.textContent).toContain('Пришла зарплата Алихан?')
   })
 
-  it('решений нет — главное «Загрузить выписку»: брендовая кнопка и рамка у карточки загрузки', async () => {
+  it('решений нет — главное «Загрузить выписку»: брендовая кнопка (B2C-50: компактный блок без карточки — рамок нет)', async () => {
     await openWeek((finance, store) => {
       finance.householdDoc.credits = []
       delete store.ops['op-1']
     })
     expect(brandButtons()).toEqual(['Загрузить выписку'])
-    expect(brandFrames()).toBe(1)
+    expect(brandFrames()).toBe(0)
+  })
+})
+
+describe('B2C-49: одно решение за раз, «N из M» растёт, а не тает', () => {
+  it('«1 из 3» → ответ → «2 из 3» (не «1 из 2»); «Потом» сдвигает к следующему; после последнего — решения нет, главное — загрузка', async () => {
+    // Сопоставление кредита, незнакомый продавец месяца и подписка без ответа — три решения.
+    await openWeek((finance, store) => {
+      store.ops['op-u'] = { id: 'op-u', bank: 'kaspi', date: '2026-09-08', amount: -7_500, kind: 'purchase', merchant: 'ИП ЖАНСАЯ', categoryId: null, internal: false }
+      finance.householdDoc.obligations = [{ id: 'nf', name: 'Netflix', note: '', day: 3, category: 'd4', versions: [{ from: '2000-01', amount: 4_990 }], updatedAt: '' }]
+    })
+    await vi.waitFor(() => expect(page()).toContain(QUESTION))
+    expect(page()).toContain('1 из 3')
+    await tap('Да, отметить')
+    expect(page()).toContain('ИП ЖАНСАЯ — куда отнести?')
+    expect(page()).toContain('2 из 3')
+    expect(page()).not.toContain('1 из 2')
+    await tap('Потом')
+    expect(page()).toContain('Оставить подписку Netflix?')
+    expect(page()).toContain('3 из 3')
+    await tap('Оставить')
+    expect(page()).not.toContain('Оставить подписку Netflix?')
+    expect(page()).not.toMatch(/\d из \d/)
+    expect(document.querySelectorAll('h2.type-h2')).toHaveLength(0)
+    expect([...document.querySelectorAll('button')].filter((b) => b.className.includes('bg-brand ')).map((b) => b.textContent?.trim())).toEqual(['Загрузить выписку'])
   })
 })

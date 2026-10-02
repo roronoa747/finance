@@ -6,6 +6,7 @@ import { money } from '@/lib/money'
 import { accountBalance } from '@/lib/finance'
 import type { Payment, SyncDoc } from '@/types/finance'
 import Dreams from './Dreams.vue'
+import Statements from './Statements.vue'
 import Money from './Money.vue'
 import WeekSalary from './WeekSalary.vue'
 import { authAs, planFamilyDoc, planOf } from '@/test/planFamily'
@@ -42,45 +43,37 @@ describe('Блок 2: моменты месяца (SSR)', () => {
   }
 
   describe('RP-11 — вопрос в конце месяца', () => {
-    it('главный: карточка решения есть в последние дни месяца, нет в середине, нет у viewer (B2C-14)', async () => {
+    // Решения живут на «Неделе» (пивот 3, Р-42/Р-43): на «Мечтах» их нет.
+    it('«Неделя»: «Остались деньги?» есть в последние дни месяца, нет в середине, нет у viewer; на «Мечтах» — нет', async () => {
       family()
-      const html = await renderScreen(Dreams, '/')
+      const html = await renderScreen(Statements, '/week')
       expect(html).toContain('Остались деньги с сентября?')
       expect(html).toMatch(/>\s*Разложить\s*</)
       expect(html).toMatch(/>\s*Не сейчас\s*</)
+      expect(await renderScreen(Dreams, '/')).not.toContain('Остались деньги')
 
       vi.setSystemTime(new Date('2026-09-20T07:00:00Z'))
-      expect(await renderScreen(Dreams, '/')).not.toContain('Остались деньги')
+      expect(await renderScreen(Statements, '/week')).not.toContain('Остались деньги')
 
       vi.setSystemTime(new Date('2026-09-28T07:00:00Z'))
       setActivePinia(createPinia())
       family('viewer')
-      expect(await renderScreen(Dreams, '/')).not.toContain('Остались деньги')
+      expect(await renderScreen(Statements, '/week')).not.toContain('Остались деньги')
     })
 
-    it('ответ помнится на устройстве до конца месяца; в конце следующего — снова', async () => {
+    it('«Не сейчас» — ответ помнится на устройстве до конца месяца; в конце следующего — снова', async () => {
       family()
       let vm: Record<string, any> = {}
       const grab = { created(this: any) { if ('answerRest' in this.$.setupState) vm = this.$.setupState } }
-      await renderScreen(Dreams, '/', undefined, [grab])
-      vm.answerRest()
+      await renderScreen(Statements, '/week', undefined, [grab])
+      vm.answerRest(false)
       expect(storage.get('ff_month_end')).toBe('2026-09')
-      expect(await renderScreen(Dreams, '/')).not.toContain('Остались деньги')
+      expect(await renderScreen(Statements, '/week')).not.toContain('Остались деньги')
       // Документ не тронут: партнёра спросят на его телефоне.
       expect(useFinanceStore().unsent).toBe(false)
 
       vi.setSystemTime(new Date('2026-10-29T07:00:00Z'))
-      expect(await renderScreen(Dreams, '/')).toContain('Остались деньги с октября?')
-    })
-
-    it('«Не сейчас» на карточке — ответ записан на устройстве; «Разложить» ведёт в «Неделю» (сумма — там, B2C-21)', async () => {
-      family()
-      let vm: Record<string, any> = {}
-      const grab = { created(this: any) { if ('onGhost' in this.$.setupState) vm = this.$.setupState } }
-      await renderScreen(Dreams, '/', undefined, [grab])
-      expect(vm.shown?.to).toBe('/week?rest=1')
-      vm.onGhost()
-      expect(storage.get('ff_month_end')).toBe('2026-09')
+      expect(await renderScreen(Statements, '/week')).toContain('Остались деньги с октября?')
     })
 
     it('Ритуал с остатком: сумма из адреса, подпись без упрёка; взнос в цель только со счётом', async () => {
@@ -186,7 +179,7 @@ describe('Блок 2: моменты месяца (SSR)', () => {
       const html = await renderScreen(WeekSalary, '/ritual?from=credit&credit=inst')
       expect(html).toContain(`Куда направить ${money(20_000)}`)
       expect(html).toContain(`«Рассрочка» закрыт — освободилось ${money(20_000)} в месяц`)
-      expect(html).toContain('платёж закрытого долга остаётся в «Свободно»')
+      expect(html).toContain('платёж закрытого долга остаётся в остатке по плану')
       expect(await renderScreen(WeekSalary, '/ritual?from=credit&credit=loan')).toContain('Этот долг ещё не закрыт')
 
       const done = await renderScreen(WeekSalary, '/ritual?from=credit&credit=inst', undefined, [

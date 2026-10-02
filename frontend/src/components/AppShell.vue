@@ -70,7 +70,8 @@ const draftSub = computed(() => {
 
 /** Вкладки — корни (у «Денег» — все три квадрата, пивот 3); остальное — вложенные экраны со стрелкой «назад». */
 const ROOTS = ['/', '/week', '/money', '/money/plan', '/money/history']
-const isRoot = computed(() => ROOTS.includes(route.path))
+// «Разбор» выписки живёт на /week, но корнем не считается: «назад» слева, как в g2 (хвост критика Б9).
+const isRoot = computed(() => ROOTS.includes(route.path) && !(route.path === '/week' && !!ops.draft))
 /** Экраны-потоки без нижней навигации (в макетах — без вкладок): цель, желания, настройки, раскладка. */
 const noTabs = computed(() => {
   const p = route.path
@@ -80,6 +81,8 @@ const noTabs = computed(() => {
 /** «Назад»: по истории, а открытый по ссылке экран — к своему корню. */
 function goBack() {
   const p = route.path
+  // «Назад» разбора — как «Отмена»: черновик сбрасывается, ничего не отправлено.
+  if (p === '/week' && ops.draft) return ops.cancelDraft()
   if (typeof window !== 'undefined' && window.history.state?.back) router.back()
   else void router.push(p.startsWith('/week') ? '/week' : '/')
 }
@@ -195,7 +198,13 @@ function navigateAndClose(to: string) {
     <!-- Капсула вкладок парит над контентом (макет pivot-3 `.tabs`): снизу запас 96 px, чтобы последняя карточка
          докручивалась из-под неё. -->
     <main ref="mainEl" :class="['flex-1 overflow-y-auto px-4 [overscroll-behavior:contain]', noTabs ? 'pb-6' : 'pb-24']">
-      <RouterView />
+      <!-- Смена экрана — короткое проявление (Р-45); ключ — имя маршрута: квадраты «Денег» и цели
+           между собой экран не пересоздают. Шапка и капсула вкладок вне — не прыгают. -->
+      <RouterView v-slot="{ Component, route: r }">
+        <div :key="String(r.name ?? r.path)" class="fx-fade">
+          <component :is="Component" />
+        </div>
+      </RouterView>
     </main>
 
     <Tabs v-if="!noTabs" :items="tabs" :plus="!authStore.isViewer" plus-label="Добавить" @plus="addOpen = true" />

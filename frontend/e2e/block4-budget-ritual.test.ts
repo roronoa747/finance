@@ -120,14 +120,14 @@ describe('e2e / block-4 — Сквозной сценарий бюджета («
     expect(amounts.d5).toBe(630_000) // 1 200 000 - (250k + 70k + 50k + 200k) = 630 000
 
     // Бывший режим «План» — виджет «Доход» «Денег» (Р-33): оклады, доли, нагрузка; свободный остаток —
-    // долей «свободно 53 %» (630 000 из 1 200 000), сумма — budgetAmounts выше.
+    // долей «остаток по плану 53 %» (630 000 из 1 200 000), сумма — budgetAmounts выше.
     const appPlan = createSSRApp(Money)
     appPlan.use(router)
     const htmlPlan = (await renderToString(appPlan)).replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
     expect(htmlPlan).toContain(money(1_200_000))
     expect(htmlPlan).toContain('Ильяс')
     expect(htmlPlan).toContain('Динара')
-    expect(htmlPlan).toContain('свободно 53 %')
+    expect(htmlPlan).toContain('остаток по плану 53 %')
     // Нагрузка — жильё и кредиты (250 000 + 70 000) из 1 200 000 = 27 % (бывшая «Нагрузка на доход» календаря).
     expect(htmlPlan).toContain('нагрузка 27 %')
 

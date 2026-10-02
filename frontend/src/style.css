@@ -5,8 +5,9 @@
 /* ---------------------------------------------------------------
    Единственный источник цвета и шрифта. Пивот 3 (Р-36,
    memory/decisions/pivot-3-money-fonts.md): палитра нейтральная, шрифт
-   системный (SF на iPhone, крупные цифры — ui-rounded); бренд «глина»,
-   участники и разделы трат — из направления А (DESIGN.md §4). Эталон —
+   системный (SF на iPhone, крупные цифры — ui-rounded); бренд «глина»
+   и разделы трат — из направления А (DESIGN.md §4), участники — «шалфей
+   и лаванда» (Р-44, pivot-3/dreams-week.html). Эталон —
    pivot-3/index.html (.f3, [data-pal="neutral"]). Ни один компонент не
    имеет права писать литеральный цвет — только токен отсюда.
    Пары light/dark обязаны существовать обе: если добавляешь токен
@@ -44,9 +45,9 @@
   --destructive-soft: #f8e0dc;
   --destructive-line: #efc3bb;
 
-  /* Участники */
-  --pa: #3b5da8;
-  --pb: #a9456a;
+  /* Участники — «шалфей и лаванда» (пивот 3, Р-44). */
+  --pa: #4f7a63;
+  --pb: #7d6a9e;
   --dot-ink: var(--on-photo);
 
   /* Разделы трат выписок — 12 оттенков на 17 разделов + «не разобрано». */
@@ -104,9 +105,10 @@
   --destructive-soft: #3a1f1b;
   --destructive-line: #5a2f28;
 
-  --pa: #8fafff;
-  --pb: #ff8fb4;
-  --dot-ink: var(--on-photo);
+  --pa: #94c2a8;
+  --pb: #b9a8dc;
+  /* Светлые кружки — тёмная буква (контраст ≥ 3:1, Р-44). */
+  --dot-ink: var(--canvas);
 
   --s1: #e0946a;
   --s2: #c9a36a;
@@ -138,6 +140,13 @@
   --r-tile: 20px;
   --r-inner: 14px;
   --r-pill: 999px;
+
+  /* Движение (пивот 3, Р-45, макет dreams-week.html «2 · Живо»): нажатие, появление, лист, полосы;
+     бег цифр и полосы — --motion-fill (≤ 1 с, `kit/CountUp`, `lib/motion.ts`). */
+  --motion-fast: 150ms;
+  --motion-base: 320ms;
+  --motion-fill: 900ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 @theme inline {
@@ -338,11 +347,60 @@
   background: linear-gradient(to bottom, transparent, var(--photo-scrim));
 }
 
+/* ---------------------------------------------------------------
+   Движение (Р-45): отклик нажатия, появление, строки по очереди, лист.
+   Только transform и opacity — без сдвига разметки. Заполнение — `backwards`, не `both`:
+   оставшийся после анимации transform делает карточку контейнером для `fixed`, и окно
+   подсказки (`Hint`) уезжает вниз под соседние карточки (критик Б10).
+---------------------------------------------------------------- */
+@keyframes fx-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes fx-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes fx-sheet {
+  from {
+    transform: translateY(24px);
+    opacity: 0.6;
+  }
+}
+/* Нажатие: сжатие 0.97 (макет `.press`); цвет фона и текста — тем же переходом. */
+@utility press {
+  transition-property: transform, color, background-color, border-color, opacity;
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--ease-out);
+  &:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+}
+/* Появление снизу; строки списка — по очереди: `style="--i: N"`, задержка 40 мс × N (не больше 6). */
+@utility fx-in {
+  animation: fx-in var(--motion-base) var(--ease-out) backwards;
+  animation-delay: calc(min(var(--i, 0), 6) * 40ms);
+}
+/* Смена экрана и затемнение листа — только прозрачность. */
+@utility fx-fade {
+  animation: fx-fade var(--motion-fast) var(--ease-out) backwards;
+}
+@utility fx-sheet {
+  animation: fx-sheet var(--motion-base) var(--ease-out) backwards;
+}
+
+/* «Уменьшить движение» выключает всё, включая задержки по очереди; JS-бег цифр и полос
+   слушает то же правило сам (`lib/motion.ts`). */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
   }
 }

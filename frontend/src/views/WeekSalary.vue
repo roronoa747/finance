@@ -141,7 +141,7 @@ const total = computed(() => {
 const empty = computed(() => {
   if (query('from') === 'salary') {
     return salary.value
-      ? 'Свободного в этой зарплате нет: всё уже расписано планом месяца.'
+      ? 'К раскладке ничего нет: всё уже расписано планом месяца.'
       : 'Эта зарплата пока не отмечена — раскладывать нечего.'
   }
   if (query('from') === 'credit') {
@@ -444,7 +444,7 @@ function home() {
     <h2 class="px-1 type-big num text-ink" :aria-label="`Куда направить ${money(total)}`">{{ money(total) }}</h2>
 
     <p v-if="salary" class="px-0.5 text-[13px] leading-relaxed text-ink-2 num">
-      Зарплата пришла — {{ money(salary.record.amount) }} · свободно {{ money(total) }}
+      Зарплата пришла — {{ money(salary.record.amount) }} · к раскладке {{ money(total) }}
     </p>
     <p v-else-if="rest" class="px-0.5 text-[13px] leading-relaxed text-ink-2 num">
       Остаток {{ monthFrom(rest.period, false) }} — {{ money(total) }}. Разложим его, пока он незаметно не разошёлся.
@@ -519,10 +519,10 @@ function home() {
 
     <!-- Разовое решение пояснений не требует: под каждой корзиной уже одна строка эффекта (правило интерфейса). -->
     <p v-if="closed" class="px-0.5 text-[12.5px] leading-relaxed text-ink-3">
-      Пока решения нет, платёж закрытого долга остаётся в «Свободно».
+      Пока решения нет, платёж закрытого долга остаётся в остатке по плану.
     </p>
     <p v-else-if="freed" class="px-0.5 text-[12.5px] leading-relaxed text-ink-3">
-      Пока решения нет, эти деньги не попадают в «свободно потратить». {{ freed.o.name }} снизится с
+      Пока решения нет, эти деньги остаются в остатке по плану. {{ freed.o.name }} снизится с
       {{ plain(amountAt(freed.o, key)) }} до {{ plain(freed.change.amount) }} ₸ с
       {{ monthFrom(freed.change.from) }}.
     </p>

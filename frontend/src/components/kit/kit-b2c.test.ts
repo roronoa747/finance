@@ -4,8 +4,10 @@ import { renderToString } from 'vue/server-renderer'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { PhHeart } from '@phosphor-icons/vue'
 import DreamHero from './DreamHero.vue'
-import DreamTile from './DreamTile.vue'
+import DreamCenter from './DreamCenter.vue'
+import ThumbRow from './ThumbRow.vue'
 import WeekCard from './WeekCard.vue'
+import WeekTotal from './WeekTotal.vue'
 import FreeCard from './FreeCard.vue'
 import DecisionCard from './DecisionCard.vue'
 import Chip from './Chip.vue'
@@ -38,71 +40,83 @@ const noLiterals = (html: string) => {
 }
 
 describe('DreamHero', () => {
-  it('фото: «До мечты», процент, строка «Цель · накоплено из нужно · будет вашей в», полоса и автор', async () => {
-    const html = await render(DreamHero, {
-      title: 'Япония',
-      percent: 62,
-      src: 'blob:photo',
-      author: 'Matthew Skinner',
-      haveAmount: 1_116_000,
-      needAmount: 1_800_000,
-      doneMonth: 'мае 2027',
-    })
+  it('экран цели (умолчание): фото, «До мечты», процент, строка, полоса, автор-ссылка, угол — 380', async () => {
+    const html = await render(
+      DreamHero,
+      { line: '1 116 000 из 1 800 000 ₸', percent: 62, src: 'blob:photo', author: 'Matthew Skinner', authorUrl: 'https://unsplash.com/@m' },
+      { corner: () => h('button', { 'aria-label': 'Сменить фото' }) },
+    )
     expect(html).toContain('До мечты')
     expect(html).toContain(pctText(62))
-    // «·» держится за предыдущее слово, месяц с годом — одним куском: строка не начинается с точки (смоук владельца, п. 4).
-    expect(html).toContain(`Япония${NBSP}· 1${NBSP}116${NBSP}000 из 1${NBSP}800${NBSP}000${NBSP}₸${NBSP}· будет вашей в мае${NBSP}2027`)
-    expect(html).not.toContain(' · ')
+    expect(html).toContain('1 116 000 из 1 800 000 ₸')
     expect(html).toContain('src="blob:photo"')
     expect(html).toContain('photo-scrim')
     expect(html).toContain('text-on-photo')
+    expect(html).toContain('href="https://unsplash.com/@m"')
     expect(html).toContain('Фото: Matthew Skinner')
     expect(html).toContain('aria-valuenow="62"')
-    expect(html).toContain('min-h-[440px]')
+    expect(html).toContain('aria-label="Сменить фото"')
+    expect(html).toContain('min-h-[380px]')
+    expect(html).not.toContain('min-h-[440px]')
     noLiterals(html)
   })
 
-  it('без фото — surface-3 и ink-текст, слот действий («Добавить фото»); экран цели — 380, превью — без процента', async () => {
-    const html = await render(DreamHero, { title: 'Машина', percent: 18, size: 'goal' }, { actions: () => h('button', 'Добавить фото') })
+  it('без фото — surface-3 и ink-текст, слот действий («Добавить фото»); превью — 180, без процента и полосы', async () => {
+    const html = await render(DreamHero, { line: 'x', percent: 18 }, { actions: () => h('button', 'Добавить фото') })
     expect(html).toContain('bg-surface-3')
     expect(html).not.toContain('<img')
     expect(html).toContain('Добавить фото')
-    expect(html).toContain('min-h-[380px]')
-    const preview = await render(DreamHero, { title: 'Путешествие · Япония', size: 'preview', src: 'x' })
+    const preview = await render(DreamHero, { line: 'Путешествие · Япония', size: 'preview', src: 'x' })
+    expect(preview).toContain('min-h-[180px]')
     expect(preview).not.toContain('До мечты')
+    expect(preview).not.toContain('role="progressbar"')
     expect(preview).toContain('Путешествие · Япония')
   })
 
-  it('empty — «На что копим?» с пояснением и кнопкой «Выбрать мечту»; процент обрезается 0…100', async () => {
-    const html = await render(DreamHero, { empty: true })
-    expect(html).toContain('На что копим?')
-    expect(html).toContain('Одна мечта с фото — и этот экран покажет, сколько до неё осталось.')
-    expect(html).toContain('Выбрать мечту')
-    expect(await render(DreamHero, { title: 'Х', percent: 140 })).toContain(pctText(100))
-    expect(await render(DreamHero, { title: 'Х', percent: -5 })).toContain(pctText(0))
+  it('процент обрезается 0…100', async () => {
+    expect(await render(DreamHero, { line: 'Х', percent: 140, size: 'goal' })).toContain(pctText(100))
+    expect(await render(DreamHero, { line: 'Х', percent: -5, size: 'goal' })).toContain(pctText(0))
   })
 })
 
-describe('DreamTile / TemplateTile', () => {
-  it('плитка: процент и имя с обрезкой; plain без фото; add — «Новая мечта»', async () => {
-    const tile = await render(DreamTile, { name: 'Путешествие в Юго-Восточную Азию', percent: 40, src: 'p' })
-    expect(tile).toContain(pctText(40))
-    expect(tile).toContain('truncate')
-    expect(tile).toContain('h-[150px]')
-    expect(await render(DreamTile, { name: 'Машина', percent: 18 })).toContain('bg-surface-3')
-    expect(await render(DreamTile, { add: true })).toContain('Новая мечта')
+describe('DreamCenter / ThumbRow (пивот 3, Р-42)', () => {
+  it('мечта по центру: фото 236 со скруглением 32, процент 40 (конечный в SSR), «название · месяц год» одним куском', async () => {
+    const html = await render(DreamCenter, { title: 'Япония', percent: 62, src: 'blob:p', month: 'май 2027', author: 'Matthew Skinner' })
+    expect(html).toContain('size-[236px]')
+    expect(html).toContain('rounded-[32px]')
+    expect(html).toContain('text-[40px]')
+    expect(html).toContain(pctText(62))
+    expect(html).toContain(`Япония${NBSP}· май${NBSP}2027`)
+    expect(html).toContain('Фото: Matthew Skinner')
+    expect(html).not.toContain('Выбрать мечту')
+    expect(await render(DreamCenter, { title: 'Машина', percent: 18 })).not.toContain('·')
+    expect(await render(DreamCenter, { title: 'Х', percent: 140 })).toContain(pctText(100))
+    noLiterals(html)
   })
 
-  it('link — переход в том же ряду (возврат смоука: «Желания» вместо отдельной ссылки): подпись, строка, иконка слотом', async () => {
-    const html = await render(DreamTile, { link: true, name: 'Желания', meta: '3 в списке' }, { icon: () => h(PhHeart) })
-    expect(html).toContain('Желания')
-    expect(html).toContain('3 в списке')
-    expect(html).toContain('<svg')
-    expect(html).toContain('border-card-border')
-    expect(html).not.toContain('border-dashed')
-    expect(html).not.toContain('%')
+  it('empty — «На что копим?» и одна брендовая «Выбрать мечту»; у viewer без кнопки', async () => {
+    const html = await render(DreamCenter, { empty: true })
+    expect(html).toContain('На что копим?')
+    expect(html).toContain('Выбрать мечту')
+    expect(html).toContain('bg-brand')
+    expect(await render(DreamCenter, { empty: true, canPick: false })).not.toContain('Выбрать мечту')
   })
 
+  it('строка: мини-фото 48 со скруглением 14, без фото — плашка оттенка; кнопкой — только `clickable`', async () => {
+    const goal = await render(ThumbRow, { title: 'Машина', tone: 'var(--s3)', clickable: true, index: 2 })
+    expect(goal).toContain('<button')
+    expect(goal).toContain('size-12')
+    expect(goal).toContain('rounded-[14px]')
+    expect(goal).toContain('background:var(--s3)')
+    expect(goal).toContain('--i:2')
+    const wish = await render(ThumbRow, { title: 'Наушники', src: 'blob:w' }, { end: () => h('button', 'Открыть') })
+    expect(wish).not.toMatch(/^<button/)
+    expect(wish).toContain('src="blob:w"')
+    expect(wish).toContain('Открыть')
+  })
+})
+
+describe('TemplateTile', () => {
   it('шаблон: выбранный — обводка бренда и aria-pressed; камера — «Своё фото»', async () => {
     const on = await render(TemplateTile, { name: 'Путешествие', src: 'p', selected: true })
     expect(on).toContain('aria-pressed="true"')
@@ -113,7 +127,24 @@ describe('DreamTile / TemplateTile', () => {
   })
 })
 
-describe('WeekCard / FreeCard', () => {
+describe('WeekTotal (пивот 3, B2C-50)', () => {
+  it('чип к прошлой: меньше — зелёный, больше — предупреждение, равно — нейтральный, нет недели — чипа нет; легенда — до 4 + «ещё N»', async () => {
+    const seg = (id: string) => ({ id, name: id, amount: 1, share: 0.1, color: 'var(--s1)' })
+    const segments = ['a', 'b', 'c', 'd', 'e', 'f'].map(seg)
+    const tag = (html: string) => html.match(/<span class="[^"]*rounded-pill[^"]*">([^<]*к прошлой|как на прошлой)<\/span>/)?.[0] ?? ''
+    expect(tag(await render(WeekTotal, { label: '28 сентября – 4 октября', total: 60_000, delta: -25, segments }))).toContain('bg-ok-soft')
+    expect(tag(await render(WeekTotal, { label: 'x', total: 90_000, delta: 13, segments }))).toContain('bg-warn-soft')
+    expect(tag(await render(WeekTotal, { label: 'x', total: 80_000, delta: 0, segments }))).toContain('bg-surface-3')
+    const none = await render(WeekTotal, { label: '28 сентября – 4 октября', total: 80_000, delta: null, segments })
+    expect(none).toContain('28 сентября – 4 октября')
+    expect(none).not.toContain('Итог недели')
+    expect(none).not.toContain('к прошлой')
+    expect(none).toContain('ещё 2 раздела')
+    expect(none).not.toContain('>e<')
+  })
+})
+
+describe('WeekCard / FreeCard (первый запуск)', () => {
   const segments = [
     { id: 'sc_food', name: 'Продукты', amount: 62_000, share: 0.34, color: 'var(--s1)' },
     { id: 'sc_cafe', name: 'Кафе и рестораны', amount: 28_000, share: 0.15, color: 'var(--s2)' },
@@ -123,72 +154,37 @@ describe('WeekCard / FreeCard', () => {
     { id: 'sc_subs', name: 'Подписки', amount: 9_990, share: 0.05, color: 'var(--s4)' },
   ]
 
-  it('сумма, тег, стопка (разделы + не разобрано), четыре строки, «ещё 2 раздела · не разобрано 40 000 ₸», ссылка', async () => {
-    const html = await render(WeekCard, {
-      total: 184_000,
-      tag: { text: 'по выпискам обоих', tone: 'ok' },
-      segments,
-      unknown: 40_000,
-      unknownShare: 0.21,
-      link: { text: 'Неделя →', to: '/week' },
-    })
+  it('первый запуск: сумма, стопка (разделы + не разобрано), четыре строки, «ещё 2 раздела · не разобрано 40 000 ₸»', async () => {
+    const html = await render(WeekCard, { total: 184_000, segments, unknown: 40_000, unknownShare: 0.21 })
     expect(html).toContain(`184${NBSP}000${NBSP}₸`)
-    expect(html).toContain('по выпискам обоих')
-    expect(html).toContain('bg-ok-soft')
     expect(html).toContain('Транспорт')
     expect(html).not.toContain('Здоровье')
     expect(html).toContain(`ещё 2 раздела · не разобрано 40${NBSP}000${NBSP}₸`)
     expect(html).toContain('var(--s-unknown)')
-    expect(html).toContain('href="/week"')
-    expect(html).toContain('Неделя →')
+    expect(html).not.toContain('<a ')
+    expect(html).not.toContain('<button')
     noLiterals(html)
   })
 
-  it('без «не разобрано» и с ≤ 4 разделами подвала нет; тег «без выписки Даны» — warn; слот заметки', async () => {
-    const html = await render(
-      WeekCard,
-      { total: 121_000, tag: { text: 'без выписки Даны', tone: 'warn' }, segments: segments.slice(0, 3) },
-      { default: () => h(Callout, { tone: 'neutral', icon: 'bell' }, () => 'Напомним Дане в воскресенье в 21:00.') },
-    )
-    expect(html).toContain('без выписки Даны')
-    expect(html).toContain('bg-warn-soft')
+  it('без «не разобрано» и с ≤ rows разделами подвала нет; rows: 5 — пять строк', async () => {
+    const html = await render(WeekCard, { total: 121_000, segments: segments.slice(0, 3) })
     expect(html).not.toContain('ещё ')
+    expect(html).not.toContain('не разобрано')
     expect(html).not.toContain('var(--s-unknown)')
-    expect(html).toContain('Напомним Дане в воскресенье в 21:00.')
+    const five = await render(WeekCard, { total: 184_000, segments, rows: 5 })
+    expect(five).toContain('Здоровье')
+    expect(five).not.toContain('Подписки')
+    expect(five).toContain('ещё 1 раздел')
   })
 
-  it('unknownRow — «Не разобрано» строкой списка с подписью и шевроном (g2 «Неделя — итог»), в подвале его нет; без action — не кнопка', async () => {
-    const html = await render(WeekCard, {
-      total: 184_000,
-      segments,
-      rows: segments.length,
-      unknown: 40_000,
-      unknownShare: 0.21,
-      unknownRow: { meta: '2 продавца · разобрать', action: true },
-    })
-    expect(html).toContain('Здоровье')
-    expect(html).toContain('Подписки')
-    expect(html).toContain('Не разобрано')
-    expect(html).toContain('2 продавца · разобрать')
-    expect(html).toContain(`40${NBSP}000${NBSP}₸`)
-    expect(html).not.toContain('не разобрано 40')
-    expect(html).toMatch(/<button[^>]*type="button"[^>]*>\s*<i[^>]*bg-s-unknown/)
-    const still = await render(WeekCard, { total: 184_000, segments, rows: segments.length, unknown: 40_000, unknownShare: 0.21, unknownRow: {} })
-    expect(still).toContain('Не разобрано')
-    expect(still).not.toContain('<button')
-  })
-
-  it('FreeCard: сумма и подпись, полоса --ok; null — «—» без полосы; md — 32', async () => {
-    const html = await render(FreeCard, { amount: 236_000, note: 'по факту выписок обоих · 9 дней до зарплаты Ильяса', share: 0.38 })
-    expect(html).toContain('Свободно до конца месяца')
+  it('FreeCard: «Остаток по плану» крупно (type-big-md) и подпись; без полосы', async () => {
+    const html = await render(FreeCard, { amount: 236_000, note: 'Из него и складывается мечта — дальше выберем её.' })
+    expect(html).toContain('Остаток по плану')
     expect(html).toContain(`236${NBSP}000${NBSP}₸`)
-    expect(html).toContain('9 дней до зарплаты Ильяса')
-    expect(html).toContain('bg-ok')
-    expect(html).toContain('type-big')
-    const none = await render(FreeCard, { amount: null, note: 'появится после первой выписки' })
-    expect(none).toContain('—')
-    expect(none).not.toContain('role="progressbar"')
-    expect(await render(FreeCard, { amount: 1, size: 'md' })).toContain('type-big-md')
+    expect(html).toContain('Из него и складывается мечта')
+    expect(html).toContain('type-big-md')
+    expect(html).not.toContain('role="progressbar"')
+    expect(html).not.toContain('Свободно')
   })
 })
 

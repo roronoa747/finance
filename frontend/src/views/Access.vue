@@ -219,6 +219,24 @@ function startDemoMode() {
         movements: [],
         updatedAt: new Date().toISOString(),
       },
+      {
+        id: 'g-sofa',
+        name: 'Новый диван',
+        need: 450_000,
+        seed: 120_000,
+        have: 120_000,
+        monthly: 30_000,
+        hue: 'ochre',
+        planPct: 0,
+        movements: [],
+        updatedAt: new Date().toISOString(),
+      },
+    ]
+    // Желания «как в макете» (приёмка Б10): у каждого участника и общее; фото шаблонов в демо нет — плашка.
+    doc.wishlist = [
+      { id: 'w-coffee', name: 'Кофемашина', price: 180_000, by: 'a', list: 'all', bought: false, addedOn: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'w-bike', name: 'Велосипед', price: 230_000, by: 'a', list: 'a', bought: false, addedOn: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'w-boots', name: 'Сапоги', price: 65_000, by: 'b', list: 'b', bought: false, addedOn: new Date().toISOString(), updatedAt: new Date().toISOString() },
     ]
     doc.accounts = [
       { id: 'acc-kaspi', name: 'Kaspi Gold', note: '', kind: 'card', amount: 480_000, updatedAt: new Date().toISOString() },
@@ -227,21 +245,18 @@ function startDemoMode() {
         deposit: { annualRate: 0.14, months: 12, monthlyTopUp: 0, capitalize: true },
       },
     ]
-    // Итоги выписок обоих за эту неделю и месяц (B2C-19 п. 4): главный сразу с картиной недели и «Свободно» по факту.
+    // Итоги выписки Аруны (B2C-19 п. 4): своих операций у неё в демо нет — итоги руками. Итоги Ильяса — из его
+    // демо-операций ниже, той же функцией, что при «Отправить» (B2C-52).
     seedSpendCategories(doc)
     const at = new Date().toISOString()
-    const total = (by: 'a' | 'b', kind: SpendTotal['kind'], period: string, categoryId: string, amount: number, ops: number): SpendTotal => ({ id: `${by}:${kind}:${period}:${categoryId}`, by, kind, period, categoryId, amount, ops, updatedAt: at })
+    const total = (kind: SpendTotal['kind'], period: string, categoryId: string, amount: number, ops: number): SpendTotal => ({ id: `b:${kind}:${period}:${categoryId}`, by: 'b', kind, period, categoryId, amount, ops, updatedAt: at })
     const week = weekKey()
     const prevWeek = weekKey(new Date(Date.now() - 7 * 86_400_000))
     const month = monthKey()
     doc.spendTotals = [
-      total('a', 'week', prevWeek, 'sc_food', 71_000, 11), total('b', 'week', prevWeek, 'sc_food', 24_000, 5), total('a', 'week', prevWeek, 'sc_cafe', 19_000, 4),
-      total('a', 'week', prevWeek, 'sc_transport', 12_000, 9), total('a', 'week', prevWeek, '_unknown', 6_000, 1),
-      total('a', 'week', week, 'sc_food', 62_000, 9), total('b', 'week', week, 'sc_food', 20_000, 4), total('a', 'week', week, 'sc_cafe', 28_000, 6),
-      total('a', 'week', week, 'sc_transport', 9_000, 7), total('b', 'week', week, 'sc_shopping', 34_000, 2), total('a', 'week', week, '_unknown', 10_000, 1),
-      total('a', 'month', month, 'sc_food', 184_000, 26), total('b', 'month', month, 'sc_food', 40_000, 8), total('a', 'month', month, 'sc_cafe', 61_000, 14),
-      total('a', 'month', month, 'sc_transport', 23_000, 18), total('b', 'month', month, 'sc_shopping', 34_000, 2), total('a', 'month', month, 'sc_credit', 95_000, 1),
-      total('a', 'month', month, '_unknown', 40_000, 3),
+      total('week', prevWeek, 'sc_food', 24_000, 5),
+      total('week', week, 'sc_food', 20_000, 4), total('week', week, 'sc_shopping', 34_000, 2),
+      total('month', month, 'sc_food', 40_000, 8), total('month', month, 'sc_shopping', 34_000, 2),
     ]
   })
   // «Деньги» в демо — все три квадрата с данными (пивот 3, B2C-45): план «Сначала долги» (машина на
@@ -255,38 +270,43 @@ function startDemoMode() {
   financeStore.markSalary('a', { accountId: 'acc-kaspi' })
   // Записи загрузок и свои операции демо — когда стор операций уже переключился на демо-семью (watch по владельцу).
   void nextTick().then(() => {
-    const today = new Date().toISOString().slice(0, 10)
-    const from = `${monthKey()}-01`
+    // Две недели своих операций (0…13 дней назад): у этой и прошлой недели есть траты — у карточки недели
+    // есть чип «к прошлой». В начале месяца прошлая неделя — в прошлом месяце: загрузка начинается с первой операции.
+    const day = (ago: number) => new Date(Date.now() - ago * 86_400_000).toISOString().slice(0, 10)
+    const today = day(0)
+    const from = [`${monthKey()}-01`, day(13)].sort()[0]
     const ops = useOperationsStore()
     ops.seedDemoUploads([
-      { id: 'demo-upload-a', slot: 'a', bank: 'kaspi', period_from: from, period_to: today, ops_count: 41, created_at: new Date().toISOString() },
+      { id: 'demo-upload-a', slot: 'a', bank: 'kaspi', period_from: from, period_to: today, ops_count: 19, created_at: new Date().toISOString() },
       { id: 'demo-upload-b', slot: 'b', bank: 'kaspi', period_from: from, period_to: today, ops_count: 12, created_at: new Date().toISOString() },
     ])
-    // До двух недель своих операций: пять разделов, продавцы из словаря, один перевод между своими.
-    // Все — в этом месяце (в его первые дни — плотнее), чтобы «История» демо не начиналась с «Раньше».
-    const span = Math.min(13, new Date().getDate() - 1)
-    const day = (ago: number) => new Date(Date.now() - Math.round((ago * span) / 13) * 86_400_000).toISOString().slice(0, 10)
+    // Пять разделов, продавцы — только из словаря (иначе ответ на продавца, переразложив операции правилами,
+    // вернёт их в «не разобрано»; суммы — вне окна оценки «Коммуналки» 21–39 тыс., иначе «платёж по
+    // Коммуналке?»), один перевод между своими и два незнакомых продавца сегодня —
+    // на «Неделе» в любой день не меньше двух решений («ИП Абенова», «ИП Жумабаева»).
     const op = (n: number, ago: number, amount: number, merchant: string, categoryId: string | null, extra: Partial<Operation> = {}): Operation => ({
       id: `demo-op-${n}`, bank: 'kaspi', date: day(ago), amount, kind: 'purchase', merchant, categoryId, internal: false, ...extra,
     })
     ops.seedDemoOperations([
-      op(1, 0, -6_800, 'ИП Сериков', 'sc_food'),
+      op(1, 0, -6_800, 'Galmart', 'sc_food'),
       op(2, 0, -4_990, 'Яндекс Плюс', 'sc_subscriptions'),
-      op(3, 1, -2_400, 'Coffee Boom', 'sc_cafe'),
-      op(4, 2, -12_400, 'Magnum', 'sc_food'),
-      op(5, 2, -1_800, 'Yandex Go', 'sc_transport'),
-      op(6, 3, -18_500, 'Del Papa', 'sc_cafe'),
-      op(7, 4, -9_300, 'Small', 'sc_food'),
-      op(8, 5, -200_000, 'На депозит', null, { kind: 'transfer-out', internal: true }),
-      op(9, 6, -2_100, 'Yandex Go', 'sc_transport'),
-      op(10, 7, -21_700, 'Magnum', 'sc_food'),
-      op(11, 8, -34_000, 'Sulpak', 'sc_shopping'),
-      op(12, 9, -3_900, 'Coffee Boom', 'sc_cafe'),
-      op(13, 10, -7_600, 'ИП Абенова', null),
-      op(14, 11, -15_200, 'Small', 'sc_food'),
-      op(15, 12, -1_500, 'Yandex Go', 'sc_transport'),
-      op(16, 13, -8_900, 'Magnum', 'sc_food'),
-      op(17, 13, -5_500, 'Del Papa', 'sc_cafe'),
+      op(3, 0, -7_600, 'ИП Абенова', null),
+      op(4, 1, -2_400, 'Coffee Boom', 'sc_cafe'),
+      op(5, 0, -3_200, 'ИП Жумабаева', null),
+      op(6, 2, -12_400, 'Magnum', 'sc_food'),
+      op(7, 2, -1_800, 'Yandex Go', 'sc_transport'),
+      op(8, 3, -18_500, 'Del Papa Cafe', 'sc_cafe'),
+      op(9, 4, -9_300, 'Small', 'sc_food'),
+      op(10, 0, -200_000, 'На депозит', null, { kind: 'transfer-out', internal: true }),
+      op(11, 6, -2_100, 'Yandex Go', 'sc_transport'),
+      op(12, 7, -17_700, 'Magnum', 'sc_food'),
+      op(13, 8, -46_000, 'Sulpak', 'sc_shopping'),
+      op(14, 9, -3_900, 'Coffee Boom', 'sc_cafe'),
+      op(15, 10, -15_200, 'Small', 'sc_food'),
+      op(16, 11, -1_500, 'Yandex Go', 'sc_transport'),
+      op(17, 12, -8_900, 'Magnum', 'sc_food'),
+      op(18, 13, -5_500, 'Del Papa Cafe', 'sc_cafe'),
+      op(19, 13, -9_800, 'Small', 'sc_food'),
     ])
   })
   void router.push('/')

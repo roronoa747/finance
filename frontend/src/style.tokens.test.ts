@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { FILL_MS } from '@/lib/motion'
 
 /**
  * Гвард токенов (B2C-12, Р-19): каждый цвет из `:root` есть в `.dark` и наоборот, и у каждого
@@ -52,11 +53,59 @@ describe('style.css — пары токенов light/dark', () => {
     expect(root.has('--s-unknown')).toBe(true)
     expect(root.get('--card-border')).toBe('var(--line)')
     expect(dark.get('--card-border')).toBe('transparent')
-    // Бренд, участники и разделы трат пивот не трогает.
-    expect(root.get('--pa')).toBe('#3b5da8')
-    expect(root.get('--pb')).toBe('#a9456a')
+    // Бренд и разделы трат пивот не трогает.
     expect(root.get('--s1')).toBe('#c2703f')
     expect(dark.get('--s12')).toBe('#b8b0a2')
+  })
+
+  it('пивот 3 (Р-44): участники «шалфей и лаванда», буква в кружке — контраст ≥ 3:1 в обеих темах', () => {
+    expect(root.get('--pa')).toBe('#4f7a63')
+    expect(root.get('--pb')).toBe('#7d6a9e')
+    expect(dark.get('--pa')).toBe('#94c2a8')
+    expect(dark.get('--pb')).toBe('#b9a8dc')
+    expect(dark.has('--dot-ink')).toBe(true)
+
+    // WCAG relative luminance; `var(--x)` раскрывается в той же теме.
+    const hex = (theme: Map<string, string>, v: string): string => {
+      const ref = v.match(/^var\((--[\w-]+)\)$/)
+      return ref ? hex(theme, theme.get(ref[1]) ?? '') : v
+    }
+    const lum = (h: string) => {
+      const [r, g, b] = [1, 3, 5]
+        .map((i) => parseInt(h.slice(i, i + 2), 16) / 255)
+        .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    }
+    const contrast = (a: string, b: string) => {
+      const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x)
+      return (hi + 0.05) / (lo + 0.05)
+    }
+    for (const theme of [root, dark]) {
+      const ink = hex(theme, theme.get('--dot-ink') ?? '')
+      for (const p of ['--pa', '--pb']) {
+        expect(contrast(ink, theme.get(p) ?? '')).toBeGreaterThanOrEqual(3)
+      }
+    }
+  })
+
+  it('пивот 3 (Р-45): токены движения 150–400 мс, полосы ≤ 1 с; «уменьшить движение» гасит анимации, переходы и задержки', () => {
+    const sizes = tokens(css.match(/:root\s*\{([^}]*--motion-fast[^}]*)\}/)?.[1] ?? '')
+    const ms = (k: string) => parseInt(sizes.get(k) ?? '', 10)
+    expect(ms('--motion-fast')).toBeGreaterThanOrEqual(150)
+    expect(ms('--motion-base')).toBeLessThanOrEqual(400)
+    expect(ms('--motion-fill')).toBeLessThanOrEqual(1000)
+    // Бег цифр (`CountUp`, JS) и рост полос (CSS) — одна длительность (ревью Блока 10, Н-6).
+    expect(ms('--motion-fill')).toBe(FILL_MS)
+    expect(sizes.get('--ease-out')).toMatch(/^cubic-bezier\(/)
+    for (const u of ['press', 'fx-in', 'fx-fade', 'fx-sheet']) expect(css).toContain(`@utility ${u} {`)
+    // Заполнение после анимации не держит transform — иначе `fixed` окна `Hint` внутри карточки уезжает (критик Б10).
+    const fx = [...css.matchAll(/^\s*animation: fx-[\w-]+ .*$/gm)].map((m) => m[0])
+    expect(fx).toHaveLength(3)
+    for (const a of fx) expect(a).not.toMatch(/\b(both|forwards)\b/)
+    const reduce = css.match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? ''
+    for (const rule of ['animation-duration', 'animation-delay', 'transition-duration', 'transition-delay']) {
+      expect(reduce).toContain(`${rule}:`)
+    }
   })
 
   it('пивот 3 (Р-36): шрифт системный, крупные цифры — ui-rounded, Google Fonts нет', () => {

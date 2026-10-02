@@ -32,7 +32,7 @@ const LABEL: Record<IncomePartKey, { name: string; color: string }> = {
   must: { name: 'обязательное', color: 'var(--s12)' },
   dreams: { name: 'мечты', color: 'var(--brand)' },
   living: { name: 'траты', color: 'var(--s1)' },
-  free: { name: 'свободно', color: 'var(--ok)' },
+  free: { name: 'остаток по плану', color: 'var(--ok)' },
 }
 const parts = computed(() => split.value.parts.map((p) => ({ ...p, ...LABEL[p.key] })))
 </script>

@@ -174,11 +174,11 @@ describe('PV-01 — закрытый кредит вне бюджета', () => 
       { id: 'cr-b', name: 'Банк', note: '', principal: 1_000_000, annualRate: 0.18, payment: 91_680, day: 20, updatedAt: '' },
     ]
 
-    // До закрытия: 1 000 000 − 151 680 − 200 000. В «Доходе» — доли: свободно 65 %, нагрузка 15 %.
+    // До закрытия: 1 000 000 − 151 680 − 200 000. В «Доходе» — доли: остаток по плану 65 %, нагрузка 15 %.
     const before = budgetAmounts({ ...store.householdDoc, credits: store.credits })
     expect(before).toMatchObject({ d2: 151_680, d5: 648_320 })
     let html = await render()
-    expect(html).toContain(`свободно ${pct(648_320, 1_000_000)} %`)
+    expect(html).toContain(`остаток по плану ${pct(648_320, 1_000_000)} %`)
     expect(html).toContain(`нагрузка ${pct(151_680, 1_000_000)} %`)
 
     store.applyPrepayment('cr-a', 'a', { amount: store.credits[0].principal, mode: 'term', accountId: 'card' })
@@ -188,7 +188,7 @@ describe('PV-01 — закрытый кредит вне бюджета', () => 
     expect(after.d2).toBe(91_680)
     expect(after.d5 - before.d5).toBe(60_000)
     html = await render()
-    expect(html).toContain(`свободно ${pct(708_320, 1_000_000)} %`)
+    expect(html).toContain(`остаток по плану ${pct(708_320, 1_000_000)} %`)
     expect(html).toContain(`нагрузка ${pct(91_680, 1_000_000)} %`)
     // Сырой документ закрытость не видит — поэтому экраны передают производные кредиты.
     expect(budgetAmounts(store.householdDoc).d2).toBe(151_680)

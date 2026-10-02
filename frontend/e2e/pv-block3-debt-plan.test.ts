@@ -151,7 +151,7 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
       expect(B.store.accounts[0].amount).toBe(cardBefore - 100_000)
       // Пивот 3 (B2C-43): шаг плана — в квадрате «План», строка «Платежей» его не печатает.
       expect(await screen(B.pinia, Money, '/money/plan')).toContain(`внесено по плану · ${money(100_000)}`)
-      expect(await screen(B.pinia, Money, '/money')).not.toContain('по плану')
+      expect(await screen(B.pinia, Money, '/money')).not.toContain('внесено по плану')
       // Второй раз в том же месяце шаг не вносится — ни у A, ни у B.
       expect(on(A).store.applyPlanStep('a')).toBeNull()
       expect(on(B).store.applyPlanStep('b', { accountId: 'card' })).toBeNull()
