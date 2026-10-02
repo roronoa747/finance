@@ -1,0 +1,570 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Разбор денег</title>
+<style>
+/* Колонка разделов; в каждом — ряд телефонов 390 px со свайпом. Приложение — токены style.css (нейтральная палитра, системный шрифт, участники «шалфей и лаванда»). */
+:root{
+  --pg-bg:#e9e9e6; --pg-fg:#19191b; --pg-mute:#6b6b70; --pg-line:#d6d6d1; --pg-chip:#ffffff;
+  --canvas:#f2f2f0; --surface:#ffffff; --surface-2:#f1f1ef; --surface-3:#e7e7e3; --line:#e3e3df; --card-border:var(--line);
+  --ink:#19191b; --ink-2:#57575b; --ink-3:#86868b;
+  --brand:#b4562f; --brand-ink:#fffdf9; --brand-soft:#f6e6dd;
+  --ok:#3e7a5b; --ok-soft:#dfeee4; --warn:#8a5a00; --warn-soft:#f8ebd0;
+  --pa:#4f7a63; --pb:#7d6a9e; --dot-ink:#ffffff;
+  --s1:#c2703f; --s3:#5b7fa6; --s4:#7a6a9e; --s5:#4f8a6b; --s8:#a47c3b; --s6:#b0587a; --s12:#9a9385;
+  --track:#e6e6e2; --on-photo:#ffffff; --photo-scrim:rgb(24 18 14 / .72);
+  --shadow-2:0 2px 6px rgb(30 26 22 / .1), 0 18px 48px rgb(30 26 22 / .14);
+  --font:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,'Segoe UI',Roboto,sans-serif;
+  --num:ui-rounded,-apple-system,BlinkMacSystemFont,system-ui,'Segoe UI',Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --pg-bg:#0c0c0e; --pg-fg:#f1f1ee; --pg-mute:#9a9a96; --pg-line:#2a2a2e; --pg-chip:#1c1c1f;
+  --canvas:#121214; --surface:#1c1c1f; --surface-2:#26262a; --surface-3:#313136; --line:#36363b; --card-border:transparent;
+  --ink:#f1f1ee; --ink-2:#b4b4b0; --ink-3:#8a8a86;
+  --brand:#e58a62; --brand-ink:#2a1208; --brand-soft:#3a2418;
+  --ok:#7fc29a; --ok-soft:#1f2e25; --warn:#e7b96a; --warn-soft:#2c2416;
+  --pa:#94c2a8; --pb:#b9a8dc; --dot-ink:#121214;
+  --s1:#e0946a; --s3:#8fb0da; --s4:#a99ad0; --s5:#7cbf9a; --s8:#d4aa66; --s6:#e08aa8; --s12:#b8b0a2;
+  --track:#313136; --photo-scrim:rgb(0 0 0 / .72);
+  --shadow-2:0 2px 8px rgb(0 0 0 / .5), 0 20px 56px rgb(0 0 0 / .55);
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --pg-bg:#0c0c0e; --pg-fg:#f1f1ee; --pg-mute:#9a9a96; --pg-line:#2a2a2e; --pg-chip:#1c1c1f;
+  --canvas:#121214; --surface:#1c1c1f; --surface-2:#26262a; --surface-3:#313136; --line:#36363b; --card-border:transparent;
+  --ink:#f1f1ee; --ink-2:#b4b4b0; --ink-3:#8a8a86;
+  --brand:#e58a62; --brand-ink:#2a1208; --brand-soft:#3a2418;
+  --ok:#7fc29a; --ok-soft:#1f2e25; --warn:#e7b96a; --warn-soft:#2c2416;
+  --pa:#94c2a8; --pb:#b9a8dc; --dot-ink:#121214;
+  --s1:#e0946a; --s3:#8fb0da; --s4:#a99ad0; --s5:#7cbf9a; --s8:#d4aa66; --s6:#e08aa8; --s12:#b8b0a2;
+  --track:#313136; --photo-scrim:rgb(0 0 0 / .72);
+  --shadow-2:0 2px 8px rgb(0 0 0 / .5), 0 20px 56px rgb(0 0 0 / .55);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--pg-bg);color:var(--pg-fg);font:15px/1.4 var(--font);margin:0}
+.wrap{max-width:1320px;margin:0 auto;padding-inline:16px;padding-block:20px 60px;display:flex;flex-direction:column;gap:44px}
+header.top{display:flex;flex-direction:column;gap:6px;max-width:70ch}
+h1{font-size:28px;letter-spacing:-.02em;margin:0;text-wrap:balance}
+.sub{color:var(--pg-mute);margin:0}
+section{display:flex;flex-direction:column;gap:14px}
+h2{font-size:21px;margin:0;letter-spacing:-.01em;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;text-wrap:balance}
+h2 .q{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--brand)}
+.why{color:var(--pg-mute);margin:0;max-width:70ch;font-size:14px}
+.row{display:flex;gap:22px;overflow-x:auto;padding-bottom:10px;scroll-snap-type:x mandatory}
+.col{display:flex;flex-direction:column;gap:10px;flex:0 0 auto;scroll-snap-align:start;width:min(390px,calc(100vw - 32px))}
+.cap{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;min-height:40px}
+.cap b{font-size:15px}
+.cap span{color:var(--pg-mute);font-size:13px}
+.rec{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:var(--brand);color:var(--brand-ink);padding:3px 8px;border-radius:99px}
+.now{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--pg-line);color:var(--pg-mute);padding:2px 8px;border-radius:99px}
+
+.phone{width:100%;max-width:390px;height:780px;background:var(--canvas);color:var(--ink);border-radius:38px;border:8px solid var(--pg-fg);overflow:hidden;position:relative;display:flex;flex-direction:column}
+.phone.short{height:640px}
+.scr{flex:1;overflow-y:auto;padding:14px 16px 110px;display:flex;flex-direction:column;gap:12px;scrollbar-width:none}
+.bar{display:flex;justify-content:space-between;align-items:center;padding:2px 2px 4px;gap:8px}
+.bar .t{font-size:26px;font-weight:700;letter-spacing:-.02em}
+.bar .back{font-size:15px;color:var(--brand);font-weight:600}
+.avs{display:flex}
+.av{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;color:var(--dot-ink);font-size:13px;font-weight:700;border:2px solid var(--canvas);flex:0 0 auto}
+.av+.av{margin-left:-8px}
+.av.a{background:var(--pa)} .av.b{background:var(--pb)}
+.av.emo{font-size:16px}
+.tabs{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:2px;background:var(--surface);box-shadow:var(--shadow-2);border-radius:99px;padding:5px;align-items:center}
+.tabs i{font-style:normal;font-size:13px;font-weight:600;padding:9px 15px;border-radius:99px;color:var(--ink-3)}
+.tabs i.on{background:var(--surface-3);color:var(--ink)}
+.tabs .plus{width:36px;height:36px;border-radius:50%;background:var(--brand);color:var(--brand-ink);display:grid;place-items:center;font-size:22px;padding:0;margin-left:4px}
+.dock{position:absolute;left:0;right:0;bottom:0;padding:12px 16px 18px;background:linear-gradient(to bottom,transparent,var(--canvas) 30%);display:flex;flex-direction:column;gap:6px}
+.card{background:var(--surface);border:1px solid var(--card-border);border-radius:24px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.lbl{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3)}
+.big{font-family:var(--num);font-weight:700;font-size:28px;line-height:1.05;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.huge{font-family:var(--num);font-weight:700;font-size:44px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.meta{font-size:13px;color:var(--ink-3)}
+.btn{border:0;border-radius:14px;padding:13px 16px;font:600 15px var(--font);background:var(--brand);color:var(--brand-ink);width:100%;cursor:pointer;transition:transform .14s ease}
+.btn:active{transform:scale(.97)}
+.btn.q{background:var(--surface-2);color:var(--ink)}
+.btn.g{background:transparent;color:var(--ink-2);padding:8px}
+.btn:focus-visible,.tg:focus-visible,.chip:focus-visible,.pk:focus-visible{outline:2.5px solid var(--brand);outline-offset:2px}
+.btns{display:flex;gap:8px}
+.seg{display:flex;height:12px;border-radius:99px;overflow:hidden;gap:2px;background:var(--track)}
+.seg i{display:block;height:100%;transition:flex-grow .45s cubic-bezier(.2,.8,.2,1)}
+.note{font-size:12px;color:var(--ink-3);text-align:center}
+.ok{color:var(--ok)} .warn{color:var(--warn)}
+.hint{display:inline-grid;place-items:center;width:17px;height:17px;border-radius:50%;background:var(--surface-2);color:var(--ink-3);font-size:11px;font-weight:700;margin-left:4px;vertical-align:1px}
+
+/* статьи */
+.list{background:var(--surface);border:1px solid var(--card-border);border-radius:24px;padding:2px 14px}
+.it{display:flex;align-items:center;gap:12px;padding:12px 0}
+.it+.it{border-top:1px solid var(--line)}
+.it .dot{width:10px;height:10px;border-radius:50%;background:var(--c);flex:0 0 auto}
+.it .tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.it .nm{font-size:16px;font-weight:600}
+.it .st{font-size:12.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.it .r{font-family:var(--num);font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.it.off .nm,.it.off .r{color:var(--ink-3)}
+.it.off .r{text-decoration:line-through}
+.it.off .dot{background:var(--track)}
+.it .th{width:44px;height:44px;border-radius:12px;overflow:hidden;flex:0 0 auto;background:var(--surface-3)}
+.it .th img{width:100%;height:100%;object-fit:cover;display:block}
+.tg{appearance:none;border:0;width:44px;height:27px;border-radius:99px;background:var(--track);position:relative;cursor:pointer;flex:0 0 auto;transition:background .2s}
+.tg::after{content:"";position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:var(--surface);box-shadow:0 1px 3px rgb(0 0 0 / .25);transition:transform .2s}
+.tg[aria-pressed="true"]{background:var(--ok)}
+.tg[aria-pressed="true"]::after{transform:translateX(17px)}
+.grip{color:var(--ink-3);font-size:18px;letter-spacing:-2px;flex:0 0 auto}
+.num{width:22px;height:22px;border-radius:50%;background:var(--surface-2);color:var(--ink-2);font-size:12px;font-weight:700;display:grid;place-items:center;flex:0 0 auto}
+.rest{position:sticky;top:-14px;z-index:2;background:var(--surface);border:1px solid var(--card-border);border-radius:24px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;box-shadow:0 8px 20px -14px rgb(0 0 0 / .4)}
+.rest .h{display:flex;justify-content:space-between;align-items:baseline}
+.add{font-size:15px;font-weight:600;color:var(--brand);padding:6px 4px}
+
+/* полоса-вариант */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1.5px solid var(--line);background:var(--surface);color:var(--ink);font:600 14px var(--font);padding:8px 12px;border-radius:99px;display:flex;gap:7px;align-items:center;cursor:pointer}
+.chip::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--c)}
+.chip[aria-pressed="false"]{color:var(--ink-3);border-style:dashed;background:transparent}
+.chip[aria-pressed="false"]::before{background:var(--track)}
+.chip.sel{border-color:var(--ink);background:var(--surface-2)}
+.ring{--ring-line:color-mix(in srgb,var(--ink) 35%,transparent);width:220px;height:220px;border-radius:50%;align-self:center;display:grid;place-items:center;position:relative;margin-block:6px;
+  box-shadow:0 0 0 .5px var(--ring-line), 0 10px 24px -6px rgb(0 0 0 / .28), 0 24px 48px -16px rgb(0 0 0 / .22)}
+.ring .in{width:164px;height:164px;border-radius:50%;background:var(--canvas);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  box-shadow:0 0 0 .5px var(--ring-line), inset 0 3px 10px rgb(0 0 0 / .08)}
+
+/* шаги */
+.dots{display:flex;gap:5px;justify-content:center}
+.dots i{width:6px;height:6px;border-radius:50%;background:var(--line)}
+.dots i.on{background:var(--ink)}
+.dec{border:1.5px solid var(--brand)}
+.dec .q2{font-size:20px;font-weight:650;letter-spacing:-.01em}
+
+/* неделя */
+.ck{display:flex;align-items:center;gap:10px;padding:8px 0}
+.ck+.ck{border-top:1px solid var(--line)}
+.box{width:24px;height:24px;border-radius:8px;border:2px solid var(--line);display:grid;place-items:center;font-size:14px;font-weight:800;color:var(--brand-ink);flex:0 0 auto}
+.box.on{background:var(--ok);border-color:var(--ok)}
+.pk{display:flex;align-items:center;gap:12px;padding:11px 0;cursor:pointer;width:100%;border:0;background:none;font:inherit;color:inherit;text-align:left}
+.pk+.pk{border-top:1px solid var(--line)}
+.pk .box{border-radius:50%}
+.pk[aria-pressed="true"] .box{background:var(--ink);border-color:var(--ink);color:var(--canvas)}
+.pk .tx{flex:1;min-width:0}
+.pk .nm{font-size:15.5px;font-weight:600}
+.pk .st{font-size:12.5px;color:var(--ink-3)}
+.pk .r{font-family:var(--num);font-weight:700;font-variant-numeric:tabular-nums}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:26px 26px 0 0;box-shadow:var(--shadow-2);padding:10px 16px 22px;display:flex;flex-direction:column;gap:12px}
+.sheet .gr{width:38px;height:5px;border-radius:99px;background:var(--line);align-self:center}
+.dim{position:absolute;inset:0;background:rgb(0 0 0 / .35)}
+.chipq{font-style:normal;font-size:14px;font-weight:600;padding:8px 12px;border-radius:99px;background:var(--surface-2);color:var(--ink)}
+
+/* фото и аватары */
+.ph{border-radius:20px;overflow:hidden;background:var(--surface-3);aspect-ratio:1/1;max-width:100%}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.field{border:1.5px solid var(--line);border-radius:14px;padding:12px 14px;font-size:15px;color:var(--ink);background:var(--surface);display:flex;gap:8px;align-items:center}
+.field .u{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tile{aspect-ratio:1/1;border-radius:16px;overflow:hidden;position:relative;background:var(--g)}
+.tile img{width:100%;height:100%;object-fit:cover;display:block}
+.tile span{position:absolute;left:8px;bottom:6px;color:var(--on-photo);font-size:12px;font-weight:650;text-shadow:0 1px 4px rgb(0 0 0 / .5)}
+.tile.new::after{content:"новое";position:absolute;right:6px;top:6px;font-size:10px;font-weight:700;background:var(--brand);color:var(--brand-ink);padding:2px 6px;border-radius:99px}
+.emos{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.emos i{font-style:normal;font-size:24px;aspect-ratio:1/1;display:grid;place-items:center;border-radius:14px;background:var(--surface-2)}
+.emos i.on{outline:2.5px solid var(--ink)}
+.cols{display:flex;gap:10px;flex-wrap:wrap}
+.cols i{width:34px;height:34px;border-radius:50%;background:var(--c)}
+.cols i.on{outline:2.5px solid var(--ink);outline-offset:2px}
+.bigav{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;font-size:46px;align-self:center;background:var(--pa)}
+
+/* виджеты */
+.wd{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.tag{font-size:12.5px;font-weight:650;padding:4px 9px;border-radius:99px;background:var(--ok-soft);color:var(--ok);white-space:nowrap}
+.tag.w{background:var(--warn-soft);color:var(--warn)}
+.cmpbar{display:flex;flex-direction:column;gap:5px}
+.cmpbar .h{display:flex;justify-content:space-between;font-size:13.5px}
+.cmpbar .tr{height:8px;border-radius:99px;background:var(--track);position:relative}
+.cmpbar .tr i{position:absolute;inset:0 auto 0 0;border-radius:99px;background:var(--c)}
+.cmpbar .tr b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);border-radius:2px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;font-size:12px;text-align:center}
+.cal span{padding:6px 0;border-radius:8px;color:var(--ink-2)}
+.cal span.p{background:var(--brand-soft);color:var(--brand);font-weight:700}
+.cal span.s{background:var(--ok-soft);color:var(--ok);font-weight:700}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+</style>
+
+<div class="wrap">
+<header class="top">
+  <h1>Разбор денег</h1>
+  <p class="sub">Бриф после Блока 10. Телефоны листаются вбок. Переключатели в разборе работают, остаток пересчитывается. Числа — примерные, не ваши.</p>
+</header>
+
+<!-- 1. Разбор денег -->
+<section>
+  <h2><span class="q">Вопрос 1</span>Как выглядит разбор зарплаты</h2>
+  <p class="why">Вместо раскладки. «Пришла зарплата» → статьи сверху вниз в порядке ступеней → сколько остаётся. Любую статью можно выключить и сразу увидеть остаток.</p>
+  <div class="row">
+    <div class="col">
+      <div class="cap"><b>А · Лесенка</b><span class="rec">рекомендую</span><span>остаток закреплён сверху, статьи списком с переключателями</span></div>
+      <div class="phone" id="pA">
+        <div class="scr">
+          <div class="bar"><span class="back">‹ Неделя</span><div class="avs"><span class="av a">И</span></div></div>
+          <div class="rest">
+            <div class="h"><span class="lbl">Остаётся</span><span class="meta">из <b class="sal"></b></span></div>
+            <div class="huge js-rest"></div>
+            <div class="seg js-seg"></div>
+          </div>
+          <div class="list js-list"></div>
+          <div class="add">+ Статья</div>
+        </div>
+        <div class="dock"><button class="btn">Разложить</button></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="cap"><b>Б · Кольцо</b><span>зарплата кольцом, статьи — чипами, нажатие включает и выключает</span></div>
+      <div class="phone" id="pB">
+        <div class="scr">
+          <div class="bar"><span class="back">‹ Неделя</span><div class="avs"><span class="av a">И</span></div></div>
+          <div class="ring js-ring"><div class="in"><span class="lbl">Остаётся</span><span class="big js-rest"></span><span class="meta">из <b class="sal"></b></span></div></div>
+          <div class="chips js-chips"></div>
+          <div class="card js-sel"></div>
+          <button class="btn g" data-replay>↻ Повторить заполнение</button>
+        </div>
+        <div class="dock"><button class="btn">Разложить</button></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="cap"><b>В · По шагу</b><span>одна статья за раз: «да» или «пропустить», остаток сверху</span></div>
+      <div class="phone" id="pC">
+        <div class="scr">
+          <div class="bar"><span class="back">‹ Неделя</span><div class="avs"><span class="av a">И</span></div></div>
+          <div class="card" style="align-items:center;text-align:center">
+            <span class="lbl">Остаётся</span><span class="huge js-rest"></span><span class="meta">из <b class="sal"></b></span>
+          </div>
+          <div class="card dec js-step"></div>
+          <div class="dots js-dots"></div>
+          <div class="list js-done"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 2. Ступени один раз + каждый месяц -->
+<section>
+  <h2><span class="q">Вопрос 2</span>Ступени — один раз, разбор — каждый месяц</h2>
+  <p class="why">Первый раз вы выбираете порядок статей и пороги, по умолчанию — стандартный порядок. Потом каждую зарплату раскладываете одним нажатием «как обычно» или правите.</p>
+  <div class="row">
+    <div class="col">
+      <div class="cap"><b>Первый раз · порядок</b><span>дефолт — стандарт, перетаскиванием меняете</span></div>
+      <div class="phone short">
+        <div class="scr">
+          <div class="bar"><span class="t">Ваш порядок</span></div>
+          <p class="meta" style="margin:0">Сверху — что важнее<span class="hint">?</span></p>
+          <div class="list">
+            <div class="it"><span class="num">1</span><div class="tx"><span class="nm">Обязательное</span><span class="st">аренда, кредиты, коммуналка</span></div><span class="grip">⋮⋮</span></div>
+            <div class="it"><span class="num">2</span><div class="tx"><span class="nm">Жизнь</span><span class="st">еда и быт</span></div><span class="grip">⋮⋮</span></div>
+            <div class="it"><span class="num">3</span><div class="tx"><span class="nm">Запас</span><span class="st">1 месяц трат</span></div><span class="grip">⋮⋮</span></div>
+            <div class="it"><span class="num">4</span><div class="tx"><span class="nm">Дорогие долги</span><span class="st">кредитка, рассрочки с %</span></div><span class="grip">⋮⋮</span></div>
+            <div class="it"><span class="num">5</span><div class="tx"><span class="nm">Подушка</span><span class="st">3 месяца</span></div><span class="grip">⋮⋮</span></div>
+            <div class="it"><span class="num">6</span><div class="tx"><span class="nm">Мечты</span><span class="st">цели со сроком</span></div><span class="grip">⋮⋮</span></div>
+            <div class="it"><span class="num">7</span><div class="tx"><span class="nm">Траты</span><span class="st">кафе, себе, развлечения</span></div><span class="grip">⋮⋮</span></div>
+          </div>
+        </div>
+        <div class="dock"><button class="btn">Готово</button></div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="cap"><b>Каждый месяц · «как обычно»</b><span>карточка на «Неделе» в день зарплаты</span></div>
+      <div class="phone short">
+        <div class="scr">
+          <div class="bar"><span class="t">Неделя</span><div class="avs"><span class="av a">И</span><span class="av b">А</span></div></div>
+          <div class="card dec">
+            <span class="lbl">Пришла зарплата</span>
+            <span class="huge">650 000 ₸</span>
+            <div class="seg"><i style="flex:280;background:var(--s1)"></i><i style="flex:150;background:var(--s5)"></i><i style="flex:50;background:var(--s3)"></i><i style="flex:60;background:var(--s6)"></i><i style="flex:25;background:var(--s4)"></i><i style="flex:85;background:var(--track)"></i></div>
+            <span class="meta">Как в сентябре · останется <b class="ok">85 000 ₸</b></span>
+            <button class="btn">Разложить как обычно</button>
+            <button class="btn g">Изменить</button>
+          </div>
+          <div class="note">1 из 3</div>
+        </div>
+        <div class="tabs"><i>Мечты</i><i class="on">Неделя</i><i>Деньги</i><span class="plus">+</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 3. Неделя пачкой + выписки -->
+<section>
+  <h2><span class="q">Вопрос 3</span>Неделя: 12 ИП — не по одному</h2>
+  <p class="why">Сейчас 12 неразобранных висят по одному. Варианты: отметить несколько и отнести разом или быстрые чипы с «не помню». Сверху — галочки «чья выписка за неделю загружена» (в приложении, без пушей).</p>
+  <div class="row">
+    <div class="col">
+      <div class="cap"><b>А · Пачкой</b><span class="rec">рекомендую</span><span>отметить → «куда» → готово</span></div>
+      <div class="phone">
+        <div class="scr">
+          <div class="bar"><span class="t">Неделя</span><div class="avs"><span class="av a">И</span><span class="av b">А</span></div></div>
+          <div class="card">
+            <span class="lbl">Выписки · 28 сен – 4 окт</span>
+            <div class="ck"><span class="box on">✓</span><span class="av a">И</span><span style="flex:1">Ильяс</span><span class="meta">вт</span></div>
+            <div class="ck"><span class="box"></span><span class="av b">А</span><span style="flex:1">Аруна</span><span class="meta">ещё нет</span></div>
+          </div>
+          <div class="card">
+            <div class="wd"><b style="font-size:17px">Без раздела · 12</b><span class="meta">Выбрать все</span></div>
+            <div class="js-pk"></div>
+          </div>
+        </div>
+        <div class="dock">
+          <span class="note js-pkn">Выбрано 3 · 14 600 ₸</span>
+          <div class="chips" style="justify-content:center"><i class="chipq">Еда</i><i class="chipq">Быт</i><i class="chipq">Переводы</i><i class="chipq">Не помню</i></div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="cap"><b>Б · По одному, но быстро</b><span>один ответ — один тап, «не помню» и «остальные — в прочее»</span></div>
+      <div class="phone">
+        <div class="scr">
+          <div class="bar"><span class="t">Неделя</span><div class="avs"><span class="av a">И</span><span class="av b">А</span></div></div>
+          <div class="card dec">
+            <span class="meta">3 из 12</span>
+            <span class="q2">ИП Сейткали</span>
+            <span class="meta">3 раза · 7 800 ₸ · последний — пт</span>
+            <div class="chips"><i class="chipq">Еда</i><i class="chipq">Быт</i><i class="chipq">Кафе</i><i class="chipq">Транспорт</i><i class="chipq">Переводы</i><i class="chipq">Не помню</i></div>
+            <button class="btn g">Остальные 9 — в «Прочее»</button>
+          </div>
+          <div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+        <div class="tabs"><i>Мечты</i><i class="on">Неделя</i><i>Деньги</i><span class="plus">+</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4. Фото и аватары -->
+<section>
+  <h2><span class="q">Вопрос 4</span>Фото по ссылке, больше фото, свой кружок</h2>
+  <p class="why">Ссылка на товар → приложение берёт картинку со страницы. Пул целей шире: новые темы. Кружок участника — смайлик и цвет вместо буквы.</p>
+  <div class="row">
+    <div class="col">
+      <div class="cap"><b>Желание по ссылке</b><span>вставили ссылку — фото, имя и цена подтянулись</span></div>
+      <div class="phone short">
+        <div class="scr">
+          <div class="bar"><span class="back">‹ Желания</span></div>
+          <div class="field"><span>🔗</span><span class="u">kaspi.kz/shop/p/dyson-airwrap-complete…</span></div>
+          <div class="ph" style="width:200px;align-self:center"><img src="img/w2.jpg" alt="Фото желания"></div>
+          <div class="card">
+            <span class="lbl">Нашли на странице</span>
+            <b style="font-size:17px">Dyson Airwrap Complete</b>
+            <span class="big">289 990 ₸</span>
+          </div>
+        </div>
+        <div class="dock"><button class="btn">Добавить</button></div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="cap"><b>Больше фото для целей</b><span>сейчас 15 (машина, квартира, 10 стран…), + новые темы</span></div>
+      <div class="phone short">
+        <div class="scr">
+          <div class="bar"><span class="back">‹ Новая цель</span></div>
+          <div class="grid">
+            <div class="tile" style="--g:var(--surface-3)"><img src="img/car.jpg" alt=""><span>Машина</span></div>
+            <div class="tile" style="--g:var(--surface-3)"><img src="img/kitchen.jpg" alt=""><span>Квартира</span></div>
+            <div class="tile" style="--g:var(--surface-3)"><img src="img/japan.jpg" alt=""><span>Япония</span></div>
+            <div class="tile new" style="--g:linear-gradient(135deg,var(--s6),var(--s1))"><span>Свадьба</span></div>
+            <div class="tile new" style="--g:linear-gradient(135deg,var(--s5),var(--s3))"><span>Ребёнок</span></div>
+            <div class="tile new" style="--g:linear-gradient(135deg,var(--s3),var(--s4))"><span>Учёба</span></div>
+            <div class="tile new" style="--g:linear-gradient(135deg,var(--s8),var(--s1))"><span>Ремонт</span></div>
+            <div class="tile new" style="--g:linear-gradient(135deg,var(--s5),var(--s8))"><span>Подушка</span></div>
+            <div class="tile new" style="--g:linear-gradient(135deg,var(--s4),var(--s6))"><span>Хадж, Умра</span></div>
+          </div>
+          <span class="note">Своё фото или по ссылке — как сейчас</span>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="cap"><b>Свой кружок</b><span>смайлик + цвет; без выбора — буква, как сейчас</span></div>
+      <div class="phone short">
+        <div class="scr">
+          <div class="bar"><span class="back">‹ Настройки</span></div>
+          <div class="bigav">🦊</div>
+          <div class="card">
+            <span class="lbl">Смайлик</span>
+            <div class="emos"><i>И</i><i class="on">🦊</i><i>🐻</i><i>🌿</i><i>⚡️</i><i>🌙</i><i>🍉</i><i>🚀</i><i>🐱</i><i>☕️</i><i>🎧</i><i>🌸</i></div>
+          </div>
+          <div class="card">
+            <span class="lbl">Цвет</span>
+            <div class="cols"><i class="on" style="--c:var(--pa)"></i><i style="--c:var(--pb)"></i><i style="--c:var(--s3)"></i><i style="--c:var(--s1)"></i><i style="--c:var(--s8)"></i><i style="--c:var(--s6)"></i></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 5. Вернуть убранное -->
+<section>
+  <h2><span class="q">Вопрос 5</span>Что вернуть из убранного пивотом 3</h2>
+  <p class="why">В виджете — одна короткая строка, нажатие открывает подробности. Ниже — три кандидата: доли трат против ориентира (было в «Бюджете»), календарь платежей и доход вклада (был отдельный экран).</p>
+  <div class="row">
+    <div class="col">
+      <div class="cap"><b>Деньги · коротко</b><span>строка-статус в каждом виджете</span></div>
+      <div class="phone">
+        <div class="scr">
+          <div class="bar"><span class="t">Деньги</span><div class="avs"><span class="av a">И</span><span class="av b">А</span></div></div>
+          <div class="card"><div class="wd"><span class="lbl">Доход</span><span class="tag">нагрузка низкая</span></div><span class="big">1 070 000 ₸</span>
+            <div class="seg"><i style="flex:38;background:var(--s1)"></i><i style="flex:12;background:var(--s6)"></i><i style="flex:30;background:var(--s5)"></i><i style="flex:20;background:var(--track)"></i></div></div>
+          <div class="card"><div class="wd"><span class="lbl">Траты</span><span class="tag w">продукты выше нормы</span></div><span class="big">412 300 ₸</span><span class="meta">из 450 000 · Продукты 31 %, обычно ~22 %</span></div>
+          <div class="card"><div class="wd"><span class="lbl">Платежи</span><span class="tag">5 из 7 оплачено</span></div><span class="meta">Следующий — 10 окт, аренда 250 000 ₸</span></div>
+          <div class="card"><div class="wd"><span class="lbl">Вклад</span><span class="tag">+48 000 ₸ в год</span></div><span class="big">400 000 ₸</span></div>
+        </div>
+        <div class="tabs"><i>Мечты</i><i>Неделя</i><i class="on">Деньги</i><span class="plus">+</span></div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="cap"><b>Нажатие на «Траты»</b><span>доли разделов и метка ориентира</span></div>
+      <div class="phone">
+        <div class="scr">
+          <div class="bar"><span class="t">Деньги</span></div>
+        </div>
+        <div class="dim"></div>
+        <div class="sheet">
+          <span class="gr"></span>
+          <b style="font-size:20px">Траты за сентябрь</b>
+          <div class="cmpbar"><div class="h"><span>Продукты</span><b>31 %</b></div><div class="tr"><i style="width:62%;--c:var(--s1)"></i><b style="left:44%"></b></div></div>
+          <div class="cmpbar"><div class="h"><span>Кафе</span><b>12 %</b></div><div class="tr"><i style="width:24%;--c:var(--s6)"></i><b style="left:20%"></b></div></div>
+          <div class="cmpbar"><div class="h"><span>Транспорт</span><b>9 %</b></div><div class="tr"><i style="width:18%;--c:var(--s3)"></i><b style="left:24%"></b></div></div>
+          <div class="cmpbar"><div class="h"><span>Быт</span><b>14 %</b></div><div class="tr"><i style="width:28%;--c:var(--s5)"></i><b style="left:30%"></b></div></div>
+          <div class="cmpbar"><div class="h"><span>Одежда</span><b>7 %</b></div><div class="tr"><i style="width:14%;--c:var(--s4)"></i><b style="left:16%"></b></div></div>
+          <span class="meta">Черта — обычная доля<span class="hint">?</span></span>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="cap"><b>Нажатие на «Платежи»</b><span>месяц сеткой — было в «Бюджете»</span></div>
+      <div class="phone">
+        <div class="scr">
+          <div class="bar"><span class="t">Деньги</span></div>
+        </div>
+        <div class="dim"></div>
+        <div class="sheet">
+          <span class="gr"></span>
+          <b style="font-size:20px">Октябрь</b>
+          <div class="cal">
+            <span class="meta">пн</span><span class="meta">вт</span><span class="meta">ср</span><span class="meta">чт</span><span class="meta">пт</span><span class="meta">сб</span><span class="meta">вс</span>
+            <span></span><span></span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span>
+            <span>6</span><span>7</span><span>8</span><span>9</span><span class="p">10</span><span>11</span><span>12</span>
+            <span>13</span><span>14</span><span class="s">15</span><span>16</span><span>17</span><span>18</span><span>19</span>
+            <span class="p">20</span><span>21</span><span>22</span><span>23</span><span class="p">24</span><span class="s">25</span><span>26</span>
+            <span>27</span><span>28</span><span>29</span><span>30</span><span>31</span><span></span><span></span>
+          </div>
+          <span class="meta"><b class="warn">●</b> платёж · <b class="ok">●</b> зарплата</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</div>
+
+<script>
+// Пример: зарплата Ильяса; статьи в порядке ступеней. Только целые тенге.
+const SAL = 650000;
+const ITEMS = [
+  {id:'must', nm:'Обязательное', st:'аренда, 2 кредита, коммуналка', a:280000, c:'--s1', on:true},
+  {id:'life', nm:'Жизнь', st:'еда и быт', a:150000, c:'--s5', on:true},
+  {id:'res', nm:'Запас', st:'есть 0,6 из 1 месяца', a:50000, c:'--s3', on:true},
+  {id:'debt', nm:'Дорогие долги', st:'кредитка Kaspi Red · 34 %', a:60000, c:'--s6', on:true},
+  {id:'cush', nm:'Подушка', st:'1 из 3 месяцев', a:0, c:'--s8', on:false},
+  {id:'dream', nm:'Мечты', st:'Япония · к маю', a:25000, c:'--s4', on:true},
+  {id:'fun', nm:'Траты', st:'кафе, себе, развлечения', a:40000, c:'--s12', on:false},
+];
+const fmt = n => n.toLocaleString('ru-RU').replace(/ /g,' ') + ' ₸';
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function countTo(el, to){
+  const from = Number(el.dataset.v || to); el.dataset.v = to;
+  if (reduce || from === to){ el.textContent = fmt(to); return; }
+  const t0 = performance.now(), d = 450;
+  const step = t => { const k = Math.min(1,(t-t0)/d), e = 1-Math.pow(1-k,3);
+    el.textContent = fmt(Math.round(from + (to-from)*e)); if (k<1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+function makePlan(root, mode){
+  const items = ITEMS.map(x => ({...x, a: x.a || (x.id==='cush' ? 40000 : x.a)}));
+  let sel = 'debt', step = 0;
+  const rest = () => SAL - items.filter(x=>x.on).reduce((s,x)=>s+x.a,0);
+  root.querySelectorAll('.sal').forEach(e => e.textContent = fmt(SAL));
+  function render(){
+    const r = rest();
+    root.querySelectorAll('.js-rest').forEach(e => { countTo(e, r); e.classList.toggle('warn', r<0); });
+    const seg = root.querySelector('.js-seg');
+    if (seg) seg.innerHTML = items.map(x => `<i style="flex-grow:${x.on?x.a:0};background:var(${x.c})"></i>`).join('') + `<i style="flex-grow:${Math.max(r,0)};background:var(--track)"></i>`;
+    const list = root.querySelector('.js-list');
+    if (list) list.innerHTML = items.map(x => `<div class="it ${x.on?'':'off'}"><span class="dot" style="--c:var(${x.c})"></span><div class="tx"><span class="nm">${x.nm}</span><span class="st">${x.st}</span></div><span class="r">${fmt(x.a)}</span><button class="tg" data-id="${x.id}" aria-pressed="${x.on}" aria-label="${x.nm}"></button></div>`).join('');
+    const ring = root.querySelector('.js-ring');
+    if (ring) animateRing(ring, items.map(x => x.on ? x.a : 0));
+    const chips = root.querySelector('.js-chips');
+    if (chips) chips.innerHTML = items.map(x => `<button class="chip ${x.id===sel?'sel':''}" data-id="${x.id}" aria-pressed="${x.on}" style="--c:var(${x.c})">${x.nm}</button>`).join('') + `<button class="chip" aria-pressed="false" style="--c:var(--track)">+ Статья</button>`;
+    const sc = root.querySelector('.js-sel');
+    if (sc){ const x = items.find(i=>i.id===sel);
+      sc.innerHTML = `<div class="wd"><b style="font-size:17px">${x.nm}</b><button class="tg" data-id="${x.id}" aria-pressed="${x.on}" aria-label="${x.nm}"></button></div><span class="big" style="${x.on?'':'color:var(--ink-3);text-decoration:line-through'}">${fmt(x.a)}</span><span class="meta">${x.st}</span>`; }
+    const st = root.querySelector('.js-step');
+    if (st){
+      const dots = root.querySelector('.js-dots'); dots.innerHTML = items.map((_,i)=>`<i class="${i<=step?'on':''}"></i>`).join('');
+      const done = root.querySelector('.js-done');
+      done.innerHTML = items.slice(0,step).map(x => `<div class="it ${x.on?'':'off'}"><span class="dot" style="--c:var(${x.c})"></span><div class="tx"><span class="nm">${x.nm}</span></div><span class="r">${fmt(x.a)}</span></div>`).join('');
+      done.hidden = step===0;
+      if (step < items.length){ const x = items[step];
+        st.innerHTML = `<span class="meta">Шаг ${step+1} из ${items.length}</span><span class="q2">${x.nm} — ${fmt(x.a)}?</span><span class="meta">${x.st}</span><div class="btns"><button class="btn q" data-skip>Пропустить</button><button class="btn" data-yes>Да</button></div>`;
+      } else st.innerHTML = `<span class="q2">Готово</span><span class="meta">Остаток — в «Свободно»</span><button class="btn" data-reset>Разложить</button>`;
+    }
+  }
+  root.addEventListener('click', e => {
+    const t = e.target.closest('button'); if (!t) return;
+    if (t.classList.contains('tg')){ const x = items.find(i=>i.id===t.dataset.id); x.on = !x.on; render(); }
+    else if (t.classList.contains('chip') && t.dataset.id){ const x = items.find(i=>i.id===t.dataset.id);
+      if (sel === x.id) x.on = !x.on; sel = x.id; render(); }
+    else if (t.hasAttribute('data-yes')){ items[step].on = true; step++; render(); }
+    else if (t.hasAttribute('data-skip')){ items[step].on = false; step++; render(); }
+    else if (t.hasAttribute('data-reset')){ step = 0; render(); }
+  });
+  // Кольцо: сектора растут по очереди от нуля при открытии и плавно меняются при выключении статьи.
+  let shown = items.map(() => 0), raf = 0;
+  function paint(ring, vals){
+    let acc = 0; const stops = [];
+    vals.forEach((v,i) => { if (v <= 0) return; const s = acc/SAL*360; acc += v; stops.push(`var(${items[i].c}) ${s}deg ${acc/SAL*360}deg`); });
+    ring.style.background = `conic-gradient(${stops.join(',')}${stops.length?',':''}var(--track) ${acc/SAL*360}deg 360deg)`;
+  }
+  function animateRing(ring, target, stagger){
+    cancelAnimationFrame(raf);
+    if (reduce){ shown = target.slice(); paint(ring, shown); return; }
+    const from = shown.slice(), t0 = performance.now(), d = stagger ? 420 : 500, gap = stagger ? 160 : 0;
+    const frame = t => {
+      let done = true;
+      shown = target.map((to,i) => { const k = Math.min(1, Math.max(0, (t - t0 - i*gap)/d)); if (k < 1) done = false;
+        const e = 1 - Math.pow(1-k, 3); return from[i] + (to - from[i])*e; });
+      paint(ring, shown);
+      if (!done) raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+  }
+  root.addEventListener('click', e => {
+    if (!e.target.closest('[data-replay]')) return;
+    const ring = root.querySelector('.js-ring'); shown = items.map(() => 0);
+    const el = root.querySelector('.js-rest'); el.dataset.v = SAL;
+    animateRing(ring, items.map(x => x.on ? x.a : 0), true); countTo(el, rest());
+  });
+  if (mode === 'C') items.forEach(x => x.on = false);
+  render();
+  const ring0 = root.querySelector('.js-ring');
+  if (ring0){ const el = root.querySelector('.js-rest'); el.dataset.v = SAL; countTo(el, rest()); shown = items.map(() => 0); animateRing(ring0, items.map(x => x.on ? x.a : 0), true); }
+}
+makePlan(document.getElementById('pA'),'A');
+makePlan(document.getElementById('pB'),'B');
+makePlan(document.getElementById('pC'),'C');
+
+// Неделя пачкой
+const PK = [['ИП Ахметова',3,8400,true],['ИП Сейткали',3,7800,false],['ИП Жумабаев',1,2900,true],['ИП Ким',2,3300,true],['ИП Оспанов',1,12000,false],['ИП Нурланова',2,4100,false],['Ещё 6',0,21500,false]];
+const pkRoot = document.querySelector('.js-pk');
+function pkRender(){
+  pkRoot.innerHTML = PK.map((p,i)=> p[1] ? `<button class="pk" data-i="${i}" aria-pressed="${p[3]}"><span class="box">${p[3]?'✓':''}</span><span class="tx"><span class="nm">${p[0]}</span><br><span class="st">${p[1]} раз${p[1]>1&&p[1]<5?'а':''}</span></span><span class="r">${fmt(p[2])}</span></button>` : `<div class="pk" style="cursor:default"><span class="tx"><span class="st">${p[0]} · ${fmt(p[2])} ›</span></span></div>`).join('');
+  const s = PK.filter(p=>p[3]); document.querySelector('.js-pkn').textContent = `Выбрано ${s.length} · ${fmt(s.reduce((a,p)=>a+p[2],0))}`;
+}
+pkRoot.addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (!b) return; PK[b.dataset.i][3] = !PK[b.dataset.i][3]; pkRender(); });
+pkRender();
+</script>
+
+</body></html>
