@@ -358,4 +358,32 @@ describe('e2e / B2C Блок 11 — «Разбор денег» на двух т
     expect(sheet).toContain(`Кафе и рестораны ${text(money(24_000))} · 24 %`)
     expect(sheet).toContain('Черта — обычная доля')
   })
+
+  it('часть 9 (приёмка) — «Траты» выше «Мечт» в «Ваш порядок»: зарплата закрывает по новому порядку, партнёр докрывает «Мечты»', async () => {
+    const A = await phone(server, st, 'a')
+    const B = await phone(server, st, 'b')
+    markSalary(A, 'a', 550_000)
+    // Перестановка пальцем на стенде — то же, что `reorderArticles` (DOM-тест «Ваш порядок»).
+    A.store.reorderArticles(['must', 'life', 'reserve', 'debts', 'cushion', 'spend', 'dreams'])
+    A.store.setMoneySettings({ orderedAt: T0 })
+    // 550 000 − 495 000 (до «Подушки» включительно) = 55 000 → «Траты» 55 000 из 60 000, «Мечты» 0 — обе ждут Аруну.
+    const a = breakdownOf(A, { from: 'salary', person: 'a', period: K })
+    expect(a.mb.articles.map((x) => x.key)).toEqual(['must', 'life', 'reserve', 'debts', 'cushion', 'spend', 'dreams'])
+    expect(a.fill).toMatchObject({ rest: 0, short: 0, waiting: ['spend', 'dreams'] })
+    expect([a.fill.given.spend, a.fill.given.dreams]).toEqual([55_000, 0])
+    await lay(A, ring('a'))
+    expect(A.store.goals.find((g) => g.id === 'trip')!.have).toBe(40_000)
+    await sync(A, B)
+    expect(B.store.moneyArticles.map((x) => x.id)).toEqual(['must', 'life', 'reserve', 'debts', 'cushion', 'spend', 'dreams'])
+
+    // Аруна 500 000: «Траты» 60 000 − 55 000 = 5 000, «Мечты» 50 000 → 55 000, остаётся 445 000; «Отпуск» 40 000 + 50 000.
+    at('2026-10-20T07:00:00Z')
+    markSalary(B, 'b', 500_000)
+    const b = breakdownOf(B, { from: 'salary', person: 'b', period: K })
+    expect(b.mb.articles.map((x) => [x.key, x.left])).toEqual([['spend', 5_000], ['dreams', 50_000]])
+    expect(b.fill).toMatchObject({ rest: 445_000, waiting: [], short: 0 })
+    await lay(B, ring('b'))
+    expect(B.store.allocations.find((x) => x.sourceId === 'b')!.parts).toEqual([{ target: 'spend', amount: 5_000 }, { target: 'dreams', amount: 50_000 }])
+    expect(B.store.goals.find((g) => g.id === 'trip')!.have).toBe(90_000)
+  })
 })
