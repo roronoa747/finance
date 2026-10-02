@@ -9,13 +9,15 @@ import Tag from './Tag.vue'
 import type { WeekSegment } from './WeekCard.vue'
 
 /**
- * Карточка недели «Недели» (пивот 3, макет `pivot-3/dreams-week.html` «А · Ритуал»): «Итог недели», крупная
+ * Карточка недели «Недели» (пивот 3, макет `pivot-3/dreams-week.html` «А · Ритуал»): даты недели подписью, крупная
  * сумма обоих (бежит — `CountUp`), чип против прошлой недели, полоса разделов и короткая легенда (до 4
  * разделов + «ещё N»), «Не разобрано · <сумма>» строкой. Суммы и доли — `weekPicture`, разница —
- * `weekVersusPrev` (`finance.ts`); здесь только показ. Даты недели — в подписи шапки.
+ * `weekVersusPrev` (`finance.ts`); здесь только показ. Подпись — даты недели (`weekRangeLabel`, как в шапке; приёмка Б10).
  */
 const props = withDefaults(
   defineProps<{
+    /** Даты недели — `weekRangeLabel` («28 сентября – 4 октября»). */
+    label: string
     total: number
     /** Разница с прошлой неделей, целый процент (`weekVersusPrev`); null — одной из недель нет. */
     delta?: number | null
@@ -46,7 +48,7 @@ const stack = computed(() => [
 
 <template>
   <Card class="flex flex-col gap-3">
-    <div class="type-label">Итог недели</div>
+    <div class="type-label">{{ label }}</div>
     <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
       <span class="type-big num text-[40px] text-ink"><CountUp :value="total" :format="money" /></span>
       <Tag v-if="chip" :tone="chip.tone">{{ chip.text }}</Tag>

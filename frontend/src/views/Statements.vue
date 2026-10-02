@@ -85,8 +85,9 @@ const mineThisWeek = computed(() => {
   const { from, to } = pic.value.range
   return store.uploads.some((u) => u.slot === me.value && u.period_to >= from && u.period_from <= to)
 })
-/** Карточка недели: сумма и доли — `weekPicture`, чип — `weekVersusPrev`, «Не разобрано» — сумма недели обоих. */
+/** Карточка недели: подпись — даты недели, сумма и доли — `weekPicture`, чип — `weekVersusPrev`, «Не разобрано» — сумма недели обоих. */
 const weekTotalProps = computed(() => ({
+  label: weekRangeLabel(pic.value.range),
   total: pic.value.total,
   delta: weekVersusPrev(spendTotals.value, week, prevWeek)?.delta ?? null,
   segments: pic.value.rows.map((r) => ({ id: r.categoryId, name: r.name, amount: r.amount, share: r.share, color: r.color })),

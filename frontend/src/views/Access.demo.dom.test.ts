@@ -13,7 +13,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
 import { spendTotals, unknownGroups } from '@/lib/statements/model'
 import type { SpendTotal } from '@/lib/statements/types'
-import { monthKey, weekKey } from '@/lib/dates'
+import { monthKey, weekKey, weekRangeLabel } from '@/lib/dates'
 import { weekPicture } from '@/lib/finance'
 import { money } from '@/lib/money'
 
@@ -122,7 +122,7 @@ describe('B2C-52: демо — итоги из демо-операций той 
     expect(pic.total).toBe(opsWeek + arunaWeek)
 
     const html = text(await renderScreen(Statements, '/week'))
-    expect(html).toContain(`Итог недели ${text(money(pic.total))}`)
+    expect(html).toContain(`${weekRangeLabel(pic.range)} ${text(money(pic.total))}`)
     expect(html).toMatch(/к прошлой|как на прошлой/)
     expect(html).toMatch(/1 из [2-9]/)
     expect(html).toContain('— куда отнести?')

@@ -112,10 +112,10 @@ describe('views/Statements.vue', () => {
     ]))
     const raw = await renderScreen(Statements, '/statements')
     const html = text(raw)
-    // Даты недели и «без выписки Дана» — в подписи шапки оболочки (AppShell.test); на экране — итог недели.
+    // Даты недели и «без выписки Дана» — в подписи шапки оболочки (AppShell.test); на экране — даты недели над суммой (приёмка Б10).
     expect(html).not.toContain('Эта неделя')
     expect(html).not.toContain('За эту неделю без выписки')
-    expect(html).toContain(`Итог недели ${m(20_000)}`)
+    expect(html).toContain(`21–27 сентября ${m(20_000)}`)
     // Своя выписка за неделю есть — ни загрузки, ни списка загрузок (g2 «Неделя — итог»).
     expect(html).not.toContain('Загрузить выписку')
     expect(html).not.toContain('Алихан · Kaspi')
@@ -198,7 +198,7 @@ describe('views/Statements.vue', () => {
     ]))
     const raw = await renderScreen(Statements, '/statements')
     const html = text(raw)
-    expect(html).toContain(`Итог недели ${m(9_000)}`)
+    expect(html).toContain(`21–27 сентября ${m(9_000)}`)
     expect(html).toContain('Разделы за сентябрь')
     expect(html).toContain('Прошлые недели')
     expect(html).not.toContain('Загрузить выписку')
@@ -390,7 +390,7 @@ describe('views/Statements.vue — решения по одному и итог 
     const html = await chip(60_000, 80_000)
     const pic = weekPicture(finance.householdDoc.spendTotals!, finance.householdDoc.spendCategories ?? [], finance.people, '2026-W39', store.uploads)
     expect(pic.total).toBe(60_000)
-    expect(html).toContain(`Итог недели ${m(pic.total)} −25 % к прошлой`)
+    expect(html).toContain(`21–27 сентября ${m(pic.total)} −25 % к прошлой`)
     expect(await chip(90_000, 80_000)).toContain('+13 % к прошлой')
     expect(await chip(80_000, 80_000)).toContain('как на прошлой')
     expect(await chip(80_000, null)).not.toContain('к прошлой')

@@ -8,7 +8,7 @@ import { useOperationsStore } from '../src/stores/operations'
 import { assignIds, spendTotals } from '../src/lib/statements/model'
 import type { Operation, ParsedStatement, SpendTotal } from '../src/lib/statements/types'
 import { money } from '../src/lib/money'
-import { weekKey } from '../src/lib/dates'
+import { weekKey, weekRange, weekRangeLabel } from '../src/lib/dates'
 import { freeByFact, untilPayday, weekPicture, type Decision } from '../src/lib/finance'
 import { planFamilyDoc } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
@@ -117,7 +117,7 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
       const free = fact(p)
       expect(free.byFact).toBe(true)
       expect(html).toContain(`Свободно ${text(money(free.amount))}`)
-      for (const w of ['Итог недели', 'куда отнести', 'Загрузить выписку', 'Пришла зарплата', 'Не разобрано']) expect(html).not.toContain(w)
+      for (const w of [weekRangeLabel(weekRange(weekKey())), 'куда отнести', 'Загрузить выписку', 'Пришла зарплата', 'Не разобрано']) expect(html).not.toContain(w)
     }
   })
 
@@ -175,7 +175,7 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     await uploadA(A)
     const V = await phone(server, st, 'b', 'viewer')
     const week = await screen(V.pinia, Statements, '/week')
-    expect(text(week)).toContain('Итог недели')
+    expect(text(week)).toContain(weekRangeLabel(weekRange(weekKey())))
     for (const w of ['куда отнести', 'Загрузить выписку', 'из 2']) expect(text(week)).not.toContain(w)
     expect(week).not.toContain('type-h2')
     expect(week).not.toContain('bg-brand text-brand-ink')
@@ -199,7 +199,7 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     const aruna = (finance.householdDoc.spendTotals ?? []).filter((t) => t.by === 'b' && t.kind === 'week' && t.period === week).reduce((a, t) => a + t.amount, 0)
     expect(pic.total).toBe(opsWeek + aruna)
     const html = text(await screen(pinia, Statements, '/week'))
-    expect(html).toContain(`Итог недели ${text(money(pic.total))}`)
+    expect(html).toContain(`${weekRangeLabel(pic.range)} ${text(money(pic.total))}`)
     expect(html).toContain('1 из 2')
     expect(html).toContain('ИП Абенова — куда отнести?')
     // «История» демо — те же операции недели.
