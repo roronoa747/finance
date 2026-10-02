@@ -3014,7 +3014,7 @@ export function decisionQueue(
   if (unallocated) {
     const { person, period, record } = unallocated
     const bctx = { totals: ctx.totals ?? [], spendCategories: ctx.spendCategories ?? [], uploads: ctx.uploads ?? [] }
-    const usual = asUsual(state, bctx, person.id, now, period)
+    const usual = asUsual(state, bctx, person.id, period)
     const path = salaryBreakdownPath(person.id, period)
     out.push({
       kind: 'allocate',
@@ -3470,8 +3470,7 @@ export type AsUsual = MonthBreakdown & { last: string | null; off: ArticleKey[] 
 
 /**
  * Карточка «Пришла зарплата · как в <прошлом месяце>» (Р-55, B2C-55 п. 3): своя пришедшая и не
- * разложенная зарплата (месяцы — как у `salaryToAllocate`: пока спрашивается «Пришла?», раньше не
- * ищем; `period` — месяц уже найденной зарплаты, очередь берёт его у `salaryToAllocate`), статьи — как
+ * разложенная зарплата месяца `period` (месяц находит `salaryToAllocate`), статьи — как
  * в прошлой записи разбора участника (выключенные там — выключены), нет её — план. null — плана нет
  * («Ваш порядок» не пройден — первый разбор начинается с него), зарплата не пришла или уже разложена.
  */
@@ -3479,13 +3478,10 @@ export function asUsual(
   state: BreakdownState,
   ctx: Omit<BreakdownCtx, 'covered' | 'extra' | 'key'>,
   me: PersonId | undefined,
-  now = today(),
-  period?: string,
+  period: string,
 ): AsUsual | null {
   if (!me || !moneySettingsOf(state).orderedAt) return null
-  const asked = salaryAsk(state, me, now)
-  const months = period ? [period] : [addMonths(now.key, 1), now.key, addMonths(now.key, -1)].filter((k) => !asked || k > asked.key)
-  const paid = months.map((k) => paidFor(state.payments, 'salary', me, k)).find(Boolean)
+  const paid = paidFor(state.payments, 'salary', me, period)
   if (!paid) return null
   const mb = monthBreakdown(state, { ...ctx, key: paid.period }, { from: 'salary', person: me, period: paid.period })
   if (!mb || mb.recorded || mb.amount <= 0) return null

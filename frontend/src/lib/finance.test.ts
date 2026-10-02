@@ -3326,19 +3326,18 @@ describe('B2C-55: разбор зарплаты по статьям — ручн
   })
 
   it('asUsual: нет плана — null; прошлый месяц с выключенными Тратами — так же; уже разложено — null', () => {
-    const now = { day: 12, key: K }
-    expect(asUsual(family({ moneySettings: null }), ctx, 'a', now)).toBeNull()
-    const plain = asUsual(family(), ctx, 'a', now)!
+    expect(asUsual(family({ moneySettings: null }), ctx, 'a', K)).toBeNull()
+    const plain = asUsual(family(), ctx, 'a', K)!
     expect(plain).toMatchObject({ last: null, off: [] })
     expect(plain.fill.rest).toBe(35_000)
     const prevRec: Allocation = { id: 'p', kind: 'breakdown', source: 'salary', sourceId: 'a', period: '2026-09', by: 'a', at: '2026-09-10T05:00:00.000Z', updatedAt: T, total: 650_000, parts: [], off: ['spend'] }
-    const usual = asUsual(family({ allocations: [prevRec] }), ctx, 'a', now)!
+    const usual = asUsual(family({ allocations: [prevRec] }), ctx, 'a', K)!
     expect(usual.last).toBe('2026-09')
     expect(usual.articles.find((a) => a.key === 'spend')!.on).toBe(false)
     expect(usual.fill.rest).toBe(75_000) // 700 000 − 625 000
     const done: Allocation = { ...prevRec, id: 'd', period: K, off: [] }
-    expect(asUsual(family({ allocations: [prevRec, done] }), ctx, 'a', now)).toBeNull()
-    expect(asUsual(family({ payments: [] }), ctx, 'a', now)).toBeNull()
+    expect(asUsual(family({ allocations: [prevRec, done] }), ctx, 'a', K)).toBeNull()
+    expect(asUsual(family({ payments: [] }), ctx, 'a', K)).toBeNull()
   })
 
   describe('B2C-58: карточка «Пришла зарплата» в очереди «Недели»', () => {
@@ -3372,7 +3371,7 @@ describe('B2C-55: разбор зарплаты по статьям — ручн
     it('без плана — «Разложить» ведёт в «Ваш порядок»; после записи — карточки нет', () => {
       const none = q(family({ payments: [stmt('a', 700_000)], moneySettings: null }), 'a')!
       expect(none).toMatchObject({ usual: null, to: '/week/order?from=salary&person=a&period=2026-10', actions: { primary: 'Разложить', ghost: 'Позже' } })
-      const u = asUsual(family({ payments: [stmt('a', 700_000)] }), ctx, 'a', now)!
+      const u = asUsual(family({ payments: [stmt('a', 700_000)] }), ctx, 'a', K)!
       const w = breakdownWith(u, u.articles.filter((a) => !a.on).map((a) => a.key))
       const rec: Allocation = { id: 'r', kind: 'breakdown', ...u.record, by: 'a', at: T, updatedAt: T, total: u.amount, parts: w.effects.parts }
       expect(q(family({ payments: [stmt('a', 700_000)], allocations: [rec] }), 'a')).toBeNull()
@@ -3380,7 +3379,7 @@ describe('B2C-55: разбор зарплаты по статьям — ручн
 
     it('партнёр после своей зарплаты — своя карточка, статьи закрыты первой (covered)', () => {
       const two = family({ people: [person('a', 650_000, 10), person('b', 450_000, 20)], payments: [stmt('a', 650_000)] })
-      const first = asUsual(two, ctx, 'a', now)!
+      const first = asUsual(two, ctx, 'a', K)!
       const rec: Allocation = { id: 'r1', kind: 'breakdown', ...first.record, by: 'a', at: T, updatedAt: T, total: 650_000, parts: breakdownWith(first, []).effects.parts }
       const after = {
         ...two,
@@ -3399,7 +3398,7 @@ describe('B2C-55: разбор зарплаты по статьям — ручн
 
     it('«как обычно» и кольцо с теми же статьями — одна запись (breakdownWith)', () => {
       const state = family({ payments: [stmt('a', 700_000)] })
-      const u = asUsual(state, ctx, 'a', now)!
+      const u = asUsual(state, ctx, 'a', K)!
       const ring = monthBreakdown(state, ctx, { from: 'salary', person: 'a', period: K })!
       const off = u.articles.filter((a) => !a.on).map((a) => a.key)
       expect(breakdownWith(ring, off)).toEqual(breakdownWith(u, off))
