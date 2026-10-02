@@ -191,7 +191,7 @@ const emptyText = computed(() => {
   </div>
 
   <!-- РАЗБОР -->
-  <div v-else class="flex flex-col gap-3 pt-1">
+  <div v-else :class="['flex flex-col gap-3 pt-1', member ? 'pb-28' : '']">
     <BreakdownRing :segments="segments" :label="`Остаётся ${money(fill.rest)} из ${money(mb.amount)}`">
       <span class="type-label">Остаётся</span>
       <span class="type-big-md num text-ink"><CountUp :value="fill.rest" :from="mb.amount" :format="money" /></span>
@@ -221,15 +221,16 @@ const emptyText = computed(() => {
     <Card v-if="selected" tight class="flex flex-col gap-2.5">
       <div class="flex items-center justify-between gap-3">
         <b class="text-[17px] text-ink">{{ selected.name }}</b>
-        <Toggle v-if="member" :model-value="selected.on" :label="selected.name" @update:model-value="toggle(selected.key)" />
+        <Toggle v-if="member" :model-value="selected.on" :label="selected.name" tone="ok" @update:model-value="toggle(selected.key)" />
       </div>
-      <span :class="['type-big-md num', selected.on ? 'text-ink' : 'text-ink-3 line-through']">{{ money(fill.given[selected.key]) }}</span>
+      <span :class="['type-big-md num', selected.on ? 'text-ink' : 'text-ink-3 line-through']">{{ money(selected.on ? fill.given[selected.key] : (selected.left ?? 0)) }}</span>
       <span class="type-meta">{{ selectedStatus }}</span>
     </Card>
 
     <Button v-if="member" variant="ghost" size="sm" class="self-center" @click="router.push({ path: '/week/order', query: route.query })">Изменить порядок</Button>
 
-    <div v-if="member" class="sticky bottom-0 -mx-4 mt-1 flex flex-col gap-1 bg-gradient-to-b from-transparent to-canvas to-30% px-4 pb-2 pt-3">
+    <!-- Док (макет `.dock`): главная кнопка прижата к низу экрана поверх прокрутки. -->
+    <div v-if="member" class="absolute inset-x-0 bottom-0 z-10 flex flex-col gap-1.5 bg-gradient-to-b from-transparent to-canvas to-30% px-4 pb-[18px] pt-3">
       <button v-if="moves" type="button" class="cursor-pointer self-center type-meta" @click="accountOpen = true">со счёта · {{ accountName }}</button>
       <Button class="w-full" @click="lay">Разложить</Button>
     </div>

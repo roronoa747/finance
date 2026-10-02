@@ -131,7 +131,7 @@ function done() {
 </script>
 
 <template>
-  <div class="flex flex-col gap-3 pt-1">
+  <div class="flex flex-col gap-3 pb-24 pt-1">
     <p class="flex items-center gap-1 px-1 type-meta">
       Сверху — что важнее
       <Hint label="Как работает порядок">
@@ -175,7 +175,8 @@ function done() {
       </ol>
     </Card>
 
-    <div class="sticky bottom-0 -mx-4 mt-2 bg-gradient-to-b from-transparent to-canvas to-30% px-4 pb-2 pt-3">
+    <!-- Док (макет `.dock`): «Готово» прижата к низу экрана поверх прокрутки. -->
+    <div class="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-b from-transparent to-canvas to-30% px-4 pb-[18px] pt-3">
       <Button class="w-full" @click="done">Готово</Button>
     </div>
   </div>

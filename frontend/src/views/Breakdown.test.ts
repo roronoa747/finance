@@ -70,7 +70,8 @@ describe('views/Breakdown.vue — разбор кольцом (B2C-57)', () => {
     family()
     const html = await renderScreen(Breakdown, PATH, undefined, [screenMixin({ off: ['dreams'], picked: 'dreams' })])
     expect(html).toContain(`Остаётся ${money(227_000)}`)
-    expect(html).toMatch(/line-through[^>]*>0\s*₸/)
+    // Выключенная статья — её сумма зачёркнута (сколько бы она получила), как в макете.
+    expect(html).toContain(`line-through">${money(130_000)}`)
     expect(html).toContain('data-chip="dreams"')
     expect(html).toMatch(/aria-pressed="false"[^>]*data-chip="dreams"/)
   })

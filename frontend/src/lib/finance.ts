@@ -3066,6 +3066,8 @@ export type BreakdownArticle = {
   /** «Запас» и «Подушка»: цель-копилка (null — заводится при первом «Разложить») и её порог. */
   potGoalId?: string | null
   potLine?: number
+  /** Сколько статье осталось закрыть в этом разборе: `need − covered` (`monthBreakdown`) — сумма выключенной статьи. */
+  left?: number
 }
 
 export type ArticleAmounts = Record<ArticleKey, number>
@@ -3383,7 +3385,7 @@ export function monthBreakdown(
   }
 
   const all = breakdownArticles(state, { ...ctx, key, covered, extra: source.from !== 'salary' })
-  const articles = all.filter((a) => !a.empty && a.need - covered[a.key] > 0)
+  const articles = all.map((a) => ({ ...a, left: a.need - covered[a.key] })).filter((a) => !a.empty && a.left > 0)
   return {
     key,
     record,

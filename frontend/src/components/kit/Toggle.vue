@@ -1,10 +1,18 @@
 <script setup lang="ts">
-/** Переключатель «вкл/выкл» (DESIGN.md §5): `role="switch"`, дорожка `--track`, включён — бренд. */
-defineProps<{
-  modelValue: boolean
-  label: string
-  disabled?: boolean
-}>()
+/**
+ * Переключатель «вкл/выкл» (DESIGN.md §5): `role="switch"`, дорожка `--track`, включён — бренд.
+ * `tone="ok"` — включён зелёным (`--ok`, макет разбора `.tg`): на экране с брендовой главной кнопкой
+ * бренд остаётся у неё одной (правило 12).
+ */
+withDefaults(
+  defineProps<{
+    modelValue: boolean
+    label: string
+    disabled?: boolean
+    tone?: 'brand' | 'ok'
+  }>(),
+  { tone: 'brand' },
+)
 
 const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void }>()
 </script>
@@ -17,7 +25,7 @@ const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void }>()
     :aria-label="label"
     :disabled="disabled"
     class="relative h-[26px] w-11 shrink-0 rounded-full transition-colors cursor-pointer disabled:opacity-50"
-    :class="modelValue ? 'bg-brand' : 'bg-track'"
+    :class="modelValue ? (tone === 'ok' ? 'bg-ok' : 'bg-brand') : 'bg-track'"
     @click="emit('update:modelValue', !modelValue)"
   >
     <span
