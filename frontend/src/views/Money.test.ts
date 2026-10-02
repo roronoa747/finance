@@ -28,6 +28,19 @@ import { authAs, planFamilyDoc, planOf, T0 } from '@/test/planFamily'
 import { renderScreen, screenMixin } from '@/test/screenState'
 import Money from './Money.vue'
 
+/** Ряд квадратов «Денег» целиком: каждый квадрат — своя обёртка (подсказка «Капитала» рядом с кнопкой). */
+function squaresOf(html: string) {
+  const at = html.indexOf('aria-label="Деньги"')
+  const tag = /<(\/?)div\b/g
+  tag.lastIndex = at
+  let depth = 1
+  for (let m = tag.exec(html); m; m = tag.exec(html)) {
+    depth += m[1] ? -1 : 1
+    if (!depth) return html.slice(at, m.index)
+  }
+  return html.slice(at)
+}
+
 describe('views/Money.vue — финансовые показатели (расчёты бывшего Обзора, B2C-14)', () => {
   const storageMap = new Map<string, string>()
   const mockLocalStorage = {
@@ -268,10 +281,7 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(html).toContain('role="dialog"')
       return text(html.slice(html.indexOf('role="dialog"')))
     }
-    const squares = (html: string) => {
-      const at = html.indexOf('aria-label="Деньги"')
-      return html.slice(at, html.indexOf('</div>', at))
-    }
+    const squares = squaresOf
 
     // Семья `planFamilyDoc`: Ильяс 700 000 (10-го), Аруна 500 000 (20-го), аренда 220 000 (5-го), три долга
     // (15-го, 22-го, 25-го), еда и быт 150 000. «Сейчас» — 12 сентября: до зарплаты Аруны 8 дней.
@@ -336,6 +346,10 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(text(squares(html))).toContain('История отметки')
       expect(squares(html).match(/aria-current="page"/g)).toHaveLength(1)
       expect(squares(html)).toMatch(/aria-current="page"[^>]*>\s*<b[^>]*>Капитал/)
+      // Подсказка «чистых» — у квадрата «Капитал», рядом с кнопкой, а не внутри (кнопка в кнопке недопустима).
+      const capital = squares(html).slice(0, squares(html).indexOf('>План</b>'))
+      expect(capital).toMatch(/<\/button>\s*<span class="absolute right-2 top-2">\s*<span[^>]*>\s*<button[^>]*aria-label="Что такое капитал"/)
+      expect(squares(html).match(/aria-label="Что такое капитал"/g)).toHaveLength(1)
       store.householdDoc.plans = [planOf()]
       html = await renderScreen(Money, '/money/plan')
       expect(text(squares(html))).toContain('План сначала долги')
@@ -378,12 +392,13 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(none).not.toContain('по выпискам')
     })
 
-    it('«Долги»: остаток красным, «в сентябре оплачено N из M» растёт после «Оплатил», «чистых» = netWorth; без долгов — «Долгов нет»', async () => {
+    it('«Долги»: остаток красным, «в сентябре оплачено N из M» растёт после «Оплатил», «чистых» нет (оно в квадрате); без долгов — «Долгов нет»', async () => {
       const store = await family()
       let html = text(await renderScreen(Money, '/money'))
       expect(html).toContain(`−${money(1_540_000)}`)
       expect(html).toContain('в сентябре оплачено 0 из 3')
-      expect(html).toContain(`чистых ${money(netWorth(store.accounts, store.credits, store.goals))}`)
+      // «Чистых» — только в квадрате «Капитал» (решение владельца 2026-10-02): в «Долгах» его нет.
+      expect(html).not.toContain('чистых')
       store.markPaid('credit', 'loan', 'a', { period: '2026-09', accountId: 'card' })
       html = text(await renderScreen(Money, '/money'))
       expect(html).toContain('в сентябре оплачено 1 из 3')
@@ -683,7 +698,7 @@ describe('views/Money.vue — финансовые показатели (рас�
   describe('B2C-44: квадрат «История» — свои операции, отметки, итог и моменты по дням', () => {
     const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
     /** Лента: от чипов фильтра до конца экрана. */
-    const squares = (html: string) => html.slice(html.indexOf('aria-label="Деньги"'), html.indexOf('</div>', html.indexOf('aria-label="Деньги"')))
+    const squares = squaresOf
     const feed = (html: string) => text(html.slice(html.indexOf('>', html.indexOf('aria-label="Фильтр"')) + 1))
     const op = (id: string, date: string, amount: number, merchant: string, p: Partial<Operation> = {}): Operation => ({
       id, bank: 'kaspi', date, amount, kind: 'purchase', merchant, categoryId: null, internal: false, ...p,

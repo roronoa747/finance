@@ -336,6 +336,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     /** Первая сумма «N ₸» после подписи. */
     const moneyAfter = (html: string, label: string) =>
       html.slice(html.indexOf(label)).match(/\d[\d ]* ₸/)?.[0]
+    /** Подпись квадрата «Капитал» — чистый капитал (`netWorth`) без «₸». */
+    const capitalNote = (html: string) => html.match(/>Капитал<\/b>(?:<!--[^>]*-->|\s)*<small[^>]*>([^<]*)<\/small>/)?.[1]
     const on = <P extends { pinia: Pinia }>(p: P) => (setActivePinia(p.pinia), p)
     const member = (slot: 'a' | 'b', role: 'member' | 'viewer' = 'member') =>
       useAuthStore().setAuthData({
@@ -498,10 +500,10 @@ describe('e2e / Блок 2 паритета — правка денег на д�
 
       // До: счета 1 000 000 + 300 000; по целям отдельно — только «Квартира» 200 000
       // (остальные лежат на «Сейфе»); долг 1 000 000 → капитал 500 000.
-      // Пивот 3 (Р-33, B2C-42): капитал — «чистых» в «Долгах», счета — итогом секции «Счета»;
+      // Пивот 3 (Р-33, B2C-42): капитал — подписью квадрата «Капитал» (владелец 2026-10-02), счета — итогом секции «Счета»;
       // «Накоплено по мечтам» строкой в «Деньгах» больше нет — сумма из goalSavings.
       const before = await page(B.pinia, Money, '/money')
-      expect(moneyAfter(before, 'чистых')).toBe(money(500_000))
+      expect(capitalNote(before)).toBe(plain(500_000))
       expect(moneyAfter(before, 'Счета')).toBe(money(1_300_000))
       expect(goalSavings(B.store.goals)).toBe(200_000)
 
@@ -527,7 +529,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(goalSavings(B.store.goals)).toBe(750_000)
       expect(netWorth(B.store.accounts, B.store.credits, B.store.goals)).toBe(750_000)
       const after = await page(B.pinia, Money, '/money')
-      expect(moneyAfter(after, 'чистых')).toBe(money(750_000))
+      expect(capitalNote(after)).toBe(plain(750_000))
       expect(moneyAfter(after, 'Счета')).toBe(money(1_000_000))
       expect(after).not.toContain('Сейф')
     })

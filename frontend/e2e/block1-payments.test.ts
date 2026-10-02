@@ -432,7 +432,8 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     expect(overview).toContain(`${payday.due.length} списания · ${plain(324_990)} ₸ · остаётся ${plain(675_010)} ₸`)
     expect(overview).toContain('хватает')
     const capital = await screen(A.pinia, Money, '/money')
-    expect(capital).toContain(`чистых ${money(2_600_000)}`) // Чистый капитал — строкой в «Долгах» (Р-33)
+    // Чистый капитал — подписью квадрата «Капитал» (Р-33; «чистых» в «Долгах» убран — владелец 2026-10-02).
+    expect(capital).toMatch(new RegExp(`>Капитал</b>(?:<!--[^>]*-->|\\s)*<small[^>]*>${plain(2_600_000)}</small>`))
     // Срок и переплата — в листе кредита (пивот 3, B2C-42).
     const loan = text(await screen(A.pinia, Money, '/money?credit=loan'))
     expect(loan).toContain('Платежей осталось 24')

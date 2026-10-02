@@ -162,7 +162,7 @@ describe('«Деньги» → Капитал: счета, кредиты, до�
     expect(resB.net).toBeGreaterThan(resA.net)
   })
 
-  it('«Деньги»: «чистых», «Счета» (личный — с пометкой) и «Платежи» с кредитом (компонентный рендер)', async () => {
+  it('«Деньги»: чистых в квадрате «Капитал», «Счета» (личный — с пометкой) и «Платежи» с кредитом (компонентный рендер)', async () => {
     const store = useFinanceStore()
 
     store.addAccount({
@@ -199,8 +199,9 @@ describe('«Деньги» → Капитал: счета, кредиты, до�
 
     const html = await renderToString(app)
 
-    // Пивот 3 (Р-33, B2C-42): «Чистый капитал» — «чистых» в «Долгах», счета и платежи — двумя списками.
-    expect(html).toContain('чистых')
+    // Пивот 3 (Р-33, B2C-42): капитал — подписью квадрата «Капитал» (владелец 2026-10-02), счета и платежи — двумя списками.
+    expect(html).toMatch(new RegExp(`>Капитал</b>(?:<!--[^>]*-->|\\s)*<small[^>]*>${plain(netWorth(store.accounts, store.credits, store.goals))}</small>`))
+    expect(html).not.toContain('чистых')
     expect(html).toContain('>Счета<')
     expect(html).toContain('Основной Kaspi')
     expect(html).toContain('Секретная заначка')

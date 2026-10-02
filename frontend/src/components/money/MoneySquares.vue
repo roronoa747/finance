@@ -7,9 +7,12 @@ import { plain } from '@/lib/money'
 import { monthKey } from '@/lib/dates'
 import { liveAccounts, liveCredits, liveGoals, netWorth, openCredits } from '@/lib/finance'
 import { cn, plural } from '@/lib/utils'
+import Hint from '@/components/kit/Hint.vue'
 
 /**
- * Три квадрата «Денег» (пивот 3, Р-31; `pivot-3/index.html` `.squares`): Капитал — чистых коротко,
+ * Три квадрата «Денег» (пивот 3, Р-31; `pivot-3/index.html` `.squares`): Капитал — чистых коротко
+ * (`netWorth`, единственное место на экране — решение владельца 2026-10-02; подсказка «?» — рядом
+ * с кнопкой квадрата, не внутри: кнопка в кнопке недопустима),
  * План — «сначала долги» / «гасить первым» / «долгов нет», История — свои операции месяца.
  * Активный — по адресу; переход — `router.replace`: «назад» ведёт на прошлую вкладку, а не
  * перебирает квадраты.
@@ -42,21 +45,24 @@ const squares = computed(() => [
 
 <template>
   <div class="flex gap-2" role="group" aria-label="Деньги">
-    <button
-      v-for="s in squares"
-      :key="s.to"
-      type="button"
-      :aria-current="route.path === s.to ? 'page' : undefined"
-      :class="
-        cn(
-          'flex min-w-0 flex-1 flex-col gap-px rounded-[16px] border px-3 py-2.5 text-left cursor-pointer',
-          route.path === s.to ? 'border-brand bg-brand-soft' : 'border-card-border bg-surface',
-        )
-      "
-      @click="route.path !== s.to && router.replace(s.to)"
-    >
-      <b :class="cn('truncate text-[14px] font-semibold', route.path === s.to ? 'text-brand' : 'text-ink-2')">{{ s.title }}</b>
-      <small :class="cn('truncate text-[11.5px] num', route.path === s.to ? 'text-brand opacity-80' : 'text-ink-3')">{{ s.note }}</small>
-    </button>
+    <div v-for="s in squares" :key="s.to" class="relative flex min-w-0 flex-1">
+      <button
+        type="button"
+        :aria-current="route.path === s.to ? 'page' : undefined"
+        :class="
+          cn(
+            'flex w-full min-w-0 flex-col gap-px rounded-[16px] border px-3 py-2.5 text-left cursor-pointer',
+            route.path === s.to ? 'border-brand bg-brand-soft' : 'border-card-border bg-surface',
+          )
+        "
+        @click="route.path !== s.to && router.replace(s.to)"
+      >
+        <b :class="cn('truncate text-[14px] font-semibold', route.path === s.to ? 'text-brand' : 'text-ink-2')">{{ s.title }}</b>
+        <small :class="cn('truncate text-[11.5px] num', route.path === s.to ? 'text-brand opacity-80' : 'text-ink-3')">{{ s.note }}</small>
+      </button>
+      <span v-if="s.to === '/money'" class="absolute right-2 top-2">
+        <Hint label="Что такое капитал">Всё, что есть, минус всё, что должны.</Hint>
+      </span>
+    </div>
   </div>
 </template>

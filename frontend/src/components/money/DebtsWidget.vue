@@ -3,21 +3,19 @@ import { computed } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { money } from '@/lib/money'
 import { monthIn, monthKey } from '@/lib/dates'
-import { debtsSummary, liveAccounts, liveCredits, liveGoals, netWorth } from '@/lib/finance'
+import { debtsSummary } from '@/lib/finance'
 import Card from '@/components/kit/Card.vue'
-import Hint from '@/components/kit/Hint.vue'
 import Tag from '@/components/kit/Tag.vue'
 
 /**
  * Виджет «Долги» (пивот 3, Р-33): остаток кредитов красным, тег «в <месяце> оплачено N из M»
- * (платежи кредитов месяца, `monthDues`) и «чистых N ₸» (`netWorth`) — бывшая карточка «Чистый
- * капитал». Открытых долгов нет — «Долгов нет». Проценты банку — в квадрате «План» (B2C-43).
+ * (платежи кредитов месяца, `monthDues`). Открытых долгов нет — «Долгов нет». «Чистых» — только в
+ * квадрате «Капитал» (решение владельца 2026-10-02). Проценты банку — в квадрате «План» (B2C-43).
  */
 const financeStore = useFinanceStore()
 
 const key = computed(() => monthKey())
 const debts = computed(() => debtsSummary({ credits: financeStore.credits, payments: financeStore.payments }, key.value))
-const worth = computed(() => netWorth(liveAccounts(financeStore.accounts), liveCredits(financeStore.credits), liveGoals(financeStore.goals)))
 </script>
 
 <template>
@@ -28,13 +26,7 @@ const worth = computed(() => netWorth(liveAccounts(financeStore.accounts), liveC
         в {{ monthIn(key, false) }} оплачено {{ debts.paid }} из {{ debts.count }}
       </Tag>
     </div>
-    <div class="flex items-center justify-between gap-3">
-      <span v-if="debts.open" class="type-num num text-destructive">−{{ money(debts.total) }}</span>
-      <span v-else class="type-num text-[24px] text-ok">Долгов нет</span>
-      <span class="flex items-center gap-1 type-meta num">
-        чистых {{ money(worth) }}
-        <Hint>Всё, что есть, минус всё, что должны.</Hint>
-      </span>
-    </div>
+    <span v-if="debts.open" class="type-num num text-destructive">−{{ money(debts.total) }}</span>
+    <span v-else class="type-num text-[24px] text-ok">Долгов нет</span>
   </Card>
 </template>
