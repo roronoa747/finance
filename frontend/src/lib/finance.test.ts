@@ -118,6 +118,7 @@ import {
   salaryToAllocate,
   keepCard,
   freedChange,
+  freedQuestion,
   weekTag,
   wishTotal,
   cushionInYear,
@@ -2654,7 +2655,8 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(q[5]).toMatchObject({ kind: 'allocate', to: '/week/salary?from=salary&person=a&period=2026-09', actions: { primary: 'Разложить', ghost: 'Позже' } })
       // «Освободится» — сумма та же, что у карточки «Денег» (`freedChange().monthly`), «Распределить» → раскладка.
       const freed = freedChange(liveObligations(state.obligations), '2026-09')!
-      expect(q[6]).toMatchObject({ question: `Освободится ${money(freed.monthly)} в месяц`, meta: 'Квартира · с ноября', to: '/week/salary?from=freed', actions: { primary: 'Распределить', ghost: 'Потом' } })
+      expect(freedQuestion(freed)).toBe(`Освободится ${money(40_000)} в месяц`)
+      expect(q[6]).toMatchObject({ question: freedQuestion(freed), meta: 'Квартира · с ноября', to: '/week/salary?from=freed', actions: { primary: 'Распределить', ghost: 'Потом' } })
       expect(freed.monthly).toBe(40_000)
       expect(q[7]).toMatchObject({ ...monthEndCard('2026-09'), to: null })
     })

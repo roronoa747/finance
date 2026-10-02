@@ -1806,6 +1806,9 @@ export const allocateCard = (u: { person: Person; record: Payment; free: number 
   meta: `${money(u.record.amount)} · к раскладке ${money(u.free)}`,
 })
 
+/** «Освободится N ₸ в месяц» — один текст для очереди «Недели» и карточки «Денег» (ревью Блока 10, Н-4). */
+export const freedQuestion = (freed: Pick<FreedChange, 'monthly'>) => `Освободится ${money(freed.monthly)} в месяц`
+
 /**
  * Подписки, от которых отказались в месяце (B2C-20 «утечки»): обязательства с надгробием
  * этого месяца (по Алматы) из группы подписок или подписки раздела «быт» (`isSubscription`:
@@ -2922,7 +2925,7 @@ export function decisionQueue(
     out.push({
       kind: 'freed',
       key: `freed:${freed.o.id}:${freed.change.from}`,
-      question: `Освободится ${money(freed.monthly)} в месяц`,
+      question: freedQuestion(freed),
       meta: `${freed.o.name} · с ${monthFrom(freed.change.from, false)}`,
       to: '/week/salary?from=freed',
       actions: { primary: 'Распределить', ghost: 'Потом' },
