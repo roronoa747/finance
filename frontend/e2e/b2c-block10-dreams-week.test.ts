@@ -205,4 +205,49 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     // «История» демо — те же операции недели.
     expect(text(await screen(pinia, Money, '/money/history'))).toContain('ИП Абенова')
   })
+
+  // Приёмка Блока 10: правило 12 на каждом шаге очереди и «Свободно» на стыке месяцев — на двух телефонах.
+  const brands = (html: string) => (html.match(/bg-brand text-brand-ink/g) ?? []).length
+
+  it('приёмка — «Неделя»: не больше одной брендовой кнопки на каждом шаге; B без своей выписки — одна «Загрузить выписку»', async () => {
+    const A = await phone(server, st, 'a')
+    const ops = await uploadA(A)
+    const B = await phone(server, st, 'b')
+    const b = await screen(B.pinia, Statements, '/week')
+    expect(brands(b)).toBe(1)
+    expect(text(b)).toContain('Загрузить выписку')
+
+    // A: продавец — чипы без брендовой; после двух ответов решений нет, своя выписка есть — загрузки нет.
+    const answer = screenMixin({}, (s) => {
+      const d = s.decision as Decision
+      ;(s.answerUnknown as (g: unknown, to: unknown) => void)(d.group, { categoryId: 'sc_food' })
+    })
+    expect(brands(await screen(A.pinia, Statements, '/week'))).toBeLessThanOrEqual(1)
+    const one = await screen(A.pinia, Statements, '/week', undefined, [answer])
+    expect(text(one)).toContain('2 из 2')
+    expect(brands(one)).toBeLessThanOrEqual(1)
+    // Ответ первого рендера отправлен; второго продавца — тем же ответом стора, с ожиданием записи.
+    await vi.runOnlyPendingTimersAsync()
+    await ops.flush(A.client)
+    let last: Parameters<typeof ops.recategorize>[0] | undefined
+    await screen(A.pinia, Statements, '/week', undefined, [screenMixin({}, (s) => (last = (s.decision as Decision).group!.match))])
+    setActivePinia(A.pinia)
+    await ops.recategorize(last!, { categoryId: 'sc_food' }, A.client)
+    const done = await screen(A.pinia, Statements, '/week')
+    expect(text(done)).not.toContain('куда отнести')
+    expect(text(done)).not.toContain('Загрузить выписку')
+    expect(brands(done)).toBe(0)
+  })
+
+  it('приёмка — «Мечты» 1 октября с выписками только за сентябрь: «Свободно» нет у обоих, «до зарплаты» есть', async () => {
+    const A = await phone(server, st, 'a')
+    await uploadA(A)
+    const B = await phone(server, st, 'b')
+    at('2026-10-01T07:00:00Z')
+    for (const p of [A, B]) {
+      const html = text(await screen(p.pinia, Dreams, '/'))
+      expect(html).not.toContain('Свободно')
+      expect(html).toMatch(/До зарплаты \d+ (день|дня|дней)/)
+    }
+  })
 })
