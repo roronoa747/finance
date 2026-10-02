@@ -146,7 +146,7 @@ describe('WeekTotal (пивот 3, B2C-50)', () => {
   })
 })
 
-describe('WeekCard / FreeCard', () => {
+describe('WeekCard / FreeCard (первый запуск)', () => {
   const segments = [
     { id: 'sc_food', name: 'Продукты', amount: 62_000, share: 0.34, color: 'var(--s1)' },
     { id: 'sc_cafe', name: 'Кафе и рестораны', amount: 28_000, share: 0.15, color: 'var(--s2)' },
@@ -156,59 +156,27 @@ describe('WeekCard / FreeCard', () => {
     { id: 'sc_subs', name: 'Подписки', amount: 9_990, share: 0.05, color: 'var(--s4)' },
   ]
 
-  it('сумма, тег, стопка (разделы + не разобрано), четыре строки, «ещё 2 раздела · не разобрано 40 000 ₸», ссылка', async () => {
-    const html = await render(WeekCard, {
-      total: 184_000,
-      tag: { text: 'по выпискам обоих', tone: 'ok' },
-      segments,
-      unknown: 40_000,
-      unknownShare: 0.21,
-      link: { text: 'Неделя →', to: '/week' },
-    })
+  it('первый запуск: сумма, стопка (разделы + не разобрано), четыре строки, «ещё 2 раздела · не разобрано 40 000 ₸»', async () => {
+    const html = await render(WeekCard, { total: 184_000, segments, unknown: 40_000, unknownShare: 0.21 })
     expect(html).toContain(`184${NBSP}000${NBSP}₸`)
-    expect(html).toContain('по выпискам обоих')
-    expect(html).toContain('bg-ok-soft')
     expect(html).toContain('Транспорт')
     expect(html).not.toContain('Здоровье')
     expect(html).toContain(`ещё 2 раздела · не разобрано 40${NBSP}000${NBSP}₸`)
     expect(html).toContain('var(--s-unknown)')
-    expect(html).toContain('href="/week"')
-    expect(html).toContain('Неделя →')
+    expect(html).not.toContain('<a ')
+    expect(html).not.toContain('<button')
     noLiterals(html)
   })
 
-  it('без «не разобрано» и с ≤ 4 разделами подвала нет; тег «без выписки Даны» — warn; слот заметки', async () => {
-    const html = await render(
-      WeekCard,
-      { total: 121_000, tag: { text: 'без выписки Даны', tone: 'warn' }, segments: segments.slice(0, 3) },
-      { default: () => h(Callout, { tone: 'neutral', icon: 'bell' }, () => 'Напомним Дане в воскресенье в 21:00.') },
-    )
-    expect(html).toContain('без выписки Даны')
-    expect(html).toContain('bg-warn-soft')
+  it('без «не разобрано» и с ≤ rows разделами подвала нет; rows: 5 — пять строк', async () => {
+    const html = await render(WeekCard, { total: 121_000, segments: segments.slice(0, 3) })
     expect(html).not.toContain('ещё ')
+    expect(html).not.toContain('не разобрано')
     expect(html).not.toContain('var(--s-unknown)')
-    expect(html).toContain('Напомним Дане в воскресенье в 21:00.')
-  })
-
-  it('unknownRow — «Не разобрано» строкой списка с подписью и шевроном (g2 «Неделя — итог»), в подвале его нет; без action — не кнопка', async () => {
-    const html = await render(WeekCard, {
-      total: 184_000,
-      segments,
-      rows: segments.length,
-      unknown: 40_000,
-      unknownShare: 0.21,
-      unknownRow: { meta: '2 продавца · разобрать', action: true },
-    })
-    expect(html).toContain('Здоровье')
-    expect(html).toContain('Подписки')
-    expect(html).toContain('Не разобрано')
-    expect(html).toContain('2 продавца · разобрать')
-    expect(html).toContain(`40${NBSP}000${NBSP}₸`)
-    expect(html).not.toContain('не разобрано 40')
-    expect(html).toMatch(/<button[^>]*type="button"[^>]*>\s*<i[^>]*bg-s-unknown/)
-    const still = await render(WeekCard, { total: 184_000, segments, rows: segments.length, unknown: 40_000, unknownShare: 0.21, unknownRow: {} })
-    expect(still).toContain('Не разобрано')
-    expect(still).not.toContain('<button')
+    const five = await render(WeekCard, { total: 184_000, segments, rows: 5 })
+    expect(five).toContain('Здоровье')
+    expect(five).not.toContain('Подписки')
+    expect(five).toContain('ещё 1 раздел')
   })
 
   it('FreeCard: сумма и подпись, полоса --ok; null — «—» без полосы; md — 32', async () => {
