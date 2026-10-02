@@ -152,6 +152,14 @@ function breakdownLine(a: Allocation) {
   const by = a.source === 'salary' && a.by === a.sourceId ? '' : ` · ${personName(a.by)}`
   return { note: `${from}${by}`, to, parts: recordedBreakdown(a, financeStore.moneyArticles.map((x) => x.id)).parts }
 }
+/** Строки разбора ленты — один расчёт на запись, шаблон только читает (ревью frontend Б11, Н-8). */
+const breakdownLines = computed(
+  () => new Map(shown.value.flatMap((d) => d.items).flatMap((x) => (x.kind === 'breakdown' ? [[x.allocation.id, breakdownLine(x.allocation)] as const] : []))),
+)
+function openBreakdown(id: string) {
+  const to = breakdownLines.value.get(id)?.to
+  if (to) void router.push(to)
+}
 
 /* ------------------ Листы ------------------ */
 // Раздел задним числом: правило по продавцу, итоги и «Свободно» пересчитывает стор.
@@ -219,15 +227,15 @@ const markOpen = ref<Payment | null>(null)
           <Row
             dense
             title="Разложено"
-            :note="breakdownLine(x.allocation).note"
-            :clickable="!!breakdownLine(x.allocation).to"
-            @click="breakdownLine(x.allocation).to && router.push(breakdownLine(x.allocation).to!)"
+            :note="breakdownLines.get(x.allocation.id)!.note"
+            :clickable="!!breakdownLines.get(x.allocation.id)!.to"
+            @click="openBreakdown(x.allocation.id)"
           >
             <template #value>
               <span class="block text-[14.5px] font-semibold num text-ink">{{ money(x.allocation.total) }}</span>
             </template>
           </Row>
-          <div v-for="p in breakdownLine(x.allocation).parts" :key="p.key" class="flex items-center gap-2.5 pb-1.5 pl-[46px] text-[13px] text-ink-2">
+          <div v-for="p in breakdownLines.get(x.allocation.id)!.parts" :key="p.key" class="flex items-center gap-2.5 pb-1.5 pl-[46px] text-[13px] text-ink-2">
             <i class="size-2 shrink-0 rounded-full" :style="{ background: ARTICLE_COLORS[p.key] }" aria-hidden="true" />
             <span class="flex-1">{{ ARTICLE_NAMES[p.key] }}</span>
             <span class="num">{{ money(p.amount) }}</span>
