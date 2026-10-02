@@ -42,7 +42,7 @@ const emit = defineEmits<{ (e: 'plus'): void }>()
       v-if="plus"
       type="button"
       :aria-label="plusLabel"
-      class="relative mx-1.5 grid size-[46px] shrink-0 place-items-center rounded-full bg-brand text-brand-ink transition-transform active:scale-95 cursor-pointer"
+      class="relative mx-1.5 grid size-[46px] shrink-0 place-items-center rounded-full bg-brand text-brand-ink press cursor-pointer"
       @click="emit('plus')"
     >
       <PhPlus :size="22" weight="bold" />

@@ -32,7 +32,7 @@ const emit = defineEmits<{ (e: 'open'): void; (e: 'toggle'): void }>()
       :class="
         cn(
           'flex w-full flex-col overflow-hidden rounded-tile border border-card-border bg-surface text-left',
-          canEdit && 'cursor-pointer transition-transform active:scale-[0.98]',
+          canEdit && 'cursor-pointer press',
           bought && 'opacity-75',
         )
       "
