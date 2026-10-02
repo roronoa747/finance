@@ -489,9 +489,9 @@ Google Play и App Store. Успех: незнакомые семьи загру
 | | B2C-55 Расчёт разбора в `finance.ts`: статьи, закрытие по порядку, статусы ступеней, факт по статьям | `block-11-money-breakdown/B2C-55-breakdown-finance.md` | B2C-54 | ✅ исполнитель 2026-10-02 |
 | | B2C-56 «Ваш порядок» — первый разбор: порядок, пороги, суммы «Жизни» и «Трат» | `block-11-money-breakdown/B2C-56-your-order.md` | B2C-55 | ✅ исполнитель 2026-10-02 |
 | | B2C-57 Экран-кольцо: кольцо с анимацией, чипы статей, «Разложить» → **ворота владельца** | `block-11-money-breakdown/B2C-57-ring-screen.md` | B2C-56 | ✅ исполнитель 2026-10-02 |
-| | B2C-58 «Пришла зарплата · как обычно», входы, редирект `/week/salary`, уборка раскладки | `block-11-money-breakdown/B2C-58-as-usual-entries.md` | B2C-57 | ⬜ |
-| | B2C-59 Строки-статусы виджетов «Денег», доли трат с ориентиром, нормы | `block-11-money-breakdown/B2C-59-widget-status-norms.md` | B2C-55 | ⬜ |
-| | B2C-60 Демо, e2e Блока 11, сверка на настоящих выписках, снимки «макет \| стенд» | `block-11-money-breakdown/B2C-60-demo-e2e-snapshots.md` | B2C-58, B2C-59 | ⬜ |
+| | B2C-58 «Пришла зарплата · как обычно», входы, редирект `/week/salary`, уборка раскладки | `block-11-money-breakdown/B2C-58-as-usual-entries.md` | B2C-57 | ✅ исполнитель 2026-10-02 |
+| | B2C-59 Строки-статусы виджетов «Денег», доли трат с ориентиром, нормы | `block-11-money-breakdown/B2C-59-widget-status-norms.md` | B2C-55 | ✅ исполнитель 2026-10-02 |
+| | B2C-60 Демо, e2e Блока 11, сверка на настоящих выписках, снимки «макет \| стенд» | `block-11-money-breakdown/B2C-60-demo-e2e-snapshots.md` | B2C-58, B2C-59 | ✅ исполнитель 2026-10-02 |
 | **12. Неделя и личное** ⬜ *(L: новая ручка Go, внешний запрос; Р-58…Р-62, Р-69; исполнитель `ultrathink` в две сессии с **воротами владельца после B2C-63**, критик и приёмка без `ultracode` — Р-67; ревью — `frontend`, `backend`; снимки рядом с макетом `pivot-3/money-breakdown.html` — Р-41)* | B2C-61 Хвост ИП пачкой и «Не помню» | `block-12-week-personal/B2C-61-unknown-batch.md` | Блок 11 🏁 | ⬜ |
 | | B2C-62 Карточка «Выписки · <неделя>» с галочками обоих | `block-12-week-personal/B2C-62-statements-checklist.md` | B2C-61 | ⬜ |
 | | B2C-63 Свой кружок: смайлик и цвет → **ворота владельца** | `block-12-week-personal/B2C-63-avatar-emoji-color.md` | — | ⬜ |
