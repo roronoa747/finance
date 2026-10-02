@@ -820,7 +820,7 @@ describe('e2e / B2C Блок 3 — часть 6 (приёмка): повтор �
     expect(opsA.pendingMatches).toEqual([])
 
     // «Остались деньги?» — карточкой первой по «Разложить» с главного.
-    expect(await screen(A.pinia, Statements, '/week?rest=1')).toContain('Остались деньги с')
+    expect(await screen(A.pinia, Statements, '/week')).toContain('Остались деньги с')
     const path = '/week/salary?from=rest&amount=100000&period=2026-09'
     await screen(A.pinia, WeekSalary, path, undefined, [
       screenMixin({}, (s) => {
@@ -832,12 +832,12 @@ describe('e2e / B2C Блок 3 — часть 6 (приёмка): повтор �
     expect(A.store.allocations).toHaveLength(1)
     expect(A.store.allocations[0]).toMatchObject({ source: 'rest', sourceId: '2026-09', period: '2026-09', by: 'a', parts: [{ target: 'trip', amount: 100_000 }] })
     expect(A.store.goals.find((g) => g.id === 'trip')!.have).toBe(150_000)
-    expect(await screen(A.pinia, Statements, '/week?rest=1')).not.toContain('Остались деньги с')
+    expect(await screen(A.pinia, Statements, '/week')).not.toContain('Остались деньги с')
 
     // B: вопрос закрыт записью семьи, а не ответом на телефоне A.
     await A.store.syncHousehold(A.client)
     await B.store.pullHousehold(B.client)
-    expect(await screen(B.pinia, Statements, '/week?rest=1')).not.toContain('Остались деньги с')
+    expect(await screen(B.pinia, Statements, '/week')).not.toContain('Остались деньги с')
     expect(await screen(B.pinia, Dreams, '/')).not.toContain('Остались деньги с')
     const partner = await screen(B.pinia, WeekSalary, path)
     expect(partner).toContain('Уже разложено')
