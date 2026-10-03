@@ -231,7 +231,13 @@ describe('e2e / B2C Блок 12 — «Неделя и личное» на дву
     await screen(A.pinia, Wishes, '/wishes', undefined, [
       screenMixin({ openWishModal: true }, (s) => {
         const raw = s
-        box = { onLink: s.onLink as (t: string) => Promise<void>, create: s.createWish as () => Promise<void>, set: (k, v) => Reflect.set(raw, k, v) }
+        const link = s.link as { load: (t: string) => Promise<unknown> }
+        const apply = s.applyLink as (f: unknown) => void
+        const onLink = async (t: string) => {
+          const found = await link.load(t)
+          if (found) apply(found)
+        }
+        box = { onLink, create: s.createWish as () => Promise<void>, set: (k, v) => Reflect.set(raw, k, v) }
       }),
     ])
     box!.set('wishUrl', 'https://kaspi.kz/shop/p/dyson-airwrap-1/')

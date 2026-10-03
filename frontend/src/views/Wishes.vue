@@ -100,12 +100,11 @@ const wishPhotoNote = ref<string | null>(null)
 const link = useLinkPreview()
 /** Название, подставленное со страницы: следующая ссылка заменит его, своё — нет. */
 let linkName = ''
-watch(wishUrl, (text) =>
-  link.schedule(text, (found: LinkFound) => {
-    if (found.file) wishFile.value = found.file
-    if (found.title && (!wishName.value.trim() || wishName.value === linkName)) wishName.value = linkName = found.title
-  }),
-)
+watch(wishUrl, (text) => link.schedule(text, applyLink))
+function applyLink(found: LinkFound) {
+  if (found.file) wishFile.value = found.file
+  if (found.title && (!wishName.value.trim() || wishName.value === linkName)) wishName.value = linkName = found.title
+}
 function onWishFile(file: File) {
   wishFile.value = file
   link.clearNote()
