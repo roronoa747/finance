@@ -1,5 +1,6 @@
 import { getCurrentScope, onScopeDispose, ref } from 'vue'
 import { apiClient, type ApiClient } from '@/api/client'
+import { bigEnough, imageSize } from './linkPhoto'
 
 /**
  * Фото желания по ссылке (B2C-66, Р-60): вставили ссылку на товар — сервер берёт со страницы
@@ -30,7 +31,11 @@ export interface LinkFound {
   file: File | null
 }
 
-export function useLinkPreview(client: ApiClient = apiClient) {
+/**
+ * `measure` — размер картинки до показа (B2C-75): маленькая (логотип SPA-магазина) — как «картинки нет»,
+ * в превью окна она не появляется; название со страницы остаётся.
+ */
+export function useLinkPreview(client: ApiClient = apiClient, measure: typeof imageSize = imageSize) {
   const busy = ref(false)
   const note = ref<string | null>(null)
   let last: string | null = null
@@ -48,6 +53,12 @@ export function useLinkPreview(client: ApiClient = apiClient) {
     try {
       const { title, blob } = await client.linkPreview(url)
       if (mine !== seq) return null
+      const size = await measure(blob)
+      if (mine !== seq) return null
+      if (size && !bigEnough(size.width, size.height)) {
+        note.value = LINK_PHOTO_MISSED
+        return { url, title, file: null }
+      }
       return { url, title, file: new File([blob], 'link-photo', { type: blob.type }) }
     } catch {
       if (mine !== seq) return null

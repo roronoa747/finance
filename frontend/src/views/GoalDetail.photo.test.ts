@@ -22,7 +22,7 @@ vi.mock('@/lib/photos/store', async (orig) => ({
 }))
 vi.mock('@/lib/photos/compress', async (orig) => ({
   ...(await orig<typeof import('@/lib/photos/compress')>()),
-  compressImage: vi.fn(async (b: Blob) => ({ blob: b })),
+  compressImage: vi.fn(async (b: Blob) => ({ blob: b, width: 800, height: 800 })),
 }))
 
 type Handlers = { onFile: (f: Blob) => Promise<void>; onTemplate: (t: unknown) => Promise<void> }

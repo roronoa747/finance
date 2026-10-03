@@ -26,7 +26,7 @@ import { at, backend, fakeServer, fakeStatements, screen, statementsFor, type Fa
 // Сжатие картинки — в браузере (canvas); здесь проверяется путь фото, а не пиксели.
 vi.mock('../src/lib/photos/compress', async (orig) => ({
   ...(await orig<typeof import('../src/lib/photos/compress')>()),
-  compressImage: vi.fn(async (b: Blob) => ({ blob: b })),
+  compressImage: vi.fn(async (b: Blob) => ({ blob: b, width: 800, height: 800 })),
 }))
 
 /**

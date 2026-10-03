@@ -21,11 +21,17 @@ vi.mock('@/lib/photos/store', async (orig) => ({
   }),
   photoUrl: vi.fn(async () => null),
 }))
+// Размер картинки со страницы (B2C-75): null — не узнать, как в Node без createImageBitmap.
+const size = vi.hoisted(() => ({ value: null as { width: number; height: number } | null }))
+vi.mock('@/lib/photos/linkPhoto', async (orig) => ({
+  ...(await orig<typeof import('@/lib/photos/linkPhoto')>()),
+  imageSize: vi.fn(async () => size.value),
+}))
 vi.mock('@/lib/photos/compress', async (orig) => ({
   ...(await orig<typeof import('@/lib/photos/compress')>()),
   compressImage: vi.fn(async (b: Blob) => {
     photos.compressed.push(b)
-    return { blob: b }
+    return { blob: b, width: 800, height: 800 }
   }),
 }))
 
@@ -36,6 +42,7 @@ vi.mock('@/lib/photos/compress', async (orig) => ({
 let app: App | null = null
 
 beforeEach(() => {
+  size.value = null
   localStorage.clear()
   photos.uploaded = []
   photos.compressed = []
@@ -142,5 +149,33 @@ describe('B2C-66: желание по ссылке', () => {
     expect(wish.url).toBe('https://shop.kz/p/9')
     expect(wish.photoId).toBeUndefined()
     expect(photos.uploaded).toHaveLength(0)
+  })
+
+  it('B2C-75: картинка со страницы 120×120 (логотип) — фото не ставится и не загружается, название подставлено', async () => {
+    size.value = { width: 120, height: 120 }
+    vi.spyOn(apiClient, 'linkPreview').mockResolvedValue({ title: 'Кофта', blob: new Blob(['png'], { type: 'image/png' }) })
+    const finance = await open()
+    await paste('https://mobile.yangkeduo.com/goods1.html?goods_id=1')
+
+    expect(input('Например, сковорода').value).toBe('Кофта')
+    expect(document.querySelector('img')).toBeNull()
+    button('Добавить в список').click()
+    await settle()
+
+    const wish = finance.wishlist.find((w) => w.name === 'Кофта')!
+    expect(wish.url).toBe('https://mobile.yangkeduo.com/goods1.html?goods_id=1')
+    expect(wish.photoId).toBeUndefined()
+    expect(photos.uploaded).toHaveLength(0)
+  })
+
+  it('B2C-75: картинка 800×800 — фото ставится, как раньше', async () => {
+    size.value = { width: 800, height: 800 }
+    vi.spyOn(apiClient, 'linkPreview').mockResolvedValue({ title: 'Плед', blob: new Blob(['jpeg'], { type: 'image/jpeg' }) })
+    const finance = await open()
+    await paste('https://kaspi.kz/shop/p/pled-2/')
+    button('Добавить в список').click()
+    await settle()
+    expect(finance.wishlist.find((w) => w.name === 'Плед')?.photoId).toBe('ph-link')
+    expect(photos.uploaded).toHaveLength(1)
   })
 })

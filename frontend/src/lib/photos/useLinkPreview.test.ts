@@ -84,4 +84,21 @@ describe('lib/photos/useLinkPreview — фото желания по ссылк�
     expect(await slow).toBeNull()
     expect(fast?.title).toBe('Новое')
   })
+
+  it('B2C-75: маленькая картинка (короткая сторона < 300) — файла нет, название остаётся, «загрузите своё»; большая — файл', async () => {
+    const client = { linkPreview: vi.fn(async () => ({ title: 'Кофта', blob: new Blob(['x'], { type: 'image/png' }) })) } as unknown as ApiClient
+    let size = { width: 120, height: 120 }
+    const lp = useLinkPreview(client, async () => size)
+    expect(await lp.load('https://mobile.yangkeduo.com/goods1.html?goods_id=1')).toEqual({
+      url: 'https://mobile.yangkeduo.com/goods1.html?goods_id=1',
+      title: 'Кофта',
+      file: null,
+    })
+    expect(lp.note.value).toBe(LINK_PHOTO_MISSED)
+
+    size = { width: 800, height: 600 }
+    const found = await lp.load('https://kaspi.kz/shop/p/pled-2/')
+    expect(found?.file).toBeInstanceOf(File)
+    expect(lp.note.value).toBeNull()
+  })
 })
