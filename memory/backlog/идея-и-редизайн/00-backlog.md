@@ -492,7 +492,7 @@ Google Play и App Store. Успех: незнакомые семьи загру
 | | B2C-58 «Пришла зарплата · как обычно», входы, редирект `/week/salary`, уборка раскладки | `block-11-money-breakdown/B2C-58-as-usual-entries.md` | B2C-57 | ✅ исполнитель 2026-10-02 |
 | | B2C-59 Строки-статусы виджетов «Денег», доли трат с ориентиром, нормы | `block-11-money-breakdown/B2C-59-widget-status-norms.md` | B2C-55 | ✅ исполнитель 2026-10-02 |
 | | B2C-60 Демо, e2e Блока 11, сверка на настоящих выписках, снимки «макет \| стенд» | `block-11-money-breakdown/B2C-60-demo-e2e-snapshots.md` | B2C-58, B2C-59 | ✅ исполнитель 2026-10-02 |
-| **12. Неделя и личное** 🔄 *(исполнитель, часть 1 ✅ · ворота ✅ «дальше» 2026-10-03 · исполнитель, часть 2 ✅ 2026-10-03 · L: новая ручка Go, внешний запрос; Р-58…Р-62, Р-69; исполнитель `ultrathink` в две сессии с **воротами владельца после B2C-63**, критик и приёмка без `ultracode` — Р-67; ревью — `frontend`, `backend`; снимки рядом с макетом `pivot-3/money-breakdown.html` — Р-41)* | B2C-61 Хвост ИП пачкой и «Не помню» | `block-12-week-personal/B2C-61-unknown-batch.md` | Блок 11 🏁 | ✅ |
+| **12. Неделя и личное** 🔄 *(исполнитель, часть 1 ✅ · ворота ✅ «дальше» 2026-10-03 · исполнитель, часть 2 ✅ 2026-10-03 · критик ✅ 2026-10-03 · L: новая ручка Go, внешний запрос; Р-58…Р-62, Р-69; исполнитель `ultrathink` в две сессии с **воротами владельца после B2C-63**, критик и приёмка без `ultracode` — Р-67; ревью — `frontend`, `backend`; снимки рядом с макетом `pivot-3/money-breakdown.html` — Р-41)* | B2C-61 Хвост ИП пачкой и «Не помню» | `block-12-week-personal/B2C-61-unknown-batch.md` | Блок 11 🏁 | ✅ |
 | | B2C-62 Карточка «Выписки · <неделя>» с галочками обоих | `block-12-week-personal/B2C-62-statements-checklist.md` | B2C-61 | ✅ |
 | | B2C-63 Свой кружок: смайлик и цвет → **ворота владельца** | `block-12-week-personal/B2C-63-avatar-emoji-color.md` | — | ✅ |
 | | B2C-64 Шире пул фото целей | `block-12-week-personal/B2C-64-goal-photo-pool.md` | — | ✅ исполнитель 2026-10-03 |
@@ -508,7 +508,7 @@ Google Play и App Store. Успех: незнакомые семьи загру
 | | B2C-28 События и страница цифр для владельца (Р-16) | `block-4-foundation/B2C-28-events-metrics.md` | B2C-22 | ⬜ |
 | **5. Недельный ритм** ⬜ | B2C-29 Go: подписки на пуш, рассылка по cron, «без выписки партнёра» | `block-5-weekly-rhythm/B2C-29-go-push.md` | Блок 4 🏁 | ⬜ |
 | | B2C-30 Фронт: подписка, день и час, пуш в SW, пометка «без выписки <имя>» | `block-5-weekly-rhythm/B2C-30-push-client.md` | B2C-29 | ⬜ |
-| **6. ИИ по выбору** ⬜ *(условный — **открыт** по замеру B2C-08 и Р-29; L: внешняя интеграция, секрет; ревью — `backend`, `frontend`)* | B2C-31 Go: клиент Gemini и ручка «категории для названий» | `block-6-ai-optional/B2C-31-go-ai-categories.md` | Блок 5 🏁, решение по B2C-08 и **решение владельца после Блока 12** (Р-29 изменено 2026-10-02) | ⬜ |
+| **6. ИИ по выбору** ⬜ *(условный — **открыт** по замеру B2C-08 и Р-29; L: внешняя интеграция, секрет; ревью — `backend`, `frontend`)* | B2C-31 Go: клиент Gemini и ручка «категории для названий» | `block-6-ai-optional/B2C-31-go-ai-categories.md` | Блок 5 🏁, решение по B2C-08 и **решение владельца после Блока 12** (Р-29 изменено 2026-10-02; ⏳ напоминание критика Б12 2026-10-03: вопрос владельцу — на приёмке Блока 12 — нужен ли ИИ после пачки «Без раздела» или отменить) | ⬜ |
 | | B2C-32 Фронт: «спросить ИИ» в разборе, экран «что уйдёт в Google» | `block-6-ai-optional/B2C-32-ai-client.md` | B2C-31 | ⬜ |
 | **7. Android** ⬜ | B2C-33 Capacitor Android: проект, сборка, нативный вход Google | `block-7-android/B2C-33-capacitor-android.md` | Блок 5 🏁 (Блок 6 — если открыт) | ⬜ |
 | | B2C-34 «Поделиться выпиской → в приложение» (share target оболочки) | `block-7-android/B2C-34-share-target.md` | B2C-33 | ⬜ |
@@ -1099,6 +1099,27 @@ B2C-37…B2C-39 (Р-13, Р-18) · скоуп 14 «один план» → Бло
 - Демо: «Ваш порядок» пройден, копилка `g-pot` 150 000, разбор августа записан, зарплата Ильяса не разобрана — карточка
   «Пришла зарплата» на «Неделе». e2e — `e2e/b2c-block11-money-breakdown.test.ts` (8 частей); старые e2e раскладки
   переведены на разбор.
+
+**После Блока 12 (Неделя и личное; критик, 2026-10-03)**
+- Очередь «Недели»: незнакомые продавцы — одно решение `kind: 'unknownBatch'` (ключ постоянный, `groups` по сумме) →
+  `components/UnknownBatch.vue`; вид `unknown`, `Decision.group`, «Пропустить все», `skipUnknown` удалены. Ответ пачкой —
+  `useOperationsStore().answerAll` / `recategorizeAll` → `finance.addMerchantRules` (одна правка личного документа, одна
+  отправка); одиночные `answer`/`recategorize`/`addMerchantRule` — обёртки над ними. «Не помню» — `OTHER_CATEGORY`
+  (`sc_other`, `dictionary.ts`), чип `CategoryChips forgot` (+ проп `top`).
+- «Выписки»: `weekUploads(people, week, uploads)` (`finance.ts`, общий `coversWeek` с `weekPicture`), `weekdayShort`
+  (`dates.ts`, Алматы); `UploadPeriod.created_at?` (сервер отдавал и раньше).
+- `Person.emoji?`, `Person.color?: PersonColor` (`'pa' | 'pb' | 's1' | 's3' | 's6' | 's8'`); `PERSON_COLORS`, `PERSON_EMOJI`,
+  `personColor(id, color?)` (`palette.ts`); `Avatar` берёт участника из стора по `id` (размер 96); экран `views/MyCircle.vue`
+  `/settings/me` (`memberOnly`). Слияние — LWW записи `people`, новых ключей документа нет.
+- Шаблоны целей — 11 типов (`GoalTemplateType` + `wedding`, `baby`, `study`, `renovation`, `cushion`, `hajj`).
+- Фото по ссылке: Go `internal/linkpreview` (`New().Fetch`, `Public(ip)`; SSRF — `net.Dialer.Control` на каждом
+  соединении, прокси из env выключен, редиректы ≤ 3 только https:443, 6 с, страница 1 МБ, картинка 2 МБ, jpeg/png/webp по
+  сигнатуре) + `handlers/preview.go` → `POST /api/photos/preview` (member; 400 `bad url`/`blocked`, 422 `no image`/`too
+  large`/`timeout`/`unavailable`; в лог — домен). Второй внешний HTTP-клиент после `fx` — образец для B2C-22 (JWKS):
+  таймауты и `httptest.NewTLSServer`. `golang.org/x/net` — в обоих `go.mod`. Фронт — `apiClient.linkPreview`
+  (`LinkPreviewError.reason`, `base64Blob`), `lib/photos/useLinkPreview` (`linkIn`, пауза 300 мс). В демо поля ссылки нет.
+- Демо: 10 незнакомых ИП сегодня, загрузка недели только у Ильяса, у Аруны 🌸 на `s6`. e2e —
+  `e2e/b2c-block12-week-personal.test.ts` (5 частей; превью ссылки — подменённый клиент).
 
 **Грабли среды**
 - **`cmd/migrate` в прод запускает владелец** в своём терминале (клинап Б1): агенту чтение
