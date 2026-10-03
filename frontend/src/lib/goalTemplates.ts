@@ -10,6 +10,7 @@ import type { HueKey } from '@/lib/palette'
  * (`place` — строка места со страницы, как её печатает Unsplash; сверено 2026-09-28, возврат
  * приёмки Блока 3 п. 6). Тип «Путешествие» места не называет — его фото утверждено в §1.1.
  * Пул шире (B2C-64): шесть тем — у каждой свой тип и своя плитка в сетке «На что копим?».
+ * Несколько фото на тему (B2C-64-а): варианты `<тип>-2…` того же типа — ряд под сеткой, плитка — первое фото.
  */
 export type GoalTemplateType = 'car' | 'home' | 'travel' | 'tech' | 'health' | 'wedding' | 'baby' | 'study' | 'renovation' | 'cushion' | 'hajj'
 
@@ -60,6 +61,37 @@ export const GOAL_TEMPLATES: GoalTemplate[] = [
   { id: 'renovation', name: 'Ремонт', type: 'renovation', hue: 'brick', photo: photo('photo-1525909002-1b05e0c869d8', '46juD4zY1XA', 'David Pisnoy', 'https://unsplash.com/@davidpisnoy') },
   { id: 'cushion', name: 'Подушка', type: 'cushion', hue: 'ochre', photo: photo('photo-1607863680198-23d4b2565df0', '5OUMf1Mr5pU', 'Andre Taissin', 'https://unsplash.com/@andretaissin') },
   { id: 'hajj', name: 'Хадж, Умра', type: 'hajj', hue: 'green', photo: photo('photo-1765892272462-bad4a8ba0fb9', 'rxk0urG5ZLc', 'Tibvia', 'https://unsplash.com/@tibvia') },
+  // Варианты фото тем (B2C-64-а): «Хадж, Умра» — без людей, «Ребёнок» — без детей.
+  { id: 'car-2', name: 'Машина', type: 'car', hue: 'steel', photo: photo('photo-1572401611152-cf63d874b019', 'bFTVxTo266E', 'Maksim Tarasov', 'https://unsplash.com/@awsmsky') },
+  { id: 'car-3', name: 'Машина', type: 'car', hue: 'steel', photo: photo('photo-1610213728302-9528164e663e', 'HBcOK_gq2Z0', 'Tyler Clemmensen', 'https://unsplash.com/@tyler_clemmensen') },
+  { id: 'car-4', name: 'Машина', type: 'car', hue: 'steel', photo: photo('photo-1620591687847-1e75446f131d', 'ROdIreK_960', 'Colin Lloyd', 'https://unsplash.com/@onthesearchforpineapples') },
+  { id: 'home-2', name: 'Квартира', type: 'home', hue: 'ochre', photo: photo('photo-1615529182904-14819c35db37', 'YqFz7UMm8qE', 'Spacejoy', 'https://unsplash.com/@spacejoy') },
+  { id: 'home-3', name: 'Квартира', type: 'home', hue: 'ochre', photo: photo('photo-1564078516393-cf04bd966897', 'rEJxpBskj3Q', 'Roberto Nickson', 'https://unsplash.com/@rpnickson') },
+  { id: 'home-4', name: 'Квартира', type: 'home', hue: 'ochre', photo: photo('photo-1741156386380-0236c72eb6f9', 'bqUZEAeWuok', 'Jakub Żerdzicki', 'https://unsplash.com/@jakubzerdzicki') },
+  { id: 'tech-2', name: 'Техника', type: 'tech', hue: 'indigo', photo: photo('photo-1625461291092-13d0c45608b3', 'wLqA-YZBDsY', 'Zesan H.', 'https://unsplash.com/@arianzesan') },
+  { id: 'tech-3', name: 'Техника', type: 'tech', hue: 'indigo', photo: photo('photo-1505740420928-5e560c06d30e', 'PDX_a_82obo', 'C D-X', 'https://unsplash.com/@cdx2') },
+  { id: 'tech-4', name: 'Техника', type: 'tech', hue: 'indigo', photo: photo('photo-1523206489230-c012c64b2b48', '6wdRuK7bVTE', 'Neil Soni', 'https://unsplash.com/@neilsoniphotography') },
+  { id: 'health-2', name: 'Здоровье', type: 'health', hue: 'green', photo: photo('photo-1646239646963-b0b9be56d6b5', 'b8Q5fHBsyik', 'Samantha Sheppard', 'https://unsplash.com/@samsheppardphoto') },
+  { id: 'health-3', name: 'Здоровье', type: 'health', hue: 'green', photo: photo('photo-1542291026-7eec264c27ff', '164_6wVEHfI', 'Ryan Waring', 'https://unsplash.com/@ryanwaring') },
+  { id: 'health-4', name: 'Здоровье', type: 'health', hue: 'green', photo: photo('photo-1684403731883-67a71a793d2d', 'opJ-TlLYu4Q', 'Abdelrahman Sarayreh', 'https://unsplash.com/@sarayra') },
+  { id: 'wedding-2', name: 'Свадьба', type: 'wedding', hue: 'plum', photo: photo('photo-1606800052052-a08af7148866', '8vaQKYnawHw', 'Sandy Millar', 'https://unsplash.com/@sandym10') },
+  { id: 'wedding-3', name: 'Свадьба', type: 'wedding', hue: 'plum', photo: photo('photo-1667555150959-3e881131b9e4', 'P4WRiQJXDQs', 'Sam Lashbrooke', 'https://unsplash.com/@fotosvoneuch') },
+  { id: 'wedding-4', name: 'Свадьба', type: 'wedding', hue: 'plum', photo: photo('photo-1723832348140-a2d9eb1753b1', 'TgV07XNKS54', 'Jennifer Kalenberg', 'https://unsplash.com/@jkalen71') },
+  { id: 'baby-2', name: 'Ребёнок', type: 'baby', hue: 'teal', photo: photo('photo-1749703827003-8e5046941847', 'Uk4R6BHQkcc', 'Kailun Zhang', 'https://unsplash.com/@kailun2019') },
+  { id: 'baby-3', name: 'Ребёнок', type: 'baby', hue: 'teal', photo: photo('photo-1594150878496-a921e5af8907', 'kWJm2a6DbAw', 'Madhuri Mohite', 'https://unsplash.com/@madhurimohite') },
+  { id: 'baby-4', name: 'Ребёнок', type: 'baby', hue: 'teal', photo: photo('photo-1559454403-b8fb88521f11', 'Zzgmde4_lYU', 'kids&me Germany', 'https://unsplash.com/@kidsandme') },
+  { id: 'study-2', name: 'Учёба', type: 'study', hue: 'indigo', photo: photo('photo-1524995997946-a1c2e315a42f', '2JIvboGLeho', 'Susan Q Yin', 'https://unsplash.com/@syinq') },
+  { id: 'study-3', name: 'Учёба', type: 'study', hue: 'indigo', photo: photo('photo-1562774053-701939374585', 'U0dBV_QeiYk', 'Michael Marsh', 'https://unsplash.com/@mmarsh101') },
+  { id: 'study-4', name: 'Учёба', type: 'study', hue: 'indigo', photo: photo('photo-1497633762265-9d179a990aa6', 'lUaaKCUANVI', 'Kimberly Farmer', 'https://unsplash.com/@kimberlyfarmer') },
+  { id: 'renovation-2', name: 'Ремонт', type: 'renovation', hue: 'brick', photo: photo('photo-1562259949-e8e7689d7828', 'Cl-OpYWFFm0', 'Theme Photos', 'https://unsplash.com/@themephotos') },
+  { id: 'renovation-3', name: 'Ремонт', type: 'renovation', hue: 'brick', photo: photo('photo-1645651964715-d200ce0939cc', 'EJU7A__krX0', 'benjamin lehman', 'https://unsplash.com/@abject') },
+  { id: 'renovation-4', name: 'Ремонт', type: 'renovation', hue: 'brick', photo: photo('photo-1556912167-f556f1f39fdf', 'RryFk4n-vOs', 'roam in color', 'https://unsplash.com/@roamincolor') },
+  { id: 'cushion-2', name: 'Подушка', type: 'cushion', hue: 'ochre', photo: photo('photo-1607863680151-1da3e60691bb', 'Dc2SRspMak4', 'Andre Taissin', 'https://unsplash.com/@andretaissin') },
+  { id: 'cushion-3', name: 'Подушка', type: 'cushion', hue: 'ochre', photo: photo('photo-1633158829875-e5316a358c6f', 'joqWSI9u_XM', 'Towfiqu barbhuiya', 'https://unsplash.com/@towfiqu999999') },
+  { id: 'cushion-4', name: 'Подушка', type: 'cushion', hue: 'ochre', photo: photo('photo-1582341305248-af5d85a9c0cd', '_TSHXXo52hA', 'Nik Shuliahin 💛💙', 'https://unsplash.com/@tjump') },
+  { id: 'hajj-2', name: 'Хадж, Умра', type: 'hajj', hue: 'green', photo: photo('photo-1710695198971-3abdf7fcc82e', 'Cg4NDIa4iN0', 'Juned Khatri', 'https://unsplash.com/@hijunedkhatri') },
+  { id: 'hajj-3', name: 'Хадж, Умра', type: 'hajj', hue: 'green', photo: photo('photo-1667456416191-43ba057635c1', 'YpMYTuKTglA', 'djonk creative', 'https://unsplash.com/@djonk_creative') },
+  { id: 'hajj-4', name: 'Хадж, Умра', type: 'hajj', hue: 'green', photo: photo('photo-1771170983433-1576bc4a7eec', 'tvEDhFhBhXM', 'Rumman Amin', 'https://unsplash.com/@rumanamin') },
   // Направления (тип «Путешествие»): место — со страницы фото.
   { id: 'japan', name: 'Япония', type: 'travel', hue: 'plum', photo: photo('photo-1624253321171-1be53e12f5f4', 'SlIl9eZjWUc', 'Roméo A.', 'https://unsplash.com/@gronemo', 'Kyoto, Préfecture de Kyoto, Japon') },
   { id: 'turkey', name: 'Турция', type: 'travel', hue: 'teal', photo: photo('photo-1631152282084-b8f1b380ccab', 'f7oe3-tlm0I', 'yyzvic', 'https://unsplash.com/@yyzvic', 'Cappadocia, Avanos, Turkey') },
@@ -75,6 +107,10 @@ export const GOAL_TEMPLATES: GoalTemplate[] = [
 
 /** Направления путешествий — для второго шага выбора после типа «Путешествие». */
 export const TRAVEL_DIRECTIONS = GOAL_TEMPLATES.filter((t) => t.type === 'travel' && t.id !== 'travel')
+
+/** Фото темы для выбора (B2C-64-а): фото плитки и варианты `<тип>-N`; у «Путешествия» вместо них — направления. */
+export const themePhotos = (type: GoalTemplateType): GoalTemplate[] =>
+  type === 'travel' ? [] : GOAL_TEMPLATES.filter((t) => t.type === type && (t.id === type || t.id.startsWith(`${type}-`)))
 
 export const templateById = (id: string | null | undefined): GoalTemplate | undefined =>
   id ? GOAL_TEMPLATES.find((t) => t.id === id) : undefined
