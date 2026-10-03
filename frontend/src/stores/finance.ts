@@ -859,15 +859,20 @@ export const useFinanceStore = defineStore('finance', () => {
     });
   }
 
-  function amendSalary(id: PersonId, from: string, amount: number, reason?: string) {
+  /**
+   * Новая версия оклада с месяца `from` (можно задним числом). Валютная (Р-70) — `amount` в
+   * целых единицах валюты и `rate` — курс Нацбанка на момент ввода (запасной для книги).
+   */
+  function amendSalary(id: PersonId, from: string, amount: number, reason?: string, fx?: { currency: Currency; rate: number }) {
     const t = new Date().toISOString()
+    const money = fx && fx.currency !== 'KZT' ? { currency: fx.currency, rate: fx.rate } : {}
     mutateHouseholdDoc((doc) => {
       const p = doc.people.find((x) => x.id === id)
       if (!p) return
       const base = p.salaryVersions?.length
         ? p.salaryVersions
         : [{ from: '2000-01', amount: p.salary }]
-      const versions = [...base.filter((v) => v.from !== from), { from, amount, reason }]
+      const versions = [...base.filter((v) => v.from !== from), { from, amount, reason, ...money }]
         .sort((a, b) => a.from.localeCompare(b.from))
       p.salaryVersions = versions
       p.updatedAt = t
@@ -884,7 +889,8 @@ export const useFinanceStore = defineStore('finance', () => {
       const p = doc.people.find((x) => x.id === id)
       if (!p) return
       const cur = (p.salaryVersions ?? []).filter((v) => v.from <= key).pop()
-      p.salary = amount
+      // `salary` — тенге по умолчанию без версий: валютную сумму туда не пишем (Р-70).
+      if (!cur?.currency || cur.currency === 'KZT') p.salary = amount
       if (cur && p.salaryVersions) {
         p.salaryVersions = p.salaryVersions.map((v) => (v.from === cur.from ? { ...v, amount } : v))
       }

@@ -106,7 +106,7 @@ export const useFxStore = defineStore('fx', () => {
   /** Курсы валют документа за период книги (13 месяцев до сегодня) — зовёт движок синка. */
   function ensureDocRates(client: ApiClient = apiClient) {
     const { from, to } = bookWindow(todayIso())
-    return ensureRates(docCurrencies({ accounts: finance.accounts }), from, to, client)
+    return ensureRates(docCurrencies({ accounts: finance.accounts, people: finance.people }), from, to, client)
   }
 
   return { book, ensureRates, ensureDocRates }

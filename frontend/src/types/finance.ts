@@ -160,8 +160,13 @@ export type Gift = Tracked & {
 export type ObligationVersion = {
   /** Ключ месяца вида «2026-11» */
   from: string
+  /** Сумма — целые единицы своей валюты (`currency`, нет — тенге), без центов (Р-70). */
   amount: number
   reason?: string
+  /** Валюта версии (оклад — B2C-78, платёж — B2C-81); нет — KZT. */
+  currency?: Currency
+  /** Курс Нацбанка на момент ввода — запасной, когда в книге нет дня (Р-70, Р-72). */
+  rate?: number
 }
 
 export type Obligation = Tracked & {

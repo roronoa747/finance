@@ -4,7 +4,7 @@ import type { UnknownGroup } from '@/lib/statements/model'
 import type { Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY, plannedElsewhere, spendArticle } from '@/lib/statements/dictionary'
 import { STAT_NORMS } from '@/lib/statements/norms'
-import { addMonths, dayLabel, daysInMonth, monthFrom, monthIn, monthKey, parseMonthKey, today, weekdayShort, weekRange } from '@/lib/dates'
+import { addMonths, dayLabel, daysInMonth, isoIn, monthFrom, monthIn, monthKey, parseMonthKey, today, weekdayShort, weekRange } from '@/lib/dates'
 import { spendColor } from '@/lib/palette'
 import { money, pct, ratePct } from '@/lib/money'
 import { plural } from '@/lib/utils'
@@ -785,10 +785,11 @@ export function rateOn(book: RateBook | null | undefined, code: Currency, day: s
   return fallback && fallback > 0 ? fallback : null;
 }
 
-/** Валюты документа, которым нужна книга курсов (Р-72): счета; без тенге. */
-export function docCurrencies(doc: { accounts?: Account[] }): Currency[] {
+/** Валюты документа, которым нужна книга курсов (Р-72): счета и оклады; без тенге. */
+export function docCurrencies(doc: { accounts?: Account[]; people?: Person[] }): Currency[] {
   const out = new Set<Currency>();
   for (const a of liveAccounts(doc.accounts ?? [])) if (a.currency) out.add(a.currency);
+  for (const p of (doc.people ?? []).filter(alive)) for (const v of p.salaryVersions ?? []) if (v.currency) out.add(v.currency);
   out.delete('KZT');
   return [...out].sort();
 }
@@ -927,26 +928,42 @@ export function keepQuestions(list: Obligation[], now = new Date()): Obligation[
     .map((x) => x.o);
 }
 
-/** Оклад, действующий в указанном месяце. */
-export function salaryAt(p: Person, key = monthKey()): number {
+/** Оклад месяца в своей валюте (Р-70): версия с `from ≤ key`; версий нет — `p.salary` в тенге. */
+export function salaryOf(p: Person, key = monthKey()): { amount: number; currency: Currency; rate?: number } {
   const v = (p.salaryVersions ?? [])
     .filter((x) => x.from <= key)
     .sort((a, b) => a.from.localeCompare(b.from));
-  return v.length ? v[v.length - 1].amount : p.salary;
+  const cur = v[v.length - 1];
+  return cur ? { amount: cur.amount, currency: cur.currency ?? 'KZT', rate: cur.rate } : { amount: p.salary, currency: 'KZT' };
 }
 
-/** Ближайшее запланированное изменение оклада. */
-export function nextSalaryChange(p: Person, key = monthKey()) {
+/** День зарплаты месяца `key`, `YYYY-MM-DD` (31-е в сентябре — 30-е). */
+export const paydayIso = (p: Pick<Person, 'payday'>, key: string) => isoIn(key, p.payday);
+
+/**
+ * Оклад месяца в тенге (Р-70, Р-72). Тенговый — как записан. Валютный — по курсу Нацбанка на
+ * день зарплаты месяца из книги (выходной — пятница; день ещё не наступил — последний курс
+ * книги); книги или дня в ней нет — по курсу версии на момент ввода. Тенге с обменами — B2C-80.
+ */
+export function salaryAt(p: Person, key = monthKey(), book?: RateBook | null): number {
+  const s = salaryOf(p, key);
+  if (s.currency === 'KZT') return s.amount;
+  const rate = rateOn(book, s.currency, paydayIso(p, key), s.rate);
+  return rate ? fxToTenge(s.amount, rate) : 0;
+}
+
+/** Ближайшее запланированное изменение оклада; `delta` — в тенге (валютный — по книге). */
+export function nextSalaryChange(p: Person, key = monthKey(), book?: RateBook | null) {
   const future = (p.salaryVersions ?? [])
     .filter((x) => x.from > key)
     .sort((a, b) => a.from.localeCompare(b.from));
   if (!future.length) return null;
-  return { ...future[0], delta: future[0].amount - salaryAt(p, key) };
+  return { ...future[0], currency: future[0].currency ?? 'KZT', delta: salaryAt(p, future[0].from, book) - salaryAt(p, key, book) };
 }
 
-/** Совокупный доход участников. */
-export const totalIncome = (people: Person[], key = monthKey()) =>
-  (people || []).filter(alive).reduce((a, p) => a + salaryAt(p, key), 0);
+/** Совокупный доход участников, тенге (валютные оклады — по книге). */
+export const totalIncome = (people: Person[], key = monthKey(), book?: RateBook | null) =>
+  (people || []).filter(alive).reduce((a, p) => a + salaryAt(p, key, book), 0);
 
 /** Проверка наличия заведённых данных в бюджете. */
 export function hasBudgetData(state: {
@@ -1043,6 +1060,8 @@ export function budgetAmounts(state: {
   payments?: Payment[];
   plans?: DebtPlan[];
   moneyArticles?: MoneyArticle[];
+  /** Книга курсов (B2C-78): валютные оклады — в тенге по курсу дня зарплаты. */
+  book?: RateBook | null;
 }, key = monthKey()) {
   const obligations = state.obligations || [];
   const credits = state.credits || [];
@@ -1069,7 +1088,7 @@ export function budgetAmounts(state: {
     .reduce((a, g) => a + g.monthly, 0);
   const extra = plan ? planExtra(plan, goalsList, credits, payments, key) : 0;
   const living = livingPlan({ categories, moneyArticles: state.moneyArticles }) + other;
-  const income = totalIncome(people, key);
+  const income = totalIncome(people, key, state.book);
   const free = income - housing - debts - goals - living - extra;
 
   return { d1: housing, d2: debts, d3: goals, d4: living, d5: free, income, planExtra: extra };

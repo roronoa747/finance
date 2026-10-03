@@ -4,9 +4,10 @@ import { useRouter } from 'vue-router'
 import { PhCaretRight } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { money } from '@/lib/money'
+import { useFxStore } from '@/stores/fx'
+import { money, moneyIn } from '@/lib/money'
 import { monthFrom, monthKey } from '@/lib/dates'
-import { budgetAmounts, incomeBreakdownPath, incomeSplit, loadTag, nextSalaryChange, salaryAt, type IncomePartKey } from '@/lib/finance'
+import { budgetAmounts, incomeBreakdownPath, incomeSplit, loadTag, nextSalaryChange, salaryAt, salaryOf, type IncomePartKey } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
 import Avatar from '@/components/kit/Avatar.vue'
 import Card from '@/components/kit/Card.vue'
@@ -24,12 +25,18 @@ import SalaryDialog from '@/components/SalaryDialog.vue'
  */
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
+const fx = useFxStore()
 const router = useRouter()
 const salaryFor = ref<PersonId | null>(null)
 
 const key = computed(() => monthKey())
-const split = computed(() => incomeSplit(budgetAmounts({ ...financeStore.householdDoc, credits: financeStore.credits }, key.value)))
-const people = computed(() => financeStore.people.filter((p) => !p.deletedAt))
+const split = computed(() => incomeSplit(budgetAmounts({ ...financeStore.householdDoc, credits: financeStore.credits, book: fx.book }, key.value)))
+/** Строки участников: оклад в своей валюте, тенге по курсу дня зарплаты (B2C-78), ближайшее изменение. */
+const people = computed(() =>
+  financeStore.people
+    .filter((p) => !p.deletedAt)
+    .map((p) => ({ p, own: salaryOf(p, key.value), tenge: salaryAt(p, key.value, fx.book), next: nextSalaryChange(p, key.value, fx.book) })),
+)
 
 const LABEL: Record<IncomePartKey, { name: string; color: string }> = {
   must: { name: 'обязательное', color: 'var(--s12)' },
@@ -72,7 +79,7 @@ const parts = computed(() => split.value.parts.map((p) => ({ ...p, ...LABEL[p.ke
     <div v-if="people.length" class="mt-1 flex flex-col">
       <component
         :is="authStore.isViewer ? 'div' : 'button'"
-        v-for="p in people"
+        v-for="{ p, own, tenge, next } in people"
         :key="p.id"
         v-bind="authStore.isViewer ? {} : { type: 'button' }"
         :class="['flex w-full items-center gap-3 border-t border-line py-2.5 text-left first:border-t-0 first:pt-0 last:pb-0', !authStore.isViewer && 'cursor-pointer']"
@@ -82,10 +89,14 @@ const parts = computed(() => split.value.parts.map((p) => ({ ...p, ...LABEL[p.ke
         <span class="min-w-0 flex-1">
           <span class="block truncate font-medium text-ink">{{ p.name }}</span>
           <span class="block type-meta num">
-            {{ p.payday }}-го<template v-if="nextSalaryChange(p, key)"> · с {{ monthFrom(nextSalaryChange(p, key)!.from, false) }} — {{ money(nextSalaryChange(p, key)!.amount) }}</template>
+            {{ p.payday }}-го<template v-if="next"> · с {{ monthFrom(next.from, false) }} — {{ moneyIn(next.amount, next.currency) }}</template>
           </span>
         </span>
-        <span class="shrink-0 font-semibold num text-ink">{{ money(salaryAt(p, key)) }}</span>
+        <span v-if="own.currency === 'KZT'" class="shrink-0 font-semibold num text-ink">{{ money(tenge) }}</span>
+        <span v-else class="shrink-0 text-right num">
+          <span class="block font-semibold text-ink">{{ moneyIn(own.amount, own.currency) }}</span>
+          <span class="block type-meta">≈ {{ money(tenge) }}</span>
+        </span>
         <PhCaretRight v-if="!authStore.isViewer" :size="16" class="shrink-0 text-ink-3" />
       </component>
     </div>

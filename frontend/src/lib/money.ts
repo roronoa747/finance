@@ -7,6 +7,9 @@
  * единицы одной миграцией: все суммы ×100 для KZT/USD/EUR.
  */
 
+import type { Currency } from '@/types/finance'
+import { CURRENCY_SIGN } from '@/lib/fx'
+
 const NBSP = ' '
 /** Типографский минус (U+2212): у локали и `toFixed` — дефис, в макетах и рядом (`−` + `plain(abs)`) — «−». */
 const MINUS = '−'
@@ -51,3 +54,8 @@ export function ratePct(r: number, digits = 2): string {
  * (0,14 × 100 в JS — 14,000000000000002), 0.1425 → «14,25». Вклад и кредит (хвост §4, приёмка Блока 3).
  */
 export const rateField = (r: number) => String(Math.round(r * 10_000) / 100).replace('.', ',')
+
+/** Сумма в своей валюте: 2500, EUR → «2 500 €»; тенге — как `money` (B2C-78). */
+export function moneyIn(v: number, currency: Currency = 'KZT'): string {
+  return currency === 'KZT' ? money(v) : plain(v) + NBSP + CURRENCY_SIGN[currency]
+}

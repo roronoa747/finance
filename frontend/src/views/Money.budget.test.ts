@@ -123,7 +123,7 @@ describe('«Деньги»: бюджет месяца и оклады (бывш�
     expect(html).toContain('Ильяс')
     expect(html).toContain(plain(650_000))
     expect(html).toContain('10')
-    expect(html).toContain('Запланировать изменение')
+    expect(html).toContain('Изменить оклад')
     expect(html).toContain('Оклад сейчас, ₸')
     expect(html).toContain('День зарплаты')
   })

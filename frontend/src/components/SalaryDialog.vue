@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
-import { money, plain, parseMoney } from '@/lib/money'
-import { monthKey, monthTitle, monthFrom, addMonths } from '@/lib/dates'
-import { salaryAt } from '@/lib/finance'
-import type { PersonId } from '@/types/finance'
+import { useFxStore } from '@/stores/fx'
+import { money, moneyIn, plain, parseMoney } from '@/lib/money'
+import { monthKey, monthTitle, monthFrom, addMonths, todayIso } from '@/lib/dates'
+import { fxToTenge, rateOn, salaryAt, salaryOf } from '@/lib/finance'
+import { CURRENCIES, CURRENCY_SIGN, fetchRates, type FxRates } from '@/lib/fx'
+import type { Currency, PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
 import Field from '@/components/kit/Field.vue'
+import Hint from '@/components/kit/Hint.vue'
 import NumField from '@/components/kit/NumField.vue'
 import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
 import SavedMark from '@/components/kit/SavedMark.vue'
@@ -16,6 +19,12 @@ import { useSavedMark } from '@/components/kit/useSavedMark'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 
+/**
+ * Оклад участника: имя, исправление текущего оклада, день зарплаты и новая версия оклада с
+ * месяца — в том числе задним числом (до 24 месяцев) и в валюте (Р-70, B2C-78): чипы валют,
+ * сумма в валюте, под ней тихая строка «≈ N ₸ по курсу Нацбанка». Курс версии — сегодняшний
+ * из книги (нет — публичная `/api/fx-rate`, нет и её — поле курса руками, как у счёта).
+ */
 const props = defineProps<{
   id: PersonId | null
 }>()
@@ -25,6 +34,7 @@ const emit = defineEmits<{
 }>()
 
 const financeStore = useFinanceStore()
+const fx = useFxStore()
 const key = computed(() => monthKey())
 
 const person = computed(() => financeStore.people.find((p) => p.id === props.id))
@@ -34,6 +44,9 @@ const newAmount = ref('')
 const fromMonth = ref(addMonths(monthKey(), 1))
 const reason = ref('')
 const personName = ref(person.value?.name ?? '')
+const newCurrency = ref<Currency>('KZT')
+const manualRate = ref('')
+const rateInfo = ref<FxRates | null>(null)
 
 watch(
   () => person.value?.name,
@@ -55,20 +68,41 @@ watch(
     planning.value = false
     newAmount.value = ''
     reason.value = ''
+    manualRate.value = ''
     fromMonth.value = addMonths(monthKey(), 1)
     personName.value = person.value?.name ?? ''
   },
 )
 
-const current = computed(() => (person.value ? salaryAt(person.value, key.value) : 0))
+/** Оклад этого месяца в своей валюте и в тенге (валютный — по курсу дня зарплаты). */
+const current = computed(() => (person.value ? salaryOf(person.value, key.value) : { amount: 0, currency: 'KZT' as Currency }))
+const currentTenge = computed(() => (person.value ? salaryAt(person.value, key.value, fx.book) : 0))
+const sign = computed(() => CURRENCY_SIGN[current.value.currency])
+
+/** Месяцы версии: 24 назад (задним числом, Р-70) … 12 вперёд. */
 const months = computed(() =>
-  Array.from({ length: 13 }, (_, i) => addMonths(key.value, i)).map((m) => ({ value: m, label: monthTitle(m) })),
+  Array.from({ length: 37 }, (_, i) => addMonths(key.value, i - 24)).map((m) => ({ value: m, label: monthTitle(m) })),
 )
 const planned = computed(() => parseMoney(newAmount.value))
-const delta = computed(() => (planned.value > 0 ? planned.value - current.value : 0))
+const isForeign = computed(() => newCurrency.value !== 'KZT')
+
+/** Курс Нацбанка на сегодня: книга, иначе публичная ручка; нет — `null`, тогда поле руками. */
+const autoRate = computed(() => {
+  if (!isForeign.value) return 1
+  return rateOn(fx.book, newCurrency.value, todayIso(), rateInfo.value?.rates[newCurrency.value] ?? null)
+})
+const rate = computed(() => autoRate.value ?? parseFloat(manualRate.value.replace(',', '.')))
+const rateOk = computed(() => Number.isFinite(rate.value) && rate.value > 0)
+const plannedTenge = computed(() => (rateOk.value ? fxToTenge(planned.value, rate.value) : 0))
+const delta = computed(() => (planned.value > 0 && rateOk.value ? plannedTenge.value - currentTenge.value : 0))
 const history = computed(() =>
   [...(person.value?.salaryVersions ?? [])].sort((a, b) => b.from.localeCompare(a.from)),
 )
+
+watch([planning, newCurrency], async ([open]) => {
+  if (!open || !isForeign.value || autoRate.value || rateInfo.value) return
+  rateInfo.value = await fetchRates()
+})
 
 function onNameBlur() {
   if (!person.value) return
@@ -81,7 +115,7 @@ function onNameBlur() {
 function onSalaryCommit(text: string) {
   if (!person.value) return
   const v = parseMoney(text)
-  if (v > 0 && v !== current.value) {
+  if (v > 0 && v !== current.value.amount) {
     financeStore.correctSalary(person.value.id, v)
   }
 }
@@ -94,26 +128,28 @@ function onPaydayCommit(text: string) {
   }
 }
 
-// «Новый оклад» — сразу под пальцем (React `Budget.tsx:426-427` `autoFocus`), как PV-11.
+// «Новый оклад» — сразу под пальцем (React `Budget.tsx:426-427` `autoFocus`), как PV-11; валюта — нынешняя.
 const planRef = ref<HTMLElement | null>(null)
 function startPlanning() {
   planning.value = true
-  void nextTick(() => planRef.value?.querySelector('input')?.focus())
+  newCurrency.value = current.value.currency
+  void nextTick(() => planRef.value?.querySelector<HTMLInputElement>('input[inputmode]')?.focus())
 }
 
 function handlePlanSubmit() {
-  if (!person.value || planned.value <= 0) return
+  if (!person.value || planned.value <= 0 || !rateOk.value) return
   financeStore.amendSalary(
     person.value.id,
     fromMonth.value,
     planned.value,
     reason.value.trim() || undefined,
+    isForeign.value ? { currency: newCurrency.value, rate: rate.value } : undefined,
   )
   planning.value = false
   newAmount.value = ''
   reason.value = ''
+  manualRate.value = ''
 }
-
 </script>
 
 <template>
@@ -124,12 +160,13 @@ function handlePlanSubmit() {
         <Input v-model="personName" @blur="onNameBlur" />
       </Field>
 
-      <Field label="Оклад сейчас, ₸">
-        <NumFieldBlur :initial="plain(current)" @commit="onSalaryCommit" />
+      <Field :label="`Оклад сейчас, ${sign}`">
+        <NumFieldBlur :initial="plain(current.amount)" @commit="onSalaryCommit" />
       </Field>
-      <p class="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-3">
-        Это исправление: оклад был введён неверно. Если зарплата действительно меняется — не трогайте
-        это поле, а запланируйте изменение ниже.
+      <p class="-mt-1 mb-3 flex items-center gap-1 text-[12px] text-ink-3 num">
+        <template v-if="current.currency !== 'KZT'">≈ {{ money(currentTenge) }} по курсу Нацбанка ·</template>
+        только исправить ошибку
+        <Hint>Оклад был введён неверно. Если зарплата действительно меняется — не трогайте это поле, а измените оклад с нужного месяца ниже.</Hint>
       </p>
 
       <Field label="День зарплаты">
@@ -138,13 +175,35 @@ function handlePlanSubmit() {
 
       <div v-if="!planning" class="mb-3">
         <Button variant="outline" class="w-full bg-surface-2" @click="startPlanning">
-          Запланировать изменение
+          Изменить оклад
         </Button>
       </div>
 
       <div v-else ref="planRef" class="mb-3 rounded-xl border border-brand p-3.5">
-        <Field label="Новый оклад, ₸">
-          <NumField v-model="newAmount" :placeholder="plain(current)" />
+        <Field label="Валюта" group>
+          <div class="grid grid-cols-5 gap-2">
+            <button
+              v-for="c in CURRENCIES"
+              :key="c"
+              type="button"
+              :aria-label="c"
+              :aria-pressed="newCurrency === c"
+              :class="cn('rounded-xl border px-2 py-2 text-[13px] transition-colors cursor-pointer', newCurrency === c ? 'border-brand bg-brand-soft font-medium text-brand' : 'border-line bg-surface-2 text-ink-2')"
+              @click="newCurrency = c"
+            >
+              {{ CURRENCY_SIGN[c] }}
+            </button>
+          </div>
+        </Field>
+
+        <Field :label="`Новый оклад, ${CURRENCY_SIGN[newCurrency]}`">
+          <NumField v-model="newAmount" :placeholder="plain(current.currency === newCurrency ? current.amount : 0)" />
+        </Field>
+        <p v-if="isForeign && autoRate && planned > 0" class="-mt-2.5 mb-3 text-[12px] text-ink-3 num">
+          ≈ {{ money(plannedTenge) }} по курсу Нацбанка
+        </p>
+        <Field v-if="isForeign && !autoRate" :label="`Курс: сколько тенге за 1 ${newCurrency}`">
+          <NumField v-model="manualRate" kind="rate" placeholder="505" />
         </Field>
 
         <Field label="С какого месяца">
@@ -176,8 +235,8 @@ function handlePlanSubmit() {
 
         <div class="flex gap-2">
           <Button variant="outline" class="flex-1" @click="planning = false">Отмена</Button>
-          <Button class="flex-1" :disabled="planned <= 0" @click="handlePlanSubmit">
-            Запланировать
+          <Button class="flex-1" :disabled="planned <= 0 || !rateOk" @click="handlePlanSubmit">
+            Сохранить
           </Button>
         </div>
       </div>
@@ -191,7 +250,7 @@ function handlePlanSubmit() {
             <span class="text-ink-3">
               {{ v.from <= key ? 'с' : 'станет с' }} {{ monthFrom(v.from) }}
             </span>
-            <b class="ml-auto num font-semibold text-ink">{{ money(v.amount) }}</b>
+            <b class="ml-auto num font-semibold text-ink">{{ moneyIn(v.amount, v.currency) }}</b>
             <span v-if="v.reason" class="text-[12px] text-ink-3">{{ v.reason }}</span>
           </div>
         </div>
