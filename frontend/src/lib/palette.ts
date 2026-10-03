@@ -120,14 +120,26 @@ export const PERSON_EMOJI = ['🦊', '🐻', '🌿', '⚡️', '🌙', '🍉', '
  * (тогда семья через ZWJ не пройдёт — запас, не правило).
  */
 export function oneEmoji(text: string): string | null {
-  const t = text.trim()
-  if (!t) return null
-  const parts =
-    typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
-      ? [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(t)].map((s) => s.segment)
-      : Array.from(t)
+  const parts = graphemes(text.trim())
   if (parts.length !== 1) return null
   return /\p{Emoji_Presentation}|\p{Extended_Pictographic}/u.test(parts[0]) ? parts[0] : null
+}
+
+/**
+ * Последний смайлик ввода (B2C-74, смоук 2 Б12): в поле уже стоит прежний свой, вставленный дописывается к
+ * нему — берётся последняя графема, если это смайлик («🐼🦊» → 🦊). Последняя — буква или цифра — null.
+ */
+export function lastEmoji(text: string): string | null {
+  const last = graphemes(text.trim()).at(-1)
+  return last ? oneEmoji(last) : null
+}
+
+/** Графемы текста: `Intl.Segmenter`, без него — кодовые точки. */
+function graphemes(text: string): string[] {
+  if (!text) return []
+  return typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
+    ? [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].map((s) => s.segment)
+    : Array.from(text)
 }
 
 /**

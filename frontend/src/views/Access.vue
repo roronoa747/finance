@@ -5,6 +5,7 @@ import { PhSparkle } from '@phosphor-icons/vue'
 import { useAuthStore, DEMO_TOKEN } from '@/stores/auth'
 import { useFinanceStore, DEMO_HOUSEHOLD } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
+import { afterFamilyLoaded } from '@/stores/syncEngine'
 import { landingPath } from '@/router/landing'
 import { seedSpendCategories } from '@/lib/statements/model'
 import { addMonths, monthKey, weekKey } from '@/lib/dates'
@@ -46,7 +47,9 @@ onMounted(() => {
 // Документ телефона привязывается к семье, куда вошли: чужой (и черновик демо)
 // стирается, свой сливается с серверным — неотправленное после истёкшего входа уходит.
 async function enterHousehold() {
-  if (authStore.household) await financeStore.enterFamily(authStore.household.id)
+  if (!authStore.household) return
+  await financeStore.enterFamily(authStore.household.id)
+  afterFamilyLoaded()
 }
 
 // Черновик демо на телефоне (Р-32): при создании семьи его можно взять с собой,

@@ -3,6 +3,7 @@ import { ref, computed, type Ref } from 'vue'
 import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { mergeDocs, mergePrivateDocs, isEmptyDoc } from '@/lib/merge'
 import { monthKey } from '@/lib/dates'
+import { clearPhotoDisk } from '@/lib/photos/store'
 import { LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, readStorage } from '@/lib/storage'
 import {
   accountBalance,
@@ -279,6 +280,8 @@ export const useFinanceStore = defineStore('finance', () => {
     } catch (e) {
       console.error('Ошибка очистки локального состояния:', e)
     }
+    // Фото семьи на телефоне (B2C-71) уходят вместе с её документами.
+    void clearPhotoDisk()
   }
 
   /**

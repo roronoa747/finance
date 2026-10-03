@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { PhCamera, PhX } from '@phosphor-icons/vue'
+import { useWideFit } from '@/lib/photos/fit'
 
 /**
  * Фото желания или сюрприза в окне (правило 12; владелец 2026-09-28: кнопки смены фото занимали
@@ -16,8 +17,10 @@ const props = withDefaults(
     present?: boolean
     busy?: boolean
     removable?: boolean
+    /** Широкое фото — целиком (B2C-73): у желаний; цели и сюрпризы — как были. */
+    fit?: boolean
   }>(),
-  { src: null, file: null, present: false, busy: false, removable: false },
+  { src: null, file: null, present: false, busy: false, removable: false, fit: false },
 )
 
 const emit = defineEmits<{ (e: 'file', file: File): void; (e: 'remove'): void }>()
@@ -37,6 +40,7 @@ onBeforeUnmount(() => {
 })
 
 const shown = computed(() => preview.value ?? props.src)
+const wideFit = useWideFit(() => shown.value)
 
 function onChange(e: Event) {
   const el = e.target as HTMLInputElement
@@ -50,7 +54,7 @@ function onChange(e: Event) {
   <div>
     <input ref="input" type="file" accept="image/*" class="hidden" @change="onChange" />
     <div v-if="shown || present" class="relative h-[180px] overflow-hidden rounded-tile bg-surface-3" :class="busy && 'opacity-60'">
-      <img v-if="shown" :src="shown" alt="" class="size-full object-cover" />
+      <img v-if="shown" :src="shown" alt="" :class="['size-full', fit ? wideFit.fit() : 'object-cover']" @load="wideFit.onLoad" />
       <button
         type="button"
         aria-label="Сменить фото"

@@ -1,9 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { useAuthStore } from './auth'
+import { useAuthStore, DEMO_TOKEN } from './auth'
 import { useFinanceStore } from './finance'
 import { apiClient } from '@/api/client'
-import { startSyncEngine, resetSyncEngineForTests, BACKGROUND_SYNC_MS } from './syncEngine'
+import { startSyncEngine, resetSyncEngineForTests, afterFamilyLoaded, BACKGROUND_SYNC_MS } from './syncEngine'
+import { fillWishPhotos } from '@/lib/photos/wishLinkPhotos'
+
+// Обход фото желаний (B2C-72) — подменён: движок только решает, когда его звать.
+vi.mock('@/lib/photos/wishLinkPhotos', () => ({ fillWishPhotos: vi.fn(async () => 0) }))
 
 // Окно и документ-заглушки: движок слушает события и таймер окна.
 function fakeEnv() {
@@ -196,5 +200,127 @@ describe('startSyncEngine — личный документ (B2C-05)', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(get).toHaveBeenCalledTimes(2)
     expect(finance.merchantRules.map((r) => r.id)).toEqual(['r-laptop'])
+  })
+})
+
+describe('startSyncEngine — фото желаний по ссылке при запуске (B2C-72)', () => {
+  const storage = new Map<string, string>()
+  const fill = vi.mocked(fillWishPhotos)
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => storage.set(k, String(v)),
+      removeItem: (k: string) => storage.delete(k),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    resetSyncEngineForTests()
+    fill.mockClear()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  /** Синк и pull подменены: успешный круг ставит 'idle', как настоящий. */
+  function start(opts: { online?: boolean; syncOk?: boolean } = {}) {
+    const finance = useFinanceStore()
+    const settle = async () => {
+      finance.status = opts.syncOk === false ? 'error' : 'idle'
+      return null
+    }
+    const sync = vi.spyOn(finance, 'syncHousehold').mockImplementation(async () => void (await settle()))
+    const pull = vi.spyOn(finance, 'pullHousehold').mockImplementation(settle)
+    vi.spyOn(finance, 'pullPrivateDoc').mockResolvedValue(null as never)
+    const env = fakeEnv()
+    if (opts.online === false) Object.defineProperty(env.win, 'navigator', { value: { onLine: false } })
+    startSyncEngine(env.win, env.doc)
+    return { finance, sync, pull, ...env }
+  }
+  const settled = async () => {
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.dynamicImportSettled()
+  }
+
+  it('после первого успешного синка — один обход; фокус и интервал его не повторяют', async () => {
+    signIn()
+    const { finance, win, pull } = start()
+    await settled()
+    expect(fill).toHaveBeenCalledTimes(1)
+    expect(fill.mock.calls[0][0]).toBe(finance)
+    expect(fill.mock.calls[0][2]?.aborted).toBe(false)
+
+    win.dispatchEvent(new Event('focus'))
+    await vi.advanceTimersByTimeAsync(BACKGROUND_SYNC_MS)
+    await settled()
+    expect(pull).toHaveBeenCalledTimes(2)
+    expect(fill).toHaveBeenCalledTimes(1)
+  })
+
+  it('первый синк не удался — обход ждёт следующего успешного круга', async () => {
+    signIn()
+    const { win, sync } = start({ syncOk: false })
+    await settled()
+    expect(fill).not.toHaveBeenCalled()
+    sync.mockImplementation(async () => void (useFinanceStore().status = 'idle'))
+    win.dispatchEvent(new Event('focus'))
+    await settled()
+    expect(fill).toHaveBeenCalledTimes(1)
+  })
+
+  it('демо, viewer, без сети — 0 вызовов', async () => {
+    useAuthStore().setAuthData({
+      token: DEMO_TOKEN,
+      user: { id: 'demo', email: 'demo@ff', created_at: '' },
+      household: null,
+      member: null,
+    } as never)
+    start()
+    await settled()
+    expect(fill).not.toHaveBeenCalled()
+
+    setActivePinia(createPinia())
+    resetSyncEngineForTests()
+    signIn()
+    const auth = useAuthStore()
+    auth.setAuthData({ token: 'viewer-token', user: auth.user!, household: auth.household!, member: { ...auth.member!, role: 'viewer' } })
+    start()
+    await settled()
+    expect(fill).not.toHaveBeenCalled()
+
+    setActivePinia(createPinia())
+    resetSyncEngineForTests()
+    signIn()
+    start({ online: false })
+    await settled()
+    expect(fill).not.toHaveBeenCalled()
+  })
+
+  it('выход отменяет обход; вход в семью на Access — новый обход сразу', async () => {
+    let signal: AbortSignal | undefined
+    fill.mockImplementation(async (_store, _deps, s) => {
+      signal = s
+      return 0
+    })
+    signIn()
+    start()
+    await settled()
+    expect(signal?.aborted).toBe(false)
+
+    const auth = useAuthStore()
+    auth.logout('discard')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(signal?.aborted).toBe(true)
+
+    signIn('token-2')
+    useFinanceStore().status = 'idle'
+    afterFamilyLoaded()
+    await settled()
+    expect(fill).toHaveBeenCalledTimes(2)
+    expect(signal?.aborted).toBe(false)
   })
 })

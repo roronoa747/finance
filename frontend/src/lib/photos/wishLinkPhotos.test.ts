@@ -36,7 +36,7 @@ function fakeDeps(preview: WishPhotoDeps['preview']): WishPhotoDeps & { previewe
       previewed.push(url)
       return preview(url)
     },
-    compress: async (blob) => ({ blob }),
+    compress: async (blob) => ({ blob, width: 800, height: 800 }),
     upload: async (blob) => {
       uploaded.push(blob)
       return `ph-${++n}`
@@ -205,5 +205,18 @@ describe('lib/photos/wishLinkPhotos — фото у старых желаний 
       storage.set(LINK_PHOTO_TRIED_KEY, JSON.stringify(['https://c.kz/1', 7, null]))
       expect(triedLinks().has('https://c.kz/1')).toBe(true)
     })
+  })
+
+  it('B2C-75: превью — картинка 120×120 → upload не вызван, адрес в tried, повторно не спрашивается', async () => {
+    const store = fakeStore([wish('w1', { url: 'https://mobile.yangkeduo.com/goods1.html?goods_id=1' })])
+    const deps = fakeDeps(async () => picture())
+    deps.compress = async (blob) => ({ blob, width: 120, height: 120 })
+    expect(await fillWishPhotos(store, deps)).toBe(0)
+    expect(deps.uploaded).toHaveLength(0)
+    expect(deps.tried.has('https://mobile.yangkeduo.com/goods1.html?goods_id=1')).toBe(true)
+    expect(store.set).not.toHaveBeenCalled()
+
+    await fillWishPhotos(store, deps)
+    expect(deps.previewed).toHaveLength(1)
   })
 })

@@ -3,6 +3,7 @@ import type { WishItem } from '@/types/finance'
 import { liveWishlist } from '@/lib/finance'
 import { LINK_PHOTO_TRIED_KEY, readStorage, writeStorage } from '@/lib/storage'
 import { compressImage } from './compress'
+import { bigEnough } from './linkPhoto'
 import { deletePhoto, uploadPhoto } from './store'
 
 /**
@@ -35,7 +36,8 @@ export type WishPhotoDeps = {
    * вход истёк, лимит, сервер упал): обход прерывается, адреса не запоминаются.
    */
   preview: (url: string) => Promise<Blob | null>
-  compress: (blob: Blob) => Promise<{ blob: Blob }>
+  /** Сжатие; размеры выхода — для порога маленьких картинок (B2C-75: `compressImage` не увеличивает). */
+  compress: (blob: Blob) => Promise<{ blob: Blob; width: number; height: number }>
   upload: (blob: Blob) => Promise<string>
   /** Фото загрузилось зря: желание исчезло или получило своё, пока грузили. */
   remove: (photoId: string) => Promise<void>
@@ -123,7 +125,11 @@ export async function fillWishPhotos(store: WishPhotoStore, deps: WishPhotoDeps 
       }
       if (!bare(wish.id)) continue
       try {
-        const { blob } = await deps.compress(picture)
+        const { blob, width, height } = await deps.compress(picture)
+        if (!bigEnough(width, height)) {
+          deps.tried.add(wish.url) // логотип вместо товара (B2C-75) — как «картинки нет»
+          continue
+        }
         const id = await deps.upload(blob)
         if (bare(wish.id)) {
           store.setWishPhoto(wish.id, id)

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { HUES, HUE_KEYS, resolveDark, hueColor, applyTheme, prefersDark, spendColor, spendSlot, SPEND_SLOTS, personColor, PERSON_COLORS, PERSON_EMOJI, memberColor, oneEmoji, slotColor } from './palette'
+import { HUES, HUE_KEYS, resolveDark, hueColor, applyTheme, prefersDark, spendColor, spendSlot, SPEND_SLOTS, personColor, PERSON_COLORS, PERSON_EMOJI, memberColor, oneEmoji, lastEmoji, slotColor } from './palette'
 import type { Person } from '@/types/finance'
 import { DEFAULT_SPEND_CATEGORIES } from './statements/dictionary'
 
@@ -153,5 +153,18 @@ describe('palette.ts — цветовая система и темы оформ�
     expect(oneEmoji(' 🐼 ')).toBe('🐼')
     for (const e of PERSON_EMOJI) expect(oneEmoji(e), e).toBe(e)
     for (const bad of ['', '   ', 'ab', 'a', '7', '#', '🦊🐻', '🇰🇿🇰🇿', 'a b', '🦊 x', 'Ж']) expect(oneEmoji(bad), JSON.stringify(bad)).toBeNull()
+  })
+
+  it('B2C-74 lastEmoji: вставка дописалась к прежнему своему — берётся последний смайлик; последняя графема не смайлик — null', () => {
+    expect(lastEmoji('🐼🦊')).toBe('🦊')
+    expect(lastEmoji('🦊')).toBe('🦊')
+    expect(lastEmoji('🐼a')).toBeNull()
+    expect(lastEmoji('🐼ab')).toBeNull()
+    expect(lastEmoji('👨‍👩‍👧')).toBe('👨‍👩‍👧')
+    expect(lastEmoji('🐼👨‍👩‍👧')).toBe('👨‍👩‍👧')
+    expect(lastEmoji('🇰🇿🇺🇸')).toBe('🇺🇸')
+    expect(lastEmoji(' 🐼🦊 ')).toBe('🦊')
+    expect(lastEmoji('')).toBeNull()
+    expect(lastEmoji('ab')).toBeNull()
   })
 })

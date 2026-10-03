@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { memberColor } from '@/lib/palette'
 import { useFinanceStore } from '@/stores/finance'
 import type { WishItem } from '@/types/finance'
+import { useWideFit } from '@/lib/photos/fit'
 import IconBox from '@/components/kit/IconBox.vue'
 import Tag from '@/components/kit/Tag.vue'
 
@@ -13,7 +14,7 @@ import Tag from '@/components/kit/Tag.vue'
  * галочка, картинка, название с автором и датой, ссылка, цена. Ссылка вынесена из нажимаемой
  * области: ссылка внутри кнопки — невалидная разметка. Viewer — строка без действий (Р-12).
  */
-defineProps<{
+const props = defineProps<{
   wish: WishItem
   src: string | null
   canEdit: boolean
@@ -24,6 +25,8 @@ defineProps<{
 const emit = defineEmits<{ (e: 'open'): void; (e: 'toggle'): void }>()
 // Точка автора — тот же цвет, что его кружок (Р-61).
 const finance = useFinanceStore()
+// Широкое фото — целиком (B2C-73).
+const { onLoad, fit } = useWideFit(() => props.src)
 </script>
 
 <template>
@@ -45,7 +48,7 @@ const finance = useFinanceStore()
     <Tag v-else-if="bought" tone="ok">купили</Tag>
     <IconBox v-else><PhShoppingBag :size="18" /></IconBox>
     <div v-if="wish.photoId" :class="cn('size-11 shrink-0 overflow-hidden rounded-inner bg-surface-3', bought && 'opacity-70')" data-photo>
-      <img v-if="src" :src="src" alt="" class="size-full object-cover" />
+      <img v-if="src" :src="src" alt="" :class="['size-full', fit()]" @load="onLoad" />
     </div>
     <component
       :is="canEdit ? 'button' : 'div'"

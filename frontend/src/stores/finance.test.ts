@@ -20,6 +20,7 @@ import {
   strategyInputs,
 } from '@/lib/finance'
 import { mergeDocs } from '@/lib/merge'
+import { photoDisk } from '@/lib/photos/store'
 
 describe('stores/finance.ts — Pinia хранилище казны и синхронизация', () => {
   const storageMap = new Map<string, string>()
@@ -637,6 +638,27 @@ describe('stores/finance.ts — Pinia хранилище казны и синх�
       expect(auth.logout('discard')).toBe(true)
       expect(store.people).toEqual([])
       expect(store.unsent).toBe(false)
+    })
+
+    it('фото на телефоне (B2C-71): выход стирает диск, «войти заново» (keep) — нет', () => {
+      const clear = vi.spyOn(photoDisk, 'clear').mockResolvedValue()
+      const auth = useAuthStore()
+      auth.setAuthData(authData('tok-1', 'h-1'))
+      const store = useFinanceStore()
+      store.claimFor('h-1')
+      store.setPerson('a', { name: 'Ильяс' })
+
+      expect(auth.logout('keep')).toBe(true)
+      expect(clear).not.toHaveBeenCalled()
+
+      auth.setAuthData(authData('tok-2', 'h-1'))
+      expect(auth.logout('discard')).toBe(true)
+      expect(clear).toHaveBeenCalledTimes(1)
+
+      store.claimFor('h-1')
+      store.claimFor('h-2')
+      expect(clear).toHaveBeenCalledTimes(2)
+      clear.mockRestore()
     })
 
     it('вход другой семьи в той же вкладке после выхода — документы не смешаны', async () => {

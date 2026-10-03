@@ -134,6 +134,7 @@ function remove() {
         :present="!!wish.photoId"
         :busy="photoBusy || link.busy.value"
         :removable="!!wish.photoId"
+        fit
         @file="onFile"
         @remove="removePhoto"
       />
