@@ -4,7 +4,7 @@ import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { mergeDocs, mergePrivateDocs, isEmptyDoc } from '@/lib/merge'
 import { monthKey } from '@/lib/dates'
 import { clearPhotoDisk } from '@/lib/photos/store'
-import { LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, readStorage } from '@/lib/storage'
+import { FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, readStorage } from '@/lib/storage'
 import {
   accountBalance,
   activePlan as pickActivePlan,
@@ -59,6 +59,7 @@ import type {
   ArticleKey,
   MoneyArticle,
   MoneySettings,
+  Currency,
 } from '@/types/finance'
 import type { MerchantRule } from '@/lib/statements/types'
 import { spendArticle } from '@/lib/statements/dictionary'
@@ -121,6 +122,8 @@ const LOCAL_KEYS = [
   MONTH_END_KEY,
   // Адреса желаний без картинки (B2C-68): ссылки этой семьи другому входу не нужны.
   LINK_PHOTO_TRIED_KEY,
+  // Книга курсов (B2C-77): курсы публичные, но кэш — этого входа.
+  FX_BOOK_KEY,
 ]
 
 // Запрос не дошёл до сервера (fetch бросил не ApiError) — это «нет сети», а не «не
@@ -966,7 +969,7 @@ export const useFinanceStore = defineStore('finance', () => {
       note?: string
       amount: number
       kind: 'card' | 'cash' | 'deposit' | 'envelope'
-      currency?: 'KZT' | 'USD' | 'EUR' | 'RUB'
+      currency?: Currency
       foreignAmount?: number
       rate?: number
       rateAt?: string

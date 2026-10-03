@@ -211,7 +211,14 @@ export type Obligation = Tracked & {
   who?: PersonId | null
 }
 
-export type Currency = 'KZT' | 'USD' | 'EUR' | 'RUB'
+export type Currency = 'KZT' | 'USD' | 'EUR' | 'RUB' | 'CNY'
+
+/**
+ * Книга курсов Нацбанка (B2C-77, Р-72): валюта → день «YYYY-MM-DD» → тенге за единицу.
+ * Курс — не деньги: дробный, как опубликован; тенге из валюты — только `fxToTenge`.
+ * Передаётся расчётам параметром (как `totals`, `uploads`), не глобалом.
+ */
+export type RateBook = Partial<Record<Currency, Record<string, number>>>
 
 export type Account = Tracked & {
   id: string

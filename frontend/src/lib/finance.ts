@@ -1,4 +1,4 @@
-import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings } from '@/types/finance'
+import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
 import type { Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
@@ -771,6 +771,27 @@ export const goalRemaining = (g: Pick<Goal, 'need' | 'have'>) => Math.max(0, g.n
 
 /** Валюта в тенге по курсу — целые тенге. Единственное место, где сумма умножается на курс. */
 export const fxToTenge = (foreignAmount: number, rate: number) => Math.round(foreignAmount * rate);
+
+/**
+ * Курс валюты на день `YYYY-MM-DD` по книге (Р-72): последний опубликованный день ≤ `day`
+ * (выходные, праздники — курс пятницы). Дня нет (раньше начала книги, книги нет) — `fallback`
+ * (снимок курса версии или счёта), нет и его — `null`. Тенге — курс 1. «Сейчас» внутри нет.
+ */
+export function rateOn(book: RateBook | null | undefined, code: Currency, day: string, fallback?: number | null): number | null {
+  if (code === 'KZT') return 1;
+  let best: string | null = null;
+  for (const d in book?.[code] ?? {}) if (d <= day && (best === null || d > best)) best = d;
+  if (best !== null) return book![code]![best];
+  return fallback && fallback > 0 ? fallback : null;
+}
+
+/** Валюты документа, которым нужна книга курсов (Р-72): счета; без тенге. */
+export function docCurrencies(doc: { accounts?: Account[] }): Currency[] {
+  const out = new Set<Currency>();
+  for (const a of liveAccounts(doc.accounts ?? [])) if (a.currency) out.add(a.currency);
+  out.delete('KZT');
+  return [...out].sort();
+}
 
 /** Сумма обязательства, действующая в указанном месяце. */
 export function amountAt(o: Obligation, key = monthKey()): number {

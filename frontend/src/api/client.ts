@@ -256,6 +256,17 @@ export class ApiClient {
     }
     return { title: res.title, blob: base64Blob(res.image, res.imageType) }
   }
+
+  /**
+   * История курсов Нацбанка (B2C-76, Р-71): опубликованные дни периода ≤ 400 дней; `partial` —
+   * сервер догрузил у банка не всё, спросить позже.
+   */
+  async fxRates(code: string, from: string, to: string): Promise<FxRatesResponse> {
+    const q = new URLSearchParams({ code, from, to })
+    return this.request<FxRatesResponse>(`/fx-rates?${q}`, { method: 'GET' })
+  }
 }
+
+export type FxRatesResponse = { code: string; rates: Record<string, number>; partial: boolean; source?: string }
 
 export const apiClient = new ApiClient()

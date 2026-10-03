@@ -2,6 +2,8 @@ import { watch } from 'vue'
 import { useAuthStore } from './auth'
 import { useFinanceStore, DEMO_HOUSEHOLD } from './finance'
 import { useOperationsStore } from './operations'
+import { useFxStore } from './fx'
+import { docCurrencies } from '@/lib/finance'
 
 /** Как часто ловить правки партнёра, пока приложение открыто. */
 export const BACKGROUND_SYNC_MS = 60_000
@@ -72,8 +74,19 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
     },
   )
 
+  // Книга курсов (B2C-77): валюты документа за 13 месяцев — на входе, тем же кругом синка (новый
+  // день) и сразу, как в документе появилась новая валюта. Догружает только недостающие дни.
+  const rates = () => {
+    if (signedIn()) void useFxStore().ensureDocRates()
+  }
+  watch(
+    () => [auth.token, docCurrencies({ accounts: finance.accounts }).join()],
+    () => rates(),
+  )
+
   const sync = () => {
     if (!signedIn()) return
+    rates()
     // Только 'idle' значит «локально всё уже на сервере». Правка без сети оставляет
     // 'offline', сбой — 'error': их нужно слить и отправить, а не затереть серверной копией.
     if (finance.status === 'idle') void finance.pullHousehold().then(linkPhotos)
@@ -109,6 +122,7 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
       void finance.syncHousehold().then(linkPhotos)
       syncPrivate()
     }
+    rates()
   }
 }
 
