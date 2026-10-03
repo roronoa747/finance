@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onScopeDispose } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PhCheck, PhGift, PhListBullets, PhPlus, PhSquaresFour } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
@@ -11,6 +11,7 @@ import { compressImage } from '@/lib/photos/compress'
 import { uploadPhoto } from '@/lib/photos/store'
 import { usePhotos } from '@/lib/photos/usePhoto'
 import { cleanLink, useLinkPreview, type LinkFound } from '@/lib/photos/useLinkPreview'
+import { fillWishPhotos } from '@/lib/photos/wishLinkPhotos'
 import { readStorage, writeStorage } from '@/lib/storage'
 import type { PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
@@ -95,6 +96,14 @@ function setView(v: 'grid' | 'list') {
 const wishSrc = usePhotos(() => wishlist.value.map((w) => w.photoId))
 const wishFile = ref<File | null>(null)
 const wishPhotoNote = ref<string | null>(null)
+
+// Старые желания со ссылкой без фото (B2C-68): картинка со страницы подтягивается сама, пока человек
+// смотрит список — без кнопок и спиннеров; уход с экрана останавливает обход.
+const leaving = new AbortController()
+onScopeDispose(() => leaving.abort())
+onMounted(() => {
+  void fillWishPhotos(financeStore, undefined, leaving.signal)
+})
 
 // Ссылка на товар (B2C-66): вставили — фото и название со страницы; название правится, цену вводит человек.
 const link = useLinkPreview()
