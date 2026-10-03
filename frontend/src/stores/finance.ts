@@ -2,11 +2,16 @@ import { defineStore } from 'pinia'
 import { ref, computed, type Ref } from 'vue'
 import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { mergeDocs, mergePrivateDocs, isEmptyDoc } from '@/lib/merge'
-import { monthKey } from '@/lib/dates'
+import { monthKey, todayIso } from '@/lib/dates'
 import { clearPhotoDisk } from '@/lib/photos/store'
 import { FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, readStorage } from '@/lib/storage'
 import {
   accountBalance,
+  accountForeign,
+  fxToTenge,
+  rateOn,
+  salaryOf,
+  type BalanceCtx,
   activePlan as pickActivePlan,
   amountAt,
   costliestCredits,
@@ -60,11 +65,14 @@ import type {
   MoneyArticle,
   MoneySettings,
   Currency,
+  FxExchange,
 } from '@/types/finance'
 import type { MerchantRule } from '@/lib/statements/types'
 import { spendArticle } from '@/lib/statements/dictionary'
 import { seedSpendCategories } from '@/lib/statements/model'
 import { useAuthStore } from '@/stores/auth'
+import { useFxStore } from '@/stores/fx'
+import { FX_ACCOUNT_NAME } from '@/lib/fx'
 import { DEFAULT_CATEGORY_NAMES, type CategoryKey, type HueKey } from '@/lib/palette'
 import type { ConflictResponse, HouseholdDocResponse } from '@/types/api'
 
@@ -86,6 +94,8 @@ export function defaultSyncDoc(): SyncDoc {
     // План разбора (B2C-54): пустой — умолчания `moneyArticlesOf` / `moneySettingsOf`.
     moneyArticles: [],
     moneySettings: null,
+    // Обмены валютной зарплаты (B2C-79): ключ и пустым — как у payments (RP-03).
+    fxExchanges: [],
     setupDoneAt: null,
   }
 }
@@ -199,7 +209,14 @@ export const useFinanceStore = defineStore('finance', () => {
   // Остатки счетов и долгов экраны получают уже выведенными из отметок (RP-06):
   // в документе лежит база последней ручной сверки. Личный счёт тоже считается по
   // отметкам общего документа — у партнёра такого id просто нет.
-  const withBalance = (a: Account): Account => ({ ...a, amount: accountBalance(a, payments.value) })
+  // Обмены валютной зарплаты (B2C-79): тенговый счёт получает тенге обмена, валютный теряет валюту;
+  // валютный счёт — в тенге по курсу Нацбанка сегодня из книги (Р-73). Книга — из стора курсов.
+  const fxExchanges = computed(() => householdDoc.value.fxExchanges ?? [])
+  const balanceCtx = (): BalanceCtx => ({ exchanges: fxExchanges.value, book: useFxStore().book, day: todayIso() })
+  const withBalance = (a: Account): Account => {
+    const ctx = balanceCtx()
+    return { ...a, amount: accountBalance(a, payments.value, ctx), ...(a.currency && a.currency !== 'KZT' ? { foreignAmount: accountForeign(a, payments.value, ctx.exchanges) } : {}) }
+  }
   const householdAccounts = computed(() => (householdDoc.value.accounts || []).map(withBalance))
   const privateAccounts = computed(() => ((privateDoc.value.accounts as Account[]) || []).map(withBalance))
   const accounts = computed(() => [...householdAccounts.value, ...privateAccounts.value])
@@ -1016,6 +1033,52 @@ export const useFinanceStore = defineStore('finance', () => {
         doc.accounts.push(newAccount)
       })
     }
+    return id
+  }
+
+  /**
+   * Валютный счёт одним нажатием (B2C-79, «Евро-счёт»): общий, остаток 0, курс — Нацбанка
+   * сегодня из книги (нет — без курса: тенге счёта посчитает книга, когда придёт).
+   */
+  function addFxAccount(currency: Currency): string {
+    const rate = rateOn(useFxStore().book, currency, todayIso())
+    return addAccount({ name: FX_ACCOUNT_NAME[currency], amount: 0, kind: 'card', currency, foreignAmount: 0, ...(rate ? { rate, rateAt: new Date().toISOString() } : {}) })
+  }
+
+  /**
+   * «Обменял» (B2C-79, Р-73): запись обмена — часть валютной зарплаты продана по своему курсу.
+   * Тенге — `fxToTenge`; валютный счёт теряет `foreign`, тенговый (`toAccountId`) получает тенге —
+   * остатки выводит finance.ts. `payments` не трогает.
+   */
+  function addExchange(x: { by: PersonId; accountId: string; toAccountId: string | null; foreign: number; rate: number; period: string }): FxExchange | null {
+    const from = accounts.value.find((a) => a.id === x.accountId && !a.deletedAt)
+    if (!from?.currency || from.currency === 'KZT' || !(x.foreign > 0) || !(x.rate > 0)) return null
+    const t = new Date().toISOString()
+    const record: FxExchange = {
+      id: Math.random().toString(36).slice(2, 10),
+      by: x.by,
+      accountId: x.accountId,
+      toAccountId: x.toAccountId,
+      currency: from.currency,
+      foreign: Math.round(x.foreign),
+      rate: x.rate,
+      tenge: fxToTenge(Math.round(x.foreign), x.rate),
+      period: x.period,
+      at: t,
+      updatedAt: t,
+    }
+    mutateHouseholdDoc((doc) => {
+      doc.fxExchanges = [...(doc.fxExchanges ?? []), record]
+    })
+    return record
+  }
+
+  /** Отменить обмен — надгробие: остатки обоих счетов возвращаются (finance.ts). */
+  function undoExchange(id: string) {
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      doc.fxExchanges = (doc.fxExchanges ?? []).map((x) => (x.id === id && !x.deletedAt ? { ...x, deletedAt: t, updatedAt: t } : x))
+    })
   }
 
   /**
@@ -1063,13 +1126,13 @@ export const useFinanceStore = defineStore('finance', () => {
   function shiftAccountAmount(id: string, delta: number) {
     const t = new Date().toISOString()
     const shift = (x: Account) => ({
-      amount: shiftedBase(x, payments.value, delta),
+      amount: shiftedBase(x, payments.value, delta, balanceCtx()),
       ...amountAnchor(x, {}, t),
       updatedAt: t,
     })
     const priv = ((privateDoc.value.accounts as Account[]) || []).find((x) => x.id === id)
     const raw = priv ?? (householdDoc.value.accounts || []).find((x) => x.id === id)
-    if (!raw || shiftedBase(raw, payments.value, delta) === raw.amount) return
+    if (!raw || shiftedBase(raw, payments.value, delta, balanceCtx()) === raw.amount) return
     if (priv) {
       mutatePrivateDoc((doc) => {
         doc.accounts = ((doc.accounts as Account[]) || []).map((x) => (x.id === id ? { ...x, ...shift(x) } : x))
@@ -1221,23 +1284,54 @@ export const useFinanceStore = defineStore('finance', () => {
    */
   function markSalary(
     personId: PersonId,
-    opts: { period?: string; amount?: number; accountId?: string | null; source?: Payment['source']; opId?: string; at?: string } = {},
+    opts: { period?: string; amount?: number; foreign?: number; accountId?: string | null; source?: Payment['source']; opId?: string; at?: string } = {},
   ): Payment | null {
     const p = people.value.find((x) => x.id === personId && !x.deletedAt)
     if (!p) return null
     const period = opts.period ?? monthKey()
     const existing = paidFor(payments.value, 'salary', personId, period)
     if (existing) return existing
-    const record = newPayment(
-      { kind: 'salary', targetId: personId, period, amount: opts.amount ?? salaryAt(p, period), by: personId, ...sourceOf(opts) },
-      opts.accountId,
-      opts.at,
-    )
+    const own = salaryOf(p, period)
+    const record =
+      own.currency === 'KZT'
+        ? newPayment(
+            { kind: 'salary', targetId: personId, period, amount: opts.amount ?? salaryAt(p, period), by: personId, ...sourceOf(opts) },
+            opts.accountId,
+            opts.at,
+          )
+        : foreignSalary(p, own, period, opts)
     mutateHouseholdDoc((doc) => {
       if (!doc.payments) doc.payments = []
       doc.payments.push(record)
     })
     return record
+  }
+
+  /**
+   * Зарплата в валюте (B2C-79, Р-73): `foreign` — в валюте оклада (по умолчанию оклад месяца),
+   * `amount` — тенге по курсу Нацбанка на день прихода из книги (нет дня — курс версии). Счёт —
+   * только валютный той же валюты: по умолчанию прошлый такой или первый живой; тенговый не
+   * принимается — тогда «не зачислено».
+   */
+  function foreignSalary(
+    p: Person,
+    own: { amount: number; currency: Currency; rate?: number },
+    period: string,
+    opts: { amount?: number; foreign?: number; accountId?: string | null; source?: Payment['source']; opId?: string; at?: string },
+  ): Payment {
+    const foreign = opts.foreign ?? own.amount
+    const rate = rateOn(useFxStore().book, own.currency, todayIso(opts.at ? new Date(opts.at) : undefined), own.rate)
+    const fits = (id: string | null | undefined) => accounts.value.some((a) => a.id === id && !a.deletedAt && a.currency === own.currency)
+    const last = lastAccountFor(payments.value, p.id, accounts.value)
+    const accountId =
+      opts.accountId !== undefined
+        ? fits(opts.accountId) ? opts.accountId : null
+        : fits(last) ? last! : (accounts.value.find((a) => !a.deletedAt && a.currency === own.currency)?.id ?? null)
+    return newPayment(
+      { kind: 'salary', targetId: p.id, period, amount: opts.amount ?? (rate ? fxToTenge(foreign, rate) : 0), foreign, currency: own.currency, by: p.id, ...sourceOf(opts) },
+      accountId,
+      opts.at,
+    )
   }
 
   /**
@@ -1913,6 +2007,10 @@ export const useFinanceStore = defineStore('finance', () => {
     removeCredit,
     markPaid,
     markSalary,
+    fxExchanges,
+    addExchange,
+    undoExchange,
+    addFxAccount,
     unmarkPaid,
     editPaid,
     applyPrepayment,

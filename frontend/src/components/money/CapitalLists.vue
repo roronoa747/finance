@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { PhBank, PhCaretRight, PhCoins, PhCreditCard, PhFolderSimple, PhPlus, PhWallet } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { money, plain, rateField } from '@/lib/money'
+import { money, moneyIn, rateField } from '@/lib/money'
 import { monthIn, monthKey } from '@/lib/dates'
 import {
   amountTotal,
@@ -64,7 +64,7 @@ const KIND_LABEL: Record<Account['kind'], string> = { card: 'карта', cash: 
 
 function accountMeta(a: Account): string {
   const what = a.deposit ? `${rateField(a.deposit.annualRate)} %` : KIND_LABEL[a.kind]
-  const fx = a.currency ? `${plain(a.foreignAmount ?? 0)} ${a.currency}` : ''
+  const fx = a.currency ? moneyIn(a.foreignAmount ?? 0, a.currency) : ''
   return [what, fx, privateIds.value.has(a.id) ? 'личный' : 'общий'].filter(Boolean).join(' · ')
 }
 

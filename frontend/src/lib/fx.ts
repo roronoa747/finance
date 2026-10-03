@@ -7,6 +7,15 @@ export const CURRENCIES: Currency[] = ['KZT', 'USD', 'EUR', 'RUB', 'CNY']
 /** Знаки валют — одна таблица для форм и подписей (B2C-77). */
 export const CURRENCY_SIGN: Record<Currency, string> = { KZT: '₸', USD: '$', EUR: '€', RUB: '₽', CNY: '¥' }
 
+/** Имя валютного счёта, созданного одним нажатием под валютную зарплату (B2C-79). */
+export const FX_ACCOUNT_NAME: Record<Currency, string> = {
+  KZT: 'Счёт',
+  USD: 'Долларовый счёт',
+  EUR: 'Евро-счёт',
+  RUB: 'Рублёвый счёт',
+  CNY: 'Юаневый счёт',
+}
+
 /** Сколько месяцев истории держит книга курсов: год и запас на «тот же день год назад» (Р-72, Р-76). */
 export const BOOK_MONTHS = 13
 

@@ -1,4 +1,4 @@
-import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook } from '@/types/finance'
+import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
 import type { Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
@@ -1209,17 +1209,64 @@ export function paidFor(
  * Действует ли отметка на остаток: сделана не раньше ручной сверки — до неё
  * деньги уже вошли во введённую сумму. Сверки не было — действуют все.
  */
-export const afterAnchor = (p: Payment, anchor?: string | null) => !anchor || p.at >= anchor
+export const afterAnchor = (p: Pick<Payment, 'at'>, anchor?: string | null) => !anchor || p.at >= anchor
+
+/** Обмены и курсы для остатков (B2C-79): `day` — сегодня (`YYYY-MM-DD`), курс валютного счёта — на него. */
+export type BalanceCtx = { exchanges?: FxExchange[]; book?: RateBook | null; day?: string };
+
+export const liveExchanges = (list: FxExchange[] = []) => list.filter(alive);
+
+const isForeign = (a: Pick<Account, 'currency'>) => !!a.currency && a.currency !== 'KZT';
 
 /**
- * Остаток счёта: база минус списания и плюс зарплаты по отметкам после сверки.
- * Зарплата (RP-10) — зачисление; знак записи — только здесь: `shiftedBase` и стор
- * берут остаток отсюда.
+ * Остаток валютного счёта в валюте (Р-73): база ручной сверки (`foreignAmount`) + пришедшие
+ * зарплаты в валюте − обмены, всё — после сверки (`amountSetAt`): сверка после обмена его не удваивает.
  */
-export function accountBalance(a: Account, payments: Payment[] = []): number {
+export function accountForeign(a: Account, payments: Payment[] = [], exchanges: FxExchange[] = []): number {
+  const came = countedPayments(payments)
+    .filter((p) => p.kind === 'salary' && p.accountId === a.id && p.foreign && afterAnchor(p, a.amountSetAt))
+    .reduce((s, p) => s + (p.foreign ?? 0), 0);
+  const sold = liveExchanges(exchanges)
+    .filter((x) => x.accountId === a.id && afterAnchor(x, a.amountSetAt))
+    .reduce((s, x) => s + x.foreign, 0);
+  return (a.foreignAmount ?? 0) + came - sold;
+}
+
+/**
+ * Остаток счёта в тенге: база минус списания и плюс зарплаты по отметкам после сверки.
+ * Зарплата (RP-10) — зачисление; знак записи — только здесь: `shiftedBase` и стор
+ * берут остаток отсюда. Тенговый счёт получает тенге обменов (B2C-79). Валютный (Р-73) —
+ * остаток в валюте по курсу Нацбанка на `ctx.day` из книги; нет курса — ручной `rate` счёта.
+ */
+export function accountBalance(a: Account, payments: Payment[] = [], ctx: BalanceCtx = {}): number {
+  if (isForeign(a)) {
+    const rate = rateOn(ctx.book, a.currency!, ctx.day ?? '9999-12-31', a.rate);
+    return rate ? fxToTenge(accountForeign(a, payments, ctx.exchanges), rate) : a.amount;
+  }
+  const bought = liveExchanges(ctx.exchanges)
+    .filter((x) => x.toAccountId === a.id && afterAnchor(x, a.amountSetAt))
+    .reduce((s, x) => s + x.tenge, 0);
   return countedPayments(payments)
     .filter((p) => p.accountId === a.id && afterAnchor(p, a.amountSetAt))
-    .reduce((left, p) => (p.kind === 'salary' ? left + p.amount : left - p.amount), a.amount)
+    .reduce((left, p) => (p.kind === 'salary' ? left + p.amount : left - p.amount), a.amount + bought)
+}
+
+/** Обменяно за месяц `period` из зарплаты участника, в валюте (строка «обменяно 800 € из 1 500 €»). */
+export function exchangedIn(exchanges: FxExchange[] = [], by: PersonId, period: string): number {
+  return liveExchanges(exchanges)
+    .filter((x) => x.by === by && x.period === period)
+    .reduce((s, x) => s + x.foreign, 0);
+}
+
+/**
+ * Валютная зарплата месяца, пришедшая на валютный счёт: сколько пришло, обменяно и осталось
+ * обменять (не меньше нуля). Тенговая или не пришедшая — null.
+ */
+export function salaryExchange(payments: Payment[] = [], exchanges: FxExchange[] = [], by: PersonId, period: string) {
+  const record = paidFor(payments, 'salary', by, period);
+  if (!record?.foreign || !record.currency || record.currency === 'KZT') return null;
+  const exchanged = exchangedIn(exchanges, by, period);
+  return { record, currency: record.currency, came: record.foreign, exchanged, left: Math.max(0, record.foreign - exchanged) };
 }
 
 /**
@@ -1229,8 +1276,8 @@ export function accountBalance(a: Account, payments: Payment[] = []): number {
  * ошибке, офлайн-отметка партнёра) перестали бы двигать остаток. Видимый остаток
  * ниже нуля не уводится — как раньше у взноса в цель.
  */
-export function shiftedBase(a: Account, payments: Payment[], delta: number): number {
-  const visible = accountBalance(a, payments)
+export function shiftedBase(a: Account, payments: Payment[], delta: number, ctx: BalanceCtx = {}): number {
+  const visible = accountBalance(a, payments, ctx)
   return a.amount + Math.max(Math.round(delta), -Math.max(0, visible))
 }
 
@@ -1823,7 +1870,8 @@ export function salaryToAllocate(
   const asked = salaryAsk(state, me, now)
   const months = [addMonths(now.key, 1), now.key, addMonths(now.key, -1)].filter((k) => !asked || k > asked.key)
   const found = record ?? months.map((k) => paidFor(payments, 'salary', me, k)).find(Boolean)
-  if (!found || found.kind !== 'salary' || found.targetId !== me || found.source !== 'statement' || found.amount <= 0) return null
+  // Ручная тенговая сразу ведёт в разбор; валютная (B2C-79) — сначала «Обменял» на этой карточке.
+  if (!found || found.kind !== 'salary' || found.targetId !== me || (found.source !== 'statement' && !found.foreign) || found.amount <= 0) return null
   if (allocationFor(state.allocations, { source: 'salary', sourceId: me, period: found.period })) return null
   return { person, period: found.period, record: found }
 }

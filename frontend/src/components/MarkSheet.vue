@@ -2,7 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { money, plain, parseMoney } from '@/lib/money'
+import { money, moneyIn, plain, parseMoney } from '@/lib/money'
+import { CURRENCY_SIGN, FX_ACCOUNT_NAME } from '@/lib/fx'
 import { addMonths, atLabel, dayLabel } from '@/lib/dates'
 import {
   afterAnchor,
@@ -13,7 +14,9 @@ import {
   paidFor,
   payableAccounts,
   paymentSplit,
+  liveAccounts,
   salaryAt,
+  salaryOf,
   salaryToAllocate,
   type MonthlyKind,
   type ScheduledKind,
@@ -66,6 +69,10 @@ const credit = computed(() => (props.kind === 'credit' ? finance.credits.find((c
 const person = computed(() => (salary.value ? finance.people.find((p) => p.id === props.targetId && !p.deletedAt) : undefined))
 
 const record = computed(() => paidFor(finance.payments, props.kind, props.targetId, props.period))
+/** Оклад в валюте (B2C-79): сумма отметки — в валюте, счёт — только валютный той же валюты. */
+const own = computed(() => (person.value ? salaryOf(person.value, props.period) : null))
+const fxSalary = computed(() => !!own.value && own.value.currency !== 'KZT')
+const sign = computed(() => (own.value ? CURRENCY_SIGN[own.value.currency] : '₸'))
 /** Своя зарплата, отмеченная по выписке, без записи разбора — «Разложить» (возврат приёмки п. 2). */
 const canAllocate = computed(
   () => salary.value && !!record.value && !!salaryToAllocate({ ...finance.householdDoc, credits: finance.credits }, auth.slot, undefined, record.value),
@@ -75,7 +82,7 @@ const canAllocate = computed(
 const due = computed(() => {
   if (obligation.value) return amountAt(obligation.value, props.period)
   if (credit.value) return creditDueAmount(credit.value)
-  if (person.value) return salaryAt(person.value, props.period)
+  if (person.value) return fxSalary.value ? own.value!.amount : salaryAt(person.value, props.period)
   return 0
 })
 
@@ -97,8 +104,15 @@ const accountName = computed(() => {
   return finance.accounts.find((a) => a.id === id)?.name ?? 'личный счёт'
 })
 
-/** Счета в тенге: платежи и зарплата в валюте — не-скоуп. */
-const choices = computed(() => payableAccounts(finance.accounts))
+/** Счета в тенге; валютная зарплата — валютные счета своей валюты (Р-73). */
+const choices = computed(() =>
+  fxSalary.value ? liveAccounts(finance.accounts).filter((a) => a.currency === own.value!.currency) : payableAccounts(finance.accounts),
+)
+
+/** «Евро-счёт» одним нажатием — валютного счёта этой валюты ещё нет. */
+function createFxAccount() {
+  if (own.value) chosen.value = finance.addFxAccount(own.value.currency)
+}
 
 const amountText = ref('')
 // undefined — счёт ещё не выбран; null — «не списывать».
@@ -143,7 +157,9 @@ function confirmMark() {
     emit('close')
     return
   }
-  const written = salary.value
+  const written = fxSalary.value
+    ? finance.markSalary(props.targetId as PersonId, { period: props.period, foreign: amount, accountId: chosen.value })
+    : salary.value
     ? finance.markSalary(props.targetId as PersonId, { period: props.period, amount, accountId: chosen.value })
     : finance.markPaid(props.kind as ScheduledKind, props.targetId, auth.slot ?? 'a', { period: props.period, amount, accountId: chosen.value })
   emit('close')
@@ -178,7 +194,7 @@ const unmarkNote = computed(() => {
         </div>
         <div class="flex justify-between gap-3">
           <span class="text-ink-2">Сумма</span>
-          <b class="num text-ink">{{ money(record.amount) }}</b>
+          <b class="num text-ink">{{ record.foreign && record.currency ? `${moneyIn(record.foreign, record.currency)} · ≈ ${money(record.amount)}` : money(record.amount) }}</b>
         </div>
         <div v-if="split" class="flex justify-between gap-3">
           <span class="text-ink-2">Из них</span>
@@ -211,18 +227,23 @@ const unmarkNote = computed(() => {
       </div>
       <div v-else class="flex flex-col gap-2">
         <Button v-if="canAllocate" class="w-full" @click="emit('close'); emit('allocate')">Разложить</Button>
-        <Button variant="secondary" class="w-full" @click="editFromRecord">Другая сумма или счёт</Button>
+        <!-- Валютная зарплата правится снятием и новой отметкой: сумма в валюте, тенге — по курсу дня -->
+        <Button v-if="!record.foreign" variant="secondary" class="w-full" @click="editFromRecord">Другая сумма или счёт</Button>
         <Button variant="secondary" class="w-full" @click="confirmUnmark = true">Снять отметку</Button>
       </div>
     </template>
 
     <template v-else-if="mode === 'mark'">
-      <Field label="Сумма, ₸">
+      <Field :label="`Сумма, ${salary ? sign : '₸'}`">
         <NumField v-model="amountText" />
         <span v-if="salary" class="text-[12px] leading-relaxed text-ink-3">
-          Оклад месяца — {{ money(due) }}. С премией впишите всю сумму: премия целиком ляжет в остаток.
+          Оклад месяца — {{ fxSalary ? moneyIn(due, own!.currency) : money(due) }}. С премией впишите всю сумму: премия целиком ляжет в остаток.
         </span>
       </Field>
+
+      <Button v-if="fxSalary && !choices.length" variant="secondary" class="mb-3.5 w-full" @click="createFxAccount">
+        {{ FX_ACCOUNT_NAME[own!.currency] }}
+      </Button>
 
       <AccountChoice
         v-model="chosen"

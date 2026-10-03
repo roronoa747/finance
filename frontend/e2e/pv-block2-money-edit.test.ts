@@ -20,7 +20,7 @@ import {
   nextCreditDue,
   nextObligationDue,
 } from '../src/lib/finance'
-import { money, plain } from '../src/lib/money'
+import { money, moneyIn, plain } from '../src/lib/money'
 import CapitalLists from '../src/components/money/CapitalLists.vue'
 import Statements from '../src/views/Statements.vue'
 import Money from '../src/views/Money.vue'
@@ -564,7 +564,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       // Строка списка второго: сумма в валюте в подписи и тенге в сумме — одни и те же (курс — в листе).
       const capital = await page(B.pinia, Money, '/money')
       const row = between(capital, 'Доллары', '</button>')
-      expect(row).toContain(`наличные · ${plain(1_337)} USD · общий`)
+      expect(row).toContain(`наличные · ${moneyIn(1_337, 'USD')} · общий`)
       expect(row).toContain(money(640_771))
       expect(row).not.toContain(money(512_340))
       expect(row).not.toContain(money(479_260))

@@ -151,7 +151,11 @@ function startDemoMode() {
   financeStore.mutateHouseholdDoc((doc) => {
     doc.setupDoneAt = new Date().toISOString()
     doc.people = [
-      { id: 'a', name: 'Ильяс', salary: 750_000, payday: 10, onboardedAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      // Оклад Ильяса в евро с прошлого года (B2C-79): тенге — по демо-книге курсов, без запросов.
+      {
+        id: 'a', name: 'Ильяс', salary: 750_000, payday: 10, onboardedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+        salaryVersions: [{ from: '2000-01', amount: 750_000 }, { from: addMonths(monthKey(), -12), amount: 1_500, currency: 'EUR', rate: 506 }],
+      },
       // Свой кружок (B2C-63/67): у Аруны — смайлик и цвет, у Ильяса — буква, как по умолчанию.
       { id: 'b', name: 'Аруна', salary: 450_000, payday: 20, emoji: '🌸', color: 's6', onboardedAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
     ]
@@ -258,6 +262,8 @@ function startDemoMode() {
     ]
     doc.accounts = [
       { id: 'acc-kaspi', name: 'Kaspi Gold', note: '', kind: 'card', amount: 480_000, updatedAt: new Date().toISOString() },
+      // Евро-счёт под зарплату Ильяса (B2C-79): остаток в евро выводится из прихода и обменов.
+      { id: 'acc-eur', name: 'Евро-счёт', note: '', kind: 'card', amount: 0, currency: 'EUR', foreignAmount: 0, rate: 506, rateAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
       {
         id: 'acc-dep', name: 'Депозит Kaspi', note: '', kind: 'deposit', amount: 1_200_000, updatedAt: new Date().toISOString(),
         deposit: { annualRate: 0.14, months: 12, monthlyTopUp: 0, capitalize: true },
@@ -304,8 +310,10 @@ function startDemoMode() {
       doc.allocations = [...(doc.allocations ?? []), { id: 'demo-breakdown-prev', kind: 'breakdown', ...before.record, by: 'a', total: before.amount, parts, at, updatedAt: at }]
     })
   }
-  // Зарплата Ильяса пришла сегодня по выписке и не разобрана — на «Неделе» «Пришла зарплата · как обычно».
-  financeStore.markSalary('a', { accountId: 'acc-kaspi', source: 'statement', opId: 'demo-salary' })
+  // Зарплата Ильяса пришла сегодня на евро-счёт и не разобрана — на «Неделе» «Пришла зарплата · как обычно»;
+  // часть уже обменяли (B2C-79): 500 € по 512 ₸ на Kaspi Gold — строка «обменяно 500 € из 1 500 €».
+  financeStore.markSalary('a', { accountId: 'acc-eur' })
+  financeStore.addExchange({ by: 'a', accountId: 'acc-eur', toAccountId: 'acc-kaspi', foreign: 500, rate: 512, period: monthKey() })
   // Записи загрузок и свои операции демо — когда стор операций уже переключился на демо-семью (watch по владельцу).
   void nextTick().then(() => {
     // Две недели своих операций (0…13 дней назад): у этой и прошлой недели есть траты — у карточки недели
