@@ -73,7 +73,7 @@ describe('salaryOf / salaryAt — оклад в валюте', () => {
   it('доход семьи и бюджет — тенге по книге; без книги — по курсу версии', () => {
     const people = [person({ salaryVersions: [eur('2025-10')] }), person({ id: 'b', name: 'Аруна', salary: 500_000, payday: 20 })]
     // 767 100 + 500 000 = 1 267 100 ₸; без книги — 758 250 + 500 000 = 1 258 250 ₸.
-    expect(totalIncome(people, '2026-09', book)).toBe(1_267_100)
+    expect(totalIncome(people, '2026-09', { book })).toBe(1_267_100)
     expect(totalIncome(people, '2026-09')).toBe(1_258_250)
     expect(budgetAmounts({ people, book }, '2026-09').income).toBe(1_267_100)
     expect(budgetAmounts({ people }, '2026-09').income).toBe(1_258_250)

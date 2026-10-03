@@ -78,6 +78,12 @@ describe('приход валютной зарплаты (стор)', () => {
     expect(b).toMatchObject({ accountId: null, foreign: 1_500 })
   })
 
+  it('из тенговой выписки — тенговая запись суммой операции (банк уже обменял, B2C-80)', () => {
+    const r = family().store.markSalary('a', { period: '2026-10', amount: 760_000, accountId: null, source: 'statement', opId: 'op1' })!
+    expect(r).toMatchObject({ kind: 'salary', amount: 760_000, accountId: null, source: 'statement', opId: 'op1' })
+    expect(r.foreign).toBeUndefined()
+  })
+
   it('«Евро-счёт» одним нажатием — общий валютный счёт с курсом сегодня', () => {
     const { store } = family('member', [])
     const id = store.addFxAccount('EUR')
@@ -105,7 +111,8 @@ describe('SalaryExchange — строка и лист «Обменял»', () =>
     const { pinia, store } = family()
     store.markSalary('a', { period: '2026-10' })
     await mount(pinia)
-    expect(text()).toContain('обменяно 0 € из 1 500 €')
+    // Тенге месяца (B2C-80): до обмена 1 500 × 502,98 (последний курс книги к 10.10) = 754 470 ₸.
+    expect(text()).toContain('обменяно 0 € из 1 500 € · ≈ 754 470 ₸')
     button('Обменял')!.click()
     await flush()
 
@@ -131,7 +138,8 @@ describe('SalaryExchange — строка и лист «Обменял»', () =>
     await flush()
     expect(store.fxExchanges).toHaveLength(1)
     expect(store.fxExchanges[0]).toMatchObject({ foreign: 500, rate: 515, tenge: 257_500, toAccountId: planFamilyDoc().accounts[0].id })
-    expect(text()).toContain('обменяно 500 € из 1 500 €')
+    // После обмена — сразу: 257 500 + 1 000 × 502,98 = 502 980 → 760 480 ₸.
+    expect(text()).toContain('обменяно 500 € из 1 500 € · ≈ 760 480 ₸')
   })
 
   it('viewer видит строку, но не «Обменял»', async () => {

@@ -5,6 +5,7 @@ import { PhSparkle } from '@phosphor-icons/vue'
 import { useAuthStore, DEMO_TOKEN } from '@/stores/auth'
 import { useFinanceStore, DEMO_HOUSEHOLD } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
+import { useFxStore } from '@/stores/fx'
 import { afterFamilyLoaded } from '@/stores/syncEngine'
 import { landingPath } from '@/router/landing'
 import { seedSpendCategories } from '@/lib/statements/model'
@@ -299,7 +300,7 @@ function startDemoMode() {
   financeStore.markPaid('obligation', 'ob-rent', 'b', { accountId: 'acc-kaspi' })
   // Разбор прошлого месяца записан — карточка говорит «как в <прошлом месяце>»; части считает finance.ts.
   const before = monthBreakdown(
-    { ...financeStore.householdDoc, credits: financeStore.credits },
+    { ...financeStore.householdDoc, credits: financeStore.credits, book: useFxStore().book },
     { key: prev, totals: [], spendCategories: [], uploads: [] },
     { from: 'salary', person: 'a', period: prev },
   )

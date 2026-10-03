@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, plain, parseMoney } from '@/lib/money'
 import { todayIso } from '@/lib/dates'
-import { fxToTenge, liveExchanges, payableAccounts, rateOn, salaryExchange } from '@/lib/finance'
+import { fxToTenge, liveExchanges, payableAccounts, rateOn, salaryExchange, salaryTenge } from '@/lib/finance'
 import { CURRENCY_SIGN } from '@/lib/fx'
 import type { PersonId } from '@/types/finance'
 import Field from '@/components/kit/Field.vue'
@@ -28,6 +28,11 @@ const fx = useFxStore()
 
 const info = computed(() => salaryExchange(finance.payments, finance.fxExchanges, props.personId, props.period))
 const sign = computed(() => (info.value ? CURRENCY_SIGN[info.value.currency] : ''))
+/** Тенге зарплаты месяца (B2C-80, Р-74): обменянное по своему курсу + остаток по курсу дня зарплаты. */
+const monthTenge = computed(() => {
+  const p = finance.people.find((x) => x.id === props.personId)
+  return p && info.value ? salaryTenge(p, props.period, { book: fx.book, payments: finance.payments, exchanges: finance.fxExchanges }).tenge : 0
+})
 const mine = computed(() => !auth.isViewer && auth.slot === props.personId)
 const canExchange = computed(() => mine.value && !!info.value && info.value.left > 0 && !!info.value.record.accountId)
 
@@ -73,7 +78,7 @@ function save() {
 <template>
   <div v-if="info" class="flex items-center gap-2">
     <span class="min-w-0 flex-1 text-[12.5px] text-ink-3 num">
-      обменяно {{ moneyIn(info.exchanged, info.currency) }} из {{ moneyIn(info.came, info.currency) }}
+      обменяно {{ moneyIn(info.exchanged, info.currency) }} из {{ moneyIn(info.came, info.currency) }} · ≈ {{ money(monthTenge) }}
     </span>
     <Button v-if="canExchange" variant="secondary" size="sm" @click="open = true">Обменял</Button>
   </div>

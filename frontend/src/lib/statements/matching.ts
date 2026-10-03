@@ -1,8 +1,8 @@
-import type { Credit, Obligation, Payment, Person, PersonId } from '@/types/finance'
+import type { Credit, FxExchange, Obligation, Payment, Person, PersonId, RateBook } from '@/types/finance'
 import type { MerchantRule, Operation, PaymentRule } from './types'
 import { dayNumber, ruleFor } from './model'
-import { amountAt, creditDueAmount, dueIn, isSubscription, liveCredits, liveObligations, paidFor, salaryAt } from '@/lib/finance'
-import { addMonths, dayLabel, daysInMonth, monthKey } from '@/lib/dates'
+import { amountAt, creditDueAmount, dueIn, isSubscription, liveCredits, liveExchanges, liveObligations, paidFor, salaryTenge, type SalaryCtx } from '@/lib/finance'
+import { addMonths, dayLabel, daysInMonth, monthKey, todayIso } from '@/lib/dates'
 import { money } from '@/lib/money'
 
 /**
@@ -70,7 +70,7 @@ export function matchCategory(kind: MatchKind, target: Obligation | Credit | Per
 }
 
 /** Цели правил платежа: обязательства, кредиты, участники (для зарплаты). */
-type RuleTargets = { obligations: Obligation[]; credits: Credit[]; people: Person[] }
+type RuleTargets = { obligations: Obligation[]; credits: Credit[]; people: Person[]; salary?: SalaryCtx }
 
 /**
  * «Такая» строка правила «это платёж по …» (Р-6: «дальше *такие* строки отмечаются сами»): знак и
@@ -86,7 +86,7 @@ export function ruleHit(op: Operation, payment: PaymentRule, targets: RuleTarget
     const p = targets.people.find((x) => x.id === payment.targetId)
     if (!p || op.amount <= 0) return null
     const { period } = nearestPeriod(op.date, p.payday)
-    return within(amount, salaryAt(p, period), SALARY_TOLERANCE) ? { target: p, period } : null
+    return within(amount, salaryTenge(p, period, targets.salary).tenge, SALARY_TOLERANCE) ? { target: p, period } : null
   }
   if (op.amount >= 0) return null
   if (payment.kind === 'credit') {
@@ -119,13 +119,35 @@ const key = (c: Pick<MatchCandidate, 'kind' | 'targetId' | 'period'>) => `${c.ki
 /** Ключ решения «нет» на этот месяц — помнит устройство (стор). */
 export const matchKey = key
 
+/**
+ * Обмен валютной зарплаты (B2C-80, Р-74), которым была операция тенговой выписки: у валютного участника
+ * в тенговую выписку приходит обмен, а не оклад (приход на валютный счёт она не видит). Свой живой обмен
+ * с зачислением, тенге в допуске зарплаты (±10 %: банк округляет курс) и день в окне зарплаты от дня
+ * обмена; из нескольких — ближайший суммой. Нет — null.
+ */
+export function exchangeOfOperation(op: Operation, exchanges: FxExchange[], me: PersonId): FxExchange | null {
+  if (op.amount <= 0 || (op.kind !== 'transfer-in' && op.kind !== 'income')) return null
+  let best: FxExchange | null = null
+  for (const x of liveExchanges(exchanges)) {
+    if (x.by !== me || !x.toAccountId || !within(op.amount, x.tenge, SALARY_TOLERANCE)) continue
+    if (Math.abs(dayNumber(op.date) - dayNumber(todayIso(new Date(x.at)))) > SALARY_WINDOW) continue
+    if (!best || Math.abs(op.amount - x.tenge) < Math.abs(op.amount - best.tenge)) best = x
+  }
+  return best
+}
+
+/**
+ * Предложения отметок по строкам выписки. Зарплата валютного участника ищется в тенге месяца
+ * (`salaryTenge`, Р-74: не оклад в валюте), зачисления его обменов — не предложения (`exchangeOfOperation`).
+ */
 export function matchCandidates(
   ops: Operation[],
-  state: { obligations?: Obligation[]; credits?: Credit[]; people?: Person[]; payments?: Payment[] },
+  state: { obligations?: Obligation[]; credits?: Credit[]; people?: Person[]; payments?: Payment[]; fxExchanges?: FxExchange[]; book?: RateBook | null },
   rules: MerchantRule[],
   me?: PersonId,
 ): MatchCandidate[] {
   const payments = state.payments ?? []
+  const salary: SalaryCtx = { book: state.book, payments, exchanges: state.fxExchanges }
   const obligations = liveObligations(state.obligations ?? [])
   const credits = liveCredits(state.credits ?? []).filter((c) => c.principal > 0)
   // Чужая зарплата — не кандидат и правилом не применяется: иначе приход A закрыл бы месяц B.
@@ -143,6 +165,8 @@ export function matchCandidates(
 
   for (const op of ops) {
     if (op.internal || linked.has(op.id)) continue
+    // Зачисление обмена валютной зарплаты (B2C-80) — отметка этого обмена, не зарплата и не вопрос.
+    if (me && exchangeOfOperation(op, state.fxExchanges ?? [], me)) continue
     const amount = Math.abs(op.amount)
     let best: (MatchCandidate & { score: number }) | null = null
     const consider = (c: MatchCandidate & { score: number }) => {
@@ -154,7 +178,7 @@ export function matchCandidates(
     // иначе месяц отметился бы чужой суммой. Не прошедшая строка идёт к эвристикам ниже и может
     // стать вопросом.
     const rule = ruleFor(op, rules)
-    const hit = rule && 'payment' in rule.to ? ruleHit(op, rule.to.payment, { obligations, credits, people }) : null
+    const hit = rule && 'payment' in rule.to ? ruleHit(op, rule.to.payment, { obligations, credits, people, salary }) : null
     if (rule && 'payment' in rule.to && hit) {
       const { kind, targetId, categoryId } = rule.to.payment
       consider({ opId: op.id, kind, targetId, period: hit.period, amount, confidence: 'rule', categoryId: categoryId ?? matchCategory(kind, hit.target), ...text(kind, hit.target.name, op), score: -1 })
@@ -188,7 +212,7 @@ export function matchCandidates(
       for (const p of people) {
         const { period, gap } = nearestPeriod(op.date, p.payday)
         if (gap > SALARY_WINDOW) continue
-        const expected = salaryAt(p, period)
+        const expected = salaryTenge(p, period, salary).tenge
         if (!within(amount, expected, SALARY_TOLERANCE)) continue
         consider({
           opId: op.id, kind: 'salary', targetId: p.id, period, amount, confidence: 'likely', categoryId: null,

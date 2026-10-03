@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
+import { useFxStore } from '@/stores/fx'
 import { OPERATIONS_STORAGE_KEYS, readStorage, writeStorage } from '@/lib/storage'
 import {
   applyRules,
@@ -126,7 +127,8 @@ export const useOperationsStore = defineStore('operations', () => {
   const pendingCount = computed(() => pending.value.reduce((n, j) => n + j.ops.length, 0))
 
   /* ---------- сопоставление с отметками (B2C-15) ---------- */
-  const matchState = () => ({ obligations: finance.obligations, credits: finance.credits, people: finance.people, payments: finance.payments })
+  // Обмены и книга — тенге валютной зарплаты (B2C-80, `salaryTenge`) и зачисления обменов.
+  const matchState = () => ({ obligations: finance.obligations, credits: finance.credits, people: finance.people, payments: finance.payments, fxExchanges: finance.fxExchanges, book: useFxStore().book })
   /** Предложения по своим операциям этого и прошлого месяца — только те, что ждут ответа. */
   const pendingMatches = computed<MatchCandidate[]>(() =>
     auth.isViewer

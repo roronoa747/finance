@@ -7,7 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { money, moneyIn } from '@/lib/money'
 import { monthFrom, monthKey } from '@/lib/dates'
-import { budgetAmounts, incomeBreakdownPath, incomeSplit, loadTag, nextSalaryChange, salaryAt, salaryOf, type IncomePartKey } from '@/lib/finance'
+import { budgetAmounts, incomeBreakdownPath, incomeSplit, loadTag, nextSalaryChange, salaryCtxOf, salaryOf, salaryTenge, type IncomePartKey } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
 import Avatar from '@/components/kit/Avatar.vue'
 import Card from '@/components/kit/Card.vue'
@@ -30,12 +30,13 @@ const router = useRouter()
 const salaryFor = ref<PersonId | null>(null)
 
 const key = computed(() => monthKey())
-const split = computed(() => incomeSplit(budgetAmounts({ ...financeStore.householdDoc, credits: financeStore.credits, book: fx.book }, key.value)))
-/** Строки участников: оклад в своей валюте, тенге по курсу дня зарплаты (B2C-78), ближайшее изменение. */
+const state = computed(() => ({ ...financeStore.householdDoc, credits: financeStore.credits, book: fx.book }))
+const split = computed(() => incomeSplit(budgetAmounts(state.value, key.value)))
+/** Строки участников: оклад в своей валюте, тенге зарплаты месяца (B2C-80, `salaryTenge`: обмены + курс), ближайшее изменение. */
 const people = computed(() =>
   financeStore.people
     .filter((p) => !p.deletedAt)
-    .map((p) => ({ p, own: salaryOf(p, key.value), tenge: salaryAt(p, key.value, fx.book), next: nextSalaryChange(p, key.value, fx.book) })),
+    .map((p) => ({ p, own: salaryOf(p, key.value), tenge: salaryTenge(p, key.value, salaryCtxOf(state.value)).tenge, next: nextSalaryChange(p, key.value, fx.book) })),
 )
 
 const LABEL: Record<IncomePartKey, { name: string; color: string }> = {

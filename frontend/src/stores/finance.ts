@@ -1292,8 +1292,9 @@ export const useFinanceStore = defineStore('finance', () => {
     const existing = paidFor(payments.value, 'salary', personId, period)
     if (existing) return existing
     const own = salaryOf(p, period)
+    // Из тенговой выписки валютная зарплата приходит уже в тенге (банк обменял, B2C-80) — тенговая запись.
     const record =
-      own.currency === 'KZT'
+      own.currency === 'KZT' || opts.source === 'statement'
         ? newPayment(
             { kind: 'salary', targetId: personId, period, amount: opts.amount ?? salaryAt(p, period), by: personId, ...sourceOf(opts) },
             opts.accountId,

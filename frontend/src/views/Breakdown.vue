@@ -9,6 +9,7 @@ import CountUp from '@/components/kit/CountUp.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Toggle from '@/components/kit/Toggle.vue'
 import { useFinanceStore } from '@/stores/finance'
+import { useFxStore } from '@/stores/fx'
 import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
 import { atLabel, monthKey } from '@/lib/dates'
@@ -37,6 +38,7 @@ import type { ArticleKey, PersonId } from '@/types/finance'
 const route = useRoute()
 const router = useRouter()
 const financeStore = useFinanceStore()
+const fx = useFxStore()
 const authStore = useAuthStore()
 const ops = useOperationsStore()
 const member = computed(() => !authStore.isViewer)
@@ -63,7 +65,7 @@ const source = computed<BreakdownSource>(() => {
 const mb = computed(() => {
   const doc = financeStore.householdDoc
   return monthBreakdown(
-    { ...doc, credits: financeStore.credits },
+    { ...doc, credits: financeStore.credits, book: fx.book },
     { key: monthKey(), totals: doc.spendTotals ?? [], spendCategories: doc.spendCategories ?? [], uploads: ops.uploads, rawCredits: doc.credits },
     source.value,
   )

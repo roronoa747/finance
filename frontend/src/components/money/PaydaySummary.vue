@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { PhCaretRight } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
+import { useFxStore } from '@/stores/fx'
 import { plain } from '@/lib/money'
 import { dayLabel } from '@/lib/dates'
 import { salaryAsk, totalIncome, untilPayday } from '@/lib/finance'
@@ -24,6 +25,7 @@ defineProps<{ quiet?: boolean }>()
 
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
+const fx = useFxStore()
 const open = ref(false)
 
 // Остатки общих счетов и долгов — из отметок, как их отдаёт стор.
@@ -35,6 +37,8 @@ const info = computed(() =>
         credits: financeStore.credits,
         accounts: financeStore.householdAccounts,
         payments: financeStore.payments,
+        fxExchanges: financeStore.fxExchanges,
+        book: fx.book,
       })
     : null,
 )
