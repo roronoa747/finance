@@ -38,6 +38,7 @@ import {
   decisionQueue,
   ringShares,
   type Decision,
+  type WeekUploadRow,
   liveSpendCategories,
   spendCategoryName,
   spendRows,
@@ -95,7 +96,7 @@ const prevWeek = weekKey(new Date(Date.now() - 7 * 86_400_000))
 /** «Выписки» (Р-62): кто загрузил выписку за неделю и в какой день; своя «ещё нет» открывает загрузку, viewer — без действий. */
 const uploadRows = computed(() => weekUploads(people.value, week, store.uploads))
 const mineThisWeek = computed(() => uploadRows.value.some((r) => r.person.id === me.value && r.day !== null))
-const uploadsMine = (r: { person: { id: PersonId }; day: string | null }) => canUpload.value && r.person.id === me.value && r.day === null
+const uploadsMine = (r: WeekUploadRow) => canUpload.value && r.person.id === me.value && r.day === null
 /** Карточка недели: подпись — даты недели, сумма и доли — `weekPicture`, чип — `weekVersusPrev`, «Не разобрано» — сумма недели обоих. */
 const weekTotalProps = computed(() => ({
   label: weekRangeLabel(pic.value.range),
