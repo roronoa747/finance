@@ -3,11 +3,12 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, plain, parseMoney } from '@/lib/money'
-import { monthKey, monthTitle, monthFrom, addMonths, todayIso } from '@/lib/dates'
-import { fxToTenge, rateOn, salaryAt, salaryOf } from '@/lib/finance'
-import { CURRENCIES, CURRENCY_SIGN, fetchRates, type FxRates } from '@/lib/fx'
+import { monthKey, monthTitle, monthFrom, addMonths } from '@/lib/dates'
+import { fxToTenge, salaryAt, salaryOf } from '@/lib/finance'
+import { CURRENCY_SIGN } from '@/lib/fx'
 import type { Currency, PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
+import CurrencyChips from '@/components/kit/CurrencyChips.vue'
 import Field from '@/components/kit/Field.vue'
 import Hint from '@/components/kit/Hint.vue'
 import NumField from '@/components/kit/NumField.vue'
@@ -16,6 +17,7 @@ import SavedMark from '@/components/kit/SavedMark.vue'
 import Select from '@/components/kit/Select.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import { useSavedMark } from '@/components/kit/useSavedMark'
+import { useNbRate } from '@/components/kit/useNbRate'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 
@@ -45,8 +47,8 @@ const fromMonth = ref(addMonths(monthKey(), 1))
 const reason = ref('')
 const personName = ref(person.value?.name ?? '')
 const newCurrency = ref<Currency>('KZT')
-const manualRate = ref('')
-const rateInfo = ref<FxRates | null>(null)
+/** Курс Нацбанка на сегодня: книга, иначе публичная ручка; нет — поле курса руками (`useNbRate`). */
+const { foreign: isForeign, auto: autoRate, manual: manualRate, rate, ok: rateOk } = useNbRate(newCurrency, planning)
 
 watch(
   () => person.value?.name,
@@ -84,25 +86,11 @@ const months = computed(() =>
   Array.from({ length: 37 }, (_, i) => addMonths(key.value, i - 24)).map((m) => ({ value: m, label: monthTitle(m) })),
 )
 const planned = computed(() => parseMoney(newAmount.value))
-const isForeign = computed(() => newCurrency.value !== 'KZT')
-
-/** Курс Нацбанка на сегодня: книга, иначе публичная ручка; нет — `null`, тогда поле руками. */
-const autoRate = computed(() => {
-  if (!isForeign.value) return 1
-  return rateOn(fx.book, newCurrency.value, todayIso(), rateInfo.value?.rates[newCurrency.value] ?? null)
-})
-const rate = computed(() => autoRate.value ?? parseFloat(manualRate.value.replace(',', '.')))
-const rateOk = computed(() => Number.isFinite(rate.value) && rate.value > 0)
 const plannedTenge = computed(() => (rateOk.value ? fxToTenge(planned.value, rate.value) : 0))
 const delta = computed(() => (planned.value > 0 && rateOk.value ? plannedTenge.value - currentTenge.value : 0))
 const history = computed(() =>
   [...(person.value?.salaryVersions ?? [])].sort((a, b) => b.from.localeCompare(a.from)),
 )
-
-watch([planning, newCurrency], async ([open]) => {
-  if (!open || !isForeign.value || autoRate.value || rateInfo.value) return
-  rateInfo.value = await fetchRates()
-})
 
 function onNameBlur() {
   if (!person.value) return
@@ -181,19 +169,7 @@ function handlePlanSubmit() {
 
       <div v-else ref="planRef" class="mb-3 rounded-xl border border-brand p-3.5">
         <Field label="Валюта" group>
-          <div class="grid grid-cols-5 gap-2">
-            <button
-              v-for="c in CURRENCIES"
-              :key="c"
-              type="button"
-              :aria-label="c"
-              :aria-pressed="newCurrency === c"
-              :class="cn('rounded-xl border px-2 py-2 text-[13px] transition-colors cursor-pointer', newCurrency === c ? 'border-brand bg-brand-soft font-medium text-brand' : 'border-line bg-surface-2 text-ink-2')"
-              @click="newCurrency = c"
-            >
-              {{ CURRENCY_SIGN[c] }}
-            </button>
-          </div>
+          <CurrencyChips v-model="newCurrency" />
         </Field>
 
         <Field :label="`Новый оклад, ${CURRENCY_SIGN[newCurrency]}`">

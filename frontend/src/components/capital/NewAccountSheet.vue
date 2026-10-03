@@ -5,8 +5,9 @@ import { money, plain, parseMoney } from '@/lib/money'
 import { fxToTenge } from '@/lib/finance'
 import type { Account, Currency } from '@/types/finance'
 import { cn } from '@/lib/utils'
-import { CURRENCIES, CURRENCY_SIGN, fetchRates, formRate, type FxRates } from '@/lib/fx'
+import { fetchRates, formRate, type FxRates } from '@/lib/fx'
 
+import CurrencyChips from '@/components/kit/CurrencyChips.vue'
 import Field from '@/components/kit/Field.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -158,17 +159,7 @@ function createAccount() {
     </Field>
 
     <Field label="Валюта" group>
-      <div class="grid grid-cols-5 gap-2 mb-3">
-        <button
-          v-for="c in CURRENCIES"
-          :key="c"
-          type="button"
-          :class="cn('rounded-xl border px-3 py-2 text-[13px] transition-colors cursor-pointer', newAccountCurrency === c ? 'border-brand bg-brand-soft font-medium text-brand' : 'border-line bg-surface-2 text-ink-2')"
-          @click="newAccountCurrency = c"
-        >
-          {{ CURRENCY_SIGN[c] }}
-        </button>
-      </div>
+      <CurrencyChips v-model="newAccountCurrency" class="mb-3" />
     </Field>
 
     <Field :label="isForeign ? `Сумма в ${newAccountCurrency}` : 'Сумма, ₸'">
