@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { HUES, HUE_KEYS, resolveDark, hueColor, applyTheme, prefersDark, spendColor, spendSlot, SPEND_SLOTS, personColor, PERSON_COLORS, memberColor, slotColor } from './palette'
+import { HUES, HUE_KEYS, resolveDark, hueColor, applyTheme, prefersDark, spendColor, spendSlot, SPEND_SLOTS, personColor, PERSON_COLORS, PERSON_EMOJI, memberColor, oneEmoji, slotColor } from './palette'
 import type { Person } from '@/types/finance'
 import { DEFAULT_SPEND_CATEGORIES } from './statements/dictionary'
 
@@ -146,5 +146,12 @@ describe('palette.ts — цветовая система и темы оформ�
     expect(slotColor('a')).toBe('pa')
     expect(slotColor('c')).toBe('ink-3')
     expect(PERSON_COLORS).not.toContain(slotColor('c'))
+  })
+
+  it('B2C-69 oneEmoji: один смайлик — и простой, и семья через ZWJ, и флаги; буквы, цифры, два смайлика, пусто — null', () => {
+    for (const e of ['🦊', '👨‍👩‍👧', '🏳️‍🌈', '🇰🇿', '⚡️', '☕️', '🐼']) expect(oneEmoji(e), e).toBe(e)
+    expect(oneEmoji(' 🐼 ')).toBe('🐼')
+    for (const e of PERSON_EMOJI) expect(oneEmoji(e), e).toBe(e)
+    for (const bad of ['', '   ', 'ab', 'a', '7', '#', '🦊🐻', '🇰🇿🇰🇿', 'a b', '🦊 x', 'Ж']) expect(oneEmoji(bad), JSON.stringify(bad)).toBeNull()
   })
 })
