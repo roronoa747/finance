@@ -617,7 +617,7 @@ describe('PV-18: покупки — правка, «Уже купили», viewe
     expect(html).not.toContain('Покупка в дом')
     expect(html).toContain('placeholder="Например, сковорода"')
     expect(html).toContain('placeholder="18 000"')
-    expect(html).toContain('placeholder="можно оставить пустым"')
+    expect(html).toContain('placeholder="Вставьте ссылку"')
     expect(html).toContain('aria-label="Кто добавил"')
     expect(html).toContain('Добавить в список')
     expect(html).not.toContain('bg-black/40')

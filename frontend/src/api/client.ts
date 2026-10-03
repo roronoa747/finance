@@ -26,6 +26,28 @@ export class ApiError<T = unknown> extends Error {
   }
 }
 
+/** Почему фото по ссылке не вышло (B2C-65): код ответа ручки; `offline` — до сервера не дошли. */
+export type LinkPreviewReason = 'bad url' | 'blocked' | 'no image' | 'too large' | 'timeout' | 'unavailable' | 'offline'
+const LINK_REASONS: LinkPreviewReason[] = ['bad url', 'blocked', 'no image', 'too large', 'timeout', 'unavailable']
+
+export class LinkPreviewError extends Error {
+  reason: LinkPreviewReason
+
+  constructor(reason: LinkPreviewReason) {
+    super(reason)
+    this.name = 'LinkPreviewError'
+    this.reason = reason
+  }
+}
+
+/** base64 из JSON → байты картинки нужного типа. */
+export function base64Blob(base64: string, type: string): Blob {
+  const bin = atob(base64)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return new Blob([bytes], { type })
+}
+
 export interface ApiClientConfig {
   baseUrl?: string
   getToken?: () => string | null
@@ -218,6 +240,18 @@ export class ApiClient {
 
   async deletePhoto(id: string): Promise<void> {
     await this.request<unknown>(`/photos/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  /** Фото и название со страницы товара (B2C-65, Р-60): цену не берём; отказ — `LinkPreviewError`. */
+  async linkPreview(url: string): Promise<{ title: string; blob: Blob }> {
+    let res: { title: string; imageType: string; image: string }
+    try {
+      res = await this.request('/photos/preview', { method: 'POST', body: JSON.stringify({ url }) })
+    } catch (e) {
+      if (!(e instanceof ApiError)) throw new LinkPreviewError('offline')
+      throw new LinkPreviewError(LINK_REASONS.find((r) => r === e.message) ?? 'unavailable')
+    }
+    return { title: res.title, blob: base64Blob(res.image, res.imageType) }
   }
 }
 

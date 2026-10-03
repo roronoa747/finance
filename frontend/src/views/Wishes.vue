@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PhCheck, PhGift, PhListBullets, PhPlus, PhSquaresFour } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
@@ -10,6 +10,7 @@ import { liveWishlist, wishTotal } from '@/lib/finance'
 import { compressImage } from '@/lib/photos/compress'
 import { uploadPhoto } from '@/lib/photos/store'
 import { usePhotos } from '@/lib/photos/usePhoto'
+import { linkIn, useLinkPreview } from '@/lib/photos/useLinkPreview'
 import { readStorage, writeStorage } from '@/lib/storage'
 import type { PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
@@ -95,6 +96,22 @@ const wishSrc = usePhotos(() => wishlist.value.map((w) => w.photoId))
 const wishFile = ref<File | null>(null)
 const wishPhotoNote = ref<string | null>(null)
 
+// Ссылка на товар (B2C-66): вставили — фото и название со страницы; название правится, цену вводит человек.
+const link = useLinkPreview()
+/** Название, подставленное со страницы: следующая ссылка заменит его, своё — нет. */
+let linkName = ''
+let linkTimer: ReturnType<typeof setTimeout> | undefined
+watch(wishUrl, (text) => {
+  clearTimeout(linkTimer)
+  linkTimer = setTimeout(() => void onLink(text), 300)
+})
+async function onLink(text: string) {
+  const found = await link.load(text)
+  if (!found) return
+  if (found.file) wishFile.value = found.file
+  if (found.title && (!wishName.value.trim() || wishName.value === linkName)) wishName.value = linkName = found.title
+}
+
 async function createWish() {
   if (!wishName.value.trim()) return
   const id = financeStore.addWish({
@@ -102,7 +119,7 @@ async function createWish() {
     price: parseMoney(wishPrice.value),
     // Список участника — от своего имени (ТЗ п. 3); «Общие» — с выбором «Кто добавил» (PV-18).
     by: tab.value !== 'all' ? (me.value ?? 'a') : people.value.length > 1 ? wishBy.value : (me.value ?? 'a'),
-    url: wishUrl.value.trim() || undefined,
+    url: linkIn(wishUrl.value) ?? (wishUrl.value.trim() || undefined),
     list: tab.value,
   })
   const file = wishFile.value
@@ -111,6 +128,8 @@ async function createWish() {
   wishUrl.value = ''
   wishFile.value = null
   wishPhotoNote.value = null
+  linkName = ''
+  link.reset()
   openWishModal.value = false
   // Запись — сразу, фото — следом: без сети желание останется без картинки, добавить можно в окне правки.
   if (file && !financeStore.isDemo) {
@@ -262,18 +281,20 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
 
     <!-- Окно: новое желание в список вкладки (React `Goals.tsx:284-305`) -->
     <Sheet :open="openWishModal && canEdit" title="Новое желание" @close="openWishModal = false">
-      <!-- Фото — первым: желание узнаётся по картинке (Р-9); в демо сервера нет -->
-      <PhotoSlot v-if="!financeStore.isDemo" class="mb-3" :file="wishFile" removable @file="wishFile = $event" @remove="wishFile = null" />
+      <!-- Ссылка — первой (макет «Желание по ссылке»): вставили — фото и название подтянулись; в демо сервера нет -->
+      <Field v-if="!financeStore.isDemo" label="Ссылка на товар">
+        <Input v-model="wishUrl" inputmode="url" placeholder="Вставьте ссылку" class="mb-3" />
+      </Field>
+      <p v-else class="mb-3 type-meta">По ссылке — в приложении</p>
+      <!-- Фото — крупно: желание узнаётся по картинке (Р-9) -->
+      <PhotoSlot v-if="!financeStore.isDemo" class="mb-3" :file="wishFile" :busy="link.busy.value" removable @file="wishFile = $event" @remove="wishFile = null" />
+      <Callout v-if="link.note.value" tone="neutral" icon="info" class="mb-3">{{ link.note.value }}</Callout>
       <Field label="Что покупаем">
         <Input v-model="wishName" placeholder="Например, сковорода" class="mb-3" />
       </Field>
       <Field label="Цена, ₸">
         <NumField v-model="wishPrice" placeholder="18 000" class="mb-3" />
       </Field>
-      <Field label="Ссылка на товар">
-        <Input v-model="wishUrl" inputmode="url" placeholder="можно оставить пустым" class="mb-3" />
-      </Field>
-
       <Field v-if="tab === 'all' && people.length > 1" label="Кто добавил" group>
         <Segmented
           v-model="wishBy"

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { useFinanceStore } from '@/stores/finance'
+import { DEMO_HOUSEHOLD, useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import type { Router } from 'vue-router'
 import type { SyncDoc, WishItem } from '@/types/finance'
@@ -355,6 +355,35 @@ describe('views/Wishes.vue — фото желаний (Р-9, B2C-18, SSR)', () 
     const viewer = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ openWishModal: true, editWishId: 'lamp' })])
     expect(viewer).toContain('data-photo')
     expect(viewer).not.toContain('accept="image/*"')
+  })
+
+  it('B2C-66: ссылка на товар — первой в «Новом желании» и в правке; viewer — без поля; демо — тихая строка вместо поля', async () => {
+    family('member', 'a', { wishlist: [wish({ id: 'pan', name: 'Сковорода', price: 18_000, url: 'https://kaspi.kz/p' })] })
+    const sheet = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ openWishModal: true })])
+    expect(sheet).toContain('placeholder="Вставьте ссылку"')
+    expect(sheet.indexOf('Ссылка на товар')).toBeLessThan(sheet.indexOf('Что покупаем'))
+    const edit = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ editWishId: 'pan' })])
+    expect(edit).toContain('placeholder="Вставьте ссылку"')
+
+    setActivePinia(createPinia())
+    stubStorage()
+    family('viewer', 'a', { wishlist: [wish({ id: 'pan', name: 'Сковорода', price: 18_000 })] })
+    const viewer = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ openWishModal: true, editWishId: 'pan' })])
+    expect(viewer).not.toContain('Ссылка на товар')
+    expect(viewer).not.toContain('Вставьте ссылку')
+
+    setActivePinia(createPinia())
+    stubStorage()
+    const demo = family('member', 'a', { wishlist: [wish({ id: 'pan', name: 'Сковорода', price: 18_000, url: 'https://kaspi.kz/p' })] })
+    demo.claimFor(DEMO_HOUSEHOLD)
+    demo.setHouseholdDoc(planFamilyDoc({ wishlist: [wish({ id: 'pan', name: 'Сковорода', price: 18_000, url: 'https://kaspi.kz/p' })] }), 1)
+    expect(demo.isDemo).toBe(true)
+    const demoSheet = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ openWishModal: true })])
+    expect(demoSheet).not.toContain('Вставьте ссылку')
+    expect(demoSheet).toContain('По ссылке — в приложении')
+    const demoEdit = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ editWishId: 'pan' })])
+    expect(demoEdit).not.toContain('Ссылка на товар')
+    expect(demoEdit).toContain('Открыть ссылку')
   })
 })
 
