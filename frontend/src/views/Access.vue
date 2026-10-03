@@ -187,6 +187,18 @@ function startDemoMode() {
         versions: [{ from: '2026-01', amount: 30_000 }],
         updatedAt: new Date().toISOString(),
       },
+      // Подписка в долларах (B2C-81, Р-75): в «Платежах» — «10 $» и тенге по курсу дня списания из демо-книги
+      // (≈ 4 500 ₸ — не в допуске ни одной демо-операции, иначе «Неделя» начнётся с вопроса «это Netflix?»).
+      {
+        id: 'ob-netflix',
+        name: 'Netflix',
+        note: 'ежемесячно',
+        day: 10,
+        category: 'd4',
+        versions: [{ from: '2026-01', amount: 10, currency: 'USD', rate: 470 }],
+        keptAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
     ]
     doc.credits = [
       {
