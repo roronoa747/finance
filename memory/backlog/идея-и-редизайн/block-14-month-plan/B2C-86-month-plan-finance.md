@@ -5,9 +5,14 @@
 ## Контекст (что уже есть)
 
 - Все деньги — `lib/finance.ts`, целые тенге (правило 6, Р-63). Опоры:
-  - зарплаты — `salaryTenge(p, key, ctx)` (Блок 13, Р-74), отметка прихода — `paidFor(payments, 'salary', who, key)`;
-  - платежи месяца — `monthDues(state, key)` (`finance.ts` ~1428; обязательства и кредиты, отметки, валюта — Р-75),
-    `duesTotals`;
+  - зарплаты — `salaryTenge(p, key, salaryCtxOf(state))` (Блок 13, Р-74: `.tenge`; обмены по своему курсу + остаток
+    по курсу дня зарплаты, до прихода — последний курс книги); пришедшая — `paidTenge(state, who, key, record)`, отметка
+    прихода — `paidFor(payments, 'salary', who, key)`; доход семьи — `totalIncome(people, key, salaryCtxOf(state))`.
+    **Книга и обмены — поля состояния** `state.book` (экран — `useFxStore().book`) и `state.fxExchanges` (уже в
+    `householdDoc`), как у `budgetAmounts`/`untilPayday` (факт Блока 13, §6 «После Блока 13»);
+  - платежи месяца — `monthDues({ …, book }, key)` (`finance.ts` ~1660; обязательства и кредиты, отметки; валютные —
+    `amountAt(o, key, book)` по курсу дня списания, Р-75), `duesTotals`. По курсу версии (без книги) пока считают
+    `nextObligationDue`, `keepCard`, `planForecast` (`month`) — хвост §4 Блока 13: план месяца их деньгами не считать;
   - траты — `SpendTotal` `kind: 'month'` по `by` (факт), `spendPlans` (план, B2C-85), разделы `plannedElsewhere`
     (`lib/statements/dictionary.ts`) — не планируются;
   - цели — `liveGoals`, `goalRemaining`, `goalMonths`, `goalDoneMonth` ~213/224; очередь — `queueOf` (B2C-85);
@@ -23,7 +28,8 @@
 
 Новые чистые функции (имена — ориентир; JSDoc по-русски):
 
-1. **`monthPlan(state, ctx: { key, book, totals, spendCategories, uploads, exchanges })`** →
+1. **`monthPlan(state, ctx: { key, totals, spendCategories, uploads })`** (книга и обмены — `state.book`,
+   `state.fxExchanges`, как у остальных расчётов после Блока 13) →
    `{ income: { total, byPerson[] (ожидается, пришло) }, dues[] (сумма, дата, плательщик, оплачено), spend[] (по людям
    и разделам: план, факт|null), queue[] (цель/фонд/долг: плательщик, взнос месяца, дано, дата «к <месяц>», на паузе),
    rest, byPerson[] (зарплата − платежи − траты − взносы → «хватает» / «не хватает N»), short }`. Шаги строго по Р-79;
