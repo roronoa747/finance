@@ -3,7 +3,7 @@ import { ref, computed, type Ref } from 'vue'
 import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { mergeDocs, mergePrivateDocs, isEmptyDoc } from '@/lib/merge'
 import { monthKey } from '@/lib/dates'
-import { MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, readStorage } from '@/lib/storage'
+import { LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, readStorage } from '@/lib/storage'
 import {
   accountBalance,
   activePlan as pickActivePlan,
@@ -118,6 +118,8 @@ const LOCAL_KEYS = [
   START_ANSWERED_KEY,
   // Ответ «остались деньги?» на месяц (Р-19): следующий вход на этом телефоне — свой вопрос.
   MONTH_END_KEY,
+  // Адреса желаний без картинки (B2C-68): ссылки этой семьи другому входу не нужны.
+  LINK_PHOTO_TRIED_KEY,
 ]
 
 // Запрос не дошёл до сервера (fetch бросил не ApiError) — это «нет сети», а не «не

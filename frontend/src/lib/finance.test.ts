@@ -135,13 +135,14 @@ import {
   type BreakdownState,
   type UploadPeriod,
   duesTag,
+  duesTotals,
   loadTag,
   spendNorms,
   spendShares,
   spendStatus,
 } from './finance'
 import { STAT_NORMS } from '@/lib/statements/norms'
-import { planOf } from '@/test/planFamily'
+import { planFamilyDoc, planOf } from '@/test/planFamily'
 import type { SpendCategory, SpendTotal } from '@/lib/statements/types'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import { DEFAULT_SPEND_CATEGORIES, spendArticle } from '@/lib/statements/dictionary'
@@ -3523,6 +3524,18 @@ describe('B2C-59: строки-статусы «Денег», доли трат 
     expect(duesTag([{ paid: true }, { paid: false }, { paid: false }])).toEqual({ text: '1 из 3 оплачено', tone: 'neutral' })
     expect(duesTag([{ paid: true }, { paid: true }])).toEqual({ text: '2 из 2 оплачено', tone: 'ok' })
     expect(duesTag([])).toBeNull()
+  })
+
+  it('B2C-70 duesTotals: три платежа, один оплачен суммой из отметки → total и left; все оплачены → left 0; пусто → null', () => {
+    // Аренда 220 000 (оплачена 215 000 — сумма из отметки, как в строке), кредит 58 000, подписка 5 000.
+    const dues = [{ amount: 215_000, paid: true }, { amount: 58_000, paid: false }, { amount: 5_000, paid: false }]
+    expect(duesTotals(dues)).toEqual({ total: 278_000, left: 63_000 })
+    expect(duesTotals(dues.map((d) => ({ ...d, paid: true })))).toEqual({ total: 278_000, left: 0 })
+    expect(duesTotals(dues.map((d) => ({ ...d, paid: false })))).toEqual({ total: 278_000, left: 278_000 })
+    expect(duesTotals([])).toBeNull()
+    // Та же сумма, что у строк `monthDues` семьи плана: аренда + три кредита.
+    const month = monthDues(planFamilyDoc(), '2026-09')
+    expect(duesTotals(month)).toEqual({ total: 220_000 + 58_000 + 25_000 + 20_000, left: 220_000 + 58_000 + 25_000 + 20_000 })
   })
 
   it('доли месяца: от трат без разделов плана, «не разобрано» — в базе без строки; целые, сумма ≤ 100', () => {

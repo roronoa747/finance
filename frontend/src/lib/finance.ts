@@ -2844,6 +2844,16 @@ export function duesTag(dues: Pick<MonthDue, 'paid'>[]): StatusTag | null {
   return { text: `${paid} из ${dues.length} оплачено`, tone: paid === dues.length ? 'ok' : 'neutral' }
 }
 
+/**
+ * Суммы платежей месяца (B2C-70, первая строка «Платежей»): `total` — все платежи месяца, `left` — ещё не
+ * оплаченные. Только сложение строк `monthDues` (у отмеченного сумма — из отметки, итог сходится со
+ * строками), новых правил нет; платежей нет — null.
+ */
+export function duesTotals(dues: Pick<MonthDue, 'amount' | 'paid'>[]): { total: number; left: number } | null {
+  if (!dues.length) return null
+  return dues.reduce((acc, d) => ({ total: acc.total + d.amount, left: acc.left + (d.paid ? 0 : d.amount) }), { total: 0, left: 0 })
+}
+
 export type SpendShare = { categoryId: string; amount: number; share: number }
 
 /**

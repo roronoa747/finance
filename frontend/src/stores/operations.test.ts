@@ -12,7 +12,7 @@ import type { OperationsPage, OperationWire, StatementUploadResponse } from '@/t
 import kaspi01 from '@/lib/statements/fixtures/kaspi-01.rows.json'
 import { planFamilyDoc } from '@/test/planFamily'
 import { freeByFact } from '@/lib/finance'
-import { readMonthEnd, writeMonthEnd } from '@/lib/storage'
+import { LINK_PHOTO_TRIED_KEY, readMonthEnd, readStorage, writeMonthEnd, writeStorage } from '@/lib/storage'
 
 const storage = new Map<string, string>()
 
@@ -297,6 +297,14 @@ describe('stores/operations — курсор, семья, демо', () => {
     expect(readMonthEnd()).toBe('2026-09')
     useFinanceStore().clearLocal()
     expect(readMonthEnd()).toBeNull()
+  })
+
+  it('выход стирает память «фото не нашлось» (B2C-68): ссылки этой семьи другому входу не нужны', () => {
+    signIn()
+    writeStorage(LINK_PHOTO_TRIED_KEY, ['https://kaspi.kz/shop/p/no-pic/'])
+    expect(readStorage<string[]>(LINK_PHOTO_TRIED_KEY, [])).toHaveLength(1)
+    useFinanceStore().clearLocal()
+    expect(readStorage<string[]>(LINK_PHOTO_TRIED_KEY, [])).toEqual([])
   })
 
   it('копия чужой семьи на диске при старте не подхватывается', () => {

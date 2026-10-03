@@ -32,11 +32,14 @@ const LINK_REASONS: LinkPreviewReason[] = ['bad url', 'blocked', 'no image', 'to
 
 export class LinkPreviewError extends Error {
   reason: LinkPreviewReason
+  /** Код ответа ручки: 400 / 422 — она посмотрела адрес и отказала; 401, 403, 429, 5xx — не дошло до адреса; нет — до сервера. */
+  status?: number
 
-  constructor(reason: LinkPreviewReason) {
+  constructor(reason: LinkPreviewReason, status?: number) {
     super(reason)
     this.name = 'LinkPreviewError'
     this.reason = reason
+    this.status = status
   }
 }
 
@@ -249,7 +252,7 @@ export class ApiClient {
       res = await this.request('/photos/preview', { method: 'POST', body: JSON.stringify({ url }) })
     } catch (e) {
       if (!(e instanceof ApiError)) throw new LinkPreviewError('offline')
-      throw new LinkPreviewError(LINK_REASONS.find((r) => r === e.message) ?? 'unavailable')
+      throw new LinkPreviewError(LINK_REASONS.find((r) => r === e.message) ?? 'unavailable', e.status)
     }
     return { title: res.title, blob: base64Blob(res.image, res.imageType) }
   }

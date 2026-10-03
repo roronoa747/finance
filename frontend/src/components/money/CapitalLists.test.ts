@@ -8,6 +8,8 @@ import { money, plain } from '@/lib/money'
 import Money from '@/views/Money.vue'
 import {
   closerWish,
+  duesTotals,
+  monthDues,
   netWorth,
   prepayment,
   lumpSum,
@@ -1290,6 +1292,110 @@ describe('PV-17 (Р-8): график в окне кредита — с шага�
     expect(loan).toContain('График платежей')
     expect(loan).not.toContain('досрочка ')
     expect(store.status).toBe('idle')
+  })
+})
+
+describe('B2C-70: «Деньги» → «Платежи» — первая строка «Осталось в <месяце>» и «из <всего>» (SSR)', () => {
+  const T0 = '2026-09-01T00:00:00.000Z'
+  const storage = new Map<string, string>()
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, val: string) => storage.set(key, String(val)),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  /** Аренда 220 000, группа подписок с двумя детьми (5 000 + 2 000), кредит 58 000; годовая страховка — не в сентябре. */
+  function family(role: 'member' | 'viewer' = 'member') {
+    useAuthStore().setAuthData(authAs(role))
+    const store = useFinanceStore()
+    store.setHouseholdDoc(
+      planFamilyDoc({
+        obligations: [
+          { id: 'rent', name: 'Аренда', note: '', day: 5, category: 'd1', versions: [{ from: '2000-01', amount: 220_000 }], updatedAt: T0 },
+          { id: 'subs', name: 'Подписки', note: '', day: 1, category: 'd4', group: true, versions: [], updatedAt: T0 },
+          { id: 'netflix', name: 'Netflix', note: '', day: 10, category: 'd4', parentId: 'subs', versions: [{ from: '2000-01', amount: 5_000 }], updatedAt: T0 },
+          { id: 'spotify', name: 'Spotify', note: '', day: 12, category: 'd4', parentId: 'subs', versions: [{ from: '2000-01', amount: 2_000 }], updatedAt: T0 },
+          { id: 'ins', name: 'Страховка', note: '', day: 12, category: 'd4', every: 'year', month: 3, versions: [{ from: '2000-01', amount: 60_000 }], updatedAt: T0 },
+        ],
+        credits: [{ id: 'loan', name: 'Кредит', note: '', principal: 1_000_000, principalSetAt: T0, annualRate: 0.33, payment: 58_000, day: 15, updatedAt: T0 }],
+      }),
+      1,
+    )
+    return store
+  }
+
+  const render = async () => (await renderScreen(Money, '/money')).replace(/<!--[^>]*-->/g, '')
+  /** Блок сумм над строками «Платежей» — одна подпись, крупная цифра, «из …». */
+  const totalsBlock = (html: string) => {
+    const at = html.indexOf('data-dues-total')
+    return at < 0 ? null : html.slice(at, html.indexOf('</div>', at))
+  }
+  const expected = (store: ReturnType<typeof useFinanceStore>) => duesTotals(monthDues(store.householdDoc, '2026-09'))!
+
+  it('строка «Осталось в сентябре» с остатком крупно и «из <всего>»; дети группы — один раз, сама группа и годовое не в свой месяц — нет', async () => {
+    const store = family()
+    const t = expected(store)
+    // Аренда + Netflix + Spotify + кредит; «Подписки» (группа) и страховка (март) — не платежи сентября.
+    expect(t).toEqual({ total: 285_000, left: 285_000 })
+    const block = totalsBlock(await render())!
+    expect(block).toContain('Осталось в сентябре')
+    expect(block).toContain(`>${money(285_000)}</span>`)
+    // Ничего не оплачено — остаток равен итогу, «из …» всё равно показан (его нет только при «Всё оплачено»).
+    expect(block).toContain(`из ${money(285_000)}`)
+    expect(block).toContain('type-num')
+    expect(block).toContain('type-label')
+    // Тег «N из M оплачено» в шапке остаётся.
+    expect(await render()).toContain('0 из 4 оплачено')
+  })
+
+  it('отметка «Оплатил» уменьшает остаток ровно на сумму отметки (число из monthDues, не из экрана); «из …» — итог со суммой отметки', async () => {
+    const store = family()
+    store.markPaid('obligation', 'rent', 'a', { amount: 215_000, accountId: 'card', source: 'statement' })
+    const t = expected(store)
+    expect(t).toEqual({ total: 280_000, left: 65_000 })
+    const block = totalsBlock(await render())!
+    expect(block).toContain('Осталось в сентябре')
+    expect(block).toContain(`>${money(t.left)}</span>`)
+    expect(block).toContain(`из ${money(t.total)}`)
+
+    store.markPaid('obligation', 'netflix', 'a', { accountId: 'card' })
+    const after = expected(store)
+    expect(after.left).toBe(t.left - 5_000)
+    expect(totalsBlock(await render())).toContain(`>${money(after.left)}</span>`)
+  })
+
+  it('все оплачены → «Всё оплачено» и итог, строки «из …» нет; платежей нет → строки нет; viewer видит', async () => {
+    const store = family()
+    for (const id of ['rent', 'netflix', 'spotify']) store.markPaid('obligation', id, 'a', { accountId: 'card' })
+    store.markPaid('credit', 'loan', 'a', { accountId: 'card' })
+    expect(expected(store)).toEqual({ total: 285_000, left: 0 })
+    const block = totalsBlock(await render())!
+    expect(block).toContain('Всё оплачено')
+    expect(block).not.toContain('Осталось')
+    expect(block).toContain(`>${money(285_000)}</span>`)
+    expect(block).not.toContain('из ')
+
+    setActivePinia(createPinia())
+    useAuthStore().setAuthData(authAs('member'))
+    useFinanceStore().setHouseholdDoc(planFamilyDoc({ obligations: [], credits: [] }), 1)
+    const empty = await render()
+    expect(empty).toContain('Платежей пока нет')
+    expect(totalsBlock(empty)).toBeNull()
+    expect(empty).not.toContain('Всё оплачено')
+
+    setActivePinia(createPinia())
+    family('viewer')
+    const ro = await render()
+    expect(totalsBlock(ro)).toContain('Осталось в сентябре')
+    expect(ro).not.toMatch(/>\s*Добавить\s*</)
   })
 })
 

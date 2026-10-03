@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
-import { apiClient, type ApiClient } from '../src/api/client'
+import { apiClient, LinkPreviewError, type ApiClient } from '../src/api/client'
+import { duesTotals, monthDues } from '../src/lib/finance'
+import { monthKey } from '../src/lib/dates'
+import { money as moneyFmt } from '../src/lib/money'
+import { fillWishPhotos } from '../src/lib/photos/wishLinkPhotos'
 import { useAuthStore } from '../src/stores/auth'
 import { useFinanceStore } from '../src/stores/finance'
 import { useOperationsStore } from '../src/stores/operations'
@@ -300,5 +304,63 @@ describe('e2e / B2C Блок 12 — «Неделя и личное» на дву
     expect(viewer).toMatch(/Ильяс (пн|вт|ср|чт|пт|сб|вс)/)
     expect(viewer).not.toContain('Загрузить выписку')
     expect(viewer).not.toContain('Без раздела')
+  })
+
+  // Возврат смоука (B2C-68…70): обход «Желаний» зовётся напрямую — `screen` рендерит без `onMounted`; гейт экрана
+  // (viewer — 0 вызовов) — в `Wishes.oldLinks.dom.test.ts` и на стенде приёмки.
+  it('часть 7 (приёмка возврата смоука) — старые желания Kaspi получают фото у обоих, без картинки не спрашивается дважды; свой смайлик виден Аруне; «Осталось в …» уменьшается ровно на отметку', async () => {
+    const A = await phone(server, st, 'a')
+    const B = await phone(server, st, 'b')
+    setActivePinia(A.pinia)
+    A.store.addWish({ name: 'Dyson', price: 289_990, by: 'a', url: 'https://kaspi.kz/shop/p/dyson-1/' })
+    A.store.addWish({ name: 'Плед', price: 18_000, by: 'a', url: 'https://kaspi.kz/shop/p/pled-2/', list: 'all' })
+    A.store.addWish({ name: 'Без картинки', price: 5_000, by: 'a', url: 'https://kaspi.kz/shop/p/no-image-3/' })
+    await sync(A, B)
+
+    // B2C-68: телефон Аруны открыл «Желания» — фото у двух, адрес без картинки запомнен; второе открытие — ни одного запроса.
+    const asked: string[] = []
+    vi.spyOn(apiClient, 'linkPreview').mockImplementation(async (url: string) => {
+      asked.push(url)
+      if (url.includes('no-image')) throw new LinkPreviewError('no image', 422)
+      return { title: url, blob: new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: 'image/jpeg' }) }
+    })
+    let n = 0
+    vi.spyOn(apiClient, 'uploadPhoto').mockImplementation(async () => ({ id: `ph-${++n}` }))
+    setActivePinia(B.pinia)
+    expect(await fillWishPhotos(B.store)).toBe(2)
+    // Порядок — как в списке (новое первым); последовательность — юнит `wishLinkPhotos.test`.
+    expect([...asked].sort()).toEqual(['https://kaspi.kz/shop/p/dyson-1/', 'https://kaspi.kz/shop/p/no-image-3/', 'https://kaspi.kz/shop/p/pled-2/'])
+    expect(await fillWishPhotos(B.store)).toBe(0)
+    expect(asked).toHaveLength(3)
+    await sync(B, A)
+    expect(A.store.wishlist.filter((w) => w.photoId).map((w) => w.name).sort()).toEqual(['Dyson', 'Плед'])
+
+    // B2C-69: Ильяс вставил флаг с клавиатуры в «Свой кружок» — Аруна видит его кружок; «ab» не пишется.
+    const field = { value: 'ab' }
+    await screen(A.pinia, MyCircle, '/settings/me', undefined, [
+      screenMixin({}, (s) => {
+        const own = s.onOwnEmoji as (e: unknown) => void
+        own({ target: field })
+        expect(A.store.people.find((p) => p.id === 'a')?.emoji ?? null).toBeNull()
+        field.value = '🇰🇿'
+        own({ target: field })
+      }),
+    ])
+    expect(A.store.people.find((p) => p.id === 'a')?.emoji).toBe('🇰🇿')
+    await sync(A, B)
+    expect(circles(await screen(B.pinia, Money, '/money'))).toContainEqual([expect.any(String), '🇰🇿'])
+
+    // B2C-70: «Деньги → Платежи» у Аруны — «Осталось в сентябре» и «из …» по `monthDues`; Ильяс отметил аренду — остаток меньше ровно на неё.
+    const totalsOf = (p: Phone) => duesTotals(monthDues(p.store.householdDoc, monthKey(new Date())))!
+    const before = totalsOf(B)
+    let money = text(await screen(B.pinia, Money, '/money'))
+    expect(money).toContain(`Осталось в сентябре ${text(moneyFmt(before.left))} из ${text(moneyFmt(before.total))}`)
+    setActivePinia(A.pinia)
+    const paid = A.store.markPaid('obligation', 'rent', 'a')!
+    await sync(A, B)
+    const after = totalsOf(B)
+    expect(after).toEqual({ total: before.total, left: before.left - paid.amount })
+    money = text(await screen(B.pinia, Money, '/money'))
+    expect(money).toContain(`Осталось в сентябре ${text(moneyFmt(after.left))} из ${text(moneyFmt(before.total))}`)
   })
 })
