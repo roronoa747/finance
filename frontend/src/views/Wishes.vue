@@ -10,7 +10,7 @@ import { liveWishlist, wishTotal } from '@/lib/finance'
 import { compressImage } from '@/lib/photos/compress'
 import { uploadPhoto } from '@/lib/photos/store'
 import { usePhotos } from '@/lib/photos/usePhoto'
-import { linkIn, useLinkPreview } from '@/lib/photos/useLinkPreview'
+import { cleanLink, useLinkPreview, type LinkFound } from '@/lib/photos/useLinkPreview'
 import { readStorage, writeStorage } from '@/lib/storage'
 import type { PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
@@ -100,16 +100,15 @@ const wishPhotoNote = ref<string | null>(null)
 const link = useLinkPreview()
 /** Название, подставленное со страницы: следующая ссылка заменит его, своё — нет. */
 let linkName = ''
-let linkTimer: ReturnType<typeof setTimeout> | undefined
-watch(wishUrl, (text) => {
-  clearTimeout(linkTimer)
-  linkTimer = setTimeout(() => void onLink(text), 300)
-})
-async function onLink(text: string) {
-  const found = await link.load(text)
-  if (!found) return
-  if (found.file) wishFile.value = found.file
-  if (found.title && (!wishName.value.trim() || wishName.value === linkName)) wishName.value = linkName = found.title
+watch(wishUrl, (text) =>
+  link.schedule(text, (found: LinkFound) => {
+    if (found.file) wishFile.value = found.file
+    if (found.title && (!wishName.value.trim() || wishName.value === linkName)) wishName.value = linkName = found.title
+  }),
+)
+function onWishFile(file: File) {
+  wishFile.value = file
+  link.clearNote()
 }
 
 async function createWish() {
@@ -119,7 +118,7 @@ async function createWish() {
     price: parseMoney(wishPrice.value),
     // Список участника — от своего имени (ТЗ п. 3); «Общие» — с выбором «Кто добавил» (PV-18).
     by: tab.value !== 'all' ? (me.value ?? 'a') : people.value.length > 1 ? wishBy.value : (me.value ?? 'a'),
-    url: linkIn(wishUrl.value) ?? (wishUrl.value.trim() || undefined),
+    url: cleanLink(wishUrl.value) || undefined,
     list: tab.value,
   })
   const file = wishFile.value
@@ -287,7 +286,7 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
       </Field>
       <p v-else class="mb-3 type-meta">По ссылке — в приложении</p>
       <!-- Фото — крупно: желание узнаётся по картинке (Р-9) -->
-      <PhotoSlot v-if="!financeStore.isDemo" class="mb-3" :file="wishFile" :busy="link.busy.value" removable @file="wishFile = $event" @remove="wishFile = null" />
+      <PhotoSlot v-if="!financeStore.isDemo" class="mb-3" :file="wishFile" :busy="link.busy.value" removable @file="onWishFile" @remove="wishFile = null" />
       <Callout v-if="link.note.value" tone="neutral" icon="info" class="mb-3">{{ link.note.value }}</Callout>
       <Field label="Что покупаем">
         <Input v-model="wishName" placeholder="Например, сковорода" class="mb-3" />

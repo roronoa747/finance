@@ -123,6 +123,19 @@ describe('B2C-66: желание по ссылке', () => {
 
     expect(document.body.textContent).toContain(LINK_PHOTO_MISSED)
     expect(name.value).toBe('Фен')
+
+    // Клинап Б12 Н-4: выбрали своё фото — просьба «загрузите своё» уходит.
+    const own = document.querySelector('input[type="file"]') as HTMLInputElement
+    Object.defineProperty(own, 'files', { value: [new File(['png'], 'own.png', { type: 'image/png' })] })
+    own.dispatchEvent(new Event('change'))
+    await nextTick()
+    expect(document.body.textContent).not.toContain(LINK_PHOTO_MISSED)
+    photos.uploaded = []
+    photos.compressed = []
+    // Фото убираем обратно: дальше проверяется желание без фото.
+    ;(document.querySelector('button[aria-label="Убрать фото"]') as HTMLButtonElement).click()
+    await nextTick()
+
     button('Добавить в список').click()
     await settle()
     const wish = finance.wishlist.find((w) => w.name === 'Фен')!

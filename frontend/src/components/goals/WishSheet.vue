@@ -8,7 +8,7 @@ import { liveWishlist } from '@/lib/finance'
 import { compressImage } from '@/lib/photos/compress'
 import { deletePhoto, uploadPhoto } from '@/lib/photos/store'
 import { usePhoto } from '@/lib/photos/usePhoto'
-import { linkIn, useLinkPreview } from '@/lib/photos/useLinkPreview'
+import { cleanLink, useLinkPreview, type LinkFound } from '@/lib/photos/useLinkPreview'
 import type { PersonId } from '@/types/finance'
 
 import Callout from '@/components/kit/Callout.vue'
@@ -49,6 +49,7 @@ const photoNote = ref<string | null>(null)
 
 async function onFile(file: File) {
   const w = wish.value
+  link.clearNote()
   if (!file || !w || financeStore.isDemo) return
   photoBusy.value = true
   photoNote.value = null
@@ -85,30 +86,23 @@ function onPrice(text: string) {
 // из записи партнёра (`mergeList` берёт поля проигравшего, которых нет у победителя).
 function onUrl(e: Event) {
   const raw = (e.target as HTMLInputElement).value
-  const v = linkIn(raw) ?? raw.trim()
+  const v = cleanLink(raw)
   if (wish.value && v !== (wish.value.url ?? '')) financeStore.updateWish(wish.value.id, { url: v })
 }
 // Вставили ссылку (B2C-66): фото со страницы заменяет прежнее тем же путём, что своё; ссылка
 // пишется сразу. Название не трогаем — у желания уже есть имя, данное человеком.
 const link = useLinkPreview()
-let linkTimer: ReturnType<typeof setTimeout> | undefined
 // Другое желание — ждущая вставка прежнего не применяется к новому (критик Б12).
 watch(
   () => props.wishId,
-  () => {
-    clearTimeout(linkTimer)
-    link.reset()
-  },
+  () => link.reset(),
 )
 function onUrlInput(e: Event) {
-  const text = (e.target as HTMLInputElement).value
-  clearTimeout(linkTimer)
-  linkTimer = setTimeout(() => void onLink(text), 300)
+  link.schedule((e.target as HTMLInputElement).value, onLink)
 }
-async function onLink(text: string) {
-  const found = await link.load(text)
+async function onLink(found: LinkFound) {
   const w = wish.value
-  if (!found || !w) return
+  if (!w) return
   if (found.url !== (w.url ?? '')) financeStore.updateWish(w.id, { url: found.url })
   if (found.file) await onFile(found.file)
 }

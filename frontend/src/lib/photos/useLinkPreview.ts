@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { getCurrentScope, onScopeDispose, ref } from 'vue'
 import { apiClient, type ApiClient } from '@/api/client'
 
 /**
@@ -15,6 +15,14 @@ export function linkIn(text: string): string | null {
   return m ? m[0].replace(/[),.;!?»]+$/, '') : null
 }
 
+/** Что записать в поле «Ссылка»: найденная ссылка, иначе текст как есть. */
+export function cleanLink(text: string): string {
+  return linkIn(text) ?? text.trim()
+}
+
+/** Пауза ввода перед запросом: вставка и правка руками не дёргают ручку на каждую букву. */
+const TYPE_PAUSE_MS = 300
+
 export interface LinkFound {
   url: string
   title: string
@@ -27,6 +35,7 @@ export function useLinkPreview(client: ApiClient = apiClient) {
   const note = ref<string | null>(null)
   let last: string | null = null
   let seq = 0
+  let timer: ReturnType<typeof setTimeout> | undefined
 
   /** Превью ссылки из текста; null — ссылки нет, она та же, что в прошлый раз, или ответ устарел. */
   async function load(text: string): Promise<LinkFound | null> {
@@ -49,12 +58,29 @@ export function useLinkPreview(client: ApiClient = apiClient) {
     }
   }
 
+  /** Превью после паузы ввода; новый вызов отменяет ждущий. `apply` получает только найденное и свежее. */
+  function schedule(text: string, apply: (found: LinkFound) => unknown) {
+    clearTimeout(timer)
+    timer = setTimeout(async () => {
+      const found = await load(text)
+      if (found) await apply(found)
+    }, TYPE_PAUSE_MS)
+  }
+
+  /** Человек выбрал своё фото — «загрузите своё» больше не нужно. */
+  function clearNote() {
+    note.value = null
+  }
+
   function reset() {
+    clearTimeout(timer)
     last = null
     seq++
     busy.value = false
     note.value = null
   }
 
-  return { busy, note, load, reset }
+  if (getCurrentScope()) onScopeDispose(reset)
+
+  return { busy, note, load, schedule, clearNote, reset }
 }

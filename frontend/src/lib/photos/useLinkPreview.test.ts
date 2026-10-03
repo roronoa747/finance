@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
+import { effectScope } from 'vue'
 import { ApiClient, LinkPreviewError } from '@/api/client'
-import { LINK_PHOTO_MISSED, linkIn, useLinkPreview } from './useLinkPreview'
+import { LINK_PHOTO_MISSED, cleanLink, linkIn, useLinkPreview } from './useLinkPreview'
 
 describe('lib/photos/useLinkPreview — фото желания по ссылке (B2C-66)', () => {
   it('linkIn: первая https-ссылка из текста «Поделиться»; http и пустое — нет', () => {
@@ -8,6 +9,45 @@ describe('lib/photos/useLinkPreview — фото желания по ссылк�
     expect(linkIn('Посмотрите товар «Dyson» на Kaspi.kz: https://kaspi.kz/shop/p/dyson-1/?ref=shared.')).toBe('https://kaspi.kz/shop/p/dyson-1/?ref=shared')
     expect(linkIn('http://shop.kz/p')).toBeNull()
     expect(linkIn('сковорода')).toBeNull()
+    expect(cleanLink('Товар: https://kaspi.kz/p/1.')).toBe('https://kaspi.kz/p/1')
+    expect(cleanLink('  shop.kz/p  ')).toBe('shop.kz/p')
+  })
+
+  it('клинап Б12 schedule: запрос после паузы 300 мс по последнему тексту; reset и конец области отменяют ждущий', async () => {
+    vi.useFakeTimers()
+    try {
+      const client = { linkPreview: vi.fn(async () => ({ title: 'Плед', blob: new Blob(['x'], { type: 'image/png' }) })) } as unknown as ApiClient
+      const scope = effectScope()
+      const lp = scope.run(() => useLinkPreview(client))!
+      const apply = vi.fn()
+      lp.schedule('https://kaspi.kz/p/1', apply)
+      await vi.advanceTimersByTimeAsync(200)
+      lp.schedule('https://kaspi.kz/p/2', apply)
+      await vi.advanceTimersByTimeAsync(299)
+      expect(client.linkPreview).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(1)
+      expect(client.linkPreview).toHaveBeenCalledTimes(1)
+      expect(client.linkPreview).toHaveBeenCalledWith('https://kaspi.kz/p/2')
+      expect(apply).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://kaspi.kz/p/2', title: 'Плед' }))
+
+      lp.schedule('https://kaspi.kz/p/3', apply)
+      lp.reset()
+      lp.schedule('https://kaspi.kz/p/4', apply)
+      scope.stop()
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(client.linkPreview).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('клинап Б12 clearNote: своё фото гасит «загрузите своё»', async () => {
+    const client = { linkPreview: vi.fn().mockRejectedValue(new LinkPreviewError('no image')) } as unknown as ApiClient
+    const lp = useLinkPreview(client)
+    await lp.load('https://shop.kz/p/9')
+    expect(lp.note.value).toBe(LINK_PHOTO_MISSED)
+    lp.clearNote()
+    expect(lp.note.value).toBeNull()
   })
 
   it('успех — файл картинки и название; та же ссылка повторно не грузится; отказ — строка «загрузите своё»', async () => {
