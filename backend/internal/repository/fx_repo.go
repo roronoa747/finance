@@ -24,6 +24,31 @@ func DayKey(day time.Time) string {
 	return day.Format(time.DateOnly)
 }
 
+// MissingDays lists the days of from..to not in checked, newest first — the order the
+// handler and cmd/fxbackfill ask the bank in.
+func MissingDays(checked map[string]bool, from, to time.Time) []time.Time {
+	var out []time.Time
+	for d := to; !d.Before(from); d = d.AddDate(0, 0, -1) {
+		if _, ok := checked[DayKey(d)]; !ok {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// SaveAsked stores one asked day's answer. An empty answer is stored as "nothing
+// published" only for a past day: today's rate may still come, and storing it empty
+// would make the hole permanent. saved reports whether anything was written.
+func SaveAsked(ctx context.Context, s FxRepository, day, today time.Time, rates map[string]float64) (saved bool, err error) {
+	if len(rates) == 0 && !day.Before(today) {
+		return false, nil
+	}
+	if err := s.Save(ctx, day, rates); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 type sqlFxRepository struct {
 	db *sql.DB
 }

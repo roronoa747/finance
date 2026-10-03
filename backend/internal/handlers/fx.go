@@ -128,12 +128,7 @@ func FxRatesHandler(client *fx.Client, store repository.FxRepository) http.Handl
 			errorJSON(w, http.StatusInternalServerError, "failed to read rates")
 			return
 		}
-		var missing []time.Time
-		for d := to; !d.Before(from); d = d.AddDate(0, 0, -1) {
-			if _, ok := checked[repository.DayKey(d)]; !ok {
-				missing = append(missing, d)
-			}
-		}
+		missing := repository.MissingDays(checked, from, to)
 		partial := false
 		if len(missing) > fxFetchLimit {
 			missing, partial = missing[:fxFetchLimit], true
@@ -188,10 +183,7 @@ func fillDays(parent context.Context, client *fx.Client, store repository.FxRepo
 				fail()
 				return
 			}
-			if len(rates) == 0 && !day.Before(today) {
-				return
-			}
-			if err := store.Save(parent, day, rates); err != nil {
+			if _, err := repository.SaveAsked(parent, store, day, today, rates); err != nil {
 				log.Printf("fx-rates: save day: %v", err)
 				fail()
 			}

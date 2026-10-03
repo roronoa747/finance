@@ -67,15 +67,10 @@ func run(ctx context.Context, client *fx.Client, store repository.FxRepository, 
 		return res, err
 	}
 
-	asked := false
-	for d := today; !d.Before(from); d = d.AddDate(0, 0, -1) {
-		if _, ok := checked[repository.DayKey(d)]; ok {
-			continue
-		}
-		if asked && pause > 0 {
+	for i, d := range repository.MissingDays(checked, from, today) {
+		if i > 0 && pause > 0 {
 			time.Sleep(pause)
 		}
-		asked = true
 
 		rates, err := client.Day(ctx, d)
 		if err != nil {
@@ -83,11 +78,12 @@ func run(ctx context.Context, client *fx.Client, store repository.FxRepository, 
 			res.failed++
 			continue
 		}
-		if len(rates) == 0 && !d.Before(today) {
-			continue
-		}
-		if err := store.Save(ctx, d, rates); err != nil {
+		saved, err := repository.SaveAsked(ctx, store, d, today, rates)
+		if err != nil {
 			return res, err
+		}
+		if !saved {
+			continue
 		}
 		res.filled++
 		if len(rates) > 0 {
