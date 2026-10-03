@@ -6,7 +6,8 @@ import { useFinanceStore, defaultSyncDoc } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { fxToTenge } from '@/lib/finance'
 import { authAs } from '@/test/planFamily'
-import type { FxExchange, Payment } from '@/types/finance'
+import { FX_BOOK_KEY, writeStorage } from '@/lib/storage'
+import type { FxExchange, Payment, RateBook } from '@/types/finance'
 import AccountSheet from './AccountSheet.vue'
 
 /**
@@ -37,7 +38,9 @@ afterEach(() => {
 const salary: Payment = { id: 's1', kind: 'salary', targetId: 'a', period: '2026-10', amount: 754_470, foreign: 1_500, currency: 'EUR', accountId: 'eur', by: 'a', at: '2026-10-03T06:00:00.000Z', updatedAt: '2026-10-03T06:00:00.000Z' }
 const exchange: FxExchange = { id: 'x1', by: 'a', accountId: 'eur', toAccountId: 'kzt', currency: 'EUR', foreign: 500, rate: 515, tenge: 257_500, period: '2026-10', at: '2026-10-03T08:00:00.000Z', updatedAt: '2026-10-03T08:00:00.000Z' }
 
-async function openEur() {
+async function openEur(book?: RateBook) {
+  // Книга курсов — из кэша устройства, как после входа (стор fx читает его при создании).
+  if (book) writeStorage(FX_BOOK_KEY, { book, covered: {} })
   const pinia = createPinia()
   setActivePinia(pinia)
   useAuthStore().setAuthData(authAs('member'))
@@ -60,9 +63,9 @@ async function openEur() {
   app.use(pinia)
   app.mount(root)
   await nextTick()
-  const field = (label: string) =>
-    [...document.querySelectorAll('[role="dialog"] label')].find((l) => l.textContent?.includes(label))!.querySelector('input')!
-  return { store, field }
+  const label = (text: string) => [...document.querySelectorAll('[role="dialog"] label')].find((l) => l.textContent?.includes(text))
+  const field = (text: string) => label(text)!.querySelector('input')!
+  return { store, field, label }
 }
 
 async function edit(input: HTMLInputElement, text: string) {
@@ -86,5 +89,22 @@ describe('критик Блока 13: курс валютного счёта', (
     expect(eur().amount).toBe(fxToTenge(1_000, 510))
     // Тенговый счёт обмен не потерял: 100 000 + 257 500.
     expect(store.accounts.find((a) => a.id === 'kzt')!.amount).toBe(357_500)
+  })
+})
+
+describe('ревью frontend Б13 Н-3: лист валютного счёта при курсе в книге', () => {
+  it('курс Нацбанка есть — одна строка «≈ N ₸ по курсу Нацбанка» (1 000 × 502,98 = 502 980 ₸), без поля курса и подписи «по этому курсу»', async () => {
+    const { store, label } = await openEur({ EUR: { '2026-10-03': 502.98 } })
+    const dialog = document.querySelector('[role="dialog"]')!.textContent!
+    expect(store.accounts.find((a) => a.id === 'eur')!.amount).toBe(502_980)
+    expect(dialog).toContain('по курсу Нацбанка')
+    expect(dialog).not.toContain('по этому курсу')
+    expect(label('Курс')).toBeUndefined()
+  })
+
+  it('книги нет — поле ручного курса и подпись «по этому курсу», как раньше', async () => {
+    const { label } = await openEur()
+    expect(label('Курс')).toBeDefined()
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain('по этому курсу')
   })
 })

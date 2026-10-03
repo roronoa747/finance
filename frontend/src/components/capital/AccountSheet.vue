@@ -2,8 +2,10 @@
 import { computed } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
+import { useFxStore } from '@/stores/fx'
+import { todayIso } from '@/lib/dates'
 import { money, plain, parseMoney, rateField, ratePct } from '@/lib/money'
-import { INFLATION, deposit as calcDeposit, fxToTenge, liveAccounts, liveGoals, realRate } from '@/lib/finance'
+import { INFLATION, deposit as calcDeposit, fxToTenge, liveAccounts, liveGoals, rateOn, realRate } from '@/lib/finance'
 import type { Account } from '@/types/finance'
 import { cn } from '@/lib/utils'
 
@@ -29,6 +31,7 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
+const fx = useFxStore()
 
 const activeAccount = computed(() => financeStore.accounts.find((a) => a.id === props.accountId))
 const accountSaved = useSavedMark(
@@ -53,6 +56,8 @@ function onForeignAmount(text: string) {
   const v = parseMoney(text)
   editAccount({ foreignAmount: v, amount: fxToTenge(v, activeAccount.value?.rate ?? 1) })
 }
+/** Курс Нацбанка сегодня из книги (Р-73): есть — тенге счёта по нему, ручной курс в расчёт не идёт и не показывается. */
+const nbRate = computed(() => (activeAccount.value?.currency ? rateOn(fx.book, activeAccount.value.currency, todayIso()) : null))
 function onAccountRate(text: string) {
   const v = parseFloat(text.replace(',', '.'))
   if (!Number.isFinite(v) || v <= 0) return
@@ -141,17 +146,22 @@ const accountRemoveWarning = computed(() => {
           <Field :label="`Сумма в ${activeAccount.currency}`">
             <NumFieldBlur :initial="plain(activeAccount.foreignAmount ?? 0)" class="mb-3" @commit="onForeignAmount" />
           </Field>
-          <Field :label="`Курс: сколько тенге за 1 ${activeAccount.currency}`">
-            <NumFieldBlur
-              :initial="String(activeAccount.rate ?? '').replace('.', ',')"
-              kind="rate"
-              class="mb-3"
-              @commit="onAccountRate"
-            />
-          </Field>
-          <p class="-mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-3">
-            В капитале счёт стоит как {{ money(activeAccount.amount) }} — по этому курсу.
+          <p v-if="nbRate" class="-mt-2.5 mb-3 text-[12px] text-ink-3 num">
+            ≈ {{ money(activeAccount.amount) }} по курсу Нацбанка
           </p>
+          <template v-else>
+            <Field :label="`Курс: сколько тенге за 1 ${activeAccount.currency}`">
+              <NumFieldBlur
+                :initial="String(activeAccount.rate ?? '').replace('.', ',')"
+                kind="rate"
+                class="mb-3"
+                @commit="onAccountRate"
+              />
+            </Field>
+            <p class="-mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-3">
+              В капитале счёт стоит как {{ money(activeAccount.amount) }} — по этому курсу.
+            </p>
+          </template>
         </template>
         <Field v-else label="Сумма, ₸">
           <NumFieldBlur
