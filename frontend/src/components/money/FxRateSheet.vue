@@ -2,8 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
-import { moneySigned as signed, plain } from '@/lib/money'
-import { MONTHS_NOM, addMonths, monthIn, monthKey } from '@/lib/dates'
+import { moneySigned as signed, plain, signTone as tone } from '@/lib/money'
+import { addMonths, monthIn, monthKey, monthShort } from '@/lib/dates'
 import { fxYearDelta, paydayIso, paydayRates, rateSeries, salaryOf } from '@/lib/finance'
 import { CURRENCY_SIGN, CURRENCY_WORD } from '@/lib/fx'
 import type { PersonId } from '@/types/finance'
@@ -37,8 +37,6 @@ watch(
   () => (picked.value = null),
 )
 const chosen = computed(() => months.value.find((m) => m.key === picked.value) ?? months.value[0] ?? null)
-
-const tone = (v: number) => (v < 0 ? 'text-destructive' : v > 0 ? 'text-ok' : 'text-ink')
 
 /* ---------- график: SVG по токенам, без библиотек ---------- */
 const W = 320
@@ -90,7 +88,7 @@ const chart = computed(() => {
 
       <div class="-mx-5 mb-2 flex gap-2 overflow-x-auto px-5 pb-0.5 [scrollbar-width:none]" role="group" aria-label="Месяц">
         <Chip v-for="m in months" :key="m.key" :on="m.key === chosen?.key" @click="picked = m.key">
-          {{ MONTHS_NOM[Number(m.key.slice(5)) - 1].slice(0, 3).toLowerCase() }}
+          {{ monthShort(m.key, false) }}
         </Chip>
       </div>
       <p v-if="chosen" class="mb-1 text-[14px] text-ink-2 num" data-month-line>

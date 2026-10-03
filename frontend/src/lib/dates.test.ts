@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { addedLabel, weekKey, weekRange, weekRangeLabel } from './dates'
+import { addedLabel, monthShort, weekKey, weekRange, weekRangeLabel } from './dates'
 
 describe('weekKey — ISO-неделя по Алматы', () => {
   afterEach(() => vi.useRealTimers())
@@ -65,5 +65,12 @@ describe('addedLabel — когда добавили или купили жел�
     expect(addedLabel('')).toBe('')
     expect(addedLabel(null)).toBe('')
     expect(addedLabel(undefined)).toBe('')
+  })
+})
+
+describe('monthShort — короткое имя месяца', () => {
+  it('с годом по умолчанию, без года — для ленты месяцев листа курса', () => {
+    expect(monthShort('2026-03')).toBe('мар 2026')
+    expect(monthShort('2026-03', false)).toBe('мар')
   })
 })

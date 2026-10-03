@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, plain, parseMoney } from '@/lib/money'
 import { todayIso } from '@/lib/dates'
-import { fxToTenge, liveExchanges, payableAccounts, rateOn, salaryExchange, salaryTenge } from '@/lib/finance'
+import { fxToTenge, liveExchanges, payableAccounts, rateOn, salaryCtxOf, salaryExchange, salaryTenge } from '@/lib/finance'
 import { CURRENCY_SIGN } from '@/lib/fx'
 import type { PersonId } from '@/types/finance'
 import Field from '@/components/kit/Field.vue'
@@ -31,7 +31,7 @@ const sign = computed(() => (info.value ? CURRENCY_SIGN[info.value.currency] : '
 /** Тенге зарплаты месяца (B2C-80, Р-74): обменянное по своему курсу + остаток по курсу дня зарплаты. */
 const monthTenge = computed(() => {
   const p = finance.people.find((x) => x.id === props.personId)
-  return p && info.value ? salaryTenge(p, props.period, { book: fx.book, payments: finance.payments, exchanges: finance.fxExchanges }).tenge : 0
+  return p && info.value ? salaryTenge(p, props.period, salaryCtxOf({ book: fx.book, payments: finance.payments, fxExchanges: finance.fxExchanges })).tenge : 0
 })
 const mine = computed(() => !auth.isViewer && auth.slot === props.personId)
 const canExchange = computed(() => mine.value && !!info.value && info.value.left > 0 && !!info.value.record.accountId)

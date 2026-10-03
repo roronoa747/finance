@@ -5,7 +5,7 @@ import { PhCaretRight } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
-import { money, moneyIn, moneySigned as signed } from '@/lib/money'
+import { money, moneyIn, moneySigned as signed, signTone } from '@/lib/money'
 import { monthFrom, monthKey } from '@/lib/dates'
 import { budgetAmounts, fxYearDelta, incomeBreakdownPath, incomeSplit, loadTag, nextSalaryChange, salaryCtxOf, salaryOf, salaryTenge, type IncomePartKey } from '@/lib/finance'
 import { CURRENCY_WORD } from '@/lib/fx'
@@ -112,7 +112,7 @@ const parts = computed(() => split.value.parts.map((p) => ({ ...p, ...LABEL[p.ke
         :aria-label="`Курс ${CURRENCY_WORD[year.currency].gen} за год`"
         @click="rateFor = p.id"
       >
-        <span :class="year.tenge < 0 ? 'text-destructive' : year.tenge > 0 ? 'text-ok' : 'text-ink-3'">
+        <span :class="signTone(year.tenge, 'text-ink-3')">
           {{ CURRENCY_WORD[year.currency].nom }} {{ signed(year.perUnit) }} за год · {{ signed(year.tenge) }}
         </span>
         <PhCaretRight :size="12" class="text-ink-3" />

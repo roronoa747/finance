@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils'
 
 import CurrencyChips from '@/components/kit/CurrencyChips.vue'
 import Field from '@/components/kit/Field.vue'
+import Hint from '@/components/kit/Hint.vue'
 import NbRateLine from '@/components/kit/NbRateLine.vue'
 import NumField from '@/components/kit/NumField.vue'
 import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
@@ -217,10 +218,10 @@ function planObligation() {
         <Field :label="`Сумма сейчас, ${CURRENCY_SIGN[obOwn.currency]}`">
           <NumFieldBlur :initial="plain(obOwn.amount)" class="mb-1" @commit="onObligationAmount" />
         </Field>
-        <p v-if="obOwn.currency !== 'KZT'" class="-mt-1 mb-1.5 text-[12px] text-ink-3 num">≈ {{ money(obCurrent) }} по курсу Нацбанка</p>
-        <p class="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-3">
-          Это исправление: сумма была введена неверно. Если платёж меняется с какого-то месяца —
-          не трогайте это поле, а запланируйте изменение ниже.
+        <p class="-mt-1 mb-3 flex items-center gap-1 text-[12px] text-ink-3 num">
+          <template v-if="obOwn.currency !== 'KZT'">≈ {{ money(obCurrent) }} по курсу Нацбанка ·</template>
+          только исправить ошибку
+          <Hint>Сумма была введена неверно. Если платёж меняется с какого-то месяца — не трогайте это поле, а запланируйте изменение ниже.</Hint>
         </p>
 
         <Field label="День платежа">
