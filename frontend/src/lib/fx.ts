@@ -7,6 +7,15 @@ export const CURRENCIES: Currency[] = ['KZT', 'USD', 'EUR', 'RUB', 'CNY']
 /** Знаки валют — одна таблица для форм и подписей (B2C-77). */
 export const CURRENCY_SIGN: Record<Currency, string> = { KZT: '₸', USD: '$', EUR: '€', RUB: '₽', CNY: '¥' }
 
+/** Валюта словом (Р-76): «евро −134 ₸ за год», заголовок листа «Курс евро» — родительный. */
+export const CURRENCY_WORD: Record<Currency, { nom: string; gen: string }> = {
+  KZT: { nom: 'тенге', gen: 'тенге' },
+  USD: { nom: 'доллар', gen: 'доллара' },
+  EUR: { nom: 'евро', gen: 'евро' },
+  RUB: { nom: 'рубль', gen: 'рубля' },
+  CNY: { nom: 'юань', gen: 'юаня' },
+}
+
 /** Имя валютного счёта, созданного одним нажатием под валютную зарплату (B2C-79). */
 export const FX_ACCOUNT_NAME: Record<Currency, string> = {
   KZT: 'Счёт',

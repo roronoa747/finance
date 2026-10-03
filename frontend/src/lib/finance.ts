@@ -1028,6 +1028,60 @@ export function salaryTenge(p: Person, key = monthKey(), ctx: SalaryCtx = {}): S
   return { tenge: exchangedTenge + (rate ? fxToTenge(left, rate) : 0), currency, exchanged, exchangedTenge, left, rate, rateDay };
 }
 
+/**
+ * Сколько курс отнял или добавил за год (Р-76): оклад месяца в валюте × (курс на день зарплаты −
+ * курс дня зарплаты того же месяца год назад), каждая сторона — `fxToTenge`. `perUnit` — разница
+ * курса за единицу до тенге (подпись «евро −134 ₸ за год»). Тенговый оклад или нет курса год назад
+ * (книга короче) — null.
+ */
+export function fxYearDelta(p: Person, key = monthKey(), book?: RateBook | null) {
+  const d = fxMonthDelta(p, key, addMonths(key, -12), book);
+  if (!d) return null;
+  return { currency: d.currency, rateNow: d.rateNow, rateThen: d.rate, perUnit: Math.round(d.rateNow - d.rate), tenge: -d.tenge };
+}
+
+/**
+ * Зарплата месяца `key` против любого месяца `otherKey` (лист «Курс евро», Р-76): курс того месяца на
+ * день зарплаты и сколько бы оклад этого месяца дал по нему — «в марте по 590 ₸ · было бы +126 000 ₸»
+ * (`tenge` = по тому курсу − по нынешнему). Тенговый оклад или нет курса — null.
+ */
+export function fxMonthDelta(p: Person, key: string, otherKey: string, book?: RateBook | null) {
+  const s = salaryOf(p, key);
+  if (s.currency === 'KZT') return null;
+  const rateNow = rateOn(book, s.currency, paydayIso(p, key), s.rate);
+  const rate = rateOn(book, s.currency, paydayIso(p, otherKey));
+  if (!rateNow || !rate) return null;
+  return {
+    currency: s.currency,
+    rateNow,
+    rate,
+    perUnit: Math.round(rate - rateNow),
+    tenge: fxToTenge(s.amount, rate) - fxToTenge(s.amount, rateNow),
+  };
+}
+
+/** Курсы валюты по книге за период `[from, to]` по дням — линия графика листа курса. */
+export function rateSeries(book: RateBook | null | undefined, code: Currency, from: string, to: string): { day: string; rate: number }[] {
+  return Object.entries(book?.[code] ?? {})
+    .filter(([d]) => d >= from && d <= to)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([day, rate]) => ({ day, rate }));
+}
+
+/**
+ * Дни зарплаты прошлых `n` месяцев до `key` (старые первыми) с курсом на них и разницей против
+ * `key` (`fxMonthDelta`) — отметки графика и чипы месяцев листа. Месяц без курса — пропускается.
+ */
+export function paydayRates(p: Person, key: string, book: RateBook | null | undefined, n = 12) {
+  const out: { key: string; day: string; rate: number; tenge: number }[] = [];
+  for (let i = n; i >= 1; i--) {
+    const k = addMonths(key, -i);
+    const d = fxMonthDelta(p, key, k, book);
+    if (d) out.push({ key: k, day: paydayIso(p, k), rate: d.rate, tenge: d.tenge });
+  }
+  return out;
+}
+
 /** Ближайшее запланированное изменение оклада; `delta` — в тенге (валютный — по книге). */
 export function nextSalaryChange(p: Person, key = monthKey(), book?: RateBook | null) {
   const future = (p.salaryVersions ?? [])
