@@ -102,7 +102,8 @@ const wishPhotoNote = ref<string | null>(null)
 const leaving = new AbortController()
 onScopeDispose(() => leaving.abort())
 onMounted(() => {
-  void fillWishPhotos(financeStore, undefined, leaving.signal)
+  // Фото пишет только участник: у viewer ручка превью кончилась бы 403 (как `retryTemplatePhotos` на «Мечтах»).
+  if (canEdit.value) void fillWishPhotos(financeStore, undefined, leaving.signal)
 })
 
 // Ссылка на товар (B2C-66): вставили — фото и название со страницы; название правится, цену вводит человек.

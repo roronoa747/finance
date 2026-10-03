@@ -8,7 +8,7 @@ import { DEMO_TOKEN, useAuthStore } from '@/stores/auth'
 import { DEMO_HOUSEHOLD, useFinanceStore } from '@/stores/finance'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
 import { apiClient, LinkPreviewError } from '@/api/client'
-import { LINK_PHOTO_TRIED_KEY } from '@/lib/photos/wishLinkPhotos'
+import { LINK_PHOTO_TRIED_KEY } from '@/lib/storage'
 import type { WishItem } from '@/types/finance'
 import Wishes from './Wishes.vue'
 
@@ -52,10 +52,10 @@ const old = (id: string, url: string, extra: Partial<WishItem> = {}): WishItem =
   id, name: id, price: 100_000, by: 'a', addedOn: '2026-09-20', bought: false, url, updatedAt: T0, ...extra,
 })
 
-async function open(wishlist: WishItem[], demo = false) {
+async function open(wishlist: WishItem[], demo = false, role: 'member' | 'viewer' = 'member') {
   const pinia = createPinia()
   setActivePinia(pinia)
-  const auth = authAs('member', 'a')
+  const auth = authAs(role, 'a')
   useAuthStore().setAuthData(demo ? { ...auth, token: DEMO_TOKEN, household: { ...auth.household, id: DEMO_HOUSEHOLD } } : auth)
   const finance = useFinanceStore()
   // Демо — документ семьи `DEMO_HOUSEHOLD` на телефоне (как `startDemoMode`).
@@ -101,7 +101,7 @@ describe('B2C-68: фото у старых желаний со ссылкой', 
   })
 
   it('нет картинки — адрес запоминается на телефоне и при следующем открытии не запрашивается', async () => {
-    const preview = vi.spyOn(apiClient, 'linkPreview').mockRejectedValue(new LinkPreviewError('no image'))
+    const preview = vi.spyOn(apiClient, 'linkPreview').mockRejectedValue(new LinkPreviewError('no image', 422))
     await open([old('w1', 'https://kaspi.kz/shop/p/no-pic/')])
     await settle()
     expect(preview).toHaveBeenCalledTimes(1)
@@ -114,6 +114,34 @@ describe('B2C-68: фото у старых желаний со ссылкой', 
     await open([old('w1', 'https://kaspi.kz/shop/p/no-pic/')])
     await settle()
     expect(preview).toHaveBeenCalledTimes(1)
+  })
+
+  it('сервер не ответил по существу (5xx, вход истёк) — адрес не запоминается, обход прерван после первого; следующее открытие спросит снова', async () => {
+    const preview = vi.spyOn(apiClient, 'linkPreview').mockRejectedValue(new LinkPreviewError('unavailable', 503))
+    const two = [old('w1', 'https://kaspi.kz/shop/p/one/'), old('w2', 'https://kaspi.kz/shop/p/two/')]
+    await open(two)
+    await settle()
+    expect(preview).toHaveBeenCalledTimes(1)
+    expect(localStorage.getItem(LINK_PHOTO_TRIED_KEY)).toBeNull()
+    expect(photos.uploaded).toHaveLength(0)
+
+    app!.unmount()
+    app = null
+    document.body.innerHTML = ''
+    preview.mockRejectedValue(new LinkPreviewError('unavailable', 401))
+    await open(two)
+    await settle()
+    expect(preview).toHaveBeenCalledTimes(2)
+    expect(localStorage.getItem(LINK_PHOTO_TRIED_KEY)).toBeNull()
+  })
+
+  it('viewer — ни одного вызова: фото пишет только участник (ручка — 403)', async () => {
+    const preview = vi.spyOn(apiClient, 'linkPreview')
+    await open([old('w1', 'https://kaspi.kz/shop/p/dyson-1/')], false, 'viewer')
+    await settle()
+    expect(preview).not.toHaveBeenCalled()
+    expect(photos.uploaded).toHaveLength(0)
+    expect(localStorage.getItem(LINK_PHOTO_TRIED_KEY)).toBeNull()
   })
 
   it('демо — ни одного вызова превью и загрузки', async () => {

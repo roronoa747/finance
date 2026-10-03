@@ -1,7 +1,7 @@
 import { apiClient, LinkPreviewError } from '@/api/client'
 import type { WishItem } from '@/types/finance'
 import { liveWishlist } from '@/lib/finance'
-import { readStorage, writeStorage } from '@/lib/storage'
+import { LINK_PHOTO_TRIED_KEY, readStorage, writeStorage } from '@/lib/storage'
 import { compressImage } from './compress'
 import { deletePhoto, uploadPhoto } from './store'
 
@@ -10,10 +10,10 @@ import { deletePhoto, uploadPhoto } from './store'
  * сохранённое до Блока 12 или добавленное без сети — получает картинку со страницы при открытии
  * «Желаний». Тот же путь, что при вставке ссылки (`useLinkPreview`): превью → сжатие → `uploadPhoto`
  * → `setWishPhoto`. Обход бережный к ручке без лимита: по одному, не больше `LINK_PHOTOS_PER_OPEN`
- * за открытие экрана; адрес, где картинки нет, запоминается на телефоне и больше не спрашивается.
- * Без кнопок и текста — фото просто появляются в плитках (правило 12).
+ * за открытие экрана; адрес, где картинки нет, запоминается на телефоне (`LINK_PHOTO_TRIED_KEY`,
+ * выход стирает) и больше не спрашивается. Без кнопок и текста — фото просто появляются в плитках
+ * (правило 12). Зовёт только участник: у viewer ручка — 403.
  */
-export const LINK_PHOTO_TRIED_KEY = 'ff_link_photo_tried'
 /** Сколько ссылок спрашивается за одно открытие экрана. */
 export const LINK_PHOTOS_PER_OPEN = 10
 /** Сколько адресов без картинки помнит телефон. */
@@ -30,8 +30,9 @@ export type TriedLinks = { has(url: string): boolean; add(url: string): void }
 
 export type WishPhotoDeps = {
   /**
-   * Картинка со страницы. `null` — ручка отказала (нет картинки, адрес закрыт, страница недоступна):
-   * адрес больше не спрашивается. Исключение — сети нет: обход прерывается, адреса не запоминаются.
+   * Картинка со страницы. `null` — ручка посмотрела адрес и отказала (нет картинки, адрес закрыт,
+   * страница недоступна): адрес больше не спрашивается. Исключение — до адреса не дошло (сети нет,
+   * вход истёк, лимит, сервер упал): обход прерывается, адреса не запоминаются.
    */
   preview: (url: string) => Promise<Blob | null>
   compress: (blob: Blob) => Promise<{ blob: Blob }>
@@ -56,15 +57,23 @@ export function triedLinks(): TriedLinks {
   }
 }
 
+/**
+ * Превью через ручку: `null` — только когда она посмотрела адрес и отказала (400 `bad url`/`blocked`,
+ * 422 `no image`/`too large`/`timeout`/`unavailable`). Сети нет (`offline`), 401, 403, 429, 5xx — адрес
+ * не виноват, запоминать его нельзя: иначе после входа заново или починки сервера фото не придёт
+ * никогда — исключение наверх, обход прерывается.
+ */
+export async function previewLink(url: string): Promise<Blob | null> {
+  try {
+    return (await apiClient.linkPreview(url)).blob
+  } catch (e) {
+    if (e instanceof LinkPreviewError && (e.status === 400 || e.status === 422)) return null
+    throw e
+  }
+}
+
 const defaults = (): WishPhotoDeps => ({
-  preview: async (url) => {
-    try {
-      return (await apiClient.linkPreview(url)).blob
-    } catch (e) {
-      if (e instanceof LinkPreviewError && e.reason !== 'offline') return null
-      throw e
-    }
-  },
+  preview: previewLink,
   compress: (blob) => compressImage(blob),
   upload: (blob) => uploadPhoto(blob),
   remove: (id) => deletePhoto(id),
@@ -106,7 +115,7 @@ export async function fillWishPhotos(store: WishPhotoStore, deps: WishPhotoDeps 
       try {
         picture = await deps.preview(wish.url)
       } catch {
-        break // сети нет — остальные тоже не получатся; адреса не виноваты
+        break // до адреса не дошло (сеть, вход, лимит, сервер) — остальные тоже не получатся; адреса не виноваты
       }
       if (!picture) {
         deps.tried.add(wish.url)

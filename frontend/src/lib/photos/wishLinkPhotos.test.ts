@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WishItem } from '@/types/finance'
-import { LINK_PHOTO_TRIED_KEY, LINK_PHOTOS_PER_OPEN, TRIED_MAX, fillWishPhotos, triedLinks, wishesNeedingPhoto, type WishPhotoDeps, type WishPhotoStore } from './wishLinkPhotos'
+import { apiClient, LinkPreviewError } from '@/api/client'
+import { LINK_PHOTO_TRIED_KEY } from '@/lib/storage'
+import { LINK_PHOTOS_PER_OPEN, TRIED_MAX, fillWishPhotos, previewLink, triedLinks, wishesNeedingPhoto, type WishPhotoDeps, type WishPhotoStore } from './wishLinkPhotos'
 
 /**
  * B2C-68: фото у старых желаний со ссылкой — обход при открытии «Желаний»: по одному, не больше 10,
@@ -151,6 +153,24 @@ describe('lib/photos/wishLinkPhotos — фото у старых желаний 
     const none = fakeDeps(async () => picture())
     expect(await fillWishPhotos(demo, none)).toBe(0)
     expect(none.previewed).toEqual([])
+  })
+
+  it('previewLink: отказ ручки по адресу (400 / 422) → null; сети нет, 401, 403, 429, 5xx → исключение (адрес не запоминается)', async () => {
+    const spy = vi.spyOn(apiClient, 'linkPreview')
+    try {
+      spy.mockResolvedValueOnce({ title: 'x', blob: picture() })
+      expect((await previewLink('https://kaspi.kz/p/1'))?.type).toBe('image/jpeg')
+      for (const [reason, status] of [['no image', 422], ['too large', 422], ['timeout', 422], ['unavailable', 422], ['bad url', 400], ['blocked', 400]] as const) {
+        spy.mockRejectedValueOnce(new LinkPreviewError(reason, status))
+        expect(await previewLink('https://kaspi.kz/p/1'), reason).toBeNull()
+      }
+      for (const [reason, status] of [['offline', undefined], ['unavailable', 401], ['unavailable', 403], ['unavailable', 429], ['unavailable', 503]] as const) {
+        spy.mockRejectedValueOnce(new LinkPreviewError(reason, status))
+        await expect(previewLink('https://kaspi.kz/p/1'), `${reason} ${status}`).rejects.toBeInstanceOf(LinkPreviewError)
+      }
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   describe('triedLinks — память на устройстве', () => {
