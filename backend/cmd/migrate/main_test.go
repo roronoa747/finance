@@ -38,9 +38,9 @@ func TestPostgresMigrateTwiceIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 000001: 6 таблиц + schema_migrations; 000002 (выписки): statement_uploads, operations;
-	// 000003 (фото, B2C-16): photos.
+	// 000003 (фото, B2C-16): photos; 000004 (курсы, B2C-76): fx_rates, fx_days.
 	files, _ := fs.Glob(migrations.FS, "*.sql")
-	if applied != len(files) || tables != 10 {
-		t.Errorf("expected %d migrations and 10 tables, got %d and %d", len(files), applied, tables)
+	if applied != len(files) || tables != 12 {
+		t.Errorf("expected %d migrations and 12 tables, got %d and %d", len(files), applied, tables)
 	}
 }

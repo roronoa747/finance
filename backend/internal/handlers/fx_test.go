@@ -24,7 +24,7 @@ func TestFxRateHandlerServesRatesWithCDNCache(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	FxRateHandler(c)(rec, httptest.NewRequest(http.MethodGet, "/api/fx-rate", nil))
+	FxRateHandler(c, nil)(rec, httptest.NewRequest(http.MethodGet, "/api/fx-rate", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -47,7 +47,7 @@ func TestFxRateHandlerBankDownIs502(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	FxRateHandler(c)(rec, httptest.NewRequest(http.MethodGet, "/api/fx-rate", nil))
+	FxRateHandler(c, nil)(rec, httptest.NewRequest(http.MethodGet, "/api/fx-rate", nil))
 
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502, got %d", rec.Code)

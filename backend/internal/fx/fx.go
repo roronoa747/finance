@@ -86,12 +86,7 @@ func (c *Client) Rates(ctx context.Context) (*Rates, error) {
 			continue // the Edge Function also skipped failed days
 		}
 
-		picked := make(map[string]float64, len(Supported))
-		for _, code := range Supported {
-			if v, ok := all[code]; ok {
-				picked[code] = v
-			}
-		}
+		picked := pickSupported(all)
 		if len(picked) == 0 {
 			continue
 		}
@@ -101,6 +96,42 @@ func (c *Client) Rates(ctx context.Context) (*Rates, error) {
 		return c.cached, nil
 	}
 	return nil, ErrNoRates
+}
+
+// Today is the current calendar date in Almaty, as a UTC midnight (the date the bank uses).
+func (c *Client) Today() time.Time {
+	y, m, d := c.Now().In(almaty).Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+}
+
+// Day asks the bank for one date's rates of the Supported currencies, bypassing the
+// cache. An empty map means nothing was published for that date.
+func (c *Client) Day(ctx context.Context, day time.Time) (map[string]float64, error) {
+	all, err := c.fetchDay(ctx, day)
+	if err != nil {
+		return nil, err
+	}
+	return pickSupported(all), nil
+}
+
+func pickSupported(all map[string]float64) map[string]float64 {
+	picked := make(map[string]float64, len(Supported))
+	for _, code := range Supported {
+		if v, ok := all[code]; ok {
+			picked[code] = v
+		}
+	}
+	return picked
+}
+
+// IsSupported reports whether code is one of the Supported currencies.
+func IsSupported(code string) bool {
+	for _, c := range Supported {
+		if c == code {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Client) fetchDay(ctx context.Context, day time.Time) (map[string]float64, error) {
