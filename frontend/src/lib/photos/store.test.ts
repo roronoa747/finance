@@ -191,5 +191,16 @@ describe('lib/photos/store', () => {
       await flush()
       expect(files.size).toBe(0)
     })
+
+    it('object URL фото с диска освобождается при выходе, как прежде; сама копия на диске остаётся (критик)', async () => {
+      fetchImpl = async () => ok()
+      const { files, disk } = memDisk()
+      files.set('ph-d', new Blob([new Uint8Array([1])], { type: 'image/webp' }))
+      const url = await photoUrl('ph-d', client(), disk)
+      expect(photoCalls()).toHaveLength(0)
+      releasePhotos()
+      expect(revoked).toContain(url)
+      expect(files.has('ph-d')).toBe(true)
+    })
   })
 })
