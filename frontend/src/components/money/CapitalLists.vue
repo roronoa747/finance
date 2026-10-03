@@ -5,7 +5,7 @@ import { PhBank, PhCaretRight, PhCoins, PhCreditCard, PhFolderSimple, PhPlus, Ph
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain, rateField } from '@/lib/money'
-import { MONTHS_PRE, monthKey } from '@/lib/dates'
+import { monthIn, monthKey } from '@/lib/dates'
 import {
   amountTotal,
   duesTag,
@@ -75,7 +75,7 @@ const dues = computed(() => monthDues({ obligations: financeStore.obligations, c
 const duesStatus = computed(() => duesTag(dues.value))
 // Первая строка «Платежей» (B2C-70, владелец): «Осталось в <месяце>» крупно и «из <всего>»; всё оплачено — «Всё оплачено» и итог.
 const totals = computed(() => duesTotals(dues.value))
-const monthPre = computed(() => MONTHS_PRE[Number(key.value.slice(5)) - 1])
+const monthPre = computed(() => monthIn(key.value, false))
 
 type Line = { id: string; day: number; item: { kind: 'credit'; credit: Credit } | { kind: 'obligation'; obligation: Obligation } }
 // Один список по дню: кредиты, ждущие платежа в этом месяце (как `monthDues`), и обязательства вне
