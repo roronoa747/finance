@@ -17,8 +17,19 @@ describe('lib/goalTemplates — шаблоны целей (Р-28, B2C-17)', () =
     }
   })
 
-  it('пять типов из брифа и 8–12 направлений путешествий', () => {
-    expect(GOAL_TYPES.map((k) => k.type)).toEqual(['car', 'home', 'travel', 'tech', 'health'])
+  it('B2C-64: шесть новых тем — свой тип и плитка у каждой; ни одна картинка и страница фото не повторяется', () => {
+    const themes = { wedding: 'Свадьба', baby: 'Ребёнок', study: 'Учёба', renovation: 'Ремонт', cushion: 'Подушка', hajj: 'Хадж, Умра' }
+    for (const [type, name] of Object.entries(themes)) {
+      expect(GOAL_TYPES.find((k) => k.type === type)?.name, type).toBe(name)
+      expect(templateById(type)?.type, type).toBe(type)
+      expect(templateImageUrl(templateById(type)!, 600)).toMatch(/^https:\/\/images\.unsplash\.com\/photo-\d+-[0-9a-f]+\?w=600&q=80&fm=jpg&fit=crop$/)
+    }
+    expect(new Set(GOAL_TEMPLATES.map((t) => t.photo.unsplashId)).size).toBe(GOAL_TEMPLATES.length)
+    expect(new Set(GOAL_TEMPLATES.map((t) => t.photo.pageId)).size).toBe(GOAL_TEMPLATES.length)
+  })
+
+  it('типы из брифа и пула B2C-64 (одиннадцать) и 8–12 направлений путешествий', () => {
+    expect(GOAL_TYPES.map((k) => k.type)).toEqual(['car', 'home', 'travel', 'tech', 'health', 'wedding', 'baby', 'study', 'renovation', 'cushion', 'hajj'])
     for (const k of GOAL_TYPES) expect(templateById(k.type)?.type).toBe(k.type)
     expect(TRAVEL_DIRECTIONS.length).toBeGreaterThanOrEqual(8)
     expect(TRAVEL_DIRECTIONS.length).toBeLessThanOrEqual(12)

@@ -9,8 +9,9 @@ import type { HueKey } from '@/lib/palette'
  * (правило 12 «образ вместо текста»): у каждого — фото, на странице которого указано это место
  * (`place` — строка места со страницы, как её печатает Unsplash; сверено 2026-09-28, возврат
  * приёмки Блока 3 п. 6). Тип «Путешествие» места не называет — его фото утверждено в §1.1.
+ * Пул шире (B2C-64): шесть тем — у каждой свой тип и своя плитка в сетке «На что копим?».
  */
-export type GoalTemplateType = 'car' | 'home' | 'travel' | 'tech' | 'health'
+export type GoalTemplateType = 'car' | 'home' | 'travel' | 'tech' | 'health' | 'wedding' | 'baby' | 'study' | 'renovation' | 'cushion' | 'hajj'
 
 export interface GoalTemplate {
   id: string
@@ -35,6 +36,12 @@ export const GOAL_TYPES: { type: GoalTemplateType; name: string }[] = [
   { type: 'travel', name: 'Путешествие' },
   { type: 'tech', name: 'Техника' },
   { type: 'health', name: 'Здоровье' },
+  { type: 'wedding', name: 'Свадьба' },
+  { type: 'baby', name: 'Ребёнок' },
+  { type: 'study', name: 'Учёба' },
+  { type: 'renovation', name: 'Ремонт' },
+  { type: 'cushion', name: 'Подушка' },
+  { type: 'hajj', name: 'Хадж, Умра' },
 ]
 
 const photo = (unsplashId: string, pageId: string, author: string, authorUrl: string, place?: string) => ({ unsplashId, pageId, author, authorUrl, ...(place ? { place } : {}) })
@@ -46,6 +53,13 @@ export const GOAL_TEMPLATES: GoalTemplate[] = [
   { id: 'travel', name: 'Путешествие', type: 'travel', hue: 'blue', photo: photo('21/string-lights.JPG', 't05kfHeygbE', 'Matthew Skinner', 'https://unsplash.com/@matthewskinner') },
   { id: 'tech', name: 'Техника', type: 'tech', hue: 'indigo', photo: photo('19/desktop.JPG', 'ICW6QYOcdlg', 'Galymzhan Abdugalimov', 'https://unsplash.com/@galymzhan') },
   { id: 'health', name: 'Здоровье', type: 'health', hue: 'green', photo: photo('19/nomad.JPG', 'tvicgTdh7Fg', 'Danka & Peter', 'https://unsplash.com/@dankapeter') },
+  // Темы пула (B2C-64): «Ребёнок» — без людей, «Хадж, Умра» — Зелёный купол Медины без людей.
+  { id: 'wedding', name: 'Свадьба', type: 'wedding', hue: 'plum', photo: photo('photo-1515934751635-c81c6bc9a2d8', 'M2T1j-6Fn8w', 'Beatriz Pérez Moya', 'https://unsplash.com/@beatriz_perez') },
+  { id: 'baby', name: 'Ребёнок', type: 'baby', hue: 'teal', photo: photo('photo-1542901689-8917f44e3541', 'e1Q-ZCzDuUQ', 'charlesdeluvio', 'https://unsplash.com/@charlesdeluvio') },
+  { id: 'study', name: 'Учёба', type: 'study', hue: 'indigo', photo: photo('photo-1564981797816-1043664bf78d', 'n4y3eiQSIoc', 'Drahomír Hugo Posteby-Mach', 'https://unsplash.com/@postebymach') },
+  { id: 'renovation', name: 'Ремонт', type: 'renovation', hue: 'brick', photo: photo('photo-1525909002-1b05e0c869d8', '46juD4zY1XA', 'David Pisnoy', 'https://unsplash.com/@davidpisnoy') },
+  { id: 'cushion', name: 'Подушка', type: 'cushion', hue: 'ochre', photo: photo('photo-1607863680198-23d4b2565df0', '5OUMf1Mr5pU', 'Andre Taissin', 'https://unsplash.com/@andretaissin') },
+  { id: 'hajj', name: 'Хадж, Умра', type: 'hajj', hue: 'green', photo: photo('photo-1765892272462-bad4a8ba0fb9', 'rxk0urG5ZLc', 'Tibvia', 'https://unsplash.com/@tibvia') },
   // Направления (тип «Путешествие»): место — со страницы фото.
   { id: 'japan', name: 'Япония', type: 'travel', hue: 'plum', photo: photo('photo-1624253321171-1be53e12f5f4', 'SlIl9eZjWUc', 'Roméo A.', 'https://unsplash.com/@gronemo', 'Kyoto, Préfecture de Kyoto, Japon') },
   { id: 'turkey', name: 'Турция', type: 'travel', hue: 'teal', photo: photo('photo-1631152282084-b8f1b380ccab', 'f7oe3-tlm0I', 'yyzvic', 'https://unsplash.com/@yyzvic', 'Cappadocia, Avanos, Turkey') },
