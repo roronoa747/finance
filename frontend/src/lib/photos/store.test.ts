@@ -1,6 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiClient } from '@/api/client'
-import { cachedPhotos, deletePhoto, forgetPhoto, photoUrl, releasePhotos, uploadPhoto } from './store'
+import type { PhotoDisk } from './disk'
+import { cachedPhotos, clearPhotoDisk, deletePhoto, forgetPhoto, photoUrl, releasePhotos, uploadPhoto } from './store'
+
+/** Диск телефона в памяти — по интерфейсу `PhotoDisk`. */
+function memDisk() {
+  const files = new Map<string, Blob>()
+  const disk: PhotoDisk = {
+    get: async (id) => files.get(id) ?? null,
+    put: async (id, blob) => void files.set(id, blob),
+    remove: async (id) => void files.delete(id),
+    clear: async () => files.clear(),
+  }
+  return { files, disk }
+}
+
+const flush = () => new Promise((r) => setTimeout(r, 0))
 
 /** Фото на телефоне (B2C-17): загрузка с типом и токеном, кэш object URL, 404 → null, освобождение. */
 describe('lib/photos/store', () => {
@@ -98,5 +113,83 @@ describe('lib/photos/store', () => {
     releasePhotos()
     expect(revoked).toHaveLength(3)
     expect(cachedPhotos()).toBe(0)
+  })
+
+  describe('диск телефона (B2C-71)', () => {
+    const ok = () => new Response(new Uint8Array([7, 7, 7]), { status: 200, headers: { 'Content-Type': 'image/webp' } })
+    const photoCalls = () => calls.filter((x) => x.url.includes('/photos/') && !x.init?.method)
+
+    it('из сети фото ложится на диск; после «перезапуска» (память сброшена) — с диска, без запроса', async () => {
+      fetchImpl = async () => ok()
+      const { files, disk } = memDisk()
+      const c = client()
+      expect(await photoUrl('ph-1', c, disk)).toBe('blob:0:3')
+      await flush()
+      expect(files.has('ph-1')).toBe(true)
+
+      releasePhotos()
+      calls.length = 0
+      expect(await photoUrl('ph-1', c, disk)).toBe('blob:1:3')
+      expect(photoCalls()).toHaveLength(0)
+    })
+
+    it('404 на диск не пишется; сбой сети — тоже', async () => {
+      const { files, disk } = memDisk()
+      fetchImpl = async () => new Response('{"error":"photo not found"}', { status: 404, headers: { 'Content-Type': 'application/json' } })
+      expect(await photoUrl('gone', client(), disk)).toBeNull()
+      fetchImpl = async () => {
+        throw new TypeError('Failed to fetch')
+      }
+      expect(await photoUrl('offline', client(), disk)).toBeNull()
+      await flush()
+      expect(files.size).toBe(0)
+    })
+
+    it('forgetPhoto и deletePhoto убирают копию с диска', async () => {
+      fetchImpl = async (_url, init) => (init?.method === 'DELETE' ? new Response(null, { status: 204 }) : ok())
+      const { files, disk } = memDisk()
+      const c = client()
+      await photoUrl('ph-1', c, disk)
+      await photoUrl('ph-2', c, disk)
+      await flush()
+      forgetPhoto('ph-1', disk)
+      await deletePhoto('ph-2', c, disk)
+      await flush()
+      expect(files.size).toBe(0)
+    })
+
+    it('диск бросает на всём — фото всё равно из сети, экран не падает', async () => {
+      fetchImpl = async () => ok()
+      const boom = async () => {
+        throw new Error('QuotaExceededError')
+      }
+      const disk: PhotoDisk = { get: boom, put: boom, remove: boom, clear: boom }
+      expect(await photoUrl('ph-1', client(), disk)).toBe('blob:0:3')
+      forgetPhoto('ph-1', disk)
+      await clearPhotoDisk(disk)
+      await flush()
+    })
+
+    it('uploadPhoto кладёт свою картинку на диск; стирание во время загрузки — не кладёт', async () => {
+      const { files, disk } = memDisk()
+      fetchImpl = async () => new Response(JSON.stringify({ id: 'ph-up' }), { status: 201, headers: { 'Content-Type': 'application/json' } })
+      const pic = new Blob([new Uint8Array([1, 2])], { type: 'image/webp' })
+      await uploadPhoto(pic, {}, client(), disk)
+      await flush()
+      expect(files.get('ph-up')).toBe(pic)
+
+      let release!: () => void
+      const gate = new Promise<void>((r) => (release = r))
+      fetchImpl = async () => {
+        await gate
+        return ok()
+      }
+      const showing = photoUrl('late', client(), disk)
+      await clearPhotoDisk(disk)
+      release()
+      await showing
+      await flush()
+      expect(files.size).toBe(0)
+    })
   })
 })
