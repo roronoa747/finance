@@ -73,8 +73,9 @@
   B2C-25 ставит Google и «с кем» **перед** `landingPath`, не вместо: `Access.vue` уже переходит по нему.
 - **Выход и устройство:** `stores/auth.ts` `clearAuth()` зовёт `releasePhotos()`; `LOCAL_KEYS` в
   `stores/finance.ts` — что стирает выход (документы и rev, `unsent`, `ff_doc_household`,
-  `OPERATIONS_STORAGE_KEYS` включая `declined`, `START_ANSWERED_KEY`); остаются на устройстве
-  осознанно: `MONTH_END_KEY` (`lib/storage.ts`), `ff_wishes_view` (Wishes.vue), тема/палитра.
+  `OPERATIONS_STORAGE_KEYS` включая `declined`, `START_ANSWERED_KEY`, `MONTH_END_KEY` — с клинапа Блока 3,
+  `LINK_PHOTO_TRIED_KEY` — возврат смоука Блока 12; ключи — `lib/storage.ts`); остаются на устройстве
+  осознанно: `ff_wishes_view` (Wishes.vue), тема/палитра.
   Хвост RP «старт всегда полный синк» (B2C-25) — `syncEngine.ts` без изменений в Блоке 3.
 - **`/settings`** (`views/Settings.vue`): карточки «Оформление» (`AppearancePanel`), «Разбор выписок»
   (`ParseSettings`, только member), «С кем» (участники `people` с `joined`, `SyncBadge` — шторка с
