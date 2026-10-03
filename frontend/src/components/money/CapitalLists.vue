@@ -5,10 +5,11 @@ import { PhBank, PhCaretRight, PhCoins, PhCreditCard, PhFolderSimple, PhPlus, Ph
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain, rateField } from '@/lib/money'
-import { monthKey } from '@/lib/dates'
+import { MONTHS_PRE, monthKey } from '@/lib/dates'
 import {
   amountTotal,
   duesTag,
+  duesTotals,
   groupChildren,
   groupTotal,
   liveAccounts,
@@ -38,8 +39,9 @@ import PaymentLine from '@/components/money/PaymentLine.vue'
 
 /**
  * Списки Капитала (пивот 3, Р-32; макет `pivot-3/index.html`, «Капитал» под виджетами): «Счета» с
- * итогом и «Платежи» — один список по дню с «Оплатил», тег «N из M оплачено» (`duesTag`, B2C-59). Всё
- * остальное — в листах: счёт (и вклад), кредит, обязательство, группа подписок, формы добавления.
+ * итогом и «Платежи» — один список по дню с «Оплатил», тег «N из M оплачено» (`duesTag`, B2C-59), первой
+ * строкой — «Осталось в <месяце>» и «из <всего>» (`duesTotals`, B2C-70). Всё остальное — в листах: счёт
+ * (и вклад), кредит, обязательство, группа подписок, формы добавления.
  * Листы открываются и по адресу (`?account=`, `?credit=`, `?obligation=`, `?payoff=`, `?add=`,
  * `?income=1`) — «+» оболочки и старые ссылки; формы добавления — только участнику.
  */
@@ -67,20 +69,22 @@ function accountMeta(a: Account): string {
 }
 
 /* ------------------ Платежи ------------------ */
-// Строка-статус (B2C-59, Р-59): «N из M оплачено» за месяц; сумма месяца — в строках ниже.
-const duesStatus = computed(() =>
-  duesTag(monthDues({ obligations: financeStore.obligations, credits: financeStore.credits, payments: financeStore.payments }, key.value)),
-)
+// Платежи месяца — одно правило (`monthDues`): на нём тег, суммы и кредиты списка.
+const dues = computed(() => monthDues({ obligations: financeStore.obligations, credits: financeStore.credits, payments: financeStore.payments }, key.value))
+// Строка-статус (B2C-59, Р-59): «N из M оплачено» за месяц.
+const duesStatus = computed(() => duesTag(dues.value))
+// Первая строка «Платежей» (B2C-70, владелец): «Осталось в <месяце>» крупно и «из <всего>»; всё оплачено — «Всё оплачено» и итог.
+const totals = computed(() => duesTotals(dues.value))
+const monthPre = computed(() => MONTHS_PRE[Number(key.value.slice(5)) - 1])
 
 type Line = { id: string; day: number; item: { kind: 'credit'; credit: Credit } | { kind: 'obligation'; obligation: Obligation } }
 // Один список по дню: кредиты, ждущие платежа в этом месяце (как `monthDues`), и обязательства вне
 // групп (годовое — и не в свой месяц, без «Оплатил»); оплаченное остаётся на месте. Группы — ниже.
 const lines = computed<Line[]>(() => {
-  const due = monthDues({ credits: financeStore.credits, payments: financeStore.payments }, key.value)
   const own = obligations.value.filter((o) => !o.parentId || !groups.value.some((g) => g.id === o.parentId))
   return [
     ...credits.value
-      .filter((c) => due.some((d) => d.targetId === c.id))
+      .filter((c) => dues.value.some((d) => d.kind === 'credit' && d.targetId === c.id))
       .map((c): Line => ({ id: c.id, day: c.day, item: { kind: 'credit', credit: c } })),
     ...own.map((o): Line => ({ id: o.id, day: o.day, item: { kind: 'obligation', obligation: o } })),
   ].sort((a, b) => a.day - b.day)
@@ -197,6 +201,12 @@ watch(queryModalOpen, (open) => {
     </template>
   </Section>
   <Card flush>
+    <!-- Суммы месяца (B2C-70): одна подпись, одна цифра; без подсказок и кнопок (правило 12) -->
+    <div v-if="totals" class="flex flex-col gap-0.5 border-b border-line px-4 pb-3 pt-3.5" data-dues-total>
+      <span class="type-label">{{ totals.left ? `Осталось в ${monthPre}` : 'Всё оплачено' }}</span>
+      <span class="type-num num text-ink">{{ money(totals.left || totals.total) }}</span>
+      <span v-if="totals.left" class="type-meta num">из {{ money(totals.total) }}</span>
+    </div>
     <PaymentLine
       v-for="l in lines"
       :key="l.id"
