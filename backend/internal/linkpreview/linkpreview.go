@@ -199,8 +199,12 @@ func (f *Fetcher) Fetch(ctx context.Context, rawURL string) (Preview, error) {
 	if mt, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type")); mt != "text/html" && mt != "application/xhtml+xml" {
 		return Preview{}, fmt.Errorf("%w: not html", ErrUpstream)
 	}
-	meta := parse(io.LimitReader(resp.Body, maxPageBytes))
+	meta, err := parse(io.LimitReader(resp.Body, maxPageBytes))
 	if meta.image == "" {
+		if err != nil {
+			// The body stalled or broke before a picture: a timeout, not "no image".
+			return Preview{}, upstream(err)
+		}
 		return Preview{}, ErrNoImage
 	}
 	// The final address after redirects is the base for a relative picture.
@@ -265,15 +269,20 @@ type pageMeta struct {
 }
 
 // parse reads meta tags: og:image, then twitter:image, then link rel=image_src;
-// og:title, then the <title> of the head.
-func parse(r io.Reader) pageMeta {
+// og:title, then the <title> of the head. A read error other than EOF is
+// returned with what was found before it.
+func parse(r io.Reader) (pageMeta, error) {
 	var ogImage, twImage, linkImage, ogTitle string
 	var title strings.Builder
 	inTitle, inBody := false, false
+	var readErr error
 	z := html.NewTokenizer(r)
 	for {
 		tt := z.Next()
 		if tt == html.ErrorToken {
+			if err := z.Err(); err != io.EOF {
+				readErr = err
+			}
 			break
 		}
 		switch tt {
@@ -318,7 +327,7 @@ func parse(r io.Reader) pageMeta {
 	m := pageMeta{image: firstOf(ogImage, twImage, linkImage), title: firstOf(ogTitle, title.String())}
 	// Shops escape twice (Kaspi: "NanoSIM&amp;#43;eSIM"): the title is plain text, unescape once more.
 	m.title = clip(strings.Join(strings.Fields(html.UnescapeString(m.title)), " "), maxTitle)
-	return m
+	return m, readErr
 }
 
 func attrs(z *html.Tokenizer) map[string]string {

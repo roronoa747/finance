@@ -276,3 +276,20 @@ func TestTimeout(t *testing.T) {
 		t.Fatalf("want ErrUpstream wrapping the deadline, got %v", err)
 	}
 }
+
+// Headers arrive, the body stalls before a picture: a timeout, not "no image".
+func TestStalledBody(t *testing.T) {
+	s, f := newSite(t)
+	s.mux.HandleFunc("/stall", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte("<html><head><title>Shop</title>"))
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	})
+	ctx, cancel := context.WithTimeout(t.Context(), 200_000_000) // 200 ms
+	defer cancel()
+	_, err := f.Fetch(ctx, "https://example.com/stall")
+	if !errors.Is(err, ErrUpstream) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("want ErrUpstream wrapping the deadline, got %v", err)
+	}
+}
