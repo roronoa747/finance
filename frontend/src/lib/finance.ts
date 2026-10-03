@@ -1,4 +1,4 @@
-import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange } from '@/types/finance'
+import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
 import type { Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
@@ -785,25 +785,53 @@ export function rateOn(book: RateBook | null | undefined, code: Currency, day: s
   return fallback && fallback > 0 ? fallback : null;
 }
 
-/** Валюты документа, которым нужна книга курсов (Р-72): счета и оклады; без тенге. */
-export function docCurrencies(doc: { accounts?: Account[]; people?: Person[] }): Currency[] {
+/** Валюты документа, которым нужна книга курсов (Р-72): счета, оклады и платежи (Р-75); без тенге. */
+export function docCurrencies(doc: { accounts?: Account[]; people?: Person[]; obligations?: Obligation[] }): Currency[] {
   const out = new Set<Currency>();
   for (const a of liveAccounts(doc.accounts ?? [])) if (a.currency) out.add(a.currency);
   for (const p of (doc.people ?? []).filter(alive)) for (const v of p.salaryVersions ?? []) if (v.currency) out.add(v.currency);
+  for (const o of liveObligations(doc.obligations ?? [])) for (const v of o.versions ?? []) if (v.currency) out.add(v.currency);
   out.delete('KZT');
   return [...out].sort();
 }
 
-/** Сумма обязательства, действующая в указанном месяце. */
-export function amountAt(o: Obligation, key = monthKey()): number {
-  const versions = o.versions || [];
-  const active = versions.filter((v) => v.from <= key).sort((a, b) => a.from.localeCompare(b.from));
-  return active.length ? active[active.length - 1].amount : 0;
+/** Версия обязательства, действующая в месяце `key` (последняя с `from ≤ key`). */
+function versionAt(o: Obligation, key: string): ObligationVersion | undefined {
+  const active = (o.versions || []).filter((v) => v.from <= key).sort((a, b) => a.from.localeCompare(b.from));
+  return active[active.length - 1];
 }
 
-/** Сколько этот платёж занимает в плане месяца (годовые делятся на 12). */
-export function monthlyAmount(o: Obligation, key = monthKey()): number {
-  const full = amountAt(o, key);
+/** Сумма месяца в своей валюте (Р-75) — для подписей «$15 · ≈ 7 700 ₸». Версий нет — 0 ₸. */
+export function amountIn(o: Obligation, key = monthKey()): { amount: number; currency: Currency } {
+  const v = versionAt(o, key);
+  return { amount: v?.amount ?? 0, currency: v?.currency ?? 'KZT' };
+}
+
+/**
+ * День списания обязательства `YYYY-MM-DD` для месяца `key`: ежемесячное — `day` этого месяца, годовое —
+ * `day` своего месяца (`month`) того же года (31-е в коротком месяце — последний день).
+ */
+export function debitDayIso(o: Pick<Obligation, 'day' | 'every' | 'month'>, key: string): string {
+  const month = o.every === 'year' ? `${key.slice(0, 4)}-${String(o.month ?? 1).padStart(2, '0')}` : key;
+  return isoIn(month, o.day);
+}
+
+/**
+ * Сумма обязательства месяца в тенге (Р-75). Тенговая — как записана. Валютная — по курсу Нацбанка на
+ * день списания из книги (выходной — пятница, день впереди — последний курс книги, `rateOn`); книги или
+ * дня нет — курс версии на момент ввода; нет и его — 0. Наценки банка нет.
+ */
+export function amountAt(o: Obligation, key = monthKey(), book?: RateBook | null): number {
+  const v = versionAt(o, key);
+  if (!v) return 0;
+  if (!v.currency || v.currency === 'KZT') return v.amount;
+  const rate = rateOn(book, v.currency, debitDayIso(o, key), v.rate);
+  return rate ? fxToTenge(v.amount, rate) : 0;
+}
+
+/** Сколько этот платёж занимает в плане месяца, тенге (годовые делятся на 12). */
+export function monthlyAmount(o: Obligation, key = monthKey(), book?: RateBook | null): number {
+  const full = amountAt(o, key, book);
   return o.every === 'year' ? full / 12 : full;
 }
 
@@ -828,13 +856,12 @@ export function dueIn(o: Obligation, key = monthKey()): boolean {
   return (o.month ?? 1) === Number(key.split('-')[1]);
 }
 
-/** Ближайшее будущее изменение суммы. */
-export function nextChange(o: Obligation, key = monthKey()) {
+/** Ближайшее будущее изменение суммы; `delta` — в тенге (валютные — по книге, Р-75). */
+export function nextChange(o: Obligation, key = monthKey(), book?: RateBook | null) {
   const versions = o.versions || [];
   const future = versions.filter((v) => v.from > key).sort((a, b) => a.from.localeCompare(b.from));
   if (!future.length) return null;
-  const current = amountAt(o, key);
-  return { ...future[0], delta: future[0].amount - current };
+  return { ...future[0], delta: amountAt(o, future[0].from, book) - amountAt(o, key, book) };
 }
 
 export type FreedChange = {
@@ -853,9 +880,9 @@ export type FreedChange = {
  * 1 000 в месяц и 12 000 за год, а не 12 000 и 144 000); версия с нулём (конец платежа) —
  * освобождается вся сумма. null — снижений впереди нет.
  */
-export function freedChange(list: Obligation[], key = monthKey()): FreedChange | null {
+export function freedChange(list: Obligation[], key = monthKey(), book?: RateBook | null): FreedChange | null {
   for (const o of list) {
-    const change = nextChange(o, key);
+    const change = nextChange(o, key, book);
     if (!change || change.delta >= 0) continue;
     const d = -change.delta;
     return o.every === 'year' ? { o, change, monthly: yearShare(d), yearly: d } : { o, change, monthly: d, yearly: d * 12 };
@@ -870,8 +897,8 @@ export const groupChildren = (group: Obligation, list: Obligation[]) =>
   liveObligations(list).filter((o) => o.parentId === group.id);
 
 /** Итог группы за месяц — сумма её подписок; годовые — долей, как в плане месяца. */
-export function groupTotal(group: Obligation, list: Obligation[], key = monthKey()): number {
-  return Math.round(groupChildren(group, list).reduce((a, o) => a + monthlyAmount(o, key), 0));
+export function groupTotal(group: Obligation, list: Obligation[], key = monthKey(), book?: RateBook | null): number {
+  return Math.round(groupChildren(group, list).reduce((a, o) => a + monthlyAmount(o, key, book), 0));
 }
 
 /**
@@ -1109,7 +1136,7 @@ export function budgetAmounts(state: {
   payments?: Payment[];
   plans?: DebtPlan[];
   moneyArticles?: MoneyArticle[];
-  /** Книга курсов и обмены (Р-74): валютные зарплаты — в тенге `salaryTenge`. */
+  /** Книга курсов и обмены (Р-74, Р-75): валютные зарплаты и платежи — в тенге по курсу. */
   book?: RateBook | null;
   fxExchanges?: FxExchange[];
 }, key = monthKey()) {
@@ -1123,15 +1150,15 @@ export function budgetAmounts(state: {
 
   const housing = liveObligations(obligations)
     .filter((o) => o.category === 'd1')
-    .reduce((a, o) => a + monthlyAmount(o, key), 0);
+    .reduce((a, o) => a + monthlyAmount(o, key, state.book), 0);
   const other = liveObligations(obligations)
     .filter((o) => o.category !== 'd1' && o.category !== 'd2')
-    .reduce((a, o) => a + monthlyAmount(o, key), 0);
+    .reduce((a, o) => a + monthlyAmount(o, key, state.book), 0);
   const debts =
     liveCredits(credits).reduce((a, c) => a + creditMonthPayment(c, payments, key), 0) +
     liveObligations(obligations)
       .filter((o) => o.category === 'd2')
-      .reduce((a, o) => a + monthlyAmount(o, key), 0);
+      .reduce((a, o) => a + monthlyAmount(o, key, state.book), 0);
   const paused = new Set(plan ? pausedGoals(plan, goalsList).map((g) => g.id) : []);
   const goals = liveGoals(goalsList)
     .filter((g) => !paused.has(g.id))
@@ -1577,7 +1604,7 @@ export type MonthDue =
  * Порядок — обязательства, затем кредиты; сортирует экран.
  */
 export function monthDues(
-  state: { obligations?: Obligation[]; credits?: Credit[]; payments?: Payment[] },
+  state: { obligations?: Obligation[]; credits?: Credit[]; payments?: Payment[]; book?: RateBook | null },
   key: string,
 ): MonthDue[] {
   const payments = state.payments || []
@@ -1585,7 +1612,7 @@ export function monthDues(
     .filter((o) => dueIn(o, key))
     .map((o) => {
       const paid = paidFor(payments, 'obligation', o.id, key)
-      const amount = paid ? paid.amount : amountAt(o, key)
+      const amount = paid ? paid.amount : amountAt(o, key, state.book)
       return { kind: 'obligation', obligation: o, targetId: o.id, name: o.name, day: o.day, amount, paid: !!paid }
     })
   const credits: MonthDue[] = liveCredits(state.credits || [])
@@ -1660,7 +1687,7 @@ export function untilPayday(
   const inDays = slot.inDays;
 
   const itemsOf = (k: string) =>
-    monthDues({ obligations, credits, payments }, k).map((d) => ({
+    monthDues({ obligations, credits, payments, book: state.book }, k).map((d) => ({
       id: d.targetId,
       targetId: d.targetId,
       kind: d.kind,
@@ -3213,7 +3240,7 @@ export function decisionQueue(
   }
 
   // «Освободится N ₸» — как карточка «Денег»; раскладка записана (`source: 'freed'`) — уже решено.
-  const freed = freedChange(liveObligations(state.obligations ?? []), now.key)
+  const freed = freedChange(liveObligations(state.obligations ?? []), now.key, state.book)
   if (freed && !allocationFor(state.allocations, { source: 'freed', sourceId: freed.o.id, period: freed.change.from })) {
     out.push({
       kind: 'freed',
@@ -3599,7 +3626,7 @@ export function monthBreakdown(
     // Записи у плана нет: ключ не совпадает ни с одним источником.
     record = { source: 'salary', sourceId: 'plan', period: key }
   } else if (source.from === 'freed') {
-    const freed = freedChange(liveObligations(state.obligations ?? []), key)
+    const freed = freedChange(liveObligations(state.obligations ?? []), key, state.book)
     if (!freed) return null
     amount = freed.monthly
     mode = 'monthly'

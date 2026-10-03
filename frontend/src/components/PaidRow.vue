@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { PhCheck } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
+import { useFxStore } from '@/stores/fx'
 import { money, plain } from '@/lib/money'
 import { addMonths, dayLabel } from '@/lib/dates'
 import {
@@ -54,6 +55,7 @@ const emit = defineEmits<{
 
 const finance = useFinanceStore()
 const auth = useAuthStore()
+const fx = useFxStore()
 
 const obligation = computed(() =>
   props.kind === 'obligation' ? finance.obligations.find((o) => o.id === props.targetId) : undefined,
@@ -69,7 +71,7 @@ const estimate = computed(() => !!obligation.value?.estimate)
 
 /** Сколько платить за этот месяц по графику. */
 const due = computed(() => {
-  if (obligation.value) return amountAt(obligation.value, props.period)
+  if (obligation.value) return amountAt(obligation.value, props.period, fx.book)
   if (credit.value) return creditDueAmount(credit.value)
   return 0
 })

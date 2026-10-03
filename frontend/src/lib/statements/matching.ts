@@ -100,7 +100,7 @@ export function ruleHit(op: Operation, payment: PaymentRule, targets: RuleTarget
   // Годовое — только в свой месяц (`dueIn`, как эвристика ниже): другая страховка тем же переводом
   // в сентябре — не платёж за март (критик возврата 2).
   if (!dueIn(o, period)) return null
-  return o.estimate || within(amount, amountAt(o, period), AMOUNT_TOLERANCE) ? { target: o, period } : null
+  return o.estimate || within(amount, amountAt(o, period, targets.salary?.book), AMOUNT_TOLERANCE) ? { target: o, period } : null
 }
 
 /**
@@ -109,8 +109,8 @@ export function ruleHit(op: Operation, payment: PaymentRule, targets: RuleTarget
  * правило на «Перевод с карты на карту» 15 000 убирало из «Свободно» все переводы месяца. Кредит —
  * и закрытый: его последний платёж остаётся в плане месяца.
  */
-export function paymentFits(state: { obligations?: Obligation[]; credits?: Credit[] }): (op: Operation, payment: PaymentRule) => boolean {
-  const targets = { obligations: liveObligations(state.obligations ?? []), credits: liveCredits(state.credits ?? []), people: [] }
+export function paymentFits(state: { obligations?: Obligation[]; credits?: Credit[]; book?: RateBook | null }): (op: Operation, payment: PaymentRule) => boolean {
+  const targets = { obligations: liveObligations(state.obligations ?? []), credits: liveCredits(state.credits ?? []), people: [], salary: { book: state.book } }
   return (op, payment) => ruleHit(op, payment, targets) !== null
 }
 
@@ -188,7 +188,7 @@ export function matchCandidates(
       for (const o of obligations) {
         const { period, gap } = nearestPeriod(op.date, o.day)
         if (gap > DAY_WINDOW || !dueIn(o, period)) continue
-        const expected = amountAt(o, period)
+        const expected = amountAt(o, period, salary.book)
         if (!within(amount, expected, o.estimate ? ESTIMATE_TOLERANCE : AMOUNT_TOLERANCE)) continue
         consider({
           opId: op.id, kind: 'obligation', targetId: o.id, period, amount, confidence: 'likely',

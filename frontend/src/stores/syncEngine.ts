@@ -80,7 +80,7 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
     if (signedIn()) void useFxStore().ensureDocRates()
   }
   watch(
-    () => [auth.token, docCurrencies({ accounts: finance.accounts, people: finance.people }).join()],
+    () => [auth.token, docCurrencies({ accounts: finance.accounts, people: finance.people, obligations: finance.obligations }).join()],
     () => rates(),
   )
 

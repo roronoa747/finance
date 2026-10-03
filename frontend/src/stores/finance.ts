@@ -707,6 +707,8 @@ export const useFinanceStore = defineStore('finance', () => {
     every?: 'month' | 'year';
     month?: number;
     who?: PersonId | null;
+    /** Платёж в валюте (Р-75): сумма — в валюте, курс Нацбанка на момент ввода — запасной. */
+    fx?: { currency: Currency; rate: number };
   }) {
     const id = Math.random().toString(36).slice(2, 10);
     const t = new Date().toISOString();
@@ -721,7 +723,7 @@ export const useFinanceStore = defineStore('finance', () => {
         every: o.every,
         month: o.month,
         who: o.who,
-        versions: [{ from: '2000-01', amount: o.amount }],
+        versions: [{ from: '2000-01', amount: o.amount, ...(o.fx && o.fx.currency !== 'KZT' ? { currency: o.fx.currency, rate: o.fx.rate } : {}) }],
         // Завести — уже решение «оставить»: только что добавленное не спрашиваем (Р-20).
         keptAt: t,
         updatedAt: t,
@@ -1245,7 +1247,8 @@ export const useFinanceStore = defineStore('finance', () => {
       if (!o) return null
       period = opts.period ?? nextObligationDue(o, payments.value)?.period
       if (!period) return null
-      amount = opts.amount ?? amountAt(o, period)
+      // Валютная подписка — тенге по курсу Нацбанка на день списания (Р-75); правится руками.
+      amount = opts.amount ?? amountAt(o, period, useFxStore().book)
     } else {
       const c = credits.value.find((x) => x.id === targetId && !x.deletedAt)
       if (!c) return null
@@ -1616,13 +1619,15 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
-  function amendObligation(id: string, from: string, amount: number, reason?: string) {
+  /** Новая версия суммы с месяца; `fx` — валюта и курс версии (Р-75), без него — тенге. */
+  function amendObligation(id: string, from: string, amount: number, reason?: string, fx?: { currency: Currency; rate: number }) {
     const t = new Date().toISOString()
+    const money = fx && fx.currency !== 'KZT' ? { currency: fx.currency, rate: fx.rate } : {}
     mutateHouseholdDoc((doc) => {
       const o = (doc.obligations || []).find((x) => x.id === id)
       if (!o) return
       const base = o.versions?.length ? o.versions : [{ from: '2000-01', amount: 0 }]
-      const versions = [...base.filter((v) => v.from !== from), { from, amount, reason }]
+      const versions = [...base.filter((v) => v.from !== from), { from, amount, reason, ...money }]
         .sort((a, b) => a.from.localeCompare(b.from))
       o.versions = versions
       o.updatedAt = t

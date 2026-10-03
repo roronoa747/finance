@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
+import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, plain, parseMoney } from '@/lib/money'
 import { CURRENCY_SIGN, FX_ACCOUNT_NAME } from '@/lib/fx'
 import { addMonths, atLabel, dayLabel } from '@/lib/dates'
@@ -62,6 +63,7 @@ const emit = defineEmits<{
 
 const finance = useFinanceStore()
 const auth = useAuthStore()
+const fx = useFxStore()
 
 const salary = computed(() => props.kind === 'salary')
 const obligation = computed(() => (props.kind === 'obligation' ? finance.obligations.find((o) => o.id === props.targetId) : undefined))
@@ -80,7 +82,7 @@ const canAllocate = computed(
 
 /** Сколько платить (у зарплаты — оклад) за этот месяц по графику. */
 const due = computed(() => {
-  if (obligation.value) return amountAt(obligation.value, props.period)
+  if (obligation.value) return amountAt(obligation.value, props.period, fx.book)
   if (credit.value) return creditDueAmount(credit.value)
   if (person.value) return fxSalary.value ? own.value!.amount : salaryAt(person.value, props.period)
   return 0

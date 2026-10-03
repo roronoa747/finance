@@ -3,6 +3,7 @@ import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
+import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
 import { money, plain } from '@/lib/money'
 import { monthKey, monthFrom } from '@/lib/dates'
@@ -29,13 +30,14 @@ const route = useRoute()
 const router = useRouter()
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
+const fx = useFxStore()
 const ops = useOperationsStore()
 
 const square = computed(() => (route.params.square === 'plan' || route.params.square === 'history' ? route.params.square : 'capital'))
 const key = computed(() => monthKey())
 
 // Событие «освободится N ₸»: у годового — доля в месяц и разница за год (`freedChange`).
-const freed = computed(() => freedChange(liveObligations(financeStore.obligations), key.value))
+const freed = computed(() => freedChange(liveObligations(financeStore.obligations), key.value, fx.book))
 
 onMounted(() => void ops.loadUploads())
 </script>
@@ -53,7 +55,7 @@ onMounted(() => void ops.loadUploads())
         <div class="type-section text-brand">С {{ monthFrom(freed.change.from, false) }}</div>
         <h3 class="mt-1 type-h2 text-ink">{{ freedQuestion(freed) }}</h3>
         <p class="mb-3.5 mt-1 text-[13px] text-ink-2 num">
-          {{ freed.o.name }}: {{ plain(amountAt(freed.o, key)) }} → {{ plain(freed.change.amount) }} ₸ · {{ money(freed.yearly) }} за год
+          {{ freed.o.name }}: {{ plain(amountAt(freed.o, key, fx.book)) }} → {{ plain(amountAt(freed.o, freed.change.from, fx.book)) }} ₸ · {{ money(freed.yearly) }} за год
         </p>
         <Button v-if="!authStore.isViewer" class="w-full" @click="router.push(breakdownPath({ from: 'freed' }))">Распределить</Button>
       </Card>

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { PhBank, PhCaretRight, PhCoins, PhCreditCard, PhFolderSimple, PhPlus, PhWallet } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
+import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, rateField } from '@/lib/money'
 import { monthIn, monthKey } from '@/lib/dates'
 import {
@@ -49,6 +50,7 @@ const route = useRoute()
 const router = useRouter()
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
+const fx = useFxStore()
 
 const key = computed(() => monthKey())
 const accounts = computed(() => liveAccounts(financeStore.accounts))
@@ -70,7 +72,7 @@ function accountMeta(a: Account): string {
 
 /* ------------------ Платежи ------------------ */
 // Платежи месяца — одно правило (`monthDues`): на нём тег, суммы и кредиты списка.
-const dues = computed(() => monthDues({ obligations: financeStore.obligations, credits: financeStore.credits, payments: financeStore.payments }, key.value))
+const dues = computed(() => monthDues({ obligations: financeStore.obligations, credits: financeStore.credits, payments: financeStore.payments, book: fx.book }, key.value))
 // Строка-статус (B2C-59, Р-59): «N из M оплачено» за месяц.
 const duesStatus = computed(() => duesTag(dues.value))
 // Первая строка «Платежей» (B2C-70, владелец): «Осталось в <месяце>» крупно и «из <всего>»; всё оплачено — «Всё оплачено» и итог.
@@ -219,7 +221,7 @@ watch(queryModalOpen, (open) => {
       :key="g.id"
       :title="g.name"
       :note="`${groupChildren(g, financeStore.obligations).length}${g.noAsk ? ' · рабочие' : ''}`"
-      :value="money(groupTotal(g, financeStore.obligations, key))"
+      :value="money(groupTotal(g, financeStore.obligations, key, fx.book))"
       clickable
       @click="selectedGroupId = g.id"
     />

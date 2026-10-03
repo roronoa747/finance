@@ -3,20 +3,27 @@ import { computed, ref } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { money, parseMoney } from '@/lib/money'
 import { MONTHS_NOM, monthKey, parseMonthKey } from '@/lib/dates'
-import { yearShare } from '@/lib/finance'
-import type { PersonId } from '@/types/finance'
+import { fxToTenge, yearShare } from '@/lib/finance'
+import { CURRENCY_SIGN } from '@/lib/fx'
+import type { Currency, PersonId } from '@/types/finance'
 import { categoryName, type CategoryKey } from '@/lib/palette'
 import { cn } from '@/lib/utils'
 
+import CurrencyChips from '@/components/kit/CurrencyChips.vue'
 import Field from '@/components/kit/Field.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Segmented from '@/components/kit/Segmented.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
+import { useNbRate } from '@/components/kit/useNbRate'
 
-/** Новый регулярный платёж — подписка или услуга (бывшее окно Капитала, PV-11). */
-defineProps<{ open: boolean }>()
+/**
+ * Новый регулярный платёж — подписка или услуга (бывшее окно Капитала, PV-11). Сумма — в валюте платежа
+ * (Р-75, чипы, тенге по умолчанию); у валютного — тихая строка «≈ N ₸ по курсу Нацбанка», курс версии —
+ * Нацбанк сегодня (нет — поле курса руками).
+ */
+const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const financeStore = useFinanceStore()
@@ -30,6 +37,10 @@ const obDay = ref('10')
 const obWho = ref<'all' | PersonId>('all')
 const obCategory = ref<CategoryKey>('d4')
 const obEstimate = ref(false)
+const obCurrency = ref<Currency>('KZT')
+const nb = useNbRate(obCurrency, () => props.open)
+/** Сумма в тенге по курсу (тенговая — как введена). */
+const obTenge = computed(() => (nb.ok.value ? fxToTenge(parseMoney(obAmount.value), nb.rate.value) : 0))
 
 // Разделы, куда кладётся платёж (React `AddObligationDialog`): цели и свободный
 // остаток — не корзины. Разделы заводятся лениво — имя берётся из запасных.
@@ -38,7 +49,7 @@ const obBuckets = computed(() =>
 )
 
 const canCreateObligation = computed(
-  () => obName.value.trim().length > 0 && parseMoney(obAmount.value) > 0,
+  () => obName.value.trim().length > 0 && parseMoney(obAmount.value) > 0 && nb.ok.value,
 )
 
 function createObligation() {
@@ -53,10 +64,13 @@ function createObligation() {
     month: obEvery.value === 'year' ? Math.min(12, Math.max(1, parseMoney(obMonth.value) || 1)) : undefined,
     who: obWho.value === 'all' ? null : obWho.value,
     amount: parseMoney(obAmount.value),
+    fx: nb.foreign.value ? { currency: obCurrency.value, rate: nb.rate.value } : undefined,
   })
   obName.value = ''
   obAmount.value = ''
   obEstimate.value = false
+  obCurrency.value = 'KZT'
+  nb.manual.value = ''
   emit('close')
 }
 </script>
@@ -78,12 +92,22 @@ function createObligation() {
       />
     </Field>
 
-    <Field :label="obEvery === 'year' ? 'Сумма за год, ₸' : 'Сумма в месяц, ₸'">
-      <NumField v-model="obAmount" placeholder="5 000" class="mb-3" />
+    <Field label="Валюта" group>
+      <CurrencyChips v-model="obCurrency" />
     </Field>
 
-    <p v-if="obEvery === 'year' && parseMoney(obAmount) > 0" class="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-3">
-      В плане месяца это займёт {{ money(yearShare(parseMoney(obAmount))) }} — годовая сумма
+    <Field :label="`${obEvery === 'year' ? 'Сумма за год' : 'Сумма в месяц'}, ${CURRENCY_SIGN[obCurrency]}`">
+      <NumField v-model="obAmount" placeholder="5 000" class="mb-3" />
+    </Field>
+    <p v-if="nb.foreign.value && nb.auto.value && parseMoney(obAmount) > 0" class="-mt-2.5 mb-3 text-[12px] text-ink-3 num">
+      ≈ {{ money(obTenge) }} по курсу Нацбанка
+    </p>
+    <Field v-if="nb.foreign.value && !nb.auto.value" :label="`Курс: сколько тенге за 1 ${obCurrency}`">
+      <NumField v-model="nb.manual.value" kind="rate" placeholder="505" />
+    </Field>
+
+    <p v-if="obEvery === 'year' && obTenge > 0" class="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-3">
+      В плане месяца это займёт {{ money(yearShare(obTenge)) }} — годовая сумма
       делится на двенадцать, чтобы не завышать одиннадцать месяцев и не удивляться на двенадцатый.
     </p>
 
