@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { nextTick } from 'vue'
+import { nextTick, watch } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { apiClient, type ApiClient } from '@/api/client'
 import { useAuthStore, DEMO_TOKEN } from './auth'
@@ -611,6 +611,29 @@ describe('stores/operations — сопоставление с отметками
     expect(rule()).toEqual({ payment: { kind: 'obligation', targetId: 'lunch', categoryId: 'sc_subscriptions', restCategoryId: 'sc_food' } })
     store.answer(magnum, { internal: true })
     expect(rule()).toEqual({ internal: true })
+  })
+
+  it('клинап Б12 Н-5: пачка правил «есть правило платежа у A + новые B, C» — одна правка документа, A сливается, B и C добавлены, без дублей', () => {
+    const finance = family()
+    const [a, b, c] = ['Magnum', 'ИП Ким', 'ИП Ли'].map((m) => ({ merchant: normalizeMerchant(m) }))
+    finance.addMerchantRule({ match: a, to: { payment: { kind: 'obligation', targetId: 'lunch', categoryId: 'sc_subscriptions' } } }, 'a')
+    const aId = finance.merchantRules.find((r) => r.match.merchant === a.merchant)!.id
+    let writes = 0
+    const stop = watch(() => finance.privateDoc.merchantRules, () => writes++, { flush: 'sync' })
+    finance.addMerchantRules([a, b, c].map((match) => ({ match, to: { categoryId: 'sc_food' } })), 'a')
+    stop()
+
+    expect(writes).toBe(1)
+    const live = finance.merchantRules.filter((r) => !r.deletedAt)
+    expect(live).toHaveLength(3)
+    expect(live.find((r) => r.match.merchant === a.merchant)).toMatchObject({
+      id: aId,
+      to: { payment: { kind: 'obligation', targetId: 'lunch', categoryId: 'sc_subscriptions', restCategoryId: 'sc_food' } },
+    })
+    expect(live.filter((r) => r.match.merchant !== a.merchant).map((r) => [r.match.merchant, r.to])).toEqual([
+      [b.merchant, { categoryId: 'sc_food' }],
+      [c.merchant, { categoryId: 'sc_food' }],
+    ])
   })
 
   it('две строки одного продавца: «Да» на одну отмечает оба месяца — вторая по новому правилу, с датой операции', async () => {
