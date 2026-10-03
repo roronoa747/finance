@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"finance-backend/internal/auth"
+	"finance-backend/internal/fx"
 	"finance-backend/internal/repository"
 )
 
@@ -26,6 +27,7 @@ type fxRatesApp struct {
 	r      http.Handler
 	tokens *auth.TokenService
 	store  *repository.MockFxRepo
+	client *fx.Client
 	calls  *atomic.Int32
 	down   map[string]bool
 	empty  map[string]bool
@@ -58,14 +60,19 @@ func setupFxRatesApp(t *testing.T) *fxRatesApp {
 		fmt.Fprintf(w, `<rates><item><title>EUR</title><description>%d.5</description></item><item><title>USD</title><description>450</description></item></rates>`, 500+day.Day())
 	})
 	c.Now = func() time.Time { return fxNow }
+	app.client = c
+	app.serveWith(app.store)
+	return app
+}
 
+// serveWith routes the handler over store (the mock itself, or a wrapper that fails).
+func (a *fxRatesApp) serveWith(store repository.FxRepository) {
 	r := chi.NewRouter()
 	r.Group(func(protected chi.Router) {
-		protected.Use(auth.Middleware(app.tokens))
-		protected.Get("/api/fx-rates", FxRatesHandler(c, app.store))
+		protected.Use(auth.Middleware(a.tokens))
+		protected.Get("/api/fx-rates", FxRatesHandler(a.client, store))
 	})
-	app.r = r
-	return app
+	a.r = r
 }
 
 func (a *fxRatesApp) get(t *testing.T, role, household, query string) *httptest.ResponseRecorder {
@@ -267,5 +274,50 @@ func TestFxRateHandlerSaveErrorKeepsAnswer(t *testing.T) {
 	FxRateHandler(c, failingFxStore{repository.NewMockFxRepo()})(rec, httptest.NewRequest(http.MethodGet, "/api/fx-rate", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"EUR":513.46`) {
 		t.Errorf("save error changed the answer: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// brokenFxStore wraps the mock and fails reads or writes on demand (review backend Н-6).
+type brokenFxStore struct {
+	*repository.MockFxRepo
+	failRead, failSave bool
+}
+
+func (b brokenFxStore) Checked(ctx context.Context, from, to time.Time) (map[string]bool, error) {
+	if b.failRead {
+		return nil, errors.New("db down")
+	}
+	return b.MockFxRepo.Checked(ctx, from, to)
+}
+
+func (b brokenFxStore) Save(ctx context.Context, day time.Time, rates map[string]float64) error {
+	if b.failSave {
+		return errors.New("db down")
+	}
+	return b.MockFxRepo.Save(ctx, day, rates)
+}
+
+func TestFxRatesSaveErrorAnswersPartial(t *testing.T) {
+	app := setupFxRatesApp(t)
+	app.serveWith(brokenFxStore{MockFxRepo: app.store, failSave: true})
+	body := decodeFxRates(t, app.get(t, "member", "h1", "code=EUR&from=2026-10-01&to=2026-10-03"))
+	if !body.Partial {
+		t.Error("a failed write must answer partial: true")
+	}
+	checked, _ := app.store.Checked(context.Background(), day(2026, 10, 1), day(2026, 10, 3))
+	if len(checked) != 0 {
+		t.Errorf("no day may be marked asked after a failed write: %v", checked)
+	}
+}
+
+func TestFxRatesReadErrorIs500WithoutBank(t *testing.T) {
+	app := setupFxRatesApp(t)
+	app.serveWith(brokenFxStore{MockFxRepo: app.store, failRead: true})
+	rec := app.get(t, "member", "h1", "code=EUR&from=2026-10-01&to=2026-10-03")
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d", rec.Code)
+	}
+	if n := app.calls.Load(); n != 0 {
+		t.Errorf("a failed read must not reach the bank, got %d calls", n)
 	}
 }
