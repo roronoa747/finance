@@ -100,7 +100,7 @@ describe('SalaryDialog — оклад в валюте', () => {
     ;(document.querySelector('button[aria-label="CNY"]') as HTMLButtonElement).click()
     await flush()
     await flush()
-    expect(text()).toContain('Курс: сколько тенге за 1 CNY')
+    expect(text()).toContain('Курс, ₸ за 1 ¥')
     const inputs = [...document.querySelectorAll('[class*="border-brand"] input[inputmode]')] as HTMLInputElement[]
     inputs[0].value = '10000'
     inputs[0].dispatchEvent(new Event('input'))

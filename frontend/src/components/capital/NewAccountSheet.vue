@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
-import { money, plain, parseMoney } from '@/lib/money'
-import { fxToTenge } from '@/lib/finance'
+import { plain, parseMoney } from '@/lib/money'
 import type { Account, Currency } from '@/types/finance'
 import { cn } from '@/lib/utils'
+import { CURRENCY_SIGN } from '@/lib/fx'
 
 import CurrencyChips from '@/components/kit/CurrencyChips.vue'
+import NbRateLine from '@/components/kit/NbRateLine.vue'
 import { useNbRate } from '@/components/kit/useNbRate'
 import Field from '@/components/kit/Field.vue'
 import NumField from '@/components/kit/NumField.vue'
@@ -39,7 +40,7 @@ const accountKinds: { value: Account['kind']; label: string }[] = [
 const isForeign = nb.foreign
 const parsedAccountAmount = computed(() => parseMoney(newAccountAmount.value))
 const accountInTenge = computed(() =>
-  isForeign.value ? (nb.ok.value ? fxToTenge(parsedAccountAmount.value, nb.rate.value) : 0) : parsedAccountAmount.value,
+  isForeign.value ? nb.tenge(parsedAccountAmount.value) : parsedAccountAmount.value,
 )
 const canCreateAccount = computed(
   () => parsedAccountAmount.value > 0 && (!isForeign.value || accountInTenge.value > 0),
@@ -122,16 +123,11 @@ function createAccount() {
       <CurrencyChips v-model="newAccountCurrency" class="mb-3" />
     </Field>
 
-    <Field :label="isForeign ? `Сумма в ${newAccountCurrency}` : 'Сумма, ₸'">
+    <Field :label="`Сумма, ${CURRENCY_SIGN[newAccountCurrency]}`">
       <NumField v-model="newAccountAmount" class="mb-3" />
     </Field>
 
-    <p v-if="isForeign && nb.auto.value && accountInTenge > 0" class="-mt-2.5 mb-3 text-[12px] text-ink-3 num">
-      ≈ {{ money(accountInTenge) }} по курсу Нацбанка
-    </p>
-    <Field v-if="isForeign && !nb.auto.value" :label="`Курс: сколько тенге за 1 ${newAccountCurrency}`">
-      <NumField v-model="nb.manual.value" kind="rate" placeholder="505" class="mb-3" />
-    </Field>
+    <NbRateLine :amount="parsedAccountAmount" :currency="newAccountCurrency" :nb="nb" />
 
     <Field v-if="newAccountKind === 'deposit'" label="Ставка по вкладу, % годовых — если есть">
       <NumField v-model="newAccountDepositRate" kind="rate" placeholder="16,5" class="mb-3" />

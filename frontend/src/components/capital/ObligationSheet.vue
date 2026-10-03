@@ -9,7 +9,6 @@ import { MONTHS_NOM, addMonths, dayLabel, monthFrom, monthKey, monthTitle, parse
 import {
   amountAt,
   amountIn,
-  fxToTenge,
   isSubscription,
   liveGroups,
   liveObligations,
@@ -25,6 +24,7 @@ import { cn } from '@/lib/utils'
 
 import CurrencyChips from '@/components/kit/CurrencyChips.vue'
 import Field from '@/components/kit/Field.vue'
+import NbRateLine from '@/components/kit/NbRateLine.vue'
 import NumField from '@/components/kit/NumField.vue'
 import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
 import SavedMark from '@/components/kit/SavedMark.vue'
@@ -110,7 +110,7 @@ watch(
 /** Сумма этого месяца в своей валюте и в тенге (валютная — по курсу дня списания, Р-75). */
 const obOwn = computed(() => (activeObligation.value ? amountIn(activeObligation.value, key.value) : { amount: 0, currency: 'KZT' as Currency }))
 const obCurrent = computed(() => (activeObligation.value ? amountAt(activeObligation.value, key.value, fx.book) : 0))
-const obPlannedTenge = computed(() => (nb.ok.value ? fxToTenge(parseMoney(obNewAmount.value), nb.rate.value) : 0))
+const obPlannedTenge = computed(() => nb.tenge(parseMoney(obNewAmount.value)))
 const plannedObligationMonths = computed(() =>
   Array.from({ length: 13 }, (_, i) => addMonths(key.value, i)),
 )
@@ -305,12 +305,7 @@ function planObligation() {
           <Field :label="`Новая сумма, ${CURRENCY_SIGN[obCurrency]}`">
             <NumField v-model="obNewAmount" :placeholder="plain(obCurrency === obOwn.currency ? obOwn.amount : 0)" />
           </Field>
-          <p v-if="nb.foreign.value && nb.auto.value && parseMoney(obNewAmount) > 0" class="-mt-2.5 mb-3 text-[12px] text-ink-3 num">
-            ≈ {{ money(obPlannedTenge) }} по курсу Нацбанка
-          </p>
-          <Field v-if="nb.foreign.value && !nb.auto.value" :label="`Курс: сколько тенге за 1 ${obCurrency}`">
-            <NumField v-model="nb.manual.value" kind="rate" placeholder="505" />
-          </Field>
+          <NbRateLine :amount="parseMoney(obNewAmount)" :currency="obCurrency" :nb="nb" />
           <Field label="С какого месяца">
             <Select
               v-model="obFromMonth"

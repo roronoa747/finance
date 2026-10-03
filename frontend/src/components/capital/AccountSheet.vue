@@ -8,6 +8,7 @@ import { money, plain, parseMoney, rateField, ratePct } from '@/lib/money'
 import { INFLATION, deposit as calcDeposit, fxToTenge, liveAccounts, liveGoals, rateOn, realRate } from '@/lib/finance'
 import type { Account } from '@/types/finance'
 import { cn } from '@/lib/utils'
+import { CURRENCY_SIGN } from '@/lib/fx'
 
 import Field from '@/components/kit/Field.vue'
 import Hint from '@/components/kit/Hint.vue'
@@ -110,7 +111,7 @@ const accountRemoveWarning = computed(() => {
       <!-- Viewer видит цифры, но не правит (Р-12, матрица §3) -->
       <div v-if="authStore.isViewer" class="mb-3 flex flex-col gap-1.5 rounded-xl border border-line bg-surface-2 p-3 text-[13px]">
         <div v-if="activeAccount.currency" class="flex justify-between">
-          <span class="text-ink-2">Сумма в {{ activeAccount.currency }}</span>
+          <span class="text-ink-2">Сумма, {{ CURRENCY_SIGN[activeAccount.currency] }}</span>
           <b class="num text-ink">{{ plain(activeAccount.foreignAmount ?? 0) }}</b>
         </div>
         <div class="flex justify-between">
@@ -143,14 +144,14 @@ const accountRemoveWarning = computed(() => {
         </Field>
 
         <template v-if="activeAccount.currency">
-          <Field :label="`Сумма в ${activeAccount.currency}`">
+          <Field :label="`Сумма, ${CURRENCY_SIGN[activeAccount.currency]}`">
             <NumFieldBlur :initial="plain(activeAccount.foreignAmount ?? 0)" class="mb-3" @commit="onForeignAmount" />
           </Field>
           <p v-if="nbRate" class="-mt-2.5 mb-3 text-[12px] text-ink-3 num">
             ≈ {{ money(activeAccount.amount) }} по курсу Нацбанка
           </p>
           <template v-else>
-            <Field :label="`Курс: сколько тенге за 1 ${activeAccount.currency}`">
+            <Field :label="`Курс, ₸ за 1 ${CURRENCY_SIGN[activeAccount.currency]}`">
               <NumFieldBlur
                 :initial="String(activeAccount.rate ?? '').replace('.', ',')"
                 kind="rate"

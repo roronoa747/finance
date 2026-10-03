@@ -1,6 +1,6 @@
 import { computed, ref, toValue, watch, type MaybeRefOrGetter } from 'vue'
 import { useFxStore } from '@/stores/fx'
-import { rateOn } from '@/lib/finance'
+import { fxToTenge, rateOn } from '@/lib/finance'
 import { todayIso } from '@/lib/dates'
 import { fetchRates, type FxRates } from '@/lib/fx'
 import type { Currency } from '@/types/finance'
@@ -20,6 +20,8 @@ export function useNbRate(currency: MaybeRefOrGetter<Currency>, active: MaybeRef
   })
   const rate = computed(() => auto.value ?? parseFloat(manual.value.replace(',', '.')))
   const ok = computed(() => Number.isFinite(rate.value) && rate.value > 0)
+  /** Тенге суммы в валюте формы по этому курсу; курса нет — 0. */
+  const tenge = (amount: number) => (ok.value ? fxToTenge(amount, rate.value) : 0)
 
   watch(
     [() => toValue(active), () => toValue(currency)],
@@ -30,5 +32,7 @@ export function useNbRate(currency: MaybeRefOrGetter<Currency>, active: MaybeRef
     { immediate: true },
   )
 
-  return { foreign, auto, manual, rate, ok }
+  return { foreign, auto, manual, rate, ok, tenge }
 }
+
+export type NbRate = ReturnType<typeof useNbRate>

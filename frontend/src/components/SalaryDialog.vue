@@ -4,13 +4,14 @@ import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, plain, parseMoney } from '@/lib/money'
 import { monthKey, monthTitle, monthFrom, addMonths } from '@/lib/dates'
-import { fxToTenge, salaryAt, salaryOf } from '@/lib/finance'
+import { salaryAt, salaryOf } from '@/lib/finance'
 import { CURRENCY_SIGN } from '@/lib/fx'
 import type { Currency, PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
 import CurrencyChips from '@/components/kit/CurrencyChips.vue'
 import Field from '@/components/kit/Field.vue'
 import Hint from '@/components/kit/Hint.vue'
+import NbRateLine from '@/components/kit/NbRateLine.vue'
 import NumField from '@/components/kit/NumField.vue'
 import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
 import SavedMark from '@/components/kit/SavedMark.vue'
@@ -48,7 +49,8 @@ const reason = ref('')
 const personName = ref(person.value?.name ?? '')
 const newCurrency = ref<Currency>('KZT')
 /** Курс Нацбанка на сегодня: книга, иначе публичная ручка; нет — поле курса руками (`useNbRate`). */
-const { foreign: isForeign, auto: autoRate, manual: manualRate, rate, ok: rateOk } = useNbRate(newCurrency, planning)
+const nb = useNbRate(newCurrency, planning)
+const { foreign: isForeign, manual: manualRate, rate, ok: rateOk } = nb
 
 watch(
   () => person.value?.name,
@@ -86,7 +88,7 @@ const months = computed(() =>
   Array.from({ length: 37 }, (_, i) => addMonths(key.value, i - 24)).map((m) => ({ value: m, label: monthTitle(m) })),
 )
 const planned = computed(() => parseMoney(newAmount.value))
-const plannedTenge = computed(() => (rateOk.value ? fxToTenge(planned.value, rate.value) : 0))
+const plannedTenge = computed(() => nb.tenge(planned.value))
 const delta = computed(() => (planned.value > 0 && rateOk.value ? plannedTenge.value - currentTenge.value : 0))
 const history = computed(() =>
   [...(person.value?.salaryVersions ?? [])].sort((a, b) => b.from.localeCompare(a.from)),
@@ -175,12 +177,7 @@ function handlePlanSubmit() {
         <Field :label="`Новый оклад, ${CURRENCY_SIGN[newCurrency]}`">
           <NumField v-model="newAmount" :placeholder="plain(current.currency === newCurrency ? current.amount : 0)" />
         </Field>
-        <p v-if="isForeign && autoRate && planned > 0" class="-mt-2.5 mb-3 text-[12px] text-ink-3 num">
-          ≈ {{ money(plannedTenge) }} по курсу Нацбанка
-        </p>
-        <Field v-if="isForeign && !autoRate" :label="`Курс: сколько тенге за 1 ${newCurrency}`">
-          <NumField v-model="manualRate" kind="rate" placeholder="505" />
-        </Field>
+        <NbRateLine :amount="planned" :currency="newCurrency" :nb="nb" />
 
         <Field label="С какого месяца">
           <Select v-model="fromMonth" :options="months" />

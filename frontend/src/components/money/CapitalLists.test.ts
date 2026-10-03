@@ -903,8 +903,8 @@ describe('PV-12: счета — валютный, удаление, тексты
     const { money } = await import('@/lib/money')
     await family()
     const html = await render('/capital', { selectedAccountId: 'usd' })
-    expect(html).toContain('>Сумма в USD</span>')
-    expect(html).toContain('>Курс: сколько тенге за 1 USD</span>')
+    expect(html).toContain('>Сумма, $</span>')
+    expect(html).toContain('>Курс, ₸ за 1 $</span>')
     expect(html).toContain('value="512,34"')
     expect(html).toContain(`В капитале счёт стоит как ${money(512_340)} — по этому курсу.`)
     expect(html).not.toContain('>Сумма, ₸</span>')
@@ -930,7 +930,7 @@ describe('PV-12: счета — валютный, удаление, тексты
     let warning = ''
     const html = await render('/capital', { selectedAccountId: 'card' }, (s) => (warning = s.accountRemoveWarning as string))
     expect(html).toContain('>Сумма, ₸</span>')
-    expect(html).not.toContain('Сумма в USD')
+    expect(html).not.toContain('Сумма, $')
     expect(html).toContain('Удалить счёт')
     expect(warning).toBe(
       'Счёт исчезнет у обоих участников. Отменить нельзя. Накопления по целям «Квартира», «Отпуск» останутся на месте: они снова будут считаться отдельно, а не лежащими на этом счёте.',
@@ -992,7 +992,8 @@ describe('PV-12: счета — валютный, удаление, тексты
     await family()
     // Без книги и без ответа ручки — курс руками.
     const manual = await render('/capital', { accountOpen: true, newAccountCurrency: 'USD', newAccountAmount: '1 000' })
-    expect(manual).toContain('>Курс: сколько тенге за 1 USD</span>')
+    expect(manual).toContain('>Сумма, $</span>')
+    expect(manual).toContain('>Курс, ₸ за 1 $</span>')
     expect(manual).not.toContain('по курсу Нацбанка')
 
     // Книга с курсом на сегодня: 1 000 × 441,89 = 441 890 ₸.
@@ -1001,7 +1002,7 @@ describe('PV-12: счета — валютный, удаление, тексты
     await family()
     const html = await render('/capital', { accountOpen: true, newAccountCurrency: 'USD', newAccountAmount: '1 000' })
     expect(html).toContain(`≈ ${money(441_890)} по курсу Нацбанка`)
-    expect(html).not.toContain('Курс: сколько тенге')
+    expect(html).not.toContain('Курс, ₸ за 1')
     expect(html).not.toContain('Курс запоминается')
 
     expect(await render('/capital', { accountOpen: true, newAccountKind: 'deposit' })).toContain('Ставка по вкладу, % годовых — если есть')

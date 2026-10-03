@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { money, parseMoney } from '@/lib/money'
 import { MONTHS_NOM, monthKey, parseMonthKey } from '@/lib/dates'
-import { fxToTenge, yearShare } from '@/lib/finance'
+import { yearShare } from '@/lib/finance'
 import { CURRENCY_SIGN } from '@/lib/fx'
 import type { Currency, PersonId } from '@/types/finance'
 import { categoryName, type CategoryKey } from '@/lib/palette'
@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 
 import CurrencyChips from '@/components/kit/CurrencyChips.vue'
 import Field from '@/components/kit/Field.vue'
+import NbRateLine from '@/components/kit/NbRateLine.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Segmented from '@/components/kit/Segmented.vue'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -40,7 +41,7 @@ const obEstimate = ref(false)
 const obCurrency = ref<Currency>('KZT')
 const nb = useNbRate(obCurrency, () => props.open)
 /** Сумма в тенге по курсу (тенговая — как введена). */
-const obTenge = computed(() => (nb.ok.value ? fxToTenge(parseMoney(obAmount.value), nb.rate.value) : 0))
+const obTenge = computed(() => nb.tenge(parseMoney(obAmount.value)))
 
 // Разделы, куда кладётся платёж (React `AddObligationDialog`): цели и свободный
 // остаток — не корзины. Разделы заводятся лениво — имя берётся из запасных.
@@ -99,12 +100,7 @@ function createObligation() {
     <Field :label="`${obEvery === 'year' ? 'Сумма за год' : 'Сумма в месяц'}, ${CURRENCY_SIGN[obCurrency]}`">
       <NumField v-model="obAmount" placeholder="5 000" class="mb-3" />
     </Field>
-    <p v-if="nb.foreign.value && nb.auto.value && parseMoney(obAmount) > 0" class="-mt-2.5 mb-3 text-[12px] text-ink-3 num">
-      ≈ {{ money(obTenge) }} по курсу Нацбанка
-    </p>
-    <Field v-if="nb.foreign.value && !nb.auto.value" :label="`Курс: сколько тенге за 1 ${obCurrency}`">
-      <NumField v-model="nb.manual.value" kind="rate" placeholder="505" />
-    </Field>
+    <NbRateLine :amount="parseMoney(obAmount)" :currency="obCurrency" :nb="nb" />
 
     <p v-if="obEvery === 'year' && obTenge > 0" class="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-3">
       В плане месяца это займёт {{ money(yearShare(obTenge)) }} — годовая сумма
