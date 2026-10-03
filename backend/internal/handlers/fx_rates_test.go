@@ -233,14 +233,22 @@ func TestFxRateHandlerSavesItsDay(t *testing.T) {
 	c.Now = func() time.Time { return fxNow }
 	store := repository.NewMockFxRepo()
 
+	h := FxRateHandler(c, store)
 	rec := httptest.NewRecorder()
-	FxRateHandler(c, store)(rec, httptest.NewRequest(http.MethodGet, "/api/fx-rate", nil))
+	h(rec, httptest.NewRequest(http.MethodGet, "/api/fx-rate", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 	got, _ := store.Rates(context.Background(), "EUR", day(2026, 10, 3), day(2026, 10, 3))
 	if got["2026-10-03"] != 513.46 || store.Saves() != 1 {
 		t.Errorf("saved: %v (%d saves)", got, store.Saves())
+	}
+
+	// The same day again (client cache): answered, not written a second time.
+	again := httptest.NewRecorder()
+	h(again, httptest.NewRequest(http.MethodGet, "/api/fx-rate?x=1", nil))
+	if again.Code != http.StatusOK || store.Saves() != 1 {
+		t.Errorf("repeat hit: %d, %d saves", again.Code, store.Saves())
 	}
 }
 

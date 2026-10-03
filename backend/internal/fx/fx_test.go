@@ -175,6 +175,15 @@ func TestDayPublishedEmptyAndBankError(t *testing.T) {
 	if _, err := testClient(failing.URL, time.Now()).Day(context.Background(), time.Now()); err == nil {
 		t.Error("bank 500 must be an error")
 	}
+
+	// 200 with a maintenance page is an error, not an empty day: the history must ask again.
+	maintenance := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<html><body>Технические работы</body></html>`))
+	}))
+	defer maintenance.Close()
+	if _, err := testClient(maintenance.URL, time.Now()).Day(context.Background(), time.Now()); !errors.Is(err, ErrNotFeed) {
+		t.Errorf("maintenance page: expected ErrNotFeed, got %v", err)
+	}
 }
 
 func TestTodayIsAlmatyDate(t *testing.T) {

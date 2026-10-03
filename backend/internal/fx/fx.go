@@ -35,6 +35,9 @@ var almaty = time.FixedZone("Asia/Almaty", 5*60*60)
 // ErrNoRates means no rates were published for the whole lookback window.
 var ErrNoRates = errors.New("курс не опубликован за последнюю неделю")
 
+// ErrNotFeed means the bank answered 200 with something that is not its rates feed.
+var ErrNotFeed = errors.New("bank answered without a rates feed")
+
 // Rates matches the frontend's FxRates: Rates[code] is tenge per one unit.
 type Rates struct {
 	Rates  map[string]float64 `json:"rates"`
@@ -154,6 +157,11 @@ func (c *Client) fetchDay(ctx context.Context, day time.Time) (map[string]float6
 	body, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if err != nil {
 		return nil, err
+	}
+	// A maintenance page or a cut answer is not "nothing published": without this the
+	// history would store the day as empty and never ask again (critic, B2C-76).
+	if !strings.Contains(string(body), "<rates") {
+		return nil, ErrNotFeed
 	}
 	return ParseRates(body), nil
 }

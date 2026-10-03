@@ -26,6 +26,10 @@ const fxSaveTimeout = 2 * time.Second
 // With a store (production) the fetched day also goes into the rate history
 // (B2C-76); a failed write is only logged, the answer is the same.
 func FxRateHandler(client *fx.Client, store repository.FxRepository) http.HandlerFunc {
+	// The day this instance has already written: a public endpoint answered from the
+	// client's cache must not turn every hit into a database transaction (critic, B2C-76).
+	var savedMu sync.Mutex
+	saved := ""
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), fxTimeout)
 		defer cancel()
@@ -38,10 +42,17 @@ func FxRateHandler(client *fx.Client, store repository.FxRepository) http.Handle
 		}
 
 		if store != nil {
-			if day, err := time.Parse(time.DateOnly, rates.Date); err == nil && len(rates.Rates) > 0 {
+			savedMu.Lock()
+			fresh := saved != rates.Date
+			savedMu.Unlock()
+			if day, err := time.Parse(time.DateOnly, rates.Date); fresh && err == nil && len(rates.Rates) > 0 {
 				saveCtx, cancelSave := context.WithTimeout(r.Context(), fxSaveTimeout)
 				if err := store.Save(saveCtx, day, rates.Rates); err != nil {
 					log.Printf("fx-rate: save day: %v", err)
+				} else {
+					savedMu.Lock()
+					saved = rates.Date
+					savedMu.Unlock()
 				}
 				cancelSave()
 			}
