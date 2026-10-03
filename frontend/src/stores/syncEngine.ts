@@ -1,3 +1,4 @@
+import { watch } from 'vue'
 import { useAuthStore } from './auth'
 import { useFinanceStore, DEMO_HOUSEHOLD } from './finance'
 import { useOperationsStore } from './operations'
@@ -6,6 +7,17 @@ import { useOperationsStore } from './operations'
 export const BACKGROUND_SYNC_MS = 60_000
 
 let started = false
+
+/** Обход фото желаний движка (B2C-72); до старта движка — ничего. */
+let linkPhotosHook: () => void = () => {}
+
+/**
+ * Документ семьи только что пришёл с сервера вне круга движка (вход в семью на `Access`) —
+ * фото старых желаний со ссылкой ищутся сразу, не дожидаясь следующего синка.
+ */
+export function afterFamilyLoaded(): void {
+  linkPhotosHook()
+}
 
 /**
  * Подписки, после которых имеет смысл синхронизироваться, — как `startSyncEngine`
@@ -30,12 +42,42 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
     else void finance.pullPrivateDoc()
   }
 
+  /**
+   * Фото старых желаний со ссылкой (B2C-72, смоук 2 Б12): ищутся при запуске в фоне, не дожидаясь
+   * «Желаний», — один раз на вход, после первого успешного круга (документ семьи с сервера).
+   * Следующие синки (фокус, интервал) обход не повторяют; «Желания» зовут свой — дублей нет
+   * (`inFlight`, `tried`). Демо, viewer (ручка 403), без сети — не зовётся; выход отменяет.
+   * Модуль обхода (сжатие) — отдельным чанком, только когда нужен.
+   */
+  let photosFor: string | null = null
+  let photosStop: AbortController | null = null
+  const linkPhotos = () => {
+    const token = auth.token
+    if (!token || photosFor === token || !signedIn() || auth.isViewer || finance.isDemo) return
+    if (finance.status !== 'idle' || win.navigator?.onLine === false) return
+    photosFor = token
+    const stop = (photosStop = new AbortController())
+    void import('@/lib/photos/wishLinkPhotos')
+      .then((m) => (stop.signal.aborted ? 0 : m.fillWishPhotos(finance, undefined, stop.signal)))
+      .catch(() => {})
+  }
+  linkPhotosHook = linkPhotos
+  watch(
+    () => auth.token,
+    (token) => {
+      if (token) return
+      photosStop?.abort()
+      photosStop = null
+      photosFor = null
+    },
+  )
+
   const sync = () => {
     if (!signedIn()) return
     // Только 'idle' значит «локально всё уже на сервере». Правка без сети оставляет
     // 'offline', сбой — 'error': их нужно слить и отправить, а не затереть серверной копией.
-    if (finance.status === 'idle') void finance.pullHousehold()
-    else void finance.syncHousehold()
+    if (finance.status === 'idle') void finance.pullHousehold().then(linkPhotos)
+    else void finance.syncHousehold().then(linkPhotos)
     syncPrivate()
     // Операции выписки, не ушедшие без сети (B2C-07), — тем же кругом.
     const operations = useOperationsStore()
@@ -64,7 +106,7 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
     if (win.navigator?.onLine === false) finance.status = 'offline'
     // Первый круг всегда полный: неотправленная перед закрытием правка не теряется.
     else {
-      void finance.syncHousehold()
+      void finance.syncHousehold().then(linkPhotos)
       syncPrivate()
     }
   }
@@ -73,4 +115,5 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
 /** Только для тестов: движок запускается один раз на страницу. */
 export function resetSyncEngineForTests(): void {
   started = false
+  linkPhotosHook = () => {}
 }

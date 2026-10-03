@@ -9,6 +9,7 @@ import { DEMO_HOUSEHOLD, useFinanceStore } from '@/stores/finance'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
 import { apiClient, LinkPreviewError } from '@/api/client'
 import { LINK_PHOTO_TRIED_KEY } from '@/lib/storage'
+import { fillWishPhotos } from '@/lib/photos/wishLinkPhotos'
 import type { WishItem } from '@/types/finance'
 import Wishes from './Wishes.vue'
 
@@ -52,7 +53,12 @@ const old = (id: string, url: string, extra: Partial<WishItem> = {}): WishItem =
   id, name: id, price: 100_000, by: 'a', addedOn: '2026-09-20', bought: false, url, updatedAt: T0, ...extra,
 })
 
-async function open(wishlist: WishItem[], demo = false, role: 'member' | 'viewer' = 'member') {
+async function open(
+  wishlist: WishItem[],
+  demo = false,
+  role: 'member' | 'viewer' = 'member',
+  before?: (finance: ReturnType<typeof useFinanceStore>) => void,
+) {
   const pinia = createPinia()
   setActivePinia(pinia)
   const auth = authAs(role, 'a')
@@ -61,6 +67,7 @@ async function open(wishlist: WishItem[], demo = false, role: 'member' | 'viewer
   // Демо — документ семьи `DEMO_HOUSEHOLD` на телефоне (как `startDemoMode`).
   finance.claimFor(demo ? DEMO_HOUSEHOLD : auth.household.id)
   finance.setHouseholdDoc(planFamilyDoc({ wishlist }), 1)
+  before?.(finance)
   const router = createRouter({ history: createMemoryHistory(), routes })
   await router.push('/wishes')
   await router.isReady()
@@ -152,5 +159,31 @@ describe('B2C-68: фото у старых желаний со ссылкой', 
     expect(preview).not.toHaveBeenCalled()
     expect(photos.uploaded).toHaveLength(0)
     expect(finance.wishlist[0].photoId).toBeUndefined()
+  })
+
+  it('B2C-72: «Желания» открылись, пока идёт фоновый обход при запуске, — тот же адрес не спрашивается дважды', async () => {
+    let answer!: () => void
+    const gate = new Promise<void>((r) => (answer = r))
+    const preview = vi.spyOn(apiClient, 'linkPreview').mockImplementation(async (url) => {
+      await gate
+      return { title: url, blob: new Blob(['jpeg'], { type: 'image/jpeg' }) }
+    })
+    let background: Promise<number> | undefined
+    const finance = await open(
+      [old('w1', 'https://kaspi.kz/shop/p/dyson-1/'), old('w2', 'https://kaspi.kz/shop/p/pled-2/')],
+      false,
+      'member',
+      (f) => void (background = fillWishPhotos(f)),
+    )
+    await settle()
+    answer()
+    await background
+    await settle()
+
+    const asked = preview.mock.calls.map(([u]) => u)
+    expect(asked.filter((u) => u.includes('dyson-1'))).toHaveLength(1)
+    expect(asked.filter((u) => u.includes('pled-2'))).toHaveLength(1)
+    expect(photos.uploaded).toHaveLength(2)
+    expect(finance.wishlist.map((w) => w.photoId)).toEqual(['ph-1', 'ph-2'])
   })
 })
