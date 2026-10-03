@@ -251,4 +251,48 @@ describe('e2e / B2C Блок 12 — «Неделя и личное» на дву
     expect(viewer).toContain('Dyson Airwrap Complete')
     expect(viewer).not.toContain('Вставьте ссылку')
   })
+
+  it('часть 6 (приёмка) — пачка в разборе выписки: ответы до «Отправить» уходят правилами, на «Неделе» пачки нет; viewer видит «Выписки» без загрузки и решений', async () => {
+    const A = await phone(server, st, 'a')
+    setActivePinia(A.pinia)
+    const ops = useOperationsStore()
+    const parsed: ParsedStatement = {
+      bank: 'kaspi', from: '2026-09-01', to: '2026-09-24', skipped: 0,
+      operations: assignIds(IP.map((m, i) => op(`2026-09-2${2 + (i % 3)}`, -IP_AMOUNT(i), m))),
+    }
+    ops.setDraft([{ name: 'a.pdf', parsed }])
+
+    // Разбор: та же карточка-пачка над «Отправить».
+    const draft = text(await screen(A.pinia, Statements, '/week'))
+    expect(draft).toContain('Без раздела · 12')
+    expect(draft).toContain('Отправить')
+
+    // Три строки → «Продукты», остальные — «Выбрать все» → «Не помню»: два ответа, правила в памяти продавцов.
+    const after = text(await screen(A.pinia, Statements, '/week', undefined, [
+      screenMixin({}, (s) => {
+        const answer = s.answerBatch as (m: unknown[], to: unknown) => void
+        const groups = () => (s.decision as Decision).groups!
+        answer(groups().filter((g) => ['ИП Абенова', 'ИП Ким', 'ИП Ли'].includes(g.label)).map((g) => g.match), { categoryId: 'sc_food' })
+        answer(groups().map((g) => g.match), { categoryId: OTHER_CATEGORY })
+      }),
+    ]))
+    expect(after).not.toContain('Без раздела')
+    const rules = A.store.merchantRules.filter((r) => !r.deletedAt)
+    expect(rules.filter((r) => r.to.categoryId === OTHER_CATEGORY)).toHaveLength(9)
+    expect(rules.filter((r) => r.to.categoryId === 'sc_food')).toHaveLength(3)
+
+    await ops.send(A.client)
+    await A.store.syncHousehold(A.client)
+    expect(unknownGroups(ops.all)).toHaveLength(0)
+    expect(text(await screen(A.pinia, Statements, '/week'))).not.toContain('Без раздела')
+    const B = await phone(server, st, 'b')
+    expect(weekOf(B, OTHER_CATEGORY)).toBe(78_000 - 17_000)
+
+    const V = await phone(server, st, 'a', 'viewer')
+    const viewer = text(await screen(V.pinia, Statements, '/week'))
+    expect(viewer).toContain('Выписки')
+    expect(viewer).toMatch(/Ильяс (пн|вт|ср|чт|пт|сб|вс)/)
+    expect(viewer).not.toContain('Загрузить выписку')
+    expect(viewer).not.toContain('Без раздела')
+  })
 })
