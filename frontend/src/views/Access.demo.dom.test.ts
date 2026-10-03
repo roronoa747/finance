@@ -115,7 +115,7 @@ describe('B2C-52: демо — итоги из демо-операций той 
     const unknownOps = ops.all.filter((o) => !o.categoryId && !o.internal && o.amount < 0 && weekKey(o.date) === week).reduce((a, o) => a - o.amount, 0)
     const pic = weekPicture(finance.householdDoc.spendTotals!, finance.householdDoc.spendCategories!, finance.people, week, ops.uploads)
     expect(pic.unknown).toBe(unknownOps)
-    expect(unknownOps).toBe(10_800)
+    expect(unknownOps).toBe(75_300) // 10 ИП сегодня (B2C-67)
     // Сумма недели — свои операции недели + итоги Аруны.
     const opsWeek = ops.all.filter((o) => !o.internal && o.amount < 0 && weekKey(o.date) === week).reduce((a, o) => a - o.amount, 0)
     const arunaWeek = finance.householdDoc.spendTotals!.filter((t) => t.by === 'b' && t.kind === 'week' && t.period === week).reduce((a, t) => a + t.amount, 0)
@@ -141,7 +141,7 @@ describe('B2C-52: демо — итоги из демо-операций той 
     const abenova = unknownGroups(ops.all).find((g) => g.label === 'ИП Абенова')!
     await ops.recategorize(abenova.match, { categoryId: 'sc_food' }).catch(() => {})
     const after = weekPicture(finance.householdDoc.spendTotals!, finance.householdDoc.spendCategories!, finance.people, week, ops.uploads)
-    expect(after.unknown).toBe(3_200)
+    expect(after.unknown).toBe(75_300 - 7_600)
     expect(after.total).toBe(pic.total)
     expect(fetch).not.toHaveBeenCalled()
   })
