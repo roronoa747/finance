@@ -18,7 +18,8 @@ const props = withDefaults(
   { size: 30 },
 )
 
-const person = computed(() => useFinanceStore().people.find((p) => p.id === props.id && !p.deletedAt))
+const finance = useFinanceStore()
+const person = computed(() => finance.people.find((p) => p.id === props.id && !p.deletedAt))
 const emoji = computed(() => person.value?.emoji || null)
 // Обводка холстом — у кружков в ряду (шапка, списки); у большого на экране кружка её нет. Смайлик — крупнее буквы (макет `.av.emo`).
 const BOX = { 30: 'size-[30px] border-2 border-canvas', 34: 'size-[34px] border-2 border-canvas', 96: 'size-24' }

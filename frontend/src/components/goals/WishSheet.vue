@@ -92,7 +92,14 @@ function onUrl(e: Event) {
 // пишется сразу. Название не трогаем — у желания уже есть имя, данное человеком.
 const link = useLinkPreview()
 let linkTimer: ReturnType<typeof setTimeout> | undefined
-watch(() => props.wishId, () => link.reset())
+// Другое желание — ждущая вставка прежнего не применяется к новому (критик Б12).
+watch(
+  () => props.wishId,
+  () => {
+    clearTimeout(linkTimer)
+    link.reset()
+  },
+)
 function onUrlInput(e: Event) {
   const text = (e.target as HTMLInputElement).value
   clearTimeout(linkTimer)

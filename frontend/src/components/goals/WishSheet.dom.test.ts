@@ -238,4 +238,20 @@ describe('B2C-66: ссылка в окне правки', () => {
     await nextTick()
     expect(pan().url).toBe('https://kaspi.kz/shop/p/tefal-2/')
   })
+
+  it('критик Б12: вставили ссылку и сразу открыли другое желание — ссылка и фото к нему не применяются', async () => {
+    const preview = vi.spyOn(apiClient, 'linkPreview').mockResolvedValue({ title: 'Tefal Ingenio', blob: new Blob(['j'], { type: 'image/jpeg' }) })
+    const { store, wishId, field } = await openPan()
+    const pot = store.addWish({ name: 'Кастрюля', price: 9_000, by: 'a' })
+    const link = field('Ссылка на товар')
+    link.value = 'https://kaspi.kz/shop/p/tefal-2/'
+    link.dispatchEvent(new Event('input', { bubbles: true }))
+    wishId.value = pot
+    await new Promise((r) => setTimeout(r, 350))
+    await flush()
+    expect(preview).not.toHaveBeenCalled()
+    expect(store.wishlist.find((w) => w.id === pot)).toMatchObject({ name: 'Кастрюля' })
+    expect(store.wishlist.find((w) => w.id === pot)?.url ?? '').toBe('')
+    expect(store.wishlist.find((w) => w.id === pot)?.photoId ?? null).toBeNull()
+  })
 })
