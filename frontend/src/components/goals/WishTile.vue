@@ -3,6 +3,7 @@ import { PhCheck, PhLink, PhShoppingBag } from '@phosphor-icons/vue'
 import { money } from '@/lib/money'
 import { cn } from '@/lib/utils'
 import type { WishItem } from '@/types/finance'
+import { useWideFit } from '@/lib/photos/fit'
 import Tag from '@/components/kit/Tag.vue'
 
 /**
@@ -21,6 +22,8 @@ const props = defineProps<{
   meta?: string
 }>()
 const emit = defineEmits<{ (e: 'open'): void; (e: 'toggle'): void }>()
+// Широкое фото (баннер магазина) — целиком на фоне плитки (B2C-73).
+const { onLoad, fit } = useWideFit(() => props.src)
 </script>
 
 <template>
@@ -39,7 +42,7 @@ const emit = defineEmits<{ (e: 'open'): void; (e: 'toggle'): void }>()
       @click="canEdit && emit('open')"
     >
       <div class="relative aspect-square w-full bg-surface-3" :data-photo="wish.photoId ? '' : undefined">
-        <img v-if="src" :src="src" alt="" class="absolute inset-0 size-full object-cover" />
+        <img v-if="src" :src="src" alt="" :class="['absolute inset-0 size-full', fit()]" @load="onLoad" />
         <div v-else class="grid size-full place-items-center text-ink-3"><PhShoppingBag :size="28" /></div>
       </div>
       <div class="flex items-baseline gap-2 px-3 pt-2.5" :class="bought ? 'pb-1' : 'pb-2.5'">

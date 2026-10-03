@@ -198,7 +198,7 @@ onMounted(refresh)
       <RouterLink to="/wishes" class="text-[14px] font-semibold text-brand">{{ openWishes.length ? `Все ${openWishes.length}` : 'Все' }}</RouterLink>
     </div>
     <Card v-if="firstWishes.length" flush class="px-3.5 py-1">
-      <ThumbRow v-for="(w, i) in firstWishes" :key="w.id" :title="w.name" :src="w.photoId ? wishSrc[w.photoId] : null" :index="i + 1">
+      <ThumbRow v-for="(w, i) in firstWishes" :key="w.id" :title="w.name" :src="w.photoId ? wishSrc[w.photoId] : null" :index="i + 1" fit>
         <span v-if="wishMeta(w)" class="truncate type-meta">{{ wishMeta(w) }}</span>
         <template #end>
           <button
