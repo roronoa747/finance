@@ -78,7 +78,7 @@ describe('B2C-69: свой смайлик с клавиатуры', () => {
     expect(document.body.textContent).not.toMatch(/ошибк|только один/i)
   })
 
-  it('ввод «ab» → ничего не записано, поле пустое; два смайлика при своём — поле возвращает свой, запись не меняется', async () => {
+  it('ввод «ab» → ничего не записано, поле пустое; вставка нового при своём — новый заменяет прежний (B2C-74)', async () => {
     const finance = await open()
     const set = vi.spyOn(finance, 'setPerson')
     await type('ab')
@@ -89,10 +89,32 @@ describe('B2C-69: свой смайлик с клавиатуры', () => {
     expect(bigCircle().textContent?.trim()).toBe('И')
 
     await type('🐼')
-    await type('🐼🦊')
-    expect(set).toHaveBeenCalledTimes(1)
-    expect(me().emoji).toBe('🐼')
-    expect(field().value).toBe('🐼')
+    await type('🐼🐙')
+    expect(set).toHaveBeenCalledTimes(2)
+    expect(set).toHaveBeenLastCalledWith('a', { emoji: '🐙' })
+    expect(me().emoji).toBe('🐙')
+    expect(field().value).toBe('🐙')
+    expect(tile().className).toContain('outline-ink')
+    expect(bigCircle().textContent?.trim()).toBe('🐙')
+
+    // Дописали буквы к своему — ничего не записано, поле возвращает свой.
+    await type('🐙ab')
+    expect(set).toHaveBeenCalledTimes(2)
+    expect(me().emoji).toBe('🐙')
+    expect(field().value).toBe('🐙')
+
+    // Вставили смайлик из списка — он и выбран, отмечен в списке, плитка-поле свободна (как B2C-69).
+    await type('🐙🦊')
+    expect(me().emoji).toBe('🦊')
+    expect(field().value).toBe('')
+    expect(document.querySelector('button[aria-label="🦊"]')?.getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('B2C-74: нажатие на плитку-поле выделяет прежний свой — вставка заменит его', async () => {
+    await open('🐼')
+    const select = vi.spyOn(field(), 'select')
+    field().dispatchEvent(new Event('focus'))
+    expect(select).toHaveBeenCalledTimes(1)
   })
 
   it('свой смайлик из документа (флаг, семья) стоит в плитке как выбранный; выбор из списка освобождает плитку', async () => {

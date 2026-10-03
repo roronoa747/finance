@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import Avatar from '@/components/kit/Avatar.vue'
 import Card from '@/components/kit/Card.vue'
-import { PERSON_COLORS, PERSON_EMOJI, oneEmoji, personColor, slotColor } from '@/lib/palette'
+import { PERSON_COLORS, PERSON_EMOJI, lastEmoji, personColor, slotColor } from '@/lib/palette'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import type { PersonColor } from '@/types/finance'
@@ -27,14 +27,17 @@ const set = (patch: { emoji?: string | null; color?: PersonColor }) => {
 
 // Свой смайлик (B2C-69): текущий не из списка — он и стоит в плитке-поле как выбранный.
 const custom = computed(() => (emoji.value && !PERSON_EMOJI.includes(emoji.value) ? emoji.value : ''))
-// Вставили один смайлик — он выбран сразу; буквы, цифры, два смайлика — поле возвращается к прежнему
-// (пустое, если своего не было), ничего не пишется, без текста ошибки (правило 12).
+// Вставили смайлик — он выбран сразу и заменяет прежний свой (B2C-74: вставка дописывается к старому —
+// берётся последний); буквы, цифры — поле возвращается к прежнему (пустое, если своего не было), ничего
+// не пишется, без текста ошибки (правило 12).
 function onOwnEmoji(e: Event) {
   const field = e.target as HTMLInputElement
-  const own = oneEmoji(field.value)
+  const own = lastEmoji(field.value)
   if (own) set({ emoji: own })
-  else field.value = custom.value
+  field.value = own ?? custom.value
 }
+// Нажал на плитку — прежний выделен: на клавиатурах, где это работает, вставка сразу его заменяет.
+const selectAll = (e: Event) => (e.target as HTMLInputElement).select()
 </script>
 
 <template>
@@ -71,6 +74,7 @@ function onOwnEmoji(e: Event) {
             autocomplete="off"
             enterkeyhint="done"
             class="size-full min-w-0 bg-transparent text-center text-[24px] leading-none text-ink outline-none placeholder:text-ink-3"
+            @focus="selectAll"
             @input="onOwnEmoji"
           />
         </label>
