@@ -5,6 +5,10 @@ import { duesTotals, monthDues } from '../src/lib/finance'
 import { monthKey } from '../src/lib/dates'
 import { money as moneyFmt } from '../src/lib/money'
 import { fillWishPhotos } from '../src/lib/photos/wishLinkPhotos'
+import { compressImage } from '../src/lib/photos/compress'
+import { photoDisk, photoUrl, releasePhotos } from '../src/lib/photos/store'
+import { LINK_PHOTO_TRIED_KEY } from '../src/lib/storage'
+import { resetSyncEngineForTests, startSyncEngine } from '../src/stores/syncEngine'
 import { useAuthStore } from '../src/stores/auth'
 import { useFinanceStore } from '../src/stores/finance'
 import { useOperationsStore } from '../src/stores/operations'
@@ -21,7 +25,7 @@ import MyCircle from '../src/views/MyCircle.vue'
 import Settings from '../src/views/Settings.vue'
 import Statements from '../src/views/Statements.vue'
 import Wishes from '../src/views/Wishes.vue'
-import { at, backend, fakeServer, fakeStatements, screen, statementsFor, type FakeServer, type FakeStatements } from './support/family'
+import { at, backend, fakePrivate, fakeServer, fakeStatements, privateFor, screen, statementsFor, type FakeServer, type FakeStatements } from './support/family'
 
 // Сжатие картинки — в браузере (canvas); здесь проверяется путь фото, а не пиксели.
 vi.mock('../src/lib/photos/compress', async (orig) => ({
@@ -362,5 +366,110 @@ describe('e2e / B2C Блок 12 — «Неделя и личное» на дву
     expect(after).toEqual({ total: before.total, left: before.left - paid.amount })
     money = text(await screen(B.pinia, Money, '/money'))
     expect(money).toContain(`Осталось в сентябре ${text(moneyFmt(after.left))} из ${text(moneyFmt(before.total))}`)
+  })
+
+  it('часть 8 (приёмка возврата смоука 2) — обход при запуске без «Желаний», фото у партнёра и после «перезапуска» без загрузки; логотип не ставится; viewer — 0; свой смайлик заменяется вставкой', async () => {
+    const A = await phone(server, st, 'a')
+    const B = await phone(server, st, 'b')
+    setActivePinia(A.pinia)
+    A.store.addWish({ name: 'Геймпад', price: 32_990, by: 'a', url: 'https://kaspi.kz/shop/p/gamepad-1/' })
+    A.store.addWish({ name: 'Кофта', price: 9_000, by: 'a', url: 'https://mobile.yangkeduo.com/goods1.html?goods_id=2' })
+    await sync(A, B)
+
+    // Фото семьи (`privateFor`) и диск у каждого телефона свой; `apiClient` и `photoDisk` — синглтоны, кто сейчас «в руке» — `who`.
+    const pv = fakePrivate()
+    const photos = { a: privateFor(pv, 'u-a'), b: privateFor(pv, 'u-b') }
+    const disks = { a: new Map<string, Blob>(), b: new Map<string, Blob>() }
+    let who: 'a' | 'b' = 'b'
+    vi.spyOn(apiClient, 'uploadPhoto').mockImplementation((blob, hidden) => photos[who].uploadPhoto(blob, hidden))
+    vi.spyOn(apiClient, 'getPhoto').mockImplementation((id) => photos[who].getPhoto(id))
+    vi.spyOn(photoDisk, 'get').mockImplementation(async (id) => disks[who].get(id) ?? null)
+    vi.spyOn(photoDisk, 'put').mockImplementation(async (id, blob) => void disks[who].set(id, blob))
+    // Kaspi — фото товара (jpeg → 800×800), Pinduoduo — логотип приложения (png → 120×120 после сжатия).
+    const asked: string[] = []
+    vi.spyOn(apiClient, 'linkPreview').mockImplementation(async (url: string) => {
+      asked.push(url)
+      const type = url.includes('yangkeduo') ? 'image/png' : 'image/jpeg'
+      return { title: url, blob: new Blob([new Uint8Array([1, 2, 3])], { type }) }
+    })
+    vi.mocked(compressImage).mockImplementation(async (b: Blob) =>
+      b.type === 'image/png' ? { blob: b, type: 'image/jpeg', width: 120, height: 120 } : { blob: b, type: 'image/jpeg', width: 800, height: 800 },
+    )
+
+    /** Запуск приложения на телефоне: движок синка с его клиентом, «Желания» не открываются. */
+    const launch = async (p: Phone) => {
+      setActivePinia(p.pinia)
+      resetSyncEngineForTests()
+      vi.spyOn(p.store, 'syncHousehold').mockImplementation(() => syncHouseholdOf(p))
+      vi.spyOn(p.store, 'pullHousehold').mockImplementation(() => pullHouseholdOf(p))
+      vi.spyOn(p.store, 'pullPrivateDoc').mockResolvedValue(null as never)
+      const win = new EventTarget() as unknown as Window
+      ;(win as unknown as { setInterval: typeof setInterval }).setInterval = setInterval
+      const doc = new EventTarget() as unknown as Document
+      Object.defineProperty(doc, 'visibilityState', { value: 'visible' })
+      startSyncEngine(win, doc)
+      await vi.advanceTimersByTimeAsync(0)
+      await vi.dynamicImportSettled()
+      await vi.advanceTimersByTimeAsync(0)
+    }
+    const real = { sync: B.store.syncHousehold, pull: B.store.pullHousehold }
+    const syncHouseholdOf = (p: Phone) => real.sync.call(p.store, p.client)
+    const pullHouseholdOf = (p: Phone) => real.pull.call(p.store, p.client)
+
+    // B2C-72: Аруна запустила приложение — превью по обоим адресам без захода в «Желания»; B2C-75: логотип не ставится, адрес в памяти.
+    await launch(B)
+    expect([...asked].sort()).toEqual(['https://kaspi.kz/shop/p/gamepad-1/', 'https://mobile.yangkeduo.com/goods1.html?goods_id=2'])
+    const pad = () => B.store.wishlist.find((w) => w.name === 'Геймпад')!
+    expect(pad().photoId).toBeTruthy()
+    expect(B.store.wishlist.find((w) => w.name === 'Кофта')!.photoId ?? null).toBeNull()
+    expect(storage.get(LINK_PHOTO_TRIED_KEY)).toContain('yangkeduo')
+    expect(pv.photos.size).toBe(1)
+    // B2C-71: загруженное обходом сразу лежит на телефоне Аруны.
+    expect(disks.b.has(pad().photoId!)).toBe(true)
+
+    // Партнёр видит фото: Ильяс получил документ, картинка из сети один раз — и легла на его диск.
+    await sync(B, A)
+    const id = A.store.wishlist.find((w) => w.name === 'Геймпад')!.photoId!
+    expect(id).toBe(pad().photoId)
+    who = 'a'
+    releasePhotos()
+    expect(await photoUrl(id)).toBeTruthy()
+    expect(photos.a.getPhoto).toHaveBeenCalledTimes(1)
+    expect(disks.a.has(id)).toBe(true)
+    // «Перезапуск» у Ильяса (память URL стёрта, диск — нет): фото есть, загрузки нет.
+    releasePhotos()
+    expect(await photoUrl(id)).toBeTruthy()
+    expect(photos.a.getPhoto).toHaveBeenCalledTimes(1)
+
+    // Второй запуск у Аруны — новых превью нет: у геймпада фото, адрес логотипа в памяти.
+    who = 'b'
+    await launch(B)
+    expect(asked).toHaveLength(2)
+
+    // Viewer запустил приложение с новым желанием со ссылкой — 0 превью (ручка 403).
+    setActivePinia(A.pinia)
+    A.store.addWish({ name: 'Лампа', price: 12_000, by: 'a', url: 'https://kaspi.kz/shop/p/lamp-3/' })
+    await sync(A, B)
+    const V = await phone(server, st, 'a', 'viewer')
+    await launch(V)
+    expect(asked).toHaveLength(2)
+
+    // B2C-74: свой 🐼 у Ильяса → вставка 🐙 дописывается к нему — пишется 🐙, «ab» не пишется; Аруна видит 🐙.
+    const field = { value: '🐼' }
+    await screen(A.pinia, MyCircle, '/settings/me', undefined, [
+      screenMixin({}, (s) => {
+        const own = s.onOwnEmoji as (e: unknown) => void
+        own({ target: field })
+        field.value = '🐼🐙'
+        own({ target: field })
+        expect(field.value).toBe('🐙')
+        field.value = '🐙ab'
+        own({ target: field })
+        expect(field.value).toBe('🐙')
+      }),
+    ])
+    expect(A.store.people.find((p) => p.id === 'a')?.emoji).toBe('🐙')
+    await sync(A, B)
+    expect(circles(await screen(B.pinia, Money, '/money'))).toContainEqual([expect.any(String), '🐙'])
   })
 })
