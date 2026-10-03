@@ -13,6 +13,7 @@ import {
   nextCreditDue,
   nextObligationDue,
   paidFor,
+  paidTenge,
   payableAccounts,
   paymentSplit,
   liveAccounts,
@@ -71,6 +72,12 @@ const credit = computed(() => (props.kind === 'credit' ? finance.credits.find((c
 const person = computed(() => (salary.value ? finance.people.find((p) => p.id === props.targetId && !p.deletedAt) : undefined))
 
 const record = computed(() => paidFor(finance.payments, props.kind, props.targetId, props.period))
+/** Тенге валютной зарплаты месяца (обмены + остаток по курсу дня зарплаты), не снимок дня прихода. */
+const recordTenge = computed(() =>
+  record.value
+    ? paidTenge({ people: finance.people, payments: finance.payments, book: fx.book, fxExchanges: finance.fxExchanges }, props.targetId as PersonId, props.period, record.value)
+    : 0,
+)
 /** Оклад в валюте (B2C-79): сумма отметки — в валюте, счёт — только валютный той же валюты. */
 const own = computed(() => (person.value ? salaryOf(person.value, props.period) : null))
 const fxSalary = computed(() => !!own.value && own.value.currency !== 'KZT')
@@ -196,7 +203,7 @@ const unmarkNote = computed(() => {
         </div>
         <div class="flex justify-between gap-3">
           <span class="text-ink-2">Сумма</span>
-          <b class="num text-ink">{{ record.foreign && record.currency ? `${moneyIn(record.foreign, record.currency)} · ≈ ${money(record.amount)}` : money(record.amount) }}</b>
+          <b class="num text-ink">{{ record.foreign && record.currency ? `${moneyIn(record.foreign, record.currency)} · ≈ ${money(recordTenge)}` : money(record.amount) }}</b>
         </div>
         <div v-if="split" class="flex justify-between gap-3">
           <span class="text-ink-2">Из них</span>

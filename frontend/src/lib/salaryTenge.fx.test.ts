@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { budgetAmounts, fxToTenge, monthBreakdown, paidTenge, salaryAt, salaryTenge, totalIncome, untilPayday } from './finance'
+import { budgetAmounts, fxToTenge, monthBreakdown, monthSummary, paidTenge, salaryAt, salaryTenge, totalIncome, untilPayday } from './finance'
 import type { FxExchange, Payment, Person, RateBook } from '@/types/finance'
 
 // Тенге зарплаты месяца (B2C-80, Р-74): обменянное — по своему курсу, необменянное — по курсу
@@ -79,6 +79,12 @@ describe('тенге зарплаты в расчётах — таблица н�
 
   it('пришедшая валютная зарплата — тенге по Р-74, не снимок отметки (754 470)', () => {
     expect(paidTenge(state, 'a', '2026-10', payments[1])).toBe(763_350)
+  })
+
+  it('итог месяца «Пришло зарплатой» — тенге по Р-74 (763 350 ₸), не снимок отметки (754 470 ₸)', () => {
+    expect(monthSummary(state, '2026-10').income).toBe(763_350)
+    // Без участников в состоянии считать не по чему — сумма отметки, как до Блока 13.
+    expect(monthSummary({ payments }, '2026-10').income).toBe(754_470)
   })
 
   it('разбор месяца: зарплата Ильяса — 763 350 ₸; ждём Аруну — 500 000 ₸; разбор Аруны ждёт Ильяса — 763 350 ₸', () => {

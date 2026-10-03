@@ -5,7 +5,8 @@ import { PhArrowDown, PhArrowUp } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
-import { money } from '@/lib/money'
+import { useFxStore } from '@/stores/fx'
+import { money, moneyIn } from '@/lib/money'
 import { MONTHS_NOM, addMonths, dayLabel, monthKey, parseMonthKey } from '@/lib/dates'
 import {
   ARTICLE_NAMES,
@@ -52,6 +53,7 @@ const router = useRouter()
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
 const ops = useOperationsStore()
+const fx = useFxStore()
 
 const key = computed(() => monthKey())
 const canEdit = computed(() => !authStore.isViewer)
@@ -94,7 +96,15 @@ const summaryKey = computed(() => summaryMonth() ?? addMonths(key.value, -1))
 const hasSummary = computed(() =>
   hasMonthSummary(
     monthSummary(
-      { credits: financeStore.householdDoc.credits, goals: financeStore.goals, payments: financeStore.payments, wishlist: financeStore.wishlist },
+      {
+        credits: financeStore.householdDoc.credits,
+        goals: financeStore.goals,
+        payments: financeStore.payments,
+        wishlist: financeStore.wishlist,
+        people: financeStore.people,
+        book: fx.book,
+        fxExchanges: financeStore.fxExchanges,
+      },
       summaryKey.value,
     ),
   ),
@@ -119,7 +129,11 @@ const opCategory = (o: Operation) => {
 function markLine(p: Payment): { title: string; note: string; value: string; plus: boolean } {
   const by = personName(p.by)
   const statement = p.source === 'statement' ? ' · из выписки' : ''
-  if (p.kind === 'salary') return { title: `Зарплата · ${personName(p.targetId)}`, note: `пришла · отметка${statement}`, value: `+${money(p.amount)}`, plus: true }
+  if (p.kind === 'salary') {
+    // Валютная зарплата — в своей валюте: тенге дня прихода — только снимок (B2C-80).
+    const value = p.foreign && p.currency ? moneyIn(p.foreign, p.currency) : money(p.amount)
+    return { title: `Зарплата · ${personName(p.targetId)}`, note: `пришла · отметка${statement}`, value: `+${value}`, plus: true }
+  }
   if (p.kind === 'prepay') {
     return { title: `Досрочка в «${targetName(p)}»`, note: `${money(p.saved ?? 0)} не отдадим банку · ${by}`, value: `−${money(p.amount)}`, plus: false }
   }

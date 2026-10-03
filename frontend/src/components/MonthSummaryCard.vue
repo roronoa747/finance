@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { PhShareNetwork } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
+import { useFxStore } from '@/stores/fx'
 import { money } from '@/lib/money'
 import { MONTHS_NOM, addMonths, monthFrom, monthIn, parseMonthKey } from '@/lib/dates'
 import { cancelledSubscriptions, monthSummary } from '@/lib/finance'
@@ -23,6 +24,7 @@ const props = defineProps<{
 }>()
 
 const finance = useFinanceStore()
+const fx = useFxStore()
 
 // Месяц раньше — переключатель внутри карточки.
 const earlier = ref(false)
@@ -39,6 +41,9 @@ const summary = computed(() =>
       goals: finance.goals,
       payments: finance.payments,
       wishlist: finance.wishlist,
+      people: finance.people,
+      book: fx.book,
+      fxExchanges: finance.fxExchanges,
     },
     key.value,
   ),

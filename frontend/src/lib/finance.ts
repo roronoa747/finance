@@ -2053,7 +2053,16 @@ export function cancelledSubscriptions(obligations: Obligation[], key: string): 
  * Кредиты — из документа, как у `progressMoments`. Кто платил и вносил — не разрезается.
  */
 export function monthSummary(
-  state: { credits?: Credit[]; goals?: Goal[]; payments?: Payment[]; wishlist?: WishItem[] },
+  state: {
+    credits?: Credit[];
+    goals?: Goal[];
+    payments?: Payment[];
+    wishlist?: WishItem[];
+    /** Валютная зарплата (B2C-80): тенге месяца — `paidTenge`, не снимок дня прихода. */
+    people?: Person[];
+    book?: RateBook | null;
+    fxExchanges?: FxExchange[];
+  },
   key: string,
 ): MonthSummary {
   const records = countedPayments(state.payments ?? []).filter((p) => p.period === key);
@@ -2088,7 +2097,7 @@ export function monthSummary(
   return {
     key,
     paid: { count: scheduled.length, amount: scheduled.reduce((a, p) => a + p.amount, 0) },
-    income: records.filter((p) => p.kind === 'salary').reduce((a, p) => a + p.amount, 0),
+    income: records.filter((p) => p.kind === 'salary').reduce((a, p) => a + paidTenge(state, p.targetId as PersonId, key, p), 0),
     closed: progressMoments({ credits: state.credits, payments: state.payments })
       .filter((m): m is Extract<Moment, { kind: 'closed' }> => m.kind === 'closed' && inMonth(m.at))
       .map((m) => ({ creditId: m.creditId, name: m.name })),
