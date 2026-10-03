@@ -24,6 +24,9 @@ const DefaultBaseURL = "https://nationalbank.kz/rss/get_rates.cfm"
 const Source = "Национальный банк РК"
 
 // Supported lists the currencies the app offers for accounts.
+//
+// A new code does not fill its history by itself: app.fx_days marks a day asked for all
+// codes at once. After adding one — DELETE FROM app.fx_days, then go run ./cmd/fxbackfill.
 var Supported = []string{"USD", "EUR", "RUB", "CNY"}
 
 // lookbackDays covers weekends and holidays, when the bank publishes nothing.
