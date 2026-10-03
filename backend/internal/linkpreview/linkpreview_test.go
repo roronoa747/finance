@@ -32,6 +32,8 @@ func TestPublicBlocksInternalAddresses(t *testing.T) {
 		"64:ff9b::7f00:1", "64:ff9b::a00:1", // NAT64 на внутренний IPv4
 		"2002:7f00:1::1", "2002:a00:1::1", // 6to4 на внутренний IPv4
 		"2001::1", "fec0::1", // Teredo, site-local
+		"::127.0.0.1", "::10.0.0.1", "::8.8.8.8", // IPv4-совместимые (::/96) — устарели, не IPv4 в IPv6 (критик Б12)
+		"64:ff9b:1::a00:1", "64:ff9b:1::808:808", // локальный NAT64 — транслятор своей сети
 	}
 	for _, s := range blocked {
 		if Public(netip.MustParseAddr(s)) {

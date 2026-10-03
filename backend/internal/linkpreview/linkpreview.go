@@ -117,13 +117,15 @@ func (f *Fetcher) control(_, address string, _ syscall.RawConn) error {
 
 // blockedPrefixes are ranges netip's predicates do not cover.
 var blockedPrefixes = []netip.Prefix{
-	netip.MustParsePrefix("0.0.0.0/8"),     // "this network"
-	netip.MustParsePrefix("100.64.0.0/10"), // CGNAT
-	netip.MustParsePrefix("192.0.0.0/24"),  // IETF protocol assignments
-	netip.MustParsePrefix("198.18.0.0/15"), // benchmarking
-	netip.MustParsePrefix("240.0.0.0/4"),   // reserved, broadcast
-	netip.MustParsePrefix("2001::/32"),     // Teredo: tunnels to anywhere
-	netip.MustParsePrefix("fec0::/10"),     // deprecated site-local
+	netip.MustParsePrefix("0.0.0.0/8"),      // "this network"
+	netip.MustParsePrefix("100.64.0.0/10"),  // CGNAT
+	netip.MustParsePrefix("192.0.0.0/24"),   // IETF protocol assignments
+	netip.MustParsePrefix("198.18.0.0/15"),  // benchmarking
+	netip.MustParsePrefix("240.0.0.0/4"),    // reserved, broadcast
+	netip.MustParsePrefix("::/96"),          // IPv4-compatible ::a.b.c.d (deprecated): netip calls it global unicast
+	netip.MustParsePrefix("64:ff9b:1::/48"), // local-use NAT64: the network's own translator
+	netip.MustParsePrefix("2001::/32"),      // Teredo: tunnels to anywhere
+	netip.MustParsePrefix("fec0::/10"),      // deprecated site-local
 }
 
 // embeddedV4 are IPv6 ranges that carry an IPv4 address: the IPv4 one is checked.
