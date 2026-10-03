@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -97,7 +98,7 @@ func (c *Client) Rates(ctx context.Context) (*Rates, error) {
 			continue
 		}
 
-		c.cached = &Rates{Rates: picked, Date: day.Format("2006-01-02"), Source: Source}
+		c.cached = &Rates{Rates: picked, Date: day.Format(time.DateOnly), Source: Source}
 		c.fetchedAt = now
 		return c.cached, nil
 	}
@@ -132,12 +133,7 @@ func pickSupported(all map[string]float64) map[string]float64 {
 
 // IsSupported reports whether code is one of the Supported currencies.
 func IsSupported(code string) bool {
-	for _, c := range Supported {
-		if c == code {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(Supported, code)
 }
 
 func (c *Client) fetchDay(ctx context.Context, day time.Time) (map[string]float64, error) {
