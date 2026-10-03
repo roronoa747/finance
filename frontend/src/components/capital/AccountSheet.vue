@@ -56,7 +56,10 @@ function onForeignAmount(text: string) {
 function onAccountRate(text: string) {
   const v = parseFloat(text.replace(',', '.'))
   if (!Number.isFinite(v) || v <= 0) return
-  editAccount({ rate: v, amount: fxToTenge(activeAccount.value?.foreignAmount ?? 0, v), rateAt: new Date().toISOString() })
+  // Новая сумма в тенге — новый якорь сверки: база в валюте пишется видимым остатком (приходы и обмены
+  // валютного счёта, B2C-79), иначе якорь отрезал бы их и остаток упал бы до старой базы.
+  const foreign = activeAccount.value?.foreignAmount ?? 0
+  editAccount({ rate: v, foreignAmount: foreign, amount: fxToTenge(foreign, v), rateAt: new Date().toISOString() })
 }
 
 /* ------------------ Вклад ------------------ */
