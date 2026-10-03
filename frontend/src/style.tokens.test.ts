@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { FILL_MS, RING_MS, RING_SHRINK_MS, RING_STEP_MS } from '@/lib/motion'
+import { PERSON_COLORS } from '@/lib/palette'
 
 /**
  * Гвард токенов (B2C-12, Р-19): каждый цвет из `:root` есть в `.dark` и наоборот, и у каждого
@@ -58,7 +59,7 @@ describe('style.css — пары токенов light/dark', () => {
     expect(dark.get('--s12')).toBe('#b8b0a2')
   })
 
-  it('пивот 3 (Р-44): участники «шалфей и лаванда», буква в кружке — контраст ≥ 3:1 в обеих темах', () => {
+  it('пивот 3 (Р-44, Р-61): участники «шалфей и лаванда», буква в кружке — контраст ≥ 3:1 на каждом цвете выбора в обеих темах', () => {
     expect(root.get('--pa')).toBe('#4f7a63')
     expect(root.get('--pb')).toBe('#7d6a9e')
     expect(dark.get('--pa')).toBe('#94c2a8')
@@ -80,9 +81,10 @@ describe('style.css — пары токенов light/dark', () => {
       const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x)
       return (hi + 0.05) / (lo + 0.05)
     }
+    // B2C-63 (Р-61): буква и смайлик своего кружка — на каждом из 6 цветов выбора.
     for (const theme of [root, dark]) {
       const ink = hex(theme, theme.get('--dot-ink') ?? '')
-      for (const p of ['--pa', '--pb']) {
+      for (const p of PERSON_COLORS.map((k) => `--${k}`)) {
         expect(contrast(ink, theme.get(p) ?? '')).toBeGreaterThanOrEqual(3)
       }
     }

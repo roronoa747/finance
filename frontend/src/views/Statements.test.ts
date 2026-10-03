@@ -5,7 +5,6 @@ import { useAuthStore, DEMO_TOKEN } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
 import { parseStatement } from '@/lib/statements/parsers'
-import { DEFAULT_SPEND_CATEGORIES } from '@/lib/statements/dictionary'
 import type { Operation } from '@/lib/statements/types'
 import { money } from '@/lib/money'
 import { decisionQueue, weekPicture } from '@/lib/finance'
@@ -140,12 +139,12 @@ describe('views/Statements.vue', () => {
     expect(html).toContain('60 операций')
     expect(html).toContain('Списания')
     expect(html).toContain('Между своими')
-    // Незнакомые — одной карточкой за раз с чипами (g2 «Решение — незнакомый продавец»), не стеной выпадающих списков.
-    expect(html).toMatch(/— куда отнести\?/)
-    expect(html).toMatch(/1 из \d+/)
-    expect(html).toContain('Пропустить все')
+    // Незнакомые — пачкой (Р-58): одна карточка «Без раздела · N» с отметками, не стена выпадающих списков.
+    expect(html).toMatch(/Без раздела · \d+/)
+    expect(html).toContain('Выбрать все')
+    expect(html).not.toContain('Пропустить все')
     expect(raw).not.toContain('<select')
-    expect(html.match(/куда отнести\?/g)).toHaveLength(1)
+    expect(html.match(/Без раздела/g)).toHaveLength(1)
     // Подсказка о партнёре по DESIGN.md §6: вопрос коротко, подробности — строкой деталей.
     expect(html).toContain('Это перевод партнёру?')
     expect(html).toContain('«Дана К.» — похоже, это Дана. Тогда переводы между вами — не траты.')
@@ -234,18 +233,30 @@ describe('views/Statements.vue', () => {
 
 // B2C-21 «Тесты»: SSR /week — очередь решений по одному после сопоставлений и итог недели.
 describe('views/Statements.vue — решения по одному и итог недели', () => {
-  it('незнакомые продавцы месяца — по одному: «куда отнести?», «1 из 2», чипы, «Ещё N ▾», «Пропустить все»', async () => {
+  it('B2C-61: незнакомые месяца — пачкой: «Без раздела · N», 6 строк по сумме + «Ещё K · сумма ›»; без отмеченных — чипов нет; брендовых кнопок нет', async () => {
     signIn()
     const store = useOperationsStore()
-    store.ops.o1 = op('o1', '2026-09-05', -12_000, 'IP ASANOVA')
-    store.ops.o2 = op('o2', '2026-09-10', -2_000, 'TOO ROMASHKA')
-    store.ops.o3 = op('o3', '2026-09-20', -3_000, 'TOO ROMASHKA')
-    const html = text(await renderScreen(Statements, '/week'))
-    expect(html).toContain('IP ASANOVA — куда отнести?')
-    expect(html).toContain(`1 раз · ${m(12_000)} · последний — 5 сентября`)
-    expect(html).toContain('1 из 2')
-    for (const t of ['Продукты', 'Между своими', `Ещё ${DEFAULT_SPEND_CATEGORIES.length - 6} ▾`, 'Пропустить все', 'Потом']) expect(html).toContain(t)
-    expect(html).not.toContain('TOO ROMASHKA — куда отнести?')
+    // 8 продавцов: 8 000, 7 000 … 1 000; у TOO ROMASHKA — две операции.
+    const names = ['IP ASANOVA', 'TOO ROMASHKA', 'IP KIM', 'IP OSPANOV', 'IP NURLANOVA', 'IP SEITKALI', 'IP ZHUMABAEV', 'IP AKHMETOVA']
+    names.forEach((n, i) => (store.ops[`o${i}`] = op(`o${i}`, '2026-09-05', -(8 - i) * 1_000 + (i === 1 ? 3_000 : 0), n)))
+    store.ops.r2 = op('r2', '2026-09-20', -3_000, 'TOO ROMASHKA')
+    const raw = await renderScreen(Statements, '/week')
+    const html = text(raw)
+    expect(html).toContain('Без раздела · 8')
+    expect(html).toContain('Выбрать все')
+    expect(html).toContain(`TOO ROMASHKA 2 раза ${m(7_000)}`)
+    expect(html).toContain(`IP ASANOVA 1 раз ${m(8_000)}`)
+    // Первые шесть — по сумме; два последних — в хвосте одной строкой.
+    expect(html.indexOf('IP ASANOVA')).toBeLessThan(html.indexOf('TOO ROMASHKA'))
+    expect(html).toContain('IP SEITKALI')
+    for (const n of ['IP ZHUMABAEV', 'IP AKHMETOVA']) expect(html).not.toContain(n)
+    expect(html).toContain(`Ещё 2 · ${m(3_000)} ›`)
+    // Без отмеченных — «куда?» нет; «Пропустить все» больше нет, «Потом» — есть.
+    for (const t of ['Выбрано', 'Продукты', 'Не помню', 'Пропустить все', 'куда отнести']) expect(html).not.toContain(t)
+    expect(html).toContain('Потом')
+    // Правило 12: брендовой кнопки нет (ответ — чипы), рамка главного — у пачки; загрузка тихая.
+    expect(brand(raw)).toEqual([])
+    expect(raw.match(/border-brand/g)).toHaveLength(1)
   })
 
   it('«Оставить подписку?» — тексты главного (keepCard): сумма месяца, за год ×12 и доля пути до мечты', async () => {
@@ -348,7 +359,8 @@ describe('views/Statements.vue — решения по одному и итог 
     const finance = useFinanceStore()
     finance.householdDoc.obligations = [netflix]
     let html = text(await renderScreen(Statements, '/week'))
-    expect(html).toContain('IP ASANOVA — куда отнести?')
+    expect(html).toContain('Без раздела · 1')
+    expect(html).toContain('IP ASANOVA')
     expect(html).toContain('1 из 3')
     expect(html).not.toContain('Оставить подписку')
     expect(html).not.toContain('Остались деньги с')
@@ -424,7 +436,8 @@ describe('views/Statements.vue — решения по одному и итог 
     // «Не разобрано» — сумма недели обоих (4 000 + 1 000), разбор продавцов — в очереди решений.
     expect(html).toContain(`Не разобрано · ${m(5_000)}`)
     expect(html).not.toContain('продавца')
-    expect(html).toContain('IP SERIKOV — куда отнести?')
+    expect(html).toContain('Без раздела · 2')
+    expect(html).toContain('IP SERIKOV')
     expect(html).not.toContain('Загрузить выписку')
     // Из «+» (`?upload=1`) — загрузка есть и при своей выписке.
     expect(text(await renderScreen(Statements, '/week?upload=1'))).toContain('Загрузить выписку')
@@ -448,15 +461,64 @@ describe('views/Statements.vue — решения по одному и итог 
     expect(raw).not.toContain('<select')
   })
 
-  it('B2C-50: в разборе «последний — <дата>» — по операциям черновика, а не по сохранённым', async () => {
+  it('B2C-61: в разборе пачка — по операциям черновика, а не по сохранённым', async () => {
     signIn()
     const store = useOperationsStore()
     // Сохранённая операция того же продавца позже — разбор её не берёт.
     store.ops.saved = op('saved', '2026-09-20', -1_000, 'IP ASANOVA')
     store.setDraft([{ name: 'выписка.pdf', parsed: { bank: 'kaspi', from: '2026-09-01', to: '2026-09-12', operations: [op('d1', '2026-09-03', -2_000, 'IP ASANOVA'), op('d2', '2026-09-08', -3_000, 'IP ASANOVA')] } as never }])
     const html = text(await renderScreen(Statements, '/week'))
-    expect(html).toContain('IP ASANOVA — куда отнести?')
-    expect(html).toContain(`2 раз · ${m(5_000)} · последний — 8 сентября`)
-    expect(html).not.toContain('последний — 20 сентября')
+    expect(html).toContain('Без раздела · 1')
+    expect(html).toContain(`IP ASANOVA 2 раза ${m(5_000)}`)
+  })
+})
+
+describe('B2C-62: карточка «Выписки» — галочки обоих за неделю', () => {
+  // Неделя 39 — 21–27 сентября; 22-е — вторник.
+  /** Заголовок и строки карточки (кнопка или div без вложенных блоков); карточки нет — ''. */
+  const section = (raw: string) => {
+    if (!raw.includes('>Выписки<')) return ''
+    const rows = [...raw.matchAll(/<(button|div)[^>]*gap-2\.5 py-2 text-left[^>]*>[\s\S]*?<\/\1>/g)].map((x) => x[0])
+    return ['Выписки', ...rows].join('\n')
+  }
+  const both: StatementUploadResponse[] = [
+    { id: 'u1', slot: 'a', bank: 'kaspi', period_from: '2026-09-01', period_to: '2026-09-23', ops_count: 30, created_at: '2026-09-22T06:00:00Z' },
+  ]
+
+  it('двое, загрузил только я: у меня галочка и «вт», у партнёра «ещё нет» (строка не кликабельна); даты недели — не в карточке', async () => {
+    signIn()
+    await useOperationsStore().loadUploads(uploadsClient(both))
+    const raw = await renderScreen(Statements, '/week')
+    const card = section(raw)
+    expect(text(card)).toMatch(/Выписки\s+А Алихан вт\s+Д Дана ещё нет/)
+    expect(card.match(/bg-ok/g)).toHaveLength(1)
+    expect(card).not.toContain('<button')
+    expect(text(card)).not.toContain('сентября')
+  })
+
+  it('своя «ещё нет» — кнопка загрузки; загрузили оба — две галочки, кнопок нет', async () => {
+    signIn()
+    const store = useOperationsStore()
+    await store.loadUploads(uploadsClient([{ ...both[0], slot: 'b' }]))
+    let card = section(await renderScreen(Statements, '/week'))
+    expect(text(card)).toMatch(/Алихан ещё нет\s+Д Дана вт/)
+    expect(card.match(/<button/g)).toHaveLength(1)
+    await store.loadUploads(uploadsClient([both[0], { ...both[0], id: 'u2', slot: 'b', created_at: '2026-09-24T03:00:00Z' }]))
+    card = section(await renderScreen(Statements, '/week'))
+    expect(text(card)).toMatch(/Алихан вт\s+Д Дана чт/)
+    expect(card.match(/bg-ok/g)).toHaveLength(2)
+    expect(card).not.toContain('<button')
+  })
+
+  it('один участник — карточки нет; viewer — карточка без действий', async () => {
+    signIn()
+    useFinanceStore().householdDoc.people = useFinanceStore().householdDoc.people.slice(0, 1)
+    expect(section(await renderScreen(Statements, '/week'))).toBe('')
+
+    setActivePinia(createPinia())
+    signIn('viewer')
+    const card = section(await renderScreen(Statements, '/week'))
+    expect(text(card)).toMatch(/Алихан ещё нет\s+Д Дана ещё нет/)
+    expect(card).not.toContain('<button')
   })
 })

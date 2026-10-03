@@ -2,7 +2,8 @@
 import { PhCheck, PhLink, PhShoppingBag } from '@phosphor-icons/vue'
 import { money } from '@/lib/money'
 import { cn } from '@/lib/utils'
-import { personColor } from '@/lib/palette'
+import { memberColor } from '@/lib/palette'
+import { useFinanceStore } from '@/stores/finance'
 import type { WishItem } from '@/types/finance'
 import IconBox from '@/components/kit/IconBox.vue'
 import Tag from '@/components/kit/Tag.vue'
@@ -21,6 +22,8 @@ defineProps<{
   meta: string
 }>()
 const emit = defineEmits<{ (e: 'open'): void; (e: 'toggle'): void }>()
+// Точка автора — тот же цвет, что его кружок (Р-61).
+const finance = useFinanceStore()
 </script>
 
 <template>
@@ -53,7 +56,7 @@ const emit = defineEmits<{ (e: 'open'): void; (e: 'toggle'): void }>()
     >
       <b :class="cn('block truncate text-[14.5px] font-medium', bought ? 'text-ink-3 line-through' : 'text-ink')">{{ wish.name }}</b>
       <span class="mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-3">
-        <i class="size-[7px] shrink-0 rounded-full" :style="{ background: personColor(wish.by) }" />
+        <i class="size-[7px] shrink-0 rounded-full" :style="{ background: memberColor(finance.people, wish.by) }" />
         {{ meta }}
       </span>
     </component>

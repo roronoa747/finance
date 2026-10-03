@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { PhFileArrowUp } from '@phosphor-icons/vue'
+import { PhCheck, PhFileArrowUp } from '@phosphor-icons/vue'
 import Button from '@/components/ui/Button.vue'
+import Avatar from '@/components/kit/Avatar.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Card from '@/components/kit/Card.vue'
 import DecisionCard from '@/components/kit/DecisionCard.vue'
@@ -16,6 +17,7 @@ import WeekTotal from '@/components/kit/WeekTotal.vue'
 import StackBar from '@/components/kit/StackBar.vue'
 import SalaryRow from '@/components/SalaryRow.vue'
 import CategoryChips from '@/components/CategoryChips.vue'
+import UnknownBatch from '@/components/UnknownBatch.vue'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
@@ -24,7 +26,7 @@ import { money, parseMoney } from '@/lib/money'
 import { plural } from '@/lib/utils'
 import { MONTHS_NOM, monthKey, parseMonthKey, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
 import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
-import { draftSummary, partnerHints, picture, pictureTotal, ruleMatchOf, unknownGroups, type UnknownGroup } from '@/lib/statements/model'
+import { draftSummary, partnerHints, picture, pictureTotal, unknownGroups, type UnknownGroup } from '@/lib/statements/model'
 import { readStatementFiles } from '@/lib/statements/read'
 import type { MerchantRule } from '@/lib/statements/types'
 import type { ArticleKey, PersonId } from '@/types/finance'
@@ -36,11 +38,13 @@ import {
   decisionQueue,
   ringShares,
   type Decision,
+  type WeekUploadRow,
   liveSpendCategories,
   spendCategoryName,
   spendRows,
   weekPicture,
   weekTag,
+  weekUploads,
   weekVersusPrev,
 } from '@/lib/finance'
 import { readMonthEnd, writeMonthEnd } from '@/lib/storage'
@@ -50,7 +54,7 @@ import { ARTICLE_COLORS } from '@/lib/palette'
  * «Неделя» — ритуал (пивот 3, Р-43; макет `pivot-3/dreams-week.html` «А · Ритуал»): итог недели обоих
  * одной карточкой → одно решение за раз из очереди `decisionQueue` → «Загрузить выписку» (брендовая, когда
  * решений нет); «Разделы за месяц» и «Прошлые недели» — свёрнутыми строками с листом. Разбор выписки —
- * сводка, продавцы черновика по одному и «Отправить». Файл разбирается на телефоне и никуда не уходит
+ * сводка, незнакомые продавцы черновика пачкой и «Отправить». Файл разбирается на телефоне и никуда не уходит
  * (Р-4); считает `finance.ts` / `lib/statements`.
  */
 const auth = useAuthStore()
@@ -89,10 +93,10 @@ const pic = computed(() => weekPicture(spendTotals.value, spendCategories.value,
 // Даты недели и чьи выписки — в подписи шапки (`AppShell`: `weekRangeLabel`, `weekTag`).
 const weekTotalOf = (key: string) => spendRows(spendTotals.value, [], { kind: 'week', period: key }).total
 const prevWeek = weekKey(new Date(Date.now() - 7 * 86_400_000))
-const mineThisWeek = computed(() => {
-  const { from, to } = pic.value.range
-  return store.uploads.some((u) => u.slot === me.value && u.period_to >= from && u.period_from <= to)
-})
+/** «Выписки» (Р-62): кто загрузил выписку за неделю и в какой день; своя «ещё нет» открывает загрузку, viewer — без действий. */
+const uploadRows = computed(() => weekUploads(people.value, week, store.uploads))
+const mineThisWeek = computed(() => uploadRows.value.some((r) => r.person.id === me.value && r.day !== null))
+const uploadsMine = (r: WeekUploadRow) => canUpload.value && r.person.id === me.value && r.day === null
 /** Карточка недели: подпись — даты недели, сумма и доли — `weekPicture`, чип — `weekVersusPrev`, «Не разобрано» — сумма недели обоих. */
 const weekTotalProps = computed(() => ({
   label: weekRangeLabel(pic.value.range),
@@ -133,24 +137,12 @@ const groupKey = (g: UnknownGroup) => JSON.stringify(g.match)
 // «Остались деньги?» (Р-19): ответ — до конца месяца, на устройстве (раскладку остатка семьи проверяет очередь).
 const answeredLocal = ref<string | null>(readMonthEnd())
 
-// Незнакомые продавцы: в разборе — черновик (ответ — правило до отправки), иначе — месяц (раздел задним числом).
-// «Последний — <дата>» — из тех же операций, что и группы (хвост (а) критика Б9).
-const unknownOps = computed(() => (store.draft ? store.draftOps : monthOps.value))
-const lastOf = (g: UnknownGroup) =>
-  unknownOps.value
-    .filter((o) => {
-      const m = ruleMatchOf(o)
-      return m.merchant === g.match.merchant && m.counterparty === g.match.counterparty
-    })
-    .map((o) => o.date)
-    .sort()
-    .at(-1)
-const skipUnknown = ref(false)
-const unknownList = computed(() => (skipUnknown.value ? [] : unknownGroups(unknownOps.value).map((g) => ({ ...g, last: lastOf(g) }))))
+// Незнакомые продавцы — пачкой (Р-58): в разборе — черновик (ответ — правило до отправки), иначе — месяц (раздел задним числом).
+const unknownList = computed(() => unknownGroups(store.draft ? store.draftOps : monthOps.value))
 
 /**
- * Одна очередь (Р-43, `decisionQueue`): сопоставление → продавец → подписка → зарплата → «освободится» →
- * «остались деньги?»; на экране — первое неотложенное. В разборе — только продавцы черновика.
+ * Одна очередь (Р-43, `decisionQueue`): сопоставление → продавцы пачкой → подписка → зарплата → «освободится» →
+ * «остались деньги?»; на экране — первое неотложенное. В разборе — только пачка продавцов черновика.
  * «Потом» / «Позже» / «Подумать» — до следующего открытия экрана.
  */
 const deferred = ref<string[]>([])
@@ -167,7 +159,7 @@ const queue = computed(() =>
       spendCategories: spendCategories.value,
       uploads: store.uploads,
     },
-  ).filter((d) => !deferred.value.includes(d.key) && (!store.draft || d.kind === 'unknown')),
+  ).filter((d) => !deferred.value.includes(d.key) && (!store.draft || d.kind === 'unknownBatch')),
 )
 const decision = computed(() => queue.value[0] ?? null)
 const defer = (d: Decision) => {
@@ -225,10 +217,10 @@ const usualSegments = (d: Decision) =>
         .map((x) => ({ ...x, color: x.key === 'rest' ? 'var(--track)' : ARTICLE_COLORS[x.key] }))
     : []
 
-/** Ответ карточки незнакомого продавца: в разборе — до отправки, в неделе — задним числом. */
-function answerUnknown(g: UnknownGroup, to: MerchantRule['to']) {
-  if (store.draft) store.answer(g.match, to)
-  else void store.recategorize(g.match, to)
+/** Ответ пачке — всем отмеченным разом: в разборе — до отправки, в неделе — задним числом одной отправкой. */
+function answerBatch(matches: MerchantRule['match'][], to: MerchantRule['to']) {
+  if (store.draft) store.answerAll(matches, to)
+  else void store.recategorizeAll(matches, to)
 }
 
 // «Оставить подписку?» (Р-20): «Отписаться» — шаг подтверждения (`keepCard().cancel`).
@@ -257,12 +249,11 @@ function answerRest(go: boolean) {
 /** Главное действие экрана (правило 12): первое решение, иначе — загрузка своей выписки. */
 const uploadLead = computed(() => !decision.value)
 
-// Ответы карточки: у продавца — чипы и тихая «Пропустить все» (ещё продавцы в очереди), у подписки — шаг отмены.
+// Ответы карточки: у подписки — шаг отмены.
 const decisionActions = computed(() => {
   const d = decision.value
   if (!d) return null
   if (d.kind === 'keep' && cancelling.value) return d.cancel?.actions ?? null
-  if (d.kind === 'unknown') return { ...d.actions, secondary: queue.value.filter((x) => x.kind === 'unknown').length > 1 ? 'Пропустить все' : undefined }
   return d.actions
 })
 function onPrimary(d: Decision) {
@@ -275,7 +266,6 @@ function onPrimary(d: Decision) {
 function onSecondary(d: Decision) {
   if (d.kind === 'match' && d.match) void store.declineMatch(d.match)
   else if (d.kind === 'keep') onKeep(d, 'cancel')
-  else if (d.kind === 'unknown') skipUnknown.value = true
 }
 function onGhost(d: Decision) {
   if (d.kind === 'keep' && cancelling.value) cancelling.value = false
@@ -298,7 +288,6 @@ async function pick(e: Event) {
     const { ok, errors } = await readStatementFiles(files)
     store.setDraft(ok, errors)
     deferred.value = []
-    skipUnknown.value = false
     // Пришли из «+» — после выбора файла адрес обычный: в итоге недели загрузки снова нет.
     if (route.query.upload === '1') void router.replace('/week')
   } finally {
@@ -366,6 +355,26 @@ onMounted(() => {
     <template v-else>
       <Callout v-if="store.pendingCount" tone="neutral">{{ store.pendingCount }} операций отправятся при сети. Итоги уже посчитаны.</Callout>
       <Callout v-if="store.lastAutoMarked" tone="ok">Отмечено по выписке: {{ store.lastAutoMarked }} — снять можно в «Деньгах».</Callout>
+      <!-- «Выписки» (Р-62, макет «А · Пачкой»): галочки обоих; даты недели — уже в шапке, в заголовок не дублируются. -->
+      <Card v-if="uploadRows.length > 1" class="flex flex-col">
+        <span class="type-label">Выписки</span>
+        <component
+          :is="uploadsMine(r) ? 'button' : 'div'"
+          v-for="(r, i) in uploadRows"
+          :key="r.person.id"
+          :type="uploadsMine(r) ? 'button' : undefined"
+          class="flex w-full items-center gap-2.5 py-2 text-left"
+          :class="[i && 'border-t border-line', uploadsMine(r) && 'cursor-pointer']"
+          @click="uploadsMine(r) && fileInput?.click()"
+        >
+          <span class="grid size-6 shrink-0 place-items-center rounded-[8px] border-2" :class="r.day !== null ? 'border-ok bg-ok text-brand-ink' : 'border-line-strong'" aria-hidden="true">
+            <PhCheck v-if="r.day !== null" :size="14" weight="bold" />
+          </span>
+          <Avatar :id="r.person.id" :name="r.person.name" />
+          <span class="min-w-0 flex-1 truncate text-ink">{{ r.person.name }}</span>
+          <span class="type-meta">{{ r.day ?? 'ещё нет' }}</span>
+        </component>
+      </Card>
       <!-- За неделю никто не загружал — карточки нет (без «0 ₸»); viewer видит пустое состояние, участник — загрузку ниже. -->
       <WeekTotal v-if="pic.uploaded.length" v-bind="weekTotalProps" />
       <Card v-else-if="!canUpload"><EmptyState title="Картины недели пока нет" /></Card>
@@ -378,7 +387,8 @@ onMounted(() => {
       <span class="type-meta num">остаётся {{ money(justLaid.rest) }}</span>
     </Card>
 
-    <!-- Одно решение за раз (Р-43): первое из очереди `decisionQueue`; в разборе — продавцы черновика -->
+    <!-- Одно решение за раз (Р-43): первое из очереди `decisionQueue`; незнакомые продавцы — пачкой (Р-58) -->
+    <UnknownBatch v-else-if="decision?.kind === 'unknownBatch'" :groups="decision.groups ?? []" :progress="progress" @answer="answerBatch" @later="defer(decision!)" />
     <DecisionCard
       v-else-if="decision"
       :key="decision.key"
@@ -396,7 +406,6 @@ onMounted(() => {
       <template v-else-if="decision.kind === 'monthEnd'" #inner>
         <NumField v-model="restAmount" placeholder="50 000" aria-label="Сколько осталось, ₸" />
       </template>
-      <CategoryChips v-if="decision.group" :counterparty="!!decision.group.match.counterparty" @choose="(to) => answerUnknown(decision!.group!, to)" />
       <!-- «Пришла зарплата» (макет, вопрос 2): сумма, полоса статей, «как в <месяце> · останется N ₸» -->
       <template v-if="decision.kind === 'allocate'">
         <span class="-mt-2.5 type-big num text-ink">{{ money(decision.amount ?? 0) }}</span>

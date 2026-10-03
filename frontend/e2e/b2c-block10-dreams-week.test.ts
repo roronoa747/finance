@@ -117,33 +117,35 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
       const free = fact(p)
       expect(free.byFact).toBe(true)
       expect(html).toContain(`Свободно ${text(money(free.amount))}`)
-      for (const w of [weekRangeLabel(weekRange(weekKey())), 'куда отнести', 'Загрузить выписку', 'Пришла зарплата', 'Не разобрано']) expect(html).not.toContain(w)
+      for (const w of [weekRangeLabel(weekRange(weekKey())), 'Без раздела', 'Загрузить выписку', 'Пришла зарплата', 'Не разобрано']) expect(html).not.toContain(w)
     }
   })
 
-  it('часть 2 — очередь: одно решение за раз, ответ на продавца у A → «2 из 2», итоги и «Свободно» у B пересчитались', async () => {
+  it('часть 2 — очередь: одно решение за раз, ответ из пачки продавцов у A, итоги и «Свободно» у B пересчитались', async () => {
     const A = await phone(server, st, 'a')
     const ops = await uploadA(A)
     const B = await phone(server, st, 'b')
     const before = fact(B).amount
 
     const html = await screen(A.pinia, Statements, '/week')
-    expect(text(html)).toContain('1 из 2')
+    // Блок 12 (Р-58): оба продавца — одной пачкой, одно решение.
+    expect(text(html)).toContain('Без раздела · 2')
     expect(html.match(/<h2 class="type-h2 text-ink">/g)).toHaveLength(1)
-    expect(text(html)).toContain('ТОО Непонятное — куда отнести?')
+    expect(text(html)).toContain('ТОО Непонятное')
 
-    // Ответ чипом «Подписки» (плановый раздел — из «Свободно» не вычитается): карточка — следующий продавец, «2 из 2».
+    // Ответ чипом «Подписки» (плановый раздел — из «Свободно» не вычитается): в пачке остался второй продавец.
     let after = ''
     const answered = await screen(A.pinia, Statements, '/week', undefined, [
       screenMixin({}, (s) => {
         const d = s.decision as Decision
-        ;(s.answerUnknown as (g: unknown, to: unknown) => void)(d.group, { categoryId: 'sc_subscriptions' })
+        const g = d.groups!.find((x) => x.label === 'ТОО Непонятное')!
+        ;(s.answerBatch as (m: unknown[], to: unknown) => void)([g.match], { categoryId: 'sc_subscriptions' })
       }),
     ])
     after = text(answered)
-    expect(after).toContain('ИП Жансая — куда отнести?')
-    expect(after).toContain('2 из 2')
-    expect(after).not.toContain('1 из 1')
+    expect(after).toContain('Без раздела · 1')
+    expect(after).toContain('ИП Жансая')
+    expect(after).not.toContain('ТОО Непонятное')
     await vi.runOnlyPendingTimersAsync()
     await ops.flush(A.client)
 
@@ -176,11 +178,11 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     const V = await phone(server, st, 'b', 'viewer')
     const week = await screen(V.pinia, Statements, '/week')
     expect(text(week)).toContain(weekRangeLabel(weekRange(weekKey())))
-    for (const w of ['куда отнести', 'Загрузить выписку', 'из 2']) expect(text(week)).not.toContain(w)
+    for (const w of ['Без раздела', 'Загрузить выписку', 'из 2']) expect(text(week)).not.toContain(w)
     expect(week).not.toContain('type-h2')
     expect(week).not.toContain('bg-brand text-brand-ink')
     const dreams = text(await screen(V.pinia, Dreams, '/'))
-    for (const w of ['куда отнести', 'Загрузить выписку', '+ Новая', 'Добавить фото']) expect(dreams).not.toContain(w)
+    for (const w of ['Без раздела', 'Загрузить выписку', '+ Новая', 'Добавить фото']) expect(dreams).not.toContain(w)
   })
 
   it('часть 5 — демо: итоги недели Ильяса = spendTotals демо-операций; сумма недели = операции + итоги Аруны; два решения; «Мечты» — 2 цели и 3 желания', async () => {
@@ -200,9 +202,10 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     expect(pic.total).toBe(opsWeek + aruna)
     const html = text(await screen(pinia, Statements, '/week'))
     expect(html).toContain(`${weekRangeLabel(pic.range)} ${text(money(pic.total))}`)
-    // Два продавца и «Пришла зарплата» Ильяса (Блок 11: зарплата демо пришла сегодня и не разобрана).
-    expect(html).toContain('1 из 3')
-    expect(html).toContain('ИП Абенова — куда отнести?')
+    // Продавцы пачкой и «Пришла зарплата» Ильяса (Блок 11: зарплата демо пришла сегодня и не разобрана; Блок 12: пачка — одно решение).
+    expect(html).toContain('1 из 2')
+    expect(html).toContain('Без раздела · 10')
+    expect(html).toContain('ИП Абенова')
     // «История» демо — те же операции недели.
     expect(text(await screen(pinia, Money, '/money/history'))).toContain('ИП Абенова')
     // «Мечты» демо «как в макете» (приёмка Б10): главная, 2 цели, желания обоих и общее.
@@ -222,24 +225,24 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     expect(brands(b)).toBe(1)
     expect(text(b)).toContain('Загрузить выписку')
 
-    // A: продавец — чипы без брендовой; после двух ответов решений нет, своя выписка есть — загрузки нет.
+    // A: пачка продавцов — чипы без брендовой; после ответа обоим решений нет, своя выписка есть — загрузки нет.
     const answer = screenMixin({}, (s) => {
       const d = s.decision as Decision
-      ;(s.answerUnknown as (g: unknown, to: unknown) => void)(d.group, { categoryId: 'sc_food' })
+      ;(s.answerBatch as (m: unknown[], to: unknown) => void)([d.groups![0].match], { categoryId: 'sc_food' })
     })
     expect(brands(await screen(A.pinia, Statements, '/week'))).toBeLessThanOrEqual(1)
     const one = await screen(A.pinia, Statements, '/week', undefined, [answer])
-    expect(text(one)).toContain('2 из 2')
+    expect(text(one)).toContain('Без раздела · 1')
     expect(brands(one)).toBeLessThanOrEqual(1)
     // Ответ первого рендера отправлен; второго продавца — тем же ответом стора, с ожиданием записи.
     await vi.runOnlyPendingTimersAsync()
     await ops.flush(A.client)
     let last: Parameters<typeof ops.recategorize>[0] | undefined
-    await screen(A.pinia, Statements, '/week', undefined, [screenMixin({}, (s) => (last = (s.decision as Decision).group!.match))])
+    await screen(A.pinia, Statements, '/week', undefined, [screenMixin({}, (s) => (last = (s.decision as Decision).groups![0].match))])
     setActivePinia(A.pinia)
     await ops.recategorize(last!, { categoryId: 'sc_food' }, A.client)
     const done = await screen(A.pinia, Statements, '/week')
-    expect(text(done)).not.toContain('куда отнести')
+    expect(text(done)).not.toContain('Без раздела')
     expect(text(done)).not.toContain('Загрузить выписку')
     expect(brands(done)).toBe(0)
   })

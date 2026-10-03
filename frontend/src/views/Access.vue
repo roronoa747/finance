@@ -149,7 +149,8 @@ function startDemoMode() {
     doc.setupDoneAt = new Date().toISOString()
     doc.people = [
       { id: 'a', name: 'Ильяс', salary: 750_000, payday: 10, onboardedAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-      { id: 'b', name: 'Аруна', salary: 450_000, payday: 20, onboardedAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      // Свой кружок (B2C-63/67): у Аруны — смайлик и цвет, у Ильяса — буква, как по умолчанию.
+      { id: 'b', name: 'Аруна', salary: 450_000, payday: 20, emoji: '🌸', color: 's6', onboardedAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
     ]
     doc.categories = [
       { key: 'd1', name: 'Жильё', note: 'аренда и коммуналка', amount: 250_000, updatedAt: new Date().toISOString() },
@@ -310,14 +311,14 @@ function startDemoMode() {
     const today = day(0)
     const from = [`${monthKey()}-01`, day(13)].sort()[0]
     const ops = useOperationsStore()
+    // «Выписки» недели (B2C-62/67): Ильяс загрузил, Аруна — ещё нет (галочка и «ещё нет»).
     ops.seedDemoUploads([
-      { id: 'demo-upload-a', slot: 'a', bank: 'kaspi', period_from: from, period_to: today, ops_count: 19, created_at: new Date().toISOString() },
-      { id: 'demo-upload-b', slot: 'b', bank: 'kaspi', period_from: from, period_to: today, ops_count: 12, created_at: new Date().toISOString() },
+      { id: 'demo-upload-a', slot: 'a', bank: 'kaspi', period_from: from, period_to: today, ops_count: 29, created_at: new Date().toISOString() },
     ])
     // Пять разделов, продавцы — только из словаря (иначе ответ на продавца, переразложив операции правилами,
     // вернёт их в «не разобрано»; суммы — вне окна оценки «Коммуналки» 21–39 тыс., иначе «платёж по
-    // Коммуналке?»), один перевод между своими и два незнакомых продавца сегодня —
-    // на «Неделе» в любой день не меньше двух решений («ИП Абенова», «ИП Жумабаева»).
+    // Коммуналке?»), один перевод между своими и десять незнакомых продавцов сегодня — на «Неделе»
+    // в любой день пачка «Без раздела · 10» (Блок 12, B2C-67) и «Пришла зарплата».
     const op = (n: number, ago: number, amount: number, merchant: string, categoryId: string | null, extra: Partial<Operation> = {}): Operation => ({
       id: `demo-op-${n}`, bank: 'kaspi', date: day(ago), amount, kind: 'purchase', merchant, categoryId, internal: false, ...extra,
     })
@@ -341,6 +342,14 @@ function startDemoMode() {
       op(17, 12, -8_900, 'Magnum', 'sc_food'),
       op(18, 13, -5_500, 'Del Papa Cafe', 'sc_cafe'),
       op(19, 13, -9_800, 'Small', 'sc_food'),
+      op(20, 0, -14_500, 'ИП Сейткали', null),
+      op(21, 0, -2_700, 'ИП Ким', null),
+      op(22, 0, -11_000, 'ИП Нурланова', null),
+      op(23, 0, -1_900, 'ИП Оспанов', null),
+      op(24, 0, -5_600, 'ИП Ахметова', null),
+      op(25, 0, -8_250, 'ИП Байжанов', null),
+      op(26, 0, -3_750, 'ИП Тулегенова', null),
+      op(27, 0, -16_800, 'ИП Искаков', null),
     ])
   })
   void router.push('/')

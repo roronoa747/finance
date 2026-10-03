@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { GOAL_TEMPLATES, GOAL_TYPES, TRAVEL_DIRECTIONS, templateById, templateCredit, templateImageUrl } from './goalTemplates'
+import { GOAL_TEMPLATES, GOAL_TYPES, TRAVEL_DIRECTIONS, templateById, templateCredit, templateImageUrl, themePhotos } from './goalTemplates'
 import { HUE_KEYS } from './palette'
 
 describe('lib/goalTemplates — шаблоны целей (Р-28, B2C-17)', () => {
@@ -17,8 +17,38 @@ describe('lib/goalTemplates — шаблоны целей (Р-28, B2C-17)', () =
     }
   })
 
-  it('пять типов из брифа и 8–12 направлений путешествий', () => {
-    expect(GOAL_TYPES.map((k) => k.type)).toEqual(['car', 'home', 'travel', 'tech', 'health'])
+  it('B2C-64: шесть новых тем — свой тип и плитка у каждой; ни одна картинка и страница фото не повторяется', () => {
+    const themes = { wedding: 'Свадьба', baby: 'Ребёнок', study: 'Учёба', renovation: 'Ремонт', cushion: 'Подушка', hajj: 'Хадж, Умра' }
+    for (const [type, name] of Object.entries(themes)) {
+      expect(GOAL_TYPES.find((k) => k.type === type)?.name, type).toBe(name)
+      expect(templateById(type)?.type, type).toBe(type)
+      expect(templateImageUrl(templateById(type)!, 600)).toMatch(/^https:\/\/images\.unsplash\.com\/photo-\d+-[0-9a-f]+\?w=600&q=80&fm=jpg&fit=crop$/)
+    }
+    expect(new Set(GOAL_TEMPLATES.map((t) => t.photo.unsplashId)).size).toBe(GOAL_TEMPLATES.length)
+    expect(new Set(GOAL_TEMPLATES.map((t) => t.photo.pageId)).size).toBe(GOAL_TEMPLATES.length)
+  })
+
+  it('B2C-64-а: у каждой темы, кроме «Путешествия», 3–5 фото — первым фото плитки, варианты `<тип>-N` того же типа и оттенка; формат автора и ссылки', () => {
+    for (const { type } of GOAL_TYPES.filter((k) => k.type !== 'travel')) {
+      const list = themePhotos(type)
+      expect(list.length, type).toBeGreaterThanOrEqual(3)
+      expect(list.length, type).toBeLessThanOrEqual(5)
+      expect(list[0].id).toBe(type)
+      for (const [i, t] of list.slice(1).entries()) {
+        expect(t.id).toBe(`${type}-${i + 2}`)
+        expect(t).toMatchObject({ type, name: list[0].name, hue: list[0].hue })
+        expect(templateImageUrl(t, 600)).toMatch(/^https:\/\/images\.unsplash\.com\/photo-\d+-[0-9a-f]+\?w=600&q=80&fm=jpg&fit=crop$/)
+        expect(t.photo.authorUrl).toMatch(/^https:\/\/unsplash\.com\/@[\w.-]+$/)
+        expect(t.photo.pageId).toMatch(/^[\w-]{11}$/)
+      }
+    }
+    expect(themePhotos('travel')).toEqual([])
+    // Варианты не попадают в направления путешествий; уникальность картинок и страниц — в тесте B2C-64 выше, на всём пуле.
+    expect(TRAVEL_DIRECTIONS.some((t) => /-\d$/.test(t.id))).toBe(false)
+  })
+
+  it('типы из брифа и пула B2C-64 (одиннадцать) и 8–12 направлений путешествий', () => {
+    expect(GOAL_TYPES.map((k) => k.type)).toEqual(['car', 'home', 'travel', 'tech', 'health', 'wedding', 'baby', 'study', 'renovation', 'cushion', 'hajj'])
     for (const k of GOAL_TYPES) expect(templateById(k.type)?.type).toBe(k.type)
     expect(TRAVEL_DIRECTIONS.length).toBeGreaterThanOrEqual(8)
     expect(TRAVEL_DIRECTIONS.length).toBeLessThanOrEqual(12)

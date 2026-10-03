@@ -44,7 +44,13 @@ export type Person = Tracked & {
    * заново открывало мастер и зацикливало его.
    */
   onboardedAt?: string | null
+  /** Свой кружок (Р-61): смайлик вместо буквы и цвет — ключ токена; null / нет — буква на цвете слота. */
+  emoji?: string | null
+  color?: PersonColor | null
 }
+
+/** Цвет кружка участника — ключ токена (`--pa` … `--s6`), список выбора — `PERSON_COLORS` (`lib/palette.ts`). */
+export type PersonColor = 'pa' | 'pb' | 's1' | 's3' | 's6' | 's8'
 
 export type Category = Tracked & {
   key: CategoryKey

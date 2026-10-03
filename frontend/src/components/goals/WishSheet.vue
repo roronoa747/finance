@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { PhLink } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { plain, parseMoney } from '@/lib/money'
@@ -8,6 +8,7 @@ import { liveWishlist } from '@/lib/finance'
 import { compressImage } from '@/lib/photos/compress'
 import { deletePhoto, uploadPhoto } from '@/lib/photos/store'
 import { usePhoto } from '@/lib/photos/usePhoto'
+import { cleanLink, useLinkPreview, type LinkFound } from '@/lib/photos/useLinkPreview'
 import type { PersonId } from '@/types/finance'
 
 import Callout from '@/components/kit/Callout.vue'
@@ -48,6 +49,7 @@ const photoNote = ref<string | null>(null)
 
 async function onFile(file: File) {
   const w = wish.value
+  link.clearNote()
   if (!file || !w || financeStore.isDemo) return
   photoBusy.value = true
   photoNote.value = null
@@ -83,8 +85,26 @@ function onPrice(text: string) {
 // Пустая ссылка пишется пустой строкой, а не undefined: пропавший ключ слияние вернуло бы
 // из записи партнёра (`mergeList` берёт поля проигравшего, которых нет у победителя).
 function onUrl(e: Event) {
-  const v = (e.target as HTMLInputElement).value.trim()
+  const raw = (e.target as HTMLInputElement).value
+  const v = cleanLink(raw)
   if (wish.value && v !== (wish.value.url ?? '')) financeStore.updateWish(wish.value.id, { url: v })
+}
+// Вставили ссылку (B2C-66): фото со страницы заменяет прежнее тем же путём, что своё; ссылка
+// пишется сразу. Название не трогаем — у желания уже есть имя, данное человеком.
+const link = useLinkPreview()
+// Другое желание — ждущая вставка прежнего не применяется к новому (критик Б12).
+watch(
+  () => props.wishId,
+  () => link.reset(),
+)
+function onUrlInput(e: Event) {
+  link.schedule((e.target as HTMLInputElement).value, onLink)
+}
+async function onLink(found: LinkFound) {
+  const w = wish.value
+  if (!w) return
+  if (found.url !== (w.url ?? '')) financeStore.updateWish(w.id, { url: found.url })
+  if (found.file) await onFile(found.file)
 }
 function onBy(by: PersonId) {
   if (wish.value) financeStore.updateWish(wish.value.id, { by })
@@ -112,12 +132,12 @@ function remove() {
         class="mb-3"
         :src="photoSrc"
         :present="!!wish.photoId"
-        :busy="photoBusy"
+        :busy="photoBusy || link.busy.value"
         :removable="!!wish.photoId"
         @file="onFile"
         @remove="removePhoto"
       />
-      <Callout v-if="photoNote" tone="neutral" icon="info" class="mb-3">{{ photoNote }}</Callout>
+      <Callout v-if="photoNote || link.note.value" tone="neutral" icon="info" class="mb-3">{{ photoNote ?? link.note.value }}</Callout>
       <p class="mb-3 type-meta">{{ meta }}</p>
       <!-- Ссылка в магазин — заметной кнопкой, а не строкой -->
       <a
@@ -136,12 +156,14 @@ function remove() {
       <Field label="Цена, ₸">
         <NumFieldBlur :initial="plain(wish.price)" class="mb-3" @commit="onPrice" />
       </Field>
-      <Field label="Ссылка на товар">
+      <!-- Ссылка подтягивает фото со страницы — нужен сервер: в демо поля нет (B2C-66) -->
+      <Field v-if="!financeStore.isDemo" label="Ссылка на товар">
         <Input
           :default-value="wish.url ?? ''"
           inputmode="url"
-          placeholder="можно оставить пустым"
+          placeholder="Вставьте ссылку"
           class="mb-3"
+          @input="onUrlInput"
           @blur="onUrl"
         />
       </Field>

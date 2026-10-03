@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { ApiClient, ApiError } from './client'
+import { ApiClient, ApiError, LinkPreviewError, base64Blob } from './client'
 import type { SyncDoc } from '@/types/finance'
 
 describe('api/client.ts — типизированный клиент Go API', () => {
@@ -101,6 +101,47 @@ describe('api/client.ts — типизированный клиент Go API', (
       expect(apiErr.status).toBe(409)
       expect(apiErr.isConflict).toBe(true)
       expect((apiErr.data as any).server_doc.rev).toBe(5)
+    }
+  })
+})
+
+describe('api/client.ts — фото по ссылке (B2C-66)', () => {
+  const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+
+  it('linkPreview: POST {url}, base64 → Blob нужного типа и название', async () => {
+    let sent = ''
+    const fetchFn = vi.fn(async (url: string, init?: RequestInit) => {
+      sent = `${init?.method} ${url} ${String(init?.body)}`
+      return json(200, { title: 'Dyson Airwrap', imageType: 'image/jpeg', image: btoa('ÿØÿjpeg') })
+    })
+    const client = new ApiClient({ fetchFn: fetchFn as unknown as typeof fetch, getToken: () => 't' })
+    const { title, blob } = await client.linkPreview('https://kaspi.kz/shop/p/1')
+    expect(sent).toBe('POST /api/photos/preview {"url":"https://kaspi.kz/shop/p/1"}')
+    expect(title).toBe('Dyson Airwrap')
+    expect(blob.type).toBe('image/jpeg')
+    expect(new Uint8Array(await blob.arrayBuffer())).toEqual(new Uint8Array([0xff, 0xd8, 0xff, 106, 112, 101, 103]))
+    expect(base64Blob(btoa('ab'), 'image/png').size).toBe(2)
+  })
+
+  it('ошибки 400/422 → LinkPreviewError с причиной; без сети — offline; незнакомое — unavailable', async () => {
+    const cases: [Response | Error, string][] = [
+      [json(400, { error: 'bad url' }), 'bad url'],
+      [json(400, { error: 'blocked' }), 'blocked'],
+      [json(422, { error: 'no image' }), 'no image'],
+      [json(422, { error: 'too large' }), 'too large'],
+      [json(422, { error: 'timeout' }), 'timeout'],
+      [json(403, { error: 'forbidden: only members can change data' }), 'unavailable'],
+      [new TypeError('Failed to fetch'), 'offline'],
+    ]
+    for (const [answer, reason] of cases) {
+      const fetchFn = vi.fn(async () => {
+        if (answer instanceof Error) throw answer
+        return answer
+      })
+      const client = new ApiClient({ fetchFn: fetchFn as unknown as typeof fetch })
+      const err = await client.linkPreview('https://kaspi.kz/x').catch((e: unknown) => e)
+      expect(err).toBeInstanceOf(LinkPreviewError)
+      expect((err as LinkPreviewError).reason).toBe(reason)
     }
   })
 })

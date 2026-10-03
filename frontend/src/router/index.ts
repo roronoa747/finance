@@ -24,6 +24,7 @@ const Statements = () => import('@/views/Statements.vue')
 const GoalNew = () => import('@/views/GoalNew.vue')
 // Первый запуск (B2C-19): один раз на семью — отдельным чанком.
 const Start = () => import('@/views/Start.vue')
+const MyCircle = () => import('@/views/MyCircle.vue')
 
 /**
  * Карта маршрутов Блока 3 (DESIGN.md §2, B2C-13): вкладки «Мечты» `/` · «Неделя» `/week` ·
@@ -95,6 +96,8 @@ export const routes: RouteRecordRaw[] = [
       // Карточка сторис (DESIGN.md §2, B2C-20) — лист на экране цели.
       { path: 'share/:goalId', redirect: (to) => ({ path: `/goals/${String(to.params.goalId)}`, query: { share: '1' } }) },
       { path: 'settings', name: 'settings', component: Settings },
+      // «Свой кружок» (Р-61) — только свой участник; viewer не правит.
+      { path: 'settings/me', name: 'my-circle', component: MyCircle, meta: { memberOnly: true } },
       // Старые адреса (до Блока 3).
       { path: 'budget', redirect: '/money' },
       { path: 'capital', redirect: capitalRedirect },

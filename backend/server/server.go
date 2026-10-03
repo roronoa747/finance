@@ -20,6 +20,7 @@ import (
 	"finance-backend/internal/db"
 	"finance-backend/internal/fx"
 	"finance-backend/internal/handlers"
+	"finance-backend/internal/linkpreview"
 	"finance-backend/internal/repository"
 )
 
@@ -113,6 +114,7 @@ func NewRouter(
 	syncHandler := handlers.NewSyncHandler(repos.Docs)
 	statementHandler := handlers.NewStatementHandler(repos.Statements)
 	photoHandler := handlers.NewPhotoHandler(repos.Photos)
+	previewHandler := handlers.NewPreviewHandler(linkpreview.New().Fetch)
 
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", handlers.HealthHandler(database))
@@ -142,6 +144,8 @@ func NewRouter(
 
 			// Фото целей и желаний (B2C-16): байты в Postgres; скрытое — только автору (404).
 			protected.Post("/photos", photoHandler.Upload)
+			// Фото желания по ссылке (B2C-65, Р-69): только member, в базу не пишет.
+			protected.Post("/photos/preview", previewHandler.Preview)
 			protected.Get("/photos/{id}", photoHandler.Get)
 			protected.Delete("/photos/{id}", photoHandler.Delete)
 		})

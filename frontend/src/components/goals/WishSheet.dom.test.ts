@@ -5,6 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { defaultSyncDoc, useFinanceStore } from '@/stores/finance'
 import { liveWishlist } from '@/lib/finance'
 import type { WishItem } from '@/types/finance'
+import { apiClient } from '@/api/client'
 import WishSheet from './WishSheet.vue'
 
 // Сервер фото и сжатие — заглушки (как `GoalDetail.photo.test.ts`): проверяется, какое фото
@@ -215,5 +216,42 @@ describe('Н-3: фото желания в окне правки', () => {
     await flush()
     expect(liveWishlist(bare.store.wishlist)).toHaveLength(0)
     expect(photos.deleted).toEqual([])
+  })
+})
+
+describe('B2C-66: ссылка в окне правки', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('вставили ссылку — фото со страницы заменяет прежнее, ссылка записана сразу, название — человека', async () => {
+    const preview = vi.spyOn(apiClient, 'linkPreview').mockResolvedValue({ title: 'Tefal Ingenio', blob: new Blob(['j'], { type: 'image/jpeg' }) })
+    const { field, pan } = await openPan({ photoId: 'ph-old' })
+    const link = field('Ссылка на товар')
+    link.value = 'Смотри https://kaspi.kz/shop/p/tefal-2/'
+    link.dispatchEvent(new Event('input', { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 350))
+    for (let i = 0; i < 5; i++) await nextTick()
+    expect(preview).toHaveBeenCalledWith('https://kaspi.kz/shop/p/tefal-2/')
+    expect(pan()).toMatchObject({ name: 'Сковорода', url: 'https://kaspi.kz/shop/p/tefal-2/', photoId: 'ph-new' })
+    expect(photos.deleted).toEqual(['ph-old'])
+    // Уход из поля не перетирает ссылку вставленным текстом.
+    link.blur()
+    await nextTick()
+    expect(pan().url).toBe('https://kaspi.kz/shop/p/tefal-2/')
+  })
+
+  it('критик Б12: вставили ссылку и сразу открыли другое желание — ссылка и фото к нему не применяются', async () => {
+    const preview = vi.spyOn(apiClient, 'linkPreview').mockResolvedValue({ title: 'Tefal Ingenio', blob: new Blob(['j'], { type: 'image/jpeg' }) })
+    const { store, wishId, field } = await openPan()
+    const pot = store.addWish({ name: 'Кастрюля', price: 9_000, by: 'a' })
+    const link = field('Ссылка на товар')
+    link.value = 'https://kaspi.kz/shop/p/tefal-2/'
+    link.dispatchEvent(new Event('input', { bubbles: true }))
+    wishId.value = pot
+    await new Promise((r) => setTimeout(r, 350))
+    await flush()
+    expect(preview).not.toHaveBeenCalled()
+    expect(store.wishlist.find((w) => w.id === pot)).toMatchObject({ name: 'Кастрюля' })
+    expect(store.wishlist.find((w) => w.id === pot)?.url ?? '').toBe('')
+    expect(store.wishlist.find((w) => w.id === pot)?.photoId ?? null).toBeNull()
   })
 })

@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { money, parseMoney } from '@/lib/money'
 import { monthIn, monthKey } from '@/lib/dates'
 import { budgetAmounts, goalDoneMonth, goalMonthly } from '@/lib/finance'
-import { GOAL_TEMPLATES, GOAL_TYPES, TRAVEL_DIRECTIONS, templateImageUrl, type GoalTemplate } from '@/lib/goalTemplates'
+import { GOAL_TEMPLATES, GOAL_TYPES, TRAVEL_DIRECTIONS, templateImageUrl, themePhotos, type GoalTemplate } from '@/lib/goalTemplates'
 import { attachFile, attachTemplate } from '@/lib/photos/goalPhoto'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
@@ -64,6 +64,8 @@ const realistic = computed(() => monthly.value > 0 && monthly.value <= free.valu
 const canCreate = computed(() => name.value.trim().length > 0 && need.value > 0 && !authStore.isViewer)
 
 const directions = computed(() => (pickedType.value === 'travel' ? TRAVEL_DIRECTIONS : []))
+// Несколько фото на тему (B2C-64-а): ряд под сеткой, первое — фото плитки.
+const variants = computed(() => (pickedType.value ? themePhotos(pickedType.value) : []))
 const byType = (type: GoalTemplate['type']) => GOAL_TEMPLATES.find((t) => t.id === type)!
 const previewSrc = computed(() => ownPreview.value ?? (template.value ? templateImageUrl(template.value, 800) : null))
 
@@ -80,7 +82,7 @@ function pickType(type: GoalTemplate['type']) {
   ownFile.value = null
   dropPreview()
 }
-function pickDirection(t: GoalTemplate) {
+function pickTemplate(t: GoalTemplate) {
   template.value = t
 }
 function onFile(e: Event) {
@@ -149,10 +151,24 @@ const inShell = inject<boolean>('ff-shell-actions', false)
       <template v-if="directions.length">
         <div class="mt-1 px-1 type-section">Куда</div>
         <div class="flex flex-wrap gap-2">
-          <Chip v-for="d in directions" :key="d.id" :on="template?.id === d.id" @click="pickDirection(d)">{{ d.name }}</Chip>
-          <Chip quiet :on="template?.id === 'travel'" @click="pickDirection(byType('travel'))">Своё</Chip>
+          <Chip v-for="d in directions" :key="d.id" :on="template?.id === d.id" @click="pickTemplate(d)">{{ d.name }}</Chip>
+          <Chip quiet :on="template?.id === 'travel'" @click="pickTemplate(byType('travel'))">Своё</Chip>
         </div>
       </template>
+      <div v-if="variants.length > 1" class="flex gap-2">
+        <button
+          v-for="(v, i) in variants"
+          :key="v.id"
+          type="button"
+          :aria-label="`Фото ${i + 1}`"
+          :aria-pressed="template?.id === v.id"
+          class="press size-14 shrink-0 overflow-hidden rounded-xl cursor-pointer"
+          :class="template?.id === v.id && 'outline outline-[2.5px] outline-offset-2 outline-brand'"
+          @click="pickTemplate(v)"
+        >
+          <img :src="templateImageUrl(v, 160)" alt="" class="size-full object-cover" loading="lazy" />
+        </button>
+      </div>
       <!-- Механика (Unsplash, сжатие) на экране не объясняется — автор виден на фото (правило интерфейса). -->
       <div class="mt-auto flex flex-col gap-2 pt-2">
         <Button size="lg" class="w-full" :disabled="!template" @click="next">Дальше</Button>

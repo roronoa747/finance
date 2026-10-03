@@ -561,6 +561,10 @@ func runLiveServerE2EFlow(
 		if respSync.StatusCode != http.StatusUnauthorized {
 			t.Errorf("expected 401 Unauthorized for sync, got %d", respSync.StatusCode)
 		}
+		// Фото по ссылке (B2C-65): без токена — 401 до разбора тела.
+		if resp, _ := sendJSON(http.MethodPost, "/api/photos/preview", map[string]string{"url": "https://kaspi.kz/"}, ""); resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("expected 401 for photo preview, got %d", resp.StatusCode)
+		}
 	})
 
 	// Step 15: Viewer role permissions check
@@ -612,6 +616,9 @@ func runLiveServerE2EFlow(
 		}
 		if resp, _ := sendJSON(http.MethodDelete, "/api/photos/00000000-0000-4000-8000-000000000000", nil, viewerToken); resp.StatusCode != http.StatusForbidden {
 			t.Errorf("viewer expected 403 on photo delete, got %d", resp.StatusCode)
+		}
+		if resp, _ := sendJSON(http.MethodPost, "/api/photos/preview", map[string]string{"url": "https://kaspi.kz/"}, viewerToken); resp.StatusCode != http.StatusForbidden {
+			t.Errorf("viewer expected 403 on photo preview, got %d", resp.StatusCode)
 		}
 	})
 }

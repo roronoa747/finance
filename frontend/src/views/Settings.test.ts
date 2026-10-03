@@ -3,9 +3,12 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore, DEMO_TOKEN } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { renderScreen } from '@/test/screenState'
-import type { PersonId } from '@/types/finance'
+import type { Person, PersonId } from '@/types/finance'
 import Settings from './Settings.vue'
 import Money from './Money.vue'
+import MyCircle from './MyCircle.vue'
+import { routes } from '@/router'
+import { screenMixin } from '@/test/screenState'
 
 const T0 = '2026-09-01T00:00:00.000Z'
 
@@ -106,5 +109,67 @@ describe('B2C-13: /settings и /money (SSR)', () => {
     const html = await renderScreen(Money, '/money')
     for (const t of ['>Капитал</b>', '>План</b>', '>История</b>']) expect(html).toContain(t)
     expect(html).not.toContain('План «Сначала долги»')
+  })
+})
+
+describe('B2C-63: свой кружок — смайлик и цвет', () => {
+  beforeEach(() => {
+    const map = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => map.set(k, String(v)),
+      removeItem: (k: string) => map.delete(k),
+      clear: () => map.clear(),
+    })
+    setActivePinia(createPinia())
+  })
+  const family = (a: Partial<Person> = {}, b: Partial<Person> = {}) => {
+    useFinanceStore().householdDoc.people = [
+      { id: 'a', name: 'Ильяс', salary: 700_000, payday: 10, updatedAt: T0, ...a },
+      { id: 'b', name: 'Дана', salary: 500_000, payday: 20, updatedAt: T0, ...b },
+    ]
+  }
+  /** Кружки участников в HTML: фон и содержимое. */
+  const circles = (html: string) => [...html.matchAll(/<span class="grid shrink-0 place-items-center rounded-full[^"]*"[^>]*style="background:([^;"]+);?"[^>]*>\s*([^<]*?)\s*<\/span>/g)].map((m) => [m[1].trim(), m[2]])
+
+  it('без выбора — буква на цвете слота, как было; смайлик и цвет — вместо буквы, у партнёра тоже', async () => {
+    signIn()
+    family()
+    expect(circles(await renderScreen(Settings, '/settings'))).toEqual([['var(--pa)', 'И'], ['var(--pb)', 'Д']])
+    family({ emoji: '🦊', color: 's8' }, { emoji: '🐻' })
+    expect(circles(await renderScreen(Settings, '/settings'))).toEqual([['var(--s8)', '🦊'], ['var(--pb)', '🐻']])
+  })
+
+  it('своя строка ведёт в «Свой кружок», чужая — нет; viewer — без перехода, маршрут только member', async () => {
+    signIn()
+    family()
+    let html = await renderScreen(Settings, '/settings')
+    expect(html.match(/href="\/settings\/me"/g)).toHaveLength(1)
+    expect(html.slice(html.indexOf('href="/settings/me"'), html.indexOf('</a>', html.indexOf('href="/settings/me"')))).toContain('Ильяс')
+    setActivePinia(createPinia())
+    signIn('viewer')
+    family()
+    html = await renderScreen(Settings, '/settings')
+    expect(html).not.toContain('/settings/me')
+    const shell = routes.find((r) => r.children?.some((c) => c.name === 'my-circle'))
+    expect(shell?.children?.find((c) => c.name === 'my-circle')?.meta).toMatchObject({ memberOnly: true })
+  })
+
+  it('экран: большой кружок, буква + 11 смайликов, 6 цветов; выбранное — aria-pressed; выбор пишется сразу', async () => {
+    signIn('member', 'b')
+    family({}, { emoji: '🌙' })
+    const html = await renderScreen(MyCircle, '/settings/me')
+    expect(html).toContain('size-24')
+    expect(html.match(/aria-label="Буква Д"/g)).toHaveLength(1)
+    const emoji = [...html.matchAll(/<button[^>]*aria-pressed="(true|false)"[^>]*aria-label="([^"]+)"/g)].map((m) => [m[2], m[1]])
+    expect(emoji.filter(([l]) => !l.startsWith('Цвет'))).toHaveLength(12)
+    expect(emoji.filter(([, on]) => on === 'true').map(([l]) => l)).toEqual(['🌙', 'Цвет 2'])
+    expect(emoji.filter(([l]) => l.startsWith('Цвет'))).toHaveLength(6)
+    // Выбор — сразу в документ своего участника (как имя), чужой не трогается.
+    await renderScreen(MyCircle, '/settings/me', undefined, [screenMixin({}, (s) => (s.set as (p: object) => void)({ color: 's3' }))])
+    const [a, b] = useFinanceStore().householdDoc.people
+    expect(b.color).toBe('s3')
+    expect(b.emoji).toBe('🌙')
+    expect(a.color).toBeUndefined()
   })
 })

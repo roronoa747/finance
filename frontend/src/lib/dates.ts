@@ -133,6 +133,14 @@ export function atLabel(iso: string): string {
   return dayLabel(d.day, d.key)
 }
 
+const WEEKDAYS_SHORT = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб']
+
+/** Короткий день недели момента по Алматы — «вт» (когда загрузили выписку, карточка «Выписки»); нет даты — ''. */
+export function weekdayShort(iso: string | null | undefined): string {
+  const t = iso ? new Date(iso).getTime() : NaN
+  return Number.isNaN(t) ? '' : WEEKDAYS_SHORT[almaty(new Date(t)).getUTCDay()]
+}
+
 /**
  * Диапазон недели для заголовка «Эта неделя · 21–27 сентября» (главный и «Неделя»): один
  * месяц — «21–27 сентября», на стыке — «29 сентября – 5 октября».

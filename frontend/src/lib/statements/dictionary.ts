@@ -4,6 +4,8 @@ import type { OperationKind, SpendCategory } from './types'
 // у себя в документе (`spendCategories`), а продавцов учит правилами (`merchantRules`).
 
 export const UNKNOWN_CATEGORY = '_unknown'
+/** «Прочее» — ответ «Не помню» (Р-58): продавец больше не спрашивается. */
+export const OTHER_CATEGORY = 'sc_other'
 
 // `plannedElsewhere` (B2C-14): раздел уже стоит в плане месяца обязательством или кредитом —
 // «Свободно по факту» его траты из выписок не вычитает второй раз.
