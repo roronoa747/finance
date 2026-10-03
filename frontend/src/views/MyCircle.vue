@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import Avatar from '@/components/kit/Avatar.vue'
 import Card from '@/components/kit/Card.vue'
-import { PERSON_COLORS, PERSON_EMOJI, personColor } from '@/lib/palette'
+import { PERSON_COLORS, PERSON_EMOJI, personColor, slotColor } from '@/lib/palette'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import type { PersonColor } from '@/types/finance'
@@ -18,7 +18,7 @@ const me = computed(() => finance.people.find((p) => p.id === auth.slot && !p.de
 const letter = computed(() => (me.value?.name ?? '').slice(0, 1))
 const emoji = computed(() => me.value?.emoji || null)
 // Без выбора отмечен цвет слота — он и есть сейчас у кружка.
-const color = computed<string>(() => me.value?.color ?? (auth.slot === 'b' ? 'pb' : 'pa'))
+const color = computed<string>(() => me.value?.color ?? (me.value ? slotColor(me.value.id) : ''))
 
 const set = (patch: { emoji?: string | null; color?: PersonColor }) => {
   if (auth.slot) finance.setPerson(auth.slot, patch)

@@ -9,6 +9,7 @@ import { atLabel } from '@/lib/dates'
 import { lastAccountFor, paidFor, salaryAt, salaryBreakdownPath, salaryOpen } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
+import { memberColor } from '@/lib/palette'
 import Row from '@/components/kit/Row.vue'
 import Button from '@/components/ui/Button.vue'
 import MarkSheet from '@/components/MarkSheet.vue'
@@ -122,7 +123,7 @@ function openMore() {
   <Row
     v-else
     :title="title"
-    :accent="`var(--p${personId})`"
+    :accent="memberColor(finance.people, personId)"
     :clickable="clickable"
     :dense="dense"
     :muted="!!record"

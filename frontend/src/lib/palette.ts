@@ -8,7 +8,7 @@
  * B2C-12). Разделы трат выписок красятся токенами `--s1…--s12` (`spendColor`).
  */
 
-import type { ArticleKey, PersonColor, PersonId } from '@/types/finance'
+import type { ArticleKey, Person, PersonColor, PersonId } from '@/types/finance'
 
 export type HueKey = 'blue' | 'teal' | 'green' | 'ochre' | 'brick' | 'plum' | 'indigo' | 'steel'
 
@@ -120,7 +120,17 @@ export const PERSON_EMOJI = ['🦊', '🐻', '🌿', '⚡️', '🌙', '🍉', '
  */
 export function personColor(id: PersonId, color?: string | null): string {
   if (color && (PERSON_COLORS as string[]).includes(color)) return `var(--${color})`
-  return id === 'c' ? 'var(--ink-3)' : `var(--p${id})`
+  return `var(--${slotColor(id)})`
+}
+
+/** Ключ токена цвета слота: `a`/`b` — `pa`/`pb`, у третьего слота — `ink-3`. */
+export function slotColor(id: PersonId): string {
+  return id === 'c' ? 'ink-3' : `p${id}`
+}
+
+/** Цвет участника по документу — один путь для всех экранов (Р-61): живой участник с выбранным цветом, иначе слот. */
+export function memberColor(people: readonly Person[], id: PersonId): string {
+  return personColor(id, people.find((p) => p.id === id && !p.deletedAt)?.color)
 }
 
 /**

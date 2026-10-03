@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { PhArrowsClockwise, PhCheck, PhCloudSlash, PhWarning } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
+import { memberColor } from '@/lib/palette'
 import Button from '@/components/ui/Button.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import DangerZone from '@/components/kit/DangerZone.vue'
@@ -149,7 +150,8 @@ function startOver() {
             class="flex items-center gap-2.5 py-1 text-[14px] text-ink"
           >
             <i
-              :class="['size-2.5 shrink-0 rounded-full', p.id === 'a' ? 'bg-pa' : p.id === 'b' ? 'bg-pb' : 'bg-ink-3']"
+              class="size-2.5 shrink-0 rounded-full"
+              :style="{ background: memberColor(people, p.id) }"
             />
             {{ p.name }}
             <span v-if="p.id === me" class="text-[12px] text-ink-3">это вы</span>

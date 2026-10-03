@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { PersonId } from '@/types/finance'
-import { personColor } from '@/lib/palette'
+import { memberColor } from '@/lib/palette'
 import { useFinanceStore } from '@/stores/finance'
 
 /**
@@ -30,7 +30,7 @@ const FONT = { letter: { 30: 'text-[12px]', 34: 'text-[12px]', 96: 'text-[40px]'
   <span
     class="grid shrink-0 place-items-center rounded-full font-semibold leading-none text-dot-ink"
     :class="[BOX[size], FONT[emoji ? 'emoji' : 'letter'][size]]"
-    :style="{ background: personColor(id, person?.color) }"
+    :style="{ background: memberColor(finance.people, id) }"
     :title="name"
   >
     {{ emoji ?? name.slice(0, 1) }}

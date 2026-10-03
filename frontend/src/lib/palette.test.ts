@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { HUES, HUE_KEYS, resolveDark, hueColor, applyTheme, prefersDark, spendColor, spendSlot, SPEND_SLOTS, personColor, PERSON_COLORS } from './palette'
+import { HUES, HUE_KEYS, resolveDark, hueColor, applyTheme, prefersDark, spendColor, spendSlot, SPEND_SLOTS, personColor, PERSON_COLORS, memberColor, slotColor } from './palette'
+import type { Person } from '@/types/finance'
 import { DEFAULT_SPEND_CATEGORIES } from './statements/dictionary'
 
 // Токены читаются из style.css текстом, как в style.tokens.test.ts (Vitest отдаёт CSS пустым).
@@ -133,5 +134,17 @@ describe('palette.ts — цветовая система и темы оформ�
     expect(personColor('a', null)).toBe('var(--pa)')
     expect(personColor('b', 's2')).toBe('var(--pb)')
     expect(personColor('a', '#ff0000')).toBe('var(--pa)')
+  })
+
+  it('клинап Б12 memberColor/slotColor: один путь цвета участника — выбранный у живого, у удалённого и без выбора — слот', () => {
+    const p = (id: Person['id'], extra: Partial<Person> = {}) => ({ id, name: id, salary: 0, updatedAt: '', ...extra }) as Person
+    const people = [p('a', { color: 's8' }), p('b', { color: 's3', deletedAt: '2026-10-01' }), p('c')]
+    expect(memberColor(people, 'a')).toBe('var(--s8)')
+    expect(memberColor(people, 'b')).toBe('var(--pb)')
+    expect(memberColor(people, 'c')).toBe('var(--ink-3)')
+    expect(memberColor([], 'a')).toBe('var(--pa)')
+    expect(slotColor('a')).toBe('pa')
+    expect(slotColor('c')).toBe('ink-3')
+    expect(PERSON_COLORS).not.toContain(slotColor('c'))
   })
 })
