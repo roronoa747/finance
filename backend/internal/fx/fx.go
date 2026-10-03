@@ -159,8 +159,10 @@ func (c *Client) fetchDay(ctx context.Context, day time.Time) (map[string]float6
 		return nil, err
 	}
 	// A maintenance page or a cut answer is not "nothing published": without this the
-	// history would store the day as empty and never ask again (critic, B2C-76).
-	if !strings.Contains(string(body), "<rates") {
+	// history would store the day as empty and never ask again (critic, B2C-76). The
+	// closing tag also catches a feed cut short — silently by LimitReader or a proxy —
+	// which would store a past day as empty or published without some codes.
+	if !strings.Contains(string(body), "</rates>") {
 		return nil, ErrNotFeed
 	}
 	return ParseRates(body), nil

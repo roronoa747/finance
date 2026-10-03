@@ -184,6 +184,15 @@ func TestDayPublishedEmptyAndBankError(t *testing.T) {
 	if _, err := testClient(maintenance.URL, time.Now()).Day(context.Background(), time.Now()); !errors.Is(err, ErrNotFeed) {
 		t.Errorf("maintenance page: expected ErrNotFeed, got %v", err)
 	}
+
+	// A feed cut short (no closing tag) is an error too: storing it would lose the day or some codes.
+	cut := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<?xml version="1.0"?><rates><item><title>EUR</title><description>513.46</description>`))
+	}))
+	defer cut.Close()
+	if _, err := testClient(cut.URL, time.Now()).Day(context.Background(), time.Now()); !errors.Is(err, ErrNotFeed) {
+		t.Errorf("cut feed: expected ErrNotFeed, got %v", err)
+	}
 }
 
 func TestTodayIsAlmatyDate(t *testing.T) {
