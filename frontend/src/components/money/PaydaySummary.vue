@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { plain } from '@/lib/money'
 import { dayLabel } from '@/lib/dates'
-import { salaryAsk, totalIncome, untilPayday } from '@/lib/finance'
+import { salaryAsk, salaryOf, untilPayday } from '@/lib/finance'
 import { plural } from '@/lib/utils'
 import Card from '@/components/kit/Card.vue'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -30,7 +30,8 @@ const open = ref(false)
 
 // Остатки общих счетов и долгов — из отметок, как их отдаёт стор.
 const info = computed(() =>
-  totalIncome(financeStore.people) > 0
+  // «Доход есть» — оклад в своей валюте, как в hasBudgetData и разборе (B2C-80): без книги не зависит от курса.
+  financeStore.people.some((p) => !p.deletedAt && salaryOf(p).amount > 0)
     ? untilPayday({
         people: financeStore.people,
         obligations: financeStore.obligations,

@@ -75,7 +75,7 @@ watch(
   ],
   () => {
     obligationDue.value = activeObligation.value
-      ? nextObligationDue(activeObligation.value, financeStore.payments)
+      ? nextObligationDue(activeObligation.value, financeStore.payments, undefined, fx.book)
       : null
   },
   { immediate: true },

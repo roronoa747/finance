@@ -926,7 +926,7 @@ const dayNo = (key: string, day: number) => {
  * «оставить» был до начала текущего квартала. Календарь — Алматы. Первыми —
  * ближайшие годовые продления, затем ежемесячные подороже.
  */
-export function keepQuestions(list: Obligation[], now = new Date()): Obligation[] {
+export function keepQuestions(list: Obligation[], now = new Date(), book?: RateBook | null): Obligation[] {
   const t = today(now);
   const todayNo = dayNo(t.key, t.day);
   const { year, month } = parseMonthKey(t.key);
@@ -951,7 +951,7 @@ export function keepQuestions(list: Obligation[], now = new Date()): Obligation[
     }
   }
   return asks
-    .sort((a, b) => a.wait - b.wait || amountAt(b.o, t.key) - amountAt(a.o, t.key))
+    .sort((a, b) => a.wait - b.wait || amountAt(b.o, t.key, book) - amountAt(a.o, t.key, book))
     .map((x) => x.o);
 }
 
@@ -1588,10 +1588,10 @@ const DUE_HORIZON = 24
  * ещё «этот» платёж: его могли внести позже срока (Р-3, без упрёка). Прошлые
  * месяцы не ищем — неотмеченное там нейтрально и оплаты не ждёт.
  */
-export function nextObligationDue(o: Obligation, payments: Payment[] = [], now = today()): Due | null {
+export function nextObligationDue(o: Obligation, payments: Payment[] = [], now = today(), book?: RateBook | null): Due | null {
   for (let i = 0; i < DUE_HORIZON; i++) {
     const period = addMonths(now.key, i)
-    const amount = amountAt(o, period)
+    const amount = amountAt(o, period, book)
     if (!dueIn(o, period) || amount <= 0 || paidFor(payments, 'obligation', o.id, period)) continue
     return { kind: 'obligation', targetId: o.id, period, day: Math.min(o.day, daysInMonth(period)), amount }
   }
@@ -2876,7 +2876,7 @@ export function weekVersusPrev(totals: SpendTotal[], week: string, prevWeek: str
 }
 
 /** Подписка за год для карточки «оставить?»: годовая — как есть, ежемесячная — ×12. */
-export const subscriptionYearly = (o: Obligation, key: string) => amountAt(o, key) * (o.every === 'year' ? 1 : 12)
+export const subscriptionYearly = (o: Obligation, key: string, book?: RateBook | null) => amountAt(o, key, book) * (o.every === 'year' ? 1 : 12)
 
 /**
  * Карточка «Оставить подписку?» (DESIGN.md §6) — одна в очереди «Недели» (`decisionQueue`).
@@ -2890,9 +2890,10 @@ export function keepCard(
   goals: Goal[],
   payments: Payment[],
   now: { day: number; key: string } = today(),
+  book?: RateBook | null,
 ): KeepCard {
-  const renewal = keep.every === 'year' ? nextObligationDue(keep, payments, now) : null
-  const yearly = renewal ? renewal.amount : subscriptionYearly(keep, now.key)
+  const renewal = keep.every === 'year' ? nextObligationDue(keep, payments, now, book) : null
+  const yearly = renewal ? renewal.amount : subscriptionYearly(keep, now.key, book)
   const goal = mainGoal(goals)
   const remaining = goal ? goalRemaining(goal) : 0
   const pathPct = remaining > 0 ? Math.round((yearly / remaining) * 100) : 0
@@ -2900,7 +2901,7 @@ export function keepCard(
     ? `${money(renewal.amount)} · в год · продлится ${dayLabel(renewal.day, renewal.period)}`
     : keep.every === 'year'
       ? `${money(yearly)} · в год`
-      : `${money(amountAt(keep, now.key))} · каждый месяц`
+      : `${money(amountAt(keep, now.key, book))} · каждый месяц`
   return {
     question: `Оставить подписку ${keep.name}?`,
     meta,
@@ -3274,8 +3275,8 @@ export function decisionQueue(
   }
 
   const { year, month } = parseMonthKey(now.key)
-  for (const o of keepQuestions(state.obligations ?? [], new Date(Date.UTC(year, month, now.day, 12)))) {
-    out.push({ kind: 'keep', key: `keep:${o.id}`, ...keepCard(o, state.goals ?? [], payments, now), to: null, obligation: o })
+  for (const o of keepQuestions(state.obligations ?? [], new Date(Date.UTC(year, month, now.day, 12)), state.book)) {
+    out.push({ kind: 'keep', key: `keep:${o.id}`, ...keepCard(o, state.goals ?? [], payments, now, state.book), to: null, obligation: o })
   }
 
   // Зарплата пришла по выписке и не разобрана — «Пришла зарплата»; иначе «пришла?» (возврат приёмки 2 п. 3: одна о зарплате).

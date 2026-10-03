@@ -101,7 +101,7 @@ const split = computed(() => (credit.value && !credit.value.rateUnknown && recor
 /** Следующий неоплаченный платёж после этого месяца (зарплате не нужен). */
 const next = computed(() => {
   const after = { day: 1, key: addMonths(props.period, 1) }
-  if (obligation.value) return nextObligationDue(obligation.value, finance.payments, after)
+  if (obligation.value) return nextObligationDue(obligation.value, finance.payments, after, fx.book)
   if (credit.value) return nextCreditDue(credit.value, finance.payments, after)
   return null
 })

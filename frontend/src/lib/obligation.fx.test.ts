@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { amountAt, amountIn, budgetAmounts, debitDayIso, docCurrencies, duesTotals, freedChange, monthDues, monthlyAmount, nextChange } from './finance'
+import { amountAt, amountIn, budgetAmounts, debitDayIso, docCurrencies, duesTotals, freedChange, keepCard, keepQuestions, monthDues, monthlyAmount, nextChange, nextObligationDue, subscriptionYearly } from './finance'
+import { money } from './money'
 import type { Obligation, Payment, RateBook } from '@/types/finance'
 
 // Подписки и платежи в валюте (B2C-81, Р-75): сумма версии — в валюте, тенге — по курсу Нацбанка на
@@ -70,5 +71,33 @@ describe('платежи месяца и бюджет с валютной под
   it('валюты платежей попадают в книгу курсов', () => {
     expect(docCurrencies({ obligations: [netflix, rent] })).toEqual(['USD'])
     expect(docCurrencies({ obligations: [{ ...netflix, deletedAt: T }] })).toEqual([])
+  })
+})
+
+describe('«дальше» и «оставить подписку?» — по книге, не по курсу версии (ревью frontend Н-2)', () => {
+  it('следующий платёж Netflix: ноябрь, 15 × 471 (последний курс книги) = 7 065 ₸; без книги — 15 × 472 = 7 080 ₸', () => {
+    const after = { day: 1, key: '2026-11' }
+    expect(nextObligationDue(netflix, [], after, book)?.amount).toBe(7_065)
+    expect(nextObligationDue(netflix, [], after)?.amount).toBe(7_080)
+  })
+
+  it('карточка «оставить?» ежемесячной: октябрь 15 × 470,5 = 7 058 ₸ в месяц, за год 7 058 × 12 = 84 696 ₸', () => {
+    expect(subscriptionYearly(netflix, '2026-10', book)).toBe(84_696)
+    const card = keepCard(netflix, [], [], { day: 15, key: '2026-10' }, book)
+    expect(card.meta).toBe(`${money(7_058)} · каждый месяц`)
+    expect(card.inner).toBe(`За год — ${money(84_696)}`)
+  })
+
+  it('годовая в валюте — цена продления по книге: iCloud $120 5 марта 2027 (впереди) → 120 × 471 = 56 520 ₸; без книги 120 × 470 = 56 400 ₸', () => {
+    const icloud = ob({ id: 'icloud', every: 'year', month: 3, day: 5, versions: [{ from: '2000-01', amount: 120, currency: 'USD', rate: 470 }] })
+    expect(keepCard(icloud, [], [], { day: 1, key: '2026-10' }, book).inner).toBe(`За год — ${money(56_520)}`)
+    expect(keepCard(icloud, [], [], { day: 1, key: '2026-10' }).inner).toBe(`За год — ${money(56_400)}`)
+  })
+
+  it('порядок вопросов — по сумме месяца в тенге по книге: Netflix 7 058 < «Кино» 7 070 (без книги 7 080 > 7 070)', () => {
+    const kino = ob({ id: 'kino', name: 'Кино', versions: [{ from: '2000-01', amount: 7_070 }] })
+    const now = new Date('2026-10-15T07:00:00.000Z')
+    expect(keepQuestions([netflix, kino], now, book).map((o) => o.id)).toEqual(['kino', 'o'])
+    expect(keepQuestions([netflix, kino], now).map((o) => o.id)).toEqual(['o', 'kino'])
   })
 })
