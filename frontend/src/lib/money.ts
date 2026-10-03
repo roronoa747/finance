@@ -24,6 +24,11 @@ export function money(v: number): string {
   return plain(v) + NBSP + '₸'
 }
 
+/** Со знаком: 15750 → «+15 750 ₸», −201000 → «−201 000 ₸», 0 → «0 ₸» (курс за год, B2C-82). */
+export function moneySigned(v: number): string {
+  return v > 0 ? `+${money(v)}` : money(v)
+}
+
 /** Компактно для тесных мест: 1234567 → «1,2 млн ₸» */
 export function moneyShort(v: number): string {
   const a = Math.abs(v)

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
-import { money, plain } from '@/lib/money'
+import { moneySigned as signed, plain } from '@/lib/money'
 import { MONTHS_NOM, addMonths, monthIn, monthKey } from '@/lib/dates'
 import { fxYearDelta, paydayIso, paydayRates, rateSeries, salaryOf } from '@/lib/finance'
 import { CURRENCY_SIGN, CURRENCY_WORD } from '@/lib/fx'
@@ -38,7 +38,6 @@ watch(
 )
 const chosen = computed(() => months.value.find((m) => m.key === picked.value) ?? months.value[0] ?? null)
 
-const signed = (v: number) => (v > 0 ? `+${money(v)}` : money(v))
 const tone = (v: number) => (v < 0 ? 'text-destructive' : v > 0 ? 'text-ok' : 'text-ink')
 
 /* ---------- график: SVG по токенам, без библиотек ---------- */

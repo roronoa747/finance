@@ -5,7 +5,7 @@ import { PhCaretRight } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
-import { money, moneyIn } from '@/lib/money'
+import { money, moneyIn, moneySigned as signed } from '@/lib/money'
 import { monthFrom, monthKey } from '@/lib/dates'
 import { budgetAmounts, fxYearDelta, incomeBreakdownPath, incomeSplit, loadTag, nextSalaryChange, salaryCtxOf, salaryOf, salaryTenge, type IncomePartKey } from '@/lib/finance'
 import { CURRENCY_WORD } from '@/lib/fx'
@@ -51,7 +51,6 @@ const LABEL: Record<IncomePartKey, { name: string; color: string }> = {
   free: { name: 'остаток по плану', color: 'var(--ok)' },
 }
 const parts = computed(() => split.value.parts.map((p) => ({ ...p, ...LABEL[p.key] })))
-const signed = (v: number) => (v > 0 ? `+${money(v)}` : money(v))
 </script>
 
 <template>
