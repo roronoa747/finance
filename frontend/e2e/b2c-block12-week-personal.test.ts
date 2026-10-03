@@ -278,8 +278,8 @@ describe('e2e / B2C Блок 12 — «Неделя и личное» на дву
     ]))
     expect(after).not.toContain('Без раздела')
     const rules = A.store.merchantRules.filter((r) => !r.deletedAt)
-    expect(rules.filter((r) => r.to.categoryId === OTHER_CATEGORY)).toHaveLength(9)
-    expect(rules.filter((r) => r.to.categoryId === 'sc_food')).toHaveLength(3)
+    expect(rules.filter((r) => 'categoryId' in r.to && r.to.categoryId === OTHER_CATEGORY)).toHaveLength(9)
+    expect(rules.filter((r) => 'categoryId' in r.to && r.to.categoryId === 'sc_food')).toHaveLength(3)
 
     await ops.send(A.client)
     await A.store.syncHousehold(A.client)
