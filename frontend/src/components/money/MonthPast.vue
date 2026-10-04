@@ -24,7 +24,7 @@ const past = computed(() => monthPlanPast({ ...finance.householdDoc, credits: fi
 const parts = computed(() => [
   { key: 'paid', amount: past.value.paid, color: '--s1' },
   { key: 'spent', amount: past.value.spent ?? 0, color: '--s8' },
-  { key: 'saved', amount: past.value.saved + past.value.prepaid, color: '--s3' },
+  { key: 'saved', amount: past.value.put, color: '--s3' },
 ])
 const income = computed(() => past.value.cameBy.map((x) => ({ ...x, came: true })))
 const goalOf = (id: string) => finance.goals.find((g) => g.id === id)

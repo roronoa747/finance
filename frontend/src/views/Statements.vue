@@ -217,7 +217,7 @@ function answerRest(go: boolean) {
   // Остаток месяца уже отложен (партнёр ответил раньше) — второй раз не пишется и «Отложено» не показывается.
   if (!src || src.mode !== 'once' || src.recorded) return
   finance.applyPlan(src, { by: auth.slot, note: 'остаток месяца' })
-  restSaved.value = amount - src.left
+  restSaved.value = src.put
   setTimeout(() => (restSaved.value = null), 2400)
 }
 

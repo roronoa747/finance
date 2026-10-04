@@ -3201,6 +3201,17 @@ export type PlanSave = {
   prepay: { creditId: string; amount: number; planId?: string } | null
   /** Части записи: `goalId` и `prepay:<creditId>`, только ненулевые. */
   parts: AllocationPart[]
+  /** Сколько кладётся всего — сумма частей (сумма под кнопкой, «Отложено N»; ревью frontend Б14, Н-5). */
+  put: number
+}
+
+/** Части записи плана и их сумма — одно место для «Отложить по плану» и прочих источников. */
+function planParts(contributions: { goalId: string; amount: number }[], prepay: { creditId: string; amount: number } | null) {
+  const parts: AllocationPart[] = [
+    ...contributions.map((c) => ({ target: c.goalId, amount: c.amount })),
+    ...(prepay ? [{ target: `prepay:${prepay.creditId}`, amount: prepay.amount }] : []),
+  ]
+  return { parts, put: amountTotal(parts) }
 }
 
 /**
@@ -3224,10 +3235,7 @@ export function planSave(plan: MonthPlan, person: PersonId): PlanSave | null {
     total: inc.amount,
     contributions,
     prepay,
-    parts: [
-      ...contributions.map((c) => ({ target: c.goalId, amount: c.amount })),
-      ...(prepay ? [{ target: `prepay:${prepay.creditId}`, amount: prepay.amount }] : []),
-    ],
+    ...planParts(contributions, prepay),
   }
 }
 
@@ -3339,10 +3347,7 @@ export function planFromSource(
     left,
     contributions,
     prepay,
-    parts: [
-      ...contributions.map((c) => ({ target: c.goalId, amount: c.amount })),
-      ...(prepay ? [{ target: `prepay:${prepay.creditId}`, amount: prepay.amount }] : []),
-    ],
+    ...planParts(contributions, prepay),
     recorded: allocationFor(state.allocations, record),
   }
 }
@@ -3358,6 +3363,8 @@ export type MonthPlanPast = {
   /** Отложено: взносы в цели и фонды месяца и досрочки. */
   saved: number
   prepaid: number
+  /** Отложили всего: взносы + досрочки (дуга «отложили», Н-5). */
+  put: number
   /** Потрачено по выпискам (кроме платежей `plannedElsewhere`); null — итогов за месяц нет. */
   spent: number | null
   /** Осталось: пришло − оплачено − потрачено − отложено − досрочки (может быть меньше нуля). */
@@ -3396,6 +3403,7 @@ export function monthPlanPast(
     paid,
     saved,
     prepaid,
+    put: saved + prepaid,
     spent,
     left: came - paid - (spent ?? 0) - saved - prepaid,
     goals,

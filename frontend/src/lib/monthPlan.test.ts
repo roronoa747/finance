@@ -255,6 +255,8 @@ describe('planSave — «Отложить по плану»', () => {
       contributions: [{ goalId: 'trip', amount: 60_000 }, { goalId: 'res', amount: 50_000 }, { goalId: 'car', amount: 100_000 }],
       prepay: null,
       parts: [{ target: 'trip', amount: 60_000 }, { target: 'res', amount: 50_000 }, { target: 'car', amount: 100_000 }],
+      // Сумма под кнопкой — сумма частей (Н-5): 60 000 + 50 000 + 100 000.
+      put: 210_000,
     })
     expect(planSave(plan, 'b')).toBeNull()
   })
@@ -302,7 +304,13 @@ describe('planFromSource — прочие источники (Р-86)', () => {
       mode: 'once', amount: 1_000_000, left: 0, prepay: null, recorded: null,
       record: { source: 'rest', sourceId: '2026-09', period: '2026-09' },
       contributions: [{ goalId: 'trip', amount: 960_000 }, { goalId: 'res', amount: 40_000 }],
+      // «Отложено N» на «Неделе» (Н-5): сумма частей = раскладываемое − не поместилось.
+      put: 1_000_000,
     })
+    // Сумма больше, чем помещается в очередь (часть не легла, left > 0): put — сумма частей, не исходная сумма.
+    const big = planFromSource(family(), ctx, { from: 'rest', amount: 20_000_000, period: '2026-09' })
+    expect(big?.mode === 'once' && big.put).toBe(20_000_000 - (big?.mode === 'once' ? big.left : 0))
+    expect(big?.mode === 'once' && big.left > 0).toBe(true)
   })
 
   it('долг закрыт: его платёж — разово по очереди', () => {
@@ -348,7 +356,7 @@ describe('monthPlanPast — сентябрь сводкой', () => {
       ],
     }
     expect(monthPlanPast(doc, sep)).toEqual({
-      key: sep, came: 450_000, cameBy: [{ person: 'b', amount: 450_000 }], paid: 250_000, saved: 40_000, prepaid: 30_000, spent: 120_000,
+      key: sep, came: 450_000, cameBy: [{ person: 'b', amount: 450_000 }], paid: 250_000, saved: 40_000, prepaid: 30_000, put: 70_000, spent: 120_000,
       // 450 000 − 250 000 − 120 000 − 40 000 − 30 000 = 10 000 (руками).
       left: 10_000,
       goals: [{ goalId: 'wed', name: doc.goals.find((g) => g.id === 'wed')!.name, amount: 40_000 }],

@@ -2401,6 +2401,7 @@ describe('B2C-54: план разбора в сторе', () => {
       contributions: [{ goalId: 'trip', amount: 40_000 }],
       prepay: { creditId: 'card', amount: 50_000 },
       parts: [{ target: 'trip', amount: 40_000 }, { target: 'prepay:card', amount: 50_000 }],
+      put: 90_000,
     }
     const rec = store.applyPlan(save, { by: 'a', note: 'по плану месяца' })
     expect(store.goals.find((g) => g.id === 'trip')!.have).toBe(40_000)

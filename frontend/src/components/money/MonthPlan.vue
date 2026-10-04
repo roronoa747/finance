@@ -94,7 +94,7 @@ const signed = (v: number) => (v > 0 ? `+${plain(v)}` : plain(v))
 const save = computed(() => {
   if (!canEdit.value || !auth.slot) return null
   const s = planSave(plan.value, auth.slot)
-  return s ? { person: auth.slot, total: s.parts.reduce((a, x) => a + x.amount, 0), count: s.parts.length, save: s } : null
+  return s ? { person: auth.slot, total: s.put, count: s.parts.length, save: s } : null
 })
 // Запись месяца есть — «✓ Отложено» суммой взносов месяца (`putTotal`), не частями записи: у старого разбора
 // Блока 11 части — статьи (платежи, жизнь…), их сумма — почти вся зарплата.
