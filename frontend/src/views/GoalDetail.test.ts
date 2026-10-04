@@ -455,8 +455,8 @@ describe('PV-15: пауза целей ради плана (SSR)', () => {
   })
 
   // Владелец, 2026-09-27 (критик Блока 3): автор — один раз, на фото и ссылкой; поверх фото —
-  // только маленькая кнопка смены; «Убрать фото» — в окне выбора; «Сделать главной» — в карточке.
-  it('герой цели: автор один раз ссылкой на фото, кнопка «Сменить фото» вместо чипов, «Сделать главной» в карточке, у главной — ни тега, ни кнопки («главная мечта» — в подписи шапки)', async () => {
+  // только маленькая кнопка смены; «Убрать фото» — в окне выбора; «Сделать главной» — первый пункт меню цели (Р-84, B2C-87).
+  it('герой цели: автор один раз ссылкой на фото, кнопка «Сменить фото» вместо чипов, «Сделать главной» в меню, у главной — ни тега, ни пункта («главная мечта» — в подписи шапки)', async () => {
     const store = useFinanceStore()
     const doc = planFamilyDoc()
     const credit = { author: 'Matthew Skinner', url: 'https://unsplash.com/@matthewskinner' }
@@ -470,13 +470,21 @@ describe('PV-15: пауза целей ради плана (SSR)', () => {
     expect(trip).toContain('aria-label="Сменить фото"')
     expect(trip).not.toContain('Другое фото')
     expect(trip).not.toContain('Убрать фото')
-    expect(trip).toContain('Сделать главной')
+    expect(trip).toContain('aria-label="Меню цели"')
+    expect(trip).not.toContain('Сделать главной')
+    // Меню: «Сделать главной» — первым и цветом бренда, затем «Изменить цель» и пауза.
+    const menu = await renderScreen(GoalDetail, '/goals/trip', undefined, [screenMixin({ menuOpen: true })])
+    expect(menu).toMatch(/text-brand"[^>]*><span[^>]*>.*?<\/span>Сделать главной/)
+    expect(menu.indexOf('Сделать главной')).toBeLessThan(menu.indexOf('Изменить цель'))
+    expect(menu).toContain('Поставить на паузу')
     expect(trip).not.toContain('>главная<')
 
     const car = await renderScreen(GoalDetail, '/goals/car')
     // Возврат смоука: тег «главная» в карточке дублировал подпись шапки «главная мечта · …» (g4) — убран.
     expect(car).not.toContain('>главная<')
-    expect(car).not.toContain('Сделать главной')
+    const carMenu = await renderScreen(GoalDetail, '/goals/car', undefined, [screenMixin({ menuOpen: true })])
+    expect(carMenu).not.toContain('Сделать главной')
+    expect(carMenu).toContain('Изменить цель')
     expect(car).not.toContain('Сменить фото')
     expect(car).toContain('Добавить фото')
 
@@ -492,9 +500,10 @@ describe('PV-15: пауза целей ради плана (SSR)', () => {
     setActivePinia(createPinia())
     useAuthStore().setAuthData(authAs('viewer'))
     useFinanceStore().setHouseholdDoc(doc, 1)
-    const viewer = await renderScreen(GoalDetail, '/goals/trip')
+    const viewer = await renderScreen(GoalDetail, '/goals/trip', undefined, [screenMixin({ menuOpen: true })])
     expect(viewer).not.toContain('Сменить фото')
     expect(viewer).not.toContain('Сделать главной')
+    expect(viewer).not.toContain('aria-label="Меню цели"')
     expect(viewer.match(/Фото: Matthew Skinner/g)).toHaveLength(1)
   })
 })
@@ -729,7 +738,7 @@ describe('PV-19: цель — окно правки, взнос полем, да
     expect(html.indexOf('>Откладывать в месяц, ₸</span>')).toBeGreaterThan(details)
     expect(html.indexOf('Снять')).toBeGreaterThan(details)
     expect(html).not.toContain('Все мечты')
-    expect(html).toContain('aria-label="Изменить цель"')
+    expect(html).toContain('aria-label="Меню цели"')
 
     for (const empty of ['0', '']) {
       await renderScreen(GoalDetail, '/goals/trip', undefined, [screenMixin({}, (s) => (s.onMonthly as (t: string) => void)(empty))])
@@ -784,7 +793,7 @@ describe('PV-19: цель — окно правки, взнос полем, да
   it('viewer: ни карандаша, ни окна правки, ни поля взноса — сумма видна', async () => {
     family('viewer')
     const html = await renderScreen(GoalDetail, '/goals/trip', undefined, [screenMixin({ openEditModal: true })])
-    expect(html).not.toContain('aria-label="Изменить цель"')
+    expect(html).not.toContain('aria-label="Меню цели"')
     expect(html).not.toContain('role="dialog"')
     expect(html).not.toContain('Откладывать в месяц, ₸')
     expect(html).not.toContain('<input')

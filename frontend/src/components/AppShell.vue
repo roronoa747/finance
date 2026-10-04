@@ -17,7 +17,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
 import { monthKey, MONTHS_NOM, parseMonthKey, weekKey, weekRangeLabel } from '@/lib/dates'
-import { liveGoals, mainGoal, weekPicture, weekTag } from '@/lib/finance'
+import { liveGoals, weekPicture, weekTag } from '@/lib/finance'
 import SyncBadge from '@/components/SyncBadge.vue'
 import Avatar from '@/components/kit/Avatar.vue'
 import IconBox from '@/components/kit/IconBox.vue'
@@ -109,7 +109,7 @@ const header = computed<{ title: string; sub?: string }>(() => {
   if (p.startsWith('/goals/')) {
     // Имя цели заголовком (g4 «Экран цели»): «главная мечта · Ильяс и Дана».
     const goal = liveGoals(financeStore.goals).find((g) => g.id === route.params.id)
-    const main = mainGoal(financeStore.goals, financeStore.goalOrder)?.id === goal?.id
+    const main = financeStore.heroGoal?.id === goal?.id
     return goal ? { title: goal.name, sub: `${main ? 'главная мечта' : 'мечта'} · ${names.value}` } : { title: 'Цель' }
   }
   if (p === '/wishes' || p.startsWith('/people/')) return { title: 'Желания', sub: 'не мечты — покупки поменьше' }

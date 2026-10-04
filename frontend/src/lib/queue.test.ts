@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEBT_CARD, fundsOf, mainGoal, moveId, payerOf, queueOf, wishQueue } from './finance'
+import { DEBT_CARD, fundsOf, mainGoal, moveId, moveWithin, payerOf, queueOf, wishQueue } from './finance'
 import type { Credit, Goal, Person, WishItem } from '@/types/finance'
 
 /** B2C-85: очередь целей и желаний (Р-84), фонды (Р-82), плательщик (Р-80). */
@@ -75,6 +75,26 @@ describe('wishQueue и moveId', () => {
     expect(moveId(['a', 'b', 'c'], 'a', 99)).toEqual(['b', 'c', 'a'])
     expect(moveId(['a', 'b', 'c'], 'c', -5)).toEqual(['c', 'a', 'b'])
     expect(moveId(['a', 'b'], 'x', 0)).toEqual(['a', 'b'])
+  })
+})
+
+describe('B2C-87: герой — первая цель очереди, перенос среди целей', () => {
+  it('mainGoal: фонд наверху (и неотмеченная копилка potGoalId) — герой следующая цель', () => {
+    const goals = [goal('pot'), goal('res', { fund: 'reserve' }), goal('trip'), goal('car')]
+    const order = { ids: ['res', 'pot', 'car', 'trip'], updatedAt: T1 }
+    const settings = { potGoalId: 'pot' } as Parameters<typeof mainGoal>[2]
+    expect(mainGoal(goals, order, settings)?.id).toBe('car')
+    // Без настроек копилка — обычная цель: так и было до B2C-87 (герой «Мечт» был бы копилкой).
+    expect(mainGoal(goals, order)?.id).toBe('pot')
+    expect(mainGoal([goal('res', { fund: 'reserve' })], null)).toBeNull()
+  })
+
+  it('moveWithin: цели переставляются среди целей, фонды и карточка долга стоят на месте', () => {
+    const ids = ['trip', 'res', DEBT_CARD, 'car', 'pot', 'flat']
+    const goals = ['trip', 'car', 'flat']
+    expect(moveWithin(ids, goals, 'flat', 0)).toEqual(['flat', 'res', DEBT_CARD, 'trip', 'pot', 'car'])
+    expect(moveWithin(ids, goals, 'trip', 2)).toEqual(['car', 'res', DEBT_CARD, 'flat', 'pot', 'trip'])
+    expect(moveWithin(ids, goals, 'res', 0)).toEqual(ids)
   })
 })
 

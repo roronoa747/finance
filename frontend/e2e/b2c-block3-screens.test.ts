@@ -393,7 +393,7 @@ describe('e2e / B2C Блок 3 — часть 3: мечта из шаблона 
     expect(screenB).toContain(`${plain(goalB.have)} из ${money(goalB.need)}`)
     expect(screenB).toContain(templateById('japan')!.photo.author)
     expect(screenB).toContain(`по ${money(150_000)} в месяц · осталось 12 взносов`)
-    expect(screenB).toContain('Сделать главной')
+    expect(screenB).toContain('aria-label="Меню цели"')
 
     // Сюрприз A для Аруны: фото скрытое, запись — в личном документе A.
     setActivePinia(A.pinia)

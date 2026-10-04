@@ -16,8 +16,10 @@ const props = withDefaults(
     index?: number
     /** Широкое фото — целиком (B2C-73): у желаний; цели — на всю плитку. */
     fit?: boolean
+    /** Черта сверху между строками; в сортируемом списке её держит строка списка (`SortableList`). */
+    divided?: boolean
   }>(),
-  { src: null, tone: null, clickable: false, index: 0, fit: false },
+  { src: null, tone: null, clickable: false, index: 0, fit: false, divided: true },
 )
 
 const emit = defineEmits<{ (e: 'click', ev: MouseEvent): void }>()
@@ -28,8 +30,8 @@ const wideFit = useWideFit(() => props.src)
   <component
     :is="clickable ? 'button' : 'div'"
     :type="clickable ? 'button' : undefined"
-    class="fx-in flex w-full items-center gap-3 border-t border-line py-[11px] text-left first:border-t-0"
-    :class="clickable && 'press cursor-pointer'"
+    class="fx-in flex w-full items-center gap-3 py-[11px] text-left"
+    :class="[clickable && 'press cursor-pointer', divided && 'border-t border-line first:border-t-0']"
     :style="{ '--i': index }"
     @click="clickable && emit('click', $event)"
   >

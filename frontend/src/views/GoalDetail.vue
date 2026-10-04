@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue'
 import { useRouter, useRoute, RouterLink } from 'vue-router'
-import { PhCamera, PhPencilSimple, PhMinus, PhShareNetwork } from '@phosphor-icons/vue'
+import { PhCamera, PhDotsThree, PhPause, PhPencilSimple, PhPlay, PhMinus, PhShareNetwork, PhStar } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, pct, plain, parseMoney, ratePct } from '@/lib/money'
@@ -14,7 +14,6 @@ import {
   goalRemaining,
   indexedNeed,
   liveGoals,
-  mainGoal,
   monthsBetween,
   movementMonth,
   payableAccounts,
@@ -73,7 +72,19 @@ const goalId = computed(() => route.params.id as string)
 const goal = computed(() => liveGoals(financeStore.goals).find((g) => g.id === goalId.value))
 const people = computed(() => financeStore.people)
 const canEdit = computed(() => !authStore.isViewer)
-const isMain = computed(() => mainGoal(financeStore.goals, financeStore.goalOrder)?.id === goalId.value)
+const isMain = computed(() => financeStore.heroGoal?.id === goalId.value)
+// Фонд («Запас», «Подушка») героем не бывает (Р-84) — пункта «Сделать главной» у него нет.
+const isDream = computed(() => financeStore.queue.find((x) => x.id === goalId.value)?.kind === 'goal')
+// Выключена в плане месяца (Р-83): стоит, пока не включат; срок сдвигается.
+const off = computed(() => !!goal.value?.pausedAt)
+const menuOpen = ref(false)
+function menu(action: 'main' | 'edit' | 'pause') {
+  menuOpen.value = false
+  if (!goal.value) return
+  if (action === 'main') financeStore.makeMain(goal.value.id)
+  else if (action === 'edit') openEditModal.value = true
+  else financeStore.pauseGoal(goal.value.id, !off.value)
+}
 // Пополнение и снятие двигают тенговую базу счёта: валютный счёт пересчитал бы её по
 // курсу при следующей правке и молча потерял сдвиг. Удалённые счета — тоже не сюда.
 const accounts = computed(() => payableAccounts(financeStore.accounts))
@@ -91,7 +102,9 @@ const progress = computed(() => (goal.value ? pct(goal.value.have, goal.value.ne
 // от месяца без процентных долгов по прогнозу плана; не закрываются — месяца нет.
 const forecast = computed(() => (paused.value && plan.value ? planForecast(plan.value, financeStore.planState(), monthKey()) : null))
 const doneMonth = computed(() => goalDoneMonth(months.value, monthKey(), forecast.value ?? undefined))
-const doneTitle = computed(() => (doneMonth.value ? `Будет вашей в ${monthIn(doneMonth.value)}` : paused.value ? 'После плана' : 'Взнос не задан'))
+const doneTitle = computed(() =>
+  off.value ? 'На паузе' : doneMonth.value ? `Будет вашей в ${monthIn(doneMonth.value)}` : paused.value ? 'После плана' : 'Взнос не задан',
+)
 const doneLine = computed(() => {
   if (!goal.value) return ''
   if (remaining.value <= 0) return 'Накоплено — мечта ваша'
@@ -237,17 +250,31 @@ function share() {
   </div>
 
   <div v-else class="flex flex-col gap-3 pt-1 text-left">
-    <!-- «Назад» и имя — в шапке оболочки; карандаш — справа в ней (g4 «Экран цели»). -->
+    <!-- «Назад» и имя — в шапке оболочки; меню цели — справа в ней (макет month-plan.html «Сделать главной»):
+         «Сделать главной» первым и цветом, «Изменить», пауза в плане месяца (Р-83, Р-84). -->
     <HeaderActions v-if="canEdit">
       <button
         type="button"
-        aria-label="Изменить цель"
+        aria-label="Меню цели"
         class="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-surface-2 text-ink-2 hover:bg-surface-3 hover:text-ink cursor-pointer"
-        @click="openEditModal = true"
+        @click="menuOpen = true"
       >
-        <PhPencilSimple :size="18" />
+        <PhDotsThree :size="20" weight="bold" />
       </button>
     </HeaderActions>
+    <Sheet v-if="canEdit" :open="menuOpen" :title="goal.name" @close="menuOpen = false">
+      <div class="flex flex-col">
+        <button v-if="isDream && !isMain" type="button" class="press flex w-full cursor-pointer items-center gap-3 border-t border-line px-1 py-[13px] text-left text-[16px] font-semibold first:border-t-0 text-brand" @click="menu('main')">
+          <span class="grid size-[34px] shrink-0 place-items-center rounded-[11px] bg-brand-soft text-brand"><PhStar :size="18" weight="fill" /></span>Сделать главной
+        </button>
+        <button type="button" class="press flex w-full cursor-pointer items-center gap-3 border-t border-line px-1 py-[13px] text-left text-[16px] font-semibold first:border-t-0 text-ink" @click="menu('edit')">
+          <span class="grid size-[34px] shrink-0 place-items-center rounded-[11px] bg-surface-2 text-ink-2"><PhPencilSimple :size="18" /></span>Изменить цель
+        </button>
+        <button type="button" class="press flex w-full cursor-pointer items-center gap-3 border-t border-line px-1 py-[13px] text-left text-[16px] font-semibold first:border-t-0 text-ink" @click="menu('pause')">
+          <span class="grid size-[34px] shrink-0 place-items-center rounded-[11px] bg-surface-2 text-ink-2"><component :is="off ? PhPlay : PhPause" :size="18" /></span>{{ off ? 'Снять с паузы' : 'Поставить на паузу' }}
+        </button>
+      </div>
+    </Sheet>
 
     <!-- Фото-герой (B2C-17): картинка шаблона или своя; автор — один раз, на фото, ссылкой (Р-28).
          Поверх картинки — только маленькая кнопка смены фото (владелец, 2026-09-27: крупные чипы
@@ -288,14 +315,9 @@ function share() {
       @remove="removePhoto"
     />
 
-    <!-- Карточка g4: месяц, строка взноса и две кнопки; «главная мечта» — в подписи шапки. -->
+    <!-- Карточка g4: месяц, строка взноса и две кнопки; «главная мечта» — в подписи шапки, «Сделать главной» — в меню. -->
     <Card>
-      <div class="flex items-start justify-between gap-3">
-        <h2 class="type-h2 text-ink">{{ doneTitle }}</h2>
-        <button v-if="canEdit && !isMain" type="button" class="shrink-0 pt-1 text-[12.5px] font-medium text-brand cursor-pointer" @click="financeStore.setMainGoal(goal.id)">
-          Сделать главной
-        </button>
-      </div>
+      <h2 class="type-h2 text-ink">{{ doneTitle }}</h2>
       <p class="mt-1.5 text-[15px] text-ink-2">{{ doneLine }}</p>
 
       <div class="mt-3.5 flex flex-wrap gap-2">
@@ -465,3 +487,4 @@ function share() {
     />
   </div>
 </template>
+

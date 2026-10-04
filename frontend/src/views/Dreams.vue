@@ -8,7 +8,7 @@ import { useOperationsStore } from '@/stores/operations'
 import { useFxStore } from '@/stores/fx'
 import { money, pct } from '@/lib/money'
 import { monthKey, monthTitle } from '@/lib/dates'
-import { freeByFact, goalDoneMonth, goalMonths, goalRemaining, liveGoals, liveWishlist, mainGoal, planForecast, untilPayday } from '@/lib/finance'
+import { freeByFact, goalDoneMonth, goalMonths, goalRemaining, monthPlan, planForecast, untilPayday, wishQueue } from '@/lib/finance'
 import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
 import { plural } from '@/lib/utils'
@@ -23,13 +23,16 @@ import Chip from '@/components/kit/Chip.vue'
 import CountUp from '@/components/kit/CountUp.vue'
 import DreamCenter from '@/components/kit/DreamCenter.vue'
 import ProgressBar from '@/components/kit/ProgressBar.vue'
+import SortableList from '@/components/kit/SortableList.vue'
 import ThumbRow from '@/components/kit/ThumbRow.vue'
 
 /**
  * «Мечты» (пивот 3, Р-42; макет dreams-week.html «А · Строки»): мечта по центру, одна строка
  * «Свободно N ₸ · до зарплаты N дней», списки «Цели» и «Желания» строками. Недельного здесь нет —
  * картина недели и решения живут на «Неделе» (Р-43). Ничего не считается здесь — `finance.ts`
- * (`mainGoal`, `freeByFact`, `untilPayday`, сроки целей). Фото — B2C-17, создание мечты — B2C-18.
+ * (`freeByFact`, `untilPayday`, сроки целей — `monthPlan`). Фото — B2C-17, создание мечты — B2C-18.
+ * Цели — в порядке очереди денег (Р-84, Блок 14): герой — первая цель, остальные переставляются ⋮⋮ среди
+ * целей; фонды и «закрыть кредит» — только в плане месяца («Деньги»). Желания — в своём порядке.
  */
 const router = useRouter()
 const financeStore = useFinanceStore()
@@ -46,15 +49,39 @@ const fx = useFxStore()
 const state = computed(() => ({ ...financeStore.householdDoc, credits: financeStore.credits, book: fx.book }))
 
 /* ---------- мечта по центру и цели ---------- */
-const goals = computed(() => liveGoals(financeStore.goals))
-const main = computed(() => mainGoal(financeStore.goals, financeStore.goalOrder))
-const others = computed(() => goals.value.filter((g) => g.id !== main.value?.id))
+const main = computed(() => financeStore.heroGoal)
+const others = computed(() => financeStore.queue.flatMap((x) => (x.kind === 'goal' && x.goal.id !== main.value?.id ? [x.goal] : [])))
+const otherIds = computed(() => others.value.map((g) => g.id))
+const othersById = computed(() => new Map(others.value.map((g) => [g.id, g])))
+const nameOf = (id: string) => `Переставить: ${othersById.value.get(id)?.name ?? ''}`
+// Место в списке под героем — второе и ниже среди целей.
+const moveOther = (id: string, index: number) => financeStore.moveGoal(id, index + 1)
+
+// Сроки — прогон очереди плана месяца (Р-83): выключил цель — она «на паузе», сроки остальных сдвинулись.
+const plan = computed(() =>
+  monthPlan(state.value, {
+    key: key.value,
+    totals: financeStore.householdDoc.spendTotals ?? [],
+    spendCategories: financeStore.householdDoc.spendCategories ?? [],
+    uploads: ops.uploads,
+  }),
+)
+const planItem = (id: string) => plan.value.queue.find((x) => x.goalId === id)
+/** Подпись срока цели: «на паузе» или «к <месяц>»; собрана или срока нет — пусто. */
+function whenOf(id: string): string {
+  const item = planItem(id)
+  if (item?.paused === 'off') return 'на паузе'
+  return item?.doneMonth && item.paused === false ? `к${NBSP}${monthTitle(item.doneMonth).toLowerCase()}` : ''
+}
 
 const heroPercent = computed(() => (main.value ? pct(main.value.have, main.value.need) : 0))
-// Месяц, когда мечта будет вашей, при текущем взносе; цель на паузе ради плана — после плана.
+// Месяц, когда мечта будет вашей, по очереди плана; выключенная — «на паузе»; на паузе ради плана долгов — после плана.
 const heroMonth = computed(() => {
   const g = main.value
   if (!g) return null
+  const item = planItem(g.id)
+  if (item?.paused === 'off') return 'на паузе'
+  if (item && item.paused === false && item.doneMonth) return monthTitle(item.doneMonth).toLowerCase()
   const paused = financeStore.pausedGoalIds.has(g.id)
   const forecast = paused && financeStore.activePlan ? planForecast(financeStore.activePlan, financeStore.planState(), key.value) : undefined
   const done = goalDoneMonth(goalMonths(goalRemaining(g), g.monthly), key.value, forecast)
@@ -108,7 +135,7 @@ const paydayText = computed(() => {
 })
 
 /* ---------- желания ---------- */
-const openWishes = computed(() => liveWishlist(financeStore.wishlist).filter((w) => !w.bought))
+const openWishes = computed(() => wishQueue({ wishlist: financeStore.wishlist, wishOrder: financeStore.wishOrder }).filter((w) => !w.bought))
 const firstWishes = computed(() => openWishes.value.slice(0, 3))
 const wishSrc = usePhotos(() => firstWishes.value.map((w) => w.photoId))
 const editWishId = ref<string | null>(null)
@@ -178,21 +205,27 @@ onMounted(refresh)
         <RouterLink v-if="canEdit" to="/goals/new" class="text-[14px] font-semibold text-brand">+ Новая</RouterLink>
       </div>
       <Card v-if="others.length" flush class="px-3.5 py-1">
-        <ThumbRow
-          v-for="(g, i) in others"
-          :key="g.id"
-          :title="g.name"
-          :src="g.photoId ? goalSrc[g.photoId] : null"
-          :tone="hueColor(g.hue, isDark)"
-          :index="i + 1"
-          clickable
-          @click="router.push(`/goals/${g.id}`)"
-        >
-          <ProgressBar :value="g.need ? g.have / g.need : 0" tone="ink" :height="5" />
-          <template #end>
-            <span class="font-num text-[15px] font-bold num text-ink">{{ pct(g.have, g.need) }}{{ NBSP }}%</span>
+        <SortableList :ids="otherIds" :label="nameOf" :disabled="!canEdit" @move="moveOther">
+          <template #default="{ id, index }">
+            <ThumbRow
+              v-if="othersById.get(id)"
+              :title="othersById.get(id)!.name"
+              :src="othersById.get(id)!.photoId ? goalSrc[othersById.get(id)!.photoId!] : null"
+              :tone="hueColor(othersById.get(id)!.hue, isDark)"
+              :index="index + 1"
+              :divided="false"
+              :class="othersById.get(id)!.pausedAt && 'opacity-60'"
+              clickable
+              @click="router.push(`/goals/${id}`)"
+            >
+              <span v-if="whenOf(id)" class="truncate type-meta">{{ whenOf(id) }}</span>
+              <ProgressBar :value="othersById.get(id)!.need ? othersById.get(id)!.have / othersById.get(id)!.need : 0" tone="ink" :height="5" />
+              <template #end>
+                <span class="font-num text-[15px] font-bold num text-ink">{{ pct(othersById.get(id)!.have, othersById.get(id)!.need) }}{{ NBSP }}%</span>
+              </template>
+            </ThumbRow>
           </template>
-        </ThumbRow>
+        </SortableList>
       </Card>
     </template>
 

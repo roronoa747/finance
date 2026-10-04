@@ -24,6 +24,7 @@ import {
   debtCardOf,
   fundsOf,
   moveId,
+  moveWithin,
   queueOf,
   wishQueue,
   moneyArticlesOf,
@@ -1693,6 +1694,11 @@ export const useFinanceStore = defineStore('finance', () => {
   /** Очередь денег (Р-84) — кредиты производные: карточка долга есть, пока долг с процентами открыт. */
   const queue = computed(() => queueOf({ ...householdDoc.value, credits: credits.value }))
   const wishes = computed(() => wishQueue(householdDoc.value))
+  /** Герой «Мечт» (Р-84): первая цель очереди — не фонд и не карточка долга. */
+  const heroGoal = computed(() => {
+    const first = queue.value.find((x) => x.kind === 'goal')
+    return first?.kind === 'goal' ? first.goal : null
+  })
 
   /** Новый порядок очереди целиком (Р-84): пишется весь список — старый `main` больше не поднимает свою цель. */
   function moveInQueue(id: string, toIndex: number) {
@@ -1705,10 +1711,25 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
-  /** Порядок «Желаний» (Р-84) — свой объект, как у целей. */
-  function moveWish(id: string, toIndex: number) {
+  /** Перенос цели среди целей (Р-84, «Мечты»): `toIndex` — место среди целей; фонды и карточка долга стоят. */
+  function moveGoal(id: string, toIndex: number) {
+    const ids = queue.value.map((x) => x.id)
+    const goalIds = queue.value.filter((x) => x.kind === 'goal').map((x) => x.id)
+    const next = moveWithin(ids, goalIds, id, toIndex)
+    if (next.join() === ids.join() && householdDoc.value.goalOrder) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      doc.goalOrder = { ids: next, updatedAt: t }
+    })
+  }
+
+  /**
+   * Порядок «Желаний» (Р-84) — свой объект, как у целей. `among` — видимая часть (вкладка участника): `toIndex`
+   * — место внутри неё, прочие желания стоят.
+   */
+  function moveWish(id: string, toIndex: number, among?: string[]) {
     const ids = wishes.value.map((x) => x.id)
-    const next = moveId(ids, id, toIndex)
+    const next = among ? moveWithin(ids, among, id, toIndex) : moveId(ids, id, toIndex)
     if (next.join() === ids.join() && householdDoc.value.wishOrder) return
     const t = new Date().toISOString()
     mutateHouseholdDoc((doc) => {
@@ -2167,7 +2188,9 @@ export const useFinanceStore = defineStore('finance', () => {
     debtCard,
     queue,
     wishes,
+    heroGoal,
     moveInQueue,
+    moveGoal,
     moveWish,
     makeMain,
     setDebtCard,

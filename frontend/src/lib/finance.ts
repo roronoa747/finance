@@ -2734,11 +2734,12 @@ export function planSchedule(
 /* ---------------- главный экран «Мечты» (Р-8, B2C-14) ---------------- */
 
 /**
- * Главная мечта — герой главного экрана (Р-84): первая цель очереди (`queueOf`), не фонд. Порядка ещё нет —
- * старая пометка `main` (поздняя) первой, иначе первая живая. null — целей нет.
+ * Главная мечта — герой главного экрана (Р-84): первая цель очереди (`queueOf`), не фонд и не карточка долга
+ * (фонд — и копилка `potGoalId`, поэтому настройки денег). Порядка ещё нет — старая пометка `main` (поздняя)
+ * первой, иначе первая живая. null — целей нет.
  */
-export function mainGoal(goals: Goal[], order?: QueueOrder | null): Goal | null {
-  return queueOf({ goals, goalOrder: order }).find((x) => x.kind === 'goal')?.goal ?? null
+export function mainGoal(goals: Goal[], order?: QueueOrder | null, settings?: MoneySettings | null): Goal | null {
+  return queueOf({ goals, goalOrder: order, moneySettings: settings }).find((x) => x.kind === 'goal')?.goal ?? null
 }
 
 /* ---------------- очередь целей, фонды, плательщик (Блок 14, B2C-85) ---------------- */
@@ -2837,6 +2838,18 @@ export function moveId(ids: string[], id: string, to: number): string[] {
   const out = ids.filter((x) => x !== id)
   out.splice(Math.max(0, Math.min(Math.round(to), out.length)), 0, id)
   return out
+}
+
+/**
+ * Перенос среди части списка (Р-84: цели — среди целей): `id` встаёт на место `to` внутри `among`, прочие
+ * (фонды, карточка долга) остаются на своих местах. Нет `id` в `among` — порядок как был.
+ */
+export function moveWithin(ids: string[], among: string[], id: string, to: number): string[] {
+  const part = ids.filter((x) => among.includes(x))
+  if (!part.includes(id)) return ids.slice()
+  const next = moveId(part, id, to)
+  let k = 0
+  return ids.map((x) => (among.includes(x) ? next[k++]! : x))
 }
 
 /* ---------------- план месяца (Блок 14, B2C-86) ---------------- */
@@ -3480,10 +3493,11 @@ export function keepCard(
   payments: Payment[],
   now: { day: number; key: string } = today(),
   book?: RateBook | null,
+  queue?: { goalOrder?: QueueOrder | null; moneySettings?: MoneySettings | null },
 ): KeepCard {
   const renewal = keep.every === 'year' ? nextObligationDue(keep, payments, now, book) : null
   const yearly = renewal ? renewal.amount : subscriptionYearly(keep, now.key, book)
-  const goal = mainGoal(goals)
+  const goal = mainGoal(goals, queue?.goalOrder, queue?.moneySettings)
   const remaining = goal ? goalRemaining(goal) : 0
   const pathPct = remaining > 0 ? Math.round((yearly / remaining) * 100) : 0
   const meta = renewal
@@ -3865,7 +3879,7 @@ export function decisionQueue(
 
   const { year, month } = parseMonthKey(now.key)
   for (const o of keepQuestions(state.obligations ?? [], new Date(Date.UTC(year, month, now.day, 12)), state.book)) {
-    out.push({ kind: 'keep', key: `keep:${o.id}`, ...keepCard(o, state.goals ?? [], payments, now, state.book), to: null, obligation: o })
+    out.push({ kind: 'keep', key: `keep:${o.id}`, ...keepCard(o, state.goals ?? [], payments, now, state.book, state), to: null, obligation: o })
   }
 
   // Зарплата пришла по выписке и не разобрана — «Пришла зарплата»; иначе «пришла?» (возврат приёмки 2 п. 3: одна о зарплате).
@@ -3950,6 +3964,8 @@ export type BreakdownState = {
   allocations?: Allocation[]
   moneyArticles?: MoneyArticle[]
   moneySettings?: MoneySettings | null
+  /** Очередь денег (Р-84): герой карточки «оставить подписку?» — первая цель очереди. */
+  goalOrder?: QueueOrder | null
   /** Книга курсов и обмены (Р-74): тенге валютных зарплат — `salaryTenge`. */
   book?: RateBook | null
   fxExchanges?: FxExchange[]
