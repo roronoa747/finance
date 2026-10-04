@@ -3,10 +3,12 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { PhCalendarPlus } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { money, plain, parseMoney } from '@/lib/money'
+import { useFxStore } from '@/stores/fx'
+import { money, moneyIn, plain, parseMoney } from '@/lib/money'
 import { MONTHS_NOM, addMonths, dayLabel, monthFrom, monthKey, monthTitle, parseMonthKey } from '@/lib/dates'
 import {
   amountAt,
+  amountIn,
   isSubscription,
   liveGroups,
   liveObligations,
@@ -15,11 +17,15 @@ import {
   yearShare,
   type Due,
 } from '@/lib/finance'
-import type { Obligation, PersonId } from '@/types/finance'
+import type { Currency, Obligation, PersonId } from '@/types/finance'
+import { CURRENCY_SIGN } from '@/lib/fx'
 import { categoryName, type CategoryKey } from '@/lib/palette'
 import { cn } from '@/lib/utils'
 
+import CurrencyChips from '@/components/kit/CurrencyChips.vue'
 import Field from '@/components/kit/Field.vue'
+import Hint from '@/components/kit/Hint.vue'
+import NbRateLine from '@/components/kit/NbRateLine.vue'
 import NumField from '@/components/kit/NumField.vue'
 import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
 import SavedMark from '@/components/kit/SavedMark.vue'
@@ -28,19 +34,22 @@ import Select from '@/components/kit/Select.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import DangerZone from '@/components/kit/DangerZone.vue'
 import { useSavedMark } from '@/components/kit/useSavedMark'
+import { useNbRate } from '@/components/kit/useNbRate'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import PaidRow from '@/components/PaidRow.vue'
 
 /**
  * Окно обязательства Капитала (React `ObligationDialog`): «Оплатил», правка полей,
- * запланированное изменение суммы, «История суммы», удаление.
+ * запланированное изменение суммы, «История суммы», удаление. Сумма — в валюте версии (Р-75): чипы
+ * валюты у нового изменения (по умолчанию нынешняя), под суммой тихая строка «≈ N ₸ по курсу».
  */
 const props = defineProps<{ obligationId: string | null }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
+const fx = useFxStore()
 
 const key = computed(() => monthKey())
 const people = computed(() => financeStore.people)
@@ -67,7 +76,7 @@ watch(
   ],
   () => {
     obligationDue.value = activeObligation.value
-      ? nextObligationDue(activeObligation.value, financeStore.payments)
+      ? nextObligationDue(activeObligation.value, financeStore.payments, undefined, fx.book)
       : null
   },
   { immediate: true },
@@ -76,6 +85,8 @@ const obPlanning = ref(false)
 const obNewAmount = ref('')
 const obFromMonth = ref(addMonths(key.value, 1))
 const obReason = ref('')
+const obCurrency = ref<Currency>('KZT')
+const nb = useNbRate(obCurrency, obPlanning)
 
 const obPlanRef = ref<HTMLElement | null>(null)
 const obligationSaved = useSavedMark(
@@ -97,12 +108,15 @@ watch(
   { immediate: true },
 )
 
-const obCurrent = computed(() => (activeObligation.value ? amountAt(activeObligation.value, key.value) : 0))
+/** Сумма этого месяца в своей валюте и в тенге (валютная — по курсу дня списания, Р-75). */
+const obOwn = computed(() => (activeObligation.value ? amountIn(activeObligation.value, key.value) : { amount: 0, currency: 'KZT' as Currency }))
+const obCurrent = computed(() => (activeObligation.value ? amountAt(activeObligation.value, key.value, fx.book) : 0))
+const obPlannedTenge = computed(() => nb.tenge(parseMoney(obNewAmount.value)))
 const plannedObligationMonths = computed(() =>
   Array.from({ length: 13 }, (_, i) => addMonths(key.value, i)),
 )
 const obChange = computed(() =>
-  plannedChange(obCurrent.value, parseMoney(obNewAmount.value), activeObligation.value?.every),
+  plannedChange(obCurrent.value, obPlannedTenge.value, activeObligation.value?.every),
 )
 /** История суммы — новые сверху (React `ObligationDialog`). */
 const obHistory = computed(() =>
@@ -120,7 +134,7 @@ function onObligationNameBlur(e: Event) {
 // месяца или правки партнёра уход из поля не откатывает сумму к старому тексту.
 function onObligationAmount(text: string) {
   const v = parseMoney(text)
-  if (activeObligation.value && v > 0 && v !== obCurrent.value) {
+  if (activeObligation.value && v > 0 && v !== obOwn.value.amount) {
     financeStore.correctObligation(activeObligation.value.id, v)
   }
 }
@@ -138,13 +152,15 @@ function setObligationWho(v: 'all' | PersonId) {
 }
 function startPlanning() {
   obPlanning.value = true
+  obCurrency.value = obOwn.value.currency
   void nextTick(() => obPlanRef.value?.querySelector('input')?.focus())
 }
 function planObligation() {
   const ob = activeObligation.value
   const planned = parseMoney(obNewAmount.value)
-  if (!ob || planned <= 0) return
-  financeStore.amendObligation(ob.id, obFromMonth.value, planned, obReason.value.trim() || undefined)
+  if (!ob || planned <= 0 || !nb.ok.value) return
+  financeStore.amendObligation(ob.id, obFromMonth.value, planned, obReason.value.trim() || undefined, nb.foreign.value ? { currency: obCurrency.value, rate: nb.rate.value } : undefined)
+  nb.manual.value = ''
   obPlanning.value = false
   obNewAmount.value = ''
 }
@@ -183,7 +199,7 @@ function planObligation() {
       >
         <div class="flex justify-between">
           <span class="text-ink-2">Сумма сейчас</span>
-          <b class="num text-ink">{{ money(obCurrent) }}</b>
+          <b class="num text-ink">{{ moneyIn(obOwn.amount, obOwn.currency) }}<template v-if="obOwn.currency !== 'KZT'"> · ≈ {{ money(obCurrent) }}</template></b>
         </div>
         <div class="flex justify-between">
           <span class="text-ink-2">День платежа</span>
@@ -199,12 +215,13 @@ function planObligation() {
           <Input :default-value="activeObligation.name" class="mb-3" @blur="onObligationNameBlur" />
         </Field>
 
-        <Field label="Сумма сейчас, ₸">
-          <NumFieldBlur :initial="plain(obCurrent)" class="mb-1" @commit="onObligationAmount" />
+        <Field :label="`Сумма сейчас, ${CURRENCY_SIGN[obOwn.currency]}`">
+          <NumFieldBlur :initial="plain(obOwn.amount)" class="mb-1" @commit="onObligationAmount" />
         </Field>
-        <p class="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-3">
-          Это исправление: сумма была введена неверно. Если платёж меняется с какого-то месяца —
-          не трогайте это поле, а запланируйте изменение ниже.
+        <p class="-mt-1 mb-3 flex items-center gap-1 text-[12px] text-ink-3 num">
+          <template v-if="obOwn.currency !== 'KZT'">≈ {{ money(obCurrent) }} по курсу Нацбанка ·</template>
+          только исправить ошибку
+          <Hint>Сумма была введена неверно. Если платёж меняется с какого-то месяца — не трогайте это поле, а запланируйте изменение ниже.</Hint>
         </p>
 
         <Field label="День платежа">
@@ -283,9 +300,13 @@ function planObligation() {
           </Button>
         </div>
         <div v-else ref="obPlanRef" class="mb-3 rounded-xl border border-brand p-3.5">
-          <Field label="Новая сумма, ₸">
-            <NumField v-model="obNewAmount" :placeholder="plain(obCurrent)" />
+          <Field label="Валюта" group>
+            <CurrencyChips v-model="obCurrency" />
           </Field>
+          <Field :label="`Новая сумма, ${CURRENCY_SIGN[obCurrency]}`">
+            <NumField v-model="obNewAmount" :placeholder="plain(obCurrency === obOwn.currency ? obOwn.amount : 0)" />
+          </Field>
+          <NbRateLine :amount="parseMoney(obNewAmount)" :currency="obCurrency" :nb="nb" />
           <Field label="С какого месяца">
             <Select
               v-model="obFromMonth"
@@ -316,7 +337,7 @@ function planObligation() {
 
           <div class="flex gap-2">
             <Button variant="outline" class="flex-1" @click="obPlanning = false">Отмена</Button>
-            <Button class="flex-1" :disabled="parseMoney(obNewAmount) <= 0" @click="planObligation">
+            <Button class="flex-1" :disabled="parseMoney(obNewAmount) <= 0 || !nb.ok.value" @click="planObligation">
               Запланировать
             </Button>
           </div>
@@ -328,7 +349,7 @@ function planObligation() {
         <div class="mb-3 flex flex-col gap-1.5">
           <div v-for="v in obHistory" :key="v.from" class="flex items-baseline gap-2 text-[13px]">
             <span class="text-ink-3">{{ v.from <= key ? 'с' : 'станет с' }} {{ monthFrom(v.from) }}</span>
-            <b class="ml-auto num text-ink">{{ money(v.amount) }}</b>
+            <b class="ml-auto num text-ink">{{ moneyIn(v.amount, v.currency) }}</b>
             <span v-if="v.reason" class="text-[12px] text-ink-3">{{ v.reason }}</span>
           </div>
         </div>

@@ -1,21 +1,33 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
-import { money, plain, parseMoney } from '@/lib/money'
+import { useFxStore } from '@/stores/fx'
+import { money, moneyIn, plain, parseMoney } from '@/lib/money'
 import { monthKey, monthTitle, monthFrom, addMonths } from '@/lib/dates'
-import { salaryAt } from '@/lib/finance'
-import type { PersonId } from '@/types/finance'
+import { salaryAt, salaryOf } from '@/lib/finance'
+import { CURRENCY_SIGN } from '@/lib/fx'
+import type { Currency, PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
+import CurrencyChips from '@/components/kit/CurrencyChips.vue'
 import Field from '@/components/kit/Field.vue'
+import Hint from '@/components/kit/Hint.vue'
+import NbRateLine from '@/components/kit/NbRateLine.vue'
 import NumField from '@/components/kit/NumField.vue'
 import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
 import SavedMark from '@/components/kit/SavedMark.vue'
 import Select from '@/components/kit/Select.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import { useSavedMark } from '@/components/kit/useSavedMark'
+import { useNbRate } from '@/components/kit/useNbRate'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 
+/**
+ * Оклад участника: имя, исправление текущего оклада, день зарплаты и новая версия оклада с
+ * месяца — в том числе задним числом (до 24 месяцев) и в валюте (Р-70, B2C-78): чипы валют,
+ * сумма в валюте, под ней тихая строка «≈ N ₸ по курсу Нацбанка». Курс версии — сегодняшний
+ * из книги (нет — публичная `/api/fx-rate`, нет и её — поле курса руками, как у счёта).
+ */
 const props = defineProps<{
   id: PersonId | null
 }>()
@@ -25,6 +37,7 @@ const emit = defineEmits<{
 }>()
 
 const financeStore = useFinanceStore()
+const fx = useFxStore()
 const key = computed(() => monthKey())
 
 const person = computed(() => financeStore.people.find((p) => p.id === props.id))
@@ -34,6 +47,10 @@ const newAmount = ref('')
 const fromMonth = ref(addMonths(monthKey(), 1))
 const reason = ref('')
 const personName = ref(person.value?.name ?? '')
+const newCurrency = ref<Currency>('KZT')
+/** Курс Нацбанка на сегодня: книга, иначе публичная ручка; нет — поле курса руками (`useNbRate`). */
+const nb = useNbRate(newCurrency, planning)
+const { foreign: isForeign, manual: manualRate, rate, ok: rateOk } = nb
 
 watch(
   () => person.value?.name,
@@ -55,17 +72,24 @@ watch(
     planning.value = false
     newAmount.value = ''
     reason.value = ''
+    manualRate.value = ''
     fromMonth.value = addMonths(monthKey(), 1)
     personName.value = person.value?.name ?? ''
   },
 )
 
-const current = computed(() => (person.value ? salaryAt(person.value, key.value) : 0))
+/** Оклад этого месяца в своей валюте и в тенге (валютный — по курсу дня зарплаты). */
+const current = computed(() => (person.value ? salaryOf(person.value, key.value) : { amount: 0, currency: 'KZT' as Currency }))
+const currentTenge = computed(() => (person.value ? salaryAt(person.value, key.value, fx.book) : 0))
+const sign = computed(() => CURRENCY_SIGN[current.value.currency])
+
+/** Месяцы версии: 24 назад (задним числом, Р-70) … 12 вперёд. */
 const months = computed(() =>
-  Array.from({ length: 13 }, (_, i) => addMonths(key.value, i)).map((m) => ({ value: m, label: monthTitle(m) })),
+  Array.from({ length: 37 }, (_, i) => addMonths(key.value, i - 24)).map((m) => ({ value: m, label: monthTitle(m) })),
 )
 const planned = computed(() => parseMoney(newAmount.value))
-const delta = computed(() => (planned.value > 0 ? planned.value - current.value : 0))
+const plannedTenge = computed(() => nb.tenge(planned.value))
+const delta = computed(() => (planned.value > 0 && rateOk.value ? plannedTenge.value - currentTenge.value : 0))
 const history = computed(() =>
   [...(person.value?.salaryVersions ?? [])].sort((a, b) => b.from.localeCompare(a.from)),
 )
@@ -81,7 +105,7 @@ function onNameBlur() {
 function onSalaryCommit(text: string) {
   if (!person.value) return
   const v = parseMoney(text)
-  if (v > 0 && v !== current.value) {
+  if (v > 0 && v !== current.value.amount) {
     financeStore.correctSalary(person.value.id, v)
   }
 }
@@ -94,26 +118,28 @@ function onPaydayCommit(text: string) {
   }
 }
 
-// «Новый оклад» — сразу под пальцем (React `Budget.tsx:426-427` `autoFocus`), как PV-11.
+// «Новый оклад» — сразу под пальцем (React `Budget.tsx:426-427` `autoFocus`), как PV-11; валюта — нынешняя.
 const planRef = ref<HTMLElement | null>(null)
 function startPlanning() {
   planning.value = true
-  void nextTick(() => planRef.value?.querySelector('input')?.focus())
+  newCurrency.value = current.value.currency
+  void nextTick(() => planRef.value?.querySelector<HTMLInputElement>('input[inputmode]')?.focus())
 }
 
 function handlePlanSubmit() {
-  if (!person.value || planned.value <= 0) return
+  if (!person.value || planned.value <= 0 || !rateOk.value) return
   financeStore.amendSalary(
     person.value.id,
     fromMonth.value,
     planned.value,
     reason.value.trim() || undefined,
+    isForeign.value ? { currency: newCurrency.value, rate: rate.value } : undefined,
   )
   planning.value = false
   newAmount.value = ''
   reason.value = ''
+  manualRate.value = ''
 }
-
 </script>
 
 <template>
@@ -124,12 +150,13 @@ function handlePlanSubmit() {
         <Input v-model="personName" @blur="onNameBlur" />
       </Field>
 
-      <Field label="Оклад сейчас, ₸">
-        <NumFieldBlur :initial="plain(current)" @commit="onSalaryCommit" />
+      <Field :label="`Оклад сейчас, ${sign}`">
+        <NumFieldBlur :initial="plain(current.amount)" @commit="onSalaryCommit" />
       </Field>
-      <p class="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-3">
-        Это исправление: оклад был введён неверно. Если зарплата действительно меняется — не трогайте
-        это поле, а запланируйте изменение ниже.
+      <p class="-mt-1 mb-3 flex items-center gap-1 text-[12px] text-ink-3 num">
+        <template v-if="current.currency !== 'KZT'">≈ {{ money(currentTenge) }} по курсу Нацбанка ·</template>
+        только исправить ошибку
+        <Hint>Оклад был введён неверно. Если зарплата действительно меняется — не трогайте это поле, а измените оклад с нужного месяца ниже.</Hint>
       </p>
 
       <Field label="День зарплаты">
@@ -138,14 +165,19 @@ function handlePlanSubmit() {
 
       <div v-if="!planning" class="mb-3">
         <Button variant="outline" class="w-full bg-surface-2" @click="startPlanning">
-          Запланировать изменение
+          Изменить оклад
         </Button>
       </div>
 
       <div v-else ref="planRef" class="mb-3 rounded-xl border border-brand p-3.5">
-        <Field label="Новый оклад, ₸">
-          <NumField v-model="newAmount" :placeholder="plain(current)" />
+        <Field label="Валюта" group>
+          <CurrencyChips v-model="newCurrency" />
         </Field>
+
+        <Field :label="`Новый оклад, ${CURRENCY_SIGN[newCurrency]}`">
+          <NumField v-model="newAmount" :placeholder="plain(current.currency === newCurrency ? current.amount : 0)" />
+        </Field>
+        <NbRateLine :amount="planned" :currency="newCurrency" :nb="nb" />
 
         <Field label="С какого месяца">
           <Select v-model="fromMonth" :options="months" />
@@ -176,8 +208,8 @@ function handlePlanSubmit() {
 
         <div class="flex gap-2">
           <Button variant="outline" class="flex-1" @click="planning = false">Отмена</Button>
-          <Button class="flex-1" :disabled="planned <= 0" @click="handlePlanSubmit">
-            Запланировать
+          <Button class="flex-1" :disabled="planned <= 0 || !rateOk" @click="handlePlanSubmit">
+            Сохранить
           </Button>
         </div>
       </div>
@@ -191,7 +223,7 @@ function handlePlanSubmit() {
             <span class="text-ink-3">
               {{ v.from <= key ? 'с' : 'станет с' }} {{ monthFrom(v.from) }}
             </span>
-            <b class="ml-auto num font-semibold text-ink">{{ money(v.amount) }}</b>
+            <b class="ml-auto num font-semibold text-ink">{{ moneyIn(v.amount, v.currency) }}</b>
             <span v-if="v.reason" class="text-[12px] text-ink-3">{{ v.reason }}</span>
           </div>
         </div>

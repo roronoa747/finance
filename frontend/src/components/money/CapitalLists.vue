@@ -4,7 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { PhBank, PhCaretRight, PhCoins, PhCreditCard, PhFolderSimple, PhPlus, PhWallet } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { money, plain, rateField } from '@/lib/money'
+import { useFxStore } from '@/stores/fx'
+import { money, moneyIn, rateField } from '@/lib/money'
 import { monthIn, monthKey } from '@/lib/dates'
 import {
   amountTotal,
@@ -49,6 +50,7 @@ const route = useRoute()
 const router = useRouter()
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
+const fx = useFxStore()
 
 const key = computed(() => monthKey())
 const accounts = computed(() => liveAccounts(financeStore.accounts))
@@ -64,13 +66,13 @@ const KIND_LABEL: Record<Account['kind'], string> = { card: 'карта', cash: 
 
 function accountMeta(a: Account): string {
   const what = a.deposit ? `${rateField(a.deposit.annualRate)} %` : KIND_LABEL[a.kind]
-  const fx = a.currency ? `${plain(a.foreignAmount ?? 0)} ${a.currency}` : ''
+  const fx = a.currency ? moneyIn(a.foreignAmount ?? 0, a.currency) : ''
   return [what, fx, privateIds.value.has(a.id) ? 'личный' : 'общий'].filter(Boolean).join(' · ')
 }
 
 /* ------------------ Платежи ------------------ */
 // Платежи месяца — одно правило (`monthDues`): на нём тег, суммы и кредиты списка.
-const dues = computed(() => monthDues({ obligations: financeStore.obligations, credits: financeStore.credits, payments: financeStore.payments }, key.value))
+const dues = computed(() => monthDues({ obligations: financeStore.obligations, credits: financeStore.credits, payments: financeStore.payments, book: fx.book }, key.value))
 // Строка-статус (B2C-59, Р-59): «N из M оплачено» за месяц.
 const duesStatus = computed(() => duesTag(dues.value))
 // Первая строка «Платежей» (B2C-70, владелец): «Осталось в <месяце>» крупно и «из <всего>»; всё оплачено — «Всё оплачено» и итог.
@@ -219,7 +221,7 @@ watch(queryModalOpen, (open) => {
       :key="g.id"
       :title="g.name"
       :note="`${groupChildren(g, financeStore.obligations).length}${g.noAsk ? ' · рабочие' : ''}`"
-      :value="money(groupTotal(g, financeStore.obligations, key))"
+      :value="money(groupTotal(g, financeStore.obligations, key, fx.book))"
       clickable
       @click="selectedGroupId = g.id"
     />

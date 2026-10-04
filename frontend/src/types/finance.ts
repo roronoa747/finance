@@ -160,8 +160,13 @@ export type Gift = Tracked & {
 export type ObligationVersion = {
   /** Ключ месяца вида «2026-11» */
   from: string
+  /** Сумма — целые единицы своей валюты (`currency`, нет — тенге), без центов (Р-70). */
   amount: number
   reason?: string
+  /** Валюта версии (оклад — B2C-78, платёж — B2C-81); нет — KZT. */
+  currency?: Currency
+  /** Курс Нацбанка на момент ввода — запасной, когда в книге нет дня (Р-70, Р-72). */
+  rate?: number
 }
 
 export type Obligation = Tracked & {
@@ -211,7 +216,14 @@ export type Obligation = Tracked & {
   who?: PersonId | null
 }
 
-export type Currency = 'KZT' | 'USD' | 'EUR' | 'RUB'
+export type Currency = 'KZT' | 'USD' | 'EUR' | 'RUB' | 'CNY'
+
+/**
+ * Книга курсов Нацбанка (B2C-77, Р-72): валюта → день «YYYY-MM-DD» → тенге за единицу.
+ * Курс — не деньги: дробный, как опубликован; тенге из валюты — только `fxToTenge`.
+ * Передаётся расчётам параметром (как `totals`, `uploads`), не глобалом.
+ */
+export type RateBook = Partial<Record<Currency, Record<string, number>>>
 
 export type Account = Tracked & {
   id: string
@@ -326,6 +338,37 @@ export type Payment = Tracked & {
    */
   source?: 'manual' | 'statement'
   opId?: string
+  /**
+   * Зарплата в валюте (B2C-79, Р-73): сколько пришло в валюте на валютный счёт; `amount` —
+   * тенге по курсу Нацбанка на день прихода. Остаток валютного счёта растёт на `foreign`.
+   */
+  foreign?: number
+  currency?: Currency
+}
+
+/**
+ * Обмен валюты (B2C-79, Р-73): часть зарплаты продали по своему курсу. Запись неизменна,
+ * отмена — надгробие (`deletedAt`). Валютный счёт теряет `foreign`, тенговый получает `tenge`.
+ */
+export type FxExchange = Tracked & {
+  id: string
+  /** Чья зарплата (участник). */
+  by: PersonId
+  /** Валютный счёт, с которого продали. */
+  accountId: string
+  /** Тенговый счёт зачисления; null — «не записывать на счёт». */
+  toAccountId: string | null
+  currency: Currency
+  /** Сколько продали, целые единицы валюты. */
+  foreign: number
+  /** Курс обмена — вводит человек (тенге за единицу). */
+  rate: number
+  /** Тенге = `fxToTenge(foreign, rate)`, снимок на момент записи. */
+  tenge: number
+  /** Месяц зарплаты, к которой относится обмен. */
+  period: string
+  /** Когда обменяли. */
+  at: string
 }
 
 /** Прогноз плана: выигрыш к горизонту, сэкономленные проценты, месяц без процентных долгов. */
@@ -455,6 +498,8 @@ export type SyncDoc = {
   moneyArticles?: MoneyArticle[]
   /** Пороги ступеней и «Ваш порядок пройден» (B2C-54). До Блока 11 — без ключа. */
   moneySettings?: MoneySettings | null
+  /** Обмены валютной зарплаты (B2C-79, Р-73). До Блока 13 — без ключа. */
+  fxExchanges?: FxExchange[]
   /**
    * Когда закончили первичную настройку бюджета. Пустое значит, что показываем
    * первый запуск (`/start`). Живёт в общем документе, а не в настройках устройства: второй

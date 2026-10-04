@@ -2,10 +2,12 @@
  * Деньги хранятся ЦЕЛЫМИ ТЕНГЕ. Никаких дробей и никаких float в состоянии.
  *
  * Почему не тиыны: тиын не ходит в обороте, а лишний множитель ×100 в каждом
- * расчёте — это источник ошибок округления. Когда появятся валютные счета,
- * добавляем поле currency + minorExponent и переводим хранение в минорные
- * единицы одной миграцией: все суммы ×100 для KZT/USD/EUR.
+ * расчёте — это источник ошибок округления. Суммы в валюте — тоже целые единицы
+ * валюты, без центов (Р-70); тенге из валюты — только `fxToTenge` (`lib/finance`).
  */
+
+import type { Currency } from '@/types/finance'
+import { CURRENCY_SIGN } from '@/lib/fx'
 
 const NBSP = ' '
 /** Типографский минус (U+2212): у локали и `toFixed` — дефис, в макетах и рядом (`−` + `plain(abs)`) — «−». */
@@ -19,6 +21,16 @@ export function plain(v: number): string {
 /** 1050000 → «1 050 000 ₸» */
 export function money(v: number): string {
   return plain(v) + NBSP + '₸'
+}
+
+/** Со знаком: 15750 → «+15 750 ₸», −201000 → «−201 000 ₸», 0 → «0 ₸» (курс за год, B2C-82). */
+export function moneySigned(v: number): string {
+  return v > 0 ? `+${money(v)}` : money(v)
+}
+
+/** Цвет суммы со знаком (токены): минус — `text-destructive`, плюс — `text-ok`, ноль — `zero`. */
+export function signTone(v: number, zero = 'text-ink'): string {
+  return v < 0 ? 'text-destructive' : v > 0 ? 'text-ok' : zero
 }
 
 /** Компактно для тесных мест: 1234567 → «1,2 млн ₸» */
@@ -51,3 +63,8 @@ export function ratePct(r: number, digits = 2): string {
  * (0,14 × 100 в JS — 14,000000000000002), 0.1425 → «14,25». Вклад и кредит (хвост §4, приёмка Блока 3).
  */
 export const rateField = (r: number) => String(Math.round(r * 10_000) / 100).replace('.', ',')
+
+/** Сумма в своей валюте: 2500, EUR → «2 500 €»; тенге — как `money` (B2C-78). */
+export function moneyIn(v: number, currency: Currency = 'KZT'): string {
+  return currency === 'KZT' ? money(v) : plain(v) + NBSP + CURRENCY_SIGN[currency]
+}

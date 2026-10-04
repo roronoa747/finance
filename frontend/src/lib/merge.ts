@@ -213,6 +213,8 @@ export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
     // План разбора (B2C-54): статьи — по id (LWW, надгробия); пороги — один объект, поздний целиком.
     moneyArticles: mergeList(local.moneyArticles ?? [], remote.moneyArticles ?? [], (x) => x.id),
     moneySettings: newerObject(local.moneySettings, remote.moneySettings),
+    // Обмены валютной зарплаты (B2C-79): записи по id, отмена — надгробие; остатки выводит finance.ts.
+    fxExchanges: mergeList(local.fxExchanges ?? [], remote.fxExchanges ?? [], (x) => x.id),
     // Метки равны (или их нет) — сброс один и тот же.
     ...(lr ? { resetAt: lr } : {}),
   }

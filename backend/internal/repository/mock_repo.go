@@ -22,6 +22,7 @@ type MockRepositories struct {
 	Docs       *MockDocRepo
 	Statements *MockStatementRepo
 	Photos     *MockPhotoRepo
+	Fx         *MockFxRepo
 }
 
 func NewMockRepositories() *MockRepositories {
@@ -32,6 +33,7 @@ func NewMockRepositories() *MockRepositories {
 		Docs:       NewMockDocRepo(),
 		Statements: NewMockStatementRepo(households),
 		Photos:     NewMockPhotoRepo(),
+		Fx:         NewMockFxRepo(),
 	}
 }
 
@@ -670,4 +672,66 @@ func (m *MockPhotoRepo) Count() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.photos)
+}
+
+// --- MockFxRepo ---
+
+// MockFxRepo keeps the rate history in memory (B2C-76).
+type MockFxRepo struct {
+	mu    sync.Mutex
+	rates map[string]map[string]float64 // day → code → rate
+	days  map[string]bool               // day → published
+	saves int
+}
+
+func NewMockFxRepo() *MockFxRepo {
+	return &MockFxRepo{rates: make(map[string]map[string]float64), days: make(map[string]bool)}
+}
+
+func (m *MockFxRepo) Rates(ctx context.Context, code string, from, to time.Time) (map[string]float64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make(map[string]float64)
+	lo, hi := DayKey(from), DayKey(to)
+	for day, byCode := range m.rates {
+		if v, ok := byCode[code]; ok && day >= lo && day <= hi {
+			out[day] = v
+		}
+	}
+	return out, nil
+}
+
+func (m *MockFxRepo) Checked(ctx context.Context, from, to time.Time) (map[string]bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make(map[string]bool)
+	lo, hi := DayKey(from), DayKey(to)
+	for day, published := range m.days {
+		if day >= lo && day <= hi {
+			out[day] = published
+		}
+	}
+	return out, nil
+}
+
+func (m *MockFxRepo) Save(ctx context.Context, day time.Time, rates map[string]float64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := DayKey(day)
+	m.saves++
+	if m.rates[key] == nil {
+		m.rates[key] = make(map[string]float64)
+	}
+	for code, v := range rates {
+		m.rates[key][code] = v
+	}
+	m.days[key] = m.days[key] || len(rates) > 0
+	return nil
+}
+
+// Saves is for tests: how many days were written.
+func (m *MockFxRepo) Saves() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.saves
 }

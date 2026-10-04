@@ -750,9 +750,9 @@ describe('PV-11: форма платежа и модалка обязатель�
     for (const label of ['Название', 'Сумма сейчас, ₸', 'День платежа', 'Как часто', 'Чьё это']) {
       expect(html).toContain(`>${label}</span>`)
     }
-    expect(html).toContain(
-      'Это исправление: сумма была введена неверно. Если платёж меняется с какого-то месяца — не трогайте это поле, а запланируйте изменение ниже.',
-    )
+    // Пояснение исправления — в подсказке (?) у строки, как в форме оклада (правило 12, ревью Б13 Н-7).
+    expect(html).toContain('только исправить ошибку')
+    expect(html).not.toContain('Это исправление')
     expect(pressed(html, 'Аруна')).toBe(true)
     expect(html).toContain('История суммы')
     const history = html.slice(html.indexOf('История суммы'))
@@ -903,8 +903,8 @@ describe('PV-12: счета — валютный, удаление, тексты
     const { money } = await import('@/lib/money')
     await family()
     const html = await render('/capital', { selectedAccountId: 'usd' })
-    expect(html).toContain('>Сумма в USD</span>')
-    expect(html).toContain('>Курс: сколько тенге за 1 USD</span>')
+    expect(html).toContain('>Сумма, $</span>')
+    expect(html).toContain('>Курс, ₸ за 1 $</span>')
     expect(html).toContain('value="512,34"')
     expect(html).toContain(`В капитале счёт стоит как ${money(512_340)} — по этому курсу.`)
     expect(html).not.toContain('>Сумма, ₸</span>')
@@ -930,7 +930,7 @@ describe('PV-12: счета — валютный, удаление, тексты
     let warning = ''
     const html = await render('/capital', { selectedAccountId: 'card' }, (s) => (warning = s.accountRemoveWarning as string))
     expect(html).toContain('>Сумма, ₸</span>')
-    expect(html).not.toContain('Сумма в USD')
+    expect(html).not.toContain('Сумма, $')
     expect(html).toContain('Удалить счёт')
     expect(warning).toBe(
       'Счёт исчезнет у обоих участников. Отменить нельзя. Накопления по целям «Квартира», «Отпуск» останутся на месте: они снова будут считаться отдельно, а не лежащими на этом счёте.',
@@ -986,21 +986,25 @@ describe('PV-12: счета — валютный, удаление, тексты
     expect(html).toContain(money(512_340))
   })
 
-  it('добавление валютного счёта: курс Нацбанка с датой, «В капитале это», «Курс запоминается…»', async () => {
+  it('добавление валютного счёта: курс Нацбанка из книги — одна строка «≈ N ₸», без поля курса; книги нет — поле курса (ревью Б13 Н-3)', async () => {
     const { money } = await import('@/lib/money')
+    const { FX_BOOK_KEY } = await import('@/lib/storage')
     await family()
-    const info = { rates: { USD: 441.89 }, date: '2026-09-25', source: 'Национальный банк РК' }
-    const html = await render('/capital', {
-      accountOpen: true, newAccountCurrency: 'USD', newAccountAmount: '1 000', newAccountRate: '441,89', rateInfo: info,
-    })
-    expect(html).toContain('Курс Национальный банк РК на 25.09.2026. Можно заменить своим.')
-    expect(html).toContain(`В капитале это <b class="num text-ink">${money(441_890)}</b>`)
-    expect(html).toContain('Курс запоминается вместе с датой. Прошлые цифры от скачков курса не поедут — чтобы обновить, поменяете курс вручную.')
+    // Без книги и без ответа ручки — курс руками.
+    const manual = await render('/capital', { accountOpen: true, newAccountCurrency: 'USD', newAccountAmount: '1 000' })
+    expect(manual).toContain('>Сумма, $</span>')
+    expect(manual).toContain('>Курс, ₸ за 1 $</span>')
+    expect(manual).not.toContain('по курсу Нацбанка')
 
-    expect(await render('/capital', { accountOpen: true, newAccountCurrency: 'USD', rateBusy: true })).toContain('Запрашиваем курс Нацбанка…')
-    expect(await render('/capital', { accountOpen: true, newAccountCurrency: 'USD', rateFailed: true })).toContain(
-      'Курс Нацбанка сейчас недоступен — впишите вручную.',
-    )
+    // Книга с курсом на сегодня: 1 000 × 441,89 = 441 890 ₸.
+    localStorage.setItem(FX_BOOK_KEY, JSON.stringify({ book: { USD: { '2026-09-24': 441.89 } }, covered: {} }))
+    setActivePinia(createPinia())
+    await family()
+    const html = await render('/capital', { accountOpen: true, newAccountCurrency: 'USD', newAccountAmount: '1 000' })
+    expect(html).toContain(`≈ ${money(441_890)} по курсу Нацбанка`)
+    expect(html).not.toContain('Курс, ₸ за 1')
+    expect(html).not.toContain('Курс запоминается')
+
     expect(await render('/capital', { accountOpen: true, newAccountKind: 'deposit' })).toContain('Ставка по вкладу, % годовых — если есть')
   })
 })

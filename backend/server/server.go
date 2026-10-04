@@ -34,6 +34,7 @@ type Repos struct {
 	Docs       repository.DocRepository
 	Statements repository.StatementRepository
 	Photos     repository.PhotoRepository
+	Fx         repository.FxRepository
 }
 
 // NewHandler builds the API over database. A nil database means in-memory
@@ -47,6 +48,7 @@ func NewHandler(cfg *config.Config, database *sql.DB) (http.Handler, error) {
 			Docs:       repository.NewSQLDocRepository(database),
 			Statements: repository.NewSQLStatementRepository(database),
 			Photos:     repository.NewSQLPhotoRepository(database),
+			Fx:         repository.NewSQLFxRepository(database),
 		}
 	} else {
 		if cfg.IsProduction() {
@@ -55,7 +57,7 @@ func NewHandler(cfg *config.Config, database *sql.DB) (http.Handler, error) {
 		log.Println("using in-memory mock repositories (development mode)")
 		mocks := repository.NewMockRepositories()
 		mocks.Households.SetDocRepo(mocks.Docs)
-		repos = Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos}
+		repos = Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos, Fx: mocks.Fx}
 	}
 
 	tokens := auth.NewTokenService(cfg.JWTSecret, tokenTTL)
@@ -118,7 +120,12 @@ func NewRouter(
 
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", handlers.HealthHandler(database))
-		api.Get("/fx-rate", handlers.FxRateHandler(fxClient))
+		// The day the public rate fetched also goes into the history — with a database only.
+		var fxStore repository.FxRepository
+		if database != nil {
+			fxStore = repos.Fx
+		}
+		api.Get("/fx-rate", handlers.FxRateHandler(fxClient, fxStore))
 
 		api.Post("/auth/register", authHandler.Register)
 		api.Post("/auth/login", authHandler.Login)
@@ -148,6 +155,9 @@ func NewRouter(
 			protected.Post("/photos/preview", previewHandler.Preview)
 			protected.Get("/photos/{id}", photoHandler.Get)
 			protected.Delete("/photos/{id}", photoHandler.Delete)
+
+			// История курсов Нацбанка (B2C-76, Р-71): member и viewer, без семьи — 409.
+			protected.Get("/fx-rates", handlers.FxRatesHandler(fxClient, repos.Fx))
 		})
 	})
 

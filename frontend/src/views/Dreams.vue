@@ -5,6 +5,7 @@ import { PhCamera } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
+import { useFxStore } from '@/stores/fx'
 import { money, pct } from '@/lib/money'
 import { monthKey, monthTitle } from '@/lib/dates'
 import { freeByFact, goalDoneMonth, goalMonths, goalRemaining, liveGoals, liveWishlist, mainGoal, planForecast, untilPayday } from '@/lib/finance'
@@ -41,7 +42,8 @@ const canEdit = computed(() => !authStore.isViewer)
 const people = computed(() => financeStore.people.filter((p) => !p.deletedAt))
 
 // Состояние для расчётов: кредиты — производные (остатки из отметок), как везде.
-const state = computed(() => ({ ...financeStore.householdDoc, credits: financeStore.credits }))
+const fx = useFxStore()
+const state = computed(() => ({ ...financeStore.householdDoc, credits: financeStore.credits, book: fx.book }))
 
 /* ---------- мечта по центру и цели ---------- */
 const goals = computed(() => liveGoals(financeStore.goals))
@@ -93,6 +95,8 @@ const payday = computed(() =>
     credits: financeStore.credits,
     accounts: financeStore.householdAccounts,
     payments: financeStore.payments,
+    fxExchanges: financeStore.fxExchanges,
+    book: fx.book,
   }),
 )
 // До выписки за месяц числа «Свободно» нет — строка держит только «До зарплаты N дней».

@@ -2,11 +2,16 @@ import { defineStore } from 'pinia'
 import { ref, computed, type Ref } from 'vue'
 import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { mergeDocs, mergePrivateDocs, isEmptyDoc } from '@/lib/merge'
-import { monthKey } from '@/lib/dates'
+import { monthKey, todayIso } from '@/lib/dates'
 import { clearPhotoDisk } from '@/lib/photos/store'
-import { LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, readStorage } from '@/lib/storage'
+import { FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, readStorage } from '@/lib/storage'
 import {
   accountBalance,
+  accountForeign,
+  fxToTenge,
+  rateOn,
+  salaryOf,
+  type BalanceCtx,
   activePlan as pickActivePlan,
   amountAt,
   costliestCredits,
@@ -59,11 +64,15 @@ import type {
   ArticleKey,
   MoneyArticle,
   MoneySettings,
+  Currency,
+  FxExchange,
 } from '@/types/finance'
 import type { MerchantRule } from '@/lib/statements/types'
 import { spendArticle } from '@/lib/statements/dictionary'
 import { seedSpendCategories } from '@/lib/statements/model'
 import { useAuthStore } from '@/stores/auth'
+import { useFxStore } from '@/stores/fx'
+import { FX_ACCOUNT_NAME } from '@/lib/fx'
 import { DEFAULT_CATEGORY_NAMES, type CategoryKey, type HueKey } from '@/lib/palette'
 import type { ConflictResponse, HouseholdDocResponse } from '@/types/api'
 
@@ -85,6 +94,8 @@ export function defaultSyncDoc(): SyncDoc {
     // План разбора (B2C-54): пустой — умолчания `moneyArticlesOf` / `moneySettingsOf`.
     moneyArticles: [],
     moneySettings: null,
+    // Обмены валютной зарплаты (B2C-79): ключ и пустым — как у payments (RP-03).
+    fxExchanges: [],
     setupDoneAt: null,
   }
 }
@@ -121,6 +132,8 @@ const LOCAL_KEYS = [
   MONTH_END_KEY,
   // Адреса желаний без картинки (B2C-68): ссылки этой семьи другому входу не нужны.
   LINK_PHOTO_TRIED_KEY,
+  // Книга курсов (B2C-77): курсы публичные, но кэш — этого входа.
+  FX_BOOK_KEY,
 ]
 
 // Запрос не дошёл до сервера (fetch бросил не ApiError) — это «нет сети», а не «не
@@ -196,7 +209,14 @@ export const useFinanceStore = defineStore('finance', () => {
   // Остатки счетов и долгов экраны получают уже выведенными из отметок (RP-06):
   // в документе лежит база последней ручной сверки. Личный счёт тоже считается по
   // отметкам общего документа — у партнёра такого id просто нет.
-  const withBalance = (a: Account): Account => ({ ...a, amount: accountBalance(a, payments.value) })
+  // Обмены валютной зарплаты (B2C-79): тенговый счёт получает тенге обмена, валютный теряет валюту;
+  // валютный счёт — в тенге по курсу Нацбанка сегодня из книги (Р-73). Книга — из стора курсов.
+  const fxExchanges = computed(() => householdDoc.value.fxExchanges ?? [])
+  const balanceCtx = (): BalanceCtx => ({ exchanges: fxExchanges.value, book: useFxStore().book, day: todayIso() })
+  const withBalance = (a: Account): Account => {
+    const ctx = balanceCtx()
+    return { ...a, amount: accountBalance(a, payments.value, ctx), ...(a.currency && a.currency !== 'KZT' ? { foreignAmount: accountForeign(a, payments.value, ctx.exchanges) } : {}) }
+  }
   const householdAccounts = computed(() => (householdDoc.value.accounts || []).map(withBalance))
   const privateAccounts = computed(() => ((privateDoc.value.accounts as Account[]) || []).map(withBalance))
   const accounts = computed(() => [...householdAccounts.value, ...privateAccounts.value])
@@ -687,6 +707,8 @@ export const useFinanceStore = defineStore('finance', () => {
     every?: 'month' | 'year';
     month?: number;
     who?: PersonId | null;
+    /** Платёж в валюте (Р-75): сумма — в валюте, курс Нацбанка на момент ввода — запасной. */
+    fx?: { currency: Currency; rate: number };
   }) {
     const id = Math.random().toString(36).slice(2, 10);
     const t = new Date().toISOString();
@@ -701,7 +723,7 @@ export const useFinanceStore = defineStore('finance', () => {
         every: o.every,
         month: o.month,
         who: o.who,
-        versions: [{ from: '2000-01', amount: o.amount }],
+        versions: [{ from: '2000-01', amount: o.amount, ...(o.fx && o.fx.currency !== 'KZT' ? { currency: o.fx.currency, rate: o.fx.rate } : {}) }],
         // Завести — уже решение «оставить»: только что добавленное не спрашиваем (Р-20).
         keptAt: t,
         updatedAt: t,
@@ -856,15 +878,20 @@ export const useFinanceStore = defineStore('finance', () => {
     });
   }
 
-  function amendSalary(id: PersonId, from: string, amount: number, reason?: string) {
+  /**
+   * Новая версия оклада с месяца `from` (можно задним числом). Валютная (Р-70) — `amount` в
+   * целых единицах валюты и `rate` — курс Нацбанка на момент ввода (запасной для книги).
+   */
+  function amendSalary(id: PersonId, from: string, amount: number, reason?: string, fx?: { currency: Currency; rate: number }) {
     const t = new Date().toISOString()
+    const money = fx && fx.currency !== 'KZT' ? { currency: fx.currency, rate: fx.rate } : {}
     mutateHouseholdDoc((doc) => {
       const p = doc.people.find((x) => x.id === id)
       if (!p) return
       const base = p.salaryVersions?.length
         ? p.salaryVersions
         : [{ from: '2000-01', amount: p.salary }]
-      const versions = [...base.filter((v) => v.from !== from), { from, amount, reason }]
+      const versions = [...base.filter((v) => v.from !== from), { from, amount, reason, ...money }]
         .sort((a, b) => a.from.localeCompare(b.from))
       p.salaryVersions = versions
       p.updatedAt = t
@@ -881,7 +908,8 @@ export const useFinanceStore = defineStore('finance', () => {
       const p = doc.people.find((x) => x.id === id)
       if (!p) return
       const cur = (p.salaryVersions ?? []).filter((v) => v.from <= key).pop()
-      p.salary = amount
+      // `salary` — тенге по умолчанию без версий: валютную сумму туда не пишем (Р-70).
+      if (!cur?.currency || cur.currency === 'KZT') p.salary = amount
       if (cur && p.salaryVersions) {
         p.salaryVersions = p.salaryVersions.map((v) => (v.from === cur.from ? { ...v, amount } : v))
       }
@@ -966,7 +994,7 @@ export const useFinanceStore = defineStore('finance', () => {
       note?: string
       amount: number
       kind: 'card' | 'cash' | 'deposit' | 'envelope'
-      currency?: 'KZT' | 'USD' | 'EUR' | 'RUB'
+      currency?: Currency
       foreignAmount?: number
       rate?: number
       rateAt?: string
@@ -1007,6 +1035,52 @@ export const useFinanceStore = defineStore('finance', () => {
         doc.accounts.push(newAccount)
       })
     }
+    return id
+  }
+
+  /**
+   * Валютный счёт одним нажатием (B2C-79, «Евро-счёт»): общий, остаток 0, курс — Нацбанка
+   * сегодня из книги (нет — без курса: тенге счёта посчитает книга, когда придёт).
+   */
+  function addFxAccount(currency: Currency): string {
+    const rate = rateOn(useFxStore().book, currency, todayIso())
+    return addAccount({ name: FX_ACCOUNT_NAME[currency], amount: 0, kind: 'card', currency, foreignAmount: 0, ...(rate ? { rate, rateAt: new Date().toISOString() } : {}) })
+  }
+
+  /**
+   * «Обменял» (B2C-79, Р-73): запись обмена — часть валютной зарплаты продана по своему курсу.
+   * Тенге — `fxToTenge`; валютный счёт теряет `foreign`, тенговый (`toAccountId`) получает тенге —
+   * остатки выводит finance.ts. `payments` не трогает.
+   */
+  function addExchange(x: { by: PersonId; accountId: string; toAccountId: string | null; foreign: number; rate: number; period: string }): FxExchange | null {
+    const from = accounts.value.find((a) => a.id === x.accountId && !a.deletedAt)
+    if (!from?.currency || from.currency === 'KZT' || !(x.foreign > 0) || !(x.rate > 0)) return null
+    const t = new Date().toISOString()
+    const record: FxExchange = {
+      id: Math.random().toString(36).slice(2, 10),
+      by: x.by,
+      accountId: x.accountId,
+      toAccountId: x.toAccountId,
+      currency: from.currency,
+      foreign: Math.round(x.foreign),
+      rate: x.rate,
+      tenge: fxToTenge(Math.round(x.foreign), x.rate),
+      period: x.period,
+      at: t,
+      updatedAt: t,
+    }
+    mutateHouseholdDoc((doc) => {
+      doc.fxExchanges = [...(doc.fxExchanges ?? []), record]
+    })
+    return record
+  }
+
+  /** Отменить обмен — надгробие: остатки обоих счетов возвращаются (finance.ts). */
+  function undoExchange(id: string) {
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      doc.fxExchanges = (doc.fxExchanges ?? []).map((x) => (x.id === id && !x.deletedAt ? { ...x, deletedAt: t, updatedAt: t } : x))
+    })
   }
 
   /**
@@ -1054,13 +1128,13 @@ export const useFinanceStore = defineStore('finance', () => {
   function shiftAccountAmount(id: string, delta: number) {
     const t = new Date().toISOString()
     const shift = (x: Account) => ({
-      amount: shiftedBase(x, payments.value, delta),
+      amount: shiftedBase(x, payments.value, delta, balanceCtx()),
       ...amountAnchor(x, {}, t),
       updatedAt: t,
     })
     const priv = ((privateDoc.value.accounts as Account[]) || []).find((x) => x.id === id)
     const raw = priv ?? (householdDoc.value.accounts || []).find((x) => x.id === id)
-    if (!raw || shiftedBase(raw, payments.value, delta) === raw.amount) return
+    if (!raw || shiftedBase(raw, payments.value, delta, balanceCtx()) === raw.amount) return
     if (priv) {
       mutatePrivateDoc((doc) => {
         doc.accounts = ((doc.accounts as Account[]) || []).map((x) => (x.id === id ? { ...x, ...shift(x) } : x))
@@ -1173,7 +1247,8 @@ export const useFinanceStore = defineStore('finance', () => {
       if (!o) return null
       period = opts.period ?? nextObligationDue(o, payments.value)?.period
       if (!period) return null
-      amount = opts.amount ?? amountAt(o, period)
+      // Валютная подписка — тенге по курсу Нацбанка на день списания (Р-75); правится руками.
+      amount = opts.amount ?? amountAt(o, period, useFxStore().book)
     } else {
       const c = credits.value.find((x) => x.id === targetId && !x.deletedAt)
       if (!c) return null
@@ -1212,23 +1287,55 @@ export const useFinanceStore = defineStore('finance', () => {
    */
   function markSalary(
     personId: PersonId,
-    opts: { period?: string; amount?: number; accountId?: string | null; source?: Payment['source']; opId?: string; at?: string } = {},
+    opts: { period?: string; amount?: number; foreign?: number; accountId?: string | null; source?: Payment['source']; opId?: string; at?: string } = {},
   ): Payment | null {
     const p = people.value.find((x) => x.id === personId && !x.deletedAt)
     if (!p) return null
     const period = opts.period ?? monthKey()
     const existing = paidFor(payments.value, 'salary', personId, period)
     if (existing) return existing
-    const record = newPayment(
-      { kind: 'salary', targetId: personId, period, amount: opts.amount ?? salaryAt(p, period), by: personId, ...sourceOf(opts) },
-      opts.accountId,
-      opts.at,
-    )
+    const own = salaryOf(p, period)
+    // Из тенговой выписки валютная зарплата приходит уже в тенге (банк обменял, B2C-80) — тенговая запись.
+    const record =
+      own.currency === 'KZT' || opts.source === 'statement'
+        ? newPayment(
+            { kind: 'salary', targetId: personId, period, amount: opts.amount ?? salaryAt(p, period), by: personId, ...sourceOf(opts) },
+            opts.accountId,
+            opts.at,
+          )
+        : foreignSalary(p, own, period, opts)
     mutateHouseholdDoc((doc) => {
       if (!doc.payments) doc.payments = []
       doc.payments.push(record)
     })
     return record
+  }
+
+  /**
+   * Зарплата в валюте (B2C-79, Р-73): `foreign` — в валюте оклада (по умолчанию оклад месяца),
+   * `amount` — тенге по курсу Нацбанка на день прихода из книги (нет дня — курс версии). Счёт —
+   * только валютный той же валюты: по умолчанию прошлый такой или первый живой; тенговый не
+   * принимается — тогда «не зачислено».
+   */
+  function foreignSalary(
+    p: Person,
+    own: { amount: number; currency: Currency; rate?: number },
+    period: string,
+    opts: { amount?: number; foreign?: number; accountId?: string | null; source?: Payment['source']; opId?: string; at?: string },
+  ): Payment {
+    const foreign = opts.foreign ?? own.amount
+    const rate = rateOn(useFxStore().book, own.currency, todayIso(opts.at ? new Date(opts.at) : undefined), own.rate)
+    const fits = (id: string | null | undefined) => accounts.value.some((a) => a.id === id && !a.deletedAt && a.currency === own.currency)
+    const last = lastAccountFor(payments.value, p.id, accounts.value)
+    const accountId =
+      opts.accountId !== undefined
+        ? fits(opts.accountId) ? opts.accountId : null
+        : fits(last) ? last! : (accounts.value.find((a) => !a.deletedAt && a.currency === own.currency)?.id ?? null)
+    return newPayment(
+      { kind: 'salary', targetId: p.id, period, amount: opts.amount ?? (rate ? fxToTenge(foreign, rate) : 0), foreign, currency: own.currency, by: p.id, ...sourceOf(opts) },
+      accountId,
+      opts.at,
+    )
   }
 
   /**
@@ -1512,13 +1619,15 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
-  function amendObligation(id: string, from: string, amount: number, reason?: string) {
+  /** Новая версия суммы с месяца; `fx` — валюта и курс версии (Р-75), без него — тенге. */
+  function amendObligation(id: string, from: string, amount: number, reason?: string, fx?: { currency: Currency; rate: number }) {
     const t = new Date().toISOString()
+    const money = fx && fx.currency !== 'KZT' ? { currency: fx.currency, rate: fx.rate } : {}
     mutateHouseholdDoc((doc) => {
       const o = (doc.obligations || []).find((x) => x.id === id)
       if (!o) return
       const base = o.versions?.length ? o.versions : [{ from: '2000-01', amount: 0 }]
-      const versions = [...base.filter((v) => v.from !== from), { from, amount, reason }]
+      const versions = [...base.filter((v) => v.from !== from), { from, amount, reason, ...money }]
         .sort((a, b) => a.from.localeCompare(b.from))
       o.versions = versions
       o.updatedAt = t
@@ -1904,6 +2013,10 @@ export const useFinanceStore = defineStore('finance', () => {
     removeCredit,
     markPaid,
     markSalary,
+    fxExchanges,
+    addExchange,
+    undoExchange,
+    addFxAccount,
     unmarkPaid,
     editPaid,
     applyPrepayment,

@@ -43,9 +43,10 @@ export function monthTitle(key: string): string {
 }
 
 /** «сен 2026» — строка таблицы: график платежей, план по месяцам. */
-export function monthShort(key: string): string {
+export function monthShort(key: string, withYear = true): string {
   const { year, month } = parseMonthKey(key)
-  return `${MONTHS_NOM[month].slice(0, 3).toLowerCase()} ${year}`
+  const short = MONTHS_NOM[month].slice(0, 3).toLowerCase()
+  return withYear ? `${short} ${year}` : short
 }
 
 /** Сдвиг ключа месяца на N месяцев. */
@@ -125,6 +126,28 @@ export function weekRange(key: string): { from: string; to: string } {
   const jan4 = Date.UTC(year, 0, 4)
   const monday = jan4 - ((new Date(jan4).getUTCDay() + 6) % 7) * DAY_MS + (week - 1) * 7 * DAY_MS
   return { from: isoDay(monday), to: isoDay(monday + 6 * DAY_MS) }
+}
+
+/** Сегодняшняя дата по Алматы, `YYYY-MM-DD` (день книги курсов). */
+export function todayIso(d = new Date()): string {
+  return almaty(d).toISOString().slice(0, 10)
+}
+
+/** Дата `YYYY-MM-DD` на `n` дней раньше / позже. */
+export function addDaysIso(iso: string, n: number): string {
+  return isoDay(Date.parse(`${iso}T00:00:00Z`) + n * DAY_MS)
+}
+
+/** Дата `YYYY-MM-DD` на `n` месяцев раньше / позже; 31-е в коротком месяце — его последний день. */
+export function shiftIsoMonths(iso: string, n: number): string {
+  const [y, mo, d] = iso.split('-').map(Number)
+  const key = addMonths(`${y}-${String(mo).padStart(2, '0')}`, n)
+  return isoIn(key, d)
+}
+
+/** День `day` месяца `key` как `YYYY-MM-DD`, обрезанный по длине месяца (день зарплаты 31 → 30 сентября). */
+export function isoIn(key: string, day: number): string {
+  return `${key}-${String(Math.min(Math.max(1, day), daysInMonth(key))).padStart(2, '0')}`
 }
 
 /** День момента времени по Алматы, «5 сентября» — когда отметили оплату. */

@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
+import { useFxStore } from '@/stores/fx'
 import { money } from '@/lib/money'
 import { monthKey } from '@/lib/dates'
 import { groupChildren, groupTotal, isSubscription, liveGroups, liveObligations } from '@/lib/finance'
@@ -29,6 +30,7 @@ const emit = defineEmits<{
 
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
+const fx = useFxStore()
 const key = computed(() => monthKey())
 
 /** Флаг группы: спрашивать ли «оставить?» о её подписках. */
@@ -109,7 +111,7 @@ const groupCandidates = computed(() =>
       <div class="mb-3 flex flex-col">
         <div class="flex justify-between pb-1 text-[13px]">
           <span class="text-ink-2">Итого</span>
-          <b class="num text-ink">{{ money(groupTotal(activeGroup, financeStore.obligations, key)) }} в месяц</b>
+          <b class="num text-ink">{{ money(groupTotal(activeGroup, financeStore.obligations, key, fx.book)) }} в месяц</b>
         </div>
         <PaymentLine
           v-for="o in groupChildren(activeGroup, financeStore.obligations)"

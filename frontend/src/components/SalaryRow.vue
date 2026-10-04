@@ -4,15 +4,16 @@ import { useRouter } from 'vue-router'
 import { PhArrowUp, PhCheck } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { plain } from '@/lib/money'
+import { moneyIn, plain } from '@/lib/money'
 import { atLabel } from '@/lib/dates'
-import { lastAccountFor, paidFor, salaryAt, salaryBreakdownPath, salaryOpen } from '@/lib/finance'
+import { lastAccountFor, liveAccounts, paidFor, salaryAt, salaryBreakdownPath, salaryOf, salaryOpen } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
 import { memberColor } from '@/lib/palette'
 import Row from '@/components/kit/Row.vue'
 import Button from '@/components/ui/Button.vue'
 import MarkSheet from '@/components/MarkSheet.vue'
+import SalaryExchange from '@/components/SalaryExchange.vue'
 
 /**
  * «Пришла зарплата» (RP-10, Р-18) — зеркало «Оплатил» для зачисления. Отмечает свою
@@ -47,10 +48,17 @@ const auth = useAuthStore()
 
 const person = computed(() => finance.people.find((p) => p.id === props.personId && !p.deletedAt))
 const record = computed(() => paidFor(finance.payments, 'salary', props.personId, props.period))
-/** Оклад месяца — сумма по умолчанию. */
-const due = computed(() => (person.value ? salaryAt(person.value, props.period) : 0))
+/**
+ * Оклад в валюте (B2C-79, Р-73): приходит на валютный счёт суммой в валюте, после — «Обменял»
+ * (`SalaryExchange`); в разбор сразу не ведёт — сначала обмен.
+ */
+const own = computed(() => (person.value ? salaryOf(person.value, props.period) : null))
+const fxSalary = computed(() => !!own.value && own.value.currency !== 'KZT')
+/** Оклад месяца — сумма по умолчанию (валютный — в валюте). */
+const due = computed(() => (!person.value ? 0 : fxSalary.value ? own.value!.amount : salaryAt(person.value, props.period)))
 /** Сумма в строке: у отмеченной — пришедшая. */
-const shown = computed(() => (record.value ? record.value.amount : due.value))
+const shown = computed(() => (record.value ? (record.value.foreign ?? record.value.amount) : due.value))
+const shownText = computed(() => (fxSalary.value || record.value?.foreign ? moneyIn(shown.value, record.value?.currency ?? own.value!.currency) : plain(shown.value)))
 
 // Свою зарплату отмечает только сам участник; viewer — никогда (Р-13).
 const mine = computed(() => !auth.isViewer && auth.slot === props.personId)
@@ -84,14 +92,32 @@ function toAllocation() {
   void router.push(salaryBreakdownPath(props.personId, props.period))
 }
 
-function mark(amount: number, accountId: string | null) {
-  finance.markSalary(props.personId, { period: props.period, amount, accountId })
+function mark(amount: number, accountId: string | null | undefined) {
+  if (fxSalary.value) {
+    finance.markSalary(props.personId, { period: props.period, foreign: amount, accountId })
+    sheet.value = null
+    return
+  }
+  finance.markSalary(props.personId, { period: props.period, amount, accountId: accountId ?? null })
   sheet.value = null
   toAllocation()
 }
 
+/** Отмечено в листе: тенговая — в разбор; валютная — остаёмся, дальше «Обменял». */
+function onMarked() {
+  if (!fxSalary.value) toAllocation()
+}
+
 /** Главный путь — одно нажатие. Лист — если счёт спросить не у кого. */
 function tap() {
+  // Валютная: одним нажатием, когда есть валютный счёт той же валюты (стор выберет); иначе лист с «Евро-счётом».
+  if (fxSalary.value) {
+    const has = liveAccounts(finance.accounts).some((a) => a.currency === own.value!.currency)
+    firstTime.value = !has
+    if (has) mark(due.value, undefined)
+    else openMark(due.value, undefined)
+    return
+  }
   const last = lastAccountFor(finance.payments, props.personId, finance.accounts)
   firstTime.value = last === undefined
   if (last === undefined) openMark(due.value, last)
@@ -99,6 +125,7 @@ function tap() {
 }
 
 function openMore() {
+  if (fxSalary.value) return openMark(due.value, undefined)
   const last = lastAccountFor(finance.payments, props.personId, finance.accounts)
   firstTime.value = last === undefined
   openMark(due.value, last)
@@ -142,7 +169,7 @@ function openMore() {
 
     <template #value>
       <span :class="cn('block text-[14.5px] font-semibold num', record ? 'text-ink-3' : 'text-brand')">
-        +{{ plain(shown) }}
+        +{{ shownText }}
       </span>
     </template>
 
@@ -173,6 +200,8 @@ function openMore() {
       </button>
     </template>
   </Row>
+  <!-- Валютная: строка обменов — и у пришедшей, и после снятой отметки, пока живы обмены месяца (Н-6). -->
+  <SalaryExchange v-if="!button && (record?.foreign || fxSalary)" class="pb-2" :person-id="personId" :period="period" />
 
   <MarkSheet
     :open="sheet"
@@ -184,7 +213,7 @@ function openMore() {
     :account="markAccount"
     :first-time="firstTime"
     @close="sheet = null"
-    @marked="toAllocation"
+    @marked="onMarked"
     @allocate="toAllocation"
   />
 </template>

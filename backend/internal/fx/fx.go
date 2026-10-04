@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,6 +25,9 @@ const DefaultBaseURL = "https://nationalbank.kz/rss/get_rates.cfm"
 const Source = "Национальный банк РК"
 
 // Supported lists the currencies the app offers for accounts.
+//
+// A new code does not fill its history by itself: app.fx_days marks a day asked for all
+// codes at once. After adding one — DELETE FROM app.fx_days, then go run ./cmd/fxbackfill.
 var Supported = []string{"USD", "EUR", "RUB", "CNY"}
 
 // lookbackDays covers weekends and holidays, when the bank publishes nothing.
@@ -34,6 +38,9 @@ var almaty = time.FixedZone("Asia/Almaty", 5*60*60)
 
 // ErrNoRates means no rates were published for the whole lookback window.
 var ErrNoRates = errors.New("курс не опубликован за последнюю неделю")
+
+// ErrNotFeed means the bank answered 200 with something that is not its rates feed.
+var ErrNotFeed = errors.New("bank answered without a rates feed")
 
 // Rates matches the frontend's FxRates: Rates[code] is tenge per one unit.
 type Rates struct {
@@ -86,21 +93,47 @@ func (c *Client) Rates(ctx context.Context) (*Rates, error) {
 			continue // the Edge Function also skipped failed days
 		}
 
-		picked := make(map[string]float64, len(Supported))
-		for _, code := range Supported {
-			if v, ok := all[code]; ok {
-				picked[code] = v
-			}
-		}
+		picked := pickSupported(all)
 		if len(picked) == 0 {
 			continue
 		}
 
-		c.cached = &Rates{Rates: picked, Date: day.Format("2006-01-02"), Source: Source}
+		c.cached = &Rates{Rates: picked, Date: day.Format(time.DateOnly), Source: Source}
 		c.fetchedAt = now
 		return c.cached, nil
 	}
 	return nil, ErrNoRates
+}
+
+// Today is the current calendar date in Almaty, as a UTC midnight (the date the bank uses).
+func (c *Client) Today() time.Time {
+	y, m, d := c.Now().In(almaty).Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+}
+
+// Day asks the bank for one date's rates of the Supported currencies, bypassing the
+// cache. An empty map means nothing was published for that date.
+func (c *Client) Day(ctx context.Context, day time.Time) (map[string]float64, error) {
+	all, err := c.fetchDay(ctx, day)
+	if err != nil {
+		return nil, err
+	}
+	return pickSupported(all), nil
+}
+
+func pickSupported(all map[string]float64) map[string]float64 {
+	picked := make(map[string]float64, len(Supported))
+	for _, code := range Supported {
+		if v, ok := all[code]; ok {
+			picked[code] = v
+		}
+	}
+	return picked
+}
+
+// IsSupported reports whether code is one of the Supported currencies.
+func IsSupported(code string) bool {
+	return slices.Contains(Supported, code)
 }
 
 func (c *Client) fetchDay(ctx context.Context, day time.Time) (map[string]float64, error) {
@@ -123,6 +156,13 @@ func (c *Client) fetchDay(ctx context.Context, day time.Time) (map[string]float6
 	body, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if err != nil {
 		return nil, err
+	}
+	// A maintenance page or a cut answer is not "nothing published": without this the
+	// history would store the day as empty and never ask again (critic, B2C-76). The
+	// closing tag also catches a feed cut short — silently by LimitReader or a proxy —
+	// which would store a past day as empty or published without some codes.
+	if !strings.Contains(string(body), "</rates>") {
+		return nil, ErrNotFeed
 	}
 	return ParseRates(body), nil
 }

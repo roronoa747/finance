@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { PhCopy, PhFileArrowUp, PhUserPlus } from '@phosphor-icons/vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
+import { useFxStore } from '@/stores/fx'
 import { useOperationsStore, type Draft, type DraftFile } from '@/stores/operations'
 import { readStatementFiles } from '@/lib/statements/read'
 import { ruleFor, ruleMatchOf } from '@/lib/statements/model'
@@ -44,6 +45,7 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const financeStore = useFinanceStore()
+const fx = useFxStore()
 const ops = useOperationsStore()
 
 const slot = computed<PersonId>(() => authStore.slot || 'a')
@@ -280,7 +282,7 @@ const spendCategories = computed(() => financeStore.householdDoc.spendCategories
 // Суммы и доли — `spendRows` (finance.ts), экран только раскладывает строки в полосу.
 const picture = computed(() => spendRows(financeStore.householdDoc.spendTotals ?? [], spendCategories.value, { kind: 'month', period: pictureMonth.value, by: slot.value }))
 const segments = computed<WeekSegment[]>(() => picture.value.rows.map((r) => ({ id: r.categoryId, name: r.name, amount: r.amount, share: r.share, color: r.color })))
-const free = computed(() => budgetAmounts({ ...financeStore.householdDoc, credits: financeStore.credits }).d5)
+const free = computed(() => budgetAmounts({ ...financeStore.householdDoc, credits: financeStore.credits, book: fx.book }).d5)
 
 /* ------------------ Шаг 5: партнёр ------------------ */
 const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: handleMakeInvite, copy: handleCopy } = useInvite()

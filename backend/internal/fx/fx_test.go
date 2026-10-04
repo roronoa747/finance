@@ -140,3 +140,65 @@ func TestRatesTimeoutStopsLookback(t *testing.T) {
 		t.Errorf("after the deadline no more days are tried, got %d calls", n)
 	}
 }
+
+func TestDayPublishedEmptyAndBankError(t *testing.T) {
+	var calls atomic.Int32
+	srv := bank(t, map[string]bool{"25.09.2026": true}, &calls)
+	c := testClient(srv.URL, time.Date(2026, 9, 28, 6, 0, 0, 0, time.UTC))
+
+	got, err := c.Day(context.Background(), time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(Supported) || got["EUR"] != 513.46 {
+		t.Errorf("published day: %v", got)
+	}
+	if _, ok := got["AUD"]; ok {
+		t.Error("unsupported currencies must be dropped")
+	}
+
+	empty, err := c.Day(context.Background(), time.Date(2026, 9, 27, 0, 0, 0, 0, time.UTC))
+	if err != nil || len(empty) != 0 {
+		t.Errorf("empty day: %v %v", empty, err)
+	}
+
+	// Day bypasses the cache: a second ask reaches the bank again.
+	_, _ = c.Day(context.Background(), time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC))
+	if n := calls.Load(); n != 3 {
+		t.Errorf("expected 3 bank calls, got %d", n)
+	}
+
+	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "down", http.StatusInternalServerError)
+	}))
+	defer failing.Close()
+	if _, err := testClient(failing.URL, time.Now()).Day(context.Background(), time.Now()); err == nil {
+		t.Error("bank 500 must be an error")
+	}
+
+	// 200 with a maintenance page is an error, not an empty day: the history must ask again.
+	maintenance := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<html><body>Технические работы</body></html>`))
+	}))
+	defer maintenance.Close()
+	if _, err := testClient(maintenance.URL, time.Now()).Day(context.Background(), time.Now()); !errors.Is(err, ErrNotFeed) {
+		t.Errorf("maintenance page: expected ErrNotFeed, got %v", err)
+	}
+
+	// A feed cut short (no closing tag) is an error too: storing it would lose the day or some codes.
+	cut := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<?xml version="1.0"?><rates><item><title>EUR</title><description>513.46</description>`))
+	}))
+	defer cut.Close()
+	if _, err := testClient(cut.URL, time.Now()).Day(context.Background(), time.Now()); !errors.Is(err, ErrNotFeed) {
+		t.Errorf("cut feed: expected ErrNotFeed, got %v", err)
+	}
+}
+
+func TestTodayIsAlmatyDate(t *testing.T) {
+	// 20:30 UTC on 30.09 is already 01.10 in Almaty.
+	c := testClient("", time.Date(2026, 9, 30, 20, 30, 0, 0, time.UTC))
+	if got := c.Today(); got != time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC) {
+		t.Errorf("today: %v", got)
+	}
+}

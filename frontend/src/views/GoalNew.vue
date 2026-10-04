@@ -2,6 +2,7 @@
 import { computed, inject, onBeforeUnmount, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useFinanceStore } from '@/stores/finance'
+import { useFxStore } from '@/stores/fx'
 import { useAuthStore } from '@/stores/auth'
 import { money, parseMoney } from '@/lib/money'
 import { monthIn, monthKey } from '@/lib/dates'
@@ -31,6 +32,7 @@ const props = defineProps<{ next?: string }>()
 const route = useRoute()
 const router = useRouter()
 const financeStore = useFinanceStore()
+const fx = useFxStore()
 const authStore = useAuthStore()
 
 const nextPath = () => props.next ?? (route.query.next ? String(route.query.next) : null)
@@ -59,7 +61,7 @@ const monthly = computed(() => (need.value > 0 ? goalMonthly(need.value, months.
 // Та же дата, что покажут экран цели и герой (`goalDoneMonth`); срок здесь всегда конечен.
 const doneMonth = computed(() => monthIn(goalDoneMonth(months.value, monthKey())!))
 // «Реально» — взнос укладывается в свободное по плану месяца.
-const free = computed(() => budgetAmounts({ ...financeStore.householdDoc, credits: financeStore.credits }).d5)
+const free = computed(() => budgetAmounts({ ...financeStore.householdDoc, credits: financeStore.credits, book: fx.book }).d5)
 const realistic = computed(() => monthly.value > 0 && monthly.value <= free.value)
 const canCreate = computed(() => name.value.trim().length > 0 && need.value > 0 && !authStore.isViewer)
 

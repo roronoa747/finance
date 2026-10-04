@@ -1,10 +1,10 @@
-import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings } from '@/types/finance'
+import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
 import type { Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY, plannedElsewhere, spendArticle } from '@/lib/statements/dictionary'
 import { STAT_NORMS } from '@/lib/statements/norms'
-import { addMonths, dayLabel, daysInMonth, monthFrom, monthIn, monthKey, parseMonthKey, today, weekdayShort, weekRange } from '@/lib/dates'
+import { addMonths, dayLabel, daysInMonth, isoIn, monthFrom, monthIn, monthKey, parseMonthKey, today, weekdayShort, weekRange } from '@/lib/dates'
 import { spendColor } from '@/lib/palette'
 import { money, pct, ratePct } from '@/lib/money'
 import { plural } from '@/lib/utils'
@@ -772,16 +772,66 @@ export const goalRemaining = (g: Pick<Goal, 'need' | 'have'>) => Math.max(0, g.n
 /** Валюта в тенге по курсу — целые тенге. Единственное место, где сумма умножается на курс. */
 export const fxToTenge = (foreignAmount: number, rate: number) => Math.round(foreignAmount * rate);
 
-/** Сумма обязательства, действующая в указанном месяце. */
-export function amountAt(o: Obligation, key = monthKey()): number {
-  const versions = o.versions || [];
-  const active = versions.filter((v) => v.from <= key).sort((a, b) => a.from.localeCompare(b.from));
-  return active.length ? active[active.length - 1].amount : 0;
+/**
+ * Курс валюты на день `YYYY-MM-DD` по книге (Р-72): последний опубликованный день ≤ `day`
+ * (выходные, праздники — курс пятницы). Дня нет (раньше начала книги, книги нет) — `fallback`
+ * (снимок курса версии или счёта), нет и его — `null`. Тенге — курс 1. «Сейчас» внутри нет.
+ */
+export function rateOn(book: RateBook | null | undefined, code: Currency, day: string, fallback?: number | null): number | null {
+  if (code === 'KZT') return 1;
+  let best: string | null = null;
+  for (const d in book?.[code] ?? {}) if (d <= day && (best === null || d > best)) best = d;
+  if (best !== null) return book![code]![best];
+  return fallback && fallback > 0 ? fallback : null;
 }
 
-/** Сколько этот платёж занимает в плане месяца (годовые делятся на 12). */
-export function monthlyAmount(o: Obligation, key = monthKey()): number {
-  const full = amountAt(o, key);
+/** Валюты документа, которым нужна книга курсов (Р-72): счета, оклады и платежи (Р-75); без тенге. */
+export function docCurrencies(doc: { accounts?: Account[]; people?: Person[]; obligations?: Obligation[] }): Currency[] {
+  const out = new Set<Currency>();
+  for (const a of liveAccounts(doc.accounts ?? [])) if (a.currency) out.add(a.currency);
+  for (const p of (doc.people ?? []).filter(alive)) for (const v of p.salaryVersions ?? []) if (v.currency) out.add(v.currency);
+  for (const o of liveObligations(doc.obligations ?? [])) for (const v of o.versions ?? []) if (v.currency) out.add(v.currency);
+  out.delete('KZT');
+  return [...out].sort();
+}
+
+/** Версия обязательства, действующая в месяце `key` (последняя с `from ≤ key`). */
+function versionAt(o: Obligation, key: string): ObligationVersion | undefined {
+  const active = (o.versions || []).filter((v) => v.from <= key).sort((a, b) => a.from.localeCompare(b.from));
+  return active[active.length - 1];
+}
+
+/** Сумма месяца в своей валюте (Р-75) — для подписей «$15 · ≈ 7 700 ₸». Версий нет — 0 ₸. */
+export function amountIn(o: Obligation, key = monthKey()): { amount: number; currency: Currency } {
+  const v = versionAt(o, key);
+  return { amount: v?.amount ?? 0, currency: v?.currency ?? 'KZT' };
+}
+
+/**
+ * День списания обязательства `YYYY-MM-DD` для месяца `key`: ежемесячное — `day` этого месяца, годовое —
+ * `day` своего месяца (`month`) того же года (31-е в коротком месяце — последний день).
+ */
+export function debitDayIso(o: Pick<Obligation, 'day' | 'every' | 'month'>, key: string): string {
+  const month = o.every === 'year' ? `${key.slice(0, 4)}-${String(o.month ?? 1).padStart(2, '0')}` : key;
+  return isoIn(month, o.day);
+}
+
+/**
+ * Сумма обязательства месяца в тенге (Р-75). Тенговая — как записана. Валютная — по курсу Нацбанка на
+ * день списания из книги (выходной — пятница, день впереди — последний курс книги, `rateOn`); книги или
+ * дня нет — курс версии на момент ввода; нет и его — 0. Наценки банка нет.
+ */
+export function amountAt(o: Obligation, key = monthKey(), book?: RateBook | null): number {
+  const v = versionAt(o, key);
+  if (!v) return 0;
+  if (!v.currency || v.currency === 'KZT') return v.amount;
+  const rate = rateOn(book, v.currency, debitDayIso(o, key), v.rate);
+  return rate ? fxToTenge(v.amount, rate) : 0;
+}
+
+/** Сколько этот платёж занимает в плане месяца, тенге (годовые делятся на 12). */
+export function monthlyAmount(o: Obligation, key = monthKey(), book?: RateBook | null): number {
+  const full = amountAt(o, key, book);
   return o.every === 'year' ? full / 12 : full;
 }
 
@@ -806,13 +856,12 @@ export function dueIn(o: Obligation, key = monthKey()): boolean {
   return (o.month ?? 1) === Number(key.split('-')[1]);
 }
 
-/** Ближайшее будущее изменение суммы. */
-export function nextChange(o: Obligation, key = monthKey()) {
+/** Ближайшее будущее изменение суммы; `delta` — в тенге (валютные — по книге, Р-75). */
+export function nextChange(o: Obligation, key = monthKey(), book?: RateBook | null) {
   const versions = o.versions || [];
   const future = versions.filter((v) => v.from > key).sort((a, b) => a.from.localeCompare(b.from));
   if (!future.length) return null;
-  const current = amountAt(o, key);
-  return { ...future[0], delta: future[0].amount - current };
+  return { ...future[0], delta: amountAt(o, future[0].from, book) - amountAt(o, key, book) };
 }
 
 export type FreedChange = {
@@ -831,9 +880,9 @@ export type FreedChange = {
  * 1 000 в месяц и 12 000 за год, а не 12 000 и 144 000); версия с нулём (конец платежа) —
  * освобождается вся сумма. null — снижений впереди нет.
  */
-export function freedChange(list: Obligation[], key = monthKey()): FreedChange | null {
+export function freedChange(list: Obligation[], key = monthKey(), book?: RateBook | null): FreedChange | null {
   for (const o of list) {
-    const change = nextChange(o, key);
+    const change = nextChange(o, key, book);
     if (!change || change.delta >= 0) continue;
     const d = -change.delta;
     return o.every === 'year' ? { o, change, monthly: yearShare(d), yearly: d } : { o, change, monthly: d, yearly: d * 12 };
@@ -848,8 +897,8 @@ export const groupChildren = (group: Obligation, list: Obligation[]) =>
   liveObligations(list).filter((o) => o.parentId === group.id);
 
 /** Итог группы за месяц — сумма её подписок; годовые — долей, как в плане месяца. */
-export function groupTotal(group: Obligation, list: Obligation[], key = monthKey()): number {
-  return Math.round(groupChildren(group, list).reduce((a, o) => a + monthlyAmount(o, key), 0));
+export function groupTotal(group: Obligation, list: Obligation[], key = monthKey(), book?: RateBook | null): number {
+  return Math.round(groupChildren(group, list).reduce((a, o) => a + monthlyAmount(o, key, book), 0));
 }
 
 /**
@@ -877,7 +926,7 @@ const dayNo = (key: string, day: number) => {
  * «оставить» был до начала текущего квартала. Календарь — Алматы. Первыми —
  * ближайшие годовые продления, затем ежемесячные подороже.
  */
-export function keepQuestions(list: Obligation[], now = new Date()): Obligation[] {
+export function keepQuestions(list: Obligation[], now = new Date(), book?: RateBook | null): Obligation[] {
   const t = today(now);
   const todayNo = dayNo(t.key, t.day);
   const { year, month } = parseMonthKey(t.key);
@@ -902,30 +951,149 @@ export function keepQuestions(list: Obligation[], now = new Date()): Obligation[
     }
   }
   return asks
-    .sort((a, b) => a.wait - b.wait || amountAt(b.o, t.key) - amountAt(a.o, t.key))
+    .sort((a, b) => a.wait - b.wait || amountAt(b.o, t.key, book) - amountAt(a.o, t.key, book))
     .map((x) => x.o);
 }
 
-/** Оклад, действующий в указанном месяце. */
-export function salaryAt(p: Person, key = monthKey()): number {
+/** Оклад месяца в своей валюте (Р-70): версия с `from ≤ key`; версий нет — `p.salary` в тенге. */
+export function salaryOf(p: Person, key = monthKey()): { amount: number; currency: Currency; rate?: number } {
   const v = (p.salaryVersions ?? [])
     .filter((x) => x.from <= key)
     .sort((a, b) => a.from.localeCompare(b.from));
-  return v.length ? v[v.length - 1].amount : p.salary;
+  const cur = v[v.length - 1];
+  return cur ? { amount: cur.amount, currency: cur.currency ?? 'KZT', rate: cur.rate } : { amount: p.salary, currency: 'KZT' };
 }
 
-/** Ближайшее запланированное изменение оклада. */
-export function nextSalaryChange(p: Person, key = monthKey()) {
+/** День зарплаты месяца `key`, `YYYY-MM-DD` (31-е в сентябре — 30-е). */
+export const paydayIso = (p: Pick<Person, 'payday'>, key: string) => isoIn(key, p.payday);
+
+/**
+ * Оклад месяца в тенге (Р-70, Р-72). Тенговый — как записан. Валютный — по курсу Нацбанка на
+ * день зарплаты месяца из книги (выходной — пятница; день ещё не наступил — последний курс
+ * книги); книги или дня в ней нет — по курсу версии на момент ввода. Это оклад (форма, подписи);
+ * тенге зарплаты месяца с обменами — `salaryTenge` (Р-74).
+ */
+export function salaryAt(p: Person, key = monthKey(), book?: RateBook | null): number {
+  const s = salaryOf(p, key);
+  if (s.currency === 'KZT') return s.amount;
+  const rate = rateOn(book, s.currency, paydayIso(p, key), s.rate);
+  return rate ? fxToTenge(s.amount, rate) : 0;
+}
+
+/** Из чего считаются тенге зарплаты месяца (Р-74): книга курсов, отметки «Пришла», обмены. */
+export type SalaryCtx = { book?: RateBook | null; payments?: Payment[]; exchanges?: FxExchange[] };
+
+/** Контекст тенге зарплаты из состояния расчёта (документ семьи + книга). */
+export const salaryCtxOf = (s: { book?: RateBook | null; payments?: Payment[]; fxExchanges?: FxExchange[] }): SalaryCtx => ({
+  book: s.book,
+  payments: s.payments,
+  exchanges: s.fxExchanges,
+});
+
+export type SalaryTenge = {
+  /** Тенге зарплаты месяца, целые. */
+  tenge: number;
+  currency: Currency;
+  /** Обменяно за месяц, в валюте, и сколько тенге за это получили (по своему курсу). */
+  exchanged: number;
+  exchangedTenge: number;
+  /** Необменянное, в валюте (не меньше нуля). */
+  left: number;
+  /** Курс Нацбанка для необменянного и его день (`YYYY-MM-DD`, день зарплаты месяца). */
+  rate: number | null;
+  rateDay: string;
+};
+
+/**
+ * Тенге зарплаты месяца (Р-74) — вход «до зарплаты», бюджета, разбора и сопоставления выписки.
+ * Тенговый оклад — как `salaryAt` (поведение прежнее). Валютный: обменянное за месяц — тенге
+ * обменов (свой курс), необменянное — по курсу Нацбанка на день зарплаты (выходной — пятница;
+ * день впереди — последний курс книги; книги нет — курс версии). До прихода необменянное — весь
+ * оклад. Обменяли больше, чем пришло, — необменянное 0, тенге — сумма обменов (в минус не уходит).
+ * Пришла в тенге (отметка без `foreign`: выписка тенгового счёта — банк уже обменял) — сумма отметки.
+ */
+export function salaryTenge(p: Person, key = monthKey(), ctx: SalaryCtx = {}): SalaryTenge {
+  const s = salaryOf(p, key);
+  const rateDay = paydayIso(p, key);
+  const none = { exchanged: 0, exchangedTenge: 0, left: 0, rateDay };
+  if (s.currency === 'KZT') return { ...none, tenge: s.amount, currency: 'KZT', rate: 1 };
+  const record = paidFor(ctx.payments, 'salary', p.id, key);
+  if (record && !record.foreign) return { ...none, tenge: record.amount, currency: s.currency, rate: null };
+  const currency = record?.currency ?? s.currency;
+  const xs = liveExchanges(ctx.exchanges).filter((x) => x.by === p.id && x.period === key);
+  const exchanged = xs.reduce((a, x) => a + x.foreign, 0);
+  const exchangedTenge = xs.reduce((a, x) => a + x.tenge, 0);
+  const left = Math.max(0, (record?.foreign ?? s.amount) - exchanged);
+  const rate = rateOn(ctx.book, currency, rateDay, s.rate);
+  return { tenge: exchangedTenge + (rate ? fxToTenge(left, rate) : 0), currency, exchanged, exchangedTenge, left, rate, rateDay };
+}
+
+/**
+ * Сколько курс отнял или добавил за год (Р-76): оклад месяца в валюте × (курс на день зарплаты −
+ * курс дня зарплаты того же месяца год назад), каждая сторона — `fxToTenge`. `perUnit` — разница
+ * курса за единицу до тенге (подпись «евро −134 ₸ за год»). Тенговый оклад или нет курса год назад
+ * (книга короче) — null.
+ */
+export function fxYearDelta(p: Person, key = monthKey(), book?: RateBook | null) {
+  const d = fxMonthDelta(p, key, addMonths(key, -12), book);
+  if (!d) return null;
+  return { currency: d.currency, rateNow: d.rateNow, rateThen: d.rate, perUnit: Math.round(d.rateNow - d.rate), tenge: -d.tenge };
+}
+
+/**
+ * Зарплата месяца `key` против любого месяца `otherKey` (лист «Курс евро», Р-76): курс того месяца на
+ * день зарплаты и сколько бы оклад этого месяца дал по нему — «в марте по 590 ₸ · было бы +126 000 ₸»
+ * (`tenge` = по тому курсу − по нынешнему). Тенговый оклад или нет курса — null.
+ */
+export function fxMonthDelta(p: Person, key: string, otherKey: string, book?: RateBook | null) {
+  const s = salaryOf(p, key);
+  if (s.currency === 'KZT') return null;
+  const rateNow = rateOn(book, s.currency, paydayIso(p, key), s.rate);
+  const rate = rateOn(book, s.currency, paydayIso(p, otherKey));
+  if (!rateNow || !rate) return null;
+  return {
+    currency: s.currency,
+    rateNow,
+    rate,
+    perUnit: Math.round(rate - rateNow),
+    tenge: fxToTenge(s.amount, rate) - fxToTenge(s.amount, rateNow),
+  };
+}
+
+/** Курсы валюты по книге за период `[from, to]` по дням — линия графика листа курса. */
+export function rateSeries(book: RateBook | null | undefined, code: Currency, from: string, to: string): { day: string; rate: number }[] {
+  return Object.entries(book?.[code] ?? {})
+    .filter(([d]) => d >= from && d <= to)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([day, rate]) => ({ day, rate }));
+}
+
+/**
+ * Дни зарплаты прошлых `n` месяцев до `key` (старые первыми) с курсом на них и разницей против
+ * `key` (`fxMonthDelta`) — отметки графика и чипы месяцев листа. Месяц без курса — пропускается.
+ */
+export function paydayRates(p: Person, key: string, book: RateBook | null | undefined, n = 12) {
+  const out: { key: string; day: string; rate: number; tenge: number }[] = [];
+  for (let i = n; i >= 1; i--) {
+    const k = addMonths(key, -i);
+    const d = fxMonthDelta(p, key, k, book);
+    if (d) out.push({ key: k, day: paydayIso(p, k), rate: d.rate, tenge: d.tenge });
+  }
+  return out;
+}
+
+/** Ближайшее запланированное изменение оклада; `delta` — в тенге (валютный — по книге). */
+export function nextSalaryChange(p: Person, key = monthKey(), book?: RateBook | null) {
   const future = (p.salaryVersions ?? [])
     .filter((x) => x.from > key)
     .sort((a, b) => a.from.localeCompare(b.from));
   if (!future.length) return null;
-  return { ...future[0], delta: future[0].amount - salaryAt(p, key) };
+  return { ...future[0], currency: future[0].currency ?? 'KZT', delta: salaryAt(p, future[0].from, book) - salaryAt(p, key, book) };
 }
 
-/** Совокупный доход участников. */
-export const totalIncome = (people: Person[], key = monthKey()) =>
-  (people || []).filter(alive).reduce((a, p) => a + salaryAt(p, key), 0);
+/** Совокупный доход участников, тенге: зарплаты месяца по Р-74 (`salaryTenge`). */
+export const totalIncome = (people: Person[], key = monthKey(), ctx: SalaryCtx = {}) =>
+  (people || []).filter(alive).reduce((a, p) => a + salaryTenge(p, key, ctx).tenge, 0);
 
 /** Проверка наличия заведённых данных в бюджете. */
 export function hasBudgetData(state: {
@@ -942,7 +1110,7 @@ export function hasBudgetData(state: {
   const accounts = state.accounts || [];
 
   return (
-    people.some((p) => salaryAt(p) > 0) ||
+    people.some((p) => salaryOf(p).amount > 0) ||
     liveObligations(obligations).length > 0 ||
     liveCredits(credits).length > 0 ||
     liveGoals(goals).length > 0 ||
@@ -1022,6 +1190,9 @@ export function budgetAmounts(state: {
   payments?: Payment[];
   plans?: DebtPlan[];
   moneyArticles?: MoneyArticle[];
+  /** Книга курсов и обмены (Р-74, Р-75): валютные зарплаты и платежи — в тенге по курсу. */
+  book?: RateBook | null;
+  fxExchanges?: FxExchange[];
 }, key = monthKey()) {
   const obligations = state.obligations || [];
   const credits = state.credits || [];
@@ -1033,22 +1204,22 @@ export function budgetAmounts(state: {
 
   const housing = liveObligations(obligations)
     .filter((o) => o.category === 'd1')
-    .reduce((a, o) => a + monthlyAmount(o, key), 0);
+    .reduce((a, o) => a + monthlyAmount(o, key, state.book), 0);
   const other = liveObligations(obligations)
     .filter((o) => o.category !== 'd1' && o.category !== 'd2')
-    .reduce((a, o) => a + monthlyAmount(o, key), 0);
+    .reduce((a, o) => a + monthlyAmount(o, key, state.book), 0);
   const debts =
     liveCredits(credits).reduce((a, c) => a + creditMonthPayment(c, payments, key), 0) +
     liveObligations(obligations)
       .filter((o) => o.category === 'd2')
-      .reduce((a, o) => a + monthlyAmount(o, key), 0);
+      .reduce((a, o) => a + monthlyAmount(o, key, state.book), 0);
   const paused = new Set(plan ? pausedGoals(plan, goalsList).map((g) => g.id) : []);
   const goals = liveGoals(goalsList)
     .filter((g) => !paused.has(g.id))
     .reduce((a, g) => a + g.monthly, 0);
   const extra = plan ? planExtra(plan, goalsList, credits, payments, key) : 0;
   const living = livingPlan({ categories, moneyArticles: state.moneyArticles }) + other;
-  const income = totalIncome(people, key);
+  const income = totalIncome(people, key, salaryCtxOf(state));
   const free = income - housing - debts - goals - living - extra;
 
   return { d1: housing, d2: debts, d3: goals, d4: living, d5: free, income, planExtra: extra };
@@ -1169,17 +1340,82 @@ export function paidFor(
  * Действует ли отметка на остаток: сделана не раньше ручной сверки — до неё
  * деньги уже вошли во введённую сумму. Сверки не было — действуют все.
  */
-export const afterAnchor = (p: Payment, anchor?: string | null) => !anchor || p.at >= anchor
+export const afterAnchor = (p: Pick<Payment, 'at'>, anchor?: string | null) => !anchor || p.at >= anchor
+
+/** Обмены и курсы для остатков (B2C-79): `day` — сегодня (`YYYY-MM-DD`), курс валютного счёта — на него. */
+export type BalanceCtx = { exchanges?: FxExchange[]; book?: RateBook | null; day?: string };
+
+export const liveExchanges = (list: FxExchange[] = []) => list.filter(alive);
+
+const isForeign = (a: Pick<Account, 'currency'>) => !!a.currency && a.currency !== 'KZT';
 
 /**
- * Остаток счёта: база минус списания и плюс зарплаты по отметкам после сверки.
- * Зарплата (RP-10) — зачисление; знак записи — только здесь: `shiftedBase` и стор
- * берут остаток отсюда.
+ * Остаток валютного счёта в валюте (Р-73): база ручной сверки (`foreignAmount`) + пришедшие
+ * зарплаты в валюте − обмены, всё — после сверки (`amountSetAt`): сверка после обмена его не удваивает.
  */
-export function accountBalance(a: Account, payments: Payment[] = []): number {
+export function accountForeign(a: Account, payments: Payment[] = [], exchanges: FxExchange[] = []): number {
+  const came = countedPayments(payments)
+    .filter((p) => p.kind === 'salary' && p.accountId === a.id && p.foreign && afterAnchor(p, a.amountSetAt))
+    .reduce((s, p) => s + (p.foreign ?? 0), 0);
+  const sold = liveExchanges(exchanges)
+    .filter((x) => x.accountId === a.id && afterAnchor(x, a.amountSetAt))
+    .reduce((s, x) => s + x.foreign, 0);
+  return (a.foreignAmount ?? 0) + came - sold;
+}
+
+/**
+ * Остаток счёта в тенге: база минус списания и плюс зарплаты по отметкам после сверки.
+ * Зарплата (RP-10) — зачисление; знак записи — только здесь: `shiftedBase` и стор
+ * берут остаток отсюда. Тенговый счёт получает тенге обменов (B2C-79). Валютный (Р-73) —
+ * остаток в валюте по курсу Нацбанка на `ctx.day` из книги; нет курса — ручной `rate` счёта.
+ */
+export function accountBalance(a: Account, payments: Payment[] = [], ctx: BalanceCtx = {}): number {
+  if (isForeign(a)) {
+    const rate = rateOn(ctx.book, a.currency!, ctx.day ?? '9999-12-31', a.rate);
+    return rate ? fxToTenge(accountForeign(a, payments, ctx.exchanges), rate) : a.amount;
+  }
+  const bought = liveExchanges(ctx.exchanges)
+    .filter((x) => x.toAccountId === a.id && afterAnchor(x, a.amountSetAt))
+    .reduce((s, x) => s + x.tenge, 0);
   return countedPayments(payments)
     .filter((p) => p.accountId === a.id && afterAnchor(p, a.amountSetAt))
-    .reduce((left, p) => (p.kind === 'salary' ? left + p.amount : left - p.amount), a.amount)
+    .reduce((left, p) => (p.kind === 'salary' ? left + p.amount : left - p.amount), a.amount + bought)
+}
+
+/** Живые обмены зарплаты участника за месяц `period`, по времени записи (лист обменов, B2C-79-а). */
+export const monthExchanges = (exchanges: FxExchange[] = [], by: PersonId, period: string) =>
+  liveExchanges(exchanges)
+    .filter((x) => x.by === by && x.period === period)
+    .sort((a, b) => a.at.localeCompare(b.at));
+
+/** Обменяно за месяц `period` из зарплаты участника, в валюте (строка «обменяно 800 € из 1 500 €»). */
+export function exchangedIn(exchanges: FxExchange[] = [], by: PersonId, period: string): number {
+  return monthExchanges(exchanges, by, period).reduce((s, x) => s + x.foreign, 0);
+}
+
+/**
+ * Валютная зарплата месяца, пришедшая на валютный счёт: сколько пришло, обменяно и осталось
+ * обменять (не меньше нуля). Тенговая или не пришедшая — null.
+ */
+export function salaryExchange(payments: Payment[] = [], exchanges: FxExchange[] = [], by: PersonId, period: string) {
+  const record = paidFor(payments, 'salary', by, period);
+  if (!record?.foreign || !record.currency || record.currency === 'KZT') return null;
+  const exchanged = exchangedIn(exchanges, by, period);
+  return { record, currency: record.currency, came: record.foreign, exchanged, left: Math.max(0, record.foreign - exchanged) };
+}
+
+/**
+ * Тенге пришедшей зарплаты (отметка `record`): тенговая — сумма отметки (премия правкой), как
+ * раньше; валютная — `salaryTenge` (обмены по своему курсу + остаток по курсу дня зарплаты, Р-74).
+ */
+export function paidTenge(
+  state: { people?: Person[]; payments?: Payment[]; book?: RateBook | null; fxExchanges?: FxExchange[] },
+  personId: PersonId,
+  period: string,
+  record: Payment,
+): number {
+  const p = record.foreign ? (state.people ?? []).find((x) => x.id === personId) : undefined;
+  return p ? salaryTenge(p, period, salaryCtxOf(state)).tenge : record.amount;
 }
 
 /**
@@ -1189,8 +1425,8 @@ export function accountBalance(a: Account, payments: Payment[] = []): number {
  * ошибке, офлайн-отметка партнёра) перестали бы двигать остаток. Видимый остаток
  * ниже нуля не уводится — как раньше у взноса в цель.
  */
-export function shiftedBase(a: Account, payments: Payment[], delta: number): number {
-  const visible = accountBalance(a, payments)
+export function shiftedBase(a: Account, payments: Payment[], delta: number, ctx: BalanceCtx = {}): number {
+  const visible = accountBalance(a, payments, ctx)
   return a.amount + Math.max(Math.round(delta), -Math.max(0, visible))
 }
 
@@ -1356,10 +1592,10 @@ const DUE_HORIZON = 24
  * ещё «этот» платёж: его могли внести позже срока (Р-3, без упрёка). Прошлые
  * месяцы не ищем — неотмеченное там нейтрально и оплаты не ждёт.
  */
-export function nextObligationDue(o: Obligation, payments: Payment[] = [], now = today()): Due | null {
+export function nextObligationDue(o: Obligation, payments: Payment[] = [], now = today(), book?: RateBook | null): Due | null {
   for (let i = 0; i < DUE_HORIZON; i++) {
     const period = addMonths(now.key, i)
-    const amount = amountAt(o, period)
+    const amount = amountAt(o, period, book)
     if (!dueIn(o, period) || amount <= 0 || paidFor(payments, 'obligation', o.id, period)) continue
     return { kind: 'obligation', targetId: o.id, period, day: Math.min(o.day, daysInMonth(period)), amount }
   }
@@ -1426,7 +1662,7 @@ export type MonthDue =
  * Порядок — обязательства, затем кредиты; сортирует экран.
  */
 export function monthDues(
-  state: { obligations?: Obligation[]; credits?: Credit[]; payments?: Payment[] },
+  state: { obligations?: Obligation[]; credits?: Credit[]; payments?: Payment[]; book?: RateBook | null },
   key: string,
 ): MonthDue[] {
   const payments = state.payments || []
@@ -1434,7 +1670,7 @@ export function monthDues(
     .filter((o) => dueIn(o, key))
     .map((o) => {
       const paid = paidFor(payments, 'obligation', o.id, key)
-      const amount = paid ? paid.amount : amountAt(o, key)
+      const amount = paid ? paid.amount : amountAt(o, key, state.book)
       return { kind: 'obligation', obligation: o, targetId: o.id, name: o.name, day: o.day, amount, paid: !!paid }
     })
   const credits: MonthDue[] = liveCredits(state.credits || [])
@@ -1471,6 +1707,8 @@ export function untilPayday(
     credits?: Credit[];
     accounts?: Account[];
     payments?: Payment[];
+    book?: RateBook | null;
+    fxExchanges?: FxExchange[];
   },
   now = today(),
 ) {
@@ -1507,7 +1745,7 @@ export function untilPayday(
   const inDays = slot.inDays;
 
   const itemsOf = (k: string) =>
-    monthDues({ obligations, credits, payments }, k).map((d) => ({
+    monthDues({ obligations, credits, payments, book: state.book }, k).map((d) => ({
       id: d.targetId,
       targetId: d.targetId,
       kind: d.kind,
@@ -1537,7 +1775,7 @@ export function untilPayday(
 
   return {
     who,
-    income: salaryAt(who, nextKey),
+    income: salaryTenge(who, nextKey, salaryCtxOf(state)).tenge,
     inDays,
     day: slot.day,
     key: nextKey,
@@ -1567,7 +1805,7 @@ export const SALARY_EARLY_DAYS = 3;
  * в месяце нет — отмечать нечего (как «Оплатил» при сумме 0): одно нажатие записало бы «+0».
  */
 export function salaryOpen(p: Person, payments: Payment[], period: string, now = today()): boolean {
-  if (salaryAt(p, period) <= 0 || paidFor(payments, 'salary', p.id, period)) return false;
+  if (salaryOf(p, period).amount <= 0 || paidFor(payments, 'salary', p.id, period)) return false;
   const day = Math.min(p.payday, daysInMonth(period));
   if (period === now.key) return now.day >= day - SALARY_EARLY_DAYS;
   if (period === addMonths(now.key, 1)) return daysInMonth(now.key) - now.day + day <= SALARY_EARLY_DAYS;
@@ -1581,7 +1819,7 @@ export function salaryOpen(p: Person, payments: Payment[], period: string, now =
  * «Недели» (`decisionQueue`), «Денег» и `salaryToAllocate` — иначе они расходятся по дням месяца.
  */
 export function salaryAsk(
-  state: { people?: Person[]; obligations?: Obligation[]; credits?: Credit[]; accounts?: Account[]; payments?: Payment[] },
+  state: Parameters<typeof untilPayday>[0],
   me: PersonId | undefined,
   now = today(),
 ): NonNullable<ReturnType<typeof untilPayday>> | null {
@@ -1783,7 +2021,8 @@ export function salaryToAllocate(
   const asked = salaryAsk(state, me, now)
   const months = [addMonths(now.key, 1), now.key, addMonths(now.key, -1)].filter((k) => !asked || k > asked.key)
   const found = record ?? months.map((k) => paidFor(payments, 'salary', me, k)).find(Boolean)
-  if (!found || found.kind !== 'salary' || found.targetId !== me || found.source !== 'statement' || found.amount <= 0) return null
+  // Ручная тенговая сразу ведёт в разбор; валютная (B2C-79) — сначала «Обменял» на этой карточке.
+  if (!found || found.kind !== 'salary' || found.targetId !== me || (found.source !== 'statement' && !found.foreign) || found.amount <= 0) return null
   if (allocationFor(state.allocations, { source: 'salary', sourceId: me, period: found.period })) return null
   return { person, period: found.period, record: found }
 }
@@ -1818,7 +2057,16 @@ export function cancelledSubscriptions(obligations: Obligation[], key: string): 
  * Кредиты — из документа, как у `progressMoments`. Кто платил и вносил — не разрезается.
  */
 export function monthSummary(
-  state: { credits?: Credit[]; goals?: Goal[]; payments?: Payment[]; wishlist?: WishItem[] },
+  state: {
+    credits?: Credit[];
+    goals?: Goal[];
+    payments?: Payment[];
+    wishlist?: WishItem[];
+    /** Валютная зарплата (B2C-80): тенге месяца — `paidTenge`, не снимок дня прихода. */
+    people?: Person[];
+    book?: RateBook | null;
+    fxExchanges?: FxExchange[];
+  },
   key: string,
 ): MonthSummary {
   const records = countedPayments(state.payments ?? []).filter((p) => p.period === key);
@@ -1853,7 +2101,7 @@ export function monthSummary(
   return {
     key,
     paid: { count: scheduled.length, amount: scheduled.reduce((a, p) => a + p.amount, 0) },
-    income: records.filter((p) => p.kind === 'salary').reduce((a, p) => a + p.amount, 0),
+    income: records.filter((p) => p.kind === 'salary').reduce((a, p) => a + paidTenge(state, p.targetId as PersonId, key, p), 0),
     closed: progressMoments({ credits: state.credits, payments: state.payments })
       .filter((m): m is Extract<Moment, { kind: 'closed' }> => m.kind === 'closed' && inMonth(m.at))
       .map((m) => ({ creditId: m.creditId, name: m.name })),
@@ -2632,7 +2880,7 @@ export function weekVersusPrev(totals: SpendTotal[], week: string, prevWeek: str
 }
 
 /** Подписка за год для карточки «оставить?»: годовая — как есть, ежемесячная — ×12. */
-export const subscriptionYearly = (o: Obligation, key: string) => amountAt(o, key) * (o.every === 'year' ? 1 : 12)
+export const subscriptionYearly = (o: Obligation, key: string, book?: RateBook | null) => amountAt(o, key, book) * (o.every === 'year' ? 1 : 12)
 
 /**
  * Карточка «Оставить подписку?» (DESIGN.md §6) — одна в очереди «Недели» (`decisionQueue`).
@@ -2646,9 +2894,10 @@ export function keepCard(
   goals: Goal[],
   payments: Payment[],
   now: { day: number; key: string } = today(),
+  book?: RateBook | null,
 ): KeepCard {
-  const renewal = keep.every === 'year' ? nextObligationDue(keep, payments, now) : null
-  const yearly = renewal ? renewal.amount : subscriptionYearly(keep, now.key)
+  const renewal = keep.every === 'year' ? nextObligationDue(keep, payments, now, book) : null
+  const yearly = renewal ? renewal.amount : subscriptionYearly(keep, now.key, book)
   const goal = mainGoal(goals)
   const remaining = goal ? goalRemaining(goal) : 0
   const pathPct = remaining > 0 ? Math.round((yearly / remaining) * 100) : 0
@@ -2656,7 +2905,7 @@ export function keepCard(
     ? `${money(renewal.amount)} · в год · продлится ${dayLabel(renewal.day, renewal.period)}`
     : keep.every === 'year'
       ? `${money(yearly)} · в год`
-      : `${money(amountAt(keep, now.key))} · каждый месяц`
+      : `${money(amountAt(keep, now.key, book))} · каждый месяц`
   return {
     question: `Оставить подписку ${keep.name}?`,
     meta,
@@ -2723,13 +2972,15 @@ export function freeByFact(
     people?: Person[]
     payments?: Payment[]
     plans?: DebtPlan[]
+    book?: RateBook | null
+    fxExchanges?: FxExchange[]
   },
   totals: SpendTotal[],
   spendCategories: SpendCategory[],
   key: string,
   uploads: UploadPeriod[] = [],
 ): FreeByFact {
-  const income = totalIncome(state.people ?? [], key)
+  const income = totalIncome(state.people ?? [], key, salaryCtxOf(state))
   const share = (amount: number) => (income > 0 ? Math.max(0, Math.min(1, amount / income)) : 0)
   const amounts = budgetAmounts(state)
   const spent = monthSpentByFact(totals, spendCategories, key, uploads)
@@ -3028,8 +3279,8 @@ export function decisionQueue(
   }
 
   const { year, month } = parseMonthKey(now.key)
-  for (const o of keepQuestions(state.obligations ?? [], new Date(Date.UTC(year, month, now.day, 12)))) {
-    out.push({ kind: 'keep', key: `keep:${o.id}`, ...keepCard(o, state.goals ?? [], payments, now), to: null, obligation: o })
+  for (const o of keepQuestions(state.obligations ?? [], new Date(Date.UTC(year, month, now.day, 12)), state.book)) {
+    out.push({ kind: 'keep', key: `keep:${o.id}`, ...keepCard(o, state.goals ?? [], payments, now, state.book), to: null, obligation: o })
   }
 
   // Зарплата пришла по выписке и не разобрана — «Пришла зарплата»; иначе «пришла?» (возврат приёмки 2 п. 3: одна о зарплате).
@@ -3049,7 +3300,7 @@ export function decisionQueue(
       actions: usual ? { primary: 'Разложить как обычно', ghost: 'Изменить' } : { primary: 'Разложить', ghost: 'Позже' },
       salary: { person, period },
       usual,
-      amount: record.amount,
+      amount: paidTenge(state, person.id, period, record),
     })
   } else if (near) {
     // «Пришла» и лист «ещё» — `SalaryRow` на месте (RP-10).
@@ -3057,7 +3308,7 @@ export function decisionQueue(
   }
 
   // «Освободится N ₸» — как карточка «Денег»; раскладка записана (`source: 'freed'`) — уже решено.
-  const freed = freedChange(liveObligations(state.obligations ?? []), now.key)
+  const freed = freedChange(liveObligations(state.obligations ?? []), now.key, state.book)
   if (freed && !allocationFor(state.allocations, { source: 'freed', sourceId: freed.o.id, period: freed.change.from })) {
     out.push({
       kind: 'freed',
@@ -3114,6 +3365,9 @@ export type BreakdownState = {
   allocations?: Allocation[]
   moneyArticles?: MoneyArticle[]
   moneySettings?: MoneySettings | null
+  /** Книга курсов и обмены (Р-74): тенге валютных зарплат — `salaryTenge`. */
+  book?: RateBook | null
+  fxExchanges?: FxExchange[]
 }
 
 export type BreakdownCtx = {
@@ -3429,18 +3683,18 @@ export function monthBreakdown(
     const paid = paidFor(state.payments, 'salary', source.person, source.period)
     if (!paid) return null
     key = source.period
-    amount = paid.amount
+    amount = paidTenge(state, source.person, source.period, paid)
     record = { source: 'salary', sourceId: source.person, period: source.period }
   } else if (source.from === 'rest') {
     key = source.period
     amount = Math.max(0, Math.round(source.amount))
     record = { source: 'rest', sourceId: source.period, period: source.period }
   } else if (source.from === 'plan') {
-    amount = totalIncome(people, key)
+    amount = totalIncome(people, key, salaryCtxOf(state))
     // Записи у плана нет: ключ не совпадает ни с одним источником.
     record = { source: 'salary', sourceId: 'plan', period: key }
   } else if (source.from === 'freed') {
-    const freed = freedChange(liveObligations(state.obligations ?? []), key)
+    const freed = freedChange(liveObligations(state.obligations ?? []), key, state.book)
     if (!freed) return null
     amount = freed.monthly
     mode = 'monthly'
@@ -3467,9 +3721,10 @@ export function monthBreakdown(
       for (const p of a.parts) if (p.target in covered) covered[p.target as ArticleKey] += p.amount
     }
     for (const p of people) {
-      if (p.id === source.person || salaryAt(p, key) <= 0) continue
+      if (p.id === source.person || salaryOf(p, key).amount <= 0) continue
       if (allocationFor(state.allocations, { source: 'salary', sourceId: p.id, period: key })) continue
-      expected += paidFor(state.payments, 'salary', p.id, key)?.amount ?? salaryAt(p, key)
+      const rec = paidFor(state.payments, 'salary', p.id, key)
+      expected += rec ? paidTenge(state, p.id, key, rec) : salaryTenge(p, key, salaryCtxOf(state)).tenge
       waitingFor.push(p.id)
     }
   }

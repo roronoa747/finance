@@ -10,6 +10,9 @@ export const START_ANSWERED_KEY = 'ff_start_answered'
 /** Адреса желаний, где фото не нашлось (B2C-68, `lib/photos/wishLinkPhotos`) — на устройстве; выход стирает (`LOCAL_KEYS`). */
 export const LINK_PHOTO_TRIED_KEY = 'ff_link_photo_tried'
 
+/** Книга курсов Нацбанка (B2C-77, `stores/fx.ts`) — кэш на устройстве; выход стирает (`LOCAL_KEYS`). */
+export const FX_BOOK_KEY = 'ff_fx_book'
+
 /**
  * Ключи личной копии операций выписок (`stores/operations.ts`, B2C-07). Выход стирает и их
  * (`LOCAL_KEYS` в `stores/finance.ts`), даже если стор операций ещё не создан.

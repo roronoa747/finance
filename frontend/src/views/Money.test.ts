@@ -19,7 +19,7 @@ import {
   nextChange,
   untilPayday,
 } from '@/lib/finance'
-import { money, pct, plain } from '@/lib/money'
+import { money, moneyIn, pct, plain } from '@/lib/money'
 import { monthIn } from '@/lib/dates'
 import type { Obligation, Payment, SyncDoc } from '@/types/finance'
 import type { Operation } from '@/lib/statements/types'
@@ -435,7 +435,7 @@ describe('views/Money.vue — финансовые показатели (рас�
         // 2 000 000 + 479 260 + 1 200 000 + 300 000 (личный тоже в капитале).
         expect(html).toContain(`Счета ${money(3_979_260)}`)
         expect(html).toContain(`Kaspi Gold карта · общий ${money(2_000_000)}`)
-        expect(html).toContain(`Доллары наличные · ${plain(1_000)} USD · общий ${money(479_260)}`)
+        expect(html).toContain(`Доллары наличные · ${moneyIn(1_000, 'USD')} · общий ${money(479_260)}`)
         expect(html).toContain(`Депозит Kaspi 14 % · общий ${money(1_200_000)}`)
         expect(html).toContain(`Заначка наличные · личный ${money(300_000)}`)
         expect(html).toContain('Добавить счёт')

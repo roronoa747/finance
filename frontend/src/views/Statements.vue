@@ -16,13 +16,15 @@ import Tag from '@/components/kit/Tag.vue'
 import WeekTotal from '@/components/kit/WeekTotal.vue'
 import StackBar from '@/components/kit/StackBar.vue'
 import SalaryRow from '@/components/SalaryRow.vue'
+import SalaryExchange from '@/components/SalaryExchange.vue'
 import CategoryChips from '@/components/CategoryChips.vue'
 import UnknownBatch from '@/components/UnknownBatch.vue'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
+import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
-import { money, parseMoney } from '@/lib/money'
+import { money, moneyIn, parseMoney } from '@/lib/money'
 import { plural } from '@/lib/utils'
 import { MONTHS_NOM, monthKey, parseMonthKey, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
 import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
@@ -37,6 +39,7 @@ import {
   breakdownWith,
   decisionQueue,
   ringShares,
+  salaryExchange,
   type Decision,
   type WeekUploadRow,
   liveSpendCategories,
@@ -59,6 +62,9 @@ import { ARTICLE_COLORS } from '@/lib/palette'
  */
 const auth = useAuthStore()
 const finance = useFinanceStore()
+const fx = useFxStore()
+/** Пришедшая валютная зарплата карточки «Пришла зарплата» (B2C-79): сумма в валюте и «Обменял». */
+const fxOf = (d: Decision) => (d.salary ? salaryExchange(finance.payments, finance.fxExchanges, d.salary.person.id, d.salary.period) : null)
 const store = useOperationsStore()
 const route = useRoute()
 const router = useRouter()
@@ -148,7 +154,7 @@ const unknownList = computed(() => unknownGroups(store.draft ? store.draftOps : 
 const deferred = ref<string[]>([])
 const queue = computed(() =>
   decisionQueue(
-    { ...finance.householdDoc, credits: finance.credits },
+    { ...finance.householdDoc, credits: finance.credits, book: fx.book },
     {
       me: auth.slot,
       canEdit: canUpload.value,
@@ -408,12 +414,17 @@ onMounted(() => {
       </template>
       <!-- «Пришла зарплата» (макет, вопрос 2): сумма, полоса статей, «как в <месяце> · останется N ₸» -->
       <template v-if="decision.kind === 'allocate'">
-        <span class="-mt-2.5 type-big num text-ink">{{ money(decision.amount ?? 0) }}</span>
+        <span v-if="fxOf(decision)" class="-mt-2.5 flex items-baseline gap-2">
+          <span class="type-big num text-ink">{{ moneyIn(fxOf(decision)!.came, fxOf(decision)!.currency) }}</span>
+          <span class="type-meta num">≈ {{ money(decision.amount ?? 0) }}</span>
+        </span>
+        <span v-else class="-mt-2.5 type-big num text-ink">{{ money(decision.amount ?? 0) }}</span>
         <StackBar v-if="decision.usual" :segments="usualSegments(decision)" />
         <p class="text-[14px] text-ink-3">
           <template v-if="decision.usual">{{ decision.lead }} · <b :class="['num font-semibold', decision.usual.fill.short > 0 ? 'text-destructive' : 'text-ok']">{{ decision.outcome }}</b></template>
           <template v-else>{{ decision.meta }}</template>
         </p>
+        <SalaryExchange v-if="decision.salary" :person-id="decision.salary.person.id" :period="decision.salary.period" />
       </template>
       <template v-if="decision.kind === 'allocate'" #actions>
         <div class="flex w-full flex-col gap-1.5">
