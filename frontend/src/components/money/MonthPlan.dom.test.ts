@@ -224,6 +224,22 @@ describe('B2C-88: «План месяца» вверху «Денег»', () => 
     expect(q('[data-plan-save]')).toBeNull()
   })
 
+  it('ревью frontend Н-3: «История» → месяц сворачивает «Подробнее»; вкладка «Деньги» (без ?month=) — снова текущий месяц', async () => {
+    await open()
+    const router = app!.config.globalProperties.$router
+    await router.push('/money/history')
+    await flush()
+    expect(q<HTMLDetailsElement>('[data-more]')!.open).toBe(true)
+    await router.push('/money?month=2026-08')
+    await flush()
+    expect(q('[data-month-past]')).not.toBeNull()
+    expect(q<HTMLDetailsElement>('[data-more]')!.open).toBe(false)
+    await router.push('/money')
+    await flush()
+    expect(q('[data-rest]')).not.toBeNull()
+    expect(txt(q('[data-month-nav]'))).toContain('Сентябрь')
+  })
+
   it('зарплата не пришла — брендовой кнопки нет', async () => {
     await open('member', { ...familyDoc(), payments: [] })
     expect(q('[data-plan-save]')).toBeNull()

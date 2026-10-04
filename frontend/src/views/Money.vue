@@ -41,12 +41,17 @@ const PAST_MONTHS = 12
 const askedOf = (m: unknown) =>
   typeof m === 'string' && /^\d{4}-\d{2}$/.test(m) && m <= addMonths(key.value, 1) && m >= addMonths(key.value, -PAST_MONTHS) ? m : null
 const shown = ref(askedOf(route.query.month) ?? key.value)
-// Ссылка «Истории» (`/money?month=`) открывается в том же экране — экран не пересоздаётся, месяц берём из адреса.
+// Ссылка «Истории» (`/money?month=`) открывается в том же экране — экран не пересоздаётся, месяц берём из адреса и
+// сворачиваем «Подробнее» (его открыл адрес `/money/history`); `?month=` пропал (вкладка «Деньги») — текущий месяц
+// (ревью frontend Б14, Н-3).
 watch(
   () => route.query.month,
   (m) => {
     const asked = askedOf(m)
-    if (asked) shown.value = asked
+    if (asked) {
+      shown.value = asked
+      more.value = false
+    } else if (m === undefined) shown.value = key.value
   },
 )
 const isNow = computed(() => shown.value >= key.value)
