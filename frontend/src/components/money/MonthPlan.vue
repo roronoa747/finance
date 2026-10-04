@@ -95,15 +95,11 @@ const rateFor = ref<PersonId | null>(null)
 const signed = (v: number) => (v > 0 ? `+${plain(v)}` : plain(v))
 
 /* ---------- «Отложить по плану» (Р-78) ---------- */
-// Чья зарплата пришла и не отложена: своя — первой. Одна брендовая кнопка за раз.
+// Своя зарплата пришла и не отложена (как карточка «Пришла зарплата» на «Неделе»): чужую откладывает её хозяин.
 const save = computed(() => {
-  if (!canEdit.value) return null
-  const order = [auth.slot, ...people.value.map((p) => p.id)].filter((x, i, a): x is PersonId => !!x && a.indexOf(x) === i)
-  for (const id of order) {
-    const s = planSave(plan.value, id)
-    if (s && s.parts.length) return { person: id, total: s.parts.reduce((a, x) => a + x.amount, 0), count: s.parts.length, save: s }
-  }
-  return null
+  if (!canEdit.value || !auth.slot) return null
+  const s = planSave(plan.value, auth.slot)
+  return s && s.parts.length ? { person: auth.slot, total: s.parts.reduce((a, x) => a + x.amount, 0), count: s.parts.length, save: s } : null
 })
 const savedTotal = computed(() =>
   Object.values(plan.value.saved).reduce((a, r) => a + (r?.parts ?? []).reduce((b, x) => b + x.amount, 0), 0),

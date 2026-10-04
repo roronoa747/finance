@@ -9,7 +9,7 @@ import { useFxStore } from '@/stores/fx'
 import { afterFamilyLoaded } from '@/stores/syncEngine'
 import { landingPath } from '@/router/landing'
 import { seedSpendCategories } from '@/lib/statements/model'
-import { addMonths, monthKey, weekKey } from '@/lib/dates'
+import { addMonths, monthKey, weekKey, weekRange } from '@/lib/dates'
 import { monthPlan, planSave } from '@/lib/finance'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
 import { authErrorText } from '@/lib/authErrors'
@@ -356,6 +356,14 @@ function startDemoMode() {
     const at = `${prev}-10T06:00:00.000Z`
     financeStore.mutateHouseholdDoc((doc) => {
       doc.allocations = [...(doc.allocations ?? []), { id: 'demo-plan-prev', kind: 'plan', ...before.record, by: 'a', total: before.total, parts: before.parts, at, updatedAt: at }]
+      // Взносы той записи — в истории целей прошлого месяца (сводка «Отложили»); накопленное их уже включает:
+      // `have` = `seed` + взносы, поэтому начальная сумма меньше на взнос.
+      for (const c of before.contributions) {
+        const g = doc.goals.find((x) => x.id === c.goalId)
+        if (!g) continue
+        g.movements = [...(g.movements ?? []), { id: `demo-plan-${c.goalId}`, date: at, amount: c.amount, by: 'a', note: 'по плану месяца' }]
+        g.seed = (g.seed ?? g.have) - c.amount
+      }
     })
   }
   // Зарплата Ильяса пришла сегодня на евро-счёт и не разобрана — на «Неделе» «Пришла зарплата · как обычно»;
@@ -370,9 +378,15 @@ function startDemoMode() {
     const today = day(0)
     const from = [`${monthKey()}-01`, day(13)].sort()[0]
     const ops = useOperationsStore()
-    // «Выписки» недели (B2C-62/67): Ильяс загрузил, Аруна — ещё нет (галочка и «ещё нет»).
+    // «Выписки» недели (B2C-62/67): Ильяс загрузил, Аруна — ещё нет (галочка и «ещё нет»). У Аруны — выписка
+    // месяца до этой недели: план месяца показывает факт трат обоих (B2C-90); в первые дни месяца, когда
+    // неделя начинается в прошлом, её выписка — с 1-го по сегодня, и галочки на «Неделе» две.
+    const monthStart = `${monthKey()}-01`
+    const weekStart = weekRange(weekKey()).from
+    const arunaTo = weekStart > monthStart ? new Date(Date.parse(weekStart) - 86_400_000).toISOString().slice(0, 10) : today
     ops.seedDemoUploads([
       { id: 'demo-upload-a', slot: 'a', bank: 'kaspi', period_from: from, period_to: today, ops_count: 29, created_at: new Date().toISOString() },
+      { id: 'demo-upload-b', slot: 'b', bank: 'kaspi', period_from: monthStart, period_to: arunaTo, ops_count: 10, created_at: new Date().toISOString() },
     ])
     // Пять разделов, продавцы — только из словаря (иначе ответ на продавца, переразложив операции правилами,
     // вернёт их в «не разобрано»; суммы — вне окна оценки «Коммуналки» 21–39 тыс., иначе «платёж по
