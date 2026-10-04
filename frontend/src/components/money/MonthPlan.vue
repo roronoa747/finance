@@ -101,9 +101,9 @@ const save = computed(() => {
   const s = planSave(plan.value, auth.slot)
   return s && s.parts.length ? { person: auth.slot, total: s.parts.reduce((a, x) => a + x.amount, 0), count: s.parts.length, save: s } : null
 })
-const savedTotal = computed(() =>
-  Object.values(plan.value.saved).reduce((a, r) => a + (r?.parts ?? []).reduce((b, x) => b + x.amount, 0), 0),
-)
+// Запись месяца есть — «✓ Отложено» суммой взносов месяца (`putTotal`), не частями записи: у старого разбора
+// Блока 11 части — статьи (платежи, жизнь…), их сумма — почти вся зарплата.
+const savedTotal = computed(() => (Object.keys(plan.value.saved).length ? plan.value.putTotal : 0))
 function onSave() {
   const s = save.value
   if (!s || !auth.slot) return

@@ -2924,6 +2924,11 @@ export type MonthPlan = {
   free: number
   queue: PlanQueueItem[]
   queueTotal: number
+  /**
+   * Уже отложено в этом месяце по очереди (сумма `put`: взносы целей и фондов, досрочки) — «✓ Отложено». Не из
+   * частей записи: у старого разбора Блока 11 части — статьи (платежи, жизнь…), не взносы.
+   */
+  putTotal: number
   /** Что осталось после очереди, ≥ 0. Доход = платежи + траты + очередь + остаток − нехватка. */
   rest: number
   /** Сколько не хватает на платежи и траты, ≥ 0. */
@@ -3116,6 +3121,7 @@ export function monthPlan(state: MonthPlanState, ctx: MonthPlanCtx): MonthPlan {
     free,
     queue,
     queueTotal,
+    putTotal: amountTotal(queue.map((q) => ({ amount: q.put }))),
     rest: Math.max(0, free - queueTotal),
     short: Math.max(0, -free),
     byPerson,

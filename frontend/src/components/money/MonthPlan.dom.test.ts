@@ -174,6 +174,31 @@ describe('B2C-88: «План месяца» вверху «Денег»', () => 
     expect(finance.goals.find((g) => g.id === 'trip')!.have).toBe(haves.get('trip')! + (mine.find((x) => x.goalId === 'trip')?.given ?? 0))
   })
 
+  it('критик: старый разбор Блока 11 этого месяца — «Отложено» суммой взносов месяца, не статьями записи', async () => {
+    const doc = familyDoc()
+    // Разбор 12-го: в «Отпуск» положили 50 000; статьи записи — почти вся зарплата.
+    const trip = doc.goals.find((g) => g.id === 'trip')!
+    const goals = doc.goals.map((g) => (g.id === 'trip' ? { ...g, have: g.have + 50_000, movements: [{ id: 'm1', date: '2026-09-11T05:00:00.000Z', amount: 50_000, by: 'a' as const }] } : g))
+    const allocations = [
+      { id: 'old', kind: 'breakdown' as const, source: 'salary' as const, sourceId: 'a', period: KEY, by: 'a' as const, total: 700_000, at: T0, updatedAt: T0,
+        parts: [{ target: 'must', amount: 400_000 }, { target: 'life', amount: 250_000 }, { target: 'dreams', amount: 50_000 }] },
+    ]
+    expect(trip.have).toBeGreaterThan(0)
+    await open('member', { ...doc, goals, allocations } as SyncDoc)
+    expect(q('[data-plan-save]')).toBeNull()
+    expect(txt(q('[data-plan-saved]'))).toBe(`✓ Отложено ${norm(money(50_000))}`)
+  })
+
+  it('критик: ссылка «Истории» `/money?month=` в том же экране — открывает сводку того месяца', async () => {
+    await open()
+    expect(q('[data-rest]')).not.toBeNull()
+    const router = app!.config.globalProperties.$router
+    await router.push('/money?month=2026-08')
+    await flush()
+    expect(q('[data-month-past]')).not.toBeNull()
+    expect(txt(q('[data-month-nav]'))).toContain('Август')
+  })
+
   it('зарплата не пришла — брендовой кнопки нет', async () => {
     await open('member', { ...familyDoc(), payments: [] })
     expect(q('[data-plan-save]')).toBeNull()

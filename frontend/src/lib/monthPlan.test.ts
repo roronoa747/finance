@@ -235,6 +235,9 @@ describe('planSave — «Отложить по плану»', () => {
     const plan = monthPlan(after, ctx)
     expect(given(plan)).toEqual(given(before))
     expect(byId(plan, 'trip')).toMatchObject({ have: 840_000, put: 60_000, doneMonth: '2028-01' })
+    // «✓ Отложено» — взносы месяца по очереди: только «Отпуск» 60 000 (критик).
+    expect(plan.putTotal).toBe(60_000)
+    expect(before.putTotal).toBe(0)
     expect(planSave(plan, 'a')).toBeNull()
   })
 

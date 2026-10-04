@@ -40,8 +40,17 @@ const key = computed(() => monthKey())
 
 /* ---------- месяц: этот — план, прошлые — сводкой ---------- */
 const PAST_MONTHS = 12
-const asked = typeof route.query.month === 'string' && /^\d{4}-\d{2}$/.test(route.query.month) ? route.query.month : null
-const shown = ref(asked && asked <= addMonths(key.value, 1) && asked >= addMonths(key.value, -PAST_MONTHS) ? asked : key.value)
+const askedOf = (m: unknown) =>
+  typeof m === 'string' && /^\d{4}-\d{2}$/.test(m) && m <= addMonths(key.value, 1) && m >= addMonths(key.value, -PAST_MONTHS) ? m : null
+const shown = ref(askedOf(route.query.month) ?? key.value)
+// Ссылка «Истории» (`/money?month=`) открывается в том же экране — экран не пересоздаётся, месяц берём из адреса.
+watch(
+  () => route.query.month,
+  (m) => {
+    const asked = askedOf(m)
+    if (asked) shown.value = asked
+  },
+)
 const isNow = computed(() => shown.value >= key.value)
 const canBack = computed(() => shown.value > addMonths(key.value, -PAST_MONTHS))
 // Своя зарплата месяца пришла и не отложена — план этого месяца с главным действием, а не сводка (Р-78).
