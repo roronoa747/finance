@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import type { ApiClient, FxRatesResponse } from '../src/api/client'
-import { accountBalance, budgetAmounts, duesTotals, fxYearDelta, monthDues, salaryAt, salaryTenge } from '../src/lib/finance'
+import { accountBalance, budgetAmounts, duesTotals, fxToTenge, fxYearDelta, monthDues, rateOn, salaryAt, salaryTenge } from '../src/lib/finance'
+import { FX_BOOK_KEY } from '../src/lib/storage'
 import { useAuthStore } from '../src/stores/auth'
 import { useFinanceStore } from '../src/stores/finance'
 import { useFxStore } from '../src/stores/fx'
@@ -218,5 +219,36 @@ describe('e2e / B2C Блок 13 — зарплата в валюте на дву
     setActivePinia(A2.pinia)
     expect(A2.store.fxExchanges.find((x) => x.id === second.id)!.deletedAt).toBeTruthy()
     expect(A2.store.accounts.find((a) => a.id === eur)!.foreignAmount).toBe(1_400)
+  })
+
+  it('часть 5 (приёмка) — ручной курс евро-счёта на телефоне без книги после прихода и обменов: € прежний у всех, с книгой — тенге по Нацбанку', async () => {
+    const { A, B } = await euroSalary()
+    setActivePinia(A.pinia)
+    const eur = A.store.addFxAccount('EUR')
+    A.store.markSalary('a', { accountId: eur })
+    A.store.addExchange({ by: 'a', accountId: eur, toAccountId: 'card', foreign: 500, rate: 515, period: '2026-10' })
+    A.store.addExchange({ by: 'a', accountId: eur, toAccountId: 'card', foreign: 300, rate: 512.5, period: '2026-10' })
+    await sync(A, B)
+    // Второй телефон Ильяса — без книги (банк недоступен, кэша нет): в листе счёта поле курса руками.
+    storage.delete(FX_BOOK_KEY)
+    const real = fxRates.getMockImplementation()!
+    fxRates.mockImplementation(async (code: string) => ({ code, rates: {}, partial: false }))
+    const A3 = await phone(server, st, 'a')
+    fxRates.mockImplementation(real)
+    setActivePinia(A3.pinia)
+    expect(rateOn(useFxStore().book, 'EUR', '2026-10-12')).toBeNull()
+    const seen = A3.store.accounts.find((a) => a.id === eur)!
+    expect(seen.foreignAmount).toBe(700)
+    // Как `AccountSheet.onAccountRate`: курс 480 — база в валюте пишется видимым остатком (`70fe2d7`). Часы
+    // идут: новый якорь сверки позже прихода и обменов (в одну миллисекунду с ними они бы считались дважды).
+    at('2026-10-12T07:05:00Z')
+    A3.store.updateAccount(eur, { rate: 480, foreignAmount: seen.foreignAmount, amount: fxToTenge(seen.foreignAmount!, 480), rateAt: new Date().toISOString() })
+    expect(A3.store.accounts.find((a) => a.id === eur)).toMatchObject({ foreignAmount: 700, amount: 336_000 })
+    await sync(A3, A, B)
+    // С книгой (A, B): 700 € × 489 (сегодня) = 342 300 ₸ — ручной курс в расчёт не идёт.
+    for (const p of [A, B]) {
+      setActivePinia(p.pinia)
+      expect(p.store.accounts.find((a) => a.id === eur)).toMatchObject({ foreignAmount: 700, amount: 342_300 })
+    }
   })
 })
