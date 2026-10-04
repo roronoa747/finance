@@ -93,6 +93,8 @@ describe('Н-2: срок и «нужно» — из плана месяца', ()
     expect(page()).toContain(`${pct(300_000, item.need)}`)
     expect(page()).toContain(`Соберём в ${monthIn(item.doneMonth!)}`)
     expect(page()).not.toContain('мечта ваша')
+    expect(page()).toContain('Собрано')
+    expect(page()).not.toContain('До мечты')
   })
 
   it('цель при нехватке остатка: дата экрана = дате «Мечт» = прогону плана, не по своему взносу', async () => {

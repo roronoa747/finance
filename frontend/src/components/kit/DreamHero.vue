@@ -17,8 +17,10 @@ const props = withDefaults(
     /** Профиль автора на Unsplash (Р-28: имя и ссылка) — подпись становится ссылкой. */
     authorUrl?: string | null
     size?: 'goal' | 'preview'
+    /** Подпись над процентом; у фонда — «Собрано» (ревью frontend Б14, Н-2). */
+    eyebrow?: string
   }>(),
-  { percent: 0, size: 'goal', src: null, author: null, authorUrl: null },
+  { percent: 0, size: 'goal', src: null, author: null, authorUrl: null, eyebrow: 'До мечты' },
 )
 
 const HEIGHT = { goal: 'min-h-[380px]', preview: 'min-h-[180px]' } as const
@@ -42,7 +44,7 @@ const pct = computed(() => Math.max(0, Math.min(100, Math.round(props.percent)))
     <div v-if="$slots.corner" class="absolute left-3 top-3"><slot name="corner" /></div>
 
     <template v-if="size !== 'preview'">
-      <div class="text-[14px] font-medium" :class="src ? 'opacity-85' : 'text-ink-3'">До мечты</div>
+      <div class="text-[14px] font-medium" :class="src ? 'opacity-85' : 'text-ink-3'">{{ eyebrow }}</div>
       <div class="mb-2 mt-1 type-percent num">{{ pct }}&nbsp;%</div>
     </template>
     <div v-if="line" class="text-[15px]" :class="src ? 'opacity-90' : 'text-ink-2'">{{ line }}</div>

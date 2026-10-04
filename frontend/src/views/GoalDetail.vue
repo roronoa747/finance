@@ -298,6 +298,7 @@ function share() {
     <DreamHero
       :percent="progress"
       :line="`${plain(goal.have)} из ${money(need)}`"
+      :eyebrow="isFund ? 'Собрано' : undefined"
       :src="photoSrc"
       :author="goal.photoCredit?.author"
       :author-url="goal.photoCredit?.url"
