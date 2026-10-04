@@ -214,9 +214,8 @@ function answerRest(go: boolean) {
   writeMonthEnd(month)
   const amount = parseMoney(restAmount.value)
   if (!go || amount <= 0 || !auth.slot) return
-  const state = { ...finance.householdDoc, credits: finance.credits, book: fx.book }
-  const ctx = { key: month, totals: spendTotals.value, spendCategories: spendCategories.value, uploads: store.uploads, rawCredits: finance.householdDoc.credits }
-  const src = planFromSource(state, ctx, { from: 'rest', amount, period: month })
+  const { state, ctx } = finance.planInput(month)
+  const src = planFromSource(state, { ...ctx, rawCredits: finance.householdDoc.credits }, { from: 'rest', amount, period: month })
   // Остаток месяца уже отложен (партнёр ответил раньше) — второй раз не пишется и «Отложено» не показывается.
   if (!src || src.mode !== 'once' || src.recorded) return
   finance.applyPlan(src, { by: auth.slot, note: 'остаток месяца' })

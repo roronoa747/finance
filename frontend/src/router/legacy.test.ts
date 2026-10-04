@@ -65,3 +65,19 @@ describe('B2C-89: кольца разбора и «Вашего порядка»
   })
 })
 
+
+/**
+ * Ревью frontend Б14, Н-4: вход плана месяца собирается одним местом — `planInput` / `monthPlanOf` стора. Экраны
+ * не зовут `monthPlan(` / `planFromSource(` со своим входом: кто зовёт — берёт `planInput`. Демо `Access.vue` —
+ * намеренно с пустыми итогами (запись прошлого месяца демо-семьи).
+ */
+describe('Н-4: план месяца — один вход', () => {
+  it('экраны и компоненты зовут monthPlan / planFromSource только со входом planInput', () => {
+    const screens = codeFiles().filter((rel) => /^(views|components)\//.test(rel) && rel !== 'views/Access.vue')
+    const bad = screens.filter((rel) => {
+      const text = fs.readFileSync(new URL(rel, SRC), 'utf-8')
+      return /\b(monthPlan|planFromSource)\(/.test(text) && !/planInput\(/.test(text)
+    })
+    expect(bad).toEqual([])
+  })
+})

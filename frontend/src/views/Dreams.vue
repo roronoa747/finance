@@ -8,7 +8,7 @@ import { useOperationsStore } from '@/stores/operations'
 import { useFxStore } from '@/stores/fx'
 import { money, pct } from '@/lib/money'
 import { monthBy, monthKey, monthTitle } from '@/lib/dates'
-import { freeByFact, goalDoneMonth, goalMonths, goalRemaining, monthPlan, planForecast, untilPayday, wishQueue } from '@/lib/finance'
+import { freeByFact, goalDoneMonth, goalMonths, goalRemaining, planForecast, untilPayday, wishQueue } from '@/lib/finance'
 import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
 import { plural } from '@/lib/utils'
@@ -58,14 +58,7 @@ const nameOf = (id: string) => `Переставить: ${othersById.value.get(i
 const moveOther = (id: string, index: number) => financeStore.moveGoal(id, index + 1)
 
 // Сроки — прогон очереди плана месяца (Р-83): выключил цель — она «на паузе», сроки остальных сдвинулись.
-const plan = computed(() =>
-  monthPlan(state.value, {
-    key: key.value,
-    totals: financeStore.householdDoc.spendTotals ?? [],
-    spendCategories: financeStore.householdDoc.spendCategories ?? [],
-    uploads: ops.uploads,
-  }),
-)
+const plan = computed(() => financeStore.monthPlanOf(key.value))
 const planItem = (id: string) => plan.value.queue.find((x) => x.goalId === id)
 /** Подпись срока цели: «на паузе» или «к <месяц>»; собрана или срока нет — пусто. */
 function whenOf(id: string): string {

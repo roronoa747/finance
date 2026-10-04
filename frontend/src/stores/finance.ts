@@ -27,6 +27,7 @@ import {
   moveId,
   moveWithin,
   queueOf,
+  monthPlan,
   wishQueue,
   moneyArticlesOf,
   moneySettingsOf,
@@ -51,6 +52,9 @@ import {
   type ScheduledKind,
   type PlanFromSource,
   type PlanSave,
+  type MonthPlan,
+  type MonthPlanCtx,
+  type MonthPlanState,
 } from '@/lib/finance'
 import type {
   AllocationPart,
@@ -77,6 +81,7 @@ import type {
 import type { MerchantRule } from '@/lib/statements/types'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
+import { useOperationsStore } from '@/stores/operations'
 import { FX_ACCOUNT_NAME } from '@/lib/fx'
 import { DEFAULT_CATEGORY_NAMES, type CategoryKey, type HueKey } from '@/lib/palette'
 import type { ConflictResponse, HouseholdDocResponse } from '@/types/api'
@@ -255,6 +260,25 @@ export const useFinanceStore = defineStore('finance', () => {
    */
   const planStepNow = (): PlanStep | null =>
     activePlan.value ? planStep(activePlan.value, planState(), monthKey()) : null
+  /**
+   * Вход плана месяца (ревью frontend Б14, Н-4) — одно место для экранов: документ с производными кредитами и
+   * книгой курсов, итоги трат и загрузки выписок. Функция, а не computed: месяц — у вызывающего, экраны зовут её
+   * внутри своих computed (зависимости отслеживаются там).
+   */
+  const planInput = (key: string): { state: MonthPlanState; ctx: MonthPlanCtx } => ({
+    state: { ...householdDoc.value, credits: credits.value, book: useFxStore().book },
+    ctx: {
+      key,
+      totals: householdDoc.value.spendTotals ?? [],
+      spendCategories: householdDoc.value.spendCategories ?? [],
+      uploads: useOperationsStore().uploads,
+    },
+  })
+  /** План месяца `key` (`monthPlan`) — со входом `planInput`. */
+  const monthPlanOf = (key: string): MonthPlan => {
+    const { state, ctx } = planInput(key)
+    return monthPlan(state, ctx)
+  }
   /** Цели на паузе ради плана (Р-9): выводятся из плана — одно место для экранов. */
   const pausedGoalIds = computed(
     () => new Set(activePlan.value ? pausedGoals(activePlan.value, goals.value).map((g) => g.id) : []),
@@ -2058,6 +2082,8 @@ export const useFinanceStore = defineStore('finance', () => {
     plans,
     activePlan,
     planState,
+    planInput,
+    monthPlanOf,
     planStepNow,
     pausedGoalIds,
     saveLocalState,

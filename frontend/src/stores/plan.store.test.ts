@@ -4,7 +4,9 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useFinanceStore, defaultSyncDoc } from './finance'
 import { useAuthStore } from './auth'
 import { authAs } from '@/test/planFamily'
-import { mainGoal } from '@/lib/finance'
+import { mainGoal, monthPlan } from '@/lib/finance'
+import { useFxStore } from './fx'
+import { useOperationsStore } from './operations'
 import type { Goal, SyncDoc } from '@/types/finance'
 
 /** B2C-85: стор плана месяца — очередь, «Сделать главной», фонды, плательщик, траты, пауза. */
@@ -145,5 +147,21 @@ describe('плательщик, траты, пауза', () => {
     store.setDebtCard({ monthly: 40_000 })
     store.pauseGoal('debt', true)
     expect(store.debtCard).toMatchObject({ monthly: 40_000, pausedAt: '2026-10-04T08:00:00.000Z' })
+  })
+})
+
+describe('ревью frontend Б14, Н-4: один вход плана месяца', () => {
+  it('planInput — документ с производными кредитами, книгой и загрузками; monthPlanOf = monthPlan(planInput)', () => {
+    const store = storeWith({
+      goals: [goal('g1', { monthly: 50_000 })],
+      credits: [{ id: 'loan', name: 'Кредит', note: '', principal: 500_000, principalSetAt: T0, annualRate: 0.3, payment: 40_000, day: 15, updatedAt: T0 }],
+      payments: [{ id: 'p1', kind: 'credit', targetId: 'loan', period: '2026-09', amount: 40_000, principal: 30_000, accountId: null, by: 'a', at: '2026-09-15T05:00:00.000Z', updatedAt: T0 }],
+    })
+    const { state, ctx } = store.planInput('2026-10')
+    expect(state.credits).toEqual(store.credits)
+    expect(state.credits?.[0]?.principal).toBeLessThan(500_000)
+    expect(state.book).toBe(useFxStore().book)
+    expect(ctx).toEqual({ key: '2026-10', totals: [], spendCategories: [], uploads: useOperationsStore().uploads })
+    expect(store.monthPlanOf('2026-10')).toEqual(monthPlan(state, ctx))
   })
 })

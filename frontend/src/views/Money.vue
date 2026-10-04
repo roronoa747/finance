@@ -5,9 +5,8 @@ import { PhCaretLeft, PhCaretRight } from '@phosphor-icons/vue'
 import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
 import { addMonths, monthKey, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
-import { monthPlan, planSave } from '@/lib/finance'
+import { planSave } from '@/lib/finance'
 import { useFinanceStore } from '@/stores/finance'
-import { useFxStore } from '@/stores/fx'
 import { cn } from '@/lib/utils'
 import { buttonVariants } from '@/components/ui/button'
 import MoneySquares from '@/components/money/MoneySquares.vue'
@@ -33,7 +32,6 @@ const route = useRoute()
 const authStore = useAuthStore()
 const ops = useOperationsStore()
 const finance = useFinanceStore()
-const fx = useFxStore()
 
 const square = computed(() => (route.params.square === 'plan' || route.params.square === 'history' ? route.params.square : 'capital'))
 const key = computed(() => monthKey())
@@ -56,12 +54,7 @@ const canBack = computed(() => shown.value > addMonths(key.value, -PAST_MONTHS))
 // Своя зарплата месяца пришла и не отложена — план этого месяца с главным действием, а не сводка (Р-78).
 const unsaved = computed(() => {
   if (isNow.value || !authStore.slot || authStore.isViewer) return false
-  const doc = finance.householdDoc
-  const plan = monthPlan(
-    { ...doc, credits: finance.credits, book: fx.book },
-    { key: shown.value, totals: doc.spendTotals ?? [], spendCategories: doc.spendCategories ?? [], uploads: ops.uploads },
-  )
-  return !!planSave(plan, authStore.slot)
+  return !!planSave(finance.monthPlanOf(shown.value), authStore.slot)
 })
 const monthName = computed(() => MONTHS_NOM[parseMonthKey(shown.value).month])
 

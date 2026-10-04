@@ -5,7 +5,6 @@ import { PhCaretRight } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
-import { useOperationsStore } from '@/stores/operations'
 import { money, parseMoney, plain, signTone } from '@/lib/money'
 import { dayLabel, monthBy, monthFrom, monthShort } from '@/lib/dates'
 import { CURRENCY_WORD } from '@/lib/fx'
@@ -22,7 +21,6 @@ import {
   planSave,
   progressMoments,
   salaryOf,
-  type MonthPlanCtx,
   type PlanQueueItem,
 } from '@/lib/finance'
 import { plannedElsewhere } from '@/lib/statements/dictionary'
@@ -59,19 +57,15 @@ const router = useRouter()
 const finance = useFinanceStore()
 const auth = useAuthStore()
 const fx = useFxStore()
-const ops = useOperationsStore()
 
 const canEdit = computed(() => !auth.isViewer)
 const people = computed(() => finance.people.filter((p) => !p.deletedAt))
 const personName = (id: PersonId | null) => people.value.find((p) => p.id === id)?.name ?? ''
 
-const state = computed(() => ({ ...finance.householdDoc, credits: finance.credits, book: fx.book }))
-const ctx = computed<MonthPlanCtx>(() => ({
-  key: props.monthKey,
-  totals: finance.householdDoc.spendTotals ?? [],
-  spendCategories: finance.householdDoc.spendCategories ?? [],
-  uploads: ops.uploads,
-}))
+// Вход плана — один на все экраны (`planInput`, ревью frontend Б14 Н-4).
+const input = computed(() => finance.planInput(props.monthKey))
+const state = computed(() => input.value.state)
+const ctx = computed(() => input.value.ctx)
 const plan = computed(() => monthPlan(state.value, ctx.value))
 const debtTip = computed(() => allInDebt(state.value, ctx.value, plan.value))
 const by = (x: string) => monthBy(x, props.monthKey)
