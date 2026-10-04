@@ -144,7 +144,9 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     setActivePinia(B.pinia)
     await B.store.pullHousehold(B.client)
     // «До зарплаты» (до 10 октября): коммуналка 8 октября — с «оценкой», её «Оплатил» откроет лист с суммой.
-    const overview = await screen(B.pinia, Money, '/money')
+    const whole = await screen(B.pinia, Money, '/money')
+    // «До зарплаты» — под «Подробнее» (Блок 14).
+    const overview = whole.slice(whole.indexOf('data-more'))
     const until = overview.slice(overview.indexOf('Коммуналка'))
     expect(until.slice(0, until.indexOf('Оплатил'))).toContain('оценка')
 
@@ -417,7 +419,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       at('2026-09-24T08:20:00Z')
       await page(B.pinia, Money, '/money?obligation=rent', { act: (s) => press(s, 'setObligationWho', 'all') })
       expect(rentB().who).toBeNull()
-      const shared = between(await page(B.pinia, Money, '/money'), 'Аренда', '</button>')
+      const moneyB = await page(B.pinia, Money, '/money')
+      const shared = between(moneyB.slice(moneyB.indexOf('data-more')), 'Аренда', '</button>')
       expect(shared).toContain(money(220_000))
       expect(shared).not.toContain('Аруна')
 

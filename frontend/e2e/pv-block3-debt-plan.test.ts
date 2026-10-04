@@ -15,7 +15,8 @@ import { at, fakeServer, phone, screen, setOnline, type FakeServer } from './sup
 
 /** Цель на паузе ради плана — на экране цели: список целей теперь плитки «Мечт» без тега (B2C-18). */
 /** Квадрат «План» (пивот 3, B2C-43): план включён — переключатель «Сначала долги». */
-const planOn = (html: string) => /role="switch" aria-checked="true"/.test(html)
+// Квадрат «План» — под «Подробнее» (Блок 14): переключатели плана месяца выше — не он.
+const planOn = (html: string) => /role="switch" aria-checked="true"/.test(html.slice(html.indexOf('data-more')))
 /** Разбор остатка с открытой статьёй «Дорогие долги» (B2C-58): её статус — какой долг досрочка закрывает первым. */
 const debtsCard = (p: { pinia: Pinia }) =>
   screen(p.pinia, Breakdown, '/week/breakdown?from=rest&amount=100000&period=2026-09', undefined, [screenMixin({ picked: 'debts' })])

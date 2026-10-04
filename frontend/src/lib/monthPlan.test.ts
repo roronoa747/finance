@@ -106,6 +106,7 @@ describe('monthPlan — ручной расчёт семьи', () => {
       { categoryId: 'sc_cafe', name: 'Кафе и рестораны', plan: 60_000, fact: 31_400 },
     ])
     expect(plan.spendTotal).toBe(330_000)
+    expect(plan.outTotal).toBe(plan.duesTotal + plan.spendTotal)
     expect(plan.free).toBe(556_800)
   })
 
@@ -310,8 +311,12 @@ describe('monthPlanPast — сентябрь сводкой', () => {
       ],
     }
     expect(monthPlanPast(doc, sep)).toEqual({
-      key: sep, came: 450_000, cameBy: [{ person: 'b', amount: 450_000 }], paid: 250_000, saved: 40_000, prepaid: 30_000, spent: 120_000, records: [breakdown],
+      key: sep, came: 450_000, cameBy: [{ person: 'b', amount: 450_000 }], paid: 250_000, saved: 40_000, prepaid: 30_000, spent: 120_000,
+      // 450 000 − 250 000 − 120 000 − 40 000 − 30 000 = 10 000 (руками).
+      left: 10_000,
+      goals: [{ goalId: 'wed', name: doc.goals.find((g) => g.id === 'wed')!.name, amount: 40_000 }],
+      records: [breakdown],
     })
-    expect(monthPlanPast({}, sep)).toMatchObject({ came: 0, paid: 0, saved: 0, spent: null, records: [] })
+    expect(monthPlanPast({}, sep)).toMatchObject({ came: 0, paid: 0, saved: 0, spent: null, left: 0, goals: [], records: [] })
   })
 })

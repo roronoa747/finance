@@ -2933,6 +2933,8 @@ export type MonthPlan = {
   duesTotal: number
   spend: PlanSpend[]
   spendTotal: number
+  /** «Потратим» месяца: платежи + траты. */
+  outTotal: number
   /** Доход − платежи − траты: что получает очередь; меньше нуля — не хватает. */
   free: number
   queue: PlanQueueItem[]
@@ -3118,6 +3120,7 @@ export function monthPlan(state: MonthPlanState, ctx: MonthPlanCtx): MonthPlan {
     duesTotal,
     spend,
     spendTotal,
+    outTotal: monthSpend,
     free,
     queue,
     queueTotal,
@@ -3312,6 +3315,10 @@ export type MonthPlanPast = {
   prepaid: number
   /** Потрачено по выпискам (кроме платежей `plannedElsewhere`); null — итогов за месяц нет. */
   spent: number | null
+  /** Осталось: пришло − оплачено − потрачено − отложено − досрочки (может быть меньше нуля). */
+  left: number
+  /** Отложено по целям и фондам месяца — в порядке очереди, только ненулевые. */
+  goals: { goalId: string; name: string; amount: number }[]
   /** Записи месяца: «Отложить по плану», разборы Блока 11, прежние раскладки — как были. */
   records: Allocation[]
 }
@@ -3327,16 +3334,26 @@ export function monthPlanPast(
     .map((p) => ({ person: p.targetId as PersonId, amount: paidTenge(state, p.targetId as PersonId, key, p) }))
   const totals = (state.spendTotals ?? []).filter((t) => !t.deletedAt && t.kind === 'month' && t.period === key && t.amount > 0)
   const live = (state.spendCategories ?? []).filter(alive)
+  const goals = queueOf(state)
+    .flatMap((q) => (q.goal ? [{ goalId: q.goal.id, name: q.goal.name, amount: goalPutIn(q.goal, key) }] : []))
+    .filter((g) => g.amount > 0)
+  const came = amountTotal(cameBy)
+  const paid = amountTotal(counted.filter((p) => p.kind === 'obligation' || p.kind === 'credit'))
+  const saved = amountTotal(goals)
+  const prepaid = amountTotal(counted.filter((p) => p.kind === 'prepay'))
+  const spent = totals.length
+    ? totals.filter((t) => t.categoryId === UNKNOWN_CATEGORY || !plannedElsewhere(t.categoryId, live)).reduce((s, t) => s + t.amount, 0)
+    : null
   return {
     key,
-    came: amountTotal(cameBy),
+    came,
     cameBy,
-    paid: amountTotal(counted.filter((p) => p.kind === 'obligation' || p.kind === 'credit')),
-    saved: liveGoals(state.goals ?? []).reduce((s, g) => s + goalPutIn(g, key), 0),
-    prepaid: amountTotal(counted.filter((p) => p.kind === 'prepay')),
-    spent: totals.length
-      ? totals.filter((t) => t.categoryId === UNKNOWN_CATEGORY || !plannedElsewhere(t.categoryId, live)).reduce((s, t) => s + t.amount, 0)
-      : null,
+    paid,
+    saved,
+    prepaid,
+    spent,
+    left: came - paid - (spent ?? 0) - saved - prepaid,
+    goals,
     records: (state.allocations ?? []).filter((a) => !a.deletedAt && a.period === key).sort((a, b) => a.at.localeCompare(b.at)),
   }
 }

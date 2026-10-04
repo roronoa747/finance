@@ -7,7 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
 import { useFxStore } from '@/stores/fx'
 import { money, pct } from '@/lib/money'
-import { monthKey, monthTitle } from '@/lib/dates'
+import { monthBy, monthKey, monthTitle } from '@/lib/dates'
 import { freeByFact, goalDoneMonth, goalMonths, goalRemaining, monthPlan, planForecast, untilPayday, wishQueue } from '@/lib/finance'
 import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
@@ -71,7 +71,7 @@ const planItem = (id: string) => plan.value.queue.find((x) => x.goalId === id)
 function whenOf(id: string): string {
   const item = planItem(id)
   if (item?.paused === 'off') return 'на паузе'
-  return item?.doneMonth && item.paused === false ? `к${NBSP}${monthTitle(item.doneMonth).toLowerCase()}` : ''
+  return item?.doneMonth && item.paused === false ? monthBy(item.doneMonth, key.value) : ''
 }
 
 const heroPercent = computed(() => (main.value ? pct(main.value.have, main.value.need) : 0))

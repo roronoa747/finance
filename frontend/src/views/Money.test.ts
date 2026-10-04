@@ -270,7 +270,9 @@ describe('views/Money.vue — финансовые показатели (рас�
     // Текст как его видит человек: теги — пробел, переводы строк и пробелы шаблона схлопнуты (NBSP сумм остаются).
     const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
     // Лист в SSR рендерится на месте (без Teleport) — его текст отдельно от экрана.
-    const dialog = (html: string) => {
+    const dialog = (all: string) => {
+      // Сводка «До зарплаты» и её лист — под «Подробнее» (Блок 14).
+      const html = all.slice(all.indexOf('data-more'))
       expect(html).toContain('role="dialog"')
       // Лист — внутри сводки, сразу за ним — квадраты «Денег».
       const at = html.indexOf('role="dialog"')
@@ -549,13 +551,14 @@ describe('views/Money.vue — финансовые показатели (рас�
       const store = await plan({ plans: [] })
       const { worstDebt, worstHalfExtra, worstGain } = debtAdvice(store.credits)
       const html = await renderScreen(Money, '/money/plan')
-      const card = text(html.slice(html.indexOf('Самая дорогая ставка'), html.indexOf('Подробнее')))
+      const card = text(html.slice(html.indexOf('Самая дорогая ставка'), html.indexOf('Подробнее', html.indexOf('Самая дорогая ставка'))))
       expect(card).toContain('Самая дорогая ставка 40 %')
       expect(card).toContain(`Кредитка ${money(300_000)}`)
       expect(card).toContain(`процентов в месяц ${plain(10_000)} · переплата до конца ${plain(worstDebt!.cost.overpay)}`)
-      const more = html.slice(html.indexOf('Подробнее'))
+      const more = html.slice(html.indexOf('Подробнее', html.indexOf('Самая дорогая ставка')))
       expect(more).toMatch(/<details[^>]*>\s*<summary/)
-      expect(html).not.toMatch(/<details[^>]* open/)
+      // Внешнее «Подробнее» «Денег» открыто адресом квадрата (Блок 14); расчёты квадрата — свёрнуты.
+      expect(html.slice(html.indexOf('Самая дорогая ставка'))).not.toMatch(/<details[^>]* open/)
       const t = text(more)
       expect(t).toContain('Доля платежа в проценты 40%')
       expect(t).toContain(`Проценты банку по всем долгам ${money(budgetInterest(store.credits))} в месяц`)

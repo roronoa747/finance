@@ -7,6 +7,7 @@ import { clearPhotoDisk } from '@/lib/photos/store'
 import { FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, readStorage } from '@/lib/storage'
 import {
   accountBalance,
+  allocationFor,
   accountForeign,
   fxToTenge,
   rateOn,
@@ -51,8 +52,11 @@ import {
   breakdownWith,
   type BreakdownEffects,
   type MonthBreakdown,
+  type PlanFromSource,
+  type PlanSave,
 } from '@/lib/finance'
 import type {
+  AllocationPart,
   SyncDoc,
   SyncStatus,
   Person,
@@ -2022,6 +2026,33 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   /**
+   * «Отложить по плану» и прочие источники (Р-78, Р-86): исполняет посчитанное `planSave` / `planFromSource` —
+   * разово взносы в цели и фонды и досрочку (шагом плана, если это шаг плана), каждый месяц — рост взноса первой
+   * цели; пишет запись `kind: 'plan'`. Запись этого источника за месяц уже есть (второй телефон, повторное
+   * нажатие) — ничего не пишет и отдаёт её. Синк — одной отправкой (правки копятся до `scheduleSync`).
+   */
+  function applyPlan(save: PlanSave | PlanFromSource, o: { by: PersonId; note: string }): Allocation {
+    const had = allocationFor(householdDoc.value.allocations, save.record)
+    if (had) return had
+    if ('mode' in save && save.mode === 'monthly') {
+      const g = goals.value.find((x) => x.id === save.goalId && !x.deletedAt)
+      if (g) setGoalMonthly(g.id, g.monthly + save.add)
+      return recordAllocation({ ...save.record, kind: 'plan', by: o.by, total: save.amount, parts: [{ target: save.goalId, amount: save.add }] })
+    }
+    let parts: AllocationPart[] = save.parts.slice()
+    for (const c of save.contributions) contribute(c.goalId, c.amount, o.by, o.note)
+    const pp = save.prepay
+    if (pp) {
+      const rec = applyPrepayment(pp.creditId, o.by, { amount: pp.amount, mode: 'term', ...(pp.planId ? { planId: pp.planId } : {}) })
+      const paid = rec?.amount ?? 0
+      const target = `prepay:${pp.creditId}`
+      if (paid !== pp.amount) parts = parts.map((x) => (x.target === target ? { ...x, amount: paid } : x)).filter((x) => x.amount > 0)
+    }
+    const total = save.total
+    return recordAllocation({ ...save.record, kind: 'plan', by: o.by, total, parts })
+  }
+
+  /**
    * Разобрать (B2C-58): кольцо «Разложить» и карточка «как обычно» — одной дорогой (`breakdownWith`),
    * поэтому записи у них одинаковые при одинаковых статьях.
    */
@@ -2189,6 +2220,7 @@ export const useFinanceStore = defineStore('finance', () => {
     queue,
     wishes,
     heroGoal,
+    applyPlan,
     moveInQueue,
     moveGoal,
     moveWish,
