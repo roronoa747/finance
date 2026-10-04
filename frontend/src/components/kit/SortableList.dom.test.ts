@@ -152,6 +152,27 @@ describe('SortableList', () => {
     expect(s.moves).toEqual([['c', 1]])
   })
 
+  it('ревью frontend Н-6: место строки в подписи ⋮⋮ и живая область после переноса стрелкой и пальцем', async () => {
+    const s = mount()
+    const live = () => document.querySelector('[data-sortable-live]')
+    expect(live()?.getAttribute('aria-live')).toBe('polite')
+    expect(live()?.textContent).toBe('')
+    expect(s.grip('c')!.getAttribute('aria-label')).toContain('Переставить: c, 3 из 4')
+    s.grip('c')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }))
+    await nextTick()
+    await nextTick()
+    expect(live()?.textContent).toBe('c — 2 из 4')
+    expect(s.grip('c')!.getAttribute('aria-label')).toContain('Переставить: c, 2 из 4')
+    pointer('pointerdown', 20, 30, s.grip('a')!)
+    await nextTick()
+    pointer('pointermove', 20, 70)
+    await nextTick()
+    pointer('pointerup', 20, 70)
+    await nextTick()
+    expect(s.rows()).toEqual(['c', 'a', 'b', 'd'])
+    expect(live()?.textContent).toBe('a — 2 из 4')
+  })
+
   it('критик: автопрокрутка у края — прокручивается <main> оболочки (не окно), строка едет вместе с ним', async () => {
     // В приложении прокручивается `<main>` AppShell с overflow-y: auto; окно стоит.
     const main = document.createElement('main')

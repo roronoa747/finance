@@ -5,7 +5,8 @@ import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
  * Сортируемый список (Р-84, макет month-plan.html «Очередь денег»): ⋮⋮ — перетащить сразу, строка — удержать
  * ~300 мс; пальцем и мышью, без библиотек. Короткое касание и сдвиг до порога — обычная прокрутка. У края окна —
  * автопрокрутка. Отпустили — `move(id, index)`; отпустили вбок за краем списка, Escape или отмена касания — на место.
- * Клавиатура: стрелки ↑↓ на ⋮⋮ — выше/ниже. `disabled` (viewer) — без ⋮⋮ и удержания. Порядок держит экран:
+ * Клавиатура: стрелки ↑↓ на ⋮⋮ — выше/ниже. Чтение с экрана: в подписи ⋮⋮ — место («2 из 5»), после переноса стрелкой
+ * или пальцем — скрытая живая строка «Машина — 2 из 5» (ревью frontend Б14, Н-6). `disabled` (viewer) — без ⋮⋮ и удержания. Порядок держит экран:
  * список только показывает перенос, пока палец не отпущен.
  */
 const props = withDefaults(
@@ -42,6 +43,14 @@ const drag = ref<{ id: string; pid: number; y0: number; dy: number; x: number; y
 let press: { id: string; pid: number; x: number; y: number; timer: ReturnType<typeof setTimeout> } | null = null
 let raf = 0
 let swallowClick = false
+
+/** Живая строка для чтения с экрана: куда встала строка после переноса. */
+const announce = ref('')
+const nameOf = (id: string) => (props.label ? props.label(id).replace(/^Переставить:\s*/, '') : '')
+function placed(id: string, to: number) {
+  const name = nameOf(id)
+  announce.value = `${name ? `${name} — ` : ''}${to + 1} из ${props.ids.length}`
+}
 
 const rowOf = (id: string) => ([...(root.value?.children ?? [])] as HTMLElement[]).find((el) => el.dataset.id === id) ?? null
 
@@ -188,7 +197,10 @@ function finish(commit: boolean) {
   scroller = null
   const to = order.value.indexOf(d.id)
   drag.value = null
-  if (commit && to !== props.ids.indexOf(d.id)) emit('move', d.id, to)
+  if (commit && to !== props.ids.indexOf(d.id)) {
+    emit('move', d.id, to)
+    placed(d.id, to)
+  }
   order.value = [...props.ids]
   // Подъём удержанием заканчивается «кликом» по строке — он не должен открывать карточку.
   if (swallowClick) setTimeout(() => (swallowClick = false), 0)
@@ -222,6 +234,7 @@ async function onGripKey(e: KeyboardEvent, id: string) {
   const to = e.key === 'ArrowUp' ? i - 1 : i + 1
   if (i < 0 || to < 0 || to >= props.ids.length) return
   emit('move', id, to)
+  placed(id, to)
   await nextTick()
   rowOf(id)?.querySelector<HTMLElement>('[data-grip]')?.focus()
 }
@@ -249,7 +262,7 @@ onBeforeUnmount(() => {
         type="button"
         data-grip
         class="grip -ml-1 shrink-0 cursor-grab touch-none px-1.5 py-2 text-[17px] leading-none tracking-[-1px] text-ink-3"
-        :aria-label="`${label ? label(id) : 'Переставить'}. Стрелки вверх и вниз — выше и ниже`"
+        :aria-label="`${label ? label(id) : 'Переставить'}, ${index + 1} из ${order.length}. Стрелки вверх и вниз — выше и ниже`"
         @keydown="onGripKey($event, id)"
       >
         ⋮⋮
@@ -258,6 +271,7 @@ onBeforeUnmount(() => {
         <slot :id="id" :index="index" />
       </div>
     </div>
+    <span v-if="!disabled" class="sr-only" aria-live="polite" data-sortable-live>{{ announce }}</span>
   </div>
 </template>
 
