@@ -20,8 +20,12 @@ import {
   creditSplit,
   endedPlan,
   goalHave,
-  liveGoals,
-  mainGoal,
+  DEBT_CARD,
+  debtCardOf,
+  fundsOf,
+  moveId,
+  queueOf,
+  wishQueue,
   moneyArticlesOf,
   moneySettingsOf,
   lastAccountFor,
@@ -66,6 +70,7 @@ import type {
   MoneySettings,
   Currency,
   FxExchange,
+  DebtCard,
 } from '@/types/finance'
 import type { MerchantRule } from '@/lib/statements/types'
 import { spendArticle } from '@/lib/statements/dictionary'
@@ -96,6 +101,11 @@ export function defaultSyncDoc(): SyncDoc {
     moneySettings: null,
     // Обмены валютной зарплаты (B2C-79): ключ и пустым — как у payments (RP-03).
     fxExchanges: [],
+    // План месяца (B2C-85): суммы трат каждого — список; порядки и карточка долга — объекты (пусто — умолчания).
+    spendPlans: [],
+    goalOrder: null,
+    wishOrder: null,
+    debtCard: null,
     setupDoneAt: null,
   }
 }
@@ -798,14 +808,12 @@ export const useFinanceStore = defineStore('finance', () => {
     have?: number;
     monthly: number;
     hue: HueKey;
-    /** Шаблон и главная мечта (B2C-17/18); первая цель семьи — главная. */
+    /** Шаблон (B2C-17/18). Главная — первая в очереди (Р-84): новая цель встаёт в конец, `main` не пишется. */
     template?: string | null;
-    main?: boolean;
   }): string {
     const id = Math.random().toString(36).slice(2, 10);
     const t = new Date().toISOString();
     const have = g.have ?? 0;
-    const main = g.main ?? liveGoals(goals.value).length === 0;
     mutateHouseholdDoc((doc) => {
       doc.goals.push({
         id,
@@ -819,7 +827,6 @@ export const useFinanceStore = defineStore('finance', () => {
         movements: [],
         updatedAt: t,
         ...(g.template ? { template: g.template } : {}),
-        ...(main ? { main: true } : {}),
       });
     });
     return id;
@@ -1678,17 +1685,140 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
-  /** Главная мечта (Р-8, B2C-14): пометка одной цели, у остальных снимается — LWW по цели. */
-  function setMainGoal(id: string) {
-    if (mainGoal(goals.value)?.id === id && goals.value.find((g) => g.id === id)?.main) return
+  /* ---------- план месяца: очередь, плательщик, траты, фонды (Блок 14, B2C-85) ---------- */
+  const goalOrder = computed(() => householdDoc.value.goalOrder ?? null)
+  const wishOrder = computed(() => householdDoc.value.wishOrder ?? null)
+  const spendPlans = computed(() => (householdDoc.value.spendPlans ?? []).filter((x) => !x.deletedAt))
+  const debtCard = computed(() => debtCardOf(householdDoc.value))
+  /** Очередь денег (Р-84) — кредиты производные: карточка долга есть, пока долг с процентами открыт. */
+  const queue = computed(() => queueOf({ ...householdDoc.value, credits: credits.value }))
+  const wishes = computed(() => wishQueue(householdDoc.value))
+
+  /** Новый порядок очереди целиком (Р-84): пишется весь список — старый `main` больше не поднимает свою цель. */
+  function moveInQueue(id: string, toIndex: number) {
+    const ids = queue.value.map((x) => x.id)
+    const next = moveId(ids, id, toIndex)
+    if (next.join() === ids.join() && householdDoc.value.goalOrder) return
     const t = new Date().toISOString()
     mutateHouseholdDoc((doc) => {
-      for (const g of doc.goals || []) {
-        if (g.deletedAt) continue
-        if (g.id === id) Object.assign(g, { main: true, updatedAt: t })
-        else if (g.main) Object.assign(g, { main: false, updatedAt: t })
-      }
+      doc.goalOrder = { ids: next, updatedAt: t }
     })
+  }
+
+  /** Порядок «Желаний» (Р-84) — свой объект, как у целей. */
+  function moveWish(id: string, toIndex: number) {
+    const ids = wishes.value.map((x) => x.id)
+    const next = moveId(ids, id, toIndex)
+    if (next.join() === ids.join() && householdDoc.value.wishOrder) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      doc.wishOrder = { ids: next, updatedAt: t }
+    })
+  }
+
+  /** «Сделать главной» (Р-84) — наверх очереди; `main` не пишется. */
+  function makeMain(id: string) {
+    moveInQueue(id, 0)
+  }
+
+  /** Главная мечта (Р-8) — прежнее имя для экранов: теперь перенос наверх очереди (`makeMain`). */
+  function setMainGoal(id: string) {
+    makeMain(id)
+  }
+
+  /** Карточка «закрыть кредит» (Р-82): объект целиком с новой меткой; правка без изменений не пишется. */
+  function setDebtCard(patch: Partial<Omit<DebtCard, 'updatedAt' | 'deletedAt'>>) {
+    if (unchanged(debtCard.value, patch)) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      doc.debtCard = { ...debtCardOf(doc), ...patch, updatedAt: t }
+    })
+  }
+
+  /** Плательщик (Р-80) — с этого месяца дальше: поле записи; прошлые отметки и записи не трогаются. */
+  function setPayer(kind: 'obligation' | 'credit' | 'goal' | 'debt', id: string, person: PersonId | null) {
+    if (kind === 'debt') return setDebtCard({ payer: person })
+    const list = (kind === 'obligation' ? obligations.value : kind === 'credit' ? householdDoc.value.credits : goals.value) as { id: string; payer?: PersonId | null }[]
+    const cur = list.find((x) => x.id === id)
+    if (!cur || cur.payer === person) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      const own = ((kind === 'obligation' ? doc.obligations : kind === 'credit' ? doc.credits : doc.goals) as { id: string }[]).find((x) => x.id === id)
+      if (own) Object.assign(own, { payer: person, updatedAt: t })
+    })
+  }
+
+  /** Вкл/выкл цели, фонда или карточки долга в плане (Р-83): пауза — с этой минуты и в следующих месяцах. */
+  function pauseGoal(id: string, paused: boolean) {
+    const t = new Date().toISOString()
+    if (id === DEBT_CARD) {
+      if (!!debtCard.value.pausedAt === paused) return
+      return setDebtCard({ pausedAt: paused ? t : null })
+    }
+    const cur = goals.value.find((g) => g.id === id && !g.deletedAt)
+    if (!cur || !!cur.pausedAt === paused) return
+    mutateHouseholdDoc((doc) => {
+      const g = doc.goals.find((x) => x.id === id)
+      if (g) Object.assign(g, { pausedAt: paused ? t : null, updatedAt: t })
+    })
+  }
+
+  /** Сумма трат участника по разделу на месяц (Р-81), целые тенге; одна запись на пару — LWW по id. */
+  function setSpendPlan(by: PersonId, categoryId: string, amount: number) {
+    const id = `${by}:${categoryId}`
+    const value = Math.max(0, Math.round(amount))
+    const cur = (householdDoc.value.spendPlans ?? []).find((x) => x.id === id)
+    if (cur && !cur.deletedAt && cur.amount === value) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      const list = (doc.spendPlans ??= [])
+      const own = list.find((x) => x.id === id)
+      if (own) Object.assign(own, { amount: value, deletedAt: null, updatedAt: t })
+      else list.push({ id, by, categoryId, amount: value, updatedAt: t })
+    })
+  }
+
+  /**
+   * Фонд (Р-82) — id его цели; есть — тот же (повторный вызов ничего не пишет). «Подушка» — копилка Блока 11
+   * (`potGoalId`) помечается фондом со всем накопленным и взносами; копилки нет — как «Запас»: новая цель-фонд
+   * с картинкой шаблона, `need` — порог, если экран его знает.
+   */
+  function ensureFund(kind: 'reserve' | 'cushion', need = 0): string {
+    const funds = fundsOf(householdDoc.value)
+    const have = funds[kind]
+    if (have?.fund === kind) return have.id
+    const t = new Date().toISOString()
+    if (have) {
+      mutateHouseholdDoc((doc) => {
+        const g = doc.goals.find((x) => x.id === have.id)
+        if (g) Object.assign(g, { fund: kind, ...(g.template ? {} : { template: 'cushion' }), updatedAt: t })
+      })
+      return have.id
+    }
+    const id = Math.random().toString(36).slice(2, 10)
+    const value = Math.max(0, Math.round(need))
+    mutateHouseholdDoc((doc) => {
+      doc.goals.push({
+        id,
+        name: kind === 'reserve' ? 'Запас' : 'Подушка',
+        need: value,
+        seed: 0,
+        have: 0,
+        monthly: 0,
+        hue: 'teal',
+        planPct: 0,
+        movements: [],
+        template: kind === 'reserve' ? 'cushion-3' : 'cushion',
+        fund: kind,
+        updatedAt: t,
+      })
+    })
+    return id
+  }
+
+  /** Порог фонда в месяцах трат (Р-82), целые месяцы. */
+  function setFundMonths(id: string, months: number) {
+    updateGoal(id, { fundMonths: Math.max(0, Math.round(months)) })
   }
 
   function contribute(id: string, amount: number, by: PersonId, note?: string) {
@@ -1840,7 +1970,7 @@ export const useFinanceStore = defineStore('finance', () => {
       for (const c of o.effects.contributions) {
         let goalId = c.goalId
         if (!goalId) {
-          goalId = addGoal({ name: 'Подушка', need: c.need ?? c.amount, monthly: 0, hue: 'teal', main: false })
+          goalId = addGoal({ name: 'Подушка', need: c.need ?? c.amount, monthly: 0, hue: 'teal' })
           setMoneySettings({ potGoalId: goalId })
         }
         contribute(goalId, c.amount, o.by, o.note)
@@ -2031,6 +2161,21 @@ export const useFinanceStore = defineStore('finance', () => {
     setWishPhoto,
     removeGoal,
     setMainGoal,
+    goalOrder,
+    wishOrder,
+    spendPlans,
+    debtCard,
+    queue,
+    wishes,
+    moveInQueue,
+    moveWish,
+    makeMain,
+    setDebtCard,
+    setPayer,
+    pauseGoal,
+    setSpendPlan,
+    ensureFund,
+    setFundMonths,
     contribute,
     withdraw,
     addWish,

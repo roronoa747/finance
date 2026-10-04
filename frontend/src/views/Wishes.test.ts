@@ -239,7 +239,9 @@ describe('views/GoalNew.vue — «Новая мечта» (B2C-18, SSR)', () => 
     setActivePinia(createPinia())
     const fresh = family('member', 'a', { goals: [] })
     await createAndLand({ step: 'form', template: templateById('car'), name: 'Машина', needText: '3 000 000', term: '18' })
-    expect(fresh.goals[0]).toMatchObject({ name: 'Машина', main: true, template: 'car', hue: 'steel', monthly: 166_667 })
+    // Главная — первая в очереди (Р-84): `main` не пишется.
+    expect(fresh.goals[0]).toMatchObject({ name: 'Машина', template: 'car', hue: 'steel', monthly: 166_667 })
+    expect(fresh.queue[0].goal?.name).toBe('Машина')
   })
 
   it('viewer: «Готово — к мечте» выключена', async () => {

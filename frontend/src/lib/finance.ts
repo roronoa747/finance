@@ -1,4 +1,4 @@
-import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion } from '@/types/finance'
+import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, DebtCard } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
 import type { Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
@@ -2734,13 +2734,109 @@ export function planSchedule(
 /* ---------------- главный экран «Мечты» (Р-8, B2C-14) ---------------- */
 
 /**
- * Главная мечта — герой главного экрана: живая цель с `main`; отмечены две (слияние двух
- * телефонов) — с поздним `updatedAt`; пометки нет — первая живая. null — целей нет.
+ * Главная мечта — герой главного экрана (Р-84): первая цель очереди (`queueOf`), не фонд. Порядка ещё нет —
+ * старая пометка `main` (поздняя) первой, иначе первая живая. null — целей нет.
  */
-export function mainGoal(goals: Goal[]): Goal | null {
-  const live = liveGoals(goals)
-  const marked = live.filter((g) => g.main).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-  return marked[0] ?? live[0] ?? null
+export function mainGoal(goals: Goal[], order?: QueueOrder | null): Goal | null {
+  return queueOf({ goals, goalOrder: order }).find((x) => x.kind === 'goal')?.goal ?? null
+}
+
+/* ---------------- очередь целей, фонды, плательщик (Блок 14, B2C-85) ---------------- */
+
+/** Id карточки «закрыть кредит» в очереди целей (Р-82). */
+export const DEBT_CARD = 'debt'
+
+/**
+ * Кто платит (Р-80): свой `payer`, иначе `who` обязательства («чей платёж»), иначе первый живой участник.
+ * Плательщик, которого в семье нет (удалён), не считается. null — участников нет.
+ */
+export function payerOf(item: { payer?: PersonId | null; who?: PersonId | null }, people: Person[]): PersonId | null {
+  const live = (people ?? []).filter(alive)
+  const ok = (id: PersonId | null | undefined): id is PersonId => !!id && live.some((p) => p.id === id)
+  if (ok(item.payer)) return item.payer
+  if (ok(item.who)) return item.who
+  return live[0]?.id ?? null
+}
+
+/**
+ * Фонды семьи (Р-82): живые цели с `fund`; двое завели один фонд офлайн — первый по id. Отдельной «Подушки»
+ * нет — ею считается копилка Блока 11 (`moneySettings.potGoalId`), пока стор не пометит её (`ensureFund`).
+ */
+export function fundsOf(doc: { goals?: Goal[]; moneySettings?: MoneySettings | null }): { reserve: Goal | null; cushion: Goal | null } {
+  const live = liveGoals(doc.goals ?? [])
+  const first = (kind: 'reserve' | 'cushion') =>
+    live.filter((g) => g.fund === kind).sort((a, b) => a.id.localeCompare(b.id))[0] ?? null
+  const reserve = first('reserve')
+  const potId = doc.moneySettings?.potGoalId
+  const pot = live.find((g) => g.id === potId && !g.fund) ?? null
+  return { reserve, cushion: first('cushion') ?? pot }
+}
+
+/** Порог фонда в месяцах трат (Р-82): свой `fundMonths`, иначе умолчание семьи. */
+export const fundMonthsOf = (kind: 'reserve' | 'cushion', g: Pick<Goal, 'fundMonths'>, settings: MoneySettings) =>
+  g.fundMonths ?? (kind === 'reserve' ? settings.reserveMonths : settings.cushionMonths)
+
+export type QueueItem =
+  | { id: string; kind: 'goal'; goal: Goal }
+  | { id: string; kind: 'fund'; fund: 'reserve' | 'cushion'; goal: Goal }
+  | { id: typeof DEBT_CARD; kind: 'debt'; goal: null }
+
+/**
+ * Очередь денег (Р-84): цели, фонды и карточка долга сверху вниз. Порядок — `goalOrder`; живые, которых в нём
+ * нет, — в конец в порядке документа (порядка нет вовсе — старая пометка `main`, поздняя, первой: один раз,
+ * до первой записи порядка); удалённые выпадают. Карточка долга — пока есть открытый долг с процентами
+ * (`costliestCredits`; кредиты — производные, как отдаёт стор); нет в порядке — в конец.
+ */
+export function queueOf(doc: {
+  goals?: Goal[]
+  goalOrder?: QueueOrder | null
+  credits?: Credit[]
+  moneySettings?: MoneySettings | null
+}): QueueItem[] {
+  const live = liveGoals(doc.goals ?? [])
+  const byId = new Map(live.map((g) => [g.id, g]))
+  const debt = costliestCredits(doc.credits ?? []).length > 0
+  const ids: string[] = []
+  const put = (id: string) => {
+    if (ids.includes(id) || (id === DEBT_CARD ? !debt : !byId.has(id))) return
+    ids.push(id)
+  }
+  const order = doc.goalOrder?.ids ?? []
+  if (order.length) order.forEach(put)
+  else {
+    const legacy = live.filter((g) => g.main).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
+    if (legacy) put(legacy.id)
+  }
+  live.forEach((g) => put(g.id))
+  put(DEBT_CARD)
+  const funds = fundsOf(doc)
+  return ids.map((id): QueueItem => {
+    if (id === DEBT_CARD) return { id: DEBT_CARD, kind: 'debt', goal: null }
+    const goal = byId.get(id)!
+    const fund = goal.id === funds.reserve?.id ? 'reserve' : goal.id === funds.cushion?.id ? 'cushion' : goal.fund ?? null
+    return fund ? { id, kind: 'fund', fund, goal } : { id, kind: 'goal', goal }
+  })
+}
+
+/** Карточка «закрыть кредит» с умолчаниями (Р-82): суммы нет — 0, включена, плательщик — по умолчанию. */
+export const debtCardOf = (doc: { debtCard?: DebtCard | null }): DebtCard => ({ monthly: 0, pausedAt: null, payer: null, updatedAt: '', ...(doc.debtCard ?? {}) })
+
+/** Порядок «Желаний» (Р-84): `wishOrder`, остальные живые — в конец в порядке документа. */
+export function wishQueue(doc: { wishlist?: WishItem[]; wishOrder?: QueueOrder | null }): WishItem[] {
+  const live = liveWishlist(doc.wishlist ?? [])
+  const byId = new Map(live.map((w) => [w.id, w]))
+  const ids = [...new Set((doc.wishOrder?.ids ?? []).filter((id) => byId.has(id)))]
+  for (const w of live) if (!ids.includes(w.id)) ids.push(w.id)
+  return ids.map((id) => byId.get(id)!)
+}
+
+/** Новый порядок: `id` переносится на место `to` (за краями — к краю). Нет `id` в списке — порядок как был. */
+export function moveId(ids: string[], id: string, to: number): string[] {
+  const from = ids.indexOf(id)
+  if (from < 0) return ids.slice()
+  const out = ids.filter((x) => x !== id)
+  out.splice(Math.max(0, Math.min(Math.round(to), out.length)), 0, id)
+  return out
 }
 
 export type WeekPictureRow = {

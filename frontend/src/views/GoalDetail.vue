@@ -73,7 +73,7 @@ const goalId = computed(() => route.params.id as string)
 const goal = computed(() => liveGoals(financeStore.goals).find((g) => g.id === goalId.value))
 const people = computed(() => financeStore.people)
 const canEdit = computed(() => !authStore.isViewer)
-const isMain = computed(() => mainGoal(financeStore.goals)?.id === goalId.value)
+const isMain = computed(() => mainGoal(financeStore.goals, financeStore.goalOrder)?.id === goalId.value)
 // Пополнение и снятие двигают тенговую базу счёта: валютный счёт пересчитал бы её по
 // курсу при следующей правке и молча потерял сдвиг. Удалённые счета — тоже не сюда.
 const accounts = computed(() => payableAccounts(financeStore.accounts))

@@ -215,6 +215,12 @@ export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
     moneySettings: newerObject(local.moneySettings, remote.moneySettings),
     // Обмены валютной зарплаты (B2C-79): записи по id, отмена — надгробие; остатки выводит finance.ts.
     fxExchanges: mergeList(local.fxExchanges ?? [], remote.fxExchanges ?? [], (x) => x.id),
+    // План месяца (B2C-85): суммы трат каждого — по id `участник:раздел` (LWW, надгробия); порядки очередей и
+    // карточка долга — объекты целиком, поздний побеждает (Р-84, как `moneySettings`).
+    spendPlans: mergeList(local.spendPlans ?? [], remote.spendPlans ?? [], (x) => x.id),
+    goalOrder: newerObject(local.goalOrder, remote.goalOrder),
+    wishOrder: newerObject(local.wishOrder, remote.wishOrder),
+    debtCard: newerObject(local.debtCard, remote.debtCard),
     // Метки равны (или их нет) — сброс один и тот же.
     ...(lr ? { resetAt: lr } : {}),
   }

@@ -109,7 +109,7 @@ const header = computed<{ title: string; sub?: string }>(() => {
   if (p.startsWith('/goals/')) {
     // Имя цели заголовком (g4 «Экран цели»): «главная мечта · Ильяс и Дана».
     const goal = liveGoals(financeStore.goals).find((g) => g.id === route.params.id)
-    const main = mainGoal(financeStore.goals)?.id === goal?.id
+    const main = mainGoal(financeStore.goals, financeStore.goalOrder)?.id === goal?.id
     return goal ? { title: goal.name, sub: `${main ? 'главная мечта' : 'мечта'} · ${names.value}` } : { title: 'Цель' }
   }
   if (p === '/wishes' || p.startsWith('/people/')) return { title: 'Желания', sub: 'не мечты — покупки поменьше' }

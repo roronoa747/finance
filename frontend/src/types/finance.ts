@@ -120,6 +120,14 @@ export type Goal = Tracked & {
   photoCredit?: { author: string; url: string } | null
   /** Шаблон, из которого сделана цель (`lib/goalTemplates`); без `photoId` — картинка ещё не загружена. */
   template?: string | null
+  /** Кто откладывает в цель (Р-80); пусто — первый участник семьи (`payerOf`). */
+  payer?: PersonId | null
+  /** Фонд (Р-82): «Запас» или «Подушка» — цель с порогом в месяцах трат; пусто — мечта. */
+  fund?: 'reserve' | 'cushion' | null
+  /** Порог фонда в месяцах трат (Р-82); пусто — умолчание `moneySettings` (запас 1, подушка 3). */
+  fundMonths?: number
+  /** Цель выключена в плане месяца (Р-83) — с этой даты, пока не включат; null — включена. */
+  pausedAt?: string | null
 }
 
 export type WishItem = Tracked & {
@@ -214,6 +222,8 @@ export type Obligation = Tracked & {
    * переделки данных.
    */
   who?: PersonId | null
+  /** Кто платит (Р-80): меняется в плане месяца с этого месяца дальше; пусто — `who`, иначе первый участник. */
+  payer?: PersonId | null
 }
 
 export type Currency = 'KZT' | 'USD' | 'EUR' | 'RUB' | 'CNY'
@@ -282,6 +292,8 @@ export type Credit = Tracked & {
   rateUnknown?: boolean | null
   payment: number
   day: number
+  /** Кто платит по графику (Р-80); пусто — первый участник семьи. */
+  payer?: PersonId | null
 }
 
 /**
@@ -474,6 +486,37 @@ export type Allocation = Tracked & {
   parts: AllocationPart[]
 }
 
+/**
+ * Сумма трат участника на месяц по разделу выписок (Р-81): одна запись на пару, `id` = `${by}:${categoryId}`,
+ * LWW по id; переносится из месяца в месяц. Факт — `SpendTotal` `kind: 'month'` этого участника.
+ */
+export type SpendPlan = Tracked & {
+  id: string
+  by: PersonId
+  categoryId: string
+  /** Целые тенге в месяц. */
+  amount: number
+}
+
+/**
+ * Порядок очереди (Р-84): ids сверху вниз — объект целиком, поздний `updatedAt` побеждает (как
+ * `moneySettings`). У целей — ids целей и фондов и `debt` (карточка долга), у «Желаний» — свой.
+ */
+export type QueueOrder = Tracked & { ids: string[] }
+
+/**
+ * Карточка «закрыть кредит» (Р-82, Р-83): досрочка самого дорогого долга своей суммой в месяц. Свой объект,
+ * а не часть `goalOrder`: перестановка на одном телефоне не затирает сумму, поставленную на другом. Объект
+ * целиком по позднему `updatedAt`.
+ */
+export type DebtCard = Tracked & {
+  /** Целые тенге в месяц; с активным планом «Сначала долги» — шаг плана, а не эта сумма. */
+  monthly: number
+  pausedAt?: string | null
+  /** Кто вносит досрочку (Р-80); пусто — первый участник семьи. */
+  payer?: PersonId | null
+}
+
 /** Документ, который ездит между устройствами. Настройки оформления в него не входят: */
 /** тема и цвета — дело устройства, партнёр не должен перекрашивать чужое приложение. */
 export type SyncDoc = {
@@ -500,6 +543,14 @@ export type SyncDoc = {
   moneySettings?: MoneySettings | null
   /** Обмены валютной зарплаты (B2C-79, Р-73). До Блока 13 — без ключа. */
   fxExchanges?: FxExchange[]
+  /** Суммы трат каждого по разделам (Р-81, B2C-85). До Блока 14 — без ключа. */
+  spendPlans?: SpendPlan[]
+  /** Порядок очереди целей, фондов и карточки долга (Р-84). До Блока 14 — без ключа: старый `main` первым. */
+  goalOrder?: QueueOrder | null
+  /** Порядок «Желаний» (Р-84). */
+  wishOrder?: QueueOrder | null
+  /** Карточка «закрыть кредит» (Р-82). */
+  debtCard?: DebtCard | null
   /**
    * Когда закончили первичную настройку бюджета. Пустое значит, что показываем
    * первый запуск (`/start`). Живёт в общем документе, а не в настройках устройства: второй

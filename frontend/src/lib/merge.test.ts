@@ -987,3 +987,51 @@ describe('B2C-63: свой кружок — смайлик и цвет учас�
     expect(mergeDocs(partner, partner).people.find((p) => p.id === 'a')?.emoji).toBeUndefined()
   })
 })
+
+describe('B2C-85: план месяца в общем документе', () => {
+  const T1 = '2026-10-01T05:00:00.000Z'
+  const T2 = '2026-10-02T05:00:00.000Z'
+  const sp = (by: 'a' | 'b', categoryId: string, amount: number, updatedAt: string) => ({ id: `${by}:${categoryId}`, by, categoryId, amount, updatedAt })
+
+  it('spendPlans с двух телефонов: разные разделы — оба, один раздел — поздняя правка', () => {
+    const mine = { ...defaultSyncDoc(), spendPlans: [sp('a', 'sc_food', 90_000, T2), sp('a', 'sc_cafe', 40_000, T1)] }
+    const theirs = { ...defaultSyncDoc(), spendPlans: [sp('a', 'sc_food', 70_000, T1), sp('b', 'sc_food', 60_000, T1)] }
+    const merged = mergeDocs(mine, theirs)
+    const by = (id: string) => merged.spendPlans!.find((x) => x.id === id)!
+    expect(merged.spendPlans!.map((x) => x.id).sort()).toEqual(['a:sc_cafe', 'a:sc_food', 'b:sc_food'])
+    expect(by('a:sc_food').amount).toBe(90_000)
+    const sorted = (d: SyncDoc) => [...d.spendPlans!].sort((a, b) => a.id.localeCompare(b.id))
+    expect(sorted(mergeDocs(theirs, mine))).toEqual(sorted(merged))
+  })
+
+  it('goalOrder, wishOrder, debtCard — поздний объект целиком; нет с одной стороны — другая; пусто — null', () => {
+    const early = { ...defaultSyncDoc(), goalOrder: { ids: ['a', 'b', 'debt'], updatedAt: T1 }, debtCard: { monthly: 40_000, updatedAt: T2 } }
+    const late = { ...defaultSyncDoc(), goalOrder: { ids: ['b', 'a'], updatedAt: T2 }, wishOrder: { ids: ['w2', 'w1'], updatedAt: T1 }, debtCard: { monthly: 10_000, updatedAt: T1 } }
+    for (const merged of [mergeDocs(early, late), mergeDocs(late, early)]) {
+      // Перестановки не сливаются по элементам: поздний порядок целиком (Р-84).
+      expect(merged.goalOrder).toEqual({ ids: ['b', 'a'], updatedAt: T2 })
+      expect(merged.wishOrder).toEqual({ ids: ['w2', 'w1'], updatedAt: T1 })
+      // Карточка долга — свой объект: поздняя перестановка не затирает сумму карточки.
+      expect(merged.debtCard).toEqual({ monthly: 40_000, updatedAt: T2 })
+    }
+    const none = mergeDocs(defaultSyncDoc(), defaultSyncDoc())
+    expect([none.goalOrder, none.wishOrder, none.debtCard, none.spendPlans]).toEqual([null, null, null, []])
+  })
+
+  it('старый клиент без ключей плана их не теряет; старый документ сервера — без ключей, свои остаются', () => {
+    const server = { ...createEmptyDoc(), spendPlans: [sp('b', 'sc_food', 60_000, T1)], goalOrder: { ids: ['g1'], updatedAt: T1 } }
+    const merged = mergeDocs(createEmptyDoc(), server)
+    expect(merged.spendPlans).toEqual(server.spendPlans)
+    expect(merged.goalOrder).toEqual(server.goalOrder)
+    expect(mergeDocs(server, createEmptyDoc()).goalOrder).toEqual(server.goalOrder)
+  })
+
+  it('новые поля записей (payer, fund, pausedAt) — LWW записи; у победителя ключа нет — берутся у проигравшего', () => {
+    const goal = (extra: Partial<Goal>): Goal => ({ id: 'g', name: 'Япония', need: 1, seed: 0, have: 0, monthly: 0, hue: 'plum', planPct: 0, movements: [], updatedAt: T1, ...extra })
+    const newCode = { ...defaultSyncDoc(), goals: [goal({ payer: 'b', pausedAt: T1, fund: null })] }
+    // Старый клиент переименовал цель позже — полей Блока 14 у него нет.
+    const oldCode = { ...createEmptyDoc(), goals: [goal({ name: 'Токио', updatedAt: T2 })] }
+    const got = mergeDocs(oldCode, newCode).goals[0]
+    expect(got).toMatchObject({ name: 'Токио', payer: 'b', pausedAt: T1, fund: null })
+  })
+})

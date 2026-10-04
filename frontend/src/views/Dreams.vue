@@ -47,7 +47,7 @@ const state = computed(() => ({ ...financeStore.householdDoc, credits: financeSt
 
 /* ---------- мечта по центру и цели ---------- */
 const goals = computed(() => liveGoals(financeStore.goals))
-const main = computed(() => mainGoal(financeStore.goals))
+const main = computed(() => mainGoal(financeStore.goals, financeStore.goalOrder))
 const others = computed(() => goals.value.filter((g) => g.id !== main.value?.id))
 
 const heroPercent = computed(() => (main.value ? pct(main.value.have, main.value.need) : 0))

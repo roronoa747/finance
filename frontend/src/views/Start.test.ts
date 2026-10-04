@@ -242,7 +242,8 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     await renderScreen(Start, '/start/dream', undefined, [
       screenMixin({ step: 'form', template: templateById('car'), name: 'Машина', needText: '3 000 000', term: '18' }, (s) => void (s.create as () => Promise<void>)()),
     ])
-    expect(store.goals[0]).toMatchObject({ name: 'Машина', main: true, template: 'car', monthly: 166_667 })
+    expect(store.goals[0]).toMatchObject({ name: 'Машина', template: 'car', monthly: 166_667 })
+    expect(store.queue[0].goal?.name).toBe('Машина')
 
     const invite = await renderScreen(Start, '/start/invite')
     expect(invite).toContain('Пригласите партнёра')

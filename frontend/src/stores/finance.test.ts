@@ -1387,7 +1387,7 @@ describe('PV-04: накопленное в цели не уходит в мин�
   })
 })
 
-describe('B2C-14: setMainGoal — главная мечта одна, у остальных снимается (LWW по цели)', () => {
+describe('B2C-14 → Р-84 (B2C-85): setMainGoal — главная одна: первая в очереди, `main` не пишется', () => {
   const storage = new Map<string, string>()
   const T = '2026-09-01T00:00:00.000Z'
   const goal = (id: string, extra: Partial<Goal> = {}): Goal => ({
@@ -1411,17 +1411,17 @@ describe('B2C-14: setMainGoal — главная мечта одна, у ост�
     vi.useRealTimers()
   })
 
-  it('b становится главной, у a пометка снята; обе с updatedAt сейчас; удалённая c не трогается; повтор ничего не пишет', () => {
+  it('b становится главной — наверх очереди; цели не правятся; удалённая c выпадает; повтор ничего не пишет', () => {
     const store = useFinanceStore()
     store.setHouseholdDoc({ ...defaultSyncDoc(), goals: [goal('a', { main: true }), goal('b'), goal('c', { main: true, deletedAt: T })] }, 1)
-    expect(mainGoal(store.goals)?.id).toBe('a')
+    expect(mainGoal(store.goals, store.goalOrder)?.id).toBe('a')
 
     store.setMainGoal('b')
     const byId = (id: string) => store.householdDoc.goals.find((g) => g.id === id)!
-    expect(byId('b')).toMatchObject({ main: true, updatedAt: '2026-09-24T07:00:00.000Z' })
-    expect(byId('a')).toMatchObject({ main: false, updatedAt: '2026-09-24T07:00:00.000Z' })
-    expect(byId('c')).toMatchObject({ main: true, updatedAt: T, deletedAt: T })
-    expect(mainGoal(store.goals)?.id).toBe('b')
+    expect(store.householdDoc.goalOrder).toEqual({ ids: ['b', 'a'], updatedAt: '2026-09-24T07:00:00.000Z' })
+    expect(byId('b')).toEqual(goal('b'))
+    expect(byId('a')).toEqual(goal('a', { main: true }))
+    expect(mainGoal(store.goals, store.goalOrder)?.id).toBe('b')
     expect(store.unsent).toBe(true)
 
     // Та же главная ещё раз — документ не меняется, неотправленного нет.

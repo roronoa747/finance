@@ -458,7 +458,7 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     vi.unstubAllGlobals()
   })
 
-  it('новая семья: выписка Kaspi → 7 вопросов → документ (оклад, кредит с остатком и отметкой июля, «Kaspi Red» обязательством, подписка), картина июля, мечта main, setupDoneAt; партнёр по коду — свои шаги → people[b]', async () => {
+  it('новая семья: выписка Kaspi → 7 вопросов → документ (оклад, кредит с остатком и отметкой июля, «Kaspi Red» обязательством, подписка), картина июля, мечта главная, setupDoneAt; партнёр по коду — свои шаги → people[b]', async () => {
     const A = await phone(server, st, 'a')
     expect(A.store.setupDone).toBe(false)
     await upload(A, kaspi('kaspi-01'))
@@ -498,17 +498,18 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     expect(month).toContain(money(mine.reduce((s, t) => s + t.amount, 0)))
     expect(month).toContain(money(budgetAmounts({ ...A.store.householdDoc, credits: A.store.credits }).d5))
 
-    // Мечта — main; «Позже» — семья настроена, участник отмечен; всё на сервере.
+    // Мечта — главная (первая в очереди, Р-84); «Позже» — семья настроена, участник отмечен; всё на сервере.
     await screen(A.pinia, Start, '/start/dream', undefined, [
       screenMixin({ step: 'form', template: templateById('car'), name: 'Машина', needText: '3 000 000', term: '18' }, (s) => void (s.create as () => Promise<void>)()),
     ])
-    expect(A.store.goals[0]).toMatchObject({ name: 'Машина', main: true, template: 'car' })
+    expect(A.store.goals[0]).toMatchObject({ name: 'Машина', template: 'car' })
+    expect(A.store.queue[0].goal?.name).toBe('Машина')
     await screen(A.pinia, Start, '/start/invite', undefined, [act('finish')])
     expect(A.store.setupDone).toBe(true)
     expect(A.store.people[0].onboardedAt).toBe('2025-07-27T07:00:00.000Z')
     await A.store.syncHousehold(A.client)
     expect(server.data.setupDoneAt).toBeTruthy()
-    expect(server.data.goals[0].main).toBe(true)
+    expect(server.data.goals[0].name).toBe('Машина')
 
     // Партнёр по коду: семья настроена, записи b нет → /start; своя выписка, свой доход, «Готово».
     // Свой телефон: без ответов и операций A в хранилище (A дальше живёт в памяти стора).

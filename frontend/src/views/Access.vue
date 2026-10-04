@@ -175,6 +175,8 @@ function startDemoMode() {
         day: 5,
         category: 'd1',
         versions: [{ from: '2026-01', amount: 220_000 }],
+        // Плательщики (Р-80, B2C-85): аренду платит Аруна, остальное — Ильяс.
+        payer: 'b',
         updatedAt: new Date().toISOString(),
       },
       {
@@ -185,6 +187,7 @@ function startDemoMode() {
         category: 'd1',
         estimate: true,
         versions: [{ from: '2026-01', amount: 30_000 }],
+        payer: 'a',
         updatedAt: new Date().toISOString(),
       },
       // Подписка в долларах (B2C-81, Р-75): в «Платежах» — «10 $» и тенге по курсу дня списания из демо-книги
@@ -196,6 +199,7 @@ function startDemoMode() {
         day: 10,
         category: 'd4',
         versions: [{ from: '2026-01', amount: 10, currency: 'USD', rate: 470 }],
+        payer: 'a',
         keptAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
@@ -209,6 +213,7 @@ function startDemoMode() {
         annualRate: 0.19,
         payment: 95_000,
         day: 18,
+        payer: 'a',
         updatedAt: new Date().toISOString(),
       },
     ]
@@ -223,9 +228,9 @@ function startDemoMode() {
         hue: 'plum',
         planPct: 0.3,
         movements: [],
-        // Главная мечта с шаблоном без фото (B2C-19 п. 4): в демо сервера нет — картинок нет.
+        // Главная мечта (первая в очереди) с шаблоном без фото (B2C-19 п. 4): в демо сервера нет — картинок нет.
         template: 'japan',
-        main: true,
+        payer: 'a',
         updatedAt: new Date().toISOString(),
       },
       // Вторая мечта — её взнос план «Сначала долги» направляет в автокредит (квадрат «План», пивот 3).
@@ -239,19 +244,39 @@ function startDemoMode() {
         hue: 'blue',
         planPct: 0,
         movements: [],
+        payer: 'a',
         updatedAt: new Date().toISOString(),
       },
-      // Копилка «Запаса» и «Подушки» (Блок 11, Р-66): запас собран наполовину.
+      // Копилка Блока 11 (Р-66) — фонд «Подушка» (Р-82, B2C-85): порог — 3 месяца трат, откладывает Аруна.
       {
         id: 'g-pot',
         name: 'Подушка',
         need: 1_500_000,
         seed: 150_000,
         have: 150_000,
-        monthly: 0,
+        monthly: 30_000,
         hue: 'teal',
         planPct: 0,
         movements: [],
+        template: 'cushion',
+        fund: 'cushion',
+        payer: 'b',
+        updatedAt: new Date().toISOString(),
+      },
+      // Фонд «Запас» (Р-82): месяц трат, собран наполовину.
+      {
+        id: 'g-reserve',
+        name: 'Запас',
+        need: 800_000,
+        seed: 300_000,
+        have: 300_000,
+        monthly: 50_000,
+        hue: 'teal',
+        planPct: 0,
+        movements: [],
+        template: 'cushion-3',
+        fund: 'reserve',
+        payer: 'a',
         updatedAt: new Date().toISOString(),
       },
       {
@@ -264,6 +289,9 @@ function startDemoMode() {
         hue: 'ochre',
         planPct: 0,
         movements: [],
+        // Выключена в плане месяца (Р-83): на «Мечтах» — «на паузе».
+        pausedAt: new Date().toISOString(),
+        payer: 'b',
         updatedAt: new Date().toISOString(),
       },
     ]
@@ -288,6 +316,14 @@ function startDemoMode() {
       [['must'], ['life', 180_000], ['reserve', 50_000], ['debts', 40_000], ['cushion', 30_000], ['dreams'], ['spend', 100_000]] as const
     ).map(([id, amount], i) => ({ id, order: i + 1, on: true, ...(amount === undefined ? {} : { amount }), updatedAt: now }))
     doc.moneySettings = { reserveMonths: 1, cushionMonths: 3, costlyRate: 0, potGoalId: 'g-pot', orderedAt: now, updatedAt: now }
+    // План месяца (Р-79…Р-84, B2C-85): траты каждого по разделам, очередь (мечта, запас, долг, …), свой порядок
+    // «Желаний», карточка долга — досрочку вносит Аруна (с планом «Сначала долги» сумма — шаг плана).
+    doc.spendPlans = (
+      [['a', 'sc_food', 90_000], ['a', 'sc_cafe', 40_000], ['a', 'sc_transport', 25_000], ['b', 'sc_food', 60_000], ['b', 'sc_shopping', 40_000]] as const
+    ).map(([by, categoryId, amount]) => ({ id: `${by}:${categoryId}`, by, categoryId, amount, updatedAt: now }))
+    doc.goalOrder = { ids: ['g-trip', 'g-reserve', 'debt', 'g-car', 'g-pot', 'g-sofa'], updatedAt: now }
+    doc.wishOrder = { ids: ['w-bike', 'w-coffee', 'w-boots'], updatedAt: now }
+    doc.debtCard = { monthly: 40_000, pausedAt: null, payer: 'b', updatedAt: now }
     // Итоги выписки Аруны (B2C-19 п. 4): своих операций у неё в демо нет — итоги руками. Итоги Ильяса — из его
     // демо-операций ниже, той же функцией, что при «Отправить» (B2C-52).
     seedSpendCategories(doc)
