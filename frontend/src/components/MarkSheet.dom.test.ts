@@ -200,13 +200,13 @@ describe('возврат приёмки п. 2: «Разложить» в лис�
     const { pinia, store } = family()
     store.markSalary('a', { period: '2026-09', amount: 700_000, accountId: null, source: 'statement', opId: 'op-9', at: '2026-09-10T07:00:00.000Z' })
     const seen = await paidSheet(pinia)
-    expect(has('Разложить')).toBe(true)
-    await press(button('Разложить'))
+    expect(has('К плану месяца')).toBe(true)
+    await press(button('К плану месяца'))
     expect(seen).toEqual({ allocate: 1, close: 1 })
 
     store.recordAllocation({ source: 'salary', sourceId: 'a', period: '2026-09', by: 'a', total: 100_000, parts: [{ target: 'life', amount: 100_000 }] })
     await nextTick()
-    expect(has('Разложить')).toBe(false)
+    expect(has('К плану месяца')).toBe(false)
 
     app?.unmount()
     document.body.innerHTML = ''
@@ -214,6 +214,6 @@ describe('возврат приёмки п. 2: «Разложить» в лис�
     manual.store.markSalary('a', { period: '2026-09', amount: 700_000, accountId: 'card' })
     await paidSheet(manual.pinia)
     expect(has('Другая сумма или счёт')).toBe(true)
-    expect(has('Разложить')).toBe(false)
+    expect(has('К плану месяца')).toBe(false)
   })
 })

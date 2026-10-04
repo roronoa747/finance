@@ -10,7 +10,7 @@ import { afterFamilyLoaded } from '@/stores/syncEngine'
 import { landingPath } from '@/router/landing'
 import { seedSpendCategories } from '@/lib/statements/model'
 import { addMonths, monthKey, weekKey } from '@/lib/dates'
-import { breakdownWith, monthBreakdown } from '@/lib/finance'
+import { monthPlan, planSave } from '@/lib/finance'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
 import { authErrorText } from '@/lib/authErrors'
 import Button from '@/components/ui/Button.vue'
@@ -347,17 +347,15 @@ function startDemoMode() {
   financeStore.markPaid('obligation', 'ob-rent', 'b', { period: prev, accountId: null, at: `${prev}-05T05:00:00.000Z` })
   financeStore.markSalary('a', { period: prev, accountId: null, at: `${prev}-10T05:00:00.000Z` })
   financeStore.markPaid('obligation', 'ob-rent', 'b', { accountId: 'acc-kaspi' })
-  // Разбор прошлого месяца записан — карточка говорит «как в <прошлом месяце>»; части считает finance.ts.
-  const before = monthBreakdown(
-    { ...financeStore.householdDoc, credits: financeStore.credits, book: useFxStore().book },
-    { key: prev, totals: [], spendCategories: [], uploads: [] },
-    { from: 'salary', person: 'a', period: prev },
+  // «Отложить по плану» прошлого месяца записан — «История» и сводка прошлого месяца его показывают; части — finance.ts.
+  const before = planSave(
+    monthPlan({ ...financeStore.householdDoc, credits: financeStore.credits, book: useFxStore().book }, { key: prev, totals: [], spendCategories: [], uploads: [] }),
+    'a',
   )
   if (before) {
-    const parts = breakdownWith(before, []).effects.parts
     const at = `${prev}-10T06:00:00.000Z`
     financeStore.mutateHouseholdDoc((doc) => {
-      doc.allocations = [...(doc.allocations ?? []), { id: 'demo-breakdown-prev', kind: 'breakdown', ...before.record, by: 'a', total: before.amount, parts, at, updatedAt: at }]
+      doc.allocations = [...(doc.allocations ?? []), { id: 'demo-plan-prev', kind: 'plan', ...before.record, by: 'a', total: before.total, parts: before.parts, at, updatedAt: at }]
     })
   }
   // Зарплата Ильяса пришла сегодня на евро-счёт и не разобрана — на «Неделе» «Пришла зарплата · как обычно»;

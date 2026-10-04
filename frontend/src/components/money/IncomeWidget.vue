@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import { PhCaretRight } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, moneySigned as signed, signTone } from '@/lib/money'
 import { monthFrom, monthKey } from '@/lib/dates'
-import { budgetAmounts, fxYearDelta, incomeBreakdownPath, incomeSplit, loadTag, nextSalaryChange, salaryCtxOf, salaryOf, salaryTenge, type IncomePartKey } from '@/lib/finance'
+import { budgetAmounts, fxYearDelta, incomeSplit, loadTag, nextSalaryChange, salaryCtxOf, salaryOf, salaryTenge, type IncomePartKey } from '@/lib/finance'
 import { CURRENCY_WORD } from '@/lib/fx'
 import type { PersonId } from '@/types/finance'
 import Avatar from '@/components/kit/Avatar.vue'
@@ -30,7 +29,6 @@ import FxRateSheet from '@/components/money/FxRateSheet.vue'
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
 const fx = useFxStore()
-const router = useRouter()
 const salaryFor = ref<PersonId | null>(null)
 const rateFor = ref<PersonId | null>(null)
 
@@ -62,16 +60,8 @@ const parts = computed(() => split.value.parts.map((p) => ({ ...p, ...LABEL[p.ke
       </span>
       <Tag v-if="split.income > 0" :tone="loadTag(split.load).tone">{{ loadTag(split.load).text }}</Tag>
     </div>
-    <!-- Сумма — вход в разбор месяца (B2C-58): последняя пришедшая зарплата, иначе план -->
-    <button
-      type="button"
-      class="press flex cursor-pointer items-center gap-1 self-start text-left"
-      aria-label="Разбор месяца"
-      @click="router.push(incomeBreakdownPath(financeStore.payments, key))"
-    >
-      <span class="type-num num text-ink">{{ money(split.income) }}</span>
-      <PhCaretRight :size="16" class="text-ink-3" />
-    </button>
+    <!-- Сумма месяца; план месяца — выше, на этом же экране (Блок 14) -->
+    <span class="type-num num self-start text-ink">{{ money(split.income) }}</span>
     <template v-if="split.income > 0">
       <StackBar :segments="parts.map((p) => ({ key: p.key, share: p.share, color: p.color }))" />
       <div class="flex flex-wrap gap-x-3 gap-y-1.5 text-[12.5px] text-ink-2">

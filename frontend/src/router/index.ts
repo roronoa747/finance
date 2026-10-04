@@ -15,9 +15,6 @@ import Wishes from '@/views/Wishes.vue'
 const GoalDetail = () => import('@/views/GoalDetail.vue')
 // «Деньги» (пивот 3, Р-31): один экран — сводка и квадраты Капитал · План · История — одним чанком.
 const Money = () => import('@/views/Money.vue')
-// Разбор зарплаты по статьям (Блок 11): «Ваш порядок» — редкий экран, отдельным чанком.
-const YourOrder = () => import('@/views/YourOrder.vue')
-const Breakdown = () => import('@/views/Breakdown.vue')
 // Выписки (B2C-07): pdf.js грузится ещё позже — только когда выбрали файл.
 const Statements = () => import('@/views/Statements.vue')
 // Новая мечта (B2C-18): шаблоны с картинками — редкий экран, отдельным чанком.
@@ -32,11 +29,10 @@ const MyCircle = () => import('@/views/MyCircle.vue')
  * План `/money/plan`, История `/money/history`. Старые адреса установленных PWA и ссылок —
  * редиректы с сохранением query (`/money/capital?credit=x` → `/money?credit=x`; счёт и вклад
  * `/money/capital/:id` → `/money?account=:id`).
- * `/ritual` без параметров — «Неделя»; с параметрами (раскладка зарплаты, остатка, освободившихся
- * денег) — разбор `/week/breakdown` с теми же параметрами (B2C-58).
+ * Раскладка, ритуал, разбор кольцом и «Ваш порядок» с любыми параметрами — план месяца «Денег» без них (Блок 14,
+ * Р-78): отдельного экрана раскладки больше нет.
  */
-const ritualRedirect = (to: { query: Record<string, unknown> }): RouteLocationRaw =>
-  Object.keys(to.query).length ? { path: '/week/breakdown', query: to.query as Record<string, string> } : '/week'
+const toPlan = (): RouteLocationRaw => ({ path: '/money', query: {} })
 
 /**
  * Бюджет и Капитал до пивота 3 — квадрат «Капитал» с теми же ключами окон; закладка калькулятора
@@ -75,13 +71,10 @@ export const routes: RouteRecordRaw[] = [
     children: [
       { path: '', name: 'dreams', component: Dreams },
       { path: 'week', name: 'week', component: Statements },
-      // Раскладка (B2C-21) заменена разбором (Р-52): старый адрес с теми же параметрами — на разбор
-      // (без параметров — освободившийся платёж, как было у раскладки).
-      { path: 'week/salary', redirect: (to) => ({ path: '/week/breakdown', query: to.query }) },
-      // «Ваш порядок» (B2C-56): статьи разбора и пороги — один раз; viewer — в разбор.
-      { path: 'week/order', name: 'week-order', component: YourOrder, meta: { memberOnly: true, viewerTo: '/week/breakdown' } },
-      // Разбор зарплаты кольцом (B2C-57): те же параметры, что у раскладки; viewer смотрит.
-      { path: 'week/breakdown', name: 'week-breakdown', component: Breakdown },
+      // Раскладка, разбор и «Ваш порядок» — старые закладки и ссылки PWA: план месяца (Р-78).
+      { path: 'week/salary', redirect: toPlan },
+      { path: 'week/order', redirect: toPlan },
+      { path: 'week/breakdown', redirect: toPlan },
       // Квадрат — по адресу; переключение — `router.replace` (назад — на прошлую вкладку).
       { path: 'money/:square(plan|history)?', name: 'money', component: Money },
       // Бюджет и Капитал до пивота 3 — теперь квадрат «Капитал»; окна — те же ключи query.
@@ -103,7 +96,7 @@ export const routes: RouteRecordRaw[] = [
       { path: 'capital', redirect: capitalRedirect },
       { path: 'capital/:id', redirect: accountRedirect },
       { path: 'goals', redirect: '/' },
-      { path: 'ritual', redirect: ritualRedirect },
+      { path: 'ritual', redirect: toPlan },
       { path: 'plan', redirect: '/money/plan' },
       { path: 'statements', redirect: '/week' },
     ],
@@ -137,8 +130,7 @@ export function createAppRouter(history = typeof window !== 'undefined' ? create
       return next({ path: '/access', query: to.query })
     }
 
-    // 3. Экраны-формы («Ваш порядок», новая мечта) — только участнику.
-    // «Ваш порядок» — viewer видит разбор, но не меняет (Р-63): прямой адрес — назад в разбор.
+    // 3. Экраны-формы (новая мечта, свой кружок) — только участнику; `viewerTo` — куда вместо них.
     if (to.meta.memberOnly && authStore.isViewer) {
       return next(typeof to.meta.viewerTo === 'string' ? { path: to.meta.viewerTo, query: to.query } : '/')
     }

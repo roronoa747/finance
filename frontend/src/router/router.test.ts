@@ -99,13 +99,13 @@ describe('router/index.ts — Навигационные гарды и защи�
     signIn()
     useFinanceStore().finishSetup()
 
-    for (const path of ['/', '/week', '/week/breakdown', '/week/order', '/money', '/money/plan', '/money/history', '/goals/x', '/goals/new', '/wishes', '/people/a', '/settings']) {
+    for (const path of ['/', '/week', '/money', '/money/plan', '/money/history', '/goals/x', '/goals/new', '/wishes', '/people/a', '/settings']) {
       await router.push(path)
       expect(router.currentRoute.value.path).toBe(path)
     }
   })
 
-  it('viewer: экраны-формы (новая мечта) по прямому адресу ведут на главный; старые ссылки раскладки — разбор (смотреть, B2C-58)', async () => {
+  it('viewer: экраны-формы (новая мечта) по прямому адресу ведут на главный; старые ссылки раскладки и разбора — план месяца (Блок 14)', async () => {
     useAuthStore().setAuthData(authAs('viewer', 'b'))
     useFinanceStore().setHouseholdDoc(planFamilyDoc(), 1)
     const router = createAppRouter(createMemoryHistory())
@@ -113,10 +113,10 @@ describe('router/index.ts — Навигационные гарды и защи�
     await router.push('/goals/new')
     expect(router.currentRoute.value.fullPath).toBe('/')
     for (const [path, to] of [
-      ['/week/salary?from=rest&amount=1&period=2026-09', '/week/breakdown?from=rest&amount=1&period=2026-09'],
-      ['/ritual?from=salary&person=a&period=2026-09', '/week/breakdown?from=salary&person=a&period=2026-09'],
-      // «Ваш порядок» — только member: viewer — в разбор с тем же источником.
-      ['/week/order?from=salary&person=a&period=2026-09', '/week/breakdown?from=salary&person=a&period=2026-09'],
+      ['/week/salary?from=rest&amount=1&period=2026-09', '/money'],
+      ['/ritual?from=salary&person=a&period=2026-09', '/money'],
+      ['/week/order?from=salary&person=a&period=2026-09', '/money'],
+      ['/week/breakdown?from=salary&person=a&period=2026-09', '/money'],
     ]) {
       await router.push('/week')
       await router.push(path)
@@ -148,15 +148,20 @@ describe('router/index.ts — Навигационные гарды и защи�
       ['/money/history', '/money/history'],
       ['/goals', '/'],
       ['/goals/g-japan', '/goals/g-japan'],
-      ['/ritual', '/week'],
-      ['/ritual?from=salary&person=a&period=2026-09', '/week/breakdown?from=salary&person=a&period=2026-09'],
-      ['/ritual?from=rest&amount=80000&period=2026-09', '/week/breakdown?from=rest&amount=80000&period=2026-09'],
-      // Раскладка заменена разбором (Р-52, B2C-58): все четыре источника — с теми же параметрами.
-      ['/week/salary?from=salary&person=a&period=2026-09', '/week/breakdown?from=salary&person=a&period=2026-09'],
-      ['/week/salary?from=rest&amount=80000&period=2026-09', '/week/breakdown?from=rest&amount=80000&period=2026-09'],
-      ['/week/salary?from=freed', '/week/breakdown?from=freed'],
-      ['/week/salary', '/week/breakdown'],
-      ['/week/salary?from=credit&credit=inst', '/week/breakdown?from=credit&credit=inst'],
+      // Раскладка, разбор кольцом и «Ваш порядок» — план месяца «Денег» с любыми параметрами (Блок 14, Р-78).
+      ['/ritual', '/money'],
+      ['/ritual?from=salary&person=a&period=2026-09', '/money'],
+      ['/ritual?from=rest&amount=80000&period=2026-09', '/money'],
+      ['/week/salary?from=salary&person=a&period=2026-09', '/money'],
+      ['/week/salary?from=rest&amount=80000&period=2026-09', '/money'],
+      ['/week/salary?from=freed', '/money'],
+      ['/week/salary', '/money'],
+      ['/week/salary?from=credit&credit=inst', '/money'],
+      ['/week/breakdown', '/money'],
+      ['/week/breakdown?from=salary&person=a&period=2026-09', '/money'],
+      ['/week/breakdown?from=plan', '/money'],
+      ['/week/order', '/money'],
+      ['/week/order?from=salary&person=a&period=2026-09', '/money'],
       ['/plan', '/money/plan'],
       ['/statements', '/week'],
       ['/nothing-here', '/'],

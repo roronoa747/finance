@@ -829,7 +829,7 @@ describe('views/Money.vue — финансовые показатели (рас�
     }
   })
 
-  it('критик возврата 3 (правило 12): «Освободится» и «Пришла зарплата» на одном экране — брендовая одна («Распределить»), без события — брендовая «Пришла зарплата»', async () => {
+  it('правило 12 (Блок 14): брендовая одна — у плана месяца («Освободится» — карточкой плана); «Пришла зарплата» в «Подробнее» — тихая', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-09-17T07:00:00Z')) // 17 сентября, Алматы — день зарплаты
     try {
@@ -843,19 +843,23 @@ describe('views/Money.vue — финансовые показатели (рас�
       store.householdDoc.people = [{ id: 'a', name: 'Ильяс', salary: 700_000, payday: 17, updatedAt: '' }]
       const brand = (html: string) =>
         [...html.matchAll(/<button[^>]*class="[^"]*bg-brand text-brand-ink[^"]*"[^>]*>([\s\S]*?)<\/button>/g)].map((x) => x[1].replace(/<[^>]+>/g, '').trim())
-      expect(brand(await renderScreen(Money, '/money'))).toEqual(['Пришла зарплата'])
+      // Зарплата не пришла, событий нет — главной кнопки нет (Р-78); «Пришла зарплата» — тихо под «Подробнее».
+      const quiet = await renderScreen(Money, '/money')
+      expect(brand(quiet)).toEqual([])
+      expect(quiet.slice(quiet.indexOf('data-more'))).toContain('Пришла зарплата')
       store.householdDoc.obligations = [
         { id: 'rent', name: 'Аренда', note: '', day: 20, category: 'd1', versions: [{ from: '2026-01', amount: 300_000 }, { from: '2026-10', amount: 220_000 }], updatedAt: '' },
       ]
+      store.householdDoc.goals = [{ id: 'trip', name: 'Отпуск', need: 2_000_000, seed: 0, have: 0, monthly: 50_000, hue: 'teal', planPct: 0, movements: [], updatedAt: '' }]
       const html = await renderScreen(Money, '/money')
       expect(html).toContain('Пришла зарплата')
-      expect(brand(html)).toEqual(['Распределить'])
+      expect(brand(html)).toEqual(['Добавить к «Отпуск»'])
     } finally {
       vi.useRealTimers()
     }
   })
 
-  it('«Освободится»: сумма из freedChange (годовое — доля в месяц и разница за год), пояснение — одной строкой, без Callout о переезде; «До зарплаты» — без абзацев (критик Блока 3)', async () => {
+  it('«Освободится» (Р-86): карточка плана — +N в месяц из freedChange (годовое — доля в месяц) первой цели очереди; «До зарплаты» — без абзацев (критик Блока 3)', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-09-17T07:00:00Z')) // 17 сентября, Алматы
     try {
@@ -867,6 +871,7 @@ describe('views/Money.vue — финансовые показатели (рас�
       })
       const store = useFinanceStore()
       store.householdDoc.people = [{ id: 'a', name: 'Ильяс', salary: 700_000, payday: 25, updatedAt: '' }]
+      store.householdDoc.goals = [{ id: 'trip', name: 'Отпуск', need: 2_000_000, seed: 0, have: 0, monthly: 50_000, hue: 'teal', planPct: 0, movements: [], updatedAt: '' }]
       // Страховка раз в год 60 000, с октября — 48 000: в месяц освобождается 1 000, за год — 12 000 (а не 12 000 и 144 000).
       store.householdDoc.obligations = [
         {
@@ -876,10 +881,10 @@ describe('views/Money.vue — финансовые показатели (рас�
         { id: 'net', name: 'Интернет', note: '', day: 20, category: 'd1', versions: [{ from: '2026-01', amount: 10_000 }], updatedAt: '' },
       ]
       let html = await renderScreen(Money, '/money')
-      expect(html).toContain('С октября')
-      expect(html).toContain(`Освободится ${money(1_000)} в месяц`)
-      expect(html).toContain(`Страховка: ${plain(60_000)} → ${plain(48_000)} ₸ · ${money(12_000)} за год`)
-      expect(html).not.toContain(money(144_000))
+      expect(html).toContain('С октября · Страховка')
+      expect(html).toContain(`+${money(1_000)}`)
+      expect(html).toContain('в месяц → «Отпуск»')
+      expect(html).not.toContain(money(12_000))
       expect(html).not.toContain('Перед экономией')
       expect(html).not.toContain('переезд')
       // Счёта нет — одна строка вместо абзаца.
@@ -892,8 +897,8 @@ describe('views/Money.vue — финансовые показатели (рас�
       ]
       store.householdDoc.accounts = [{ id: 'card', name: 'Kaspi Gold', note: '', kind: 'card', amount: 100_000, updatedAt: '' }]
       html = await renderScreen(Money, '/money')
-      expect(html).toContain(`Освободится ${money(80_000)} в месяц`)
-      expect(html).toContain(`Аренда: ${plain(300_000)} → ${plain(220_000)} ₸ · ${money(960_000)} за год`)
+      expect(html).toContain('С октября · Аренда')
+      expect(html).toContain(`+${money(80_000)}`)
       // Сводка «До зарплаты» (пивот 3): аренда 300 000 до 25-го, на счетах 100 000 — тег «не хватает».
       expect(html).toContain(`не хватает ${plain(200_000)} ₸`)
       expect(html).not.toContain('Перенесите платёж')

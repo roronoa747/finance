@@ -17,7 +17,10 @@ import {
   liveSpendCategories,
   moneySettingsOf,
   monthPlan,
+  movementMonth,
+  planFromSource,
   planSave,
+  progressMoments,
   salaryOf,
   type MonthPlanCtx,
   type PlanQueueItem,
@@ -111,6 +114,40 @@ function onSave() {
   finance.applyPlan(s.save, { by: auth.slot, note: 'по плану месяца' })
 }
 
+/* ---------- прочие источники (Р-86): «Освободится», «Долг закрыт» — одной кнопкой, пока зарплата отложена ---------- */
+const source = computed(() => {
+  if (!canEdit.value || save.value) return null
+  const sctx = { ...ctx.value, rawCredits: finance.householdDoc.credits }
+  const f = planFromSource(state.value, sctx, { from: 'freed' })
+  if (f?.mode === 'monthly' && !f.recorded) {
+    const o = finance.obligations.find((x) => x.id === f.record.sourceId)
+    const when = f.after ? ` ${by(f.after)}` + (f.before && f.before !== f.after ? `, а не ${by(f.before)}` : '') : ''
+    return {
+      kind: 'freed' as const,
+      label: `С ${monthFrom(f.record.period, false)} · ${o?.name ?? ''}`,
+      big: `+${money(f.add)}`,
+      meta: `в месяц → «${f.name}»${when}`,
+      button: `Добавить к «${f.name}»`,
+      note: 'освободившийся платёж',
+      src: f,
+    }
+  }
+  const closed = progressMoments({ credits: finance.householdDoc.credits, payments: finance.payments }).find(
+    (m) => m.kind === 'closed' && movementMonth(m.at) === props.monthKey,
+  )
+  if (closed?.kind === 'closed') {
+    const c = planFromSource(state.value, sctx, { from: 'credit', creditId: closed.creditId })
+    if (c?.mode === 'once' && !c.recorded && c.amount > 0) {
+      return { kind: 'credit' as const, label: `${closed.name} закрыт`, big: money(c.amount), meta: 'свободны в этом месяце → по очереди', button: 'Отложить', note: 'закрытый долг', src: c }
+    }
+  }
+  return null
+})
+function onSource() {
+  const s = source.value
+  if (s && auth.slot) finance.applyPlan(s.src, { by: auth.slot, note: s.note })
+}
+
 /* ---------- кто платит (Р-80) ---------- */
 type PayerTarget = { kind: 'obligation' | 'credit' | 'goal' | 'debt'; id: string; name: string; payer: PersonId | null }
 const payerFor = ref<PayerTarget | null>(null)
@@ -163,6 +200,8 @@ function statusOf(q: PlanQueueItem): { text: string; warn?: boolean; ok?: boolea
   if (q.paused === 'off') return { text: 'на паузе' }
   if (q.paused === 'plan') return { text: 'на паузе ради плана' }
   if (q.kind === 'debt') {
+    // С планом «Сначала долги» сумма карточки — шаг плана (Р-82); шага в долг в этом месяце нет — так и пишем.
+    if (q.want <= 0 && finance.activePlan) return { text: 'по плану «Сначала долги»' }
     if (q.want <= 0) return { text: canEdit.value ? 'задайте сумму в месяц' : 'по графику' + (q.doneMonth ? ` · ${by(q.doneMonth)}` : '') }
     return { text: `${plain(q.given)} ₸` + (q.doneMonth ? ` · ${by(q.doneMonth)}` : ''), warn: q.given < q.want }
   }
@@ -207,6 +246,14 @@ const wishSrc = usePhotos(() => wishes.value.slice(0, 3).map((w) => w.photoId))
 
 <template>
   <div class="flex flex-col gap-3">
+    <!-- Деньги сверх плана (Р-86): карточка над кругом, одна кнопка -->
+    <Card v-if="source" class="flex flex-col gap-1.5 border-[1.5px] border-brand" :data-source="source.kind">
+      <span class="type-section">{{ source.label }}</span>
+      <span class="font-num text-[40px] font-bold leading-none num text-ink">{{ source.big }}</span>
+      <span class="type-meta num">{{ source.meta }}</span>
+      <Button class="mt-1.5 w-full" @click="onSource">{{ source.button }}</Button>
+    </Card>
+
     <!-- Круг месяца: обе зарплаты снаружи, платежи · траты · очередь внутри -->
     <MonthRing :income="plan.income.byPerson" :parts="parts" :total="plan.income.total">
       <template v-if="plan.short > 0">

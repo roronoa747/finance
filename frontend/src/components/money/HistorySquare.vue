@@ -10,7 +10,7 @@ import { money, moneyIn } from '@/lib/money'
 import { MONTHS_NOM, addMonths, dayLabel, monthKey, parseMonthKey } from '@/lib/dates'
 import {
   ARTICLE_NAMES,
-  breakdownPath,
+  articleParts,
   hasMonthSummary,
   historyCategories,
   historyFeed,
@@ -18,8 +18,6 @@ import {
   monthSummary,
   progressMoments,
   liveSpendCategories,
-  recordedBreakdown,
-  salaryBreakdownPath,
   spendCategoryName,
   summaryMonth,
   type HistoryItem,
@@ -82,7 +80,7 @@ const shown = computed(() =>
       items: d.items.filter((x) => {
         if (filter.value === 'all') return true
         if (filter.value === 'ops') return x.kind === 'op'
-        if (filter.value === 'marks') return x.kind === 'mark' || x.kind === 'breakdown'
+        if (filter.value === 'marks') return x.kind === 'mark' || x.kind === 'record'
         return x.kind === 'op' && !x.op.internal && x.op.amount < 0 && (x.op.categoryId ?? UNKNOWN_CATEGORY) === filter.value
       }),
     }))
@@ -149,29 +147,38 @@ function momentLine(x: Extract<HistoryItem, { kind: 'moment' }>) {
   return {
     title: `«${m.name}» закрыт`,
     note: inPlan ? 'его платёж идёт в следующий долг по плану' : `освободилось ${money(m.freed)} в месяц`,
-    // Раскладка — решение: viewer его не принимает (Р-13).
-    to: canEdit.value ? (inPlan ? '/money/plan' : breakdownPath({ from: 'credit', credit: m.creditId })) : null,
+    // Куда деть освободившееся — карточка «Долг закрыт» в плане месяца (Р-86); viewer решений не принимает (Р-13).
+    to: canEdit.value ? (inPlan ? '/money/plan' : '/money') : null,
   }
 }
 
-/** Разбор (B2C-58): откуда деньги и части по статьям в порядке плана; нажатие — записанный разбор. */
-function breakdownLine(a: Allocation) {
+/**
+ * Запись денег месяца (Р-85): «Отложить по плану» — части по целям и фондам; старый разбор Блока 11 и раскладка —
+ * части по статьям, как были. Нажатие — сводка этого месяца в плане «Денег».
+ */
+function recordLine(a: Allocation) {
   const from = a.source === 'salary' ? `зарплата · ${personName(a.sourceId)}` : a.source === 'rest' ? 'остаток месяца' : 'каждый месяц'
-  const to =
-    a.source === 'salary'
-      ? salaryBreakdownPath(a.sourceId as 'a', a.period)
-      : a.source === 'rest'
-        ? breakdownPath({ from: 'rest', amount: a.total, period: a.period })
-        : null
   const by = a.source === 'salary' && a.by === a.sourceId ? '' : ` · ${personName(a.by)}`
-  return { note: `${from}${by}`, to, parts: recordedBreakdown(a, financeStore.moneyArticles.map((x) => x.id)).parts }
+  const parts =
+    a.kind === 'plan'
+      ? a.parts.map((p) => ({ key: p.target, name: partName(p.target), amount: p.amount, color: 'var(--s3)' }))
+      : articleParts(a).parts.map((p) => ({ key: p.key, name: ARTICLE_NAMES[p.key], amount: p.amount, color: ARTICLE_COLORS[p.key] }))
+  return { title: a.kind === 'plan' ? 'Отложено по плану' : 'Разложено', note: `${from}${by}`, to: `/money?month=${a.period}`, parts }
+}
+/** Часть записи плана: цель или фонд по id, досрочка — «Досрочка в <долг>». */
+function partName(target: string) {
+  if (target.startsWith('prepay:')) {
+    const c = financeStore.credits.find((x) => x.id === target.slice(7))
+    return c ? `Досрочка в «${c.name}»` : 'Досрочка'
+  }
+  return financeStore.goals.find((g) => g.id === target)?.name ?? 'Цель'
 }
 /** Строки разбора ленты — один расчёт на запись, шаблон только читает (ревью frontend Б11, Н-8). */
-const breakdownLines = computed(
-  () => new Map(shown.value.flatMap((d) => d.items).flatMap((x) => (x.kind === 'breakdown' ? [[x.allocation.id, breakdownLine(x.allocation)] as const] : []))),
+const recordLines = computed(
+  () => new Map(shown.value.flatMap((d) => d.items).flatMap((x) => (x.kind === 'record' ? [[x.allocation.id, recordLine(x.allocation)] as const] : []))),
 )
-function openBreakdown(id: string) {
-  const to = breakdownLines.value.get(id)?.to
+function openRecord(id: string) {
+  const to = recordLines.value.get(id)?.to
   if (to) void router.push(to)
 }
 
@@ -182,7 +189,7 @@ function recategorize(to: MerchantRule['to']) {
   if (opOpen.value) void ops.recategorize(ruleMatchOf(opOpen.value), to)
   opOpen.value = null
 }
-// Отметка — её лист (снять отметку, «Разложить» у зарплаты); у досрочки листа отметки нет.
+// Отметка — её лист (снять отметку, «К плану месяца» у зарплаты); у досрочки листа отметки нет.
 const markOpen = ref<Payment | null>(null)
 </script>
 
@@ -237,21 +244,21 @@ const markOpen = ref<Payment | null>(null)
             <span class="block text-[14.5px] font-semibold num" :class="markLine(x.payment).plus ? 'text-ok' : 'text-ink'">{{ markLine(x.payment).value }}</span>
           </template>
         </Row>
-        <template v-else-if="x.kind === 'breakdown'">
+        <template v-else-if="x.kind === 'record'">
           <Row
             dense
-            title="Разложено"
-            :note="breakdownLines.get(x.allocation.id)!.note"
-            :clickable="!!breakdownLines.get(x.allocation.id)!.to"
-            @click="openBreakdown(x.allocation.id)"
+            :title="recordLines.get(x.allocation.id)!.title"
+            :note="recordLines.get(x.allocation.id)!.note"
+            :clickable="!!recordLines.get(x.allocation.id)!.to"
+            @click="openRecord(x.allocation.id)"
           >
             <template #value>
               <span class="block text-[14.5px] font-semibold num text-ink">{{ money(x.allocation.total) }}</span>
             </template>
           </Row>
-          <div v-for="p in breakdownLines.get(x.allocation.id)!.parts" :key="p.key" class="flex items-center gap-2.5 pb-1.5 pl-[46px] text-[13px] text-ink-2">
-            <i class="size-2 shrink-0 rounded-full" :style="{ background: ARTICLE_COLORS[p.key] }" aria-hidden="true" />
-            <span class="flex-1">{{ ARTICLE_NAMES[p.key] }}</span>
+          <div v-for="p in recordLines.get(x.allocation.id)!.parts" :key="p.key" class="flex items-center gap-2.5 pb-1.5 pl-[46px] text-[13px] text-ink-2">
+            <i class="size-2 shrink-0 rounded-full" :style="{ background: p.color }" aria-hidden="true" />
+            <span class="flex-1">{{ p.name }}</span>
             <span class="num">{{ money(p.amount) }}</span>
           </div>
         </template>
@@ -297,6 +304,6 @@ const markOpen = ref<Payment | null>(null)
     :period="markOpen.period"
     :title="markOpen.kind === 'salary' ? `Зарплата · ${personName(markOpen.targetId)}` : targetName(markOpen)"
     @close="markOpen = null"
-    @allocate="router.push(salaryBreakdownPath(markOpen!.targetId as 'a', markOpen!.period))"
+    @allocate="router.push('/money')"
   />
 </template>

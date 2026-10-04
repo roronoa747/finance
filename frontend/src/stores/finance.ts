@@ -49,9 +49,6 @@ import {
   type PlanState,
   type PlanStep,
   type ScheduledKind,
-  breakdownWith,
-  type BreakdownEffects,
-  type MonthBreakdown,
   type PlanFromSource,
   type PlanSave,
 } from '@/lib/finance'
@@ -78,8 +75,6 @@ import type {
   DebtCard,
 } from '@/types/finance'
 import type { MerchantRule } from '@/lib/statements/types'
-import { spendArticle } from '@/lib/statements/dictionary'
-import { seedSpendCategories } from '@/lib/statements/model'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { FX_ACCOUNT_NAME } from '@/lib/fx'
@@ -1919,23 +1914,6 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
-  /** Новый порядок статей (`ids` сверху вниз): пишутся только статьи, чей номер поменялся. */
-  function reorderArticles(ids: ArticleKey[]) {
-    const moved = ids
-      .map((id, i) => ({ id, order: i + 1 }))
-      .filter(({ id, order }) => moneyArticles.value.find((a) => a.id === id)?.order !== order)
-    if (!moved.length) return
-    const t = new Date().toISOString()
-    mutateHouseholdDoc((doc) => {
-      const list = (doc.moneyArticles ??= [])
-      for (const { id, order } of moved) {
-        const own = list.find((a) => a.id === id)
-        if (own) Object.assign(own, { order, deletedAt: null, updatedAt: t })
-        else list.push({ ...moneyArticles.value.find((a) => a.id === id)!, order, updatedAt: t })
-      }
-    })
-  }
-
   /** Пороги ступеней, копилка, «Ваш порядок пройден» — один объект, целиком с новой меткой. */
   function setMoneySettings(patch: Partial<Omit<MoneySettings, 'updatedAt' | 'deletedAt'>>) {
     if (unchanged(moneySettings.value, patch)) return
@@ -1945,21 +1923,7 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
-  /**
-   * Статья раздела выписки (Р-56): «Жизнь» или «Траты». Разделы, которых семья ещё не завела,
-   * сеются стартовым словарём целиком — иначе один раздел заслонил бы остальные.
-   */
-  function setSpendArticle(categoryId: string, article: 'must' | 'life' | 'spend') {
-    if (spendArticle(categoryId, householdDoc.value.spendCategories ?? []) === article) return
-    const t = new Date().toISOString()
-    mutateHouseholdDoc((doc) => {
-      seedSpendCategories(doc, t)
-      const c = (doc.spendCategories ?? []).find((x) => x.id === categoryId)
-      if (c) Object.assign(c, { article, updatedAt: t })
-    })
-  }
-
-  /* ---------- записи разбора (B2C-21, Блок 11) ---------- */
+  /* ---------- записи: «Отложить по плану», прежние разборы и раскладки (Р-85) ---------- */
   const allocations = computed(() => (householdDoc.value.allocations ?? []).filter((a) => !a.deletedAt))
 
   /** Решение разбора — в общий документ: партнёр и второй заход видят его, а не разбирают снова. */
@@ -1970,59 +1934,6 @@ export const useFinanceStore = defineStore('finance', () => {
       doc.allocations = [...(doc.allocations ?? []), record]
     })
     return record
-  }
-
-  /**
-   * «Разложить» (B2C-57, Р-53): исполняет то, что посчитал `breakdownEffects`, теми же правками, что
-   * прежняя раскладка, и пишет запись разбора. Разово — взносы в цели и копилку (нет копилки —
-   * заводится «Подушка», Р-66), сдвиг остатка выбранного счёта на взносы, досрочка (шагом плана,
-   * если это шаг плана); часть «Дорогих долгов» — внесённое на деле (не больше остатка долга).
-   * Каждый месяц — рост взносов целей и статей.
-   */
-  function applyBreakdown(o: {
-    record: Pick<Allocation, 'source' | 'sourceId' | 'period'>
-    total: number
-    mode: 'once' | 'monthly'
-    effects: BreakdownEffects
-    off: ArticleKey[]
-    by: PersonId
-    accountId?: string | null
-    note: string
-  }): Allocation {
-    let parts = o.effects.parts.slice()
-    if (o.mode === 'once') {
-      let toGoals = 0
-      for (const c of o.effects.contributions) {
-        let goalId = c.goalId
-        if (!goalId) {
-          goalId = addGoal({ name: 'Подушка', need: c.need ?? c.amount, monthly: 0, hue: 'teal' })
-          setMoneySettings({ potGoalId: goalId })
-        }
-        contribute(goalId, c.amount, o.by, o.note)
-        toGoals += c.amount
-      }
-      if (o.accountId && toGoals > 0) shiftAccountAmount(o.accountId, -toGoals)
-      const pp = o.effects.prepay
-      if (pp) {
-        const rec = applyPrepayment(pp.creditId, o.by, {
-          amount: pp.amount,
-          mode: 'term',
-          accountId: o.accountId ?? null,
-          ...(pp.planId ? { planId: pp.planId } : {}),
-        })
-        const paid = rec?.amount ?? 0
-        if (paid !== pp.amount) parts = parts.map((p) => (p.target === 'debts' ? { ...p, amount: paid } : p)).filter((p) => p.amount > 0)
-      }
-    } else {
-      for (const m of o.effects.monthly) {
-        const g = goals.value.find((x) => x.id === m.goalId && !x.deletedAt)
-        if (g) setGoalMonthly(g.id, g.monthly + m.add)
-      }
-      for (const a of o.effects.articleAdds) {
-        setArticle(a.key, { amount: (moneyArticles.value.find((x) => x.id === a.key)?.amount ?? 0) + a.add })
-      }
-    }
-    return recordAllocation({ ...o.record, kind: 'breakdown', by: o.by, total: o.total, parts, ...(o.off.length ? { off: o.off } : {}) })
   }
 
   /**
@@ -2050,15 +1961,6 @@ export const useFinanceStore = defineStore('finance', () => {
     }
     const total = save.total
     return recordAllocation({ ...save.record, kind: 'plan', by: o.by, total, parts })
-  }
-
-  /**
-   * Разобрать (B2C-58): кольцо «Разложить» и карточка «как обычно» — одной дорогой (`breakdownWith`),
-   * поэтому записи у них одинаковые при одинаковых статьях.
-   */
-  function layBreakdown(m: MonthBreakdown, off: ArticleKey[], o: { by: PersonId; accountId?: string | null; note: string }): Allocation {
-    const w = breakdownWith(m, off)
-    return applyBreakdown({ record: m.record, total: m.amount, mode: m.mode, effects: w.effects, off: w.off, ...o })
   }
 
   function addGift(g: { forSlot: PersonId; name: string; price: number; photoId?: string | null }): Gift {
@@ -2235,14 +2137,10 @@ export const useFinanceStore = defineStore('finance', () => {
     withdraw,
     addWish,
     recordAllocation,
-    applyBreakdown,
-    layBreakdown,
     moneyArticles,
     moneySettings,
     setArticle,
-    reorderArticles,
     setMoneySettings,
-    setSpendArticle,
     updateSpendCategory,
     addGift,
     updateGift,

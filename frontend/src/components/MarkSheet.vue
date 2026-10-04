@@ -56,9 +56,9 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (e: 'close'): void
-  /** Отметка записана (не правка) — родитель может повести дальше (разбор зарплаты). */
+  /** Отметка записана (не правка) — родитель может повести дальше (план месяца). */
   (e: 'marked', record: Payment): void
-  /** «Разложить» у пришедшей по выписке и не разложенной зарплаты — родитель ведёт на разбор. */
+  /** «К плану месяца» у пришедшей по выписке и не отложенной зарплаты — родитель ведёт в план (Р-78). */
   (e: 'allocate'): void
 }>()
 
@@ -82,7 +82,7 @@ const recordTenge = computed(() =>
 const own = computed(() => (person.value ? salaryOf(person.value, props.period) : null))
 const fxSalary = computed(() => !!own.value && own.value.currency !== 'KZT')
 const sign = computed(() => (own.value ? CURRENCY_SIGN[own.value.currency] : '₸'))
-/** Своя зарплата, отмеченная по выписке, без записи разбора — «Разложить» (возврат приёмки п. 2). */
+/** Своя зарплата, отмеченная по выписке, без записи месяца — «К плану месяца» (возврат приёмки п. 2). */
 const canAllocate = computed(
   () => salary.value && !!record.value && !!salaryToAllocate({ ...finance.householdDoc, credits: finance.credits }, auth.slot, undefined, record.value),
 )
@@ -235,7 +235,7 @@ const unmarkNote = computed(() => {
         </div>
       </div>
       <div v-else class="flex flex-col gap-2">
-        <Button v-if="canAllocate" class="w-full" @click="emit('close'); emit('allocate')">Разложить</Button>
+        <Button v-if="canAllocate" class="w-full" @click="emit('close'); emit('allocate')">К плану месяца</Button>
         <!-- Валютная зарплата правится снятием и новой отметкой: сумма в валюте, тенге — по курсу дня -->
         <Button v-if="!record.foreign" variant="secondary" class="w-full" @click="editFromRecord">Другая сумма или счёт</Button>
         <Button variant="secondary" class="w-full" @click="confirmUnmark = true">Снять отметку</Button>

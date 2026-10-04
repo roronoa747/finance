@@ -2,14 +2,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { money, plain } from '@/lib/money'
-import { accountBalance, breakdownWith, monthBreakdown, paidFor } from '@/lib/finance'
+import { plain } from '@/lib/money'
 import type { Payment } from '@/types/finance'
 import { createSSRApp } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import SalaryRow from './SalaryRow.vue'
 import Money from '@/views/Money.vue'
-import Breakdown from '@/views/Breakdown.vue'
 import { authAs, planFamilyDoc } from '@/test/planFamily'
 import { renderScreen, screenMixin } from '@/test/screenState'
 
@@ -136,48 +134,4 @@ describe('RP-10: «Пришла зарплата» (SSR)', () => {
   })
 
   /** Разбор зарплаты Ильяса за сентябрь — те же числа, что у экрана (`finance.ts`). */
-  const breakdownOf = () => {
-    const store = useFinanceStore()
-    const doc = store.householdDoc
-    return monthBreakdown(
-      { ...doc, credits: store.credits },
-      { key: '2026-09', totals: [], spendCategories: [], uploads: [], rawCredits: doc.credits },
-      { from: 'salary', person: 'a', period: '2026-09' },
-    )!
-  }
-  const path = '/week/breakdown?from=salary&person=a&period=2026-09'
-
-  it('Разбор с источником «зарплата» (B2C-58): «Остаётся N из 700 000» — из finance.ts; без отметки — не отмечена', async () => {
-    family('member', 'a', [salary()])
-    const mb = breakdownOf()
-    const rest = breakdownWith(mb, mb.articles.filter((a) => !a.on).map((a) => a.key)).fill.rest
-    const html = await renderScreen(Breakdown, path)
-    expect(html).toContain(`Остаётся ${money(rest)} из ${money(700_000)}`)
-    expect(html).toContain('>Разложить<')
-
-    setActivePinia(createPinia())
-    family('member', 'a')
-    expect(await renderScreen(Breakdown, path)).toContain('Эта зарплата ещё не отмечена.')
-    // Старый адрес раскладки — тот же разбор (редирект с параметрами).
-    expect(await renderScreen(Breakdown, '/week/salary?from=salary&person=a&period=2026-09')).toContain('Эта зарплата ещё не отмечена.')
-  })
-
-  it('«Разложить»: взносы в цели со счёта зарплаты, досрочка записью prepay, запись разбора с частями', async () => {
-    family('member', 'a', [salary()])
-    const store = useFinanceStore()
-    const mb = breakdownOf()
-    const w = breakdownWith(mb, mb.articles.filter((a) => !a.on).map((a) => a.key))
-    const toGoals = w.effects.contributions.reduce((a, c) => a + c.amount, 0)
-    expect(toGoals).toBeGreaterThan(0)
-    await renderScreen(Breakdown, path, undefined, [screenMixin({}, (s) => (s.lay as () => void)())])
-    expect(store.allocations).toHaveLength(1)
-    expect(store.allocations[0]).toMatchObject({ kind: 'breakdown', source: 'salary', sourceId: 'a', period: '2026-09', total: 700_000 })
-    expect(store.allocations[0].parts).toEqual(w.effects.parts)
-    // Деньги уходят со счёта, на который пришла зарплата; запись зарплаты не тронута.
-    const card = store.householdDoc.accounts[0]
-    const prepaid = store.payments.filter((p) => p.kind === 'prepay').reduce((a, p) => a + p.amount, 0)
-    expect(prepaid).toBe(w.effects.prepay?.amount ?? 0)
-    expect(accountBalance(card, store.payments)).toBe(2_000_000 + 700_000 - toGoals - prepaid)
-    expect(paidFor(store.payments, 'salary', 'a', '2026-09')?.amount).toBe(700_000)
-  })
 })

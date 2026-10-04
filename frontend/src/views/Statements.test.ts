@@ -299,9 +299,9 @@ describe('views/Statements.vue — решения по одному и итог 
     const html = text(raw)
     expect(html).toContain('Остались деньги с')
     expect(html).toContain('Остались деньги с сентября?')
-    expect(html).toContain('Месяц заканчивается — разложим остаток в мечту или на досрочку')
+    expect(html).toContain('Месяц заканчивается — отложим остаток по очереди целей')
     expect(html).toContain('Не сейчас')
-    expect(brand(raw)).toEqual(['Разложить'])
+    expect(brand(raw)).toEqual(['Отложить'])
 
     // «Не сейчас» — ответ до конца месяца в формате главного («2026-09», не JSON): карточка уходит.
     const answered = await renderScreen(Statements, '/week', undefined, [screenMixin({}, (s) => (s.answerRest as (go: boolean) => void)(false))])
@@ -349,7 +349,7 @@ describe('views/Statements.vue — решения по одному и итог 
     raw = await renderScreen(Statements, '/week')
     expect(text(raw)).not.toContain('Пришла зарплата Алихан?')
     expect(text(raw)).toContain('Остались деньги с')
-    expect(brand(raw)).toEqual(['Разложить'])
+    expect(brand(raw)).toEqual(['Отложить'])
   })
 
   it('B2C-49: продавец месяца раньше подписки и остатка; «Освободится N ₸» — в очереди с «Распределить», сумма — как в «Деньгах»', async () => {
@@ -365,7 +365,7 @@ describe('views/Statements.vue — решения по одному и итог 
     expect(html).not.toContain('Оставить подписку')
     expect(html).not.toContain('Остались деньги с')
 
-    // Освободится: аренда 220 000 → 180 000 с ноября — 40 000 ₸ в месяц, «Распределить».
+    // Освободится: аренда 220 000 → 180 000 с ноября — 40 000 ₸ в месяц, «К плану месяца» (карточка плана, Р-86).
     vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
     finance.householdDoc.obligations = [{ id: 'flat', name: 'Квартира', note: '', day: 5, category: 'd1', versions: [{ from: '2000-01', amount: 220_000 }, { from: '2026-11', amount: 180_000 }], updatedAt: T }]
     useOperationsStore().ops = {}
@@ -373,7 +373,7 @@ describe('views/Statements.vue — решения по одному и итог 
     html = text(raw)
     expect(html).toContain(`Освободится ${m(40_000)} в месяц`)
     expect(html).toContain('Квартира · с ноября')
-    expect(brand(raw)).toEqual(['Распределить'])
+    expect(brand(raw)).toEqual(['К плану месяца'])
   })
 
   it('«Остались деньги?»: остаток месяца уже разложил партнёр (раскладка rest в общем документе) — не спрашиваем', async () => {

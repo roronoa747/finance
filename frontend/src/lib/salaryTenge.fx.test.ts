@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { budgetAmounts, fxToTenge, monthBreakdown, monthSummary, paidTenge, salaryAt, salaryTenge, totalIncome, untilPayday } from './finance'
+import { budgetAmounts, fxToTenge, monthPlan, monthSummary, paidTenge, salaryAt, salaryTenge, totalIncome, untilPayday } from './finance'
 import type { FxExchange, Payment, Person, RateBook } from '@/types/finance'
 
 // Тенге зарплаты месяца (B2C-80, Р-74): обменянное — по своему курсу, необменянное — по курсу
@@ -87,11 +87,14 @@ describe('тенге зарплаты в расчётах — таблица н�
     expect(monthSummary({ payments }, '2026-10').income).toBe(754_470)
   })
 
-  it('разбор месяца: зарплата Ильяса — 763 350 ₸; ждём Аруну — 500 000 ₸; разбор Аруны ждёт Ильяса — 763 350 ₸', () => {
+  it('план месяца (Блок 14): зарплата Ильяса пришла — 763 350 ₸; ждём Аруну — 500 000 ₸; пришла и она — оба пришли', () => {
     const ctx = { key: '2026-10', totals: [], spendCategories: [], uploads: [] }
-    expect(monthBreakdown(state, ctx, { from: 'salary', person: 'a', period: '2026-10' })).toMatchObject({ amount: 763_350, expected: 500_000 })
+    expect(monthPlan(state, ctx).income.byPerson).toEqual([
+      { person: 'a', name: 'Ильяс', amount: 763_350, came: true },
+      { person: 'b', name: state.people!.find((p) => p.id === 'b')!.name, amount: 500_000, came: false },
+    ])
     const paidB: Payment = { ...came('2026-10'), id: 'sb', targetId: 'b', by: 'b', amount: 500_000, foreign: undefined, currency: undefined }
-    expect(monthBreakdown({ ...state, payments: [...payments, paidB] }, ctx, { from: 'salary', person: 'b', period: '2026-10' })).toMatchObject({ amount: 500_000, expected: 763_350 })
+    expect(monthPlan({ ...state, payments: [...payments, paidB] }, ctx).income).toMatchObject({ total: 1_263_350, byPerson: [{ came: true }, { amount: 500_000, came: true }] })
   })
 
   it('«до зарплаты» — следующая зарплата Ильяса (ноябрь) по последнему курсу: 1 500 × 504 = 756 000 ₸', () => {

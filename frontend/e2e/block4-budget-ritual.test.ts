@@ -15,7 +15,6 @@ import {
 import { monthKey } from '../src/lib/dates'
 import { money } from '../src/lib/money'
 import Money from '../src/views/Money.vue'
-import Breakdown from '../src/views/Breakdown.vue'
 
 describe('e2e / block-4 — Сквозной сценарий бюджета («Деньги»: Доход, Платежи) и Ритуала высвобождения', () => {
   const storageMap = new Map<string, string>()
@@ -152,20 +151,22 @@ describe('e2e / block-4 — Сквозной сценарий бюджета («
     const appList = createSSRApp(Money)
     appList.use(router)
     const htmlList = await renderToString(appList)
-    const payments = htmlList.slice(htmlList.indexOf('>Платежи<'))
+    // Прежние «Платежи» — под «Подробнее» (Блок 14).
+    const more = htmlList.slice(htmlList.indexOf('data-more'))
+    const payments = more.slice(more.indexOf('>Платежи<'))
     expect(payments).toContain('Аренда квартиры')
     expect(payments).toContain('Автокредит')
     expect(htmlList).toContain(money(750_000))
 
-    // 8. Разбор освободившихся денег (бывший /ritual → /week/salary → разбор, B2C-58):
-    // А) Нет запланированного снижения
+    // 8. Освободившиеся деньги (бывший /ritual → разбор → план месяца, Блок 14, Р-86):
+    // А) Нет запланированного снижения — карточки в плане нет
     await router.push('/week/salary')
-    expect(router.currentRoute.value.path).toBe('/week/breakdown')
+    expect(router.currentRoute.value.path).toBe('/money')
 
-    const appRitualEmpty = createSSRApp(Breakdown)
+    const appRitualEmpty = createSSRApp(Money)
     appRitualEmpty.use(router)
     const htmlRitualEmpty = await renderToString(appRitualEmpty)
-    expect(htmlRitualEmpty).toContain('Разбирать нечего.')
+    expect(htmlRitualEmpty).not.toContain('data-source="freed"')
 
     // Б) Появляется будущее снижение аренды на 50 000 ₸
     financeStore.householdDoc.obligations[0].versions.push({
@@ -178,14 +179,13 @@ describe('e2e / block-4 — Сквозной сценарий бюджета («
     expect(freed?.delta).toBe(-50_000)
 
     // Рендер активного экрана ритуала
-    const appRitualActive = createSSRApp(Breakdown)
+    const appRitualActive = createSSRApp(Money)
     appRitualActive.use(router)
     const htmlRitualActive = await renderToString(appRitualActive)
-    // Кольцо на освободившиеся 50 000 ₸ — статьи от «Запаса» (Р-65), «Мечты» среди них.
-    expect(htmlRitualActive).toContain(`из ${money(50_000)}`)
-    expect(htmlRitualActive).toContain('data-chip="dreams"')
-    expect(htmlRitualActive).not.toContain('data-chip="life"')
-    expect(htmlRitualActive).toMatch(/>\s*Разложить\s*</)
+    // Карточка плана: +50 000 ₸ в месяц первой цели очереди, одна кнопка (Р-86).
+    expect(htmlRitualActive).toContain('data-source="freed"')
+    expect(htmlRitualActive).toContain(`+${money(50_000)}`)
+    expect(htmlRitualActive).toMatch(/>\s*Добавить к «[^»]+»\s*</)
 
     // В) Распределение высвобожденных денег: 30 000 в цель, 20 000 на качество жизни
     const goalBefore = financeStore.goals[0]

@@ -479,8 +479,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(modal).not.toContain('Запланировать изменение')
       expect(modal).not.toContain('Удалить обязательство')
       expect(modal).not.toContain('<input')
-      // Обзор второго — событие «освободится» из того же плана.
-      expect(await page(B.pinia, Money, '/money')).toContain(`Освободится ${money(20_000)} в месяц`)
+      // «Освободится» — карточка плана месяца с кнопкой (Р-86); viewer решений не принимает (Р-13) — у него её нет.
+      expect(await page(B.pinia, Money, '/money')).not.toContain('data-source=')
 
       // Ноябрь: план наступил — строка «с ноября», сумма сейчас 200 000.
       at('2026-11-02T04:00:00Z')

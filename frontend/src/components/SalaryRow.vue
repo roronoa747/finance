@@ -6,7 +6,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { moneyIn, plain } from '@/lib/money'
 import { atLabel } from '@/lib/dates'
-import { lastAccountFor, liveAccounts, paidFor, salaryAt, salaryBreakdownPath, salaryOf, salaryOpen } from '@/lib/finance'
+import { lastAccountFor, liveAccounts, paidFor, salaryAt, salaryOf, salaryOpen } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
 import { memberColor } from '@/lib/palette'
@@ -50,7 +50,7 @@ const person = computed(() => finance.people.find((p) => p.id === props.personId
 const record = computed(() => paidFor(finance.payments, 'salary', props.personId, props.period))
 /**
  * Оклад в валюте (B2C-79, Р-73): приходит на валютный счёт суммой в валюте, после — «Обменял»
- * (`SalaryExchange`); в разбор сразу не ведёт — сначала обмен.
+ * (`SalaryExchange`); в план месяца сразу не ведёт — сначала обмен.
  */
 const own = computed(() => (person.value ? salaryOf(person.value, props.period) : null))
 const fxSalary = computed(() => !!own.value && own.value.currency !== 'KZT')
@@ -87,9 +87,9 @@ function openMark(amount: number, account: string | null | undefined) {
   sheet.value = 'mark'
 }
 
-/** После отметки — разбор этой зарплаты (B2C-58). */
+/** После отметки — план месяца: «Отложить по плану» этой зарплаты (Р-78). */
 function toAllocation() {
-  void router.push(salaryBreakdownPath(props.personId, props.period))
+  void router.push('/money')
 }
 
 function mark(amount: number, accountId: string | null | undefined) {
@@ -103,7 +103,7 @@ function mark(amount: number, accountId: string | null | undefined) {
   toAllocation()
 }
 
-/** Отмечено в листе: тенговая — в разбор; валютная — остаёмся, дальше «Обменял». */
+/** Отмечено в листе: тенговая — в план месяца; валютная — остаёмся, дальше «Обменял». */
 function onMarked() {
   if (!fxSalary.value) toAllocation()
 }
