@@ -288,4 +288,26 @@ describe('e2e / B2C Блок 14 — план месяца на двух теле
     setActivePinia(A.pinia)
     expect(A.store.goalOrder?.ids).toEqual(['car', 'cushion', 'trip', 'debt'])
   })
+
+  it('часть 10 (приёмка) — фонд наверху очереди: деньги первым получает он, а герой «Мечт» и «главная» — первая цель', async () => {
+    const A = await phone(server, st, 'a')
+    const B = await phone(server, st, 'b')
+    setActivePinia(A.pinia)
+    A.store.moveInQueue('cushion', 0)
+    await sync(A, B)
+    for (const P of [A, B]) {
+      setActivePinia(P.pinia)
+      // Сумма та же (467 000): порог «Подушки» далеко, все получают свой взнос; меняется только порядок.
+      expect(planOf(P).queue.map((q) => [q.id, q.given])).toEqual([['cushion', 30_000], ['trip', 40_000], ['car', 60_000], ['debt', 30_000]])
+      expect(planOf(P).rest).toBe(467_000)
+      expect(P.store.heroGoal?.id).toBe('trip')
+      const html = await screen(P.pinia, Money, '/money')
+      expect(part(html, 'data-queue="trip"')).toContain('главная')
+      expect(part(html, 'data-queue="cushion"')).not.toContain('главная')
+      // «Мечты»: фонды — только в плане (макет), герой — «Отпуск», в списке его нет.
+      const dreams = await screen(P.pinia, Dreams, '/')
+      expect(dreams).not.toContain('data-id="cushion"')
+      expect(dreams).not.toContain('data-id="trip"')
+    }
+  })
 })
