@@ -1387,7 +1387,7 @@ describe('PV-04: накопленное в цели не уходит в мин�
   })
 })
 
-describe('B2C-14 → Р-84 (B2C-85): setMainGoal — главная одна: первая в очереди, `main` не пишется', () => {
+describe('B2C-14 → Р-84 (B2C-85): makeMain — главная одна: первая в очереди, `main` не пишется', () => {
   const storage = new Map<string, string>()
   const T = '2026-09-01T00:00:00.000Z'
   const goal = (id: string, extra: Partial<Goal> = {}): Goal => ({
@@ -1416,7 +1416,7 @@ describe('B2C-14 → Р-84 (B2C-85): setMainGoal — главная одна: п
     store.setHouseholdDoc({ ...defaultSyncDoc(), goals: [goal('a', { main: true }), goal('b'), goal('c', { main: true, deletedAt: T })] }, 1)
     expect(mainGoal(store.goals, store.goalOrder)?.id).toBe('a')
 
-    store.setMainGoal('b')
+    store.makeMain('b')
     const byId = (id: string) => store.householdDoc.goals.find((g) => g.id === id)!
     expect(store.householdDoc.goalOrder).toEqual({ ids: ['b', 'a'], updatedAt: '2026-09-24T07:00:00.000Z' })
     expect(byId('b')).toEqual(goal('b'))
@@ -1429,7 +1429,7 @@ describe('B2C-14 → Р-84 (B2C-85): setMainGoal — главная одна: п
     expect(store.unsent).toBe(false)
     const before = JSON.stringify(store.householdDoc)
     vi.setSystemTime(new Date('2026-09-24T08:00:00Z'))
-    store.setMainGoal('b')
+    store.makeMain('b')
     expect(JSON.stringify(store.householdDoc)).toBe(before)
     expect(store.unsent).toBe(false)
   })

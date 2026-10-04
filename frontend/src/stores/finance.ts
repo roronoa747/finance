@@ -1765,11 +1765,6 @@ export const useFinanceStore = defineStore('finance', () => {
     moveInQueue(id, 0)
   }
 
-  /** Главная мечта (Р-8) — прежнее имя для экранов: теперь перенос наверх очереди (`makeMain`). */
-  function setMainGoal(id: string) {
-    makeMain(id)
-  }
-
   /** Карточка «закрыть кредит» (Р-82): объект целиком с новой меткой; правка без изменений не пишется. */
   function setDebtCard(patch: Partial<Omit<DebtCard, 'updatedAt' | 'deletedAt'>>) {
     if (unchanged(debtCard.value, patch)) return
@@ -1938,7 +1933,7 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
-  /** Пороги ступеней, копилка, «Ваш порядок пройден» — один объект, целиком с новой меткой. */
+  /** Пороги фондов (месяцы трат), ставка «дорогого» долга, копилка — один объект, целиком с новой меткой. */
   function setMoneySettings(patch: Partial<Omit<MoneySettings, 'updatedAt' | 'deletedAt'>>) {
     if (unchanged(moneySettings.value, patch)) return
     const t = new Date().toISOString()
@@ -2140,7 +2135,6 @@ export const useFinanceStore = defineStore('finance', () => {
     setGoalPhoto,
     setWishPhoto,
     removeGoal,
-    setMainGoal,
     goalOrder,
     wishOrder,
     spendPlans,

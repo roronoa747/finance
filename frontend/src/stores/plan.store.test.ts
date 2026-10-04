@@ -52,8 +52,8 @@ describe('очередь и «Сделать главной»', () => {
     expect(store.goals.find((g) => g.id === 'c')?.main).toBeUndefined()
     expect(store.goals.find((g) => g.id === 'b')).toEqual(goal('b', { main: true }))
     expect(mainGoal(store.goals, store.goalOrder)?.id).toBe('c')
-    // setMainGoal — та же дорога.
-    store.setMainGoal('a')
+    // Ещё раз — другая цель наверх.
+    store.makeMain('a')
     expect(store.queue.map((x) => x.id)).toEqual(['a', 'c', 'b'])
   })
 
