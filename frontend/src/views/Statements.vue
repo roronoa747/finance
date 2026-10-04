@@ -217,7 +217,8 @@ function answerRest(go: boolean) {
   const state = { ...finance.householdDoc, credits: finance.credits, book: fx.book }
   const ctx = { key: month, totals: spendTotals.value, spendCategories: spendCategories.value, uploads: store.uploads, rawCredits: finance.householdDoc.credits }
   const src = planFromSource(state, ctx, { from: 'rest', amount, period: month })
-  if (!src || src.mode !== 'once') return
+  // Остаток месяца уже отложен (партнёр ответил раньше) — второй раз не пишется и «Отложено» не показывается.
+  if (!src || src.mode !== 'once' || src.recorded) return
   finance.applyPlan(src, { by: auth.slot, note: 'остаток месяца' })
   restSaved.value = amount - src.left
   setTimeout(() => (restSaved.value = null), 2400)
