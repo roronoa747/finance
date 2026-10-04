@@ -339,8 +339,9 @@ function startDemoMode() {
     ]
   })
   // «Деньги» в демо — все три квадрата с данными (пивот 3, B2C-45): план «Сначала долги» (машина на
-  // паузе ради автокредита) и отметки месяца — аренда оплачена Аруной, зарплата Ильяса пришла.
-  financeStore.choosePlan({ keptGoalIds: ['g-trip'], cushionGoalId: null, months: 24, lump: 0 }, 'a')
+  // паузе ради автокредита) и отметки месяца — аренда оплачена Аруной, зарплата Ильяса пришла. Фонды «Запас» и
+  // «Подушка» — «не останавливать» (план ставит на паузу все цели, кроме этих, Р-82: квадрат «План» прежний).
+  financeStore.choosePlan({ keptGoalIds: ['g-trip', 'g-reserve', 'g-pot'], cushionGoalId: null, months: 24, lump: 0 }, 'a')
   // Прошлый месяц тоже с отметками — у «Истории» есть итог «Наш <месяц>» и в начале месяца.
   const prev = addMonths(monthKey(), -1)
   financeStore.markPaid('obligation', 'ob-rent', 'b', { period: prev, accountId: null, at: `${prev}-05T05:00:00.000Z` })
