@@ -44,9 +44,24 @@ let raf = 0
 let swallowClick = false
 
 const rowOf = (id: string) => ([...(root.value?.children ?? [])] as HTMLElement[]).find((el) => el.dataset.id === id) ?? null
-const docY = (clientY: number) => clientY + (window.scrollY || 0)
+
+/**
+ * Что прокручивается: в приложении — не окно, а `<main>` оболочки (AppShell) — ближайший предок с прокруткой по
+ * вертикали; нет такого — окно. Ищется при подъёме.
+ */
+let scroller: HTMLElement | null = null
+function findScroller(): HTMLElement | null {
+  for (let el = root.value?.parentElement ?? null; el; el = el.parentElement) {
+    const oy = getComputedStyle(el).overflowY
+    if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight) return el
+  }
+  return null
+}
+const scrollTop = () => (scroller ? scroller.scrollTop : window.scrollY || 0)
+const docY = (clientY: number) => clientY + scrollTop()
 
 function lift(id: string, pid: number, x: number, y: number) {
+  scroller = findScroller()
   drag.value = { id, pid, y0: docY(y), dy: 0, x, y }
   window.addEventListener('pointermove', onMove, { passive: false })
   window.addEventListener('pointerup', onUp)
@@ -149,7 +164,8 @@ function tick() {
   const h = window.innerHeight || 0
   const step = d.y < EDGE ? -Math.ceil((EDGE - d.y) / 6) : h && d.y > h - EDGE ? Math.ceil((d.y - (h - EDGE)) / 6) : 0
   if (step) {
-    window.scrollBy(0, step)
+    if (scroller) scroller.scrollTop += step
+    else window.scrollBy(0, step)
     follow()
   }
   raf = requestAnimationFrame(tick)
@@ -169,6 +185,7 @@ function finish(commit: boolean) {
   window.removeEventListener('keydown', onKey)
   document.removeEventListener('touchmove', blockScroll)
   cancelAnimationFrame(raf)
+  scroller = null
   const to = order.value.indexOf(d.id)
   drag.value = null
   if (commit && to !== props.ids.indexOf(d.id)) emit('move', d.id, to)

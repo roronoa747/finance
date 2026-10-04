@@ -25,12 +25,12 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-function mount(disabled = false) {
+function mount(disabled = false, parent: HTMLElement = document.body) {
   const ids = ref(['a', 'b', 'c', 'd'])
   const moves: [string, number][] = []
   const opened: string[] = []
   const root = document.createElement('div')
-  document.body.appendChild(root)
+  parent.appendChild(root)
   app = createApp({
     render: () =>
       h(
@@ -150,6 +150,28 @@ describe('SortableList', () => {
     s.grip('d')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
     await nextTick()
     expect(s.moves).toEqual([['c', 1]])
+  })
+
+  it('критик: автопрокрутка у края — прокручивается <main> оболочки (не окно), строка едет вместе с ним', async () => {
+    // В приложении прокручивается `<main>` AppShell с overflow-y: auto; окно стоит.
+    const main = document.createElement('main')
+    main.style.overflowY = 'auto'
+    document.body.appendChild(main)
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(2000)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(600)
+    const winScroll = vi.spyOn(window, 'scrollBy').mockImplementation(() => {})
+    const s = mount(false, main)
+    const bottom = window.innerHeight - 5
+    pointer('pointerdown', 20, 30, s.grip('a')!)
+    pointer('pointermove', 20, bottom)
+    vi.advanceTimersByTime(100)
+    await nextTick()
+    expect(main.scrollTop).toBeGreaterThan(0)
+    expect(winScroll).not.toHaveBeenCalled()
+    pointer('pointerup', 20, bottom)
+    await nextTick()
+    // Палец у низа + прокрутка <main> — строка ушла в конец списка.
+    expect(s.moves).toEqual([['a', 3]])
   })
 
   it('disabled (viewer): ⋮⋮ нет, удержание не поднимает', async () => {
