@@ -199,6 +199,31 @@ describe('B2C-88: «План месяца» вверху «Денег»', () => 
     expect(txt(q('[data-month-nav]'))).toContain('Август')
   })
 
+  it('ревью frontend Н-1: прошлый месяц с пришедшей зарплатой — план с кнопкой, если есть что отложить; без своих целей — сводка', async () => {
+    const august = { id: 'sal-a-08', kind: 'salary' as const, targetId: 'a', period: '2026-08', amount: 700_000, accountId: null, by: 'a' as const, at: '2026-08-10T05:00:00.000Z', updatedAt: T0 }
+    const doc = familyDoc()
+    await open('member', { ...doc, payments: [...(doc.payments ?? []), august] })
+    const router = app!.config.globalProperties.$router
+    await router.push('/money?month=2026-08')
+    await flush()
+    expect(q('[data-plan-save]')).not.toBeNull()
+    expect(q('[data-month-past]')).toBeNull()
+
+    app?.unmount()
+    document.body.innerHTML = ''
+    await open('member', { ...doc, goals: [], payments: [...(doc.payments ?? []), august] })
+    await app!.config.globalProperties.$router.push('/money?month=2026-08')
+    await flush()
+    expect(q('[data-month-past]')).not.toBeNull()
+    expect(q('[data-plan-save]')).toBeNull()
+  })
+
+  it('ревью frontend Н-1: у участника без своих целей кнопки «Отложить по плану» нет и в этом месяце', async () => {
+    await open('member', { ...familyDoc(), goals: [] })
+    expect(q('[data-rest]')).not.toBeNull()
+    expect(q('[data-plan-save]')).toBeNull()
+  })
+
   it('зарплата не пришла — брендовой кнопки нет', async () => {
     await open('member', { ...familyDoc(), payments: [] })
     expect(q('[data-plan-save]')).toBeNull()

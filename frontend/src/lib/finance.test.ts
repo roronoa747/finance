@@ -115,6 +115,8 @@ import {
   type Decision,
   salaryAsk,
   salaryToAllocate,
+  monthPlan,
+  planSave,
   keepCard,
   freedChange,
   freedQuestion,
@@ -2734,11 +2736,27 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       const done: Allocation = { id: 'al', source: 'salary', sourceId: 'a', period: '2026-09', by: 'a', at: T, total: 100_000, parts: [{ target: 'life', amount: 100_000 }], updatedAt: T }
       expect(salaryToAllocate({ ...paid(stmt('a', '2026-09')), allocations: [done] }, 'a', now)).toBeNull()
       expect(first({ ...paid(stmt('a', '2026-09')), allocations: [done] }, { me: 'a', now })?.kind).not.toBe('allocate')
-      // Платежи больше зарплаты — разбор всё равно нужен (покажет «не хватает», Р-65); нулевая отметка — нечего.
+      // Блок 14 (ревью frontend Н-1): платежи больше зарплаты — очереди ничего не достаётся, откладывать нечего —
+      // карточки нет (план «Денег» сам покажет «Не хватает»); нулевая отметка — тоже нечего.
       const heavy = { ...paid(stmt('a', '2026-09')), obligations: [{ ...rent, versions: [{ from: '2000-01', amount: 5_000_000 }] }] }
-      expect(salaryToAllocate(heavy, 'a', now)?.period).toBe('2026-09')
+      expect(salaryToAllocate(heavy, 'a', now)).toBeNull()
       expect(salaryToAllocate(paid(stmt('a', '2026-09', { amount: 0 })), 'a', now)).toBeNull()
       expect(salaryToAllocate(paid(stmt('a', '2026-09')), undefined, now)).toBeNull()
+    })
+
+    it('ревью frontend Б14, Н-1: у второго участника без своих целей «Пришла зарплата» нет; цель с плательщиком b — есть', () => {
+      const stmtB: Payment = {
+        id: 's-b', kind: 'salary', targetId: 'b', period: '2026-09', amount: 500_000, accountId: null, by: 'b', at: T, updatedAt: T, source: 'statement', opId: 'op-b',
+      }
+      const late = { day: 25, key: '2026-09' }
+      // Плательщик цели по умолчанию — первый участник (Р-80): у b в плане ни строки — откладывать нечего.
+      const state = { ...base, payments: [stmtB] }
+      expect(planSave(monthPlan(state, { key: '2026-09', totals: [], spendCategories: [], uploads: [] }), 'b')).toBeNull()
+      expect(salaryToAllocate(state, 'b', late)).toBeNull()
+      expect(kinds(decisionQueue(state, { me: 'b', now: late, answeredMonthEnd: '2026-09' }))).toEqual([])
+      // Цель платит b — карточка есть и ведёт на план.
+      const own = { ...state, goals: base.goals.map((g) => ({ ...g, payer: 'b' as const })) }
+      expect(first(own, { me: 'b', now: late, answeredMonthEnd: '2026-09' })).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата · Дана', to: '/money' })
     })
 
     it('возврат приёмки 2 п. 3: неразложенная августовская из выписки — «разложить?» весь сентябрь, кроме дней «Пришла?» (7–10-е при дне 10); после дня зарплаты не теряется', () => {

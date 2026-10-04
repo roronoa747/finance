@@ -89,11 +89,12 @@ const rateFor = ref<PersonId | null>(null)
 const signed = (v: number) => (v > 0 ? `+${plain(v)}` : plain(v))
 
 /* ---------- «Отложить по плану» (Р-78) ---------- */
-// Своя зарплата пришла и не отложена (как карточка «Пришла зарплата» на «Неделе»): чужую откладывает её хозяин.
+// Своя зарплата пришла, не отложена и есть что отложить (`planSave` — одно условие с карточкой «Недели», Н-1):
+// чужую откладывает её хозяин.
 const save = computed(() => {
   if (!canEdit.value || !auth.slot) return null
   const s = planSave(plan.value, auth.slot)
-  return s && s.parts.length ? { person: auth.slot, total: s.parts.reduce((a, x) => a + x.amount, 0), count: s.parts.length, save: s } : null
+  return s ? { person: auth.slot, total: s.parts.reduce((a, x) => a + x.amount, 0), count: s.parts.length, save: s } : null
 })
 // Запись месяца есть — «✓ Отложено» суммой взносов месяца (`putTotal`), не частями записи: у старого разбора
 // Блока 11 части — статьи (платежи, жизнь…), их сумма — почти вся зарплата.

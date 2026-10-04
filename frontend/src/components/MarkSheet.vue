@@ -82,9 +82,12 @@ const recordTenge = computed(() =>
 const own = computed(() => (person.value ? salaryOf(person.value, props.period) : null))
 const fxSalary = computed(() => !!own.value && own.value.currency !== 'KZT')
 const sign = computed(() => (own.value ? CURRENCY_SIGN[own.value.currency] : '₸'))
-/** Своя зарплата, отмеченная по выписке, без записи месяца — «К плану месяца» (возврат приёмки п. 2). */
+/**
+ * Своя зарплата, отмеченная по выписке, без записи месяца и с чем отложить по плану — «К плану месяца» (возврат
+ * приёмки п. 2; ревью frontend Б14 Н-1: то же условие, что у карточки «Недели» и кнопки плана).
+ */
 const canAllocate = computed(
-  () => salary.value && !!record.value && !!salaryToAllocate({ ...finance.householdDoc, credits: finance.credits }, auth.slot, undefined, record.value),
+  () => salary.value && !!record.value && !!salaryToAllocate(finance.planInput(props.period).state, auth.slot, undefined, record.value),
 )
 
 /** Сколько платить (у зарплаты — оклад) за этот месяц по графику. */

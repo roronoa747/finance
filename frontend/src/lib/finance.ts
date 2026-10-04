@@ -1981,16 +1981,13 @@ export function allocationFor(
  * старая неразобранная заслонила бы её. После дня зарплаты «Пришла?» уже не спрашивается — прошлая
  * неразобранная снова здесь (возврат приёмки 2 п. 3: выписку грузят после дня зарплаты, и с 13-го по
  * конец месяца зарплата терялась). Пришедшая раньше срока зарплата следующего месяца (день 1-го, пришла
- * 29-го) — сразу (критик возврата Блока 3).
+ * 29-го) — сразу (критик возврата Блока 3). Блок 14: только если по плану того месяца есть что отложить
+ * (`planSave` с частями, ревью frontend Б14 Н-1) — у участника без своих целей и фондов (по умолчанию второй,
+ * Р-80) карточка вела на план без «Отложить по плану» и висела до конца месяца. Суммы очереди от итогов трат и
+ * выписок не зависят (траты плана — `spendPlans`), поэтому план здесь — без них.
  */
 export function salaryToAllocate(
-  state: {
-    obligations?: Obligation[]
-    credits?: Credit[]
-    people?: Person[]
-    payments?: Payment[]
-    allocations?: Allocation[]
-  },
+  state: MonthPlanState & { spendCategories?: SpendCategory[] },
   me: PersonId | undefined,
   now = today(),
   record?: Payment | null,
@@ -2008,6 +2005,8 @@ export function salaryToAllocate(
   // Ручная тенговая сразу ведёт в план месяца; валютная (B2C-79) — сначала «Обменял» на этой карточке.
   if (!found || found.kind !== 'salary' || found.targetId !== me || (found.source !== 'statement' && !found.foreign) || found.amount <= 0) return null
   if (allocationFor(state.allocations, { source: 'salary', sourceId: me, period: found.period })) return null
+  const plan = monthPlan(state, { key: found.period, totals: [], spendCategories: state.spendCategories ?? [], uploads: [] })
+  if (!planSave(plan, me)) return null
   return { person, period: found.period, record: found }
 }
 
@@ -3162,7 +3161,9 @@ export type PlanSave = {
 /**
  * «Отложить по плану» для плательщика (Р-78): его цели, фонды и досрочка — суммами плана месяца, разово. За
  * вычетом уже отложенного в этом месяце (`put`: взнос руками, другая запись) — дважды не кладётся. null — его
- * зарплата месяца не пришла или запись месяца уже есть (в том числе старого разбора Блока 11).
+ * зарплата месяца не пришла, запись месяца уже есть (в том числе старого разбора Блока 11) или откладывать нечего:
+ * за плательщиком нет целей, фондов и досрочки с суммой (ревью frontend Б14, Н-1) — одно условие «есть что
+ * отложить» для кнопки плана, «Денег» (`?month=`), карточки «Недели» и листа отметки (`salaryToAllocate`).
  */
 export function planSave(plan: MonthPlan, person: PersonId): PlanSave | null {
   const inc = plan.income.byPerson.find((x) => x.person === person)
@@ -3172,6 +3173,7 @@ export function planSave(plan: MonthPlan, person: PersonId): PlanSave | null {
   const contributions = mine.filter((q) => q.goalId && amount(q) > 0).map((q) => ({ goalId: q.goalId!, amount: amount(q) }))
   const debt = mine.find((q) => q.kind === 'debt' && q.creditId && amount(q) > 0)
   const prepay = debt ? { creditId: debt.creditId!, amount: amount(debt), ...(debt.planId ? { planId: debt.planId } : {}) } : null
+  if (!contributions.length && !prepay) return null
   return {
     record: { source: 'salary', sourceId: person, period: plan.key },
     total: inc.amount,
@@ -3949,6 +3951,10 @@ export type DecisionState = {
   /** Книга курсов и обмены (Р-74): тенге валютных зарплат — `salaryTenge`. */
   book?: RateBook | null
   fxExchanges?: FxExchange[]
+  /** План месяца для «Пришла зарплата» (`salaryToAllocate`, ревью frontend Б14 Н-1): траты каждого, карточка долга, разделы. */
+  spendPlans?: SpendPlan[]
+  debtCard?: DebtCard | null
+  spendCategories?: SpendCategory[]
 }
 
 /**

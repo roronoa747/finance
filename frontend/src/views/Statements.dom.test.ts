@@ -120,6 +120,8 @@ describe('возврат приёмки п. 2 · B2C-58: зарплата, от�
   const salaryDay = (finance: ReturnType<typeof useFinanceStore>, store: ReturnType<typeof useOperationsStore>) => {
     finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000 }
     finance.householdDoc.credits = []
+    // Есть что отложить по плану (ревью frontend Б14, Н-1): цель Алихана со взносом.
+    finance.householdDoc.goals = [{ id: 'g', name: 'Япония', need: 1_000_000, seed: 0, have: 0, monthly: 50_000, hue: 'teal', planPct: 0, movements: [], updatedAt: '' }]
     delete store.ops['op-1']
     store.ops['op-2'] = { id: 'op-2', bank: 'kaspi', date: '2026-09-10', amount: 500_000, kind: 'transfer-in', merchant: 'ТОО Работодатель', categoryId: null, internal: false }
   }
@@ -224,6 +226,7 @@ describe('возврат приёмки 2 п. 3, 4: одна карточка о
     const setup = (finance: ReturnType<typeof useFinanceStore>, store: ReturnType<typeof useOperationsStore>) => {
       finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000, payday: 1 }
       finance.householdDoc.credits = []
+      finance.householdDoc.goals = [{ id: 'g', name: 'Япония', need: 1_000_000, seed: 0, have: 0, monthly: 50_000, hue: 'teal', planPct: 0, movements: [], updatedAt: '' }]
       delete store.ops['op-1']
       finance.markSalary('a', { period: '2026-09', amount: 500_000, accountId: null, source: 'statement', opId: 'op-9', at: '2026-09-01T07:00:00.000Z' })
     }

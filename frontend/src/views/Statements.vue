@@ -21,7 +21,6 @@ import UnknownBatch from '@/components/UnknownBatch.vue'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
-import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
 import { money, moneyIn, parseMoney } from '@/lib/money'
 import { plural } from '@/lib/utils'
@@ -56,7 +55,6 @@ import { readMonthEnd, writeMonthEnd } from '@/lib/storage'
  */
 const auth = useAuthStore()
 const finance = useFinanceStore()
-const fx = useFxStore()
 /** Пришедшая валютная зарплата карточки «Пришла зарплата» (B2C-79): сумма в валюте и «Обменял». */
 const fxOf = (d: Decision) => (d.salary ? salaryExchange(finance.payments, finance.fxExchanges, d.salary.person.id, d.salary.period) : null)
 const store = useOperationsStore()
@@ -148,7 +146,7 @@ const unknownList = computed(() => unknownGroups(store.draft ? store.draftOps : 
 const deferred = ref<string[]>([])
 const queue = computed(() =>
   decisionQueue(
-    { ...finance.householdDoc, credits: finance.credits, book: fx.book },
+    finance.planInput(month).state,
     {
       me: auth.slot,
       canEdit: canUpload.value,

@@ -215,5 +215,17 @@ describe('возврат приёмки п. 2: «Разложить» в лис�
     await paidSheet(manual.pinia)
     expect(has('Другая сумма или счёт')).toBe(true)
     expect(has('К плану месяца')).toBe(false)
+
+    // Ревью frontend Б14, Н-1: по плану откладывать нечего (своих целей нет) — кнопки нет, как и карточки «Недели».
+    app?.unmount()
+    document.body.innerHTML = ''
+    const empty = family()
+    empty.store.mutateHouseholdDoc((doc) => {
+      doc.goals = []
+    })
+    empty.store.markSalary('a', { period: '2026-09', amount: 700_000, accountId: null, source: 'statement', opId: 'op-9', at: '2026-09-10T07:00:00.000Z' })
+    await paidSheet(empty.pinia)
+    expect(has('Снять отметку')).toBe(true)
+    expect(has('К плану месяца')).toBe(false)
   })
 })
