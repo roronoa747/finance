@@ -10,6 +10,7 @@ import { useOperationsStore } from '../src/stores/operations'
 import { planFamilyDoc } from '../src/test/planFamily'
 import Money from '../src/views/Money.vue'
 import Statements from '../src/views/Statements.vue'
+import SalaryRow from '../src/components/SalaryRow.vue'
 import type { Currency } from '../src/types/finance'
 import { at, backend, fakeServer, fakeStatements, screen, statementsFor, type FakeServer, type FakeStatements } from './support/family'
 
@@ -250,5 +251,49 @@ describe('e2e / B2C Блок 13 — зарплата в валюте на дву
       setActivePinia(p.pinia)
       expect(p.store.accounts.find((a) => a.id === eur)).toMatchObject({ foreignAmount: 700, amount: 342_300 })
     }
+  })
+
+  it('часть 6 (B2C-79-а) — отмена одного из двух обменов: остатки и тенге зарплаты до тенге у обоих; снятая отметка — строка видна, отмена работает', async () => {
+    const { A, B } = await euroSalary()
+    setActivePinia(A.pinia)
+    const eur = A.store.addFxAccount('EUR')
+    A.store.markSalary('a', { accountId: eur })
+    const first = A.store.addExchange({ by: 'a', accountId: eur, toAccountId: 'card', foreign: 500, rate: 515, period: '2026-10' })!
+    const second = A.store.addExchange({ by: 'a', accountId: eur, toAccountId: 'card', foreign: 300, rate: 512.5, period: '2026-10' })!
+    await sync(A, B)
+    // Лист обменов, «Отменить» → «Отменить» (подтверждение) у 500 € по 515.
+    setActivePinia(A.pinia)
+    A.store.undoExchange(first.id)
+    await sync(A, B)
+    for (const p of [A, B]) {
+      const c = ctx(p)
+      // Евро-счёт: 1 500 − 300 = 1 200 € × 489 = 586 800 ₸; Kaspi: 2 000 000 + 153 750 = 2 153 750 ₸.
+      expect(p.store.accounts.find((a) => a.id === eur)).toMatchObject({ foreignAmount: 1_200, amount: 586_800 })
+      expect(p.store.accounts.find((a) => a.id === 'card')!.amount).toBe(2_153_750)
+      // 153 750 + 1 200 × 488,23 = 585 876 → 739 626 ₸; доход 739 626 + 500 000 = 1 239 626 ₸.
+      expect(salaryTenge(ilyas(p), '2026-10', c)).toMatchObject({ tenge: 739_626, exchanged: 300, left: 1_200 })
+      expect(budgetAmounts({ ...p.store.householdDoc, book: c.book }, '2026-10').income).toBe(1_239_626)
+    }
+    expect(text(await screen(A.pinia, Statements, '/week'))).toContain('обменяно 300 € из 1 500 € · ≈ 739 626 ₸')
+
+    // Отметку сняли (Н-6): обмен жив, строка без «из» и без «Обменял»; тенге месяца — оклад по-прежнему 1 500 €.
+    setActivePinia(A.pinia)
+    A.store.unmarkPaid('salary', 'a', '2026-10')
+    expect(A.store.fxExchanges.find((x) => x.id === second.id)!.deletedAt).toBeFalsy()
+    expect(salaryTenge(ilyas(A), '2026-10', ctx(A)).tenge).toBe(739_626)
+    // Строка зарплаты — как в листе «До зарплаты» (`PaydaySummary`).
+    const unmarked = text(await screen(A.pinia, SalaryRow, '/money', { personId: 'a', period: '2026-10' }))
+    expect(unmarked).toContain('обменяно 300 € · ≈ 739 626 ₸')
+    expect(unmarked).not.toContain('Обменял')
+    // Отмена работает и без отметки: всё возвращается — евро-счёт 0 €, Kaspi 2 000 000 ₸, у второго телефона тоже.
+    setActivePinia(A.pinia)
+    A.store.undoExchange(second.id)
+    await sync(A, B)
+    for (const p of [A, B]) {
+      setActivePinia(p.pinia)
+      expect(p.store.accounts.find((a) => a.id === eur)).toMatchObject({ foreignAmount: 0, amount: 0 })
+      expect(p.store.accounts.find((a) => a.id === 'card')!.amount).toBe(2_000_000)
+    }
+    expect(text(await screen(A.pinia, SalaryRow, '/money', { personId: 'a', period: '2026-10' }))).not.toContain('обменяно')
   })
 })

@@ -200,7 +200,8 @@ function openMore() {
       </button>
     </template>
   </Row>
-  <SalaryExchange v-if="!button && record?.foreign" class="pb-2" :person-id="personId" :period="period" />
+  <!-- Валютная: строка обменов — и у пришедшей, и после снятой отметки, пока живы обмены месяца (Н-6). -->
+  <SalaryExchange v-if="!button && (record?.foreign || fxSalary)" class="pb-2" :person-id="personId" :period="period" />
 
   <MarkSheet
     :open="sheet"

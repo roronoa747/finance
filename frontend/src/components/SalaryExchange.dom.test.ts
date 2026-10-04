@@ -151,6 +151,86 @@ describe('SalaryExchange — строка и лист «Обменял»', () =>
     expect(button('Обменял')).toBeUndefined()
   })
 
+  it('лист обменов (B2C-79-а): «Отменить» → подтверждение → надгробие у одного, второй на месте', async () => {
+    const { pinia, store } = family()
+    store.markSalary('a', { period: '2026-10' })
+    const kaspi = planFamilyDoc().accounts[0]
+    const x1 = store.addExchange({ by: 'a', accountId: 'eur', toAccountId: kaspi.id, foreign: 500, rate: 515, period: '2026-10' })!
+    const x2 = store.addExchange({ by: 'a', accountId: 'eur', toAccountId: null, foreign: 300, rate: 520.5, period: '2026-10' })!
+    const kzt = () => store.accounts.find((a) => a.id === kaspi.id)!.amount
+    const before = kzt()
+    await mount(pinia)
+    // 500 × 515 = 257 500; 300 × 520,5 = 156 150; 700 × 502,98 = 352 086 → 765 736 ₸.
+    expect(text()).toContain('обменяно 800 € из 1 500 € · ≈ 765 736 ₸')
+    ;[...document.querySelectorAll('button')].find((b) => b.textContent?.includes('обменяно'))!.click()
+    await flush()
+    expect(text()).toContain(`500 € по 515 → 257 500 ₸ ${kaspi.name} · 3 октября`)
+    expect(text()).toContain('300 € по 520,5 → 156 150 ₸ не на счёт · 3 октября')
+    // В листе нет брендовой кнопки — главное действие экрана остаётся «Обменял».
+    const dialog = document.querySelector('[role="dialog"]') as HTMLElement
+    expect([...dialog.querySelectorAll('button')].some((b) => b.className.includes('bg-brand text-brand-ink'))).toBe(false)
+
+    const cancels = () => [...dialog.querySelectorAll('button')].filter((b) => b.textContent?.trim() === 'Отменить')
+    expect(cancels()).toHaveLength(2)
+    cancels()[0].click()
+    await flush()
+    // Подтверждение в том же листе; без «Отменить» во второй раз надгробия нет.
+    expect(text()).toContain('Отменить обмен 500 €?')
+    expect(store.fxExchanges.every((x) => !x.deletedAt)).toBe(true)
+    button('Нет')!.click()
+    await flush()
+    expect(text()).not.toContain('Отменить обмен 500 €?')
+    cancels()[0].click()
+    await flush()
+    cancels()[0].click() // у первого обмена «Отменить» сменилось подтверждением — первая теперь его
+    await flush()
+    expect(store.fxExchanges.find((x) => x.id === x1.id)!.deletedAt).toBeTruthy()
+    expect(store.fxExchanges.find((x) => x.id === x2.id)!.deletedAt).toBeFalsy()
+    expect(text()).not.toContain('500 € по 515')
+    expect(text()).toContain('300 € по 520,5')
+    // Остатки — из записей: Kaspi −257 500 ₸, евро-счёт +500 € (1 500 − 300).
+    expect(kzt()).toBe(before - 257_500)
+    expect(store.accounts.find((a) => a.id === 'eur')!.foreignAmount).toBe(1_200)
+    // 300 × 520,5 = 156 150 + 1 200 × 502,98 = 603 576 → 759 726 ₸.
+    expect(text()).toContain('обменяно 300 € из 1 500 € · ≈ 759 726 ₸')
+  })
+
+  it.each([
+    ['viewer', authAs('viewer')],
+    ['партнёр', authAs('member', 'b')],
+  ])('%s открывает лист только для чтения — без «Отменить»', async (_, auth) => {
+    const { pinia, store } = family()
+    store.markSalary('a', { period: '2026-10' })
+    store.addExchange({ by: 'a', accountId: 'eur', toAccountId: null, foreign: 500, rate: 515, period: '2026-10' })
+    useAuthStore().setAuthData(auth)
+    await mount(pinia)
+    ;[...document.querySelectorAll('button')].find((b) => b.textContent?.includes('обменяно'))!.click()
+    await flush()
+    expect(text()).toContain('500 € по 515 → 257 500 ₸')
+    expect(button('Отменить')).toBeUndefined()
+    expect(button('Обменял')).toBeUndefined()
+  })
+
+  it('отметку сняли, обмен жив (Н-6): строка и лист видны, без «Обменял»; отмена работает', async () => {
+    const { pinia, store } = family()
+    store.markSalary('a', { period: '2026-10' })
+    store.addExchange({ by: 'a', accountId: 'eur', toAccountId: null, foreign: 500, rate: 515, period: '2026-10' })
+    store.unmarkPaid('salary', 'a', '2026-10')
+    expect(store.fxExchanges.every((x) => !x.deletedAt)).toBe(true) // снятие отметки обмены не трогает
+    await mount(pinia)
+    // До прихода необменянное — весь оклад: 257 500 + 1 000 × 502,98 = 502 980 → 760 480 ₸.
+    expect(text()).toContain('обменяно 500 € · ≈ 760 480 ₸')
+    expect(button('Обменял')).toBeUndefined()
+    ;[...document.querySelectorAll('button')].find((b) => b.textContent?.includes('обменяно'))!.click()
+    await flush()
+    button('Отменить')!.click()
+    await flush()
+    button('Отменить')!.click()
+    await flush()
+    expect(store.fxExchanges[0].deletedAt).toBeTruthy()
+    expect(text()).toBe('')
+  })
+
   it('тенговая зарплата — ничего не рисует', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)

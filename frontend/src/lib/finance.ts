@@ -1382,11 +1382,15 @@ export function accountBalance(a: Account, payments: Payment[] = [], ctx: Balanc
     .reduce((left, p) => (p.kind === 'salary' ? left + p.amount : left - p.amount), a.amount + bought)
 }
 
+/** Живые обмены зарплаты участника за месяц `period`, по времени записи (лист обменов, B2C-79-а). */
+export const monthExchanges = (exchanges: FxExchange[] = [], by: PersonId, period: string) =>
+  liveExchanges(exchanges)
+    .filter((x) => x.by === by && x.period === period)
+    .sort((a, b) => a.at.localeCompare(b.at));
+
 /** Обменяно за месяц `period` из зарплаты участника, в валюте (строка «обменяно 800 € из 1 500 €»). */
 export function exchangedIn(exchanges: FxExchange[] = [], by: PersonId, period: string): number {
-  return liveExchanges(exchanges)
-    .filter((x) => x.by === by && x.period === period)
-    .reduce((s, x) => s + x.foreign, 0);
+  return monthExchanges(exchanges, by, period).reduce((s, x) => s + x.foreign, 0);
 }
 
 /**
