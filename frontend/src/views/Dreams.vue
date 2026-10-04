@@ -8,7 +8,8 @@ import { useOperationsStore } from '@/stores/operations'
 import { useFxStore } from '@/stores/fx'
 import { money, pct } from '@/lib/money'
 import { monthBy, monthKey, monthTitle } from '@/lib/dates'
-import { freeByFact, goalDoneMonth, goalMonths, goalRemaining, planForecast, untilPayday, wishQueue } from '@/lib/finance'
+import { freeByFact, goalTerm, planForecast, untilPayday, wishQueue } from '@/lib/finance'
+import type { Goal } from '@/types/finance'
 import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
 import { plural } from '@/lib/utils'
@@ -59,26 +60,31 @@ const moveOther = (id: string, index: number) => financeStore.moveGoal(id, index
 
 // Сроки — прогон очереди плана месяца (Р-83): выключил цель — она «на паузе», сроки остальных сдвинулись.
 const plan = computed(() => financeStore.monthPlanOf(key.value))
-const planItem = (id: string) => plan.value.queue.find((x) => x.goalId === id)
-/** Подпись срока цели: «на паузе» или «к <месяц>»; собрана или срока нет — пусто. */
-function whenOf(id: string): string {
-  const item = planItem(id)
-  if (item?.paused === 'off') return 'на паузе'
-  return item?.doneMonth && item.paused === false ? monthBy(item.doneMonth, key.value) : ''
+// Прогноз плана «Сначала долги» — только для целей на его паузе (срок — после плана).
+const forecast = computed(() => (financeStore.activePlan ? planForecast(financeStore.activePlan, financeStore.planState(), key.value) : undefined))
+/**
+ * Срок цели — одна функция для строки и героя (`goalTerm`, ревью frontend Б14 Н-2), та же, что у экрана цели:
+ * выключенная — «на паузе», на паузе плана долгов — после плана, иначе — месяц прогона очереди.
+ */
+function termOf(g: Goal) {
+  const item = plan.value.queue.find((x) => x.goalId === g.id)
+  return goalTerm(item, g, key.value, item?.paused === 'plan' ? forecast.value : undefined)
+}
+/** Подпись срока цели в строке: «на паузе» или «к <месяц>»; срока нет — пусто. */
+function whenOf(g: Goal): string {
+  const t = termOf(g)
+  if (t.off) return 'на паузе'
+  return t.doneMonth ? monthBy(t.doneMonth, key.value) : ''
 }
 
 const heroPercent = computed(() => (main.value ? pct(main.value.have, main.value.need) : 0))
-// Месяц, когда мечта будет вашей, по очереди плана; выключенная — «на паузе»; на паузе ради плана долгов — после плана.
+// Месяц, когда мечта будет вашей, — тот же срок, что у строки (`termOf`).
 const heroMonth = computed(() => {
   const g = main.value
   if (!g) return null
-  const item = planItem(g.id)
-  if (item?.paused === 'off') return 'на паузе'
-  if (item && item.paused === false && item.doneMonth) return monthTitle(item.doneMonth).toLowerCase()
-  const paused = financeStore.pausedGoalIds.has(g.id)
-  const forecast = paused && financeStore.activePlan ? planForecast(financeStore.activePlan, financeStore.planState(), key.value) : undefined
-  const done = goalDoneMonth(goalMonths(goalRemaining(g), g.monthly), key.value, forecast)
-  return done ? monthTitle(done).toLowerCase() : null
+  const t = termOf(g)
+  if (t.off) return 'на паузе'
+  return t.doneMonth ? monthTitle(t.doneMonth).toLowerCase() : null
 })
 
 /* ---------- фото (B2C-17) ---------- */
@@ -211,7 +217,7 @@ onMounted(refresh)
               clickable
               @click="router.push(`/goals/${id}`)"
             >
-              <span v-if="whenOf(id)" class="truncate type-meta">{{ whenOf(id) }}</span>
+              <span v-if="whenOf(othersById.get(id)!)" class="truncate type-meta">{{ whenOf(othersById.get(id)!) }}</span>
               <ProgressBar :value="othersById.get(id)!.need ? othersById.get(id)!.have / othersById.get(id)!.need : 0" tone="ink" :height="5" />
               <template #end>
                 <span class="font-num text-[15px] font-bold num text-ink">{{ pct(othersById.get(id)!.have, othersById.get(id)!.need) }}{{ NBSP }}%</span>

@@ -99,7 +99,9 @@ const header = computed<{ title: string; sub?: string }>(() => {
     // Имя цели заголовком (g4 «Экран цели»): «главная мечта · Ильяс и Дана».
     const goal = liveGoals(financeStore.goals).find((g) => g.id === route.params.id)
     const main = financeStore.heroGoal?.id === goal?.id
-    return goal ? { title: goal.name, sub: `${main ? 'главная мечта' : 'мечта'} · ${names.value}` } : { title: 'Цель' }
+    // Фонд («Запас», «Подушка», Р-82) — не мечта (ревью frontend Б14, Н-2).
+    const fund = financeStore.queue.find((x) => x.id === goal?.id)?.kind === 'fund'
+    return goal ? { title: goal.name, sub: `${fund ? 'фонд' : main ? 'главная мечта' : 'мечта'} · ${names.value}` } : { title: 'Цель' }
   }
   if (p === '/wishes' || p.startsWith('/people/')) return { title: 'Желания', sub: 'не мечты — покупки поменьше' }
   if (p === '/settings/me') return { title: 'Свой кружок' }

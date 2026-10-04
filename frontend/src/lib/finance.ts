@@ -3145,6 +3145,51 @@ export function allInDebt(
   return m === null ? null : { month: addMonths(plan.key, m), creditId: credit.id, extra: plan.free }
 }
 
+/** Срок цели или фонда (`goalTerm`). */
+export type GoalTerm = {
+  /** Выключена в плане месяца (`pausedAt`, Р-83): срока нет, строки взносов нет. */
+  off: boolean
+  /** На паузе плана «Сначала долги»: срок — после плана (`planForecast`). */
+  afterPlan: boolean
+  /** Цель — её сумма, фонд — порог плана (месяцы × траты месяца, Р-82). */
+  need: number
+  /** Сколько осталось до `need` от накопленного сейчас, ≥ 0. */
+  remaining: number
+  /** Месяц, когда соберём; null — не соберём (взнос 0, долги не закрываются). */
+  doneMonth: string | null
+  /** Сколько взносов осталось (с этим месяцем); Infinity — срока нет. */
+  months: number
+}
+
+/**
+ * Срок цели или фонда — одна функция для «Мечт» (строка и герой) и экрана цели (ревью frontend Б14, Н-2; Р-38):
+ * из строки очереди плана месяца (`monthPlan` → `queueRun`: верх получает первым, при нехватке остатка — меньше
+ * взноса). Фонд — до порога плана, не до своей суммы. На паузе плана «Сначала долги» — прежний расчёт после плана
+ * (`goalDoneMonth` с прогнозом плана). Цели нет в очереди или накопленное сдвинули в этом месяце не взносом — по
+ * своему взносу, как до Блока 14.
+ */
+export function goalTerm(
+  item: PlanQueueItem | undefined,
+  goal: Pick<Goal, 'need' | 'have' | 'monthly'>,
+  key: string,
+  forecast?: { debtFreeMonth: string | null },
+): GoalTerm {
+  const need = item?.need ?? goal.need
+  const remaining = Math.max(0, need - Math.max(0, goal.have))
+  if (item?.paused === 'off') return { off: true, afterPlan: false, need, remaining, doneMonth: null, months: Infinity }
+  // Накопленное правили или снимали в этом месяце (сейчас ≠ начало месяца + взносы) — прогон плана от начала месяца
+  // устарел: по своему взносу от того, что есть сейчас, иначе «осталось N взносов» не сходится с остатком.
+  const stale = !!item && item.kind !== 'debt' && Math.max(0, goal.have) !== item.have + item.put
+  if (!item || item.paused === 'plan' || stale) {
+    const months = goalMonths(remaining, goal.monthly)
+    const afterPlan = item?.paused === 'plan'
+    return { off: false, afterPlan, need, remaining, doneMonth: goalDoneMonth(months, key, afterPlan ? forecast ?? { debtFreeMonth: null } : undefined), months }
+  }
+  // Собрана сейчас (взнос этого месяца уже лёг) — ваша в этом месяце, хотя план считает от начала месяца.
+  const doneMonth = remaining <= 0 ? key : item.doneMonth
+  return { off: false, afterPlan: false, need, remaining, doneMonth, months: doneMonth ? monthsBetween(key, doneMonth) + 1 : Infinity }
+}
+
 /** Что записывает «Отложить по плану» (Р-78) — стор только исполняет. */
 export type PlanSave = {
   record: { source: 'salary'; sourceId: PersonId; period: string }

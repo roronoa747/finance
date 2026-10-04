@@ -182,6 +182,8 @@ describe('views/GoalDetail.vue, GoalNew.vue, Wishes.vue, лист вклада �
       hue: 'blue',
     })
     const gId = store.goals[0].id
+    // Срок — из плана месяца (ревью frontend Б14, Н-2): доход покрывает взнос целиком.
+    store.householdDoc.people = [{ id: 'a', name: 'Ильяс', salary: 700_000, payday: 10, updatedAt: '' }]
 
     const { createSSRApp } = await import('vue')
     const { renderToString } = await import('vue/server-renderer')

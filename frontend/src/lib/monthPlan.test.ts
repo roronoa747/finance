@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { allInDebt, creditOutlook, monthPlan, monthPlanPast, planFromSource, planSave, type MonthPlanCtx, type MonthPlanState } from './finance'
+import { allInDebt, creditOutlook, goalDoneMonth, goalMonths, goalTerm, monthPlan, monthPlanPast, monthsBetween, planFromSource, planSave, type MonthPlanCtx, type MonthPlanState } from './finance'
 import { addMonths } from './dates'
 import type { Allocation, Goal } from '@/types/finance'
 
@@ -204,6 +204,40 @@ describe('плательщик (Р-80)', () => {
     expect(moved.byPerson.map((p) => p.left)).toEqual([336_800 - 250_000, -310_000 + 250_000])
     expect(moved.rest).toBe(base.rest)
     expect(moved.queueTotal).toBe(base.queueTotal)
+  })
+})
+
+describe('goalTerm — срок цели и фонда из строки плана (ревью frontend Н-2)', () => {
+  const termOf = (state: MonthPlanState, id: string) => {
+    const g = state.goals!.find((x) => x.id === id)!
+    return { term: goalTerm(byId(monthPlan(state, ctx), id), g, KEY), item: byId(monthPlan(state, ctx), id), g }
+  }
+
+  it('фонд — «нужно» = порог плана (667 200), не своя сумма; срок и «осталось N» — из прогона очереди', () => {
+    const { term, item } = termOf(family(), 'res')
+    expect(term).toEqual({ off: false, afterPlan: false, need: 667_200, remaining: 357_200, doneMonth: '2027-05', months: 8 })
+    expect(term.doneMonth).toBe(item.doneMonth)
+  })
+
+  it('нехватка остатка: «Свадьба» просит 300 000, получает 226 800 — срок плана, а не по своему взносу', () => {
+    const state = family({ goals: family().goals!.map((g) => (g.id === 'wed' ? { ...g, monthly: 300_000 } : g)) })
+    const { term, item, g } = termOf(state, 'wed')
+    expect(item.given).toBe(226_800)
+    expect(term.doneMonth).toBe(item.doneMonth)
+    // По своему взносу: 1 300 000 / 300 000 → 5 взносов → февраль 2027; план — позже.
+    const own = goalDoneMonth(goalMonths(1_300_000, g.monthly), KEY)
+    expect(own).toBe('2027-02')
+    expect(term.doneMonth! > own!).toBe(true)
+    expect(term.months).toBe(monthsBetween(KEY, term.doneMonth!) + 1)
+  })
+
+  it('выключенная — «на паузе» без срока и взносов; цели нет в очереди — по своему взносу', () => {
+    const off = family({ goals: family().goals!.map((g) => (g.id === 'car' ? { ...g, pausedAt: T0 } : g)) })
+    expect(termOf(off, 'car').term).toMatchObject({ off: true, doneMonth: null, months: Infinity })
+    expect(goalTerm(undefined, { need: 1_000_000, have: 400_000, monthly: 100_000 }, KEY)).toMatchObject({ doneMonth: '2027-03', months: 6, remaining: 600_000 })
+    // Сняли в этом месяце 1 000 000 из «Машины» — план от начала месяца устарел: по взносу от того, что есть.
+    const took = family({ goals: family().goals!.map((g) => (g.id === 'car' ? { ...g, have: 900_000, movements: [{ id: 'w', date: '2026-10-05T05:00:00.000Z', amount: -1_000_000, by: 'a' }] } : g)) })
+    expect(termOf(took, 'car').term).toMatchObject({ remaining: 4_100_000, months: 41, doneMonth: addMonths(KEY, 40) })
   })
 })
 

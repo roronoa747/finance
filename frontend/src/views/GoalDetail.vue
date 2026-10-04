@@ -8,10 +8,8 @@ import { money, pct, plain, parseMoney, ratePct } from '@/lib/money'
 import {
   INFLATION,
   contributionStreak,
-  goalDoneMonth,
-  goalMonths,
   goalMonthly,
-  goalRemaining,
+  goalTerm,
   indexedNeed,
   liveGoals,
   monthsBetween,
@@ -94,25 +92,42 @@ const plan = computed(() => financeStore.activePlan)
 const paused = computed(() => financeStore.pausedGoalIds.has(goalId.value))
 const planCushion = computed(() => !!plan.value && plan.value.cushionGoalId === goalId.value)
 
-const remaining = computed(() => (goal.value ? goalRemaining(goal.value) : 0))
-const months = computed(() => (goal.value ? goalMonths(remaining.value, goal.value.monthly) : 1))
-const progress = computed(() => (goal.value ? pct(goal.value.have, goal.value.need) : 0))
+// Фонд («Запас», «Подушка», Р-82): «нужно» — порог плана, не своя сумма; «фонд» в шапке, без «мечты».
+const isFund = computed(() => financeStore.queue.find((x) => x.id === goalId.value)?.kind === 'fund')
 
-// Цель на паузе стоит, пока план не закроет долги с процентами (Н-8 ревью Блока 3): дата —
-// от месяца без процентных долгов по прогнозу плана; не закрываются — месяца нет.
+// Срок, «нужно» и «осталось N взносов» — из строки плана месяца, одной функцией с «Мечтами» (`goalTerm`, ревью
+// frontend Б14 Н-2). Цель на паузе плана «Сначала долги» стоит, пока план не закроет долги с процентами (Н-8 ревью
+// Блока 3): дата — от месяца без процентных долгов по прогнозу плана; не закрываются — месяца нет.
 const forecast = computed(() => (paused.value && plan.value ? planForecast(plan.value, financeStore.planState(), monthKey()) : null))
-const doneMonth = computed(() => goalDoneMonth(months.value, monthKey(), forecast.value ?? undefined))
-const doneTitle = computed(() =>
-  off.value ? 'На паузе' : doneMonth.value ? `Будет вашей в ${monthIn(doneMonth.value)}` : paused.value ? 'После плана' : 'Взнос не задан',
-)
-const doneLine = computed(() => {
-  if (!goal.value) return ''
-  if (remaining.value <= 0) return 'Накоплено — мечта ваша'
-  if (!Number.isFinite(months.value)) return 'Задайте взнос — и появится дата'
-  return `по ${money(goal.value.monthly)} в месяц · осталось ${months.value} ${plural(months.value, 'взнос', 'взноса', 'взносов')}${paused.value && doneMonth.value ? ' · после плана' : ''}`
+const term = computed(() => {
+  if (!goal.value) return null
+  const item = financeStore.monthPlanOf(monthKey()).queue.find((x) => x.goalId === goal.value!.id)
+  return goalTerm(item, goal.value, monthKey(), forecast.value ?? undefined)
 })
-// Во сколько обойдётся та же цель к сроку (хвост PV: горизонт — до месяца закрытия, у паузы — позже).
-const indexed = computed(() => (goal.value && doneMonth.value ? indexedNeed(goal.value.need, monthsBetween(monthKey(), doneMonth.value)) : null))
+const need = computed(() => term.value?.need ?? 0)
+const remaining = computed(() => term.value?.remaining ?? 0)
+const months = computed(() => term.value?.months ?? Infinity)
+const doneMonth = computed(() => term.value?.doneMonth ?? null)
+const progress = computed(() => (goal.value ? pct(goal.value.have, need.value) : 0))
+
+const doneTitle = computed(() => {
+  if (term.value?.off) return 'На паузе'
+  if (doneMonth.value) return `${isFund.value ? 'Соберём' : 'Будет вашей'} в ${monthIn(doneMonth.value)}`
+  if (term.value?.afterPlan) return 'После плана'
+  // Взнос есть, но остатка месяца на него не хватает (план даёт 0) — срока нет, как на «Мечтах».
+  return goal.value && goal.value.monthly > 0 && remaining.value > 0 ? 'Срока пока нет' : 'Взнос не задан'
+})
+// Выключенная в плане — без строки взносов: её нет в этом месяце.
+const doneLine = computed(() => {
+  if (!goal.value || term.value?.off) return ''
+  if (remaining.value <= 0) return isFund.value ? 'Собрано' : 'Накоплено — мечта ваша'
+  if (!Number.isFinite(months.value)) return goal.value.monthly > 0 ? 'Остатка месяца не хватает на взнос' : 'Задайте взнос — и появится дата'
+  return `по ${money(goal.value.monthly)} в месяц · осталось ${months.value} ${plural(months.value, 'взнос', 'взноса', 'взносов')}${term.value?.afterPlan && doneMonth.value ? ' · после плана' : ''}`
+})
+// Во сколько обойдётся та же цель к сроку (хвост PV: горизонт — до месяца закрытия, у паузы — позже). Фонд — не покупка.
+const indexed = computed(() =>
+  goal.value && !isFund.value && doneMonth.value ? indexedNeed(goal.value.need, monthsBetween(monthKey(), doneMonth.value)) : null,
+)
 
 /* ------------------ Взнос полем (исключение из Р-2, владелец 2026-09-25) ------------------ */
 // «Сохранено» — по самому взносу, а не по updatedAt цели: пополнение тоже меняет цель, но
@@ -282,7 +297,7 @@ function share() {
          Строка — только «накоплено из нужно» (макет g4): имя уже в шапке, месяц — в карточке. -->
     <DreamHero
       :percent="progress"
-      :line="`${plain(goal.have)} из ${money(goal.need)}`"
+      :line="`${plain(goal.have)} из ${money(need)}`"
       :src="photoSrc"
       :author="goal.photoCredit?.author"
       :author-url="goal.photoCredit?.url"
@@ -318,7 +333,7 @@ function share() {
     <!-- Карточка g4: месяц, строка взноса и две кнопки; «главная мечта» — в подписи шапки, «Сделать главной» — в меню. -->
     <Card>
       <h2 class="type-h2 text-ink">{{ doneTitle }}</h2>
-      <p class="mt-1.5 text-[15px] text-ink-2">{{ doneLine }}</p>
+      <p v-if="doneLine" class="mt-1.5 text-[15px] text-ink-2">{{ doneLine }}</p>
 
       <div class="mt-3.5 flex flex-wrap gap-2">
         <Button
