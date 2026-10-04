@@ -1,4 +1,4 @@
-import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, DebtCard } from '@/types/finance'
+import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
 import type { Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
@@ -2837,6 +2837,495 @@ export function moveId(ids: string[], id: string, to: number): string[] {
   const out = ids.filter((x) => x !== id)
   out.splice(Math.max(0, Math.min(Math.round(to), out.length)), 0, id)
   return out
+}
+
+/* ---------------- план месяца (Блок 14, B2C-86) ---------------- */
+
+/** Документ семьи для плана месяца: кредиты — производные (как отдаёт стор), книга курсов и обмены — Р-74. */
+export type MonthPlanState = {
+  people?: Person[]
+  obligations?: Obligation[]
+  credits?: Credit[]
+  goals?: Goal[]
+  payments?: Payment[]
+  plans?: DebtPlan[]
+  allocations?: Allocation[]
+  moneySettings?: MoneySettings | null
+  spendPlans?: SpendPlan[]
+  goalOrder?: QueueOrder | null
+  debtCard?: DebtCard | null
+  book?: RateBook | null
+  fxExchanges?: FxExchange[]
+}
+
+export type MonthPlanCtx = {
+  /** Месяц плана. */
+  key: string
+  totals: SpendTotal[]
+  spendCategories: SpendCategory[]
+  uploads: UploadPeriod[]
+}
+
+export type PlanIncome = {
+  person: PersonId
+  name: string
+  /** Тенге месяца: пришла — сколько пришло (`paidTenge`), нет — сколько ждём (`salaryTenge`). */
+  amount: number
+  came: boolean
+}
+
+export type PlanDue = MonthDue & { payer: PersonId | null }
+
+export type PlanSpend = {
+  by: PersonId
+  /** Сумма разделов на месяц (Р-81). */
+  plan: number
+  /** Факт по выпискам участника за месяц (кроме платежей `plannedElsewhere`); null — выписок за месяц нет. */
+  fact: number | null
+  rows: { categoryId: string; name: string; plan: number; fact: number | null }[]
+}
+
+export type PlanQueueItem = {
+  id: string
+  kind: 'goal' | 'fund' | 'debt'
+  fund?: 'reserve' | 'cushion'
+  /** Цель или фонд; у карточки долга — null. */
+  goalId: string | null
+  /** Долг карточки (самый дорогой с процентами). */
+  creditId?: string
+  /** Досрочка шагом плана «Сначала долги» (Р-82): сумма карточки — шаг плана. */
+  planId?: string
+  name: string
+  payer: PersonId | null
+  /** Сколько просит в этом месяце: взнос (`monthly`), не больше остатка до суммы, порога фонда, долга. */
+  want: number
+  /** Сколько даёт план (Р-84: сверху вниз из остатка после платежей и трат); выключенная — 0. */
+  given: number
+  /** Выключена (Р-83): `pausedAt`, у цели — и пауза плана «Сначала долги» (`plan`). */
+  paused: false | 'off' | 'plan'
+  /** Накоплено на начало месяца (у долга — остаток на начало месяца). */
+  have: number
+  /** Цель — её сумма, фонд — порог (месяцы × траты месяца), долг — остаток на начало месяца. */
+  need: number
+  /** Уже отложено в этом месяце (взносы цели, досрочки долга). */
+  put: number
+  /** Месяц, к которому соберём или закроем при той же очереди и суммах; null — не соберём (пауза, взнос 0). */
+  doneMonth: string | null
+}
+
+export type MonthPlan = {
+  key: string
+  income: { total: number; byPerson: PlanIncome[] }
+  dues: PlanDue[]
+  duesTotal: number
+  spend: PlanSpend[]
+  spendTotal: number
+  /** Доход − платежи − траты: что получает очередь; меньше нуля — не хватает. */
+  free: number
+  queue: PlanQueueItem[]
+  queueTotal: number
+  /** Что осталось после очереди, ≥ 0. Доход = платежи + траты + очередь + остаток − нехватка. */
+  rest: number
+  /** Сколько не хватает на платежи и траты, ≥ 0. */
+  short: number
+  /** Хватает ли каждому (Р-80): зарплата − его платежи − его траты − его цели и фонды; минус — не хватает. */
+  byPerson: { person: PersonId; income: number; dues: number; spend: number; queue: number; left: number }[]
+  /** Записи «Отложить по плану» (и старого разбора) этого месяца по плательщику — второй раз не пишется. */
+  saved: Partial<Record<PersonId, Allocation>>
+}
+
+/** Горизонт прогона очереди — как у графика кредита. */
+const PLAN_HORIZON = 600
+
+type RunItem = { on: boolean; cap: number; left: number; debt?: { rate: number; payment: number } }
+
+/**
+ * Прогон очереди по месяцам (B2C-86 п. 2): каждый месяц — тот же свободный остаток сверху вниз, каждой не
+ * больше её взноса и остатка; собранная выпадает — её деньги идут ниже. Долг: сначала платёж по графику
+ * (`creditSplit`, проценты до тенге), затем доплата карточки. Ответ — месяц (смещение от первого), когда
+ * цель собрана или долг закрыт; null — не в горизонте. Платежи и траты считаются прежними — дата осторожная.
+ */
+function queueRun(items: RunItem[], free: number): (number | null)[] {
+  const left = items.map((x) => x.left)
+  const done: (number | null)[] = items.map((x, i) => (x.debt ? null : left[i] <= 0 ? 0 : null))
+  for (let m = 0; m < PLAN_HORIZON && done.some((d) => d === null); m++) {
+    let avail = Math.max(0, free)
+    items.forEach((x, i) => {
+      if (done[i] !== null) return
+      if (x.debt) left[i] -= creditSplit(left[i], x.debt.rate, x.debt.payment).body
+      const give = x.on ? Math.max(0, Math.min(x.cap, left[i], avail)) : 0
+      left[i] -= give
+      avail -= give
+      if (left[i] <= 0) done[i] = m
+    })
+  }
+  return done
+}
+
+/** Тело кредита и досрочек этого месяца по долгу — чтобы считать от остатка на начало месяца. */
+const creditBodyIn = (c: Credit, payments: Payment[] = [], key: string) =>
+  countedPayments(payments)
+    .filter((p) => p.targetId === c.id && (p.kind === 'credit' || p.kind === 'prepay') && p.period === key && afterAnchor(p, c.principalSetAt))
+    .reduce((s, p) => s + (p.principal ?? 0), 0)
+
+/** Есть ли у участника выписка, покрывающая хотя бы день месяца. */
+const uploadedBy = (by: PersonId, key: string, uploads: UploadPeriod[]) =>
+  monthUploaded(key, uploads.filter((u) => u.slot === by))
+
+/**
+ * План месяца (Р-78, Р-79): доход обоих → платежи месяца → траты каждого → цели, фонды и карточка долга по
+ * очереди (Р-84) из остатка → что осталось. Каждая часть — целые тенге; доход = платежи + траты + очередь +
+ * остаток − нехватка. Взносы и пороги считаются от начала месяца: «Отложить по плану» план не меняет.
+ *
+ * - Доход — зарплаты месяца: пришедшая — `paidTenge`, ещё нет — `salaryTenge` (Р-74).
+ * - Платежи — `monthDues` (отметки — суммой отметки, валютные — по курсу дня списания, Р-75); плательщик — Р-80.
+ * - Траты — `spendPlans` участника (разделы платежей — `plannedElsewhere` — не планируются, Р-81); факт —
+ *   итоги выписок участника за месяц.
+ * - Очередь — цель: `monthly`, не больше остатка до суммы; фонд: `monthly`, не больше остатка до порога —
+ *   месяцы фонда × (платежи + траты месяца) (Р-82); карточка долга: своя сумма в месяц, не больше остатка долга
+ *   после платежа по графику, а с активным планом «Сначала долги» — шаг плана (`planStep`). Выключенная (`pausedAt`)
+ *   и цель на паузе плана — 0.
+ * - Даты — прогон очереди по месяцам (`queueRun`); выключил цель — даты остальных сдвигаются.
+ */
+export function monthPlan(state: MonthPlanState, ctx: MonthPlanCtx): MonthPlan {
+  const { key } = ctx
+  const people = (state.people ?? []).filter(alive)
+  const payments = state.payments ?? []
+  const salaryCtx = salaryCtxOf(state)
+  const settings = moneySettingsOf(state)
+
+  // Доход.
+  const income: PlanIncome[] = people
+    .map((p) => {
+      const rec = paidFor(payments, 'salary', p.id, key)
+      const amount = rec ? paidTenge(state, p.id, key, rec) : salaryTenge(p, key, salaryCtx).tenge
+      return { person: p.id, name: p.name, amount, came: !!rec }
+    })
+    .filter((x) => x.amount > 0 || x.came)
+  const incomeTotal = amountTotal(income)
+
+  // Платежи.
+  const dues: PlanDue[] = monthDues(state, key).map((d) => ({
+    ...d,
+    payer: payerOf(d.kind === 'obligation' ? d.obligation : d.credit, people),
+  }))
+  const duesTotal = amountTotal(dues)
+
+  // Траты каждого.
+  const live = ctx.spendCategories.filter(alive)
+  const named = liveSpendCategories(ctx.spendCategories)
+  const spend: PlanSpend[] = people
+    .map((p): PlanSpend => {
+      const has = uploadedBy(p.id, key, ctx.uploads)
+      const mine = ctx.totals.filter((t) => !t.deletedAt && t.by === p.id && t.kind === 'month' && t.period === key && t.amount > 0)
+      const factOf = (categoryId: string) => (has ? mine.filter((t) => t.categoryId === categoryId).reduce((s, t) => s + t.amount, 0) : null)
+      const rows = (state.spendPlans ?? [])
+        .filter((x) => !x.deletedAt && x.by === p.id && x.amount > 0 && !plannedElsewhere(x.categoryId, live))
+        .map((x) => ({ categoryId: x.categoryId, name: spendCategoryName(named, x.categoryId), plan: x.amount, fact: factOf(x.categoryId) }))
+      const fact = has
+        ? mine.filter((t) => t.categoryId === UNKNOWN_CATEGORY || !plannedElsewhere(t.categoryId, live)).reduce((s, t) => s + t.amount, 0)
+        : null
+      return { by: p.id, plan: rows.reduce((s, r) => s + r.plan, 0), fact, rows }
+    })
+    .filter((s) => s.rows.length > 0 || (s.fact ?? 0) > 0)
+  const spendTotal = spend.reduce((s, x) => s + x.plan, 0)
+
+  const free = incomeTotal - duesTotal - spendTotal
+  const monthSpend = duesTotal + spendTotal
+
+  // Очередь.
+  const plan = activePlan(state.plans ?? [])
+  const planPaused = new Set(plan ? pausedGoals(plan, state.goals ?? []).map((g) => g.id) : [])
+  const card = debtCardOf(state)
+  const target = costliestCredits(state.credits ?? [])[0]
+  const step = plan && target ? planStep(plan, state, key) : null
+  const shape = queueOf(state).map((q) => {
+    if (q.kind === 'debt') {
+      const c = plan && step?.kind === 'prepay' ? (state.credits ?? []).find((x) => x.id === step.creditId) ?? target : target
+      const start = c.principal + creditBodyIn(c, payments, key)
+      const afterRegular = start - creditSplit(start, c.annualRate, c.payment).body
+      const want = plan ? (step?.kind === 'prepay' ? Math.min(step.amount, afterRegular) : 0) : Math.min(Math.max(0, card.monthly), afterRegular)
+      const put = countedPayments(payments)
+        .filter((p) => p.kind === 'prepay' && p.targetId === c.id && p.period === key)
+        .reduce((s, p) => s + p.amount, 0)
+      return {
+        item: {
+          id: q.id, kind: 'debt' as const, goalId: null, creditId: c.id, ...(plan && step?.kind === 'prepay' ? { planId: plan.id } : {}),
+          name: c.name, payer: payerOf(card, people), want, paused: card.pausedAt ? ('off' as const) : (false as const), have: start, need: start, put,
+        },
+        run: { cap: want, left: start, debt: { rate: c.annualRate, payment: c.payment } },
+      }
+    }
+    const g = q.goal
+    const have = goalHaveBefore(g, key)
+    const need = q.kind === 'fund' ? fundMonthsOf(q.fund, g, settings) * monthSpend : g.need
+    const want = Math.min(Math.max(0, g.monthly), Math.max(0, need - have))
+    const paused = g.pausedAt ? ('off' as const) : planPaused.has(g.id) ? ('plan' as const) : (false as const)
+    return {
+      item: {
+        id: q.id, kind: q.kind, ...(q.kind === 'fund' ? { fund: q.fund } : {}), goalId: g.id,
+        name: g.name, payer: payerOf(g, people), want, paused, have, need, put: goalPutIn(g, key),
+      },
+      run: { cap: want, left: Math.max(0, need - have) },
+    }
+  })
+  let avail = free
+  const queue: PlanQueueItem[] = shape.map(({ item }) => {
+    const given = item.paused ? 0 : Math.max(0, Math.min(item.want, avail))
+    avail -= given
+    return { ...item, given, doneMonth: null }
+  })
+  const done = queueRun(shape.map(({ item, run }) => ({ ...run, on: !item.paused })), free)
+  queue.forEach((q, i) => {
+    // Долг на паузе всё равно закрывается по графику; цель на паузе — нет.
+    const d = done[i]
+    q.doneMonth = d === null || (q.paused && q.kind !== 'debt') ? null : addMonths(key, d)
+  })
+  const queueTotal = amountTotal(queue.map((q) => ({ amount: q.given })))
+
+  const byPerson = people.map((p) => {
+    const mine = <T extends { payer: PersonId | null }>(xs: T[]) => xs.filter((x) => x.payer === p.id)
+    const inc = income.find((x) => x.person === p.id)?.amount ?? 0
+    const d = amountTotal(mine(dues))
+    const s = spend.find((x) => x.by === p.id)?.plan ?? 0
+    const q = mine(queue).reduce((a, x) => a + x.given, 0)
+    return { person: p.id, income: inc, dues: d, spend: s, queue: q, left: inc - d - s - q }
+  })
+
+  const saved: Partial<Record<PersonId, Allocation>> = {}
+  for (const p of people) {
+    const rec = allocationFor(state.allocations, { source: 'salary', sourceId: p.id, period: key })
+    if (rec) saved[p.id] = rec
+  }
+
+  return {
+    key,
+    income: { total: incomeTotal, byPerson: income },
+    dues,
+    duesTotal,
+    spend,
+    spendTotal,
+    free,
+    queue,
+    queueTotal,
+    rest: Math.max(0, free - queueTotal),
+    short: Math.max(0, -free),
+    byPerson,
+    saved,
+  }
+}
+
+/**
+ * Подсказка «всё в долг — закроете к N» (Р-83): все цели и фонды выключены, весь свободный остаток месяца —
+ * досрочкой в самый дорогой долг; тот же прогон, что у дат плана. null — долгов с процентами нет, остатка нет
+ * или долг так не закрывается в горизонте.
+ */
+export function allInDebt(
+  state: MonthPlanState,
+  ctx: MonthPlanCtx,
+  plan: MonthPlan = monthPlan(state, ctx),
+): { month: string; creditId: string; extra: number } | null {
+  const debt = plan.queue.find((q) => q.kind === 'debt')
+  const credit = (state.credits ?? []).find((c) => c.id === debt?.creditId)
+  if (!debt || !credit || plan.free <= 0) return null
+  const [m] = queueRun([{ on: true, cap: plan.free, left: debt.have, debt: { rate: credit.annualRate, payment: credit.payment } }], plan.free)
+  return m === null ? null : { month: addMonths(plan.key, m), creditId: credit.id, extra: plan.free }
+}
+
+/** Что записывает «Отложить по плану» (Р-78) — стор только исполняет. */
+export type PlanSave = {
+  record: { source: 'salary'; sourceId: PersonId; period: string }
+  /** Зарплата плательщика этого месяца — `total` записи. */
+  total: number
+  /** Разовые взносы в цели и фонды плательщика. */
+  contributions: { goalId: string; amount: number }[]
+  /** Досрочка карточки долга, если её вносит плательщик; `planId` — шагом плана «Сначала долги». */
+  prepay: { creditId: string; amount: number; planId?: string } | null
+  /** Части записи: `goalId` и `prepay:<creditId>`, только ненулевые. */
+  parts: AllocationPart[]
+}
+
+/**
+ * «Отложить по плану» для плательщика (Р-78): его цели, фонды и досрочка — суммами плана месяца, разово. За
+ * вычетом уже отложенного в этом месяце (`put`: взнос руками, другая запись) — дважды не кладётся. null — его
+ * зарплата месяца не пришла или запись месяца уже есть (в том числе старого разбора Блока 11).
+ */
+export function planSave(plan: MonthPlan, person: PersonId): PlanSave | null {
+  const inc = plan.income.byPerson.find((x) => x.person === person)
+  if (!inc?.came || plan.saved[person]) return null
+  const mine = plan.queue.filter((q) => q.payer === person && !q.paused)
+  const amount = (q: PlanQueueItem) => Math.max(0, q.given - q.put)
+  const contributions = mine.filter((q) => q.goalId && amount(q) > 0).map((q) => ({ goalId: q.goalId!, amount: amount(q) }))
+  const debt = mine.find((q) => q.kind === 'debt' && q.creditId && amount(q) > 0)
+  const prepay = debt ? { creditId: debt.creditId!, amount: amount(debt), ...(debt.planId ? { planId: debt.planId } : {}) } : null
+  return {
+    record: { source: 'salary', sourceId: person, period: plan.key },
+    total: inc.amount,
+    contributions,
+    prepay,
+    parts: [
+      ...contributions.map((c) => ({ target: c.goalId, amount: c.amount })),
+      ...(prepay ? [{ target: `prepay:${prepay.creditId}`, amount: prepay.amount }] : []),
+    ],
+  }
+}
+
+/** Прочие источники (Р-86): остаток месяца, освободившийся платёж, закрытый долг. */
+export type PlanSource =
+  | { from: 'rest'; amount: number; period: string }
+  | { from: 'freed' }
+  | { from: 'credit'; creditId: string }
+
+export type PlanFromSource =
+  | (Omit<PlanSave, 'record'> & {
+      mode: 'once'
+      record: { source: 'rest' | 'freed'; sourceId: string; period: string }
+      /** Сколько раскладывается. */
+      amount: number
+      /** Что не поместилось в очередь (всё собрано), ≥ 0. */
+      left: number
+      recorded: Allocation | null
+    })
+  | {
+      mode: 'monthly'
+      record: { source: 'freed'; sourceId: string; period: string }
+      amount: number
+      /** Первая включённая цель или фонд очереди: её `monthly` растёт на `amount` с месяца освобождения. */
+      goalId: string
+      name: string
+      add: number
+      /** Месяц цели без прибавки и с ней (план месяца освобождения). */
+      before: string | null
+      after: string | null
+      recorded: Allocation | null
+    }
+
+/**
+ * Прочие источники старой раскладки (Р-86) — без отдельного экрана:
+ * - «остались деньги?» (`rest`) и «долг закрыт» (`credit`, его платёж — разово; долг активного плана «Сначала
+ *   долги» — 0: платёж уже идёт в следующий долг) — разовый взнос по очереди сверху вниз: цель — до суммы, фонд —
+ *   до порога, долг — до остатка; выключенные пропускаются;
+ * - «освободится N ₸» (`freed`) — +N к взносу первой включённой цели или фонда очереди (не собранной) с месяца,
+ *   когда платёж уменьшится; даты «к X, а не к Y» — план того месяца без прибавки и с ней.
+ * null — источника нет (снижения впереди нет, долг не закрыт) или класть некуда.
+ * `rawCredits` — кредиты документа (база сверки) для «долг закрыт», как у `monthBreakdown`.
+ */
+export function planFromSource(
+  state: MonthPlanState,
+  ctx: MonthPlanCtx & { rawCredits?: Credit[] },
+  source: PlanSource,
+): PlanFromSource | null {
+  if (source.from === 'freed') {
+    const freed = freedChange(liveObligations(state.obligations ?? []), ctx.key, state.book)
+    if (!freed) return null
+    const at = { ...ctx, key: freed.change.from }
+    const plan = monthPlan(state, at)
+    const head = plan.queue.find((q) => q.kind !== 'debt' && !q.paused && q.need - q.have > 0)
+    if (!head?.goalId) return null
+    const goals = (state.goals ?? []).map((g) => (g.id === head.goalId ? { ...g, monthly: g.monthly + freed.monthly } : g))
+    const after = monthPlan({ ...state, goals }, at).queue.find((q) => q.id === head.id)
+    const record = { source: 'freed' as const, sourceId: freed.o.id, period: freed.change.from }
+    return {
+      mode: 'monthly',
+      record,
+      amount: freed.monthly,
+      goalId: head.goalId,
+      name: head.name,
+      add: freed.monthly,
+      before: head.doneMonth,
+      after: after?.doneMonth ?? null,
+      recorded: allocationFor(state.allocations, record),
+    }
+  }
+
+  let amount: number
+  let record: { source: 'rest' | 'freed'; sourceId: string; period: string }
+  if (source.from === 'rest') {
+    amount = Math.max(0, Math.round(source.amount))
+    record = { source: 'rest', sourceId: source.period, period: source.period }
+  } else {
+    const m = progressMoments({ credits: ctx.rawCredits ?? state.credits, payments: state.payments }).find(
+      (x): x is Extract<Moment, { kind: 'closed' }> => x.kind === 'closed' && x.creditId === source.creditId,
+    )
+    if (!m) return null
+    amount = activePlan(state.plans ?? [])?.creditIds.includes(m.creditId) ? 0 : m.freed
+    record = { source: 'freed', sourceId: m.creditId, period: movementMonth(m.at) }
+  }
+
+  // Разово — до суммы цели, порога фонда, остатка долга: на сейчас, а не на начало месяца.
+  const plan = monthPlan(state, ctx)
+  const goals = new Map(liveGoals(state.goals ?? []).map((g) => [g.id, g]))
+  let left = amount
+  const contributions: { goalId: string; amount: number }[] = []
+  let prepay: PlanSave['prepay'] = null
+  for (const q of plan.queue) {
+    if (q.paused || left <= 0) continue
+    const room = q.kind === 'debt'
+      ? (state.credits ?? []).find((c) => c.id === q.creditId)?.principal ?? 0
+      : Math.max(0, q.need - Math.max(0, goals.get(q.goalId!)?.have ?? 0))
+    const x = Math.min(room, left)
+    if (x <= 0) continue
+    left -= x
+    if (q.kind === 'debt') prepay = { creditId: q.creditId!, amount: x }
+    else contributions.push({ goalId: q.goalId!, amount: x })
+  }
+  if (!contributions.length && !prepay) return null
+  return {
+    mode: 'once',
+    record,
+    amount,
+    total: amount,
+    left,
+    contributions,
+    prepay,
+    parts: [
+      ...contributions.map((c) => ({ target: c.goalId, amount: c.amount })),
+      ...(prepay ? [{ target: `prepay:${prepay.creditId}`, amount: prepay.amount }] : []),
+    ],
+    recorded: allocationFor(state.allocations, record),
+  }
+}
+
+/** Сводка прошлого месяца (Р-85) — только из записей, только чтение. */
+export type MonthPlanPast = {
+  key: string
+  /** Пришло зарплат, тенге (`paidTenge`), и по участникам. */
+  came: number
+  cameBy: { person: PersonId; amount: number }[]
+  /** Оплачено по графику (обязательства и кредиты) — суммы отметок. */
+  paid: number
+  /** Отложено: взносы в цели и фонды месяца и досрочки. */
+  saved: number
+  prepaid: number
+  /** Потрачено по выпискам (кроме платежей `plannedElsewhere`); null — итогов за месяц нет. */
+  spent: number | null
+  /** Записи месяца: «Отложить по плану», разборы Блока 11, прежние раскладки — как были. */
+  records: Allocation[]
+}
+
+/** Прошлый месяц сводкой (Р-85): пришло, оплачено, отложено, потрачено — из отметок, взносов и итогов выписок. */
+export function monthPlanPast(
+  state: MonthPlanState & { spendTotals?: SpendTotal[]; spendCategories?: SpendCategory[] },
+  key: string,
+): MonthPlanPast {
+  const counted = countedPayments(state.payments ?? []).filter((p) => p.period === key)
+  const cameBy = counted
+    .filter((p) => p.kind === 'salary')
+    .map((p) => ({ person: p.targetId as PersonId, amount: paidTenge(state, p.targetId as PersonId, key, p) }))
+  const totals = (state.spendTotals ?? []).filter((t) => !t.deletedAt && t.kind === 'month' && t.period === key && t.amount > 0)
+  const live = (state.spendCategories ?? []).filter(alive)
+  return {
+    key,
+    came: amountTotal(cameBy),
+    cameBy,
+    paid: amountTotal(counted.filter((p) => p.kind === 'obligation' || p.kind === 'credit')),
+    saved: liveGoals(state.goals ?? []).reduce((s, g) => s + goalPutIn(g, key), 0),
+    prepaid: amountTotal(counted.filter((p) => p.kind === 'prepay')),
+    spent: totals.length
+      ? totals.filter((t) => t.categoryId === UNKNOWN_CATEGORY || !plannedElsewhere(t.categoryId, live)).reduce((s, t) => s + t.amount, 0)
+      : null,
+    records: (state.allocations ?? []).filter((a) => !a.deletedAt && a.period === key).sort((a, b) => a.at.localeCompare(b.at)),
+  }
 }
 
 export type WeekPictureRow = {

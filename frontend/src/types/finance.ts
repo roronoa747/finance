@@ -473,9 +473,10 @@ export type Allocation = Tracked & {
   source: 'salary' | 'rest' | 'freed'
   /**
    * Запись разбора (B2C-54, Р-65): `parts` — по статьям (`target` = `ArticleKey`). Старые записи
-   * без `kind` — раскладка по целям, читаются как были.
+   * без `kind` — раскладка по целям, читаются как были. `plan` — «Отложить по плану» (Р-78, B2C-86):
+   * `parts` — цели и фонды (`goalId`) и досрочка (`prepay:<creditId>`), `total` — зарплата плательщика.
    */
-  kind?: 'breakdown'
+  kind?: 'breakdown' | 'plan'
   /** Статьи, выключенные в этом разборе: «как обычно» в следующем месяце их не включает (Р-55). */
   off?: ArticleKey[]
   sourceId: string
