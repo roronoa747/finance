@@ -361,6 +361,20 @@ describe('B2C-96: загрузка «сразу готово» и вопросы
     expect(api.upsertOperations).not.toHaveBeenCalled()
   })
 
+  it('«Отменить» возвращает и неделю, с которой загружали (ревью frontend Н-6)', async () => {
+    server()
+    const { store } = await openWeek({ uploads: [BOTH[1]!] })
+    const back = () => q<HTMLButtonElement>('button[aria-label="Прошлая неделя"]')!
+    await press(back())
+    expect(txt(q('[data-week-label]'))).toBe('14–20 сентября')
+    readResult.value = { ok: [parsed()], errors: [] }
+    await pickFile()
+    expect(txt(q('[data-week-label]'))).toBe('21–27 сентября')
+    await press(q('[data-toast-action]'))
+    expect(store.held).toBe(false)
+    expect(txt(q('[data-week-label]'))).toBe('14–20 сентября')
+  })
+
   it('пока висит тост, листы показывают то же, что экран: раздел — операции выписки, «Мои выписки» — её строку (критик)', async () => {
     server()
     const { store } = await openWeek({ uploads: [BOTH[1]!] })

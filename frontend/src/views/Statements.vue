@@ -147,8 +147,16 @@ const heldText = computed(() => {
   const what = `${n} ${plural(n, 'операция', 'операции', 'операций')}`
   return n > 0 && known === n ? `Эти ${what} уже были` : `Загружено ${what}`
 })
+/** Неделя до загрузки — «Отменить» возвращает и её (ревью frontend Б15, Н-6). */
+let beforeUpload: { week: string; turned: boolean } | null = null
 function undo() {
+  const held = store.held
   store.undoUpload()
+  if (held && beforeUpload) {
+    week.value = beforeUpload.week
+    turned.value = beforeUpload.turned
+    beforeUpload = null
+  }
   flash('Отменено', 1600)
 }
 // Платежи, которые выписка отметила сама (Р-6, Р-94), — коротким тостом после отправки.
@@ -172,6 +180,7 @@ async function pick(e: Event) {
     readErrors.value = errors
     if (ok.length) {
       note.value = null
+      beforeUpload = { week: week.value, turned: turned.value }
       await store.upload(ok)
       // Показать неделю, которой кончается выписка (не дальше текущей).
       const last = weekKey(ok.map((f) => f.parsed.to).sort().at(-1)!)
