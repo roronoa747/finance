@@ -280,10 +280,15 @@ export const useOperationsStore = defineStore('operations', () => {
     holdTimer = setTimeout(() => void commitUpload(client), UPLOAD_HOLD_MS)
   }
 
-  /** Тост ушёл, экран закрыли или вкладку скрыли — отправка сразу; ждать нечего — ничего не делает. */
+  /**
+   * Тост ушёл, экран закрыли или вкладку скрыли — отправка сразу; ждать нечего — ничего не делает. Все операции выписки
+   * уже были («Эти N операций уже были») — новых данных нет: ни второй записи загрузки, ни отправки (ревью Б15, Н-5).
+   */
   async function commitUpload(client: ApiClient = apiClient) {
     if (!held.value) return
     dropHold()
+    const fresh = draftOps.value
+    if (fresh.length && fresh.every((o) => o.id in ops.value)) return cancelDraft()
     await send(client)
   }
 

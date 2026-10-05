@@ -848,6 +848,28 @@ describe('stores/operations — «сразу готово» с «Отменит�
     expect(totals()).toContainEqual(['week', '2026-W39', 'sc_food', 12_500])
   })
 
+  it('та же выписка второй раз («уже были»): тост ушёл — записи загрузки одна, очередь пуста (ревью frontend Н-5)', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const { client, server, calls } = fakeServer()
+    await store.upload(draftOf(week39()), client)
+    await vi.advanceTimersByTimeAsync(UPLOAD_HOLD_MS)
+    expect(server.uploads).toHaveLength(1)
+    const sent = calls.upsertOperations.mock.calls.length
+    await store.upload(draftOf(week39()), client)
+    await vi.advanceTimersByTimeAsync(UPLOAD_HOLD_MS)
+    expect(store.held).toBe(false)
+    expect(store.draft).toBeNull()
+    expect(server.uploads).toHaveLength(1)
+    expect(store.pending).toEqual([])
+    expect(calls.upsertOperations.mock.calls.length).toBe(sent)
+    expect(totals()).toContainEqual(['week', '2026-W39', 'sc_food', 10_000])
+    // Хоть одна новая операция — обычная отправка.
+    await store.upload(draftOf(stmt('2026-09-21', '2026-09-25', ['2026-09-22', 4_000, 'Magnum'], ['2026-09-23', 6_000, 'Small'], ['2026-09-25', 1_000, 'Small'])), client)
+    await store.commitUpload(client)
+    expect(server.uploads).toHaveLength(2)
+  })
+
   it('ушли с экрана (commitUpload) — отправка сразу, таймер второй раз не шлёт', async () => {
     signIn()
     const store = useOperationsStore()
