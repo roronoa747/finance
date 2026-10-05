@@ -80,7 +80,6 @@ h2 .q{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:upperca
 .seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgb(0 0 0 / .08)}
 .seg button.dot::after{content:"";position:absolute;top:7px;right:calc(50% - 40px);width:8px;height:8px;border-radius:50%;background:var(--brand)}
 .card{background:var(--surface);border:1px solid var(--card-border);border-radius:24px;padding:16px;display:flex;flex-direction:column;gap:10px}
-.card.dec{border:1.5px solid var(--brand)}
 .list{background:var(--surface);border:1px solid var(--card-border);border-radius:24px;padding:2px 14px}
 .lbl{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3)}
 .meta{font-size:13px;color:var(--ink-3)}
@@ -277,6 +276,8 @@ button.drow,div.drow[data-pay]{cursor:pointer}
 .sq button.on{outline:2px solid var(--ink);outline-offset:-2px}
 .sq b{font-size:14px} .sq span{font-family:var(--num);font-size:12.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dream{border-radius:28px;aspect-ratio:1/1;max-width:100%;background:linear-gradient(135deg,var(--s3),var(--s5));display:flex;flex-direction:column;justify-content:flex-end;padding:18px;color:var(--dot-ink)}
+.chipq.go{background:var(--brand);color:var(--brand-ink)}
+.pdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--brand);margin-left:6px;vertical-align:middle}
 /* круг — оглавление (ворота B2C-91, владелец: вариант А) */
 .accs{background:var(--surface);border:1px solid var(--card-border);border-radius:24px;padding:2px 14px}
 .acch{display:flex;align-items:center;gap:10px;width:100%;border:0;border-top:1px solid var(--line);background:transparent;padding:13px 0;cursor:pointer;text-align:left}
@@ -446,12 +447,12 @@ phone('rWeek', 'Нажал свой кружок', 'мои выписки', '<b>
 phone('rWeek', 'Загрузил', 'сразу готово, без «Отправить»', '<b>Главное:</b> ничего не нужно. «Отменить» — в тосте, пока он виден.', { tab: 'plan', seg: 'week', view: 'list', week: 3, toast: { t: 'Загружено 48 операций', undo: true }, pin: true });
 phone('rWeek', 'Нажал «! 3»', 'вопросы по одному', '<b>Главное:</b> ответ — одно нажатие. «Потом» — вопрос подождёт.', { tab: 'plan', seg: 'week', view: 'list', week: 3, sheet: { k: 'q', i: 0 } });
 
- phone('rMonth', 'Месяц', 'пришла зарплата Ильяса — точка на «Месяце»', '<b>Главное:</b> «Отложить по плану» — только пока зарплата не разложена. <b>Подсказка:</b> «хватает ли каждому» (?). <b>Скрыто:</b> разделы — под кругом, нажатием.', { tab: 'plan', seg: 'month' });
+ phone('rMonth', 'Месяц', 'пришла зарплата Ильяса — точка на «Месяце»', '<b>Главное:</b> «Отложить» — небольшой кнопкой в строке того, кому пришла зарплата; отложил — на её месте «✓ отложено». <b>Подсказка:</b> «хватает ли каждому» (?). <b>Скрыто:</b> разделы — под кругом, нажатием.', { tab: 'plan', seg: 'month' });
 phone('rMonth', 'Нажал синий цвет круга', 'раздел открылся прямо под кругом', '<b>Главное:</b> как было. Выключил цель или сменил, кто платит, — круг тут же, над списком. Остальные цвета бледнеют.', { tab: 'plan', seg: 'month', acc: 'goals', scrollTo: 'ring' });
 phone('rMonth', 'Подписки раскрыты', '✓ у группы — когда списались все', '<b>Ручная группа</b> «Кино и музыка» — подгруппой внутри. Оплатите ChatGPT — у группы появится ✓.', { tab: 'plan', seg: 'month', subs: true, acc: 'pay', scrollTo: 'ring' });
 phone('rMonth', 'Нажал на платёж', 'выписка не нашла — отмечаю сам', '<b>Главное:</b> «Оплатил». Тихо: «Изменить платёж». На строке отдельной кнопки нет.', { tab: 'plan', seg: 'month', acc: 'pay', scrollTo: 'ring', sheet: { k: 'pay', id: 'kaspi' } });
 phone('rMonth', 'Внеплановый доход', 'из карточки зарплат или из «+»', '<b>Главное:</b> «Готово». Деньги идут по очереди целей — сверху вниз.', { tab: 'plan', seg: 'month', sheet: { k: 'income' } });
-phone('rMonth', 'Освободится', 'платёж кончается — карточка наверху', '<b>Главное:</b> одна кнопка на карточке. Пока зарплата не разложена, эта карточка ждёт.', { tab: 'plan', seg: 'month', freed: true });
+phone('rMonth', 'Освободится', 'платёж кончается — подсказка у самого платежа', '<b>Главное:</b> «К «Японии»» — в строке под платежом, точка на «Платежах». Пока зарплата не отложена, кнопка тихая.', { tab: 'plan', seg: 'month', freed: true, acc: 'pay', scrollTo: 'ring' });
 phone('rMonth', 'Просмотр (viewer)', 'без «Неделя | Месяц», только читать', '<b>Главное:</b> нет. Без переключателей, ⋮⋮, смены плательщика и кнопок.', { tab: 'plan', seg: 'month', ro: true });
 phone('rMonth', 'Сентябрь', '‹ — прошлый месяц сводкой', '<b>Главное:</b> нет — только чтение. › — обратно в октябрь.', { tab: 'plan', seg: 'month', past: true });
 
@@ -550,24 +551,18 @@ function accView(v, c) {
   const S = [['pay', 'Платежи', '--s1', c.dues, `${paid} из ${G.dues.length} оплачено`, () => duesList(v)],
     ['spend', 'Траты', '--s8', c.spend, `потрачено ${nb(spentAll)}`, () => spendList()],
     ['goals', 'Цели и фонды', '--s3', c.goals, `${on} из ${G.goals.length} включены`, () => goalsList(v, c)]];
-  return `<div class="accs">` + S.map(([k, n, col, val, meta, body]) => `<button class="acch" data-acc="${k}" aria-expanded="${v.acc === k}" style="--c:var(${col})"><span class="k"><span>${n}<br><small>${meta}</small></span></span><span class="v">${nb(val)}</span><span class="chev ${v.acc === k ? 'open' : ''}">›</span></button>`
+  return `<div class="accs">` + S.map(([k, n, col, val, meta, body]) => `<button class="acch" data-acc="${k}" aria-expanded="${v.acc === k}" style="--c:var(${col})"><span class="k"><span>${n}${k === 'pay' && v.freed && !G.freedDone ? '<i class="pdot"></i>' : ''}<br><small>${meta}</small></span></span><span class="v">${nb(val)}</span><span class="chev ${v.acc === k ? 'open' : ''}">›</span></button>`
     + (v.acc === k ? `<div class="accb">${body()}</div>` : '')).join('') + `</div>`;
-}
-function topCard(v, c) {
-  if (v.ro) return '';
-  if (v.freed) return G.freedDone ? '' : `<div class="card dec"><span class="lbl">С мая · рассрочка iPhone</span><span class="huge">+32 000 ₸</span><span class="meta">в месяц → «Япония» на 2 месяца раньше</span><button class="btn" data-freed>Добавить к «Японии»</button></div>`;
-  if (G.saved) return '';
-  return `<div class="card dec"><span class="lbl">Пришла зарплата · Ильяс</span><span class="huge">774 000 ₸</span><span class="meta">по плану в ${c.nSave} ${plural(c.nSave, 'цель', 'цели', 'целей')} — ${fmt(c.toSave)}</span><button class="btn" data-save>Отложить по плану</button></div>`;
 }
 function salCard(v, c) {
   const tag = p => `<span class="tag ${c.by[p] < 0 ? 'w' : ''}">${pl(c.by[p])}</span>`;
   return `<div class="card">
     <div class="sal">${av('I')}<div class="tx"><span class="nm">Ильяс <span class="ok" style="font-size:13px">✓ пришла</span></span><span class="st">1 500 € · обменял 500 € по 512</span></div><div class="r"><b>${nb(P.I.sal)} ₸</b><span>${tag('I')}<span class="hint" title="Зарплата минус свои платежи, траты и цели">?</span></span></div></div>
-    <div class="fx">${v.ro ? '' : '<button class="chipq" data-fx>Обменял</button>'}<span class="meta">евро −134 ₸ за год ›</span></div>
+    <div class="fx">${v.ro ? '' : (G.saved ? `<span class="ok" style="font-size:13px;font-weight:650">✓ отложено ${nb(G.saved)}</span>` : `<button class="chipq go" data-save>Отложить ${nb(c.toSave)}</button>`) + '<button class="chipq" data-fx>Обменял</button>'}<span class="meta">евро −134 ₸ за год ›</span></div>
     <div class="sep"></div>
     <div class="sal">${av('A')}<div class="tx"><span class="nm">Аруна</span><span class="st">ждём 25 окт</span></div><div class="r"><b class="wait">${nb(P.A.sal)} ₸</b>${tag('A')}</div></div>
+    ${v.ro ? '' : '<div class="fx"><button class="chipq">Пришла</button></div>'}
     ${v.ro ? '' : '<div class="sep"></div><div><button class="chipq" data-income>+ Внеплановый доход</button></div>'}
-    ${G.saved ? `<div class="saved">✓ Отложено ${fmt(G.saved)}</div>` : ''}
   </div>`;
 }
 function dueRow(d, ro, inner) {
@@ -586,7 +581,7 @@ function subsGroup(v, ref) {
   return `<div class="grp">${head}<div class="inner">${inner}</div></div>`;
 }
 function duesList(v) {
-  const rows = G.dues.filter(d => !d.sub).map(d => ({ day: d.day, h: dueRow(d, v.ro) }));
+  const rows = G.dues.filter(d => !d.sub).map(d => ({ day: d.day, h: dueRow(d, v.ro) + (d.id === 'iph' && v.freed && !v.ro && !G.freedDone ? `<div class="tip"><span>С мая свободно +32 000 в месяц</span><button class="chipq ${G.saved ? 'go' : ''}" data-freed>К «Японии»</button></div>` : '') }));
   rows.push({ day: Math.min(...G.dues.filter(d => d.sub).map(d => d.day)), h: subsGroup(v, false) });
   return `<div class="list">${rows.sort((a, b) => a.day - b.day).map(r => r.h).join('')}</div>`;
 }
@@ -616,7 +611,7 @@ function monthView(v) {
   }
   const c = calc();
   const head = v.ro ? `<div class="tbar"><span class="t">План</span><span class="ro">просмотр</span></div>` : seg(v);
-  return head + topCard(v, c)
+  return head
     + `<div class="mnav"><button class="nav" data-past="1" aria-label="Сентябрь">‹</button>Октябрь<button class="nav" disabled>›</button></div>`
     + `<div class="ringbox" data-anchor="ring">${ring(c, { acc: v.acc || '' })}</div>` + salCard(v, c)
     + accView(v, c)
