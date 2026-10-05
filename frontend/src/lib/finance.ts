@@ -4028,8 +4028,8 @@ export function freeByFact(
 
 /**
  * Траты месяца по выпискам обоих, кроме разделов, уже учтённых планом (`plannedElsewhere`:
- * кредиты, коммуналка, аренда, подписки живут в `monthDues`). Одна функция на два места (Р-38):
- * `freeByFact` вычитает её из плана, виджет «Траты» в «Деньгах» показывает её фактом.
+ * кредиты, коммуналка, аренда, подписки живут в `monthDues`). Вызывает её `freeByFact` — вычитает из плана
+ * (виджета «Траты» в «Деньгах» больше нет, Блок 15).
  * `null` — за месяц ни одной загрузки: факта нет, а не «потрачено 0».
  */
 export function monthSpentByFact(totals: SpendTotal[], spendCategories: SpendCategory[], key: string, uploads: UploadPeriod[] = []): number | null {
