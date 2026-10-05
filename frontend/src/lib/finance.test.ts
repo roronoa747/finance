@@ -115,6 +115,8 @@ import {
   type Decision,
   salaryAsk,
   salaryToAllocate,
+  monthPlan,
+  planSave,
   keepCard,
   freedChange,
   freedQuestion,
@@ -122,18 +124,7 @@ import {
   wishTotal,
   moneyArticlesOf,
   moneySettingsOf,
-  articleFact,
-  asUsual,
-  breakdownWith,
-  incomeBreakdownPath,
-  breakdownArticles,
-  breakdownEffects,
-  breakdownFill,
-  monthBreakdown,
-  type BreakdownArticle,
-  type BreakdownFill,
-  type BreakdownState,
-  type UploadPeriod,
+  type DecisionState,
   duesTag,
   duesTotals,
   loadTag,
@@ -142,7 +133,7 @@ import {
   spendStatus,
 } from './finance'
 import { STAT_NORMS } from '@/lib/statements/norms'
-import { planFamilyDoc, planOf } from '@/test/planFamily'
+import { planFamilyDoc } from '@/test/planFamily'
 import type { SpendCategory, SpendTotal } from '@/lib/statements/types'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import { DEFAULT_SPEND_CATEGORIES, spendArticle } from '@/lib/statements/dictionary'
@@ -150,7 +141,7 @@ import { plain, money, moneyShort, parseMoney, pct, ratePct } from './money'
 import { clean, caretAt, sigBefore } from './num'
 import { plural } from './utils'
 import { monthKey, parseMonthKey, addMonths, daysInMonth, today, atLabel } from '@/lib/dates'
-import type { Account, Allocation, ArticleKey, Credit, DebtPlan, Goal, MoneyArticle, Obligation, Payment, Person, SyncDoc, WishItem } from '@/types/finance'
+import type { Account, Allocation, Credit, DebtPlan, Goal, MoneyArticle, Obligation, Payment, Person, SyncDoc, WishItem } from '@/types/finance'
 
 describe('finance.ts — аннуитет и кредитные расчёты', () => {
   it('annuityPayment — корректный расчёт платежа при нулевой и положительной ставке', () => {
@@ -2660,11 +2651,11 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(q[2].actions.primary).toBeUndefined()
       expect(q[2].groups!.map((g) => g.label)).toEqual(['ИП Абенова', 'ИП Ким', 'Kiosk'])
       expect(q[3]).toMatchObject({ kind: 'keep', ...keepCard(sub, base.goals, [stmt], end), to: null, obligation: { id: 'nf' } })
-      expect(q[4]).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата', to: '/week/order?from=salary&person=a&period=2026-09', actions: { primary: 'Разложить', ghost: 'Позже' }, usual: null, amount: 700_000 })
-      // «Освободится» — сумма та же, что у карточки «Денег» (`freedChange().monthly`), «Распределить» → разбор.
+      expect(q[4]).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата · Ильяс', to: '/money', actions: { primary: 'К плану месяца', ghost: 'Потом' }, amount: 700_000 })
+      // «Освободится» — сумма та же, что у карточки плана (`freedChange().monthly`); вход — план месяца (Р-86).
       const freed = freedChange(liveObligations(state.obligations), '2026-09')!
       expect(freedQuestion(freed)).toBe(`Освободится ${money(40_000)} в месяц`)
-      expect(q[5]).toMatchObject({ question: freedQuestion(freed), meta: 'Квартира · с ноября', to: '/week/breakdown?from=freed', actions: { primary: 'Распределить', ghost: 'Потом' } })
+      expect(q[5]).toMatchObject({ question: freedQuestion(freed), meta: 'Квартира · с ноября', to: '/money', actions: { primary: 'К плану месяца', ghost: 'Потом' } })
       expect(freed.monthly).toBe(40_000)
       expect(q[6]).toMatchObject({ ...monthEndCard('2026-09'), to: null })
     })
@@ -2722,8 +2713,8 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(found).toMatchObject({ period: '2026-09', person: { id: 'a' }, record: { amount: 700_000 } })
       // Раньше «пришла?», шагов и подписок; после сопоставлений (их «Да, зарплата» и ведёт сюда).
       expect(first(paid(stmt('a', '2026-09')), { me: 'a', now })).toMatchObject({
-        kind: 'allocate', question: 'Пришла зарплата', meta: 'Сначала — ваш порядок', amount: 700_000,
-        to: '/week/order?from=salary&person=a&period=2026-09', actions: { primary: 'Разложить', ghost: 'Позже' },
+        kind: 'allocate', question: 'Пришла зарплата · Ильяс', meta: '', amount: 700_000,
+        to: '/money', actions: { primary: 'К плану месяца', ghost: 'Потом' },
       })
       expect(first(paid(stmt('a', '2026-09')), { me: 'a', now, matches: [candidate('salary', 'a')] })?.kind).toBe('match')
 
@@ -2745,11 +2736,27 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       const done: Allocation = { id: 'al', source: 'salary', sourceId: 'a', period: '2026-09', by: 'a', at: T, total: 100_000, parts: [{ target: 'life', amount: 100_000 }], updatedAt: T }
       expect(salaryToAllocate({ ...paid(stmt('a', '2026-09')), allocations: [done] }, 'a', now)).toBeNull()
       expect(first({ ...paid(stmt('a', '2026-09')), allocations: [done] }, { me: 'a', now })?.kind).not.toBe('allocate')
-      // Платежи больше зарплаты — разбор всё равно нужен (покажет «не хватает», Р-65); нулевая отметка — нечего.
+      // Блок 14 (ревью frontend Н-1): платежи больше зарплаты — очереди ничего не достаётся, откладывать нечего —
+      // карточки нет (план «Денег» сам покажет «Не хватает»); нулевая отметка — тоже нечего.
       const heavy = { ...paid(stmt('a', '2026-09')), obligations: [{ ...rent, versions: [{ from: '2000-01', amount: 5_000_000 }] }] }
-      expect(salaryToAllocate(heavy, 'a', now)?.period).toBe('2026-09')
+      expect(salaryToAllocate(heavy, 'a', now)).toBeNull()
       expect(salaryToAllocate(paid(stmt('a', '2026-09', { amount: 0 })), 'a', now)).toBeNull()
       expect(salaryToAllocate(paid(stmt('a', '2026-09')), undefined, now)).toBeNull()
+    })
+
+    it('ревью frontend Б14, Н-1: у второго участника без своих целей «Пришла зарплата» нет; цель с плательщиком b — есть', () => {
+      const stmtB: Payment = {
+        id: 's-b', kind: 'salary', targetId: 'b', period: '2026-09', amount: 500_000, accountId: null, by: 'b', at: T, updatedAt: T, source: 'statement', opId: 'op-b',
+      }
+      const late = { day: 25, key: '2026-09' }
+      // Плательщик цели по умолчанию — первый участник (Р-80): у b в плане ни строки — откладывать нечего.
+      const state = { ...base, payments: [stmtB] }
+      expect(planSave(monthPlan(state, { key: '2026-09', totals: [], spendCategories: [], uploads: [] }), 'b')).toBeNull()
+      expect(salaryToAllocate(state, 'b', late)).toBeNull()
+      expect(kinds(decisionQueue(state, { me: 'b', now: late, answeredMonthEnd: '2026-09' }))).toEqual([])
+      // Цель платит b — карточка есть и ведёт на план.
+      const own = { ...state, goals: base.goals.map((g) => ({ ...g, payer: 'b' as const })) }
+      expect(first(own, { me: 'b', now: late, answeredMonthEnd: '2026-09' })).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата · Дана', to: '/money' })
     })
 
     it('возврат приёмки 2 п. 3: неразложенная августовская из выписки — «разложить?» весь сентябрь, кроме дней «Пришла?» (7–10-е при дне 10); после дня зарплаты не теряется', () => {
@@ -3170,341 +3177,6 @@ describe('B2C-54: статьи разбора — умолчания и одна
   })
 })
 
-describe('B2C-55: разбор зарплаты по статьям — ручной расчёт', () => {
-  const T = '2026-10-01T00:00:00.000Z'
-  const K = '2026-10'
-  const person = (id: 'a' | 'b', salary: number, payday: number): Person => ({ id, name: id === 'a' ? 'Ильяс' : 'Аруна', salary, payday, updatedAt: T })
-  const goal = (id: string, name: string, need: number, have: number, monthly: number, extra: Partial<Goal> = {}): Goal => ({
-    id, name, need, seed: have, have, monthly, hue: 'plum', planPct: 0, movements: [], updatedAt: T, ...extra,
-  })
-  const salary = (who: 'a' | 'b', amount: number, period = K): Payment => ({
-    id: `sal-${who}-${period}`, kind: 'salary', targetId: who, period, amount, accountId: 'acc', by: who, at: `${period}-10T05:00:00.000Z`, updatedAt: T,
-  })
-  const card = (principal = 300_000): Credit => ({ id: 'card', name: 'Kaspi Red', note: '', principal, annualRate: 0.34, payment: 20_000, day: 15, updatedAt: T })
-  const article = (id: ArticleKey, amount?: number, on = true): MoneyArticle => ({
-    id, order: ['must', 'life', 'reserve', 'debts', 'cushion', 'dreams', 'spend'].indexOf(id) + 1, on, ...(amount === undefined ? {} : { amount }), updatedAt: T,
-  })
-  // Семья: аренда 250 000 + коммуналка 30 000 + платёж Kaspi Red 20 000 = «Обязательное» 300 000.
-  // План: Жизнь 150 000, Запас 50 000/мес, Дорогие долги 60 000/мес, Подушка 40 000/мес, Траты 40 000;
-  // копилка «Подушка» — 114 000; Япония — главная, осталось 1 400 000, взнос 25 000.
-  const family = (extra: Partial<BreakdownState> = {}): BreakdownState => ({
-    people: [person('a', 650_000, 10)],
-    categories: [],
-    obligations: [
-      { id: 'rent', name: 'Аренда', note: '', day: 5, category: 'd1', versions: [{ from: '2026-01', amount: 250_000 }], updatedAt: T },
-      { id: 'util', name: 'Коммуналка', note: '', day: 15, category: 'd1', versions: [{ from: '2026-01', amount: 30_000 }], updatedAt: T },
-    ],
-    credits: [card()],
-    goals: [goal('trip', 'Япония', 2_000_000, 600_000, 25_000, { main: true }), goal('pot', 'Подушка', 1_000_000, 114_000, 0)],
-    payments: [salary('a', 700_000)],
-    plans: [],
-    allocations: [],
-    moneyArticles: [article('life', 150_000), article('reserve', 50_000), article('debts', 60_000), article('cushion', 40_000), article('spend', 40_000)],
-    moneySettings: { reserveMonths: 1, cushionMonths: 3, costlyRate: 0, potGoalId: 'pot', orderedAt: T, updatedAt: T },
-    ...extra,
-  })
-  const ctx = { key: K, totals: [] as SpendTotal[], spendCategories: [] as SpendCategory[], uploads: [] as UploadPeriod[] }
-  const needs = (list: BreakdownArticle[]) => Object.fromEntries(list.map((a) => [a.key, a.need]))
-  const integers = (f: BreakdownFill) => Object.values(f.given).every(Number.isInteger) && Number.isInteger(f.rest) && Number.isInteger(f.short)
-
-  it('статьи месяца: нужды и статусы', () => {
-    const list = breakdownArticles(family(), ctx)
-    // Запас: порог 1 × (150 000 + 40 000) = 190 000, есть 114 000 → нужно 76 000, взнос 50 000 → 50 000.
-    // Подушка: порог 3 × (300 000 + 150 000) = 1 350 000 − 114 000 − 50 000 = 1 186 000 → взнос 40 000.
-    // Мечты: Япония — min(25 000, 1 400 000) = 25 000; 1 400 000 / 25 000 = 56 взносов → май 2031.
-    expect(needs(list)).toEqual({ must: 300_000, life: 150_000, reserve: 50_000, debts: 60_000, cushion: 40_000, dreams: 25_000, spend: 40_000 })
-    const st = Object.fromEntries(list.map((a) => [a.key, a.status]))
-    expect(st.must).toBe('аренда, коммуналка, Kaspi Red')
-    expect(st.reserve).toBe('есть 0,6 из 1 месяца') // 114 000 / 190 000 = 0,6
-    expect(st.cushion).toBe('0,2 из 3 месяцев') // 114 000 / 450 000 = 0,25 → десятые вниз
-    expect(st.debts).toBe('Kaspi Red · 34%')
-    expect(st.dreams).toBe('Япония · в мае 2031')
-    expect(list.every((a) => Number.isInteger(a.need) && a.need >= 0)).toBe(true)
-  })
-
-  it('одна зарплата закрывает всё: остаток 700 000 − 665 000 = 35 000', () => {
-    const mb = monthBreakdown(family(), ctx, { from: 'salary', person: 'a', period: K })!
-    expect(mb.amount).toBe(700_000)
-    expect(mb.fill.given).toEqual({ must: 300_000, life: 150_000, reserve: 50_000, debts: 60_000, cushion: 40_000, dreams: 25_000, spend: 40_000 })
-    expect(mb.fill).toMatchObject({ rest: 35_000, short: 0, waiting: [] })
-    expect(integers(mb.fill)).toBe(true)
-  })
-
-  it('зарплата меньше статей: 600 000 закрывают верх, Мечты и Траты не закрыты — не хватает 65 000', () => {
-    const mb = monthBreakdown(family({ payments: [salary('a', 600_000)] }), ctx, { from: 'salary', person: 'a', period: K })!
-    // 300 000 + 150 000 + 50 000 + 60 000 + 40 000 = 600 000; Мечты 25 000 и Траты 40 000 — без денег.
-    expect(mb.fill.given).toMatchObject({ cushion: 40_000, dreams: 0, spend: 0 })
-    expect(mb.fill).toMatchObject({ rest: 0, short: 65_000, waiting: [] })
-  })
-
-  it('две зарплаты: первая закрывает верх, вторая докрывает остальное (и наоборот — порядок тот же)', () => {
-    const two = family({ people: [person('a', 650_000, 10), person('b', 450_000, 20)], payments: [salary('a', 650_000)] })
-    const first = monthBreakdown(two, ctx, { from: 'salary', person: 'a', period: K })!
-    // 650 000: всё до Мечт (625 000) и 25 000 из 40 000 Трат; 15 000 Трат ждут оклад Аруны 450 000.
-    expect(first.expected).toBe(450_000)
-    expect(first.waitingFor).toEqual(['b'])
-    expect(first.fill.given).toMatchObject({ dreams: 25_000, spend: 25_000 })
-    expect(first.fill).toMatchObject({ rest: 0, short: 0, waiting: ['spend'] })
-    // Записали: копилка +90 000 (204 000), Япония +25 000, Kaspi Red −60 000 (240 000).
-    const rec = { id: 'r1', kind: 'breakdown' as const, source: 'salary' as const, sourceId: 'a', period: K, by: 'a' as const, at: T, updatedAt: T, total: 650_000, parts: breakdownEffects(first.fill.given, first.articles, 'once').parts }
-    const after = {
-      ...two,
-      payments: [salary('a', 650_000), salary('b', 450_000)],
-      goals: [goal('trip', 'Япония', 2_000_000, 625_000, 25_000, { main: true }), goal('pot', 'Подушка', 1_000_000, 204_000, 0)],
-      credits: [card(240_000)],
-      allocations: [rec],
-    }
-    const second = monthBreakdown(after, ctx, { from: 'salary', person: 'b', period: K })!
-    // Закрыто первой всё, кроме 15 000 Трат: копилка от начала месяца 204 000 − 90 000 = 114 000 — нужды те же.
-    expect(second.articles.map((a) => a.key)).toEqual(['spend'])
-    expect(second.fill.given.spend).toBe(15_000)
-    expect(second.fill).toMatchObject({ rest: 435_000, short: 0, waiting: [] })
-    expect(second.expected).toBe(0)
-
-    // Наоборот: Аруна раньше — 450 000 закрывают Обязательное и Жизнь, остальное ждёт оклад Ильяса.
-    const early = monthBreakdown({ ...two, payments: [salary('b', 450_000)] }, ctx, { from: 'salary', person: 'b', period: K })!
-    expect(early.fill.given).toMatchObject({ must: 300_000, life: 150_000, reserve: 0 })
-    expect(early.fill).toMatchObject({ rest: 0, short: 0, waiting: ['reserve', 'debts', 'cushion', 'dreams', 'spend'] })
-    const recB = { ...rec, id: 'r2', sourceId: 'b', total: 450_000, parts: breakdownEffects(early.fill.given, early.articles, 'once').parts }
-    const late = monthBreakdown({ ...two, allocations: [recB] }, ctx, { from: 'salary', person: 'a', period: K })!
-    // 650 000 − (50 000 + 60 000 + 40 000 + 25 000 + 40 000) = 435 000.
-    expect(late.fill.given).toMatchObject({ must: 0, life: 0, reserve: 50_000, debts: 60_000, cushion: 40_000, dreams: 25_000, spend: 40_000 })
-    expect(late.fill.rest).toBe(435_000)
-  })
-
-  it('выключенная статья: её сумма — в остатке (700 000 − 625 000 = 75 000)', () => {
-    const mb = monthBreakdown(family(), ctx, { from: 'salary', person: 'a', period: K })!
-    const off = mb.articles.map((a) => (a.key === 'spend' ? { ...a, on: false } : a))
-    const fill = breakdownFill(off, mb.amount, mb.covered, mb.expected)
-    expect(fill.given.spend).toBe(0)
-    expect(fill.rest).toBe(75_000)
-    expect(Object.values(fill.given).reduce((s, x) => s + x, 0) + fill.rest).toBe(mb.amount)
-  })
-
-  it('пустые статьи не показываются: нет долгов и целей', () => {
-    const mb = monthBreakdown(family({ credits: [], goals: [goal('pot', 'Подушка', 1_000_000, 114_000, 0)] }), ctx, { from: 'salary', person: 'a', period: K })!
-    expect(mb.articles.map((a) => a.key)).toEqual(['must', 'life', 'reserve', 'cushion', 'spend'])
-    // Без кредита Обязательное — 280 000; 700 000 − 280 000 − 150 000 − 50 000 − 40 000 − 40 000 = 140 000.
-    expect(mb.fill.rest).toBe(140_000)
-  })
-
-  it('копилка у порога: Запас закрыт при 190 000, частично при 160 000 (нужно 30 000)', () => {
-    const at = (have: number) => breakdownArticles(family({ goals: [goal('pot', 'Подушка', 1_000_000, have, 0)] }), ctx).find((a) => a.key === 'reserve')!
-    expect(at(190_000)).toMatchObject({ need: 0, empty: true, status: 'закрыт' })
-    expect(at(160_000)).toMatchObject({ need: 30_000, empty: false })
-    // Подушка за порогом 1 350 000 — закрыта.
-    const full = breakdownArticles(family({ goals: [goal('pot', 'Подушка', 2_000_000, 1_400_000, 0)] }), ctx).find((a) => a.key === 'cushion')!
-    expect(full).toMatchObject({ need: 0, empty: true, status: 'закрыт' })
-    // Копилка от начала месяца: было 1 330 000 (до порога Подушки 20 000), первая зарплата дала 10 000 →
-    // 1 340 000. Нужда по-прежнему 20 000, вторая докрывает 10 000 (без вычета вышло бы 10 − 10 = 0).
-    const near = breakdownArticles(family({ goals: [goal('pot', 'Подушка', 2_000_000, 1_340_000, 0)] }), { ...ctx, covered: { cushion: 10_000 } })
-    expect(near.find((a) => a.key === 'cushion')!.need).toBe(20_000)
-  })
-
-  it('план «Сначала долги»: Дорогие долги — шаг плана, повтор не удваивает, недовнесённое докрывается', () => {
-    // Машина на паузе плана — её 60 000 в месяц идут в досрочку: шаг 60 000 в Kaspi Red.
-    const planDoc = (payments: Payment[] = [salary('a', 700_000)], allocations: Allocation[] = []) =>
-      family({
-        goals: [goal('trip', 'Япония', 2_000_000, 600_000, 25_000, { main: true }), goal('car', 'Машина', 6_000_000, 0, 60_000), goal('pot', 'Подушка', 2_000_000, 1_400_000, 0)],
-        plans: [{ ...planOf(), keptGoalIds: ['trip'], cushionGoalId: 'pot', creditIds: ['card'] }],
-        payments,
-        allocations,
-      })
-    const debts = (d: BreakdownState, covered = {}) => breakdownArticles(d, { ...ctx, covered }).find((a) => a.key === 'debts')!
-    expect(debts(planDoc())).toMatchObject({ need: 60_000, planId: 'plan', creditId: 'card', status: 'по плану · Kaspi Red' })
-    // Шаг внесён разбором целиком: нужда = записанное 60 000, докрывать нечего.
-    const prepay = (amount: number): Payment => ({ id: `pp${amount}`, kind: 'prepay', targetId: 'card', period: K, amount, principal: amount, accountId: 'acc', by: 'a', at: T, updatedAt: T, planId: 'plan' })
-    expect(debts(planDoc([salary('a', 700_000), prepay(60_000)]), { debts: 60_000 }).need).toBe(60_000)
-    // Внесён частично (20 000): нужда 20 000 + 40 000 = 60 000 — вторая докроет 40 000.
-    expect(debts(planDoc([salary('a', 700_000), prepay(20_000)]), { debts: 20_000 }).need).toBe(60_000)
-    // Шаг внесён кнопкой плана, не разбором: нужда 0 — шаг не удваивается.
-    expect(debts(planDoc([salary('a', 700_000), prepay(60_000)])).need).toBe(0)
-    // Подушка плана ещё пустая — шаг плана в неё, долги ждут.
-    const empty = family({
-      goals: [goal('trip', 'Япония', 2_000_000, 600_000, 25_000, { main: true }), goal('car', 'Машина', 6_000_000, 0, 60_000), goal('pot', 'Подушка', 2_000_000, 0, 0)],
-      plans: [{ ...planOf(), keptGoalIds: ['trip'], cushionGoalId: 'pot', creditIds: ['card'] }],
-    })
-    const list = breakdownArticles(empty, ctx)
-    expect(list.find((a) => a.key === 'debts')).toMatchObject({ need: 0, empty: true })
-    expect(list.find((a) => a.key === 'cushion')).toMatchObject({ need: 60_000, status: 'по плану «Сначала долги»' })
-    // Машина на паузе — не в Мечтах.
-    expect(list.find((a) => a.key === 'dreams')!.goals).toEqual([{ goalId: 'trip', cap: 25_000 }])
-  })
-
-  it('не-зарплатный источник — только статьи от Запаса: остаток 100 000 → Запас 76 000, долг 24 000', () => {
-    const mb = monthBreakdown(family(), ctx, { from: 'rest', amount: 100_000, period: K })!
-    expect(mb.articles.map((a) => a.key)).toEqual(['reserve', 'debts', 'cushion', 'dreams'])
-    // Запас до порога: 190 000 − 114 000 = 76 000; Дорогие долги — остаток долга 300 000.
-    expect(mb.fill.given).toMatchObject({ reserve: 76_000, debts: 24_000, cushion: 0 })
-    expect(mb.record).toEqual({ source: 'rest', sourceId: K, period: K })
-    const fx = breakdownEffects(mb.fill.given, mb.articles, mb.mode)
-    expect(fx.contributions).toEqual([{ goalId: 'pot', amount: 76_000 }])
-    expect(fx.prepay).toEqual({ creditId: 'card', amount: 24_000 })
-  })
-
-  it('asUsual: нет плана — null; прошлый месяц с выключенными Тратами — так же; уже разложено — null', () => {
-    expect(asUsual(family({ moneySettings: null }), ctx, 'a', K)).toBeNull()
-    const plain = asUsual(family(), ctx, 'a', K)!
-    expect(plain).toMatchObject({ last: null, off: [] })
-    expect(plain.fill.rest).toBe(35_000)
-    const prevRec: Allocation = { id: 'p', kind: 'breakdown', source: 'salary', sourceId: 'a', period: '2026-09', by: 'a', at: '2026-09-10T05:00:00.000Z', updatedAt: T, total: 650_000, parts: [], off: ['spend'] }
-    const usual = asUsual(family({ allocations: [prevRec] }), ctx, 'a', K)!
-    expect(usual.last).toBe('2026-09')
-    expect(usual.articles.find((a) => a.key === 'spend')!.on).toBe(false)
-    expect(usual.fill.rest).toBe(75_000) // 700 000 − 625 000
-    const done: Allocation = { ...prevRec, id: 'd', period: K, off: [] }
-    expect(asUsual(family({ allocations: [prevRec, done] }), ctx, 'a', K)).toBeNull()
-    expect(asUsual(family({ payments: [] }), ctx, 'a', K)).toBeNull()
-  })
-
-  describe('B2C-58: карточка «Пришла зарплата» в очереди «Недели»', () => {
-    const now = { day: 12, key: K }
-    const stmt = (who: 'a' | 'b', amount: number): Payment => ({ ...salary(who, amount), source: 'statement', opId: `op-${who}` })
-    const q = (state: BreakdownState, me: 'a' | 'b') => decisionQueue(state, { me, now, answeredMonthEnd: K, ...ctx }).find((d) => d.kind === 'allocate') ?? null
-
-    it('несёт asUsual: остаток — ручной расчёт; как в прошлом месяце; «Изменить» — кольцо', () => {
-      const card = q(family({ payments: [stmt('a', 700_000)] }), 'a')!
-      // 700 000 − (300 000 + 150 000 + 50 000 + 60 000 + 40 000 + 25 000 + 40 000) = 35 000.
-      expect(card).toMatchObject({
-        question: 'Пришла зарплата', meta: `По вашему порядку · останется ${money(35_000)}`, amount: 700_000,
-        to: '/week/breakdown?from=salary&person=a&period=2026-10', actions: { primary: 'Разложить как обычно', ghost: 'Изменить' },
-      })
-      expect(card.usual!.fill.rest).toBe(35_000)
-      // В сентябре Траты были выключены — так же: 700 000 − 625 000 = 75 000.
-      const prevRec: Allocation = { id: 'p', kind: 'breakdown', source: 'salary', sourceId: 'a', period: '2026-09', by: 'a', at: '2026-09-10T05:00:00.000Z', updatedAt: T, total: 650_000, parts: [], off: ['spend'] }
-      const usual = q(family({ payments: [stmt('a', 700_000)], allocations: [prevRec] }), 'a')!
-      expect(usual.meta).toBe(`Как в сентябре · останется ${money(75_000)}`)
-      // Части — для экрана (итог красится отдельно, строку не режут; ревью frontend Б11, Н-1).
-      expect(usual).toMatchObject({ lead: 'Как в сентябре', outcome: `останется ${money(75_000)}` })
-      expect(usual.usual!.articles.find((a) => a.key === 'spend')!.on).toBe(false)
-      // Не хватает — так и пишем: 600 000 при статьях 665 000.
-      expect(q(family({ payments: [stmt('a', 600_000)] }), 'a')!).toMatchObject({
-        meta: `По вашему порядку · не хватает ${money(65_000)}`,
-        lead: 'По вашему порядку',
-        outcome: `не хватает ${money(65_000)}`,
-      })
-    })
-
-    it('без плана — «Разложить» ведёт в «Ваш порядок»; после записи — карточки нет', () => {
-      const none = q(family({ payments: [stmt('a', 700_000)], moneySettings: null }), 'a')!
-      expect(none).toMatchObject({ usual: null, to: '/week/order?from=salary&person=a&period=2026-10', actions: { primary: 'Разложить', ghost: 'Позже' } })
-      const u = asUsual(family({ payments: [stmt('a', 700_000)] }), ctx, 'a', K)!
-      const w = breakdownWith(u, u.articles.filter((a) => !a.on).map((a) => a.key))
-      const rec: Allocation = { id: 'r', kind: 'breakdown', ...u.record, by: 'a', at: T, updatedAt: T, total: u.amount, parts: w.effects.parts }
-      expect(q(family({ payments: [stmt('a', 700_000)], allocations: [rec] }), 'a')).toBeNull()
-    })
-
-    it('партнёр после своей зарплаты — своя карточка, статьи закрыты первой (covered)', () => {
-      const two = family({ people: [person('a', 650_000, 10), person('b', 450_000, 20)], payments: [stmt('a', 650_000)] })
-      const first = asUsual(two, ctx, 'a', K)!
-      const rec: Allocation = { id: 'r1', kind: 'breakdown', ...first.record, by: 'a', at: T, updatedAt: T, total: 650_000, parts: breakdownWith(first, []).effects.parts }
-      const after = {
-        ...two,
-        payments: [stmt('a', 650_000), stmt('b', 450_000)],
-        goals: [goal('trip', 'Япония', 2_000_000, 625_000, 25_000, { main: true }), goal('pot', 'Подушка', 1_000_000, 204_000, 0)],
-        credits: [card(240_000)],
-        allocations: [rec],
-      }
-      const b = q(after, 'b')!
-      // Аруне 20-го: закрыто всё, кроме 15 000 Трат → 450 000 − 15 000 = 435 000.
-      expect(b.usual!.covered).toMatchObject({ must: 300_000, life: 150_000, reserve: 50_000, debts: 60_000, cushion: 40_000, dreams: 25_000, spend: 25_000 })
-      expect(b.usual!.fill.given.spend).toBe(15_000)
-      expect(b.meta).toBe(`По вашему порядку · останется ${money(435_000)}`)
-      expect(q(after, 'a')).toBeNull()
-    })
-
-    it('«как обычно» и кольцо с теми же статьями — одна запись (breakdownWith)', () => {
-      const state = family({ payments: [stmt('a', 700_000)] })
-      const u = asUsual(state, ctx, 'a', K)!
-      const ring = monthBreakdown(state, ctx, { from: 'salary', person: 'a', period: K })!
-      const off = u.articles.filter((a) => !a.on).map((a) => a.key)
-      expect(breakdownWith(ring, off)).toEqual(breakdownWith(u, off))
-      expect(breakdownWith(u, off).fill).toEqual(u.fill)
-    })
-
-    it('нажатие на «Доход»: разбор последней пришедшей зарплаты месяца, иначе план месяца', () => {
-      expect(incomeBreakdownPath([], K)).toBe('/week/breakdown?from=plan')
-      const a = salary('a', 650_000)
-      const b = { ...salary('b', 450_000), at: `${K}-20T05:00:00.000Z` }
-      expect(incomeBreakdownPath([a, b], K)).toBe('/week/breakdown?from=salary&person=b&period=2026-10')
-      expect(incomeBreakdownPath([a, { ...b, deletedAt: T }], K)).toBe('/week/breakdown?from=salary&person=a&period=2026-10')
-      // План месяца — статьи на сумму окладов, записи нет: 650 000 − 665 000 → не хватает 15 000.
-      const plan = monthBreakdown(family(), ctx, { from: 'plan' })!
-      expect(plan).toMatchObject({ amount: 650_000, recorded: null })
-      expect(plan.fill).toMatchObject({ rest: 0, short: 15_000 })
-    })
-  })
-
-  it('articleFact = monthSpentByFact на демо-итогах; без загрузок — null', () => {
-    const tot = (categoryId: string, amount: number): SpendTotal => ({ id: `b:month:${K}:${categoryId}`, by: 'b', kind: 'month', period: K, categoryId, amount, ops: 1, updatedAt: T })
-    const totals = [tot('sc_food', 40_000), tot('sc_shopping', 34_000), tot('sc_cafe', 10_000), tot('sc_rent', 250_000), tot('_unknown', 5_000)]
-    const uploads = [{ slot: 'b', period_from: '2026-10-01', period_to: '2026-10-12' }]
-    // Жизнь: продукты 40 000 + незнакомое 5 000; Траты: покупки 34 000 + кафе 10 000; аренда — в плане.
-    expect(articleFact(totals, [], K, uploads)).toEqual({ life: 45_000, spend: 44_000 })
-    expect(45_000 + 44_000).toBe(monthSpentByFact(totals, [], K, uploads))
-    expect(articleFact(totals, [], K, [])).toBeNull()
-    // Раздел, перенесённый в «Траты», считается там.
-    expect(articleFact(totals, [{ id: 'sc_food', name: 'Продукты', hue: 'green', order: 1, article: 'spend', updatedAt: T }], K, uploads)).toEqual({ life: 5_000, spend: 84_000 })
-  })
-
-  it('breakdownEffects: Мечты — по взносу целей, остаток главной; каждый месяц — рост взносов', () => {
-    const articles: BreakdownArticle[] = [
-      { key: 'dreams', name: 'Мечты', on: true, need: 55_000, status: '', empty: false, goals: [{ goalId: 'trip', cap: 25_000 }, { goalId: 'sofa', cap: 30_000 }] },
-      { key: 'reserve', name: 'Запас', on: true, need: 10_000, status: '', empty: false, potGoalId: null, potLine: 190_000 },
-      { key: 'debts', name: 'Дорогие долги', on: true, need: 5_000, status: '', empty: false, creditId: 'card', planId: 'plan' },
-    ]
-    const given = { must: 0, life: 0, reserve: 10_000, debts: 5_000, cushion: 0, dreams: 70_000, spend: 0 }
-    // 70 000: Японии 25 000, дивану 30 000, остаток 15 000 — главной (Японии): 40 000.
-    const once = breakdownEffects(given, articles, 'once')
-    expect(once.contributions).toEqual([{ goalId: 'trip', amount: 40_000 }, { goalId: 'sofa', amount: 30_000 }, { goalId: null, amount: 10_000, need: 190_000 }])
-    expect(once.prepay).toEqual({ creditId: 'card', amount: 5_000, planId: 'plan' })
-    expect(once.parts).toEqual([{ target: 'dreams', amount: 70_000 }, { target: 'reserve', amount: 10_000 }, { target: 'debts', amount: 5_000 }])
-    const monthly = breakdownEffects(given, articles, 'monthly')
-    expect(monthly).toMatchObject({ contributions: [], prepay: null, monthly: [{ goalId: 'trip', add: 40_000 }, { goalId: 'sofa', add: 30_000 }] })
-    expect(monthly.articleAdds).toEqual([{ key: 'reserve', add: 10_000 }, { key: 'debts', add: 5_000 }])
-  })
-
-  it('критик: вторая зарплата докрывает Мечты тем целям, которым первая взнос не дала', () => {
-    // Япония (главная) 25 000/мес, Диван 30 000/мес — Мечты 55 000; Траты выключены. Ильяс 625 000:
-    // до Мечт 300 000 + 150 000 + 50 000 + 60 000 + 40 000 = 600 000, Мечтам — 25 000 (Японии).
-    // Аруне Мечт остаётся 30 000 — недоданное Дивану, а не второй взнос Японии.
-    const sofa = goal('sofa', 'Диван', 500_000, 0, 30_000)
-    const two = family({
-      people: [person('a', 625_000, 10), person('b', 450_000, 20)],
-      payments: [salary('a', 625_000)],
-      goals: [goal('trip', 'Япония', 2_000_000, 600_000, 25_000, { main: true }), sofa, goal('pot', 'Подушка', 1_000_000, 114_000, 0)],
-      moneyArticles: [article('life', 150_000), article('reserve', 50_000), article('debts', 60_000), article('cushion', 40_000), article('spend', 40_000, false)],
-    })
-    const first = monthBreakdown(two, ctx, { from: 'salary', person: 'a', period: K })!
-    const w1 = breakdownWith(first, ['spend'])
-    expect(w1.fill.given.dreams).toBe(25_000) // 625 000 − 600 000
-    expect(w1.effects.contributions.filter((c) => c.goalId !== 'pot')).toEqual([{ goalId: 'trip', amount: 25_000 }])
-    const rec: Allocation = { id: 'r1', kind: 'breakdown', ...first.record, by: 'a', at: T, updatedAt: T, total: 625_000, parts: w1.effects.parts, off: ['spend'] }
-    const after = {
-      ...two,
-      payments: [salary('a', 625_000), salary('b', 450_000)],
-      goals: [goal('trip', 'Япония', 2_000_000, 625_000, 25_000, { main: true }), sofa, goal('pot', 'Подушка', 1_000_000, 204_000, 0)],
-      credits: [card(240_000)],
-      allocations: [rec],
-    }
-    const second = monthBreakdown(after, ctx, { from: 'salary', person: 'b', period: K })!
-    const w2 = breakdownWith(second, ['spend'])
-    // Мечтам осталось 55 000 − 25 000 = 30 000 — всё Дивану, Япония свой взнос месяца уже получила.
-    expect(w2.fill.given.dreams).toBe(30_000)
-    expect(w2.effects.contributions).toEqual([{ goalId: 'sofa', amount: 30_000 }])
-  })
-
-  it('свойства: Σ given + rest = amount, всё целое, нужды ≥ 0 — на ряде сумм', () => {
-    const d = family()
-    const articles = breakdownArticles(d, ctx)
-    for (const amount of [0, 1, 99_999, 300_001, 664_999, 665_000, 1_234_567]) {
-      const f = breakdownFill(articles, amount, {}, 7)
-      expect(Object.values(f.given).reduce((s, x) => s + x, 0) + f.rest).toBe(amount)
-      expect(integers(f)).toBe(true)
-    }
-  })
-})
-
 describe('B2C-59: строки-статусы «Денег», доли трат и ориентир — ручной расчёт', () => {
   const T = '2026-10-01T00:00:00.000Z'
   const tot = (period: string, categoryId: string, amount: number, by: 'a' | 'b' = 'a'): SpendTotal => ({
@@ -3588,3 +3260,25 @@ describe('B2C-59: строки-статусы «Денег», доли трат 
     expect(spendStatus(null, norms, [])).toBeNull()
   })
 })
+
+describe('B2C-89: карточки «Недели» ведут в план месяца (Р-78, Р-86)', () => {
+  const K = '2026-09'
+  const now = { day: 12, key: K }
+  const salary = (extra: Partial<Payment> = {}): Payment => ({
+    id: 's-a', kind: 'salary', targetId: 'a', period: K, amount: 700_000, accountId: null, by: 'a', at: '2026-09-10T05:00:00.000Z', updatedAt: '2026-09-10T05:00:00.000Z',
+    source: 'statement', opId: 'op-a', ...extra,
+  })
+  const q = (state: DecisionState) => decisionQueue(state, { me: 'a', now, answeredMonthEnd: K }).find((d) => d.kind === 'allocate') ?? null
+
+  it('«Пришла зарплата · <имя>»: сумма из отметки, одна кнопка — «К плану месяца» → /money', () => {
+    const d = q({ ...planFamilyDoc(), payments: [salary()] })
+    expect(d).toMatchObject({ question: 'Пришла зарплата · Ильяс', to: '/money', actions: { primary: 'К плану месяца', ghost: 'Потом' }, amount: 700_000 })
+  })
+
+  it('отложено по плану (запись месяца любого вида, и старого разбора) — карточки нет', () => {
+    const rec = (kind: Allocation['kind']): Allocation => ({ id: 'r', kind, source: 'salary', sourceId: 'a', period: K, by: 'a', at: '2026-09-11T05:00:00.000Z', total: 700_000, parts: [], updatedAt: '2026-09-11T05:00:00.000Z' })
+    expect(q({ ...planFamilyDoc(), payments: [salary()], allocations: [rec('plan')] })).toBeNull()
+    expect(q({ ...planFamilyDoc(), payments: [salary()], allocations: [rec('breakdown')] })).toBeNull()
+  })
+})
+

@@ -144,7 +144,9 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
   // от сегодня до зарплаты (24 сентября → 10 октября); полный список месяца — «Платежи» (B2C-42).
   /** Лист «До зарплаты» открыт; текст листа — отдельно от экрана (в SSR лист рендерится на месте). */
   async function paydaySheet() {
-    const html = await renderScreen(Money, '/money', undefined, [screenMixin({ open: true })])
+    const all = await renderScreen(Money, '/money', undefined, [screenMixin({ open: true })])
+    // Сводка «До зарплаты» — под «Подробнее» (Блок 14); листы плана месяца выше — не она.
+    const html = all.slice(all.indexOf('data-more'))
     expect(html).toContain('role="dialog"')
     // Лист — внутри сводки, сразу за ним — квадраты «Денег».
     const at = html.indexOf('role="dialog"')
@@ -173,7 +175,11 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
   })
 
   /** Секция «Платежи» Капитала (B2C-42) — список месяца с «Оплатил». */
-  const payments = (html: string) => html.slice(html.indexOf('>Платежи<'))
+  // Прежние виджеты «Денег» — под «Подробнее» (Блок 14): «Платежи» плана месяца выше — не они.
+  const payments = (html: string) => {
+    const more = html.slice(html.indexOf('data-more'))
+    return more.slice(more.indexOf('>Платежи<'))
+  }
 
   it('«Платежи» (пивот 3, вместо списка Бюджета): «Оплатил» у платежей по графику, зарплат в списке нет', async () => {
     family()

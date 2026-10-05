@@ -9,7 +9,6 @@ import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
 import Statements from './Statements.vue'
-import type { Payment } from '@/types/finance'
 
 /**
  * B2C-15 «Тесты»: карточка решения → запись. Кнопки карточки сопоставления на «Неделе» ведут
@@ -121,6 +120,8 @@ describe('возврат приёмки п. 2 · B2C-58: зарплата, от�
   const salaryDay = (finance: ReturnType<typeof useFinanceStore>, store: ReturnType<typeof useOperationsStore>) => {
     finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000 }
     finance.householdDoc.credits = []
+    // Есть что отложить по плану (ревью frontend Б14, Н-1): цель Алихана со взносом.
+    finance.householdDoc.goals = [{ id: 'g', name: 'Япония', need: 1_000_000, seed: 0, have: 0, monthly: 50_000, hue: 'teal', planPct: 0, movements: [], updatedAt: '' }]
     delete store.ops['op-1']
     store.ops['op-2'] = { id: 'op-2', bank: 'kaspi', date: '2026-09-10', amount: 500_000, kind: 'transfer-in', merchant: 'ТОО Работодатель', categoryId: null, internal: false }
   }
@@ -128,16 +129,6 @@ describe('возврат приёмки п. 2 · B2C-58: зарплата, от�
     salaryDay(finance, store)
     finance.markSalary('a', { period: '2026-09', amount: 500_000, accountId: null, source: 'statement', opId: 'op-2', at: '2026-09-10T07:00:00.000Z' })
   }
-  /** «Ваш порядок» пройден (Р-55): Жизнь 150 000, Траты 50 000 — остальные статьи пусты. */
-  const ordered = (finance: ReturnType<typeof useFinanceStore>) => {
-    finance.householdDoc.moneyArticles = [
-      { id: 'life', order: 2, on: true, amount: 150_000, updatedAt: '' },
-      { id: 'spend', order: 7, on: true, amount: 50_000, updatedAt: '' },
-    ]
-    finance.householdDoc.moneySettings = { reserveMonths: 1, cushionMonths: 3, costlyRate: 0, potGoalId: null, orderedAt: '2026-09-01T00:00:00.000Z', updatedAt: '' }
-  }
-  const ORDER = '/week/order?from=salary&person=a&period=2026-09'
-  const RING = '/week/breakdown?from=salary&person=a&period=2026-09'
   const brandButtons = () => [...document.querySelectorAll('button')].filter((b) => b.className.includes('bg-brand ')).map((b) => b.textContent?.trim())
 
   it('«Да, зарплата» на карточке сопоставления — отметка из выписки, следующей — «Пришла зарплата»', async () => {
@@ -146,27 +137,27 @@ describe('возврат приёмки п. 2 · B2C-58: зарплата, от�
     await tap('Да, зарплата')
     expect(router.currentRoute.value.fullPath).toBe('/week')
     expect(finance.payments.filter((p) => !p.deletedAt)).toEqual([expect.objectContaining({ kind: 'salary', targetId: 'a', period: '2026-09', source: 'statement', opId: 'op-2' })])
-    await vi.waitFor(() => expect(page()).toContain('Сначала — ваш порядок'))
+    await vi.waitFor(() => expect(page()).toContain('Пришла зарплата · Алихан'))
   })
 
-  it('без плана — «Разложить» ведёт в «Ваш порядок»; записанный разбор и ручная отметка карточки не дают', async () => {
+  it('Блок 14 (Р-78): одна брендовая «К плану месяца» → план «Денег»; записанная запись месяца и ручная отметка карточки не дают', async () => {
     const { router } = await openWeek(marked)
-    expect(page()).toContain('Пришла зарплата')
-    expect(page()).toContain('Сначала — ваш порядок')
-    expect(brandButtons()).toEqual(['Разложить'])
-    await tap('Разложить')
-    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe(ORDER))
+    expect(page()).toContain('Пришла зарплата · Алихан')
+    expect(brandButtons()).toEqual(['К плану месяца'])
+    await tap('К плану месяца')
+    // Переход лениво грузит чанк «Денег» — под нагрузкой общего прогона дольше секунды.
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/money'), { timeout: 10_000 })
 
-    // Разбор (или старая раскладка) записан — карточки нет.
+    // Отложено по плану (или старый разбор) — карточки нет.
     app?.unmount()
     document.body.innerHTML = ''
     await openWeek((finance, store) => {
       marked(finance, store)
-      finance.recordAllocation({ source: 'salary', sourceId: 'a', period: '2026-09', by: 'a', total: 100_000, parts: [{ target: 'life', amount: 100_000 }] })
+      finance.recordAllocation({ kind: 'plan', source: 'salary', sourceId: 'a', period: '2026-09', by: 'a', total: 100_000, parts: [{ target: 'trip', amount: 100_000 }] })
     })
     expect(page()).not.toContain('Пришла зарплата')
 
-    // Ручная отметка («Пришла») сама ведёт на разбор — карточки нет.
+    // Ручная отметка («Пришла») сама ведёт в план — карточки нет.
     app?.unmount()
     document.body.innerHTML = ''
     await openWeek((finance, store) => {
@@ -176,63 +167,9 @@ describe('возврат приёмки п. 2 · B2C-58: зарплата, от�
     expect(page()).not.toContain('Пришла зарплата')
   })
 
-  it('с планом — «Разложить как обычно» одним нажатием пишет разбор, на месте карточки — «Разложено»; «Изменить» — кольцо', async () => {
-    const { finance } = await openWeek((finance, store) => {
-      marked(finance, store)
-      ordered(finance)
-    })
-    // 500 000 − (Жизнь 150 000 + Траты 50 000) = 300 000.
-    expect(page()).toContain('Пришла зарплата')
-    expect(page().replace(/\s/g, ' ')).toContain('По вашему порядку · останется 300 000 ₸')
-    expect(brandButtons()).toEqual(['Разложить как обычно'])
-    expect(document.querySelectorAll('.border-brand')).toHaveLength(1)
-    await tap('Разложить как обычно')
-    expect(finance.allocations).toEqual([
-      expect.objectContaining({
-        kind: 'breakdown', source: 'salary', sourceId: 'a', period: '2026-09', total: 500_000,
-        parts: [{ target: 'life', amount: 150_000 }, { target: 'spend', amount: 50_000 }],
-      }),
-    ])
-    expect(page()).toContain('Разложено')
-    expect(page()).not.toContain('Разложить как обычно')
-    vi.advanceTimersByTime(2_500)
-    await nextTick()
-    expect(page()).not.toContain('Разложено')
-
-    app?.unmount()
-    document.body.innerHTML = ''
-    localStorage.clear()
-    const second = await openWeek((finance, store) => {
-      marked(finance, store)
-      ordered(finance)
-    })
-    await tap('Изменить')
-    await vi.waitFor(() => expect(second.router.currentRoute.value.fullPath).toBe(RING))
-    expect(second.finance.allocations).toEqual([])
-  })
-
-  it('«как обычно» двигает деньги, а счёт неизвестен — не пишет, ведёт на кольцо (там спросят счёт)', async () => {
-    // Стор всегда пишет `accountId` (null — «не двигать»); без ключа отметка приходит только из документа
-    // старого клиента — страховка (ревью frontend Б11, Н-2). Прошлых счетов нет; «Запас» 50 000 — взнос в
-    // копилку, деньги уходят со счёта.
-    const { finance, router } = await openWeek((finance, store) => {
-      salaryDay(finance, store)
-      const legacy = { id: 'p-old', kind: 'salary', targetId: 'a', period: '2026-09', amount: 500_000, by: 'a', source: 'statement', opId: 'op-2', at: '2026-09-10T07:00:00.000Z', updatedAt: '' }
-      finance.householdDoc.payments = [legacy as unknown as Payment]
-      ordered(finance)
-      finance.householdDoc.moneyArticles!.push({ id: 'reserve', order: 3, on: true, amount: 50_000, updatedAt: '' })
-    })
-    expect(brandButtons()).toEqual(['Разложить как обычно'])
-    await tap('Разложить как обычно')
-    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe(RING))
-    expect(finance.allocations).toEqual([])
-    expect(page()).not.toContain('Разложено')
-  })
-
   it('viewer — карточки нет', async () => {
     await openWeek((finance, store) => {
       marked(finance, store)
-      ordered(finance)
       useAuthStore().setAuthData({
         token: 't', user: { id: 'u-v', email: 'v@b.kz', created_at: '' },
         household: { id: 'h1', name: 'Семья', created_by: 'u-a', created_at: '' },
@@ -240,12 +177,12 @@ describe('возврат приёмки п. 2 · B2C-58: зарплата, от�
       })
     })
     expect(page()).not.toContain('Пришла зарплата')
-    expect(page()).not.toContain('Разложить')
+    expect(page()).not.toContain('К плану месяца')
   })
 })
 
 describe('возврат приёмки 2 п. 3, 4: одна карточка о зарплате, у неотмеченной — вопрос о приходе', () => {
-  it('день зарплаты, отметки нет — «Пришла зарплата Алихан?» (как решение на главном); «Пришла зарплата» отмечает приход и ведёт на разбор', async () => {
+  it('день зарплаты, отметки нет — «Пришла зарплата Алихан?» (как решение на главном); «Пришла зарплата» отмечает приход и ведёт в план месяца', async () => {
     vi.setSystemTime(new Date('2026-09-10T07:00:00Z'))
     const { finance, router } = await openWeek((finance, store) => {
       finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000 }
@@ -256,7 +193,7 @@ describe('возврат приёмки 2 п. 3, 4: одна карточка о
     })
     expect(page()).toContain('Пришла зарплата Алихан?')
     expect(page()).toContain('10 сентября')
-    expect(page()).not.toContain('Сначала — ваш порядок')
+    expect(page()).not.toContain('К плану месяца')
     // Возврат приёмки 3 п. 3 (правило 12): главная кнопка карточки — брендовая, не серая.
     const main = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Пришла зарплата')!
     expect(main.className).toContain('bg-brand')
@@ -265,7 +202,8 @@ describe('возврат приёмки 2 п. 3, 4: одна карточка о
     const mine = finance.payments.filter((p) => !p.deletedAt && p.period === '2026-09')
     expect(mine).toEqual([expect.objectContaining({ kind: 'salary', targetId: 'a', amount: 500_000, accountId: null })])
     expect(mine[0].opId).toBeUndefined()
-    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/week/breakdown?from=salary&person=a&period=2026-09'))
+    // Переход лениво грузит чанк «Денег» — под нагрузкой общего прогона дольше секунды.
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/money'), { timeout: 10_000 })
   })
 
   it('B2C-49: сопоставление раньше «Пришла зарплата?» — на экране одно решение, «1 из 2», брендовая одна; ответ → «2 из 2» — зарплата', async () => {
@@ -288,20 +226,21 @@ describe('возврат приёмки 2 п. 3, 4: одна карточка о
     const setup = (finance: ReturnType<typeof useFinanceStore>, store: ReturnType<typeof useOperationsStore>) => {
       finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000, payday: 1 }
       finance.householdDoc.credits = []
+      finance.householdDoc.goals = [{ id: 'g', name: 'Япония', need: 1_000_000, seed: 0, have: 0, monthly: 50_000, hue: 'teal', planPct: 0, movements: [], updatedAt: '' }]
       delete store.ops['op-1']
       finance.markSalary('a', { period: '2026-09', amount: 500_000, accountId: null, source: 'statement', opId: 'op-9', at: '2026-09-01T07:00:00.000Z' })
     }
     vi.setSystemTime(new Date('2026-09-29T07:00:00Z'))
     await openWeek(setup)
     expect(page()).toContain('Пришла зарплата Алихан?')
-    expect(page()).not.toContain('Сначала — ваш порядок')
+    expect(page()).not.toContain('К плану месяца')
     expect(page().split('Пришла зарплата Алихан').length - 1).toBe(1)
 
     app?.unmount()
     document.body.innerHTML = ''
     vi.setSystemTime(new Date('2026-10-02T07:00:00Z'))
     await openWeek(setup)
-    expect(page()).toContain('Сначала — ваш порядок')
+    expect(page()).toContain('К плану месяца')
     expect(page()).not.toContain('Пришла зарплата Алихан?')
     expect(document.querySelectorAll('section h2')).toHaveLength(1)
   })
@@ -316,7 +255,7 @@ describe('возврат приёмки 2 п. 3, 4: одна карточка о
       finance.markSalary('a', { period: '2026-09', amount: 500_000, accountId: null, source: 'statement', opId: 'op-9', at: '2026-09-02T07:00:00.000Z' })
     })
     expect(page()).toContain('Пришла зарплата Алихан?')
-    expect(page()).not.toContain('Сначала — ваш порядок')
+    expect(page()).not.toContain('К плану месяца')
   })
 })
 

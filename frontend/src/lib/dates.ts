@@ -8,6 +8,12 @@ export const MONTHS_GEN = [
   'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
 ]
 
+/** Дательный падеж: «к марту», «соберём к ноябрю». */
+export const MONTHS_DAT = [
+  'январю', 'февралю', 'марту', 'апрелю', 'маю', 'июню',
+  'июлю', 'августу', 'сентябрю', 'октябрю', 'ноябрю', 'декабрю',
+]
+
 /** Предложный падеж: «в сентябре», «закроется в августе». */
 export const MONTHS_PRE = [
   'январе', 'феврале', 'марте', 'апреле', 'мае', 'июне',
@@ -70,6 +76,12 @@ export function monthAfter(n: number, from = monthKey()): string {
 export function monthIn(key: string, withYear = true): string {
   const { year, month } = parseMonthKey(key)
   return MONTHS_PRE[month] + (withYear ? ` ${year}` : '')
+}
+
+/** Срок: «к марту» в этом году, «к марту 2027» — в другом (`now` — месяц, от которого смотрим). */
+export function monthBy(key: string, now = monthKey()): string {
+  const { year, month } = parseMonthKey(key)
+  return `к ${MONTHS_DAT[month]}` + (year !== parseMonthKey(now).year ? ` ${year}` : '')
 }
 
 /** Родительный: «с ноября 2026», «до августа». */

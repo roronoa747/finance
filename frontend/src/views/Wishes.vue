@@ -6,7 +6,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, parseMoney } from '@/lib/money'
 import { addedLabel } from '@/lib/dates'
-import { liveWishlist, wishTotal } from '@/lib/finance'
+import { wishQueue, wishTotal } from '@/lib/finance'
 import { compressImage } from '@/lib/photos/compress'
 import { uploadPhoto } from '@/lib/photos/store'
 import { usePhotos } from '@/lib/photos/usePhoto'
@@ -30,6 +30,7 @@ import Segmented from '@/components/kit/Segmented.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import GiftSheet from '@/components/goals/GiftSheet.vue'
 import WishRow from '@/components/goals/WishRow.vue'
+import SortableList from '@/components/kit/SortableList.vue'
 import WishSheet from '@/components/goals/WishSheet.vue'
 import WishTile from '@/components/goals/WishTile.vue'
 import PhotoSlot from '@/components/goals/PhotoSlot.vue'
@@ -63,11 +64,16 @@ const tab = computed<Tab>({
 const tabs = computed(() => [...people.value.map((p) => ({ value: p.id as Tab, label: p.name })), { value: 'all' as Tab, label: 'Общие' }])
 const person = computed(() => people.value.find((p) => p.id === tab.value))
 
-const wishlist = computed(() => liveWishlist(financeStore.wishlist))
+// Свой порядок «Желаний» (Р-84): ⋮⋮ в виде списком; галерея — в том же порядке.
+const wishlist = computed(() => wishQueue({ wishlist: financeStore.wishlist, wishOrder: financeStore.wishOrder }))
 // «Общие» — весь список семьи; вкладка участника — его желания (записи до Блока 3 — по добавившему).
 const shown = computed(() => (tab.value === 'all' ? wishlist.value : wishlist.value.filter((w) => (w.list ?? w.by) === tab.value)))
 const activeWish = computed(() => shown.value.filter((w) => !w.bought))
 const boughtWish = computed(() => shown.value.filter((w) => w.bought))
+const activeIds = computed(() => activeWish.value.map((w) => w.id))
+const activeById = computed(() => new Map(activeWish.value.map((w) => [w.id, w])))
+// Перестановка внутри видимой вкладки: прочие желания семьи стоят на своих местах.
+const moveActive = (id: string, index: number) => financeStore.moveWish(id, index, activeIds.value)
 const boughtSum = computed(() => wishTotal(boughtWish.value))
 
 function nameOf(id: PersonId) {
@@ -194,17 +200,20 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
         @toggle="markBought(w.id, w.name)"
       />
     </div>
-    <Card v-else-if="activeWish.length" flush>
-      <WishRow
-        v-for="w in activeWish"
-        :key="w.id"
-        :wish="w"
-        :src="w.photoId ? (wishSrc[w.photoId] ?? null) : null"
-        :can-edit="canEdit"
-        :meta="`${nameOf(w.by)} · ${addedLabel(w.addedOn)}`"
-        @open="editWishId = w.id"
-        @toggle="markBought(w.id, w.name)"
-      />
+    <Card v-else-if="activeWish.length" flush :class="canEdit && 'pl-2.5'">
+      <SortableList :ids="activeIds" :label="(id) => `Переставить: ${activeById.get(id)?.name ?? ''}`" :disabled="!canEdit" @move="moveActive">
+        <template #default="{ id }">
+          <WishRow
+            v-if="activeById.get(id)"
+            :wish="activeById.get(id)!"
+            :src="activeById.get(id)!.photoId ? (wishSrc[activeById.get(id)!.photoId!] ?? null) : null"
+            :can-edit="canEdit"
+            :meta="`${nameOf(activeById.get(id)!.by)} · ${addedLabel(activeById.get(id)!.addedOn)}`"
+            @open="editWishId = id"
+            @toggle="markBought(id, activeById.get(id)!.name)"
+          />
+        </template>
+      </SortableList>
     </Card>
     <Card v-else>
       <EmptyState title="Список пуст">

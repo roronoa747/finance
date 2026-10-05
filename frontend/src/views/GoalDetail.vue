@@ -1,20 +1,18 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue'
 import { useRouter, useRoute, RouterLink } from 'vue-router'
-import { PhCamera, PhPencilSimple, PhMinus, PhShareNetwork } from '@phosphor-icons/vue'
+import { PhCamera, PhDotsThree, PhPause, PhPencilSimple, PhPlay, PhMinus, PhShareNetwork, PhStar } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, pct, plain, parseMoney, ratePct } from '@/lib/money'
 import {
   INFLATION,
   contributionStreak,
-  goalDoneMonth,
-  goalMonths,
+  fundMonthsOf,
   goalMonthly,
-  goalRemaining,
+  goalTerm,
   indexedNeed,
   liveGoals,
-  mainGoal,
   monthsBetween,
   movementMonth,
   payableAccounts,
@@ -73,7 +71,19 @@ const goalId = computed(() => route.params.id as string)
 const goal = computed(() => liveGoals(financeStore.goals).find((g) => g.id === goalId.value))
 const people = computed(() => financeStore.people)
 const canEdit = computed(() => !authStore.isViewer)
-const isMain = computed(() => mainGoal(financeStore.goals)?.id === goalId.value)
+const isMain = computed(() => financeStore.heroGoal?.id === goalId.value)
+// Фонд («Запас», «Подушка») героем не бывает (Р-84) — пункта «Сделать главной» у него нет.
+const isDream = computed(() => financeStore.queue.find((x) => x.id === goalId.value)?.kind === 'goal')
+// Выключена в плане месяца (Р-83): стоит, пока не включат; срок сдвигается.
+const off = computed(() => !!goal.value?.pausedAt)
+const menuOpen = ref(false)
+function menu(action: 'main' | 'edit' | 'pause') {
+  menuOpen.value = false
+  if (!goal.value) return
+  if (action === 'main') financeStore.makeMain(goal.value.id)
+  else if (action === 'edit') openEditModal.value = true
+  else financeStore.pauseGoal(goal.value.id, !off.value)
+}
 // Пополнение и снятие двигают тенговую базу счёта: валютный счёт пересчитал бы её по
 // курсу при следующей правке и молча потерял сдвиг. Удалённые счета — тоже не сюда.
 const accounts = computed(() => payableAccounts(financeStore.accounts))
@@ -83,23 +93,42 @@ const plan = computed(() => financeStore.activePlan)
 const paused = computed(() => financeStore.pausedGoalIds.has(goalId.value))
 const planCushion = computed(() => !!plan.value && plan.value.cushionGoalId === goalId.value)
 
-const remaining = computed(() => (goal.value ? goalRemaining(goal.value) : 0))
-const months = computed(() => (goal.value ? goalMonths(remaining.value, goal.value.monthly) : 1))
-const progress = computed(() => (goal.value ? pct(goal.value.have, goal.value.need) : 0))
+// Фонд («Запас», «Подушка», Р-82): «нужно» — порог плана, не своя сумма; «фонд» в шапке, без «мечты».
+const isFund = computed(() => financeStore.queue.find((x) => x.id === goalId.value)?.kind === 'fund')
 
-// Цель на паузе стоит, пока план не закроет долги с процентами (Н-8 ревью Блока 3): дата —
-// от месяца без процентных долгов по прогнозу плана; не закрываются — месяца нет.
+// Срок, «нужно» и «осталось N взносов» — из строки плана месяца, одной функцией с «Мечтами» (`goalTerm`, ревью
+// frontend Б14 Н-2). Цель на паузе плана «Сначала долги» стоит, пока план не закроет долги с процентами (Н-8 ревью
+// Блока 3): дата — от месяца без процентных долгов по прогнозу плана; не закрываются — месяца нет.
 const forecast = computed(() => (paused.value && plan.value ? planForecast(plan.value, financeStore.planState(), monthKey()) : null))
-const doneMonth = computed(() => goalDoneMonth(months.value, monthKey(), forecast.value ?? undefined))
-const doneTitle = computed(() => (doneMonth.value ? `Будет вашей в ${monthIn(doneMonth.value)}` : paused.value ? 'После плана' : 'Взнос не задан'))
-const doneLine = computed(() => {
-  if (!goal.value) return ''
-  if (remaining.value <= 0) return 'Накоплено — мечта ваша'
-  if (!Number.isFinite(months.value)) return 'Задайте взнос — и появится дата'
-  return `по ${money(goal.value.monthly)} в месяц · осталось ${months.value} ${plural(months.value, 'взнос', 'взноса', 'взносов')}${paused.value && doneMonth.value ? ' · после плана' : ''}`
+const term = computed(() => {
+  if (!goal.value) return null
+  const item = financeStore.monthPlanOf(monthKey()).queue.find((x) => x.goalId === goal.value!.id)
+  return goalTerm(item, goal.value, monthKey(), forecast.value ?? undefined)
 })
-// Во сколько обойдётся та же цель к сроку (хвост PV: горизонт — до месяца закрытия, у паузы — позже).
-const indexed = computed(() => (goal.value && doneMonth.value ? indexedNeed(goal.value.need, monthsBetween(monthKey(), doneMonth.value)) : null))
+const need = computed(() => term.value?.need ?? 0)
+const remaining = computed(() => term.value?.remaining ?? 0)
+const months = computed(() => term.value?.months ?? Infinity)
+const doneMonth = computed(() => term.value?.doneMonth ?? null)
+const progress = computed(() => (goal.value ? pct(goal.value.have, need.value) : 0))
+
+const doneTitle = computed(() => {
+  if (term.value?.off) return 'На паузе'
+  if (doneMonth.value) return `${isFund.value ? 'Соберём' : 'Будет вашей'} в ${monthIn(doneMonth.value)}`
+  if (term.value?.afterPlan) return 'После плана'
+  // Взнос есть, но остатка месяца на него не хватает (план даёт 0) — срока нет, как на «Мечтах».
+  return goal.value && goal.value.monthly > 0 && remaining.value > 0 ? 'Срока пока нет' : 'Взнос не задан'
+})
+// Выключенная в плане — без строки взносов: её нет в этом месяце.
+const doneLine = computed(() => {
+  if (!goal.value || term.value?.off) return ''
+  if (remaining.value <= 0) return isFund.value ? 'Собрано' : 'Накоплено — мечта ваша'
+  if (!Number.isFinite(months.value)) return goal.value.monthly > 0 ? 'Остатка месяца не хватает на взнос' : 'Задайте взнос — и появится дата'
+  return `по ${money(goal.value.monthly)} в месяц · осталось ${months.value} ${plural(months.value, 'взнос', 'взноса', 'взносов')}${term.value?.afterPlan && doneMonth.value ? ' · после плана' : ''}`
+})
+// Во сколько обойдётся та же цель к сроку (хвост PV: горизонт — до месяца закрытия, у паузы — позже). Фонд — не покупка.
+const indexed = computed(() =>
+  goal.value && !isFund.value && doneMonth.value ? indexedNeed(goal.value.need, monthsBetween(monthKey(), doneMonth.value)) : null,
+)
 
 /* ------------------ Взнос полем (исключение из Р-2, владелец 2026-09-25) ------------------ */
 // «Сохранено» — по самому взносу, а не по updatedAt цели: пополнение тоже меняет цель, но
@@ -111,6 +140,22 @@ const monthlySaved = useSavedMark(
 function onMonthly(text: string) {
   const v = parseMoney(text)
   if (goal.value && v > 0 && v !== goal.value.monthly) financeStore.setGoalMonthly(goal.value.id, v)
+}
+
+/* ------------------ Порог фонда полем (Р-82, ревью frontend Б14 Н-9; владелец 2026-10-05 — в клинап) ------------------ */
+// Свой `fundMonths` вместо умолчания семьи; «нужно» выше пересчитает план месяца.
+const fundKind = computed(() => {
+  const q = financeStore.queue.find((x) => x.id === goalId.value)
+  return q?.kind === 'fund' ? q.fund : null
+})
+const fundMonths = computed(() => (goal.value && fundKind.value ? fundMonthsOf(fundKind.value, goal.value, financeStore.moneySettings) : 0))
+const fundSaved = useSavedMark(
+  () => goal.value?.id,
+  () => (goal.value && fundKind.value ? String(fundMonths.value) : undefined),
+)
+function onFundMonths(text: string) {
+  const v = parseMoney(text)
+  if (goal.value && v > 0 && v !== fundMonths.value) financeStore.setFundMonths(goal.value.id, v)
 }
 
 /* ------------------ Ритм (месяцы по Алматы) ------------------ */
@@ -237,17 +282,31 @@ function share() {
   </div>
 
   <div v-else class="flex flex-col gap-3 pt-1 text-left">
-    <!-- «Назад» и имя — в шапке оболочки; карандаш — справа в ней (g4 «Экран цели»). -->
+    <!-- «Назад» и имя — в шапке оболочки; меню цели — справа в ней (макет month-plan.html «Сделать главной»):
+         «Сделать главной» первым и цветом, «Изменить», пауза в плане месяца (Р-83, Р-84). -->
     <HeaderActions v-if="canEdit">
       <button
         type="button"
-        aria-label="Изменить цель"
+        aria-label="Меню цели"
         class="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-surface-2 text-ink-2 hover:bg-surface-3 hover:text-ink cursor-pointer"
-        @click="openEditModal = true"
+        @click="menuOpen = true"
       >
-        <PhPencilSimple :size="18" />
+        <PhDotsThree :size="20" weight="bold" />
       </button>
     </HeaderActions>
+    <Sheet v-if="canEdit" :open="menuOpen" :title="goal.name" @close="menuOpen = false">
+      <div class="flex flex-col">
+        <button v-if="isDream && !isMain" type="button" class="press flex w-full cursor-pointer items-center gap-3 border-t border-line px-1 py-[13px] text-left text-[16px] font-semibold first:border-t-0 text-brand" @click="menu('main')">
+          <span class="grid size-[34px] shrink-0 place-items-center rounded-[11px] bg-brand-soft text-brand"><PhStar :size="18" weight="fill" /></span>Сделать главной
+        </button>
+        <button type="button" class="press flex w-full cursor-pointer items-center gap-3 border-t border-line px-1 py-[13px] text-left text-[16px] font-semibold first:border-t-0 text-ink" @click="menu('edit')">
+          <span class="grid size-[34px] shrink-0 place-items-center rounded-[11px] bg-surface-2 text-ink-2"><PhPencilSimple :size="18" /></span>Изменить цель
+        </button>
+        <button type="button" class="press flex w-full cursor-pointer items-center gap-3 border-t border-line px-1 py-[13px] text-left text-[16px] font-semibold first:border-t-0 text-ink" @click="menu('pause')">
+          <span class="grid size-[34px] shrink-0 place-items-center rounded-[11px] bg-surface-2 text-ink-2"><component :is="off ? PhPlay : PhPause" :size="18" /></span>{{ off ? 'Снять с паузы' : 'Поставить на паузу' }}
+        </button>
+      </div>
+    </Sheet>
 
     <!-- Фото-герой (B2C-17): картинка шаблона или своя; автор — один раз, на фото, ссылкой (Р-28).
          Поверх картинки — только маленькая кнопка смены фото (владелец, 2026-09-27: крупные чипы
@@ -255,7 +314,8 @@ function share() {
          Строка — только «накоплено из нужно» (макет g4): имя уже в шапке, месяц — в карточке. -->
     <DreamHero
       :percent="progress"
-      :line="`${plain(goal.have)} из ${money(goal.need)}`"
+      :line="`${plain(goal.have)} из ${money(need)}`"
+      :eyebrow="isFund ? 'Собрано' : undefined"
       :src="photoSrc"
       :author="goal.photoCredit?.author"
       :author-url="goal.photoCredit?.url"
@@ -288,15 +348,10 @@ function share() {
       @remove="removePhoto"
     />
 
-    <!-- Карточка g4: месяц, строка взноса и две кнопки; «главная мечта» — в подписи шапки. -->
+    <!-- Карточка g4: месяц, строка взноса и две кнопки; «главная мечта» — в подписи шапки, «Сделать главной» — в меню. -->
     <Card>
-      <div class="flex items-start justify-between gap-3">
-        <h2 class="type-h2 text-ink">{{ doneTitle }}</h2>
-        <button v-if="canEdit && !isMain" type="button" class="shrink-0 pt-1 text-[12.5px] font-medium text-brand cursor-pointer" @click="financeStore.setMainGoal(goal.id)">
-          Сделать главной
-        </button>
-      </div>
-      <p class="mt-1.5 text-[15px] text-ink-2">{{ doneLine }}</p>
+      <h2 class="type-h2 text-ink">{{ doneTitle }}</h2>
+      <p v-if="doneLine" class="mt-1.5 text-[15px] text-ink-2">{{ doneLine }}</p>
 
       <div class="mt-3.5 flex flex-wrap gap-2">
         <Button
@@ -344,6 +399,16 @@ function share() {
           >
             <PhMinus :size="16" weight="bold" /> Снять
           </Button>
+        </Card>
+
+        <!-- Порог фонда — месяцев трат (Н-9): «нужно» = месяцы × траты месяца по плану. -->
+        <Card v-if="canEdit && fundKind">
+          <div class="-mb-3.5 flex justify-end">
+            <SavedMark :on="fundSaved" />
+          </div>
+          <Field label="Месяцев трат">
+            <NumFieldBlur :initial="String(fundMonths)" aria-label="Порог фонда — месяцев трат" @commit="onFundMonths" />
+          </Field>
         </Card>
 
         <p v-if="remaining > 0" class="px-1 text-[13px] text-ink-2">
@@ -465,3 +530,4 @@ function share() {
     />
   </div>
 </template>
+

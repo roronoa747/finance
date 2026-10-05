@@ -6,7 +6,6 @@ import { money } from '../src/lib/money'
 import type { Goal, Payment, SyncDoc } from '../src/types/finance'
 import GoalDetail from '../src/views/GoalDetail.vue'
 import Money from '../src/views/Money.vue'
-import Breakdown from '../src/views/Breakdown.vue'
 import { plain } from '../src/lib/money'
 import { useAuthStore } from '../src/stores/auth'
 import { authAs } from '../src/test/planFamily'
@@ -15,10 +14,14 @@ import { at, fakeServer, phone, screen, setOnline, type FakeServer } from './sup
 
 /** Цель на паузе ради плана — на экране цели: список целей теперь плитки «Мечт» без тега (B2C-18). */
 /** Квадрат «План» (пивот 3, B2C-43): план включён — переключатель «Сначала долги». */
-const planOn = (html: string) => /role="switch" aria-checked="true"/.test(html)
-/** Разбор остатка с открытой статьёй «Дорогие долги» (B2C-58): её статус — какой долг досрочка закрывает первым. */
-const debtsCard = (p: { pinia: Pinia }) =>
-  screen(p.pinia, Breakdown, '/week/breakdown?from=rest&amount=100000&period=2026-09', undefined, [screenMixin({ picked: 'debts' })])
+// Квадрат «План» — под «Подробнее» (Блок 14): переключатели плана месяца выше — не он.
+const planOn = (html: string) => /role="switch" aria-checked="true"/.test(html.slice(html.indexOf('data-more')))
+/** Карточка «закрыть кредит» в очереди плана месяца (Блок 14, Р-82): какой долг досрочка закрывает первым. */
+const debtsCard = async (p: { pinia: Pinia }) => {
+  const html = await screen(p.pinia, Money, '/money')
+  const at = html.indexOf('data-queue="debt"')
+  return at < 0 ? '' : html.slice(at, html.indexOf('data-status', at) + 200)
+}
 
 const pausedOn = async (p: { pinia: Pinia }, id: string) => (await screen(p.pinia, GoalDetail, `/goals/${id}`)).includes('На паузе ради плана')
 
@@ -425,15 +428,10 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
 
       // Не хватает 73 000 — из 100 000 плана в подушку 73 000.
       expect(planStep(plan, B.store.planState(), '2026-09')).toEqual({ kind: 'cushion', goalId: 'cushion', amount: 73_000, missing: 73_000 })
-      // Разбор (B2C-58, Р-66): при шаге «подушка» «Дорогим долгам» нечего закрывать — статьи нет (Р-65), «Подушка» — по плану.
+      // План месяца (Блок 14, Р-82): при шаге «подушка» карточке долга нечего вносить — она «по плану», не «задайте сумму».
       const ritual = await debtsCard(B)
-      expect(ritual).not.toContain('data-chip="debts"')
-      const cushionCard = await screen(B.pinia, Breakdown, '/week/breakdown?from=rest&amount=100000&period=2026-09', undefined, [screenMixin({ picked: 'cushion' })])
-      expect(cushionCard).toContain('по плану «Сначала долги»')
-      // (прежний Ритуал: «Сначала подушка: не хватает N» — теперь сумма шага в «Деньги · План» ниже)
-      // Цели плана на паузе — «Мечт» в разборе нет, деньги сверх месяца идут в «Подушку».
-      expect(cushionCard).toContain('data-chip="cushion"')
-      expect(cushionCard).not.toContain('data-chip="dreams"')
+      expect(ritual).toContain('по плану «Сначала долги»')
+      // (прежний Ритуал: «Сначала подушка: не хватает N» — сумма шага в «Деньги · План» ниже)
       const cushionPlan = await screen(B.pinia, Money, '/money/plan')
       expect(cushionPlan).toContain(`сначала подушка: не хватает ${money(73_000)}`)
       expect(cushionPlan).toContain('Подушка плана')
@@ -460,7 +458,8 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
       expect(prepayPlan).toContain('в «Кредитка»')
       const ritualA = await debtsCard(A)
       expect(ritualA).not.toContain('сначала подушка')
-      expect(ritualA).toContain('Кредитка · 40%')
+      expect(ritualA).toContain('Кредитка')
+      expect(ritualA).not.toContain('по плану «Сначала долги»')
     })
 
     it('пропуск месяца: план с июля, шаг июля внесён, август пропущен — в сентябре строка без упрёка, шаг — сумма одного месяца', async () => {

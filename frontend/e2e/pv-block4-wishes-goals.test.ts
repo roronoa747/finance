@@ -237,7 +237,7 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       const goalV = await screen(V.pinia, GoalDetail, '/goals/trip')
       expect(goalV).toContain(`${plain(400_000)} из ${money(1_000_000)}`)
       expect(goalV).toContain(`+${plain(50_000)} ₸`)
-      expect(goalV).not.toContain('aria-label="Изменить цель"')
+      expect(goalV).not.toContain('aria-label="Меню цели"')
       expect(goalV).not.toContain('Откладывать в месяц, ₸')
       expect(goalV).toContain(money(50_000))
       expect(goalV).not.toMatch(button('Готово'))

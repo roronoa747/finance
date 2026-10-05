@@ -3,30 +3,24 @@ import { setActivePinia } from 'pinia'
 import { defaultSyncDoc } from '../src/stores/finance'
 import { useAuthStore } from '../src/stores/auth'
 import { at, phone, screen, setOnline, type FakeServer } from './support/family'
-import { accountBalance, monthSummary, paidFor, breakdownWith, monthBreakdown, type BreakdownSource } from '../src/lib/finance'
+import { accountBalance, monthPlan, monthSummary, paidFor, planFromSource, type PlanSource } from '../src/lib/finance'
 import { money } from '../src/lib/money'
 import type { Payment, SyncDoc } from '../src/types/finance'
 import { authAs } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
 import Statements from '../src/views/Statements.vue'
 import Money from '../src/views/Money.vue'
-import Breakdown from '../src/views/Breakdown.vue'
 
 /**
  * Блок 2 развития: моменты месяца. Два телефона — два стора Pinia на одном фейковом
  * сервере с ревизиями и 409 (`support/family`).
  */
-/** Разбор источника — те же числа, что у экрана (`finance.ts`), со статьями плана. */
-function breakdownOf(store: { householdDoc: SyncDoc; credits: SyncDoc['credits'] }, source: BreakdownSource, key = '2026-09') {
-  const doc = store.householdDoc
-  const mb = monthBreakdown(
-    { ...doc, credits: store.credits },
-    { key, totals: doc.spendTotals ?? [], spendCategories: doc.spendCategories ?? [], uploads: [], rawCredits: doc.credits },
-    source,
-  )!
-  const w = breakdownWith(mb, mb.articles.filter((a) => !a.on).map((a) => a.key))
-  return { mb, ...w, toGoals: w.effects.contributions.reduce((a, c) => a + c.amount, 0) }
-}
+/** План месяца и деньги сверх плана — те же числа, что у экрана (`finance.ts`, Блок 14). */
+const ctxOf = (doc: SyncDoc, key = '2026-09') => ({ key, totals: doc.spendTotals ?? [], spendCategories: doc.spendCategories ?? [], uploads: [], rawCredits: doc.credits })
+const planOf = (store: { householdDoc: SyncDoc; credits: SyncDoc['credits'] }, key = '2026-09') =>
+  monthPlan({ ...store.householdDoc, credits: store.credits }, ctxOf(store.householdDoc, key))
+const sourceOf = (store: { householdDoc: SyncDoc; credits: SyncDoc['credits'] }, source: PlanSource) =>
+  planFromSource({ ...store.householdDoc, credits: store.credits }, ctxOf(store.householdDoc), source)
 
 describe('e2e / Блок 2 — моменты месяца на двух телефонах', () => {
   let server: FakeServer
@@ -83,10 +77,11 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       // Повторное нажатие (или второй телефон до синка) второй записи не пишет.
       expect(A.store.markSalary('a')!.id).toBe(record.id)
 
-      // Разбор (B2C-58): кольцо на всю пришедшую сумму, «Остаётся» — из finance.ts; старый адрес Ритуала — туда же.
-      const b = breakdownOf(A.store, { from: 'salary', person: 'a', period: '2026-09' })
-      const ritual = await screen(A.pinia, Breakdown, '/ritual?from=salary&person=a&period=2026-09')
-      expect(ritual).toContain(`Остаётся ${money(b.fill.rest)} из ${money(700_000)}`)
+      // План месяца (Блок 14): пришла — «Отложить по плану», «Остаётся» — из finance.ts.
+      const plan = planOf(A.store)
+      expect(plan.income.byPerson.find((x) => x.person === 'a')).toMatchObject({ amount: 700_000, came: true })
+      const money_ = await screen(A.pinia, Money, '/money')
+      expect(money_).toContain(`data-rest>${money(plan.rest)}<`)
 
       await A.store.syncHousehold(A.client)
       await B.store.syncHousehold(B.client)
@@ -175,26 +170,27 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       expect(await screen(A.pinia, Statements, '/week')).toContain('Остались деньги с сентября?')
       expect(await screen(B.pinia, Statements, '/week')).toContain('Остались деньги с сентября?')
 
-      // Разбор остатка (B2C-58): статьи от «Запаса» — взносы со счёта «Kaspi Gold».
+      // «Остались деньги?» (Р-86): сумма — разово по очереди целей сверху вниз, запись своим источником.
       setActivePinia(A.pinia)
-      const b = breakdownOf(A.store, { from: 'rest', amount: 80_000, period: '2026-09' })
-      expect(b.toGoals).toBeGreaterThan(0)
+      const src = sourceOf(A.store, { from: 'rest', amount: 80_000, period: '2026-09' })!
+      expect(src.mode).toBe('once')
+      const toGoals = src.mode === 'once' ? src.contributions.reduce((a, c) => a + c.amount, 0) : 0
+      expect(toGoals).toBeGreaterThan(0)
       const monthly = Object.fromEntries(A.store.goals.map((g) => [g.id, g.monthly]))
-      const done = await screen(A.pinia, Breakdown, '/ritual?from=rest&amount=80000&period=2026-09', undefined, [
-        screenMixin({}, (s) => {
-          s.chosen = 'card'
-          ;(s.lay as () => void)()
+      const haves = A.store.goals.reduce((a, g) => a + g.have, 0)
+      const done = await screen(A.pinia, Statements, '/week', undefined, [
+        screenMixin({ restAmount: '80 000' }, (s) => {
+          if (typeof s.answerRest === 'function') (s.answerRest as (go: boolean) => void)(true)
         }),
       ])
-      expect(done).toContain('Разложено')
+      expect(done).not.toContain('Остались деньги с сентября?')
       await A.store.syncHousehold(A.client)
       await B.store.syncHousehold(B.client)
-      expect(B.store.allocations).toEqual([expect.objectContaining({ kind: 'breakdown', source: 'rest', total: 80_000, parts: b.effects.parts })])
-      // Разовый разбор — взносы сейчас, ежемесячные взносы прежние; копилки не было — заведена «Подушка» (Р-66).
-      expect(Object.fromEntries(B.store.goals.filter((g) => g.id in monthly).map((g) => [g.id, g.monthly]))).toEqual(monthly)
-      expect(B.store.goals.filter((g) => !(g.id in monthly)).map((g) => g.name)).toEqual(['Подушка'])
-      const prepaid = B.store.payments.filter((p) => p.kind === 'prepay').reduce((a, p) => a + p.amount, 0)
-      expect(B.store.accounts.find((x) => x.id === 'card')!.amount).toBe(1_000_000 - b.toGoals - prepaid)
+      expect(B.store.allocations).toEqual([expect.objectContaining({ kind: 'plan', source: 'rest', total: 80_000, parts: src.mode === 'once' ? src.parts : [] })])
+      // Разово — взносы сейчас, ежемесячные взносы прежние; новых целей не заводится.
+      expect(Object.fromEntries(B.store.goals.map((g) => [g.id, g.monthly]))).toEqual(monthly)
+      expect(B.store.goals.reduce((a, g) => a + g.have, 0)).toBe(haves + toGoals)
+      expect(await screen(B.pinia, Statements, '/week')).not.toContain('Остались деньги с сентября?')
     })
 
     it('1 октября вопроса нет; 29 октября — снова (RP-11)', async () => {
@@ -208,7 +204,7 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
   })
 
   describe('RP-12 — моменты прогресса', () => {
-    it('B закрывает маленький долг последним «Оплатил» → строка у обоих, ведёт в «освободилось»; снятие убирает', async () => {
+    it('B закрывает маленький долг последним «Оплатил» → строка у обоих и карточка «закрыт» в плане месяца; снятие убирает', async () => {
       server.data.credits.push({
         id: 'tv', name: 'Телевизор', note: '', principal: 30_000, principalSetAt: T0, annualRate: 0, payment: 30_000, day: 12, updatedAt: T0,
       })
@@ -228,8 +224,11 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       expect(overview).toContain('«Телевизор» закрыт')
       // Квадрат «История» (B2C-44): день — подпись ленты, момент — строкой под ним.
       expect(overview.replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')).toMatch(new RegExp(`12 сентября .*«Телевизор» закрыт освободилось ${money(30_000)} в месяц`))
-      const ritual = await screen(A.pinia, Breakdown, '/ritual?from=credit&credit=tv')
-      expect(ritual).toContain(`из ${money(30_000)}`)
+      // Деньги закрытого долга — карточкой плана месяца (Р-86), одна кнопка.
+      const plan = await screen(A.pinia, Money, '/money')
+      expect(plan).toContain('data-source="credit"')
+      expect(plan).toContain('Телевизор закрыт')
+      expect(plan).toContain(money(30_000))
 
       // Ошиблись — сняли отметку: долг снова открыт, момента нет ни у кого.
       setActivePinia(B.pinia)
@@ -237,7 +236,7 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       await B.store.syncHousehold(B.client)
       await A.store.syncHousehold(A.client)
       expect(await screen(A.pinia, Money, '/money/history')).not.toContain('«Телевизор» закрыт')
-      expect(await screen(A.pinia, Breakdown, '/ritual?from=credit&credit=tv')).toContain('Этот долг ещё не закрыт')
+      expect(await screen(A.pinia, Money, '/money')).not.toContain('data-source="credit"')
       // В документе — только записи оплат: моменты не пишутся.
       expect(Object.keys(server.data).filter((k) => /moment|history/i.test(k))).toEqual([])
     })

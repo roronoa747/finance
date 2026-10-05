@@ -17,7 +17,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
 import { monthKey, MONTHS_NOM, parseMonthKey, weekKey, weekRangeLabel } from '@/lib/dates'
-import { liveGoals, mainGoal, weekPicture, weekTag } from '@/lib/finance'
+import { liveGoals, weekPicture, weekTag } from '@/lib/finance'
 import SyncBadge from '@/components/SyncBadge.vue'
 import Avatar from '@/components/kit/Avatar.vue'
 import IconBox from '@/components/kit/IconBox.vue'
@@ -35,7 +35,7 @@ import Tabs from '@/components/kit/Tabs.vue'
  * Шапка — как в макетах (возврат смоука): у вкладок справа аватары (шестерёнка — только на
  * «Мечтах», §2; на «Неделе» аватаров нет), у вложенных экранов слева «назад», справа — действия
  * самого экрана (`HeaderActions` переносит их в `#shell-actions`). Экраны-потоки (цель, желания,
- * настройки, разбор и «Ваш порядок») — без вкладок, как в макетах g2/g4/g7.
+ * настройки) — без вкладок, как в макетах g2/g4/g7.
  */
 const route = useRoute()
 const router = useRouter()
@@ -72,12 +72,10 @@ const draftSub = computed(() => {
 const ROOTS = ['/', '/week', '/money', '/money/plan', '/money/history']
 // «Разбор» выписки живёт на /week, но корнем не считается: «назад» слева, как в g2 (хвост критика Б9).
 const isRoot = computed(() => ROOTS.includes(route.path) && !(route.path === '/week' && !!ops.draft))
-/** Экраны-потоки без нижней навигации (в макетах — без вкладок): цель, желания, настройки, разбор. */
+/** Экраны-потоки без нижней навигации (в макетах — без вкладок): цель, желания, настройки. */
 const noTabs = computed(() => {
   const p = route.path
-  return (
-    p.startsWith('/goals/') || p === '/wishes' || p.startsWith('/people/') || p.startsWith('/settings') || p === '/week/order' || p === '/week/breakdown'
-  )
+  return p.startsWith('/goals/') || p === '/wishes' || p.startsWith('/people/') || p.startsWith('/settings')
 })
 
 /** «Назад»: по истории, а открытый по ссылке экран — к своему корню. */
@@ -93,15 +91,6 @@ function goBack() {
 const header = computed<{ title: string; sub?: string }>(() => {
   const p = route.path
   if (p === '/') return { title: 'Мечты', sub: `${monthName.value} · ${names.value}` }
-  if (p === '/week/breakdown') {
-    // Подпись — откуда деньги (как у бывшей раскладки, g2).
-    const from = route.query.from
-    const who = people.value.find((x) => x.id === route.query.person)?.name
-    const sub =
-      from === 'salary' ? (who ? `зарплата · ${who}` : 'зарплата') : from === 'rest' ? 'остаток месяца' : from === 'credit' ? 'закрытый долг' : from === 'plan' ? 'план месяца' : 'освободившийся платёж'
-    return { title: 'Разбор', sub }
-  }
-  if (p === '/week/order') return { title: 'Ваш порядок' }
   if (p.startsWith('/week')) return ops.draft ? { title: 'Разбор', sub: draftSub.value } : { title: 'Неделя', sub: weekSub.value }
   // «Деньги» — один экран с тремя квадратами (пивот 3, Р-31): шапка одна на все.
   if (p === '/money' || p.startsWith('/money/')) return { title: 'Деньги', sub: `${monthName.value} · ${names.value}` }
@@ -109,8 +98,10 @@ const header = computed<{ title: string; sub?: string }>(() => {
   if (p.startsWith('/goals/')) {
     // Имя цели заголовком (g4 «Экран цели»): «главная мечта · Ильяс и Дана».
     const goal = liveGoals(financeStore.goals).find((g) => g.id === route.params.id)
-    const main = mainGoal(financeStore.goals)?.id === goal?.id
-    return goal ? { title: goal.name, sub: `${main ? 'главная мечта' : 'мечта'} · ${names.value}` } : { title: 'Цель' }
+    const main = financeStore.heroGoal?.id === goal?.id
+    // Фонд («Запас», «Подушка», Р-82) — не мечта (ревью frontend Б14, Н-2).
+    const fund = financeStore.queue.find((x) => x.id === goal?.id)?.kind === 'fund'
+    return goal ? { title: goal.name, sub: `${fund ? 'фонд' : main ? 'главная мечта' : 'мечта'} · ${names.value}` } : { title: 'Цель' }
   }
   if (p === '/wishes' || p.startsWith('/people/')) return { title: 'Желания', sub: 'не мечты — покупки поменьше' }
   if (p === '/settings/me') return { title: 'Свой кружок' }

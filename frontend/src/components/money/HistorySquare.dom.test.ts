@@ -82,8 +82,8 @@ describe('B2C-44: «куда отнести?» из «Истории»', () => {
   })
 })
 
-describe('B2C-58: разбор в «Истории»', () => {
-  it('строка «Разложено» — откуда и кто, части по статьям; нажатие — записанный разбор (ревью frontend Б11, Н-8)', async () => {
+describe('B2C-58, B2C-89: записи денег в «Истории» (Р-85)', () => {
+  it('старый разбор — «Разложено», откуда и кто, части по статьям; запись плана — по целям; нажатие — сводка месяца плана', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
     useAuthStore().setAuthData(authAs('member'))
@@ -96,6 +96,11 @@ describe('B2C-58: разбор в «Истории»', () => {
             id: 'r1', kind: 'breakdown', source: 'salary', sourceId: 'a', period: '2026-09', by: 'b',
             at: '2026-09-12T07:00:00.000Z', updatedAt: '2026-09-12T07:00:00.000Z', total: 200_000,
             parts: [{ target: 'dreams', amount: 50_000 }, { target: 'life', amount: 150_000 }],
+          },
+          {
+            id: 'p1', kind: 'plan', source: 'salary', sourceId: 'b', period: '2026-09', by: 'b',
+            at: '2026-09-20T07:00:00.000Z', updatedAt: '2026-09-20T07:00:00.000Z', total: 500_000,
+            parts: [{ target: 'trip', amount: 40_000 }, { target: 'prepay:loan', amount: 30_000 }],
           },
         ],
       }),
@@ -121,6 +126,11 @@ describe('B2C-58: разбор в «Истории»', () => {
     const push = vi.spyOn(router, 'push')
     row.click()
     await nextTick()
-    expect(push).toHaveBeenCalledWith('/week/breakdown?from=salary&person=a&period=2026-09')
+    expect(push).toHaveBeenCalledWith('/money?month=2026-09')
+    // Запись «Отложить по плану» — по целям и досрочке, тем же путём в сводку месяца.
+    const plan = [...document.querySelectorAll<HTMLElement>('button')].find((x) => x.textContent?.includes('Отложено по плану'))!
+    expect(plan.textContent).toContain('зарплата · Аруна')
+    expect(text).toContain('Отпуск')
+    expect(text).toContain('Досрочка в «Кредит»')
   })
 })

@@ -14,7 +14,6 @@ import Row from '@/components/kit/Row.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Tag from '@/components/kit/Tag.vue'
 import WeekTotal from '@/components/kit/WeekTotal.vue'
-import StackBar from '@/components/kit/StackBar.vue'
 import SalaryRow from '@/components/SalaryRow.vue'
 import SalaryExchange from '@/components/SalaryExchange.vue'
 import CategoryChips from '@/components/CategoryChips.vue'
@@ -22,7 +21,6 @@ import UnknownBatch from '@/components/UnknownBatch.vue'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
-import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
 import { money, moneyIn, parseMoney } from '@/lib/money'
 import { plural } from '@/lib/utils'
@@ -31,14 +29,10 @@ import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import { draftSummary, partnerHints, picture, pictureTotal, unknownGroups, type UnknownGroup } from '@/lib/statements/model'
 import { readStatementFiles } from '@/lib/statements/read'
 import type { MerchantRule } from '@/lib/statements/types'
-import type { ArticleKey, PersonId } from '@/types/finance'
+import type { PersonId } from '@/types/finance'
 import {
-  breakdownAccount,
-  breakdownMoves,
-  breakdownPath,
-  breakdownWith,
   decisionQueue,
-  ringShares,
+  planFromSource,
   salaryExchange,
   type Decision,
   type WeekUploadRow,
@@ -51,7 +45,6 @@ import {
   weekVersusPrev,
 } from '@/lib/finance'
 import { readMonthEnd, writeMonthEnd } from '@/lib/storage'
-import { ARTICLE_COLORS } from '@/lib/palette'
 
 /**
  * «Неделя» — ритуал (пивот 3, Р-43; макет `pivot-3/dreams-week.html` «А · Ритуал»): итог недели обоих
@@ -62,7 +55,6 @@ import { ARTICLE_COLORS } from '@/lib/palette'
  */
 const auth = useAuthStore()
 const finance = useFinanceStore()
-const fx = useFxStore()
 /** Пришедшая валютная зарплата карточки «Пришла зарплата» (B2C-79): сумма в валюте и «Обменял». */
 const fxOf = (d: Decision) => (d.salary ? salaryExchange(finance.payments, finance.fxExchanges, d.salary.person.id, d.salary.period) : null)
 const store = useOperationsStore()
@@ -154,16 +146,13 @@ const unknownList = computed(() => unknownGroups(store.draft ? store.draftOps : 
 const deferred = ref<string[]>([])
 const queue = computed(() =>
   decisionQueue(
-    { ...finance.householdDoc, credits: finance.credits, book: fx.book },
+    finance.planInput(month).state,
     {
       me: auth.slot,
       canEdit: canUpload.value,
       matches: store.draft ? [] : store.pendingMatches,
       unknown: unknownList.value,
       answeredMonthEnd: answeredLocal.value,
-      totals: spendTotals.value,
-      spendCategories: spendCategories.value,
-      uploads: store.uploads,
     },
   ).filter((d) => !deferred.value.includes(d.key) && (!store.draft || d.kind === 'unknownBatch')),
 )
@@ -191,38 +180,6 @@ function acceptMatch(c: MatchCandidate) {
   void store.acceptMatch(c)
 }
 
-/**
- * «Пришла зарплата» (Р-55, B2C-58): «Разложить как обычно» пишет разбор той же дорогой, что «Разложить» на
- * кольце (`layBreakdown`), и карточка коротко показывает «Разложено». Счёт — как у кольца; не выбран, а
- * деньги уходят со счёта — кольцо, там его спросят.
- */
-const justLaid = ref<{ total: number; rest: number } | null>(null)
-function layUsual(d: Decision) {
-  const u = d.usual
-  if (!u || !d.salary) return
-  const off = u.articles.filter((a) => !a.on).map((a) => a.key)
-  const source = { from: 'salary' as const, person: d.salary.person.id, period: d.salary.period }
-  const accountId = breakdownAccount(finance.payments, source, auth.slot, finance.accounts)
-  if (accountId === undefined && breakdownMoves(u.mode, breakdownWith(u, off).effects)) {
-    if (d.to) void router.push(d.to)
-    return
-  }
-  finance.layBreakdown(u, off, { by: auth.slot ?? 'a', accountId, note: 'из зарплаты' })
-  void finance.syncHousehold()
-  justLaid.value = { total: u.amount, rest: u.fill.rest }
-  setTimeout(() => (justLaid.value = null), 2400)
-}
-/** Полоса статей карточки: что получит каждая статья из этой зарплаты, хвост — остаток дорожкой (`StackBar`, макет). */
-const usualSegments = (d: Decision) =>
-  d.usual
-    ? ringShares<ArticleKey | 'rest'>(
-        [...d.usual.articles.map((a) => ({ key: a.key, amount: d.usual!.fill.given[a.key] })), { key: 'rest', amount: d.usual.fill.rest }],
-        d.usual.amount,
-      )
-        .filter((x) => x.share > 0)
-        .map((x) => ({ ...x, color: x.key === 'rest' ? 'var(--track)' : ARTICLE_COLORS[x.key] }))
-    : []
-
 /** Ответ пачке — всем отмеченным разом: в разборе — до отправки, в неделе — задним числом одной отправкой. */
 function answerBatch(matches: MerchantRule['match'][], to: MerchantRule['to']) {
   if (store.draft) store.answerAll(matches, to)
@@ -244,12 +201,24 @@ function onKeep(d: Decision, action: 'keep' | 'cancel') {
   cancelling.value = false
 }
 
+/**
+ * «Остались деньги?» (Р-86): сумма — разово по очереди целей сверху вниз (`planFromSource`), запись своим
+ * источником (`rest`); отдельного экрана нет. Класть некуда — ответ просто записан.
+ */
 const restAmount = ref('')
+const restSaved = ref<number | null>(null)
 function answerRest(go: boolean) {
   answeredLocal.value = month
   writeMonthEnd(month)
   const amount = parseMoney(restAmount.value)
-  if (go && amount > 0) void router.push(breakdownPath({ from: 'rest', amount, period: month }))
+  if (!go || amount <= 0 || !auth.slot) return
+  const { state, ctx } = finance.planInput(month)
+  const src = planFromSource(state, { ...ctx, rawCredits: finance.householdDoc.credits }, { from: 'rest', amount, period: month })
+  // Остаток месяца уже отложен (партнёр ответил раньше) — второй раз не пишется и «Отложено» не показывается.
+  if (!src || src.mode !== 'once' || src.recorded) return
+  finance.applyPlan(src, { by: auth.slot, note: 'остаток месяца' })
+  restSaved.value = src.put
+  setTimeout(() => (restSaved.value = null), 2400)
 }
 
 /** Главное действие экрана (правило 12): первое решение, иначе — загрузка своей выписки. */
@@ -266,7 +235,6 @@ function onPrimary(d: Decision) {
   if (d.kind === 'match' && d.match) acceptMatch(d.match)
   else if (d.kind === 'keep') onKeep(d, cancelling.value ? 'cancel' : 'keep')
   else if (d.kind === 'monthEnd') answerRest(true)
-  else if (d.kind === 'allocate' && d.usual) layUsual(d)
   else if (d.to) void router.push(d.to)
 }
 function onSecondary(d: Decision) {
@@ -276,7 +244,6 @@ function onSecondary(d: Decision) {
 function onGhost(d: Decision) {
   if (d.kind === 'keep' && cancelling.value) cancelling.value = false
   else if (d.kind === 'monthEnd') answerRest(false)
-  else if (d.kind === 'allocate' && d.usual && d.to) void router.push(d.to)
   else defer(d)
 }
 
@@ -386,11 +353,10 @@ onMounted(() => {
       <Card v-else-if="!canUpload"><EmptyState title="Картины недели пока нет" /></Card>
     </template>
 
-    <!-- «Разложить как обычно» — коротко «Разложено» на месте карточки -->
-    <Card v-if="justLaid" class="fx-in flex flex-col gap-1 border-ok" aria-live="polite">
-      <span class="type-label">Разложено</span>
-      <span class="type-big-md num text-ink">{{ money(justLaid.total) }}</span>
-      <span class="type-meta num">остаётся {{ money(justLaid.rest) }}</span>
+    <!-- «Остались деньги?» — коротко «Отложено» на месте карточки -->
+    <Card v-if="restSaved !== null" class="fx-in flex flex-col gap-1 border-ok" aria-live="polite">
+      <span class="type-label">Отложено</span>
+      <span class="type-big-md num text-ink">{{ money(restSaved) }}</span>
     </Card>
 
     <!-- Одно решение за раз (Р-43): первое из очереди `decisionQueue`; незнакомые продавцы — пачкой (Р-58) -->
@@ -412,18 +378,13 @@ onMounted(() => {
       <template v-else-if="decision.kind === 'monthEnd'" #inner>
         <NumField v-model="restAmount" placeholder="50 000" aria-label="Сколько осталось, ₸" />
       </template>
-      <!-- «Пришла зарплата» (макет, вопрос 2): сумма, полоса статей, «как в <месяце> · останется N ₸» -->
+      <!-- «Пришла зарплата» (макет month-plan.html «Неделя»): сумма, тихое «Обменял»; главное — «К плану месяца» -->
       <template v-if="decision.kind === 'allocate'">
         <span v-if="fxOf(decision)" class="-mt-2.5 flex items-baseline gap-2">
           <span class="type-big num text-ink">{{ moneyIn(fxOf(decision)!.came, fxOf(decision)!.currency) }}</span>
           <span class="type-meta num">≈ {{ money(decision.amount ?? 0) }}</span>
         </span>
         <span v-else class="-mt-2.5 type-big num text-ink">{{ money(decision.amount ?? 0) }}</span>
-        <StackBar v-if="decision.usual" :segments="usualSegments(decision)" />
-        <p class="text-[14px] text-ink-3">
-          <template v-if="decision.usual">{{ decision.lead }} · <b :class="['num font-semibold', decision.usual.fill.short > 0 ? 'text-destructive' : 'text-ok']">{{ decision.outcome }}</b></template>
-          <template v-else>{{ decision.meta }}</template>
-        </p>
         <SalaryExchange v-if="decision.salary" :person-id="decision.salary.person.id" :period="decision.salary.period" />
       </template>
       <template v-if="decision.kind === 'allocate'" #actions>

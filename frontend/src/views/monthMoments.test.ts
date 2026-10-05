@@ -3,12 +3,11 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money } from '@/lib/money'
-import { accountBalance, breakdownWith, monthBreakdown, type BreakdownSource } from '@/lib/finance'
+import { planFromSource, type PlanSource } from '@/lib/finance'
 import type { Payment, SyncDoc } from '@/types/finance'
 import Dreams from './Dreams.vue'
 import Statements from './Statements.vue'
 import Money from './Money.vue'
-import Breakdown from './Breakdown.vue'
 import { authAs, planFamilyDoc, planOf } from '@/test/planFamily'
 import { renderScreen, screenMixin } from '@/test/screenState'
 
@@ -36,15 +35,11 @@ describe('Блок 2: моменты месяца (SSR)', () => {
     vi.useRealTimers()
   })
 
-  /** Разбор источника — те же числа, что у экрана (`finance.ts`). */
-  function breakdown(source: BreakdownSource) {
+  /** Деньги сверх плана (Р-86) — те же числа, что у экрана (`finance.ts`). */
+  function fromSource(source: PlanSource) {
     const store = useFinanceStore()
     const doc = store.householdDoc
-    return monthBreakdown(
-      { ...doc, credits: store.credits },
-      { key: '2026-09', totals: [], spendCategories: [], uploads: [], rawCredits: doc.credits },
-      source,
-    )!
+    return planFromSource({ ...doc, credits: store.credits }, { key: '2026-09', totals: [], spendCategories: [], uploads: [], rawCredits: doc.credits }, source)!
   }
 
   function family(role: 'member' | 'viewer' = 'member', slot: 'a' | 'b' = 'a', extra: Partial<SyncDoc> = {}) {
@@ -59,7 +54,7 @@ describe('Блок 2: моменты месяца (SSR)', () => {
       family()
       const html = await renderScreen(Statements, '/week')
       expect(html).toContain('Остались деньги с сентября?')
-      expect(html).toMatch(/>\s*Разложить\s*</)
+      expect(html).toMatch(/>\s*Отложить\s*</)
       expect(html).toMatch(/>\s*Не сейчас\s*</)
       expect(await renderScreen(Dreams, '/')).not.toContain('Остались деньги')
 
@@ -87,35 +82,20 @@ describe('Блок 2: моменты месяца (SSR)', () => {
       expect(await renderScreen(Statements, '/week')).toContain('Остались деньги с октября?')
     })
 
-    it('Разбор остатка (B2C-58): сумма из адреса; без своих отметок счёт спрашивается — ничего не пишется; со счётом — взносы со счёта', async () => {
+    it('«Остались деньги?» (Р-86): сумма — разово по очереди целей сверху вниз, запись своим источником; экрана разбора нет', async () => {
       const store = family()
-      const path = '/week/breakdown?from=rest&amount=55000&period=2026-09'
-      expect(await renderScreen(Breakdown, path)).toContain(`из ${money(55_000)}`)
-      expect(await renderScreen(Breakdown, '/week/breakdown?from=rest&amount=0&period=2026-09')).toContain('Разбирать нечего.')
-      // Старый адрес Ритуала — тот же разбор.
-      expect(await renderScreen(Breakdown, '/ritual?from=rest&amount=55000&period=2026-09')).toContain(`из ${money(55_000)}`)
-
-      const mb = breakdown({ from: 'rest', amount: 55_000, period: '2026-09' })
-      const w = breakdownWith(mb, mb.articles.filter((a) => !a.on).map((a) => a.key))
-      const toGoals = w.effects.contributions.reduce((a, c) => a + c.amount, 0)
-      expect(toGoals).toBeGreaterThan(0)
-      // Своих зарплат ещё не отмечали — счёт не угадать: «Разложить» открывает выбор счёта, ничего не пишется.
-      await renderScreen(Breakdown, path, undefined, [screenMixin({}, (s) => (s.lay as () => void)())])
-      expect(store.allocations).toEqual([])
-      expect(store.goals.every((g) => g.movements.length === 0)).toBe(true)
-
-      await renderScreen(Breakdown, path, undefined, [
-        screenMixin({}, (s) => {
-          s.chosen = 'card'
-          ;(s.lay as () => void)()
+      const src = fromSource({ from: 'rest', amount: 55_000, period: '2026-09' })
+      expect(src.mode).toBe('once')
+      await renderScreen(Statements, '/week', undefined, [
+        screenMixin({ restAmount: '55 000' }, (s) => {
+          if (typeof s.answerRest === 'function') (s.answerRest as (go: boolean) => void)(true)
         }),
       ])
-      expect(store.allocations[0]).toMatchObject({ kind: 'breakdown', source: 'rest', sourceId: '2026-09', total: 55_000, parts: w.effects.parts })
+      expect(store.allocations).toHaveLength(1)
+      expect(store.allocations[0]).toMatchObject({ kind: 'plan', source: 'rest', sourceId: '2026-09', total: 55_000, parts: src.mode === 'once' ? src.parts : [] })
       const notes = store.goals.flatMap((g) => g.movements.map((m) => m.note))
       expect(notes.length).toBeGreaterThan(0)
-      expect(notes.every((n) => n === 'из остатка месяца')).toBe(true)
-      const prepaid = store.payments.filter((p) => p.kind === 'prepay').reduce((a, p) => a + p.amount, 0)
-      expect(accountBalance(store.householdDoc.accounts[0], store.payments)).toBe(2_000_000 - toGoals - prepaid)
+      expect(notes.every((n) => n === 'остаток месяца')).toBe(true)
     })
   })
 
@@ -180,24 +160,23 @@ describe('Блок 2: моменты месяца (SSR)', () => {
       family('member', 'a', { ...moments(), plans: [planOf({ creditIds: ['cc', 'loan', 'inst'] })] })
       const html = await renderScreen(Money, '/money/history')
       expect(section(html)).toContain('его платёж идёт в следующий долг по плану')
-      expect(await renderScreen(Breakdown, '/ritual?from=credit&credit=inst')).toContain('уже идёт в следующий долг по плану')
     })
 
-    it('Разбор «освободилось N ₸» (B2C-58): сумма — платёж закрытого долга, решение прибавляет ежемесячные взносы', async () => {
+    it('«Долг закрыт» (Р-86): карточка плана — платёж закрытого долга разово по очереди одной кнопкой, запись своим источником', async () => {
       const store = family('member', 'a', moments())
-      const path = '/week/breakdown?from=credit&credit=inst'
-      expect(await renderScreen(Breakdown, path)).toContain(`из ${money(20_000)}`)
-      expect(await renderScreen(Breakdown, '/week/breakdown?from=credit&credit=loan')).toContain('Этот долг ещё не закрыт.')
-
-      const mb = breakdown({ from: 'credit', creditId: 'inst' })
-      expect(mb).toMatchObject({ amount: 20_000, mode: 'monthly' })
-      const w = breakdownWith(mb, mb.articles.filter((a) => !a.on).map((a) => a.key))
-      const before = Object.fromEntries(store.goals.map((g) => [g.id, g.monthly]))
-      await renderScreen(Breakdown, path, undefined, [screenMixin({}, (s) => (s.lay as () => void)())])
-      expect(store.allocations[0]).toMatchObject({ kind: 'breakdown', source: 'freed', sourceId: 'inst', total: 20_000, parts: w.effects.parts })
-      for (const m of w.effects.monthly) expect(store.goals.find((g) => g.id === m.goalId)!.monthly).toBe(before[m.goalId] + m.add)
-      // Каждый месяц — без взносов сейчас.
-      expect(store.goals.every((g) => g.movements.length === (g.id === 'trip' ? 1 : 0))).toBe(true)
+      const src = fromSource({ from: 'credit', creditId: 'inst' })
+      expect(src).toMatchObject({ mode: 'once', amount: 20_000 })
+      const html = await renderScreen(Money, '/money')
+      expect(html).toContain('data-source="credit"')
+      expect(html).toContain('Рассрочка закрыт')
+      await renderScreen(Money, '/money', undefined, [
+        screenMixin({}, (s) => {
+          if (typeof s.onSource === 'function') (s.onSource as () => void)()
+        }),
+      ])
+      expect(store.allocations[0]).toMatchObject({ kind: 'plan', source: 'freed', sourceId: 'inst', total: 20_000, parts: src.mode === 'once' ? src.parts : [] })
+      // Записано — карточки нет.
+      expect(await renderScreen(Money, '/money')).not.toContain('data-source=')
     })
   })
 

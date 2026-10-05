@@ -101,10 +101,14 @@ describe('слияние обменов', () => {
 describe('карточка «Пришла зарплата» на «Неделе»', () => {
   const people = [{ id: 'a' as const, name: 'Ильяс', salary: 700_000, payday: 3, updatedAt: T0, salaryVersions: [{ from: '2025-10', amount: 1_500, currency: 'EUR' as const, rate: 505.5 }] }]
   const now = { day: 4, key: '2026-10' }
+  // Есть что отложить по плану (ревью frontend Б14, Н-1): цель Ильяса со взносом.
+  const goals = [{ id: 'g', name: 'Япония', need: 1_000_000, seed: 0, have: 0, monthly: 50_000, hue: 'teal' as const, planPct: 0, movements: [], updatedAt: T0 }]
 
   it('валютная зарплата, отмеченная руками, держит карточку (сначала «Обменял»); тенговая ручная — нет', () => {
-    expect(salaryToAllocate({ people, payments: [salary] }, 'a', now)?.record.id).toBe('s1')
+    expect(salaryToAllocate({ people, goals, payments: [salary] }, 'a', now)?.record.id).toBe('s1')
     const kztManual: Payment = { ...salary, foreign: undefined, currency: undefined, amount: 700_000 }
-    expect(salaryToAllocate({ people, payments: [kztManual] }, 'a', now)).toBeNull()
+    expect(salaryToAllocate({ people, goals, payments: [kztManual] }, 'a', now)).toBeNull()
+    // Откладывать нечего (целей нет) — карточки нет и у валютной: «Обменял» — в плане месяца.
+    expect(salaryToAllocate({ people, payments: [salary] }, 'a', now)).toBeNull()
   })
 })

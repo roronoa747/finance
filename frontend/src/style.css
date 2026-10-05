@@ -150,11 +150,8 @@
   --motion-base: 320ms;
   --motion-fill: 900ms;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
-  /* Кольцо разбора (Блок 11, Р-53): сектор растёт ~0,4 с, следующий — через ~0,16 с; выключенная статья
-     сжимается ~0,5 с (`kit/BreakdownRing`, `lib/motion.ts` RING_*). */
+  /* Круг месяца (Блок 14, `money/MonthRing`): дуги платежей, трат и очереди меняются ~0,4 с. */
   --motion-ring: 420ms;
-  --motion-ring-step: 160ms;
-  --motion-ring-shrink: 500ms;
 }
 
 @theme inline {

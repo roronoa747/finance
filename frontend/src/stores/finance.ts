@@ -7,6 +7,7 @@ import { clearPhotoDisk } from '@/lib/photos/store'
 import { FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, readStorage } from '@/lib/storage'
 import {
   accountBalance,
+  allocationFor,
   accountForeign,
   fxToTenge,
   rateOn,
@@ -20,8 +21,14 @@ import {
   creditSplit,
   endedPlan,
   goalHave,
-  liveGoals,
-  mainGoal,
+  DEBT_CARD,
+  debtCardOf,
+  fundsOf,
+  moveId,
+  moveWithin,
+  queueOf,
+  monthPlan,
+  wishQueue,
   moneyArticlesOf,
   moneySettingsOf,
   lastAccountFor,
@@ -43,11 +50,14 @@ import {
   type PlanState,
   type PlanStep,
   type ScheduledKind,
-  breakdownWith,
-  type BreakdownEffects,
-  type MonthBreakdown,
+  type PlanFromSource,
+  type PlanSave,
+  type MonthPlan,
+  type MonthPlanCtx,
+  type MonthPlanState,
 } from '@/lib/finance'
 import type {
+  AllocationPart,
   SyncDoc,
   SyncStatus,
   Person,
@@ -66,12 +76,12 @@ import type {
   MoneySettings,
   Currency,
   FxExchange,
+  DebtCard,
 } from '@/types/finance'
 import type { MerchantRule } from '@/lib/statements/types'
-import { spendArticle } from '@/lib/statements/dictionary'
-import { seedSpendCategories } from '@/lib/statements/model'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
+import { useOperationsStore } from '@/stores/operations'
 import { FX_ACCOUNT_NAME } from '@/lib/fx'
 import { DEFAULT_CATEGORY_NAMES, type CategoryKey, type HueKey } from '@/lib/palette'
 import type { ConflictResponse, HouseholdDocResponse } from '@/types/api'
@@ -96,6 +106,11 @@ export function defaultSyncDoc(): SyncDoc {
     moneySettings: null,
     // Обмены валютной зарплаты (B2C-79): ключ и пустым — как у payments (RP-03).
     fxExchanges: [],
+    // План месяца (B2C-85): суммы трат каждого — список; порядки и карточка долга — объекты (пусто — умолчания).
+    spendPlans: [],
+    goalOrder: null,
+    wishOrder: null,
+    debtCard: null,
     setupDoneAt: null,
   }
 }
@@ -245,6 +260,25 @@ export const useFinanceStore = defineStore('finance', () => {
    */
   const planStepNow = (): PlanStep | null =>
     activePlan.value ? planStep(activePlan.value, planState(), monthKey()) : null
+  /**
+   * Вход плана месяца (ревью frontend Б14, Н-4) — одно место для экранов: документ с производными кредитами и
+   * книгой курсов, итоги трат и загрузки выписок. Функция, а не computed: месяц — у вызывающего, экраны зовут её
+   * внутри своих computed (зависимости отслеживаются там).
+   */
+  const planInput = (key: string): { state: MonthPlanState; ctx: MonthPlanCtx } => ({
+    state: { ...householdDoc.value, credits: credits.value, book: useFxStore().book },
+    ctx: {
+      key,
+      totals: householdDoc.value.spendTotals ?? [],
+      spendCategories: householdDoc.value.spendCategories ?? [],
+      uploads: useOperationsStore().uploads,
+    },
+  })
+  /** План месяца `key` (`monthPlan`) — со входом `planInput`. */
+  const monthPlanOf = (key: string): MonthPlan => {
+    const { state, ctx } = planInput(key)
+    return monthPlan(state, ctx)
+  }
   /** Цели на паузе ради плана (Р-9): выводятся из плана — одно место для экранов. */
   const pausedGoalIds = computed(
     () => new Set(activePlan.value ? pausedGoals(activePlan.value, goals.value).map((g) => g.id) : []),
@@ -798,14 +832,12 @@ export const useFinanceStore = defineStore('finance', () => {
     have?: number;
     monthly: number;
     hue: HueKey;
-    /** Шаблон и главная мечта (B2C-17/18); первая цель семьи — главная. */
+    /** Шаблон (B2C-17/18). Главная — первая в очереди (Р-84): новая цель встаёт в конец, `main` не пишется. */
     template?: string | null;
-    main?: boolean;
   }): string {
     const id = Math.random().toString(36).slice(2, 10);
     const t = new Date().toISOString();
     const have = g.have ?? 0;
-    const main = g.main ?? liveGoals(goals.value).length === 0;
     mutateHouseholdDoc((doc) => {
       doc.goals.push({
         id,
@@ -819,7 +851,6 @@ export const useFinanceStore = defineStore('finance', () => {
         movements: [],
         updatedAt: t,
         ...(g.template ? { template: g.template } : {}),
-        ...(main ? { main: true } : {}),
       });
     });
     return id;
@@ -1678,17 +1709,155 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
-  /** Главная мечта (Р-8, B2C-14): пометка одной цели, у остальных снимается — LWW по цели. */
-  function setMainGoal(id: string) {
-    if (mainGoal(goals.value)?.id === id && goals.value.find((g) => g.id === id)?.main) return
+  /* ---------- план месяца: очередь, плательщик, траты, фонды (Блок 14, B2C-85) ---------- */
+  const goalOrder = computed(() => householdDoc.value.goalOrder ?? null)
+  const wishOrder = computed(() => householdDoc.value.wishOrder ?? null)
+  const spendPlans = computed(() => (householdDoc.value.spendPlans ?? []).filter((x) => !x.deletedAt))
+  const debtCard = computed(() => debtCardOf(householdDoc.value))
+  /** Очередь денег (Р-84) — кредиты производные: карточка долга есть, пока долг с процентами открыт. */
+  const queue = computed(() => queueOf({ ...householdDoc.value, credits: credits.value }))
+  const wishes = computed(() => wishQueue(householdDoc.value))
+  /** Герой «Мечт» (Р-84): первая цель очереди — не фонд и не карточка долга. */
+  const heroGoal = computed(() => {
+    const first = queue.value.find((x) => x.kind === 'goal')
+    return first?.kind === 'goal' ? first.goal : null
+  })
+
+  /** Новый порядок очереди целиком (Р-84): пишется весь список — старый `main` больше не поднимает свою цель. */
+  function moveInQueue(id: string, toIndex: number) {
+    const ids = queue.value.map((x) => x.id)
+    const next = moveId(ids, id, toIndex)
+    if (next.join() === ids.join() && householdDoc.value.goalOrder) return
     const t = new Date().toISOString()
     mutateHouseholdDoc((doc) => {
-      for (const g of doc.goals || []) {
-        if (g.deletedAt) continue
-        if (g.id === id) Object.assign(g, { main: true, updatedAt: t })
-        else if (g.main) Object.assign(g, { main: false, updatedAt: t })
-      }
+      doc.goalOrder = { ids: next, updatedAt: t }
     })
+  }
+
+  /** Перенос цели среди целей (Р-84, «Мечты»): `toIndex` — место среди целей; фонды и карточка долга стоят. */
+  function moveGoal(id: string, toIndex: number) {
+    const ids = queue.value.map((x) => x.id)
+    const goalIds = queue.value.filter((x) => x.kind === 'goal').map((x) => x.id)
+    const next = moveWithin(ids, goalIds, id, toIndex)
+    if (next.join() === ids.join() && householdDoc.value.goalOrder) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      doc.goalOrder = { ids: next, updatedAt: t }
+    })
+  }
+
+  /**
+   * Порядок «Желаний» (Р-84) — свой объект, как у целей. `among` — видимая часть (вкладка участника): `toIndex`
+   * — место внутри неё, прочие желания стоят.
+   */
+  function moveWish(id: string, toIndex: number, among?: string[]) {
+    const ids = wishes.value.map((x) => x.id)
+    const next = among ? moveWithin(ids, among, id, toIndex) : moveId(ids, id, toIndex)
+    if (next.join() === ids.join() && householdDoc.value.wishOrder) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      doc.wishOrder = { ids: next, updatedAt: t }
+    })
+  }
+
+  /** «Сделать главной» (Р-84) — наверх очереди; `main` не пишется. */
+  function makeMain(id: string) {
+    moveInQueue(id, 0)
+  }
+
+  /** Карточка «закрыть кредит» (Р-82): объект целиком с новой меткой; правка без изменений не пишется. */
+  function setDebtCard(patch: Partial<Omit<DebtCard, 'updatedAt' | 'deletedAt'>>) {
+    if (unchanged(debtCard.value, patch)) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      doc.debtCard = { ...debtCardOf(doc), ...patch, updatedAt: t }
+    })
+  }
+
+  /** Плательщик (Р-80) — с этого месяца дальше: поле записи; прошлые отметки и записи не трогаются. */
+  function setPayer(kind: 'obligation' | 'credit' | 'goal' | 'debt', id: string, person: PersonId | null) {
+    if (kind === 'debt') return setDebtCard({ payer: person })
+    const list = (kind === 'obligation' ? obligations.value : kind === 'credit' ? householdDoc.value.credits : goals.value) as { id: string; payer?: PersonId | null }[]
+    const cur = list.find((x) => x.id === id)
+    if (!cur || cur.payer === person) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      const own = ((kind === 'obligation' ? doc.obligations : kind === 'credit' ? doc.credits : doc.goals) as { id: string }[]).find((x) => x.id === id)
+      if (own) Object.assign(own, { payer: person, updatedAt: t })
+    })
+  }
+
+  /** Вкл/выкл цели, фонда или карточки долга в плане (Р-83): пауза — с этой минуты и в следующих месяцах. */
+  function pauseGoal(id: string, paused: boolean) {
+    const t = new Date().toISOString()
+    if (id === DEBT_CARD) {
+      if (!!debtCard.value.pausedAt === paused) return
+      return setDebtCard({ pausedAt: paused ? t : null })
+    }
+    const cur = goals.value.find((g) => g.id === id && !g.deletedAt)
+    if (!cur || !!cur.pausedAt === paused) return
+    mutateHouseholdDoc((doc) => {
+      const g = doc.goals.find((x) => x.id === id)
+      if (g) Object.assign(g, { pausedAt: paused ? t : null, updatedAt: t })
+    })
+  }
+
+  /** Сумма трат участника по разделу на месяц (Р-81), целые тенге; одна запись на пару — LWW по id. */
+  function setSpendPlan(by: PersonId, categoryId: string, amount: number) {
+    const id = `${by}:${categoryId}`
+    const value = Math.max(0, Math.round(amount))
+    const cur = (householdDoc.value.spendPlans ?? []).find((x) => x.id === id)
+    if (cur && !cur.deletedAt && cur.amount === value) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      const list = (doc.spendPlans ??= [])
+      const own = list.find((x) => x.id === id)
+      if (own) Object.assign(own, { amount: value, deletedAt: null, updatedAt: t })
+      else list.push({ id, by, categoryId, amount: value, updatedAt: t })
+    })
+  }
+
+  /**
+   * Фонд (Р-82) — id его цели; есть — тот же (повторный вызов ничего не пишет). «Подушка» — копилка Блока 11
+   * (`potGoalId`) помечается фондом со всем накопленным и взносами; копилки нет — как «Запас»: новая цель-фонд
+   * с картинкой шаблона, `need` — порог, если экран его знает.
+   */
+  function ensureFund(kind: 'reserve' | 'cushion', need = 0): string {
+    const funds = fundsOf(householdDoc.value)
+    const have = funds[kind]
+    if (have?.fund === kind) return have.id
+    const t = new Date().toISOString()
+    if (have) {
+      mutateHouseholdDoc((doc) => {
+        const g = doc.goals.find((x) => x.id === have.id)
+        if (g) Object.assign(g, { fund: kind, ...(g.template ? {} : { template: 'cushion' }), updatedAt: t })
+      })
+      return have.id
+    }
+    const id = Math.random().toString(36).slice(2, 10)
+    const value = Math.max(0, Math.round(need))
+    mutateHouseholdDoc((doc) => {
+      doc.goals.push({
+        id,
+        name: kind === 'reserve' ? 'Запас' : 'Подушка',
+        need: value,
+        seed: 0,
+        have: 0,
+        monthly: 0,
+        hue: 'teal',
+        planPct: 0,
+        movements: [],
+        template: kind === 'reserve' ? 'cushion-3' : 'cushion',
+        fund: kind,
+        updatedAt: t,
+      })
+    })
+    return id
+  }
+
+  /** Порог фонда в месяцах трат (Р-82), целые месяцы. */
+  function setFundMonths(id: string, months: number) {
+    updateGoal(id, { fundMonths: Math.max(0, Math.round(months)) })
   }
 
   function contribute(id: string, amount: number, by: PersonId, note?: string) {
@@ -1764,24 +1933,7 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
-  /** Новый порядок статей (`ids` сверху вниз): пишутся только статьи, чей номер поменялся. */
-  function reorderArticles(ids: ArticleKey[]) {
-    const moved = ids
-      .map((id, i) => ({ id, order: i + 1 }))
-      .filter(({ id, order }) => moneyArticles.value.find((a) => a.id === id)?.order !== order)
-    if (!moved.length) return
-    const t = new Date().toISOString()
-    mutateHouseholdDoc((doc) => {
-      const list = (doc.moneyArticles ??= [])
-      for (const { id, order } of moved) {
-        const own = list.find((a) => a.id === id)
-        if (own) Object.assign(own, { order, deletedAt: null, updatedAt: t })
-        else list.push({ ...moneyArticles.value.find((a) => a.id === id)!, order, updatedAt: t })
-      }
-    })
-  }
-
-  /** Пороги ступеней, копилка, «Ваш порядок пройден» — один объект, целиком с новой меткой. */
+  /** Пороги фондов (месяцы трат), ставка «дорогого» долга, копилка — один объект, целиком с новой меткой. */
   function setMoneySettings(patch: Partial<Omit<MoneySettings, 'updatedAt' | 'deletedAt'>>) {
     if (unchanged(moneySettings.value, patch)) return
     const t = new Date().toISOString()
@@ -1790,21 +1942,7 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
-  /**
-   * Статья раздела выписки (Р-56): «Жизнь» или «Траты». Разделы, которых семья ещё не завела,
-   * сеются стартовым словарём целиком — иначе один раздел заслонил бы остальные.
-   */
-  function setSpendArticle(categoryId: string, article: 'must' | 'life' | 'spend') {
-    if (spendArticle(categoryId, householdDoc.value.spendCategories ?? []) === article) return
-    const t = new Date().toISOString()
-    mutateHouseholdDoc((doc) => {
-      seedSpendCategories(doc, t)
-      const c = (doc.spendCategories ?? []).find((x) => x.id === categoryId)
-      if (c) Object.assign(c, { article, updatedAt: t })
-    })
-  }
-
-  /* ---------- записи разбора (B2C-21, Блок 11) ---------- */
+  /* ---------- записи: «Отложить по плану», прежние разборы и раскладки (Р-85) ---------- */
   const allocations = computed(() => (householdDoc.value.allocations ?? []).filter((a) => !a.deletedAt))
 
   /** Решение разбора — в общий документ: партнёр и второй заход видят его, а не разбирают снова. */
@@ -1818,65 +1956,30 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   /**
-   * «Разложить» (B2C-57, Р-53): исполняет то, что посчитал `breakdownEffects`, теми же правками, что
-   * прежняя раскладка, и пишет запись разбора. Разово — взносы в цели и копилку (нет копилки —
-   * заводится «Подушка», Р-66), сдвиг остатка выбранного счёта на взносы, досрочка (шагом плана,
-   * если это шаг плана); часть «Дорогих долгов» — внесённое на деле (не больше остатка долга).
-   * Каждый месяц — рост взносов целей и статей.
+   * «Отложить по плану» и прочие источники (Р-78, Р-86): исполняет посчитанное `planSave` / `planFromSource` —
+   * разово взносы в цели и фонды и досрочку (шагом плана, если это шаг плана), каждый месяц — рост взноса первой
+   * цели; пишет запись `kind: 'plan'`. Запись этого источника за месяц уже есть (второй телефон, повторное
+   * нажатие) — ничего не пишет и отдаёт её. Синк — одной отправкой (правки копятся до `scheduleSync`).
    */
-  function applyBreakdown(o: {
-    record: Pick<Allocation, 'source' | 'sourceId' | 'period'>
-    total: number
-    mode: 'once' | 'monthly'
-    effects: BreakdownEffects
-    off: ArticleKey[]
-    by: PersonId
-    accountId?: string | null
-    note: string
-  }): Allocation {
-    let parts = o.effects.parts.slice()
-    if (o.mode === 'once') {
-      let toGoals = 0
-      for (const c of o.effects.contributions) {
-        let goalId = c.goalId
-        if (!goalId) {
-          goalId = addGoal({ name: 'Подушка', need: c.need ?? c.amount, monthly: 0, hue: 'teal', main: false })
-          setMoneySettings({ potGoalId: goalId })
-        }
-        contribute(goalId, c.amount, o.by, o.note)
-        toGoals += c.amount
-      }
-      if (o.accountId && toGoals > 0) shiftAccountAmount(o.accountId, -toGoals)
-      const pp = o.effects.prepay
-      if (pp) {
-        const rec = applyPrepayment(pp.creditId, o.by, {
-          amount: pp.amount,
-          mode: 'term',
-          accountId: o.accountId ?? null,
-          ...(pp.planId ? { planId: pp.planId } : {}),
-        })
-        const paid = rec?.amount ?? 0
-        if (paid !== pp.amount) parts = parts.map((p) => (p.target === 'debts' ? { ...p, amount: paid } : p)).filter((p) => p.amount > 0)
-      }
-    } else {
-      for (const m of o.effects.monthly) {
-        const g = goals.value.find((x) => x.id === m.goalId && !x.deletedAt)
-        if (g) setGoalMonthly(g.id, g.monthly + m.add)
-      }
-      for (const a of o.effects.articleAdds) {
-        setArticle(a.key, { amount: (moneyArticles.value.find((x) => x.id === a.key)?.amount ?? 0) + a.add })
-      }
+  function applyPlan(save: PlanSave | PlanFromSource, o: { by: PersonId; note: string }): Allocation {
+    const had = allocationFor(householdDoc.value.allocations, save.record)
+    if (had) return had
+    if ('mode' in save && save.mode === 'monthly') {
+      const g = goals.value.find((x) => x.id === save.goalId && !x.deletedAt)
+      if (g) setGoalMonthly(g.id, g.monthly + save.add)
+      return recordAllocation({ ...save.record, kind: 'plan', by: o.by, total: save.amount, parts: [{ target: save.goalId, amount: save.add }] })
     }
-    return recordAllocation({ ...o.record, kind: 'breakdown', by: o.by, total: o.total, parts, ...(o.off.length ? { off: o.off } : {}) })
-  }
-
-  /**
-   * Разобрать (B2C-58): кольцо «Разложить» и карточка «как обычно» — одной дорогой (`breakdownWith`),
-   * поэтому записи у них одинаковые при одинаковых статьях.
-   */
-  function layBreakdown(m: MonthBreakdown, off: ArticleKey[], o: { by: PersonId; accountId?: string | null; note: string }): Allocation {
-    const w = breakdownWith(m, off)
-    return applyBreakdown({ record: m.record, total: m.amount, mode: m.mode, effects: w.effects, off: w.off, ...o })
+    let parts: AllocationPart[] = save.parts.slice()
+    for (const c of save.contributions) contribute(c.goalId, c.amount, o.by, o.note)
+    const pp = save.prepay
+    if (pp) {
+      const rec = applyPrepayment(pp.creditId, o.by, { amount: pp.amount, mode: 'term', ...(pp.planId ? { planId: pp.planId } : {}) })
+      const paid = rec?.amount ?? 0
+      const target = `prepay:${pp.creditId}`
+      if (paid !== pp.amount) parts = parts.map((x) => (x.target === target ? { ...x, amount: paid } : x)).filter((x) => x.amount > 0)
+    }
+    const total = save.total
+    return recordAllocation({ ...save.record, kind: 'plan', by: o.by, total, parts })
   }
 
   function addGift(g: { forSlot: PersonId; name: string; price: number; photoId?: string | null }): Gift {
@@ -1974,6 +2077,8 @@ export const useFinanceStore = defineStore('finance', () => {
     plans,
     activePlan,
     planState,
+    planInput,
+    monthPlanOf,
     planStepNow,
     pausedGoalIds,
     saveLocalState,
@@ -2030,19 +2135,32 @@ export const useFinanceStore = defineStore('finance', () => {
     setGoalPhoto,
     setWishPhoto,
     removeGoal,
-    setMainGoal,
+    goalOrder,
+    wishOrder,
+    spendPlans,
+    debtCard,
+    queue,
+    wishes,
+    heroGoal,
+    applyPlan,
+    moveInQueue,
+    moveGoal,
+    moveWish,
+    makeMain,
+    setDebtCard,
+    setPayer,
+    pauseGoal,
+    setSpendPlan,
+    ensureFund,
+    setFundMonths,
     contribute,
     withdraw,
     addWish,
     recordAllocation,
-    applyBreakdown,
-    layBreakdown,
     moneyArticles,
     moneySettings,
     setArticle,
-    reorderArticles,
     setMoneySettings,
-    setSpendArticle,
     updateSpendCategory,
     addGift,
     updateGift,

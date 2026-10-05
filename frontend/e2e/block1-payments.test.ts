@@ -201,7 +201,9 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     await A.store.pullHousehold(A.client)
     overview = await screen(A.pinia, Statements, '/week')
     expect(overview).not.toContain('Оставить подписку')
-    const capital = await screen(A.pinia, Money, '/money')
+    // Прежние «Платежи» — под «Подробнее» (Блок 14); план месяца выше показывает подписки поштучно.
+    const page = await screen(A.pinia, Money, '/money')
+    const capital = page.slice(page.indexOf('data-more'))
     expect(capital).not.toContain('Netflix')
     // Группа — строкой с числом подписок и итогом, подписки — в её листе (пивот 3, B2C-42);
     // годовая не в свой месяц — «раз в год · в октябре», без «Оплатил».

@@ -40,14 +40,16 @@ describe('stores/finance — фото цели и шаблоны', () => {
     }
   }
 
-  it('addGoal: первая цель — главная, шаблон записан; setGoalPhoto пишет id и автора, null — убирает', () => {
+  it('addGoal: первая цель — главная (первая в очереди, Р-84), шаблон записан; setGoalPhoto пишет id и автора, null — убирает', () => {
     const store = useFinanceStore()
     store.claimFor('h1')
     const id = store.addGoal({ name: 'Япония', need: 1_800_000, monthly: 150_000, hue: 'plum', template: 'japan' })
-    expect(store.goals.find((g) => g.id === id)).toMatchObject({ main: true, template: 'japan' })
+    expect(store.goals.find((g) => g.id === id)).toMatchObject({ template: 'japan' })
+    expect(store.goals.find((g) => g.id === id)?.main).toBeUndefined()
     expect(store.goals.find((g) => g.id === id)?.photoId).toBeUndefined()
     const second = store.addGoal({ name: 'Машина', need: 3_000_000, monthly: 60_000, hue: 'steel' })
     expect(store.goals.find((g) => g.id === second)?.main).toBeUndefined()
+    expect(store.queue.map((x) => x.id)).toEqual([id, second])
 
     store.setGoalPhoto(id, 'ph-9', { author: 'Matthew Skinner', url: 'https://unsplash.com/photos/t05kfHeygbE' })
     expect(store.goals.find((g) => g.id === id)).toMatchObject({ photoId: 'ph-9', photoCredit: { author: 'Matthew Skinner' } })

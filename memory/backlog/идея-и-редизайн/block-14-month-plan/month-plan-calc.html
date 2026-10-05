@@ -1,0 +1,137 @@
+<title>План месяца — сверка</title>
+<style>
+/* Лесенка плана: две семьи друг под другом, в каждой — шаги сверху вниз, «код» против «руками». Токены — из макета. */
+:root{
+  --bg:#e9e9e6; --fg:#19191b; --mute:#6b6b70; --line:#d6d6d1;
+  --surface:#ffffff; --surface-2:#f1f1ef;
+  --brand:#b4562f; --brand-soft:#f6e6dd;
+  --ok:#3e7a5b; --ok-soft:#dfeee4; --warn:#8a5a00; --warn-soft:#f8ebd0; --bad:#a6392b;
+  --pa:#4f7a63; --pb:#7d6a9e; --dot-ink:#ffffff;
+  --s1:#c2703f; --s3:#5b7fa6; --s8:#a47c3b;
+  --font:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,'Segoe UI',Roboto,sans-serif;
+  --num:ui-rounded,-apple-system,BlinkMacSystemFont,system-ui,'Segoe UI',Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0c0c0e; --fg:#f1f1ee; --mute:#9a9a96; --line:#2a2a2e;
+  --surface:#1c1c1f; --surface-2:#26262a;
+  --brand:#e58a62; --brand-soft:#3a2418;
+  --ok:#7fc29a; --ok-soft:#1f2e25; --warn:#e7b96a; --warn-soft:#2c2416; --bad:#ff8f7c;
+  --pa:#94c2a8; --pb:#b9a8dc; --dot-ink:#121214;
+  --s1:#e0946a; --s3:#8fb0da; --s8:#d4aa66; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0c0c0e; --fg:#f1f1ee; --mute:#9a9a96; --line:#2a2a2e;
+  --surface:#1c1c1f; --surface-2:#26262a;
+  --brand:#e58a62; --brand-soft:#3a2418;
+  --ok:#7fc29a; --ok-soft:#1f2e25; --warn:#e7b96a; --warn-soft:#2c2416; --bad:#ff8f7c;
+  --pa:#94c2a8; --pb:#b9a8dc; --dot-ink:#121214;
+  --s1:#e0946a; --s3:#8fb0da; --s8:#d4aa66; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.45 var(--font);margin:0}
+.wrap{max-width:760px;margin:0 auto;padding-inline:16px;padding-block:28px 48px;display:grid;gap:28px}
+h1{font-size:28px;letter-spacing:-.02em;margin:0;text-wrap:balance}
+.lead{color:var(--mute);margin:6px 0 0;max-width:62ch}
+.verdict{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:99px;font-size:13px;font-weight:600;background:var(--ok-soft);color:var(--ok)}
+.pill.w{background:var(--warn-soft);color:var(--warn)}
+section{background:var(--surface);border-radius:20px;padding:18px 16px 8px;display:grid;gap:10px}
+h2{font-size:20px;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.sub{color:var(--mute);font-size:13px;margin:-6px 0 4px}
+.tbl{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+td{padding:8px 0;border-top:1px solid var(--line);vertical-align:top}
+td.n{text-align:right;font-family:var(--num);font-weight:600;white-space:nowrap;padding-left:12px}
+td.k{width:1%;white-space:nowrap;padding-right:10px}
+td .how{display:block;color:var(--mute);font-size:12.5px;margin-top:1px}
+tr.step td{border-top:0;padding:16px 0 4px}
+tr.step td span{font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--c,var(--brand))}
+tr.sum td{font-weight:700}
+tr.sum td.n{font-size:17px}
+.ok{color:var(--ok)} .bad{color:var(--bad)} .mute{color:var(--mute)}
+.chk{color:var(--ok);font-weight:700;margin-left:6px}
+.dot{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;font-size:11px;font-weight:700;color:var(--dot-ink);vertical-align:-4px;margin-right:6px}
+.dot.a{background:var(--pa)} .dot.b{background:var(--pb)}
+.tag{display:inline-block;font-size:11.5px;font-weight:600;padding:1px 7px;border-radius:99px;background:var(--surface-2);color:var(--mute);margin-left:6px}
+.tag.w{background:var(--warn-soft);color:var(--warn)}
+.when{font-family:var(--num);font-weight:600}
+.q{display:grid;gap:10px}
+.q li{margin:0}
+ol{margin:0;padding-left:20px;display:grid;gap:10px}
+.small{font-size:13px;color:var(--mute)}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>План месяца — сверка</h1>
+    <p class="lead">Октябрь 2026. Слева — что посчитал <b>finance.ts</b>, справа — тот же расчёт руками. Сходится до тенге.</p>
+    <div class="verdict"><span class="pill">✓ демо до тенге</span><span class="pill">✓ семья из ТЗ: 17 тестов</span><span class="pill w">настоящие данные — на вашем телефоне</span></div>
+  </header>
+
+  <section aria-labelledby="demo">
+    <h2 id="demo">Демо-семья</h2>
+    <p class="sub">Как в «Попробовать в демо-режиме», 4 октября</p>
+    <div class="tbl"><table>
+      <tr class="step" style="--c:var(--ok)"><td colspan="2"><span>Доход</span></td></tr>
+      <tr><td><span class="dot a">И</span>Ильяс <span class="tag">пришла</span><span class="how">обменял 500 € по 512 = 256 000 · 1 000 € по курсу 505,31 = 505 310</span></td><td class="n">761 310<span class="chk">✓</span></td></tr>
+      <tr><td><span class="dot b">А</span>Аруна <span class="tag">ждём 20-го</span></td><td class="n">450 000<span class="chk">✓</span></td></tr>
+      <tr class="sum"><td>Вместе</td><td class="n">1 211 310<span class="chk">✓</span></td></tr>
+
+      <tr class="step" style="--c:var(--s1)"><td colspan="2"><span>Платежи</span></td></tr>
+      <tr><td><span class="dot b">А</span>Аренда <span class="tag">оплачено</span></td><td class="n">220 000</td></tr>
+      <tr><td><span class="dot a">И</span>Коммуналка</td><td class="n">30 000</td></tr>
+      <tr><td><span class="dot a">И</span>Netflix<span class="how">10 $ × 451,45</span></td><td class="n">4 515</td></tr>
+      <tr><td><span class="dot a">И</span>Автокредит</td><td class="n">95 000</td></tr>
+      <tr class="sum"><td>Платежи</td><td class="n">349 515<span class="chk">✓</span></td></tr>
+
+      <tr class="step" style="--c:var(--s8)"><td colspan="2"><span>Траты каждого</span></td></tr>
+      <tr><td><span class="dot a">И</span>Ильяс<span class="how">продукты 90 000 · кафе 40 000 · транспорт 25 000 · по выписке уже 117 200</span></td><td class="n">155 000<span class="chk">✓</span></td></tr>
+      <tr><td><span class="dot b">А</span>Аруна<span class="how">продукты 60 000 · покупки 40 000 · выписки нет</span></td><td class="n">100 000<span class="chk">✓</span></td></tr>
+      <tr class="sum"><td>Свободно для целей<span class="how">1 211 310 − 349 515 − 255 000</span></td><td class="n">606 795<span class="chk">✓</span></td></tr>
+
+      <tr class="step" style="--c:var(--s3)"><td colspan="2"><span>Цели и фонды по очереди</span></td></tr>
+      <tr><td><span class="dot a">И</span>Поездка в Японию<span class="how">есть 600 000 из 2 000 000 · 1 400 000 / 100 000 = 14 мес.</span></td><td class="n">100 000<span class="how when">к ноябрю 2027 ✓</span></td></tr>
+      <tr><td><span class="dot a">И</span>Запас<span class="how">порог 1 мес. трат = 604 515 · есть 300 000 · 304 515 / 50 000 → 7 мес.</span></td><td class="n">50 000<span class="how when">к апрелю 2027 ✓</span></td></tr>
+      <tr><td><span class="dot b">А</span>Автокредит<span class="tag">шаг плана</span><span class="how">«Сначала долги»: взносы Машины 60 000 + Дивана 30 000 · 1 800 000 под 19 %, 95 000 + 90 000 в месяц → 11 мес.</span></td><td class="n">90 000<span class="how when">к августу 2027 ✓</span></td></tr>
+      <tr><td><span class="dot a">И</span>Машина <span class="tag">пауза плана</span></td><td class="n mute">0</td></tr>
+      <tr><td><span class="dot b">А</span>Подушка<span class="how">порог 3 мес. = 1 813 545 · есть 150 000 · 1 663 545 / 30 000 → 56 мес.</span></td><td class="n">30 000<span class="how when">к маю 2031 ✓</span></td></tr>
+      <tr><td><span class="dot b">А</span>Новый диван <span class="tag w">выключен</span></td><td class="n mute">0</td></tr>
+      <tr class="sum"><td>Отложим</td><td class="n">270 000<span class="chk">✓</span></td></tr>
+      <tr class="sum"><td>Остаётся<span class="how">606 795 − 270 000</span></td><td class="n ok">336 795<span class="chk">✓</span></td></tr>
+
+      <tr class="step" style="--c:var(--brand)"><td colspan="2"><span>Хватает ли каждому</span></td></tr>
+      <tr><td><span class="dot a">И</span>Ильяс<span class="how">761 310 − платежи 129 515 − траты 155 000 − цели 150 000</span></td><td class="n ok">+326 795<span class="chk">✓</span></td></tr>
+      <tr><td><span class="dot b">А</span>Аруна<span class="how">450 000 − 220 000 − 100 000 − 120 000</span></td><td class="n ok">+10 000<span class="chk">✓</span></td></tr>
+      <tr><td class="small">Сумма «хватает» = остаток: 326 795 + 10 000 = 336 795</td><td class="n">✓</td></tr>
+
+      <tr class="step" style="--c:var(--mute)"><td colspan="2"><span>Если</span></td></tr>
+      <tr><td>Выключить Японию<span class="how">её 100 000 — в остаток: остальным уже хватает их взноса</span></td><td class="n">436 795<span class="chk">✓</span></td></tr>
+      <tr><td>Всё в долг<span class="how">606 795 в месяц сверх платежа: октябрь → 1 126 705, ноябрь → 442 749, декабрь — 0</span></td><td class="n"><span class="when">к декабрю 2026</span><span class="chk">✓</span></td></tr>
+      <tr><td>«Отложить по плану» — Ильяс<span class="how">Япония 100 000 + Запас 50 000; Аруна — после её зарплаты; второй раз — пусто</span></td><td class="n">150 000<span class="chk">✓</span></td></tr>
+    </table></div>
+  </section>
+
+  <section aria-labelledby="tz">
+    <h2 id="tz">Семья из ТЗ</h2>
+    <p class="sub">Ильяс 1 500 €, Аруна 450 000 ₸, квартира, кредит, подписка $15, три цели и два фонда — автотест</p>
+    <div class="tbl"><table>
+      <tr><td>Доход<span class="how">256 000 + 1 000 € × 518 = 774 000 · + 450 000</span></td><td class="n">1 224 000<span class="chk">✓</span></td></tr>
+      <tr><td>Платежи<span class="how">квартира 250 000 · кредит 80 000 · $15 × 480 = 7 200</span></td><td class="n">337 200<span class="chk">✓</span></td></tr>
+      <tr><td>Траты<span class="how">Ильяс 140 000 · Аруна 190 000 · коммуналка в тратах не планируется</span></td><td class="n">330 000<span class="chk">✓</span></td></tr>
+      <tr><td>Очередь<span class="how">Япония 60 000 · Запас 50 000 · долг 80 000 · Машина 100 000 · Подушка 40 000 · Свадьба 200 000</span></td><td class="n">530 000<span class="chk">✓</span></td></tr>
+      <tr class="sum"><td>Остаётся</td><td class="n ok">26 800<span class="chk">✓</span></td></tr>
+      <tr><td><span class="dot a">И</span>Ильяс хватает<span class="how">774 000 − 87 200 − 140 000 − 210 000</span></td><td class="n ok">+336 800<span class="chk">✓</span></td></tr>
+      <tr><td><span class="dot b">А</span>Аруна не хватает<span class="how">450 000 − 250 000 − 190 000 − 320 000</span></td><td class="n bad">−310 000<span class="chk">✓</span></td></tr>
+      <tr><td>Даты<span class="how">Япония янв 2028 · Запас май 2027 · долг апр 2027 · Машина апр 2029 · Подушка авг 2029 · Свадьба апр 2027</span></td><td class="n">✓</td></tr>
+      <tr><td>Не хватает<span class="how">траты 1 040 000 → цели 0, нехватка 153 200; свободно 70 000 → Япония 60 000, Запас 10 000 из 50 000</span></td><td class="n">✓</td></tr>
+      <tr><td>Прочие деньги<span class="how">«остались 1 000 000» → Япония 960 000 + Запас 40 000 · «долг закрыт» 50 000 → Япония · «освободится 20 000» → Япония к ноябрю 2027, а не к марту 2028</span></td><td class="n">✓</td></tr>
+    </table></div>
+  </section>
+
+  <section aria-labelledby="ask">
+    <h2 id="ask">Проверьте три правила</h2>
+    <ol class="q">
+      <li><b>Порог фонда</b> — месяцы × (платежи + траты месяца). Запас 1 месяц, Подушка 3.</li>
+      <li><b>Даты</b> — при тех же суммах; собранная цель отдаёт свои деньги следующей.</li>
+      <li><b>План «Сначала долги»</b> ставит на паузу все цели, кроме «не останавливать», и шлёт их взносы в долг — как сейчас в «Плане». В демо фонды добавлены в «не останавливать».</li>
+    </ol>
+    <p class="small">Ваши настоящие данные — в семейном документе на сервере, агенту он недоступен. Сверка на них — в B2C-90 на вашем телефоне.</p>
+  </section>
+</div>
