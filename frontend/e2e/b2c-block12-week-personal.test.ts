@@ -101,6 +101,9 @@ const weekOf = (p: Phone, categoryId: string) =>
 /** Кружки участников в HTML: фон и содержимое (как `Settings.test.ts`). */
 const circles = (html: string) => [...html.matchAll(/<span class="grid shrink-0 place-items-center rounded-full[^"]*"[^>]*style="background:([^;"]+);?"[^>]*>\s*([^<]*?)\s*<\/span>/g)].map((m) => [m[1].trim(), m[2]])
 
+/** «Неделя» с открытым листом вопросов «! N» (Блок 15, Р-97). */
+const sheetOpen = () => [screenMixin({ questionsOpen: true })]
+
 describe('e2e / B2C Блок 12 — «Неделя и личное» на двух телефонах', () => {
   const storage = new Map<string, string>()
   let server: FakeServer
@@ -132,7 +135,7 @@ describe('e2e / B2C Блок 12 — «Неделя и личное» на дву
     const B = await phone(server, st, 'b')
     expect(weekOf(B, '_unknown')).toBe(78_000) // 1 000 + … + 12 000
 
-    const first = text(await screen(A.pinia, Statements, '/week'))
+    const first = text(await screen(A.pinia, Statements, '/week', undefined, sheetOpen()))
     expect(first).toContain('Без раздела · 12')
     expect(first).toContain('Выбрать все')
     expect(first).toContain('Ещё 6') // 6 строк + «Ещё K · сумма ›»
@@ -140,14 +143,14 @@ describe('e2e / B2C Блок 12 — «Неделя и личное» на дву
     // Ответ 1: отмечены три строки → чип «Продукты».
     const three = (s: Record<string, unknown>) => (s.decision as Decision).groups!.filter((g) => ['ИП Абенова', 'ИП Ким', 'ИП Ли'].includes(g.label))
     const second = text(await screen(A.pinia, Statements, '/week', undefined, [
-      screenMixin({}, (s) => (s.answerBatch as (m: unknown[], to: unknown) => void)(three(s).map((g) => g.match), { categoryId: 'sc_food' })),
+      screenMixin({ questionsOpen: true }, (s) => (s.answerBatch as (m: unknown[], to: unknown) => void)(three(s).map((g) => g.match), { categoryId: 'sc_food' })),
     ]))
     expect(second).toContain('Без раздела · 9')
     expect(second).not.toContain('ИП Абенова')
 
     // Ответ 2: «Выбрать все» → «Не помню» — все оставшиеся в «Прочее».
     const third = text(await screen(A.pinia, Statements, '/week', undefined, [
-      screenMixin({}, (s) => (s.answerBatch as (m: unknown[], to: unknown) => void)((s.decision as Decision).groups!.map((g) => g.match), { categoryId: OTHER_CATEGORY })),
+      screenMixin({ questionsOpen: true }, (s) => (s.answerBatch as (m: unknown[], to: unknown) => void)((s.decision as Decision).groups!.map((g) => g.match), { categoryId: OTHER_CATEGORY })),
     ]))
     expect(third).not.toContain('Без раздела')
     await vi.runOnlyPendingTimersAsync()
@@ -165,23 +168,24 @@ describe('e2e / B2C Блок 12 — «Неделя и личное» на дву
     expect(unknownGroups(useOperationsStore().all)).toHaveLength(0)
   })
 
-  it('часть 2 — «Выписки»: Ильяс загрузил — у обоих его день и «ещё нет» Аруны; Аруна загрузила — две галочки у обоих', async () => {
+  // Блок 15 (Р-96): карточки «Выписки» нет — кружки обоих с ✓ в строке загрузки; свой — кнопка «Мои выписки».
+  const uploaded = (html: string) => [...html.matchAll(/data-uploaded="(true|false)"/g)].map((m) => m[1] === 'true')
+
+  it('часть 2 — строка загрузки: Ильяс загрузил — у обоих ✓ у его кружка и нет у Аруны; Аруна загрузила — две ✓ у обоих', async () => {
     const A = await phone(server, st, 'a')
     await uploadA(A)
     const B = await phone(server, st, 'b')
     for (const p of [A, B]) {
-      const html = text(await screen(p.pinia, Statements, '/week'))
-      expect(html).toContain('Выписки')
-      expect(html).toMatch(/Ильяс (пн|вт|ср|чт|пт|сб|вс)/)
-      expect(html).toContain('Аруна ещё нет')
+      const html = await screen(p.pinia, Statements, '/week', undefined, sheetOpen())
+      expect(text(html)).not.toContain('Выписки')
+      expect(uploaded(html)).toEqual([true, false])
     }
+    // Своей выписки нет — у Аруны брендовая «Загрузить»; у Ильяса — тихий «⊕».
+    expect(await screen(B.pinia, Statements, '/week')).toContain('data-upload="lead"')
+    expect(await screen(A.pinia, Statements, '/week')).toContain('data-upload="quiet"')
     await upload(B, 'b', [op('2026-09-23', -3_000, 'Magnum', 'sc_food')])
     await sync(B, A)
-    for (const p of [A, B]) {
-      const html = text(await screen(p.pinia, Statements, '/week'))
-      expect(html).not.toContain('ещё нет')
-      expect(html).toMatch(/Аруна (пн|вт|ср|чт|пт|сб|вс)/)
-    }
+    for (const p of [A, B]) expect(uploaded(await screen(p.pinia, Statements, '/week', undefined, sheetOpen()))).toEqual([true, true])
   })
 
   it('часть 3 — свой кружок: Ильяс выбрал 🦊 и цвет — Аруна видит его в «Деньгах», «Неделе» и «Настройках»; своё у Аруны — буква', async () => {
@@ -277,13 +281,13 @@ describe('e2e / B2C Блок 12 — «Неделя и личное» на дву
     ops.setDraft([{ name: 'a.pdf', parsed }])
 
     // Разбор: та же карточка-пачка над «Отправить».
-    const draft = text(await screen(A.pinia, Statements, '/week'))
+    const draft = text(await screen(A.pinia, Statements, '/week', undefined, sheetOpen()))
     expect(draft).toContain('Без раздела · 12')
     expect(draft).toContain('Отправить')
 
     // Три строки → «Продукты», остальные — «Выбрать все» → «Не помню»: два ответа, правила в памяти продавцов.
     const after = text(await screen(A.pinia, Statements, '/week', undefined, [
-      screenMixin({}, (s) => {
+      screenMixin({ questionsOpen: true }, (s) => {
         const answer = s.answerBatch as (m: unknown[], to: unknown) => void
         const groups = () => (s.decision as Decision).groups!
         answer(groups().filter((g) => ['ИП Абенова', 'ИП Ким', 'ИП Ли'].includes(g.label)).map((g) => g.match), { categoryId: 'sc_food' })
@@ -298,16 +302,15 @@ describe('e2e / B2C Блок 12 — «Неделя и личное» на дву
     await ops.send(A.client)
     await A.store.syncHousehold(A.client)
     expect(unknownGroups(ops.all)).toHaveLength(0)
-    expect(text(await screen(A.pinia, Statements, '/week'))).not.toContain('Без раздела')
+    expect(text(await screen(A.pinia, Statements, '/week', undefined, sheetOpen()))).not.toContain('Без раздела')
     const B = await phone(server, st, 'b')
     expect(weekOf(B, OTHER_CATEGORY)).toBe(78_000 - 17_000)
 
     const V = await phone(server, st, 'a', 'viewer')
-    const viewer = text(await screen(V.pinia, Statements, '/week'))
-    expect(viewer).toContain('Выписки')
-    expect(viewer).toMatch(/Ильяс (пн|вт|ср|чт|пт|сб|вс)/)
-    expect(viewer).not.toContain('Загрузить выписку')
-    expect(viewer).not.toContain('Без раздела')
+    // Viewer на «Неделю» не попадает (Р-104, гвард роутера); сам экран без действий: ни загрузки, ни вопросов.
+    const viewer = await screen(V.pinia, Statements, '/week', undefined, sheetOpen())
+    expect(viewer).not.toContain('data-upload=')
+    expect(text(viewer)).not.toContain('Без раздела')
   })
 
   // Возврат смоука (B2C-68…70): обход «Желаний» зовётся напрямую — `screen` рендерит без `onMounted`; гейт экрана

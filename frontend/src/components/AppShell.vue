@@ -16,9 +16,9 @@ import {
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
-import { monthKey, MONTHS_NOM, parseMonthKey, weekKey, weekRangeLabel } from '@/lib/dates'
+import { monthKey, MONTHS_NOM, parseMonthKey, weekRangeLabel } from '@/lib/dates'
 import { readPlanView } from '@/lib/storage'
-import { liveGoals, weekPicture, weekTag } from '@/lib/finance'
+import { liveGoals } from '@/lib/finance'
 import SyncBadge from '@/components/SyncBadge.vue'
 import Avatar from '@/components/kit/Avatar.vue'
 import IconBox from '@/components/kit/IconBox.vue'
@@ -34,7 +34,7 @@ import Tabs from '@/components/kit/Tabs.vue'
  * покупку viewer тоже не может, критик Блока 3). «Советника» нет.
  *
  * Шапка — как в макетах (возврат смоука): у вкладок справа аватары (шестерёнка — только на
- * «Мечтах», §2; на «Неделе» аватаров нет), у вложенных экранов слева «назад», справа — действия
+ * «Мечтах», §2; на «Неделе» аватаров нет — кружки участников стоят в её строке загрузки, Р-96), у вложенных экранов слева «назад», справа — действия
  * самого экрана (`HeaderActions` переносит их в `#shell-actions`). Экраны-потоки (цель, желания,
  * настройки) — без вкладок, как в макетах g2/g4/g7.
  */
@@ -53,13 +53,6 @@ const monthName = computed(() => MONTHS_NOM[parseMonthKey(monthKey()).month])
 
 const BANKS: Record<string, string> = { kaspi: 'Kaspi', freedom: 'Freedom' }
 
-/** «Неделя»: подпись — даты недели и чьи выписки в итоге (g2 «15–21 сентября · обе выписки»). */
-const weekSub = computed(() => {
-  const doc = financeStore.householdDoc
-  const pic = weekPicture(doc.spendTotals ?? [], doc.spendCategories ?? [], people.value, weekKey(), ops.uploads)
-  const tag = weekTag(pic, people.value.length)
-  return tag ? `${weekRangeLabel(pic.range)} · ${tag.text}` : weekRangeLabel(pic.range)
-})
 /** Разбор выписки (g2 «Разбор — предпросмотр»): банк и период файлов черновика. */
 const draftSub = computed(() => {
   const files = ops.draft?.files ?? []
@@ -92,7 +85,8 @@ function goBack() {
 const header = computed<{ title: string; sub?: string }>(() => {
   const p = route.path
   if (p === '/') return { title: 'Мечты', sub: `${monthName.value} · ${names.value}` }
-  if (p.startsWith('/week')) return ops.draft ? { title: 'Разбор', sub: draftSub.value } : { title: 'План', sub: weekSub.value }
+  // «План» — одна вкладка на «Неделю» и «Месяц» (Р-89): даты недели и месяц листаются на самих экранах.
+  if (p.startsWith('/week')) return ops.draft ? { title: 'Разбор', sub: draftSub.value } : { title: 'План', sub: names.value }
   if (p === '/month') return { title: 'План', sub: names.value }
   // «Деньги» — один экран с тремя квадратами (пивот 3, Р-31): шапка одна на все.
   if (p === '/money' || p.startsWith('/money/')) return { title: 'Деньги', sub: `${monthName.value} · ${names.value}` }

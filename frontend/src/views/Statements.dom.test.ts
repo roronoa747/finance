@@ -71,6 +71,10 @@ async function openWeek(setup?: (finance: ReturnType<typeof useFinanceStore>, st
   app.use(router)
   app.mount(root)
   await nextTick()
+  // Вопросы — в листе за «! N» (Р-97): открываем его, как человек.
+  document.querySelector<HTMLButtonElement>('[data-bang]')?.click()
+  await nextTick()
+  await nextTick()
   return { finance, store, router }
 }
 
@@ -143,7 +147,7 @@ describe('возврат приёмки п. 2 · B2C-58: зарплата, от�
   it('Блок 14 (Р-78): одна брендовая «К плану месяца» → план «Денег»; записанная запись месяца и ручная отметка карточки не дают', async () => {
     const { router } = await openWeek(marked)
     expect(page()).toContain('Пришла зарплата · Алихан')
-    expect(brandButtons()).toEqual(['К плану месяца'])
+    expect(brandButtons()).toEqual(['Загрузить', 'К плану месяца'])
     await tap('К плану месяца')
     // Переход лениво грузит чанк «Денег» — под нагрузкой общего прогона дольше секунды.
     await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/month'), { timeout: 10_000 })
@@ -215,11 +219,11 @@ describe('возврат приёмки 2 п. 3, 4: одна карточка о
     expect(page()).not.toContain('Пришла зарплата Алихан?')
     expect(page()).toContain('1 из 2')
     const brandButtons = () => [...document.querySelectorAll('button')].filter((b) => b.className.includes('bg-brand ')).map((b) => b.textContent?.trim())
-    expect(brandButtons()).toEqual(['Да, отметить'])
+    expect(brandButtons()).toEqual(['Загрузить', 'Да, отметить'])
     await tap('Да, отметить')
     expect(page()).toContain('Пришла зарплата Алихан?')
     expect(page()).toContain('2 из 2')
-    expect(brandButtons()).toEqual(['Пришла зарплата'])
+    expect(brandButtons()).toEqual(['Загрузить', 'Пришла зарплата'])
   })
 
   it('день зарплаты 1-го: пока спрашивается «Пришла?» октября (с 28 сентября), неразложенная сентябрьская прячется — одна карточка; со 2 октября — снова «Пришла зарплата»', async () => {
@@ -259,7 +263,9 @@ describe('возврат приёмки 2 п. 3, 4: одна карточка о
   })
 })
 
-describe('ревью Блока 3 Н-22 (правило 12): брендовая кнопка и брендовая рамка — только у главного на экране', () => {
+// Блок 15 (Р-96, Р-97): на экране брендовая — только «Загрузить», пока своей выписки за неделю нет; вопросы — в
+// листе за «! N», в листе — не больше одной брендовой, брендовых рамок нет.
+describe('ревью Блока 3 Н-22 (правило 12): брендовая на экране — «Загрузить»; в листе вопросов — не больше одной', () => {
   const brandButtons = () => [...document.querySelectorAll('button')].filter((b) => b.className.includes('bg-brand ')).map((b) => b.textContent?.trim())
   const brandFrames = () => document.querySelectorAll('.border-brand').length
   /** Незнакомый продавец месяца — пачка «Без раздела» (ответ — чипы). */
@@ -267,19 +273,18 @@ describe('ревью Блока 3 Н-22 (правило 12): брендовая 
     store.ops['op-u'] = { id: 'op-u', bank: 'kaspi', date: '2026-09-08', amount: -7_500, kind: 'purchase', merchant: 'ИП ЖАНСАЯ', categoryId: null, internal: false }
   }
 
-  it('сопоставление + «Пришла зарплата?» + своя выписка не загружена — одно решение: брендовая и рамка у сопоставления, загрузка тихая', async () => {
+  it('сопоставление + «Пришла зарплата?» + своя выписка не загружена — в листе одно решение с одной брендовой', async () => {
     vi.setSystemTime(new Date('2026-09-10T07:00:00Z'))
     await openWeek((finance) => {
       finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000 }
     })
     await vi.waitFor(() => expect(page()).toContain(QUESTION))
     expect(page()).not.toContain('Пришла зарплата Алихан?')
-    expect(page()).toContain('Загрузить выписку')
-    expect(brandButtons()).toEqual(['Да, отметить'])
-    expect(brandFrames()).toBe(1)
+    expect(brandButtons()).toEqual(['Загрузить', 'Да, отметить'])
+    expect(brandFrames()).toBe(0)
   })
 
-  it('разбор продавца + «Пришла зарплата?» — ответ чипами: брендовых кнопок нет, рамка у решения, загрузка тихая', async () => {
+  it('разбор продавца + «Пришла зарплата?» — ответ чипами: в листе брендовых кнопок нет', async () => {
     vi.setSystemTime(new Date('2026-09-10T07:00:00Z'))
     await openWeek((finance, store) => {
       finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000 }
@@ -289,11 +294,11 @@ describe('ревью Блока 3 Н-22 (правило 12): брендовая 
     })
     await vi.waitFor(() => expect(page()).toContain('Без раздела · 1'))
     expect(page()).not.toContain('Пришла зарплата Алихан?')
-    expect(brandButtons()).toEqual([])
-    expect(brandFrames()).toBe(1)
+    expect(brandButtons()).toEqual(['Загрузить'])
+    expect(brandFrames()).toBe(0)
   })
 
-  it('«Пришла зарплата?» одна — брендовая и рамка у неё; загрузка тихая', async () => {
+  it('«Пришла зарплата?» одна — в листе брендовая у неё', async () => {
     vi.setSystemTime(new Date('2026-09-10T07:00:00Z'))
     await openWeek((finance, store) => {
       finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000 }
@@ -301,24 +306,24 @@ describe('ревью Блока 3 Н-22 (правило 12): брендовая 
       delete store.ops['op-1']
     })
     expect(page()).toContain('Пришла зарплата Алихан?')
-    expect(page()).toContain('Загрузить выписку')
-    expect(brandButtons()).toEqual(['Пришла зарплата'])
-    expect(brandFrames()).toBe(1)
-    expect(document.querySelector('.border-brand')?.textContent).toContain('Пришла зарплата Алихан?')
+    expect(brandButtons()).toEqual(['Загрузить', 'Пришла зарплата'])
+    expect(brandFrames()).toBe(0)
   })
 
-  it('решений нет — главное «Загрузить выписку»: брендовая кнопка (B2C-50: компактный блок без карточки — рамок нет)', async () => {
+  it('решений нет — главное «Загрузить» в строке загрузки: одна брендовая, значка «!» и рамок нет', async () => {
     await openWeek((finance, store) => {
       finance.householdDoc.credits = []
       delete store.ops['op-1']
     })
-    expect(brandButtons()).toEqual(['Загрузить выписку'])
+    expect(brandButtons()).toEqual(['Загрузить'])
+    expect(document.querySelector('[data-bang]')).toBeNull()
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
     expect(brandFrames()).toBe(0)
   })
 })
 
 describe('B2C-49: одно решение за раз, «N из M» растёт, а не тает', () => {
-  it('«1 из 3» → ответ → «2 из 3» (не «1 из 2»); «Потом» сдвигает к следующему; после последнего — решения нет, главное — загрузка', async () => {
+  it('«! 3» → лист: «1 из 3» → ответ → «2 из 3» (не «1 из 2»); «Потом» сдвигает к следующему; после последнего — лист закрыт', async () => {
     // Сопоставление кредита, незнакомый продавец месяца и подписка без ответа — три решения.
     await openWeek((finance, store) => {
       store.ops['op-u'] = { id: 'op-u', bank: 'kaspi', date: '2026-09-08', amount: -7_500, kind: 'purchase', merchant: 'ИП ЖАНСАЯ', categoryId: null, internal: false }
@@ -338,7 +343,10 @@ describe('B2C-49: одно решение за раз, «N из M» растёт
     expect(page()).not.toContain('Оставить подписку Netflix?')
     expect(page()).not.toMatch(/\d из \d/)
     expect(document.querySelectorAll('h2.type-h2')).toHaveLength(0)
-    expect([...document.querySelectorAll('button')].filter((b) => b.className.includes('bg-brand ')).map((b) => b.textContent?.trim())).toEqual(['Загрузить выписку'])
+    // Вопросы кончились — лист закрылся сам, значка нет.
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+    expect(document.querySelector('[data-bang]')).toBeNull()
+    expect([...document.querySelectorAll('button')].filter((b) => b.className.includes('bg-brand ')).map((b) => b.textContent?.trim())).toEqual(['Загрузить'])
   })
 })
 

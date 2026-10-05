@@ -23,6 +23,9 @@ const planOf = (store: { householdDoc: SyncDoc; credits: SyncDoc['credits'] }, k
 const sourceOf = (store: { householdDoc: SyncDoc; credits: SyncDoc['credits'] }, source: PlanSource) =>
   planFromSource({ ...store.householdDoc, credits: store.credits }, ctxOf(store.householdDoc), source)
 
+/** «Неделя» с открытым листом вопросов «! N» (Блок 15, Р-97). */
+const sheetOpen = () => [screenMixin({ questionsOpen: true })]
+
 describe('e2e / Блок 2 — моменты месяца на двух телефонах', () => {
   let server: FakeServer
   const T0 = '2026-09-01T00:00:00.000Z'
@@ -168,8 +171,8 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       useAuthStore().setAuthData(authAs('member', 'a'))
       const B = await phone(server)
       useAuthStore().setAuthData(authAs('member', 'b'))
-      expect(await screen(A.pinia, Statements, '/week')).toContain('Остались деньги с сентября?')
-      expect(await screen(B.pinia, Statements, '/week')).toContain('Остались деньги с сентября?')
+      expect(await screen(A.pinia, Statements, '/week', undefined, sheetOpen())).toContain('Остались деньги с сентября?')
+      expect(await screen(B.pinia, Statements, '/week', undefined, sheetOpen())).toContain('Остались деньги с сентября?')
 
       // «Остались деньги?» (Р-86): сумма — разово по очереди целей сверху вниз, запись своим источником.
       setActivePinia(A.pinia)
@@ -191,16 +194,16 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       // Разово — взносы сейчас, ежемесячные взносы прежние; новых целей не заводится.
       expect(Object.fromEntries(B.store.goals.map((g) => [g.id, g.monthly]))).toEqual(monthly)
       expect(B.store.goals.reduce((a, g) => a + g.have, 0)).toBe(haves + toGoals)
-      expect(await screen(B.pinia, Statements, '/week')).not.toContain('Остались деньги с сентября?')
+      expect(await screen(B.pinia, Statements, '/week', undefined, sheetOpen())).not.toContain('Остались деньги с сентября?')
     })
 
     it('1 октября вопроса нет; 29 октября — снова (RP-11)', async () => {
       at('2026-10-01T07:00:00Z')
       const A = await phone(server)
       useAuthStore().setAuthData(authAs('member', 'a'))
-      expect(await screen(A.pinia, Statements, '/week')).not.toContain('Остались деньги')
+      expect(await screen(A.pinia, Statements, '/week', undefined, sheetOpen())).not.toContain('Остались деньги')
       at('2026-10-29T07:00:00Z')
-      expect(await screen(A.pinia, Statements, '/week')).toContain('Остались деньги с октября?')
+      expect(await screen(A.pinia, Statements, '/week', undefined, sheetOpen())).toContain('Остались деньги с октября?')
     })
   })
 
@@ -336,19 +339,19 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       useAuthStore().setAuthData(authAs('member', 'b'))
 
       at('2026-09-30T18:00:00Z') // 30 сентября, 23:00 по Алматы
-      expect(await screen(A.pinia, Statements, '/week')).toContain('Остались деньги с сентября?')
+      expect(await screen(A.pinia, Statements, '/week', undefined, sheetOpen())).toContain('Остались деньги с сентября?')
       at('2026-09-30T19:30:00Z') // 1 октября, 00:30 по Алматы
-      expect(await screen(A.pinia, Statements, '/week')).not.toContain('Остались деньги')
+      expect(await screen(A.pinia, Statements, '/week', undefined, sheetOpen())).not.toContain('Остались деньги')
 
       at('2026-09-28T07:00:00Z')
       vi.stubGlobal('localStorage', storage({ ff_month_end: '2026-09' }))
-      expect(await screen(A.pinia, Statements, '/week')).not.toContain('Остались деньги')
+      expect(await screen(A.pinia, Statements, '/week', undefined, sheetOpen())).not.toContain('Остались деньги')
       vi.stubGlobal('localStorage', storage())
-      expect(await screen(B.pinia, Statements, '/week')).toContain('Остались деньги с сентября?')
+      expect(await screen(B.pinia, Statements, '/week', undefined, sheetOpen())).toContain('Остались деньги с сентября?')
       // Ответ за сентябрь не гасит октябрь.
       at('2026-10-29T07:00:00Z')
       vi.stubGlobal('localStorage', storage({ ff_month_end: '2026-09' }))
-      expect(await screen(A.pinia, Statements, '/week')).toContain('Остались деньги с октября?')
+      expect(await screen(A.pinia, Statements, '/week', undefined, sheetOpen())).toContain('Остались деньги с октября?')
     })
 
     it('RP-13: дубль отметки, надгробие, чужой месяц, старая дата покупки — итог посчитан руками, у обоих одинаково', async () => {

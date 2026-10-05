@@ -50,22 +50,23 @@ describe('Блок 2: моменты месяца (SSR)', () => {
   }
 
   describe('RP-11 — вопрос в конце месяца', () => {
-    // Решения живут на «Неделе» (пивот 3, Р-42/Р-43): на «Мечтах» их нет.
+    // Решения живут на «Неделе» (пивот 3, Р-42/Р-43) — в листе за «! N» (Блок 15, Р-97): на «Мечтах» их нет.
+    const asked = () => renderScreen(Statements, '/week', undefined, [screenMixin({ questionsOpen: true })])
     it('«Неделя»: «Остались деньги?» есть в последние дни месяца, нет в середине, нет у viewer; на «Мечтах» — нет', async () => {
       family()
-      const html = await renderScreen(Statements, '/week')
+      const html = await asked()
       expect(html).toContain('Остались деньги с сентября?')
       expect(html).toMatch(/>\s*Отложить\s*</)
       expect(html).toMatch(/>\s*Не сейчас\s*</)
       expect(await renderScreen(Dreams, '/')).not.toContain('Остались деньги')
 
       vi.setSystemTime(new Date('2026-09-20T07:00:00Z'))
-      expect(await renderScreen(Statements, '/week')).not.toContain('Остались деньги')
+      expect(await asked()).not.toContain('Остались деньги')
 
       vi.setSystemTime(new Date('2026-09-28T07:00:00Z'))
       setActivePinia(createPinia())
       family('viewer')
-      expect(await renderScreen(Statements, '/week')).not.toContain('Остались деньги')
+      expect(await asked()).not.toContain('Остались деньги')
     })
 
     it('«Не сейчас» — ответ помнится на устройстве до конца месяца; в конце следующего — снова', async () => {
@@ -75,12 +76,12 @@ describe('Блок 2: моменты месяца (SSR)', () => {
       await renderScreen(Statements, '/week', undefined, [grab])
       vm.answerRest(false)
       expect(storage.get('ff_month_end')).toBe('2026-09')
-      expect(await renderScreen(Statements, '/week')).not.toContain('Остались деньги')
+      expect(await asked()).not.toContain('Остались деньги')
       // Документ не тронут: партнёра спросят на его телефоне.
       expect(useFinanceStore().unsent).toBe(false)
 
       vi.setSystemTime(new Date('2026-10-29T07:00:00Z'))
-      expect(await renderScreen(Statements, '/week')).toContain('Остались деньги с октября?')
+      expect(await asked()).toContain('Остались деньги с октября?')
     })
 
     it('«Остались деньги?» (Р-86): сумма — разово по очереди целей сверху вниз, запись своим источником; экрана разбора нет', async () => {

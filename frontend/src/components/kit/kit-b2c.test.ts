@@ -8,7 +8,6 @@ import DreamHero from './DreamHero.vue'
 import DreamCenter from './DreamCenter.vue'
 import ThumbRow from './ThumbRow.vue'
 import WeekCard from './WeekCard.vue'
-import WeekTotal from './WeekTotal.vue'
 import FreeCard from './FreeCard.vue'
 import DecisionCard from './DecisionCard.vue'
 import Chip from './Chip.vue'
@@ -127,23 +126,6 @@ describe('TemplateTile', () => {
     const cam = await render(TemplateTile, { name: 'Своё фото', camera: true })
     expect(cam).toContain('Своё фото')
     expect(cam).toContain('border-dashed')
-  })
-})
-
-describe('WeekTotal (пивот 3, B2C-50)', () => {
-  it('чип к прошлой: меньше — зелёный, больше — предупреждение, равно — нейтральный, нет недели — чипа нет; легенда — до 4 + «ещё N»', async () => {
-    const seg = (id: string) => ({ id, name: id, amount: 1, share: 0.1, color: 'var(--s1)' })
-    const segments = ['a', 'b', 'c', 'd', 'e', 'f'].map(seg)
-    const tag = (html: string) => html.match(/<span class="[^"]*rounded-pill[^"]*">([^<]*к прошлой|как на прошлой)<\/span>/)?.[0] ?? ''
-    expect(tag(await render(WeekTotal, { label: '28 сентября – 4 октября', total: 60_000, delta: -25, segments }))).toContain('bg-ok-soft')
-    expect(tag(await render(WeekTotal, { label: 'x', total: 90_000, delta: 13, segments }))).toContain('bg-warn-soft')
-    expect(tag(await render(WeekTotal, { label: 'x', total: 80_000, delta: 0, segments }))).toContain('bg-surface-3')
-    const none = await render(WeekTotal, { label: '28 сентября – 4 октября', total: 80_000, delta: null, segments })
-    expect(none).toContain('28 сентября – 4 октября')
-    expect(none).not.toContain('Итог недели')
-    expect(none).not.toContain('к прошлой')
-    expect(none).toContain('ещё 2 раздела')
-    expect(none).not.toContain('>e<')
   })
 })
 

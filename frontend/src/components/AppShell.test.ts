@@ -90,7 +90,7 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     expect(await renderScreen(AppShell, '/week')).not.toContain('aria-label="Назад"')
   })
 
-  it('шапка по макетам (возврат смоука): «Деньги» — аватары без шестерёнки; «Неделя» — даты в подписи, без аватаров; вложенные — «назад» без аватаров', async () => {
+  it('шапка по макетам (возврат смоука): «Деньги» — аватары без шестерёнки; «План · Неделя» — без дат и аватаров (они на экране, Р-96); вложенные — «назад» без аватаров', async () => {
     // Квадраты «Денег» — корни, как сама вкладка (пивот 3): подпись месяца, аватары, без «назад».
     for (const path of ['/money', '/money/debts', '/money/history']) {
       const money = await renderScreen(AppShell, path)
@@ -100,7 +100,9 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
       expect(money).not.toContain('aria-label="Назад"')
     }
     const week = await renderScreen(AppShell, '/week')
-    expect(week).toContain('14–20 сентября')
+    expect(week).toContain('>План</h1>')
+    expect(week).toContain('Ильяс и Дана')
+    expect(week.slice(0, week.indexOf('<main'))).not.toContain('сентября')
     expect(week).not.toContain('href="/people/a"')
     expect(week).not.toContain('aria-label="Настройки"')
     for (const path of ['/goals/new', '/goals/x', '/settings']) {

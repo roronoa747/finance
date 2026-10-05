@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { monthPlan, myWeek, prevWeekKey, sectionWeek, weekTrend, type MonthPlanState } from './finance'
+import { firstWeek, monthPlan, myWeek, prevWeekKey, sectionWeek, startWeek, weekTrend, type MonthPlanState } from './finance'
 import { periodsOf, spendTotals } from '@/lib/statements/model'
 import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
@@ -229,5 +229,34 @@ describe('weekTrend — 8 недель (Р-98)', () => {
     expect(t.map((x) => x.amount)).toEqual([0, 0, 0, 0, 21_000, 31_000, 41_400, 6_000])
     expect(t.at(-1)!.from).toBe('2026-10-19')
     expect(weekTrend(TOTALS, [], 'b', '2026-W43').map((x) => x.amount)).toEqual([0, 0, 0, 0, 0, 0, 40_000, 0])
+  })
+})
+
+describe('startWeek · firstWeek — какую неделю открыть и докуда листать (Р-102)', () => {
+  const up = (slot: string, from: string, to: string): UploadPeriod => ({ slot, period_from: from, period_to: to })
+
+  it('текущая — если за неё уже есть своя выписка или траты', () => {
+    expect(startWeek(TOTALS, UPLOADS, 'a', '2026-W43')).toBe('2026-W43') // 20 октября — продукты 6 000
+    expect(startWeek([], [up('a', '2026-10-19', '2026-10-19')], 'a', '2026-W43')).toBe('2026-W43')
+  })
+
+  it('иначе прошлая — если за неё есть своя выписка или траты (выписку грузят в начале следующей недели)', () => {
+    // Понедельник 26 октября (W44): за новую неделю ничего нет, за W43 — есть.
+    expect(startWeek(TOTALS, UPLOADS, 'a', '2026-W44')).toBe('2026-W43')
+    expect(startWeek([], [up('a', '2026-10-01', '2026-10-25')], 'a', '2026-W44')).toBe('2026-W43')
+  })
+
+  it('нет ни там, ни там — текущая (ждёт загрузки); чужие выписки и траты не в счёт', () => {
+    expect(startWeek(TOTALS, UPLOADS, 'a', '2026-W46')).toBe('2026-W46')
+    expect(startWeek([], [], 'a', '2026-W43')).toBe('2026-W43')
+    // У Аруны — только W42 (её итог и выписка по 18 октября): в W44 она на текущей, в W43 — на прошлой.
+    expect(startWeek(TOTALS, UPLOADS, 'b', '2026-W44')).toBe('2026-W44')
+    expect(startWeek(TOTALS, UPLOADS, 'b', '2026-W43')).toBe('2026-W42')
+  })
+
+  it('firstWeek — самая ранняя неделя со своими тратами; трат нет — null', () => {
+    expect(firstWeek(TOTALS, 'a')).toBe('2026-W40')
+    expect(firstWeek(TOTALS, 'b')).toBe('2026-W42')
+    expect(firstWeek([], 'a')).toBeNull()
   })
 })

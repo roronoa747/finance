@@ -4,7 +4,7 @@ import { createApp, nextTick, type App } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory } from 'vue-router'
 import { createAppRouter } from '@/router'
-import { renderScreen } from '@/test/screenState'
+import { renderScreen, screenMixin } from '@/test/screenState'
 import Access from './Access.vue'
 import Money from './Money.vue'
 import Statements from './Statements.vue'
@@ -14,7 +14,7 @@ import { useOperationsStore } from '@/stores/operations'
 import { spendTotals, unknownGroups } from '@/lib/statements/model'
 import type { SpendTotal } from '@/lib/statements/types'
 import { monthKey, weekKey, weekRangeLabel } from '@/lib/dates'
-import { weekPicture } from '@/lib/finance'
+import { myWeek, weekPicture } from '@/lib/finance'
 import { money } from '@/lib/money'
 
 /**
@@ -121,11 +121,16 @@ describe('B2C-52: демо — итоги из демо-операций той 
     const arunaWeek = finance.householdDoc.spendTotals!.filter((t) => t.by === 'b' && t.kind === 'week' && t.period === week).reduce((a, t) => a + t.amount, 0)
     expect(pic.total).toBe(opsWeek + arunaWeek)
 
-    const html = text(await renderScreen(Statements, '/week'))
-    expect(html).toContain(`${weekRangeLabel(pic.range)} ${text(money(pic.total))}`)
-    expect(html).toMatch(/к прошлой|как на прошлой/)
-    expect(html).toMatch(/1 из [2-9]/)
-    expect(html).toContain('Без раздела · ')
+    // Блок 15 (Р-95): «Неделя» — сумма только своих трат (`myWeek`), сравнение — с прошлой своей; вопросы — в листе «!».
+    const { state, ctx } = finance.planInput(monthKey())
+    const own = myWeek(state, { ...ctx, by: 'a', week, ops: ops.all })
+    expect(own.total).toBeGreaterThan(0)
+    expect(own.total).toBeLessThan(pic.total)
+    const html = text(await renderScreen(Statements, '/week', undefined, [screenMixin({ questionsOpen: true })]))
+    expect(html).toContain(`${weekRangeLabel(pic.range)} ${text(money(own.total))}`)
+    expect(html).toMatch(/[↑↓] [0-9]+%/)
+    // Вопросы — за значком «! N» (лист уходит в body — в разметке экрана его нет).
+    expect(html).toMatch(/! [2-9]/)
 
     // «Мечты»: главная мечта, строка «Свободно», цели и желания строками.
     const dreams = text(await renderScreen(Dreams, '/'))

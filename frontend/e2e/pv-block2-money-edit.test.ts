@@ -426,12 +426,14 @@ describe('e2e / Блок 2 паритета — правка денег на д�
 
       // «Оставить?» (RP-09; карточка «Недели» — пивот 3, Р-43): только что заведённое в этом квартале не спрашиваем…
       expect(keepQuestions(B.store.obligations)).toEqual([])
-      expect(await page(B.pinia, Statements, '/week')).not.toContain('Оставить подписку')
+      // Вопросы «Недели» — в листе за «! N» (Блок 15, Р-97).
+      const asked = { state: { questionsOpen: true } }
+      expect(await page(B.pinia, Statements, '/week', asked)).not.toContain('Оставить подписку')
       // …с нового квартала второй телефон спрашивает про подписку «Интернет» — не про
       // «Свет» (оценка) и не про аренду (жильё).
       at('2026-10-02T04:00:00Z')
       expect(keepQuestions(B.store.obligations).map((o) => o.name)).toEqual(['Интернет'])
-      const overview = await page(B.pinia, Statements, '/week')
+      const overview = await page(B.pinia, Statements, '/week', asked)
       expect(overview).toContain('Оставить подписку Интернет?')
       expect(overview).toContain(`${money(6_990)} · каждый месяц`)
       expect(overview).not.toContain('Оставить подписку Свет?')

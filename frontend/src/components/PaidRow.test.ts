@@ -357,7 +357,8 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     for (const role of ['member', 'viewer'] as const) {
       setActivePinia(createPinia())
       family(role, [netflix])
-      const week = await page(Statements, '/week')
+      // Вопросы «Недели» — в листе за «! N» (Блок 15, Р-97).
+      const week = await renderScreen(Statements, '/week', undefined, [screenMixin({ questionsOpen: true })])
       // «Деньги» — лист «До зарплаты» (пивот 3): аренда 28-го в нём у обоих.
       const overview = (await paydaySheet()).sheet
       const budget = payments(await page(Money, '/money'))
@@ -406,7 +407,7 @@ describe('RP-07: «Оплатил» в интерфейсе (SSR)', () => {
     family('member', [yearly])
     vi.setSystemTime(new Date('2026-09-25T07:00:00Z')) // 25 сентября, Алматы: до продления 10 дней
     // Карточка решения на «Неделе» (пивот 3, Р-43): сумма продления из новой версии.
-    const card = await page(Statements, '/week')
+    const card = await renderScreen(Statements, '/week', undefined, [screenMixin({ questionsOpen: true })])
     expect(card).toContain('Оставить подписку Иви?')
     expect(card).toContain(`${money(12_000)} · в год · продлится 5 октября`)
     expect(card).not.toContain(money(10_000))

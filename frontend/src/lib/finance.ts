@@ -3845,6 +3845,28 @@ export function myWeek(
   return { week, range, month, total, prev, delta: total - prev, pct: prev > 0 ? Math.round((Math.abs(total - prev) / prev) * 100) : null, rows }
 }
 
+/**
+ * С какой недели открывается «Неделя» (Р-102): текущая, если за неё уже есть своя выписка или траты; иначе прошлая,
+ * если они есть за неё (выписку за неделю грузят в начале следующей); нет ни там, ни там — текущая (ждёт загрузки).
+ */
+export function startWeek(totals: SpendTotal[], uploads: UploadPeriod[], by: PersonId, now: string = weekKey()): string {
+  const has = (week: string) => {
+    const range = weekRange(week)
+    return (
+      uploads.some((u) => u.slot === by && coversWeek(u, range)) ||
+      totals.some((t) => !t.deletedAt && t.by === by && t.kind === 'week' && t.period === week && t.amount > 0)
+    )
+  }
+  const prev = prevWeekKey(now)
+  return has(now) || !has(prev) ? now : prev
+}
+
+/** Самая ранняя неделя со своими тратами — дальше неё «‹» не листает; null — трат ещё нет. */
+export function firstWeek(totals: SpendTotal[], by: PersonId): string | null {
+  const weeks = totals.filter((t) => !t.deletedAt && t.by === by && t.kind === 'week' && t.amount > 0).map((t) => t.period)
+  return weeks.length ? weeks.sort()[0]! : null
+}
+
 /** Раздел за неделю из своих операций (`sectionWeek`, Р-101). */
 export type SectionWeek = {
   /** Сумма и число трат раздела за неделю. */

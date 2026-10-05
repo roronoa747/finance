@@ -1,58 +1,56 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { PhCheck, PhFileArrowUp } from '@phosphor-icons/vue'
+import { PhCaretLeft, PhCaretRight, PhCheck, PhListBullets, PhPlus, PhSquaresFour } from '@phosphor-icons/vue'
 import Button from '@/components/ui/Button.vue'
 import Avatar from '@/components/kit/Avatar.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Card from '@/components/kit/Card.vue'
 import DecisionCard from '@/components/kit/DecisionCard.vue'
-import EmptyState from '@/components/kit/EmptyState.vue'
-import Hint from '@/components/kit/Hint.vue'
 import NumField from '@/components/kit/NumField.vue'
-import Row from '@/components/kit/Row.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Tag from '@/components/kit/Tag.vue'
-import WeekTotal from '@/components/kit/WeekTotal.vue'
 import SalaryRow from '@/components/SalaryRow.vue'
 import SalaryExchange from '@/components/SalaryExchange.vue'
-import CategoryChips from '@/components/CategoryChips.vue'
 import UnknownBatch from '@/components/UnknownBatch.vue'
 import PlanSwitch from '@/components/plan/PlanSwitch.vue'
+import SectionSheet from '@/components/week/SectionSheet.vue'
+import UploadsSheet from '@/components/week/UploadsSheet.vue'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
-import { money, moneyIn, parseMoney } from '@/lib/money'
+import { money, moneyIn, parseMoney, plain } from '@/lib/money'
 import { plural } from '@/lib/utils'
-import { MONTHS_NOM, monthKey, parseMonthKey, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
+import { MONTHS_NOM, addDaysIso, monthKey, parseMonthKey, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
 import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
-import { draftSummary, partnerHints, picture, pictureTotal, unknownGroups, type UnknownGroup } from '@/lib/statements/model'
+import { draftSummary, partnerHints, unknownGroups } from '@/lib/statements/model'
 import { readStatementFiles } from '@/lib/statements/read'
 import type { MerchantRule } from '@/lib/statements/types'
 import type { PersonId } from '@/types/finance'
 import {
   decisionQueue,
+  firstWeek,
+  myWeek,
   planFromSource,
+  prevWeekKey,
   salaryExchange,
-  type Decision,
-  type WeekUploadRow,
-  liveSpendCategories,
-  spendCategoryName,
-  spendRows,
-  weekPicture,
-  weekTag,
+  startWeek,
+  weekTrend,
   weekUploads,
-  weekVersusPrev,
+  type Decision,
+  type MyWeekRow,
 } from '@/lib/finance'
-import { readMonthEnd, writeMonthEnd } from '@/lib/storage'
+import { readMonthEnd, readWeekView, writeMonthEnd, writePlanView, writeWeekView, type WeekView } from '@/lib/storage'
 
 /**
- * «Неделя» — ритуал (пивот 3, Р-43; макет `pivot-3/dreams-week.html` «А · Ритуал»): итог недели обоих
- * одной карточкой → одно решение за раз из очереди `decisionQueue` → «Загрузить выписку» (брендовая, когда
- * решений нет); «Разделы за месяц» и «Прошлые недели» — свёрнутыми строками с листом. Разбор выписки —
- * сводка, незнакомые продавцы черновика пачкой и «Отправить». Файл разбирается на телефоне и никуда не уходит
- * (Р-4); считает `finance.ts` / `lib/statements`.
+ * «План · Неделя» (Блок 15, Р-95…Р-102; макет week-month.html «Неделя — мои траты»): только свои цифры. Верх —
+ * одна строка: кружки участников с ✓ «загрузил за неделю» (свой — лист «Мои выписки»), «⊕» загрузки, «! N»
+ * вопросов (лист, по одному), вид ☰ / ▦. Ниже — моя сумма недели крупно со сравнением и ‹ › по неделям, разделы — потрачено за
+ * неделю и остаток до конца месяца от своей суммы плана (список полосами или плитки с кольцом), нажатие раздела —
+ * лист с продавцами и операциями; тренд 8 недель — свёрнут. Цифр партнёра нет: его траты — в «Месяце». Главное
+ * действие — «+ Загрузить», пока своей выписки за неделю нет; потом главной кнопки нет (правило 12). Считает
+ * `finance.ts` (`myWeek`, `sectionWeek`, `weekTrend`); файл выписки разбирается на телефоне и никуда не уходит (Р-4).
  */
 const auth = useAuthStore()
 const finance = useFinanceStore()
@@ -66,13 +64,8 @@ const canUpload = computed(() => !auth.isViewer)
 const me = computed<PersonId>(() => auth.slot ?? 'a')
 const reading = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
-const uploadBox = ref<HTMLElement | null>(null)
-const openCategory = ref<string | null>(null)
-/** Свёрнутые строки «Недели» (правило 12: таблицы — за «подробнее») открывают лист. */
-const sheet = ref<'sections' | 'past' | null>(null)
+const uploadButton = ref<HTMLElement | null>(null)
 
-const categories = computed(() => liveSpendCategories(finance.householdDoc.spendCategories))
-const categoryName = (id: string) => spendCategoryName(categories.value, id)
 const people = computed(() => finance.people.filter((p) => !p.deletedAt))
 const personName = (slot: string) => people.value.find((p) => p.id === slot)?.name ?? 'Участник'
 
@@ -80,58 +73,73 @@ const personName = (slot: string) => people.value.find((p) => p.id === slot)?.na
 const summary = computed(() => draftSummary(store.draftOps, (id) => id in store.ops))
 const dismissedHints = ref<string[]>([])
 const hints = computed(() => partnerHints(store.draftOps, finance.people, me.value, finance.merchantRules).filter((h) => !dismissedHints.value.includes(h.counterparty)))
-
-/* ---------- неделя и месяц ---------- */
-const week = weekKey()
-const month = monthKey()
-// «Сентябрь» — заголовок колонки листа, «за сентябрь» — строка и лист «Разделы».
-const monthName = MONTHS_NOM[parseMonthKey(month).month]
-const spendTotals = computed(() => finance.householdDoc.spendTotals ?? [])
-const spendCategories = computed(() => finance.householdDoc.spendCategories ?? [])
-const pic = computed(() => weekPicture(spendTotals.value, spendCategories.value, people.value, week, store.uploads))
-// Даты недели и чьи выписки — в подписи шапки (`AppShell`: `weekRangeLabel`, `weekTag`).
-const weekTotalOf = (key: string) => spendRows(spendTotals.value, [], { kind: 'week', period: key }).total
-const prevWeek = weekKey(new Date(Date.now() - 7 * 86_400_000))
-/** «Выписки» (Р-62): кто загрузил выписку за неделю и в какой день; своя «ещё нет» открывает загрузку, viewer — без действий. */
-const uploadRows = computed(() => weekUploads(people.value, week, store.uploads))
-const mineThisWeek = computed(() => uploadRows.value.some((r) => r.person.id === me.value && r.day !== null))
-const uploadsMine = (r: WeekUploadRow) => canUpload.value && r.person.id === me.value && r.day === null
-/** Карточка недели: подпись — даты недели, сумма и доли — `weekPicture`, чип — `weekVersusPrev`, «Не разобрано» — сумма недели обоих. */
-const weekTotalProps = computed(() => ({
-  label: weekRangeLabel(pic.value.range),
-  total: pic.value.total,
-  delta: weekVersusPrev(spendTotals.value, week, prevWeek)?.delta ?? null,
-  segments: pic.value.rows.map((r) => ({ id: r.categoryId, name: r.name, amount: r.amount, share: r.share, color: r.color })),
-  unknown: pic.value.unknown,
-  unknownShare: pic.value.unknownShare,
-}))
-// Разделы за неделю и месяц по итогам обоих (B2C-07): раскрытие — свои продавцы раздела и раздел задним числом.
-// Таблица — в листе «Разделы за месяц» (правило 12: расчёты свёрнуты), главный поток — итог недели.
-const rows = computed(() => picture(spendTotals.value, week, month))
-const totals = computed(() => pictureTotal(rows.value))
-const monthOps = computed(() => store.all.filter((o) => o.date.startsWith(month)))
-const openGroups = computed(() =>
-  openCategory.value === null ? [] : unknownGroups(monthOps.value, openCategory.value === UNKNOWN_CATEGORY ? null : openCategory.value),
-)
-// Прошлые недели — итоги обоих, четыре назад; подпись — чьи выписки (g2 «обе выписки»).
-const pastWeeks = computed(() =>
-  [1, 2, 3, 4]
-    .map((i) => weekKey(new Date(Date.now() - i * 7 * 86_400_000)))
-    .map((key) => ({
-      key,
-      label: weekRangeLabel(weekRange(key)),
-      total: weekTotalOf(key),
-      meta: weekTag(weekPicture(spendTotals.value, spendCategories.value, people.value, key, store.uploads), people.value.length)?.text ?? '',
-    }))
-    .filter((w) => w.total > 0),
-)
-// Загрузка видна, пока своей выписки за неделю нет, и по «+» → «Загрузить выписку» (`?upload=1`); кто ещё
-// без выписки — подпись шапки (`weekTag`). Ещё одна выписка при своей — из листа «+».
-const showUpload = computed(() => canUpload.value && (!mineThisWeek.value || route.query.upload === '1'))
 const foreign = computed(() => (store.draft?.files ?? []).reduce((a, f) => a + (f.parsed.skippedForeign ?? 0), 0))
 
+/* ---------- неделя: моя, листается ‹ › (Р-102) ---------- */
+const month = monthKey()
+const nowWeek = weekKey()
+const spendTotals = computed(() => finance.householdDoc.spendTotals ?? [])
+const spendCategories = computed(() => finance.householdDoc.spendCategories ?? [])
+const week = ref(startWeek(spendTotals.value, store.uploads, me.value, nowWeek))
+// Загрузки приходят с сервера после открытия: пока неделю не листали — открываем ту, за которую есть выписка.
+const turned = ref(false)
+watch(
+  () => store.uploads.length,
+  () => {
+    if (!turned.value) week.value = startWeek(spendTotals.value, store.uploads, me.value, nowWeek)
+  },
+)
+const first = computed(() => firstWeek(spendTotals.value, me.value))
+const canBack = computed(() => first.value !== null && week.value > first.value)
+const canForward = computed(() => week.value < nowWeek)
+function turn(step: -1 | 1) {
+  turned.value = true
+  week.value = step < 0 ? prevWeekKey(week.value) : weekKey(addDaysIso(weekRange(week.value).from, 7))
+}
+
+/** Мои траты недели — всё из `myWeek`: сумма, сравнение, разделы с остатком (одна дорога с «Месяцем»). */
+const mine = computed(() => {
+  const { state, ctx } = finance.planInput(month)
+  return myWeek(state, { ...ctx, by: me.value, week: week.value, ops: store.all })
+})
+const restMonth = computed(() => MONTHS_NOM[parseMonthKey(mine.value.month).month].toLowerCase())
+const hasPlan = computed(() => mine.value.rows.some((r) => r.plan !== null))
+const barShare = (r: MyWeekRow) => (r.plan && r.spent !== null ? Math.max(0, Math.min(100, Math.round((r.spent / r.plan) * 100))) : 0)
+const RING = 2 * Math.PI * 17
+const letter = (r: MyWeekRow) => (r.categoryId === UNKNOWN_CATEGORY ? '?' : r.name.slice(0, 1).toUpperCase())
+
+/** Строка загрузки (Р-96): кто загрузил выписку за неделю — только ✓, цифр партнёра нет. */
+const uploadRows = computed(() => weekUploads(people.value, week.value, store.uploads))
+const mineIn = computed(() => uploadRows.value.some((r) => r.person.id === me.value && r.day !== null))
+
+/** Вид — список или плитки (Р-100), на устройстве. */
+const view = ref<WeekView>(readWeekView())
+function toggleView() {
+  view.value = view.value === 'list' ? 'tiles' : 'list'
+  writeWeekView(view.value)
+}
+
+/** Тренд 8 недель (Р-98) — свёрнут (правило 12). */
+const trend = computed(() => weekTrend(spendTotals.value, spendCategories.value, me.value, week.value))
+const trendMax = computed(() => Math.max(...trend.value.map((t) => t.amount)))
+const trendOpen = ref(false)
+const trendDay = (iso: string) => `${Number(iso.slice(8, 10))}.${iso.slice(5, 7)}`
+
+/* ---------- листы: раздел (Р-101) и «Мои выписки» (Р-102) ---------- */
+const sectionFor = ref<string | null>(null)
+const sectionRow = computed(() => mine.value.rows.find((r) => r.categoryId === sectionFor.value) ?? null)
+const uploadsOpen = ref(false)
+function pickFile() {
+  uploadsOpen.value = false
+  fileInput.value?.click()
+}
+function toMonth() {
+  writePlanView('month')
+  void router.replace('/month')
+}
+
 /* ---------- решения по одному ---------- */
-const groupKey = (g: UnknownGroup) => JSON.stringify(g.match)
+const monthOps = computed(() => store.all.filter((o) => o.date.startsWith(month)))
 
 // «Остались деньги?» (Р-19): ответ — до конца месяца, на устройстве (раскладку остатка семьи проверяет очередь).
 const answeredLocal = ref<string | null>(readMonthEnd())
@@ -162,6 +170,14 @@ const defer = (d: Decision) => {
   deferred.value = [...deferred.value, d.key]
   cancelling.value = false
 }
+/** Вопросы — в листе за «! N» (Р-97), по одному; кончились — лист закрывается сам. */
+const questionsOpen = ref(false)
+watch(
+  () => queue.value.length,
+  (n) => {
+    if (!n && restSaved.value === null) questionsOpen.value = false
+  },
+)
 
 // «N из M»: M — все решения, что были в очереди с открытия экрана (или начала разбора), — не тает при
 // ответе; новые (например, «Пришла зарплата» после «Да, зарплата») её увеличивают. N — сколько позади + 1.
@@ -219,11 +235,11 @@ function answerRest(go: boolean) {
   if (!src || src.mode !== 'once' || src.recorded) return
   finance.applyPlan(src, { by: auth.slot, note: 'остаток месяца' })
   restSaved.value = src.put
-  setTimeout(() => (restSaved.value = null), 2400)
+  setTimeout(() => {
+    restSaved.value = null
+    if (!queue.value.length) questionsOpen.value = false
+  }, 2400)
 }
-
-/** Главное действие экрана (правило 12): первое решение, иначе — загрузка своей выписки. */
-const uploadLead = computed(() => !decision.value)
 
 // Ответы карточки: у подписки — шаг отмены.
 const decisionActions = computed(() => {
@@ -248,11 +264,6 @@ function onGhost(d: Decision) {
   else defer(d)
 }
 
-/** Ответ в «Разделах за месяц» — задним числом, тем же `CategoryChips`, что и карточка (хвост (г) критика Б9). */
-function answerLater(g: UnknownGroup, to: MerchantRule['to']) {
-  void store.recategorize(g.match, to)
-}
-
 async function pick(e: Event) {
   const input = e.target as HTMLInputElement
   const files = [...(input.files ?? [])]
@@ -262,7 +273,7 @@ async function pick(e: Event) {
     const { ok, errors } = await readStatementFiles(files)
     store.setDraft(ok, errors)
     deferred.value = []
-    // Пришли из «+» — после выбора файла адрес обычный: в итоге недели загрузки снова нет.
+    // Пришли из «+» — после выбора файла адрес обычный.
     if (route.query.upload === '1') void router.replace('/week')
   } finally {
     reading.value = false
@@ -274,15 +285,16 @@ onMounted(() => {
   void store.loadUploads()
   void store.pull()
   // «Загрузить выписку» из листа «+» (`/week?upload=1`, B2C-13): окно выбора файла браузер
-  // открывает только по нажатию — подводим к кнопке и ставим на неё фокус.
-  if (route.query.upload === '1') uploadBox.value?.querySelector('button')?.focus()
+  // открывает только по нажатию — ставим фокус на «⊕».
+  if (route.query.upload === '1') uploadButton.value?.focus()
 })
 </script>
 
 <template>
-  <div class="flex flex-col gap-3.5 pt-1 text-left">
+  <div class="flex flex-col gap-3 pt-1 text-left">
     <PlanSwitch v-if="!store.draft" view="week" :dot="finance.planDot" />
     <p v-if="auth.isDemo" class="px-1 text-[12px] text-ink-3">демо: только на этом телефоне</p>
+    <input v-if="canUpload" ref="fileInput" type="file" accept="application/pdf,.pdf" multiple class="hidden" @change="pick" />
 
     <!-- РАЗБОР (g2 «Разбор — предпросмотр»): сводка → решения по одному → «Отправить». Банк и период — в шапке. -->
     <template v-if="store.draft">
@@ -326,78 +338,249 @@ onMounted(() => {
       </template>
     </template>
 
-    <!-- НЕДЕЛЯ (макет «А · Ритуал»): итог недели одной карточкой -->
+    <!-- НЕДЕЛЯ — мои траты -->
     <template v-else>
       <Callout v-if="store.pendingCount" tone="neutral">{{ store.pendingCount }} операций отправятся при сети. Итоги уже посчитаны.</Callout>
-      <Callout v-if="store.lastAutoMarked" tone="ok">Отмечено по выписке: {{ store.lastAutoMarked }} — снять можно в «Деньгах».</Callout>
-      <!-- «Выписки» (Р-62, макет «А · Пачкой»): галочки обоих; даты недели — уже в шапке, в заголовок не дублируются. -->
-      <Card v-if="uploadRows.length > 1" class="flex flex-col">
-        <span class="type-label">Выписки</span>
-        <component
-          :is="uploadsMine(r) ? 'button' : 'div'"
-          v-for="(r, i) in uploadRows"
-          :key="r.person.id"
-          :type="uploadsMine(r) ? 'button' : undefined"
-          class="flex w-full items-center gap-2.5 py-2 text-left"
-          :class="[i && 'border-t border-line', uploadsMine(r) && 'cursor-pointer']"
-          @click="uploadsMine(r) && fileInput?.click()"
-        >
-          <span class="grid size-6 shrink-0 place-items-center rounded-[8px] border-2" :class="r.day !== null ? 'border-ok bg-ok text-brand-ink' : 'border-line-strong'" aria-hidden="true">
-            <PhCheck v-if="r.day !== null" :size="14" weight="bold" />
+      <Callout v-if="store.lastAutoMarked" tone="ok">Отмечено по выписке: {{ store.lastAutoMarked }} — снять можно в «Месяце».</Callout>
+
+      <!-- Строка загрузки (Р-96): кружки с ✓ · ⊕ · «! N» · вид -->
+      <div class="flex items-center gap-2.5" data-week-strip>
+        <template v-for="r in uploadRows" :key="r.person.id">
+          <button
+            v-if="r.person.id === me"
+            type="button"
+            class="press relative shrink-0 cursor-pointer rounded-full"
+            aria-label="Мои выписки"
+            :data-uploaded="r.day !== null"
+            data-my-uploads
+            @click="uploadsOpen = true"
+          >
+            <Avatar :id="r.person.id" :name="r.person.name" :size="34" :class="r.day === null && 'opacity-35'" />
+            <span v-if="r.day !== null" class="absolute -bottom-[3px] -right-[3px] grid size-4 place-items-center rounded-full border-2 border-canvas bg-ok text-surface" aria-hidden="true">
+              <PhCheck :size="9" weight="bold" />
+            </span>
+          </button>
+          <span v-else class="relative shrink-0" :title="r.person.name" :data-uploaded="r.day !== null" :data-partner="r.person.id">
+            <Avatar :id="r.person.id" :name="r.person.name" :size="34" :class="r.day === null && 'opacity-35'" />
+            <span v-if="r.day !== null" class="absolute -bottom-[3px] -right-[3px] grid size-4 place-items-center rounded-full border-2 border-canvas bg-ok text-surface" aria-hidden="true">
+              <PhCheck :size="9" weight="bold" />
+            </span>
           </span>
-          <Avatar :id="r.person.id" :name="r.person.name" />
-          <span class="min-w-0 flex-1 truncate text-ink">{{ r.person.name }}</span>
-          <span class="type-meta">{{ r.day ?? 'ещё нет' }}</span>
-        </component>
+        </template>
+        <template v-if="canUpload">
+          <button
+            v-if="!mineIn"
+            ref="uploadButton"
+            type="button"
+            class="press flex h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-pill bg-brand text-brand-ink px-4 text-[15px] font-bold disabled:opacity-50"
+            :disabled="reading"
+            data-upload="lead"
+            @click="fileInput?.click()"
+          >
+            <PhPlus :size="16" weight="bold" />{{ reading ? 'Читаем…' : 'Загрузить' }}
+          </button>
+          <button
+            v-else
+            ref="uploadButton"
+            type="button"
+            class="press grid size-[34px] shrink-0 cursor-pointer place-items-center rounded-full border-2 border-dashed border-ink-3 text-ink-2 disabled:opacity-50"
+            aria-label="Загрузить выписку"
+            :disabled="reading"
+            data-upload="quiet"
+            @click="fileInput?.click()"
+          >
+            <PhPlus :size="16" weight="bold" />
+          </button>
+        </template>
+        <button
+          v-if="queue.length"
+          type="button"
+          class="press ml-auto flex shrink-0 cursor-pointer items-center gap-1.5 rounded-pill bg-ok-soft px-[11px] py-1.5 text-[14px] font-bold text-ok num"
+          :aria-label="`Вопросы: ${queue.length}`"
+          data-bang
+          @click="questionsOpen = true"
+        >
+          <span class="grid size-[18px] place-items-center rounded-full bg-ok text-[12px] text-surface" aria-hidden="true">!</span>{{ queue.length }}
+        </button>
+        <span v-else class="ml-auto" />
+        <button
+          type="button"
+          class="press grid size-[34px] shrink-0 cursor-pointer place-items-center rounded-[10px] bg-surface-2 text-ink-2"
+          :aria-label="view === 'list' ? 'Плитками' : 'Списком'"
+          data-view-toggle
+          @click="toggleView"
+        >
+          <PhSquaresFour v-if="view === 'list'" :size="18" />
+          <PhListBullets v-else :size="18" />
+        </button>
+      </div>
+
+      <!-- Сумма недели: моя, крупно; сравнение с прошлой; ‹ › — недели -->
+      <component :is="view === 'list' ? Card : 'div'" :tight="view === 'list' ? true : undefined" class="flex flex-col gap-1" :class="view === 'tiles' && 'px-1 pb-0.5 pt-1'" data-week-sum>
+        <div class="flex items-center gap-1.5">
+          <button type="button" class="press -ml-1.5 grid size-7 cursor-pointer place-items-center text-ink-3 disabled:opacity-30" :disabled="!canBack" aria-label="Прошлая неделя" @click="turn(-1)">
+            <PhCaretLeft :size="16" />
+          </button>
+          <span class="type-section" data-week-label>{{ weekRangeLabel(mine.range) }}</span>
+          <button type="button" class="press grid size-7 cursor-pointer place-items-center text-ink-3 disabled:opacity-30" :disabled="!canForward" aria-label="Следующая неделя" @click="turn(1)">
+            <PhCaretRight :size="16" />
+          </button>
+        </div>
+        <div class="flex flex-wrap items-baseline gap-2.5">
+          <span class="font-num text-[40px] font-bold leading-none num" :class="mine.total ? 'text-ink' : 'text-ink-3'" data-week-total>{{ money(mine.total) }}</span>
+          <span
+            v-if="mine.total && mine.pct !== null && mine.delta !== 0"
+            class="whitespace-nowrap rounded-pill px-[9px] py-[3px] text-[12.5px] font-bold num"
+            :class="mine.delta > 0 ? 'bg-warn-soft text-warn' : 'bg-ok-soft text-ok'"
+            data-week-delta
+          >
+            {{ mine.delta > 0 ? '↑' : '↓' }} {{ mine.pct }}%
+          </span>
+        </div>
+        <span v-if="view === 'list' && mine.prev > 0" class="type-meta num" data-week-prev>прошлая неделя — {{ money(mine.prev) }}</span>
+        <div v-if="!hasPlan && mine.rows.length" class="pt-1">
+          <Button variant="secondary" size="sm" data-to-plan @click="toMonth">План трат — в «Месяце» ›</Button>
+        </div>
+      </component>
+
+      <!-- Разделы списком: потрачено за неделю, полоса и остаток до конца месяца -->
+      <Card v-if="view === 'list' && mine.rows.length" flush class="px-3.5 py-0.5" data-week-list>
+        <button
+          v-for="r in mine.rows"
+          :key="r.categoryId"
+          type="button"
+          class="press flex w-full cursor-pointer flex-col gap-1.5 border-t border-line py-3 text-left first:border-t-0"
+          :data-row="r.categoryId"
+          @click="sectionFor = r.categoryId"
+        >
+          <span class="flex items-center gap-2.5">
+            <span class="grid size-8 shrink-0 place-items-center rounded-[10px] text-[13px] font-bold text-on-photo" :style="{ background: r.color }" aria-hidden="true">{{ letter(r) }}</span>
+            <span class="min-w-0 flex-1 truncate text-[15.5px] font-semibold text-ink">{{ r.name }}</span>
+            <span class="w-4 text-center text-[12px] font-extrabold" :class="r.arrow === 'up' ? 'text-warn' : 'text-ok'" :data-arrow="r.arrow ?? ''" aria-hidden="true">
+              {{ r.arrow === 'up' ? '↑' : r.arrow === 'down' ? '↓' : '' }}
+            </span>
+            <span class="font-num text-[16px] font-bold num text-ink" data-amount>{{ plain(r.amount) }}</span>
+          </span>
+          <template v-if="r.plan !== null && r.rest !== null">
+            <span class="ml-[42px] block h-1.5 overflow-hidden rounded-pill bg-track">
+              <i class="block h-full rounded-pill" :style="{ width: `${barShare(r)}%`, background: r.low ? 'var(--warn)' : r.color }" />
+            </span>
+            <span class="ml-[42px] text-[12.5px] text-ink-3 num" data-rest>
+              <template v-if="r.rest >= 0">на {{ restMonth }} осталось <b class="font-semibold" :class="r.low ? 'text-warn' : 'text-ink-2'">{{ plain(r.rest) }}</b> из {{ plain(r.plan) }}</template>
+              <template v-else>на {{ restMonth }} сверх плана <b class="font-semibold text-warn">{{ plain(-r.rest) }}</b></template>
+            </span>
+          </template>
+          <span v-else-if="hasPlan && r.categoryId !== UNKNOWN_CATEGORY" class="ml-[42px] text-[12.5px] text-ink-3" data-rest>вне плана</span>
+        </button>
       </Card>
-      <!-- За неделю никто не загружал — карточки нет (без «0 ₸»); viewer видит пустое состояние, участник — загрузку ниже. -->
-      <WeekTotal v-if="pic.uploaded.length" v-bind="weekTotalProps" />
-      <Card v-else-if="!canUpload"><EmptyState title="Картины недели пока нет" /></Card>
+
+      <!-- Разделы плитками: кольцо — сколько потрачено от плана месяца -->
+      <div v-else-if="view === 'tiles' && mine.rows.length" class="grid grid-cols-2 gap-2.5" data-week-tiles>
+        <button
+          v-for="r in mine.rows"
+          :key="r.categoryId"
+          type="button"
+          class="press flex min-w-0 cursor-pointer flex-col gap-2 rounded-[22px] border border-card-border bg-surface p-3.5 text-left"
+          :data-row="r.categoryId"
+          @click="sectionFor = r.categoryId"
+        >
+          <span class="flex h-11 w-full items-center justify-between">
+            <span class="grid size-8 shrink-0 place-items-center rounded-[10px] text-[13px] font-bold text-on-photo" :style="{ background: r.color }" aria-hidden="true">{{ letter(r) }}</span>
+            <svg v-if="r.plan !== null" class="size-11" viewBox="0 0 44 44" aria-hidden="true">
+              <circle cx="22" cy="22" r="17" fill="none" stroke="var(--track)" stroke-width="6" />
+              <circle
+                cx="22"
+                cy="22"
+                r="17"
+                fill="none"
+                :stroke="r.low ? 'var(--warn)' : r.color"
+                stroke-width="6"
+                stroke-linecap="round"
+                :stroke-dasharray="`${((RING * barShare(r)) / 100).toFixed(1)} ${RING.toFixed(1)}`"
+                transform="rotate(-90 22 22)"
+              />
+            </svg>
+          </span>
+          <span class="font-num text-[22px] font-bold leading-none num text-ink" data-amount>{{ plain(r.amount) }}</span>
+          <span class="text-[12px] text-ink-3 num">
+            {{ r.name }}<span v-if="r.arrow === 'up' || r.arrow === 'down'" :class="r.arrow === 'up' ? 'text-warn' : 'text-ok'"> · {{ r.arrow === 'up' ? '↑' : '↓' }}</span>
+            <span v-if="r.plan !== null && r.rest !== null" :class="r.low && 'text-warn'" data-rest> · {{ r.rest >= 0 ? `ост. ${plain(r.rest)}` : `сверх ${plain(-r.rest)}` }}</span>
+            <span v-else-if="hasPlan && r.categoryId !== UNKNOWN_CATEGORY" data-rest> · вне плана</span>
+          </span>
+        </button>
+      </div>
+
+      <!-- Тренд 8 недель — свёрнут -->
+      <div v-if="trendMax > 0" data-week-trend>
+        <button
+          type="button"
+          class="press flex w-full cursor-pointer items-center justify-between bg-surface px-4 py-3.5 text-left text-[15px] font-semibold text-ink-2"
+          :class="trendOpen ? 'rounded-t-[20px]' : 'rounded-[20px]'"
+          :aria-expanded="trendOpen"
+          @click="trendOpen = !trendOpen"
+        >
+          <span>8 недель</span>
+          <PhCaretRight :size="15" class="text-ink-3 transition-transform" :class="trendOpen && 'rotate-90'" />
+        </button>
+        <div v-if="trendOpen" class="flex h-[110px] items-end gap-[7px] rounded-b-[20px] bg-surface px-4 pb-3.5 pt-1" data-trend-bars>
+          <div v-for="(t, i) in trend" :key="t.week" class="flex h-full flex-1 flex-col items-center justify-end gap-1">
+            <em v-if="t.amount > 0 && (i === trend.length - 1 || t.amount === trendMax)" class="text-[10px] not-italic text-ink-3 num">{{ Math.round(t.amount / 1000) }}к</em>
+            <i class="block w-full rounded-b-[3px] rounded-t-[6px]" :class="i === trend.length - 1 ? 'bg-brand' : 'bg-surface-3'" :style="{ height: `${Math.round((t.amount / trendMax) * 70)}%` }" />
+            <span class="text-[10.5px] text-ink-3 num">{{ trendDay(t.from) }}</span>
+          </div>
+        </div>
+      </div>
     </template>
 
-    <!-- «Остались деньги?» — коротко «Отложено» на месте карточки -->
-    <Card v-if="restSaved !== null" class="fx-in flex flex-col gap-1 border-ok" aria-live="polite">
-      <span class="type-label">Отложено</span>
-      <span class="type-big-md num text-ink">{{ money(restSaved) }}</span>
-    </Card>
+    <!-- Разбор: незнакомые продавцы черновика — пачкой на экране (Р-58) -->
+    <UnknownBatch v-if="store.draft && decision?.kind === 'unknownBatch'" :groups="decision.groups ?? []" :progress="progress" @answer="answerBatch" @later="defer(decision!)" />
 
-    <!-- Одно решение за раз (Р-43): первое из очереди `decisionQueue`; незнакомые продавцы — пачкой (Р-58) -->
-    <UnknownBatch v-else-if="decision?.kind === 'unknownBatch'" :groups="decision.groups ?? []" :progress="progress" @answer="answerBatch" @later="defer(decision!)" />
-    <DecisionCard
-      v-else-if="decision"
-      :key="decision.key"
-      lead
-      :eyebrow="decision.kind === 'allocate'"
-      :question="decision.question"
-      :meta="decision.kind === 'allocate' ? '' : decision.meta"
-      :progress="progress"
-      :actions="decisionActions"
-      @primary="onPrimary(decision)"
-      @secondary="onSecondary(decision)"
-      @ghost="onGhost(decision)"
-    >
-      <template v-if="decision.kind === 'keep'" #inner>{{ cancelling ? decision.cancel?.inner : decision.inner }}</template>
-      <template v-else-if="decision.kind === 'monthEnd'" #inner>
-        <NumField v-model="restAmount" placeholder="50 000" aria-label="Сколько осталось, ₸" />
-      </template>
-      <!-- «Пришла зарплата» (макет month-plan.html «Неделя»): сумма, тихое «Обменял»; главное — «К плану месяца» -->
-      <template v-if="decision.kind === 'allocate'">
-        <span v-if="fxOf(decision)" class="-mt-2.5 flex items-baseline gap-2">
-          <span class="type-big num text-ink">{{ moneyIn(fxOf(decision)!.came, fxOf(decision)!.currency) }}</span>
-          <span class="type-meta num">≈ {{ money(decision.amount ?? 0) }}</span>
-        </span>
-        <span v-else class="-mt-2.5 type-big num text-ink">{{ money(decision.amount ?? 0) }}</span>
-        <SalaryExchange v-if="decision.salary" :person-id="decision.salary.person.id" :period="decision.salary.period" />
-      </template>
-      <template v-if="decision.kind === 'allocate'" #actions>
-        <div class="flex w-full flex-col gap-1.5">
-          <Button class="w-full" @click="onPrimary(decision!)">{{ decision.actions.primary }}</Button>
-          <Button variant="ghost" class="w-full" @click="onGhost(decision!)">{{ decision.actions.ghost }}</Button>
-        </div>
-      </template>
-      <!-- «Пришла» и лист «ещё» — SalaryRow (RP-10) -->
-      <SalaryRow v-if="decision.kind === 'salary' && decision.salary" button :person-id="decision.salary.person.id" :period="decision.salary.period" />
-    </DecisionCard>
+    <!-- Вопросы — за «! N» (Р-97): по одному, «N из M», «Потом» откладывает -->
+    <Sheet :open="!store.draft && questionsOpen && (!!decision || restSaved !== null)" title="Вопросы" @close="questionsOpen = false">
+      <!-- «Остались деньги?» — коротко «Отложено» на месте вопроса -->
+      <div v-if="restSaved !== null" class="fx-in flex flex-col gap-1" aria-live="polite" data-rest-saved>
+        <span class="type-label">Отложено</span>
+        <span class="type-big-md num text-ink">{{ money(restSaved) }}</span>
+      </div>
+
+      <!-- Одно решение за раз (Р-43): первое из очереди `decisionQueue`; незнакомые продавцы — пачкой (Р-58) -->
+      <UnknownBatch v-else-if="decision?.kind === 'unknownBatch'" bare :groups="decision.groups ?? []" :progress="progress" @answer="answerBatch" @later="defer(decision!)" />
+      <DecisionCard
+        v-else-if="decision"
+        :key="decision.key"
+        bare
+        :eyebrow="decision.kind === 'allocate'"
+        :question="decision.question"
+        :meta="decision.kind === 'allocate' ? '' : decision.meta"
+        :progress="progress"
+        :actions="decisionActions"
+        @primary="onPrimary(decision)"
+        @secondary="onSecondary(decision)"
+        @ghost="onGhost(decision)"
+      >
+        <template v-if="decision.kind === 'keep'" #inner>{{ cancelling ? decision.cancel?.inner : decision.inner }}</template>
+        <template v-else-if="decision.kind === 'monthEnd'" #inner>
+          <NumField v-model="restAmount" placeholder="50 000" aria-label="Сколько осталось, ₸" />
+        </template>
+        <!-- «Пришла зарплата» (макет month-plan.html «Неделя»): сумма, тихое «Обменял»; главное — «К плану месяца» -->
+        <template v-if="decision.kind === 'allocate'">
+          <span v-if="fxOf(decision)" class="-mt-2.5 flex items-baseline gap-2">
+            <span class="type-big num text-ink">{{ moneyIn(fxOf(decision)!.came, fxOf(decision)!.currency) }}</span>
+            <span class="type-meta num">≈ {{ money(decision.amount ?? 0) }}</span>
+          </span>
+          <span v-else class="-mt-2.5 type-big num text-ink">{{ money(decision.amount ?? 0) }}</span>
+          <SalaryExchange v-if="decision.salary" :person-id="decision.salary.person.id" :period="decision.salary.period" />
+        </template>
+        <template v-if="decision.kind === 'allocate'" #actions>
+          <div class="flex w-full flex-col gap-1.5">
+            <Button class="w-full" @click="onPrimary(decision!)">{{ decision.actions.primary }}</Button>
+            <Button variant="ghost" class="w-full" @click="onGhost(decision!)">{{ decision.actions.ghost }}</Button>
+          </div>
+        </template>
+        <!-- «Пришла» и лист «ещё» — SalaryRow (RP-10) -->
+        <SalaryRow v-if="decision.kind === 'salary' && decision.salary" button :person-id="decision.salary.person.id" :period="decision.salary.period" />
+      </DecisionCard>
+    </Sheet>
 
     <!-- Разбор: одна брендовая «Отправить» и тихая «Отмена» (g2: «Дальше» / «Отмена»; «назад» шапки — то же) -->
     <div v-if="store.draft" class="flex flex-col gap-2 pt-1">
@@ -405,74 +588,7 @@ onMounted(() => {
       <Button variant="ghost" class="w-full" @click="store.cancelDraft()">Отмена</Button>
     </div>
 
-    <template v-else>
-      <!-- Загрузка: брендовая, когда решений нет; при решении — тихая. Механика — в подсказке (правило 12). -->
-      <template v-if="canUpload">
-        <input ref="fileInput" type="file" accept="application/pdf,.pdf" multiple class="hidden" @change="pick" />
-        <div v-if="showUpload" ref="uploadBox" class="flex flex-col items-center gap-2">
-          <Button size="lg" class="w-full" :variant="uploadLead ? 'default' : 'secondary'" :disabled="reading" @click="fileInput?.click()">
-            <PhFileArrowUp :size="18" />
-            {{ reading ? 'Читаем выписку…' : 'Загрузить выписку' }}
-          </Button>
-          <span class="inline-flex items-center gap-1.5 type-meta">PDF из Kaspi или Freedom <Hint>Разбор на телефоне — файл никуда не уходит. На сервер попадают только продавец, дата, сумма и раздел.</Hint></span>
-        </div>
-      </template>
-
-      <!-- Свёрнутые строки (макет: «Разделы за месяц ›», «Прошлые недели ›») — подробности в листе -->
-      <Card v-if="rows.length" flush>
-        <Row :title="`Разделы за ${monthName.toLowerCase()}`" clickable @click="sheet = 'sections'" />
-      </Card>
-      <Card v-if="pastWeeks.length" flush>
-        <Row title="Прошлые недели" clickable @click="sheet = 'past'" />
-      </Card>
-    </template>
-
-    <!-- Разделы за неделю и месяц: раскрытие раздела — свои продавцы и раздел задним числом (CategoryChips) -->
-    <Sheet :open="sheet === 'sections'" :title="`Разделы за ${monthName.toLowerCase()}`" @close="sheet = null">
-      <div class="-mx-5">
-        <div class="grid grid-cols-[1fr_auto_auto] gap-x-3 border-b border-line px-5 py-2 text-[12px] text-ink-3">
-          <span>Раздел</span><span class="w-[86px] text-right">Неделя</span><span class="w-[96px] text-right">{{ monthName }}</span>
-        </div>
-        <template v-for="r in rows" :key="r.categoryId">
-          <button
-            type="button"
-            class="grid w-full grid-cols-[1fr_auto_auto] gap-x-3 px-5 py-2.5 text-left text-[13.5px] cursor-pointer hover:bg-surface-2"
-            @click="openCategory = openCategory === r.categoryId ? null : r.categoryId"
-          >
-            <span :class="r.categoryId === UNKNOWN_CATEGORY ? 'text-ink-3' : 'text-ink'">{{ categoryName(r.categoryId) }}</span>
-            <span class="w-[86px] text-right num text-ink-2">{{ r.week ? money(r.week) : '—' }}</span>
-            <span class="w-[96px] text-right num text-ink">{{ money(r.month) }}</span>
-          </button>
-          <div v-if="openCategory === r.categoryId" class="flex flex-col gap-3 border-y border-line bg-surface-2 px-5 py-3">
-            <p v-if="!openGroups.length" class="text-[12.5px] text-ink-3">Здесь только ваши траты — у партнёра они в его телефоне.</p>
-            <div v-for="g in openGroups" :key="groupKey(g)" class="flex flex-col gap-2">
-              <div class="flex items-baseline justify-between gap-2 text-[13px]">
-                <span class="min-w-0 truncate text-ink">{{ g.label }}</span>
-                <span class="shrink-0 num text-ink-3">{{ money(g.amount) }}</span>
-              </div>
-              <CategoryChips v-if="canUpload" :counterparty="!!g.match.counterparty" @choose="(to) => answerLater(g, to)" />
-            </div>
-          </div>
-        </template>
-        <div class="grid grid-cols-[1fr_auto_auto] gap-x-3 border-t border-line px-5 pt-2 text-[13.5px] font-semibold">
-          <span class="text-ink">Всего</span>
-          <span class="w-[86px] text-right num text-ink">{{ money(totals.week) }}</span>
-          <span class="w-[96px] text-right num text-ink">{{ money(totals.month) }}</span>
-        </div>
-      </div>
-    </Sheet>
-
-    <!-- Прошлые недели (g2): даты, чьи выписки, сумма -->
-    <Sheet :open="sheet === 'past'" title="Прошлые недели" @close="sheet = null">
-      <div class="flex flex-col">
-        <div v-for="(w, i) in pastWeeks" :key="w.key" class="fx-in flex items-center gap-3 border-t border-line py-3 first:border-t-0 first:pt-0 last:pb-0" :style="{ '--i': i }">
-          <span class="min-w-0 flex-1">
-            <span class="block font-medium text-ink">{{ w.label }}</span>
-            <span v-if="w.meta" class="block type-meta">{{ w.meta }}</span>
-          </span>
-          <span class="money whitespace-nowrap text-ink">{{ money(w.total) }}</span>
-        </div>
-      </div>
-    </Sheet>
+    <SectionSheet :row="sectionRow" :week="week" :month-name="restMonth" @close="sectionFor = null" />
+    <UploadsSheet :open="uploadsOpen" :me="me" :busy="reading" @close="uploadsOpen = false" @upload="pickFile" />
   </div>
 </template>

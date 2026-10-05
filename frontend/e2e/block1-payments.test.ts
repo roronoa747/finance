@@ -27,6 +27,9 @@ const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+
  * Блок 1 развития: «Оплатил», досрочка, подписки. Два телефона — два стора Pinia
  * на одном фейковом сервере с ревизиями и 409, как в two-clients-sync.
  */
+/** «Неделя» с открытым листом вопросов «! N» (Блок 15, Р-97). */
+const sheetOpen = () => [screenMixin({ questionsOpen: true })]
+
 describe('e2e / Блок 1 — отметки оплат на двух телефонах', () => {
   let server: FakeServer
   const T0 = '2026-09-01T00:00:00.000Z'
@@ -175,7 +178,7 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     const B = await phone(server)
 
     // «Оставить?» — карточка решения «Недели» (пивот 3, Р-43; на «Мечтах» решений нет): тексты DESIGN.md §6.
-    let overview = await screen(A.pinia, Statements, '/week')
+    let overview = await screen(A.pinia, Statements, '/week', undefined, sheetOpen())
     expect(overview).toContain('Оставить подписку iCloud?')
     expect(overview).toContain('продлится 5 октября')
     expect(overview).not.toContain('Оставить подписку Slack?')
@@ -183,14 +186,14 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     setActivePinia(A.pinia)
     at('2026-09-24T08:00:00Z')
     A.store.keepSubscription('icloud')
-    overview = await screen(A.pinia, Statements, '/week')
+    overview = await screen(A.pinia, Statements, '/week', undefined, sheetOpen())
     expect(overview).toContain('Оставить подписку Netflix?')
     expect(overview).toContain('каждый месяц')
 
     // Партнёр тот же вопрос не получает — ответ в общем документе.
     await A.store.syncHousehold(A.client)
     await B.store.pullHousehold(B.client)
-    overview = await screen(B.pinia, Statements, '/week')
+    overview = await screen(B.pinia, Statements, '/week', undefined, sheetOpen())
     expect(overview).not.toContain('Оставить подписку iCloud?')
     expect(overview).toContain('Оставить подписку Netflix?')
 
@@ -199,7 +202,7 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     B.store.removeObligation('netflix')
     await B.store.syncHousehold(B.client)
     await A.store.pullHousehold(A.client)
-    overview = await screen(A.pinia, Statements, '/week')
+    overview = await screen(A.pinia, Statements, '/week', undefined, sheetOpen())
     expect(overview).not.toContain('Оставить подписку')
     // Прежние «Платежи» — под «Подробнее» (Блок 14); план месяца выше показывает подписки поштучно.
     const page = await screen(A.pinia, Money, '/money')

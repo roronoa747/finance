@@ -18,10 +18,12 @@ withDefaults(
     disabled?: boolean
     /** Главное действие экрана (правило 12): рамка `--brand`, как у карточки решения макета «А · Ритуал». */
     lead?: boolean
+    /** Внутри листа (вопросы «Недели», Р-97): без своей рамки, фона и отступов — их даёт лист. */
+    bare?: boolean
     /** Вопрос — подписью (`type-label`), когда главное в карточке — число ниже (макет «как обычно», B2C-58). */
     eyebrow?: boolean
   }>(),
-  { meta: '', progress: null, actions: null, disabled: false, lead: false, eyebrow: false },
+  { meta: '', progress: null, actions: null, disabled: false, lead: false, bare: false, eyebrow: false },
 )
 
 const emit = defineEmits<{
@@ -32,7 +34,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <section class="flex flex-col gap-3.5 rounded-card border bg-surface p-5 text-left" :class="lead ? 'border-brand' : 'border-card-border'" aria-live="polite">
+  <section class="flex flex-col gap-3.5 text-left" :class="bare ? '' : ['rounded-card border bg-surface p-5', lead ? 'border-brand' : 'border-card-border']" aria-live="polite">
     <div v-if="progress" class="type-meta flex items-center gap-2.5">
       <ProgressBar :value="progress.k ? progress.n / progress.k : 0" :height="4" class="flex-1" />
       <span class="num shrink-0">{{ progress.n }} из {{ progress.k }}</span>

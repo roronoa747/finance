@@ -176,6 +176,11 @@ export function weekdayShort(iso: string | null | undefined): string {
   return Number.isNaN(t) ? '' : WEEKDAYS_SHORT[almaty(new Date(t)).getUTCDay()]
 }
 
+/** День с днём недели — «18 октября, вс» (лист раздела «Недели»: операции по дням). */
+export function dayWeekdayLabel(iso: string): string {
+  return `${dayLabel(Number(iso.slice(8, 10)), iso.slice(0, 7))}, ${weekdayShort(iso)}`
+}
+
 /**
  * Диапазон недели для заголовка «Эта неделя · 21–27 сентября» (главный и «Неделя»): один
  * месяц — «21–27 сентября», на стыке — «29 сентября – 5 октября».
