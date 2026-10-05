@@ -2616,11 +2616,12 @@ export type PlanMonth = {
 const goalHaveBefore = (g: Goal, period: string) =>
   goalHave(g.seed, (g.movements ?? []).filter((m) => monthKey(new Date(m.date)) < period))
 
-/** Сколько положили в цель за месяц `period`. */
+/**
+ * Сколько положили в цель за месяц `period` — нетто движений месяца, не ниже нуля: снятие «Не отложено» вычитается
+ * (одно определение для `put` плана, списка дел `planPuts` и сводки прошлого месяца — ревью frontend Б15, Н-3).
+ */
 const goalPutIn = (g: Goal, period: string) =>
-  (g.movements ?? [])
-    .filter((m) => m.amount > 0 && monthKey(new Date(m.date)) === period)
-    .reduce((a, m) => a + m.amount, 0)
+  Math.max(0, (g.movements ?? []).filter((m) => monthKey(new Date(m.date)) === period).reduce((a, m) => a + m.amount, 0))
 
 /** План и факт по месяцам (Р-6): с месяца старта по `key` включительно. */
 export function planMonths(plan: DebtPlan, state: PlanState, key: string): PlanMonth[] {
@@ -2909,7 +2910,7 @@ export type PlanQueueItem = {
   have: number
   /** Цель — её сумма, фонд — порог (месяцы × траты месяца), долг — остаток на начало месяца. */
   need: number
-  /** Уже отложено в этом месяце (взносы цели, досрочки долга). */
+  /** Уже отложено в этом месяце (взносы цели за вычетом снятий — `goalPutIn`, досрочки долга). */
   put: number
   /** Месяц, к которому соберём или закроем при той же очереди и суммах; null — не соберём (пауза, взнос 0). */
   doneMonth: string | null
@@ -3436,9 +3437,9 @@ export type PlanPut = {
 }
 
 /**
- * Список дел «отложить» (Р-97): строки очереди, которым план даёт сумму в этом месяце. Отложено — движения цели
- * за месяц со знаком (снятие «Не отложено» возвращает строку в дела; `put` плана месяца считает только взносы и
- * не меняется), у долга — досрочки месяца. План считает от начала месяца — отметка сумму строки не меняет.
+ * Список дел «отложить» (Р-97): строки очереди, которым план даёт сумму в этом месяце. Отложено — `goalPutIn`, нетто
+ * движений цели за месяц (снятие «Не отложено» возвращает строку в дела), у долга — досрочки месяца. План считает от
+ * начала месяца — отметка сумму строки не меняет.
  */
 export function planPuts(state: MonthPlanState, plan: MonthPlan): PlanPut[] {
   const goals = new Map(liveGoals(state.goals ?? []).map((g) => [g.id, g]))
@@ -3449,9 +3450,7 @@ export function planPuts(state: MonthPlanState, plan: MonthPlan): PlanPut[] {
     .filter((q) => !q.paused && q.given > 0)
     .map((q): PlanPut => {
       const g = q.goalId ? goals.get(q.goalId) : undefined
-      const put = g
-        ? Math.max(0, (g.movements ?? []).filter((m) => monthKey(new Date(m.date)) === plan.key).reduce((s, m) => s + m.amount, 0))
-        : q.put
+      const put = g ? goalPutIn(g, plan.key) : q.put
       const left = Math.max(0, q.given - put)
       return {
         id: q.id, kind: q.kind, goalId: q.goalId, ...(q.creditId ? { creditId: q.creditId } : {}), ...(q.planId ? { planId: q.planId } : {}),

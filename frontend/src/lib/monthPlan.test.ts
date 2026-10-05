@@ -501,9 +501,28 @@ describe('planPuts — «Отложил» ✓ у целей (Р-97)', () => {
     // Прошлые месяцы не в счёт.
     const old = family({ goals: family().goals!.map((g) => (g.id === 'trip' ? { ...g, movements: [{ id: 'm0', date: '2026-09-12T07:00:00.000Z', amount: 60_000, by: 'a' as const }] } : g)) })
     expect(trip(old)).toMatchObject({ put: 0, done: false })
-    // План месяца при этом не меняется: `put` плана — только взносы (как в Блоке 14).
+    // `put` плана — то же нетто (ревью frontend Б15, Н-3); сумма плана от него не зависит.
     const plan = monthPlan(withTrip([move('m1', 60_000), move('m2', -60_000)]), ctx)
-    expect(byId(plan, 'trip')).toMatchObject({ given: 60_000, put: 60_000 })
+    expect(byId(plan, 'trip')).toMatchObject({ given: 60_000, put: 0 })
+  })
+
+  it('ревью frontend Б15, Н-3: «Отложил» → «Не отложено» → «Отложил» — отложено один взнос; после «Не отложено» месяц снова ждёт', () => {
+    const again = withTrip([move('m1', 40_000), move('m2', -40_000), move('m3', 40_000)])
+    expect(monthPlanPast(again, KEY).goals.find((g) => g.goalId === 'trip')?.amount).toBe(40_000)
+    expect(byId(monthPlan(again, ctx), 'trip').put).toBe(40_000)
+    // Снятие сверх положенного за месяц — не ниже нуля.
+    expect(byId(monthPlan(withTrip([move('m1', -10_000)]), ctx), 'trip').put).toBe(0)
+    // Ильяс отложил все свои строки, затем «Не отложено» у Японии: «есть что отложить» (`planSave`) — Япония.
+    const all = family({
+      goals: family().goals!.map((g) => {
+        const m = ({ trip: [move('m1', 60_000), move('m2', -60_000)], res: [move('m3', 50_000)], car: [move('m4', 100_000)] } as Record<string, ReturnType<typeof move>[]>)[g.id]
+        return m ? { ...g, have: g.have + m.reduce((x, y) => x + y.amount, 0), movements: m } : g
+      }),
+    })
+    const plan = monthPlan(all, ctx)
+    expect(planSave(plan, 'a')?.contributions).toEqual([{ goalId: 'trip', amount: 60_000 }])
+    // Суммы очереди от отложенного не зависят.
+    expect(plan.queue.map((q) => q.given)).toEqual(monthPlan(family(), ctx).queue.map((q) => q.given))
   })
 
   it('«Не отложено» снимает только положенное записями плана этого месяца, не больше отложенного', () => {

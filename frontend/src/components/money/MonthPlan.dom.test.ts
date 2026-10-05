@@ -487,6 +487,27 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(q('[data-put-all]')).not.toBeNull()
   })
 
+  it('прошлый месяц: всё отложили, затем «Не отложено» — открывается планом с «Отложил всё», не сводкой (ревью frontend Н-3)', async () => {
+    const august = paid('salary', 'a', '2026-08', 700_000, { id: 'sal-a-08', accountId: null, at: '2026-08-10T05:00:00.000Z' })
+    const doc = familyDoc()
+    const finance = await open('member', { ...doc, payments: [...(doc.payments ?? []), august] }, '/month?month=2026-08')
+    await flush()
+    // Ильяс в августе положил в каждую свою строку её сумму и снял обратно.
+    const mine = finance.monthPlanOf('2026-08').queue.filter((x) => x.payer === 'a' && x.goalId && x.given > 0)
+    expect(mine.length).toBeGreaterThan(0)
+    for (const x of mine) {
+      finance.contribute(x.goalId!, x.given, 'a', 'по плану', '2026-08-20T07:00:00.000Z')
+      finance.withdraw(x.goalId!, x.given, 'a', 'не отложено', '2026-08-21T07:00:00.000Z')
+    }
+    app?.unmount()
+    document.body.innerHTML = ''
+    await open('member', JSON.parse(JSON.stringify(finance.householdDoc)), '/month?month=2026-08')
+    await flush()
+    expect(q('[data-month-past]')).toBeNull()
+    await press(section('queue'))
+    expect(q('[data-put-all]')).not.toBeNull()
+  })
+
   it('viewer — тот же план без переключателя вида, выключателей, ⋮⋮, плательщиков, листов и кнопок', async () => {
     const finance = await open('viewer')
     expect(txt(q('[data-rest]'))).toBe(norm(money(planOf(finance).rest)))
