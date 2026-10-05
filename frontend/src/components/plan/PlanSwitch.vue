@@ -5,9 +5,10 @@ import { writePlanView, type PlanView } from '@/lib/storage'
 /**
  * Переключатель вкладки «План» — «Неделя | Месяц» (Р-89; макет week-month.html `.seg`): один на оба экрана.
  * Выбор запоминается на устройстве (Р-99) — вкладка «План» открывает последний; переход — `router.replace`:
- * «назад» ведёт на прошлую вкладку, а не перебирает виды. `dot` — точка на «Месяце»: там ждёт действие (Р-97).
+ * «назад» ведёт на прошлую вкладку, а не перебирает виды. `dot` — точка на «Месяце»: там ждёт действие (Р-97);
+ * `month` — месяц, где оно ждёт, если это не текущий (своя зарплата прошлого месяца не отложена): «Месяц» откроет его.
  */
-const props = defineProps<{ view: PlanView; dot?: boolean }>()
+const props = defineProps<{ view: PlanView; dot?: boolean; month?: string | null }>()
 const router = useRouter()
 
 const OPTIONS: { value: PlanView; label: string; to: string }[] = [
@@ -18,7 +19,7 @@ const OPTIONS: { value: PlanView; label: string; to: string }[] = [
 function pick(o: (typeof OPTIONS)[number]) {
   if (o.value === props.view) return
   writePlanView(o.value)
-  void router.replace(o.to)
+  void router.replace(o.value === 'month' && props.month ? { path: o.to, query: { month: props.month } } : o.to)
 }
 </script>
 

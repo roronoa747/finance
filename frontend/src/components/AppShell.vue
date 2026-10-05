@@ -15,8 +15,7 @@ import {
 } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { useOperationsStore } from '@/stores/operations'
-import { monthKey, MONTHS_NOM, parseMonthKey, weekRangeLabel } from '@/lib/dates'
+import { monthKey, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
 import { readPlanView } from '@/lib/storage'
 import { liveGoals } from '@/lib/finance'
 import SyncBadge from '@/components/SyncBadge.vue'
@@ -42,7 +41,6 @@ const route = useRoute()
 const router = useRouter()
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
-const ops = useOperationsStore()
 
 const addOpen = ref(false)
 provide('ff-shell-actions', true)
@@ -51,21 +49,9 @@ const people = computed(() => financeStore.people.filter((p) => !p.deletedAt))
 const names = computed(() => people.value.map((p) => p.name).join(' и '))
 const monthName = computed(() => MONTHS_NOM[parseMonthKey(monthKey()).month])
 
-const BANKS: Record<string, string> = { kaspi: 'Kaspi', freedom: 'Freedom' }
-
-/** Разбор выписки (g2 «Разбор — предпросмотр»): банк и период файлов черновика. */
-const draftSub = computed(() => {
-  const files = ops.draft?.files ?? []
-  if (!files.length) return undefined
-  const from = files.map((f) => f.parsed.from).sort()[0]
-  const to = files.map((f) => f.parsed.to).sort().at(-1)!
-  return `${[...new Set(files.map((f) => BANKS[f.parsed.bank] ?? f.parsed.bank))].join(', ')} · ${weekRangeLabel({ from, to })}`
-})
-
 /** Вкладки — корни (у «Денег» — все три квадрата, пивот 3); остальное — вложенные экраны со стрелкой «назад». */
 const ROOTS = ['/', '/week', '/month', '/money', '/money/debts', '/money/history']
-// «Разбор» выписки живёт на /week, но корнем не считается: «назад» слева, как в g2 (хвост критика Б9).
-const isRoot = computed(() => ROOTS.includes(route.path) && !(route.path === '/week' && !!ops.draft))
+const isRoot = computed(() => ROOTS.includes(route.path))
 /** Экраны-потоки без нижней навигации (в макетах — без вкладок): цель, желания, настройки. */
 const noTabs = computed(() => {
   const p = route.path
@@ -75,8 +61,6 @@ const noTabs = computed(() => {
 /** «Назад»: по истории, а открытый по ссылке экран — к своему корню. */
 function goBack() {
   const p = route.path
-  // «Назад» разбора — как «Отмена»: черновик сбрасывается, ничего не отправлено.
-  if (p === '/week' && ops.draft) return ops.cancelDraft()
   if (typeof window !== 'undefined' && window.history.state?.back) router.back()
   else void router.push(p.startsWith('/week') ? '/week' : p === '/settings/me' ? '/settings' : '/')
 }
@@ -86,8 +70,7 @@ const header = computed<{ title: string; sub?: string }>(() => {
   const p = route.path
   if (p === '/') return { title: 'Мечты', sub: `${monthName.value} · ${names.value}` }
   // «План» — одна вкладка на «Неделю» и «Месяц» (Р-89): даты недели и месяц листаются на самих экранах.
-  if (p.startsWith('/week')) return ops.draft ? { title: 'Разбор', sub: draftSub.value } : { title: 'План', sub: names.value }
-  if (p === '/month') return { title: 'План', sub: names.value }
+  if (p.startsWith('/week') || p === '/month') return { title: 'План', sub: names.value }
   // «Деньги» — один экран с тремя квадратами (пивот 3, Р-31): шапка одна на все.
   if (p === '/money' || p.startsWith('/money/')) return { title: 'Деньги', sub: `${monthName.value} · ${names.value}` }
   if (p === '/goals/new') return { title: 'Новая мечта' }
@@ -204,6 +187,9 @@ function navigateAndClose(to: string) {
         </div>
       </RouterView>
     </main>
+
+    <!-- Тосты экранов (`kit/Toast`) — над капсулой вкладок (макет week-month.html `.toast`). -->
+    <div id="shell-toast" class="absolute inset-x-4 z-20 flex flex-col gap-2 empty:hidden" :class="noTabs ? 'bottom-4' : 'bottom-[84px]'" />
 
     <Tabs v-if="!noTabs" :items="tabs" :plus="!authStore.isViewer" plus-label="Добавить" @plus="addOpen = true" />
 

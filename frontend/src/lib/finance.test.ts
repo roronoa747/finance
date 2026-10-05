@@ -119,12 +119,10 @@ import {
   planSave,
   keepCard,
   freedChange,
-  freedQuestion,
   weekTag,
   wishTotal,
   moneyArticlesOf,
   moneySettingsOf,
-  type DecisionState,
   duesTag,
   duesTotals,
   loadTag,
@@ -2609,23 +2607,31 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
     })
   })
 
-  describe('decisionQueue', () => {
+  describe('decisionQueue — вопросы «Недели» за «! N» (Р-97)', () => {
     const base = { people, obligations: [rent], credits: [loan], goals: [goal('g', 'Япония', { need: 1_800_000, have: 1_116_000 })], payments: [] as Payment[] }
     const sub: Obligation = { id: 'nf', name: 'Netflix', note: '', day: 3, category: 'd4', versions: [{ from: '2000-01', amount: 4_990 }], updatedAt: T }
-    // Снижение с ноября: 220 000 → 180 000 — «освободится 40 000 ₸ в месяц».
+    // Снижение с ноября: 220 000 → 180 000 — «освободится 40 000 ₸ в месяц» (дело «Месяца», не вопрос «Недели»).
     const cheaper: Obligation = { ...rent, id: 'flat', name: 'Квартира', versions: [{ from: '2000-01', amount: 220_000 }, { from: '2026-11', amount: 180_000 }] }
     const candidate = (kind: MatchCandidate['kind'], targetId: string): MatchCandidate => ({
       opId: `op-${targetId}`, kind, targetId, period: '2026-09', amount: 58_000, confidence: 'likely',
       question: `Похоже, это платёж по ${targetId} — отметить?`, meta: `${money(58_000)} · 15 сентября`, categoryId: null,
     })
     const group = (label: string, amount: number) => ({ match: { merchant: label.toLowerCase() }, label, count: 2, amount })
-    /** Первое решение очереди — то, что «Неделя» показывает первым (бывшее ближайшее решение главного). */
-    const first = (state: Parameters<typeof decisionQueue>[0], ctx: Parameters<typeof decisionQueue>[1]) => decisionQueue(state, ctx)[0] ?? null
     const kinds = (q: Decision[]) => q.map((d) => d.kind)
+    /**
+     * Что «Месяц» знает о своей зарплате (вне очереди «Недели»): пришла по выписке и ждёт «Отложил»
+     * (`salaryToAllocate`) или пора спросить «пришла?» (`salaryAsk`) — одна из двух, как было у карточки «Недели».
+     */
+    const salaryNow = (state: Parameters<typeof salaryToAllocate>[0], me: 'a' | 'b' | undefined, at: { day: number; key: string }) => {
+      const unallocated = salaryToAllocate(state, me, at)
+      if (unallocated) return `allocate:${unallocated.period}`
+      const near = salaryAsk(state, me, at)
+      return near ? `salary:${near.key}` : 'undefined:undefined'
+    }
 
-    it('порядок Р-43 на фикстуре со всеми видами: сопоставления → продавцы → подписка → зарплата → освободится → остались деньги; шага плана нет', () => {
-      // 28 сентября (последние три дня): у Даны (день 20-го) зарплата этого месяца прошла — «пришла?» не спрашивается,
-      // поэтому зарплата — «Пришла зарплата» из выписки Ильяса (плана статей нет — «Разложить» ведёт в «Ваш порядок»).
+    it('состав и порядок: сопоставления → продавцы пачкой → подписка → остались деньги; зарплаты, «освободится» и шага плана нет', () => {
+      // 28 сентября (последние три дня месяца): зарплата Ильяса пришла по выписке и не отложена, аренда уменьшится с
+      // ноября, идёт план «Сначала долги» — всё это дела «Месяца», в вопросы «Недели» не попадает.
       const end = { day: 28, key: '2026-09' }
       const stmt: Payment = { id: 's', kind: 'salary', targetId: 'a', period: '2026-09', amount: 700_000, accountId: null, by: 'a', at: T, updatedAt: T, source: 'statement', opId: 'op-s' }
       const plan: DebtPlan = {
@@ -2633,76 +2639,63 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
         creditIds: ['loan'], months: 24, lump: 0, forecast: { gain: 0, savedInterest: 0, debtFreeMonth: null }, result: null, updatedAt: T,
       }
       const state = { ...base, obligations: [rent, sub, cheaper], payments: [stmt], plans: [plan] }
+      expect(salaryToAllocate(state, 'a', end)).not.toBeNull()
+      expect(freedChange(liveObligations(state.obligations), '2026-09')!.monthly).toBe(40_000)
       const q = decisionQueue(state, {
-        me: 'a', now: end,
+        now: end,
         matches: [candidate('credit', 'loan'), candidate('obligation', 'rent')],
         unknown: [group('Kiosk', 1_200), group('ИП Абенова', 9_400), group('ИП Ким', 3_300)],
       })
       // Блок 12 (Р-58): все незнакомые — одна пачка на месте прежних «куда отнести?» по одному.
-      expect(kinds(q)).toEqual(['match', 'match', 'unknownBatch', 'keep', 'allocate', 'freed', 'monthEnd'])
+      expect(kinds(q)).toEqual(['match', 'match', 'unknownBatch', 'keep', 'monthEnd'])
       // Ключи разные — «Потом» и «N из M» считают по ним.
       expect(new Set(q.map((d) => d.key)).size).toBe(q.length)
 
-      expect(q[0]).toMatchObject({ question: 'Похоже, это платёж по loan — отметить?', to: null, actions: { primary: 'Да, отметить', secondary: 'Нет, это другое', ghost: 'Потом' } })
+      expect(q[0]).toMatchObject({ question: 'Похоже, это платёж по loan — отметить?', actions: { primary: 'Да, отметить', secondary: 'Нет, это другое', ghost: 'Потом' } })
       expect(q[0].match?.targetId).toBe('loan')
-      expect(decisionQueue(base, { me: 'a', now, matches: [candidate('salary', 'a')] })[0].actions).toEqual({ primary: 'Да, зарплата', secondary: 'Нет', ghost: 'Потом' })
+      // «Это зарплата?» — тоже сопоставление: вопрос о строке выписки остаётся на «Неделе».
+      expect(decisionQueue(base, { now, matches: [candidate('salary', 'a')] })[0].actions).toEqual({ primary: 'Да, зарплата', secondary: 'Нет', ghost: 'Потом' })
       // Пачка: ответ — чипы, брендовой кнопки нет; группы — по сумме, сначала крупные; ключ постоянный («Потом» — всей пачке).
-      expect(q[2]).toMatchObject({ key: 'unknownBatch', question: 'Без раздела · 3', meta: money(13_900), to: null, actions: { ghost: 'Потом' } })
+      expect(q[2]).toMatchObject({ key: 'unknownBatch', question: 'Без раздела · 3', meta: money(13_900), actions: { ghost: 'Потом' } })
       expect(q[2].actions.primary).toBeUndefined()
       expect(q[2].groups!.map((g) => g.label)).toEqual(['ИП Абенова', 'ИП Ким', 'Kiosk'])
-      expect(q[3]).toMatchObject({ kind: 'keep', ...keepCard(sub, base.goals, [stmt], end), to: null, obligation: { id: 'nf' } })
-      expect(q[4]).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата · Ильяс', to: '/month', actions: { primary: 'К плану месяца', ghost: 'Потом' }, amount: 700_000 })
-      // «Освободится» — сумма та же, что у карточки плана (`freedChange().monthly`); вход — план месяца (Р-86).
-      const freed = freedChange(liveObligations(state.obligations), '2026-09')!
-      expect(freedQuestion(freed)).toBe(`Освободится ${money(40_000)} в месяц`)
-      expect(q[5]).toMatchObject({ question: freedQuestion(freed), meta: 'Квартира · с ноября', to: '/month', actions: { primary: 'К плану месяца', ghost: 'Потом' } })
-      expect(freed.monthly).toBe(40_000)
-      expect(q[6]).toMatchObject({ ...monthEndCard('2026-09'), to: null })
+      expect(q[3]).toMatchObject({ kind: 'keep', ...keepCard(sub, base.goals, [stmt], end), obligation: { id: 'nf' } })
+      expect(q[4]).toMatchObject({ ...monthEndCard('2026-09') })
     })
 
-    it('пусто: ничего не ждёт; viewer (`canEdit` false) — без решений; без своего слота — без решений о своей зарплате', () => {
-      expect(decisionQueue(base, { me: 'a', now })).toEqual([])
-      const all = { me: 'b' as const, now, matches: [candidate('credit', 'loan')], unknown: [group('Kiosk', 1_200)] }
+    it('пусто: ничего не ждёт; viewer (`canEdit` false) — без вопросов; день зарплаты и «освободится» вопросов не добавляют', () => {
+      expect(decisionQueue(base, { now })).toEqual([])
+      const all = { now, matches: [candidate('credit', 'loan')], unknown: [group('Kiosk', 1_200)] }
       const state = { ...base, obligations: [rent, sub, cheaper] }
-      expect(kinds(decisionQueue(state, all))).toEqual(['match', 'unknownBatch', 'keep', 'salary', 'freed'])
+      // 17 сентября у Даны спрашивалось бы «пришла?» (день 20-го) — теперь это строка зарплаты «Месяца».
+      expect(salaryAsk(state, 'b', now)?.key).toBe('2026-09')
+      expect(kinds(decisionQueue(state, all))).toEqual(['match', 'unknownBatch', 'keep'])
       expect(decisionQueue(state, { ...all, canEdit: false })).toEqual([])
-      expect(kinds(decisionQueue(state, { ...all, me: undefined }))).toEqual(['match', 'unknownBatch', 'keep', 'freed'])
     })
 
-    it('каждое решение уходит после своей записи: отметка зарплаты, «оставить», ответ «остались деньги?», раскладка остатка и «освободится», ответ продавцу', () => {
-      // «Пришла зарплата Дана?» (17-е, день 20-го) → отметка зарплаты — вопроса нет.
-      expect(kinds(decisionQueue(base, { me: 'b', now }))).toEqual(['salary'])
-      const mark: Payment = { id: 'm', kind: 'salary', targetId: 'b', period: '2026-09', amount: 500_000, accountId: null, by: 'b', at: T, updatedAt: T }
-      expect(decisionQueue({ ...base, payments: [mark] }, { me: 'b', now })).toEqual([])
+    it('каждый вопрос уходит после своей записи: «оставить», ответ «остались деньги?», раскладка остатка, ответ продавцу', () => {
       // «Оставить» — подписка с ответом в этом квартале больше не спрашивается.
-      expect(kinds(decisionQueue({ ...base, obligations: [rent, sub] }, { me: 'a', now }))).toEqual(['keep'])
-      expect(decisionQueue({ ...base, obligations: [rent, { ...sub, keptAt: '2026-09-17T06:00:00.000Z' }] }, { me: 'a', now })).toEqual([])
+      expect(kinds(decisionQueue({ ...base, obligations: [rent, sub] }, { now }))).toEqual(['keep'])
+      expect(decisionQueue({ ...base, obligations: [rent, { ...sub, keptAt: '2026-09-17T06:00:00.000Z' }] }, { now })).toEqual([])
       // «Остались деньги?»: ответ на устройстве или раскладка остатка семьи (её ключ — на месяц).
       const end = { day: 28, key: '2026-09' }
-      expect(kinds(decisionQueue(base, { me: 'a', now: end }))).toEqual(['monthEnd'])
-      expect(decisionQueue(base, { me: 'a', now: end, answeredMonthEnd: '2026-09' })).toEqual([])
+      expect(kinds(decisionQueue(base, { now: end }))).toEqual(['monthEnd'])
+      expect(decisionQueue(base, { now: end, answeredMonthEnd: '2026-09' })).toEqual([])
       const rest: Allocation = { id: 'r', source: 'rest', sourceId: '2026-09', period: '2026-09', by: 'b', at: T, total: 50_000, parts: [{ target: 'life', amount: 50_000 }], updatedAt: T }
-      expect(decisionQueue({ ...base, allocations: [rest] }, { me: 'a', now: end })).toEqual([])
-      // «Освободится» — раскладка `from=freed` записана.
-      const withFreed = { ...base, obligations: [rent, cheaper] }
-      expect(kinds(decisionQueue(withFreed, { me: 'a', now }))).toEqual(['freed'])
-      const spread: Allocation = { ...rest, id: 'f', source: 'freed', sourceId: 'flat', period: '2026-11' }
-      expect(decisionQueue({ ...withFreed, allocations: [spread] }, { me: 'a', now })).toEqual([])
+      expect(decisionQueue({ ...base, allocations: [rest] }, { now: end })).toEqual([])
       // Продавец: ответ становится правилом — группы больше нет, экран её не передаёт.
-      expect(kinds(decisionQueue(base, { me: 'a', now, unknown: [group('Kiosk', 1_200)] }))).toEqual(['unknownBatch'])
-      expect(decisionQueue(base, { me: 'a', now, unknown: [] })).toEqual([])
+      expect(kinds(decisionQueue(base, { now, unknown: [group('Kiosk', 1_200)] }))).toEqual(['unknownBatch'])
+      expect(decisionQueue(base, { now, unknown: [] })).toEqual([])
     })
 
-    it('бывшее решение главного: «пришла?» — своя зарплата, день настал или близко; у чужой — нет', () => {
+    it('«пришла?» (`salaryAsk`) — своя зарплата, день настал или близко; у чужой — нет', () => {
       // 17 сентября: ближайшая зарплата — Даны 20-го, до неё 3 дня → «пришла?» у Даны; у Ильяса
       // (его 10-е давно прошло) вопроса нет.
-      const salary = first(base, { me: 'b', now })
-      expect(salary).toMatchObject({ kind: 'salary', question: 'Пришла зарплата Дана?', meta: `${money(500_000)} · 20 сентября`, to: null })
-      expect(salary?.salary).toMatchObject({ period: '2026-09' })
-      expect(first(base, { me: 'a', now })).toBeNull()
+      expect(salaryAsk(base, 'b', now)).toMatchObject({ key: '2026-09', who: { id: 'b' }, income: 500_000, day: 20 })
+      expect(salaryAsk(base, 'a', now)).toBeNull()
     })
 
-    it('возврат приёмки п. 2 (B2C-58): своя зарплата из выписки без записи разбора → «Пришла зарплата»; прошлый месяц — тоже; чужая, ручная, разложенная — нет', () => {
+    it('возврат приёмки п. 2 (B2C-58): своя зарплата из выписки без записи месяца → ждёт «Отложил»; прошлый месяц — тоже; чужая, ручная, отложенная — нет', () => {
       const stmt = (who: 'a' | 'b', period: string, extra: Partial<Payment> = {}): Payment => ({
         id: `s-${who}-${period}`, kind: 'salary', targetId: who, period, amount: who === 'a' ? 700_000 : 500_000, accountId: null, by: who, at: T, updatedAt: T,
         source: 'statement', opId: `op-${who}-${period}`, ...extra,
@@ -2711,12 +2704,6 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
 
       const found = salaryToAllocate(paid(stmt('a', '2026-09')), 'a', now)!
       expect(found).toMatchObject({ period: '2026-09', person: { id: 'a' }, record: { amount: 700_000 } })
-      // Раньше «пришла?», шагов и подписок; после сопоставлений (их «Да, зарплата» и ведёт сюда).
-      expect(first(paid(stmt('a', '2026-09')), { me: 'a', now })).toMatchObject({
-        kind: 'allocate', question: 'Пришла зарплата · Ильяс', meta: '', amount: 700_000,
-        to: '/month', actions: { primary: 'К плану месяца', ghost: 'Потом' },
-      })
-      expect(first(paid(stmt('a', '2026-09')), { me: 'a', now, matches: [candidate('salary', 'a')] })?.kind).toBe('match')
 
       // Прошлый месяц (в начале следующего ещё не разложили) — да; позапрошлый — нет.
       const early = { day: 3, key: '2026-09' }
@@ -2725,7 +2712,7 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       // Критик возврата: зарплата этого месяца ждёт отметки (день настал) — старая августовская «Пришла?» не заслоняет.
       const payday = { day: 10, key: '2026-09' }
       expect(salaryToAllocate(paid(stmt('a', '2026-08')), 'a', payday)).toBeNull()
-      expect(first(paid(stmt('a', '2026-08')), { me: 'a', now: payday })).toMatchObject({ kind: 'salary', salary: { period: '2026-09' } })
+      expect(salaryNow(paid(stmt('a', '2026-08')), 'a', payday)).toBe('salary:2026-09')
       // Пришла раньше срока за следующий месяц (день 1-го, 29-го) — «разложить?» сразу, не с 1-го.
       const firstDay = { ...base, people: people.map((p) => (p.id === 'a' ? { ...p, payday: 1 } : p)) }
       expect(salaryToAllocate({ ...firstDay, payments: [stmt('a', '2026-10')] }, 'a', { day: 29, key: '2026-09' })?.period).toBe('2026-10')
@@ -2735,16 +2722,15 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       // Раскладка записана — второй раз не спрашиваем.
       const done: Allocation = { id: 'al', source: 'salary', sourceId: 'a', period: '2026-09', by: 'a', at: T, total: 100_000, parts: [{ target: 'life', amount: 100_000 }], updatedAt: T }
       expect(salaryToAllocate({ ...paid(stmt('a', '2026-09')), allocations: [done] }, 'a', now)).toBeNull()
-      expect(first({ ...paid(stmt('a', '2026-09')), allocations: [done] }, { me: 'a', now })?.kind).not.toBe('allocate')
       // Блок 14 (ревью frontend Н-1): платежи больше зарплаты — очереди ничего не достаётся, откладывать нечего —
-      // карточки нет (план «Денег» сам покажет «Не хватает»); нулевая отметка — тоже нечего.
+      // карточки нет (план сам покажет «Не хватает»); нулевая отметка — тоже нечего.
       const heavy = { ...paid(stmt('a', '2026-09')), obligations: [{ ...rent, versions: [{ from: '2000-01', amount: 5_000_000 }] }] }
       expect(salaryToAllocate(heavy, 'a', now)).toBeNull()
       expect(salaryToAllocate(paid(stmt('a', '2026-09', { amount: 0 })), 'a', now)).toBeNull()
       expect(salaryToAllocate(paid(stmt('a', '2026-09')), undefined, now)).toBeNull()
     })
 
-    it('ревью frontend Б14, Н-1: у второго участника без своих целей «Пришла зарплата» нет; цель с плательщиком b — есть', () => {
+    it('ревью frontend Б14, Н-1: у второго участника без своих целей откладывать нечего; цель с плательщиком b — есть', () => {
       const stmtB: Payment = {
         id: 's-b', kind: 'salary', targetId: 'b', period: '2026-09', amount: 500_000, accountId: null, by: 'b', at: T, updatedAt: T, source: 'statement', opId: 'op-b',
       }
@@ -2753,54 +2739,44 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       const state = { ...base, payments: [stmtB] }
       expect(planSave(monthPlan(state, { key: '2026-09', totals: [], spendCategories: [], uploads: [] }), 'b')).toBeNull()
       expect(salaryToAllocate(state, 'b', late)).toBeNull()
-      expect(kinds(decisionQueue(state, { me: 'b', now: late, answeredMonthEnd: '2026-09' }))).toEqual([])
-      // Цель платит b — карточка есть и ведёт на план.
+      // Цель платит b — есть что отложить.
       const own = { ...state, goals: base.goals.map((g) => ({ ...g, payer: 'b' as const })) }
-      expect(first(own, { me: 'b', now: late, answeredMonthEnd: '2026-09' })).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата · Дана', to: '/month' })
+      expect(salaryToAllocate(own, 'b', late)).toMatchObject({ period: '2026-09', person: { id: 'b' } })
     })
 
-    it('возврат приёмки 2 п. 3: неразложенная августовская из выписки — «разложить?» весь сентябрь, кроме дней «Пришла?» (7–10-е при дне 10); после дня зарплаты не теряется', () => {
+    it('возврат приёмки 2 п. 3: неотложенная августовская из выписки — весь сентябрь, кроме дней «Пришла?» (7–10-е при дне 10); после дня зарплаты не теряется', () => {
       const august: Payment = {
         id: 's-a-08', kind: 'salary', targetId: 'a', period: '2026-08', amount: 700_000, accountId: null, by: 'a', at: T, updatedAt: T, source: 'statement', opId: 'op-a-08',
       }
       const state = { ...base, payments: [august] }
-      // Выписку грузят после дня зарплаты: 11 и 27 сентября августовская ещё ждёт раскладки.
-      for (const day of [11, 27]) {
-        expect(salaryToAllocate(state, 'a', { day, key: '2026-09' })?.period).toBe('2026-08')
-        expect(first(state, { me: 'a', now: { day, key: '2026-09' } })).toMatchObject({ kind: 'allocate', salary: { period: '2026-08' } })
-      }
-      // Скан месяца: «разложить?» августа — до окна «Пришла?», «Пришла?» — с 7-го по день зарплаты, затем снова августа.
-      const kinds = Array.from({ length: 30 }, (_, i) => {
-        const d = first(state, { me: 'a', now: { day: i + 1, key: '2026-09' }, answeredMonthEnd: '2026-09' })
-        return `${d?.kind}:${d?.salary?.period}`
-      })
-      expect(kinds).toEqual(Array.from({ length: 30 }, (_, i) => (i + 1 >= 7 && i + 1 <= 10 ? 'salary:2026-09' : 'allocate:2026-08')))
-      // Одно условие «Пришла?» для главного и раскладки: salaryAsk.
+      // Выписку грузят после дня зарплаты: 11 и 27 сентября августовская ещё ждёт.
+      for (const day of [11, 27]) expect(salaryToAllocate(state, 'a', { day, key: '2026-09' })?.period).toBe('2026-08')
+      // Скан месяца: августовская — до окна «Пришла?», «Пришла?» — с 7-го по день зарплаты, затем снова августовская.
+      const scan = Array.from({ length: 30 }, (_, i) => salaryNow(state, 'a', { day: i + 1, key: '2026-09' }))
+      expect(scan).toEqual(Array.from({ length: 30 }, (_, i) => (i + 1 >= 7 && i + 1 <= 10 ? 'salary:2026-09' : 'allocate:2026-08')))
+      // Одно условие «Пришла?»: salaryAsk.
       expect(salaryAsk(state, 'a', { day: 10, key: '2026-09' })?.key).toBe('2026-09')
       expect(salaryAsk(state, 'a', { day: 11, key: '2026-09' })).toBeNull()
       expect(salaryAsk(state, 'b', { day: 18, key: '2026-09' })?.key).toBe('2026-09')
       expect(salaryAsk(state, undefined, { day: 10, key: '2026-09' })).toBeNull()
     })
 
-    it('критик возврата 2: день зарплаты 1-го — «Пришла?» октября с 28 сентября по 1 октября, сентябрьская неразложенная прячется только на эти дни, со 2-го снова «разложить?»', () => {
+    it('критик возврата 2: день зарплаты 1-го — «Пришла?» октября с 28 сентября по 1 октября, сентябрьская неотложенная прячется только на эти дни, со 2-го — снова она', () => {
       const september: Payment = {
         id: 's-a-09', kind: 'salary', targetId: 'a', period: '2026-09', amount: 700_000, accountId: null, by: 'a', at: T, updatedAt: T, source: 'statement', opId: 'op-a-09',
       }
       const state = { ...base, people: people.map((p) => (p.id === 'a' ? { ...p, payday: 1 } : p)), payments: [september] }
-      const at = (key: string, day: number) => {
-        const d = first(state, { me: 'a', now: { day, key }, answeredMonthEnd: key })
-        return `${d?.kind}:${d?.salary?.period}`
-      }
+      const at = (key: string, day: number) => salaryNow(state, 'a', { day, key })
       expect([26, 27].map((d) => at('2026-09', d))).toEqual(['allocate:2026-09', 'allocate:2026-09'])
       expect([28, 29, 30].map((d) => at('2026-09', d))).toEqual(['salary:2026-10', 'salary:2026-10', 'salary:2026-10'])
       expect(at('2026-10', 1)).toBe('salary:2026-10')
       expect([2, 3, 4].map((d) => at('2026-10', d))).toEqual(['allocate:2026-09', 'allocate:2026-09', 'allocate:2026-09'])
-      // Месяц перед спрашиваемым не ищется — и в «Неделе» карточка одна.
+      // Месяц перед спрашиваемым не ищется.
       expect(salaryToAllocate(state, 'a', { day: 29, key: '2026-09' })).toBeNull()
       expect(salaryToAllocate(state, 'a', { day: 2, key: '2026-10' })?.period).toBe('2026-09')
     })
 
-    it('возврат приёмки 3 п. 2: день зарплаты 1–3, неразложенные август и сентябрь — пока спрашивается «Пришла?» октября, «разложить?» не показывается ни за один прошлый месяц; главный, «Неделя» и «Деньги» — одно', () => {
+    it('возврат приёмки 3 п. 2: день зарплаты 1–3, неотложенные август и сентябрь — пока спрашивается «Пришла?» октября, прошлые месяцы не всплывают', () => {
       const mark = (period: string): Payment => ({
         id: `s-a-${period}`, kind: 'salary', targetId: 'a', period, amount: 700_000, accountId: null, by: 'a', at: T, updatedAt: T, source: 'statement', opId: `op-${period}`,
       })
@@ -2808,14 +2784,10 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       const scan = (payday: number) => {
         const state = { ...base, people: people.map((p) => (p.id === 'a' ? { ...p, payday } : p)), payments: [mark('2026-08'), mark('2026-09')] }
         return days.map(([key, day]) => {
-          const now = { day, key }
-          const d = first(state, { me: 'a', now, answeredMonthEnd: key })
-          const asked = salaryAsk(state, 'a', now)
-          const allocate = salaryToAllocate(state, 'a', now)
-          // «Неделя»: «Пришла?» — при salaryAsk и без «разложить?»; «Деньги»: «Пришла зарплата» — при salaryAsk.
-          expect(!!asked && !allocate).toBe(!!asked)
-          expect(d?.kind === 'salary').toBe(!!asked)
-          return `${d?.kind}:${d?.salary?.period}`
+          const at = { day, key }
+          // «Пришла?» спрашивается — ни один прошлый месяц «отложить» не предлагает.
+          expect(!!salaryAsk(state, 'a', at) && !salaryToAllocate(state, 'a', at)).toBe(!!salaryAsk(state, 'a', at))
+          return salaryNow(state, 'a', at)
         })
       }
       const A = 'allocate:2026-09'
@@ -2826,15 +2798,13 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(scan(3)).toEqual([A, A, A, S, S, S, S, A])
     })
 
-    it('шаг плана «Сначала долги» в очередь не входит — он в квадрате «План» (Р-34); не участник — пусто', () => {
+    it('шаг плана «Сначала долги» в вопросы не входит — он в квадрате «Долги» (Р-34, Р-91)', () => {
       const plan: DebtPlan = {
         id: 'p', status: 'active', by: 'a', startedAt: '2026-09-01T05:00:00.000Z', endedAt: null, keptGoalIds: [], cushionGoalId: null,
         creditIds: ['loan'], months: 24, lump: 0, forecast: { gain: 0, savedInterest: 0, debtFreeMonth: null }, result: null, updatedAt: T,
       }
-      // Шаг месяца есть (раньше он был последним решением главного), а в очереди его нет.
       expect(stepDue(planStep(plan, { goals: base.goals, credits: base.credits, obligations: base.obligations, payments: [] }, now.key))).not.toBeNull()
-      expect(decisionQueue({ ...base, plans: [plan] }, { me: 'a', now })).toEqual([])
-      expect(first(base, { me: undefined, now })).toBeNull()
+      expect(decisionQueue({ ...base, plans: [plan] }, { now })).toEqual([])
     })
   })
 
@@ -2872,7 +2842,7 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(card.inner).toBe(`За год — ${money(12_000)} · это 2 % пути до Япония`)
       expect(JSON.stringify(card)).not.toContain(money(10_000))
       // Очередь «Недели» берёт ту же карточку.
-      const d = decisionQueue({ people, goals: [japan], obligations: [ivi], payments: [] }, { me: 'a', now: sep25 })[0]
+      const d = decisionQueue({ people, goals: [japan], obligations: [ivi], payments: [] }, { now: sep25 })[0]
       expect(d).toMatchObject({ kind: 'keep', ...card })
     })
 
@@ -2942,7 +2912,6 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
     })
   })
 })
-
 
 describe('B2C-18: «это приближает» и месяц взноса по Алматы', () => {
   const T = '2026-09-01T00:00:00.000Z'
@@ -3258,27 +3227,6 @@ describe('B2C-59: строки-статусы «Денег», доли трат 
     // Имя — как назвала семья.
     expect(spendStatus([row('sc_food', 40)], norms, [{ id: 'sc_food', name: 'Еда' }])!.text).toBe('еда выше нормы')
     expect(spendStatus(null, norms, [])).toBeNull()
-  })
-})
-
-describe('B2C-89: карточки «Недели» ведут в план месяца (Р-78, Р-86)', () => {
-  const K = '2026-09'
-  const now = { day: 12, key: K }
-  const salary = (extra: Partial<Payment> = {}): Payment => ({
-    id: 's-a', kind: 'salary', targetId: 'a', period: K, amount: 700_000, accountId: null, by: 'a', at: '2026-09-10T05:00:00.000Z', updatedAt: '2026-09-10T05:00:00.000Z',
-    source: 'statement', opId: 'op-a', ...extra,
-  })
-  const q = (state: DecisionState) => decisionQueue(state, { me: 'a', now, answeredMonthEnd: K }).find((d) => d.kind === 'allocate') ?? null
-
-  it('«Пришла зарплата · <имя>»: сумма из отметки, одна кнопка — «К плану месяца» → /money', () => {
-    const d = q({ ...planFamilyDoc(), payments: [salary()] })
-    expect(d).toMatchObject({ question: 'Пришла зарплата · Ильяс', to: '/month', actions: { primary: 'К плану месяца', ghost: 'Потом' }, amount: 700_000 })
-  })
-
-  it('отложено по плану (запись месяца любого вида, и старого разбора) — карточки нет', () => {
-    const rec = (kind: Allocation['kind']): Allocation => ({ id: 'r', kind, source: 'salary', sourceId: 'a', period: K, by: 'a', at: '2026-09-11T05:00:00.000Z', total: 700_000, parts: [], updatedAt: '2026-09-11T05:00:00.000Z' })
-    expect(q({ ...planFamilyDoc(), payments: [salary()], allocations: [rec('plan')] })).toBeNull()
-    expect(q({ ...planFamilyDoc(), payments: [salary()], allocations: [rec('breakdown')] })).toBeNull()
   })
 })
 

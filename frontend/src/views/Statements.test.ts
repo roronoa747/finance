@@ -92,32 +92,6 @@ describe('views/Statements.vue', () => {
     expect(raw).not.toContain('data-week-trend')
   })
 
-  it('предпросмотр: сводка, незнакомые с выбором раздела, подсказка о переводе партнёру', async () => {
-    signIn()
-    const parsed = parseStatement(kaspi01)
-    useOperationsStore().setDraft([{ name: 'выписка.pdf', parsed }], [{ name: 'чек.pdf', message: 'Пока понимаю выписки Kaspi и Freedom' }])
-    const raw = await renderScreen(Statements, '/statements')
-    const html = text(raw)
-    // Банк и период — в подписи шапки «Разбор» (AppShell); здесь — сводка g2 «Разбор — предпросмотр».
-    expect(html).toContain('чек.pdf: Пока понимаю выписки Kaspi и Freedom')
-    expect(html).toContain('60 операций')
-    expect(html).toContain('Списания')
-    expect(html).toContain('Между своими')
-    // Незнакомые — пачкой (Р-58): одна карточка «Без раздела · N» с отметками, не стена выпадающих списков.
-    expect(html).toMatch(/Без раздела · \d+/)
-    expect(html).toContain('Выбрать все')
-    expect(html).not.toContain('Пропустить все')
-    expect(raw).not.toContain('<select')
-    expect(html.match(/Без раздела/g)).toHaveLength(1)
-    // Подсказка о партнёре по DESIGN.md §6: вопрос коротко, подробности — строкой деталей.
-    expect(html).toContain('Это перевод партнёру?')
-    expect(html).toContain('«Дана К.» — похоже, это Дана. Тогда переводы между вами — не траты.')
-    expect(html).toContain('Да, это Дана')
-    // Главная в разборе одна — «Отправить»; «Да, это Дана» — тихая.
-    expect(brand(raw)).toEqual(['Отправить'])
-    expect(html).not.toContain('Загрузить выписку')
-  })
-
   it('B2C-15: карточка сопоставления по одному — «Похоже, это платёж по … — отметить?», три действия; viewer её не видит', async () => {
     signIn()
     const finance = useFinanceStore()
@@ -142,15 +116,6 @@ describe('views/Statements.vue', () => {
     useFinanceStore().householdDoc.credits = finance.householdDoc.credits
     useOperationsStore().ops['op-1'] = store.ops['op-1']
     expect(await asked()).not.toContain('отметить?')
-  })
-
-  it('повтор того же файла — «все N уже были»', async () => {
-    signIn()
-    const store = useOperationsStore()
-    const parsed = parseStatement(kaspi01)
-    for (const op of parsed.operations) store.ops[op.id] = op
-    store.setDraft([{ name: 'выписка.pdf', parsed }])
-    expect(text(await renderScreen(Statements, '/statements'))).toContain('60 операций все уже были')
   })
 
   it('демо: отправка без запросов, загрузка — локально', async () => {
@@ -257,63 +222,49 @@ describe('views/Statements.vue — решения по одному и итог 
     expect(await asked()).toContain('Остались деньги с')
   })
 
-  it('B2C-49: одна очередь Р-43 — подписка → «Пришла зарплата?» → «Остались деньги?»; на экране одно решение и одна брендовая кнопка', async () => {
-    // День зарплаты 1-го: 29 сентября спрашиваются подписка, «Пришла?» октября и «Остались деньги?» сентября.
+  it('Р-97: вопросы «Недели» — подписка → «Остались деньги?»; зарплаты и «освободится» в листе нет — это дела «Месяца»', async () => {
+    // День зарплаты 1-го: 29 сентября раньше спрашивалось и «Пришла?» октября — теперь это строка зарплаты «Месяца».
     vi.setSystemTime(new Date('2026-09-29T07:00:00Z'))
     signIn()
     const finance = useFinanceStore()
     finance.householdDoc.people[0] = { ...finance.householdDoc.people[0], salary: 500_000, payday: 1 }
-    finance.householdDoc.obligations = [{ ...netflix }] // копия: «оставить» ниже пишет keptAt в объект
-    const queue = () => decisionQueue({ ...finance.householdDoc, credits: finance.credits }, { me: 'a' })
-    expect(queue().map((d) => d.kind)).toEqual(['keep', 'salary', 'monthEnd'])
+    // Аренда уменьшится с ноября — «освободится 40 000 ₸» живёт у своего платежа в «Месяце».
+    const flat: Obligation = { id: 'flat', name: 'Квартира', note: '', day: 5, category: 'd1', versions: [{ from: '2000-01', amount: 220_000 }, { from: '2026-11', amount: 180_000 }], updatedAt: T }
+    finance.householdDoc.obligations = [{ ...netflix }, flat] // копия: «оставить» ниже пишет keptAt в объект
+    const queue = () => decisionQueue({ ...finance.householdDoc, credits: finance.credits }, {})
+    expect(queue().map((d) => d.kind)).toEqual(['keep', 'monthEnd'])
 
     let raw = await asked()
     expect(text(raw)).toContain('Оставить подписку Netflix?')
-    expect(text(raw)).not.toContain('Пришла зарплата Алихан?')
-    expect(text(raw)).not.toContain('Остались деньги с')
-    expect(text(raw)).toContain('1 из 3')
+    expect(text(raw)).toContain('1 из 2')
+    for (const t of ['Пришла зарплата', 'Освободится', 'К плану месяца', 'Остались деньги с']) expect(text(raw)).not.toContain(t)
     expect(brand(raw)).toEqual(['Загрузить', 'Оставить'])
     expect(raw.match(/<h2 class="type-h2 text-ink">/g)).toHaveLength(1)
 
-    // Ответили «оставить» — «Пришла?»: тексты `salaryCard` (DecisionCard, вопрос type-h2).
+    // Ответили «оставить» — «Остались деньги?».
     finance.keepSubscription('nf')
     raw = await asked()
-    const d = queue()[0]
-    expect(d.kind).toBe('salary')
-    expect(raw).toMatch(new RegExp(`<h2 class="type-h2 text-ink">${d.question.replace('?', '\\?')}</h2>`))
-    expect(raw).toContain(d.meta)
-    expect(brand(raw)).toEqual(['Загрузить', 'Пришла зарплата'])
-
-    // Отмечена — «Остались деньги?».
-    finance.markSalary('a', { period: '2026-10', amount: 500_000, accountId: null })
-    raw = await asked()
-    expect(text(raw)).not.toContain('Пришла зарплата Алихан?')
     expect(text(raw)).toContain('Остались деньги с')
+    expect(text(raw)).not.toContain('Пришла зарплата')
     expect(brand(raw)).toEqual(['Загрузить', 'Отложить'])
   })
 
-  it('B2C-49: продавец месяца раньше подписки и остатка; «Освободится N ₸» — в очереди с «Распределить», сумма — как в «Деньгах»', async () => {
+  it('B2C-49: продавец раньше подписки и остатка; незнакомые — по своим операциям этого и прошлого месяца', async () => {
     vi.setSystemTime(new Date('2026-09-29T07:00:00Z'))
     signIn()
-    useOperationsStore().ops.o1 = op('o1', '2026-09-10', -7_000, 'IP ASANOVA')
-    const finance = useFinanceStore()
-    finance.householdDoc.obligations = [netflix]
-    let html = text(await asked())
-    expect(html).toContain('Без раздела · 1')
+    const store = useOperationsStore()
+    store.ops.o1 = op('o1', '2026-09-10', -7_000, 'IP ASANOVA')
+    store.ops.o2 = op('o2', '2026-08-28', -3_000, 'IP KIM')
+    store.ops.o3 = op('o3', '2026-07-30', -9_000, 'IP OSPANOV')
+    useFinanceStore().householdDoc.obligations = [netflix]
+    const html = text(await asked())
+    expect(html).toContain('Без раздела · 2')
     expect(html).toContain('IP ASANOVA')
+    expect(html).toContain('IP KIM')
+    expect(html).not.toContain('IP OSPANOV')
     expect(html).toContain('1 из 3')
     expect(html).not.toContain('Оставить подписку')
     expect(html).not.toContain('Остались деньги с')
-
-    // Освободится: аренда 220 000 → 180 000 с ноября — 40 000 ₸ в месяц, «К плану месяца» (карточка плана, Р-86).
-    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
-    finance.householdDoc.obligations = [{ id: 'flat', name: 'Квартира', note: '', day: 5, category: 'd1', versions: [{ from: '2000-01', amount: 220_000 }, { from: '2026-11', amount: 180_000 }], updatedAt: T }]
-    useOperationsStore().ops = {}
-    const raw = await asked()
-    html = text(raw)
-    expect(html).toContain(`Освободится ${m(40_000)} в месяц`)
-    expect(html).toContain('Квартира · с ноября')
-    expect(brand(raw)).toEqual(['Загрузить', 'К плану месяца'])
   })
 
   it('«Остались деньги?»: остаток месяца уже разложил партнёр (раскладка rest в общем документе) — не спрашиваем', async () => {
@@ -326,15 +277,5 @@ describe('views/Statements.vue — решения по одному и итог 
     expect(await asked()).not.toContain('Остались деньги с')
   })
 
-  it('B2C-61: в разборе пачка — по операциям черновика, а не по сохранённым', async () => {
-    signIn()
-    const store = useOperationsStore()
-    // Сохранённая операция того же продавца позже — разбор её не берёт.
-    store.ops.saved = op('saved', '2026-09-20', -1_000, 'IP ASANOVA')
-    store.setDraft([{ name: 'выписка.pdf', parsed: { bank: 'kaspi', from: '2026-09-01', to: '2026-09-12', operations: [op('d1', '2026-09-03', -2_000, 'IP ASANOVA'), op('d2', '2026-09-08', -3_000, 'IP ASANOVA')] } as never }])
-    const html = text(await asked())
-    expect(html).toContain('Без раздела · 1')
-    expect(html).toContain(`IP ASANOVA 2 раза ${m(5_000)}`)
-  })
 })
 

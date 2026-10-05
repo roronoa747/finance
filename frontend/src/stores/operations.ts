@@ -27,6 +27,12 @@ import type { PersonId } from '@/types/finance'
 const { ops: KEY_OPS, cursor: KEY_CURSOR, pending: KEY_PENDING, demoUploads: KEY_DEMO_UPLOADS, declined: KEY_DECLINED } = OPERATIONS_STORAGE_KEYS
 const KEYS = Object.values(OPERATIONS_STORAGE_KEYS)
 
+/**
+ * Сколько висит тост «Загружено N · Отменить» (Р-97): отправка выписки ждёт столько — удаления загрузки на сервере
+ * нет, поэтому «Отменить» работает до отправки.
+ */
+export const UPLOAD_HOLD_MS = 6_000
+
 /** Операций в одном POST /api/operations/batch (сервер принимает до 2000). */
 export const BATCH_SIZE = 500
 /** Страница GET /api/operations. */
@@ -116,6 +122,9 @@ export const useOperationsStore = defineStore('operations', () => {
   const status = ref<'idle' | 'sending' | 'offline' | 'error'>('idle')
   const lastError = ref<string | null>(null)
   const draft = ref<Draft | null>(null)
+  /** Выписка выбрана и показана, отправка ждёт тост «Отменить» (`upload`). */
+  const held = ref(false)
+  let holdTimer: ReturnType<typeof setTimeout> | null = null
   /** Сколько строк последней отправки отметилось по правилам («Отмечено по выписке: N»). */
   const lastAutoMarked = ref(0)
   let flushing: Promise<void> | null = null
@@ -212,6 +221,7 @@ export const useOperationsStore = defineStore('operations', () => {
     demoUploads.value = []
     declined.value = []
     serverUploads.value = []
+    dropHold()
     draft.value = null
     lastAutoMarked.value = 0
     status.value = 'idle'
@@ -249,6 +259,65 @@ export const useOperationsStore = defineStore('operations', () => {
   function cancelDraft() {
     draft.value = null
   }
+
+  /* ---------- «сразу готово» (Р-97): показать сразу, отправить после тоста ---------- */
+  function dropHold() {
+    if (holdTimer) clearTimeout(holdTimer)
+    holdTimer = null
+    held.value = false
+  }
+
+  /**
+   * Выписка выбрана — «Неделя» показывает её сразу (`shown`, `shownTotals`, `shownUploads`), а запись и отправка
+   * (`send`) ждут `UPLOAD_HOLD_MS`: пока висит тост, «Отменить» (`undoUpload`) возвращает как было — ни операций,
+   * ни итогов, ни очереди. Прошлая выписка ещё ждёт — сначала отправляется она: двойная загрузка её не теряет.
+   */
+  async function upload(files: DraftFile[], client: ApiClient = apiClient) {
+    await commitUpload(client)
+    if (!files.length) return
+    setDraft(files)
+    held.value = true
+    holdTimer = setTimeout(() => void commitUpload(client), UPLOAD_HOLD_MS)
+  }
+
+  /** Тост ушёл, экран закрыли или вкладку скрыли — отправка сразу; ждать нечего — ничего не делает. */
+  async function commitUpload(client: ApiClient = apiClient) {
+    if (!held.value) return
+    dropHold()
+    await send(client)
+  }
+
+  /** «Отменить» в тосте: выписка не записана и не отправлена. */
+  function undoUpload() {
+    if (!held.value) return
+    dropHold()
+    cancelDraft()
+  }
+
+  /** Свои операции вместе с выпиской, которая ещё ждёт тост. */
+  const shown = computed<Operation[]>(() => {
+    if (!held.value) return all.value
+    const ids = new Set(draftOps.value.map((o) => o.id))
+    return [...all.value.filter((o) => !ids.has(o.id)), ...draftOps.value]
+  })
+  /** Итоги семьи, где свои периоды ждущей выписки пересчитаны с ней — тем же `spendTotals`, что запишет `send`. */
+  const shownTotals = computed(() => {
+    const base = finance.householdDoc.spendTotals ?? []
+    if (!held.value) return base
+    const by = me()
+    const periods = periodsOf(draftOps.value)
+    const touched = (t: { by: PersonId; kind: string; period: string }) => t.by === by && periods.some((p) => p.kind === t.kind && p.period === t.period)
+    return [...base.filter((t) => !touched(t)), ...periods.flatMap(({ kind, period }) => spendTotals(shown.value, by, kind, period))]
+  })
+  /** Загрузки семьи вместе с ждущей — ✓ «загрузил за неделю» появляется сразу. */
+  const shownUploads = computed<StatementUploadResponse[]>(() => {
+    if (!held.value || !draft.value) return uploads.value
+    const now = new Date().toISOString()
+    const mine = draft.value.files.map((f, i): StatementUploadResponse => ({
+      id: `held-${i}`, slot: me(), bank: f.parsed.bank, period_from: f.parsed.from, period_to: f.parsed.to, ops_count: f.parsed.operations.length, created_at: now,
+    }))
+    return [...mine, ...uploads.value]
+  })
 
   /** Ответ на вопрос разбора — правило в личный документ (Р-22); черновик пересчитается сам. */
   function answer(match: MerchantRule['match'], to: MerchantRule['to']) {
@@ -515,6 +584,13 @@ export const useOperationsStore = defineStore('operations', () => {
     status,
     lastError,
     draft,
+    held,
+    shown,
+    shownTotals,
+    shownUploads,
+    upload,
+    commitUpload,
+    undoUpload,
     draftOps,
     pendingMatches,
     draftAutoMatches,

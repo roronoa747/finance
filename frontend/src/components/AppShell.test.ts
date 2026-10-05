@@ -76,18 +76,16 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     expect(html).not.toContain('aria-label="Назад"')
   })
 
-  it('B2C-50: «Разбор» выписки — «назад» слева; нажатие действует как «Отмена»: черновик сброшен, ничего не отправлено', async () => {
+  it('Р-97: выписка, которая ждёт тост «Отменить», шапку не меняет — «План», без «назад» и без «Разбора»', async () => {
     const ops = useOperationsStore()
-    ops.setDraft([{ name: 'выписка.pdf', parsed: { bank: 'kaspi', from: '2026-09-01', to: '2026-09-12', operations: [] } as never }])
+    await ops.upload([{ name: 'выписка.pdf', parsed: { bank: 'kaspi', from: '2026-09-01', to: '2026-09-12', operations: [], skipped: 0 } }])
     const html = await renderScreen(AppShell, '/week')
-    expect(html).toContain('>Разбор</h1>')
-    expect(html).toContain('aria-label="Назад"')
-    const send = vi.spyOn(ops, 'send')
-    await renderScreen(AppShell, '/week', undefined, [screenMixin({}, (s) => (s.goBack as () => void)())])
-    expect(ops.draft).toBeNull()
-    expect(send).not.toHaveBeenCalled()
-    // Без черновика «Неделя» — корень, без «назад».
-    expect(await renderScreen(AppShell, '/week')).not.toContain('aria-label="Назад"')
+    expect(html).toContain('>План</h1>')
+    expect(html).not.toContain('Разбор')
+    expect(html).not.toContain('aria-label="Назад"')
+    // Тост встаёт в слот оболочки над вкладками.
+    expect(html).toContain('id="shell-toast"')
+    ops.undoUpload()
   })
 
   it('шапка по макетам (возврат смоука): «Деньги» — аватары без шестерёнки; «План · Неделя» — без дат и аватаров (они на экране, Р-96); вложенные — «назад» без аватаров', async () => {

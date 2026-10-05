@@ -16,6 +16,10 @@ import type { Operation, SpendTotal } from '@/lib/statements/types'
 import type { StatementUploadResponse } from '@/types/api'
 import Statements from './Statements.vue'
 
+// Чтение PDF подменено: экран получает готовый разбор (сам разбор — тесты парсеров).
+const readResult = vi.hoisted(() => ({ value: { ok: [], errors: [] } as { ok: unknown[]; errors: { name: string; message: string; detail?: string }[] } }))
+vi.mock('@/lib/statements/read', () => ({ readStatementFiles: vi.fn(async () => readResult.value) }))
+
 /**
  * B2C-95 (Р-95, Р-96, Р-98, Р-100…Р-102): «План · Неделя» — только мои траты. Цифры экрана — из `myWeek` /
  * `sectionWeek` (компонент не считает); цифр партнёра нет — только ✓; ‹ › листают недели; вид ☰ / ▦ запоминается;
@@ -296,5 +300,128 @@ describe('B2C-95: «План · Неделя» — мои траты', () => {
     expect(txt(q('[data-week-total]'))).toBe(norm(money(7_700)))
     expect(q('[data-upload]')!.dataset.upload).toBe('lead')
     expect(txt(document.body)).not.toContain('12 000')
+  })
+})
+
+/**
+ * B2C-96 (Р-97): загрузка «сразу готово» — без сводки и «Отправить»: неделя показывает выписку сразу, тост
+ * «Загружено N · Отменить»; «Отменить» возвращает как было; уход с экрана — отправка. Вопросы — только за «! N».
+ */
+describe('B2C-96: загрузка «сразу готово» и вопросы за «!»', () => {
+  const NEW: Operation[] = [op('2026-09-22', 2_000, 'sc_cafe', 'Starbucks'), op('2026-09-23', 3_000, 'sc_cafe', 'Wolt')]
+  const parsed = (operations: Operation[] = NEW) => ({ name: 'выписка.pdf', parsed: { bank: 'kaspi' as const, from: '2026-09-21', to: '2026-09-24', operations, skipped: 0 } })
+  const pickFile = async () => {
+    const input = q<HTMLInputElement>('input[type="file"]')!
+    Object.defineProperty(input, 'files', { configurable: true, value: [new File(['x'], 'выписка.pdf')] })
+    input.dispatchEvent(new Event('change'))
+    await flush()
+    await flush()
+  }
+  const server = () => {
+    const createStatementUpload = vi.spyOn(apiClient, 'createStatementUpload').mockResolvedValue({ id: 'up-1', slot: 'a', bank: 'kaspi', period_from: '2026-09-21', period_to: '2026-09-24', ops_count: 2, created_at: '2026-09-24T07:00:00Z' })
+    const upsertOperations = vi.spyOn(apiClient, 'upsertOperations').mockResolvedValue({ upserted: 2 })
+    return { createStatementUpload, upsertOperations }
+  }
+
+  it('выбрал файл — тост «Загружено N · Отменить» и неделя уже с выпиской; ничего не записано; «Отменить» возвращает как было', async () => {
+    const api = server()
+    // Своей выписки за неделю ещё нет (траты недели — из прошлой загрузки), партнёр загрузил.
+    const { finance, store } = await openWeek({ uploads: [BOTH[1]!] })
+    expect(q('[data-upload]')!.dataset.upload).toBe('lead')
+    expect(txt(q('[data-week-total]'))).toBe(norm(money(26_000)))
+    const before = JSON.stringify(finance.householdDoc.spendTotals)
+
+    readResult.value = { ok: [parsed()], errors: [] }
+    await pickFile()
+    // Тост и «сразу готово»: +5 000 кафе, своя ✓, брендовой кнопки больше нет — без сводки и «Отправить».
+    expect(txt(q('[data-toast]'))).toBe('Загружено 2 операцииОтменить')
+    expect(txt(q('[data-week-total]'))).toBe(norm(money(31_000)))
+    expect(txt(row('sc_cafe')!.querySelector('[data-amount]'))).toBe(norm(plain(5_000)))
+    expect(q('[data-my-uploads]')!.dataset.uploaded).toBe('true')
+    expect(q('[data-upload]')!.dataset.upload).toBe('quiet')
+    expect(all('button').filter((b) => b.className.includes('bg-brand '))).toHaveLength(0)
+    expect(txt(document.body)).not.toContain('Отправить')
+    expect(txt(document.body)).not.toContain('Списания')
+    // В документе и копии — как было; на сервер ничего не ушло.
+    expect(store.held).toBe(true)
+    expect(Object.keys(store.ops)).toHaveLength(OPS.length)
+    expect(JSON.stringify(finance.householdDoc.spendTotals)).toBe(before)
+    expect(api.createStatementUpload).not.toHaveBeenCalled()
+
+    await press(q('[data-toast-action]'))
+    expect(txt(q('[data-toast]'))).toBe('Отменено')
+    expect(txt(q('[data-week-total]'))).toBe(norm(money(26_000)))
+    expect(q('[data-upload]')!.dataset.upload).toBe('lead')
+    expect(q('[data-my-uploads]')!.dataset.uploaded).toBe('false')
+    expect(store.held).toBe(false)
+    expect(store.draft).toBeNull()
+    expect(store.pending).toEqual([])
+    expect(JSON.stringify(finance.householdDoc.spendTotals)).toBe(before)
+    expect(api.createStatementUpload).not.toHaveBeenCalled()
+    expect(api.upsertOperations).not.toHaveBeenCalled()
+  })
+
+  it('без отмены: ушли с экрана — выписка записана и отправлена, итоги недели в документе', async () => {
+    const api = server()
+    const { finance, store } = await openWeek({ uploads: [BOTH[1]!] })
+    readResult.value = { ok: [parsed()], errors: [] }
+    await pickFile()
+    expect(store.held).toBe(true)
+    app!.unmount()
+    app = null
+    await vi.waitFor(() => expect(api.upsertOperations).toHaveBeenCalledTimes(1))
+    expect(store.held).toBe(false)
+    expect(Object.keys(store.ops)).toHaveLength(OPS.length + 2)
+    expect(api.createStatementUpload).toHaveBeenCalledWith({ bank: 'kaspi', period_from: '2026-09-21', period_to: '2026-09-24', ops_count: 2 })
+    expect(finance.householdDoc.spendTotals!.find((t) => t.id === 'a:week:2026-W39:sc_cafe')?.amount).toBe(5_000)
+  })
+
+  it('те же операции второй раз — «Эти N операций уже были», суммы не удваиваются', async () => {
+    server()
+    const { store } = await openWeek()
+    readResult.value = { ok: [parsed(OPS.slice(3, 5))], errors: [] }
+    await pickFile()
+    expect(txt(q('[data-toast]'))).toBe('Эти 2 операции уже былиОтменить')
+    expect(txt(q('[data-week-total]'))).toBe(norm(money(26_000)))
+    store.undoUpload()
+  })
+
+  it('файл не прочитан — тихий лист «Не прочитано» с именем и причиной, без брендовой кнопки и без тоста', async () => {
+    const { store } = await openWeek()
+    readResult.value = { ok: [], errors: [{ name: 'чек.pdf', message: 'Пока понимаю выписки Kaspi и Freedom' }] }
+    await pickFile()
+    const sheet = q('[role="dialog"]')!
+    expect(txt(sheet)).toContain('Не прочитано')
+    expect(txt(sheet.querySelector('[data-read-error]'))).toBe('чек.pdfПока понимаю выписки Kaspi и Freedom')
+    expect(all('[role="dialog"] button').filter((b) => b.className.includes('bg-brand '))).toHaveLength(0)
+    expect(q('[data-toast]')).toBeNull()
+    expect(store.held).toBe(false)
+  })
+
+  it('«! N» — число вопросов; лист — по одному с «N из M»; «Потом» откладывает; вопросов нет — значка нет', async () => {
+    vi.spyOn(apiClient, 'pushPrivateDoc').mockImplementation(async (rev, data) => ({ household_id: 'h1', user_id: 'u-a', rev: rev + 1, data, updated_at: '' }))
+    const { finance, store } = await openWeek()
+    expect(q('[data-bang]')).toBeNull()
+    // Незнакомый продавец и подписка без ответа — два вопроса.
+    store.ops.u1 = { ...op('2026-09-22', 7_500, null, 'ИП ЖАНСАЯ'), id: 'u1' }
+    finance.householdDoc.obligations = [{ id: 'nf', name: 'Netflix', note: '', day: 3, category: 'd4', versions: [{ from: '2000-01', amount: 4_990 }], updatedAt: '' }]
+    await flush()
+    expect(txt(q('[data-bang]'))).toBe('!2')
+    expect(q('[data-bang]')!.getAttribute('aria-label')).toBe('Вопросы: 2')
+    // На экране вопросов нет — только в листе.
+    expect(txt(document.body)).not.toContain('Без раздела')
+    await press(q('[data-bang]'))
+    const sheet = () => txt(q('[role="dialog"]'))
+    expect(sheet()).toContain('Вопросы')
+    expect(sheet()).toContain('1 из 2')
+    expect(sheet()).toContain('Без раздела · 1')
+    expect(sheet()).not.toContain('Оставить подписку')
+    await press(all('[role="dialog"] button').find((b) => txt(b) === 'Потом'))
+    expect(sheet()).toContain('2 из 2')
+    expect(sheet()).toContain('Оставить подписку Netflix?')
+    expect(txt(q('[data-bang]'))).toBe('!1')
+    await press(all('[role="dialog"] button').find((b) => txt(b) === 'Оставить'))
+    expect(q('[role="dialog"]')).toBeNull()
+    expect(q('[data-bang]')).toBeNull()
   })
 })

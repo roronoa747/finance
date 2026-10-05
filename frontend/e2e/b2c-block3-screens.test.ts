@@ -10,7 +10,7 @@ import { assignIds } from '../src/lib/statements/model'
 import type { Operation, ParsedStatement } from '../src/lib/statements/types'
 import Statements from '../src/views/Statements.vue'
 import { money, plain } from '../src/lib/money'
-import { budgetAmounts, creditBalance, duesTotal, freeByFact, monthDues, monthPlan, planFromSource, planSave, salaryAsk, type Decision } from '../src/lib/finance'
+import { budgetAmounts, creditBalance, duesTotal, freeByFact, monthDues, monthPlan, planFromSource, planSave, salaryAsk, salaryOpen, type Decision } from '../src/lib/finance'
 import { planFamilyDoc, T0 } from '../src/test/planFamily'
 import type { Payment, SyncDoc } from '../src/types/finance'
 import type { SpendTotal } from '../src/lib/statements/types'
@@ -59,8 +59,8 @@ async function phone(server: FakeServer, st: FakeStatements, slot: 'a' | 'b', ro
 }
 
 /**
- * Первое решение «Недели» (пивот 3, Р-42/Р-43: на «Мечтах» решений нет) — первое в очереди экрана
- * (`decisionQueue`, B2C-49); у «Пришла зарплата» — вопрос карточки и адрес (разбор или «Ваш порядок», B2C-58).
+ * Первый вопрос «Недели» (пивот 3, Р-42/Р-43: на «Мечтах» решений нет) — первый в очереди листа «! N»
+ * (`decisionQueue`, B2C-49). Зарплата — не вопрос «Недели» (Блок 15, Р-97): её строка и «Отложил» — в «Месяце».
  */
 async function weekDecision(p: Phone) {
   let vm: Record<string, any> = {}
@@ -68,9 +68,12 @@ async function weekDecision(p: Phone) {
   await screen(p.pinia, Statements, '/week', undefined, [grab])
   const d = vm.decision as Decision | null | undefined
   if (!d) return null
-  const allocate = d.kind === 'allocate'
-  return { kind: d.kind as string, question: allocate ? d.question : undefined, to: allocate ? d.to : undefined, match: d.match }
+  return { kind: d.kind as string, match: d.match }
 }
+
+/** Строка своей зарплаты в «Месяце» нажимается («Пришла» — листом, Р-97): ждём её и день настал или близко. */
+const salaryTap = async (p: Phone, slot: 'a' | 'b', month?: string) =>
+  new RegExp(`data-salary="${slot}" role="button"`).test(await screen(p.pinia, Month, month ? `/month?month=${month}` : '/month'))
 
 /** План месяца на телефоне — те же числа, что у экрана (`finance.ts`, Блок 14). */
 function planOn(p: Phone, key = '2026-09') {
@@ -177,7 +180,9 @@ describe('e2e / B2C Блок 3 — часть 1: главный «Мечты» (
     const htmlB = await screen(B.pinia, Dreams, '/')
     expect(htmlB).toContain(money(483_000))
     expect(htmlB).not.toContain('Пришла зарплата')
-    expect(await screen(B.pinia, Statements, '/week', undefined, sheetOpen())).toContain('Пришла зарплата Дана?')
+    // Блок 15 (Р-97): о зарплате спрашивает не «Неделя» — её строка в «Месяце» нажимается («Пришла»).
+    expect(await screen(B.pinia, Statements, '/week', undefined, sheetOpen())).not.toContain('Пришла зарплата')
+    expect(await salaryTap(B, 'b')).toBe(true)
 
     // viewer видит мечту и цифры, но без решений и «+ Новая».
     const V = await phone(server, st, 'b', 'viewer')
@@ -725,11 +730,11 @@ describe('e2e / B2C Блок 3 — часть 5: раскладка записа
     const A = await phone(server, st, 'a')
     const B = await phone(server, st, 'b')
 
-    // «Пришла зарплата» — на «Неделе» (карточка-вопрос о приходе, возврат приёмки 2 п. 4) и в «Деньгах»; отметка — со счёта.
+    // «Пришла» — строкой своей зарплаты в «Месяце» (Блок 15, Р-97): пока не пришла — откладывать нечего; отметка — со счёта.
     setActivePinia(A.pinia)
-    const week = await screen(A.pinia, Statements, '/week', undefined, sheetOpen())
-    expect(week).toContain('Пришла зарплата Ильяс?')
-    expect(week).not.toContain('К плану месяца')
+    expect(await salaryTap(A, 'a')).toBe(true)
+    expect(A.store.planCall()).toBeNull()
+    expect(await monthGoals(A)).not.toContain('data-put-all')
     A.store.markSalary('a', { period: '2026-09', amount: 700_000, accountId: 'card' })
     const save = planSave(planOn(A), 'a')!
     const toGoals = save.contributions.reduce((a, c) => a + c.amount, 0)
@@ -904,12 +909,12 @@ describe('e2e / B2C Блок 3 — часть 7 (возврат приёмки �
     vi.unstubAllGlobals()
   })
 
-  it('сентябрь: «Да, зарплата» → карточка «Пришла зарплата» → план месяца → запись; октябрь: правило отмечает само → «Пришла зарплата» → план → вопрос закрыт; партнёру чужая зарплата не предлагается', async () => {
+  it('сентябрь: «Да, зарплата» → точка «Месяца» и «Отложил всё» → запись; октябрь: правило отмечает само → точка → план → вопрос закрыт; партнёру чужая зарплата не предлагается', async () => {
     const A = await phone(server, st, 'a')
     const B = await phone(server, st, 'b')
     const september = '2026-09'
 
-    // Сентябрь: выписка с зарплатой — вопрос «Это зарплата Ильяс?»; «Да, зарплата» — следующей карточкой «Пришла зарплата» (B2C-58).
+    // Сентябрь: выписка с зарплатой — вопрос «Это зарплата Ильяс?» в листе «!»; «Да, зарплата» — зарплата пришла: «Месяц» ждёт «Отложил» (Р-97).
     const opsA = await upload(A, statement('2026-09-01', '2026-09-10', op('2026-09-10', 700_000, 'ТОО Работодатель')))
     expect(await screen(A.pinia, Statements, '/week', undefined, sheetOpen())).toContain('Это зарплата Ильяс?')
     let router: any = null
@@ -924,37 +929,39 @@ describe('e2e / B2C Блок 3 — часть 7 (возврат приёмки �
       },
     ])
     expect(router.currentRoute.value.fullPath).toBe('/week')
-    expect(await decision(A)).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата · Ильяс', to: '/month' })
+    expect(await decision(A)).toBeNull()
+    expect(A.store.planCall()).toBe('2026-09')
     expect(A.store.payments.find((p) => p.kind === 'salary')).toMatchObject({ targetId: 'a', period: '2026-09', source: 'statement', accountId: null })
     expect(opsA.pendingMatches).toEqual([])
     await allocateAll(A, september)
     expect(A.store.allocations).toEqual([expect.objectContaining({ kind: 'plan', source: 'salary', sourceId: 'a', period: '2026-09', total: 700_000 })])
-    expect((await decision(A))?.kind).not.toBe('allocate')
+    expect(A.store.planCall()).toBeNull()
 
     // Октябрь: та же строка — правило отмечает зарплату само, раскладки ещё нет.
     at('2026-10-10T07:00:00Z')
     await upload(A, statement('2026-10-01', '2026-10-10', op('2026-10-10', 700_000, 'ТОО Работодатель')))
     expect(opsA.lastAutoMarked).toBe(1)
     const october = '2026-10'
-    const d = await decision(A)
-    expect(d).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата · Ильяс', to: '/month' })
-    expect(await screen(A.pinia, Statements, '/week', undefined, sheetOpen())).toContain('К плану месяца')
+    expect(await decision(A)).toBeNull()
+    expect(A.store.planCall()).toBe(october)
+    expect(await screen(A.pinia, Statements, '/week')).toContain('data-plan-dot')
 
-    // Партнёр — пока октябрьская Ильяса не разложена: её не раскладывает и о ней не спрашивается
-    // (после раскладки A проверка не отличила бы фильтр «своя» от «разложено» — критик возврата).
+    // Партнёр: месяц — общий список дел (Р-97): цели Ильяса ждут «Отложил» и на его телефоне — точка та же;
+    // о зарплате Ильяса его «Неделя» не спрашивает.
     await A.store.syncHousehold(A.client)
     await B.store.pullHousehold(B.client)
-    expect((await decision(B))?.kind).not.toBe('allocate')
-    expect(await screen(B.pinia, Statements, '/week', undefined, sheetOpen())).not.toContain('К плану месяца')
+    setActivePinia(B.pinia)
+    expect(B.store.planCall()).toBe(october)
+    expect(await decision(B)).toBeNull()
 
     setActivePinia(A.pinia)
     await allocateAll(A, october)
     expect(A.store.allocations.map((a) => a.period).sort()).toEqual(['2026-09', '2026-10'])
-    expect((await decision(A))?.kind).not.toBe('allocate')
-    expect(await screen(A.pinia, Statements, '/week', undefined, sheetOpen())).not.toContain('К плану месяца')
+    expect(A.store.planCall()).toBeNull()
+    expect(await screen(A.pinia, Statements, '/week')).not.toContain('data-plan-dot')
   })
 
-  it('возврат приёмки 2 п. 3: выписка после дня зарплаты — «Да, зарплата» за август 13 сентября → «Пришла зарплата» на «Неделе» и 13-го, и 27-го → план августа', async () => {
+  it('возврат приёмки 2 п. 3: выписка после дня зарплаты — «Да, зарплата» за август 13 сентября → точка зовёт в «Месяц» августа и 13-го, и 27-го → план августа', async () => {
     // Сентябрьской зарплаты в выписке нет (день 10-й прошёл), вопрос «Это зарплата?» — об августовской.
     at('2026-09-13T07:00:00Z')
     const A = await phone(server, st, 'a')
@@ -975,17 +982,18 @@ describe('e2e / B2C Блок 3 — часть 7 (возврат приёмки �
     expect(router.currentRoute.value.fullPath).toBe('/week')
     expect(A.store.payments.find((p) => p.kind === 'salary')).toMatchObject({ period: '2026-08', source: 'statement' })
 
-    // Не разложил: августовская ждёт на «Неделе», пока «Пришла?» сентября не спрашивается.
+    // Не отложил: августовская ждёт — точка на «Месяце» ведёт в август (не текущий месяц), где её и откладывают.
     for (const day of ['2026-09-13', '2026-09-27']) {
       at(`${day}T07:00:00Z`)
-      // Зарплата августа — карточка ведёт в план августа, где её и откладывают (не текущий месяц).
-      expect(await decision(A)).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата · Ильяс', to: '/month?month=2026-08' })
+      expect(A.store.planCall()).toBe(august)
       const week = await screen(A.pinia, Statements, '/week', undefined, sheetOpen())
-      expect(week).toContain('К плану месяца')
-      expect(week).not.toContain('Пришла зарплата Ильяс?')
+      expect(week).toContain('data-plan-dot')
+      expect(week).not.toContain('Пришла зарплата')
+      // В «Месяце» сентября — точка у «‹»: зовёт в прошлый месяц.
+      expect(await screen(A.pinia, Month, '/month')).toContain('data-past-dot')
     }
     await allocateAll(A, august)
-    expect((await decision(A))?.kind).not.toBe('allocate')
+    expect(A.store.planCall()).toBeNull()
   })
 })
 
@@ -1179,7 +1187,7 @@ describe('e2e / B2C Блок 3 — часть 9 (четвёртая приёмк
   })
 
   for (const payday of [1, 2, 3]) {
-    it(`день зарплаты ${payday}: скан 27.09–04.10 — в окне «Пришла?» октября везде «Пришла зарплата Ильяс?» без карточки разбора (ни август, ни сентябрь), на «Неделе» одна брендовая; вне окна — «Пришла зарплата» сентября, в «Деньгах» нет «Пришла зарплата»`, async () => {
+    it(`день зарплаты ${payday}: скан 27.09–04.10 — в окне «Пришла?» октября строка зарплаты октября в «Месяце» нажимается; «Неделя» о зарплате не спрашивает; неотложенная сентябрьская — точкой «Месяца», август не всплывает`, async () => {
       const doc = planFamilyDoc()
       const server = fakeServer({
         ...doc,
@@ -1200,24 +1208,27 @@ describe('e2e / B2C Блок 3 — часть 9 (четвёртая приёмк
         const week = await screen(A.pinia, Statements, '/week', undefined, sheetOpen())
         const moneyHtml = await screen(A.pinia, Money, '/money')
 
-        if (asked) {
-          expect(home.shown, `${day}: «Неделя»`).toMatchObject({ kind: 'salary' })
-          for (const [name, html] of [['главный', home.html], ['«Неделя»', week], ['«Деньги»', moneyHtml]] as const) {
-            expect(text(html), `${day}: ${name} — без карточки «Пришла зарплата»`).not.toContain('К плану месяца')
-          }
-          expect(text(week), `${day}: «Неделя»`).toContain('Пришла зарплата Ильяс?')
-          expect(brand(week), `${day}: «Неделя» — «Загрузить» на экране и одна брендовая в листе`).toEqual(['Загрузить', 'Пришла зарплата'])
-          expect(salaryButtons(moneyHtml), `${day}: «Деньги»`).toEqual(['Пришла зарплата'])
-        } else {
-          // Сентябрьская не отложена: в октябре карточка ведёт в план сентября.
-          expect(home.shown, `${day}: «Неделя»`).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата · Ильяс', to: now.key === '2026-09' ? '/month' : '/month?month=2026-09' })
-          expect(text(week), `${day}: «Неделя»`).toContain('К плану месяца')
-          expect(text(week), `${day}: «Неделя»`).not.toContain('Пришла зарплата Ильяс?')
-          expect(salaryButtons(moneyHtml), `${day}: «Деньги»`).toEqual([])
+        // «Неделя» и «Мечты» о зарплате не спрашивают (Р-97); брендовая на «Неделе» — только «Загрузить».
+        // В последние дни месяца в листе законно стоит «Остались деньги?» — но не зарплата.
+        expect([undefined, 'monthEnd']).toContain(home.shown?.kind)
+        for (const [name, html] of [['главный', home.html], ['«Неделя»', week]] as const) {
+          expect(text(html), `${day}: ${name}`).not.toContain('Пришла зарплата')
+          expect(text(html), `${day}: ${name}`).not.toContain('К плану месяца')
         }
-        seen.push(`${day.slice(5)}:${home.shown?.kind}`)
+        expect(brand(await screen(A.pinia, Statements, '/week')), `${day}: «Неделя»`).toEqual(['Загрузить'])
+        // «Пришла?» октября — строкой зарплаты октября в «Месяце»: нажимается с начала окна и дальше, пока не отмечена
+        // (`salaryOpen` — отметить можно и после дня зарплаты).
+        const open = salaryOpen(A.store.people.find((p) => p.id === 'a')!, A.store.payments, '2026-10', now)
+        expect(await salaryTap(A, 'a', '2026-10'), `${day}: строка зарплаты октября`).toBe(open)
+        if (asked) expect(open, `${day}: в окне строка нажимается`).toBe(true)
+        expect(salaryButtons(moneyHtml), `${day}: «Деньги»`).toEqual(asked ? ['Пришла зарплата'] : [])
+        // Неотложенная сентябрьская: в сентябре — дело этого месяца; в октябре — зовёт в сентябрь, но не в окне
+        // «Пришла?» (одна о зарплате за раз, `salaryToAllocate`). Август не всплывает ни разу.
+        const call = A.store.planCall()
+        expect(call, `${day}: точка «Месяца»`).toBe(now.key === '2026-09' ? '2026-09' : asked ? null : '2026-09')
+        seen.push(`${day.slice(5)}:${asked ? 'salary' : 'allocate'}`)
       }
-      // Одно решение за раз и без скачков: окно — сплошное, август не всплывает ни разу.
+      // Окно — сплошное, четыре дня.
       expect(seen.filter((s) => s.endsWith('salary'))).toHaveLength(4)
     })
   }

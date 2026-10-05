@@ -4,7 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { apiClient, type ApiClient } from '@/api/client'
 import { useAuthStore, DEMO_TOKEN } from './auth'
 import { useFinanceStore } from './finance'
-import { BATCH_SIZE, PULL_LIMIT, toWire, useOperationsStore } from './operations'
+import { BATCH_SIZE, PULL_LIMIT, UPLOAD_HOLD_MS, toWire, useOperationsStore } from './operations'
 import { assignIds, draftSummary, normalizeMerchant } from '@/lib/statements/model'
 import { parseStatement } from '@/lib/statements/parsers'
 import type { Operation, ParsedStatement } from '@/lib/statements/types'
@@ -727,5 +727,143 @@ describe('stores/operations — сопоставление с отметками
     useFinanceStore().setHouseholdDoc(planFamilyDoc(), 1)
     const store = useOperationsStore()
     expect(store.pendingMatches).toEqual([])
+  })
+})
+
+/**
+ * B2C-96 (Р-97): «сразу готово» — выписка показана сразу, запись и отправка ждут тост. «Отменить» до отправки —
+ * ни операций, ни итогов, ни очереди; без отмены — то же, что прежний `send`; двойная загрузка первую не теряет.
+ */
+describe('stores/operations — «сразу готово» с «Отменить» (Р-97)', () => {
+  const stmt = (from: string, to: string, ...list: [string, number, string][]): ParsedStatement => ({
+    bank: 'kaspi', from, to, skipped: 0,
+    operations: assignIds(list.map(([date, amount, merchant]) => ({ bank: 'kaspi' as const, date, amount: -amount, kind: 'purchase' as const, merchant, categoryId: 'sc_food', internal: false }))),
+  })
+  const week39 = () => stmt('2026-09-21', '2026-09-24', ['2026-09-22', 4_000, 'Magnum'], ['2026-09-23', 6_000, 'Small'])
+  const totals = () => (useFinanceStore().householdDoc.spendTotals ?? []).filter((t) => t.amount > 0).map((t) => [t.kind, t.period, t.categoryId, t.amount])
+
+  it('пока висит тост: в документе, копии и очереди пусто, а предпросмотр уже с выпиской (операции, итоги, ✓ загрузки)', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const { client, calls } = fakeServer()
+    await store.upload(draftOf(week39()), client)
+    expect(store.held).toBe(true)
+    // Ничего не записано и не отправлено.
+    expect(store.all).toEqual([])
+    expect(totals()).toEqual([])
+    expect(store.pending).toEqual([])
+    expect(calls.createStatementUpload).not.toHaveBeenCalled()
+    expect(calls.upsertOperations).not.toHaveBeenCalled()
+    expect(useFinanceStore().unsent).toBe(false)
+    // Предпросмотр — как будет после отправки.
+    expect(store.shown.map((o) => -o.amount).sort()).toEqual([4_000, 6_000])
+    expect(store.shownTotals.filter((t) => t.by === 'a').map((t) => [t.kind, t.period, t.amount])).toEqual([['week', '2026-W39', 10_000], ['month', '2026-09', 10_000]])
+    expect(store.shownUploads).toMatchObject([{ slot: 'a', bank: 'kaspi', period_from: '2026-09-21', period_to: '2026-09-24', ops_count: 2 }])
+    expect(store.uploads).toEqual([])
+  })
+
+  it('«Отменить» до отправки — ни операций, ни итогов, ни очереди; таймер тоста после отмены ничего не шлёт', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const { client, calls } = fakeServer()
+    await store.upload(draftOf(week39()), client)
+    store.undoUpload()
+    expect(store.held).toBe(false)
+    expect(store.draft).toBeNull()
+    await vi.advanceTimersByTimeAsync(UPLOAD_HOLD_MS * 2)
+    expect(store.all).toEqual([])
+    expect(store.shown).toEqual([])
+    expect(totals()).toEqual([])
+    expect(store.shownTotals).toEqual([])
+    expect(store.pending).toEqual([])
+    expect(store.shownUploads).toEqual([])
+    expect(calls.createStatementUpload).not.toHaveBeenCalled()
+    expect(calls.upsertOperations).not.toHaveBeenCalled()
+    // Повторная отмена и отправка «ничего» безвредны.
+    store.undoUpload()
+    await store.commitUpload(client)
+    expect(calls.upsertOperations).not.toHaveBeenCalled()
+  })
+
+  it('без отмены — то же, что прежний send: тост ушёл по таймеру → операции, итоги и загрузка на месте', async () => {
+    signIn()
+    const held = useOperationsStore()
+    const a = fakeServer()
+    await held.upload(draftOf(week39()), a.client)
+    await vi.advanceTimersByTimeAsync(UPLOAD_HOLD_MS)
+    expect(held.held).toBe(false)
+    const viaHold = { ops: held.all.map((o) => [o.id, o.amount, o.uploadId]), totals: totals(), uploads: a.server.uploads.map((u) => [u.bank, u.period_from, u.period_to, u.ops_count]), sent: [...a.server.ops.keys()].sort() }
+
+    setActivePinia(createPinia())
+    signIn()
+    const plain = useOperationsStore()
+    const b = fakeServer()
+    plain.setDraft(draftOf(week39()))
+    await plain.send(b.client)
+    expect(viaHold).toEqual({ ops: plain.all.map((o) => [o.id, o.amount, o.uploadId]), totals: totals(), uploads: b.server.uploads.map((u) => [u.bank, u.period_from, u.period_to, u.ops_count]), sent: [...b.server.ops.keys()].sort() })
+    expect(viaHold.sent).toHaveLength(2)
+    expect(viaHold.totals).toContainEqual(['week', '2026-W39', 'sc_food', 10_000])
+  })
+
+  it('ушли с экрана (commitUpload) — отправка сразу, таймер второй раз не шлёт', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const { client, calls } = fakeServer()
+    await store.upload(draftOf(week39()), client)
+    await store.commitUpload(client)
+    expect(store.held).toBe(false)
+    expect(store.all).toHaveLength(2)
+    expect(calls.createStatementUpload).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(UPLOAD_HOLD_MS * 2)
+    expect(calls.createStatementUpload).toHaveBeenCalledTimes(1)
+    expect(calls.upsertOperations).toHaveBeenCalledTimes(1)
+  })
+
+  it('двойная загрузка подряд не теряет первую: вторая сначала отправляет первую, «Отменить» снимает только вторую', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const { client, server } = fakeServer()
+    await store.upload(draftOf(week39()), client)
+    await store.upload(draftOf(stmt('2026-09-14', '2026-09-20', ['2026-09-15', 20_000, 'Magnum'])), client)
+    // Первая уже записана и отправлена; вторая ждёт тост.
+    expect(store.all).toHaveLength(2)
+    expect(server.uploads).toHaveLength(1)
+    expect(store.held).toBe(true)
+    expect(store.shown).toHaveLength(3)
+    store.undoUpload()
+    await vi.advanceTimersByTimeAsync(UPLOAD_HOLD_MS * 2)
+    expect(store.all).toHaveLength(2)
+    expect(server.uploads).toHaveLength(1)
+    expect(totals()).toEqual(expect.arrayContaining([['week', '2026-W39', 'sc_food', 10_000]]))
+    expect(totals().some((t) => t[1] === '2026-W38')).toBe(false)
+  })
+
+  it('предпросмотр итогов: свои периоды выписки пересчитаны вместе с прежними операциями, чужие итоги и другие периоды не тронуты', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const { client } = fakeServer()
+    store.setDraft(draftOf(stmt('2026-09-21', '2026-09-21', ['2026-09-21', 1_000, 'Magnum'])))
+    await store.send(client)
+    const finance = useFinanceStore()
+    finance.householdDoc.spendTotals = [
+      ...(finance.householdDoc.spendTotals ?? []),
+      { id: 'b:week:2026-W39:sc_food', by: 'b', kind: 'week', period: '2026-W39', categoryId: 'sc_food', amount: 7_700, ops: 1, updatedAt: '' },
+      { id: 'a:week:2026-W30:sc_food', by: 'a', kind: 'week', period: '2026-W30', categoryId: 'sc_food', amount: 5_000, ops: 1, updatedAt: '' },
+    ]
+    await store.upload(draftOf(week39()), client)
+    const row = (by: string, period: string) => store.shownTotals.find((t) => t.by === by && t.kind === 'week' && t.period === period)?.amount
+    expect(row('a', '2026-W39')).toBe(11_000) // 1 000 прежняя + 10 000 новой выписки
+    expect(row('b', '2026-W39')).toBe(7_700)
+    expect(row('a', '2026-W30')).toBe(5_000)
+    // В документе — по-прежнему 1 000.
+    expect(finance.householdDoc.spendTotals!.find((t) => t.id === 'a:week:2026-W39:sc_food')?.amount).toBe(1_000)
+  })
+
+  it('пустой выбор файлов — ничего не держим', async () => {
+    signIn()
+    const store = useOperationsStore()
+    await store.upload([], fakeServer().client)
+    expect(store.held).toBe(false)
+    expect(store.draft).toBeNull()
   })
 })

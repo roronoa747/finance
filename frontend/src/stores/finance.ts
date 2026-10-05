@@ -29,6 +29,7 @@ import {
   queueOf,
   monthPlan,
   pendingPuts,
+  salaryToAllocate,
   planExtras,
   planPuts,
   wishQueue,
@@ -283,16 +284,21 @@ export const useFinanceStore = defineStore('finance', () => {
     return monthPlan(state, ctx)
   }
   /**
-   * Точка на «Месяце» (Р-97): в плане этого месяца ждёт действие — зарплата плательщика пришла, а цели не отложены,
-   * или есть деньги сверх плана («освободится», «долг закрыт»). Viewer действий не делает — точки нет.
+   * Месяц, где «Месяц» ждёт действия (Р-97): этот — зарплата плательщика пришла, а цели не отложены, или есть деньги
+   * сверх плана («освободится», «долг закрыт»); иначе — месяц своей пришедшей по выписке и не отложенной зарплаты
+   * (`salaryToAllocate`: прошлый, когда выписку загрузили позже). Ничего не ждёт или viewer — null. Функция, не
+   * computed: ответ зависит и от сегодняшнего дня — экраны зовут её в своих computed.
    */
-  const planDot = computed(() => {
-    if (useAuthStore().isViewer) return false
-    const { state, ctx } = planInput(monthKey())
-    if (pendingPuts(planPuts(state, monthPlan(state, ctx))).length) return true
+  const planCall = (): string | null => {
+    const auth = useAuthStore()
+    if (auth.isViewer) return null
+    const key = monthKey()
+    const { state, ctx } = planInput(key)
+    if (pendingPuts(planPuts(state, monthPlan(state, ctx))).length) return key
     const extras = planExtras(state, { ...ctx, rawCredits: householdDoc.value.credits })
-    return !!extras.freed || !!extras.closed
-  })
+    if (extras.freed || extras.closed) return key
+    return salaryToAllocate(state, auth.slot)?.period ?? null
+  }
   /** Цели на паузе ради плана (Р-9): выводятся из плана — одно место для экранов. */
   const pausedGoalIds = computed(
     () => new Set(activePlan.value ? pausedGoals(activePlan.value, goals.value).map((g) => g.id) : []),
@@ -2126,7 +2132,7 @@ export const useFinanceStore = defineStore('finance', () => {
     planState,
     planInput,
     monthPlanOf,
-    planDot,
+    planCall,
     planStepNow,
     pausedGoalIds,
     saveLocalState,

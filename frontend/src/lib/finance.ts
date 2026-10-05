@@ -2035,18 +2035,6 @@ export function salaryToAllocate(
 }
 
 /**
- * «Пришла зарплата <имя>?» (RP-10) — тексты карточки ближайшей зарплаты (`salaryAsk`), одни на
- * главном и в «Неделе» (ревью Блока 3, Н-23).
- */
-export const salaryCard = (near: { who: Person; income: number; day: number; key: string }) => ({
-  question: `Пришла зарплата ${near.who.name}?`,
-  meta: `${money(near.income)} · ${dayLabel(near.day, near.key)}`,
-})
-
-/** «Освободится N ₸ в месяц» — один текст для очереди «Недели» и карточки «Денег» (ревью Блока 10, Н-4). */
-export const freedQuestion = (freed: Pick<FreedChange, 'monthly'>) => `Освободится ${money(freed.monthly)} в месяц`
-
-/**
  * Подписки, от которых отказались в месяце (B2C-20 «утечки»): обязательства с надгробием
  * этого месяца (по Алматы) из группы подписок или подписки раздела «быт» (`isSubscription`:
  * d4 с точной суммой — туда же кладёт подписки первый запуск; оценка «быта» — не подписка).
@@ -4255,49 +4243,39 @@ export function spendStatus(
   return { text: `${name.toLowerCase()} выше нормы`, tone: 'warn', worst: { name, share, norm: norms[worst.id] } }
 }
 
-export type DecisionKind = 'match' | 'unknownBatch' | 'keep' | 'allocate' | 'salary' | 'freed' | 'monthEnd'
+export type DecisionKind = 'match' | 'unknownBatch' | 'keep' | 'monthEnd'
 
-/** Решение очереди «Недели» (`decisionQueue`): тексты DESIGN.md §6, ключ и данные для ответа на месте. */
+/** Вопрос листа «! N» «Недели» (`decisionQueue`): тексты DESIGN.md §6, ключ и данные для ответа на месте. */
 export type Decision = {
   kind: DecisionKind
-  /** Ключ решения — «Потом» откладывает его до следующего открытия, «N из M» считает по нему. */
+  /** Ключ вопроса — «Потом» откладывает его до следующего открытия, «N из M» считает по нему. */
   key: string
   question: string
   meta: string
   /** Строка внутренней карточки (детали) — если есть. */
   inner?: string
-  /** Куда ведёт главное действие; null — ответ на месте (стор). */
-  to: string | null
   actions: { primary?: string; secondary?: string; ghost?: string }
   /** Шаг «Отписаться» вопроса «оставить?» (`keepCard`). */
   cancel?: KeepCard['cancel']
   /** Подписка вопроса «оставить?». */
   obligation?: Obligation
-  /** Участник и месяц зарплаты «пришла?» / «Пришла зарплата». */
-  salary?: { person: Person; period: string }
   /** Ждущее сопоставление операции с отметкой (Р-6). */
   match?: MatchCandidate
   /** Незнакомые продавцы пачкой (Р-58) — по сумме, сначала крупные. */
   groups?: UnknownGroup[]
-  /** Снижение обязательства «освободится N ₸». */
-  freed?: FreedChange
-  /** Сумма пришедшей зарплаты карточки «Пришла зарплата». */
-  amount?: number
 }
 
 /**
- * Очередь решений «Недели» (Р-43) — одна на экран: сопоставления (по одному на каждое ждущее) →
- * незнакомые продавцы — одной пачкой (Р-58; группы ищет экран — месяц или черновик) → «оставить подписку?» (`keepQuestions`) → зарплата: «Пришла зарплата»
- * (`salaryToAllocate` — «К плану месяца», Р-78), иначе «пришла?» (`salaryAsk`) — одна карточка о зарплате за раз →
- * «освободится N ₸» (`freedChange`, пока его запись не сделана — тоже в план, Р-86) → «остались деньги?»
- * (`monthEndAsk`, пока остаток месяца не отложен). Шаг плана долгов — в квадрате «План» (Р-34), не здесь.
- * Отложенные («Потом») убирает экран. Viewer (`canEdit` false) решений не видит (Р-50); без своего слота (`me`)
- * нет только решений о своей зарплате — как было у «Недели».
+ * Вопросы «Недели» за «! N» (Р-97) — отбор и порядок: «то же самое?» — сопоставления (по одному на каждое ждущее) →
+ * незнакомые продавцы — одной пачкой (Р-58; группы ищет экран по своим операциям) → «оставить подписку?»
+ * (`keepQuestions`) → «остались деньги?» (`monthEndAsk`, пока остаток месяца не отложен). «Пришла зарплата»,
+ * «пришла?» и «освободится N ₸» — не вопросы «Недели»: это дела «Месяца» (✓ у зарплаты, «Отложил» у целей —
+ * `planPuts`, подсказка у платежа — `planExtras`). Отложенные («Потом») убирает экран. Viewer (`canEdit` false)
+ * вопросов не видит (Р-50).
  */
 export function decisionQueue(
   state: DecisionState,
   ctx: {
-    me: PersonId | undefined
     canEdit?: boolean
     matches?: MatchCandidate[]
     unknown?: UnknownGroup[]
@@ -4316,7 +4294,6 @@ export function decisionQueue(
       key: `match:${c.kind}:${c.targetId}:${c.period}`,
       question: c.question,
       meta: c.meta,
-      to: null,
       actions: c.kind === 'salary' ? { primary: 'Да, зарплата', secondary: 'Нет', ghost: 'Потом' } : { primary: 'Да, отметить', secondary: 'Нет, это другое', ghost: 'Потом' },
       match: c,
     })
@@ -4330,7 +4307,6 @@ export function decisionQueue(
       key: 'unknownBatch',
       question: `Без раздела · ${unknown.length}`,
       meta: money(amountTotal(unknown)),
-      to: null,
       actions: { ghost: 'Потом' },
       groups: unknown,
     })
@@ -4338,56 +4314,21 @@ export function decisionQueue(
 
   const { year, month } = parseMonthKey(now.key)
   for (const o of keepQuestions(state.obligations ?? [], new Date(Date.UTC(year, month, now.day, 12)), state.book)) {
-    out.push({ kind: 'keep', key: `keep:${o.id}`, ...keepCard(o, state.goals ?? [], payments, now, state.book, state), to: null, obligation: o })
-  }
-
-  // Зарплата пришла и не отложена — «Пришла зарплата» → план месяца (Р-78); иначе «пришла?» (возврат приёмки 2 п. 3: одна о зарплате).
-  const unallocated = salaryToAllocate(state, ctx.me, now)
-  const near = unallocated ? null : salaryAsk(state, ctx.me, now)
-  if (unallocated) {
-    const { person, period, record } = unallocated
-    out.push({
-      kind: 'allocate',
-      key: `allocate:${person.id}:${period}`,
-      question: `Пришла зарплата · ${person.name}`,
-      meta: '',
-      // План того месяца, чья зарплата: пришла 1-го или подтверждена по выписке позже — не текущий месяц.
-      to: period === now.key ? '/month' : `/month?month=${period}`,
-      actions: { primary: 'К плану месяца', ghost: 'Потом' },
-      salary: { person, period },
-      amount: paidTenge(state, person.id, period, record),
-    })
-  } else if (near) {
-    // «Пришла» и лист «ещё» — `SalaryRow` на месте (RP-10).
-    out.push({ kind: 'salary', key: `salary:${near.who.id}:${near.key}`, ...salaryCard(near), to: null, actions: {}, salary: { person: near.who, period: near.key } })
-  }
-
-  // «Освободится N ₸» — карточка плана месяца (Р-86); запись сделана (`source: 'freed'`) — уже решено.
-  const freed = freedChange(liveObligations(state.obligations ?? []), now.key, state.book)
-  if (freed && !allocationFor(state.allocations, { source: 'freed', sourceId: freed.o.id, period: freed.change.from })) {
-    out.push({
-      kind: 'freed',
-      key: `freed:${freed.o.id}:${freed.change.from}`,
-      question: freedQuestion(freed),
-      meta: `${freed.o.name} · с ${monthFrom(freed.change.from, false)}`,
-      to: '/month',
-      actions: { primary: 'К плану месяца', ghost: 'Потом' },
-      freed,
-    })
+    out.push({ kind: 'keep', key: `keep:${o.id}`, ...keepCard(o, state.goals ?? [], payments, now, state.book, state), obligation: o })
   }
 
   // Ответ — до конца месяца на устройстве (`answeredMonthEnd`); отложенный остаток — ответ семьи: партнёр второй раз не спрашивается.
   const restDone = allocationFor(state.allocations, { source: 'rest', sourceId: now.key, period: now.key })
   if (!restDone && monthEndAsk(ctx.answeredMonthEnd ?? null, now)) {
-    out.push({ kind: 'monthEnd', key: `monthEnd:${now.key}`, ...monthEndCard(now.key), to: null })
+    out.push({ kind: 'monthEnd', key: `monthEnd:${now.key}`, ...monthEndCard(now.key) })
   }
 
   return out
 }
 
-/* ---------------- очередь «Недели»: состояние; старые записи разбора (Блок 11, Р-85) ---------------- */
+/* ---------------- вопросы «Недели»: состояние; старые записи разбора (Блок 11, Р-85) ---------------- */
 
-/** Документ семьи для очереди решений «Недели»; кредиты — производные остатки, как их отдаёт стор. */
+/** Документ семьи для вопросов «Недели» и листа отметки зарплаты; кредиты — производные остатки, как их отдаёт стор. */
 export type DecisionState = {
   people?: Person[]
   obligations?: Obligation[]

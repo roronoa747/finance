@@ -278,7 +278,7 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     const plan = planOf(finance)
     const mine = plan.queue.filter((x) => x.payer === 'a' && x.given > 0 && x.goalId)
     expect(mine.length).toBeGreaterThan(1)
-    expect(finance.planDot).toBe(true)
+    expect(finance.planCall()).toBe(KEY)
     expect(q('[data-section="queue"] [data-section-dot]')).not.toBeNull()
     await press(section('queue'))
     const haves = new Map(finance.goals.map((g) => [g.id, g.have]))
@@ -292,7 +292,7 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(all('[data-put-done]')).toHaveLength(mine.length)
     expect(txt(q('[data-section="queue"] [data-section-meta]'))).toBe(`${mine.length} из ${mine.length} отложено`)
     expect(q('[data-section="queue"] [data-section-dot]')).toBeNull()
-    expect(finance.planDot).toBe(false)
+    expect(finance.planCall()).toBeNull()
     // План считает от начала месяца — суммы строк прежние.
     expect(planOf(finance).queue.map((x) => x.given)).toEqual(plan.queue.map((x) => x.given))
   })
@@ -315,7 +315,7 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(q('[data-queue="car"] [data-put-done]')).toBeNull()
     // Остальные ещё ждут — «Отложил всё» без отпуска, точка на месте.
     expect(txt(q('[data-put-all]'))).not.toContain(norm(money(putsOf(finance).reduce((s, p) => s + p.amount, 0))))
-    expect(finance.planDot).toBe(true)
+    expect(finance.planCall()).toBe(KEY)
     // Отложенная: «✓ Отложено» и «Не отложено»; кнопки «Отложил» нет — дважды не положить.
     await press(q('[data-queue="trip"]'))
     expect(q('[role="dialog"] [data-put]')).not.toBeNull()
@@ -343,7 +343,7 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
   it('зарплата не пришла — «Отложил всё» и точки нет; цель всё равно отмечается нажатием', async () => {
     const doc = familyDoc()
     const finance = await open('member', { ...doc, payments: (doc.payments ?? []).filter((p) => p.kind !== 'salary') })
-    expect(finance.planDot).toBe(false)
+    expect(finance.planCall()).toBeNull()
     await press(section('queue'))
     expect(q('[data-put-all]')).toBeNull()
     expect(q('[data-section="queue"] [data-section-dot]')).toBeNull()
@@ -436,7 +436,7 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(q('[data-plan-view]')).toBeNull()
     expect(txt(document.body)).toContain('просмотр')
     expect(q('[data-extra-income]')).toBeNull()
-    expect(finance.planDot).toBe(false)
+    expect(finance.planCall()).toBeNull()
     expect(q('[data-section-dot]')).toBeNull()
     await press(section('dues'))
     expect(all('button').some((b) => b.getAttribute('aria-label')?.startsWith('Платит'))).toBe(false)

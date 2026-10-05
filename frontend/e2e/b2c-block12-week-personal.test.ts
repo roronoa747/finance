@@ -270,7 +270,8 @@ describe('e2e / B2C Блок 12 — «Неделя и личное» на дву
     expect(viewer).not.toContain('Вставьте ссылку')
   })
 
-  it('часть 6 (приёмка) — пачка в разборе выписки: ответы до «Отправить» уходят правилами, на «Неделе» пачки нет; viewer видит «Выписки» без загрузки и решений', async () => {
+  // Блок 15 (Р-97): загрузка «сразу готово» — «Отправить» нет; незнакомые продавцы выписки — пачкой в листе «!» после отправки.
+  it('часть 6 (приёмка) — пачка после загрузки выписки: ответы до «Отправить» уходят правилами, на «Неделе» пачки нет; viewer видит «Выписки» без загрузки и решений', async () => {
     const A = await phone(server, st, 'a')
     setActivePinia(A.pinia)
     const ops = useOperationsStore()
@@ -278,12 +279,16 @@ describe('e2e / B2C Блок 12 — «Неделя и личное» на дву
       bank: 'kaspi', from: '2026-09-01', to: '2026-09-24', skipped: 0,
       operations: assignIds(IP.map((m, i) => op(`2026-09-2${2 + (i % 3)}`, -IP_AMOUNT(i), m))),
     }
-    ops.setDraft([{ name: 'a.pdf', parsed }])
+    await ops.upload([{ name: 'a.pdf', parsed }], A.client)
 
-    // Разбор: та же карточка-пачка над «Отправить».
-    const draft = text(await screen(A.pinia, Statements, '/week', undefined, sheetOpen()))
-    expect(draft).toContain('Без раздела · 12')
-    expect(draft).toContain('Отправить')
+    // Пока висит тост — ни сводки, ни «Отправить»; вопросы о продавцах выписки — после отправки.
+    const held = text(await screen(A.pinia, Statements, '/week', undefined, sheetOpen()))
+    expect(held).toContain('Загружено 12 операций')
+    expect(held).toContain('Отменить')
+    expect(held).not.toContain('Отправить')
+    expect(held).not.toContain('Без раздела')
+    await ops.commitUpload(A.client)
+    expect(text(await screen(A.pinia, Statements, '/week', undefined, sheetOpen()))).toContain('Без раздела · 12')
 
     // Три строки → «Продукты», остальные — «Выбрать все» → «Не помню»: два ответа, правила в памяти продавцов.
     const after = text(await screen(A.pinia, Statements, '/week', undefined, [
@@ -299,7 +304,7 @@ describe('e2e / B2C Блок 12 — «Неделя и личное» на дву
     expect(rules.filter((r) => 'categoryId' in r.to && r.to.categoryId === OTHER_CATEGORY)).toHaveLength(9)
     expect(rules.filter((r) => 'categoryId' in r.to && r.to.categoryId === 'sc_food')).toHaveLength(3)
 
-    await ops.send(A.client)
+    await ops.flush(A.client)
     await A.store.syncHousehold(A.client)
     expect(unknownGroups(ops.all)).toHaveLength(0)
     expect(text(await screen(A.pinia, Statements, '/week', undefined, sheetOpen()))).not.toContain('Без раздела')

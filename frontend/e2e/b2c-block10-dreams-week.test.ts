@@ -213,7 +213,8 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     expect(html).toContain(`${weekRangeLabel(pic.range)} ${text(money(own))}`)
     expect(html).not.toContain(text(money(pic.total)))
     // Продавцы пачкой и «Пришла зарплата» Ильяса (Блок 11: зарплата демо пришла сегодня и не разобрана; Блок 12: пачка — одно решение).
-    expect(html).toContain('1 из 2')
+    // Пришедшая зарплата Ильяса — дело «Месяца» (Блок 15, Р-97): в листе «!» — только пачка продавцов.
+    expect(html).not.toContain('Пришла зарплата')
     expect(html).toContain('Без раздела · 10')
     expect(html).toContain('ИП Абенова')
     // «История» демо — те же операции недели.
