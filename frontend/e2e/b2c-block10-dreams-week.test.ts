@@ -190,7 +190,7 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     for (const w of ['Без раздела', 'Загрузить выписку', '+ Новая', 'Добавить фото']) expect(dreams).not.toContain(w)
   })
 
-  it('часть 5 — демо: итоги недели Ильяса = spendTotals демо-операций; сумма недели = операции + итоги Аруны; два решения; «Мечты» — 2 цели и 3 желания', async () => {
+  it('часть 5 — демо: итоги недели Ильяса = spendTotals демо-операций; сумма недели = операции + итоги Аруны; три вопроса за «!»; «Мечты» — 2 цели и 3 желания', async () => {
     const pinia = createPinia()
     await screen(pinia, Access, '/access', undefined, [screenMixin({}, (s) => (s.startDemoMode as () => void)())])
     await nextTick()
@@ -205,16 +205,19 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     const opsWeek = ops.all.filter((o) => !o.internal && o.amount < 0 && weekKey(o.date) === week).reduce((a, o) => a - o.amount, 0)
     const aruna = (finance.householdDoc.spendTotals ?? []).filter((t) => t.by === 'b' && t.kind === 'week' && t.period === week).reduce((a, t) => a + t.amount, 0)
     expect(pic.total).toBe(opsWeek + aruna)
-    const html = text(await screen(pinia, Statements, '/week', undefined, sheetOpen()))
+    let kinds: string[] = []
+    const html = text(
+      await screen(pinia, Statements, '/week', undefined, [screenMixin({ questionsOpen: true }, (s) => (kinds = (s.queue as Decision[]).map((d) => d.kind)))]),
+    )
     // Блок 15 (Р-95): на «Неделе» — сумма только своих трат недели, без итогов Аруны и без платежей (подписки, связь — Р-94).
     const own = mine.filter((t) => !plannedElsewhere(t.categoryId, finance.householdDoc.spendCategories ?? [])).reduce((a, t) => a + t.amount, 0)
     expect(html).toContain(`${weekRangeLabel(pic.range)} ${text(money(own))}`)
     expect(html).not.toContain(text(money(pic.total)))
-    // Продавцы пачкой и «Пришла зарплата» Ильяса (Блок 11: зарплата демо пришла сегодня и не разобрана; Блок 12: пачка — одно решение).
-    // Пришедшая зарплата Ильяса — дело «Месяца» (Блок 15, Р-97): в листе «!» — только пачка продавцов.
+    // Пришедшая зарплата Ильяса — дело «Месяца» (Блок 15, Р-97). За «!» — три вопроса по одному (B2C-98):
+    // платёж «Яндекс Плюс» из выписки, пачка незнакомых продавцов, «Оставить Spotify?».
     expect(html).not.toContain('Пришла зарплата')
-    expect(html).toContain('Без раздела · 10')
-    expect(html).toContain('ИП Абенова')
+    expect(kinds.slice(0, 3)).toEqual(['match', 'unknownBatch', 'keep'])
+    expect(html).toContain('Похоже, это платёж по Яндекс Плюс')
     // «История» демо — те же операции недели.
     expect(text(await screen(pinia, Money, '/money/history'))).toContain('ИП Абенова')
     // «Мечты» демо «как в макете» (приёмка Б10): главная, 2 цели, желания обоих и общее.

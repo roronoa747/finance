@@ -3,8 +3,8 @@ import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useOperationsStore } from '@/stores/operations'
 import { useFinanceStore } from '@/stores/finance'
-import { money, plain } from '@/lib/money'
-import { amountTotal, liveAccounts, liveCredits, liveGoals, netWorth, openDebt } from '@/lib/finance'
+import { money } from '@/lib/money'
+import { liveAccounts, liveCredits, liveGoals, netWorth } from '@/lib/finance'
 import Card from '@/components/kit/Card.vue'
 import MoneySquares from '@/components/money/MoneySquares.vue'
 import DebtsWidget from '@/components/money/DebtsWidget.vue'
@@ -14,7 +14,7 @@ import HistorySquare from '@/components/money/HistorySquare.vue'
 
 /**
  * «Деньги» — капитал без месяца (Блок 15, Р-91; макет week-month.html «Деньги»): квадраты Капитал · Долги · История
- * (`/money`, `/money/debts`, `/money/history`). Капитал — чистых крупно, «Счета» и «Платежи» справочником (без
+ * (`/money`, `/money/debts`, `/money/history`). Капитал — чистых крупно, «Счета», «Кредиты» и «Платежи» справочником (без
  * отметок месяца, подписки — одной строкой); Долги — остаток и долговой план (Р-34); История — как была. Плана
  * месяца, «Подробнее», «До зарплаты» и виджетов «Доход» и «Траты» здесь нет: месяц живёт в «План · Месяц».
  * Брендовой кнопки на экране нет (правило 12). Ничего не считается здесь.
@@ -25,8 +25,6 @@ const finance = useFinanceStore()
 
 const square = computed(() => (route.params.square === 'debts' || route.params.square === 'history' ? route.params.square : 'capital'))
 const worth = computed(() => netWorth(liveAccounts(finance.accounts), liveCredits(finance.credits), liveGoals(finance.goals)))
-const accountsTotal = computed(() => amountTotal(liveAccounts(finance.accounts)))
-const debtsTotal = computed(() => openDebt(finance.credits))
 
 onMounted(() => void ops.loadUploads())
 </script>
@@ -39,7 +37,6 @@ onMounted(() => void ops.loadUploads())
       <Card tight class="flex flex-col gap-1" data-capital>
         <span class="type-label">Капитал</span>
         <span class="font-num text-[40px] font-bold leading-none num" :class="worth < 0 ? 'text-warn' : 'text-ink'" data-worth>{{ money(worth) }}</span>
-        <span v-if="debtsTotal > 0" class="type-meta num">счета {{ plain(accountsTotal) }} · долги −{{ plain(debtsTotal) }}</span>
       </Card>
       <CapitalLists />
     </template>

@@ -6,9 +6,11 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, rateField } from '@/lib/money'
-import { monthKey } from '@/lib/dates'
+import { monthFromAfter, monthKey } from '@/lib/dates'
 import {
   amountTotal,
+  creditOutlook,
+  duesTotal,
   groupChildren,
   groupTotal,
   isSubscription,
@@ -16,7 +18,9 @@ import {
   liveCredits,
   liveGroups,
   liveObligations,
+  monthDues,
   monthlyAmount,
+  openDebt,
   subscriptionGroup,
 } from '@/lib/finance'
 import type { Account, Credit, Obligation } from '@/types/finance'
@@ -37,7 +41,8 @@ import GroupSheets from '@/components/capital/GroupSheets.vue'
 import PaymentLine from '@/components/money/PaymentLine.vue'
 
 /**
- * Списки Капитала (Блок 15, Р-91, Р-93; макет week-month.html «Деньги · Капитал»): «Счета» с итогом и «Платежи» —
+ * Списки Капитала (Блок 15, Р-91, Р-93; макет week-month.html «Деньги · Капитал»): «Счета» с итогом, «Кредиты» —
+ * остаток, ставка и срок, «Платежи» с суммой месяца —
  * справочник: один список по дню, без «Оплатил» и отметок месяца (✓ и «Оплатил» — в «Месяце», Р-94); подписки —
  * одной строкой «Подписки · N», раскрытие — список с ручными группами. Всё остальное — в листах: счёт (и вклад),
  * кредит, обязательство, группа подписок, формы добавления.
@@ -68,7 +73,19 @@ function accountMeta(a: Account): string {
   return [what, fx, privateIds.value.has(a.id) ? 'личный' : 'общий'].filter(Boolean).join(' · ')
 }
 
+/* ------------------ Кредиты ------------------ */
+// Открытые кредиты: остаток, ставка и месяц последнего платежа при нынешнем платеже (`creditOutlook`).
+const openCredits = computed(() => credits.value.filter((c) => c.principal > 0))
+const debtsTotal = computed(() => openDebt(financeStore.credits))
+function creditMeta(c: Credit): string {
+  const out = creditOutlook(c)
+  const rate = c.rateUnknown ? 'ставку уточните' : `${rateField(c.annualRate)} %`
+  return [rate, out.closes ? `до ${monthFromAfter(out.months)}` : ''].filter(Boolean).join(' · ')
+}
+
 /* ------------------ Платежи — справочник ------------------ */
+// Сумма платежей этого месяца (`monthDues` — те же строки, что в «Месяце»).
+const duesMonth = computed(() => duesTotal(monthDues({ obligations: financeStore.obligations, credits: financeStore.credits, payments: financeStore.payments, book: fx.book }, key.value)))
 // Подписки — одной группой (`subscriptionGroup`, та же функция, что в «Месяце»): сумма — в месяц (годовая — долей).
 const subs = computed(() =>
   subscriptionGroup(
@@ -198,8 +215,24 @@ watch(queryModalOpen, (open) => {
     </div>
   </Card>
 
+  <!-- Кредиты: остаток, ставка и срок; нажатие — лист кредита -->
+  <template v-if="openCredits.length">
+    <Section title="Кредиты">
+      <template #action>
+        <span class="text-[13px] font-semibold text-ink-3 num">{{ money(debtsTotal) }}</span>
+      </template>
+    </Section>
+    <Card flush data-credits>
+      <Row v-for="c in openCredits" :key="c.id" :title="c.name" :note="creditMeta(c)" :value="money(c.principal)" clickable @click="selectedCreditId = c.id" />
+    </Card>
+  </template>
+
   <!-- Платежи — справочник: один список по дню, без отметок месяца; подписки — одной строкой -->
-  <Section title="Платежи" />
+  <Section title="Платежи">
+    <template v-if="duesMonth > 0" #action>
+      <span class="text-[13px] font-semibold text-ink-3 num">{{ money(duesMonth) }} / мес</span>
+    </template>
+  </Section>
   <Card flush data-payments>
     <PaymentLine
       v-for="l in lines"

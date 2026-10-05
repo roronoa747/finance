@@ -287,14 +287,22 @@ describe('views/Money.vue — финансовые показатели (рас�
       vi.restoreAllMocks()
     })
 
-    it('Капитал: чистых крупно, «счета · долги» строкой; месячного нет — ни плана, ни «Подробнее», ни «До зарплаты», ни «Дохода» и «Трат», ни «Оплатил»; брендовой кнопки нет', async () => {
+    it('Капитал: чистых крупно, «Счета», «Кредиты» (остаток, ставка, срок) и «Платежи» с суммой месяца; месячного нет — ни плана, ни «Подробнее», ни «До зарплаты», ни «Дохода» и «Трат», ни «Оплатил»; брендовой кнопки нет', async () => {
       const store = await family()
       store.markPaid('credit', 'loan', 'a', { period: '2026-09', accountId: 'card' })
       const worth = netWorth(store.accounts, store.credits, store.goals)
       const raw = await renderScreen(Money, '/money')
       const html = text(raw)
       expect(html).toContain(`Капитал ${money(worth)}`)
-      expect(html).toContain(`счета ${plain(store.accounts.reduce((a, x) => a + x.amount, 0))} · долги −${plain(store.credits.reduce((a, c) => a + c.principal, 0))}`)
+      // «Кредиты» — остаток, ставка и срок (макет «Деньги · Капитал»): 969 500 + 300 000 + 240 000 = 1 509 500.
+      const credits = text(raw.slice(raw.indexOf('data-credits'), raw.indexOf('data-payments')))
+      expect(html).toContain(`Кредиты ${money(1_509_500)}`)
+      expect(credits).toMatch(/Кредит 33 % · до [а-я]+ 20\d\d/)
+      expect(credits).toContain(money(969_500))
+      // Рассрочка 0 %: 240 000 / 20 000 = 12 платежей — до сентября 2027.
+      expect(credits).toContain(`Рассрочка 0 % · до сентября 2027 ${money(240_000)}`)
+      // «Платежи» — сумма месяца: 220 000 + 58 000 + 25 000 + 20 000.
+      expect(html).toContain(`Платежи ${money(323_000)} / мес`)
       // Месяц живёт в «План · Месяц»: здесь его нет совсем.
       for (const gone of ['До зарплаты', 'Подробнее', 'Доход', 'обязательное', 'нагрузка', 'остаток по плану', 'Остаётся', 'Отложим', 'Осталось в', 'оплачено', 'Оплатил', 'Пришла зарплата', 'Сентябрь', 'Цели и фонды', 'из 150 000']) {
         expect(html, gone).not.toContain(gone)
