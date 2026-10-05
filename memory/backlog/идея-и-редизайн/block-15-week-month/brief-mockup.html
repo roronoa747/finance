@@ -1,0 +1,549 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Неделя и Месяц</title>
+<style>
+/* Ряды телефонов 390 px по экранам; палитра — токены приложения (frontend/src/style.css), как в макетах Блока 14. */
+:root{
+  --pg-bg:#e9e9e6; --pg-fg:#19191b; --pg-mute:#6b6b70; --pg-line:#d6d6d1;
+  --canvas:#f2f2f0; --surface:#ffffff; --surface-2:#f1f1ef; --surface-3:#e7e7e3; --line:#e3e3df; --card-border:var(--line);
+  --ink:#19191b; --ink-2:#57575b; --ink-3:#86868b;
+  --brand:#b4562f; --brand-ink:#fffdf9; --brand-soft:#f6e6dd;
+  --ok:#3e7a5b; --ok-soft:#dfeee4; --warn:#8a5a00; --warn-soft:#f8ebd0;
+  --pa:#4f7a63; --pb:#7d6a9e; --dot-ink:#ffffff;
+  --s1:#c2703f; --s3:#5b7fa6; --s5:#4f8a6b; --s6:#b0587a; --s8:#a47c3b;
+  --track:#e6e6e2; --scrim:rgb(30 26 22 / .45);
+  --shadow-2:0 2px 6px rgb(30 26 22 / .1), 0 18px 48px rgb(30 26 22 / .14);
+  --font:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,'Segoe UI',Roboto,sans-serif;
+  --num:ui-rounded,-apple-system,BlinkMacSystemFont,system-ui,'Segoe UI',Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --pg-bg:#0c0c0e; --pg-fg:#f1f1ee; --pg-mute:#9a9a96; --pg-line:#2a2a2e;
+  --canvas:#121214; --surface:#1c1c1f; --surface-2:#26262a; --surface-3:#313136; --line:#36363b; --card-border:transparent;
+  --ink:#f1f1ee; --ink-2:#b4b4b0; --ink-3:#8a8a86;
+  --brand:#e58a62; --brand-ink:#2a1208; --brand-soft:#3a2418;
+  --ok:#7fc29a; --ok-soft:#1f2e25; --warn:#e7b96a; --warn-soft:#2c2416;
+  --pa:#94c2a8; --pb:#b9a8dc; --dot-ink:#121214;
+  --s1:#e0946a; --s3:#8fb0da; --s5:#7cbf9a; --s6:#e08aab; --s8:#d4aa66;
+  --track:#313136; --scrim:rgb(0 0 0 / .6);
+  --shadow-2:0 2px 8px rgb(0 0 0 / .5), 0 20px 56px rgb(0 0 0 / .55);
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --pg-bg:#0c0c0e; --pg-fg:#f1f1ee; --pg-mute:#9a9a96; --pg-line:#2a2a2e;
+  --canvas:#121214; --surface:#1c1c1f; --surface-2:#26262a; --surface-3:#313136; --line:#36363b; --card-border:transparent;
+  --ink:#f1f1ee; --ink-2:#b4b4b0; --ink-3:#8a8a86;
+  --brand:#e58a62; --brand-ink:#2a1208; --brand-soft:#3a2418;
+  --ok:#7fc29a; --ok-soft:#1f2e25; --warn:#e7b96a; --warn-soft:#2c2416;
+  --pa:#94c2a8; --pb:#b9a8dc; --dot-ink:#121214;
+  --s1:#e0946a; --s3:#8fb0da; --s5:#7cbf9a; --s6:#e08aab; --s8:#d4aa66;
+  --track:#313136; --scrim:rgb(0 0 0 / .6);
+  --shadow-2:0 2px 8px rgb(0 0 0 / .5), 0 20px 56px rgb(0 0 0 / .55);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--pg-bg);color:var(--pg-fg);font:15px/1.4 var(--font);margin:0}
+button{font:inherit;color:inherit}
+.wrap{max-width:1320px;margin:0 auto;padding-inline:16px;padding-block:20px 60px;display:flex;flex-direction:column;gap:44px}
+header.top{display:flex;flex-direction:column;gap:8px;max-width:72ch}
+h1{font-size:28px;letter-spacing:-.02em;margin:0;text-wrap:balance}
+.sub{color:var(--pg-mute);margin:0}
+section{display:flex;flex-direction:column;gap:14px}
+h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.row{display:flex;gap:22px;overflow-x:auto;padding-bottom:10px;scroll-snap-type:x mandatory}
+.col{display:flex;flex-direction:column;gap:10px;flex:0 0 auto;scroll-snap-align:start;width:min(390px,calc(100vw - 32px))}
+.cap{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;min-height:28px}
+.cap b{font-size:15px}
+.cap span{color:var(--pg-mute);font-size:13px}
+.rec{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:var(--brand);color:var(--brand-ink)!important;padding:3px 8px;border-radius:99px}
+
+/* телефон */
+.phone{width:100%;max-width:390px;height:780px;background:var(--canvas);color:var(--ink);border-radius:38px;border:8px solid var(--pg-fg);overflow:hidden;position:relative;display:flex;flex-direction:column}
+.scr{flex:1;overflow-y:auto;padding:14px 16px 110px;display:flex;flex-direction:column;gap:12px;scrollbar-width:none}
+.scr > *{flex-shrink:0}
+.tabs{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:2px;background:var(--surface);box-shadow:var(--shadow-2);border-radius:99px;padding:5px;align-items:center;z-index:4}
+.tabs i{font-style:normal;font-size:13px;font-weight:600;padding:9px 15px;border-radius:99px;color:var(--ink-3)}
+.tabs i.on{background:var(--surface-3);color:var(--ink)}
+.tabs .plus{width:36px;height:36px;border-radius:50%;background:var(--brand);color:var(--brand-ink);display:grid;place-items:center;font-size:22px;margin-left:4px;font-style:normal}
+.seg{display:flex;background:var(--surface-2);border-radius:14px;padding:4px;gap:4px}
+.seg button{flex:1;border:0;background:transparent;border-radius:10px;padding:9px;font-weight:650;font-size:14.5px;color:var(--ink-3);cursor:pointer}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgb(0 0 0 / .08)}
+.card{background:var(--surface);border:1px solid var(--card-border);border-radius:24px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.list{background:var(--surface);border:1px solid var(--card-border);border-radius:24px;padding:2px 14px}
+.lbl{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3)}
+.meta{font-size:13px;color:var(--ink-3)}
+.n{font-family:var(--num);font-variant-numeric:tabular-nums}
+.huge{font-family:var(--num);font-weight:700;font-size:40px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.btn{border:0;border-radius:14px;padding:13px 16px;font:600 15px var(--font);background:var(--brand);color:var(--brand-ink);width:100%;cursor:pointer}
+.up{color:var(--warn)} .down{color:var(--ok)}
+.pill{font-size:12.5px;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap}
+.pill.up{background:var(--warn-soft)} .pill.down{background:var(--ok-soft)}
+.btn:focus-visible,.seg button:focus-visible,.srow:focus-visible,.drow:focus-visible{outline:2.5px solid var(--brand);outline-offset:2px}
+
+/* верхняя строка недели */
+.strip{display:flex;align-items:center;gap:10px}
+.who{position:relative;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:var(--dot-ink);font-weight:700;font-size:14px}
+.who.a{background:var(--pa)} .who.b{background:var(--pb)}
+.who.no{opacity:.35}
+.who .ck{position:absolute;right:-3px;bottom:-3px;width:16px;height:16px;border-radius:50%;background:var(--ok);color:var(--surface);font-size:10px;display:grid;place-items:center;border:2px solid var(--canvas);font-weight:800}
+.addup{width:34px;height:34px;border-radius:50%;border:2px dashed var(--brand);color:var(--brand);display:grid;place-items:center;font-size:20px;font-weight:600;background:transparent;cursor:pointer;padding:0}
+.bang{margin-left:auto;display:flex;align-items:center;gap:5px;background:var(--ok-soft);color:var(--ok);font-weight:750;border-radius:99px;padding:6px 11px;font-size:14px;border:0;cursor:pointer}
+.bang b{width:18px;height:18px;border-radius:50%;background:var(--ok);color:var(--surface);display:grid;place-items:center;font-size:12px}
+
+/* разделы — полосы */
+.srow{display:flex;flex-direction:column;gap:6px;padding:12px 0;border-top:1px solid var(--line);cursor:pointer;background:transparent;border-left:0;border-right:0;border-bottom:0;text-align:left;width:100%}
+.list > .srow:first-child{border-top:0}
+.sl{display:flex;align-items:center;gap:10px}
+.ic{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;font-size:17px;flex:0 0 auto;background:var(--surface-2)}
+.sl .nm{flex:1;min-width:0;font-weight:650;font-size:15.5px}
+.sl .v{font-family:var(--num);font-weight:700;font-size:16px;font-variant-numeric:tabular-nums}
+.sl .ar{font-size:12px;font-weight:800;width:16px;text-align:center}
+.bar{height:6px;border-radius:99px;background:var(--track);overflow:hidden;margin-left:42px}
+.bar i{display:block;height:100%;border-radius:99px;background:var(--c)}
+.rest{margin-left:42px;font-size:12.5px;color:var(--ink-3)}
+.rest b{color:var(--ink-2);font-weight:650}
+.rest.lo b{color:var(--warn)}
+.top{margin:6px 0 0 42px;display:flex;flex-direction:column;gap:6px;padding:10px 12px;background:var(--surface-2);border-radius:14px}
+.top div{display:flex;justify-content:space-between;font-size:13.5px;gap:8px}
+.top span{color:var(--ink-3)}
+
+/* тренд */
+.trend{display:flex;align-items:flex-end;gap:7px;height:92px;padding-top:6px}
+.trend div{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end}
+.trend i{display:block;width:100%;border-radius:6px 6px 3px 3px;background:var(--surface-3)}
+.trend .now i{background:var(--brand)}
+.trend span{font-size:10.5px;color:var(--ink-3)}
+.more{display:flex;justify-content:space-between;align-items:center;padding:14px 2px;font-weight:600;font-size:15px;color:var(--ink-2)}
+
+/* плитки */
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{background:var(--surface);border:1px solid var(--card-border);border-radius:22px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.tile .h{display:flex;justify-content:space-between;align-items:center}
+.tile .v{font-family:var(--num);font-weight:700;font-size:22px;font-variant-numeric:tabular-nums;line-height:1}
+.tile .m{font-size:12px;color:var(--ink-3)}
+.mini{width:44px;height:44px}
+
+/* лист и тост */
+.dim{position:absolute;inset:0;background:var(--scrim);z-index:5}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:26px 26px 0 0;box-shadow:var(--shadow-2);padding:10px 16px 26px;display:flex;flex-direction:column;gap:12px;z-index:6}
+.sheet .gr{width:38px;height:5px;border-radius:99px;background:var(--line);align-self:center}
+.sheet .st{font-size:20px;font-weight:700;letter-spacing:-.01em}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:0;font-size:14px;font-weight:600;padding:9px 13px;border-radius:99px;background:var(--surface-2);color:var(--ink);cursor:pointer}
+.toast{position:absolute;left:16px;right:16px;bottom:84px;background:var(--ink);color:var(--canvas);border-radius:16px;padding:13px 16px;display:flex;justify-content:space-between;align-items:center;z-index:4;font-weight:600;font-size:14.5px}
+.toast b{color:var(--brand-soft)}
+.prog{display:flex;gap:4px}
+.prog i{flex:1;height:4px;border-radius:99px;background:var(--track)}
+.prog i.on{background:var(--ok)}
+
+/* месяц */
+.sh{display:flex;justify-content:space-between;align-items:baseline;padding:4px 4px 0;gap:8px}
+.sh .k{font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px}
+.sh .k::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--c)}
+.sh .v{font-family:var(--num);font-weight:700;font-variant-numeric:tabular-nums;font-size:15px;color:var(--ink-2)}
+.drow{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--line);width:100%;background:transparent;border-left:0;border-right:0;border-bottom:0;text-align:left;cursor:pointer}
+.list > .drow:first-child,.list > div:first-child > .drow{border-top:0}
+.day{width:38px;flex:0 0 auto;display:flex;flex-direction:column;align-items:center;line-height:1.05}
+.day b{font-family:var(--num);font-size:18px}
+.day span{font-size:11px;color:var(--ink-3)}
+.drow .nm{flex:1;min-width:0;font-weight:650;font-size:15.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.drow .v{font-family:var(--num);font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.drow.paid .v{color:var(--ink-3);font-weight:600}
+.drow .v .c{color:var(--ok);font-weight:800}
+.av{width:24px;height:24px;border-radius:50%;display:inline-grid;place-items:center;color:var(--dot-ink);font-size:11px;font-weight:700;flex:0 0 auto}
+.av.a{background:var(--pa)} .av.b{background:var(--pb)}
+.grp{width:38px;flex:0 0 auto;display:grid;place-items:center}
+.grp i{font-style:normal;width:28px;height:28px;border-radius:9px;background:var(--surface-2);display:grid;place-items:center;font-size:15px}
+.sub-l{padding-left:22px;border-left:2px solid var(--line);margin-left:18px}
+.chev{color:var(--ink-3);font-size:14px;transition:transform .2s}
+.open .chev{transform:rotate(90deg)}
+.dot{position:relative}
+.dot::after{content:"";position:absolute;top:6px;right:18px;width:8px;height:8px;border-radius:50%;background:var(--brand)}
+.tg{width:42px;height:26px;border-radius:99px;background:var(--ok);position:relative;flex:0 0 auto}
+.tg::after{content:"";position:absolute;top:3px;right:3px;width:20px;height:20px;border-radius:50%;background:var(--surface)}
+.tg.off{background:var(--track)} .tg.off::after{right:auto;left:3px}
+.grip{color:var(--ink-3);font-size:14px;letter-spacing:-2px;width:14px}
+.sal{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.sal:first-of-type{border-top:0}
+.sal .nm{flex:1;font-weight:650}
+.sal .v{font-family:var(--num);font-weight:700}
+.sal .wait{color:var(--ink-3)}
+.sq{display:flex;gap:8px}
+.sq a{flex:1;background:var(--surface);border:1px solid var(--card-border);border-radius:18px;padding:12px;display:flex;flex-direction:column;gap:2px;text-decoration:none;color:var(--ink)}
+.sq a.on{outline:2px solid var(--brand);outline-offset:-2px}
+.sq b{font-size:14px} .sq span{font-family:var(--num);font-size:13px;color:var(--ink-3)}
+.mnav{display:flex;justify-content:center;align-items:center;gap:14px;font-size:15px}
+.mnav i{font-style:normal;color:var(--ink-3);font-size:20px;line-height:1;padding:0 6px}
+.mnav i.off{opacity:.3}
+.ringbox{position:relative;width:236px;height:236px;align-self:center}
+.ringbox svg{position:absolute;inset:0;width:100%;height:100%}
+.ringbox .c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center}
+.vt{width:34px;height:34px;border-radius:10px;border:0;background:var(--surface-2);color:var(--ink-2);font-size:17px;display:grid;place-items:center;cursor:pointer;padding:0}
+.wk{display:flex;align-items:center;gap:8px}
+.wk i{font-style:normal;color:var(--ink-3);font-size:20px;line-height:1;padding:0 4px;cursor:pointer}
+.wk i.off{opacity:.3}
+.ops{display:flex;flex-direction:column}
+.ops .d{font-size:12px;font-weight:650;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);padding:10px 0 4px}
+.ops .o{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid var(--line);font-size:14.5px}
+.ops .o span{color:var(--ink-3);font-size:13px}
+.ops .o b{font-family:var(--num);font-variant-numeric:tabular-nums;font-weight:650}
+.vt:focus-visible{outline:2.5px solid var(--brand);outline-offset:2px}
+@media (prefers-reduced-motion: reduce){ .chev{transition:none} }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>Неделя и Месяц</h1>
+    <p class="sub">Вкладки: Мечты · План · Деньги. Экраны 390 px, цифры — пример. Нажимайте на разделы, подписки и «Неделя | Месяц».</p>
+  </header>
+
+  <!-- ===== НЕДЕЛЯ ===== -->
+  <section>
+    <h2>План · Неделя</h2>
+    <div class="row">
+
+      <!-- A: полосы -->
+      <div class="col">
+        <div class="cap"><b>Неделя · список</b><span>▦ справа — переключить на плитки</span></div>
+        <div class="phone">
+          <div class="scr">
+            <div class="seg" data-seg><button class="on">Неделя</button><button>Месяц</button></div>
+            <div class="strip">
+              <span class="who a">И<span class="ck">✓</span></span>
+              <span class="who b no">А</span>
+              <button class="addup" aria-label="Загрузить выписку">+</button>
+              <button class="bang"><b>!</b> 3</button>
+              <button class="vt" aria-label="Плитками">▦</button>
+            </div>
+            <div class="card">
+              <span class="wk"><i>‹</i><span class="lbl">12 – 18 октября</span><i class="off">›</i></span>
+              <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><span class="huge">85 400 ₸</span><span class="pill up">↑ 12%</span></div>
+              <span class="meta">прошлая неделя — 76 200 ₸</span>
+            </div>
+            <div class="list" data-acc>
+              <button class="srow" style="--c:var(--s5)">
+                <span class="sl"><span class="ic">🛒</span><span class="nm">Еда</span><span class="ar down">↓</span><span class="v">32 000</span></span>
+                <span class="bar"><i style="width:73%"></i></span>
+                <span class="rest">на октябрь осталось <b>41 000</b> из 150 000</span>
+                <span class="top" hidden><div>Magnum<span>6 раз · 18 400</span></div><div>Small<span>9 раз · 9 100</span></div><div>Базар<span>1 раз · 4 500</span></div></span>
+              </button>
+              <button class="srow" style="--c:var(--s3)">
+                <span class="sl"><span class="ic">🚕</span><span class="nm">Такси</span><span class="ar up">↑</span><span class="v">18 000</span></span>
+                <span class="bar"><i style="width:65%"></i></span>
+                <span class="rest">на октябрь осталось <b>28 000</b> из 80 000</span>
+                <span class="top"><div>Яндекс Go<span>14 поездок · 15 200</span></div><div>inDrive<span>2 поездки · 2 800</span></div></span>
+              </button>
+              <button class="srow" style="--c:var(--s6)">
+                <span class="sl"><span class="ic">☕</span><span class="nm">Кафе и доставка</span><span class="ar up">↑</span><span class="v">14 500</span></span>
+                <span class="bar"><i style="width:65%"></i></span>
+                <span class="rest">на октябрь осталось <b>21 000</b> из 60 000</span>
+                <span class="top" hidden><div>Wolt<span>3 заказа · 9 800</span></div><div>Starbucks<span>4 раза · 4 700</span></div></span>
+              </button>
+              <button class="srow" style="--c:var(--warn)">
+                <span class="sl"><span class="ic">🧺</span><span class="nm">Мелкое</span><span class="ar up">↑</span><span class="v">20 900</span></span>
+                <span class="bar"><i style="width:93%"></i></span>
+                <span class="rest lo">на октябрь осталось <b>2 000</b> из 30 000</span>
+                <span class="top" hidden><div>Kaspi магазин<span>2 раза · 12 400</span></div><div>Аптека<span>3 раза · 8 500</span></div></span>
+              </button>
+            </div>
+            <div class="card">
+              <span class="lbl">8 недель</span>
+              <div class="trend">
+                <div><i style="height:66%"></i><span>24.08</span></div>
+                <div><i style="height:86%"></i><span>31.08</span></div>
+                <div><i style="height:64%"></i><span>7.09</span></div>
+                <div><i style="height:75%"></i><span>14.09</span></div>
+                <div><i style="height:73%"></i><span>21.09</span></div>
+                <div><i style="height:82%"></i><span>28.09</span></div>
+                <div><i style="height:71%"></i><span>5.10</span></div>
+                <div class="now"><i style="height:80%"></i><span>12.10</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="tabs"><i>Мечты</i><i class="on">План</i><i>Деньги</i><i class="plus">+</i></div>
+        </div>
+      </div>
+
+      <!-- B: плитки -->
+      <div class="col">
+        <div class="cap"><b>Неделя · плитки</b><span>☰ — обратно списком; выбор запоминается</span></div>
+        <div class="phone">
+          <div class="scr">
+            <div class="seg" data-seg><button class="on">Неделя</button><button>Месяц</button></div>
+            <div class="strip">
+              <span class="who a">И<span class="ck">✓</span></span>
+              <span class="who b no">А</span>
+              <button class="addup" aria-label="Загрузить выписку">+</button>
+              <button class="bang"><b>!</b> 3</button>
+              <button class="vt" aria-label="Списком">☰</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px;padding:4px 4px 2px">
+              <span class="wk"><i>‹</i><span class="lbl">12 – 18 октября</span><i class="off">›</i></span>
+              <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><span class="huge">85 400 ₸</span><span class="pill up">↑ 12%</span></div>
+            </div>
+            <div class="tiles">
+              <div class="tile"><div class="h"><span class="ic">🛒</span><svg class="mini" viewBox="0 0 44 44"><circle cx="22" cy="22" r="17" fill="none" stroke="var(--track)" stroke-width="6"/><circle cx="22" cy="22" r="17" fill="none" stroke="var(--s5)" stroke-width="6" stroke-linecap="round" stroke-dasharray="78 107" transform="rotate(-90 22 22)"/></svg></div><span class="v">32 000</span><span class="m">Еда · <span class="down">↓</span> · ост. 41 000</span></div>
+              <div class="tile"><div class="h"><span class="ic">🚕</span><svg class="mini" viewBox="0 0 44 44"><circle cx="22" cy="22" r="17" fill="none" stroke="var(--track)" stroke-width="6"/><circle cx="22" cy="22" r="17" fill="none" stroke="var(--s3)" stroke-width="6" stroke-linecap="round" stroke-dasharray="69 107" transform="rotate(-90 22 22)"/></svg></div><span class="v">18 000</span><span class="m">Такси · <span class="up">↑</span> · ост. 28 000</span></div>
+              <div class="tile"><div class="h"><span class="ic">☕</span><svg class="mini" viewBox="0 0 44 44"><circle cx="22" cy="22" r="17" fill="none" stroke="var(--track)" stroke-width="6"/><circle cx="22" cy="22" r="17" fill="none" stroke="var(--s6)" stroke-width="6" stroke-linecap="round" stroke-dasharray="69 107" transform="rotate(-90 22 22)"/></svg></div><span class="v">14 500</span><span class="m">Кафе · <span class="up">↑</span> · ост. 21 000</span></div>
+              <div class="tile"><div class="h"><span class="ic">🧺</span><svg class="mini" viewBox="0 0 44 44"><circle cx="22" cy="22" r="17" fill="none" stroke="var(--track)" stroke-width="6"/><circle cx="22" cy="22" r="17" fill="none" stroke="var(--warn)" stroke-width="6" stroke-linecap="round" stroke-dasharray="99 107" transform="rotate(-90 22 22)"/></svg></div><span class="v">20 900</span><span class="m">Мелкое · <span class="up">↑</span> · <span class="up">ост. 2 000</span></span></div>
+            </div>
+            <div class="list"><div class="more"><span>Прошлые недели</span><span class="chev">›</span></div></div>
+          </div>
+          <div class="tabs"><i>Мечты</i><i class="on">План</i><i>Деньги</i><i class="plus">+</i></div>
+        </div>
+      </div>
+
+      <!-- после загрузки -->
+      <div class="col">
+        <div class="cap"><b>Загрузил выписку</b><span>сразу готово, отмена — в тосте</span></div>
+        <div class="phone">
+          <div class="scr">
+            <div class="seg"><button class="on">Неделя</button><button>Месяц</button></div>
+            <div class="strip">
+              <span class="who a">И<span class="ck">✓</span></span>
+              <span class="who b no">А</span>
+              <button class="addup" aria-label="Загрузить выписку">+</button>
+              <button class="bang"><b>!</b> 3</button>
+              <button class="vt" aria-label="Плитками">▦</button>
+            </div>
+            <div class="card">
+              <span class="wk"><i>‹</i><span class="lbl">12 – 18 октября</span><i class="off">›</i></span>
+              <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><span class="huge">85 400 ₸</span><span class="pill up">↑ 12%</span></div>
+              <span class="meta">прошлая неделя — 76 200 ₸</span>
+            </div>
+          </div>
+          <div class="toast"><span>Загружено 48 операций</span><b>Отменить</b></div>
+          <div class="tabs"><i>Мечты</i><i class="on">План</i><i>Деньги</i><i class="plus">+</i></div>
+        </div>
+      </div>
+
+      <!-- лист ! -->
+      <div class="col">
+        <div class="cap"><b>Нажал «! 3»</b><span>вопросы по одному, в листе</span></div>
+        <div class="phone">
+          <div class="scr">
+            <div class="seg"><button class="on">Неделя</button><button>Месяц</button></div>
+          </div>
+          <div class="dim"></div>
+          <div class="sheet">
+            <span class="gr"></span>
+            <div class="prog"><i class="on"></i><i></i><i></i></div>
+            <span class="lbl">1 из 3 · для точности</span>
+            <span class="st">ИП Ахметова · 12 400 ₸</span>
+            <span class="meta">16 октября · куда отнести?</span>
+            <div class="chips"><button class="chip">🛒 Еда</button><button class="chip">🧺 Мелкое</button><button class="chip">☕ Кафе</button><button class="chip">🎁 Подарки</button><button class="chip">Другое…</button></div>
+            <button class="btn" style="background:transparent;color:var(--ink-2)">Потом</button>
+          </div>
+          <div class="tabs" style="z-index:3"><i>Мечты</i><i class="on">План</i><i>Деньги</i><i class="plus">+</i></div>
+        </div>
+      </div>
+
+      <!-- раздел: операции -->
+      <div class="col">
+        <div class="cap"><b>Нажал «Такси»</b><span>в списке и в плитках одинаково: где и когда</span></div>
+        <div class="phone">
+          <div class="scr">
+            <div class="seg"><button class="on">Неделя</button><button>Месяц</button></div>
+          </div>
+          <div class="dim"></div>
+          <div class="sheet" style="max-height:88%;overflow-y:auto">
+            <span class="gr"></span>
+            <div style="display:flex;align-items:center;gap:10px"><span class="ic">🚕</span><span class="st" style="flex:1">Такси</span><span class="huge" style="font-size:26px">18 000 ₸</span></div>
+            <span class="meta">12 – 18 октября · <span class="up">↑ 5 600</span> к прошлой · на октябрь осталось 28 000</span>
+            <div class="top" style="margin:0"><div>Яндекс Go<span>14 поездок · 15 200</span></div><div>inDrive<span>2 поездки · 2 800</span></div></div>
+            <div class="ops">
+              <span class="d">18 октября, сб</span>
+              <div class="o">Яндекс Go <span>22:40</span><b>1 450</b></div>
+              <div class="o">Яндекс Go <span>13:05</span><b>980</b></div>
+              <span class="d">17 октября, пт</span>
+              <div class="o">inDrive <span>19:12</span><b>1 600</b></div>
+              <div class="o">Яндекс Go <span>08:47</span><b>1 120</b></div>
+              <span class="d">16 октября, чт</span>
+              <div class="o">Яндекс Go <span>09:02</span><b>1 300</b></div>
+            </div>
+            <div class="more" style="padding:6px 2px"><span>Ещё 11 · 11 550 ₸</span><span class="chev">›</span></div>
+          </div>
+          <div class="tabs" style="z-index:3"><i>Мечты</i><i class="on">План</i><i>Деньги</i><i class="plus">+</i></div>
+        </div>
+      </div>
+
+      <!-- выписки -->
+      <div class="col">
+        <div class="cap"><b>Нажал свой кружок</b><span>мои выписки; недели — стрелками ‹ ›</span></div>
+        <div class="phone">
+          <div class="scr">
+            <div class="seg"><button class="on">Неделя</button><button>Месяц</button></div>
+          </div>
+          <div class="dim"></div>
+          <div class="sheet">
+            <span class="gr"></span>
+            <span class="st">Мои выписки</span>
+            <div class="list" style="padding:2px 0;border:0">
+              <div class="drow"><span class="ic">K</span><span class="nm">Kaspi Gold<br><span class="meta">12 – 18 окт · 48 операций</span></span><span class="meta">19 окт</span></div>
+              <div class="drow"><span class="ic">F</span><span class="nm">Freedom<br><span class="meta">1 – 18 окт · 9 операций</span></span><span class="meta">19 окт</span></div>
+              <div class="drow"><span class="ic">K</span><span class="nm">Kaspi Gold<br><span class="meta">5 – 11 окт · 51 операция</span></span><span class="meta">12 окт</span></div>
+              <div class="drow"><span class="ic">K</span><span class="nm">Kaspi Gold<br><span class="meta">28 сен – 4 окт · 44 операции</span></span><span class="meta">5 окт</span></div>
+            </div>
+            <button class="btn">+ Загрузить выписку</button>
+          </div>
+          <div class="tabs" style="z-index:3"><i>Мечты</i><i class="on">План</i><i>Деньги</i><i class="plus">+</i></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===== МЕСЯЦ ===== -->
+  <section>
+    <h2>План · Месяц</h2>
+    <div class="row">
+      <div class="col">
+        <div class="cap"><b>Месяц</b><span>план Блока 14 без дублей; подписки — одной строкой</span></div>
+        <div class="phone">
+          <div class="scr">
+            <div class="seg" data-seg><button>Неделя</button><button class="on">Месяц</button></div>
+            <div class="mnav"><i>‹</i><b>Октябрь</b><i class="off">›</i></div>
+            <div class="ringbox">
+              <svg viewBox="0 0 236 236" aria-hidden="true">
+                <circle cx="118" cy="118" r="100" fill="none" stroke="var(--track)" stroke-width="22"/>
+                <circle cx="118" cy="118" r="100" fill="none" stroke="var(--s1)" stroke-width="22" stroke-dasharray="187.2 628.3" stroke-dashoffset="0" transform="rotate(-90 118 118)"/>
+                <circle cx="118" cy="118" r="100" fill="none" stroke="var(--s8)" stroke-width="22" stroke-dasharray="251.3 628.3" stroke-dashoffset="-187.2" transform="rotate(-90 118 118)"/>
+                <circle cx="118" cy="118" r="100" fill="none" stroke="var(--s3)" stroke-width="22" stroke-dasharray="79.6 628.3" stroke-dashoffset="-438.5" transform="rotate(-90 118 118)"/>
+                <circle cx="118" cy="118" r="100" fill="none" stroke="var(--ok)" stroke-width="22" stroke-dasharray="110.2 628.3" stroke-dashoffset="-518.1" transform="rotate(-90 118 118)"/>
+              </svg>
+              <div class="c"><span class="lbl">останется</span><span class="huge" style="font-size:32px">263 000</span><span class="meta">из 1 500 000 ₸</span></div>
+            </div>
+            <div class="card" style="gap:4px">
+              <div class="sal"><span class="av a">И</span><span class="nm">Ильяс</span><span class="v">900 000 <span class="down">✓</span></span></div>
+              <div class="sal"><span class="av b">А</span><span class="nm">Аруна</span><span class="v wait">600 000 · 10-го</span></div>
+            </div>
+
+            <div class="sh" style="--c:var(--s1)"><span class="k">Платежи</span><span class="v">447 000</span></div>
+            <div class="list" data-acc2>
+              <button class="drow paid"><span class="day"><b>5</b><span>окт</span></span><span class="nm">Квартира</span><span class="av a">И</span><span class="v"><span class="c">✓ </span>300 000</span></button>
+              <button class="drow"><span class="day"><b>10</b><span>окт</span></span><span class="nm">Кредит Kaspi</span><span class="av b">А</span><span class="v">88 000</span></button>
+              <div class="open">
+                <button class="drow" data-sub><span class="grp"><i>▦</i></span><span class="nm">Подписки · 4</span><span class="meta">2 ✓</span><span class="v">24 000</span><span class="chev">›</span></button>
+                <div class="sub-l" data-subl>
+                  <button class="drow paid"><span class="day"><b>2</b><span>окт</span></span><span class="nm">Netflix</span><span class="av a">И</span><span class="v"><span class="c">✓ </span>6 000</span></button>
+                  <button class="drow paid"><span class="day"><b>7</b><span>окт</span></span><span class="nm">Spotify</span><span class="av b">А</span><span class="v"><span class="c">✓ </span>3 000</span></button>
+                  <button class="drow"><span class="day"><b>15</b><span>окт</span></span><span class="nm">iCloud</span><span class="av a">И</span><span class="v">1 500</span></button>
+                  <button class="drow"><span class="day"><b>20</b><span>окт</span></span><span class="nm">ChatGPT</span><span class="av a">И</span><span class="v">13 500</span></button>
+                </div>
+              </div>
+              <button class="drow"><span class="day"><b>20</b><span>окт</span></span><span class="nm">Коммуналка</span><span class="av b">А</span><span class="v">≈ 35 000</span></button>
+            </div>
+
+            <div class="sh" style="--c:var(--s8)"><span class="k">Траты</span><span class="v">600 000</span></div>
+            <div class="list">
+              <div class="drow"><span class="av a">И</span><span class="nm">Ильяс</span><span class="meta">211 000 из</span><span class="v">320 000</span></div>
+              <div class="drow"><span class="av b">А</span><span class="nm">Аруна</span><span class="meta">140 000 из</span><span class="v">280 000</span></div>
+            </div>
+
+            <div class="sh" style="--c:var(--s3)"><span class="k">Цели и фонды</span><span class="v">190 000</span></div>
+            <div class="list">
+              <div class="drow"><span class="grip">⋮⋮</span><span class="nm">Япония</span><span class="av a">И</span><span class="v">100 000</span><span class="tg"></span></div>
+              <div class="drow"><span class="grip">⋮⋮</span><span class="nm">Подушка</span><span class="av b">А</span><span class="v">50 000</span><span class="tg"></span></div>
+              <div class="drow"><span class="grip">⋮⋮</span><span class="nm">Кухня</span><span class="av b">А</span><span class="v">40 000</span><span class="tg"></span></div>
+              <div class="drow"><span class="grip">⋮⋮</span><span class="nm" style="color:var(--ink-3)">Машина · пауза</span><span class="v" style="color:var(--ink-3)">0</span><span class="tg off"></span></div>
+            </div>
+          </div>
+          <div class="tabs"><i>Мечты</i><i class="on">План</i><i>Деньги</i><i class="plus">+</i></div>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="cap"><b>Нажал на платёж</b><span>выписка не нашла — отмечаешь сам</span></div>
+        <div class="phone">
+          <div class="scr">
+            <div class="seg"><button>Неделя</button><button class="on">Месяц</button></div>
+          </div>
+          <div class="dim"></div>
+          <div class="sheet">
+            <span class="gr"></span>
+            <span class="st">Кредит Kaspi</span>
+            <span class="meta">10 октября · платит Аруна</span>
+            <span class="huge" style="font-size:32px">88 000 ₸</span>
+            <button class="btn">Оплатил</button>
+            <button class="btn" style="background:transparent;color:var(--ink-2)">Изменить платёж</button>
+          </div>
+          <div class="tabs" style="z-index:3"><i>Мечты</i><i class="on">План</i><i>Деньги</i><i class="plus">+</i></div>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="cap"><b>Пришла зарплата</b><span>точка на «Месяце», одна главная кнопка</span></div>
+        <div class="phone">
+          <div class="scr">
+            <div class="seg"><button>Неделя</button><button class="on dot">Месяц</button></div>
+            <div class="card" style="gap:6px;border-color:var(--brand)">
+              <span class="lbl" style="color:var(--brand)">Пришла зарплата · Аруна</span>
+              <span class="huge">600 000 ₸</span>
+              <span class="meta">в цели и фонды по плану — 90 000 ₸</span>
+              <button class="btn" style="margin-top:6px">Отложить по плану</button>
+            </div>
+            <div class="sh" style="--c:var(--s1)"><span class="k">Платежи</span><span class="v">447 000</span></div>
+            <div class="list"><div class="drow paid"><span class="day"><b>5</b><span>окт</span></span><span class="nm">Квартира</span><span class="av a">И</span><span class="v"><span class="c">✓ </span>300 000</span></div></div>
+          </div>
+          <div class="tabs"><i>Мечты</i><i class="on">План</i><i>Деньги</i><i class="plus">+</i></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== ДЕНЬГИ ===== -->
+  <section>
+    <h2>Деньги</h2>
+    <div class="row">
+      <div class="col">
+        <div class="cap"><b>Деньги</b><span>только то, что не меняется от месяца к месяцу</span></div>
+        <div class="phone">
+          <div class="scr">
+            <div class="sq"><a class="on"><b>Капитал</b><span>4 200 000</span></a><a><b>Долги</b><span>1 240 000</span></a><a><b>История</b><span>12 мес.</span></a></div>
+            <div class="card" style="gap:4px"><span class="lbl">Капитал</span><span class="huge">4 200 000 ₸</span><span class="meta"><span class="down">↑ 180 000</span> за месяц</span></div>
+            <div class="sh" style="--c:var(--s5)"><span class="k">Счета</span><span class="v">3 840 000</span></div>
+            <div class="list">
+              <div class="drow"><span class="nm">Kaspi Gold</span><span class="v">820 000</span></div>
+              <div class="drow"><span class="nm">Freedom депозит</span><span class="v">2 900 000</span></div>
+              <div class="drow"><span class="nm">Наличные</span><span class="v">120 000</span></div>
+            </div>
+            <div class="sh" style="--c:var(--s6)"><span class="k">Кредиты</span><span class="v">1 240 000</span></div>
+            <div class="list"><div class="drow"><span class="nm">Кредит Kaspi · до мая 2027</span><span class="v">1 240 000</span></div></div>
+            <div class="sh" style="--c:var(--s1)"><span class="k">Платежи</span><span class="v">447 000 / мес</span></div>
+            <div class="list">
+              <div class="drow"><span class="nm">Квартира · 5-го</span><span class="v">300 000</span></div>
+              <div class="drow"><span class="nm">Кредит Kaspi · 10-го</span><span class="v">88 000</span></div>
+              <div class="drow"><span class="nm">Подписки · 4</span><span class="v">24 000</span><span class="chev">›</span></div>
+              <div class="drow"><span class="nm">Коммуналка · 20-го</span><span class="v">≈ 35 000</span></div>
+            </div>
+          </div>
+          <div class="tabs"><i>Мечты</i><i>План</i><i class="on">Деньги</i><i class="plus">+</i></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+// разделы недели: нажатие раскрывает «где тратим больше всего»
+document.querySelectorAll('[data-acc] .srow').forEach(function (b) {
+  b.addEventListener('click', function () { var t = b.querySelector('.top'); if (t) t.hidden = !t.hidden })
+})
+// подписки: раскрыть/свернуть
+document.querySelectorAll('[data-sub]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var box = b.parentElement; var l = box.querySelector('[data-subl]')
+    l.hidden = !l.hidden; box.classList.toggle('open', !l.hidden)
+  })
+})
+// «Неделя | Месяц» — переключение внутри телефона (показывает, что это один экран)
+document.querySelectorAll('[data-seg]').forEach(function (seg) {
+  seg.querySelectorAll('button').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var week = btn.textContent === 'Неделя'
+      var target = document.querySelectorAll('.phone')[week ? 0 : 6]
+      target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'start' })
+    })
+  })
+})
+</script>
+
+</body></html>
