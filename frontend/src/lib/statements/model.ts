@@ -271,6 +271,9 @@ export function periodOf(date: string, kind: SpendTotal['kind']): string {
   return kind === 'week' ? weekKey(date) : date.slice(0, 7)
 }
 
+/** Трата выписки: списание, не перевод между своими — одно правило итогов (`spendTotals`) и «Недели» (B2C-92). */
+export const isSpend = (op: Pick<Operation, 'amount' | 'internal'>) => op.amount < 0 && !op.internal
+
 /**
  * Итоги по разделам за период (Р-21): только списания, внутренние не входят; незнакомое —
  * `_unknown`. Суммы положительные, целые. Считаются из **всех** операций периода.
@@ -284,7 +287,7 @@ export function spendTotals(
 ): SpendTotal[] {
   const out = new Map<string, SpendTotal>()
   for (const op of ops) {
-    if (op.amount >= 0 || op.internal || periodOf(op.date, kind) !== period) continue
+    if (!isSpend(op) || periodOf(op.date, kind) !== period) continue
     const categoryId = op.categoryId ?? UNKNOWN_CATEGORY
     const id = `${by}:${kind}:${period}:${categoryId}`
     const total = out.get(id) ?? { id, by, kind, period, categoryId, amount: 0, ops: 0, updatedAt: at }

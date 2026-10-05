@@ -1,10 +1,11 @@
 import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
+import { isSpend, normalizeCounterparty, normalizeMerchant } from '@/lib/statements/model'
 import type { Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY, plannedElsewhere } from '@/lib/statements/dictionary'
 import { STAT_NORMS } from '@/lib/statements/norms'
-import { addMonths, dayLabel, daysInMonth, isoIn, monthFrom, monthKey, parseMonthKey, today, weekdayShort, weekRange } from '@/lib/dates'
+import { addDaysIso, addMonths, dayLabel, daysInMonth, isoIn, monthFrom, monthKey, parseMonthKey, today, todayIso, weekdayShort, weekKey, weekRange } from '@/lib/dates'
 import { spendColor } from '@/lib/palette'
 import { money, pct } from '@/lib/money'
 /**
@@ -3568,6 +3569,206 @@ export function weekVersusPrev(totals: SpendTotal[], week: string, prevWeek: str
   const prev = sum(prevWeek)
   if (!prev || !now) return null
   return { delta: Math.round(((now - prev) / prev) * 100) }
+}
+
+/* ---------------- «Неделя» — мои траты (Блок 15, B2C-92; Р-95, Р-98, Р-101) ---------------- */
+
+/** Остаток раздела «мало»: меньше этой доли плана месяца (или уже сверх плана) — строка красится `--warn`. */
+export const LOW_REST_SHARE = 0.15
+
+/** Стрелка к прошлой неделе: больше / меньше / столько же; null — на этой неделе трат нет. */
+export type WeekArrow = 'up' | 'down' | 'same' | null
+
+const weekArrow = (now: number, prev: number): WeekArrow => (now <= 0 ? null : now > prev ? 'up' : now < prev ? 'down' : 'same')
+
+/** Прошлая ISO-неделя. */
+export const prevWeekKey = (week: string) => weekKey(addDaysIso(weekRange(week).from, -7))
+
+/** Раздел участника за неделю (`myWeek`). */
+export type MyWeekRow = {
+  categoryId: string
+  name: string
+  /** Токен цвета раздела (`spendColor`). */
+  color: string
+  /** Потрачено за неделю, целые тенге. */
+  amount: number
+  /** Потрачено за прошлую неделю. */
+  prev: number
+  arrow: WeekArrow
+  /** Сумма раздела на месяц недели (`spendPlans`, Р-81); null — раздел вне плана. */
+  plan: number | null
+  /** Факт месяца на конец недели (для текущей — на сегодня); null — раздел вне плана. */
+  spent: number | null
+  /** Остаток до конца месяца: план − факт; меньше нуля — сверх плана; null — раздел вне плана. */
+  rest: number | null
+  /** Остатка мало (`LOW_REST_SHARE`) или уже сверх плана. */
+  low: boolean
+}
+
+export type MyWeek = {
+  week: string
+  /** Понедельник и воскресенье недели, `YYYY-MM-DD`. */
+  range: { from: string; to: string }
+  /** Месяц плана для остатков: по последнему дню недели, не позже сегодня (неделя на стыке месяцев). */
+  month: string
+  /** Мои траты за неделю, включая не разобранное. */
+  total: number
+  /** Мои траты за прошлую неделю. */
+  prev: number
+  delta: number
+  /** На сколько процентов больше или меньше прошлой недели, целое ≥ 0; null — прошлой недели нет. */
+  pct: number | null
+  /** Разделы: с тратами за неделю и разделы плана; от большего к меньшему. */
+  rows: MyWeekRow[]
+}
+
+/** Мои траты недели по разделам из итогов выписок — без платежей (`plannedElsewhere`), как факт трат в `monthPlan`. */
+function mySpendOf(totals: SpendTotal[], live: SpendCategory[], by: PersonId, week: string): Map<string, number> {
+  const out = new Map<string, number>()
+  for (const t of totals) {
+    if (t.deletedAt || t.by !== by || t.kind !== 'week' || t.period !== week || t.amount <= 0) continue
+    if (t.categoryId !== UNKNOWN_CATEGORY && plannedElsewhere(t.categoryId, live)) continue
+    out.set(t.categoryId, (out.get(t.categoryId) ?? 0) + t.amount)
+  }
+  return out
+}
+
+const mapTotal = (m: Map<string, number>) => [...m.values()].reduce((s, x) => s + x, 0)
+
+/**
+ * «Неделя» — только мои траты (Р-95, Р-98): разделы участника за ISO-неделю (потрачено, стрелка к прошлой),
+ * у разделов плана — остаток до конца месяца; сумма недели и сравнение с прошлой. Платежи (`plannedElsewhere`)
+ * на «Неделе» не показываются (Р-94) — то же правило, что у факта трат плана месяца.
+ *
+ * Остаток — одна дорога с «Месяцем»: строка трат участника из `monthPlan` (план и факт месяца) минус свои
+ * операции месяца после конца недели (`ops` — своя копия операций); у текущей недели таких нет — остаток равен
+ * «Месяцу» до тенге. Месяц — по последнему дню недели, не позже сегодня (`today`, `YYYY-MM-DD`).
+ */
+export function myWeek(
+  state: MonthPlanState,
+  ctx: Omit<MonthPlanCtx, 'key'> & { by: PersonId; week: string; ops?: Operation[]; today?: string },
+): MyWeek {
+  const { by, week } = ctx
+  const range = weekRange(week)
+  const day = ctx.today ?? todayIso()
+  const end = range.to < day ? range.to : day
+  const month = end.slice(0, 7)
+  const live = ctx.spendCategories.filter(alive)
+  const named = liveSpendCategories(ctx.spendCategories)
+
+  const now = mySpendOf(ctx.totals, live, by, week)
+  const before = mySpendOf(ctx.totals, live, by, prevWeekKey(week))
+  const planned = monthPlan(state, { ...ctx, key: month }).spend.find((s) => s.by === by)?.rows ?? []
+  // Свои траты месяца после конца недели: у прошлой недели остаток — на её конец.
+  const later = new Map<string, number>()
+  for (const op of ctx.ops ?? []) {
+    if (!isSpend(op) || op.date <= end || op.date.slice(0, 7) !== month) continue
+    const id = op.categoryId ?? UNKNOWN_CATEGORY
+    later.set(id, (later.get(id) ?? 0) - op.amount)
+  }
+
+  const ids = [...new Set([...now.keys(), ...planned.map((r) => r.categoryId)])]
+  const rows = ids
+    .map((categoryId): MyWeekRow => {
+      const amount = now.get(categoryId) ?? 0
+      const prev = before.get(categoryId) ?? 0
+      const row = planned.find((r) => r.categoryId === categoryId)
+      const spent = row ? Math.max(0, (row.fact ?? 0) - (later.get(categoryId) ?? 0)) : null
+      const rest = row && spent !== null ? row.plan - spent : null
+      const cat = categoryId === UNKNOWN_CATEGORY ? null : named.find((c) => c.id === categoryId) ?? null
+      return {
+        categoryId,
+        name: spendCategoryName(named, categoryId),
+        color: spendColor(cat),
+        amount,
+        prev,
+        arrow: weekArrow(amount, prev),
+        plan: row?.plan ?? null,
+        spent,
+        rest,
+        low: !!row && rest !== null && rest < row.plan * LOW_REST_SHARE,
+      }
+    })
+    .sort((a, b) => b.amount - a.amount || (b.plan ?? 0) - (a.plan ?? 0) || a.name.localeCompare(b.name))
+
+  const total = mapTotal(now)
+  const prev = mapTotal(before)
+  return { week, range, month, total, prev, delta: total - prev, pct: prev > 0 ? Math.round((Math.abs(total - prev) / prev) * 100) : null, rows }
+}
+
+/** Раздел за неделю из своих операций (`sectionWeek`, Р-101). */
+export type SectionWeek = {
+  /** Сумма и число трат раздела за неделю. */
+  total: number
+  count: number
+  /** Топ продавцов: имя, число операций, сумма — по убыванию суммы. */
+  tops: { name: string; count: number; amount: number }[]
+  /** Операции по дням, свежие сверху — первые `limit`. */
+  days: { date: string; ops: { id: string; name: string; amount: number }[] }[]
+  /** Хвост «Ещё N · сумма»: что не поместилось; null — показано всё. */
+  more: { count: number; amount: number } | null
+}
+
+/** Сколько продавцов в топе раздела и сколько операций листа до «Ещё N». */
+export const SECTION_TOPS = 3
+export const SECTION_OPS = 5
+
+/**
+ * Лист раздела (Р-101): свои траты раздела за неделю — топ продавцов и операции по дням. Отбор — тот же, что у
+ * итогов выписок (`isSpend`: списания, без переводов между своими); раздел `UNKNOWN_CATEGORY` — не разобранное.
+ */
+export function sectionWeek(
+  ops: Operation[],
+  where: { week: string; categoryId: string; limit?: number; tops?: number },
+): SectionWeek {
+  const list = ops
+    .filter((op) => isSpend(op) && (op.categoryId ?? UNKNOWN_CATEGORY) === where.categoryId && weekKey(op.date) === where.week)
+    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? op.merchant, amount: -op.amount, key: op.counterparty ? `c:${normalizeCounterparty(op.counterparty)}` : `m:${normalizeMerchant(op.merchant)}` }))
+    .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount || a.id.localeCompare(b.id))
+
+  const groups = new Map<string, { name: string; count: number; amount: number }>()
+  for (const op of list) {
+    const g = groups.get(op.key) ?? { name: op.name, count: 0, amount: 0 }
+    g.count += 1
+    g.amount += op.amount
+    groups.set(op.key, g)
+  }
+  const tops = [...groups.values()].sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name)).slice(0, where.tops ?? SECTION_TOPS)
+
+  const shown = list.slice(0, where.limit ?? SECTION_OPS)
+  const days: SectionWeek['days'] = []
+  for (const op of shown) {
+    const last = days.at(-1)
+    const item = { id: op.id, name: op.name, amount: op.amount }
+    if (last?.date === op.date) last.ops.push(item)
+    else days.push({ date: op.date, ops: [item] })
+  }
+  const rest = list.slice(shown.length)
+  return {
+    total: amountTotal(list),
+    count: list.length,
+    tops,
+    days,
+    more: rest.length ? { count: rest.length, amount: amountTotal(rest) } : null,
+  }
+}
+
+/** Тренд (Р-98): мои суммы недель по порядку, текущая — последняя; недели без трат — 0. */
+export function weekTrend(
+  totals: SpendTotal[],
+  spendCategories: SpendCategory[],
+  by: PersonId,
+  week: string,
+  n = 8,
+): { week: string; from: string; amount: number }[] {
+  const live = spendCategories.filter(alive)
+  const out: { week: string; from: string; amount: number }[] = []
+  let key = week
+  for (let i = 0; i < n; i++) {
+    out.unshift({ week: key, from: weekRange(key).from, amount: mapTotal(mySpendOf(totals, live, by, key)) })
+    key = prevWeekKey(key)
+  }
+  return out
 }
 
 /** Подписка за год для карточки «оставить?»: годовая — как есть, ежемесячная — ×12. */
