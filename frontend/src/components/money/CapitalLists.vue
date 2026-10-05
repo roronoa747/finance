@@ -102,7 +102,7 @@ type Line = { id: string; day: number; item: { kind: 'credit'; credit: Credit } 
 const lines = computed<Line[]>(() => {
   const own = obligations.value.filter((o) => !inSubs(o) && (!o.parentId || !groups.value.some((g) => g.id === o.parentId)))
   return [
-    ...credits.value.filter((c) => c.principal > 0).map((c): Line => ({ id: c.id, day: c.day, item: { kind: 'credit', credit: c } })),
+    ...openCredits.value.map((c): Line => ({ id: c.id, day: c.day, item: { kind: 'credit', credit: c } })),
     ...own.map((o): Line => ({ id: o.id, day: o.day, item: { kind: 'obligation', obligation: o } })),
   ].sort((a, b) => a.day - b.day)
 })

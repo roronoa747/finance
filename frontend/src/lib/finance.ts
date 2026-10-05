@@ -1505,7 +1505,7 @@ export const budgetInterest = (credits: Credit[]) =>
   openCredits(credits).reduce((a, c) => a + creditSplit(c.principal, c.annualRate, c.payment).interest, 0)
 
 /**
- * «Что гасить первым» (квадрат «План», пивот 3, Р-34; бывшая секция Капитала): долги с процентами
+ * «Что гасить первым» (квадрат «Долги», пивот 3, Р-34; бывшая секция Капитала): долги с процентами
  * по `costliestCredits` с выводами `creditOutlook`, самый дорогой — первым; добавка в месяц,
  * снимающая половину его переплаты, и что она даёт (`prepayOutcome`). Долги без ставки (кредит из
  * выписки, B2C-19) не ранжируются — их просим уточнить. Кредиты — производные.
@@ -2533,7 +2533,7 @@ export function overpayNoPlan(credits: Credit[]): number | null {
 }
 
 /**
- * Прогноз плана одной строкой квадрата «План» (пивот 3, Р-34): те же два прогона, что у
+ * Прогноз плана одной строкой квадрата «Долги» (пивот 3, Р-34): те же два прогона, что у
  * `planForecast`, — когда закроются долги с планом, на сколько месяцев раньше, чем без него, и
  * переплата банку без плана → с планом (от нынешних остатков, целые тенге). «Без плана» —
  * `overpayNoPlan` (одно число с карточкой ставки), «с планом» — оно минус экономия
@@ -3579,7 +3579,7 @@ export type WeekPictureRow = {
 /** Загрузка выписки, как её отдаёт сервер: чья и за какой период (`created_at` — когда загрузили). */
 export type UploadPeriod = { slot: string; period_from: string; period_to: string; created_at?: string }
 
-/** Выписка за неделю есть, если её период перекрывает неделю хотя бы днём (`weekPicture`, «Выписки»). */
+/** Выписка за неделю есть, если её период перекрывает неделю хотя бы днём (строка загрузки «Недели», `startWeek`). */
 const coversWeek = (u: UploadPeriod, range: { from: string; to: string }) => u.period_to >= range.from && u.period_from <= range.to
 
 /**
@@ -3601,7 +3601,7 @@ export type SpendRows = { total: number; rows: WeekPictureRow[]; unknown: number
 
 /**
  * Строки картины по разделам из итогов `spendTotals` за период — неделя или месяц, все
- * участники или один (`by`): суммы, доли от общей, «не разобрано» отдельно. Ядро `weekPicture`
+ * участники или один (`by`): суммы, доли от общей, «не разобрано» отдельно. Ядро картины недели
  * и картины месяца первого запуска (`Start`): экраны сами не суммируют.
  */
 export function spendRows(
@@ -3637,7 +3637,7 @@ export function spendRows(
 /** Строка карточки «Выписки» (Р-62): загружена ли выписка за неделю и в какой день — последняя загрузка; нет — null. */
 export type WeekUploadRow = { person: Person; day: string | null }
 
-/** Карточка «Выписки · неделя» (Р-62) — по живым участникам, то же перекрытие периода с неделей, что `weekPicture`. */
+/** Кто загрузил выписку за неделю (Р-62; строка загрузки «Недели», Р-96) — по живым участникам, перекрытие периода с неделей — `coversWeek`. */
 export function weekUploads(people: Person[], week: string, uploads: UploadPeriod[] = []): WeekUploadRow[] {
   const range = weekRange(week)
   return people.filter(alive).map((person) => {

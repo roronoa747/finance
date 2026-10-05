@@ -307,7 +307,7 @@ function choose() {
       Ставку {{ inputs.unknownRate.map((c) => `«${c.name}»`).join(', ') }} уточните — пока считаем без неё.
     </p>
 
-    <!-- Активный план — строка вместо выбора (PV-15); шаг месяца — в том же квадрате «План» выше, не повторяется -->
+    <!-- Активный план — строка вместо выбора (PV-15); шаг месяца — в том же квадрате «Долги» выше, не повторяется -->
     <div v-if="plan" class="mt-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3 text-[13.5px] font-medium text-ink">
       План выбран в {{ monthIn(planStartMonth(plan)) }}
     </div>
