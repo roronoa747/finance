@@ -434,4 +434,54 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     for (const a of ['data-put-all', 'data-extra-income', 'role="switch"']) expect(monthV).not.toContain(a)
     expect(await month(V, { opened: 'dues', payFor: 'obligation:rent' })).not.toContain('data-pay')
   })
+
+  // Приёмка Блока 15 (стенд: семья A + B на Go) — пункт 1 смоука Блока 14 (Н-1) на новом «Месяце».
+  it('часть 7 — приёмка, Н-1: зарплата Аруны на её телефоне — нечего откладывать → ни точки, ни «Отложил всё»; есть её строка → точка и кнопка на её сумму', async () => {
+    const A = await phone(server, st, 'a')
+    const B = await phone(server, st, 'b')
+    const putAll = (p: Phone) => screen(p.pinia, Month, '/month', undefined, [screenMixin({}, (s) => (s.savePuts as (list: unknown) => void)(s.pending))])
+
+    // «Подушку» откладывает Аруна: у Ильяса «Отложил всё» — только его строки.
+    setActivePinia(A.pinia)
+    A.store.setPayer('goal', 'cushion', 'b')
+    expect(text(between(await month(A, { opened: 'queue' }), 'data-put-all', '</button>'))).toContain(`Отложил всё · ${sp(money(100_000))}`)
+    await putAll(A)
+    await sync(A, B)
+
+    // Её зарплата не пришла: Ильяс своё отложил — на её телефоне дел нет.
+    setActivePinia(B.pinia)
+    expect(B.store.planCall()).toBeNull()
+    const waiting = await month(B, { opened: 'queue' })
+    expect(waiting.match(/data-put-done/g)).toHaveLength(2)
+    expect(waiting).not.toContain('data-put-all')
+
+    // Её строка выключена, зарплата пришла: откладывать нечего — ни точки, ни кнопки (ни в «Месяце», ни с «Недели»).
+    B.store.pauseGoal('cushion', true)
+    B.store.markSalary('b', { period: K, accountId: 'card' })
+    expect(B.store.planCall()).toBeNull()
+    const nothing = await month(B, { opened: 'queue' })
+    expect(text(between(nothing, 'data-salary="b"', 'data-sections'))).toContain(`✓ ${sp(money(500_000))}`)
+    expect(nothing).not.toContain('data-put-all')
+    expect(nothing).not.toContain('data-section-dot')
+    expect(await week(B)).not.toContain('data-plan-dot')
+
+    // Включила обратно: за ней есть фонд — точка на разделе и на сегменте, кнопка — на её сумму.
+    setActivePinia(B.pinia)
+    B.store.pauseGoal('cushion', false)
+    expect(B.store.planCall()).toBe(K)
+    const hers = await month(B, { opened: 'queue' })
+    expect(hers).toContain('data-section-dot')
+    expect(text(between(hers, 'data-put-all', '</button>'))).toContain(`Отложил всё · ${sp(money(30_000))}`)
+    expect(await week(B)).toContain('data-plan-dot')
+
+    // «Отложил всё» — взнос в её фонд; Ильяс после синка видит три ✓.
+    await putAll(B)
+    setActivePinia(B.pinia)
+    expect(B.store.goals.find((g) => g.id === 'cushion')!.have).toBe(400_000 + 30_000)
+    expect(B.store.planCall()).toBeNull()
+    await sync(B, A)
+    const seen = await month(A, { opened: 'queue' })
+    expect(seen.match(/data-put-done/g)).toHaveLength(3)
+    expect(text(between(seen, 'data-salary="b"', 'data-sections'))).toContain(`✓ ${sp(money(500_000))}`)
+  })
 })
