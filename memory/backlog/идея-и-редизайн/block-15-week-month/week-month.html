@@ -277,6 +277,18 @@ button.drow,div.drow[data-pay]{cursor:pointer}
 .sq button.on{outline:2px solid var(--ink);outline-offset:-2px}
 .sq b{font-size:14px} .sq span{font-family:var(--num);font-size:12.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dream{border-radius:28px;aspect-ratio:1/1;max-width:100%;background:linear-gradient(135deg,var(--s3),var(--s5));display:flex;flex-direction:column;justify-content:flex-end;padding:18px;color:var(--dot-ink)}
+/* круг — оглавление (ворота B2C-91, владелец: вариант А) */
+.accs{background:var(--surface);border:1px solid var(--card-border);border-radius:24px;padding:2px 14px}
+.acch{display:flex;align-items:center;gap:10px;width:100%;border:0;border-top:1px solid var(--line);background:transparent;padding:13px 0;cursor:pointer;text-align:left}
+.accs > .acch:first-child{border-top:0}
+.acch .k{display:flex;align-items:center;gap:8px;font-size:16.5px;font-weight:700;flex:1;min-width:0;line-height:1.2}
+.acch .k::before{content:"";width:12px;height:12px;border-radius:50%;background:var(--c);flex:0 0 auto}
+.acch .k small{font-size:12.5px;font-weight:500;color:var(--ink-3)}
+.acch .v{font-family:var(--num);font-weight:700;font-size:16px;font-variant-numeric:tabular-nums}
+.accb{padding:0 0 10px}
+.accb > .list{border:0;padding:0;border-radius:0}
+.ringbox [data-acc]{cursor:pointer}
+.acch:focus-visible{outline:2.5px solid var(--brand);outline-offset:2px}
 @media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
 
@@ -306,7 +318,7 @@ button.drow,div.drow[data-pay]{cursor:pointer}
 
 <section>
   <h2><span class="q">План</span>Месяц — план семьи</h2>
-  <p class="why">План Блока 14 со всем управлением: кто платит, вкл/выкл целей, ⋮⋮ — перетащить. Подписки — одной строкой.</p>
+  <p class="why">План Блока 14 со всем управлением. Круг — оглавление: нажали цвет или строку — раздел открылся под кругом.</p>
   <div class="row" id="rMonth"></div>
 </section>
 
@@ -434,9 +446,10 @@ phone('rWeek', 'Нажал свой кружок', 'мои выписки', '<b>
 phone('rWeek', 'Загрузил', 'сразу готово, без «Отправить»', '<b>Главное:</b> ничего не нужно. «Отменить» — в тосте, пока он виден.', { tab: 'plan', seg: 'week', view: 'list', week: 3, toast: { t: 'Загружено 48 операций', undo: true }, pin: true });
 phone('rWeek', 'Нажал «! 3»', 'вопросы по одному', '<b>Главное:</b> ответ — одно нажатие. «Потом» — вопрос подождёт.', { tab: 'plan', seg: 'week', view: 'list', week: 3, sheet: { k: 'q', i: 0 } });
 
-phone('rMonth', 'Месяц', 'пришла зарплата Ильяса — точка на «Месяце»', '<b>Главное:</b> «Отложить по плану» — только пока зарплата не разложена. <b>Подсказка:</b> «хватает ли каждому» (?). <b>Скрыто:</b> подписки — одной строкой.', { tab: 'plan', seg: 'month' });
-phone('rMonth', 'Подписки раскрыты', '✓ у группы — когда списались все', '<b>Ручная группа</b> «Кино и музыка» — подгруппой внутри. Оплатите ChatGPT — у группы появится ✓.', { tab: 'plan', seg: 'month', subs: true, scrollTo: 'pay' });
-phone('rMonth', 'Нажал на платёж', 'выписка не нашла — отмечаю сам', '<b>Главное:</b> «Оплатил». Тихо: «Изменить платёж». На строке отдельной кнопки нет.', { tab: 'plan', seg: 'month', sheet: { k: 'pay', id: 'kaspi' } });
+ phone('rMonth', 'Месяц', 'пришла зарплата Ильяса — точка на «Месяце»', '<b>Главное:</b> «Отложить по плану» — только пока зарплата не разложена. <b>Подсказка:</b> «хватает ли каждому» (?). <b>Скрыто:</b> разделы — под кругом, нажатием.', { tab: 'plan', seg: 'month' });
+phone('rMonth', 'Нажал синий цвет круга', 'раздел открылся прямо под кругом', '<b>Главное:</b> как было. Выключил цель или сменил, кто платит, — круг тут же, над списком. Остальные цвета бледнеют.', { tab: 'plan', seg: 'month', acc: 'goals', scrollTo: 'ring' });
+phone('rMonth', 'Подписки раскрыты', '✓ у группы — когда списались все', '<b>Ручная группа</b> «Кино и музыка» — подгруппой внутри. Оплатите ChatGPT — у группы появится ✓.', { tab: 'plan', seg: 'month', subs: true, acc: 'pay', scrollTo: 'ring' });
+phone('rMonth', 'Нажал на платёж', 'выписка не нашла — отмечаю сам', '<b>Главное:</b> «Оплатил». Тихо: «Изменить платёж». На строке отдельной кнопки нет.', { tab: 'plan', seg: 'month', acc: 'pay', scrollTo: 'ring', sheet: { k: 'pay', id: 'kaspi' } });
 phone('rMonth', 'Внеплановый доход', 'из карточки зарплат или из «+»', '<b>Главное:</b> «Готово». Деньги идут по очереди целей — сверху вниз.', { tab: 'plan', seg: 'month', sheet: { k: 'income' } });
 phone('rMonth', 'Освободится', 'платёж кончается — карточка наверху', '<b>Главное:</b> одна кнопка на карточке. Пока зарплата не разложена, эта карточка ждёт.', { tab: 'plan', seg: 'month', freed: true });
 phone('rMonth', 'Просмотр (viewer)', 'без «Неделя | Месяц», только читать', '<b>Главное:</b> нет. Без переключателей, ⋮⋮, смены плательщика и кнопок.', { tab: 'plan', seg: 'month', ro: true });
@@ -527,9 +540,18 @@ function ring(c, o = {}) {
     + arc(R1, C1, 0, sI, '--pa', 'stroke-width="7"') + arc(R1, C1, sI, C1 - sI, '--pb', `stroke-width="7" ${o.past ? '' : 'opacity=".45"'}`)
     + `<circle cx="120" cy="120" r="${R2}" fill="none" stroke="var(--track)" stroke-width="24"/>`;
   let acc = 0;
-  for (const [col, v] of [['--s1', c.dues], ['--s8', c.spend], ['--s3', c.goals]]) { const len = C2 * v / c.inc; out += arc(R2, C2, acc, len, col, 'stroke-width="24"'); acc += len; }
+  for (const [k, col, v] of [['pay', '--s1', c.dues], ['spend', '--s8', c.spend], ['goals', '--s3', c.goals]]) { const len = C2 * v / c.inc; out += arc(R2, C2, acc, len, col, 'stroke-width="24"' + (o.acc != null ? ` data-acc="${k}" ${o.acc && o.acc !== k ? 'opacity=".3"' : ''}` : '')); acc += len; }
   const center = o.center ?? `<span class="lbl">Остаётся</span><span class="big ${c.rest < 0 ? 'warn' : ''}">${fmt(c.rest)}</span><span class="meta">из ${nb(c.inc)}</span>`;
-  return `<svg viewBox="0 0 240 240" aria-hidden="true">${out}</svg><div class="c">${center}</div>`;
+  return `<svg viewBox="0 0 240 240" aria-hidden="true">${out}</svg><div class="c" style="pointer-events:none">${center}</div>`;
+}
+function accView(v, c) {
+  const paid = G.dues.filter(d => d.paid).length, on = G.goals.filter(g => g.on).length;
+  const spentAll = sumBy(spendI(), x => x.f) + sumBy(SPEND_A, x => x.f);
+  const S = [['pay', 'Платежи', '--s1', c.dues, `${paid} из ${G.dues.length} оплачено`, () => duesList(v)],
+    ['spend', 'Траты', '--s8', c.spend, `потрачено ${nb(spentAll)}`, () => spendList()],
+    ['goals', 'Цели и фонды', '--s3', c.goals, `${on} из ${G.goals.length} включены`, () => goalsList(v, c)]];
+  return `<div class="accs">` + S.map(([k, n, col, val, meta, body]) => `<button class="acch" data-acc="${k}" aria-expanded="${v.acc === k}" style="--c:var(${col})"><span class="k"><span>${n}<br><small>${meta}</small></span></span><span class="v">${nb(val)}</span><span class="chev ${v.acc === k ? 'open' : ''}">›</span></button>`
+    + (v.acc === k ? `<div class="accb">${body()}</div>` : '')).join('') + `</div>`;
 }
 function topCard(v, c) {
   if (v.ro) return '';
@@ -596,10 +618,8 @@ function monthView(v) {
   const head = v.ro ? `<div class="tbar"><span class="t">План</span><span class="ro">просмотр</span></div>` : seg(v);
   return head + topCard(v, c)
     + `<div class="mnav"><button class="nav" data-past="1" aria-label="Сентябрь">‹</button>Октябрь<button class="nav" disabled>›</button></div>`
-    + `<div class="ringbox">${ring(c)}</div>` + salCard(v, c)
-    + secH('Платежи', '--s1', nb(c.dues), 'pay') + duesList(v)
-    + secH('Траты', '--s8', nb(c.spend)) + spendList()
-    + secH('Цели и фонды', '--s3', nb(c.goals)) + goalsList(v, c)
+    + `<div class="ringbox" data-anchor="ring">${ring(c, { acc: v.acc || '' })}</div>` + salCard(v, c)
+    + accView(v, c)
     + `<div class="card sum"><div class="ln"><span>Отложим</span><b class="ok">${fmt(c.goals)}</b></div><div class="ln"><span>Потратим</span><b>${fmt(c.dues + c.spend)}</b></div><div class="ln main2"><span>Остаётся</span><b>${fmt(c.rest)}</b></div></div>`;
 }
 
@@ -703,7 +723,7 @@ function toast(i, t, undo) {
   clearTimeout(toastT); toastT = setTimeout(() => { v.toast = null; render(i); }, undo ? 6000 : 1600);
 }
 document.addEventListener('click', e => {
-  const t = e.target.closest('button,[data-pay]'); if (!t) return;
+  const t = e.target.closest('button,[data-pay],[data-acc]'); if (!t) return;
   if (t.dataset.themeSet !== undefined) {
     const x = t.dataset.themeSet; if (x) document.documentElement.dataset.theme = x; else delete document.documentElement.dataset.theme;
     document.querySelectorAll('[data-theme-set]').forEach(b => b.setAttribute('aria-pressed', b === t)); return;
@@ -746,6 +766,7 @@ document.addEventListener('click', e => {
     return renderAll();
   }
   if (d.past) { v.past = d.past === '1'; return one(); }
+  if (d.acc) { v.acc = v.acc === d.acc ? null : d.acc; return one(); }
   if (d.sq) { v.top0 = true; v.sq = d.sq; return one(); }
   if ('calc' in d) { v.calc = !v.calc; return one(); }
   if (d.hist) { v.top0 = true; v.tab = 'plan'; v.seg = 'month'; v.past = d.hist === '0'; return one(); }
