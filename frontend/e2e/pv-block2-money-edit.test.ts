@@ -21,7 +21,7 @@ import {
 } from '../src/lib/finance'
 import { money, moneyIn, plain } from '../src/lib/money'
 import CapitalLists from '../src/components/money/CapitalLists.vue'
-import Statements from '../src/views/Statements.vue'
+import Week from '../src/views/Week.vue'
 import Money from '../src/views/Money.vue'
 import Month from '../src/views/Month.vue'
 import DangerZone from '../src/components/kit/DangerZone.vue'
@@ -429,12 +429,12 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(keepQuestions(B.store.obligations)).toEqual([])
       // Вопросы «Недели» — в листе за «! N» (Блок 15, Р-97).
       const asked = { state: { questionsOpen: true } }
-      expect(await page(B.pinia, Statements, '/week', asked)).not.toContain('Оставить подписку')
+      expect(await page(B.pinia, Week, '/week', asked)).not.toContain('Оставить подписку')
       // …с нового квартала второй телефон спрашивает про подписку «Интернет» — не про
       // «Свет» (оценка) и не про аренду (жильё).
       at('2026-10-02T04:00:00Z')
       expect(keepQuestions(B.store.obligations).map((o) => o.name)).toEqual(['Интернет'])
-      const overview = await page(B.pinia, Statements, '/week', asked)
+      const overview = await page(B.pinia, Week, '/week', asked)
       expect(overview).toContain('Оставить подписку Интернет?')
       expect(overview).toContain(`${money(6_990)} · каждый месяц`)
       expect(overview).not.toContain('Оставить подписку Свет?')

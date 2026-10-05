@@ -18,7 +18,7 @@ import type { Obligation, SyncDoc } from '../src/types/finance'
 import AppShell from '../src/components/AppShell.vue'
 import Money from '../src/views/Money.vue'
 import Month from '../src/views/Month.vue'
-import Statements from '../src/views/Statements.vue'
+import Week from '../src/views/Week.vue'
 import { at, backend, fakeServer, fakeStatements, screen, statementsFor, tapPay, type FakeServer, type FakeStatements } from './support/family'
 
 /**
@@ -115,7 +115,7 @@ const statementA = (): ParsedStatement => ({
 
 /** «Неделя» телефона; `state` — поля экрана (вид, лист, неделя), `act` — нажатие. */
 const week = (p: Phone, state: Record<string, unknown> = {}, act?: (s: Record<string, unknown>) => void) =>
-  screen(p.pinia, Statements, '/week', undefined, [screenMixin(state, act)])
+  screen(p.pinia, Week, '/week', undefined, [screenMixin(state, act)])
 const month = (p: Phone, state: Record<string, unknown> = {}, path = '/month') => screen(p.pinia, Month, path, undefined, [screenMixin(state)])
 
 describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на двух телефонах и у viewer', () => {

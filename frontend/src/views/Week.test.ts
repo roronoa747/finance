@@ -12,7 +12,7 @@ import { MONTH_END_KEY } from '@/lib/storage'
 import { renderScreen, screenMixin } from '@/test/screenState'
 import type { Allocation, Goal, Obligation } from '@/types/finance'
 import kaspi01 from '@/lib/statements/fixtures/kaspi-01.rows.json'
-import Statements from './Statements.vue'
+import Week from './Week.vue'
 
 const storage = new Map<string, string>()
 const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;| /g, ' ').replace(/\s+/g, ' ')
@@ -76,12 +76,12 @@ afterEach(() => {
 
 /** «Неделя» с открытым листом вопросов «! N» (Р-97). */
 const asked = (state: Record<string, unknown> = {}, act?: (s: Record<string, unknown>) => void) =>
-  renderScreen(Statements, '/week', undefined, [screenMixin({ questionsOpen: true, ...state }, act)])
+  renderScreen(Week, '/week', undefined, [screenMixin({ questionsOpen: true, ...state }, act)])
 
-describe('views/Statements.vue', () => {
+describe('views/Week.vue', () => {
   it('пусто (Р-96): одна брендовая «Загрузить» в строке загрузки, сумма — тихий «0 ₸»; ни карточки «Выписки», ни кнопки внизу, ни механики', async () => {
     signIn()
-    const raw = await renderScreen(Statements, '/statements')
+    const raw = await renderScreen(Week, '/statements')
     const html = text(raw)
     expect(brand(raw)).toEqual(['Загрузить'])
     expect(raw).toContain('data-upload="lead"')
@@ -106,7 +106,7 @@ describe('views/Statements.vue', () => {
     expect(html).not.toContain('запомним')
     expect(brand(html)).toEqual(['Загрузить', 'Да, отметить'])
     // Лист закрыт — на экране только значок «! 1».
-    const closed = await renderScreen(Statements, '/week')
+    const closed = await renderScreen(Week, '/week')
     expect(closed).not.toContain('отметить?')
     expect(text(closed)).toContain('! 1')
     expect(closed).toContain('aria-label="Вопросы: 1"')
@@ -129,7 +129,7 @@ describe('views/Statements.vue', () => {
     const store = useOperationsStore()
     store.setDraft([{ name: 'выписка.pdf', parsed: parseStatement(kaspi01) }])
     await store.send()
-    const html = text(await renderScreen(Statements, '/statements'))
+    const html = text(await renderScreen(Week, '/statements'))
     expect(fetchSpy).not.toHaveBeenCalled()
     expect(html).toContain('демо: только на этом телефоне')
     // Загрузка записана локально; выписка июня-июля эту неделю не закрывает — экран зовёт загрузить свою.
@@ -140,7 +140,7 @@ describe('views/Statements.vue', () => {
 })
 
 // B2C-21 «Тесты»: SSR /week — очередь решений по одному после сопоставлений и итог недели.
-describe('views/Statements.vue — решения по одному и итог недели', () => {
+describe('views/Week.vue — решения по одному и итог недели', () => {
   it('B2C-61: незнакомые месяца — пачкой: «Без раздела · N», 6 строк по сумме + «Ещё K · сумма ›»; без отмеченных — чипов нет; брендовых кнопок нет', async () => {
     signIn()
     const store = useOperationsStore()

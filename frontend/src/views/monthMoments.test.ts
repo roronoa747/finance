@@ -6,7 +6,7 @@ import { money } from '@/lib/money'
 import { planFromSource, type PlanSource } from '@/lib/finance'
 import type { Payment, SyncDoc } from '@/types/finance'
 import Dreams from './Dreams.vue'
-import Statements from './Statements.vue'
+import Week from './Week.vue'
 import Money from './Money.vue'
 import Month from './Month.vue'
 import { authAs, planFamilyDoc, planOf } from '@/test/planFamily'
@@ -51,7 +51,7 @@ describe('Блок 2: моменты месяца (SSR)', () => {
 
   describe('RP-11 — вопрос в конце месяца', () => {
     // Решения живут на «Неделе» (пивот 3, Р-42/Р-43) — в листе за «! N» (Блок 15, Р-97): на «Мечтах» их нет.
-    const asked = () => renderScreen(Statements, '/week', undefined, [screenMixin({ questionsOpen: true })])
+    const asked = () => renderScreen(Week, '/week', undefined, [screenMixin({ questionsOpen: true })])
     it('«Неделя»: «Остались деньги?» есть в последние дни месяца, нет в середине, нет у viewer; на «Мечтах» — нет', async () => {
       family()
       const html = await asked()
@@ -73,7 +73,7 @@ describe('Блок 2: моменты месяца (SSR)', () => {
       family()
       let vm: Record<string, any> = {}
       const grab = { created(this: any) { if ('answerRest' in this.$.setupState) vm = this.$.setupState } }
-      await renderScreen(Statements, '/week', undefined, [grab])
+      await renderScreen(Week, '/week', undefined, [grab])
       vm.answerRest(false)
       expect(storage.get('ff_month_end')).toBe('2026-09')
       expect(await asked()).not.toContain('Остались деньги')
@@ -88,7 +88,7 @@ describe('Блок 2: моменты месяца (SSR)', () => {
       const store = family()
       const src = fromSource({ from: 'rest', amount: 55_000, period: '2026-09' })
       expect(src.mode).toBe('once')
-      await renderScreen(Statements, '/week', undefined, [
+      await renderScreen(Week, '/week', undefined, [
         screenMixin({ restAmount: '55 000' }, (s) => {
           if (typeof s.answerRest === 'function') (s.answerRest as (go: boolean) => void)(true)
         }),

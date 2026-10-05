@@ -9,7 +9,7 @@ import { useFxStore } from '../src/stores/fx'
 import { useOperationsStore } from '../src/stores/operations'
 import { planFamilyDoc } from '../src/test/planFamily'
 import Money from '../src/views/Money.vue'
-import Statements from '../src/views/Statements.vue'
+import Week from '../src/views/Week.vue'
 import Month from '../src/views/Month.vue'
 import SalaryRow from '../src/components/SalaryRow.vue'
 import type { Currency } from '../src/types/finance'
@@ -144,7 +144,7 @@ describe('e2e / B2C Блок 13 — зарплата в валюте на дву
     // Пришло 1 500 € сегодня: тенге записи — по курсу дня прихода 1 500 × 489 = 733 500 ₸.
     expect(A.store.markSalary('a', { accountId: eur })).toMatchObject({ foreign: 1_500, currency: 'EUR', amount: 733_500, accountId: eur })
     // Блок 15 (Р-90, Р-97): «Обменял» — у строки своей зарплаты в «Месяце», на «Неделе» зарплаты нет.
-    expect(text(await screen(A.pinia, Statements, '/week', undefined, sheetOpen()))).not.toContain('обменяно')
+    expect(text(await screen(A.pinia, Week, '/week', undefined, sheetOpen()))).not.toContain('обменяно')
     const html0 = text(await screen(A.pinia, Month, '/month'))
     expect(html0).toContain('обменяно 0 € из 1 500 € · ≈ 732 345 ₸')
     expect(html0).toContain('Обменял')
@@ -168,7 +168,7 @@ describe('e2e / B2C Блок 13 — зарплата в валюте на дву
     expect(text(await screen(A.pinia, Month, '/month'))).toContain('обменяно 800 € из 1 500 € · ≈ 753 011 ₸')
     // Viewer: решений «Недели» нет (Р-50); строка года — внизу листа обменов «Месяца» (ворота B2C-91), «Обменял» нигде.
     const viewer =
-      text(await screen(V.pinia, Month, '/month', undefined, [screenMixin({ list: true })])) + text(await screen(V.pinia, Statements, '/week', undefined, sheetOpen()))
+      text(await screen(V.pinia, Month, '/month', undefined, [screenMixin({ list: true })])) + text(await screen(V.pinia, Week, '/week', undefined, sheetOpen()))
     expect(viewer).toContain('за год: −134 ₸')
     expect(viewer).not.toContain('Обменял')
     // Остаток счёта в тенге не зависит от того, чей телефон: сверка с формулой.

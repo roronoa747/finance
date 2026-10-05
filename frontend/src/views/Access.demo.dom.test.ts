@@ -7,7 +7,7 @@ import { createAppRouter } from '@/router'
 import { renderScreen, screenMixin } from '@/test/screenState'
 import Access from './Access.vue'
 import Money from './Money.vue'
-import Statements from './Statements.vue'
+import Week from './Week.vue'
 import Dreams from './Dreams.vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
@@ -130,7 +130,7 @@ describe('B2C-52: демо — итоги из демо-операций той 
     const own = myWeek(state, { ...ctx, by: 'a', week, ops: ops.all })
     expect(own.total).toBeGreaterThan(0)
     expect(own.total).toBeLessThan(pic.total)
-    const html = text(await renderScreen(Statements, '/week', undefined, [screenMixin({ questionsOpen: true })]))
+    const html = text(await renderScreen(Week, '/week', undefined, [screenMixin({ questionsOpen: true })]))
     expect(html).toContain(`${weekRangeLabel(pic.range)} ${text(money(own.total))}`)
     expect(html).toMatch(/[↑↓] [0-9]+%/)
     // Вопросы — за значком «! N» (лист уходит в body — в разметке экрана его нет).

@@ -8,7 +8,7 @@ import { apiClient } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
-import Statements from './Statements.vue'
+import Week from './Week.vue'
 
 /**
  * B2C-15 «Тесты»: карточка решения → запись. Кнопки карточки сопоставления на «Неделе» ведут
@@ -66,7 +66,7 @@ async function openWeek(setup?: (finance: ReturnType<typeof useFinanceStore>, st
   await router.isReady()
   const root = document.createElement('div')
   document.body.appendChild(root)
-  app = createApp(Statements)
+  app = createApp(Week)
   app.use(pinia)
   app.use(router)
   app.mount(root)

@@ -14,7 +14,7 @@ import { money, plain } from '@/lib/money'
 import { WEEK_VIEW_KEY } from '@/lib/storage'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
 import type { StatementUploadResponse } from '@/types/api'
-import Statements from './Statements.vue'
+import Week from './Week.vue'
 
 // Чтение PDF подменено: экран получает готовый разбор (сам разбор — тесты парсеров).
 const readResult = vi.hoisted(() => ({ value: { ok: [], errors: [] } as { ok: unknown[]; errors: { name: string; message: string; detail?: string }[] } }))
@@ -106,7 +106,7 @@ async function openWeek(o: { uploads?: StatementUploadResponse[]; plans?: boolea
   await router.isReady()
   const root = document.createElement('div')
   document.body.appendChild(root)
-  app = createApp(Statements)
+  app = createApp(Week)
   app.use(pinia)
   app.use(router)
   app.mount(root)

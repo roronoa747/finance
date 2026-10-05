@@ -18,7 +18,7 @@ const Money = () => import('@/views/Money.vue')
 // «План · Месяц» (Блок 15, Р-89): план месяца семьи — своим чанком.
 const Month = () => import('@/views/Month.vue')
 // Выписки (B2C-07): pdf.js грузится ещё позже — только когда выбрали файл.
-const Statements = () => import('@/views/Statements.vue')
+const Week = () => import('@/views/Week.vue')
 // Новая мечта (B2C-18): шаблоны с картинками — редкий экран, отдельным чанком.
 const GoalNew = () => import('@/views/GoalNew.vue')
 // Первый запуск (B2C-19): один раз на семью — отдельным чанком.
@@ -75,7 +75,7 @@ export const routes: RouteRecordRaw[] = [
     children: [
       { path: '', name: 'dreams', component: Dreams },
       // «План» (Р-89): «Неделя» — только свои траты, viewer уходит в «Месяц» (Р-104).
-      { path: 'week', name: 'week', component: Statements, meta: { memberOnly: true, viewerTo: '/month' } },
+      { path: 'week', name: 'week', component: Week, meta: { memberOnly: true, viewerTo: '/month' } },
       { path: 'month', name: 'month', component: Month },
       // Раскладка, разбор и «Ваш порядок» — старые закладки и ссылки PWA: план месяца (Р-78, Р-103).
       { path: 'week/salary', redirect: toPlan },

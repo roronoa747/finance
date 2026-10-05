@@ -9,7 +9,7 @@ import { parseStatement } from '../src/lib/statements/parsers'
 import type { Operation } from '../src/lib/statements/types'
 import { fromWire } from '../src/stores/operations'
 import type { OperationWire } from '../src/types/api'
-import Statements from '../src/views/Statements.vue'
+import Week from '../src/views/Week.vue'
 import { backend, fakeServer, fakeStatements, screen, setOnline, statementsFor, type FakeServer, type FakeStatements } from './support/family'
 import kaspi01 from '../src/lib/statements/fixtures/kaspi-01.rows.json'
 import kaspi02 from '../src/lib/statements/fixtures/kaspi-02.rows.json'
@@ -175,7 +175,7 @@ describe('e2e / B2C Блок 1 — выписка: разбор на телеф�
     expect(opsV.uploads.map((u) => [u.slot, u.bank])).toEqual([['a', 'freedom'], ['a', 'kaspi']])
     expect(V.client.listOperations).not.toHaveBeenCalled()
     expect(opsV.all).toEqual([])
-    const html = await screen(V.pinia, Statements, '/statements')
+    const html = await screen(V.pinia, Week, '/statements')
     expect(html).not.toContain('Загрузить выписку')
     // Блок 15 (Р-104): viewer на «Неделю» не попадает — «План» открывает «Месяц»; сам экран у него без загрузки
     // (запись загрузки — выше, в сторе).

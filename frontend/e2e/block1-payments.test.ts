@@ -17,7 +17,7 @@ import {
   untilPayday,
 } from '../src/lib/finance'
 import { money, plain } from '../src/lib/money'
-import Statements from '../src/views/Statements.vue'
+import Week from '../src/views/Week.vue'
 import Money from '../src/views/Money.vue'
 import Month from '../src/views/Month.vue'
 
@@ -183,7 +183,7 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     const B = await phone(server)
 
     // «Оставить?» — карточка решения «Недели» (пивот 3, Р-43; на «Мечтах» решений нет): тексты DESIGN.md §6.
-    let overview = await screen(A.pinia, Statements, '/week', undefined, sheetOpen())
+    let overview = await screen(A.pinia, Week, '/week', undefined, sheetOpen())
     expect(overview).toContain('Оставить подписку iCloud?')
     expect(overview).toContain('продлится 5 октября')
     expect(overview).not.toContain('Оставить подписку Slack?')
@@ -191,14 +191,14 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     setActivePinia(A.pinia)
     at('2026-09-24T08:00:00Z')
     A.store.keepSubscription('icloud')
-    overview = await screen(A.pinia, Statements, '/week', undefined, sheetOpen())
+    overview = await screen(A.pinia, Week, '/week', undefined, sheetOpen())
     expect(overview).toContain('Оставить подписку Netflix?')
     expect(overview).toContain('каждый месяц')
 
     // Партнёр тот же вопрос не получает — ответ в общем документе.
     await A.store.syncHousehold(A.client)
     await B.store.pullHousehold(B.client)
-    overview = await screen(B.pinia, Statements, '/week', undefined, sheetOpen())
+    overview = await screen(B.pinia, Week, '/week', undefined, sheetOpen())
     expect(overview).not.toContain('Оставить подписку iCloud?')
     expect(overview).toContain('Оставить подписку Netflix?')
 
@@ -207,7 +207,7 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     B.store.removeObligation('netflix')
     await B.store.syncHousehold(B.client)
     await A.store.pullHousehold(A.client)
-    overview = await screen(A.pinia, Statements, '/week', undefined, sheetOpen())
+    overview = await screen(A.pinia, Week, '/week', undefined, sheetOpen())
     expect(overview).not.toContain('Оставить подписку')
     // «Деньги → Платежи» — справочник (Блок 15).
     const capital = await screen(A.pinia, Money, '/money')
