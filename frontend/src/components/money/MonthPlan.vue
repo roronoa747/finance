@@ -5,7 +5,7 @@ import { PhCaretRight } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, parseMoney, plain } from '@/lib/money'
-import { atLabel, dayLabel, monthBy, monthFrom, monthShort, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
+import { atLabel, dayLabel, monthBy, monthFrom, monthKey as monthNow, monthShort, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
 import {
   DEBT_CARD,
   allInDebt,
@@ -42,6 +42,7 @@ import SalaryDialog from '@/components/SalaryDialog.vue'
 import SalaryExchange from '@/components/SalaryExchange.vue'
 import SalaryRow from '@/components/SalaryRow.vue'
 import ExtraIncomeSheet from '@/components/capital/ExtraIncomeSheet.vue'
+import DueRow from '@/components/money/DueRow.vue'
 import MonthRing from '@/components/money/MonthRing.vue'
 
 /**
@@ -230,6 +231,7 @@ function editDue(d: PlanDue) {
   void router.push({ path: '/money', query: d.kind === 'credit' ? { credit: d.targetId } : { obligation: d.targetId } })
 }
 const dueNote = (d: PlanDue) => (d.kind === 'obligation' && d.obligation.estimate ? 'примерно' : '')
+const askPayer = (d: PlanDue) => (payerFor.value = { kind: d.kind, id: d.targetId, name: d.name, payer: d.payer })
 
 /* ---------- траты каждого (Р-81) ---------- */
 const categories = computed(() => {
@@ -274,9 +276,13 @@ const toggle = (id: string, on: boolean) => finance.pauseGoal(id, !on)
 const putFor = ref<string | null>(null)
 const putSheet = computed(() => (putFor.value ? (putById.value.get(putFor.value) ?? null) : null))
 const debtEdit = ref<string | null>(null)
-/** Строка с суммой месяца — лист «Отложил»; без суммы — к цели или к сумме карточки долга, как в Блоке 14. */
+/**
+ * Строка с суммой месяца — лист «Отложил»; без суммы — к цели или к сумме карточки долга, как в Блоке 14. В прошлом
+ * месяце (он открыт планом, пока своя зарплата не отложена) цель по одной не отмечается: первая же запись закрыла бы
+ * месяц сводкой, а остальные цели остались бы без отметки — там только «Отложил всё».
+ */
 function openItem(q: PlanQueueItem) {
-  if (canEdit.value && putById.value.has(q.id)) putFor.value = q.id
+  if (canEdit.value && props.monthKey >= monthNow() && putById.value.has(q.id)) putFor.value = q.id
   else openDetail(q)
 }
 function openDetail(q: Pick<PlanQueueItem, 'kind' | 'goalId'>) {
@@ -391,38 +397,17 @@ function addFund(kind: 'reserve' | 'cushion') {
         <div v-if="opened === 'dues' && s.key === 'dues'" class="pb-2.5" data-dues>
           <p v-if="!dueLines.length" class="py-2 type-meta">Платежей нет</p>
           <template v-for="l in dueLines" :key="l.key">
-            <div
+            <DueRow
               v-if="l.due"
-              class="flex items-center gap-2.5 border-t border-line py-[11px] first:border-t-0"
-              :class="canEdit && 'press cursor-pointer'"
-              data-due
-              :data-due-id="l.key"
-              :role="canEdit ? 'button' : undefined"
-              :tabindex="canEdit ? 0 : undefined"
-              @click="canEdit && (payFor = l.key)"
-              @keydown.enter.self="canEdit && (payFor = l.key)"
-            >
-              <span class="flex w-[38px] shrink-0 flex-col items-center leading-[1.05]" :class="l.due.paid ? 'text-ink-3' : 'text-ink-2'">
-                <b class="font-num text-[18px] num">{{ l.due.day }}</b><span class="text-[11px] text-ink-3">{{ mon }}</span>
-              </span>
-              <span class="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span class="truncate text-[15.5px] font-semibold text-ink">{{ l.due.name }}</span>
-                <span v-if="dueNote(l.due)" class="text-[12.5px] text-ink-3">{{ dueNote(l.due) }}</span>
-              </span>
-              <button
-                v-if="canEdit && l.due.payer"
-                type="button"
-                class="press shrink-0 cursor-pointer rounded-full"
-                :aria-label="`Платит ${personName(l.due.payer)}. Сменить`"
-                @click.stop="payerFor = { kind: l.due.kind, id: l.due.targetId, name: l.due.name, payer: l.due.payer }"
-              >
-                <Avatar :id="l.due.payer" :name="personName(l.due.payer)" :size="24" />
-              </button>
-              <Avatar v-else-if="l.due.payer" :id="l.due.payer" :name="personName(l.due.payer)" :size="24" />
-              <span class="font-num text-[15px] font-bold num whitespace-nowrap" :class="l.due.paid ? 'font-semibold text-ink-3' : 'text-ink'">
-                <span v-if="l.due.paid" class="font-extrabold text-ok">✓ </span>{{ plain(l.due.amount) }}
-              </span>
-            </div>
+              :id="l.key"
+              :due="l.due"
+              :mon="mon"
+              :payer-name="personName(l.due.payer)"
+              :note="dueNote(l.due)"
+              :can-edit="canEdit"
+              @open="payFor = l.key"
+              @payer="askPayer(l.due)"
+            />
 
             <!-- Подписки · N — свёрнуто; ✓ у группы — когда списались все; ручные группы — подзаголовками -->
             <div v-else-if="grouped.subs" class="border-t border-line first:border-t-0" data-subs>
@@ -444,36 +429,18 @@ function addFund(kind: 'reserve' | 'cushion') {
               <div v-if="subsOpen" class="mb-2 ml-[18px] border-l-2 border-line pl-3.5">
                 <template v-for="g in grouped.subs.parts" :key="g.groupId ?? ''">
                   <p v-if="g.name" class="pb-0.5 pt-2.5 text-[11.5px] font-semibold uppercase tracking-[0.04em] text-ink-3">{{ g.name }}</p>
-                  <div
+                  <DueRow
                     v-for="d in g.rows"
+                    :id="dueKey(d)"
                     :key="d.targetId"
-                    class="flex items-center gap-2.5 border-t border-line py-[11px] first:border-t-0"
-                    :class="canEdit && 'press cursor-pointer'"
-                    data-due
-                    :data-due-id="dueKey(d)"
-                    :role="canEdit ? 'button' : undefined"
-                    :tabindex="canEdit ? 0 : undefined"
-                    @click="canEdit && (payFor = dueKey(d))"
-                    @keydown.enter.self="canEdit && (payFor = dueKey(d))"
-                  >
-                    <span class="flex w-[38px] shrink-0 flex-col items-center leading-[1.05]" :class="d.paid ? 'text-ink-3' : 'text-ink-2'">
-                      <b class="font-num text-[18px] num">{{ d.day }}</b><span class="text-[11px] text-ink-3">{{ mon }}</span>
-                    </span>
-                    <span class="min-w-0 flex-1 truncate text-[15.5px] font-semibold text-ink">{{ d.name }}</span>
-                    <button
-                      v-if="canEdit && d.payer"
-                      type="button"
-                      class="press shrink-0 cursor-pointer rounded-full"
-                      :aria-label="`Платит ${personName(d.payer)}. Сменить`"
-                      @click.stop="payerFor = { kind: d.kind, id: d.targetId, name: d.name, payer: d.payer }"
-                    >
-                      <Avatar :id="d.payer" :name="personName(d.payer)" :size="24" />
-                    </button>
-                    <Avatar v-else-if="d.payer" :id="d.payer" :name="personName(d.payer)" :size="24" />
-                    <span class="font-num text-[15px] font-bold num whitespace-nowrap" :class="d.paid ? 'font-semibold text-ink-3' : 'text-ink'">
-                      <span v-if="d.paid" class="font-extrabold text-ok">✓ </span>{{ plain(d.amount) }}
-                    </span>
-                  </div>
+                    :due="d"
+                    :mon="mon"
+                    :payer-name="personName(d.payer)"
+                    :note="dueNote(d)"
+                    :can-edit="canEdit"
+                    @open="payFor = dueKey(d)"
+                    @payer="askPayer(d)"
+                  />
                 </template>
               </div>
             </div>

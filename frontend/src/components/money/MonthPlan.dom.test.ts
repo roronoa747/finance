@@ -443,6 +443,18 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(q('[data-month-past]')).not.toBeNull()
   })
 
+  it('прошлый месяц планом: цель по одной не отмечается (запись закрыла бы месяц сводкой) — только «Отложил всё» (критик)', async () => {
+    const august = paid('salary', 'a', '2026-08', 700_000, { id: 'sal-a-08', accountId: null, at: '2026-08-10T05:00:00.000Z' })
+    const doc = familyDoc()
+    const finance = await open('member', { ...doc, payments: [...(doc.payments ?? []), august] }, '/month?month=2026-08')
+    await flush()
+    await press(section('queue'))
+    await press(q('[data-queue="trip"]'))
+    expect(q('[role="dialog"] [data-put-one]')).toBeNull()
+    expect(plans(finance)).toHaveLength(0)
+    expect(q('[data-put-all]')).not.toBeNull()
+  })
+
   it('viewer — тот же план без переключателя вида, выключателей, ⋮⋮, плательщиков, листов и кнопок', async () => {
     const finance = await open('viewer')
     expect(txt(q('[data-rest]'))).toBe(norm(money(planOf(finance).rest)))
