@@ -3220,6 +3220,40 @@ function planParts(contributions: { goalId: string; amount: number }[], prepay: 
   return { parts, put: amountTotal(parts) }
 }
 
+/** Факт трат месяца по всем участникам (строка «Траты» — «потрачено N»); null — выписок за месяц нет ни у кого. */
+export function spendFact(spend: PlanSpend[]): number | null {
+  const known = spend.filter((s) => s.fact !== null)
+  return known.length ? amountTotal(known.map((s) => ({ amount: s.fact! }))) : null
+}
+
+/** Состояние строки очереди «Месяца» — только когда есть что сказать (правило 12); текст — в экране. */
+export type QueueStatus =
+  | { kind: 'off' }
+  | { kind: 'planPause' }
+  /** Карточка долга без суммы на месяц при плане «Сначала долги» — сумма идёт шагом плана (Р-82). */
+  | { kind: 'debtByPlan' }
+  /** Карточка долга без суммы на месяц, плана нет. */
+  | { kind: 'debtNoAmount' }
+  | { kind: 'collected' }
+  | { kind: 'noMonthly' }
+  /** План даёт меньше взноса: `amount` — сколько не хватает. */
+  | { kind: 'short'; amount: number }
+  /** План в этом месяце не даёт ничего. */
+  | { kind: 'shortAll' }
+
+export function queueStatus(q: PlanQueueItem, o: { debtPlan: boolean }): QueueStatus | null {
+  if (q.paused === 'off') return { kind: 'off' }
+  if (q.paused === 'plan') return { kind: 'planPause' }
+  if (q.kind === 'debt') {
+    if (q.want <= 0) return { kind: o.debtPlan ? 'debtByPlan' : 'debtNoAmount' }
+  } else {
+    if (q.need - q.have <= 0) return { kind: 'collected' }
+    if (q.want <= 0) return { kind: 'noMonthly' }
+  }
+  if (q.given < q.want) return q.given > 0 ? { kind: 'short', amount: q.want - q.given } : { kind: 'shortAll' }
+  return null
+}
+
 /**
  * «Отложить по плану» для плательщика (Р-78): его цели, фонды и досрочка — суммами плана месяца, разово. За
  * вычетом уже отложенного в этом месяце (`put`: взнос руками, другая запись) — дважды не кладётся. null — его
@@ -3464,6 +3498,9 @@ export function planPuts(state: MonthPlanState, plan: MonthPlan): PlanPut[] {
 /** Что ждёт «Отложил» прямо сейчас: зарплата плательщика пришла, сумма плана не отложена. */
 export const pendingPuts = (puts: PlanPut[]) => puts.filter((p) => p.ready && !p.done)
 
+/** Сколько осталось отложить по строкам — сумма на «Отложил всё», ровно то, что запишет `planPutSaves` (остатки `left`). */
+export const putsLeft = (puts: PlanPut[]) => amountTotal(puts.map((p) => ({ amount: p.left })))
+
 /**
  * Что записать по строкам списка дел («Отложил» у цели, «Отложил всё»): по записи на плательщика — его взносы и
  * досрочка остатком до суммы плана (`left`), источник — его зарплата месяца. Уже отложенные строки пропускаются.
@@ -3669,6 +3706,8 @@ export type MyWeekRow = {
   amount: number
   /** Потрачено за прошлую неделю. */
   prev: number
+  /** К прошлой неделе: `amount − prev`. */
+  delta: number
   arrow: WeekArrow
   /** Сумма раздела на месяц недели (`spendPlans`, Р-81); null — раздел вне плана. */
   plan: number | null
@@ -3757,6 +3796,7 @@ export function myWeek(
         color: spendColor(cat),
         amount,
         prev,
+        delta: amount - prev,
         arrow: weekArrow(amount, prev),
         plan: row?.plan ?? null,
         spent,

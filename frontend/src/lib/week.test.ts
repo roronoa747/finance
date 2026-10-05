@@ -105,6 +105,13 @@ describe('myWeek — мои разделы недели (Р-95, Р-98)', () => {
     expect(row(week('2026-W43', '2026-10-21'), 'sc_food').arrow).toBe('down') // 6 000 против 25 000
   })
 
+  it('к прошлой у раздела — delta = amount − prev (лист раздела не считает сам; ревью frontend Б15, Н-4)', () => {
+    const w = week('2026-W42', '2026-10-21')
+    expect(row(w, 'sc_food')).toMatchObject({ amount: 25_000, prev: 18_000, delta: 7_000 })
+    expect(row(w, 'sc_transport').delta).toBe(0)
+    expect(row(week('2026-W43', '2026-10-21'), 'sc_food').delta).toBe(-19_000)
+  })
+
   it('партнёрские итоги не попадают: у Ильяса нет 40 000 Аруны, у Аруны — только её', () => {
     expect(row(week('2026-W42', '2026-10-21'), 'sc_food').amount).toBe(25_000)
     const b = week('2026-W42', '2026-10-21', 'b')

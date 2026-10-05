@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { allInDebt, budgetAmounts, creditOutlook, goalDoneMonth, goalMonths, goalTerm, monthPlan, monthSubscriptions, livingPlan, monthPlanPast, monthsBetween, pendingPuts, planExtras, planFromSource, planPutSaves, planPuts, planSave, planSpendTotal, subscriptionGroup, type MonthPlanCtx, type MonthPlanState } from './finance'
+import { allInDebt, budgetAmounts, creditOutlook, goalDoneMonth, goalMonths, goalTerm, monthPlan, monthSubscriptions, livingPlan, monthPlanPast, monthsBetween, pendingPuts, planExtras, putsLeft, queueStatus, spendFact, planFromSource, planPutSaves, planPuts, planSave, planSpendTotal, subscriptionGroup, type MonthPlanCtx, type MonthPlanState } from './finance'
 import { addMonths } from './dates'
 import type { Allocation, Goal, SpendPlan } from '@/types/finance'
 
@@ -489,6 +489,10 @@ describe('planPuts — «Отложил» ✓ у целей (Р-97)', () => {
       ['wed', 200_000, 200_000, false, false],
     ])
     expect(pendingPuts(puts).map((p) => p.id)).toEqual(['trip', 'res', 'car'])
+    // «Отложил всё · N» — остатки строк, ровно то, что запишет planPutSaves (ревью frontend Б15, Н-4).
+    expect(putsLeft(pendingPuts(puts))).toBe(210_000)
+    expect(putsLeft(pendingPuts(putsOf(withTrip([move('m1', 20_000)]))))).toBe(190_000)
+    expect(putsLeft([])).toBe(0)
     // Выключенная цель и цель без суммы в месяце — не дело.
     const off = family({ goals: family().goals!.map((g) => (g.id === 'car' ? { ...g, pausedAt: T0 } : g)) })
     expect(putsOf(off).some((p) => p.id === 'car')).toBe(false)
@@ -591,5 +595,30 @@ describe('planExtras — деньги сверх плана у своего пр
 
   it('ничего сверх плана — пусто', () => {
     expect(planExtras(family(), ctx)).toEqual({ freed: null, closed: null })
+  })
+})
+
+describe('ревью frontend Б15, Н-4: суммы строк «Месяца» — из finance.ts', () => {
+  it('spendFact — сумма фактов участников; выписок нет ни у кого — null', () => {
+    const row = (by: 'a' | 'b', fact: number | null) => ({ by, plan: 100_000, fact, rows: [] })
+    expect(spendFact([row('a', 30_000), row('b', 45_500)])).toBe(75_500)
+    expect(spendFact([row('a', 30_000), row('b', null)])).toBe(30_000)
+    expect(spendFact([row('a', null)])).toBeNull()
+    expect(spendFact([])).toBeNull()
+  })
+
+  it('queueStatus: пауза, собрано, взнос не задан, нехватка с суммой, долг по плану и без суммы', () => {
+    const plan = monthPlan(family(), ctx)
+    const item = byId(plan, 'car')
+    expect(queueStatus({ ...item, paused: 'off' }, { debtPlan: false })).toEqual({ kind: 'off' })
+    expect(queueStatus({ ...item, paused: 'plan' }, { debtPlan: false })).toEqual({ kind: 'planPause' })
+    expect(queueStatus({ ...item, need: 100, have: 100 }, { debtPlan: false })).toEqual({ kind: 'collected' })
+    expect(queueStatus({ ...item, want: 0 }, { debtPlan: false })).toEqual({ kind: 'noMonthly' })
+    expect(queueStatus({ ...item, want: 150_000, given: 100_000 }, { debtPlan: false })).toEqual({ kind: 'short', amount: 50_000 })
+    expect(queueStatus({ ...item, want: 150_000, given: 0 }, { debtPlan: false })).toEqual({ kind: 'shortAll' })
+    expect(queueStatus({ ...item, want: 100_000, given: 100_000 }, { debtPlan: false })).toBeNull()
+    const debt = byId(plan, 'debt')
+    expect(queueStatus({ ...debt, want: 0 }, { debtPlan: true })).toEqual({ kind: 'debtByPlan' })
+    expect(queueStatus({ ...debt, want: 0 }, { debtPlan: false })).toEqual({ kind: 'debtNoAmount' })
   })
 })

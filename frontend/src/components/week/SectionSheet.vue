@@ -26,7 +26,6 @@ watch(
 const detail = computed(() =>
   props.row ? sectionWeek(store.shown, { week: props.week, categoryId: props.row.categoryId, ...(all.value ? { limit: Infinity } : {}) }) : null,
 )
-const diff = computed(() => (props.row ? props.row.amount - props.row.prev : 0))
 </script>
 
 <template>
@@ -35,8 +34,8 @@ const diff = computed(() => (props.row ? props.row.amount - props.row.prev : 0))
       <p class="font-num text-[32px] font-bold leading-tight num text-ink" data-section-total>{{ money(row.amount) }}</p>
       <p class="mb-3 type-meta num" data-section-meta>
         {{ weekRangeLabel(weekRange(week)) }}
-        <template v-if="row.prev > 0 && diff !== 0">
-          · <span :class="diff > 0 ? 'text-warn' : 'text-ok'">{{ diff > 0 ? '↑' : '↓' }} {{ plain(Math.abs(diff)) }}</span> к прошлой
+        <template v-if="row.prev > 0 && row.delta !== 0">
+          · <span :class="row.delta > 0 ? 'text-warn' : 'text-ok'">{{ row.delta > 0 ? '↑' : '↓' }} {{ plain(Math.abs(row.delta)) }}</span> к прошлой
         </template>
         <template v-if="row.rest !== null"> · на {{ monthName }} {{ row.rest >= 0 ? 'осталось' : 'сверх плана' }} {{ plain(Math.abs(row.rest)) }}</template>
       </p>

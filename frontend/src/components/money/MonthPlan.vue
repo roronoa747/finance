@@ -18,8 +18,11 @@ import {
   planExtras,
   planPutSaves,
   planPuts,
+  putsLeft,
+  queueStatus,
   salaryOf,
   salaryOpen,
+  spendFact,
   type PlanDue,
   type PlanPut,
   type PlanQueueItem,
@@ -90,7 +93,7 @@ const parts = computed(() => [
 const puts = computed(() => planPuts(state.value, plan.value))
 const putById = computed(() => new Map(puts.value.map((p) => [p.id, p])))
 const pending = computed(() => (canEdit.value ? pendingPuts(puts.value) : []))
-const pendingTotal = computed(() => pending.value.reduce((s, p) => s + p.left, 0))
+const pendingTotal = computed(() => putsLeft(pending.value))
 const extras = computed(() =>
   canEdit.value ? planExtras(state.value, { ...ctx.value, rawCredits: finance.householdDoc.credits }) : { freed: null, closed: null },
 )
@@ -108,6 +111,7 @@ const freedMeta = computed(() => {
   return f ? `С ${monthFrom(f.record.period, false)} свободно +${plain(f.add)} в месяц` : ''
 })
 
+const spentFact = computed(() => spendFact(plan.value.spend))
 const sections = computed(() => [
   {
     key: 'dues' as const,
@@ -122,7 +126,7 @@ const sections = computed(() => [
     name: 'Траты',
     color: '--s8',
     total: plan.value.spendTotal,
-    meta: plan.value.spend.some((s) => s.fact !== null) ? `потрачено ${plain(plan.value.spend.reduce((a, s) => a + (s.fact ?? 0), 0))}` : 'по плану',
+    meta: spentFact.value !== null ? `потрачено ${plain(spentFact.value)}` : 'по плану',
     dot: false,
   },
   {
@@ -255,19 +259,29 @@ const spendless = computed(() => people.value.filter((p) => !plan.value.spend.so
 const queueIds = computed(() => plan.value.queue.map((q) => q.id))
 const queueById = computed(() => new Map(plan.value.queue.map((q) => [q.id, q])))
 
-/** Строка состояния — только когда есть что сказать (правило 12): пауза, нехватка, собрано. */
+/** Строка состояния — только когда есть что сказать (правило 12): пауза, нехватка, собрано (`queueStatus`). */
 function statusOf(q: PlanQueueItem): { text: string; warn?: boolean } | null {
-  if (q.paused === 'off') return { text: 'на паузе' }
-  if (q.paused === 'plan') return { text: 'на паузе ради плана' }
-  if (q.kind === 'debt') {
+  const st = queueStatus(q, { debtPlan: !!finance.activePlan })
+  if (!st) return null
+  switch (st.kind) {
+    case 'off':
+      return { text: 'на паузе' }
+    case 'planPause':
+      return { text: 'на паузе ради плана' }
     // С планом «Сначала долги» сумма карточки — шаг плана (Р-82); шага в долг в этом месяце нет — так и пишем.
-    if (q.want <= 0) return { text: finance.activePlan ? 'по плану «Сначала долги»' : canEdit.value ? 'задайте сумму в месяц' : 'по графику' }
-  } else {
-    if (q.need - q.have <= 0) return { text: 'собрано' }
-    if (q.want <= 0) return { text: 'взнос не задан' }
+    case 'debtByPlan':
+      return { text: 'по плану «Сначала долги»' }
+    case 'debtNoAmount':
+      return { text: canEdit.value ? 'задайте сумму в месяц' : 'по графику' }
+    case 'collected':
+      return { text: 'собрано' }
+    case 'noMonthly':
+      return { text: 'взнос не задан' }
+    case 'short':
+      return { text: `не хватает ${plain(st.amount)}`, warn: true }
+    case 'shortAll':
+      return { text: 'в этом месяце не хватает', warn: true }
   }
-  if (q.given < q.want) return q.given > 0 ? { text: `не хватает ${plain(q.want - q.given)}`, warn: true } : { text: 'в этом месяце не хватает', warn: true }
-  return null
 }
 
 /** Вкл/выкл (Р-83): выключенная — на паузе с этой минуты и дальше. */
