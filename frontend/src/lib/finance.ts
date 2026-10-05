@@ -3376,6 +3376,155 @@ export function planFromSource(
   }
 }
 
+/* ---------------- «Месяц» — список дел (Блок 15, B2C-94; Р-93, Р-97) ---------------- */
+
+/** Строка подписки для группы: платёж месяца («Месяц») или строка справочника («Деньги»). */
+export type SubsItem = { obligation: Obligation; amount: number; paid: boolean; day: number }
+
+/** Подписки одной группой (Р-93): строка «Подписки · N · сумма», раскрытие — подгруппы. */
+export type SubsGroup<T> = {
+  count: number
+  total: number
+  /** Сколько подписок оплачено; ✓ у группы — когда все. */
+  paid: number
+  allPaid: boolean
+  /** День первой подписки — место группы в списке по дням. */
+  day: number
+  /** Сначала подписки без ручной группы (`name` пусто), затем ручные группы (`group` / `parentId`) по имени; внутри — по дню. */
+  parts: { groupId: string | null; name: string; rows: T[] }[]
+}
+
+/** С какого числа подписок они сворачиваются в группу: одна подписка — обычная строка. */
+export const SUBS_GROUP_MIN = 2
+
+/**
+ * Группа подписок (Р-93) — одна функция для «Месяца» (с отметками) и справочника «Денег»: число, сумма, сколько
+ * оплачено, подгруппы ручных групп. `items` — уже подписки (`isSubscription`); `all` — обязательства семьи (имена
+ * ручных групп). Меньше `SUBS_GROUP_MIN` — null: сворачивать нечего.
+ */
+export function subscriptionGroup<T extends SubsItem>(items: T[], all: Obligation[]): SubsGroup<T> | null {
+  if (items.length < SUBS_GROUP_MIN) return null
+  const groups = liveGroups(all)
+  const parts = new Map<string, { groupId: string | null; name: string; rows: T[] }>()
+  for (const x of items.slice().sort((a, b) => a.day - b.day || a.obligation.name.localeCompare(b.obligation.name))) {
+    const g = groups.find((y) => y.id === x.obligation.parentId) ?? null
+    const part = parts.get(g?.id ?? '') ?? { groupId: g?.id ?? null, name: g?.name ?? '', rows: [] }
+    part.rows.push(x)
+    parts.set(g?.id ?? '', part)
+  }
+  const paid = items.filter((x) => x.paid).length
+  return {
+    count: items.length,
+    total: amountTotal(items),
+    paid,
+    allPaid: paid === items.length,
+    day: Math.min(...items.map((x) => x.day)),
+    parts: [...parts.values()].sort((a, b) => Number(!!a.groupId) - Number(!!b.groupId) || a.name.localeCompare(b.name)),
+  }
+}
+
+/** Платежи месяца для списка (Р-93): подписки — группой, остальные — строками как были. */
+export function monthSubscriptions<T extends MonthDue>(dues: T[], all: Obligation[]): { rest: T[]; subs: SubsGroup<Extract<T, { kind: 'obligation' }>> | null } {
+  const isSub = (d: T): d is Extract<T, { kind: 'obligation' }> => d.kind === 'obligation' && isSubscription(d.obligation)
+  const subs = subscriptionGroup(dues.filter(isSub), all)
+  return subs ? { rest: dues.filter((d) => !isSub(d)), subs } : { rest: dues, subs: null }
+}
+
+/** Дело «отложить» месяца (Р-97, ворота B2C-91): строка очереди как пункт списка — «Отложил» ✓. */
+export type PlanPut = {
+  /** id строки очереди. */
+  id: string
+  kind: PlanQueueItem['kind']
+  goalId: string | null
+  creditId?: string
+  planId?: string
+  name: string
+  payer: PersonId | null
+  /** Сколько даёт план в этом месяце (`given`), > 0. */
+  amount: number
+  /** Отложено в этом месяце с учётом снятий, ≥ 0. */
+  put: number
+  /** Осталось отложить: `amount − put`, ≥ 0. */
+  left: number
+  /** ✓ — сумма плана отложена вся. */
+  done: boolean
+  /** Зарплата плательщика пришла — строка ждёт «Отложил» (точка, «Отложил всё»). */
+  ready: boolean
+  /** Сколько снимет «Не отложено»: положенное в цель записями плана этого месяца, не больше `put`; 0 — снимать нечего. */
+  undo: number
+}
+
+/**
+ * Список дел «отложить» (Р-97): строки очереди, которым план даёт сумму в этом месяце. Отложено — движения цели
+ * за месяц со знаком (снятие «Не отложено» возвращает строку в дела; `put` плана месяца считает только взносы и
+ * не меняется), у долга — досрочки месяца. План считает от начала месяца — отметка сумму строки не меняет.
+ */
+export function planPuts(state: MonthPlanState, plan: MonthPlan): PlanPut[] {
+  const goals = new Map(liveGoals(state.goals ?? []).map((g) => [g.id, g]))
+  const came = new Set(plan.income.byPerson.filter((x) => x.came).map((x) => x.person))
+  const records = (state.allocations ?? []).filter((a) => !a.deletedAt && a.kind === 'plan' && a.source === 'salary' && a.period === plan.key)
+  const recorded = (target: string) => records.reduce((s, a) => s + a.parts.filter((p) => p.target === target).reduce((x, p) => x + p.amount, 0), 0)
+  return plan.queue
+    .filter((q) => !q.paused && q.given > 0)
+    .map((q): PlanPut => {
+      const g = q.goalId ? goals.get(q.goalId) : undefined
+      const put = g
+        ? Math.max(0, (g.movements ?? []).filter((m) => monthKey(new Date(m.date)) === plan.key).reduce((s, m) => s + m.amount, 0))
+        : q.put
+      const left = Math.max(0, q.given - put)
+      return {
+        id: q.id, kind: q.kind, goalId: q.goalId, ...(q.creditId ? { creditId: q.creditId } : {}), ...(q.planId ? { planId: q.planId } : {}),
+        name: q.name, payer: q.payer, amount: q.given, put, left, done: left <= 0,
+        ready: !!q.payer && came.has(q.payer),
+        undo: q.goalId ? Math.min(put, recorded(q.goalId)) : 0,
+      }
+    })
+}
+
+/** Что ждёт «Отложил» прямо сейчас: зарплата плательщика пришла, сумма плана не отложена. */
+export const pendingPuts = (puts: PlanPut[]) => puts.filter((p) => p.ready && !p.done)
+
+/**
+ * Что записать по строкам списка дел («Отложил» у цели, «Отложил всё»): по записи на плательщика — его взносы и
+ * досрочка остатком до суммы плана (`left`), источник — его зарплата месяца. Уже отложенные строки пропускаются.
+ */
+export function planPutSaves(plan: MonthPlan, puts: PlanPut[]): PlanSave[] {
+  const todo = puts.filter((p) => p.left > 0 && p.payer)
+  return [...new Set(todo.map((p) => p.payer!))].map((person) => {
+    const mine = todo.filter((p) => p.payer === person)
+    const contributions = mine.filter((p) => p.goalId).map((p) => ({ goalId: p.goalId!, amount: p.left }))
+    const debt = mine.find((p) => p.kind === 'debt' && p.creditId)
+    const prepay = debt ? { creditId: debt.creditId!, amount: debt.left, ...(debt.planId ? { planId: debt.planId } : {}) } : null
+    return {
+      record: { source: 'salary' as const, sourceId: person, period: plan.key },
+      total: plan.income.byPerson.find((x) => x.person === person)?.amount ?? 0,
+      contributions,
+      prepay,
+      ...planParts(contributions, prepay),
+    }
+  })
+}
+
+/** Деньги сверх плана у своего предмета (Р-86, Р-97): «освободится» — у платежа, «долг закрыт» — у целей. */
+export type PlanExtras = {
+  /** Платёж уменьшится: +N в месяц первой цели очереди; запись ещё не сделана. */
+  freed: (Extract<PlanFromSource, { mode: 'monthly' }> & { obligationId: string }) | null
+  /** Долг закрыт в этом месяце: его платёж — разово по очереди; запись ещё не сделана. */
+  closed: (Extract<PlanFromSource, { mode: 'once' }> & { name: string }) | null
+}
+
+/** Прочие источники месяца, которые ещё ждут решения (`planFromSource` без записи) — одно место для экрана и точки. */
+export function planExtras(state: MonthPlanState, ctx: MonthPlanCtx & { rawCredits?: Credit[] }): PlanExtras {
+  const f = planFromSource(state, ctx, { from: 'freed' })
+  const freed = f?.mode === 'monthly' && !f.recorded ? { ...f, obligationId: f.record.sourceId } : null
+  const moment = progressMoments({ credits: ctx.rawCredits ?? state.credits, payments: state.payments }).find(
+    (m): m is Extract<Moment, { kind: 'closed' }> => m.kind === 'closed' && movementMonth(m.at) === ctx.key,
+  )
+  const c = moment ? planFromSource(state, ctx, { from: 'credit', creditId: moment.creditId }) : null
+  const closed = moment && c?.mode === 'once' && !c.recorded && c.amount > 0 ? { ...c, name: moment.name } : null
+  return { freed, closed }
+}
+
 /** Сводка прошлого месяца (Р-85) — только из записей, только чтение. */
 export type MonthPlanPast = {
   key: string

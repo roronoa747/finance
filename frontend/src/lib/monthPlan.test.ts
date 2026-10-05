@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { allInDebt, budgetAmounts, creditOutlook, goalDoneMonth, goalMonths, goalTerm, monthPlan, livingPlan, monthPlanPast, monthsBetween, planFromSource, planSave, planSpendTotal, type MonthPlanCtx, type MonthPlanState } from './finance'
+import { allInDebt, budgetAmounts, creditOutlook, goalDoneMonth, goalMonths, goalTerm, monthPlan, monthSubscriptions, livingPlan, monthPlanPast, monthsBetween, pendingPuts, planExtras, planFromSource, planPutSaves, planPuts, planSave, planSpendTotal, subscriptionGroup, type MonthPlanCtx, type MonthPlanState } from './finance'
 import { addMonths } from './dates'
 import type { Allocation, Goal, SpendPlan } from '@/types/finance'
 
@@ -399,5 +399,178 @@ describe('livingPlan — траты плана месяца (хвост §4 Б14
       expect(planSpendTotal(doc)).toBeNull()
       expect(livingPlan(doc)).toBe(300_000)
     }
+  })
+})
+
+/**
+ * B2C-94 (Р-93): группа подписок месяца. Подписка семьи — $15 по курсу книги 480 = 7 200 ₸ (10-го); добавлены
+ * «Музыка» 3 000 ₸ (7-го) и «Кино» 5 000 ₸ (20-го) в ручной группе «Развлечения», коммуналка-оценка — не подписка.
+ * Группа: 3 подписки, 7 200 + 3 000 + 5 000 = 15 200.
+ */
+describe('monthSubscriptions — подписки одной группой (Р-93)', () => {
+  const subs = (paid: string[] = []) =>
+    family({
+      obligations: [
+        ...family().obligations!,
+        { id: 'fun', name: 'Развлечения', note: '', day: 1, category: 'd4', group: true, versions: [], updatedAt: T0 },
+        { id: 'music', name: 'Музыка', note: '', day: 7, category: 'd4', parentId: 'fun', versions: [{ from: '2026-01', amount: 3_000 }], updatedAt: T0 },
+        { id: 'kino', name: 'Кино', note: '', day: 20, category: 'd4', parentId: 'fun', versions: [{ from: '2026-01', amount: 5_000 }], updatedAt: T0 },
+        { id: 'util', name: 'Коммуналка', note: '', day: 12, category: 'd4', estimate: true, versions: [{ from: '2026-01', amount: 28_000 }], updatedAt: T0 },
+      ],
+      payments: [
+        ...family().payments!,
+        ...paid.map((id) => ({ id: `p-${id}`, kind: 'obligation' as const, targetId: id, period: KEY, amount: id === 'sub' ? 7_300 : id === 'music' ? 3_000 : 5_000, accountId: null, by: 'a' as const, at: '2026-10-11T05:00:00.000Z', updatedAt: T0 })),
+      ],
+    })
+  const group = (paid: string[] = []) => {
+    const s = subs(paid)
+    return monthSubscriptions(monthPlan(s, ctx).dues, s.obligations!)
+  }
+
+  it('число, сумма (валютная — через книгу курсов), день первой, остальные платежи — как были', () => {
+    const { rest, subs: g } = group()
+    expect(g).toMatchObject({ count: 3, total: 15_200, paid: 0, allPaid: false, day: 7 })
+    // Квартира, коммуналка-оценка и кредит — обычными строками.
+    expect(rest.map((d) => d.targetId).sort()).toEqual(['flat', 'loan', 'util'])
+  })
+
+  it('подгруппы: сначала без группы, затем ручная группа; внутри — по дню', () => {
+    expect(group().subs!.parts.map((p) => [p.name, p.rows.map((d) => d.targetId)])).toEqual([
+      ['', ['sub']],
+      ['Развлечения', ['music', 'kino']],
+    ])
+  })
+
+  it('✓ у группы — только когда оплачены все; сумма оплаченной — из отметки', () => {
+    expect(group(['music'])).toMatchObject({ subs: { paid: 1, allPaid: false } })
+    expect(group(['music', 'kino'])).toMatchObject({ subs: { paid: 2, allPaid: false } })
+    // Подписку $15 отметили на 7 300 (курс дня списания) — итог группы по отметкам: 7 300 + 3 000 + 5 000.
+    expect(group(['music', 'kino', 'sub'])).toMatchObject({ subs: { paid: 3, allPaid: true, total: 15_300 } })
+  })
+
+  it('одна подписка — не группа: строка остаётся в списке', () => {
+    const one = family()
+    const { rest, subs: g } = monthSubscriptions(monthPlan(one, ctx).dues, one.obligations!)
+    expect(g).toBeNull()
+    expect(rest.map((d) => d.targetId).sort()).toEqual(['flat', 'loan', 'sub'])
+  })
+
+  it('справочник «Денег»: те же подгруппы без отметок (subscriptionGroup)', () => {
+    const s = subs()
+    const items = s.obligations!.filter((o) => !o.group && o.category === 'd4' && !o.estimate).map((o) => ({ obligation: o, amount: o.versions[0]!.amount, paid: false, day: o.day }))
+    expect(subscriptionGroup(items, s.obligations!)).toMatchObject({ count: 3, paid: 0, allPaid: false, day: 7 })
+    expect(subscriptionGroup(items.slice(0, 1), s.obligations!)).toBeNull()
+  })
+})
+
+/**
+ * B2C-94 (Р-97, ворота B2C-91): месяц — список дел. Зарплата Ильяса пришла: его Япония 60 000, Запас 50 000, Машина
+ * 100 000 ждут «Отложил»; долг 80 000, Подушка 40 000 и Свадьба 200 000 — Аруны, её зарплаты ещё нет.
+ */
+describe('planPuts — «Отложил» ✓ у целей (Р-97)', () => {
+  const at = '2026-10-12T07:00:00.000Z'
+  const move = (id: string, amount: number) => ({ id, date: at, amount, by: 'a' as const })
+  const withTrip = (movements: ReturnType<typeof move>[], allocations: Allocation[] = []) =>
+    family({ goals: family().goals!.map((g) => (g.id === 'trip' ? { ...g, have: 840_000 + movements.reduce((s, m) => s + m.amount, 0), movements } : g)), allocations })
+  const rec = (parts: Allocation['parts'], extra: Partial<Allocation> = {}): Allocation => ({
+    id: 'r1', kind: 'plan', source: 'salary', sourceId: 'a', period: KEY, by: 'a', at, total: 774_000, parts, updatedAt: at, ...extra,
+  })
+  const putsOf = (s: MonthPlanState) => planPuts(s, monthPlan(s, ctx))
+  const trip = (s: MonthPlanState) => putsOf(s).find((p) => p.id === 'trip')!
+
+  it('строки — кому план даёт сумму; ждут те, чья зарплата пришла', () => {
+    const puts = putsOf(family())
+    expect(puts.map((p) => [p.id, p.amount, p.left, p.done, p.ready])).toEqual([
+      ['trip', 60_000, 60_000, false, true],
+      ['res', 50_000, 50_000, false, true],
+      ['debt', 80_000, 80_000, false, false],
+      ['car', 100_000, 100_000, false, true],
+      ['pot', 40_000, 40_000, false, false],
+      ['wed', 200_000, 200_000, false, false],
+    ])
+    expect(pendingPuts(puts).map((p) => p.id)).toEqual(['trip', 'res', 'car'])
+    // Выключенная цель и цель без суммы в месяце — не дело.
+    const off = family({ goals: family().goals!.map((g) => (g.id === 'car' ? { ...g, pausedAt: T0 } : g)) })
+    expect(putsOf(off).some((p) => p.id === 'car')).toBe(false)
+  })
+
+  it('отложено — движения месяца со знаком: взнос ставит ✓, снятие возвращает в дела; частичный взнос — остаток', () => {
+    expect(trip(withTrip([move('m1', 60_000)]))).toMatchObject({ put: 60_000, left: 0, done: true })
+    expect(trip(withTrip([move('m1', 20_000)]))).toMatchObject({ put: 20_000, left: 40_000, done: false })
+    expect(trip(withTrip([move('m1', 60_000), move('m2', -60_000)]))).toMatchObject({ put: 0, left: 60_000, done: false })
+    // Прошлые месяцы не в счёт.
+    const old = family({ goals: family().goals!.map((g) => (g.id === 'trip' ? { ...g, movements: [{ id: 'm0', date: '2026-09-12T07:00:00.000Z', amount: 60_000, by: 'a' as const }] } : g)) })
+    expect(trip(old)).toMatchObject({ put: 0, done: false })
+    // План месяца при этом не меняется: `put` плана — только взносы (как в Блоке 14).
+    const plan = monthPlan(withTrip([move('m1', 60_000), move('m2', -60_000)]), ctx)
+    expect(byId(plan, 'trip')).toMatchObject({ given: 60_000, put: 60_000 })
+  })
+
+  it('«Не отложено» снимает только положенное записями плана этого месяца, не больше отложенного', () => {
+    expect(trip(withTrip([move('m1', 60_000)])).undo).toBe(0) // взнос руками — снимать нечего
+    expect(trip(withTrip([move('m1', 60_000)], [rec([{ target: 'trip', amount: 60_000 }])])).undo).toBe(60_000)
+    // 20 000 руками + 40 000 «Отложил»: снимется 40 000.
+    expect(trip(withTrip([move('m1', 20_000), move('m2', 40_000)], [rec([{ target: 'trip', amount: 40_000 }])])).undo).toBe(40_000)
+    // Запись другого месяца, старого разбора (статьи) и снятая — не в счёт.
+    expect(trip(withTrip([move('m1', 60_000)], [rec([{ target: 'trip', amount: 60_000 }], { period: '2026-09' })])).undo).toBe(0)
+    expect(trip(withTrip([move('m1', 60_000)], [rec([{ target: 'dreams', amount: 60_000 }], { kind: 'breakdown' })])).undo).toBe(0)
+    expect(trip(withTrip([move('m1', 60_000)], [rec([{ target: 'trip', amount: 60_000 }], { deletedAt: at })])).undo).toBe(0)
+  })
+
+  it('долг: отложено — досрочки месяца; «Не отложено» не предлагается', () => {
+    const s = family({
+      payments: [...family().payments!, { id: 'pp', kind: 'prepay', targetId: 'loan', period: KEY, amount: 80_000, principal: 80_000, accountId: null, by: 'b', at, updatedAt: at }],
+      credits: family().credits!.map((c) => ({ ...c, principal: c.principal - 80_000 })),
+    })
+    expect(putsOf(s).find((p) => p.id === 'debt')).toMatchObject({ kind: 'debt', creditId: 'loan', put: 80_000, done: true, undo: 0 })
+  })
+
+  it('planPutSaves: запись на плательщика — взносы остатком до плана, досрочка, сумма частей', () => {
+    const s = withTrip([move('m1', 20_000)])
+    const plan = monthPlan(s, ctx)
+    const puts = planPuts(s, plan)
+    // «Отложил всё» Ильяса: Япония 40 000 (20 000 уже есть), Запас 50 000, Машина 100 000.
+    expect(planPutSaves(plan, pendingPuts(puts))).toEqual([
+      {
+        record: { source: 'salary', sourceId: 'a', period: KEY },
+        total: 774_000,
+        contributions: [{ goalId: 'trip', amount: 40_000 }, { goalId: 'res', amount: 50_000 }, { goalId: 'car', amount: 100_000 }],
+        prepay: null,
+        parts: [{ target: 'trip', amount: 40_000 }, { target: 'res', amount: 50_000 }, { target: 'car', amount: 100_000 }],
+        put: 190_000,
+      },
+    ])
+    // Цель Аруны и её долг — своя запись на её зарплату (ещё не пришла: сумма — ожидаемая).
+    const hers = planPutSaves(plan, puts.filter((p) => p.id === 'debt' || p.id === 'pot'))
+    expect(hers).toEqual([
+      {
+        record: { source: 'salary', sourceId: 'b', period: KEY },
+        total: 450_000,
+        contributions: [{ goalId: 'pot', amount: 40_000 }],
+        prepay: { creditId: 'loan', amount: 80_000 },
+        parts: [{ target: 'pot', amount: 40_000 }, { target: 'prepay:loan', amount: 80_000 }],
+        put: 120_000,
+      },
+    ])
+    // Уже отложенное не пишется.
+    const done = withTrip([move('m1', 60_000)])
+    expect(planPutSaves(monthPlan(done, ctx), [trip(done)])).toEqual([])
+  })
+})
+
+describe('planExtras — деньги сверх плана у своего предмета (Р-86)', () => {
+  it('освободится: платёж уменьшится — +N первой цели, id платежа; запись сделана — пусто', () => {
+    const s = family({
+      obligations: family().obligations!.map((o) => (o.id === 'flat' ? { ...o, versions: [{ from: '2026-01', amount: 250_000 }, { from: '2026-12', amount: 200_000 }] } : o)),
+    })
+    const x = planExtras(s, ctx)
+    expect(x.freed).toMatchObject({ mode: 'monthly', obligationId: 'flat', add: 50_000, goalId: 'trip', name: 'Япония' })
+    expect(x.closed).toBeNull()
+    const recorded = { ...s, allocations: [{ id: 'f', kind: 'plan' as const, source: 'freed' as const, sourceId: 'flat', period: '2026-12', by: 'a' as const, at: T0, total: 50_000, parts: [], updatedAt: T0 }] }
+    expect(planExtras(recorded, ctx).freed).toBeNull()
+  })
+
+  it('ничего сверх плана — пусто', () => {
+    expect(planExtras(family(), ctx)).toEqual({ freed: null, closed: null })
   })
 })

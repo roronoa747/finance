@@ -24,6 +24,7 @@ import { parseStatement } from '../src/lib/statements/parsers'
 import { landingPath } from '../src/router/landing'
 import Start from '../src/views/Start.vue'
 import Money from '../src/views/Money.vue'
+import Month from '../src/views/Month.vue'
 import { attachTemplate } from '../src/lib/photos/goalPhoto'
 import { photoUrl, releasePhotos, uploadPhoto } from '../src/lib/photos/store'
 
@@ -78,12 +79,13 @@ function planOn(p: Phone, key = '2026-09') {
   return monthPlan({ ...doc, credits: p.store.credits }, { key, totals: doc.spendTotals ?? [], spendCategories: doc.spendCategories ?? [], uploads: [] })
 }
 
-/** «Отложить по плану» на «Деньгах» (Р-78) — кнопкой экрана плана месяца `month`. */
+/** «Месяц» плана `month` с раскрытым разделом «Цели и фонды» (Блок 15: план живёт в «План · Месяц»). */
+const monthGoals = (p: Phone, month = '2026-09') => screen(p.pinia, Month, `/month?month=${month}`, undefined, [screenMixin({ opened: 'queue' })])
+
+/** «Отложил всё» в «Месяце» (Р-97; было «Отложить по плану», Р-78) — кнопкой раздела целей плана месяца `month`. */
 async function savePlan(p: Phone, month = '2026-09') {
-  await screen(p.pinia, Money, `/money?month=${month}`, undefined, [
-    screenMixin({}, (s) => {
-      if (typeof s.onSave === 'function') (s.onSave as () => void)()
-    }),
+  await screen(p.pinia, Month, `/month?month=${month}`, undefined, [
+    screenMixin({}, (s) => (s.savePuts as (list: unknown) => void)(s.pending)),
   ])
 }
 
@@ -731,8 +733,7 @@ describe('e2e / B2C Блок 3 — часть 5: раскладка записа
     const save = planSave(planOn(A), 'a')!
     const toGoals = save.contributions.reduce((a, c) => a + c.amount, 0)
     expect(toGoals).toBeGreaterThan(0)
-    const before = await screen(A.pinia, Money, '/money')
-    expect(before).toMatch(/>\s*Отложить по плану\s*</)
+    expect(await monthGoals(A)).toContain('data-put-all')
 
     await savePlan(A)
     const rec = A.store.allocations[0]
@@ -740,10 +741,10 @@ describe('e2e / B2C Блок 3 — часть 5: раскладка записа
     expect(rec.parts).toEqual(save.parts)
     const haves = Object.fromEntries(A.store.goals.map((g) => [g.id, g.have]))
 
-    // Второй заход A — «Отложено», а не кнопка; повторное нажатие (старый экран) ничего не пишет.
-    const again = await screen(A.pinia, Money, '/money')
-    expect(again).toContain('Отложено')
-    expect(again).not.toMatch(/>\s*Отложить по плану\s*</)
+    // Второй заход A — ✓ у целей, а не кнопка; повторное нажатие (старый экран) ничего не пишет.
+    const again = await monthGoals(A)
+    expect(again).toContain('data-put-done')
+    expect(again).not.toContain('data-put-all')
     await savePlan(A)
     expect(A.store.allocations).toHaveLength(1)
 
@@ -751,9 +752,9 @@ describe('e2e / B2C Блок 3 — часть 5: раскладка записа
     await A.store.syncHousehold(A.client)
     await B.store.pullHousehold(B.client)
     expect(B.store.allocations).toHaveLength(1)
-    const partner = await screen(B.pinia, Money, '/money')
-    expect(partner).toContain('Отложено')
-    expect(partner).not.toMatch(/>\s*Отложить по плану\s*</)
+    const partner = await monthGoals(B)
+    expect(partner).toContain('data-put-done')
+    expect(partner).not.toContain('data-put-all')
     expect(Object.fromEntries(B.store.goals.map((g) => [g.id, g.have]))).toEqual(haves)
   })
 })
@@ -873,10 +874,9 @@ describe('e2e / B2C Блок 3 — часть 7 (возврат приёмки �
     return ops
   }
 
-  /** «Отложить по плану» месяца зарплаты (Блок 14): кнопка видна в плане этого месяца — и нажимается. */
+  /** «Отложил всё» месяца зарплаты (Блок 15): кнопка видна в плане этого месяца — и нажимается. */
   async function allocateAll(p: Phone, month: string) {
-    const html = await screen(p.pinia, Money, `/money?month=${month}`)
-    expect(html).toMatch(/>\s*Отложить по плану\s*</)
+    expect(await monthGoals(p, month)).toContain('data-put-all')
     await savePlan(p, month)
   }
 

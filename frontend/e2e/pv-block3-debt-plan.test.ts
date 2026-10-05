@@ -6,6 +6,7 @@ import { money } from '../src/lib/money'
 import type { Goal, Payment, SyncDoc } from '../src/types/finance'
 import GoalDetail from '../src/views/GoalDetail.vue'
 import Money from '../src/views/Money.vue'
+import Month from '../src/views/Month.vue'
 import { plain } from '../src/lib/money'
 import { useAuthStore } from '../src/stores/auth'
 import { authAs } from '../src/test/planFamily'
@@ -16,11 +17,11 @@ import { at, fakeServer, phone, screen, setOnline, type FakeServer } from './sup
 /** Квадрат «План» (пивот 3, B2C-43): план включён — переключатель «Сначала долги». */
 // Квадрат «План» — под «Подробнее» (Блок 14): переключатели плана месяца выше — не он.
 const planOn = (html: string) => /role="switch" aria-checked="true"/.test(html.slice(html.indexOf('data-more')))
-/** Карточка «закрыть кредит» в очереди плана месяца (Блок 14, Р-82): какой долг досрочка закрывает первым. */
+/** Строка «закрыть кредит» в очереди «Месяца» (Блок 14, Р-82; Блок 15 — раздел «Цели и фонды»): какой долг досрочка закрывает первым. */
 const debtsCard = async (p: { pinia: Pinia }) => {
-  const html = await screen(p.pinia, Money, '/money')
+  const html = await screen(p.pinia, Month, '/month', undefined, [screenMixin({ opened: 'queue' })])
   const at = html.indexOf('data-queue="debt"')
-  return at < 0 ? '' : html.slice(at, html.indexOf('data-status', at) + 200)
+  return at < 0 ? '' : html.slice(at, at + 700)
 }
 
 const pausedOn = async (p: { pinia: Pinia }, id: string) => (await screen(p.pinia, GoalDetail, `/goals/${id}`)).includes('На паузе ради плана')

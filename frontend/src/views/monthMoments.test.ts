@@ -8,6 +8,7 @@ import type { Payment, SyncDoc } from '@/types/finance'
 import Dreams from './Dreams.vue'
 import Statements from './Statements.vue'
 import Money from './Money.vue'
+import Month from './Month.vue'
 import { authAs, planFamilyDoc, planOf } from '@/test/planFamily'
 import { renderScreen, screenMixin } from '@/test/screenState'
 
@@ -166,17 +167,14 @@ describe('Блок 2: моменты месяца (SSR)', () => {
       const store = family('member', 'a', moments())
       const src = fromSource({ from: 'credit', creditId: 'inst' })
       expect(src).toMatchObject({ mode: 'once', amount: 20_000 })
-      const html = await renderScreen(Money, '/money')
-      expect(html).toContain('data-source="credit"')
+      const goals = () => renderScreen(Month, '/month', undefined, [screenMixin({ opened: 'queue' })])
+      const html = await goals()
+      expect(html).toContain('data-closed')
       expect(html).toContain('Рассрочка закрыт')
-      await renderScreen(Money, '/money', undefined, [
-        screenMixin({}, (s) => {
-          if (typeof s.onSource === 'function') (s.onSource as () => void)()
-        }),
-      ])
+      await renderScreen(Month, '/month', undefined, [screenMixin({}, (s) => (s.onClosed as () => void)())])
       expect(store.allocations[0]).toMatchObject({ kind: 'plan', source: 'freed', sourceId: 'inst', total: 20_000, parts: src.mode === 'once' ? src.parts : [] })
-      // Записано — карточки нет.
-      expect(await renderScreen(Money, '/money')).not.toContain('data-source=')
+      // Записано — подсказки нет.
+      expect(await goals()).not.toContain('data-closed')
     })
   })
 

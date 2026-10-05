@@ -28,6 +28,9 @@ import {
   moveWithin,
   queueOf,
   monthPlan,
+  pendingPuts,
+  planExtras,
+  planPuts,
   wishQueue,
   moneyArticlesOf,
   moneySettingsOf,
@@ -279,6 +282,17 @@ export const useFinanceStore = defineStore('finance', () => {
     const { state, ctx } = planInput(key)
     return monthPlan(state, ctx)
   }
+  /**
+   * Точка на «Месяце» (Р-97): в плане этого месяца ждёт действие — зарплата плательщика пришла, а цели не отложены,
+   * или есть деньги сверх плана («освободится», «долг закрыт»). Viewer действий не делает — точки нет.
+   */
+  const planDot = computed(() => {
+    if (useAuthStore().isViewer) return false
+    const { state, ctx } = planInput(monthKey())
+    if (pendingPuts(planPuts(state, monthPlan(state, ctx))).length) return true
+    const extras = planExtras(state, { ...ctx, rawCredits: householdDoc.value.credits })
+    return !!extras.freed || !!extras.closed
+  })
   /** Цели на паузе ради плана (Р-9): выводятся из плана — одно место для экранов. */
   const pausedGoalIds = computed(
     () => new Set(activePlan.value ? pausedGoals(activePlan.value, goals.value).map((g) => g.id) : []),
@@ -1964,6 +1978,39 @@ export const useFinanceStore = defineStore('finance', () => {
   function applyPlan(save: PlanSave | PlanFromSource, o: { by: PersonId; note: string }): Allocation {
     const had = allocationFor(householdDoc.value.allocations, save.record)
     if (had) return had
+    return writePlan(save, o)
+  }
+
+  /**
+   * «Отложил» у цели и «Отложил всё» (Р-97, ворота B2C-91): исполняет `planPutSaves` — взносы и досрочку остатком
+   * до суммы плана и запись `kind: 'plan'` на плательщика. Месяц — список дел: записей источника за месяц может быть
+   * несколько (цель за целью), поэтому без проверки «запись уже есть» — второй раз не кладётся, потому что сумма
+   * строки — то, что осталось отложить.
+   */
+  function putPlan(saves: PlanSave[], o: { by: PersonId; note: string }) {
+    if (viewer()) return
+    for (const s of saves) if (s.put > 0) writePlan(s, o)
+  }
+
+  /**
+   * «Не отложено» (ворота B2C-91): снимает с цели положенное записями плана месяца (`PlanPut.undo`) и убирает её
+   * часть из этих записей; запись без частей — надгробие. Взносы руками не трогает.
+   */
+  function unputPlan(goalId: string, period: string, amount: number, by: PersonId) {
+    if (viewer() || amount <= 0) return
+    withdraw(goalId, amount, by, 'не отложено')
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      for (const a of doc.allocations ?? []) {
+        if (a.deletedAt || a.kind !== 'plan' || a.source !== 'salary' || a.period !== period || !a.parts.some((p) => p.target === goalId)) continue
+        a.parts = a.parts.filter((p) => p.target !== goalId)
+        a.updatedAt = t
+        if (!a.parts.length) a.deletedAt = t
+      }
+    })
+  }
+
+  function writePlan(save: PlanSave | PlanFromSource, o: { by: PersonId; note: string }): Allocation {
     if ('mode' in save && save.mode === 'monthly') {
       const g = goals.value.find((x) => x.id === save.goalId && !x.deletedAt)
       if (g) setGoalMonthly(g.id, g.monthly + save.add)
@@ -2079,6 +2126,7 @@ export const useFinanceStore = defineStore('finance', () => {
     planState,
     planInput,
     monthPlanOf,
+    planDot,
     planStepNow,
     pausedGoalIds,
     saveLocalState,
@@ -2143,6 +2191,8 @@ export const useFinanceStore = defineStore('finance', () => {
     wishes,
     heroGoal,
     applyPlan,
+    putPlan,
+    unputPlan,
     moveInQueue,
     moveGoal,
     moveWish,

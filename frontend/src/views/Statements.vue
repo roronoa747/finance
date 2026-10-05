@@ -281,7 +281,7 @@ onMounted(() => {
 
 <template>
   <div class="flex flex-col gap-3.5 pt-1 text-left">
-    <PlanSwitch v-if="!store.draft" view="week" />
+    <PlanSwitch v-if="!store.draft" view="week" :dot="finance.planDot" />
     <p v-if="auth.isDemo" class="px-1 text-[12px] text-ink-3">демо: только на этом телефоне</p>
 
     <!-- РАЗБОР (g2 «Разбор — предпросмотр»): сводка → решения по одному → «Отправить». Банк и период — в шапке. -->

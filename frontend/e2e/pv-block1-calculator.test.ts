@@ -13,6 +13,7 @@ import { HUES } from '../src/lib/palette'
 import { isDark } from '../src/lib/theme'
 import { money, plain } from '../src/lib/money'
 import Money from '../src/views/Money.vue'
+import Month from '../src/views/Month.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
 import StrategyCompare from '../src/components/StrategyCompare.vue'
 
@@ -47,11 +48,11 @@ describe('e2e / PV Блок 1 — калькулятор и точные рас�
   }
 
   /** Колонка калькулятора как её видит человек: накоплено, долг, проценты, срок. */
-  /** Карточка «закрыть кредит» в очереди плана месяца (Блок 14, Р-82): какой долг досрочка закрывает первым. */
+  /** Строка «закрыть кредит» в очереди «Месяца» (Блок 14, Р-82; Блок 15 — раздел «Цели и фонды»): какой долг досрочка закрывает первым. */
 const debtsCard = async (p: { pinia: Pinia }) => {
-  const html = await screen(p.pinia, Money, '/money')
+  const html = await screen(p.pinia, Month, '/month', undefined, [screenMixin({ opened: 'queue' })])
   const at = html.indexOf('data-queue="debt"')
-  return at < 0 ? '' : html.slice(at, html.indexOf('data-status', at) + 200)
+  return at < 0 ? '' : html.slice(at, at + 700)
 }
 
 const column = (title: string, savings: number, debt: number, interest: number, free: string) =>

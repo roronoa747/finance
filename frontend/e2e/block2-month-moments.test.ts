@@ -10,6 +10,7 @@ import { authAs } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
 import Statements from '../src/views/Statements.vue'
 import Money from '../src/views/Money.vue'
+import Month from '../src/views/Month.vue'
 
 /**
  * Блок 2 развития: моменты месяца. Два телефона — два стора Pinia на одном фейковом
@@ -224,9 +225,10 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       expect(overview).toContain('«Телевизор» закрыт')
       // Квадрат «История» (B2C-44): день — подпись ленты, момент — строкой под ним.
       expect(overview.replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')).toMatch(new RegExp(`12 сентября .*«Телевизор» закрыт освободилось ${money(30_000)} в месяц`))
-      // Деньги закрытого долга — карточкой плана месяца (Р-86), одна кнопка.
-      const plan = await screen(A.pinia, Money, '/money')
-      expect(plan).toContain('data-source="credit"')
+      // Деньги закрытого долга — подсказкой в разделе «Цели и фонды» «Месяца» (Р-86, Блок 15), одна кнопка.
+      const goals = [screenMixin({ opened: 'queue' })]
+      const plan = await screen(A.pinia, Month, '/month', undefined, goals)
+      expect(plan).toContain('data-closed')
       expect(plan).toContain('Телевизор закрыт')
       expect(plan).toContain(money(30_000))
 
@@ -236,7 +238,7 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       await B.store.syncHousehold(B.client)
       await A.store.syncHousehold(A.client)
       expect(await screen(A.pinia, Money, '/money/history')).not.toContain('«Телевизор» закрыт')
-      expect(await screen(A.pinia, Money, '/money')).not.toContain('data-source="credit"')
+      expect(await screen(A.pinia, Month, '/month', undefined, goals)).not.toContain('data-closed')
       // В документе — только записи оплат: моменты не пишутся.
       expect(Object.keys(server.data).filter((k) => /moment|history/i.test(k))).toEqual([])
     })

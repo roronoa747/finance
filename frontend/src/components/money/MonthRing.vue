@@ -8,6 +8,8 @@ import type { PersonId } from '@/types/finance'
  * Круг месяца (Р-78, макет month-plan.html «Лесенка»): снаружи — зарплаты по людям (ещё не пришла — бледнее),
  * внутри — платежи · траты · цели и фонды долями дохода; в центре — слот (остаток месяца). Суммы — готовые из
  * `monthPlan`/`monthPlanPast`; здесь только доли дуг. Цвета — токены (`--s1`, `--s8`, `--s3`, цвет участника).
+ * Круг-оглавление (ворота B2C-91): с `pickable` цвет нажимается (`pick`), при раскрытом разделе (`active`)
+ * остальные бледнеют. Те же разделы открываются строками под кругом — круг для чтения с экрана скрыт.
  */
 const props = withDefaults(
   defineProps<{
@@ -16,9 +18,14 @@ const props = withDefaults(
     /** Целое кольца: доход месяца (части сверх него обрезаются кругом). */
     total: number
     size?: number
+    /** Раскрытый раздел — ключ части; остальные бледнеют. */
+    active?: string | null
+    pickable?: boolean
   }>(),
-  { size: 236 },
+  { size: 236, active: null, pickable: false },
 )
+
+const emit = defineEmits<{ (e: 'pick', key: string): void }>()
 
 const finance = useFinanceStore()
 const R1 = 110
@@ -72,7 +79,10 @@ const dash = (a: Arc, C: number) => `${Math.max(0, a.len - GAP)} ${C}`
         v-for="a in inner"
         :key="`i-${a.key}`"
         class="ring-arc"
+        :class="pickable && 'ring-pick'"
         :data-part="a.key"
+        :opacity="active && active !== a.key ? 0.3 : 1"
+        @click="pickable && emit('pick', a.key)"
         cx="120"
         cy="120"
         :r="R2"
@@ -84,7 +94,7 @@ const dash = (a: Arc, C: number) => `${Math.max(0, a.len - GAP)} ${C}`
         transform="rotate(-90 120 120)"
       />
     </svg>
-    <div class="absolute inset-0 flex flex-col items-center justify-center gap-0.5 text-center">
+    <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-0.5 text-center">
       <slot />
     </div>
   </div>
@@ -94,6 +104,11 @@ const dash = (a: Arc, C: number) => `${Math.max(0, a.len - GAP)} ${C}`
 .ring-arc {
   transition:
     stroke-dasharray var(--motion-ring) var(--ease-out),
-    stroke-dashoffset var(--motion-ring) var(--ease-out);
+    stroke-dashoffset var(--motion-ring) var(--ease-out),
+    opacity var(--motion-fast) var(--ease-out);
+}
+.ring-pick {
+  cursor: pointer;
+  pointer-events: stroke;
 }
 </style>

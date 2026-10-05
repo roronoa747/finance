@@ -27,6 +27,7 @@ import type { SpendTotal } from '@/lib/statements/types'
 import { authAs, planFamilyDoc, planOf, T0 } from '@/test/planFamily'
 import { renderScreen, screenMixin } from '@/test/screenState'
 import Money from './Money.vue'
+import Month from './Month.vue'
 
 /** Ряд квадратов «Денег» целиком: каждый квадрат — своя обёртка (подсказка «Капитала» рядом с кнопкой). */
 function squaresOf(html: string) {
@@ -851,9 +852,10 @@ describe('views/Money.vue — финансовые показатели (рас�
         { id: 'rent', name: 'Аренда', note: '', day: 20, category: 'd1', versions: [{ from: '2026-01', amount: 300_000 }, { from: '2026-10', amount: 220_000 }], updatedAt: '' },
       ]
       store.householdDoc.goals = [{ id: 'trip', name: 'Отпуск', need: 2_000_000, seed: 0, have: 0, monthly: 50_000, hue: 'teal', planPct: 0, movements: [], updatedAt: '' }]
-      const html = await renderScreen(Money, '/money')
-      expect(html).toContain('Пришла зарплата')
-      expect(brand(html)).toEqual(['Добавить к «Отпуск»'])
+      expect(await renderScreen(Money, '/money')).toContain('Пришла зарплата')
+      // Блок 15: «Освободится» — у своего платежа в «Месяце»; зарплата не ждёт «Отложил» — кнопка брендовая, одна.
+      expect(brand(await renderScreen(Month, '/month'))).toEqual([])
+      expect(brand(await renderScreen(Month, '/month', undefined, [screenMixin({ opened: 'dues' })]))).toEqual(['К «Отпуск»'])
     } finally {
       vi.useRealTimers()
     }
@@ -880,10 +882,12 @@ describe('views/Money.vue — финансовые показатели (рас�
         },
         { id: 'net', name: 'Интернет', note: '', day: 20, category: 'd1', versions: [{ from: '2026-01', amount: 10_000 }], updatedAt: '' },
       ]
+      const dues = [screenMixin({ opened: 'dues' })]
+      let plan = await renderScreen(Month, '/month', undefined, dues)
+      expect(plan).toContain(`С октября свободно +${plain(1_000)} в месяц`)
+      expect(plan).toMatch(/>\s*К «Отпуск»\s*</)
+      expect(plan).not.toContain(plain(12_000))
       let html = await renderScreen(Money, '/money')
-      expect(html).toContain('С октября · Страховка')
-      expect(html).toContain(`+${money(1_000)}`)
-      expect(html).toContain('в месяц → «Отпуск»')
       expect(html).not.toContain(money(12_000))
       expect(html).not.toContain('Перед экономией')
       expect(html).not.toContain('переезд')
@@ -896,9 +900,9 @@ describe('views/Money.vue — финансовые показатели (рас�
         { id: 'rent', name: 'Аренда', note: '', day: 20, category: 'd1', versions: [{ from: '2026-01', amount: 300_000 }, { from: '2026-10', amount: 220_000 }], updatedAt: '' },
       ]
       store.householdDoc.accounts = [{ id: 'card', name: 'Kaspi Gold', note: '', kind: 'card', amount: 100_000, updatedAt: '' }]
+      plan = await renderScreen(Month, '/month', undefined, dues)
+      expect(plan).toContain(`С октября свободно +${plain(80_000)} в месяц`)
       html = await renderScreen(Money, '/money')
-      expect(html).toContain('С октября · Аренда')
-      expect(html).toContain(`+${money(80_000)}`)
       // Сводка «До зарплаты» (пивот 3): аренда 300 000 до 25-го, на счетах 100 000 — тег «не хватает».
       expect(html).toContain(`не хватает ${plain(200_000)} ₸`)
       expect(html).not.toContain('Перенесите платёж')

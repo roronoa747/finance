@@ -13,8 +13,10 @@ import {
   goalMonths,
 } from '../src/lib/finance'
 import { monthKey } from '../src/lib/dates'
-import { money } from '../src/lib/money'
+import { money, plain } from '../src/lib/money'
 import Money from '../src/views/Money.vue'
+import Month from '../src/views/Month.vue'
+import { screenMixin } from '../src/test/screenState'
 
 describe('e2e / block-4 — Сквозной сценарий бюджета («Деньги»: Доход, Платежи) и Ритуала высвобождения', () => {
   const storageMap = new Map<string, string>()
@@ -163,10 +165,13 @@ describe('e2e / block-4 — Сквозной сценарий бюджета («
     await router.push('/week/salary')
     expect(router.currentRoute.value.path).toBe('/month')
 
-    const appRitualEmpty = createSSRApp(Money)
+    // Блок 15: «Освободится» — подсказкой у своего платежа в разделе «Платежи» «Месяца».
+    const appRitualEmpty = createSSRApp(Month)
     appRitualEmpty.use(router)
+    appRitualEmpty.mixin(screenMixin({ opened: 'dues' }))
     const htmlRitualEmpty = await renderToString(appRitualEmpty)
-    expect(htmlRitualEmpty).not.toContain('data-source="freed"')
+    expect(htmlRitualEmpty).toContain('data-due')
+    expect(htmlRitualEmpty).not.toContain('data-freed')
 
     // Б) Появляется будущее снижение аренды на 50 000 ₸
     financeStore.householdDoc.obligations[0].versions.push({
@@ -179,13 +184,14 @@ describe('e2e / block-4 — Сквозной сценарий бюджета («
     expect(freed?.delta).toBe(-50_000)
 
     // Рендер активного экрана ритуала
-    const appRitualActive = createSSRApp(Money)
+    const appRitualActive = createSSRApp(Month)
     appRitualActive.use(router)
+    appRitualActive.mixin(screenMixin({ opened: 'dues' }))
     const htmlRitualActive = await renderToString(appRitualActive)
-    // Карточка плана: +50 000 ₸ в месяц первой цели очереди, одна кнопка (Р-86).
-    expect(htmlRitualActive).toContain('data-source="freed"')
-    expect(htmlRitualActive).toContain(`+${money(50_000)}`)
-    expect(htmlRitualActive).toMatch(/>\s*Добавить к «[^»]+»\s*</)
+    // Подсказка у платежа: +50 000 в месяц первой цели очереди, одна кнопка (Р-86).
+    expect(htmlRitualActive).toContain('data-freed')
+    expect(htmlRitualActive).toContain(`+${plain(50_000)} в месяц`)
+    expect(htmlRitualActive).toMatch(/>\s*К «[^»]+»\s*</)
 
     // В) Распределение высвобожденных денег: 30 000 в цель, 20 000 на качество жизни
     const goalBefore = financeStore.goals[0]
