@@ -1559,7 +1559,7 @@ B2C-37…B2C-39 (Р-13, Р-18) · скоуп 14 «один план» → Бло
 **После Блока 15 (Неделя и Месяц; критик, 2026-10-05)**
 - Документ и сервер не менялись: миграций, ручек Go и новых ключей `SyncDoc` нет. На устройстве — два ключа
   `lib/storage.ts`: `ff_plan_view` (`readPlanView` / `writePlanView`, Р-99) и `ff_week_view` (Р-100).
-- Маршруты (`router/index.ts`): вкладка «План» — `/week` (`Statements.vue`, `memberOnly`, viewer → `/month`) и `/month`
+- Маршруты (`router/index.ts`): вкладка «План» — `/week` (`Week.vue`, до клинапа Б15 — `Statements.vue`; `memberOnly`, viewer → `/month`) и `/month`
   (`views/Month.vue`, `?month=YYYY-MM`, `?income=1`); «Деньги» — `money/:square(debts|history)?`; редиректы Р-103 —
   `toPlan` (→ `/month`, из query остаётся только `month`), `beforeEnter` у `money` (`?month=` → `/month`), `/money/plan`
   и `/plan` → `/money/debts`. Гварды — `router/legacy.test.ts`, `router.test.ts`. Переключатель — `plan/PlanSwitch.vue`
