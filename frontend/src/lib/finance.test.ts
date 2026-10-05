@@ -98,17 +98,12 @@ import {
   SUMMARY_FIRST_DAYS,
   type PlanState,
   mainGoal,
-  weekPicture,
   weekUploads,
   spendRows,
-  weekVersusPrev,
   subscriptionYearly,
   goalRemaining,
   freeByFact,
   monthSpentByFact,
-  incomeSplit,
-  livingPlanFact,
-  debtsSummary,
   decisionQueue,
   liveObligations,
   stepDue,
@@ -119,19 +114,10 @@ import {
   planSave,
   keepCard,
   freedChange,
-  weekTag,
   wishTotal,
   moneyArticlesOf,
   moneySettingsOf,
-  duesTag,
-  duesTotals,
-  loadTag,
-  spendNorms,
-  spendShares,
-  spendStatus,
 } from './finance'
-import { STAT_NORMS } from '@/lib/statements/norms'
-import { planFamilyDoc } from '@/test/planFamily'
 import type { SpendCategory, SpendTotal } from '@/lib/statements/types'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import { DEFAULT_SPEND_CATEGORIES, spendArticle } from '@/lib/statements/dictionary'
@@ -2402,29 +2388,6 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
   })
 
   describe('weekPicture', () => {
-    it('двое: сумма обоих по разделам, доли, «не разобрано» отдельно, один без загрузки за неделю', () => {
-      const totals = [
-        total('a', 'week', '2026-W38', 'sc_food', 60_000),
-        total('b', 'week', '2026-W38', 'sc_food', 20_000),
-        total('a', 'week', '2026-W38', 'sc_cafe', 10_000),
-        total('a', 'week', '2026-W38', '_unknown', 10_000),
-        total('a', 'week', '2026-W37', 'sc_food', 999_999), // другая неделя
-        total('a', 'month', '2026-09', 'sc_food', 999_999), // месяц — не неделя
-      ]
-      const uploads = [{ slot: 'a', period_from: '2026-09-01', period_to: '2026-09-15' }, { slot: 'b', period_from: '2026-08-01', period_to: '2026-08-31' }]
-      const p = weekPicture(totals, categories, people, '2026-W38', uploads)
-      expect(p.range).toEqual({ from: '2026-09-14', to: '2026-09-20' })
-      expect(p.total).toBe(100_000)
-      expect(p.rows.map((r) => [r.categoryId, r.name, r.amount, r.share, r.color])).toEqual([
-        ['sc_food', 'Продукты', 80_000, 0.8, 'var(--s1)'],
-        ['sc_cafe', 'Кафе и рестораны', 10_000, 0.1, 'var(--s2)'],
-      ])
-      expect(p.unknown).toBe(10_000)
-      expect(p.unknownShare).toBe(0.1)
-      expect(p.uploaded.map((x) => x.id)).toEqual(['a'])
-      expect(p.missing.map((x) => x.name)).toEqual(['Дана'])
-    })
-
     it('B2C-62 «Выписки»: перекрытие с неделей на границах (пн / вс), день — из записи загрузки по Алматы; последняя загрузка', () => {
       // Неделя 38 — 14–20 сентября 2026.
       const up = (slot: string, period_from: string, period_to: string, created_at?: string) => ({ slot, period_from, period_to, created_at })
@@ -2439,15 +2402,6 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(weekUploads([people[0], { ...people[1], deletedAt: T }], '2026-W38', [up('a', '2026-09-14', '2026-09-20')]).map((r) => [r.person.id, r.day])).toEqual([['a', '']])
     })
 
-    it('пусто — нули без исключений; имя раздела семьи — из документа', () => {
-      const p = weekPicture([], [], people, '2026-W38')
-      expect(p.total).toBe(0)
-      expect(p.rows).toEqual([])
-      expect(p.missing.length).toBe(2)
-      const named = weekPicture([total('a', 'week', '2026-W38', 'sc_food', 1)], [{ ...categories[0], name: 'Еда' }], people, '2026-W38')
-      expect(named.rows[0].name).toBe('Еда')
-      expect(named.rows[0].share).toBe(1)
-    })
   })
 
   // Критик Блока 3: суммы картины, «на N % прошлой», «за год» и остаток цели — из finance.ts, не из экранов.
@@ -2467,14 +2421,6 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(r.unknown).toBe(10_000)
       expect(r.unknownShare).toBe(0.1)
       expect(spendRows(totals, categories, { kind: 'month', period: '2026-08' }).total).toBe(600_000)
-    })
-
-    it('weekVersusPrev: целый процент к прошлой неделе обоих; одной недели нет — null', () => {
-      const totals = [total('a', 'week', '2026-W38', 'sc_food', 60_000), total('b', 'week', '2026-W38', '_unknown', 20_000), total('a', 'week', '2026-W37', 'sc_food', 100_000)]
-      expect(weekVersusPrev(totals, '2026-W38', '2026-W37')).toEqual({ delta: -20 })
-      expect(weekVersusPrev(totals, '2026-W37', '2026-W38')).toEqual({ delta: 25 })
-      expect(weekVersusPrev(totals, '2026-W38', '2026-W36')).toBeNull()
-      expect(weekVersusPrev([], '2026-W38', '2026-W37')).toBeNull()
     })
 
     it('subscriptionYearly: ежемесячная ×12, годовая — как есть; goalRemaining: не меньше нуля', () => {
@@ -2552,46 +2498,6 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(monthSpentByFact(totals, own, '2026-09', uploads)).toBe(freeByFact(state, totals, own, '2026-09', uploads).spent)
       expect(monthSpentByFact(totals, categories, '2026-09', [{ slot: 'a', period_from: '2026-08-01', period_to: '2026-08-31' }])).toBeNull()
       expect(monthSpentByFact([], categories, '2026-09', uploads)).toBe(0)
-    })
-
-    it('incomeSplit: нагрузка = доля жилья и кредитов (формула «вместе с жильём»), доли — проценты Бюджета, свободно не меньше 0', () => {
-      const a = { d1: 220_000, d2: 103_000, d3: 130_000, d4: 150_000, d5: 597_000, income: 1_200_000, planExtra: 0 }
-      const s = incomeSplit(a)
-      expect(s.load).toBe(27)
-      expect(s.load).toBe(pct(a.d1 + a.d2, a.income))
-      expect(s.parts.map((p) => [p.key, p.amount, p.pct])).toEqual([
-        ['must', 323_000, 27],
-        ['dreams', 130_000, 11],
-        ['living', 150_000, 13],
-        ['free', 597_000, 50],
-      ])
-      expect(s.parts[0].share).toBeCloseTo(323_000 / 1_200_000, 6)
-      expect(s.overplanned).toBe(0)
-      // С планом «Сначала долги» досрочка — в «мечтах»; расписано больше дохода — свободно 0 и «не сходится».
-      const over = incomeSplit({ ...a, d3: 100_000, planExtra: 30_000, d4: 800_000, d5: -53_000 })
-      expect(over.parts.find((p) => p.key === 'dreams')!.amount).toBe(130_000)
-      expect(over.parts.find((p) => p.key === 'free')).toMatchObject({ amount: 0, pct: 0, share: 0 })
-      expect(over.overplanned).toBe(53_000)
-      expect(incomeSplit({ ...a, income: 0 })).toMatchObject({ load: 0 })
-    })
-
-    it('livingPlanFact: план — «Жизнь» + «Траты» (без статей — база d4), факт — monthSpentByFact, проценты факта от плана; нет загрузок — факта и процента нет', () => {
-      const cats = [{ key: 'd4' as const, name: 'Еда и быт', note: '', amount: 300_000, updatedAt: T }]
-      expect(livingPlanFact({ categories: cats }, totals, categories, '2026-09', uploads)).toEqual({ plan: 300_000, spent: 220_000, pct: 73, share: 220_000 / 300_000, over: false })
-      expect(livingPlanFact({ categories: cats }, totals, categories, '2026-09', [])).toEqual({ plan: 300_000, spent: null, pct: null, share: 0, over: false })
-      const small = [{ ...cats[0], amount: 200_000 }]
-      expect(livingPlanFact({ categories: small }, totals, categories, '2026-09', uploads)).toMatchObject({ pct: 110, share: 1, over: true })
-      expect(livingPlanFact({ categories: [] }, totals, categories, '2026-09', uploads)).toMatchObject({ plan: 0, spent: 220_000, pct: null })
-    })
-
-    it('debtsSummary: остаток живых кредитов и «оплачено N из M» из monthDues — после «Оплатил» N растёт', () => {
-      const cc: Credit = { ...loan, id: 'cc', name: 'Кредитка', principal: 300_000, payment: 25_000, day: 22 }
-      const s = { credits: [loan, cc], payments: [] as Payment[] }
-      expect(debtsSummary(s, '2026-09')).toEqual({ total: loan.principal + 300_000, open: true, paid: 0, count: 2 })
-      const paid: Payment = { id: 'p', kind: 'credit', targetId: 'loan', period: '2026-09', amount: 58_000, accountId: null, by: 'a', at: T, updatedAt: T }
-      expect(debtsSummary({ ...s, payments: [paid] }, '2026-09')).toMatchObject({ paid: 1, count: 2 })
-      expect(debtsSummary({ credits: [{ ...loan, principal: 0 }], payments: [] }, '2026-09')).toMatchObject({ total: 0, open: false })
-      expect(debtsSummary({ credits: [], payments: [] }, '2026-09')).toEqual({ total: 0, open: false, paid: 0, count: 0 })
     })
 
     it('untilPayday: список платежей до зарплаты — сводка «K списаний · сумма»: сумма списка = dueTotal, оплаченное — отдельно', () => {
@@ -2867,17 +2773,6 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(freedChange([], '2026-09')).toBeNull()
     })
 
-    it('weekTag: один без выписки — «без выписки <имя>», оба — «по выпискам обоих», один участник — «по выписке», никто — null', () => {
-      const uploads = [{ slot: 'a', period_from: '2026-09-01', period_to: '2026-09-30' }]
-      expect(weekTag(weekPicture([], categories, people, '2026-W38', uploads), 2)).toEqual({ text: 'без выписки Дана', tone: 'warn' })
-      const both = [...uploads, { slot: 'b', period_from: '2026-09-14', period_to: '2026-09-14' }]
-      expect(weekTag(weekPicture([], categories, people, '2026-W38', both), 2)).toEqual({ text: 'по выпискам обоих', tone: 'ok' })
-      expect(weekTag(weekPicture([], categories, [people[0]], '2026-W38', uploads), 1)).toEqual({ text: 'по выписке', tone: 'ok' })
-      expect(weekTag(weekPicture([], categories, people, '2026-W38'), 2)).toBeNull()
-      const three: Person[] = [...people, { id: 'c', name: 'Аружан', salary: 0, payday: 1, updatedAt: T }]
-      expect(weekTag(weekPicture([], categories, three, '2026-W38', uploads), 3)?.text).toBe('без выписки Дана и Аружан')
-    })
-
     it('wishTotal — сумма цен', () => {
       expect(wishTotal([{ price: 120_000 }, { price: 35_500 }])).toBe(155_500)
       expect(wishTotal([])).toBe(0)
@@ -3143,90 +3038,6 @@ describe('B2C-54: статьи разбора — умолчания и одна
     expect(spendArticle('_unknown', [])).toBe('life')
     expect(spendArticle('sc_cafe', [{ id: 'sc_cafe', article: 'life' }])).toBe('life')
     expect(spendArticle('sc_food', [{ id: 'sc_food', article: 'spend' }])).toBe('spend')
-  })
-})
-
-describe('B2C-59: строки-статусы «Денег», доли трат и ориентир — ручной расчёт', () => {
-  const T = '2026-10-01T00:00:00.000Z'
-  const tot = (period: string, categoryId: string, amount: number, by: 'a' | 'b' = 'a'): SpendTotal => ({
-    id: `${by}:month:${period}:${categoryId}`, by, kind: 'month', period, categoryId, amount, ops: 1, updatedAt: T,
-  })
-  const up = (from: string, to: string) => ({ slot: 'a', period_from: from, period_to: to })
-
-  it('нагрузка словом: 29 % — низкая, 30 и 50 % — средняя, 51 % — высокая', () => {
-    expect(loadTag(0)).toEqual({ text: 'нагрузка низкая', tone: 'ok' })
-    expect(loadTag(29).text).toBe('нагрузка низкая')
-    expect(loadTag(30)).toEqual({ text: 'нагрузка средняя', tone: 'neutral' })
-    expect(loadTag(50).text).toBe('нагрузка средняя')
-    expect(loadTag(51)).toEqual({ text: 'нагрузка высокая', tone: 'warn' })
-  })
-
-  it('«N из M оплачено»: отметки месяца; всё оплачено — ok; платежей нет — null', () => {
-    expect(duesTag([{ paid: true }, { paid: false }, { paid: false }])).toEqual({ text: '1 из 3 оплачено', tone: 'neutral' })
-    expect(duesTag([{ paid: true }, { paid: true }])).toEqual({ text: '2 из 2 оплачено', tone: 'ok' })
-    expect(duesTag([])).toBeNull()
-  })
-
-  it('B2C-70 duesTotals: три платежа, один оплачен суммой из отметки → total и left; все оплачены → left 0; пусто → null', () => {
-    // Аренда 220 000 (оплачена 215 000 — сумма из отметки, как в строке), кредит 58 000, подписка 5 000.
-    const dues = [{ amount: 215_000, paid: true }, { amount: 58_000, paid: false }, { amount: 5_000, paid: false }]
-    expect(duesTotals(dues)).toEqual({ total: 278_000, left: 63_000 })
-    expect(duesTotals(dues.map((d) => ({ ...d, paid: true })))).toEqual({ total: 278_000, left: 0 })
-    expect(duesTotals(dues.map((d) => ({ ...d, paid: false })))).toEqual({ total: 278_000, left: 278_000 })
-    expect(duesTotals([])).toBeNull()
-    // Та же сумма, что у строк `monthDues` семьи плана: аренда + три кредита.
-    const month = monthDues(planFamilyDoc(), '2026-09')
-    expect(duesTotals(month)).toEqual({ total: 220_000 + 58_000 + 25_000 + 20_000, left: 220_000 + 58_000 + 25_000 + 20_000 })
-  })
-
-  it('доли месяца: от трат без разделов плана, «не разобрано» — в базе без строки; целые, сумма ≤ 100', () => {
-    const uploads = [up('2026-10-01', '2026-10-12')]
-    // База: продукты 60 000 + кафе 30 000 + не разобрано 10 000 = 100 000 (аренда — в плане, не входит).
-    const totals = [tot('2026-10', 'sc_food', 60_000), tot('2026-10', 'sc_cafe', 30_000), tot('2026-10', '_unknown', 10_000), tot('2026-10', 'sc_rent', 250_000)]
-    expect(spendShares(totals, [], '2026-10', uploads)).toEqual([
-      { categoryId: 'sc_food', amount: 60_000, share: 60 },
-      { categoryId: 'sc_cafe', amount: 30_000, share: 30 },
-    ])
-    expect(spendShares(totals, [], '2026-10', [])).toBeNull()
-    // 790 + 105 + 105 = 1000: 79 + 11 (10,5 вверх) + 11 = 101 → лишний процент снимается с самой большой: 78.
-    const round = spendShares([tot('2026-10', 'sc_food', 790), tot('2026-10', 'sc_cafe', 105), tot('2026-10', 'sc_fun', 105)], [], '2026-10', uploads)!
-    expect(round.map((r) => r.share)).toEqual([78, 11, 11])
-    for (const rows of [round, spendShares(totals, [], '2026-10', uploads)!]) {
-      expect(rows.every((r) => Number.isInteger(r.share))).toBe(true)
-      expect(rows.reduce((a, r) => a + r.share, 0)).toBeLessThanOrEqual(100)
-    }
-  })
-
-  it('ориентир: 2 полных месяца выписок — таблица статистики; 3 — своё среднее', () => {
-    const totals = [
-      // Июль: продукты 60 %, кафе 40 %. Август: 70 / 30. Сентябрь: 50 / 30 / развлечения 20.
-      tot('2026-07', 'sc_food', 60_000), tot('2026-07', 'sc_cafe', 40_000),
-      tot('2026-08', 'sc_food', 70_000), tot('2026-08', 'sc_cafe', 30_000),
-      tot('2026-09', 'sc_food', 50_000), tot('2026-09', 'sc_cafe', 30_000), tot('2026-09', 'sc_fun', 20_000),
-    ]
-    expect(spendNorms(totals, [], [up('2026-08-01', '2026-09-30')], '2026-10')).toEqual({ from: 'stat', norms: STAT_NORMS })
-    // Июль начат не с 1-го — месяц не полный.
-    expect(spendNorms(totals, [], [up('2026-07-02', '2026-09-30')], '2026-10').from).toBe('stat')
-    // Продукты (60 + 70 + 50) / 3 = 60; кафе (40 + 30 + 30) / 3 = 33,3 → 33; развлечения 20 / 3 = 6,7 → 7.
-    expect(spendNorms(totals, [], [up('2026-07-01', '2026-08-31'), up('2026-09-01', '2026-09-30')], '2026-10')).toEqual({
-      from: 'own',
-      norms: { sc_food: 60, sc_cafe: 33, sc_fun: 7 },
-    })
-  })
-
-  it('статус «Трат»: наибольшее превышение ориентира (больше 3 п. п.), иначе «в норме»; без выписок — null', () => {
-    const norms = { sc_food: 30, sc_cafe: 10 }
-    const row = (categoryId: string, share: number) => ({ categoryId, amount: share * 1_000, share })
-    // Продукты +10, кафе +15 — кафе.
-    expect(spendStatus([row('sc_food', 40), row('sc_cafe', 25)], norms, [])).toEqual({
-      text: 'кафе и рестораны выше нормы', tone: 'warn', worst: { name: 'Кафе и рестораны', share: 25, norm: 10 },
-    })
-    expect(spendStatus([row('sc_food', 40), row('sc_cafe', 12)], norms, [])).toMatchObject({ text: 'продукты выше нормы', worst: { share: 40, norm: 30 } })
-    // +3 — ещё норма; раздела без ориентира статус не касается.
-    expect(spendStatus([row('sc_food', 33), row('sc_people', 60)], norms, [])).toEqual({ text: 'в норме', tone: 'ok' })
-    // Имя — как назвала семья.
-    expect(spendStatus([row('sc_food', 40)], norms, [{ id: 'sc_food', name: 'Еда' }])!.text).toBe('еда выше нормы')
-    expect(spendStatus(null, norms, [])).toBeNull()
   })
 })
 

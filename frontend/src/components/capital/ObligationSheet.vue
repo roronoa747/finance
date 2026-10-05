@@ -5,17 +5,15 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, plain, parseMoney } from '@/lib/money'
-import { MONTHS_NOM, addMonths, dayLabel, monthFrom, monthKey, monthTitle, parseMonthKey } from '@/lib/dates'
+import { MONTHS_NOM, addMonths, monthFrom, monthKey, monthTitle, parseMonthKey } from '@/lib/dates'
 import {
   amountAt,
   amountIn,
   isSubscription,
   liveGroups,
   liveObligations,
-  nextObligationDue,
   plannedChange,
   yearShare,
-  type Due,
 } from '@/lib/finance'
 import type { Currency, Obligation, PersonId } from '@/types/finance'
 import { CURRENCY_SIGN } from '@/lib/fx'
@@ -37,10 +35,9 @@ import { useSavedMark } from '@/components/kit/useSavedMark'
 import { useNbRate } from '@/components/kit/useNbRate'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
-import PaidRow from '@/components/PaidRow.vue'
 
 /**
- * Окно обязательства Капитала (React `ObligationDialog`): «Оплатил», правка полей,
+ * Окно обязательства Капитала (React `ObligationDialog`): правка полей (отметка «Оплатил» — в «Месяце», Р-94),
  * запланированное изменение суммы, «История суммы», удаление. Сумма — в валюте версии (Р-75): чипы
  * валюты у нового изменения (по умолчанию нынешняя), под суммой тихая строка «≈ N ₸ по курсу».
  */
@@ -64,23 +61,6 @@ const obBuckets = computed(() =>
   (['d1', 'd2', 'd4'] as CategoryKey[]).map((key) => ({ key, name: categoryName(financeStore.categories, key) })),
 )
 
-// Платёж для «Оплатил» берётся при открытии (как у кредита): отметка не перескакивает
-// на следующий месяц. Правка дня или периодичности меняет график — снимок заново.
-const obligationDue = ref<Due | null>(null)
-watch(
-  [
-    () => activeObligation.value?.id,
-    () => activeObligation.value?.day,
-    () => activeObligation.value?.every,
-    () => activeObligation.value?.month,
-  ],
-  () => {
-    obligationDue.value = activeObligation.value
-      ? nextObligationDue(activeObligation.value, financeStore.payments, undefined, fx.book)
-      : null
-  },
-  { immediate: true },
-)
 const obPlanning = ref(false)
 const obNewAmount = ref('')
 const obFromMonth = ref(addMonths(key.value, 1))
@@ -172,18 +152,6 @@ function planObligation() {
       <SavedMark :on="obligationSaved" />
     </template>
     <template v-if="activeObligation" #default="{ close }">
-      <div v-if="obligationDue" class="mb-3 rounded-xl border border-line px-3">
-        <PaidRow
-          dense
-          more
-          kind="obligation"
-          :target-id="activeObligation.id"
-          :period="obligationDue.period"
-          :title="`Платёж ${dayLabel(obligationDue.day, obligationDue.period)}`"
-          :note="activeObligation.every === 'year' ? 'раз в год' : 'по графику'"
-        />
-      </div>
-
       <Field v-if="isSubscription(activeObligation) && groups.length && !authStore.isViewer" label="Группа">
         <Select
           :model-value="activeObligation.parentId ?? ''"

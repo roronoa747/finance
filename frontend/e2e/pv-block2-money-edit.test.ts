@@ -2,8 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { setActivePinia, type Pinia } from 'pinia'
-import { createRenderer, createSSRApp, h, nextTick, ssrContextKey, type Component } from 'vue'
-import { renderToString } from 'vue/server-renderer'
+import { createRenderer, h, nextTick, ssrContextKey, type Component } from 'vue'
 import { createMemoryHistory } from 'vue-router'
 import { createAppRouter } from '../src/router'
 import { defaultSyncDoc } from '../src/stores/finance'
@@ -24,7 +23,7 @@ import { money, moneyIn, plain } from '../src/lib/money'
 import CapitalLists from '../src/components/money/CapitalLists.vue'
 import Statements from '../src/views/Statements.vue'
 import Money from '../src/views/Money.vue'
-import PaidRow from '../src/components/PaidRow.vue'
+import Month from '../src/views/Month.vue'
 import DangerZone from '../src/components/kit/DangerZone.vue'
 import CreditSheet from '../src/components/capital/CreditSheet.vue'
 import PayoffSheet from '../src/components/capital/PayoffSheet.vue'
@@ -49,7 +48,7 @@ describe('PV-09: кит окон', () => {
 
     // Экраны блока — без литерального затемнения.
     const sheets = ['AccountSheet', 'CreditSheet', 'ObligationSheet', 'PayoffSheet', 'NewAccountSheet', 'NewDebtSheet', 'NewObligationSheet', 'GroupSheets', 'ExtraIncomeSheet'].map((n) => `../src/components/capital/${n}.vue`)
-    for (const file of ['../src/components/money/CapitalLists.vue', '../src/components/PaidRow.vue', ...sheets]) {
+    for (const file of ['../src/components/money/CapitalLists.vue', '../src/components/money/MonthPlan.vue', ...sheets]) {
       const src = readFileSync(resolve(import.meta.dirname, file), 'utf-8')
       expect(src).not.toMatch(/bg-black|fixed inset-0|<select/)
     }
@@ -112,7 +111,6 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     expect(nextCreditDue(B.store.credits[0], B.store.payments)).toMatchObject({ period: '2026-10', day: 20 })
     const capitalB = await screen(B.pinia, Money, '/money?credit=loan')
     expect(capitalB).toContain('value="25"')
-    expect(capitalB).toContain('Платёж 20 октября')
 
     // Сверка с банком на втором телефоне — новая база и якорь; отметка до якоря в ней.
     at('2026-09-25T08:00:00Z')
@@ -143,12 +141,13 @@ describe('e2e / Блок 2 паритета — правка денег на д�
 
     setActivePinia(B.pinia)
     await B.store.pullHousehold(B.client)
-    // «До зарплаты» (до 10 октября): коммуналка 8 октября — с «оценкой», её «Оплатил» откроет лист с суммой.
+    // Коммуналка — с оценкой: в справочнике «≈ оценка», в «Месяце» — «примерно» (её «Оплатил» откроет лист с суммой).
     const whole = await screen(B.pinia, Money, '/money')
-    // «До зарплаты» — под «Подробнее» (Блок 14).
-    const overview = whole.slice(whole.indexOf('data-more'))
-    const until = overview.slice(overview.indexOf('Коммуналка'))
-    expect(until.slice(0, until.indexOf('Оплатил'))).toContain('оценка')
+    const until = whole.slice(whole.indexOf('Коммуналка'))
+    expect(until.slice(0, until.indexOf('</button>'))).toContain('≈ оценка')
+    const month = await screen(B.pinia, Month, '/month?month=2026-10', undefined, [screenMixin({ opened: 'dues' })])
+    const due = month.slice(month.indexOf('Коммуналка'))
+    expect(due.slice(0, due.indexOf('data-due', 1))).toContain('примерно')
 
     // Жильё — d1 Бюджета: аренда 220 000 + коммуналка 35 000 + гараж 30 000; в d4 их нет.
     const amounts = budgetAmounts({ ...B.store.householdDoc, credits: B.store.credits })
@@ -159,19 +158,18 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     // отмечается одним нажатием, с оценкой открывается лист с суммой, отметки нет.
     const garage = B.store.obligations.find((o) => o.name === 'Гараж')!
     for (const o of [util, garage]) B.store.markPaid('obligation', o.id, 'b', { period: '2026-09', accountId: 'card' })
-    const tap = async (targetId: string, title: string) => {
+    // Блок 15 (Р-94): «Оплатил» — в листе платежа «Месяца» (`MonthPlan.pay`), строки с кнопкой больше нет.
+    const tap = async (targetId: string, _title: string) => {
       setActivePinia(B.pinia)
-      let sheet: unknown
-      const app = createSSRApp(PaidRow, { kind: 'obligation', targetId, period: '2026-10', title })
-      app.mixin({
-        created() {
-          if (this.$.parent !== null) return
-          ;(this.$.setupState.tap as () => void)()
-          sheet = this.$.setupState.sheet
-        },
-      })
-      await renderToString(app)
-      return sheet
+      let asked: unknown
+      await screen(B.pinia, Month, '/month?month=2026-10', undefined, [
+        screenMixin({}, (st) => {
+          const due = (st.plan as { dues: { targetId: string }[] }).dues.find((d) => d.targetId === targetId)
+          ;(st.pay as (d: unknown) => void)(due)
+          asked = st.markFor
+        }),
+      ])
+      return asked ? 'mark' : null
     }
     const october = (id: string) => B.store.payments.filter((p) => p.targetId === id && p.period === '2026-10')
     expect(await tap(util.id, 'Коммуналка')).toBe('mark')
@@ -289,7 +287,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     expect(screenA.addDebtOpen).toBe(true)
   })
 
-  it('PV-10 (критик): закрытый кредит снова открыт сверкой остатка — у модалки появляется «Оплатил»', async () => {
+  it('PV-10 (критик): закрытый кредит снова открыт сверкой остатка — платёж возвращается в «Месяц»', async () => {
     const A = await phone(server)
     useAuthStore().setAuthData({
       token: 't',
@@ -306,13 +304,16 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     const capitalA = mountLive(A.pinia, router)
     // Окно кредита — `CreditSheet` (Н-3): открытый кредит берёт у экрана.
     const screenA = mountLive(A.pinia, router, { view: CreditSheet, props: () => ({ creditId: capitalA.selectedCreditId }) })
-    expect(screenA.creditDue).toBe(null)
+    // Блок 15 (Р-94): «Оплатил» — в «Месяце»; закрытого кредита среди платежей месяца нет.
+    const dueInMonth = async () => (await screen(A.pinia, Month, '/month', undefined, [screenMixin({ opened: 'dues' })])).includes('data-due-id="credit:loan"')
+    expect(await dueInMonth()).toBe(false)
 
     at('2026-09-24T09:00:00Z')
     ;(screenA.onCreditPrincipal as (t: string) => void)('150 000')
     await nextTick()
     expect(A.store.credits[0].principal).toBe(150_000)
-    expect(screenA.creditDue).toMatchObject({ kind: 'credit', targetId: 'loan', period: '2026-09', day: 15 })
+    expect(nextCreditDue(A.store.credits[0], A.store.payments)).toMatchObject({ kind: 'credit', targetId: 'loan', period: '2026-09', day: 15 })
+    expect(await dueInMonth()).toBe(true)
   })
 
   /**
@@ -408,7 +409,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(nextObligationDue(rentB(), B.store.payments)).toMatchObject({ period: '2026-09', day: 3 })
       // «Платежи» второго (B2C-42): аренда 3-го, а не 5-го.
       const list = await page(B.pinia, Money, '/money')
-      const rentRow = between(list, 'Аренда', 'Оплатил')
+      const rentRow = between(list, 'Аренда', '</button>')
       expect(rentRow).toContain('3-го')
       expect(rentRow).not.toContain('5-го')
       // Капитал второго: у аренды хозяйка в подписи; в окне «Чьё это» нажата Аруна.
@@ -420,7 +421,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       await page(B.pinia, Money, '/money?obligation=rent', { act: (s) => press(s, 'setObligationWho', 'all') })
       expect(rentB().who).toBeNull()
       const moneyB = await page(B.pinia, Money, '/money')
-      const shared = between(moneyB.slice(moneyB.indexOf('data-more')), 'Аренда', '</button>')
+      const shared = between(moneyB, 'Аренда', '</button>')
       expect(shared).toContain(money(220_000))
       expect(shared).not.toContain('Аруна')
 
@@ -668,11 +669,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       for (const n of [58_000, 35_026, 22_974, 800_385]) expect(nov).toContain(plain(n))
       expect(modalB).toContain('май 2028')
       expect(modalB).not.toContain('июн 2028')
-      // Платёж ноября второго — от остатка 835 411: проценты 835 411 × 0,33 / 12 = 22 973,8 → 22 974,
-      // в долг 58 000 − 22 974 = 35 026. Доли — в листе кредита (пивот 3, B2C-42: строка «Платежей» их не печатает).
-      const due = between(modalB, 'Платёж ', 'Другая сумма или счёт')
-      expect(due).toContain(`в долг ${plain(35_026)}`)
-      expect(due).toContain(`банку ${plain(22_974)}`)
+      // Платёж ноября второго — от остатка 835 411: в долг 35 026, банку 22 974 — строка графика `nov` выше
+      // (Блок 15: «Оплатил» с долями ушёл из листа кредита — отметка в «Месяце», доли — в графике).
       expect(between(await page(B.pinia, Money, '/money'), 'Кредит', '</button>')).not.toContain('в долг')
       // Проценты месяца второго — 22 974; «Оплатил» октября по записи 34 089 / 23 911 — строка графика `oct` выше.
       expect(await interest(B.pinia)).toContain(`${money(22_974)} в месяц`)
@@ -697,11 +695,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(modal).toContain('При таком платеже долг не закрывается: проценты съедают его целиком.')
       expect(modal).not.toContain('Платежей осталось')
       expect(modal).not.toContain('График платежей')
-      // «Оплатил» октября в окне: весь платёж банку (20 000 < 26 661), в долг 0.
-      const due = between(modal, 'Платёж 15 октября', 'Другая сумма или счёт')
-      expect(due).toContain(money(20_000))
-      expect(due).toContain('в долг 0')
-      expect(due).toContain(`банку ${plain(20_000)}`)
+      // Платёж октября: весь банку (20 000 < 26 661), в долг 0 — расчёт `nextCreditDue`; «Оплатил» — в «Месяце» (Блок 15).
+      expect(nextCreditDue(B.store.credits[0], B.store.payments)).toMatchObject({ period: '2026-10', day: 15 })
       const payoff = await page(B.pinia, Money, '/money?payoff=loan')
       expect(cell(payoff, 'Переплата, если не трогать')).toBe('долг не закрывается')
       expect(cell(payoff, 'Осталось платежей')).toBe('—')

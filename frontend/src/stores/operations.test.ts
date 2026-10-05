@@ -5,7 +5,7 @@ import { apiClient, type ApiClient } from '@/api/client'
 import { useAuthStore, DEMO_TOKEN } from './auth'
 import { useFinanceStore } from './finance'
 import { BATCH_SIZE, PULL_LIMIT, UPLOAD_HOLD_MS, toWire, useOperationsStore } from './operations'
-import { assignIds, draftSummary, normalizeMerchant } from '@/lib/statements/model'
+import { assignIds, normalizeMerchant } from '@/lib/statements/model'
 import { parseStatement } from '@/lib/statements/parsers'
 import type { Operation, ParsedStatement } from '@/lib/statements/types'
 import type { OperationsPage, OperationWire, StatementUploadResponse } from '@/types/api'
@@ -96,15 +96,15 @@ describe('stores/operations — отправка выписки', () => {
     expect(store.draft).toBeNull()
   })
 
-  it('пересекающиеся выписки в одном выборе: сводка как у одной, операция уходит один раз', async () => {
+  it('пересекающиеся выписки в одном выборе: операции как у одной, каждая уходит один раз', async () => {
     signIn()
     const store = useOperationsStore()
     const { client, server, calls } = fakeServer()
     store.setDraft(draftOf(kaspi()))
-    const single = draftSummary(store.draftOps, () => false)
+    const single = store.draftOps.map((o) => [o.id, o.amount])
     store.setDraft([...draftOf(kaspi()), { name: 'та же.pdf', parsed: kaspi() }])
     expect(store.draftOps).toHaveLength(60)
-    expect(draftSummary(store.draftOps, () => false)).toEqual(single)
+    expect(store.draftOps.map((o) => [o.id, o.amount])).toEqual(single)
 
     await store.send(client)
     // Обе записи загрузок — со своим числом операций; второй батч пустой и не отправляется.

@@ -7,6 +7,7 @@ import type { SyncDoc } from '../src/types/finance'
 import Access from '../src/views/Access.vue'
 import Dreams from '../src/views/Dreams.vue'
 import Money from '../src/views/Money.vue'
+import Month from '../src/views/Month.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
 import SyncBadge from '../src/components/SyncBadge.vue'
 import Settings from '../src/views/Settings.vue'
@@ -219,8 +220,9 @@ describe('e2e / PV Блок 5 — оболочка на двух телефон�
       await act(A.pinia, AppearancePanel, '/budget', 'saveName', { userName: '  Ильяс М ' })
       await A.store.syncHousehold(A.client)
       await on(B).store.syncHousehold(B.client)
-      const income = (await screen(B.pinia, Money, '/money')).replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
-      expect(income).toContain('Ильяс М 10-го')
+      // Зарплаты — у круга «Месяца» (Блок 15, Р-91).
+      const income = (await screen(B.pinia, Month, '/month')).replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
+      expect(income).toContain('Ильяс М ждём 10 сентября')
       expect(await screen(B.pinia, SyncBadge, '/budget', undefined, [screenMixin({ open: true })])).toContain('Ильяс М')
 
       at('2026-09-26T07:20:00Z')

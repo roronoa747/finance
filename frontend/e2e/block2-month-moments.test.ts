@@ -84,7 +84,7 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       // План месяца (Блок 14): пришла — «Отложить по плану», «Остаётся» — из finance.ts.
       const plan = planOf(A.store)
       expect(plan.income.byPerson.find((x) => x.person === 'a')).toMatchObject({ amount: 700_000, came: true })
-      const money_ = await screen(A.pinia, Money, '/money')
+      const money_ = await screen(A.pinia, Month, '/month')
       expect(money_).toContain(`data-rest>${money(plan.rest)}<`)
 
       await A.store.syncHousehold(A.client)
@@ -97,9 +97,10 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       expect(history).toContain(`Зарплата · Ильяс пришла · отметка +${money(700_000)}`)
       expect(history).not.toContain('Пришла зарплата')
 
-      // Ближайшая зарплата у обоих — Аруны: строка листа сводки «До зарплаты» в «Деньгах» (пивот 3, Р-32).
-      const overview = await screen(B.pinia, Money, '/money', undefined, [screenMixin({ open: true })])
-      expect(overview).toContain('Зарплата · Аруна')
+      // Зарплата Аруны ждёт — её строка в «Месяце» (Блок 15; сводки «До зарплаты» в «Деньгах» нет, Р-91).
+      const overview = await screen(B.pinia, Month, '/month')
+      expect(overview).toMatch(/data-salary-status>ждём 20 сентября</)
+      expect(overview).not.toMatch(/data-salary="a" data-can-mark/)
     })
 
     it('следующая зарплата — на счёт прошлой одним нажатием; снятие возвращает; премия — правкой', async () => {
@@ -329,7 +330,7 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
         // Считается ранняя по моменту отметки.
         expect(paidFor(s.payments, 'salary', 'a', '2026-09')!.id).toBe(first.id)
       }
-      expect(await screen(A2.pinia, Money, '/money', undefined, [screenMixin({ open: true })])).toContain('Зарплата · Аруна')
+      expect(await screen(A2.pinia, Month, '/month')).not.toMatch(/data-salary="a" data-can-mark/)
     })
 
     it('RP-11: окно по Алматы на стыке месяцев; ответ помнит устройство — на телефоне партнёра вопрос остаётся', async () => {

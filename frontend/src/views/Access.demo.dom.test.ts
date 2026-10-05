@@ -13,8 +13,8 @@ import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
 import { spendTotals, unknownGroups } from '@/lib/statements/model'
 import type { SpendTotal } from '@/lib/statements/types'
-import { monthKey, weekKey, weekRangeLabel } from '@/lib/dates'
-import { myWeek, weekPicture } from '@/lib/finance'
+import { monthKey, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
+import { myWeek, spendRows } from '@/lib/finance'
 import { money } from '@/lib/money'
 
 /**
@@ -61,7 +61,9 @@ describe('B2C-45: демо — «Деньги» с данными во всех 
 
     const capital = text(await renderScreen(Money, '/money'))
     expect(capital).toContain('Депозит Kaspi 14 % · общий')
-    expect(capital).toContain('Аренда квартиры 5-го · оплачено')
+    // Блок 15 (Р-91): «Платежи» — справочник, отметок месяца в нём нет.
+    expect(capital).toContain('Аренда квартиры 5-го')
+    expect(capital).not.toContain('оплачено')
     expect(capital).toContain('Автокредит')
 
     const plan = await renderScreen(Money, '/money/debts')
@@ -112,8 +114,10 @@ describe('B2C-52: демо — итоги из демо-операций той 
       expect(strip(mine(kind, period))).toEqual(strip(spendTotals(ops.all, 'a', kind, period)))
     }
     // «Не разобрано» недели — сумма своих операций недели без раздела (у Аруны незнакомого нет).
+    /** Траты недели обоих по итогам семьи (`spendRows`) — как их видел бы общий итог; на «Неделе» теперь только свои (Р-95). */
+    const picOf = () => ({ ...spendRows(finance.householdDoc.spendTotals!, finance.householdDoc.spendCategories!, { kind: 'week', period: week }), range: weekRange(week) })
     const unknownOps = ops.all.filter((o) => !o.categoryId && !o.internal && o.amount < 0 && weekKey(o.date) === week).reduce((a, o) => a - o.amount, 0)
-    const pic = weekPicture(finance.householdDoc.spendTotals!, finance.householdDoc.spendCategories!, finance.people, week, ops.uploads)
+    const pic = picOf()
     expect(pic.unknown).toBe(unknownOps)
     expect(unknownOps).toBe(75_300) // 10 ИП сегодня (B2C-67)
     // Сумма недели — свои операции недели + итоги Аруны.
@@ -147,7 +151,7 @@ describe('B2C-52: демо — итоги из демо-операций той 
     // операции заново (`reapply`), и остальные не возвращаются в «не разобрано» (стенд B2C-52).
     const abenova = unknownGroups(ops.all).find((g) => g.label === 'ИП Абенова')!
     await ops.recategorize(abenova.match, { categoryId: 'sc_food' }).catch(() => {})
-    const after = weekPicture(finance.householdDoc.spendTotals!, finance.householdDoc.spendCategories!, finance.people, week, ops.uploads)
+    const after = picOf()
     expect(after.unknown).toBe(75_300 - 7_600)
     expect(after.total).toBe(pic.total)
     expect(fetch).not.toHaveBeenCalled()

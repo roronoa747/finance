@@ -10,7 +10,7 @@ import { plannedElsewhere } from '../src/lib/statements/dictionary'
 import type { Operation, ParsedStatement, SpendTotal } from '../src/lib/statements/types'
 import { money } from '../src/lib/money'
 import { weekKey, weekRange, weekRangeLabel } from '../src/lib/dates'
-import { freeByFact, untilPayday, weekPicture, type Decision } from '../src/lib/finance'
+import { freeByFact, spendRows, type Decision } from '../src/lib/finance'
 import { planFamilyDoc } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
 import Access from '../src/views/Access.vue'
@@ -166,14 +166,12 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     expect(weekB).toMatch(/data-uploaded="true" data-partner="a"/)
   })
 
-  it('часть 3 — «Свободно» одно: сводка «Денег» — «останется на счетах», «Доход» — «остаток по плану»; числа прежние', async () => {
+  it('часть 3 — «Свободно» одно: на «Деньгах» слова нет, с числом — только на «Мечтах»', async () => {
     const A = await phone(server, st, 'a')
     await uploadA(A)
     setActivePinia(A.pinia)
-    const p = untilPayday({ people: A.store.people, obligations: A.store.obligations, credits: A.store.credits, accounts: A.store.householdAccounts, payments: A.store.payments })!
+    // Блок 15 (Р-91): сводки «До зарплаты» и виджета «Доход» на «Деньгах» нет — слова «свободно» там по-прежнему нет.
     const money_ = text(await screen(A.pinia, Money, '/money'))
-    expect(money_).toContain(`останется на счетах ${text(money(p.shortfall))}`)
-    expect(money_).toContain('остаток по плану')
     expect(money_.toLowerCase()).not.toContain('свободно')
     // Слово с числом — только на «Мечтах».
     expect(text(await screen(A.pinia, Dreams, '/'))).toContain('Свободно ')
@@ -203,7 +201,7 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     const mine = (finance.householdDoc.spendTotals ?? []).filter((t) => t.by === 'a' && t.kind === 'week' && t.period === week && t.amount > 0)
     const strip = (list: SpendTotal[]) => list.map(({ categoryId, amount }) => ({ categoryId, amount }))
     expect(strip(mine)).toEqual(strip(spendTotals(ops.all, 'a', 'week', week)))
-    const pic = weekPicture(finance.householdDoc.spendTotals ?? [], finance.householdDoc.spendCategories ?? [], finance.people, week, ops.uploads)
+    const pic = { ...spendRows(finance.householdDoc.spendTotals ?? [], finance.householdDoc.spendCategories ?? [], { kind: 'week', period: week }), range: weekRange(week) }
     const opsWeek = ops.all.filter((o) => !o.internal && o.amount < 0 && weekKey(o.date) === week).reduce((a, o) => a - o.amount, 0)
     const aruna = (finance.householdDoc.spendTotals ?? []).filter((t) => t.by === 'b' && t.kind === 'week' && t.period === week).reduce((a, t) => a + t.amount, 0)
     expect(pic.total).toBe(opsWeek + aruna)

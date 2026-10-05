@@ -4,10 +4,9 @@ import type { UnknownGroup } from '@/lib/statements/model'
 import { isSpend, normalizeCounterparty, normalizeMerchant } from '@/lib/statements/model'
 import type { Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY, plannedElsewhere } from '@/lib/statements/dictionary'
-import { STAT_NORMS } from '@/lib/statements/norms'
 import { addDaysIso, addMonths, dayLabel, daysInMonth, isoIn, monthFrom, monthKey, parseMonthKey, today, todayIso, weekdayShort, weekKey, weekRange } from '@/lib/dates'
 import { spendColor } from '@/lib/palette'
-import { money, pct } from '@/lib/money'
+import { money } from '@/lib/money'
 /**
  * Расчётное ядро. Чистые функции: ни сети, ни состояния, ни ИИ.
  *
@@ -747,6 +746,9 @@ export const liveCredits = (list: Credit[]) => (list || []).filter(alive);
  * база последней сверки, закрытость в нём не видна.
  */
 export const openCredits = (list: Credit[]) => liveCredits(list).filter((c) => c.principal > 0);
+
+/** Остаток открытых долгов семьи — квадрат и карточка «Долги», строка под «Капиталом» (Р-91). */
+export const openDebt = (list: Credit[]) => openCredits(list).reduce((a, c) => a + c.principal, 0);
 /**
  * Долги, которые стоит гасить досрочно: открытые с процентами, самый дорогой
  * первым (при равной ставке — тот, что больше съедает процентами в месяц).
@@ -1080,15 +1082,6 @@ export function paydayRates(p: Person, key: string, book: RateBook | null | unde
     if (d) out.push({ key: k, day: paydayIso(p, k), rate: d.rate, tenge: d.tenge });
   }
   return out;
-}
-
-/** Ближайшее запланированное изменение оклада; `delta` — в тенге (валютный — по книге). */
-export function nextSalaryChange(p: Person, key = monthKey(), book?: RateBook | null) {
-  const future = (p.salaryVersions ?? [])
-    .filter((x) => x.from > key)
-    .sort((a, b) => a.from.localeCompare(b.from));
-  if (!future.length) return null;
-  return { ...future[0], currency: future[0].currency ?? 'KZT', delta: salaryAt(p, future[0].from, book) - salaryAt(p, key, book) };
 }
 
 /** Совокупный доход участников, тенге: зарплаты месяца по Р-74 (`salaryTenge`). */
@@ -3583,20 +3576,6 @@ export type WeekPictureRow = {
   color: string
 }
 
-export type WeekPicture = {
-  /** Понедельник и воскресенье недели, `YYYY-MM-DD`. */
-  range: { from: string; to: string }
-  /** Траты обоих за неделю, включая не разобранное. */
-  total: number
-  /** Разделы по убыванию суммы, без «не разобрано». */
-  rows: WeekPictureRow[]
-  unknown: number
-  unknownShare: number
-  /** Кто загрузил выписку, покрывающую неделю, и кто нет. */
-  uploaded: Person[]
-  missing: Person[]
-}
-
 /** Загрузка выписки, как её отдаёт сервер: чья и за какой период (`created_at` — когда загрузили). */
 export type UploadPeriod = { slot: string; period_from: string; period_to: string; created_at?: string }
 
@@ -3655,37 +3634,6 @@ export function spendRows(
   return { total, rows, unknown, unknownShare: total > 0 ? unknown / total : 0 }
 }
 
-/**
- * Картина недели (Р-8): траты обоих по разделам за ISO-неделю `week` — сумма недельных
- * итогов всех участников (`spendTotals`), доли от общей суммы; «не разобрано» — отдельно.
- * Кто без выписки — по загрузкам семьи, покрывающим хотя бы день недели.
- */
-export function weekPicture(
-  totals: SpendTotal[],
-  categories: SpendCategory[],
-  people: Person[],
-  week: string,
-  uploads: UploadPeriod[] = [],
-): WeekPicture {
-  const range = weekRange(week)
-  const { total, rows, unknown, unknownShare } = spendRows(totals, categories, { kind: 'week', period: week })
-  const alivePeople = people.filter(alive)
-  const uploaded = alivePeople.filter((p) => uploads.some((u) => u.slot === p.id && coversWeek(u, range)))
-  const missing = alivePeople.filter((p) => !uploaded.includes(p))
-  return { range, total, rows, unknown, unknownShare, uploaded, missing }
-}
-
-/**
- * Тег картины недели (главный и «Неделя» — один текст): кто-то загрузил, а кто-то нет —
- * «без выписки <имена>»; загрузили все — «по выпискам обоих» (один участник — «по выписке»);
- * никто — null. `peopleCount` — живые участники семьи.
- */
-export function weekTag(pic: Pick<WeekPicture, 'uploaded' | 'missing'>, peopleCount: number): { text: string; tone: 'ok' | 'warn' } | null {
-  if (pic.missing.length && pic.uploaded.length) return { text: `без выписки ${pic.missing.map((p) => p.name).join(' и ')}`, tone: 'warn' }
-  if (pic.uploaded.length) return { text: peopleCount > 1 ? 'по выпискам обоих' : 'по выписке', tone: 'ok' }
-  return null
-}
-
 /** Строка карточки «Выписки» (Р-62): загружена ли выписка за неделю и в какой день — последняя загрузка; нет — null. */
 export type WeekUploadRow = { person: Person; day: string | null }
 
@@ -3697,15 +3645,6 @@ export function weekUploads(people: Person[], week: string, uploads: UploadPerio
     const last = mine.map((u) => u.created_at ?? '').sort().at(-1)
     return { person, day: mine.length ? weekdayShort(last) : null }
   })
-}
-
-/** Итог недели против прошлой (DESIGN.md §6 «на N % меньше/больше прошлой»), целый процент; null — одной из недель нет. */
-export function weekVersusPrev(totals: SpendTotal[], week: string, prevWeek: string): { delta: number } | null {
-  const sum = (key: string) => spendRows(totals, [], { kind: 'week', period: key }).total
-  const now = sum(week)
-  const prev = sum(prevWeek)
-  if (!prev || !now) return null
-  return { delta: Math.round(((now - prev) / prev) * 100) }
 }
 
 /* ---------------- «Неделя» — мои траты (Блок 15, B2C-92; Р-95, Р-98, Р-101) ---------------- */
@@ -4061,186 +4000,6 @@ export function monthSpentByFact(totals: SpendTotal[], spendCategories: SpendCat
     .filter((t) => !t.deletedAt && t.kind === 'month' && t.period === key && t.amount > 0)
     .filter((t) => t.categoryId === UNKNOWN_CATEGORY || !plannedElsewhere(t.categoryId, live))
     .reduce((a, t) => a + t.amount, 0)
-}
-
-export type IncomePartKey = 'must' | 'dreams' | 'living' | 'free'
-
-/**
- * Виджет «Доход» в «Деньгах» (Р-33): доли дохода — обязательное (жильё и кредиты), мечты
- * (взносы и досрочка по плану), траты (раздел d4), свободно (не меньше 0) — и нагрузка: доля жилья и
- * кредитов в доходе (формула «вместе с жильём» прежнего Бюджета). `share` — доля 0…1 для полосы,
- * `pct` — те же проценты, что печатал Бюджет. `overplanned` — на сколько расписано больше дохода.
- */
-export function incomeSplit(a: Pick<ReturnType<typeof budgetAmounts>, 'd1' | 'd2' | 'd3' | 'd4' | 'd5' | 'income' | 'planExtra'>) {
-  const parts: { key: IncomePartKey; amount: number }[] = [
-    { key: 'must', amount: a.d1 + a.d2 },
-    { key: 'dreams', amount: a.d3 + a.planExtra },
-    { key: 'living', amount: a.d4 },
-    { key: 'free', amount: Math.max(0, a.d5) },
-  ]
-  return {
-    income: a.income,
-    load: pct(a.d1 + a.d2, a.income),
-    parts: parts.map((p) => ({ ...p, pct: pct(p.amount, a.income), share: a.income > 0 ? p.amount / a.income : 0 })),
-    overplanned: Math.max(0, -a.d5),
-  }
-}
-
-/**
- * Виджет «Траты» (Р-33; бывший «Еда и быт»): план — `livingPlan` (траты плана месяца, иначе статьи «Жизнь» + «Траты», B2C-59; без
- * статей — база раздела d4, как раньше), факт — `monthSpentByFact` (`null` — за месяц нет загрузок). `pct` —
- * факт от плана, `share` — для полосы 0…1, `over` — перерасход.
- */
-export function livingPlanFact(
-  doc: Parameters<typeof livingPlan>[0],
-  totals: SpendTotal[],
-  spendCategories: SpendCategory[],
-  key: string,
-  uploads: UploadPeriod[] = [],
-) {
-  const plan = livingPlan(doc)
-  const spent = monthSpentByFact(totals, spendCategories, key, uploads)
-  return {
-    plan,
-    spent,
-    pct: spent !== null && plan > 0 ? pct(spent, plan) : null,
-    share: spent !== null && plan > 0 ? Math.min(1, spent / plan) : 0,
-    over: spent !== null && spent > plan,
-  }
-}
-
-/**
- * Виджет «Долги» (Р-33): остаток живых кредитов (сумма `principal`, как итог долгов Капитала) и
- * «в <месяце> оплачено N из M» — платежи кредитов месяца из `monthDues` (Р-38). `open` — есть ли
- * незакрытый долг (нет — «Долгов нет»). Кредиты — производные остатки, как их отдаёт стор.
- */
-export function debtsSummary(state: { credits?: Credit[]; payments?: Payment[] }, key: string) {
-  const credits = liveCredits(state.credits ?? [])
-  const dues = monthDues({ credits: state.credits, payments: state.payments }, key).filter((d) => d.kind === 'credit')
-  return {
-    total: credits.reduce((a, c) => a + c.principal, 0),
-    open: credits.some((c) => c.principal > 0),
-    paid: dues.filter((d) => d.paid).length,
-    count: dues.length,
-  }
-}
-
-/* ---------------- строки-статусы виджетов «Денег» и доли трат (B2C-59, Р-57, Р-59) ---------------- */
-
-export type StatusTag = { text: string; tone: 'ok' | 'neutral' | 'warn' }
-
-/**
- * Нагрузка словом (тег «Дохода»): доля жилья и кредитов в доходе, целые проценты (`incomeSplit().load`).
- * Пороги — дефолт составителя: до 29 % — низкая, 30–50 % — средняя, от 51 % — высокая.
- */
-export const LOAD_LEVELS: { upTo: number; text: string; tone: StatusTag['tone'] }[] = [
-  { upTo: 29, text: 'нагрузка низкая', tone: 'ok' },
-  { upTo: 50, text: 'нагрузка средняя', tone: 'neutral' },
-  { upTo: Infinity, text: 'нагрузка высокая', tone: 'warn' },
-]
-export const loadTag = (load: number): StatusTag => {
-  const l = LOAD_LEVELS.find((x) => load <= x.upTo)!
-  return { text: l.text, tone: l.tone }
-}
-
-/** «N из M оплачено» (тег «Платежей»): платежи месяца (`monthDues`) и их отметки; платежей нет — null. */
-export function duesTag(dues: Pick<MonthDue, 'paid'>[]): StatusTag | null {
-  if (!dues.length) return null
-  const paid = dues.filter((d) => d.paid).length
-  return { text: `${paid} из ${dues.length} оплачено`, tone: paid === dues.length ? 'ok' : 'neutral' }
-}
-
-/**
- * Суммы платежей месяца (B2C-70, первая строка «Платежей»): `total` — все платежи месяца, `left` — ещё не
- * оплаченные. Только сложение строк `monthDues` (у отмеченного сумма — из отметки, итог сходится со
- * строками), новых правил нет; платежей нет — null.
- */
-export function duesTotals(dues: Pick<MonthDue, 'amount' | 'paid'>[]): { total: number; left: number } | null {
-  if (!dues.length) return null
-  return dues.reduce((acc, d) => ({ total: acc.total + d.amount, left: acc.left + (d.paid ? 0 : d.amount) }), { total: 0, left: 0 })
-}
-
-export type SpendShare = { categoryId: string; amount: number; share: number }
-
-/**
- * Доли разделов месяца (лист «Траты»): сумма раздела от трат месяца по выпискам обоих (`monthSpentByFact`:
- * без разделов, учтённых планом; «не разобрано» — в базе, но строкой не идёт). Целые проценты, по убыванию;
- * округление не выводит сумму за 100 (лишний процент снимается с самой большой доли). null — загрузок нет.
- */
-export function spendShares(totals: SpendTotal[], spendCategories: SpendCategory[], key: string, uploads: UploadPeriod[] = []): SpendShare[] | null {
-  const base = monthSpentByFact(totals, spendCategories, key, uploads)
-  if (base === null) return null
-  const live = spendCategories.filter(alive)
-  const by = new Map<string, number>()
-  for (const t of totals) {
-    if (t.deletedAt || t.kind !== 'month' || t.period !== key || t.amount <= 0) continue
-    if (t.categoryId === UNKNOWN_CATEGORY || plannedElsewhere(t.categoryId, live)) continue
-    by.set(t.categoryId, (by.get(t.categoryId) ?? 0) + t.amount)
-  }
-  const rows = [...by]
-    .map(([categoryId, amount]) => ({ categoryId, amount, share: pct(amount, base) }))
-    .sort((a, b) => b.amount - a.amount)
-  let over = rows.reduce((a, r) => a + r.share, 0) - 100
-  for (let i = 0; over > 0 && i < rows.length; i++) {
-    const take = Math.min(over, rows[i].share)
-    rows[i].share -= take
-    over -= take
-  }
-  return rows
-}
-
-/** Месяц покрыт выписками целиком: есть загрузка на его первый и на последний день. */
-const monthCovered = (key: string, uploads: UploadPeriod[]) => {
-  const first = `${key}-01`
-  const last = `${key}-${String(daysInMonth(key)).padStart(2, '0')}`
-  return uploads.some((u) => u.period_from <= first && u.period_to >= first) && uploads.some((u) => u.period_from <= last && u.period_to >= last)
-}
-
-/** Сколько полных месяцев выписок нужно, чтобы ориентиром стало своё среднее (Р-57). */
-export const OWN_NORM_MONTHS = 3
-
-/**
- * Ориентир долей (Р-57): после трёх полных месяцев с выписками перед `key` — своё среднее долей разделов
- * за эти месяцы (раздел, которого в месяце не было, — 0 %; целые проценты, нулевые — без черты), иначе
- * — таблица статистики РК (`STAT_NORMS`).
- */
-export function spendNorms(
-  totals: SpendTotal[],
-  spendCategories: SpendCategory[],
-  uploads: UploadPeriod[],
-  key: string,
-): { from: 'own' | 'stat'; norms: Record<string, number> } {
-  const months = Array.from({ length: OWN_NORM_MONTHS }, (_, i) => addMonths(key, -(i + 1)))
-  if (!months.every((m) => monthCovered(m, uploads))) return { from: 'stat', norms: STAT_NORMS }
-  const sums = new Map<string, number>()
-  for (const m of months) for (const r of spendShares(totals, spendCategories, m, uploads) ?? []) sums.set(r.categoryId, (sums.get(r.categoryId) ?? 0) + r.share)
-  const norms = Object.fromEntries([...sums].map(([id, s]) => [id, Math.round(s / months.length)] as const).filter(([, s]) => s > 0))
-  return { from: 'own', norms }
-}
-
-/** Насколько доля должна превысить ориентир, чтобы раздел считался «выше нормы» (п. п., дефолт исполнителя). */
-export const NORM_SLACK = 3
-
-/**
- * Тег «Трат»: раздел с наибольшим превышением ориентира — «продукты выше нормы» (превышение — больше
- * `NORM_SLACK` п. п.), иначе «в норме»; без выписок за месяц — null. `worst` — для строки под суммой
- * (макет: «Продукты 31 %, обычно ~22 %»).
- */
-export function spendStatus(
-  shares: SpendShare[] | null,
-  norms: Record<string, number>,
-  spendCategories: Pick<SpendCategory, 'id' | 'name'>[],
-): (StatusTag & { worst?: { name: string; share: number; norm: number } }) | null {
-  if (!shares) return null
-  const worst = shares
-    .filter((r) => r.categoryId in norms)
-    .map((r) => ({ id: r.categoryId, over: r.share - norms[r.categoryId] }))
-    .filter((x) => x.over > NORM_SLACK)
-    .sort((a, b) => b.over - a.over)[0]
-  if (!worst) return { text: 'в норме', tone: 'ok' }
-  const name = spendCategoryName(spendCategories, worst.id)
-  const share = shares.find((r) => r.categoryId === worst.id)!.share
-  return { text: `${name.toLowerCase()} выше нормы`, tone: 'warn', worst: { name, share, norm: norms[worst.id] } }
 }
 
 export type DecisionKind = 'match' | 'unknownBatch' | 'keep' | 'monthEnd'

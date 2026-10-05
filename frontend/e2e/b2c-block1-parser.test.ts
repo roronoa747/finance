@@ -3,9 +3,9 @@ import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import type { ApiClient } from '../src/api/client'
 import { useAuthStore } from '../src/stores/auth'
 import { defaultSyncDoc, useFinanceStore } from '../src/stores/finance'
+import { spendRows } from '../src/lib/finance'
 import { useOperationsStore } from '../src/stores/operations'
 import { parseStatement } from '../src/lib/statements/parsers'
-import { picture } from '../src/lib/statements/model'
 import type { Operation } from '../src/lib/statements/types'
 import { fromWire } from '../src/stores/operations'
 import type { OperationWire } from '../src/types/api'
@@ -123,8 +123,8 @@ describe('e2e / B2C Блок 1 — выписка: разбор на телеф�
     const julyB = spent(useOperationsStore().all, '2025-07')
     setActivePinia(A.pinia)
     await useFinanceStore().pullHousehold(A.client)
-    const rows = picture(useFinanceStore().householdDoc.spendTotals ?? [], '2025-W30', '2025-07')
-    expect(rows.reduce((s, r) => s + r.month, 0)).toBe(julyA + julyB)
+    // Итоги июля обоих — сумма месячных итогов семьи (`spendRows`).
+    expect(spendRows(useFinanceStore().householdDoc.spendTotals ?? [], [], { kind: 'month', period: '2025-07' }).total).toBe(julyA + julyB)
     expect(st.ops.get('u-b')?.size).toBe(42)
 
     // A без сети: итоги сразу, операции в очереди; сеть вернулась — на сервере.

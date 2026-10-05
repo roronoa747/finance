@@ -1,23 +1,23 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { PhBank, PhCaretRight, PhCoins, PhCreditCard, PhFolderSimple, PhPlus, PhWallet } from '@phosphor-icons/vue'
+import { PhArrowsClockwise, PhBank, PhCaretRight, PhCoins, PhCreditCard, PhFolderSimple, PhPlus, PhWallet } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, rateField } from '@/lib/money'
-import { monthIn, monthKey } from '@/lib/dates'
+import { monthKey } from '@/lib/dates'
 import {
   amountTotal,
-  duesTag,
-  duesTotals,
   groupChildren,
   groupTotal,
+  isSubscription,
   liveAccounts,
   liveCredits,
   liveGroups,
   liveObligations,
-  monthDues,
+  monthlyAmount,
+  subscriptionGroup,
 } from '@/lib/finance'
 import type { Account, Credit, Obligation } from '@/types/finance'
 
@@ -25,7 +25,6 @@ import Card from '@/components/kit/Card.vue'
 import Row from '@/components/kit/Row.vue'
 import Section from '@/components/kit/Section.vue'
 import Sheet from '@/components/kit/Sheet.vue'
-import Tag from '@/components/kit/Tag.vue'
 import Button from '@/components/ui/Button.vue'
 import AccountSheet from '@/components/capital/AccountSheet.vue'
 import CreditSheet from '@/components/capital/CreditSheet.vue'
@@ -35,16 +34,15 @@ import NewAccountSheet from '@/components/capital/NewAccountSheet.vue'
 import NewDebtSheet from '@/components/capital/NewDebtSheet.vue'
 import NewObligationSheet from '@/components/capital/NewObligationSheet.vue'
 import GroupSheets from '@/components/capital/GroupSheets.vue'
-import ExtraIncomeSheet from '@/components/capital/ExtraIncomeSheet.vue'
 import PaymentLine from '@/components/money/PaymentLine.vue'
 
 /**
- * Списки Капитала (пивот 3, Р-32; макет `pivot-3/index.html`, «Капитал» под виджетами): «Счета» с
- * итогом и «Платежи» — один список по дню с «Оплатил», тег «N из M оплачено» (`duesTag`, B2C-59), первой
- * строкой — «Осталось в <месяце>» и «из <всего>» (`duesTotals`, B2C-70). Всё остальное — в листах: счёт
- * (и вклад), кредит, обязательство, группа подписок, формы добавления.
- * Листы открываются и по адресу (`?account=`, `?credit=`, `?obligation=`, `?payoff=`, `?add=`,
- * `?income=1`) — «+» оболочки и старые ссылки; формы добавления — только участнику.
+ * Списки Капитала (Блок 15, Р-91, Р-93; макет week-month.html «Деньги · Капитал»): «Счета» с итогом и «Платежи» —
+ * справочник: один список по дню, без «Оплатил» и отметок месяца (✓ и «Оплатил» — в «Месяце», Р-94); подписки —
+ * одной строкой «Подписки · N», раскрытие — список с ручными группами. Всё остальное — в листах: счёт (и вклад),
+ * кредит, обязательство, группа подписок, формы добавления.
+ * Листы открываются и по адресу (`?account=`, `?credit=`, `?obligation=`, `?payoff=`, `?add=`) — «+» оболочки,
+ * «Изменить платёж» из «Месяца» и старые ссылки; формы добавления — только участнику.
  */
 const route = useRoute()
 const router = useRouter()
@@ -70,29 +68,36 @@ function accountMeta(a: Account): string {
   return [what, fx, privateIds.value.has(a.id) ? 'личный' : 'общий'].filter(Boolean).join(' · ')
 }
 
-/* ------------------ Платежи ------------------ */
-// Платежи месяца — одно правило (`monthDues`): на нём тег, суммы и кредиты списка.
-const dues = computed(() => monthDues({ obligations: financeStore.obligations, credits: financeStore.credits, payments: financeStore.payments, book: fx.book }, key.value))
-// Строка-статус (B2C-59, Р-59): «N из M оплачено» за месяц.
-const duesStatus = computed(() => duesTag(dues.value))
-// Первая строка «Платежей» (B2C-70, владелец): «Осталось в <месяце>» крупно и «из <всего>»; всё оплачено — «Всё оплачено» и итог.
-const totals = computed(() => duesTotals(dues.value))
-const monthPre = computed(() => monthIn(key.value, false))
+/* ------------------ Платежи — справочник ------------------ */
+// Подписки — одной группой (`subscriptionGroup`, та же функция, что в «Месяце»): сумма — в месяц (годовая — долей).
+const subs = computed(() =>
+  subscriptionGroup(
+    obligations.value.filter(isSubscription).map((o) => ({ obligation: o, amount: monthlyAmount(o, key.value, fx.book), paid: false, day: o.day })),
+    financeStore.obligations,
+  ),
+)
+const subsOpen = ref(false)
+const inSubs = (o: Obligation) => !!subs.value && isSubscription(o)
 
 type Line = { id: string; day: number; item: { kind: 'credit'; credit: Credit } | { kind: 'obligation'; obligation: Obligation } }
-// Один список по дню: кредиты, ждущие платежа в этом месяце (как `monthDues`), и обязательства вне
-// групп (годовое — и не в свой месяц, без «Оплатил»); оплаченное остаётся на месте. Группы — ниже.
+// Один список по дню: открытые кредиты и обязательства (годовое — тоже: «раз в год · в <месяце>»); подписки —
+// в своей группе, остальное из ручных групп — в строке группы ниже.
 const lines = computed<Line[]>(() => {
-  const own = obligations.value.filter((o) => !o.parentId || !groups.value.some((g) => g.id === o.parentId))
+  const own = obligations.value.filter((o) => !inSubs(o) && (!o.parentId || !groups.value.some((g) => g.id === o.parentId)))
   return [
-    ...credits.value
-      .filter((c) => dues.value.some((d) => d.kind === 'credit' && d.targetId === c.id))
-      .map((c): Line => ({ id: c.id, day: c.day, item: { kind: 'credit', credit: c } })),
+    ...credits.value.filter((c) => c.principal > 0).map((c): Line => ({ id: c.id, day: c.day, item: { kind: 'credit', credit: c } })),
     ...own.map((o): Line => ({ id: o.id, day: o.day, item: { kind: 'obligation', obligation: o } })),
   ].sort((a, b) => a.day - b.day)
 })
+// Ручная группа — строкой, пока она пуста или в ней есть не-подписки (её подписки — подзаголовком в «Подписки · N»).
+const groupRows = computed(() =>
+  groups.value.filter((g) => {
+    const kids = groupChildren(g, financeStore.obligations)
+    return !kids.length || kids.some((o) => !inSubs(o))
+  }),
+)
 
-// Закрытые кредиты (остаток 0, платежа в этом месяце нет) — тихой строкой внизу «Платежей» → лист
+// Закрытые кредиты (остаток 0) — тихой строкой внизу «Платежей» → лист
 // списком → лист кредита: история, график, удаление (решение владельца 2026-10-02, хвост критика Б9).
 const closed = computed(() => credits.value.filter((c) => c.principal <= 0 && !lines.value.some((l) => l.id === c.id)))
 const closedOpen = ref(false)
@@ -112,7 +117,6 @@ const addOpen = ref(false)
 const addDebtOpen = ref(false)
 const addObligationOpen = ref(false)
 const addGroupOpen = ref(false)
-const extraIncomeOpen = ref(false)
 
 /** «+ Добавить» в «Платежах» — выбор из трёх, дальше — форма. */
 function addKind(kind: 'payment' | 'debt' | 'group') {
@@ -121,7 +125,7 @@ function addKind(kind: 'payment' | 'debt' | 'group') {
 }
 
 // Окна открываются и по адресу: «+» в шапке, сводка, старые закладки. Формы добавления —
-// только участнику: у viewer старая закладка ?add=… / ?income=1 формы не открывает (запись
+// только участнику: у viewer старая закладка ?add=… формы не открывает (запись
 // ушла бы в локальный документ, а сервер её не примет).
 watch(
   () => route.query,
@@ -129,7 +133,6 @@ watch(
     if (!authStore.isViewer) {
       if (q.add === 'debt') addDebtOpen.value = true
       if (q.add === 'payment') addObligationOpen.value = true
-      if (q.income === '1') extraIncomeOpen.value = true
     }
     if (typeof q.credit === 'string') selectedCreditId.value = q.credit
     if (typeof q.obligation === 'string') selectedObligationId.value = q.obligation
@@ -141,12 +144,11 @@ watch(
 )
 
 /** Параметры адреса, которыми открываются окна. */
-const QUERY_KEYS = ['add', 'income', 'credit', 'obligation', 'payoff', 'account']
+const QUERY_KEYS = ['add', 'credit', 'obligation', 'payoff', 'account']
 const queryModalOpen = computed(
   () =>
     addDebtOpen.value ||
     addObligationOpen.value ||
-    extraIncomeOpen.value ||
     // Окно показано, а не только id в ref: удалённая синком запись закрывает лист,
     // но id остаётся — адрес тогда не очистился бы никогда.
     credits.value.some((c) => c.id === selectedCreditId.value || c.id === payoffCreditId.value) ||
@@ -196,19 +198,9 @@ watch(queryModalOpen, (open) => {
     </div>
   </Card>
 
-  <!-- Платежи: один список по дню, «Оплатил» — здесь -->
-  <Section title="Платежи">
-    <template #action>
-      <Tag v-if="duesStatus" :tone="duesStatus.tone">{{ duesStatus.text }}</Tag>
-    </template>
-  </Section>
-  <Card flush>
-    <!-- Суммы месяца (B2C-70): одна подпись, одна цифра; без подсказок и кнопок (правило 12) -->
-    <div v-if="totals" class="flex flex-col gap-0.5 border-b border-line px-4 pb-3 pt-3.5" data-dues-total>
-      <span class="type-label">{{ totals.left ? `Осталось в ${monthPre}` : 'Всё оплачено' }}</span>
-      <span class="type-num num text-ink">{{ money(totals.left || totals.total) }}</span>
-      <span v-if="totals.left" class="type-meta num">из {{ money(totals.total) }}</span>
-    </div>
+  <!-- Платежи — справочник: один список по дню, без отметок месяца; подписки — одной строкой -->
+  <Section title="Платежи" />
+  <Card flush data-payments>
     <PaymentLine
       v-for="l in lines"
       :key="l.id"
@@ -216,8 +208,30 @@ watch(queryModalOpen, (open) => {
       :period="key"
       @open="l.item.kind === 'credit' ? (selectedCreditId = l.id) : (selectedObligationId = l.id)"
     />
+    <div v-if="subs" class="border-b border-line last:border-b-0" data-subs>
+      <button type="button" class="press flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left hover:bg-surface-2" :aria-expanded="subsOpen" @click="subsOpen = !subsOpen">
+        <span class="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-surface-3 text-ink-2"><PhArrowsClockwise :size="17" /></span>
+        <span class="min-w-0 flex-1 truncate text-[14.5px] font-medium text-ink">Подписки · {{ subs.count }}</span>
+        <span class="shrink-0 text-[14.5px] font-semibold num text-ink">{{ money(subs.total) }}</span>
+        <PhCaretRight :size="14" class="shrink-0 text-ink-3 transition-transform" :class="subsOpen && 'rotate-90'" />
+      </button>
+      <div v-if="subsOpen" class="mb-2 ml-[33px] border-l-2 border-line pl-3">
+        <template v-for="g in subs.parts" :key="g.groupId ?? ''">
+          <button
+            v-if="g.groupId"
+            type="button"
+            class="press block cursor-pointer pb-0.5 pt-2.5 text-left text-[11.5px] font-semibold uppercase tracking-[0.04em] text-ink-3"
+            :aria-label="`Группа «${g.name}»`"
+            @click="selectedGroupId = g.groupId"
+          >
+            {{ g.name }} ›
+          </button>
+          <PaymentLine v-for="x in g.rows" :key="x.obligation.id" dense :item="{ kind: 'obligation', obligation: x.obligation }" :period="key" @open="selectedObligationId = x.obligation.id" />
+        </template>
+      </div>
+    </div>
     <Row
-      v-for="g in groups"
+      v-for="g in groupRows"
       :key="g.id"
       :title="g.name"
       :note="`${groupChildren(g, financeStore.obligations).length}${g.noAsk ? ' · рабочие' : ''}`"
@@ -225,7 +239,7 @@ watch(queryModalOpen, (open) => {
       clickable
       @click="selectedGroupId = g.id"
     />
-    <div v-if="!lines.length && !groups.length" class="px-4 py-6 text-center text-[13px] text-ink-3">Платежей пока нет</div>
+    <div v-if="!lines.length && !groupRows.length && !subs" class="px-4 py-6 text-center text-[13px] text-ink-3">Платежей пока нет</div>
     <button
       v-if="closed.length"
       type="button"
@@ -282,5 +296,4 @@ watch(queryModalOpen, (open) => {
   />
   <NewDebtSheet :open="addDebtOpen" @close="addDebtOpen = false" />
   <NewObligationSheet :open="addObligationOpen" @close="addObligationOpen = false" />
-  <ExtraIncomeSheet :open="extraIncomeOpen" @close="extraIncomeOpen = false" />
 </template>

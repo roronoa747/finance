@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { amountAt, amountIn, budgetAmounts, debitDayIso, docCurrencies, duesTotals, freedChange, keepCard, keepQuestions, monthDues, monthlyAmount, nextChange, nextObligationDue, subscriptionYearly } from './finance'
+import { amountAt, amountIn, budgetAmounts, debitDayIso, docCurrencies, duesTotal, freedChange, keepCard, keepQuestions, monthDues, monthlyAmount, nextChange, nextObligationDue, subscriptionYearly } from './finance'
 import { money } from './money'
 import type { Obligation, Payment, RateBook } from '@/types/finance'
 
@@ -58,9 +58,11 @@ describe('платежи месяца и бюджет с валютной под
   it('октябрь: 200 000 + 7 058 = 207 058 ₸; отмеченная — суммой отметки (7 100): 207 100 ₸', () => {
     const dues = monthDues({ obligations: [rent, netflix], book }, '2026-10')
     expect(dues.map((d) => d.amount)).toEqual([200_000, 7_058])
-    expect(duesTotals(dues)).toEqual({ total: 207_058, left: 207_058 })
+    expect(duesTotal(dues)).toBe(207_058)
     const paid: Payment = { id: 'p', kind: 'obligation', targetId: 'o', period: '2026-10', amount: 7_100, accountId: null, by: 'a', at: T, updatedAt: T }
-    expect(duesTotals(monthDues({ obligations: [rent, netflix], payments: [paid], book }, '2026-10'))).toEqual({ total: 207_100, left: 200_000 })
+    const after = monthDues({ obligations: [rent, netflix], payments: [paid], book }, '2026-10')
+    expect(duesTotal(after)).toBe(207_100)
+    expect(duesTotal(after.filter((d) => !d.paid))).toBe(200_000)
   })
 
   it('бюджет: «Еда и быт» включает подписку в тенге по книге', () => {

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import type { ApiClient, FxRatesResponse } from '../src/api/client'
-import { accountBalance, budgetAmounts, duesTotals, fxToTenge, fxYearDelta, monthDues, rateOn, salaryAt, salaryTenge } from '../src/lib/finance'
+import { accountBalance, budgetAmounts, duesTotal, fxToTenge, fxYearDelta, monthDues, rateOn, salaryAt, salaryTenge } from '../src/lib/finance'
 import { FX_BOOK_KEY } from '../src/lib/storage'
 import { useAuthStore } from '../src/stores/auth'
 import { useFinanceStore } from '../src/stores/finance'
@@ -130,11 +130,10 @@ describe('e2e / B2C Блок 13 — зарплата в валюте на дву
       expect(budgetAmounts({ ...p.store.householdDoc, book: c.book }, '2026-10').income).toBe(1_232_345)
       // Год: 1 500 × (488,23 − 622,23) = −201 000 ₸.
       expect(fxYearDelta(ilyas(p), '2026-10', c.book)).toMatchObject({ perUnit: -134, tenge: -201_000 })
-      const html = text(await screen(p.pinia, Money, '/money'))
-      expect(html).toContain('1 500 €')
-      expect(html).toContain('≈ 732 345 ₸')
-      expect(html).toContain('евро −134 ₸ за год · −201 000 ₸')
-      expect(html).toContain('1 232 345 ₸')
+      // Блок 15 (Р-91): зарплаты — у круга «Месяца» (тенге месяца и доход семьи); виджета «Доход» на «Деньгах» нет.
+      const html = text(await screen(p.pinia, Month, '/month'))
+      expect(html).toContain('732 345 ₸')
+      expect(html).toContain('из 1 232 345')
     }
   })
 
@@ -167,9 +166,10 @@ describe('e2e / B2C Блок 13 — зарплата в валюте на дву
       expect(budgetAmounts({ ...p.store.householdDoc, book: c.book }, '2026-10').income).toBe(1_253_011)
     }
     expect(text(await screen(A.pinia, Month, '/month'))).toContain('обменяно 800 € из 1 500 € · ≈ 753 011 ₸')
-    // Viewer: решений «Недели» нет (Р-50), в «Деньгах» — строка года, «Обменял» нигде.
-    const viewer = text(await screen(V.pinia, Money, '/money')) + text(await screen(V.pinia, Statements, '/week', undefined, sheetOpen()))
-    expect(viewer).toContain('евро −134 ₸ за год')
+    // Viewer: решений «Недели» нет (Р-50); строка года — внизу листа обменов «Месяца» (ворота B2C-91), «Обменял» нигде.
+    const viewer =
+      text(await screen(V.pinia, Month, '/month', undefined, [screenMixin({ list: true })])) + text(await screen(V.pinia, Statements, '/week', undefined, sheetOpen()))
+    expect(viewer).toContain('за год: −134 ₸')
     expect(viewer).not.toContain('Обменял')
     // Остаток счёта в тенге не зависит от того, чей телефон: сверка с формулой.
     setActivePinia(A.pinia)
@@ -188,7 +188,7 @@ describe('e2e / B2C Блок 13 — зарплата в валюте на дву
     setActivePinia(B.pinia)
     const dues = monthDues({ obligations: B.store.obligations, credits: B.store.credits, payments: B.store.payments, book: useFxStore().book }, '2026-10')
     expect(dues.find((d) => d.targetId === nf.id)!.amount).toBe(7_058)
-    const before = duesTotals(dues)!.total
+    const before = duesTotal(dues)
     expect(B.store.markPaid('obligation', nf.id, 'b', { accountId: null })).toMatchObject({ period: '2026-10', amount: 7_058 })
     await sync(B, A)
     const html = text(await screen(A.pinia, Money, '/money'))
@@ -197,7 +197,7 @@ describe('e2e / B2C Блок 13 — зарплата в валюте на дву
     expect(html).toContain('7 058 ₸')
     setActivePinia(A.pinia)
     const after = monthDues({ obligations: A.store.obligations, credits: A.store.credits, payments: A.store.payments, book: useFxStore().book }, '2026-10')
-    expect(duesTotals(after)!.total).toBe(before)
+    expect(duesTotal(after)).toBe(before)
   })
 
   it('часть 4 — два телефона Ильяса офлайн: обмены не теряются, отмена (надгробие) доходит до второго', async () => {

@@ -107,7 +107,7 @@ const groupCandidates = computed(() =>
         </Field>
       </template>
 
-      <!-- Подписки группы — те же строки, что в «Платежах»: «Оплатил», нажатие — лист подписки. -->
+      <!-- Подписки группы — те же строки справочника, что в «Платежах»: нажатие — лист подписки. -->
       <div class="mb-3 flex flex-col">
         <div class="flex justify-between pb-1 text-[13px]">
           <span class="text-ink-2">Итого</span>

@@ -2,7 +2,7 @@ import { vi } from 'vitest'
 import { setActivePinia, createPinia, type Pinia } from 'pinia'
 import type { Component, ComponentOptions } from 'vue'
 import { useFinanceStore } from '../../src/stores/finance'
-import { renderScreen } from '../../src/test/screenState'
+import { renderScreen, screenMixin } from '../../src/test/screenState'
 import { ApiClient, ApiError } from '../../src/api/client'
 import type { SyncDoc } from '../../src/types/finance'
 import type { HouseholdDocResponse, ConflictResponse, OperationWire, StatementUploadResponse } from '../../src/types/api'
@@ -107,6 +107,10 @@ export async function screen(
 }
 
 /** «Сейчас» телефона и сервера (фальшивые таймеры включает сам тест). */
+/** Нажатие «Оплатил» в листе платежа «Месяца» (`MonthPlan.pay`, Блок 15, Р-94): счёт прошлой оплаты — отметка сразу, иначе лист. */
+export const tapPay = (targetId: string) =>
+  screenMixin({}, (s) => (s.pay as (d: unknown) => void)((s.plan as { dues: { targetId: string }[] }).dues.find((d) => d.targetId === targetId)))
+
 export const at = (iso: string) => vi.setSystemTime(new Date(iso))
 
 export const setOnline = (onLine: boolean) => vi.stubGlobal('navigator', { onLine })

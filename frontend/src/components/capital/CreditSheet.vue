@@ -3,8 +3,8 @@ import { ref, computed, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain, parseMoney, rateField, ratePct } from '@/lib/money'
-import { dayLabel, monthKey } from '@/lib/dates'
-import { creditOutlook, creditSchedule, creditTotals, liveCredits, nextCreditDue, planSchedule, type Due } from '@/lib/finance'
+import { monthKey } from '@/lib/dates'
+import { creditOutlook, creditSchedule, creditTotals, liveCredits, planSchedule } from '@/lib/finance'
 import type { Credit } from '@/types/finance'
 import { plural } from '@/lib/utils'
 
@@ -16,7 +16,6 @@ import DangerZone from '@/components/kit/DangerZone.vue'
 import { useSavedMark } from '@/components/kit/useSavedMark'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
-import PaidRow from '@/components/PaidRow.vue'
 import ScheduleTable from '@/components/ScheduleTable.vue'
 
 /**
@@ -85,27 +84,6 @@ function onCreditDay(text: string) {
   if (v !== activeCredit.value?.day) editCredit({ day: v })
 }
 
-// Платёж, который модалка предлагает отметить, берётся при открытии: после
-// «Оплатил» строка остаётся на этом месяце и показывает следующий платёж, а не
-// перескакивает на следующий месяц с новой кнопкой. Правка дня, платежа или ставки
-// меняет сам график — тогда снимок берётся заново.
-const creditDue = ref<Due | null>(null)
-watch(
-  [
-    () => activeCredit.value?.id,
-    () => activeCredit.value?.day,
-    () => activeCredit.value?.payment,
-    () => activeCredit.value?.annualRate,
-    // Закрытый долг снова открылся (сверка остатка, снятая синком отметка) — снимка
-    // ещё нет. Сам остаток не следим: после «Оплатил», закрывшего долг, строка
-    // оплаченного месяца должна остаться.
-    () => !creditDue.value && (activeCredit.value?.principal ?? 0) > 0,
-  ],
-  () => {
-    creditDue.value = activeCredit.value ? nextCreditDue(activeCredit.value, financeStore.payments) : null
-  },
-  { immediate: true },
-)
 </script>
 
 <template>
@@ -114,18 +92,6 @@ watch(
       <SavedMark :on="creditSaved" />
     </template>
     <template v-if="activeCredit" #default="{ close }">
-      <div v-if="creditDue" class="mb-3 rounded-xl border border-line px-3">
-        <PaidRow
-          dense
-          more
-          kind="credit"
-          :target-id="activeCredit.id"
-          :period="creditDue.period"
-          :title="`Платёж ${dayLabel(creditDue.day, creditDue.period)}`"
-          note="по графику"
-        />
-      </div>
-
       <p
         v-if="activeCreditTotals && activeCreditTotals.count > 0 && !activeCredit.rateUnknown"
         class="-mt-1 mb-3 px-1 text-[12.5px] leading-relaxed text-ink-2 num"

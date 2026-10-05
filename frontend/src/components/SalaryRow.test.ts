@@ -7,9 +7,7 @@ import type { Payment } from '@/types/finance'
 import { createSSRApp } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import SalaryRow from './SalaryRow.vue'
-import Money from '@/views/Money.vue'
 import { authAs, planFamilyDoc } from '@/test/planFamily'
-import { renderScreen, screenMixin } from '@/test/screenState'
 
 /**
  * RP-10 «Пришла зарплата» в SSR: кнопка — только своему участнику и не viewer; отметку
@@ -100,37 +98,6 @@ describe('RP-10: «Пришла зарплата» (SSR)', () => {
     expect(theirs).toContain('пришла 10 сентября · Kaspi Gold')
     expect(theirs).toContain('aria-label="Пришла"')
     expect(theirs).not.toContain('подробнее')
-  })
-
-  // Пивот 3 (Р-32, Р-39): «Пришла зарплата» — в сводке «До зарплаты N дней»; ближайшая зарплата — строкой её листа.
-  it('«Деньги»: «Пришла зарплата» в сводке «До зарплаты» — у того, чья зарплата ближайшая; после отметки — следующая', async () => {
-    vi.setSystemTime(new Date('2026-09-09T07:00:00Z')) // завтра зарплата Ильяса, списаний до неё нет
-    family('member', 'a')
-    const mine = await renderScreen(Money, '/money')
-    expect(mine).toContain('До зарплаты 1 день')
-    expect(mine).toMatch(/>\s*Пришла зарплата\s*</)
-
-    setActivePinia(createPinia())
-    family('member', 'b')
-    expect(await renderScreen(Money, '/money')).not.toMatch(/Пришла зарплата/)
-
-    setActivePinia(createPinia())
-    family('viewer', 'a')
-    expect(await renderScreen(Money, '/money')).not.toMatch(/Пришла зарплата/)
-
-    // Отметили раньше дня — «До зарплаты» смотрит на зарплату Аруны 20-го.
-    setActivePinia(createPinia())
-    family('member', 'a', [salary({ at: '2026-09-09T04:00:00.000Z' })])
-    const after = await renderScreen(Money, '/money', undefined, [screenMixin({ open: true })])
-    expect(after).toContain('До зарплаты 11 дней')
-    expect(after.slice(after.indexOf('role="dialog"'))).toContain('Зарплата · Аруна')
-    expect(after).not.toMatch(/Пришла зарплата/)
-  })
-
-  it('Обзор: за 4 дня до дня кнопки нет', async () => {
-    vi.setSystemTime(new Date('2026-09-06T07:00:00Z'))
-    family('member', 'a')
-    expect(await renderScreen(Money, '/money')).not.toMatch(/Пришла зарплата/)
   })
 
   /** Разбор зарплаты Ильяса за сентябрь — те же числа, что у экрана (`finance.ts`). */

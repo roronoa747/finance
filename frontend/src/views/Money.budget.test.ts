@@ -3,9 +3,9 @@ import { setActivePinia, createPinia } from 'pinia'
 import { createSSRApp } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { useFinanceStore } from '@/stores/finance'
-import { budgetAmounts, budgetInterest, nextSalaryChange, salaryAt } from '@/lib/finance'
+import { budgetAmounts, budgetInterest, salaryAt } from '@/lib/finance'
 import { monthKey } from '@/lib/dates'
-import { money, pct, plain } from '@/lib/money'
+import { money, plain } from '@/lib/money'
 import Money from './Money.vue'
 import { renderScreen } from '@/test/screenState'
 import SalaryDialog from '@/components/SalaryDialog.vue'
@@ -68,7 +68,7 @@ describe('«Деньги»: бюджет месяца и оклады (бывш�
     expect(after.d5).toBe(170_000) // 500k - 150k (housing) - 180k (d4) = 170k
   })
 
-  it('методы управления окладом correctSalary и amendSalary обновляют данные и вычисляют nextSalaryChange', () => {
+  it('методы управления окладом correctSalary и amendSalary обновляют данные: оклад сейчас и с месяца изменения', () => {
     const store = useFinanceStore()
     const key = monthKey()
 
@@ -85,7 +85,7 @@ describe('«Деньги»: бюджет месяца и оклады (бывш�
 
     const person = store.people[0]
     expect(salaryAt(person, key)).toBe(500_000)
-    expect(nextSalaryChange(person, key)).toBeNull()
+    expect(salaryAt(person, '2028-01')).toBe(500_000)
 
     // Исправление оклада сейчас
     store.correctSalary('a', 550_000)
@@ -94,13 +94,10 @@ describe('«Деньги»: бюджет месяца и оклады (бывш�
     // Запланированное повышение в будущем (2028-01)
     store.amendSalary('a', '2028-01', 700_000, 'Повышение в должности')
     const updated = store.people[0]
-    const change = nextSalaryChange(updated, key)
-
-    expect(change).not.toBeNull()
-    expect(change?.from).toBe('2028-01')
-    expect(change?.amount).toBe(700_000)
-    expect(change?.delta).toBe(150_000)
-    expect(change?.reason).toBe('Повышение в должности')
+    // До января 2028 — исправленный оклад, с января — новый (на 150 000 больше); причина — в версии.
+    expect(salaryAt(updated, '2027-12')).toBe(550_000)
+    expect(salaryAt(updated, '2028-01')).toBe(700_000)
+    expect(updated.salaryVersions?.find((v) => v.from === '2028-01')).toMatchObject({ amount: 700_000, reason: 'Повышение в должности' })
   })
 
 
@@ -160,7 +157,7 @@ describe('PV-01 — закрытый кредит вне бюджета', () => 
     vi.useRealTimers()
   })
 
-  /** «Деньги» → Капитал (виджет «Доход» — доли) или квадрат «План». */
+  /** «Деньги» → квадрат «Долги». */
   const render = async (path = '/money') => (await renderScreen(Money, path)).replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
 
 
@@ -174,14 +171,11 @@ describe('PV-01 — закрытый кредит вне бюджета', () => 
       { id: 'cr-b', name: 'Банк', note: '', principal: 1_000_000, annualRate: 0.18, payment: 91_680, day: 20, updatedAt: '' },
     ]
 
-    // До закрытия: 1 000 000 − 151 680 − 200 000. В «Доходе» — доли: остаток по плану 65 %, нагрузка 15 %.
+    // До закрытия: 1 000 000 − 151 680 − 200 000 (виджет «Доход» с долями ушёл с «Денег», Р-91 — числа те же).
     const before = budgetAmounts({ ...store.householdDoc, credits: store.credits })
     expect(before).toMatchObject({ d2: 151_680, d5: 648_320 })
     let html = await render()
-    expect(html).toContain(`остаток по плану ${pct(648_320, 1_000_000)} %`)
-    // Нагрузка 15 % — словом (B2C-59): низкая.
-    expect(pct(151_680, 1_000_000)).toBe(15)
-    expect(html).toContain('нагрузка низкая')
+    expect(html).toContain('Рассрочка')
 
     store.applyPrepayment('cr-a', 'a', { amount: store.credits[0].principal, mode: 'term', accountId: 'card' })
     expect(store.credits[0].principal).toBe(0)
@@ -189,9 +183,10 @@ describe('PV-01 — закрытый кредит вне бюджета', () => 
     const after = budgetAmounts({ ...store.householdDoc, credits: store.credits })
     expect(after.d2).toBe(91_680)
     expect(after.d5 - before.d5).toBe(60_000)
+    // Закрытый кредит из «Платежей» справочника выпал — остался один.
     html = await render()
-    expect(html).toContain(`остаток по плану ${pct(708_320, 1_000_000)} %`)
-    expect(html).toContain('нагрузка низкая')
+    expect(html).not.toContain('Рассрочка 12-го')
+    expect(html).toContain('Банк')
     // Сырой документ закрытость не видит — поэтому экраны передают производные кредиты.
     expect(budgetAmounts(store.householdDoc).d2).toBe(151_680)
   })

@@ -5,21 +5,17 @@ import {
   applyRules,
   assignIds,
   categorize,
-  draftSummary,
   fingerprint,
   matchPerson,
   normalizeMerchant,
   pairInternalTransfers,
-  partnerHints,
   periodsOf,
-  picture,
-  pictureTotal,
   sanitize,
   seedSpendCategories,
   spendTotals,
   unknownGroups,
 } from './model'
-import type { MerchantRule, Operation, SpendTotal } from './types'
+import type { MerchantRule, Operation } from './types'
 
 const T = '2026-09-20T10:00:00.000Z'
 let seq = 0
@@ -300,11 +296,6 @@ describe('функции экрана выписок (B2C-07)', () => {
     ])
   })
 
-  it('draftSummary — списания, поступления, внутренние, «уже были»', () => {
-    const ops = [op({ id: 'x1', amount: -500 }), op({ id: 'x2', amount: 900 }), op({ id: 'x3', amount: -300, internal: true })]
-    expect(draftSummary(ops, (id) => id === 'x1')).toEqual({ total: 3, already: 1, spent: 500, received: 900, internal: 300 })
-  })
-
   it('unknownGroups — по продавцу и получателю, по сумме; раздел задним числом', () => {
     const ops = [
       op({ merchant: 'IP ZHANSAYA ALMATY KZ', amount: -100 }),
@@ -321,30 +312,4 @@ describe('функции экрана выписок (B2C-07)', () => {
   })
 
 
-  it('partnerHints — другой участник по имени, пока правила нет', () => {
-    const people = [{ id: 'a', name: 'Алихан', updatedAt: T }, { id: 'b', name: 'Дана', updatedAt: T }] as Person[]
-    const ops = [op({ kind: 'transfer-out', counterparty: 'Дана К.' }), op({ kind: 'transfer-in', counterparty: 'Алихан С.' })]
-    expect(partnerHints(ops, people, 'a', [])).toEqual([{ counterparty: 'дана к.', label: 'Дана К.', person: 'b' }])
-    expect(partnerHints(ops, people, 'a', [rule({ match: { counterparty: 'дана к.' }, to: { internal: true } })])).toEqual([])
-  })
-
-  it('picture — сумма обоих участников, неделя и месяц, нулевые не показываются', () => {
-    const t = (id: string, amount: number) => {
-      const [by, kind, period, categoryId] = id.split(':')
-      return { id, by, kind, period, categoryId, amount, ops: 1, updatedAt: T } as SpendTotal
-    }
-    const rows = picture([
-      t('a:week:2026-W39:sc_food', 1000), t('b:week:2026-W39:sc_food', 500), t('a:month:2026-09:sc_food', 4000),
-      t('a:month:2026-09:sc_cafe', 0), t('a:month:2026-08:sc_cafe', 900),
-    ], '2026-W39', '2026-09')
-    expect(rows).toEqual([{ categoryId: 'sc_food', week: 1500, month: 4000 }])
-  })
-
-  it('pictureTotal — «Всего» за неделю и месяц по строкам картины', () => {
-    expect(pictureTotal([
-      { categoryId: 'sc_food', week: 1500, month: 4000 },
-      { categoryId: 'sc_cafe', week: 0, month: 900 },
-    ])).toEqual({ week: 1500, month: 4900 })
-    expect(pictureTotal([])).toEqual({ week: 0, month: 0 })
-  })
 })

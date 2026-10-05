@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import { apiClient, LinkPreviewError, type ApiClient } from '../src/api/client'
-import { duesTotals, monthDues } from '../src/lib/finance'
+import { monthDues } from '../src/lib/finance'
 import { monthKey } from '../src/lib/dates'
-import { money as moneyFmt } from '../src/lib/money'
 import { fillWishPhotos } from '../src/lib/photos/wishLinkPhotos'
 import { compressImage } from '../src/lib/photos/compress'
 import { photoDisk, photoUrl, releasePhotos } from '../src/lib/photos/store'
@@ -24,6 +23,7 @@ import Money from '../src/views/Money.vue'
 import MyCircle from '../src/views/MyCircle.vue'
 import Settings from '../src/views/Settings.vue'
 import Statements from '../src/views/Statements.vue'
+import Month from '../src/views/Month.vue'
 import Wishes from '../src/views/Wishes.vue'
 import { at, backend, fakePrivate, fakeServer, fakeStatements, privateFor, screen, statementsFor, type FakeServer, type FakeStatements } from './support/family'
 
@@ -362,18 +362,15 @@ describe('e2e / B2C Блок 12 — «Неделя и личное» на дву
     await sync(A, B)
     expect(circles(await screen(B.pinia, Money, '/money'))).toContainEqual([expect.any(String), '🇰🇿'])
 
-    // B2C-70: «Деньги → Платежи» у Аруны — «Осталось в сентябре» и «из …» по `monthDues`; Ильяс отметил аренду — остаток меньше ровно на неё.
-    const totalsOf = (p: Phone) => duesTotals(monthDues(p.store.householdDoc, monthKey(new Date())))!
-    const before = totalsOf(B)
-    let money = text(await screen(B.pinia, Money, '/money'))
-    expect(money).toContain(`Осталось в сентябре ${text(moneyFmt(before.left))} из ${text(moneyFmt(before.total))}`)
+    // Блок 15 (Р-91, Р-94): «Деньги → Платежи» — справочник без сумм месяца («Осталось в сентябре», B2C-70, ушло);
+    // оплата — в «Месяце»: Ильяс отметил аренду — у Аруны в строке раздела на одну оплату больше.
+    expect(text(await screen(B.pinia, Money, '/money'))).not.toContain('Осталось в')
+    const count = monthDues(B.store.householdDoc, monthKey(new Date())).length
+    expect(text(await screen(B.pinia, Month, '/month'))).toContain(`0 из ${count} оплачено`)
     setActivePinia(A.pinia)
-    const paid = A.store.markPaid('obligation', 'rent', 'a')!
+    A.store.markPaid('obligation', 'rent', 'a')
     await sync(A, B)
-    const after = totalsOf(B)
-    expect(after).toEqual({ total: before.total, left: before.left - paid.amount })
-    money = text(await screen(B.pinia, Money, '/money'))
-    expect(money).toContain(`Осталось в сентябре ${text(moneyFmt(after.left))} из ${text(moneyFmt(before.total))}`)
+    expect(text(await screen(B.pinia, Month, '/month'))).toContain(`1 из ${count} оплачено`)
   })
 
   it('часть 8 (приёмка возврата смоука 2) — обход при запуске без «Желаний», фото у партнёра и после «перезапуска» без загрузки; логотип не ставится; viewer — 0; свой смайлик заменяется вставкой', async () => {

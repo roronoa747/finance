@@ -370,19 +370,32 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(q('[data-section="dues"] [data-section-dot]')).toBeNull()
   })
 
-  it('своя зарплата: ждём — нажатие строки открывает «Пришла зарплата»; чужая строка не нажимается; пришедшая — лист отметки', async () => {
+  it('строка зарплаты — лист: своя и ждём — «Пришла зарплата»; чужая — без «Пришла»; пришедшая — отметка; у всех — «Изменить оклад»', async () => {
     const doc = familyDoc()
     await open('member', { ...doc, payments: (doc.payments ?? []).filter((p) => p.kind !== 'salary') })
-    expect(q('[data-salary="b"]')!.getAttribute('role')).toBeNull()
     await press(q('[data-salary="a"]'))
     expect(txt(q('[role="dialog"]'))).toContain('Зарплата · Ильяс')
+    expect(txt(q('[role="dialog"]'))).toContain('ждём 10 сентября')
     expect(dialogButton('Пришла зарплата')).toBeTruthy()
     expect(dialogButton('Другая сумма или счёт')).toBeTruthy()
+    expect(dialogButton('Изменить оклад')).toBeTruthy()
+    // Чужую зарплату не отмечают (Р-13) — в листе только оклад.
+    await press(q('[role="dialog"] button[aria-label="Закрыть"]'))
+    await press(q('[data-salary="b"]'))
+    expect(txt(q('[role="dialog"]'))).toContain('Зарплата · Аруна')
+    expect(dialogButton('Пришла зарплата')).toBeUndefined()
+    // «Изменить оклад» — лист оклада (сумма, день, валюта): из «Денег» он ушёл вместе с виджетом «Доход».
+    await press(dialogButton('Изменить оклад'))
+    expect(txt(q('[role="dialog"]'))).toContain('Аруна')
+    expect(q('[role="dialog"] input')).not.toBeNull()
 
     app?.unmount()
     document.body.innerHTML = ''
     await open()
     await press(q('[data-salary="a"]'))
+    expect(txt(q('[role="dialog"]'))).toContain('пришла 10 сентября')
+    expect(dialogButton('Пришла зарплата')).toBeUndefined()
+    await press(dialogButton('Другая сумма или снять'))
     expect(txt(q('[role="dialog"]'))).toContain('Снять отметку')
   })
 

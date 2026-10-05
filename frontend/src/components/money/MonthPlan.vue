@@ -38,6 +38,7 @@ import Tag from '@/components/kit/Tag.vue'
 import Toggle from '@/components/kit/Toggle.vue'
 import Button from '@/components/ui/Button.vue'
 import MarkSheet from '@/components/MarkSheet.vue'
+import SalaryDialog from '@/components/SalaryDialog.vue'
 import SalaryExchange from '@/components/SalaryExchange.vue'
 import SalaryRow from '@/components/SalaryRow.vue'
 import ExtraIncomeSheet from '@/components/capital/ExtraIncomeSheet.vue'
@@ -133,7 +134,7 @@ const sections = computed(() => [
   },
 ])
 
-/* ---------- зарплаты: ✓ у суммы, «Пришла» — нажатием своей строки ---------- */
+/* ---------- зарплаты: ✓ у суммы; нажатие строки — лист: «Пришла» у своей, «Изменить оклад» ---------- */
 const salaries = computed(() =>
   plan.value.income.byPerson.map((inc) => {
     const p = people.value.find((x) => x.id === inc.person)
@@ -145,15 +146,25 @@ const salaries = computed(() =>
       left: plan.value.byPerson.find((x) => x.person === inc.person)?.left ?? 0,
       foreign: !!p && salaryOf(p, props.monthKey).currency !== 'KZT',
       cameAt: record ? atLabel(record.at) : '',
-      // Свою зарплату отмечает только сам участник (Р-13): ждём — лист «Пришла», пришла — лист отметки.
-      tap: mine && !!p && (!!record || salaryOpen(p, finance.payments, props.monthKey)),
+      mine,
+      // Свою зарплату отмечает только сам участник (Р-13), когда её день настал или близко.
+      canMark: mine && !!p && !record && salaryOpen(p, finance.payments, props.monthKey),
     }
   }),
 )
 const signed = (v: number) => (v > 0 ? `+${plain(v)}` : plain(v))
 const salaryFor = ref<PersonId | null>(null)
 const salarySheet = computed(() => salaries.value.find((s) => s.person === salaryFor.value) ?? null)
-// «Пришла» отмечена — лист ожидания закрывается сам: ✓ уже у суммы в строке.
+/** Лист отметки пришедшей своей зарплаты (когда, счёт, другая сумма, снять) и лист оклада (сумма, день, валюта). */
+const salaryPaid = ref<PersonId | null>(null)
+const salaryEdit = ref<PersonId | null>(null)
+function fromSalary(next: 'paid' | 'edit') {
+  const id = salaryFor.value
+  salaryFor.value = null
+  if (next === 'paid') salaryPaid.value = id
+  else salaryEdit.value = id
+}
+// «Пришла» отмечена — лист закрывается сам: ✓ уже у суммы в строке.
 watch(
   () => salarySheet.value?.came,
   (came, was) => {
@@ -322,12 +333,13 @@ function addFund(kind: 'reserve' | 'cushion') {
         <div v-if="i > 0" class="h-px bg-line" />
         <div
           class="flex items-center gap-2.5"
-          :class="s.tap && 'press cursor-pointer'"
+          :class="canEdit && 'press cursor-pointer'"
           :data-salary="s.person"
-          :role="s.tap ? 'button' : undefined"
-          :tabindex="s.tap ? 0 : undefined"
-          @click="s.tap && (salaryFor = s.person)"
-          @keydown.enter.self="s.tap && (salaryFor = s.person)"
+          :data-can-mark="s.canMark || undefined"
+          :role="canEdit ? 'button' : undefined"
+          :tabindex="canEdit ? 0 : undefined"
+          @click="canEdit && (salaryFor = s.person)"
+          @keydown.enter.self="canEdit && (salaryFor = s.person)"
         >
           <Avatar :id="s.person" :name="s.name" />
           <div class="flex min-w-0 flex-1 flex-col gap-px">
@@ -615,23 +627,28 @@ function addFund(kind: 'reserve' | 'cushion') {
       </div>
     </Card>
 
-    <!-- Зарплата: ждём — «Пришла» (и «Другая сумма или счёт»); пришла — лист отметки -->
-    <Sheet :open="!!salarySheet && !salarySheet.came" :title="salarySheet ? `Зарплата · ${salarySheet.name}` : ''" @close="salaryFor = null">
+    <!-- Зарплата: своя и ждём — «Пришла» (и «Другая сумма или счёт»); тихо — отметка пришедшей и «Изменить оклад» -->
+    <Sheet :open="!!salarySheet" :title="salarySheet ? `Зарплата · ${salarySheet.name}` : ''" @close="salaryFor = null">
       <template v-if="salarySheet">
-        <p class="type-meta">ждём {{ dayLabel(salarySheet.payday, monthKey) }}</p>
-        <p class="font-num text-[32px] font-bold leading-tight num text-ink">{{ money(salarySheet.amount) }}</p>
-        <SalaryRow button :person-id="salarySheet.person" :period="monthKey" />
+        <p class="type-meta">{{ salarySheet.came ? `пришла ${salarySheet.cameAt}` : `ждём ${dayLabel(salarySheet.payday, monthKey)}` }}</p>
+        <p class="mb-1 font-num text-[32px] font-bold leading-tight num text-ink">{{ money(salarySheet.amount) }}</p>
+        <SalaryRow v-if="salarySheet.canMark" button :person-id="salarySheet.person" :period="monthKey" />
+        <div class="mt-2 flex flex-col gap-1.5">
+          <Button v-if="salarySheet.mine && salarySheet.came" variant="ghost" class="w-full" data-salary-paid @click="fromSalary('paid')">Другая сумма или снять</Button>
+          <Button variant="ghost" class="w-full" data-salary-edit @click="fromSalary('edit')">Изменить оклад</Button>
+        </div>
       </template>
     </Sheet>
     <MarkSheet
-      v-if="salarySheet?.came"
+      v-if="salaryPaid"
       open="paid"
       kind="salary"
-      :target-id="salarySheet.person"
+      :target-id="salaryPaid"
       :period="monthKey"
-      :title="`Зарплата · ${salarySheet.name}`"
-      @close="salaryFor = null"
+      :title="`Зарплата · ${personName(salaryPaid)}`"
+      @close="salaryPaid = null"
     />
+    <SalaryDialog v-if="canEdit" :id="salaryEdit" @close="salaryEdit = null" />
     <ExtraIncomeSheet :open="incomeOpen" @close="incomeOpen = false" />
 
     <!-- Платёж: одна кнопка «Оплатил»; тихо — «Изменить платёж» -->

@@ -71,9 +71,9 @@ async function weekDecision(p: Phone) {
   return { kind: d.kind as string, match: d.match }
 }
 
-/** Строка своей зарплаты в «Месяце» нажимается («Пришла» — листом, Р-97): ждём её и день настал или близко. */
+/** У строки своей зарплаты в «Месяце» есть «Пришла» (листом, Р-97): ждём её и день настал или близко. */
 const salaryTap = async (p: Phone, slot: 'a' | 'b', month?: string) =>
-  new RegExp(`data-salary="${slot}" role="button"`).test(await screen(p.pinia, Month, month ? `/month?month=${month}` : '/month'))
+  new RegExp(`data-salary="${slot}" data-can-mark="true"`).test(await screen(p.pinia, Month, month ? `/month?month=${month}` : '/month'))
 
 /** План месяца на телефоне — те же числа, что у экрана (`finance.ts`, Блок 14). */
 function planOn(p: Phone, key = '2026-09') {
@@ -257,10 +257,10 @@ describe('e2e / B2C Блок 3 — часть 2: сопоставление вы
     expect(paidB).toMatchObject({ targetId: 'loan', period: '2026-09', amount: 58_000, source: 'statement', accountId: null })
     // creditSplit(1 000 000, 33 %, 58 000): банку 27 500, в долг 30 500.
     expect(B.store.credits.find((c) => c.id === 'loan')!.principal).toBe(969_500)
-    // Отметки платежей месяца — «Платежи» Капитала (пивот 3, Р-32, B2C-42): «12-го · оплачено · из выписки».
-    const moneyB = await screen(B.pinia, Money, '/money')
-    expect(moneyB).toContain('оплачено')
-    expect(moneyB).toContain('из выписки')
+    // Отметка месяца — ✓ у суммы платежа в «Месяце» (Блок 15, Р-94); «Деньги → Платежи» — справочник без отметок.
+    const monthB = (await screen(B.pinia, Month, '/month?month=2026-09', undefined, [screenMixin({ opened: 'dues' })])).replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
+    expect(monthB).toContain(`✓ ${plain(58_000)}`)
+    expect(await screen(B.pinia, Money, '/money')).not.toContain('оплачено')
     // Правило — в личном документе A, партнёру не уезжает.
     expect(A.store.merchantRules).toHaveLength(1)
     expect(B.store.merchantRules).toHaveLength(0)
@@ -1221,7 +1221,8 @@ describe('e2e / B2C Блок 3 — часть 9 (четвёртая приёмк
         const open = salaryOpen(A.store.people.find((p) => p.id === 'a')!, A.store.payments, '2026-10', now)
         expect(await salaryTap(A, 'a', '2026-10'), `${day}: строка зарплаты октября`).toBe(open)
         if (asked) expect(open, `${day}: в окне строка нажимается`).toBe(true)
-        expect(salaryButtons(moneyHtml), `${day}: «Деньги»`).toEqual(asked ? ['Пришла зарплата'] : [])
+        // «Деньги» о зарплате не спрашивают (Блок 15, Р-91).
+        expect(salaryButtons(moneyHtml), `${day}: «Деньги»`).toEqual([])
         // Неотложенная сентябрьская: в сентябре — дело этого месяца; в октябре — зовёт в сентябрь, но не в окне
         // «Пришла?» (одна о зарплате за раз, `salaryToAllocate`). Август не всплывает ни разу.
         const call = A.store.planCall()
