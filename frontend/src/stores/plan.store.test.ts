@@ -5,6 +5,7 @@ import { useFinanceStore, defaultSyncDoc } from './finance'
 import { useAuthStore } from './auth'
 import { authAs } from '@/test/planFamily'
 import { mainGoal, monthPlan } from '@/lib/finance'
+import { monthKey } from '@/lib/dates'
 import { useFxStore } from './fx'
 import { useOperationsStore } from './operations'
 import type { Goal, SyncDoc } from '@/types/finance'
@@ -163,5 +164,37 @@ describe('ревью frontend Б14, Н-4: один вход плана меся�
     expect(state.book).toBe(useFxStore().book)
     expect(ctx).toEqual({ key: '2026-10', totals: [], spendCategories: [], uploads: useOperationsStore().uploads })
     expect(store.monthPlanOf('2026-10')).toEqual(monthPlan(state, ctx))
+  })
+})
+
+describe('ревью frontend Б15, Н-2: запись плана прошлого месяца — в том месяце', () => {
+  const doc = () => ({
+    goals: [goal('g1')],
+    credits: [{ id: 'loan', name: 'Кредит', note: '', principal: 500_000, principalSetAt: T0, annualRate: 0.3, payment: 40_000, day: 15, updatedAt: T0 }],
+  })
+  const save = (period: string) => ({
+    record: { source: 'salary' as const, sourceId: 'a' as const, period },
+    total: 700_000,
+    contributions: [{ goalId: 'g1', amount: 10_000 }],
+    prepay: { creditId: 'loan', amount: 50_000 },
+    parts: [{ target: 'g1', amount: 10_000 }, { target: 'prepay:loan', amount: 50_000 }],
+    put: 60_000,
+  })
+  const moves = (store: ReturnType<typeof useFinanceStore>) => store.householdDoc.goals!.find((g) => g.id === 'g1')!.movements ?? []
+
+  it('сентябрь в октябре: взнос — полдень 30 сентября по Алматы, досрочка — периодом сентября; «Не отложено» — тоже в сентябре', () => {
+    const store = storeWith(doc())
+    store.putPlan([save('2026-09')], { by: 'a', note: 'по плану' })
+    expect(moves(store).map((m) => m.date)).toEqual(['2026-09-30T07:00:00.000Z'])
+    expect(store.payments.filter((p) => p.kind === 'prepay').map((p) => p.period)).toEqual(['2026-09'])
+    store.unputPlan('g1', '2026-09', 10_000, 'a')
+    expect(moves(store).map((m) => [monthKey(new Date(m.date)), m.amount])).toEqual([['2026-09', 10_000], ['2026-09', -10_000]])
+  })
+
+  it('текущий месяц — как было: взнос сейчас, досрочка периодом этого месяца', () => {
+    const store = storeWith(doc())
+    store.putPlan([save('2026-10')], { by: 'a', note: 'по плану' })
+    expect(moves(store).map((m) => m.date)).toEqual(['2026-10-04T08:00:00.000Z'])
+    expect(store.payments.filter((p) => p.kind === 'prepay').map((p) => p.period)).toEqual(['2026-10'])
   })
 })

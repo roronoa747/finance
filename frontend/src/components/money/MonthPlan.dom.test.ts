@@ -8,7 +8,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
-import { monthPlan, planPuts, type MonthPlanCtx } from '@/lib/finance'
+import { monthPlan, monthPlanPast, planPuts, type MonthPlanCtx } from '@/lib/finance'
+import { monthKey } from '@/lib/dates'
 import { money, plain } from '@/lib/money'
 import type { Obligation, Payment, SyncDoc } from '@/types/finance'
 import Month from '@/views/Month.vue'
@@ -452,6 +453,37 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     await press(q('[data-queue="trip"]'))
     expect(q('[role="dialog"] [data-put-one]')).toBeNull()
     expect(plans(finance)).toHaveLength(0)
+    expect(q('[data-put-all]')).not.toBeNull()
+  })
+
+  it('«Отложил всё» прошлого месяца — взносы в том месяце: у сентября ✓ без нажатия нет (ревью frontend Н-2)', async () => {
+    const august = paid('salary', 'a', '2026-08', 700_000, { id: 'sal-a-08', accountId: null, at: '2026-08-10T05:00:00.000Z' })
+    const doc = familyDoc()
+    const finance = await open('member', { ...doc, payments: [...(doc.payments ?? []), august] }, '/month?month=2026-08')
+    await flush()
+    const doneBefore = putsOf(finance).filter((p) => p.done).map((p) => p.id)
+    const moved = () => finance.householdDoc.goals!.flatMap((g) => g.movements ?? [])
+    const movesBefore = moved().length
+    await press(section('queue'))
+    await press(q('[data-put-all]'))
+
+    const [record] = plans(finance)
+    expect(plans(finance)).toHaveLength(1)
+    expect(record!.period).toBe('2026-08')
+    const fresh = moved().slice(movesBefore)
+    expect(fresh.length).toBeGreaterThan(0)
+    expect(fresh.every((m) => monthKey(new Date(m.date)) === '2026-08')).toBe(true)
+    // Август: «Отложили» = сумма записи; сентябрь: ни одной новой ✓ — его взносы ждут «Отложил».
+    const past = monthPlanPast({ ...finance.householdDoc, credits: finance.credits, book: useFxStore().book }, '2026-08')
+    expect(past.put).toBe(record!.parts.reduce((s, x) => s + x.amount, 0))
+    expect(putsOf(finance).filter((p) => p.done).map((p) => p.id)).toEqual(doneBefore)
+
+    app?.unmount()
+    document.body.innerHTML = ''
+    await open('member', JSON.parse(JSON.stringify(finance.householdDoc)), '/month')
+    await flush()
+    await press(section('queue'))
+    expect(q('[data-put-done]')).toBeNull()
     expect(q('[data-put-all]')).not.toBeNull()
   })
 

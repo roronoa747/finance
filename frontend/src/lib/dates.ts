@@ -106,6 +106,11 @@ export function daysInMonth(key: string): number {
   return new Date(year, month + 1, 0).getDate()
 }
 
+/** Полдень последнего дня месяца по Алматы (ISO) — момент записи, которая принадлежит прошлому месяцу. */
+export function monthLastNoon(key: string): string {
+  return new Date(`${key}-${String(daysInMonth(key)).padStart(2, '0')}T12:00:00+05:00`).toISOString()
+}
+
 /** «5 сентября» */
 export function dayLabel(day: number, key = monthKey()): string {
   return `${day} ${MONTHS_GEN[parseMonthKey(key).month]}`
