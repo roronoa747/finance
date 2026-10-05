@@ -8,6 +8,7 @@ import { money, pct, plain, parseMoney, ratePct } from '@/lib/money'
 import {
   INFLATION,
   contributionStreak,
+  fundMonthsOf,
   goalMonthly,
   goalTerm,
   indexedNeed,
@@ -139,6 +140,22 @@ const monthlySaved = useSavedMark(
 function onMonthly(text: string) {
   const v = parseMoney(text)
   if (goal.value && v > 0 && v !== goal.value.monthly) financeStore.setGoalMonthly(goal.value.id, v)
+}
+
+/* ------------------ Порог фонда полем (Р-82, ревью frontend Б14 Н-9; владелец 2026-10-05 — в клинап) ------------------ */
+// Свой `fundMonths` вместо умолчания семьи; «нужно» выше пересчитает план месяца.
+const fundKind = computed(() => {
+  const q = financeStore.queue.find((x) => x.id === goalId.value)
+  return q?.kind === 'fund' ? q.fund : null
+})
+const fundMonths = computed(() => (goal.value && fundKind.value ? fundMonthsOf(fundKind.value, goal.value, financeStore.moneySettings) : 0))
+const fundSaved = useSavedMark(
+  () => goal.value?.id,
+  () => (goal.value && fundKind.value ? String(fundMonths.value) : undefined),
+)
+function onFundMonths(text: string) {
+  const v = parseMoney(text)
+  if (goal.value && v > 0 && v !== fundMonths.value) financeStore.setFundMonths(goal.value.id, v)
 }
 
 /* ------------------ Ритм (месяцы по Алматы) ------------------ */
@@ -382,6 +399,16 @@ function share() {
           >
             <PhMinus :size="16" weight="bold" /> Снять
           </Button>
+        </Card>
+
+        <!-- Порог фонда — месяцев трат (Н-9): «нужно» = месяцы × траты месяца по плану. -->
+        <Card v-if="canEdit && fundKind">
+          <div class="-mb-3.5 flex justify-end">
+            <SavedMark :on="fundSaved" />
+          </div>
+          <Field label="Месяцев трат">
+            <NumFieldBlur :initial="String(fundMonths)" aria-label="Порог фонда — месяцев трат" @commit="onFundMonths" />
+          </Field>
         </Card>
 
         <p v-if="remaining > 0" class="px-1 text-[13px] text-ink-2">

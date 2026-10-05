@@ -119,3 +119,28 @@ describe('Н-2: срок и «нужно» — из плана месяца', ()
     expect(page()).not.toContain('осталось')
   })
 })
+
+describe('Н-9: порог фонда полем «Месяцев трат»', () => {
+  const field = () => document.querySelector<HTMLInputElement>('input[aria-label="Порог фонда — месяцев трат"]')
+
+  it('фонд: правка 1 → 2 — свой порог, «нужно» плана вдвое, экран показывает новое «из»', async () => {
+    const finance = await open(GoalDetail, '/goals/res')
+    const before = finance.monthPlanOf(KEY).queue.find((q) => q.id === 'res')!.need
+    const input = field()!
+    expect(input.value).toBe('1')
+    input.focus()
+    input.value = '2'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    input.dispatchEvent(new Event('blur'))
+    for (let i = 0; i < 3; i++) await nextTick()
+    expect(finance.goals.find((g) => g.id === 'res')!.fundMonths).toBe(2)
+    const after = finance.monthPlanOf(KEY).queue.find((q) => q.id === 'res')!.need
+    expect(after).toBe(before * 2)
+    expect(page()).toContain(norm(`из ${money(after)}`))
+  })
+
+  it('цель — поля нет', async () => {
+    await open(GoalDetail, '/goals/car')
+    expect(field()).toBeNull()
+  })
+})
