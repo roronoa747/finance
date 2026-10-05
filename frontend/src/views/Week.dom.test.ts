@@ -361,6 +361,25 @@ describe('B2C-96: загрузка «сразу готово» и вопросы
     expect(api.upsertOperations).not.toHaveBeenCalled()
   })
 
+  it('пока висит тост, листы показывают то же, что экран: раздел — операции выписки, «Мои выписки» — её строку (критик)', async () => {
+    server()
+    const { store } = await openWeek({ uploads: [BOTH[1]!] })
+    readResult.value = { ok: [parsed()], errors: [] }
+    await pickFile()
+    expect(store.held).toBe(true)
+    await press(row('sc_cafe'))
+    expect(txt(q('[data-section-total]'))).toBe(norm(money(5_000)))
+    const ops = txt(q('[data-section-ops]'))
+    expect(ops).toContain('Starbucks')
+    expect(ops).toContain('Wolt')
+    expect(txt(document.body)).not.toContain('За эту неделю трат нет')
+    await press(q('[data-my-uploads]'))
+    expect(all('[data-uploads] [data-upload]')).toHaveLength(1)
+    expect(txt(q('[data-uploads]'))).toContain('2 операции')
+    // Отмена — чтобы уход с экрана в конце теста ничего не отправил.
+    store.undoUpload()
+  })
+
   it('без отмены: ушли с экрана — выписка записана и отправлена, итоги недели в документе', async () => {
     const api = server()
     const { finance, store } = await openWeek({ uploads: [BOTH[1]!] })

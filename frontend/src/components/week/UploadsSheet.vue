@@ -9,7 +9,7 @@ import Button from '@/components/ui/Button.vue'
 
 /**
  * «Мои выписки» (Р-102; макет week-month.html «Нажал свой кружок»): свои загрузки — банк, период, число операций,
- * когда загрузил; новые сверху. Одна кнопка — «+ Загрузить выписку» (в листе — во всю ширину, правило 12).
+ * когда загрузил; новые сверху — и та, что ещё ждёт тост (`shownUploads`). Одна кнопка — «+ Загрузить выписку» (в листе — во всю ширину, правило 12).
  */
 const props = defineProps<{ open: boolean; me: PersonId; busy?: boolean }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'upload'): void }>()
@@ -17,7 +17,7 @@ const emit = defineEmits<{ (e: 'close'): void; (e: 'upload'): void }>()
 const BANKS: Record<string, string> = { kaspi: 'Kaspi', freedom: 'Freedom' }
 const store = useOperationsStore()
 const mine = computed(() =>
-  store.uploads.filter((u) => u.slot === props.me).slice().sort((a, b) => b.created_at.localeCompare(a.created_at)),
+  store.shownUploads.filter((u) => u.slot === props.me).slice().sort((a, b) => b.created_at.localeCompare(a.created_at)),
 )
 </script>
 

@@ -11,7 +11,8 @@ import Sheet from '@/components/kit/Sheet.vue'
 /**
  * Лист раздела «Недели» (Р-101; макет week-month.html «Нажал „Такси“»): сумма за неделю, к прошлой, остаток на
  * месяц, топ продавцов и свои операции по дням — первые пять, остальные за «Ещё N». Только чтение; всё считает
- * `sectionWeek` / `myWeek` (`finance.ts`). Времени операции в выписке нет — строка без него.
+ * `sectionWeek` / `myWeek` (`finance.ts`). Времени операции в выписке нет — строка без него. Операции — вместе с
+ * выпиской, которая ещё ждёт тост (`store.shown`): лист сходится со строкой раздела и до отправки.
  */
 const props = defineProps<{ row: MyWeekRow | null; week: string; monthName: string }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -23,7 +24,7 @@ watch(
   () => (all.value = false),
 )
 const detail = computed(() =>
-  props.row ? sectionWeek(store.all, { week: props.week, categoryId: props.row.categoryId, ...(all.value ? { limit: Infinity } : {}) }) : null,
+  props.row ? sectionWeek(store.shown, { week: props.week, categoryId: props.row.categoryId, ...(all.value ? { limit: Infinity } : {}) }) : null,
 )
 const diff = computed(() => (props.row ? props.row.amount - props.row.prev : 0))
 </script>
