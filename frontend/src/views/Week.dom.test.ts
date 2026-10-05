@@ -395,6 +395,21 @@ describe('B2C-96: загрузка «сразу готово» и вопросы
     expect(finance.householdDoc.spendTotals!.find((t) => t.id === 'a:week:2026-W39:sc_cafe')?.amount).toBe(5_000)
   })
 
+  it('без отмены: скрыли вкладку во время тоста — выписка записана сразу и отправлена (Н-1 ревью)', async () => {
+    const api = server()
+    const { finance, store } = await openWeek({ uploads: [BOTH[1]!] })
+    readResult.value = { ok: [parsed()], errors: [] }
+    await pickFile()
+    expect(store.held).toBe(true)
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    document.dispatchEvent(new Event('visibilitychange'))
+    // На диске — до ответа сети.
+    expect(store.held).toBe(false)
+    expect(Object.keys(JSON.parse(localStorage.getItem('ff_operations')!).ops)).toHaveLength(OPS.length + 2)
+    expect(finance.householdDoc.spendTotals!.find((t) => t.id === 'a:week:2026-W39:sc_cafe')?.amount).toBe(5_000)
+    await vi.waitFor(() => expect(api.upsertOperations).toHaveBeenCalledTimes(1))
+  })
+
   it('те же операции второй раз — «Эти N операций уже были», суммы не удваиваются', async () => {
     server()
     const { store } = await openWeek()

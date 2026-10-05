@@ -805,6 +805,49 @@ describe('stores/operations — «сразу готово» с «Отменит�
     expect(viaHold.totals).toContainEqual(['week', '2026-W39', 'sc_food', 10_000])
   })
 
+  it('сеть не ответила (Н-1 ревью): тост ушёл — выписка уже на диске (операции, итоги, очередь); новый запуск досылает', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const hang = fakeServer()
+    vi.mocked(hang.calls.createStatementUpload).mockImplementation(() => new Promise(() => {}))
+    await store.upload(draftOf(week39()), hang.client)
+    void store.commitUpload(hang.client)
+    // До ответа сети: всё записано, предпросмотр не нужен — цифры те же.
+    expect(store.held).toBe(false)
+    expect(store.shown.map((o) => -o.amount).sort()).toEqual([4_000, 6_000])
+    expect(store.shownTotals.filter((t) => t.by === 'a').map((t) => [t.kind, t.period, t.amount])).toEqual([['week', '2026-W39', 10_000], ['month', '2026-09', 10_000]])
+    expect(Object.keys(JSON.parse(storage.get('ff_operations')!).ops)).toHaveLength(2)
+    expect(JSON.parse(storage.get('ff_operations_pending')!)[0]).toMatchObject({ upload: { bank: 'kaspi', ops_count: 2 } })
+
+    // Приложение закрыли: новый запуск с того же хранилища — итоги в документе, очередь досылается.
+    setActivePinia(createPinia())
+    signIn()
+    const again = useOperationsStore()
+    expect(again.all).toHaveLength(2)
+    expect(totals()).toContainEqual(['week', '2026-W39', 'sc_food', 10_000])
+    const up = fakeServer()
+    await again.flush(up.client)
+    expect(again.pendingCount).toBe(0)
+    expect(up.server.uploads).toHaveLength(1)
+    expect(up.server.ops.size).toBe(2)
+  })
+
+  it('пока сеть отдаёт операции, цифры не мигают; пришли операции со второго устройства — итоги дописаны с ними', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const { client, calls } = fakeServer()
+    let answer: (p: OperationsPage) => void = () => {}
+    calls.listOperations.mockImplementationOnce(() => new Promise((r) => (answer = r)))
+    await store.upload(draftOf(week39()), client)
+    const sending = store.commitUpload(client)
+    await vi.waitFor(() => expect(calls.listOperations).toHaveBeenCalled())
+    expect(store.shownTotals.filter((t) => t.by === 'a' && t.kind === 'week').map((t) => t.amount)).toEqual([10_000])
+    const [other] = assignIds([{ bank: 'freedom', date: '2026-09-23', amount: -2_500, kind: 'purchase', merchant: 'Wolt', categoryId: 'sc_food', internal: false }])
+    answer({ operations: [{ ...toWire(other), updated_at: '2026-09-24T10:00:00Z' }], next: '2026-09-24T10:00:00Z' })
+    await sending
+    expect(totals()).toContainEqual(['week', '2026-W39', 'sc_food', 12_500])
+  })
+
   it('ушли с экрана (commitUpload) — отправка сразу, таймер второй раз не шлёт', async () => {
     signIn()
     const store = useOperationsStore()

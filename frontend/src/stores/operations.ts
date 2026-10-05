@@ -358,16 +358,13 @@ export const useOperationsStore = defineStore('operations', () => {
   }
 
   /**
-   * «Отправить» (B2C-07): операции — в свою копию, итоги — в общий документ сразу (в том
-   * числе без сети), записи загрузок и операции — в очередь, очередь — на сервер.
+   * «Отправить» (B2C-07): операции — в свою копию, итоги — в общий документ, записи загрузок и операции — в очередь,
+   * всё на диск — до первого ожидания сети (тост «Загружено» ушёл, вкладку закрыли — выписка уже на устройстве);
+   * затем очередь — на сервер и свои операции со второго устройства.
    */
   async function send(client: ApiClient = apiClient) {
     const d = draft.value
     if (!d) return
-    // Итоги — из всех своих операций периода: сначала забрать загруженное со второго
-    // устройства, иначе устаревшая копия затрёт полные итоги (LWW по id). Без сети — что есть.
-    await pull(client)
-    if (draft.value !== d) return // второе нажатие, пока ждали сеть
     if (!finance.householdDoc.spendCategories?.length) finance.mutateHouseholdDoc((doc) => void seedSpendCategories(doc))
 
     const fresh = draftOps.value
@@ -376,7 +373,8 @@ export const useOperationsStore = defineStore('operations', () => {
     const paired = pairInternalTransfers([...fresh, ...all.value.filter((o) => !ids.has(o.id))])
     const changed = paired.slice(fresh.length).filter((o) => o.internal !== ops.value[o.id]?.internal)
     remember([...fresh, ...changed])
-    writeTotals(periodsOf([...fresh, ...changed]))
+    const periods = periodsOf([...fresh, ...changed])
+    writeTotals(periods)
     // Правила «это платёж по …» отмечают платежи сами (Р-6); отмеченный месяц второй записи не получает.
     lastAutoMarked.value = autoMark(fresh)
 
@@ -403,7 +401,11 @@ export const useOperationsStore = defineStore('operations', () => {
     }
     draft.value = null
     save()
-    await flush(client)
+    // Итоги — из всех своих операций периода: загруженное со второго устройства (`pull` сначала досылает очередь)
+    // дописывает их ещё раз, иначе устаревшая копия оставила бы неполные итоги (LWW по id).
+    const sent = new Set([...fresh, ...changed].map((o) => o.id))
+    const got = await pull(client)
+    if (got.some((id) => !sent.has(id))) writeTotals(periods)
   }
 
   /** Смена раздела задним числом: правило + пересчёт своих операций и итогов их периодов. */
@@ -508,17 +510,17 @@ export const useOperationsStore = defineStore('operations', () => {
     return flushing
   }
 
-  /** Свои операции с сервера по курсору (правки со второго устройства); сначала — очередь. */
-  async function pull(client: ApiClient = apiClient) {
-    if (demo.value || !auth.isMember) return
+  /** Свои операции с сервера по курсору (правки со второго устройства); сначала — очередь. Отдаёт id полученных. */
+  async function pull(client: ApiClient = apiClient): Promise<string[]> {
+    const got: string[] = []
+    if (demo.value || !auth.isMember) return got
     await flush(client)
-    if (offline() || pending.value.length) return
+    if (offline() || pending.value.length) return got
     try {
       // Строка, давшая курсор, попадает в запас — значит, next непустой страницы не раньше
       // курсора; пустая страница курсор не двигает (назад он не уезжает).
       let since = cursor.value
       let from = since && new Date(Date.parse(since) - CURSOR_OVERLAP_MS).toISOString()
-      const got: string[] = []
       for (;;) {
         const page = await client.listOperations(from, PULL_LIMIT)
         for (const w of page.operations) {
@@ -537,6 +539,7 @@ export const useOperationsStore = defineStore('operations', () => {
     } catch (err) {
       lastError.value = err instanceof Error ? err.message : String(err)
     }
+    return got
   }
 
   /** Демо-пример (B2C-19 п. 4): записи загрузок обоих, чтобы главный показывал картину недели. */
