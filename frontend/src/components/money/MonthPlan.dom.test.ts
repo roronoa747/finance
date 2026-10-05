@@ -508,6 +508,43 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(q('[data-put-all]')).not.toBeNull()
   })
 
+  it('строки платежа, зарплаты и цели — без «кнопки в кнопке»: одна кнопка-строка, плательщик и выключатель — отдельно (ревью frontend Н-7)', async () => {
+    const reopen = async () => {
+      app?.unmount()
+      document.body.innerHTML = ''
+      await open()
+    }
+    await open()
+    const rows: [string, 'dues' | 'queue' | null][] = [['[data-due-id="obligation:rent"]', 'dues'], ['[data-salary="a"]', null], ['[data-queue="trip"]', 'queue']]
+    for (const [sel, k] of rows) {
+      if (k) await press(section(k))
+      expect(q('[role="button"]'), sel).toBeNull()
+      const row = q(sel)!
+      expect(row, sel).toBeTruthy()
+      const main = row.querySelector<HTMLElement>('[data-row-open]')!
+      expect(main.tagName, sel).toBe('BUTTON')
+      expect(main.querySelector('button, [role="switch"]'), sel).toBeNull()
+      expect(row.querySelectorAll('[data-row-open]'), sel).toHaveLength(1)
+    }
+    expect(q('[data-queue="trip"] button[aria-label^="Платит"]')).not.toBeNull()
+    expect(q('[data-queue="trip"] [role="switch"]')).not.toBeNull()
+
+    // Кнопка строки открывает лист своего предмета; кружок — лист плательщика, не лист строки.
+    await reopen()
+    await press(section('dues'))
+    await press(q('[data-due-id="obligation:rent"] [data-row-open]'))
+    expect(dialogButton('Оплатил')).toBeDefined()
+    await reopen()
+    await press(section('dues'))
+    expect(txt(q('[data-due-id="obligation:rent"] [data-row-open]'))).toContain('Аренда')
+    await press(q('[data-due-id="obligation:rent"] button[aria-label^="Платит"]'))
+    expect(txt(q('[role="dialog"]'))).toContain('Кто платит')
+    expect(dialogButton('Оплатил')).toBeUndefined()
+    await reopen()
+    await press(q('[data-salary="a"] [data-row-open]'))
+    expect(q('[role="dialog"]')).not.toBeNull()
+  })
+
   it('viewer — тот же план без переключателя вида, выключателей, ⋮⋮, плательщиков, листов и кнопок', async () => {
     const finance = await open('viewer')
     expect(txt(q('[data-rest]'))).toBe(norm(money(planOf(finance).rest)))

@@ -385,6 +385,24 @@
     transform: scale(0.97);
   }
 }
+/*
+ * Кнопка строки списка (ревью frontend Б15, Н-7): настоящая `<button>` на названии, нажимается вся строка (у строки —
+ * `relative`), боковые кнопки и переключатели строки — поверх (`relative z-10`).
+ */
+@utility row-open {
+  cursor: pointer;
+  outline: none;
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 12px;
+  }
+  &:focus-visible::after {
+    outline: 2.5px solid var(--brand);
+    outline-offset: 2px;
+  }
+}
 /* Появление снизу; строки списка — по очереди: `style="--i: N"`, задержка 40 мс × N (не больше 6). */
 @utility fx-in {
   animation: fx-in var(--motion-base) var(--ease-out) backwards;

@@ -338,25 +338,28 @@ function addFund(kind: 'reserve' | 'cushion') {
       <template v-for="(s, i) in salaries" :key="s.person">
         <div v-if="i > 0" class="h-px bg-line" />
         <div
-          class="flex items-center gap-2.5"
+          class="relative flex items-center gap-2.5"
           :class="canEdit && 'press cursor-pointer'"
           :data-salary="s.person"
           :data-can-mark="s.canMark || undefined"
-          :role="canEdit ? 'button' : undefined"
-          :tabindex="canEdit ? 0 : undefined"
           @click="canEdit && (salaryFor = s.person)"
-          @keydown.enter.self="canEdit && (salaryFor = s.person)"
         >
           <Avatar :id="s.person" :name="s.name" />
-          <div class="flex min-w-0 flex-1 flex-col gap-px">
+          <component
+            :is="canEdit ? 'button' : 'div'"
+            :type="canEdit ? 'button' : undefined"
+            class="flex min-w-0 flex-1 flex-col gap-px text-left"
+            :class="canEdit && 'row-open'"
+            :data-row-open="canEdit || undefined"
+          >
             <span class="text-[16px] font-semibold text-ink">{{ s.name }}</span>
             <span class="type-meta" data-salary-status>{{ s.came ? s.cameAt : `ждём ${dayLabel(s.payday, monthKey)}` }}</span>
-          </div>
+          </component>
           <div class="flex flex-col items-end gap-1">
             <b class="font-num text-[16px] num whitespace-nowrap" :class="s.came ? 'text-ink' : 'text-ink-3'">
               <span v-if="s.came" class="font-extrabold text-ok" data-came>✓ </span>{{ money(s.amount) }}
             </b>
-            <span class="flex items-center gap-1" @click.stop>
+            <span class="relative z-10 flex items-center gap-1" @click.stop>
               <Tag :tone="s.left >= 0 ? 'ok' : 'warn'" class="num" data-left>{{ signed(s.left) }}</Tag>
               <Hint v-if="i === 0" label="Хватает ли">Зарплата минус свои платежи, траты, цели и фонды</Hint>
             </span>
@@ -512,24 +515,21 @@ function addFund(kind: 'reserve' | 'cushion') {
             <template #default="{ id }">
               <template v-if="queueById.get(id)">
                 <div
-                  class="press flex cursor-pointer items-center gap-2.5 py-2.5"
+                  class="press relative flex cursor-pointer items-center gap-2.5 py-2.5"
                   :data-queue="id"
-                  role="button"
-                  tabindex="0"
                   @click="openItem(queueById.get(id)!)"
-                  @keydown.enter.self="openItem(queueById.get(id)!)"
                 >
-                  <span class="flex min-w-0 flex-1 flex-col gap-px">
+                  <button type="button" class="row-open flex min-w-0 flex-1 flex-col gap-px text-left" data-row-open>
                     <span class="truncate text-[15.5px] font-semibold" :class="queueById.get(id)!.paused ? 'text-ink-3' : 'text-ink'">{{ queueById.get(id)!.name }}</span>
                     <span v-if="statusOf(queueById.get(id)!)" class="text-[12px] num" :class="statusOf(queueById.get(id)!)!.warn ? 'text-warn' : 'text-ink-3'" data-status>
                       {{ statusOf(queueById.get(id)!)!.text }}
                     </span>
-                  </span>
+                  </button>
                   <button
                     v-if="canEdit && queueById.get(id)!.payer"
                     type="button"
                     data-no-drag
-                    class="press shrink-0 cursor-pointer rounded-full"
+                    class="press relative z-10 shrink-0 cursor-pointer rounded-full"
                     :aria-label="`Платит ${personName(queueById.get(id)!.payer)}. Сменить`"
                     @click.stop="
                       payerFor = {
@@ -550,7 +550,7 @@ function addFund(kind: 'reserve' | 'cushion') {
                   >
                     <span v-if="putById.get(id)?.done" class="font-extrabold text-ok" data-put-done>✓ </span>{{ plain(queueById.get(id)!.given) }}
                   </span>
-                  <span v-if="canEdit" data-no-drag class="shrink-0" @click.stop>
+                  <span v-if="canEdit" data-no-drag class="relative z-10 shrink-0" @click.stop>
                     <Toggle
                       :model-value="queueById.get(id)!.paused !== 'off'"
                       :label="queueById.get(id)!.name"
