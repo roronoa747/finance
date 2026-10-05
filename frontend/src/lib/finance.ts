@@ -1160,11 +1160,31 @@ export function moneySettingsOf(doc: { moneySettings?: MoneySettings | null }): 
   return { ...DEFAULT_MONEY_SETTINGS, potGoalId: null, orderedAt: null, updatedAt: '', ...(doc.moneySettings ?? {}) }
 }
 
+/** Строка трат плана месяца (Р-81): живая, с суммой, раздел не учтён платежами (`plannedElsewhere`). */
+export const planSpendOn = (x: SpendPlan, live: SpendCategory[]) => !x.deletedAt && x.amount > 0 && !plannedElsewhere(x.categoryId, live)
+
+/** Траты плана месяца всех участников (`spendPlans`, Р-81) — `null`, пока семья их не завела. */
+export function planSpendTotal(doc: { spendPlans?: SpendPlan[]; spendCategories?: SpendCategory[]; people?: Person[] }): number | null {
+  const live = (doc.spendCategories ?? []).filter(alive)
+  const ids = new Set((doc.people ?? []).filter(alive).map((p) => p.id))
+  const rows = (doc.spendPlans ?? []).filter((x) => ids.has(x.by) && planSpendOn(x, live))
+  return rows.length ? rows.reduce((s, x) => s + x.amount, 0) : null
+}
+
 /**
- * Сумма месяца «Жизни» и «Трат» — одна правда раздела d4 (B2C-54 п. 4): с заведёнными статьями —
- * их суммы (выключенная — 0), без статей — `d4.amount`, как до Блока 11.
+ * Сумма месяца «Жизни» и «Трат» — одна правда раздела d4 (B2C-54 п. 4): заведены траты плана месяца — их сумма
+ * (`planSpendTotal`, хвост §4 Б14 «план трат в двух местах»); иначе статьи (выключенная — 0), без статей —
+ * `d4.amount`, как до Блока 11.
  */
-export function livingPlan(doc: { moneyArticles?: MoneyArticle[]; categories?: Category[] }): number {
+export function livingPlan(doc: {
+  moneyArticles?: MoneyArticle[]
+  categories?: Category[]
+  spendPlans?: SpendPlan[]
+  spendCategories?: SpendCategory[]
+  people?: Person[]
+}): number {
+  const fromPlan = planSpendTotal(doc)
+  if (fromPlan !== null) return fromPlan
   return moneyArticlesOf(doc)
     .filter((a) => (a.id === 'life' || a.id === 'spend') && a.on)
     .reduce((s, a) => s + (a.amount ?? 0), 0)
@@ -1189,6 +1209,9 @@ export function budgetAmounts(state: {
   payments?: Payment[];
   plans?: DebtPlan[];
   moneyArticles?: MoneyArticle[];
+  /** Траты плана месяца (Р-81): заведены — «Жизнь» и «Траты» берутся из них (`livingPlan`). */
+  spendPlans?: SpendPlan[];
+  spendCategories?: SpendCategory[];
   /** Книга курсов и обмены (Р-74, Р-75): валютные зарплаты и платежи — в тенге по курсу. */
   book?: RateBook | null;
   fxExchanges?: FxExchange[];
@@ -1217,7 +1240,7 @@ export function budgetAmounts(state: {
     .filter((g) => !paused.has(g.id))
     .reduce((a, g) => a + g.monthly, 0);
   const extra = plan ? planExtra(plan, goalsList, credits, payments, key) : 0;
-  const living = livingPlan({ categories, moneyArticles: state.moneyArticles }) + other;
+  const living = livingPlan({ categories, moneyArticles: state.moneyArticles, spendPlans: state.spendPlans, spendCategories: state.spendCategories, people }) + other;
   const income = totalIncome(people, key, salaryCtxOf(state));
   const free = income - housing - debts - goals - living - extra;
 
@@ -3031,7 +3054,7 @@ export function monthPlan(state: MonthPlanState, ctx: MonthPlanCtx): MonthPlan {
       const mine = ctx.totals.filter((t) => !t.deletedAt && t.by === p.id && t.kind === 'month' && t.period === key && t.amount > 0)
       const factOf = (categoryId: string) => (has ? mine.filter((t) => t.categoryId === categoryId).reduce((s, t) => s + t.amount, 0) : null)
       const rows = (state.spendPlans ?? [])
-        .filter((x) => !x.deletedAt && x.by === p.id && x.amount > 0 && !plannedElsewhere(x.categoryId, live))
+        .filter((x) => x.by === p.id && planSpendOn(x, live))
         .map((x) => ({ categoryId: x.categoryId, name: spendCategoryName(named, x.categoryId), plan: x.amount, fact: factOf(x.categoryId) }))
       const fact = has
         ? mine.filter((t) => t.categoryId === UNKNOWN_CATEGORY || !plannedElsewhere(t.categoryId, live)).reduce((s, t) => s + t.amount, 0)
@@ -3641,6 +3664,9 @@ export function freeByFact(
     people?: Person[]
     payments?: Payment[]
     plans?: DebtPlan[]
+    moneyArticles?: MoneyArticle[]
+    spendPlans?: SpendPlan[]
+    spendCategories?: SpendCategory[]
     book?: RateBook | null
     fxExchanges?: FxExchange[]
   },
@@ -3701,12 +3727,12 @@ export function incomeSplit(a: Pick<ReturnType<typeof budgetAmounts>, 'd1' | 'd2
 }
 
 /**
- * Виджет «Траты» (Р-33; бывший «Еда и быт»): план — статьи разбора «Жизнь» + «Траты» (`livingPlan`, B2C-59; без
+ * Виджет «Траты» (Р-33; бывший «Еда и быт»): план — `livingPlan` (траты плана месяца, иначе статьи «Жизнь» + «Траты», B2C-59; без
  * статей — база раздела d4, как раньше), факт — `monthSpentByFact` (`null` — за месяц нет загрузок). `pct` —
  * факт от плана, `share` — для полосы 0…1, `over` — перерасход.
  */
 export function livingPlanFact(
-  doc: { moneyArticles?: MoneyArticle[]; categories?: Category[] },
+  doc: Parameters<typeof livingPlan>[0],
   totals: SpendTotal[],
   spendCategories: SpendCategory[],
   key: string,

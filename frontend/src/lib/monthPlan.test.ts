@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { allInDebt, creditOutlook, goalDoneMonth, goalMonths, goalTerm, monthPlan, monthPlanPast, monthsBetween, planFromSource, planSave, type MonthPlanCtx, type MonthPlanState } from './finance'
+import { allInDebt, budgetAmounts, creditOutlook, goalDoneMonth, goalMonths, goalTerm, monthPlan, livingPlan, monthPlanPast, monthsBetween, planFromSource, planSave, planSpendTotal, type MonthPlanCtx, type MonthPlanState } from './finance'
 import { addMonths } from './dates'
-import type { Allocation, Goal } from '@/types/finance'
+import type { Allocation, Goal, SpendPlan } from '@/types/finance'
 
 /**
  * B2C-86: план месяца против ручного расчёта (правило 6 — числа в комментариях).
@@ -363,5 +363,41 @@ describe('monthPlanPast — сентябрь сводкой', () => {
       records: [breakdown],
     })
     expect(monthPlanPast({}, sep)).toMatchObject({ came: 0, paid: 0, saved: 0, spent: null, left: 0, goals: [], records: [] })
+  })
+})
+
+describe('livingPlan — траты плана месяца (хвост §4 Б14 «план трат в двух местах»)', () => {
+  const articles = [
+    { id: 'life' as const, on: true, amount: 200_000, order: 0, updatedAt: T0 },
+    { id: 'spend' as const, on: true, amount: 100_000, order: 1, updatedAt: T0 },
+  ]
+
+  it('заведены траты плана — «Жизнь» и «Траты» = их сумма, как в плане (330 000: коммуналка — платёж, не трата)', () => {
+    const doc = { ...family(), moneyArticles: articles }
+    const plan = monthPlan(doc, ctx)
+    expect(planSpendTotal(doc)).toBe(330_000)
+    expect(livingPlan(doc)).toBe(plan.spend.reduce((s, x) => s + x.plan, 0))
+    expect(livingPlan(doc)).toBe(330_000)
+  })
+
+  it('поменял траты в плане — «Свободно» сдвинулось на ту же сумму', () => {
+    const before = budgetAmounts({ ...family(), moneyArticles: articles }, KEY)
+    const more = family({ spendPlans: [...family().spendPlans!, { id: 'b:sc_fun', by: 'b', categoryId: 'sc_fun', amount: 50_000, updatedAt: T0 }] })
+    const after = budgetAmounts({ ...more, moneyArticles: articles }, KEY)
+    expect(after.d4 - before.d4).toBe(50_000)
+    expect(before.d5 - after.d5).toBe(50_000)
+  })
+
+  it('трат плана нет (пусто, удалены, нули, ушедший участник) — статьи, как было: 200 000 + 100 000', () => {
+    const gone: SpendPlan[] = [
+      { id: 'a:sc_cafe', by: 'a', categoryId: 'sc_cafe', amount: 60_000, updatedAt: T0, deletedAt: T0 },
+      { id: 'b:sc_food', by: 'b', categoryId: 'sc_food', amount: 0, updatedAt: T0 },
+      { id: 'c:sc_food', by: 'c', categoryId: 'sc_food', amount: 70_000, updatedAt: T0 },
+    ]
+    for (const spendPlans of [[], gone] as SpendPlan[][]) {
+      const doc = { ...family({ spendPlans }), moneyArticles: articles }
+      expect(planSpendTotal(doc)).toBeNull()
+      expect(livingPlan(doc)).toBe(300_000)
+    }
   })
 })

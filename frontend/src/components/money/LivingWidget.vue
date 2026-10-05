@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
 import { money, parseMoney, plain } from '@/lib/money'
 import { MONTHS_NOM, monthKey, parseMonthKey } from '@/lib/dates'
-import { ARTICLE_NAMES, liveSpendCategories, livingPlanFact, spendCategoryName, spendNorms, spendShares, spendStatus } from '@/lib/finance'
+import { ARTICLE_NAMES, liveSpendCategories, livingPlanFact, planSpendTotal, spendCategoryName, spendNorms, spendShares, spendStatus } from '@/lib/finance'
 import { STAT_NORMS_LABEL } from '@/lib/statements/norms'
 import { spendColor } from '@/lib/palette'
 import Card from '@/components/kit/Card.vue'
@@ -21,7 +21,8 @@ import Tag from '@/components/kit/Tag.vue'
  * выпискам обоих за месяц без разделов, учтённых планом (\`monthSpentByFact\`), «из N» — план статей «Жизнь» +
  * «Траты» (\`livingPlan\`); тег — одна строка: раздел, сильнее всех выше ориентира, или «в норме» (без выписок —
  * нет тега). Нажатие — лист «Траты за <месяц>»: доли разделов с чертой ориентира (статистика РК или своё
- * среднее за 3 месяца) и правка сумм «Жизни» и «Трат» (viewer — без правки). Всё считает \`finance.ts\`.
+ * среднее за 3 месяца) и правка сумм «Жизни» и «Трат» (viewer — без правки; заведены траты плана месяца — план из них,
+ * правка — там, полей нет). Всё считает \`finance.ts\`.
  */
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
@@ -33,6 +34,8 @@ const monthName = computed(() => MONTHS_NOM[parseMonthKey(key.value).month].toLo
 const totals = computed(() => financeStore.householdDoc.spendTotals ?? [])
 const docCategories = computed(() => financeStore.householdDoc.spendCategories ?? [])
 
+/** Траты заведены в плане месяца (Р-81) — «из N» считается по ним, статьи здесь не правятся. */
+const fromPlan = computed(() => planSpendTotal(financeStore.householdDoc) !== null)
 const living = computed(() => livingPlanFact(financeStore.householdDoc, totals.value, docCategories.value, key.value, ops.uploads))
 const shares = computed(() => spendShares(totals.value, docCategories.value, key.value, ops.uploads))
 const norms = computed(() => spendNorms(totals.value, docCategories.value, ops.uploads, key.value))
@@ -91,7 +94,7 @@ function commit(id: 'life' | 'spend', text: string) {
         <Hint>{{ norms.from === 'own' ? 'Ваше среднее за 3 месяца.' : `Средние доли семей ${STAT_NORMS_LABEL}.` }}</Hint>
       </span>
 
-      <template v-if="!authStore.isViewer">
+      <template v-if="!authStore.isViewer && !fromPlan">
         <Field :label="ARTICLE_NAMES.life">
           <NumFieldBlur :initial="plain(articleAmount('life'))" :aria-label="`${ARTICLE_NAMES.life} — в месяц`" class-name="bg-surface-2" @commit="(t) => commit('life', t)" />
         </Field>
