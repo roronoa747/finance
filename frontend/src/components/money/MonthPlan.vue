@@ -402,7 +402,8 @@ function addFund(kind: 'reserve' | 'cushion') {
           <span class="size-3 shrink-0 rounded-full" :style="{ background: `var(${s.color})` }" aria-hidden="true" />
           <span class="flex min-w-0 flex-1 flex-col leading-[1.2]">
             <span class="text-[16.5px] font-bold text-ink">
-              {{ s.name }}<span v-if="s.dot" class="ml-1.5 inline-block size-2 rounded-full bg-brand align-middle" data-section-dot aria-label="есть что сделать" />
+              {{ s.name
+              }}<template v-if="s.dot"><span class="ml-1.5 inline-block size-2 rounded-full bg-brand align-middle" data-section-dot aria-hidden="true" /><span class="sr-only">, есть что сделать</span></template>
             </span>
             <span class="text-[12.5px] text-ink-3 num" data-section-meta>{{ s.meta }}</span>
           </span>

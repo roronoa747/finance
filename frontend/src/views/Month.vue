@@ -71,7 +71,9 @@ onMounted(() => void ops.loadUploads())
       <button type="button" class="press relative grid size-8 cursor-pointer place-items-center text-ink-3 disabled:opacity-30" :disabled="!canBack" aria-label="Прошлый месяц" @click="shown = addMonths(shown, -1)">
         <PhCaretLeft :size="18" />
         <!-- Своя зарплата прошлого месяца пришла и не отложена — точка зовёт назад (Р-97) -->
-        <span v-if="pastCall" class="absolute right-0.5 top-0.5 size-2 rounded-full bg-brand" data-past-dot aria-label="есть что сделать" />
+        <template v-if="pastCall">
+          <span class="absolute right-0.5 top-0.5 size-2 rounded-full bg-brand" data-past-dot aria-hidden="true" /><span class="sr-only">, есть что сделать</span>
+        </template>
       </button>
       <span>{{ monthName }}</span>
       <button type="button" class="press grid size-8 cursor-pointer place-items-center text-ink-3 disabled:opacity-30" :disabled="!canForward" aria-label="Следующий месяц" @click="shown = addMonths(shown, 1)">

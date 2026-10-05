@@ -156,7 +156,7 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(txt(q('[data-section="spend"] [data-section-meta]'))).toBe('по плану')
     expect(txt(q('[data-section="queue"] [data-section-meta]'))).toBe(`0 из ${putsOf(finance).length} отложено`)
     // «Месяц» — переключатель есть, брендовой крупной кнопки нет.
-    expect(q('[data-plan-view="month"]')!.getAttribute('aria-selected')).toBe('true')
+    expect(q('[data-plan-view="month"]')!.getAttribute('aria-current')).toBe('page')
     expect(txt(document.body)).not.toContain('Отложить по плану')
   })
 
