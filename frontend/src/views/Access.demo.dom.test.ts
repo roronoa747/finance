@@ -64,7 +64,7 @@ describe('B2C-45: демо — «Деньги» с данными во всех 
     expect(capital).toContain('Аренда квартиры 5-го · оплачено')
     expect(capital).toContain('Автокредит')
 
-    const plan = await renderScreen(Money, '/money/plan')
+    const plan = await renderScreen(Money, '/money/debts')
     expect(plan).toMatch(/role="switch" aria-checked="true"/)
     expect(text(plan)).toContain('Цели на паузе Машина')
 

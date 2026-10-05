@@ -923,7 +923,7 @@ describe('e2e / B2C Блок 3 — часть 7 (возврат приёмки �
       },
     ])
     expect(router.currentRoute.value.fullPath).toBe('/week')
-    expect(await decision(A)).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата · Ильяс', to: '/money' })
+    expect(await decision(A)).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата · Ильяс', to: '/month' })
     expect(A.store.payments.find((p) => p.kind === 'salary')).toMatchObject({ targetId: 'a', period: '2026-09', source: 'statement', accountId: null })
     expect(opsA.pendingMatches).toEqual([])
     await allocateAll(A, september)
@@ -936,7 +936,7 @@ describe('e2e / B2C Блок 3 — часть 7 (возврат приёмки �
     expect(opsA.lastAutoMarked).toBe(1)
     const october = '2026-10'
     const d = await decision(A)
-    expect(d).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата · Ильяс', to: '/money' })
+    expect(d).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата · Ильяс', to: '/month' })
     expect(await screen(A.pinia, Statements, '/week')).toContain('К плану месяца')
 
     // Партнёр — пока октябрьская Ильяса не разложена: её не раскладывает и о ней не спрашивается
@@ -978,7 +978,7 @@ describe('e2e / B2C Блок 3 — часть 7 (возврат приёмки �
     for (const day of ['2026-09-13', '2026-09-27']) {
       at(`${day}T07:00:00Z`)
       // Зарплата августа — карточка ведёт в план августа, где её и откладывают (не текущий месяц).
-      expect(await decision(A)).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата · Ильяс', to: '/money?month=2026-08' })
+      expect(await decision(A)).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата · Ильяс', to: '/month?month=2026-08' })
       const week = await screen(A.pinia, Statements, '/week')
       expect(week).toContain('К плану месяца')
       expect(week).not.toContain('Пришла зарплата Ильяс?')
@@ -1209,7 +1209,7 @@ describe('e2e / B2C Блок 3 — часть 9 (четвёртая приёмк
           expect(salaryButtons(moneyHtml), `${day}: «Деньги»`).toEqual(['Пришла зарплата'])
         } else {
           // Сентябрьская не отложена: в октябре карточка ведёт в план сентября.
-          expect(home.shown, `${day}: «Неделя»`).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата · Ильяс', to: now.key === '2026-09' ? '/money' : '/money?month=2026-09' })
+          expect(home.shown, `${day}: «Неделя»`).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата · Ильяс', to: now.key === '2026-09' ? '/month' : '/month?month=2026-09' })
           expect(text(week), `${day}: «Неделя»`).toContain('К плану месяца')
           expect(text(week), `${day}: «Неделя»`).not.toContain('Пришла зарплата Ильяс?')
           expect(salaryButtons(moneyHtml), `${day}: «Деньги»`).toEqual([])

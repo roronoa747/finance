@@ -260,7 +260,7 @@ describe('e2e / B2C Блок 14 — план месяца на двух теле
     useFinanceStore().finishSetup()
     for (const old of ['/week/breakdown?from=salary&person=a&period=2026-10', '/week/order', '/week/salary?from=freed', '/ritual?from=rest&amount=1&period=2026-09']) {
       await router.push(old)
-      expect(router.currentRoute.value.fullPath).toBe('/money')
+      expect(router.currentRoute.value.fullPath).toBe('/month')
     }
   })
 

@@ -18,6 +18,7 @@ import SalaryRow from '@/components/SalaryRow.vue'
 import SalaryExchange from '@/components/SalaryExchange.vue'
 import CategoryChips from '@/components/CategoryChips.vue'
 import UnknownBatch from '@/components/UnknownBatch.vue'
+import PlanSwitch from '@/components/plan/PlanSwitch.vue'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
@@ -280,6 +281,7 @@ onMounted(() => {
 
 <template>
   <div class="flex flex-col gap-3.5 pt-1 text-left">
+    <PlanSwitch v-if="!store.draft" view="week" />
     <p v-if="auth.isDemo" class="px-1 text-[12px] text-ink-3">демо: только на этом телефоне</p>
 
     <!-- РАЗБОР (g2 «Разбор — предпросмотр»): сводка → решения по одному → «Отправить». Банк и период — в шапке. -->

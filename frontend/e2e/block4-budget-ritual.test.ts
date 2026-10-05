@@ -161,7 +161,7 @@ describe('e2e / block-4 — Сквозной сценарий бюджета («
     // 8. Освободившиеся деньги (бывший /ritual → разбор → план месяца, Блок 14, Р-86):
     // А) Нет запланированного снижения — карточки в плане нет
     await router.push('/week/salary')
-    expect(router.currentRoute.value.path).toBe('/money')
+    expect(router.currentRoute.value.path).toBe('/month')
 
     const appRitualEmpty = createSSRApp(Money)
     appRitualEmpty.use(router)

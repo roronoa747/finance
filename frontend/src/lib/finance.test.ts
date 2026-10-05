@@ -2651,11 +2651,11 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(q[2].actions.primary).toBeUndefined()
       expect(q[2].groups!.map((g) => g.label)).toEqual(['ИП Абенова', 'ИП Ким', 'Kiosk'])
       expect(q[3]).toMatchObject({ kind: 'keep', ...keepCard(sub, base.goals, [stmt], end), to: null, obligation: { id: 'nf' } })
-      expect(q[4]).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата · Ильяс', to: '/money', actions: { primary: 'К плану месяца', ghost: 'Потом' }, amount: 700_000 })
+      expect(q[4]).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата · Ильяс', to: '/month', actions: { primary: 'К плану месяца', ghost: 'Потом' }, amount: 700_000 })
       // «Освободится» — сумма та же, что у карточки плана (`freedChange().monthly`); вход — план месяца (Р-86).
       const freed = freedChange(liveObligations(state.obligations), '2026-09')!
       expect(freedQuestion(freed)).toBe(`Освободится ${money(40_000)} в месяц`)
-      expect(q[5]).toMatchObject({ question: freedQuestion(freed), meta: 'Квартира · с ноября', to: '/money', actions: { primary: 'К плану месяца', ghost: 'Потом' } })
+      expect(q[5]).toMatchObject({ question: freedQuestion(freed), meta: 'Квартира · с ноября', to: '/month', actions: { primary: 'К плану месяца', ghost: 'Потом' } })
       expect(freed.monthly).toBe(40_000)
       expect(q[6]).toMatchObject({ ...monthEndCard('2026-09'), to: null })
     })
@@ -2714,7 +2714,7 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       // Раньше «пришла?», шагов и подписок; после сопоставлений (их «Да, зарплата» и ведёт сюда).
       expect(first(paid(stmt('a', '2026-09')), { me: 'a', now })).toMatchObject({
         kind: 'allocate', question: 'Пришла зарплата · Ильяс', meta: '', amount: 700_000,
-        to: '/money', actions: { primary: 'К плану месяца', ghost: 'Потом' },
+        to: '/month', actions: { primary: 'К плану месяца', ghost: 'Потом' },
       })
       expect(first(paid(stmt('a', '2026-09')), { me: 'a', now, matches: [candidate('salary', 'a')] })?.kind).toBe('match')
 
@@ -2756,7 +2756,7 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(kinds(decisionQueue(state, { me: 'b', now: late, answeredMonthEnd: '2026-09' }))).toEqual([])
       // Цель платит b — карточка есть и ведёт на план.
       const own = { ...state, goals: base.goals.map((g) => ({ ...g, payer: 'b' as const })) }
-      expect(first(own, { me: 'b', now: late, answeredMonthEnd: '2026-09' })).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата · Дана', to: '/money' })
+      expect(first(own, { me: 'b', now: late, answeredMonthEnd: '2026-09' })).toMatchObject({ kind: 'allocate', question: 'Пришла зарплата · Дана', to: '/month' })
     })
 
     it('возврат приёмки 2 п. 3: неразложенная августовская из выписки — «разложить?» весь сентябрь, кроме дней «Пришла?» (7–10-е при дне 10); после дня зарплаты не теряется', () => {
@@ -3272,7 +3272,7 @@ describe('B2C-89: карточки «Недели» ведут в план ме�
 
   it('«Пришла зарплата · <имя>»: сумма из отметки, одна кнопка — «К плану месяца» → /money', () => {
     const d = q({ ...planFamilyDoc(), payments: [salary()] })
-    expect(d).toMatchObject({ question: 'Пришла зарплата · Ильяс', to: '/money', actions: { primary: 'К плану месяца', ghost: 'Потом' }, amount: 700_000 })
+    expect(d).toMatchObject({ question: 'Пришла зарплата · Ильяс', to: '/month', actions: { primary: 'К плану месяца', ghost: 'Потом' }, amount: 700_000 })
   })
 
   it('отложено по плану (запись месяца любого вида, и старого разбора) — карточки нет', () => {

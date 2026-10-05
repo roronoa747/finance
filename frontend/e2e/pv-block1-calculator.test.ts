@@ -116,7 +116,7 @@ const column = (title: string, savings: number, debt: number, interest: number, 
   it('PV-02: калькулятор — семь элементов и числа React до тенге на каждом переключении', async () => {
     const A = await phone(server)
 
-    const capital = await screen(A.pinia, Money, '/money/plan')
+    const capital = await screen(A.pinia, Money, '/money/debts')
     // Текст подсказки открывается по «?» — он проверен в браузере, в SSR она закрыта.
     expect(capital).toContain('Одинаковые траты, разный порядок')
     expect(capital).toContain('Горизонт')
@@ -179,7 +179,7 @@ const column = (title: string, savings: number, debt: number, interest: number, 
       expect(ritual).toContain('Банк')
       expect(ritual).not.toContain('Кредитка')
       // (прежний Ритуал печатал «12 платежей, переплата» — расчёт остался в калькуляторе ниже)
-      const capital = await screen(P.pinia, Money, '/money/plan')
+      const capital = await screen(P.pinia, Money, '/money/debts')
       // Закрытый досрочкой долг платежа не ждёт — в «Платежах» его нет (B2C-42); в калькулятор он не входит:
       // подушка 332 000, выигрыш 48 987.
       expect(await screen(P.pinia, Money, '/money')).not.toContain('Кредитка')

@@ -4181,7 +4181,7 @@ export function decisionQueue(
       question: `Пришла зарплата · ${person.name}`,
       meta: '',
       // План того месяца, чья зарплата: пришла 1-го или подтверждена по выписке позже — не текущий месяц.
-      to: period === now.key ? '/money' : `/money?month=${period}`,
+      to: period === now.key ? '/month' : `/month?month=${period}`,
       actions: { primary: 'К плану месяца', ghost: 'Потом' },
       salary: { person, period },
       amount: paidTenge(state, person.id, period, record),
@@ -4199,7 +4199,7 @@ export function decisionQueue(
       key: `freed:${freed.o.id}:${freed.change.from}`,
       question: freedQuestion(freed),
       meta: `${freed.o.name} · с ${monthFrom(freed.change.from, false)}`,
-      to: '/money',
+      to: '/month',
       actions: { primary: 'К плану месяца', ghost: 'Потом' },
       freed,
     })

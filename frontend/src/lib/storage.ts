@@ -68,3 +68,12 @@ export function writeMonthEnd(key: string) {
     console.error(`Ошибка записи ${MONTH_END_KEY}:`, e)
   }
 }
+
+/** Вид вкладки «План» — «Неделя» или «Месяц» (Р-99): выбор на устройстве, как тема; выход его не стирает. */
+export const PLAN_VIEW_KEY = 'ff_plan_view'
+export type PlanView = 'week' | 'month'
+
+/** Последний выбранный вид «Плана»; пусто, мусор или хранилище недоступно — «Неделя». */
+export const readPlanView = (): PlanView => (readStorage<unknown>(PLAN_VIEW_KEY, 'week') === 'month' ? 'month' : 'week')
+
+export const writePlanView = (view: PlanView) => writeStorage(PLAN_VIEW_KEY, view)

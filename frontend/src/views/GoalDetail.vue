@@ -370,11 +370,11 @@ function share() {
     <Callout v-if="paused" title="На паузе ради плана">
       Взнос {{ money(goal.monthly) }} идёт в досрочку самого дорогого долга — так семья отдаст банку
       меньше. Цель возобновится сама, когда долги с процентами закроются, или когда вы отмените план.
-      <RouterLink to="/money/plan" class="font-medium text-brand">Открыть план</RouterLink>
+      <RouterLink to="/money/debts" class="font-medium text-brand">Открыть план</RouterLink>
     </Callout>
     <Callout v-else-if="planCushion" tone="ok" title="Подушка плана: взносы продолжаются">
       Пока в ней меньше месяца обязательных списаний, шаг плана — пополнить её.
-      <RouterLink to="/money/plan" class="font-medium text-brand">Открыть план</RouterLink>
+      <RouterLink to="/money/debts" class="font-medium text-brand">Открыть план</RouterLink>
     </Callout>
 
     <!-- Взнос полем, «Снять», расчёты и график — за «Подробнее», по умолчанию свёрнуты (правило 12; в макете g4 их нет) -->

@@ -291,7 +291,7 @@ describe('PV-02: калькулятор в Капитале (SSR)', () => {
     store.applyPrepayment(card, 'a', { amount: 300_000, mode: 'term', accountId: store.accounts[0].id })
     expect(store.credits[0].principal).toBe(0)
 
-    const html = await renderScreen(Money, '/money/plan')
+    const html = await renderScreen(Money, '/money/debts')
     expect(html).toContain('Одинаковые траты, разный порядок')
     expect(html).toContain('Горизонт')
     const debts = [{ principal: 1_000_000, annualRate: 0.18, payment: 91_680 }]
@@ -537,14 +537,14 @@ describe('PV-10: модалка кредита и калькулятор дос�
     expect(html).toContain('24-го · ставку уточните')
     expect(html).not.toContain('без процентов')
     expect(html).not.toContain('переплата')
-    const plan = await render('/money/plan')
+    const plan = await render('/money/debts')
     expect(plan.slice(plan.indexOf('Самая дорогая ставка'))).toContain('Ставку «Оплата Kaspi Кредита» уточните — тогда сравним.')
 
     // «Копить или гасить»: долг без ставки — не беспроцентный.
     const inputs = strategyInputs({ credits: store.credits, goals: [], obligations: [], key: '2026-09', kept: [], cushion: false, useSaved: false })
     expect(inputs.interestFree).toEqual([])
     expect(inputs.unknownRate.map((c) => c.id)).toEqual([id])
-    const calc = await render('/money/plan')
+    const calc = await render('/money/debts')
     expect(calc).not.toContain('Беспроцентные долги')
     expect(calc).toContain('Ставку «Оплата Kaspi Кредита» уточните — пока считаем без неё.')
 
@@ -1150,13 +1150,13 @@ describe('PV-16: план и досрочка шага — квадрат «Пл
     const store = useFinanceStore()
     store.setHouseholdDoc(planFamilyDoc(), 1)
     useAuthStore().setAuthData(authAs('viewer', 'b'))
-    const viewer = await renderScreen(Money, '/money/plan')
+    const viewer = await renderScreen(Money, '/money/debts')
     expect(viewer).toContain('Подушка — какая цель?')
     expect(viewer).not.toMatch(choice)
 
     useAuthStore().setAuthData(authAs('member'))
-    expect(await renderScreen(Money, '/money/plan')).toMatch(choice)
-    await renderScreen(Money, '/money/plan', undefined, [
+    expect(await renderScreen(Money, '/money/debts')).toMatch(choice)
+    await renderScreen(Money, '/money/debts', undefined, [
       screenMixin({ cushion: false, useSaved: true, cushionGoalId: 'cushion' }, (s) => (s.choose as () => void)()),
     ])
     const plan = store.activePlan!
@@ -1171,14 +1171,14 @@ describe('PV-16: план и досрочка шага — квадрат «Пл
   it('«Изменить режим» — окно досрочки разово на сумму шага; запись с id плана, «снизить платёж» — шаг внесён', async () => {
     useAuthStore().setAuthData(authAs('member'))
     const store = family()
-    const html = await renderScreen(Money, '/money/plan', undefined, [
+    const html = await renderScreen(Money, '/money/debts', undefined, [
       screenMixin({}, (s) => (s.changeMode as () => void)()),
     ])
     expect(html).toContain(`Шаг плана — ${money(100_000)}.`)
     expect(html).toContain(`value="${plain(100_000)}"`)
     expect(html).toContain('Применить к кредиту')
 
-    await renderScreen(Money, '/money/plan', undefined, [
+    await renderScreen(Money, '/money/debts', undefined, [
       screenMixin({}, (s) => (s.changeMode as () => void)()),
       screenMixin({ applyMode: 'payment', applyAccount: 'card' }, (s) => (s.applyPrepay as () => void)()),
     ])
@@ -1192,7 +1192,7 @@ describe('PV-16: план и досрочка шага — квадрат «Пл
     useAuthStore().setAuthData(authAs('member'))
     const store = family()
     // Одно и то же окно: применили, сняли, передумали насчёт режима (Р-10) и применили снова.
-    await renderScreen(Money, '/money/plan', undefined, [
+    await renderScreen(Money, '/money/debts', undefined, [
       screenMixin({}, (s) => (s.changeMode as () => void)()),
       screenMixin({ applyAccount: 'card' }, (s) => {
         const apply = s.applyPrepay as () => void
@@ -1210,7 +1210,7 @@ describe('PV-16: план и досрочка шага — квадрат «Пл
     store.removePrepayment(again[0].id)
 
     // Окно открыто, шаг вносит партнёр — «Применить» пишет обычную досрочку.
-    await renderScreen(Money, '/money/plan', undefined, [
+    await renderScreen(Money, '/money/debts', undefined, [
       screenMixin({}, (s) => (s.changeMode as () => void)()),
       screenMixin({ applyAccount: 'card' }, (s) => {
         const apply = s.applyPrepay as () => void
@@ -1226,7 +1226,7 @@ describe('PV-16: план и досрочка шага — квадрат «Пл
   it('шаг плана не подставляется в окно досрочки другого кредита', async () => {
     useAuthStore().setAuthData(authAs('member'))
     const store = family()
-    const html = await renderScreen(Money, '/money/plan', undefined, [
+    const html = await renderScreen(Money, '/money/debts', undefined, [
       screenMixin({ payoffPlan: { id: 'plan', amount: 100_000, creditId: 'cc' }, payoffCreditId: 'loan' }),
       screenMixin({ payoffMode: 'once', payoffAmount: '50 000', applyAccount: 'card' }, (s) => (s.applyPrepay as () => void)()),
     ])

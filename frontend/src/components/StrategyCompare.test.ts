@@ -252,7 +252,7 @@ describe('PV-15: «Выбрать этот план» в калькулятор�
     const html = await render({ plan })
     expect(text(html)).toContain('План выбран в сентябре 2026')
     expect(text(html)).not.toContain('шаг этого месяца')
-    expect(html).not.toContain('href="/money/plan"')
+    expect(html).not.toContain('href="/money/debts"')
     expect(html).not.toMatch(/>\s*Выбрать этот план\s*</)
     expect(html).not.toContain('type="radio"')
   })

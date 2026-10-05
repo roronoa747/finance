@@ -33,7 +33,7 @@ const authStore = useAuthStore()
 const ops = useOperationsStore()
 const finance = useFinanceStore()
 
-const square = computed(() => (route.params.square === 'plan' || route.params.square === 'history' ? route.params.square : 'capital'))
+const square = computed(() => (route.params.square === 'debts' || route.params.square === 'history' ? route.params.square : 'capital'))
 const key = computed(() => monthKey())
 
 /* ---------- месяц: этот — план, прошлые — сводкой ---------- */
@@ -108,7 +108,7 @@ onMounted(() => void ops.loadUploads())
           <CapitalLists />
         </template>
 
-        <PlanSquare v-else-if="square === 'plan'" />
+        <PlanSquare v-else-if="square === 'debts'" />
         <HistorySquare v-else />
       </div>
     </details>

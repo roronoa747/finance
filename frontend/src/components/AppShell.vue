@@ -17,6 +17,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
 import { monthKey, MONTHS_NOM, parseMonthKey, weekKey, weekRangeLabel } from '@/lib/dates'
+import { readPlanView } from '@/lib/storage'
 import { liveGoals, weekPicture, weekTag } from '@/lib/finance'
 import SyncBadge from '@/components/SyncBadge.vue'
 import Avatar from '@/components/kit/Avatar.vue'
@@ -28,7 +29,7 @@ import Tabs from '@/components/kit/Tabs.vue'
 /**
  * Оболочка (DESIGN.md §2, §5; B2C-13): шапка `.topbar` — заголовок экрана 30 (системный, пивот 3) с
  * подписью, аватары участников (точка при «не сошлось» — `SyncBadge` compact), шестерёнка →
- * `/settings`; капсула вкладок «Мечты · Неделя · Деньги» и «+»; лист «+» на `Sheet` — шесть
+ * `/settings`; капсула вкладок «Мечты · План · Деньги» и «+»; лист «+» на `Sheet` — шесть
  * действий; у viewer «+» нет вовсе (ТЗ B2C-13 п. 3: лист без действий правки — а добавить
  * покупку viewer тоже не может, критик Блока 3). «Советника» нет.
  *
@@ -69,7 +70,7 @@ const draftSub = computed(() => {
 })
 
 /** Вкладки — корни (у «Денег» — все три квадрата, пивот 3); остальное — вложенные экраны со стрелкой «назад». */
-const ROOTS = ['/', '/week', '/money', '/money/plan', '/money/history']
+const ROOTS = ['/', '/week', '/month', '/money', '/money/debts', '/money/history']
 // «Разбор» выписки живёт на /week, но корнем не считается: «назад» слева, как в g2 (хвост критика Б9).
 const isRoot = computed(() => ROOTS.includes(route.path) && !(route.path === '/week' && !!ops.draft))
 /** Экраны-потоки без нижней навигации (в макетах — без вкладок): цель, желания, настройки. */
@@ -91,7 +92,8 @@ function goBack() {
 const header = computed<{ title: string; sub?: string }>(() => {
   const p = route.path
   if (p === '/') return { title: 'Мечты', sub: `${monthName.value} · ${names.value}` }
-  if (p.startsWith('/week')) return ops.draft ? { title: 'Разбор', sub: draftSub.value } : { title: 'Неделя', sub: weekSub.value }
+  if (p.startsWith('/week')) return ops.draft ? { title: 'Разбор', sub: draftSub.value } : { title: 'План', sub: weekSub.value }
+  if (p === '/month') return { title: 'План', sub: names.value }
   // «Деньги» — один экран с тремя квадратами (пивот 3, Р-31): шапка одна на все.
   if (p === '/money' || p.startsWith('/money/')) return { title: 'Деньги', sub: `${monthName.value} · ${names.value}` }
   if (p === '/goals/new') return { title: 'Новая мечта' }
@@ -114,9 +116,15 @@ const header = computed<{ title: string; sub?: string }>(() => {
   return { title: 'Family Finance' }
 })
 
+/** Вкладка «План» открывает последний выбранный вид (Р-99, на устройстве); viewer — всегда «Месяц» (Р-104). */
+const planTo = computed(() => {
+  void route.path // вид запоминает переключатель и тут же меняет адрес — перечитываем на каждом переходе
+  return authStore.isViewer || readPlanView() === 'month' ? '/month' : '/week'
+})
+
 const tabs = computed(() => [
   { to: '/', label: 'Мечты', icon: PhHeart, active: route.path === '/' || route.path.startsWith('/goals') || route.path === '/wishes' || route.path.startsWith('/people/') },
-  { to: '/week', label: 'Неделя', icon: PhCalendarBlank, active: route.path.startsWith('/week') },
+  { to: planTo.value, label: 'План', icon: PhCalendarBlank, active: route.path.startsWith('/week') || route.path === '/month' },
   { to: '/money', label: 'Деньги', icon: PhWallet, active: route.path.startsWith('/money') },
 ])
 

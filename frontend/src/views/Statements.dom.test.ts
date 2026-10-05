@@ -146,7 +146,7 @@ describe('возврат приёмки п. 2 · B2C-58: зарплата, от�
     expect(brandButtons()).toEqual(['К плану месяца'])
     await tap('К плану месяца')
     // Переход лениво грузит чанк «Денег» — под нагрузкой общего прогона дольше секунды.
-    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/money'), { timeout: 10_000 })
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/month'), { timeout: 10_000 })
 
     // Отложено по плану (или старый разбор) — карточки нет.
     app?.unmount()
@@ -203,7 +203,7 @@ describe('возврат приёмки 2 п. 3, 4: одна карточка о
     expect(mine).toEqual([expect.objectContaining({ kind: 'salary', targetId: 'a', amount: 500_000, accountId: null })])
     expect(mine[0].opId).toBeUndefined()
     // Переход лениво грузит чанк «Денег» — под нагрузкой общего прогона дольше секунды.
-    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/money'), { timeout: 10_000 })
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/month'), { timeout: 10_000 })
   })
 
   it('B2C-49: сопоставление раньше «Пришла зарплата?» — на экране одно решение, «1 из 2», брендовая одна; ответ → «2 из 2» — зарплата', async () => {

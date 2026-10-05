@@ -13,8 +13,10 @@ import Wishes from '@/views/Wishes.vue'
 // Редкие экраны — отдельными чанками (Н-9 ревью Блока 3): главный чанк без них меньше 500 kB.
 // Предкэш PWA (`generateSW`) берёт все чанки — офлайн они открываются так же.
 const GoalDetail = () => import('@/views/GoalDetail.vue')
-// «Деньги» (пивот 3, Р-31): один экран — сводка и квадраты Капитал · План · История — одним чанком.
+// «Деньги» (пивот 3, Р-31): один экран — квадраты Капитал · Долги · История — одним чанком.
 const Money = () => import('@/views/Money.vue')
+// «План · Месяц» (Блок 15, Р-89): план месяца семьи — своим чанком.
+const Month = () => import('@/views/Month.vue')
 // Выписки (B2C-07): pdf.js грузится ещё позже — только когда выбрали файл.
 const Statements = () => import('@/views/Statements.vue')
 // Новая мечта (B2C-18): шаблоны с картинками — редкий экран, отдельным чанком.
@@ -24,23 +26,25 @@ const Start = () => import('@/views/Start.vue')
 const MyCircle = () => import('@/views/MyCircle.vue')
 
 /**
- * Карта маршрутов Блока 3 (DESIGN.md §2, B2C-13): вкладки «Мечты» `/` · «Неделя» `/week` ·
- * «Деньги» `/money`, `/settings`. «Деньги» — один экран (пивот 3, Р-31): квадраты Капитал `/money`,
- * План `/money/plan`, История `/money/history`. Старые адреса установленных PWA и ссылок —
- * редиректы с сохранением query (`/money/capital?credit=x` → `/money?credit=x`; счёт и вклад
- * `/money/capital/:id` → `/money?account=:id`).
- * Раскладка, ритуал, разбор кольцом и «Ваш порядок» с любыми параметрами — план месяца «Денег» без них (Блок 14,
- * Р-78): отдельного экрана раскладки больше нет.
+ * Карта маршрутов (DESIGN.md §2, B2C-13; Блок 15, Р-89, Р-103): вкладки «Мечты» `/` · «План» — `/week`
+ * («Неделя») и `/month` («Месяц») · «Деньги» `/money`, `/settings`. «Деньги» — один экран (пивот 3, Р-31):
+ * квадраты Капитал `/money`, Долги `/money/debts`, История `/money/history`. Старые адреса установленных PWA и
+ * ссылок — редиректы с сохранением query (`/money/capital?credit=x` → `/money?credit=x`; счёт и вклад
+ * `/money/capital/:id` → `/money?account=:id`; `/money/plan` и `/plan` → `/money/debts`;
+ * `/money?month=…` → `/month?month=…`).
+ * Раскладка, ритуал, разбор кольцом и «Ваш порядок» — «План · Месяц» (Р-78, Р-103): из параметров остаётся
+ * только месяц (`month`), отдельного экрана раскладки нет.
  */
-const toPlan = (): RouteLocationRaw => ({ path: '/money', query: {} })
+const monthQuery = (q: Record<string, unknown>) => (typeof q.month === 'string' ? { month: q.month } : {})
+const toPlan = (to: { query: Record<string, unknown> }): RouteLocationRaw => ({ path: '/month', query: monthQuery(to.query) })
 
 /**
  * Бюджет и Капитал до пивота 3 — квадрат «Капитал» с теми же ключами окон; закладка калькулятора
- * «Копить или гасить» (`?advice=strategy`) — квадрат «План», где он теперь живёт (B2C-43).
+ * «Копить или гасить» (`?advice=strategy`) — квадрат «Долги», где он теперь живёт (B2C-43, Р-91).
  */
 const capitalRedirect = (to: { query: Record<string, unknown> }): RouteLocationRaw => {
   const { advice, ...query } = to.query as Record<string, string>
-  return advice === 'strategy' ? { path: '/money/plan', query } : { path: '/money', query }
+  return advice === 'strategy' ? { path: '/money/debts', query } : { path: '/money', query }
 }
 
 /** Экран счёта или вклада — лист счёта в «Деньгах» (пивот 3). */
@@ -70,13 +74,23 @@ export const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true },
     children: [
       { path: '', name: 'dreams', component: Dreams },
-      { path: 'week', name: 'week', component: Statements },
-      // Раскладка, разбор и «Ваш порядок» — старые закладки и ссылки PWA: план месяца (Р-78).
+      // «План» (Р-89): «Неделя» — только свои траты, viewer уходит в «Месяц» (Р-104).
+      { path: 'week', name: 'week', component: Statements, meta: { memberOnly: true, viewerTo: '/month' } },
+      { path: 'month', name: 'month', component: Month },
+      // Раскладка, разбор и «Ваш порядок» — старые закладки и ссылки PWA: план месяца (Р-78, Р-103).
       { path: 'week/salary', redirect: toPlan },
       { path: 'week/order', redirect: toPlan },
       { path: 'week/breakdown', redirect: toPlan },
       // Квадрат — по адресу; переключение — `router.replace` (назад — на прошлую вкладку).
-      { path: 'money/:square(plan|history)?', name: 'money', component: Money },
+      // Закладка месяца плана (`/money?month=`, Блок 14) — «План · Месяц» (Р-103).
+      {
+        path: 'money/:square(debts|history)?',
+        name: 'money',
+        component: Money,
+        beforeEnter: (to) => (typeof to.query.month === 'string' ? { path: '/month', query: monthQuery(to.query) } : true),
+      },
+      // Квадрат «План» переименован в «Долги» (Р-91).
+      { path: 'money/plan', redirect: (to) => ({ path: '/money/debts', query: to.query }) },
       // Бюджет и Капитал до пивота 3 — теперь квадрат «Капитал»; окна — те же ключи query.
       { path: 'money/budget', redirect: (to) => ({ path: '/money', query: to.query }) },
       { path: 'money/capital', redirect: capitalRedirect },
@@ -97,7 +111,7 @@ export const routes: RouteRecordRaw[] = [
       { path: 'capital/:id', redirect: accountRedirect },
       { path: 'goals', redirect: '/' },
       { path: 'ritual', redirect: toPlan },
-      { path: 'plan', redirect: '/money/plan' },
+      { path: 'plan', redirect: '/money/debts' },
       { path: 'statements', redirect: '/week' },
     ],
   },

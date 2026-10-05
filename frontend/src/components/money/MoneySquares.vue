@@ -34,7 +34,7 @@ const opsCount = computed(() => {
 
 const squares = computed(() => [
   { to: '/money', title: 'Капитал', note: plain(worth.value) },
-  { to: '/money/plan', title: 'План', note: planNote.value },
+  { to: '/money/debts', title: 'План', note: planNote.value },
   {
     to: '/money/history',
     title: 'История',

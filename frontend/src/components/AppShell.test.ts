@@ -44,10 +44,12 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
 
   it.each([
     ['/', 'Мечты'],
-    ['/week', 'Неделя'],
+    // «План» — одна вкладка на «Неделю» и «Месяц» (Р-89).
+    ['/week', 'План'],
+    ['/month', 'План'],
     ['/money', 'Деньги'],
     // «Деньги» — один экран с квадратами (пивот 3, Р-31): шапка одна на все три.
-    ['/money/plan', 'Деньги'],
+    ['/money/debts', 'Деньги'],
     ['/money/history', 'Деньги'],
     ['/goals/x', 'Цель'],
     ['/goals/new', 'Новая мечта'],
@@ -90,7 +92,7 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
 
   it('шапка по макетам (возврат смоука): «Деньги» — аватары без шестерёнки; «Неделя» — даты в подписи, без аватаров; вложенные — «назад» без аватаров', async () => {
     // Квадраты «Денег» — корни, как сама вкладка (пивот 3): подпись месяца, аватары, без «назад».
-    for (const path of ['/money', '/money/plan', '/money/history']) {
+    for (const path of ['/money', '/money/debts', '/money/history']) {
       const money = await renderScreen(AppShell, path)
       expect(money).toContain('Сентябрь · Ильяс и Дана')
       expect(money).toContain('href="/people/a"')
@@ -114,7 +116,7 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     expect(fresh).not.toContain('На что копим?')
   })
 
-  it('вкладки «Мечты · Неделя · Деньги» + «+»: активная — aria-current; экраны-потоки (цель, желания, настройки, раскладка) — без вкладок, как в макетах', async () => {
+  it('вкладки «Мечты · План · Деньги» + «+»: активная — aria-current; экраны-потоки (цель, желания, настройки, раскладка) — без вкладок, как в макетах', async () => {
     const active = async (path: string) => {
       const html = await renderScreen(AppShell, path)
       const nav = html.slice(html.indexOf('<nav'), html.indexOf('</nav>'))
@@ -122,8 +124,10 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
       return nav.match(/<a aria-current="page" href="([^"]+)"/)?.[1]
     }
     expect(await active('/')).toBe('/')
+    // «План» активен на обоих путях; ведёт на последний выбранный вид (пусто — «Неделя», Р-99).
     expect(await active('/week')).toBe('/week')
-    expect(await active('/money/plan')).toBe('/money')
+    expect(await active('/month')).toBe('/week')
+    expect(await active('/money/debts')).toBe('/money')
     expect(await active('/money/history')).toBe('/money')
     // Возврат смоука: в макетах g2/g4/g7 у цели, желаний и настроек нижней навигации нет — путь назад в шапке.
     for (const path of ['/goals/x', '/people/a', '/wishes', '/settings']) {
@@ -133,7 +137,7 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     }
     const html = await renderScreen(AppShell, '/')
     expect(html).toContain('>Мечты</span>')
-    expect(html).toContain('>Неделя</span>')
+    expect(html).toContain('>План</span>')
     expect(html).toContain('>Деньги</span>')
     expect(html).toContain('aria-label="Добавить"')
     expect(html).not.toMatch(/Обзор|Бюджет<\/span>|Капитал<\/span>/)

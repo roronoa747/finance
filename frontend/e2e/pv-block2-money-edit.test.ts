@@ -581,7 +581,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
 
     /** «Проценты банку по всем долгам N в месяц» — квадрат «План» (B2C-43; было «из них проценты банку» Бюджета). */
     const interest = async (pinia: Pinia) => {
-      const html = await page(pinia, Money, '/money/plan')
+      const html = await page(pinia, Money, '/money/debts')
       const at = html.indexOf('Проценты банку по всем долгам')
       return html.slice(at, html.indexOf('</div>', at))
     }

@@ -89,7 +89,7 @@ function openMark(amount: number, account: string | null | undefined) {
 
 /** После отметки — план месяца: «Отложить по плану» этой зарплаты (Р-78). */
 function toAllocation() {
-  void router.push('/money')
+  void router.push('/month')
 }
 
 function mark(amount: number, accountId: string | null | undefined) {

@@ -206,10 +206,10 @@ describe('PV-01 — закрытый кредит вне бюджета', () => 
     ]
     // 300 000 × 0,24 / 12 = 6 000; 1 000 000 × 0,18 / 12 = 15 000.
     expect(budgetInterest(store.credits)).toBe(21_000)
-    expect(await render('/money/plan')).toContain(`Проценты банку по всем долгам ${money(21_000)} в месяц`)
+    expect(await render('/money/debts')).toContain(`Проценты банку по всем долгам ${money(21_000)} в месяц`)
 
     store.applyPrepayment('cr-a', 'a', { amount: 300_000, mode: 'term', accountId: 'card' })
-    const plan = await render('/money/plan')
+    const plan = await render('/money/debts')
     expect(plan).toContain(`Проценты банку по всем долгам ${money(15_000)} в месяц`)
     expect(plan).not.toContain(money(21_000))
   })

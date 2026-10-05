@@ -41,7 +41,7 @@ describe('B2C-58: старой раскладки в коде нет', () => {
 
 /**
  * Блок 14 (B2C-89, Р-78): кольцо разбора и «Ваш порядок» убраны — в коде `src/` нет их экранов, пути и расчёта;
- * старые адреса `/week/breakdown`, `/week/order`, `/week/salary`, `/ritual` — только редиректами на `/money`.
+ * старые адреса `/week/breakdown`, `/week/order`, `/week/salary`, `/ritual` — только редиректами на «План · Месяц» (`toPlan`, Р-103).
  */
 describe('B2C-89: кольца разбора и «Вашего порядка» в коде нет', () => {
   const grep = (re: RegExp) =>
@@ -58,7 +58,7 @@ describe('B2C-89: кольца разбора и «Вашего порядка»
     expect(hits.map((x) => `${x.rel}:${x.n} ${x.line}`)).toEqual([])
   })
 
-  it('старые адреса — только редиректами на /money в router/index.ts', () => {
+  it('старые адреса — только редиректами (toPlan → /month) в router/index.ts', () => {
     const hits = grep(/week\/(breakdown|order|salary)|path: 'ritual'/)
     expect(hits.every((x) => x.rel === 'router/index.ts' && /redirect: toPlan/.test(x.line))).toBe(true)
     expect(hits).toHaveLength(4)
