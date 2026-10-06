@@ -382,8 +382,8 @@ describe('views/Money.vue — финансовые показатели (рас�
         })
         store.addAccount({ name: 'Заначка', kind: 'cash', amount: 300_000 }, true)
         const html = lists(await renderScreen(Money, '/money'))
-        // 2 000 000 + 479 260 + 1 200 000 + 300 000 (личный тоже в капитале).
-        expect(html).toContain(`Счета ${money(3_979_260)}`)
+        // 2 000 000 + 479 260 + 1 200 000 + 300 000 (личный тоже в капитале) + цели вне счетов 650 000 (Р-109, Блок 16).
+        expect(html).toContain(`Счета ${money(4_629_260)}`)
         expect(html).toContain(`Kaspi Gold карта · общий ${money(2_000_000)}`)
         expect(html).toContain(`Доллары наличные · ${moneyIn(1_000, 'USD')} · общий ${money(479_260)}`)
         expect(html).toContain(`Депозит Kaspi 14 % · общий ${money(1_200_000)}`)
