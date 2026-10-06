@@ -3207,6 +3207,11 @@ export type SalaryLine = PlanIncome & {
   left: number
   /** Оклад месяца в валюте — у пришедшей строка обмена. */
   foreign: boolean
+  /**
+   * Сумма в валюте оклада — мини-подпись под тенге (владелец на снимках Б16): пришла — сколько пришло (`Payment.foreign`),
+   * ждём — оклад месяца в валюте. Тенговый оклад — null.
+   */
+  fx: { amount: number; currency: Currency } | null
   /** Когда отметили «Пришла» (`Payment.at`); null — не пришла. */
   at: string | null
   /** «Пришла» можно отметить сейчас (`salaryOpen`); своя ли строка — решает экран. */
@@ -3219,11 +3224,19 @@ export function monthSalaries(plan: MonthPlan, state: { people?: Person[]; payme
   return plan.income.byPerson.map((inc) => {
     const p = (state.people ?? []).find((x) => x.id === inc.person && !x.deletedAt)
     const record = paidFor(payments, 'salary', inc.person, plan.key)
+    const own = p ? salaryOf(p, plan.key) : null
+    const fx =
+      record?.foreign && record.currency && record.currency !== 'KZT'
+        ? { amount: record.foreign, currency: record.currency }
+        : !record && own && own.currency !== 'KZT'
+          ? { amount: own.amount, currency: own.currency }
+          : null
     return {
       ...inc,
       payday: p?.payday ?? 1,
       left: plan.byPerson.find((x) => x.person === inc.person)?.left ?? 0,
-      foreign: !!p && salaryOf(p, plan.key).currency !== 'KZT',
+      foreign: !!own && own.currency !== 'KZT',
+      fx,
       at: record?.at ?? null,
       open: !!p && !record && salaryOpen(p, payments, plan.key, now),
     }

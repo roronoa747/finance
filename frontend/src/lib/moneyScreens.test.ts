@@ -183,5 +183,21 @@ describe('monthSalaries — строки зарплат «Месяца» и «К
     const due = monthSalaries(plan, state, { day: 20, key: KEY })
     expect(due[1].open).toBe(true)
     expect(due.map((s) => s.left)).toEqual(plan.byPerson.map((p) => p.left))
+    // Тенговые оклады — без подписи в валюте.
+    expect(due.map((s) => s.fx)).toEqual([null, null])
+  })
+
+  it('оклад в евро — подпись в валюте: ждём — оклад месяца, пришла — сколько пришло', () => {
+    const eur: MonthPlanState = {
+      people: [{ id: 'a', name: 'Ильяс', salary: 750_000, payday: 6, updatedAt: T0, salaryVersions: [{ from: '2026-01', amount: 1_500, currency: 'EUR', rate: 506 }] }],
+      book: { EUR: { '2026-10-05': 507 } },
+      payments: [],
+    }
+    const waiting = monthSalaries(monthPlan(eur, { key: KEY, totals: [], spendCategories: [], uploads: [] }), eur, { day: 3, key: KEY })
+    expect(waiting[0].fx).toEqual({ amount: 1_500, currency: 'EUR' })
+    // Пришло 1 400 € (премия меньше) — подпись по отметке.
+    const came = { ...eur, payments: [pay('sa', { kind: 'salary', targetId: 'a', amount: 709_800, foreign: 1_400, currency: 'EUR', at: '2026-10-06T05:00:00.000Z' })] }
+    const lines = monthSalaries(monthPlan(came, { key: KEY, totals: [], spendCategories: [], uploads: [] }), came, { day: 7, key: KEY })
+    expect(lines[0]).toMatchObject({ came: true, foreign: true, fx: { amount: 1_400, currency: 'EUR' } })
   })
 })
