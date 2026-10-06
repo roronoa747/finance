@@ -1254,6 +1254,24 @@ export const netWorth = (accounts: Account[], credits: Credit[], goals: Goal[] =
   goalSavings(goals) -
   liveCredits(credits).reduce((a, c) => a + c.principal, 0);
 
+export type CapitalGoal = { goalId: string; name: string; amount: number; accountName: string | null }
+
+/**
+ * «Цели · N» в «Счетах» «Капитала» (Р-109): живые цели с накопленным. Цель со счётом (`accountId`) — с его
+ * именем: её деньги уже в остатке счёта, в `total` не входит (как в `goalSavings`, двойного счёта нет). `count` и
+ * `total` — цели вне счетов (макет: «Цели · 3 · 4 140 000» над четырьмя строками), так что
+ * итог «Счетов» (счета + `total`) − «Кредиты» = `netWorth`. Порядок: вне счетов, потом на счетах — по сумме.
+ */
+export function capitalGoals(goals: Goal[], accounts: Account[]): { count: number; total: number; items: CapitalGoal[] } {
+  const named = new Map(accounts.map((a) => [a.id, a.name]))
+  const items = liveGoals(goals)
+    .filter((g) => g.have > 0)
+    .map((g) => ({ goalId: g.id, name: g.name, amount: g.have, accountName: g.accountId ? (named.get(g.accountId) ?? 'счёт') : null }))
+    .sort((a, b) => Number(!!a.accountName) - Number(!!b.accountName) || b.amount - a.amount)
+  const outside = items.filter((g) => !g.accountName)
+  return { count: outside.length, total: amountTotal(outside), items }
+}
+
 /* ---------------- отметки оплат и остатки из них (RP-06) ---------------- */
 
 /** Что можно отметить по графику. Досрочка — не платёж графика, а отдельный взнос. */
@@ -2553,6 +2571,53 @@ export function planOutlook(plan: DebtPlan, state: PlanState, key: string) {
   }
 }
 
+export type DebtRow = {
+  creditId: string
+  name: string
+  /** Платёж в месяц по графику. */
+  payment: number
+  rate: number
+  rateUnknown: boolean
+  /** Месяц последнего платежа при нынешнем платеже (`creditOutlook`, как «до …» в «Кредитах»); null — не закрывается. */
+  endMonth: string | null
+  /** Остаток долга. */
+  left: number
+  /** Погашено с начала учёта, 0…1: тело из отметок / (остаток + оно); null — отметок с телом нет. */
+  paidShare: number | null
+}
+
+/**
+ * Экран «Долги» (Р-110): сумма остатков, «без долгов — к» и кредиты строками. `freeMonth` с активным планом
+ * «Сначала долги» — его прогноз (`planForecast`: последний долг с процентами) и графики беспроцентных (план их не
+ * гасит досрочно) — что позже; без плана — последний месяц закрытия по графикам. null — долгов нет или какой-то
+ * не закрывается. Исходной суммы кредита в документе нет — полоса считает от начала учёта. Кредиты — производные.
+ */
+export function debtsOverview(state: PlanState & { plans?: DebtPlan[] }, key: string): { total: number; freeMonth: string | null; rows: DebtRow[] } {
+  const credits = openCredits(state.credits ?? [])
+  const counted = countedPayments(state.payments ?? [])
+  const rows = credits.map((c): DebtRow => {
+    const out = creditOutlook(c)
+    const body = counted
+      .filter((p) => p.targetId === c.id && (p.kind === 'credit' || p.kind === 'prepay'))
+      .reduce((s, p) => s + (p.principal ?? 0), 0)
+    return {
+      creditId: c.id,
+      name: c.name,
+      payment: c.payment,
+      rate: c.annualRate,
+      rateUnknown: !!c.rateUnknown,
+      endMonth: out.closes ? addMonths(key, out.months) : null,
+      left: c.principal,
+      paidShare: body > 0 ? body / (c.principal + body) : null,
+    }
+  })
+  const plan = activePlan(state.plans)
+  const scheduled = plan ? rows.filter((r) => !(r.rate > 0)) : rows
+  const ends = [...scheduled.map((r) => r.endMonth), ...(plan ? [planForecast(plan, state, key).debtFreeMonth] : [])]
+  const freeMonth = !rows.length || ends.includes(null) ? null : (ends as string[]).sort().at(-1)!
+  return { total: openDebt(credits), freeMonth, rows }
+}
+
 /** Два прогона прогноза плана: «копим как сейчас» (`a`) и план (`b`) на нынешних остатках. */
 function planRuns(plan: DebtPlan, state: PlanState, key: string) {
   const credits = state.credits ?? []
@@ -3134,6 +3199,37 @@ export function monthPlan(state: MonthPlanState, ctx: MonthPlanCtx): MonthPlan {
   }
 }
 
+/** Строка зарплаты месяца (Р-97, Р-108): одна для «Месяца» и карточки «Зарплаты» «Капитала». */
+export type SalaryLine = PlanIncome & {
+  /** День зарплаты участника («ждём <дата>»). */
+  payday: number
+  /** «Хватает ли»: зарплата минус свои платежи, траты, цели и фонды (`byPerson.left`). */
+  left: number
+  /** Оклад месяца в валюте — у пришедшей строка обмена. */
+  foreign: boolean
+  /** Когда отметили «Пришла» (`Payment.at`); null — не пришла. */
+  at: string | null
+  /** «Пришла» можно отметить сейчас (`salaryOpen`); своя ли строка — решает экран. */
+  open: boolean
+}
+
+/** Строки зарплат месяца плана — из `monthPlan` и отметок; экраны их не собирают сами (Р-108). */
+export function monthSalaries(plan: MonthPlan, state: { people?: Person[]; payments?: Payment[] }, now = today()): SalaryLine[] {
+  const payments = state.payments ?? []
+  return plan.income.byPerson.map((inc) => {
+    const p = (state.people ?? []).find((x) => x.id === inc.person && !x.deletedAt)
+    const record = paidFor(payments, 'salary', inc.person, plan.key)
+    return {
+      ...inc,
+      payday: p?.payday ?? 1,
+      left: plan.byPerson.find((x) => x.person === inc.person)?.left ?? 0,
+      foreign: !!p && salaryOf(p, plan.key).currency !== 'KZT',
+      at: record?.at ?? null,
+      open: !!p && !record && salaryOpen(p, payments, plan.key, now),
+    }
+  })
+}
+
 /**
  * Подсказка «всё в долг — закроете к N» (Р-83): все цели и фонды выключены, весь свободный остаток месяца —
  * досрочкой в самый дорогой долг; тот же прогон, что у дат плана. null — долгов с процентами нет, остатка нет
@@ -3599,6 +3695,25 @@ export function monthPlanPast(
     goals,
     records: (state.allocations ?? []).filter((a) => !a.deletedAt && a.period === key).sort((a, b) => a.at.localeCompare(b.at)),
   }
+}
+
+/**
+ * Месяцы «Истории» (Р-111): от прошлого месяца назад, не раньше первого месяца данных (`historyStart` — свои
+ * операции, отметки, моменты, записи), не больше `max`. «осталось» и «+отложили» — `monthPlanPast`, одна функция со
+ * сводкой «Месяца» того же месяца.
+ */
+export function historyMonths(
+  state: MonthPlanState & { spendTotals?: SpendTotal[]; spendCategories?: SpendCategory[]; ops?: Operation[]; moments?: Moment[] },
+  key: string,
+  max = 12,
+): { key: string; left: number; put: number }[] {
+  const start = historyStart({ ops: state.ops ?? [], payments: state.payments, moments: state.moments, allocations: state.allocations })
+  const out: { key: string; left: number; put: number }[] = []
+  for (let m = addMonths(key, -1); start && m >= start && out.length < max; m = addMonths(m, -1)) {
+    const past = monthPlanPast(state, m)
+    out.push({ key: m, left: past.left, put: past.put })
+  }
+  return out
 }
 
 export type WeekPictureRow = {

@@ -12,16 +12,14 @@ import {
   lastAccountFor,
   liveSpendCategories,
   monthPlan,
+  monthSalaries,
   monthSubscriptions,
-  paidFor,
   pendingPuts,
   planExtras,
   planPutSaves,
   planPuts,
   putsLeft,
   queueStatus,
-  salaryOf,
-  salaryOpen,
   spendFact,
   type PlanDue,
   type PlanPut,
@@ -141,21 +139,13 @@ const sections = computed(() => [
 
 /* ---------- зарплаты: ✓ у суммы; нажатие строки — лист: «Пришла» у своей, «Изменить оклад» ---------- */
 const salaries = computed(() =>
-  plan.value.income.byPerson.map((inc) => {
-    const p = people.value.find((x) => x.id === inc.person)
-    const record = paidFor(finance.payments, 'salary', inc.person, props.monthKey)
-    const mine = canEdit.value && auth.slot === inc.person
-    return {
-      ...inc,
-      payday: p?.payday ?? 1,
-      left: plan.value.byPerson.find((x) => x.person === inc.person)?.left ?? 0,
-      foreign: !!p && salaryOf(p, props.monthKey).currency !== 'KZT',
-      cameAt: record ? atLabel(record.at) : '',
-      mine,
-      // Свою зарплату отмечает только сам участник (Р-13), когда её день настал или близко.
-      canMark: mine && !!p && !record && salaryOpen(p, finance.payments, props.monthKey),
-    }
-  }),
+  monthSalaries(plan.value, { people: finance.people, payments: finance.payments }).map((s) => ({
+    ...s,
+    cameAt: s.at ? atLabel(s.at) : '',
+    mine: canEdit.value && auth.slot === s.person,
+    // Свою зарплату отмечает только сам участник (Р-13), когда её день настал или близко.
+    canMark: canEdit.value && auth.slot === s.person && s.open,
+  })),
 )
 const signed = (v: number) => (v > 0 ? `+${plain(v)}` : plain(v))
 const salaryFor = ref<PersonId | null>(null)
