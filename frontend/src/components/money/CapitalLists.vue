@@ -353,7 +353,7 @@ watch(queryModalOpen, (open) => {
     @close="selectedCreditId = null"
     @payoff="(id) => { payoffCreditId = id; selectedCreditId = null }"
   />
-  <PayoffSheet :credit-id="payoffCreditId" :plan="null" @close="payoffCreditId = null" />
+  <PayoffSheet :credit-id="payoffCreditId" @close="payoffCreditId = null" />
   <ObligationSheet :obligation-id="selectedObligationId" @close="selectedObligationId = null" />
   <GroupSheets
     :group-id="selectedGroupId"

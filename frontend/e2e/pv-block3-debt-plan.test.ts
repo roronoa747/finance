@@ -1,17 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, type Pinia } from 'pinia'
 import { defaultSyncDoc } from '../src/stores/finance'
-import { activePlan, budgetAmounts, planForecast, planMonths, planOutlook, planStep } from '../src/lib/finance'
+import { activePlan, budgetAmounts, planMonths, planStep } from '../src/lib/finance'
 import { money } from '../src/lib/money'
 import type { Goal, Payment, SyncDoc } from '../src/types/finance'
 import GoalDetail from '../src/views/GoalDetail.vue'
 import Money from '../src/views/Money.vue'
 import Month from '../src/views/Month.vue'
-import { plain } from '../src/lib/money'
 import { useAuthStore } from '../src/stores/auth'
 import { authAs } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
-import { at, fakeServer, phone, screen, setOnline, type FakeServer } from './support/family'
+import { at, fakeServer, phone, screen, tapPutDebt, setOnline, type FakeServer } from './support/family'
 
 /** Цель на паузе ради плана — на экране цели: список целей теперь плитки «Мечт» без тега (B2C-18). */
 /** Квадрат «План» (пивот 3, B2C-43): план включён — переключатель «Сначала долги». */
@@ -169,7 +168,7 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
       const planB = await screen(B.pinia, Money, '/money/debts')
       expect(planB).toContain('Шаг октября')
       expect(planB).toContain(`${money(100_000)} досрочно`)
-      expect(planB).toMatch(/>\s*Шаг сделан\s*</)
+      expect(planB).not.toMatch(/>\s*Шаг сделан\s*</) // Блок 16 (Р-110): кнопки шага нет — «Отложил» в «Месяце»
       expect(planB).not.toContain('досрочки не было')
       const next = on(B).store.applyPlanStep('b')!
       expect(next).toMatchObject({ period: '2026-10', targetId: 'cc', accountId: 'card' })
@@ -232,8 +231,6 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
     }
     /** Кнопка с подписью (текст кнопки целиком). */
     const button = (label: string) => new RegExp(`>\\s*${label}\\s*<`)
-    /** Нажатие: обработчик того компонента экрана, у которого он есть. */
-    const press = (name: string) => screenMixin({}, (s) => (s[name] as () => void)())
     /** Живые досрочки по плану (любому) — шаг месяца один на семью. */
     const planPrepays = (payments: Payment[]) => payments.filter((p) => p.kind === 'prepay' && !p.deletedAt && !!p.planId)
 
@@ -255,13 +252,13 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
       expect(await screen(B.pinia, Money, '/money/debts')).toContain(`${money(100_000)} досрочно`)
       expect(budgetAmounts({ ...B.store.householdDoc, credits: B.store.credits }).d5).toBe(freeBefore)
 
-      // Кредитку A уже оплачивал с карты — «Внести по плану» на экране плана без листа счёта.
+      // Кредитку A уже оплачивал с карты — шаг «Отложил» у строки долга в «Месяце» без листа счёта (Блок 16, Р-110).
       on(A).store.markPaid('credit', 'cc', 'a', { accountId: 'card' })
       expect(planStep(plan, A.store.planState(), '2026-09')).toMatchObject({ kind: 'prepay', creditId: 'cc', amount: 100_000, applied: null })
       const ccBefore = A.store.credits.find((c) => c.id === 'cc')!.principal
       const cardBefore = A.store.accounts[0].amount
       at('2026-09-24T09:00:00Z')
-      await screen(A.pinia, Money, '/money/debts', undefined, [press('tap')])
+      await screen(A.pinia, Month, '/month', undefined, [tapPutDebt()])
       const steps = planPrepays(A.store.payments)
       expect(steps).toHaveLength(1)
       const rec = steps[0]
@@ -362,59 +359,6 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
       expect(await screen(V.pinia, Money, '/money/debts')).toContain(`внесено по плану · ${money(100_000)}`)
     })
 
-    it('«Изменить режим» → «снизить платёж» (Р-10): одна запись шага с planId; у B платёж кредитки ниже, шаг «внесено», прогноз от факта — не снимок', async () => {
-      const A = await phone(server)
-      const B = await phone(server)
-      at('2026-09-24T08:00:00Z')
-      const plan = on(A).store.choosePlan(draft, 'a')!
-      await A.store.syncHousehold(A.client)
-      await on(B).store.pullHousehold(B.client)
-      expect(await screen(B.pinia, Money, '/money/debts')).toContain('Изменить режим')
-
-      // A: «Изменить режим» в квадрате «План» — окно досрочки разово на сумму шага.
-      at('2026-09-24T09:00:00Z')
-      const changeMode = () => screenMixin({}, (s) => (s.changeMode as () => void)())
-      const opened = await screen(A.pinia, Money, '/money/debts', undefined, [changeMode()])
-      expect(opened).toContain(`Шаг плана — ${money(100_000)}.`)
-      expect(opened).toContain(`value="${plain(100_000)}"`)
-      // «Снизить платёж», с карты — «Применить досрочку».
-      await screen(A.pinia, Money, '/money/debts', undefined, [
-        changeMode(),
-        screenMixin({ applyMode: 'payment', applyAccount: 'card' }, (s) => (s.applyPrepay as () => void)()),
-      ])
-      const steps = planPrepays(A.store.payments)
-      expect(steps).toHaveLength(1)
-      const rec = steps[0]
-      expect(rec).toMatchObject({ targetId: 'cc', amount: 100_000, mode: 'payment', planId: plan.id, accountId: 'card', period: '2026-09', prevPayment: 25_000 })
-      expect(rec.newPayment).toBeLessThan(25_000)
-      await A.store.syncHousehold(A.client)
-      await on(B).store.pullHousehold(B.client)
-
-      // У B: платёж кредитки ниже, остаток − шаг, запись шага одна, второй раз шаг не вносится.
-      const ccB = B.store.credits.find((c) => c.id === 'cc')!
-      expect(ccB.payment).toBe(rec.newPayment)
-      expect(ccB.principal).toBe(300_000 - 100_000)
-      expect(planPrepays(B.store.payments)).toHaveLength(1)
-      expect(B.store.applyPlanStep('b', { accountId: 'card' })).toBeNull()
-      const planStepB = await screen(B.pinia, Money, '/money/debts')
-      expect(planStepB).toContain(`внесено по плану · ${money(100_000)}`)
-      expect(planStepB).not.toContain('Изменить режим')
-      expect(await screen(B.pinia, Money, '/money?payoff=cc')).toContain('снизили платёж · по плану')
-
-      // План пересчитан от факта: прогноз «сейчас» — не снимок при выборе, снимок не переписан.
-      const planB = await screen(B.pinia, Money, '/money/debts')
-      expect(planB).toContain('внесено по плану')
-      const active = B.store.activePlan!
-      expect(active.forecast).toEqual(plan.forecast)
-      const now = planForecast(active, B.store.planState(), '2026-09')
-      expect(now).not.toEqual(active.forecast)
-      expect(now.savedInterest).not.toBeNull()
-      // Прогноз строкой квадрата — переплата без плана → с планом от нынешних остатков; разница — тот же прогноз.
-      const o = planOutlook(active, B.store.planState(), '2026-09')
-      expect(o.overpayWithout! - o.overpayWith!).toBe(now.savedInterest)
-      expect(planB).toContain(`Переплата ${plain(o.overpayWithout!)} → ${money(o.overpayWith!)}`)
-    })
-
     it('фаза подушки: подушка ниже месяца списаний — шаг «подушка» (Ритуал, экран плана); пополнили до месяца — шаг досрочкой в самый дорогой долг', async () => {
       // Подушка 250 000 при месяце списаний 323 000 (аренда 220 000 + платежи 58 000 + 25 000 + 20 000);
       // аренда дешевеет с октября — Ритуалу есть что распределить.
@@ -454,7 +398,7 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
       expect(amount).toBeGreaterThan(0)
       const prepayPlan = await screen(A.pinia, Money, '/money/debts')
       expect(prepayPlan).not.toContain('сначала подушка')
-      expect(prepayPlan).toMatch(button('Шаг сделан'))
+      expect(prepayPlan).not.toMatch(button('Шаг сделан')) // Блок 16 (Р-110): шаг — «Отложил» в «Месяце»
       expect(between(prepayPlan, 'Шаг сентября', 'Копить или гасить?')).toContain(`${money(amount)} досрочно`)
       expect(prepayPlan).toContain('в «Кредитка»')
       const ritualA = await debtsCard(A)
@@ -496,7 +440,7 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
       const stepCard = between(planB, 'Шаг сентября', 'Копить или гасить?')
       expect(stepCard).toContain(`${money(100_000)} досрочно`)
       expect(stepCard).not.toContain(money(200_000))
-      expect(stepCard).toMatch(button('Шаг сделан'))
+      expect(stepCard).not.toMatch(button('Шаг сделан')) // Блок 16 (Р-110)
       const september = B.store.applyPlanStep('b')!
       expect(september).toMatchObject({ period: '2026-09', targetId: 'cc', amount: 100_000, accountId: 'card', planId: plan.id })
       expect(B.store.credits.find((c) => c.id === 'cc')!.principal).toBe(300_000 - 200_000)

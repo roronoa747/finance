@@ -15,7 +15,7 @@ import type { Payment } from '../src/types/finance'
 import { screenMixin } from '../src/test/screenState'
 import Money from '../src/views/Money.vue'
 import Month from '../src/views/Month.vue'
-import { at, backend, fakeServer, fakeStatements, screen, statementsFor, tapPay, type FakeServer, type FakeStatements } from './support/family'
+import { at, backend, fakeServer, fakeStatements, screen, statementsFor, tapPay, tapPutDebt, type FakeServer, type FakeStatements } from './support/family'
 
 /**
  * Приёмка Блока 9 (пивот 3, «Деньги без лишнего»): два телефона на фейковом сервере. Часть 1 — сводка
@@ -109,7 +109,7 @@ describe('e2e / B2C Блок 9 — «Деньги без лишнего» на �
     expect(text(await screen(B.pinia, Money, '/money'))).not.toContain('оплачено')
   })
 
-  it('часть 2 — план: «Выбрать этот план» → переключатель включён у обоих; «Шаг сделан» → досрочка шага, прогноз и «уже сэкономили»', async () => {
+  it('часть 2 — план: «Выбрать этот план» → переключатель включён у обоих; «Отложил» долга в «Месяце» → досрочка шага, прогноз и «уже сэкономили»', async () => {
     server.data.payments = [august, { ...august, id: 'aug-cc', targetId: 'cc', amount: 25_000 }]
     const A = await phone(server, st, 'a')
     const B = await phone(server, st, 'b')
@@ -128,8 +128,8 @@ describe('e2e / B2C Блок 9 — «Деньги без лишнего» на �
     expect(text(before)).toContain('Переплата')
     expect(text(before)).not.toContain('Уже сэкономили')
 
-    // «Шаг сделан» у A — досрочка 100 000 в кредитку с карты, с id плана.
-    await screen(A.pinia, Money, '/money/debts', undefined, [screenMixin({}, (s) => (s.tap as () => void)())])
+    // Шаг у A — «Отложил» у строки долга в «Месяце» (Блок 16: «Шаг сделан» убран, Р-110): досрочка 100 000 в кредитку с карты, с id плана.
+    await screen(A.pinia, Month, '/month', undefined, [tapPutDebt()])
     setActivePinia(A.pinia)
     const step = A.store.payments.find((x) => x.kind === 'prepay' && !x.deletedAt)!
     expect(step).toMatchObject({ targetId: 'cc', amount: 100_000, planId: plan.id, accountId: 'card' })

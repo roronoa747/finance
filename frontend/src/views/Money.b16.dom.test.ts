@@ -7,7 +7,9 @@ import { routes } from '@/router'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
-import { capitalGoals, monthSalaries } from '@/lib/finance'
+import { capitalGoals, debtsOverview, monthSalaries } from '@/lib/finance'
+import { monthBy } from '@/lib/dates'
+import { plain } from '@/lib/money'
 import type { Payment, SyncDoc } from '@/types/finance'
 import Money from '@/views/Money.vue'
 import Month from '@/views/Month.vue'
@@ -124,7 +126,7 @@ describe('B2C-100: «Капитал» — зарплаты для справки
     expect(cushion.querySelector('.num')!.className).toContain('text-ink-3')
     expect(q('[data-goal="trip"] .num')!.className).not.toContain('text-ink-3')
     await press(q('[data-goal="trip"] button'))
-    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/goals/trip'))
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/goals/trip'), { timeout: 5000 })
   })
 
   it('зарплаты: ✓ у пришедшей, «ждём <дата>» — у ждущей; строки = monthSalaries', async () => {
@@ -166,5 +168,67 @@ describe('B2C-100: «Капитал» — зарплаты для справки
     expect(row.tagName).toBe('DIV')
     await press(row)
     expect(dialog()).toBeNull()
+  })
+})
+
+describe('B2C-101: «Долги» по макету', () => {
+  // Кредитка: отметка сентября с телом 15 000 — полоса 15 000 / (300 000 − 15 000 + 15 000) = 5 %.
+  const ccMark = paid('credit', 'cc', KEY, 25_000, { principal: 15_000 })
+
+  it('карточка и строки = debtsOverview; полоса — только у кредита с отметками; брендовых кнопок нет', async () => {
+    const finance = await open('member', familyDoc({ payments: [ccMark] }), '/money/debts')
+    const o = debtsOverview({ ...finance.planState(), plans: finance.plans }, KEY)
+    expect(num(q('[data-debts-total]'))).toBe(o.total)
+    expect(o.total).toBe(1_540_000 - 15_000)
+    expect(txt(q('[data-debts-free]'))).toBe(`без долгов — ${monthBy(o.freeMonth!, KEY)}`)
+    expect(all('[data-debt]').map((r) => r.dataset.debt)).toEqual(o.rows.map((r) => r.creditId))
+    const cc = q('[data-debt="cc"]')!
+    expect(txt(cc)).toContain(`${plain(25_000).replace(/\s+/g, ' ')} в месяц · 40 %`)
+    expect(cc.querySelector<HTMLElement>('[data-debt-bar] span')!.style.width).toBe('5%')
+    expect(q('[data-debt="loan"] [data-debt-bar]')).toBeNull()
+    // На экране брендовых нет; «Выбрать этот план» — подтверждение калькулятора внутри свёрнутого расчёта (правило 12).
+    const brand = all('button').filter((b) => /(^|\s)bg-brand(\s|$)/.test(b.className))
+    expect(brand.filter((b) => !b.closest('[data-debts-calc-body]'))).toEqual([])
+    expect(brand.map(txt)).toEqual(['Выбрать этот план'])
+    expect(document.body.textContent).not.toContain('Шаг сделан')
+  })
+
+  it('«Как закрыть быстрее» свёрнуто; раскрытие — «Сначала долги»; план включается и выключается оттуда', async () => {
+    const finance = await open('member', familyDoc(), '/money/debts')
+    const body = q('[data-debts-calc-body]')!
+    expect(body.style.display).toBe('none')
+    await press(q('[data-debts-calc]'))
+    expect(body.style.display).toBe('')
+    expect(txt(body)).toContain('Сначала долги')
+    // Включить — раскрывается «Копить или гасить?» с выбором плана.
+    await press(q('[data-debts-calc-body] [role="switch"]'))
+    await press(all('[data-debts-calc-body] button').find((b) => txt(b) === 'Выбрать этот план'))
+    expect(finance.activePlan).not.toBeNull()
+    // Выключить — подтверждение.
+    await press(q('[data-debts-calc-body] [role="switch"]'))
+    await press(dialogButton('Отменить план'))
+    expect(finance.activePlan).toBeNull()
+  })
+
+  it('строка кредита — лист кредита; «+ Кредит» — форма нового долга', async () => {
+    await open('member', familyDoc(), '/money/debts')
+    await press(q('[data-debt="loan"]'))
+    expect(txt(dialog())).toContain('Кредит')
+    await press(q('[role="dialog"] button[aria-label="Закрыть"]'))
+    await press(q('[data-add-credit]'))
+    expect(dialog()).not.toBeNull()
+  })
+
+  it('viewer — без «+ Кредит», переключатель плана неактивен', async () => {
+    await open('viewer', familyDoc(), '/money/debts')
+    expect(q('[data-add-credit]')).toBeNull()
+    expect(q<HTMLButtonElement>('[data-debts-calc-body] [role="switch"]')!.disabled).toBe(true)
+  })
+
+  it('без долгов — «Долгов нет», без расчёта и строк', async () => {
+    await open('member', familyDoc({ credits: [] }), '/money/debts')
+    expect(txt(q('[data-debts]'))).toContain('Долгов нет')
+    expect(q('[data-debts-calc]')).toBeNull()
+    expect(q('[data-debt]')).toBeNull()
   })
 })

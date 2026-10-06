@@ -30,7 +30,6 @@ import { cn } from '@/lib/utils'
 
 import Card from '@/components/kit/Card.vue'
 import Callout from '@/components/kit/Callout.vue'
-import EmptyState from '@/components/kit/EmptyState.vue'
 import Row from '@/components/kit/Row.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Tag from '@/components/kit/Tag.vue'
@@ -38,13 +37,13 @@ import Toggle from '@/components/kit/Toggle.vue'
 import Button from '@/components/ui/Button.vue'
 import { buttonVariants } from '@/components/ui/button'
 import StrategyCompare from '@/components/StrategyCompare.vue'
-import PlanStepAction from '@/components/PlanStepAction.vue'
 import PayoffSheet from '@/components/capital/PayoffSheet.vue'
 
 /**
  * Долговой план в квадрате «Долги» «Денег» (Р-91; до Блока 15 — квадрат «План», пивот 3, Р-34): «Самая дорогая ставка»
  * (бывшее «Что гасить первым») и «Сначала долги» с переключателем — шаг месяца, прогноз одной
- * строкой, «Шаг сделан», цели на паузе. «Копить или гасить?» и «Шаги по месяцам» (с историей
+ * строкой, цели на паузе. Блок 16 (Р-110): весь квадрат — внутри свёрнутого «Как закрыть быстрее ›» экрана «Долги»
+ * (`DebtsWidget`); «Шаг сделан» и «Изменить режим» убраны — шаг месяца записывает «Отложил» у строки долга в «Месяце». «Копить или гасить?» и «Шаги по месяцам» (с историей
  * планов, Р-39) — свёрнуты. Всё считает `finance.ts`; график долга — только в листе кредита.
  */
 const router = useRouter()
@@ -63,7 +62,6 @@ const worst = computed(() => advice.value.worstDebt)
 const interestAll = computed(() => budgetInterest(credits.value))
 const savedAll = computed(() => prepaySaved(financeStore.payments, financeStore.credits))
 const payoffCreditId = ref<string | null>(null)
-const payoffPlan = ref<{ id: string; amount: number; creditId: string } | null>(null)
 
 /* ------------------ Сначала долги ------------------ */
 const plan = computed(() => financeStore.activePlan)
@@ -155,14 +153,6 @@ function cancelPlan() {
 function choosePlan(opts: { keptGoalIds: string[]; cushionGoalId: string | null; months: 12 | 24 | 36; lump: number }) {
   if (financeStore.choosePlan(opts, authStore.slot ?? 'a')) compareOpen.value = false
 }
-
-/** «Изменить режим»: окно досрочки с суммой шага — там можно «снизить платёж» (Р-10); запись — с id плана. */
-function changeMode() {
-  const s = due.value
-  if (!s || !plan.value) return
-  payoffPlan.value = { id: plan.value.id, amount: s.amount, creditId: s.creditId }
-  payoffCreditId.value = s.creditId
-}
 </script>
 
 <template>
@@ -172,7 +162,6 @@ function changeMode() {
   </Callout>
 
   <template v-if="!open.length && !plan">
-    <EmptyState title="Долгов нет" />
     <Card v-if="history.length" tight>
       <details>
         <summary :class="FOLD_ROW">Прошлые планы<PhCaretDown :size="16" class="shrink-0 text-ink-3" /></summary>
@@ -265,13 +254,8 @@ function changeMode() {
           <p v-if="missed" class="mt-1 text-[12.5px]">В {{ monthIn(missed, false) }} досрочки не было — план пересчитан от факта.</p>
         </div>
 
-        <div v-if="!authStore.isViewer && step && (due || step.kind === 'cushion')" class="flex gap-2">
-          <Button v-if="step.kind === 'cushion'" class="flex-1" @click="router.push(`/goals/${step.goalId}`)">Пополнить подушку</Button>
-          <template v-else>
-            <PlanStepAction primary />
-            <Button variant="ghost" @click="changeMode">Изменить режим</Button>
-          </template>
-        </div>
+        <!-- Шаг месяца записывает «Отложил» у строки долга в «Месяце» (Р-110): кнопки шага здесь нет -->
+        <Button v-if="!authStore.isViewer && step && step.kind === 'cushion'" variant="secondary" class="w-full" @click="router.push(`/goals/${step.goalId}`)">Пополнить подушку</Button>
 
         <div class="flex flex-col">
           <Row
@@ -341,12 +325,5 @@ function changeMode() {
     <Button variant="ghost" class="w-full" @click="cancelOpen = false">Оставить</Button>
   </Sheet>
 
-  <PayoffSheet
-    :credit-id="payoffCreditId"
-    :plan="payoffPlan"
-    @close="
-      payoffCreditId = null;
-      payoffPlan = null;
-    "
-  />
+  <PayoffSheet :credit-id="payoffCreditId" @close="payoffCreditId = null" />
 </template>

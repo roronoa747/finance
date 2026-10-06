@@ -1128,11 +1128,6 @@ describe('PV-16: план и досрочка шага — квадрат «Пл
   })
   afterEach(() => vi.useRealTimers())
 
-  const family = () => {
-    const store = useFinanceStore()
-    store.setHouseholdDoc(planFamilyDoc({ plans: [planOf()] }), 1)
-    return store
-  }
   const button = />\s*Внести по плану\s*</
 
   // Снят в B2C-45: шаг плана в строке кредита ушёл в квадрат «План» (Р-34): Money.test «B2C-43», e2e pv-block3.
@@ -1167,73 +1162,6 @@ describe('PV-16: план и досрочка шага — квадрат «Пл
     expect(plan.lump).toBe(
       strategyInputs({ credits: store.credits, goals: store.goals, obligations: store.obligations, key: '2026-09', kept: ['cushion'], cushion: false, useSaved: true }).lump,
     )
-  })
-
-  it('«Изменить режим» — окно досрочки разово на сумму шага; запись с id плана, «снизить платёж» — шаг внесён', async () => {
-    useAuthStore().setAuthData(authAs('member'))
-    const store = family()
-    const html = await renderScreen(Money, '/money/debts', undefined, [
-      screenMixin({}, (s) => (s.changeMode as () => void)()),
-    ])
-    expect(html).toContain(`Шаг плана — ${money(100_000)}.`)
-    expect(html).toContain(`value="${plain(100_000)}"`)
-    expect(html).toContain('Применить к кредиту')
-
-    await renderScreen(Money, '/money/debts', undefined, [
-      screenMixin({}, (s) => (s.changeMode as () => void)()),
-      screenMixin({ applyMode: 'payment', applyAccount: 'card' }, (s) => (s.applyPrepay as () => void)()),
-    ])
-    const rec = store.payments.find((p) => p.kind === 'prepay')!
-    expect(rec).toMatchObject({ targetId: 'cc', amount: 100_000, planId: 'plan', mode: 'payment' })
-    expect(store.credits.find((c) => c.id === 'cc')!.payment).toBeLessThan(25_000)
-    expect(store.applyPlanStep('a', { accountId: 'card' })).toBeNull()
-  })
-
-  it('окно досрочки плана: сняли досрочку шага — повторная снова по плану; партнёр внёс шаг, пока окно открыто, — запись без id плана', async () => {
-    useAuthStore().setAuthData(authAs('member'))
-    const store = family()
-    // Одно и то же окно: применили, сняли, передумали насчёт режима (Р-10) и применили снова.
-    await renderScreen(Money, '/money/debts', undefined, [
-      screenMixin({}, (s) => (s.changeMode as () => void)()),
-      screenMixin({ applyAccount: 'card' }, (s) => {
-        const apply = s.applyPrepay as () => void
-        apply()
-        const first = store.payments.find((p) => p.kind === 'prepay')!
-        expect(first.planId).toBe('plan')
-        store.removePrepayment(first.id)
-        s.applyMode = 'payment'
-        s.payoffAmount = plain(100_000)
-        apply()
-      }),
-    ])
-    const again = store.payments.filter((p) => p.kind === 'prepay' && !p.deletedAt)
-    expect(again).toEqual([expect.objectContaining({ planId: 'plan', mode: 'payment' })])
-    store.removePrepayment(again[0].id)
-
-    // Окно открыто, шаг вносит партнёр — «Применить» пишет обычную досрочку.
-    await renderScreen(Money, '/money/debts', undefined, [
-      screenMixin({}, (s) => (s.changeMode as () => void)()),
-      screenMixin({ applyAccount: 'card' }, (s) => {
-        const apply = s.applyPrepay as () => void
-        store.applyPlanStep('b', { accountId: 'card' })
-        apply()
-      }),
-    ])
-    const live = store.payments.filter((p) => p.kind === 'prepay' && !p.deletedAt)
-    expect(live.filter((p) => p.planId)).toHaveLength(1)
-    expect(live.filter((p) => !p.planId)).toHaveLength(1)
-  })
-
-  it('шаг плана не подставляется в окно досрочки другого кредита', async () => {
-    useAuthStore().setAuthData(authAs('member'))
-    const store = family()
-    const html = await renderScreen(Money, '/money/debts', undefined, [
-      screenMixin({ payoffPlan: { id: 'plan', amount: 100_000, creditId: 'cc' }, payoffCreditId: 'loan' }),
-      screenMixin({ payoffMode: 'once', payoffAmount: '50 000', applyAccount: 'card' }, (s) => (s.applyPrepay as () => void)()),
-    ])
-    expect(html).not.toContain('Шаг плана —')
-    expect(store.payments.find((p) => p.kind === 'prepay')).toMatchObject({ targetId: 'loan', amount: 50_000 })
-    expect(store.payments.find((p) => p.kind === 'prepay')!.planId).toBeUndefined()
   })
 
   it('досрочка применена — одна строка «Это приближает: «желание» …» от того, что не отдадим банку (closerWish, ТЗ B2C-18 п. 4)', async () => {

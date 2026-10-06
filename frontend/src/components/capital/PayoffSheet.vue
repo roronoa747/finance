@@ -17,7 +17,6 @@ import {
   paymentSplit,
   payoffChips,
   payoffLadder,
-  stepDue,
   prepayOutcome,
   type LumpMode,
 } from '@/lib/finance'
@@ -33,11 +32,10 @@ import Button from '@/components/ui/Button.vue'
 
 /**
  * Калькулятор досрочного погашения (React `PayoffDialog`) и применение досрочки
- * к кредиту (RP-08): вывод, чипы, лесенка отдачи, применённые досрочки со снятием.
- * `plan` — открыто из шага плана «Изменить режим» (PV-16): сумма шага подставлена,
- * разовый взнос, запись — с id плана (Р-10: режим можно сменить, план считается от факта).
+ * к кредиту (RP-08): вывод, чипы, лесенка отдачи, применённые досрочки со снятием. Шаг плана «Сначала долги» отсюда
+ * не вносится (Блок 16, Р-110: «Изменить режим» убран — шаг записывает «Отложил» в «Месяце»).
  */
-const props = defineProps<{ creditId: string | null; plan?: { id: string; amount: number; creditId: string } | null }>()
+const props = defineProps<{ creditId: string | null }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const financeStore = useFinanceStore()
@@ -93,25 +91,13 @@ const creditPrepays = computed(() =>
     .sort((a, b) => b.at.localeCompare(a.at)),
 )
 
-// Шаг плана — только для своего кредита (окно могли открыть потом для другого).
-const stepPlan = computed(() => (props.plan && props.plan.creditId === props.creditId ? props.plan : null))
-// Шаг ещё ждёт оплаты в этом кредите (его мог внести партнёр, пока окно открыто, или его
-// сняли здесь же) — выводится из документа, не флагом окна. Иначе запись идёт без id
-// плана: шаг месяца один (Р-4).
-const planPending = computed(
-  () =>
-    !!stepPlan.value &&
-    financeStore.activePlan?.id === stepPlan.value.id &&
-    stepDue(financeStore.planStepNow())?.creditId === stepPlan.value.creditId,
-)
-
 // Другой кредит — чистый калькулятор (React `PayoffDialog`); счёт по умолчанию —
-// прошлой оплаты этого кредита (Р-5). Из шага плана — разовый взнос на сумму шага.
+// прошлой оплаты этого кредита (Р-5).
 watch(
-  [() => props.creditId, () => props.plan?.id],
-  ([id]) => {
-    payoffAmount.value = stepPlan.value ? plain(stepPlan.value.amount) : ''
-    payoffMode.value = stepPlan.value ? 'once' : 'monthly'
+  () => props.creditId,
+  (id) => {
+    payoffAmount.value = ''
+    payoffMode.value = 'monthly'
     applyMode.value = 'term'
     applyDone.value = null
     removingPrepay.value = null
@@ -141,7 +127,6 @@ function applyPrepay() {
     amount: parseMoney(payoffAmount.value),
     mode: applyMode.value,
     accountId: applyAccount.value ?? null,
-    ...(planPending.value && stepPlan.value ? { planId: stepPlan.value.id } : {}),
   })
   payoffAmount.value = ''
 }
@@ -169,11 +154,6 @@ function applyPrepay() {
           </b>
         </div>
       </div>
-
-      <p v-if="planPending" class="-mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-2">
-        Шаг плана — {{ money(stepPlan?.amount ?? 0) }}. Можно «снизить платёж» вместо «сократить срок»: план
-        пересчитается от факта.
-      </p>
 
       <Field label="Как вносите" group>
         <Segmented
