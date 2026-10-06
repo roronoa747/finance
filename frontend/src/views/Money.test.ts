@@ -741,13 +741,14 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(empty).not.toContain('Загрузить выписку')
     })
 
-    it('пусто у участника — «Пока пусто» и тихая «Загрузить выписку»; подпись квадрата — число своих операций месяца', async () => {
+    it('пусто у участника — «Пока пусто» и тихая «Загрузить выписку»; подпись квадрата — последний прошлый месяц', async () => {
       await history('member', '2026-11-25T07:00:00Z')
       const html = await renderScreen(Money, '/money/history')
       expect(text(html)).toContain('Пока пусто')
       expect(html).toMatch(/>\s*Загрузить выписку\s*</)
+      // Блок 16 (Р-111): подпись — последний прошлый месяц списка «Истории» (данные с августа).
       await history()
-      expect(text(squares(await renderScreen(Money, '/money/history')))).toContain('История 5 операций')
+      expect(text(squares(await renderScreen(Money, '/money/history')))).toContain('История август')
     })
   })
 

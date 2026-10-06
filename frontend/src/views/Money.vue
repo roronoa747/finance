@@ -10,13 +10,13 @@ import MoneySquares from '@/components/money/MoneySquares.vue'
 import DebtsWidget from '@/components/money/DebtsWidget.vue'
 import CapitalSalaries from '@/components/money/CapitalSalaries.vue'
 import CapitalLists from '@/components/money/CapitalLists.vue'
-import HistorySquare from '@/components/money/HistorySquare.vue'
+import HistoryMonths from '@/components/money/HistoryMonths.vue'
 
 /**
  * «Деньги» — капитал без месяца (Блок 15, Р-91; макет week-month.html «Деньги»): квадраты Капитал · Долги · История
  * (`/money`, `/money/debts`, `/money/history`). Капитал — чистых крупно, зарплаты месяца для справки (Р-108), «Счета» с
  * «Цели · N» (Р-109), «Кредиты» и «Платежи» справочником (без отметок месяца, подписки — одной строкой); Долги — по макету Блока 16 (`DebtsWidget`, Р-110);
- * История — как была. Плана
+ * История — месяцами, лента — свёрнутой «Все записи» (`HistoryMonths`, Р-111). Плана
  * месяца, «Подробнее», «До зарплаты» и виджетов «Доход» и «Траты» здесь нет: месяц живёт в «План · Месяц».
  * Брендовой кнопки на экране нет (правило 12). Ничего не считается здесь.
  */
@@ -47,6 +47,6 @@ onMounted(() => void ops.loadUploads())
       <DebtsWidget />
     </template>
 
-    <HistorySquare v-else />
+    <HistoryMonths v-else />
   </div>
 </template>

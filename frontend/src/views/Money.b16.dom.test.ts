@@ -7,7 +7,7 @@ import { routes } from '@/router'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
-import { capitalGoals, debtsOverview, monthSalaries } from '@/lib/finance'
+import { capitalGoals, debtsOverview, historyMonths, monthPlanPast, monthSalaries } from '@/lib/finance'
 import { monthBy } from '@/lib/dates'
 import { plain } from '@/lib/money'
 import type { Payment, SyncDoc } from '@/types/finance'
@@ -230,5 +230,61 @@ describe('B2C-101: «Долги» по макету', () => {
     expect(txt(q('[data-debts]'))).toContain('Долгов нет')
     expect(q('[data-debts-calc]')).toBeNull()
     expect(q('[data-debt]')).toBeNull()
+  })
+})
+
+describe('B2C-102: «История» — месяцы и «Все записи»', () => {
+  // Июль: зарплата Ильяса 700 000, аренда 220 000; август: зарплата 700 000 (familyDoc), аренда и взнос в «Отпуск» 40 000.
+  const doc = () => {
+    const base = familyDoc()
+    return familyDoc({
+      payments: [
+        ...base.payments!,
+        paid('salary', 'a', '2026-07', 700_000),
+        paid('obligation', 'rent', '2026-07', 220_000),
+        paid('obligation', 'rent', '2026-08', 220_000),
+      ],
+      goals: base.goals.map((g) => (g.id === 'trip' ? { ...g, movements: [{ id: 'mv', date: '2026-08-11T06:00:00.000Z', amount: 40_000, by: 'a' as const }] } : g)),
+    })
+  }
+
+  it('строки = historyMonths (= сводка «Месяца»); нажатие — /month?month=', async () => {
+    const finance = await open('member', doc(), '/money/history')
+    const state = { ...finance.householdDoc, credits: finance.credits, ops: [] }
+    const list = historyMonths(state, KEY)
+    // Август: 700 000 − 220 000 − 40 000 = 440 000, отложили 40 000; июль: 700 000 − 220 000 = 480 000.
+    expect(list).toEqual([{ key: '2026-08', left: 440_000, put: 40_000 }, { key: '2026-07', left: 480_000, put: 0 }])
+    for (const m of list) expect(m.left).toBe(monthPlanPast(state, m.key).left)
+    expect(all('[data-history-month]').map((r) => r.dataset.historyMonth)).toEqual(['2026-08', '2026-07'])
+    const aug = q('[data-history-month="2026-08"]')!
+    expect(txt(aug)).toContain('Август')
+    expect(num(aug.querySelector('[data-left]'))).toBe(440_000)
+    expect(num(aug.querySelector('[data-put]'))).toBe(40_000)
+    expect(q('[data-history-month="2026-07"] [data-put]')).toBeNull()
+    // Подпись квадрата — последний прошлый месяц.
+    expect(txt(q('[aria-label="Деньги"] [aria-current="page"] small'))).toBe('август')
+    await press(aug)
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/month?month=2026-08'), { timeout: 5000 })
+  })
+
+  it('«Все записи» свёрнуто; раскрытие — прежняя лента', async () => {
+    await open('member', doc(), '/money/history')
+    const body = q('[data-history-feed-body]')!
+    expect(body.style.display).toBe('none')
+    await press(q('[data-history-feed]'))
+    expect(body.style.display).toBe('')
+    // Лента «Истории» (HistorySquare): чипы фильтра и отметки по дням.
+    expect(txt(body)).toContain('Отметки')
+  })
+
+  it('пусто — одна строка, без кнопок в списке', async () => {
+    await open('member', familyDoc({ payments: [] }), '/money/history')
+    expect(txt(q('[data-history-empty]'))).toBe('Здесь появятся прошлые месяцы')
+    expect(q('[data-history-months]')).toBeNull()
+  })
+
+  it('viewer — те же месяцы', async () => {
+    await open('viewer', doc(), '/money/history')
+    expect(all('[data-history-month]')).toHaveLength(2)
   })
 })

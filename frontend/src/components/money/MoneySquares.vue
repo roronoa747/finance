@@ -3,16 +3,17 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
+import { useFxStore } from '@/stores/fx'
 import { plain } from '@/lib/money'
-import { monthKey } from '@/lib/dates'
-import { liveAccounts, liveCredits, liveGoals, netWorth, openDebt } from '@/lib/finance'
+import { MONTHS_NOM, monthKey, parseMonthKey } from '@/lib/dates'
+import { historyMonths, liveAccounts, liveCredits, liveGoals, netWorth, openDebt, progressMoments } from '@/lib/finance'
 import { cn, plural } from '@/lib/utils'
 import Hint from '@/components/kit/Hint.vue'
 
 /**
  * Три квадрата «Денег» (пивот 3, Р-31; Блок 15, Р-91): Капитал — чистых коротко (`netWorth`; подсказка «?» —
  * рядом с кнопкой квадрата, не внутри: кнопка в кнопке недопустима), Долги (бывший «План») — остаток открытых
- * долгов или «долгов нет», История — свои операции месяца.
+ * долгов или «долгов нет», История — последний прошлый месяц (Блок 16), без прошлых — свои операции месяца.
  * Активный — по адресу; переход — `router.replace`: «назад» ведёт на прошлую вкладку, а не
  * перебирает квадраты.
  */
@@ -24,20 +25,27 @@ const ops = useOperationsStore()
 const worth = computed(() => netWorth(liveAccounts(financeStore.accounts), liveCredits(financeStore.credits), liveGoals(financeStore.goals)))
 const debt = computed(() => openDebt(financeStore.credits))
 const debtsNote = computed(() => (debt.value > 0 ? plain(debt.value) : 'долгов нет'))
-// Свои операции из выписок за этот месяц (партнёр своих не видит — Р-5); нет — в Истории отметки.
+// История (Блок 16, Р-111) — последний прошлый месяц списка («сентябрь»); прошлых нет — свои операции этого месяца
+// (партнёр чужих не видит — Р-5) или «отметки».
+const lastMonth = computed(() => {
+  const fx = useFxStore()
+  const doc = financeStore.householdDoc
+  const moments = progressMoments({ credits: doc.credits, goals: financeStore.goals, payments: financeStore.payments })
+  return historyMonths({ ...doc, credits: financeStore.credits, book: fx.book, ops: ops.all, moments }, monthKey(), 1)[0]?.key ?? null
+})
 const opsCount = computed(() => {
   const key = monthKey()
   return ops.all.filter((o) => o.date.startsWith(key)).length
+})
+const historyNote = computed(() => {
+  if (lastMonth.value) return MONTHS_NOM[parseMonthKey(lastMonth.value).month].toLowerCase()
+  return opsCount.value ? `${opsCount.value} ${plural(opsCount.value, 'операция', 'операции', 'операций')}` : 'отметки'
 })
 
 const squares = computed(() => [
   { to: '/money', title: 'Капитал', note: plain(worth.value) },
   { to: '/money/debts', title: 'Долги', note: debtsNote.value },
-  {
-    to: '/money/history',
-    title: 'История',
-    note: opsCount.value ? `${opsCount.value} ${plural(opsCount.value, 'операция', 'операции', 'операций')}` : 'отметки',
-  },
+  { to: '/money/history', title: 'История', note: historyNote.value },
 ])
 </script>
 
