@@ -8,8 +8,6 @@ import { money, plain } from '@/lib/money'
 import Money from '@/views/Money.vue'
 import {
   closerWish,
-  duesTotals,
-  monthDues,
   netWorth,
   prepayment,
   lumpSum,
@@ -212,7 +210,7 @@ describe('«Деньги» → Капитал: счета, кредиты, до�
     expect(html).toContain('Кредитная карта')
   })
 
-  it('рендерит модалку «Внеплановый доход» при переходе по маршруту /capital?income=1', async () => {
+  it('рендерит модалку «Внеплановый доход» при переходе по маршруту /month?income=1', async () => {
     const store = useFinanceStore()
     store.addGoal({
       name: 'Резерв',
@@ -225,10 +223,11 @@ describe('«Деньги» → Капитал: счета, кредиты, до�
     const { createSSRApp } = await import('vue')
     const { renderToString } = await import('vue/server-renderer')
     const { createMemoryHistory } = await import('vue-router')
-    const Money = (await import('@/views/Money.vue')).default
+    // Блок 15 (Р-91): «Внеплановый доход» — лист «Месяца».
+    const Money = (await import('@/views/Month.vue')).default
 
     const router = (await import('@/router')).createAppRouter(createMemoryHistory())
-    await router.push('/capital?income=1')
+    await router.push('/month?income=1')
     await router.isReady()
 
     const app = createSSRApp(Money)
@@ -291,7 +290,7 @@ describe('PV-02: калькулятор в Капитале (SSR)', () => {
     store.applyPrepayment(card, 'a', { amount: 300_000, mode: 'term', accountId: store.accounts[0].id })
     expect(store.credits[0].principal).toBe(0)
 
-    const html = await renderScreen(Money, '/money/plan')
+    const html = await renderScreen(Money, '/money/debts')
     expect(html).toContain('Одинаковые траты, разный порядок')
     expect(html).toContain('Горизонт')
     const debts = [{ principal: 1_000_000, annualRate: 0.18, payment: 91_680 }]
@@ -537,14 +536,14 @@ describe('PV-10: модалка кредита и калькулятор дос�
     expect(html).toContain('24-го · ставку уточните')
     expect(html).not.toContain('без процентов')
     expect(html).not.toContain('переплата')
-    const plan = await render('/money/plan')
+    const plan = await render('/money/debts')
     expect(plan.slice(plan.indexOf('Самая дорогая ставка'))).toContain('Ставку «Оплата Kaspi Кредита» уточните — тогда сравним.')
 
     // «Копить или гасить»: долг без ставки — не беспроцентный.
     const inputs = strategyInputs({ credits: store.credits, goals: [], obligations: [], key: '2026-09', kept: [], cushion: false, useSaved: false })
     expect(inputs.interestFree).toEqual([])
     expect(inputs.unknownRate.map((c) => c.id)).toEqual([id])
-    const calc = await render('/money/plan')
+    const calc = await render('/money/debts')
     expect(calc).not.toContain('Беспроцентные долги')
     expect(calc).toContain('Ставку «Оплата Kaspi Кредита» уточните — пока считаем без неё.')
 
@@ -618,7 +617,9 @@ describe('PV-10: модалка кредита и калькулятор дос�
     for (const t of ['Подписка или услуга', 'Долг или рассрочка', 'Группа подписок']) expect(choose).toContain(t)
     expect(await render('/money?add=debt')).toContain('Знаю ставку')
     expect(await render('/capital?add=payment')).toContain('Регулярный платёж')
-    expect(await render('/capital?income=1')).toContain('Внеплановый доход')
+    // «Внеплановый доход» — лист «Месяца» (Блок 15), на «Деньгах» его нет.
+    expect(await render('/capital?income=1')).not.toContain('Внеплановый доход')
+    expect(await renderScreen((await import('@/views/Month.vue')).default, '/month?income=1')).toContain('Внеплановый доход')
   })
 
   it('viewer: Капитал без форм — кнопок добавления нет, старые закладки ?add=… и ?income=1 форм не открывают (B2C-21)', async () => {
@@ -970,7 +971,7 @@ describe('PV-12: счета — валютный, удаление, тексты
 
   it('«Внеплановый доход» → «На счёт»: только тенговые счета — сдвиг валютного стёрла бы правка курса (клинап)', async () => {
     await family()
-    const html = await render('/capital?income=1')
+    const html = await renderScreen((await import('@/views/Month.vue')).default, '/month?income=1')
     expect(html).toContain('label="На счёт"')
     expect(html).toContain('value="account:card"')
     expect(html).not.toContain('value="account:usd"')
@@ -1150,13 +1151,13 @@ describe('PV-16: план и досрочка шага — квадрат «Пл
     const store = useFinanceStore()
     store.setHouseholdDoc(planFamilyDoc(), 1)
     useAuthStore().setAuthData(authAs('viewer', 'b'))
-    const viewer = await renderScreen(Money, '/money/plan')
+    const viewer = await renderScreen(Money, '/money/debts')
     expect(viewer).toContain('Подушка — какая цель?')
     expect(viewer).not.toMatch(choice)
 
     useAuthStore().setAuthData(authAs('member'))
-    expect(await renderScreen(Money, '/money/plan')).toMatch(choice)
-    await renderScreen(Money, '/money/plan', undefined, [
+    expect(await renderScreen(Money, '/money/debts')).toMatch(choice)
+    await renderScreen(Money, '/money/debts', undefined, [
       screenMixin({ cushion: false, useSaved: true, cushionGoalId: 'cushion' }, (s) => (s.choose as () => void)()),
     ])
     const plan = store.activePlan!
@@ -1171,14 +1172,14 @@ describe('PV-16: план и досрочка шага — квадрат «Пл
   it('«Изменить режим» — окно досрочки разово на сумму шага; запись с id плана, «снизить платёж» — шаг внесён', async () => {
     useAuthStore().setAuthData(authAs('member'))
     const store = family()
-    const html = await renderScreen(Money, '/money/plan', undefined, [
+    const html = await renderScreen(Money, '/money/debts', undefined, [
       screenMixin({}, (s) => (s.changeMode as () => void)()),
     ])
     expect(html).toContain(`Шаг плана — ${money(100_000)}.`)
     expect(html).toContain(`value="${plain(100_000)}"`)
     expect(html).toContain('Применить к кредиту')
 
-    await renderScreen(Money, '/money/plan', undefined, [
+    await renderScreen(Money, '/money/debts', undefined, [
       screenMixin({}, (s) => (s.changeMode as () => void)()),
       screenMixin({ applyMode: 'payment', applyAccount: 'card' }, (s) => (s.applyPrepay as () => void)()),
     ])
@@ -1192,7 +1193,7 @@ describe('PV-16: план и досрочка шага — квадрат «Пл
     useAuthStore().setAuthData(authAs('member'))
     const store = family()
     // Одно и то же окно: применили, сняли, передумали насчёт режима (Р-10) и применили снова.
-    await renderScreen(Money, '/money/plan', undefined, [
+    await renderScreen(Money, '/money/debts', undefined, [
       screenMixin({}, (s) => (s.changeMode as () => void)()),
       screenMixin({ applyAccount: 'card' }, (s) => {
         const apply = s.applyPrepay as () => void
@@ -1210,7 +1211,7 @@ describe('PV-16: план и досрочка шага — квадрат «Пл
     store.removePrepayment(again[0].id)
 
     // Окно открыто, шаг вносит партнёр — «Применить» пишет обычную досрочку.
-    await renderScreen(Money, '/money/plan', undefined, [
+    await renderScreen(Money, '/money/debts', undefined, [
       screenMixin({}, (s) => (s.changeMode as () => void)()),
       screenMixin({ applyAccount: 'card' }, (s) => {
         const apply = s.applyPrepay as () => void
@@ -1226,7 +1227,7 @@ describe('PV-16: план и досрочка шага — квадрат «Пл
   it('шаг плана не подставляется в окно досрочки другого кредита', async () => {
     useAuthStore().setAuthData(authAs('member'))
     const store = family()
-    const html = await renderScreen(Money, '/money/plan', undefined, [
+    const html = await renderScreen(Money, '/money/debts', undefined, [
       screenMixin({ payoffPlan: { id: 'plan', amount: 100_000, creditId: 'cc' }, payoffCreditId: 'loan' }),
       screenMixin({ payoffMode: 'once', payoffAmount: '50 000', applyAccount: 'card' }, (s) => (s.applyPrepay as () => void)()),
     ])
@@ -1296,110 +1297,6 @@ describe('PV-17 (Р-8): график в окне кредита — с шага�
     expect(loan).toContain('График платежей')
     expect(loan).not.toContain('досрочка ')
     expect(store.status).toBe('idle')
-  })
-})
-
-describe('B2C-70: «Деньги» → «Платежи» — первая строка «Осталось в <месяце>» и «из <всего>» (SSR)', () => {
-  const T0 = '2026-09-01T00:00:00.000Z'
-  const storage = new Map<string, string>()
-  beforeEach(() => {
-    vi.stubGlobal('localStorage', {
-      getItem: (key: string) => storage.get(key) ?? null,
-      setItem: (key: string, val: string) => storage.set(key, String(val)),
-      removeItem: (key: string) => storage.delete(key),
-      clear: () => storage.clear(),
-    })
-    storage.clear()
-    setActivePinia(createPinia())
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
-  })
-  afterEach(() => vi.useRealTimers())
-
-  /** Аренда 220 000, группа подписок с двумя детьми (5 000 + 2 000), кредит 58 000; годовая страховка — не в сентябре. */
-  function family(role: 'member' | 'viewer' = 'member') {
-    useAuthStore().setAuthData(authAs(role))
-    const store = useFinanceStore()
-    store.setHouseholdDoc(
-      planFamilyDoc({
-        obligations: [
-          { id: 'rent', name: 'Аренда', note: '', day: 5, category: 'd1', versions: [{ from: '2000-01', amount: 220_000 }], updatedAt: T0 },
-          { id: 'subs', name: 'Подписки', note: '', day: 1, category: 'd4', group: true, versions: [], updatedAt: T0 },
-          { id: 'netflix', name: 'Netflix', note: '', day: 10, category: 'd4', parentId: 'subs', versions: [{ from: '2000-01', amount: 5_000 }], updatedAt: T0 },
-          { id: 'spotify', name: 'Spotify', note: '', day: 12, category: 'd4', parentId: 'subs', versions: [{ from: '2000-01', amount: 2_000 }], updatedAt: T0 },
-          { id: 'ins', name: 'Страховка', note: '', day: 12, category: 'd4', every: 'year', month: 3, versions: [{ from: '2000-01', amount: 60_000 }], updatedAt: T0 },
-        ],
-        credits: [{ id: 'loan', name: 'Кредит', note: '', principal: 1_000_000, principalSetAt: T0, annualRate: 0.33, payment: 58_000, day: 15, updatedAt: T0 }],
-      }),
-      1,
-    )
-    return store
-  }
-
-  const render = async () => (await renderScreen(Money, '/money')).replace(/<!--[^>]*-->/g, '')
-  /** Блок сумм над строками «Платежей» — одна подпись, крупная цифра, «из …». */
-  const totalsBlock = (html: string) => {
-    const at = html.indexOf('data-dues-total')
-    return at < 0 ? null : html.slice(at, html.indexOf('</div>', at))
-  }
-  const expected = (store: ReturnType<typeof useFinanceStore>) => duesTotals(monthDues(store.householdDoc, '2026-09'))!
-
-  it('строка «Осталось в сентябре» с остатком крупно и «из <всего>»; дети группы — один раз, сама группа и годовое не в свой месяц — нет', async () => {
-    const store = family()
-    const t = expected(store)
-    // Аренда + Netflix + Spotify + кредит; «Подписки» (группа) и страховка (март) — не платежи сентября.
-    expect(t).toEqual({ total: 285_000, left: 285_000 })
-    const block = totalsBlock(await render())!
-    expect(block).toContain('Осталось в сентябре')
-    expect(block).toContain(`>${money(285_000)}</span>`)
-    // Ничего не оплачено — остаток равен итогу, «из …» всё равно показан (его нет только при «Всё оплачено»).
-    expect(block).toContain(`из ${money(285_000)}`)
-    expect(block).toContain('type-num')
-    expect(block).toContain('type-label')
-    // Тег «N из M оплачено» в шапке остаётся.
-    expect(await render()).toContain('0 из 4 оплачено')
-  })
-
-  it('отметка «Оплатил» уменьшает остаток ровно на сумму отметки (число из monthDues, не из экрана); «из …» — итог со суммой отметки', async () => {
-    const store = family()
-    store.markPaid('obligation', 'rent', 'a', { amount: 215_000, accountId: 'card', source: 'statement' })
-    const t = expected(store)
-    expect(t).toEqual({ total: 280_000, left: 65_000 })
-    const block = totalsBlock(await render())!
-    expect(block).toContain('Осталось в сентябре')
-    expect(block).toContain(`>${money(t.left)}</span>`)
-    expect(block).toContain(`из ${money(t.total)}`)
-
-    store.markPaid('obligation', 'netflix', 'a', { accountId: 'card' })
-    const after = expected(store)
-    expect(after.left).toBe(t.left - 5_000)
-    expect(totalsBlock(await render())).toContain(`>${money(after.left)}</span>`)
-  })
-
-  it('все оплачены → «Всё оплачено» и итог, строки «из …» нет; платежей нет → строки нет; viewer видит', async () => {
-    const store = family()
-    for (const id of ['rent', 'netflix', 'spotify']) store.markPaid('obligation', id, 'a', { accountId: 'card' })
-    store.markPaid('credit', 'loan', 'a', { accountId: 'card' })
-    expect(expected(store)).toEqual({ total: 285_000, left: 0 })
-    const block = totalsBlock(await render())!
-    expect(block).toContain('Всё оплачено')
-    expect(block).not.toContain('Осталось')
-    expect(block).toContain(`>${money(285_000)}</span>`)
-    expect(block).not.toContain('из ')
-
-    setActivePinia(createPinia())
-    useAuthStore().setAuthData(authAs('member'))
-    useFinanceStore().setHouseholdDoc(planFamilyDoc({ obligations: [], credits: [] }), 1)
-    const empty = await render()
-    expect(empty).toContain('Платежей пока нет')
-    expect(totalsBlock(empty)).toBeNull()
-    expect(empty).not.toContain('Всё оплачено')
-
-    setActivePinia(createPinia())
-    family('viewer')
-    const ro = await render()
-    expect(totalsBlock(ro)).toContain('Осталось в сентябре')
-    expect(ro).not.toMatch(/>\s*Добавить\s*</)
   })
 })
 

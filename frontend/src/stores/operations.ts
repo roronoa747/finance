@@ -27,6 +27,12 @@ import type { PersonId } from '@/types/finance'
 const { ops: KEY_OPS, cursor: KEY_CURSOR, pending: KEY_PENDING, demoUploads: KEY_DEMO_UPLOADS, declined: KEY_DECLINED } = OPERATIONS_STORAGE_KEYS
 const KEYS = Object.values(OPERATIONS_STORAGE_KEYS)
 
+/**
+ * Сколько висит тост «Загружено N · Отменить» (Р-97): отправка выписки ждёт столько — удаления загрузки на сервере
+ * нет, поэтому «Отменить» работает до отправки.
+ */
+export const UPLOAD_HOLD_MS = 6_000
+
 /** Операций в одном POST /api/operations/batch (сервер принимает до 2000). */
 export const BATCH_SIZE = 500
 /** Страница GET /api/operations. */
@@ -116,6 +122,9 @@ export const useOperationsStore = defineStore('operations', () => {
   const status = ref<'idle' | 'sending' | 'offline' | 'error'>('idle')
   const lastError = ref<string | null>(null)
   const draft = ref<Draft | null>(null)
+  /** Выписка выбрана и показана, отправка ждёт тост «Отменить» (`upload`). */
+  const held = ref(false)
+  let holdTimer: ReturnType<typeof setTimeout> | null = null
   /** Сколько строк последней отправки отметилось по правилам («Отмечено по выписке: N»). */
   const lastAutoMarked = ref(0)
   let flushing: Promise<void> | null = null
@@ -212,6 +221,7 @@ export const useOperationsStore = defineStore('operations', () => {
     demoUploads.value = []
     declined.value = []
     serverUploads.value = []
+    dropHold()
     draft.value = null
     lastAutoMarked.value = 0
     status.value = 'idle'
@@ -249,6 +259,70 @@ export const useOperationsStore = defineStore('operations', () => {
   function cancelDraft() {
     draft.value = null
   }
+
+  /* ---------- «сразу готово» (Р-97): показать сразу, отправить после тоста ---------- */
+  function dropHold() {
+    if (holdTimer) clearTimeout(holdTimer)
+    holdTimer = null
+    held.value = false
+  }
+
+  /**
+   * Выписка выбрана — «Неделя» показывает её сразу (`shown`, `shownTotals`, `shownUploads`), а запись и отправка
+   * (`send`) ждут `UPLOAD_HOLD_MS`: пока висит тост, «Отменить» (`undoUpload`) возвращает как было — ни операций,
+   * ни итогов, ни очереди. Прошлая выписка ещё ждёт — сначала отправляется она: двойная загрузка её не теряет.
+   */
+  async function upload(files: DraftFile[], client: ApiClient = apiClient) {
+    await commitUpload(client)
+    if (!files.length) return
+    setDraft(files)
+    held.value = true
+    holdTimer = setTimeout(() => void commitUpload(client), UPLOAD_HOLD_MS)
+  }
+
+  /**
+   * Тост ушёл, экран закрыли или вкладку скрыли — отправка сразу; ждать нечего — ничего не делает. Все операции выписки
+   * уже были («Эти N операций уже были») — новых данных нет: ни второй записи загрузки, ни отправки (ревью Б15, Н-5).
+   */
+  async function commitUpload(client: ApiClient = apiClient) {
+    if (!held.value) return
+    dropHold()
+    const fresh = draftOps.value
+    if (fresh.length && fresh.every((o) => o.id in ops.value)) return cancelDraft()
+    await send(client)
+  }
+
+  /** «Отменить» в тосте: выписка не записана и не отправлена. */
+  function undoUpload() {
+    if (!held.value) return
+    dropHold()
+    cancelDraft()
+  }
+
+  /** Свои операции вместе с выпиской, которая ещё ждёт тост. */
+  const shown = computed<Operation[]>(() => {
+    if (!held.value) return all.value
+    const ids = new Set(draftOps.value.map((o) => o.id))
+    return [...all.value.filter((o) => !ids.has(o.id)), ...draftOps.value]
+  })
+  /** Итоги семьи, где свои периоды ждущей выписки пересчитаны с ней — тем же `spendTotals`, что запишет `send`. */
+  const shownTotals = computed(() => {
+    const base = finance.householdDoc.spendTotals ?? []
+    if (!held.value) return base
+    const by = me()
+    const periods = periodsOf(draftOps.value)
+    const touched = (t: { by: PersonId; kind: string; period: string }) => t.by === by && periods.some((p) => p.kind === t.kind && p.period === t.period)
+    return [...base.filter((t) => !touched(t)), ...periods.flatMap(({ kind, period }) => spendTotals(shown.value, by, kind, period))]
+  })
+  /** Загрузки семьи вместе с ждущей — ✓ «загрузил за неделю» появляется сразу. */
+  const shownUploads = computed<StatementUploadResponse[]>(() => {
+    if (!held.value || !draft.value) return uploads.value
+    const now = new Date().toISOString()
+    const mine = draft.value.files.map((f, i): StatementUploadResponse => ({
+      id: `held-${i}`, slot: me(), bank: f.parsed.bank, period_from: f.parsed.from, period_to: f.parsed.to, ops_count: f.parsed.operations.length, created_at: now,
+    }))
+    return [...mine, ...uploads.value]
+  })
 
   /** Ответ на вопрос разбора — правило в личный документ (Р-22); черновик пересчитается сам. */
   function answer(match: MerchantRule['match'], to: MerchantRule['to']) {
@@ -289,16 +363,13 @@ export const useOperationsStore = defineStore('operations', () => {
   }
 
   /**
-   * «Отправить» (B2C-07): операции — в свою копию, итоги — в общий документ сразу (в том
-   * числе без сети), записи загрузок и операции — в очередь, очередь — на сервер.
+   * «Отправить» (B2C-07): операции — в свою копию, итоги — в общий документ, записи загрузок и операции — в очередь,
+   * всё на диск — до первого ожидания сети (тост «Загружено» ушёл, вкладку закрыли — выписка уже на устройстве);
+   * затем очередь — на сервер и свои операции со второго устройства.
    */
   async function send(client: ApiClient = apiClient) {
     const d = draft.value
     if (!d) return
-    // Итоги — из всех своих операций периода: сначала забрать загруженное со второго
-    // устройства, иначе устаревшая копия затрёт полные итоги (LWW по id). Без сети — что есть.
-    await pull(client)
-    if (draft.value !== d) return // второе нажатие, пока ждали сеть
     if (!finance.householdDoc.spendCategories?.length) finance.mutateHouseholdDoc((doc) => void seedSpendCategories(doc))
 
     const fresh = draftOps.value
@@ -307,7 +378,8 @@ export const useOperationsStore = defineStore('operations', () => {
     const paired = pairInternalTransfers([...fresh, ...all.value.filter((o) => !ids.has(o.id))])
     const changed = paired.slice(fresh.length).filter((o) => o.internal !== ops.value[o.id]?.internal)
     remember([...fresh, ...changed])
-    writeTotals(periodsOf([...fresh, ...changed]))
+    const periods = periodsOf([...fresh, ...changed])
+    writeTotals(periods)
     // Правила «это платёж по …» отмечают платежи сами (Р-6); отмеченный месяц второй записи не получает.
     lastAutoMarked.value = autoMark(fresh)
 
@@ -334,7 +406,11 @@ export const useOperationsStore = defineStore('operations', () => {
     }
     draft.value = null
     save()
-    await flush(client)
+    // Итоги — из всех своих операций периода: загруженное со второго устройства (`pull` сначала досылает очередь)
+    // дописывает их ещё раз, иначе устаревшая копия оставила бы неполные итоги (LWW по id).
+    const sent = new Set([...fresh, ...changed].map((o) => o.id))
+    const got = await pull(client)
+    if (got.some((id) => !sent.has(id))) writeTotals(periods)
   }
 
   /** Смена раздела задним числом: правило + пересчёт своих операций и итогов их периодов. */
@@ -439,17 +515,17 @@ export const useOperationsStore = defineStore('operations', () => {
     return flushing
   }
 
-  /** Свои операции с сервера по курсору (правки со второго устройства); сначала — очередь. */
-  async function pull(client: ApiClient = apiClient) {
-    if (demo.value || !auth.isMember) return
+  /** Свои операции с сервера по курсору (правки со второго устройства); сначала — очередь. Отдаёт id полученных. */
+  async function pull(client: ApiClient = apiClient): Promise<string[]> {
+    const got: string[] = []
+    if (demo.value || !auth.isMember) return got
     await flush(client)
-    if (offline() || pending.value.length) return
+    if (offline() || pending.value.length) return got
     try {
       // Строка, давшая курсор, попадает в запас — значит, next непустой страницы не раньше
       // курсора; пустая страница курсор не двигает (назад он не уезжает).
       let since = cursor.value
       let from = since && new Date(Date.parse(since) - CURSOR_OVERLAP_MS).toISOString()
-      const got: string[] = []
       for (;;) {
         const page = await client.listOperations(from, PULL_LIMIT)
         for (const w of page.operations) {
@@ -468,6 +544,7 @@ export const useOperationsStore = defineStore('operations', () => {
     } catch (err) {
       lastError.value = err instanceof Error ? err.message : String(err)
     }
+    return got
   }
 
   /** Демо-пример (B2C-19 п. 4): записи загрузок обоих, чтобы главный показывал картину недели. */
@@ -515,6 +592,13 @@ export const useOperationsStore = defineStore('operations', () => {
     status,
     lastError,
     draft,
+    held,
+    shown,
+    shownTotals,
+    shownUploads,
+    upload,
+    commitUpload,
+    undoUpload,
     draftOps,
     pendingMatches,
     draftAutoMatches,

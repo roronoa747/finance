@@ -12,7 +12,7 @@ import { planFamilyDoc, T0 } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
 import type { SyncDoc, WishItem } from '../src/types/finance'
 import Dreams from '../src/views/Dreams.vue'
-import Money from '../src/views/Money.vue'
+import Month from '../src/views/Month.vue'
 import Wishes from '../src/views/Wishes.vue'
 import { at, backend, fakeServer, fakeStatements, screen, statementsFor, type FakeServer, type FakeStatements } from './support/family'
 
@@ -22,7 +22,9 @@ import { at, backend, fakeServer, fakeStatements, screen, statementsFor, type Fa
  * кредитка 25 000, рассрочка 20 000 — все Ильяса (плательщик по умолчанию — первый участник). Траты: Ильяс —
  * продукты 150 000, Аруна — продукты 100 000. Очередь: «Отпуск» 40 000 → «Машина» 60 000 → «Подушка» (копилка,
  * фонд, порог 3 мес.) 30 000 → «закрыть кредит» 30 000 (платит Аруна). Нажатия — методами стора и кнопками
- * экранов (SSR, `screen`); браузер — на стенде.
+ * экранов (SSR, `screen`); браузер — на стенде. Блок 15: план живёт в «План · Месяц» (`/month`) — круг-оглавление,
+ * разделы раскрываются (`opened`), «Отложить по плану» стало «Отложил всё» в разделе «Цели и фонды» (Р-97, ворота
+ * B2C-91); «главной» и «Желаний» в плане нет (Р-92).
  *
  * Ручной расчёт октября:
  *   Доход        700 000 + 500 000                          = 1 200 000
@@ -98,12 +100,13 @@ function familyDoc(): SyncDoc {
   }
 }
 
-/** «Отложить по плану» — кнопкой экрана «Денег». */
+/** «Месяц» с раскрытым разделом. */
+const month = (p: Phone, opened?: 'dues' | 'spend' | 'queue') => screen(p.pinia, Month, '/month', undefined, opened ? [screenMixin({ opened })] : [])
+
+/** «Отложил всё» — кнопкой раздела «Цели и фонды» «Месяца». */
 async function tapSave(p: Phone) {
-  await screen(p.pinia, Money, '/money', undefined, [
-    screenMixin({}, (s) => {
-      if (typeof s.onSave === 'function') (s.onSave as () => void)()
-    }),
+  await screen(p.pinia, Month, '/month', undefined, [
+    screenMixin({}, (s) => (s.savePuts as (list: unknown) => void)(s.pending)),
   ])
 }
 
@@ -140,14 +143,19 @@ describe('e2e / B2C Блок 14 — план месяца на двух теле
       expect(plan.income).toEqual({ total: 1_200_000, byPerson: [expect.objectContaining({ person: 'a', amount: 700_000, came: true }), expect.objectContaining({ person: 'b', amount: 500_000, came: false })] })
       expect(plan.queue.map((q) => [q.id, q.given])).toEqual([['trip', 40_000], ['car', 60_000], ['cushion', 30_000], ['debt', 30_000]])
       expect(plan.byPerson.map((x) => [x.person, x.left])).toEqual([['a', 97_000], ['b', 370_000]])
-      const html = await screen(P.pinia, Money, '/money')
+      const html = await month(P)
       expect(part(html, 'data-rest')).toBe(sp(money(467_000)))
-      expect(part(html, 'data-salary="a"')).toContain('✓ пришла')
+      // Зарплата: ✓ у суммы и день прихода; ожидаемая — «ждём».
+      expect(part(html, 'data-salary="a"')).toContain('10 октября')
+      expect(html.match(/data-came/g)).toHaveLength(1)
       expect(part(html, 'data-salary="b"')).toContain('ждём 20 октября')
       expect(text(html)).toContain(`+${sp(plain(97_000))}`)
       expect(text(html)).toContain(`+${sp(plain(370_000))}`)
-      // У каждого платежа и цели — кружок плательщика и дата.
-      expect(html.match(/data-due[ >]/g)).toHaveLength(4)
+      // Оглавление свёрнуто: строки разделов с суммой и «N из M»; платежи — в раскрытом разделе.
+      expect(html).not.toMatch(/data-due[ >]/)
+      expect(part(html, 'data-section="dues"')).toContain(`0 из 4 оплачено ${sp(plain(323_000))}`)
+      expect(part(html, 'data-section="queue"')).toContain(`0 из 4 отложено ${sp(plain(160_000))}`)
+      expect((await month(P, 'dues')).match(/data-due[ >]/g)).toHaveLength(4)
       expect(text(html)).toContain(`Отложим ${sp(money(160_000))}`)
     }
   })
@@ -165,7 +173,7 @@ describe('e2e / B2C Блок 14 — план месяца на двух теле
     expect(before.queue.find((q) => q.id === 'car')!.doneMonth).not.toBeNull()
     await sync(A, B)
     expect(planOf(B).rest).toBe(527_000)
-    const money_ = await screen(B.pinia, Money, '/money')
+    const money_ = await month(B, 'queue')
     expect(part(money_, 'data-rest')).toBe(sp(money(527_000)))
     expect(part(money_, 'data-queue="car"')).toContain('на паузе')
     expect(part(await screen(B.pinia, Dreams, '/'), 'data-id="car"')).toContain('на паузе')
@@ -189,7 +197,10 @@ describe('e2e / B2C Блок 14 — план месяца на двух теле
     // «Машина» — герой, в списке её нет; «Отпуск» — первой строкой.
     expect(dreams).not.toContain('data-id="car"')
     expect(dreams.indexOf('data-id="trip"')).toBeGreaterThan(-1)
-    expect(part(await screen(B.pinia, Money, '/money'), 'data-queue="car"')).toContain('главная')
+    // В «Месяце» — та же очередь короткими строками, без «главная» (Р-92).
+    const plan = await month(B, 'queue')
+    expect(plan.indexOf('data-queue="car"')).toBeLessThan(plan.indexOf('data-queue="trip"'))
+    expect(text(plan)).not.toContain('главная')
   })
 
   it('часть 4 — желания переставляются; порядок у партнёра тот же', async () => {
@@ -213,18 +224,17 @@ describe('e2e / B2C Блок 14 — план месяца на двух теле
     await sync(A, B)
     // Ильяс 97 000 + 220 000 = 317 000; Аруна 370 000 − 220 000 = 150 000.
     expect(planOf(B).byPerson.map((x) => [x.person, x.left])).toEqual([['a', 317_000], ['b', 150_000]])
-    const html = await screen(B.pinia, Money, '/money')
+    const html = await month(B)
     expect(text(html)).toContain(`+${sp(plain(317_000))}`)
     expect(text(html)).toContain(`+${sp(plain(150_000))}`)
     expect(B.store.payments.find((p) => p.id === 'sal-a')).toMatchObject({ amount: 700_000 })
   })
 
-  it('часть 6 — «Отложить по плану»: взносы Ильяса по плану, запись месяца; повтор не пишет; у партнёра — «Отложено», без удвоения', async () => {
+  it('часть 6 — «Отложил всё»: взносы целей Ильяса (его зарплата пришла) по плану, запись месяца; повтор не пишет; у партнёра — ✓ у строк, без удвоения', async () => {
     const A = await phone(server, st, 'a')
     const B = await phone(server, st, 'b')
-    expect(await screen(A.pinia, Money, '/money')).toMatch(/>\s*Отложить по плану\s*</)
-    // У Аруны зарплата не пришла — её кнопки нет.
-    expect(await screen(B.pinia, Money, '/money')).not.toMatch(/>\s*Отложить по плану\s*</)
+    // Месяц — общий список дел: цели Ильяса ждут «Отложил» у обоих; долг Аруны — нет, её зарплата не пришла.
+    for (const P of [A, B]) expect(part(await month(P, 'queue'), 'data-put-all')).toBe(`Отложил всё · ${sp(money(130_000))}`)
     await tapSave(A)
     setActivePinia(A.pinia)
     expect(A.store.allocations).toEqual([
@@ -240,27 +250,32 @@ describe('e2e / B2C Блок 14 — план месяца на двух теле
     setActivePinia(B.pinia)
     expect(B.store.allocations).toHaveLength(1)
     expect(Object.fromEntries(B.store.goals.map((g) => [g.id, g.have]))).toEqual(haves)
-    expect(part(await screen(B.pinia, Money, '/money'), 'data-plan-saved')).toContain(`Отложено ${sp(money(130_000))}`)
+    const done = await month(B, 'queue')
+    expect(part(done, 'data-section="queue"')).toContain('3 из 4 отложено')
+    expect(done.match(/data-put-done/g)).toHaveLength(3)
+    expect(done).not.toContain('data-put-all')
   })
 
   it('часть 7 — viewer видит тот же план без переключателей, плательщиков, ⋮⋮ и кнопки', async () => {
     const V = await phone(server, st, 'a', 'viewer')
-    const html = await screen(V.pinia, Money, '/money')
+    const html = await month(V, 'queue')
     expect(part(html, 'data-rest')).toBe(sp(money(467_000)))
     expect(html).toContain('просмотр')
-    expect(html.slice(0, html.indexOf('data-more'))).not.toContain('role="switch"')
+    expect(html).not.toContain('data-plan-view')
+    expect(html).not.toContain('role="switch"')
     expect(html).not.toContain('data-grip')
     expect(html).not.toContain('aria-label="Платит')
-    expect(html).not.toMatch(/>\s*Отложить по плану\s*</)
+    expect(html).not.toContain('data-put-all')
+    expect(await month(V, 'dues')).not.toContain('aria-label="Платит')
   })
 
-  it('часть 8 — старые адреса разбора и «Вашего порядка» открывают «Деньги»', async () => {
+  it('часть 8 — старые адреса разбора и «Вашего порядка» открывают «План · Месяц» (Р-103)', async () => {
     await phone(server, st, 'a')
     const router = createAppRouter(createMemoryHistory())
     useFinanceStore().finishSetup()
     for (const old of ['/week/breakdown?from=salary&person=a&period=2026-10', '/week/order', '/week/salary?from=freed', '/ritual?from=rest&amount=1&period=2026-09']) {
       await router.push(old)
-      expect(router.currentRoute.value.fullPath).toBe('/money')
+      expect(router.currentRoute.value.fullPath).toBe('/month')
     }
   })
 
@@ -289,7 +304,7 @@ describe('e2e / B2C Блок 14 — план месяца на двух теле
     expect(A.store.goalOrder?.ids).toEqual(['car', 'cushion', 'trip', 'debt'])
   })
 
-  it('часть 10 (приёмка) — фонд наверху очереди: деньги первым получает он, а герой «Мечт» и «главная» — первая цель', async () => {
+  it('часть 10 (приёмка) — фонд наверху очереди: деньги первым получает он, а герой «Мечт» — первая цель', async () => {
     const A = await phone(server, st, 'a')
     const B = await phone(server, st, 'b')
     setActivePinia(A.pinia)
@@ -301,9 +316,8 @@ describe('e2e / B2C Блок 14 — план месяца на двух теле
       expect(planOf(P).queue.map((q) => [q.id, q.given])).toEqual([['cushion', 30_000], ['trip', 40_000], ['car', 60_000], ['debt', 30_000]])
       expect(planOf(P).rest).toBe(467_000)
       expect(P.store.heroGoal?.id).toBe('trip')
-      const html = await screen(P.pinia, Money, '/money')
-      expect(part(html, 'data-queue="trip"')).toContain('главная')
-      expect(part(html, 'data-queue="cushion"')).not.toContain('главная')
+      const html = await month(P, 'queue')
+      expect(html.indexOf('data-queue="cushion"')).toBeLessThan(html.indexOf('data-queue="trip"'))
       // «Мечты»: фонды — только в плане (макет), герой — «Отпуск», в списке его нет.
       const dreams = await screen(P.pinia, Dreams, '/')
       expect(dreams).not.toContain('data-id="cushion"')

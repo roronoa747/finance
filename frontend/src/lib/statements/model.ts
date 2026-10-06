@@ -271,6 +271,9 @@ export function periodOf(date: string, kind: SpendTotal['kind']): string {
   return kind === 'week' ? weekKey(date) : date.slice(0, 7)
 }
 
+/** Трата выписки: списание, не перевод между своими — одно правило итогов (`spendTotals`) и «Недели» (B2C-92). */
+export const isSpend = (op: Pick<Operation, 'amount' | 'internal'>) => op.amount < 0 && !op.internal
+
 /**
  * Итоги по разделам за период (Р-21): только списания, внутренние не входят; незнакомое —
  * `_unknown`. Суммы положительные, целые. Считаются из **всех** операций периода.
@@ -284,7 +287,7 @@ export function spendTotals(
 ): SpendTotal[] {
   const out = new Map<string, SpendTotal>()
   for (const op of ops) {
-    if (op.amount >= 0 || op.internal || periodOf(op.date, kind) !== period) continue
+    if (!isSpend(op) || periodOf(op.date, kind) !== period) continue
     const categoryId = op.categoryId ?? UNKNOWN_CATEGORY
     const id = `${by}:${kind}:${period}:${categoryId}`
     const total = out.get(id) ?? { id, by, kind, period, categoryId, amount: 0, ops: 0, updatedAt: at }
@@ -312,19 +315,6 @@ export function periodsOf(ops: Operation[]): { kind: SpendTotal['kind']; period:
     }
   }
   return [...out.values()]
-}
-
-/** Итоги предпросмотра: сколько операций, сколько уже было, списания, поступления, внутренние. */
-export function draftSummary(ops: Operation[], known: (id: string) => boolean) {
-  let spent = 0
-  let received = 0
-  let internal = 0
-  for (const op of ops) {
-    if (op.internal) internal += Math.abs(op.amount)
-    else if (op.amount < 0) spent += -op.amount
-    else received += op.amount
-  }
-  return { total: ops.length, already: ops.filter((op) => known(op.id)).length, spent, received, internal }
 }
 
 export interface UnknownGroup {
@@ -356,54 +346,3 @@ export function unknownGroups(ops: Operation[], categoryId: string | null = null
   return [...groups.values()].sort((a, b) => b.amount - a.amount || a.label.localeCompare(b.label))
 }
 
-/**
- * «Это перевод партнёру?» (Р-5): получатели и отправители, чьё имя совпадает с другим
- * участником семьи, пока правила о них нет.
- */
-export function partnerHints(
-  ops: Operation[],
-  people: Person[],
-  me: PersonId,
-  rules: MerchantRule[],
-): { counterparty: string; label: string; person: PersonId }[] {
-  const out = new Map<string, { counterparty: string; label: string; person: PersonId }>()
-  const others = people.filter((p) => p.id !== me)
-  for (const op of ops) {
-    if (!op.counterparty || op.internal) continue
-    const who = normalizeCounterparty(op.counterparty)
-    if (out.has(who) || rules.some((r) => !r.deletedAt && r.match.counterparty === who)) continue
-    const person = matchPerson(op.counterparty, others)
-    if (person) out.set(who, { counterparty: who, label: op.counterparty, person })
-  }
-  return [...out.values()]
-}
-
-export interface PictureRow {
-  categoryId: string
-  week: number
-  month: number
-}
-
-/**
- * Простая картина (B2C-07): траты семьи по разделам за неделю и месяц — сумма итогов всех
- * участников. Порядок — по сумме месяца; нулевые строки не показываются.
- */
-export function picture(totals: SpendTotal[], week: string, month: string): PictureRow[] {
-  const rows = new Map<string, PictureRow>()
-  for (const t of totals) {
-    if (t.deletedAt || !t.amount) continue
-    const inWeek = t.kind === 'week' && t.period === week
-    const inMonth = t.kind === 'month' && t.period === month
-    if (!inWeek && !inMonth) continue
-    const row = rows.get(t.categoryId) ?? { categoryId: t.categoryId, week: 0, month: 0 }
-    if (inWeek) row.week += t.amount
-    else row.month += t.amount
-    rows.set(t.categoryId, row)
-  }
-  return [...rows.values()].sort((a, b) => b.month - a.month || b.week - a.week)
-}
-
-/** Строка «Всего» картины: траты семьи за неделю и за месяц. */
-export function pictureTotal(rows: PictureRow[]): { week: number; month: number } {
-  return rows.reduce((s, r) => ({ week: s.week + r.week, month: s.month + r.month }), { week: 0, month: 0 })
-}

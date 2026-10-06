@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
-import type { ComponentOptions } from 'vue'
 import { createMemoryHistory } from 'vue-router'
 import type { ApiClient } from '../src/api/client'
 import { createAppRouter } from '../src/router'
@@ -9,13 +8,14 @@ import { useFinanceStore } from '../src/stores/finance'
 import { useOperationsStore } from '../src/stores/operations'
 import { assignIds } from '../src/lib/statements/model'
 import type { Operation, ParsedStatement } from '../src/lib/statements/types'
-import { money, pct, plain } from '../src/lib/money'
+import { money, plain } from '../src/lib/money'
 import { deposit, freeByFact, planFact, untilPayday } from '../src/lib/finance'
 import { planFamilyDoc, T0 } from '../src/test/planFamily'
 import type { Payment } from '../src/types/finance'
 import { screenMixin } from '../src/test/screenState'
 import Money from '../src/views/Money.vue'
-import { at, backend, fakeServer, fakeStatements, screen, statementsFor, type FakeServer, type FakeStatements } from './support/family'
+import Month from '../src/views/Month.vue'
+import { at, backend, fakeServer, fakeStatements, screen, statementsFor, tapPay, type FakeServer, type FakeStatements } from './support/family'
 
 /**
  * Приёмка Блока 9 (пивот 3, «Деньги без лишнего»): два телефона на фейковом сервере. Часть 1 — сводка
@@ -55,13 +55,6 @@ async function sync(from: Phone, to: Phone) {
 
 const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
 
-/** Нажатие «Оплатил» в строке нужного платежа (`PaidRow` с этим `targetId`). */
-const tapPaid = (targetId: string): ComponentOptions => ({
-  created() {
-    if (this.$props?.targetId === targetId && 'tap' in this.$.setupState) (this.$.setupState.tap as () => void)()
-  },
-})
-
 describe('e2e / B2C Блок 9 — «Деньги без лишнего» на двух телефонах', () => {
   const storage = new Map<string, string>()
   let server: FakeServer
@@ -98,35 +91,37 @@ describe('e2e / B2C Блок 9 — «Деньги без лишнего» на �
     const p = untilPayday({ people: A.store.people, obligations: A.store.obligations, credits: A.store.credits, accounts: A.store.householdAccounts, payments: A.store.payments })!
     expect(p.due.map((d) => d.targetId)).toEqual(['loan'])
     expect(p.dueTotal).toBe(58_000)
-    expect(text(await screen(A.pinia, Money, '/money'))).toContain(`До зарплаты 8 дней хватает 1 списание · ${plain(p.dueTotal)} ₸`)
+    // Блок 15 (Р-91, Р-94): сводки «До зарплаты» на «Деньгах» нет; «Оплатил» — в листе платежа «Месяца».
+    const dues = async (P: typeof A) => text(await screen(P.pinia, Month, '/month', undefined, [screenMixin({ opened: 'dues' })]))
+    expect(text(await screen(A.pinia, Money, '/money'))).not.toContain('До зарплаты')
+    expect(await dues(A)).not.toContain(`✓ ${plain(58_000)}`)
 
-    // A нажимает «Оплатил» у кредита в «Платежах» — одна отметка со счёта прошлой оплаты.
-    await screen(A.pinia, Money, '/money', undefined, [tapPaid('loan')])
+    // A нажимает «Оплатил» у кредита — одна отметка со счёта прошлой оплаты.
+    await screen(A.pinia, Month, '/month', undefined, [tapPay('loan')])
     expect(A.store.payments.filter((x) => x.kind === 'credit' && x.period === '2026-09' && !x.deletedAt)).toEqual([
       expect.objectContaining({ targetId: 'loan', amount: 58_000, accountId: 'card', by: 'a' }),
     ])
-    expect(text(await screen(A.pinia, Money, '/money'))).toContain('Списаний нет')
+    expect(await dues(A)).toContain(`✓ ${plain(58_000)}`)
 
     await sync(A, B)
-    const b = text(await screen(B.pinia, Money, '/money'))
-    expect(b).toContain('Списаний нет')
-    expect(b).toContain(`Кредит 15-го · оплачено ${money(58_000)}`)
-    expect(await screen(B.pinia, Money, '/money')).toContain('aria-label="Оплачено — подробнее"')
+    expect(await dues(B)).toContain(`✓ ${plain(58_000)}`)
+    // «Деньги → Платежи» — справочник: отметки месяца в нём нет.
+    expect(text(await screen(B.pinia, Money, '/money'))).not.toContain('оплачено')
   })
 
   it('часть 2 — план: «Выбрать этот план» → переключатель включён у обоих; «Шаг сделан» → досрочка шага, прогноз и «уже сэкономили»', async () => {
     server.data.payments = [august, { ...august, id: 'aug-cc', targetId: 'cc', amount: 25_000 }]
     const A = await phone(server, st, 'a')
     const B = await phone(server, st, 'b')
-    expect(await screen(A.pinia, Money, '/money/plan')).toMatch(/role="switch" aria-checked="false"/)
+    expect(await screen(A.pinia, Money, '/money/debts')).toMatch(/role="switch" aria-checked="false"/)
 
     // «Выбрать этот план» в раскрытом «Копить или гасить?» (подушка — «Подушка»).
-    await screen(A.pinia, Money, '/money/plan', undefined, [screenMixin({ cushionGoalId: 'cushion' }, (s) => (s.choose as () => void)())])
+    await screen(A.pinia, Money, '/money/debts', undefined, [screenMixin({ cushionGoalId: 'cushion' }, (s) => (s.choose as () => void)())])
     setActivePinia(A.pinia)
     const plan = A.store.activePlan!
     expect(plan).toMatchObject({ cushionGoalId: 'cushion', creditIds: ['cc', 'loan'] })
     await sync(A, B)
-    const before = await screen(B.pinia, Money, '/money/plan')
+    const before = await screen(B.pinia, Money, '/money/debts')
     expect(before).toMatch(/role="switch" aria-checked="true"/)
     expect(text(before)).toContain(`Шаг сентября ${money(100_000)} досрочно`)
     // До первой досрочки строка прогноза без «Уже сэкономили 0 ₸» (ревью frontend Б9, Н-9).
@@ -134,7 +129,7 @@ describe('e2e / B2C Блок 9 — «Деньги без лишнего» на �
     expect(text(before)).not.toContain('Уже сэкономили')
 
     // «Шаг сделан» у A — досрочка 100 000 в кредитку с карты, с id плана.
-    await screen(A.pinia, Money, '/money/plan', undefined, [screenMixin({}, (s) => (s.tap as () => void)())])
+    await screen(A.pinia, Money, '/money/debts', undefined, [screenMixin({}, (s) => (s.tap as () => void)())])
     setActivePinia(A.pinia)
     const step = A.store.payments.find((x) => x.kind === 'prepay' && !x.deletedAt)!
     expect(step).toMatchObject({ targetId: 'cc', amount: 100_000, planId: plan.id, accountId: 'card' })
@@ -142,7 +137,7 @@ describe('e2e / B2C Блок 9 — «Деньги без лишнего» на �
     setActivePinia(B.pinia)
     const saved = planFact(B.store.activePlan!, B.store.payments, B.store.credits).savedInterest
     expect(saved).toBeGreaterThan(0)
-    const after = text(await screen(B.pinia, Money, '/money/plan'))
+    const after = text(await screen(B.pinia, Money, '/money/debts'))
     expect(after).toContain(`внесено по плану · ${money(100_000)}`)
     expect(after).toContain(`Уже сэкономили ${money(saved)}.`)
     expect(after).not.toContain('Шаг сделан')
@@ -189,47 +184,22 @@ describe('e2e / B2C Блок 9 — «Деньги без лишнего» на �
     expect(historyB).not.toContain('ТОО Непонятное')
   })
 
-  it('часть 4 — права: viewer на /money, /money/plan, /money/history — без «Оплатил», «Добавить», полей и активного переключателя', async () => {
+  it('часть 4 — права: viewer на /money, /money/debts, /money/history — без «Оплатил», «Добавить», полей и активного переключателя', async () => {
     server.data.plans = [{
       id: 'plan', status: 'active', by: 'a', startedAt: '2026-09-10T05:00:00.000Z', endedAt: null, keptGoalIds: [], cushionGoalId: 'cushion',
       creditIds: ['cc', 'loan'], months: 24, lump: 0, forecast: { gain: 0, savedInterest: 0, debtFreeMonth: null }, result: null, updatedAt: T0,
     }]
     const V = await phone(server, st, 'b', 'viewer')
-    for (const path of ['/money', '/money/plan', '/money/history', '/money?add=debt', '/money?income=1']) {
+    for (const path of ['/money', '/money/debts', '/money/history', '/money?add=debt', '/money?income=1']) {
       const html = await screen(V.pinia, Money, path)
       expect(html, path).not.toMatch(/>\s*Оплатил\s*</)
       expect(html, path).not.toMatch(/>\s*(<svg[\s\S]*?<\/svg>\s*)?Добавить( счёт)?\s*</)
       expect(html, path).not.toMatch(/>\s*Шаг сделан\s*</)
       // Поля записи — нет; калькулятор «Копить или гасить?» в «Плане» — расчёт без записи, его переключатели остаются.
-      if (path !== '/money/plan') expect(html, path).not.toContain('<input')
+      if (path !== '/money/debts') expect(html, path).not.toContain('<input')
       expect(html, path).not.toMatch(/>\s*Выбрать этот план\s*</)
-      if (path === '/money/plan') expect(html).toMatch(/role="switch" aria-checked="true"[^>]*\sdisabled(=""|\s|>)/)
+      if (path === '/money/debts') expect(html).toMatch(/role="switch" aria-checked="true"[^>]*\sdisabled(=""|\s|>)/)
     }
-  })
-
-  it('часть 6 (приёмка) — план «Трат» из листа виден партнёру; доли «Дохода» = прежний Бюджет', async () => {
-    const A = await phone(server, st, 'a')
-    const B = await phone(server, st, 'b')
-    const before = text(await screen(A.pinia, Money, '/money'))
-    // Нагрузка — жильё 220 000 + кредиты 103 000 от дохода 1 200 000 (формула «вместе с жильём» Бюджета).
-    // 27 % — словом (B2C-59): низкая.
-    expect(pct(220_000 + 58_000 + 25_000 + 20_000, 1_200_000)).toBe(27)
-    expect(before).toContain('нагрузка низкая')
-    expect(before).toContain(`траты ${pct(150_000, 1_200_000)} %`)
-
-    // A правит план в листе виджета (B2C-59: поля «Жизнь» и «Траты» → `commit`): «Траты» — так, чтобы вместе с «Жизнью» вышло 222 000.
-    const life = A.store.moneyArticles.find((a) => a.id === 'life')!.amount ?? 0
-    const editLiving: ComponentOptions = {
-      created() {
-        const s = this.$.setupState
-        if ('living' in s && 'commit' in s) (s.commit as (id: string, t: string) => void)('spend', String(222_000 - life))
-      },
-    }
-    await screen(A.pinia, Money, '/money', undefined, [editLiving])
-    await sync(A, B)
-    const b = text(await screen(B.pinia, Money, '/money'))
-    expect(b).toContain(`из ${plain(222_000)}`)
-    expect(b).toContain(`траты ${pct(222_000, 1_200_000)} %`)
   })
 
   it('часть 7 (приёмка) — лист вклада по адресу: условия и расчёт `deposit()`', async () => {
@@ -253,8 +223,8 @@ describe('e2e / B2C Блок 9 — «Деньги без лишнего» на �
       ['/capital/dep', '/money?account=dep'],
       ['/money/capital/dep?x=1', '/money?x=1&account=dep'],
       ['/money/budget?add=payment', '/money?add=payment'],
-      ['/capital?advice=strategy', '/money/plan'],
-      ['/plan', '/money/plan'],
+      ['/capital?advice=strategy', '/money/debts'],
+      ['/plan', '/money/debts'],
     ]
     for (const [from, to] of cases) {
       await router.push(from)

@@ -126,7 +126,7 @@ describe('B2C-58, B2C-89: записи денег в «Истории» (Р-85)'
     const push = vi.spyOn(router, 'push')
     row.click()
     await nextTick()
-    expect(push).toHaveBeenCalledWith('/money?month=2026-09')
+    expect(push).toHaveBeenCalledWith('/month?month=2026-09')
     // Запись «Отложить по плану» — по целям и досрочке, тем же путём в сводку месяца.
     const plan = [...document.querySelectorAll<HTMLElement>('button')].find((x) => x.textContent?.includes('Отложено по плану'))!
     expect(plan.textContent).toContain('зарплата · Аруна')

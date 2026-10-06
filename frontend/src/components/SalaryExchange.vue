@@ -3,16 +3,17 @@ import { computed, ref, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
-import { money, moneyIn, plain, parseMoney } from '@/lib/money'
+import { money, moneyIn, moneySigned, plain, parseMoney, signTone } from '@/lib/money'
 import { atLabel, todayIso } from '@/lib/dates'
-import { fxToTenge, liveExchanges, monthExchanges, payableAccounts, rateOn, salaryCtxOf, salaryExchange, salaryTenge } from '@/lib/finance'
-import { CURRENCY_SIGN } from '@/lib/fx'
+import { fxToTenge, fxYearDelta, liveExchanges, monthExchanges, payableAccounts, rateOn, salaryCtxOf, salaryExchange, salaryTenge } from '@/lib/finance'
+import { CURRENCY_SIGN, CURRENCY_WORD } from '@/lib/fx'
 import type { PersonId } from '@/types/finance'
 import Field from '@/components/kit/Field.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Button from '@/components/ui/Button.vue'
 import AccountChoice from '@/components/AccountChoice.vue'
+import FxRateSheet from '@/components/money/FxRateSheet.vue'
 
 /**
  * «Обменял» (B2C-79, Р-73): под пришедшей валютной зарплатой — одна строка «обменяно 800 € из
@@ -21,7 +22,8 @@ import AccountChoice from '@/components/AccountChoice.vue'
  * итог «= N ₸» крупно, счёт зачисления; одна брендовая «Записать». Тенговая зарплата — ничего.
  * Нажатие на строку — лист обменов месяца (B2C-79-а): по строке на обмен, у своей — тихая
  * «Отменить» с подтверждением (надгробие); viewer и партнёр — только смотрят. Отметку сняли, а
- * обмены живы (ревью frontend Н-6) — строка и лист остаются, без «Обменял».
+ * обмены живы (ревью frontend Н-6) — строка и лист остаются, без «Обменял». «Евро за год: −134 ₸» — тихой строкой
+ * внизу обоих листов (ворота B2C-91: из карточки зарплат ушла сюда), нажатие — лист курса (`FxRateSheet`, Р-76).
  */
 const props = defineProps<{ personId: PersonId; period: string }>()
 
@@ -40,6 +42,17 @@ const monthTenge = computed(() => {
   return p && currency.value ? salaryTenge(p, props.period, salaryCtxOf({ book: fx.book, payments: finance.payments, fxExchanges: finance.fxExchanges })).tenge : 0
 })
 const mine = computed(() => !auth.isViewer && auth.slot === props.personId)
+/** Курс за год (Р-76): сколько тенге на единицу валюты курс добавил или отнял — строка внизу листов. */
+const year = computed(() => {
+  const p = finance.people.find((x) => x.id === props.personId && !x.deletedAt)
+  return p ? fxYearDelta(p, props.period, fx.book) : null
+})
+const rateOpen = ref(false)
+function openRate() {
+  list.value = false
+  open.value = false
+  rateOpen.value = true
+}
 const canExchange = computed(() => mine.value && !!info.value && info.value.left > 0 && !!info.value.record.accountId)
 
 /** Лист обменов месяца; `confirming` — id обмена, отмену которого подтверждают. */
@@ -126,6 +139,9 @@ function save() {
         <Button variant="ghost" size="sm" @click="confirming = null">Нет</Button>
       </div>
     </div>
+    <button v-if="year" type="button" class="press mt-2 w-full cursor-pointer text-center text-[12.5px] num" :class="signTone(year.tenge, 'text-ink-3')" data-fx-year @click="openRate">
+      {{ CURRENCY_WORD[year.currency].nom }} за год: {{ moneySigned(year.perUnit) }}
+    </button>
   </Sheet>
 
   <Sheet :open="open" title="Обменял" :z="60" @close="open = false">
@@ -144,5 +160,9 @@ function save() {
     <AccountChoice v-model="chosen" :accounts="choices" label="Куда зачислить" none="Не записывать на счёт" />
 
     <Button class="w-full" :disabled="!valid || chosen === undefined" @click="save">Записать</Button>
+    <button v-if="year" type="button" class="press mt-2 w-full cursor-pointer text-center text-[12.5px] num" :class="signTone(year.tenge, 'text-ink-3')" data-fx-year @click="openRate">
+      {{ CURRENCY_WORD[year.currency].nom }} за год: {{ moneySigned(year.perUnit) }}
+    </button>
   </Sheet>
+  <FxRateSheet :person-id="rateOpen ? personId : null" @close="rateOpen = false" />
 </template>

@@ -5,15 +5,14 @@ import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
 import { plain } from '@/lib/money'
 import { monthKey } from '@/lib/dates'
-import { liveAccounts, liveCredits, liveGoals, netWorth, openCredits } from '@/lib/finance'
+import { liveAccounts, liveCredits, liveGoals, netWorth, openDebt } from '@/lib/finance'
 import { cn, plural } from '@/lib/utils'
 import Hint from '@/components/kit/Hint.vue'
 
 /**
- * Три квадрата «Денег» (пивот 3, Р-31; `pivot-3/index.html` `.squares`): Капитал — чистых коротко
- * (`netWorth`, единственное место на экране — решение владельца 2026-10-02; подсказка «?» — рядом
- * с кнопкой квадрата, не внутри: кнопка в кнопке недопустима),
- * План — «сначала долги» / «гасить первым» / «долгов нет», История — свои операции месяца.
+ * Три квадрата «Денег» (пивот 3, Р-31; Блок 15, Р-91): Капитал — чистых коротко (`netWorth`; подсказка «?» —
+ * рядом с кнопкой квадрата, не внутри: кнопка в кнопке недопустима), Долги (бывший «План») — остаток открытых
+ * долгов или «долгов нет», История — свои операции месяца.
  * Активный — по адресу; переход — `router.replace`: «назад» ведёт на прошлую вкладку, а не
  * перебирает квадраты.
  */
@@ -23,9 +22,8 @@ const financeStore = useFinanceStore()
 const ops = useOperationsStore()
 
 const worth = computed(() => netWorth(liveAccounts(financeStore.accounts), liveCredits(financeStore.credits), liveGoals(financeStore.goals)))
-const planNote = computed(() =>
-  financeStore.activePlan ? 'сначала долги' : openCredits(financeStore.credits).length ? 'гасить первым' : 'долгов нет',
-)
+const debt = computed(() => openDebt(financeStore.credits))
+const debtsNote = computed(() => (debt.value > 0 ? plain(debt.value) : 'долгов нет'))
 // Свои операции из выписок за этот месяц (партнёр своих не видит — Р-5); нет — в Истории отметки.
 const opsCount = computed(() => {
   const key = monthKey()
@@ -34,7 +32,7 @@ const opsCount = computed(() => {
 
 const squares = computed(() => [
   { to: '/money', title: 'Капитал', note: plain(worth.value) },
-  { to: '/money/plan', title: 'План', note: planNote.value },
+  { to: '/money/debts', title: 'Долги', note: debtsNote.value },
   {
     to: '/money/history',
     title: 'История',

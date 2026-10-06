@@ -1,12 +1,12 @@
 import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
+import { isSpend, normalizeCounterparty, normalizeMerchant } from '@/lib/statements/model'
 import type { Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY, plannedElsewhere } from '@/lib/statements/dictionary'
-import { STAT_NORMS } from '@/lib/statements/norms'
-import { addMonths, dayLabel, daysInMonth, isoIn, monthFrom, monthKey, parseMonthKey, today, weekdayShort, weekRange } from '@/lib/dates'
+import { addDaysIso, addMonths, dayLabel, daysInMonth, isoIn, monthFrom, monthKey, parseMonthKey, today, todayIso, weekdayShort, weekKey, weekRange } from '@/lib/dates'
 import { spendColor } from '@/lib/palette'
-import { money, pct } from '@/lib/money'
+import { money } from '@/lib/money'
 /**
  * Расчётное ядро. Чистые функции: ни сети, ни состояния, ни ИИ.
  *
@@ -746,6 +746,9 @@ export const liveCredits = (list: Credit[]) => (list || []).filter(alive);
  * база последней сверки, закрытость в нём не видна.
  */
 export const openCredits = (list: Credit[]) => liveCredits(list).filter((c) => c.principal > 0);
+
+/** Остаток открытых долгов семьи — квадрат и карточка «Долги», строка под «Капиталом» (Р-91). */
+export const openDebt = (list: Credit[]) => openCredits(list).reduce((a, c) => a + c.principal, 0);
 /**
  * Долги, которые стоит гасить досрочно: открытые с процентами, самый дорогой
  * первым (при равной ставке — тот, что больше съедает процентами в месяц).
@@ -1079,15 +1082,6 @@ export function paydayRates(p: Person, key: string, book: RateBook | null | unde
     if (d) out.push({ key: k, day: paydayIso(p, k), rate: d.rate, tenge: d.tenge });
   }
   return out;
-}
-
-/** Ближайшее запланированное изменение оклада; `delta` — в тенге (валютный — по книге). */
-export function nextSalaryChange(p: Person, key = monthKey(), book?: RateBook | null) {
-  const future = (p.salaryVersions ?? [])
-    .filter((x) => x.from > key)
-    .sort((a, b) => a.from.localeCompare(b.from));
-  if (!future.length) return null;
-  return { ...future[0], currency: future[0].currency ?? 'KZT', delta: salaryAt(p, future[0].from, book) - salaryAt(p, key, book) };
 }
 
 /** Совокупный доход участников, тенге: зарплаты месяца по Р-74 (`salaryTenge`). */
@@ -1511,7 +1505,7 @@ export const budgetInterest = (credits: Credit[]) =>
   openCredits(credits).reduce((a, c) => a + creditSplit(c.principal, c.annualRate, c.payment).interest, 0)
 
 /**
- * «Что гасить первым» (квадрат «План», пивот 3, Р-34; бывшая секция Капитала): долги с процентами
+ * «Что гасить первым» (квадрат «Долги», пивот 3, Р-34; бывшая секция Капитала): долги с процентами
  * по `costliestCredits` с выводами `creditOutlook`, самый дорогой — первым; добавка в месяц,
  * снимающая половину его переплаты, и что она даёт (`prepayOutcome`). Долги без ставки (кредит из
  * выписки, B2C-19) не ранжируются — их просим уточнить. Кредиты — производные.
@@ -2034,18 +2028,6 @@ export function salaryToAllocate(
 }
 
 /**
- * «Пришла зарплата <имя>?» (RP-10) — тексты карточки ближайшей зарплаты (`salaryAsk`), одни на
- * главном и в «Неделе» (ревью Блока 3, Н-23).
- */
-export const salaryCard = (near: { who: Person; income: number; day: number; key: string }) => ({
-  question: `Пришла зарплата ${near.who.name}?`,
-  meta: `${money(near.income)} · ${dayLabel(near.day, near.key)}`,
-})
-
-/** «Освободится N ₸ в месяц» — один текст для очереди «Недели» и карточки «Денег» (ревью Блока 10, Н-4). */
-export const freedQuestion = (freed: Pick<FreedChange, 'monthly'>) => `Освободится ${money(freed.monthly)} в месяц`
-
-/**
  * Подписки, от которых отказались в месяце (B2C-20 «утечки»): обязательства с надгробием
  * этого месяца (по Алматы) из группы подписок или подписки раздела «быт» (`isSubscription`:
  * d4 с точной суммой — туда же кладёт подписки первый запуск; оценка «быта» — не подписка).
@@ -2551,7 +2533,7 @@ export function overpayNoPlan(credits: Credit[]): number | null {
 }
 
 /**
- * Прогноз плана одной строкой квадрата «План» (пивот 3, Р-34): те же два прогона, что у
+ * Прогноз плана одной строкой квадрата «Долги» (пивот 3, Р-34): те же два прогона, что у
  * `planForecast`, — когда закроются долги с планом, на сколько месяцев раньше, чем без него, и
  * переплата банку без плана → с планом (от нынешних остатков, целые тенге). «Без плана» —
  * `overpayNoPlan` (одно число с карточкой ставки), «с планом» — оно минус экономия
@@ -2634,11 +2616,12 @@ export type PlanMonth = {
 const goalHaveBefore = (g: Goal, period: string) =>
   goalHave(g.seed, (g.movements ?? []).filter((m) => monthKey(new Date(m.date)) < period))
 
-/** Сколько положили в цель за месяц `period`. */
+/**
+ * Сколько положили в цель за месяц `period` — нетто движений месяца, не ниже нуля: снятие «Не отложено» вычитается
+ * (одно определение для `put` плана, списка дел `planPuts` и сводки прошлого месяца — ревью frontend Б15, Н-3).
+ */
 const goalPutIn = (g: Goal, period: string) =>
-  (g.movements ?? [])
-    .filter((m) => m.amount > 0 && monthKey(new Date(m.date)) === period)
-    .reduce((a, m) => a + m.amount, 0)
+  Math.max(0, (g.movements ?? []).filter((m) => monthKey(new Date(m.date)) === period).reduce((a, m) => a + m.amount, 0))
 
 /** План и факт по месяцам (Р-6): с месяца старта по `key` включительно. */
 export function planMonths(plan: DebtPlan, state: PlanState, key: string): PlanMonth[] {
@@ -2927,7 +2910,7 @@ export type PlanQueueItem = {
   have: number
   /** Цель — её сумма, фонд — порог (месяцы × траты месяца), долг — остаток на начало месяца. */
   need: number
-  /** Уже отложено в этом месяце (взносы цели, досрочки долга). */
+  /** Уже отложено в этом месяце (взносы цели за вычетом снятий — `goalPutIn`, досрочки долга). */
   put: number
   /** Месяц, к которому соберём или закроем при той же очереди и суммах; null — не соберём (пауза, взнос 0). */
   doneMonth: string | null
@@ -3237,6 +3220,40 @@ function planParts(contributions: { goalId: string; amount: number }[], prepay: 
   return { parts, put: amountTotal(parts) }
 }
 
+/** Факт трат месяца по всем участникам (строка «Траты» — «потрачено N»); null — выписок за месяц нет ни у кого. */
+export function spendFact(spend: PlanSpend[]): number | null {
+  const known = spend.filter((s) => s.fact !== null)
+  return known.length ? amountTotal(known.map((s) => ({ amount: s.fact! }))) : null
+}
+
+/** Состояние строки очереди «Месяца» — только когда есть что сказать (правило 12); текст — в экране. */
+export type QueueStatus =
+  | { kind: 'off' }
+  | { kind: 'planPause' }
+  /** Карточка долга без суммы на месяц при плане «Сначала долги» — сумма идёт шагом плана (Р-82). */
+  | { kind: 'debtByPlan' }
+  /** Карточка долга без суммы на месяц, плана нет. */
+  | { kind: 'debtNoAmount' }
+  | { kind: 'collected' }
+  | { kind: 'noMonthly' }
+  /** План даёт меньше взноса: `amount` — сколько не хватает. */
+  | { kind: 'short'; amount: number }
+  /** План в этом месяце не даёт ничего. */
+  | { kind: 'shortAll' }
+
+export function queueStatus(q: PlanQueueItem, o: { debtPlan: boolean }): QueueStatus | null {
+  if (q.paused === 'off') return { kind: 'off' }
+  if (q.paused === 'plan') return { kind: 'planPause' }
+  if (q.kind === 'debt') {
+    if (q.want <= 0) return { kind: o.debtPlan ? 'debtByPlan' : 'debtNoAmount' }
+  } else {
+    if (q.need - q.have <= 0) return { kind: 'collected' }
+    if (q.want <= 0) return { kind: 'noMonthly' }
+  }
+  if (q.given < q.want) return q.given > 0 ? { kind: 'short', amount: q.want - q.given } : { kind: 'shortAll' }
+  return null
+}
+
 /**
  * «Отложить по плану» для плательщика (Р-78): его цели, фонды и досрочка — суммами плана месяца, разово. За
  * вычетом уже отложенного в этом месяце (`put`: взнос руками, другая запись) — дважды не кладётся. null — его
@@ -3375,6 +3392,156 @@ export function planFromSource(
   }
 }
 
+/* ---------------- «Месяц» — список дел (Блок 15, B2C-94; Р-93, Р-97) ---------------- */
+
+/** Строка подписки для группы: платёж месяца («Месяц») или строка справочника («Деньги»). */
+export type SubsItem = { obligation: Obligation; amount: number; paid: boolean; day: number }
+
+/** Подписки одной группой (Р-93): строка «Подписки · N · сумма», раскрытие — подгруппы. */
+export type SubsGroup<T> = {
+  count: number
+  total: number
+  /** Сколько подписок оплачено; ✓ у группы — когда все. */
+  paid: number
+  allPaid: boolean
+  /** День первой подписки — место группы в списке по дням. */
+  day: number
+  /** Сначала подписки без ручной группы (`name` пусто), затем ручные группы (`group` / `parentId`) по имени; внутри — по дню. */
+  parts: { groupId: string | null; name: string; rows: T[] }[]
+}
+
+/** С какого числа подписок они сворачиваются в группу: одна подписка — обычная строка. */
+export const SUBS_GROUP_MIN = 2
+
+/**
+ * Группа подписок (Р-93) — одна функция для «Месяца» (с отметками) и справочника «Денег»: число, сумма, сколько
+ * оплачено, подгруппы ручных групп. `items` — уже подписки (`isSubscription`); `all` — обязательства семьи (имена
+ * ручных групп). Меньше `SUBS_GROUP_MIN` — null: сворачивать нечего.
+ */
+export function subscriptionGroup<T extends SubsItem>(items: T[], all: Obligation[]): SubsGroup<T> | null {
+  if (items.length < SUBS_GROUP_MIN) return null
+  const groups = liveGroups(all)
+  const parts = new Map<string, { groupId: string | null; name: string; rows: T[] }>()
+  for (const x of items.slice().sort((a, b) => a.day - b.day || a.obligation.name.localeCompare(b.obligation.name))) {
+    const g = groups.find((y) => y.id === x.obligation.parentId) ?? null
+    const part = parts.get(g?.id ?? '') ?? { groupId: g?.id ?? null, name: g?.name ?? '', rows: [] }
+    part.rows.push(x)
+    parts.set(g?.id ?? '', part)
+  }
+  const paid = items.filter((x) => x.paid).length
+  return {
+    count: items.length,
+    total: amountTotal(items),
+    paid,
+    allPaid: paid === items.length,
+    day: Math.min(...items.map((x) => x.day)),
+    parts: [...parts.values()].sort((a, b) => Number(!!a.groupId) - Number(!!b.groupId) || a.name.localeCompare(b.name)),
+  }
+}
+
+/** Платежи месяца для списка (Р-93): подписки — группой, остальные — строками как были. */
+export function monthSubscriptions<T extends MonthDue>(dues: T[], all: Obligation[]): { rest: T[]; subs: SubsGroup<Extract<T, { kind: 'obligation' }>> | null } {
+  const isSub = (d: T): d is Extract<T, { kind: 'obligation' }> => d.kind === 'obligation' && isSubscription(d.obligation)
+  const subs = subscriptionGroup(dues.filter(isSub), all)
+  return subs ? { rest: dues.filter((d) => !isSub(d)), subs } : { rest: dues, subs: null }
+}
+
+/** Дело «отложить» месяца (Р-97, ворота B2C-91): строка очереди как пункт списка — «Отложил» ✓. */
+export type PlanPut = {
+  /** id строки очереди. */
+  id: string
+  kind: PlanQueueItem['kind']
+  goalId: string | null
+  creditId?: string
+  planId?: string
+  name: string
+  payer: PersonId | null
+  /** Сколько даёт план в этом месяце (`given`), > 0. */
+  amount: number
+  /** Отложено в этом месяце с учётом снятий, ≥ 0. */
+  put: number
+  /** Осталось отложить: `amount − put`, ≥ 0. */
+  left: number
+  /** ✓ — сумма плана отложена вся. */
+  done: boolean
+  /** Зарплата плательщика пришла — строка ждёт «Отложил» (точка, «Отложил всё»). */
+  ready: boolean
+  /** Сколько снимет «Не отложено»: положенное в цель записями плана этого месяца, не больше `put`; 0 — снимать нечего. */
+  undo: number
+}
+
+/**
+ * Список дел «отложить» (Р-97): строки очереди, которым план даёт сумму в этом месяце. Отложено — `goalPutIn`, нетто
+ * движений цели за месяц (снятие «Не отложено» возвращает строку в дела), у долга — досрочки месяца. План считает от
+ * начала месяца — отметка сумму строки не меняет.
+ */
+export function planPuts(state: MonthPlanState, plan: MonthPlan): PlanPut[] {
+  const goals = new Map(liveGoals(state.goals ?? []).map((g) => [g.id, g]))
+  const came = new Set(plan.income.byPerson.filter((x) => x.came).map((x) => x.person))
+  const records = (state.allocations ?? []).filter((a) => !a.deletedAt && a.kind === 'plan' && a.source === 'salary' && a.period === plan.key)
+  const recorded = (target: string) => records.reduce((s, a) => s + a.parts.filter((p) => p.target === target).reduce((x, p) => x + p.amount, 0), 0)
+  return plan.queue
+    .filter((q) => !q.paused && q.given > 0)
+    .map((q): PlanPut => {
+      const g = q.goalId ? goals.get(q.goalId) : undefined
+      const put = g ? goalPutIn(g, plan.key) : q.put
+      const left = Math.max(0, q.given - put)
+      return {
+        id: q.id, kind: q.kind, goalId: q.goalId, ...(q.creditId ? { creditId: q.creditId } : {}), ...(q.planId ? { planId: q.planId } : {}),
+        name: q.name, payer: q.payer, amount: q.given, put, left, done: left <= 0,
+        ready: !!q.payer && came.has(q.payer),
+        undo: q.goalId ? Math.min(put, recorded(q.goalId)) : 0,
+      }
+    })
+}
+
+/** Что ждёт «Отложил» прямо сейчас: зарплата плательщика пришла, сумма плана не отложена. */
+export const pendingPuts = (puts: PlanPut[]) => puts.filter((p) => p.ready && !p.done)
+
+/** Сколько осталось отложить по строкам — сумма на «Отложил всё», ровно то, что запишет `planPutSaves` (остатки `left`). */
+export const putsLeft = (puts: PlanPut[]) => amountTotal(puts.map((p) => ({ amount: p.left })))
+
+/**
+ * Что записать по строкам списка дел («Отложил» у цели, «Отложил всё»): по записи на плательщика — его взносы и
+ * досрочка остатком до суммы плана (`left`), источник — его зарплата месяца. Уже отложенные строки пропускаются.
+ */
+export function planPutSaves(plan: MonthPlan, puts: PlanPut[]): PlanSave[] {
+  const todo = puts.filter((p) => p.left > 0 && p.payer)
+  return [...new Set(todo.map((p) => p.payer!))].map((person) => {
+    const mine = todo.filter((p) => p.payer === person)
+    const contributions = mine.filter((p) => p.goalId).map((p) => ({ goalId: p.goalId!, amount: p.left }))
+    const debt = mine.find((p) => p.kind === 'debt' && p.creditId)
+    const prepay = debt ? { creditId: debt.creditId!, amount: debt.left, ...(debt.planId ? { planId: debt.planId } : {}) } : null
+    return {
+      record: { source: 'salary' as const, sourceId: person, period: plan.key },
+      total: plan.income.byPerson.find((x) => x.person === person)?.amount ?? 0,
+      contributions,
+      prepay,
+      ...planParts(contributions, prepay),
+    }
+  })
+}
+
+/** Деньги сверх плана у своего предмета (Р-86, Р-97): «освободится» — у платежа, «долг закрыт» — у целей. */
+export type PlanExtras = {
+  /** Платёж уменьшится: +N в месяц первой цели очереди; запись ещё не сделана. */
+  freed: (Extract<PlanFromSource, { mode: 'monthly' }> & { obligationId: string }) | null
+  /** Долг закрыт в этом месяце: его платёж — разово по очереди; запись ещё не сделана. */
+  closed: (Extract<PlanFromSource, { mode: 'once' }> & { name: string }) | null
+}
+
+/** Прочие источники месяца, которые ещё ждут решения (`planFromSource` без записи) — одно место для экрана и точки. */
+export function planExtras(state: MonthPlanState, ctx: MonthPlanCtx & { rawCredits?: Credit[] }): PlanExtras {
+  const f = planFromSource(state, ctx, { from: 'freed' })
+  const freed = f?.mode === 'monthly' && !f.recorded ? { ...f, obligationId: f.record.sourceId } : null
+  const moment = progressMoments({ credits: ctx.rawCredits ?? state.credits, payments: state.payments }).find(
+    (m): m is Extract<Moment, { kind: 'closed' }> => m.kind === 'closed' && movementMonth(m.at) === ctx.key,
+  )
+  const c = moment ? planFromSource(state, ctx, { from: 'credit', creditId: moment.creditId }) : null
+  const closed = moment && c?.mode === 'once' && !c.recorded && c.amount > 0 ? { ...c, name: moment.name } : null
+  return { freed, closed }
+}
+
 /** Сводка прошлого месяца (Р-85) — только из записей, только чтение. */
 export type MonthPlanPast = {
   key: string
@@ -3445,24 +3612,10 @@ export type WeekPictureRow = {
   color: string
 }
 
-export type WeekPicture = {
-  /** Понедельник и воскресенье недели, `YYYY-MM-DD`. */
-  range: { from: string; to: string }
-  /** Траты обоих за неделю, включая не разобранное. */
-  total: number
-  /** Разделы по убыванию суммы, без «не разобрано». */
-  rows: WeekPictureRow[]
-  unknown: number
-  unknownShare: number
-  /** Кто загрузил выписку, покрывающую неделю, и кто нет. */
-  uploaded: Person[]
-  missing: Person[]
-}
-
 /** Загрузка выписки, как её отдаёт сервер: чья и за какой период (`created_at` — когда загрузили). */
 export type UploadPeriod = { slot: string; period_from: string; period_to: string; created_at?: string }
 
-/** Выписка за неделю есть, если её период перекрывает неделю хотя бы днём (`weekPicture`, «Выписки»). */
+/** Выписка за неделю есть, если её период перекрывает неделю хотя бы днём (строка загрузки «Недели», `startWeek`). */
 const coversWeek = (u: UploadPeriod, range: { from: string; to: string }) => u.period_to >= range.from && u.period_from <= range.to
 
 /**
@@ -3484,7 +3637,7 @@ export type SpendRows = { total: number; rows: WeekPictureRow[]; unknown: number
 
 /**
  * Строки картины по разделам из итогов `spendTotals` за период — неделя или месяц, все
- * участники или один (`by`): суммы, доли от общей, «не разобрано» отдельно. Ядро `weekPicture`
+ * участники или один (`by`): суммы, доли от общей, «не разобрано» отдельно. Ядро картины недели
  * и картины месяца первого запуска (`Start`): экраны сами не суммируют.
  */
 export function spendRows(
@@ -3517,41 +3670,10 @@ export function spendRows(
   return { total, rows, unknown, unknownShare: total > 0 ? unknown / total : 0 }
 }
 
-/**
- * Картина недели (Р-8): траты обоих по разделам за ISO-неделю `week` — сумма недельных
- * итогов всех участников (`spendTotals`), доли от общей суммы; «не разобрано» — отдельно.
- * Кто без выписки — по загрузкам семьи, покрывающим хотя бы день недели.
- */
-export function weekPicture(
-  totals: SpendTotal[],
-  categories: SpendCategory[],
-  people: Person[],
-  week: string,
-  uploads: UploadPeriod[] = [],
-): WeekPicture {
-  const range = weekRange(week)
-  const { total, rows, unknown, unknownShare } = spendRows(totals, categories, { kind: 'week', period: week })
-  const alivePeople = people.filter(alive)
-  const uploaded = alivePeople.filter((p) => uploads.some((u) => u.slot === p.id && coversWeek(u, range)))
-  const missing = alivePeople.filter((p) => !uploaded.includes(p))
-  return { range, total, rows, unknown, unknownShare, uploaded, missing }
-}
-
-/**
- * Тег картины недели (главный и «Неделя» — один текст): кто-то загрузил, а кто-то нет —
- * «без выписки <имена>»; загрузили все — «по выпискам обоих» (один участник — «по выписке»);
- * никто — null. `peopleCount` — живые участники семьи.
- */
-export function weekTag(pic: Pick<WeekPicture, 'uploaded' | 'missing'>, peopleCount: number): { text: string; tone: 'ok' | 'warn' } | null {
-  if (pic.missing.length && pic.uploaded.length) return { text: `без выписки ${pic.missing.map((p) => p.name).join(' и ')}`, tone: 'warn' }
-  if (pic.uploaded.length) return { text: peopleCount > 1 ? 'по выпискам обоих' : 'по выписке', tone: 'ok' }
-  return null
-}
-
 /** Строка карточки «Выписки» (Р-62): загружена ли выписка за неделю и в какой день — последняя загрузка; нет — null. */
 export type WeekUploadRow = { person: Person; day: string | null }
 
-/** Карточка «Выписки · неделя» (Р-62) — по живым участникам, то же перекрытие периода с неделей, что `weekPicture`. */
+/** Кто загрузил выписку за неделю (Р-62; строка загрузки «Недели», Р-96) — по живым участникам, перекрытие периода с неделей — `coversWeek`. */
 export function weekUploads(people: Person[], week: string, uploads: UploadPeriod[] = []): WeekUploadRow[] {
   const range = weekRange(week)
   return people.filter(alive).map((person) => {
@@ -3561,13 +3683,229 @@ export function weekUploads(people: Person[], week: string, uploads: UploadPerio
   })
 }
 
-/** Итог недели против прошлой (DESIGN.md §6 «на N % меньше/больше прошлой»), целый процент; null — одной из недель нет. */
-export function weekVersusPrev(totals: SpendTotal[], week: string, prevWeek: string): { delta: number } | null {
-  const sum = (key: string) => spendRows(totals, [], { kind: 'week', period: key }).total
-  const now = sum(week)
-  const prev = sum(prevWeek)
-  if (!prev || !now) return null
-  return { delta: Math.round(((now - prev) / prev) * 100) }
+/* ---------------- «Неделя» — мои траты (Блок 15, B2C-92; Р-95, Р-98, Р-101) ---------------- */
+
+/** Остаток раздела «мало»: меньше этой доли плана месяца (или уже сверх плана) — строка красится `--warn`. */
+export const LOW_REST_SHARE = 0.15
+
+/** Стрелка к прошлой неделе: больше / меньше / столько же; null — на этой неделе трат нет. */
+export type WeekArrow = 'up' | 'down' | 'same' | null
+
+const weekArrow = (now: number, prev: number): WeekArrow => (now <= 0 ? null : now > prev ? 'up' : now < prev ? 'down' : 'same')
+
+/** Прошлая ISO-неделя. */
+export const prevWeekKey = (week: string) => weekKey(addDaysIso(weekRange(week).from, -7))
+
+/** Раздел участника за неделю (`myWeek`). */
+export type MyWeekRow = {
+  categoryId: string
+  name: string
+  /** Токен цвета раздела (`spendColor`). */
+  color: string
+  /** Потрачено за неделю, целые тенге. */
+  amount: number
+  /** Потрачено за прошлую неделю. */
+  prev: number
+  /** К прошлой неделе: `amount − prev`. */
+  delta: number
+  arrow: WeekArrow
+  /** Сумма раздела на месяц недели (`spendPlans`, Р-81); null — раздел вне плана. */
+  plan: number | null
+  /** Факт месяца на конец недели (для текущей — на сегодня); null — раздел вне плана. */
+  spent: number | null
+  /** Остаток до конца месяца: план − факт; меньше нуля — сверх плана; null — раздел вне плана. */
+  rest: number | null
+  /** Остатка мало (`LOW_REST_SHARE`) или уже сверх плана. */
+  low: boolean
+}
+
+export type MyWeek = {
+  week: string
+  /** Понедельник и воскресенье недели, `YYYY-MM-DD`. */
+  range: { from: string; to: string }
+  /** Месяц плана для остатков: по последнему дню недели, не позже сегодня (неделя на стыке месяцев). */
+  month: string
+  /** Мои траты за неделю, включая не разобранное. */
+  total: number
+  /** Мои траты за прошлую неделю. */
+  prev: number
+  delta: number
+  /** На сколько процентов больше или меньше прошлой недели, целое ≥ 0; null — прошлой недели нет. */
+  pct: number | null
+  /** Разделы: с тратами за неделю и разделы плана; от большего к меньшему. */
+  rows: MyWeekRow[]
+}
+
+/** Мои траты недели по разделам из итогов выписок — без платежей (`plannedElsewhere`), как факт трат в `monthPlan`. */
+function mySpendOf(totals: SpendTotal[], live: SpendCategory[], by: PersonId, week: string): Map<string, number> {
+  const out = new Map<string, number>()
+  for (const t of totals) {
+    if (t.deletedAt || t.by !== by || t.kind !== 'week' || t.period !== week || t.amount <= 0) continue
+    if (t.categoryId !== UNKNOWN_CATEGORY && plannedElsewhere(t.categoryId, live)) continue
+    out.set(t.categoryId, (out.get(t.categoryId) ?? 0) + t.amount)
+  }
+  return out
+}
+
+const mapTotal = (m: Map<string, number>) => [...m.values()].reduce((s, x) => s + x, 0)
+
+/**
+ * «Неделя» — только мои траты (Р-95, Р-98): разделы участника за ISO-неделю (потрачено, стрелка к прошлой),
+ * у разделов плана — остаток до конца месяца; сумма недели и сравнение с прошлой. Платежи (`plannedElsewhere`)
+ * на «Неделе» не показываются (Р-94) — то же правило, что у факта трат плана месяца.
+ *
+ * Остаток — одна дорога с «Месяцем»: строка трат участника из `monthPlan` (план и факт месяца) минус свои
+ * операции месяца после конца недели (`ops` — своя копия операций); у текущей недели таких нет — остаток равен
+ * «Месяцу» до тенге. Месяц — по последнему дню недели, не позже сегодня (`today`, `YYYY-MM-DD`).
+ */
+export function myWeek(
+  state: MonthPlanState,
+  ctx: Omit<MonthPlanCtx, 'key'> & { by: PersonId; week: string; ops?: Operation[]; today?: string },
+): MyWeek {
+  const { by, week } = ctx
+  const range = weekRange(week)
+  const day = ctx.today ?? todayIso()
+  const end = range.to < day ? range.to : day
+  const month = end.slice(0, 7)
+  const live = ctx.spendCategories.filter(alive)
+  const named = liveSpendCategories(ctx.spendCategories)
+
+  const now = mySpendOf(ctx.totals, live, by, week)
+  const before = mySpendOf(ctx.totals, live, by, prevWeekKey(week))
+  const planned = monthPlan(state, { ...ctx, key: month }).spend.find((s) => s.by === by)?.rows ?? []
+  // Свои траты месяца после конца недели: у прошлой недели остаток — на её конец.
+  const later = new Map<string, number>()
+  for (const op of ctx.ops ?? []) {
+    if (!isSpend(op) || op.date <= end || op.date.slice(0, 7) !== month) continue
+    const id = op.categoryId ?? UNKNOWN_CATEGORY
+    later.set(id, (later.get(id) ?? 0) - op.amount)
+  }
+
+  const ids = [...new Set([...now.keys(), ...planned.map((r) => r.categoryId)])]
+  const rows = ids
+    .map((categoryId): MyWeekRow => {
+      const amount = now.get(categoryId) ?? 0
+      const prev = before.get(categoryId) ?? 0
+      const row = planned.find((r) => r.categoryId === categoryId)
+      const spent = row ? Math.max(0, (row.fact ?? 0) - (later.get(categoryId) ?? 0)) : null
+      const rest = row && spent !== null ? row.plan - spent : null
+      const cat = categoryId === UNKNOWN_CATEGORY ? null : named.find((c) => c.id === categoryId) ?? null
+      return {
+        categoryId,
+        name: spendCategoryName(named, categoryId),
+        color: spendColor(cat),
+        amount,
+        prev,
+        delta: amount - prev,
+        arrow: weekArrow(amount, prev),
+        plan: row?.plan ?? null,
+        spent,
+        rest,
+        low: !!row && rest !== null && rest < row.plan * LOW_REST_SHARE,
+      }
+    })
+    .sort((a, b) => b.amount - a.amount || (b.plan ?? 0) - (a.plan ?? 0) || a.name.localeCompare(b.name))
+
+  const total = mapTotal(now)
+  const prev = mapTotal(before)
+  return { week, range, month, total, prev, delta: total - prev, pct: prev > 0 ? Math.round((Math.abs(total - prev) / prev) * 100) : null, rows }
+}
+
+/**
+ * С какой недели открывается «Неделя» (Р-102): текущая, если за неё уже есть своя выписка или траты; иначе прошлая,
+ * если они есть за неё (выписку за неделю грузят в начале следующей); нет ни там, ни там — текущая (ждёт загрузки).
+ */
+export function startWeek(totals: SpendTotal[], uploads: UploadPeriod[], by: PersonId, now: string = weekKey()): string {
+  const has = (week: string) => {
+    const range = weekRange(week)
+    return (
+      uploads.some((u) => u.slot === by && coversWeek(u, range)) ||
+      totals.some((t) => !t.deletedAt && t.by === by && t.kind === 'week' && t.period === week && t.amount > 0)
+    )
+  }
+  const prev = prevWeekKey(now)
+  return has(now) || !has(prev) ? now : prev
+}
+
+/** Самая ранняя неделя со своими тратами — дальше неё «‹» не листает; null — трат ещё нет. */
+export function firstWeek(totals: SpendTotal[], by: PersonId): string | null {
+  const weeks = totals.filter((t) => !t.deletedAt && t.by === by && t.kind === 'week' && t.amount > 0).map((t) => t.period)
+  return weeks.length ? weeks.sort()[0]! : null
+}
+
+/** Раздел за неделю из своих операций (`sectionWeek`, Р-101). */
+export type SectionWeek = {
+  /** Сумма и число трат раздела за неделю. */
+  total: number
+  count: number
+  /** Топ продавцов: имя, число операций, сумма — по убыванию суммы. */
+  tops: { name: string; count: number; amount: number }[]
+  /** Операции по дням, свежие сверху — первые `limit`. */
+  days: { date: string; ops: { id: string; name: string; amount: number }[] }[]
+  /** Хвост «Ещё N · сумма»: что не поместилось; null — показано всё. */
+  more: { count: number; amount: number } | null
+}
+
+/** Сколько продавцов в топе раздела и сколько операций листа до «Ещё N». */
+export const SECTION_TOPS = 3
+export const SECTION_OPS = 5
+
+/**
+ * Лист раздела (Р-101): свои траты раздела за неделю — топ продавцов и операции по дням. Отбор — тот же, что у
+ * итогов выписок (`isSpend`: списания, без переводов между своими); раздел `UNKNOWN_CATEGORY` — не разобранное.
+ */
+export function sectionWeek(
+  ops: Operation[],
+  where: { week: string; categoryId: string; limit?: number; tops?: number },
+): SectionWeek {
+  const list = ops
+    .filter((op) => isSpend(op) && (op.categoryId ?? UNKNOWN_CATEGORY) === where.categoryId && weekKey(op.date) === where.week)
+    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? op.merchant, amount: -op.amount, key: op.counterparty ? `c:${normalizeCounterparty(op.counterparty)}` : `m:${normalizeMerchant(op.merchant)}` }))
+    .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount || a.id.localeCompare(b.id))
+
+  const groups = new Map<string, { name: string; count: number; amount: number }>()
+  for (const op of list) {
+    const g = groups.get(op.key) ?? { name: op.name, count: 0, amount: 0 }
+    g.count += 1
+    g.amount += op.amount
+    groups.set(op.key, g)
+  }
+  const tops = [...groups.values()].sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name)).slice(0, where.tops ?? SECTION_TOPS)
+
+  const shown = list.slice(0, where.limit ?? SECTION_OPS)
+  const days: SectionWeek['days'] = []
+  for (const op of shown) {
+    const last = days.at(-1)
+    const item = { id: op.id, name: op.name, amount: op.amount }
+    if (last?.date === op.date) last.ops.push(item)
+    else days.push({ date: op.date, ops: [item] })
+  }
+  const rest = list.slice(shown.length)
+  return {
+    total: amountTotal(list),
+    count: list.length,
+    tops,
+    days,
+    more: rest.length ? { count: rest.length, amount: amountTotal(rest) } : null,
+  }
+}
+
+/** Тренд (Р-98): мои суммы недель по порядку, текущая — последняя; недели без трат — 0. */
+export function weekTrend(
+  totals: SpendTotal[],
+  spendCategories: SpendCategory[],
+  by: PersonId,
+  week: string,
+  n = 8,
+): { week: string; from: string; amount: number }[] {
+  const live = spendCategories.filter(alive)
+  const out: { week: string; from: string; amount: number }[] = []
+  let key = week
+  for (let i = 0; i < n; i++) {
+    out.unshift({ week: key, from: weekRange(key).from, amount: mapTotal(mySpendOf(totals, live, by, key)) })
+    key = prevWeekKey(key)
+  }
+  return out
 }
 
 /** Подписка за год для карточки «оставить?»: годовая — как есть, ежемесячная — ×12. */
@@ -3690,8 +4028,8 @@ export function freeByFact(
 
 /**
  * Траты месяца по выпискам обоих, кроме разделов, уже учтённых планом (`plannedElsewhere`:
- * кредиты, коммуналка, аренда, подписки живут в `monthDues`). Одна функция на два места (Р-38):
- * `freeByFact` вычитает её из плана, виджет «Траты» в «Деньгах» показывает её фактом.
+ * кредиты, коммуналка, аренда, подписки живут в `monthDues`). Вызывает её `freeByFact` — вычитает из плана
+ * (виджета «Траты» в «Деньгах» больше нет, Блок 15).
  * `null` — за месяц ни одной загрузки: факта нет, а не «потрачено 0».
  */
 export function monthSpentByFact(totals: SpendTotal[], spendCategories: SpendCategory[], key: string, uploads: UploadPeriod[] = []): number | null {
@@ -3703,229 +4041,39 @@ export function monthSpentByFact(totals: SpendTotal[], spendCategories: SpendCat
     .reduce((a, t) => a + t.amount, 0)
 }
 
-export type IncomePartKey = 'must' | 'dreams' | 'living' | 'free'
+export type DecisionKind = 'match' | 'unknownBatch' | 'keep' | 'monthEnd'
 
-/**
- * Виджет «Доход» в «Деньгах» (Р-33): доли дохода — обязательное (жильё и кредиты), мечты
- * (взносы и досрочка по плану), траты (раздел d4), свободно (не меньше 0) — и нагрузка: доля жилья и
- * кредитов в доходе (формула «вместе с жильём» прежнего Бюджета). `share` — доля 0…1 для полосы,
- * `pct` — те же проценты, что печатал Бюджет. `overplanned` — на сколько расписано больше дохода.
- */
-export function incomeSplit(a: Pick<ReturnType<typeof budgetAmounts>, 'd1' | 'd2' | 'd3' | 'd4' | 'd5' | 'income' | 'planExtra'>) {
-  const parts: { key: IncomePartKey; amount: number }[] = [
-    { key: 'must', amount: a.d1 + a.d2 },
-    { key: 'dreams', amount: a.d3 + a.planExtra },
-    { key: 'living', amount: a.d4 },
-    { key: 'free', amount: Math.max(0, a.d5) },
-  ]
-  return {
-    income: a.income,
-    load: pct(a.d1 + a.d2, a.income),
-    parts: parts.map((p) => ({ ...p, pct: pct(p.amount, a.income), share: a.income > 0 ? p.amount / a.income : 0 })),
-    overplanned: Math.max(0, -a.d5),
-  }
-}
-
-/**
- * Виджет «Траты» (Р-33; бывший «Еда и быт»): план — `livingPlan` (траты плана месяца, иначе статьи «Жизнь» + «Траты», B2C-59; без
- * статей — база раздела d4, как раньше), факт — `monthSpentByFact` (`null` — за месяц нет загрузок). `pct` —
- * факт от плана, `share` — для полосы 0…1, `over` — перерасход.
- */
-export function livingPlanFact(
-  doc: Parameters<typeof livingPlan>[0],
-  totals: SpendTotal[],
-  spendCategories: SpendCategory[],
-  key: string,
-  uploads: UploadPeriod[] = [],
-) {
-  const plan = livingPlan(doc)
-  const spent = monthSpentByFact(totals, spendCategories, key, uploads)
-  return {
-    plan,
-    spent,
-    pct: spent !== null && plan > 0 ? pct(spent, plan) : null,
-    share: spent !== null && plan > 0 ? Math.min(1, spent / plan) : 0,
-    over: spent !== null && spent > plan,
-  }
-}
-
-/**
- * Виджет «Долги» (Р-33): остаток живых кредитов (сумма `principal`, как итог долгов Капитала) и
- * «в <месяце> оплачено N из M» — платежи кредитов месяца из `monthDues` (Р-38). `open` — есть ли
- * незакрытый долг (нет — «Долгов нет»). Кредиты — производные остатки, как их отдаёт стор.
- */
-export function debtsSummary(state: { credits?: Credit[]; payments?: Payment[] }, key: string) {
-  const credits = liveCredits(state.credits ?? [])
-  const dues = monthDues({ credits: state.credits, payments: state.payments }, key).filter((d) => d.kind === 'credit')
-  return {
-    total: credits.reduce((a, c) => a + c.principal, 0),
-    open: credits.some((c) => c.principal > 0),
-    paid: dues.filter((d) => d.paid).length,
-    count: dues.length,
-  }
-}
-
-/* ---------------- строки-статусы виджетов «Денег» и доли трат (B2C-59, Р-57, Р-59) ---------------- */
-
-export type StatusTag = { text: string; tone: 'ok' | 'neutral' | 'warn' }
-
-/**
- * Нагрузка словом (тег «Дохода»): доля жилья и кредитов в доходе, целые проценты (`incomeSplit().load`).
- * Пороги — дефолт составителя: до 29 % — низкая, 30–50 % — средняя, от 51 % — высокая.
- */
-export const LOAD_LEVELS: { upTo: number; text: string; tone: StatusTag['tone'] }[] = [
-  { upTo: 29, text: 'нагрузка низкая', tone: 'ok' },
-  { upTo: 50, text: 'нагрузка средняя', tone: 'neutral' },
-  { upTo: Infinity, text: 'нагрузка высокая', tone: 'warn' },
-]
-export const loadTag = (load: number): StatusTag => {
-  const l = LOAD_LEVELS.find((x) => load <= x.upTo)!
-  return { text: l.text, tone: l.tone }
-}
-
-/** «N из M оплачено» (тег «Платежей»): платежи месяца (`monthDues`) и их отметки; платежей нет — null. */
-export function duesTag(dues: Pick<MonthDue, 'paid'>[]): StatusTag | null {
-  if (!dues.length) return null
-  const paid = dues.filter((d) => d.paid).length
-  return { text: `${paid} из ${dues.length} оплачено`, tone: paid === dues.length ? 'ok' : 'neutral' }
-}
-
-/**
- * Суммы платежей месяца (B2C-70, первая строка «Платежей»): `total` — все платежи месяца, `left` — ещё не
- * оплаченные. Только сложение строк `monthDues` (у отмеченного сумма — из отметки, итог сходится со
- * строками), новых правил нет; платежей нет — null.
- */
-export function duesTotals(dues: Pick<MonthDue, 'amount' | 'paid'>[]): { total: number; left: number } | null {
-  if (!dues.length) return null
-  return dues.reduce((acc, d) => ({ total: acc.total + d.amount, left: acc.left + (d.paid ? 0 : d.amount) }), { total: 0, left: 0 })
-}
-
-export type SpendShare = { categoryId: string; amount: number; share: number }
-
-/**
- * Доли разделов месяца (лист «Траты»): сумма раздела от трат месяца по выпискам обоих (`monthSpentByFact`:
- * без разделов, учтённых планом; «не разобрано» — в базе, но строкой не идёт). Целые проценты, по убыванию;
- * округление не выводит сумму за 100 (лишний процент снимается с самой большой доли). null — загрузок нет.
- */
-export function spendShares(totals: SpendTotal[], spendCategories: SpendCategory[], key: string, uploads: UploadPeriod[] = []): SpendShare[] | null {
-  const base = monthSpentByFact(totals, spendCategories, key, uploads)
-  if (base === null) return null
-  const live = spendCategories.filter(alive)
-  const by = new Map<string, number>()
-  for (const t of totals) {
-    if (t.deletedAt || t.kind !== 'month' || t.period !== key || t.amount <= 0) continue
-    if (t.categoryId === UNKNOWN_CATEGORY || plannedElsewhere(t.categoryId, live)) continue
-    by.set(t.categoryId, (by.get(t.categoryId) ?? 0) + t.amount)
-  }
-  const rows = [...by]
-    .map(([categoryId, amount]) => ({ categoryId, amount, share: pct(amount, base) }))
-    .sort((a, b) => b.amount - a.amount)
-  let over = rows.reduce((a, r) => a + r.share, 0) - 100
-  for (let i = 0; over > 0 && i < rows.length; i++) {
-    const take = Math.min(over, rows[i].share)
-    rows[i].share -= take
-    over -= take
-  }
-  return rows
-}
-
-/** Месяц покрыт выписками целиком: есть загрузка на его первый и на последний день. */
-const monthCovered = (key: string, uploads: UploadPeriod[]) => {
-  const first = `${key}-01`
-  const last = `${key}-${String(daysInMonth(key)).padStart(2, '0')}`
-  return uploads.some((u) => u.period_from <= first && u.period_to >= first) && uploads.some((u) => u.period_from <= last && u.period_to >= last)
-}
-
-/** Сколько полных месяцев выписок нужно, чтобы ориентиром стало своё среднее (Р-57). */
-export const OWN_NORM_MONTHS = 3
-
-/**
- * Ориентир долей (Р-57): после трёх полных месяцев с выписками перед `key` — своё среднее долей разделов
- * за эти месяцы (раздел, которого в месяце не было, — 0 %; целые проценты, нулевые — без черты), иначе
- * — таблица статистики РК (`STAT_NORMS`).
- */
-export function spendNorms(
-  totals: SpendTotal[],
-  spendCategories: SpendCategory[],
-  uploads: UploadPeriod[],
-  key: string,
-): { from: 'own' | 'stat'; norms: Record<string, number> } {
-  const months = Array.from({ length: OWN_NORM_MONTHS }, (_, i) => addMonths(key, -(i + 1)))
-  if (!months.every((m) => monthCovered(m, uploads))) return { from: 'stat', norms: STAT_NORMS }
-  const sums = new Map<string, number>()
-  for (const m of months) for (const r of spendShares(totals, spendCategories, m, uploads) ?? []) sums.set(r.categoryId, (sums.get(r.categoryId) ?? 0) + r.share)
-  const norms = Object.fromEntries([...sums].map(([id, s]) => [id, Math.round(s / months.length)] as const).filter(([, s]) => s > 0))
-  return { from: 'own', norms }
-}
-
-/** Насколько доля должна превысить ориентир, чтобы раздел считался «выше нормы» (п. п., дефолт исполнителя). */
-export const NORM_SLACK = 3
-
-/**
- * Тег «Трат»: раздел с наибольшим превышением ориентира — «продукты выше нормы» (превышение — больше
- * `NORM_SLACK` п. п.), иначе «в норме»; без выписок за месяц — null. `worst` — для строки под суммой
- * (макет: «Продукты 31 %, обычно ~22 %»).
- */
-export function spendStatus(
-  shares: SpendShare[] | null,
-  norms: Record<string, number>,
-  spendCategories: Pick<SpendCategory, 'id' | 'name'>[],
-): (StatusTag & { worst?: { name: string; share: number; norm: number } }) | null {
-  if (!shares) return null
-  const worst = shares
-    .filter((r) => r.categoryId in norms)
-    .map((r) => ({ id: r.categoryId, over: r.share - norms[r.categoryId] }))
-    .filter((x) => x.over > NORM_SLACK)
-    .sort((a, b) => b.over - a.over)[0]
-  if (!worst) return { text: 'в норме', tone: 'ok' }
-  const name = spendCategoryName(spendCategories, worst.id)
-  const share = shares.find((r) => r.categoryId === worst.id)!.share
-  return { text: `${name.toLowerCase()} выше нормы`, tone: 'warn', worst: { name, share, norm: norms[worst.id] } }
-}
-
-export type DecisionKind = 'match' | 'unknownBatch' | 'keep' | 'allocate' | 'salary' | 'freed' | 'monthEnd'
-
-/** Решение очереди «Недели» (`decisionQueue`): тексты DESIGN.md §6, ключ и данные для ответа на месте. */
+/** Вопрос листа «! N» «Недели» (`decisionQueue`): тексты DESIGN.md §6, ключ и данные для ответа на месте. */
 export type Decision = {
   kind: DecisionKind
-  /** Ключ решения — «Потом» откладывает его до следующего открытия, «N из M» считает по нему. */
+  /** Ключ вопроса — «Потом» откладывает его до следующего открытия, «N из M» считает по нему. */
   key: string
   question: string
   meta: string
   /** Строка внутренней карточки (детали) — если есть. */
   inner?: string
-  /** Куда ведёт главное действие; null — ответ на месте (стор). */
-  to: string | null
   actions: { primary?: string; secondary?: string; ghost?: string }
   /** Шаг «Отписаться» вопроса «оставить?» (`keepCard`). */
   cancel?: KeepCard['cancel']
   /** Подписка вопроса «оставить?». */
   obligation?: Obligation
-  /** Участник и месяц зарплаты «пришла?» / «Пришла зарплата». */
-  salary?: { person: Person; period: string }
   /** Ждущее сопоставление операции с отметкой (Р-6). */
   match?: MatchCandidate
   /** Незнакомые продавцы пачкой (Р-58) — по сумме, сначала крупные. */
   groups?: UnknownGroup[]
-  /** Снижение обязательства «освободится N ₸». */
-  freed?: FreedChange
-  /** Сумма пришедшей зарплаты карточки «Пришла зарплата». */
-  amount?: number
 }
 
 /**
- * Очередь решений «Недели» (Р-43) — одна на экран: сопоставления (по одному на каждое ждущее) →
- * незнакомые продавцы — одной пачкой (Р-58; группы ищет экран — месяц или черновик) → «оставить подписку?» (`keepQuestions`) → зарплата: «Пришла зарплата»
- * (`salaryToAllocate` — «К плану месяца», Р-78), иначе «пришла?» (`salaryAsk`) — одна карточка о зарплате за раз →
- * «освободится N ₸» (`freedChange`, пока его запись не сделана — тоже в план, Р-86) → «остались деньги?»
- * (`monthEndAsk`, пока остаток месяца не отложен). Шаг плана долгов — в квадрате «План» (Р-34), не здесь.
- * Отложенные («Потом») убирает экран. Viewer (`canEdit` false) решений не видит (Р-50); без своего слота (`me`)
- * нет только решений о своей зарплате — как было у «Недели».
+ * Вопросы «Недели» за «! N» (Р-97) — отбор и порядок: «то же самое?» — сопоставления (по одному на каждое ждущее) →
+ * незнакомые продавцы — одной пачкой (Р-58; группы ищет экран по своим операциям) → «оставить подписку?»
+ * (`keepQuestions`) → «остались деньги?» (`monthEndAsk`, пока остаток месяца не отложен). «Пришла зарплата»,
+ * «пришла?» и «освободится N ₸» — не вопросы «Недели»: это дела «Месяца» (✓ у зарплаты, «Отложил» у целей —
+ * `planPuts`, подсказка у платежа — `planExtras`). Отложенные («Потом») убирает экран. Viewer (`canEdit` false)
+ * вопросов не видит (Р-50).
  */
 export function decisionQueue(
   state: DecisionState,
   ctx: {
-    me: PersonId | undefined
     canEdit?: boolean
     matches?: MatchCandidate[]
     unknown?: UnknownGroup[]
@@ -3944,7 +4092,6 @@ export function decisionQueue(
       key: `match:${c.kind}:${c.targetId}:${c.period}`,
       question: c.question,
       meta: c.meta,
-      to: null,
       actions: c.kind === 'salary' ? { primary: 'Да, зарплата', secondary: 'Нет', ghost: 'Потом' } : { primary: 'Да, отметить', secondary: 'Нет, это другое', ghost: 'Потом' },
       match: c,
     })
@@ -3958,7 +4105,6 @@ export function decisionQueue(
       key: 'unknownBatch',
       question: `Без раздела · ${unknown.length}`,
       meta: money(amountTotal(unknown)),
-      to: null,
       actions: { ghost: 'Потом' },
       groups: unknown,
     })
@@ -3966,56 +4112,21 @@ export function decisionQueue(
 
   const { year, month } = parseMonthKey(now.key)
   for (const o of keepQuestions(state.obligations ?? [], new Date(Date.UTC(year, month, now.day, 12)), state.book)) {
-    out.push({ kind: 'keep', key: `keep:${o.id}`, ...keepCard(o, state.goals ?? [], payments, now, state.book, state), to: null, obligation: o })
-  }
-
-  // Зарплата пришла и не отложена — «Пришла зарплата» → план месяца (Р-78); иначе «пришла?» (возврат приёмки 2 п. 3: одна о зарплате).
-  const unallocated = salaryToAllocate(state, ctx.me, now)
-  const near = unallocated ? null : salaryAsk(state, ctx.me, now)
-  if (unallocated) {
-    const { person, period, record } = unallocated
-    out.push({
-      kind: 'allocate',
-      key: `allocate:${person.id}:${period}`,
-      question: `Пришла зарплата · ${person.name}`,
-      meta: '',
-      // План того месяца, чья зарплата: пришла 1-го или подтверждена по выписке позже — не текущий месяц.
-      to: period === now.key ? '/money' : `/money?month=${period}`,
-      actions: { primary: 'К плану месяца', ghost: 'Потом' },
-      salary: { person, period },
-      amount: paidTenge(state, person.id, period, record),
-    })
-  } else if (near) {
-    // «Пришла» и лист «ещё» — `SalaryRow` на месте (RP-10).
-    out.push({ kind: 'salary', key: `salary:${near.who.id}:${near.key}`, ...salaryCard(near), to: null, actions: {}, salary: { person: near.who, period: near.key } })
-  }
-
-  // «Освободится N ₸» — карточка плана месяца (Р-86); запись сделана (`source: 'freed'`) — уже решено.
-  const freed = freedChange(liveObligations(state.obligations ?? []), now.key, state.book)
-  if (freed && !allocationFor(state.allocations, { source: 'freed', sourceId: freed.o.id, period: freed.change.from })) {
-    out.push({
-      kind: 'freed',
-      key: `freed:${freed.o.id}:${freed.change.from}`,
-      question: freedQuestion(freed),
-      meta: `${freed.o.name} · с ${monthFrom(freed.change.from, false)}`,
-      to: '/money',
-      actions: { primary: 'К плану месяца', ghost: 'Потом' },
-      freed,
-    })
+    out.push({ kind: 'keep', key: `keep:${o.id}`, ...keepCard(o, state.goals ?? [], payments, now, state.book, state), obligation: o })
   }
 
   // Ответ — до конца месяца на устройстве (`answeredMonthEnd`); отложенный остаток — ответ семьи: партнёр второй раз не спрашивается.
   const restDone = allocationFor(state.allocations, { source: 'rest', sourceId: now.key, period: now.key })
   if (!restDone && monthEndAsk(ctx.answeredMonthEnd ?? null, now)) {
-    out.push({ kind: 'monthEnd', key: `monthEnd:${now.key}`, ...monthEndCard(now.key), to: null })
+    out.push({ kind: 'monthEnd', key: `monthEnd:${now.key}`, ...monthEndCard(now.key) })
   }
 
   return out
 }
 
-/* ---------------- очередь «Недели»: состояние; старые записи разбора (Блок 11, Р-85) ---------------- */
+/* ---------------- вопросы «Недели»: состояние; старые записи разбора (Блок 11, Р-85) ---------------- */
 
-/** Документ семьи для очереди решений «Недели»; кредиты — производные остатки, как их отдаёт стор. */
+/** Документ семьи для вопросов «Недели» и листа отметки зарплаты; кредиты — производные остатки, как их отдаёт стор. */
 export type DecisionState = {
   people?: Person[]
   obligations?: Obligation[]

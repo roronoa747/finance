@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import { apiClient, LinkPreviewError, type ApiClient } from '../src/api/client'
-import { duesTotals, monthDues } from '../src/lib/finance'
+import { monthDues } from '../src/lib/finance'
 import { monthKey } from '../src/lib/dates'
-import { money as moneyFmt } from '../src/lib/money'
 import { fillWishPhotos } from '../src/lib/photos/wishLinkPhotos'
 import { compressImage } from '../src/lib/photos/compress'
 import { photoDisk, photoUrl, releasePhotos } from '../src/lib/photos/store'
@@ -23,7 +22,8 @@ import GoalNew from '../src/views/GoalNew.vue'
 import Money from '../src/views/Money.vue'
 import MyCircle from '../src/views/MyCircle.vue'
 import Settings from '../src/views/Settings.vue'
-import Statements from '../src/views/Statements.vue'
+import Week from '../src/views/Week.vue'
+import Month from '../src/views/Month.vue'
 import Wishes from '../src/views/Wishes.vue'
 import { at, backend, fakePrivate, fakeServer, fakeStatements, privateFor, screen, statementsFor, type FakeServer, type FakeStatements } from './support/family'
 
@@ -101,6 +101,9 @@ const weekOf = (p: Phone, categoryId: string) =>
 /** Кружки участников в HTML: фон и содержимое (как `Settings.test.ts`). */
 const circles = (html: string) => [...html.matchAll(/<span class="grid shrink-0 place-items-center rounded-full[^"]*"[^>]*style="background:([^;"]+);?"[^>]*>\s*([^<]*?)\s*<\/span>/g)].map((m) => [m[1].trim(), m[2]])
 
+/** «Неделя» с открытым листом вопросов «! N» (Блок 15, Р-97). */
+const sheetOpen = () => [screenMixin({ questionsOpen: true })]
+
 describe('e2e / B2C Блок 12 — «Неделя и личное» на двух телефонах', () => {
   const storage = new Map<string, string>()
   let server: FakeServer
@@ -132,22 +135,22 @@ describe('e2e / B2C Блок 12 — «Неделя и личное» на дву
     const B = await phone(server, st, 'b')
     expect(weekOf(B, '_unknown')).toBe(78_000) // 1 000 + … + 12 000
 
-    const first = text(await screen(A.pinia, Statements, '/week'))
+    const first = text(await screen(A.pinia, Week, '/week', undefined, sheetOpen()))
     expect(first).toContain('Без раздела · 12')
     expect(first).toContain('Выбрать все')
     expect(first).toContain('Ещё 6') // 6 строк + «Ещё K · сумма ›»
 
     // Ответ 1: отмечены три строки → чип «Продукты».
     const three = (s: Record<string, unknown>) => (s.decision as Decision).groups!.filter((g) => ['ИП Абенова', 'ИП Ким', 'ИП Ли'].includes(g.label))
-    const second = text(await screen(A.pinia, Statements, '/week', undefined, [
-      screenMixin({}, (s) => (s.answerBatch as (m: unknown[], to: unknown) => void)(three(s).map((g) => g.match), { categoryId: 'sc_food' })),
+    const second = text(await screen(A.pinia, Week, '/week', undefined, [
+      screenMixin({ questionsOpen: true }, (s) => (s.answerBatch as (m: unknown[], to: unknown) => void)(three(s).map((g) => g.match), { categoryId: 'sc_food' })),
     ]))
     expect(second).toContain('Без раздела · 9')
     expect(second).not.toContain('ИП Абенова')
 
     // Ответ 2: «Выбрать все» → «Не помню» — все оставшиеся в «Прочее».
-    const third = text(await screen(A.pinia, Statements, '/week', undefined, [
-      screenMixin({}, (s) => (s.answerBatch as (m: unknown[], to: unknown) => void)((s.decision as Decision).groups!.map((g) => g.match), { categoryId: OTHER_CATEGORY })),
+    const third = text(await screen(A.pinia, Week, '/week', undefined, [
+      screenMixin({ questionsOpen: true }, (s) => (s.answerBatch as (m: unknown[], to: unknown) => void)((s.decision as Decision).groups!.map((g) => g.match), { categoryId: OTHER_CATEGORY })),
     ]))
     expect(third).not.toContain('Без раздела')
     await vi.runOnlyPendingTimersAsync()
@@ -165,23 +168,24 @@ describe('e2e / B2C Блок 12 — «Неделя и личное» на дву
     expect(unknownGroups(useOperationsStore().all)).toHaveLength(0)
   })
 
-  it('часть 2 — «Выписки»: Ильяс загрузил — у обоих его день и «ещё нет» Аруны; Аруна загрузила — две галочки у обоих', async () => {
+  // Блок 15 (Р-96): карточки «Выписки» нет — кружки обоих с ✓ в строке загрузки; свой — кнопка «Мои выписки».
+  const uploaded = (html: string) => [...html.matchAll(/data-uploaded="(true|false)"/g)].map((m) => m[1] === 'true')
+
+  it('часть 2 — строка загрузки: Ильяс загрузил — у обоих ✓ у его кружка и нет у Аруны; Аруна загрузила — две ✓ у обоих', async () => {
     const A = await phone(server, st, 'a')
     await uploadA(A)
     const B = await phone(server, st, 'b')
     for (const p of [A, B]) {
-      const html = text(await screen(p.pinia, Statements, '/week'))
-      expect(html).toContain('Выписки')
-      expect(html).toMatch(/Ильяс (пн|вт|ср|чт|пт|сб|вс)/)
-      expect(html).toContain('Аруна ещё нет')
+      const html = await screen(p.pinia, Week, '/week', undefined, sheetOpen())
+      expect(text(html)).not.toContain('Выписки')
+      expect(uploaded(html)).toEqual([true, false])
     }
+    // Своей выписки нет — у Аруны брендовая «Загрузить»; у Ильяса — тихий «⊕».
+    expect(await screen(B.pinia, Week, '/week')).toContain('data-upload="lead"')
+    expect(await screen(A.pinia, Week, '/week')).toContain('data-upload="quiet"')
     await upload(B, 'b', [op('2026-09-23', -3_000, 'Magnum', 'sc_food')])
     await sync(B, A)
-    for (const p of [A, B]) {
-      const html = text(await screen(p.pinia, Statements, '/week'))
-      expect(html).not.toContain('ещё нет')
-      expect(html).toMatch(/Аруна (пн|вт|ср|чт|пт|сб|вс)/)
-    }
+    for (const p of [A, B]) expect(uploaded(await screen(p.pinia, Week, '/week', undefined, sheetOpen()))).toEqual([true, true])
   })
 
   it('часть 3 — свой кружок: Ильяс выбрал 🦊 и цвет — Аруна видит его в «Деньгах», «Неделе» и «Настройках»; своё у Аруны — буква', async () => {
@@ -198,7 +202,7 @@ describe('e2e / B2C Блок 12 — «Неделя и личное» на дву
     expect(circle).toContain('Смайлик')
     expect(A.store.people.find((p) => p.id === 'a')).toMatchObject({ emoji: '🦊', color: 's8' })
     await sync(A, B)
-    for (const [view, path] of [[Money, '/money'], [Statements, '/week'], [Settings, '/settings']] as const) {
+    for (const [view, path] of [[Money, '/money'], [Week, '/week'], [Settings, '/settings']] as const) {
       const shown = circles(await screen(B.pinia, view, path))
       expect(shown, path).toContainEqual(['var(--s8)', '🦊'])
       expect(shown, path).not.toContainEqual(['var(--pa)', 'И'])
@@ -266,7 +270,8 @@ describe('e2e / B2C Блок 12 — «Неделя и личное» на дву
     expect(viewer).not.toContain('Вставьте ссылку')
   })
 
-  it('часть 6 (приёмка) — пачка в разборе выписки: ответы до «Отправить» уходят правилами, на «Неделе» пачки нет; viewer видит «Выписки» без загрузки и решений', async () => {
+  // Блок 15 (Р-97): загрузка «сразу готово» — «Отправить» нет; незнакомые продавцы выписки — пачкой в листе «!» после отправки.
+  it('часть 6 (приёмка) — пачка после загрузки выписки: ответы до «Отправить» уходят правилами, на «Неделе» пачки нет; viewer видит «Выписки» без загрузки и решений', async () => {
     const A = await phone(server, st, 'a')
     setActivePinia(A.pinia)
     const ops = useOperationsStore()
@@ -274,16 +279,20 @@ describe('e2e / B2C Блок 12 — «Неделя и личное» на дву
       bank: 'kaspi', from: '2026-09-01', to: '2026-09-24', skipped: 0,
       operations: assignIds(IP.map((m, i) => op(`2026-09-2${2 + (i % 3)}`, -IP_AMOUNT(i), m))),
     }
-    ops.setDraft([{ name: 'a.pdf', parsed }])
+    await ops.upload([{ name: 'a.pdf', parsed }], A.client)
 
-    // Разбор: та же карточка-пачка над «Отправить».
-    const draft = text(await screen(A.pinia, Statements, '/week'))
-    expect(draft).toContain('Без раздела · 12')
-    expect(draft).toContain('Отправить')
+    // Пока висит тост — ни сводки, ни «Отправить»; вопросы о продавцах выписки — после отправки.
+    const held = text(await screen(A.pinia, Week, '/week', undefined, sheetOpen()))
+    expect(held).toContain('Загружено 12 операций')
+    expect(held).toContain('Отменить')
+    expect(held).not.toContain('Отправить')
+    expect(held).not.toContain('Без раздела')
+    await ops.commitUpload(A.client)
+    expect(text(await screen(A.pinia, Week, '/week', undefined, sheetOpen()))).toContain('Без раздела · 12')
 
     // Три строки → «Продукты», остальные — «Выбрать все» → «Не помню»: два ответа, правила в памяти продавцов.
-    const after = text(await screen(A.pinia, Statements, '/week', undefined, [
-      screenMixin({}, (s) => {
+    const after = text(await screen(A.pinia, Week, '/week', undefined, [
+      screenMixin({ questionsOpen: true }, (s) => {
         const answer = s.answerBatch as (m: unknown[], to: unknown) => void
         const groups = () => (s.decision as Decision).groups!
         answer(groups().filter((g) => ['ИП Абенова', 'ИП Ким', 'ИП Ли'].includes(g.label)).map((g) => g.match), { categoryId: 'sc_food' })
@@ -295,19 +304,18 @@ describe('e2e / B2C Блок 12 — «Неделя и личное» на дву
     expect(rules.filter((r) => 'categoryId' in r.to && r.to.categoryId === OTHER_CATEGORY)).toHaveLength(9)
     expect(rules.filter((r) => 'categoryId' in r.to && r.to.categoryId === 'sc_food')).toHaveLength(3)
 
-    await ops.send(A.client)
+    await ops.flush(A.client)
     await A.store.syncHousehold(A.client)
     expect(unknownGroups(ops.all)).toHaveLength(0)
-    expect(text(await screen(A.pinia, Statements, '/week'))).not.toContain('Без раздела')
+    expect(text(await screen(A.pinia, Week, '/week', undefined, sheetOpen()))).not.toContain('Без раздела')
     const B = await phone(server, st, 'b')
     expect(weekOf(B, OTHER_CATEGORY)).toBe(78_000 - 17_000)
 
     const V = await phone(server, st, 'a', 'viewer')
-    const viewer = text(await screen(V.pinia, Statements, '/week'))
-    expect(viewer).toContain('Выписки')
-    expect(viewer).toMatch(/Ильяс (пн|вт|ср|чт|пт|сб|вс)/)
-    expect(viewer).not.toContain('Загрузить выписку')
-    expect(viewer).not.toContain('Без раздела')
+    // Viewer на «Неделю» не попадает (Р-104, гвард роутера); сам экран без действий: ни загрузки, ни вопросов.
+    const viewer = await screen(V.pinia, Week, '/week', undefined, sheetOpen())
+    expect(viewer).not.toContain('data-upload=')
+    expect(text(viewer)).not.toContain('Без раздела')
   })
 
   // Возврат смоука (B2C-68…70): обход «Желаний» зовётся напрямую — `screen` рендерит без `onMounted`; гейт экрана
@@ -354,18 +362,15 @@ describe('e2e / B2C Блок 12 — «Неделя и личное» на дву
     await sync(A, B)
     expect(circles(await screen(B.pinia, Money, '/money'))).toContainEqual([expect.any(String), '🇰🇿'])
 
-    // B2C-70: «Деньги → Платежи» у Аруны — «Осталось в сентябре» и «из …» по `monthDues`; Ильяс отметил аренду — остаток меньше ровно на неё.
-    const totalsOf = (p: Phone) => duesTotals(monthDues(p.store.householdDoc, monthKey(new Date())))!
-    const before = totalsOf(B)
-    let money = text(await screen(B.pinia, Money, '/money'))
-    expect(money).toContain(`Осталось в сентябре ${text(moneyFmt(before.left))} из ${text(moneyFmt(before.total))}`)
+    // Блок 15 (Р-91, Р-94): «Деньги → Платежи» — справочник без сумм месяца («Осталось в сентябре», B2C-70, ушло);
+    // оплата — в «Месяце»: Ильяс отметил аренду — у Аруны в строке раздела на одну оплату больше.
+    expect(text(await screen(B.pinia, Money, '/money'))).not.toContain('Осталось в')
+    const count = monthDues(B.store.householdDoc, monthKey(new Date())).length
+    expect(text(await screen(B.pinia, Month, '/month'))).toContain(`0 из ${count} оплачено`)
     setActivePinia(A.pinia)
-    const paid = A.store.markPaid('obligation', 'rent', 'a')!
+    A.store.markPaid('obligation', 'rent', 'a')
     await sync(A, B)
-    const after = totalsOf(B)
-    expect(after).toEqual({ total: before.total, left: before.left - paid.amount })
-    money = text(await screen(B.pinia, Money, '/money'))
-    expect(money).toContain(`Осталось в сентябре ${text(moneyFmt(after.left))} из ${text(moneyFmt(before.total))}`)
+    expect(text(await screen(B.pinia, Month, '/month'))).toContain(`1 из ${count} оплачено`)
   })
 
   it('часть 8 (приёмка возврата смоука 2) — обход при запуске без «Желаний», фото у партнёра и после «перезапуска» без загрузки; логотип не ставится; viewer — 0; свой смайлик заменяется вставкой', async () => {

@@ -107,7 +107,7 @@ describe('B2C-13: /settings и /money (SSR)', () => {
 
   it('«Деньги» (пивот 3): три квадрата Капитал · План · История вместо входов второго уровня', async () => {
     const html = await renderScreen(Money, '/money')
-    for (const t of ['>Капитал</b>', '>План</b>', '>История</b>']) expect(html).toContain(t)
+    for (const t of ['>Капитал</b>', '>Долги</b>', '>История</b>']) expect(html).toContain(t)
     expect(html).not.toContain('План «Сначала долги»')
   })
 })

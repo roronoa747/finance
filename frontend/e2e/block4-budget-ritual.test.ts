@@ -8,13 +8,14 @@ import { useFinanceStore } from '../src/stores/finance'
 import {
   budgetAmounts,
   salaryAt,
-  nextSalaryChange,
   nextChange,
   goalMonths,
 } from '../src/lib/finance'
 import { monthKey } from '../src/lib/dates'
-import { money } from '../src/lib/money'
+import { money, plain } from '../src/lib/money'
 import Money from '../src/views/Money.vue'
+import Month from '../src/views/Month.vue'
+import { screenMixin } from '../src/test/screenState'
 
 describe('e2e / block-4 — Сквозной сценарий бюджета («Деньги»: Доход, Платежи) и Ритуала высвобождения', () => {
   const storageMap = new Map<string, string>()
@@ -118,17 +119,13 @@ describe('e2e / block-4 — Сквозной сценарий бюджета («
     expect(amounts.d4).toBe(200_000)
     expect(amounts.d5).toBe(630_000) // 1 200 000 - (250k + 70k + 50k + 200k) = 630 000
 
-    // Бывший режим «План» — виджет «Доход» «Денег» (Р-33): оклады, доли, нагрузка; свободный остаток —
-    // долей «остаток по плану 53 %» (630 000 из 1 200 000), сумма — budgetAmounts выше.
-    const appPlan = createSSRApp(Money)
+    // Бывший режим «План» — «Месяц» (Блок 15, Р-91): обе зарплаты у круга; долей и «нагрузки» на «Деньгах» нет.
+    const appPlan = createSSRApp(Month)
     appPlan.use(router)
     const htmlPlan = (await renderToString(appPlan)).replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
-    expect(htmlPlan).toContain(money(1_200_000))
+    expect(htmlPlan).toContain(`из ${plain(1_200_000)}`)
     expect(htmlPlan).toContain('Ильяс')
     expect(htmlPlan).toContain('Динара')
-    expect(htmlPlan).toContain('остаток по плану 53 %')
-    // Нагрузка — жильё и кредиты (250 000 + 70 000) из 1 200 000 = 27 % (бывшая «Нагрузка на доход» календаря).
-    expect(htmlPlan).toContain('нагрузка низкая')
 
     // 4. Изменение лимита статьи «Еда и быт» (d4)
     financeStore.setCategoryAmount('d4', 280_000)
@@ -142,31 +139,33 @@ describe('e2e / block-4 — Сквозной сценарий бюджета («
 
     // Планируем повышение через 6 месяцев
     financeStore.amendSalary('a', '2028-06', 900_000, 'Новый грейд')
-    const change = nextSalaryChange(financeStore.people[0], key)
-    expect(change).not.toBeNull()
-    expect(change?.amount).toBe(900_000)
-    expect(change?.delta).toBe(150_000)
+    // До июня 2028 — прежний оклад, с июня — новый: на 150 000 больше.
+    expect(salaryAt(financeStore.people[0], '2028-05')).toBe(750_000)
+    expect(salaryAt(financeStore.people[0], '2028-06')).toBe(900_000)
 
-    // 6–7. Календарь ушёл (Р-39), список платежей — «Платежи» Капитала (Р-32); зарплаты — строками «Дохода».
+    // 6–7. Календарь ушёл (Р-39), список платежей — справочник «Платежи» в «Деньгах»; зарплаты — у круга «Месяца».
     const appList = createSSRApp(Money)
     appList.use(router)
     const htmlList = await renderToString(appList)
-    // Прежние «Платежи» — под «Подробнее» (Блок 14).
-    const more = htmlList.slice(htmlList.indexOf('data-more'))
-    const payments = more.slice(more.indexOf('>Платежи<'))
+    const payments = htmlList.slice(htmlList.indexOf('data-payments'))
     expect(payments).toContain('Аренда квартиры')
     expect(payments).toContain('Автокредит')
-    expect(htmlList).toContain(money(750_000))
+    const appMonth = createSSRApp(Month)
+    appMonth.use(router)
+    expect(await renderToString(appMonth)).toContain(money(750_000))
 
     // 8. Освободившиеся деньги (бывший /ritual → разбор → план месяца, Блок 14, Р-86):
     // А) Нет запланированного снижения — карточки в плане нет
     await router.push('/week/salary')
-    expect(router.currentRoute.value.path).toBe('/money')
+    expect(router.currentRoute.value.path).toBe('/month')
 
-    const appRitualEmpty = createSSRApp(Money)
+    // Блок 15: «Освободится» — подсказкой у своего платежа в разделе «Платежи» «Месяца».
+    const appRitualEmpty = createSSRApp(Month)
     appRitualEmpty.use(router)
+    appRitualEmpty.mixin(screenMixin({ opened: 'dues' }))
     const htmlRitualEmpty = await renderToString(appRitualEmpty)
-    expect(htmlRitualEmpty).not.toContain('data-source="freed"')
+    expect(htmlRitualEmpty).toContain('data-due')
+    expect(htmlRitualEmpty).not.toContain('data-freed')
 
     // Б) Появляется будущее снижение аренды на 50 000 ₸
     financeStore.householdDoc.obligations[0].versions.push({
@@ -179,13 +178,14 @@ describe('e2e / block-4 — Сквозной сценарий бюджета («
     expect(freed?.delta).toBe(-50_000)
 
     // Рендер активного экрана ритуала
-    const appRitualActive = createSSRApp(Money)
+    const appRitualActive = createSSRApp(Month)
     appRitualActive.use(router)
+    appRitualActive.mixin(screenMixin({ opened: 'dues' }))
     const htmlRitualActive = await renderToString(appRitualActive)
-    // Карточка плана: +50 000 ₸ в месяц первой цели очереди, одна кнопка (Р-86).
-    expect(htmlRitualActive).toContain('data-source="freed"')
-    expect(htmlRitualActive).toContain(`+${money(50_000)}`)
-    expect(htmlRitualActive).toMatch(/>\s*Добавить к «[^»]+»\s*</)
+    // Подсказка у платежа: +50 000 в месяц первой цели очереди, одна кнопка (Р-86).
+    expect(htmlRitualActive).toContain('data-freed')
+    expect(htmlRitualActive).toContain(`+${plain(50_000)} в месяц`)
+    expect(htmlRitualActive).toMatch(/>\s*К «[^»]+»\s*</)
 
     // В) Распределение высвобожденных денег: 30 000 в цель, 20 000 на качество жизни
     const goalBefore = financeStore.goals[0]

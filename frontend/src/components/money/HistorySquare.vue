@@ -148,13 +148,13 @@ function momentLine(x: Extract<HistoryItem, { kind: 'moment' }>) {
     title: `«${m.name}» закрыт`,
     note: inPlan ? 'его платёж идёт в следующий долг по плану' : `освободилось ${money(m.freed)} в месяц`,
     // Куда деть освободившееся — карточка «Долг закрыт» в плане месяца (Р-86); viewer решений не принимает (Р-13).
-    to: canEdit.value ? (inPlan ? '/money/plan' : '/money') : null,
+    to: canEdit.value ? (inPlan ? '/money/debts' : '/month') : null,
   }
 }
 
 /**
  * Запись денег месяца (Р-85): «Отложить по плану» — части по целям и фондам; старый разбор Блока 11 и раскладка —
- * части по статьям, как были. Нажатие — сводка этого месяца в плане «Денег».
+ * части по статьям, как были. Нажатие — этот месяц в «План · Месяц» (Р-103).
  */
 function recordLine(a: Allocation) {
   const from = a.source === 'salary' ? `зарплата · ${personName(a.sourceId)}` : a.source === 'rest' ? 'остаток месяца' : 'каждый месяц'
@@ -163,7 +163,7 @@ function recordLine(a: Allocation) {
     a.kind === 'plan'
       ? a.parts.map((p) => ({ key: p.target, name: partName(p.target), amount: p.amount, color: 'var(--s3)' }))
       : articleParts(a).parts.map((p) => ({ key: p.key, name: ARTICLE_NAMES[p.key], amount: p.amount, color: ARTICLE_COLORS[p.key] }))
-  return { title: a.kind === 'plan' ? 'Отложено по плану' : 'Разложено', note: `${from}${by}`, to: `/money?month=${a.period}`, parts }
+  return { title: a.kind === 'plan' ? 'Отложено по плану' : 'Разложено', note: `${from}${by}`, to: `/month?month=${a.period}`, parts }
 }
 /** Часть записи плана: цель или фонд по id, досрочка — «Досрочка в <долг>». */
 function partName(target: string) {
@@ -304,6 +304,6 @@ const markOpen = ref<Payment | null>(null)
     :period="markOpen.period"
     :title="markOpen.kind === 'salary' ? `Зарплата · ${personName(markOpen.targetId)}` : targetName(markOpen)"
     @close="markOpen = null"
-    @allocate="router.push('/money')"
+    @allocate="router.push('/month')"
   />
 </template>

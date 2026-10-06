@@ -94,36 +94,40 @@ describe('router/index.ts — Навигационные гарды и защи�
     expect(router.currentRoute.value.path).toBe('/')
   })
 
-  it('авторизованный пользователь с завершённым бюджетом имеет доступ к / и вкладкам «Неделя», «Деньги», второму уровню и настройкам', async () => {
+  it('авторизованный пользователь с завершённым бюджетом имеет доступ к / и вкладкам «План» (Неделя, Месяц), «Деньги», второму уровню и настройкам', async () => {
     const router = createAppRouter(createMemoryHistory())
     signIn()
     useFinanceStore().finishSetup()
 
-    for (const path of ['/', '/week', '/money', '/money/plan', '/money/history', '/goals/x', '/goals/new', '/wishes', '/people/a', '/settings']) {
+    for (const path of ['/', '/week', '/month', '/money', '/money/debts', '/money/history', '/goals/x', '/goals/new', '/wishes', '/people/a', '/settings']) {
       await router.push(path)
       expect(router.currentRoute.value.path).toBe(path)
     }
   })
 
-  it('viewer: экраны-формы (новая мечта) по прямому адресу ведут на главный; старые ссылки раскладки и разбора — план месяца (Блок 14)', async () => {
+  it('viewer: экраны-формы (новая мечта) по прямому адресу ведут на главный; «Неделя» — «Месяц» (Р-104); старые ссылки раскладки и разбора — «Месяц» (Р-103)', async () => {
     useAuthStore().setAuthData(authAs('viewer', 'b'))
     useFinanceStore().setHouseholdDoc(planFamilyDoc(), 1)
     const router = createAppRouter(createMemoryHistory())
+    // «Неделя» — только свои траты: у viewer её нет, «План» — это «Месяц» (и по старой закладке, и из «+»).
     await router.push('/week')
+    expect(router.currentRoute.value.fullPath).toBe('/month')
+    await router.push('/statements')
+    expect(router.currentRoute.value.fullPath).toBe('/month')
     await router.push('/goals/new')
     expect(router.currentRoute.value.fullPath).toBe('/')
     for (const [path, to] of [
-      ['/week/salary?from=rest&amount=1&period=2026-09', '/money'],
-      ['/ritual?from=salary&person=a&period=2026-09', '/money'],
-      ['/week/order?from=salary&person=a&period=2026-09', '/money'],
-      ['/week/breakdown?from=salary&person=a&period=2026-09', '/money'],
+      ['/week/salary?from=rest&amount=1&period=2026-09', '/month'],
+      ['/ritual?from=salary&person=a&period=2026-09', '/month'],
+      ['/week/order?from=salary&person=a&period=2026-09', '/month'],
+      ['/week/breakdown?from=salary&person=a&period=2026-09', '/month'],
     ]) {
-      await router.push('/week')
+      await router.push('/')
       await router.push(path)
       expect(router.currentRoute.value.fullPath).toBe(to)
     }
     // Остальное viewer смотрит как есть.
-    for (const path of ['/week', '/money', '/money/plan', '/money/history', '/goals/cushion', '/wishes']) {
+    for (const path of ['/month', '/money', '/money/debts', '/money/history', '/goals/cushion', '/wishes']) {
       await router.push(path)
       expect(router.currentRoute.value.path).toBe(path)
     }
@@ -141,28 +145,39 @@ describe('router/index.ts — Навигационные гарды и защи�
       ['/money/capital', '/money'],
       ['/money/capital?add=debt', '/money?add=debt'],
       ['/money/capital?income=1', '/money?income=1'],
-      ['/money/capital?advice=strategy', '/money/plan'],
-      ['/capital?advice=strategy', '/money/plan'],
+      ['/money/capital?advice=strategy', '/money/debts'],
+      ['/capital?advice=strategy', '/money/debts'],
       ['/money/capital/x', '/money?account=x'],
-      ['/money/plan', '/money/plan'],
+      // Блок 15 (Р-91, Р-103): квадрат «План» — «Долги»; закладка месяца плана — «План · Месяц».
+      ['/money/plan', '/money/debts'],
+      ['/money/plan?credit=loan', '/money/debts?credit=loan'],
+      ['/money/debts', '/money/debts'],
+      ['/money?month=2026-09', '/month?month=2026-09'],
+      ['/money/history?month=2026-09', '/month?month=2026-09'],
+      ['/month', '/month'],
+      ['/month?month=2026-09', '/month?month=2026-09'],
       ['/money/history', '/money/history'],
       ['/goals', '/'],
       ['/goals/g-japan', '/goals/g-japan'],
-      // Раскладка, разбор кольцом и «Ваш порядок» — план месяца «Денег» с любыми параметрами (Блок 14, Р-78).
-      ['/ritual', '/money'],
-      ['/ritual?from=salary&person=a&period=2026-09', '/money'],
-      ['/ritual?from=rest&amount=80000&period=2026-09', '/money'],
-      ['/week/salary?from=salary&person=a&period=2026-09', '/money'],
-      ['/week/salary?from=rest&amount=80000&period=2026-09', '/money'],
-      ['/week/salary?from=freed', '/money'],
-      ['/week/salary', '/money'],
-      ['/week/salary?from=credit&credit=inst', '/money'],
-      ['/week/breakdown', '/money'],
-      ['/week/breakdown?from=salary&person=a&period=2026-09', '/money'],
-      ['/week/breakdown?from=plan', '/money'],
-      ['/week/order', '/money'],
-      ['/week/order?from=salary&person=a&period=2026-09', '/money'],
-      ['/plan', '/money/plan'],
+      // Раскладка, разбор кольцом и «Ваш порядок» — «План · Месяц» (Р-103): из параметров остаётся только месяц.
+      ['/ritual?month=2026-09', '/month?month=2026-09'],
+      ['/week/salary?from=salary&person=a&month=2026-09', '/month?month=2026-09'],
+      ['/week/breakdown?month=2026-09&from=plan', '/month?month=2026-09'],
+      ['/week/order?month=2026-09', '/month?month=2026-09'],
+      ['/ritual', '/month'],
+      ['/ritual?from=salary&person=a&period=2026-09', '/month'],
+      ['/ritual?from=rest&amount=80000&period=2026-09', '/month'],
+      ['/week/salary?from=salary&person=a&period=2026-09', '/month'],
+      ['/week/salary?from=rest&amount=80000&period=2026-09', '/month'],
+      ['/week/salary?from=freed', '/month'],
+      ['/week/salary', '/month'],
+      ['/week/salary?from=credit&credit=inst', '/month'],
+      ['/week/breakdown', '/month'],
+      ['/week/breakdown?from=salary&person=a&period=2026-09', '/month'],
+      ['/week/breakdown?from=plan', '/month'],
+      ['/week/order', '/month'],
+      ['/week/order?from=salary&person=a&period=2026-09', '/month'],
+      ['/plan', '/money/debts'],
       ['/statements', '/week'],
       ['/nothing-here', '/'],
     ])('%s → %s', async (from, to) => {
@@ -178,7 +193,7 @@ describe('router/index.ts — Навигационные гарды и защи�
       signIn()
       useFinanceStore().finishSetup()
       const records = new Set<unknown>()
-      for (const [path, square] of [['/money', undefined], ['/money/plan', 'plan'], ['/money/history', 'history']] as const) {
+      for (const [path, square] of [['/money', undefined], ['/money/debts', 'debts'], ['/money/history', 'history']] as const) {
         await router.push(path)
         const r = router.currentRoute.value
         expect(r.name).toBe('money')

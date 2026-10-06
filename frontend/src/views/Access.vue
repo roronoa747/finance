@@ -203,6 +203,30 @@ function startDemoMode() {
         keptAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
+      // Ещё две подписки (Блок 15, Р-93): в «Месяце» и «Деньгах» — одной строкой «Подписки · 3». «Яндекс Плюс»
+      // списался сегодня (операция демо ниже) — за «!» вопрос «это платёж по Яндекс Плюс?»; у Spotify ответа
+      // «оставить» ещё не было — там же «Оставить подписку?».
+      {
+        id: 'ob-yandex',
+        name: 'Яндекс Плюс',
+        note: 'ежемесячно',
+        day: Math.min(new Date().getDate(), 28),
+        category: 'd4',
+        versions: [{ from: '2026-01', amount: 4_990 }],
+        payer: 'a',
+        keptAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: 'ob-spotify',
+        name: 'Spotify',
+        note: 'ежемесячно',
+        day: 22,
+        category: 'd4',
+        versions: [{ from: '2026-01', amount: 2_990 }],
+        payer: 'b',
+        updatedAt: new Date().toISOString(),
+      },
     ]
     doc.credits = [
       {
@@ -233,7 +257,7 @@ function startDemoMode() {
         payer: 'a',
         updatedAt: new Date().toISOString(),
       },
-      // Вторая мечта — её взнос план «Сначала долги» направляет в автокредит (квадрат «План», пивот 3).
+      // Вторая мечта — её взнос план «Сначала долги» направляет в автокредит (квадрат «Долги», пивот 3).
       {
         id: 'g-car',
         name: 'Машина',
@@ -340,7 +364,7 @@ function startDemoMode() {
   })
   // «Деньги» в демо — все три квадрата с данными (пивот 3, B2C-45): план «Сначала долги» (машина на
   // паузе ради автокредита) и отметки месяца — аренда оплачена Аруной, зарплата Ильяса пришла. Фонды «Запас» и
-  // «Подушка» — «не останавливать» (план ставит на паузу все цели, кроме этих, Р-82: квадрат «План» прежний).
+  // «Подушка» — «не останавливать» (план ставит на паузу все цели, кроме этих, Р-82: квадрат «Долги» прежний).
   financeStore.choosePlan({ keptGoalIds: ['g-trip', 'g-reserve', 'g-pot'], cushionGoalId: null, months: 24, lump: 0 }, 'a')
   // Прошлый месяц тоже с отметками — у «Истории» есть итог «Наш <месяц>» и в начале месяца.
   const prev = addMonths(monthKey(), -1)
@@ -372,11 +396,11 @@ function startDemoMode() {
   financeStore.addExchange({ by: 'a', accountId: 'acc-eur', toAccountId: 'acc-kaspi', foreign: 500, rate: 512, period: monthKey() })
   // Записи загрузок и свои операции демо — когда стор операций уже переключился на демо-семью (watch по владельцу).
   void nextTick().then(() => {
-    // Две недели своих операций (0…13 дней назад): у этой и прошлой недели есть траты — у карточки недели
-    // есть чип «к прошлой». В начале месяца прошлая неделя — в прошлом месяце: загрузка начинается с первой операции.
+    // Девять недель своих операций (0…62 дня назад, Блок 15): у «Недели» есть сравнение с прошлой и тренд
+    // «8 недель»; одна загрузка покрывает их все.
     const day = (ago: number) => new Date(Date.now() - ago * 86_400_000).toISOString().slice(0, 10)
     const today = day(0)
-    const from = [`${monthKey()}-01`, day(13)].sort()[0]
+    const from = day(63)
     const ops = useOperationsStore()
     // «Выписки» недели (B2C-62/67): Ильяс загрузил, Аруна — ещё нет (галочка и «ещё нет»). У Аруны — выписка
     // месяца до этой недели: план месяца показывает факт трат обоих (B2C-90); в первые дни месяца, когда
@@ -385,7 +409,7 @@ function startDemoMode() {
     const weekStart = weekRange(weekKey()).from
     const arunaTo = weekStart > monthStart ? new Date(Date.parse(weekStart) - 86_400_000).toISOString().slice(0, 10) : today
     ops.seedDemoUploads([
-      { id: 'demo-upload-a', slot: 'a', bank: 'kaspi', period_from: from, period_to: today, ops_count: 29, created_at: new Date().toISOString() },
+      { id: 'demo-upload-a', slot: 'a', bank: 'kaspi', period_from: from, period_to: today, ops_count: 55, created_at: new Date().toISOString() },
       { id: 'demo-upload-b', slot: 'b', bank: 'kaspi', period_from: monthStart, period_to: arunaTo, ops_count: 10, created_at: new Date().toISOString() },
     ])
     // Пять разделов, продавцы — только из словаря (иначе ответ на продавца, переразложив операции правилами,
@@ -395,7 +419,20 @@ function startDemoMode() {
     const op = (n: number, ago: number, amount: number, merchant: string, categoryId: string | null, extra: Partial<Operation> = {}): Operation => ({
       id: `demo-op-${n}`, bank: 'kaspi', date: day(ago), amount, kind: 'purchase', merchant, categoryId, internal: false, ...extra,
     })
+    // Ещё семь недель назад (14…62 дня, Блок 15): у тренда «8 недель», сравнения недель и остатка разделов есть
+    // данные. Суммы — вне допусков платежей (подписки 3–5 тыс., «Коммуналка» 21–39 тыс.): вопросов не добавляют.
+    const older = [1, 0.8, 1.15, 0.9, 1.3, 0.7, 1.05].flatMap((k, w) => {
+      const ago = 14 + w * 7
+      const sum = (n: number) => -Math.round((n * k) / 100) * 100
+      return [
+        op(100 + w * 4, ago + 1, sum(14_000), 'Magnum', 'sc_food'),
+        op(101 + w * 4, ago + 4, sum(9_000), 'Small', 'sc_food'),
+        op(102 + w * 4, ago + 2, sum(7_500), 'Del Papa Cafe', 'sc_cafe'),
+        op(103 + w * 4, ago + 5, sum(1_700), 'Yandex Go', 'sc_transport'),
+      ]
+    })
     ops.seedDemoOperations([
+      ...older,
       op(1, 0, -6_800, 'Galmart', 'sc_food'),
       op(2, 0, -4_990, 'Яндекс Плюс', 'sc_subscriptions'),
       op(3, 0, -7_600, 'ИП Абенова', null),

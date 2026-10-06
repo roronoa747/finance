@@ -8,8 +8,8 @@ import StackBar from './StackBar.vue'
 
 /**
  * Картина недели первого запуска (DESIGN.md §5): сумма обоих, стопка разделов, первые `rows`
- * строк и подвал «ещё N разделов · не разобрано X». Суммы и доли считает `weekPicture`
- * (`finance.ts`); здесь — только показ. Карточка «Недели» — `WeekTotal` (пивот 3, B2C-50).
+ * строк и подвал «ещё N разделов · не разобрано X». Суммы и доли считает `spendRows`
+ * (`finance.ts`); здесь — только показ.
  */
 export type WeekSegment = { id: string; name: string; amount: number; share: number; color: string }
 

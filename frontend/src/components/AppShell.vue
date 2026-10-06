@@ -15,9 +15,9 @@ import {
 } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { useOperationsStore } from '@/stores/operations'
-import { monthKey, MONTHS_NOM, parseMonthKey, weekKey, weekRangeLabel } from '@/lib/dates'
-import { liveGoals, weekPicture, weekTag } from '@/lib/finance'
+import { monthKey, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
+import { readPlanView } from '@/lib/storage'
+import { liveGoals } from '@/lib/finance'
 import SyncBadge from '@/components/SyncBadge.vue'
 import Avatar from '@/components/kit/Avatar.vue'
 import IconBox from '@/components/kit/IconBox.vue'
@@ -28,12 +28,12 @@ import Tabs from '@/components/kit/Tabs.vue'
 /**
  * Оболочка (DESIGN.md §2, §5; B2C-13): шапка `.topbar` — заголовок экрана 30 (системный, пивот 3) с
  * подписью, аватары участников (точка при «не сошлось» — `SyncBadge` compact), шестерёнка →
- * `/settings`; капсула вкладок «Мечты · Неделя · Деньги» и «+»; лист «+» на `Sheet` — шесть
+ * `/settings`; капсула вкладок «Мечты · План · Деньги» и «+»; лист «+» на `Sheet` — шесть
  * действий; у viewer «+» нет вовсе (ТЗ B2C-13 п. 3: лист без действий правки — а добавить
  * покупку viewer тоже не может, критик Блока 3). «Советника» нет.
  *
  * Шапка — как в макетах (возврат смоука): у вкладок справа аватары (шестерёнка — только на
- * «Мечтах», §2; на «Неделе» аватаров нет), у вложенных экранов слева «назад», справа — действия
+ * «Мечтах», §2; на «Неделе» аватаров нет — кружки участников стоят в её строке загрузки, Р-96), у вложенных экранов слева «назад», справа — действия
  * самого экрана (`HeaderActions` переносит их в `#shell-actions`). Экраны-потоки (цель, желания,
  * настройки) — без вкладок, как в макетах g2/g4/g7.
  */
@@ -41,7 +41,6 @@ const route = useRoute()
 const router = useRouter()
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
-const ops = useOperationsStore()
 
 const addOpen = ref(false)
 provide('ff-shell-actions', true)
@@ -50,28 +49,9 @@ const people = computed(() => financeStore.people.filter((p) => !p.deletedAt))
 const names = computed(() => people.value.map((p) => p.name).join(' и '))
 const monthName = computed(() => MONTHS_NOM[parseMonthKey(monthKey()).month])
 
-const BANKS: Record<string, string> = { kaspi: 'Kaspi', freedom: 'Freedom' }
-
-/** «Неделя»: подпись — даты недели и чьи выписки в итоге (g2 «15–21 сентября · обе выписки»). */
-const weekSub = computed(() => {
-  const doc = financeStore.householdDoc
-  const pic = weekPicture(doc.spendTotals ?? [], doc.spendCategories ?? [], people.value, weekKey(), ops.uploads)
-  const tag = weekTag(pic, people.value.length)
-  return tag ? `${weekRangeLabel(pic.range)} · ${tag.text}` : weekRangeLabel(pic.range)
-})
-/** Разбор выписки (g2 «Разбор — предпросмотр»): банк и период файлов черновика. */
-const draftSub = computed(() => {
-  const files = ops.draft?.files ?? []
-  if (!files.length) return undefined
-  const from = files.map((f) => f.parsed.from).sort()[0]
-  const to = files.map((f) => f.parsed.to).sort().at(-1)!
-  return `${[...new Set(files.map((f) => BANKS[f.parsed.bank] ?? f.parsed.bank))].join(', ')} · ${weekRangeLabel({ from, to })}`
-})
-
 /** Вкладки — корни (у «Денег» — все три квадрата, пивот 3); остальное — вложенные экраны со стрелкой «назад». */
-const ROOTS = ['/', '/week', '/money', '/money/plan', '/money/history']
-// «Разбор» выписки живёт на /week, но корнем не считается: «назад» слева, как в g2 (хвост критика Б9).
-const isRoot = computed(() => ROOTS.includes(route.path) && !(route.path === '/week' && !!ops.draft))
+const ROOTS = ['/', '/week', '/month', '/money', '/money/debts', '/money/history']
+const isRoot = computed(() => ROOTS.includes(route.path))
 /** Экраны-потоки без нижней навигации (в макетах — без вкладок): цель, желания, настройки. */
 const noTabs = computed(() => {
   const p = route.path
@@ -81,8 +61,6 @@ const noTabs = computed(() => {
 /** «Назад»: по истории, а открытый по ссылке экран — к своему корню. */
 function goBack() {
   const p = route.path
-  // «Назад» разбора — как «Отмена»: черновик сбрасывается, ничего не отправлено.
-  if (p === '/week' && ops.draft) return ops.cancelDraft()
   if (typeof window !== 'undefined' && window.history.state?.back) router.back()
   else void router.push(p.startsWith('/week') ? '/week' : p === '/settings/me' ? '/settings' : '/')
 }
@@ -91,7 +69,8 @@ function goBack() {
 const header = computed<{ title: string; sub?: string }>(() => {
   const p = route.path
   if (p === '/') return { title: 'Мечты', sub: `${monthName.value} · ${names.value}` }
-  if (p.startsWith('/week')) return ops.draft ? { title: 'Разбор', sub: draftSub.value } : { title: 'Неделя', sub: weekSub.value }
+  // «План» — одна вкладка на «Неделю» и «Месяц» (Р-89): даты недели и месяц листаются на самих экранах.
+  if (p.startsWith('/week') || p === '/month') return { title: 'План', sub: names.value }
   // «Деньги» — один экран с тремя квадратами (пивот 3, Р-31): шапка одна на все.
   if (p === '/money' || p.startsWith('/money/')) return { title: 'Деньги', sub: `${monthName.value} · ${names.value}` }
   if (p === '/goals/new') return { title: 'Новая мечта' }
@@ -114,9 +93,15 @@ const header = computed<{ title: string; sub?: string }>(() => {
   return { title: 'Family Finance' }
 })
 
+/** Вкладка «План» открывает последний выбранный вид (Р-99, на устройстве); viewer — всегда «Месяц» (Р-104). */
+const planTo = computed(() => {
+  void route.path // вид запоминает переключатель и тут же меняет адрес — перечитываем на каждом переходе
+  return authStore.isViewer || readPlanView() === 'month' ? '/month' : '/week'
+})
+
 const tabs = computed(() => [
   { to: '/', label: 'Мечты', icon: PhHeart, active: route.path === '/' || route.path.startsWith('/goals') || route.path === '/wishes' || route.path.startsWith('/people/') },
-  { to: '/week', label: 'Неделя', icon: PhCalendarBlank, active: route.path.startsWith('/week') },
+  { to: planTo.value, label: 'План', icon: PhCalendarBlank, active: route.path.startsWith('/week') || route.path === '/month' },
   { to: '/money', label: 'Деньги', icon: PhWallet, active: route.path.startsWith('/money') },
 ])
 
@@ -139,7 +124,7 @@ const actions = computed(() => {
     edit && { to: '/week?upload=1', title: 'Загрузить выписку', note: 'Kaspi или Freedom — траты недели по разделам', icon: PhFileArrowUp },
     edit && { to: '/goals/new', title: 'Новая мечта', note: 'фото, сумма и срок', icon: PhHeart },
     edit && { to: '/wishes', title: 'Покупка в список желаний', note: 'себе, партнёру или сюрприз', icon: PhShoppingBag },
-    edit && { to: '/money?income=1', title: 'Внеплановый доход', note: 'премия, подарок, возврат', icon: PhCoins },
+    edit && { to: '/month?income=1', title: 'Внеплановый доход', note: 'премия, подарок, возврат', icon: PhCoins },
     edit && { to: '/money?add=payment', title: 'Обязательство или подписка', note: 'аренда, связь, страховка', icon: PhRepeat },
     edit && { to: '/money?add=debt', title: 'Кредит или рассрочка', note: 'долг, платёж, график', icon: PhCreditCard },
   ].filter((a): a is Exclude<typeof a, false> => Boolean(a))
@@ -202,6 +187,9 @@ function navigateAndClose(to: string) {
         </div>
       </RouterView>
     </main>
+
+    <!-- Тосты экранов (`kit/Toast`) — над капсулой вкладок (макет week-month.html `.toast`). -->
+    <div id="shell-toast" class="absolute inset-x-4 z-20 flex flex-col gap-2 empty:hidden" :class="noTabs ? 'bottom-4' : 'bottom-[84px]'" />
 
     <Tabs v-if="!noTabs" :items="tabs" :plus="!authStore.isViewer" plus-label="Добавить" @plus="addOpen = true" />
 

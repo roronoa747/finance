@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MONTH_END_KEY, readMonthEnd, writeMonthEnd } from './storage'
+import { MONTH_END_KEY, PLAN_VIEW_KEY, readMonthEnd, readPlanView, writeMonthEnd, writePlanView } from './storage'
 
 // Ответ «остались деньги?» (Р-19): «Мечты» и «Неделя» пишут и читают одним форматом (критик Блока 3).
 describe('readMonthEnd / writeMonthEnd', () => {
@@ -42,5 +42,38 @@ describe('readMonthEnd / writeMonthEnd', () => {
     expect(readMonthEnd()).toBeNull()
     expect(() => writeMonthEnd('2026-09')).not.toThrow()
     err.mockRestore()
+  })
+})
+
+// Вид вкладки «План» (Р-99): последний выбранный — на устройстве; пусто, мусор или нет хранилища — «Неделя».
+describe('readPlanView / writePlanView', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('пусто — «Неделя»; записанный вид читается; мусор — «Неделя»', () => {
+    const map = new Map<string, string>()
+    vi.stubGlobal('localStorage', { getItem: (k: string) => map.get(k) ?? null, setItem: (k: string, v: string) => void map.set(k, String(v)) })
+    expect(readPlanView()).toBe('week')
+    writePlanView('month')
+    expect(readPlanView()).toBe('month')
+    writePlanView('week')
+    expect(readPlanView()).toBe('week')
+    map.set(PLAN_VIEW_KEY, '"tiles"')
+    expect(readPlanView()).toBe('week')
+    map.set(PLAN_VIEW_KEY, 'не json')
+    expect(readPlanView()).toBe('week')
+  })
+
+  it('хранилище бросает — «Неделя», без исключений', () => {
+    vi.stubGlobal('localStorage', {
+      getItem: () => {
+        throw new Error('закрыто')
+      },
+      setItem: () => {
+        throw new Error('закрыто')
+      },
+    })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(readPlanView()).toBe('week')
+    expect(() => writePlanView('month')).not.toThrow()
   })
 })

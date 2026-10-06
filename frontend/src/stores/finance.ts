@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, type Ref } from 'vue'
 import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { mergeDocs, mergePrivateDocs, isEmptyDoc } from '@/lib/merge'
-import { monthKey, todayIso } from '@/lib/dates'
+import { monthKey, monthLastNoon, todayIso } from '@/lib/dates'
 import { clearPhotoDisk } from '@/lib/photos/store'
 import { FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, readStorage } from '@/lib/storage'
 import {
@@ -28,6 +28,10 @@ import {
   moveWithin,
   queueOf,
   monthPlan,
+  pendingPuts,
+  salaryToAllocate,
+  planExtras,
+  planPuts,
   wishQueue,
   moneyArticlesOf,
   moneySettingsOf,
@@ -278,6 +282,22 @@ export const useFinanceStore = defineStore('finance', () => {
   const monthPlanOf = (key: string): MonthPlan => {
     const { state, ctx } = planInput(key)
     return monthPlan(state, ctx)
+  }
+  /**
+   * Месяц, где «Месяц» ждёт действия (Р-97): этот — зарплата плательщика пришла, а цели не отложены, или есть деньги
+   * сверх плана («освободится», «долг закрыт»); иначе — месяц своей пришедшей по выписке и не отложенной зарплаты
+   * (`salaryToAllocate`: прошлый, когда выписку загрузили позже). Ничего не ждёт или viewer — null. Функция, не
+   * computed: ответ зависит и от сегодняшнего дня — экраны зовут её в своих computed.
+   */
+  const planCall = (): string | null => {
+    const auth = useAuthStore()
+    if (auth.isViewer) return null
+    const key = monthKey()
+    const { state, ctx } = planInput(key)
+    if (pendingPuts(planPuts(state, monthPlan(state, ctx))).length) return key
+    const extras = planExtras(state, { ...ctx, rawCredits: householdDoc.value.credits })
+    if (extras.freed || extras.closed) return key
+    return salaryToAllocate(state, auth.slot)?.period ?? null
   }
   /** Цели на паузе ради плана (Р-9): выводятся из плана — одно место для экранов. */
   const pausedGoalIds = computed(
@@ -1460,7 +1480,7 @@ export const useFinanceStore = defineStore('finance', () => {
   function applyPrepayment(
     creditId: string,
     by: PersonId,
-    opts: { amount: number; mode: LumpMode; accountId?: string | null; planId?: string },
+    opts: { amount: number; mode: LumpMode; accountId?: string | null; planId?: string; period?: string },
   ): Payment | null {
     const c = credits.value.find((x) => x.id === creditId && !x.deletedAt)
     if (!c) return null
@@ -1473,13 +1493,14 @@ export const useFinanceStore = defineStore('finance', () => {
     // целей на паузе, а на счёт приходит сдвигом (как «снять с цели на счёт») — со счёта
     // уходит только остальное. Цели, досрочка и счёт — одной записью документа.
     const debtPlan = opts.planId ? plans.value.find((p) => p.id === opts.planId && !p.deletedAt) : undefined
-    const takes = debtPlan ? planLumpTakes(debtPlan, goals.value, plan.paid, monthKey()) : []
+    const period = opts.period ?? monthKey()
+    const takes = debtPlan ? planLumpTakes(debtPlan, goals.value, plan.paid, period) : []
     const took = takes.reduce((a, x) => a + x.amount, 0)
     const record = newPayment(
       {
         kind: 'prepay',
         targetId: c.id,
-        period: monthKey(),
+        period,
         amount: plan.paid,
         principal: plan.paid,
         by,
@@ -1860,22 +1881,23 @@ export const useFinanceStore = defineStore('finance', () => {
     updateGoal(id, { fundMonths: Math.max(0, Math.round(months)) })
   }
 
-  function contribute(id: string, amount: number, by: PersonId, note?: string) {
+  /** `at` — момент движения (по умолчанию сейчас): запись прошлого месяца кладёт его в тот месяц (ревью frontend Б15, Н-2). */
+  function contribute(id: string, amount: number, by: PersonId, note?: string, at?: string) {
     const t = new Date().toISOString()
     const mid = Math.random().toString(36).slice(2, 10)
     mutateHouseholdDoc((doc) => {
       const g = (doc.goals || []).find((x) => x.id === id)
       if (!g) return
       if (!g.movements) g.movements = []
-      g.movements.push({ id: mid, date: t, amount, by, note })
+      g.movements.push({ id: mid, date: at ?? t, amount, by, note })
       // Снятие сверх накопленного пишется целиком, остаток — не ниже нуля (как в слиянии).
       g.have = goalHave(g.seed, g.movements)
       g.updatedAt = t
     })
   }
 
-  function withdraw(id: string, amount: number, by: PersonId, note?: string) {
-    contribute(id, -Math.abs(amount), by, note)
+  function withdraw(id: string, amount: number, by: PersonId, note?: string, at?: string) {
+    contribute(id, -Math.abs(amount), by, note, at)
   }
 
   // Покупки в дом (React `useStore.ts:280-311`). Даты — ISO, а не «сегодня» как в React:
@@ -1964,16 +1986,52 @@ export const useFinanceStore = defineStore('finance', () => {
   function applyPlan(save: PlanSave | PlanFromSource, o: { by: PersonId; note: string }): Allocation {
     const had = allocationFor(householdDoc.value.allocations, save.record)
     if (had) return had
+    return writePlan(save, o)
+  }
+
+  /**
+   * «Отложил» у цели и «Отложил всё» (Р-97, ворота B2C-91): исполняет `planPutSaves` — взносы и досрочку остатком
+   * до суммы плана и запись `kind: 'plan'` на плательщика. Месяц — список дел: записей источника за месяц может быть
+   * несколько (цель за целью), поэтому без проверки «запись уже есть» — второй раз не кладётся, потому что сумма
+   * строки — то, что осталось отложить.
+   */
+  function putPlan(saves: PlanSave[], o: { by: PersonId; note: string }) {
+    if (viewer()) return
+    for (const s of saves) if (s.put > 0) writePlan(s, o)
+  }
+
+  /**
+   * «Не отложено» (ворота B2C-91): снимает с цели положенное записями плана месяца (`PlanPut.undo`) и убирает её
+   * часть из этих записей; запись без частей — надгробие. Взносы руками не трогает.
+   */
+  function unputPlan(goalId: string, period: string, amount: number, by: PersonId) {
+    if (viewer() || amount <= 0) return
+    withdraw(goalId, amount, by, 'не отложено', period < monthKey() ? monthLastNoon(period) : undefined)
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      for (const a of doc.allocations ?? []) {
+        if (a.deletedAt || a.kind !== 'plan' || a.source !== 'salary' || a.period !== period || !a.parts.some((p) => p.target === goalId)) continue
+        a.parts = a.parts.filter((p) => p.target !== goalId)
+        a.updatedAt = t
+        if (!a.parts.length) a.deletedAt = t
+      }
+    })
+  }
+
+  function writePlan(save: PlanSave | PlanFromSource, o: { by: PersonId; note: string }): Allocation {
     if ('mode' in save && save.mode === 'monthly') {
       const g = goals.value.find((x) => x.id === save.goalId && !x.deletedAt)
       if (g) setGoalMonthly(g.id, g.monthly + save.add)
       return recordAllocation({ ...save.record, kind: 'plan', by: o.by, total: save.amount, parts: [{ target: save.goalId, amount: save.add }] })
     }
     let parts: AllocationPart[] = save.parts.slice()
-    for (const c of save.contributions) contribute(c.goalId, c.amount, o.by, o.note)
+    // Запись прошлого месяца (зарплата нашлась по выписке позже) — взносы и досрочка в том месяце, не в текущем.
+    const { period } = save.record
+    const at = period < monthKey() ? monthLastNoon(period) : undefined
+    for (const c of save.contributions) contribute(c.goalId, c.amount, o.by, o.note, at)
     const pp = save.prepay
     if (pp) {
-      const rec = applyPrepayment(pp.creditId, o.by, { amount: pp.amount, mode: 'term', ...(pp.planId ? { planId: pp.planId } : {}) })
+      const rec = applyPrepayment(pp.creditId, o.by, { amount: pp.amount, mode: 'term', period, ...(pp.planId ? { planId: pp.planId } : {}) })
       const paid = rec?.amount ?? 0
       const target = `prepay:${pp.creditId}`
       if (paid !== pp.amount) parts = parts.map((x) => (x.target === target ? { ...x, amount: paid } : x)).filter((x) => x.amount > 0)
@@ -2079,6 +2137,7 @@ export const useFinanceStore = defineStore('finance', () => {
     planState,
     planInput,
     monthPlanOf,
+    planCall,
     planStepNow,
     pausedGoalIds,
     saveLocalState,
@@ -2143,6 +2202,8 @@ export const useFinanceStore = defineStore('finance', () => {
     wishes,
     heroGoal,
     applyPlan,
+    putPlan,
+    unputPlan,
     moveInQueue,
     moveGoal,
     moveWish,

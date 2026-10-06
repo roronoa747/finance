@@ -40,7 +40,7 @@ async function mount(withPlan: boolean) {
   const store = useFinanceStore()
   store.setHouseholdDoc(planFamilyDoc({ plans: withPlan ? [planOf()] : [] }), 1)
   const router = createRouter({ history: createMemoryHistory(), routes })
-  await router.push('/money/plan')
+  await router.push('/money/debts')
   await router.isReady()
   const root = document.createElement('div')
   document.body.appendChild(root)

@@ -180,7 +180,7 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
 
       // Машина: осталось 2 800 000, по 60 000 — 47 взносов с месяца после конца плана.
       const free = debtFree(B)
-      expect(await screen(B.pinia, Money, '/money/plan')).toContain(`Закроется в ${monthIn(free)}`)
+      expect(await screen(B.pinia, Money, '/money/debts')).toContain(`Закроется в ${monthIn(free)}`)
       for (const p of [A, B]) {
         const car = await screen(p.pinia, GoalDetail, '/goals/car')
         expect(car).toContain('На паузе ради плана')
@@ -197,10 +197,10 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       await A.store.syncHousehold(A.client)
       await on(B).store.syncHousehold(B.client)
       // «Досрочно по плану» — шаг месяца квадрата «План» (Бюджета нет, B2C-45).
-      expect(await screen(B.pinia, Money, '/money/plan')).toContain(`${money(110_000)} досрочно`)
+      expect(await screen(B.pinia, Money, '/money/debts')).toContain(`${money(110_000)} досрочно`)
       const free2 = debtFree(B)
       expect(free2 <= free).toBe(true)
-      expect(await screen(B.pinia, Money, '/money/plan')).toContain(`Закроется в ${monthIn(free2)}`)
+      expect(await screen(B.pinia, Money, '/money/debts')).toContain(`Закроется в ${monthIn(free2)}`)
       expect(await screen(B.pinia, GoalDetail, '/goals/car')).toContain(`Будет вашей в ${monthIn(addMonths(free2, 40))}`)
     })
 

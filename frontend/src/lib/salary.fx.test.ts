@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { budgetAmounts, docCurrencies, nextSalaryChange, paydayIso, salaryAt, salaryOf, totalIncome } from './finance'
+import { budgetAmounts, docCurrencies, paydayIso, salaryAt, salaryOf, totalIncome } from './finance'
 import type { Person, RateBook } from '@/types/finance'
 
 // Оклад в валюте (B2C-78, Р-70, Р-72): сумма версии — в валюте, тенге — по курсу дня зарплаты
@@ -77,13 +77,6 @@ describe('salaryOf / salaryAt — оклад в валюте', () => {
     expect(totalIncome(people, '2026-09')).toBe(1_258_250)
     expect(budgetAmounts({ people, book }, '2026-09').income).toBe(1_267_100)
     expect(budgetAmounts({ people }, '2026-09').income).toBe(1_258_250)
-  })
-
-  it('ближайшее изменение в валюте: сумма в евро, разница — в тенге', () => {
-    const p = person({ salaryVersions: [{ from: '2000-01', amount: 700_000 }, eur('2026-11', 1_600)] })
-    const next = nextSalaryChange(p, '2026-09', book)!
-    // 1 600 × 513,3 = 821 280 ₸ (ноябрь — последний курс книги) − 700 000 = 121 280 ₸.
-    expect(next).toMatchObject({ from: '2026-11', amount: 1_600, currency: 'EUR', delta: 121_280 })
   })
 
   it('валюты окладов попадают в книгу курсов', () => {

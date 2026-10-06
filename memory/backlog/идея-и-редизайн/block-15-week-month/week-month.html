@@ -1,0 +1,827 @@
+<title>Неделя и Месяц</title>
+<style>
+/* Ряды телефонов 390 px по экранам. Палитра — токены приложения (frontend/src/style.css), как в макетах брифа и Блока 14.
+   Платежи — s1, траты — s8, цели — s3; участники — pa / pb. */
+:root{
+  --pg-bg:#e9e9e6; --pg-fg:#19191b; --pg-mute:#6b6b70; --pg-line:#d6d6d1;
+  --canvas:#f2f2f0; --surface:#ffffff; --surface-2:#f1f1ef; --surface-3:#e7e7e3; --line:#e3e3df; --card-border:var(--line);
+  --ink:#19191b; --ink-2:#57575b; --ink-3:#86868b;
+  --brand:#b4562f; --brand-ink:#fffdf9; --brand-soft:#f6e6dd;
+  --ok:#3e7a5b; --ok-soft:#dfeee4; --warn:#8a5a00; --warn-soft:#f8ebd0;
+  --pa:#4f7a63; --pb:#7d6a9e; --dot-ink:#ffffff;
+  --s1:#c2703f; --s3:#5b7fa6; --s5:#4f8a6b; --s6:#b0587a; --s8:#a47c3b;
+  --track:#e6e6e2; --scrim:rgb(30 26 22 / .45);
+  --shadow-2:0 2px 6px rgb(30 26 22 / .1), 0 18px 48px rgb(30 26 22 / .14);
+  --shadow-lift:0 6px 14px rgb(30 26 22 / .16), 0 22px 44px rgb(30 26 22 / .2);
+  --font:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,'Segoe UI',Roboto,sans-serif;
+  --num:ui-rounded,-apple-system,BlinkMacSystemFont,system-ui,'Segoe UI',Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --pg-bg:#0c0c0e; --pg-fg:#f1f1ee; --pg-mute:#9a9a96; --pg-line:#2a2a2e;
+  --canvas:#121214; --surface:#1c1c1f; --surface-2:#26262a; --surface-3:#313136; --line:#36363b; --card-border:transparent;
+  --ink:#f1f1ee; --ink-2:#b4b4b0; --ink-3:#8a8a86;
+  --brand:#e58a62; --brand-ink:#2a1208; --brand-soft:#3a2418;
+  --ok:#7fc29a; --ok-soft:#1f2e25; --warn:#e7b96a; --warn-soft:#2c2416;
+  --pa:#94c2a8; --pb:#b9a8dc; --dot-ink:#121214;
+  --s1:#e0946a; --s3:#8fb0da; --s5:#7cbf9a; --s6:#e08aab; --s8:#d4aa66;
+  --track:#313136; --scrim:rgb(0 0 0 / .6);
+  --shadow-2:0 2px 8px rgb(0 0 0 / .5), 0 20px 56px rgb(0 0 0 / .55);
+  --shadow-lift:0 6px 16px rgb(0 0 0 / .55), 0 24px 48px rgb(0 0 0 / .6);
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --pg-bg:#0c0c0e; --pg-fg:#f1f1ee; --pg-mute:#9a9a96; --pg-line:#2a2a2e;
+  --canvas:#121214; --surface:#1c1c1f; --surface-2:#26262a; --surface-3:#313136; --line:#36363b; --card-border:transparent;
+  --ink:#f1f1ee; --ink-2:#b4b4b0; --ink-3:#8a8a86;
+  --brand:#e58a62; --brand-ink:#2a1208; --brand-soft:#3a2418;
+  --ok:#7fc29a; --ok-soft:#1f2e25; --warn:#e7b96a; --warn-soft:#2c2416;
+  --pa:#94c2a8; --pb:#b9a8dc; --dot-ink:#121214;
+  --s1:#e0946a; --s3:#8fb0da; --s5:#7cbf9a; --s6:#e08aab; --s8:#d4aa66;
+  --track:#313136; --scrim:rgb(0 0 0 / .6);
+  --shadow-2:0 2px 8px rgb(0 0 0 / .5), 0 20px 56px rgb(0 0 0 / .55);
+  --shadow-lift:0 6px 16px rgb(0 0 0 / .55), 0 24px 48px rgb(0 0 0 / .6);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--pg-bg);color:var(--pg-fg);font:15px/1.4 var(--font);margin:0}
+button{font:inherit;color:inherit}
+.wrap{max-width:1320px;margin:0 auto;padding-inline:16px;padding-block:20px 60px;display:flex;flex-direction:column;gap:44px}
+header.head{display:flex;flex-direction:column;gap:10px;max-width:72ch}
+h1{font-size:28px;letter-spacing:-.02em;margin:0;text-wrap:balance}
+.sub{color:var(--pg-mute);margin:0}
+.theme{display:flex;gap:6px;flex-wrap:wrap}
+.theme button,.reset{border:1px solid var(--pg-line);background:transparent;color:var(--pg-fg);border-radius:99px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer}
+.theme button[aria-pressed="true"]{background:var(--pg-fg);color:var(--pg-bg);border-color:var(--pg-fg)}
+section{display:flex;flex-direction:column;gap:14px}
+h2{font-size:21px;margin:0;letter-spacing:-.01em;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;text-wrap:balance}
+h2 .q{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--brand)}
+.why{color:var(--pg-mute);margin:0;max-width:72ch;font-size:14px}
+.row{display:flex;gap:22px;overflow-x:auto;padding-bottom:10px;scroll-snap-type:x mandatory}
+.col{display:flex;flex-direction:column;gap:10px;flex:0 0 auto;scroll-snap-align:start;width:min(390px,calc(100vw - 32px))}
+.cap{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;min-height:40px}
+.cap b{font-size:15px}
+.cap span{color:var(--pg-mute);font-size:13px}
+.r12{font-size:12px;color:var(--pg-mute);margin:0;line-height:1.45}
+.r12 b{color:var(--pg-fg);font-weight:600}
+
+/* телефон */
+.phone{width:100%;max-width:390px;height:780px;background:var(--canvas);color:var(--ink);border-radius:38px;border:8px solid var(--pg-fg);overflow:hidden;position:relative;display:flex;flex-direction:column}
+.scr{flex:1;overflow-y:auto;padding:14px 16px 110px;display:flex;flex-direction:column;gap:12px;scrollbar-width:none}
+.scr > *{flex-shrink:0}
+.tabs{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:2px;background:var(--surface);box-shadow:var(--shadow-2);border-radius:99px;padding:5px;align-items:center;z-index:4}
+.tabs button{border:0;background:transparent;font-size:13px;font-weight:600;padding:9px 15px;border-radius:99px;color:var(--ink-3);cursor:pointer}
+.tabs button.on{background:var(--surface-3);color:var(--ink)}
+.tabs .plus{width:36px;height:36px;border-radius:50%;background:var(--brand);color:var(--brand-ink);display:grid;place-items:center;font-size:22px;margin-left:4px}
+.tbar{display:flex;justify-content:space-between;align-items:center;padding:2px 2px 0;gap:8px}
+.tbar .t{font-size:26px;font-weight:700;letter-spacing:-.02em}
+.ro{font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);background:var(--surface-2);padding:3px 8px;border-radius:99px}
+.seg{display:flex;background:var(--surface-2);border-radius:14px;padding:4px;gap:4px}
+.seg button{flex:1;border:0;background:transparent;border-radius:10px;padding:9px;font-weight:650;font-size:14.5px;color:var(--ink-3);cursor:pointer;position:relative}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgb(0 0 0 / .08)}
+.seg button.dot::after{content:"";position:absolute;top:7px;right:calc(50% - 40px);width:8px;height:8px;border-radius:50%;background:var(--brand)}
+.card{background:var(--surface);border:1px solid var(--card-border);border-radius:24px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.list{background:var(--surface);border:1px solid var(--card-border);border-radius:24px;padding:2px 14px}
+.lbl{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3)}
+.meta{font-size:13px;color:var(--ink-3)}
+.note{font-size:12.5px;color:var(--ink-3);text-align:center}
+.big{font-family:var(--num);font-weight:700;font-size:26px;line-height:1.05;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.huge{font-family:var(--num);font-weight:700;font-size:40px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.huge.zero{color:var(--ink-3)}
+.btn{border:0;border-radius:14px;padding:13px 16px;font:600 15px var(--font);background:var(--brand);color:var(--brand-ink);width:100%;cursor:pointer;transition:transform .14s ease}
+.btn:active{transform:scale(.97)}
+.btn.g{background:transparent;color:var(--ink-2);padding:8px}
+.chipq{border:0;font-size:13.5px;font-weight:600;padding:7px 12px;border-radius:99px;background:var(--surface-2);color:var(--ink);cursor:pointer;white-space:nowrap}
+.up{color:var(--warn)} .down,.ok{color:var(--ok)} .warn{color:var(--warn)}
+.pill{font-size:12.5px;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap}
+.pill.up{background:var(--warn-soft)} .pill.down{background:var(--ok-soft)}
+.tag{font-size:12px;font-weight:650;padding:3px 8px;border-radius:99px;background:var(--ok-soft);color:var(--ok);white-space:nowrap;font-variant-numeric:tabular-nums}
+.tag.w{background:var(--warn-soft);color:var(--warn)}
+.tag.n{background:var(--surface-2);color:var(--ink-3)}
+.hint{display:inline-grid;place-items:center;width:17px;height:17px;border-radius:50%;background:var(--surface-2);color:var(--ink-3);font-size:11px;font-weight:700;margin-left:4px;vertical-align:1px;cursor:help}
+.sep{height:1px;background:var(--line)}
+.chev{color:var(--ink-3);font-size:15px;transition:transform .2s;display:inline-block}
+.open > .chev,.chev.open{transform:rotate(90deg)}
+.btn:focus-visible,.seg button:focus-visible,.srow:focus-visible,.tile:focus-visible,.drow:focus-visible,.tabs button:focus-visible,.chipq:focus-visible,.chip:focus-visible,.tg:focus-visible,.grip:focus-visible,button.av:focus-visible,button.who:focus-visible,.addup:focus-visible,.upl:focus-visible,.bang:focus-visible,.vt:focus-visible,.more:focus-visible,.nav:focus-visible,.sq button:focus-visible,.theme button:focus-visible,.reset:focus-visible,.opt:focus-visible{outline:2.5px solid var(--brand);outline-offset:2px}
+
+/* верхняя строка недели (Р-96) */
+.strip{display:flex;align-items:center;gap:10px}
+.who{position:relative;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:var(--dot-ink);font-weight:700;font-size:14px;border:0;padding:0;flex:0 0 auto}
+button.who{cursor:pointer}
+.who.a{background:var(--pa)} .who.b{background:var(--pb)}
+.who.no{opacity:.35}
+.who .ck{position:absolute;right:-3px;bottom:-3px;width:16px;height:16px;border-radius:50%;background:var(--ok);color:var(--surface);font-size:10px;display:grid;place-items:center;border:2px solid var(--canvas);font-weight:800}
+.addup{width:34px;height:34px;border-radius:50%;border:2px dashed var(--ink-3);color:var(--ink-2);display:grid;place-items:center;font-size:20px;font-weight:600;background:transparent;cursor:pointer;padding:0;flex:0 0 auto}
+.upl{border:0;background:var(--brand);color:var(--brand-ink);font-weight:700;font-size:15px;border-radius:99px;padding:0 16px;height:40px;display:flex;align-items:center;gap:6px;cursor:pointer}
+.upl b{font-size:20px;font-weight:600;line-height:1}
+.bang{margin-left:auto;display:flex;align-items:center;gap:5px;background:var(--ok-soft);color:var(--ok);font-weight:750;border-radius:99px;padding:6px 11px;font-size:14px;border:0;cursor:pointer}
+.bang b{width:18px;height:18px;border-radius:50%;background:var(--ok);color:var(--surface);display:grid;place-items:center;font-size:12px}
+.vt{width:34px;height:34px;border-radius:10px;border:0;background:var(--surface-2);color:var(--ink-2);font-size:17px;display:grid;place-items:center;cursor:pointer;padding:0;flex:0 0 auto}
+.strip .push{margin-left:auto}
+
+/* сумма недели */
+.wk{display:flex;align-items:center;gap:6px}
+.nav{border:0;background:transparent;color:var(--ink-3);font-size:22px;line-height:1;padding:0 6px;cursor:pointer}
+.nav:disabled{opacity:.3;cursor:default}
+.hrow{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.wsum{display:flex;flex-direction:column;gap:4px;padding:4px 4px 2px}
+
+/* разделы — полосы */
+.srow{display:flex;flex-direction:column;gap:6px;padding:12px 0;border:0;border-top:1px solid var(--line);cursor:pointer;background:transparent;text-align:left;width:100%}
+.list > .srow:first-child{border-top:0}
+.sl{display:flex;align-items:center;gap:10px}
+.ic{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;font-size:17px;flex:0 0 auto;background:var(--surface-2)}
+.sl .nm{flex:1;min-width:0;font-weight:650;font-size:15.5px}
+.sl .v{font-family:var(--num);font-weight:700;font-size:16px;font-variant-numeric:tabular-nums}
+.sl .ar{font-size:12px;font-weight:800;width:16px;text-align:center}
+.pbar{height:6px;border-radius:99px;background:var(--track);overflow:hidden;margin-left:42px}
+.pbar i{display:block;height:100%;border-radius:99px;background:var(--c)}
+.rest{margin-left:42px;font-size:12.5px;color:var(--ink-3)}
+.rest b{color:var(--ink-2);font-weight:650}
+.rest.lo b{color:var(--warn)}
+.tops{display:flex;flex-direction:column;gap:6px;padding:10px 12px;background:var(--surface-2);border-radius:14px}
+.tops div{display:flex;justify-content:space-between;font-size:13.5px;gap:8px}
+.tops span{color:var(--ink-3);font-variant-numeric:tabular-nums}
+
+/* плитки */
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{background:var(--surface);border:1px solid var(--card-border);border-radius:22px;padding:14px;display:flex;flex-direction:column;gap:8px;text-align:left;cursor:pointer;min-width:0}
+.tile .h{display:flex;justify-content:space-between;align-items:center;width:100%}
+.tile .v{font-family:var(--num);font-weight:700;font-size:22px;font-variant-numeric:tabular-nums;line-height:1}
+.tile .m{font-size:12px;color:var(--ink-3)}
+.mini{width:44px;height:44px}
+
+/* тренд */
+.more{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;font-weight:600;font-size:15px;color:var(--ink-2);border:0;background:var(--surface);border-radius:20px;cursor:pointer;width:100%;text-align:left}
+.trend{display:flex;align-items:flex-end;gap:7px;height:110px;padding:4px 16px 14px;margin-top:-8px;background:var(--surface);border-radius:0 0 20px 20px}
+.trend div{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end}
+.trend i{display:block;width:100%;border-radius:6px 6px 3px 3px;background:var(--surface-3)}
+.trend .now i{background:var(--brand)}
+.trend span{font-size:10.5px;color:var(--ink-3)}
+.trend em{font-style:normal;font-size:10px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.more.open{border-radius:20px 20px 0 0}
+
+/* листы и тост */
+.dim{position:absolute;inset:0;background:var(--scrim);z-index:5;border:0;padding:0;cursor:pointer;width:100%}
+.sheet{position:absolute;left:0;right:0;bottom:0;max-height:90%;overflow-y:auto;background:var(--surface);border-radius:26px 26px 0 0;box-shadow:var(--shadow-2);padding:10px 16px 26px;display:flex;flex-direction:column;gap:12px;z-index:6;scrollbar-width:none}
+.sheet .gr{width:38px;height:5px;border-radius:99px;background:var(--line);align-self:center;flex:0 0 auto}
+.sheet .st{font-size:20px;font-weight:700;letter-spacing:-.01em}
+.sheet > *{flex-shrink:0}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:0;font-size:14px;font-weight:600;padding:9px 13px;border-radius:99px;background:var(--surface-2);color:var(--ink);cursor:pointer}
+.toast{position:absolute;left:16px;right:16px;bottom:84px;background:var(--ink);color:var(--canvas);border-radius:16px;padding:13px 16px;display:flex;justify-content:space-between;align-items:center;z-index:4;font-weight:600;font-size:14.5px}
+.toast button{border:0;background:transparent;color:var(--brand-soft);font-weight:700;cursor:pointer;padding:0}
+.prog{display:flex;gap:4px}
+.prog i{flex:1;height:4px;border-radius:99px;background:var(--track)}
+.prog i.on{background:var(--ok)}
+.ops{display:flex;flex-direction:column}
+.ops .d{font-size:12px;font-weight:650;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);padding:10px 0 4px}
+.ops .o{display:flex;gap:8px;padding:7px 0;border-top:1px solid var(--line);font-size:14.5px;align-items:baseline}
+.ops .o span:first-child{flex:1}
+.ops .o .tm{color:var(--ink-3);font-size:13px}
+.ops .o b{font-family:var(--num);font-variant-numeric:tabular-nums;font-weight:650;min-width:60px;text-align:right}
+.tail{display:flex;justify-content:space-between;align-items:center;padding:6px 2px;font-weight:600;color:var(--ink-2)}
+.opt{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--line);border-radius:16px;font-size:16px;font-weight:600;background:none;cursor:pointer;text-align:left;width:100%}
+.opt.sel{border-color:var(--ink);background:var(--surface-2)}
+.opt i{margin-left:auto;font-style:normal;color:var(--ok);font-weight:800}
+.field{border:1.5px solid var(--line);border-radius:14px;padding:10px 14px;display:flex;flex-direction:column;gap:2px}
+.field span{font-size:12px;color:var(--ink-3)}
+.field b{font-family:var(--num);font-size:22px;font-variant-numeric:tabular-nums}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.wd{display:flex;justify-content:space-between;align-items:center;gap:10px}
+
+/* месяц: круг, зарплаты (эталон Б14) */
+.mnav{display:flex;justify-content:center;align-items:center;gap:14px;font-weight:650;font-size:15px}
+.ringbox{position:relative;width:236px;height:236px;align-self:center;flex:0 0 auto}
+.ringbox svg{position:absolute;inset:0;width:100%;height:100%}
+.ringbox .c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center}
+.ringbox circle{transition:stroke-dasharray .45s cubic-bezier(.2,.8,.2,1),stroke-dashoffset .45s cubic-bezier(.2,.8,.2,1)}
+.ringsm{width:150px;height:150px}
+.sal{display:flex;align-items:center;gap:10px}
+.sal .tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.sal .nm{font-size:16px;font-weight:650;display:flex;gap:6px;align-items:center}
+.sal .st{font-size:12.5px;color:var(--ink-3)}
+.sal .r{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.sal .r b{font-family:var(--num);font-size:16px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.sal .r b.wait{color:var(--ink-3)}
+.fx{display:flex;align-items:center;gap:8px;padding-left:40px;flex-wrap:wrap}
+.saved{display:flex;gap:8px;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:var(--ok);padding:2px}
+.av{width:30px;height:30px;border-radius:50%;display:inline-grid;place-items:center;color:var(--dot-ink);font-size:13px;font-weight:700;flex:0 0 auto;padding:0;line-height:1;border:0}
+.av.sm{width:24px;height:24px;font-size:11px}
+.av.a{background:var(--pa)} .av.b{background:var(--pb)}
+button.av{cursor:pointer;box-shadow:0 0 0 2px var(--surface),0 0 0 3.5px var(--line)}
+button.av:active{transform:scale(.92)}
+.opt .av{width:36px;height:36px;font-size:15px}
+
+/* разделы плана */
+.sh{display:flex;justify-content:space-between;align-items:baseline;padding:4px 4px 0;gap:8px}
+.sh .k{font-size:18px;font-weight:700;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
+.sh .k::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--c)}
+.sh .v{font-family:var(--num);font-weight:700;font-variant-numeric:tabular-nums;font-size:15px;color:var(--ink-2)}
+.drow{display:flex;align-items:center;gap:10px;padding:11px 0;border:0;border-top:1px solid var(--line);width:100%;background:transparent;text-align:left}
+button.drow,div.drow[data-pay]{cursor:pointer}
+.list > .drow:first-child,.list > .grp:first-child > .drow{border-top:0}
+.dt{width:38px;flex:0 0 auto;display:flex;flex-direction:column;align-items:center;line-height:1.05;color:var(--ink-2)}
+.dt b{font-family:var(--num);font-size:18px;font-variant-numeric:tabular-nums}
+.dt span{font-size:11px;color:var(--ink-3)}
+.dt.done b{color:var(--ink-3)}
+.dt.ic2{display:grid;place-items:center}
+.dt.ic2 i{font-style:normal;width:30px;height:30px;border-radius:9px;background:var(--surface-2);display:grid;place-items:center;font-size:15px;color:var(--ink-2)}
+.drow .tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.drow .nm{font-size:15.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.drow .st{font-size:12.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.drow .r{font-family:var(--num);font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.drow .r.done{color:var(--ink-3);font-weight:600}
+.drow .r.done::before{content:"✓ ";color:var(--ok);font-weight:800}
+.drow .r.w{color:var(--warn)}
+.grp .inner{padding-left:14px;border-left:2px solid var(--line);margin:0 0 8px 18px}
+.grp .inner .drow:first-child{border-top:0}
+.subh{font-size:11.5px;font-weight:650;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);padding:10px 0 2px}
+/* траты каждого */
+.sg{padding:10px 0;display:flex;flex-direction:column;gap:9px}
+.sg+.sg{border-top:1px solid var(--line)}
+.sgh{display:flex;align-items:center;gap:8px}
+.sgh b{flex:1;font-size:15.5px}
+.sp{display:flex;flex-direction:column;gap:4px;padding-left:32px}
+.sp .h{display:flex;justify-content:space-between;font-size:14px;gap:8px}
+.sp .h span:last-child{font-variant-numeric:tabular-nums;color:var(--ink-3);white-space:nowrap}
+.sp .h b{color:var(--ink);font-weight:650}
+.pb{height:5px;border-radius:99px;background:var(--track);overflow:hidden}
+.pb i{display:block;height:100%;border-radius:99px;background:var(--c,var(--ink));transition:width .45s cubic-bezier(.2,.8,.2,1)}
+/* цели и фонды — короткие строки (Р-92) */
+.gq{display:flex;align-items:center;gap:10px;padding:10px 0;background:var(--surface);touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.gq+.gq,.tip+.gq{border-top:1px solid var(--line)}
+.gq .tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.gq .nm{font-size:15.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gq .st{font-size:12px;color:var(--ink-3)}
+.gq .r{font-family:var(--num);font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.gq.off .nm,.gq.off .r{color:var(--ink-3)}
+.gq .r.done{color:var(--ink-3);font-weight:600}
+.gq .r.done::before{content:"✓ ";color:var(--ok);font-weight:800}
+.gq[data-goal]{cursor:pointer}
+.grip{border:0;background:none;color:var(--ink-3);font-size:17px;letter-spacing:-1px;padding:8px 4px 8px 0;cursor:grab;touch-action:none;flex:0 0 auto}
+.gq.lift{position:relative;z-index:3;box-shadow:var(--shadow-lift);border-radius:16px;padding-inline:10px;margin-inline:-10px}
+.gq.settle{transition:transform .18s ease}
+.tg{appearance:none;border:0;width:44px;height:27px;border-radius:99px;background:var(--track);position:relative;cursor:pointer;flex:0 0 auto;transition:background .2s;padding:0}
+.tg::after{content:"";position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:var(--surface);box-shadow:0 1px 3px rgb(0 0 0 / .25);transition:transform .2s}
+.tg[aria-pressed="true"]{background:var(--ok)}
+.tg[aria-pressed="true"]::after{transform:translateX(17px)}
+.tip{display:flex;align-items:center;gap:10px;padding:9px 12px;margin:2px 0 10px;border-radius:14px;background:var(--surface-2);font-size:13.5px}
+.tip span{flex:1;min-width:0}
+.sum{gap:8px}
+.sum .ln{display:flex;justify-content:space-between;align-items:baseline;font-size:15px}
+.sum .ln b{font-family:var(--num);font-variant-numeric:tabular-nums;font-size:17px}
+.sum .ln.main2 b{font-size:22px}
+
+/* деньги */
+.sq{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.sq button{background:var(--surface);border:1px solid var(--card-border);border-radius:18px;padding:12px;display:flex;flex-direction:column;gap:2px;text-align:left;cursor:pointer;min-width:0}
+.sq button.on{outline:2px solid var(--ink);outline-offset:-2px}
+.sq b{font-size:14px} .sq span{font-family:var(--num);font-size:12.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dream{border-radius:28px;aspect-ratio:1/1;max-width:100%;background:linear-gradient(135deg,var(--s3),var(--s5));display:flex;flex-direction:column;justify-content:flex-end;padding:18px;color:var(--dot-ink)}
+.sal[data-sal]{cursor:pointer}
+.chipq.go{background:var(--brand);color:var(--brand-ink)}
+.pdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--brand);margin-left:6px;vertical-align:middle}
+/* круг — оглавление (ворота B2C-91, владелец: вариант А) */
+.accs{background:var(--surface);border:1px solid var(--card-border);border-radius:24px;padding:2px 14px}
+.acch{display:flex;align-items:center;gap:10px;width:100%;border:0;border-top:1px solid var(--line);background:transparent;padding:13px 0;cursor:pointer;text-align:left}
+.accs > .acch:first-child{border-top:0}
+.acch .k{display:flex;align-items:center;gap:8px;font-size:16.5px;font-weight:700;flex:1;min-width:0;line-height:1.2}
+.acch .k::before{content:"";width:12px;height:12px;border-radius:50%;background:var(--c);flex:0 0 auto}
+.acch .k small{font-size:12.5px;font-weight:500;color:var(--ink-3)}
+.acch .v{font-family:var(--num);font-weight:700;font-size:16px;font-variant-numeric:tabular-nums}
+.accb{padding:0 0 10px}
+.accb > .list{border:0;padding:0;border-radius:0}
+.ringbox [data-acc]{cursor:pointer}
+.acch:focus-visible{outline:2.5px solid var(--brand);outline-offset:2px}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+</style>
+
+<div class="wrap">
+<header class="head">
+  <h1>Неделя и Месяц</h1>
+  <p class="sub">Вкладки: Мечты · План · Деньги. Экраны 390 px, семья — Ильяс (это вы) и Аруна, сегодня 19 октября. Всё нажимается.</p>
+  <div class="theme" role="group" aria-label="Тема">
+    <button type="button" data-theme-set="" aria-pressed="true">Как в системе</button>
+    <button type="button" data-theme-set="light" aria-pressed="false">Светлая</button>
+    <button type="button" data-theme-set="dark" aria-pressed="false">Тёмная</button>
+    <button type="button" class="reset" data-reset>↺ Сбросить пример</button>
+  </div>
+</header>
+
+<section>
+  <h2><span class="q">Живой</span>Один телефон целиком</h2>
+  <p class="why">Вкладки и «Неделя | Месяц» переключаются. Вкладка «План» открывается там, где вы были в прошлый раз.</p>
+  <div class="row" id="rLive"></div>
+</section>
+
+<section>
+  <h2><span class="q">План</span>Неделя — мои траты</h2>
+  <p class="why">Сколько потратил за неделю и сколько осталось на месяц по каждому разделу. Цифр Аруны здесь нет.</p>
+  <div class="row" id="rWeek"></div>
+</section>
+
+<section>
+  <h2><span class="q">План</span>Месяц — план семьи</h2>
+  <p class="why">План Блока 14 со всем управлением. Круг — оглавление: нажали цвет или строку — раздел открылся под кругом.</p>
+  <div class="row" id="rMonth"></div>
+</section>
+
+<section>
+  <h2><span class="q">Деньги</span>Капитал без месяца</h2>
+  <p class="why">Счета, долги и история. Платежи — справочником, без отметок месяца.</p>
+  <div class="row" id="rMoney"></div>
+</section>
+</div>
+
+<script>
+// Пример семьи. Только целые тенге. В приложении всё считает finance.ts; здесь — макет.
+const nb = n => Math.abs(Math.round(n)).toLocaleString('ru-RU').replace(/\s/g, ' ');
+const fmt = n => (n < 0 ? '−' : '') + nb(n) + ' ₸';
+const pl = n => (n < 0 ? '−' : '+') + nb(n);
+const sumBy = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
+const pct = (a, b) => b ? Math.max(0, Math.min(100, Math.round(a / b * 100))) : 0;
+const plural = (n, a, b, c) => { const m10 = n % 10, m100 = n % 100; return m10 === 1 && m100 !== 11 ? a : m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20) ? b : c; };
+
+const P = { I: { nm: 'Ильяс', av: 'И', cls: 'a', sal: 774000 }, A: { nm: 'Аруна', av: 'А', cls: 'b', sal: 450000 } };
+
+// ── Неделя: мои разделы (Ильяс). w — траты по неделям октября: 1 = 28 сен – 4 окт, 2 = 5–11, 3 = 12–18 ──
+const SEC = [
+  { id: 'food', nm: 'Еда', ic: '🛒', c: '--s5', plan: 150000, w: { 1: 39000, 2: 38000, 3: 32000 } },
+  { id: 'small', nm: 'Мелкое', ic: '🧺', c: '--s8', plan: 30000, w: { 1: 1100, 2: 6000, 3: 20900 } },
+  { id: 'taxi', nm: 'Такси', ic: '🚕', c: '--s3', plan: 80000, w: { 1: 21600, 2: 12400, 3: 18000 } },
+  { id: 'cafe', nm: 'Кафе и доставка', ic: '☕', c: '--s6', plan: 60000, w: { 1: 4700, 2: 19800, 3: 14500 } },
+  { id: 'gift', nm: 'Подарки', ic: '🎁', c: '--s1', plan: null, w: { 1: 0, 2: 0, 3: 9000 } },
+];
+const WEEKS = { 2: { lbl: '5 – 11 октября', days: '5–11 окт' }, 3: { lbl: '12 – 18 октября', days: '12–18 окт' } };
+const TREND = [['24.08', 71000], ['31.08', 92300], ['7.09', 69000], ['14.09', 80800], ['21.09', 78600], ['28.09', 66400], ['5.10', 76200], ['12.10', 94400]];
+// топ продавцов и операции раздела за неделю: [продавец, раз, сумма]; операции — [день, продавец, время, сумма]
+const DETAIL = {
+  3: {
+    food: { n: 16, tops: [['Magnum', 6, 18400], ['Small', 9, 9100], ['Базар', 1, 4500]], ops: [[18, 'Magnum', '18:20', 4200], [18, 'Small', '10:05', 890], [17, 'Базар', '11:30', 4500], [16, 'Magnum', '19:45', 3100]] },
+    small: { n: 5, tops: [['Kaspi магазин', 2, 12400], ['Аптека', 3, 8500]], ops: [[17, 'Kaspi магазин', '14:02', 9900], [15, 'Аптека', '20:11', 3700], [14, 'Kaspi магазин', '12:40', 2500]] },
+    taxi: { n: 16, tops: [['Яндекс Go', 14, 15200], ['inDrive', 2, 2800]], ops: [[18, 'Яндекс Go', '22:40', 1450], [18, 'Яндекс Go', '13:05', 980], [17, 'inDrive', '19:12', 1600], [17, 'Яндекс Go', '08:47', 1120], [16, 'Яндекс Go', '09:02', 1300]] },
+    cafe: { n: 7, tops: [['Wolt', 3, 9800], ['Starbucks', 4, 4700]], ops: [[18, 'Wolt', '20:30', 3900], [16, 'Starbucks', '08:15', 1200], [15, 'Wolt', '21:05', 3400]] },
+    gift: { n: 1, tops: [['Цветы Алматы', 1, 9000]], ops: [[17, 'Цветы Алматы', '17:40', 9000]] },
+  },
+  2: {
+    food: { n: 15, tops: [['Magnum', 7, 24000], ['Small', 8, 14000]], ops: [] },
+    small: { n: 2, tops: [['Аптека', 2, 6000]], ops: [] },
+    taxi: { n: 11, tops: [['Яндекс Go', 11, 12400]], ops: [] },
+    cafe: { n: 9, tops: [['Wolt', 4, 13300], ['Starbucks', 5, 6500]], ops: [] },
+  },
+};
+const DAYS = { 12: 'пн', 13: 'вт', 14: 'ср', 15: 'чт', 16: 'пт', 17: 'сб', 18: 'вс' };
+const UPLOADS = [['K', 'Kaspi Gold', '12 – 18 окт', 48, '19 окт'], ['F', 'Freedom', '1 – 18 окт', 9, '19 окт'], ['K', 'Kaspi Gold', '5 – 11 окт', 51, '12 окт'], ['K', 'Kaspi Gold', '28 сен – 4 окт', 44, '5 окт']];
+const QS = [
+  { lbl: 'Новый продавец', t: 'ИП Ахметова · 12 400 ₸', m: '16 октября · куда отнести?', ch: ['🛒 Еда', '🧺 Мелкое', '☕ Кафе', '🎁 Подарки', 'Другое…'] },
+  { lbl: 'То же самое?', t: 'MAGNUM CASH&CARRY', m: 'Это Magnum? Тогда — в «Еду»', ch: ['Да', 'Нет, другое'] },
+  { lbl: 'Подписка', t: 'Yandex Plus · 2 990 ₸', m: 'Списалась снова. Оставить в платежах?', ch: ['Оставить', 'Это разово'] },
+];
+
+// ── Месяц: план Блока 14 (эталон month-plan.html) ──
+const DUES0 = [
+  { id: 'net', nm: 'Netflix', st: '$10', day: 5, a: 5030, by: 'I', paid: true, sub: 'Кино и музыка' },
+  { id: 'spot', nm: 'Spotify', day: 7, a: 3000, by: 'A', paid: true, sub: 'Кино и музыка' },
+  { id: 'flat', nm: 'Квартира', day: 10, a: 250000, by: 'I', paid: true },
+  { id: 'inet', nm: 'Интернет', day: 12, a: 7000, by: 'A', paid: true },
+  { id: 'kaspi', nm: 'Kaspi кредит', day: 15, a: 85000, by: 'A', paid: false },
+  { id: 'icl', nm: 'iCloud', day: 15, a: 1500, by: 'I', paid: true, sub: true },
+  { id: 'util', nm: 'Коммуналка', day: 20, a: 28000, by: 'I', paid: false, est: true },
+  { id: 'gpt', nm: 'ChatGPT', st: '$20', day: 22, a: 10500, by: 'I', paid: false, sub: true },
+  { id: 'iph', nm: 'Рассрочка iPhone', day: 24, a: 32000, by: 'A', paid: false },
+];
+const SPEND_A = [{ nm: 'Продукты', a: 100000, f: 64300 }, { nm: 'Такси', a: 30000, f: 18900 }, { nm: 'Себе', a: 25000, f: 9500 }];
+const GOALS0 = [
+  { id: 'jp', nm: 'Япония', m: 60000, by: 'I', on: true },
+  { id: 'res', nm: 'Запас', m: 50000, by: 'I', on: true },
+  { id: 'debt', nm: 'Закрыть кредит', m: 80000, by: 'A', on: true, debt: true, bal: 1020000, reg: 85000 },
+  { id: 'car', nm: 'Машина', m: 70000, by: 'I', on: true },
+  { id: 'cush', nm: 'Подушка', m: 40000, by: 'A', on: true },
+  { id: 'ter', nm: 'Терраса', m: 20000, by: 'I', on: true },
+  { id: 'wed', nm: 'Свадьба', m: 80000, by: 'A', on: false },
+];
+const MD = ['январю', 'февралю', 'марту', 'апрелю', 'маю', 'июню', 'июлю', 'августу', 'сентябрю', 'октябрю', 'ноябрю', 'декабрю'];
+const toMonth = off => { const t = 9 + off, y = 2026 + Math.floor(t / 12); return 'к ' + MD[t % 12] + (y !== 2026 ? ' ' + y : ''); };
+
+let G; // общее состояние семьи (одно на все телефоны)
+function resetG() {
+  G = { dues: DUES0.map(x => ({ ...x })), goals: GOALS0.map(x => ({ ...x })), order: GOALS0.map(g => g.id), put: new Set(), cameA: false, allDebt: null, answered: new Set(), freedDone: false };
+}
+resetG();
+const goal = id => G.goals.find(g => g.id === id);
+const due = id => G.dues.find(d => d.id === id);
+const myMonthFact = s => s.w[1] + s.w[2] + s.w[3];
+const spendI = () => SEC.filter(s => s.plan).map(s => ({ nm: s.nm, a: s.plan, f: myMonthFact(s) }));
+
+// План: платежи → траты → цели и фонды по очереди из остатка → что осталось (тождество Б14).
+function calc() {
+  const inc = P.I.sal + P.A.sal;
+  const dues = sumBy(G.dues, d => d.a);
+  const sI = spendI(), spend = sumBy(sI, x => x.a) + sumBy(SPEND_A, x => x.a);
+  let avail = inc - dues - spend; const free0 = avail;
+  const give = {};
+  for (const id of G.order) {
+    const g = goal(id), m = g.debt && G.allDebt ? Infinity : g.m;
+    const v = g.on ? Math.max(0, Math.min(m, avail)) : 0;
+    give[id] = v; avail -= v;
+  }
+  const spendOf = p => p === 'I' ? sumBy(sI, x => x.a) : sumBy(SPEND_A, x => x.a);
+  const by = {};
+  for (const p of ['I', 'A']) by[p] = P[p].sal - sumBy(G.dues.filter(d => d.by === p), d => d.a) - spendOf(p) - sumBy(G.order.filter(id => goal(id).by === p), id => give[id]);
+  const goals = sumBy(G.order, id => give[id]);
+  const mine = G.order.filter(id => goal(id).by === 'I' && give[id] > 0);
+  return { inc, dues, spend, goals, rest: avail, give, by, free0, toSave: sumBy(mine, id => give[id]), nSave: mine.length };
+}
+
+// Что ещё не отложено: цели того, чья зарплата пришла (Ильяс), с суммой в этом месяце.
+const pending = () => { const c = calc(); return G.order.filter(id => (goal(id).by === 'I' || G.cameA) && c.give[id] > 0 && !G.put.has(id)); };
+
+// ── телефоны: у каждого свой вид (v), семья — общая (G) ──
+const PH = [];
+function phone(row, cap, note, r12, v) { PH.push({ row, cap, note, r12, v0: v, v: { ...v } }); }
+const LS = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, x) { try { localStorage.setItem(k, x); } catch (e) {} } };
+
+phone('rLive', 'Живой', 'вкладки и «Неделя | Месяц» работают', '<b>Запоминается:</b> «Неделя» или «Месяц», список или плитки — на этом устройстве.',
+  { tab: 'plan', seg: LS.get('wm-seg') || 'week', view: LS.get('wm-view') || 'list', week: 3, live: true });
+
+phone('rWeek', 'Неделя · список', '▦ справа — плитками', '<b>Главное:</b> нет — выписка уже загружена, ⊕ тихий. <b>Скрыто:</b> 8 недель, продавцы и операции — нажатием.', { tab: 'plan', seg: 'week', view: 'list', week: 3 });
+phone('rWeek', 'Неделя · плитки', '☰ — обратно списком', '<b>Главное:</b> нет. Плитка — тот же раздел: кольцо — сколько потрачено от плана месяца.', { tab: 'plan', seg: 'week', view: 'tiles', week: 3 });
+phone('rWeek', 'Своей выписки ещё нет', 'Аруна загрузила, я — нет', '<b>Главное:</b> «+ Загрузить» — крупно и цветом. Остаток — по прошлым неделям. Нажмите — загрузится.', { tab: 'plan', seg: 'week', view: 'list', week: 3, empty: true, partnerUp: true });
+phone('rWeek', 'Плана трат нет', 'остатка не показываем', '<b>Главное:</b> нет. Разделы без полос; план трат задаётся в «Месяце» — одна тихая ссылка.', { tab: 'plan', seg: 'week', view: 'list', week: 3, noPlan: true });
+phone('rWeek', 'Нажал «Такси»', 'в списке и в плитках одинаково', '<b>Главное:</b> нет — лист для чтения. Операции — первые пять, остальные за «Ещё».', { tab: 'plan', seg: 'week', view: 'list', week: 3, sheet: { k: 'sec', id: 'taxi' } });
+phone('rWeek', 'Нажал свой кружок', 'мои выписки', '<b>Главное:</b> «+ Загрузить выписку». Недели листаются ‹ › у дат.', { tab: 'plan', seg: 'week', view: 'list', week: 3, sheet: { k: 'ups' } });
+phone('rWeek', 'Загрузил', 'сразу готово, без «Отправить»', '<b>Главное:</b> ничего не нужно. «Отменить» — в тосте, пока он виден.', { tab: 'plan', seg: 'week', view: 'list', week: 3, toast: { t: 'Загружено 48 операций', undo: true }, pin: true });
+phone('rWeek', 'Нажал «! 3»', 'вопросы по одному', '<b>Главное:</b> ответ — одно нажатие. «Потом» — вопрос подождёт.', { tab: 'plan', seg: 'week', view: 'list', week: 3, sheet: { k: 'q', i: 0 } });
+
+ phone('rMonth', 'Месяц', 'пришла зарплата Ильяса — точка на «Месяце»', '<b>Главное:</b> большой кнопки нет. Зарплата пришла — ✓ у суммы (ставит выписка; нет выписки — нажать строку, «Пришла»), и точка на «Цели и фонды»; там «Отложил всё» или ✓ у каждой цели, как «Оплатил» у платежей. <b>Подсказка:</b> «хватает ли каждому» (?). <b>Скрыто:</b> разделы — под кругом, нажатием.', { tab: 'plan', seg: 'month' });
+phone('rMonth', 'Нажал синий цвет круга', 'раздел открылся прямо под кругом', '<b>Главное:</b> «Отложил всё» — небольшой кнопкой над целями; или нажать цель — «Отложил» ✓. Выключил цель — круг тут же, над списком.', { tab: 'plan', seg: 'month', acc: 'goals', scrollTo: 'ring' });
+phone('rMonth', 'Подписки раскрыты', '✓ у группы — когда списались все', '<b>Ручная группа</b> «Кино и музыка» — подгруппой внутри. Оплатите ChatGPT — у группы появится ✓.', { tab: 'plan', seg: 'month', subs: true, acc: 'pay', scrollTo: 'ring' });
+phone('rMonth', 'Нажал на платёж', 'выписка не нашла — отмечаю сам', '<b>Главное:</b> «Оплатил». Тихо: «Изменить платёж». На строке отдельной кнопки нет.', { tab: 'plan', seg: 'month', acc: 'pay', scrollTo: 'ring', sheet: { k: 'pay', id: 'kaspi' } });
+phone('rMonth', 'Внеплановый доход', 'из карточки зарплат или из «+»', '<b>Главное:</b> «Готово». Деньги идут по очереди целей — сверху вниз.', { tab: 'plan', seg: 'month', sheet: { k: 'income' } });
+phone('rMonth', 'Освободится', 'платёж кончается — подсказка у самого платежа', '<b>Главное:</b> «К «Японии»» — в строке под платежом, точка на «Платежах». Пока зарплата не отложена, кнопка тихая.', { tab: 'plan', seg: 'month', freed: true, acc: 'pay', scrollTo: 'ring' });
+phone('rMonth', 'Просмотр (viewer)', 'без «Неделя | Месяц», только читать', '<b>Главное:</b> нет. Без переключателей, ⋮⋮, смены плательщика и кнопок.', { tab: 'plan', seg: 'month', ro: true });
+phone('rMonth', 'Сентябрь', '‹ — прошлый месяц сводкой', '<b>Главное:</b> нет — только чтение. › — обратно в октябрь.', { tab: 'plan', seg: 'month', past: true });
+
+phone('rMoney', 'Деньги · Капитал', 'то, что не меняется от месяца к месяцу', '<b>Главное:</b> брендовой кнопки нет. Тихо: «+ Платёж». Подписки — одной строкой.', { tab: 'money', sq: 'cap' });
+phone('rMoney', 'Долги', 'бывший квадрат «План»', '<b>Скрыто:</b> «Как закрыть быстрее» — расчёт свёрнут.', { tab: 'money', sq: 'debt' });
+phone('rMoney', 'История', 'месяц → «План · Месяц»', '<b>Главное:</b> нет. Нажатие месяца открывает его в «Месяце».', { tab: 'money', sq: 'hist' });
+
+// ── части экрана ──
+const seg = v => v.ro ? '' : `<div class="seg" role="tablist"><button role="tab" data-seg="week" class="${v.seg === 'week' ? 'on' : ''}">Неделя</button><button role="tab" data-seg="month" class="${v.seg === 'month' ? 'on' : ''} ${pending().length && v.seg !== 'month' ? 'dot' : ''}">Месяц</button></div>`;
+const tabs = v => `<nav class="tabs">${[['dreams', 'Мечты'], ['plan', 'План'], ['money', 'Деньги']].map(([k, n]) => `<button data-tab="${k}" class="${v.tab === k ? 'on' : ''}">${n}</button>`).join('')}${v.ro ? '' : '<span class="plus" aria-hidden="true">+</span>'}</nav>`;
+const secH = (k, col, v, id) => `<div class="sh" style="--c:var(${col})" ${id ? `data-anchor="${id}"` : ''}><span class="k">${k}</span><span class="v">${v}</span></div>`;
+
+// Неделя
+const wCur = (s, w, v) => (v.empty && w === 3) ? 0 : (s.w[w] || 0);
+const wThrough = (s, w, v) => { let t = 0; for (let k = 1; k <= w; k++) t += wCur(s, k, v); return t; };
+function weekRows(v) {
+  const w = v.week;
+  return SEC.map(s => {
+    const plan = v.noPlan ? null : s.plan;
+    const cur = wCur(s, w, v), prev = s.w[w - 1] || 0, spent = wThrough(s, w, v);
+    return { s, plan, cur, prev, spent, rest: plan ? plan - spent : null };
+  }).filter(r => r.cur > 0 || r.plan).sort((a, b) => b.cur - a.cur || (b.plan || 0) - (a.plan || 0));
+}
+const arrow = r => r.cur === 0 ? '<span class="ar"></span>' : r.cur > r.prev ? '<span class="ar up">↑</span>' : '<span class="ar down">↓</span>';
+const isLow = r => r.plan && r.rest < r.plan * .15;
+function restLine(r, short) {
+  if (r.plan == null) return short ? 'вне плана' : '<span class="rest">вне плана</span>';
+  const t = r.rest >= 0 ? (short ? `ост. ${nb(r.rest)}` : `на октябрь осталось <b>${nb(r.rest)}</b> из ${nb(r.plan)}`) : (short ? `сверх ${nb(-r.rest)}` : `на октябрь сверх плана <b>${nb(-r.rest)}</b>`);
+  return short ? (isLow(r) || r.rest < 0 ? `<span class="up">${t}</span>` : t) : `<span class="rest ${isLow(r) || r.rest < 0 ? 'lo' : ''}">${t}</span>`;
+}
+function weekSum(v, boxed) {
+  const w = v.week, rows = SEC, tot = sumBy(rows, s => wCur(s, w, v)), prev = sumBy(rows, s => s.w[w - 1] || 0);
+  const d = prev ? Math.round((tot - prev) / prev * 100) : 0;
+  const pill = tot ? `<span class="pill ${d > 0 ? 'up' : 'down'}">${d > 0 ? '↑' : '↓'} ${Math.abs(d)}%</span>` : '';
+  const inner = `<span class="wk"><button class="nav" data-wk="-1" aria-label="Прошлая неделя" ${w <= 2 ? 'disabled' : ''}>‹</button><span class="lbl">${WEEKS[w].lbl}</span><button class="nav" data-wk="1" aria-label="Следующая неделя" ${w >= 3 ? 'disabled' : ''}>›</button></span>
+    <div class="hrow"><span class="huge ${tot ? '' : 'zero'}">${fmt(tot)}</span>${pill}</div>
+    ${boxed ? `<span class="meta">прошлая неделя — ${fmt(prev)}</span>` : ''}
+    ${v.noPlan ? '<div><button class="chipq" data-seg="month">План трат — в «Месяце» ›</button></div>' : ''}`;
+  return boxed ? `<div class="card">${inner}</div>` : `<div class="wsum">${inner}</div>`;
+}
+function strip(v) {
+  const mineIn = !(v.empty && v.week === 3);
+  const left = QS.filter((q, i) => !G.answered.has(i)).length;
+  const up = !mineIn ? `<button class="upl" data-up aria-label="Загрузить выписку"><b>+</b>Загрузить</button>` : `<button class="addup" data-up aria-label="Загрузить выписку">+</button>`;
+  return `<div class="strip">
+    <button class="who a ${mineIn ? '' : 'no'}" data-ups aria-label="Мои выписки">И${mineIn ? '<span class="ck">✓</span>' : ''}</button>
+    <span class="who b ${v.partnerUp || v.week < 3 ? '' : 'no'}" title="Аруна">А${v.partnerUp || v.week < 3 ? '<span class="ck">✓</span>' : ''}</span>
+    ${up}
+    ${left && mineIn ? `<button class="bang" data-q aria-label="Вопросы: ${left}"><b>!</b> ${left}</button>` : '<span class="push"></span>'}
+    <button class="vt" data-view aria-label="${v.view === 'list' ? 'Плитками' : 'Списком'}">${v.view === 'list' ? '▦' : '☰'}</button>
+  </div>`;
+}
+function trend(v) {
+  const max = Math.max(...TREND.map(t => t[1]));
+  return `<button class="more ${v.trend ? 'open' : ''}" data-trend aria-expanded="${!!v.trend}"><span>8 недель</span><span class="chev ${v.trend ? 'open' : ''}">›</span></button>`
+    + (v.trend ? `<div class="trend">${TREND.map((t, i) => `<div class="${i === TREND.length - 1 ? 'now' : ''}">${i === TREND.length - 1 || t[1] === max ? `<em>${Math.round(t[1] / 1000)}к</em>` : ''}<i style="height:${Math.round(t[1] / max * 70)}%"></i><span>${t[0]}</span></div>`).join('')}</div>` : '');
+}
+function weekView(v) {
+  const rows = weekRows(v);
+  let body;
+  if (v.view === 'list') {
+    body = weekSum(v, true) + `<div class="list">` + rows.map(r => `<button class="srow" data-sec="${r.s.id}" style="--c:var(${isLow(r) ? '--warn' : r.s.c})">
+      <span class="sl"><span class="ic">${r.s.ic}</span><span class="nm">${r.s.nm}</span>${arrow(r)}<span class="v">${nb(r.cur)}</span></span>
+      ${r.plan ? `<span class="pbar"><i style="width:${pct(r.spent, r.plan)}%"></i></span>${restLine(r)}` : (v.noPlan ? '' : restLine(r))}
+    </button>`).join('') + `</div>`;
+  } else {
+    const C = 2 * Math.PI * 17;
+    body = weekSum(v, false) + `<div class="tiles">` + rows.map(r => `<button class="tile" data-sec="${r.s.id}">
+      <span class="h"><span class="ic">${r.s.ic}</span>${r.plan ? `<svg class="mini" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="17" fill="none" stroke="var(--track)" stroke-width="6"/><circle cx="22" cy="22" r="17" fill="none" stroke="var(${isLow(r) ? '--warn' : r.s.c})" stroke-width="6" stroke-linecap="round" stroke-dasharray="${(C * pct(r.spent, r.plan) / 100).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 22 22)"/></svg>` : ''}</span>
+      <span class="v">${nb(r.cur)}</span><span class="m">${r.s.nm} ${r.cur ? `· ${r.cur > r.prev ? '<span class="up">↑</span>' : '<span class="down">↓</span>'}` : ''}${v.noPlan ? '' : ' · ' + restLine(r, true)}</span>
+    </button>`).join('') + `</div>`;
+  }
+  return seg(v) + strip(v) + body + (v.empty ? '' : trend(v));
+}
+
+// Месяц
+function av(p, ro, id) {
+  const x = P[p];
+  return ro || !id ? `<span class="av sm ${x.cls}" title="${x.nm}">${x.av}</span>` : `<button class="av sm ${x.cls}" data-payer="${id}" aria-label="Платит ${x.nm}. Сменить">${x.av}</button>`;
+}
+function ring(c, o = {}) {
+  const R1 = 110, R2 = 88, C1 = 2 * Math.PI * R1, C2 = 2 * Math.PI * R2, gap = 2;
+  const arc = (r, C, from, len, col, extra = '') => len <= 0 ? '' : `<circle cx="120" cy="120" r="${r}" fill="none" stroke="var(${col})" ${extra} stroke-dasharray="${Math.max(0, len - gap)} ${C}" stroke-dashoffset="${-from}" transform="rotate(-90 120 120)"/>`;
+  const sI = C1 * (o.sI ?? P.I.sal / c.inc);
+  let out = `<circle cx="120" cy="120" r="${R1}" fill="none" stroke="var(--track)" stroke-width="7"/>`
+    + arc(R1, C1, 0, sI, '--pa', 'stroke-width="7"') + arc(R1, C1, sI, C1 - sI, '--pb', `stroke-width="7" ${o.past || G.cameA ? '' : 'opacity=".45"'}`)
+    + `<circle cx="120" cy="120" r="${R2}" fill="none" stroke="var(--track)" stroke-width="24"/>`;
+  let acc = 0;
+  for (const [k, col, v] of [['pay', '--s1', c.dues], ['spend', '--s8', c.spend], ['goals', '--s3', c.goals]]) { const len = C2 * v / c.inc; out += arc(R2, C2, acc, len, col, 'stroke-width="24"' + (o.acc != null ? ` data-acc="${k}" ${o.acc && o.acc !== k ? 'opacity=".3"' : ''}` : '')); acc += len; }
+  const center = o.center ?? `<span class="lbl">Остаётся</span><span class="big ${c.rest < 0 ? 'warn' : ''}">${fmt(c.rest)}</span><span class="meta">из ${nb(c.inc)}</span>`;
+  return `<svg viewBox="0 0 240 240" aria-hidden="true">${out}</svg><div class="c" style="pointer-events:none">${center}</div>`;
+}
+function accView(v, c) {
+  const paid = G.dues.filter(d => d.paid).length, act = G.order.filter(id => c.give[id] > 0);
+  const spentAll = sumBy(spendI(), x => x.f) + sumBy(SPEND_A, x => x.f);
+  const S = [['pay', 'Платежи', '--s1', c.dues, `${paid} из ${G.dues.length} оплачено`, () => duesList(v)],
+    ['spend', 'Траты', '--s8', c.spend, `потрачено ${nb(spentAll)}`, () => spendList()],
+    ['goals', 'Цели и фонды', '--s3', c.goals, `${act.filter(id => G.put.has(id)).length} из ${act.length} отложено`, () => goalsList(v, c)]];
+  return `<div class="accs">` + S.map(([k, n, col, val, meta, body]) => `<button class="acch" data-acc="${k}" aria-expanded="${v.acc === k}" style="--c:var(${col})"><span class="k"><span>${n}${(k === 'pay' && v.freed && !G.freedDone) || (k === 'goals' && !v.ro && pending().length) ? '<i class="pdot"></i>' : ''}<br><small>${meta}</small></span></span><span class="v">${nb(val)}</span><span class="chev ${v.acc === k ? 'open' : ''}">›</span></button>`
+    + (v.acc === k ? `<div class="accb">${body()}</div>` : '')).join('') + `</div>`;
+}
+function salCard(v, c) {
+  const tag = p => `<span class="tag ${c.by[p] < 0 ? 'w' : ''}">${pl(c.by[p])}</span>`;
+  return `<div class="card">
+    <div class="sal">${av('I')}<div class="tx"><span class="nm">Ильяс</span><span class="st">1 500 € · обменял 500 € по 512</span></div><div class="r"><b><span class="ok">✓ </span>${nb(P.I.sal)} ₸</b><span>${tag('I')}<span class="hint" title="Зарплата минус свои платежи, траты и цели">?</span></span></div></div>
+    ${v.ro ? '' : '<div class="fx"><button class="chipq" data-fx>Обменял</button></div>'}
+    <div class="sep"></div>
+    <div class="sal" ${v.ro || G.cameA ? '' : 'data-sal="A" role="button" tabindex="0"'}>${av('A')}<div class="tx"><span class="nm">Аруна</span><span class="st">${G.cameA ? '19 окт' : 'ждём 25 окт'}</span></div><div class="r"><b class="${G.cameA ? '' : 'wait'}">${G.cameA ? '<span class="ok">✓ </span>' : ''}${nb(P.A.sal)} ₸</b>${tag('A')}</div></div>
+    ${v.ro ? '' : '<div class="sep"></div><div><button class="chipq" data-income>+ Внеплановый доход</button></div>'}
+  </div>`;
+}
+function dueRow(d, ro, inner) {
+  const st = [d.st, d.est ? 'примерно' : ''].filter(Boolean).join(' · ');
+  return `<div class="drow" ${ro ? '' : `data-pay="${d.id}" role="button" tabindex="0"`}><span class="dt ${d.paid ? 'done' : ''}"><b>${d.day}</b><span>окт</span></span><span class="tx"><span class="nm">${d.nm}</span>${st ? `<span class="st">${st}</span>` : ''}</span>${av(d.by, ro, d.id)}<span class="r ${d.paid ? 'done' : ''}">${d.est ? '≈ ' : ''}${nb(d.a)}</span></div>`;
+}
+// Подписки одной группой (Р-93): одна функция для «Месяца» (с отметками) и справочника «Денег».
+function subsGroup(v, ref) {
+  const subs = G.dues.filter(d => d.sub), open = ref ? v.msubs : v.subs;
+  const paid = subs.filter(d => d.paid).length, all = paid === subs.length;
+  const head = `<button class="drow" data-subs aria-expanded="${!!open}"><span class="dt ic2"><i>↻</i></span><span class="tx"><span class="nm">Подписки · ${subs.length}</span>${ref ? '' : `<span class="st">${all ? 'все списались' : `${paid} из ${subs.length} списались`}</span>`}</span><span class="r ${!ref && all ? 'done' : ''}">${nb(sumBy(subs, d => d.a))}</span><span class="chev ${open ? 'open' : ''}">›</span></button>`;
+  if (!open) return `<div class="grp">${head}</div>`;
+  const groups = [...new Set(subs.map(d => typeof d.sub === 'string' ? d.sub : ''))];
+  const row = d => ref ? `<div class="drow"><span class="tx"><span class="nm">${d.nm}</span><span class="st">${d.day}-го${d.st ? ' · ' + d.st : ''}</span></span><span class="r">${nb(d.a)}</span></div>` : dueRow(d, v.ro);
+  const inner = groups.map(gn => (gn ? `<div class="subh">${gn}</div>` : '') + subs.filter(d => (typeof d.sub === 'string' ? d.sub : '') === gn).map(row).join('')).join('');
+  return `<div class="grp">${head}<div class="inner">${inner}</div></div>`;
+}
+function duesList(v) {
+  const rows = G.dues.filter(d => !d.sub).map(d => ({ day: d.day, h: dueRow(d, v.ro) + (d.id === 'iph' && v.freed && !v.ro && !G.freedDone ? `<div class="tip"><span>С мая свободно +32 000 в месяц</span><button class="chipq ${pending().length ? '' : 'go'}" data-freed>К «Японии»</button></div>` : '') }));
+  rows.push({ day: Math.min(...G.dues.filter(d => d.sub).map(d => d.day)), h: subsGroup(v, false) });
+  return `<div class="list">${rows.sort((a, b) => a.day - b.day).map(r => r.h).join('')}</div>`;
+}
+function spendList() {
+  const sI = spendI();
+  const grp = (p, xs) => `<div class="sg"><div class="sgh">${av(p)}<b>${P[p].nm}</b><span class="meta">${nb(sumBy(xs, x => x.f))} из ${nb(sumBy(xs, x => x.a))}</span></div>`
+    + xs.map(x => `<div class="sp"><div class="h"><span>${x.nm}</span><span><b>${nb(x.f)}</b> из ${nb(x.a)}</span></div><div class="pb"><i style="width:${pct(x.f, x.a)}%;--c:var(--s8)"></i></div></div>`).join('') + `</div>`;
+  return `<div class="list">${grp('I', sI)}${grp('A', SPEND_A)}</div>`;
+}
+const allDebtMonth = c => { const d = goal('debt'); return toMonth(Math.ceil(d.bal / (d.reg + c.free0)) - 1); };
+function goalsList(v, c) {
+  const pend = v.ro ? [] : pending();
+  const top = pend.length ? `<div style="padding:2px 0 8px"><button class="chipq go" data-save>Отложил всё · ${fmt(sumBy(pend, id => c.give[id]))}</button></div>` : '';
+  return top + `<div class="list ${v.ro ? '' : 'js-q'}">` + G.order.map(id => {
+    const g = goal(id), x = c.give[id];
+    const st = !g.on ? 'на паузе' : x < g.m && !(g.debt && G.allDebt) ? (x ? `не хватает ${nb(g.m - x)}` : 'в этом месяце не хватает') : '';
+    let row = `<div class="gq ${g.on ? '' : 'off'}" data-id="${id}" ${v.ro || !x ? '' : `data-goal="${id}"`}>${v.ro ? '' : `<button class="grip" data-drag aria-label="Переставить: ${g.nm}">⋮⋮</button>`}<div class="tx"><span class="nm">${g.nm}</span>${st ? `<span class="st ${g.on ? 'warn' : ''}">${st}</span>` : ''}</div>${av(g.by, v.ro, id)}<span class="r ${G.put.has(id) ? 'done' : ''}">${nb(x)}</span>${v.ro ? '' : `<button class="tg" data-tg="${id}" aria-pressed="${g.on}" aria-label="${g.nm}: ${g.on ? 'выключить' : 'включить'}"></button>`}</div>`;
+    if (g.debt && !v.ro && g.on) row += `<div class="tip"><span>${G.allDebt ? 'Всё в долг' : `Всё в долг — закроете ${allDebtMonth(c)}`}</span><button class="chipq" data-alldebt>${G.allDebt ? 'Вернуть' : 'Показать'}</button></div>`;
+    return row;
+  }).join('') + `</div>`;
+}
+function monthView(v) {
+  if (v.past) {
+    const c = { inc: 1198000, dues: 402000, spend: 431200, goals: 330000 };
+    return seg(v) + `<div class="mnav"><button class="nav" disabled>‹</button>Сентябрь<button class="nav" data-past="0" aria-label="Октябрь">›</button></div>`
+      + `<div class="ringbox ringsm">${ring(c, { sI: 774000 / 1198000, past: true, center: '<span class="lbl">Осталось</span><span class="big" style="font-size:19px">34 800 ₸</span>' })}</div>`
+      + `<div class="card sum"><div class="ln"><span>Пришло</span><b>1 198 000 ₸</b></div><div class="ln"><span>Платежи</span><b>402 000 ₸</b></div><div class="ln"><span>Траты <span class="tag w">план 400 000</span></span><b>431 200 ₸</b></div><div class="ln"><span>Отложили</span><b class="ok">330 000 ₸</b></div><div class="ln"><span>Осталось</span><b>34 800 ₸</b></div></div>`
+      + `<div class="list">${[['Япония', 60000], ['Запас', 50000], ['Закрыть кредит', 80000], ['Машина', 100000], ['Подушка', 40000]].map(([n, a]) => `<div class="gq"><div class="tx"><span class="nm">${n}</span></div><span class="r">${nb(a)}</span></div>`).join('')}</div>`;
+  }
+  const c = calc();
+  const head = v.ro ? `<div class="tbar"><span class="t">План</span><span class="ro">просмотр</span></div>` : seg(v);
+  return head
+    + `<div class="mnav"><button class="nav" data-past="1" aria-label="Сентябрь">‹</button>Октябрь<button class="nav" disabled>›</button></div>`
+    + `<div class="ringbox" data-anchor="ring">${ring(c, { acc: v.acc || '' })}</div>` + salCard(v, c)
+    + accView(v, c)
+    + `<div class="card sum"><div class="ln"><span>Отложим</span><b class="ok">${fmt(c.goals)}</b></div><div class="ln"><span>Потратим</span><b>${fmt(c.dues + c.spend)}</b></div><div class="ln main2"><span>Остаётся</span><b>${fmt(c.rest)}</b></div></div>`;
+}
+
+// Деньги
+const ACC = [['Kaspi Gold', 820000, ''], ['Евро-счёт', 512000, '1 000 €'], ['Депозит Freedom', 9400000, ''], ['Депозит Halyk', 2992000, '']];
+const CRED = [{ nm: 'Kaspi кредит', bal: 1020000, orig: 2000000, m: 85000, st: '18,5 % · до апреля 2028' }, { nm: 'Рассрочка iPhone', bal: 224000, orig: 384000, m: 32000, st: '0 % · до мая 2027' }];
+function moneyView(v) {
+  const accs = sumBy(ACC, a => a[1]), debts = sumBy(CRED, x => x.bal), cap = accs - debts;
+  const sq = `<div class="sq">${[['cap', 'Капитал', nb(cap)], ['debt', 'Долги', nb(debts)], ['hist', 'История', 'сентябрь']].map(([k, n, s]) => `<button data-sq="${k}" class="${v.sq === k ? 'on' : ''}"><b>${n}</b><span>${s}</span></button>`).join('')}</div>`;
+  const head = `<div class="tbar"><span class="t">Деньги</span></div>` + sq;
+  if (v.sq === 'debt') {
+    return head + `<div class="card" style="gap:4px"><span class="lbl">Долги</span><span class="huge">${fmt(debts)}</span><span class="meta">без долгов — к маю 2027</span></div>`
+      + `<div class="list">${CRED.map(x => `<div class="drow" style="flex-wrap:wrap"><span class="tx"><span class="nm">${x.nm}</span><span class="st">${nb(x.m)} в месяц · ${x.st}</span></span><span class="r">${nb(x.bal)}</span><div class="pb" style="flex-basis:100%"><i style="width:${pct(x.orig - x.bal, x.orig)}%;--c:var(--s6)"></i></div></div>`).join('')}</div>`
+      + `<button class="more ${v.calc ? 'open' : ''}" data-calc aria-expanded="${!!v.calc}"><span>Как закрыть быстрее</span><span class="chev ${v.calc ? 'open' : ''}">›</span></button>`
+      + (v.calc ? `<div class="card" style="margin-top:-12px;border-radius:0 0 20px 20px;border-top:0"><div class="wd"><span>+80 000 в месяц из плана</span><b class="ok">к маю 2027</b></div><div class="wd"><span class="meta">без досрочки</span><span class="meta">к апрелю 2028</span></div><span class="meta">Досрочка — строка «Закрыть кредит» в «Месяце»</span></div>` : '')
+      + `<button class="btn g">+ Кредит</button>`;
+  }
+  if (v.sq === 'hist') {
+    return head + `<div class="list">${[['Сентябрь', 330000, 34800], ['Август', 290000, 12100], ['Июль', 310000, 0]].map(([m, s, r], i) => `<button class="drow" data-hist="${i}"><span class="tx"><span class="nm">${m}</span><span class="st">осталось ${nb(r)}</span></span><span class="r ok">+${nb(s)}</span><span class="chev">›</span></button>`).join('')}</div><span class="note">Отложили за месяц — зелёным</span>`;
+  }
+  const c = calc();
+  return head + `<div class="card" style="gap:4px"><span class="lbl">Капитал</span><span class="huge">${fmt(cap)}</span><span class="meta"><span class="ok">↑ 180 000</span> за месяц</span></div>`
+    + secH('Счета', '--s5', nb(accs)) + `<div class="list">${ACC.map(a => `<div class="drow"><span class="tx"><span class="nm">${a[0]}</span>${a[2] ? `<span class="st">${a[2]}</span>` : ''}</span><span class="r">${nb(a[1])}</span></div>`).join('')}</div>`
+    + secH('Кредиты', '--s6', nb(debts)) + `<div class="list">${CRED.map(x => `<div class="drow"><span class="tx"><span class="nm">${x.nm}</span><span class="st">${x.st}</span></span><span class="r">${nb(x.bal)}</span></div>`).join('')}</div>`
+    + secH('Платежи', '--s1', nb(c.dues) + ' / мес') + `<div class="list">${G.dues.filter(d => !d.sub).map(d => `<div class="drow"><span class="tx"><span class="nm">${d.nm}</span><span class="st">${d.day}-го</span></span>${av(d.by, true)}<span class="r">${d.est ? '≈ ' : ''}${nb(d.a)}</span></div>`).join('')}${subsGroup(v, true)}</div>`
+    + `<button class="btn g">+ Платёж</button>`;
+}
+const dreamsView = () => `<div class="tbar"><span class="t">Мечты</span></div><div class="dream"><span class="lbl" style="color:inherit;opacity:.85">До мечты</span><span class="huge" style="font-size:48px">47%</span><span>Япония</span></div><p class="note">Мечты в этом блоке не меняются</p>`;
+
+// листы
+function sheet(v) {
+  const s = v.sheet; if (!s) return '';
+  let h = '';
+  if (s.k === 'sec') {
+    const r = weekRows(v).find(x => x.s.id === s.id), D = v.empty && v.week === 3 ? null : (DETAIL[v.week] || {})[s.id];
+    const diff = r.cur - r.prev;
+    h = `<div class="wd"><span class="ic">${r.s.ic}</span><span class="st" style="flex:1">${r.s.nm}</span><span class="huge" style="font-size:26px">${fmt(r.cur)}</span></div>
+      <span class="meta">${WEEKS[v.week].days} · <span class="${diff > 0 ? 'up' : 'down'}">${diff > 0 ? '↑' : '↓'} ${nb(diff)}</span> к прошлой${r.plan ? ` · на октябрь ${r.rest >= 0 ? 'осталось' : 'сверх'} ${nb(r.rest)}` : v.noPlan ? '' : ' · вне плана'}</span>`;
+    if (D) {
+      h += `<div class="tops">${D.tops.map(t => `<div>${t[0]}<span>${t[1]} ${plural(t[1], 'раз', 'раза', 'раз')} · ${nb(t[2])}</span></div>`).join('')}</div>`;
+      if (D.ops.length) {
+        let last = 0;
+        h += `<div class="ops">${D.ops.map(o => { const d = o[0] !== last ? `<span class="d">${o[0]} октября, ${DAYS[o[0]]}</span>` : ''; last = o[0]; return d + `<div class="o"><span>${o[1]}</span><span class="tm">${o[2]}</span><b>${nb(o[3])}</b></div>`; }).join('')}</div>`;
+        const n = D.n - D.ops.length, rest = r.cur - sumBy(D.ops, o => o[3]);
+        if (n > 0) h += `<div class="tail"><span>Ещё ${n} · ${fmt(rest)}</span><span class="chev">›</span></div>`;
+      } else h += `<div class="tail"><span>Все операции · ${D.n}</span><span class="chev">›</span></div>`;
+    }
+  } else if (s.k === 'ups') {
+    h = `<span class="st">Мои выписки</span><div class="list" style="padding:0;border:0">${UPLOADS.map(u => `<div class="drow"><span class="ic">${u[0]}</span><span class="tx"><span class="nm">${u[1]}</span><span class="st">${u[2]} · ${u[3]} ${plural(u[3], 'операция', 'операции', 'операций')}</span></span><span class="meta">${u[4]}</span></div>`).join('')}</div><button class="btn" data-up>+ Загрузить выписку</button>`;
+  } else if (s.k === 'q') {
+    const rem = QS.map((q, i) => i).filter(i => !G.answered.has(i));
+    const qi = rem[s.i % rem.length], q = QS[qi];
+    h = `<div class="prog">${rem.map((x, k) => `<i class="${k <= s.i % rem.length ? 'on' : ''}"></i>`).join('')}</div>
+      <span class="lbl">${s.i % rem.length + 1} из ${rem.length} · ${q.lbl}</span><span class="st">${q.t}</span><span class="meta">${q.m}</span>
+      <div class="chips">${q.ch.map(x => `<button class="chip" data-ans="${qi}">${x}</button>`).join('')}</div>
+      <button class="btn g" data-later>Потом</button>`;
+  } else if (s.k === 'pay') {
+    const d = due(s.id);
+    h = `<span class="st">${d.nm}</span><span class="meta">${d.day} октября · платит ${P[d.by].nm}</span><span class="huge" style="font-size:32px">${d.est ? '≈ ' : ''}${fmt(d.a)}</span>`
+      + (d.paid ? `<div class="saved">✓ Оплачено</div><button class="btn g" data-unpaid="${d.id}">Не оплачено</button>` : `<button class="btn" data-paid="${d.id}">Оплатил</button>`)
+      + `<button class="btn g">Изменить платёж</button>`;
+  } else if (s.k === 'sal') {
+    h = `<span class="st">Зарплата · Аруна</span><span class="meta">ждём 25 октября</span><span class="huge" style="font-size:32px">${fmt(P.A.sal)}</span><button class="btn" data-came>Пришла</button><button class="btn g">Другая сумма</button>`;
+  } else if (s.k === 'goal') {
+    const g = goal(s.id), x = calc().give[s.id];
+    h = `<span class="st">${g.nm}</span><span class="meta">октябрь · откладывает ${P[g.by].nm}</span><span class="huge" style="font-size:32px">${fmt(x)}</span>`
+      + (G.put.has(s.id) ? `<div class="saved">✓ Отложено</div><button class="btn g" data-unput="${g.id}">Не отложено</button>` : `<button class="btn" data-put="${g.id}">Отложил</button>`);
+  } else if (s.k === 'payer') {
+    const it = due(s.id) || goal(s.id);
+    h = `<span class="st">Кто платит: ${it.nm.toLowerCase()}?</span>${['I', 'A'].map(p => `<button class="opt ${it.by === p ? 'sel' : ''}" data-pick="${p}"><span class="av ${P[p].cls}">${P[p].av}</span>${P[p].nm}${it.by === p ? '<i>✓</i>' : ''}</button>`).join('')}<span class="note">С октября и дальше. Прошлые месяцы не меняются.</span>`;
+  } else if (s.k === 'fx') {
+    h = `<span class="st">Обменял</span><div class="f2"><div class="field"><span>Сколько, €</span><b>500</b></div><div class="field"><span>Курс, ₸</span><b>512</b></div></div><span class="meta">= 256 000 ₸ · на счёте осталось 1 000 €</span><button class="btn" data-close>Готово</button><span class="note">Евро за год: −134 ₸</span>`;
+  } else if (s.k === 'income') {
+    h = `<span class="st">Внеплановый доход</span><div class="field"><span>Сколько, ₸</span><b>150 000</b></div>
+      <div class="f2">${['I', 'A'].map(p => `<button class="opt ${p === 'I' ? 'sel' : ''}"><span class="av ${P[p].cls}">${P[p].av}</span>${P[p].nm}</button>`).join('')}</div>
+      <button class="opt sel">По очереди целей<i>✓</i></button><button class="opt">На счёт</button>
+      <span class="meta">→ «Япония» 60 000 · «Запас» 50 000 · «Машина» 40 000</span>
+      <button class="btn" data-close>Готово</button>`;
+  }
+  return `<button class="dim" data-close aria-label="Закрыть"></button><div class="sheet" role="dialog"><span class="gr"></span>${h}</div>`;
+}
+
+function render(i) {
+  const p = PH[i], v = p.v, el = p.el;
+  const scr = el.querySelector('.scr'), top = scr ? scr.scrollTop : 0, sh = el.querySelector('.sheet'), stop = sh ? sh.scrollTop : 0;
+  const tab = v.ro && v.tab === 'plan' ? 'plan' : v.tab;
+  const body = tab === 'dreams' ? dreamsView() : tab === 'money' ? moneyView(v) : (v.seg === 'month' || v.ro) ? monthView(v) : weekView(v);
+  el.innerHTML = `<div class="scr">${body}</div>${v.toast ? `<div class="toast" role="status"><span>${v.toast.t}</span>${v.toast.undo ? '<button data-undo>Отменить</button>' : ''}</div>` : ''}${tabs(v)}${sheet(v)}`;
+  const s2 = el.querySelector('.scr'); s2.scrollTop = v.top0 ? 0 : top; v.top0 = false;
+  if (v.scrollTo && !p.scrolled) { const a = s2.querySelector(`[data-anchor="${v.scrollTo}"]`); if (a) s2.scrollTop = a.offsetTop - 14; p.scrolled = true; }
+  const sh2 = el.querySelector('.sheet'); if (sh2) sh2.scrollTop = stop;
+}
+function renderAll() { PH.forEach((p, i) => render(i)); }
+
+// сборка рядов
+PH.forEach((p, i) => {
+  const col = document.createElement('div'); col.className = 'col';
+  col.innerHTML = `<div class="cap"><b>${p.cap}</b><span>${p.note}</span></div><div class="phone" data-p="${i}"></div><p class="r12">${p.r12}</p>`;
+  document.getElementById(p.row).appendChild(col); p.el = col.querySelector('.phone');
+});
+renderAll();
+
+// ── действия ──
+let toastT = null;
+function toast(i, t, undo) {
+  const v = PH[i].v; v.toast = { t, undo }; render(i);
+  clearTimeout(toastT); toastT = setTimeout(() => { v.toast = null; render(i); }, undo ? 6000 : 1600);
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('button,[data-pay],[data-acc],[data-goal],[data-sal]'); if (!t) return;
+  if (t.dataset.themeSet !== undefined) {
+    const x = t.dataset.themeSet; if (x) document.documentElement.dataset.theme = x; else delete document.documentElement.dataset.theme;
+    document.querySelectorAll('[data-theme-set]').forEach(b => b.setAttribute('aria-pressed', b === t)); return;
+  }
+  if (t.hasAttribute('data-reset')) { resetG(); PH.forEach(p => { p.v = { ...p.v0, seg: p.v0.live ? p.v.seg : p.v0.seg, view: p.v0.live ? p.v.view : p.v0.view }; p.scrolled = false; }); renderAll(); return; }
+  const ph = t.closest('.phone'); if (!ph) return;
+  const i = +ph.dataset.p, v = PH[i].v, d = t.dataset;
+  const one = () => render(i);
+  if ('close' in d) { v.sheet = null; return one(); }
+  if (d.tab) { v.top0 = true; v.tab = d.tab; v.sheet = null; if (d.tab === 'plan' && v.live) v.seg = LS.get('wm-seg') || 'week'; return one(); }
+  if (d.seg) { v.top0 = true; v.seg = d.seg; v.past = false; if (v.live) LS.set('wm-seg', d.seg); return one(); }
+  if ('view' in d) { v.view = v.view === 'list' ? 'tiles' : 'list'; if (v.live) LS.set('wm-view', v.view); return one(); }
+  if (d.wk) { v.week = Math.max(2, Math.min(3, v.week + +d.wk)); return one(); }
+  if ('trend' in d) { v.trend = !v.trend; return one(); }
+  if (d.sec) { v.sheet = { k: 'sec', id: d.sec }; return one(); }
+  if ('ups' in d) { v.sheet = { k: 'ups' }; return one(); }
+  if ('up' in d) {
+    v.sheet = null; v.pin = false;
+    if (v.empty) { v.empty = false; v.wasEmpty = true; return toast(i, 'Загружено 48 операций', true); }
+    return toast(i, 'Загружено 9 операций', true);
+  }
+  if ('undo' in d) { if (v.wasEmpty) { v.empty = true; v.wasEmpty = false; } return toast(i, 'Отменено', false); }
+  if ('q' in d) { v.sheet = { k: 'q', i: 0 }; return one(); }
+  if (d.ans) { G.answered.add(+d.ans); const left = QS.length - G.answered.size; if (!left) { PH.forEach(p => { if (p.v.sheet && p.v.sheet.k === 'q') p.v.sheet = null; }); } else if (v.sheet.i >= left) v.sheet.i = 0; return renderAll(); }
+  if ('later' in d) { v.sheet.i++; const left = QS.length - G.answered.size; if (v.sheet.i >= left) v.sheet = null; return one(); }
+  if ('save' in d) { for (const id of pending()) G.put.add(id); return renderAll(); }
+  if (d.sal) { v.sheet = { k: 'sal' }; return one(); }
+  if ('came' in d) { G.cameA = true; v.sheet = null; return renderAll(); }
+  if (d.goal) { v.sheet = { k: 'goal', id: d.goal }; return one(); }
+  if (d.put) { G.put.add(d.put); v.sheet = null; return renderAll(); }
+  if (d.unput) { G.put.delete(d.unput); v.sheet = null; return renderAll(); }
+  if ('freed' in d) { G.freedDone = true; return renderAll(); }
+  if ('fx' in d) { v.sheet = { k: 'fx' }; return one(); }
+  if ('income' in d) { v.sheet = { k: 'income' }; return one(); }
+  if (d.payer) { v.sheet = { k: 'payer', id: d.payer }; return one(); }
+  if (d.pick) { const it = due(v.sheet.id) || goal(v.sheet.id); it.by = d.pick; v.sheet = null; return renderAll(); }
+  if (d.pay) { v.sheet = { k: 'pay', id: d.pay }; return one(); }
+  if (d.paid) { due(d.paid).paid = true; v.sheet = null; return renderAll(); }
+  if (d.unpaid) { due(d.unpaid).paid = false; v.sheet = null; return renderAll(); }
+  if ('subs' in d) { if (v.tab === 'money') v.msubs = !v.msubs; else v.subs = !v.subs; return one(); }
+  if (d.tg) { const g = goal(d.tg); g.on = !g.on; if (!g.on) G.put.delete(d.tg); return renderAll(); }
+  if ('alldebt' in d) {
+    if (G.allDebt) { for (const g of G.goals) g.on = G.allDebt[g.id]; G.allDebt = null; }
+    else { G.allDebt = Object.fromEntries(G.goals.map(g => [g.id, g.on])); for (const g of G.goals) g.on = !!g.debt; }
+    return renderAll();
+  }
+  if (d.past) { v.past = d.past === '1'; return one(); }
+  if (d.acc) { v.acc = v.acc === d.acc ? null : d.acc; return one(); }
+  if (d.sq) { v.top0 = true; v.sq = d.sq; return one(); }
+  if ('calc' in d) { v.calc = !v.calc; return one(); }
+  if (d.hist) { v.top0 = true; v.tab = 'plan'; v.seg = 'month'; v.past = d.hist === '0'; return one(); }
+});
+
+document.addEventListener('keydown', e => { const r = e.target.closest && e.target.closest('div[data-pay]'); if (r && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); r.click(); } });
+
+// ── перестановка очереди (как Б14): ⋮⋮ — сразу, строка — удержать 350 мс; стрелки ↑↓ на ⋮⋮ ──
+function commit(list) { G.order = [...list.querySelectorAll(':scope > [data-id]')].map(r => r.dataset.id); renderAll(); }
+let drag = null, press = null;
+function startDrag(row, y, pid) { drag = { row, list: row.parentElement, y0: y }; row.classList.add('lift'); try { row.setPointerCapture(pid); } catch (e) {} }
+document.addEventListener('pointerdown', e => {
+  const row = e.target.closest('.js-q > [data-id]'); if (!row || e.target.closest('.tg, button.av')) return;
+  if (e.target.closest('[data-drag]')) { e.preventDefault(); startDrag(row, e.clientY, e.pointerId); return; }
+  press = { row, y: e.clientY, pid: e.pointerId, t: setTimeout(() => { startDrag(row, press.y, press.pid); press = null; }, 350) };
+});
+document.addEventListener('pointermove', e => {
+  if (press && Math.abs(e.clientY - press.y) > 8) { clearTimeout(press.t); press = null; }
+  if (!drag) return; e.preventDefault();
+  const { row, list } = drag; let dy = e.clientY - drag.y0;
+  let prev = row.previousElementSibling; if (prev && !prev.dataset.id) prev = prev.previousElementSibling;
+  let next = row.nextElementSibling; if (next && !next.dataset.id) next = next.nextElementSibling;
+  if (prev && prev.dataset.id && dy < -prev.offsetHeight / 2) { list.insertBefore(row, prev); drag.y0 -= prev.offsetHeight; dy = e.clientY - drag.y0; }
+  else if (next && next.dataset.id && dy > next.offsetHeight / 2) { list.insertBefore(next, row); drag.y0 += next.offsetHeight; dy = e.clientY - drag.y0; }
+  row.style.transform = `translateY(${dy}px)`;
+}, { passive: false });
+function endDrag() {
+  if (press) { clearTimeout(press.t); press = null; }
+  if (!drag) return; const { row, list } = drag; drag = null;
+  row.classList.add('settle'); row.style.transform = '';
+  setTimeout(() => { row.classList.remove('lift', 'settle'); commit(list); }, 180);
+}
+document.addEventListener('pointerup', endDrag);
+document.addEventListener('pointercancel', endDrag);
+document.addEventListener('keydown', e => {
+  const h = e.target.closest && e.target.closest('[data-drag]'); if (!h || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+  e.preventDefault(); const row = h.closest('[data-id]'), list = row.parentElement;
+  let sib = e.key === 'ArrowUp' ? row.previousElementSibling : row.nextElementSibling;
+  if (sib && !sib.dataset.id) sib = e.key === 'ArrowUp' ? sib.previousElementSibling : sib.nextElementSibling;
+  if (!sib || !sib.dataset.id) return;
+  if (e.key === 'ArrowUp') list.insertBefore(row, sib); else list.insertBefore(sib, row);
+  const id = row.dataset.id, i = list.closest('.phone').dataset.p; commit(list);
+  const nh = document.querySelector(`.phone[data-p="${i}"] [data-id="${id}"] [data-drag]`); if (nh) nh.focus();
+});
+</script>

@@ -106,6 +106,11 @@ export function daysInMonth(key: string): number {
   return new Date(year, month + 1, 0).getDate()
 }
 
+/** Полдень последнего дня месяца по Алматы (ISO) — момент записи, которая принадлежит прошлому месяцу. */
+export function monthLastNoon(key: string): string {
+  return new Date(`${key}-${String(daysInMonth(key)).padStart(2, '0')}T12:00:00+05:00`).toISOString()
+}
+
 /** «5 сентября» */
 export function dayLabel(day: number, key = monthKey()): string {
   return `${day} ${MONTHS_GEN[parseMonthKey(key).month]}`
@@ -174,6 +179,11 @@ const WEEKDAYS_SHORT = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб']
 export function weekdayShort(iso: string | null | undefined): string {
   const t = iso ? new Date(iso).getTime() : NaN
   return Number.isNaN(t) ? '' : WEEKDAYS_SHORT[almaty(new Date(t)).getUTCDay()]
+}
+
+/** День с днём недели — «18 октября, вс» (лист раздела «Недели»: операции по дням). */
+export function dayWeekdayLabel(iso: string): string {
+  return `${dayLabel(Number(iso.slice(8, 10)), iso.slice(0, 7))}, ${weekdayShort(iso)}`
 }
 
 /**

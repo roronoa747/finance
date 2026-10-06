@@ -6,8 +6,9 @@ import { money } from '@/lib/money'
 import { planFromSource, type PlanSource } from '@/lib/finance'
 import type { Payment, SyncDoc } from '@/types/finance'
 import Dreams from './Dreams.vue'
-import Statements from './Statements.vue'
+import Week from './Week.vue'
 import Money from './Money.vue'
+import Month from './Month.vue'
 import { authAs, planFamilyDoc, planOf } from '@/test/planFamily'
 import { renderScreen, screenMixin } from '@/test/screenState'
 
@@ -49,44 +50,45 @@ describe('Блок 2: моменты месяца (SSR)', () => {
   }
 
   describe('RP-11 — вопрос в конце месяца', () => {
-    // Решения живут на «Неделе» (пивот 3, Р-42/Р-43): на «Мечтах» их нет.
+    // Решения живут на «Неделе» (пивот 3, Р-42/Р-43) — в листе за «! N» (Блок 15, Р-97): на «Мечтах» их нет.
+    const asked = () => renderScreen(Week, '/week', undefined, [screenMixin({ questionsOpen: true })])
     it('«Неделя»: «Остались деньги?» есть в последние дни месяца, нет в середине, нет у viewer; на «Мечтах» — нет', async () => {
       family()
-      const html = await renderScreen(Statements, '/week')
+      const html = await asked()
       expect(html).toContain('Остались деньги с сентября?')
       expect(html).toMatch(/>\s*Отложить\s*</)
       expect(html).toMatch(/>\s*Не сейчас\s*</)
       expect(await renderScreen(Dreams, '/')).not.toContain('Остались деньги')
 
       vi.setSystemTime(new Date('2026-09-20T07:00:00Z'))
-      expect(await renderScreen(Statements, '/week')).not.toContain('Остались деньги')
+      expect(await asked()).not.toContain('Остались деньги')
 
       vi.setSystemTime(new Date('2026-09-28T07:00:00Z'))
       setActivePinia(createPinia())
       family('viewer')
-      expect(await renderScreen(Statements, '/week')).not.toContain('Остались деньги')
+      expect(await asked()).not.toContain('Остались деньги')
     })
 
     it('«Не сейчас» — ответ помнится на устройстве до конца месяца; в конце следующего — снова', async () => {
       family()
       let vm: Record<string, any> = {}
       const grab = { created(this: any) { if ('answerRest' in this.$.setupState) vm = this.$.setupState } }
-      await renderScreen(Statements, '/week', undefined, [grab])
+      await renderScreen(Week, '/week', undefined, [grab])
       vm.answerRest(false)
       expect(storage.get('ff_month_end')).toBe('2026-09')
-      expect(await renderScreen(Statements, '/week')).not.toContain('Остались деньги')
+      expect(await asked()).not.toContain('Остались деньги')
       // Документ не тронут: партнёра спросят на его телефоне.
       expect(useFinanceStore().unsent).toBe(false)
 
       vi.setSystemTime(new Date('2026-10-29T07:00:00Z'))
-      expect(await renderScreen(Statements, '/week')).toContain('Остались деньги с октября?')
+      expect(await asked()).toContain('Остались деньги с октября?')
     })
 
     it('«Остались деньги?» (Р-86): сумма — разово по очереди целей сверху вниз, запись своим источником; экрана разбора нет', async () => {
       const store = family()
       const src = fromSource({ from: 'rest', amount: 55_000, period: '2026-09' })
       expect(src.mode).toBe('once')
-      await renderScreen(Statements, '/week', undefined, [
+      await renderScreen(Week, '/week', undefined, [
         screenMixin({ restAmount: '55 000' }, (s) => {
           if (typeof s.answerRest === 'function') (s.answerRest as (go: boolean) => void)(true)
         }),
@@ -166,17 +168,14 @@ describe('Блок 2: моменты месяца (SSR)', () => {
       const store = family('member', 'a', moments())
       const src = fromSource({ from: 'credit', creditId: 'inst' })
       expect(src).toMatchObject({ mode: 'once', amount: 20_000 })
-      const html = await renderScreen(Money, '/money')
-      expect(html).toContain('data-source="credit"')
+      const goals = () => renderScreen(Month, '/month', undefined, [screenMixin({ opened: 'queue' })])
+      const html = await goals()
+      expect(html).toContain('data-closed')
       expect(html).toContain('Рассрочка закрыт')
-      await renderScreen(Money, '/money', undefined, [
-        screenMixin({}, (s) => {
-          if (typeof s.onSource === 'function') (s.onSource as () => void)()
-        }),
-      ])
+      await renderScreen(Month, '/month', undefined, [screenMixin({}, (s) => (s.onClosed as () => void)())])
       expect(store.allocations[0]).toMatchObject({ kind: 'plan', source: 'freed', sourceId: 'inst', total: 20_000, parts: src.mode === 'once' ? src.parts : [] })
-      // Записано — карточки нет.
-      expect(await renderScreen(Money, '/money')).not.toContain('data-source=')
+      // Записано — подсказки нет.
+      expect(await goals()).not.toContain('data-closed')
     })
   })
 

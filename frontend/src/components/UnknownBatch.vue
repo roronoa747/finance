@@ -19,7 +19,8 @@ import type { MerchantRule } from '@/lib/statements/types'
  */
 const SHOWN = 6
 
-const props = withDefaults(defineProps<{ groups: UnknownGroup[]; progress?: { n: number; k: number } | null }>(), { progress: null })
+// `bare` — внутри листа вопросов «Недели» (Р-97): без своей рамки и отступов, «куда?» — обычным блоком под списком.
+const props = withDefaults(defineProps<{ groups: UnknownGroup[]; progress?: { n: number; k: number } | null; bare?: boolean }>(), { progress: null, bare: false })
 const emit = defineEmits<{
   (e: 'answer', matches: MerchantRule['match'][], to: MerchantRule['to']): void
   (e: 'later'): void
@@ -46,7 +47,7 @@ const card = ref<HTMLElement | null>(null)
 watch(
   () => chosen.value.length > 0,
   async (on) => {
-    if (!on) return
+    if (!on || props.bare) return
     await nextTick()
     card.value?.scrollIntoView?.({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' })
   },
@@ -72,7 +73,7 @@ function choose(to: MerchantRule['to']) {
 
 <template>
   <div class="flex flex-col gap-3">
-    <section ref="card" class="fx-in flex scroll-mt-2 flex-col gap-3 rounded-card border border-brand bg-surface p-5 text-left" aria-live="polite">
+    <section ref="card" class="fx-in flex scroll-mt-2 flex-col gap-3 text-left" :class="!bare && 'rounded-card border border-brand bg-surface p-5'" aria-live="polite">
       <div v-if="progress" class="type-meta flex items-center gap-2.5">
         <ProgressBar :value="progress.k ? progress.n / progress.k : 0" :height="4" class="flex-1" />
         <span class="num shrink-0">{{ progress.n }} из {{ progress.k }}</span>
@@ -120,7 +121,12 @@ function choose(to: MerchantRule['to']) {
     </section>
 
     <!-- Отмечено ≥ 1 — «куда?» прилипает над капсулой вкладок, пока пачка на экране (макет `.dock`); отступ под капсулу — `pb-24` у `main`. -->
-    <div v-if="chosen.length" class="fx-in sticky -bottom-6 z-[5] -mx-4 flex flex-col gap-2 px-4 pb-8 pt-7" :style="{ background: 'linear-gradient(to bottom, transparent, var(--canvas) 24px)' }">
+    <div
+      v-if="chosen.length"
+      class="fx-in flex flex-col gap-2"
+      :class="!bare && 'sticky -bottom-6 z-[5] -mx-4 px-4 pb-8 pt-7'"
+      :style="bare ? undefined : { background: 'linear-gradient(to bottom, transparent, var(--canvas) 24px)' }"
+    >
       <span class="text-center type-meta num">Выбрано {{ chosen.length }} · {{ money(amountTotal(chosen)) }}</span>
       <CategoryChips forgot :top="3" :counterparty="people" @choose="choose" />
     </div>
