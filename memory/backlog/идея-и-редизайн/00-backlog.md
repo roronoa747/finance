@@ -1644,6 +1644,22 @@ B2C-37…B2C-39 (Р-13, Р-18) · скоуп 14 «один план» → Бло
   три вопроса за «!». Демо зависит от дня недели (хвост §4). e2e — `e2e/b2c-block15-week-month.test.ts` (6 частей);
   e2e Блока 11 удалён (нормы трат ушли), прошлые блоки переведены на «Месяц» (общий `tapPay` — `e2e/support/family.ts`).
 
+**После Блока 16 (Деньги по макету; исполнитель, 2026-10-06)**
+- Документ и сервер не менялись: миграций, ручек Go и новых ключей `SyncDoc` нет.
+- Расчёт (`finance.ts`, тесты — `lib/moneyScreens.test.ts`): **`capitalGoals(goals, accounts)`** («Цели · N»: `count` и
+  `total` — цели вне счетов, `total` = `goalSavings`; цель со счётом — `accountName`), **`debtsOverview(state, key)`**
+  (сумма, `freeMonth` — с планом позднее из `planForecast` и графиков беспроцентных, без плана — по графикам; строки с
+  `paidShare` = тело из отметок / (остаток + оно)), **`historyMonths(state, key, max)`** (месяцы от прошлого до
+  `historyStart`, числа — `monthPlanPast`), **`monthSalaries(plan, state, now)`** (строки зарплат — одна функция для
+  «Месяца» и «Капитала»).
+- UI: `money/SalarySheet` (лист зарплаты — общий для `MonthPlan` и `CapitalSalaries`), `money/CapitalSalaries`,
+  «Цели · N» в `CapitalLists` (итог «Счетов» = счета + цели вне счетов), `money/DebtsWidget` — весь экран «Долги»
+  (внутри свёрнутого «Как закрыть быстрее» — `PlanSquare`), `money/HistoryMonths` — экран «История» (лента
+  `HistorySquare` — под «Все записи»). Удалены `PlanStepAction` и ветка шага плана в `PayoffSheet` (проп `plan`):
+  шаг «Сначала долги» пишет только «Отложил» у строки долга в «Месяце»; `store.applyPlanStep` остался (тесты стора).
+- Демо: «Запас» на Kaspi Gold, три прошлых месяца отметок (аренда, зарплата, автокредит с телом). e2e —
+  `e2e/b2c-block16-money-screens.test.ts`; шаг плана в старых e2e — `tapPutDebt` (`e2e/support/family.ts`).
+
 **Грабли среды**
 - **`cmd/migrate` в прод запускает владелец** в своём терминале (клинап Б1): агенту чтение
   `memory/secrets/supabase-db.md` не разрешено автопроверкой прав, а коннектор Supabase прод-проект
