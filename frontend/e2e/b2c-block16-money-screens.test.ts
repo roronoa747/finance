@@ -170,4 +170,31 @@ describe('e2e / B2C Блок 16 — «Деньги» по макету на дв
     const history = await screen(V.pinia, Money, '/money/history')
     expect(history.match(/data-history-month=/g)).toHaveLength(2)
   })
+
+  // Приёмка Б16: план «Сначала долги» — общий; «без долгов — к» у второго телефона и viewer меняется вслед за ним.
+  it('часть 5 — план «Сначала долги» на телефоне Ильяса: у Аруны и viewer «без долгов — к» по прогнозу плана; отмена — снова по графикам', async () => {
+    const A = await phone(server, 'a')
+    const B = await phone(server, 'b')
+    const V = await phone(server, 'b', 'viewer')
+    const free = (p: Phone) => {
+      setActivePinia(p.pinia)
+      return debtsOverview({ ...p.store.planState(), plans: p.store.plans }, K).freeMonth!
+    }
+    const byGraphs = free(B)
+
+    setActivePinia(A.pinia)
+    expect(A.store.choosePlan({ keptGoalIds: [], cushionGoalId: null, months: 12, lump: 0 }, 'a')).not.toBeNull()
+    await sync(A, B, V)
+    const byPlan = free(B)
+    expect(byPlan).not.toBe(byGraphs)
+    expect(free(V)).toBe(byPlan)
+    expect(text(await screen(B.pinia, Money, '/money/debts'))).toContain(`без долгов — ${monthBy(byPlan, K)}`)
+    expect(text(await screen(V.pinia, Money, '/money/debts'))).toContain(`без долгов — ${monthBy(byPlan, K)}`)
+
+    setActivePinia(A.pinia)
+    A.store.cancelPlan()
+    await sync(A, B)
+    expect(free(B)).toBe(byGraphs)
+    expect(text(await screen(B.pinia, Money, '/money/debts'))).toContain(`без долгов — ${monthBy(byGraphs, K)}`)
+  })
 })
