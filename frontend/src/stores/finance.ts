@@ -28,6 +28,8 @@ import {
   moveWithin,
   queueOf,
   monthPlan,
+  historyMonths,
+  progressMoments,
   pendingPuts,
   salaryToAllocate,
   planExtras,
@@ -283,6 +285,23 @@ export const useFinanceStore = defineStore('finance', () => {
     const { state, ctx } = planInput(key)
     return monthPlan(state, ctx)
   }
+  /**
+   * Прошлые месяцы «Истории» (`historyMonths`, Р-111) — одно место для экрана «История» и подписи её квадрата (критик
+   * Б16): вход — как у сводки «Месяца» (`MonthPast`) плюс свои операции и моменты для первого месяца данных. Функция,
+   * а не computed: месяц берётся из часов — экраны зовут её в своих computed.
+   */
+  const historyMonthsNow = (max?: number) =>
+    historyMonths(
+      {
+        ...householdDoc.value,
+        credits: credits.value,
+        book: useFxStore().book,
+        ops: useOperationsStore().all,
+        moments: progressMoments({ credits: householdDoc.value.credits, goals: goals.value, payments: payments.value }),
+      },
+      monthKey(),
+      max,
+    )
   /**
    * Месяц, где «Месяц» ждёт действия (Р-97): этот — зарплата плательщика пришла, а цели не отложены, или есть деньги
    * сверх плана («освободится», «долг закрыт»); иначе — месяц своей пришедшей по выписке и не отложенной зарплаты
@@ -2137,6 +2156,7 @@ export const useFinanceStore = defineStore('finance', () => {
     planState,
     planInput,
     monthPlanOf,
+    historyMonthsNow,
     planCall,
     planStepNow,
     pausedGoalIds,

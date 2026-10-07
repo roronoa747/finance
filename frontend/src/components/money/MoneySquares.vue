@@ -3,10 +3,9 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
-import { useFxStore } from '@/stores/fx'
 import { plain } from '@/lib/money'
 import { MONTHS_NOM, monthKey, parseMonthKey } from '@/lib/dates'
-import { historyMonths, liveAccounts, liveCredits, liveGoals, netWorth, openDebt, progressMoments } from '@/lib/finance'
+import { liveAccounts, liveCredits, liveGoals, netWorth, openDebt } from '@/lib/finance'
 import { cn, plural } from '@/lib/utils'
 import Hint from '@/components/kit/Hint.vue'
 
@@ -27,12 +26,7 @@ const debt = computed(() => openDebt(financeStore.credits))
 const debtsNote = computed(() => (debt.value > 0 ? plain(debt.value) : 'долгов нет'))
 // История (Блок 16, Р-111) — последний прошлый месяц списка («сентябрь»); прошлых нет — свои операции этого месяца
 // (партнёр чужих не видит — Р-5) или «отметки».
-const lastMonth = computed(() => {
-  const fx = useFxStore()
-  const doc = financeStore.householdDoc
-  const moments = progressMoments({ credits: doc.credits, goals: financeStore.goals, payments: financeStore.payments })
-  return historyMonths({ ...doc, credits: financeStore.credits, book: fx.book, ops: ops.all, moments }, monthKey(), 1)[0]?.key ?? null
-})
+const lastMonth = computed(() => financeStore.historyMonthsNow(1)[0]?.key ?? null)
 const opsCount = computed(() => {
   const key = monthKey()
   return ops.all.filter((o) => o.date.startsWith(key)).length

@@ -6,7 +6,7 @@ import { createRouter, createMemoryHistory, type Router } from 'vue-router'
 import { routes } from '@/router'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
-import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
+import { authAs, planFamilyDoc, planOf, T0 } from '@/test/planFamily'
 import { capitalGoals, debtsOverview, historyMonths, monthPlanPast, monthSalaries } from '@/lib/finance'
 import { monthBy } from '@/lib/dates'
 import { plain } from '@/lib/money'
@@ -230,6 +230,31 @@ describe('B2C-101: «Долги» по макету', () => {
     expect(txt(q('[data-debts]'))).toContain('Долгов нет')
     expect(q('[data-debts-calc]')).toBeNull()
     expect(q('[data-debt]')).toBeNull()
+  })
+
+  // Критик Б16: «без долгов — к» с планом — прогноз плана, а не графики; другой месяц, чем без плана.
+  it('с планом «Сначала долги» — «без долгов — к» по прогнозу плана', async () => {
+    const without = debtsOverview({ ...(await open('member', familyDoc(), '/money/debts')).planState(), plans: [] }, KEY).freeMonth!
+    app?.unmount()
+    document.body.innerHTML = ''
+    const finance = await open('member', familyDoc({ plans: [planOf()] }), '/money/debts')
+    const o = debtsOverview({ ...finance.planState(), plans: finance.plans }, KEY)
+    expect(o.freeMonth).not.toBe(without)
+    expect(txt(q('[data-debts-free]'))).toBe(`без долгов — ${monthBy(o.freeMonth!, KEY)}`)
+  })
+
+  it('кредит не закрывается при нынешнем платеже — «не закрывается» в строке, «без долгов — к» нет', async () => {
+    const base = familyDoc()
+    await open('member', familyDoc({ credits: base.credits!.map((c) => (c.id === 'cc' ? { ...c, payment: 5_000 } : c)) }), '/money/debts')
+    expect(txt(q('[data-debt="cc"]'))).toContain('не закрывается')
+    expect(q('[data-debts-free]')).toBeNull()
+  })
+
+  it('долгов и плана нет, есть прошлый план — «Прошлые планы» видны сразу, без свёртки', async () => {
+    const done = planOf({ status: 'done', endedAt: '2026-09-01T05:00:00.000Z' })
+    await open('member', familyDoc({ credits: [], plans: [done] }), '/money/debts')
+    expect(q('[data-debts-calc]')).toBeNull()
+    expect(document.body.textContent).toContain('Прошлые планы')
   })
 })
 

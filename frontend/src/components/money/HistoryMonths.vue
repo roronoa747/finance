@@ -3,36 +3,20 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { PhCaretRight } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
-import { useOperationsStore } from '@/stores/operations'
-import { useFxStore } from '@/stores/fx'
 import { plain } from '@/lib/money'
 import { MONTHS_NOM, monthKey, parseMonthKey } from '@/lib/dates'
-import { historyMonths, progressMoments } from '@/lib/finance'
 import Card from '@/components/kit/Card.vue'
 import HistorySquare from '@/components/money/HistorySquare.vue'
 
 /**
  * «История» — месяцы (Блок 16, Р-111; макет money-b16.html): до 12 прошлых месяцев — «<Месяц> · осталось N» и
  * зелёным «+отложили M», нажатие — «План · Месяц» того месяца (`/month?month=`, сводка `monthPlanPast` — те же числа).
- * Внизу тихое «Все записи ›» — прежняя лента (`HistorySquare`, Р-35), свёрнута. Числа — `historyMonths`.
+ * Внизу тихое «Все записи ›» — прежняя лента (`HistorySquare`, Р-35), свёрнута. Числа — `historyMonths` (стор: `historyMonthsNow`).
  */
 const router = useRouter()
 const finance = useFinanceStore()
-const ops = useOperationsStore()
-const fx = useFxStore()
 
-const months = computed(() =>
-  historyMonths(
-    {
-      ...finance.householdDoc,
-      credits: finance.credits,
-      book: fx.book,
-      ops: ops.all,
-      moments: progressMoments({ credits: finance.householdDoc.credits, goals: finance.goals, payments: finance.payments }),
-    },
-    monthKey(),
-  ),
-)
+const months = computed(() => finance.historyMonthsNow())
 const thisYear = computed(() => parseMonthKey(monthKey()).year)
 function title(key: string): string {
   const { year, month } = parseMonthKey(key)
