@@ -12,16 +12,14 @@ import {
   lastAccountFor,
   liveSpendCategories,
   monthPlan,
+  monthSalaries,
   monthSubscriptions,
-  paidFor,
   pendingPuts,
   planExtras,
   planPutSaves,
   planPuts,
   putsLeft,
   queueStatus,
-  salaryOf,
-  salaryOpen,
   spendFact,
   type PlanDue,
   type PlanPut,
@@ -41,12 +39,11 @@ import Tag from '@/components/kit/Tag.vue'
 import Toggle from '@/components/kit/Toggle.vue'
 import Button from '@/components/ui/Button.vue'
 import MarkSheet from '@/components/MarkSheet.vue'
-import SalaryDialog from '@/components/SalaryDialog.vue'
 import SalaryExchange from '@/components/SalaryExchange.vue'
-import SalaryRow from '@/components/SalaryRow.vue'
 import ExtraIncomeSheet from '@/components/capital/ExtraIncomeSheet.vue'
 import DueRow from '@/components/money/DueRow.vue'
 import MonthRing from '@/components/money/MonthRing.vue'
+import SalarySheet from '@/components/money/SalarySheet.vue'
 
 /**
  * «План · Месяц» (Блок 15, Р-90; макет week-month.html, ворота B2C-91): круг — оглавление. Под кругом зарплаты и
@@ -141,41 +138,17 @@ const sections = computed(() => [
 
 /* ---------- зарплаты: ✓ у суммы; нажатие строки — лист: «Пришла» у своей, «Изменить оклад» ---------- */
 const salaries = computed(() =>
-  plan.value.income.byPerson.map((inc) => {
-    const p = people.value.find((x) => x.id === inc.person)
-    const record = paidFor(finance.payments, 'salary', inc.person, props.monthKey)
-    const mine = canEdit.value && auth.slot === inc.person
-    return {
-      ...inc,
-      payday: p?.payday ?? 1,
-      left: plan.value.byPerson.find((x) => x.person === inc.person)?.left ?? 0,
-      foreign: !!p && salaryOf(p, props.monthKey).currency !== 'KZT',
-      cameAt: record ? atLabel(record.at) : '',
-      mine,
-      // Свою зарплату отмечает только сам участник (Р-13), когда её день настал или близко.
-      canMark: mine && !!p && !record && salaryOpen(p, finance.payments, props.monthKey),
-    }
-  }),
+  monthSalaries(plan.value, { people: finance.people, payments: finance.payments }).map((s) => ({
+    ...s,
+    cameAt: s.at ? atLabel(s.at) : '',
+    // Свою зарплату отмечает только сам участник (Р-13), когда её день настал или близко.
+    canMark: canEdit.value && auth.slot === s.person && s.open,
+  })),
 )
 const signed = (v: number) => (v > 0 ? `+${plain(v)}` : plain(v))
+// Лист зарплаты — общий с «Капиталом» (`SalarySheet`, Р-108).
 const salaryFor = ref<PersonId | null>(null)
 const salarySheet = computed(() => salaries.value.find((s) => s.person === salaryFor.value) ?? null)
-/** Лист отметки пришедшей своей зарплаты (когда, счёт, другая сумма, снять) и лист оклада (сумма, день, валюта). */
-const salaryPaid = ref<PersonId | null>(null)
-const salaryEdit = ref<PersonId | null>(null)
-function fromSalary(next: 'paid' | 'edit') {
-  const id = salaryFor.value
-  salaryFor.value = null
-  if (next === 'paid') salaryPaid.value = id
-  else salaryEdit.value = id
-}
-// «Пришла» отмечена — лист закрывается сам: ✓ уже у суммы в строке.
-watch(
-  () => salarySheet.value?.came,
-  (came, was) => {
-    if (came && was === false) salaryFor.value = null
-  },
-)
 
 /* ---------- внеплановый доход: тихо в карточке зарплат и из «+» (`?income=1`) ---------- */
 const incomeOpen = ref(false)
@@ -610,27 +583,7 @@ function addFund(kind: 'reserve' | 'cushion') {
     </Card>
 
     <!-- Зарплата: своя и ждём — «Пришла» (и «Другая сумма или счёт»); тихо — отметка пришедшей и «Изменить оклад» -->
-    <Sheet :open="!!salarySheet" :title="salarySheet ? `Зарплата · ${salarySheet.name}` : ''" @close="salaryFor = null">
-      <template v-if="salarySheet">
-        <p class="type-meta">{{ salarySheet.came ? `пришла ${salarySheet.cameAt}` : `ждём ${dayLabel(salarySheet.payday, monthKey)}` }}</p>
-        <p class="mb-1 font-num text-[32px] font-bold leading-tight num text-ink">{{ money(salarySheet.amount) }}</p>
-        <SalaryRow v-if="salarySheet.canMark" button :person-id="salarySheet.person" :period="monthKey" />
-        <div class="mt-2 flex flex-col gap-1.5">
-          <Button v-if="salarySheet.mine && salarySheet.came" variant="ghost" class="w-full" data-salary-paid @click="fromSalary('paid')">Другая сумма или снять</Button>
-          <Button variant="ghost" class="w-full" data-salary-edit @click="fromSalary('edit')">Изменить оклад</Button>
-        </div>
-      </template>
-    </Sheet>
-    <MarkSheet
-      v-if="salaryPaid"
-      open="paid"
-      kind="salary"
-      :target-id="salaryPaid"
-      :period="monthKey"
-      :title="`Зарплата · ${personName(salaryPaid)}`"
-      @close="salaryPaid = null"
-    />
-    <SalaryDialog v-if="canEdit" :id="salaryEdit" @close="salaryEdit = null" />
+    <SalarySheet :month-key="monthKey" :line="salarySheet" @close="salaryFor = null" />
     <ExtraIncomeSheet :open="incomeOpen" @close="incomeOpen = false" />
 
     <!-- Платёж: одна кнопка «Оплатил»; тихо — «Изменить платёж» -->

@@ -300,6 +300,8 @@ function startDemoMode() {
         movements: [],
         template: 'cushion-3',
         fund: 'reserve',
+        // Лежит на Kaspi Gold (Блок 16, Р-109): в «Цели · N» «Капитала» — «на Kaspi Gold», вне суммы.
+        accountId: 'acc-kaspi',
         payer: 'a',
         updatedAt: new Date().toISOString(),
       },
@@ -366,10 +368,15 @@ function startDemoMode() {
   // паузе ради автокредита) и отметки месяца — аренда оплачена Аруной, зарплата Ильяса пришла. Фонды «Запас» и
   // «Подушка» — «не останавливать» (план ставит на паузу все цели, кроме этих, Р-82: квадрат «Долги» прежний).
   financeStore.choosePlan({ keptGoalIds: ['g-trip', 'g-reserve', 'g-pot'], cushionGoalId: null, months: 24, lump: 0 }, 'a')
-  // Прошлый месяц тоже с отметками — у «Истории» есть итог «Наш <месяц>» и в начале месяца.
+  // Прошлые три месяца с отметками — у «Истории» есть итог «Наш <месяц>» и список месяцев (Блок 16, Р-111); платежи
+  // автокредита с телом — полоса «погашено» в «Долгах» (Р-110).
   const prev = addMonths(monthKey(), -1)
-  financeStore.markPaid('obligation', 'ob-rent', 'b', { period: prev, accountId: null, at: `${prev}-05T05:00:00.000Z` })
-  financeStore.markSalary('a', { period: prev, accountId: null, at: `${prev}-10T05:00:00.000Z` })
+  for (const n of [3, 2, 1]) {
+    const p = addMonths(monthKey(), -n)
+    financeStore.markPaid('obligation', 'ob-rent', 'b', { period: p, accountId: null, at: `${p}-05T05:00:00.000Z` })
+    financeStore.markSalary('a', { period: p, accountId: null, at: `${p}-10T05:00:00.000Z` })
+    financeStore.markPaid('credit', 'cr-car', 'a', { period: p, accountId: null, at: `${p}-18T05:00:00.000Z` })
+  }
   financeStore.markPaid('obligation', 'ob-rent', 'b', { accountId: 'acc-kaspi' })
   // «Отложить по плану» прошлого месяца записан — «История» и сводка прошлого месяца его показывают; части — finance.ts.
   const before = planSave(

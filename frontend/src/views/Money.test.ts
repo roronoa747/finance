@@ -339,10 +339,10 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(squares(html)).toMatch(/aria-current="page"[^>]*>\s*<b[^>]*>История/)
     })
 
-    it('«Долги» (бывший «План»): остаток красным и долговой план под ним; отметок месяца нет; без долгов — «Долгов нет»', async () => {
+    it('«Долги» (бывший «План»; Блок 16, Р-110): сумма остатков и долговой план под ним; отметок месяца нет; без долгов — «Долгов нет»', async () => {
       const store = await family()
       let html = text(await renderScreen(Money, '/money/debts'))
-      expect(html).toContain(`Долги −${money(1_540_000)}`)
+      expect(html).toContain(`Долги ${money(1_540_000)}`)
       expect(html).toContain('Самая дорогая ставка')
       expect(html).not.toContain('оплачено')
       expect(html).not.toContain('чистых')
@@ -382,8 +382,8 @@ describe('views/Money.vue — финансовые показатели (рас�
         })
         store.addAccount({ name: 'Заначка', kind: 'cash', amount: 300_000 }, true)
         const html = lists(await renderScreen(Money, '/money'))
-        // 2 000 000 + 479 260 + 1 200 000 + 300 000 (личный тоже в капитале).
-        expect(html).toContain(`Счета ${money(3_979_260)}`)
+        // 2 000 000 + 479 260 + 1 200 000 + 300 000 (личный тоже в капитале) + цели вне счетов 650 000 (Р-109, Блок 16).
+        expect(html).toContain(`Счета ${money(4_629_260)}`)
         expect(html).toContain(`Kaspi Gold карта · общий ${money(2_000_000)}`)
         expect(html).toContain(`Доллары наличные · ${moneyIn(1_000, 'USD')} · общий ${money(479_260)}`)
         expect(html).toContain(`Депозит Kaspi 14 % · общий ${money(1_200_000)}`)
@@ -544,7 +544,7 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(html).not.toMatch(stepButton)
     })
 
-    it('план: переключатель включён, шаг месяца, прогноз одной строкой от planOutlook, «Уже сэкономили» = planFact, цели на паузе, подушка; «Шаг сделан» и «Изменить режим»', async () => {
+    it('план: переключатель включён, шаг месяца, прогноз одной строкой от planOutlook, «Уже сэкономили» = planFact, цели на паузе, подушка; «Шаг сделан» и «Изменить режим» убраны (Блок 16, Р-110)', async () => {
       const store = await plan()
       const html = await renderScreen(Money, '/money/debts')
       const t = text(html)
@@ -560,9 +560,9 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(t).not.toContain('Уже сэкономили')
       expect(t).toContain('Цели на паузе Отпуск, Машина · взнос идёт в долг')
       expect(t).toContain('Подушка плана Подушка')
-      expect(html).toMatch(stepButton)
-      expect(html).toMatch(/class="[^"]*bg-brand text-brand-ink[^"]*"[^>]*>\s*Шаг сделан/)
-      expect(t).toContain('Изменить режим')
+      // Шаг месяца записывает «Отложил» у строки долга в «Месяце» — здесь кнопок шага нет.
+      expect(html).not.toMatch(stepButton)
+      expect(t).not.toContain('Изменить режим')
       // Шаг внесён — «внесено по плану», досрочка строкой, кнопок нет; «Уже сэкономили» — живой planFact.
       await plan({ payments: [prepay({})] })
       const st = useFinanceStore()
@@ -651,16 +651,6 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(html).not.toMatch(/>\s*Выбрать этот план\s*</)
     })
 
-    it('«Шаг сделан» одним нажатием: досрочка шага со счёта прошлой оплаты (PlanStepAction)', async () => {
-      const store = await plan()
-      store.markPaid('credit', 'cc', 'a', { accountId: 'card' })
-      const card = store.accounts[0].amount
-      await renderScreen(Money, '/money/debts', undefined, [screenMixin({}, (st) => (st.tap as () => void)())])
-      expect(store.payments.filter((p) => p.kind === 'prepay')).toEqual([
-        expect.objectContaining({ targetId: 'cc', amount: 100_000, planId: 'plan', accountId: 'card', mode: 'term' }),
-      ])
-      expect(store.accounts[0].amount).toBe(card - 100_000)
-    })
   })
 
   describe('B2C-44: квадрат «История» — свои операции, отметки, итог и моменты по дням', () => {
@@ -751,13 +741,14 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(empty).not.toContain('Загрузить выписку')
     })
 
-    it('пусто у участника — «Пока пусто» и тихая «Загрузить выписку»; подпись квадрата — число своих операций месяца', async () => {
+    it('пусто у участника — «Пока пусто» и тихая «Загрузить выписку»; подпись квадрата — последний прошлый месяц', async () => {
       await history('member', '2026-11-25T07:00:00Z')
       const html = await renderScreen(Money, '/money/history')
       expect(text(html)).toContain('Пока пусто')
       expect(html).toMatch(/>\s*Загрузить выписку\s*</)
+      // Блок 16 (Р-111): подпись — последний прошлый месяц списка «Истории» (данные с августа).
       await history()
-      expect(text(squares(await renderScreen(Money, '/money/history')))).toContain('История 5 операций')
+      expect(text(squares(await renderScreen(Money, '/money/history')))).toContain('История август')
     })
   })
 

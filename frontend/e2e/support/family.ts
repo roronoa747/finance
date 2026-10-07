@@ -111,6 +111,10 @@ export async function screen(
 export const tapPay = (targetId: string) =>
   screenMixin({}, (s) => (s.pay as (d: unknown) => void)((s.plan as { dues: { targetId: string }[] }).dues.find((d) => d.targetId === targetId)))
 
+/** «Отложил» у строки долга в «Месяце» (`MonthPlan.onPut`, Р-97) — шаг плана «Сначала долги» (Блок 16: «Шаг сделан» убран, Р-110). */
+export const tapPutDebt = () =>
+  screenMixin({}, (s) => (s.onPut as (p: unknown) => void)((s.puts as { kind: string }[]).find((p) => p.kind === 'debt')))
+
 export const at = (iso: string) => vi.setSystemTime(new Date(iso))
 
 export const setOnline = (onLine: boolean) => vi.stubGlobal('navigator', { onLine })

@@ -510,7 +510,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       // «Накоплено по мечтам» строкой в «Деньгах» больше нет — сумма из goalSavings.
       const before = await page(B.pinia, Money, '/money')
       expect(capitalNote(before)).toBe(plain(500_000))
-      expect(moneyAfter(before, 'Счета')).toBe(money(1_300_000))
+      // Блок 16 (Р-109): итог «Счетов» — счета 1 300 000 + цели вне счетов 200 000; «Счета» − долг = капитал.
+      expect(moneyAfter(before, 'Счета')).toBe(money(1_500_000))
       expect(goalSavings(B.store.goals)).toBe(200_000)
 
       // «Удалить счёт» в окне «Сейфа» на A: текст React с обеими целями на нём.
@@ -536,7 +537,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(netWorth(B.store.accounts, B.store.credits, B.store.goals)).toBe(750_000)
       const after = await page(B.pinia, Money, '/money')
       expect(capitalNote(after)).toBe(plain(750_000))
-      expect(moneyAfter(after, 'Счета')).toBe(money(1_000_000))
+      // Счета 1 000 000 + отвязанные цели 450 000 + 100 000 + 200 000 (Р-109) − долг 1 000 000 = 750 000.
+      expect(moneyAfter(after, 'Счета')).toBe(money(1_750_000))
       expect(after).not.toContain('Сейф')
     })
 

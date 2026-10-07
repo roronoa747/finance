@@ -7,8 +7,11 @@ import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, rateField } from '@/lib/money'
 import { monthFromAfter, monthKey } from '@/lib/dates'
+import { hueColor } from '@/lib/palette'
+import { isDark } from '@/lib/theme'
 import {
   amountTotal,
+  capitalGoals,
   creditOutlook,
   duesTotal,
   groupChildren,
@@ -63,8 +66,14 @@ const obligations = computed(() => liveObligations(financeStore.obligations))
 const groups = computed(() => liveGroups(financeStore.obligations))
 
 /* ------------------ Счета ------------------ */
-// Сумма счёта всегда в тенге (валютный — по своему курсу), итог — их сумма.
-const accountsTotal = computed(() => amountTotal(accounts.value))
+// Сумма счёта всегда в тенге (валютный — по своему курсу); итог — счета и цели вне счетов (Р-109): «Счета» − «Кредиты» = «Капитал».
+const goals = computed(() => capitalGoals(financeStore.goals, financeStore.accounts))
+const accountsTotal = computed(() => amountTotal(accounts.value) + goals.value.total)
+const goalsOpen = ref(false)
+const goalHue = (id: string) => {
+  const hue = financeStore.goals.find((g) => g.id === id)?.hue
+  return hue ? hueColor(hue, isDark.value) : undefined
+}
 const KIND_LABEL: Record<Account['kind'], string> = { card: 'карта', cash: 'наличные', envelope: 'конверт', deposit: 'вклад' }
 
 function accountMeta(a: Account): string {
@@ -187,7 +196,7 @@ watch(queryModalOpen, (open) => {
   <!-- Счета -->
   <Section title="Счета">
     <template #action>
-      <span class="text-[13px] font-semibold text-ink-3 num">{{ money(accountsTotal) }}</span>
+      <span class="text-[13px] font-semibold text-ink-3 num" data-accounts-total>{{ money(accountsTotal) }}</span>
     </template>
   </Section>
   <Card flush>
@@ -207,6 +216,32 @@ watch(queryModalOpen, (open) => {
         <PhCreditCard v-else :size="17" />
       </template>
     </Row>
+    <!-- Цели · N: деньги в целях — тоже капитал; на счёте — видна, но второй раз не считается (Р-109) -->
+    <div v-if="goals.items.length" class="border-b border-line last:border-b-0" data-goals>
+      <button type="button" class="press flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left hover:bg-surface-2" :aria-expanded="goalsOpen" @click="goalsOpen = !goalsOpen">
+        <span class="min-w-0 flex-1 truncate text-[14.5px] font-medium text-ink">Цели · {{ goals.count }}</span>
+        <span class="shrink-0 text-[14.5px] font-semibold num text-ink" data-goals-total>{{ money(goals.total) }}</span>
+        <PhCaretRight :size="14" class="shrink-0 text-ink-3 transition-transform" :class="goalsOpen && 'rotate-90'" />
+      </button>
+      <div v-if="goalsOpen" class="mb-2 ml-4 border-l-2 border-line pl-1">
+        <Row
+          v-for="g in goals.items"
+          :key="g.goalId"
+          :title="g.name"
+          :note="g.accountName ? `на ${g.accountName} — уже в счёте` : undefined"
+          clickable
+          :data-goal="g.goalId"
+          @click="router.push(`/goals/${g.goalId}`)"
+        >
+          <template #icon>
+            <span class="grid size-full place-items-center rounded-[10px] text-[13px] font-bold text-dot-ink" :style="{ background: goalHue(g.goalId) }">{{ g.name.slice(0, 1).toUpperCase() }}</span>
+          </template>
+          <template #value>
+            <span class="block text-[14.5px] font-semibold num" :class="g.accountName ? 'text-ink-3' : 'text-ink'">{{ money(g.amount) }}</span>
+          </template>
+        </Row>
+      </div>
+    </div>
     <div v-if="!accounts.length" class="px-4 py-6 text-center text-[13px] text-ink-3">Счетов пока нет</div>
     <div v-if="!authStore.isViewer" class="border-t border-line px-2 py-1.5">
       <Button variant="ghost" class="px-2.5" @click="accountOpen = true">
@@ -219,7 +254,7 @@ watch(queryModalOpen, (open) => {
   <template v-if="openCredits.length">
     <Section title="Кредиты">
       <template #action>
-        <span class="text-[13px] font-semibold text-ink-3 num">{{ money(debtsTotal) }}</span>
+        <span class="text-[13px] font-semibold text-ink-3 num" data-credits-total>{{ money(debtsTotal) }}</span>
       </template>
     </Section>
     <Card flush data-credits>
@@ -318,7 +353,7 @@ watch(queryModalOpen, (open) => {
     @close="selectedCreditId = null"
     @payoff="(id) => { payoffCreditId = id; selectedCreditId = null }"
   />
-  <PayoffSheet :credit-id="payoffCreditId" :plan="null" @close="payoffCreditId = null" />
+  <PayoffSheet :credit-id="payoffCreditId" @close="payoffCreditId = null" />
   <ObligationSheet :obligation-id="selectedObligationId" @close="selectedObligationId = null" />
   <GroupSheets
     :group-id="selectedGroupId"
