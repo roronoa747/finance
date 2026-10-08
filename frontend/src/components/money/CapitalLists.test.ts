@@ -641,7 +641,7 @@ describe('PV-10: модалка кредита и калькулятор дос�
     }
     // «+ Добавить» — выбор из трёх, дальше — форма.
     const choose = await render('/money', { addOpen: true })
-    for (const t of ['Подписка или услуга', 'Долг или рассрочка', 'Группа подписок']) expect(choose).toContain(t)
+    for (const t of ['Подписка или услуга', 'Долг — банку или человеку', 'Группа подписок']) expect(choose).toContain(t)
     expect(await render('/money?add=debt')).toContain('Знаю ставку')
     expect(await render('/capital?add=payment')).toContain('Регулярный платёж')
     // «Внеплановый доход» — лист «Месяца» (Блок 15), на «Деньгах» его нет.
@@ -652,7 +652,7 @@ describe('PV-10: модалка кредита и калькулятор дос�
   it('viewer: Капитал без форм — кнопок добавления нет, старые закладки ?add=… и ?income=1 форм не открывают (B2C-21)', async () => {
     await family('viewer')
     const html = await render('/capital')
-    for (const t of ['Добавить счёт или накопления', 'Подписка или услуга', 'Долг или рассрочка', 'Группа подписок']) {
+    for (const t of ['Добавить счёт или накопления', 'Подписка или услуга', 'Долг — банку или человеку', 'Группа подписок']) {
       expect(html).not.toContain(t)
     }
     for (const path of ['/capital?add=debt', '/capital?add=payment', '/capital?income=1']) {

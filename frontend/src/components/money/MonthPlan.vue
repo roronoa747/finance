@@ -231,6 +231,8 @@ function pay(d: PlanDue) {
   if (last === undefined || estimate) markFor.value = { due: d, account: last }
   else finance.markPaid(d.kind, d.targetId, me.value, { period: props.monthKey, accountId: last })
 }
+/** Долг человеку — «Отдал», как у его строки в «Долгах» (мелочи Р-5). */
+const givenDue = (d: PlanDue) => d.kind === 'credit' && !!d.credit.person
 function unpay(d: PlanDue) {
   payFor.value = null
   finance.unmarkPaid(d.kind, d.targetId, props.monthKey)
@@ -610,10 +612,10 @@ function addFund(kind: 'reserve' | 'cushion') {
         <p class="mb-3 font-num text-[32px] font-bold leading-tight num text-ink">{{ dueNote(paySheet) ? '≈ ' : '' }}{{ money(paySheet.amount) }}</p>
         <div class="flex flex-col gap-1.5">
           <template v-if="paySheet.paid">
-            <p class="p-1 text-center text-[14px] font-semibold text-ok" data-paid>✓ Оплачено</p>
+            <p class="p-1 text-center text-[14px] font-semibold text-ok" data-paid>{{ givenDue(paySheet) ? '✓ Отдал' : '✓ Оплачено' }}</p>
             <Button variant="ghost" size="md" class="w-full" data-unpay @click="unpay(paySheet)">Не оплачено</Button>
           </template>
-          <Button v-else class="w-full" data-pay @click="pay(paySheet)">Оплатил</Button>
+          <Button v-else class="w-full" data-pay @click="pay(paySheet)">{{ givenDue(paySheet) ? 'Отдал' : 'Оплатил' }}</Button>
           <Button variant="ghost" size="md" class="w-full" @click="editDue(paySheet)">Изменить платёж</Button>
         </div>
       </template>

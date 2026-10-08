@@ -489,7 +489,7 @@ describe('views/Money.vue — финансовые показатели (рас�
           expect(text(html)).toContain('Платежи')
           expect(html).not.toMatch(/<button[^>]*>\s*Оплатил/)
           expect(html).not.toMatch(/<button[^>]*>[^<]*(<svg[\s\S]*?<\/svg>)?\s*Добавить/)
-          for (const t of ['Долг или рассрочка', 'Новый долг', 'Регулярный платёж']) expect(html).not.toContain(t)
+          for (const t of ['Долг — банку или человеку', 'Новый долг', 'Регулярный платёж']) expect(html).not.toContain(t)
         }
       })
 

@@ -231,6 +231,10 @@ describe('ML-16: формы «Человеку» и «Людям»', () => {
     expect(sw.getAttribute('aria-checked')).toBe('false')
     sw.click()
     await nextTick()
+    // /ux: пустое «Кому» говорит «Введите, кому», как форма долга человеку.
+    button('Добавить').click()
+    await nextTick()
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain('Введите, кому')
     await type('Кому', 'Маме')
     await type('Сумма в месяц', '100 000')
     button('Добавить').click()

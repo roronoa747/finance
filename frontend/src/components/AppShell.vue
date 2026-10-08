@@ -114,7 +114,7 @@ const actions = computed(() => {
     edit && { to: '/wishes', title: 'Покупка в список желаний', note: 'себе, партнёру или сюрприз', icon: PhShoppingBag },
     edit && { to: '/month?income=1', title: 'Внеплановый доход', note: 'премия, подарок, возврат', icon: PhCoins },
     edit && { to: '/money?add=payment', title: 'Обязательство или подписка', note: 'аренда, связь, страховка', icon: PhRepeat },
-    edit && { to: '/money?add=debt', title: 'Кредит или рассрочка', note: 'долг, платёж, график', icon: PhCreditCard },
+    edit && { to: '/money?add=debt', title: 'Долг', note: 'кредит, рассрочка, человеку', icon: PhCreditCard },
   ].filter((a): a is Exclude<typeof a, false> => Boolean(a))
 })
 

@@ -393,8 +393,14 @@ describe('ML-17: «Долги» — долг человеку, «Людям · N
 
   it('первая отдача — счёт спрашивает лист отметки', async () => {
     await open('member', withPeople({ payments: [] }), '/money/debts')
+    // /ux: полоса есть и до первой отдачи — пустая, строка ровная с кредитом (макет).
+    expect(q('[data-debt="bro"] [data-debt-bar] span')!.style.width).toBe('0%')
     await press(giveIn('bro'))
     expect(txt(dialog())).toContain('Брату')
+    // /ux: кнопка листа — «Отдал», как у строки, не общее «Отметить оплату».
+    const labels = all('[role="dialog"] button').map((b) => txt(b))
+    expect(labels).toContain('Отдал')
+    expect(labels).not.toContain('Отметить оплату')
   })
 
   it('viewer — строка и «Людям» видны, без «Отдал», «+ Людям» и «+ Долг»', async () => {

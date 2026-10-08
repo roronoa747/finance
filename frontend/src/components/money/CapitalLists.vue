@@ -311,7 +311,7 @@ watch(queryModalOpen, (open) => {
         <PhPlus :size="16" weight="bold" /> Подписка или услуга
       </Button>
       <Button variant="secondary" class="w-full justify-start" @click="addKind('debt')">
-        <PhPlus :size="16" weight="bold" /> Долг или рассрочка
+        <PhPlus :size="16" weight="bold" /> Долг — банку или человеку
       </Button>
       <Button variant="secondary" class="w-full justify-start" @click="addKind('group')">
         <PhFolderSimple :size="16" /> Группа подписок

@@ -101,8 +101,9 @@ const addPeopleOpen = ref(false)
           </span>
         </span>
         <span class="type-meta num">{{ rowMeta(r) }}</span>
-        <span v-if="r.paidShare !== null" class="mt-1 block h-1.5 w-full overflow-hidden rounded-full bg-track" data-debt-bar>
-          <span class="block h-full rounded-full bg-ok" :style="{ width: `${Math.round(r.paidShare * 100)}%` }" />
+        <!-- У долга человеку полоса есть и до первой отдачи (пустая) — строка ровная с кредитом, кнопка не жмётся (макет). -->
+        <span v-if="r.paidShare !== null || r.person" class="mt-1 block h-1.5 w-full overflow-hidden rounded-full bg-track" data-debt-bar>
+          <span class="block h-full rounded-full bg-ok" :style="{ width: `${Math.round((r.paidShare ?? 0) * 100)}%` }" />
         </span>
       </button>
       <!-- «Отдал» — у своего предмета, в строке (правило 12); отдано — ✓ у суммы, кнопки нет. -->
@@ -132,7 +133,7 @@ const addPeopleOpen = ref(false)
       <span class="shrink-0 text-[15px] font-semibold num text-ink" data-people-total>{{ money(people.total) }}</span>
       <PhCaretRight :size="14" class="shrink-0 text-ink-3 transition-transform" :class="peopleOpen && 'rotate-90'" />
     </button>
-    <div v-if="peopleOpen" class="mb-2 ml-[33px] border-l-2 border-line pl-3" data-people-list>
+    <div v-if="peopleOpen" class="mb-2 ml-[33px] mr-4 border-l-2 border-line pl-3" data-people-list>
       <template v-for="g in people.parts" :key="g.groupId ?? ''">
         <PaymentLine
           v-for="x in g.rows"

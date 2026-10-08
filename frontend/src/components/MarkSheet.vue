@@ -276,7 +276,7 @@ const unmarkNote = computed(() => {
       </AccountChoice>
 
       <Button class="w-full" @click="form.submit(confirmMark)">
-        {{ record ? 'Сохранить' : salary ? 'Отметить зарплату' : 'Отметить оплату' }}
+        {{ record ? 'Сохранить' : salary ? 'Отметить зарплату' : credit?.person ? 'Отдал' : 'Отметить оплату' }}
       </Button>
     </template>
   </Sheet>

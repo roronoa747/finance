@@ -56,7 +56,7 @@ const obBuckets = computed(() =>
 )
 
 const form = useFormCheck(() => [
-  ['name', !obName.value.trim() && 'Введите название'],
+  ['name', !obName.value.trim() && (obPeople.value ? 'Введите, кому' : 'Введите название')],
   ['amount', parseMoney(obAmount.value) <= 0 ? 'Введите сумму' : !nb.ok.value && 'Нет курса — попробуйте позже'],
 ])
 
