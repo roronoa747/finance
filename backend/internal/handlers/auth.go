@@ -142,28 +142,13 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	member, household, err := h.householdRepo.GetMembership(r.Context(), user.ID)
+	// Without a household — a token without one, as for Google (Р-25): then "с кем".
+	resp, err := h.authResponse(r.Context(), user)
 	if err != nil {
-		if errors.Is(err, repository.ErrMembershipNotFound) {
-			respondJSON(w, http.StatusNotFound, map[string]string{"error": "household membership not found"})
-			return
-		}
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load household membership"})
 		return
 	}
-
-	token, err := h.tokens.GenerateToken(user.ID, household.ID, member.Role, member.Slot)
-	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate token"})
-		return
-	}
-
-	respondJSON(w, http.StatusOK, AuthResponse{
-		Token:     token,
-		User:      user,
-		Household: household,
-		Member:    member,
-	})
+	respondJSON(w, http.StatusOK, resp)
 }
 
 type GoogleLoginRequest struct {

@@ -361,3 +361,4 @@ func TestDeleteAccount(t *testing.T) {
 		t.Errorf("sign-in after deletion: %d %+v", code, again)
 	}
 }
+

@@ -376,7 +376,8 @@ func TestRegisterCompensatesOrphanUser(t *testing.T) {
 	}
 }
 
-func TestLoginWithoutMembershipReturns404(t *testing.T) {
+// Р-25 (B2C-22): a user without a household gets a token without one — then "с кем".
+func TestLoginWithoutMembershipReturnsTokenWithoutHousehold(t *testing.T) {
 	router, repos, _ := setupTestApp()
 
 	hash, err := auth.HashPassword("secret123")
@@ -390,8 +391,10 @@ func TestLoginWithoutMembershipReturns404(t *testing.T) {
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/auth/login",
 		bytes.NewReader(makeAuthJSON("lonely@example.com", "secret123", "", ""))))
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	var got AuthResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &got)
+	if rec.Code != http.StatusOK || got.Token == "" || got.Household != nil || got.Member != nil {
+		t.Fatalf("expected 200 without household, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
