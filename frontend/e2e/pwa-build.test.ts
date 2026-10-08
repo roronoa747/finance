@@ -32,8 +32,8 @@ describe('B2C-53: строка сверху — цвет фона, бренд �
   })
 })
 
-describe.skipIf(!built)('PWA-сборка заменяет React-PWA (MGV-17)', () => {
-  it('манифест совпадает с React-версией', () => {
+describe.skipIf(!built)('PWA-сборка Vue (MGV-17)', () => {
+  it('манифест — имя, язык, standalone', () => {
     const manifest = JSON.parse(readFileSync(resolve(dist, 'manifest.webmanifest'), 'utf-8'))
     expect(manifest).toMatchObject({
       name: 'Family Finance',

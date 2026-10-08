@@ -5,16 +5,18 @@ import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
 import { OPERATIONS_STORAGE_KEYS, readStorage, writeStorage } from '@/lib/storage'
+import { creditDueAmount } from '@/lib/finance'
 import {
   applyRules,
   pairInternalTransfers,
   periodsOf,
+  ruleFor,
   ruleMatchOf,
   seedSpendCategories,
   spendTotals,
 } from '@/lib/statements/model'
-import { matchCandidates, matchKey, operationAt, paymentFits, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
-import type { MerchantRule, Operation, ParsedStatement } from '@/lib/statements/types'
+import { markedOps, matchCandidates, matchKey, operationAt, paymentFits, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
+import type { MerchantRule, Operation, ParsedStatement, SpendTotal } from '@/lib/statements/types'
 import type { OperationWire, StatementUploadResponse } from '@/types/api'
 import type { PersonId } from '@/types/finance'
 
@@ -32,6 +34,10 @@ const KEYS = Object.values(OPERATIONS_STORAGE_KEYS)
  * нет, поэтому «Отменить» работает до отправки.
  */
 export const UPLOAD_HOLD_MS = 6_000
+
+/** Итог тот же: сумма, строки и сумма без отметки — запись не нужна. */
+const sameTotal = (a: SpendTotal | undefined, b: SpendTotal) =>
+  !!a && !a.deletedAt && a.amount === b.amount && a.ops === b.ops && (a.unmarked ?? 0) === (b.unmarked ?? 0)
 
 /** Операций в одном POST /api/operations/batch (сервер принимает до 2000). */
 export const BATCH_SIZE = 500
@@ -184,6 +190,8 @@ export const useOperationsStore = defineStore('operations', () => {
     })
     const n = autoMark(same)
     if (n) lastAutoMarked.value += n
+    // Отмеченные строки уходят из трат сразу, не дожидаясь наблюдателя отметок (хвосты 952/967).
+    writeTotals(periodsOf([op, ...same]))
     await saving
   }
 
@@ -192,6 +200,9 @@ export const useOperationsStore = defineStore('operations', () => {
     const k = matchKey(c)
     if (!declined.value.includes(k)) declined.value = [...declined.value, k]
     save()
+    // Строка не платёж — в раздел платежей она теперь трата (`markedOps`, хвосты 952/967).
+    const op = ops.value[c.opId]
+    if (op) writeTotals(periodsOf([op]))
   }
 
   /** Автоотметка по правилам среди только что отправленных строк; сколько отметилось. */
@@ -311,8 +322,9 @@ export const useOperationsStore = defineStore('operations', () => {
     if (!held.value) return base
     const by = me()
     const periods = periodsOf(draftOps.value)
+    const marks = totalMarks(shown.value)
     const touched = (t: { by: PersonId; kind: string; period: string }) => t.by === by && periods.some((p) => p.kind === t.kind && p.period === t.period)
-    return [...base.filter((t) => !touched(t)), ...periods.flatMap(({ kind, period }) => spendTotals(shown.value, by, kind, period))]
+    return [...base.filter((t) => !touched(t)), ...periods.flatMap(({ kind, period }) => spendTotals(shown.value, by, kind, period, undefined, marks))]
   })
   /** Загрузки семьи вместе с ждущей — ✓ «загрузил за неделю» появляется сразу. */
   const shownUploads = computed<StatementUploadResponse[]>(() => {
@@ -342,20 +354,32 @@ export const useOperationsStore = defineStore('operations', () => {
     if (!periods.length) return
     const by = me()
     const at = new Date().toISOString()
-    finance.mutateHouseholdDoc((doc) => {
-      const byId = new Map((doc.spendTotals ?? []).map((t) => [t.id, t]))
-      for (const { kind, period } of periods) {
-        const next = spendTotals(all.value, by, kind, period, at)
-        const ids = new Set(next.map((t) => t.id))
-        for (const t of byId.values()) {
-          if (t.by === by && t.kind === kind && t.period === period && !ids.has(t.id) && (t.amount || t.ops)) {
-            byId.set(t.id, { ...t, amount: 0, ops: 0, updatedAt: at })
-          }
+    const marks = totalMarks(all.value)
+    const byId = new Map((finance.householdDoc.spendTotals ?? []).map((t) => [t.id, t]))
+    const writes: SpendTotal[] = []
+    for (const { kind, period } of periods) {
+      const next = spendTotals(all.value, by, kind, period, at, marks)
+      const ids = new Set(next.map((t) => t.id))
+      for (const t of byId.values()) {
+        if (t.by === by && t.kind === kind && t.period === period && !ids.has(t.id) && (t.amount || t.ops)) {
+          const { unmarked: _gone, ...rest } = t
+          writes.push({ ...rest, amount: 0, ops: 0, updatedAt: at })
         }
-        for (const t of next) byId.set(t.id, t)
       }
-      doc.spendTotals = [...byId.values()]
+      // Тот же итог второй раз не пишется: наблюдатель отметок будит пересчёт, а запись — синк.
+      for (const t of next) if (!sameTotal(byId.get(t.id), t)) writes.push(t)
+    }
+    if (!writes.length) return
+    finance.mutateHouseholdDoc((doc) => {
+      const merged = new Map((doc.spendTotals ?? []).map((t) => [t.id, t]))
+      for (const t of writes) merged.set(t.id, t)
+      doc.spendTotals = [...merged.values()]
     })
+  }
+
+  /** Отмеченные строки (`markedOps`) и разделы — итоги разделов платежей пишут сумму без отметки (хвосты 952/967). */
+  function totalMarks(list: Operation[]) {
+    return { marked: markedOps(list, matchState(), finance.merchantRules, me(), declined.value), categories: finance.householdDoc.spendCategories ?? [] }
   }
 
   function remember(list: Operation[]) {
@@ -379,9 +403,10 @@ export const useOperationsStore = defineStore('operations', () => {
     const changed = paired.slice(fresh.length).filter((o) => o.internal !== ops.value[o.id]?.internal)
     remember([...fresh, ...changed])
     const periods = periodsOf([...fresh, ...changed])
-    writeTotals(periods)
     // Правила «это платёж по …» отмечают платежи сами (Р-6); отмеченный месяц второй записи не получает.
+    // Отметки — раньше итогов: отмеченные строки разделов платежей не траты (`unmarked`, хвосты 952/967).
     lastAutoMarked.value = autoMark(fresh)
+    writeTotals(periods)
 
     if (demo.value) {
       for (const f of d.files) {
@@ -580,6 +605,38 @@ export const useOperationsStore = defineStore('operations', () => {
     () => [...released.value].sort().join(' '),
     (now, before) => void settleReleased(new Set([...now.split(' '), ...(before ?? '').split(' ')].filter(Boolean))),
     { immediate: true },
+  )
+
+  /*
+   * Отметки по строкам выписки (свои и партнёра — синком): «Да, отметить», ручной «Оплатил», снятие — сумма без
+   * отметки у итогов разделов платежей меняется (хвосты 952/967), итоги свежих периодов переписываются (`sameTotal`
+   * не пишет неизменённые). Подпись — строкой: синк документа без новых отметок пересчёт не будит.
+   */
+  watch(
+    () => (finance.payments ?? []).filter((p) => !p.deletedAt && p.kind !== 'prepay').map((p) => p.opId ?? `${p.kind}:${p.targetId}:${p.period}`).sort().join(' '),
+    () => writeTotals(periodsOf(recentOperations(all.value))),
+  )
+
+  /*
+   * Цели платежей изменились (хвост 966): обязательство удалено в «Капитале», «Отменить подписку», сумма или день
+   * исправлены — у себя или синком партнёра. Строки правил платежа пересчитываются тем же путём, что снятые отметки
+   * (`reapply` — плановый раздел только «таким»), итоги свежих периодов переписываются (`markedOps`: строка цели,
+   * которой больше нет, — трата). Подпись — строкой из полей сопоставления: имя, заметка и синк без правок не будят.
+   */
+  watch(
+    () => [
+      ...finance.obligations.map((o) => [o.id, o.deletedAt ? '×' : '', o.category, o.day, o.every ?? '', o.month ?? '', o.estimate ? 1 : 0, JSON.stringify(o.versions)].join(':')),
+      ...finance.credits.map((c) => [c.id, c.deletedAt ? '×' : '', c.day, c.payment, creditDueAmount(c)].join(':')),
+    ].sort().join(' '),
+    () => {
+      // Смена цели касается только строк с правилом «это платёж по …».
+      const byPayment = all.value.filter((o) => {
+        const rule = ruleFor(o, finance.merchantRules)
+        return !!rule && 'payment' in rule.to
+      })
+      void settleReleased(new Set(byPayment.map((o) => o.id)))
+      writeTotals(periodsOf(recentOperations(all.value)))
+    },
   )
 
   return {

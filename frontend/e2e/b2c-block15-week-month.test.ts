@@ -239,6 +239,8 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     expect(list).not.toContain('data-row="sc_subscriptions"')
     expect(list).toMatch(/data-uploaded="true"[^>]*data-my-uploads|data-my-uploads[^>]*data-uploaded="true"/)
     expect(list).toMatch(/data-uploaded="false" data-partner="b"/)
+    // Хвост 992 устарел (мелочи ML-01): партнёр без выписки — бледный кружок, без подписи «без выписки <имя>».
+    expect(list).not.toContain('без выписки')
 
     // Вида плитками больше нет (Б17): один список, без переключателя.
     expect(list).not.toContain('data-view-toggle')

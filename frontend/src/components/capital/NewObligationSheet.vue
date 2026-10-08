@@ -99,7 +99,7 @@ function createObligation() {
     </Field>
 
     <Field :label="`${obEvery === 'year' ? 'Сумма за год' : 'Сумма в месяц'}, ${CURRENCY_SIGN[obCurrency]}`" name="amount">
-      <NumField v-model="obAmount" placeholder="5 000" />
+      <NumField v-model="obAmount" :currency="obCurrency" placeholder="5 000" />
     </Field>
     <NbRateLine :amount="parseMoney(obAmount)" :currency="obCurrency" :nb="nb" />
 

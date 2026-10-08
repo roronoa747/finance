@@ -148,7 +148,8 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     expect(html.match(/<h2 class="type-h2 text-ink">/g)).toHaveLength(1)
     expect(text(html)).toContain('ТОО Непонятное')
 
-    // Ответ чипом «Подписки» (плановый раздел — из «Свободно» не вычитается): в пачке остался второй продавец.
+    // Ответ чипом «Подписки»: в пачке остался второй продавец. Подписки такой в плане нет, строка не отмечена —
+    // «Свободно» её по-прежнему вычитает (мелочи ML-03, хвост 952).
     let after = ''
     const answered = await screen(A.pinia, Week, '/week', undefined, [
       screenMixin({ questionsOpen: true }, (s) => {
@@ -168,8 +169,8 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     const week = (B.store.householdDoc.spendTotals ?? []).filter((t) => t.by === 'a' && t.kind === 'week' && t.period === '2026-W39' && t.amount > 0)
     expect(week.find((t) => t.categoryId === 'sc_subscriptions')?.amount).toBe(12_000)
     expect(week.find((t) => t.categoryId === '_unknown')?.amount).toBe(4_000)
-    expect(fact(B).amount).toBe(before + 12_000)
-    expect(await restHint(B)).toContain(`Свободно по выпискам — ${text(money(before + 12_000))}`)
+    expect(fact(B).amount).toBe(before)
+    expect(await restHint(B)).toContain(`Свободно по выпискам — ${text(money(before))}`)
     // Блок 15 (Р-95): «Неделя» — только свои траты: на телефоне B цифр Ильяса нет — ни 4 000, ни 12 000; у него только ✓.
     const weekB = await screen(B.pinia, Week, '/week', undefined, sheetOpen())
     expect(text(weekB)).not.toContain(text(money(4_000)))

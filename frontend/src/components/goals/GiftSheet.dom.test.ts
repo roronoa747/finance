@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick, ref, type App } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { defaultSyncDoc, useFinanceStore } from '@/stores/finance'
+import { useAuthStore } from '@/stores/auth'
+import { authAs } from '@/test/planFamily'
+import type { Gift } from '@/types/finance'
 import GiftSheet from './GiftSheet.vue'
 
 /**
@@ -10,7 +13,7 @@ import GiftSheet from './GiftSheet.vue'
  * отдаёт его только автору; сама запись — в личном документе автора, в общем её имени нет. Сервер
  * фото и сжатие — заглушки: проверяется, с каким признаком лист зовёт загрузку.
  */
-const photos = vi.hoisted(() => ({ calls: [] as unknown[][], fail: false }))
+const photos = vi.hoisted(() => ({ calls: [] as unknown[][], fail: false, deleted: [] as string[] }))
 vi.mock('@/lib/photos/store', async (orig) => ({
   ...(await orig<typeof import('@/lib/photos/store')>()),
   uploadPhoto: vi.fn(async (...args: unknown[]) => {
@@ -18,6 +21,10 @@ vi.mock('@/lib/photos/store', async (orig) => ({
     if (photos.fail) throw new Error('offline')
     return 'p1'
   }),
+  deletePhoto: vi.fn(async (id: string) => {
+    photos.deleted.push(id)
+  }),
+  photoUrl: vi.fn(async () => null),
 }))
 vi.mock('@/lib/photos/compress', async (orig) => ({
   ...(await orig<typeof import('@/lib/photos/compress')>()),
@@ -31,6 +38,7 @@ const urls = { create: URL.createObjectURL, revoke: URL.revokeObjectURL }
 beforeEach(() => {
   photos.calls = []
   photos.fail = false
+  photos.deleted = []
   // Сервера нет: запись сюрприза сразу шлёт личный документ — сеть «выключена», повтор по таймеру не наступает.
   vi.stubGlobal('fetch', vi.fn(async () => {
     throw new TypeError('offline')
@@ -50,9 +58,10 @@ afterEach(() => {
   Object.assign(URL, { createObjectURL: urls.create, revokeObjectURL: urls.revoke })
 })
 
-async function openSheet() {
+async function openSheet(o: { edit?: Partial<Gift>; role?: 'member' | 'viewer' } = {}) {
   const pinia = createPinia()
   setActivePinia(pinia)
+  if (o.role) useAuthStore().setAuthData(authAs(o.role))
   const store = useFinanceStore()
   store.setHouseholdDoc(
     {
@@ -65,10 +74,11 @@ async function openSheet() {
     },
     1,
   )
+  const giftId = o.edit ? store.addGift({ forSlot: 'b', name: 'Наушники', price: 90_000, photoId: 'old', ...o.edit }).id : null
   const open = ref(true)
   const root = document.createElement('div')
   document.body.appendChild(root)
-  app = createApp({ render: () => h(GiftSheet, { open: open.value, forSlot: 'b', forName: 'Аруна', onClose: () => (open.value = false) }) })
+  app = createApp({ render: () => h(GiftSheet, { open: open.value, giftId, forSlot: 'b', forName: 'Аруна', onClose: () => (open.value = false) }) })
   app.use(pinia)
   app.mount(root)
   await nextTick()
@@ -137,5 +147,82 @@ describe('GiftSheet в DOM — скрытое фото сюрприза', () => 
     await settle()
     expect(document.body.textContent).toContain('Введите, что это')
     expect(store.gifts).toHaveLength(1)
+  })
+})
+
+describe('GiftSheet в DOM — правка и удаление сюрприза (ML-07, хвост 955)', () => {
+  it('правка имени и цены: «Сохранить» пишет в личный документ, фото прежнее, окно закрыто', async () => {
+    const { store, open, field, button } = await openSheet({ edit: {} })
+    expect(field('Что').value).toBe('Наушники')
+    await type(field('Что'), 'Наушники Sony')
+    await type(field('Сколько'), '75 000')
+    button('Сохранить').click()
+    await settle()
+
+    expect(store.gifts).toHaveLength(1)
+    expect(store.gifts[0]).toMatchObject({ name: 'Наушники Sony', price: 75_000, photoId: 'old' })
+    expect(photos.deleted).toEqual([])
+    expect(open.value).toBe(false)
+  })
+
+  it('новое фото при правке: скрытая загрузка, прежнее удалено с сервера', async () => {
+    const { store, button } = await openSheet({ edit: {} })
+    await pickFile(new File(['img'], 'gift.jpg', { type: 'image/jpeg' }))
+    button('Сохранить').click()
+    await settle()
+
+    expect(photos.calls[0][1]).toEqual({ hidden: true })
+    expect(store.gifts[0].photoId).toBe('p1')
+    expect(photos.deleted).toEqual(['old'])
+  })
+
+  it('критик: «Убрать фото» и «Сохранить» — у сюрприза фото нет, прежнее удалено с сервера', async () => {
+    const { store, button } = await openSheet({ edit: {} })
+    document.querySelector<HTMLButtonElement>('[role="dialog"] button[aria-label="Убрать фото"]')!.click()
+    await nextTick()
+    expect(photos.deleted).toEqual([])
+    button('Сохранить').click()
+    await settle()
+
+    expect(store.gifts[0].photoId).toBeNull()
+    expect(photos.deleted).toEqual(['old'])
+  })
+
+  it('критик: новое фото не загрузилось — остальное записано, прежнее фото на месте; повторное «Сохранить» закрывает окно', async () => {
+    photos.fail = true
+    const { store, open, field, button } = await openSheet({ edit: {} })
+    await type(field('Сколько'), '80 000')
+    await pickFile(new File(['img'], 'gift.jpg', { type: 'image/jpeg' }))
+    button('Сохранить').click()
+    await settle()
+
+    expect(store.gifts[0]).toMatchObject({ price: 80_000, photoId: 'old' })
+    expect(photos.deleted).toEqual([])
+    expect(open.value).toBe(true)
+    expect(document.body.textContent).toContain('Фото не загрузилось — остальное сохранено.')
+    button('Сохранить').click()
+    await settle()
+    expect(open.value).toBe(false)
+  })
+
+  it('«Удалить сюрприз» спрашивает, удаляет запись и её фото', async () => {
+    const { store, open, button } = await openSheet({ edit: {} })
+    button('Удалить сюрприз').click()
+    await nextTick()
+    expect(store.gifts).toHaveLength(1)
+    button('Удалить').click()
+    await settle()
+
+    expect(store.gifts).toHaveLength(0)
+    expect(photos.deleted).toEqual(['old'])
+    expect(open.value).toBe(false)
+  })
+
+  it('viewer: только смотрит — поля выключены, нет «Сохранить» и «Удалить»', async () => {
+    const { field, button } = await openSheet({ edit: {}, role: 'viewer' })
+    expect(field('Что').disabled).toBe(true)
+    expect(field('Сколько').disabled).toBe(true)
+    expect(button('Сохранить')).toBeUndefined()
+    expect(button('Удалить сюрприз')).toBeUndefined()
   })
 })

@@ -1154,6 +1154,14 @@ export function moneySettingsOf(doc: { moneySettings?: MoneySettings | null }): 
   return { ...DEFAULT_MONEY_SETTINGS, potGoalId: null, orderedAt: null, updatedAt: '', ...(doc.moneySettings ?? {}) }
 }
 
+/**
+ * Итог раздела в тратах — одно правило «Свободно», «Месяца», «Истории» и «Недели» (хвосты 952/967): раздел платежей
+ * (`plannedElsewhere`) — только строки без отметки (`unmarked`: незаведённая рассрочка, вторая строка продавца),
+ * отмеченные уже в платежах месяца; остальные разделы и «не разобрано» — весь итог.
+ */
+export const spentOf = (t: SpendTotal, live: SpendCategory[]) =>
+  t.categoryId === UNKNOWN_CATEGORY || !plannedElsewhere(t.categoryId, live) ? t.amount : (t.unmarked ?? 0)
+
 /** Строка трат плана месяца (Р-81): живая, с суммой, раздел не учтён платежами (`plannedElsewhere`). */
 export const planSpendOn = (x: SpendPlan, live: SpendCategory[]) => !x.deletedAt && x.amount > 0 && !plannedElsewhere(x.categoryId, live)
 
@@ -2724,13 +2732,14 @@ export function planMonths(plan: DebtPlan, state: PlanState, key: string): PlanM
 
 /**
  * Что сделать с планами после правки долгов и после слияния (Р-5, Р-9): два активных —
- * старший отменён; долгов с процентами не осталось — активный завершён. У закрытого
+ * старший отменён; долгов с процентами не осталось — активный завершён. Открытый долг без ставки (`rateUnknown`,
+ * из выписки) план не закрывает: проценты у него, скорее всего, есть (хвост 958). У закрытого
  * плана — итог по его досрочкам. null — менять нечего. Кредиты — производные.
  */
 export function settlePlans(plans: DebtPlan[] = [], credits: Credit[], payments: Payment[], t: string): DebtPlan[] | null {
   const latest = activePlan(plans)
   if (!latest) return null
-  const done = costliestCredits(credits).length === 0
+  const done = costliestCredits(credits).length === 0 && !openCredits(credits).some((c) => c.rateUnknown)
   let changed = false
   const next = plans.map((p): DebtPlan => {
     if (p.deletedAt || p.status !== 'active') return p
@@ -3105,7 +3114,7 @@ export function monthPlan(state: MonthPlanState, ctx: MonthPlanCtx): MonthPlan {
         .filter((x) => x.by === p.id && planSpendOn(x, live))
         .map((x) => ({ categoryId: x.categoryId, name: spendCategoryName(named, x.categoryId), plan: x.amount, fact: factOf(x.categoryId) }))
       const fact = has
-        ? mine.filter((t) => t.categoryId === UNKNOWN_CATEGORY || !plannedElsewhere(t.categoryId, live)).reduce((s, t) => s + t.amount, 0)
+        ? mine.reduce((s, t) => s + spentOf(t, live), 0)
         : null
       return { by: p.id, plan: rows.reduce((s, r) => s + r.plan, 0), fact, rows }
     })
@@ -3693,7 +3702,7 @@ export function monthPlanPast(
   const saved = amountTotal(goals)
   const prepaid = amountTotal(counted.filter((p) => p.kind === 'prepay'))
   const spent = totals.length
-    ? totals.filter((t) => t.categoryId === UNKNOWN_CATEGORY || !plannedElsewhere(t.categoryId, live)).reduce((s, t) => s + t.amount, 0)
+    ? totals.reduce((s, t) => s + spentOf(t, live), 0)
     : null
   return {
     key,
@@ -3869,8 +3878,8 @@ function mySpendOf(totals: SpendTotal[], live: SpendCategory[], by: PersonId, we
   const out = new Map<string, number>()
   for (const t of totals) {
     if (t.deletedAt || t.by !== by || t.kind !== 'week' || t.period !== week || t.amount <= 0) continue
-    if (t.categoryId !== UNKNOWN_CATEGORY && plannedElsewhere(t.categoryId, live)) continue
-    out.set(t.categoryId, (out.get(t.categoryId) ?? 0) + t.amount)
+    const spent = spentOf(t, live)
+    if (spent > 0) out.set(t.categoryId, (out.get(t.categoryId) ?? 0) + spent)
   }
   return out
 }
@@ -4117,9 +4126,9 @@ export type FreeByFact = {
 /**
  * «Свободно до конца месяца» по факту выписок обоих (Р-8): доход месяца − обязательства и
  * кредиты по плану (`monthDues`, отметки учтены один раз — сумма из отметки) − взносы в
- * цели по плану − траты по выпискам за месяц, кроме разделов `plannedElsewhere` (кредиты,
- * коммуналка, аренда, подписки — они уже в `monthDues`). Ни одной загрузки за месяц —
- * план (`budgetAmounts.free`) с `byFact: false`.
+ * цели по плану и разложенное сверх плана (`allocatedBeyondPlan`, хвост 951) − траты по выпискам за месяц,
+ * кроме разделов `plannedElsewhere` (кредиты, коммуналка, аренда, подписки — они уже в `monthDues`). Ни одной
+ * загрузки за месяц — план (`budgetAmounts.free`) за вычетом разложенного сверх плана, с `byFact: false`.
  */
 export function freeByFact(
   state: {
@@ -4135,6 +4144,8 @@ export function freeByFact(
     spendCategories?: SpendCategory[]
     book?: RateBook | null
     fxExchanges?: FxExchange[]
+    /** Раскладки (хвост 951): разовые взносы и досрочка сверх плана уменьшают «Свободно» (`allocatedBeyondPlan`). */
+    allocations?: Allocation[]
   },
   totals: SpendTotal[],
   spendCategories: SpendCategory[],
@@ -4144,14 +4155,56 @@ export function freeByFact(
   const income = totalIncome(state.people ?? [], key, salaryCtxOf(state))
   const share = (amount: number) => (income > 0 ? Math.max(0, Math.min(1, amount / income)) : 0)
   const amounts = budgetAmounts(state)
+  const beyond = allocatedBeyondPlan(state, key, amounts.planExtra)
+  const goals = amounts.d3 + amounts.planExtra + beyond
   const spent = monthSpentByFact(totals, spendCategories, key, uploads)
   if (spent === null) {
-    return { amount: amounts.d5, byFact: false, income, dues: amounts.d1 + amounts.d2, goals: amounts.d3 + amounts.planExtra, spent: 0, share: share(amounts.d5) }
+    const amount = amounts.d5 - beyond
+    return { amount, byFact: false, income, dues: amounts.d1 + amounts.d2, goals, spent: 0, share: share(amount) }
   }
   const dues = duesTotal(monthDues(state, key))
-  const goals = amounts.d3 + amounts.planExtra
   const amount = income - dues - goals - spent
   return { amount, byFact: true, income, dues, goals, spent, share: share(amount) }
+}
+
+/** Статьи разбора, которые «Свободно» уже считает: платежи — `dues`, «Жизнь» и «Траты» — траты, «Мечты» — взносы целей. */
+const COUNTED_ARTICLES: readonly string[] = ['must', 'life', 'spend', 'dreams'] satisfies ArticleKey[]
+
+/**
+ * Сколько разложено в месяце `key` сверх плана (хвост 951) — «Свободно» уменьшается на эту сумму. Берутся живые
+ * раскладки зарплаты и остатка месяца (`freed` — нет: он уже в плане прибавкой к взносу). Правило учёта, без двойного
+ * счёта с плановым взносом:
+ * - часть в цель — сколько по всем записям месяца легло в цель сверх её взноса в плане (`monthly`; цель на паузе
+ *   плана «Сначала долги» — 0): «Отложить по плану» кладёт не больше взноса и ничего не добавляет;
+ * - досрочка (`prepay:<id>`) — сверх «Досрочно по плану» (`planExtra`); без плана — вся;
+ * - статья разбора (старые записи Блока 11) — кроме уже посчитанных (`COUNTED_ARTICLES`).
+ * Запись не-плана одного источника — последняя (`allocationFor`); записей плана за месяц бывает несколько — все.
+ */
+export function allocatedBeyondPlan(
+  state: { allocations?: Allocation[]; goals?: Goal[]; plans?: DebtPlan[] },
+  key: string,
+  planExtra: number,
+): number {
+  const month = (state.allocations ?? []).filter((a) => !a.deletedAt && a.period === key && (a.source === 'salary' || a.source === 'rest'))
+  // Последняя — среди записей не-плана: запись плана того же источника позже её не вытесняет (критик ML-02).
+  const loose = month.filter((a) => a.kind !== 'plan')
+  const records = month.filter((a) => a.kind === 'plan' || allocationFor(loose, a) === a)
+  const goals = new Map(liveGoals(state.goals ?? []).map((g) => [g.id, g]))
+  const plan = activePlan(state.plans ?? [])
+  const paused = new Set(plan ? pausedGoals(plan, state.goals ?? []).map((g) => g.id) : [])
+  const toGoal = new Map<string, number>()
+  let prepay = 0
+  let articles = 0
+  for (const a of records) {
+    for (const p of a.parts) {
+      if (p.target.startsWith('prepay:')) prepay += p.amount
+      else if (a.kind === 'breakdown') articles += COUNTED_ARTICLES.includes(p.target) ? 0 : p.amount
+      else if (goals.has(p.target)) toGoal.set(p.target, (toGoal.get(p.target) ?? 0) + p.amount)
+    }
+  }
+  let beyond = Math.max(0, prepay - planExtra) + articles
+  for (const [id, put] of toGoal) beyond += Math.max(0, put - (paused.has(id) ? 0 : goals.get(id)!.monthly))
+  return beyond
 }
 
 /**
@@ -4165,8 +4218,7 @@ export function monthSpentByFact(totals: SpendTotal[], spendCategories: SpendCat
   const live = spendCategories.filter(alive)
   return totals
     .filter((t) => !t.deletedAt && t.kind === 'month' && t.period === key && t.amount > 0)
-    .filter((t) => t.categoryId === UNKNOWN_CATEGORY || !plannedElsewhere(t.categoryId, live))
-    .reduce((a, t) => a + t.amount, 0)
+    .reduce((a, t) => a + spentOf(t, live), 0)
 }
 
 export type DecisionKind = 'match' | 'unknownBatch' | 'keep' | 'monthEnd'

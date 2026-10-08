@@ -7,12 +7,12 @@
 - Экран «Долги» — `/money/debts` → `frontend/src/views/Money.vue:54-55` → `components/money/DebtsWidget.vue`:
   карточка суммы и «без долгов — к <месяц>» (:44-50), строки кредитов кнопками (:52-70, `rowMeta` :33), «Как закрыть
   быстрее ›» (:75-82 → `views/DebtFaster.vue`), тихое «+ Кредит» (:86-88, `!authStore.isViewer`).
-- Лист кредита — `components/capital/CreditSheet.vue` (банковские слова: «Ставка (ГЭСВ)», «Посчитать досрочно» :196,
-  график :171; viewer — блок только чтения :104-124). Форма — `components/capital/NewDebtSheet.vue` («Долг или
+- Лист кредита — `components/capital/CreditSheet.vue` (банковские слова: «Ставка (ГЭСВ)», «Посчитать досрочно» :207,
+  график :182; viewer — блок только чтения :114-134). Форма — `components/capital/NewDebtSheet.vue` («Долг или
   рассрочка», режимы none/rate/term :92-113).
 - **«Подписки · N» на «Долгах» сейчас нет** — свёрнутая группа живёт в «Капитал → Платежи»
   (`CapitalLists.vue:88-95`, шаблон :259-263) и в плане месяца (`MonthPlan.vue:432-439`); построитель —
-  `subscriptionGroup` (`lib/finance.ts:3523-3549`, `SUBS_GROUP_MIN=2`). «Людям · N» — тот же приём.
+  `subscriptionGroup` (`lib/finance.ts:3532-3558`, `SUBS_GROUP_MIN=2`). «Людям · N» — тот же приём.
 - **«Оплатил» у кредита сейчас только в плане месяца** (строка платежа, `MonthPlan.vue:205-226`, `DueRow.vue` →
   `store.markPaid`); в листе кредита кнопки нет (комментарий `CreditSheet.vue:23` устарел).
 - Практика ворот — Р-10 этого бэклога, образец — Блок 17 `идея-и-редизайн` (`block-17-polish/SESSION.md`, «Ворота

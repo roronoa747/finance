@@ -167,6 +167,8 @@ function markBought(id: string, itemName: string) {
 const giftsFor = computed(() => (person.value && person.value.id !== me.value ? financeStore.gifts.filter((g) => g.forSlot === person.value!.id) : []))
 const showGifts = computed(() => canEdit.value && !!person.value && person.value.id !== me.value)
 const openGift = ref(false)
+// Правка сюрприза (ML-07): нажатие на строку — тот же лист в режиме правки.
+const editGiftId = ref<string | null>(null)
 // Фото сюрприза — скрытое, сервер отдаёт его только автору; показываем в строке (критик Блока 3: грузилось, но не показывалось).
 const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
 </script>
@@ -240,13 +242,16 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
         </Callout>
         <div class="flex flex-col">
           <div v-for="g in giftsFor" :key="g.id" class="flex items-center gap-3 border-t border-line py-2.5 first:border-t-0">
-            <img v-if="g.photoId && giftSrc[g.photoId]" :src="giftSrc[g.photoId]!" alt="" class="size-[38px] shrink-0 rounded-[12px] object-cover" />
-            <IconBox v-else><PhGift :size="18" /></IconBox>
-            <div class="min-w-0 flex-1">
-              <div class="truncate font-medium" :class="g.bought ? 'text-ink-2 line-through' : 'text-ink'">{{ g.name }}</div>
-              <div class="type-meta">{{ g.bought ? `куплено ${addedLabel(g.boughtOn)}` : 'сюрприз' }}</div>
-            </div>
-            <span class="shrink-0 text-[14px] font-semibold num" :class="g.bought ? 'text-ink-2' : 'text-ink'">{{ money(g.price) }}</span>
+            <button type="button" :aria-label="`Сюрприз: ${g.name}`" class="flex min-w-0 flex-1 items-center gap-3 text-left cursor-pointer" @click="editGiftId = g.id">
+              <img v-if="g.photoId && giftSrc[g.photoId]" :src="giftSrc[g.photoId]!" alt="" class="size-[38px] shrink-0 rounded-[12px] object-cover" />
+              <IconBox v-else><PhGift :size="18" /></IconBox>
+              <div class="min-w-0 flex-1">
+                <div class="truncate font-medium" :class="g.bought ? 'text-ink-2 line-through' : 'text-ink'">{{ g.name }}</div>
+                <!-- Подпись — только дата покупки: «сюрприз» дублировал заголовок раздела (/ux мелочи 1) -->
+                <div v-if="g.bought" class="type-meta">куплено {{ addedLabel(g.boughtOn) }}</div>
+              </div>
+              <span class="shrink-0 text-[14px] font-semibold num" :class="g.bought ? 'text-ink-2' : 'text-ink'">{{ money(g.price) }}</span>
+            </button>
             <button
               type="button"
               :aria-label="g.bought ? 'Вернуть сюрприз в список' : 'Сюрприз куплен'"
@@ -261,6 +266,7 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
         <Button variant="secondary" class="mt-2 w-full" @click="openGift = true"><PhPlus :size="16" weight="bold" /> Сюрприз</Button>
       </Card>
       <GiftSheet :open="openGift" :for-slot="person.id" :for-name="person.name" @close="openGift = false" />
+      <GiftSheet :open="!!editGiftId" :gift-id="editGiftId" :for-slot="person.id" :for-name="person.name" @close="editGiftId = null" />
     </template>
 
     <!-- «Уже купили» — только когда есть что показать (правило 12: без пустых секций). -->

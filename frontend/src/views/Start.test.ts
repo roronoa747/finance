@@ -315,6 +315,23 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     expect(paid.at < store.householdDoc.credits[0].principalSetAt!).toBe(true)
   })
 
+  it('ML-06 (хвост 959): перевод другого отправителя перед зарплатой — «Да» отмечает август и сентябрь строками правила; вопроса «Это зарплата?» и второго правила нет', async () => {
+    const store = family()
+    seedOps(
+      parsed([
+        // Перевод от брата ≈ оклада — выше зарплаты по выписке.
+        op('d8', '2026-08-09', 590_000, 'Перевод от Дана К.', 'transfer-in'),
+        op('s8', '2026-08-10', 600_000, 'Зарплата ТОО Ромашка', 'income'),
+        op('s9', '2026-09-10', 600_000, 'Зарплата ТОО Ромашка', 'income'),
+      ]),
+    )
+    await renderScreen(Start, '/start/questions', undefined, [act('answerIncome', { incomeSalary: '600 000' })])
+    expect(paidFor(store.payments, 'salary', 'a', '2026-08')).toMatchObject({ amount: 600_000, opId: 's8', source: 'statement' })
+    expect(paidFor(store.payments, 'salary', 'a', '2026-09')).toMatchObject({ opId: 's9' })
+    expect(useOperationsStore().pendingMatches.filter((c) => c.kind === 'salary')).toEqual([])
+    expect(store.merchantRules.filter((r) => 'payment' in r.to && r.to.payment.kind === 'salary')).toHaveLength(1)
+  })
+
   it('возврат приёмки п. 7: зарплату месяца отмечает только приход в допуске оклада — мелкий перевод того же отправителя месяц не отмечает', async () => {
     const store = family()
     // Оклад 30 000 (июль и август), а в сентябре от того же отправителя пришли только 4 700.

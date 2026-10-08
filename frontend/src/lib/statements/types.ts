@@ -96,6 +96,11 @@ export type SpendTotal = Tracked & {
   /** > 0, сумма списаний в целых тенге. */
   amount: number
   ops: number
+  /**
+   * Раздел платежей (`plannedElsewhere`): строки без живой отметки (`markedOps`) — они траты в «Свободно» (хвосты
+   * 952/967); 0 — поля нет. Итоги до этого поля — без него: раздел платежей по-старому вне трат.
+   */
+  unmarked?: number
 }
 
 export interface ParsedStatement {

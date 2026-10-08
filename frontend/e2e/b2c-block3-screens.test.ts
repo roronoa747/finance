@@ -1125,7 +1125,8 @@ describe('e2e / B2C Блок 3 — часть 8 (повторная приёмк
     const monthA = () => Object.fromEntries(B.store.householdDoc.spendTotals!.filter((t) => t.id.startsWith('a:month:2026-09:')).map((t) => [t.categoryId, t.amount]))
 
     // Аренда 220 000 5-го. Первая строка — долг другу той же суммой (ошибочная), вторая — аренда.
-    const parsed = statement('2026-09-01', '2026-09-20', op('2026-09-04', -220_000, 'ИП Ахметов'), op('2026-09-05', -221_000, 'ИП Жолдасбеков'))
+    // Ошибочная — ровно сумма и день аренды: кандидат пары она (ML-06 — очередь по сумме и дню, не по порядку строк).
+    const parsed = statement('2026-09-01', '2026-09-20', op('2026-09-05', -220_000, 'ИП Ахметов'), op('2026-09-06', -221_000, 'ИП Жолдасбеков'))
     const opsA = await upload(A, parsed)
     const wrong = opsA.all.find((o) => o.merchant === 'ИП Ахметов')!
     const right = opsA.all.find((o) => o.merchant === 'ИП Жолдасбеков')!

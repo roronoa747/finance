@@ -5,7 +5,13 @@ import { apiClient, type ApiClient } from '@/api/client'
 import { useAuthStore, DEMO_TOKEN } from './auth'
 import { useFinanceStore } from './finance'
 import { BATCH_SIZE, PULL_LIMIT, UPLOAD_HOLD_MS, toWire, useOperationsStore } from './operations'
-import { assignIds, normalizeMerchant } from '@/lib/statements/model'
+import { applyRules, assignIds, normalizeMerchant } from '@/lib/statements/model'
+
+// Счётчик пересчётов правил (ML-04): та же функция, только видно, сколько раз её звали.
+vi.mock('@/lib/statements/model', async (orig) => {
+  const m = await orig<typeof import('@/lib/statements/model')>()
+  return { ...m, applyRules: vi.fn(m.applyRules) }
+})
 import { parseStatement } from '@/lib/statements/parsers'
 import type { Operation, ParsedStatement } from '@/lib/statements/types'
 import type { OperationsPage, OperationWire, StatementUploadResponse } from '@/types/api'
@@ -508,7 +514,8 @@ describe('stores/operations — сопоставление с отметками
     const finance = family()
     const { client } = fakeServer()
     const store = useOperationsStore()
-    const september = statement('2026-09-01', '2026-09-20', op('2026-09-14', -58_000, 'ИП Жолдасбеков'), op('2026-09-15', -58_000, 'Оплата Kaspi Кредита'))
+    // ИП — ровно в день платежа: кандидат пары он (ML-06 — очередь по сумме и дню, не по порядку строк).
+    const september = statement('2026-09-01', '2026-09-20', op('2026-09-15', -58_000, 'ИП Жолдасбеков'), op('2026-09-16', -58_000, 'Оплата Kaspi Кредита'))
     store.setDraft(draftOf(september))
     await store.send(client)
     const wrong = store.all.find((o) => o.merchant === 'ИП Жолдасбеков')!.id
@@ -566,6 +573,80 @@ describe('stores/operations — сопоставление с отметками
     ])
     // Сентябрь: 15 000 больше не вычитается дважды (план и трата) — «Свободно» больше ровно на него, а не на 297 000.
     expect(free()).toBe(before + 15_000)
+  })
+
+  it('ML-03 (хвост 967): два перевода по 15 000 в месяце, «Да» на один — второй не плановый, «Свободно» больше на 15 000, а не на 30 000', async () => {
+    const finance = family()
+    const p2p = finance.addObligation({ name: 'Курсы', day: 20, category: 'd4', amount: 15_000 })
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    const transfer = (date: string) => ({ ...op(date, -15_000, 'Перевод с карты на карту'), kind: 'transfer-out' as const })
+    store.setDraft(draftOf(statement('2026-09-01', '2026-09-20', transfer('2026-09-05'), transfer('2026-09-20'))))
+    await store.send(client)
+    const free = () =>
+      freeByFact({ ...finance.householdDoc, credits: finance.credits }, finance.householdDoc.spendTotals ?? [], finance.householdDoc.spendCategories ?? [], '2026-09', [
+        { slot: 'a', period_from: '2026-09-01', period_to: '2026-09-20' },
+      ]).amount
+    const before = free()
+
+    await store.acceptMatch(store.pendingMatches.find((c) => c.targetId === p2p)!, client)
+    await nextTick()
+    expect(store.all.map((o) => [o.date, o.categoryId])).toEqual([['2026-09-05', null], ['2026-09-20', 'sc_subscriptions']])
+    expect(free()).toBe(before + 15_000)
+  })
+
+  it('ML-03 (хвост 952): рассрочка без цели в разделе кредитов — трата; строка кредита с вопросом — нет, после «Нет, это другое» — трата', async () => {
+    const finance = family()
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    // Кредит семьи 58 000 15-го — строка ждёт ответа; рассрочка 80 000 — незаведённая (в плане её нет).
+    store.setDraft(draftOf(statement('2026-09-01', '2026-09-20', op('2026-09-14', -58_000, 'Оплата Kaspi Кредита'), op('2026-09-10', -80_000, 'Kaspi Рассрочка'))))
+    await store.send(client)
+    await store.recategorizeAll([{ merchant: normalizeMerchant('Оплата Kaspi Кредита') }, { merchant: normalizeMerchant('Kaspi Рассрочка') }], { categoryId: 'sc_credit' }, client)
+    const month = () => (finance.householdDoc.spendTotals ?? []).find((t) => t.kind === 'month' && t.period === '2026-09' && t.categoryId === 'sc_credit')!
+    expect(month()).toMatchObject({ amount: 138_000, unmarked: 80_000 })
+    store.declineMatch(store.pendingMatches.find((c) => c.kind === 'credit')!)
+    expect(month()).toMatchObject({ amount: 138_000, unmarked: 138_000 })
+  })
+
+  describe('ML-04 (хвост 966): цель правила платежа изменилась — строки пересчитаны', () => {
+    async function marked() {
+      const finance = family()
+      const target = finance.addObligation({ name: 'Курсы', day: 20, category: 'd4', amount: 15_000 })
+      const { client } = fakeServer()
+      const store = useOperationsStore()
+      store.setDraft(draftOf(statement('2026-09-01', '2026-09-20', { ...op('2026-09-20', -15_000, 'Перевод с карты на карту'), kind: 'transfer-out' })))
+      await store.send(client)
+      await store.acceptMatch(store.pendingMatches.find((c) => c.targetId === target)!, client)
+      expect(store.all[0].categoryId).toBe('sc_subscriptions')
+      const free = () =>
+        freeByFact({ ...finance.householdDoc, credits: finance.credits }, finance.householdDoc.spendTotals ?? [], finance.householdDoc.spendCategories ?? [], '2026-09', [
+          { slot: 'a', period_from: '2026-09-01', period_to: '2026-09-20' },
+        ]).amount
+      return { finance, store, target, free }
+    }
+
+    it('обязательство удалено — строка уходит из планового раздела в траты; «Свободно» не завышено на платёж', async () => {
+      const { finance, store, target, free } = await marked()
+      const before = free()
+      finance.removeObligation(target)
+      await nextTick()
+      expect(store.all[0].categoryId).toBeNull()
+      // Платежа в плане больше нет (+15 000), а строка — трата (−15 000): без пересчёта было бы +15 000.
+      expect(free()).toBe(before)
+    })
+
+    it('сумма исправлена вне допуска — строка больше не «такая»; имя — пересчёта нет', async () => {
+      const { finance, store, target } = await marked()
+      const calls = vi.mocked(applyRules).mock.calls.length
+      finance.updateObligation(target, { name: 'Английский', note: 'по средам' })
+      await nextTick()
+      expect(vi.mocked(applyRules).mock.calls.length).toBe(calls)
+      finance.correctObligation(target, 30_000)
+      await nextTick()
+      expect(vi.mocked(applyRules).mock.calls.length).toBeGreaterThan(calls)
+      expect(store.all[0].categoryId).toBeNull()
+    })
   })
 
   it('критик возврата 2: ответ «куда отнести?» о продавце с правилом платежа — раздел остальных строк, правило платежа живо; следующая выписка отмечает 15 000 сама, остальное — в тот раздел', async () => {

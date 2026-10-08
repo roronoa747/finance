@@ -157,7 +157,7 @@ function save() {
 
   <Sheet :open="open" title="Обменял" :z="60" @close="open = false">
     <Field :label="`Сколько, ${sign}`" name="amount">
-      <NumField v-model="amountText" />
+      <NumField v-model="amountText" :currency="currency ?? null" />
     </Field>
     <Field :label="`Курс, ₸ за 1 ${sign}`" name="rate">
       <NumField v-model="rateText" kind="rate" :placeholder="nbRate ? String(nbRate).replace('.', ',') : '505'" />

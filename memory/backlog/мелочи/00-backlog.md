@@ -1,6 +1,6 @@
 # Бэклог «мелочи» (ML)
 
-> **Статус:** в работе — блок 1 ⬜ (следующий шаг — `/worker мелочи 1`).
+> **Статус:** в работе — блок 1 🔄: исполнитель ✅, критик ✅, `/ux` ✅, приёмка ↩ возврат (ML-09: набор с точкой) → исполнитель (возврат) ✅ `eb31f93` → **критик (возврат) ✅** `a97e051`, следующий шаг — `/accept мелочи 1`.
 > Два блока до Блока 4 `идея-и-редизайн`: хвосты и уборка React → «Кредиты шире». Потом Блок 4, потом бриф ИИ.
 
 Источник: `мелочи-brief.md` (резюме интервью подтверждено 2026-10-08). Формат — `memory/process/BACKLOG-GUIDE.md`.
@@ -78,19 +78,19 @@
 
 | Блок | Задача | Файл | Зависит от | Статус |
 |---|---|---|---|---|
-| 1. Хвосты и уборка ⬜ | ML-01 Сверка «вероятно закрытых» хвостов | `block-1-tails/ML-01-verify-stale.md` | — | ⬜ |
-| | ML-02 «Свободно» уменьшается после раскладки | `block-1-tails/ML-02-free-after-allocation.md` | ML-01 | ⬜ |
-| | ML-03 Плановый раздел — только строке с отметкой | `block-1-tails/ML-03-planned-only-marked.md` | ML-02 | ⬜ |
-| | ML-04 Пересчёт строк при изменении цели правила | `block-1-tails/ML-04-reapply-on-target-change.md` | ML-03 | ⬜ |
-| | ML-05 Кредит без ставки: остаток и план честные | `block-1-tails/ML-05-credit-rate-unknown.md` | ML-04 | ⬜ |
-| | ML-06 Кандидат зарплаты не зависит от порядка | `block-1-tails/ML-06-salary-candidate-order.md` | ML-05 | ⬜ |
-| | ML-07 Сюрприз: правка и удаление | `block-1-tails/ML-07-gift-edit-delete.md` | ML-06 | ⬜ |
-| | ML-08 Короткое название по ссылке Kaspi (Go) | `block-1-tails/ML-08-kaspi-title.md` | ML-07 | ⬜ |
-| | ML-09 Центы в валютной сумме | `block-1-tails/ML-09-fx-cents.md` | ML-08 | ⬜ |
-| | ML-10 Будильник базы без React | `block-1-tails/ML-10-db-wakeup.md` | ML-09 | ⬜ |
-| | ML-11 Уборка React из репо | `block-1-tails/ML-11-repo-cleanup.md` | ML-10 | ⬜ |
-| | ML-12 Инструкция владельцу: Supabase и Vercel | `block-1-tails/ML-12-supabase-owner-steps.md` | ML-11 | ⬜ |
-| | ML-13 e2e блока и закрытие хвостов | `block-1-tails/ML-13-e2e-close-tails.md` | ML-01…ML-12 | ⬜ |
+| 1. Хвосты и уборка 🔄 | ML-01 Сверка «вероятно закрытых» хвостов | `block-1-tails/ML-01-verify-stale.md` | — | ✅ |
+| | ML-02 «Свободно» уменьшается после раскладки | `block-1-tails/ML-02-free-after-allocation.md` | ML-01 | ✅ |
+| | ML-03 Плановый раздел — только строке с отметкой | `block-1-tails/ML-03-planned-only-marked.md` | ML-02 | ✅ |
+| | ML-04 Пересчёт строк при изменении цели правила | `block-1-tails/ML-04-reapply-on-target-change.md` | ML-03 | ✅ |
+| | ML-05 Кредит без ставки: остаток и план честные | `block-1-tails/ML-05-credit-rate-unknown.md` | ML-04 | ✅ |
+| | ML-06 Кандидат зарплаты не зависит от порядка | `block-1-tails/ML-06-salary-candidate-order.md` | ML-05 | ✅ |
+| | ML-07 Сюрприз: правка и удаление | `block-1-tails/ML-07-gift-edit-delete.md` | ML-06 | ✅ |
+| | ML-08 Короткое название по ссылке Kaspi (Go) | `block-1-tails/ML-08-kaspi-title.md` | ML-07 | ✅ |
+| | ML-09 Центы в валютной сумме | `block-1-tails/ML-09-fx-cents.md` | ML-08 | ✅ |
+| | ML-10 Будильник базы без React | `block-1-tails/ML-10-db-wakeup.md` | ML-09 | ✅ |
+| | ML-11 Уборка React из репо | `block-1-tails/ML-11-repo-cleanup.md` | ML-10 | ✅ |
+| | ML-12 Инструкция владельцу: Supabase и Vercel | `block-1-tails/ML-12-supabase-owner-steps.md` | ML-11 | ✅ |
+| | ML-13 e2e блока и закрытие хвостов | `block-1-tails/ML-13-e2e-close-tails.md` | ML-01…ML-12 | ✅ |
 | 2. Кредиты шире ⬜ *(M + ворота макета)* | ML-14 Макет «до \| после» и ворота | `block-2-people-debts/ML-14-mockup-gate.md` | Блок 1 🏁 | ⬜ |
 | | ML-15 Модель и расчёты | `block-2-people-debts/ML-15-model-finance.md` | ML-14 (ворота ✅) | ⬜ |
 | | ML-16 Формы «Человеку» и «Людям» | `block-2-people-debts/ML-16-forms.md` | ML-15 | ⬜ |
@@ -141,7 +141,9 @@ ML-12 · закрытие в §4 `идея-и-редизайн` → ML-13 · «�
 - **Стенд:** `cd frontend && npm run dev -- --port 5174 --strictPort` (демо) или Go на моках; 390 px, обе темы,
   `ru-RU`, `Asia/Almaty`; member и viewer. Браузерные проверки — `playwright-core` из корневого `node_modules`
   **до ML-11**, после — из `frontend/node_modules` (ML-11 переносит). Фоновые задачи Bash — `timeout: 7200000`.
+- **После ML-11:** `playwright-core` 1.63.0 — devDependency `frontend`; импорт в скриптах сессий —
+  `file:///C:/Users/SW/finance/frontend/node_modules/playwright-core/index.mjs`. Корневых `node_modules`/`package.json` нет.
 - **Деньги** — целые тенге; все числа — `frontend/src/lib/finance.ts`; цвета — токены `frontend/src/style.css` (пары
   тёмной темы). Мутационные проверки — откат копией файла, не `git checkout`.
-- **Расчёты долгов:** `debtsOverview` (`lib/finance.ts:2595`), `costliestCredits` (:758, только ставка > 0),
-  `creditSplit` (:1290), `store.markPaid` (`stores/finance.ts:1305`) — общие для ML-05 и ML-15…ML-17.
+- **Расчёты долгов:** `debtsOverview` (`lib/finance.ts:2603`), `costliestCredits` (:758, только ставка > 0),
+  `creditSplit` (:1298), `store.markPaid` (`stores/finance.ts:1305`) — общие для ML-05 и ML-15…ML-17.

@@ -111,7 +111,7 @@ function createAccount() {
     </Field>
 
     <Field :label="`Сумма, ${CURRENCY_SIGN[newAccountCurrency]}`" name="amount">
-      <NumField v-model="newAccountAmount" />
+      <NumField v-model="newAccountAmount" :currency="newAccountCurrency" />
     </Field>
 
     <NbRateLine :amount="parsedAccountAmount" :currency="newAccountCurrency" :nb="nb" />

@@ -94,6 +94,33 @@ describe('B2C-43: переключатель «Сначала долги»', () 
   })
 })
 
+// ML-05 (хвост 958): открыт долг без ставки (из выписки) — ни «нет», ни «закрыты»: «Ставку … уточните».
+it.each([['без прошлых планов', false], ['с прошлым планом', true]])('рассрочки и долг без ставки (%s): «Долгов с процентами нет» и «закрыты» не пишутся — «Ставку … уточните»', async (_, past) => {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  useAuthStore().setAuthData(authAs('member'))
+  const doc = planFamilyDoc({ plans: past ? [planOf({ status: 'cancelled', endedAt: '2026-08-20T05:00:00.000Z', startedAt: '2026-07-10T05:00:00.000Z' })] : [] })
+  doc.credits = [
+    ...doc.credits.filter((c) => c.annualRate === 0),
+    { id: 'kaspi', name: 'Оплата Kaspi Кредита', note: '', principal: 600_000, annualRate: 0, rateUnknown: true, payment: 50_000, day: 24, updatedAt: '' },
+  ]
+  useFinanceStore().setHouseholdDoc(doc, 1)
+  const router = createRouter({ history: createMemoryHistory(), routes })
+  await router.push('/money/debts')
+  await router.isReady()
+  const root = document.createElement('div')
+  document.body.appendChild(root)
+  app = createApp(PlanSquare)
+  app.use(pinia)
+  app.use(router)
+  app.mount(root)
+  await nextTick()
+  const text = document.body.textContent ?? ''
+  expect(text).not.toContain('Долгов с процентами нет')
+  expect(text).not.toContain('закрыты')
+  expect(text).toContain('Ставку «Оплата Kaspi Кредита» уточните — тогда сравним.')
+})
+
 // Критик Б17: «Закрыть быстрее» при одних рассрочках без процентов — строка «Долгов с процентами нет», без пустого «Подробнее».
 it('только рассрочки без процентов: «Долгов с процентами нет», «Подробнее» нет', async () => {
   await mount(false, true)

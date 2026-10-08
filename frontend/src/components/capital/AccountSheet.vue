@@ -145,7 +145,7 @@ const accountRemoveWarning = computed(() => {
 
         <template v-if="activeAccount.currency">
           <Field :label="`Сумма, ${CURRENCY_SIGN[activeAccount.currency]}`">
-            <NumFieldBlur :initial="plain(activeAccount.foreignAmount ?? 0)" @commit="onForeignAmount" />
+            <NumFieldBlur :initial="plain(activeAccount.foreignAmount ?? 0)" :currency="activeAccount.currency" @commit="onForeignAmount" />
           </Field>
           <p v-if="nbRate" class="-mt-2.5 mb-3 text-[12px] text-ink-2 num">
             ≈ {{ money(activeAccount.amount) }} по курсу Нацбанка
