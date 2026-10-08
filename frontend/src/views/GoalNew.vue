@@ -194,7 +194,7 @@ const inShell = inject<boolean>('ff-shell-actions', false)
         size="preview"
         :src="previewSrc"
         :author="template?.photo.author"
-        :line="template ? `${GOAL_TYPES.find((k) => k.type === template!.type)?.name ?? ''} · ${template.name}` : 'Своё фото'"
+        line=""
       />
       <Field label="Название" name="name">
         <Input v-model="name" placeholder="Япония" />

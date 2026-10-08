@@ -64,15 +64,15 @@ describe('«Деньги»: квадраты и «История» (B2C-21 → �
     expect(await renderScreen(Money, '/money/history')).toContain('Наш сентябрь')
   })
 
-  it('настройки: «Разбор выписок» — разделы по словарю до первой выписки, правил нет; viewer раздела не видит', async () => {
+  it('настройки: «Разбор трат» — разделы по словарю до первой выписки, правил нет; viewer раздела не видит', async () => {
     family()
     const html = await renderScreen(Settings, '/settings')
-    expect(html).toContain('Разбор выписок')
+    expect(html).toContain('Разбор трат')
     expect(html).toContain('Появятся после первой выписки — пока разделы по словарю.')
     expect(html).toContain('Правил пока нет.')
 
     setActivePinia(createPinia())
     family('viewer')
-    expect(await renderScreen(Settings, '/settings')).not.toContain('Разбор выписок')
+    expect(await renderScreen(Settings, '/settings')).not.toContain('Разбор трат')
   })
 })

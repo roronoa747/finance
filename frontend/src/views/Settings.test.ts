@@ -60,7 +60,7 @@ describe('B2C-13: /settings и /money (SSR)', () => {
     expect(html.indexOf('С кем')).toBeLessThan(html.indexOf('Выйти из аккаунта'))
     expect(html).not.toContain('<details open')
     expect(html).not.toContain('Цвета разделов')
-    const parse = html.slice(html.lastIndexOf('<details', html.indexOf('Разбор выписок')), html.indexOf('Разбор выписок'))
+    const parse = html.slice(html.lastIndexOf('<details', html.indexOf('Разбор трат')), html.indexOf('Разбор трат'))
     expect(parse).toContain('<summary')
   })
 

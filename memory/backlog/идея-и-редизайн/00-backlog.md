@@ -1720,6 +1720,34 @@ B2C-37…B2C-39 (Р-13, Р-18) · скоуп 14 «один план» → Бло
 - Демо: «Запас» на Kaspi Gold, три прошлых месяца отметок (аренда, зарплата, автокредит с телом). e2e —
   `e2e/b2c-block16-money-screens.test.ts`; шаг плана в старых e2e — `tapPutDebt` (`e2e/support/family.ts`).
 
+**После Блока 17 (Полировка; исполнитель, 2026-10-08)**
+- Документ, сервер и `finance.ts` не менялись (дифф `lib/finance.ts` пуст); миграций нет.
+- **Формы (Р-114):** `kit/useFormCheck(rules)` — правила формы по порядку `[имя поля, текст ошибки | false]`;
+  `form.submit(action)` — всё верно → `action()`, иначе строка под первым неверным полем, прокрутка и фокус. Поле —
+  `kit/Field name="…"` (provide/inject; `Input`/`NumField`/`Select` внутри получают `aria-invalid` и
+  `aria-describedby`); `Field` без `label` — обёртка для плиток и выбора, `AccountChoice name`. Одна форма на
+  компонент (вторая перекроет первую), разные шаги — одна форма, правила по шагу. Поле ушло со страницы (лист закрыт)
+  — его ошибка гаснет. Кнопки форм `disabled` не ставят; `disabled` — только «идёт работа» (busy), viewer, границы
+  месяцев/недель и `StrategyCompare` «Выбрать этот план» (строка «почему» под ней). Слот `Field #hint` — «?» у подписи.
+- **Прокрутка (Р-115):** `components/useScrollMemory(mainEl, isRoot)` в `AppShell` — `scrollTop` `<main>` по `path`
+  перед уходом (`router.beforeEach`); «назад» (`router.options.history.listen`) и корень вкладки (`ROOTS`) — на место,
+  дописывая по кадрам до ~2 с; вперёд — сверху; смена только query — не трогает. Лист `kit/Sheet` без «ручки»; пока
+  открыт хоть один — `html[data-sheet-open]` запирает окно и `<main>` (`style.css`, вне слоя).
+- **Тишина (Р-116):** шапка без подзаголовков (кроме «Настроек»); «Свободно по выпискам» и дни до зарплаты — подсказка
+  у «Остаётся» в `MonthPlan` (`freeByFact`, `untilPayday`); дата, «хватает ли», обмены — `money/SalarySheet`
+  (`SalaryExchange part="button" | "line"`); точки `PlanSwitch` нет (зовут `data-section-dot`, `data-past-dot`);
+  чипы `MoneySquares` без чисел; итог «Счетов» и долги — `Hint` у суммы капитала; ставка и срок кредита — в листе
+  кредита («закроется в …», `monthInAfter`). «Неделя» — только список (плиток и `readWeekView` нет; ключ
+  `WEEK_VIEW_KEY` остался), «Разобрать» — в строке «Не разобрано» или своей строке «Вопросы».
+- **Геометрия (Р-117):** `ui/button.ts` — `default`/`lg` 52, `md` 44, `sm` 32, variant `soft`; `opt`/`opt-on` — варианты
+  в листах; `type-h1` 25, `type-percent`/`type-big` 34, подписи `--ink-2`. «Закрыть быстрее» — свой экран
+  `/money/debts/faster` (`views/DebtFaster.vue` → `PlanSquare`: сверху переключатель и «на N мес. раньше», остальное —
+  за «Подробнее»); на «Долгах» — ссылка `a[data-debts-calc]`.
+- **Демо (Р-118):** картинки — `frontend/src/assets/demo/*.jpg`; id фото `demo:<имя>` — `lib/photos/store.ts`
+  (`DEMO_PHOTO`, `demoPhotoUrl`; `photoUrl` отдаёт адрес бандла, `deletePhoto` сервер не зовёт). Люди демо — «Вы» /
+  «Партнёр», семья «Семья»; `adoptDemo` уносит только id — байты не грузятся.
+- e2e — `e2e/b2c-block17-polish.test.ts` (happy-dom: формы, «назад», шапки, демо, viewer).
+
 **Грабли среды**
 - **`cmd/migrate` в прод запускает владелец** в своём терминале (клинап Б1): агенту чтение
   `memory/secrets/supabase-db.md` не разрешено автопроверкой прав, а коннектор Supabase прод-проект

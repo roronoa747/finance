@@ -42,7 +42,7 @@
 *{box-sizing:border-box}
 body{background:var(--pg-bg);color:var(--pg-fg);font:15px/1.4 var(--font);margin:0}
 button{font:inherit;color:inherit}
-.wrap{max-width:860px;margin:0 auto;padding-inline:16px;padding-block:20px 60px;display:flex;flex-direction:column;gap:40px}
+.wrap{max-width:1260px;margin:0 auto;padding-inline:16px;padding-block:20px 60px;display:flex;flex-direction:column;gap:40px}
 header.head{display:flex;flex-direction:column;gap:10px}
 h1{font-size:28px;letter-spacing:-.02em;margin:0;text-wrap:balance}
 .sub{color:var(--pg-mute);margin:0;max-width:62ch}
@@ -55,11 +55,13 @@ h1{font-size:28px;letter-spacing:-.02em;margin:0;text-wrap:balance}
 .grp{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--brand);margin:0 0 -24px}
 section.pair{display:flex;flex-direction:column;gap:12px;scroll-margin-top:12px}
 h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
-.row{display:grid;grid-template-columns:repeat(2,minmax(0,390px));gap:18px;justify-content:start}
+.row{display:grid;grid-template-columns:repeat(3,minmax(0,390px));gap:18px;justify-content:start}
+@media (max-width:1240px){.row{grid-template-columns:repeat(2,minmax(0,390px))}}
 @media (max-width:820px){.row{grid-template-columns:minmax(0,390px)}}
 .col{display:flex;flex-direction:column;gap:6px;min-width:0}
 .tagc{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--pg-mute)}
 .col.after .tagc{color:var(--ok)}
+.col.now .tagc{color:var(--brand)}
 .r12{font-size:13.5px;color:var(--pg-mute);margin:0;max-width:72ch;line-height:1.5}
 .r12 b{color:var(--pg-fg);font-weight:650}
 .legend{display:flex;flex-direction:column;gap:10px;background:var(--surface);color:var(--ink);border-radius:20px;padding:16px;max-width:390px}
@@ -176,7 +178,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
 <div class="wrap">
 <header class="head">
   <h1>Полировка · до | после</h1>
-  <p class="sub">Слева — как сейчас (демо), справа — предложение. Под парой: главное действие и куда переехали числа — ничего не пропадает, расчёты те же.</p>
+  <p class="sub">Слева — как было (демо), в середине — утверждённый макет, справа — стенд Блока 17 (демо, 390 px). Под парой: главное действие и куда переехали числа — ничего не пропадает, расчёты те же.</p>
   <div class="theme" role="group" aria-label="Тема">
     <button type="button" data-t="auto" aria-pressed="true">Авто</button>
     <button type="button" data-t="light" aria-pressed="false">Светлая</button>
@@ -217,6 +219,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
       <div class="li"><span class="thumb" style="background-image:url(img/boots.jpg)"></span><span class="m"><span class="n">Сапоги</span><span class="meta">Партнёр</span></span><span class="v">65 000 ₸</span></div>
     </div>
   </div><div class="tabs"><span class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>Мечты</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>План</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 14.5h3"/></svg>Деньги</span><span class="plus">+</span></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="dreams-now" alt="Мечты — стенд Блока 17" loading="lazy"></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> мечта — нажатие на фото; новая цель — «+ Новая» у списка целей. <b>Переехало:</b> «Октябрь · имена» — убрано (кружки есть); «ноябрь 2027», «к сентябрю 2034» → экран цели; «Свободно · до зарплаты» → подсказка (?) у «Остаётся» в «Месяце» и лист зарплаты; кнопки «Открыть» → вся строка нажимается.</p>
 </section>
@@ -240,6 +243,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
     </div>
     <div class="list"><div class="li"><span class="m"><span class="n">8 недель</span></span><span class="chev">›</span></div></div>
   </div><div class="tabs"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>Мечты</span><span class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>План</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 14.5h3"/></svg>Деньги</span><span class="plus">+</span></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="week-now" alt="Неделя — стенд Блока 17" loading="lazy"></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> «Разобрать» — у строки «Не разобрано» (была «! 3» сверху). <b>Переехало:</b> «↑ 24 %», «прошлая неделя», стрелки у разделов → «8 недель»; «из 40 000» → лист раздела; точка у «Месяц», строка «демо: только на этом телефоне», переключатель ▦ — убраны (вид плитками — на ваше решение).</p>
 </section>
@@ -264,6 +268,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
       <div class="li"><span class="dot" style="--c:var(--s3)"></span><span class="m"><span class="n">Цели и фонды<span class="bdot"></span></span><span class="meta">0 из 4 отложено</span></span><span class="v">270 000</span><span class="chev">›</span></div>
     </div>
   </div><div class="tabs"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>Мечты</span><span class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>План</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 14.5h3"/></svg>Деньги</span><span class="plus">+</span></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="month-now" alt="Месяц — стенд Блока 17" loading="lazy"></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> «Обменял» — у своей зарплаты; «Отложил» / «Оплатил» — в строках разделов. <b>Переехало:</b> «8 октября», «ждём 20 октября», «+321 805» (хватает ли), «обменяно 500 € из 1 500 €» → лист зарплаты; «из 1 211 310» → подсказка (?) у «Остаётся»; карточка «Отложим · Потратим · Остаётся» — повтор кольца и строк, убрана.</p>
 </section>
@@ -291,6 +296,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
       <div class="li"><span class="acc"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M7 15h4"/></svg></span><span class="m"><span class="n">Автокредит</span><span class="meta">кредит</span></span><span class="v">1 597 324 ₸</span><span class="chev">›</span></div>
     </div>
   </div><div class="tabs"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>Мечты</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>План</span><span class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 14.5h3"/></svg>Деньги</span><span class="plus">+</span></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="money-now" alt="Капитал — стенд Блока 17" loading="lazy"></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> счёт — нажатие на строку; «+ Добавить счёт» — тихо в конце списка. <b>Переехало:</b> числа на чипах и слово «Капитал» над суммой — повтор, убраны; «Счета 3 991 310» → подсказка (?) у суммы («счета − долги»); «пришла / ждём …» → лист зарплаты; «1 500 €» остаётся под суммой.</p>
 </section>
@@ -309,6 +315,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
     <div class="list"><div class="li"><span class="m"><span class="n">Как закрыть быстрее</span></span><span class="chev">›</span></div></div>
     <button class="gh l" type="button">+ Кредит</button>
   </div><div class="tabs"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>Мечты</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>План</span><span class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 14.5h3"/></svg>Деньги</span><span class="plus">+</span></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="debts-now" alt="Долги — стенд Блока 17" loading="lazy"></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> кредит — нажатие на строку; «+ Кредит» — тихо внизу. <b>Переехало:</b> «19 % · до июня 2028» → лист кредита; слово «Долги» над суммой — повтор чипа, убрано.</p>
 </section>
@@ -328,6 +335,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
       <div class="li"><span class="m"><span class="n">Подробнее</span><span class="meta">шаги по месяцам, копить или гасить, своя сумма</span></span><span class="chev">⌄</span></div>
     </div>
   </div><div class="tabs"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>Мечты</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>План</span><span class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 14.5h3"/></svg>Деньги</span><span class="plus">+</span></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="credit-now" alt="Экран кредита — стенд Блока 17" loading="lazy"></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> один переключатель «Сначала долги»; «Отложил» в долг — по-прежнему у строки долга в «Месяце». <b>Одна крупная цифра</b> — на сколько раньше. <b>Скрыто в «Подробнее»:</b> «Самая дорогая ставка», проценты в месяц 25 291, доля 27 %, переплата 274 623 → 134 022, «Посчитать на свою сумму» (с подсказанной суммой 86 000), «Копить или гасить?», «Шаги по месяцам». Абзац и розовый блок — убраны. Экран открывается отдельно, сверху.</p>
 </section>
@@ -346,6 +354,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
     </div>
     <div class="list"><div class="li"><span class="m"><span class="n">Все записи</span></span><span class="chev">›</span></div></div>
   </div><div class="tabs"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>Мечты</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>План</span><span class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 14.5h3"/></svg>Деньги</span><span class="plus">+</span></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="history-now" alt="История — стенд Блока 17" loading="lazy"></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> месяц — нажатие на строку. <b>Переехало:</b> строка «Зелёным — сколько отложили» → подсказка (?) у зелёной суммы; «сентябрь» на чипе — убран.</p>
 </section>
@@ -367,6 +376,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
     <div class="pause"><span>На паузе — взнос идёт в долг</span><span class="chev" style="flex:0">›</span></div>
     <button class="gh" type="button">Подробнее</button>
   </div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="goal-now" alt="Цель — стенд Блока 17" loading="lazy"></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> «Пополнить» — одна, у срока цели. <b>Переехало:</b> «мечта · имена» — убрано; «Поделиться» → значок ⤴ в шапке; «осталось 85 взносов · после плана» → «Подробнее»; абзац паузы → строка, ведёт к «Закрыть быстрее». Срок цели живёт здесь (Р-116).</p>
 </section>
@@ -384,6 +394,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
     <button class="b1" type="button">Готово — к мечте</button>
     <button class="gh" type="button">Назад</button>
   </div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="goalnew-now" alt="Новая мечта — стенд Блока 17" loading="lazy"></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> «Готово — к мечте» всегда яркая; нажали с пустым полем — поле подсвечено, под ним одна строка, ничего не сохранено (Р-114). Так во всех листах и формах. Подпись «Машина · Машина» на фото — убрана, автор фото — остаётся.</p>
 </section>
@@ -401,6 +412,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
       <div class="tile"><span class="im" style="background-image:url(img/boots.jpg)"></span><span class="tx">Сапоги<b>65 000 ₸</b></span></div>
     </div>
   </div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="wishes-now" alt="Желания — стенд Блока 17" loading="lazy"></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> «+» в шапке. <b>Переехало:</b> подзаголовок «не мечты — покупки поменьше» — убран; фото у всех желаний демо (Р-118; здесь — для примера, подбор — в B2C-110); имена — «Вы / Партнёр».</p>
 </section>
@@ -420,6 +432,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
     <label class="fld"><span>День платежа</span><span class="inp">12</span></label>
     <button class="b1" type="button">Добавить</button>
   </div></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="s-newdebt-now" alt="Новый кредит — стенд Блока 17" loading="lazy"></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> «Добавить» — яркая, по нажатию — первое пустое поле. <b>Переехало:</b> пояснение «Рассрочка: платите ровно столько…» → подсказка (?) у «Проценты».</p>
 </section>
@@ -438,6 +451,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
     <button class="b1" type="button">Сохранить</button>
     <button class="gh" type="button">Посчитать досрочно</button>
   </div></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="s-credit-now" alt="Лист кредита — стенд Блока 17" loading="lazy"></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> «Сохранить». <b>Сюда переехали</b> ставка и срок из строки «Долги». <b>Скрыто:</b> «За всё время: в долг …, банку …» → подсказка (?) у названия; крупная серая «Посчитать досрочное погашение» посреди формы → тихая ссылка под «Сохранить».</p>
 </section>
@@ -455,6 +469,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
     <div class="fld"><span>Кто видит</span><div class="opts"><span class="on">Семья</span><span>Только я</span></div></div>
     <button class="b1" type="button">Добавить счёт</button>
   </div></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="s-account-now" alt="Новый счёт — стенд Блока 17" loading="lazy"></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> «Добавить счёт» — яркая. <b>Геометрия:</b> все варианты — одна высота 44 px; «Общий (семья) / Личный (только мне)» → «Семья / Только я» внизу; заголовок «Счёт или накопления» → «Счёт».</p>
 </section>
@@ -471,6 +486,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
     <label class="fld"><span>Куда направить</span><span class="inp">Выберите… <span style="margin-left:auto" class="chev">⌄</span></span></label>
     <button class="b1" type="button">Записать</button>
   </div></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="s-extra-now" alt="Доход — стенд Блока 17" loading="lazy"></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> «Записать» — яркая. <b>Текст:</b> три строки пояснения → одна. <b>Геометрия:</b> «Кому» — те же варианты, что в остальных листах.</p>
 </section>
@@ -486,6 +502,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
     <div class="fld"><span>Чьё</span><div class="opts"><span class="on">Вы</span><span>Партнёр</span></div></div>
     <button class="b1" type="button">Добавить в список</button>
   </div></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="s-wish-now" alt="Новое желание — стенд Блока 17" loading="lazy"></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> «Добавить в список» — яркая. Строка «По ссылке — в приложении» — убрана (механика).</p>
 </section>
@@ -503,6 +520,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
     </div>
     <button class="gh" type="button">Изменить оклад</button>
   </div></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="s-salary-now" alt="Лист зарплаты — стенд Блока 17" loading="lazy"></div></div></div>
 </div>
 <p class="r12"><b>Сюда переехали</b> с «Месяца» и «Капитала»: дата («ждём / пришла»), «хватает ли» (+7 010, у вас +321 805), у валютной — «обменяно 500 € из 1 500 €». Своя пришедшая — «Пришла» / «Обменял» в строке, как сейчас.</p>
 </section>
@@ -518,6 +536,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
     <label class="fld"><span>День зарплаты</span><span class="inp">20</span></label>
     <button class="b1" type="button">Изменить оклад</button>
   </div></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="s-oklad-now" alt="Оклад — стенд Блока 17" loading="lazy"></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> «Изменить оклад» — была серой, становится брендовой. «только исправить ошибку» → подсказка (?) у поля.</p>
 </section>
@@ -541,6 +560,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
     <button class="b1" type="button">Выбрать файл</button>
     <button class="gh" type="button">Введу вручную</button>
   </div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="start-now" alt="Первый запуск — стенд Блока 17" loading="lazy"></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> «Выбрать файл» — пустой экран, первый шаг. <b>Переехало:</b> «Загрузите первую выписку» (механика) → «Ваш банк»; пути «Мой банк → Выписка → PDF…» → подсказка (?) у банка.</p>
 </section>
@@ -562,6 +582,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
     <div class="list"><div class="li"><span class="m"><span class="n">Разбор трат</span></span><span class="chev">⌄</span></div></div>
     <div class="card"><span class="meta" style="font-size:14px">Демо живёт только на этом телефоне</span><button class="b1" type="button">Создать семью или войти</button></div>
   </div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="settings-now" alt="Настройки — стенд Блока 17" loading="lazy"></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> в демо — «Создать семью или войти». <b>Текст:</b> два предложения про демо → одна строка; «demo@family.local» и «Ильяс» → «Вы»; «Разбор выписок · разделы трат и память ответов» → «Разбор трат».</p>
 </section>
@@ -576,6 +597,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
     <div class="card"><span class="lbl">Смайлик</span><div class="emo"><span class="on">В</span><span>🦊</span><span>🐻</span><span>🌿</span><span>⚡</span><span>🌙</span><span>🍉</span><span>🚀</span><span>🐱</span><span>☕</span><span>🎧</span><span>🌸</span></div></div>
     <div class="card"><span class="lbl">Цвет</span><div class="cols"><span class="on" style="--c:var(--pa)"></span><span style="--c:#7d6a9e"></span><span style="--c:var(--s3)"></span><span style="--c:var(--s1)"></span><span style="--c:var(--s8)"></span><span style="--c:var(--pb)"></span></div></div>
   </div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="me-now" alt="Свой кружок — стенд Блока 17" loading="lazy"></div></div></div>
 </div>
 <p class="r12">Без изменений: экран уже спокойный. Viewer видит все экраны выше без «Пополнить», «Оплатил», «+» — проверено.</p>
 </section>

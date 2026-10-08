@@ -198,7 +198,8 @@ describe('views/GoalNew.vue — «Новая мечта» (B2C-18, SSR)', () => 
     expect(html).toContain('реально')
     expect(html).toContain(`при остатке ≈ ${money(free)}`)
     expect(html).toContain(`будет вашей в ${monthIn(addMonths('2026-09', 11))}`)
-    expect(html).toContain('Путешествие · Япония')
+    // Подписи «<тип> · <шаблон>» на фото нет (макет Б17: «Машина · Машина» — шум); автор фото — остаётся.
+    expect(html).not.toContain('Путешествие · Япония')
     expect(html).toContain(templateById('japan')!.photo.author)
     expect(html).toContain('Готово — к мечте')
 

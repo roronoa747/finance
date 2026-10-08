@@ -304,14 +304,15 @@ const BANK_HOWTO = [
 ]
 
 const titles: Record<Step, { title: string; sub: string }> = {
-  upload: { title: 'Загрузите первую выписку', sub: 'Приложение само найдёт зарплату, кредиты и подписки — вы только подтвердите.' },
+  // «Выписка» — механика, не заголовок (правило 12, макет Б17): заголовок — про банк, путь к PDF — в подсказке у банка.
+  upload: { title: 'Ваш банк', sub: 'Найдём зарплату, кредиты и подписки' },
   questions: { title: 'Нашли повторяющиеся', sub: 'Подтвердите по одному — дальше отметим сами.' },
   month: { title: 'Ваш месяц', sub: '' },
   dream: { title: '', sub: '' },
   invite: { title: 'Пригласите партнёра', sub: 'Мечты и покупки — одни на двоих.' },
 }
 const title = computed(() => {
-  if (step.value === 'upload') return joining.value ? 'Загрузите свою выписку' : titles.upload.title
+  if (step.value === 'upload') return titles.upload.title
   if (step.value === 'questions') return current.value ? `Нашли ${questions.value.length} ${plural(questions.value.length, 'повторяющийся', 'повторяющихся', 'повторяющихся')}` : 'Доход'
   if (step.value === 'month') return `Ваш ${monthName.value}`
   return titles[step.value].title
@@ -335,10 +336,8 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
         <Card tight>
           <div v-for="b in BANK_HOWTO" :key="b.name" class="flex items-center gap-3 border-t border-line py-3 first:border-t-0 first:pt-0 last:pb-0">
             <span class="grid size-9 shrink-0 place-items-center rounded-[10px] text-[12px] font-bold text-on-photo" :class="b.tone" aria-hidden="true">{{ b.name[0] }}</span>
-            <span class="min-w-0">
-              <span class="block font-medium text-ink">{{ b.name }}</span>
-              <span class="block type-meta">{{ b.path }}</span>
-            </span>
+            <span class="min-w-0 flex-1 font-medium text-ink">{{ b.name }}</span>
+            <Hint :label="`Выписка ${b.name}`">{{ b.path }}</Hint>
           </div>
         </Card>
         <!-- Одна строка + подсказка (правило интерфейса: пояснение длиннее строки — в Hint). -->

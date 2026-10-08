@@ -90,8 +90,7 @@ const { code: inviteCode, canInvite, busy: inviteBusy, error: inviteError, copie
       <details>
         <summary class="flex cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden">
           <span class="min-w-0 flex-1">
-            <span class="block type-h3 text-ink">Разбор выписок</span>
-            <span class="block type-meta">разделы трат и память ответов</span>
+            <span class="block type-h3 text-ink">Разбор трат</span>
           </span>
           <PhCaretDown :size="16" class="shrink-0 text-ink-3" />
         </summary>
