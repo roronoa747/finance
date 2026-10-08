@@ -2732,13 +2732,14 @@ export function planMonths(plan: DebtPlan, state: PlanState, key: string): PlanM
 
 /**
  * Что сделать с планами после правки долгов и после слияния (Р-5, Р-9): два активных —
- * старший отменён; долгов с процентами не осталось — активный завершён. У закрытого
+ * старший отменён; долгов с процентами не осталось — активный завершён. Открытый долг без ставки (`rateUnknown`,
+ * из выписки) план не закрывает: проценты у него, скорее всего, есть (хвост 958). У закрытого
  * плана — итог по его досрочкам. null — менять нечего. Кредиты — производные.
  */
 export function settlePlans(plans: DebtPlan[] = [], credits: Credit[], payments: Payment[], t: string): DebtPlan[] | null {
   const latest = activePlan(plans)
   if (!latest) return null
-  const done = costliestCredits(credits).length === 0
+  const done = costliestCredits(credits).length === 0 && !openCredits(credits).some((c) => c.rateUnknown)
   let changed = false
   const next = plans.map((p): DebtPlan => {
     if (p.deletedAt || p.status !== 'active') return p

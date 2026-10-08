@@ -59,6 +59,8 @@ const creditName = (id: string | null) => financeStore.credits.find((c) => c.id 
 /* ------------------ Самая дорогая ставка ------------------ */
 const advice = computed(() => debtAdvice(credits.value))
 const worst = computed(() => advice.value.worstDebt)
+/** Долг без ставки (кредит из выписки) — одна строка «уточните» вместо «долгов с процентами нет» (хвост 958). */
+const unknownRateText = computed(() => `Ставку ${advice.value.unknownRate.map((c) => `«${c.name}»`).join(', ')} уточните — тогда сравним.`)
 const interestAll = computed(() => budgetInterest(credits.value))
 const savedAll = computed(() => prepaySaved(financeStore.payments, financeStore.credits))
 const payoffCreditId = ref<string | null>(null)
@@ -199,15 +201,16 @@ function choosePlan(opts: { keptGoalIds: string[]; cushionGoalId: string | null;
       <span v-else-if="worst" class="text-[14.5px] text-ink-2 num" data-plan-worst>
         Самая дорогая — {{ worst.credit.name }} · {{ ratePct(worst.credit.annualRate, 0).replace('%', ' %') }}
       </span>
-      <span v-else-if="!plan" class="type-meta">Долгов с процентами нет</span>
-      <p v-if="advice.unknownRate.length" class="type-meta">
-        Ставку {{ advice.unknownRate.map((c) => `«${c.name}»`).join(', ') }} уточните — тогда сравним.
-      </p>
+      <!-- Долг без ставки открыт (хвост 958) — «нет» не пишем: ниже «Ставку … уточните». -->
+      <span v-else-if="!plan && !advice.unknownRate.length" class="type-meta">Долгов с процентами нет</span>
+      <p v-if="advice.unknownRate.length" class="type-meta">{{ unknownRateText }}</p>
       <!-- Шаг месяца записывает «Отложил» у строки долга в «Месяце» (Р-110): кнопки шага здесь нет -->
       <Button v-if="!authStore.isViewer && plan && step && step.kind === 'cushion'" variant="secondary" size="md" class="w-full" @click="router.push(`/goals/${step.goalId}`)">Пополнить подушку</Button>
     </Card>
     <!-- Одни рассрочки без процентов: сравнивать и ускорять нечего (критик Б17 — как до Б17, без пустого «Подробнее»). -->
-    <Card v-else tight data-plan-none><span class="type-meta">Долгов с процентами нет</span></Card>
+    <Card v-else tight data-plan-none>
+      <span class="type-meta">{{ advice.unknownRate.length ? unknownRateText : 'Долгов с процентами нет' }}</span>
+    </Card>
 
     <Card v-if="plan && (paused.length || cushion)" flush>
       <Row

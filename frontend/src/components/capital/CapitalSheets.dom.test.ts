@@ -118,6 +118,34 @@ describe('Критик Блока 5: «Готово» в окнах Капита
     ;[...document.querySelectorAll<HTMLElement>('[role="dialog"] button')].find((b) => b.textContent?.includes('График платежей'))!.click()
     await nextTick()
     expect(dialog()).toContain('Платежей осталось')
+
+    // ML-05 (хвост 958): отметки без ставки тело не писали — у остатка «Сверьте остаток с банком»; сверка (новый
+    // остаток — якорь) подсказку убирает.
+    expect(document.querySelector('[data-credit-reconcile]')?.textContent).toBe('Сверьте остаток с банком')
+    const anchor = store.householdDoc.credits.find((c) => c.id === id)!.principalSetAt
+    vi.setSystemTime(new Date(Date.now() + 60_000))
+    const principal = field('Остаток долга')
+    principal.focus()
+    principal.value = '1 150 000'
+    principal.dispatchEvent(new Event('input', { bubbles: true }))
+    principal.blur()
+    await nextTick()
+    expect(store.credits.find((c) => c.id === id)!.principal).toBe(1_150_000)
+    expect(store.householdDoc.credits.find((c) => c.id === id)!.principalSetAt).not.toBe(anchor)
+    expect(document.querySelector('[data-credit-reconcile]')).toBeNull()
+  })
+
+  it('ML-05: у кредита со ставкой правка ставки подсказку сверки не показывает', async () => {
+    const { pinia } = family()
+    mount(pinia, () => h(CreditSheet, { creditId: 'loan', onClose: () => {} }))
+    await nextTick()
+    const rate = field('Ставка, % годовых')
+    rate.focus()
+    rate.value = '30'
+    rate.dispatchEvent(new Event('input', { bubbles: true }))
+    rate.blur()
+    await nextTick()
+    expect(document.querySelector('[data-credit-reconcile]')).toBeNull()
   })
 
   it('группа подписок (лист из «Платежей»): «Название» и «Готово» — записано, окно закрыто', async () => {

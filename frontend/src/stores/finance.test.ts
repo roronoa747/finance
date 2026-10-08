@@ -1456,6 +1456,35 @@ describe('PV-10: правка кредита — якорь только у ос
     vi.useRealTimers()
   })
 
+  it('ML-05 (хвост 958): кредит без ставки — «Оплатил» остаток не меняет; ставку назвали — следующая отметка делит на тело и проценты', () => {
+    const store = useFinanceStore()
+    store.addAccount({ name: 'Kaspi', kind: 'card', amount: 1_000_000 })
+    const id = store.addCredit({ name: 'Из выписки', principal: 1_000_000, annualRate: 0, rateUnknown: true, payment: 58_000, day: 15 })
+    at('2026-09-24T08:00:00Z')
+    const sep = store.markPaid('credit', id, 'a', { accountId: store.accounts[0].id })!
+    expect(sep).toMatchObject({ amount: 58_000 })
+    expect(sep.principal).toBeUndefined()
+    expect(store.credits[0].principal).toBe(1_000_000)
+    // Ставку назвали (36 %) — без пересплита сентября; октябрь: проценты 30 000 с остатка 1 000 000, тело 28 000.
+    store.updateCredit(id, { annualRate: 0.36, rateUnknown: null })
+    expect(store.credits[0].principal).toBe(1_000_000)
+    store.markPaid('credit', id, 'a', { period: '2026-10', accountId: store.accounts[0].id })
+    expect(store.credits[0].principal).toBe(972_000)
+  })
+
+  it('ML-05 (хвост 958): план «Сначала долги» не закрывается, пока открыт долг без ставки', () => {
+    const store = useFinanceStore()
+    store.addAccount({ name: 'Kaspi', kind: 'card', amount: 1_000_000 })
+    store.addCredit({ name: 'Кредит', principal: 1_000_000, annualRate: 0.33, payment: 58_000, day: 15 })
+    const unknown = store.addCredit({ name: 'Из выписки', principal: 500_000, annualRate: 0, rateUnknown: true, payment: 30_000, day: 20 })
+    const plans = [{ id: 'p', status: 'active' as const, by: 'a' as const, startedAt: '2026-09-10T05:00:00.000Z', endedAt: null, keptGoalIds: [], cushionGoalId: null, creditIds: [store.credits[0].id], months: 24 as const, lump: 0, forecast: { gain: 0, savedInterest: 0, debtFreeMonth: null }, result: null, updatedAt: '2026-09-10T05:00:00.000Z' }]
+    store.mutateHouseholdDoc((doc) => void (doc.plans = plans))
+    store.removeCredit(store.credits[0].id)
+    expect(store.activePlan?.status).toBe('active')
+    store.removeCredit(unknown)
+    expect(store.activePlan).toBeNull()
+  })
+
   /** Кредит 1 000 000 под 33% с отметкой за сентябрь: производный остаток 969 500. */
   function paidLoan() {
     const store = useFinanceStore()

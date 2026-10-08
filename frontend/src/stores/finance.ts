@@ -1326,7 +1326,8 @@ export const useFinanceStore = defineStore('finance', () => {
       if (!period) return null
       const split = creditSplit(c.principal, c.annualRate, opts.amount ?? c.payment)
       amount = split.amount
-      principal = split.body
+      // Ставка неизвестна (кредит из выписки, хвост 958): тело не пишем — остаток держится до ставки и сверки с банком.
+      if (!c.rateUnknown) principal = split.body
     }
     const existing = paidFor(payments.value, kind, targetId, period)
     if (existing) return existing

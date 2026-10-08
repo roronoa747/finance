@@ -67,7 +67,15 @@ function onCreditNoteBlur(e: Event) {
   const v = (e.target as HTMLInputElement).value.trim()
   if (v !== activeCredit.value?.note) editCredit({ note: v })
 }
+/*
+ * Ставку назвали у кредита «ставка неизвестна» (хвост 958): отметки до неё тело не писали — остаток стоит, каким его
+ * ввели. Подсказка «Сверьте остаток с банком» у поля остатка; сверка (новый остаток — якорь `principalSetAt`) её
+ * убирает. Прошлые отметки задним числом не делятся.
+ */
+const reconcile = ref(false)
+watch(() => props.creditId, () => (reconcile.value = false))
 function onCreditPrincipal(text: string) {
+  reconcile.value = false
   const v = parseMoney(text)
   if (v > 0 && v !== activeCredit.value?.principal) editCredit({ principal: v })
 }
@@ -78,7 +86,9 @@ function onCreditPayment(text: string) {
 function onCreditRate(text: string) {
   const v = parseFloat(text.replace(',', '.'))
   // Ноль законен: рассрочка без процентов. Ставку назвали — она больше не «неизвестна» (B2C-19).
-  if (Number.isFinite(v) && v >= 0) editCredit({ annualRate: v / 100, ...(activeCredit.value?.rateUnknown ? { rateUnknown: null } : {}) })
+  if (!Number.isFinite(v) || v < 0) return
+  if (activeCredit.value?.rateUnknown) reconcile.value = true
+  editCredit({ annualRate: v / 100, ...(activeCredit.value?.rateUnknown ? { rateUnknown: null } : {}) })
 }
 function onCreditDay(text: string) {
   const v = Math.min(28, Math.max(1, parseMoney(text) || 1))
@@ -126,6 +136,7 @@ function onCreditDay(text: string) {
         <Field label="Остаток долга, ₸">
           <NumFieldBlur :initial="plain(activeCredit.principal)" @commit="onCreditPrincipal" />
         </Field>
+        <p v-if="reconcile" class="-mt-2 mb-3.5 text-[13px] text-warn" data-credit-reconcile>Сверьте остаток с банком</p>
         <Field label="Платёж в месяц, ₸">
           <NumFieldBlur :initial="plain(activeCredit.payment)" @commit="onCreditPayment" />
         </Field>
