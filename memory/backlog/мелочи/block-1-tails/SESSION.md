@@ -382,3 +382,20 @@
   без error/warning.
 - **Владельцу (нужен вход):** Kaspi-название (ML-08 — ручка превью за авторизацией) и ручной запуск будильника
   (Actions → «Будильник для базы» → Run) — вместе с шагами `supabase-cleanup.md` (п. 4 их включает). 🏁 — после них.
+
+### Уборка Supabase (ML-12) — 2026-10-08
+
+Агент по правилу владельца в `.claude/settings.local.json` (запуск только скриптов `cleanup-*.ps1` сессии; строка базы —
+из `memory/secrets/supabase-db.md` внутри скрипта, не печаталась; проверка хоста `tpkyopaovfdkcmdhauws`), Docker `postgres:17`.
+
+- **Бэкап:** `memory/secrets/backups/public-backup-2026-10.dump` — `TABLE DATA` = 5; `auth-users-2026-10.csv` — 4 строки.
+- **До удаления** в `public` ровно 5 таблиц и 9 функций — имена и сигнатуры как в инструкции.
+- **Удаление (с «да» владельца; вопрос «как я зайду» — вход Vue/Go идёт через `app.users`, `auth.users` бэкенд не
+  читает):** 3.1 — `BEGIN / DROP TABLE / DROP FUNCTION / COMMIT`; 3.2 — `DELETE 4`.
+- **Проверка:** `app.*` до и после — 11 чисел совпали (users 5, households 2, household_members 3, household_docs 2,
+  private_docs 3, household_invites 2, statement_uploads 5, operations 2592, photos 15, fx_rates 1600, fx_days 400);
+  в `public` 0 таблиц и 0 функций, `auth.users` 0; `/api/health` 200 `db: connected`; логи Vercel Production за 50 мин —
+  без error/warning.
+- **Осталось владельцу (дашборды):** Edge Function `fx-rate` (3.3); Vercel env Preview ветки `mgv-block-6-prod` — 3
+  переменные `APP_ENV`, `DATABASE_URL`, `JWT_SECRET` (3.4; удаления env у коннектора нет); будильник Run; Kaspi-название
+  на телефоне. 🏁 — после них.
