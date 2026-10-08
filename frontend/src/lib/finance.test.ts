@@ -58,6 +58,10 @@ import {
   groupTotal,
   groupChildren,
   isSubscription,
+  isPeoplePayment,
+  peopleGroup,
+  subscriptionGroup,
+  planDraft,
   keepQuestions,
   KEEP_ASK_DAYS,
   creditMonthPayment,
@@ -3122,3 +3126,46 @@ describe('B2C-54: статьи разбора — умолчания и одна
   })
 })
 
+
+describe('ML-15 — долг человеку и платёж людям в расчётах (мелочи Р-5…Р-7, Р-12)', () => {
+  const T0 = '2026-09-01T00:00:00Z'
+  const ob = (id: string, name: string, day: number, amount: number, p: Partial<Obligation> = {}): Obligation => ({
+    id, name, note: '', day, category: 'd4', versions: [{ from: '2026-01', amount }], updatedAt: T0, ...p,
+  })
+  const row = (o: Obligation) => ({ obligation: o, amount: o.versions[0]!.amount, paid: false, day: o.day })
+  const MOM = ob('mom', 'Маме', 5, 100_000, { people: true })
+  const SCHOOL = ob('school', 'Школа', 1, 60_000, { people: true })
+  const ALIM = ob('alim', 'Алименты', 10, 80_000, { people: true, category: 'd1' })
+  const NETFLIX = ob('nf', 'Netflix', 7, 5_000)
+  const SPOTIFY = ob('sp', 'Spotify', 12, 3_000)
+
+  it('peopleGroup — группа уже с одного платежа; три — сумма и порядок по дню', () => {
+    expect(peopleGroup([row(MOM)], [MOM])).toMatchObject({ count: 1, total: 100_000, day: 5, paid: 0 })
+    // 60 000 + 100 000 + 80 000 = 240 000; по дню: Школа 1-го, Маме 5-го, Алименты 10-го.
+    const g = peopleGroup([row(MOM), row(SCHOOL), row(ALIM)], [MOM, SCHOOL, ALIM])!
+    expect(g).toMatchObject({ count: 3, total: 240_000, day: 1, allPaid: false })
+    expect(g.parts.flatMap((p) => p.rows.map((r) => r.obligation.id))).toEqual(['school', 'mom', 'alim'])
+    expect(peopleGroup([], [])).toBeNull()
+  })
+
+  it('платёж людям в быте — не подписка: в группу подписок не попадает', () => {
+    const all = [MOM, NETFLIX, SPOTIFY]
+    expect(isSubscription(MOM)).toBe(false)
+    expect(isPeoplePayment(MOM)).toBe(true)
+    expect(isPeoplePayment(NETFLIX)).toBe(false)
+    const subs = subscriptionGroup(all.filter(isSubscription).map(row), all)!
+    expect(subs.count).toBe(2)
+    expect(subs.parts[0]!.rows.map((r) => r.obligation.id)).toEqual(['nf', 'sp'])
+  })
+
+  it('«Сначала долги» не досрочит долг человеку — как рассрочку (Р-7)', () => {
+    const loan: Credit = { id: 'loan', name: 'Кредит', note: '', principal: 1_000_000, annualRate: 0.24, payment: 50_000, day: 15, updatedAt: T0 }
+    const bro: Credit = { id: 'bro', name: 'Брату', note: '', principal: 500_000, annualRate: 0, payment: 50_000, day: 20, person: true, updatedAt: T0 }
+    expect(costliestCredits([loan, bro]).map((c) => c.id)).toEqual(['loan'])
+    const plan = planDraft({ id: 'p', by: 'a', t: T0, keptGoalIds: [], cushionGoalId: null, months: 24, lump: 0, credits: [loan, bro] })
+    expect(plan.creditIds).toEqual(['loan'])
+    const inputs = strategyInputs({ credits: [loan, bro], goals: [], obligations: [], key: '2026-10', kept: [], cushion: false, useSaved: false })
+    expect(inputs.interestFree.map((c) => c.id)).toEqual(['bro'])
+    expect(inputs.unknownRate).toEqual([])
+  })
+})
