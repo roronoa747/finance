@@ -93,6 +93,24 @@ describe('Блок 2 «мелочи» — долг человеку и плат�
     expect(overview(store).total).toBe(1_540_000)
   })
 
+  it('«Отдал» у строки «Долгов» — та же отметка в плане месяца; второй платёж людям — «Людям · 2», сумма долгов прежняя (приёмка)', () => {
+    const store = family()
+    const bro = store.addCredit({ name: 'Брату', principal: 300_000, annualRate: 0, payment: 50_000, day: 25, person: true })
+    store.addObligation({ name: 'Маме', day: 5, category: 'd4', amount: 50_000, people: true })
+    const dues = () => monthPlan(store.householdDoc, { key: MONTH, totals: [], spendCategories: [], uploads: [] }).dues
+    expect(dues().find((d) => d.targetId === bro)).toMatchObject({ kind: 'credit', amount: 50_000, paid: false })
+
+    store.markPaid('credit', bro, 'a', { period: MONTH, accountId: 'card' })
+    // Отметка одна на оба экрана: в плане брат оплачен 50 000, в «Долгах» — остаток 250 000.
+    expect(dues().find((d) => d.targetId === bro)).toMatchObject({ amount: 50_000, paid: true })
+    expect(overview(store).rows.find((r) => r.creditId === bro)!.left).toBe(250_000)
+
+    // «+ Людям» школе 80 000: «Людям · 2 · 130 000»; сумма долгов — 1 540 000 + 250 000, платежи людям в неё не входят.
+    store.addObligation({ name: 'Школе', day: 10, category: 'd4', amount: 80_000, people: true })
+    expect(people(store)).toMatchObject({ count: 2, total: 130_000 })
+    expect(overview(store).total).toBe(1_790_000)
+  })
+
   it('план «Сначала долги» брата не досрочит: в плане только кредиты с процентами, шаг — не брату', () => {
     const store = family()
     const bro = store.addCredit({ name: 'Брату', principal: 500_000, annualRate: 0, payment: 50_000, day: 25, person: true })
