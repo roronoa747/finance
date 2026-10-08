@@ -187,81 +187,83 @@ export function matchCandidates(
   // Чужая зарплата — не кандидат и правилом не применяется: иначе приход A закрыл бы месяц B.
   const people = (state.people ?? []).filter((p) => !p.deletedAt && p.id === me)
   const linked = new Set(payments.map((p) => p.opId).filter((id): id is string => !!id))
-  const taken = new Set<string>()
-  const out: MatchCandidate[] = []
-
   // Вторая строка — факт из выписки: сумма и дата операции, строка банка (DESIGN.md §6).
   const when = (op: Operation) => dayLabel(Number(op.date.slice(8, 10)), op.date.slice(0, 7))
   const text = (kind: MatchKind, name: string, op: Operation) =>
     kind === 'salary'
       ? { question: `Это зарплата ${name}?`, meta: `${money(Math.abs(op.amount))} · ${when(op)} · поступление` }
       : { question: `Похоже, это платёж по ${name} — отметить?`, meta: `${money(Math.abs(op.amount))} · ${when(op)} · «${op.merchant}»` }
+  const near = (amount: number, expected: number) => (expected > 0 ? Math.abs(amount - expected) / expected : 0)
 
-  for (const op of ops) {
-    if (op.internal || linked.has(op.id)) continue
+  /*
+   * Кандидаты всех строк сразу, затем одна очередь (хвост 959): правило семьи раньше эвристик, затем ближе к сумме
+   * (оклад, платёж), затем раньше по дате. Пара «цель · месяц» и строка — по одному разу, по этой очереди: приход
+   * другого отправителя выше по выписке больше не занимает месяц раньше строки правила, порядок строк не важен.
+   */
+  type Scored = MatchCandidate & { tier: 0 | 1; score: number; date: string; index: number }
+  const all: Scored[] = []
+  ops.forEach((op, index) => {
+    if (op.internal || linked.has(op.id)) return
     // Зачисление обмена валютной зарплаты (B2C-80) — отметка этого обмена, не зарплата и не вопрос.
-    if (me && exchangeOfOperation(op, state.fxExchanges ?? [], me)) continue
+    if (me && exchangeOfOperation(op, state.fxExchanges ?? [], me)) return
     const amount = Math.abs(op.amount)
-    let best: (MatchCandidate & { score: number }) | null = null
-    const consider = (c: MatchCandidate & { score: number }) => {
-      if (paidFor(payments, c.kind, c.targetId, c.period) || taken.has(key(c))) return
-      if (!best || c.score < best.score) best = c
-    }
+    const add = (c: MatchCandidate, tier: 0 | 1, score: number) => all.push({ ...c, tier, score, date: op.date, index })
 
     // Правило семьи — без вопроса, но только «такая» строка (`ruleHit`: знак и сумма в допуске),
     // иначе месяц отметился бы чужой суммой. Не прошедшая строка идёт к эвристикам ниже и может
-    // стать вопросом.
+    // стать вопросом; прошедшая, чья пара уже занята, — тоже.
     const rule = ruleFor(op, rules)
     const hit = rule && 'payment' in rule.to ? ruleHit(op, rule.to.payment, { obligations, credits, people, salary }) : null
     if (rule && 'payment' in rule.to && hit) {
       const { kind, targetId, categoryId } = rule.to.payment
-      consider({ opId: op.id, kind, targetId, period: hit.period, amount, confidence: 'rule', categoryId: categoryId ?? matchCategory(kind, hit.target), ...text(kind, hit.target.name, op), score: -1 })
+      const t = hit.target
+      const expected =
+        kind === 'salary' ? salaryTenge(t as Person, hit.period, salary).tenge : kind === 'credit' ? creditDueAmount(t as Credit) : amountAt(t as Obligation, hit.period, salary.book)
+      add({ opId: op.id, kind, targetId, period: hit.period, amount, confidence: 'rule', categoryId: categoryId ?? matchCategory(kind, t), ...text(kind, t.name, op) }, 0, near(amount, expected))
     }
 
-    if (!best && op.amount < 0) {
+    if (op.amount < 0) {
       for (const o of obligations) {
         const { period, gap } = nearestPeriod(op.date, o.day)
         if (gap > DAY_WINDOW || !dueIn(o, period)) continue
         const expected = amountAt(o, period, salary.book)
         if (!within(amount, expected, o.estimate ? ESTIMATE_TOLERANCE : AMOUNT_TOLERANCE)) continue
-        consider({
+        add({
           opId: op.id, kind: 'obligation', targetId: o.id, period, amount, confidence: 'likely',
-          categoryId: matchCategory('obligation', o), subscription: isSubscription(o) || undefined,
-          ...text('obligation', o.name, op), score: Math.abs(amount - expected) / expected + gap / 100,
-        })
+          categoryId: matchCategory('obligation', o), subscription: isSubscription(o) || undefined, ...text('obligation', o.name, op),
+        }, 1, near(amount, expected) + gap / 100)
       }
       for (const c of credits) {
         const { period, gap } = nearestPeriod(op.date, c.day)
         if (gap > DAY_WINDOW) continue
         const due = creditDueAmount(c)
         if (!within(amount, due, AMOUNT_TOLERANCE) && amount !== c.payment) continue
-        consider({
-          opId: op.id, kind: 'credit', targetId: c.id, period, amount, confidence: 'likely', categoryId: 'sc_credit',
-          ...text('credit', c.name, op), score: Math.abs(amount - due) / due + gap / 100,
-        })
+        add({ opId: op.id, kind: 'credit', targetId: c.id, period, amount, confidence: 'likely', categoryId: 'sc_credit', ...text('credit', c.name, op) }, 1, near(amount, due) + gap / 100)
       }
     }
 
-    if (!best && op.amount > 0 && (op.kind === 'transfer-in' || op.kind === 'income')) {
+    if (op.amount > 0 && (op.kind === 'transfer-in' || op.kind === 'income')) {
       for (const p of people) {
         const { period, gap } = nearestPeriod(op.date, p.payday)
         if (gap > SALARY_WINDOW) continue
         const expected = salaryTenge(p, period, salary).tenge
         if (!within(amount, expected, SALARY_TOLERANCE)) continue
-        consider({
-          opId: op.id, kind: 'salary', targetId: p.id, period, amount, confidence: 'likely', categoryId: null,
-          ...text('salary', p.name, op), score: Math.abs(amount - expected) / expected + gap / 100,
-        })
+        add({ opId: op.id, kind: 'salary', targetId: p.id, period, amount, confidence: 'likely', categoryId: null, ...text('salary', p.name, op) }, 1, near(amount, expected) + gap / 100)
       }
     }
+  })
 
-    if (best) {
-      const { score: _score, ...candidate } = best as MatchCandidate & { score: number }
-      taken.add(key(candidate))
-      out.push(candidate)
-    }
+  all.sort((a, b) => a.tier - b.tier || a.score - b.score || a.date.localeCompare(b.date) || a.index - b.index)
+  const taken = new Set<string>()
+  const chosen = new Map<string, Scored>()
+  for (const c of all) {
+    if (chosen.has(c.opId) || taken.has(key(c)) || paidFor(payments, c.kind, c.targetId, c.period)) continue
+    taken.add(key(c))
+    chosen.set(c.opId, c)
   }
-  return out
+  return [...chosen.values()]
+    .sort((a, b) => a.index - b.index)
+    .map(({ tier: _tier, score: _score, date: _date, index: _index, ...candidate }) => candidate)
 }
 
 /**

@@ -514,7 +514,8 @@ describe('stores/operations — сопоставление с отметками
     const finance = family()
     const { client } = fakeServer()
     const store = useOperationsStore()
-    const september = statement('2026-09-01', '2026-09-20', op('2026-09-14', -58_000, 'ИП Жолдасбеков'), op('2026-09-15', -58_000, 'Оплата Kaspi Кредита'))
+    // ИП — ровно в день платежа: кандидат пары он (ML-06 — очередь по сумме и дню, не по порядку строк).
+    const september = statement('2026-09-01', '2026-09-20', op('2026-09-15', -58_000, 'ИП Жолдасбеков'), op('2026-09-16', -58_000, 'Оплата Kaspi Кредита'))
     store.setDraft(draftOf(september))
     await store.send(client)
     const wrong = store.all.find((o) => o.merchant === 'ИП Жолдасбеков')!.id

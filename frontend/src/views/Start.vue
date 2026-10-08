@@ -13,7 +13,7 @@ import { matchCandidates, matchCategory, operationAt } from '@/lib/statements/ma
 import type { Operation } from '@/lib/statements/types'
 import { budgetAmounts, spendRows } from '@/lib/finance'
 import { money, parseMoney, plain } from '@/lib/money'
-import { monthKey, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
+import { addMonths, monthKey, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
 import { START_ANSWERED_KEY, readStorage, writeStorage } from '@/lib/storage'
 import { useInvite } from '@/components/useInvite'
 import type { PersonId } from '@/types/finance'
@@ -205,8 +205,12 @@ function answerIncome(yes = true) {
       ops.answer(ruleMatchOf(op), { payment: { kind: 'salary', targetId: slot.value } })
       // Отметка — только приходом в допуске оклада (как правило «Недели»): мелкий перевод того же
       // отправителя в этом месяце — не зарплата, месяц остаётся неотмеченным.
-      const cur = salaryOpOfMonth(groupOps(q.candidate.opIds), salary, monthKey())
-      if (cur) financeStore.markSalary(slot.value, { period: monthKey(), amount: Math.abs(cur.amount), source: 'statement', opId: cur.id, at: operationAt(cur.date) })
+      // Этот и прошлый месяц — как «Да» в «Неделе» (`acceptMatch`, хвост 959): иначе прошлый месяц займёт приход
+      // другого отправителя вопросом «Это зарплата?», а «Да» на нём напишет второе правило зарплаты.
+      for (const period of [addMonths(monthKey(), -1), monthKey()]) {
+        const cur = salaryOpOfMonth(groupOps(q.candidate.opIds), salary, period)
+        if (cur) financeStore.markSalary(slot.value, { period, amount: Math.abs(cur.amount), source: 'statement', opId: cur.id, at: operationAt(cur.date) })
+      }
     }
   }
   markAnswered('income')

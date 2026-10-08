@@ -159,6 +159,20 @@ describe('matchCandidates', () => {
     expect(paymentFits({ obligations: [insurance] })(ops(op('2026-09-10', -120_000, 'INS'))[0], pay('obligation', 'ins'))).toBe(false)
   })
 
+  it('ML-06 (хвост 959): кандидат пары не зависит от порядка строк — правило раньше эвристики; эвристика берёт пару, только если правила нет', () => {
+    const [other, salaryRow] = ops(op('2026-08-09', 690_000, 'Перевод от Дана К.'), op('2026-08-10', 700_000, 'ТОО Ромашка', { kind: 'income' }))
+    const rule: MerchantRule = { id: 'r', match: { merchant: normalizeMerchant('ТОО Ромашка') }, to: { payment: { kind: 'salary', targetId: 'a' } }, by: 'a', updatedAt: T }
+    const pick = (list: Operation[], rules: MerchantRule[]) => matchCandidates(list, state, rules, 'a').map((c) => [c.opId, c.confidence, c.period])
+    expect(pick([other, salaryRow], [rule])).toEqual([[salaryRow.id, 'rule', '2026-08']])
+    expect(pick([salaryRow, other], [rule])).toEqual([[salaryRow.id, 'rule', '2026-08']])
+    // Правила нет — пару берёт эвристика: ближе к окладу (700 000), а не первая по выписке.
+    expect(pick([other, salaryRow], [])).toEqual([[salaryRow.id, 'likely', '2026-08']])
+    expect(pick([salaryRow, other], [])).toEqual([[salaryRow.id, 'likely', '2026-08']])
+    // Две строки правила в одном месяце — ближе к окладу, затем раньше.
+    const [low, exact] = ops(op('2026-08-10', 650_000, 'ТОО Ромашка', { kind: 'income' }), op('2026-08-11', 700_000, 'ТОО Ромашка', { kind: 'income' }))
+    expect(pick([low, exact], [rule])).toEqual([[exact.id, 'rule', '2026-08']])
+  })
+
   it('ML-03 (хвост 967): пара «цель · месяц» отмечена одной строкой — вторая строка того же продавца в допуске не «такая»', () => {
     const pay = { kind: 'obligation' as const, targetId: 'sub', categoryId: 'sc_subscriptions' }
     const sub = ob('sub', 'Курсы', 15_000, 5, { category: 'd4' })
