@@ -75,7 +75,10 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
 .tabs{position:absolute;left:12px;right:12px;bottom:12px;display:flex;align-items:center;background:var(--surface);box-shadow:var(--shadow-2);border-radius:99px;padding:6px 6px 6px 10px;z-index:4}
 .tabs span{flex:1;text-align:center;font-size:12px;font-weight:600;color:var(--ink-3);display:flex;flex-direction:column;align-items:center;gap:2px}
 .tabs span i{width:20px;height:16px;border-radius:5px;border:2px solid currentColor;display:block}
-.tabs span.on{color:var(--ink)} .tabs span.on i{background:currentColor}
+.tabs span.on{color:var(--ink)}
+.tabs svg,.acc svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tabs span.on svg{stroke-width:2.4}
+.acc{width:40px;height:40px;border-radius:12px;background:var(--surface-2);color:var(--ink-2);display:grid;place-items:center;flex:0 0 auto}
 .tabs .plus{flex:0 0 auto;width:46px;height:46px;border-radius:50%;background:var(--brand);color:var(--brand-ink);display:grid;place-items:center;font-size:26px;line-height:1}
 .tbar{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:40px}
 .tbar .t{font-size:25px;font-weight:750;letter-spacing:-.02em}
@@ -213,7 +216,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
       <div class="li"><span class="thumb" style="background-image:url(img/coffee.jpg)"></span><span class="m"><span class="n">Кофемашина</span><span class="meta">общие</span></span><span class="v">180 000 ₸</span></div>
       <div class="li"><span class="thumb" style="background-image:url(img/boots.jpg)"></span><span class="m"><span class="n">Сапоги</span><span class="meta">Партнёр</span></span><span class="v">65 000 ₸</span></div>
     </div>
-  </div><div class="tabs"><span class="on"><i></i>Мечты</span><span><i></i>План</span><span><i></i>Деньги</span><span class="plus">+</span></div></div></div>
+  </div><div class="tabs"><span class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>Мечты</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>План</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 14.5h3"/></svg>Деньги</span><span class="plus">+</span></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> мечта — нажатие на фото; новая цель — «+ Новая» у списка целей. <b>Переехало:</b> «Октябрь · имена» — убрано (кружки есть); «ноябрь 2027», «к сентябрю 2034» → экран цели; «Свободно · до зарплаты» → подсказка (?) у «Остаётся» в «Месяце» и лист зарплаты; кнопки «Открыть» → вся строка нажимается.</p>
 </section>
@@ -236,7 +239,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
       <div class="li"><span class="m"><span class="n">Транспорт</span><span class="bar" style="--c:var(--s3)"><i style="width:16%"></i></span><span class="meta">осталось 21 100</span></span><span class="v">1 800</span></div>
     </div>
     <div class="list"><div class="li"><span class="m"><span class="n">8 недель</span></span><span class="chev">›</span></div></div>
-  </div><div class="tabs"><span><i></i>Мечты</span><span class="on"><i></i>План</span><span><i></i>Деньги</span><span class="plus">+</span></div></div></div>
+  </div><div class="tabs"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>Мечты</span><span class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>План</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 14.5h3"/></svg>Деньги</span><span class="plus">+</span></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> «Разобрать» — у строки «Не разобрано» (была «! 3» сверху). <b>Переехало:</b> «↑ 24 %», «прошлая неделя», стрелки у разделов → «8 недель»; «из 40 000» → лист раздела; точка у «Месяц», строка «демо: только на этом телефоне», переключатель ▦ — убраны (вид плитками — на ваше решение).</p>
 </section>
@@ -260,7 +263,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
       <div class="li"><span class="dot" style="--c:var(--s8)"></span><span class="m"><span class="n">Траты</span><span class="meta">потрачено 220 300</span></span><span class="v">255 000</span><span class="chev">›</span></div>
       <div class="li"><span class="dot" style="--c:var(--s3)"></span><span class="m"><span class="n">Цели и фонды<span class="bdot"></span></span><span class="meta">0 из 4 отложено</span></span><span class="v">270 000</span><span class="chev">›</span></div>
     </div>
-  </div><div class="tabs"><span><i></i>Мечты</span><span class="on"><i></i>План</span><span><i></i>Деньги</span><span class="plus">+</span></div></div></div>
+  </div><div class="tabs"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>Мечты</span><span class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>План</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 14.5h3"/></svg>Деньги</span><span class="plus">+</span></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> «Обменял» — у своей зарплаты; «Отложил» / «Оплатил» — в строках разделов. <b>Переехало:</b> «8 октября», «ждём 20 октября», «+321 805» (хватает ли), «обменяно 500 € из 1 500 €» → лист зарплаты; «из 1 211 310» → подсказка (?) у «Остаётся»; карточка «Отложим · Потратим · Остаётся» — повтор кольца и строк, убрана.</p>
 </section>
@@ -278,13 +281,16 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
       <div class="li"><span class="av l b">П</span><span class="m"><span class="n">Партнёр</span></span><span class="v mute">450 000 ₸</span></div>
     </div>
     <div class="list">
-      <div class="li"><span class="thumb" style="width:40px;height:40px"></span><span class="m"><span class="n">Kaspi Gold</span><span class="meta">карта · общий</span></span><span class="v">516 000 ₸</span><span class="chev">›</span></div>
-      <div class="li"><span class="thumb" style="width:40px;height:40px"></span><span class="m"><span class="n">Евро-счёт</span><span class="meta">карта · 1 000 € · общий</span></span><span class="v">505 310 ₸</span><span class="chev">›</span></div>
-      <div class="li"><span class="thumb" style="width:40px;height:40px"></span><span class="m"><span class="n">Депозит Kaspi</span><span class="meta">14 % · общий</span></span><span class="v">1 200 000 ₸</span><span class="chev">›</span></div>
+      <div class="li"><span class="acc"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M7 15h4"/></svg></span><span class="m"><span class="n">Kaspi Gold</span><span class="meta">карта · общий</span></span><span class="v">516 000 ₸</span><span class="chev">›</span></div>
+      <div class="li"><span class="acc"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M7 15h4"/></svg></span><span class="m"><span class="n">Евро-счёт</span><span class="meta">карта · 1 000 € · общий</span></span><span class="v">505 310 ₸</span><span class="chev">›</span></div>
+      <div class="li"><span class="acc"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10l9-5 9 5M5 10v8M10 10v8M14 10v8M19 10v8M3 20h18" transform="translate(0 -1)"/></svg></span><span class="m"><span class="n">Депозит Kaspi</span><span class="meta">14 % · общий</span></span><span class="v">1 200 000 ₸</span><span class="chev">›</span></div>
       <div class="li"><span class="m"><span class="n">Цели · 4</span></span><span class="v">1 770 000 ₸</span><span class="chev">›</span></div>
       <div class="li"><button class="gh l" type="button">+ Добавить счёт</button></div>
     </div>
-  </div><div class="tabs"><span><i></i>Мечты</span><span><i></i>План</span><span class="on"><i></i>Деньги</span><span class="plus">+</span></div></div></div>
+    <div class="list">
+      <div class="li"><span class="acc"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M7 15h4"/></svg></span><span class="m"><span class="n">Автокредит</span><span class="meta">кредит</span></span><span class="v">1 597 324 ₸</span><span class="chev">›</span></div>
+    </div>
+  </div><div class="tabs"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>Мечты</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>План</span><span class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 14.5h3"/></svg>Деньги</span><span class="plus">+</span></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> счёт — нажатие на строку; «+ Добавить счёт» — тихо в конце списка. <b>Переехало:</b> числа на чипах и слово «Капитал» над суммой — повтор, убраны; «Счета 3 991 310» → подсказка (?) у суммы («счета − долги»); «пришла / ждём …» → лист зарплаты; «1 500 €» остаётся под суммой.</p>
 </section>
@@ -302,7 +308,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
     </div>
     <div class="list"><div class="li"><span class="m"><span class="n">Как закрыть быстрее</span></span><span class="chev">›</span></div></div>
     <button class="gh l" type="button">+ Кредит</button>
-  </div><div class="tabs"><span><i></i>Мечты</span><span><i></i>План</span><span class="on"><i></i>Деньги</span><span class="plus">+</span></div></div></div>
+  </div><div class="tabs"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>Мечты</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>План</span><span class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 14.5h3"/></svg>Деньги</span><span class="plus">+</span></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> кредит — нажатие на строку; «+ Кредит» — тихо внизу. <b>Переехало:</b> «19 % · до июня 2028» → лист кредита; слово «Долги» над суммой — повтор чипа, убрано.</p>
 </section>
@@ -321,7 +327,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
     <div class="list">
       <div class="li"><span class="m"><span class="n">Подробнее</span><span class="meta">шаги по месяцам, копить или гасить, своя сумма</span></span><span class="chev">⌄</span></div>
     </div>
-  </div><div class="tabs"><span><i></i>Мечты</span><span><i></i>План</span><span class="on"><i></i>Деньги</span><span class="plus">+</span></div></div></div>
+  </div><div class="tabs"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>Мечты</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>План</span><span class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 14.5h3"/></svg>Деньги</span><span class="plus">+</span></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> один переключатель «Сначала долги»; «Отложил» в долг — по-прежнему у строки долга в «Месяце». <b>Одна крупная цифра</b> — на сколько раньше. <b>Скрыто в «Подробнее»:</b> «Самая дорогая ставка», проценты в месяц 25 291, доля 27 %, переплата 274 623 → 134 022, «Посчитать на свою сумму» (с подсказанной суммой 86 000), «Копить или гасить?», «Шаги по месяцам». Абзац и розовый блок — убраны. Экран открывается отдельно, сверху.</p>
 </section>
@@ -339,7 +345,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
       <div class="li"><span class="m"><span class="n">Июль</span><span class="meta">осталось 493 200</span></span><span class="chev">›</span></div>
     </div>
     <div class="list"><div class="li"><span class="m"><span class="n">Все записи</span></span><span class="chev">›</span></div></div>
-  </div><div class="tabs"><span><i></i>Мечты</span><span><i></i>План</span><span class="on"><i></i>Деньги</span><span class="plus">+</span></div></div></div>
+  </div><div class="tabs"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>Мечты</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>План</span><span class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 14.5h3"/></svg>Деньги</span><span class="plus">+</span></div></div></div>
 </div>
 <p class="r12"><b>Главное:</b> месяц — нажатие на строку. <b>Переехало:</b> строка «Зелёным — сколько отложили» → подсказка (?) у зелёной суммы; «сентябрь» на чипе — убран.</p>
 </section>
