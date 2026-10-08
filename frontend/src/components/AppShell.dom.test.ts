@@ -58,6 +58,84 @@ it('новый экран — <main> наверх; параметр адреса
   expect(main.scrollTop).toBe(0)
 })
 
+it('B2C-107: «Деньги» → цель (сверху) → назад — то же место; «Мечты» → «План» → «Мечты» — место «Мечт»; query — без прыжка', async () => {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      {
+        path: '/',
+        component: AppShell,
+        children: [
+          { path: '', component: page('Мечты') },
+          { path: 'month', component: page('Месяц') },
+          { path: 'money', component: page('Деньги') },
+          { path: 'goals/:id', component: page('Цель') },
+        ],
+      },
+    ],
+  })
+  await router.push('/money')
+  await router.isReady()
+  const root = document.createElement('div')
+  document.body.appendChild(root)
+  app = createApp({ render: () => h(RouterView) })
+  app.use(createPinia())
+  app.use(router)
+  app.mount(root)
+  await nextTick()
+  const main = document.querySelector('main')!
+  const settle = async () => {
+    await nextTick()
+    await nextTick()
+  }
+
+  main.scrollTop = 640
+  await router.push('/money?account=kaspi')
+  await settle()
+  expect(main.scrollTop).toBe(640)
+
+  await router.push('/goals/g1')
+  await settle()
+  expect(main.textContent).toContain('Цель')
+  expect(main.scrollTop).toBe(0)
+  main.scrollTop = 120
+
+  // Вложенный экран не корень: на место его возвращает только «назад».
+  await router.push('/goals/g2')
+  await settle()
+  expect(main.scrollTop).toBe(0)
+  router.back()
+  await new Promise((r) => setTimeout(r, 0))
+  await settle()
+  expect(router.currentRoute.value.path).toBe('/goals/g1')
+  expect(main.scrollTop).toBe(120)
+
+  router.back()
+  await new Promise((r) => setTimeout(r, 0))
+  await settle()
+  expect(router.currentRoute.value.path).toBe('/money')
+  expect(main.scrollTop).toBe(640)
+
+  // Вкладки: у каждой своё место.
+  await router.push('/')
+  await settle()
+  expect(main.scrollTop).toBe(0)
+  main.scrollTop = 900
+  await router.push('/month')
+  await settle()
+  expect(main.scrollTop).toBe(0)
+  main.scrollTop = 300
+  await router.push('/')
+  await settle()
+  expect(main.scrollTop).toBe(900)
+  await router.push('/month')
+  await settle()
+  expect(main.scrollTop).toBe(300)
+  await router.push('/money')
+  await settle()
+  expect(main.scrollTop).toBe(640)
+})
+
 // ТЗ B2C-13 «Тесты»: «+» открывает лист на Sheet, Escape закрывает (критик Блока 3).
 it('«+» открывает лист «Добавить» на Sheet, Escape закрывает', async () => {
   const router = createRouter({

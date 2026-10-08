@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, provide } from 'vue'
+import { ref, computed, provide } from 'vue'
 import { useRoute, useRouter, RouterLink, RouterView } from 'vue-router'
 import {
   PhHeart,
@@ -18,6 +18,7 @@ import { useAuthStore } from '@/stores/auth'
 import { monthKey, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
 import { readPlanView } from '@/lib/storage'
 import { liveGoals } from '@/lib/finance'
+import { useScrollMemory } from './useScrollMemory'
 import SyncBadge from '@/components/SyncBadge.vue'
 import Avatar from '@/components/kit/Avatar.vue'
 import IconBox from '@/components/kit/IconBox.vue'
@@ -105,17 +106,9 @@ const tabs = computed(() => [
   { to: '/money', label: 'Деньги', icon: PhWallet, active: route.path.startsWith('/money') },
 ])
 
-// Прокручивается не окно, а <main>: новый экран открывается сверху, а не на прокрутке
-// прошлого (после «Выбрать этот план» шаг месяца был за верхом экрана). По path, не
-// fullPath: Капитал открывает окна параметром адреса (Б-15) — список не прыгает.
+// Прокручивается не окно, а <main>: новый экран — сверху, «назад» и вкладка — на своё место (Р-115).
 const mainEl = ref<HTMLElement | null>(null)
-watch(
-  () => route.path,
-  () => {
-    if (mainEl.value) mainEl.value.scrollTop = 0
-  },
-  { flush: 'post' },
-)
+useScrollMemory(mainEl, (p) => ROOTS.includes(p))
 
 /** Лист «+» (DESIGN.md §2): порядок действий — как в макете; у viewer кнопки «+» нет. */
 const actions = computed(() => {
