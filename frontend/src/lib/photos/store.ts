@@ -37,8 +37,24 @@ export async function uploadPhoto(
   return id
 }
 
-/** Object URL картинки по id; null — нет фото, 404 или нет сети. */
+/**
+ * Фото демо лежат в приложении (Р-118, B2C-110): id `demo:<имя>` — картинка бандла `assets/demo/<имя>.jpg`, без
+ * сервера и диска. Демо, взятое в настоящую семью (`adoptDemo`), уносит в документ только этот id — байты на сервер не
+ * грузятся, оба телефона берут картинку из своего приложения.
+ */
+export const DEMO_PHOTO = 'demo:'
+const DEMO_FILES = import.meta.glob<string>('../../assets/demo/*.jpg', { eager: true, import: 'default' })
+
+/** Адрес картинки демо по id; не демо или нет такого файла — null. */
+export function demoPhotoUrl(id: string): string | null {
+  if (!id.startsWith(DEMO_PHOTO)) return null
+  const file = `/${id.slice(DEMO_PHOTO.length)}.jpg`
+  return Object.entries(DEMO_FILES).find(([path]) => path.endsWith(file))?.[1] ?? null
+}
+
+/** Object URL картинки по id (у демо — адрес из бандла); null — нет фото, 404 или нет сети. */
 export function photoUrl(id: string, client: ApiClient = apiClient, disk: PhotoDisk = photoDisk): Promise<string | null> {
+  if (id.startsWith(DEMO_PHOTO)) return Promise.resolve(demoPhotoUrl(id))
   const known = urls.get(id)
   if (known) return Promise.resolve(known)
   if (missing.has(id)) return Promise.resolve(null)
@@ -72,7 +88,8 @@ export function photoUrl(id: string, client: ApiClient = apiClient, disk: PhotoD
 
 /** Удаляет фото на сервере и забывает его URL и копию на телефоне. */
 export async function deletePhoto(id: string, client: ApiClient = apiClient, disk: PhotoDisk = photoDisk): Promise<void> {
-  await client.deletePhoto(id)
+  // Картинка демо — в приложении, на сервере её нет.
+  if (!id.startsWith(DEMO_PHOTO)) await client.deletePhoto(id)
   forgetPhoto(id, disk)
 }
 

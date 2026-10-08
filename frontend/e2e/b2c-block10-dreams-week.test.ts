@@ -202,7 +202,7 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     for (const w of ['Без раздела', 'Загрузить выписку', '+ Новая', 'Добавить фото']) expect(dreams).not.toContain(w)
   })
 
-  it('часть 5 — демо: итоги недели Ильяса = spendTotals демо-операций; сумма недели = операции + итоги Аруны; три вопроса за «!»; «Мечты» — 2 цели и 3 желания', async () => {
+  it('часть 5 — демо: итоги недели участника a = spendTotals демо-операций; сумма недели = операции + итоги партнёра; три вопроса за «!»; «Мечты» — 2 цели и 3 желания', async () => {
     const pinia = createPinia()
     await screen(pinia, Access, '/access', undefined, [screenMixin({}, (s) => (s.startDemoMode as () => void)())])
     await nextTick()
@@ -234,7 +234,7 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     expect(text(await screen(pinia, Money, '/money/history'))).toContain('ИП Абенова')
     // «Мечты» демо «как в макете» (приёмка Б10): главная, 2 цели, желания обоих и общее.
     const dreams = text(await screen(pinia, Dreams, '/'))
-    for (const w of ['Поездка в Японию', 'Машина', 'Новый диван', 'Все 3', 'общие', 'Ильяс', 'Аруна']) expect(dreams).toContain(w)
+    for (const w of ['Поездка в Японию', 'Машина', 'Новый диван', 'Все 3', 'общие', 'Вы', 'Партнёр']) expect(dreams).toContain(w)
     expect(dreams).not.toContain('+ Желание')
   })
 

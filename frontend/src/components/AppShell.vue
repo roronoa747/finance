@@ -84,7 +84,8 @@ const header = computed<{ title: string; sub?: string }>(() => {
   if (p === '/settings') {
     // g7: «Ильяс · ilyas@…» — имя в семье и почта входа.
     const me = people.value.find((x) => x.id === authStore.slot)?.name
-    const sub = [me, authStore.user?.email].filter(Boolean).join(' · ')
+    // В демо почты нет — только «Вы» (Р-118).
+    const sub = [me, authStore.isDemo ? null : authStore.user?.email].filter(Boolean).join(' · ')
     return sub ? { title: 'Настройки', sub } : { title: 'Настройки' }
   }
   return { title: 'Family Finance' }
