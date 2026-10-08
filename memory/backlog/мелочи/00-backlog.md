@@ -1,6 +1,6 @@
 # Бэклог «мелочи» (ML)
 
-> **Статус:** в работе — блок 1 🔄: исполнитель ч. 1 ✅ (ML-01…ML-06), следующий шаг — `/worker мелочи 1` (ч. 2).
+> **Статус:** в работе — блок 1 🔄: исполнитель ✅ (ч. 1 ML-01…ML-06, ч. 2 ML-07…ML-13), следующий шаг — `/critic мелочи 1`.
 > Два блока до Блока 4 `идея-и-редизайн`: хвосты и уборка React → «Кредиты шире». Потом Блок 4, потом бриф ИИ.
 
 Источник: `мелочи-brief.md` (резюме интервью подтверждено 2026-10-08). Формат — `memory/process/BACKLOG-GUIDE.md`.
@@ -84,13 +84,13 @@
 | | ML-04 Пересчёт строк при изменении цели правила | `block-1-tails/ML-04-reapply-on-target-change.md` | ML-03 | ✅ |
 | | ML-05 Кредит без ставки: остаток и план честные | `block-1-tails/ML-05-credit-rate-unknown.md` | ML-04 | ✅ |
 | | ML-06 Кандидат зарплаты не зависит от порядка | `block-1-tails/ML-06-salary-candidate-order.md` | ML-05 | ✅ |
-| | ML-07 Сюрприз: правка и удаление | `block-1-tails/ML-07-gift-edit-delete.md` | ML-06 | ⬜ |
-| | ML-08 Короткое название по ссылке Kaspi (Go) | `block-1-tails/ML-08-kaspi-title.md` | ML-07 | ⬜ |
-| | ML-09 Центы в валютной сумме | `block-1-tails/ML-09-fx-cents.md` | ML-08 | ⬜ |
-| | ML-10 Будильник базы без React | `block-1-tails/ML-10-db-wakeup.md` | ML-09 | ⬜ |
-| | ML-11 Уборка React из репо | `block-1-tails/ML-11-repo-cleanup.md` | ML-10 | ⬜ |
-| | ML-12 Инструкция владельцу: Supabase и Vercel | `block-1-tails/ML-12-supabase-owner-steps.md` | ML-11 | ⬜ |
-| | ML-13 e2e блока и закрытие хвостов | `block-1-tails/ML-13-e2e-close-tails.md` | ML-01…ML-12 | ⬜ |
+| | ML-07 Сюрприз: правка и удаление | `block-1-tails/ML-07-gift-edit-delete.md` | ML-06 | ✅ |
+| | ML-08 Короткое название по ссылке Kaspi (Go) | `block-1-tails/ML-08-kaspi-title.md` | ML-07 | ✅ |
+| | ML-09 Центы в валютной сумме | `block-1-tails/ML-09-fx-cents.md` | ML-08 | ✅ |
+| | ML-10 Будильник базы без React | `block-1-tails/ML-10-db-wakeup.md` | ML-09 | ✅ |
+| | ML-11 Уборка React из репо | `block-1-tails/ML-11-repo-cleanup.md` | ML-10 | ✅ |
+| | ML-12 Инструкция владельцу: Supabase и Vercel | `block-1-tails/ML-12-supabase-owner-steps.md` | ML-11 | ✅ |
+| | ML-13 e2e блока и закрытие хвостов | `block-1-tails/ML-13-e2e-close-tails.md` | ML-01…ML-12 | ✅ |
 | 2. Кредиты шире ⬜ *(M + ворота макета)* | ML-14 Макет «до \| после» и ворота | `block-2-people-debts/ML-14-mockup-gate.md` | Блок 1 🏁 | ⬜ |
 | | ML-15 Модель и расчёты | `block-2-people-debts/ML-15-model-finance.md` | ML-14 (ворота ✅) | ⬜ |
 | | ML-16 Формы «Человеку» и «Людям» | `block-2-people-debts/ML-16-forms.md` | ML-15 | ⬜ |
