@@ -287,6 +287,27 @@ func runLiveServerE2EFlow(
 	})
 
 	// Step 8: Sync household budget — Alice reads initial rev
+	// B2C-26: an escape jsonb cannot store is a 400, not a 500 from the database.
+	t.Run("Unstorable escapes are refused with 400", func(t *testing.T) {
+		bs := string(rune(92))
+		for _, path := range []string{"/api/sync/household", "/api/sync/private"} {
+			for _, bad := range []string{`"a` + bs + `u0000"`, `"` + bs + `ud83d"`} {
+				body := []byte(`{"last_seen_rev": 1, "data": {"name": ` + bad + `}}`)
+				req, _ := http.NewRequest(http.MethodPost, ts.URL+path, bytes.NewReader(body))
+				req.Header.Set("Authorization", "Bearer "+aliceToken)
+				req.Header.Set("Content-Type", "application/json")
+				resp, err := client.Do(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				resp.Body.Close()
+				if resp.StatusCode != http.StatusBadRequest {
+					t.Errorf("%s %s: expected 400, got %d", path, bad, resp.StatusCode)
+				}
+			}
+		}
+	})
+
 	t.Run("Alice reads initial household doc", func(t *testing.T) {
 		resp, body := sendJSON(http.MethodGet, "/api/sync/household", nil, aliceToken)
 		if resp.StatusCode != http.StatusOK {

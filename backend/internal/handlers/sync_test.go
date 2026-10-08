@@ -454,3 +454,54 @@ func TestSyncPushKeepsKeysMissingFromOldClient(t *testing.T) {
 	expectKey("private old client", resp, "wishes", `[{"id": "w1"}]`)
 	expectKey("private old client", resp, "accounts", `[]`)
 }
+
+// B2C-26: jsonb refuses \u0000 and lone surrogates — 400 before the repository, not a 500 after.
+func TestSyncUnstorableEscapesReturn400(t *testing.T) {
+	tokens := auth.NewTokenService("sync-test-signing-key", 2*time.Hour)
+	syncHandler := NewSyncHandler(docRepoSpy{t: t})
+	r := chi.NewRouter()
+	r.With(auth.Middleware(tokens, nil)).Post("/api/sync/household", syncHandler.PushHouseholdDoc)
+	r.With(auth.Middleware(tokens, nil)).Post("/api/sync/private", syncHandler.PushPrivateDoc)
+	token, _ := tokens.GenerateToken("user-1", "hh-1", "member", "a")
+
+	bs := string(rune(92)) // a backslash, spelled out so the JSON below stays readable
+	for _, data := range []string{
+		`{"name": "a` + bs + `u0000b"}`,
+		`{"a` + bs + `u0000": 1}`,
+		`{"name": "` + bs + `ud83d"}`,
+		`{"name": "` + bs + `ud83dx"}`,
+		`{"name": "` + bs + `ud83d` + bs + `n"}`,
+		`{"name": "` + bs + `ud83d` + bs + `u0041"}`,
+		`{"name": "` + bs + `ude00"}`,
+		`{"list": ["ok", "` + bs + `uDC00"]}`,
+	} {
+		body := []byte(`{"last_seen_rev": 1, "data": ` + data + `}`)
+		for _, path := range []string{"/api/sync/household", "/api/sync/private"} {
+			req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+			req.Header.Set("Authorization", "Bearer "+token)
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, req)
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("%s %s: expected 400, got %d: %s", path, data, rec.Code, rec.Body.String())
+			}
+		}
+	}
+}
+
+func TestDocDataProblemAcceptsOrdinaryUnicode(t *testing.T) {
+	bs := string(rune(92))
+	for _, data := range []string{
+		`{}`,
+		`{"name": "Дана 🌸", "note": "` + bs + `"quoted` + bs + `" ` + bs + bs + `u0000 is text"}`,
+		`{"emoji": "` + bs + `ud83c` + bs + `udf38", "e": "` + bs + `u00e9` + bs + `u0041"}`,
+		`{"tail": "` + bs + bs + `"}`,
+		`[1, "x", null, {"k": "` + bs + `t"}]`,
+	} {
+		if msg := docDataProblem([]byte(data)); msg != "" {
+			t.Errorf("%s: %s", data, msg)
+		}
+	}
+	if docDataProblem([]byte(`{"a": `)) == "" {
+		t.Error("truncated JSON must be refused")
+	}
+}

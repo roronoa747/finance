@@ -22,6 +22,71 @@ func NewSyncHandler(docRepo repository.DocRepository) *SyncHandler {
 // maxDocBodyBytes caps a pushed document; larger bodies get 413.
 const maxDocBodyBytes = 10 << 20
 
+// docDataProblem explains why PostgreSQL would refuse data as jsonb — a 500 otherwise — or
+// returns "". RawMessage keeps the bytes verbatim: invalid UTF-8, and inside valid JSON the
+// escapes \u0000 and lone surrogates (\ud800 without its pair) that jsonb does not store
+// (B2C-26). On 400 the client shows an error instead of retrying the same push forever.
+func docDataProblem(data []byte) string {
+	if !utf8.Valid(data) {
+		return "data must be valid UTF-8"
+	}
+	if !json.Valid(data) {
+		return "data must be valid JSON"
+	}
+	inString := false
+	for i := 0; i < len(data); i++ {
+		c := data[i]
+		if !inString {
+			inString = c == '"'
+			continue
+		}
+		switch c {
+		case '"':
+			inString = false
+		case '\\':
+			if data[i+1] != 'u' {
+				i++ // a one-letter escape; json.Valid vouched for it
+				continue
+			}
+			r := hex4(data[i+2 : i+6])
+			i += 5
+			switch {
+			case r == 0:
+				return `data must not contain \u0000`
+			case r >= 0xD800 && r <= 0xDBFF:
+				// A high surrogate must be followed by \u and a low one.
+				if i+6 >= len(data) || data[i+1] != '\\' || data[i+2] != 'u' {
+					return "data must not contain lone surrogates"
+				}
+				if low := hex4(data[i+3 : i+7]); low < 0xDC00 || low > 0xDFFF {
+					return "data must not contain lone surrogates"
+				}
+				i += 6
+			case r >= 0xDC00 && r <= 0xDFFF:
+				return "data must not contain lone surrogates"
+			}
+		}
+	}
+	return ""
+}
+
+// hex4 reads four hex digits json.Valid has already checked.
+func hex4(b []byte) rune {
+	var r rune
+	for _, c := range b {
+		r <<= 4
+		switch {
+		case c >= '0' && c <= '9':
+			r |= rune(c - '0')
+		case c >= 'a' && c <= 'f':
+			r |= rune(c-'a') + 10
+		case c >= 'A' && c <= 'F':
+			r |= rune(c-'A') + 10
+		}
+	}
+	return r
+}
+
 type PushDocRequest struct {
 	LastSeenRev int64           `json:"last_seen_rev"`
 	Data        json.RawMessage `json:"data"`
@@ -75,10 +140,8 @@ func (h *SyncHandler) PushHouseholdDoc(w http.ResponseWriter, r *http.Request) {
 	if len(req.Data) == 0 {
 		req.Data = json.RawMessage("{}")
 	}
-	// RawMessage keeps the bytes verbatim; PostgreSQL would reject invalid
-	// UTF-8 in jsonb and surface it as a 500.
-	if !utf8.Valid(req.Data) {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "data must be valid UTF-8"})
+	if msg := docDataProblem(req.Data); msg != "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
 		return
 	}
 
@@ -146,10 +209,8 @@ func (h *SyncHandler) PushPrivateDoc(w http.ResponseWriter, r *http.Request) {
 	if len(req.Data) == 0 {
 		req.Data = json.RawMessage("{}")
 	}
-	// RawMessage keeps the bytes verbatim; PostgreSQL would reject invalid
-	// UTF-8 in jsonb and surface it as a 500.
-	if !utf8.Valid(req.Data) {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "data must be valid UTF-8"})
+	if msg := docDataProblem(req.Data); msg != "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
 		return
 	}
 
