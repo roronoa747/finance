@@ -4186,7 +4186,9 @@ export function allocatedBeyondPlan(
   planExtra: number,
 ): number {
   const month = (state.allocations ?? []).filter((a) => !a.deletedAt && a.period === key && (a.source === 'salary' || a.source === 'rest'))
-  const records = month.filter((a) => a.kind === 'plan' || allocationFor(month, a) === a)
+  // Последняя — среди записей не-плана: запись плана того же источника позже её не вытесняет (критик ML-02).
+  const loose = month.filter((a) => a.kind !== 'plan')
+  const records = month.filter((a) => a.kind === 'plan' || allocationFor(loose, a) === a)
   const goals = new Map(liveGoals(state.goals ?? []).map((g) => [g.id, g]))
   const plan = activePlan(state.plans ?? [])
   const paused = new Set(plan ? pausedGoals(plan, state.goals ?? []).map((g) => g.id) : [])

@@ -2547,6 +2547,12 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
         const last = alloc({ at: '2026-09-02T00:00:00.000Z' }, [{ target: 'jp', amount: 500_000 }])
         expect(free([old, last]).amount).toBe(before - 500_000)
       })
+
+      it('критик: запись плана позже ручной раскладки того же источника её не вытесняет — считаются обе', () => {
+        const rest = alloc({ source: 'rest', sourceId: '2026-09', at: '2026-09-20T00:00:00.000Z' }, [{ target: 'jp', amount: 40_000 }])
+        const plan = alloc({ source: 'rest', sourceId: '2026-09', kind: 'plan', at: '2026-09-21T00:00:00.000Z' }, [{ target: 'prepay:loan', amount: 10_000 }])
+        expect(free([rest, plan]).amount).toBe(before - 50_000)
+      })
     })
   })
 
