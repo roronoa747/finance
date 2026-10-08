@@ -54,7 +54,7 @@ func newGoogleApp(t *testing.T, google handlers.GoogleVerifier) *googleApp {
 	mocks.Households.SetDocRepo(mocks.Docs)
 	cfg := devConfig()
 	tokens := auth.NewTokenService(cfg.JWTSecret, time.Hour)
-	r := NewRouter(cfg, nil, Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos, Fx: mocks.Fx},
+	r := NewRouter(cfg, nil, Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos, Fx: mocks.Fx, Accounts: repository.NewMockAccountRepo(mocks)},
 		tokens, fx.NewClient(), google)
 	return &googleApp{r: r, mocks: mocks, tokens: tokens}
 }
@@ -295,5 +295,69 @@ func TestWhoCreateJoinAndMembers(t *testing.T) {
 	_, lonely := a.google(t, "id:sub-lonely:lonely@example.com")
 	if rec := a.do(t, http.MethodGet, "/api/household/members", lonely.Token, nil); rec.Code != http.StatusConflict {
 		t.Errorf("members without a household: %d", rec.Code)
+	}
+}
+
+func TestDeleteAccount(t *testing.T) {
+	a := newGoogleApp(t, fakeGoogle{})
+	_, dana := a.google(t, "id:sub-dana:dana@example.com")
+	rec := a.do(t, http.MethodPost, "/api/household", dana.Token, map[string]string{"display_name": "Дана"})
+	var hh handlers.AuthResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &hh)
+	inv := a.do(t, http.MethodPost, "/api/household/invites", hh.Token, nil)
+	var invite struct{ Code string }
+	_ = json.Unmarshal(inv.Body.Bytes(), &invite)
+	_, ilyas := a.google(t, "id:sub-ilyas:ilyas@example.com")
+	a.do(t, http.MethodPost, "/api/household/join", ilyas.Token, map[string]string{"code": invite.Code, "display_name": "Ильяс"})
+	push := a.do(t, http.MethodPost, "/api/sync/household", hh.Token, map[string]any{"last_seen_rev": 1, "data": map[string]any{"goals": []any{"g1"}}})
+	if push.Code != http.StatusOK {
+		t.Fatalf("push: %d %s", push.Code, push.Body.String())
+	}
+
+	// The creator leaves: the partner keeps the household, its document and becomes the creator.
+	if rec := a.do(t, http.MethodDelete, "/api/account", dana.Token, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := a.do(t, http.MethodGet, "/api/auth/me", dana.Token, nil); rec.Code != http.StatusUnauthorized {
+		t.Errorf("me after deletion: %d", rec.Code)
+	}
+	if rec := a.do(t, http.MethodDelete, "/api/account", dana.Token, nil); rec.Code != http.StatusUnauthorized {
+		t.Errorf("repeated deletion: %d", rec.Code)
+	}
+	doc := a.do(t, http.MethodGet, "/api/sync/household", ilyas.Token, nil)
+	if doc.Code != http.StatusOK || !bytes.Contains(doc.Body.Bytes(), []byte(`"g1"`)) {
+		t.Errorf("partner's household doc: %d %s", doc.Code, doc.Body.String())
+	}
+	household, err := a.mocks.Households.GetHousehold(context.Background(), hh.Household.ID)
+	if err != nil || household.CreatedBy != ilyas.User.ID {
+		t.Errorf("created_by after the creator left: %+v %v", household, err)
+	}
+	members := a.do(t, http.MethodGet, "/api/household/members", ilyas.Token, nil)
+	if bytes.Contains(members.Body.Bytes(), []byte("Дана")) {
+		t.Errorf("deleted member still listed: %s", members.Body.String())
+	}
+
+	// A user without a household may delete too.
+	_, lonely := a.google(t, "id:sub-lonely:lonely@example.com")
+	if rec := a.do(t, http.MethodDelete, "/api/account", lonely.Token, nil); rec.Code != http.StatusNoContent {
+		t.Errorf("delete without a household: %d", rec.Code)
+	}
+
+	// The last member takes the household along; an old code no longer works.
+	inv = a.do(t, http.MethodPost, "/api/household/invites", ilyas.Token, nil)
+	_ = json.Unmarshal(inv.Body.Bytes(), &invite)
+	if rec := a.do(t, http.MethodDelete, "/api/account", ilyas.Token, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("last member delete: %d", rec.Code)
+	}
+	if _, err := a.mocks.Households.GetHousehold(context.Background(), hh.Household.ID); !errors.Is(err, repository.ErrHouseholdNotFound) {
+		t.Errorf("household of the last member: %v", err)
+	}
+	_, newcomer := a.google(t, "id:sub-new:new@example.com")
+	if rec := a.do(t, http.MethodPost, "/api/household/join", newcomer.Token, map[string]string{"code": invite.Code, "display_name": "Новый"}); rec.Code != http.StatusNotFound {
+		t.Errorf("code of a deleted household: %d", rec.Code)
+	}
+	// Signing in again with the same Google account starts from scratch.
+	if code, again := a.google(t, "id:sub-dana:dana@example.com"); code != http.StatusCreated || again.Household != nil {
+		t.Errorf("sign-in after deletion: %d %+v", code, again)
 	}
 }

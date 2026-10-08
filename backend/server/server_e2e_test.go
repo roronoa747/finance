@@ -32,7 +32,7 @@ func TestLiveServerE2EFlow(t *testing.T) {
 	mockRepos := repository.NewMockRepositories()
 	mockRepos.Households.SetDocRepo(mockRepos.Docs)
 
-	runLiveServerE2EFlow(t, nil, mockRepos.Users, mockRepos.Households, mockRepos.Docs, mockRepos.Statements, mockRepos.Photos)
+	runLiveServerE2EFlow(t, nil, mockRepos.Users, mockRepos.Households, mockRepos.Docs, mockRepos.Statements, mockRepos.Photos, repository.NewMockAccountRepo(mockRepos))
 }
 
 // TestLiveServerE2EFlowPostgres runs the same flow against a real PostgreSQL.
@@ -45,7 +45,8 @@ func TestLiveServerE2EFlowPostgres(t *testing.T) {
 		repository.NewSQLHouseholdRepository(database),
 		repository.NewSQLDocRepository(database),
 		repository.NewSQLStatementRepository(database),
-		repository.NewSQLPhotoRepository(database))
+		repository.NewSQLPhotoRepository(database),
+		repository.NewSQLAccountRepository(database))
 }
 
 func runLiveServerE2EFlow(
@@ -56,6 +57,7 @@ func runLiveServerE2EFlow(
 	docRepo repository.DocRepository,
 	statementRepo repository.StatementRepository,
 	photoRepo repository.PhotoRepository,
+	accountRepo repository.AccountRepository,
 ) {
 	cfg := &config.Config{
 		Port:       "8080",
@@ -65,7 +67,7 @@ func runLiveServerE2EFlow(
 	}
 	tokenService := auth.NewTokenService(cfg.JWTSecret, 24*time.Hour)
 
-	router := NewRouter(cfg, database, Repos{Users: userRepo, Households: householdRepo, Docs: docRepo, Statements: statementRepo, Photos: photoRepo, Fx: repository.NewSQLFxRepository(database)}, tokenService, fx.NewClient(), fakeGoogle{})
+	router := NewRouter(cfg, database, Repos{Users: userRepo, Households: householdRepo, Docs: docRepo, Statements: statementRepo, Photos: photoRepo, Fx: repository.NewSQLFxRepository(database), Accounts: accountRepo}, tokenService, fx.NewClient(), fakeGoogle{})
 	wantDBStatus := "disconnected"
 	if database != nil {
 		wantDBStatus = "connected"
@@ -668,6 +670,84 @@ func runLiveServerE2EFlow(
 		}
 		if resp, _ := sendJSON(http.MethodPost, "/api/photos/preview", map[string]string{"url": "https://kaspi.kz/"}, viewerToken); resp.StatusCode != http.StatusForbidden {
 			t.Errorf("viewer expected 403 on photo preview, got %d", resp.StatusCode)
+		}
+	})
+
+	// Удаление аккаунта (B2C-24): партнёр уходит — семья и документ у второй целы; последний
+	// уходит — семьи нет, код не работает.
+	t.Run("Account deletion: partner, then the last member", func(t *testing.T) {
+		_, before := sendJSON(http.MethodGet, "/api/sync/household", nil, aliceToken)
+
+		bob, err := userRepo.GetByEmail(context.Background(), "bob@e2e.test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp, body := sendJSON(http.MethodDelete, "/api/account", nil, bobToken); resp.StatusCode != http.StatusNoContent {
+			t.Fatalf("partner deletion: %d %s", resp.StatusCode, body)
+		}
+		if resp, _ := sendJSON(http.MethodGet, "/api/auth/me", nil, bobToken); resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("partner token after deletion: %d", resp.StatusCode)
+		}
+		resp, after := sendJSON(http.MethodGet, "/api/sync/household", nil, aliceToken)
+		// updated_by of the leaver becomes null; the revision and the data stay.
+		var docBefore, docAfter models.HouseholdDoc
+		_ = json.Unmarshal(before, &docBefore)
+		_ = json.Unmarshal(after, &docAfter)
+		if resp.StatusCode != http.StatusOK || docBefore.Rev != docAfter.Rev || !bytes.Equal(docBefore.Data, docAfter.Data) {
+			t.Errorf("household doc changed by the partner's deletion: %s → %s", before, after)
+		}
+		if resp, body := sendJSON(http.MethodGet, "/api/household/members", nil, aliceToken); resp.StatusCode != http.StatusOK || bytes.Contains(body, []byte("Bob Cooper")) {
+			t.Errorf("members after the partner left: %d %s", resp.StatusCode, body)
+		}
+		if database != nil {
+			for _, q := range []string{
+				`SELECT count(*) FROM app.users WHERE id = $1`,
+				`SELECT count(*) FROM app.household_members WHERE user_id = $1`,
+				`SELECT count(*) FROM app.private_docs WHERE user_id = $1`,
+				`SELECT count(*) FROM app.operations WHERE user_id = $1`,
+				`SELECT count(*) FROM app.statement_uploads WHERE user_id = $1`,
+				`SELECT count(*) FROM app.photos WHERE user_id = $1`,
+				`SELECT count(*) FROM app.household_invites WHERE created_by = $1 OR used_by = $1`,
+			} {
+				var n int
+				if err := database.QueryRow(q, bob.ID).Scan(&n); err != nil || n != 0 {
+					t.Errorf("%s → %d (%v)", q, n, err)
+				}
+			}
+		}
+
+		// The viewer and then Alice — the last member — leave.
+		resp, body := sendJSON(http.MethodPost, "/api/household/invites", nil, aliceToken)
+		var invite models.HouseholdInvite
+		if resp.StatusCode != http.StatusCreated || json.Unmarshal(body, &invite) != nil {
+			t.Fatalf("invite: %d %s", resp.StatusCode, body)
+		}
+		viewer, err := userRepo.GetByEmail(context.Background(), "viewer@example.com")
+		if err != nil {
+			t.Fatal(err)
+		}
+		viewerToken, _ := tokenService.GenerateToken(viewer.ID, "", "", "")
+		for _, token := range []string{viewerToken, aliceToken} {
+			if resp, body := sendJSON(http.MethodDelete, "/api/account", nil, token); resp.StatusCode != http.StatusNoContent {
+				t.Fatalf("deletion: %d %s", resp.StatusCode, body)
+			}
+		}
+		if _, err := householdRepo.GetHousehold(context.Background(), aliceHouseholdID); err == nil {
+			t.Error("the last member's household survived")
+		}
+		resp, body = sendJSON(http.MethodPost, "/api/auth/google", map[string]string{"id_token": "id:sub-carol:carol@e2e.test"}, "")
+		var carol handlers.AuthResponse
+		_ = json.Unmarshal(body, &carol)
+		if resp, body := sendJSON(http.MethodPost, "/api/household/join", map[string]string{"code": invite.Code, "display_name": "Carol"}, carol.Token); resp.StatusCode != http.StatusNotFound {
+			t.Errorf("code of a deleted household: %d %s", resp.StatusCode, body)
+		}
+		if database != nil {
+			for _, table := range []string{"households", "household_members", "household_docs", "private_docs", "household_invites", "statement_uploads", "operations", "photos"} {
+				var n int
+				if err := database.QueryRow(`SELECT count(*) FROM app.`+table+` WHERE `+map[bool]string{true: "id", false: "household_id"}[table == "households"]+` = $1`, aliceHouseholdID).Scan(&n); err != nil || n != 0 {
+					t.Errorf("app.%s of the deleted household: %d (%v)", table, n, err)
+				}
+			}
 		}
 	})
 }

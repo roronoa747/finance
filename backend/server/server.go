@@ -37,6 +37,7 @@ type Repos struct {
 	Statements repository.StatementRepository
 	Photos     repository.PhotoRepository
 	Fx         repository.FxRepository
+	Accounts   repository.AccountRepository
 }
 
 // NewHandler builds the API over database. A nil database means in-memory
@@ -51,6 +52,7 @@ func NewHandler(cfg *config.Config, database *sql.DB) (http.Handler, error) {
 			Statements: repository.NewSQLStatementRepository(database),
 			Photos:     repository.NewSQLPhotoRepository(database),
 			Fx:         repository.NewSQLFxRepository(database),
+			Accounts:   repository.NewSQLAccountRepository(database),
 		}
 	} else {
 		if cfg.IsProduction() {
@@ -59,7 +61,7 @@ func NewHandler(cfg *config.Config, database *sql.DB) (http.Handler, error) {
 		log.Println("using in-memory mock repositories (development mode)")
 		mocks := repository.NewMockRepositories()
 		mocks.Households.SetDocRepo(mocks.Docs)
-		repos = Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos, Fx: mocks.Fx}
+		repos = Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos, Fx: mocks.Fx, Accounts: repository.NewMockAccountRepo(mocks)}
 	}
 
 	tokens := auth.NewTokenService(cfg.JWTSecret, tokenTTL)
@@ -146,6 +148,7 @@ func NewRouter(
 	statementHandler := handlers.NewStatementHandler(repos.Statements)
 	photoHandler := handlers.NewPhotoHandler(repos.Photos)
 	previewHandler := handlers.NewPreviewHandler(linkpreview.New().Fetch)
+	accountHandler := handlers.NewAccountHandler(repos.Accounts)
 
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", handlers.HealthHandler(database))
@@ -168,6 +171,8 @@ func NewRouter(
 			protected.Get("/auth/me", authHandler.Me)
 			protected.Post("/household", householdHandler.CreateHousehold)
 			protected.Post("/household/join", householdHandler.JoinHousehold)
+			// Удаление аккаунта (B2C-24): любому вошедшему, с семьёй и без.
+			protected.Delete("/account", accountHandler.Delete)
 
 			// Household routes: 409 "no household" until "с кем" is done.
 			protected.Group(func(family chi.Router) {
