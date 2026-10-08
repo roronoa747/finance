@@ -13,6 +13,7 @@ import { money, plain, rateField } from '@/lib/money'
 import type { Payment, SyncDoc } from '@/types/finance'
 import Money from '@/views/Money.vue'
 import Month from '@/views/Month.vue'
+import DebtFaster from '@/views/DebtFaster.vue'
 
 vi.mock('@/lib/photos/store', async (orig) => ({
   ...(await orig<typeof import('@/lib/photos/store')>()),
@@ -200,30 +201,35 @@ describe('B2C-101: «Долги» по макету', () => {
     expect(txt(cc)).not.toContain('40 %')
     expect(cc.querySelector<HTMLElement>('[data-debt-bar] span')!.style.width).toBe('5%')
     expect(q('[data-debt="loan"] [data-debt-bar]')).toBeNull()
-    // На экране брендовых нет; «Выбрать этот план» — подтверждение калькулятора внутри свёрнутого расчёта (правило 12).
-    const brand = all('button').filter((b) => /(^|\s)bg-brand(\s|$)/.test(b.className))
-    expect(brand.filter((b) => !b.closest('[data-debts-calc-body]'))).toEqual([])
-    expect(brand.map(txt)).toEqual(['Выбрать этот план'])
+    // На «Долгах» брендовых нет совсем: расчёт с «Выбрать этот план» — на своём экране «Закрыть быстрее» (Б17, правило 12).
+    expect(all('button').filter((b) => /(^|\s)bg-brand(\s|$)/.test(b.className))).toEqual([])
     expect(document.body.textContent).not.toContain('Шаг сделан')
     // Ставка — в листе кредита: нажатие строки.
     await press(cc)
-    expect(txt(q('[role="dialog"]'))).toContain('Ставка (ГЭСВ), % годовых')
+    expect(txt(q('[role="dialog"]'))).toContain('Ставка, % годовых')
     expect(all('[role="dialog"] input').map((i) => (i as HTMLInputElement).value)).toContain(rateField(0.4))
   })
 
-  it('«Как закрыть быстрее» свёрнуто; раскрытие — «Сначала долги»; план включается и выключается оттуда', async () => {
-    const finance = await open('member', familyDoc(), '/money/debts')
-    const body = q('[data-debts-calc-body]')!
-    expect(body.style.display).toBe('none')
-    await press(q('[data-debts-calc]'))
-    expect(body.style.display).toBe('')
-    expect(txt(body)).toContain('Сначала долги')
-    // Включить — раскрывается «Копить или гасить?» с выбором плана.
-    await press(q('[data-debts-calc-body] [role="switch"]'))
-    await press(all('[data-debts-calc-body] button').find((b) => txt(b) === 'Выбрать этот план'))
+  it('«Как закрыть быстрее» — ссылка на свой экран (Б17); там «Сначала долги», «Подробнее» свёрнуто; план включается и выключается оттуда', async () => {
+    await open('member', familyDoc(), '/money/debts')
+    const link = q<HTMLAnchorElement>('a[data-debts-calc]')!
+    expect(link.getAttribute('href')).toBe('/money/debts/faster')
+    expect(q('[data-plan-main]')).toBeNull()
+    await press(link)
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/money/debts/faster'), { timeout: 5000 })
+    app?.unmount()
+    document.body.innerHTML = ''
+    const finance = await open('member', familyDoc(), '/money/debts/faster', DebtFaster)
+    expect(txt(q('[data-plan-main]'))).toContain('Сначала долги')
+    const more = q<HTMLDetailsElement>('details[data-plan-more]')!
+    expect(more.open).toBe(false)
+    // Включить — раскрываются «Подробнее» и «Копить или гасить?» с выбором плана.
+    await press(q('[data-plan-main] [role="switch"]'))
+    expect(more.open).toBe(true)
+    await press(all('[data-plan-more] button').find((b) => txt(b) === 'Выбрать этот план'))
     expect(finance.activePlan).not.toBeNull()
     // Выключить — подтверждение.
-    await press(q('[data-debts-calc-body] [role="switch"]'))
+    await press(q('[data-plan-main] [role="switch"]'))
     await press(dialogButton('Отменить план'))
     expect(finance.activePlan).toBeNull()
   })
@@ -240,7 +246,10 @@ describe('B2C-101: «Долги» по макету', () => {
   it('viewer — без «+ Кредит», переключатель плана неактивен', async () => {
     await open('viewer', familyDoc(), '/money/debts')
     expect(q('[data-add-credit]')).toBeNull()
-    expect(q<HTMLButtonElement>('[data-debts-calc-body] [role="switch"]')!.disabled).toBe(true)
+    app?.unmount()
+    document.body.innerHTML = ''
+    await open('viewer', familyDoc(), '/money/debts/faster', DebtFaster)
+    expect(q<HTMLButtonElement>('[data-plan-main] [role="switch"]')!.disabled).toBe(true)
   })
 
   it('без долгов — «Долгов нет», без расчёта и строк', async () => {

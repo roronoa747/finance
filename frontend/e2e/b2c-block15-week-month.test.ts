@@ -19,6 +19,7 @@ import AppShell from '../src/components/AppShell.vue'
 import Money from '../src/views/Money.vue'
 import Month from '../src/views/Month.vue'
 import Week from '../src/views/Week.vue'
+import DebtFaster from '../src/views/DebtFaster.vue'
 import { at, backend, fakeServer, fakeStatements, screen, statementsFor, tapPay, type FakeServer, type FakeStatements } from './support/family'
 
 /**
@@ -437,8 +438,9 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     expect(capital).toContain('data-capital-salaries')
     expect(capital).not.toContain('Netflix')
     expect(await screen(A.pinia, Money, '/money', undefined, [screenMixin({ subsOpen: true })])).toContain('Netflix')
-    // «Долги» — долговой план по своему адресу.
-    expect(text(await screen(A.pinia, Money, '/money/debts'))).toContain('Копить или гасить?')
+    // «Долги» — ссылка «Как закрыть быстрее» на свой экран долгового плана (Б17; прежде план жил на «Долгах»).
+    expect(await screen(A.pinia, Money, '/money/debts')).toMatch(/<a[^>]*href="\/money\/debts\/faster"[^>]*data-debts-calc|<a[^>]*data-debts-calc[^>]*href="\/money\/debts\/faster"/)
+    expect(text(await screen(A.pinia, DebtFaster, '/money/debts/faster'))).toContain('Копить или гасить?')
 
     const V = await phone(server, st, 'a', 'viewer')
     for (const path of ['/money', '/money/debts', '/money/history']) {

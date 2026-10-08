@@ -3,12 +3,13 @@ import { ref, computed, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain, parseMoney, rateField, ratePct } from '@/lib/money'
-import { monthKey } from '@/lib/dates'
+import { monthInAfter, monthKey } from '@/lib/dates'
 import { creditOutlook, creditSchedule, creditTotals, liveCredits, planSchedule } from '@/lib/finance'
 import type { Credit } from '@/types/finance'
 import { plural } from '@/lib/utils'
 
 import Field from '@/components/kit/Field.vue'
+import Hint from '@/components/kit/Hint.vue'
 import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
 import SavedMark from '@/components/kit/SavedMark.vue'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -89,18 +90,16 @@ function onCreditDay(text: string) {
 <template>
   <Sheet :open="!!activeCredit" :title="activeCredit?.name ?? ''" @close="emit('close')">
     <template #mark>
+      <!-- «За всё время» — подсказкой у названия (Б17), не абзацем над полями. -->
+      <Hint v-if="activeCredit && activeCreditTotals && activeCreditTotals.count > 0 && !activeCredit.rateUnknown" label="За всё время" data-credit-totals>
+        <span class="num">
+          За всё время: в долг {{ money(activeCreditTotals.body) }}, банку {{ money(activeCreditTotals.interest) }}
+          ({{ activeCreditTotals.count }} {{ plural(activeCreditTotals.count, 'платёж', 'платежа', 'платежей') }})
+        </span>
+      </Hint>
       <SavedMark :on="creditSaved" />
     </template>
     <template v-if="activeCredit" #default="{ close }">
-      <p
-        v-if="activeCreditTotals && activeCreditTotals.count > 0 && !activeCredit.rateUnknown"
-        class="-mt-1 mb-3 px-1 text-[12.5px] leading-relaxed text-ink-2 num"
-      >
-        За всё время: в долг {{ money(activeCreditTotals.body) }}, банку {{ money(activeCreditTotals.interest) }}
-        ({{ activeCreditTotals.count }}
-        {{ plural(activeCreditTotals.count, 'платёж', 'платежа', 'платежей') }})
-      </p>
-
       <!-- Viewer видит цифры, но не правит (Р-12, матрица §3) -->
       <div
         v-if="authStore.isViewer"
@@ -124,84 +123,79 @@ function onCreditDay(text: string) {
         </div>
       </div>
       <template v-else>
-        <Field label="Название">
-          <Input :default-value="activeCredit.name" class="mb-3" @blur="onCreditNameBlur" />
-        </Field>
         <Field label="Остаток долга, ₸">
-          <NumFieldBlur :initial="plain(activeCredit.principal)" class="mb-3" @commit="onCreditPrincipal" />
+          <NumFieldBlur :initial="plain(activeCredit.principal)" @commit="onCreditPrincipal" />
         </Field>
         <Field label="Платёж в месяц, ₸">
-          <NumFieldBlur :initial="plain(activeCredit.payment)" class="mb-3" @commit="onCreditPayment" />
+          <NumFieldBlur :initial="plain(activeCredit.payment)" @commit="onCreditPayment" />
         </Field>
-        <Field label="Ставка (ГЭСВ), % годовых">
-          <NumFieldBlur
-            :initial="activeCredit.rateUnknown ? '' : rateField(activeCredit.annualRate)"
-            kind="rate"
-            :placeholder="activeCredit.rateUnknown ? 'уточните в договоре' : ''"
-            class="mb-3"
-            @commit="onCreditRate"
-          />
-        </Field>
-        <Field label="День платежа">
-          <NumFieldBlur :initial="String(activeCredit.day)" kind="int" class="mb-3" @commit="onCreditDay" />
-        </Field>
+        <div class="grid grid-cols-2 gap-2.5">
+          <Field label="Ставка, % годовых">
+            <NumFieldBlur
+              :initial="activeCredit.rateUnknown ? '' : rateField(activeCredit.annualRate)"
+              kind="rate"
+              :placeholder="activeCredit.rateUnknown ? 'уточните' : ''"
+              @commit="onCreditRate"
+            />
+          </Field>
+          <Field label="День платежа">
+            <NumFieldBlur :initial="String(activeCredit.day)" kind="int" @commit="onCreditDay" />
+          </Field>
+        </div>
       </template>
 
-      <!-- Без ставки калькулятор досрочки показал бы «переплата 0 · экономия 0» (B2C-19) -->
-      <Button v-if="!activeCredit.rateUnknown" variant="outline" class="mb-3 w-full bg-surface-2" @click="emit('payoff', activeCredit.id)">
-        Посчитать досрочное погашение
-      </Button>
-
-      <Field v-if="!authStore.isViewer" label="Примечание">
-        <Input :default-value="activeCredit.note" class="mb-3" @blur="onCreditNoteBlur" />
-      </Field>
-
-      <!-- Закрытый долг (остаток 0) выводов не ждёт: строка «Оплатил» уже говорит «долг закрыт».
-           Ставку не знаем (кредит из выписки) — срок и переплата с нулём врут: вместо них одна строка. -->
-      <p
-        v-if="activeCredit.rateUnknown && activeCredit.principal > 0"
-        class="mb-3 rounded-xl border border-warn-line bg-warn-soft px-3.5 py-3 text-[12.5px] text-ink-2"
-      >
+      <!-- Срок — сюда со строк «Капитала» и «Долгов» (Р-116). Закрытый долг (остаток 0) выводов не ждёт. Ставку не знаем
+           (кредит из выписки) — срок и переплата с нулём врут: вместо них одна строка. -->
+      <p v-if="activeCredit.rateUnknown && activeCredit.principal > 0" class="-mt-1 mb-3.5 text-[13px] text-warn">
         Ставку уточните — без неё срок и переплату не посчитать.
       </p>
       <template v-else-if="activeCredit.principal > 0 && activeCreditOutlook">
-        <div
-          v-if="activeCreditOutlook.closes"
-          class="mb-3 rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-[13px]"
+        <p v-if="activeCreditOutlook.closes" class="-mt-1 mb-3.5 text-[13px] text-ink-2 num" data-credit-closes>
+          закроется в {{ monthInAfter(activeCreditOutlook.months) }}
+        </p>
+        <p v-else class="-mt-1 mb-3.5 text-[13px] text-warn" data-credit-closes>
+          При таком платеже долг не закрывается — проверьте остаток, платёж и ставку.
+        </p>
+      </template>
+
+      <template v-if="!authStore.isViewer">
+        <Field label="Название">
+          <Input :default-value="activeCredit.name" @blur="onCreditNameBlur" />
+        </Field>
+        <Field label="Примечание">
+          <Input :default-value="activeCredit.note" @blur="onCreditNoteBlur" />
+        </Field>
+      </template>
+
+      <!-- График платежей (Р-8) и переплата — свёрнуты; платёж меньше процентов — графика нет, есть строка выше -->
+      <div v-if="activeCredit.principal > 0 && activeCreditOutlook?.closes && !activeCredit.rateUnknown" class="mb-3.5 rounded-xl border border-line px-3.5 py-2.5">
+        <button
+          type="button"
+          class="flex w-full items-center justify-between gap-2 text-left cursor-pointer"
+          :aria-expanded="scheduleOpen"
+          @click="scheduleOpen = !scheduleOpen"
         >
-          <div class="flex justify-between">
+          <span class="text-[13.5px] font-medium text-ink">График платежей</span>
+          <span class="text-[12.5px] text-brand">{{ scheduleOpen ? 'Свернуть' : 'Показать' }}</span>
+        </button>
+        <template v-if="scheduleOpen">
+          <div class="mt-2.5 flex justify-between text-[13px]">
             <span class="text-ink-2">Платежей осталось</span>
             <b class="num text-ink">{{ activeCreditOutlook.months }}</b>
           </div>
-          <div class="mt-1 flex justify-between">
+          <div class="mt-1 flex justify-between text-[13px]">
             <span class="text-ink-2">Переплата до конца</span>
             <b class="num text-warn">{{ money(activeCreditOutlook.overpay) }}</b>
           </div>
-        </div>
-        <div
-          v-else
-          class="mb-3 rounded-xl border border-warn-line bg-warn-soft px-3.5 py-3 text-[12.5px] leading-relaxed text-ink-2"
-        >
-          При таком платеже долг не закрывается: проценты съедают его целиком.
-          Проверьте остаток, платёж и ставку.
-        </div>
+          <ScheduleTable :rows="activeSchedule" class="mt-2.5" />
+        </template>
+      </div>
 
-        <!-- График платежей (Р-8): свёрнут; платёж меньше процентов — графика нет, есть текст выше -->
-        <div v-if="activeCreditOutlook.closes" class="mb-3 rounded-xl border border-line px-3.5 py-2.5">
-          <button
-            type="button"
-            class="flex w-full items-center justify-between gap-2 text-left cursor-pointer"
-            :aria-expanded="scheduleOpen"
-            @click="scheduleOpen = !scheduleOpen"
-          >
-            <span class="text-[13px] font-medium text-ink">График платежей</span>
-            <span class="text-[12.5px] text-brand">{{ scheduleOpen ? 'Свернуть' : 'Показать' }}</span>
-          </button>
-          <ScheduleTable v-if="scheduleOpen" :rows="activeSchedule" class="mt-2.5" />
-        </div>
-      </template>
-
-      <Button class="mb-3 w-full" @click="close">Готово</Button>
+      <!-- Одна главная внизу (правило 12); досрочка — тихо под ней. Без ставки калькулятор врал бы «экономия 0» (B2C-19). -->
+      <Button class="w-full" @click="close">Готово</Button>
+      <Button v-if="!activeCredit.rateUnknown" variant="ghost" class="mb-1 w-full" data-credit-payoff @click="emit('payoff', activeCredit.id)">
+        Посчитать досрочно
+      </Button>
 
       <DangerZone
         v-if="!authStore.isViewer"

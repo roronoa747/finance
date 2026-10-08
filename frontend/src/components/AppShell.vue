@@ -71,6 +71,7 @@ const header = computed<{ title: string; sub?: string }>(() => {
   // «План» — одна вкладка на «Неделю» и «Месяц» (Р-89): даты недели и месяц листаются на самих экранах.
   if (p.startsWith('/week') || p === '/month') return { title: 'План' }
   // «Деньги» — один экран с тремя квадратами (пивот 3, Р-31): шапка одна на все.
+  if (p === '/money/debts/faster') return { title: 'Закрыть быстрее' }
   if (p === '/money' || p.startsWith('/money/')) return { title: 'Деньги' }
   if (p === '/goals/new') return { title: 'Новая мечта' }
   if (p.startsWith('/goals/')) {

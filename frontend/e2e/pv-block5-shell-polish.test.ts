@@ -243,8 +243,10 @@ describe('e2e / PV Блок 5 — оболочка на двух телефон�
       ]
       const B = await phone(server)
 
-      // Пивот 3 (B2C-42): ставка и срок — в листе кредита; у рассрочки 0 % — «Платежей осталось 10».
-      const cap = await screen(B.pinia, Money, '/money?credit=inst')
+      // Пивот 3 (B2C-42): ставка и срок — в листе кредита; у рассрочки 0 % — «Платежей осталось 10» в свёрнутом
+      // «Графике платежей» (Б17), срок — строкой `data-credit-closes`.
+      const cap = await screen(B.pinia, Money, '/money?credit=inst', undefined, [screenMixin({ scheduleOpen: true })])
+      expect(cap).toMatch(/data-credit-closes>\s*закроется в /)
       expect(cap).toMatch(/Платежей осталось<\/span>\s*<b[^>]*>10</)
       const goal = await screen(B.pinia, GoalDetail, '/goals/trip', undefined, [screenMixin({ openDepositModal: true, depositOperation: 'deposit' })])
       expect(goal).toContain('Пополнить «Отпуск»')

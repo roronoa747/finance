@@ -11,6 +11,7 @@ import { screenMixin } from '../src/test/screenState'
 import type { Payment, SyncDoc } from '../src/types/finance'
 import Money from '../src/views/Money.vue'
 import Month from '../src/views/Month.vue'
+import DebtFaster from '../src/views/DebtFaster.vue'
 import { at, backend, fakeServer, screen, type FakeServer } from './support/family'
 
 /**
@@ -138,7 +139,7 @@ describe('e2e / B2C Блок 16 — «Деньги» по макету на дв
     expect(await status(B, 'a')).toContain('пришла 12 сентября')
   })
 
-  it('часть 2 — «Долги»: сумма и «без долгов — к», полоса у кредитки, расчёт свёрнут, «Шаг сделан» нет', async () => {
+  it('часть 2 — «Долги»: сумма и «без долгов — к», полоса у кредитки, расчёт — своим экраном «Закрыть быстрее», «Шаг сделан» нет', async () => {
     const B = await phone(server, 'b')
     const html = await screen(B.pinia, Money, '/money/debts')
     setActivePinia(B.pinia)
@@ -149,8 +150,12 @@ describe('e2e / B2C Блок 16 — «Деньги» по макету на дв
     expect(o.rows.find((r) => r.creditId === 'cc')!.paidShare).toBe(0.1)
     expect(html).toMatch(/data-debt="cc"[\s\S]*?data-debt-bar[\s\S]*?width:10%/)
     expect(html).not.toMatch(/data-debt="loan"[^]*?data-debt-bar[^]*?data-debt="cc"/)
-    expect(html).toMatch(/data-debts-calc-body[^>]*style="display:none;?"/)
-    expect(text(html)).toContain('Как закрыть быстрее')
+    // Б17: расчёт не раскрывашкой на «Долгах», а ссылкой на экран «Закрыть быстрее»; там «Подробнее» свёрнуто.
+    expect(html).toMatch(/<a[^>]*href="\/money\/debts\/faster"[^>]*data-debts-calc[^>]*>\s*Как закрыть быстрее/)
+    expect(html).not.toContain('data-plan-main')
+    const faster = await screen(B.pinia, DebtFaster, '/money/debts/faster')
+    expect(faster).toContain('data-plan-main')
+    expect(faster).toMatch(/<details(?![^>]*\sopen)[^>]*data-plan-more/)
     expect(text(html)).not.toContain('Шаг сделан')
     expect(html).toContain('data-add-credit')
   })

@@ -509,7 +509,6 @@ function share() {
           <NumField
             v-model="depositAmount"
             :placeholder="depositOperation === 'deposit' ? plain(goal.monthly) : '10 000'"
-            class="mb-3"
           />
         </Field>
       </div>
@@ -530,7 +529,7 @@ function share() {
       </Field>
 
       <Field label="Примечание">
-        <Input v-model="depositNote" placeholder="Премия, накопления…" class="mb-3" />
+        <Input v-model="depositNote" placeholder="Премия, накопления…" />
       </Field>
 
       <Button class="w-full mt-2" @click="form.submit(applyDeposit)">

@@ -24,6 +24,7 @@ const GoalNew = () => import('@/views/GoalNew.vue')
 // Первый запуск (B2C-19): один раз на семью — отдельным чанком.
 const Start = () => import('@/views/Start.vue')
 const MyCircle = () => import('@/views/MyCircle.vue')
+const DebtFaster = () => import('@/views/DebtFaster.vue')
 
 /**
  * Карта маршрутов (DESIGN.md §2, B2C-13; Блок 15, Р-89, Р-103): вкладки «Мечты» `/` · «План» — `/week`
@@ -89,6 +90,8 @@ export const routes: RouteRecordRaw[] = [
         component: Money,
         beforeEnter: (to) => (typeof to.query.month === 'string' ? { path: '/month', query: monthQuery(to.query) } : true),
       },
+      // «Как закрыть быстрее» — свой экран со стрелкой «назад» (Б17, макет): открывается сверху, «назад» — на «Долги».
+      { path: 'money/debts/faster', name: 'debt-faster', component: DebtFaster },
       // Квадрат «План» переименован в «Долги» (Р-91).
       { path: 'money/plan', redirect: (to) => ({ path: '/money/debts', query: to.query }) },
       // Бюджет и Капитал до пивота 3 — теперь квадрат «Капитал»; окна — те же ключи query.

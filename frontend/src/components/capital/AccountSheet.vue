@@ -140,12 +140,12 @@ const accountRemoveWarning = computed(() => {
 
       <template v-else>
         <Field label="Название">
-          <Input :default-value="activeAccount.name" class="mb-3" @blur="onAccountNameBlur" />
+          <Input :default-value="activeAccount.name" @blur="onAccountNameBlur" />
         </Field>
 
         <template v-if="activeAccount.currency">
           <Field :label="`Сумма, ${CURRENCY_SIGN[activeAccount.currency]}`">
-            <NumFieldBlur :initial="plain(activeAccount.foreignAmount ?? 0)" class="mb-3" @commit="onForeignAmount" />
+            <NumFieldBlur :initial="plain(activeAccount.foreignAmount ?? 0)" @commit="onForeignAmount" />
           </Field>
           <p v-if="nbRate" class="-mt-2.5 mb-3 text-[12px] text-ink-2 num">
             ≈ {{ money(activeAccount.amount) }} по курсу Нацбанка
@@ -155,7 +155,6 @@ const accountRemoveWarning = computed(() => {
               <NumFieldBlur
                 :initial="String(activeAccount.rate ?? '').replace('.', ',')"
                 kind="rate"
-                class="mb-3"
                 @commit="onAccountRate"
               />
             </Field>
@@ -167,25 +166,24 @@ const accountRemoveWarning = computed(() => {
         <Field v-else label="Сумма, ₸">
           <NumFieldBlur
             :initial="plain(activeAccount.amount)"
-            class="mb-3"
             @commit="(text) => financeStore.setAccountAmount(activeAccount!.id, parseMoney(text))"
           />
         </Field>
 
         <Field label="Примечание">
-          <Input :default-value="activeAccount.note" class="mb-3" @blur="onAccountNoteBlur" />
+          <Input :default-value="activeAccount.note" @blur="onAccountNoteBlur" />
         </Field>
 
         <!-- Вклад: условия полями (бывший экран вклада) -->
         <template v-if="depositData">
           <Field label="Ставка, % годовых">
-            <NumFieldBlur :initial="rateField(depositData.annualRate)" kind="rate" class="mb-3" @commit="onDepositRate" />
+            <NumFieldBlur :initial="rateField(depositData.annualRate)" kind="rate" @commit="onDepositRate" />
           </Field>
           <Field label="Пополнение в месяц, ₸">
-            <NumFieldBlur :initial="plain(depositData.monthlyTopUp)" class="mb-3" @commit="(t) => setDeposit({ monthlyTopUp: parseMoney(t) })" />
+            <NumFieldBlur :initial="plain(depositData.monthlyTopUp)" @commit="(t) => setDeposit({ monthlyTopUp: parseMoney(t) })" />
           </Field>
           <Field label="Срок, месяцев">
-            <NumFieldBlur :initial="String(depositData.months)" kind="int" class="mb-3" @commit="(t) => setDeposit({ months: Math.max(1, parseMoney(t)) })" />
+            <NumFieldBlur :initial="String(depositData.months)" kind="int" @commit="(t) => setDeposit({ months: Math.max(1, parseMoney(t)) })" />
           </Field>
           <Field label="Капитализация" group>
             <Segmented

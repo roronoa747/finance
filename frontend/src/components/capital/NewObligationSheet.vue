@@ -80,7 +80,7 @@ function createObligation() {
 <template>
   <Sheet :open="open" title="Регулярный платёж" @close="emit('close')">
     <Field label="Что оплачиваем" name="name">
-      <Input v-model="obName" placeholder="Например, интернет или абонемент" class="mb-3" />
+      <Input v-model="obName" placeholder="Например, интернет или абонемент" />
     </Field>
 
     <Field label="Как часто" group>
@@ -99,7 +99,7 @@ function createObligation() {
     </Field>
 
     <Field :label="`${obEvery === 'year' ? 'Сумма за год' : 'Сумма в месяц'}, ${CURRENCY_SIGN[obCurrency]}`" name="amount">
-      <NumField v-model="obAmount" placeholder="5 000" class="mb-3" />
+      <NumField v-model="obAmount" placeholder="5 000" />
     </Field>
     <NbRateLine :amount="parseMoney(obAmount)" :currency="obCurrency" :nb="nb" />
 
@@ -124,7 +124,7 @@ function createObligation() {
     </Field>
 
     <Field label="День платежа">
-      <NumField v-model="obDay" kind="int" class="mb-3" />
+      <NumField v-model="obDay" kind="int" />
     </Field>
 
     <Field v-if="people.length > 1" label="Чьё это" group>

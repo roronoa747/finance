@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import { PhCaretRight, PhPlus } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
@@ -16,7 +17,7 @@ import PlanSquare from '@/components/money/PlanSquare.vue'
 /**
  * Экран «Долги» (Блок 16, Р-110; макет money-b16.html): карточка — сумма остатков и «без долгов — к <месяц>»; кредиты
  * строками «платёж в месяц» (ставка и срок — в листе кредита, Б17) с остатком и полосой «погашено с начала учёта» (отметок с телом нет —
- * без полосы), нажатие — лист кредита. «Как закрыть быстрее ›» свёрнуто: внутри — долговой план (`PlanSquare`).
+ * без полосы), нажатие — лист кредита. «Как закрыть быстрее ›» — свой экран `/money/debts/faster` (Б17, `PlanSquare`).
  * Тихое «+ Кредит» — участнику; брендовых кнопок нет: «Отложил» в долг — у его строки в «Месяце». Всё — `debtsOverview`.
  */
 const financeStore = useFinanceStore()
@@ -33,7 +34,6 @@ function rowMeta(r: DebtRow): string {
   return [`${plain(r.payment)} в месяц`, r.rateUnknown ? 'ставку уточните' : '', r.endMonth ? '' : 'не закрывается'].filter(Boolean).join(' · ')
 }
 
-const calcOpen = ref(false)
 const creditId = ref<string | null>(null)
 const payoffId = ref<string | null>(null)
 const addOpen = ref(false)
@@ -71,19 +71,15 @@ const addOpen = ref(false)
 
   <!-- Расчёт и «Сначала долги» — свёрнуты (правило 12) -->
   <template v-if="overview.rows.length || hasPlan">
-    <button
-      type="button"
-      class="press flex w-full cursor-pointer items-center justify-between gap-3 rounded-[16px] border border-card-border bg-surface px-4 py-3 text-left text-[15px] font-semibold text-ink"
-      :aria-expanded="calcOpen"
+    <!-- «Как закрыть быстрее» — свой экран (Б17): открывается сверху, «назад» — сюда же. -->
+    <RouterLink
+      to="/money/debts/faster"
+      class="press flex w-full items-center justify-between gap-3 rounded-[16px] border border-card-border bg-surface px-4 py-3 text-left text-[15px] font-semibold text-ink"
       data-debts-calc
-      @click="calcOpen = !calcOpen"
     >
       Как закрыть быстрее
-      <PhCaretRight :size="14" class="shrink-0 text-ink-3 transition-transform" :class="calcOpen && 'rotate-90'" />
-    </button>
-    <div v-show="calcOpen" class="flex flex-col gap-3" data-debts-calc-body>
-      <PlanSquare />
-    </div>
+      <PhCaretRight :size="14" class="shrink-0 text-ink-3" />
+    </RouterLink>
   </template>
   <PlanSquare v-else-if="pastPlans" />
 

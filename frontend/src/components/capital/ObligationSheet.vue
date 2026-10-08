@@ -185,7 +185,7 @@ function planObligation() {
       </div>
       <template v-else>
         <Field label="Название">
-          <Input :default-value="activeObligation.name" class="mb-3" @blur="onObligationNameBlur" />
+          <Input :default-value="activeObligation.name" @blur="onObligationNameBlur" />
         </Field>
 
         <Field :label="`Сумма сейчас, ${CURRENCY_SIGN[obOwn.currency]}`">
@@ -198,7 +198,7 @@ function planObligation() {
         </p>
 
         <Field label="День платежа">
-          <NumFieldBlur :initial="String(activeObligation.day)" kind="int" class="mb-3" @commit="onObligationDay" />
+          <NumFieldBlur :initial="String(activeObligation.day)" kind="int" @commit="onObligationDay" />
         </Field>
 
         <Field label="Как часто" group>

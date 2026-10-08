@@ -152,10 +152,10 @@ function remove() {
       </a>
 
       <Field label="Что покупаем">
-        <Input :default-value="wish.name" class="mb-3" @blur="onName" />
+        <Input :default-value="wish.name" @blur="onName" />
       </Field>
       <Field label="Цена, ₸">
-        <NumFieldBlur :initial="plain(wish.price)" class="mb-3" @commit="onPrice" />
+        <NumFieldBlur :initial="plain(wish.price)" @commit="onPrice" />
       </Field>
       <!-- Ссылка подтягивает фото со страницы — нужен сервер: в демо поля нет (B2C-66) -->
       <Field v-if="!financeStore.isDemo" label="Ссылка на товар">
@@ -163,7 +163,6 @@ function remove() {
           :default-value="wish.url ?? ''"
           inputmode="url"
           placeholder="Вставьте ссылку"
-          class="mb-3"
           @input="onUrlInput"
           @blur="onUrl"
         />

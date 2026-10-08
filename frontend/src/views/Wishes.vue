@@ -302,17 +302,16 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
     <Sheet :open="openWishModal && canEdit" title="Новое желание" @close="openWishModal = false">
       <!-- Ссылка — первой (макет «Желание по ссылке»): вставили — фото и название подтянулись; в демо сервера нет -->
       <Field v-if="!financeStore.isDemo" label="Ссылка на товар">
-        <Input v-model="wishUrl" inputmode="url" placeholder="Вставьте ссылку" class="mb-3" />
+        <Input v-model="wishUrl" inputmode="url" placeholder="Вставьте ссылку" />
       </Field>
-      <p v-else class="mb-3 type-meta">По ссылке — в приложении</p>
       <!-- Фото — крупно: желание узнаётся по картинке (Р-9) -->
       <PhotoSlot v-if="!financeStore.isDemo" class="mb-3" :file="wishFile" :busy="link.busy.value" removable @file="onWishFile" @remove="wishFile = null" />
       <Callout v-if="link.note.value" tone="neutral" icon="info" class="mb-3">{{ link.note.value }}</Callout>
       <Field label="Что покупаем" name="wishName">
-        <Input v-model="wishName" placeholder="Например, сковорода" class="mb-3" />
+        <Input v-model="wishName" placeholder="Например, сковорода" />
       </Field>
       <Field label="Цена, ₸">
-        <NumField v-model="wishPrice" placeholder="18 000" class="mb-3" />
+        <NumField v-model="wishPrice" placeholder="18 000" />
       </Field>
       <Field v-if="tab === 'all' && people.length > 1" label="Кто добавил" group>
         <Segmented
@@ -321,7 +320,7 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
         />
       </Field>
 
-      <Button class="w-full mt-2" @click="form.submit(createWish)">
+      <Button class="w-full" @click="form.submit(createWish)">
         Добавить в список
       </Button>
     </Sheet>

@@ -9,6 +9,7 @@ import Access from './Access.vue'
 import Money from './Money.vue'
 import Week from './Week.vue'
 import Dreams from './Dreams.vue'
+import DebtFaster from './DebtFaster.vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
 import { spendTotals, unknownGroups } from '@/lib/statements/model'
@@ -66,7 +67,9 @@ describe('B2C-45: демо — «Деньги» с данными во всех 
     expect(capital).not.toContain('оплачено')
     expect(capital).toContain('Автокредит')
 
-    const plan = await renderScreen(Money, '/money/debts')
+    // План «Сначала долги» — на экране «Закрыть быстрее» (Б17), «Долги» ведут туда ссылкой.
+    expect(await renderScreen(Money, '/money/debts')).toContain('data-debts-calc')
+    const plan = await renderScreen(DebtFaster, '/money/debts/faster')
     expect(plan).toMatch(/role="switch" aria-checked="true"/)
     expect(text(plan)).toContain('Цели на паузе Машина')
 

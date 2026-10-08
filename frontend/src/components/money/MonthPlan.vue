@@ -681,7 +681,7 @@ function addFund(kind: 'reserve' | 'cushion') {
           <Select v-model="spendEdit.categoryId" :options="categories.map((c) => ({ value: c.id, label: c.name }))" class="mb-3" />
         </Field>
         <Field :label="`${personName(spendEdit.by)}, ₸ в месяц`">
-          <NumField v-model="spendEdit.amount" placeholder="50 000" class="mb-3" />
+          <NumField v-model="spendEdit.amount" placeholder="50 000" />
         </Field>
         <Button class="w-full" @click="spendForm.submit(saveSpend)">Готово</Button>
       </template>
@@ -691,7 +691,7 @@ function addFund(kind: 'reserve' | 'cushion') {
     <Sheet :open="debtEdit !== null" :title="debtName || 'Закрыть кредит'" @close="debtEdit = null">
       <template v-if="debtEdit !== null">
         <Field label="Сверх графика, ₸ в месяц">
-          <NumField v-model="debtEdit" placeholder="50 000" class="mb-3" />
+          <NumField v-model="debtEdit" placeholder="50 000" />
         </Field>
         <Button class="w-full" @click="saveDebt">Готово</Button>
       </template>

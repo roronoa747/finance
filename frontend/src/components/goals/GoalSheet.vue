@@ -70,13 +70,13 @@ function remove() {
     </template>
     <template v-if="goal" #default="{ close }">
       <Field label="Название">
-        <Input :default-value="goal.name" class="mb-3" @blur="onName" />
+        <Input :default-value="goal.name" @blur="onName" />
       </Field>
       <Field label="Сколько нужно, ₸">
-        <NumFieldBlur :initial="plain(goal.need)" class="mb-3" @commit="onNeed" />
+        <NumFieldBlur :initial="plain(goal.need)" @commit="onNeed" />
       </Field>
       <Field label="Уже накоплено, ₸">
-        <NumFieldBlur :initial="plain(goal.have)" class="mb-3" @commit="onHave" />
+        <NumFieldBlur :initial="plain(goal.have)" @commit="onHave" />
       </Field>
       <p v-if="goal.movements?.length" class="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-2">
         Взносы ({{ goal.movements.length }}) останутся в истории: правится только та часть,

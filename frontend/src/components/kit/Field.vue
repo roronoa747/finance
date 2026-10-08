@@ -8,7 +8,7 @@ import { injectForm, provideFieldError } from './useFormCheck'
  * первой кнопки, и тап по ней эту кнопку нажимает.
  *
  * Ошибка (Р-114): `name` — имя поля в правилах `useFormCheck` формы, `error` — своя строка.
- * Под полем одна строка «что не так», поле ввода внутри получает `aria-invalid`.
+ * Под полем одна строка «что не так», поле ввода внутри получает `aria-invalid`. Слот `hint` — «?» (`Hint`) у подписи.
  */
 const props = defineProps<{
   label?: string
@@ -33,12 +33,12 @@ onBeforeUnmount(() => {
 
 <template>
   <div v-if="group" ref="root" role="group" :aria-label="label" :aria-describedby="error ? id : undefined" class="mb-3.5 flex flex-col gap-1.5 text-left">
-    <span v-if="label" class="text-[12.5px] font-medium text-ink-2">{{ label }}</span>
+    <span v-if="label" class="flex items-center gap-1 text-[12.5px] font-medium text-ink-2">{{ label }}<slot name="hint" /></span>
     <slot />
     <span v-if="error" :id="id" role="alert" class="text-[12.5px] font-medium text-destructive">{{ error }}</span>
   </div>
   <label v-else ref="root" class="mb-3.5 flex flex-col gap-1.5 text-left">
-    <span v-if="label" class="text-[12.5px] font-medium text-ink-2">{{ label }}</span>
+    <span v-if="label" class="flex items-center gap-1 text-[12.5px] font-medium text-ink-2">{{ label }}<slot name="hint" /></span>
     <slot />
     <span v-if="error" :id="id" role="alert" class="text-[12.5px] font-medium text-destructive">{{ error }}</span>
   </label>

@@ -365,7 +365,7 @@ describe('views/Wishes.vue — фото желаний (Р-9, B2C-18, SSR)', () 
     expect(viewer).not.toContain('accept="image/*"')
   })
 
-  it('B2C-66: ссылка на товар — первой в «Новом желании» и в правке; viewer — без поля; демо — тихая строка вместо поля', async () => {
+  it('B2C-66: ссылка на товар — первой в «Новом желании» и в правке; viewer — без поля; демо — без поля и без строки-пояснения (Б17)', async () => {
     family('member', 'a', { wishlist: [wish({ id: 'pan', name: 'Сковорода', price: 18_000, url: 'https://kaspi.kz/p' })] })
     const sheet = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ openWishModal: true })])
     expect(sheet).toContain('placeholder="Вставьте ссылку"')
@@ -388,7 +388,9 @@ describe('views/Wishes.vue — фото желаний (Р-9, B2C-18, SSR)', () 
     expect(demo.isDemo).toBe(true)
     const demoSheet = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ openWishModal: true })])
     expect(demoSheet).not.toContain('Вставьте ссылку')
-    expect(demoSheet).toContain('По ссылке — в приложении')
+    // Б17: строки «По ссылке — в приложении» больше нет — в демо лист просто без поля ссылки.
+    expect(demoSheet).toContain('Что покупаем')
+    expect(demoSheet).not.toContain('По ссылке — в приложении')
     const demoEdit = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ editWishId: 'pan' })])
     expect(demoEdit).not.toContain('Ссылка на товар')
     expect(demoEdit).toContain('Открыть ссылку')

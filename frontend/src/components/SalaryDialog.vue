@@ -156,20 +156,19 @@ function handlePlanSubmit() {
       </Field>
 
       <Field :label="`Оклад сейчас, ${sign}`">
+        <!-- «только исправить ошибку» — в подсказке у поля (макет Б17), не строкой. -->
+        <template #hint><Hint label="Оклад сейчас">Только исправить ошибку: оклад был введён неверно. Если зарплата действительно меняется — не трогайте это поле, а измените оклад с нужного месяца ниже.</Hint></template>
         <NumFieldBlur :initial="plain(current.amount)" @commit="onSalaryCommit" />
       </Field>
-      <p class="-mt-1 mb-3 flex items-center gap-1 text-[12px] text-ink-2 num">
-        <template v-if="current.currency !== 'KZT'">≈ {{ money(currentTenge) }} по курсу Нацбанка ·</template>
-        только исправить ошибку
-        <Hint>Оклад был введён неверно. Если зарплата действительно меняется — не трогайте это поле, а измените оклад с нужного месяца ниже.</Hint>
-      </p>
+      <p v-if="current.currency !== 'KZT'" class="-mt-1 mb-3 text-[12.5px] text-ink-2 num">≈ {{ money(currentTenge) }} по курсу Нацбанка</p>
 
       <Field label="День зарплаты">
         <NumFieldBlur :initial="String(person.payday)" kind="int" @commit="onPaydayCommit" />
       </Field>
 
       <div v-if="!planning" class="mb-3">
-        <Button variant="outline" class="w-full bg-surface-2" @click="startPlanning">
+        <!-- Главная листа — брендовая (была серой, макет Б17). -->
+        <Button class="w-full" @click="startPlanning">
           Изменить оклад
         </Button>
       </div>

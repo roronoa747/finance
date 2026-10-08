@@ -86,33 +86,15 @@ function createAccount() {
 </script>
 
 <template>
-  <Sheet :open="open" title="Счёт или накопления" @close="emit('close')">
-    <Field label="Приватность счёта" group>
-      <div class="grid grid-cols-2 gap-2 mb-3">
-        <button
-          type="button"
-          :class="cn('rounded-xl border px-3 py-2.5 text-[13px] font-medium transition-colors cursor-pointer', !newAccountIsPrivate ? 'border-brand bg-brand-soft text-brand' : 'border-line bg-surface-2 text-ink-2')"
-          @click="newAccountIsPrivate = false"
-        >
-          Общий (семья)
-        </button>
-        <button
-          type="button"
-          :class="cn('rounded-xl border px-3 py-2.5 text-[13px] font-medium transition-colors cursor-pointer', newAccountIsPrivate ? 'border-brand bg-brand-soft text-brand' : 'border-line bg-surface-2 text-ink-2')"
-          @click="newAccountIsPrivate = true"
-        >
-          Личный (только мне)
-        </button>
-      </div>
-    </Field>
-
+  <Sheet :open="open" title="Счёт" @close="emit('close')">
     <Field label="Что это" group>
-      <div class="grid grid-cols-2 gap-2 mb-3">
+      <div class="grid grid-cols-2 gap-2">
         <button
           v-for="k in accountKinds"
           :key="k.value"
           type="button"
-          :class="cn('rounded-xl border px-3 py-2 text-[13px] transition-colors cursor-pointer', newAccountKind === k.value ? 'border-brand bg-brand-soft font-medium text-brand' : 'border-line bg-surface-2 text-ink-2')"
+          :aria-pressed="newAccountKind === k.value"
+          :class="cn('opt', newAccountKind === k.value && 'opt-on')"
           @click="newAccountKind = k.value"
         >
           {{ k.label }}
@@ -121,25 +103,31 @@ function createAccount() {
     </Field>
 
     <Field label="Название">
-      <Input v-model="newAccountName" placeholder="Например, Kaspi Gold" class="mb-3" />
+      <Input v-model="newAccountName" placeholder="Например, Kaspi Gold" />
     </Field>
 
     <Field label="Валюта" group>
-      <CurrencyChips v-model="newAccountCurrency" class="mb-3" />
+      <CurrencyChips v-model="newAccountCurrency" />
     </Field>
 
     <Field :label="`Сумма, ${CURRENCY_SIGN[newAccountCurrency]}`" name="amount">
-      <NumField v-model="newAccountAmount" class="mb-3" />
+      <NumField v-model="newAccountAmount" />
     </Field>
 
     <NbRateLine :amount="parsedAccountAmount" :currency="newAccountCurrency" :nb="nb" />
 
     <Field v-if="newAccountKind === 'deposit'" label="Ставка по вкладу, % годовых — если есть">
-      <NumField v-model="newAccountDepositRate" kind="rate" placeholder="16,5" class="mb-3" />
+      <NumField v-model="newAccountDepositRate" kind="rate" placeholder="16,5" />
     </Field>
 
-    <Button class="w-full mt-2" @click="form.submit(createAccount)">
-      Добавить счёт
-    </Button>
+    <!-- «Общий (семья) / Личный (только мне)» → «Семья / Только я», внизу (макет Б17): сначала — что это за деньги. -->
+    <Field label="Кто видит" group>
+      <div class="grid grid-cols-2 gap-2">
+        <button type="button" :aria-pressed="!newAccountIsPrivate" :class="cn('opt', !newAccountIsPrivate && 'opt-on')" @click="newAccountIsPrivate = false">Семья</button>
+        <button type="button" :aria-pressed="newAccountIsPrivate" :class="cn('opt', newAccountIsPrivate && 'opt-on')" @click="newAccountIsPrivate = true">Только я</button>
+      </div>
+    </Field>
+
+    <Button class="w-full" @click="form.submit(createAccount)">Добавить счёт</Button>
   </Sheet>
 </template>

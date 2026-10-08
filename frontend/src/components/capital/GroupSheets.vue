@@ -62,7 +62,7 @@ const groupCandidates = computed(() =>
 <template>
   <Sheet :open="createOpen" title="Группа подписок" @close="emit('close-create')">
     <Field label="Название" name="groupName">
-      <Input v-model="groupName" placeholder="Рабочие, досуг, для дома…" class="mb-3" />
+      <Input v-model="groupName" placeholder="Рабочие, досуг, для дома…" />
     </Field>
     <Field label="Спрашивать «оставить?»" group>
       <div class="grid grid-cols-2 gap-2">
@@ -86,7 +86,6 @@ const groupCandidates = computed(() =>
         <Field label="Название">
           <Input
             :default-value="activeGroup.name"
-            class="mb-3"
             @blur="(e: Event) => {
               const v = (e.target as HTMLInputElement).value.trim()
               if (v && v !== activeGroup!.name) financeStore.updateObligation(activeGroup!.id, { name: v })

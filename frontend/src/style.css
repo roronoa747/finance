@@ -390,6 +390,29 @@
  * Кнопка строки списка (ревью frontend Б15, Н-7): настоящая `<button>` на названии, нажимается вся строка (у строки —
  * `relative`), боковые кнопки и переключатели строки — поверх (`relative z-10`).
  */
+/*
+ * Вариант выбора в листе (Б17, Р-117): «Карта / Наличные», «Вы / Партнёр», «Семья / Только я» — одна высота 44 px и
+ * один вид во всех листах. Выбранный — `opt-on`. Кнопка — `<button type="button" :aria-pressed>`.
+ */
+@utility opt {
+  display: grid;
+  place-items: center;
+  height: 44px;
+  padding-inline: 10px;
+  border-radius: 14px;
+  border: 1.5px solid transparent;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast);
+}
+@utility opt-on {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand);
+}
 @utility row-open {
   cursor: pointer;
   outline: none;
