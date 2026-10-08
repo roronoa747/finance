@@ -63,6 +63,15 @@ describe('NumField: набор по символу с точкой', () => {
     expect(c.input.value).toBe('9,99')
   })
 
+  it('$: точка в середину «1 250» — курсор за запятой, следующая цифра в дробь: «12,75»', async () => {
+    const { input } = await field({ currency: 'USD' })
+    await typeChars(input, '1250')
+    input.setSelectionRange(3, 3)
+    await typeChars(input, '.7')
+    expect(input.value).toBe('12,75')
+    expect(document.body.textContent).toContain('Округлим до 13 $')
+  })
+
   it('ставка: «36.5» → «36,5» (было «365,» и в main до блока)', async () => {
     const { input } = await field({ kind: 'rate' })
     await typeChars(input, '36.5')
