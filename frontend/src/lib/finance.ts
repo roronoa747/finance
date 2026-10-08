@@ -4117,9 +4117,9 @@ export type FreeByFact = {
 /**
  * «Свободно до конца месяца» по факту выписок обоих (Р-8): доход месяца − обязательства и
  * кредиты по плану (`monthDues`, отметки учтены один раз — сумма из отметки) − взносы в
- * цели по плану − траты по выпискам за месяц, кроме разделов `plannedElsewhere` (кредиты,
- * коммуналка, аренда, подписки — они уже в `monthDues`). Ни одной загрузки за месяц —
- * план (`budgetAmounts.free`) с `byFact: false`.
+ * цели по плану и разложенное сверх плана (`allocatedBeyondPlan`, хвост 951) − траты по выпискам за месяц,
+ * кроме разделов `plannedElsewhere` (кредиты, коммуналка, аренда, подписки — они уже в `monthDues`). Ни одной
+ * загрузки за месяц — план (`budgetAmounts.free`) за вычетом разложенного сверх плана, с `byFact: false`.
  */
 export function freeByFact(
   state: {
@@ -4135,6 +4135,8 @@ export function freeByFact(
     spendCategories?: SpendCategory[]
     book?: RateBook | null
     fxExchanges?: FxExchange[]
+    /** Раскладки (хвост 951): разовые взносы и досрочка сверх плана уменьшают «Свободно» (`allocatedBeyondPlan`). */
+    allocations?: Allocation[]
   },
   totals: SpendTotal[],
   spendCategories: SpendCategory[],
@@ -4144,14 +4146,54 @@ export function freeByFact(
   const income = totalIncome(state.people ?? [], key, salaryCtxOf(state))
   const share = (amount: number) => (income > 0 ? Math.max(0, Math.min(1, amount / income)) : 0)
   const amounts = budgetAmounts(state)
+  const beyond = allocatedBeyondPlan(state, key, amounts.planExtra)
+  const goals = amounts.d3 + amounts.planExtra + beyond
   const spent = monthSpentByFact(totals, spendCategories, key, uploads)
   if (spent === null) {
-    return { amount: amounts.d5, byFact: false, income, dues: amounts.d1 + amounts.d2, goals: amounts.d3 + amounts.planExtra, spent: 0, share: share(amounts.d5) }
+    const amount = amounts.d5 - beyond
+    return { amount, byFact: false, income, dues: amounts.d1 + amounts.d2, goals, spent: 0, share: share(amount) }
   }
   const dues = duesTotal(monthDues(state, key))
-  const goals = amounts.d3 + amounts.planExtra
   const amount = income - dues - goals - spent
   return { amount, byFact: true, income, dues, goals, spent, share: share(amount) }
+}
+
+/** Статьи разбора, которые «Свободно» уже считает: платежи — `dues`, «Жизнь» и «Траты» — траты, «Мечты» — взносы целей. */
+const COUNTED_ARTICLES: readonly string[] = ['must', 'life', 'spend', 'dreams'] satisfies ArticleKey[]
+
+/**
+ * Сколько разложено в месяце `key` сверх плана (хвост 951) — «Свободно» уменьшается на эту сумму. Берутся живые
+ * раскладки зарплаты и остатка месяца (`freed` — нет: он уже в плане прибавкой к взносу). Правило учёта, без двойного
+ * счёта с плановым взносом:
+ * - часть в цель — сколько по всем записям месяца легло в цель сверх её взноса в плане (`monthly`; цель на паузе
+ *   плана «Сначала долги» — 0): «Отложить по плану» кладёт не больше взноса и ничего не добавляет;
+ * - досрочка (`prepay:<id>`) — сверх «Досрочно по плану» (`planExtra`); без плана — вся;
+ * - статья разбора (старые записи Блока 11) — кроме уже посчитанных (`COUNTED_ARTICLES`).
+ * Запись не-плана одного источника — последняя (`allocationFor`); записей плана за месяц бывает несколько — все.
+ */
+export function allocatedBeyondPlan(
+  state: { allocations?: Allocation[]; goals?: Goal[]; plans?: DebtPlan[] },
+  key: string,
+  planExtra: number,
+): number {
+  const month = (state.allocations ?? []).filter((a) => !a.deletedAt && a.period === key && (a.source === 'salary' || a.source === 'rest'))
+  const records = month.filter((a) => a.kind === 'plan' || allocationFor(month, a) === a)
+  const goals = new Map(liveGoals(state.goals ?? []).map((g) => [g.id, g]))
+  const plan = activePlan(state.plans ?? [])
+  const paused = new Set(plan ? pausedGoals(plan, state.goals ?? []).map((g) => g.id) : [])
+  const toGoal = new Map<string, number>()
+  let prepay = 0
+  let articles = 0
+  for (const a of records) {
+    for (const p of a.parts) {
+      if (p.target.startsWith('prepay:')) prepay += p.amount
+      else if (a.kind === 'breakdown') articles += COUNTED_ARTICLES.includes(p.target) ? 0 : p.amount
+      else if (goals.has(p.target)) toGoal.set(p.target, (toGoal.get(p.target) ?? 0) + p.amount)
+    }
+  }
+  let beyond = Math.max(0, prepay - planExtra) + articles
+  for (const [id, put] of toGoal) beyond += Math.max(0, put - (paused.has(id) ? 0 : goals.get(id)!.monthly))
+  return beyond
 }
 
 /**

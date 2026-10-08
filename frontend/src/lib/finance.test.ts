@@ -103,6 +103,7 @@ import {
   subscriptionYearly,
   goalRemaining,
   freeByFact,
+  allocatedBeyondPlan,
   monthSpentByFact,
   decisionQueue,
   liveObligations,
@@ -2472,6 +2473,51 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       const f = freeByFact(state, [total('a', 'month', '2026-09', 'sc_credit', 58_000)], own, '2026-09', uploads)
       expect(f.spent).toBe(58_000)
       expect(freeByFact(state, [total('a', 'month', '2026-09', 'sc_credit', 58_000)], [], '2026-09', uploads).spent).toBe(0)
+    })
+
+    describe('ML-02 (хвост 951): раскладка месяца уменьшает «Свободно» — без двойного счёта с планом', () => {
+      const totals = [total('a', 'month', '2026-09', 'sc_food', 100_000)]
+      const alloc = (extra: Partial<Allocation>, parts: Allocation['parts']): Allocation => ({
+        id: `al-${Math.random()}`, source: 'salary', sourceId: 'a', period: '2026-09', by: 'a', at: T, total: 700_000, parts, updatedAt: T, ...extra,
+      })
+      const japan = { ...goal('jp', 'Япония'), monthly: 0 }
+      const base = { ...state, goals: [goal('g', 'Цель'), japan] }
+      const free = (allocations: Allocation[]) => freeByFact({ ...base, allocations }, totals, categories, '2026-09', uploads)
+      const before = free([]).amount
+
+      it('600 000 зарплаты → Япония — «Свободно» −600 000; остаток месяца в цель — тоже; оба — по плану без выписок', () => {
+        expect(free([alloc({}, [{ target: 'jp', amount: 600_000 }])]).amount).toBe(before - 600_000)
+        expect(free([alloc({ source: 'rest', sourceId: '2026-09' }, [{ target: 'jp', amount: 40_000 }])]).amount).toBe(before - 40_000)
+        const plan = freeByFact({ ...base, allocations: [alloc({}, [{ target: 'jp', amount: 600_000 }])] }, totals, categories, '2026-09', [])
+        expect(plan).toMatchObject({ byFact: false, amount: budgetAmounts(base).d5 - 600_000 })
+      })
+
+      it('«Жизнь» разбора, «освободится» (freed), удалённая запись и другой месяц — не вычитаются', () => {
+        expect(free([alloc({ kind: 'breakdown' }, [{ target: 'life', amount: 150_000 }, { target: 'reserve', amount: 30_000 }])]).amount).toBe(before - 30_000)
+        expect(free([alloc({ source: 'freed', sourceId: 'loan' }, [{ target: 'jp', amount: 58_000 }])]).amount).toBe(before)
+        expect(free([alloc({ deletedAt: T }, [{ target: 'jp', amount: 600_000 }])]).amount).toBe(before)
+        expect(free([alloc({ period: '2026-08' }, [{ target: 'jp', amount: 600_000 }])]).amount).toBe(before)
+      })
+
+      it('плановый взнос не вычитается второй раз: «Отложить по плану» 50 000 в цель с взносом 50 000 — 0; сверх — только разница', () => {
+        expect(free([alloc({ kind: 'plan' }, [{ target: 'g', amount: 50_000 }])]).amount).toBe(before)
+        // Две записи плана и разовая из остатка в ту же цель: 50 000 + 20 000 сверх взноса 50 000 → −20 000.
+        const two = [alloc({ kind: 'plan' }, [{ target: 'g', amount: 30_000 }]), alloc({ kind: 'plan', sourceId: 'b' }, [{ target: 'g', amount: 20_000 }])]
+        expect(free([...two, alloc({ source: 'rest', sourceId: '2026-09' }, [{ target: 'g', amount: 20_000 }])]).amount).toBe(before - 20_000)
+      })
+
+      it('досрочка: без плана «Сначала долги» — вся; с планом — сверх «Досрочно по плану»', () => {
+        const prepay = alloc({ kind: 'plan' }, [{ target: 'prepay:loan', amount: 70_000 }])
+        expect(free([prepay]).amount).toBe(before - 70_000)
+        expect(allocatedBeyondPlan({ allocations: [prepay] }, '2026-09', 50_000)).toBe(20_000)
+        expect(allocatedBeyondPlan({ allocations: [prepay] }, '2026-09', 90_000)).toBe(0)
+      })
+
+      it('повтор записи одного источника (не плана) — считается последняя', () => {
+        const old = alloc({ at: '2026-09-01T00:00:00.000Z' }, [{ target: 'jp', amount: 600_000 }])
+        const last = alloc({ at: '2026-09-02T00:00:00.000Z' }, [{ target: 'jp', amount: 500_000 }])
+        expect(free([old, last]).amount).toBe(before - 500_000)
+      })
     })
   })
 
