@@ -607,6 +607,31 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
  * Р-116 (B2C-108): «Свободно по выпискам» и «До зарплаты N дней» переехали с «Мечт» в подсказку у «Остаётся».
  * Семья — `planFamilyDoc` (доход 1 200 000), «сейчас» — четверг 17 сентября 2026, ближняя зарплата — Аруна, 20-е.
  */
+describe('ML-01: хвост 960 устарел — траты на жизнь заводятся у семьи без обязательств', () => {
+  it('«Введу вручную» без обязательств и трат: «+ Траты · <имя>» у каждого; ввод суммы — она в плане месяца', async () => {
+    const base = planFamilyDoc()
+    const doc = planFamilyDoc({
+      obligations: [],
+      credits: [],
+      goals: [],
+      categories: base.categories.map((c) => ({ ...c, amount: 0 })),
+      spendPlans: [],
+    })
+    const finance = await open('member', doc)
+    expect(planOf(finance).spendTotal).toBe(0)
+    await press(section('spend'))
+    expect(all('[data-spends] button').map((b) => txt(b).slice(txt(b).indexOf('+')))).toEqual(['+ Траты · Ильяс', '+ Траты · Аруна'])
+    await press(all('[data-spends] button')[0])
+    expect(txt(q('[role="dialog"] h3'))).toContain('Траты на месяц')
+    const input = q<HTMLInputElement>('[role="dialog"] input[inputmode]')!
+    input.value = '120000'
+    input.dispatchEvent(new Event('input'))
+    await press(dialogButton('Готово'))
+    expect(planOf(finance).spendTotal).toBe(120_000)
+    expect(txt(section('spend'))).toContain(norm(plain(120_000)))
+  })
+})
+
 describe('B2C-108: подсказка у «Остаётся» — «Свободно» по выпискам и дни до зарплаты (бывшая строка «Мечт»)', () => {
   const total = (by: 'a' | 'b', kind: 'week' | 'month', period: string, categoryId: string, amount: number): SpendTotal => ({
     id: `${by}:${kind}:${period}:${categoryId}`, by, kind, period, categoryId, amount, ops: 1, updatedAt: T0,
