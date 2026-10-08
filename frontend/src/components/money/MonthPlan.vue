@@ -364,22 +364,16 @@ function addFund(kind: 'reserve' | 'cushion') {
       <template v-for="(s, i) in salaries" :key="s.person">
         <div v-if="i > 0" class="h-px bg-line" />
         <div
-          class="relative flex items-center gap-2.5"
-          :class="canEdit && 'press cursor-pointer'"
+          class="press relative flex cursor-pointer items-center gap-2.5"
           :data-salary="s.person"
           :data-can-mark="s.canMark || undefined"
-          @click="canEdit && (salaryFor = s.person)"
+          @click="salaryFor = s.person"
         >
           <Avatar :id="s.person" :name="s.name" />
-          <component
-            :is="canEdit ? 'button' : 'div'"
-            :type="canEdit ? 'button' : undefined"
-            class="flex min-w-0 flex-1 flex-col gap-px text-left"
-            :class="canEdit && 'row-open'"
-            :data-row-open="canEdit || undefined"
-          >
+          <!-- Лист открывает и viewer — только чтение: дата и «хватает» живут лишь там (критик Б17). -->
+          <button type="button" class="row-open flex min-w-0 flex-1 flex-col gap-px text-left" data-row-open>
             <span class="truncate text-[16px] font-semibold text-ink">{{ s.name }}</span>
-          </component>
+          </button>
           <span v-if="s.came && s.foreign" class="relative z-10 shrink-0" @click.stop>
             <SalaryExchange :person-id="s.person" :period="monthKey" part="button" />
           </span>

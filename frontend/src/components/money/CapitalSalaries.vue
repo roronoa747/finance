@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
-import { useAuthStore } from '@/stores/auth'
 import { money, moneyIn } from '@/lib/money'
 import { monthKey } from '@/lib/dates'
 import { monthSalaries } from '@/lib/finance'
@@ -12,14 +11,12 @@ import SalarySheet from '@/components/money/SalarySheet.vue'
 
 /**
  * Зарплаты этого месяца в «Капитале» — для справки (Р-108, макет money-b16.html): участник, ✓ и сумма — пришла,
- * серая — ждём (дата — в листе зарплаты, Р-116); валютный оклад — мини-подписью в валюте. Нажатие — тот же лист зарплаты, что в «Месяце» (`SalarySheet`); viewer — строки
- * без нажатия. Строки — `monthSalaries`, как в «Месяце».
+ * серая — ждём (дата — в листе зарплаты, Р-116); валютный оклад — мини-подписью в валюте. Нажатие — тот же лист зарплаты, что в «Месяце» (`SalarySheet`); у viewer —
+ * только чтение (дата и «хватает» — только там, критик Б17). Строки — `monthSalaries`, как в «Месяце».
  */
 const finance = useFinanceStore()
-const auth = useAuthStore()
 
 const key = computed(() => monthKey())
-const canEdit = computed(() => !auth.isViewer)
 const lines = computed(() => monthSalaries(finance.monthPlanOf(key.value), { people: finance.people, payments: finance.payments }))
 const open = ref<PersonId | null>(null)
 const line = computed(() => lines.value.find((s) => s.person === open.value) ?? null)
@@ -30,12 +27,11 @@ const line = computed(() => lines.value.find((s) => s.person === open.value) ?? 
     <template v-for="(s, i) in lines" :key="s.person">
       <div v-if="i > 0" class="h-px bg-line" />
       <component
-        :is="canEdit ? 'button' : 'div'"
-        :type="canEdit ? 'button' : undefined"
-        class="flex w-full items-center gap-2.5 text-left"
-        :class="canEdit && 'press cursor-pointer'"
+        is="button"
+        type="button"
+        class="press flex w-full cursor-pointer items-center gap-2.5 text-left"
         :data-salary="s.person"
-        @click="canEdit && (open = s.person)"
+        @click="open = s.person"
       >
         <Avatar :id="s.person" :name="s.name" />
         <span class="flex min-w-0 flex-1 flex-col gap-px">
@@ -50,5 +46,5 @@ const line = computed(() => lines.value.find((s) => s.person === open.value) ?? 
       </component>
     </template>
   </Card>
-  <SalarySheet v-if="canEdit" :month-key="key" :line="line" @close="open = null" />
+  <SalarySheet :month-key="key" :line="line" @close="open = null" />
 </template>

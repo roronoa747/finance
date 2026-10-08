@@ -437,7 +437,8 @@ describe('PV-15: пауза целей ради плана (SSR)', () => {
     const store = family()
     const html = await renderScreen(GoalDetail, '/goals/trip')
     const plan = html.match(/<a[^>]*data-goal-plan[^>]*>[\s\S]*?<\/a>/)?.[0] ?? ''
-    expect(plan).toContain('href="/money/debts"')
+    // План «Сначала долги» живёт на «Закрыть быстрее» (Б17), не на «Долгах» (критик Б17).
+    expect(plan).toContain('href="/money/debts/faster"')
     expect(plan).toContain('На паузе — взнос идёт в долг')
     expect(html).toContain(`${money(40_000)} в месяц`)
     const left = html.match(/<p[^>]*data-goal-left[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? ''
@@ -453,7 +454,7 @@ describe('PV-15: пауза целей ради плана (SSR)', () => {
     const cushion = await renderScreen(GoalDetail, '/goals/cushion')
     const plan = cushion.match(/<a[^>]*data-goal-plan[^>]*>[\s\S]*?<\/a>/)?.[0] ?? ''
     expect(plan).toContain('Подушка плана — взносы идут')
-    expect(plan).toContain('href="/money/debts"')
+    expect(plan).toContain('href="/money/debts/faster"')
     expect(cushion).not.toContain('На паузе — взнос идёт в долг')
     expect(cushion).not.toContain('после плана')
 

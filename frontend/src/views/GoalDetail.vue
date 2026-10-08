@@ -383,10 +383,10 @@ function share() {
       </Button>
     </Card>
 
-    <!-- Пауза плана и подушка — строкой, ведущей к плану долгов; абзац объяснения — в подсказке (Р-116). -->
+    <!-- Пауза плана и подушка — строкой к плану долгов на «Закрыть быстрее» (Б17, принято на воротах); абзаца нет. -->
     <RouterLink
       v-if="paused || planCushion"
-      to="/money/debts"
+      to="/money/debts/faster"
       class="press flex items-center gap-2.5 rounded-[16px] px-3.5 py-3 text-[14.5px] font-semibold"
       :class="paused ? 'bg-warn-soft text-warn' : 'bg-ok-soft text-ok'"
       data-goal-plan

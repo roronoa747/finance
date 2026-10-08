@@ -16,7 +16,8 @@ import SalaryRow from '@/components/SalaryRow.vue'
 /**
  * Лист зарплаты (Р-97, Р-108) — один для «Месяца» и карточки «Зарплаты» «Капитала»: пришла или ждём, сумма, у своей
  * и ждём — «Пришла» (и «Другая сумма или счёт»); тихо — отметка пришедшей и «Изменить оклад». Строка — `monthSalaries`;
- * «Пришла» отмечена — лист закрывается сам (✓ уже у суммы в строке). Viewer листа не открывает — его не зовут.
+ * «Пришла» отмечена — лист закрывается сам (✓ уже у суммы в строке). Viewer открывает лист только для чтения: дата,
+ * «хватает» и обмены живут лишь здесь (Р-116), кнопок у него нет.
  */
 const props = defineProps<{ monthKey: string; line: SalaryLine | null }>()
 const emit = defineEmits<{ close: [] }>()
@@ -66,7 +67,7 @@ watch(
       <SalaryRow v-if="mine && line.open" button :person-id="line.person" :period="monthKey" />
       <div class="mt-2 flex flex-col gap-1.5">
         <Button v-if="mine && line.came" variant="ghost" class="w-full" data-salary-paid @click="next('paid')">Другая сумма или снять</Button>
-        <Button variant="ghost" class="w-full" data-salary-edit @click="next('edit')">Изменить оклад</Button>
+        <Button v-if="canEdit" variant="ghost" class="w-full" data-salary-edit @click="next('edit')">Изменить оклад</Button>
       </div>
     </template>
   </Sheet>

@@ -94,6 +94,16 @@ describe('lib/photos/store', () => {
     expect(await photoUrl('offline', c)).toBe('blob:1:1')
   })
 
+  // Критик Б17 (B2C-110): фото демо — в бандле; показ и удаление (в том числе после переноса демо в семью) сервер не зовут.
+  it('demo:<имя> — адрес картинки бандла; photoUrl и deletePhoto не ходят в /api', async () => {
+    const c = client()
+    const url = await photoUrl('demo:japan', c)
+    expect(url).toMatch(/japan.*\.jpg/)
+    await deletePhoto('demo:japan', c)
+    expect(await photoUrl('demo:nope', c)).toBeNull()
+    expect(calls).toEqual([])
+  })
+
   it('deletePhoto и releasePhotos освобождают object URL', async () => {
     fetchImpl = async (_url, init) =>
       init?.method === 'DELETE'

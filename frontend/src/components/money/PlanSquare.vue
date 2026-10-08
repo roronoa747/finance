@@ -206,6 +206,8 @@ function choosePlan(opts: { keptGoalIds: string[]; cushionGoalId: string | null;
       <!-- Шаг месяца записывает «Отложил» у строки долга в «Месяце» (Р-110): кнопки шага здесь нет -->
       <Button v-if="!authStore.isViewer && plan && step && step.kind === 'cushion'" variant="secondary" size="md" class="w-full" @click="router.push(`/goals/${step.goalId}`)">Пополнить подушку</Button>
     </Card>
+    <!-- Одни рассрочки без процентов: сравнивать и ускорять нечего (критик Б17 — как до Б17, без пустого «Подробнее»). -->
+    <Card v-else tight data-plan-none><span class="type-meta">Долгов с процентами нет</span></Card>
 
     <Card v-if="plan && (paused.length || cushion)" flush>
       <Row
@@ -219,7 +221,7 @@ function choosePlan(opts: { keptGoalIds: string[]; cushionGoalId: string | null;
     </Card>
 
     <!-- Подробнее — свёрнуто (правило 12): ставки и проценты, своя сумма, «Копить или гасить?», шаги по месяцам. -->
-    <Card tight>
+    <Card v-if="worst || plan || history.length" tight>
       <details :open="moreOpen || undefined" data-plan-more @toggle="(e: Event) => (moreOpen = (e.target as HTMLDetailsElement).open)">
         <summary :class="FOLD_ROW">Подробнее<PhCaretDown :size="16" class="shrink-0 text-ink-3" /></summary>
         <div class="mt-3 flex flex-col gap-3">

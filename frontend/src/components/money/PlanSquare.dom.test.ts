@@ -33,12 +33,14 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function mount(withPlan: boolean) {
+async function mount(withPlan: boolean, onlyInstallments = false) {
   const pinia = createPinia()
   setActivePinia(pinia)
   useAuthStore().setAuthData(authAs('member'))
   const store = useFinanceStore()
-  store.setHouseholdDoc(planFamilyDoc({ plans: withPlan ? [planOf()] : [] }), 1)
+  const doc = planFamilyDoc({ plans: withPlan ? [planOf()] : [] })
+  if (onlyInstallments) doc.credits = doc.credits.filter((c) => c.annualRate === 0)
+  store.setHouseholdDoc(doc, 1)
   const router = createRouter({ history: createMemoryHistory(), routes })
   await router.push('/money/debts')
   await router.isReady()
@@ -90,4 +92,11 @@ describe('B2C-43: переключатель «Сначала долги»', () 
     expect(store.activePlan).not.toBeNull()
     expect(toggle().getAttribute('aria-checked')).toBe('true')
   })
+})
+
+// Критик Б17: «Закрыть быстрее» при одних рассрочках без процентов — строка «Долгов с процентами нет», без пустого «Подробнее».
+it('только рассрочки без процентов: «Долгов с процентами нет», «Подробнее» нет', async () => {
+  await mount(false, true)
+  expect(document.querySelector('[data-plan-none]')?.textContent).toContain('Долгов с процентами нет')
+  expect(document.querySelector('[data-plan-more]')).toBeNull()
 })

@@ -175,12 +175,14 @@ describe('B2C-100: «Капитал» — зарплаты для справки
     expect(txt(dialog())).toBe(fromCapital)
   })
 
-  it('viewer — строки без нажатия, листа нет', async () => {
+  // Критик Б17: дата и «хватает» переехали в лист (Р-116) — viewer открывает его только для чтения, иначе числа потеряны.
+  it('viewer — лист зарплаты только для чтения: «Когда» и «Хватает» есть, кнопок нет', async () => {
     await open('viewer')
-    const row = q('[data-capital-salaries] [data-salary="a"]')!
-    expect(row.tagName).toBe('DIV')
-    await press(row)
-    expect(dialog()).toBeNull()
+    await press(q('[data-capital-salaries] [data-salary="a"]'))
+    expect(txt(q('[role="dialog"] [data-salary-status]'))).toContain('ждём 10 сентября')
+    expect(q('[role="dialog"] [data-left]')).not.toBeNull()
+    expect(dialogButton('Изменить оклад')).toBeFalsy()
+    expect(dialogButton('Пришла зарплата')).toBeFalsy()
   })
 })
 

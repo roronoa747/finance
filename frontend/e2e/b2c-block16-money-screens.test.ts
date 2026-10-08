@@ -182,11 +182,11 @@ describe('e2e / B2C Блок 16 — «Деньги» по макету на дв
     expect(text(await screen(A.pinia, Month, '/month?month=2026-08'))).toContain('Остаётся')
   })
 
-  it('часть 4 — viewer: зарплаты без нажатия, без «+ Кредит», месяцы «Истории» те же', async () => {
+  // Критик Б17: дата зарплаты — в листе (Р-116), viewer открывает его только для чтения (кнопки — DOM-тест Money.b16).
+  it('часть 4 — viewer: зарплаты открывают лист, без «+ Кредит», месяцы «Истории» те же', async () => {
     const V = await phone(server, 'a', 'viewer')
     const capital = await screen(V.pinia, Money, '/money')
-    expect(capital).toMatch(/<div[^>]*data-salary="a"/)
-    expect(capital).not.toMatch(/<button[^>]*data-salary=/)
+    expect(capital).toMatch(/<button[^>]*data-salary="a"/)
     expect(await screen(V.pinia, Money, '/money/debts')).not.toContain('data-add-credit')
     const history = await screen(V.pinia, Money, '/money/history')
     expect(history.match(/data-history-month=/g)).toHaveLength(2)

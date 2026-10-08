@@ -585,8 +585,11 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(q('[data-queue] [role="switch"]')).toBeNull()
     expect(q('[data-grip]')).toBeNull()
     expect(q('[data-put-all]')).toBeNull()
-    await press(q('[data-salary="a"]'))
-    expect(q('[role="dialog"]')).toBeNull()
+    // Критик Б17: дата и «хватает» — только в листе зарплаты (Р-116), viewer открывает его для чтения — без кнопок.
+    await press(q('[data-salary="a"] [data-row-open]'))
+    expect(q('[role="dialog"] [data-salary-status]')).not.toBeNull()
+    expect(q('[role="dialog"] [data-salary-edit], [role="dialog"] [data-salary-paid]')).toBeNull()
+    expect([...document.querySelectorAll('[role="dialog"] button')].map((b) => b.textContent?.trim())).not.toContain('Пришла зарплата')
   })
 
   it('‹ — прошлый месяц сводкой (только чтение), › — обратно к плану', async () => {
