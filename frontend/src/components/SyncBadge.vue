@@ -13,8 +13,8 @@ import DangerZone from '@/components/kit/DangerZone.vue'
  * Состояние синхронизации словами и шторка по нему (React `SyncBadge.tsx`, Б-18): дата
  * обмена, участники, пояснение про офлайн и «Начать бюджет заново». Приглашение второго — в
  * «С кем» Настроек (`useInvite`, приёмка Блока 3 п. 8), не здесь.
- * «Выйти» — в «Оформлении» (PV-21 п. 6). Участники — из `people` документа: ручки
- * участников с ролями у Go нет (Р-15), поэтому «только просмотр» — только у себя.
+ * «Выйти» — в «Оформлении» (PV-21 п. 6). Участники и роли — с сервера (`GET /api/household/members`,
+ * B2C-25): viewer виден всем; цвет и имя — из документа по слоту. Без ответа сервера — люди документа.
  */
 /**
  * `compact` (шапка оболочки, B2C-13): только точка-иконка, и только когда есть что сказать —
@@ -35,6 +35,16 @@ const lastSyncedAt = computed(() => financeStore.lastSyncedAt)
 const lastError = computed(() => financeStore.lastError)
 const people = computed(() => financeStore.people)
 const me = computed(() => authStore.slot)
+const rows = computed(() =>
+  authStore.members.length
+    ? authStore.members.map((m) => ({ id: m.slot, name: people.value.find((p) => p.id === m.slot)?.name || m.display_name, viewer: m.role === 'viewer' }))
+    : people.value.map((p) => ({ id: p.id, name: p.name, viewer: p.id === me.value && authStore.isViewer })),
+)
+
+function openSheet() {
+  open.value = true
+  void authStore.fetchMembers()
+}
 
 const isBad = computed(() => status.value === 'error' || status.value === 'conflict')
 const quiet = computed(() => props.compact && (authStore.isDemo || status.value === 'idle'))
@@ -102,7 +112,7 @@ function startOver() {
       ]"
       :title="authStore.isDemo ? 'Демо живёт только на этом телефоне' : lastError || label"
       :aria-label="compact ? `Обмен: ${label}` : undefined"
-      @click="open = true"
+      @click="openSheet"
     >
       <!-- Демо к серверу не ходит (Р-32): статуса синхронизации у него нет. -->
       <template v-if="authStore.isDemo">демо</template>
@@ -142,10 +152,10 @@ function startOver() {
           </div>
         </div>
 
-        <div v-if="people.length" class="rounded-xl border border-line px-3.5 py-3">
+        <div v-if="rows.length" class="rounded-xl border border-line px-3.5 py-3">
           <div class="mb-2 text-[12px] uppercase tracking-[0.07em] text-ink-2">В бюджете</div>
           <div
-            v-for="p in people"
+            v-for="p in rows"
             :key="p.id"
             class="flex items-center gap-2.5 py-1 text-[14px] text-ink"
           >
@@ -155,7 +165,7 @@ function startOver() {
             />
             {{ p.name }}
             <span v-if="p.id === me" class="text-[12px] text-ink-2">это вы</span>
-            <span v-if="p.id === me && authStore.isViewer" class="text-[12px] text-ink-2">
+            <span v-if="p.viewer" class="text-[12px] text-ink-2">
               только просмотр
             </span>
           </div>

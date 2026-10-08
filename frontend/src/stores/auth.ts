@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { apiClient, ApiError } from '@/api/client'
-import type { User, Household, HouseholdMember } from '@/types/api'
+import type { User, Household, HouseholdMember, MemberView } from '@/types/api'
 import { releasePhotos } from '@/lib/photos/store'
 import { useFinanceStore } from './finance'
 
@@ -31,8 +31,14 @@ export const useAuthStore = defineStore('auth', () => {
   )
   const loading = ref<boolean>(false)
   const error = ref<string | null>(null)
+  /** Участники семьи с ролями — с сервера (B2C-23): «Семья» в настройках и шторка синка. */
+  const members = ref<MemberView[]>([])
+  /** Почта владельца из `ADMIN_EMAILS` (B2C-28) — `/auth/me`. */
+  const admin = ref(false)
 
   const isAuthenticated = computed(() => Boolean(token.value && user.value))
+  /** Вошёл, но «с кем» ещё не пройдено (Р-13): без семьи — только `/who` и настройки. */
+  const hasHousehold = computed(() => Boolean(household.value))
   const isDemo = computed(() => token.value === DEMO_TOKEN)
   const isMember = computed(() => member.value?.role === 'member')
   const isViewer = computed(() => member.value?.role === 'viewer')
@@ -41,8 +47,8 @@ export const useAuthStore = defineStore('auth', () => {
   function setAuthData(data: {
     token: string
     user: User
-    household: Household
-    member: HouseholdMember
+    household: Household | null
+    member: HouseholdMember | null
   }) {
     token.value = data.token
     user.value = data.user
@@ -61,6 +67,8 @@ export const useAuthStore = defineStore('auth', () => {
     household.value = null
     member.value = null
     error.value = null
+    members.value = []
+    admin.value = false
 
     removeItem('ff_auth_token')
     removeItem('ff_user')
@@ -116,6 +124,7 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = res.user
       household.value = res.household
       member.value = res.member
+      admin.value = res.admin === true
 
       setItem('ff_user', JSON.stringify(res.user))
       setItem('ff_household', JSON.stringify(res.household))
@@ -166,6 +175,69 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  /** Вход через Google (B2C-25): ID-токен из GIS → свой токен; семья может быть null → «с кем». */
+  async function googleLogin(idToken: string) {
+    loading.value = true
+    error.value = null
+    try {
+      const res = await apiClient.googleLogin(idToken)
+      setAuthData(res)
+      return res
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : String(err)
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /** «С кем» → «Я один» / «Создать семью» (B2C-23): своя семья, токен уже с ней. */
+  async function createHousehold(data: { name?: string; display_name: string }) {
+    loading.value = true
+    error.value = null
+    try {
+      const res = await apiClient.createHousehold(data)
+      setAuthData(res)
+      return res
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : String(err)
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /** Участники семьи с ролями; сбой — прежний список (экран покажет людей документа). */
+  async function fetchMembers() {
+    if (!token.value || isDemo.value || !household.value) return members.value
+    try {
+      members.value = (await apiClient.householdMembers()).members
+    } catch {
+      // Нет сети — участники из документа; 401 уже увёл на вход.
+    }
+    return members.value
+  }
+
+  /**
+   * Вход больше не действует (401: истёк, аккаунт удалён на другом телефоне). Документ телефона
+   * не стирается: вход в ту же семью сольёт неотправленное, в другую — `claimFor` его сотрёт.
+   */
+  function expire() {
+    if (!token.value || isDemo.value) return false
+    clearAuth()
+    return true
+  }
+
+  /**
+   * Удаление аккаунта (B2C-24): сервер стирает данные, телефон — всё своё (документы, операции,
+   * фото); остаются тема и вид экранов — в них нет данных семьи.
+   */
+  async function deleteAccount() {
+    await apiClient.deleteAccount()
+    useFinanceStore().clearLocal()
+    clearAuth()
+  }
+
   /**
    * Выход. Документы семьи на телефоне стираются, чтобы следующий вход не смешал
    * семьи. Если сервер видел не всё, без явного выбора ничего не делает и
@@ -189,7 +261,10 @@ export const useAuthStore = defineStore('auth', () => {
     member,
     loading,
     error,
+    members,
+    admin,
     isAuthenticated,
+    hasHousehold,
     isDemo,
     isMember,
     isViewer,
@@ -197,6 +272,11 @@ export const useAuthStore = defineStore('auth', () => {
     register,
     login,
     fetchMe,
+    googleLogin,
+    createHousehold,
+    fetchMembers,
+    expire,
+    deleteAccount,
     logout,
     createInvite,
     joinHousehold,

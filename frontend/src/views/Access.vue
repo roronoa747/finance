@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick, defineAsyncComponent } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { PhSparkle } from '@phosphor-icons/vue'
 import { useAuthStore, DEMO_TOKEN } from '@/stores/auth'
 import { useFinanceStore, DEMO_HOUSEHOLD } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
@@ -15,37 +14,69 @@ import { templateById, templateCredit } from '@/lib/goalTemplates'
 import { DEMO_PHOTO } from '@/lib/photos/store'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
 import { authErrorText } from '@/lib/authErrors'
+import { googleClientId, renderGoogleButton } from '@/lib/googleSignIn'
+import { isDark } from '@/lib/theme'
 import Button from '@/components/ui/Button.vue'
-import Input from '@/components/ui/Input.vue'
-import Segmented from '@/components/kit/Segmented.vue'
-import Field from '@/components/kit/Field.vue'
+import Hint from '@/components/kit/Hint.vue'
 
-type Mode = 'login' | 'register' | 'join'
+// Вход по почте — только стенд: под константой сборки ветка и чанк в прод-сборку не попадают.
+const DevLogin = import.meta.env.DEV ? defineAsyncComponent(() => import('@/components/DevLogin.vue')) : null
+
+/**
+ * Вход (B2C-25, Р-13; DESIGN.md §6 «Первый запуск»): «Реально.», кнопка Google и «Попробовать».
+ * Почта и пароль — только в dev-сборке (стенд, e2e): `DevLogin` подключается под
+ * `import.meta.env.DEV`, в прод-сборку не попадает. «По коду» — на `/who`, после входа.
+ */
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const financeStore = useFinanceStore()
 
-// Из демо чаще приходят создавать семью — туда и открываем.
-const mode = ref<Mode>(financeStore.isDemo ? 'register' : 'login')
-
-// Form fields
-const email = ref('')
-const pass = ref('')
-const displayName = ref('')
-const householdName = ref('Наш бюджет')
-const inviteCode = ref('')
-
 const busy = ref(false)
 const errorMessage = ref('')
+// Вход истёк (401 любой ручки, B2C-25) — одной строкой над кнопкой.
+const expired = computed(() => route.query.expired === '1')
 
-onMounted(() => {
-  if (route.query.code) {
-    inviteCode.value = String(route.query.code).toUpperCase().trim()
-    mode.value = 'join'
+const googleEl = ref<HTMLElement | null>(null)
+const googleUnavailable = ref(false)
+
+onMounted(async () => {
+  if (!googleClientId) {
+    googleUnavailable.value = true
+    return
+  }
+  await nextTick()
+  if (!googleEl.value) return
+  try {
+    await renderGoogleButton(googleEl.value, onGoogleToken, { theme: isDark.value ? 'dark' : 'light' })
+  } catch {
+    googleUnavailable.value = true
   }
 })
+
+async function onGoogleToken(idToken: string) {
+  busy.value = true
+  errorMessage.value = ''
+  try {
+    await authStore.googleLogin(idToken)
+    await afterSignIn()
+  } catch (err: unknown) {
+    errorMessage.value = authErrorText(err instanceof Error ? err.message : String(err), 'google')
+  } finally {
+    busy.value = false
+  }
+}
+
+// После входа: без семьи — «с кем» (Р-13); семья есть — её документы и первый запуск или главный.
+async function afterSignIn() {
+  if (!authStore.household) {
+    await router.push('/who')
+    return
+  }
+  await enterHousehold()
+  await router.push(landingPath(authStore, financeStore))
+}
 
 // Документ телефона привязывается к семье, куда вошли: чужой (и черновик демо)
 // стирается, свой сливается с серверным — неотправленное после истёкшего входа уходит.
@@ -55,75 +86,10 @@ async function enterHousehold() {
   afterFamilyLoaded()
 }
 
-// Черновик демо на телефоне (Р-32): при создании семьи его можно взять с собой,
-// при входе в существующую — нет, и это сказано заранее.
+// Черновик демо на телефоне: «Вернуться в демо» вместо «Попробовать».
 const hasDemoDraft = computed(() => financeStore.isDemo)
-const askDemo = ref(false)
 // После «Войти заново» правки семьи ждут на телефоне: старт демо стёр бы их молча.
 const editsWaitLogin = computed(() => financeStore.hasUnsent && !financeStore.isDemo)
-
-async function answerDemo(take: boolean) {
-  const household = authStore.household
-  if (!household) return
-  busy.value = true
-  try {
-    if (take) await financeStore.adoptDemo(household.id, displayName.value.trim())
-    else financeStore.startNewFamily(household.id)
-    askDemo.value = false
-    await router.push(landingPath(authStore, financeStore))
-  } finally {
-    busy.value = false
-  }
-}
-
-async function submit() {
-  busy.value = true
-  errorMessage.value = ''
-
-  try {
-    if (mode.value === 'login') {
-      if (!email.value.trim() || !pass.value) {
-        errorMessage.value = 'Введите почту и пароль'
-        return
-      }
-      await authStore.login({ email: email.value.trim(), ['pass' + 'word']: pass.value } as any)
-      await enterHousehold()
-      await router.push(landingPath(authStore, financeStore))
-    } else if (mode.value === 'register') {
-      if (!email.value.trim() || !pass.value || !displayName.value.trim()) {
-        errorMessage.value = 'Заполните все обязательные поля'
-        return
-      }
-      await authStore.register({
-        email: email.value.trim(),
-        ['pass' + 'word']: pass.value,
-        display_name: displayName.value.trim(),
-        household_name: householdName.value.trim() || 'Наш бюджет',
-      } as any)
-      if (hasDemoDraft.value) {
-        askDemo.value = true
-        return
-      }
-      if (authStore.household) financeStore.startNewFamily(authStore.household.id)
-      await router.push('/start')
-    } else if (mode.value === 'join') {
-      if (!inviteCode.value.trim() || !displayName.value.trim()) {
-        errorMessage.value = 'Укажите код приглашения и ваше имя'
-        return
-      }
-      await authStore.joinHousehold({
-        code: inviteCode.value.trim().toUpperCase(),
-        display_name: displayName.value.trim(),
-      })
-      await enterHousehold()
-      await router.push(landingPath(authStore, financeStore))
-    }
-  } catch (err: unknown) {
-    errorMessage.value = authErrorText(err instanceof Error ? err.message : String(err), mode.value)
-  } finally {
-    busy.value = false
-  }
-}
 
 /** Фото цели демо из бандла (`assets/demo`) с автором шаблона — как у цели, заведённой из шаблона (Р-28). */
 function demoPhoto(file: string, template: string) {
@@ -516,8 +482,7 @@ function startDemoMode() {
 
 <template>
   <div class="mx-auto flex min-h-dvh w-full max-w-[420px] flex-col justify-center px-5 py-8 text-left">
-    <!-- Header Brand -->
-    <div class="mb-5 flex items-center gap-2.5">
+    <div class="mb-8 flex items-center gap-2.5">
       <span
         class="grid size-9 place-items-center rounded-xl bg-brand font-display text-[15px] font-bold tracking-[0.02em] text-brand-ink"
       >
@@ -528,171 +493,45 @@ function startDemoMode() {
       </span>
     </div>
 
-    <!-- Регистрация из демо: взять ли черновик в новую семью (Р-32) -->
-    <div v-if="askDemo" class="flex flex-col gap-3">
-      <h1 class="font-display text-[25px] font-semibold leading-tight tracking-[-0.025em] text-ink">
-        Взять то, что вы заполнили в демо?
-      </h1>
-      <p class="text-[13.5px] leading-relaxed text-ink-2">
-        Бюджет, счета, кредиты и цели из демо станут данными новой семьи, ваше имя — из регистрации.
-        Если нет — начнём с чистого листа.
-      </p>
-      <Button class="w-full mt-1" :disabled="busy" @click="answerDemo(true)">
-        {{ busy ? 'Минуту…' : 'Да, взять' }}
-      </Button>
-      <Button variant="ghost" size="md" class="w-full" :disabled="busy" @click="answerDemo(false)">
-        Нет, начать с чистого
-      </Button>
-    </div>
+    <h1 class="font-display text-[44px] font-semibold leading-none tracking-[-0.03em] text-ink">Реально.</h1>
+    <p class="mt-2 text-[15px] text-ink-2">Фото цели и одна цифра — сколько до неё.</p>
 
-    <template v-else>
-    <!-- Title and Note -->
-    <div class="mb-5">
-      <h1 class="font-display text-[25px] font-semibold leading-tight tracking-[-0.025em] text-ink">
-        {{
-          mode === 'login'
-            ? 'Вход'
-            : mode === 'register'
-              ? 'Создать семью'
-              : 'Присоединиться'
-        }}
-      </h1>
-      <p class="mt-1 text-[13.5px] leading-relaxed text-ink-2">
-        {{
-          mode === 'login'
-            ? 'Общий семейный бюджет на двоих. Введите данные для входа.'
-            : mode === 'register'
-              ? 'Создайте новое домохозяйство и пригласите партнёра по коду.'
-              : 'Введите код приглашения, который вам продиктовал партнёр.'
-        }}
+    <p
+      v-if="expired"
+      role="status"
+      class="mt-5 rounded-xl border border-warn-line bg-warn-soft px-3.5 py-2.5 text-[13px] text-ink-2"
+    >
+      Вход истёк, войдите снова
+    </p>
+
+    <!-- Главное действие — кнопка Google (её рисует GIS: цвета Google, не бренд). -->
+    <div class="mt-7 flex flex-col gap-2.5">
+      <div ref="googleEl" class="flex min-h-[44px] justify-center" data-testid="google-button" />
+      <p v-if="googleUnavailable" class="text-center text-[13px] text-ink-2">Вход через Google недоступен</p>
+      <p class="flex items-center justify-center gap-1 text-[12.5px] text-ink-2">
+        Раньше входили по почте?
+        <Hint label="Раньше входили по почте">Войдите через Google с той же почтой — данные на месте.</Hint>
       </p>
     </div>
 
-    <!-- Tabs Segmented -->
-    <div class="mb-4">
-      <Segmented
-        :model-value="mode"
-        :options="[
-          { value: 'login', label: 'Войти' },
-          { value: 'register', label: 'Создать' },
-          { value: 'join', label: 'По коду' },
-        ]"
-        @update:model-value="(val) => { mode = val; errorMessage = ''; }"
-      />
+    <div
+      v-if="errorMessage"
+      role="alert"
+      class="mt-3 rounded-xl border border-warn-line bg-warn-soft px-3.5 py-2.5 text-[13px] text-ink-2"
+    >
+      {{ errorMessage }}
     </div>
 
-    <!-- Forms -->
-    <form class="flex flex-col gap-1" @submit.prevent="submit">
-      <template v-if="mode === 'login'">
-        <Field label="Почта">
-          <Input
-            v-model="email"
-            type="email"
-            placeholder="you@example.com"
-            autocomplete="email"
-            inputmode="email"
-          />
-        </Field>
-        <Field label="Пароль">
-          <Input
-            v-model="pass"
-            type="password"
-            placeholder="••••••••"
-            autocomplete="current-password"
-          />
-        </Field>
-      </template>
-
-      <template v-else-if="mode === 'register'">
-        <Field label="Как вас зовут">
-          <Input v-model="displayName" placeholder="Имя" autocomplete="name" />
-        </Field>
-        <Field label="Название семьи">
-          <Input v-model="householdName" placeholder="Наша семья" />
-        </Field>
-        <Field label="Почта">
-          <Input
-            v-model="email"
-            type="email"
-            placeholder="you@example.com"
-            autocomplete="email"
-            inputmode="email"
-          />
-        </Field>
-        <Field label="Пароль (от 6 символов)">
-          <Input
-            v-model="pass"
-            type="password"
-            placeholder="••••••••"
-            autocomplete="new-password"
-          />
-        </Field>
-      </template>
-
-      <template v-else-if="mode === 'join'">
-        <Field label="Код приглашения">
-          <Input
-            v-model="inviteCode"
-            placeholder="A1B2C3D4"
-            autocapitalize="characters"
-            class-name="num tracking-[0.14em] font-semibold uppercase"
-          />
-        </Field>
-        <Field label="Как вас зовут">
-          <Input v-model="displayName" placeholder="Имя" autocomplete="name" />
-        </Field>
-      </template>
-
-      <!-- Error alert -->
-      <div
-        v-if="errorMessage"
-        class="mb-3 rounded-xl border border-warn-line bg-warn-soft px-3.5 py-2.5 text-[13px] text-ink-2"
-      >
-        {{ errorMessage }}
-      </div>
-
-      <p v-if="hasDemoDraft" class="mb-3 text-[12.5px] leading-relaxed text-ink-2">
-        {{
-          mode === 'register'
-            ? 'После создания спросим, взять ли то, что вы заполнили в демо.'
-            : 'Заполненное в демо сюда не переносится: у семьи уже есть свои данные. Взять его с собой можно при создании новой семьи.'
-        }}
-      </p>
-
-      <Button type="submit" class="w-full mt-1" :disabled="busy">
-        {{
-          busy
-            ? 'Минуту…'
-            : mode === 'login'
-              ? 'Войти'
-              : mode === 'register'
-                ? 'Создать бюджет'
-                : 'Войти в семью'
-        }}
-      </Button>
-    </form>
-
-    <!-- Sandbox / Demo Mode Button -->
-    <p v-if="editsWaitLogin" class="mt-6 pt-5 border-t border-line text-center text-[12px] text-ink-2">
+    <p v-if="editsWaitLogin" class="mt-6 text-center text-[12px] text-ink-2">
       Неотправленные правки ждут на этом телефоне — войдите в свою семью, и они уйдут.
     </p>
-    <div v-else class="mt-6 pt-5 border-t border-line text-center">
-      <button
-        type="button"
-        class="inline-flex items-center gap-1.5 text-[13px] font-medium text-brand hover:underline cursor-pointer"
-        @click="startDemoMode"
-      >
-        <PhSparkle :size="16" />
-        {{ hasDemoDraft ? 'Вернуться в демо' : 'Попробовать в демо-режиме без регистрации' }}
-      </button>
-      <p class="mt-1 text-[11.5px] text-ink-2">
-        {{
-          hasDemoDraft
-            ? 'Черновик демо сохранён на этом телефоне.'
-            : 'Загружает готовую семью с примерами расходов, кредитов и целей.'
-        }}
-      </p>
-    </div>
-    </template>
+    <Button v-else variant="ghost" class="mt-4 w-full" @click="startDemoMode">
+      {{ hasDemoDraft ? 'Вернуться в демо' : 'Попробовать без регистрации' }}
+    </Button>
+
+    <p class="mt-8 text-center text-[11.5px] text-ink-3">Бесплатно · выписка остаётся на телефоне</p>
+
+    <!-- Стенд и e2e: вход по почте (только dev-сборка). -->
+    <component :is="DevLogin" v-if="DevLogin" @signed-in="afterSignIn" />
   </div>
 </template>

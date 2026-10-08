@@ -52,6 +52,25 @@ describe('router/index.ts — Навигационные гарды и защи�
     expect(router.currentRoute.value.path).toBe('/access')
   })
 
+  it('B2C-25: вошёл через Google без семьи — всё ведёт на /who, кроме настроек; с семьёй /who не нужен', async () => {
+    const router = createAppRouter(createMemoryHistory())
+    const auth = useAuthStore()
+    auth.setAuthData({ token: 'tok-g', user: { id: 'u9', email: 'n@example.com', created_at: '' }, household: null, member: null })
+    for (const path of ['/', '/week', '/money', '/start', '/access', '/goals/new']) {
+      await router.push(path)
+      expect(router.currentRoute.value.path, path).toBe('/who')
+    }
+    await router.push('/settings')
+    expect(router.currentRoute.value.path).toBe('/settings')
+
+    // «С кем» пройдено: семья без данных — первый запуск, /who ведёт туда же.
+    signIn()
+    await router.push('/who')
+    expect(router.currentRoute.value.path).toBe('/start')
+    await router.push('/')
+    expect(router.currentRoute.value.path).toBe('/start')
+  })
+
   it('неавторизованный пользователь свободно заходит на /access', async () => {
     const router = createAppRouter(createMemoryHistory())
     await router.push('/access')

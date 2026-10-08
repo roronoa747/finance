@@ -24,6 +24,8 @@ const GoalNew = () => import('@/views/GoalNew.vue')
 // Первый запуск (B2C-19): один раз на семью — отдельным чанком.
 const Start = () => import('@/views/Start.vue')
 const MyCircle = () => import('@/views/MyCircle.vue')
+// «С кем» (B2C-25): один раз после первого входа — отдельным чанком.
+const Who = () => import('@/views/Who.vue')
 const DebtFaster = () => import('@/views/DebtFaster.vue')
 
 /**
@@ -60,6 +62,13 @@ export const routes: RouteRecordRaw[] = [
     name: 'access',
     component: Access,
     meta: { public: true },
+  },
+  // «С кем ведём?» (B2C-25, Р-13): только вошедшему без семьи.
+  {
+    path: '/who',
+    name: 'who',
+    component: Who,
+    meta: { requiresAuth: true },
   },
   {
     path: '/start/:step?',
@@ -146,6 +155,14 @@ export function createAppRouter(history = typeof window !== 'undefined' ? create
     if (!isAuthed) {
       return next({ path: '/access', query: to.query })
     }
+
+    // 2а. Без семьи (вошёл через Google, «с кем» не пройдено): только «с кем» и настройки — там
+    // выход и удаление аккаунта. С семьёй «с кем» больше не нужен.
+    if (!authStore.isDemo && !authStore.hasHousehold) {
+      if (to.path === '/who' || to.path === '/settings') return next()
+      return next('/who')
+    }
+    if (to.path === '/who') return next(landingPath(authStore, financeStore))
 
     // 3. Экраны-формы (новая мечта, свой кружок) — только участнику; `viewerTo` — куда вместо них.
     if (to.meta.memberOnly && authStore.isViewer) {

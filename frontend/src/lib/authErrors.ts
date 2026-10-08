@@ -8,7 +8,7 @@
  * текст уходит в консоль: английского на экране не бывает.
  */
 
-export type AuthErrorContext = 'login' | 'register' | 'join' | 'invite'
+export type AuthErrorContext = 'login' | 'register' | 'join' | 'invite' | 'google' | 'household'
 
 export const SERVER_TROUBLE = 'Не получилось связаться с сервером. Попробуйте ещё раз.'
 
@@ -27,6 +27,14 @@ const TEXTS: Record<string, string> = {
   'invite code has already been used': 'Этот код уже использован. Попросите партнёра создать новый.',
   'invite code has expired': 'Срок кода истёк: он действует две недели. Попросите партнёра создать новый.',
   'household has maximum members': 'В этой семье уже нет свободных мест.',
+  // Вход через Google (`handlers/auth.go` GoogleLogin, B2C-22)
+  'invalid google token': 'Google не подтвердил вход. Попробуйте ещё раз.',
+  'google sign-in is not configured': 'Вход через Google пока не настроен.',
+  'google sign-in is unavailable': 'Google сейчас недоступен. Попробуйте через минуту.',
+  'email is linked to another google account': 'Эта почта уже привязана к другому аккаунту Google.',
+  // «С кем» (`handlers/household.go`, B2C-23)
+  'already in household': 'Вы уже в семье.',
+  'display_name is required': 'Как вас зовут?',
   // Создание кода (`handlers/household.go` CreateInvite)
   'only full members can create invites': 'Код может создать только участник с правом правки — у вас только просмотр.',
 }

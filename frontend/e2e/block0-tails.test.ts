@@ -175,7 +175,6 @@ describe('e2e / Блок 0 — демо как черновик будущей �
     startDemoAndEdit()
     let html = await renderAccess()
     expect(html).toContain('Вернуться в демо')
-    expect(html).toContain('спросим, взять ли то, что вы заполнили в демо')
 
     // «Войти заново» в семье h-1: правки ждут на телефоне — вход в демо стёр бы их.
     setActivePinia(createPinia())
@@ -185,7 +184,7 @@ describe('e2e / Блок 0 — демо как черновик будущей �
     finance.setPerson('a', { name: 'Ильяс' })
     html = await renderAccess()
     expect(html).toContain('Неотправленные правки ждут на этом телефоне')
-    expect(html).not.toContain('демо-режиме')
+    expect(html).not.toContain('Попробовать без регистрации')
   })
 })
 

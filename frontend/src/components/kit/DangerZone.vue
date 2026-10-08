@@ -1,15 +1,21 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import Button from '@/components/ui/Button.vue'
+import Input from '@/components/ui/Input.vue'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     label: string
     warning: string
     confirmLabel?: string
+    /** Необратимое (удаление аккаунта, B2C-25): кнопка оживает, когда введено это слово. */
+    confirmWord?: string
+    busy?: boolean
   }>(),
   {
     confirmLabel: 'Удалить',
+    confirmWord: '',
+    busy: false,
   },
 )
 
@@ -18,6 +24,8 @@ const emit = defineEmits<{
 }>()
 
 const confirm = ref(false)
+const typed = ref('')
+const ready = computed(() => !props.confirmWord || typed.value.trim().toLowerCase() === props.confirmWord.toLowerCase())
 </script>
 
 <template>
@@ -39,15 +47,24 @@ const confirm = ref(false)
         </svg>
         <p class="text-[12.5px] leading-relaxed text-ink-2">{{ warning }}</p>
       </div>
+      <Input
+        v-if="confirmWord"
+        v-model="typed"
+        class="mb-2 bg-surface"
+        :placeholder="`Введите «${confirmWord}»`"
+        :aria-label="`Введите «${confirmWord}»`"
+        autocomplete="off"
+      />
       <div class="flex gap-2">
         <Button variant="outline" class="flex-1 bg-surface" @click="confirm = false">
           Отмена
         </Button>
         <Button
           class="flex-1 bg-destructive text-destructive-foreground hover:bg-destructive"
+          :disabled="!ready || busy"
           @click="emit('confirm')"
         >
-          {{ confirmLabel }}
+          {{ busy ? 'Минуту…' : confirmLabel }}
         </Button>
       </div>
     </div>

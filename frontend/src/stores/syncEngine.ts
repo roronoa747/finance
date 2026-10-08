@@ -35,7 +35,8 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
 
   const auth = useAuthStore()
   const finance = useFinanceStore()
-  const signedIn = () => auth.isAuthenticated && !auth.isDemo
+  // Без семьи («с кем» не пройдено) ручки семьи отвечают 409 — к ним не ходим.
+  const signedIn = () => auth.isAuthenticated && !auth.isDemo && auth.hasHousehold
 
   // Личный документ (B2C-05) — тем же кругом: неотправленное досылаем со слиянием, иначе
   // забираем правки со второго устройства (успешный pull снимает и прошлый сбой).
@@ -117,10 +118,13 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
     if (auth.household) finance.claimFor(auth.household.id)
     // Без сети статус честный сразу, а не «синхронизировано» до первого события.
     if (win.navigator?.onLine === false) finance.status = 'offline'
-    // Первый круг всегда полный: неотправленная перед закрытием правка не теряется.
+    // Старт (B2C-25): тот же выбор, что у каждого круга, — всё отправлено → только забираем
+    // (ревизия не растёт от одного открытия, у viewer нет 403); неотправленное перед закрытием
+    // (`unsent` → статус 'dirty') — полный синк со слиянием. Операции — тоже: решения «Недели»
+    // на новом устройстве готовы сразу, а не после захода на «Неделю».
     else {
-      void finance.syncHousehold().then(linkPhotos)
-      syncPrivate()
+      sync()
+      if (auth.isMember) void useOperationsStore().pull()
     }
     rates()
   }

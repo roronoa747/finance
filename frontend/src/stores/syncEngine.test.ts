@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore, DEMO_TOKEN } from './auth'
 import { useFinanceStore } from './finance'
+import { useOperationsStore } from './operations'
 import { apiClient } from '@/api/client'
 import { startSyncEngine, resetSyncEngineForTests, afterFamilyLoaded, BACKGROUND_SYNC_MS } from './syncEngine'
 import { fillWishPhotos } from '@/lib/photos/wishLinkPhotos'
@@ -53,20 +54,53 @@ describe('startSyncEngine — правки партнёра без собств�
     const finance = useFinanceStore()
     const pull = vi.spyOn(finance, 'pullHousehold').mockResolvedValue(null)
     const sync = vi.spyOn(finance, 'syncHousehold').mockResolvedValue()
+    const opsPull = vi.spyOn(useOperationsStore(), 'pull').mockResolvedValue([])
     const env = fakeEnv()
     startSyncEngine(env.win, env.doc)
-    return { finance, pull, sync, ...env }
+    return { finance, pull, sync, opsPull, ...env }
   }
 
-  it('старт с сессией — один полный круг (неотправленное перед закрытием не теряется)', () => {
+  it('B2C-25: старт без неотправленного — только забираем документ и операции (ревизия не растёт)', () => {
+    const { pull, sync, opsPull } = setup('real-token')
+    expect(pull).toHaveBeenCalledTimes(1)
+    expect(sync).not.toHaveBeenCalled()
+    expect(opsPull).toHaveBeenCalledTimes(1)
+  })
+
+  it('B2C-25: старт с неотправленным перед закрытием — полный круг со слиянием', () => {
+    storage.set('ff_unsent', JSON.stringify({ household: true }))
+    setActivePinia(createPinia())
     const { pull, sync } = setup('real-token')
     expect(sync).toHaveBeenCalledTimes(1)
     expect(pull).not.toHaveBeenCalled()
   })
 
+  it('B2C-25: viewer на старте — только pull, POST (и 403) нет; операций не тянет', () => {
+    useAuthStore().setAuthData({
+      token: 'viewer-token',
+      user: { id: 'u3', email: 'v@b.kz', created_at: '2026-09-24T00:00:00Z' },
+      household: { id: 'h1', name: 'Казна', created_by: 'u1', created_at: '2026-09-24T00:00:00Z' },
+      member: { household_id: 'h1', user_id: 'u3', slot: 'c', display_name: 'Гость', role: 'viewer', joined_at: '2026-09-24T00:00:00Z' },
+    })
+    const { pull, sync, opsPull } = setup()
+    expect(pull).toHaveBeenCalledTimes(1)
+    expect(sync).not.toHaveBeenCalled()
+    expect(opsPull).not.toHaveBeenCalled()
+  })
+
+  it('B2C-25: вошёл без семьи («с кем» не пройдено) — к ручкам семьи не ходим', () => {
+    useAuthStore().setAuthData({ token: 'google-token', user: { id: 'u9', email: 'n@b.kz', created_at: '2026-09-24T00:00:00Z' }, household: null, member: null })
+    const { pull, sync, win } = setup()
+    win.dispatchEvent(new Event('focus'))
+    vi.advanceTimersByTime(BACKGROUND_SYNC_MS)
+    expect(pull).not.toHaveBeenCalled()
+    expect(sync).not.toHaveBeenCalled()
+  })
+
   it('вернулись в приложение при idle — только забираем документ, без записи', () => {
     const { finance, pull, sync, win, doc } = setup('real-token')
     sync.mockClear()
+    pull.mockClear()
     finance.status = 'idle'
 
     win.dispatchEvent(new Event('focus'))
@@ -78,6 +112,7 @@ describe('startSyncEngine — правки партнёра без собств�
   it('правка без сети: offline → online — полный круг со слиянием, а не затирание', () => {
     const { finance, pull, sync, win } = setup('real-token')
     sync.mockClear()
+    pull.mockClear()
 
     win.dispatchEvent(new Event('offline'))
     expect(finance.status).toBe('offline')
@@ -108,6 +143,7 @@ describe('startSyncEngine — правки партнёра без собств�
 
   it('раз в минуту — только на видимом экране', () => {
     const { finance, pull, doc } = setup('real-token')
+    pull.mockClear()
     finance.status = 'idle'
 
     vi.advanceTimersByTime(BACKGROUND_SYNC_MS)
@@ -257,7 +293,8 @@ describe('startSyncEngine — фото желаний по ссылке при �
     win.dispatchEvent(new Event('focus'))
     await vi.advanceTimersByTimeAsync(BACKGROUND_SYNC_MS)
     await settled()
-    expect(pull).toHaveBeenCalledTimes(2)
+    // Старт (B2C-25 — тоже pull), фокус и интервал.
+    expect(pull).toHaveBeenCalledTimes(3)
     expect(fill).toHaveBeenCalledTimes(1)
   })
 

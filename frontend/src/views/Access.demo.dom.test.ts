@@ -58,7 +58,7 @@ describe('B2C-45: демо — «Деньги» с данными во всех 
     app.use(router)
     app.mount(root)
     await nextTick()
-    ;[...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('демо'))!.click()
+    ;[...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('Попробовать'))!.click()
     await nextTick()
     await nextTick()
 
@@ -105,7 +105,7 @@ describe('B2C-52: демо — итоги из демо-операций той 
     app.use(router)
     app.mount(root)
     await nextTick()
-    ;[...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('демо'))!.click()
+    ;[...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('Попробовать'))!.click()
     await nextTick()
     await nextTick()
   }
@@ -184,7 +184,7 @@ describe('B2C-110 (Р-118): демо — фото из приложения, л�
     app.use(router)
     app.mount(root)
     await nextTick()
-    ;[...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('демо'))!.click()
+    ;[...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('Попробовать'))!.click()
     await nextTick()
     await nextTick()
 
