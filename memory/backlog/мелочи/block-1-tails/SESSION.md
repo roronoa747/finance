@@ -366,3 +366,19 @@
   `dpl_Dx1fU6gM…`, код тот же) — **он же откат** (promote). `origin/main` = `4463fc7`, ветка его содержит.
 - **Не проверено до деплоя:** CI ветки (не запушена), `pg_dump`/`pg_restore` п. 1 `supabase-cleanup.md` (Docker нет) —
   бэкап делает владелец, `pg_restore --list` = 5 — проверка в самой инструкции до удаления.
+
+### Деплой — 2026-10-08 (с «да» владельца)
+
+- CI ветки на `a005fd3`: `ci-frontend` 37815759367 ✅, `ci-backend` 37815759439 ✅; превью Vercel
+  `dpl_GuYxjcXx5uoFmpSECJf1UTVuMZh4` READY (сборка без React-корня — критерий ML-11).
+- Мёрж `f00bff1` (`--no-ff`) в `main`; дерево `main` = ветка (пустой дифф с `a005fd3`) — `npm ci` не делал (чужие
+  стенды держат `node_modules` → EPERM), `npm run build` ✅, `npx vitest run` 155 / 1605 ✅ + 1 на `main`; push
+  `4463fc7..f00bff1`.
+- **Production — `dpl_4ENrQwKC5rh4DBkVPYFnbtNokaSf`** (`f00bff1`) READY; **откат — promote
+  `dpl_4WzzKuCcLXezNcybzJrkq7GxabuZ`**.
+- **Смоук агента:** `/api/health` 200 `{"status":"ok","db":"connected"}`; новый код в чанках («Округлим»); браузерный
+  сценарий приёмки против прода (демо, 390 px, обе темы) — **44/44**: сюрприз правится и удаляется, «9.99» точкой →
+  10 $, «Свободно» после раскладки, кредит без ставки, viewer, консоль чистая. Логи Vercel Production за 30 мин —
+  без error/warning.
+- **Владельцу (нужен вход):** Kaspi-название (ML-08 — ручка превью за авторизацией) и ручной запуск будильника
+  (Actions → «Будильник для базы» → Run) — вместе с шагами `supabase-cleanup.md` (п. 4 их включает). 🏁 — после них.
