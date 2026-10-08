@@ -197,7 +197,8 @@ export function createAppRouter(history = typeof window !== 'undefined' ? create
     const me = financeStore.people.find((p) => p.id === authStore.slot)
     const joining = financeStore.setupDone && !authStore.isViewer && !!me && !me.onboardedAt
 
-    if (!onStart && landing === '/start' && !setupCompleted) return next('/start')
+    // Настройки (выход, удаление аккаунта — Р-14) и цифры владельца — и посреди первого запуска.
+    if (!onStart && landing === '/start' && !setupCompleted && to.path !== '/settings' && to.path !== '/admin') return next('/start')
     if (onStart && landing !== '/start' && !joining) return next('/')
 
     next()

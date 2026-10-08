@@ -95,6 +95,10 @@ describe('router/index.ts — Навигационные гарды и защи�
     // Старый адрес мастера — на первый запуск.
     await router.push('/setup')
     expect(router.currentRoute.value.path).toBe('/start')
+
+    // Настройки — и посреди первого запуска: выход и удаление аккаунта (B2C-25).
+    await router.push('/settings')
+    expect(router.currentRoute.value.path).toBe('/settings')
   })
 
   it('авторизованный пользователь при попытке зайти на /access отправляется в приложение', async () => {
