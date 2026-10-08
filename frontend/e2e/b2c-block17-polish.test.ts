@@ -27,6 +27,7 @@ vi.mock('../src/lib/photos/goalPhoto', async (orig) => ({
  * 3. Тишина (Р-116): в шапках вкладок и цели нет имён и «<месяц> · …».
  * 4. Демо (Р-118): «Вы» и «Партнёр», фото у всех целей и желаний из приложения, без /api.
  * 5. Viewer: кнопок ввода нет, как было.
+ * 6. Приёмка: вкладки нижней панели помнят каждая своё место (Р-115), цель с вкладки — сверху.
  */
 type Phone = { pinia: Pinia; client: ApiClient; store: ReturnType<typeof useFinanceStore> }
 
@@ -180,6 +181,31 @@ describe('e2e / B2C Блок 17 — полировка на двух телеф�
       await tick()
       for (const words of ['Ильяс', 'Аруна', 'Сентябрь ·']) expect(header()).not.toContain(words)
     }
+  })
+
+  it('часть 6 (приёмка) — вкладки нижней панели помнят каждая своё место, цель с вкладки — сверху', async () => {
+    const A = await phone('a')
+    const router = await mount(A, RouterView, '/money')
+    const main = document.querySelector('main')!
+    const go = async (path: string) => {
+      await router.push(path)
+      await tick()
+    }
+
+    main.scrollTop = 250
+    await go('/')
+    expect(main.scrollTop).toBe(0)
+    main.scrollTop = 140
+    await go('/month')
+    main.scrollTop = 60
+    await go('/money')
+    expect(main.scrollTop).toBe(250)
+    await go('/')
+    expect(main.scrollTop).toBe(140)
+    await go('/goals/car')
+    expect(main.scrollTop).toBe(0)
+    await go('/month')
+    expect(main.scrollTop).toBe(60)
   })
 
   it('часть 4 — демо: «Вы» и «Партнёр», фото у всех целей и желаний из приложения, без /api', async () => {
