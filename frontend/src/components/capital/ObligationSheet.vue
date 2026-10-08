@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils'
 
 import CurrencyChips from '@/components/kit/CurrencyChips.vue'
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import Hint from '@/components/kit/Hint.vue'
 import NbRateLine from '@/components/kit/NbRateLine.vue'
 import NumField from '@/components/kit/NumField.vue'
@@ -135,6 +136,10 @@ function startPlanning() {
   obCurrency.value = obOwn.value.currency
   void nextTick(() => obPlanRef.value?.querySelector('input')?.focus())
 }
+const form = useFormCheck(() => [
+  ['newAmount', parseMoney(obNewAmount.value) <= 0 ? 'Введите сумму' : !nb.ok.value && 'Нет курса — попробуйте позже'],
+])
+
 function planObligation() {
   const ob = activeObligation.value
   const planned = parseMoney(obNewAmount.value)
@@ -271,7 +276,7 @@ function planObligation() {
           <Field label="Валюта" group>
             <CurrencyChips v-model="obCurrency" />
           </Field>
-          <Field :label="`Новая сумма, ${CURRENCY_SIGN[obCurrency]}`">
+          <Field :label="`Новая сумма, ${CURRENCY_SIGN[obCurrency]}`" name="newAmount">
             <NumField v-model="obNewAmount" :placeholder="plain(obCurrency === obOwn.currency ? obOwn.amount : 0)" />
           </Field>
           <NbRateLine :amount="parseMoney(obNewAmount)" :currency="obCurrency" :nb="nb" />
@@ -305,7 +310,7 @@ function planObligation() {
 
           <div class="flex gap-2">
             <Button variant="outline" class="flex-1" @click="obPlanning = false">Отмена</Button>
-            <Button class="flex-1" :disabled="parseMoney(obNewAmount) <= 0 || !nb.ok.value" @click="planObligation">
+            <Button class="flex-1" @click="form.submit(planObligation)">
               Запланировать
             </Button>
           </div>

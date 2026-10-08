@@ -34,6 +34,7 @@ import Callout from '@/components/kit/Callout.vue'
 import Chip from '@/components/kit/Chip.vue'
 import DreamHero from '@/components/kit/DreamHero.vue'
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import HeaderActions from '@/components/kit/HeaderActions.vue'
 import Hint from '@/components/kit/Hint.vue'
 import NumField from '@/components/kit/NumField.vue'
@@ -185,6 +186,8 @@ watch(openDepositModal, (open) => {
 // История — новые сверху по дате: слияние хранит «новые первыми», взнос дописывается в конец.
 const history = computed(() => [...(goal.value?.movements ?? [])].sort((a, b) => b.date.localeCompare(a.date)))
 const monthOf = (iso: string) => MONTHS_NOM[parseMonthKey(movementMonth(iso)).month]
+
+const form = useFormCheck(() => [['amount', parseMoney(depositAmount.value) <= 0 && 'Введите сумму']])
 
 function applyDeposit() {
   const v = parseMoney(depositAmount.value)
@@ -486,7 +489,7 @@ function share() {
       @close="openDepositModal = false"
     >
       <div ref="depositAmountRef">
-        <Field label="Сумма, ₸">
+        <Field label="Сумма, ₸" name="amount">
           <NumField
             v-model="depositAmount"
             :placeholder="depositOperation === 'deposit' ? plain(goal.monthly) : '10 000'"
@@ -514,7 +517,7 @@ function share() {
         <Input v-model="depositNote" placeholder="Премия, накопления…" class="mb-3" />
       </Field>
 
-      <Button :disabled="parseMoney(depositAmount) <= 0" class="w-full mt-2" @click="applyDeposit">
+      <Button class="w-full mt-2" @click="form.submit(applyDeposit)">
         {{ depositOperation === 'deposit' ? 'Внести' : 'Снять' }}
       </Button>
     </Sheet>

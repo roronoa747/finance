@@ -9,6 +9,7 @@ import { groupChildren, groupTotal, isSubscription, liveGroups, liveObligations 
 import { cn } from '@/lib/utils'
 
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import Select from '@/components/kit/Select.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import DangerZone from '@/components/kit/DangerZone.vue'
@@ -40,6 +41,7 @@ const NO_ASK_OPTIONS = [
 ]
 const groupName = ref('')
 const groupNoAsk = ref(false)
+const form = useFormCheck(() => [['groupName', !groupName.value.trim() && 'Введите название']])
 
 function createGroup() {
   const name = groupName.value.trim()
@@ -59,7 +61,7 @@ const groupCandidates = computed(() =>
 
 <template>
   <Sheet :open="createOpen" title="Группа подписок" @close="emit('close-create')">
-    <Field label="Название">
+    <Field label="Название" name="groupName">
       <Input v-model="groupName" placeholder="Рабочие, досуг, для дома…" class="mb-3" />
     </Field>
     <Field label="Спрашивать «оставить?»" group>
@@ -75,7 +77,7 @@ const groupCandidates = computed(() =>
         </button>
       </div>
     </Field>
-    <Button :disabled="!groupName.trim()" class="w-full" @click="createGroup">Создать группу</Button>
+    <Button class="w-full" @click="form.submit(createGroup)">Создать группу</Button>
   </Sheet>
 
   <Sheet :open="!!activeGroup" :title="activeGroup?.name ?? ''" @close="emit('close')">

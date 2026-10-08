@@ -5,6 +5,8 @@ import Button from '@/components/ui/Button.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import TemplateTile from '@/components/kit/TemplateTile.vue'
 import Chip from '@/components/kit/Chip.vue'
+import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 
 /**
  * Выбор картинки мечты (DESIGN.md §5 `TemplateTile` / `PhotoPicker`, g3 «На что копим» и g4
@@ -51,6 +53,7 @@ watch(
 
 const directions = computed(() => (pickedType.value === 'travel' ? TRAVEL_DIRECTIONS : []))
 const picked = computed(() => GOAL_TEMPLATES.find((t) => t.id === pickedId.value) ?? null)
+const form = useFormCheck(() => [['photo', !picked.value && 'Выберите картинку']])
 
 function pickType(type: GoalTemplateType) {
   pickedType.value = type
@@ -72,17 +75,19 @@ function onFile(e: Event) {
 <template>
   <Sheet :open="open" :title="title" @close="emit('close')">
     <div class="flex flex-col gap-3">
-      <div class="grid grid-cols-3 gap-2.5">
-        <TemplateTile
-          v-for="k in GOAL_TYPES"
-          :key="k.type"
-          :name="k.name"
-          :src="templateImageUrl(byType(k.type), 400)"
-          :selected="pickedType === k.type"
-          @click="pickType(k.type)"
-        />
-        <TemplateTile name="Своё фото" camera @click="fileInput?.click()" />
-      </div>
+      <Field name="photo" group class="!mb-0">
+        <div class="grid grid-cols-3 gap-2.5">
+          <TemplateTile
+            v-for="k in GOAL_TYPES"
+            :key="k.type"
+            :name="k.name"
+            :src="templateImageUrl(byType(k.type), 400)"
+            :selected="pickedType === k.type"
+            @click="pickType(k.type)"
+          />
+          <TemplateTile name="Своё фото" camera @click="fileInput?.click()" />
+        </div>
+      </Field>
       <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFile" />
 
       <template v-if="directions.length">
@@ -94,7 +99,7 @@ function onFile(e: Event) {
       </template>
 
       <!-- Автор — один раз, на самом фото героя после выбора (владелец): здесь строкой не повторяем. -->
-      <Button size="lg" class="w-full" :disabled="!picked" @click="confirm">Выбрать это</Button>
+      <Button size="lg" class="w-full" @click="form.submit(confirm)">Выбрать это</Button>
       <Button v-if="skippable" variant="ghost" class="w-full" @click="emit('skip')">Пропустить</Button>
       <Button v-if="removable" variant="ghost" class="w-full" @click="emit('remove')">Убрать фото</Button>
     </div>

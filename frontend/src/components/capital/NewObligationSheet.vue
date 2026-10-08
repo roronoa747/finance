@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 
 import CurrencyChips from '@/components/kit/CurrencyChips.vue'
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import NbRateLine from '@/components/kit/NbRateLine.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Segmented from '@/components/kit/Segmented.vue'
@@ -49,12 +50,12 @@ const obBuckets = computed(() =>
   (['d1', 'd2', 'd4'] as CategoryKey[]).map((key) => ({ key, name: categoryName(financeStore.categories, key) })),
 )
 
-const canCreateObligation = computed(
-  () => obName.value.trim().length > 0 && parseMoney(obAmount.value) > 0 && nb.ok.value,
-)
+const form = useFormCheck(() => [
+  ['name', !obName.value.trim() && 'Введите название'],
+  ['amount', parseMoney(obAmount.value) <= 0 ? 'Введите сумму' : !nb.ok.value && 'Нет курса — попробуйте позже'],
+])
 
 function createObligation() {
-  if (!canCreateObligation.value) return
   financeStore.addObligation({
     name: obName.value.trim(),
     note: obEvery.value === 'year' ? 'раз в год' : 'ежемесячно',
@@ -78,7 +79,7 @@ function createObligation() {
 
 <template>
   <Sheet :open="open" title="Регулярный платёж" @close="emit('close')">
-    <Field label="Что оплачиваем">
+    <Field label="Что оплачиваем" name="name">
       <Input v-model="obName" placeholder="Например, интернет или абонемент" class="mb-3" />
     </Field>
 
@@ -97,7 +98,7 @@ function createObligation() {
       <CurrencyChips v-model="obCurrency" />
     </Field>
 
-    <Field :label="`${obEvery === 'year' ? 'Сумма за год' : 'Сумма в месяц'}, ${CURRENCY_SIGN[obCurrency]}`">
+    <Field :label="`${obEvery === 'year' ? 'Сумма за год' : 'Сумма в месяц'}, ${CURRENCY_SIGN[obCurrency]}`" name="amount">
       <NumField v-model="obAmount" placeholder="5 000" class="mb-3" />
     </Field>
     <NbRateLine :amount="parseMoney(obAmount)" :currency="obCurrency" :nb="nb" />
@@ -167,7 +168,7 @@ function createObligation() {
       Сумма плавает — показывать как оценку
     </label>
 
-    <Button :disabled="!canCreateObligation" class="w-full mt-2" @click="createObligation">
+    <Button class="w-full mt-2" @click="form.submit(createObligation)">
       Добавить
     </Button>
   </Sheet>

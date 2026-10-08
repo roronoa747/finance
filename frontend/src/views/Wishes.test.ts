@@ -164,14 +164,14 @@ describe('views/GoalNew.vue — «Новая мечта» (B2C-18, SSR)', () => 
     vi.unstubAllGlobals()
   })
 
-  it('шаг «На что копим?»: пять типов с картинками Unsplash, «Своё фото», «Дальше» выключена до выбора, «Пока без мечты»', async () => {
+  it('шаг «На что копим?»: пять типов с картинками Unsplash, «Своё фото», «Дальше» не серая до выбора (Р-114: нажатие назовёт картинку), «Пока без мечты»', async () => {
     family()
     const html = await renderScreen(GoalNew, '/goals/new')
     expect(html).toContain('На что копим?')
     for (const k of GOAL_TYPES) expect(html).toContain(k.name)
     expect(html).toContain('Своё фото')
     expect((html.match(/images\.unsplash\.com\//g) ?? []).length).toBeGreaterThanOrEqual(5)
-    expect(disabled(html, 'Дальше')).toBe(true)
+    expect(disabled(html, 'Дальше')).toBe(false)
     expect(html).toContain('Пока без мечты')
     expect(html).not.toContain('Куда')
   })
@@ -244,12 +244,18 @@ describe('views/GoalNew.vue — «Новая мечта» (B2C-18, SSR)', () => 
     expect(fresh.queue[0].goal?.name).toBe('Машина')
   })
 
-  it('viewer: «Готово — к мечте» выключена', async () => {
-    family('viewer')
+  it('viewer: экран только участнику (гард `memberOnly`); дошёл бы — «Готово — к мечте» ничего не пишет', async () => {
+    const store = family('viewer')
+    const before = store.goals.length
+    let create: (() => Promise<void>) | null = null
     const html = await renderScreen(GoalNew, '/goals/new', undefined, [
-      screenMixin({ step: 'form', template: templateById('japan'), name: 'Япония', needText: '1 800 000' }),
+      screenMixin({ step: 'form', template: templateById('japan'), name: 'Япония', needText: '1 800 000' }, (s) => {
+        create = s.create as () => Promise<void>
+      }),
     ])
-    expect(disabled(html, 'Готово — к мечте')).toBe(true)
+    expect(disabled(html, 'Готово — к мечте')).toBe(false)
+    await create!()
+    expect(store.goals.length).toBe(before)
   })
 
   /** Нажать «Готово — к мечте» и дождаться загрузки фото; куда пришёл экран. */

@@ -84,14 +84,16 @@ const live = (s: ReturnType<typeof useFinanceStore>, kind: Payment['kind'], targ
   s.payments.filter((p) => !p.deletedAt && p.kind === kind && p.targetId === targetId && p.period === '2026-09')
 
 describe('components/MarkSheet в DOM', () => {
-  it('платёж: сумма из графика, без счёта кнопка неактивна; счёт → «Отметить оплату» — запись markPaid, close и marked', async () => {
+  it('платёж: сумма из графика, без счёта нажатие называет счёт (Р-114); счёт → «Отметить оплату» — запись markPaid, close и marked', async () => {
     const { pinia, store } = family()
     const seen = await mount(pinia, { open: 'mark', kind: 'credit', targetId: 'loan', period: '2026-09', title: 'Кредит', amount: 58_000 })
     expect(amountField().value).toBe(plain(58_000))
-    expect(button('Отметить оплату').disabled).toBe(true)
+    await press(button('Отметить оплату'))
+    expect(dialog().textContent).toContain('Выберите счёт')
+    expect(live(store, 'credit', 'loan')).toHaveLength(0)
 
     await press(buttons().find((b) => b.textContent?.includes('Kaspi Gold'))!)
-    expect(button('Отметить оплату').disabled).toBe(false)
+    expect(dialog().textContent).not.toContain('Выберите счёт')
     await press(button('Отметить оплату'))
 
     const rec = live(store, 'credit', 'loan')
@@ -106,7 +108,9 @@ describe('components/MarkSheet в DOM', () => {
     const { pinia, store } = family()
     const seen = await mount(pinia, { open: 'mark', kind: 'salary', targetId: 'a', period: '2026-09', title: 'Зарплата Ильяса', amount: 700_000 })
     expect(dialog().textContent).toContain('Оклад месяца')
-    expect(button('Отметить зарплату').disabled).toBe(true)
+    await press(button('Отметить зарплату'))
+    expect(dialog().textContent).toContain('Выберите счёт')
+    expect(live(store, 'salary', 'a')).toHaveLength(0)
 
     await press(button('Не зачислять — только отметить'))
     await press(button('Отметить зарплату'))

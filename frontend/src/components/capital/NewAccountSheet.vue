@@ -10,6 +10,7 @@ import CurrencyChips from '@/components/kit/CurrencyChips.vue'
 import NbRateLine from '@/components/kit/NbRateLine.vue'
 import { useNbRate } from '@/components/kit/useNbRate'
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import NumField from '@/components/kit/NumField.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Button from '@/components/ui/Button.vue'
@@ -42,12 +43,16 @@ const parsedAccountAmount = computed(() => parseMoney(newAccountAmount.value))
 const accountInTenge = computed(() =>
   isForeign.value ? nb.tenge(parsedAccountAmount.value) : parsedAccountAmount.value,
 )
-const canCreateAccount = computed(
-  () => parsedAccountAmount.value > 0 && (!isForeign.value || accountInTenge.value > 0),
-)
+const form = useFormCheck(() => [
+  [
+    'amount',
+    parsedAccountAmount.value <= 0
+      ? 'Введите сумму'
+      : isForeign.value && accountInTenge.value <= 0 && 'Нет курса — попробуйте позже',
+  ],
+])
 
 function createAccount() {
-  if (!canCreateAccount.value) return
   const annual = parseFloat(newAccountDepositRate.value.replace(',', '.'))
   financeStore.addAccount(
     {
@@ -123,7 +128,7 @@ function createAccount() {
       <CurrencyChips v-model="newAccountCurrency" class="mb-3" />
     </Field>
 
-    <Field :label="`Сумма, ${CURRENCY_SIGN[newAccountCurrency]}`">
+    <Field :label="`Сумма, ${CURRENCY_SIGN[newAccountCurrency]}`" name="amount">
       <NumField v-model="newAccountAmount" class="mb-3" />
     </Field>
 
@@ -133,7 +138,7 @@ function createAccount() {
       <NumField v-model="newAccountDepositRate" kind="rate" placeholder="16,5" class="mb-3" />
     </Field>
 
-    <Button :disabled="!canCreateAccount" class="w-full mt-2" @click="createAccount">
+    <Button class="w-full mt-2" @click="form.submit(createAccount)">
       Добавить счёт
     </Button>
   </Sheet>

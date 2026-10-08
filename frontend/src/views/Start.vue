@@ -25,6 +25,7 @@ import Card from '@/components/kit/Card.vue'
 import Chip from '@/components/kit/Chip.vue'
 import DecisionCard from '@/components/kit/DecisionCard.vue'
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import FreeCard from '@/components/kit/FreeCard.vue'
 import Hint from '@/components/kit/Hint.vue'
 import NumField from '@/components/kit/NumField.vue'
@@ -77,6 +78,7 @@ const reading = ref(false)
 const errors = ref<Draft['errors']>([])
 const manual = ref(false)
 const manualSalary = ref('')
+const form = useFormCheck(() => [['salary', parseMoney(manualSalary.value) <= 0 && 'Введите зарплату']])
 const manualPayday = ref('10')
 
 async function pick(e: Event) {
@@ -356,7 +358,7 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
         </div>
       </template>
       <template v-else>
-        <Field label="Зарплата в месяц, ₸">
+        <Field label="Зарплата в месяц, ₸" name="salary">
           <NumField v-model="manualSalary" placeholder="450 000" />
         </Field>
         <Field label="День зарплаты (1–28)">
@@ -364,7 +366,7 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
         </Field>
         <p class="text-[12.5px] leading-relaxed text-ink-3">Оклад без премий.</p>
         <div class="mt-auto flex flex-col gap-2 pt-2">
-          <Button size="lg" class="w-full" :disabled="parseMoney(manualSalary) <= 0" @click="manualNext">Дальше</Button>
+          <Button size="lg" class="w-full" @click="form.submit(manualNext)">Дальше</Button>
           <Button variant="ghost" class="w-full" @click="manual = false">Лучше загружу выписку</Button>
         </div>
       </template>
@@ -394,14 +396,14 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
         </DecisionCard>
       </template>
       <template v-else-if="!salaryKnown">
-        <Field label="Зарплата в месяц, ₸">
+        <Field label="Зарплата в месяц, ₸" name="salary">
           <NumField v-model="manualSalary" placeholder="450 000" />
         </Field>
         <Field label="День зарплаты (1–28)">
           <NumField v-model="manualPayday" kind="int" placeholder="10" />
         </Field>
         <div class="mt-auto flex flex-col gap-2 pt-2">
-          <Button size="lg" class="w-full" :disabled="parseMoney(manualSalary) <= 0" @click="manualAfterQuestions">{{ joining ? 'Готово' : 'Дальше' }}</Button>
+          <Button size="lg" class="w-full" @click="form.submit(manualAfterQuestions)">{{ joining ? 'Готово' : 'Дальше' }}</Button>
         </div>
       </template>
       <!-- Все вопросы закрыты (перезагрузка после ответов) — просто дальше. -->

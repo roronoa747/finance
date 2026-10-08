@@ -22,6 +22,7 @@ import Callout from '@/components/kit/Callout.vue'
 import Card from '@/components/kit/Card.vue'
 import EmptyState from '@/components/kit/EmptyState.vue'
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import HeaderActions from '@/components/kit/HeaderActions.vue'
 import IconBox from '@/components/kit/IconBox.vue'
 import NumField from '@/components/kit/NumField.vue'
@@ -83,6 +84,7 @@ function nameOf(id: PersonId) {
 /* ------------------ Покупки ------------------ */
 const openWishModal = ref(false)
 const wishName = ref('')
+const form = useFormCheck(() => [['wishName', !wishName.value.trim() && 'Введите, что покупаем']])
 const wishPrice = ref('')
 const wishUrl = ref('')
 const wishBy = ref<PersonId>(me.value ?? 'a')
@@ -306,7 +308,7 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
       <!-- Фото — крупно: желание узнаётся по картинке (Р-9) -->
       <PhotoSlot v-if="!financeStore.isDemo" class="mb-3" :file="wishFile" :busy="link.busy.value" removable @file="onWishFile" @remove="wishFile = null" />
       <Callout v-if="link.note.value" tone="neutral" icon="info" class="mb-3">{{ link.note.value }}</Callout>
-      <Field label="Что покупаем">
+      <Field label="Что покупаем" name="wishName">
         <Input v-model="wishName" placeholder="Например, сковорода" class="mb-3" />
       </Field>
       <Field label="Цена, ₸">
@@ -319,7 +321,7 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
         />
       </Field>
 
-      <Button :disabled="!wishName.trim()" class="w-full mt-2" @click="createWish">
+      <Button class="w-full mt-2" @click="form.submit(createWish)">
         Добавить в список
       </Button>
     </Sheet>

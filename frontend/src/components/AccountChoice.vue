@@ -3,7 +3,7 @@
  * Выбор счёта списания (ревью Блока 3, Н-6): кнопки счетов с остатками и «Не списывать —
  * только отметить». `undefined` — ещё не выбран, `null` — не списывать, иначе id счёта.
  * Подсказка под кнопками — слотом. Один для отметки оплаты (`MarkSheet`), зарплаты (`SalaryRow`) и разбора (`Breakdown`) — у зачисления свои
- * подписи (`label`, `none`). Окно досрочки держит свой `Select` внутри длинной формы
+ * подписи (`label`, `none`). `name` — имя поля в правилах формы (`useFormCheck`): «Выберите счёт». Окно досрочки держит свой `Select` внутри длинной формы
  * (хвост Н-11 `развитие-приложения` — перевод ждёт «да» владельца).
  */
 import type { Account } from '@/types/finance'
@@ -11,7 +11,7 @@ import { money } from '@/lib/money'
 import { cn } from '@/lib/utils'
 import Field from '@/components/kit/Field.vue'
 
-withDefaults(defineProps<{ accounts: Account[]; label?: string; none?: string }>(), {
+withDefaults(defineProps<{ accounts: Account[]; label?: string; none?: string; name?: string }>(), {
   label: 'С какого счёта',
   none: 'Не списывать — только отметить',
 })
@@ -19,7 +19,7 @@ const model = defineModel<string | null | undefined>()
 </script>
 
 <template>
-  <Field :label="label" group>
+  <Field :label="label" :name="name" group>
     <button
       v-for="a in accounts"
       :key="a.id"

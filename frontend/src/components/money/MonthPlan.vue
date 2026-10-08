@@ -30,6 +30,7 @@ import type { PersonId } from '@/types/finance'
 import Avatar from '@/components/kit/Avatar.vue'
 import Card from '@/components/kit/Card.vue'
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import Hint from '@/components/kit/Hint.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Select from '@/components/kit/Select.vue'
@@ -221,6 +222,7 @@ function editSpend(personId: PersonId, categoryId?: string, amount = 0) {
   if (!canEdit.value) return
   spendEdit.value = { by: personId, categoryId: categoryId ?? categories.value[0]?.id ?? '', amount: amount ? plain(amount) : '', fresh: !categoryId }
 }
+const spendForm = useFormCheck(() => [['category', !spendEdit.value?.categoryId && 'Выберите раздел']])
 function saveSpend() {
   const e = spendEdit.value
   spendEdit.value = null
@@ -654,13 +656,13 @@ function addFund(kind: 'reserve' | 'cushion') {
     <!-- Сумма раздела трат -->
     <Sheet :open="!!spendEdit" :title="spendEdit?.fresh ? 'Траты на месяц' : 'Сколько в месяц'" @close="spendEdit = null">
       <template v-if="spendEdit">
-        <Field v-if="spendEdit.fresh" label="Раздел">
+        <Field v-if="spendEdit.fresh" label="Раздел" name="category">
           <Select v-model="spendEdit.categoryId" :options="categories.map((c) => ({ value: c.id, label: c.name }))" class="mb-3" />
         </Field>
         <Field :label="`${personName(spendEdit.by)}, ₸ в месяц`">
           <NumField v-model="spendEdit.amount" placeholder="50 000" class="mb-3" />
         </Field>
-        <Button class="w-full" :disabled="!spendEdit.categoryId" @click="saveSpend">Готово</Button>
+        <Button class="w-full" @click="spendForm.submit(saveSpend)">Готово</Button>
       </template>
     </Sheet>
 

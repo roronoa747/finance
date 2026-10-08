@@ -24,6 +24,7 @@ import type { Payment } from '@/types/finance'
 import { cn, plural, sentence } from '@/lib/utils'
 
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import NumField from '@/components/kit/NumField.vue'
 import Segmented from '@/components/kit/Segmented.vue'
 import AccountChoice from '@/components/AccountChoice.vue'
@@ -119,6 +120,8 @@ function prepayUndoNote(p: Payment): string {
   if (p.prevPayment !== undefined && c?.payment === p.newPayment) parts.push('платёж — к прежнему')
   return parts.join(', ') + '.'
 }
+
+const form = useFormCheck(() => [['applyAccount', applyAccount.value === undefined && 'Выберите счёт']])
 
 function applyPrepay() {
   const c = activePayoffCredit.value
@@ -245,8 +248,8 @@ function applyPrepay() {
         <div v-else class="mb-3 rounded-xl bg-brand-soft px-3 py-2 text-[13px] text-ink-2">
           Не отдадим банку <b class="num text-brand">{{ money(applyPlan.saved) }}</b>
         </div>
-        <AccountChoice v-model="applyAccount" :accounts="payAccounts" label="Откуда списать" />
-        <Button class="w-full" :disabled="applyAccount === undefined" @click="applyPrepay">Применить досрочку</Button>
+        <AccountChoice v-model="applyAccount" :accounts="payAccounts" label="Откуда списать" name="applyAccount" />
+        <Button class="w-full" @click="form.submit(applyPrepay)">Применить досрочку</Button>
       </div>
 
       <div

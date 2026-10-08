@@ -7,6 +7,7 @@ import type { PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
 
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import NumField from '@/components/kit/NumField.vue'
 import Select from '@/components/kit/Select.vue'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -28,12 +29,12 @@ const extraIncomeBy = ref<PersonId>('a')
 const extraIncomeTarget = ref('')
 
 const extraIncomeValue = computed(() => parseMoney(extraIncomeAmount.value))
-const canApplyExtraIncome = computed(
-  () => extraIncomeValue.value > 0 && Boolean(extraIncomeTarget.value),
-)
+const form = useFormCheck(() => [
+  ['amount', extraIncomeValue.value <= 0 && 'Введите сумму'],
+  ['target', !extraIncomeTarget.value && 'Выберите, куда'],
+])
 
 function applyExtraIncome() {
-  if (!canApplyExtraIncome.value) return
   const [kind, id] = extraIncomeTarget.value.split(':')
   if (kind === 'goal') {
     financeStore.contribute(id, extraIncomeValue.value, extraIncomeBy.value, 'Внеплановый доход')
@@ -54,7 +55,7 @@ function applyExtraIncome() {
       пока деньги не разошлись по мелочам.
     </p>
 
-    <Field label="Сумма, ₸">
+    <Field label="Сумма, ₸" name="amount">
       <NumField v-model="extraIncomeAmount" placeholder="50 000" class="mb-3" />
     </Field>
 
@@ -72,7 +73,7 @@ function applyExtraIncome() {
       </div>
     </Field>
 
-    <Field label="Куда направить">
+    <Field label="Куда направить" name="target">
       <Select v-model="extraIncomeTarget" class="mb-3">
         <option value="">Выберите…</option>
         <optgroup v-if="goals.length > 0" label="В цель">
@@ -92,7 +93,7 @@ function applyExtraIncome() {
       Сначала заведите цель или счёт — иначе деньги некуда положить.
     </p>
 
-    <Button :disabled="!canApplyExtraIncome" class="w-full mt-1" @click="applyExtraIncome">
+    <Button class="w-full mt-1" @click="form.submit(applyExtraIncome)">
       Записать
     </Button>
   </Sheet>

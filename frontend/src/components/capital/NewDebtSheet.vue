@@ -6,6 +6,7 @@ import { installmentMonths, rateFromSchedule, scheduleMismatch } from '@/lib/fin
 import { plural } from '@/lib/utils'
 
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import NumField from '@/components/kit/NumField.vue'
 import Segmented from '@/components/kit/Segmented.vue'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -51,10 +52,12 @@ const mismatch = computed(() =>
     ? scheduleMismatch(leftPrincipal.value, paymentVal.value, termMonths.value)
     : null,
 )
-const canCreateDebt = computed(() => leftPrincipal.value > 0 && paymentVal.value > 0)
+const form = useFormCheck(() => [
+  ['principal', leftPrincipal.value <= 0 && 'Введите остаток'],
+  ['payment', paymentVal.value <= 0 && 'Введите платёж'],
+])
 
 function createDebt() {
-  if (!canCreateDebt.value) return
   financeStore.addCredit({
     name: debtName.value.trim() || 'Долг',
     note: resolvedRate.value > 0 ? 'ежемесячный платёж' : 'рассрочка',
@@ -78,10 +81,10 @@ function createDebt() {
     <Field label="Название">
       <Input v-model="debtName" placeholder="Например, рассрочка на телефон" class="mb-3" />
     </Field>
-    <Field label="Остаток долга, ₸">
+    <Field label="Остаток долга, ₸" name="principal">
       <NumField v-model="debtPrincipal" placeholder="600 000" class="mb-3" />
     </Field>
-    <Field label="Платёж в месяц, ₸">
+    <Field label="Платёж в месяц, ₸" name="payment">
       <NumField v-model="debtPayment" placeholder="55 000" class="mb-3" />
     </Field>
 
@@ -136,7 +139,7 @@ function createDebt() {
       <NumField v-model="debtDay" kind="int" class="mb-3" />
     </Field>
 
-    <Button :disabled="!canCreateDebt" class="w-full mt-2" @click="createDebt">
+    <Button class="w-full mt-2" @click="form.submit(createDebt)">
       Добавить
     </Button>
   </Sheet>

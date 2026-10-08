@@ -10,6 +10,7 @@ import type { Currency, PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
 import CurrencyChips from '@/components/kit/CurrencyChips.vue'
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import Hint from '@/components/kit/Hint.vue'
 import NbRateLine from '@/components/kit/NbRateLine.vue'
 import NumField from '@/components/kit/NumField.vue'
@@ -126,6 +127,10 @@ function startPlanning() {
   void nextTick(() => planRef.value?.querySelector<HTMLInputElement>('input[inputmode]')?.focus())
 }
 
+const form = useFormCheck(() => [
+  ['newAmount', planned.value <= 0 ? 'Введите оклад' : !rateOk.value && 'Нет курса — попробуйте позже'],
+])
+
 function handlePlanSubmit() {
   if (!person.value || planned.value <= 0 || !rateOk.value) return
   financeStore.amendSalary(
@@ -174,7 +179,7 @@ function handlePlanSubmit() {
           <CurrencyChips v-model="newCurrency" />
         </Field>
 
-        <Field :label="`Новый оклад, ${CURRENCY_SIGN[newCurrency]}`">
+        <Field :label="`Новый оклад, ${CURRENCY_SIGN[newCurrency]}`" name="newAmount">
           <NumField v-model="newAmount" :placeholder="plain(current.currency === newCurrency ? current.amount : 0)" />
         </Field>
         <NbRateLine :amount="planned" :currency="newCurrency" :nb="nb" />
@@ -208,7 +213,7 @@ function handlePlanSubmit() {
 
         <div class="flex gap-2">
           <Button variant="outline" class="flex-1" @click="planning = false">Отмена</Button>
-          <Button class="flex-1" :disabled="planned <= 0 || !rateOk" @click="handlePlanSubmit">
+          <Button class="flex-1" @click="form.submit(handlePlanSubmit)">
             Сохранить
           </Button>
         </div>

@@ -9,6 +9,7 @@ import { fxToTenge, fxYearDelta, liveExchanges, monthExchanges, payableAccounts,
 import { CURRENCY_SIGN, CURRENCY_WORD } from '@/lib/fx'
 import type { PersonId } from '@/types/finance'
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import NumField from '@/components/kit/NumField.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Button from '@/components/ui/Button.vue'
@@ -85,6 +86,11 @@ const rate = computed(() => parseFloat(rateText.value.replace(',', '.')))
 const valid = computed(() => !!info.value && foreign.value > 0 && Number.isFinite(rate.value) && rate.value > 0)
 const tenge = computed(() => (valid.value ? fxToTenge(foreign.value, rate.value) : 0))
 const choices = computed(() => payableAccounts(finance.accounts))
+const form = useFormCheck(() => [
+  ['amount', foreign.value <= 0 && 'Введите сумму'],
+  ['rate', !(Number.isFinite(rate.value) && rate.value > 0) && 'Введите курс'],
+  ['account', chosen.value === undefined && 'Выберите счёт'],
+])
 
 watch(open, (v) => {
   if (!v || !info.value) return
@@ -145,10 +151,10 @@ function save() {
   </Sheet>
 
   <Sheet :open="open" title="Обменял" :z="60" @close="open = false">
-    <Field :label="`Сколько, ${sign}`">
+    <Field :label="`Сколько, ${sign}`" name="amount">
       <NumField v-model="amountText" />
     </Field>
-    <Field :label="`Курс, ₸ за 1 ${sign}`">
+    <Field :label="`Курс, ₸ за 1 ${sign}`" name="rate">
       <NumField v-model="rateText" kind="rate" :placeholder="nbRate ? String(nbRate).replace('.', ',') : '505'" />
     </Field>
     <p v-if="nbRate" class="-mt-2.5 mb-3 text-[12px] text-ink-3 num">Нацбанк сегодня — {{ String(nbRate).replace('.', ',') }} ₸</p>
@@ -157,9 +163,9 @@ function save() {
       <span class="type-big num text-ink">= {{ money(tenge) }}</span>
     </div>
 
-    <AccountChoice v-model="chosen" :accounts="choices" label="Куда зачислить" none="Не записывать на счёт" />
+    <AccountChoice v-model="chosen" :accounts="choices" label="Куда зачислить" none="Не записывать на счёт" name="account" />
 
-    <Button class="w-full" :disabled="!valid || chosen === undefined" @click="save">Записать</Button>
+    <Button class="w-full" @click="form.submit(save)">Записать</Button>
     <button v-if="year" type="button" class="press mt-2 w-full cursor-pointer text-center text-[12.5px] num" :class="signTone(year.tenge, 'text-ink-3')" data-fx-year @click="openRate">
       {{ CURRENCY_WORD[year.currency].nom }} за год: {{ moneySigned(year.perUnit) }}
     </button>
