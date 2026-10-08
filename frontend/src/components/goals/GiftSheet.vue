@@ -94,6 +94,8 @@ async function save() {
   const g = gift.value
   const what = name.value.trim()
   if (!g || !what) return
+  // Заметка прошлого сбоя фото — не повод держать окно открытым после этой записи.
+  note.value = null
   busy.value = true
   try {
     const old = g.photoId ?? null

@@ -176,6 +176,35 @@ describe('GiftSheet в DOM — правка и удаление сюрприза
     expect(photos.deleted).toEqual(['old'])
   })
 
+  it('критик: «Убрать фото» и «Сохранить» — у сюрприза фото нет, прежнее удалено с сервера', async () => {
+    const { store, button } = await openSheet({ edit: {} })
+    document.querySelector<HTMLButtonElement>('[role="dialog"] button[aria-label="Убрать фото"]')!.click()
+    await nextTick()
+    expect(photos.deleted).toEqual([])
+    button('Сохранить').click()
+    await settle()
+
+    expect(store.gifts[0].photoId).toBeNull()
+    expect(photos.deleted).toEqual(['old'])
+  })
+
+  it('критик: новое фото не загрузилось — остальное записано, прежнее фото на месте; повторное «Сохранить» закрывает окно', async () => {
+    photos.fail = true
+    const { store, open, field, button } = await openSheet({ edit: {} })
+    await type(field('Сколько'), '80 000')
+    await pickFile(new File(['img'], 'gift.jpg', { type: 'image/jpeg' }))
+    button('Сохранить').click()
+    await settle()
+
+    expect(store.gifts[0]).toMatchObject({ price: 80_000, photoId: 'old' })
+    expect(photos.deleted).toEqual([])
+    expect(open.value).toBe(true)
+    expect(document.body.textContent).toContain('Фото не загрузилось — остальное сохранено.')
+    button('Сохранить').click()
+    await settle()
+    expect(open.value).toBe(false)
+  })
+
   it('«Удалить сюрприз» спрашивает, удаляет запись и её фото', async () => {
     const { store, open, button } = await openSheet({ edit: {} })
     button('Удалить сюрприз').click()
