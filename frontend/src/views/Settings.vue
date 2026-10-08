@@ -148,6 +148,9 @@ async function deleteAccount() {
 
     <Card tight>
       <AppearancePanel section="account" />
+      <RouterLink to="/privacy" class="mt-3 flex items-center justify-between border-t border-line pt-3 text-[14px] text-ink-2">
+        Политика конфиденциальности <PhCaretRight :size="16" class="text-ink-3" />
+      </RouterLink>
       <!-- Удаление аккаунта (Р-14) — любому вошедшему, и без семьи; в демо аккаунта нет. -->
       <DangerZone
         v-if="!authStore.isDemo"

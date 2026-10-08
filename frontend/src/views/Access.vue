@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, defineAsyncComponent } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter, useRoute, RouterLink } from 'vue-router'
 import { useAuthStore, DEMO_TOKEN } from '@/stores/auth'
 import { useFinanceStore, DEMO_HOUSEHOLD } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
@@ -529,7 +529,10 @@ function startDemoMode() {
       {{ hasDemoDraft ? 'Вернуться в демо' : 'Попробовать без регистрации' }}
     </Button>
 
-    <p class="mt-8 text-center text-[11.5px] text-ink-3">Бесплатно · выписка остаётся на телефоне</p>
+    <p class="mt-8 text-center text-[11.5px] text-ink-3">
+      Бесплатно · выписка остаётся на телефоне ·
+      <RouterLink to="/privacy" class="underline">политика</RouterLink>
+    </p>
 
     <!-- Стенд и e2e: вход по почте (только dev-сборка). -->
     <component :is="DevLogin" v-if="DevLogin" @signed-in="afterSignIn" />

@@ -26,6 +26,8 @@ const Start = () => import('@/views/Start.vue')
 const MyCircle = () => import('@/views/MyCircle.vue')
 // «С кем» (B2C-25): один раз после первого входа — отдельным чанком.
 const Who = () => import('@/views/Who.vue')
+// Политика конфиденциальности (B2C-26): публичная, лёгким чанком.
+const Privacy = () => import('@/views/Privacy.vue')
 const DebtFaster = () => import('@/views/DebtFaster.vue')
 
 /**
@@ -63,6 +65,7 @@ export const routes: RouteRecordRaw[] = [
     component: Access,
     meta: { public: true },
   },
+  { path: '/privacy', name: 'privacy', component: Privacy, meta: { public: true } },
   // «С кем ведём?» (B2C-25, Р-13): только вошедшему без семьи.
   {
     path: '/who',
@@ -150,6 +153,9 @@ export function createAppRouter(history = typeof window !== 'undefined' ? create
       if (isAuthed) return next(landingPath(authStore, financeStore))
       return next()
     }
+
+    // 1а. Остальные публичные (политика) — всем, со входом и без.
+    if (to.meta.public) return next()
 
     // 2. Требуется авторизация
     if (!isAuthed) {
