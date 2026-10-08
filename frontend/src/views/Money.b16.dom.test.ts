@@ -416,6 +416,10 @@ describe('ML-17: «Долги» — долг человеку, «Людям · N
     expect(d()).toContain('Удалить долг')
     const input = all('[role="dialog"] label').find((l) => txt(l).startsWith('Отдаю сейчас'))!.querySelector('input')!
     expect(input.value).toBe(plain(50_000))
+    // Критик: платёж поправили в этом же листе — «Отдаю сейчас» следует за ним.
+    finance.updateCredit('bro', { payment: 40_000 })
+    await nextTick()
+    expect(input.value).toBe(plain(40_000))
     input.value = '30 000'
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await press(q('[data-person-give]'))

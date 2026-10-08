@@ -105,7 +105,8 @@ function onCreditDay(text: string) {
 const key = computed(() => monthKey())
 const given = computed(() => (activeCredit.value ? paidFor(financeStore.payments, 'credit', activeCredit.value.id, key.value) : null))
 const giveText = ref('')
-watch(() => props.creditId, () => (giveText.value = activeCredit.value ? plain(activeCredit.value.payment) : ''), { immediate: true })
+// Платёж поправили в этом же листе — «Отдаю сейчас» следует за ним.
+watch(() => [props.creditId, activeCredit.value?.payment], () => (giveText.value = activeCredit.value ? plain(activeCredit.value.payment) : ''), { immediate: true })
 /** Лист отметки: «mark» — счёт спросить впервые, «paid» — правка отданного. */
 const markOpen = ref<'mark' | 'paid' | null>(null)
 watch(() => props.creditId, () => (markOpen.value = null))

@@ -82,6 +82,17 @@ describe('Блок 2 «мелочи» — долг человеку и плат�
     expect(store.payments.filter((p) => p.targetId === bro && !p.deletedAt)).toHaveLength(1)
   })
 
+  it('последний «Отдал» меньше платежа: отдаётся остаток, долг закрыт и уходит из «Долгов» (критик)', () => {
+    const store = family()
+    const bro = store.addCredit({ name: 'Брату', principal: 30_000, annualRate: 0, payment: 50_000, day: 25, person: true })
+    store.markPaid('credit', bro, 'a', { period: MONTH, accountId: 'card' })
+    // Остаток 30 000 < платежа 50 000 → в отметке 30 000, всё — в тело; сумма долгов — снова кредиты семьи.
+    expect(store.payments.find((p) => p.targetId === bro && p.period === MONTH)).toMatchObject({ amount: 30_000, principal: 30_000 })
+    expect(store.credits.find((c) => c.id === bro)!.principal).toBe(0)
+    expect(overview(store).rows.some((r) => r.creditId === bro)).toBe(false)
+    expect(overview(store).total).toBe(1_540_000)
+  })
+
   it('план «Сначала долги» брата не досрочит: в плане только кредиты с процентами, шаг — не брату', () => {
     const store = family()
     const bro = store.addCredit({ name: 'Брату', principal: 500_000, annualRate: 0, payment: 50_000, day: 25, person: true })

@@ -54,10 +54,10 @@ const addOpen = ref(false)
 /* ---------- долг человеку: «Отдал» у строки (одна отметка на месяц) ---------- */
 const given = (r: DebtRow) => paidFor(financeStore.payments, 'credit', r.creditId, key.value)
 /** Счёт — тот, с которого отдавали в прошлый раз (Р-5); не с чего взять — лист отметки спросит один раз. */
-const giveFor = ref<{ row: DebtRow; account: string | null | undefined } | null>(null)
+const giveFor = ref<DebtRow | null>(null)
 function give(r: DebtRow) {
   const last = lastAccountFor(financeStore.payments, r.creditId, financeStore.accounts)
-  if (last === undefined) giveFor.value = { row: r, account: last }
+  if (last === undefined) giveFor.value = r
   else financeStore.markPaid('credit', r.creditId, me.value, { period: key.value, accountId: last })
 }
 
@@ -176,11 +176,10 @@ const addPeopleOpen = ref(false)
     v-if="giveFor"
     open="mark"
     kind="credit"
-    :target-id="giveFor.row.creditId"
+    :target-id="giveFor.creditId"
     :period="key"
-    :title="giveFor.row.name"
-    :amount="giveFor.row.payment"
-    :account="giveFor.account"
+    :title="giveFor.name"
+    :amount="giveFor.payment"
     first-time
     @close="giveFor = null"
   />
