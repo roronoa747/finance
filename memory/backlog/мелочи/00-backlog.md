@@ -145,5 +145,10 @@ ML-12 · закрытие в §4 `идея-и-редизайн` → ML-13 · «�
   `file:///C:/Users/SW/finance/frontend/node_modules/playwright-core/index.mjs`. Корневых `node_modules`/`package.json` нет.
 - **Деньги** — целые тенге; все числа — `frontend/src/lib/finance.ts`; цвета — токены `frontend/src/style.css` (пары
   тёмной темы). Мутационные проверки — откат копией файла, не `git checkout`.
+- **После Блока 2 (ML-15…ML-18):** `Credit.person` — долг человеку (ставка 0, без `rateUnknown`, путь рассрочки; показ —
+  `DebtRow.person`, `DebtsWidget` «Отдал», лист `CreditSheet` без банковских полей, «человеку» в «Капитал → Кредиты»);
+  `Obligation.people` — платёж людям (`isPeoplePayment`, не подписка; `peopleGroup` с одного платежа → «Людям · N» в
+  «Долгах»; в «Платежах» и плане месяца — обычной строкой). Формы: `NewDebtSheet` «Банку · Человеку»,
+  `NewObligationSheet` переключатель «Людям» (проп `people`). Демо — «Брату» и «Маме».
 - **Расчёты долгов:** `debtsOverview` (`lib/finance.ts:2603`), `costliestCredits` (:758, только ставка > 0),
   `creditSplit` (:1298), `store.markPaid` (`stores/finance.ts:1305`) — общие для ML-05 и ML-15…ML-17.
