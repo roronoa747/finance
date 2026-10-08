@@ -247,7 +247,8 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
               <IconBox v-else><PhGift :size="18" /></IconBox>
               <div class="min-w-0 flex-1">
                 <div class="truncate font-medium" :class="g.bought ? 'text-ink-2 line-through' : 'text-ink'">{{ g.name }}</div>
-                <div class="type-meta">{{ g.bought ? `куплено ${addedLabel(g.boughtOn)}` : 'сюрприз' }}</div>
+                <!-- Подпись — только дата покупки: «сюрприз» дублировал заголовок раздела (/ux мелочи 1) -->
+                <div v-if="g.bought" class="type-meta">куплено {{ addedLabel(g.boughtOn) }}</div>
               </div>
               <span class="shrink-0 text-[14px] font-semibold num" :class="g.bought ? 'text-ink-2' : 'text-ink'">{{ money(g.price) }}</span>
             </button>

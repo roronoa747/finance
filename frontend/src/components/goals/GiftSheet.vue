@@ -133,10 +133,12 @@ function onRemovePhoto() {
 
 <template>
   <Sheet :open="open && (!editing || !!gift)" :title="`Сюрприз для ${forName}`" @close="emit('close')">
-    <div class="flex flex-col gap-3">
-      <Callout tone="neutral" icon="lock">{{ forName }} не увидит — только вы.</Callout>
+    <!-- Поток как у WishSheet: Field несёт свой отступ, остальным — mb-3 (без gap — поля не разъезжаются вдвое). -->
+    <div>
+      <Callout tone="neutral" icon="lock" class="mb-3">{{ forName }} не увидит — только вы.</Callout>
       <PhotoSlot
         v-if="editing && !finance.isDemo && (canEdit || gift?.photoId)"
+        class="mb-3"
         :src="photoSrc"
         :file="file"
         :present="!!gift?.photoId && !dropPhoto"
@@ -151,10 +153,10 @@ function onRemovePhoto() {
       <Field label="Сколько">
         <NumField v-model="price" placeholder="36 000" :disabled="!canEdit" />
       </Field>
-      <PhotoSlot v-if="!editing && !finance.isDemo" :file="file" removable @file="file = $event" @remove="file = null" />
-      <Callout v-if="note" tone="neutral" icon="info">{{ note }}</Callout>
+      <PhotoSlot v-if="!editing && !finance.isDemo" class="mb-3" :file="file" removable @file="file = $event" @remove="file = null" />
+      <Callout v-if="note" tone="neutral" icon="info" class="mb-3">{{ note }}</Callout>
       <template v-if="canEdit">
-        <Button v-if="editing" size="lg" class="w-full" :disabled="busy" @click="form.submit(save)">Сохранить</Button>
+        <Button v-if="editing" size="lg" class="mb-3 w-full" :disabled="busy" @click="form.submit(save)">Сохранить</Button>
         <Button v-else size="lg" class="w-full" :disabled="busy" @click="form.submit(add)">Добавить</Button>
         <DangerZone v-if="editing" label="Удалить сюрприз" warning="Сюрприз и его фото исчезнут. Отменить нельзя." @confirm="remove" />
       </template>
