@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { clean, fxRounds, fxWhole, moneyKind, numChanged } from './num'
+import { clean, fxRounds, fxWhole, moneyKind, numChanged, sigBefore } from './num'
 import { parseMoney } from './money'
 
 const NB = ' '
@@ -34,6 +34,13 @@ describe('lib/num.ts — поле суммы в валюте (fx)', () => {
     expect(moneyKind('USD')).toBe('fx')
     expect(moneyKind('KZT')).toBe('money')
     expect(moneyKind(null)).toBe('money')
+  })
+
+  it('курсор: точка в валюте и ставке — значащий знак (станет запятой), в тенге — нет', () => {
+    expect(sigBefore('9.', 'fx')).toBe(2)
+    expect(sigBefore('36.', 'rate')).toBe(3)
+    expect(sigBefore('9.', 'money')).toBe(1)
+    expect(sigBefore('9.')).toBe(1)
   })
 
   it('уход из поля без изменения целого — не правка', () => {

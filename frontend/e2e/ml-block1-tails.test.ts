@@ -1,6 +1,9 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { createApp, h, nextTick } from 'vue'
+import NewObligationSheet from '../src/components/capital/NewObligationSheet.vue'
+import { FX_BOOK_KEY } from '../src/lib/storage'
 import { useAuthStore } from '../src/stores/auth'
 import { useFinanceStore } from '../src/stores/finance'
 import { freeByFact, liveSpendCategories } from '../src/lib/finance'
@@ -112,5 +115,38 @@ describe('Блок 1 «мелочи» — хвосты на семье', () => {
     const store = family()
     const spotify = store.addObligation({ name: 'Spotify', day: 12, category: 'd4', amount: parseMoney('9,99'), fx: { currency: 'USD', rate: 470 } })
     expect(store.obligations.find((o) => o.id === spotify)?.versions).toEqual([{ from: '2000-01', amount: 10, currency: 'USD', rate: 470 }])
+  })
+
+  it('1000 (ML-09, возврат приёмки): в форме подписки набрано по символу «9.99» точкой — «9,99», сохраняется 10 $, не 999 $', async () => {
+    localStorage.setItem(FX_BOOK_KEY, JSON.stringify({ book: { USD: { '2026-10-03': 471.2 } }, covered: {} }))
+    const store = family()
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    const app = createApp({ render: () => h(NewObligationSheet, { open: true }) })
+    app.use((store as unknown as { _p: ReturnType<typeof createPinia> })._p)
+    app.mount(root)
+    const flush = async () => { for (let i = 0; i < 4; i++) await nextTick() }
+    await flush()
+    const name = document.querySelector('input') as HTMLInputElement
+    name.value = 'Spotify'
+    name.dispatchEvent(new Event('input'))
+    ;(document.querySelector('button[aria-label="USD"]') as HTMLButtonElement).click()
+    await flush()
+    const amount = document.querySelector('input[inputmode]') as HTMLInputElement
+    amount.focus()
+    for (const ch of '9.99') {
+      const at = amount.selectionStart ?? amount.value.length
+      amount.value = amount.value.slice(0, at) + ch + amount.value.slice(at)
+      amount.setSelectionRange(at + 1, at + 1)
+      amount.dispatchEvent(new Event('input'))
+      await flush()
+    }
+    expect(amount.value).toBe('9,99')
+    expect(document.body.textContent).toContain('Округлим до 10 $')
+    ;[...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Добавить')!.click()
+    await flush()
+    expect(store.obligations.find((o) => o.name === 'Spotify')?.versions).toEqual([{ from: '2000-01', amount: 10, currency: 'USD', rate: 471.2 }])
+    app.unmount()
+    root.remove()
   })
 })

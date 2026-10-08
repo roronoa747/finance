@@ -45,7 +45,7 @@ function onInput(e: Event) {
   const raw = el.value
   const cursor = el.selectionStart ?? raw.length
   const upto = raw.slice(0, cursor)
-  const sig = sigBefore(upto)
+  const sig = sigBefore(upto, numKind.value)
 
   const next = clean(raw, numKind.value, props.modelValue)
   const nextCaret = caretAt(next, sig)

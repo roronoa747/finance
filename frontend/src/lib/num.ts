@@ -98,7 +98,11 @@ export function numChanged(text: string, initial: string | number, kind: NumKind
   return numValue(text, kind) !== numValue(String(initial ?? ''), kind)
 }
 
-/** Сколько значащих знаков слева от курсора. */
-export function sigBefore(text: string): number {
-  return (text.match(/[\d,]/g) ?? []).length
+/**
+ * Сколько значащих знаков слева от курсора. В ставке и валюте точка станет запятой
+ * (`clean`) — считается и она, иначе после «9.» курсор вставал перед запятой и
+ * «9.99» набиралось как «999,» (возврат приёмки ML-09).
+ */
+export function sigBefore(text: string, kind: NumKind = 'money'): number {
+  return (text.match(kind === 'rate' || kind === 'fx' ? /[\d.,]/g : /[\d,]/g) ?? []).length
 }
