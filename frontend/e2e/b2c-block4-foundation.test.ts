@@ -9,6 +9,9 @@ import type { SyncDoc } from '../src/types/finance'
 import Access from '../src/views/Access.vue'
 import Who from '../src/views/Who.vue'
 import Settings from '../src/views/Settings.vue'
+import Landing from '../src/views/Landing.vue'
+import { DEMO_HOUSEHOLD } from '../src/stores/finance'
+import { readDemoPending } from '../src/lib/storage'
 import { screen } from './support/family'
 
 /**
@@ -315,5 +318,74 @@ describe('e2e / B2C Блок 4 — чужая семья: Google → «с кем
     await vm.deleteAccount()
     expect(families.has(hid)).toBe(false)
     expect([...current.keys()].filter((k) => k.startsWith('ff_') && !k.startsWith('ff_theme') && !k.endsWith('_view'))).toEqual([])
+  })
+  it('B2C-27: аноним «/» → «Попробовать» — демо без запросов; демо → Google → «с кем» → закрыли/открыли → «Взять?» → «Да» — документ семьи = демо', async () => {
+    const phoneA = phone()
+    let vm = await act(phoneA, Landing, '/', 'tryDemo')
+    vm.tryDemo()
+    await settle()
+    expect(useFinanceStore().isDemo).toBe(true)
+    expect(fetch).not.toHaveBeenCalled()
+    const demoGoals = useFinanceStore().householdDoc.goals.map((g) => g.id).sort()
+    expect(demoGoals.length).toBeGreaterThan(0)
+
+    // Из демо — на вход (выход из демо оставляет черновик), вход Google без семьи.
+    useAuthStore().clearAuth()
+    vm = await act(phoneA, Access, '/access', 'onGoogleToken')
+    await vm.onGoogleToken('id:sub-dana:dana@example.com')
+    expect(readDemoPending()).toBe(true)
+    vm = await act(phoneA, Who, '/who', 'create')
+    await vm.create('alone')
+    // Семья создана, вопрос задан, черновик цел — закрыли приложение до ответа.
+    expect(useAuthStore().hasHousehold).toBe(true)
+    expect(useFinanceStore().docHousehold).toBe(DEMO_HOUSEHOLD)
+
+    const reopened = createPinia()
+    storages.set(reopened, current)
+    on(reopened)
+    const win = new EventTarget() as unknown as Window
+    ;(win as unknown as { setInterval: typeof setInterval }).setInterval = (() => 0) as unknown as typeof setInterval
+    const doc = new EventTarget() as unknown as Document
+    Object.defineProperty(doc, 'visibilityState', { value: 'visible' })
+    startSyncEngine(win, doc)
+    await settle(1000)
+    expect(useFinanceStore().isDemo).toBe(true)
+    const html = await screen(reopened, Who, '/who')
+    expect(html).toContain('Взять демо?')
+
+    vm = await act(reopened, Who, '/who', 'answerDemo')
+    await vm.answerDemo(true)
+    await settle(5000)
+    const family = families.get(useAuthStore().household!.id)!
+    expect((family.data.goals ?? []).map((g) => g.id).sort()).toEqual(demoGoals)
+    expect(family.data.people?.find((p) => p.id === 'a')?.name).toBe('Dana')
+    expect(readDemoPending()).toBe(false)
+  })
+
+  it('B2C-27: из демо по коду — демо не переносится, у семьи свои данные', async () => {
+    const dana = phone()
+    let vm = await act(dana, Access, '/access', 'onGoogleToken')
+    await vm.onGoogleToken('id:sub-dana:dana@example.com')
+    vm = await act(dana, Who, '/who', 'create')
+    await vm.create('family')
+    const code = vm.invite as string
+    finishStart('Дана', 'a')
+    await settle(5000)
+
+    const ilyas = phone()
+    vm = await act(ilyas, Landing, '/', 'tryDemo')
+    vm.tryDemo()
+    await settle()
+    useAuthStore().clearAuth()
+    vm = await act(ilyas, Access, '/access', 'onGoogleToken')
+    await vm.onGoogleToken('id:sub-ilyas:ilyas@example.com')
+    vm = await act(ilyas, Who, '/who', 'join')
+    vm.pick('code')
+    expect(await screen(ilyas, Who, '/who', undefined, [{ created(this: any) { if ('choice' in this.$.setupState) this.$.setupState.choice = 'code' } }])).toContain('Демо сюда не переносится')
+    vm.code = code
+    await vm.join()
+    expect(readDemoPending()).toBe(false)
+    expect(useFinanceStore().isDemo).toBe(false)
+    expect(useFinanceStore().people.map((p) => p.name)).toEqual(['Дана'])
   })
 })

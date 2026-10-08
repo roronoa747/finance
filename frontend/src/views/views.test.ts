@@ -181,7 +181,7 @@ describe('views/Access & Start — сценарии входа и первого
     expect(html).toContain('Family Finance')
     expect(html).toContain('Реально.')
     expect(html).toContain('data-testid="google-button"')
-    expect(html).toContain('Попробовать без регистрации')
+    expect(html).toContain('Назад к описанию')
     // Dev-сборка (vitest): вход по почте для стенда — свёрнутым блоком; «По коду» — на /who.
     expect(html).toContain('Вход по почте (стенд)')
     expect(html).not.toContain('По коду')

@@ -32,8 +32,10 @@ describe('e2e / block-3 — Сквозной сценарий навигации
     const authStore = useAuthStore()
     const financeStore = useFinanceStore()
 
-    // 1. Неавторизованный пользователь пытается открыть главную страницу
+    // 1. Неавторизованный пользователь: «/» — лэндинг (B2C-27), экран приложения — на вход
     await router.push('/')
+    expect(router.currentRoute.value.path).toBe('/')
+    await router.push('/week')
     expect(router.currentRoute.value.path).toBe('/access')
 
     // 2. Регистрация нового домохозяйства (Ильяс, Семья Ильясовых)

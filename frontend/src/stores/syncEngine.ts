@@ -4,6 +4,7 @@ import { useFinanceStore, DEMO_HOUSEHOLD } from './finance'
 import { useOperationsStore } from './operations'
 import { useFxStore } from './fx'
 import { docCurrencies } from '@/lib/finance'
+import { readDemoPending } from '@/lib/storage'
 
 /** Как часто ловить правки партнёра, пока приложение открыто. */
 export const BACKGROUND_SYNC_MS = 60_000
@@ -115,7 +116,8 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
 
   if (signedIn()) {
     // Документ, записанный до RP-04, получает хозяина — семью, в которой вошли.
-    if (auth.household) finance.claimFor(auth.household.id)
+    // Черновик демо ждёт ответа «взять?» (B2C-27): его не стирать до ответа на «с кем».
+    if (auth.household && !(readDemoPending() && finance.isDemo)) finance.claimFor(auth.household.id)
     // Без сети статус честный сразу, а не «синхронизировано» до первого события.
     if (win.navigator?.onLine === false) finance.status = 'offline'
     // Старт (B2C-25): тот же выбор, что у каждого круга, — всё отправлено → только забираем

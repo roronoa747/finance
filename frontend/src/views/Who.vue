@@ -8,6 +8,7 @@ import { afterFamilyLoaded } from '@/stores/syncEngine'
 import { landingPath } from '@/router/landing'
 import { authErrorText } from '@/lib/authErrors'
 import { useInvite } from '@/components/useInvite'
+import { readDemoPending, writeDemoPending } from '@/lib/storage'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Field from '@/components/kit/Field.vue'
@@ -16,6 +17,7 @@ import Field from '@/components/kit/Field.vue'
  * «С кем ведём?» (B2C-25, Р-7, Р-13; DESIGN.md §2 «Шаг 1 — с кем», §6): вошедший через Google без
  * семьи выбирает — один, создать семью (код для партнёра сразу) или по коду партнёра. Один
  * человек — тоже семья. Дальше — первый запуск (`/start`); участник по коду проходит свои шаги.
+ * Вход из демо (B2C-27): после создания семьи — «Взять демо?»; по коду демо не переносится.
  */
 type Choice = 'alone' | 'family' | 'code'
 
@@ -30,6 +32,11 @@ const code = ref('')
 // Код — общий с настройками (useInvite): там виден тот же, второй не создаётся.
 const { code: invite, copied, make: makeInvite, copy, error: inviteError } = useInvite()
 
+// Черновик демо ждёт ответа (`ff_demo_pending`): семья уже создана — вопрос сразу, в том числе
+// после перезапуска приложения; ещё нет — после «Один» / «Создать семью».
+const demoPending = ref(readDemoPending() && financeStore.isDemo)
+const askDemo = computed(() => demoPending.value && authStore.hasHousehold)
+
 // Имя участника на сервере — из Google; у старого пользователя без имени — начало почты.
 const name = computed(() => authStore.user?.display_name?.trim() || authStore.user?.email.split('@')[0] || 'Участник')
 
@@ -39,20 +46,42 @@ async function create(kind: 'alone' | 'family') {
   error.value = ''
   try {
     const res = await authStore.createHousehold({ display_name: name.value })
+    // Черновик демо ждёт ответа — сначала вопрос (askDemo), документ телефона не трогаем.
+    if (demoPending.value) return
     // Новая семья пуста: остатки прежнего документа телефона не переносятся.
     if (res.household) financeStore.startNewFamily(res.household.id)
-    if (kind === 'alone') {
-      await router.push('/start')
-      return
-    }
-    await makeInvite()
-    // Код не создался — семья уже есть: код возьмут в настройках, дальше — первый запуск.
-    if (!invite.value) {
-      error.value = inviteError.value
-      await router.push('/start')
-    }
+    await afterCreate(kind)
   } catch (e) {
     error.value = authErrorText(e instanceof Error ? e.message : String(e), 'household')
+  } finally {
+    busy.value = false
+  }
+}
+
+async function afterCreate(kind: 'alone' | 'family') {
+  if (kind === 'alone') {
+    await router.push(landingPath(authStore, financeStore))
+    return
+  }
+  await makeInvite()
+  // Код не создался — семья уже есть: код возьмут в настройках, дальше — первый запуск.
+  if (!invite.value) {
+    error.value = inviteError.value
+    await router.push(landingPath(authStore, financeStore))
+  }
+}
+
+/** «Да» — демо-документ становится документом новой семьи (Р-32); «Нет» — чистый лист. */
+async function answerDemo(take: boolean) {
+  const household = authStore.household
+  if (!household) return
+  busy.value = true
+  try {
+    if (take) await financeStore.adoptDemo(household.id, name.value)
+    else financeStore.startNewFamily(household.id)
+    writeDemoPending(false)
+    demoPending.value = false
+    await afterCreate(choice.value === 'family' ? 'family' : 'alone')
   } finally {
     busy.value = false
   }
@@ -67,6 +96,8 @@ async function join() {
   error.value = ''
   try {
     await authStore.joinHousehold({ code: code.value.trim().toUpperCase(), display_name: name.value })
+    // У семьи партнёра свои данные: черновик демо не переносится (сказано у поля кода).
+    writeDemoPending(false)
     if (authStore.household) {
       await financeStore.enterFamily(authStore.household.id)
       afterFamilyLoaded()
@@ -94,8 +125,16 @@ function pick(id: Choice) {
 
 <template>
   <div class="mx-auto flex min-h-dvh w-full max-w-[420px] flex-col justify-center px-5 py-8 text-left">
+    <!-- Вход из демо: семья создана — взять ли черновик (B2C-27, Р-32) -->
+    <template v-if="askDemo">
+      <h1 class="type-h1 text-ink">Взять демо?</h1>
+      <p class="mt-1 text-[14px] text-ink-2">То, что вы заполнили в демо, станет вашим.</p>
+      <Button class="mt-6 w-full" :disabled="busy" @click="answerDemo(true)">{{ busy ? 'Минуту…' : 'Да, взять' }}</Button>
+      <Button variant="ghost" class="mt-2 w-full" :disabled="busy" @click="answerDemo(false)">Нет, начать с чистого</Button>
+    </template>
+
     <!-- Семья создана: код для партнёра — сразу, дальше первый запуск -->
-    <template v-if="invite">
+    <template v-else-if="invite">
       <h1 class="type-h1 text-ink">Код для партнёра</h1>
       <p class="mt-1 text-[14px] text-ink-2">Действует две недели. Есть и в настройках.</p>
       <button
@@ -107,7 +146,7 @@ function pick(id: Choice) {
         {{ invite }} <PhCopy :size="18" class="text-ink-3" />
       </button>
       <p class="mt-1.5 h-4 text-center text-[12px] text-brand">{{ copied ? 'Скопировано' : '' }}</p>
-      <Button class="mt-4 w-full" @click="router.push('/start')">Дальше</Button>
+      <Button class="mt-4 w-full" @click="router.push(landingPath(authStore, financeStore))">Дальше</Button>
     </template>
 
     <template v-else>
@@ -143,6 +182,7 @@ function pick(id: Choice) {
             class-name="num tracking-[0.14em] font-semibold uppercase"
           />
         </Field>
+        <p v-if="demoPending" class="mb-2 text-[12.5px] text-ink-2">Демо сюда не переносится — у семьи уже свои данные.</p>
         <Button type="submit" class="w-full mt-1" :disabled="busy">{{ busy ? 'Минуту…' : 'Войти в семью' }}</Button>
       </form>
 

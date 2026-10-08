@@ -3,9 +3,10 @@ import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { hasBudgetData } from '@/lib/finance'
 import { landingPath } from '@/router/landing'
+import { readDemoPending } from '@/lib/storage'
 
 import Access from '@/views/Access.vue'
-import AppShell from '@/components/AppShell.vue'
+import Root from '@/views/Root.vue'
 import Dreams from '@/views/Dreams.vue'
 import Settings from '@/views/Settings.vue'
 import Wishes from '@/views/Wishes.vue'
@@ -82,8 +83,9 @@ export const routes: RouteRecordRaw[] = [
   // Мастер настройки (до Блока 3) — теперь первый запуск из выписки.
   { path: '/setup', redirect: '/start' },
   {
+    // Вошедшему — оболочка приложения, анониму на «/» — лэндинг (B2C-27, `Root.vue`).
     path: '/',
-    component: AppShell,
+    component: Root,
     meta: { requiresAuth: true },
     children: [
       { path: '', name: 'dreams', component: Dreams },
@@ -157,14 +159,20 @@ export function createAppRouter(history = typeof window !== 'undefined' ? create
     // 1а. Остальные публичные (политика) — всем, со входом и без.
     if (to.meta.public) return next()
 
-    // 2. Требуется авторизация
+    // 2. Требуется авторизация; аноним на «/» — лэндинг (B2C-27).
     if (!isAuthed) {
+      if (to.path === '/') return next()
       return next({ path: '/access', query: to.query })
     }
 
     // 2а. Без семьи (вошёл через Google, «с кем» не пройдено): только «с кем» и настройки — там
     // выход и удаление аккаунта. С семьёй «с кем» больше не нужен.
     if (!authStore.isDemo && !authStore.hasHousehold) {
+      if (to.path === '/who' || to.path === '/settings') return next()
+      return next('/who')
+    }
+    // Вопрос «взять демо?» не отвечен (B2C-27): он живёт на «с кем», закрытие приложения его не снимает.
+    if (!authStore.isDemo && readDemoPending() && financeStore.isDemo) {
       if (to.path === '/who' || to.path === '/settings') return next()
       return next('/who')
     }

@@ -37,12 +37,14 @@ describe('router/index.ts — Навигационные гарды и защи�
     setActivePinia(createPinia())
   })
 
-  it('неавторизованный пользователь перенаправляется на /access', async () => {
+  it('неавторизованный пользователь: «/» — лэндинг (B2C-27), остальное — на /access', async () => {
     const router = createAppRouter(createMemoryHistory())
     const authStore = useAuthStore()
     expect(authStore.isAuthenticated).toBe(false)
 
     await router.push('/')
+    expect(router.currentRoute.value.path).toBe('/')
+    await router.push('/week')
     expect(router.currentRoute.value.path).toBe('/access')
 
     await router.push('/money/budget')

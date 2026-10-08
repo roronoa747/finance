@@ -47,12 +47,13 @@ afterEach(() => {
 })
 
 describe('Access (B2C-25)', () => {
-  it('прод-сборка: «Реально.», кнопка Google и «Попробовать» — формы почты и пароля нет', async () => {
+  it('прод-сборка: «Реально.», кнопка Google и «Назад к описанию» — формы почты и пароля нет', async () => {
     vi.stubEnv('DEV', false)
     const html = await renderScreen(Access, '/access')
     expect(html).toContain('Реально.')
     expect(html).toContain('data-testid="google-button"')
-    expect(html).toContain('Попробовать без регистрации')
+    expect(html).toContain('Назад к описанию')
+    expect(html).not.toContain('Попробовать')
     expect(html).not.toContain('type="password"')
     expect(html).not.toContain('Вход по почте')
     expect(html).not.toContain('Пароль')
