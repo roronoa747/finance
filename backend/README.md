@@ -13,8 +13,6 @@ REST API приложения: вход, домохозяйство, синхр�
 - `cmd/migrate` — миграции отдельной командой (прод).
 - `cmd/fxbackfill` — история курсов Нацбанка за `-days` дней назад (прод, вручную после
   `cmd/migrate`); спрошенные дни пропускает, сбой банка по дню считает `failed` — повтор добирает.
-- `cmd/transfer` — перенос семьи между таблицами React (`auth.users`, `public.*`) и схемой `app`
-  в одной транзакции со сверкой до `COMMIT` (расхождение → `ROLLBACK`, код выхода ≠ 0).
 - `migrations/` — SQL, встроены в бинарник.
 - Синк (`handlers/sync.go`, `repository/doc_repo.go`): push с верной ревизией сохраняет ключи
   верхнего уровня, которых нет в присланном документе (`data || pushed` в том же `UPDATE`, что
@@ -68,7 +66,7 @@ REST API приложения: вход, домохозяйство, синхр�
 - **Функция Vercel** — транзакционный пулер Supavisor, порт `6543`, с `binary_parameters=yes`
   в строке (иначе `lib/pq` делает prepare и bind в разных обращениях, а пулер между ними
   может сменить соединение).
-- **`cmd/migrate`, `cmd/fxbackfill` и `cmd/transfer`** — сессионное/прямое подключение, порт `5432`
+- **`cmd/migrate` и `cmd/fxbackfill`** — сессионное/прямое подключение, порт `5432`
   (advisory lock миграций и перенос в одной транзакции требуют одной сессии).
 
 ## Команды
@@ -77,9 +75,6 @@ REST API приложения: вход, домохозяйство, синхр�
 go run ./cmd/server                                   # локально, моки
 DATABASE_URL=<5432> go run ./cmd/migrate              # миграции схемы app (идемпотентно)
 DATABASE_URL=<5432> go run ./cmd/fxbackfill -days 730   # история курсов (идемпотентно; повтор добирает failed)
-DATABASE_URL=<5432> go run ./cmd/transfer forward -dry-run   # репетиция переноса, всё откатывается
-DATABASE_URL=<5432> go run ./cmd/transfer forward [-replace] # копия public → app (-replace: app не пуст)
-DATABASE_URL=<5432> go run ./cmd/transfer back [-force] [-dry-run] # откат: документы app → public
 go test ./...                                         # юнит-тесты на моках
 TEST_DATABASE_URL=<одноразовая БД> go test -p 1 -run Postgres ./...   # БД стирается
 ```

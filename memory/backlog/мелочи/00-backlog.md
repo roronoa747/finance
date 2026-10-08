@@ -141,6 +141,8 @@ ML-12 · закрытие в §4 `идея-и-редизайн` → ML-13 · «�
 - **Стенд:** `cd frontend && npm run dev -- --port 5174 --strictPort` (демо) или Go на моках; 390 px, обе темы,
   `ru-RU`, `Asia/Almaty`; member и viewer. Браузерные проверки — `playwright-core` из корневого `node_modules`
   **до ML-11**, после — из `frontend/node_modules` (ML-11 переносит). Фоновые задачи Bash — `timeout: 7200000`.
+- **После ML-11:** `playwright-core` 1.63.0 — devDependency `frontend`; импорт в скриптах сессий —
+  `file:///C:/Users/SW/finance/frontend/node_modules/playwright-core/index.mjs`. Корневых `node_modules`/`package.json` нет.
 - **Деньги** — целые тенге; все числа — `frontend/src/lib/finance.ts`; цвета — токены `frontend/src/style.css` (пары
   тёмной темы). Мутационные проверки — откат копией файла, не `git checkout`.
 - **Расчёты долгов:** `debtsOverview` (`lib/finance.ts:2595`), `costliestCredits` (:758, только ставка > 0),
