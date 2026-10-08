@@ -29,6 +29,8 @@ const MyCircle = () => import('@/views/MyCircle.vue')
 const Who = () => import('@/views/Who.vue')
 // Политика конфиденциальности (B2C-26): публичная, лёгким чанком.
 const Privacy = () => import('@/views/Privacy.vue')
+// Цифры для владельца (B2C-28): только почте из ADMIN_EMAILS (сервер отвечает 404 остальным).
+const Admin = () => import('@/views/Admin.vue')
 const DebtFaster = () => import('@/views/DebtFaster.vue')
 
 /**
@@ -122,6 +124,7 @@ export const routes: RouteRecordRaw[] = [
       { path: 'settings', name: 'settings', component: Settings },
       // «Свой кружок» (Р-61) — только свой участник; viewer не правит.
       { path: 'settings/me', name: 'my-circle', component: MyCircle, meta: { memberOnly: true } },
+      { path: 'admin', name: 'admin', component: Admin },
       // Старые адреса (до Блока 3).
       { path: 'budget', redirect: '/money' },
       { path: 'capital', redirect: capitalRedirect },

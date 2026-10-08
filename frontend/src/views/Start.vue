@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { PhCopy, PhFileArrowUp, PhUserPlus } from '@phosphor-icons/vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
+import { useEventsStore } from '@/stores/events'
 import { useFxStore } from '@/stores/fx'
 import { useOperationsStore, type Draft, type DraftFile } from '@/stores/operations'
 import { readStatementFiles } from '@/lib/statements/read'
@@ -298,6 +299,7 @@ const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: ha
 function finish() {
   financeStore.setPerson(slot.value, { name: knownName.value, onboardedAt: new Date().toISOString() })
   if (!joining.value) financeStore.finishSetup()
+  useEventsStore().track('first_run_done')
   void financeStore.syncHousehold()
   void router.push('/')
 }

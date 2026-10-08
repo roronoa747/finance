@@ -38,6 +38,8 @@ type Repos struct {
 	Photos     repository.PhotoRepository
 	Fx         repository.FxRepository
 	Accounts   repository.AccountRepository
+	Events     repository.EventRepository
+	Metrics    repository.MetricsRepository
 }
 
 // NewHandler builds the API over database. A nil database means in-memory
@@ -53,6 +55,8 @@ func NewHandler(cfg *config.Config, database *sql.DB) (http.Handler, error) {
 			Photos:     repository.NewSQLPhotoRepository(database),
 			Fx:         repository.NewSQLFxRepository(database),
 			Accounts:   repository.NewSQLAccountRepository(database),
+			Events:     repository.NewSQLEventRepository(database),
+			Metrics:    repository.NewSQLMetricsRepository(database),
 		}
 	} else {
 		if cfg.IsProduction() {
@@ -61,7 +65,7 @@ func NewHandler(cfg *config.Config, database *sql.DB) (http.Handler, error) {
 		log.Println("using in-memory mock repositories (development mode)")
 		mocks := repository.NewMockRepositories()
 		mocks.Households.SetDocRepo(mocks.Docs)
-		repos = Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos, Fx: mocks.Fx, Accounts: repository.NewMockAccountRepo(mocks)}
+		repos = Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos, Fx: mocks.Fx, Accounts: repository.NewMockAccountRepo(mocks), Events: &repository.MockEventRepo{}, Metrics: repository.MockMetricsRepo{}}
 	}
 
 	tokens := auth.NewTokenService(cfg.JWTSecret, tokenTTL)
@@ -142,13 +146,14 @@ func NewRouter(
 		MaxAge:           300,
 	}))
 
-	authHandler := handlers.NewAuthHandler(repos.Users, repos.Households, tokenService, google)
+	authHandler := handlers.NewAuthHandler(repos.Users, repos.Households, tokenService, google, cfg.AdminEmails)
 	householdHandler := handlers.NewHouseholdHandler(repos.Users, repos.Households, tokenService)
 	syncHandler := handlers.NewSyncHandler(repos.Docs)
 	statementHandler := handlers.NewStatementHandler(repos.Statements)
 	photoHandler := handlers.NewPhotoHandler(repos.Photos)
 	previewHandler := handlers.NewPreviewHandler(linkpreview.New().Fetch)
 	accountHandler := handlers.NewAccountHandler(repos.Accounts)
+	eventsHandler := handlers.NewEventsHandler(repos.Events, repos.Metrics, repos.Users, cfg.AdminEmails)
 
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", handlers.HealthHandler(database))
@@ -173,6 +178,9 @@ func NewRouter(
 			protected.Post("/household/join", householdHandler.JoinHousehold)
 			// Удаление аккаунта (B2C-24): любому вошедшему, с семьёй и без.
 			protected.Delete("/account", accountHandler.Delete)
+			// События удержания и цифры владельца (B2C-28): события — любому вошедшему.
+			protected.Post("/events", eventsHandler.Record)
+			protected.Get("/admin/metrics", eventsHandler.Metrics)
 
 			// Household routes: 409 "no household" until "с кем" is done.
 			protected.Group(func(family chi.Router) {

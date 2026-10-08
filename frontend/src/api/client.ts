@@ -154,6 +154,16 @@ export class ApiClient {
     return this.request<{ members: MemberView[] }>('/household/members', { method: 'GET' })
   }
 
+  /** Событие удержания (B2C-28): только вид и время. */
+  async sendEvent(kind: string, at: string): Promise<void> {
+    await this.request<unknown>('/events', { method: 'POST', body: JSON.stringify({ kind, at }) })
+  }
+
+  /** Цифры для владельца (B2C-28); не владельцу — 404. */
+  async adminMetrics(): Promise<AdminMetrics> {
+    return this.request<AdminMetrics>('/admin/metrics', { method: 'GET' })
+  }
+
   /** Удаление аккаунта вместе с данными (B2C-24). */
   async deleteAccount(): Promise<void> {
     await this.request<unknown>('/account', { method: 'DELETE' })
@@ -295,6 +305,18 @@ export class ApiClient {
     const q = new URLSearchParams({ code, from, to })
     return this.request<FxRatesResponse>(`/fx-rates?${q}`, { method: 'GET' })
   }
+}
+
+/** Ответ `GET /api/admin/metrics` (B2C-28). */
+export type AdminMetrics = {
+  users: number
+  households: number
+  households_with_upload: number
+  second_upload_14d: { eligible: number; retained: number }
+  active_7d: number
+  active_28d: number
+  funnel_28d: { created: number; uploaded: number; goal: number; done: number }
+  weeks: { week: string; new_households: number; uploads: number; week_done: number }[]
 }
 
 export type FxRatesResponse = { code: string; rates: Record<string, number>; partial: boolean; source?: string }

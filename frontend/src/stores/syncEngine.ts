@@ -3,6 +3,7 @@ import { useAuthStore } from './auth'
 import { useFinanceStore, DEMO_HOUSEHOLD } from './finance'
 import { useOperationsStore } from './operations'
 import { useFxStore } from './fx'
+import { useEventsStore } from './events'
 import { docCurrencies } from '@/lib/finance'
 import { readDemoPending } from '@/lib/storage'
 
@@ -94,6 +95,9 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
     if (finance.status === 'idle') void finance.pullHousehold().then(linkPhotos)
     else void finance.syncHousehold().then(linkPhotos)
     syncPrivate()
+    // Открытие приложения (B2C-28): раз в день; тем же кругом — неотправленные события.
+    useEventsStore().track('app_open')
+    void useEventsStore().flush()
     // Операции выписки, не ушедшие без сети (B2C-07), — тем же кругом.
     const operations = useOperationsStore()
     if (operations.pendingCount) void operations.flush()

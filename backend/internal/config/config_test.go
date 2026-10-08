@@ -8,7 +8,7 @@ import (
 // clearEnv blanks every variable Load reads; getEnv treats "" as unset.
 func clearEnv(t *testing.T) {
 	t.Helper()
-	for _, key := range []string{"PORT", "DATABASE_URL", "JWT_SECRET", "CORS_ORIGIN", "APP_ENV", "GOOGLE_CLIENT_IDS"} {
+	for _, key := range []string{"PORT", "DATABASE_URL", "JWT_SECRET", "CORS_ORIGIN", "APP_ENV", "GOOGLE_CLIENT_IDS", "ADMIN_EMAILS"} {
 		t.Setenv(key, "")
 	}
 }
@@ -141,5 +141,17 @@ func TestGoogleClientIDsOptional(t *testing.T) {
 	}
 	if strings.Join(cfg.GoogleClientIDs, "|") != "web.apps.googleusercontent.com|android.apps.googleusercontent.com" {
 		t.Errorf("GoogleClientIDs = %v", cfg.GoogleClientIDs)
+	}
+}
+
+func TestAdminEmailsLowercased(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("ADMIN_EMAILS", " Owner@Example.com ,")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(cfg.AdminEmails, "|") != "owner@example.com" {
+		t.Errorf("AdminEmails = %v", cfg.AdminEmails)
 	}
 }

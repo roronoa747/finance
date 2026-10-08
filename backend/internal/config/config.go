@@ -22,6 +22,9 @@ type Config struct {
 	// GoogleClientIDs are the OAuth clients whose ID tokens sign in (web, Android, iOS —
 	// GOOGLE_CLIENT_IDS, comma-separated). Optional: without them Google sign-in answers 503.
 	GoogleClientIDs []string
+	// AdminEmails see the owner's numbers page /admin (ADMIN_EMAILS, comma-separated, B2C-28).
+	// Optional: without it /api/admin/metrics is 404 for everyone.
+	AdminEmails []string
 }
 
 // Load loads configuration from environment variables with fallback defaults.
@@ -37,6 +40,7 @@ func Load() (*Config, error) {
 		Env:         getEnv("APP_ENV", "development"),
 
 		GoogleClientIDs: splitList(getEnv("GOOGLE_CLIENT_IDS", "")),
+		AdminEmails:     splitList(strings.ToLower(getEnv("ADMIN_EMAILS", ""))),
 	}
 	if cfg.IsProduction() {
 		if err := cfg.ValidateProduction(); err != nil {

@@ -74,6 +74,9 @@ export function writeMonthEnd(key: string) {
  * входе Google с черновиком демо на телефоне; пока не отвечено, гард ведёт на «с кем», где вопрос
  * задаётся после создания семьи; закрыть приложение между — вопрос остаётся. Выход стирает.
  */
+/** Очередь событий удержания (B2C-28, `stores/events.ts`) — этого входа; выход стирает (`LOCAL_KEYS`). */
+export const EVENTS_QUEUE_KEY = 'ff_events_queue'
+
 export const DEMO_PENDING_KEY = 'ff_demo_pending'
 export const readDemoPending = (): boolean => readStorage<unknown>(DEMO_PENDING_KEY, false) === true
 export function writeDemoPending(on: boolean) {

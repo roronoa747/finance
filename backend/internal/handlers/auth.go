@@ -24,6 +24,7 @@ type AuthHandler struct {
 	householdRepo repository.HouseholdRepository
 	tokens        *auth.TokenService
 	google        GoogleVerifier // nil: GOOGLE_CLIENT_IDS is not set
+	admins        []string       // ADMIN_EMAILS: /auth/me answers admin: true (B2C-28)
 }
 
 func NewAuthHandler(
@@ -31,12 +32,14 @@ func NewAuthHandler(
 	householdRepo repository.HouseholdRepository,
 	tokens *auth.TokenService,
 	google GoogleVerifier,
+	admins []string,
 ) *AuthHandler {
 	return &AuthHandler{
 		userRepo:      userRepo,
 		householdRepo: householdRepo,
 		tokens:        tokens,
 		google:        google,
+		admins:        admins,
 	}
 }
 
@@ -276,6 +279,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		"user":      user,
 		"household": household,
 		"member":    member,
+		"admin":     isAdmin(h.admins, user.Email),
 	})
 }
 

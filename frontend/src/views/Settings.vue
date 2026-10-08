@@ -47,6 +47,8 @@ const joined = (r: { id: string; role: string }) =>
 
 onMounted(() => {
   void authStore.fetchMembers()
+  // Флаг владельца (`/auth/me`, B2C-28) — пункт «Цифры».
+  if (!authStore.isDemo && authStore.token) void authStore.fetchMe().catch(() => {})
 })
 
 // Дом приглашения (приёмка Блока 3 п. 8): код создаёт участник с правом правки, в демо сервера нет;
@@ -148,6 +150,9 @@ async function deleteAccount() {
 
     <Card tight>
       <AppearancePanel section="account" />
+      <RouterLink v-if="authStore.admin" to="/admin" class="mt-3 flex items-center justify-between border-t border-line pt-3 text-[14px] text-ink-2">
+        Цифры <PhCaretRight :size="16" class="text-ink-3" />
+      </RouterLink>
       <RouterLink to="/privacy" class="mt-3 flex items-center justify-between border-t border-line pt-3 text-[14px] text-ink-2">
         Политика конфиденциальности <PhCaretRight :size="16" class="text-ink-3" />
       </RouterLink>

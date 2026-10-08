@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
+import { useEventsStore } from './events'
 import { useFxStore } from '@/stores/fx'
 import { OPERATIONS_STORAGE_KEYS, readStorage, writeStorage } from '@/lib/storage'
 import { creditDueAmount } from '@/lib/finance'
@@ -433,6 +434,8 @@ export const useOperationsStore = defineStore('operations', () => {
     save()
     // Итоги — из всех своих операций периода: загруженное со второго устройства (`pull` сначала досылает очередь)
     // дописывает их ещё раз, иначе устаревшая копия оставила бы неполные итоги (LWW по id).
+    // Неделя разобрана — выписка отправлена (B2C-28: «финиша недели» после решений больше нет, Блок 15).
+    if (!demo.value) useEventsStore().track('week_done')
     const sent = new Set([...fresh, ...changed].map((o) => o.id))
     const got = await pull(client)
     if (got.some((id) => !sent.has(id))) writeTotals(periods)

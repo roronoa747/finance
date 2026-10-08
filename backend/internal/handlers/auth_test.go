@@ -22,7 +22,7 @@ func setupTestApp() (*chi.Mux, *repository.MockRepositories, *auth.TokenService)
 	repos.Households.SetDocRepo(repos.Docs)
 	tokens := auth.NewTokenService("test-secret-salt-key", 2*time.Hour)
 
-	authHandler := NewAuthHandler(repos.Users, repos.Households, tokens, nil)
+	authHandler := NewAuthHandler(repos.Users, repos.Households, tokens, nil, nil)
 	householdHandler := NewHouseholdHandler(repos.Users, repos.Households, tokens)
 
 	r := chi.NewRouter()
@@ -346,7 +346,7 @@ func TestRegisterCompensatesOrphanUser(t *testing.T) {
 	repos := repository.NewMockRepositories()
 	users := &ctxCheckingUserRepo{MockUserRepo: repos.Users}
 	tokens := auth.NewTokenService("test-secret-salt-key", 2*time.Hour)
-	failing := NewAuthHandler(users, failingHouseholdRepo{repos.Households}, tokens, nil)
+	failing := NewAuthHandler(users, failingHouseholdRepo{repos.Households}, tokens, nil, nil)
 
 	// Client disconnects: the request context is already cancelled
 	ctx, cancel := context.WithCancel(context.Background())
@@ -367,7 +367,7 @@ func TestRegisterCompensatesOrphanUser(t *testing.T) {
 	}
 
 	// The same email can register again once the household step works
-	working := NewAuthHandler(repos.Users, repos.Households, tokens, nil)
+	working := NewAuthHandler(repos.Users, repos.Households, tokens, nil, nil)
 	rec = httptest.NewRecorder()
 	working.Register(rec, httptest.NewRequest(http.MethodPost, "/api/auth/register",
 		bytes.NewReader(makeAuthJSON("orphan@example.com", "secret123", "", ""))))
