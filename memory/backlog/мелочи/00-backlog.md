@@ -1,6 +1,6 @@
 # Бэклог «мелочи» (ML)
 
-> **Статус:** в работе — блок 1 🔄: исполнитель ✅ (ч. 1 ML-01…ML-06, ч. 2 ML-07…ML-13), следующий шаг — `/critic мелочи 1`.
+> **Статус:** в работе — блок 1 🔄: исполнитель ✅ (ч. 1 ML-01…ML-06, ч. 2 ML-07…ML-13), критик ✅, следующий шаг — `/ux мелочи 1`.
 > Два блока до Блока 4 `идея-и-редизайн`: хвосты и уборка React → «Кредиты шире». Потом Блок 4, потом бриф ИИ.
 
 Источник: `мелочи-brief.md` (резюме интервью подтверждено 2026-10-08). Формат — `memory/process/BACKLOG-GUIDE.md`.
@@ -145,5 +145,5 @@ ML-12 · закрытие в §4 `идея-и-редизайн` → ML-13 · «�
   `file:///C:/Users/SW/finance/frontend/node_modules/playwright-core/index.mjs`. Корневых `node_modules`/`package.json` нет.
 - **Деньги** — целые тенге; все числа — `frontend/src/lib/finance.ts`; цвета — токены `frontend/src/style.css` (пары
   тёмной темы). Мутационные проверки — откат копией файла, не `git checkout`.
-- **Расчёты долгов:** `debtsOverview` (`lib/finance.ts:2595`), `costliestCredits` (:758, только ставка > 0),
-  `creditSplit` (:1290), `store.markPaid` (`stores/finance.ts:1305`) — общие для ML-05 и ML-15…ML-17.
+- **Расчёты долгов:** `debtsOverview` (`lib/finance.ts:2603`), `costliestCredits` (:758, только ставка > 0),
+  `creditSplit` (:1298), `store.markPaid` (`stores/finance.ts:1305`) — общие для ML-05 и ML-15…ML-17.

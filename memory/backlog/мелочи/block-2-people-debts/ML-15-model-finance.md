@@ -5,14 +5,14 @@
 ## Контекст (что уже есть)
 
 - `Credit` (`types/finance.ts:275-297`): `id, name, note, principal, principalSetAt?, annualRate, rateUnknown?, payment,
-  day, payer?, updatedAt, deletedAt`; срок не хранится (`creditOutlook`), остаток — `creditBalance` (`lib/finance.ts:1468`).
+  day, payer?, updatedAt, deletedAt`; срок не хранится (`creditOutlook`), остаток — `creditBalance` (`lib/finance.ts:1476`).
   Рассрочка — без флага: `annualRate===0 && !rateUnknown` (`interestFree` :714, `unknownRate` :715).
 - `Obligation` (`types/finance.ts:168-227`): `category: 'd1'..'d5'`, `versions` (с `currency?` — Р-75), `estimate?`,
   `group?`, `every?`, `who?`, `payer?`…; подписка — производная `isSubscription = !group && category==='d4' &&
-  !estimate` (finance.ts:910). Группа — `subscriptionGroup(items, all)` (:3523-3549, `SUBS_GROUP_MIN=2`),
-  `monthSubscriptions` :3552.
-- Долги: `openCredits` :748, `openDebt` :751, `netWorth` :1252; `debtsOverview(state, key): {total, freeMonth, rows}`
-  :2595-2619 (`DebtRow` :2574 = `{creditId, name, payment, rate, rateUnknown, endMonth, left, paidShare}`; без плана
+  !estimate` (finance.ts:910). Группа — `subscriptionGroup(items, all)` (:3532-3558, `SUBS_GROUP_MIN=2`),
+  `monthSubscriptions` :3561.
+- Долги: `openCredits` :748, `openDebt` :751, `netWorth` :1260; `debtsOverview(state, key): {total, freeMonth, rows}`
+  :2603-2627 (`DebtRow` :2582 = `{creditId, name, payment, rate, rateUnknown, endMonth, left, paidShare}`; без плана
   `freeMonth` — последний конец графика; с планом — графики 0 %-строк + `planForecast(...).debtFreeMonth`).
 - **«Сначала долги» 0 % не досрочит** (`costliestCredits` :758-763 — только `annualRate>0`; `simulateStrategy` :556,
   :576-577) — рассрочка идёт по своему графику. Это и есть «последним, как рассрочка» Р-7.
