@@ -65,3 +65,59 @@ func TestPostgresGoogleUsers(t *testing.T) {
 		t.Errorf("link of a missing user: %v", err)
 	}
 }
+
+// B2C-23: one household per user — creating a second one or joining another by code fails,
+// and two concurrent "Создать семью" make one household.
+func TestPostgresOneHouseholdPerUser(t *testing.T) {
+	database := testdb.Open(t)
+	ctx := context.Background()
+	users := NewSQLUserRepository(database)
+	households := NewSQLHouseholdRepository(database)
+
+	u, _ := users.CreateGoogle(ctx, "one@example.com", "sub-one", "")
+	results := make(chan error, 2)
+	for range 2 {
+		go func() {
+			_, _, err := households.CreateHousehold(ctx, "", u.ID, "Один")
+			results <- err
+		}()
+	}
+	var ok, already int
+	for range 2 {
+		switch err := <-results; {
+		case err == nil:
+			ok++
+		case errors.Is(err, ErrAlreadyInHousehold):
+			already++
+		default:
+			t.Fatalf("concurrent create: %v", err)
+		}
+	}
+	if ok != 1 || already != 1 {
+		t.Errorf("concurrent creates: %d ok, %d already", ok, already)
+	}
+	var count int
+	_ = database.QueryRowContext(ctx, `SELECT count(*) FROM app.household_members WHERE user_id = $1`, u.ID).Scan(&count)
+	if count != 1 {
+		t.Errorf("memberships = %d", count)
+	}
+
+	owner, _ := users.CreateGoogle(ctx, "owner@example.com", "sub-owner", "")
+	h, _, err := households.CreateHousehold(ctx, "", owner.ID, "Владелец")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv, _ := households.CreateInvite(ctx, h.ID, owner.ID)
+	if _, err := households.JoinHousehold(ctx, inv.Code, u.ID, "Один"); !errors.Is(err, ErrAlreadyInHousehold) {
+		t.Errorf("join from a household: %v", err)
+	}
+	// The code is still unused after the refusal.
+	free, _ := users.CreateGoogle(ctx, "free@example.com", "sub-free", "")
+	if m, err := households.JoinHousehold(ctx, inv.Code, free.ID, "Партнёр"); err != nil || m.Slot != "b" {
+		t.Errorf("join without a household: %+v %v", m, err)
+	}
+	// Joining your own household again stays idempotent.
+	if m, err := households.JoinHousehold(ctx, inv.Code, free.ID, "Партнёр"); err != nil && !errors.Is(err, ErrInviteAlreadyUsed) {
+		t.Errorf("rejoin: %+v %v", m, err)
+	}
+}

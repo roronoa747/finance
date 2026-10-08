@@ -28,7 +28,15 @@ REST API приложения: вход, домохозяйство, синхр�
   каждом запросе (`auth.Middleware` + `membershipResolver`): удалённый пользователь — 401,
   смена роли действует сразу. Без семьи (`auth.RequireHousehold`) — 409 `no household` на
   `/sync/*`, `/statements`, `/operations*`, `/photos*`, `/household/invites`, `/fx-rates`;
-  работают `/auth/me` и `/household/join`.
+  работают `/auth/me`, `/household` и `/household/join`.
+- «С кем» (`handlers/household.go`, B2C-23, Р-7): пользователь состоит максимум в одной семье.
+  `POST /api/household {name?, display_name}` — пользователь без семьи создаёт семью (слот `a`,
+  документы; имя по умолчанию — «Наша казна»; пустое `display_name` — 400), ответ 201 —
+  `AuthResponse` с новым токеном; уже в семье — 409 `already in household`.
+  `POST /api/household/join {code, display_name}` — только без своей семьи (из семьи — 409, переход
+  между семьями не поддерживается). Проверка «уже в семье» — и в репозитории под `FOR UPDATE`
+  строки пользователя (два нажатия не создадут двух семей). `GET /api/household/members` (member
+  и viewer) — `{members: [{slot, display_name, role, joined_at}]}` своей семьи, без почты и id.
 - Синк (`handlers/sync.go`, `repository/doc_repo.go`): push с верной ревизией сохраняет ключи
   верхнего уровня, которых нет в присланном документе (`data || pushed` в том же `UPDATE`, что
   и проверка ревизии), — старый PWA не стирает списки нового кода; присланные `[]` и `null`

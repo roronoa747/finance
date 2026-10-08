@@ -225,3 +225,75 @@ type failingUsers struct{ repository.UserRepository }
 func (failingUsers) GetByID(context.Context, string) (*models.User, error) {
 	return nil, errors.New("connection refused")
 }
+
+func TestWhoCreateJoinAndMembers(t *testing.T) {
+	a := newGoogleApp(t, fakeGoogle{})
+	_, dana := a.google(t, "id:sub-dana:dana@example.com")
+
+	if rec := a.do(t, http.MethodPost, "/api/household", dana.Token, map[string]string{"display_name": "  "}); rec.Code != http.StatusBadRequest {
+		t.Errorf("empty display_name: %d", rec.Code)
+	}
+	rec := a.do(t, http.MethodPost, "/api/household", dana.Token, map[string]string{"display_name": "Дана"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
+	}
+	var created handlers.AuthResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	if created.Household == nil || created.Household.Name != "Наша казна" || created.Member.Slot != "a" || created.User.ID != dana.User.ID {
+		t.Fatalf("created = %+v", created)
+	}
+	// The old token works too: the household comes from the database.
+	if rec := a.do(t, http.MethodGet, "/api/sync/household", dana.Token, nil); rec.Code != http.StatusOK {
+		t.Errorf("old token after creating: %d", rec.Code)
+	}
+	if rec := a.do(t, http.MethodPost, "/api/household", created.Token, map[string]string{"display_name": "Дана"}); rec.Code != http.StatusConflict {
+		t.Errorf("second create: %d", rec.Code)
+	}
+
+	inv := a.do(t, http.MethodPost, "/api/household/invites", created.Token, nil)
+	var invite struct{ Code string }
+	_ = json.Unmarshal(inv.Body.Bytes(), &invite)
+
+	_, ilyas := a.google(t, "id:sub-ilyas:ilyas@example.com")
+	rec = a.do(t, http.MethodPost, "/api/household/join", ilyas.Token, map[string]string{"code": invite.Code, "display_name": "Ильяс"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("join without a household: %d %s", rec.Code, rec.Body.String())
+	}
+	var joined handlers.JoinResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &joined)
+	if joined.Member.Slot != "b" || joined.Member.HouseholdID != created.Household.ID {
+		t.Errorf("joined = %+v", joined.Member)
+	}
+
+	// Another family: a member there cannot join by code; its members are not visible.
+	_, other := a.google(t, "id:sub-other:other@example.com")
+	rec = a.do(t, http.MethodPost, "/api/household", other.Token, map[string]string{"display_name": "Чужой"})
+	var otherHH handlers.AuthResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &otherHH)
+	inv2 := a.do(t, http.MethodPost, "/api/household/invites", created.Token, nil)
+	_ = json.Unmarshal(inv2.Body.Bytes(), &invite)
+	if rec := a.do(t, http.MethodPost, "/api/household/join", otherHH.Token, map[string]string{"code": invite.Code, "display_name": "Чужой"}); rec.Code != http.StatusConflict {
+		t.Errorf("join from another household: %d", rec.Code)
+	}
+
+	// Members: member and viewer see their own family only.
+	a.mocks.Households.SetRole(created.Household.ID, ilyas.User.ID, "viewer")
+	for _, token := range []string{created.Token, joined.Token} {
+		rec := a.do(t, http.MethodGet, "/api/household/members", token, nil)
+		var out struct {
+			Members []handlers.HouseholdMemberView `json:"members"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		if rec.Code != http.StatusOK || len(out.Members) != 2 || out.Members[1].Role != "viewer" || out.Members[1].DisplayName != "Ильяс" {
+			t.Errorf("members: %d %s", rec.Code, rec.Body.String())
+		}
+	}
+	rec = a.do(t, http.MethodGet, "/api/household/members", otherHH.Token, nil)
+	if !bytes.Contains(rec.Body.Bytes(), []byte("Чужой")) || bytes.Contains(rec.Body.Bytes(), []byte("Дана")) {
+		t.Errorf("other family's members: %s", rec.Body.String())
+	}
+	_, lonely := a.google(t, "id:sub-lonely:lonely@example.com")
+	if rec := a.do(t, http.MethodGet, "/api/household/members", lonely.Token, nil); rec.Code != http.StatusConflict {
+		t.Errorf("members without a household: %d", rec.Code)
+	}
+}

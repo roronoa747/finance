@@ -20,7 +20,30 @@ var (
 	ErrInviteExpired      = errors.New("invite code has expired")
 	ErrInviteAlreadyUsed  = errors.New("invite code has already been used")
 	ErrHouseholdFull      = errors.New("household has reached maximum members")
+	// ErrAlreadyInHousehold: a user belongs to at most one household (B2C-23); moving
+	// between households is out of scope.
+	ErrAlreadyInHousehold = errors.New("user already belongs to a household")
 )
+
+// lockUserWithoutHousehold locks the user's row for the transaction and fails with
+// ErrAlreadyInHousehold when they already belong to a household other than except:
+// two taps of "Создать семью" must not make two households.
+func lockUserWithoutHousehold(ctx context.Context, tx *sql.Tx, userID, except string) error {
+	var id string
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM app.users WHERE id = $1 FOR UPDATE;`, userID).Scan(&id); err != nil {
+		return fmt.Errorf("failed to lock user: %w", err)
+	}
+	var taken bool
+	if err := tx.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM app.household_members WHERE user_id = $1 AND household_id::text <> $2);`,
+		userID, except).Scan(&taken); err != nil {
+		return fmt.Errorf("failed to check membership: %w", err)
+	}
+	if taken {
+		return ErrAlreadyInHousehold
+	}
+	return nil
+}
 
 type HouseholdRepository interface {
 	CreateHousehold(ctx context.Context, name, creatorID, creatorDisplayName string) (*models.Household, *models.HouseholdMember, error)
@@ -53,6 +76,10 @@ func (r *sqlHouseholdRepository) CreateHousehold(ctx context.Context, name, crea
 		return nil, nil, fmt.Errorf("failed to begin tx: %w", err)
 	}
 	defer tx.Rollback()
+
+	if err := lockUserWithoutHousehold(ctx, tx, creatorID, ""); err != nil {
+		return nil, nil, err
+	}
 
 	// 1. Insert household
 	h := &models.Household{}
@@ -271,6 +298,10 @@ func (r *sqlHouseholdRepository) JoinHousehold(ctx context.Context, code, userID
 		return &existingMember, nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("failed to check existing membership: %w", err)
+	}
+
+	if err := lockUserWithoutHousehold(ctx, tx, userID, inv.HouseholdID); err != nil {
+		return nil, err
 	}
 
 	// 3. Find available slot ('a', 'b', 'c')

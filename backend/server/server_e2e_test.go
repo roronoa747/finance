@@ -65,7 +65,7 @@ func runLiveServerE2EFlow(
 	}
 	tokenService := auth.NewTokenService(cfg.JWTSecret, 24*time.Hour)
 
-	router := NewRouter(cfg, database, Repos{Users: userRepo, Households: householdRepo, Docs: docRepo, Statements: statementRepo, Photos: photoRepo, Fx: repository.NewSQLFxRepository(database)}, tokenService, fx.NewClient(), nil)
+	router := NewRouter(cfg, database, Repos{Users: userRepo, Households: householdRepo, Docs: docRepo, Statements: statementRepo, Photos: photoRepo, Fx: repository.NewSQLFxRepository(database)}, tokenService, fx.NewClient(), fakeGoogle{})
 	wantDBStatus := "disconnected"
 	if database != nil {
 		wantDBStatus = "connected"
@@ -130,31 +130,39 @@ func runLiveServerE2EFlow(
 	var aliceHouseholdID string
 	var aliceUserID string
 
-	t.Run("Register User 1 (Alice)", func(t *testing.T) {
-		regBody := map[string]string{
-			"email":          "alice@e2e.test",
-			"pass" + "word":  "AliceSecretPassword123",
-			"display_name":   "Alice Cooper",
-			"household_name": "Cooper Family",
-		}
-		resp, body := sendJSON(http.MethodPost, "/api/auth/register", regBody, "")
+	// Alice signs in with Google (B2C-22): no household until "с кем" (B2C-23).
+	t.Run("Alice signs in with Google and creates a household", func(t *testing.T) {
+		resp, body := sendJSON(http.MethodPost, "/api/auth/google", map[string]string{"id_token": "id:sub-alice:alice@e2e.test"}, "")
 		if resp.StatusCode != http.StatusCreated {
-			t.Fatalf("expected 201 Created, got %d: %s", resp.StatusCode, string(body))
+			t.Fatalf("google sign-in: expected 201, got %d: %s", resp.StatusCode, string(body))
 		}
-
-		var regResp handlers.AuthResponse
-		if err := json.Unmarshal(body, &regResp); err != nil {
+		var signIn handlers.AuthResponse
+		if err := json.Unmarshal(body, &signIn); err != nil {
 			t.Fatalf("failed to parse auth response: %v", err)
 		}
+		if signIn.Household != nil || signIn.Member != nil {
+			t.Fatalf("a new Google user has no household: %s", string(body))
+		}
+		if resp, _ := sendJSON(http.MethodGet, "/api/sync/household", nil, signIn.Token); resp.StatusCode != http.StatusConflict {
+			t.Errorf("sync before a household: expected 409, got %d", resp.StatusCode)
+		}
 
-		if regResp.Token == "" {
-			t.Fatal("expected non-empty auth token")
+		resp, body = sendJSON(http.MethodPost, "/api/household", map[string]string{"name": "Cooper Family", "display_name": "Alice Cooper"}, signIn.Token)
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("create household: expected 201, got %d: %s", resp.StatusCode, string(body))
 		}
-		if regResp.Member.Slot != "a" {
-			t.Errorf("expected slot 'a', got %s", regResp.Member.Slot)
+		var regResp handlers.AuthResponse
+		if err := json.Unmarshal(body, &regResp); err != nil {
+			t.Fatalf("failed to parse household response: %v", err)
 		}
-		if regResp.Member.Role != "member" {
-			t.Errorf("expected role 'member', got %s", regResp.Member.Role)
+		if regResp.Token == "" || regResp.Household == nil || regResp.Household.Name != "Cooper Family" {
+			t.Fatalf("household response: %s", string(body))
+		}
+		if regResp.Member.Slot != "a" || regResp.Member.Role != "member" {
+			t.Errorf("expected member in slot 'a', got %+v", regResp.Member)
+		}
+		if resp, _ := sendJSON(http.MethodPost, "/api/household", map[string]string{"display_name": "Alice"}, regResp.Token); resp.StatusCode != http.StatusConflict {
+			t.Errorf("second household: expected 409, got %d", resp.StatusCode)
 		}
 
 		aliceToken = regResp.Token
@@ -196,13 +204,8 @@ func runLiveServerE2EFlow(
 
 	// Step 5: Register User 2 (Bob)
 	var bobToken string
-	t.Run("Register User 2 (Bob)", func(t *testing.T) {
-		regBody := map[string]string{
-			"email":         "bob@e2e.test",
-			"pass" + "word": "BobSecretPassword456",
-			"display_name":  "Bob Builder",
-		}
-		resp, body := sendJSON(http.MethodPost, "/api/auth/register", regBody, "")
+	t.Run("Bob signs in with Google, without a household", func(t *testing.T) {
+		resp, body := sendJSON(http.MethodPost, "/api/auth/google", map[string]string{"id_token": "id:sub-bob:bob@e2e.test"}, "")
 		if resp.StatusCode != http.StatusCreated {
 			t.Fatalf("expected 201 Created, got %d: %s", resp.StatusCode, string(body))
 		}
@@ -252,6 +255,32 @@ func runLiveServerE2EFlow(
 		}
 		if meResp.Member.Slot != "b" {
 			t.Errorf("expected slot 'b', got %s", meResp.Member.Slot)
+		}
+	})
+
+	// Both see the household's members — slots, names and roles, no emails.
+	t.Run("Members are visible to both", func(t *testing.T) {
+		for _, token := range []string{aliceToken, bobToken} {
+			resp, body := sendJSON(http.MethodGet, "/api/household/members", nil, token)
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("members: %d %s", resp.StatusCode, string(body))
+			}
+			var out struct {
+				Members []handlers.HouseholdMemberView `json:"members"`
+			}
+			if err := json.Unmarshal(body, &out); err != nil {
+				t.Fatal(err)
+			}
+			if len(out.Members) != 2 || out.Members[0].Slot != "a" || out.Members[0].DisplayName != "Alice Cooper" || out.Members[1].Slot != "b" || out.Members[1].Role != "member" {
+				t.Errorf("members = %+v", out.Members)
+			}
+			if bytes.Contains(body, []byte("@e2e.test")) || bytes.Contains(body, []byte("user_id")) {
+				t.Errorf("members leak emails or ids: %s", string(body))
+			}
+		}
+		// A member cannot move to another household by code.
+		if resp, _ := sendJSON(http.MethodPost, "/api/household/join", map[string]string{"code": inviteCode, "display_name": "Bob"}, bobToken); resp.StatusCode != http.StatusConflict {
+			t.Errorf("join from a household: expected 409, got %d", resp.StatusCode)
 		}
 	})
 

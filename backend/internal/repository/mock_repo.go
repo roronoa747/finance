@@ -203,6 +203,9 @@ func (m *MockHouseholdRepo) CreateHousehold(ctx context.Context, name, creatorID
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if m.memberElsewhere(creatorID, "") {
+		return nil, nil, ErrAlreadyInHousehold
+	}
 	if strings.TrimSpace(name) == "" {
 		name = "Наша казна"
 	}
@@ -268,6 +271,21 @@ func (m *MockHouseholdRepo) GetMembership(ctx context.Context, userID string) (*
 		return latestMember, latestHousehold, nil
 	}
 	return nil, nil, ErrMembershipNotFound
+}
+
+// memberElsewhere mirrors lockUserWithoutHousehold. Callers hold mu.
+func (m *MockHouseholdRepo) memberElsewhere(userID, except string) bool {
+	for hID, list := range m.members {
+		if hID == except {
+			continue
+		}
+		for _, member := range list {
+			if member.UserID == userID {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // SetRole changes a member's role — tests only: the app has no route for it, the owner
@@ -348,6 +366,10 @@ func (m *MockHouseholdRepo) JoinHousehold(ctx context.Context, code, userID, dis
 		if existing.UserID == userID {
 			return existing, nil
 		}
+	}
+
+	if m.memberElsewhere(userID, inv.HouseholdID) {
+		return nil, ErrAlreadyInHousehold
 	}
 
 	usedSlots := make(map[string]bool)

@@ -141,7 +141,7 @@ func NewRouter(
 	}))
 
 	authHandler := handlers.NewAuthHandler(repos.Users, repos.Households, tokenService, google)
-	householdHandler := handlers.NewHouseholdHandler(repos.Households, tokenService)
+	householdHandler := handlers.NewHouseholdHandler(repos.Users, repos.Households, tokenService)
 	syncHandler := handlers.NewSyncHandler(repos.Docs)
 	statementHandler := handlers.NewStatementHandler(repos.Statements)
 	photoHandler := handlers.NewPhotoHandler(repos.Photos)
@@ -166,6 +166,7 @@ func NewRouter(
 
 			// Without a household too (Р-25): who am I, "с кем".
 			protected.Get("/auth/me", authHandler.Me)
+			protected.Post("/household", householdHandler.CreateHousehold)
 			protected.Post("/household/join", householdHandler.JoinHousehold)
 
 			// Household routes: 409 "no household" until "с кем" is done.
@@ -173,6 +174,7 @@ func NewRouter(
 				family.Use(auth.RequireHousehold)
 
 				family.Post("/household/invites", householdHandler.CreateInvite)
+				family.Get("/household/members", householdHandler.Members)
 
 				family.Get("/sync/household", syncHandler.GetHouseholdDoc)
 				family.Post("/sync/household", syncHandler.PushHouseholdDoc)

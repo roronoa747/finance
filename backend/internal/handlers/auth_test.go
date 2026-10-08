@@ -23,7 +23,7 @@ func setupTestApp() (*chi.Mux, *repository.MockRepositories, *auth.TokenService)
 	tokens := auth.NewTokenService("test-secret-salt-key", 2*time.Hour)
 
 	authHandler := NewAuthHandler(repos.Users, repos.Households, tokens, nil)
-	householdHandler := NewHouseholdHandler(repos.Households, tokens)
+	householdHandler := NewHouseholdHandler(repos.Users, repos.Households, tokens)
 
 	r := chi.NewRouter()
 	r.Route("/api", func(api chi.Router) {
@@ -58,7 +58,7 @@ func makeAuthJSON(email, pass, displayName, householdName string) []byte {
 }
 
 func TestAuthAndHouseholdFlow(t *testing.T) {
-	router, _, _ := setupTestApp()
+	router, repos, tokens := setupTestApp()
 
 	// 1. Register User 1
 	regBody1 := makeAuthJSON("alice@example.com", "UserSecret123", "Алиса", "Семья Алисы")
@@ -146,19 +146,12 @@ func TestAuthAndHouseholdFlow(t *testing.T) {
 		t.Fatal("expected non-empty invite code")
 	}
 
-	// 7. Register User 2
-	regBody2 := makeAuthJSON("bob@example.com", "UserSecret456", "Боб", "Временная казна Боба")
-	req2 := httptest.NewRequest(http.MethodPost, "/api/auth/register", bytes.NewReader(regBody2))
-	req2.Header.Set("Content-Type", "application/json")
-	rec2 := httptest.NewRecorder()
-	router.ServeHTTP(rec2, req2)
-
-	if rec2.Code != http.StatusCreated {
-		t.Fatalf("expected 201 Created for register user 2, got %d", rec2.Code)
+	// 7. User 2 signed in without a household (Google, B2C-22): "по коду" is for them.
+	bob, err := repos.Users.CreateGoogle(t.Context(), "bob@example.com", "sub-bob", "Боб")
+	if err != nil {
+		t.Fatalf("create Bob: %v", err)
 	}
-	var regResp2 AuthResponse
-	_ = json.NewDecoder(rec2.Body).Decode(&regResp2)
-	bobInitialToken := regResp2.Token
+	bobInitialToken, _ := tokens.GenerateToken(bob.ID, "", "", "")
 
 	// 8. User 2 joins User 1's household using invite code
 	joinBody := `{"code":"` + inviteResp.Code + `","display_name":"Боб"}`
@@ -262,6 +255,8 @@ func TestHouseholdInviteEdgeCases(t *testing.T) {
 	// Create viewer user
 	u2, _ := repos.Users.Create(ctx, "viewer@invite.test", "hash")
 	viewerToken, _ := tokens.GenerateToken(u2.ID, hh.ID, "viewer", "b")
+	// Before joining u2 has no household: "по коду" (B2C-23) is for such a user.
+	partnerToken, _ := tokens.GenerateToken(u2.ID, "", "", "")
 
 	// 2. Viewer tries to create invite -> 403 Forbidden (§3 rights matrix)
 	viewerInviteReq := httptest.NewRequest(http.MethodPost, "/api/household/invites", nil)
@@ -289,7 +284,7 @@ func TestHouseholdInviteEdgeCases(t *testing.T) {
 
 	// 4. Partner joins with non-existent invite code -> 404
 	joinBadReq := httptest.NewRequest(http.MethodPost, "/api/household/join", bytes.NewBufferString(`{"code":"BADCODE1","display_name":"Partner"}`))
-	joinBadReq.Header.Set("Authorization", "Bearer "+viewerToken)
+	joinBadReq.Header.Set("Authorization", "Bearer "+partnerToken)
 	joinBadReq.Header.Set("Content-Type", "application/json")
 	joinBadRec := httptest.NewRecorder()
 	router.ServeHTTP(joinBadRec, joinBadReq)
@@ -300,7 +295,7 @@ func TestHouseholdInviteEdgeCases(t *testing.T) {
 
 	// 5. Valid join
 	joinValidReq := httptest.NewRequest(http.MethodPost, "/api/household/join", bytes.NewBufferString(`{"code":"`+inv.Code+`","display_name":"Partner"}`))
-	joinValidReq.Header.Set("Authorization", "Bearer "+viewerToken)
+	joinValidReq.Header.Set("Authorization", "Bearer "+partnerToken)
 	joinValidReq.Header.Set("Content-Type", "application/json")
 	joinValidRec := httptest.NewRecorder()
 	router.ServeHTTP(joinValidRec, joinValidReq)
@@ -311,7 +306,7 @@ func TestHouseholdInviteEdgeCases(t *testing.T) {
 
 	// 6. Reuse the same invite code -> 400 Bad Request
 	u3, _ := repos.Users.Create(ctx, "third@invite.test", "hash")
-	thirdToken, _ := tokens.GenerateToken(u3.ID, "hh-temp", "member", "a")
+	thirdToken, _ := tokens.GenerateToken(u3.ID, "", "", "")
 
 	reuseReq := httptest.NewRequest(http.MethodPost, "/api/household/join", bytes.NewBufferString(`{"code":"`+inv.Code+`","display_name":"Third"}`))
 	reuseReq.Header.Set("Authorization", "Bearer "+thirdToken)
