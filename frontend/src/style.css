@@ -428,3 +428,11 @@
     transition-delay: 0s !important;
   }
 }
+
+/* Открыт лист (`kit/Sheet`) — экран за ним стоит (ворота Б17): ни окно, ни <main> оболочки не прокручиваются.
+   Вне слоя — сильнее утилиты `overflow-y-auto` у <main>; позиция прокрутки при этом сохраняется. */
+html[data-sheet-open],
+html[data-sheet-open] body,
+html[data-sheet-open] main {
+  overflow: hidden;
+}
