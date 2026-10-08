@@ -78,7 +78,7 @@ function remove() {
       <Field label="Уже накоплено, ₸">
         <NumFieldBlur :initial="plain(goal.have)" class="mb-3" @commit="onHave" />
       </Field>
-      <p v-if="goal.movements?.length" class="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-3">
+      <p v-if="goal.movements?.length" class="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-2">
         Взносы ({{ goal.movements.length }}) останутся в истории: правится только та часть,
         с которой цель завели.
       </p>

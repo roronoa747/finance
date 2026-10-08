@@ -15,7 +15,6 @@ import {
 } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { monthKey, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
 import { readPlanView } from '@/lib/storage'
 import { liveGoals } from '@/lib/finance'
 import { useScrollMemory } from './useScrollMemory'
@@ -47,8 +46,6 @@ const addOpen = ref(false)
 provide('ff-shell-actions', true)
 
 const people = computed(() => financeStore.people.filter((p) => !p.deletedAt))
-const names = computed(() => people.value.map((p) => p.name).join(' и '))
-const monthName = computed(() => MONTHS_NOM[parseMonthKey(monthKey()).month])
 
 /** Вкладки — корни (у «Денег» — все три квадрата, пивот 3); остальное — вложенные экраны со стрелкой «назад». */
 const ROOTS = ['/', '/week', '/month', '/money', '/money/debts', '/money/history']
@@ -69,21 +66,19 @@ function goBack() {
 /** Заголовок и подпись шапки по маршруту (DESIGN.md §6 «Заголовки экранов»). */
 const header = computed<{ title: string; sub?: string }>(() => {
   const p = route.path
-  if (p === '/') return { title: 'Мечты', sub: `${monthName.value} · ${names.value}` }
+  // Подзаголовков «<месяц> · <имена>» нет (Р-116): кружки людей уже в шапке, месяц — на своём экране.
+  if (p === '/') return { title: 'Мечты' }
   // «План» — одна вкладка на «Неделю» и «Месяц» (Р-89): даты недели и месяц листаются на самих экранах.
-  if (p.startsWith('/week') || p === '/month') return { title: 'План', sub: names.value }
+  if (p.startsWith('/week') || p === '/month') return { title: 'План' }
   // «Деньги» — один экран с тремя квадратами (пивот 3, Р-31): шапка одна на все.
-  if (p === '/money' || p.startsWith('/money/')) return { title: 'Деньги', sub: `${monthName.value} · ${names.value}` }
+  if (p === '/money' || p.startsWith('/money/')) return { title: 'Деньги' }
   if (p === '/goals/new') return { title: 'Новая мечта' }
   if (p.startsWith('/goals/')) {
-    // Имя цели заголовком (g4 «Экран цели»): «главная мечта · Ильяс и Дана».
+    // Имя цели заголовком (g4 «Экран цели»), без «мечта · имена» (Р-116).
     const goal = liveGoals(financeStore.goals).find((g) => g.id === route.params.id)
-    const main = financeStore.heroGoal?.id === goal?.id
-    // Фонд («Запас», «Подушка», Р-82) — не мечта (ревью frontend Б14, Н-2).
-    const fund = financeStore.queue.find((x) => x.id === goal?.id)?.kind === 'fund'
-    return goal ? { title: goal.name, sub: `${fund ? 'фонд' : main ? 'главная мечта' : 'мечта'} · ${names.value}` } : { title: 'Цель' }
+    return { title: goal?.name ?? 'Цель' }
   }
-  if (p === '/wishes' || p.startsWith('/people/')) return { title: 'Желания', sub: 'не мечты — покупки поменьше' }
+  if (p === '/wishes' || p.startsWith('/people/')) return { title: 'Желания' }
   if (p === '/settings/me') return { title: 'Свой кружок' }
   if (p === '/settings') {
     // g7: «Ильяс · ilyas@…» — имя в семье и почта входа.

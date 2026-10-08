@@ -26,7 +26,11 @@ import FxRateSheet from '@/components/money/FxRateSheet.vue'
  * обмены живы (ревью frontend Н-6) — строка и лист остаются, без «Обменял». «Евро за год: −134 ₸» — тихой строкой
  * внизу обоих листов (ворота B2C-91: из карточки зарплат ушла сюда), нажатие — лист курса (`FxRateSheet`, Р-76).
  */
-const props = defineProps<{ personId: PersonId; period: string }>()
+/**
+ * Части (Б17, Р-116): `button` — только «Обменял» (в строке зарплаты, у своего предмета), `line` — только «обменяно … из …»
+ * (в листе зарплаты); без `part` — обе рядом. Листы обмена и списка — при любой части.
+ */
+const props = defineProps<{ personId: PersonId; period: string; part?: 'button' | 'line' }>()
 
 const finance = useFinanceStore()
 const auth = useAuthStore()
@@ -118,16 +122,17 @@ function save() {
 </script>
 
 <template>
-  <div v-if="currency" class="flex items-center gap-2">
+  <div v-if="currency && !(part === 'button' && !canExchange)" class="flex items-center gap-2">
     <button
+      v-if="part !== 'button'"
       type="button"
       :disabled="!xs.length"
-      class="min-w-0 flex-1 text-left text-[12.5px] text-ink-3 num enabled:cursor-pointer"
+      class="min-w-0 flex-1 text-left text-[12.5px] text-ink-2 num enabled:cursor-pointer"
       @click="list = true"
     >
       обменяно {{ moneyIn(exchanged, currency) }}<template v-if="info"> из {{ moneyIn(info.came, currency) }}</template> · ≈ {{ money(monthTenge) }}
     </button>
-    <Button v-if="canExchange" variant="secondary" size="sm" @click="open = true">Обменял</Button>
+    <Button v-if="canExchange && part !== 'line'" variant="secondary" size="sm" data-exchange @click="open = true">Обменял</Button>
   </div>
 
   <Sheet :open="list" title="Обмены" :z="60" @close="list = false">
@@ -135,7 +140,7 @@ function save() {
       <div class="flex items-center gap-2">
         <span class="min-w-0 flex-1 text-[13.5px] text-ink num">
           {{ moneyIn(x.foreign, x.currency) }} по {{ String(x.rate).replace('.', ',') }} → {{ money(x.tenge) }}
-          <span class="block text-[12px] text-ink-3">{{ toName(x.toAccountId) }} · {{ atLabel(x.at) }}</span>
+          <span class="block text-[12px] text-ink-2">{{ toName(x.toAccountId) }} · {{ atLabel(x.at) }}</span>
         </span>
         <Button v-if="mine && confirming !== x.id" variant="ghost" size="sm" @click="confirming = x.id">Отменить</Button>
       </div>
@@ -145,7 +150,7 @@ function save() {
         <Button variant="ghost" size="sm" @click="confirming = null">Нет</Button>
       </div>
     </div>
-    <button v-if="year" type="button" class="press mt-2 w-full cursor-pointer text-center text-[12.5px] num" :class="signTone(year.tenge, 'text-ink-3')" data-fx-year @click="openRate">
+    <button v-if="year" type="button" class="press mt-2 w-full cursor-pointer text-center text-[12.5px] num" :class="signTone(year.tenge, 'text-ink-2')" data-fx-year @click="openRate">
       {{ CURRENCY_WORD[year.currency].nom }} за год: {{ moneySigned(year.perUnit) }}
     </button>
   </Sheet>
@@ -157,7 +162,7 @@ function save() {
     <Field :label="`Курс, ₸ за 1 ${sign}`" name="rate">
       <NumField v-model="rateText" kind="rate" :placeholder="nbRate ? String(nbRate).replace('.', ',') : '505'" />
     </Field>
-    <p v-if="nbRate" class="-mt-2.5 mb-3 text-[12px] text-ink-3 num">Нацбанк сегодня — {{ String(nbRate).replace('.', ',') }} ₸</p>
+    <p v-if="nbRate" class="-mt-2.5 mb-3 text-[12px] text-ink-2 num">Нацбанк сегодня — {{ String(nbRate).replace('.', ',') }} ₸</p>
 
     <div class="mb-3.5 flex items-baseline gap-2">
       <span class="type-big num text-ink">= {{ money(tenge) }}</span>
@@ -166,7 +171,7 @@ function save() {
     <AccountChoice v-model="chosen" :accounts="choices" label="Куда зачислить" none="Не записывать на счёт" name="account" />
 
     <Button class="w-full" @click="form.submit(save)">Записать</Button>
-    <button v-if="year" type="button" class="press mt-2 w-full cursor-pointer text-center text-[12.5px] num" :class="signTone(year.tenge, 'text-ink-3')" data-fx-year @click="openRate">
+    <button v-if="year" type="button" class="press mt-2 w-full cursor-pointer text-center text-[12.5px] num" :class="signTone(year.tenge, 'text-ink-2')" data-fx-year @click="openRate">
       {{ CURRENCY_WORD[year.currency].nom }} за год: {{ moneySigned(year.perUnit) }}
     </button>
   </Sheet>

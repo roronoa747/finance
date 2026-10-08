@@ -3,8 +3,8 @@ import { computed, ref } from 'vue'
 import { PhCaretRight, PhPlus } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { money, plain, rateField } from '@/lib/money'
-import { monthBy, monthFrom, monthKey } from '@/lib/dates'
+import { money, plain } from '@/lib/money'
+import { monthBy, monthKey } from '@/lib/dates'
 import { debtsOverview, type DebtRow } from '@/lib/finance'
 import Card from '@/components/kit/Card.vue'
 import Button from '@/components/ui/Button.vue'
@@ -15,7 +15,7 @@ import PlanSquare from '@/components/money/PlanSquare.vue'
 
 /**
  * Экран «Долги» (Блок 16, Р-110; макет money-b16.html): карточка — сумма остатков и «без долгов — к <месяц>»; кредиты
- * строками «платёж в месяц · ставка · до когда» с остатком и полосой «погашено с начала учёта» (отметок с телом нет —
+ * строками «платёж в месяц» (ставка и срок — в листе кредита, Б17) с остатком и полосой «погашено с начала учёта» (отметок с телом нет —
  * без полосы), нажатие — лист кредита. «Как закрыть быстрее ›» свёрнуто: внутри — долговой план (`PlanSquare`).
  * Тихое «+ Кредит» — участнику; брендовых кнопок нет: «Отложил» в долг — у его строки в «Месяце». Всё — `debtsOverview`.
  */
@@ -28,9 +28,9 @@ const hasPlan = computed(() => !!financeStore.activePlan)
 // Без открытых долгов и плана — прошлые планы и поздравление плана видны сразу, без свёртки (как раньше).
 const pastPlans = computed(() => financeStore.plans.some((p) => !p.deletedAt && p.status !== 'active'))
 
+// Строка — платёж в месяц; ставка и месяц закрытия — в листе кредита (Р-116). Без ставки и «не закрывается» — предупреждения, остаются.
 function rowMeta(r: DebtRow): string {
-  const rate = r.rateUnknown ? 'ставку уточните' : `${rateField(r.rate)} %`
-  return [`${plain(r.payment)} в месяц`, rate, r.endMonth ? `до ${monthFrom(r.endMonth)}` : 'не закрывается'].join(' · ')
+  return [`${plain(r.payment)} в месяц`, r.rateUnknown ? 'ставку уточните' : '', r.endMonth ? '' : 'не закрывается'].filter(Boolean).join(' · ')
 }
 
 const calcOpen = ref(false)
@@ -40,10 +40,10 @@ const addOpen = ref(false)
 </script>
 
 <template>
-  <Card tight class="flex flex-col gap-1" data-debts>
-    <span class="type-label">Долги</span>
+  <!-- Слово «Долги» — уже на чипе (Р-116). -->
+  <Card tight class="flex flex-col gap-1 py-5" data-debts>
     <template v-if="overview.total > 0">
-      <span class="font-num text-[40px] font-bold leading-none num text-ink" data-debts-total>{{ money(overview.total) }}</span>
+      <span class="font-num text-[34px] font-bold leading-none num text-ink" data-debts-total>{{ money(overview.total) }}</span>
       <span v-if="overview.freeMonth" class="type-meta" data-debts-free>без долгов — {{ monthBy(overview.freeMonth, key) }}</span>
     </template>
     <span v-else class="type-num text-[24px] text-ok">Долгов нет</span>

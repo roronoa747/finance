@@ -31,7 +31,7 @@ const emit = defineEmits<{ (e: 'open'): void; (e: 'payer'): void }>()
     @click="canEdit && emit('open')"
   >
     <span class="flex w-[38px] shrink-0 flex-col items-center leading-[1.05]" :class="due.paid ? 'text-ink-3' : 'text-ink-2'">
-      <b class="font-num text-[18px] num">{{ due.day }}</b><span class="text-[11px] text-ink-3">{{ mon }}</span>
+      <b class="font-num text-[18px] num">{{ due.day }}</b><span class="text-[11px] text-ink-2">{{ mon }}</span>
     </span>
     <component
       :is="canEdit ? 'button' : 'span'"
@@ -41,7 +41,7 @@ const emit = defineEmits<{ (e: 'open'): void; (e: 'payer'): void }>()
       :data-row-open="canEdit || undefined"
     >
       <span class="truncate text-[15.5px] font-semibold text-ink">{{ due.name }}</span>
-      <span v-if="note" class="text-[12.5px] text-ink-3">{{ note }}</span>
+      <span v-if="note" class="text-[12.5px] text-ink-2">{{ note }}</span>
     </component>
     <button
       v-if="canEdit && due.payer"
@@ -53,7 +53,7 @@ const emit = defineEmits<{ (e: 'open'): void; (e: 'payer'): void }>()
       <Avatar :id="due.payer" :name="payerName" :size="24" />
     </button>
     <Avatar v-else-if="due.payer" :id="due.payer" :name="payerName" :size="24" />
-    <span class="font-num text-[15px] font-bold num whitespace-nowrap" :class="due.paid ? 'font-semibold text-ink-3' : 'text-ink'">
+    <span class="font-num text-[15px] font-bold num whitespace-nowrap" :class="due.paid ? 'font-semibold text-ink-2' : 'text-ink'">
       <span v-if="due.paid" class="font-extrabold text-ok">✓ </span>{{ plain(due.amount) }}
     </span>
   </div>

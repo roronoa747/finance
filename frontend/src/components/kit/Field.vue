@@ -33,12 +33,12 @@ onBeforeUnmount(() => {
 
 <template>
   <div v-if="group" ref="root" role="group" :aria-label="label" :aria-describedby="error ? id : undefined" class="mb-3.5 flex flex-col gap-1.5 text-left">
-    <span v-if="label" class="text-[12.5px] font-medium text-ink-3">{{ label }}</span>
+    <span v-if="label" class="text-[12.5px] font-medium text-ink-2">{{ label }}</span>
     <slot />
     <span v-if="error" :id="id" role="alert" class="text-[12.5px] font-medium text-destructive">{{ error }}</span>
   </div>
   <label v-else ref="root" class="mb-3.5 flex flex-col gap-1.5 text-left">
-    <span v-if="label" class="text-[12.5px] font-medium text-ink-3">{{ label }}</span>
+    <span v-if="label" class="text-[12.5px] font-medium text-ink-2">{{ label }}</span>
     <slot />
     <span v-if="error" :id="id" role="alert" class="text-[12.5px] font-medium text-destructive">{{ error }}</span>
   </label>

@@ -4,8 +4,9 @@ import { useRoute } from 'vue-router'
 import { useOperationsStore } from '@/stores/operations'
 import { useFinanceStore } from '@/stores/finance'
 import { money } from '@/lib/money'
-import { liveAccounts, liveCredits, liveGoals, netWorth } from '@/lib/finance'
+import { amountTotal, capitalGoals, liveAccounts, liveCredits, liveGoals, netWorth, openDebt } from '@/lib/finance'
 import Card from '@/components/kit/Card.vue'
+import Hint from '@/components/kit/Hint.vue'
 import MoneySquares from '@/components/money/MoneySquares.vue'
 import DebtsWidget from '@/components/money/DebtsWidget.vue'
 import CapitalSalaries from '@/components/money/CapitalSalaries.vue'
@@ -26,6 +27,9 @@ const finance = useFinanceStore()
 
 const square = computed(() => (route.params.square === 'debts' || route.params.square === 'history' ? route.params.square : 'capital'))
 const worth = computed(() => netWorth(liveAccounts(finance.accounts), liveCredits(finance.credits), liveGoals(finance.goals)))
+// Для подсказки у суммы: «Счета» (счета и цели вне счетов, Р-109) и долги — те же функции, что у списков «Капитала».
+const assets = computed(() => amountTotal(liveAccounts(finance.accounts)) + capitalGoals(finance.goals, finance.accounts).total)
+const debt = computed(() => openDebt(finance.credits))
 
 onMounted(() => void ops.loadUploads())
 </script>
@@ -35,9 +39,13 @@ onMounted(() => void ops.loadUploads())
     <MoneySquares />
 
     <template v-if="square === 'capital'">
-      <Card tight class="flex flex-col gap-1" data-capital>
-        <span class="type-label">Капитал</span>
-        <span class="font-num text-[40px] font-bold leading-none num" :class="worth < 0 ? 'text-warn' : 'text-ink'" data-worth>{{ money(worth) }}</span>
+      <!-- Слово «Капитал» — уже на чипе; «счета − долги» и итог «Счетов» — в подсказке у суммы (Р-116). -->
+      <Card tight class="flex items-center gap-1.5 py-5" data-capital>
+        <span class="font-num text-[34px] font-bold leading-none num" :class="worth < 0 ? 'text-warn' : 'text-ink'" data-worth>{{ money(worth) }}</span>
+        <Hint label="Что такое капитал" data-worth-hint>
+          <span class="block">Всё, что есть, минус всё, что должны.</span>
+          <span class="block num">Счета и цели — {{ money(assets) }}, долги — {{ money(debt) }}.</span>
+        </Hint>
       </Card>
       <CapitalSalaries />
       <CapitalLists />

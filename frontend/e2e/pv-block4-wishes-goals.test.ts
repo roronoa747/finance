@@ -183,9 +183,10 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       expect(await screen(B.pinia, Money, '/money/debts')).toContain(`Закроется в ${monthIn(free)}`)
       for (const p of [A, B]) {
         const car = await screen(p.pinia, GoalDetail, '/goals/car')
-        expect(car).toContain('На паузе ради плана')
+        // Пауза — строка-ссылка на план (Р-116); «Осталось 47 взносов · после плана» — в «Подробнее» (`data-goal-left`).
+        expect(car).toContain('На паузе — взнос идёт в долг')
         expect(car).toContain(`Будет вашей в ${monthIn(addMonths(free, 47))}`)
-        expect(car).toContain('после плана')
+        expect(car.match(/data-goal-left[^>]*>([^<]*)</)?.[1]).toBe('Осталось 47 взносов · после плана')
       }
 
       // A поднимает взнос машины до 70 000: у B «Досрочно по плану» 40 000 + 70 000, конец плана —

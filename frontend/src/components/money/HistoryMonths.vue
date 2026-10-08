@@ -6,6 +6,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { plain } from '@/lib/money'
 import { MONTHS_NOM, monthKey, parseMonthKey } from '@/lib/dates'
 import Card from '@/components/kit/Card.vue'
+import Hint from '@/components/kit/Hint.vue'
 import HistorySquare from '@/components/money/HistorySquare.vue'
 
 /**
@@ -23,28 +24,32 @@ function title(key: string): string {
   return MONTHS_NOM[month] + (year !== thisYear.value ? ` ${year}` : '')
 }
 
+// «Зелёным — сколько отложили» — подсказкой у первой зелёной суммы (Р-116), не строкой под списком.
+const firstPut = computed(() => months.value.find((m) => m.put > 0)?.key ?? null)
+
 const feedOpen = ref(false)
 </script>
 
 <template>
   <Card v-if="months.length" flush data-history-months>
-    <button
+    <!-- Строка нажимается вся (`row-open`); «?» у первой зелёной суммы — поверх, не кнопка в кнопке. -->
+    <div
       v-for="m in months"
       :key="m.key"
-      type="button"
-      class="press flex w-full cursor-pointer items-center gap-3 border-b border-line px-4 py-3 text-left last:border-b-0 hover:bg-surface-2"
+      class="relative flex w-full items-center gap-3 border-b border-line px-4 py-3 text-left last:border-b-0 hover:bg-surface-2"
       :data-history-month="m.key"
-      @click="router.push(`/month?month=${m.key}`)"
     >
-      <span class="flex min-w-0 flex-1 flex-col gap-px">
+      <button type="button" class="row-open flex min-w-0 flex-1 flex-col gap-px text-left" @click="router.push(`/month?month=${m.key}`)">
         <span class="text-[15px] font-semibold text-ink">{{ title(m.key) }}</span>
         <span class="type-meta num" data-left>осталось {{ plain(m.left) }}</span>
+      </button>
+      <span v-if="m.put > 0" class="flex shrink-0 items-center gap-1">
+        <span class="text-[15px] font-semibold num text-ok" data-put>+{{ plain(m.put) }}</span>
+        <span v-if="m.key === firstPut" class="relative z-10"><Hint label="Зелёным">Сколько отложили за месяц</Hint></span>
       </span>
-      <span v-if="m.put > 0" class="shrink-0 text-[15px] font-semibold num text-ok" data-put>+{{ plain(m.put) }}</span>
       <PhCaretRight :size="14" class="shrink-0 text-ink-3" />
-    </button>
+    </div>
   </Card>
-  <p v-if="months.length" class="px-1 type-meta">Зелёным — сколько отложили за месяц</p>
   <p v-else class="px-1 py-2 type-meta" data-history-empty>Здесь появятся прошлые месяцы</p>
 
   <!-- Прежняя лента — свёрнута (правило 12) -->

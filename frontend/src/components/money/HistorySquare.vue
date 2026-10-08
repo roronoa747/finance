@@ -292,7 +292,7 @@ const markOpen = ref<Payment | null>(null)
     <template v-if="opOpen">
       <p class="mb-3 type-meta num">{{ dayTitle(opOpen.date) }} · {{ money(Math.abs(opOpen.amount)) }}</p>
       <CategoryChips :counterparty="!!opOpen.counterparty" @choose="recategorize" />
-      <p class="mt-3 text-[12px] text-ink-3">Ответ запомним — такие строки разложатся сами.</p>
+      <p class="mt-3 text-[12px] text-ink-2">Ответ запомним — такие строки разложатся сами.</p>
     </template>
   </Sheet>
 

@@ -10,11 +10,14 @@ import { useAuthStore } from '../src/stores/auth'
 import type { Category } from '../src/types/finance'
 import { at, phone, screen, type FakeServer } from './support/family'
 import {
+  amountTotal,
   budgetAmounts,
+  capitalGoals,
   creditSchedule,
   creditTotals,
   goalSavings,
   keepQuestions,
+  liveAccounts,
   netWorth,
   nextCreditDue,
   nextObligationDue,
@@ -339,8 +342,14 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     /** Первая сумма «N ₸» после подписи. */
     const moneyAfter = (html: string, label: string) =>
       html.slice(html.indexOf(label)).match(/\d[\d ]* ₸/)?.[0]
-    /** Подпись квадрата «Капитал» — чистый капитал (`netWorth`) без «₸». */
-    const capitalNote = (html: string) => html.match(/>Капитал<\/b>(?:<!--[^>]*-->|\s)*<small[^>]*>([^<]*)<\/small>/)?.[1]
+    /** Сумма карточки «Капитал» (`data-worth`) — чистый капитал (`netWorth`); Р-116: одна крупная цифра. */
+    const capitalNote = (html: string) => html.match(/data-worth[^>]*>([^<]*)</)?.[1]
+    /**
+     * «Счета и цели» — бывший итог секции «Счета» (Р-109), теперь в подсказке «Что такое капитал» (Р-116). В SSR
+     * подсказка свёрнута — число тем же расчётом `finance.ts`, что у `Money.vue`, плюс наличие кнопки подсказки.
+     */
+    const assetsOf = (store: { accounts: Parameters<typeof liveAccounts>[0]; goals: Parameters<typeof capitalGoals>[0] }) =>
+      amountTotal(liveAccounts(store.accounts)) + capitalGoals(store.goals, store.accounts).total
     const on = <P extends { pinia: Pinia }>(p: P) => (setActivePinia(p.pinia), p)
     const member = (slot: 'a' | 'b', role: 'member' | 'viewer' = 'member') =>
       useAuthStore().setAuthData({
@@ -509,9 +518,11 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       // Пивот 3 (Р-33, B2C-42): капитал — подписью квадрата «Капитал» (владелец 2026-10-02), счета — итогом секции «Счета»;
       // «Накоплено по мечтам» строкой в «Деньгах» больше нет — сумма из goalSavings.
       const before = await page(B.pinia, Money, '/money')
-      expect(capitalNote(before)).toBe(plain(500_000))
-      // Блок 16 (Р-109): итог «Счетов» — счета 1 300 000 + цели вне счетов 200 000; «Счета» − долг = капитал.
-      expect(moneyAfter(before, 'Счета')).toBe(money(1_500_000))
+      expect(capitalNote(before)).toBe(money(500_000))
+      // Блок 16 (Р-109): «Счета и цели» — счета 1 300 000 + цели вне счетов 200 000; минус долг = капитал.
+      // Р-116: это число — в подсказке «Что такое капитал» у суммы.
+      expect(before).toContain('data-worth-hint')
+      expect(assetsOf(B.store)).toBe(1_500_000)
       expect(goalSavings(B.store.goals)).toBe(200_000)
 
       // «Удалить счёт» в окне «Сейфа» на A: текст React с обеими целями на нём.
@@ -536,9 +547,9 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(goalSavings(B.store.goals)).toBe(750_000)
       expect(netWorth(B.store.accounts, B.store.credits, B.store.goals)).toBe(750_000)
       const after = await page(B.pinia, Money, '/money')
-      expect(capitalNote(after)).toBe(plain(750_000))
+      expect(capitalNote(after)).toBe(money(750_000))
       // Счета 1 000 000 + отвязанные цели 450 000 + 100 000 + 200 000 (Р-109) − долг 1 000 000 = 750 000.
-      expect(moneyAfter(after, 'Счета')).toBe(money(1_750_000))
+      expect(assetsOf(B.store)).toBe(1_750_000)
       expect(after).not.toContain('Сейф')
     })
 
@@ -576,8 +587,9 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(row).toContain(money(640_771))
       expect(row).not.toContain(money(512_340))
       expect(row).not.toContain(money(479_260))
-      // 1 000 000 на карте + 640 771.
-      expect(moneyAfter(capital, 'Счета')).toBe(money(1_640_771))
+      // 1 000 000 на карте + 640 771 — «Счета и цели» подсказки капитала (Р-116), тем же расчётом.
+      expect(capital).toContain('data-worth-hint')
+      expect(assetsOf(B.store)).toBe(1_640_771)
       const modal = await page(B.pinia, Money, '/money', { state: { selectedAccountId: 'usd' } })
       expect(modal).toContain(`value="${plain(1_337)}"`)
       expect(modal).toContain('value="479,26"')

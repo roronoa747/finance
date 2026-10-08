@@ -97,18 +97,21 @@ describe('Н-2: срок и «нужно» — из плана месяца', ()
     expect(page()).not.toContain('До мечты')
   })
 
-  it('цель при нехватке остатка: дата экрана = дате «Мечт» = прогону плана, не по своему взносу', async () => {
+  // Р-116 (B2C-108): срок цели живёт только на экране цели — на «Мечтах» строка цели без «к <месяц>».
+  it('цель при нехватке остатка: дата экрана = прогону плана, не по своему взносу; на «Мечтах» срока нет', async () => {
     const finance = await open(GoalDetail, '/goals/car')
     const item = finance.monthPlanOf(KEY).queue.find((q) => q.id === 'car')!
     expect(item.given).toBeLessThan(item.want)
     const own = goalDoneMonth(goalMonths(item.need - item.have, 600_000), KEY)
     expect(item.doneMonth).not.toBe(own)
     expect(page()).toContain(`Будет вашей в ${monthIn(item.doneMonth!)}`)
+    if (own) expect(page()).not.toContain(`Будет вашей в ${monthIn(own)}`)
 
     app?.unmount()
     document.body.innerHTML = ''
     await open(Dreams, '/')
-    expect(page()).toContain(monthBy(item.doneMonth!, KEY))
+    expect(page()).toContain('Машина')
+    expect(page()).not.toContain(monthBy(item.doneMonth!, KEY))
   })
 
   it('выключенная цель — «На паузе» без строки взносов', async () => {

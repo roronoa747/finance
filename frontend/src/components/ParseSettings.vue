@@ -64,7 +64,7 @@ function ruleTarget(r: MerchantRule) {
 <template>
   <div class="flex flex-col gap-4">
     <div>
-      <div class="type-section text-ink-3">Разделы трат</div>
+      <div class="type-section text-ink-2">Разделы трат</div>
       <p v-if="!seeded" class="mt-1 text-[13px] text-ink-2">Появятся после первой выписки — пока разделы по словарю.</p>
       <div v-else class="mt-2 flex flex-col">
         <div v-for="c in categories" :key="c.id" class="flex flex-col gap-2 border-t border-line py-2.5 first:border-t-0 first:pt-0">
@@ -98,7 +98,7 @@ function ruleTarget(r: MerchantRule) {
 
     <div>
       <!-- Пояснение — в подсказке, не абзацем (правило интерфейса, критик Блока 3). -->
-      <div class="flex items-center gap-1.5 type-section text-ink-3">
+      <div class="flex items-center gap-1.5 type-section text-ink-2">
         Память разбора
         <Hint>Ответы на вопросы разбора — только ваши, партнёр их не видит. «Убрать» — следующие выписки спросят снова, свои операции пересчитаются.</Hint>
       </div>

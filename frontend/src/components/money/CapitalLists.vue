@@ -6,14 +6,11 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, rateField } from '@/lib/money'
-import { monthFromAfter, monthKey } from '@/lib/dates'
+import { monthKey } from '@/lib/dates'
 import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
 import {
-  amountTotal,
   capitalGoals,
-  creditOutlook,
-  duesTotal,
   groupChildren,
   groupTotal,
   isSubscription,
@@ -21,9 +18,7 @@ import {
   liveCredits,
   liveGroups,
   liveObligations,
-  monthDues,
   monthlyAmount,
-  openDebt,
   subscriptionGroup,
 } from '@/lib/finance'
 import type { Account, Credit, Obligation } from '@/types/finance'
@@ -68,7 +63,6 @@ const groups = computed(() => liveGroups(financeStore.obligations))
 /* ------------------ Счета ------------------ */
 // Сумма счёта всегда в тенге (валютный — по своему курсу); итог — счета и цели вне счетов (Р-109): «Счета» − «Кредиты» = «Капитал».
 const goals = computed(() => capitalGoals(financeStore.goals, financeStore.accounts))
-const accountsTotal = computed(() => amountTotal(accounts.value) + goals.value.total)
 const goalsOpen = ref(false)
 const goalHue = (id: string) => {
   const hue = financeStore.goals.find((g) => g.id === id)?.hue
@@ -83,18 +77,13 @@ function accountMeta(a: Account): string {
 }
 
 /* ------------------ Кредиты ------------------ */
-// Открытые кредиты: остаток, ставка и месяц последнего платежа при нынешнем платеже (`creditOutlook`).
+// Открытые кредиты: остаток и вид; ставка и месяц последнего платежа — в листе кредита (Р-116).
 const openCredits = computed(() => credits.value.filter((c) => c.principal > 0))
-const debtsTotal = computed(() => openDebt(financeStore.credits))
 function creditMeta(c: Credit): string {
-  const out = creditOutlook(c)
-  const rate = c.rateUnknown ? 'ставку уточните' : `${rateField(c.annualRate)} %`
-  return [rate, out.closes ? `до ${monthFromAfter(out.months)}` : ''].filter(Boolean).join(' · ')
+  return c.rateUnknown ? 'ставку уточните' : c.annualRate > 0 ? 'кредит' : 'рассрочка'
 }
 
 /* ------------------ Платежи — справочник ------------------ */
-// Сумма платежей этого месяца (`monthDues` — те же строки, что в «Месяце»).
-const duesMonth = computed(() => duesTotal(monthDues({ obligations: financeStore.obligations, credits: financeStore.credits, payments: financeStore.payments, book: fx.book }, key.value)))
 // Подписки — одной группой (`subscriptionGroup`, та же функция, что в «Месяце»): сумма — в месяц (годовая — долей).
 const subs = computed(() =>
   subscriptionGroup(
@@ -194,11 +183,8 @@ watch(queryModalOpen, (open) => {
 
 <template>
   <!-- Счета -->
-  <Section title="Счета">
-    <template #action>
-      <span class="text-[13px] font-semibold text-ink-3 num" data-accounts-total>{{ money(accountsTotal) }}</span>
-    </template>
-  </Section>
+  <!-- Итог «Счетов» — в подсказке у суммы капитала (Р-116). -->
+  <Section title="Счета" />
   <Card flush>
     <Row
       v-for="a in accounts"
@@ -237,12 +223,12 @@ watch(queryModalOpen, (open) => {
             <span class="grid size-full place-items-center rounded-[10px] text-[13px] font-bold text-dot-ink" :style="{ background: goalHue(g.goalId) }">{{ g.name.slice(0, 1).toUpperCase() }}</span>
           </template>
           <template #value>
-            <span class="block text-[14.5px] font-semibold num" :class="g.accountName ? 'text-ink-3' : 'text-ink'">{{ money(g.amount) }}</span>
+            <span class="block text-[14.5px] font-semibold num" :class="g.accountName ? 'text-ink-2' : 'text-ink'">{{ money(g.amount) }}</span>
           </template>
         </Row>
       </div>
     </div>
-    <div v-if="!accounts.length" class="px-4 py-6 text-center text-[13px] text-ink-3">Счетов пока нет</div>
+    <div v-if="!accounts.length" class="px-4 py-6 text-center text-[13px] text-ink-2">Счетов пока нет</div>
     <div v-if="!authStore.isViewer" class="border-t border-line px-2 py-1.5">
       <Button variant="ghost" class="px-2.5" @click="accountOpen = true">
         <PhPlus :size="16" weight="bold" /> Добавить счёт
@@ -252,22 +238,16 @@ watch(queryModalOpen, (open) => {
 
   <!-- Кредиты: остаток, ставка и срок; нажатие — лист кредита -->
   <template v-if="openCredits.length">
-    <Section title="Кредиты">
-      <template #action>
-        <span class="text-[13px] font-semibold text-ink-3 num" data-credits-total>{{ money(debtsTotal) }}</span>
-      </template>
-    </Section>
+    <!-- Итог — на «Долгах», ставка и срок — в листе кредита (Р-116). -->
+    <Section title="Кредиты" />
     <Card flush data-credits>
       <Row v-for="c in openCredits" :key="c.id" :title="c.name" :note="creditMeta(c)" :value="money(c.principal)" clickable @click="selectedCreditId = c.id" />
     </Card>
   </template>
 
   <!-- Платежи — справочник: один список по дню, без отметок месяца; подписки — одной строкой -->
-  <Section title="Платежи">
-    <template v-if="duesMonth > 0" #action>
-      <span class="text-[13px] font-semibold text-ink-3 num">{{ money(duesMonth) }} / мес</span>
-    </template>
-  </Section>
+  <!-- Сумма платежей месяца — строка «Платежи» в «Месяце» (Р-116). -->
+  <Section title="Платежи" />
   <Card flush data-payments>
     <PaymentLine
       v-for="l in lines"
@@ -288,7 +268,7 @@ watch(queryModalOpen, (open) => {
           <button
             v-if="g.groupId"
             type="button"
-            class="press block cursor-pointer pb-0.5 pt-2.5 text-left text-[11.5px] font-semibold uppercase tracking-[0.04em] text-ink-3"
+            class="press block cursor-pointer pb-0.5 pt-2.5 text-left text-[11.5px] font-semibold uppercase tracking-[0.04em] text-ink-2"
             :aria-label="`Группа «${g.name}»`"
             @click="selectedGroupId = g.groupId"
           >
@@ -307,11 +287,11 @@ watch(queryModalOpen, (open) => {
       clickable
       @click="selectedGroupId = g.id"
     />
-    <div v-if="!lines.length && !groupRows.length && !subs" class="px-4 py-6 text-center text-[13px] text-ink-3">Платежей пока нет</div>
+    <div v-if="!lines.length && !groupRows.length && !subs" class="px-4 py-6 text-center text-[13px] text-ink-2">Платежей пока нет</div>
     <button
       v-if="closed.length"
       type="button"
-      class="flex w-full cursor-pointer items-center justify-between gap-3 border-t border-line px-4 py-2.5 text-left text-[13px] text-ink-3 hover:bg-surface-2"
+      class="flex w-full cursor-pointer items-center justify-between gap-3 border-t border-line px-4 py-2.5 text-left text-[13px] text-ink-2 hover:bg-surface-2"
       @click="closedOpen = true"
     >
       <span>Закрытые · {{ closed.length }}</span>

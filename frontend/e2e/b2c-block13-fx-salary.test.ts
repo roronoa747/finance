@@ -77,8 +77,12 @@ const ctx = (p: Phone) => {
 }
 const ilyas = (p: Phone) => p.store.people.find((x) => x.id === 'a')!
 
-/** «Неделя» с открытым листом вопросов «! N» (Блок 15, Р-97). */
+/** «Неделя» с открытым листом вопросов «Разобрать» (Блок 15, Р-97; B2C-108). */
 const sheetOpen = () => [screenMixin({ questionsOpen: true })]
+/** «Месяц» с открытыми подсказками `Hint` (в SSR текст подсказки есть только у открытой) — «Из N дохода месяца» (Р-116). */
+const hintsOpen = () => [screenMixin({ at: { left: 0, top: 0, width: 300 } })]
+/** «Месяц» с открытым листом зарплаты (`SalarySheet`): дата, «хватает», «обменяно … из …» — переехали туда (Р-116). */
+const salarySheet = (person: string) => [screenMixin({ salaryFor: person })]
 
 describe('e2e / B2C Блок 13 — зарплата в валюте на двух телефонах', () => {
   const storage = new Map<string, string>()
@@ -130,10 +134,10 @@ describe('e2e / B2C Блок 13 — зарплата в валюте на дву
       expect(budgetAmounts({ ...p.store.householdDoc, book: c.book }, '2026-10').income).toBe(1_232_345)
       // Год: 1 500 × (488,23 − 622,23) = −201 000 ₸.
       expect(fxYearDelta(ilyas(p), '2026-10', c.book)).toMatchObject({ perUnit: -134, tenge: -201_000 })
-      // Блок 15 (Р-91): зарплаты — у круга «Месяца» (тенге месяца и доход семьи); виджета «Доход» на «Деньгах» нет.
-      const html = text(await screen(p.pinia, Month, '/month'))
+      // Блок 15 (Р-91): зарплаты — у круга «Месяца» (тенге месяца); доход семьи — в подсказке у «Остаётся» (Р-116).
+      const html = text(await screen(p.pinia, Month, '/month', undefined, hintsOpen()))
       expect(html).toContain('732 345 ₸')
-      expect(html).toContain('из 1 232 345')
+      expect(html).toContain('Из 1 232 345 ₸ дохода месяца')
     }
   })
 
@@ -143,11 +147,13 @@ describe('e2e / B2C Блок 13 — зарплата в валюте на дву
     const eur = A.store.addFxAccount('EUR')
     // Пришло 1 500 € сегодня: тенге записи — по курсу дня прихода 1 500 × 489 = 733 500 ₸.
     expect(A.store.markSalary('a', { accountId: eur })).toMatchObject({ foreign: 1_500, currency: 'EUR', amount: 733_500, accountId: eur })
-    // Блок 15 (Р-90, Р-97): «Обменял» — у строки своей зарплаты в «Месяце», на «Неделе» зарплаты нет.
+    // Блок 15 (Р-90, Р-97): «Обменял» — у строки своей зарплаты в «Месяце», на «Неделе» зарплаты нет;
+    // «обменяно … из …» — в листе зарплаты (Р-116), в строке его нет.
     expect(text(await screen(A.pinia, Week, '/week', undefined, sheetOpen()))).not.toContain('обменяно')
-    const html0 = text(await screen(A.pinia, Month, '/month'))
-    expect(html0).toContain('обменяно 0 € из 1 500 € · ≈ 732 345 ₸')
-    expect(html0).toContain('Обменял')
+    const row0 = text(await screen(A.pinia, Month, '/month'))
+    expect(row0).toContain('Обменял')
+    expect(row0).not.toContain('обменяно')
+    expect(text(await screen(A.pinia, Month, '/month', undefined, salarySheet('a')))).toContain('обменяно 0 € из 1 500 € · ≈ 732 345 ₸')
 
     // Обмены: 500 € по 515 = 257 500 ₸ и 300 € по 512,5 = 153 750 ₸ — на Kaspi Gold.
     setActivePinia(A.pinia)
@@ -165,7 +171,7 @@ describe('e2e / B2C Блок 13 — зарплата в валюте на дву
       expect(salaryTenge(ilyas(p), '2026-10', c)).toMatchObject({ tenge: 753_011, exchanged: 800, left: 700 })
       expect(budgetAmounts({ ...p.store.householdDoc, book: c.book }, '2026-10').income).toBe(1_253_011)
     }
-    expect(text(await screen(A.pinia, Month, '/month'))).toContain('обменяно 800 € из 1 500 € · ≈ 753 011 ₸')
+    expect(text(await screen(A.pinia, Month, '/month', undefined, salarySheet('a')))).toContain('обменяно 800 € из 1 500 € · ≈ 753 011 ₸')
     // Viewer: решений «Недели» нет (Р-50); строка года — внизу листа обменов «Месяца» (ворота B2C-91), «Обменял» нигде.
     const viewer =
       text(await screen(V.pinia, Month, '/month', undefined, [screenMixin({ list: true })])) + text(await screen(V.pinia, Week, '/week', undefined, sheetOpen()))
@@ -281,7 +287,7 @@ describe('e2e / B2C Блок 13 — зарплата в валюте на дву
       expect(salaryTenge(ilyas(p), '2026-10', c)).toMatchObject({ tenge: 739_626, exchanged: 300, left: 1_200 })
       expect(budgetAmounts({ ...p.store.householdDoc, book: c.book }, '2026-10').income).toBe(1_239_626)
     }
-    expect(text(await screen(A.pinia, Month, '/month'))).toContain('обменяно 300 € из 1 500 € · ≈ 739 626 ₸')
+    expect(text(await screen(A.pinia, Month, '/month', undefined, salarySheet('a')))).toContain('обменяно 300 € из 1 500 € · ≈ 739 626 ₸')
 
     // Отметку сняли (Н-6): обмен жив, строка без «из» и без «Обменял»; тенге месяца — оклад по-прежнему 1 500 €.
     setActivePinia(A.pinia)

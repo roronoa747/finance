@@ -610,7 +610,7 @@ function startDemoMode() {
         {{ errorMessage }}
       </div>
 
-      <p v-if="hasDemoDraft" class="mb-3 text-[12.5px] leading-relaxed text-ink-3">
+      <p v-if="hasDemoDraft" class="mb-3 text-[12.5px] leading-relaxed text-ink-2">
         {{
           mode === 'register'
             ? 'После создания спросим, взять ли то, что вы заполнили в демо.'
@@ -632,7 +632,7 @@ function startDemoMode() {
     </form>
 
     <!-- Sandbox / Demo Mode Button -->
-    <p v-if="editsWaitLogin" class="mt-6 pt-5 border-t border-line text-center text-[12px] text-ink-3">
+    <p v-if="editsWaitLogin" class="mt-6 pt-5 border-t border-line text-center text-[12px] text-ink-2">
       Неотправленные правки ждут на этом телефоне — войдите в свою семью, и они уйдут.
     </p>
     <div v-else class="mt-6 pt-5 border-t border-line text-center">
@@ -644,7 +644,7 @@ function startDemoMode() {
         <PhSparkle :size="16" />
         {{ hasDemoDraft ? 'Вернуться в демо' : 'Попробовать в демо-режиме без регистрации' }}
       </button>
-      <p class="mt-1 text-[11.5px] text-ink-3">
+      <p class="mt-1 text-[11.5px] text-ink-2">
         {{
           hasDemoDraft
             ? 'Черновик демо сохранён на этом телефоне.'

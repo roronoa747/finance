@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue'
 import { useRouter, useRoute, RouterLink } from 'vue-router'
-import { PhCamera, PhDotsThree, PhPause, PhPencilSimple, PhPlay, PhMinus, PhShareNetwork, PhStar } from '@phosphor-icons/vue'
+import { PhCamera, PhCaretRight, PhDotsThree, PhPause, PhPencilSimple, PhPlay, PhMinus, PhShareNetwork, PhStar } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, pct, plain, parseMoney, ratePct } from '@/lib/money'
@@ -124,7 +124,12 @@ const doneLine = computed(() => {
   if (!goal.value || term.value?.off) return ''
   if (remaining.value <= 0) return isFund.value ? 'Собрано' : 'Накоплено — мечта ваша'
   if (!Number.isFinite(months.value)) return goal.value.monthly > 0 ? 'Остатка месяца не хватает на взнос' : 'Задайте взнос — и появится дата'
-  return `по ${money(goal.value.monthly)} в месяц · осталось ${months.value} ${plural(months.value, 'взнос', 'взноса', 'взносов')}${term.value?.afterPlan && doneMonth.value ? ' · после плана' : ''}`
+  return `${money(goal.value.monthly)} в месяц`
+})
+// Сколько взносов осталось и «после плана» — в «Подробнее» (Р-116): под сроком одна строка.
+const leftLine = computed(() => {
+  if (!goal.value || term.value?.off || remaining.value <= 0 || !Number.isFinite(months.value)) return ''
+  return `Осталось ${months.value} ${plural(months.value, 'взнос', 'взноса', 'взносов')}${term.value?.afterPlan && doneMonth.value ? ' · после плана' : ''}`
 })
 // Во сколько обойдётся та же цель к сроку (хвост PV: горизонт — до месяца закрытия, у паузы — позже). Фонд — не покупка.
 const indexed = computed(() =>
@@ -277,7 +282,7 @@ function share() {
 </script>
 
 <template>
-  <div v-if="!goal" class="pt-6 text-center text-[14px] text-ink-3">
+  <div v-if="!goal" class="pt-6 text-center text-[14px] text-ink-2">
     Цель не найдена.
     <button class="text-brand font-medium cursor-pointer" @click="router.push('/')">
       К списку
@@ -287,8 +292,19 @@ function share() {
   <div v-else class="flex flex-col gap-3 pt-1 text-left">
     <!-- «Назад» и имя — в шапке оболочки; меню цели — справа в ней (макет month-plan.html «Сделать главной»):
          «Сделать главной» первым и цветом, «Изменить», пауза в плане месяца (Р-83, Р-84). -->
-    <HeaderActions v-if="canEdit">
+    <HeaderActions>
+      <!-- «Поделиться» — значком в шапке (Б17): в карточке остаётся одно действие — «Пополнить». -->
       <button
+        type="button"
+        aria-label="Поделиться"
+        class="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-surface-2 text-ink-2 hover:bg-surface-3 hover:text-ink cursor-pointer"
+        data-goal-share
+        @click="share"
+      >
+        <PhShareNetwork :size="19" />
+      </button>
+      <button
+        v-if="canEdit"
         type="button"
         aria-label="Меню цели"
         class="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-surface-2 text-ink-2 hover:bg-surface-3 hover:text-ink cursor-pointer"
@@ -351,39 +367,39 @@ function share() {
       @remove="removePhoto"
     />
 
-    <!-- Карточка g4: месяц, строка взноса и две кнопки; «главная мечта» — в подписи шапки, «Сделать главной» — в меню. -->
+    <!-- Карточка g4: срок цели (живёт здесь, Р-116), взнос в месяц и одна главная — «Пополнить» у срока. -->
     <Card>
       <h2 class="type-h2 text-ink">{{ doneTitle }}</h2>
       <p v-if="doneLine" class="mt-1.5 text-[15px] text-ink-2">{{ doneLine }}</p>
-
-      <div class="mt-3.5 flex flex-wrap gap-2">
-        <Button
-          v-if="canEdit"
-          @click="
-            depositOperation = 'deposit';
-            openDepositModal = true;
-          "
-        >
-          Пополнить
-        </Button>
-        <Button variant="secondary" @click="share"><PhShareNetwork :size="16" /> Поделиться</Button>
-      </div>
+      <Button
+        v-if="canEdit"
+        class="mt-3.5 w-full"
+        @click="
+          depositOperation = 'deposit';
+          openDepositModal = true;
+        "
+      >
+        Пополнить
+      </Button>
     </Card>
 
-    <Callout v-if="paused" title="На паузе ради плана">
-      Взнос {{ money(goal.monthly) }} идёт в досрочку самого дорогого долга — так семья отдаст банку
-      меньше. Цель возобновится сама, когда долги с процентами закроются, или когда вы отмените план.
-      <RouterLink to="/money/debts" class="font-medium text-brand">Открыть план</RouterLink>
-    </Callout>
-    <Callout v-else-if="planCushion" tone="ok" title="Подушка плана: взносы продолжаются">
-      Пока в ней меньше месяца обязательных списаний, шаг плана — пополнить её.
-      <RouterLink to="/money/debts" class="font-medium text-brand">Открыть план</RouterLink>
-    </Callout>
+    <!-- Пауза плана и подушка — строкой, ведущей к плану долгов; абзац объяснения — в подсказке (Р-116). -->
+    <RouterLink
+      v-if="paused || planCushion"
+      to="/money/debts"
+      class="press flex items-center gap-2.5 rounded-[16px] px-3.5 py-3 text-[14.5px] font-semibold"
+      :class="paused ? 'bg-warn-soft text-warn' : 'bg-ok-soft text-ok'"
+      data-goal-plan
+    >
+      <span class="min-w-0 flex-1">{{ paused ? 'На паузе — взнос идёт в долг' : 'Подушка плана — взносы идут' }}</span>
+      <PhCaretRight :size="16" class="shrink-0" />
+    </RouterLink>
 
     <!-- Взнос полем, «Снять», расчёты и график — за «Подробнее», по умолчанию свёрнуты (правило 12; в макете g4 их нет) -->
     <details>
       <summary :class="cn(buttonVariants({ variant: 'ghost' }), 'flex w-full list-none [&::-webkit-details-marker]:hidden')">Подробнее</summary>
       <div class="mt-2 flex flex-col gap-3">
+        <p v-if="leftLine" class="px-1 text-[14px] text-ink-2 num" data-goal-left>{{ leftLine }}</p>
         <!-- Взнос вводится числом, а не ползунком (исключение из Р-2, владелец 2026-09-25). Viewer — только сумма. -->
         <Card v-if="canEdit">
           <div class="-mb-3.5 flex justify-end">
@@ -463,7 +479,7 @@ function share() {
           <b class="block text-[14.5px] font-medium text-ink">
             {{ m.amount > 0 ? monthOf(m.date) : 'Снятие' }}
           </b>
-          <span class="block text-[12.5px] text-ink-3">
+          <span class="block text-[12.5px] text-ink-2">
             {{ atLabel(m.date) }} · {{ people.find((p) => p.id === m.by)?.name || 'Участник' }}
             <span v-if="m.note">· {{ m.note }}</span>
           </span>
@@ -477,7 +493,7 @@ function share() {
           {{ m.amount > 0 ? '+' : '−' }}{{ plain(Math.abs(m.amount)) }} ₸
         </span>
       </div>
-      <div v-if="!(goal.movements && goal.movements.length)" class="px-4 py-6 text-center text-[13px] text-ink-3">
+      <div v-if="!(goal.movements && goal.movements.length)" class="px-4 py-6 text-center text-[13px] text-ink-2">
         Взносов пока нет — история появится после первого пополнения
       </div>
     </Card>

@@ -93,11 +93,11 @@ function startOver() {
         'flex items-center gap-1.5 font-medium transition-colors cursor-pointer',
         compact ? 'grid size-[38px] place-items-center rounded-[12px] bg-surface-2' : 'text-[12px]',
         authStore.isDemo
-          ? 'text-ink-3 hover:text-ink-2'
+          ? 'text-ink-2 hover:text-ink-2'
           : isBad
             ? 'text-warn'
             : status === 'idle'
-              ? 'text-ink-3 hover:text-ink-2'
+              ? 'text-ink-2 hover:text-ink-2'
               : 'text-brand',
       ]"
       :title="authStore.isDemo ? 'Демо живёт только на этом телефоне' : lastError || label"
@@ -124,12 +124,12 @@ function startOver() {
             <b v-if="authStore.isDemo" class="font-semibold text-ink">демо</b>
             <b v-else :class="['font-semibold', isBad ? 'text-warn' : 'text-ink']">{{ label }}</b>
           </div>
-          <p v-if="authStore.isDemo" class="mt-2 text-[12.5px] text-ink-3">
+          <p v-if="authStore.isDemo" class="mt-2 text-[12.5px] text-ink-2">
             Демо живёт только на этом телефоне.
           </p>
           <div
             v-else-if="lastSyncedAt"
-            class="mt-2 flex items-center justify-between text-[12.5px] text-ink-3"
+            class="mt-2 flex items-center justify-between text-[12.5px] text-ink-2"
           >
             <span>Последний обмен</span>
             <span class="num">{{ new Date(lastSyncedAt).toLocaleString('ru-RU') }}</span>
@@ -143,7 +143,7 @@ function startOver() {
         </div>
 
         <div v-if="people.length" class="rounded-xl border border-line px-3.5 py-3">
-          <div class="mb-2 text-[12px] uppercase tracking-[0.07em] text-ink-3">В бюджете</div>
+          <div class="mb-2 text-[12px] uppercase tracking-[0.07em] text-ink-2">В бюджете</div>
           <div
             v-for="p in people"
             :key="p.id"
@@ -154,15 +154,15 @@ function startOver() {
               :style="{ background: memberColor(people, p.id) }"
             />
             {{ p.name }}
-            <span v-if="p.id === me" class="text-[12px] text-ink-3">это вы</span>
-            <span v-if="p.id === me && authStore.isViewer" class="text-[12px] text-ink-3">
+            <span v-if="p.id === me" class="text-[12px] text-ink-2">это вы</span>
+            <span v-if="p.id === me && authStore.isViewer" class="text-[12px] text-ink-2">
               только просмотр
             </span>
           </div>
         </div>
 
         <div v-if="authStore.household && !authStore.isDemo" class="rounded-xl border border-line p-3.5 text-[13px]">
-          <div class="text-ink-3">Семья</div>
+          <div class="text-ink-2">Семья</div>
           <div class="mt-0.5 font-semibold text-ink">{{ authStore.household.name }}</div>
         </div>
 
@@ -177,7 +177,7 @@ function startOver() {
           {{ syncing ? 'Синхронизируем…' : 'Синхронизировать' }}
         </Button>
 
-        <p class="text-[12px] leading-relaxed text-ink-3">
+        <p class="text-[12px] leading-relaxed text-ink-2">
           Записи сохраняются на устройстве сразу, даже без сети, и уезжают в облако при первой
           возможности. Если оба правили одно и то же офлайн — взносы и покупки сложатся, а не
           перезатрут друг друга.

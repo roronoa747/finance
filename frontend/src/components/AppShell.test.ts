@@ -60,9 +60,9 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     expect(await title(path)).toBe(expected)
   })
 
-  it('главный: подпись «Сентябрь · Ильяс и Дана», аватары обоих, шестерёнка → /settings, «Советника» нет', async () => {
+  it('главный: без подписи под заголовком (Р-116, тишина), аватары обоих, шестерёнка → /settings, «Советника» нет', async () => {
     const html = await renderScreen(AppShell, '/')
-    expect(html).toContain('Сентябрь · Ильяс и Дана')
+    expect(html).not.toContain('Сентябрь · Ильяс и Дана')
     expect(html).toContain('background:var(--pa)')
     expect(html).toContain('background:var(--pb)')
     // Аватары ведут на список желаний участника (B2C-18).
@@ -89,17 +89,17 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
   })
 
   it('шапка по макетам (возврат смоука): «Деньги» — аватары без шестерёнки; «План · Неделя» — без дат и аватаров (они на экране, Р-96); вложенные — «назад» без аватаров', async () => {
-    // Квадраты «Денег» — корни, как сама вкладка (пивот 3): подпись месяца, аватары, без «назад».
+    // Квадраты «Денег» — корни, как сама вкладка (пивот 3): аватары, без «назад»; подписи месяца нет (Р-116).
     for (const path of ['/money', '/money/debts', '/money/history']) {
       const money = await renderScreen(AppShell, path)
-      expect(money).toContain('Сентябрь · Ильяс и Дана')
+      expect(money).not.toContain('Сентябрь · Ильяс и Дана')
       expect(money).toContain('href="/people/a"')
       expect(money).not.toContain('aria-label="Настройки"')
       expect(money).not.toContain('aria-label="Назад"')
     }
     const week = await renderScreen(AppShell, '/week')
     expect(week).toContain('>План</h1>')
-    expect(week).toContain('Ильяс и Дана')
+    expect(week.slice(0, week.indexOf('<main'))).not.toContain('Ильяс и Дана')
     expect(week.slice(0, week.indexOf('<main'))).not.toContain('сентября')
     expect(week).not.toContain('href="/people/a"')
     expect(week).not.toContain('aria-label="Настройки"')
@@ -167,11 +167,11 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     }
   })
 
-  it('одиночка: подпись без «и», один аватар', async () => {
+  it('одиночка: без подписи, один аватар', async () => {
     useFinanceStore().householdDoc.people = [{ id: 'a', name: 'Ильяс', salary: 700_000, payday: 10, updatedAt: T0 }]
     const html = await renderScreen(AppShell, '/')
-    expect(html).toContain('Сентябрь · Ильяс')
-    expect(html).not.toContain('Сентябрь · Ильяс и')
+    expect(html).not.toContain('Сентябрь · Ильяс')
+    expect(html).toContain('background:var(--pa)')
     expect(html).not.toContain('background:var(--pb)')
   })
 })

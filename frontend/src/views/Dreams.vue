@@ -5,14 +5,12 @@ import { PhCamera } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
-import { useFxStore } from '@/stores/fx'
 import { money, pct } from '@/lib/money'
-import { monthBy, monthKey, monthTitle } from '@/lib/dates'
-import { freeByFact, goalTerm, planForecast, untilPayday, wishQueue } from '@/lib/finance'
+import { monthKey } from '@/lib/dates'
+import { goalTerm, planForecast, wishQueue } from '@/lib/finance'
 import type { Goal } from '@/types/finance'
 import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
-import { plural } from '@/lib/utils'
 import { GOAL_TEMPLATES, type GoalTemplate } from '@/lib/goalTemplates'
 import { attachFile, attachTemplate, retryTemplatePhotos } from '@/lib/photos/goalPhoto'
 import { usePhoto, usePhotos } from '@/lib/photos/usePhoto'
@@ -21,17 +19,16 @@ import WishSheet from '@/components/goals/WishSheet.vue'
 import Card from '@/components/kit/Card.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Chip from '@/components/kit/Chip.vue'
-import CountUp from '@/components/kit/CountUp.vue'
 import DreamCenter from '@/components/kit/DreamCenter.vue'
 import ProgressBar from '@/components/kit/ProgressBar.vue'
 import SortableList from '@/components/kit/SortableList.vue'
 import ThumbRow from '@/components/kit/ThumbRow.vue'
 
 /**
- * «Мечты» (пивот 3, Р-42; макет dreams-week.html «А · Строки»): мечта по центру, одна строка
- * «Свободно N ₸ · до зарплаты N дней», списки «Цели» и «Желания» строками. Недельного здесь нет —
+ * «Мечты» (пивот 3, Р-42; макет dreams-week.html «А · Строки»; тишина Б17 — Р-116): мечта по центру,
+ * списки «Цели» и «Желания» строками («Свободно · до зарплаты» — в «Месяце» и листе зарплаты). Недельного нет —
  * картина недели и решения живут на «Неделе» (Р-43). Ничего не считается здесь — `finance.ts`
- * (`freeByFact`, `untilPayday`, сроки целей — `monthPlan`). Фото — B2C-17, создание мечты — B2C-18.
+ * (пауза целей — `monthPlan`; сроки — на экране цели). Фото — B2C-17, создание мечты — B2C-18.
  * Цели — в порядке очереди денег (Р-84, Блок 14): герой — первая цель, остальные переставляются ⋮⋮ среди
  * целей; фонды и «закрыть кредит» — только в плане месяца («Деньги»). Желания — в своём порядке.
  */
@@ -44,10 +41,6 @@ const NBSP = ' '
 const key = computed(() => monthKey())
 const canEdit = computed(() => !authStore.isViewer)
 const people = computed(() => financeStore.people.filter((p) => !p.deletedAt))
-
-// Состояние для расчётов: кредиты — производные (остатки из отметок), как везде.
-const fx = useFxStore()
-const state = computed(() => ({ ...financeStore.householdDoc, credits: financeStore.credits, book: fx.book }))
 
 /* ---------- мечта по центру и цели ---------- */
 const main = computed(() => financeStore.heroGoal)
@@ -70,22 +63,14 @@ function termOf(g: Goal) {
   const item = plan.value.queue.find((x) => x.goalId === g.id)
   return goalTerm(item, g, key.value, item?.paused === 'plan' ? forecast.value : undefined)
 }
-/** Подпись срока цели в строке: «на паузе» или «к <месяц>»; срока нет — пусто. */
+/** Подпись цели в строке — только «на паузе»; срок цели — на её экране (Р-116). */
 function whenOf(g: Goal): string {
-  const t = termOf(g)
-  if (t.off) return 'на паузе'
-  return t.doneMonth ? monthBy(t.doneMonth, key.value) : ''
+  return termOf(g).off ? 'на паузе' : ''
 }
 
 const heroPercent = computed(() => (main.value ? pct(main.value.have, main.value.need) : 0))
-// Месяц, когда мечта будет вашей, — тот же срок, что у строки (`termOf`).
-const heroMonth = computed(() => {
-  const g = main.value
-  if (!g) return null
-  const t = termOf(g)
-  if (t.off) return 'на паузе'
-  return t.doneMonth ? monthTitle(t.doneMonth).toLowerCase() : null
-})
+// Под героем — название; месяц, когда мечта будет вашей, — на экране цели (Р-116). На паузе — так и сказано.
+const heroMonth = computed(() => (main.value && termOf(main.value).off ? 'на паузе' : null))
 
 /* ---------- фото (B2C-17) ---------- */
 const heroSrc = usePhoto(() => main.value?.photoId)
@@ -107,32 +92,6 @@ async function onFile(file: File) {
   photoNote.value = ok ? null : 'Фото не загрузилось — попробуйте при сети.'
 }
 
-/* ---------- «Свободно · до зарплаты» (Р-42, Р-47: одно число — по факту выписок) ---------- */
-const free = computed(() =>
-  freeByFact(state.value, financeStore.householdDoc.spendTotals ?? [], financeStore.householdDoc.spendCategories ?? [], key.value, ops.uploads),
-)
-// Выписки за этот месяц нет (в начале месяца — только прошлые) — `freeByFact` отдаёт остаток по плану: это
-// число «Дохода», под словом «Свободно» его не показываем (Р-47).
-const hasUploads = computed(() => free.value.byFact)
-const payday = computed(() =>
-  untilPayday({
-    people: financeStore.people,
-    obligations: financeStore.obligations,
-    credits: financeStore.credits,
-    accounts: financeStore.householdAccounts,
-    payments: financeStore.payments,
-    fxExchanges: financeStore.fxExchanges,
-    book: fx.book,
-  }),
-)
-// До выписки за месяц числа «Свободно» нет — строка держит только «До зарплаты N дней».
-const paydayText = computed(() => {
-  const p = payday.value
-  if (!p) return ''
-  const text = p.inDays === 0 ? 'сегодня зарплата' : `до зарплаты ${p.inDays}${NBSP}${plural(p.inDays, 'день', 'дня', 'дней')}`
-  return hasUploads.value ? `${NBSP}· ${text}` : text.charAt(0).toUpperCase() + text.slice(1)
-})
-
 /* ---------- желания ---------- */
 const openWishes = computed(() => wishQueue({ wishlist: financeStore.wishlist, wishOrder: financeStore.wishOrder }).filter((w) => !w.bought))
 const firstWishes = computed(() => openWishes.value.slice(0, 3))
@@ -142,9 +101,6 @@ const editWishId = ref<string | null>(null)
 function wishOwner(w: { list?: string; by: string }) {
   const list = w.list ?? w.by
   return list === 'all' ? 'общие' : (people.value.find((p) => p.id === list)?.name ?? '')
-}
-function wishMeta(w: { price: number; list?: string; by: string }) {
-  return [w.price > 0 ? money(w.price) : '', wishOwner(w)].filter(Boolean).join(`${NBSP}· `)
 }
 // Участник открывает лист желания здесь; viewer листа правки не видит — список желаний.
 function openWish(id: string) {
@@ -191,12 +147,6 @@ onMounted(refresh)
       @file="onFile"
     />
 
-    <!-- Одна строка: свободно по факту выписок и дни до зарплаты -->
-    <p v-if="hasUploads || paydayText" class="fx-in text-center text-[13px] text-ink-2">
-      <!-- prettier-ignore -->
-      <template v-if="hasUploads">Свободно <b class="font-semibold num" :class="free.amount < 0 ? 'text-destructive' : 'text-ok'"><CountUp :value="free.amount" :format="money" /></b></template>{{ paydayText }}
-    </p>
-
     <!-- Цели: остальные мечты строками -->
     <template v-if="main">
       <div class="flex items-baseline justify-between px-1 pt-1.5">
@@ -234,16 +184,20 @@ onMounted(refresh)
       <RouterLink to="/wishes" class="text-[14px] font-semibold text-brand">{{ openWishes.length ? `Все ${openWishes.length}` : 'Все' }}</RouterLink>
     </div>
     <Card v-if="firstWishes.length" flush class="px-3.5 py-1">
-      <ThumbRow v-for="(w, i) in firstWishes" :key="w.id" :title="w.name" :src="w.photoId ? wishSrc[w.photoId] : null" :index="i + 1" fit>
-        <span v-if="wishMeta(w)" class="truncate type-meta">{{ wishMeta(w) }}</span>
-        <template #end>
-          <button
-            type="button"
-            class="press shrink-0 rounded-pill bg-brand-soft px-[11px] py-1.5 text-[13px] font-semibold text-brand cursor-pointer"
-            @click="openWish(w.id)"
-          >
-            Открыть
-          </button>
+      <!-- Желание — нажатием на всю строку (без «Открыть»), цена — справа, чьё — подписью (Б17). -->
+      <ThumbRow
+        v-for="(w, i) in firstWishes"
+        :key="w.id"
+        :title="w.name"
+        :src="w.photoId ? wishSrc[w.photoId] : null"
+        :index="i + 1"
+        fit
+        clickable
+        @click="openWish(w.id)"
+      >
+        <span v-if="wishOwner(w)" class="truncate type-meta">{{ wishOwner(w) }}</span>
+        <template v-if="w.price > 0" #end>
+          <span class="font-num text-[15px] font-bold num whitespace-nowrap text-ink">{{ money(w.price) }}</span>
         </template>
       </ThumbRow>
     </Card>

@@ -243,10 +243,10 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
             <img v-if="g.photoId && giftSrc[g.photoId]" :src="giftSrc[g.photoId]!" alt="" class="size-[38px] shrink-0 rounded-[12px] object-cover" />
             <IconBox v-else><PhGift :size="18" /></IconBox>
             <div class="min-w-0 flex-1">
-              <div class="truncate font-medium" :class="g.bought ? 'text-ink-3 line-through' : 'text-ink'">{{ g.name }}</div>
+              <div class="truncate font-medium" :class="g.bought ? 'text-ink-2 line-through' : 'text-ink'">{{ g.name }}</div>
               <div class="type-meta">{{ g.bought ? `куплено ${addedLabel(g.boughtOn)}` : 'сюрприз' }}</div>
             </div>
-            <span class="shrink-0 text-[14px] font-semibold num" :class="g.bought ? 'text-ink-3' : 'text-ink'">{{ money(g.price) }}</span>
+            <span class="shrink-0 text-[14px] font-semibold num" :class="g.bought ? 'text-ink-2' : 'text-ink'">{{ money(g.price) }}</span>
             <button
               type="button"
               :aria-label="g.bought ? 'Вернуть сюрприз в список' : 'Сюрприз куплен'"

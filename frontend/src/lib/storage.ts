@@ -78,11 +78,5 @@ export const readPlanView = (): PlanView => (readStorage<unknown>(PLAN_VIEW_KEY,
 
 export const writePlanView = (view: PlanView) => writeStorage(PLAN_VIEW_KEY, view)
 
-/** Вид «Недели» — разделы списком или плитками (Р-100): выбор на устройстве; выход его не стирает. */
+/** Ключ прежнего вида «Недели» (список / плитки, Р-100). Плиток нет с Блока 17 — значение на устройстве ни на что не влияет. */
 export const WEEK_VIEW_KEY = 'ff_week_view'
-export type WeekView = 'list' | 'tiles'
-
-/** Вид «Недели»; пусто, мусор или хранилище недоступно — список. */
-export const readWeekView = (): WeekView => (readStorage<unknown>(WEEK_VIEW_KEY, 'list') === 'tiles' ? 'tiles' : 'list')
-
-export const writeWeekView = (view: WeekView) => writeStorage(WEEK_VIEW_KEY, view)

@@ -5,7 +5,6 @@ import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
 import { apiClient } from '@/api/client'
 import { money, pct } from '@/lib/money'
-import { untilPayday } from '@/lib/finance'
 import { HUES } from '@/lib/palette'
 import { OPERATIONS_STORAGE_KEYS, writeStorage } from '@/lib/storage'
 import type { SyncDoc, WishItem } from '@/types/finance'
@@ -25,8 +24,8 @@ vi.mock('@/lib/photos/goalPhoto', async (orig) => ({
 }))
 
 /**
- * «Мечты» (B2C-48, Р-42; SSR): мечта по центру, строка «Свободно · до зарплаты», «Цели» и
- * «Желания» строками; недельного нет. Семья — `planFamilyDoc` (Ильяс a / Аруна b, аренда 220 000,
+ * «Мечты» (B2C-48, Р-42; SSR): мечта по центру, «Цели» и «Желания» строками; недельного нет. Строки
+ * «Свободно · до зарплаты» нет (Р-116) — она в подсказке у «Остаётся» в «Месяце» (`MonthPlan.dom.test.ts`, B2C-108). Семья — `planFamilyDoc` (Ильяс a / Аруна b, аренда 220 000,
  * три долга, три цели, доход 1 200 000). «Сейчас» — четверг 17 сентября 2026 (неделя 14–20 сентября).
  */
 const NOW = '2026-09-17T07:00:00Z'
@@ -83,12 +82,13 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
   }
   const withMain = (): Partial<SyncDoc> => ({ goals: planFamilyDoc().goals.map((g) => (g.id === 'car' ? { ...g, main: true } : g)) })
 
-  it('мечта по центру: процент и «название · месяц»; «Цели» — все мечты, кроме главной, с процентом; «+ Новая» — ссылка', async () => {
+  it('мечта по центру: процент и название (срок — на экране цели, Р-116); «Цели» — все мечты, кроме главной, с процентом; «+ Новая» — ссылка', async () => {
     await family('member', 'a', withMain())
     const html = await renderScreen(Dreams, '/')
-    // Машина: 200 000 из 3 000 000 → 7 %; по 60 000 в месяц — 47 взносов → июль 2030.
+    // Машина: 200 000 из 3 000 000 → 7 %; месяца «· июль 2030» под мечтой нет — он на экране цели.
     expect(html).toContain(`7${NBSP}%`)
-    expect(html).toContain(`Машина${NBSP}· июль${NBSP}2030`)
+    expect(html).toContain('text-ink-2">Машина</span>')
+    expect(html).not.toContain(`июль${NBSP}2030`)
     expect(html).toContain('href="/goals/new"')
     expect(html).toContain('+ Новая')
     expect(html).toContain('Добавить фото')
@@ -98,58 +98,51 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
       expect(html).toContain(`${pct(g.have, g.need)}${NBSP}%`)
     }
     // Главная — не строкой списка: «Машина» только в подписи мечты.
-    expect(html).not.toContain(">Машина</span>")
-    // Ни одной брендовой кнопки: «+ Новая» и «Все N» — ссылки, «Открыть» — тихая.
+    expect(html).not.toContain('font-semibold text-ink">Машина</span>')
+    // У строк целей срока «к <месяц>» нет (Р-116).
+    expect(html).not.toMatch(/>к [а-я]+/)
+    // Ни одной брендовой кнопки: «+ Новая» и «Все N» — ссылки, желания — строки целиком.
     expect(brandButtons(html)).toEqual([])
     for (const w of WEEKLY) expect(html).not.toContain(w)
   })
 
-  it('строка «Свободно» = freeByFact().amount (посчитано руками) · «до зарплаты N дней» = untilPayday().inDays', async () => {
+  it('строки «Свободно · до зарплаты» на «Мечтах» нет и при выписке месяца (числа — в подсказке «Месяца», B2C-108)', async () => {
     const totals = [
       total('a', 'week', '2026-W38', 'sc_food', 62_000),
       total('a', 'month', '2026-09', 'sc_food', 184_000),
       total('a', 'month', '2026-09', 'sc_credit', 58_000),
       total('a', 'month', '2026-09', '_unknown', 40_000),
     ]
-    const store = await family('member', 'a', { ...withMain(), spendTotals: totals }, [upload('a', 'u1')])
+    await family('member', 'a', { ...withMain(), spendTotals: totals }, [upload('a', 'u1')])
     const html = await renderScreen(Dreams, '/')
-    // Свободно = доход 1 200 000 − обязательства и кредиты сентября 323 000 (аренда 220 000, кредит
-    // 58 000, кредитка 25 000, рассрочка 20 000) − взносы в цели 130 000 − траты по выписке 224 000
-    // (продукты 184 000 + не разобрано 40 000; кредит 58 000 уже в плане — не вычитается) = 523 000.
-    const days = untilPayday({ people: store.people, obligations: store.obligations, credits: store.credits, accounts: store.householdAccounts, payments: store.payments })!.inDays
-    expect(days).toBe(3) // Аруна, 20-е
-    expect(html).toMatch(new RegExp(`Свободно <b[^>]*text-ok[^>]*><span>${money(523_000)}</span></b>${NBSP}· до зарплаты 3${NBSP}дня`))
+    expect(html).not.toContain('Свободно')
+    expect(html).not.toContain(money(523_000))
+    expect(html).not.toMatch(/[Дд]о зарплаты/)
     for (const w of WEEKLY) expect(html).not.toContain(w)
   })
 
-  it('до первой выписки — без числа «Свободно», одна строка «До зарплаты N дней»', async () => {
+  it('до первой выписки — ни «Свободно», ни «До зарплаты» на «Мечтах» нет', async () => {
     await family('member', 'a', withMain())
     const html = await renderScreen(Dreams, '/')
     expect(html).not.toContain('Свободно')
-    expect(html).toContain(`До зарплаты 3${NBSP}дня`)
+    expect(html).not.toContain('До зарплаты')
   })
 
-  it('выписки только за прошлый месяц — числа «Свободно» нет: freeByFact без факта отдаёт «остаток по плану» (Р-47, критик Б10)', async () => {
-    const august = { ...upload('a', 'u0'), period_from: '2026-08-01', period_to: '2026-08-31' }
-    await family('member', 'a', withMain(), [august])
-    const html = await renderScreen(Dreams, '/')
-    expect(html).not.toContain('Свободно')
-    expect(html).toContain(`До зарплаты 3${NBSP}дня`)
-  })
-
-  it('«Желания» — первые три некупленных: фото-плашка, «сумма · чьё», тихая «Открыть»; «Все N» = некупленных → /wishes', async () => {
+  it('«Желания» — первые три некупленных: фото-плашка, вся строка — кнопка, цена справа, подпись — чьё; «Все N» = некупленных → /wishes', async () => {
     await family('member', 'a', { ...withMain(), wishlist: WISHES })
     const html = await renderScreen(Dreams, '/')
     expect(html).toContain('>Желания<')
     expect(html).toMatch(/href="\/wishes"[^>]*>Все 4</)
     expect(html).toContain('Наушники')
-    expect(html).toContain(`${money(89_000)}${NBSP}· Ильяс`)
-    expect(html).toContain(`${money(145_000)}${NBSP}· общие`)
-    expect(html).toContain(`${money(60_000)}${NBSP}· Аруна`)
+    // Строка — кнопка целиком: название, подпись «чьё», цена справа (Р-116; кнопки «Открыть» нет).
+    const row = (name: string, whose: string, price: number) =>
+      new RegExp(`<button[^>]*>(?:(?!</button>)[\\s\\S])*>${name}</span>(?:(?!</button>)[\\s\\S])*>${whose}</span>(?:(?!</button>)[\\s\\S])*>${money(price)}</span>`)
+    expect(html).toMatch(row('Наушники', 'Ильяс', 89_000))
+    expect(html).toMatch(row('Кофемашина', 'общие', 145_000))
+    expect(html).toMatch(row('Кроссовки', 'Аруна', 60_000))
     expect(html).not.toContain('Палатка')
     expect(html).not.toContain('Куплено давно')
-    expect(html.match(/>\s*Открыть\s*</g)?.length).toBe(3)
-    expect(html).toMatch(/<button[^>]*bg-brand-soft[^>]*>\s*Открыть\s*</)
+    expect(html).not.toMatch(/>\s*Открыть\s*</)
   })
 
   it('без главной мечты — «На что копим?» с одной брендовой «Выбрать мечту», путь к «Желаниям» есть; у viewer — без кнопки', async () => {
@@ -177,7 +170,7 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
     expect(html.match(/\+ Желание/g)?.length).toBe(1)
   })
 
-  it('viewer — мечта, строка и списки; без «+ Новая», «Добавить фото», «+ Желание»; «Открыть» есть (ведёт в список)', async () => {
+  it('viewer — мечта и списки; без «+ Новая», «Добавить фото», «+ Желание»; желания — строками-кнопками (ведут в список)', async () => {
     await family('viewer', 'b', { ...withMain(), wishlist: WISHES })
     const html = await renderScreen(Dreams, '/')
     expect(html).toContain(`7${NBSP}%`)
@@ -185,8 +178,9 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
     expect(html).not.toContain('+ Новая')
     expect(html).not.toContain('Добавить фото')
     expect(html).not.toContain('+ Желание')
-    expect(html).toContain('Открыть')
-    expect(html).toContain(`До зарплаты 3${NBSP}дня`)
+    expect(html).toMatch(/<button[^>]*>(?:(?!<\/button>)[\s\S])*>Наушники<\/span>/)
+    expect(html).not.toContain('Открыть')
+    expect(html).not.toContain('До зарплаты')
     for (const w of WEEKLY) expect(html).not.toContain(w)
   })
 

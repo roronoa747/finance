@@ -103,7 +103,7 @@ function createObligation() {
     </Field>
     <NbRateLine :amount="parseMoney(obAmount)" :currency="obCurrency" :nb="nb" />
 
-    <p v-if="obEvery === 'year' && obTenge > 0" class="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-3">
+    <p v-if="obEvery === 'year' && obTenge > 0" class="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-2">
       В плане месяца это займёт {{ money(yearShare(obTenge)) }} — годовая сумма
       делится на двенадцать, чтобы не завышать одиннадцать месяцев и не удивляться на двенадцатый.
     </p>

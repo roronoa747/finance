@@ -54,9 +54,9 @@ const percentText = (n: number) => `${n}${NBSP}%`
         <img v-if="src" :src="src" alt="" class="size-full object-cover" />
         <PhHeart v-else :size="44" class="absolute inset-0 m-auto text-ink-3" aria-hidden="true" />
         <!-- Автор — на самом фото, как в герое (Р-28: требование Unsplash). -->
-        <span v-if="author" class="absolute right-3 top-2 text-[11px]" :class="src ? 'text-on-photo opacity-75' : 'text-ink-3'">Фото: {{ author }}</span>
+        <span v-if="author" class="absolute right-3 top-2 text-[11px]" :class="src ? 'text-on-photo opacity-75' : 'text-ink-2'">Фото: {{ author }}</span>
       </span>
-      <span class="type-percent num text-[40px] leading-none text-ink"><CountUp :value="pct" :format="percentText" /></span>
+      <span class="type-percent num leading-none text-ink"><CountUp :value="pct" :format="percentText" /></span>
       <span class="text-[15px] text-ink-2">{{ line }}</span>
     </button>
     <div v-if="$slots.actions" class="flex flex-wrap justify-center gap-2">

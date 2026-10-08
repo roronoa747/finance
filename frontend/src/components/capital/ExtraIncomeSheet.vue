@@ -89,7 +89,7 @@ function applyExtraIncome() {
       </Select>
     </Field>
 
-    <p v-if="!goals.length && !payAccounts.length" class="mb-3 text-[12.5px] text-ink-3">
+    <p v-if="!goals.length && !payAccounts.length" class="mb-3 text-[12.5px] text-ink-2">
       Сначала заведите цель или счёт — иначе деньги некуда положить.
     </p>
 

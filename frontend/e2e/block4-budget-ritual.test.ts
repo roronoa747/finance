@@ -120,10 +120,17 @@ describe('e2e / block-4 — Сквозной сценарий бюджета («
     expect(amounts.d5).toBe(630_000) // 1 200 000 - (250k + 70k + 50k + 200k) = 630 000
 
     // Бывший режим «План» — «Месяц» (Блок 15, Р-91): обе зарплаты у круга; долей и «нагрузки» на «Деньгах» нет.
+    // Доход месяца — в подсказке у «Остаётся» (B2C-108, Р-116): «?» нажат — текст подсказки в разметке.
     const appPlan = createSSRApp(Month)
     appPlan.use(router)
+    appPlan.mixin({
+      created() {
+        const s = this.$.setupState as Record<string, unknown>
+        if ('at' in s && this.$.props.label === 'Остаётся') s.at = { left: 0, top: 0, width: 280 }
+      },
+    })
     const htmlPlan = (await renderToString(appPlan)).replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
-    expect(htmlPlan).toContain(`из ${plain(1_200_000)}`)
+    expect(htmlPlan).toContain(`Из ${money(1_200_000)} дохода месяца`)
     expect(htmlPlan).toContain('Ильяс')
     expect(htmlPlan).toContain('Динара')
 

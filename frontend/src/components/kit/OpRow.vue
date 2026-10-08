@@ -41,12 +41,12 @@ const emit = defineEmits<{ (e: 'click'): void }>()
     </span>
     <span class="min-w-0 flex-1">
       <span class="block truncate font-medium text-ink">{{ merchant }}</span>
-      <span class="flex items-center gap-1.5 text-[12px] text-ink-3">
+      <span class="flex items-center gap-1.5 text-[12px] text-ink-2">
         <i class="size-[7px] shrink-0 rounded-full" :style="{ background: category?.color ?? 'var(--s-unknown)' }" aria-hidden="true" />
         <span class="truncate">{{ category?.name ?? 'Не разобрано' }}<template v-if="date"> · {{ date }}</template></span>
       </span>
     </span>
-    <span v-if="muted" class="money whitespace-nowrap text-ink-3">{{ money(Math.abs(amount)) }}</span>
+    <span v-if="muted" class="money whitespace-nowrap text-ink-2">{{ money(Math.abs(amount)) }}</span>
     <span v-else class="money whitespace-nowrap" :class="amount > 0 ? 'text-ok' : 'text-ink'">{{ amount > 0 ? '+' : '−' }}{{ money(Math.abs(amount)) }}</span>
   </component>
 </template>

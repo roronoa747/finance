@@ -199,8 +199,9 @@ describe('«Деньги» → Капитал: счета, кредиты, до�
 
     const html = await renderToString(app)
 
-    // Пивот 3 (Р-33, B2C-42): капитал — подписью квадрата «Капитал» (владелец 2026-10-02), счета и платежи — двумя списками.
-    expect(html).toMatch(new RegExp(`>Капитал</b>(?:<!--[^>]*-->|\\s)*<small[^>]*>${plain(netWorth(store.accounts, store.credits, store.goals))}</small>`))
+    // Пивот 3 (Р-33, B2C-42): капитал — одной суммой в карточке (`data-worth`; чип «Капитал» — без числа, Р-116), счета и платежи — двумя списками.
+    expect(html).toMatch(new RegExp(`data-worth[^>]*>${money(netWorth(store.accounts, store.credits, store.goals))}</span>`))
+    expect(html).not.toMatch(/>Капитал<\/b>(?:<!--[^>]*-->|\s)*<small/)
     expect(html).not.toContain('чистых')
     expect(html).toContain('>Счета<')
     expect(html).toContain('Основной Kaspi')

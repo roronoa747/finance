@@ -15,8 +15,12 @@ import {
   liquidCash,
   nextChange,
   untilPayday,
+  amountTotal,
+  capitalGoals,
+  liveAccounts,
+  openDebt,
 } from '@/lib/finance'
-import { money, moneyIn, plain } from '@/lib/money'
+import { money, moneyIn, plain, rateField } from '@/lib/money'
 import { monthIn } from '@/lib/dates'
 import type { Obligation, Payment, SyncDoc } from '@/types/finance'
 import type { Operation } from '@/lib/statements/types'
@@ -287,22 +291,30 @@ describe('views/Money.vue — финансовые показатели (рас�
       vi.restoreAllMocks()
     })
 
-    it('Капитал: чистых крупно, «Счета», «Кредиты» (остаток, ставка, срок) и «Платежи» с суммой месяца; месячного нет — ни плана, ни «Подробнее», ни «До зарплаты», ни «Дохода» и «Трат», ни «Оплатил»; брендовой кнопки нет', async () => {
+    it('Капитал: чистых крупно (итоги — в подсказке), «Счета», «Кредиты» (остаток; ставка и срок — в листе кредита) и «Платежи»; месячного нет — ни плана, ни «Подробнее», ни «До зарплаты», ни «Дохода» и «Трат», ни «Оплатил»; брендовой кнопки нет', async () => {
       const store = await family()
       store.markPaid('credit', 'loan', 'a', { period: '2026-09', accountId: 'card' })
       const worth = netWorth(store.accounts, store.credits, store.goals)
       const raw = await renderScreen(Money, '/money')
       const html = text(raw)
-      expect(html).toContain(`Капитал ${money(worth)}`)
-      // «Кредиты» — остаток, ставка и срок (макет «Деньги · Капитал»): 969 500 + 300 000 + 240 000 = 1 509 500.
+      // Слова «Капитал» над суммой нет — оно на чипе; сумма одна, рядом — подсказка (Р-116).
+      expect(raw).toMatch(new RegExp(`data-worth[^>]*>${money(worth)}<`))
+      expect(raw).toContain('aria-label="Что такое капитал"')
+      // «Кредиты» — без итога у заголовка (он — «долги» в подсказке у капитала): 969 500 + 300 000 + 240 000 = 1 509 500.
       const credits = text(raw.slice(raw.indexOf('data-credits'), raw.indexOf('data-payments')))
-      expect(html).toContain(`Кредиты ${money(1_509_500)}`)
-      expect(credits).toMatch(/Кредит 33 % · до [а-я]+ 20\d\d/)
-      expect(credits).toContain(money(969_500))
-      // Рассрочка 0 %: 240 000 / 20 000 = 12 платежей — до сентября 2027.
-      expect(credits).toContain(`Рассрочка 0 % · до сентября 2027 ${money(240_000)}`)
-      // «Платежи» — сумма месяца: 220 000 + 58 000 + 25 000 + 20 000.
-      expect(html).toContain(`Платежи ${money(323_000)} / мес`)
+      expect(openDebt(store.credits)).toBe(1_509_500)
+      expect(html).not.toContain(money(1_509_500))
+      // Строка кредита — вид и остаток; ставки и срока нет (Р-116) — они в листе кредита.
+      expect(credits).toContain(`Кредит кредит ${money(969_500)}`)
+      expect(credits).not.toMatch(/33 %|до [а-я]+ 20\d\d/)
+      expect(credits).toContain(`Рассрочка рассрочка ${money(240_000)}`)
+      const loanSheet = await renderScreen(Money, '/money?credit=loan')
+      expect(loanSheet).toContain(`value="${rateField(store.credits.find((c) => c.id === 'loan')!.annualRate)}"`)
+      // Рассрочка 0 %: 240 000 / 20 000 = 12 платежей — в листе.
+      expect(text(await renderScreen(Money, '/money?credit=inst'))).toMatch(/Платежей осталось\s*12/)
+      // «Платежи» — без суммы месяца у заголовка (220 000 + 58 000 + 25 000 + 20 000 — раздел «Платежи» в «Месяце»).
+      expect(html).not.toContain('/ мес')
+      expect(store.monthPlanOf('2026-09').duesTotal).toBe(323_000)
       // Месяц живёт в «План · Месяц»: здесь его нет совсем.
       for (const gone of ['До зарплаты', 'Подробнее', 'Доход', 'обязательное', 'нагрузка', 'остаток по плану', 'Остаётся', 'Отложим', 'Осталось в', 'оплачено', 'Оплатил', 'Пришла зарплата', 'Сентябрь', 'Цели и фонды', 'из 150 000']) {
         expect(html, gone).not.toContain(gone)
@@ -315,34 +327,34 @@ describe('views/Money.vue — финансовые показатели (рас�
       for (const path of ['/money', '/money/debts', '/money/history']) expect(brand(shown(await renderScreen(Money, path))), path).toEqual([])
     })
 
-    it('квадраты: Капитал — чистых коротко, Долги — остаток или «долгов нет», История — «отметки» без операций; активный — по адресу', async () => {
+    it('чипы: Капитал · Долги · История — без чисел и подписей (Р-116; числа — на своих экранах); активный — по адресу', async () => {
       const store = await family()
       const worth = netWorth(store.accounts, store.credits, store.goals)
       let html = await renderScreen(Money, '/money')
-      expect(text(squares(html))).toContain(`Капитал ${plain(worth)}`)
-      expect(text(squares(html))).toContain(`Долги ${plain(1_540_000)}`)
-      expect(text(squares(html))).toContain('История отметки')
-      expect(text(squares(html))).not.toContain('План')
+      expect(text(squares(html))).toMatch(/> Капитал Долги История\s*$/)
+      expect(squares(html)).not.toContain(plain(worth))
       expect(squares(html).match(/aria-current="page"/g)).toHaveLength(1)
-      expect(squares(html)).toMatch(/aria-current="page"[^>]*>\s*<b[^>]*>Капитал/)
-      // Подсказка «чистых» — у квадрата «Капитал», рядом с кнопкой, а не внутри (кнопка в кнопке недопустима).
-      const capital = squares(html).slice(0, squares(html).indexOf('>Долги</b>'))
-      expect(capital).toMatch(/<\/button>\s*<span class="absolute right-2 top-2">\s*<span[^>]*>\s*<button[^>]*aria-label="Что такое капитал"/)
-      expect(squares(html).match(/aria-label="Что такое капитал"/g)).toHaveLength(1)
+      expect(squares(html)).toMatch(/aria-current="page"[^>]*>\s*Капитал/)
+      // Подсказка «Что такое капитал» — не на чипе, а у суммы капитала (одна на экране).
+      expect(squares(html)).not.toContain('Что такое капитал')
+      expect(html.match(/aria-label="Что такое капитал"/g)).toHaveLength(1)
       html = await renderScreen(Money, '/money/debts')
-      expect(squares(html)).toMatch(/aria-current="page"[^>]*>\s*<b[^>]*>Долги/)
+      expect(squares(html)).toMatch(/aria-current="page"[^>]*>\s*Долги/)
+      // Остаток долгов — на экране «Долгов», не на чипе.
+      expect(html).toMatch(new RegExp(`data-debts-total[^>]*>${money(1_540_000)}<`))
       // Списки — только у Капитала.
       expect(text(html)).not.toContain('Счета')
       store.householdDoc.credits = []
       html = await renderScreen(Money, '/money/history')
-      expect(text(squares(html))).toContain('Долги долгов нет')
-      expect(squares(html)).toMatch(/aria-current="page"[^>]*>\s*<b[^>]*>История/)
+      expect(text(squares(html))).not.toContain('долгов нет')
+      expect(squares(html)).toMatch(/aria-current="page"[^>]*>\s*История/)
     })
 
     it('«Долги» (бывший «План»; Блок 16, Р-110): сумма остатков и долговой план под ним; отметок месяца нет; без долгов — «Долгов нет»', async () => {
       const store = await family()
       let html = text(await renderScreen(Money, '/money/debts'))
-      expect(html).toContain(`Долги ${money(1_540_000)}`)
+      // Слова «Долги» над суммой нет — оно на чипе (Р-116).
+      expect(html).toContain(`Капитал Долги История ${money(1_540_000)}`)
       expect(html).toContain('Самая дорогая ставка')
       expect(html).not.toContain('оплачено')
       expect(html).not.toContain('чистых')
@@ -382,8 +394,10 @@ describe('views/Money.vue — финансовые показатели (рас�
         })
         store.addAccount({ name: 'Заначка', kind: 'cash', amount: 300_000 }, true)
         const html = lists(await renderScreen(Money, '/money'))
-        // 2 000 000 + 479 260 + 1 200 000 + 300 000 (личный тоже в капитале) + цели вне счетов 650 000 (Р-109, Блок 16).
-        expect(html).toContain(`Счета ${money(4_629_260)}`)
+        // 2 000 000 + 479 260 + 1 200 000 + 300 000 (личный тоже в капитале) + цели вне счетов 650 000 (Р-109, Блок 16) —
+        // итог не у заголовка, а в подсказке у капитала («Счета и цели — …», Р-116): та же сумма из finance.ts.
+        expect(amountTotal(liveAccounts(store.accounts)) + capitalGoals(store.goals, store.accounts).total).toBe(4_629_260)
+        expect(html).not.toContain(money(4_629_260))
         expect(html).toContain(`Kaspi Gold карта · общий ${money(2_000_000)}`)
         expect(html).toContain(`Доллары наличные · ${moneyIn(1_000, 'USD')} · общий ${money(479_260)}`)
         expect(html).toContain(`Депозит Kaspi 14 % · общий ${money(1_200_000)}`)
@@ -741,14 +755,16 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(empty).not.toContain('Загрузить выписку')
     })
 
-    it('пусто у участника — «Пока пусто» и тихая «Загрузить выписку»; подпись квадрата — последний прошлый месяц', async () => {
+    it('пусто у участника — «Пока пусто» и тихая «Загрузить выписку»; у чипа подписи нет — последний прошлый месяц первой строкой', async () => {
       await history('member', '2026-11-25T07:00:00Z')
       const html = await renderScreen(Money, '/money/history')
       expect(text(html)).toContain('Пока пусто')
       expect(html).toMatch(/>\s*Загрузить выписку\s*</)
-      // Блок 16 (Р-111): подпись — последний прошлый месяц списка «Истории» (данные с августа).
+      // Блок 16 (Р-111): последний прошлый месяц «Истории» (данные с августа) — первой строкой; чип без подписи (Р-116).
       await history()
-      expect(text(squares(await renderScreen(Money, '/money/history')))).toContain('История август')
+      const filled = await renderScreen(Money, '/money/history')
+      expect(text(squares(filled))).toMatch(/> Капитал Долги История\s*$/)
+      expect(filled.match(/data-history-month="([^"]+)"/)?.[1]).toBe('2026-08')
     })
   })
 

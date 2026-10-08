@@ -212,7 +212,7 @@ function choosePlan(opts: { keptGoalIds: string[]; cushionGoalId: string | null;
             <span class="text-ink-2">Досрочками уже сэкономили</span>
             <b class="num text-brand">{{ money(savedAll) }}</b>
           </div>
-          <p class="mt-1 text-[12.5px] leading-relaxed text-ink-3">
+          <p class="mt-1 text-[12.5px] leading-relaxed text-ink-2">
             {{
               worst.cost.sharePct >= 50
                 ? 'Больше половины платежа уходит в проценты, поэтому остаток почти не двигается. Такой долг выгоднее закрыть раньше остальных, даже если он самый маленький.'
@@ -291,14 +291,14 @@ function choosePlan(opts: { keptGoalIds: string[]; cushionGoalId: string | null;
         <summary :class="FOLD">Шаги по месяцам<PhCaretDown :size="16" class="shrink-0 text-ink-3" /></summary>
         <div class="mt-2 flex flex-col gap-3 text-[12.5px]">
           <div v-if="plan" class="grid grid-cols-[auto_1fr_1fr_auto] items-baseline gap-x-3 gap-y-1.5 num">
-            <span class="text-ink-3">Месяц</span>
-            <span class="text-right text-ink-3">План</span>
-            <span class="text-right text-ink-3">Факт</span>
-            <span class="text-ink-3">Куда</span>
+            <span class="text-ink-2">Месяц</span>
+            <span class="text-right text-ink-2">План</span>
+            <span class="text-right text-ink-2">Факт</span>
+            <span class="text-ink-2">Куда</span>
             <template v-for="m in months" :key="m.period">
               <span :class="cn(m.period === key ? 'font-semibold text-brand' : 'text-ink-2')">{{ monthShort(m.period) }}</span>
               <span class="text-right text-ink">{{ money(m.planned) }}</span>
-              <span :class="cn('text-right', m.fact ? 'text-ink' : 'text-ink-3')">{{ m.fact ? money(m.fact) : '—' }}</span>
+              <span :class="cn('text-right', m.fact ? 'text-ink' : 'text-ink-2')">{{ m.fact ? money(m.fact) : '—' }}</span>
               <span class="truncate text-ink-2">{{ m.cushion ? 'в подушку' : creditName(m.creditId) || '—' }}</span>
             </template>
           </div>

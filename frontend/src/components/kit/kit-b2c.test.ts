@@ -42,13 +42,14 @@ const noLiterals = (html: string) => {
 }
 
 describe('DreamHero', () => {
-  it('экран цели (умолчание): фото, «До мечты», процент, строка, полоса, автор-ссылка, угол — 380', async () => {
+  it('экран цели (умолчание): фото, процент (type-percent, 34) без подписи «До мечты» (Р-116), строка, полоса, автор-ссылка, угол — 380; у фонда — «Собрано»', async () => {
     const html = await render(
       DreamHero,
       { line: '1 116 000 из 1 800 000 ₸', percent: 62, src: 'blob:photo', author: 'Matthew Skinner', authorUrl: 'https://unsplash.com/@m' },
       { corner: () => h('button', { 'aria-label': 'Сменить фото' }) },
     )
-    expect(html).toContain('До мечты')
+    expect(html).not.toContain('До мечты')
+    expect(html).toContain('type-percent')
     expect(html).toContain(pctText(62))
     expect(html).toContain('1 116 000 из 1 800 000 ₸')
     expect(html).toContain('src="blob:photo"')
@@ -61,6 +62,7 @@ describe('DreamHero', () => {
     expect(html).toContain('min-h-[380px]')
     expect(html).not.toContain('min-h-[440px]')
     noLiterals(html)
+    expect(await render(DreamHero, { line: 'x', percent: 30, eyebrow: 'Собрано' })).toContain('Собрано')
   })
 
   it('без фото — surface-3 и ink-текст, слот действий («Добавить фото»); превью — 180, без процента и полосы', async () => {
@@ -82,11 +84,12 @@ describe('DreamHero', () => {
 })
 
 describe('DreamCenter / ThumbRow (пивот 3, Р-42)', () => {
-  it('мечта по центру: фото 236 со скруглением 32, процент 40 (конечный в SSR), «название · месяц год» одним куском', async () => {
+  it('мечта по центру: фото 236 со скруглением 32, процент type-percent (34, Р-116; конечный в SSR), «название · месяц год» одним куском', async () => {
     const html = await render(DreamCenter, { title: 'Япония', percent: 62, src: 'blob:p', month: 'май 2027', author: 'Matthew Skinner' })
     expect(html).toContain('size-[236px]')
     expect(html).toContain('rounded-[32px]')
-    expect(html).toContain('text-[40px]')
+    expect(html).toContain('type-percent')
+    expect(html).not.toContain('text-[40px]')
     expect(html).toContain(pctText(62))
     expect(html).toContain(`Япония${NBSP}· май${NBSP}2027`)
     expect(html).toContain('Фото: Matthew Skinner')
@@ -236,7 +239,9 @@ describe('OpRow / Tabs / Toggle / EmptyState / ScreenHeader / Avatar / Tag / Car
     expect(pos).toMatch(/^<button/)
     const own = await render(OpRow, { merchant: 'На депозит', amount: -200_000, muted: true })
     expect(own).toContain(`>200${NBSP}000${NBSP}₸<`)
-    expect(own).toContain('text-ink-3')
+    // Подписи — --ink-2 (Р-116: не бледные), «тихо» — без знака и без зелёного.
+    expect(own).toContain('text-ink-2')
+    expect(own).not.toContain('text-ok')
     expect(own).not.toContain('−')
   })
 

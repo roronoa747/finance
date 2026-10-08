@@ -34,11 +34,13 @@ describe('«Деньги»: квадраты и «История» (B2C-21 → �
     return store
   }
 
-  it('«Деньги» (пивот 3, Р-31): квадраты Капитал · План · История вместо меню входов; вклад и платежи — в Капитале; истории на нём нет', async () => {
+  it('«Деньги» (пивот 3, Р-31): чипы Капитал · Долги · История вместо меню входов; вклад и платежи — в Капитале; истории на нём нет', async () => {
     const store = family()
     store.addAccount({ name: 'Kaspi Депозит', kind: 'deposit', amount: 1_000_000, deposit: { annualRate: 0.14, months: 12, monthlyTopUp: 0, capitalize: true } })
     const html = await renderScreen(Money, '/money')
-    for (const t of ['>Капитал</b>', '>Долги</b>', '>История</b>', 'Kaspi Депозит']) expect(html).toContain(t)
+    // Чипы — кнопки с одним словом, без чисел и подписей (Р-116).
+    for (const t of ['Капитал', 'Долги', 'История']) expect(html).toMatch(new RegExp(`>\\s*${t}\\s*</button>`))
+    expect(html).toContain('Kaspi Депозит')
     for (const gone of ['Бюджет', 'План «Сначала долги»', 'Вклад · Kaspi Депозит', 'История и итоги', 'Впереди', 'href="/money/budget"']) expect(html).not.toContain(gone)
     for (const t of ['Аренда', 'Кредит', 'Кредитка', 'Рассрочка']) expect(html).toContain(t)
     expect(html).not.toContain('История семьи')

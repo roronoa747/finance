@@ -23,7 +23,8 @@ const debtsCard = async (p: { pinia: Pinia }) => {
   return at < 0 ? '' : html.slice(at, at + 700)
 }
 
-const pausedOn = async (p: { pinia: Pinia }, id: string) => (await screen(p.pinia, GoalDetail, `/goals/${id}`)).includes('На паузе ради плана')
+// Пауза ради плана — строка-ссылка `data-goal-plan` на экране цели (Р-116; был абзац «На паузе ради плана»).
+const pausedOn = async (p: { pinia: Pinia }, id: string) => (await screen(p.pinia, GoalDetail, `/goals/${id}`)).includes('На паузе — взнос идёт в долг')
 
 /**
  * Блок 3 паритета — выбранный план «Сначала долги» (PV-14…PV-17): два телефона на одном
@@ -120,7 +121,10 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
 
       expect(await pausedOn(B, 'trip')).toBe(true)
       expect(await pausedOn(B, 'cushion')).toBe(false)
-      expect(await screen(B.pinia, GoalDetail, '/goals/car')).toContain(`Взнос ${money(60_000)} идёт в досрочку`)
+      // Сумма взноса, что идёт в долг, — в карточке цели («N ₸ в месяц»), рядом строка паузы (Р-116).
+      const car = await screen(B.pinia, GoalDetail, '/goals/car')
+      expect(car).toContain('На паузе — взнос идёт в долг')
+      expect(car).toContain(`${money(60_000)} в месяц`)
 
       // «Досрочно по плану» — шаг месяца квадрата «План» (Бюджета нет, B2C-45).
       expect(await screen(B.pinia, Money, '/money/debts')).toContain(`${money(100_000)} досрочно`)

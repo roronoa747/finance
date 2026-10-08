@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { money } from '@/lib/money'
+import { money, moneyIn } from '@/lib/money'
 import { atLabel, dayLabel } from '@/lib/dates'
 import type { SalaryLine } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
+import Hint from '@/components/kit/Hint.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Button from '@/components/ui/Button.vue'
 import MarkSheet from '@/components/MarkSheet.vue'
 import SalaryDialog from '@/components/SalaryDialog.vue'
+import SalaryExchange from '@/components/SalaryExchange.vue'
 import SalaryRow from '@/components/SalaryRow.vue'
 
 /**
@@ -45,8 +47,22 @@ watch(
 <template>
   <Sheet :open="!!line" :title="line ? `Зарплата · ${line.name}` : ''" @close="emit('close')">
     <template v-if="line">
-      <p class="type-meta">{{ line.came && line.at ? `пришла ${atLabel(line.at)}` : `ждём ${dayLabel(line.payday, monthKey)}` }}</p>
-      <p class="mb-1 font-num text-[32px] font-bold leading-tight num text-ink">{{ money(line.amount) }}</p>
+      <p class="font-num text-[28px] font-bold leading-tight num text-ink">{{ money(line.amount) }}</p>
+      <p v-if="line.fx" class="type-meta num">{{ moneyIn(line.fx.amount, line.fx.currency) }}</p>
+      <!-- Переехало со строк «Месяца» и «Капитала» (Р-116): дата, «хватает ли», обмены валютной. -->
+      <div class="mb-1 mt-3 flex flex-col rounded-[16px] bg-surface-2 px-3.5">
+        <div class="flex items-center justify-between gap-3 py-2.5 text-[14.5px]" data-salary-status>
+          <span class="text-ink-2">Когда</span>
+          <span class="font-semibold text-ink">{{ line.came && line.at ? `пришла ${atLabel(line.at)}` : `ждём ${dayLabel(line.payday, monthKey)}` }}</span>
+        </div>
+        <div class="flex items-center justify-between gap-3 border-t border-line py-2.5 text-[14.5px]">
+          <span class="flex items-center gap-1 text-ink-2">Хватает<Hint label="Хватает ли">Зарплата минус свои платежи, траты, цели и фонды</Hint></span>
+          <b class="font-num num" :class="line.left >= 0 ? 'text-ok' : 'text-warn'" data-left>{{ line.left > 0 ? `+${money(line.left)}` : money(line.left) }}</b>
+        </div>
+        <div v-if="line.came && line.foreign" class="border-t border-line py-2.5" data-salary-exchanges>
+          <SalaryExchange :person-id="line.person" :period="monthKey" part="line" />
+        </div>
+      </div>
       <SalaryRow v-if="mine && line.open" button :person-id="line.person" :period="monthKey" />
       <div class="mt-2 flex flex-col gap-1.5">
         <Button v-if="mine && line.came" variant="ghost" class="w-full" data-salary-paid @click="next('paid')">Другая сумма или снять</Button>

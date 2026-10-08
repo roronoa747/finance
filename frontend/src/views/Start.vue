@@ -346,7 +346,7 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
           <span class="inline-flex items-center gap-1.5">Файл остаётся на телефоне <Hint>На сервер попадают только продавец, дата, сумма и раздел — без номеров и ФИО.</Hint></span>
         </Callout>
         <Callout v-for="e in errors" :key="e.name" tone="warn">
-          {{ e.name }}: {{ e.message }}<span v-if="e.detail" class="block text-[12px] text-ink-3">{{ e.detail }}</span>
+          {{ e.name }}: {{ e.message }}<span v-if="e.detail" class="block text-[12px] text-ink-2">{{ e.detail }}</span>
         </Callout>
         <input ref="fileInput" type="file" accept="application/pdf,.pdf" multiple class="hidden" @change="pick" />
         <div class="mt-auto flex flex-col gap-2 pt-2">
@@ -364,7 +364,7 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
         <Field label="День зарплаты (1–28)">
           <NumField v-model="manualPayday" kind="int" placeholder="10" />
         </Field>
-        <p class="text-[12.5px] leading-relaxed text-ink-3">Оклад без премий.</p>
+        <p class="text-[12.5px] leading-relaxed text-ink-2">Оклад без премий.</p>
         <div class="mt-auto flex flex-col gap-2 pt-2">
           <Button size="lg" class="w-full" @click="form.submit(manualNext)">Дальше</Button>
           <Button variant="ghost" class="w-full" @click="manual = false">Лучше загружу выписку</Button>
@@ -391,7 +391,7 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
           </template>
           <template v-if="recurringKind === 'credit'" #inner>
             <Field label="Остаток долга, ₸ — если знаете"><NumField v-model="creditPrincipal" placeholder="можно позже, в Капитале" /></Field>
-            <p class="text-[12px] text-ink-3">Ставку уточните потом в Капитале.</p>
+            <p class="text-[12px] text-ink-2">Ставку уточните потом в Капитале.</p>
           </template>
         </DecisionCard>
       </template>
@@ -450,7 +450,7 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
       <div class="mt-auto flex flex-col gap-2 pt-2">
         <!-- Одна брендовая кнопка (правило 12): до кода главная — «Создать код», «Позже» — тихая. -->
         <Button size="lg" class="w-full" :variant="inviteCode ? 'default' : 'ghost'" @click="finish">{{ inviteCode ? 'Готово' : 'Позже' }}</Button>
-        <p v-if="!inviteCode" class="text-center text-[12px] text-ink-3">Один человек — тоже семья. Код есть и в настройках.</p>
+        <p v-if="!inviteCode" class="text-center text-[12px] text-ink-2">Один человек — тоже семья. Код есть и в настройках.</p>
       </div>
     </template>
   </div>

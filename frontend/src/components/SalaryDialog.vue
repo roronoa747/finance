@@ -158,7 +158,7 @@ function handlePlanSubmit() {
       <Field :label="`Оклад сейчас, ${sign}`">
         <NumFieldBlur :initial="plain(current.amount)" @commit="onSalaryCommit" />
       </Field>
-      <p class="-mt-1 mb-3 flex items-center gap-1 text-[12px] text-ink-3 num">
+      <p class="-mt-1 mb-3 flex items-center gap-1 text-[12px] text-ink-2 num">
         <template v-if="current.currency !== 'KZT'">≈ {{ money(currentTenge) }} по курсу Нацбанка ·</template>
         только исправить ошибку
         <Hint>Оклад был введён неверно. Если зарплата действительно меняется — не трогайте это поле, а измените оклад с нужного месяца ниже.</Hint>
@@ -220,16 +220,16 @@ function handlePlanSubmit() {
       </div>
 
       <div v-if="history.length > 1" class="mt-4 border-t border-line pt-3">
-        <div class="mb-2 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-3">
+        <div class="mb-2 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-2">
           История оклада
         </div>
         <div class="flex flex-col gap-1.5">
           <div v-for="v in history" :key="v.from" class="flex items-baseline gap-2 text-[13px]">
-            <span class="text-ink-3">
+            <span class="text-ink-2">
               {{ v.from <= key ? 'с' : 'станет с' }} {{ monthFrom(v.from) }}
             </span>
             <b class="ml-auto num font-semibold text-ink">{{ moneyIn(v.amount, v.currency) }}</b>
-            <span v-if="v.reason" class="text-[12px] text-ink-3">{{ v.reason }}</span>
+            <span v-if="v.reason" class="text-[12px] text-ink-2">{{ v.reason }}</span>
           </div>
         </div>
       </div>

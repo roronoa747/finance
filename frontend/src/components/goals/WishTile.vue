@@ -46,10 +46,10 @@ const { onLoad, fit } = useWideFit(() => props.src)
         <div v-else class="grid size-full place-items-center text-ink-3"><PhShoppingBag :size="28" /></div>
       </div>
       <div class="flex items-baseline gap-2 px-3 pt-2.5" :class="bought ? 'pb-1' : 'pb-2.5'">
-        <b :class="cn('min-w-0 flex-1 truncate text-[14px] font-medium', bought ? 'text-ink-3 line-through' : 'text-ink')">{{ wish.name }}</b>
-        <span :class="cn('shrink-0 text-[14px] font-semibold num', bought ? 'text-ink-3' : 'text-ink')">{{ money(wish.price) }}</span>
+        <b :class="cn('min-w-0 flex-1 truncate text-[14px] font-medium', bought ? 'text-ink-2 line-through' : 'text-ink')">{{ wish.name }}</b>
+        <span :class="cn('shrink-0 text-[14px] font-semibold num', bought ? 'text-ink-2' : 'text-ink')">{{ money(wish.price) }}</span>
       </div>
-      <div v-if="bought && meta" class="px-3 pb-2.5 text-[12px] text-ink-3">{{ meta }}</div>
+      <div v-if="bought && meta" class="px-3 pb-2.5 text-[12px] text-ink-2">{{ meta }}</div>
     </component>
 
     <!-- Поверх плитки: «куплено» / «вернуть» и ссылка в магазин -->

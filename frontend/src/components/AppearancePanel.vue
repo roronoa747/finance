@@ -142,7 +142,7 @@ function leave(choice: 'keep' | 'discard') {
             семью. Или выйдите без них.
           </template>
         </Callout>
-        <p v-if="leaving === 'failed' && financeStore.lastError" class="text-[12px] text-ink-3">
+        <p v-if="leaving === 'failed' && financeStore.lastError" class="text-[12px] text-ink-2">
           Причина: {{ financeStore.lastError }}
         </p>
         <Button v-if="leaving === 'ask'" class="w-full" :disabled="sending" @click="sendAndLeave">

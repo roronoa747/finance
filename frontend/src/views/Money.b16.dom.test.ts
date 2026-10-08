@@ -9,7 +9,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { authAs, planFamilyDoc, planOf, T0 } from '@/test/planFamily'
 import { capitalGoals, debtsOverview, historyMonths, monthPlanPast, monthSalaries } from '@/lib/finance'
 import { monthBy } from '@/lib/dates'
-import { plain } from '@/lib/money'
+import { money, plain, rateField } from '@/lib/money'
 import type { Payment, SyncDoc } from '@/types/finance'
 import Money from '@/views/Money.vue'
 import Month from '@/views/Month.vue'
@@ -83,6 +83,7 @@ async function open(role: 'member' | 'viewer' = 'member', doc = familyDoc(), pat
 const q = <T extends Element = HTMLElement>(sel: string) => document.querySelector<T>(sel)
 const all = (sel: string) => [...document.querySelectorAll<HTMLElement>(sel)]
 const txt = (el: Element | null) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim()
+const norm = (s: string) => s.replace(/\s+/g, ' ')
 /** Сумма с экрана в целых тенге: «−1 540 000 ₸» → −1540000. */
 const num = (el: Element | null) => {
   const t = txt(el)
@@ -101,13 +102,18 @@ const dialog = () => q('[role="dialog"]')
 const dialogButton = (label: string) => all('[role="dialog"] button').find((b) => txt(b).startsWith(label))
 
 describe('B2C-100: «Капитал» — зарплаты для справки и «Цели · N» в «Счетах»', () => {
-  it('«Счета» − «Кредиты» = «Капитал» на экране; цели вне счетов — в итоге «Счетов»', async () => {
+  it('«Счета» − «Кредиты» = «Капитал» на экране (итоги — в подсказке у суммы, Р-116); цели вне счетов — в итоге «Счетов»', async () => {
     const finance = await open()
     const goals = capitalGoals(finance.goals, finance.accounts)
-    expect(num(q('[data-accounts-total]'))).toBe(2_250_000)
+    // Итогов у заголовков «Счета» и «Кредиты» нет — они в подсказке «Что такое капитал».
+    expect(q('[data-accounts-total]')).toBeNull()
+    expect(q('[data-credits-total]')).toBeNull()
     expect(num(q('[data-goals-total]'))).toBe(goals.total)
-    expect(num(q('[data-credits-total]'))).toBe(1_540_000)
-    expect(num(q('[data-accounts-total]')) - num(q('[data-credits-total]'))).toBe(num(q('[data-worth]')))
+    await press(q('button[aria-label="Что такое капитал"]'))
+    const note = txt(q('[role="note"]'))
+    expect(note).toContain('Всё, что есть, минус всё, что должны.')
+    expect(note).toContain(`Счета и цели — ${norm(money(2_250_000))}, долги — ${norm(money(1_540_000))}.`)
+    expect(2_250_000 - 1_540_000).toBe(num(q('[data-worth]')))
     expect(num(q('[data-worth]'))).toBe(710_000)
     // Брендовой кнопки на экране нет (правило 12).
     expect(all('button').filter((b) => /(^|\s)bg-brand(\s|$)/.test(b.className))).toEqual([])
@@ -123,21 +129,27 @@ describe('B2C-100: «Капитал» — зарплаты для справки
     expect(all('[data-goal]').map((r) => r.dataset.goal)).toEqual(['car', 'trip', 'cushion'])
     const cushion = q('[data-goal="cushion"]')!
     expect(txt(cushion)).toContain('на Kaspi Gold — уже в счёте')
-    expect(cushion.querySelector('.num')!.className).toContain('text-ink-3')
-    expect(q('[data-goal="trip"] .num')!.className).not.toContain('text-ink-3')
+    // Серая — --ink-2 (Р-116: подписи не бледные).
+    expect(cushion.querySelector('.num')!.classList.contains('text-ink-2')).toBe(true)
+    expect(q('[data-goal="trip"] .num')!.classList.contains('text-ink-2')).toBe(false)
     await press(q('[data-goal="trip"] button'))
     await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/goals/trip'), { timeout: 5000 })
   })
 
-  it('зарплаты: ✓ у пришедшей, «ждём <дата>» — у ждущей; строки = monthSalaries', async () => {
+  it('зарплаты: ✓ у пришедшей; дата («ждём» / «пришла») — в листе зарплаты (Р-116); строки = monthSalaries', async () => {
     const doc = familyDoc()
     const finance = await open('member', { ...doc, payments: [...doc.payments!, paid('salary', 'b', KEY, 500_000, { by: 'b', at: '2026-09-11T05:00:00.000Z' })] })
     const lines = monthSalaries(finance.monthPlanOf(KEY), { people: finance.people, payments: finance.payments })
     expect(lines.map((s) => [s.person, s.came])).toEqual([['a', false], ['b', true]])
-    expect(txt(q('[data-capital-salaries] [data-salary="a"] [data-salary-status]'))).toBe('ждём 10 сентября')
+    expect(q('[data-capital-salaries] [data-salary-status]')).toBeNull()
     expect(q('[data-capital-salaries] [data-salary="a"] [data-came]')).toBeNull()
-    expect(txt(q('[data-capital-salaries] [data-salary="b"] [data-salary-status]'))).toBe('пришла 11 сентября')
+    expect(q('[data-capital-salaries] [data-salary="b"] [data-came]')).not.toBeNull()
     expect(num(q('[data-capital-salaries] [data-salary="b"] b'))).toBe(500_000)
+    for (const [id, when] of [['a', 'ждём 10 сентября'], ['b', 'пришла 11 сентября']]) {
+      await press(q(`[data-capital-salaries] [data-salary="${id}"]`))
+      expect(txt(q('[role="dialog"] [data-salary-status]'))).toContain(when)
+      await press(q('[role="dialog"] button[aria-label="Закрыть"]'))
+    }
   })
 
   it('строка зарплаты — тот же лист, что в «Месяце»; «Пришла» из «Капитала» пишет ту же отметку', async () => {
@@ -183,7 +195,9 @@ describe('B2C-101: «Долги» по макету', () => {
     expect(txt(q('[data-debts-free]'))).toBe(`без долгов — ${monthBy(o.freeMonth!, KEY)}`)
     expect(all('[data-debt]').map((r) => r.dataset.debt)).toEqual(o.rows.map((r) => r.creditId))
     const cc = q('[data-debt="cc"]')!
-    expect(txt(cc)).toContain(`${plain(25_000).replace(/\s+/g, ' ')} в месяц · 40 %`)
+    // В строке — платёж в месяц; ставка (40 %) — в листе кредита (Р-116).
+    expect(txt(cc)).toContain(`${plain(25_000).replace(/\s+/g, ' ')} в месяц`)
+    expect(txt(cc)).not.toContain('40 %')
     expect(cc.querySelector<HTMLElement>('[data-debt-bar] span')!.style.width).toBe('5%')
     expect(q('[data-debt="loan"] [data-debt-bar]')).toBeNull()
     // На экране брендовых нет; «Выбрать этот план» — подтверждение калькулятора внутри свёрнутого расчёта (правило 12).
@@ -191,6 +205,10 @@ describe('B2C-101: «Долги» по макету', () => {
     expect(brand.filter((b) => !b.closest('[data-debts-calc-body]'))).toEqual([])
     expect(brand.map(txt)).toEqual(['Выбрать этот план'])
     expect(document.body.textContent).not.toContain('Шаг сделан')
+    // Ставка — в листе кредита: нажатие строки.
+    await press(cc)
+    expect(txt(q('[role="dialog"]'))).toContain('Ставка (ГЭСВ), % годовых')
+    expect(all('[role="dialog"] input').map((i) => (i as HTMLInputElement).value)).toContain(rateField(0.4))
   })
 
   it('«Как закрыть быстрее» свёрнуто; раскрытие — «Сначала долги»; план включается и выключается оттуда', async () => {
@@ -286,9 +304,9 @@ describe('B2C-102: «История» — месяцы и «Все записи�
     expect(num(aug.querySelector('[data-left]'))).toBe(440_000)
     expect(num(aug.querySelector('[data-put]'))).toBe(40_000)
     expect(q('[data-history-month="2026-07"] [data-put]')).toBeNull()
-    // Подпись квадрата — последний прошлый месяц.
-    expect(txt(q('[aria-label="Деньги"] [aria-current="page"] small'))).toBe('август')
-    await press(aug)
+    // Чип «История» — без подписи месяца (Р-116): август — первой строкой списка.
+    expect(q('[aria-label="Деньги"] [aria-current="page"] small')).toBeNull()
+    await press(aug.querySelector<HTMLElement>('button.row-open'))
     await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/month?month=2026-08'), { timeout: 5000 })
   })
 

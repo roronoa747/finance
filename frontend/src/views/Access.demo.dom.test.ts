@@ -125,21 +125,23 @@ describe('B2C-52: демо — итоги из демо-операций той 
     const arunaWeek = finance.householdDoc.spendTotals!.filter((t) => t.by === 'b' && t.kind === 'week' && t.period === week).reduce((a, t) => a + t.amount, 0)
     expect(pic.total).toBe(opsWeek + arunaWeek)
 
-    // Блок 15 (Р-95): «Неделя» — сумма только своих трат (`myWeek`), сравнение — с прошлой своей; вопросы — в листе «!».
+    // Блок 15 (Р-95): «Неделя» — сумма только своих трат (`myWeek`); сравнение недель — в «8 недель», бейджа «↑ N %» нет (Р-116).
     const { state, ctx } = finance.planInput(monthKey())
     const own = myWeek(state, { ...ctx, by: 'a', week, ops: ops.all })
     expect(own.total).toBeGreaterThan(0)
     expect(own.total).toBeLessThan(pic.total)
     const html = text(await renderScreen(Week, '/week', undefined, [screenMixin({ questionsOpen: true })]))
     expect(html).toContain(`${weekRangeLabel(pic.range)} ${text(money(own.total))}`)
-    expect(html).toMatch(/[↑↓] [0-9]+%/)
-    // Вопросы — за значком «! N» (лист уходит в body — в разметке экрана его нет).
-    expect(html).toMatch(/! [1-9]/)
+    expect(html).not.toMatch(/[↑↓] [0-9]+%/)
+    // Вопросы — «Разобрать» в строке «Не разобрано» с подписью «N вопрос(а/ов)» (Р-116; лист уходит в body).
+    expect(html).toMatch(/Не разобрано [1-9][0-9]* вопрос/)
+    expect(html).toContain('Разобрать')
+    expect(html).not.toMatch(/! [1-9]/)
 
-    // «Мечты»: главная мечта, строка «Свободно», цели и желания строками.
+    // «Мечты»: главная мечта, цели и желания строками; строки «Свободно» нет — она в подсказке «Месяца» (Р-116).
     const dreams = text(await renderScreen(Dreams, '/'))
     expect(dreams).toContain('Поездка в Японию')
-    expect(dreams).toContain('Свободно')
+    expect(dreams).not.toContain('Свободно')
     // Приёмка Б10: 2 цели кроме главной и 3 желания — у каждого участника и общее; пустых «добавить» нет.
     // Блок 11: плюс копилка разбора «Подушка» (Р-66); Блок 14 — фонды «Подушка» и «Запас» в очереди (Р-82, Р-84),
     // главная — первая в очереди, `main` не пишется.

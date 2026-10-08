@@ -147,7 +147,7 @@ const accountRemoveWarning = computed(() => {
           <Field :label="`Сумма, ${CURRENCY_SIGN[activeAccount.currency]}`">
             <NumFieldBlur :initial="plain(activeAccount.foreignAmount ?? 0)" class="mb-3" @commit="onForeignAmount" />
           </Field>
-          <p v-if="nbRate" class="-mt-2.5 mb-3 text-[12px] text-ink-3 num">
+          <p v-if="nbRate" class="-mt-2.5 mb-3 text-[12px] text-ink-2 num">
             ≈ {{ money(activeAccount.amount) }} по курсу Нацбанка
           </p>
           <template v-else>
@@ -159,7 +159,7 @@ const accountRemoveWarning = computed(() => {
                 @commit="onAccountRate"
               />
             </Field>
-            <p class="-mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-3">
+            <p class="-mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-2">
               В капитале счёт стоит как {{ money(activeAccount.amount) }} — по этому курсу.
             </p>
           </template>

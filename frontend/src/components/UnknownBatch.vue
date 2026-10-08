@@ -80,7 +80,7 @@ function choose(to: MerchantRule['to']) {
       </div>
       <div class="flex items-baseline justify-between gap-3">
         <h2 class="type-h2 text-ink">Без раздела · <span class="num">{{ groups.length }}</span></h2>
-        <button type="button" class="shrink-0 text-[14px] font-medium text-ink-3 hover:text-ink cursor-pointer" @click="toggleAll">
+        <button type="button" class="shrink-0 text-[14px] font-medium text-ink-2 hover:text-ink cursor-pointer" @click="toggleAll">
           {{ allPicked ? 'Снять все' : 'Выбрать все' }}
         </button>
       </div>

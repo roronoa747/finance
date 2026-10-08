@@ -203,7 +203,7 @@ function applyPrepay() {
           вместо {{ payoffResult.monthsNow }}.
         </div>
       </div>
-      <p v-else class="mb-3 text-[12.5px] leading-relaxed text-ink-3">
+      <p v-else class="mb-3 text-[12.5px] leading-relaxed text-ink-2">
         Впишите сумму, которую действительно можете внести. Приложение не станет предлагать
         больше — считать по деньгам, которых нет, смысла нет.
       </p>
@@ -264,7 +264,7 @@ function applyPrepay() {
       </div>
 
       <div v-if="creditPrepays.length > 0" class="mb-3">
-        <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-3">
+        <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-2">
           Применённые досрочки
         </div>
         <div
@@ -278,7 +278,7 @@ function applyPrepay() {
             </span>
             <b class="ml-auto num text-ink">{{ money(p.amount) }}</b>
           </div>
-          <div class="text-ink-3 num">
+          <div class="text-ink-2 num">
             в долг {{ plain(paymentSplit(p, activePayoffCredit, 0).body) }} · банку
             {{ plain(paymentSplit(p, activePayoffCredit, 0).interest) }}
           </div>
@@ -287,7 +287,7 @@ function applyPrepay() {
             <button
               v-if="!authStore.isViewer && removingPrepay !== p.id"
               type="button"
-              class="ml-auto text-ink-3 hover:underline cursor-pointer"
+              class="ml-auto text-ink-2 hover:underline cursor-pointer"
               @click="removingPrepay = p.id"
             >
               Снять
@@ -310,7 +310,7 @@ function applyPrepay() {
 
       <!-- Лесенка отдачи -->
       <div v-if="ladder.length > 0" class="mb-3">
-        <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-3">
+        <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-2">
           Отдача падает
         </div>
         <div class="flex flex-col gap-1 text-[12.5px]">
@@ -320,11 +320,11 @@ function applyPrepay() {
             class="flex items-center justify-between border-b border-line/60 py-1"
           >
             <span class="num text-ink-2">+{{ plain(item.extra) }}</span>
-            <span class="num text-ink-3">−{{ item.monthsSaved }} мес.</span>
+            <span class="num text-ink-2">−{{ item.monthsSaved }} мес.</span>
             <span class="num font-medium text-brand">{{ money(item.saved) }}</span>
           </div>
         </div>
-        <p v-if="payoffHalf" class="mt-2 text-[12.5px] leading-relaxed text-ink-3">
+        <p v-if="payoffHalf" class="mt-2 text-[12.5px] leading-relaxed text-ink-2">
           Половину переплаты снимает уже добавка в {{ money(payoffHalf) }} — дальше каждая
           следующая тысяча даёт меньше предыдущей. Если больших сумм нет, начинать стоит отсюда.
         </p>

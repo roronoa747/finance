@@ -98,7 +98,7 @@ function createDebt() {
         ]"
       />
     </Field>
-    <p v-if="debtMode === 'none'" class="-mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-3">
+    <p v-if="debtMode === 'none'" class="-mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-2">
       Рассрочка: платите ровно столько, сколько должны. Приложение посчитает, что долг
       закроется за {{ plainMonths || '—' }} {{ plural(plainMonths, 'платёж', 'платежа', 'платежей') }}.
     </p>
@@ -129,7 +129,7 @@ function createDebt() {
             : ' Выходит больше остатка — видимо, в платёж входит что-то ещё.'
         }}
       </p>
-      <p class="mt-2 text-[12.5px] leading-relaxed text-ink-3">
+      <p class="mt-2 text-[12.5px] leading-relaxed text-ink-2">
         Записать всё равно можно: сохраним как рассрочку без процентов, а ставку
         поправите, когда сверитесь с банком.
       </p>

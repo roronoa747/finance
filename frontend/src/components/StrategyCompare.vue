@@ -233,7 +233,7 @@ function choose() {
         </div>
       </div>
 
-      <p v-if="openEnded" class="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-3">{{ sentence(NO_SAVING) }}.</p>
+      <p v-if="openEnded" class="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-2">{{ sentence(NO_SAVING) }}.</p>
 
       <div class="mb-3 rounded-xl border border-line px-3.5 py-3">
         <div class="text-[12.5px] text-ink-2">
@@ -242,7 +242,7 @@ function choose() {
         <div class="font-num text-[22px] font-bold tracking-[-0.01em] num text-ink">
           {{ money(Math.abs(gain)) }}
         </div>
-        <div class="text-[12.5px] text-ink-3">
+        <div class="text-[12.5px] text-ink-2">
           чистыми через {{ months }} мес. — это деньги, которые не ушли банку
         </div>
       </div>
@@ -256,7 +256,7 @@ function choose() {
     </p>
 
     <div v-if="goals.length > 0" class="mb-3">
-      <div class="mb-1.5 flex items-center gap-1.5 text-[12.5px] text-ink-3">
+      <div class="mb-1.5 flex items-center gap-1.5 text-[12.5px] text-ink-2">
         Что не останавливать
         <Hint>
           Отметьте цели-страховки. Если декрет или другая обязательная трата ближе года,
@@ -272,7 +272,7 @@ function choose() {
             @change="toggleKept(g.id, ($event.target as HTMLInputElement).checked)"
           />
           <span class="min-w-0 flex-1 truncate">{{ g.name }}</span>
-          <span class="shrink-0 text-[12.5px] text-ink-3 num">{{ plain(g.monthly) }}/мес</span>
+          <span class="shrink-0 text-[12.5px] text-ink-2 num">{{ plain(g.monthly) }}/мес</span>
         </label>
       </div>
     </div>
@@ -281,7 +281,7 @@ function choose() {
       <input v-model="cushion" type="checkbox" class="mt-0.5 size-4 accent-[var(--brand)]" />
       <span>
         Сначала подушка — {{ money(inputs.cushionSize) }}
-        <span class="block text-[12px] text-ink-3">
+        <span class="block text-[12px] text-ink-2">
           месяц обязательных списаний; без неё первая поломка вернёт вас на кредитную карту
         </span>
       </span>
@@ -291,19 +291,19 @@ function choose() {
       <input v-model="useSaved" type="checkbox" class="mt-0.5 size-4 accent-[var(--brand)]" />
       <span>
         Вложить уже накопленное — {{ money(lumpOffer) }}
-        <span class="block text-[12px] text-ink-3">
+        <span class="block text-[12px] text-ink-2">
           из неотмеченных целей, подушка остаётся. Если это вклад с госпремией — сначала
           проверьте условия: премия может обыграть ставку.
         </span>
       </span>
     </label>
 
-    <p v-if="inputs.interestFree.length > 0" class="text-[12px] leading-relaxed text-ink-3">
+    <p v-if="inputs.interestFree.length > 0" class="text-[12px] leading-relaxed text-ink-2">
       Беспроцентные долги — {{ inputs.interestFree.map((c) => c.name).join(', ') }} — досрочно не
       гасятся: они ничего не стоят, а внесённые раньше срока деньги просто перестают быть
       доступными.
     </p>
-    <p v-if="inputs.unknownRate.length > 0" class="text-[12px] leading-relaxed text-ink-3">
+    <p v-if="inputs.unknownRate.length > 0" class="text-[12px] leading-relaxed text-ink-2">
       Ставку {{ inputs.unknownRate.map((c) => `«${c.name}»`).join(', ') }} уточните — пока считаем без неё.
     </p>
 
