@@ -253,7 +253,7 @@ const unmarkNote = computed(() => {
 
     <template v-else-if="mode === 'mark'">
       <Field :label="`Сумма, ${salary ? sign : '₸'}`" name="amount">
-        <NumField v-model="amountText" />
+        <NumField v-model="amountText" :currency="own?.currency ?? null" />
         <span v-if="salary" class="text-[12px] leading-relaxed text-ink-2">
           Оклад месяца — {{ fxSalary ? moneyIn(due, own!.currency) : money(due) }}. С премией впишите всю сумму: премия целиком ляжет в остаток.
         </span>

@@ -189,7 +189,7 @@ function planObligation() {
         </Field>
 
         <Field :label="`Сумма сейчас, ${CURRENCY_SIGN[obOwn.currency]}`">
-          <NumFieldBlur :initial="plain(obOwn.amount)" class="mb-1" @commit="onObligationAmount" />
+          <NumFieldBlur :initial="plain(obOwn.amount)" :currency="obOwn.currency" class="mb-1" @commit="onObligationAmount" />
         </Field>
         <p class="-mt-1 mb-3 flex items-center gap-1 text-[12px] text-ink-2 num">
           <template v-if="obOwn.currency !== 'KZT'">≈ {{ money(obCurrent) }} по курсу Нацбанка ·</template>
@@ -277,7 +277,7 @@ function planObligation() {
             <CurrencyChips v-model="obCurrency" />
           </Field>
           <Field :label="`Новая сумма, ${CURRENCY_SIGN[obCurrency]}`" name="newAmount">
-            <NumField v-model="obNewAmount" :placeholder="plain(obCurrency === obOwn.currency ? obOwn.amount : 0)" />
+            <NumField v-model="obNewAmount" :currency="obCurrency" :placeholder="plain(obCurrency === obOwn.currency ? obOwn.amount : 0)" />
           </Field>
           <NbRateLine :amount="parseMoney(obNewAmount)" :currency="obCurrency" :nb="nb" />
           <Field label="С какого месяца">

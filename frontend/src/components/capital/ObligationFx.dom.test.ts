@@ -134,3 +134,26 @@ describe('подписка в долларах', () => {
 function createPiniaFrom() {
   return (useFinanceStore() as unknown as { _p: ReturnType<typeof createPinia> })._p
 }
+
+describe('центы в долларах (ML-09, хвост 1000)', () => {
+  it('«9,99 $»: подсказка «Округлим до 10 $», сохраняется 10, а не 999; тенге — без запятой', async () => {
+    const store = await mount(NewObligationSheet, { open: true })
+    const [name] = [...document.querySelectorAll('input')] as HTMLInputElement[]
+    await type(name, 'Spotify')
+    const amount = () => [...document.querySelectorAll('input[inputmode]')][0] as HTMLInputElement
+    await type(amount(), '9,99')
+    expect(amount().value).toBe('999')
+    ;(document.querySelector('button[aria-label="USD"]') as HTMLButtonElement).click()
+    await flush()
+    await type(amount(), '9,99')
+    expect(amount().value).toBe('9,99')
+    expect(amount().getAttribute('inputmode')).toBe('decimal')
+    expect(text()).toContain('Округлим до 10 $')
+    // 10 × 471,20 = 4 712 ₸.
+    expect(text()).toContain('≈ 4 712 ₸ по курсу Нацбанка')
+    button('Добавить').click()
+    await flush()
+    const o = store.obligations.find((x) => x.name === 'Spotify')!
+    expect(o.versions).toEqual([{ from: '2000-01', amount: 10, currency: 'USD', rate: 471.2 }])
+  })
+})

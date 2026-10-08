@@ -8,7 +8,13 @@ const NBSP = ' '
 /** Цифры и запятая — всё, что имеет значение для положения курсора. */
 export const SIG = /[\d,]/
 
-export type NumKind = 'money' | 'int' | 'rate'
+/** `fx` — сумма в валюте (ML-09, Р-13): «9,99» вводится, сохраняется целым — 10. */
+export type NumKind = 'money' | 'int' | 'rate' | 'fx'
+
+/** Вид поля суммы по валюте: не тенге — `fx` (одно место выбора, `NumField`). */
+export function moneyKind(currency: string | null | undefined): NumKind {
+  return currency && currency !== 'KZT' ? 'fx' : 'money'
+}
 
 /**
  * Приводит набранное к показываемому виду.
@@ -31,6 +37,12 @@ export function clean(s: string, kind: NumKind, prev?: string): string {
     const one = i < 0 ? only : only.slice(0, i + 1) + only.slice(i + 1).replace(/,/g, '')
     return one.replace(/^0+(?=\d)/, '')
   }
+  if (kind === 'fx') {
+    const only = s.replace(/[^\d.,]/g, '').replace(/\./g, ',')
+    const i = only.indexOf(',')
+    const whole = (i < 0 ? only : only.slice(0, i)).replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3})+(?!\d))/g, NBSP)
+    return i < 0 ? whole : `${whole},${only.slice(i + 1).replace(/,/g, '').slice(0, 2)}`
+  }
   const d = s.replace(/\D/g, '').replace(/^0+(?=\d)/, '')
   return kind === 'int' ? d : d.replace(/\B(?=(\d{3})+(?!\d))/g, NBSP)
 }
@@ -51,11 +63,26 @@ export function caretAt(text: string, sig: number): number {
   return text.length
 }
 
+/**
+ * Сумма в валюте целым (ML-09, Р-13): запятая или точка — дробная часть, округление
+ * `Math.round` («9,99» → 10, «9,49» → 9). Деньги в состоянии — целые (правило 6).
+ */
+export function fxWhole(s: string): number {
+  const c = clean(s, 'fx')
+  const n = parseFloat(c.replace(/\s/g, '').replace(',', '.'))
+  return Number.isFinite(n) ? Math.round(n) : 0
+}
+
+/** В поле валюты набрана дробь — сохранится округлённой (подсказка под полем). */
+export function fxRounds(s: string): boolean {
+  return /,\d/.test(clean(s, 'fx'))
+}
+
 /** Число в поле без оглядки на разряды и запятую; пустое или нечисло — null. */
 function numValue(s: string, kind: NumKind): number | null {
   const c = clean(s, kind)
   if (c === '') return null
-  const n = kind === 'rate' ? parseFloat(c.replace(',', '.')) : parseInt(c.replace(/\D/g, ''), 10)
+  const n = kind === 'rate' ? parseFloat(c.replace(',', '.')) : kind === 'fx' ? fxWhole(c) : parseInt(c.replace(/\D/g, ''), 10)
   return Number.isFinite(n) ? n : null
 }
 

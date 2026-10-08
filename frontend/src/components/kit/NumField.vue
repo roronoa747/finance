@@ -1,13 +1,21 @@
 <script setup lang="ts">
 import { useFieldInvalid } from '@/components/kit/useFormCheck'
-import { ref, nextTick, type HTMLAttributes } from 'vue'
-import { clean, caretAt, sigBefore, type NumKind } from '@/lib/num'
+import { computed, ref, nextTick, type HTMLAttributes } from 'vue'
+import { clean, caretAt, fxRounds, fxWhole, moneyKind, sigBefore, type NumKind } from '@/lib/num'
+import { CURRENCY_SIGN } from '@/lib/fx'
+import { plain } from '@/lib/money'
+import type { Currency } from '@/types/finance'
 import { cn } from '@/lib/utils'
+
+// Атрибуты (aria-label, keydown) — на поле, не на обёртку с подсказкой.
+defineOptions({ inheritAttrs: false })
 
 const props = withDefaults(
   defineProps<{
     modelValue: string
     kind?: NumKind
+    /** Валюта суммы: не тенге — поле `fx` с запятой и округлением (ML-09); задана — `kind` не нужен. */
+    currency?: Currency | null
     placeholder?: string
     disabled?: boolean
     class?: HTMLAttributes['class']
@@ -26,6 +34,11 @@ const emit = defineEmits<{
 }>()
 
 const inputRef = ref<HTMLInputElement | null>(null)
+const numKind = computed<NumKind>(() => (props.currency !== undefined ? moneyKind(props.currency) : props.kind))
+// «Округлим до 10 $» — только пока набрана дробь (Р-13: ввод не теряется молча).
+const rounding = computed(() =>
+  numKind.value === 'fx' && props.currency && fxRounds(props.modelValue) ? `Округлим до ${plain(fxWhole(props.modelValue))} ${CURRENCY_SIGN[props.currency]}` : null,
+)
 
 function onInput(e: Event) {
   const el = e.target as HTMLInputElement
@@ -34,7 +47,7 @@ function onInput(e: Event) {
   const upto = raw.slice(0, cursor)
   const sig = sigBefore(upto)
 
-  const next = clean(raw, props.kind, props.modelValue)
+  const next = clean(raw, numKind.value, props.modelValue)
   const nextCaret = caretAt(next, sig)
 
   // Набрали букву — модель та же, и Vue поле не перерисует: мусор убираем сами.
@@ -57,10 +70,10 @@ const invalid = useFieldInvalid()
     ref="inputRef"
     type="text"
     :value="modelValue"
-    :inputmode="kind === 'rate' ? 'decimal' : 'numeric'"
+    :inputmode="numKind === 'rate' || numKind === 'fx' ? 'decimal' : 'numeric'"
     :placeholder="placeholder"
     :disabled="disabled"
-    v-bind="invalid"
+    v-bind="{ ...$attrs, ...invalid }"
     data-slot="input"
     :class="
       cn(
@@ -72,4 +85,5 @@ const invalid = useFieldInvalid()
     @input="onInput"
     @blur="emit('blur')"
   />
+  <span v-if="rounding" class="mt-1 block text-[12.5px] text-ink-2 num">{{ rounding }}</span>
 </template>

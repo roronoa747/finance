@@ -8,6 +8,7 @@
 
 import type { Currency } from '@/types/finance'
 import { CURRENCY_SIGN } from '@/lib/fx'
+import { fxWhole } from '@/lib/num'
 
 const NBSP = ' '
 /** Типографский минус (U+2212): у локали и `toFixed` — дефис, в макетах и рядом (`−` + `plain(abs)`) — «−». */
@@ -43,6 +44,8 @@ export function moneyShort(v: number): string {
 
 /** «1 050 000 ₸», «1050000», «1 050 000» → 1050000; «−5 000» и «-5 000» → −5000 */
 export function parseMoney(s: string): number {
+  // Дробь бывает только в поле валюты (`fx`, ML-09): «9,99» → 10; у тенге запятой нет.
+  if (/[.,]\d/.test(String(s))) return (/^\s*[-−]/.test(String(s)) ? -1 : 1) * fxWhole(String(s))
   const n = parseInt(String(s).replace(MINUS, '-').replace(/[^\d-]/g, ''), 10)
   return Number.isFinite(n) ? n : 0
 }
