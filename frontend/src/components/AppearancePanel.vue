@@ -117,10 +117,8 @@ function leave(choice: 'keep' | 'discard') {
     <template v-else>
 
     <div v-if="authStore.isDemo" class="flex flex-col gap-2">
-      <p class="text-[12.5px] leading-relaxed text-ink-2">
-        Это демо: всё живёт только на этом телефоне. Создайте семью — и заполненное можно будет взять с
-        собой.
-      </p>
+      <!-- Два предложения про демо → одна строка (макет Б17); что заполненное можно взять — скажет сам переход. -->
+      <p class="text-[14px] text-ink-2">Демо живёт только на этом телефоне</p>
       <Button class="w-full" @click="leaveDemo">Создать семью или войти</Button>
     </div>
     <div v-else>
@@ -142,7 +140,7 @@ function leave(choice: 'keep' | 'discard') {
             семью. Или выйдите без них.
           </template>
         </Callout>
-        <p v-if="leaving === 'failed' && financeStore.lastError" class="text-[12px] text-ink-3">
+        <p v-if="leaving === 'failed' && financeStore.lastError" class="text-[12px] text-ink-2">
           Причина: {{ financeStore.lastError }}
         </p>
         <Button v-if="leaving === 'ask'" class="w-full" :disabled="sending" @click="sendAndLeave">
@@ -157,7 +155,7 @@ function leave(choice: 'keep' | 'discard') {
         >
           Выйти, правки пропадут
         </Button>
-        <Button variant="ghost" class="w-full" :disabled="sending" @click="leaving = null">Остаться</Button>
+        <Button variant="ghost" size="md" class="w-full" :disabled="sending" @click="leaving = null">Остаться</Button>
       </div>
     </div>
     </template>

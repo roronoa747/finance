@@ -281,7 +281,7 @@ const markOpen = ref<Payment | null>(null)
   </Card>
   <p v-else-if="!shown.length" class="px-1 type-meta">Здесь пока ничего.</p>
 
-  <Button v-if="canEarlier" variant="ghost" class="w-full" @click="earlier">Раньше</Button>
+  <Button v-if="canEarlier" variant="ghost" size="md" class="w-full" @click="earlier">Раньше</Button>
 
   <!-- Листы -->
   <Sheet :open="summaryOpen && hasSummary" title="Итог месяца" @close="summaryOpen = false">
@@ -292,7 +292,7 @@ const markOpen = ref<Payment | null>(null)
     <template v-if="opOpen">
       <p class="mb-3 type-meta num">{{ dayTitle(opOpen.date) }} · {{ money(Math.abs(opOpen.amount)) }}</p>
       <CategoryChips :counterparty="!!opOpen.counterparty" @choose="recategorize" />
-      <p class="mt-3 text-[12px] text-ink-3">Ответ запомним — такие строки разложатся сами.</p>
+      <p class="mt-3 text-[12px] text-ink-2">Ответ запомним — такие строки разложатся сами.</p>
     </template>
   </Sheet>
 

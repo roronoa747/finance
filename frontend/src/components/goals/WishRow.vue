@@ -57,8 +57,8 @@ const { onLoad, fit } = useWideFit(() => props.src)
       :class="cn('min-w-0 flex-1 text-left', canEdit && 'cursor-pointer')"
       @click="canEdit && emit('open')"
     >
-      <b :class="cn('block truncate text-[14.5px] font-medium', bought ? 'text-ink-3 line-through' : 'text-ink')">{{ wish.name }}</b>
-      <span class="mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-3">
+      <b :class="cn('block truncate text-[14.5px] font-medium', bought ? 'text-ink-2 line-through' : 'text-ink')">{{ wish.name }}</b>
+      <span class="mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-2">
         <i class="size-[7px] shrink-0 rounded-full" :style="{ background: memberColor(finance.people, wish.by) }" />
         {{ meta }}
       </span>
@@ -73,6 +73,6 @@ const { onLoad, fit } = useWideFit(() => props.src)
     >
       <PhLink :size="10" /> ссылка
     </a>
-    <span :class="cn('shrink-0 text-[14px] font-semibold num', bought ? 'text-ink-3' : 'text-ink')">{{ money(wish.price) }}</span>
+    <span :class="cn('shrink-0 text-[14px] font-semibold num', bought ? 'text-ink-2' : 'text-ink')">{{ money(wish.price) }}</span>
   </div>
 </template>

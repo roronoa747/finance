@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils'
 
 import CurrencyChips from '@/components/kit/CurrencyChips.vue'
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import Hint from '@/components/kit/Hint.vue'
 import NbRateLine from '@/components/kit/NbRateLine.vue'
 import NumField from '@/components/kit/NumField.vue'
@@ -135,6 +136,10 @@ function startPlanning() {
   obCurrency.value = obOwn.value.currency
   void nextTick(() => obPlanRef.value?.querySelector('input')?.focus())
 }
+const form = useFormCheck(() => [
+  ['newAmount', parseMoney(obNewAmount.value) <= 0 ? 'Введите сумму' : !nb.ok.value && 'Нет курса — попробуйте позже'],
+])
+
 function planObligation() {
   const ob = activeObligation.value
   const planned = parseMoney(obNewAmount.value)
@@ -180,20 +185,20 @@ function planObligation() {
       </div>
       <template v-else>
         <Field label="Название">
-          <Input :default-value="activeObligation.name" class="mb-3" @blur="onObligationNameBlur" />
+          <Input :default-value="activeObligation.name" @blur="onObligationNameBlur" />
         </Field>
 
         <Field :label="`Сумма сейчас, ${CURRENCY_SIGN[obOwn.currency]}`">
           <NumFieldBlur :initial="plain(obOwn.amount)" class="mb-1" @commit="onObligationAmount" />
         </Field>
-        <p class="-mt-1 mb-3 flex items-center gap-1 text-[12px] text-ink-3 num">
+        <p class="-mt-1 mb-3 flex items-center gap-1 text-[12px] text-ink-2 num">
           <template v-if="obOwn.currency !== 'KZT'">≈ {{ money(obCurrent) }} по курсу Нацбанка ·</template>
           только исправить ошибку
           <Hint>Сумма была введена неверно. Если платёж меняется с какого-то месяца — не трогайте это поле, а запланируйте изменение ниже.</Hint>
         </p>
 
         <Field label="День платежа">
-          <NumFieldBlur :initial="String(activeObligation.day)" kind="int" class="mb-3" @commit="onObligationDay" />
+          <NumFieldBlur :initial="String(activeObligation.day)" kind="int" @commit="onObligationDay" />
         </Field>
 
         <Field label="Как часто" group>
@@ -222,7 +227,7 @@ function planObligation() {
               </button>
             </div>
           </Field>
-          <p class="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-3">
+          <p class="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-2">
             В плане месяца этот платёж занимает {{ money(yearShare(obCurrent)) }} — годовая сумма
             делится на двенадцать.
           </p>
@@ -271,7 +276,7 @@ function planObligation() {
           <Field label="Валюта" group>
             <CurrencyChips v-model="obCurrency" />
           </Field>
-          <Field :label="`Новая сумма, ${CURRENCY_SIGN[obCurrency]}`">
+          <Field :label="`Новая сумма, ${CURRENCY_SIGN[obCurrency]}`" name="newAmount">
             <NumField v-model="obNewAmount" :placeholder="plain(obCurrency === obOwn.currency ? obOwn.amount : 0)" />
           </Field>
           <NbRateLine :amount="parseMoney(obNewAmount)" :currency="obCurrency" :nb="nb" />
@@ -298,14 +303,14 @@ function planObligation() {
             </template>
           </div>
 
-          <p class="mb-3 text-[12px] leading-relaxed text-ink-3">
+          <p class="mb-3 text-[12px] leading-relaxed text-ink-2">
             Месяц, который выберете, оплачивается уже по новой сумме. Если переезд в середине
             месяца, ставьте следующий: за текущий вы платите по-старому.
           </p>
 
           <div class="flex gap-2">
             <Button variant="outline" class="flex-1" @click="obPlanning = false">Отмена</Button>
-            <Button class="flex-1" :disabled="parseMoney(obNewAmount) <= 0 || !nb.ok.value" @click="planObligation">
+            <Button class="flex-1" @click="form.submit(planObligation)">
               Запланировать
             </Button>
           </div>
@@ -313,12 +318,12 @@ function planObligation() {
       </template>
 
       <template v-if="obHistory.length > 1">
-        <div class="mb-2 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-3">История суммы</div>
+        <div class="mb-2 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-2">История суммы</div>
         <div class="mb-3 flex flex-col gap-1.5">
           <div v-for="v in obHistory" :key="v.from" class="flex items-baseline gap-2 text-[13px]">
-            <span class="text-ink-3">{{ v.from <= key ? 'с' : 'станет с' }} {{ monthFrom(v.from) }}</span>
+            <span class="text-ink-2">{{ v.from <= key ? 'с' : 'станет с' }} {{ monthFrom(v.from) }}</span>
             <b class="ml-auto num text-ink">{{ moneyIn(v.amount, v.currency) }}</b>
-            <span v-if="v.reason" class="text-[12px] text-ink-3">{{ v.reason }}</span>
+            <span v-if="v.reason" class="text-[12px] text-ink-2">{{ v.reason }}</span>
           </div>
         </div>
       </template>

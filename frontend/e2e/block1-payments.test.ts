@@ -20,6 +20,7 @@ import { money, plain } from '../src/lib/money'
 import Week from '../src/views/Week.vue'
 import Money from '../src/views/Money.vue'
 import Month from '../src/views/Month.vue'
+import DebtFaster from '../src/views/DebtFaster.vue'
 
 /** Текст как его видит человек: теги — пробел, пробелы шаблона схлопнуты (NBSP сумм остаются). */
 const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
@@ -158,10 +159,10 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
       expect(p.store.accounts[0].amount).toBe(800_000)
       expect(prepaySaved(p.store.payments, p.store.credits)).toBe(plan.saved)
       expect(await screen(p.pinia, Money, '/money')).toContain(money(800_000))
-      // Пивот 3 (B2C-42): срок — в листе кредита, строка «Платежей» его не печатает.
-      expect(text(await screen(p.pinia, Money, '/money?credit=loan'))).toContain(`Платежей осталось ${plan.months}`)
-      // Сэкономленное досрочками — в «Подробнее» квадрата «План» (Р-34, B2C-43).
-      expect(text(await screen(p.pinia, Money, '/money/debts'))).toContain(`Досрочками уже сэкономили ${money(plan.saved)}`)
+      // Пивот 3 (B2C-42): срок — в листе кредита; число платежей — в свёрнутом «Графике платежей» (Б17).
+      expect(text(await screen(p.pinia, Money, '/money?credit=loan', undefined, [screenMixin({ scheduleOpen: true })]))).toContain(`Платежей осталось ${plan.months}`)
+      // Сэкономленное досрочками — в «Подробнее» экрана «Закрыть быстрее» (Б17; прежде квадрат «План», Р-34, B2C-43).
+      expect(text(await screen(p.pinia, DebtFaster, '/money/debts/faster'))).toContain(`Досрочками уже сэкономили ${money(plan.saved)}`)
       const payoff = await screen(p.pinia, Money, '/money?payoff=loan')
       expect(payoff).toContain('Применённые досрочки')
       expect(payoff).toContain('сократили срок')
@@ -439,10 +440,10 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     expect(payday.dueTotal).toBe(324_990)
     expect(overview).not.toContain('До зарплаты')
     const capital = await screen(A.pinia, Money, '/money')
-    // Чистый капитал — подписью квадрата «Капитал» (Р-33; «чистых» в «Долгах» убран — владелец 2026-10-02).
-    expect(capital).toMatch(new RegExp(`>Капитал</b>(?:<!--[^>]*-->|\\s)*<small[^>]*>${plain(2_600_000)}</small>`))
-    // Срок и переплата — в листе кредита (пивот 3, B2C-42).
-    const loan = text(await screen(A.pinia, Money, '/money?credit=loan'))
+    // Чистый капитал — одна крупная сумма карточки «Капитал» (`data-worth`, Р-116; на чипе чисел нет).
+    expect(capital).toMatch(new RegExp(`data-worth>${money(2_600_000)}<`))
+    // Срок и переплата — в свёрнутом «Графике платежей» листа кредита (пивот 3, B2C-42; Б17).
+    const loan = text(await screen(A.pinia, Money, '/money?credit=loan', undefined, [screenMixin({ scheduleOpen: true })]))
     expect(loan).toContain('Платежей осталось 24')
     expect(loan).toContain(`Переплата до конца ${money(374_102)}`)
     // Открытие ничего не пишет: ни отметок, ни якорей, ни push.
@@ -519,7 +520,8 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     expect(B.store.credits[0].principal).toBe(700_000)
     expect(B.store.accounts[0].amount).toBe(700_000)
     expect(prepaySaved(B.store.payments, B.store.credits)).toBe(181_913)
-    expect(text(await screen(B.pinia, Money, '/money/debts'))).toContain(`Досрочками уже сэкономили ${money(181_913)}`)
+    // Сэкономленное — в «Подробнее» экрана «Закрыть быстрее» (Б17).
+    expect(text(await screen(B.pinia, DebtFaster, '/money/debts/faster'))).toContain(`Досрочками уже сэкономили ${money(181_913)}`)
 
     setActivePinia(B.pinia)
     at('2026-09-24T09:00:00Z')

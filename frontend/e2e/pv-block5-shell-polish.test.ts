@@ -210,7 +210,7 @@ describe('e2e / PV Блок 5 — оболочка на двух телефон�
       expect(server.data.people).toEqual([])
     })
 
-    it('Б-19: A переименовал себя в «Оформлении» → у B новое имя в Бюджете и шторке; пустое имя не пишется и возвращает прежнее', async () => {
+    it('Б-19: A переименовал себя в «Оформлении» → у B новое имя в «Месяце» (строка и лист зарплаты) и шторке; пустое имя не пишется и возвращает прежнее', async () => {
       const A = await phone(server)
       const B = await phone(server)
       on(A)
@@ -220,9 +220,14 @@ describe('e2e / PV Блок 5 — оболочка на двух телефон�
       await act(A.pinia, AppearancePanel, '/budget', 'saveName', { userName: '  Ильяс М ' })
       await A.store.syncHousehold(A.client)
       await on(B).store.syncHousehold(B.client)
-      // Зарплаты — у круга «Месяца» (Блок 15, Р-91).
-      const income = (await screen(B.pinia, Month, '/month')).replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
-      expect(income).toContain('Ильяс М ждём 10 сентября')
+      // Зарплаты — у круга «Месяца» (Блок 15, Р-91): в строке имя; дата «ждём …» — в листе зарплаты (Р-116).
+      const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
+      const income = text(await screen(B.pinia, Month, '/month'))
+      expect(income).toContain('Ильяс М')
+      expect(income).not.toContain('ждём 10 сентября')
+      const sheet = text(await screen(B.pinia, Month, '/month', undefined, [screenMixin({ salaryFor: 'a' })]))
+      expect(sheet).toContain('Зарплата · Ильяс М')
+      expect(sheet).toContain('Когда ждём 10 сентября')
       expect(await screen(B.pinia, SyncBadge, '/budget', undefined, [screenMixin({ open: true })])).toContain('Ильяс М')
 
       at('2026-09-26T07:20:00Z')
@@ -238,8 +243,10 @@ describe('e2e / PV Блок 5 — оболочка на двух телефон�
       ]
       const B = await phone(server)
 
-      // Пивот 3 (B2C-42): ставка и срок — в листе кредита; у рассрочки 0 % — «Платежей осталось 10».
-      const cap = await screen(B.pinia, Money, '/money?credit=inst')
+      // Пивот 3 (B2C-42): ставка и срок — в листе кредита; у рассрочки 0 % — «Платежей осталось 10» в свёрнутом
+      // «Графике платежей» (Б17), срок — строкой `data-credit-closes`.
+      const cap = await screen(B.pinia, Money, '/money?credit=inst', undefined, [screenMixin({ scheduleOpen: true })])
+      expect(cap).toMatch(/data-credit-closes>\s*закроется в /)
       expect(cap).toMatch(/Платежей осталось<\/span>\s*<b[^>]*>10</)
       const goal = await screen(B.pinia, GoalDetail, '/goals/trip', undefined, [screenMixin({ openDepositModal: true, depositOperation: 'deposit' })])
       expect(goal).toContain('Пополнить «Отпуск»')

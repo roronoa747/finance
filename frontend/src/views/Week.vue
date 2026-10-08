@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { PhCaretLeft, PhCaretRight, PhCheck, PhListBullets, PhPlus, PhSquaresFour } from '@phosphor-icons/vue'
+import { PhCaretLeft, PhCaretRight, PhCheck, PhPlus } from '@phosphor-icons/vue'
 import Button from '@/components/ui/Button.vue'
 import Avatar from '@/components/kit/Avatar.vue'
 import Callout from '@/components/kit/Callout.vue'
@@ -38,7 +38,7 @@ import {
   type Decision,
   type MyWeekRow,
 } from '@/lib/finance'
-import { readMonthEnd, readWeekView, writeMonthEnd, writePlanView, writeWeekView, type WeekView } from '@/lib/storage'
+import { readMonthEnd, writeMonthEnd, writePlanView } from '@/lib/storage'
 
 /**
  * «План · Неделя» (Блок 15, Р-95…Р-102; макет week-month.html «Неделя — мои траты»): только свои цифры. Верх —
@@ -100,19 +100,13 @@ const mine = computed(() => {
 const restMonth = computed(() => MONTHS_NOM[parseMonthKey(mine.value.month).month].toLowerCase())
 const hasPlan = computed(() => mine.value.rows.some((r) => r.plan !== null))
 const barShare = (r: MyWeekRow) => (r.plan && r.spent !== null ? Math.max(0, Math.min(100, Math.round((r.spent / r.plan) * 100))) : 0)
-const RING = 2 * Math.PI * 17
+// Строка «Не разобрано» есть — «Разобрать» встаёт в неё; нет — у вопросов своя строка.
+const hasUnknownRow = computed(() => mine.value.rows.some((r) => r.categoryId === UNKNOWN_CATEGORY))
 const letter = (r: MyWeekRow) => (r.categoryId === UNKNOWN_CATEGORY ? '?' : r.name.slice(0, 1).toUpperCase())
 
 /** Строка загрузки (Р-96): кто загрузил выписку за неделю — только ✓, цифр партнёра нет. */
 const uploadRows = computed(() => weekUploads(people.value, week.value, store.shownUploads))
 const mineIn = computed(() => uploadRows.value.some((r) => r.person.id === me.value && r.day !== null))
-
-/** Вид — список или плитки (Р-100), на устройстве. */
-const view = ref<WeekView>(readWeekView())
-function toggleView() {
-  view.value = view.value === 'list' ? 'tiles' : 'list'
-  writeWeekView(view.value)
-}
 
 /** Тренд 8 недель (Р-98) — свёрнут (правило 12). */
 const trend = computed(() => weekTrend(spendTotals.value, spendCategories.value, me.value, week.value))
@@ -325,12 +319,11 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="flex flex-col gap-3 pt-1 text-left">
-    <PlanSwitch view="week" :dot="planCall !== null" :month="planCall !== month ? planCall : null" />
-    <p v-if="auth.isDemo" class="px-1 text-[12px] text-ink-3">демо: только на этом телефоне</p>
+    <PlanSwitch view="week" :month="planCall !== null && planCall !== month ? planCall : null" />
     <input v-if="canUpload" ref="fileInput" type="file" accept="application/pdf,.pdf" multiple class="hidden" @change="pick" />
     <Callout v-if="store.pendingCount && !store.held" tone="neutral">{{ store.pendingCount }} операций отправятся при сети. Итоги уже посчитаны.</Callout>
 
-    <!-- Строка загрузки (Р-96): кружки с ✓ · ⊕ · «! N» · вид -->
+    <!-- Строка загрузки (Р-96): кружки с ✓ · ⊕ (вопросы — «Разобрать» в строке раздела, вида плитками нет — Б17) -->
     <div class="flex items-center gap-2.5" data-week-strip>
       <template v-for="r in uploadRows" :key="r.person.id">
         <button
@@ -379,31 +372,10 @@ onBeforeUnmount(() => {
           <PhPlus :size="16" weight="bold" />
         </button>
       </template>
-      <button
-        v-if="queue.length"
-        type="button"
-        class="press ml-auto flex shrink-0 cursor-pointer items-center gap-1.5 rounded-pill bg-ok-soft px-[11px] py-1.5 text-[14px] font-bold text-ok num"
-        :aria-label="`Вопросы: ${queue.length}`"
-        data-bang
-        @click="questionsOpen = true"
-      >
-        <span class="grid size-[18px] place-items-center rounded-full bg-ok text-[12px] text-surface" aria-hidden="true">!</span>{{ queue.length }}
-      </button>
-      <span v-else class="ml-auto" />
-      <button
-        type="button"
-        class="press grid size-[34px] shrink-0 cursor-pointer place-items-center rounded-[10px] bg-surface-2 text-ink-2"
-        :aria-label="view === 'list' ? 'Плитками' : 'Списком'"
-        data-view-toggle
-        @click="toggleView"
-      >
-        <PhSquaresFour v-if="view === 'list'" :size="18" />
-        <PhListBullets v-else :size="18" />
-      </button>
     </div>
 
-    <!-- Сумма недели: моя, крупно; сравнение с прошлой; ‹ › — недели -->
-    <component :is="view === 'list' ? Card : 'div'" :tight="view === 'list' ? true : undefined" class="flex flex-col gap-1" :class="view === 'tiles' && 'px-1 pb-0.5 pt-1'" data-week-sum>
+    <!-- Сумма недели: моя, крупно; ‹ › — недели. Сравнение с прошлой — в «8 недель» (Р-116). -->
+    <Card tight class="flex flex-col gap-1" data-week-sum>
       <div class="flex items-center gap-1.5">
         <button type="button" class="press -ml-1.5 grid size-7 cursor-pointer place-items-center text-ink-3 disabled:opacity-30" :disabled="!canBack" aria-label="Прошлая неделя" @click="turn(-1)">
           <PhCaretLeft :size="16" />
@@ -413,89 +385,52 @@ onBeforeUnmount(() => {
           <PhCaretRight :size="16" />
         </button>
       </div>
-      <div class="flex flex-wrap items-baseline gap-2.5">
-        <span class="font-num text-[40px] font-bold leading-none num" :class="mine.total ? 'text-ink' : 'text-ink-3'" data-week-total>{{ money(mine.total) }}</span>
-        <span
-          v-if="mine.total && mine.pct !== null && mine.delta !== 0"
-          class="whitespace-nowrap rounded-pill px-[9px] py-[3px] text-[12.5px] font-bold num"
-          :class="mine.delta > 0 ? 'bg-warn-soft text-warn' : 'bg-ok-soft text-ok'"
-          data-week-delta
-        >
-          {{ mine.delta > 0 ? '↑' : '↓' }} {{ mine.pct }}%
-        </span>
-      </div>
-      <span v-if="view === 'list' && mine.prev > 0" class="type-meta num" data-week-prev>прошлая неделя — {{ money(mine.prev) }}</span>
+      <span class="font-num text-[34px] font-bold leading-none num" :class="mine.total ? 'text-ink' : 'text-ink-2'" data-week-total>{{ money(mine.total) }}</span>
       <div v-if="!hasPlan && mine.rows.length" class="pt-1">
         <Button variant="secondary" size="sm" data-to-plan @click="toMonth">План трат — в «Месяце» ›</Button>
       </div>
-    </component>
+    </Card>
 
-    <!-- Разделы списком: потрачено за неделю, полоса и остаток до конца месяца -->
-    <Card v-if="view === 'list' && mine.rows.length" flush class="px-3.5 py-0.5" data-week-list>
-      <button
+    <!--
+      Разделы списком: потрачено за неделю, полоса и остаток на месяц («из N» — в листе раздела). Вопросы разбора —
+      «Разобрать» у строки «Не разобрано» (Р-116: действие у своего предмета); нет такой строки — своя строка «Вопросы».
+    -->
+    <Card v-if="mine.rows.length || queue.length" flush class="px-3.5 py-0.5" data-week-list>
+      <div v-if="queue.length && !hasUnknownRow" class="flex items-center gap-2.5 py-3" data-questions-row>
+        <span class="grid size-8 shrink-0 place-items-center rounded-[10px] bg-surface-2 text-[13px] font-bold text-ink-2" aria-hidden="true">?</span>
+        <span class="min-w-0 flex-1">
+          <span class="block truncate text-[15.5px] font-semibold text-ink">Вопросы</span>
+          <span class="block type-meta num">{{ queue.length }} {{ plural(queue.length, 'вопрос', 'вопроса', 'вопросов') }}</span>
+        </span>
+        <Button variant="soft" size="sm" data-bang @click="questionsOpen = true">Разобрать</Button>
+      </div>
+      <div
         v-for="r in mine.rows"
         :key="r.categoryId"
-        type="button"
-        class="press flex w-full cursor-pointer flex-col gap-1.5 border-t border-line py-3 text-left first:border-t-0"
+        class="relative flex w-full flex-col gap-1.5 border-t border-line py-3 text-left first:border-t-0"
         :data-row="r.categoryId"
-        @click="sectionFor = r.categoryId"
       >
         <span class="flex items-center gap-2.5">
           <span class="grid size-8 shrink-0 place-items-center rounded-[10px] text-[13px] font-bold text-on-photo" :style="{ background: r.color }" aria-hidden="true">{{ letter(r) }}</span>
-          <span class="min-w-0 flex-1 truncate text-[15.5px] font-semibold text-ink">{{ r.name }}</span>
-          <span class="w-4 text-center text-[12px] font-extrabold" :class="r.arrow === 'up' ? 'text-warn' : 'text-ok'" :data-arrow="r.arrow ?? ''" aria-hidden="true">
-            {{ r.arrow === 'up' ? '↑' : r.arrow === 'down' ? '↓' : '' }}
+          <span class="min-w-0 flex-1">
+            <button type="button" class="row-open block w-full truncate text-left text-[15.5px] font-semibold text-ink" @click="sectionFor = r.categoryId">{{ r.name }}</button>
+            <span v-if="r.categoryId === UNKNOWN_CATEGORY && queue.length" class="block type-meta num">{{ queue.length }} {{ plural(queue.length, 'вопрос', 'вопроса', 'вопросов') }}</span>
           </span>
+          <Button v-if="r.categoryId === UNKNOWN_CATEGORY && queue.length" variant="soft" size="sm" class="relative z-10" data-bang @click="questionsOpen = true">Разобрать</Button>
           <span class="font-num text-[16px] font-bold num text-ink" data-amount>{{ plain(r.amount) }}</span>
         </span>
         <template v-if="r.plan !== null && r.rest !== null">
           <span class="ml-[42px] block h-1.5 overflow-hidden rounded-pill bg-track">
             <i class="block h-full rounded-pill" :style="{ width: `${barShare(r)}%`, background: r.low ? 'var(--warn)' : r.color }" />
           </span>
-          <span class="ml-[42px] text-[12.5px] text-ink-3 num" data-rest>
-            <template v-if="r.rest >= 0">на {{ restMonth }} осталось <b class="font-semibold" :class="r.low ? 'text-warn' : 'text-ink-2'">{{ plain(r.rest) }}</b> из {{ plain(r.plan) }}</template>
-            <template v-else>на {{ restMonth }} сверх плана <b class="font-semibold text-warn">{{ plain(-r.rest) }}</b></template>
+          <span class="ml-[42px] text-[12.5px] text-ink-2 num" data-rest>
+            <template v-if="r.rest >= 0">осталось <b class="font-semibold" :class="r.low ? 'text-warn' : 'text-ink-2'">{{ plain(r.rest) }}</b></template>
+            <template v-else>сверх плана <b class="font-semibold text-warn">{{ plain(-r.rest) }}</b></template>
           </span>
         </template>
-        <span v-else-if="hasPlan && r.categoryId !== UNKNOWN_CATEGORY" class="ml-[42px] text-[12.5px] text-ink-3" data-rest>вне плана</span>
-      </button>
+        <span v-else-if="hasPlan && r.categoryId !== UNKNOWN_CATEGORY" class="ml-[42px] text-[12.5px] text-ink-2" data-rest>вне плана</span>
+      </div>
     </Card>
-
-    <!-- Разделы плитками: кольцо — сколько потрачено от плана месяца -->
-    <div v-else-if="view === 'tiles' && mine.rows.length" class="grid grid-cols-2 gap-2.5" data-week-tiles>
-      <button
-        v-for="r in mine.rows"
-        :key="r.categoryId"
-        type="button"
-        class="press flex min-w-0 cursor-pointer flex-col gap-2 rounded-[22px] border border-card-border bg-surface p-3.5 text-left"
-        :data-row="r.categoryId"
-        @click="sectionFor = r.categoryId"
-      >
-        <span class="flex h-11 w-full items-center justify-between">
-          <span class="grid size-8 shrink-0 place-items-center rounded-[10px] text-[13px] font-bold text-on-photo" :style="{ background: r.color }" aria-hidden="true">{{ letter(r) }}</span>
-          <svg v-if="r.plan !== null" class="size-11" viewBox="0 0 44 44" aria-hidden="true">
-            <circle cx="22" cy="22" r="17" fill="none" stroke="var(--track)" stroke-width="6" />
-            <circle
-              cx="22"
-              cy="22"
-              r="17"
-              fill="none"
-              :stroke="r.low ? 'var(--warn)' : r.color"
-              stroke-width="6"
-              stroke-linecap="round"
-              :stroke-dasharray="`${((RING * barShare(r)) / 100).toFixed(1)} ${RING.toFixed(1)}`"
-              transform="rotate(-90 22 22)"
-            />
-          </svg>
-        </span>
-        <span class="font-num text-[22px] font-bold leading-none num text-ink" data-amount>{{ plain(r.amount) }}</span>
-        <span class="text-[12px] text-ink-3 num">
-          {{ r.name }}<span v-if="r.arrow === 'up' || r.arrow === 'down'" :class="r.arrow === 'up' ? 'text-warn' : 'text-ok'"> · {{ r.arrow === 'up' ? '↑' : '↓' }}</span>
-          <span v-if="r.plan !== null && r.rest !== null" :class="r.low && 'text-warn'" data-rest> · {{ r.rest >= 0 ? `ост. ${plain(r.rest)}` : `сверх ${plain(-r.rest)}` }}</span>
-          <span v-else-if="hasPlan && r.categoryId !== UNKNOWN_CATEGORY" data-rest> · вне плана</span>
-        </span>
-      </button>
-    </div>
 
     <!-- Тренд 8 недель — свёрнут -->
     <div v-if="trendMax > 0" data-week-trend>
@@ -511,9 +446,9 @@ onBeforeUnmount(() => {
       </button>
       <div v-if="trendOpen" class="flex h-[110px] items-end gap-[7px] rounded-b-[20px] bg-surface px-4 pb-3.5 pt-1" data-trend-bars>
         <div v-for="(t, i) in trend" :key="t.week" class="flex h-full flex-1 flex-col items-center justify-end gap-1">
-          <em v-if="t.amount > 0 && (i === trend.length - 1 || t.amount === trendMax)" class="text-[10px] not-italic text-ink-3 num">{{ Math.round(t.amount / 1000) }}к</em>
+          <em v-if="t.amount > 0 && (i === trend.length - 1 || t.amount === trendMax)" class="text-[10px] not-italic text-ink-2 num">{{ Math.round(t.amount / 1000) }}к</em>
           <i class="block w-full rounded-b-[3px] rounded-t-[6px]" :class="i === trend.length - 1 ? 'bg-brand' : 'bg-surface-3'" :style="{ height: `${Math.round((t.amount / trendMax) * 70)}%` }" />
-          <span class="text-[10.5px] text-ink-3 num">{{ trendDay(t.from) }}</span>
+          <span class="text-[10.5px] text-ink-2 num">{{ trendDay(t.from) }}</span>
         </div>
       </div>
     </div>
@@ -546,7 +481,7 @@ onBeforeUnmount(() => {
       <div v-for="e in readErrors" :key="e.name" class="border-t border-line py-2.5 first:border-t-0 first:pt-0" role="alert" data-read-error>
         <p class="truncate text-[15px] font-semibold text-ink">{{ e.name }}</p>
         <p class="text-[13.5px] text-ink-2">{{ e.message }}</p>
-        <p v-if="e.detail" class="mt-1 break-all text-[11.5px] text-ink-3">{{ e.detail }}</p>
+        <p v-if="e.detail" class="mt-1 break-all text-[11.5px] text-ink-2">{{ e.detail }}</p>
       </div>
     </Sheet>
 

@@ -6,6 +6,8 @@ import { installmentMonths, rateFromSchedule, scheduleMismatch } from '@/lib/fin
 import { plural } from '@/lib/utils'
 
 import Field from '@/components/kit/Field.vue'
+import Hint from '@/components/kit/Hint.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import NumField from '@/components/kit/NumField.vue'
 import Segmented from '@/components/kit/Segmented.vue'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -51,10 +53,12 @@ const mismatch = computed(() =>
     ? scheduleMismatch(leftPrincipal.value, paymentVal.value, termMonths.value)
     : null,
 )
-const canCreateDebt = computed(() => leftPrincipal.value > 0 && paymentVal.value > 0)
+const form = useFormCheck(() => [
+  ['principal', leftPrincipal.value <= 0 && 'Введите остаток'],
+  ['payment', paymentVal.value <= 0 && 'Введите платёж'],
+])
 
 function createDebt() {
-  if (!canCreateDebt.value) return
   financeStore.addCredit({
     name: debtName.value.trim() || 'Долг',
     note: resolvedRate.value > 0 ? 'ежемесячный платёж' : 'рассрочка',
@@ -76,16 +80,23 @@ function createDebt() {
 <template>
   <Sheet :open="open" title="Долг или рассрочка" @close="emit('close')">
     <Field label="Название">
-      <Input v-model="debtName" placeholder="Например, рассрочка на телефон" class="mb-3" />
+      <Input v-model="debtName" placeholder="Например, рассрочка на телефон" />
     </Field>
-    <Field label="Остаток долга, ₸">
-      <NumField v-model="debtPrincipal" placeholder="600 000" class="mb-3" />
+    <Field label="Остаток долга, ₸" name="principal">
+      <NumField v-model="debtPrincipal" placeholder="600 000" />
     </Field>
-    <Field label="Платёж в месяц, ₸">
-      <NumField v-model="debtPayment" placeholder="55 000" class="mb-3" />
+    <Field label="Платёж в месяц, ₸" name="payment">
+      <NumField v-model="debtPayment" placeholder="55 000" />
     </Field>
 
     <Field label="Проценты" group>
+      <!-- Пояснение рассрочки — в подсказке (макет Б17), не абзацем под переключателем. -->
+      <template #hint>
+        <Hint label="Проценты">
+          Без процентов — рассрочка: платите ровно столько, сколько должны.<template v-if="plainMonths">
+            Долг закроется за {{ plainMonths }} {{ plural(plainMonths, 'платёж', 'платежа', 'платежей') }}.</template>
+        </Hint>
+      </template>
       <Segmented
         v-model="debtMode"
         :options="[
@@ -95,16 +106,12 @@ function createDebt() {
         ]"
       />
     </Field>
-    <p v-if="debtMode === 'none'" class="-mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-3">
-      Рассрочка: платите ровно столько, сколько должны. Приложение посчитает, что долг
-      закроется за {{ plainMonths || '—' }} {{ plural(plainMonths, 'платёж', 'платежа', 'платежей') }}.
-    </p>
 
     <Field v-if="debtMode === 'rate'" label="Ставка (ГЭСВ), % годовых">
-      <NumField v-model="debtRate" kind="rate" placeholder="23,4" class="mb-3" />
+      <NumField v-model="debtRate" kind="rate" placeholder="23,4" />
     </Field>
     <Field v-if="debtMode === 'term'" label="Сколько платежей осталось">
-      <NumField v-model="debtTerm" kind="int" placeholder="12" class="mb-3" />
+      <NumField v-model="debtTerm" kind="int" placeholder="12" />
     </Field>
 
     <div
@@ -126,17 +133,17 @@ function createDebt() {
             : ' Выходит больше остатка — видимо, в платёж входит что-то ещё.'
         }}
       </p>
-      <p class="mt-2 text-[12.5px] leading-relaxed text-ink-3">
+      <p class="mt-2 text-[12.5px] leading-relaxed text-ink-2">
         Записать всё равно можно: сохраним как рассрочку без процентов, а ставку
         поправите, когда сверитесь с банком.
       </p>
     </div>
 
     <Field label="День платежа">
-      <NumField v-model="debtDay" kind="int" class="mb-3" />
+      <NumField v-model="debtDay" kind="int" />
     </Field>
 
-    <Button :disabled="!canCreateDebt" class="w-full mt-2" @click="createDebt">
+    <Button class="w-full" @click="form.submit(createDebt)">
       Добавить
     </Button>
   </Sheet>

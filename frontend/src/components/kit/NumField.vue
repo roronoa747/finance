@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useFieldInvalid } from '@/components/kit/useFormCheck'
 import { ref, nextTick, type HTMLAttributes } from 'vue'
 import { clean, caretAt, sigBefore, type NumKind } from '@/lib/num'
 import { cn } from '@/lib/utils'
@@ -46,6 +47,9 @@ function onInput(e: Event) {
     }
   })
 }
+
+// Поле внутри `kit/Field` с ошибкой — неверное (рамка `--destructive`, строка под полем).
+const invalid = useFieldInvalid()
 </script>
 
 <template>
@@ -56,10 +60,11 @@ function onInput(e: Event) {
     :inputmode="kind === 'rate' ? 'decimal' : 'numeric'"
     :placeholder="placeholder"
     :disabled="disabled"
+    v-bind="invalid"
     data-slot="input"
     :class="
       cn(
-        'flex h-12 w-full min-w-0 rounded-inner border border-transparent bg-surface-2 px-3.5 py-1 text-[16px] text-ink transition-[color,background-color,border-color] outline-none selection:bg-brand selection:text-brand-ink placeholder:text-ink-3 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 focus-visible:border-brand focus-visible:bg-surface aria-invalid:border-destructive num',
+        'flex h-12 w-full min-w-0 rounded-inner border border-transparent bg-surface-2 px-3.5 py-1 text-[16px] text-ink transition-[color,background-color,border-color] outline-none selection:bg-brand selection:text-brand-ink placeholder:text-ink-3 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 focus-visible:border-brand focus-visible:bg-surface aria-invalid:border-destructive aria-invalid:focus-visible:border-destructive num',
         props.class,
         props.className,
       )

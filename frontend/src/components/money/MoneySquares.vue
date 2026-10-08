@@ -1,68 +1,38 @@
 <script setup lang="ts">
-import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useFinanceStore } from '@/stores/finance'
-import { useOperationsStore } from '@/stores/operations'
-import { plain } from '@/lib/money'
-import { MONTHS_NOM, monthKey, parseMonthKey } from '@/lib/dates'
-import { liveAccounts, liveCredits, liveGoals, netWorth, openDebt } from '@/lib/finance'
-import { cn, plural } from '@/lib/utils'
-import Hint from '@/components/kit/Hint.vue'
+import { cn } from '@/lib/utils'
 
 /**
- * Три квадрата «Денег» (пивот 3, Р-31; Блок 15, Р-91): Капитал — чистых коротко (`netWorth`; подсказка «?» —
- * рядом с кнопкой квадрата, не внутри: кнопка в кнопке недопустима), Долги (бывший «План») — остаток открытых
- * долгов или «долгов нет», История — последний прошлый месяц (Блок 16), без прошлых — свои операции месяца.
- * Активный — по адресу; переход — `router.replace`: «назад» ведёт на прошлую вкладку, а не
- * перебирает квадраты.
+ * Три чипа «Денег» (пивот 3, Р-31; Блок 15, Р-91): Капитал · Долги · История. Чисел на чипах нет (Р-116, Б17) — они
+ * повторяли экран под чипом: сумма капитала и долгов — крупно на своём экране, месяц истории — строкой там же.
+ * Активный — по адресу; переход — `router.replace`: «назад» ведёт на прошлую вкладку, а не перебирает квадраты.
  */
 const route = useRoute()
 const router = useRouter()
-const financeStore = useFinanceStore()
-const ops = useOperationsStore()
 
-const worth = computed(() => netWorth(liveAccounts(financeStore.accounts), liveCredits(financeStore.credits), liveGoals(financeStore.goals)))
-const debt = computed(() => openDebt(financeStore.credits))
-const debtsNote = computed(() => (debt.value > 0 ? plain(debt.value) : 'долгов нет'))
-// История (Блок 16, Р-111) — последний прошлый месяц списка («сентябрь»); прошлых нет — свои операции этого месяца
-// (партнёр чужих не видит — Р-5) или «отметки».
-const lastMonth = computed(() => financeStore.historyMonthsNow(1)[0]?.key ?? null)
-const opsCount = computed(() => {
-  const key = monthKey()
-  return ops.all.filter((o) => o.date.startsWith(key)).length
-})
-const historyNote = computed(() => {
-  if (lastMonth.value) return MONTHS_NOM[parseMonthKey(lastMonth.value).month].toLowerCase()
-  return opsCount.value ? `${opsCount.value} ${plural(opsCount.value, 'операция', 'операции', 'операций')}` : 'отметки'
-})
-
-const squares = computed(() => [
-  { to: '/money', title: 'Капитал', note: plain(worth.value) },
-  { to: '/money/debts', title: 'Долги', note: debtsNote.value },
-  { to: '/money/history', title: 'История', note: historyNote.value },
-])
+const squares = [
+  { to: '/money', title: 'Капитал' },
+  { to: '/money/debts', title: 'Долги' },
+  { to: '/money/history', title: 'История' },
+]
 </script>
 
 <template>
-  <div class="flex gap-2" role="group" aria-label="Деньги">
-    <div v-for="s in squares" :key="s.to" class="relative flex min-w-0 flex-1">
-      <button
-        type="button"
-        :aria-current="route.path === s.to ? 'page' : undefined"
-        :class="
-          cn(
-            'press flex w-full min-w-0 flex-col gap-px rounded-[16px] border px-3 py-2.5 text-left cursor-pointer',
-            route.path === s.to ? 'border-brand bg-brand-soft' : 'border-card-border bg-surface',
-          )
-        "
-        @click="route.path !== s.to && router.replace(s.to)"
-      >
-        <b :class="cn('truncate text-[14px] font-semibold', route.path === s.to ? 'text-brand' : 'text-ink-2')">{{ s.title }}</b>
-        <small :class="cn('truncate text-[11.5px] num', route.path === s.to ? 'text-brand opacity-80' : 'text-ink-3')">{{ s.note }}</small>
-      </button>
-      <span v-if="s.to === '/money'" class="absolute right-2 top-2">
-        <Hint label="Что такое капитал">Всё, что есть, минус всё, что должны.</Hint>
-      </span>
-    </div>
+  <div class="grid grid-cols-3 gap-2" role="group" aria-label="Деньги">
+    <button
+      v-for="s in squares"
+      :key="s.to"
+      type="button"
+      :aria-current="route.path === s.to ? 'page' : undefined"
+      :class="
+        cn(
+          'press h-11 min-w-0 truncate rounded-[14px] border px-2 text-center text-[14px] font-semibold cursor-pointer',
+          route.path === s.to ? 'border-brand bg-brand-soft text-brand' : 'border-card-border bg-surface text-ink-2',
+        )
+      "
+      @click="route.path !== s.to && router.replace(s.to)"
+    >
+      {{ s.title }}
+    </button>
   </div>
 </template>

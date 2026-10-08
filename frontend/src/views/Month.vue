@@ -79,7 +79,7 @@ onMounted(() => void ops.loadUploads())
       <button type="button" class="press grid size-8 cursor-pointer place-items-center text-ink-3 disabled:opacity-30" :disabled="!canForward" aria-label="Следующий месяц" @click="shown = addMonths(shown, 1)">
         <PhCaretRight :size="18" />
       </button>
-      <span v-if="authStore.isViewer" class="absolute right-0 rounded-pill bg-surface-2 px-2 py-[3px] text-[11.5px] font-bold uppercase tracking-[0.04em] text-ink-3">просмотр</span>
+      <span v-if="authStore.isViewer" class="absolute right-0 rounded-pill bg-surface-2 px-2 py-[3px] text-[11.5px] font-bold uppercase tracking-[0.04em] text-ink-2">просмотр</span>
     </div>
 
     <MonthPlan v-if="isNow || unsaved" :key="shown" :month-key="shown" />

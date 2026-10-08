@@ -164,14 +164,14 @@ describe('views/GoalNew.vue — «Новая мечта» (B2C-18, SSR)', () => 
     vi.unstubAllGlobals()
   })
 
-  it('шаг «На что копим?»: пять типов с картинками Unsplash, «Своё фото», «Дальше» выключена до выбора, «Пока без мечты»', async () => {
+  it('шаг «На что копим?»: пять типов с картинками Unsplash, «Своё фото», «Дальше» не серая до выбора (Р-114: нажатие назовёт картинку), «Пока без мечты»', async () => {
     family()
     const html = await renderScreen(GoalNew, '/goals/new')
     expect(html).toContain('На что копим?')
     for (const k of GOAL_TYPES) expect(html).toContain(k.name)
     expect(html).toContain('Своё фото')
     expect((html.match(/images\.unsplash\.com\//g) ?? []).length).toBeGreaterThanOrEqual(5)
-    expect(disabled(html, 'Дальше')).toBe(true)
+    expect(disabled(html, 'Дальше')).toBe(false)
     expect(html).toContain('Пока без мечты')
     expect(html).not.toContain('Куда')
   })
@@ -198,7 +198,8 @@ describe('views/GoalNew.vue — «Новая мечта» (B2C-18, SSR)', () => 
     expect(html).toContain('реально')
     expect(html).toContain(`при остатке ≈ ${money(free)}`)
     expect(html).toContain(`будет вашей в ${monthIn(addMonths('2026-09', 11))}`)
-    expect(html).toContain('Путешествие · Япония')
+    // Подписи «<тип> · <шаблон>» на фото нет (макет Б17: «Машина · Машина» — шум); автор фото — остаётся.
+    expect(html).not.toContain('Путешествие · Япония')
     expect(html).toContain(templateById('japan')!.photo.author)
     expect(html).toContain('Готово — к мечте')
 
@@ -244,12 +245,18 @@ describe('views/GoalNew.vue — «Новая мечта» (B2C-18, SSR)', () => 
     expect(fresh.queue[0].goal?.name).toBe('Машина')
   })
 
-  it('viewer: «Готово — к мечте» выключена', async () => {
-    family('viewer')
+  it('viewer: экран только участнику (гард `memberOnly`); дошёл бы — «Готово — к мечте» ничего не пишет', async () => {
+    const store = family('viewer')
+    const before = store.goals.length
+    let create: (() => Promise<void>) | null = null
     const html = await renderScreen(GoalNew, '/goals/new', undefined, [
-      screenMixin({ step: 'form', template: templateById('japan'), name: 'Япония', needText: '1 800 000' }),
+      screenMixin({ step: 'form', template: templateById('japan'), name: 'Япония', needText: '1 800 000' }, (s) => {
+        create = s.create as () => Promise<void>
+      }),
     ])
-    expect(disabled(html, 'Готово — к мечте')).toBe(true)
+    expect(disabled(html, 'Готово — к мечте')).toBe(false)
+    await create!()
+    expect(store.goals.length).toBe(before)
   })
 
   /** Нажать «Готово — к мечте» и дождаться загрузки фото; куда пришёл экран. */
@@ -359,7 +366,7 @@ describe('views/Wishes.vue — фото желаний (Р-9, B2C-18, SSR)', () 
     expect(viewer).not.toContain('accept="image/*"')
   })
 
-  it('B2C-66: ссылка на товар — первой в «Новом желании» и в правке; viewer — без поля; демо — тихая строка вместо поля', async () => {
+  it('B2C-66: ссылка на товар — первой в «Новом желании» и в правке; viewer — без поля; демо — без поля и без строки-пояснения (Б17)', async () => {
     family('member', 'a', { wishlist: [wish({ id: 'pan', name: 'Сковорода', price: 18_000, url: 'https://kaspi.kz/p' })] })
     const sheet = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ openWishModal: true })])
     expect(sheet).toContain('placeholder="Вставьте ссылку"')
@@ -382,7 +389,9 @@ describe('views/Wishes.vue — фото желаний (Р-9, B2C-18, SSR)', () 
     expect(demo.isDemo).toBe(true)
     const demoSheet = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ openWishModal: true })])
     expect(demoSheet).not.toContain('Вставьте ссылку')
-    expect(demoSheet).toContain('По ссылке — в приложении')
+    // Б17: строки «По ссылке — в приложении» больше нет — в демо лист просто без поля ссылки.
+    expect(demoSheet).toContain('Что покупаем')
+    expect(demoSheet).not.toContain('По ссылке — в приложении')
     const demoEdit = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ editWishId: 'pan' })])
     expect(demoEdit).not.toContain('Ссылка на товар')
     expect(demoEdit).toContain('Открыть ссылку')

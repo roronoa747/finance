@@ -76,7 +76,7 @@ async function save() {
   <Sheet :open="open" :title="title" @close="emit('close')">
     <div class="flex flex-col items-center gap-3">
       <canvas ref="canvas" width="1080" height="1920" class="h-auto w-[270px] rounded-card bg-surface-3 shadow-sheet" aria-label="Предпросмотр карточки" />
-      <p class="text-center text-[12.5px] text-ink-3">
+      <p class="text-center text-[12.5px] text-ink-2">
         {{ kind === 'goal' ? 'Без сумм — только процент, имя мечты и месяц.' : 'Без сумм — только число подписок.' }}
       </p>
       <Callout v-if="error" tone="warn">Не получилось нарисовать карточку: {{ error }}</Callout>

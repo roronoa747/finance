@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useFieldInvalid } from '@/components/kit/useFormCheck'
 import { nextTick } from 'vue'
 
 /**
@@ -23,13 +24,17 @@ function onChange(e: Event) {
     if (el.value !== props.modelValue) el.value = props.modelValue
   })
 }
+
+// Поле внутри `kit/Field` с ошибкой — неверное (рамка `--destructive`, строка под полем).
+const invalid = useFieldInvalid()
 </script>
 
 <template>
   <select
     :value="modelValue"
     :disabled="disabled"
-    class="w-full rounded-inner border border-transparent bg-surface-2 px-3.5 py-3 text-[15px] text-ink outline-none focus-visible:border-brand disabled:opacity-50"
+    v-bind="invalid"
+    class="w-full rounded-inner border border-transparent bg-surface-2 px-3.5 py-3 text-[15px] text-ink outline-none focus-visible:border-brand disabled:opacity-50 aria-invalid:border-destructive aria-invalid:focus-visible:border-destructive"
     @change="onChange"
   >
     <slot>

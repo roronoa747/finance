@@ -10,6 +10,7 @@ import type { Currency, PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
 import CurrencyChips from '@/components/kit/CurrencyChips.vue'
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import Hint from '@/components/kit/Hint.vue'
 import NbRateLine from '@/components/kit/NbRateLine.vue'
 import NumField from '@/components/kit/NumField.vue'
@@ -126,6 +127,10 @@ function startPlanning() {
   void nextTick(() => planRef.value?.querySelector<HTMLInputElement>('input[inputmode]')?.focus())
 }
 
+const form = useFormCheck(() => [
+  ['newAmount', planned.value <= 0 ? 'Введите оклад' : !rateOk.value && 'Нет курса — попробуйте позже'],
+])
+
 function handlePlanSubmit() {
   if (!person.value || planned.value <= 0 || !rateOk.value) return
   financeStore.amendSalary(
@@ -151,20 +156,19 @@ function handlePlanSubmit() {
       </Field>
 
       <Field :label="`Оклад сейчас, ${sign}`">
+        <!-- «только исправить ошибку» — в подсказке у поля (макет Б17), не строкой. -->
+        <template #hint><Hint label="Оклад сейчас">Только исправить ошибку: оклад был введён неверно. Если зарплата действительно меняется — не трогайте это поле, а измените оклад с нужного месяца ниже.</Hint></template>
         <NumFieldBlur :initial="plain(current.amount)" @commit="onSalaryCommit" />
       </Field>
-      <p class="-mt-1 mb-3 flex items-center gap-1 text-[12px] text-ink-3 num">
-        <template v-if="current.currency !== 'KZT'">≈ {{ money(currentTenge) }} по курсу Нацбанка ·</template>
-        только исправить ошибку
-        <Hint>Оклад был введён неверно. Если зарплата действительно меняется — не трогайте это поле, а измените оклад с нужного месяца ниже.</Hint>
-      </p>
+      <p v-if="current.currency !== 'KZT'" class="-mt-1 mb-3 text-[12.5px] text-ink-2 num">≈ {{ money(currentTenge) }} по курсу Нацбанка</p>
 
       <Field label="День зарплаты">
         <NumFieldBlur :initial="String(person.payday)" kind="int" @commit="onPaydayCommit" />
       </Field>
 
       <div v-if="!planning" class="mb-3">
-        <Button variant="outline" class="w-full bg-surface-2" @click="startPlanning">
+        <!-- Главная листа — брендовая (была серой, макет Б17). -->
+        <Button class="w-full" @click="startPlanning">
           Изменить оклад
         </Button>
       </div>
@@ -174,7 +178,7 @@ function handlePlanSubmit() {
           <CurrencyChips v-model="newCurrency" />
         </Field>
 
-        <Field :label="`Новый оклад, ${CURRENCY_SIGN[newCurrency]}`">
+        <Field :label="`Новый оклад, ${CURRENCY_SIGN[newCurrency]}`" name="newAmount">
           <NumField v-model="newAmount" :placeholder="plain(current.currency === newCurrency ? current.amount : 0)" />
         </Field>
         <NbRateLine :amount="planned" :currency="newCurrency" :nb="nb" />
@@ -208,23 +212,23 @@ function handlePlanSubmit() {
 
         <div class="flex gap-2">
           <Button variant="outline" class="flex-1" @click="planning = false">Отмена</Button>
-          <Button class="flex-1" :disabled="planned <= 0 || !rateOk" @click="handlePlanSubmit">
+          <Button class="flex-1" @click="form.submit(handlePlanSubmit)">
             Сохранить
           </Button>
         </div>
       </div>
 
       <div v-if="history.length > 1" class="mt-4 border-t border-line pt-3">
-        <div class="mb-2 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-3">
+        <div class="mb-2 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-2">
           История оклада
         </div>
         <div class="flex flex-col gap-1.5">
           <div v-for="v in history" :key="v.from" class="flex items-baseline gap-2 text-[13px]">
-            <span class="text-ink-3">
+            <span class="text-ink-2">
               {{ v.from <= key ? 'с' : 'станет с' }} {{ monthFrom(v.from) }}
             </span>
             <b class="ml-auto num font-semibold text-ink">{{ moneyIn(v.amount, v.currency) }}</b>
-            <span v-if="v.reason" class="text-[12px] text-ink-3">{{ v.reason }}</span>
+            <span v-if="v.reason" class="text-[12px] text-ink-2">{{ v.reason }}</span>
           </div>
         </div>
       </div>

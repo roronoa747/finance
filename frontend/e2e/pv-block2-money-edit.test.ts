@@ -10,11 +10,14 @@ import { useAuthStore } from '../src/stores/auth'
 import type { Category } from '../src/types/finance'
 import { at, phone, screen, type FakeServer } from './support/family'
 import {
+  amountTotal,
   budgetAmounts,
+  capitalGoals,
   creditSchedule,
   creditTotals,
   goalSavings,
   keepQuestions,
+  liveAccounts,
   netWorth,
   nextCreditDue,
   nextObligationDue,
@@ -24,6 +27,7 @@ import CapitalLists from '../src/components/money/CapitalLists.vue'
 import Week from '../src/views/Week.vue'
 import Money from '../src/views/Money.vue'
 import Month from '../src/views/Month.vue'
+import DebtFaster from '../src/views/DebtFaster.vue'
 import DangerZone from '../src/components/kit/DangerZone.vue'
 import CreditSheet from '../src/components/capital/CreditSheet.vue'
 import PayoffSheet from '../src/components/capital/PayoffSheet.vue'
@@ -339,8 +343,16 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     /** Первая сумма «N ₸» после подписи. */
     const moneyAfter = (html: string, label: string) =>
       html.slice(html.indexOf(label)).match(/\d[\d ]* ₸/)?.[0]
-    /** Подпись квадрата «Капитал» — чистый капитал (`netWorth`) без «₸». */
-    const capitalNote = (html: string) => html.match(/>Капитал<\/b>(?:<!--[^>]*-->|\s)*<small[^>]*>([^<]*)<\/small>/)?.[1]
+    /** Сумма карточки «Капитал» (`data-worth`) — чистый капитал (`netWorth`); Р-116: одна крупная цифра. */
+    const capitalNote = (html: string) => html.match(/data-worth[^>]*>([^<]*)</)?.[1]
+    /**
+     * «Счета и цели» — бывший итог секции «Счета» (Р-109), теперь в подсказке «Что такое капитал» (Р-116). В SSR
+     * подсказка свёрнута — число тем же расчётом `finance.ts`, что у `Money.vue`, плюс наличие кнопки подсказки.
+     */
+    const assetsOf = (store: { accounts: Parameters<typeof liveAccounts>[0]; goals: Parameters<typeof capitalGoals>[0] }) =>
+      amountTotal(liveAccounts(store.accounts)) + capitalGoals(store.goals, store.accounts).total
+    /** Подсказки `kit/Hint` открыты (в SSR текст подсказки есть только при заданном `at`). */
+    const HINT_OPEN = { at: { left: 0, top: 0, width: 280 } }
     const on = <P extends { pinia: Pinia }>(p: P) => (setActivePinia(p.pinia), p)
     const member = (slot: 'a' | 'b', role: 'member' | 'viewer' = 'member') =>
       useAuthStore().setAuthData({
@@ -509,9 +521,11 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       // Пивот 3 (Р-33, B2C-42): капитал — подписью квадрата «Капитал» (владелец 2026-10-02), счета — итогом секции «Счета»;
       // «Накоплено по мечтам» строкой в «Деньгах» больше нет — сумма из goalSavings.
       const before = await page(B.pinia, Money, '/money')
-      expect(capitalNote(before)).toBe(plain(500_000))
-      // Блок 16 (Р-109): итог «Счетов» — счета 1 300 000 + цели вне счетов 200 000; «Счета» − долг = капитал.
-      expect(moneyAfter(before, 'Счета')).toBe(money(1_500_000))
+      expect(capitalNote(before)).toBe(money(500_000))
+      // Блок 16 (Р-109): «Счета и цели» — счета 1 300 000 + цели вне счетов 200 000; минус долг = капитал.
+      // Р-116: это число — в подсказке «Что такое капитал» у суммы.
+      expect(before).toContain('data-worth-hint')
+      expect(assetsOf(B.store)).toBe(1_500_000)
       expect(goalSavings(B.store.goals)).toBe(200_000)
 
       // «Удалить счёт» в окне «Сейфа» на A: текст React с обеими целями на нём.
@@ -536,9 +550,9 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(goalSavings(B.store.goals)).toBe(750_000)
       expect(netWorth(B.store.accounts, B.store.credits, B.store.goals)).toBe(750_000)
       const after = await page(B.pinia, Money, '/money')
-      expect(capitalNote(after)).toBe(plain(750_000))
+      expect(capitalNote(after)).toBe(money(750_000))
       // Счета 1 000 000 + отвязанные цели 450 000 + 100 000 + 200 000 (Р-109) − долг 1 000 000 = 750 000.
-      expect(moneyAfter(after, 'Счета')).toBe(money(1_750_000))
+      expect(assetsOf(B.store)).toBe(1_750_000)
       expect(after).not.toContain('Сейф')
     })
 
@@ -576,17 +590,18 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(row).toContain(money(640_771))
       expect(row).not.toContain(money(512_340))
       expect(row).not.toContain(money(479_260))
-      // 1 000 000 на карте + 640 771.
-      expect(moneyAfter(capital, 'Счета')).toBe(money(1_640_771))
+      // 1 000 000 на карте + 640 771 — «Счета и цели» подсказки капитала (Р-116), тем же расчётом.
+      expect(capital).toContain('data-worth-hint')
+      expect(assetsOf(B.store)).toBe(1_640_771)
       const modal = await page(B.pinia, Money, '/money', { state: { selectedAccountId: 'usd' } })
       expect(modal).toContain(`value="${plain(1_337)}"`)
       expect(modal).toContain('value="479,26"')
       expect(modal).toContain(`В капитале счёт стоит как ${money(640_771)} — по этому курсу.`)
     })
 
-    /** «Проценты банку по всем долгам N в месяц» — квадрат «План» (B2C-43; было «из них проценты банку» Бюджета). */
+    /** «Проценты банку по всем долгам N в месяц» — «Подробнее» экрана «Закрыть быстрее» (Б17; прежде квадрат «План», B2C-43). */
     const interest = async (pinia: Pinia) => {
-      const html = await page(pinia, Money, '/money/debts')
+      const html = await page(pinia, DebtFaster, '/money/debts/faster')
       const at = html.indexOf('Проценты банку по всем долгам')
       return html.slice(at, html.indexOf('</div>', at))
     }
@@ -605,7 +620,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       await on(B).store.pullHousehold(B.client)
       expect(B.store.credits[0].principal).toBe(969_500)
       expect(creditTotals(B.store.payments, 'loan')).toEqual({ body: 30_500, interest: 27_500, count: 1 })
-      expect(await page(B.pinia, Money, '/money?credit=loan')).toContain(
+      // «За всё время» — подсказка у названия листа кредита (Б17): в SSR открыта полем `at`.
+      expect(await page(B.pinia, Money, '/money?credit=loan', { state: HINT_OPEN })).toContain(
         `За всё время: в долг ${money(30_500)}, банку ${money(27_500)} (1 платёж)`,
       )
       // 969 500 × 0,33 / 12 = 26 661,25 → 26 661.
@@ -619,7 +635,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       await on(A).store.pullHousehold(A.client)
       expect(A.store.credits[0].principal).toBe(869_500)
       expect(creditTotals(A.store.payments, 'loan')).toEqual({ body: 130_500, interest: 27_500, count: 2 })
-      expect(await page(A.pinia, Money, '/money?credit=loan')).toContain(
+      expect(await page(A.pinia, Money, '/money?credit=loan', { state: HINT_OPEN })).toContain(
         `За всё время: в долг ${money(130_500)}, банку ${money(27_500)} (2 платежа)`,
       )
       // 869 500 × 0,33 / 12 = 23 911,25 → 23 911.
@@ -650,7 +666,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       const totals = creditTotals(B.store.payments, 'loan')
       expect(totals).toEqual({ body: 164_589, interest: 51_411, count: 3 })
       expect({ body: totals.body - before.body, interest: totals.interest - before.interest }).toEqual({ body: 34_089, interest: 23_911 })
-      const modalB = await page(B.pinia, Money, '/money?credit=loan', { state: { scheduleOpen: true } })
+      const modalB = await page(B.pinia, Money, '/money?credit=loan', { state: { scheduleOpen: true, ...HINT_OPEN } })
       expect(modalB).toContain(`За всё время: в долг ${money(164_589)}, банку ${money(51_411)} (3 платежа)`)
 
       // График второго после отметки: октябрь оплачен (по записи, с досрочкой), дальше —
@@ -694,7 +710,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(B.store.householdDoc.credits[0]).toMatchObject({ principal: 1_000_000, principalSetAt: T0, payment: 20_000 })
       expect(B.store.credits[0].principal).toBe(969_500)
       const modal = await page(B.pinia, Money, '/money?credit=loan')
-      expect(modal).toContain('При таком платеже долг не закрывается: проценты съедают его целиком.')
+      // Срок — строкой `data-credit-closes` под ставкой и днём (Б17).
+      expect(modal).toMatch(/data-credit-closes>\s*При таком платеже долг не закрывается — проверьте остаток, платёж и ставку\./)
       expect(modal).not.toContain('Платежей осталось')
       expect(modal).not.toContain('График платежей')
       // Платёж октября: весь банку (20 000 < 26 661), в долг 0 — расчёт `nextCreditDue`; «Оплатил» — в «Месяце» (Блок 15).
@@ -708,7 +725,9 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       // = 21,66 → 22 платежа; переплата 60 000 × 21,6606 − 969 500 = 330 138.
       at('2026-09-24T10:00:00Z')
       await page(B.pinia, Money, '/money?credit=loan', { act: (s) => press(s, 'onCreditPayment', '60 000') })
-      const fixed = await page(B.pinia, Money, '/money?credit=loan')
+      // Число платежей и переплата — в свёрнутом «Графике платежей» (Б17), срок — строкой `data-credit-closes`.
+      const fixed = await page(B.pinia, Money, '/money?credit=loan', { state: { scheduleOpen: true } })
+      expect(fixed).toMatch(/data-credit-closes>\s*закроется в /)
       expect(cell(fixed, 'Платежей осталось')).toBe('22')
       expect(cell(fixed, 'Переплата до конца')).toBe(money(330_138))
       await B.store.syncHousehold(B.client)
@@ -775,7 +794,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(cell(closed, 'Осталось платежей')).toBe('—')
       expect(closed).toContain('Применённые досрочки')
       expect(closed).toContain(`в долг ${plain(240_000)} · банку 0`)
-      expect(await page(A.pinia, Money, `/money?credit=${inst.id}`)).toContain(
+      expect(await page(A.pinia, Money, `/money?credit=${inst.id}`, { state: HINT_OPEN })).toContain(
         `За всё время: в долг ${money(240_000)}, банку ${money(0)} (1 платёж)`,
       )
     })

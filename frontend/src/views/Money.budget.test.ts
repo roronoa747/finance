@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { createSSRApp } from 'vue'
+import { createSSRApp, type Component } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { useFinanceStore } from '@/stores/finance'
 import { budgetAmounts, budgetInterest, salaryAt } from '@/lib/finance'
 import { monthKey } from '@/lib/dates'
 import { money, plain } from '@/lib/money'
 import Money from './Money.vue'
+import DebtFaster from './DebtFaster.vue'
 import { renderScreen } from '@/test/screenState'
 import SalaryDialog from '@/components/SalaryDialog.vue'
 import Input from '@/components/ui/Input.vue'
@@ -158,7 +159,7 @@ describe('PV-01 — закрытый кредит вне бюджета', () => 
   })
 
   /** «Деньги» → квадрат «Долги». */
-  const render = async (path = '/money') => (await renderScreen(Money, path)).replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
+  const render = async (path = '/money', view: Component = Money) => (await renderScreen(view, path)).replace(/<[^>]+>/g, ' ').replace(/[ \t\r\n]+/g, ' ')
 
 
   it('кредит закрыт досрочкой на всю сумму → «Свободно» выросло ровно на его платёж, «Кредиты» без него', async () => {
@@ -191,7 +192,7 @@ describe('PV-01 — закрытый кредит вне бюджета', () => 
     expect(budgetAmounts(store.householdDoc).d2).toBe(151_680)
   })
 
-  it('PV-13: проценты банку в месяц = budgetInterest — в «Подробнее» самой дорогой ставки «Плана»; закрытый кредит выпадает', async () => {
+  it('PV-13: проценты банку в месяц = budgetInterest — в «Подробнее» экрана «Закрыть быстрее»; закрытый кредит выпадает', async () => {
     const store = useFinanceStore()
     store.householdDoc.people = [{ id: 'a', name: 'Ильяс', salary: 1_000_000, payday: 10, updatedAt: '' }]
     store.householdDoc.accounts = [{ id: 'card', name: 'Kaspi', note: '', kind: 'card', amount: 2_000_000, updatedAt: '' }]
@@ -201,10 +202,11 @@ describe('PV-01 — закрытый кредит вне бюджета', () => 
     ]
     // 300 000 × 0,24 / 12 = 6 000; 1 000 000 × 0,18 / 12 = 15 000.
     expect(budgetInterest(store.credits)).toBe(21_000)
-    expect(await render('/money/debts')).toContain(`Проценты банку по всем долгам ${money(21_000)} в месяц`)
+    // Экран «Закрыть быстрее» (Б17): строка — в «Подробнее» самой дорогой ставки.
+    expect(await render('/money/debts/faster', DebtFaster)).toContain(`Проценты банку по всем долгам ${money(21_000)} в месяц`)
 
     store.applyPrepayment('cr-a', 'a', { amount: 300_000, mode: 'term', accountId: 'card' })
-    const plan = await render('/money/debts')
+    const plan = await render('/money/debts/faster', DebtFaster)
     expect(plan).toContain(`Проценты банку по всем долгам ${money(15_000)} в месяц`)
     expect(plan).not.toContain(money(21_000))
   })

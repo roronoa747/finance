@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 
 import CurrencyChips from '@/components/kit/CurrencyChips.vue'
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import NbRateLine from '@/components/kit/NbRateLine.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Segmented from '@/components/kit/Segmented.vue'
@@ -49,12 +50,12 @@ const obBuckets = computed(() =>
   (['d1', 'd2', 'd4'] as CategoryKey[]).map((key) => ({ key, name: categoryName(financeStore.categories, key) })),
 )
 
-const canCreateObligation = computed(
-  () => obName.value.trim().length > 0 && parseMoney(obAmount.value) > 0 && nb.ok.value,
-)
+const form = useFormCheck(() => [
+  ['name', !obName.value.trim() && 'Введите название'],
+  ['amount', parseMoney(obAmount.value) <= 0 ? 'Введите сумму' : !nb.ok.value && 'Нет курса — попробуйте позже'],
+])
 
 function createObligation() {
-  if (!canCreateObligation.value) return
   financeStore.addObligation({
     name: obName.value.trim(),
     note: obEvery.value === 'year' ? 'раз в год' : 'ежемесячно',
@@ -78,8 +79,8 @@ function createObligation() {
 
 <template>
   <Sheet :open="open" title="Регулярный платёж" @close="emit('close')">
-    <Field label="Что оплачиваем">
-      <Input v-model="obName" placeholder="Например, интернет или абонемент" class="mb-3" />
+    <Field label="Что оплачиваем" name="name">
+      <Input v-model="obName" placeholder="Например, интернет или абонемент" />
     </Field>
 
     <Field label="Как часто" group>
@@ -97,12 +98,12 @@ function createObligation() {
       <CurrencyChips v-model="obCurrency" />
     </Field>
 
-    <Field :label="`${obEvery === 'year' ? 'Сумма за год' : 'Сумма в месяц'}, ${CURRENCY_SIGN[obCurrency]}`">
-      <NumField v-model="obAmount" placeholder="5 000" class="mb-3" />
+    <Field :label="`${obEvery === 'year' ? 'Сумма за год' : 'Сумма в месяц'}, ${CURRENCY_SIGN[obCurrency]}`" name="amount">
+      <NumField v-model="obAmount" placeholder="5 000" />
     </Field>
     <NbRateLine :amount="parseMoney(obAmount)" :currency="obCurrency" :nb="nb" />
 
-    <p v-if="obEvery === 'year' && obTenge > 0" class="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-3">
+    <p v-if="obEvery === 'year' && obTenge > 0" class="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-2">
       В плане месяца это займёт {{ money(yearShare(obTenge)) }} — годовая сумма
       делится на двенадцать, чтобы не завышать одиннадцать месяцев и не удивляться на двенадцатый.
     </p>
@@ -123,7 +124,7 @@ function createObligation() {
     </Field>
 
     <Field label="День платежа">
-      <NumField v-model="obDay" kind="int" class="mb-3" />
+      <NumField v-model="obDay" kind="int" />
     </Field>
 
     <Field v-if="people.length > 1" label="Чьё это" group>
@@ -167,7 +168,7 @@ function createObligation() {
       Сумма плавает — показывать как оценку
     </label>
 
-    <Button :disabled="!canCreateObligation" class="w-full mt-2" @click="createObligation">
+    <Button class="w-full mt-2" @click="form.submit(createObligation)">
       Добавить
     </Button>
   </Sheet>

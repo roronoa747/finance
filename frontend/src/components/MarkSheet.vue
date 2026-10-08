@@ -25,6 +25,7 @@ import {
 } from '@/lib/finance'
 import type { Payment, PersonId } from '@/types/finance'
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import Sheet from '@/components/kit/Sheet.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Button from '@/components/ui/Button.vue'
@@ -159,6 +160,11 @@ watch(
   (v) => (mode.value = v),
 )
 
+const form = useFormCheck(() => [
+  ['amount', parseMoney(amountText.value) <= 0 && 'Введите сумму'],
+  ['account', chosen.value === undefined && 'Выберите счёт'],
+])
+
 function confirmMark() {
   const amount = parseMoney(amountText.value)
   if (chosen.value === undefined || amount <= 0) return
@@ -246,9 +252,9 @@ const unmarkNote = computed(() => {
     </template>
 
     <template v-else-if="mode === 'mark'">
-      <Field :label="`Сумма, ${salary ? sign : '₸'}`">
+      <Field :label="`Сумма, ${salary ? sign : '₸'}`" name="amount">
         <NumField v-model="amountText" />
-        <span v-if="salary" class="text-[12px] leading-relaxed text-ink-3">
+        <span v-if="salary" class="text-[12px] leading-relaxed text-ink-2">
           Оклад месяца — {{ fxSalary ? moneyIn(due, own!.currency) : money(due) }}. С премией впишите всю сумму: премия целиком ляжет в остаток.
         </span>
       </Field>
@@ -259,16 +265,17 @@ const unmarkNote = computed(() => {
 
       <AccountChoice
         v-model="chosen"
+        name="account"
         :accounts="choices"
         :label="salary ? 'На какой счёт' : undefined"
         :none="salary ? 'Не зачислять — только отметить' : undefined"
       >
-        <p v-if="firstTime" class="text-[12px] leading-relaxed text-ink-3">
+        <p v-if="firstTime" class="text-[12px] leading-relaxed text-ink-2">
           {{ salary ? 'Спрашиваем один раз: дальше зарплата отметится одним нажатием на тот же счёт.' : 'Спрашиваем один раз: дальше этот платёж отметится одним нажатием с того же счёта.' }}
         </p>
       </AccountChoice>
 
-      <Button class="w-full" :disabled="chosen === undefined || parseMoney(amountText) <= 0" @click="confirmMark">
+      <Button class="w-full" @click="form.submit(confirmMark)">
         {{ record ? 'Сохранить' : salary ? 'Отметить зарплату' : 'Отметить оплату' }}
       </Button>
     </template>

@@ -7,7 +7,7 @@ import { weekKey } from '../src/lib/dates'
 import { money, plain } from '../src/lib/money'
 import { assignIds } from '../src/lib/statements/model'
 import type { Operation, ParsedStatement } from '../src/lib/statements/types'
-import { readPlanView, readWeekView } from '../src/lib/storage'
+import { readPlanView } from '../src/lib/storage'
 import { createAppRouter } from '../src/router'
 import { useAuthStore } from '../src/stores/auth'
 import { useFinanceStore } from '../src/stores/finance'
@@ -19,6 +19,7 @@ import AppShell from '../src/components/AppShell.vue'
 import Money from '../src/views/Money.vue'
 import Month from '../src/views/Month.vue'
 import Week from '../src/views/Week.vue'
+import DebtFaster from '../src/views/DebtFaster.vue'
 import { at, backend, fakeServer, fakeStatements, screen, statementsFor, tapPay, type FakeServer, type FakeStatements } from './support/family'
 
 /**
@@ -75,6 +76,8 @@ const between = (html: string, from: string, to: string) => {
   const j = html.indexOf(to, i + from.length)
   return html.slice(i, j < 0 ? undefined : j)
 }
+/** Строка раздела «Недели» (`div[data-row]`: название-кнопка, сумма, полоса, «осталось N»). */
+const row = (html: string, id: string) => text(between(html, `data-row="${id}"`, '</div>'))
 
 const sub = (id: string, name: string, amount: number, day: number, keptAt?: string): Obligation =>
   ({ id, name, note: '', day, category: 'd4', versions: [{ from: '2000-01', amount }], ...(keptAt ? { keptAt } : {}), updatedAt: T0 }) as Obligation
@@ -155,12 +158,14 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
 
   it('часть 1 — вкладка «План»: память вида на устройстве, точка «Месяца», старые адреса; viewer — только «Месяц»', async () => {
     const A = await phone(server, st, 'a')
-    // По умолчанию «План» открывает «Неделю»; зарплата Ильяса пришла и не отложена — точка на «Месяце» и на вкладке.
+    // По умолчанию «План» открывает «Неделю»; зарплата Ильяса пришла и не отложена — точка у раздела в самом «Месяце»
+    // (на сегменте «Месяц» точки нет — Р-116, Б17).
     expect(readPlanView()).toBe('week')
     const shell = await screen(A.pinia, AppShell, '/')
     expect(shell).toMatch(/href="\/week"[^>]*>(?:(?!<\/a>)[\s\S])*План/)
     expect(A.store.planCall()).toBe(K)
-    expect(await week(A)).toContain('data-plan-dot')
+    expect(await week(A)).not.toContain('data-plan-dot')
+    expect(await month(A)).toContain('data-section-dot')
 
     // Перешёл на «Месяц» переключателем — выбор запомнен: вкладка ведёт в «Месяц».
     await week(A, {}, (s) => (s.toMonth as () => void)())
@@ -193,7 +198,7 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     expect(await month(V)).not.toContain('data-plan-view')
   })
 
-  it('часть 2 — «Неделя»: только мои траты — сумма, сравнение, остаток до конца месяца; оба вида, лист раздела, ‹ ›, «Мои выписки»; у партнёра — только ✓', async () => {
+  it('часть 2 — «Неделя»: только мои траты — сумма, остаток до конца месяца, сравнение в «8 недель»; лист раздела, ‹ ›, «Мои выписки»; у партнёра — только ✓', async () => {
     const A = await phone(server, st, 'a')
     const B = await phone(server, st, 'b')
     // Выписки нет — главное действие одно: «Загрузить».
@@ -214,23 +219,30 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     const list = await week(A)
     expect(list).not.toContain('data-upload="lead"')
     expect(text(between(list, 'data-week-total', '</span>'))).toContain(sp(money(22_500)))
-    expect(text(between(list, 'data-week-prev', '</span>'))).toContain(`прошлая неделя — ${sp(money(40_000))}`)
-    const food = text(between(list, 'data-row="sc_food"', '</button>'))
+    // Сравнения с прошлой неделей у суммы нет (Р-116) — прошлая неделя (40 000) в «8 недель» (свёрнуто).
+    expect(list).not.toContain('data-week-prev')
+    expect(list).not.toContain('data-week-delta')
+    expect(text(between(await week(A, { trendOpen: true }), 'data-trend-bars', 'Вопросы'))).toContain('40к')
+    // Строка раздела — «осталось N»; «на октябрь осталось N из План» — в листе раздела.
+    const food = row(list, 'sc_food')
     expect(food).toContain(`Продукты`)
-    expect(food).toContain(`на октябрь осталось ${sp(plain(108_000))} из ${sp(plain(150_000))}`)
-    expect(text(between(list, 'data-row="sc_cafe"', '</button>'))).toContain(`осталось ${sp(plain(26_500))} из ${sp(plain(40_000))}`)
+    expect(food).toContain(`осталось ${sp(plain(108_000))}`)
+    expect(food).not.toContain(' из ')
+    expect(row(list, 'sc_cafe')).toContain(`осталось ${sp(plain(26_500))}`)
+    expect(text(between(await week(A, { sectionFor: 'sc_food' }), 'data-section-meta', '</p>'))).toContain(
+      `на октябрь осталось ${sp(plain(108_000))} из ${sp(plain(150_000))}`,
+    )
+    expect(text(between(await week(A, { sectionFor: 'sc_cafe' }), 'data-section-meta', '</p>'))).toContain(
+      `осталось ${sp(plain(26_500))} из ${sp(plain(40_000))}`,
+    )
     // Платёж (подписка) — не трата недели; цифр партнёра нет.
     expect(list).not.toContain('data-row="sc_subscriptions"')
     expect(list).toMatch(/data-uploaded="true"[^>]*data-my-uploads|data-my-uploads[^>]*data-uploaded="true"/)
     expect(list).toMatch(/data-uploaded="false" data-partner="b"/)
 
-    // Вид плитками — те же остатки; выбор запомнен на устройстве.
-    await week(A, {}, (s) => (s.toggleView as () => void)())
-    expect(readWeekView()).toBe('tiles')
-    const tiles = await week(A)
-    expect(tiles).toContain('data-week-tiles')
-    expect(tiles).not.toContain('data-week-list')
-    expect(text(between(tiles, 'data-row="sc_food"', '</button>'))).toContain(`ост. ${sp(plain(108_000))}`)
+    // Вида плитками больше нет (Б17): один список, без переключателя.
+    expect(list).not.toContain('data-view-toggle')
+    expect(list).not.toContain('data-week-tiles')
 
     // Лист раздела: сумма недели, продавцы и операции.
     const sheet = text(await week(A, { sectionFor: 'sc_food' }))
@@ -270,8 +282,11 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     expect(held).toMatch(/>\s*Отменить\s*</)
     expect(text(between(held, 'data-week-total', '</span>'))).toContain(sp(money(22_500)))
     expect(held).not.toContain('Отправить')
-    // Вопрос о подписке был и до выписки; вопросы о самой выписке — после отправки.
-    expect(held).toContain('aria-label="Вопросы: 1"')
+    // Вопрос о подписке был и до выписки; вопросы о самой выписке — после отправки. «Разобрать» — у «Не разобрано».
+    const unknownHeld = row(held, '_unknown')
+    expect(unknownHeld).toContain('1 вопрос')
+    expect(unknownHeld).toContain('Разобрать')
+    expect(held.match(/data-bang/g)).toHaveLength(1)
     expect(ops.all).toHaveLength(0)
     expect(A.store.householdDoc.spendTotals ?? []).toHaveLength(0)
     expect(A.client.upsertOperations).not.toHaveBeenCalled()
@@ -305,16 +320,17 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     expect(ops.all).toHaveLength(6)
   })
 
-  it('часть 4 — «! N»: вопросы только в листе, по одному — платёж из выписки, продавец, «оставить подписку?»; ответ «да» ставит ✓ в «Месяце» у обоих', async () => {
+  it('часть 4 — «Разобрать»: вопросы только в листе, по одному — платёж из выписки, продавец, «оставить подписку?»; ответ «да» ставит ✓ в «Месяце» у обоих', async () => {
     const A = await phone(server, st, 'a')
     const B = await phone(server, st, 'b')
     await uploaded(A)
 
-    // На самой «Неделе» вопросов нет — только значок с числом.
+    // На самой «Неделе» вопросов нет — только «3 вопроса · Разобрать» в строке «Не разобрано».
     let queue: Decision[] = []
     const closed = await week(A, {}, (s) => void (queue = [...(s.queue as Decision[])]))
     expect(queue.map((d) => d.kind)).toEqual(['match', 'unknownBatch', 'keep'])
-    expect(closed).toContain('aria-label="Вопросы: 3"')
+    expect(row(closed, '_unknown')).toContain('3 вопроса')
+    expect(row(closed, '_unknown')).toContain('Разобрать')
     for (const t of ['Похоже, это платёж', 'Без раздела', 'Оставить подписку']) expect(closed).not.toContain(t)
 
     // Лист — первый вопрос и «1 из 3».
@@ -348,7 +364,7 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
       expect(text(between(dues, 'data-subs-status', '</span>'))).toContain('1 из 3 списались')
       expect(text(between(dues, 'data-due-id="obligation:netflix"', '</div>'))).toContain(`✓ ${sp(plain(4_500))}`)
     }
-    // Аруна про продавцов Ильяса не спрашивается — её лист «!» о них молчит.
+    // Аруна про продавцов Ильяса не спрашивается — её лист вопросов о них молчит.
     let queueB: Decision[] = []
     await week(B, {}, (s) => void (queueB = [...(s.queue as Decision[])]))
     expect(queueB.map((d) => d.kind)).toEqual(['keep'])
@@ -384,15 +400,17 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     // «Не оплачено» — в том же листе, тихо.
     expect(await month(A, { opened: 'dues', payFor: 'obligation:rent' })).toContain('data-unpay')
 
-    // Зарплата Ильяса пришла (✓ у суммы), Аруны — ждём; не отложено — «Отложил всё» в разделе целей и точка.
+    // Зарплата Ильяса пришла (✓ у суммы), Аруны — ждём (дата — в листе зарплаты, Р-116); не отложено — «Отложил всё»
+    // в разделе целей и точка.
     const top = await month(A)
     expect(text(between(top, 'data-salary="a"', 'data-salary="b"'))).toContain(`✓ ${sp(money(700_000))}`)
-    expect(text(between(top, 'data-salary="b"', 'data-sections'))).toContain('ждём 20 октября')
+    expect(text(between(top, 'data-salary="b"', 'data-sections'))).not.toContain('✓')
+    expect(text(between(await month(A, { salaryFor: 'b' }), 'data-salary-status', '</div>'))).toContain('ждём 20 октября')
     expect(top).toContain('data-section-dot')
     const queue = await month(A, { opened: 'queue' })
     expect(text(between(queue, 'data-put-all', '</button>'))).toContain(`Отложил всё · ${sp(money(130_000))}`)
 
-    // «Отложил всё» — взносы целям, ✓ у сумм; дел не осталось — точки нет ни в «Месяце», ни на «Неделе».
+    // «Отложил всё» — взносы целям, ✓ у сумм; дел не осталось — точки нет ни у раздела, ни у «‹».
     await screen(A.pinia, Month, '/month', undefined, [screenMixin({}, (s) => (s.savePuts as (list: unknown) => void)(s.pending))])
     setActivePinia(A.pinia)
     expect(A.store.goals.find((g) => g.id === 'trip')!.have).toBe(50_000 + 40_000)
@@ -401,7 +419,7 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     expect(done).not.toContain('data-put-all')
     expect(done.match(/data-put-done/g)).toHaveLength(3)
     expect(done).not.toContain('data-section-dot')
-    expect(await week(A)).not.toContain('data-plan-dot')
+    expect(done).not.toContain('data-past-dot')
     await sync(A, B)
     expect((await month(B, { opened: 'queue' })).match(/data-put-done/g)).toHaveLength(3)
   })
@@ -420,8 +438,9 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     expect(capital).toContain('data-capital-salaries')
     expect(capital).not.toContain('Netflix')
     expect(await screen(A.pinia, Money, '/money', undefined, [screenMixin({ subsOpen: true })])).toContain('Netflix')
-    // «Долги» — долговой план по своему адресу.
-    expect(text(await screen(A.pinia, Money, '/money/debts'))).toContain('Копить или гасить?')
+    // «Долги» — ссылка «Как закрыть быстрее» на свой экран долгового плана (Б17; прежде план жил на «Долгах»).
+    expect(await screen(A.pinia, Money, '/money/debts')).toMatch(/<a[^>]*href="\/money\/debts\/faster"[^>]*data-debts-calc|<a[^>]*data-debts-calc[^>]*href="\/money\/debts\/faster"/)
+    expect(text(await screen(A.pinia, DebtFaster, '/money/debts/faster'))).toContain('Копить или гасить?')
 
     const V = await phone(server, st, 'a', 'viewer')
     for (const path of ['/money', '/money/debts', '/money/history']) {
@@ -456,7 +475,7 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     expect(waiting.match(/data-put-done/g)).toHaveLength(2)
     expect(waiting).not.toContain('data-put-all')
 
-    // Её строка выключена, зарплата пришла: откладывать нечего — ни точки, ни кнопки (ни в «Месяце», ни с «Недели»).
+    // Её строка выключена, зарплата пришла: откладывать нечего — ни точки (ни у раздела, ни у «‹»), ни кнопки.
     B.store.pauseGoal('cushion', true)
     B.store.markSalary('b', { period: K, accountId: 'card' })
     expect(B.store.planCall()).toBeNull()
@@ -464,16 +483,16 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     expect(text(between(nothing, 'data-salary="b"', 'data-sections'))).toContain(`✓ ${sp(money(500_000))}`)
     expect(nothing).not.toContain('data-put-all')
     expect(nothing).not.toContain('data-section-dot')
-    expect(await week(B)).not.toContain('data-plan-dot')
+    expect(nothing).not.toContain('data-past-dot')
 
-    // Включила обратно: за ней есть фонд — точка на разделе и на сегменте, кнопка — на её сумму.
+    // Включила обратно: за ней есть фонд — точка у раздела (и в свёрнутом «Месяце»), кнопка — на её сумму.
     setActivePinia(B.pinia)
     B.store.pauseGoal('cushion', false)
     expect(B.store.planCall()).toBe(K)
     const hers = await month(B, { opened: 'queue' })
     expect(hers).toContain('data-section-dot')
     expect(text(between(hers, 'data-put-all', '</button>'))).toContain(`Отложил всё · ${sp(money(30_000))}`)
-    expect(await week(B)).toContain('data-plan-dot')
+    expect(await month(B)).toContain('data-section-dot')
 
     // «Отложил всё» — взнос в её фонд; Ильяс после синка видит три ✓.
     await putAll(B)

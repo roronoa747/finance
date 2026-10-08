@@ -9,6 +9,7 @@ import Access from './Access.vue'
 import Money from './Money.vue'
 import Week from './Week.vue'
 import Dreams from './Dreams.vue'
+import DebtFaster from './DebtFaster.vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
 import { spendTotals, unknownGroups } from '@/lib/statements/model'
@@ -16,6 +17,8 @@ import type { SpendTotal } from '@/lib/statements/types'
 import { monthKey, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
 import { myWeek, spendRows } from '@/lib/finance'
 import { money } from '@/lib/money'
+import { useAuthStore } from '@/stores/auth'
+import { demoPhotoUrl, photoUrl } from '@/lib/photos/store'
 
 /**
  * Демо (пивот 3, B2C-45): «Попробовать» — и «Деньги» показывают все три квадрата с данными: счета с
@@ -66,7 +69,9 @@ describe('B2C-45: демо — «Деньги» с данными во всех 
     expect(capital).not.toContain('оплачено')
     expect(capital).toContain('Автокредит')
 
-    const plan = await renderScreen(Money, '/money/debts')
+    // План «Сначала долги» — на экране «Закрыть быстрее» (Б17), «Долги» ведут туда ссылкой.
+    expect(await renderScreen(Money, '/money/debts')).toContain('data-debts-calc')
+    const plan = await renderScreen(DebtFaster, '/money/debts/faster')
     expect(plan).toMatch(/role="switch" aria-checked="true"/)
     expect(text(plan)).toContain('Цели на паузе Машина')
 
@@ -74,7 +79,7 @@ describe('B2C-45: демо — «Деньги» с данными во всех 
     expect(history).not.toContain('Пока пусто')
     expect(history).toContain('Galmart')
     expect(history).toContain('между своими · не трата')
-    expect(history).toContain('Аренда квартиры оплачено · Аруна')
+    expect(history).toContain('Аренда квартиры оплачено · Партнёр')
     expect(history).toMatch(/Всё Операции Отметки /)
 
     expect(fetch).not.toHaveBeenCalled()
@@ -101,7 +106,7 @@ describe('B2C-52: демо — итоги из демо-операций той 
   }
 
   // 1 октября (прошлая неделя — в сентябре) и середина месяца.
-  it.each(['2026-10-01T07:00:00Z', '2026-10-15T07:00:00Z'])('%s: итоги Ильяса = spendTotals его демо-операций; «Не разобрано» = операции без раздела; «Неделя» — сумма обоих, чип и два решения', async (iso) => {
+  it.each(['2026-10-01T07:00:00Z', '2026-10-15T07:00:00Z'])('%s: итоги участника a = spendTotals его демо-операций; «Не разобрано» = операции без раздела; «Неделя» — сумма обоих, чип и два решения', async (iso) => {
     vi.setSystemTime(new Date(iso))
     await tryDemo()
     const finance = useFinanceStore()
@@ -125,27 +130,29 @@ describe('B2C-52: демо — итоги из демо-операций той 
     const arunaWeek = finance.householdDoc.spendTotals!.filter((t) => t.by === 'b' && t.kind === 'week' && t.period === week).reduce((a, t) => a + t.amount, 0)
     expect(pic.total).toBe(opsWeek + arunaWeek)
 
-    // Блок 15 (Р-95): «Неделя» — сумма только своих трат (`myWeek`), сравнение — с прошлой своей; вопросы — в листе «!».
+    // Блок 15 (Р-95): «Неделя» — сумма только своих трат (`myWeek`); сравнение недель — в «8 недель», бейджа «↑ N %» нет (Р-116).
     const { state, ctx } = finance.planInput(monthKey())
     const own = myWeek(state, { ...ctx, by: 'a', week, ops: ops.all })
     expect(own.total).toBeGreaterThan(0)
     expect(own.total).toBeLessThan(pic.total)
     const html = text(await renderScreen(Week, '/week', undefined, [screenMixin({ questionsOpen: true })]))
     expect(html).toContain(`${weekRangeLabel(pic.range)} ${text(money(own.total))}`)
-    expect(html).toMatch(/[↑↓] [0-9]+%/)
-    // Вопросы — за значком «! N» (лист уходит в body — в разметке экрана его нет).
-    expect(html).toMatch(/! [1-9]/)
+    expect(html).not.toMatch(/[↑↓] [0-9]+%/)
+    // Вопросы — «Разобрать» в строке «Не разобрано» с подписью «N вопрос(а/ов)» (Р-116; лист уходит в body).
+    expect(html).toMatch(/Не разобрано [1-9][0-9]* вопрос/)
+    expect(html).toContain('Разобрать')
+    expect(html).not.toMatch(/! [1-9]/)
 
-    // «Мечты»: главная мечта, строка «Свободно», цели и желания строками.
+    // «Мечты»: главная мечта, цели и желания строками; строки «Свободно» нет — она в подсказке «Месяца» (Р-116).
     const dreams = text(await renderScreen(Dreams, '/'))
     expect(dreams).toContain('Поездка в Японию')
-    expect(dreams).toContain('Свободно')
+    expect(dreams).not.toContain('Свободно')
     // Приёмка Б10: 2 цели кроме главной и 3 желания — у каждого участника и общее; пустых «добавить» нет.
     // Блок 11: плюс копилка разбора «Подушка» (Р-66); Блок 14 — фонды «Подушка» и «Запас» в очереди (Р-82, Р-84),
     // главная — первая в очереди, `main` не пишется.
     expect(finance.queue.map((x) => x.goal?.name ?? x.id)).toEqual(['Поездка в Японию', 'Запас', 'debt', 'Машина', 'Подушка', 'Новый диван'])
     expect(finance.householdDoc.goals.some((g) => g.main)).toBe(false)
-    for (const w of ['Машина', 'Новый диван', 'Все 3', 'Кофемашина', 'общие', 'Велосипед', 'Ильяс', 'Сапоги', 'Аруна']) expect(dreams).toContain(w)
+    for (const w of ['Машина', 'Новый диван', 'Все 3', 'Кофемашина', 'общие', 'Велосипед', 'Вы', 'Сапоги', 'Партнёр']) expect(dreams).toContain(w)
     expect(dreams).not.toContain('+ Желание')
     // Разделы демо-операций — те, что дают словарь и правила: ответ на одного продавца раскладывает
     // операции заново (`reapply`), и остальные не возвращаются в «не разобрано» (стенд B2C-52).
@@ -154,6 +161,47 @@ describe('B2C-52: демо — итоги из демо-операций той 
     const after = picOf()
     expect(after.unknown).toBe(75_300 - 7_600)
     expect(after.total).toBe(pic.total)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+})
+
+describe('B2C-110 (Р-118): демо — фото из приложения, люди «Вы» и «Партнёр»', () => {
+  it('у всех целей и желаний — фото бандла (адрес без сервера); имён «Ильяс», «Аруна», «Демо Семья» нет; без /api', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const router = createAppRouter(createMemoryHistory())
+    await router.push('/access')
+    await router.isReady()
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app = createApp(Access)
+    app.use(pinia)
+    app.use(router)
+    app.mount(root)
+    await nextTick()
+    ;[...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('демо'))!.click()
+    await nextTick()
+    await nextTick()
+
+    const finance = useFinanceStore()
+    const doc = finance.householdDoc
+    const photoIds = [...doc.goals.filter((g) => !g.deletedAt), ...doc.wishlist].map((x) => x.photoId)
+    expect(photoIds).toHaveLength(8)
+    for (const id of photoIds) {
+      expect(id).toMatch(/^demo:/)
+      // Один путь показа фото: `photoUrl` отдаёт адрес картинки бандла сразу, не зовя сервер.
+      expect(await photoUrl(id!)).toBe(demoPhotoUrl(id!))
+      expect(demoPhotoUrl(id!)).toMatch(/assets\/demo\/.+\.jpg/)
+    }
+    // Цель из шаблона — с автором фото (Р-28), как заведённая из шаблона.
+    expect(doc.goals.find((g) => g.id === 'g-trip')?.photoCredit?.author).toBe('Roméo A.')
+
+    const auth = useAuthStore()
+    const all = JSON.stringify({ doc, user: auth.user, household: auth.household, member: auth.member })
+    for (const name of ['Ильяс', 'Аруна', 'Аруны', 'Ильяса', 'Демо Семья']) expect(all).not.toContain(name)
+    expect(doc.people.map((p) => p.name)).toEqual(['Вы', 'Партнёр'])
+    const dreams = text(await renderScreen(Dreams, '/'))
+    expect(dreams).not.toMatch(/Ильяс|Аруна/)
     expect(fetch).not.toHaveBeenCalled()
   })
 })

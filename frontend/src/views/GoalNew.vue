@@ -14,6 +14,7 @@ import Input from '@/components/ui/Input.vue'
 import Chip from '@/components/kit/Chip.vue'
 import DreamHero from '@/components/kit/DreamHero.vue'
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import NumField from '@/components/kit/NumField.vue'
 import Segmented from '@/components/kit/Segmented.vue'
 import Tag from '@/components/kit/Tag.vue'
@@ -63,7 +64,15 @@ const doneMonth = computed(() => monthIn(goalDoneMonth(months.value, monthKey())
 // «Реально» — взнос укладывается в свободное по плану месяца.
 const free = computed(() => budgetAmounts({ ...financeStore.householdDoc, credits: financeStore.credits, book: fx.book }).d5)
 const realistic = computed(() => monthly.value > 0 && monthly.value <= free.value)
-const canCreate = computed(() => name.value.trim().length > 0 && need.value > 0 && !authStore.isViewer)
+// Одна форма на экран (provide один): правила — по шагу.
+const form = useFormCheck(() =>
+  step.value === 'pick'
+    ? [['photo', !template.value && 'Выберите картинку']]
+    : [
+        ['name', !name.value.trim() && 'Введите название'],
+        ['need', need.value <= 0 && 'Введите сумму'],
+      ],
+)
 
 const directions = computed(() => (pickedType.value === 'travel' ? TRAVEL_DIRECTIONS : []))
 // Несколько фото на тему (B2C-64-а): ряд под сеткой, первое — фото плитки.
@@ -108,7 +117,7 @@ function skip() {
 }
 
 async function create() {
-  if (!canCreate.value) return
+  if (authStore.isViewer) return
   const file = ownFile.value
   const tpl = template.value
   const id = financeStore.addGoal({
@@ -138,17 +147,19 @@ const inShell = inject<boolean>('ff-shell-actions', false)
     <template v-if="step === 'pick'">
       <!-- В оболочке заголовок «Новая мечта» уже в шапке — второй заголовок подряд не нужен (возврат смоука); в первом запуске это заголовок шага. -->
       <h2 v-if="!inShell" class="type-h2-lg text-ink">На что копим?</h2>
-      <div class="grid grid-cols-3 gap-2.5">
-        <TemplateTile
-          v-for="k in GOAL_TYPES"
-          :key="k.type"
-          :name="k.name"
-          :src="templateImageUrl(byType(k.type), 400)"
-          :selected="pickedType === k.type"
-          @click="pickType(k.type)"
-        />
-        <TemplateTile name="Своё фото" camera @click="fileInput?.click()" />
-      </div>
+      <Field name="photo" group class="!mb-0">
+        <div class="grid grid-cols-3 gap-2.5">
+          <TemplateTile
+            v-for="k in GOAL_TYPES"
+            :key="k.type"
+            :name="k.name"
+            :src="templateImageUrl(byType(k.type), 400)"
+            :selected="pickedType === k.type"
+            @click="pickType(k.type)"
+          />
+          <TemplateTile name="Своё фото" camera @click="fileInput?.click()" />
+        </div>
+      </Field>
       <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFile" />
       <template v-if="directions.length">
         <div class="mt-1 px-1 type-section">Куда</div>
@@ -173,8 +184,8 @@ const inShell = inject<boolean>('ff-shell-actions', false)
       </div>
       <!-- Механика (Unsplash, сжатие) на экране не объясняется — автор виден на фото (правило интерфейса). -->
       <div class="mt-auto flex flex-col gap-2 pt-2">
-        <Button size="lg" class="w-full" :disabled="!template" @click="next">Дальше</Button>
-        <Button variant="ghost" class="w-full" @click="skip">Пока без мечты</Button>
+        <Button size="lg" class="w-full" @click="form.submit(next)">Дальше</Button>
+        <Button variant="ghost" size="md" class="w-full" @click="skip">Пока без мечты</Button>
       </div>
     </template>
 
@@ -183,17 +194,17 @@ const inShell = inject<boolean>('ff-shell-actions', false)
         size="preview"
         :src="previewSrc"
         :author="template?.photo.author"
-        :line="template ? `${GOAL_TYPES.find((k) => k.type === template!.type)?.name ?? ''} · ${template.name}` : 'Своё фото'"
+        line=""
       />
-      <Field label="Название">
-        <Input v-model="name" placeholder="Япония" />
+      <Field label="Название" name="name">
+        <Input v-model="name" placeholder="Япония" class="bg-surface" />
       </Field>
-      <Field label="Сколько нужно">
-        <NumField v-model="needText" placeholder="1 800 000" />
+      <Field label="Сколько нужно" name="need">
+        <NumField v-model="needText" placeholder="1 800 000" class="bg-surface" />
       </Field>
       <Field label="Когда" group>
         <Segmented v-model="term" :options="TERMS" />
-        <NumField v-if="term === 'custom'" v-model="customMonths" kind="int" placeholder="месяцев" class="mt-2" />
+        <NumField v-if="term === 'custom'" v-model="customMonths" kind="int" placeholder="месяцев" class="mt-2 bg-surface" />
       </Field>
       <div v-if="need > 0" class="rounded-inner bg-surface-2 px-3.5 py-3">
         <div class="flex items-center justify-between gap-3">
@@ -203,8 +214,8 @@ const inShell = inject<boolean>('ff-shell-actions', false)
         <div class="mt-1 text-[13px] text-ink-2">при остатке ≈ {{ money(Math.max(0, free)) }} · будет вашей в {{ doneMonth }}</div>
       </div>
       <div class="mt-auto flex flex-col gap-2 pt-2">
-        <Button size="lg" class="w-full" :disabled="!canCreate" @click="create">Готово — к мечте</Button>
-        <Button variant="ghost" class="w-full" @click="step = 'pick'">Назад</Button>
+        <Button size="lg" class="w-full" @click="form.submit(create)">Готово — к мечте</Button>
+        <Button variant="ghost" size="md" class="w-full" @click="step = 'pick'">Назад</Button>
       </div>
     </template>
   </div>

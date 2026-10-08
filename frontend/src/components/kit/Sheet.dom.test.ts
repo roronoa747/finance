@@ -196,3 +196,30 @@ describe('Н-2: kit/Row в DOM', () => {
     expect(clicks).toEqual([1])
   })
 })
+
+describe('ворота Б17: экран за открытым листом не прокручивается', () => {
+  it('два листа: экран заперт, пока открыт хоть один; закрыли оба — снова прокручивается; ручки нет', async () => {
+    const s = reactive({ a: false, b: false })
+    mount(() =>
+      h('div', [
+        h(Sheet, { open: s.a, title: 'Окно', onClose: () => (s.a = false) }, () => h('p', 'нижнее')),
+        h(Sheet, { open: s.b, title: 'Лист', z: 60, onClose: () => (s.b = false) }, () => h('p', 'верхнее')),
+      ]),
+    )
+    const locked = () => 'sheetOpen' in document.documentElement.dataset
+    await nextTick()
+    expect(locked()).toBe(false)
+    s.a = true
+    await nextTick()
+    expect(locked()).toBe(true)
+    expect(dialogs()[0].querySelector('.bg-line-strong')).toBeNull()
+    s.b = true
+    await nextTick()
+    s.b = false
+    await nextTick()
+    expect(locked()).toBe(true)
+    s.a = false
+    await nextTick()
+    expect(locked()).toBe(false)
+  })
+})

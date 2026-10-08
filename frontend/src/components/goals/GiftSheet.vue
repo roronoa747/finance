@@ -9,6 +9,7 @@ import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import PhotoSlot from '@/components/goals/PhotoSlot.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -30,6 +31,7 @@ const name = ref('')
 const price = ref('')
 const file = ref<File | null>(null)
 const busy = ref(false)
+const form = useFormCheck(() => [['name', !name.value.trim() && 'Введите, что это']])
 const note = ref<string | null>(null)
 
 watch(
@@ -74,7 +76,7 @@ async function add() {
   <Sheet :open="open" :title="`Сюрприз для ${forName}`" @close="emit('close')">
     <div class="flex flex-col gap-3">
       <Callout tone="neutral" icon="lock">{{ forName }} не увидит — только вы.</Callout>
-      <Field label="Что">
+      <Field label="Что" name="name">
         <Input v-model="name" placeholder="Билеты на концерт" />
       </Field>
       <Field label="Сколько">
@@ -82,7 +84,7 @@ async function add() {
       </Field>
       <PhotoSlot v-if="!finance.isDemo" :file="file" removable @file="file = $event" @remove="file = null" />
       <Callout v-if="note" tone="neutral" icon="info">{{ note }}</Callout>
-      <Button size="lg" class="w-full" :disabled="!name.trim() || busy" @click="add">Добавить</Button>
+      <Button size="lg" class="w-full" :disabled="busy" @click="form.submit(add)">Добавить</Button>
     </div>
   </Sheet>
 </template>

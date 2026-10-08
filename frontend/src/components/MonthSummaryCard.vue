@@ -89,7 +89,7 @@ const lines = computed(() => {
 
 <template>
   <Card>
-    <div class="text-[12.5px] text-ink-3">Итог месяца</div>
+    <div class="text-[12.5px] text-ink-2">Итог месяца</div>
     <div class="mt-0.5 font-display text-[17px] font-semibold tracking-[-0.01em] text-ink">{{ title }}</div>
 
     <div v-if="lines.length" class="mt-2 flex flex-col">
@@ -100,12 +100,12 @@ const lines = computed(() => {
       >
         <span class="min-w-0 flex-1 text-[13.5px] text-ink-2">
           {{ l.label }}
-          <span v-if="l.note" class="block text-[12px] text-ink-3 num">{{ l.note }}</span>
+          <span v-if="l.note" class="block text-[12px] text-ink-2 num">{{ l.note }}</span>
         </span>
         <b class="shrink-0 text-right text-[14px] font-semibold text-ink num">{{ l.value }}</b>
       </div>
     </div>
-    <p v-else class="mt-2 text-[13px] leading-relaxed text-ink-3">
+    <p v-else class="mt-2 text-[13px] leading-relaxed text-ink-2">
       В {{ monthIn(key, false) }} отметок пока нет.
     </p>
 
@@ -113,7 +113,7 @@ const lines = computed(() => {
 
     <!-- Карточка «утечек» для сторис (B2C-20): только число подписок, без сумм -->
     <template v-if="cancelled.length">
-      <Button variant="secondary" size="sm" class="mt-3" @click="storyOpen = true"><PhShareNetwork :size="15" /> Поделиться</Button>
+      <Button variant="secondary" size="md" class="mt-3" @click="storyOpen = true"><PhShareNetwork :size="15" /> Поделиться</Button>
       <StorySheet :open="storyOpen" kind="leaks" :data="{ count: cancelled.length }" :src="null" @close="storyOpen = false" />
     </template>
 

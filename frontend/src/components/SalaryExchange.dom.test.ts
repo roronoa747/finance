@@ -130,7 +130,11 @@ describe('SalaryExchange — строка и лист «Обменял»', () =>
     // Брендовая кнопка кита — `bg-brand text-brand-ink`; в листе она одна.
     const brand = [...dialog.querySelectorAll('button')].filter((b) => b.className.includes('bg-brand text-brand-ink'))
     expect(brand.map((b) => b.textContent?.trim())).toEqual(['Записать'])
-    expect(button('Записать')!.disabled).toBe(true) // счёт зачисления ещё не выбран
+    // Счёт зачисления ещё не выбран: нажатие называет его, обмен не записан (Р-114).
+    button('Записать')!.click()
+    await flush()
+    expect(text()).toContain('Выберите счёт')
+    expect(store.fxExchanges).toHaveLength(0)
     const kaspi = [...dialog.querySelectorAll('button')].find((b) => b.textContent?.includes('Kaspi Gold'))!
     kaspi.click()
     await flush()

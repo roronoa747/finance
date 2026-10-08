@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
-import { nextTick } from 'vue'
+import { nextTick, type ComponentOptions } from 'vue'
 import type { ApiClient } from '../src/api/client'
 import { useAuthStore } from '../src/stores/auth'
 import { useFinanceStore } from '../src/stores/finance'
@@ -16,15 +16,16 @@ import { screenMixin } from '../src/test/screenState'
 import Access from '../src/views/Access.vue'
 import Dreams from '../src/views/Dreams.vue'
 import Money from '../src/views/Money.vue'
+import Month from '../src/views/Month.vue'
 import Week from '../src/views/Week.vue'
 import { at, backend, fakeServer, fakeStatements, screen, statementsFor, type FakeServer, type FakeStatements } from './support/family'
 
 /**
- * Приёмка Блока 10 (пивот 3, «Мечты и Неделя»): два телефона на фейковом сервере. Часть 1 — «Мечты»: строка
- * «Свободно» = `freeByFact`, недельного нет; часть 2 — одна очередь «Недели»: ответ на продавца у A → итоги и
- * «Свободно» у B пересчитались, «N из M» растёт; часть 3 — «Свободно» одно (сводка «Денег» — «останется на
- * счетах», «Доход» — «остаток по плану»); часть 4 — viewer без решений и загрузки; часть 5 — демо: итоги недели
- * из демо-операций той же функцией, что разбор. Нажатия — обработчиками компонентов (`screenMixin`).
+ * Приёмка Блока 10 (пивот 3, «Мечты и Неделя»): два телефона на фейковом сервере. Часть 1 — «Свободно» =
+ * `freeByFact` (B2C-108, Р-116: переехало с «Мечт» в подсказку у «Остаётся» в «План · Месяц»), недельного на «Мечтах»
+ * нет; часть 2 — одна очередь «Недели»: ответ на продавца у A → итоги и «Свободно» у B пересчитались, «N из M»
+ * растёт; часть 3 — «Свободно» одно (на «Деньгах» слова нет); часть 4 — viewer без решений и загрузки; часть 5 —
+ * демо: итоги недели из демо-операций той же функцией, что разбор. Нажатия — обработчиками компонентов (`screenMixin`).
  */
 type Phone = { pinia: Pinia; client: ApiClient; store: ReturnType<typeof useFinanceStore> }
 
@@ -85,8 +86,18 @@ const fact = (p: Phone) => {
   return freeByFact({ ...p.store.householdDoc, credits: p.store.credits }, p.store.householdDoc.spendTotals ?? [], p.store.householdDoc.spendCategories ?? [], '2026-09', ops.uploads)
 }
 
-/** «Неделя» с открытым листом вопросов «! N» (Блок 15, Р-97). */
+/** «Неделя» с открытым листом вопросов (Блок 15, Р-97). */
 const sheetOpen = () => [screenMixin({ questionsOpen: true })]
+
+/** Нажатый «?» подсказки `kit/Hint` с этой подписью: текст подсказки в SSR — только у открытой. */
+const openHint = (label: string): ComponentOptions => ({
+  created() {
+    const s = this.$.setupState as Record<string, unknown>
+    if ('at' in s && this.$.props.label === label) s.at = { left: 0, top: 0, width: 280 }
+  },
+})
+/** «План · Месяц» с открытой подсказкой у «Остаётся» — там «Свободно» по выпискам и дни до зарплаты (B2C-108). */
+const restHint = async (p: Phone) => text(await screen(p.pinia, Month, '/month', undefined, [openHint('Остаётся')]))
 
 describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух телефонах', () => {
   const storage = new Map<string, string>()
@@ -112,7 +123,7 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     vi.unstubAllGlobals()
   })
 
-  it('часть 1 — «Мечты»: строка «Свободно» = freeByFact у обоих, недельного нет', async () => {
+  it('часть 1 — «Свободно» = freeByFact у обоих (подсказка «Остаётся» в «Месяце»); на «Мечтах» ни его, ни недельного', async () => {
     const A = await phone(server, st, 'a')
     await uploadA(A)
     const B = await phone(server, st, 'b')
@@ -120,8 +131,8 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
       const html = text(await screen(p.pinia, Dreams, '/'))
       const free = fact(p)
       expect(free.byFact).toBe(true)
-      expect(html).toContain(`Свободно ${text(money(free.amount))}`)
-      for (const w of [weekRangeLabel(weekRange(weekKey())), 'Без раздела', 'Загрузить выписку', 'Пришла зарплата', 'Не разобрано']) expect(html).not.toContain(w)
+      expect(await restHint(p)).toContain(`Свободно по выпискам — ${text(money(free.amount))}`)
+      for (const w of ['Свободно', weekRangeLabel(weekRange(weekKey())), 'Без раздела', 'Загрузить выписку', 'Пришла зарплата', 'Не разобрано']) expect(html).not.toContain(w)
     }
   })
 
@@ -158,7 +169,7 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     expect(week.find((t) => t.categoryId === 'sc_subscriptions')?.amount).toBe(12_000)
     expect(week.find((t) => t.categoryId === '_unknown')?.amount).toBe(4_000)
     expect(fact(B).amount).toBe(before + 12_000)
-    expect(text(await screen(B.pinia, Dreams, '/'))).toContain(`Свободно ${text(money(before + 12_000))}`)
+    expect(await restHint(B)).toContain(`Свободно по выпискам — ${text(money(before + 12_000))}`)
     // Блок 15 (Р-95): «Неделя» — только свои траты: на телефоне B цифр Ильяса нет — ни 4 000, ни 12 000; у него только ✓.
     const weekB = await screen(B.pinia, Week, '/week', undefined, sheetOpen())
     expect(text(weekB)).not.toContain(text(money(4_000)))
@@ -166,15 +177,16 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     expect(weekB).toMatch(/data-uploaded="true" data-partner="a"/)
   })
 
-  it('часть 3 — «Свободно» одно: на «Деньгах» слова нет, с числом — только на «Мечтах»', async () => {
+  it('часть 3 — «Свободно» одно: на «Деньгах» и «Мечтах» слова нет, с числом — только в подсказке «Месяца»', async () => {
     const A = await phone(server, st, 'a')
     await uploadA(A)
     setActivePinia(A.pinia)
     // Блок 15 (Р-91): сводки «До зарплаты» и виджета «Доход» на «Деньгах» нет — слова «свободно» там по-прежнему нет.
     const money_ = text(await screen(A.pinia, Money, '/money'))
     expect(money_.toLowerCase()).not.toContain('свободно')
-    // Слово с числом — только на «Мечтах».
-    expect(text(await screen(A.pinia, Dreams, '/'))).toContain('Свободно ')
+    // Слово с числом — только в подсказке у «Остаётся» в «Месяце» (B2C-108); на «Мечтах» строки нет.
+    expect(text(await screen(A.pinia, Dreams, '/'))).not.toContain('Свободно')
+    expect(await restHint(A)).toContain(`Свободно по выпискам — ${text(money(fact(A).amount))}`)
   })
 
   it('часть 4 — viewer: «Мечты» и «Неделя» без решений, загрузки и брендовых кнопок; картина недели видна', async () => {
@@ -190,7 +202,7 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     for (const w of ['Без раздела', 'Загрузить выписку', '+ Новая', 'Добавить фото']) expect(dreams).not.toContain(w)
   })
 
-  it('часть 5 — демо: итоги недели Ильяса = spendTotals демо-операций; сумма недели = операции + итоги Аруны; три вопроса за «!»; «Мечты» — 2 цели и 3 желания', async () => {
+  it('часть 5 — демо: итоги недели участника a = spendTotals демо-операций; сумма недели = операции + итоги партнёра; три вопроса за «!»; «Мечты» — 2 цели и 3 желания', async () => {
     const pinia = createPinia()
     await screen(pinia, Access, '/access', undefined, [screenMixin({}, (s) => (s.startDemoMode as () => void)())])
     await nextTick()
@@ -222,7 +234,7 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     expect(text(await screen(pinia, Money, '/money/history'))).toContain('ИП Абенова')
     // «Мечты» демо «как в макете» (приёмка Б10): главная, 2 цели, желания обоих и общее.
     const dreams = text(await screen(pinia, Dreams, '/'))
-    for (const w of ['Поездка в Японию', 'Машина', 'Новый диван', 'Все 3', 'общие', 'Ильяс', 'Аруна']) expect(dreams).toContain(w)
+    for (const w of ['Поездка в Японию', 'Машина', 'Новый диван', 'Все 3', 'общие', 'Вы', 'Партнёр']) expect(dreams).toContain(w)
     expect(dreams).not.toContain('+ Желание')
   })
 
@@ -259,13 +271,13 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     expect(brands(done)).toBe(0)
   })
 
-  it('приёмка — «Мечты» 1 октября с выписками только за сентябрь: «Свободно» нет у обоих, «до зарплаты» есть', async () => {
+  it('приёмка — 1 октября с выписками только за сентябрь: в подсказке «Месяца» «Свободно» нет у обоих, «до зарплаты» есть', async () => {
     const A = await phone(server, st, 'a')
     await uploadA(A)
     const B = await phone(server, st, 'b')
     at('2026-10-01T07:00:00Z')
     for (const p of [A, B]) {
-      const html = text(await screen(p.pinia, Dreams, '/'))
+      const html = await restHint(p)
       expect(html).not.toContain('Свободно')
       expect(html).toMatch(/До зарплаты \d+ (день|дня|дней)/)
     }

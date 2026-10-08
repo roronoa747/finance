@@ -12,6 +12,7 @@ import { budgetAmounts, liveGoals, liveObligations, openCredits } from '../src/l
 import { HUES } from '../src/lib/palette'
 import { isDark } from '../src/lib/theme'
 import { money, plain } from '../src/lib/money'
+import DebtFaster from '../src/views/DebtFaster.vue'
 import Money from '../src/views/Money.vue'
 import Month from '../src/views/Month.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
@@ -117,7 +118,8 @@ const column = (title: string, savings: number, debt: number, interest: number, 
   it('PV-02: калькулятор — семь элементов и числа React до тенге на каждом переключении', async () => {
     const A = await phone(server)
 
-    const capital = await screen(A.pinia, Money, '/money/debts')
+    // Калькулятор «Копить или гасить?» — в «Подробнее» экрана «Закрыть быстрее» (B2C-109; в SSR details в HTML).
+    const capital = await screen(A.pinia, DebtFaster, '/money/debts/faster')
     // Текст подсказки открывается по «?» — он проверен в браузере, в SSR она закрыта.
     expect(capital).toContain('Одинаковые траты, разный порядок')
     expect(capital).toContain('Горизонт')
@@ -180,7 +182,7 @@ const column = (title: string, savings: number, debt: number, interest: number, 
       expect(ritual).toContain('Банк')
       expect(ritual).not.toContain('Кредитка')
       // (прежний Ритуал печатал «12 платежей, переплата» — расчёт остался в калькуляторе ниже)
-      const capital = await screen(P.pinia, Money, '/money/debts')
+      const capital = await screen(P.pinia, DebtFaster, '/money/debts/faster')
       // Закрытый досрочкой долг платежа не ждёт — в «Платежах» его нет (B2C-42); в калькулятор он не входит:
       // подушка 332 000, выигрыш 48 987.
       expect(await screen(P.pinia, Money, '/money')).not.toContain('Кредитка')

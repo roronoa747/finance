@@ -60,7 +60,7 @@ describe('B2C-13: /settings и /money (SSR)', () => {
     expect(html.indexOf('С кем')).toBeLessThan(html.indexOf('Выйти из аккаунта'))
     expect(html).not.toContain('<details open')
     expect(html).not.toContain('Цвета разделов')
-    const parse = html.slice(html.lastIndexOf('<details', html.indexOf('Разбор выписок')), html.indexOf('Разбор выписок'))
+    const parse = html.slice(html.lastIndexOf('<details', html.indexOf('Разбор трат')), html.indexOf('Разбор трат'))
     expect(parse).toContain('<summary')
   })
 
@@ -105,9 +105,10 @@ describe('B2C-13: /settings и /money (SSR)', () => {
     expect(await renderScreen(Settings, '/settings')).not.toContain('Пригласить партнёра')
   })
 
-  it('«Деньги» (пивот 3): три квадрата Капитал · План · История вместо входов второго уровня', async () => {
+  it('«Деньги» (пивот 3): три чипа Капитал · Долги · История вместо входов второго уровня', async () => {
     const html = await renderScreen(Money, '/money')
-    for (const t of ['>Капитал</b>', '>Долги</b>', '>История</b>']) expect(html).toContain(t)
+    // Чипы — кнопки с одним словом, без чисел и подписей (Р-116).
+    for (const t of ['Капитал', 'Долги', 'История']) expect(html).toMatch(new RegExp(`>\\s*${t}\\s*</button>`))
     expect(html).not.toContain('План «Сначала долги»')
   })
 })

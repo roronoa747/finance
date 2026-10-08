@@ -97,10 +97,14 @@ describe('e2e / Блок 2 — моменты месяца на двух тел�
       expect(history).toContain(`Зарплата · Ильяс пришла · отметка +${money(700_000)}`)
       expect(history).not.toContain('Пришла зарплата')
 
-      // Зарплата Аруны ждёт — её строка в «Месяце» (Блок 15; сводки «До зарплаты» в «Деньгах» нет, Р-91).
+      // Зарплата Аруны ждёт — её строка в «Месяце» (Блок 15; сводки «До зарплаты» в «Деньгах» нет, Р-91);
+      // дата «ждём …» — в листе зарплаты, открытом нажатием строки (Р-116).
       const overview = await screen(B.pinia, Month, '/month')
-      expect(overview).toMatch(/data-salary-status>ждём 20 сентября</)
+      expect(overview).toContain('data-salary="b"')
+      expect(overview).not.toContain('data-salary-status')
       expect(overview).not.toMatch(/data-salary="a" data-can-mark/)
+      const sheet = await screen(B.pinia, Month, '/month', undefined, [screenMixin({ salaryFor: 'b' })])
+      expect(sheet).toMatch(/data-salary-status>(?:\s|<[^>]+>)*Когда(?:\s|<[^>]+>)*ждём 20 сентября</)
     })
 
     it('следующая зарплата — на счёт прошлой одним нажатием; снятие возвращает; премия — правкой', async () => {

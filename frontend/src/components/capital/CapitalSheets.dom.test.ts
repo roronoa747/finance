@@ -99,9 +99,10 @@ describe('Критик Блока 5: «Готово» в окнах Капита
     await nextTick()
     const dialog = () => document.querySelector('[role="dialog"]')!.textContent!
     expect(dialog()).toContain('Ставку уточните')
-    expect(dialog()).not.toContain('Платежей осталось')
+    expect(dialog()).not.toContain('закроется в')
+    expect(dialog()).not.toContain('График платежей')
 
-    const rate = field('Ставка (ГЭСВ)')
+    const rate = field('Ставка, % годовых')
     expect(rate.value).toBe('')
     rate.focus()
     rate.value = '36'
@@ -111,8 +112,12 @@ describe('Критик Блока 5: «Готово» в окнах Капита
     const credit = store.credits.find((c) => c.id === id)!
     expect(credit.annualRate).toBe(0.36)
     expect(credit.rateUnknown).toBeNull()
-    expect(dialog()).toContain('Платежей осталось')
+    // Срок — строкой у полей (Б17); «Платежей осталось» — в раскрытом «Графике платежей».
+    expect(document.querySelector('[data-credit-closes]')?.textContent).toMatch(/закроется в \S+ \d{4}/)
     expect(dialog()).not.toContain('Ставку уточните')
+    ;[...document.querySelectorAll<HTMLElement>('[role="dialog"] button')].find((b) => b.textContent?.includes('График платежей'))!.click()
+    await nextTick()
+    expect(dialog()).toContain('Платежей осталось')
   })
 
   it('группа подписок (лист из «Платежей»): «Название» и «Готово» — записано, окно закрыто', async () => {

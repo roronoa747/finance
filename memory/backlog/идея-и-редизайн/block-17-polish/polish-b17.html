@@ -1,0 +1,623 @@
+<title>Полировка Блока 17</title>
+<style>
+/* Пары «до | после» по экрану, телефоны 390 px. Палитра — токены приложения (frontend/src/style.css), как в money-b16.html.
+   «До» — снимки демо (Vite, ru-RU, Asia/Almaty), «после» — разметка. Люди демо — «Вы» (pa) и «Партнёр» (pb), Р-118. */
+:root{
+  --pg-bg:#e9e9e6; --pg-fg:#19191b; --pg-mute:#6b6b70; --pg-line:#d6d6d1;
+  --canvas:#f2f2f0; --surface:#ffffff; --surface-2:#f1f1ef; --surface-3:#e7e7e3; --line:#e3e3df; --card-border:var(--line);
+  --ink:#19191b; --ink-2:#57575b; --ink-3:#86868b;
+  --brand:#b4562f; --brand-ink:#fffdf9; --brand-soft:#f6e6dd;
+  --ok:#3e7a5b; --ok-soft:#dfeee4; --warn:#8a5a00; --warn-soft:#f8ebd0; --bad:#b3372b; --bad-soft:#f7e1dd;
+  --pa:#4f7a63; --pb:#b0587a; --dot-ink:#ffffff;
+  --s1:#c2703f; --s3:#5b7fa6; --s8:#a47c3b;
+  --track:#e6e6e2; --scrim:rgb(30 26 22 / .45);
+  --shadow-2:0 2px 6px rgb(30 26 22 / .1), 0 18px 48px rgb(30 26 22 / .14);
+  --font:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,'Segoe UI',Roboto,sans-serif;
+  --num:ui-rounded,-apple-system,BlinkMacSystemFont,system-ui,'Segoe UI',Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --pg-bg:#0c0c0e; --pg-fg:#f1f1ee; --pg-mute:#9a9a96; --pg-line:#2a2a2e;
+  --canvas:#121214; --surface:#1c1c1f; --surface-2:#26262a; --surface-3:#313136; --line:#36363b; --card-border:transparent;
+  --ink:#f1f1ee; --ink-2:#b4b4b0; --ink-3:#8a8a86;
+  --brand:#e58a62; --brand-ink:#2a1208; --brand-soft:#3a2418;
+  --ok:#7fc29a; --ok-soft:#1f2e25; --warn:#e7b96a; --warn-soft:#2c2416; --bad:#f08a7c; --bad-soft:#3a1d19;
+  --pa:#94c2a8; --pb:#e08aab; --dot-ink:#121214;
+  --s1:#e0946a; --s3:#8fb0da; --s8:#d4aa66;
+  --track:#313136; --scrim:rgb(0 0 0 / .6);
+  --shadow-2:0 2px 8px rgb(0 0 0 / .5), 0 20px 56px rgb(0 0 0 / .55);
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --pg-bg:#0c0c0e; --pg-fg:#f1f1ee; --pg-mute:#9a9a96; --pg-line:#2a2a2e;
+  --canvas:#121214; --surface:#1c1c1f; --surface-2:#26262a; --surface-3:#313136; --line:#36363b; --card-border:transparent;
+  --ink:#f1f1ee; --ink-2:#b4b4b0; --ink-3:#8a8a86;
+  --brand:#e58a62; --brand-ink:#2a1208; --brand-soft:#3a2418;
+  --ok:#7fc29a; --ok-soft:#1f2e25; --warn:#e7b96a; --warn-soft:#2c2416; --bad:#f08a7c; --bad-soft:#3a1d19;
+  --pa:#94c2a8; --pb:#e08aab; --dot-ink:#121214;
+  --s1:#e0946a; --s3:#8fb0da; --s8:#d4aa66;
+  --track:#313136; --scrim:rgb(0 0 0 / .6);
+  --shadow-2:0 2px 8px rgb(0 0 0 / .5), 0 20px 56px rgb(0 0 0 / .55);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--pg-bg);color:var(--pg-fg);font:15px/1.4 var(--font);margin:0}
+button{font:inherit;color:inherit}
+.wrap{max-width:1260px;margin:0 auto;padding-inline:16px;padding-block:20px 60px;display:flex;flex-direction:column;gap:40px}
+header.head{display:flex;flex-direction:column;gap:10px}
+h1{font-size:28px;letter-spacing:-.02em;margin:0;text-wrap:balance}
+.sub{color:var(--pg-mute);margin:0;max-width:62ch}
+.theme{display:flex;gap:6px;flex-wrap:wrap}
+.theme button{border:1px solid var(--pg-line);background:transparent;color:var(--pg-fg);border-radius:99px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer}
+.theme button[aria-pressed="true"]{background:var(--pg-fg);color:var(--pg-bg);border-color:var(--pg-fg)}
+.theme button:focus-visible,.toc a:focus-visible{outline:2.5px solid var(--brand);outline-offset:2px}
+.toc{display:flex;flex-wrap:wrap;gap:6px}
+.toc a{font-size:13px;color:var(--pg-fg);text-decoration:none;border:1px solid var(--pg-line);border-radius:99px;padding:4px 10px}
+.grp{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--brand);margin:0 0 -24px}
+section.pair{display:flex;flex-direction:column;gap:12px;scroll-margin-top:12px}
+h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.row{display:grid;grid-template-columns:repeat(3,minmax(0,390px));gap:18px;justify-content:start}
+@media (max-width:1240px){.row{grid-template-columns:repeat(2,minmax(0,390px))}}
+@media (max-width:820px){.row{grid-template-columns:minmax(0,390px)}}
+.col{display:flex;flex-direction:column;gap:6px;min-width:0}
+.tagc{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--pg-mute)}
+.col.after .tagc{color:var(--ok)}
+.col.now .tagc{color:var(--brand)}
+.r12{font-size:13.5px;color:var(--pg-mute);margin:0;max-width:72ch;line-height:1.5}
+.r12 b{color:var(--pg-fg);font-weight:650}
+.legend{display:flex;flex-direction:column;gap:10px;background:var(--surface);color:var(--ink);border-radius:20px;padding:16px;max-width:390px}
+.legend .lr{display:flex;align-items:center;gap:12px;font-size:13px;color:var(--ink-2)}
+.legend .lr > :first-child{flex:0 0 150px}
+
+/* телефон */
+.phone{width:100%;max-width:390px;height:760px;background:var(--canvas);color:var(--ink);border-radius:38px;border:8px solid var(--pg-fg);overflow:hidden;position:relative;display:flex;flex-direction:column}
+.shot{flex:1;overflow-y:auto;scrollbar-width:none;background:var(--canvas)}
+.shot img{display:block;width:100%;height:auto}
+.scr{flex:1;overflow-y:auto;padding:14px 16px 104px;display:flex;flex-direction:column;gap:12px;scrollbar-width:none}
+.scr > *{flex-shrink:0}
+.tabs{position:absolute;left:12px;right:12px;bottom:12px;display:flex;align-items:center;background:var(--surface);box-shadow:var(--shadow-2);border-radius:99px;padding:6px 6px 6px 10px;z-index:4}
+.tabs span{flex:1;text-align:center;font-size:12px;font-weight:600;color:var(--ink-3);display:flex;flex-direction:column;align-items:center;gap:2px}
+.tabs span i{width:20px;height:16px;border-radius:5px;border:2px solid currentColor;display:block}
+.tabs span.on{color:var(--ink)}
+.tabs svg,.acc svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tabs span.on svg{stroke-width:2.4}
+.acc{width:40px;height:40px;border-radius:12px;background:var(--surface-2);color:var(--ink-2);display:grid;place-items:center;flex:0 0 auto}
+.tabs .plus{flex:0 0 auto;width:46px;height:46px;border-radius:50%;background:var(--brand);color:var(--brand-ink);display:grid;place-items:center;font-size:26px;line-height:1}
+.tbar{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:40px}
+.tbar .t{font-size:25px;font-weight:750;letter-spacing:-.02em}
+.tbar .l{display:flex;align-items:center;gap:10px}
+.back,.ib{width:36px;height:36px;border-radius:12px;background:var(--surface-2);display:grid;place-items:center;color:var(--ink-2);font-size:17px;flex:0 0 auto}
+.ib.b{background:var(--brand-soft);color:var(--brand);font-size:22px}
+.avs{display:flex}
+.av{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;color:var(--dot-ink);font-weight:700;font-size:13px;border:2px solid var(--canvas)}
+.av + .av{margin-left:-8px}
+.av.a{background:var(--pa)} .av.b{background:var(--pb)}
+.av.l{width:36px;height:36px;font-size:15px;border:0}
+.seg{display:flex;background:var(--surface-2);border-radius:14px;padding:4px;gap:4px}
+.seg span{flex:1;text-align:center;border-radius:10px;padding:8px;font-weight:650;font-size:14px;color:var(--ink-2)}
+.seg span.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgb(0 0 0 / .08)}
+.chips{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.chips span{border-radius:14px;padding:11px 0;text-align:center;font-weight:650;font-size:14px;background:var(--surface);border:1px solid var(--card-border);color:var(--ink-2)}
+.chips span.on{background:var(--brand-soft);color:var(--brand);border-color:var(--brand)}
+.card{background:var(--surface);border:1px solid var(--card-border);border-radius:24px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.list{background:var(--surface);border:1px solid var(--card-border);border-radius:24px;padding:2px 16px}
+.li{display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--line)}
+.list > .li:first-child{border-top:0}
+.li .m{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.li .n{font-weight:650;font-size:15px}
+.li .v{font-family:var(--num);font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.li .v.mute{color:var(--ink-2)}
+.chev{color:var(--ink-3);font-size:16px}
+.meta{font-size:13px;color:var(--ink-2)}
+.sub2{display:block;font-size:12.5px;font-weight:600;color:var(--ink-2);text-align:right;font-family:var(--num)}
+.lbl{font-size:12px;font-weight:650;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)}
+.huge{font-family:var(--num);font-weight:750;font-size:34px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.big{font-family:var(--num);font-weight:750;font-size:24px;line-height:1.05;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.ctr{text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px}
+.hint{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--surface-2);color:var(--ink-3);font-size:11px;font-weight:700;margin-left:4px;vertical-align:2px;border:1px solid var(--line)}
+.sh{display:flex;justify-content:space-between;align-items:baseline;padding:4px 2px 0}
+.sh b{font-size:19px;letter-spacing:-.01em}
+.sh .a{color:var(--brand);font-weight:650;font-size:15px}
+.thumb{width:44px;height:44px;border-radius:12px;background:var(--surface-3) center/cover;flex:0 0 auto}
+.bar{height:6px;border-radius:99px;background:var(--track);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px;background:var(--c,var(--ink))}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--c);flex:0 0 auto}
+.bdot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--brand);margin-left:6px;vertical-align:3px}
+.photo{border-radius:28px;background:var(--surface-3) center/cover;position:relative;overflow:hidden}
+.photo .scrim{position:absolute;inset:auto 0 0 0;padding:16px 18px;background:linear-gradient(transparent,rgb(0 0 0 / .55));color:#fff;display:flex;flex-direction:column;gap:6px}
+.photo .cred{position:absolute;top:10px;right:14px;font-size:10.5px;color:rgb(255 255 255 / .8)}
+/* кнопки по уровню (Р-117) */
+.b1{border:0;border-radius:16px;height:52px;width:100%;font:650 15.5px var(--font);background:var(--brand);color:var(--brand-ink);display:grid;place-items:center}
+.b2{border:0;border-radius:14px;height:44px;padding:0 16px;font:600 15px var(--font);background:var(--surface-2);color:var(--ink);display:inline-grid;place-items:center}
+.b3{border:0;border-radius:99px;height:32px;padding:0 12px;font:650 13.5px var(--font);background:var(--surface-2);color:var(--ink);white-space:nowrap;display:inline-grid;place-items:center}
+.b3.br{background:var(--brand-soft);color:var(--brand)}
+.gh{border:0;background:transparent;color:var(--ink-2);font:600 15px var(--font);padding:8px;text-align:center}
+.gh.l{text-align:left;padding:8px 2px}
+/* лист */
+.sheetw{position:absolute;inset:0;background:var(--scrim);display:flex;flex-direction:column;justify-content:flex-end;z-index:5}
+.sheet{background:var(--surface);border-radius:28px 28px 0 0;padding:10px 20px 24px;display:flex;flex-direction:column;gap:14px;max-height:94%;overflow-y:auto;scrollbar-width:none}
+.grab{width:40px;height:4px;border-radius:9px;background:var(--line);align-self:center}
+.sht{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.sht b{font-size:21px;letter-spacing:-.02em}
+.x{width:36px;height:36px;border-radius:12px;background:var(--surface-2);display:grid;place-items:center;color:var(--ink-2)}
+.fld{display:flex;flex-direction:column;gap:6px}
+.fld > span{font-size:13px;font-weight:650;color:var(--ink-2)}
+.inp{height:48px;border-radius:14px;background:var(--surface-2);display:flex;align-items:center;padding:0 14px;font-size:16px;color:var(--ink);border:1.5px solid transparent}
+.inp.ph{color:var(--ink-3)}
+.inp.err{border-color:var(--bad);background:var(--bad-soft)}
+.errt{font-size:13px;color:var(--bad);font-weight:600}
+.opts{display:grid;gap:8px;grid-template-columns:1fr 1fr}
+.opts.c5{grid-template-columns:repeat(5,1fr)}
+.opts span{height:44px;border-radius:14px;display:grid;place-items:center;font-size:14.5px;font-weight:600;background:var(--surface-2);color:var(--ink-2);border:1.5px solid transparent}
+.opts span.on{background:var(--brand-soft);color:var(--brand);border-color:var(--brand)}
+.pause{display:flex;align-items:center;gap:10px;background:var(--warn-soft);color:var(--warn);border-radius:16px;padding:12px 14px;font-weight:600;font-size:14.5px}
+.pause span{flex:1}
+.gw{display:flex;align-items:center;gap:6px;color:var(--ok);font-weight:700;font-size:16px;font-family:var(--num)}
+.tile{border-radius:20px;overflow:hidden;background:var(--surface);border:1px solid var(--card-border);display:flex;flex-direction:column}
+.tile .im{aspect-ratio:1/1;background:var(--surface-3) center/cover}
+.tile .tx{display:flex;justify-content:space-between;gap:6px;padding:10px 12px;font-size:14px;font-weight:600}
+.tile .tx b{font-family:var(--num);white-space:nowrap}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ring{width:200px;height:200px;border-radius:50%;margin:4px auto;display:grid;place-items:center;background:conic-gradient(var(--s1) 0 30%,var(--s8) 30% 52%,var(--s3) 52% 74%,var(--surface-3) 74% 100%);position:relative}
+.ring::before{content:"";position:absolute;inset:26px;border-radius:50%;background:var(--canvas)}
+.ring > div{position:relative;text-align:center}
+.wkn{display:flex;align-items:center;gap:8px;color:var(--ink-3);font-size:13px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.sw{width:50px;height:30px;border-radius:99px;background:var(--brand);position:relative;flex:0 0 auto}
+.sw::after{content:"";position:absolute;right:3px;top:3px;width:24px;height:24px;border-radius:50%;background:var(--brand-ink)}
+.emo{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.emo span{aspect-ratio:1;border-radius:14px;background:var(--surface-2);display:grid;place-items:center;font-size:20px}
+.emo span.on{outline:2.5px solid var(--ink)}
+.cols{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.cols span{aspect-ratio:1;border-radius:50%;background:var(--c)}
+.cols span.on{outline:2.5px solid var(--ink);outline-offset:2px}
+.logo{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;color:#fff;font-weight:700;flex:0 0 auto}
+.prog{display:flex;align-items:center;gap:10px;color:var(--ink-3);font-size:13px}
+.prog .bar{flex:1}
+@media (prefers-reduced-motion: reduce){*{scroll-behavior:auto}}
+</style>
+
+<div class="wrap">
+<header class="head">
+  <h1>Полировка · до | после</h1>
+  <p class="sub">Слева — как было (демо), в середине — утверждённый макет, справа — стенд Блока 17 (демо, 390 px). Под парой: главное действие и куда переехали числа — ничего не пропадает, расчёты те же.</p>
+  <div class="theme" role="group" aria-label="Тема">
+    <button type="button" data-t="auto" aria-pressed="true">Авто</button>
+    <button type="button" data-t="light" aria-pressed="false">Светлая</button>
+    <button type="button" data-t="dark" aria-pressed="false">Тёмная</button>
+  </div>
+  <nav class="toc" aria-label="Экраны">
+    <a href="#dreams">Мечты</a><a href="#week">Неделя</a><a href="#month">Месяц</a><a href="#capital">Капитал</a><a href="#debts">Долги</a><a href="#credit">Кредит</a><a href="#history">История</a><a href="#goal">Цель</a><a href="#goalnew">Новая мечта</a><a href="#wishes">Желания</a><a href="#s-newdebt">Новый кредит</a><a href="#s-credit">Лист кредита</a><a href="#s-account">Счёт</a><a href="#s-extra">Доход</a><a href="#s-wish">Желание</a><a href="#s-salary">Зарплата</a><a href="#s-oklad">Оклад</a><a href="#start">Первый запуск</a><a href="#settings">Настройки</a><a href="#me">Кружок</a>
+  </nav>
+  <div class="legend" aria-label="Кнопки по уровню">
+    <div class="lr"><span class="b1">Главная</span><span>одна, брендовая — в листе и на пустом экране</span></div>
+    <div class="lr"><span><span class="b2">Вторая</span></span><span>тихая, 44 px</span></div>
+    <div class="lr"><span><span class="b3 br">В строке</span></span><span>у своего предмета, 32 px</span></div>
+    <div class="lr"><span><span class="big">328 815 ₸</span></span><span>крупная цифра — одна, не больше 34 px</span></div>
+    <div class="lr"><span style="color:var(--ink-2);font-weight:600">подпись</span><span>тёмно-серая, читается; бледный — только подсказка в пустом поле</span></div>
+    <div class="lr"><span style="font-weight:600">лист</span><span>без полоски-«ручки»; экран за листом не прокручивается</span></div>
+  </div>
+</header>
+
+<p class="grp">Вкладки</p>
+
+<!-- Мечты -->
+<section class="pair" id="dreams"><h2>Мечты</h2>
+<div class="row">
+  <div class="col"><span class="tagc">до</span><div class="phone"><div class="shot"><img data-shot="dreams" alt="Мечты сейчас"></div></div></div>
+  <div class="col after"><span class="tagc">после</span><div class="phone"><div class="scr">
+    <div class="tbar"><span class="t">Мечты</span><span class="l"><span class="avs"><span class="av a">В</span><span class="av b">П</span></span><span class="ib">⚙</span></span></div>
+    <div class="photo" style="height:300px;background-image:url(img/japan.jpg)"></div>
+    <div class="ctr"><span class="huge">30 %</span><span style="font-size:17px;color:var(--ink-2)">Поездка в Японию</span></div>
+    <div class="sh"><b>Цели</b><span class="a">+ Новая</span></div>
+    <div class="list">
+      <div class="li"><span class="thumb" style="background-image:url(img/car.jpg)"></span><span class="m"><span class="n">Машина</span><span class="bar"><i style="width:15%"></i></span></span><span class="v">15 %</span></div>
+      <div class="li"><span class="thumb" style="background-image:url(img/sofa.jpg)"></span><span class="m"><span class="n">Новый диван</span><span class="meta">на паузе</span></span><span class="v mute">27 %</span></div>
+    </div>
+    <div class="sh"><b>Желания</b><span class="a">Все 3</span></div>
+    <div class="list">
+      <div class="li"><span class="thumb" style="background-image:url(img/bike.jpg)"></span><span class="m"><span class="n">Велосипед</span><span class="meta">Вы</span></span><span class="v">230 000 ₸</span></div>
+      <div class="li"><span class="thumb" style="background-image:url(img/coffee.jpg)"></span><span class="m"><span class="n">Кофемашина</span><span class="meta">общие</span></span><span class="v">180 000 ₸</span></div>
+      <div class="li"><span class="thumb" style="background-image:url(img/boots.jpg)"></span><span class="m"><span class="n">Сапоги</span><span class="meta">Партнёр</span></span><span class="v">65 000 ₸</span></div>
+    </div>
+  </div><div class="tabs"><span class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>Мечты</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>План</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 14.5h3"/></svg>Деньги</span><span class="plus">+</span></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="dreams-now" alt="Мечты — стенд Блока 17" loading="lazy"></div></div></div>
+</div>
+<p class="r12"><b>Главное:</b> мечта — нажатие на фото; новая цель — «+ Новая» у списка целей. <b>Переехало:</b> «Октябрь · имена» — убрано (кружки есть); «ноябрь 2027», «к сентябрю 2034» → экран цели; «Свободно · до зарплаты» → подсказка (?) у «Остаётся» в «Месяце» и лист зарплаты; кнопки «Открыть» → вся строка нажимается.</p>
+</section>
+
+<!-- Неделя -->
+<section class="pair" id="week"><h2>План · Неделя</h2>
+<div class="row">
+  <div class="col"><span class="tagc">до</span><div class="phone"><div class="shot"><img data-shot="week" alt="Неделя сейчас"></div></div></div>
+  <div class="col after"><span class="tagc">после</span><div class="phone"><div class="scr">
+    <div class="tbar"><span class="t">План</span><span class="avs"><span class="av a">В</span><span class="av b">П</span></span></div>
+    <div class="seg"><span class="on">Неделя</span><span>Месяц</span></div>
+    <div class="card">
+      <div class="wkn"><span>‹</span>5–11 октября<span>›</span></div>
+      <span class="huge">117 200 ₸</span>
+    </div>
+    <div class="list">
+      <div class="li"><span class="m"><span class="n">Не разобрано</span><span class="meta">3 вопроса</span></span><span class="b3 br">Разобрать</span><span class="v">75 300</span></div>
+      <div class="li" style="flex-wrap:wrap"><span class="m"><span class="n">Кафе и рестораны</span><span class="bar" style="--c:var(--s8)"><i style="width:52%"></i></span><span class="meta">осталось 19 100</span></span><span class="v">20 900</span></div>
+      <div class="li"><span class="m"><span class="n">Продукты</span><span class="bar" style="--c:var(--s1)"><i style="width:51%"></i></span><span class="meta">осталось 43 800</span></span><span class="v">19 200</span></div>
+      <div class="li"><span class="m"><span class="n">Транспорт</span><span class="bar" style="--c:var(--s3)"><i style="width:16%"></i></span><span class="meta">осталось 21 100</span></span><span class="v">1 800</span></div>
+    </div>
+    <div class="list"><div class="li"><span class="m"><span class="n">8 недель</span></span><span class="chev">›</span></div></div>
+  </div><div class="tabs"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>Мечты</span><span class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>План</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 14.5h3"/></svg>Деньги</span><span class="plus">+</span></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="week-now" alt="Неделя — стенд Блока 17" loading="lazy"></div></div></div>
+</div>
+<p class="r12"><b>Главное:</b> «Разобрать» — у строки «Не разобрано» (была «! 3» сверху). <b>Переехало:</b> «↑ 24 %», «прошлая неделя», стрелки у разделов → «8 недель»; «из 40 000» → лист раздела; точка у «Месяц», строка «демо: только на этом телефоне», переключатель ▦ — убраны (вид плитками — на ваше решение).</p>
+</section>
+
+<!-- Месяц -->
+<section class="pair" id="month"><h2>План · Месяц</h2>
+<div class="row">
+  <div class="col"><span class="tagc">до</span><div class="phone"><div class="shot"><img data-shot="month" alt="Месяц сейчас"></div></div></div>
+  <div class="col after"><span class="tagc">после</span><div class="phone"><div class="scr">
+    <div class="tbar"><span class="t">План</span><span class="avs"><span class="av a">В</span><span class="av b">П</span></span></div>
+    <div class="seg"><span>Неделя</span><span class="on">Месяц</span></div>
+    <div class="ctr" style="flex-direction:row;justify-content:center;gap:28px;font-weight:650"><span class="chev">‹</span>Октябрь<span class="chev">›</span></div>
+    <div class="ring"><div><div class="lbl">Остаётся<span class="hint">?</span></div><div class="big">328 815 ₸</div></div></div>
+    <div class="list">
+      <div class="li"><span class="av l a">В</span><span class="m"><span class="n">Вы</span></span><span class="b3">Обменял</span><span class="v"><span style="color:var(--ok)">✓</span> 761 310 ₸<span class="sub2">1 500 €</span></span></div>
+      <div class="li"><span class="av l b">П</span><span class="m"><span class="n">Партнёр</span></span><span class="v mute">450 000 ₸</span></div>
+      <div class="li"><button class="gh l" type="button">+ Внеплановый доход</button></div>
+    </div>
+    <div class="list">
+      <div class="li"><span class="dot" style="--c:var(--s1)"></span><span class="m"><span class="n">Платежи</span><span class="meta">1 из 6 оплачено</span></span><span class="v">357 495</span><span class="chev">›</span></div>
+      <div class="li"><span class="dot" style="--c:var(--s8)"></span><span class="m"><span class="n">Траты</span><span class="meta">потрачено 220 300</span></span><span class="v">255 000</span><span class="chev">›</span></div>
+      <div class="li"><span class="dot" style="--c:var(--s3)"></span><span class="m"><span class="n">Цели и фонды<span class="bdot"></span></span><span class="meta">0 из 4 отложено</span></span><span class="v">270 000</span><span class="chev">›</span></div>
+    </div>
+  </div><div class="tabs"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>Мечты</span><span class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>План</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 14.5h3"/></svg>Деньги</span><span class="plus">+</span></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="month-now" alt="Месяц — стенд Блока 17" loading="lazy"></div></div></div>
+</div>
+<p class="r12"><b>Главное:</b> «Обменял» — у своей зарплаты; «Отложил» / «Оплатил» — в строках разделов. <b>Переехало:</b> «8 октября», «ждём 20 октября», «+321 805» (хватает ли), «обменяно 500 € из 1 500 €» → лист зарплаты; «из 1 211 310» → подсказка (?) у «Остаётся»; карточка «Отложим · Потратим · Остаётся» — повтор кольца и строк, убрана.</p>
+</section>
+
+<!-- Капитал -->
+<section class="pair" id="capital"><h2>Деньги · Капитал</h2>
+<div class="row">
+  <div class="col"><span class="tagc">до</span><div class="phone"><div class="shot"><img data-shot="money" alt="Капитал сейчас"></div></div></div>
+  <div class="col after"><span class="tagc">после</span><div class="phone"><div class="scr">
+    <div class="tbar"><span class="t">Деньги</span><span class="avs"><span class="av a">В</span><span class="av b">П</span></span></div>
+    <div class="chips"><span class="on">Капитал</span><span>Долги</span><span>История</span></div>
+    <div class="card" style="padding-block:20px"><span class="huge">2 393 986 ₸<span class="hint">?</span></span></div>
+    <div class="list">
+      <div class="li"><span class="av l a">В</span><span class="m"><span class="n">Вы</span></span><span class="v"><span style="color:var(--ok)">✓</span> 761 310 ₸<span class="sub2">1 500 €</span></span></div>
+      <div class="li"><span class="av l b">П</span><span class="m"><span class="n">Партнёр</span></span><span class="v mute">450 000 ₸</span></div>
+    </div>
+    <div class="list">
+      <div class="li"><span class="acc"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M7 15h4"/></svg></span><span class="m"><span class="n">Kaspi Gold</span><span class="meta">карта · общий</span></span><span class="v">516 000 ₸</span><span class="chev">›</span></div>
+      <div class="li"><span class="acc"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M7 15h4"/></svg></span><span class="m"><span class="n">Евро-счёт</span><span class="meta">карта · 1 000 € · общий</span></span><span class="v">505 310 ₸</span><span class="chev">›</span></div>
+      <div class="li"><span class="acc"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10l9-5 9 5M5 10v8M10 10v8M14 10v8M19 10v8M3 20h18" transform="translate(0 -1)"/></svg></span><span class="m"><span class="n">Депозит Kaspi</span><span class="meta">14 % · общий</span></span><span class="v">1 200 000 ₸</span><span class="chev">›</span></div>
+      <div class="li"><span class="m"><span class="n">Цели · 4</span></span><span class="v">1 770 000 ₸</span><span class="chev">›</span></div>
+      <div class="li"><button class="gh l" type="button">+ Добавить счёт</button></div>
+    </div>
+    <div class="list">
+      <div class="li"><span class="acc"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M7 15h4"/></svg></span><span class="m"><span class="n">Автокредит</span><span class="meta">кредит</span></span><span class="v">1 597 324 ₸</span><span class="chev">›</span></div>
+    </div>
+  </div><div class="tabs"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>Мечты</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>План</span><span class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 14.5h3"/></svg>Деньги</span><span class="plus">+</span></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="money-now" alt="Капитал — стенд Блока 17" loading="lazy"></div></div></div>
+</div>
+<p class="r12"><b>Главное:</b> счёт — нажатие на строку; «+ Добавить счёт» — тихо в конце списка. <b>Переехало:</b> числа на чипах и слово «Капитал» над суммой — повтор, убраны; «Счета 3 991 310» → подсказка (?) у суммы («счета − долги»); «пришла / ждём …» → лист зарплаты; «1 500 €» остаётся под суммой.</p>
+</section>
+
+<!-- Долги -->
+<section class="pair" id="debts"><h2>Деньги · Долги</h2>
+<div class="row">
+  <div class="col"><span class="tagc">до</span><div class="phone"><div class="shot"><img data-shot="debts" alt="Долги сейчас"></div></div></div>
+  <div class="col after"><span class="tagc">после</span><div class="phone"><div class="scr">
+    <div class="tbar"><span class="t">Деньги</span><span class="avs"><span class="av a">В</span><span class="av b">П</span></span></div>
+    <div class="chips"><span>Капитал</span><span class="on">Долги</span><span>История</span></div>
+    <div class="card" style="padding-block:20px"><span class="huge">1 597 324 ₸</span><span class="meta" style="font-size:14px">без долгов — к августу 2027</span></div>
+    <div class="list">
+      <div class="li" style="flex-direction:column;align-items:stretch;gap:8px"><span style="display:flex;justify-content:space-between"><span class="n">Автокредит</span><span class="v">1 597 324 ₸</span></span><span class="meta">95 000 в месяц</span><span class="bar" style="--c:var(--ok)"><i style="width:11%"></i></span></div>
+    </div>
+    <div class="list"><div class="li"><span class="m"><span class="n">Как закрыть быстрее</span></span><span class="chev">›</span></div></div>
+    <button class="gh l" type="button">+ Кредит</button>
+  </div><div class="tabs"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>Мечты</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>План</span><span class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 14.5h3"/></svg>Деньги</span><span class="plus">+</span></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="debts-now" alt="Долги — стенд Блока 17" loading="lazy"></div></div></div>
+</div>
+<p class="r12"><b>Главное:</b> кредит — нажатие на строку; «+ Кредит» — тихо внизу. <b>Переехало:</b> «19 % · до июня 2028» → лист кредита; слово «Долги» над суммой — повтор чипа, убрано.</p>
+</section>
+
+<!-- Кредит -->
+<section class="pair" id="credit"><h2>Как закрыть быстрее</h2>
+<div class="row">
+  <div class="col"><span class="tagc">до</span><div class="phone"><div class="shot"><img data-shot="credit" alt="Экран кредита сейчас"></div></div></div>
+  <div class="col after"><span class="tagc">после</span><div class="phone"><div class="scr">
+    <div class="tbar"><span class="l"><span class="back">‹</span><span class="t" style="font-size:24px">Закрыть быстрее</span></span></div>
+    <div class="card" style="gap:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:17px">Сначала долги</b><span class="sw" aria-label="включено"></span></div>
+      <span class="huge">на 10 мес. раньше</span>
+      <span class="meta" style="font-size:14.5px">90 000 ₸ в месяц → Автокредит · 19 %</span>    </div>
+    <div class="list"><div class="li"><span class="m"><span class="n">Цели на паузе</span><span class="meta">Машина, Новый диван</span></span><span class="chev">›</span></div></div>
+    <div class="list">
+      <div class="li"><span class="m"><span class="n">Подробнее</span><span class="meta">шаги по месяцам, копить или гасить, своя сумма</span></span><span class="chev">⌄</span></div>
+    </div>
+  </div><div class="tabs"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>Мечты</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>План</span><span class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 14.5h3"/></svg>Деньги</span><span class="plus">+</span></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="credit-now" alt="Экран кредита — стенд Блока 17" loading="lazy"></div></div></div>
+</div>
+<p class="r12"><b>Главное:</b> один переключатель «Сначала долги»; «Отложил» в долг — по-прежнему у строки долга в «Месяце». <b>Одна крупная цифра</b> — на сколько раньше. <b>Скрыто в «Подробнее»:</b> «Самая дорогая ставка», проценты в месяц 25 291, доля 27 %, переплата 274 623 → 134 022, «Посчитать на свою сумму» (с подсказанной суммой 86 000), «Копить или гасить?», «Шаги по месяцам». Абзац и розовый блок — убраны. Экран открывается отдельно, сверху.</p>
+</section>
+
+<!-- История -->
+<section class="pair" id="history"><h2>Деньги · История</h2>
+<div class="row">
+  <div class="col"><span class="tagc">до</span><div class="phone"><div class="shot"><img data-shot="history" alt="История сейчас"></div></div></div>
+  <div class="col after"><span class="tagc">после</span><div class="phone"><div class="scr">
+    <div class="tbar"><span class="t">Деньги</span><span class="avs"><span class="av a">В</span><span class="av b">П</span></span></div>
+    <div class="chips"><span>Капитал</span><span>Долги</span><span class="on">История</span></div>
+    <div class="list">
+      <div class="li"><span class="m"><span class="n">Сентябрь</span><span class="meta">осталось 103 655</span></span><span class="gw">+150 000<span class="hint">?</span></span><span class="chev">›</span></div>
+      <div class="li"><span class="m"><span class="n">Август</span><span class="meta">осталось 362 685</span></span><span class="chev">›</span></div>
+      <div class="li"><span class="m"><span class="n">Июль</span><span class="meta">осталось 493 200</span></span><span class="chev">›</span></div>
+    </div>
+    <div class="list"><div class="li"><span class="m"><span class="n">Все записи</span></span><span class="chev">›</span></div></div>
+  </div><div class="tabs"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg>Мечты</span><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>План</span><span class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M15 14.5h3"/></svg>Деньги</span><span class="plus">+</span></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="history-now" alt="История — стенд Блока 17" loading="lazy"></div></div></div>
+</div>
+<p class="r12"><b>Главное:</b> месяц — нажатие на строку. <b>Переехало:</b> строка «Зелёным — сколько отложили» → подсказка (?) у зелёной суммы; «сентябрь» на чипе — убран.</p>
+</section>
+
+<p class="grp">Цели и желания</p>
+
+<!-- Цель -->
+<section class="pair" id="goal"><h2>Экран цели</h2>
+<div class="row">
+  <div class="col"><span class="tagc">до</span><div class="phone"><div class="shot"><img data-shot="goal" alt="Цель сейчас"></div></div></div>
+  <div class="col after"><span class="tagc">после</span><div class="phone"><div class="scr" style="padding-bottom:24px">
+    <div class="tbar"><span class="l"><span class="back">‹</span><span class="t">Машина</span></span><span class="l"><span class="ib">⤴</span><span class="ib">…</span></span></div>
+    <div class="photo" style="height:340px;background-image:url(img/car.jpg)"><div class="scrim"><span class="huge" style="font-size:44px">15 %</span><span style="font-size:14px">900 000 из 6 000 000 ₸</span></div></div>
+    <div class="card">
+      <b style="font-size:21px;letter-spacing:-.01em">Будет вашей в сентябре 2034</b>
+      <span class="meta" style="font-size:14.5px">60 000 ₸ в месяц</span>
+      <button class="b1" type="button">Пополнить</button>
+    </div>
+    <div class="pause"><span>На паузе — взнос идёт в долг</span><span class="chev" style="flex:0">›</span></div>
+    <button class="gh" type="button">Подробнее</button>
+  </div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="goal-now" alt="Цель — стенд Блока 17" loading="lazy"></div></div></div>
+</div>
+<p class="r12"><b>Главное:</b> «Пополнить» — одна, у срока цели. <b>Переехало:</b> «мечта · имена» — убрано; «Поделиться» → значок ⤴ в шапке; «осталось 85 взносов · после плана» → «Подробнее»; абзац паузы → строка, ведёт к «Закрыть быстрее». Срок цели живёт здесь (Р-116).</p>
+</section>
+
+<!-- Новая мечта -->
+<section class="pair" id="goalnew"><h2>Новая мечта · форма</h2>
+<div class="row">
+  <div class="col"><span class="tagc">до</span><div class="phone"><div class="shot"><img data-shot="goalnew" alt="Новая мечта сейчас"></div></div></div>
+  <div class="col after"><span class="tagc">после · нажали «Готово» пустым</span><div class="phone"><div class="scr" style="padding-bottom:24px">
+    <div class="tbar"><span class="l"><span class="back">‹</span><span class="t">Новая мечта</span></span></div>
+    <div class="photo" style="height:210px;background-image:url(img/car.jpg)"><span class="cred">Фото: Tim Stief</span></div>
+    <label class="fld"><span>Название</span><span class="inp">Машина</span></label>
+    <label class="fld"><span>Сколько нужно</span><span class="inp err ph">1 800 000</span><span class="errt">Сколько нужно на мечту?</span></label>
+    <div class="fld"><span>Когда</span><div class="seg"><span>6 мес</span><span class="on">12 мес</span><span>18 мес</span><span>свой</span></div></div>
+    <button class="b1" type="button">Готово — к мечте</button>
+    <button class="gh" type="button">Назад</button>
+  </div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="goalnew-now" alt="Новая мечта — стенд Блока 17" loading="lazy"></div></div></div>
+</div>
+<p class="r12"><b>Главное:</b> «Готово — к мечте» всегда яркая; нажали с пустым полем — поле подсвечено, под ним одна строка, ничего не сохранено (Р-114). Так во всех листах и формах. Подпись «Машина · Машина» на фото — убрана, автор фото — остаётся.</p>
+</section>
+
+<!-- Желания -->
+<section class="pair" id="wishes"><h2>Желания</h2>
+<div class="row">
+  <div class="col"><span class="tagc">до</span><div class="phone"><div class="shot"><img data-shot="wishes" alt="Желания сейчас"></div></div></div>
+  <div class="col after"><span class="tagc">после</span><div class="phone"><div class="scr" style="padding-bottom:24px">
+    <div class="tbar"><span class="l"><span class="back">‹</span><span class="t">Желания</span></span><span class="ib b">+</span></div>
+    <div class="seg"><span>Вы</span><span>Партнёр</span><span class="on">Общие</span></div>
+    <div class="grid2">
+      <div class="tile"><span class="im" style="background-image:url(img/bike.jpg)"></span><span class="tx">Велосипед<b>230 000 ₸</b></span></div>
+      <div class="tile"><span class="im" style="background-image:url(img/coffee.jpg)"></span><span class="tx">Кофемашина<b>180 000 ₸</b></span></div>
+      <div class="tile"><span class="im" style="background-image:url(img/boots.jpg)"></span><span class="tx">Сапоги<b>65 000 ₸</b></span></div>
+    </div>
+  </div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="wishes-now" alt="Желания — стенд Блока 17" loading="lazy"></div></div></div>
+</div>
+<p class="r12"><b>Главное:</b> «+» в шапке. <b>Переехало:</b> подзаголовок «не мечты — покупки поменьше» — убран; фото у всех желаний демо (Р-118; здесь — для примера, подбор — в B2C-110); имена — «Вы / Партнёр».</p>
+</section>
+
+<p class="grp">Листы ввода</p>
+
+<!-- Новый кредит -->
+<section class="pair" id="s-newdebt"><h2>Новый кредит</h2>
+<div class="row">
+  <div class="col"><span class="tagc">до</span><div class="phone"><div class="shot"><img data-shot="s-newdebt" alt="Новый кредит сейчас"></div></div></div>
+  <div class="col after"><span class="tagc">после · нажали «Добавить» пустым</span><div class="phone"><div class="sheetw"><div class="sheet">
+    <div class="sht"><b>Долг или рассрочка</b><span class="x">✕</span></div>
+    <label class="fld"><span>Название</span><span class="inp err ph">Например, рассрочка на телефон</span><span class="errt">Как назвать долг?</span></label>
+    <label class="fld"><span>Остаток долга, ₸</span><span class="inp ph">600 000</span></label>
+    <label class="fld"><span>Платёж в месяц, ₸</span><span class="inp ph">55 000</span></label>
+    <div class="fld"><span>Проценты<span class="hint">?</span></span><div class="seg"><span class="on">Без них</span><span>Знаю ставку</span><span>Знаю срок</span></div></div>
+    <label class="fld"><span>День платежа</span><span class="inp">12</span></label>
+    <button class="b1" type="button">Добавить</button>
+  </div></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="s-newdebt-now" alt="Новый кредит — стенд Блока 17" loading="lazy"></div></div></div>
+</div>
+<p class="r12"><b>Главное:</b> «Добавить» — яркая, по нажатию — первое пустое поле. <b>Переехало:</b> пояснение «Рассрочка: платите ровно столько…» → подсказка (?) у «Проценты».</p>
+</section>
+
+<!-- Лист кредита -->
+<section class="pair" id="s-credit"><h2>Лист кредита</h2>
+<div class="row">
+  <div class="col"><span class="tagc">до</span><div class="phone"><div class="shot"><img data-shot="s-credit" alt="Лист кредита сейчас"></div></div></div>
+  <div class="col after"><span class="tagc">после</span><div class="phone"><div class="sheetw"><div class="sheet">
+    <div class="sht"><b>Автокредит<span class="hint">?</span></b><span class="x">✕</span></div>
+    <label class="fld"><span>Остаток долга, ₸</span><span class="inp">1 597 324</span></label>
+    <label class="fld"><span>Платёж в месяц, ₸</span><span class="inp">95 000</span></label>
+    <div class="opts"><label class="fld"><span>Ставка, %</span><span class="inp">19</span></label><label class="fld"><span>День платежа</span><span class="inp">18</span></label></div>
+    <span class="meta">закроется в июне 2028</span>
+    <label class="fld"><span>Название</span><span class="inp">Автокредит</span></label>
+    <button class="b1" type="button">Сохранить</button>
+    <button class="gh" type="button">Посчитать досрочно</button>
+  </div></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="s-credit-now" alt="Лист кредита — стенд Блока 17" loading="lazy"></div></div></div>
+</div>
+<p class="r12"><b>Главное:</b> «Сохранить». <b>Сюда переехали</b> ставка и срок из строки «Долги». <b>Скрыто:</b> «За всё время: в долг …, банку …» → подсказка (?) у названия; крупная серая «Посчитать досрочное погашение» посреди формы → тихая ссылка под «Сохранить».</p>
+</section>
+
+<!-- Счёт -->
+<section class="pair" id="s-account"><h2>Новый счёт</h2>
+<div class="row">
+  <div class="col"><span class="tagc">до</span><div class="phone"><div class="shot"><img data-shot="s-account" alt="Новый счёт сейчас"></div></div></div>
+  <div class="col after"><span class="tagc">после · нажали пустым</span><div class="phone"><div class="sheetw"><div class="sheet">
+    <div class="sht"><b>Счёт</b><span class="x">✕</span></div>
+    <div class="fld"><span>Что это</span><div class="opts"><span class="on">Карта</span><span>Наличные</span><span>Вклад</span><span>Конверт</span></div></div>
+    <label class="fld"><span>Название</span><span class="inp err ph">Например, Kaspi Gold</span><span class="errt">Как назвать счёт?</span></label>
+    <div class="fld"><span>Валюта</span><div class="opts c5"><span class="on">₸</span><span>$</span><span>€</span><span>₽</span><span>¥</span></div></div>
+    <label class="fld"><span>Сумма, ₸</span><span class="inp"></span></label>
+    <div class="fld"><span>Кто видит</span><div class="opts"><span class="on">Семья</span><span>Только я</span></div></div>
+    <button class="b1" type="button">Добавить счёт</button>
+  </div></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="s-account-now" alt="Новый счёт — стенд Блока 17" loading="lazy"></div></div></div>
+</div>
+<p class="r12"><b>Главное:</b> «Добавить счёт» — яркая. <b>Геометрия:</b> все варианты — одна высота 44 px; «Общий (семья) / Личный (только мне)» → «Семья / Только я» внизу; заголовок «Счёт или накопления» → «Счёт».</p>
+</section>
+
+<!-- Доход -->
+<section class="pair" id="s-extra"><h2>Внеплановый доход</h2>
+<div class="row">
+  <div class="col"><span class="tagc">до</span><div class="phone"><div class="shot"><img data-shot="s-extra" alt="Доход сейчас"></div></div></div>
+  <div class="col after"><span class="tagc">после · нажали пустым</span><div class="phone"><div class="sheetw"><div class="sheet">
+    <div class="sht"><b>Внеплановый доход</b><span class="x">✕</span></div>
+    <span class="meta" style="font-size:14px">Премия, подарок, возврат налога</span>
+    <label class="fld"><span>Сумма, ₸</span><span class="inp err ph">50 000</span><span class="errt">Сколько пришло?</span></label>
+    <div class="fld"><span>Кому</span><div class="opts"><span class="on">Вы</span><span>Партнёр</span></div></div>
+    <label class="fld"><span>Куда направить</span><span class="inp">Выберите… <span style="margin-left:auto" class="chev">⌄</span></span></label>
+    <button class="b1" type="button">Записать</button>
+  </div></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="s-extra-now" alt="Доход — стенд Блока 17" loading="lazy"></div></div></div>
+</div>
+<p class="r12"><b>Главное:</b> «Записать» — яркая. <b>Текст:</b> три строки пояснения → одна. <b>Геометрия:</b> «Кому» — те же варианты, что в остальных листах.</p>
+</section>
+
+<!-- Желание -->
+<section class="pair" id="s-wish"><h2>Новое желание</h2>
+<div class="row">
+  <div class="col"><span class="tagc">до</span><div class="phone"><div class="shot"><img data-shot="s-wish" alt="Новое желание сейчас"></div></div></div>
+  <div class="col after"><span class="tagc">после · нажали пустым</span><div class="phone"><div class="sheetw"><div class="sheet">
+    <div class="sht"><b>Новое желание</b><span class="x">✕</span></div>
+    <label class="fld"><span>Что покупаем</span><span class="inp err ph">Например, сковорода</span><span class="errt">Что хотите купить?</span></label>
+    <label class="fld"><span>Цена, ₸</span><span class="inp ph">18 000</span></label>
+    <div class="fld"><span>Чьё</span><div class="opts"><span class="on">Вы</span><span>Партнёр</span></div></div>
+    <button class="b1" type="button">Добавить в список</button>
+  </div></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="s-wish-now" alt="Новое желание — стенд Блока 17" loading="lazy"></div></div></div>
+</div>
+<p class="r12"><b>Главное:</b> «Добавить в список» — яркая. Строка «По ссылке — в приложении» — убрана (механика).</p>
+</section>
+
+<!-- Зарплата -->
+<section class="pair" id="s-salary"><h2>Лист зарплаты</h2>
+<div class="row">
+  <div class="col"><span class="tagc">до</span><div class="phone"><div class="shot"><img data-shot="s-salary" alt="Лист зарплаты сейчас"></div></div></div>
+  <div class="col after"><span class="tagc">после</span><div class="phone"><div class="sheetw"><div class="sheet">
+    <div class="sht"><b>Зарплата · Партнёр</b><span class="x">✕</span></div>
+    <span class="big">450 000 ₸</span>
+    <div class="list" style="background:var(--surface-2)">
+      <div class="li"><span class="m"><span class="meta">Когда</span></span><span style="font-weight:600">ждём 20 октября</span></div>
+      <div class="li"><span class="m"><span class="meta">Хватает<span class="hint">?</span></span></span><span class="gw" style="font-size:15px">+7 010 ₸</span></div>
+    </div>
+    <button class="gh" type="button">Изменить оклад</button>
+  </div></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="s-salary-now" alt="Лист зарплаты — стенд Блока 17" loading="lazy"></div></div></div>
+</div>
+<p class="r12"><b>Сюда переехали</b> с «Месяца» и «Капитала»: дата («ждём / пришла»), «хватает ли» (+7 010, у вас +321 805), у валютной — «обменяно 500 € из 1 500 €». Своя пришедшая — «Пришла» / «Обменял» в строке, как сейчас.</p>
+</section>
+
+<!-- Оклад -->
+<section class="pair" id="s-oklad"><h2>Оклад</h2>
+<div class="row">
+  <div class="col"><span class="tagc">до</span><div class="phone"><div class="shot"><img data-shot="s-oklad" alt="Оклад сейчас"></div></div></div>
+  <div class="col after"><span class="tagc">после</span><div class="phone"><div class="sheetw"><div class="sheet">
+    <div class="sht"><b>Партнёр</b><span class="x">✕</span></div>
+    <label class="fld"><span>Имя</span><span class="inp">Партнёр</span></label>
+    <label class="fld"><span>Оклад сейчас, ₸<span class="hint">?</span></span><span class="inp">450 000</span></label>
+    <label class="fld"><span>День зарплаты</span><span class="inp">20</span></label>
+    <button class="b1" type="button">Изменить оклад</button>
+  </div></div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="s-oklad-now" alt="Оклад — стенд Блока 17" loading="lazy"></div></div></div>
+</div>
+<p class="r12"><b>Главное:</b> «Изменить оклад» — была серой, становится брендовой. «только исправить ошибку» → подсказка (?) у поля.</p>
+</section>
+
+<p class="grp">Остальное</p>
+
+<!-- Первый запуск -->
+<section class="pair" id="start"><h2>Первый запуск</h2>
+<div class="row">
+  <div class="col"><span class="tagc">до</span><div class="phone"><div class="shot"><img data-shot="start" alt="Первый запуск сейчас"></div></div></div>
+  <div class="col after"><span class="tagc">после</span><div class="phone"><div class="scr" style="padding-bottom:24px">
+    <div class="prog"><span class="bar" style="--c:var(--brand)"><i style="width:20%"></i></span>1 из 5</div>
+    <b style="font-size:30px;letter-spacing:-.02em;line-height:1.1">Ваш банк</b>
+    <span class="meta" style="font-size:15px">Найдём зарплату, кредиты и подписки</span>
+    <div class="list">
+      <div class="li"><span class="logo" style="background:#b8322a">K</span><span class="m"><span class="n">Kaspi</span></span><span class="hint">?</span></div>
+      <div class="li"><span class="logo" style="background:#3c7a5a">F</span><span class="m"><span class="n">Freedom</span></span><span class="hint">?</span></div>
+    </div>
+    <span class="meta">Файл остаётся на телефоне<span class="hint">?</span></span>
+    <div style="flex:1;min-height:150px"></div>
+    <button class="b1" type="button">Выбрать файл</button>
+    <button class="gh" type="button">Введу вручную</button>
+  </div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="start-now" alt="Первый запуск — стенд Блока 17" loading="lazy"></div></div></div>
+</div>
+<p class="r12"><b>Главное:</b> «Выбрать файл» — пустой экран, первый шаг. <b>Переехало:</b> «Загрузите первую выписку» (механика) → «Ваш банк»; пути «Мой банк → Выписка → PDF…» → подсказка (?) у банка.</p>
+</section>
+
+<!-- Настройки -->
+<section class="pair" id="settings"><h2>Настройки</h2>
+<div class="row">
+  <div class="col"><span class="tagc">до</span><div class="phone"><div class="shot"><img data-shot="settings" alt="Настройки сейчас"></div></div></div>
+  <div class="col after"><span class="tagc">после</span><div class="phone"><div class="scr" style="padding-bottom:24px">
+    <div class="tbar"><span class="l"><span class="back">‹</span><span class="t">Настройки</span></span></div>
+    <div class="card">
+      <label class="fld"><span>Ваше имя</span><span class="inp">Вы</span></label>
+      <div class="fld"><span>Тема</span><div class="seg"><span>Авто</span><span class="on">Светлая</span><span>Тёмная</span></div></div>
+    </div>
+    <div class="list">
+      <div class="li"><span class="av l a">В</span><span class="m"><span class="n">Вы</span><span class="meta">участник</span></span><span class="chev">›</span></div>
+      <div class="li"><span class="av l b">П</span><span class="m"><span class="n">Партнёр</span><span class="meta">участник</span></span></div>
+    </div>
+    <div class="list"><div class="li"><span class="m"><span class="n">Разбор трат</span></span><span class="chev">⌄</span></div></div>
+    <div class="card"><span class="meta" style="font-size:14px">Демо живёт только на этом телефоне</span><button class="b1" type="button">Создать семью или войти</button></div>
+  </div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="settings-now" alt="Настройки — стенд Блока 17" loading="lazy"></div></div></div>
+</div>
+<p class="r12"><b>Главное:</b> в демо — «Создать семью или войти». <b>Текст:</b> два предложения про демо → одна строка; «demo@family.local» и «Ильяс» → «Вы»; «Разбор выписок · разделы трат и память ответов» → «Разбор трат».</p>
+</section>
+
+<!-- Кружок -->
+<section class="pair" id="me"><h2>Свой кружок</h2>
+<div class="row">
+  <div class="col"><span class="tagc">до</span><div class="phone"><div class="shot"><img data-shot="me" alt="Свой кружок сейчас"></div></div></div>
+  <div class="col after"><span class="tagc">после</span><div class="phone"><div class="scr" style="padding-bottom:24px">
+    <div class="tbar"><span class="l"><span class="back">‹</span><span class="t">Свой кружок</span></span></div>
+    <div class="ctr"><span class="av" style="width:96px;height:96px;font-size:40px;background:var(--pa);border:0">В</span></div>
+    <div class="card"><span class="lbl">Смайлик</span><div class="emo"><span class="on">В</span><span>🦊</span><span>🐻</span><span>🌿</span><span>⚡</span><span>🌙</span><span>🍉</span><span>🚀</span><span>🐱</span><span>☕</span><span>🎧</span><span>🌸</span></div></div>
+    <div class="card"><span class="lbl">Цвет</span><div class="cols"><span class="on" style="--c:var(--pa)"></span><span style="--c:#7d6a9e"></span><span style="--c:var(--s3)"></span><span style="--c:var(--s1)"></span><span style="--c:var(--s8)"></span><span style="--c:var(--pb)"></span></div></div>
+  </div></div></div>
+  <div class="col now"><span class="tagc">сейчас · стенд</span><div class="phone"><div class="shot"><img data-shot="me-now" alt="Свой кружок — стенд Блока 17" loading="lazy"></div></div></div>
+</div>
+<p class="r12">Без изменений: экран уже спокойный. Viewer видит все экраны выше без «Пополнить», «Оплатил», «+» — проверено.</p>
+</section>
+</div>
+
+<script>
+(function(){
+  var root=document.documentElement, mq=window.matchMedia('(prefers-color-scheme: dark)'), mode='auto';
+  try{ mode=localStorage.getItem('pb17-theme')||'auto' }catch(e){}
+  function dark(){ return mode==='dark' || (mode==='auto' && mq.matches) }
+  function apply(){
+    if(mode==='auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme',mode);
+    var t=dark()?'dark':'light';
+    document.querySelectorAll('img[data-shot]').forEach(function(i){ i.src='shots/'+i.dataset.shot+'-'+t+'.jpg' });
+    document.querySelectorAll('.theme button').forEach(function(b){ b.setAttribute('aria-pressed', String(b.dataset.t===mode)) });
+  }
+  document.querySelectorAll('.theme button').forEach(function(b){
+    b.addEventListener('click',function(){ mode=b.dataset.t; try{localStorage.setItem('pb17-theme',mode)}catch(e){} apply() });
+  });
+  mq.addEventListener && mq.addEventListener('change',apply);
+  apply();
+})();
+</script>

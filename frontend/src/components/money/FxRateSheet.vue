@@ -80,7 +80,7 @@ const chart = computed(() => {
             :fill="m.key === chosen?.key ? 'var(--brand)' : 'var(--ink-3)'"
           />
         </svg>
-        <figcaption class="mt-1 flex justify-between text-[11.5px] text-ink-3 num">
+        <figcaption class="mt-1 flex justify-between text-[11.5px] text-ink-2 num">
           <span>{{ plain(chart.lo) }}–{{ plain(chart.hi) }} ₸</span>
           <span>{{ CURRENCY_SIGN[currency] }} · Нацбанк</span>
         </figcaption>

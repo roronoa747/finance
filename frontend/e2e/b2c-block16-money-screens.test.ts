@@ -11,6 +11,7 @@ import { screenMixin } from '../src/test/screenState'
 import type { Payment, SyncDoc } from '../src/types/finance'
 import Money from '../src/views/Money.vue'
 import Month from '../src/views/Month.vue'
+import DebtFaster from '../src/views/DebtFaster.vue'
 import { at, backend, fakeServer, screen, type FakeServer } from './support/family'
 
 /**
@@ -52,6 +53,14 @@ const amountAt = (html: string, attr: string) => {
   if (!m) throw new Error(`нет ${attr}`)
   return (/[−-]/.test(m[1]) ? -1 : 1) * Number(m[1].replace(/\D/g, ''))
 }
+/** Открытые подсказки `Hint` (в SSR текст подсказки есть только у открытой). */
+const hintsOpen = () => screenMixin({ at: { left: 0, top: 0, width: 300 } })
+/** «Что такое капитал»: «Счета и цели — N, долги — M.» (Р-116: итоги «Счета»/«Кредиты» переехали в подсказку). */
+const worthParts = (html: string) => {
+  const m = text(html).match(/Счета и цели — ([^,]+), долги — ([^.]+)\./)
+  if (!m) throw new Error('нет подсказки «Что такое капитал»')
+  return { assets: Number(m[1].replace(/\D/g, '')), debt: Number(m[2].replace(/\D/g, '')) }
+}
 const mark = (kind: Payment['kind'], targetId: string, period: string, amount: number, extra: Partial<Payment> = {}): Payment => ({
   id: `${kind}-${targetId}-${period}`, kind, targetId, period, amount, accountId: 'card', by: 'a', at: `${period}-10T05:00:00.000Z`, updatedAt: T0, ...extra,
 })
@@ -92,20 +101,27 @@ afterEach(() => {
 })
 
 describe('e2e / B2C Блок 16 — «Деньги» по макету на двух телефонах и у viewer', () => {
-  it('часть 1 — «Капитал»: «Счета» − «Кредиты» = «Капитал»; «Цели · N» — подушка на счёте вне суммы; зарплата → лист → «Пришла» — у партнёра ✓ в «Месяце»', async () => {
+  it('часть 1 — «Капитал»: «Счета и цели» − «долги» (подсказка) = «Капитал»; «Цели · N» — подушка на счёте вне суммы; зарплата → лист → «Пришла» — у партнёра ✓ в «Месяце»', async () => {
     const A = await phone(server, 'a')
     const B = await phone(server, 'b')
-    const html = await screen(A.pinia, Money, '/money', undefined, [screenMixin({ goalsOpen: true })])
-    expect(amountAt(html, 'data-accounts-total')).toBe(2_250_000)
-    expect(amountAt(html, 'data-credits-total')).toBe(1_510_000)
+    const html = await screen(A.pinia, Money, '/money', undefined, [screenMixin({ goalsOpen: true }), hintsOpen()])
+    // Итогов у заголовков «Счета» / «Кредиты» нет — оба числа в подсказке «Что такое капитал» у суммы (Р-116).
+    expect(html).not.toContain('data-accounts-total')
+    expect(html).not.toContain('data-credits-total')
+    const { assets, debt } = worthParts(html)
+    expect(assets).toBe(2_250_000)
+    expect(debt).toBe(1_510_000)
     expect(amountAt(html, 'data-worth')).toBe(740_000)
-    expect(amountAt(html, 'data-accounts-total') - amountAt(html, 'data-credits-total')).toBe(amountAt(html, 'data-worth'))
+    expect(assets - debt).toBe(amountAt(html, 'data-worth'))
     const seen = text(html)
     expect(seen).toContain(`Цели · 2 ${money(250_000)}`)
     expect(seen).toContain('Подушка на Kaspi Gold — уже в счёте')
-    // Зарплаты для справки: Ильяс ждём 10-го (день прошёл — «Пришла» можно), Аруна ждём 20-го.
-    expect(seen).toContain('Ильяс ждём 10 сентября')
-    expect(seen).toContain('Аруна ждём 20 сентября')
+    // Зарплаты для справки: дата — в листе зарплаты (Р-116). Ильяс ждём 10-го (день прошёл — «Пришла» можно), Аруна ждём 20-го.
+    expect(seen).not.toContain('ждём')
+    const status = async (p: Phone, person: 'a' | 'b') =>
+      text((await screen(p.pinia, Money, '/money', undefined, [screenMixin({ open: person })])).match(/data-salary-status[\s\S]*?<\/div>/)?.[0] ?? '')
+    expect(await status(A, 'a')).toContain('ждём 10 сентября')
+    expect(await status(A, 'b')).toContain('ждём 20 сентября')
 
     // Строка Ильяса → лист зарплаты (тот же, что в «Месяце») → «Пришла зарплата»: одним нажатием на карту прошлого раза.
     const sheet = await screen(A.pinia, Money, '/money', undefined, [screenMixin({ open: 'a' })])
@@ -118,11 +134,12 @@ describe('e2e / B2C Блок 16 — «Деньги» по макету на дв
     await sync(A, B)
     const month = await screen(B.pinia, Month, '/month')
     expect(month).toMatch(/data-salary="a"[\s\S]*?data-came/)
-    const capitalB = await screen(B.pinia, Money, '/money')
-    expect(text(capitalB)).toContain('Ильяс пришла 12 сентября')
+    // У Аруны строка Ильяса — с ✓, дата прихода — в листе его зарплаты.
+    expect(await screen(B.pinia, Money, '/money')).toMatch(/data-salary="a"(?:(?!data-salary="b")[\s\S])*data-came/)
+    expect(await status(B, 'a')).toContain('пришла 12 сентября')
   })
 
-  it('часть 2 — «Долги»: сумма и «без долгов — к», полоса у кредитки, расчёт свёрнут, «Шаг сделан» нет', async () => {
+  it('часть 2 — «Долги»: сумма и «без долгов — к», полоса у кредитки, расчёт — своим экраном «Закрыть быстрее», «Шаг сделан» нет', async () => {
     const B = await phone(server, 'b')
     const html = await screen(B.pinia, Money, '/money/debts')
     setActivePinia(B.pinia)
@@ -133,8 +150,12 @@ describe('e2e / B2C Блок 16 — «Деньги» по макету на дв
     expect(o.rows.find((r) => r.creditId === 'cc')!.paidShare).toBe(0.1)
     expect(html).toMatch(/data-debt="cc"[\s\S]*?data-debt-bar[\s\S]*?width:10%/)
     expect(html).not.toMatch(/data-debt="loan"[^]*?data-debt-bar[^]*?data-debt="cc"/)
-    expect(html).toMatch(/data-debts-calc-body[^>]*style="display:none;?"/)
-    expect(text(html)).toContain('Как закрыть быстрее')
+    // Б17: расчёт не раскрывашкой на «Долгах», а ссылкой на экран «Закрыть быстрее»; там «Подробнее» свёрнуто.
+    expect(html).toMatch(/<a[^>]*href="\/money\/debts\/faster"[^>]*data-debts-calc[^>]*>\s*Как закрыть быстрее/)
+    expect(html).not.toContain('data-plan-main')
+    const faster = await screen(B.pinia, DebtFaster, '/money/debts/faster')
+    expect(faster).toContain('data-plan-main')
+    expect(faster).toMatch(/<details(?![^>]*\sopen)[^>]*data-plan-more/)
     expect(text(html)).not.toContain('Шаг сделан')
     expect(html).toContain('data-add-credit')
   })
@@ -161,11 +182,11 @@ describe('e2e / B2C Блок 16 — «Деньги» по макету на дв
     expect(text(await screen(A.pinia, Month, '/month?month=2026-08'))).toContain('Остаётся')
   })
 
-  it('часть 4 — viewer: зарплаты без нажатия, без «+ Кредит», месяцы «Истории» те же', async () => {
+  // Критик Б17: дата зарплаты — в листе (Р-116), viewer открывает его только для чтения (кнопки — DOM-тест Money.b16).
+  it('часть 4 — viewer: зарплаты открывают лист, без «+ Кредит», месяцы «Истории» те же', async () => {
     const V = await phone(server, 'a', 'viewer')
     const capital = await screen(V.pinia, Money, '/money')
-    expect(capital).toMatch(/<div[^>]*data-salary="a"/)
-    expect(capital).not.toMatch(/<button[^>]*data-salary=/)
+    expect(capital).toMatch(/<button[^>]*data-salary="a"/)
     expect(await screen(V.pinia, Money, '/money/debts')).not.toContain('data-add-credit')
     const history = await screen(V.pinia, Money, '/money/history')
     expect(history.match(/data-history-month=/g)).toHaveLength(2)

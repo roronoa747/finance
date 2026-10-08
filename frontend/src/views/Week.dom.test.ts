@@ -134,23 +134,29 @@ const weekOf = (finance: ReturnType<typeof useFinanceStore>, week = '2026-W39') 
   return myWeek(state, { ...ctx, by: 'a', week, ops: OPS })
 }
 const row = (id: string) => q(`[data-row="${id}"]`)
+/** Строка раздела — `div` с кнопкой-названием внутри (Р-116): лист открывает она. */
+const openRow = (id: string) => q(`[data-row="${id}"] button.row-open`)
 
 describe('B2C-95: «План · Неделя» — мои траты', () => {
-  it('сумма недели, сравнение и разделы — из myWeek; от большего к меньшему; цифр партнёра нет — только ✓', async () => {
+  it('сумма недели и разделы — из myWeek, сравнение — в «8 недель»; от большего к меньшему; цифр партнёра нет — только ✓', async () => {
     const { finance } = await openWeek()
     const w = weekOf(finance)
     // 12 000 + 5 000 + 9 000 = 26 000 против 25 000 прошлой: +4 %.
     expect(w).toMatchObject({ total: 26_000, prev: 25_000, pct: 4 })
     expect(txt(q('[data-week-label]'))).toBe('21–27 сентября')
     expect(txt(q('[data-week-total]'))).toBe(norm(money(w.total)))
-    expect(txt(q('[data-week-delta]'))).toBe('↑ 4%')
-    expect(txt(q('[data-week-prev]'))).toBe(norm(`прошлая неделя — ${money(25_000)}`))
+    // Бейджа «↑ 4%» и «прошлая неделя — …» нет (Р-116): сравнение — в «8 недель» (25к прошлой → 26к этой).
+    expect(q('[data-week-delta]')).toBeNull()
+    expect(q('[data-week-prev]')).toBeNull()
+    await press(q('[data-week-trend] button'))
+    const bars = all('[data-trend-bars] em').map(txt)
+    expect(bars[bars.length - 1]).toBe(`${Math.round(w.total / 1000)}к`)
     expect(all('[data-week-list] [data-row]').map((el) => [el.dataset.row, txt(el.querySelector('[data-amount]'))])).toEqual(
       w.rows.map((r) => [r.categoryId, norm(plain(r.amount))]),
     )
     expect(w.rows.map((r) => r.categoryId)).toEqual(['sc_food', 'sc_fun', 'sc_transport', 'sc_cafe'])
-    // Стрелки к прошлой неделе: продукты меньше, цветы — новое, такси столько же, кафе без трат.
-    expect(all('[data-row] [data-arrow]').map((el) => el.dataset.arrow)).toEqual(['down', 'up', 'same', ''])
+    // Стрелок к прошлой неделе у разделов нет (Р-116) — «↓ N к прошлой» в листе раздела (тест листа ниже).
+    expect(q('[data-row] [data-arrow]')).toBeNull()
     // Партнёр: его кружок с ✓, а 7 700 его продуктов нет ни в сумме, ни в строках.
     expect(q('[data-partner="b"]')!.dataset.uploaded).toBe('true')
     expect(txt(document.body)).not.toContain('7 700')
@@ -172,11 +178,17 @@ describe('B2C-95: «План · Неделя» — мои траты', () => {
       expect(mineRow.rest).toBe(r.plan - (r.fact ?? 0))
     }
     // Продукты: 100 000 − 62 000 = 38 000; такси: 11 000 − 10 000 = 1 000 — мало (< 15 %); кафе — весь план.
-    expect(txt(row('sc_food')!.querySelector('[data-rest]'))).toBe(norm(`на сентябрь осталось ${plain(38_000)} из ${plain(100_000)}`))
-    expect(txt(row('sc_transport')!.querySelector('[data-rest]'))).toBe(norm(`на сентябрь осталось ${plain(1_000)} из ${plain(11_000)}`))
+    // В строке — «осталось N» (Р-116); «на <месяц> осталось N из <план>» — в листе раздела.
+    const rests: [string, number, number][] = [['sc_food', 38_000, 100_000], ['sc_transport', 1_000, 11_000], ['sc_cafe', 40_000, 40_000]]
+    for (const [id, rest, plan] of rests) {
+      expect(txt(row(id)!.querySelector('[data-rest]'))).toBe(norm(`осталось ${plain(rest)}`))
+      await press(openRow(id))
+      expect(txt(q('[role="dialog"] [data-section-meta]'))).toContain(norm(`на сентябрь осталось ${plain(rest)} из ${plain(plan)}`))
+      await press(q('[role="dialog"] button[aria-label="Закрыть"]'))
+      expect(q('[role="dialog"]')).toBeNull()
+    }
     expect(row('sc_transport')!.querySelector('[data-rest] b')!.className).toContain('text-warn')
     expect(row('sc_food')!.querySelector('[data-rest] b')!.className).not.toContain('text-warn')
-    expect(txt(row('sc_cafe')!.querySelector('[data-rest]'))).toBe(norm(`на сентябрь осталось ${plain(40_000)} из ${plain(40_000)}`))
     // Раздел не из плана — «вне плана», без полосы.
     expect(txt(row('sc_fun')!.querySelector('[data-rest]'))).toBe('вне плана')
   })
@@ -205,29 +217,18 @@ describe('B2C-95: «План · Неделя» — мои траты', () => {
     expect(forward().disabled).toBe(true)
   })
 
-  it('вид ☰ / ▦ — плитки с тем же остатком; выбор запоминается на устройстве', async () => {
+  it('вида плитками нет (Р-116, Б17): переключателя ☰ / ▦ нет, даже если устройство помнит «плитки»; остаток раздела — тот же', async () => {
+    localStorage.setItem(WEEK_VIEW_KEY, JSON.stringify('tiles'))
     await openWeek()
-    expect(q('[data-week-list]')).not.toBeNull()
-    await press(q('[data-view-toggle]'))
-    expect(q('[data-week-list]')).toBeNull()
-    expect(all('[data-week-tiles] [data-row]').map((el) => el.dataset.row)).toEqual(['sc_food', 'sc_fun', 'sc_transport', 'sc_cafe'])
-    expect(txt(q('[data-week-tiles] [data-row="sc_food"] [data-rest]'))).toBe(norm(`· ост. ${plain(38_000)}`))
-    expect(q('[data-week-tiles] [data-row="sc_food"] svg')).not.toBeNull()
-    expect(q('[data-week-tiles] [data-row="sc_fun"] svg')).toBeNull()
-    expect(q('[data-week-prev]')).toBeNull()
-    expect(JSON.parse(localStorage.getItem(WEEK_VIEW_KEY)!)).toBe('tiles')
-    // Открыли заново — плитки.
-    app?.unmount()
-    document.body.innerHTML = ''
-    await openWeek()
-    expect(q('[data-week-tiles]')).not.toBeNull()
-    await press(q('[data-view-toggle]'))
-    expect(JSON.parse(localStorage.getItem(WEEK_VIEW_KEY)!)).toBe('list')
+    expect(q('[data-view-toggle]')).toBeNull()
+    expect(q('[data-week-tiles]')).toBeNull()
+    expect(all('[data-week-list] [data-row]').map((el) => el.dataset.row)).toEqual(['sc_food', 'sc_fun', 'sc_transport', 'sc_cafe'])
+    expect(txt(q('[data-week-list] [data-row="sc_food"] [data-rest]'))).toBe(norm(`осталось ${plain(38_000)}`))
   })
 
   it('нажатие раздела — лист: сумма, к прошлой, остаток, топ продавцов, операции по дням и «Ещё N»', async () => {
     const { finance } = await openWeek()
-    await press(row('sc_food'))
+    await press(openRow('sc_food'))
     const d = sectionWeek(OPS, { week: '2026-W39', categoryId: 'sc_food' })
     const sheet = q('[role="dialog"]')!
     expect(txt(sheet)).toContain('Продукты')
@@ -235,7 +236,7 @@ describe('B2C-95: «План · Неделя» — мои траты', () => {
     const meta = txt(sheet.querySelector('[data-section-meta]'))
     expect(meta).toContain('21–27 сентября')
     expect(meta).toContain(norm(`↓ ${plain(8_000)} к прошлой`))
-    expect(meta).toContain(norm(`на сентябрь осталось ${plain(weekOf(finance).rows[0]!.rest!)}`))
+    expect(meta).toContain(norm(`на сентябрь осталось ${plain(weekOf(finance).rows[0]!.rest!)} из ${plain(100_000)}`))
     // Топ: Magnum 4 000 + 3 000 + 500 = 7 500 (3 раза), Small 3 500 (2 раза), Базар 1 000.
     expect(d.tops).toEqual([{ name: 'Magnum', count: 3, amount: 7_500 }, { name: 'Small', count: 2, amount: 3_500 }, { name: 'Базар', count: 1, amount: 1_000 }])
     expect(txt(sheet.querySelector('[data-section-tops]'))).toBe(norm(`Magnum3 раза · ${plain(7_500)}Small2 раза · ${plain(3_500)}Базар1 раз · ${plain(1_000)}`))
@@ -381,7 +382,7 @@ describe('B2C-96: загрузка «сразу готово» и вопросы
     readResult.value = { ok: [parsed()], errors: [] }
     await pickFile()
     expect(store.held).toBe(true)
-    await press(row('sc_cafe'))
+    await press(openRow('sc_cafe'))
     expect(txt(q('[data-section-total]'))).toBe(norm(money(5_000)))
     const ops = txt(q('[data-section-ops]'))
     expect(ops).toContain('Starbucks')
@@ -446,7 +447,7 @@ describe('B2C-96: загрузка «сразу готово» и вопросы
     expect(store.held).toBe(false)
   })
 
-  it('«! N» — число вопросов; лист — по одному с «N из M»; «Потом» откладывает; вопросов нет — значка нет', async () => {
+  it('«Разобрать» с подписью «N вопросов» — в строке раздела; лист — по одному с «N из M»; «Потом» откладывает; вопросов нет — кнопки нет', async () => {
     vi.spyOn(apiClient, 'pushPrivateDoc').mockImplementation(async (rev, data) => ({ household_id: 'h1', user_id: 'u-a', rev: rev + 1, data, updated_at: '' }))
     const { finance, store } = await openWeek()
     expect(q('[data-bang]')).toBeNull()
@@ -454,8 +455,10 @@ describe('B2C-96: загрузка «сразу готово» и вопросы
     store.ops.u1 = { ...op('2026-09-22', 7_500, null, 'ИП ЖАНСАЯ'), id: 'u1' }
     finance.householdDoc.obligations = [{ id: 'nf', name: 'Netflix', note: '', day: 3, category: 'd4', versions: [{ from: '2000-01', amount: 4_990 }], updatedAt: '' }]
     await flush()
-    expect(txt(q('[data-bang]'))).toBe('!2')
-    expect(q('[data-bang]')!.getAttribute('aria-label')).toBe('Вопросы: 2')
+    // «! N» вверху нет (Р-116): «Разобрать» — в строке «Не разобрано» (или своей строке «Вопросы») с подписью «N вопроса».
+    const bangRow = () => q('[data-bang]')!.closest('[data-row], [data-questions-row]')
+    expect(txt(q('[data-bang]'))).toBe('Разобрать')
+    expect(txt(bangRow())).toContain('2 вопроса')
     // На экране вопросов нет — только в листе.
     expect(txt(document.body)).not.toContain('Без раздела')
     await press(q('[data-bang]'))
@@ -467,7 +470,8 @@ describe('B2C-96: загрузка «сразу готово» и вопросы
     await press(all('[role="dialog"] button').find((b) => txt(b) === 'Потом'))
     expect(sheet()).toContain('2 из 2')
     expect(sheet()).toContain('Оставить подписку Netflix?')
-    expect(txt(q('[data-bang]'))).toBe('!1')
+    expect(txt(bangRow())).toContain('1 вопрос')
+    expect(txt(bangRow())).not.toContain('2 вопроса')
     await press(all('[role="dialog"] button').find((b) => txt(b) === 'Оставить'))
     expect(q('[role="dialog"]')).toBeNull()
     expect(q('[data-bang]')).toBeNull()

@@ -426,33 +426,42 @@ describe('PV-15: пауза целей ради плана (SSR)', () => {
   it('без плана — ни паузы, ни «после плана» на экране цели', async () => {
     family(false)
     const html = await renderScreen(GoalDetail, '/goals/trip')
-    expect(html).not.toContain('На паузе ради плана')
+    expect(html).not.toContain('data-goal-plan')
+    expect(html).not.toContain('На паузе — взнос идёт в долг')
     expect(html).not.toContain('после плана')
   })
 
-  it('GoalDetail на паузе — Callout с суммой взноса и ссылкой на план, дата «после плана»; взнос в документе прежний', async () => {
+  // Р-116 (B2C-108): абзац-Callout паузы → строка-ссылка `data-goal-plan` на план долгов; сумма взноса — в карточке
+  // («N ₸ в месяц»), «Осталось K взносов · после плана» — в «Подробнее» (`data-goal-left`).
+  it('GoalDetail на паузе — строка-ссылка на план, взнос в карточке, «после плана» в «Подробнее»; взнос в документе прежний', async () => {
     const store = family()
     const html = await renderScreen(GoalDetail, '/goals/trip')
-    expect(html).toContain('На паузе ради плана')
-    expect(html).toContain(`Взнос ${money(40_000)} идёт в досрочку самого дорогого долга — так семья отдаст банку`)
-    expect(html).toContain('Цель возобновится сама, когда долги с процентами закроются, или когда вы отмените план.')
-    expect(html).toContain('href="/money/debts"')
-    expect(html).toContain('после плана')
+    const plan = html.match(/<a[^>]*data-goal-plan[^>]*>[\s\S]*?<\/a>/)?.[0] ?? ''
+    // План «Сначала долги» живёт на «Закрыть быстрее» (Б17), не на «Долгах» (критик Б17).
+    expect(plan).toContain('href="/money/debts/faster"')
+    expect(plan).toContain('На паузе — взнос идёт в долг')
+    expect(html).toContain(`${money(40_000)} в месяц`)
+    const left = html.match(/<p[^>]*data-goal-left[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? ''
+    expect(left).toContain('после плана')
+    const details = html.slice(html.indexOf('<details'))
+    expect(details).toContain('data-goal-left')
     expect(store.householdDoc.goals.find((g) => g.id === 'trip')!.monthly).toBe(40_000)
     expect(store.status).toBe('idle')
   })
 
-  it('GoalDetail подушки — «Подушка плана: взносы продолжаются»; без плана — ни того, ни другого', async () => {
+  it('GoalDetail подушки — строка «Подушка плана — взносы идут»; без плана — ни того, ни другого', async () => {
     family()
     const cushion = await renderScreen(GoalDetail, '/goals/cushion')
-    expect(cushion).toContain('Подушка плана: взносы продолжаются')
-    expect(cushion).not.toContain('На паузе ради плана')
+    const plan = cushion.match(/<a[^>]*data-goal-plan[^>]*>[\s\S]*?<\/a>/)?.[0] ?? ''
+    expect(plan).toContain('Подушка плана — взносы идут')
+    expect(plan).toContain('href="/money/debts/faster"')
+    expect(cushion).not.toContain('На паузе — взнос идёт в долг')
     expect(cushion).not.toContain('после плана')
 
     setActivePinia(createPinia())
     family(false)
     const free = await renderScreen(GoalDetail, '/goals/trip')
-    expect(free).not.toContain('На паузе ради плана')
+    expect(free).not.toContain('data-goal-plan')
     expect(free).not.toContain('Подушка плана')
   })
 

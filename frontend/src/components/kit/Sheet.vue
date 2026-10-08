@@ -85,8 +85,15 @@ function onScrimClick() {
   downOnScrim = false
 }
 
+/** Пока открыт хоть один лист, экран за ним не прокручивается (`style.css`, `html[data-sheet-open]`). */
+function lockScreen() {
+  if (stack.length) document.documentElement.dataset.sheetOpen = ''
+  else delete document.documentElement.dataset.sheetOpen
+}
+
 function show() {
   stack.push(me)
+  lockScreen()
   back = document.activeElement instanceof HTMLElement ? document.activeElement : null
   document.addEventListener('keydown', onKeydown)
   void nextTick(() => {
@@ -98,6 +105,7 @@ function hide() {
   const i = stack.indexOf(me)
   if (i < 0) return
   stack.splice(i, 1)
+  lockScreen()
   document.removeEventListener('keydown', onKeydown)
   // Фокус — туда, откуда окно открыли, если тот элемент ещё на странице.
   if (back?.isConnected) back.focus()
@@ -123,21 +131,22 @@ onUnmounted(() => {
   <Teleport to="body" :disabled="inline">
     <div
       v-if="open"
-      class="fx-fade fixed inset-0 flex items-end justify-center bg-scrim backdrop-blur-xs sm:items-center sm:p-4"
+      class="fx-fade fixed inset-0 flex items-end justify-center overscroll-contain bg-scrim backdrop-blur-xs sm:items-center sm:p-4"
       :style="{ zIndex: z }"
       @pointerdown="onScrimDown"
       @click.self="onScrimClick"
+      @touchmove.self.prevent
     >
-      <!-- Лист снизу (DESIGN.md §5): грип, радиус 28, тень только у листа, заголовок 24. -->
+      <!-- Лист снизу (DESIGN.md §5): радиус 28, тень только у листа, заголовок 24. Ручки-полоски нет: лист не
+           тянется (ворота Б17), а обещать перетаскивание, которого нет, — врать. -->
       <div
         ref="card"
         role="dialog"
         aria-modal="true"
         :aria-labelledby="titleId"
         tabindex="-1"
-        class="fx-sheet max-h-[88dvh] w-full max-w-[420px] overflow-y-auto rounded-t-[28px] bg-surface px-5 pb-9 pt-3 text-left shadow-sheet outline-none sm:rounded-card sm:pb-5"
+        class="fx-sheet max-h-[88dvh] w-full max-w-[420px] overflow-y-auto overscroll-contain rounded-t-[28px] bg-surface px-5 pb-9 pt-5 text-left shadow-sheet outline-none sm:rounded-card sm:pb-5"
       >
-        <div class="mx-auto mb-3 h-1 w-9 rounded-full bg-line-strong" aria-hidden="true" />
         <div class="mb-4 flex items-center justify-between gap-3">
           <!-- Отметка рядом с заголовком, а не внутри: имя окна и заголовок — только title. -->
           <div class="flex min-w-0 items-center gap-2">

@@ -4,10 +4,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { PhCaretRight } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { money, parseMoney, plain } from '@/lib/money'
-import { atLabel, dayLabel, monthBy, monthFrom, monthKey as monthNow, monthShort, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
+import { useFxStore } from '@/stores/fx'
+import { useOperationsStore } from '@/stores/operations'
+import { money, moneyIn, parseMoney, plain } from '@/lib/money'
+import { dayLabel, monthBy, monthFrom, monthKey as monthNow, monthShort, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
 import {
   DEBT_CARD,
+  freeByFact,
   allInDebt,
   lastAccountFor,
   liveSpendCategories,
@@ -21,21 +24,23 @@ import {
   putsLeft,
   queueStatus,
   spendFact,
+  untilPayday,
   type PlanDue,
   type PlanPut,
   type PlanQueueItem,
 } from '@/lib/finance'
 import { plannedElsewhere } from '@/lib/statements/dictionary'
 import type { PersonId } from '@/types/finance'
+import { plural } from '@/lib/utils'
 import Avatar from '@/components/kit/Avatar.vue'
 import Card from '@/components/kit/Card.vue'
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import Hint from '@/components/kit/Hint.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Select from '@/components/kit/Select.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import SortableList from '@/components/kit/SortableList.vue'
-import Tag from '@/components/kit/Tag.vue'
 import Toggle from '@/components/kit/Toggle.vue'
 import Button from '@/components/ui/Button.vue'
 import MarkSheet from '@/components/MarkSheet.vue'
@@ -140,12 +145,40 @@ const sections = computed(() => [
 const salaries = computed(() =>
   monthSalaries(plan.value, { people: finance.people, payments: finance.payments }).map((s) => ({
     ...s,
-    cameAt: s.at ? atLabel(s.at) : '',
     // Свою зарплату отмечает только сам участник (Р-13), когда её день настал или близко.
     canMark: canEdit.value && auth.slot === s.person && s.open,
   })),
 )
-const signed = (v: number) => (v > 0 ? `+${plain(v)}` : plain(v))
+
+/*
+ * Подсказка у «Остаётся» (Р-116, переехало с «Мечт»): «Свободно» по факту выписок (Р-47 — до выписки месяца числа нет)
+ * и дни до зарплаты. Считает `finance.ts` — те же `freeByFact` и `untilPayday`, что были на «Мечтах».
+ */
+const fx = useFxStore()
+const ops = useOperationsStore()
+const free = computed(() =>
+  freeByFact(
+    { ...finance.householdDoc, credits: finance.credits, book: fx.book },
+    finance.householdDoc.spendTotals ?? [],
+    finance.householdDoc.spendCategories ?? [],
+    props.monthKey,
+    ops.uploads,
+  ),
+)
+const paydayText = computed(() => {
+  if (props.monthKey !== monthNow()) return ''
+  const p = untilPayday({
+    people: finance.people,
+    obligations: finance.obligations,
+    credits: finance.credits,
+    accounts: finance.householdAccounts,
+    payments: finance.payments,
+    fxExchanges: finance.fxExchanges,
+    book: fx.book,
+  })
+  if (!p) return ''
+  return p.inDays === 0 ? 'Сегодня зарплата' : `До зарплаты ${p.inDays} ${plural(p.inDays, 'день', 'дня', 'дней')}`
+})
 // Лист зарплаты — общий с «Капиталом» (`SalarySheet`, Р-108).
 const salaryFor = ref<PersonId | null>(null)
 const salarySheet = computed(() => salaries.value.find((s) => s.person === salaryFor.value) ?? null)
@@ -221,6 +254,7 @@ function editSpend(personId: PersonId, categoryId?: string, amount = 0) {
   if (!canEdit.value) return
   spendEdit.value = { by: personId, categoryId: categoryId ?? categories.value[0]?.id ?? '', amount: amount ? plain(amount) : '', fresh: !categoryId }
 }
+const spendForm = useFormCheck(() => [['category', !spendEdit.value?.categoryId && 'Выберите раздел']])
 function saveSpend() {
   const e = spendEdit.value
   spendEdit.value = null
@@ -309,56 +343,51 @@ function addFund(kind: 'reserve' | 'cushion') {
   <div class="flex flex-col gap-3">
     <!-- Круг месяца — оглавление: обе зарплаты снаружи, платежи · траты · цели внутри; цвет раскрывает раздел -->
     <MonthRing :income="plan.income.byPerson" :parts="parts" :total="plan.income.total" :active="opened" pickable @pick="toggleSection">
-      <template v-if="plan.short > 0">
-        <span class="type-section">Не хватает</span>
-        <span class="font-num text-[26px] font-bold leading-tight num text-warn">{{ money(plan.short) }}</span>
-      </template>
-      <template v-else>
-        <span class="type-section">Остаётся</span>
-        <span class="font-num text-[26px] font-bold leading-tight num text-ink" data-rest>{{ money(plan.rest) }}</span>
-      </template>
-      <span class="type-meta num">из {{ plain(plan.income.total) }}</span>
+      <!-- «из N», «Свободно» по выпискам и дни до зарплаты — в подсказке у слова (Р-116), крупно — одно число. -->
+      <span class="relative z-10 flex items-center gap-1" @click.stop>
+        <span class="type-section">{{ plan.short > 0 ? 'Не хватает' : 'Остаётся' }}</span>
+        <Hint label="Остаётся" data-rest-hint>
+          <span class="block num">Из {{ money(plan.income.total) }} дохода месяца.</span>
+          <span v-if="free.byFact" class="block num" data-free>Свободно по выпискам — {{ money(free.amount) }}.</span>
+          <span v-if="paydayText" class="block" data-payday>{{ paydayText }}.</span>
+        </Hint>
+      </span>
+      <span v-if="plan.short > 0" class="font-num text-[24px] font-bold leading-tight num text-warn">{{ money(plan.short) }}</span>
+      <span v-else class="font-num text-[24px] font-bold leading-tight num text-ink" data-rest>{{ money(plan.rest) }}</span>
     </MonthRing>
 
-    <!-- Зарплаты: ✓ у суммы — пришла; своя строка нажимается; хватает ли каждому (?); обмен — у валютной -->
+    <!--
+      Зарплаты: ✓ у суммы — пришла, валютная — «1 500 €» под суммой; строка нажимается — лист зарплаты (дата, «хватает
+      ли», обмены — там, Р-116); «Обменял» — у своей пришедшей валютной, в строке.
+    -->
     <Card v-if="salaries.length || canEdit" tight class="flex flex-col gap-2.5">
       <template v-for="(s, i) in salaries" :key="s.person">
         <div v-if="i > 0" class="h-px bg-line" />
         <div
-          class="relative flex items-center gap-2.5"
-          :class="canEdit && 'press cursor-pointer'"
+          class="press relative flex cursor-pointer items-center gap-2.5"
           :data-salary="s.person"
           :data-can-mark="s.canMark || undefined"
-          @click="canEdit && (salaryFor = s.person)"
+          @click="salaryFor = s.person"
         >
           <Avatar :id="s.person" :name="s.name" />
-          <component
-            :is="canEdit ? 'button' : 'div'"
-            :type="canEdit ? 'button' : undefined"
-            class="flex min-w-0 flex-1 flex-col gap-px text-left"
-            :class="canEdit && 'row-open'"
-            :data-row-open="canEdit || undefined"
-          >
-            <span class="text-[16px] font-semibold text-ink">{{ s.name }}</span>
-            <span class="type-meta" data-salary-status>{{ s.came ? s.cameAt : `ждём ${dayLabel(s.payday, monthKey)}` }}</span>
-          </component>
-          <div class="flex flex-col items-end gap-1">
-            <b class="font-num text-[16px] num whitespace-nowrap" :class="s.came ? 'text-ink' : 'text-ink-3'">
+          <!-- Лист открывает и viewer — только чтение: дата и «хватает» живут лишь там (критик Б17). -->
+          <button type="button" class="row-open flex min-w-0 flex-1 flex-col gap-px text-left" data-row-open>
+            <span class="truncate text-[16px] font-semibold text-ink">{{ s.name }}</span>
+          </button>
+          <span v-if="s.came && s.foreign" class="relative z-10 shrink-0" @click.stop>
+            <SalaryExchange :person-id="s.person" :period="monthKey" part="button" />
+          </span>
+          <div class="flex flex-col items-end">
+            <b class="font-num text-[16px] num whitespace-nowrap" :class="s.came ? 'text-ink' : 'text-ink-2'">
               <span v-if="s.came" class="font-extrabold text-ok" data-came>✓ </span>{{ money(s.amount) }}
             </b>
-            <span class="relative z-10 flex items-center gap-1" @click.stop>
-              <Tag :tone="s.left >= 0 ? 'ok' : 'warn'" class="num" data-left>{{ signed(s.left) }}</Tag>
-              <Hint v-if="i === 0" label="Хватает ли">Зарплата минус свои платежи, траты, цели и фонды</Hint>
-            </span>
+            <span v-if="s.fx" class="text-[12.5px] font-semibold text-ink-2 num whitespace-nowrap" data-salary-fx>{{ moneyIn(s.fx.amount, s.fx.currency) }}</span>
           </div>
-        </div>
-        <div v-if="s.came && s.foreign" class="pl-10">
-          <SalaryExchange :person-id="s.person" :period="monthKey" />
         </div>
       </template>
       <template v-if="canEdit">
         <div v-if="salaries.length" class="h-px bg-line" />
-        <div><Button variant="secondary" size="sm" data-extra-income @click="incomeOpen = true">+ Внеплановый доход</Button></div>
+        <div><Button variant="ghost" size="sm" class="-ml-2" data-extra-income @click="incomeOpen = true">+ Внеплановый доход</Button></div>
       </template>
     </Card>
 
@@ -378,7 +407,7 @@ function addFund(kind: 'reserve' | 'cushion') {
               {{ s.name
               }}<template v-if="s.dot"><span class="ml-1.5 inline-block size-2 rounded-full bg-brand align-middle" data-section-dot aria-hidden="true" /><span class="sr-only">, есть что сделать</span></template>
             </span>
-            <span class="text-[12.5px] text-ink-3 num" data-section-meta>{{ s.meta }}</span>
+            <span class="text-[12.5px] text-ink-2 num" data-section-meta>{{ s.meta }}</span>
           </span>
           <span class="font-num text-[16px] font-bold num text-ink">{{ plain(s.total) }}</span>
           <PhCaretRight :size="15" class="shrink-0 text-ink-3 transition-transform" :class="opened === s.key && 'rotate-90'" />
@@ -408,18 +437,18 @@ function addFund(kind: 'reserve' | 'cushion') {
                 </span>
                 <span class="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span class="truncate text-[15.5px] font-semibold text-ink">Подписки · {{ grouped.subs.count }}</span>
-                  <span class="text-[12.5px] text-ink-3 num" data-subs-status>
+                  <span class="text-[12.5px] text-ink-2 num" data-subs-status>
                     {{ grouped.subs.allPaid ? 'все списались' : `${grouped.subs.paid} из ${grouped.subs.count} списались` }}
                   </span>
                 </span>
-                <span class="font-num text-[15px] font-bold num whitespace-nowrap" :class="grouped.subs.allPaid ? 'font-semibold text-ink-3' : 'text-ink'">
+                <span class="font-num text-[15px] font-bold num whitespace-nowrap" :class="grouped.subs.allPaid ? 'font-semibold text-ink-2' : 'text-ink'">
                   <span v-if="grouped.subs.allPaid" class="font-extrabold text-ok" data-subs-done>✓ </span>{{ plain(grouped.subs.total) }}
                 </span>
                 <PhCaretRight :size="15" class="shrink-0 text-ink-3 transition-transform" :class="subsOpen && 'rotate-90'" />
               </button>
               <div v-if="subsOpen" class="mb-2 ml-[18px] border-l-2 border-line pl-3.5">
                 <template v-for="g in grouped.subs.parts" :key="g.groupId ?? ''">
-                  <p v-if="g.name" class="pb-0.5 pt-2.5 text-[11.5px] font-semibold uppercase tracking-[0.04em] text-ink-3">{{ g.name }}</p>
+                  <p v-if="g.name" class="pb-0.5 pt-2.5 text-[11.5px] font-semibold uppercase tracking-[0.04em] text-ink-2">{{ g.name }}</p>
                   <DueRow
                     v-for="d in g.rows"
                     :id="dueKey(d)"
@@ -464,7 +493,7 @@ function addFund(kind: 'reserve' | 'cushion') {
             >
               <span class="flex w-full justify-between gap-2 text-[14px]">
                 <span class="text-ink">{{ r.name }}</span>
-                <span class="whitespace-nowrap text-ink-3 num"><b v-if="r.fact !== null" class="font-semibold text-ink">{{ plain(r.fact) }}</b>{{ r.fact !== null ? ' из ' : '' }}{{ plain(r.plan) }}</span>
+                <span class="whitespace-nowrap text-ink-2 num"><b v-if="r.fact !== null" class="font-semibold text-ink">{{ plain(r.fact) }}</b>{{ r.fact !== null ? ' из ' : '' }}{{ plain(r.plan) }}</span>
               </span>
               <span class="block h-[5px] w-full overflow-hidden rounded-pill bg-track">
                 <i class="block h-full rounded-pill bg-s8" :style="{ width: `${spendShare(r.fact, r.plan)}%` }" />
@@ -508,8 +537,8 @@ function addFund(kind: 'reserve' | 'cushion') {
                   @click="openItem(queueById.get(id)!)"
                 >
                   <button type="button" class="row-open flex min-w-0 flex-1 flex-col gap-px text-left" data-row-open>
-                    <span class="truncate text-[15.5px] font-semibold" :class="queueById.get(id)!.paused ? 'text-ink-3' : 'text-ink'">{{ queueById.get(id)!.name }}</span>
-                    <span v-if="statusOf(queueById.get(id)!)" class="text-[12px] num" :class="statusOf(queueById.get(id)!)!.warn ? 'text-warn' : 'text-ink-3'" data-status>
+                    <span class="truncate text-[15.5px] font-semibold" :class="queueById.get(id)!.paused ? 'text-ink-2' : 'text-ink'">{{ queueById.get(id)!.name }}</span>
+                    <span v-if="statusOf(queueById.get(id)!)" class="text-[12px] num" :class="statusOf(queueById.get(id)!)!.warn ? 'text-warn' : 'text-ink-2'" data-status>
                       {{ statusOf(queueById.get(id)!)!.text }}
                     </span>
                   </button>
@@ -533,7 +562,7 @@ function addFund(kind: 'reserve' | 'cushion') {
                   <Avatar v-else-if="queueById.get(id)!.payer" :id="queueById.get(id)!.payer!" :name="personName(queueById.get(id)!.payer)" :size="24" />
                   <span
                     class="font-num text-[15px] num whitespace-nowrap"
-                    :class="putById.get(id)?.done || queueById.get(id)!.paused ? 'font-semibold text-ink-3' : 'font-bold text-ink'"
+                    :class="putById.get(id)?.done || queueById.get(id)!.paused ? 'font-semibold text-ink-2' : 'font-bold text-ink'"
                     data-given
                   >
                     <span v-if="putById.get(id)?.done" class="font-extrabold text-ok" data-put-done>✓ </span>{{ plain(queueById.get(id)!.given) }}
@@ -568,19 +597,7 @@ function addFund(kind: 'reserve' | 'cushion') {
       </template>
     </Card>
 
-    <!-- Итог -->
-    <Card tight class="flex flex-col gap-2" data-plan-sum>
-      <div class="flex items-baseline justify-between text-[15px] text-ink">
-        <span>Отложим</span><b class="font-num text-[17px] num text-ok">{{ money(plan.queueTotal) }}</b>
-      </div>
-      <div class="flex items-baseline justify-between text-[15px] text-ink">
-        <span>Потратим</span><b class="font-num text-[17px] num">{{ money(plan.outTotal) }}</b>
-      </div>
-      <div class="flex items-baseline justify-between text-[15px] text-ink">
-        <span>{{ plan.short > 0 ? 'Не хватает' : 'Остаётся' }}</span>
-        <b class="font-num text-[22px] num" :class="plan.short > 0 && 'text-warn'">{{ money(plan.short > 0 ? plan.short : plan.rest) }}</b>
-      </div>
-    </Card>
+    <!-- Итога «Отложим · Потратим · Остаётся» нет (Р-116): повтор кольца и строк разделов. -->
 
     <!-- Зарплата: своя и ждём — «Пришла» (и «Другая сумма или счёт»); тихо — отметка пришедшей и «Изменить оклад» -->
     <SalarySheet :month-key="monthKey" :line="salarySheet" @close="salaryFor = null" />
@@ -594,10 +611,10 @@ function addFund(kind: 'reserve' | 'cushion') {
         <div class="flex flex-col gap-1.5">
           <template v-if="paySheet.paid">
             <p class="p-1 text-center text-[14px] font-semibold text-ok" data-paid>✓ Оплачено</p>
-            <Button variant="ghost" class="w-full" data-unpay @click="unpay(paySheet)">Не оплачено</Button>
+            <Button variant="ghost" size="md" class="w-full" data-unpay @click="unpay(paySheet)">Не оплачено</Button>
           </template>
           <Button v-else class="w-full" data-pay @click="pay(paySheet)">Оплатил</Button>
-          <Button variant="ghost" class="w-full" @click="editDue(paySheet)">Изменить платёж</Button>
+          <Button variant="ghost" size="md" class="w-full" @click="editDue(paySheet)">Изменить платёж</Button>
         </div>
       </template>
     </Sheet>
@@ -622,13 +639,13 @@ function addFund(kind: 'reserve' | 'cushion') {
         <div class="flex flex-col gap-1.5">
           <template v-if="putSheet.done">
             <p class="p-1 text-center text-[14px] font-semibold text-ok" data-put>✓ Отложено</p>
-            <Button v-if="putSheet.undo > 0" variant="ghost" class="w-full" data-unput @click="onUnput(putSheet)">Не отложено</Button>
+            <Button v-if="putSheet.undo > 0" variant="ghost" size="md" class="w-full" data-unput @click="onUnput(putSheet)">Не отложено</Button>
           </template>
           <template v-else>
             <p v-if="putSheet.put > 0" class="text-center type-meta num">уже отложено {{ plain(putSheet.put) }}</p>
             <Button class="w-full" data-put-one @click="onPut(putSheet)">Отложил{{ putSheet.put > 0 ? ` · ${money(putSheet.left)}` : '' }}</Button>
           </template>
-          <Button variant="ghost" class="w-full" @click="openDetail(putSheet)">{{ putSheet.kind === 'debt' ? 'Сумма в месяц' : 'Открыть цель' }}</Button>
+          <Button variant="ghost" size="md" class="w-full" @click="openDetail(putSheet)">{{ putSheet.kind === 'debt' ? 'Сумма в месяц' : 'Открыть цель' }}</Button>
         </div>
       </template>
     </Sheet>
@@ -647,20 +664,20 @@ function addFund(kind: 'reserve' | 'cushion') {
           <Avatar :id="p.id" :name="p.name" :size="34" />{{ p.name }}
           <span v-if="payerFor?.payer === p.id" class="ml-auto font-extrabold text-ok">✓</span>
         </button>
-        <p class="text-center text-[12.5px] text-ink-3">С {{ monthFrom(monthKey, false) }} и дальше</p>
+        <p class="text-center text-[12.5px] text-ink-2">С {{ monthFrom(monthKey, false) }} и дальше</p>
       </div>
     </Sheet>
 
     <!-- Сумма раздела трат -->
     <Sheet :open="!!spendEdit" :title="spendEdit?.fresh ? 'Траты на месяц' : 'Сколько в месяц'" @close="spendEdit = null">
       <template v-if="spendEdit">
-        <Field v-if="spendEdit.fresh" label="Раздел">
+        <Field v-if="spendEdit.fresh" label="Раздел" name="category">
           <Select v-model="spendEdit.categoryId" :options="categories.map((c) => ({ value: c.id, label: c.name }))" class="mb-3" />
         </Field>
         <Field :label="`${personName(spendEdit.by)}, ₸ в месяц`">
-          <NumField v-model="spendEdit.amount" placeholder="50 000" class="mb-3" />
+          <NumField v-model="spendEdit.amount" placeholder="50 000" />
         </Field>
-        <Button class="w-full" :disabled="!spendEdit.categoryId" @click="saveSpend">Готово</Button>
+        <Button class="w-full" @click="spendForm.submit(saveSpend)">Готово</Button>
       </template>
     </Sheet>
 
@@ -668,7 +685,7 @@ function addFund(kind: 'reserve' | 'cushion') {
     <Sheet :open="debtEdit !== null" :title="debtName || 'Закрыть кредит'" @close="debtEdit = null">
       <template v-if="debtEdit !== null">
         <Field label="Сверх графика, ₸ в месяц">
-          <NumField v-model="debtEdit" placeholder="50 000" class="mb-3" />
+          <NumField v-model="debtEdit" placeholder="50 000" />
         </Field>
         <Button class="w-full" @click="saveDebt">Готово</Button>
       </template>

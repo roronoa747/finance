@@ -7,8 +7,11 @@ import { routes } from '@/router'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
+import { useOperationsStore } from '@/stores/operations'
+import { apiClient } from '@/api/client'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
-import { monthPlan, monthPlanPast, planPuts, type MonthPlanCtx } from '@/lib/finance'
+import { monthPlan, monthPlanPast, planPuts, untilPayday, type MonthPlanCtx } from '@/lib/finance'
+import type { SpendTotal } from '@/lib/statements/types'
 import { monthKey } from '@/lib/dates'
 import { money, plain } from '@/lib/money'
 import type { Obligation, Payment, SyncDoc } from '@/types/finance'
@@ -135,17 +138,31 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     const plan = planOf(finance)
     expect(plan.income.total).toBe(1_200_000)
     expect(txt(q('[data-rest]'))).toBe(norm(money(plan.rest)))
-    expect(txt(document.body)).toContain(norm(`из ${plain(plan.income.total)}`))
-    const sum = txt(q('[data-plan-sum]'))
-    expect(sum).toContain(`Отложим${norm(money(plan.queueTotal))}`)
-    expect(sum).toContain(`Потратим${norm(money(plan.outTotal))}`)
-    for (const p of plan.byPerson) expect(txt(q(`[data-salary="${p.person}"] [data-left]`))).toBe(norm(p.left > 0 ? `+${plain(p.left)}` : plain(p.left)))
-    // Зарплата: ✓ у суммы и день прихода; ожидаемая — «ждём»; слов «✓ пришла» нет.
+    // «из <доход>» — не строкой под кругом, а в подсказке у «Остаётся» (Р-116).
+    expect(txt(document.body)).not.toContain(norm(`из ${plain(plan.income.total)}`))
+    await press(q('button[aria-label="Остаётся"]'))
+    expect(txt(q('[role="note"]'))).toContain(norm(`Из ${money(plan.income.total)} дохода месяца.`))
+    await press(q('button[aria-label="Остаётся"]'))
+    expect(q('[role="note"]')).toBeNull()
+    // Итоговой карточки «Отложим · Потратим» нет (Р-116): Отложим — строка «Цели и фонды», Потратим — «Платежи» + «Траты».
+    expect(q('[data-plan-sum]')).toBeNull()
+    expect(txt(section('queue'))).toContain(norm(plain(plan.queueTotal)))
+    expect(txt(section('spend'))).toContain(norm(plain(plan.spendTotal)))
+    expect(plan.duesTotal + plan.spendTotal).toBe(plan.outTotal)
+    // Зарплата: в строке — ✓ у суммы; дата и «хватает ли» — в листе зарплаты (Р-116). Слов «✓ пришла» нет.
     expect(q('[data-salary="a"] [data-came]')).not.toBeNull()
-    expect(txt(q('[data-salary="a"] [data-salary-status]'))).toBe('10 сентября')
     expect(q('[data-salary="b"] [data-came]')).toBeNull()
-    expect(txt(q('[data-salary="b"] [data-salary-status]'))).toBe('ждём 20 сентября')
+    expect(q('[data-salary] [data-salary-status]')).toBeNull()
+    expect(q('[data-salary] [data-left]')).toBeNull()
     expect(txt(document.body)).not.toContain('✓ пришла')
+    const when = { a: 'пришла 10 сентября', b: 'ждём 20 сентября' } as Record<string, string>
+    for (const p of plan.byPerson) {
+      await press(q(`[data-salary="${p.person}"] [data-row-open]`))
+      expect(txt(q('[role="dialog"] [data-left]'))).toBe(norm(p.left > 0 ? `+${money(p.left)}` : money(p.left)))
+      expect(txt(q('[role="dialog"] [data-salary-status]'))).toContain(when[p.person])
+      await press(q('[role="dialog"] button[aria-label="Закрыть"]'))
+      expect(q('[role="dialog"]')).toBeNull()
+    }
     // Оглавление: три строки, всё свёрнуто.
     expect(all('[data-section]').map((el) => el.dataset.section)).toEqual(['dues', 'spend', 'queue'])
     expect(all('[data-section]').every((el) => el.getAttribute('aria-expanded') === 'false')).toBe(true)
@@ -204,9 +221,16 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
 
   it('смена плательщика — «хватает» обоих пересчитано; лист платежа кружок не открывает', async () => {
     const finance = await open()
-    const leftOf = (id: string) => txt(q(`[data-salary="${id}"] [data-left]`))
-    const a0 = leftOf('a')
-    const b0 = leftOf('b')
+    // «Хватает» — в листе зарплаты (Р-116): открыть строку, прочитать, закрыть.
+    const leftOf = async (id: string) => {
+      await press(q(`[data-salary="${id}"] [data-row-open]`))
+      const left = txt(q('[role="dialog"] [data-left]'))
+      await press(q('[role="dialog"] button[aria-label="Закрыть"]'))
+      expect(left).not.toBe('')
+      return left
+    }
+    const a0 = await leftOf('a')
+    const b0 = await leftOf('b')
     await press(section('dues'))
     await press(q<HTMLButtonElement>('[data-due-id="obligation:rent"] button[aria-label^="Платит"]'))
     expect(txt(q('[role="dialog"]'))).toContain('Кто платит: аренда?')
@@ -214,8 +238,8 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     const other = all('[role="dialog"] button').filter((b) => /Ильяс|Аруна/.test(b.textContent ?? '')).find((b) => !b.textContent?.includes('✓'))
     await press(other)
     expect(finance.obligations.find((o) => o.id === 'rent')?.payer).toBe('b')
-    expect(leftOf('a')).not.toBe(a0)
-    expect(leftOf('b')).not.toBe(b0)
+    expect(await leftOf('a')).not.toBe(a0)
+    expect(await leftOf('b')).not.toBe(b0)
   })
 
   it('подписки — одной строкой «Подписки · 3»; раскрытие — список с ручной группой; ✓ группы — только когда оплачены все', async () => {
@@ -561,8 +585,11 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(q('[data-queue] [role="switch"]')).toBeNull()
     expect(q('[data-grip]')).toBeNull()
     expect(q('[data-put-all]')).toBeNull()
-    await press(q('[data-salary="a"]'))
-    expect(q('[role="dialog"]')).toBeNull()
+    // Критик Б17: дата и «хватает» — только в листе зарплаты (Р-116), viewer открывает его для чтения — без кнопок.
+    await press(q('[data-salary="a"] [data-row-open]'))
+    expect(q('[role="dialog"] [data-salary-status]')).not.toBeNull()
+    expect(q('[role="dialog"] [data-salary-edit], [role="dialog"] [data-salary-paid]')).toBeNull()
+    expect([...document.querySelectorAll('[role="dialog"] button')].map((b) => b.textContent?.trim())).not.toContain('Пришла зарплата')
   })
 
   it('‹ — прошлый месяц сводкой (только чтение), › — обратно к плану', async () => {
@@ -573,5 +600,62 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(txt(q('[data-month-nav]'))).toContain('Август')
     await press(all('button').find((b) => b.getAttribute('aria-label') === 'Следующий месяц'))
     expect(q('[data-rest]')).not.toBeNull()
+  })
+})
+
+/**
+ * Р-116 (B2C-108): «Свободно по выпискам» и «До зарплаты N дней» переехали с «Мечт» в подсказку у «Остаётся».
+ * Семья — `planFamilyDoc` (доход 1 200 000), «сейчас» — четверг 17 сентября 2026, ближняя зарплата — Аруна, 20-е.
+ */
+describe('B2C-108: подсказка у «Остаётся» — «Свободно» по выпискам и дни до зарплаты (бывшая строка «Мечт»)', () => {
+  const total = (by: 'a' | 'b', kind: 'week' | 'month', period: string, categoryId: string, amount: number): SpendTotal => ({
+    id: `${by}:${kind}:${period}:${categoryId}`, by, kind, period, categoryId, amount, ops: 1, updatedAt: T0,
+  })
+  const upload = (slot: 'a' | 'b', id: string, from = '2026-09-01', to = '2026-09-17') =>
+    ({ id, slot, bank: 'kaspi', period_from: from, period_to: to, ops_count: 10, created_at: T0 })
+  async function openWith(uploads: ReturnType<typeof upload>[], extra: Partial<SyncDoc> = {}, role: 'member' | 'viewer' = 'member') {
+    vi.setSystemTime(new Date('2026-09-17T07:00:00Z'))
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads } as never)
+    const finance = await open(role, planFamilyDoc(extra))
+    await useOperationsStore().loadUploads()
+    await flush()
+    await press(q('button[aria-label="Остаётся"]'))
+    return finance
+  }
+
+  it('«Свободно» = freeByFact().amount (посчитано руками) · «До зарплаты N дней» = untilPayday().inDays', async () => {
+    const totals = [
+      total('a', 'week', '2026-W38', 'sc_food', 62_000),
+      total('a', 'month', '2026-09', 'sc_food', 184_000),
+      total('a', 'month', '2026-09', 'sc_credit', 58_000),
+      total('a', 'month', '2026-09', '_unknown', 40_000),
+    ]
+    const store = await openWith([upload('a', 'u1')], { spendTotals: totals })
+    // Свободно = доход 1 200 000 − обязательства и кредиты сентября 323 000 (аренда 220 000, кредит
+    // 58 000, кредитка 25 000, рассрочка 20 000) − взносы в цели 130 000 − траты по выписке 224 000
+    // (продукты 184 000 + не разобрано 40 000; кредит 58 000 уже в плане — не вычитается) = 523 000.
+    const days = untilPayday({ people: store.people, obligations: store.obligations, credits: store.credits, accounts: store.householdAccounts, payments: store.payments })!.inDays
+    expect(days).toBe(3) // Аруна, 20-е
+    expect(txt(q('[role="note"] [data-free]'))).toBe(norm(`Свободно по выпискам — ${money(523_000)}.`))
+    expect(txt(q('[role="note"] [data-payday]'))).toBe('До зарплаты 3 дня.')
+    // На кольце — одно крупное число; «Свободно» строкой не показано.
+    expect(txt(document.body).replace(txt(q('[role="note"]')), '')).not.toContain('Свободно')
+  })
+
+  it('до первой выписки — без «Свободно», только «До зарплаты N дней»; у viewer — то же', async () => {
+    await openWith([])
+    expect(q('[role="note"] [data-free]')).toBeNull()
+    expect(txt(q('[role="note"] [data-payday]'))).toBe('До зарплаты 3 дня.')
+    app?.unmount()
+    app = null
+    document.body.innerHTML = ''
+    await openWith([], {}, 'viewer')
+    expect(txt(q('[role="note"] [data-payday]'))).toBe('До зарплаты 3 дня.')
+  })
+
+  it('выписки только за прошлый месяц — «Свободно» нет: freeByFact без факта отдаёт «остаток по плану» (Р-47, критик Б10)', async () => {
+    await openWith([upload('a', 'u0', '2026-08-01', '2026-08-31')])
+    expect(q('[role="note"] [data-free]')).toBeNull()
+    expect(txt(q('[role="note"] [data-payday]'))).toBe('До зарплаты 3 дня.')
   })
 })

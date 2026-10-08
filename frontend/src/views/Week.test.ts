@@ -105,11 +105,11 @@ describe('views/Week.vue', () => {
     // Без абзаца механики (правило 12); в листе — одна брендовая, на экране — «Загрузить» (своей выписки нет).
     expect(html).not.toContain('запомним')
     expect(brand(html)).toEqual(['Загрузить', 'Да, отметить'])
-    // Лист закрыт — на экране только значок «! 1».
+    // Лист закрыт — на экране строка «Вопросы · 1 вопрос» с «Разобрать» (Б17: действие у предмета, не «! 1» сверху).
     const closed = await renderScreen(Week, '/week')
     expect(closed).not.toContain('отметить?')
-    expect(text(closed)).toContain('! 1')
-    expect(closed).toContain('aria-label="Вопросы: 1"')
+    expect(text(closed)).toContain('Вопросы 1 вопрос Разобрать')
+    expect(closed).toContain('data-questions-row')
 
     setActivePinia(createPinia())
     signIn('viewer')
@@ -131,7 +131,8 @@ describe('views/Week.vue', () => {
     await store.send()
     const html = text(await renderScreen(Week, '/statements'))
     expect(fetchSpy).not.toHaveBeenCalled()
-    expect(html).toContain('демо: только на этом телефоне')
+    // Строки «демо: только на этом телефоне» на «Неделе» нет (Б17, макет) — демо говорит о себе в «Настройках».
+    expect(html).not.toContain('демо: только на этом телефоне')
     // Загрузка записана локально; выписка июня-июля эту неделю не закрывает — экран зовёт загрузить свою.
     expect(store.uploads).toHaveLength(1)
     expect(store.uploads[0]).toMatchObject({ ops_count: 60 })

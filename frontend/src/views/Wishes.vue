@@ -22,6 +22,7 @@ import Callout from '@/components/kit/Callout.vue'
 import Card from '@/components/kit/Card.vue'
 import EmptyState from '@/components/kit/EmptyState.vue'
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import HeaderActions from '@/components/kit/HeaderActions.vue'
 import IconBox from '@/components/kit/IconBox.vue'
 import NumField from '@/components/kit/NumField.vue'
@@ -83,6 +84,7 @@ function nameOf(id: PersonId) {
 /* ------------------ Покупки ------------------ */
 const openWishModal = ref(false)
 const wishName = ref('')
+const form = useFormCheck(() => [['wishName', !wishName.value.trim() && 'Введите, что покупаем']])
 const wishPrice = ref('')
 const wishUrl = ref('')
 const wishBy = ref<PersonId>(me.value ?? 'a')
@@ -241,10 +243,10 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
             <img v-if="g.photoId && giftSrc[g.photoId]" :src="giftSrc[g.photoId]!" alt="" class="size-[38px] shrink-0 rounded-[12px] object-cover" />
             <IconBox v-else><PhGift :size="18" /></IconBox>
             <div class="min-w-0 flex-1">
-              <div class="truncate font-medium" :class="g.bought ? 'text-ink-3 line-through' : 'text-ink'">{{ g.name }}</div>
+              <div class="truncate font-medium" :class="g.bought ? 'text-ink-2 line-through' : 'text-ink'">{{ g.name }}</div>
               <div class="type-meta">{{ g.bought ? `куплено ${addedLabel(g.boughtOn)}` : 'сюрприз' }}</div>
             </div>
-            <span class="shrink-0 text-[14px] font-semibold num" :class="g.bought ? 'text-ink-3' : 'text-ink'">{{ money(g.price) }}</span>
+            <span class="shrink-0 text-[14px] font-semibold num" :class="g.bought ? 'text-ink-2' : 'text-ink'">{{ money(g.price) }}</span>
             <button
               type="button"
               :aria-label="g.bought ? 'Вернуть сюрприз в список' : 'Сюрприз куплен'"
@@ -300,17 +302,16 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
     <Sheet :open="openWishModal && canEdit" title="Новое желание" @close="openWishModal = false">
       <!-- Ссылка — первой (макет «Желание по ссылке»): вставили — фото и название подтянулись; в демо сервера нет -->
       <Field v-if="!financeStore.isDemo" label="Ссылка на товар">
-        <Input v-model="wishUrl" inputmode="url" placeholder="Вставьте ссылку" class="mb-3" />
+        <Input v-model="wishUrl" inputmode="url" placeholder="Вставьте ссылку" />
       </Field>
-      <p v-else class="mb-3 type-meta">По ссылке — в приложении</p>
       <!-- Фото — крупно: желание узнаётся по картинке (Р-9) -->
       <PhotoSlot v-if="!financeStore.isDemo" class="mb-3" :file="wishFile" :busy="link.busy.value" removable @file="onWishFile" @remove="wishFile = null" />
       <Callout v-if="link.note.value" tone="neutral" icon="info" class="mb-3">{{ link.note.value }}</Callout>
-      <Field label="Что покупаем">
-        <Input v-model="wishName" placeholder="Например, сковорода" class="mb-3" />
+      <Field label="Что покупаем" name="wishName">
+        <Input v-model="wishName" placeholder="Например, сковорода" />
       </Field>
       <Field label="Цена, ₸">
-        <NumField v-model="wishPrice" placeholder="18 000" class="mb-3" />
+        <NumField v-model="wishPrice" placeholder="18 000" />
       </Field>
       <Field v-if="tab === 'all' && people.length > 1" label="Кто добавил" group>
         <Segmented
@@ -319,7 +320,7 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
         />
       </Field>
 
-      <Button :disabled="!wishName.trim()" class="w-full mt-2" @click="createWish">
+      <Button class="w-full" @click="form.submit(createWish)">
         Добавить в список
       </Button>
     </Sheet>

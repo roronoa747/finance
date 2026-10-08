@@ -77,7 +77,7 @@ function handleClick(e: MouseEvent) {
             {{ title }}
           </span>
           <slot name="note">
-            <span v-if="note" class="block text-[12.5px] text-ink-3">{{ note }}</span>
+            <span v-if="note" class="block text-[12.5px] text-ink-2">{{ note }}</span>
           </slot>
         </span>
 
@@ -85,18 +85,18 @@ function handleClick(e: MouseEvent) {
           <slot name="value">
             <span v-if="value !== undefined" class="block text-[14.5px] font-semibold num text-ink">{{ value }}</span>
           </slot>
-          <span v-if="sub" class="block text-[12px] text-ink-3">{{ sub }}</span>
+          <span v-if="sub" class="block text-[12px] text-ink-2">{{ sub }}</span>
         </span>
 
         <svg
           v-if="clickable"
-          width="8"
-          height="14"
+          width="6"
+          height="11"
           viewBox="0 0 8 14"
           fill="none"
           aria-hidden="true"
           stroke="currentColor"
-          stroke-width="1.8"
+          stroke-width="1.6"
           stroke-linecap="round"
           stroke-linejoin="round"
           class="ml-0.5 shrink-0 text-ink-3"

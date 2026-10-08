@@ -13,6 +13,7 @@ import { deposit, freeByFact, planFact, untilPayday } from '../src/lib/finance'
 import { planFamilyDoc, T0 } from '../src/test/planFamily'
 import type { Payment } from '../src/types/finance'
 import { screenMixin } from '../src/test/screenState'
+import DebtFaster from '../src/views/DebtFaster.vue'
 import Money from '../src/views/Money.vue'
 import Month from '../src/views/Month.vue'
 import { at, backend, fakeServer, fakeStatements, screen, statementsFor, tapPay, tapPutDebt, type FakeServer, type FakeStatements } from './support/family'
@@ -113,15 +114,15 @@ describe('e2e / B2C Блок 9 — «Деньги без лишнего» на �
     server.data.payments = [august, { ...august, id: 'aug-cc', targetId: 'cc', amount: 25_000 }]
     const A = await phone(server, st, 'a')
     const B = await phone(server, st, 'b')
-    expect(await screen(A.pinia, Money, '/money/debts')).toMatch(/role="switch" aria-checked="false"/)
+    expect(await screen(A.pinia, DebtFaster, '/money/debts/faster')).toMatch(/role="switch" aria-checked="false"/)
 
-    // «Выбрать этот план» в раскрытом «Копить или гасить?» (подушка — «Подушка»).
-    await screen(A.pinia, Money, '/money/debts', undefined, [screenMixin({ cushionGoalId: 'cushion' }, (s) => (s.choose as () => void)())])
+    // «Выбрать этот план» в «Копить или гасить?» экрана «Закрыть быстрее» (подушка — «Подушка»).
+    await screen(A.pinia, DebtFaster, '/money/debts/faster', undefined, [screenMixin({ cushionGoalId: 'cushion' }, (s) => (s.choose as () => void)())])
     setActivePinia(A.pinia)
     const plan = A.store.activePlan!
     expect(plan).toMatchObject({ cushionGoalId: 'cushion', creditIds: ['cc', 'loan'] })
     await sync(A, B)
-    const before = await screen(B.pinia, Money, '/money/debts')
+    const before = await screen(B.pinia, DebtFaster, '/money/debts/faster')
     expect(before).toMatch(/role="switch" aria-checked="true"/)
     expect(text(before)).toContain(`Шаг сентября ${money(100_000)} досрочно`)
     // До первой досрочки строка прогноза без «Уже сэкономили 0 ₸» (ревью frontend Б9, Н-9).
@@ -137,7 +138,7 @@ describe('e2e / B2C Блок 9 — «Деньги без лишнего» на �
     setActivePinia(B.pinia)
     const saved = planFact(B.store.activePlan!, B.store.payments, B.store.credits).savedInterest
     expect(saved).toBeGreaterThan(0)
-    const after = text(await screen(B.pinia, Money, '/money/debts'))
+    const after = text(await screen(B.pinia, DebtFaster, '/money/debts/faster'))
     expect(after).toContain(`внесено по плану · ${money(100_000)}`)
     expect(after).toContain(`Уже сэкономили ${money(saved)}.`)
     expect(after).not.toContain('Шаг сделан')
@@ -184,21 +185,22 @@ describe('e2e / B2C Блок 9 — «Деньги без лишнего» на �
     expect(historyB).not.toContain('ТОО Непонятное')
   })
 
-  it('часть 4 — права: viewer на /money, /money/debts, /money/history — без «Оплатил», «Добавить», полей и активного переключателя', async () => {
+  it('часть 4 — права: viewer на /money, /money/debts, «Закрыть быстрее», /money/history — без «Оплатил», «Добавить», полей и активного переключателя', async () => {
     server.data.plans = [{
       id: 'plan', status: 'active', by: 'a', startedAt: '2026-09-10T05:00:00.000Z', endedAt: null, keptGoalIds: [], cushionGoalId: 'cushion',
       creditIds: ['cc', 'loan'], months: 24, lump: 0, forecast: { gain: 0, savedInterest: 0, debtFreeMonth: null }, result: null, updatedAt: T0,
     }]
     const V = await phone(server, st, 'b', 'viewer')
-    for (const path of ['/money', '/money/debts', '/money/history', '/money?add=debt', '/money?income=1']) {
-      const html = await screen(V.pinia, Money, path)
+    // План с переключателем — на экране «Закрыть быстрее» `/money/debts/faster` (B2C-109), на «Долгах» — ссылка на него.
+    for (const path of ['/money', '/money/debts', '/money/debts/faster', '/money/history', '/money?add=debt', '/money?income=1']) {
+      const html = await screen(V.pinia, path === '/money/debts/faster' ? DebtFaster : Money, path)
       expect(html, path).not.toMatch(/>\s*Оплатил\s*</)
       expect(html, path).not.toMatch(/>\s*(<svg[\s\S]*?<\/svg>\s*)?Добавить( счёт)?\s*</)
       expect(html, path).not.toMatch(/>\s*Шаг сделан\s*</)
       // Поля записи — нет; калькулятор «Копить или гасить?» в «Плане» — расчёт без записи, его переключатели остаются.
-      if (path !== '/money/debts') expect(html, path).not.toContain('<input')
+      if (path !== '/money/debts/faster') expect(html, path).not.toContain('<input')
       expect(html, path).not.toMatch(/>\s*Выбрать этот план\s*</)
-      if (path === '/money/debts') expect(html).toMatch(/role="switch" aria-checked="true"[^>]*\sdisabled(=""|\s|>)/)
+      if (path === '/money/debts/faster') expect(html).toMatch(/role="switch" aria-checked="true"[^>]*\sdisabled(=""|\s|>)/)
     }
   })
 

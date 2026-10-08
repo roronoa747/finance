@@ -7,6 +7,7 @@ import type { PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
 
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import NumField from '@/components/kit/NumField.vue'
 import Select from '@/components/kit/Select.vue'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -28,12 +29,12 @@ const extraIncomeBy = ref<PersonId>('a')
 const extraIncomeTarget = ref('')
 
 const extraIncomeValue = computed(() => parseMoney(extraIncomeAmount.value))
-const canApplyExtraIncome = computed(
-  () => extraIncomeValue.value > 0 && Boolean(extraIncomeTarget.value),
-)
+const form = useFormCheck(() => [
+  ['amount', extraIncomeValue.value <= 0 && 'Введите сумму'],
+  ['target', !extraIncomeTarget.value && 'Выберите, куда'],
+])
 
 function applyExtraIncome() {
-  if (!canApplyExtraIncome.value) return
   const [kind, id] = extraIncomeTarget.value.split(':')
   if (kind === 'goal') {
     financeStore.contribute(id, extraIncomeValue.value, extraIncomeBy.value, 'Внеплановый доход')
@@ -49,22 +50,21 @@ function applyExtraIncome() {
 
 <template>
   <Sheet :open="open" title="Внеплановый доход" @close="emit('close')">
-    <p class="-mt-1 mb-3 text-[12.5px] leading-relaxed text-ink-2">
-      Премия, подарок, возврат налога — то, чего нет в плане месяца. Направьте сразу,
-      пока деньги не разошлись по мелочам.
-    </p>
+    <!-- Три строки пояснения → одна (макет Б17). -->
+    <p class="-mt-1 mb-3.5 text-[14px] text-ink-2">Премия, подарок, возврат налога</p>
 
-    <Field label="Сумма, ₸">
-      <NumField v-model="extraIncomeAmount" placeholder="50 000" class="mb-3" />
+    <Field label="Сумма, ₸" name="amount">
+      <NumField v-model="extraIncomeAmount" placeholder="50 000" />
     </Field>
 
-    <Field v-if="people.length > 1" label="Кому пришло" group>
-      <div class="flex gap-2 mb-3">
+    <Field v-if="people.length > 1" label="Кому" group>
+      <div class="grid grid-cols-2 gap-2">
         <button
           v-for="p in people"
           :key="p.id"
           type="button"
-          :class="cn('rounded-xl border px-3 py-2 text-[13px] flex-1 cursor-pointer', extraIncomeBy === p.id ? 'border-brand bg-brand-soft text-brand font-medium' : 'border-line text-ink-2')"
+          :aria-pressed="extraIncomeBy === p.id"
+          :class="cn('opt', extraIncomeBy === p.id && 'opt-on')"
           @click="extraIncomeBy = p.id"
         >
           {{ p.name }}
@@ -72,8 +72,8 @@ function applyExtraIncome() {
       </div>
     </Field>
 
-    <Field label="Куда направить">
-      <Select v-model="extraIncomeTarget" class="mb-3">
+    <Field label="Куда направить" name="target">
+      <Select v-model="extraIncomeTarget">
         <option value="">Выберите…</option>
         <optgroup v-if="goals.length > 0" label="В цель">
           <option v-for="g in goals" :key="g.id" :value="`goal:${g.id}`">
@@ -88,11 +88,11 @@ function applyExtraIncome() {
       </Select>
     </Field>
 
-    <p v-if="!goals.length && !payAccounts.length" class="mb-3 text-[12.5px] text-ink-3">
+    <p v-if="!goals.length && !payAccounts.length" class="mb-3 text-[12.5px] text-ink-2">
       Сначала заведите цель или счёт — иначе деньги некуда положить.
     </p>
 
-    <Button :disabled="!canApplyExtraIncome" class="w-full mt-1" @click="applyExtraIncome">
+    <Button class="w-full mt-1" @click="form.submit(applyExtraIncome)">
       Записать
     </Button>
   </Sheet>

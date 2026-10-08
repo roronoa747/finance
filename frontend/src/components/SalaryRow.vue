@@ -161,14 +161,14 @@ function openMore() {
     </template>
 
     <template #note>
-      <span v-if="record" class="block text-[12.5px] text-ink-3">
+      <span v-if="record" class="block text-[12.5px] text-ink-2">
         пришла {{ atLabel(record.at) }} · {{ toAccount }}{{ record.source === 'statement' ? ' · из выписки' : '' }}
       </span>
-      <span v-else-if="note" class="block text-[12.5px] text-ink-3">{{ note }}</span>
+      <span v-else-if="note" class="block text-[12.5px] text-ink-2">{{ note }}</span>
     </template>
 
     <template #value>
-      <span :class="cn('block text-[14.5px] font-semibold num', record ? 'text-ink-3' : 'text-brand')">
+      <span :class="cn('block text-[14.5px] font-semibold num', record ? 'text-ink-2' : 'text-brand')">
         +{{ shownText }}
       </span>
     </template>

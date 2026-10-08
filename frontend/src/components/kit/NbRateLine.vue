@@ -17,7 +17,7 @@ const setManual = (v: string) => (props.nb.manual.value = v)
 
 <template>
   <template v-if="nb.foreign.value">
-    <p v-if="nb.auto.value && amount > 0" class="-mt-2.5 mb-3 text-[12px] text-ink-3 num">
+    <p v-if="nb.auto.value && amount > 0" class="-mt-2.5 mb-3 text-[12px] text-ink-2 num">
       ≈ {{ money(nb.tenge(amount)) }} по курсу Нацбанка
     </p>
     <Field v-else-if="!nb.auto.value" :label="`Курс, ₸ за 1 ${CURRENCY_SIGN[currency]}`">

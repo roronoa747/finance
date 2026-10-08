@@ -11,6 +11,8 @@ import { landingPath } from '@/router/landing'
 import { seedSpendCategories } from '@/lib/statements/model'
 import { addMonths, monthKey, weekKey, weekRange } from '@/lib/dates'
 import { monthPlan, planSave } from '@/lib/finance'
+import { templateById, templateCredit } from '@/lib/goalTemplates'
+import { DEMO_PHOTO } from '@/lib/photos/store'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
 import { authErrorText } from '@/lib/authErrors'
 import Button from '@/components/ui/Button.vue'
@@ -123,6 +125,12 @@ async function submit() {
   }
 }
 
+/** Фото цели демо из бандла (`assets/demo`) с автором шаблона — как у цели, заведённой из шаблона (Р-28). */
+function demoPhoto(file: string, template: string) {
+  const t = templateById(template)
+  return { photoId: DEMO_PHOTO + file, photoCredit: t ? templateCredit(t) : null }
+}
+
 function startDemoMode() {
   // Черновик демо уже есть — возвращаемся к нему, а не начинаем пример заново.
   const resume = financeStore.isDemo
@@ -131,7 +139,8 @@ function startDemoMode() {
     user: { id: 'demo-user-1', email: 'demo@family.local', created_at: new Date().toISOString() },
     household: {
       id: 'demo-household-1',
-      name: 'Демо Семья',
+      // Люди демо — «Вы» и «Партнёр», без наших имён (Р-118).
+      name: 'Семья',
       created_by: 'demo-user-1',
       created_at: new Date().toISOString(),
     },
@@ -139,7 +148,7 @@ function startDemoMode() {
       household_id: 'demo-household-1',
       user_id: 'demo-user-1',
       slot: 'a',
-      display_name: 'Ильяс',
+      display_name: 'Вы',
       role: 'member',
       joined_at: new Date().toISOString(),
     },
@@ -152,13 +161,13 @@ function startDemoMode() {
   financeStore.mutateHouseholdDoc((doc) => {
     doc.setupDoneAt = new Date().toISOString()
     doc.people = [
-      // Оклад Ильяса в евро с прошлого года (B2C-79): тенге — по демо-книге курсов, без запросов.
+      // Оклад участника a в евро с прошлого года (B2C-79): тенге — по демо-книге курсов, без запросов.
       {
-        id: 'a', name: 'Ильяс', salary: 750_000, payday: 10, onboardedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+        id: 'a', name: 'Вы', salary: 750_000, payday: 10, onboardedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
         salaryVersions: [{ from: '2000-01', amount: 750_000 }, { from: addMonths(monthKey(), -12), amount: 1_500, currency: 'EUR', rate: 506 }],
       },
-      // Свой кружок (B2C-63/67): у Аруны — смайлик и цвет, у Ильяса — буква, как по умолчанию.
-      { id: 'b', name: 'Аруна', salary: 450_000, payday: 20, emoji: '🌸', color: 's6', onboardedAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      // Свой кружок (B2C-63/67): у партнёра — свой цвет, у обоих — буква, как по умолчанию (макет Б17: «В», «П»).
+      { id: 'b', name: 'Партнёр', salary: 450_000, payday: 20, color: 's6', onboardedAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
     ]
     doc.categories = [
       { key: 'd1', name: 'Жильё', note: 'аренда и коммуналка', amount: 250_000, updatedAt: new Date().toISOString() },
@@ -175,7 +184,7 @@ function startDemoMode() {
         day: 5,
         category: 'd1',
         versions: [{ from: '2026-01', amount: 220_000 }],
-        // Плательщики (Р-80, B2C-85): аренду платит Аруна, остальное — Ильяс.
+        // Плательщики (Р-80, B2C-85): аренду платит партнёр b, остальное — участник a.
         payer: 'b',
         updatedAt: new Date().toISOString(),
       },
@@ -252,8 +261,9 @@ function startDemoMode() {
         hue: 'plum',
         planPct: 0.3,
         movements: [],
-        // Главная мечта (первая в очереди) с шаблоном без фото (B2C-19 п. 4): в демо сервера нет — картинок нет.
+        // Фото демо — из приложения (Р-118): сервера в демо нет, картинка шаблона лежит в бандле.
         template: 'japan',
+        ...demoPhoto('japan', 'japan'),
         payer: 'a',
         updatedAt: new Date().toISOString(),
       },
@@ -268,10 +278,12 @@ function startDemoMode() {
         hue: 'blue',
         planPct: 0,
         movements: [],
+        template: 'car',
+        ...demoPhoto('car', 'car'),
         payer: 'a',
         updatedAt: new Date().toISOString(),
       },
-      // Копилка Блока 11 (Р-66) — фонд «Подушка» (Р-82, B2C-85): порог — 3 месяца трат, откладывает Аруна.
+      // Копилка Блока 11 (Р-66) — фонд «Подушка» (Р-82, B2C-85): порог — 3 месяца трат, откладывает партнёр b.
       {
         id: 'g-pot',
         name: 'Подушка',
@@ -283,6 +295,7 @@ function startDemoMode() {
         planPct: 0,
         movements: [],
         template: 'cushion',
+        ...demoPhoto('cushion', 'cushion'),
         fund: 'cushion',
         payer: 'b',
         updatedAt: new Date().toISOString(),
@@ -299,6 +312,7 @@ function startDemoMode() {
         planPct: 0,
         movements: [],
         template: 'cushion-3',
+        ...demoPhoto('cushion-3', 'cushion-3'),
         fund: 'reserve',
         // Лежит на Kaspi Gold (Блок 16, Р-109): в «Цели · N» «Капитала» — «на Kaspi Gold», вне суммы.
         accountId: 'acc-kaspi',
@@ -315,21 +329,23 @@ function startDemoMode() {
         hue: 'ochre',
         planPct: 0,
         movements: [],
+        photoId: DEMO_PHOTO + 'sofa',
         // Выключена в плане месяца (Р-83): на «Мечтах» — «на паузе».
         pausedAt: new Date().toISOString(),
         payer: 'b',
         updatedAt: new Date().toISOString(),
       },
     ]
-    // Желания «как в макете» (приёмка Б10): у каждого участника и общее; фото шаблонов в демо нет — плашка.
+    // Желания «как в макете» (приёмка Б10): у каждого участника и общее; фото — из приложения (Р-118), Unsplash:
+    // велосипед — Mikkel Bech, кофемашина — Kevin Schmid, сапоги — Zac Wolff; диван у цели — картинка макета Б17.
     doc.wishlist = [
-      { id: 'w-coffee', name: 'Кофемашина', price: 180_000, by: 'a', list: 'all', bought: false, addedOn: new Date().toISOString(), updatedAt: new Date().toISOString() },
-      { id: 'w-bike', name: 'Велосипед', price: 230_000, by: 'a', list: 'a', bought: false, addedOn: new Date().toISOString(), updatedAt: new Date().toISOString() },
-      { id: 'w-boots', name: 'Сапоги', price: 65_000, by: 'b', list: 'b', bought: false, addedOn: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'w-coffee', name: 'Кофемашина', photoId: DEMO_PHOTO + 'coffee', price: 180_000, by: 'a', list: 'all', bought: false, addedOn: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'w-bike', name: 'Велосипед', photoId: DEMO_PHOTO + 'bike', price: 230_000, by: 'a', list: 'a', bought: false, addedOn: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: 'w-boots', name: 'Сапоги', photoId: DEMO_PHOTO + 'boots', price: 65_000, by: 'b', list: 'b', bought: false, addedOn: new Date().toISOString(), updatedAt: new Date().toISOString() },
     ]
     doc.accounts = [
       { id: 'acc-kaspi', name: 'Kaspi Gold', note: '', kind: 'card', amount: 480_000, updatedAt: new Date().toISOString() },
-      // Евро-счёт под зарплату Ильяса (B2C-79): остаток в евро выводится из прихода и обменов.
+      // Евро-счёт под зарплату участника a (B2C-79): остаток в евро выводится из прихода и обменов.
       { id: 'acc-eur', name: 'Евро-счёт', note: '', kind: 'card', amount: 0, currency: 'EUR', foreignAmount: 0, rate: 506, rateAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
       {
         id: 'acc-dep', name: 'Депозит Kaspi', note: '', kind: 'deposit', amount: 1_200_000, updatedAt: new Date().toISOString(),
@@ -343,14 +359,14 @@ function startDemoMode() {
     ).map(([id, amount], i) => ({ id, order: i + 1, on: true, ...(amount === undefined ? {} : { amount }), updatedAt: now }))
     doc.moneySettings = { reserveMonths: 1, cushionMonths: 3, costlyRate: 0, potGoalId: 'g-pot', orderedAt: now, updatedAt: now }
     // План месяца (Р-79…Р-84, B2C-85): траты каждого по разделам, очередь (мечта, запас, долг, …), свой порядок
-    // «Желаний», карточка долга — досрочку вносит Аруна (с планом «Сначала долги» сумма — шаг плана).
+    // «Желаний», карточка долга — досрочку вносит партнёр b (с планом «Сначала долги» сумма — шаг плана).
     doc.spendPlans = (
       [['a', 'sc_food', 90_000], ['a', 'sc_cafe', 40_000], ['a', 'sc_transport', 25_000], ['b', 'sc_food', 60_000], ['b', 'sc_shopping', 40_000]] as const
     ).map(([by, categoryId, amount]) => ({ id: `${by}:${categoryId}`, by, categoryId, amount, updatedAt: now }))
     doc.goalOrder = { ids: ['g-trip', 'g-reserve', 'debt', 'g-car', 'g-pot', 'g-sofa'], updatedAt: now }
     doc.wishOrder = { ids: ['w-bike', 'w-coffee', 'w-boots'], updatedAt: now }
     doc.debtCard = { monthly: 40_000, pausedAt: null, payer: 'b', updatedAt: now }
-    // Итоги выписки Аруны (B2C-19 п. 4): своих операций у неё в демо нет — итоги руками. Итоги Ильяса — из его
+    // Итоги выписки партнёра b (B2C-19 п. 4): своих операций у неё в демо нет — итоги руками. Итоги участника a — из его
     // демо-операций ниже, той же функцией, что при «Отправить» (B2C-52).
     seedSpendCategories(doc)
     const at = new Date().toISOString()
@@ -365,7 +381,7 @@ function startDemoMode() {
     ]
   })
   // «Деньги» в демо — все три квадрата с данными (пивот 3, B2C-45): план «Сначала долги» (машина на
-  // паузе ради автокредита) и отметки месяца — аренда оплачена Аруной, зарплата Ильяса пришла. Фонды «Запас» и
+  // паузе ради автокредита) и отметки месяца — аренда оплачена партнёром b, зарплата участника a пришла. Фонды «Запас» и
   // «Подушка» — «не останавливать» (план ставит на паузу все цели, кроме этих, Р-82: квадрат «Долги» прежний).
   financeStore.choosePlan({ keptGoalIds: ['g-trip', 'g-reserve', 'g-pot'], cushionGoalId: null, months: 24, lump: 0 }, 'a')
   // Прошлые три месяца с отметками — у «Истории» есть итог «Наш <месяц>» и список месяцев (Блок 16, Р-111); платежи
@@ -397,7 +413,7 @@ function startDemoMode() {
       }
     })
   }
-  // Зарплата Ильяса пришла сегодня на евро-счёт и не разобрана — на «Неделе» «Пришла зарплата · как обычно»;
+  // Зарплата участника a пришла сегодня на евро-счёт и не разобрана — на «Неделе» «Пришла зарплата · как обычно»;
   // часть уже обменяли (B2C-79): 500 € по 512 ₸ на Kaspi Gold — строка «обменяно 500 € из 1 500 €».
   financeStore.markSalary('a', { accountId: 'acc-eur' })
   financeStore.addExchange({ by: 'a', accountId: 'acc-eur', toAccountId: 'acc-kaspi', foreign: 500, rate: 512, period: monthKey() })
@@ -409,7 +425,7 @@ function startDemoMode() {
     const today = day(0)
     const from = day(63)
     const ops = useOperationsStore()
-    // «Выписки» недели (B2C-62/67): Ильяс загрузил, Аруна — ещё нет (галочка и «ещё нет»). У Аруны — выписка
+    // «Выписки» недели (B2C-62/67): участник a загрузил, партнёр b — ещё нет (галочка и «ещё нет»). У партнёра b — выписка
     // месяца до этой недели: план месяца показывает факт трат обоих (B2C-90); в первые дни месяца, когда
     // неделя начинается в прошлом, её выписка — с 1-го по сегодня, и галочки на «Неделе» две.
     const monthStart = `${monthKey()}-01`
@@ -499,7 +515,7 @@ function startDemoMode() {
       <Button class="w-full mt-1" :disabled="busy" @click="answerDemo(true)">
         {{ busy ? 'Минуту…' : 'Да, взять' }}
       </Button>
-      <Button variant="ghost" class="w-full" :disabled="busy" @click="answerDemo(false)">
+      <Button variant="ghost" size="md" class="w-full" :disabled="busy" @click="answerDemo(false)">
         Нет, начать с чистого
       </Button>
     </div>
@@ -564,10 +580,10 @@ function startDemoMode() {
 
       <template v-else-if="mode === 'register'">
         <Field label="Как вас зовут">
-          <Input v-model="displayName" placeholder="Ильяс" autocomplete="name" />
+          <Input v-model="displayName" placeholder="Имя" autocomplete="name" />
         </Field>
         <Field label="Название семьи">
-          <Input v-model="householdName" placeholder="Семья Ильяса и Аруны" />
+          <Input v-model="householdName" placeholder="Наша семья" />
         </Field>
         <Field label="Почта">
           <Input
@@ -598,7 +614,7 @@ function startDemoMode() {
           />
         </Field>
         <Field label="Как вас зовут">
-          <Input v-model="displayName" placeholder="Аруна" autocomplete="name" />
+          <Input v-model="displayName" placeholder="Имя" autocomplete="name" />
         </Field>
       </template>
 
@@ -610,7 +626,7 @@ function startDemoMode() {
         {{ errorMessage }}
       </div>
 
-      <p v-if="hasDemoDraft" class="mb-3 text-[12.5px] leading-relaxed text-ink-3">
+      <p v-if="hasDemoDraft" class="mb-3 text-[12.5px] leading-relaxed text-ink-2">
         {{
           mode === 'register'
             ? 'После создания спросим, взять ли то, что вы заполнили в демо.'
@@ -632,7 +648,7 @@ function startDemoMode() {
     </form>
 
     <!-- Sandbox / Demo Mode Button -->
-    <p v-if="editsWaitLogin" class="mt-6 pt-5 border-t border-line text-center text-[12px] text-ink-3">
+    <p v-if="editsWaitLogin" class="mt-6 pt-5 border-t border-line text-center text-[12px] text-ink-2">
       Неотправленные правки ждут на этом телефоне — войдите в свою семью, и они уйдут.
     </p>
     <div v-else class="mt-6 pt-5 border-t border-line text-center">
@@ -644,7 +660,7 @@ function startDemoMode() {
         <PhSparkle :size="16" />
         {{ hasDemoDraft ? 'Вернуться в демо' : 'Попробовать в демо-режиме без регистрации' }}
       </button>
-      <p class="mt-1 text-[11.5px] text-ink-3">
+      <p class="mt-1 text-[11.5px] text-ink-2">
         {{
           hasDemoDraft
             ? 'Черновик демо сохранён на этом телефоне.'

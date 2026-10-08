@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { nextTick } from 'vue'
+import { nextTick, type ComponentOptions } from 'vue'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import type { ApiClient } from '../src/api/client'
 import { useAuthStore } from '../src/stores/auth'
@@ -25,6 +25,7 @@ import { landingPath } from '../src/router/landing'
 import Start from '../src/views/Start.vue'
 import Money from '../src/views/Money.vue'
 import Month from '../src/views/Month.vue'
+import PlanSwitch from '../src/components/plan/PlanSwitch.vue'
 import { attachTemplate } from '../src/lib/photos/goalPhoto'
 import { photoUrl, releasePhotos, uploadPhoto } from '../src/lib/photos/store'
 
@@ -34,8 +35,8 @@ import { at, backend, fakePrivate, fakeServer, fakeStatements, privateFor, scree
 
 /**
  * Приёмка Блока 3 B2C — экраны и лёгкий флоу. Часть 1 (B2C-14): главный «Мечты» у семьи с
- * планом и итогами выписок — процент героя, «Свободно» по факту (посчитано руками), карточка
- * решения ведёт на «Неделю». Части 2–5 — B2C-15, B2C-18, B2C-19, B2C-21.
+ * планом и итогами выписок — процент героя, «Свободно» по факту (посчитано руками; с B2C-108 — в подсказке
+ * у «Остаётся» в «Месяце»), решения — на «Неделе». Части 2–5 — B2C-15, B2C-18, B2C-19, B2C-21.
  */
 type Phone = { pinia: Pinia; client: ApiClient; user: string; store: ReturnType<typeof useFinanceStore> }
 
@@ -96,8 +97,26 @@ const total = (by: 'a' | 'b', kind: 'week' | 'month', period: string, categoryId
   id: `${by}:${kind}:${period}:${categoryId}`, by, kind, period, categoryId, amount, ops: 1, updatedAt: T0,
 })
 
-/** «Неделя» с открытым листом вопросов «! N» (Блок 15, Р-97). */
+/** «Неделя» с открытым листом вопросов (Блок 15, Р-97). */
 const sheetOpen = () => [screenMixin({ questionsOpen: true })]
+
+/** Нажатый «?» подсказки `kit/Hint` с этой подписью: текст подсказки в SSR — только у открытой. */
+const openHint = (label: string): ComponentOptions => ({
+  created() {
+    const s = this.$.setupState as Record<string, unknown>
+    if ('at' in s && this.$.props.label === label) s.at = { left: 0, top: 0, width: 280 }
+  },
+})
+/** «Месяц» с открытой подсказкой у «Остаётся»: «Свободно» по выпискам и дни до зарплаты (B2C-108, Р-116). */
+const restHint = (p: Phone, month = '2026-09') => screen(p.pinia, Month, `/month?month=${month}`, undefined, [openHint('Остаётся')])
+
+/** Куда ведёт «Месяц» переключателя на «Неделе»: месяц, где ждёт действие, если не текущий (точки на «Месяце» нет, Р-116). */
+async function switchMonth(p: Phone) {
+  let month: unknown = 'не отрисован'
+  const grab = { created(this: any) { if (this.$.type === PlanSwitch) month = this.$.props.month ?? null } }
+  await screen(p.pinia, Week, '/week', undefined, [grab])
+  return month
+}
 
 describe('e2e / B2C Блок 3 — часть 1: главный «Мечты» (B2C-14)', () => {
   const storage = new Map<string, string>()
@@ -144,15 +163,21 @@ describe('e2e / B2C Блок 3 — часть 1: главный «Мечты» (
     vi.unstubAllGlobals()
   })
 
-  // Пивот 3 (B2C-48, Р-42/Р-43): «Мечты» — мечта по центру и одна строка «Свободно · до зарплаты»;
-  // картина недели и решения — на «Неделе». Суммы те же.
-  it('мечта 7 % · июль 2030; строка «Свободно» сходится с ручным расчётом; картина недели и решение — на «Неделе»', async () => {
+  // Пивот 3 (B2C-48, Р-42/Р-43): «Мечты» — мечта по центру; картина недели и решения — на «Неделе». B2C-108 (Р-116):
+  // «Свободно · до зарплаты» — в подсказке у «Остаётся» в «Месяце», срок мечты — на экране цели. Суммы те же.
+  it('мечта 7 % · июль 2030 (срок — на экране цели); «Свободно» в подсказке «Месяца» сходится с ручным расчётом; картина недели и решение — на «Неделе»', async () => {
     const A = await phone(server, st, 'a')
     const html = await screen(A.pinia, Dreams, '/')
 
     // Мечта: 200 000 / 3 000 000 = 7 %; по 60 000 в месяц — 47 взносов с сентября 2026 → июль 2030.
+    // Под героем — только название; срок — на экране цели.
     expect(html).toContain(`7${NBSP}%`)
-    expect(html).toContain(`Машина${NBSP}· июль${NBSP}2030`)
+    expect(html).toContain('Машина')
+    expect(html).not.toContain(`июль${NBSP}2030`)
+    const goal = await screen(A.pinia, GoalDetail, '/goals/car')
+    expect(goal).toMatch(/<h2 class="type-h2 text-ink">[^<]*июл[^<]*2030<\/h2>/)
+    expect(goal).toContain(`${money(60_000)} в месяц`)
+    expect(goal).toMatch(/data-goal-left>Осталось 47 взносов</)
 
     // «Свободно» руками: доход 1 200 000 − платежи сентября (аренда 220 000 +
     // кредит 58 000 + кредитка 25 000 + рассрочка 20 000 = 323 000) − взносы в цели 130 000 −
@@ -162,10 +187,11 @@ describe('e2e / B2C Блок 3 — часть 1: главный «Мечты» (
     const state = { ...s.householdDoc, credits: s.credits }
     expect(duesTotal(monthDues(state, '2026-09'))).toBe(323_000)
     expect(budgetAmounts(state).d3).toBe(130_000)
-    expect(html).toContain(money(483_000))
-    expect(html).toContain(`${NBSP}· до зарплаты 3${NBSP}дня`)
-    // Недельного на «Мечтах» нет.
-    for (const w of ['Эта неделя', 'Не разобрано', 'Пришла зарплата', money(120_000)]) expect(html).not.toContain(w)
+    const hintA = await restHint(A)
+    expect(hintA).toContain(`Свободно по выпискам — ${money(483_000)}`)
+    expect(hintA).toMatch(/data-payday>До зарплаты 3\sдня\.</)
+    // На «Мечтах» нет ни «Свободно», ни недельного.
+    for (const w of ['Свободно', money(483_000), 'Эта неделя', 'Не разобрано', 'Пришла зарплата', money(120_000)]) expect(html).not.toContain(w)
 
     // «Неделя» (Блок 15, Р-95) — только свои траты: 62 000 продукты, 28 000 кафе, 10 000 не разобрано = 100 000
     // (20 000 продуктов Даны здесь нет); первое решение в листе «!» — пачка незнакомых продавцов (10 000 ₸, Блок 12).
@@ -178,17 +204,17 @@ describe('e2e / B2C Блок 3 — часть 1: главный «Мечты» (
     // У Даны незнакомых нет (операции личные) — её решение: зарплата 20-го через 3 дня → «пришла?».
     const B = await phone(server, st, 'b')
     const htmlB = await screen(B.pinia, Dreams, '/')
-    expect(htmlB).toContain(money(483_000))
+    expect(await restHint(B)).toContain(`Свободно по выпискам — ${money(483_000)}`)
     expect(htmlB).not.toContain('Пришла зарплата')
     // Блок 15 (Р-97): о зарплате спрашивает не «Неделя» — её строка в «Месяце» нажимается («Пришла»).
     expect(await screen(B.pinia, Week, '/week', undefined, sheetOpen())).not.toContain('Пришла зарплата')
     expect(await salaryTap(B, 'b')).toBe(true)
 
-    // viewer видит мечту и цифры, но без решений и «+ Новая».
+    // viewer видит мечту и цифры («Свободно» — в той же подсказке «Месяца»), но без решений и «+ Новая».
     const V = await phone(server, st, 'b', 'viewer')
     const htmlV = await screen(V.pinia, Dreams, '/')
     expect(htmlV).toContain(`7${NBSP}%`)
-    expect(htmlV).toContain(money(483_000))
+    expect(await restHint(V)).toContain(`Свободно по выпискам — ${money(483_000)}`)
     expect(htmlV).not.toContain('Пришла зарплата')
     expect(htmlV).not.toContain('+ Новая')
   })
@@ -320,7 +346,7 @@ describe('e2e / B2C Блок 3 — часть 2: сопоставление вы
     const after = await freeB()
     expect(monthA(B)).toEqual({ sc_rent: 0, _unknown: 220_000 })
     expect(after).toBe(before - 220_000)
-    expect(await screen(B.pinia, Dreams, '/')).toContain(money(after))
+    expect(await restHint(B)).toContain(`Свободно по выпискам — ${money(after)}`)
   })
 })
 
@@ -393,7 +419,9 @@ describe('e2e / B2C Блок 3 — часть 3: мечта из шаблона 
     // Имя цели — в шапке оболочки (screen() её не рисует); в герое — «накоплено из нужно» (правило 12, критик Б3).
     expect(screenB).toContain(`${plain(goalB.have)} из ${money(goalB.need)}`)
     expect(screenB).toContain(templateById('japan')!.photo.author)
-    expect(screenB).toContain(`по ${money(150_000)} в месяц · осталось 12 взносов`)
+    // Взнос — в карточке срока, «осталось N взносов» — в «Подробнее» (B2C-108, Р-116).
+    expect(screenB).toContain(`${money(150_000)} в месяц`)
+    expect(screenB).toMatch(/data-goal-left>Осталось 12 взносов</)
     expect(screenB).toContain('aria-label="Меню цели"')
 
     // Сюрприз A для Аруны: фото скрытое, запись — в личном документе A.
@@ -944,7 +972,9 @@ describe('e2e / B2C Блок 3 — часть 7 (возврат приёмки �
     const october = '2026-10'
     expect(await decision(A)).toBeNull()
     expect(A.store.planCall()).toBe(october)
-    expect(await screen(A.pinia, Week, '/week')).toContain('data-plan-dot')
+    // Точки на «Месяце» переключателя нет (Р-116): дело зовёт точка раздела «Цели и фонды» в самом «Месяце».
+    expect(await switchMonth(A)).toBeNull()
+    expect(await screen(A.pinia, Month, '/month')).toContain('data-section-dot')
 
     // Партнёр: месяц — общий список дел (Р-97): цели Ильяса ждут «Отложил» и на его телефоне — точка та же;
     // о зарплате Ильяса его «Неделя» не спрашивает.
@@ -958,7 +988,7 @@ describe('e2e / B2C Блок 3 — часть 7 (возврат приёмки �
     await allocateAll(A, october)
     expect(A.store.allocations.map((a) => a.period).sort()).toEqual(['2026-09', '2026-10'])
     expect(A.store.planCall()).toBeNull()
-    expect(await screen(A.pinia, Week, '/week')).not.toContain('data-plan-dot')
+    expect(await screen(A.pinia, Month, '/month')).not.toContain('data-section-dot')
   })
 
   it('возврат приёмки 2 п. 3: выписка после дня зарплаты — «Да, зарплата» за август 13 сентября → точка зовёт в «Месяц» августа и 13-го, и 27-го → план августа', async () => {
@@ -982,12 +1012,12 @@ describe('e2e / B2C Блок 3 — часть 7 (возврат приёмки �
     expect(router.currentRoute.value.fullPath).toBe('/week')
     expect(A.store.payments.find((p) => p.kind === 'salary')).toMatchObject({ period: '2026-08', source: 'statement' })
 
-    // Не отложил: августовская ждёт — точка на «Месяце» ведёт в август (не текущий месяц), где её и откладывают.
+    // Не отложил: августовская ждёт — «Месяц» переключателя ведёт в август (не текущий месяц), где её и откладывают.
     for (const day of ['2026-09-13', '2026-09-27']) {
       at(`${day}T07:00:00Z`)
       expect(A.store.planCall()).toBe(august)
+      expect(await switchMonth(A)).toBe(august)
       const week = await screen(A.pinia, Week, '/week', undefined, sheetOpen())
-      expect(week).toContain('data-plan-dot')
       expect(week).not.toContain('Пришла зарплата')
       // В «Месяце» сентября — точка у «‹»: зовёт в прошлый месяц.
       expect(await screen(A.pinia, Month, '/month')).toContain('data-past-dot')
@@ -1131,7 +1161,7 @@ describe('e2e / B2C Блок 3 — часть 8 (повторная приёмк
     const free3 = await freeB()
     expect(monthA()).toEqual({ sc_rent: 221_000, _unknown: 220_000 })
     expect(free3).toBe(free1)
-    expect(await screen(B.pinia, Dreams, '/')).toContain(money(free3))
+    expect(await restHint(B)).toContain(`Свободно по выпискам — ${money(free3)}`)
 
     // Повтор той же выписки ничего не возвращает в аренду.
     await upload(A, parsed)
@@ -1148,9 +1178,9 @@ describe('e2e / B2C Блок 3 — часть 9 (четвёртая приёмк
     id: `s-a-${period}`, kind: 'salary', targetId: 'a', period, amount: 700_000, accountId: null, by: 'a', at: T0, updatedAt: T0, source: 'statement', opId: `op-${period}`,
   })
   const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;| /g, ' ').replace(/\s+/g, ' ')
-  /** Брендовые кнопки экрана (вариант default, `bg-brand`) — правило 12: главная кнопка одна. */
+  /** Брендовые кнопки экрана (вариант default, `bg-brand`; тихая `soft` — `bg-brand-soft` — не в счёт) — правило 12: главная кнопка одна. */
   const brand = (html: string) =>
-    [...html.matchAll(/<button[^>]*class="[^"]*\bbg-brand\b[^"]*"[^>]*>([\s\S]*?)<\/button>/g)].map((x) => text(x[1]).trim())
+    [...html.matchAll(/<button[^>]*class="[^"]*(?<![\w-])bg-brand(?![\w-])[^"]*"[^>]*>([\s\S]*?)<\/button>/g)].map((x) => text(x[1]).trim())
   /** Кнопки «Пришла зарплата» экрана (любого варианта). */
   const salaryButtons = (html: string) =>
     [...html.matchAll(/<button[^>]*>([\s\S]*?)<\/button>/g)].map((x) => text(x[1]).trim()).filter((t) => t === 'Пришла зарплата')

@@ -76,11 +76,12 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     vi.unstubAllGlobals()
   })
 
-  it('шаг 1: «Загрузите первую выписку», «1 из 5», файл остаётся на телефоне, «Выбрать файл» и «Введу вручную»; партнёр — «свою выписку», «1 из 2»', async () => {
+  it('шаг 1: «Ваш банк» (Б17: механика не в заголовке), «1 из 5», файл остаётся на телефоне, «Выбрать файл» и «Введу вручную»; партнёр — тот же заголовок, «1 из 2»', async () => {
     family()
     const html = await renderScreen(Start, '/start')
-    expect(html).toContain('Загрузите первую выписку')
-    expect(html).toContain('Приложение само найдёт зарплату, кредиты и подписки — вы только подтвердите.')
+    expect(html).toContain('Ваш банк')
+    expect(html).not.toContain('Загрузите первую выписку')
+    expect(html).toContain('Найдём зарплату, кредиты и подписки')
     expect(html).toContain('1 из 5')
     // Одна строка, подробности — в подсказке (правило интерфейса, критик Блока 3).
     expect(html).toContain('Файл остаётся на телефоне')
@@ -90,15 +91,19 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     expect(html).toContain('Введу вручную')
     expect(html).toContain('accept="application/pdf,.pdf"')
     // Возврат смоука (g3 «Шаг 2 — первая выписка»): откуда взять PDF — карточкой банков, цвет — токенами.
-    expect(html).toContain('Мой банк → Выписка → PDF → Поделиться')
-    expect(html).toContain('Счёт → Выписка → за 3 месяца → PDF')
+    // Путь к PDF — в подсказке у банка (Б17): на экране — кнопка «?», текст — в открытой подсказке.
+    expect(html).toContain('aria-label="Выписка Kaspi"')
+    expect(html).toContain('aria-label="Выписка Freedom"')
+    const hints = await renderScreen(Start, '/start', undefined, [screenMixin({ at: { left: 0, top: 0, width: 300 } })])
+    expect(hints).toContain('Мой банк → Выписка → PDF → Поделиться')
+    expect(hints).toContain('Счёт → Выписка → за 3 месяца → PDF')
     expect(html).toContain('bg-destructive')
     expect(html).not.toMatch(/#[0-9a-f]{6}/i)
 
     setActivePinia(createPinia())
     family('member', 'b', { ...planFamilyDoc(), people: [planFamilyDoc().people[0]] })
     const partner = await renderScreen(Start, '/start/upload')
-    expect(partner).toContain('Загрузите свою выписку')
+    expect(partner).toContain('Ваш банк')
     expect(partner).toContain('1 из 2')
   })
 

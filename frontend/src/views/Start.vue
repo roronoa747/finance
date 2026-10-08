@@ -25,6 +25,7 @@ import Card from '@/components/kit/Card.vue'
 import Chip from '@/components/kit/Chip.vue'
 import DecisionCard from '@/components/kit/DecisionCard.vue'
 import Field from '@/components/kit/Field.vue'
+import { useFormCheck } from '@/components/kit/useFormCheck'
 import FreeCard from '@/components/kit/FreeCard.vue'
 import Hint from '@/components/kit/Hint.vue'
 import NumField from '@/components/kit/NumField.vue'
@@ -77,6 +78,7 @@ const reading = ref(false)
 const errors = ref<Draft['errors']>([])
 const manual = ref(false)
 const manualSalary = ref('')
+const form = useFormCheck(() => [['salary', parseMoney(manualSalary.value) <= 0 && 'Введите зарплату']])
 const manualPayday = ref('10')
 
 async function pick(e: Event) {
@@ -302,14 +304,15 @@ const BANK_HOWTO = [
 ]
 
 const titles: Record<Step, { title: string; sub: string }> = {
-  upload: { title: 'Загрузите первую выписку', sub: 'Приложение само найдёт зарплату, кредиты и подписки — вы только подтвердите.' },
+  // «Выписка» — механика, не заголовок (правило 12, макет Б17): заголовок — про банк, путь к PDF — в подсказке у банка.
+  upload: { title: 'Ваш банк', sub: 'Найдём зарплату, кредиты и подписки' },
   questions: { title: 'Нашли повторяющиеся', sub: 'Подтвердите по одному — дальше отметим сами.' },
   month: { title: 'Ваш месяц', sub: '' },
   dream: { title: '', sub: '' },
   invite: { title: 'Пригласите партнёра', sub: 'Мечты и покупки — одни на двоих.' },
 }
 const title = computed(() => {
-  if (step.value === 'upload') return joining.value ? 'Загрузите свою выписку' : titles.upload.title
+  if (step.value === 'upload') return titles.upload.title
   if (step.value === 'questions') return current.value ? `Нашли ${questions.value.length} ${plural(questions.value.length, 'повторяющийся', 'повторяющихся', 'повторяющихся')}` : 'Доход'
   if (step.value === 'month') return `Ваш ${monthName.value}`
   return titles[step.value].title
@@ -333,10 +336,8 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
         <Card tight>
           <div v-for="b in BANK_HOWTO" :key="b.name" class="flex items-center gap-3 border-t border-line py-3 first:border-t-0 first:pt-0 last:pb-0">
             <span class="grid size-9 shrink-0 place-items-center rounded-[10px] text-[12px] font-bold text-on-photo" :class="b.tone" aria-hidden="true">{{ b.name[0] }}</span>
-            <span class="min-w-0">
-              <span class="block font-medium text-ink">{{ b.name }}</span>
-              <span class="block type-meta">{{ b.path }}</span>
-            </span>
+            <span class="min-w-0 flex-1 font-medium text-ink">{{ b.name }}</span>
+            <Hint :label="`Выписка ${b.name}`">{{ b.path }}</Hint>
           </div>
         </Card>
         <!-- Одна строка + подсказка (правило интерфейса: пояснение длиннее строки — в Hint). -->
@@ -344,7 +345,7 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
           <span class="inline-flex items-center gap-1.5">Файл остаётся на телефоне <Hint>На сервер попадают только продавец, дата, сумма и раздел — без номеров и ФИО.</Hint></span>
         </Callout>
         <Callout v-for="e in errors" :key="e.name" tone="warn">
-          {{ e.name }}: {{ e.message }}<span v-if="e.detail" class="block text-[12px] text-ink-3">{{ e.detail }}</span>
+          {{ e.name }}: {{ e.message }}<span v-if="e.detail" class="block text-[12px] text-ink-2">{{ e.detail }}</span>
         </Callout>
         <input ref="fileInput" type="file" accept="application/pdf,.pdf" multiple class="hidden" @change="pick" />
         <div class="mt-auto flex flex-col gap-2 pt-2">
@@ -352,20 +353,20 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
             <PhFileArrowUp :size="18" />
             {{ reading ? 'Читаем выписку…' : 'Выбрать файл' }}
           </Button>
-          <Button variant="ghost" class="w-full" @click="manual = true">Введу вручную</Button>
+          <Button variant="ghost" size="md" class="w-full" @click="manual = true">Введу вручную</Button>
         </div>
       </template>
       <template v-else>
-        <Field label="Зарплата в месяц, ₸">
-          <NumField v-model="manualSalary" placeholder="450 000" />
+        <Field label="Зарплата в месяц, ₸" name="salary">
+          <NumField v-model="manualSalary" placeholder="450 000" class="bg-surface" />
         </Field>
         <Field label="День зарплаты (1–28)">
-          <NumField v-model="manualPayday" kind="int" placeholder="10" />
+          <NumField v-model="manualPayday" kind="int" placeholder="10" class="bg-surface" />
         </Field>
-        <p class="text-[12.5px] leading-relaxed text-ink-3">Оклад без премий.</p>
+        <p class="text-[12.5px] leading-relaxed text-ink-2">Оклад без премий.</p>
         <div class="mt-auto flex flex-col gap-2 pt-2">
-          <Button size="lg" class="w-full" :disabled="parseMoney(manualSalary) <= 0" @click="manualNext">Дальше</Button>
-          <Button variant="ghost" class="w-full" @click="manual = false">Лучше загружу выписку</Button>
+          <Button size="lg" class="w-full" @click="form.submit(manualNext)">Дальше</Button>
+          <Button variant="ghost" size="md" class="w-full" @click="manual = false">Лучше загружу выписку</Button>
         </div>
       </template>
     </template>
@@ -389,19 +390,19 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
           </template>
           <template v-if="recurringKind === 'credit'" #inner>
             <Field label="Остаток долга, ₸ — если знаете"><NumField v-model="creditPrincipal" placeholder="можно позже, в Капитале" /></Field>
-            <p class="text-[12px] text-ink-3">Ставку уточните потом в Капитале.</p>
+            <p class="text-[12px] text-ink-2">Ставку уточните потом в Капитале.</p>
           </template>
         </DecisionCard>
       </template>
       <template v-else-if="!salaryKnown">
-        <Field label="Зарплата в месяц, ₸">
-          <NumField v-model="manualSalary" placeholder="450 000" />
+        <Field label="Зарплата в месяц, ₸" name="salary">
+          <NumField v-model="manualSalary" placeholder="450 000" class="bg-surface" />
         </Field>
         <Field label="День зарплаты (1–28)">
-          <NumField v-model="manualPayday" kind="int" placeholder="10" />
+          <NumField v-model="manualPayday" kind="int" placeholder="10" class="bg-surface" />
         </Field>
         <div class="mt-auto flex flex-col gap-2 pt-2">
-          <Button size="lg" class="w-full" :disabled="parseMoney(manualSalary) <= 0" @click="manualAfterQuestions">{{ joining ? 'Готово' : 'Дальше' }}</Button>
+          <Button size="lg" class="w-full" @click="form.submit(manualAfterQuestions)">{{ joining ? 'Готово' : 'Дальше' }}</Button>
         </div>
       </template>
       <!-- Все вопросы закрыты (перезагрузка после ответов) — просто дальше. -->
@@ -448,7 +449,7 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
       <div class="mt-auto flex flex-col gap-2 pt-2">
         <!-- Одна брендовая кнопка (правило 12): до кода главная — «Создать код», «Позже» — тихая. -->
         <Button size="lg" class="w-full" :variant="inviteCode ? 'default' : 'ghost'" @click="finish">{{ inviteCode ? 'Готово' : 'Позже' }}</Button>
-        <p v-if="!inviteCode" class="text-center text-[12px] text-ink-3">Один человек — тоже семья. Код есть и в настройках.</p>
+        <p v-if="!inviteCode" class="text-center text-[12px] text-ink-2">Один человек — тоже семья. Код есть и в настройках.</p>
       </div>
     </template>
   </div>

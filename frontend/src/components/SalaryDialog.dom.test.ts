@@ -93,7 +93,7 @@ describe('SalaryDialog — оклад в валюте', () => {
     expect(text()).toContain('≈ 765 000 ₸ по курсу Нацбанка')
   })
 
-  it('валюты нет в книге и ручка молчит — поле курса руками; без курса сохранить нельзя', async () => {
+  it('валюты нет в книге и ручка молчит — поле курса руками; без курса «Сохранить» называет курс', async () => {
     const store = await mount()
     button('Изменить оклад').click()
     await flush()
@@ -105,11 +105,14 @@ describe('SalaryDialog — оклад в валюте', () => {
     inputs[0].value = '10000'
     inputs[0].dispatchEvent(new Event('input'))
     await flush()
-    expect(button('Сохранить').disabled).toBe(true)
+    button('Сохранить').click()
+    await flush()
+    expect(text()).toContain('Нет курса — попробуйте позже')
+    expect(store.people.find((x) => x.id === 'a')!.salaryVersions?.some((x) => x.currency === 'CNY')).toBeFalsy()
     inputs[1].value = '66,8'
     inputs[1].dispatchEvent(new Event('input'))
     await flush()
-    expect(button('Сохранить').disabled).toBe(false)
+    expect(text()).not.toContain('Нет курса — попробуйте позже')
     button('Сохранить').click()
     await flush()
     const v = store.people.find((x) => x.id === 'a')!.salaryVersions!.find((x) => x.currency === 'CNY')
