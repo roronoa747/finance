@@ -109,7 +109,10 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
       expect(html).not.toContain('href="/people/a"')
       expect(html).not.toContain('aria-label="Настройки"')
     }
-    expect(await renderScreen(AppShell, '/settings')).toContain('Ильяс · a@example.com')
+    // Под «Настройками» — только почта входа: имя — в поле «Ваше имя» ниже (ux Б17).
+    const settings = await renderScreen(AppShell, '/settings')
+    expect(settings).toContain('type-meta">a@example.com<')
+    expect(settings).not.toContain('Ильяс · a@example.com')
     // «Новая мечта» в шапке — без второго заголовка «На что копим?» под ней (он — заголовок шага первого запуска).
     const fresh = await renderScreen(AppShell, '/goals/new')
     expect(fresh).toContain('>Новая мечта</h1>')

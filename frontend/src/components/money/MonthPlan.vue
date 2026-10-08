@@ -611,10 +611,10 @@ function addFund(kind: 'reserve' | 'cushion') {
         <div class="flex flex-col gap-1.5">
           <template v-if="paySheet.paid">
             <p class="p-1 text-center text-[14px] font-semibold text-ok" data-paid>✓ Оплачено</p>
-            <Button variant="ghost" class="w-full" data-unpay @click="unpay(paySheet)">Не оплачено</Button>
+            <Button variant="ghost" size="md" class="w-full" data-unpay @click="unpay(paySheet)">Не оплачено</Button>
           </template>
           <Button v-else class="w-full" data-pay @click="pay(paySheet)">Оплатил</Button>
-          <Button variant="ghost" class="w-full" @click="editDue(paySheet)">Изменить платёж</Button>
+          <Button variant="ghost" size="md" class="w-full" @click="editDue(paySheet)">Изменить платёж</Button>
         </div>
       </template>
     </Sheet>
@@ -639,13 +639,13 @@ function addFund(kind: 'reserve' | 'cushion') {
         <div class="flex flex-col gap-1.5">
           <template v-if="putSheet.done">
             <p class="p-1 text-center text-[14px] font-semibold text-ok" data-put>✓ Отложено</p>
-            <Button v-if="putSheet.undo > 0" variant="ghost" class="w-full" data-unput @click="onUnput(putSheet)">Не отложено</Button>
+            <Button v-if="putSheet.undo > 0" variant="ghost" size="md" class="w-full" data-unput @click="onUnput(putSheet)">Не отложено</Button>
           </template>
           <template v-else>
             <p v-if="putSheet.put > 0" class="text-center type-meta num">уже отложено {{ plain(putSheet.put) }}</p>
             <Button class="w-full" data-put-one @click="onPut(putSheet)">Отложил{{ putSheet.put > 0 ? ` · ${money(putSheet.left)}` : '' }}</Button>
           </template>
-          <Button variant="ghost" class="w-full" @click="openDetail(putSheet)">{{ putSheet.kind === 'debt' ? 'Сумма в месяц' : 'Открыть цель' }}</Button>
+          <Button variant="ghost" size="md" class="w-full" @click="openDetail(putSheet)">{{ putSheet.kind === 'debt' ? 'Сумма в месяц' : 'Открыть цель' }}</Button>
         </div>
       </template>
     </Sheet>

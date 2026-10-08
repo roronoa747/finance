@@ -82,10 +82,8 @@ const header = computed<{ title: string; sub?: string }>(() => {
   if (p === '/wishes' || p.startsWith('/people/')) return { title: 'Желания' }
   if (p === '/settings/me') return { title: 'Свой кружок' }
   if (p === '/settings') {
-    // g7: «Ильяс · ilyas@…» — имя в семье и почта входа.
-    const me = people.value.find((x) => x.id === authStore.slot)?.name
-    // В демо почты нет — только «Вы» (Р-118).
-    const sub = [me, authStore.isDemo ? null : authStore.user?.email].filter(Boolean).join(' · ')
+    // Под заголовком — только почта входа: имя — в поле «Ваше имя» ниже (Р-116, макет Б17); в демо почты нет.
+    const sub = authStore.isDemo ? null : authStore.user?.email
     return sub ? { title: 'Настройки', sub } : { title: 'Настройки' }
   }
   return { title: 'Family Finance' }

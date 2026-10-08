@@ -193,7 +193,7 @@ function onCreditDay(text: string) {
 
       <!-- Одна главная внизу (правило 12); досрочка — тихо под ней. Без ставки калькулятор врал бы «экономия 0» (B2C-19). -->
       <Button class="w-full" @click="close">Готово</Button>
-      <Button v-if="!activeCredit.rateUnknown" variant="ghost" class="mb-1 w-full" data-credit-payoff @click="emit('payoff', activeCredit.id)">
+      <Button v-if="!activeCredit.rateUnknown" variant="ghost" size="md" class="mt-2 w-full" data-credit-payoff @click="emit('payoff', activeCredit.id)">
         Посчитать досрочно
       </Button>
 

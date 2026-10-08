@@ -155,7 +155,7 @@ function leave(choice: 'keep' | 'discard') {
         >
           Выйти, правки пропадут
         </Button>
-        <Button variant="ghost" class="w-full" :disabled="sending" @click="leaving = null">Остаться</Button>
+        <Button variant="ghost" size="md" class="w-full" :disabled="sending" @click="leaving = null">Остаться</Button>
       </div>
     </div>
     </template>

@@ -353,20 +353,20 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
             <PhFileArrowUp :size="18" />
             {{ reading ? 'Читаем выписку…' : 'Выбрать файл' }}
           </Button>
-          <Button variant="ghost" class="w-full" @click="manual = true">Введу вручную</Button>
+          <Button variant="ghost" size="md" class="w-full" @click="manual = true">Введу вручную</Button>
         </div>
       </template>
       <template v-else>
         <Field label="Зарплата в месяц, ₸" name="salary">
-          <NumField v-model="manualSalary" placeholder="450 000" />
+          <NumField v-model="manualSalary" placeholder="450 000" class="bg-surface" />
         </Field>
         <Field label="День зарплаты (1–28)">
-          <NumField v-model="manualPayday" kind="int" placeholder="10" />
+          <NumField v-model="manualPayday" kind="int" placeholder="10" class="bg-surface" />
         </Field>
         <p class="text-[12.5px] leading-relaxed text-ink-2">Оклад без премий.</p>
         <div class="mt-auto flex flex-col gap-2 pt-2">
           <Button size="lg" class="w-full" @click="form.submit(manualNext)">Дальше</Button>
-          <Button variant="ghost" class="w-full" @click="manual = false">Лучше загружу выписку</Button>
+          <Button variant="ghost" size="md" class="w-full" @click="manual = false">Лучше загружу выписку</Button>
         </div>
       </template>
     </template>
@@ -396,10 +396,10 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
       </template>
       <template v-else-if="!salaryKnown">
         <Field label="Зарплата в месяц, ₸" name="salary">
-          <NumField v-model="manualSalary" placeholder="450 000" />
+          <NumField v-model="manualSalary" placeholder="450 000" class="bg-surface" />
         </Field>
         <Field label="День зарплаты (1–28)">
-          <NumField v-model="manualPayday" kind="int" placeholder="10" />
+          <NumField v-model="manualPayday" kind="int" placeholder="10" class="bg-surface" />
         </Field>
         <div class="mt-auto flex flex-col gap-2 pt-2">
           <Button size="lg" class="w-full" @click="form.submit(manualAfterQuestions)">{{ joining ? 'Готово' : 'Дальше' }}</Button>

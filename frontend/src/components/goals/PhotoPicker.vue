@@ -100,8 +100,8 @@ function onFile(e: Event) {
 
       <!-- Автор — один раз, на самом фото героя после выбора (владелец): здесь строкой не повторяем. -->
       <Button size="lg" class="w-full" @click="form.submit(confirm)">Выбрать это</Button>
-      <Button v-if="skippable" variant="ghost" class="w-full" @click="emit('skip')">Пропустить</Button>
-      <Button v-if="removable" variant="ghost" class="w-full" @click="emit('remove')">Убрать фото</Button>
+      <Button v-if="skippable" variant="ghost" size="md" class="w-full" @click="emit('skip')">Пропустить</Button>
+      <Button v-if="removable" variant="ghost" size="md" class="w-full" @click="emit('remove')">Убрать фото</Button>
     </div>
   </Sheet>
 </template>

@@ -185,7 +185,7 @@ const inShell = inject<boolean>('ff-shell-actions', false)
       <!-- Механика (Unsplash, сжатие) на экране не объясняется — автор виден на фото (правило интерфейса). -->
       <div class="mt-auto flex flex-col gap-2 pt-2">
         <Button size="lg" class="w-full" @click="form.submit(next)">Дальше</Button>
-        <Button variant="ghost" class="w-full" @click="skip">Пока без мечты</Button>
+        <Button variant="ghost" size="md" class="w-full" @click="skip">Пока без мечты</Button>
       </div>
     </template>
 
@@ -197,14 +197,14 @@ const inShell = inject<boolean>('ff-shell-actions', false)
         line=""
       />
       <Field label="Название" name="name">
-        <Input v-model="name" placeholder="Япония" />
+        <Input v-model="name" placeholder="Япония" class="bg-surface" />
       </Field>
       <Field label="Сколько нужно" name="need">
-        <NumField v-model="needText" placeholder="1 800 000" />
+        <NumField v-model="needText" placeholder="1 800 000" class="bg-surface" />
       </Field>
       <Field label="Когда" group>
         <Segmented v-model="term" :options="TERMS" />
-        <NumField v-if="term === 'custom'" v-model="customMonths" kind="int" placeholder="месяцев" class="mt-2" />
+        <NumField v-if="term === 'custom'" v-model="customMonths" kind="int" placeholder="месяцев" class="mt-2 bg-surface" />
       </Field>
       <div v-if="need > 0" class="rounded-inner bg-surface-2 px-3.5 py-3">
         <div class="flex items-center justify-between gap-3">
@@ -215,7 +215,7 @@ const inShell = inject<boolean>('ff-shell-actions', false)
       </div>
       <div class="mt-auto flex flex-col gap-2 pt-2">
         <Button size="lg" class="w-full" @click="form.submit(create)">Готово — к мечте</Button>
-        <Button variant="ghost" class="w-full" @click="step = 'pick'">Назад</Button>
+        <Button variant="ghost" size="md" class="w-full" @click="step = 'pick'">Назад</Button>
       </div>
     </template>
   </div>

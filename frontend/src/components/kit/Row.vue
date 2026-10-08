@@ -90,16 +90,16 @@ function handleClick(e: MouseEvent) {
 
         <svg
           v-if="clickable"
-          width="8"
-          height="14"
+          width="6"
+          height="11"
           viewBox="0 0 8 14"
           fill="none"
           aria-hidden="true"
           stroke="currentColor"
-          stroke-width="1.8"
+          stroke-width="1.6"
           stroke-linecap="round"
           stroke-linejoin="round"
-          class="ml-0.5 shrink-0 text-ink-2"
+          class="ml-0.5 shrink-0 text-ink-3"
         >
           <path d="M1 1l5.5 6L1 13" />
         </svg>

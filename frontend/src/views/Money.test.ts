@@ -595,7 +595,7 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(o.monthsSooner).toBeGreaterThan(0)
       // Одна крупная цифра (Б17): на сколько раньше; шаг — строкой под ней.
       expect(html).toMatch(new RegExp(`data-plan-sooner[^>]*>на ${o.monthsSooner} мес\\. раньше<`))
-      expect(html).toMatch(new RegExp(`data-plan-step[^>]*>${money(100_000)} → Кредитка · 40 %<`))
+      expect(html).toMatch(new RegExp(`data-plan-step[^>]*>${money(100_000)} в месяц → Кредитка · 40 %<`))
       // Полный прогноз — в «Подробнее».
       expect(t).toContain(
         `Закроется в ${monthIn(o.debtFreeMonth!)}, на ${o.monthsSooner} мес. раньше. Переплата ${plain(o.overpayWithout!)} → ${money(o.overpayWith!)}.`,

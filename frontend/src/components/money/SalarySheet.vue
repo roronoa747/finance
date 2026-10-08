@@ -66,8 +66,8 @@ watch(
       </div>
       <SalaryRow v-if="mine && line.open" button :person-id="line.person" :period="monthKey" />
       <div class="mt-2 flex flex-col gap-1.5">
-        <Button v-if="mine && line.came" variant="ghost" class="w-full" data-salary-paid @click="next('paid')">Другая сумма или снять</Button>
-        <Button v-if="canEdit" variant="ghost" class="w-full" data-salary-edit @click="next('edit')">Изменить оклад</Button>
+        <Button v-if="mine && line.came" variant="ghost" size="md" class="w-full" data-salary-paid @click="next('paid')">Другая сумма или снять</Button>
+        <Button v-if="canEdit" variant="ghost" size="md" class="w-full" data-salary-edit @click="next('edit')">Изменить оклад</Button>
       </div>
     </template>
   </Sheet>

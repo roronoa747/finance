@@ -515,7 +515,7 @@ function startDemoMode() {
       <Button class="w-full mt-1" :disabled="busy" @click="answerDemo(true)">
         {{ busy ? 'Минуту…' : 'Да, взять' }}
       </Button>
-      <Button variant="ghost" class="w-full" :disabled="busy" @click="answerDemo(false)">
+      <Button variant="ghost" size="md" class="w-full" :disabled="busy" @click="answerDemo(false)">
         Нет, начать с чистого
       </Button>
     </div>

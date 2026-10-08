@@ -91,7 +91,7 @@ const stepLine = computed(() => {
   const s = step.value
   if (s && s.kind === 'prepay' && !s.applied) {
     const c = financeStore.credits.find((x) => x.id === s.creditId)
-    return c ? `${money(s.amount)} → ${c.name} · ${ratePct(c.annualRate, 0).replace('%', ' %')}` : stepText.value
+    return c ? `${money(s.amount)} в месяц → ${c.name} · ${ratePct(c.annualRate, 0).replace('%', ' %')}` : stepText.value
   }
   return stepText.value
 })
@@ -331,7 +331,7 @@ function choosePlan(opts: { keptGoalIds: string[]; cushionGoalId: string | null;
   <Sheet :open="cancelOpen" title="Выключить план?" @close="cancelOpen = false">
     <p class="mb-4 text-[14px] text-ink-2">Цели возобновятся, история плана останется.</p>
     <Button variant="destructive" class="mb-2 w-full" @click="cancelPlan">Отменить план</Button>
-    <Button variant="ghost" class="w-full" @click="cancelOpen = false">Оставить</Button>
+    <Button variant="ghost" size="md" class="w-full" @click="cancelOpen = false">Оставить</Button>
   </Sheet>
 
   <PayoffSheet :credit-id="payoffCreditId" @close="payoffCreditId = null" />
