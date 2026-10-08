@@ -255,3 +255,22 @@ describe('ML-16: формы «Человеку» и «Людям»', () => {
     expect('people' in store.householdDoc.obligations.find((o) => o.name === 'Интернет')!).toBe(false)
   })
 })
+
+describe('ML-17: лист долга человеку', () => {
+  it('без «Ставка» и «Готово»; поля «Кому», «Осталось», «В месяц», «День»; правка по уходу из поля', async () => {
+    const { pinia, store } = family()
+    const id = store.addCredit({ name: 'Брату', principal: 500_000, annualRate: 0, payment: 50_000, day: 25, person: true })
+    mount(pinia, () => h(CreditSheet, { creditId: id, onClose: () => {} }))
+    await nextTick()
+    const dialog = document.querySelector('[role="dialog"]')!.textContent!
+    for (const t of ['Ставка', 'Готово', 'Посчитать досрочно']) expect(dialog).not.toContain(t)
+    for (const t of ['Кому', 'Осталось', 'В месяц', 'День', 'Отдаю сейчас']) expect(dialog).toContain(t)
+    const pay = field('В месяц')
+    pay.focus()
+    pay.value = '40 000'
+    pay.dispatchEvent(new Event('input', { bubbles: true }))
+    pay.blur()
+    await nextTick()
+    expect(store.credits.find((c) => c.id === id)).toMatchObject({ payment: 40_000, person: true, annualRate: 0 })
+  })
+})

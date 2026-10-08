@@ -342,3 +342,94 @@ describe('B2C-102: «История» — месяцы и «Все записи�
     expect(all('[data-history-month]')).toHaveLength(2)
   })
 })
+
+describe('ML-17: «Долги» — долг человеку, «Людям · N», «Отдал» у строки', () => {
+  const BRO = { id: 'bro', name: 'Брату', note: '', principal: 500_000, principalSetAt: T0, annualRate: 0, payment: 50_000, day: 25, person: true, updatedAt: T0 }
+  const ob = (id: string, name: string, day: number, amount: number) =>
+    ({ id, name, note: '', day, category: 'd4' as const, people: true, versions: [{ from: '2000-01', amount }], updatedAt: T0 })
+  const people = [ob('mom', 'Маме', 5, 100_000), ob('school', 'Школа', 1, 45_000)]
+  // Август отдали с Kaspi Gold — «Отдал» сентября пишет одним нажатием с того же счёта (Р-5).
+  const augGiven = paid('credit', 'bro', '2026-08', 50_000, { principal: 50_000, at: '2026-08-25T05:00:00.000Z' })
+  function withPeople(extra: Partial<SyncDoc> = {}) {
+    const base = familyDoc()
+    return familyDoc({ credits: [...base.credits!, BRO], obligations: [...base.obligations!, ...people], payments: [...base.payments!, augGiven], ...extra })
+  }
+  const giveIn = (id: string) => q(`[data-debt="${id}"]`)!.parentElement!.querySelector<HTMLElement>('[data-debt-give]')
+
+  it('строка брата без ставки и срока, «Отдал» в строке; «Людям · 2» свёрнута и не в сумме долгов', async () => {
+    const finance = await open('member', withPeople(), '/money/debts')
+    const o = debtsOverview({ ...finance.planState(), plans: finance.plans }, KEY)
+    // 1 540 000 кредитов + 500 000 брату = 2 040 000; «Маме» и «Школа» (145 000 в месяц) — не остаток.
+    expect(o.total).toBe(2_040_000)
+    expect(num(q('[data-debts-total]'))).toBe(2_040_000)
+    const bro = q('[data-debt="bro"]')!
+    expect(txt(bro)).toBe(`Брату${norm(money(500_000))}${norm(plain(50_000))} в месяц`)
+    expect(giveIn('bro')).not.toBeNull()
+    expect(giveIn('loan')).toBeNull()
+    // Людям: 100 000 + 45 000 = 145 000 в месяц; свёрнута.
+    expect(txt(q('[data-people]'))).toContain('Людям · 2')
+    expect(num(q('[data-people-total]'))).toBe(145_000)
+    expect(q('[data-people-list]')).toBeNull()
+    await press(q('[data-people] button'))
+    expect(txt(q('[data-people-list]'))).toMatch(/Школа.*Маме/)
+    expect(q('[data-add-people]')).not.toBeNull()
+    // Платёж людям — его лист.
+    await press(all('[data-people-list] [data-payment] button')[1])
+    expect(txt(dialog())).toContain('Маме')
+  })
+
+  it('«Отдал» — отметка месяца на платёж, остаток падает, ✓ у суммы, кнопки нет', async () => {
+    const finance = await open('member', withPeople(), '/money/debts')
+    const spy = vi.spyOn(finance, 'markPaid')
+    await press(giveIn('bro'))
+    expect(spy).toHaveBeenCalledWith('credit', 'bro', 'a', { period: KEY, accountId: 'card' })
+    expect(finance.payments.find((p) => p.targetId === 'bro' && p.period === KEY)).toMatchObject({ amount: 50_000, principal: 50_000 })
+    // 500 000 − 50 000 = 450 000; сумма долгов 2 040 000 − 50 000 = 1 990 000.
+    expect(txt(q('[data-debt="bro"]'))).toContain(norm(money(450_000)))
+    expect(num(q('[data-debts-total]'))).toBe(1_990_000)
+    expect(q('[data-debt="bro"] [data-debt-given]')).not.toBeNull()
+    expect(giveIn('bro')).toBeNull()
+  })
+
+  it('первая отдача — счёт спрашивает лист отметки', async () => {
+    await open('member', withPeople({ payments: [] }), '/money/debts')
+    await press(giveIn('bro'))
+    expect(txt(dialog())).toContain('Брату')
+  })
+
+  it('viewer — строка и «Людям» видны, без «Отдал», «+ Людям» и «+ Долг»', async () => {
+    await open('viewer', withPeople(), '/money/debts')
+    expect(q('[data-debt="bro"]')).not.toBeNull()
+    expect(giveIn('bro')).toBeNull()
+    await press(q('[data-people] button'))
+    expect(q('[data-people-list]')).not.toBeNull()
+    expect(q('[data-add-people]')).toBeNull()
+    expect(q('[data-add-credit]')).toBeNull()
+  })
+
+  it('лист долга человеку: без ставки и досрочки; «Отдаю сейчас» 30 000 → «✓ Отдал в сентябре»', async () => {
+    const finance = await open('member', withPeople(), '/money/debts')
+    await press(q('[data-debt="bro"]'))
+    const d = () => txt(dialog())
+    for (const t of ['Ставка', 'ГЭСВ', 'Посчитать досрочно', 'График платежей', 'Примечание']) expect(d()).not.toContain(t)
+    expect(d()).toContain('закроется в')
+    expect(d()).toContain('Удалить долг')
+    const input = all('[role="dialog"] label').find((l) => txt(l).startsWith('Отдаю сейчас'))!.querySelector('input')!
+    expect(input.value).toBe(plain(50_000))
+    input.value = '30 000'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await press(q('[data-person-give]'))
+    expect(finance.payments.find((p) => p.targetId === 'bro' && p.period === KEY)).toMatchObject({ amount: 30_000, principal: 30_000 })
+    expect(txt(q('[data-person-given]'))).toBe(`✓ Отдал в сентябре${norm(money(30_000))}`)
+    expect(q('[data-person-give]')).toBeNull()
+  })
+
+  it('viewer — лист только чтением: остаток, «В месяц», «День», без полей и кнопок', async () => {
+    await open('viewer', withPeople(), '/money/debts')
+    await press(q('[data-debt="bro"]'))
+    expect(txt(dialog())).toContain('В месяц')
+    expect(all('[role="dialog"] input')).toEqual([])
+    expect(q('[data-person-give]')).toBeNull()
+    expect(txt(dialog())).not.toContain('Удалить долг')
+  })
+})
