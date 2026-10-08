@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchCandidates, matchCategory, matchKey, nearestPeriod, operationAt, paymentFits, recentOperations, releasedOps, ruleHit } from './matching'
+import { markedOps, matchCandidates, matchCategory, matchKey, nearestPeriod, operationAt, paymentFits, recentOperations, releasedOps, ruleHit } from './matching'
 import { assignIds, normalizeMerchant } from './model'
 import type { MerchantRule, Operation } from './types'
 import type { Credit, Obligation, Payment, Person } from '@/types/finance'
@@ -157,6 +157,39 @@ describe('matchCandidates', () => {
     expect(ruleHit(ops(op('2026-03-10', -120_000, 'INS'))[0], pay('obligation', 'ins'), yearly)).toMatchObject({ target: { id: 'ins' }, period: '2026-03' })
     expect(ruleHit(ops(op('2026-09-10', -120_000, 'INS'))[0], pay('obligation', 'ins'), yearly)).toBeNull()
     expect(paymentFits({ obligations: [insurance] })(ops(op('2026-09-10', -120_000, 'INS'))[0], pay('obligation', 'ins'))).toBe(false)
+  })
+
+  it('ML-03 (хвост 967): пара «цель · месяц» отмечена одной строкой — вторая строка того же продавца в допуске не «такая»', () => {
+    const pay = { kind: 'obligation' as const, targetId: 'sub', categoryId: 'sc_subscriptions' }
+    const sub = ob('sub', 'Курсы', 15_000, 5, { category: 'd4' })
+    const [first, second] = ops(op('2026-09-05', -15_000, 'PEREVOD'), op('2026-09-06', -15_000, 'PEREVOD'))
+    const mark = (opId?: string, extra: Partial<Payment> = {}): Payment => ({
+      id: `p-${opId}`, kind: 'obligation', targetId: 'sub', period: '2026-09', amount: 15_000, accountId: null, by: 'a', at: T, updatedAt: T, opId, ...extra,
+    })
+    // Отметки нет — обе «такие» (минимум хвоста: до отметки строка не знает, что она вторая).
+    expect([first, second].map((o) => paymentFits({ obligations: [sub] })(o, pay))).toEqual([true, true])
+    const fits = paymentFits({ obligations: [sub], payments: [mark(first.id)] })
+    expect(fits(first, pay)).toBe(true)
+    expect(fits(second, pay)).toBe(false)
+    // Отметка руками (без строки) и снятая отметка — вторую не вытесняют.
+    expect(paymentFits({ obligations: [sub], payments: [mark(undefined)] })(second, pay)).toBe(true)
+    expect(paymentFits({ obligations: [sub], payments: [mark(first.id, { deletedAt: T })] })(second, pay)).toBe(true)
+  })
+
+  it('ML-03 (хвосты 952/967): markedOps — строки, чей платёж в плане месяца: отмеченная, отмеченной руками пары, ждущая ответа; без цели, вторая и «нет» — траты', () => {
+    const list = ops(op('2026-09-05', -220_000, 'PEREVOD ARENDA'), op('2026-09-06', -80_000, 'KASPI RASSROCHKA'), op('2026-09-15', -58_000, 'BANK'), op('2026-09-06', -220_000, 'PEREVOD ARENDA'))
+    const [rentRow, other, loanRow, rentAgain] = list
+    const mark = (p: Partial<Payment>): Payment => ({ id: 'm', kind: 'obligation', targetId: 'rent', period: '2026-09', amount: 220_000, accountId: null, by: 'a', at: T, updatedAt: T, ...p })
+    const sorted = (s: Set<string>) => [...s].sort()
+    // Отметок нет: аренда и кредит ждут ответа — их суммы уже в платежах месяца; рассрочка без цели — трата; пара — одна строка.
+    expect(sorted(markedOps(list, state, []))).toEqual([rentRow.id, loanRow.id].sort())
+    // Аренда отмечена второй строкой: она и есть платёж, первая — трата.
+    expect(sorted(markedOps(list, { ...state, payments: [mark({ opId: rentAgain.id })] }, []))).toEqual([loanRow.id, rentAgain.id].sort())
+    // Аренда отмечена руками «Оплатил» — её строка выписки этот платёж, не трата.
+    expect(markedOps(list, { ...state, payments: [mark({})] }, []).has(rentRow.id)).toBe(true)
+    // «Нет, это другое» о кредите — строка трата.
+    expect(markedOps(list, state, [], undefined, [matchKey({ kind: 'credit', targetId: 'loan', period: '2026-09' })]).has(loanRow.id)).toBe(false)
+    expect(markedOps([other], state, []).size).toBe(0)
   })
 
   it('releasedOps: снятая отметка с id операции освобождает её; правка отметки и повторная отметка месяца — нет', () => {

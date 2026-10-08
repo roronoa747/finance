@@ -244,9 +244,10 @@ function answerRecurring(save = true) {
     const op = ops.all.find((o) => o.id === c.opIds[0])
     if (op) {
       const goal = target.kind === 'credit' ? financeStore.credits.find((x) => x.id === target.id) : financeStore.obligations.find((x) => x.id === target.id)
-      void ops.recategorize(ruleMatchOf(op), { payment: { kind: target.kind, targetId: target.id, categoryId: goal ? matchCategory(target.kind, goal) : null } })
+      // Отметка — до пересчёта: итоги пишутся с ней, отмеченная строка не трата (хвосты 952/967).
       const cur = paymentOpOfMonth(groupOps(c.opIds), c.amount, monthKey(), kind === 'utilities')
       if (cur) financeStore.markPaid(target.kind, target.id, slot.value, { period: monthKey(), amount: Math.abs(cur.amount), source: 'statement', opId: cur.id, at: operationAt(cur.date, before) })
+      void ops.recategorize(ruleMatchOf(op), { payment: { kind: target.kind, targetId: target.id, categoryId: goal ? matchCategory(target.kind, goal) : null } })
     }
   }
   markAnswered(c.key)

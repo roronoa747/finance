@@ -1154,6 +1154,14 @@ export function moneySettingsOf(doc: { moneySettings?: MoneySettings | null }): 
   return { ...DEFAULT_MONEY_SETTINGS, potGoalId: null, orderedAt: null, updatedAt: '', ...(doc.moneySettings ?? {}) }
 }
 
+/**
+ * Итог раздела в тратах — одно правило «Свободно», «Месяца», «Истории» и «Недели» (хвосты 952/967): раздел платежей
+ * (`plannedElsewhere`) — только строки без отметки (`unmarked`: незаведённая рассрочка, вторая строка продавца),
+ * отмеченные уже в платежах месяца; остальные разделы и «не разобрано» — весь итог.
+ */
+export const spentOf = (t: SpendTotal, live: SpendCategory[]) =>
+  t.categoryId === UNKNOWN_CATEGORY || !plannedElsewhere(t.categoryId, live) ? t.amount : (t.unmarked ?? 0)
+
 /** Строка трат плана месяца (Р-81): живая, с суммой, раздел не учтён платежами (`plannedElsewhere`). */
 export const planSpendOn = (x: SpendPlan, live: SpendCategory[]) => !x.deletedAt && x.amount > 0 && !plannedElsewhere(x.categoryId, live)
 
@@ -3105,7 +3113,7 @@ export function monthPlan(state: MonthPlanState, ctx: MonthPlanCtx): MonthPlan {
         .filter((x) => x.by === p.id && planSpendOn(x, live))
         .map((x) => ({ categoryId: x.categoryId, name: spendCategoryName(named, x.categoryId), plan: x.amount, fact: factOf(x.categoryId) }))
       const fact = has
-        ? mine.filter((t) => t.categoryId === UNKNOWN_CATEGORY || !plannedElsewhere(t.categoryId, live)).reduce((s, t) => s + t.amount, 0)
+        ? mine.reduce((s, t) => s + spentOf(t, live), 0)
         : null
       return { by: p.id, plan: rows.reduce((s, r) => s + r.plan, 0), fact, rows }
     })
@@ -3693,7 +3701,7 @@ export function monthPlanPast(
   const saved = amountTotal(goals)
   const prepaid = amountTotal(counted.filter((p) => p.kind === 'prepay'))
   const spent = totals.length
-    ? totals.filter((t) => t.categoryId === UNKNOWN_CATEGORY || !plannedElsewhere(t.categoryId, live)).reduce((s, t) => s + t.amount, 0)
+    ? totals.reduce((s, t) => s + spentOf(t, live), 0)
     : null
   return {
     key,
@@ -3869,8 +3877,8 @@ function mySpendOf(totals: SpendTotal[], live: SpendCategory[], by: PersonId, we
   const out = new Map<string, number>()
   for (const t of totals) {
     if (t.deletedAt || t.by !== by || t.kind !== 'week' || t.period !== week || t.amount <= 0) continue
-    if (t.categoryId !== UNKNOWN_CATEGORY && plannedElsewhere(t.categoryId, live)) continue
-    out.set(t.categoryId, (out.get(t.categoryId) ?? 0) + t.amount)
+    const spent = spentOf(t, live)
+    if (spent > 0) out.set(t.categoryId, (out.get(t.categoryId) ?? 0) + spent)
   }
   return out
 }
@@ -4207,8 +4215,7 @@ export function monthSpentByFact(totals: SpendTotal[], spendCategories: SpendCat
   const live = spendCategories.filter(alive)
   return totals
     .filter((t) => !t.deletedAt && t.kind === 'month' && t.period === key && t.amount > 0)
-    .filter((t) => t.categoryId === UNKNOWN_CATEGORY || !plannedElsewhere(t.categoryId, live))
-    .reduce((a, t) => a + t.amount, 0)
+    .reduce((a, t) => a + spentOf(t, live), 0)
 }
 
 export type DecisionKind = 'match' | 'unknownBatch' | 'keep' | 'monthEnd'

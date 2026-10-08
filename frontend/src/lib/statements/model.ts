@@ -1,7 +1,7 @@
 import { weekKey } from '@/lib/dates'
 import type { Person, PersonId, SyncDoc } from '@/types/finance'
-import { DEFAULT_SPEND_CATEGORIES, DICTIONARY, KIND_CATEGORY, UNKNOWN_CATEGORY } from './dictionary'
-import type { MerchantRule, Operation, PaymentRule, SpendTotal } from './types'
+import { DEFAULT_SPEND_CATEGORIES, DICTIONARY, KIND_CATEGORY, UNKNOWN_CATEGORY, plannedElsewhere } from './dictionary'
+import type { MerchantRule, Operation, PaymentRule, SpendCategory, SpendTotal } from './types'
 
 // Модель операций выписки (B2C-02): чистые функции, деньги — целые тенге.
 
@@ -276,7 +276,8 @@ export const isSpend = (op: Pick<Operation, 'amount' | 'internal'>) => op.amount
 
 /**
  * Итоги по разделам за период (Р-21): только списания, внутренние не входят; незнакомое —
- * `_unknown`. Суммы положительные, целые. Считаются из **всех** операций периода.
+ * `_unknown`. Суммы положительные, целые. Считаются из **всех** операций периода. `marks` — у разделов
+ * платежей (`plannedElsewhere`) сумма строк без отметки (`unmarked`, хвосты 952/967).
  */
 export function spendTotals(
   ops: Operation[],
@@ -284,6 +285,7 @@ export function spendTotals(
   kind: SpendTotal['kind'],
   period: string,
   at = new Date().toISOString(),
+  marks?: { marked: ReadonlySet<string>; categories: Pick<SpendCategory, 'id' | 'plannedElsewhere'>[] },
 ): SpendTotal[] {
   const out = new Map<string, SpendTotal>()
   for (const op of ops) {
@@ -293,6 +295,9 @@ export function spendTotals(
     const total = out.get(id) ?? { id, by, kind, period, categoryId, amount: 0, ops: 0, updatedAt: at }
     total.amount += -op.amount
     total.ops += 1
+    if (marks && !marks.marked.has(op.id) && op.categoryId && plannedElsewhere(op.categoryId, marks.categories)) {
+      total.unmarked = (total.unmarked ?? 0) - op.amount
+    }
     out.set(id, total)
   }
   return [...out.values()].sort((a, b) => a.categoryId.localeCompare(b.categoryId))

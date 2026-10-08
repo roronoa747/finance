@@ -104,6 +104,7 @@ import {
   goalRemaining,
   freeByFact,
   allocatedBeyondPlan,
+  spentOf,
   monthSpentByFact,
   decisionQueue,
   liveObligations,
@@ -119,7 +120,8 @@ import {
   moneyArticlesOf,
   moneySettingsOf,
 } from './finance'
-import type { SpendCategory, SpendTotal } from '@/lib/statements/types'
+import type { Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
+import { spendTotals } from '@/lib/statements/model'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import { DEFAULT_SPEND_CATEGORIES, spendArticle } from '@/lib/statements/dictionary'
 import { plain, money, moneyShort, parseMoney, pct, ratePct } from './money'
@@ -2473,6 +2475,33 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       const f = freeByFact(state, [total('a', 'month', '2026-09', 'sc_credit', 58_000)], own, '2026-09', uploads)
       expect(f.spent).toBe(58_000)
       expect(freeByFact(state, [total('a', 'month', '2026-09', 'sc_credit', 58_000)], [], '2026-09', uploads).spent).toBe(0)
+    })
+
+    describe('ML-03 (хвосты 952/967): раздел платежей — трата только строками без отметки', () => {
+      const row = (id: string, date: string, amount: number, categoryId: string): Operation => ({
+        id, bank: 'kaspi', date, amount, kind: 'purchase', merchant: id, categoryId, internal: false,
+      })
+      const month = (rows: Operation[], marked: string[]) =>
+        spendTotals(rows, 'a', 'month', '2026-09', T, { marked: new Set(marked), categories })
+      const base = freeByFact(state, [], categories, '2026-09', uploads)
+
+      it('рассрочка Kaspi 80 000 без обязательства — трата; подписка с отметкой — нет (она в платежах)', () => {
+        const totals = month([row('kaspi', '2026-09-03', -80_000, 'sc_credit'), row('nf', '2026-09-03', -4_990, 'sc_subscriptions')], ['nf'])
+        expect(totals.map((t) => [t.categoryId, t.amount, t.unmarked])).toEqual([['sc_credit', 80_000, 80_000], ['sc_subscriptions', 4_990, undefined]])
+        const f = freeByFact(state, totals, categories, '2026-09', uploads)
+        expect(f.spent).toBe(80_000)
+        expect(f.amount).toBe(base.amount - 80_000)
+      })
+
+      it('две строки по 15 000, отмечена одна — трата 15 000 (не 0 и не 30 000); итог без поля — по-старому вне трат', () => {
+        const totals = month([row('p1', '2026-09-05', -15_000, 'sc_subscriptions'), row('p2', '2026-09-06', -15_000, 'sc_subscriptions')], ['p1'])
+        expect(freeByFact(state, totals, categories, '2026-09', uploads).spent).toBe(15_000)
+        expect(spentOf(totals[0], categories)).toBe(15_000)
+        expect(spentOf({ ...totals[0], unmarked: undefined }, categories)).toBe(0)
+        // Флаг семьи снят — раздел весь в тратах, как раньше.
+        const own = categories.map((c) => (c.id === 'sc_subscriptions' ? { ...c, plannedElsewhere: false } : c))
+        expect(spentOf(totals[0], own)).toBe(30_000)
+      })
     })
 
     describe('ML-02 (хвост 951): раскладка месяца уменьшает «Свободно» — без двойного счёта с планом', () => {

@@ -109,12 +109,46 @@ export function ruleHit(op: Operation, payment: PaymentRule, targets: RuleTarget
  * правило на «Перевод с карты на карту» 15 000 убирало из «Свободно» все переводы месяца. Кредит —
  * и закрытый: его последний платёж остаётся в плане месяца.
  */
-export function paymentFits(state: { obligations?: Obligation[]; credits?: Credit[]; book?: RateBook | null }): (op: Operation, payment: PaymentRule) => boolean {
+export function paymentFits(state: {
+  obligations?: Obligation[]
+  credits?: Credit[]
+  book?: RateBook | null
+  payments?: Payment[]
+}): (op: Operation, payment: PaymentRule) => boolean {
   const targets = { obligations: liveObligations(state.obligations ?? []), credits: liveCredits(state.credits ?? []), people: [], salary: { book: state.book } }
-  return (op, payment) => ruleHit(op, payment, targets) !== null
+  // Пара «цель · месяц» уже отмечена другой строкой — эта не «такая» (хвост 967): два перевода по 15 000 — плановый один.
+  const byOp = new Map((state.payments ?? []).filter((p) => !p.deletedAt && p.opId).map((p) => [key(p), p.opId!]))
+  return (op, payment) => {
+    const hit = ruleHit(op, payment, targets)
+    if (!hit) return false
+    const other = byOp.get(key({ kind: payment.kind, targetId: payment.targetId, period: hit.period }))
+    return !other || other === op.id
+  }
 }
 
-const key = (c: Pick<MatchCandidate, 'kind' | 'targetId' | 'period'>) => `${c.kind}:${c.targetId}:${c.period}`
+/**
+ * Строки, чей платёж уже в платежах месяца (`monthDues`, хвосты 952/967): отмеченные из выписки (живой
+ * `Payment.opId`) и та строка, которую сопоставление отдаёт паре «цель · месяц» без такой отметки — отмеченной руками
+ * или ждущей ответа «это платёж по …?»: в платежах месяца уже её сумма, вычесть строку ещё и тратой — дважды. Пара
+ * берёт одну строку (`matchCandidates`): вторая строка продавца в месяце — трата. «Нет, это другое» (`declined`) —
+ * трата. Остальные строки разделов платежей — траты (`SpendTotal.unmarked`).
+ */
+export function markedOps(
+  ops: Operation[],
+  state: { obligations?: Obligation[]; credits?: Credit[]; people?: Person[]; payments?: Payment[]; fxExchanges?: FxExchange[]; book?: RateBook | null },
+  rules: MerchantRule[],
+  me?: PersonId,
+  declined: string[] = [],
+): Set<string> {
+  const linked = (state.payments ?? []).filter((p) => !p.deletedAt && p.opId)
+  const out = new Set(linked.map((p) => p.opId!))
+  for (const c of matchCandidates(ops, { ...state, payments: linked }, rules, me)) if (!declined.includes(key(c))) out.add(c.opId)
+  return out
+}
+
+function key(c: { kind: string; targetId: string; period: string }) {
+  return `${c.kind}:${c.targetId}:${c.period}`
+}
 
 /** Ключ решения «нет» на этот месяц — помнит устройство (стор). */
 export const matchKey = key

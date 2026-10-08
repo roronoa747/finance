@@ -167,7 +167,8 @@ describe('e2e / B2C Блок 9 — «Деньги без лишнего» на �
     const historyA = text(await screen(A.pinia, Money, '/money/history'))
     expect(historyA).toContain(`ТОО Непонятное Не разобрано −${money(12_000)}`)
 
-    // Раздел задним числом: «Подписки» — плановый раздел, из «Свободно» не вычитается (Р-22).
+    // Раздел задним числом: «Подписки» — плановый раздел, но подписки такой в плане нет и строка не отмечена —
+    // по-прежнему трата «Свободно» (мелочи ML-03, хвост 952: из «Свободно» уходят только строки платежей месяца).
     const target = ops.all[0]
     await screen(A.pinia, Money, '/money/history', undefined, [
       screenMixin({ opOpen: target }, (s) => (s.recategorize as (to: unknown) => void)({ categoryId: 'sc_subscriptions' })),
@@ -176,7 +177,7 @@ describe('e2e / B2C Блок 9 — «Деньги без лишнего» на �
     const totals = A.store.householdDoc.spendTotals ?? []
     expect(totals.find((t) => t.kind === 'month' && t.categoryId === 'sc_subscriptions')?.amount).toBe(12_000)
     expect(totals.find((t) => t.kind === 'month' && t.categoryId === '_unknown' && t.amount > 0)).toBeUndefined()
-    expect(fact().amount).toBe(freeBefore + 12_000)
+    expect(fact().amount).toBe(freeBefore)
     expect(text(await screen(A.pinia, Money, '/money/history'))).toContain(`ТОО Непонятное Подписки −${money(12_000)}`)
 
     await sync(A, B)

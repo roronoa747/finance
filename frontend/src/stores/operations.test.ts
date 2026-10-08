@@ -568,6 +568,40 @@ describe('stores/operations — сопоставление с отметками
     expect(free()).toBe(before + 15_000)
   })
 
+  it('ML-03 (хвост 967): два перевода по 15 000 в месяце, «Да» на один — второй не плановый, «Свободно» больше на 15 000, а не на 30 000', async () => {
+    const finance = family()
+    const p2p = finance.addObligation({ name: 'Курсы', day: 20, category: 'd4', amount: 15_000 })
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    const transfer = (date: string) => ({ ...op(date, -15_000, 'Перевод с карты на карту'), kind: 'transfer-out' as const })
+    store.setDraft(draftOf(statement('2026-09-01', '2026-09-20', transfer('2026-09-05'), transfer('2026-09-20'))))
+    await store.send(client)
+    const free = () =>
+      freeByFact({ ...finance.householdDoc, credits: finance.credits }, finance.householdDoc.spendTotals ?? [], finance.householdDoc.spendCategories ?? [], '2026-09', [
+        { slot: 'a', period_from: '2026-09-01', period_to: '2026-09-20' },
+      ]).amount
+    const before = free()
+
+    await store.acceptMatch(store.pendingMatches.find((c) => c.targetId === p2p)!, client)
+    await nextTick()
+    expect(store.all.map((o) => [o.date, o.categoryId])).toEqual([['2026-09-05', null], ['2026-09-20', 'sc_subscriptions']])
+    expect(free()).toBe(before + 15_000)
+  })
+
+  it('ML-03 (хвост 952): рассрочка без цели в разделе кредитов — трата; строка кредита с вопросом — нет, после «Нет, это другое» — трата', async () => {
+    const finance = family()
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    // Кредит семьи 58 000 15-го — строка ждёт ответа; рассрочка 80 000 — незаведённая (в плане её нет).
+    store.setDraft(draftOf(statement('2026-09-01', '2026-09-20', op('2026-09-14', -58_000, 'Оплата Kaspi Кредита'), op('2026-09-10', -80_000, 'Kaspi Рассрочка'))))
+    await store.send(client)
+    await store.recategorizeAll([{ merchant: normalizeMerchant('Оплата Kaspi Кредита') }, { merchant: normalizeMerchant('Kaspi Рассрочка') }], { categoryId: 'sc_credit' }, client)
+    const month = () => (finance.householdDoc.spendTotals ?? []).find((t) => t.kind === 'month' && t.period === '2026-09' && t.categoryId === 'sc_credit')!
+    expect(month()).toMatchObject({ amount: 138_000, unmarked: 80_000 })
+    store.declineMatch(store.pendingMatches.find((c) => c.kind === 'credit')!)
+    expect(month()).toMatchObject({ amount: 138_000, unmarked: 138_000 })
+  })
+
   it('критик возврата 2: ответ «куда отнести?» о продавце с правилом платежа — раздел остальных строк, правило платежа живо; следующая выписка отмечает 15 000 сама, остальное — в тот раздел', async () => {
     const finance = family()
     const p2p = finance.addObligation({ name: 'Переводы', day: 20, category: 'd4', amount: 15_000 })
