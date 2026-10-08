@@ -1,6 +1,6 @@
 # Бэклог «мелочи» (ML)
 
-> **Статус:** в работе — блок 1 ⬜ (следующий шаг — `/worker мелочи 1`).
+> **Статус:** в работе — блок 1 🔄: исполнитель ч. 1 ✅ (ML-01…ML-06), следующий шаг — `/worker мелочи 1` (ч. 2).
 > Два блока до Блока 4 `идея-и-редизайн`: хвосты и уборка React → «Кредиты шире». Потом Блок 4, потом бриф ИИ.
 
 Источник: `мелочи-brief.md` (резюме интервью подтверждено 2026-10-08). Формат — `memory/process/BACKLOG-GUIDE.md`.
@@ -78,12 +78,12 @@
 
 | Блок | Задача | Файл | Зависит от | Статус |
 |---|---|---|---|---|
-| 1. Хвосты и уборка ⬜ | ML-01 Сверка «вероятно закрытых» хвостов | `block-1-tails/ML-01-verify-stale.md` | — | ⬜ |
-| | ML-02 «Свободно» уменьшается после раскладки | `block-1-tails/ML-02-free-after-allocation.md` | ML-01 | ⬜ |
-| | ML-03 Плановый раздел — только строке с отметкой | `block-1-tails/ML-03-planned-only-marked.md` | ML-02 | ⬜ |
-| | ML-04 Пересчёт строк при изменении цели правила | `block-1-tails/ML-04-reapply-on-target-change.md` | ML-03 | ⬜ |
-| | ML-05 Кредит без ставки: остаток и план честные | `block-1-tails/ML-05-credit-rate-unknown.md` | ML-04 | ⬜ |
-| | ML-06 Кандидат зарплаты не зависит от порядка | `block-1-tails/ML-06-salary-candidate-order.md` | ML-05 | ⬜ |
+| 1. Хвосты и уборка 🔄 | ML-01 Сверка «вероятно закрытых» хвостов | `block-1-tails/ML-01-verify-stale.md` | — | ✅ |
+| | ML-02 «Свободно» уменьшается после раскладки | `block-1-tails/ML-02-free-after-allocation.md` | ML-01 | ✅ |
+| | ML-03 Плановый раздел — только строке с отметкой | `block-1-tails/ML-03-planned-only-marked.md` | ML-02 | ✅ |
+| | ML-04 Пересчёт строк при изменении цели правила | `block-1-tails/ML-04-reapply-on-target-change.md` | ML-03 | ✅ |
+| | ML-05 Кредит без ставки: остаток и план честные | `block-1-tails/ML-05-credit-rate-unknown.md` | ML-04 | ✅ |
+| | ML-06 Кандидат зарплаты не зависит от порядка | `block-1-tails/ML-06-salary-candidate-order.md` | ML-05 | ✅ |
 | | ML-07 Сюрприз: правка и удаление | `block-1-tails/ML-07-gift-edit-delete.md` | ML-06 | ⬜ |
 | | ML-08 Короткое название по ссылке Kaspi (Go) | `block-1-tails/ML-08-kaspi-title.md` | ML-07 | ⬜ |
 | | ML-09 Центы в валютной сумме | `block-1-tails/ML-09-fx-cents.md` | ML-08 | ⬜ |
