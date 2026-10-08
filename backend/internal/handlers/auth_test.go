@@ -22,7 +22,7 @@ func setupTestApp() (*chi.Mux, *repository.MockRepositories, *auth.TokenService)
 	repos.Households.SetDocRepo(repos.Docs)
 	tokens := auth.NewTokenService("test-secret-salt-key", 2*time.Hour)
 
-	authHandler := NewAuthHandler(repos.Users, repos.Households, tokens)
+	authHandler := NewAuthHandler(repos.Users, repos.Households, tokens, nil)
 	householdHandler := NewHouseholdHandler(repos.Households, tokens)
 
 	r := chi.NewRouter()
@@ -32,7 +32,7 @@ func setupTestApp() (*chi.Mux, *repository.MockRepositories, *auth.TokenService)
 
 		// Protected routes
 		api.Group(func(protected chi.Router) {
-			protected.Use(auth.Middleware(tokens))
+			protected.Use(auth.Middleware(tokens, nil))
 			protected.Get("/auth/me", authHandler.Me)
 			protected.Post("/household/invites", householdHandler.CreateInvite)
 			protected.Post("/household/join", householdHandler.JoinHousehold)
@@ -351,7 +351,7 @@ func TestRegisterCompensatesOrphanUser(t *testing.T) {
 	repos := repository.NewMockRepositories()
 	users := &ctxCheckingUserRepo{MockUserRepo: repos.Users}
 	tokens := auth.NewTokenService("test-secret-salt-key", 2*time.Hour)
-	failing := NewAuthHandler(users, failingHouseholdRepo{repos.Households}, tokens)
+	failing := NewAuthHandler(users, failingHouseholdRepo{repos.Households}, tokens, nil)
 
 	// Client disconnects: the request context is already cancelled
 	ctx, cancel := context.WithCancel(context.Background())
@@ -372,7 +372,7 @@ func TestRegisterCompensatesOrphanUser(t *testing.T) {
 	}
 
 	// The same email can register again once the household step works
-	working := NewAuthHandler(repos.Users, repos.Households, tokens)
+	working := NewAuthHandler(repos.Users, repos.Households, tokens, nil)
 	rec = httptest.NewRecorder()
 	working.Register(rec, httptest.NewRequest(http.MethodPost, "/api/auth/register",
 		bytes.NewReader(makeAuthJSON("orphan@example.com", "secret123", "", ""))))

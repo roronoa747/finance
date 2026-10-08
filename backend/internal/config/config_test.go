@@ -8,7 +8,7 @@ import (
 // clearEnv blanks every variable Load reads; getEnv treats "" as unset.
 func clearEnv(t *testing.T) {
 	t.Helper()
-	for _, key := range []string{"PORT", "DATABASE_URL", "JWT_SECRET", "CORS_ORIGIN", "APP_ENV"} {
+	for _, key := range []string{"PORT", "DATABASE_URL", "JWT_SECRET", "CORS_ORIGIN", "APP_ENV", "GOOGLE_CLIENT_IDS"} {
 		t.Setenv(key, "")
 	}
 }
@@ -117,5 +117,29 @@ func TestLoadProductionIgnoresCaseAndSpaces(t *testing.T) {
 		if _, err := Load(); err == nil {
 			t.Errorf("APP_ENV=%q without DATABASE_URL must fail", env)
 		}
+	}
+}
+
+func TestGoogleClientIDsOptional(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("JWT_SECRET", prodSecret)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("production without GOOGLE_CLIENT_IDS must load: %v", err)
+	}
+	if len(cfg.GoogleClientIDs) != 0 {
+		t.Errorf("GoogleClientIDs = %v, want none", cfg.GoogleClientIDs)
+	}
+
+	t.Setenv("GOOGLE_CLIENT_IDS", " web.apps.googleusercontent.com , ,android.apps.googleusercontent.com")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(cfg.GoogleClientIDs, "|") != "web.apps.googleusercontent.com|android.apps.googleusercontent.com" {
+		t.Errorf("GoogleClientIDs = %v", cfg.GoogleClientIDs)
 	}
 }

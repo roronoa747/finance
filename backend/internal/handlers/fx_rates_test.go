@@ -69,7 +69,7 @@ func setupFxRatesApp(t *testing.T) *fxRatesApp {
 func (a *fxRatesApp) serveWith(store repository.FxRepository) {
 	r := chi.NewRouter()
 	r.Group(func(protected chi.Router) {
-		protected.Use(auth.Middleware(a.tokens))
+		protected.Use(auth.Middleware(a.tokens, nil))
 		protected.Get("/api/fx-rates", FxRatesHandler(a.client, store))
 	})
 	a.r = r

@@ -29,7 +29,7 @@ func setupSyncTestApp() (*chi.Mux, *repository.MockRepositories, *auth.TokenServ
 	r := chi.NewRouter()
 	r.Route("/api", func(api chi.Router) {
 		api.Group(func(protected chi.Router) {
-			protected.Use(auth.Middleware(tokens))
+			protected.Use(auth.Middleware(tokens, nil))
 
 			protected.Get("/sync/household", syncHandler.GetHouseholdDoc)
 			protected.Post("/sync/household", syncHandler.PushHouseholdDoc)
@@ -357,8 +357,8 @@ func TestSyncInvalidUTF8Returns400(t *testing.T) {
 	tokens := auth.NewTokenService("sync-test-signing-key", 2*time.Hour)
 	syncHandler := NewSyncHandler(docRepoSpy{t: t})
 	r := chi.NewRouter()
-	r.With(auth.Middleware(tokens)).Post("/api/sync/household", syncHandler.PushHouseholdDoc)
-	r.With(auth.Middleware(tokens)).Post("/api/sync/private", syncHandler.PushPrivateDoc)
+	r.With(auth.Middleware(tokens, nil)).Post("/api/sync/household", syncHandler.PushHouseholdDoc)
+	r.With(auth.Middleware(tokens, nil)).Post("/api/sync/private", syncHandler.PushPrivateDoc)
 
 	token, _ := tokens.GenerateToken("user-1", "hh-1", "member", "a")
 	body := []byte("{\"last_seen_rev\": 1, \"data\": {\"name\": \"\xff\xfe\"}}")

@@ -65,7 +65,7 @@ func runLiveServerE2EFlow(
 	}
 	tokenService := auth.NewTokenService(cfg.JWTSecret, 24*time.Hour)
 
-	router := NewRouter(cfg, database, Repos{Users: userRepo, Households: householdRepo, Docs: docRepo, Statements: statementRepo, Photos: photoRepo, Fx: repository.NewSQLFxRepository(database)}, tokenService, fx.NewClient())
+	router := NewRouter(cfg, database, Repos{Users: userRepo, Households: householdRepo, Docs: docRepo, Statements: statementRepo, Photos: photoRepo, Fx: repository.NewSQLFxRepository(database)}, tokenService, fx.NewClient(), nil)
 	wantDBStatus := "disconnected"
 	if database != nil {
 		wantDBStatus = "connected"
@@ -128,6 +128,7 @@ func runLiveServerE2EFlow(
 	// Step 2: Register User 1 (Alice)
 	var aliceToken string
 	var aliceHouseholdID string
+	var aliceUserID string
 
 	t.Run("Register User 1 (Alice)", func(t *testing.T) {
 		regBody := map[string]string{
@@ -158,6 +159,7 @@ func runLiveServerE2EFlow(
 
 		aliceToken = regResp.Token
 		aliceHouseholdID = regResp.Household.ID
+		aliceUserID = regResp.User.ID
 	})
 
 	// Step 3: Alice calls /api/auth/me
@@ -574,7 +576,25 @@ func runLiveServerE2EFlow(
 		if err != nil {
 			t.Fatalf("failed to create viewer user: %v", err)
 		}
-		viewerToken, err := tokenService.GenerateToken(viewer.ID, aliceHouseholdID, "viewer", "c")
+		// The role lives in the database (B2C-22): a viewer is a member whose role the owner
+		// changed — a token claiming "viewer" for someone outside the household gets 409.
+		forged, err := tokenService.GenerateToken(viewer.ID, aliceHouseholdID, "viewer", "c")
+		if err != nil {
+			t.Fatalf("failed to generate viewer token: %v", err)
+		}
+		if resp, body := sendJSON(http.MethodGet, "/api/sync/household", nil, forged); resp.StatusCode != http.StatusConflict {
+			t.Fatalf("forged household claim: expected 409, got %d: %s", resp.StatusCode, body)
+		}
+		invite, err := householdRepo.CreateInvite(context.Background(), aliceHouseholdID, aliceUserID)
+		if err != nil {
+			t.Fatalf("viewer invite: %v", err)
+		}
+		if _, err := householdRepo.JoinHousehold(context.Background(), invite.Code, viewer.ID, "Гость"); err != nil {
+			t.Fatalf("viewer join: %v", err)
+		}
+		setRole(t, database, householdRepo, aliceHouseholdID, viewer.ID, "viewer")
+		// The token still says "member": the database wins.
+		viewerToken, err := tokenService.GenerateToken(viewer.ID, aliceHouseholdID, "member", "c")
 		if err != nil {
 			t.Fatalf("failed to generate viewer token: %v", err)
 		}
@@ -596,7 +616,7 @@ func runLiveServerE2EFlow(
 
 		// Viewer writes to their own private doc -> 200 OK
 		pvResp, pvBody := sendJSON(http.MethodPost, "/api/sync/private", map[string]any{
-			"last_seen_rev": 0,
+			"last_seen_rev": 1, // joining created the private doc
 			"data":          map[string]any{"viewer_wallet": 100},
 		}, viewerToken)
 		if pvResp.StatusCode != http.StatusOK {
@@ -621,4 +641,16 @@ func runLiveServerE2EFlow(
 			t.Errorf("viewer expected 403 on photo preview, got %d", resp.StatusCode)
 		}
 	})
+}
+
+// setRole changes a member's role the way the owner does — in SQL, or in the mock.
+func setRole(t *testing.T, database *sql.DB, households repository.HouseholdRepository, householdID, userID, role string) {
+	t.Helper()
+	if database != nil {
+		if _, err := database.Exec(`UPDATE app.household_members SET role = $1 WHERE household_id = $2 AND user_id = $3`, role, householdID, userID); err != nil {
+			t.Fatalf("set role: %v", err)
+		}
+		return
+	}
+	households.(*repository.MockHouseholdRepo).SetRole(householdID, userID, role)
 }

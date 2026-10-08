@@ -14,6 +14,21 @@ REST API приложения: вход, домохозяйство, синхр�
 - `cmd/fxbackfill` — история курсов Нацбанка за `-days` дней назад (прод, вручную после
   `cmd/migrate`); спрошенные дни пропускает, сбой банка по дню считает `failed` — повтор добирает.
 - `migrations/` — SQL, встроены в бинарник.
+- Вход (`handlers/auth.go`, `internal/googleauth`, миграция `000005`, Р-13, Р-25):
+  `POST /api/auth/google {id_token}` — ID-токен Google проверяется по JWKS Google (подпись RS256
+  по `kid`, ключи кэшируются по `max-age`, незнакомый `kid` — перезагрузка не чаще раза в минуту;
+  `iss` — Google, `aud` ∈ `GOOGLE_CLIENT_IDS`, `exp`, `email_verified`). Пользователь ищется по
+  `google_sub`, иначе по почте (старый пользователь привязывается: `google_sub`, `display_name`),
+  иначе создаётся без пароля и **без семьи** — 201, иначе 200; ответ — `AuthResponse`, у
+  пользователя без семьи `household`/`member` — `null`, JWT без семьи. Почта, привязанная к
+  другому аккаунту Google, — 409. Без `GOOGLE_CLIENT_IDS` — 503; JWKS недоступен — 503; плохой
+  токен — 401. Из токена ничего не логируется. `register`/`login` остаются для стенда и e2e;
+  пользователь без пароля по `login` получает 401.
+  **Семья по факту базы:** защищённые ручки берут семью, роль и слот не из JWT, а из базы на
+  каждом запросе (`auth.Middleware` + `membershipResolver`): удалённый пользователь — 401,
+  смена роли действует сразу. Без семьи (`auth.RequireHousehold`) — 409 `no household` на
+  `/sync/*`, `/statements`, `/operations*`, `/photos*`, `/household/invites`, `/fx-rates`;
+  работают `/auth/me` и `/household/join`.
 - Синк (`handlers/sync.go`, `repository/doc_repo.go`): push с верной ревизией сохраняет ключи
   верхнего уровня, которых нет в присланном документе (`data || pushed` в том же `UPDATE`, что
   и проверка ревизии), — старый PWA не стирает списки нового кода; присланные `[]` и `null`
@@ -60,6 +75,7 @@ REST API приложения: вход, домохозяйство, синхр�
 | `DATABASE_URL` | прод, опционально локально | без неё локально — in-memory моки |
 | `JWT_SECRET` | прод | 32+ символа, свой для Preview и Production |
 | `PORT`, `CORS_ORIGIN` | только `cmd/server` | дефолты `8080` и `localhost:5173` |
+| `GOOGLE_CLIENT_IDS` | прод, опционально | id клиентов OAuth Google через запятую (веб, Android, iOS) — допустимые `aud`; без неё вход через Google отвечает 503. Значения — `memory/secrets/google-oauth.md` |
 
 Строки подключения к Supabase — только в `memory/secrets/` и env Vercel, в доки не пишутся.
 
