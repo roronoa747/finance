@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -326,8 +327,36 @@ func parse(r io.Reader) (pageMeta, error) {
 	}
 	m := pageMeta{image: firstOf(ogImage, twImage, linkImage), title: firstOf(ogTitle, title.String())}
 	// Shops escape twice (Kaspi: "NanoSIM&amp;#43;eSIM"): the title is plain text, unescape once more.
-	m.title = clip(strings.Join(strings.Fields(html.UnescapeString(m.title)), " "), maxTitle)
+	m.title = clip(shortTitle(strings.Join(strings.Fields(html.UnescapeString(m.title)), " ")), maxTitle)
 	return m, readErr
+}
+
+var (
+	// Shop tail: " – Магазин на Kaspi.kz", " | Shop", " - интернет-магазин …".
+	shopTail = regexp.MustCompile(`(?:^|\s+)(?:[–—-]\s+(?:[Мм]агазин|[Ии]нтернет-магазин)(?:\s.*)?|\|.*)$`)
+	// " в Алматы" right before the shop tail: " в " + one capitalised word.
+	cityTail = regexp.MustCompile(`\s+в\s+\p{Lu}[\p{L}-]*$`)
+)
+
+// shortTitle strips shop marketing around the product name (ML-08): a leading
+// "Купить", the shop tail and the city before it. Kaspi is the first case:
+// "Купить Смартфон … в Алматы – Магазин на Kaspi.kz" → "Смартфон …". Nothing
+// left → the title as it was.
+func shortTitle(t string) string {
+	s := t
+	for _, p := range []string{"Купить: ", "Купить "} {
+		if strings.HasPrefix(s, p) {
+			s = s[len(p):]
+			break
+		}
+	}
+	if cut := shopTail.ReplaceAllString(s, ""); cut != s {
+		s = cityTail.ReplaceAllString(cut, "")
+	}
+	if s = strings.TrimSpace(s); s == "" {
+		return t
+	}
+	return s
 }
 
 func attrs(z *html.Tokenizer) map[string]string {

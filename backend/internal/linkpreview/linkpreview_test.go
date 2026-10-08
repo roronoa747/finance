@@ -293,3 +293,20 @@ func TestStalledBody(t *testing.T) {
 		t.Fatalf("want ErrUpstream wrapping the deadline, got %v", err)
 	}
 }
+
+// ML-08 (хвост 993): название желания по ссылке — без «Купить», города и хвоста магазина.
+func TestShortTitle(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"Купить Смартфон Apple iPhone 15 128Gb черный в Алматы – Магазин на Kaspi.kz", "Смартфон Apple iPhone 15 128Gb черный"},
+		{"Купить: Пылесос Dyson V15 в Нур-Султане - интернет-магазин Технодом", "Пылесос Dyson V15"},
+		{"Наушники Sony WH-1000XM5 | Sulpak", "Наушники Sony WH-1000XM5"},
+		{"Dyson Airwrap Complete NanoSIM+eSIM", "Dyson Airwrap Complete NanoSIM+eSIM"},
+		{"Книга «Как купить квартиру» Купить в рассрочку", "Книга «Как купить квартиру» Купить в рассрочку"},
+		{"Поездка в Алматы", "Поездка в Алматы"},
+		{"Купить – Магазин на Kaspi.kz", "Купить – Магазин на Kaspi.kz"},
+	} {
+		if got := shortTitle(c.in); got != c.want {
+			t.Errorf("shortTitle(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
