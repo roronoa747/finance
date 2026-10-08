@@ -5,10 +5,12 @@ import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
 import { OPERATIONS_STORAGE_KEYS, readStorage, writeStorage } from '@/lib/storage'
+import { creditDueAmount } from '@/lib/finance'
 import {
   applyRules,
   pairInternalTransfers,
   periodsOf,
+  ruleFor,
   ruleMatchOf,
   seedSpendCategories,
   spendTotals,
@@ -613,6 +615,28 @@ export const useOperationsStore = defineStore('operations', () => {
   watch(
     () => (finance.payments ?? []).filter((p) => !p.deletedAt && p.kind !== 'prepay').map((p) => p.opId ?? `${p.kind}:${p.targetId}:${p.period}`).sort().join(' '),
     () => writeTotals(periodsOf(recentOperations(all.value))),
+  )
+
+  /*
+   * Цели платежей изменились (хвост 966): обязательство удалено в «Капитале», «Отменить подписку», сумма или день
+   * исправлены — у себя или синком партнёра. Строки правил платежа пересчитываются тем же путём, что снятые отметки
+   * (`reapply` — плановый раздел только «таким»), итоги свежих периодов переписываются (`markedOps`: строка цели,
+   * которой больше нет, — трата). Подпись — строкой из полей сопоставления: имя, заметка и синк без правок не будят.
+   */
+  watch(
+    () => [
+      ...finance.obligations.map((o) => [o.id, o.deletedAt ? '×' : '', o.category, o.day, o.every ?? '', o.month ?? '', o.estimate ? 1 : 0, JSON.stringify(o.versions)].join(':')),
+      ...finance.credits.map((c) => [c.id, c.deletedAt ? '×' : '', c.day, c.payment, creditDueAmount(c)].join(':')),
+    ].sort().join(' '),
+    () => {
+      // Смена цели касается только строк с правилом «это платёж по …».
+      const byPayment = all.value.filter((o) => {
+        const rule = ruleFor(o, finance.merchantRules)
+        return !!rule && 'payment' in rule.to
+      })
+      void settleReleased(new Set(byPayment.map((o) => o.id)))
+      writeTotals(periodsOf(recentOperations(all.value)))
+    },
   )
 
   return {
