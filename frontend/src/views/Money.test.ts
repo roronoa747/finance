@@ -489,7 +489,7 @@ describe('views/Money.vue — финансовые показатели (рас�
           expect(text(html)).toContain('Платежи')
           expect(html).not.toMatch(/<button[^>]*>\s*Оплатил/)
           expect(html).not.toMatch(/<button[^>]*>[^<]*(<svg[\s\S]*?<\/svg>)?\s*Добавить/)
-          for (const t of ['Долг или рассрочка', 'Регулярный платёж']) expect(html).not.toContain(t)
+          for (const t of ['Долг — банку или человеку', 'Новый долг', 'Регулярный платёж']) expect(html).not.toContain(t)
         }
       })
 
@@ -503,7 +503,7 @@ describe('views/Money.vue — финансовые показатели (рас�
         expect(dep).toContain('Удалить вклад')
         expect(dialog2(await renderScreen(Money, '/money?credit=loan'))).toContain('закроется в')
         expect(dialog2(await renderScreen(Money, '/money?obligation=rent'))).toContain('Аренда')
-        expect(dialog2(await renderScreen(Money, '/money?add=debt'))).toContain('Долг или рассрочка')
+        expect(dialog2(await renderScreen(Money, '/money?add=debt'))).toContain('Новый долг')
         // `?income=1` на «Деньгах» больше ничего не открывает — лист живёт в «Месяце».
         expect(await renderScreen(Money, '/money?income=1')).not.toContain('role="dialog"')
         expect(dialog2(await renderScreen(Month, '/month?income=1'))).toContain('Внеплановый доход')

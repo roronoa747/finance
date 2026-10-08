@@ -14,7 +14,7 @@ import {
 } from './finance'
 import { addMonths } from './dates'
 import type { Operation } from '@/lib/statements/types'
-import type { Account, Credit, DebtPlan, Goal, Payment } from '@/types/finance'
+import type { Account, Credit, DebtPlan, Goal, Obligation, Payment } from '@/types/finance'
 
 /**
  * B2C-99: расчёты «Денег» Блока 16 против ручного расчёта (правило 6 — числа в комментариях). Пример — эталон
@@ -94,8 +94,8 @@ describe('debtsOverview — экран «Долги» (Р-110)', () => {
     // ln(1 + 0,185/12) = 0,2046 / 0,01530 ≈ 13,4 → 14 платежей → декабрь 2027.
     expect(d.rows).toEqual([
       // 100 000 / (1 020 000 + 100 000) = 0,0893.
-      { creditId: 'loan', name: 'Kaspi кредит', payment: 85_000, rate: 0.185, rateUnknown: false, endMonth: '2027-12', left: 1_020_000, paidShare: 100_000 / 1_120_000 },
-      { creditId: 'phone', name: 'Рассрочка iPhone', payment: 32_000, rate: 0, rateUnknown: false, endMonth: '2027-05', left: 224_000, paidShare: null },
+      { creditId: 'loan', name: 'Kaspi кредит', payment: 85_000, rate: 0.185, rateUnknown: false, person: false, endMonth: '2027-12', left: 1_020_000, paidShare: 100_000 / 1_120_000 },
+      { creditId: 'phone', name: 'Рассрочка iPhone', payment: 32_000, rate: 0, rateUnknown: false, person: false, endMonth: '2027-05', left: 224_000, paidShare: null },
     ])
     expect(addMonths(KEY, creditOutlook(LOAN).months)).toBe('2027-12')
   })
@@ -126,6 +126,49 @@ describe('debtsOverview — экран «Долги» (Р-110)', () => {
   it('не закрывается или долгов нет — месяца нет', () => {
     expect(debtsOverview({ ...state, credits: [credit('bad', 'Карта', 1_000_000, 0.4, 20_000)] }, KEY).freeMonth).toBeNull()
     expect(debtsOverview({ credits: [{ ...LOAN, principal: 0 }] }, KEY)).toEqual({ total: 0, freeMonth: null, rows: [] })
+  })
+})
+
+describe('debtsOverview — долг человеку и платёж людям (мелочи ML-15)', () => {
+  // Брату 500 000 по 50 000 в месяц без процентов: 500 000 / 50 000 = 10 платежей → август 2027.
+  const BRO: Credit = { ...credit('bro', 'Брату', 500_000, 0, 50_000), person: true }
+  const MOM: Obligation = { id: 'mom', name: 'Маме', note: '', day: 5, category: 'd4', people: true, versions: [{ from: '2026-01', amount: 100_000 }], updatedAt: T0 }
+  const state = { credits: [LOAN, BRO], obligations: [MOM], goals: GOALS }
+  const plan: DebtPlan = {
+    id: 'plan', status: 'active', by: 'a', startedAt: '2026-10-01T05:00:00.000Z', endedAt: null, keptGoalIds: [], cushionGoalId: null,
+    creditIds: ['loan'], months: 24, lump: 0, forecast: { gain: 0, savedInterest: 0, debtFreeMonth: null }, result: null, updatedAt: T0,
+  }
+
+  it('долг брату — в сумме и строкой с person, без ставки; платёж маме в сумму не входит', () => {
+    const d = debtsOverview(state, KEY)
+    // 1 020 000 + 500 000 = 1 520 000; «Маме» 100 000 — не остаток.
+    expect(d.total).toBe(1_520_000)
+    expect(d.rows.find((r) => r.creditId === 'bro')).toEqual({
+      creditId: 'bro', name: 'Брату', payment: 50_000, rate: 0, rateUnknown: false, person: true, endMonth: '2027-08', left: 500_000, paidShare: null,
+    })
+    expect(d.rows.find((r) => r.creditId === 'loan')!.person).toBe(false)
+    // Капитал: 10 732 000 счетов + 4 140 000 целей − 1 520 000 долгов = 13 352 000.
+    expect(netWorth(ACCOUNTS, [LOAN, BRO], GOALS)).toBe(13_352_000)
+  })
+
+  it('без плана — «без долгов» по последнему графику: кредит декабрь 2027 позже брата', () => {
+    expect(debtsOverview(state, KEY).freeMonth).toBe('2027-12')
+    // Брату 1 200 000 по 50 000 = 24 платежа → октябрь 2028: «без долгов» по нему.
+    expect(debtsOverview({ ...state, credits: [LOAN, { ...BRO, principal: 1_200_000 }] }, KEY).freeMonth).toBe('2028-10')
+  })
+
+  it('с планом — брат по своему графику: не раньше августа 2027, прогноз плана — только кредит', () => {
+    const withPlan = { ...state, plans: [plan] }
+    const forecast = planForecast(plan, withPlan, KEY).debtFreeMonth!
+    const d = debtsOverview(withPlan, KEY)
+    expect(d.freeMonth).toBe(forecast > '2027-08' ? forecast : '2027-08')
+    expect(d.freeMonth! >= '2027-08').toBe(true)
+  })
+
+  it('старый документ без person — прежние строки (person: false)', () => {
+    const old = debtsOverview({ credits: [LOAN, PHONE] }, KEY)
+    expect(old.rows.map((r) => r.person)).toEqual([false, false])
+    expect(old.total).toBe(1_244_000)
   })
 })
 

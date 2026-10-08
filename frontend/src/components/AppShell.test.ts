@@ -152,7 +152,7 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     const html = await renderScreen(AppShell, '/', undefined, [screenMixin({ addOpen: true })])
     expect(html).toContain('role="dialog"')
     expect(html).toContain('bg-scrim')
-    const order = ['Загрузить выписку', 'Новая мечта', 'Покупка в список желаний', 'Внеплановый доход', 'Обязательство или подписка', 'Кредит или рассрочка']
+    const order = ['Загрузить выписку', 'Новая мечта', 'Покупка в список желаний', 'Внеплановый доход', 'Обязательство или подписка', 'кредит, рассрочка, человеку']
     const at = order.map((t) => html.indexOf(t))
     expect(at.every((i) => i >= 0)).toBe(true)
     expect([...at].sort((a, b) => a - b)).toEqual(at)
@@ -165,7 +165,7 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     signIn('viewer', 'b')
     const html = await renderScreen(AppShell, '/', undefined, [screenMixin({ addOpen: true })])
     expect(html).not.toContain('aria-label="Добавить"')
-    for (const t of ['Покупка в список желаний', 'Загрузить выписку', 'Новая мечта', 'Внеплановый доход', 'Обязательство или подписка', 'Кредит или рассрочка']) {
+    for (const t of ['Покупка в список желаний', 'Загрузить выписку', 'Новая мечта', 'Внеплановый доход', 'Обязательство или подписка', 'кредит, рассрочка, человеку']) {
       expect(html).not.toContain(t)
     }
   })

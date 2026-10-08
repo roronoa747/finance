@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { money, parseMoney } from '@/lib/money'
 import { MONTHS_NOM, monthKey, parseMonthKey } from '@/lib/dates'
@@ -11,11 +11,13 @@ import { cn } from '@/lib/utils'
 
 import CurrencyChips from '@/components/kit/CurrencyChips.vue'
 import Field from '@/components/kit/Field.vue'
+import Hint from '@/components/kit/Hint.vue'
 import { useFormCheck } from '@/components/kit/useFormCheck'
 import NbRateLine from '@/components/kit/NbRateLine.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Segmented from '@/components/kit/Segmented.vue'
 import Sheet from '@/components/kit/Sheet.vue'
+import Toggle from '@/components/kit/Toggle.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import { useNbRate } from '@/components/kit/useNbRate'
@@ -23,14 +25,17 @@ import { useNbRate } from '@/components/kit/useNbRate'
 /**
  * Новый регулярный платёж — подписка или услуга (бывшее окно Капитала, PV-11). Сумма — в валюте платежа
  * (Р-75, чипы, тенге по умолчанию); у валютного — тихая строка «≈ N ₸ по курсу Нацбанка», курс версии —
- * Нацбанк сегодня (нет — поле курса руками).
+ * Нацбанк сегодня (нет — поле курса руками). «Людям» (мелочи Р-5) — платёж маме, алименты, школа: строкой «Людям · N»
+ * в «Долгах»; `people` — открыть с включённым (из «+ Людям»).
  */
-const props = defineProps<{ open: boolean }>()
+const props = defineProps<{ open: boolean; people?: boolean }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const financeStore = useFinanceStore()
 const people = computed(() => financeStore.people)
 
+const obPeople = ref(false)
+watch(() => props.open, (v) => { if (v) obPeople.value = !!props.people }, { immediate: true })
 const obName = ref('')
 const obAmount = ref('')
 const obEvery = ref<'month' | 'year'>('month')
@@ -51,7 +56,7 @@ const obBuckets = computed(() =>
 )
 
 const form = useFormCheck(() => [
-  ['name', !obName.value.trim() && 'Введите название'],
+  ['name', !obName.value.trim() && (obPeople.value ? 'Введите, кому' : 'Введите название')],
   ['amount', parseMoney(obAmount.value) <= 0 ? 'Введите сумму' : !nb.ok.value && 'Нет курса — попробуйте позже'],
 ])
 
@@ -67,6 +72,7 @@ function createObligation() {
     who: obWho.value === 'all' ? null : obWho.value,
     amount: parseMoney(obAmount.value),
     fx: nb.foreign.value ? { currency: obCurrency.value, rate: nb.rate.value } : undefined,
+    people: obPeople.value,
   })
   obName.value = ''
   obAmount.value = ''
@@ -79,8 +85,16 @@ function createObligation() {
 
 <template>
   <Sheet :open="open" title="Регулярный платёж" @close="emit('close')">
-    <Field label="Что оплачиваем" name="name">
-      <Input v-model="obName" placeholder="Например, интернет или абонемент" />
+    <div class="mb-3.5 flex items-center justify-between gap-3">
+      <span class="flex items-center gap-1 text-[13.5px] font-medium text-ink">
+        Людям
+        <Hint label="Людям">Маме, алименты, школа — строкой «Людям» в «Долгах»</Hint>
+      </span>
+      <Toggle v-model="obPeople" label="Людям" tone="ok" />
+    </div>
+
+    <Field :label="obPeople ? 'Кому' : 'Что оплачиваем'" name="name">
+      <Input v-model="obName" :placeholder="obPeople ? 'Например, маме или школе' : 'Например, интернет или абонемент'" />
     </Field>
 
     <Field label="Как часто" group>

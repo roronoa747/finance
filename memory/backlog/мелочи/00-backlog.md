@@ -1,6 +1,6 @@
 # Бэклог «мелочи» (ML)
 
-> **Статус:** в работе — блок 1 🏁 закрыт 2026-10-08 (прод `dpl_4ENrQwKC…`, мёрж `f00bff1`, Supabase убран); следующий — блок 2 «Кредиты шире», `/worker мелочи 2` (ч. 1 — ворота макета).
+> **Статус:** в работе — блок 1 🏁 закрыт 2026-10-08 (прод `dpl_4ENrQwKC…`, мёрж `f00bff1`, Supabase убран); блок 2 «Кредиты шире» 🔄 — ворота макета ✅ (2026-10-08, «Ок»), исполнитель ч. 2 ✅ (ML-15…ML-18), критик ✅, `/ux` ✅ (2026-10-08, `98d1c58`); следующий шаг — `/accept мелочи 2`.
 > Два блока до Блока 4 `идея-и-редизайн`: хвосты и уборка React → «Кредиты шире». Потом Блок 4, потом бриф ИИ.
 
 Источник: `мелочи-brief.md` (резюме интервью подтверждено 2026-10-08). Формат — `memory/process/BACKLOG-GUIDE.md`.
@@ -91,11 +91,11 @@
 | | ML-11 Уборка React из репо | `block-1-tails/ML-11-repo-cleanup.md` | ML-10 | ✅ |
 | | ML-12 Инструкция владельцу: Supabase и Vercel | `block-1-tails/ML-12-supabase-owner-steps.md` | ML-11 | ✅ |
 | | ML-13 e2e блока и закрытие хвостов | `block-1-tails/ML-13-e2e-close-tails.md` | ML-01…ML-12 | ✅ |
-| 2. Кредиты шире ⬜ *(M + ворота макета)* | ML-14 Макет «до \| после» и ворота | `block-2-people-debts/ML-14-mockup-gate.md` | Блок 1 🏁 | ⬜ |
-| | ML-15 Модель и расчёты | `block-2-people-debts/ML-15-model-finance.md` | ML-14 (ворота ✅) | ⬜ |
-| | ML-16 Формы «Человеку» и «Людям» | `block-2-people-debts/ML-16-forms.md` | ML-15 | ⬜ |
-| | ML-17 «Долги»: строка, «Людям · N», «Отдал» | `block-2-people-debts/ML-17-debts-screen.md` | ML-16 | ⬜ |
-| | ML-18 Демо, e2e и доки | `block-2-people-debts/ML-18-demo-e2e.md` | ML-17 | ⬜ |
+| 2. Кредиты шире 🔄 *(M + ворота макета)* | ML-14 Макет «до \| после» и ворота | `block-2-people-debts/ML-14-mockup-gate.md` | Блок 1 🏁 | ✅ |
+| | ML-15 Модель и расчёты | `block-2-people-debts/ML-15-model-finance.md` | ML-14 (ворота ✅) | ✅ |
+| | ML-16 Формы «Человеку» и «Людям» | `block-2-people-debts/ML-16-forms.md` | ML-15 | ✅ |
+| | ML-17 «Долги»: строка, «Людям · N», «Отдал» | `block-2-people-debts/ML-17-debts-screen.md` | ML-16 | ✅ |
+| | ML-18 Демо, e2e и доки | `block-2-people-debts/ML-18-demo-e2e.md` | ML-17 | ✅ |
 
 Трассировка бриф → задачи: хвосты «до Блока 4» (951/952/958/959/960/966/967) → ML-01…ML-06 · видимые мелочи
 (955/986/991/992/993/995/1000) → ML-01, ML-07, ML-08, ML-09 · уборка старого → ML-01 (`pwa-build`), ML-10, ML-11,
@@ -145,5 +145,10 @@ ML-12 · закрытие в §4 `идея-и-редизайн` → ML-13 · «�
   `file:///C:/Users/SW/finance/frontend/node_modules/playwright-core/index.mjs`. Корневых `node_modules`/`package.json` нет.
 - **Деньги** — целые тенге; все числа — `frontend/src/lib/finance.ts`; цвета — токены `frontend/src/style.css` (пары
   тёмной темы). Мутационные проверки — откат копией файла, не `git checkout`.
+- **После Блока 2 (ML-15…ML-18):** `Credit.person` — долг человеку (ставка 0, без `rateUnknown`, путь рассрочки; показ —
+  `DebtRow.person`, `DebtsWidget` «Отдал», лист `CreditSheet` без банковских полей, «человеку» в «Капитал → Кредиты»);
+  `Obligation.people` — платёж людям (`isPeoplePayment`, не подписка; `peopleGroup` с одного платежа → «Людям · N» в
+  «Долгах»; в «Платежах» и плане месяца — обычной строкой). Формы: `NewDebtSheet` «Банку · Человеку»,
+  `NewObligationSheet` переключатель «Людям» (проп `people`). Демо — «Брату» и «Маме».
 - **Расчёты долгов:** `debtsOverview` (`lib/finance.ts:2603`), `costliestCredits` (:758, только ставка > 0),
   `creditSplit` (:1298), `store.markPaid` (`stores/finance.ts:1305`) — общие для ML-05 и ML-15…ML-17.

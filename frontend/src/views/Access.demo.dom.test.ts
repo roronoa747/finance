@@ -70,7 +70,12 @@ describe('B2C-45: демо — «Деньги» с данными во всех 
     expect(capital).toContain('Автокредит')
 
     // План «Сначала долги» — на экране «Закрыть быстрее» (Б17), «Долги» ведут туда ссылкой.
-    expect(await renderScreen(Money, '/money/debts')).toContain('data-debts-calc')
+    const debts = await renderScreen(Money, '/money/debts')
+    expect(debts).toContain('data-debts-calc')
+    // Мелочи Р-6: долг брату — строкой с «Отдал», мама — «Людям · 1».
+    expect(debts).toContain('data-debt="cr-bro"')
+    expect(debts).toContain('data-debt-give')
+    expect(text(debts)).toContain('Людям · 1')
     const plan = await renderScreen(DebtFaster, '/money/debts/faster')
     expect(plan).toMatch(/role="switch" aria-checked="true"/)
     expect(text(plan)).toContain('Цели на паузе Машина')

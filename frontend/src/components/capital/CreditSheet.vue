@@ -3,13 +3,14 @@ import { ref, computed, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain, parseMoney, rateField, ratePct } from '@/lib/money'
-import { monthInAfter, monthKey } from '@/lib/dates'
-import { creditOutlook, creditSchedule, creditTotals, liveCredits, planSchedule } from '@/lib/finance'
+import { MONTHS_PRE, monthInAfter, monthKey, parseMonthKey } from '@/lib/dates'
+import { creditOutlook, creditSchedule, creditTotals, lastAccountFor, liveCredits, paidFor, planSchedule } from '@/lib/finance'
 import type { Credit } from '@/types/finance'
 import { plural } from '@/lib/utils'
 
 import Field from '@/components/kit/Field.vue'
 import Hint from '@/components/kit/Hint.vue'
+import NumField from '@/components/kit/NumField.vue'
 import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
 import SavedMark from '@/components/kit/SavedMark.vue'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -18,6 +19,7 @@ import { useSavedMark } from '@/components/kit/useSavedMark'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import ScheduleTable from '@/components/ScheduleTable.vue'
+import MarkSheet from '@/components/MarkSheet.vue'
 
 /**
  * Окно кредита Капитала: «Оплатил» за ближайший платёж, правка полей (React
@@ -95,13 +97,35 @@ function onCreditDay(text: string) {
   if (v !== activeCredit.value?.day) editCredit({ day: v })
 }
 
+/*
+ * Долг человеку (мелочи Р-5, макет people-debts.html): без банковских полей; «Отдаю сейчас» (по умолчанию платёж
+ * месяца) и «Отдал» — одна главная; отдано в этом месяце — зелёная строка, у участника нажатие — лист отметки
+ * (другая сумма или снять). Одна отметка на месяц — `markPaid` того же пути, что «Оплатил».
+ */
+const key = computed(() => monthKey())
+const given = computed(() => (activeCredit.value ? paidFor(financeStore.payments, 'credit', activeCredit.value.id, key.value) : null))
+const giveText = ref('')
+// Платёж поправили в этом же листе — «Отдаю сейчас» следует за ним.
+watch(() => [props.creditId, activeCredit.value?.payment], () => (giveText.value = activeCredit.value ? plain(activeCredit.value.payment) : ''), { immediate: true })
+/** Лист отметки: «mark» — счёт спросить впервые, «paid» — правка отданного. */
+const markOpen = ref<'mark' | 'paid' | null>(null)
+watch(() => props.creditId, () => (markOpen.value = null))
+const giveAmount = computed(() => parseMoney(giveText.value) || activeCredit.value?.payment || 0)
+function give() {
+  const c = activeCredit.value
+  if (!c) return
+  const last = lastAccountFor(financeStore.payments, c.id, financeStore.accounts)
+  if (last === undefined) markOpen.value = 'mark'
+  else financeStore.markPaid('credit', c.id, authStore.slot ?? 'a', { period: key.value, amount: giveAmount.value, accountId: last })
+}
+
 </script>
 
 <template>
   <Sheet :open="!!activeCredit" :title="activeCredit?.name ?? ''" @close="emit('close')">
     <template #mark>
       <!-- «За всё время» — подсказкой у названия (Б17), не абзацем над полями. -->
-      <Hint v-if="activeCredit && activeCreditTotals && activeCreditTotals.count > 0 && !activeCredit.rateUnknown" label="За всё время" data-credit-totals>
+      <Hint v-if="activeCredit && activeCreditTotals && activeCreditTotals.count > 0 && !activeCredit.rateUnknown && !activeCredit.person" label="За всё время" data-credit-totals>
         <span class="num">
           За всё время: в долг {{ money(activeCreditTotals.body) }}, банку {{ money(activeCreditTotals.interest) }}
           ({{ activeCreditTotals.count }} {{ plural(activeCreditTotals.count, 'платёж', 'платежа', 'платежей') }})
@@ -109,7 +133,67 @@ function onCreditDay(text: string) {
       </Hint>
       <SavedMark :on="creditSaved" />
     </template>
-    <template v-if="activeCredit" #default="{ close }">
+    <!-- Долг человеку: остаток крупно, «Отдал» — одна главная; ставки, графика и досрочки нет (мелочи Р-5). -->
+    <template v-if="activeCredit?.person" #default>
+      <div class="mb-3.5 flex flex-col gap-1" data-person-debt>
+        <span class="font-num text-[34px] font-bold leading-none num text-ink">{{ money(activeCredit.principal) }}</span>
+        <span v-if="activeCredit.principal > 0 && activeCreditOutlook?.closes" class="type-meta num" data-credit-closes>
+          закроется в {{ monthInAfter(activeCreditOutlook.months) }}
+        </span>
+      </div>
+
+      <component
+        :is="authStore.isViewer ? 'div' : 'button'"
+        v-if="given"
+        :type="authStore.isViewer ? undefined : 'button'"
+        class="mb-3.5 flex w-full items-center justify-between gap-3 rounded-xl bg-ok-soft px-3.5 py-3 text-left text-[14px] font-semibold text-ok"
+        :class="!authStore.isViewer && 'press cursor-pointer'"
+        data-person-given
+        @click="!authStore.isViewer && (markOpen = 'paid')"
+      >
+        <span>✓ Отдал в {{ MONTHS_PRE[parseMonthKey(key).month] }}</span>
+        <span class="num">{{ money(given.amount) }}</span>
+      </component>
+      <Field v-else-if="!authStore.isViewer && activeCredit.principal > 0" label="Отдаю сейчас, ₸">
+        <span class="flex items-center gap-2">
+          <NumField v-model="giveText" class="min-w-0 flex-1" />
+          <Button class="shrink-0" data-person-give @click="give">Отдал</Button>
+        </span>
+      </Field>
+
+      <div v-if="authStore.isViewer" class="mb-3 rounded-xl border border-line bg-surface-2 p-3 text-[13px] flex flex-col gap-1.5">
+        <div class="flex justify-between">
+          <span class="text-ink-2">В месяц</span>
+          <b class="num text-ink">{{ money(activeCredit.payment) }}</b>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-ink-2">День</span>
+          <b class="num text-ink">{{ activeCredit.day }}</b>
+        </div>
+      </div>
+      <template v-else>
+        <Field label="Кому">
+          <Input :default-value="activeCredit.name" @blur="onCreditNameBlur" />
+        </Field>
+        <div class="grid grid-cols-2 gap-2.5">
+          <Field label="Осталось, ₸">
+            <NumFieldBlur :initial="plain(activeCredit.principal)" @commit="onCreditPrincipal" />
+          </Field>
+          <Field label="В месяц, ₸">
+            <NumFieldBlur :initial="plain(activeCredit.payment)" @commit="onCreditPayment" />
+          </Field>
+        </div>
+        <Field label="День">
+          <NumFieldBlur :initial="String(activeCredit.day)" kind="int" @commit="onCreditDay" />
+        </Field>
+        <DangerZone
+          label="Удалить долг"
+          warning="Долг исчезнет у обоих участников, и платёж перестанет учитываться в бюджете. Отменить нельзя."
+          @confirm="() => { financeStore.removeCredit(activeCredit!.id); emit('close') }"
+        />
+      </template>
+    </template>
+    <template v-else-if="activeCredit" #default="{ close }">
       <!-- Viewer видит цифры, но не правит (Р-12, матрица §3) -->
       <div
         v-if="authStore.isViewer"
@@ -216,4 +300,15 @@ function onCreditDay(text: string) {
       />
     </template>
   </Sheet>
+  <MarkSheet
+    v-if="activeCredit?.person && markOpen"
+    :open="markOpen"
+    kind="credit"
+    :target-id="activeCredit.id"
+    :period="key"
+    :title="activeCredit.name"
+    :amount="giveAmount"
+    :first-time="markOpen === 'mark'"
+    @close="markOpen = null"
+  />
 </template>

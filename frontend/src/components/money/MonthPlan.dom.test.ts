@@ -298,6 +298,22 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(finance.payments.some((p) => p.kind === 'credit' && p.targetId === 'loan')).toBe(false)
   })
 
+  it('/ux мелочи 2: долг человеку в плане — «Отдал», отданный — «✓ Отдал», как его строка в «Долгах»', async () => {
+    const base = familyDoc()
+    const bro = { id: 'bro', name: 'Брату', note: '', principal: 300_000, principalSetAt: T0, annualRate: 0, payment: 50_000, day: 25, person: true, updatedAt: T0 }
+    const finance = await open('member', familyDoc({
+      credits: [...base.credits!, bro],
+      payments: [...base.payments!, paid('credit', 'bro', '2026-08', 50_000, { principal: 50_000 })],
+    }))
+    await press(section('dues'))
+    await press(q('[data-due-id="credit:bro"]'))
+    expect(dialogButton('Оплатил')).toBeUndefined()
+    await press(dialogButton('Отдал'))
+    expect(finance.payments.find((p) => p.targetId === 'bro' && p.period === KEY)).toMatchObject({ amount: 50_000, accountId: 'card' })
+    await press(q('[data-due-id="credit:bro"]'))
+    expect(txt(q('[role="dialog"] [data-paid]'))).toBe('✓ Отдал')
+  })
+
   it('«Отложил всё» — взносы тех, чья зарплата пришла, остатком до плана; запись kind plan; ✓ у строк, точки нет; план не меняется', async () => {
     const finance = await open()
     const plan = planOf(finance)

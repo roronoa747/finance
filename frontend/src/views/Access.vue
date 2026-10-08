@@ -236,6 +236,18 @@ function startDemoMode() {
         payer: 'b',
         updatedAt: new Date().toISOString(),
       },
+      // Платёж людям (мелочи Р-5): в «Долгах» — строкой «Людям · 1», в плане месяца — обычный платёж.
+      {
+        id: 'ob-mom',
+        name: 'Маме',
+        note: 'ежемесячно',
+        day: 5,
+        category: 'd4',
+        people: true,
+        versions: [{ from: '2026-01', amount: 50_000 }],
+        payer: 'b',
+        updatedAt: new Date().toISOString(),
+      },
     ]
     doc.credits = [
       {
@@ -246,6 +258,19 @@ function startDemoMode() {
         annualRate: 0.19,
         payment: 95_000,
         day: 18,
+        payer: 'a',
+        updatedAt: new Date().toISOString(),
+      },
+      // Долг человеку (мелочи Р-5): без процентов, «Отдал» в строке «Долгов»; план «Сначала долги» его не досрочит.
+      {
+        id: 'cr-bro',
+        name: 'Брату',
+        note: '',
+        principal: 300_000,
+        annualRate: 0,
+        payment: 50_000,
+        day: 25,
+        person: true,
         payer: 'a',
         updatedAt: new Date().toISOString(),
       },

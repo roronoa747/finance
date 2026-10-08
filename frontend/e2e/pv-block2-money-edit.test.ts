@@ -257,7 +257,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     await next
     expect(router.currentRoute.value.fullPath).toBe('/money')
 
-    // Второй «+ Кредит или рассрочка» — новый переход, форма снова открыта.
+    // Второй «+ Долг» — новый переход, форма снова открыта.
     await router.push('/money?add=debt')
     await nextTick()
     expect(screenA.addDebtOpen).toBe(true)

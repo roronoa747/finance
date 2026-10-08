@@ -1035,3 +1035,27 @@ describe('B2C-85: план месяца в общем документе', () =>
     expect(got).toMatchObject({ name: 'Токио', payer: 'b', pausedAt: T1, fund: null })
   })
 })
+
+describe('ML-15: долг человеку и платёж людям при слиянии — по записи', () => {
+  const bro: Credit = { id: 'bro', name: 'Брату', note: '', principal: 500_000, annualRate: 0, payment: 50_000, day: 20, updatedAt: '2026-10-01T10:00:00Z' }
+  const mom: Obligation = { id: 'mom', name: 'Маме', note: '', day: 5, category: 'd4', versions: [{ from: '2026-10', amount: 100_000 }], updatedAt: '2026-10-01T10:00:00Z' }
+
+  it('партнёр позже отметил person/people — флаги доходят в обоих порядках', () => {
+    const local = { ...createEmptyDoc(), credits: [bro], obligations: [mom] }
+    const remote = {
+      ...createEmptyDoc(),
+      credits: [{ ...bro, person: true, updatedAt: '2026-10-02T10:00:00Z' }],
+      obligations: [{ ...mom, people: true, updatedAt: '2026-10-02T10:00:00Z' }],
+    }
+    for (const m of [mergeDocs(local, remote), mergeDocs(remote, local)]) {
+      expect(m.credits[0]!.person).toBe(true)
+      expect(m.obligations[0]!.people).toBe(true)
+    }
+  })
+
+  it('поздняя правка остатка у себя побеждает запись партнёра целиком — флаг с ней', () => {
+    const local = { ...createEmptyDoc(), credits: [{ ...bro, person: true, principal: 450_000, updatedAt: '2026-10-03T10:00:00Z' }] }
+    const remote = { ...createEmptyDoc(), credits: [{ ...bro, person: true, payment: 40_000, updatedAt: '2026-10-02T10:00:00Z' }] }
+    expect(mergeDocs(local, remote).credits[0]).toMatchObject({ person: true, principal: 450_000, payment: 50_000 })
+  })
+})

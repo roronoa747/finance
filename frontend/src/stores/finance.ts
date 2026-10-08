@@ -782,6 +782,8 @@ export const useFinanceStore = defineStore('finance', () => {
     who?: PersonId | null;
     /** Платёж в валюте (Р-75): сумма — в валюте, курс Нацбанка на момент ввода — запасной. */
     fx?: { currency: Currency; rate: number };
+    /** Платёж людям (мелочи Р-5): строка «Людям · N» в «Долгах». */
+    people?: boolean;
   }) {
     const id = Math.random().toString(36).slice(2, 10);
     const t = new Date().toISOString();
@@ -796,6 +798,7 @@ export const useFinanceStore = defineStore('finance', () => {
         every: o.every,
         month: o.month,
         who: o.who,
+        ...(o.people ? { people: true } : {}),
         versions: [{ from: '2000-01', amount: o.amount, ...(o.fx && o.fx.currency !== 'KZT' ? { currency: o.fx.currency, rate: o.fx.rate } : {}) }],
         // Завести — уже решение «оставить»: только что добавленное не спрашиваем (Р-20).
         keptAt: t,
@@ -845,6 +848,8 @@ export const useFinanceStore = defineStore('finance', () => {
     rateUnknown?: boolean;
     payment: number;
     day: number;
+    /** Долг человеку (мелочи Р-5): ставка 0, без `rateUnknown`. */
+    person?: boolean;
   }) {
     const id = Math.random().toString(36).slice(2, 10);
     const t = new Date().toISOString();
@@ -859,6 +864,7 @@ export const useFinanceStore = defineStore('finance', () => {
         ...(c.rateUnknown ? { rateUnknown: true } : {}),
         payment: c.payment,
         day: c.day,
+        ...(c.person ? { person: true } : {}),
         updatedAt: t,
       });
     });

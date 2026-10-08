@@ -905,9 +905,11 @@ export function groupTotal(group: Obligation, list: Obligation[], key = monthKey
 
 /**
  * Подписка — то, что заводит форма «Подписка или услуга»: быт (d4), сумма не
- * плавает. Аренду, кредиты и коммуналку «оставить?» не спрашиваем.
+ * плавает. Аренду, кредиты и коммуналку «оставить?» не спрашиваем. Платёж людям (мелочи Р-5) — не подписка.
  */
-export const isSubscription = (o: Obligation) => !o.group && o.category === 'd4' && !o.estimate;
+export const isSubscription = (o: Obligation) => !o.group && o.category === 'd4' && !o.estimate && !o.people;
+/** Платёж людям (мелочи Р-5): маме, алименты, школа — строка «Людям · N» в «Долгах» (`peopleGroup`). */
+export const isPeoplePayment = (o: Obligation) => !o.group && !!o.people;
 
 /**
  * За сколько дней до годового продления спрашивать «оставить?». Две недели —
@@ -2586,6 +2588,8 @@ export type DebtRow = {
   payment: number
   rate: number
   rateUnknown: boolean
+  /** Долг человеку (мелочи Р-5): строка без ставки, «Отдал» у строки. */
+  person: boolean
   /** Месяц последнего платежа при нынешнем платеже (`creditOutlook`, как «до …» в «Кредитах»); null — не закрывается. */
   endMonth: string | null
   /** Остаток долга. */
@@ -2614,6 +2618,7 @@ export function debtsOverview(state: PlanState & { plans?: DebtPlan[] }, key: st
       payment: c.payment,
       rate: c.annualRate,
       rateUnknown: !!c.rateUnknown,
+      person: !!c.person,
       endMonth: out.closes ? addMonths(key, out.months) : null,
       left: c.principal,
       paidShare: body > 0 ? body / (c.principal + body) : null,
@@ -3537,7 +3542,18 @@ export const SUBS_GROUP_MIN = 2
  * ручных групп). Меньше `SUBS_GROUP_MIN` — null: сворачивать нечего.
  */
 export function subscriptionGroup<T extends SubsItem>(items: T[], all: Obligation[]): SubsGroup<T> | null {
-  if (items.length < SUBS_GROUP_MIN) return null
+  return items.length < SUBS_GROUP_MIN ? null : rowsGroup(items, all)
+}
+
+/**
+ * Платежи людям одной строкой «Людям · N · сумма» в «Долгах» (мелочи Р-6) — как `subscriptionGroup`, но с **одного**
+ * платежа: строка нужна всегда, когда есть хоть один. `items` — уже платежи людям (`isPeoplePayment`). Пусто — null.
+ */
+export function peopleGroup<T extends SubsItem>(items: T[], all: Obligation[]): SubsGroup<T> | null {
+  return items.length ? rowsGroup(items, all) : null
+}
+
+function rowsGroup<T extends SubsItem>(items: T[], all: Obligation[]): SubsGroup<T> {
   const groups = liveGroups(all)
   const parts = new Map<string, { groupId: string | null; name: string; rows: T[] }>()
   for (const x of items.slice().sort((a, b) => a.day - b.day || a.obligation.name.localeCompare(b.obligation.name))) {

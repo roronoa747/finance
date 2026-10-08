@@ -80,7 +80,7 @@ function accountMeta(a: Account): string {
 // Открытые кредиты: остаток и вид; ставка и месяц последнего платежа — в листе кредита (Р-116).
 const openCredits = computed(() => credits.value.filter((c) => c.principal > 0))
 function creditMeta(c: Credit): string {
-  return c.rateUnknown ? 'ставку уточните' : c.annualRate > 0 ? 'кредит' : 'рассрочка'
+  return c.person ? 'человеку' : c.rateUnknown ? 'ставку уточните' : c.annualRate > 0 ? 'кредит' : 'рассрочка'
 }
 
 /* ------------------ Платежи — справочник ------------------ */
@@ -311,7 +311,7 @@ watch(queryModalOpen, (open) => {
         <PhPlus :size="16" weight="bold" /> Подписка или услуга
       </Button>
       <Button variant="secondary" class="w-full justify-start" @click="addKind('debt')">
-        <PhPlus :size="16" weight="bold" /> Долг или рассрочка
+        <PhPlus :size="16" weight="bold" /> Долг — банку или человеку
       </Button>
       <Button variant="secondary" class="w-full justify-start" @click="addKind('group')">
         <PhFolderSimple :size="16" /> Группа подписок

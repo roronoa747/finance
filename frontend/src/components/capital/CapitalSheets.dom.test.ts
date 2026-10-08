@@ -10,6 +10,8 @@ import type { Obligation } from '@/types/finance'
 import AccountSheet from './AccountSheet.vue'
 import CreditSheet from './CreditSheet.vue'
 import ObligationSheet from './ObligationSheet.vue'
+import NewDebtSheet from './NewDebtSheet.vue'
+import NewObligationSheet from './NewObligationSheet.vue'
 import Money from '@/views/Money.vue'
 
 /**
@@ -161,5 +163,118 @@ describe('Критик Блока 5: «Готово» в окнах Капита
     await typeThenDone('Название', 'Сервисы')
     expect(document.querySelector('[role="dialog"]')).toBeNull()
     expect(store.obligations.find((o) => o.id === 'subs')?.name).toBe('Сервисы')
+  })
+})
+
+describe('ML-16: формы «Человеку» и «Людям»', () => {
+  const button = (text: string) =>
+    [...document.querySelectorAll<HTMLElement>('[role="dialog"] button')].find((b) => b.textContent?.trim() === text)!
+  async function type(label: string, text: string) {
+    const input = field(label)
+    input.value = text
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await nextTick()
+  }
+
+  it('«Новый долг» → «Человеку»: без имени — поле подсвечено, долг не заведён; заполнено — person, ставка 0', async () => {
+    const { pinia, store } = family()
+    const add = vi.spyOn(store, 'addCredit')
+    const open = ref(true)
+    mount(pinia, () => h(NewDebtSheet, { open: open.value, onClose: () => (open.value = false) }))
+    await nextTick()
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain('Новый долг')
+    button('Человеку').click()
+    await nextTick()
+    const dialog = document.querySelector('[role="dialog"]')!.textContent!
+    expect(dialog).not.toContain('Проценты')
+    expect(dialog).not.toContain('Ставка')
+    await type('Сколько осталось', '500 000')
+    await type('Сколько в месяц', '50 000')
+    button('Добавить').click()
+    await nextTick()
+    expect(add).not.toHaveBeenCalled()
+    expect(field('Кому').getAttribute('aria-invalid')).toBe('true')
+
+    await type('Кому', 'Брату')
+    button('Добавить').click()
+    await nextTick()
+    expect(add).toHaveBeenCalledOnce()
+    expect(add.mock.calls[0]![0]).toMatchObject({ name: 'Брату', principal: 500_000, payment: 50_000, annualRate: 0, person: true })
+    const bro = store.credits.find((c) => c.name === 'Брату')!
+    expect(bro).toMatchObject({ person: true, annualRate: 0, principal: 500_000 })
+    expect(bro.rateUnknown).toBeUndefined()
+    expect(open.value).toBe(false)
+  })
+
+  it('«Банку» — прежняя форма: без названия можно, person не пишется', async () => {
+    const { pinia, store } = family()
+    mount(pinia, () => h(NewDebtSheet, { open: true, onClose: () => {} }))
+    await nextTick()
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain('Проценты')
+    await type('Остаток долга', '224 000')
+    await type('Платёж в месяц', '32 000')
+    button('Добавить').click()
+    await nextTick()
+    const c = store.householdDoc.credits.at(-1)!
+    expect(c).toMatchObject({ name: 'Долг', note: 'рассрочка', annualRate: 0 })
+    expect('person' in c).toBe(false)
+  })
+
+  it('«Регулярный платёж» → «Людям»: поле «Кому», пишется people; открытая с people — уже включено', async () => {
+    const { pinia, store } = family()
+    const people = ref(false)
+    const open = ref(true)
+    mount(pinia, () => h(NewObligationSheet, { open: open.value, people: people.value, onClose: () => (open.value = false) }))
+    await nextTick()
+    const toggle = () => document.querySelector<HTMLElement>('[role="dialog"] [role="switch"][aria-label="Людям"]')!
+    const sw = toggle()
+    expect(sw.getAttribute('aria-checked')).toBe('false')
+    sw.click()
+    await nextTick()
+    // /ux: пустое «Кому» говорит «Введите, кому», как форма долга человеку.
+    button('Добавить').click()
+    await nextTick()
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain('Введите, кому')
+    await type('Кому', 'Маме')
+    await type('Сумма в месяц', '100 000')
+    button('Добавить').click()
+    await nextTick()
+    expect(store.householdDoc.obligations.find((o) => o.name === 'Маме')).toMatchObject({ people: true, versions: [{ amount: 100_000 }] })
+
+    people.value = true
+    open.value = true
+    await nextTick()
+    expect(toggle().getAttribute('aria-checked')).toBe('true')
+    expect(field('Кому')).toBeTruthy()
+  })
+
+  it('обычный платёж — без people', async () => {
+    const { pinia, store } = family()
+    mount(pinia, () => h(NewObligationSheet, { open: true, onClose: () => {} }))
+    await nextTick()
+    await type('Что оплачиваем', 'Интернет')
+    await type('Сумма в месяц', '9 000')
+    button('Добавить').click()
+    await nextTick()
+    expect('people' in store.householdDoc.obligations.find((o) => o.name === 'Интернет')!).toBe(false)
+  })
+})
+
+describe('ML-17: лист долга человеку', () => {
+  it('без «Ставка» и «Готово»; поля «Кому», «Осталось», «В месяц», «День»; правка по уходу из поля', async () => {
+    const { pinia, store } = family()
+    const id = store.addCredit({ name: 'Брату', principal: 500_000, annualRate: 0, payment: 50_000, day: 25, person: true })
+    mount(pinia, () => h(CreditSheet, { creditId: id, onClose: () => {} }))
+    await nextTick()
+    const dialog = document.querySelector('[role="dialog"]')!.textContent!
+    for (const t of ['Ставка', 'Готово', 'Посчитать досрочно']) expect(dialog).not.toContain(t)
+    for (const t of ['Кому', 'Осталось', 'В месяц', 'День', 'Отдаю сейчас']) expect(dialog).toContain(t)
+    const pay = field('В месяц')
+    pay.focus()
+    pay.value = '40 000'
+    pay.dispatchEvent(new Event('input', { bubbles: true }))
+    pay.blur()
+    await nextTick()
+    expect(store.credits.find((c) => c.id === id)).toMatchObject({ payment: 40_000, person: true, annualRate: 0 })
   })
 })
