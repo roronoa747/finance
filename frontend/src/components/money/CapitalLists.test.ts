@@ -324,7 +324,7 @@ describe('PV-03: форма долга — ставка из срока и ра�
 
   it('по маршруту /capital?add=debt — переключатель React и текст «Без них»', async () => {
     const html = await render()
-    expect(html).toContain('Долг или рассрочка')
+    expect(html).toContain('Новый долг')
     for (const t of ['Без них', 'Знаю ставку', 'Знаю срок']) expect(html).toContain(`>${t}</button>`)
     // Пояснение рассрочки — в подсказке «Проценты» (Б17): без нажатия текста нет, кнопка `?` есть.
     expect(html).toContain('aria-label="Проценты"')
