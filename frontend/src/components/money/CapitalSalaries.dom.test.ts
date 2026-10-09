@@ -37,12 +37,18 @@ const KEY = '2026-09'
 /** В августе зарплата Ильяса пришла на карту — счёт для одного нажатия (Р-5). */
 const augustSalary: Payment = { id: 'sal-a-08', kind: 'salary', targetId: 'a', period: '2026-08', amount: 700_000, accountId: 'card', by: 'a', at: '2026-08-10T05:00:00.000Z', updatedAt: T0 }
 
-async function open(role: 'member' | 'viewer' = 'member', slot: 'a' | 'b' = 'a', payments: Payment[] = [augustSalary]) {
+async function open(role: 'member' | 'viewer' = 'member', slot: 'a' | 'b' = 'a', payments: Payment[] = [augustSalary], euro = false) {
   const pinia = createPinia()
   setActivePinia(pinia)
   useAuthStore().setAuthData(authAs(role, slot))
   const finance = useFinanceStore()
-  finance.setHouseholdDoc(planFamilyDoc({ payments }), 1)
+  const doc = planFamilyDoc({ payments })
+  if (euro) {
+    // Ильяс: 1 500 € с января 2025 (книги курсов в тесте нет — курс версии 505); евро-счёт есть — одно нажатие без вопроса о счёте.
+    doc.people[0] = { ...doc.people[0], salary: 0, salaryVersions: [{ from: '2025-01', amount: 1_500, currency: 'EUR', rate: 505 }] }
+    doc.accounts = [...doc.accounts, { id: 'eur', name: 'Евро', note: '', amount: 0, amountSetAt: T0, kind: 'card', currency: 'EUR', foreignAmount: 0, rate: 505, rateAt: T0, updatedAt: T0 }]
+  }
+  finance.setHouseholdDoc(doc, 1)
   const router = createRouter({ history: createMemoryHistory(), routes })
   await router.push('/money')
   await router.isReady()
@@ -118,5 +124,20 @@ describe('PN-02: «Пришла» у своей строки зарплаты в
     expect(txt(q('[role="dialog"]'))).toContain('Спрашиваем один раз')
     expect(q('[role="dialog"] [data-salary-status]')).toBeNull()
     expect(salaries(finance)).toHaveLength(0)
+  })
+
+  /** Критик Б1: вторая ветка `tap()` из строки — валютный оклад (B2C-79): запись в валюте на евро-счёт, в план месяца не ведёт (сначала «Обменял»). */
+  it('валютный оклад: «Пришла» в строке — одно нажатие на евро-счёт, запись 1 500 € по курсу версии; остаёмся в «Капитале», листа нет; после — ✓, кнопки нет', async () => {
+    const { finance, router } = await open('member', 'a', [], true)
+    expect(txt(q('[data-salary="a"] [data-salary-fx]'))).toContain('€')
+    const push = vi.spyOn(router, 'push')
+    await press(q('[data-salary="a"] [data-salary-came-btn]'))
+    expect(q('[role="dialog"]')).toBeNull()
+    expect(salaries(finance)).toHaveLength(1)
+    expect(salaries(finance)[0]).toMatchObject({ targetId: 'a', period: KEY, foreign: 1_500, currency: 'EUR', amount: 757_500, accountId: 'eur', by: 'a' })
+    expect(push).not.toHaveBeenCalled()
+    expect(router.currentRoute.value.path).toBe('/money')
+    expect(q('[data-salary="a"] [data-came]')).not.toBeNull()
+    expect(q('[data-salary="a"] [data-salary-came-btn]')).toBeNull()
   })
 })
