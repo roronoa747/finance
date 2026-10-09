@@ -114,7 +114,15 @@ const editsWaitLogin = computed(() => financeStore.hasUnsent && !financeStore.is
 
     <!-- Главное действие — кнопка Google (её рисует GIS: цвета Google, не бренд). -->
     <div class="mt-7 flex flex-col gap-2.5">
-      <div ref="googleEl" class="flex min-h-[44px] justify-center" data-testid="google-button" />
+      <!-- Пока идёт вход — кнопка не нажимается: второй вход той же почтой гонялся бы с первым (ревью frontend Б4 Н-4). -->
+      <div
+        ref="googleEl"
+        class="flex min-h-[44px] justify-center"
+        :class="busy && 'pointer-events-none opacity-60'"
+        :aria-busy="busy"
+        data-testid="google-button"
+      />
+      <p v-if="busy" role="status" class="text-center text-[13px] text-ink-2">Минуту…</p>
       <p v-if="googleUnavailable" class="text-center text-[13px] text-ink-2">Вход через Google недоступен</p>
       <p class="flex items-center justify-center gap-1 text-[12.5px] text-ink-2">
         Раньше входили по почте?

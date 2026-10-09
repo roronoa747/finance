@@ -80,6 +80,14 @@ describe('Access (B2C-25)', () => {
     expect(pull).toHaveBeenCalledWith('h-1')
   })
 
+  it('пока идёт вход — кнопка Google не нажимается, строка «Минуту…» (ревью frontend Б4 Н-4)', async () => {
+    const idle = await renderScreen(Access, '/access')
+    expect(idle).not.toContain('Минуту…')
+    const html = await renderScreen(Access, '/access', undefined, [screenMixin({ busy: true })])
+    expect(html).toMatch(/class="[^"]*pointer-events-none[^"]*"[^>]*data-testid="google-button"/)
+    expect(html).toContain('Минуту…')
+  })
+
   it('отказ Google — русским текстом', async () => {
     const { ApiError } = await import('@/api/client')
     vi.spyOn(apiClient, 'googleLogin').mockRejectedValue(new ApiError('invalid google token', 401))

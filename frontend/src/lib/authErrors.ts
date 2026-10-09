@@ -16,7 +16,6 @@ const TEXTS: Record<string, string> = {
   // Вход (`handlers/auth.go` Login)
   'email and password are required': 'Введите почту и пароль',
   'invalid email or password': 'Почта или пароль не подходят.',
-  'household membership not found': 'Аккаунт есть, но семьи в нём нет.',
   // Регистрация (`handlers/auth.go` Register, `auth/passwords.go`)
   'valid email is required': 'Проверьте почту: в адресе нужен знак @.',
   'password must be at least 6 characters long': 'Пароль слишком короткий: нужно хотя бы 6 символов.',
@@ -39,21 +38,21 @@ const TEXTS: Record<string, string> = {
   'only full members can create invites': 'Код может создать только участник с правом правки — у вас только просмотр.',
 }
 
-/** «unauthorized» мидлвара значит разное: у входа по коду сессии ещё нет, у кода — она истекла. */
-const UNAUTHORIZED: Partial<Record<AuthErrorContext, string>> = {
-  join: 'Чтобы войти по коду, сначала войдите в аккаунт.',
-  invite: 'Вход истёк. Выйдите и войдите заново.',
+/**
+ * Тот же текст Go — другой смысл: «user already exists» у Google — гонка двух первых входов одной
+ * почтой (ревью frontend Б4 Н-4), вкладки «Войти» в проде нет. 401 с токеном экран сам уводит на
+ * вход (`/access?expired=1`), поэтому своего текста у «unauthorized» нет.
+ */
+const BY_CONTEXT: Partial<Record<AuthErrorContext, Record<string, string>>> = {
+  google: { 'user already exists': 'Попробуйте ещё раз.' },
 }
 
 export function authErrorText(message: string, context: AuthErrorContext): string {
   const key = message.trim().toLowerCase()
-  const text =
-    key === 'unauthorized'
-      ? UNAUTHORIZED[context]
-      : // bcrypt не берёт пароль длиннее 72 байт — Go отвечает 400 с его текстом.
-        key.startsWith('failed to hash password')
-        ? 'Пароль слишком длинный — выберите покороче.'
-        : TEXTS[key]
+  // bcrypt не берёт пароль длиннее 72 байт — Go отвечает 400 с его текстом.
+  const text = key.startsWith('failed to hash password')
+    ? 'Пароль слишком длинный — выберите покороче.'
+    : (BY_CONTEXT[context]?.[key] ?? TEXTS[key])
   if (text) return text
   console.warn(`[${context}] ошибка сервера:`, message)
   return SERVER_TROUBLE
