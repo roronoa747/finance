@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"finance-backend/internal/models"
 	"finance-backend/internal/testdb"
@@ -36,7 +37,7 @@ func countRows(t *testing.T, f statementFixture, query string, arg string) int {
 	return n
 }
 
-// userTables are every place a user's own rows live (migrations 000001–000005).
+// userTables are every place a user's own rows live (migrations 000001–000006).
 var userTables = []string{
 	`SELECT count(*) FROM app.users WHERE id = $1`,
 	`SELECT count(*) FROM app.household_members WHERE user_id = $1`,
@@ -47,6 +48,7 @@ var userTables = []string{
 	`SELECT count(*) FROM app.household_invites WHERE created_by = $1 OR used_by = $1`,
 	`SELECT count(*) FROM app.households WHERE created_by = $1`,
 	`SELECT count(*) FROM app.household_docs WHERE updated_by = $1`,
+	`SELECT count(*) FROM app.events WHERE user_id = $1`,
 }
 
 func TestPostgresDeleteAccount(t *testing.T) {
@@ -54,6 +56,9 @@ func TestPostgresDeleteAccount(t *testing.T) {
 	ctx := context.Background()
 	fillUser(t, f, f.aliceID)
 	fillUser(t, f, f.bobID)
+	if err := NewSQLEventRepository(f.db).Record(ctx, f.aliceID, f.householdID, "app_open", time.Now()); err != nil {
+		t.Fatalf("event: %v", err)
+	}
 	if _, _, err := NewSQLDocRepository(f.db).PushHouseholdDoc(ctx, f.householdID, 1, []byte(`{"goals":[{"id":"g1"}]}`), f.aliceID); err != nil {
 		t.Fatalf("push: %v", err)
 	}
@@ -96,6 +101,20 @@ func TestPostgresDeleteAccount(t *testing.T) {
 	// Deleting a missing user is not an error.
 	if err := accounts.DeleteAccount(ctx, f.bobID); err != nil {
 		t.Errorf("repeated deletion: %v", err)
+	}
+
+	// Н-6 (review backend Block 4): Google → "delete" before choosing who with — no household.
+	loner, err := f.users.CreateGoogle(ctx, "loner@st.pg", "sub-loner", "Один")
+	if err != nil {
+		t.Fatalf("create loner: %v", err)
+	}
+	if err := accounts.DeleteAccount(ctx, loner.ID); err != nil {
+		t.Fatalf("delete user without a household: %v", err)
+	}
+	for _, q := range userTables {
+		if n := countRows(t, f, q, loner.ID); n != 0 {
+			t.Errorf("%s → %d after deleting a user without a household", q, n)
+		}
 	}
 }
 
