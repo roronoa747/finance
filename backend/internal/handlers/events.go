@@ -74,7 +74,7 @@ func (h *EventsHandler) Record(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// IsAdmin reports whether the signed-in user's email is in ADMIN_EMAILS.
+// isAdmin reports whether the signed-in user's email is in ADMIN_EMAILS.
 func isAdmin(admins []string, email string) bool {
 	return len(admins) > 0 && slices.Contains(admins, strings.ToLower(strings.TrimSpace(email)))
 }
