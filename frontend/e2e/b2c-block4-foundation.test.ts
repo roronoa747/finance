@@ -58,6 +58,11 @@ async function fakeGo(input: RequestInfo | URL, init: RequestInit = {}): Promise
     const [, sub, email] = String(body.id_token).split(':')
     if (!sub || !email) return json(401, { error: 'invalid google token' })
     let u = users.get(sub)
+    // Как Go (B2C-22): не нашли по sub — привязка по почте к старому пользователю.
+    if (!u) {
+      u = [...users.values()].find((o) => o.email === email)
+      if (u) users.set(sub, u)
+    }
     const created = !u
     if (!u) users.set(sub, (u = { id: sub, email, name: email.split('@')[0][0].toUpperCase() + email.split('@')[0].slice(1), household: null, slot: '', role: 'member' }))
     return json(created ? 201 : 200, authResponse(u))
@@ -387,5 +392,37 @@ describe('e2e / B2C Блок 4 — чужая семья: Google → «с кем
     expect(readDemoPending()).toBe(false)
     expect(useFinanceStore().isDemo).toBe(false)
     expect(useFinanceStore().people.map((p) => p.name)).toEqual(['Дана'])
+  })
+
+  // Приёмка Блока 4, часть 2 (стенд Go + PG: старый пользователь `old@…` → Google той же почтой).
+  it('приёмка: старый пользователь (почта и пароль) входит Google той же почтой на новом телефоне — та же семья, данные на месте, ревизия не растёт', async () => {
+    const dana = phone()
+    let vm = await act(dana, Access, '/access', 'onGoogleToken')
+    await vm.onGoogleToken('id:sub-dana:dana@example.com')
+    vm = await act(dana, Who, '/who', 'create')
+    await vm.create('alone')
+    finishStart('Дана', 'a')
+    await settle(5000)
+    const family = families.get(useAuthStore().household!.id)!
+    // До Блока 4 — вход по почте: у пользователя нет Google, только почта.
+    const old = users.get('sub-dana')!
+    users.delete('sub-dana')
+    old.id = 'old-dana'
+    users.set(old.id, old)
+    const rev = family.rev
+    const sent = posts
+
+    const fresh = phone()
+    vm = await act(fresh, Access, '/access', 'onGoogleToken')
+    await vm.onGoogleToken('id:sub-google-dana:dana@example.com')
+    await settle(1000)
+    expect(useAuthStore().household?.id).toBe(family.id)
+    expect(users.get('sub-google-dana')).toBe(old)
+    startSyncEngine(Object.assign(new EventTarget(), { setInterval: () => 0 }) as unknown as Window, Object.defineProperty(new EventTarget(), 'visibilityState', { value: 'visible' }) as unknown as Document)
+    await settle(1000)
+    expect(useFinanceStore().people.map((p) => `${p.name}:${p.salary}`)).toEqual(['Дана:500000'])
+    expect(landingPath(useAuthStore(), useFinanceStore())).toBe('/')
+    expect(family.rev).toBe(rev)
+    expect(posts).toBe(sent)
   })
 })
