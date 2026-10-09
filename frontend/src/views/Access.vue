@@ -136,7 +136,7 @@ const editsWaitLogin = computed(() => financeStore.hasUnsent && !financeStore.is
     <p v-else-if="hasDemoDraft" class="mt-6 text-center text-[12px] text-ink-2">Новая семья — спросим, взять ли демо.</p>
     <RouterLink to="/" class="mt-6 text-center text-[13px] text-brand">‹ Назад к описанию</RouterLink>
 
-    <p class="mt-8 text-center text-[11.5px] text-ink-3">
+    <p class="mt-8 text-center text-[11.5px] text-ink-2">
       Бесплатно · выписка остаётся на телефоне ·
       <RouterLink to="/privacy" class="underline">политика</RouterLink>
     </p>

@@ -45,7 +45,7 @@ function tryDemo() {
         <div class="flex items-center gap-5 text-[14px] text-ink-2">
           <a href="#how" class="hidden md:inline">Как это работает</a>
           <a href="#privacy" class="hidden md:inline">Приватность</a>
-          <RouterLink to="/access" class="rounded-pill bg-surface-2 px-4 py-2 font-medium text-ink">Начать</RouterLink>
+          <RouterLink to="/access" class="rounded-pill bg-surface px-4 py-2 font-medium text-ink">Начать</RouterLink>
         </div>
       </nav>
 
@@ -66,7 +66,7 @@ function tryDemo() {
             <button
               v-if="!editsWaitLogin"
               type="button"
-              class="press inline-flex h-13 items-center justify-center rounded-pill bg-surface-2 px-7 text-[15.5px] font-semibold text-ink cursor-pointer"
+              class="press inline-flex h-13 items-center justify-center rounded-pill bg-surface px-7 text-[15.5px] font-semibold text-ink cursor-pointer"
               @click="tryDemo"
             >
               {{ hasDemoDraft ? 'Вернуться в демо' : 'Попробовать' }}
@@ -75,7 +75,7 @@ function tryDemo() {
           <p v-if="editsWaitLogin" class="mt-3 text-[13px] text-ink-2" data-landing="edits-wait">
             Неотправленные правки ждут — войдите в свою семью.
           </p>
-          <p v-else class="mt-3 text-[13px] text-ink-3">Бесплатно. Без карты. Выписка остаётся на телефоне.</p>
+          <p v-else class="mt-3 text-[13px] text-ink-2">Бесплатно. Без карты. Выписка остаётся на телефоне.</p>
         </div>
         <div class="flex justify-center">
           <img
@@ -109,13 +109,13 @@ function tryDemo() {
 
       <!-- Для кого и приватность -->
       <section id="privacy" class="grid gap-4 py-8 md:grid-cols-2" data-landing="bands">
-        <div class="rounded-card bg-surface-2 p-6">
+        <div class="rounded-card bg-surface p-6">
           <h2 class="font-display text-[22px] font-semibold">Для двоих. Или для одного.</h2>
           <p class="mt-2 text-[15px] text-ink-2">
             Партнёр видит итоги по разделам — до тенге. Ваши операции остаются у вас. Один человек — тоже семья.
           </p>
         </div>
-        <div class="rounded-card bg-surface-2 p-6">
+        <div class="rounded-card bg-surface p-6">
           <h2 class="font-display text-[22px] font-semibold">Файл не покидает телефон.</h2>
           <p class="mt-2 text-[15px] text-ink-2">
             PDF из Kaspi или Freedom разбирается на месте. На сервере — продавец, дата, сумма и раздел, без номеров и
@@ -124,7 +124,7 @@ function tryDemo() {
         </div>
       </section>
 
-      <footer class="flex flex-col gap-2 border-t border-line py-8 text-[13px] text-ink-3 md:flex-row md:justify-between">
+      <footer class="flex flex-col gap-2 border-t border-line py-8 text-[13px] text-ink-2 md:flex-row md:justify-between">
         <span>© Family Finance, 2026 · Казахстан</span>
         <span class="flex flex-wrap gap-4">
           <RouterLink to="/privacy">Политика конфиденциальности</RouterLink>

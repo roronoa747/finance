@@ -73,7 +73,7 @@ const funnel = computed(() => {
           <tr v-for="[label, n] in funnel" :key="label" class="border-t border-line first:border-0">
             <td class="py-1.5 text-ink-2">{{ label }}</td>
             <td class="py-1.5 text-right num text-ink">{{ n }}</td>
-            <td class="w-14 py-1.5 text-right num text-ink-3">{{ pct(n, metrics.funnel_28d.created) }}</td>
+            <td class="w-14 py-1.5 text-right num text-ink-2">{{ pct(n, metrics.funnel_28d.created) }}</td>
           </tr>
         </table>
       </Card>
@@ -82,7 +82,7 @@ const funnel = computed(() => {
         <h2 class="type-h3 mb-2 text-ink">По неделям</h2>
         <table class="w-full text-[13.5px]">
           <thead>
-            <tr class="text-ink-3">
+            <tr class="text-ink-2">
               <th class="py-1 text-left font-normal">Неделя</th>
               <th class="py-1 text-right font-normal">Семьи</th>
               <th class="py-1 text-right font-normal">Выписки</th>

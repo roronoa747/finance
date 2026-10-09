@@ -179,12 +179,12 @@ function pick(id: Choice) {
       </div>
 
       <form v-if="choice === 'code'" class="mt-4 flex flex-col gap-1" @submit.prevent="join">
-        <Field label="Код приглашения">
+        <Field label="Код приглашения" :error="error">
           <Input
             v-model="code"
             placeholder="A1B2C3D4"
             autocapitalize="characters"
-            class-name="num tracking-[0.14em] font-semibold uppercase"
+            class-name="bg-surface num tracking-[0.14em] font-semibold uppercase"
           />
         </Field>
         <p v-if="demoPending" class="mb-2 text-[12.5px] text-ink-2">Демо сюда не переносится — у семьи уже свои данные.</p>
@@ -193,7 +193,7 @@ function pick(id: Choice) {
 
       <p v-if="busy && choice !== 'code'" class="mt-4 text-center text-[13px] text-ink-2">Минуту…</p>
       <p
-        v-if="error"
+        v-if="error && choice !== 'code'"
         role="alert"
         class="mt-3 rounded-xl border border-warn-line bg-warn-soft px-3.5 py-2.5 text-[13px] text-ink-2"
       >
