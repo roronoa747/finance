@@ -45,6 +45,7 @@ import Toggle from '@/components/kit/Toggle.vue'
 import Button from '@/components/ui/Button.vue'
 import MarkSheet from '@/components/MarkSheet.vue'
 import SalaryExchange from '@/components/SalaryExchange.vue'
+import SalaryRow from '@/components/SalaryRow.vue'
 import ExtraIncomeSheet from '@/components/capital/ExtraIncomeSheet.vue'
 import DueRow from '@/components/money/DueRow.vue'
 import MonthRing from '@/components/money/MonthRing.vue'
@@ -360,7 +361,8 @@ function addFund(kind: 'reserve' | 'cushion') {
 
     <!--
       Зарплаты: ✓ у суммы — пришла, валютная — «1 500 €» под суммой; строка нажимается — лист зарплаты (дата, «хватает
-      ли», обмены — там, Р-116); «Обменял» — у своей пришедшей валютной, в строке.
+      ли», обмены — там, Р-116); «Обменял» — у своей пришедшей валютной, в строке; «Пришла» — у своей открытой, в
+      строке (PN-02, правило 12: действие у предмета; та же отметка, что в листе — `useSalaryTap`).
     -->
     <Card v-if="salaries.length || canEdit" tight class="flex flex-col gap-2.5">
       <template v-for="(s, i) in salaries" :key="s.person">
@@ -385,6 +387,10 @@ function addFund(kind: 'reserve' | 'cushion') {
             </b>
             <span v-if="s.fx" class="text-[12.5px] font-semibold text-ink-2 num whitespace-nowrap" data-salary-fx>{{ moneyIn(s.fx.amount, s.fx.currency) }}</span>
           </div>
+          <!-- Одна отметка на счёт прошлого раза, лист строки не открывает; без прошлого счёта — лист отметки. -->
+          <span v-if="s.canMark" class="relative z-10 shrink-0" @click.stop>
+            <SalaryRow button small :person-id="s.person" :period="monthKey" />
+          </span>
         </div>
       </template>
       <template v-if="canEdit">

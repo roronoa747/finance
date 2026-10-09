@@ -1,12 +1,9 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed } from 'vue'
 import { PhArrowUp, PhCheck } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
-import { useAuthStore } from '@/stores/auth'
 import { moneyIn, plain } from '@/lib/money'
 import { atLabel } from '@/lib/dates'
-import { lastAccountFor, liveAccounts, paidFor, salaryAt, salaryOf, salaryOpen } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
 import { memberColor } from '@/lib/palette'
@@ -14,6 +11,7 @@ import Row from '@/components/kit/Row.vue'
 import Button from '@/components/ui/Button.vue'
 import MarkSheet from '@/components/MarkSheet.vue'
 import SalaryExchange from '@/components/SalaryExchange.vue'
+import { useSalaryTap } from '@/components/useSalaryTap'
 
 /**
  * «Пришла зарплата» (RP-10, Р-18) — зеркало «Оплатил» для зачисления. Отмечает свою
@@ -21,6 +19,7 @@ import SalaryExchange from '@/components/SalaryExchange.vue'
  * отметку после синка. Одно нажатие — оклад месяца на счёт, куда зарплата пришла в
  * прошлый раз (Р-5); лист (`MarkSheet`, B2C-15) — только для исключений: первая отметка
  * (счёт спросить один раз), премия, правка и снятие. После отметки — разбор этой зарплаты.
+ * Сама отметка — `useSalaryTap` (PN-02): одна на строку «Месяца»/«Капитала» и лист зарплаты.
  */
 const props = defineProps<{
   personId: PersonId
@@ -36,35 +35,28 @@ const props = defineProps<{
   button?: boolean
   /** Кнопка тихая: на экране уже есть главное действие (правило 12 — одна брендовая). */
   quiet?: boolean
+  /**
+   * С `button`: маленькая «Пришла» у своей строки зарплаты в «Месяце» и «Капитале» (PN-02, правило 12 — действие у
+   * предмета), без «Другая сумма или счёт» (он — в листе, который открывает сама строка). Ничего не рендерит, пока
+   * отметить нельзя.
+   */
+  small?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'open'): void
 }>()
 
-const router = useRouter()
 const finance = useFinanceStore()
-const auth = useAuthStore()
 
-const person = computed(() => finance.people.find((p) => p.id === props.personId && !p.deletedAt))
-const record = computed(() => paidFor(finance.payments, 'salary', props.personId, props.period))
-/**
- * Оклад в валюте (B2C-79, Р-73): приходит на валютный счёт суммой в валюте, после — «Обменял»
- * (`SalaryExchange`); в план месяца сразу не ведёт — сначала обмен.
- */
-const own = computed(() => (person.value ? salaryOf(person.value, props.period) : null))
-const fxSalary = computed(() => !!own.value && own.value.currency !== 'KZT')
-/** Оклад месяца — сумма по умолчанию (валютный — в валюте). */
-const due = computed(() => (!person.value ? 0 : fxSalary.value ? own.value!.amount : salaryAt(person.value, props.period)))
+const { record, own, fxSalary, due, mine, canMark, title, sheet, markAmount, markAccount, firstTime, tap, openMore, onMarked, toAllocation } = useSalaryTap(
+  () => props.personId,
+  () => props.period,
+)
+
 /** Сумма в строке: у отмеченной — пришедшая. */
 const shown = computed(() => (record.value ? (record.value.foreign ?? record.value.amount) : due.value))
 const shownText = computed(() => (fxSalary.value || record.value?.foreign ? moneyIn(shown.value, record.value?.currency ?? own.value!.currency) : plain(shown.value)))
-
-// Свою зарплату отмечает только сам участник; viewer — никогда (Р-13).
-const mine = computed(() => !auth.isViewer && auth.slot === props.personId)
-const canMark = computed(
-  () => mine.value && !!person.value && salaryOpen(person.value, finance.payments, props.period),
-)
 
 const toAccount = computed(() => {
   const id = record.value?.accountId
@@ -72,68 +64,13 @@ const toAccount = computed(() => {
   // Личный счёт партнёра на этом телефоне не виден.
   return finance.accounts.find((a) => a.id === id)?.name ?? 'личный счёт'
 })
-
-const title = computed(() => `Зарплата · ${person.value?.name ?? ''}`)
-
-const sheet = ref<'mark' | 'paid' | null>(null)
-const markAmount = ref(0)
-// undefined — счёт ещё не выбран; null — «не зачислять».
-const markAccount = ref<string | null | undefined>(undefined)
-const firstTime = ref(false)
-
-function openMark(amount: number, account: string | null | undefined) {
-  markAmount.value = amount
-  markAccount.value = account
-  sheet.value = 'mark'
-}
-
-/** После отметки — план месяца: «Отложить по плану» этой зарплаты (Р-78). */
-function toAllocation() {
-  void router.push('/month')
-}
-
-function mark(amount: number, accountId: string | null | undefined) {
-  if (fxSalary.value) {
-    finance.markSalary(props.personId, { period: props.period, foreign: amount, accountId })
-    sheet.value = null
-    return
-  }
-  finance.markSalary(props.personId, { period: props.period, amount, accountId: accountId ?? null })
-  sheet.value = null
-  toAllocation()
-}
-
-/** Отмечено в листе: тенговая — в план месяца; валютная — остаёмся, дальше «Обменял». */
-function onMarked() {
-  if (!fxSalary.value) toAllocation()
-}
-
-/** Главный путь — одно нажатие. Лист — если счёт спросить не у кого. */
-function tap() {
-  // Валютная: одним нажатием, когда есть валютный счёт той же валюты (стор выберет); иначе лист с «Евро-счётом».
-  if (fxSalary.value) {
-    const has = liveAccounts(finance.accounts).some((a) => a.currency === own.value!.currency)
-    firstTime.value = !has
-    if (has) mark(due.value, undefined)
-    else openMark(due.value, undefined)
-    return
-  }
-  const last = lastAccountFor(finance.payments, props.personId, finance.accounts)
-  firstTime.value = last === undefined
-  if (last === undefined) openMark(due.value, last)
-  else mark(due.value, last)
-}
-
-function openMore() {
-  if (fxSalary.value) return openMark(due.value, undefined)
-  const last = lastAccountFor(finance.payments, props.personId, finance.accounts)
-  firstTime.value = last === undefined
-  openMark(due.value, last)
-}
 </script>
 
 <template>
-  <template v-if="button">
+  <template v-if="button && small">
+    <Button v-if="canMark" variant="soft" size="sm" data-salary-came-btn @click="tap">Пришла</Button>
+  </template>
+  <template v-else-if="button">
     <Button v-if="canMark" :variant="quiet ? 'secondary' : 'default'" class="mt-3 w-full" @click="tap">
       Пришла зарплата
     </Button>

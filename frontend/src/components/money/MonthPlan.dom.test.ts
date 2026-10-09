@@ -87,10 +87,10 @@ function familyDoc(extra: Partial<SyncDoc> = {}): SyncDoc {
   })
 }
 
-async function open(role: 'member' | 'viewer' = 'member', doc = familyDoc(), path = '/month') {
+async function open(role: 'member' | 'viewer' = 'member', doc = familyDoc(), path = '/month', slot: 'a' | 'b' = 'a') {
   const pinia = createPinia()
   setActivePinia(pinia)
-  useAuthStore().setAuthData(authAs(role, 'a'))
+  useAuthStore().setAuthData(authAs(role, slot))
   const finance = useFinanceStore()
   finance.setHouseholdDoc(doc, 1)
   const router = createRouter({ history: createMemoryHistory(), routes })
@@ -616,6 +616,72 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(txt(q('[data-month-nav]'))).toContain('Август')
     await press(all('button').find((b) => b.getAttribute('aria-label') === 'Следующий месяц'))
     expect(q('[data-rest]')).not.toBeNull()
+  })
+})
+
+/**
+ * PN-02 (хвост 1022, правило 12 «действие у предмета»): «Пришла» — тихой кнопкой у своей открытой строки зарплаты;
+ * та же одна отметка, что «Пришла зарплата» в листе (`useSalaryTap`), лист строки не открывает. 12 сентября: зарплата
+ * Ильяса (10-го) открыта, Аруны (20-го) — нет.
+ */
+describe('PN-02: «Пришла» у своей строки зарплаты в «Месяце»', () => {
+  /** В августе зарплата Ильяса пришла на карту — счёт для одного нажатия (Р-5). */
+  const augustSalary = paid('salary', 'a', '2026-08', 700_000, { id: 'sal-a-08', accountId: 'card', at: '2026-08-10T05:00:00.000Z' })
+  /** Сентябрь не отмечен (строка открыта); прошлые отметки — `history`. */
+  const waiting = (history: Payment[] = [augustSalary]) => {
+    const doc = familyDoc()
+    return { ...doc, payments: [...(doc.payments ?? []).filter((p) => p.kind !== 'salary'), ...history] }
+  }
+  const salaries = (finance: ReturnType<typeof useFinanceStore>) => finance.payments.filter((p) => !p.deletedAt && p.kind === 'salary' && p.period === KEY)
+
+  it('кнопка только у своей открытой (canMark): у Ильяса есть, у Аруны нет; партнёр (слот b) и viewer — без кнопки; кнопка тихая', async () => {
+    await open('member', waiting())
+    const btn = q('[data-salary="a"][data-can-mark] [data-salary-came-btn]')
+    expect(btn).not.toBeNull()
+    expect(txt(btn)).toBe('Пришла')
+    expect(q('[data-salary="b"] [data-salary-came-btn]')).toBeNull()
+    // Не брендовая: главная кнопка экрана одна (правило 12); не внутри кнопки-строки (ревью Н-7).
+    expect(btn!.className).not.toContain('bg-brand ')
+    expect(btn!.closest('[data-row-open]')).toBeNull()
+
+    app?.unmount()
+    document.body.innerHTML = ''
+    await open('member', waiting(), '/month', 'b')
+    expect(q('[data-salary="a"] [data-salary-came-btn]')).toBeNull()
+    expect(q('[data-salary="b"] [data-salary-came-btn]')).toBeNull()
+
+    app?.unmount()
+    document.body.innerHTML = ''
+    await open('viewer', waiting())
+    expect(q('[data-salary-came-btn]')).toBeNull()
+  })
+
+  it('нажатие — одна отметка на счёт прошлого раза, лист не открывается; после — ✓ у суммы, кнопки нет; в листе — «Другая сумма или снять»', async () => {
+    const finance = await open('member', waiting())
+    await press(q('[data-salary="a"] [data-salary-came-btn]'))
+    expect(q('[role="dialog"]')).toBeNull()
+    expect(salaries(finance)).toHaveLength(1)
+    expect(salaries(finance)[0]).toMatchObject({ targetId: 'a', period: KEY, amount: 700_000, accountId: 'card', by: 'a' })
+    expect(q('[data-salary="a"] [data-came]')).not.toBeNull()
+    expect(q('[data-salary="a"] [data-salary-came-btn]')).toBeNull()
+    // Та же отметка, что в листе: лист — «пришла», без «Пришла зарплата», с «Другая сумма или снять».
+    await press(q('[data-salary="a"] [data-row-open]'))
+    expect(txt(q('[role="dialog"] [data-salary-status]'))).toContain('пришла')
+    expect(dialogButton('Пришла зарплата')).toBeUndefined()
+    expect(dialogButton('Другая сумма или снять')).toBeTruthy()
+  })
+
+  it('прошлого счёта нет — лист отметки «спрашиваем один раз» (не лист зарплаты), записи пока нет; строка по-прежнему открывает лист зарплаты', async () => {
+    const finance = await open('member', waiting([]))
+    await press(q('[data-salary="a"] [data-salary-came-btn]'))
+    expect(txt(q('[role="dialog"]'))).toContain('Спрашиваем один раз')
+    expect(q('[role="dialog"] [data-salary-status]')).toBeNull()
+    expect(salaries(finance)).toHaveLength(0)
+    await press(q('[role="dialog"] button[aria-label="Закрыть"]'))
+    expect(q('[role="dialog"]')).toBeNull()
+    await press(q('[data-salary="a"] [data-row-open]'))
+    expect(q('[role="dialog"] [data-salary-status]')).not.toBeNull()
+    expect(dialogButton('Пришла зарплата')).toBeTruthy()
   })
 })
 
