@@ -54,7 +54,8 @@ export const useEventsStore = defineStore('events', () => {
           // 401 уже увёл на вход; 5xx и сеть — позже; 4xx — событие не примут и потом.
           if (!(e instanceof ApiError) || e.status >= 500 || e.status === 401) break
         }
-        queue.value = queue.value.slice(1)
+        // Не `slice(1)`: пока шёл запрос, `track` мог вытеснить голову очереди (лимит).
+        queue.value = queue.value.filter((e) => e !== next)
         writeStorage(EVENTS_QUEUE_KEY, queue.value)
       }
     })().finally(() => {
@@ -63,5 +64,16 @@ export const useEventsStore = defineStore('events', () => {
     return flushing
   }
 
-  return { queue, track, flush }
+  /** Выход, истёкший вход, удаление: события прежнего пользователя не уходят от имени следующего. */
+  function reset() {
+    queue.value = []
+    openedOn = ''
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.removeItem(EVENTS_QUEUE_KEY)
+    } catch {
+      // Хранилище недоступно — очереди на устройстве и нет.
+    }
+  }
+
+  return { queue, track, flush, reset }
 })

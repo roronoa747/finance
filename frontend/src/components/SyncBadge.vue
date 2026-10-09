@@ -33,7 +33,8 @@ const syncing = ref(false)
 const status = computed(() => financeStore.syncStatus)
 const lastSyncedAt = computed(() => financeStore.lastSyncedAt)
 const lastError = computed(() => financeStore.lastError)
-const people = computed(() => financeStore.people)
+// Ушедшие (надгробие `deletedAt`) в шторке не числятся — как в «С кем» настроек.
+const people = computed(() => financeStore.people.filter((p) => !p.deletedAt))
 const me = computed(() => authStore.slot)
 const rows = computed(() =>
   authStore.members.length

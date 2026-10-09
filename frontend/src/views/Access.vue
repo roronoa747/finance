@@ -133,7 +133,7 @@ const editsWaitLogin = computed(() => financeStore.hasUnsent && !financeStore.is
     <p v-if="editsWaitLogin" class="mt-6 text-center text-[12px] text-ink-2">
       Неотправленные правки ждут на этом телефоне — войдите в свою семью, и они уйдут.
     </p>
-    <p v-else-if="hasDemoDraft" class="mt-6 text-center text-[12px] text-ink-2">После входа спросим, взять ли демо с собой.</p>
+    <p v-else-if="hasDemoDraft" class="mt-6 text-center text-[12px] text-ink-2">Новая семья — спросим, взять ли демо.</p>
     <RouterLink to="/" class="mt-6 text-center text-[13px] text-brand">‹ Назад к описанию</RouterLink>
 
     <p class="mt-8 text-center text-[11.5px] text-ink-3">

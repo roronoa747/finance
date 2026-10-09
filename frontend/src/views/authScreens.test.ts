@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { Component } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
-import { useFinanceStore } from '@/stores/finance'
+import { useFinanceStore, DEMO_HOUSEHOLD } from '@/stores/finance'
+import { readDemoPending, writeDemoPending } from '@/lib/storage'
 import { apiClient } from '@/api/client'
 import { renderScreen, screenMixin } from '@/test/screenState'
 import type { AuthResponse } from '@/types/api'
@@ -125,6 +126,43 @@ describe('Who — «С кем ведём?» (B2C-25)', () => {
     expect(html).toContain('Код для партнёра')
     expect(html).toContain('AB12CD34')
     expect(html).toContain('Дальше')
+  })
+
+  it('из демо: «Создать семью» → «Взять демо?»; перезапуск до ответа; «Да» — демо в семье и код партнёру (критик Блока 4)', async () => {
+    vi.spyOn(apiClient, 'createHousehold').mockResolvedValue(dana(true))
+    vi.spyOn(apiClient, 'createInvite').mockResolvedValue({ code: 'AB12CD34', expires_at: T0 })
+    useFinanceStore().claimFor(DEMO_HOUSEHOLD)
+    writeDemoPending(true)
+    let vm = await screen(Who, '/who', 'pick')
+    await vm.create('family')
+    expect(apiClient.createInvite).not.toHaveBeenCalled()
+    expect(useFinanceStore().isDemo).toBe(true)
+    expect(visible(await renderScreen(Who, '/who'))).toContain('Взять демо?')
+
+    // Приложение закрыли и открыли: вход и черновик — с телефона, выбор «Создать семью» не потерян.
+    setActivePinia(createPinia())
+    expect(readDemoPending()).toBe(true)
+    const adopt = vi.spyOn(useFinanceStore(), 'adoptDemo').mockResolvedValue()
+    vm = await screen(Who, '/who', 'answerDemo')
+    await vm.answerDemo(true)
+    expect(adopt).toHaveBeenCalledWith('h-1', 'Дана')
+    expect(readDemoPending()).toBe(false)
+    expect(apiClient.createInvite).toHaveBeenCalledTimes(1)
+    expect(vm.invite).toBe('AB12CD34')
+  })
+
+  it('из демо: «Нет» — чистый лист новой семьи, вопрос снят', async () => {
+    vi.spyOn(apiClient, 'createHousehold').mockResolvedValue(dana(true))
+    const finance = useFinanceStore()
+    finance.claimFor(DEMO_HOUSEHOLD)
+    finance.setPerson('a', { name: 'Демо' })
+    writeDemoPending(true)
+    const vm = await screen(Who, '/who', 'pick')
+    await vm.create('alone')
+    await vm.answerDemo(false)
+    expect(finance.docHousehold).toBe('h-1')
+    expect(finance.people).toEqual([])
+    expect(readDemoPending()).toBe(false)
   })
 
   it('«По коду» — вход в семью партнёра, её документ с сервера; ошибка кода — русским текстом', async () => {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { defineAsyncComponent } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import AppShell from '@/components/AppShell.vue'
 
@@ -10,9 +11,11 @@ import AppShell from '@/components/AppShell.vue'
  */
 const Landing = defineAsyncComponent(() => import('@/views/Landing.vue'))
 const auth = useAuthStore()
+// 401 на вложенном экране: вход сброшен, роутер уводит на `/access` — лэндинг тут не мелькает.
+const route = useRoute()
 </script>
 
 <template>
   <AppShell v-if="auth.isAuthenticated" />
-  <Landing v-else />
+  <Landing v-else-if="route.path === '/'" />
 </template>

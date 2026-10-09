@@ -8,7 +8,7 @@ import { afterFamilyLoaded } from '@/stores/syncEngine'
 import { landingPath } from '@/router/landing'
 import { authErrorText } from '@/lib/authErrors'
 import { useInvite } from '@/components/useInvite'
-import { readDemoPending, writeDemoPending } from '@/lib/storage'
+import { readDemoPending, readDemoPendingKind, writeDemoPending } from '@/lib/storage'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Field from '@/components/kit/Field.vue'
@@ -46,8 +46,12 @@ async function create(kind: 'alone' | 'family') {
   error.value = ''
   try {
     const res = await authStore.createHousehold({ display_name: name.value })
-    // Черновик демо ждёт ответа — сначала вопрос (askDemo), документ телефона не трогаем.
-    if (demoPending.value) return
+    // Черновик демо ждёт ответа (askDemo), документ телефона не трогаем; выбор помним — перезапуск
+    // до ответа не теряет код для партнёра.
+    if (demoPending.value) {
+      writeDemoPending(kind)
+      return
+    }
     // Новая семья пуста: остатки прежнего документа телефона не переносятся.
     if (res.household) financeStore.startNewFamily(res.household.id)
     await afterCreate(kind)
@@ -79,9 +83,10 @@ async function answerDemo(take: boolean) {
   try {
     if (take) await financeStore.adoptDemo(household.id, name.value)
     else financeStore.startNewFamily(household.id)
+    const kind = choice.value === 'family' || choice.value === 'alone' ? choice.value : readDemoPendingKind()
     writeDemoPending(false)
     demoPending.value = false
-    await afterCreate(choice.value === 'family' ? 'family' : 'alone')
+    await afterCreate(kind)
   } finally {
     busy.value = false
   }

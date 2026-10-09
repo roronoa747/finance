@@ -4,6 +4,7 @@ import { apiClient, ApiError } from '@/api/client'
 import type { User, Household, HouseholdMember, MemberView } from '@/types/api'
 import { releasePhotos } from '@/lib/photos/store'
 import { useFinanceStore } from './finance'
+import { useEventsStore } from './events'
 
 function getItem(key: string): string | null {
   return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null
@@ -76,6 +77,7 @@ export const useAuthStore = defineStore('auth', () => {
     removeItem('ff_member')
     // Object URL фото семьи — не для следующего входа (B2C-17).
     releasePhotos()
+    useEventsStore().reset()
   }
 
   async function register(data: {
@@ -248,7 +250,8 @@ export const useAuthStore = defineStore('auth', () => {
    */
   function logout(choice?: 'keep' | 'discard'): boolean {
     const finance = useFinanceStore()
-    if (finance.hasUnsent && !choice) return false
+    // Черновик демо (вход Google до ответа «взять демо?») отправить нельзя — не спрашиваем.
+    if (finance.hasUnsent && !finance.isDemo && !choice) return false
     if (choice !== 'keep') finance.clearLocal()
     clearAuth()
     return true

@@ -86,6 +86,49 @@ describe('B2C-28: события удержания — очередь на ус
     expect(useEventsStore().queue).toEqual([])
   })
 
+  it('вход истёк — очередь прежнего не уходит от имени следующего, app_open дня снова пишется (критик Блока 4)', async () => {
+    signIn()
+    const events = useEventsStore()
+    const down = { sendEvent: () => Promise.reject(new TypeError('offline')) } as unknown as ApiClient
+    events.track('app_open', down)
+    events.track('week_done', down)
+    await settle()
+    expect(useAuthStore().expire()).toBe(true)
+    expect(events.queue).toEqual([])
+    expect(map.has('ff_events_queue')).toBe(false)
+
+    signIn('t2')
+    const sent: string[] = []
+    const client = { sendEvent: vi.fn(async (k: string) => void sent.push(k)) } as unknown as ApiClient
+    events.track('app_open', client)
+    await settle()
+    await events.flush(client)
+    expect(sent).toEqual(['app_open'])
+  })
+
+  it('пока шёл запрос, очередь упёрлась в лимит — уходит из очереди именно отправленное (критик Блока 4)', async () => {
+    signIn()
+    const events = useEventsStore()
+    const down = { sendEvent: () => Promise.reject(new TypeError('offline')) } as unknown as ApiClient
+    for (let i = 0; i < 50; i++) events.track('week_done', down)
+    await settle()
+    const head = events.queue[0]
+    let release!: () => void
+    let calls = 0
+    // Первый запрос висит до release; дальше сети нет — flush останавливается.
+    const slow = {
+      sendEvent: vi.fn(() => (calls++ === 0 ? new Promise<void>((r) => (release = r)) : Promise.reject(new TypeError('offline')))),
+    } as unknown as ApiClient
+    const done = events.flush(slow)
+    await settle()
+    events.track('first_run_done', down) // вытесняет голову, которая сейчас в запросе
+    expect(events.queue).not.toContain(head)
+    release()
+    await done
+    expect(events.queue.at(-1)?.kind).toBe('first_run_done')
+    expect(events.queue).toHaveLength(50) // `slice(1)` выбросил бы неотправленное — 49
+  })
+
   it('выход стирает очередь (LOCAL_KEYS)', () => {
     signIn()
     useEventsStore().track('week_done', { sendEvent: () => Promise.reject(new TypeError('offline')) } as unknown as ApiClient)

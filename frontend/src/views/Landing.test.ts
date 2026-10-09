@@ -6,6 +6,7 @@ import { createAppRouter } from '@/router'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore, DEMO_HOUSEHOLD } from '@/stores/finance'
 import { writeDemoPending } from '@/lib/storage'
+import { startDemo } from '@/lib/demo'
 import Landing from './Landing.vue'
 
 const visible = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ')
@@ -53,6 +54,26 @@ describe('B2C-27: лэндинг «/» для анонима', () => {
   it('черновик демо на телефоне — «Вернуться в демо»', async () => {
     useFinanceStore().claimFor(DEMO_HOUSEHOLD)
     expect(visible(await renderScreen(Landing, '/'))).toContain('Вернуться в демо')
+  })
+
+  it('вход истёк, правки семьи не отправлены — «Попробовать» нет, демо их не стирает (критик Блока 4)', async () => {
+    localStorage.setItem('ff_unsent', JSON.stringify({ household: true }))
+    const finance = useFinanceStore()
+    finance.claimFor('h-own')
+    finance.mutateHouseholdDoc((doc) => {
+      doc.people = [{ id: 'a', name: 'Дана', salary: 1, updatedAt: '2026-10-01T00:00:00Z' } as never]
+    })
+    const before = JSON.stringify(finance.householdDoc)
+
+    const text = visible(await renderScreen(Landing, '/'))
+    expect(text).not.toContain('Попробовать')
+    expect(text).toContain('Неотправленные правки ждут — войдите в свою семью.')
+
+    expect(startDemo()).toBe(false)
+    expect(useAuthStore().isDemo).toBe(false)
+    expect(finance.docHousehold).toBe('h-own')
+    expect(JSON.stringify(finance.householdDoc)).toBe(before)
+    expect(finance.hasUnsent).toBe(true)
   })
 
   it('гард: аноним «/» — лэндинг; вошедший — приложение; вопрос «взять демо?» не отвечен — «с кем»', async () => {

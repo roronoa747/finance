@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory, createMemoryHistory, type RouteRecordRaw, type RouteLocationRaw } from 'vue-router'
+import { createRouter, createWebHistory, createMemoryHistory, type Router, type RouteRecordRaw, type RouteLocationRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { hasBudgetData } from '@/lib/finance'
@@ -147,6 +147,7 @@ export function createAppRouter(history = typeof window !== 'undefined' ? create
     routes,
   })
 
+  const BEFORE_FAMILY = new Set(['/who', '/settings', '/admin'])
   router.beforeEach((to, _from, next) => {
     const authStore = useAuthStore()
     const financeStore = useFinanceStore()
@@ -168,15 +169,15 @@ export function createAppRouter(history = typeof window !== 'undefined' ? create
       return next({ path: '/access', query: to.query })
     }
 
-    // 2а. Без семьи (вошёл через Google, «с кем» не пройдено): только «с кем» и настройки — там
-    // выход и удаление аккаунта. С семьёй «с кем» больше не нужен.
+    // 2а. Без семьи (вошёл через Google, «с кем» не пройдено): только «с кем», настройки (выход и
+    // удаление аккаунта) и цифры владельца (ссылка из настроек). С семьёй «с кем» больше не нужен.
     if (!authStore.isDemo && !authStore.hasHousehold) {
-      if (to.path === '/who' || to.path === '/settings') return next()
+      if (BEFORE_FAMILY.has(to.path)) return next()
       return next('/who')
     }
     // Вопрос «взять демо?» не отвечен (B2C-27): он живёт на «с кем», закрытие приложения его не снимает.
     if (!authStore.isDemo && readDemoPending() && financeStore.isDemo) {
-      if (to.path === '/who' || to.path === '/settings') return next()
+      if (BEFORE_FAMILY.has(to.path)) return next()
       return next('/who')
     }
     if (to.path === '/who') return next(landingPath(authStore, financeStore))
@@ -205,6 +206,11 @@ export function createAppRouter(history = typeof window !== 'undefined' ? create
   })
 
   return router
+}
+
+/** 401 любой ручки (B2C-25, `apiClient.onUnauthorized`): вход больше не действует — выход без стирания документа и экран входа. */
+export function expireToAccess(r: Router) {
+  if (useAuthStore().expire()) void r.replace({ path: '/access', query: { expired: '1' } })
 }
 
 export const router = createAppRouter()

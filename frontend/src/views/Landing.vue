@@ -29,10 +29,11 @@ const images = [
 
 // Черновик демо на телефоне — «Попробовать» возвращает к нему.
 const hasDemoDraft = computed(() => finance.isDemo)
+// После истёкшего входа правки семьи ждут на телефоне: демо стёрло бы их — вместо «Попробовать» строка.
+const editsWaitLogin = computed(() => finance.hasUnsent && !finance.isDemo)
 
 function tryDemo() {
-  startDemo()
-  void router.push('/')
+  if (startDemo()) void router.push('/')
 }
 </script>
 
@@ -63,6 +64,7 @@ function tryDemo() {
               Начать с Google
             </RouterLink>
             <button
+              v-if="!editsWaitLogin"
               type="button"
               class="press inline-flex h-13 items-center justify-center rounded-pill bg-surface-2 px-7 text-[15.5px] font-semibold text-ink cursor-pointer"
               @click="tryDemo"
@@ -70,7 +72,10 @@ function tryDemo() {
               {{ hasDemoDraft ? 'Вернуться в демо' : 'Попробовать' }}
             </button>
           </div>
-          <p class="mt-3 text-[13px] text-ink-3">Бесплатно. Без карты. Выписка остаётся на телефоне.</p>
+          <p v-if="editsWaitLogin" class="mt-3 text-[13px] text-ink-2" data-landing="edits-wait">
+            Неотправленные правки ждут — войдите в свою семью.
+          </p>
+          <p v-else class="mt-3 text-[13px] text-ink-3">Бесплатно. Без карты. Выписка остаётся на телефоне.</p>
         </div>
         <div class="flex justify-center">
           <img
@@ -79,7 +84,7 @@ function tryDemo() {
             width="390"
             height="780"
             fetchpriority="high"
-            class="w-[300px] rounded-[36px] border border-line shadow-lg md:w-[340px]"
+            class="w-[300px] rounded-[36px] border border-line md:w-[340px]"
           />
         </div>
       </section>

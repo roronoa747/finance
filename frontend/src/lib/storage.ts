@@ -78,9 +78,16 @@ export function writeMonthEnd(key: string) {
 export const EVENTS_QUEUE_KEY = 'ff_events_queue'
 
 export const DEMO_PENDING_KEY = 'ff_demo_pending'
-export const readDemoPending = (): boolean => readStorage<unknown>(DEMO_PENDING_KEY, false) === true
-export function writeDemoPending(on: boolean) {
-  if (on) writeStorage(DEMO_PENDING_KEY, true)
+/** `true` — семьи ещё нет; `'alone'` / `'family'` — семья создана этим выбором (после перезапуска «Создать семью» покажет код). */
+type DemoPending = boolean | 'alone' | 'family'
+const demoPendingValue = (): DemoPending => {
+  const v = readStorage<unknown>(DEMO_PENDING_KEY, false)
+  return v === true || v === 'alone' || v === 'family' ? v : false
+}
+export const readDemoPending = (): boolean => demoPendingValue() !== false
+export const readDemoPendingKind = (): 'alone' | 'family' => (demoPendingValue() === 'family' ? 'family' : 'alone')
+export function writeDemoPending(on: DemoPending) {
+  if (on) writeStorage(DEMO_PENDING_KEY, on)
   else
     try {
       if (typeof localStorage !== 'undefined') localStorage.removeItem(DEMO_PENDING_KEY)

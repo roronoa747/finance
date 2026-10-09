@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { createMemoryHistory } from 'vue-router'
-import { createAppRouter, routes } from './index'
+import { createAppRouter, expireToAccess, routes } from './index'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { authAs, planFamilyDoc } from '@/test/planFamily'
@@ -37,6 +37,27 @@ describe('router/index.ts — Навигационные гарды и защи�
     setActivePinia(createPinia())
   })
 
+  it('B2C-25: 401 любой ручки — /access?expired=1, документ телефона цел; в демо и без входа — ничего', async () => {
+    const router = createAppRouter(createMemoryHistory())
+    signIn()
+    const finance = useFinanceStore()
+    finance.claimFor('h1')
+    finance.setPerson('a', { name: 'Ильяс' })
+    await router.push('/settings')
+
+    expireToAccess(router)
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/access'))
+    expect(router.currentRoute.value.query.expired).toBe('1')
+    expect(useAuthStore().isAuthenticated).toBe(false)
+    expect(finance.docHousehold).toBe('h1')
+    expect(finance.people.map((p) => p.name)).toEqual(['Ильяс'])
+
+    // Второй 401 (параллельный запрос) — входа уже нет, повторного перехода нет.
+    const replace = vi.spyOn(router, 'replace')
+    expireToAccess(router)
+    expect(replace).not.toHaveBeenCalled()
+  })
+
   it('неавторизованный пользователь: «/» — лэндинг (B2C-27), остальное — на /access', async () => {
     const router = createAppRouter(createMemoryHistory())
     const authStore = useAuthStore()
@@ -64,6 +85,9 @@ describe('router/index.ts — Навигационные гарды и защи�
     }
     await router.push('/settings')
     expect(router.currentRoute.value.path).toBe('/settings')
+    // «Цифры» из настроек владельца без семьи (критик Блока 4) — не обратно на /who.
+    await router.push('/admin')
+    expect(router.currentRoute.value.path).toBe('/admin')
 
     // «С кем» пройдено: семья без данных — первый запуск, /who ведёт туда же.
     signIn()

@@ -18,11 +18,13 @@ function demoPhoto(file: string, template: string) {
 
 /**
  * Демо (Р-32, «Попробовать»): документ-пример на телефоне, без сервера. Черновик уже есть —
- * возвращаемся к нему, а не начинаем пример заново. Дальше экран переходит на «/».
+ * возвращаемся к нему, а не начинаем пример заново. Дальше экран переходит на «/». После истёкшего
+ * входа неотправленные правки семьи ждут на телефоне — демо их стёрло бы молча: `false`, ничего не тронуто.
  */
-export function startDemo(): void {
+export function startDemo(): boolean {
   const authStore = useAuthStore()
   const financeStore = useFinanceStore()
+  if (financeStore.hasUnsent && !financeStore.isDemo) return false
   // Черновик демо уже есть — возвращаемся к нему, а не начинаем пример заново.
   const resume = financeStore.isDemo
   authStore.setAuthData({
@@ -44,7 +46,7 @@ export function startDemo(): void {
       joined_at: new Date().toISOString(),
     },
   })
-  if (resume) return
+  if (resume) return true
   financeStore.startNewFamily(DEMO_HOUSEHOLD)
   financeStore.mutateHouseholdDoc((doc) => {
     doc.setupDoneAt = new Date().toISOString()
@@ -398,4 +400,5 @@ export function startDemo(): void {
       op(27, 0, -16_800, 'ИП Искаков', null),
     ])
   })
+  return true
 }
