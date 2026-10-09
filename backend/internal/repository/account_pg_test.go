@@ -135,6 +135,26 @@ func TestPostgresJoinSkipsLeaverSlot(t *testing.T) {
 	}
 }
 
+// A tombstoned person (deletedAt) holds the slot as well — the tombstone would beat a newcomer's
+// person on that slot in mergeDocs.
+func TestPostgresJoinTombstonedPersonHoldsSlot(t *testing.T) {
+	f := newStatementFixture(t)
+	ctx := context.Background()
+	if err := NewSQLAccountRepository(f.db).DeleteAccount(ctx, f.bobID); err != nil {
+		t.Fatalf("delete bob: %v", err)
+	}
+	people := `{"people":[{"id":"a","name":"Алия"},{"id":"b","name":"Бекзат","deletedAt":"2026-10-01T00:00:00Z"}]}`
+	if _, _, err := NewSQLDocRepository(f.db).PushHouseholdDoc(ctx, f.householdID, 1, []byte(people), f.aliceID); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	households := NewSQLHouseholdRepository(f.db)
+	carol, _ := f.users.Create(ctx, "carol@st.pg", "hash")
+	inv, _ := households.CreateInvite(ctx, f.householdID, f.aliceID)
+	if m, err := households.JoinHousehold(ctx, inv.Code, carol.ID, "Каршыга"); err != nil || m.Slot != "c" {
+		t.Fatalf("newcomer next to a tombstone: %+v %v, want slot c", m, err)
+	}
+}
+
 // Both partners delete at once: both succeed and nothing is left.
 func TestPostgresDeleteAccountConcurrent(t *testing.T) {
 	for round := range 5 {

@@ -176,6 +176,24 @@ func TestJoinSkipsLeaverSlot(t *testing.T) {
 	}
 }
 
+// A tombstoned person (deletedAt) still holds the slot: in mergeDocs the tombstone beats any
+// later edit, so a newcomer on that slot would lose their own person on the next sync.
+func TestJoinTombstonedPersonHoldsSlot(t *testing.T) {
+	ctx := context.Background()
+	repos := NewMockRepositories()
+	repos.Households.SetDocRepo(repos.Docs)
+
+	h, _, _ := repos.Households.CreateHousehold(ctx, "Семья", "dana", "Дана")
+	people := `{"people":[{"id":"a","name":"Дана"},{"id":"b","name":"Ару","deletedAt":"2026-10-01T00:00:00Z"}]}`
+	if _, _, err := repos.Docs.PushHouseholdDoc(ctx, h.ID, 1, []byte(people), "dana"); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	inv, _ := repos.Households.CreateInvite(ctx, h.ID, "dana")
+	if m, err := repos.Households.JoinHousehold(ctx, inv.Code, "bek", "Бек"); err != nil || m.Slot != "c" {
+		t.Fatalf("newcomer next to a tombstone: %+v %v, want slot c", m, err)
+	}
+}
+
 func TestDocRepositoryOptimisticLock(t *testing.T) {
 	ctx := context.Background()
 	docRepo := NewMockDocRepo()
