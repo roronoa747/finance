@@ -86,8 +86,13 @@ async function fakeGo(input: RequestInfo | URL, init: RequestInit = {}): Promise
     const hid = invites.get(String(body.code))
     if (!hid || !families.has(hid)) return json(404, { error: 'invite code not found' })
     invites.delete(String(body.code))
-    families.get(hid)!.privates.set(u.id, { rev: 1, data: {} })
-    Object.assign(u, { household: hid, slot: 'b', role: 'member', name: body.display_name })
+    const fam = families.get(hid)!
+    // Как Go (В-1): слот занят участником или записью в `people` документа (ушедший её оставляет).
+    const taken = new Set([...[...users.values()].filter((o) => o.household === hid).map((o) => o.slot), ...(fam.data.people ?? []).map((p) => p.id)])
+    const slot = ['a', 'b', 'c'].find((s) => !taken.has(s))
+    if (!slot) return json(400, { error: 'household has maximum members' })
+    fam.privates.set(u.id, { rev: 1, data: {} })
+    Object.assign(u, { household: hid, slot, role: 'member', name: body.display_name })
     const r = authResponse(u)
     return json(200, { token: r.token, member: r.member })
   }
@@ -165,7 +170,7 @@ async function act(pinia: Pinia, view: object, path: string, action: string) {
 }
 
 /** Первый запуск пройден (B2C-19): свой участник с `onboardedAt`, семья настроена. */
-function finishStart(name: string, slot: 'a' | 'b') {
+function finishStart(name: string, slot: 'a' | 'b' | 'c') {
   const finance = useFinanceStore()
   finance.mutateHouseholdDoc((doc) => {
     doc.setupDoneAt ??= T
@@ -323,6 +328,54 @@ describe('e2e / B2C Блок 4 — чужая семья: Google → «с кем
     await vm.deleteAccount()
     expect(families.has(hid)).toBe(false)
     expect([...current.keys()].filter((k) => k.startsWith('ff_') && !k.startsWith('ff_theme') && !k.endsWith('_view'))).toEqual([])
+  })
+
+  it('возврат приёмки В-1: Дана ушла — Бек по коду получает свой слот и проходит свой первый запуск; запись Даны не его', async () => {
+    const dana = phone()
+    let vm = await act(dana, Access, '/access', 'onGoogleToken')
+    await vm.onGoogleToken('id:sub-dana:dana@example.com')
+    vm = await act(dana, Who, '/who', 'create')
+    await vm.create('family')
+    const code = vm.invite as string
+    finishStart('Дана', 'a')
+    await settle(5000)
+    const hid = useAuthStore().household!.id
+
+    const ilyas = phone()
+    vm = await act(ilyas, Access, '/access', 'onGoogleToken')
+    await vm.onGoogleToken('id:sub-ilyas:ilyas@example.com')
+    vm = await act(ilyas, Who, '/who', 'join')
+    vm.code = code
+    await vm.join()
+    finishStart('Ильяс', 'b')
+    await settle(5000)
+
+    on(dana)
+    vm = await act(dana, Settings, '/settings', 'deleteAccount')
+    await vm.deleteAccount()
+    expect(families.get(hid)!.data.people?.map((p) => `${p.id}:${p.name}`)).toEqual(['a:Дана', 'b:Ильяс'])
+
+    on(ilyas)
+    const code2 = (await useAuthStore().createInvite()).code
+    const bek = phone()
+    vm = await act(bek, Access, '/access', 'onGoogleToken')
+    await vm.onGoogleToken('id:sub-bek:bek@example.com')
+    vm = await act(bek, Who, '/who', 'join')
+    vm.code = code2
+    await vm.join()
+    // Слот Даны с её записью (имя, оклад, onboardedAt) не выдан: у Бека свой — и свой первый запуск.
+    expect(useAuthStore().slot).toBe('c')
+    expect(useFinanceStore().people.find((p) => p.id === 'c')).toBeUndefined()
+    expect(landingPath(useAuthStore(), useFinanceStore())).toBe('/start')
+    finishStart('Бек', 'c')
+    await settle(5000)
+    expect(landingPath(useAuthStore(), useFinanceStore())).toBe('/')
+    expect(families.get(hid)!.data.people?.map((p) => `${p.id}:${p.name}`)).toEqual(['a:Дана', 'b:Ильяс', 'c:Бек'])
+
+    // «С кем» у Ильяса: двое живых с сервера, Даны среди участников нет.
+    on(ilyas)
+    await useAuthStore().fetchMembers()
+    expect(useAuthStore().members.map((m) => `${m.slot}:${m.display_name}`)).toEqual(['b:Ilyas', 'c:Bek'])
   })
   it('B2C-27: аноним «/» → «Попробовать» — демо без запросов; демо → Google → «с кем» → закрыли/открыли → «Взять?» → «Да» — документ семьи = демо', async () => {
     const phoneA = phone()

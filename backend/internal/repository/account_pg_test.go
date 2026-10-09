@@ -98,6 +98,43 @@ func TestPostgresDeleteAccount(t *testing.T) {
 	}
 }
 
+// В-1: the leaver's person stays in the shared document, so a newcomer by code gets
+// a fresh slot, not the leaver's record. A document without people does not hold slots.
+func TestPostgresJoinSkipsLeaverSlot(t *testing.T) {
+	f := newStatementFixture(t)
+	ctx := context.Background()
+	households := NewSQLHouseholdRepository(f.db)
+	docs := NewSQLDocRepository(f.db)
+	people := `{"people":[{"id":"a","name":"Алия","onboardedAt":"2026-10-01T00:00:00Z"},{"id":"b","name":"Бекзат"},"x",{"name":"без id"}]}`
+	if _, _, err := docs.PushHouseholdDoc(ctx, f.householdID, 1, []byte(people), f.aliceID); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	if err := NewSQLAccountRepository(f.db).DeleteAccount(ctx, f.aliceID); err != nil {
+		t.Fatalf("delete alice: %v", err)
+	}
+
+	carol, _ := f.users.Create(ctx, "carol@st.pg", "hash")
+	inv, _ := households.CreateInvite(ctx, f.householdID, f.bobID)
+	m, err := households.JoinHousehold(ctx, inv.Code, carol.ID, "Каршыга")
+	if err != nil || m.Slot != "c" {
+		t.Fatalf("newcomer after the leaver: %+v %v, want slot c", m, err)
+	}
+	dan, _ := f.users.Create(ctx, "dan@st.pg", "hash")
+	inv2, _ := households.CreateInvite(ctx, f.householdID, f.bobID)
+	if _, err := households.JoinHousehold(ctx, inv2.Code, dan.ID, "Дан"); err != ErrHouseholdFull {
+		t.Fatalf("fourth: %v, want ErrHouseholdFull", err)
+	}
+
+	// A household whose document has no people (or a non-array) frees the leaver's slot as before.
+	if _, _, err := docs.PushHouseholdDoc(ctx, f.householdID, 2, []byte(`{"people":{"a":1}}`), f.bobID); err != nil {
+		t.Fatalf("push 2: %v", err)
+	}
+	inv3, _ := households.CreateInvite(ctx, f.householdID, f.bobID)
+	if m, err := households.JoinHousehold(ctx, inv3.Code, dan.ID, "Дан"); err != nil || m.Slot != "a" {
+		t.Fatalf("without people: %+v %v, want slot a", m, err)
+	}
+}
+
 // Both partners delete at once: both succeed and nothing is left.
 func TestPostgresDeleteAccountConcurrent(t *testing.T) {
 	for round := range 5 {

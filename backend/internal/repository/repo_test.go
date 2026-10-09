@@ -142,6 +142,40 @@ func TestHouseholdRepository(t *testing.T) {
 	}
 }
 
+// В-1: a member who deleted their account leaves their person in the shared document;
+// a newcomer by code gets a fresh slot instead of the leaver's record.
+func TestJoinSkipsLeaverSlot(t *testing.T) {
+	ctx := context.Background()
+	repos := NewMockRepositories()
+	repos.Households.SetDocRepo(repos.Docs)
+	accounts := NewMockAccountRepo(repos)
+
+	h, _, _ := repos.Households.CreateHousehold(ctx, "Семья", "dana", "Дана")
+	inv, _ := repos.Households.CreateInvite(ctx, h.ID, "dana")
+	if m, err := repos.Households.JoinHousehold(ctx, inv.Code, "aru", "Ару"); err != nil || m.Slot != "b" {
+		t.Fatalf("partner: %+v %v", m, err)
+	}
+	// Junk around the people is ignored; only objects with an id hold a slot.
+	people := `{"people":[{"id":"a","name":"Дана","onboardedAt":"2026-10-01T00:00:00Z"},{"id":"b","name":"Ару"},"x",{"name":"без id"}]}`
+	if _, _, err := repos.Docs.PushHouseholdDoc(ctx, h.ID, 1, []byte(people), "dana"); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	if err := accounts.DeleteAccount(ctx, "dana"); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+
+	inv2, _ := repos.Households.CreateInvite(ctx, h.ID, "aru")
+	m, err := repos.Households.JoinHousehold(ctx, inv2.Code, "bek", "Бек")
+	if err != nil || m.Slot != "c" {
+		t.Fatalf("newcomer after the leaver: %+v %v, want slot c", m, err)
+	}
+	// Every slot is now held by a member or a leaver's record.
+	inv3, _ := repos.Households.CreateInvite(ctx, h.ID, "aru")
+	if _, err := repos.Households.JoinHousehold(ctx, inv3.Code, "dan", "Дан"); err != ErrHouseholdFull {
+		t.Fatalf("fourth: %v, want ErrHouseholdFull", err)
+	}
+}
+
 func TestDocRepositoryOptimisticLock(t *testing.T) {
 	ctx := context.Background()
 	docRepo := NewMockDocRepo()

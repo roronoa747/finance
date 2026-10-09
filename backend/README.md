@@ -39,7 +39,10 @@ REST API приложения: вход, домохозяйство, синхр�
   `AuthResponse` с новым токеном; уже в семье — 409 `already in household`.
   `POST /api/household/join {code, display_name}` — только без своей семьи (из семьи — 409, переход
   между семьями не поддерживается). Проверка «уже в семье» — и в репозитории под `FOR UPDATE`
-  строки пользователя (два нажатия не создадут двух семей). `GET /api/household/members` (member
+  строки пользователя (два нажатия не создадут двух семей). Слот — первый из `a`/`b`/`c`, который не
+  занят ни участником, ни записью в `people` общего документа (`usedSlotsSQL`, возврат приёмки Б4
+  В-1): ушедший оставляет свою запись, и новый по коду её не наследует — свой слот и свой первый
+  запуск; слотов нет — 400 `household has maximum members`. `GET /api/household/members` (member
   и viewer) — `{members: [{slot, display_name, role, joined_at}]}` своей семьи, без почты и id.
 - Удаление аккаунта (`handlers/account.go`, `repository/account_repo.go`, B2C-24, Р-14):
   `DELETE /api/account` — любому вошедшему (member, viewer, без семьи), 204; токен сразу перестаёт

@@ -241,6 +241,16 @@ func (r *sqlHouseholdRepository) GetInvite(ctx context.Context, code string) (*m
 	return inv, nil
 }
 
+// usedSlotsSQL lists slots held by members plus the ids of people in the shared
+// document (non-objects and a missing or non-array `people` are ignored).
+const usedSlotsSQL = `
+		SELECT slot FROM app.household_members WHERE household_id = $1
+		UNION
+		SELECT p->>'id'
+		FROM app.household_docs d,
+			jsonb_array_elements(CASE WHEN jsonb_typeof(d.data->'people') = 'array' THEN d.data->'people' ELSE '[]'::jsonb END) p
+		WHERE d.household_id = $1 AND jsonb_typeof(p) = 'object' AND p->>'id' IS NOT NULL;`
+
 func (r *sqlHouseholdRepository) JoinHousehold(ctx context.Context, code, userID, displayName string) (*models.HouseholdMember, error) {
 	cleanedCode := strings.ToUpper(strings.TrimSpace(code))
 	if strings.TrimSpace(displayName) == "" {
@@ -304,8 +314,11 @@ func (r *sqlHouseholdRepository) JoinHousehold(ctx context.Context, code, userID
 		return nil, err
 	}
 
-	// 3. Find available slot ('a', 'b', 'c')
-	usedSlotsRows, err := tx.QueryContext(ctx, `SELECT slot FROM app.household_members WHERE household_id = $1;`, inv.HouseholdID)
+	// 3. Find available slot ('a', 'b', 'c'). A slot is taken while a member holds it
+	// or while the shared document still has a person under it: after an account
+	// deletion the leaver's record stays (name, salary, onboardedAt, records by slot),
+	// and a newcomer must not inherit it.
+	usedSlotsRows, err := tx.QueryContext(ctx, usedSlotsSQL, inv.HouseholdID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query used slots: %w", err)
 	}

@@ -372,7 +372,11 @@ func (m *MockHouseholdRepo) JoinHousehold(ctx context.Context, code, userID, dis
 		return nil, ErrAlreadyInHousehold
 	}
 
+	// As in usedSlotsSQL: a person left in the shared document keeps the slot taken.
 	usedSlots := make(map[string]bool)
+	if m.docs != nil {
+		usedSlots = m.docs.peopleSlots(inv.HouseholdID)
+	}
 	for _, mem := range members {
 		usedSlots[mem.Slot] = true
 	}
@@ -471,6 +475,33 @@ func (m *MockDocRepo) InitDocs(householdID, creatorID string) error {
 		UpdatedAt:   time.Now(),
 	}
 	return nil
+}
+
+// peopleSlots returns the ids of people in the household document (see usedSlotsSQL).
+func (m *MockDocRepo) peopleSlots(householdID string) map[string]bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	slots := make(map[string]bool)
+	doc, ok := m.householdDocs[householdID]
+	if !ok {
+		return slots
+	}
+	var data struct {
+		People []json.RawMessage `json:"people"`
+	}
+	if json.Unmarshal(doc.Data, &data) != nil {
+		return slots
+	}
+	for _, raw := range data.People {
+		var p struct {
+			ID *string `json:"id"`
+		}
+		if json.Unmarshal(raw, &p) == nil && p.ID != nil {
+			slots[*p.ID] = true
+		}
+	}
+	return slots
 }
 
 func (m *MockDocRepo) InitPrivateDoc(householdID, userID string) error {
