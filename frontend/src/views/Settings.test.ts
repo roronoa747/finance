@@ -38,13 +38,15 @@ describe('B2C-13: /settings и /money (SSR)', () => {
     ]
   })
 
-  it('Настройки: «Оформление» с темой и именем прямо на экране, «С кем» — участники, свой помечен, состояние обмена', async () => {
+  it('Настройки: «С кем» первым — участники, свой помечен, состояние обмена; «Оформление» — тема, поля имени нет (PN-01)', async () => {
     const html = await renderScreen(Settings, '/settings')
     expect(html).toContain('Оформление')
     expect(html).toContain('Авто')
     expect(html).toContain('Светлая')
     expect(html).toContain('Тёмная')
-    expect(html).toMatch(/<input[^>]*value="Ильяс"/)
+    // Имя правится в одном месте — «Свой кружок» (Р-1 PN-01): поля имени в «Оформлении» нет.
+    expect(html).not.toMatch(/<input[^>]*value="Ильяс"/)
+    expect(html).not.toContain('Ваше имя')
     expect(html).toContain('С кем')
     expect(html).toContain('вы · участник')
     expect(html).toContain('Дана')
@@ -54,10 +56,10 @@ describe('B2C-13: /settings и /money (SSR)', () => {
     // Напоминание — Блок 5: секции нет. Удаление аккаунта (B2C-25) — после выхода.
     expect(html).not.toContain('Напоминание')
     expect(html.indexOf('Выйти из аккаунта')).toBeLessThan(html.indexOf('Удалить аккаунт и данные'))
-    // Возврат смоука (g7, правило 12): порядок «Оформление» → «С кем» → выход; разбор выписок — свёрнут
-    // (<details> без open), выход — своей карточкой после «С кем». «Цвета разделов» сняты (клинап Б9, Р-33).
-    expect(html.indexOf('Оформление')).toBeLessThan(html.indexOf('С кем'))
-    expect(html.indexOf('С кем')).toBeLessThan(html.indexOf('Выйти из аккаунта'))
+    // Р-1 «понятность» (PN-01): аватары шапки ведут сюда — «С кем» первым, затем «Оформление» → выход; разбор выписок —
+    // свёрнут (<details> без open), выход — своей карточкой. «Цвета разделов» сняты (клинап Б9, Р-33).
+    expect(html.indexOf('С кем')).toBeLessThan(html.indexOf('Оформление'))
+    expect(html.indexOf('Оформление')).toBeLessThan(html.indexOf('Выйти из аккаунта'))
     expect(html).not.toContain('<details open')
     expect(html).not.toContain('Цвета разделов')
     const parse = html.slice(html.lastIndexOf('<details', html.indexOf('Разбор трат')), html.indexOf('Разбор трат'))
@@ -156,10 +158,15 @@ describe('B2C-63: свой кружок — смайлик и цвет', () => {
     expect(shell?.children?.find((c) => c.name === 'my-circle')?.meta).toMatchObject({ memberOnly: true })
   })
 
-  it('экран: большой кружок, буква + 11 смайликов, 6 цветов; выбранное — aria-pressed; выбор пишется сразу', async () => {
+  it('экран: поле «Имя» над кружком (PN-01), большой кружок, буква + 11 смайликов, 6 цветов; выбранное — aria-pressed; выбор пишется сразу', async () => {
     signIn('member', 'b')
     family({}, { emoji: '🌙' })
     const html = await renderScreen(MyCircle, '/settings/me')
+    // Имя — своё, из документа, выше кружка; «Сохранено» в покое не горит.
+    expect(html).toMatch(/<input[^>]*value="Дана"/)
+    expect(html).toContain('aria-label="Имя"')
+    expect(html.indexOf('value="Дана"')).toBeLessThan(html.indexOf('size-24'))
+    expect(html).not.toContain('Сохранено')
     expect(html).toContain('size-24')
     expect(html.match(/aria-label="Буква Д"/g)).toHaveLength(1)
     const emoji = [...html.matchAll(/<button[^>]*aria-pressed="(true|false)"[^>]*aria-label="([^"]+)"/g)].map((m) => [m[2], m[1]])

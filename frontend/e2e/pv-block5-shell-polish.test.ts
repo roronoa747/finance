@@ -11,7 +11,7 @@ import Month from '../src/views/Month.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
 import SyncBadge from '../src/components/SyncBadge.vue'
 import Settings from '../src/views/Settings.vue'
-import AppearancePanel from '../src/components/AppearancePanel.vue'
+import MyCircle from '../src/views/MyCircle.vue'
 import { authAs } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
 import { at, fakeServer, phone, screen, setOnline, type FakeServer } from './support/family'
@@ -207,14 +207,14 @@ describe('e2e / PV Блок 5 — оболочка на двух телефон�
       expect(server.data.people).toEqual([])
     })
 
-    it('Б-19: A переименовал себя в «Оформлении» → у B новое имя в «Месяце» (строка и лист зарплаты) и шторке; пустое имя не пишется и возвращает прежнее', async () => {
+    it('Б-19: A переименовал себя в «Своём кружке» (PN-01: поле имени переехало из «Оформления») → у B новое имя в «Месяце» (строка и лист зарплаты) и шторке; пустое имя не пишется и возвращает прежнее', async () => {
       const A = await phone(server)
       const B = await phone(server)
       on(A)
       useAuthStore().setAuthData(authAs('member', 'a'))
 
       at('2026-09-26T07:10:00Z')
-      await act(A.pinia, AppearancePanel, '/budget', 'saveName', { userName: '  Ильяс М ' })
+      await act(A.pinia, MyCircle, '/settings/me', 'saveName', { userName: '  Ильяс М ' })
       await A.store.syncHousehold(A.client)
       await on(B).store.syncHousehold(B.client)
       // Зарплаты — у круга «Месяца» (Блок 15, Р-91): в строке имя; дата «ждём …» — в листе зарплаты (Р-116).
@@ -228,7 +228,7 @@ describe('e2e / PV Блок 5 — оболочка на двух телефон�
       expect(await screen(B.pinia, SyncBadge, '/budget', undefined, [screenMixin({ open: true })])).toContain('Ильяс М')
 
       at('2026-09-26T07:20:00Z')
-      const vm = await act(A.pinia, AppearancePanel, '/budget', 'saveName', { userName: '   ' })
+      const vm = await act(A.pinia, MyCircle, '/settings/me', 'saveName', { userName: '   ' })
       expect(vm.userName).toBe('Ильяс М')
       expect(A.store.unsent).toBe(false)
       expect(A.store.householdDoc.people.find((p) => p.id === 'a')).toMatchObject({ name: 'Ильяс М', updatedAt: '2026-09-26T07:10:00.000Z' })

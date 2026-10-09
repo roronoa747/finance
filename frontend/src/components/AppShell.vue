@@ -27,8 +27,9 @@ import Tabs from '@/components/kit/Tabs.vue'
 
 /**
  * Оболочка (DESIGN.md §2, §5; B2C-13): шапка `.topbar` — заголовок экрана 30 (системный, пивот 3) с
- * подписью, аватары участников (точка при «не сошлось» — `SyncBadge` compact), шестерёнка →
- * `/settings`; капсула вкладок «Мечты · План · Деньги» и «+»; лист «+» на `Sheet` — шесть
+ * подписью, аватары участников (точка при «не сошлось» — `SyncBadge` compact) и шестерёнка — оба →
+ * `/settings` (Р-1 «понятность»: нажал на лица — видишь лица в «С кем»; желания — с «Мечт»);
+ * капсула вкладок «Мечты · План · Деньги» и «+»; лист «+» на `Sheet` — шесть
  * действий; у viewer «+» нет вовсе (ТЗ B2C-13 п. 3: лист без действий правки — а добавить
  * покупку viewer тоже не может, критик Блока 3). «Советника» нет.
  *
@@ -83,7 +84,7 @@ const header = computed<{ title: string; sub?: string }>(() => {
   if (p === '/settings/me') return { title: 'Свой кружок' }
   if (p === '/admin') return { title: 'Цифры' }
   if (p === '/settings') {
-    // Под заголовком — только почта входа: имя — в поле «Ваше имя» ниже (Р-116, макет Б17); в демо почты нет.
+    // Под заголовком — только почта входа: имя — в «Свой кружок» (Р-116, макет Б17; PN-01); в демо почты нет.
     const sub = authStore.isDemo ? null : authStore.user?.email
     return sub ? { title: 'Настройки', sub } : { title: 'Настройки' }
   }
@@ -151,9 +152,10 @@ function navigateAndClose(to: string) {
         <template v-if="isRoot">
           <!-- Место под бейдж зарезервировано: в покое он пуст, но аватары не прыгают на каждой записи. -->
           <div class="size-[38px] shrink-0"><SyncBadge compact /></div>
-          <!-- Аватары ведут на список желаний участника (B2C-18); на «Неделе» их нет (g2). -->
+          <!-- Аватары — свой и партнёра одинаково — ведут в Настройки, раздел «С кем» (Р-1 «понятность»; было —
+               желания участника, B2C-18: они теперь с «Мечт»). На «Неделе» аватаров нет (g2). -->
           <div v-if="people.length && route.path !== '/week'" class="flex">
-            <RouterLink v-for="(p, i) in people" :key="p.id" :to="`/people/${p.id}`" :aria-label="`Желания · ${p.name}`" class="rounded-full" :class="i ? '-ml-2' : ''">
+            <RouterLink v-for="(p, i) in people" :key="p.id" to="/settings" :aria-label="`Настройки · ${p.name}`" class="rounded-full" :class="i ? '-ml-2' : ''">
               <Avatar :id="p.id" :name="p.name" />
             </RouterLink>
           </div>

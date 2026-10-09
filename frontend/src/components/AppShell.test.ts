@@ -60,14 +60,16 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     expect(await title(path)).toBe(expected)
   })
 
-  it('главный: без подписи под заголовком (Р-116, тишина), аватары обоих, шестерёнка → /settings, «Советника» нет', async () => {
+  it('главный: без подписи под заголовком (Р-116, тишина), аватары обоих → /settings (Р-1 «понятность»), шестерёнка → /settings, «Советника» нет', async () => {
     const html = await renderScreen(AppShell, '/')
     expect(html).not.toContain('Сентябрь · Ильяс и Дана')
     expect(html).toContain('background:var(--pa)')
     expect(html).toContain('background:var(--pb)')
-    // Аватары ведут на список желаний участника (B2C-18).
-    expect(html).toContain('href="/people/a"')
-    expect(html).toContain('href="/people/b"')
+    // Аватары — свой и партнёра одинаково — ведут в Настройки (Р-1 PN-01); желаний участника в шапке больше нет (B2C-18).
+    expect(html).toMatch(/<a[^>]*aria-label="Настройки · Ильяс"[^>]*href="\/settings"|<a[^>]*href="\/settings"[^>]*aria-label="Настройки · Ильяс"/)
+    expect(html).toMatch(/<a[^>]*aria-label="Настройки · Дана"[^>]*href="\/settings"|<a[^>]*href="\/settings"[^>]*aria-label="Настройки · Дана"/)
+    expect(html).not.toContain('href="/people/')
+    expect(html).not.toContain('Желания · ')
     expect(html).toMatch(/<a[^>]*aria-label="Настройки"[^>]*href="\/settings"|<a[^>]*href="\/settings"[^>]*aria-label="Настройки"/)
     expect(html).not.toContain('Советник')
     expect(html).not.toContain('aria-label="Оформление"')
@@ -88,12 +90,15 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     ops.undoUpload()
   })
 
-  it('шапка по макетам (возврат смоука): «Деньги» — аватары без шестерёнки; «План · Неделя» — без дат и аватаров (они на экране, Р-96); вложенные — «назад» без аватаров', async () => {
-    // Квадраты «Денег» — корни, как сама вкладка (пивот 3): аватары, без «назад»; подписи месяца нет (Р-116).
-    for (const path of ['/money', '/money/debts', '/money/history']) {
+  it('шапка по макетам (возврат смоука): «Деньги» и «Месяц» — аватары (→ /settings) без шестерёнки; «План · Неделя» — без дат и аватаров (они на экране, Р-96); вложенные — «назад» без аватаров', async () => {
+    // Квадраты «Денег» и «Месяц» — корни, как сама вкладка (пивот 3): аватары → Настройки (Р-1 PN-01), без «назад»;
+    // подписи месяца нет (Р-116); шестерёнка — только на «Мечтах».
+    for (const path of ['/month', '/money', '/money/debts', '/money/history']) {
       const money = await renderScreen(AppShell, path)
       expect(money).not.toContain('Сентябрь · Ильяс и Дана')
-      expect(money).toContain('href="/people/a"')
+      expect(money).toMatch(/<a[^>]*aria-label="Настройки · Ильяс"[^>]*href="\/settings"|<a[^>]*href="\/settings"[^>]*aria-label="Настройки · Ильяс"/)
+      expect(money).toContain('aria-label="Настройки · Дана"')
+      expect(money).not.toContain('href="/people/')
       expect(money).not.toContain('aria-label="Настройки"')
       expect(money).not.toContain('aria-label="Назад"')
     }
@@ -101,15 +106,15 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     expect(week).toContain('>План</h1>')
     expect(week.slice(0, week.indexOf('<main'))).not.toContain('Ильяс и Дана')
     expect(week.slice(0, week.indexOf('<main'))).not.toContain('сентября')
-    expect(week).not.toContain('href="/people/a"')
+    expect(week).not.toContain('aria-label="Настройки · ')
     expect(week).not.toContain('aria-label="Настройки"')
-    for (const path of ['/goals/new', '/goals/x', '/settings']) {
+    for (const path of ['/goals/new', '/goals/x', '/settings', '/people/a']) {
       const html = await renderScreen(AppShell, path)
       expect(html).toContain('aria-label="Назад"')
-      expect(html).not.toContain('href="/people/a"')
+      expect(html).not.toContain('aria-label="Настройки · ')
       expect(html).not.toContain('aria-label="Настройки"')
     }
-    // Под «Настройками» — только почта входа: имя — в поле «Ваше имя» ниже (ux Б17).
+    // Под «Настройками» — только почта входа: имя — в «Свой кружок» (ux Б17, PN-01).
     const settings = await renderScreen(AppShell, '/settings')
     expect(settings).toContain('type-meta">a@example.com<')
     expect(settings).not.toContain('Ильяс · a@example.com')
