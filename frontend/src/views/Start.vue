@@ -443,7 +443,7 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
             </button>
           </div>
           <p class="inline-flex max-w-[280px] items-center gap-1.5 text-[12.5px] leading-relaxed text-ink-2">
-            Продиктуйте партнёру — он выберет «По коду» <Hint>Партнёр открывает тот же адрес, регистрируется и выбирает «По коду». Код действует две недели и срабатывает один раз.</Hint>
+            Продиктуйте партнёру — он выберет «По коду» <Hint>Партнёр открывает тот же адрес, входит через Google и выбирает «По коду». Код действует две недели и срабатывает один раз.</Hint>
           </p>
           <span v-if="copied" class="text-[12px] font-medium text-brand">Скопировано</span>
         </template>
