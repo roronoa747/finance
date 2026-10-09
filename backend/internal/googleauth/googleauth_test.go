@@ -197,6 +197,31 @@ func TestVerifyTimeoutIsUnavailable(t *testing.T) {
 	}
 }
 
+// Google down: sign-ins within the cooldown do not each wait out another timeout under the
+// lock (critic of Block 4); after the cooldown the keys are asked for again.
+func TestVerifyFailedFetchIsNotRepeatedWithinCooldown(t *testing.T) {
+	g := newFakeGoogle(t, "k1")
+	g.delay = 300 * time.Millisecond
+	v := g.verifier()
+	v.HTTP.Timeout = 50 * time.Millisecond
+	tok := g.token(t, "k1", nil)
+	for i := 0; i < 3; i++ {
+		if _, err := v.Verify(context.Background(), tok); !errors.Is(err, ErrUnavailable) {
+			t.Fatalf("try %d: err = %v, want ErrUnavailable", i, err)
+		}
+	}
+	if got := g.hits.Load(); got != 1 {
+		t.Errorf("jwks hits while down = %d, want 1", got)
+	}
+
+	g.delay = 0
+	later := now.Add(2 * time.Minute)
+	v.Now = func() time.Time { return later }
+	if _, err := v.Verify(context.Background(), tok); err != nil {
+		t.Fatalf("after the cooldown: %v", err)
+	}
+}
+
 func TestNewWithoutClientIDsIsOff(t *testing.T) {
 	if New(nil) != nil {
 		t.Error("New(nil) should switch Google sign-in off")

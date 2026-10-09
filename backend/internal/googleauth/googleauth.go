@@ -63,6 +63,7 @@ type Verifier struct {
 	keys      map[string]*rsa.PublicKey
 	expiresAt time.Time
 	fetchedAt time.Time
+	failedAt  time.Time // the last failed fetch: Google down is not asked again within the cooldown
 }
 
 // New returns a verifier for the live Google keys, or nil without client ids — sign-in
@@ -154,15 +155,23 @@ func (v *Verifier) key(ctx context.Context, kid string) (*rsa.PublicKey, error) 
 		return nil, ErrInvalidToken
 	}
 
+	if !v.failedAt.IsZero() && now.Sub(v.failedAt) < refreshCooldown {
+		if key, ok := v.keys[kid]; ok {
+			return key, nil
+		}
+		return nil, fmt.Errorf("%w: keys failed to load a moment ago", ErrUnavailable)
+	}
+
 	keys, ttl, err := v.fetch(ctx)
 	if err != nil {
+		v.failedAt = now
 		// Stale keys still verify a known kid better than refusing everyone.
 		if key, ok := v.keys[kid]; ok {
 			return key, nil
 		}
 		return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
-	v.keys, v.fetchedAt, v.expiresAt = keys, now, now.Add(ttl)
+	v.keys, v.fetchedAt, v.expiresAt, v.failedAt = keys, now, now.Add(ttl), time.Time{}
 	if key, ok := keys[kid]; ok {
 		return key, nil
 	}

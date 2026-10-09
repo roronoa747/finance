@@ -113,6 +113,7 @@ func FromEnv() (http.Handler, error) {
 	if err := cfg.ValidateProduction(); err != nil {
 		return nil, fmt.Errorf("load configuration: %w", err)
 	}
+	cfg.Env = "production"
 
 	database, err := db.Connect(cfg.DatabaseURL, db.ServerlessPool)
 	if err != nil {
@@ -164,7 +165,12 @@ func NewRouter(
 		}
 		api.Get("/fx-rate", handlers.FxRateHandler(fxClient, fxStore))
 
-		api.Post("/auth/register", authHandler.Register)
+		// Signing up with a password is for the stand and e2e only (Р-13): nobody confirms that
+		// address, and Google sign-in links by email — an account taken in advance under
+		// someone else's address would get that person's Google sign-in and data.
+		if !cfg.IsProduction() {
+			api.Post("/auth/register", authHandler.Register)
+		}
 		api.Post("/auth/login", authHandler.Login)
 		api.Post("/auth/google", authHandler.GoogleLogin)
 
