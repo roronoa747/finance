@@ -71,6 +71,7 @@ export async function renderGoogleButton(
     shape: 'pill',
     text: 'continue_with',
     locale: 'ru',
-    width: Math.max(200, Math.min(400, Math.round(opts.width ?? el.clientWidth ?? 320))),
+    // Скрытый контейнер даёт clientWidth 0 — тогда 320, а не край 200.
+    width: Math.max(200, Math.min(400, Math.round(opts.width || el.clientWidth || 320))),
   })
 }
