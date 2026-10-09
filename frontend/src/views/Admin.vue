@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { apiClient, ApiError, type AdminMetrics } from '@/api/client'
 import Card from '@/components/kit/Card.vue'
+import { pct as share } from '@/lib/money'
 
 /**
  * Цифры для владельца (B2C-28, Р-16): удержание и воронка — таблицами, без графиков. Ручка
@@ -19,7 +20,7 @@ onMounted(async () => {
   }
 })
 
-const pct = (part: number, whole: number) => (whole ? `${Math.round((part / whole) * 100)} %` : '—')
+const pct = (part: number, whole: number) => (whole ? `${share(part, whole)} %` : '—')
 const second = computed(() => metrics.value?.second_upload_14d)
 const totals = computed(() => {
   const m = metrics.value

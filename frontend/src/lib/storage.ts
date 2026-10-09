@@ -69,14 +69,14 @@ export function writeMonthEnd(key: string) {
   }
 }
 
+/** Очередь событий удержания (B2C-28, `stores/events.ts`) — этого входа; выход стирает (`LOCAL_KEYS`). */
+export const EVENTS_QUEUE_KEY = 'ff_events_queue'
+
 /**
  * Вход из демо (B2C-27): «Взять то, что вы заполнили в демо?» — состояние, а не экран. Ставится при
  * входе Google с черновиком демо на телефоне; пока не отвечено, гард ведёт на «с кем», где вопрос
  * задаётся после создания семьи; закрыть приложение между — вопрос остаётся. Выход стирает.
  */
-/** Очередь событий удержания (B2C-28, `stores/events.ts`) — этого входа; выход стирает (`LOCAL_KEYS`). */
-export const EVENTS_QUEUE_KEY = 'ff_events_queue'
-
 export const DEMO_PENDING_KEY = 'ff_demo_pending'
 /** `true` — семьи ещё нет; `'alone'` / `'family'` — семья создана этим выбором (после перезапуска «Создать семью» покажет код). */
 type DemoPending = boolean | 'alone' | 'family'

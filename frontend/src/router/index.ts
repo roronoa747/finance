@@ -147,7 +147,9 @@ export function createAppRouter(history = typeof window !== 'undefined' ? create
     routes,
   })
 
-  const BEFORE_FAMILY = new Set(['/who', '/settings', '/admin'])
+  // Открыты всегда: и до семьи, и посреди первого запуска (выход, удаление аккаунта — Р-14; цифры владельца).
+  const OPEN_ANYTIME = new Set(['/settings', '/admin'])
+  const BEFORE_FAMILY = new Set(['/who', ...OPEN_ANYTIME])
   router.beforeEach((to, _from, next) => {
     const authStore = useAuthStore()
     const financeStore = useFinanceStore()
@@ -198,8 +200,7 @@ export function createAppRouter(history = typeof window !== 'undefined' ? create
     const me = financeStore.people.find((p) => p.id === authStore.slot)
     const joining = financeStore.setupDone && !authStore.isViewer && !!me && !me.onboardedAt
 
-    // Настройки (выход, удаление аккаунта — Р-14) и цифры владельца — и посреди первого запуска.
-    if (!onStart && landing === '/start' && !setupCompleted && to.path !== '/settings' && to.path !== '/admin') return next('/start')
+    if (!onStart && landing === '/start' && !setupCompleted && !OPEN_ANYTIME.has(to.path)) return next('/start')
     if (onStart && landing !== '/start' && !joining) return next('/')
 
     next()
