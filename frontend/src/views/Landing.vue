@@ -45,7 +45,6 @@ function tryDemo() {
         <div class="flex items-center gap-5 text-[14px] text-ink-2">
           <a href="#how" class="hidden md:inline">Как это работает</a>
           <a href="#privacy" class="hidden md:inline">Приватность</a>
-          <RouterLink to="/access" class="rounded-pill bg-surface px-4 py-2 font-medium text-ink">Начать</RouterLink>
         </div>
       </nav>
 

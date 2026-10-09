@@ -41,6 +41,10 @@ describe('B2C-27: лэндинг «/» для анонима', () => {
       'Политика конфиденциальности',
     ]) expect(text, t).toContain(t)
     expect(html).toContain('href="/access"')
+    // Шапка без своего «Начать»: главное действие — одно, «Начать с Google» в герое (смоук владельца Б4).
+    const nav = html.match(/<nav[\s\S]*?<\/nav>/)?.[0]
+    expect(nav).toBeTruthy()
+    expect(nav).not.toContain('href="/access"')
     expect(html).toContain('href="/privacy"')
     expect(html).toContain('mailto:')
     // Десктоп — та же страница шире: две колонки героя и три образа в ряд.
