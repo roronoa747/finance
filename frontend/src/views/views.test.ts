@@ -179,11 +179,12 @@ describe('views/Access & Start — сценарии входа и первого
 
     const html = await renderToString(app)
     expect(html).toContain('Family Finance')
-    expect(html).toContain('Вход')
-    expect(html).toContain('Войти')
-    expect(html).toContain('Создать')
-    expect(html).toContain('По коду')
-    expect(html).toContain('Попробовать в демо-режиме без регистрации')
+    expect(html).toContain('Реально.')
+    expect(html).toContain('data-testid="google-button"')
+    expect(html).toContain('Назад к описанию')
+    // Dev-сборка (vitest): вход по почте для стенда — свёрнутым блоком; «По коду» — на /who.
+    expect(html).toContain('Вход по почте (стенд)')
+    expect(html).not.toContain('По коду')
   })
 
   describe('PV-20: ошибка сервера — русским текстом на экране', () => {
@@ -196,7 +197,7 @@ describe('views/Access & Start — сценарии входа и первого
       return { vm, render: (more: Record<string, unknown>) => renderScreen(view, path, undefined, [screenMixin({ ...state, ...more })]) }
     }
 
-    it('Access: неверный пароль, короткий пароль, код без входа — тексты из таблицы, не английский', async () => {
+    it('Access: неверный пароль, короткий пароль — тексты из таблицы, не английский', async () => {
       const { default: Access } = await import('./Access.vue')
       vi.spyOn(apiClient, 'login').mockRejectedValue(new ApiError('invalid email or password', 401))
       vi.spyOn(apiClient, 'register').mockRejectedValue(new ApiError('password must be at least 6 characters long', 400))
@@ -204,7 +205,6 @@ describe('views/Access & Start — сценарии входа и первого
       const cases = [
         [{ mode: 'login', email: 'a@b.kz', pass: 'wrong1' }, 'Почта или пароль не подходят.'],
         [{ mode: 'register', email: 'a@b.kz', pass: '123', displayName: 'Ильяс' }, 'Пароль слишком короткий: нужно хотя бы 6 символов.'],
-        [{ mode: 'join', inviteCode: 'ABC123', displayName: 'Аруна' }, 'Чтобы войти по коду, сначала войдите в аккаунт.'],
       ] as const
       for (const [state, text] of cases) {
         const { vm, render } = await screen(Access, '/access', 'submit', state)

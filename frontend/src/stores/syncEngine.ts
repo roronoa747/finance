@@ -3,7 +3,9 @@ import { useAuthStore } from './auth'
 import { useFinanceStore, DEMO_HOUSEHOLD } from './finance'
 import { useOperationsStore } from './operations'
 import { useFxStore } from './fx'
+import { useEventsStore } from './events'
 import { docCurrencies } from '@/lib/finance'
+import { readDemoPending } from '@/lib/storage'
 
 /** Как часто ловить правки партнёра, пока приложение открыто. */
 export const BACKGROUND_SYNC_MS = 60_000
@@ -35,7 +37,8 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
 
   const auth = useAuthStore()
   const finance = useFinanceStore()
-  const signedIn = () => auth.isAuthenticated && !auth.isDemo
+  // Без семьи («с кем» не пройдено) ручки семьи отвечают 409 — к ним не ходим.
+  const signedIn = () => auth.isAuthenticated && !auth.isDemo && auth.hasHousehold
 
   // Личный документ (B2C-05) — тем же кругом: неотправленное досылаем со слиянием, иначе
   // забираем правки со второго устройства (успешный pull снимает и прошлый сбой).
@@ -92,6 +95,9 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
     if (finance.status === 'idle') void finance.pullHousehold().then(linkPhotos)
     else void finance.syncHousehold().then(linkPhotos)
     syncPrivate()
+    // Открытие приложения (B2C-28): раз в день; тем же кругом — неотправленные события.
+    useEventsStore().track('app_open')
+    void useEventsStore().flush()
     // Операции выписки, не ушедшие без сети (B2C-07), — тем же кругом.
     const operations = useOperationsStore()
     if (operations.pendingCount) void operations.flush()
@@ -114,13 +120,17 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
 
   if (signedIn()) {
     // Документ, записанный до RP-04, получает хозяина — семью, в которой вошли.
-    if (auth.household) finance.claimFor(auth.household.id)
+    // Черновик демо ждёт ответа «взять?» (B2C-27): его не стирать до ответа на «с кем».
+    if (auth.household && !(readDemoPending() && finance.isDemo)) finance.claimFor(auth.household.id)
     // Без сети статус честный сразу, а не «синхронизировано» до первого события.
     if (win.navigator?.onLine === false) finance.status = 'offline'
-    // Первый круг всегда полный: неотправленная перед закрытием правка не теряется.
+    // Старт (B2C-25): тот же выбор, что у каждого круга, — всё отправлено → только забираем
+    // (ревизия не растёт от одного открытия, у viewer нет 403); неотправленное перед закрытием
+    // (`unsent` → статус 'dirty') — полный синк со слиянием. Операции — тоже: решения «Недели»
+    // на новом устройстве готовы сразу, а не после захода на «Неделю».
     else {
-      void finance.syncHousehold().then(linkPhotos)
-      syncPrivate()
+      sync()
+      if (auth.isMember) void useOperationsStore().pull()
     }
     rates()
   }

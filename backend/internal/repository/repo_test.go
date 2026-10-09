@@ -118,27 +118,66 @@ func TestHouseholdRepository(t *testing.T) {
 		t.Fatal("expected error on reusing invite, got nil")
 	}
 
-	// Invite third member
+	// A second code does not let in a third full member (review backend Block 4, Н-3).
 	inv2, err := hRepo.CreateInvite(ctx, h.ID, creatorID)
 	if err != nil {
 		t.Fatalf("failed to create second invite: %v", err)
 	}
-	thirdMember, err := hRepo.JoinHousehold(ctx, inv2.Code, "user-3", "Чарли")
-	if err != nil {
-		t.Fatalf("third member failed to join: %v", err)
+	_, err = hRepo.JoinHousehold(ctx, inv2.Code, "user-3", "Чарли")
+	if err != ErrHouseholdFull {
+		t.Fatalf("third member: expected ErrHouseholdFull, got %v", err)
 	}
-	if thirdMember.Slot != "c" {
-		t.Errorf("expected slot 'c', got %s", thirdMember.Slot)
+}
+
+// В-1: a member who deleted their account leaves their person in the shared document;
+// a newcomer by code gets a fresh slot instead of the leaver's record.
+func TestJoinSkipsLeaverSlot(t *testing.T) {
+	ctx := context.Background()
+	repos := NewMockRepositories()
+	repos.Households.SetDocRepo(repos.Docs)
+	accounts := NewMockAccountRepo(repos)
+
+	h, _, _ := repos.Households.CreateHousehold(ctx, "Семья", "dana", "Дана")
+	inv, _ := repos.Households.CreateInvite(ctx, h.ID, "dana")
+	if m, err := repos.Households.JoinHousehold(ctx, inv.Code, "aru", "Ару"); err != nil || m.Slot != "b" {
+		t.Fatalf("partner: %+v %v", m, err)
+	}
+	// Junk around the people is ignored; only objects with an id hold a slot.
+	people := `{"people":[{"id":"a","name":"Дана","onboardedAt":"2026-10-01T00:00:00Z"},{"id":"b","name":"Ару"},"x",{"name":"без id"}]}`
+	if _, _, err := repos.Docs.PushHouseholdDoc(ctx, h.ID, 1, []byte(people), "dana"); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	if err := accounts.DeleteAccount(ctx, "dana"); err != nil {
+		t.Fatalf("delete: %v", err)
 	}
 
-	// Fourth member should fail (slots a, b, c full)
-	inv3, err := hRepo.CreateInvite(ctx, h.ID, creatorID)
-	if err != nil {
-		t.Fatalf("failed to create third invite: %v", err)
+	inv2, _ := repos.Households.CreateInvite(ctx, h.ID, "aru")
+	m, err := repos.Households.JoinHousehold(ctx, inv2.Code, "bek", "Бек")
+	if err != nil || m.Slot != "c" {
+		t.Fatalf("newcomer after the leaver: %+v %v, want slot c", m, err)
 	}
-	_, err = hRepo.JoinHousehold(ctx, inv3.Code, "user-4", "Давид")
-	if err != ErrHouseholdFull {
-		t.Fatalf("expected ErrHouseholdFull, got %v", err)
+	// Two members again: the family is full.
+	inv3, _ := repos.Households.CreateInvite(ctx, h.ID, "aru")
+	if _, err := repos.Households.JoinHousehold(ctx, inv3.Code, "dan", "Дан"); err != ErrHouseholdFull {
+		t.Fatalf("fourth: %v, want ErrHouseholdFull", err)
+	}
+}
+
+// A tombstoned person (deletedAt) still holds the slot: in mergeDocs the tombstone beats any
+// later edit, so a newcomer on that slot would lose their own person on the next sync.
+func TestJoinTombstonedPersonHoldsSlot(t *testing.T) {
+	ctx := context.Background()
+	repos := NewMockRepositories()
+	repos.Households.SetDocRepo(repos.Docs)
+
+	h, _, _ := repos.Households.CreateHousehold(ctx, "Семья", "dana", "Дана")
+	people := `{"people":[{"id":"a","name":"Дана"},{"id":"b","name":"Ару","deletedAt":"2026-10-01T00:00:00Z"}]}`
+	if _, _, err := repos.Docs.PushHouseholdDoc(ctx, h.ID, 1, []byte(people), "dana"); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	inv, _ := repos.Households.CreateInvite(ctx, h.ID, "dana")
+	if m, err := repos.Households.JoinHousehold(ctx, inv.Code, "bek", "Бек"); err != nil || m.Slot != "c" {
+		t.Fatalf("newcomer next to a tombstone: %+v %v, want slot c", m, err)
 	}
 }
 

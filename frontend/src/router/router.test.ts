@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { createMemoryHistory } from 'vue-router'
-import { createAppRouter, routes } from './index'
+import { createAppRouter, expireToAccess, routes } from './index'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { authAs, planFamilyDoc } from '@/test/planFamily'
@@ -37,12 +37,35 @@ describe('router/index.ts — Навигационные гарды и защи�
     setActivePinia(createPinia())
   })
 
-  it('неавторизованный пользователь перенаправляется на /access', async () => {
+  it('B2C-25: 401 любой ручки — /access?expired=1, документ телефона цел; в демо и без входа — ничего', async () => {
+    const router = createAppRouter(createMemoryHistory())
+    signIn()
+    const finance = useFinanceStore()
+    finance.claimFor('h1')
+    finance.setPerson('a', { name: 'Ильяс' })
+    await router.push('/settings')
+
+    expireToAccess(router)
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/access'))
+    expect(router.currentRoute.value.query.expired).toBe('1')
+    expect(useAuthStore().isAuthenticated).toBe(false)
+    expect(finance.docHousehold).toBe('h1')
+    expect(finance.people.map((p) => p.name)).toEqual(['Ильяс'])
+
+    // Второй 401 (параллельный запрос) — входа уже нет, повторного перехода нет.
+    const replace = vi.spyOn(router, 'replace')
+    expireToAccess(router)
+    expect(replace).not.toHaveBeenCalled()
+  })
+
+  it('неавторизованный пользователь: «/» — лэндинг (B2C-27), остальное — на /access', async () => {
     const router = createAppRouter(createMemoryHistory())
     const authStore = useAuthStore()
     expect(authStore.isAuthenticated).toBe(false)
 
     await router.push('/')
+    expect(router.currentRoute.value.path).toBe('/')
+    await router.push('/week')
     expect(router.currentRoute.value.path).toBe('/access')
 
     await router.push('/money/budget')
@@ -50,6 +73,28 @@ describe('router/index.ts — Навигационные гарды и защи�
 
     await router.push('/start')
     expect(router.currentRoute.value.path).toBe('/access')
+  })
+
+  it('B2C-25: вошёл через Google без семьи — всё ведёт на /who, кроме настроек; с семьёй /who не нужен', async () => {
+    const router = createAppRouter(createMemoryHistory())
+    const auth = useAuthStore()
+    auth.setAuthData({ token: 'tok-g', user: { id: 'u9', email: 'n@example.com', created_at: '' }, household: null, member: null })
+    for (const path of ['/', '/week', '/money', '/start', '/access', '/goals/new']) {
+      await router.push(path)
+      expect(router.currentRoute.value.path, path).toBe('/who')
+    }
+    await router.push('/settings')
+    expect(router.currentRoute.value.path).toBe('/settings')
+    // «Цифры» из настроек владельца без семьи (критик Блока 4) — не обратно на /who.
+    await router.push('/admin')
+    expect(router.currentRoute.value.path).toBe('/admin')
+
+    // «С кем» пройдено: семья без данных — первый запуск, /who ведёт туда же.
+    signIn()
+    await router.push('/who')
+    expect(router.currentRoute.value.path).toBe('/start')
+    await router.push('/')
+    expect(router.currentRoute.value.path).toBe('/start')
   })
 
   it('неавторизованный пользователь свободно заходит на /access', async () => {
@@ -74,6 +119,10 @@ describe('router/index.ts — Навигационные гарды и защи�
     // Старый адрес мастера — на первый запуск.
     await router.push('/setup')
     expect(router.currentRoute.value.path).toBe('/start')
+
+    // Настройки — и посреди первого запуска: выход и удаление аккаунта (B2C-25).
+    await router.push('/settings')
+    expect(router.currentRoute.value.path).toBe('/settings')
   })
 
   it('авторизованный пользователь при попытке зайти на /access отправляется в приложение', async () => {

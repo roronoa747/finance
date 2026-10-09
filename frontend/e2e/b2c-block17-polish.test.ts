@@ -11,7 +11,7 @@ import { authAs, planFamilyDoc } from '../src/test/planFamily'
 import { demoPhotoUrl } from '../src/lib/photos/store'
 import GoalNew from '../src/views/GoalNew.vue'
 import NewDebtSheet from '../src/components/capital/NewDebtSheet.vue'
-import Access from '../src/views/Access.vue'
+import Landing from '../src/views/Landing.vue'
 import { at, backend, fakeServer, type FakeServer } from './support/family'
 
 vi.mock('../src/lib/photos/goalPhoto', async (orig) => ({
@@ -213,8 +213,8 @@ describe('e2e / B2C Блок 17 — полировка на двух телеф�
     vi.stubGlobal('fetch', fetchSpy)
     const pinia = createPinia()
     const p = { pinia } as Phone
-    await mount(p, Access, '/access')
-    ;[...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('демо'))!.click()
+    await mount(p, Landing, '/')
+    ;[...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('Попробовать'))!.click()
     await tick()
     const store = useFinanceStore()
     expect(store.people.map((x) => x.name)).toEqual(['Вы', 'Партнёр'])

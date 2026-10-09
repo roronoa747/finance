@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
-import { useInvite } from './useInvite'
+import { useInvite, useMembers } from './useInvite'
 
 const T0 = '2026-09-01T00:00:00.000Z'
 
@@ -64,5 +64,39 @@ describe('useInvite — один код на сессию и семью (рев�
     signIn('h-invite-3', 'viewer')
     useFinanceStore().householdDoc.people = [{ id: 'a', name: 'Ильяс', salary: 0, payday: 10, updatedAt: T0 }]
     expect(useInvite().canInvite.value).toBe(false)
+  })
+})
+
+describe('useMembers — состав семьи одним местом (ревью frontend Б4 Н-2, Р-124 п. 1)', () => {
+  beforeEach(() => {
+    const map = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => map.set(k, String(v)),
+      removeItem: (k: string) => map.delete(k),
+      clear: () => map.clear(),
+    })
+    setActivePinia(createPinia())
+  })
+
+  const member = (slot: 'a' | 'b' | 'c', name: string, role: 'member' | 'viewer' = 'member') => ({ slot, display_name: name, role, joined_at: T0 })
+
+  it('партнёр ушёл: запись Даны осталась в документе, сервер считает одного — «Пригласить» снова есть', () => {
+    signIn('h-members-1')
+    useFinanceStore().householdDoc.people = [
+      { id: 'a', name: 'Ильяс', salary: 0, payday: 10, updatedAt: T0 },
+      { id: 'b', name: 'Дана', salary: 0, payday: 20, updatedAt: T0 },
+    ]
+    const auth = useAuthStore()
+    auth.members = [member('a', 'Ильяс')]
+    expect(useMembers().rows.value.map((r) => r.name)).toEqual(['Ильяс'])
+    expect(useInvite().canInvite.value).toBe(true)
+
+    // Новый партнёр вошёл — двое участников по серверу, кода нет; viewer участником не считается.
+    auth.members = [member('a', 'Ильяс'), member('c', 'Бек')]
+    expect(useInvite().canInvite.value).toBe(false)
+    auth.members = [member('a', 'Ильяс'), member('c', 'Гость', 'viewer')]
+    expect(useInvite().canInvite.value).toBe(true)
+    expect(useMembers().rows.value.find((r) => r.id === 'c')?.role).toBe('viewer')
   })
 })

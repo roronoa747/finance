@@ -1,11 +1,12 @@
-import { createRouter, createWebHistory, createMemoryHistory, type RouteRecordRaw, type RouteLocationRaw } from 'vue-router'
+import { createRouter, createWebHistory, createMemoryHistory, type Router, type RouteRecordRaw, type RouteLocationRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { hasBudgetData } from '@/lib/finance'
 import { landingPath } from '@/router/landing'
+import { readDemoPending } from '@/lib/storage'
 
 import Access from '@/views/Access.vue'
-import AppShell from '@/components/AppShell.vue'
+import Root from '@/views/Root.vue'
 import Dreams from '@/views/Dreams.vue'
 import Settings from '@/views/Settings.vue'
 import Wishes from '@/views/Wishes.vue'
@@ -24,6 +25,12 @@ const GoalNew = () => import('@/views/GoalNew.vue')
 // Первый запуск (B2C-19): один раз на семью — отдельным чанком.
 const Start = () => import('@/views/Start.vue')
 const MyCircle = () => import('@/views/MyCircle.vue')
+// «С кем» (B2C-25): один раз после первого входа — отдельным чанком.
+const Who = () => import('@/views/Who.vue')
+// Политика конфиденциальности (B2C-26): публичная, лёгким чанком.
+const Privacy = () => import('@/views/Privacy.vue')
+// Цифры для владельца (B2C-28): только почте из ADMIN_EMAILS (сервер отвечает 404 остальным).
+const Admin = () => import('@/views/Admin.vue')
 const DebtFaster = () => import('@/views/DebtFaster.vue')
 
 /**
@@ -61,6 +68,14 @@ export const routes: RouteRecordRaw[] = [
     component: Access,
     meta: { public: true },
   },
+  { path: '/privacy', name: 'privacy', component: Privacy, meta: { public: true } },
+  // «С кем ведём?» (B2C-25, Р-13): только вошедшему без семьи.
+  {
+    path: '/who',
+    name: 'who',
+    component: Who,
+    meta: { requiresAuth: true },
+  },
   {
     path: '/start/:step?',
     name: 'start',
@@ -70,8 +85,9 @@ export const routes: RouteRecordRaw[] = [
   // Мастер настройки (до Блока 3) — теперь первый запуск из выписки.
   { path: '/setup', redirect: '/start' },
   {
+    // Вошедшему — оболочка приложения, анониму на «/» — лэндинг (B2C-27, `Root.vue`).
     path: '/',
-    component: AppShell,
+    component: Root,
     meta: { requiresAuth: true },
     children: [
       { path: '', name: 'dreams', component: Dreams },
@@ -108,6 +124,7 @@ export const routes: RouteRecordRaw[] = [
       { path: 'settings', name: 'settings', component: Settings },
       // «Свой кружок» (Р-61) — только свой участник; viewer не правит.
       { path: 'settings/me', name: 'my-circle', component: MyCircle, meta: { memberOnly: true } },
+      { path: 'admin', name: 'admin', component: Admin },
       // Старые адреса (до Блока 3).
       { path: 'budget', redirect: '/money' },
       { path: 'capital', redirect: capitalRedirect },
@@ -130,6 +147,9 @@ export function createAppRouter(history = typeof window !== 'undefined' ? create
     routes,
   })
 
+  // Открыты всегда: и до семьи, и посреди первого запуска (выход, удаление аккаунта — Р-14; цифры владельца).
+  const OPEN_ANYTIME = new Set(['/settings', '/admin'])
+  const BEFORE_FAMILY = new Set(['/who', ...OPEN_ANYTIME])
   router.beforeEach((to, _from, next) => {
     const authStore = useAuthStore()
     const financeStore = useFinanceStore()
@@ -142,10 +162,27 @@ export function createAppRouter(history = typeof window !== 'undefined' ? create
       return next()
     }
 
-    // 2. Требуется авторизация
+    // 1а. Остальные публичные (политика) — всем, со входом и без.
+    if (to.meta.public) return next()
+
+    // 2. Требуется авторизация; аноним на «/» — лэндинг (B2C-27).
     if (!isAuthed) {
+      if (to.path === '/') return next()
       return next({ path: '/access', query: to.query })
     }
+
+    // 2а. Без семьи (вошёл через Google, «с кем» не пройдено): только «с кем», настройки (выход и
+    // удаление аккаунта) и цифры владельца (ссылка из настроек). С семьёй «с кем» больше не нужен.
+    if (!authStore.isDemo && !authStore.hasHousehold) {
+      if (BEFORE_FAMILY.has(to.path)) return next()
+      return next('/who')
+    }
+    // Вопрос «взять демо?» не отвечен (B2C-27): он живёт на «с кем», закрытие приложения его не снимает.
+    if (!authStore.isDemo && readDemoPending() && financeStore.isDemo) {
+      if (BEFORE_FAMILY.has(to.path)) return next()
+      return next('/who')
+    }
+    if (to.path === '/who') return next(landingPath(authStore, financeStore))
 
     // 3. Экраны-формы (новая мечта, свой кружок) — только участнику; `viewerTo` — куда вместо них.
     if (to.meta.memberOnly && authStore.isViewer) {
@@ -163,13 +200,18 @@ export function createAppRouter(history = typeof window !== 'undefined' ? create
     const me = financeStore.people.find((p) => p.id === authStore.slot)
     const joining = financeStore.setupDone && !authStore.isViewer && !!me && !me.onboardedAt
 
-    if (!onStart && landing === '/start' && !setupCompleted) return next('/start')
+    if (!onStart && landing === '/start' && !setupCompleted && !OPEN_ANYTIME.has(to.path)) return next('/start')
     if (onStart && landing !== '/start' && !joining) return next('/')
 
     next()
   })
 
   return router
+}
+
+/** 401 любой ручки (B2C-25, `apiClient.onUnauthorized`): вход больше не действует — выход без стирания документа и экран входа. */
+export function expireToAccess(r: Router) {
+  if (useAuthStore().expire()) void r.replace({ path: '/access', query: { expired: '1' } })
 }
 
 export const router = createAppRouter()

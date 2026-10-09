@@ -4,6 +4,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"finance-backend/internal/config"
 	"finance-backend/internal/db"
 	"finance-backend/internal/fx"
+	"finance-backend/internal/googleauth"
 	"finance-backend/internal/handlers"
 	"finance-backend/internal/linkpreview"
 	"finance-backend/internal/repository"
@@ -35,6 +37,9 @@ type Repos struct {
 	Statements repository.StatementRepository
 	Photos     repository.PhotoRepository
 	Fx         repository.FxRepository
+	Accounts   repository.AccountRepository
+	Events     repository.EventRepository
+	Metrics    repository.MetricsRepository
 }
 
 // NewHandler builds the API over database. A nil database means in-memory
@@ -49,6 +54,9 @@ func NewHandler(cfg *config.Config, database *sql.DB) (http.Handler, error) {
 			Statements: repository.NewSQLStatementRepository(database),
 			Photos:     repository.NewSQLPhotoRepository(database),
 			Fx:         repository.NewSQLFxRepository(database),
+			Accounts:   repository.NewSQLAccountRepository(database),
+			Events:     repository.NewSQLEventRepository(database),
+			Metrics:    repository.NewSQLMetricsRepository(database),
 		}
 	} else {
 		if cfg.IsProduction() {
@@ -57,11 +65,37 @@ func NewHandler(cfg *config.Config, database *sql.DB) (http.Handler, error) {
 		log.Println("using in-memory mock repositories (development mode)")
 		mocks := repository.NewMockRepositories()
 		mocks.Households.SetDocRepo(mocks.Docs)
-		repos = Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos, Fx: mocks.Fx}
+		repos = Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos, Fx: mocks.Fx, Accounts: repository.NewMockAccountRepo(mocks), Events: &repository.MockEventRepo{}, Metrics: repository.MockMetricsRepo{}}
 	}
 
 	tokens := auth.NewTokenService(cfg.JWTSecret, tokenTTL)
-	return NewRouter(cfg, database, repos, tokens, fx.NewClient()), nil
+	// A nil *Verifier must stay a nil interface: then Google sign-in answers 503.
+	var google handlers.GoogleVerifier
+	if v := googleauth.New(cfg.GoogleClientIDs); v != nil {
+		google = v
+	}
+	return NewRouter(cfg, database, repos, tokens, fx.NewClient(), google), nil
+}
+
+// membershipResolver reads the household, role and slot from the database on every
+// request (B2C-22): the token's own may be stale.
+func membershipResolver(repos Repos) auth.Resolver {
+	return func(ctx context.Context, userID string) (*auth.Membership, error) {
+		if _, err := repos.Users.GetByID(ctx, userID); err != nil {
+			if errors.Is(err, repository.ErrUserNotFound) {
+				return nil, auth.ErrUserGone
+			}
+			return nil, err
+		}
+		member, _, err := repos.Households.GetMembership(ctx, userID)
+		if errors.Is(err, repository.ErrMembershipNotFound) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		return &auth.Membership{HouseholdID: member.HouseholdID, Role: member.Role, Slot: member.Slot}, nil
+	}
 }
 
 // FromEnv builds the handler for a serverless function: configuration from the
@@ -79,6 +113,7 @@ func FromEnv() (http.Handler, error) {
 	if err := cfg.ValidateProduction(); err != nil {
 		return nil, fmt.Errorf("load configuration: %w", err)
 	}
+	cfg.Env = "production"
 
 	database, err := db.Connect(cfg.DatabaseURL, db.ServerlessPool)
 	if err != nil {
@@ -94,6 +129,7 @@ func NewRouter(
 	repos Repos,
 	tokenService *auth.TokenService,
 	fxClient *fx.Client,
+	google handlers.GoogleVerifier,
 ) *chi.Mux {
 	r := chi.NewRouter()
 
@@ -111,12 +147,14 @@ func NewRouter(
 		MaxAge:           300,
 	}))
 
-	authHandler := handlers.NewAuthHandler(repos.Users, repos.Households, tokenService)
-	householdHandler := handlers.NewHouseholdHandler(repos.Households, tokenService)
+	authHandler := handlers.NewAuthHandler(repos.Users, repos.Households, tokenService, google, cfg.AdminEmails)
+	householdHandler := handlers.NewHouseholdHandler(repos.Users, repos.Households, tokenService)
 	syncHandler := handlers.NewSyncHandler(repos.Docs)
 	statementHandler := handlers.NewStatementHandler(repos.Statements)
 	photoHandler := handlers.NewPhotoHandler(repos.Photos)
 	previewHandler := handlers.NewPreviewHandler(linkpreview.New().Fetch)
+	accountHandler := handlers.NewAccountHandler(repos.Accounts)
+	eventsHandler := handlers.NewEventsHandler(repos.Events, repos.Metrics, repos.Users, cfg.AdminEmails)
 
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", handlers.HealthHandler(database))
@@ -127,37 +165,57 @@ func NewRouter(
 		}
 		api.Get("/fx-rate", handlers.FxRateHandler(fxClient, fxStore))
 
-		api.Post("/auth/register", authHandler.Register)
+		// Signing up with a password is for the stand and e2e only (Р-13): nobody confirms that
+		// address, and Google sign-in links by email — an account taken in advance under
+		// someone else's address would get that person's Google sign-in and data.
+		if !cfg.IsProduction() {
+			api.Post("/auth/register", authHandler.Register)
+		}
 		api.Post("/auth/login", authHandler.Login)
+		api.Post("/auth/google", authHandler.GoogleLogin)
 
-		// Protected endpoints
+		// Protected endpoints: the household, role and slot come from the database (B2C-22).
 		api.Group(func(protected chi.Router) {
-			protected.Use(auth.Middleware(tokenService))
+			protected.Use(auth.Middleware(tokenService, membershipResolver(repos)))
+
+			// Without a household too (Р-25): who am I, "с кем".
 			protected.Get("/auth/me", authHandler.Me)
-
-			protected.Post("/household/invites", householdHandler.CreateInvite)
+			protected.Post("/household", householdHandler.CreateHousehold)
 			protected.Post("/household/join", householdHandler.JoinHousehold)
+			// Удаление аккаунта (B2C-24): любому вошедшему, с семьёй и без.
+			protected.Delete("/account", accountHandler.Delete)
+			// События удержания и цифры владельца (B2C-28): события — любому вошедшему.
+			protected.Post("/events", eventsHandler.Record)
+			protected.Get("/admin/metrics", eventsHandler.Metrics)
 
-			protected.Get("/sync/household", syncHandler.GetHouseholdDoc)
-			protected.Post("/sync/household", syncHandler.PushHouseholdDoc)
-			protected.Get("/sync/private", syncHandler.GetPrivateDoc)
-			protected.Post("/sync/private", syncHandler.PushPrivateDoc)
+			// Household routes: 409 "no household" until "с кем" is done.
+			protected.Group(func(family chi.Router) {
+				family.Use(auth.RequireHousehold)
 
-			// Выписки (B2C-06): записи загрузок — семье, операции — только владельцу.
-			protected.Post("/statements", statementHandler.CreateUpload)
-			protected.Get("/statements", statementHandler.ListUploads)
-			protected.Post("/operations/batch", statementHandler.UpsertOperations)
-			protected.Get("/operations", statementHandler.ListOperations)
+				family.Post("/household/invites", householdHandler.CreateInvite)
+				family.Get("/household/members", householdHandler.Members)
 
-			// Фото целей и желаний (B2C-16): байты в Postgres; скрытое — только автору (404).
-			protected.Post("/photos", photoHandler.Upload)
-			// Фото желания по ссылке (B2C-65, Р-69): только member, в базу не пишет.
-			protected.Post("/photos/preview", previewHandler.Preview)
-			protected.Get("/photos/{id}", photoHandler.Get)
-			protected.Delete("/photos/{id}", photoHandler.Delete)
+				family.Get("/sync/household", syncHandler.GetHouseholdDoc)
+				family.Post("/sync/household", syncHandler.PushHouseholdDoc)
+				family.Get("/sync/private", syncHandler.GetPrivateDoc)
+				family.Post("/sync/private", syncHandler.PushPrivateDoc)
 
-			// История курсов Нацбанка (B2C-76, Р-71): member и viewer, без семьи — 409.
-			protected.Get("/fx-rates", handlers.FxRatesHandler(fxClient, repos.Fx))
+				// Выписки (B2C-06): записи загрузок — семье, операции — только владельцу.
+				family.Post("/statements", statementHandler.CreateUpload)
+				family.Get("/statements", statementHandler.ListUploads)
+				family.Post("/operations/batch", statementHandler.UpsertOperations)
+				family.Get("/operations", statementHandler.ListOperations)
+
+				// Фото целей и желаний (B2C-16): байты в Postgres; скрытое — только автору (404).
+				family.Post("/photos", photoHandler.Upload)
+				// Фото желания по ссылке (B2C-65, Р-69): только member, в базу не пишет.
+				family.Post("/photos/preview", previewHandler.Preview)
+				family.Get("/photos/{id}", photoHandler.Get)
+				family.Delete("/photos/{id}", photoHandler.Delete)
+
+				// История курсов Нацбанка (B2C-76, Р-71): member и viewer.
+				family.Get("/fx-rates", handlers.FxRatesHandler(fxClient, repos.Fx))
+			})
 		})
 	})
 

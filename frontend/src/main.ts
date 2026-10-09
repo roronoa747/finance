@@ -1,11 +1,12 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import { router } from './router'
+import { router, expireToAccess } from './router'
 import './style.css'
 import App from './App.vue'
 import { startSyncEngine } from './stores/syncEngine'
 import { watchServiceWorkerUpdates } from './lib/pwa'
 import { applyCurrentPalette, watchSystemTheme } from './lib/theme'
+import { apiClient } from './api/client'
 
 // Тема — до монтирования: на /access и /start тоже, без вспышки светлой.
 applyCurrentPalette()
@@ -17,6 +18,8 @@ const pinia = createPinia()
 app.use(pinia)
 app.use(router)
 app.mount('#app')
+
+apiClient.onUnauthorized = () => expireToAccess(router)
 startSyncEngine()
 
 // Новая версия PWA подхватывается сама: перезагрузка на смене SW (Б-20).

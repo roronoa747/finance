@@ -3,6 +3,8 @@ import type { SyncDoc } from './finance'
 export interface User {
   id: string
   email: string
+  /** Имя из Google (B2C-22); у старых пользователей с паролем — нет. */
+  display_name?: string
   created_at: string
 }
 
@@ -22,17 +24,28 @@ export interface HouseholdMember {
   joined_at: string
 }
 
+/** Вход (B2C-22): у пользователя без семьи `household` и `member` — null, дальше — «с кем». */
 export interface AuthResponse {
   token: string
   user: User
-  household: Household
-  member: HouseholdMember
+  household: Household | null
+  member: HouseholdMember | null
 }
 
 export interface MeResponse {
   user: User
-  household: Household
-  member: HouseholdMember
+  household: Household | null
+  member: HouseholdMember | null
+  /** Почта в `ADMIN_EMAILS` (B2C-28) — пункт «Цифры» в настройках. */
+  admin?: boolean
+}
+
+/** Участник семьи из `GET /api/household/members` (B2C-23): без почты и id. */
+export interface MemberView {
+  slot: 'a' | 'b' | 'c'
+  display_name: string
+  role: 'member' | 'viewer'
+  joined_at: string
 }
 
 export interface InviteResponse {

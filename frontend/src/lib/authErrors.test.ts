@@ -17,19 +17,17 @@ describe('authErrorText — тексты Go по-русски (Б-13, Б-14, Р-
   it.each([
     ['login', 'email and password are required', 'Введите почту и пароль'],
     ['login', 'invalid email or password', 'Почта или пароль не подходят.'],
-    ['login', 'household membership not found', 'Аккаунт есть, но семьи в нём нет.'],
     ['register', 'valid email is required', 'Проверьте почту: в адресе нужен знак @.'],
     ['register', 'password must be at least 6 characters long', 'Пароль слишком короткий: нужно хотя бы 6 символов.'],
     ['register', 'user already exists', 'Такая почта уже зарегистрирована. Войдите с ней на вкладке «Войти».'],
     ['register', BCRYPT_TOO_LONG, 'Пароль слишком длинный — выберите покороче.'],
     ['join', 'invite code is required', 'Введите код приглашения.'],
-    ['join', 'unauthorized', 'Чтобы войти по коду, сначала войдите в аккаунт.'],
     ['join', 'invite code not found', 'Код не найден. Проверьте, нет ли опечатки.'],
     ['join', 'invite code has already been used', 'Этот код уже использован. Попросите партнёра создать новый.'],
     ['join', 'invite code has expired', 'Срок кода истёк: он действует две недели. Попросите партнёра создать новый.'],
     ['join', 'household has maximum members', 'В этой семье уже нет свободных мест.'],
     ['invite', 'only full members can create invites', 'Код может создать только участник с правом правки — у вас только просмотр.'],
-    ['invite', 'unauthorized', 'Вход истёк. Выйдите и войдите заново.'],
+    ['google', 'user already exists', 'Попробуйте ещё раз.'],
   ] as const)('%s: «%s» → «%s»', (context, go, ru) => {
     expect(authErrorText(go, context)).toBe(ru)
     expect(warn).not.toHaveBeenCalled()
@@ -45,6 +43,7 @@ describe('authErrorText — тексты Go по-русски (Б-13, Б-14, Р-
     ['login', 'request body too large'],
     ['login', 'invalid request body'],
     ['login', 'unauthorized'],
+    ['join', 'unauthorized'],
     ['login', 'HTTP error 500 Internal Server Error'],
     ['login', 'HTTP error 502 Bad Gateway'],
     ['join', 'Failed to fetch'],

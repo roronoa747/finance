@@ -19,6 +19,12 @@ type Config struct {
 	JWTSecret   string
 	CORSOrigin  string
 	Env         string
+	// GoogleClientIDs are the OAuth clients whose ID tokens sign in (web, Android, iOS —
+	// GOOGLE_CLIENT_IDS, comma-separated). Optional: without them Google sign-in answers 503.
+	GoogleClientIDs []string
+	// AdminEmails see the owner's numbers page /admin (ADMIN_EMAILS, comma-separated, B2C-28).
+	// Optional: without it /api/admin/metrics is 404 for everyone.
+	AdminEmails []string
 }
 
 // Load loads configuration from environment variables with fallback defaults.
@@ -32,6 +38,9 @@ func Load() (*Config, error) {
 		JWTSecret:   getEnv("JWT_SECRET", DefaultJWTSecret),
 		CORSOrigin:  getEnv("CORS_ORIGIN", "http://localhost:5173,http://127.0.0.1:5173"),
 		Env:         getEnv("APP_ENV", "development"),
+
+		GoogleClientIDs: splitList(getEnv("GOOGLE_CLIENT_IDS", "")),
+		AdminEmails:     splitList(strings.ToLower(getEnv("ADMIN_EMAILS", ""))),
 	}
 	if cfg.IsProduction() {
 		if err := cfg.ValidateProduction(); err != nil {
@@ -62,17 +71,22 @@ func (c *Config) ValidateProduction() error {
 
 // AllowedOrigins parses comma-separated CORS origins into a slice.
 func (c *Config) AllowedOrigins() []string {
-	var origins []string
-	for _, o := range strings.Split(c.CORSOrigin, ",") {
-		trimmed := strings.TrimSpace(o)
-		if trimmed != "" {
-			origins = append(origins, trimmed)
-		}
-	}
+	origins := splitList(c.CORSOrigin)
 	if len(origins) == 0 {
 		return []string{"http://localhost:5173", "http://127.0.0.1:5173"}
 	}
 	return origins
+}
+
+// splitList parses a comma-separated variable, dropping blanks.
+func splitList(v string) []string {
+	var out []string
+	for _, item := range strings.Split(v, ",") {
+		if trimmed := strings.TrimSpace(item); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
 func getEnv(key, defaultVal string) string {

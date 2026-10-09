@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { PhCopy, PhFileArrowUp, PhUserPlus } from '@phosphor-icons/vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
+import { useEventsStore } from '@/stores/events'
 import { useFxStore } from '@/stores/fx'
 import { useOperationsStore, type Draft, type DraftFile } from '@/stores/operations'
 import { readStatementFiles } from '@/lib/statements/read'
@@ -298,6 +299,7 @@ const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: ha
 function finish() {
   financeStore.setPerson(slot.value, { name: knownName.value, onboardedAt: new Date().toISOString() })
   if (!joining.value) financeStore.finishSetup()
+  useEventsStore().track('first_run_done')
   void financeStore.syncHousehold()
   void router.push('/')
 }
@@ -441,7 +443,7 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
             </button>
           </div>
           <p class="inline-flex max-w-[280px] items-center gap-1.5 text-[12.5px] leading-relaxed text-ink-2">
-            Продиктуйте партнёру — он выберет «По коду» <Hint>Партнёр открывает тот же адрес, регистрируется и выбирает «По коду». Код действует две недели и срабатывает один раз.</Hint>
+            Продиктуйте партнёру — он выберет «По коду» <Hint>Партнёр открывает тот же адрес, входит через Google и выбирает «По коду». Код действует две недели и срабатывает один раз.</Hint>
           </p>
           <span v-if="copied" class="text-[12px] font-medium text-brand">Скопировано</span>
         </template>

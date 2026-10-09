@@ -62,7 +62,7 @@ func setupPhotosApp(t *testing.T) photosApp {
 	r := chi.NewRouter()
 	r.Route("/api", func(api chi.Router) {
 		api.Group(func(protected chi.Router) {
-			protected.Use(auth.Middleware(tokens))
+			protected.Use(auth.Middleware(tokens, nil))
 			protected.Post("/photos", h.Upload)
 			protected.Get("/photos/{id}", h.Get)
 			protected.Delete("/photos/{id}", h.Delete)

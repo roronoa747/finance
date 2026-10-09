@@ -32,7 +32,7 @@ func setupStatementsApp(t *testing.T) statementsApp {
 	r := chi.NewRouter()
 	r.Route("/api", func(api chi.Router) {
 		api.Group(func(protected chi.Router) {
-			protected.Use(auth.Middleware(tokens))
+			protected.Use(auth.Middleware(tokens, nil))
 			protected.Post("/statements", h.CreateUpload)
 			protected.Get("/statements", h.ListUploads)
 			protected.Post("/operations/batch", h.UpsertOperations)

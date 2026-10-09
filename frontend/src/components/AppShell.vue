@@ -53,14 +53,14 @@ const isRoot = computed(() => ROOTS.includes(route.path))
 /** Экраны-потоки без нижней навигации (в макетах — без вкладок): цель, желания, настройки. */
 const noTabs = computed(() => {
   const p = route.path
-  return p.startsWith('/goals/') || p === '/wishes' || p.startsWith('/people/') || p.startsWith('/settings')
+  return p.startsWith('/goals/') || p === '/wishes' || p.startsWith('/people/') || p.startsWith('/settings') || p === '/admin'
 })
 
 /** «Назад»: по истории, а открытый по ссылке экран — к своему корню. */
 function goBack() {
   const p = route.path
   if (typeof window !== 'undefined' && window.history.state?.back) router.back()
-  else void router.push(p.startsWith('/week') ? '/week' : p === '/settings/me' ? '/settings' : '/')
+  else void router.push(p.startsWith('/week') ? '/week' : p === '/settings/me' || p === '/admin' ? '/settings' : '/')
 }
 
 /** Заголовок и подпись шапки по маршруту (DESIGN.md §6 «Заголовки экранов»). */
@@ -81,6 +81,7 @@ const header = computed<{ title: string; sub?: string }>(() => {
   }
   if (p === '/wishes' || p.startsWith('/people/')) return { title: 'Желания' }
   if (p === '/settings/me') return { title: 'Свой кружок' }
+  if (p === '/admin') return { title: 'Цифры' }
   if (p === '/settings') {
     // Под заголовком — только почта входа: имя — в поле «Ваше имя» ниже (Р-116, макет Б17); в демо почты нет.
     const sub = authStore.isDemo ? null : authStore.user?.email

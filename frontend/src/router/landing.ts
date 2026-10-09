@@ -6,9 +6,11 @@ import { hasBudgetData } from '@/lib/finance'
  * Отдельным модулем: роутер импортирует экраны, экран входа — этот выбор.
  */
 export function landingPath(
-  auth: { slot?: string | null; isViewer: boolean },
+  auth: { slot?: string | null; isViewer: boolean; hasHousehold?: boolean },
   finance: { setupDone: boolean; householdDoc: Parameters<typeof hasBudgetData>[0] & { people?: { id: string; onboardedAt?: string | null }[] } },
 ): string {
+  // Вошёл через Google, семьи ещё нет (Р-13): сначала «с кем».
+  if (auth.hasHousehold === false) return '/who'
   // Viewer смотрит, что есть, — первый запуск не его.
   if (auth.isViewer) return '/'
   const me = auth.slot ? (finance.householdDoc.people ?? []).find((p) => p.id === auth.slot) : undefined

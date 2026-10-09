@@ -3,6 +3,7 @@ import type {
   MeResponse,
   InviteResponse,
   JoinResponse,
+  MemberView,
   HouseholdDocResponse,
   PrivateDocResponse,
   ConflictResponse,
@@ -61,6 +62,11 @@ export class ApiClient {
   private baseUrl: string
   private getToken: () => string | null
   private fetchFn: typeof fetch
+  /**
+   * 401 на запрос с токеном (B2C-25): вход больше не действует — истёк, аккаунт удалён. Ставит
+   * `main.ts`: выход без стирания документа и экран входа.
+   */
+  onUnauthorized: () => void = () => {}
 
   constructor(config: ApiClientConfig = {}) {
     this.baseUrl = config.baseUrl ?? '/api'
@@ -92,6 +98,7 @@ export class ApiClient {
     const isJson = contentType.includes('application/json')
     const body = isJson ? await res.json().catch(() => null) : await res.text().catch(() => null)
 
+    if (res.status === 401 && token) this.onUnauthorized()
     if (!res.ok) {
       const errMsg =
         body && typeof body === 'object' && 'error' in body
@@ -123,6 +130,14 @@ export class ApiClient {
     })
   }
 
+  /** Вход через Google (B2C-22): ID-токен Google → свой токен; семьи может не быть. */
+  async googleLogin(idToken: string): Promise<AuthResponse> {
+    return this.request<AuthResponse>('/auth/google', {
+      method: 'POST',
+      body: JSON.stringify({ id_token: idToken }),
+    })
+  }
+
   async me(): Promise<MeResponse> {
     return this.request<MeResponse>('/auth/me', {
       method: 'GET',
@@ -130,6 +145,30 @@ export class ApiClient {
   }
 
   // Household endpoints
+  /** «С кем» → один или семья (B2C-23): пользователь без семьи создаёт свою. */
+  async createHousehold(data: { name?: string; display_name: string }): Promise<AuthResponse> {
+    return this.request<AuthResponse>('/household', { method: 'POST', body: JSON.stringify(data) })
+  }
+
+  async householdMembers(): Promise<{ members: MemberView[] }> {
+    return this.request<{ members: MemberView[] }>('/household/members', { method: 'GET' })
+  }
+
+  /** Событие удержания (B2C-28): только вид и время. */
+  async sendEvent(kind: string, at: string): Promise<void> {
+    await this.request<unknown>('/events', { method: 'POST', body: JSON.stringify({ kind, at }) })
+  }
+
+  /** Цифры для владельца (B2C-28); не владельцу — 404. */
+  async adminMetrics(): Promise<AdminMetrics> {
+    return this.request<AdminMetrics>('/admin/metrics', { method: 'GET' })
+  }
+
+  /** Удаление аккаунта вместе с данными (B2C-24). */
+  async deleteAccount(): Promise<void> {
+    await this.request<unknown>('/account', { method: 'DELETE' })
+  }
+
   async createInvite(): Promise<InviteResponse> {
     return this.request<InviteResponse>('/household/invites', {
       method: 'POST',
@@ -237,6 +276,7 @@ export class ApiClient {
     if (token) headers.set('Authorization', `Bearer ${token}`)
     const res = await this.fetchFn(`${this.baseUrl}/photos/${encodeURIComponent(id)}`, { method: 'GET', headers })
     if (res.status === 404) return null
+    if (res.status === 401 && token) this.onUnauthorized()
     if (!res.ok) throw new ApiError(`HTTP error ${res.status} ${res.statusText}`, res.status)
     return res.blob()
   }
@@ -265,6 +305,18 @@ export class ApiClient {
     const q = new URLSearchParams({ code, from, to })
     return this.request<FxRatesResponse>(`/fx-rates?${q}`, { method: 'GET' })
   }
+}
+
+/** Ответ `GET /api/admin/metrics` (B2C-28). */
+export type AdminMetrics = {
+  users: number
+  households: number
+  households_with_upload: number
+  second_upload_14d: { eligible: number; retained: number }
+  active_7d: number
+  active_28d: number
+  funnel_28d: { created: number; uploaded: number; goal: number; done: number }
+  weeks: { week: string; new_households: number; uploads: number; week_done: number }[]
 }
 
 export type FxRatesResponse = { code: string; rates: Record<string, number>; partial: boolean; source?: string }

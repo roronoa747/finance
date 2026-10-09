@@ -94,6 +94,64 @@ func (m *MockUserRepo) GetByID(ctx context.Context, id string) (*models.User, er
 	return user, nil
 }
 
+func (m *MockUserRepo) GetByGoogleSub(ctx context.Context, sub string) (*models.User, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for _, user := range m.users {
+		if user.GoogleSub != "" && user.GoogleSub == sub {
+			return user, nil
+		}
+	}
+	return nil, ErrUserNotFound
+}
+
+func (m *MockUserRepo) CreateGoogle(ctx context.Context, email, sub, name string) (*models.User, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	cleanEmail := strings.ToLower(strings.TrimSpace(email))
+	if _, exists := m.byEmail[cleanEmail]; exists {
+		return nil, ErrUserAlreadyExists
+	}
+	for _, user := range m.users {
+		if user.GoogleSub == sub {
+			return nil, ErrUserAlreadyExists
+		}
+	}
+
+	user := &models.User{
+		ID:          uuid.New().String(),
+		Email:       cleanEmail,
+		GoogleSub:   sub,
+		DisplayName: name,
+		CreatedAt:   time.Now(),
+	}
+	m.users[user.ID] = user
+	m.byEmail[cleanEmail] = user
+	return user, nil
+}
+
+func (m *MockUserRepo) LinkGoogle(ctx context.Context, id, sub, name string) (*models.User, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	user, exists := m.users[id]
+	if !exists {
+		return nil, ErrUserNotFound
+	}
+	for _, other := range m.users {
+		if other.ID != id && other.GoogleSub == sub {
+			return nil, ErrUserAlreadyExists
+		}
+	}
+	user.GoogleSub = sub
+	if user.DisplayName == "" {
+		user.DisplayName = name
+	}
+	return user, nil
+}
+
 func (m *MockUserRepo) Delete(ctx context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -115,6 +173,18 @@ type MockHouseholdRepo struct {
 	members    map[string][]*models.HouseholdMember // householdID -> members
 	invites    map[string]*models.HouseholdInvite   // code -> invite
 	docs       *MockDocRepo
+	lastJoin   time.Time
+}
+
+// joinTime is strictly increasing: Windows clocks tick coarsely, and GetMembership
+// picks the latest join. Callers hold mu.
+func (m *MockHouseholdRepo) joinTime() time.Time {
+	now := time.Now()
+	if !now.After(m.lastJoin) {
+		now = m.lastJoin.Add(time.Microsecond)
+	}
+	m.lastJoin = now
+	return now
 }
 
 func NewMockHouseholdRepo() *MockHouseholdRepo {
@@ -133,6 +203,9 @@ func (m *MockHouseholdRepo) CreateHousehold(ctx context.Context, name, creatorID
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if m.memberElsewhere(creatorID, "") {
+		return nil, nil, ErrAlreadyInHousehold
+	}
 	if strings.TrimSpace(name) == "" {
 		name = "Наша казна"
 	}
@@ -154,7 +227,7 @@ func (m *MockHouseholdRepo) CreateHousehold(ctx context.Context, name, creatorID
 		Slot:        "a",
 		DisplayName: creatorDisplayName,
 		Role:        "member",
-		JoinedAt:    time.Now(),
+		JoinedAt:    m.joinTime(),
 	}
 	m.members[h.ID] = []*models.HouseholdMember{member}
 
@@ -198,6 +271,33 @@ func (m *MockHouseholdRepo) GetMembership(ctx context.Context, userID string) (*
 		return latestMember, latestHousehold, nil
 	}
 	return nil, nil, ErrMembershipNotFound
+}
+
+// memberElsewhere mirrors lockUserWithoutHousehold. Callers hold mu.
+func (m *MockHouseholdRepo) memberElsewhere(userID, except string) bool {
+	for hID, list := range m.members {
+		if hID == except {
+			continue
+		}
+		for _, member := range list {
+			if member.UserID == userID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// SetRole changes a member's role — tests only: the app has no route for it, the owner
+// does it in SQL.
+func (m *MockHouseholdRepo) SetRole(householdID, userID, role string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, member := range m.members[householdID] {
+		if member.UserID == userID {
+			member.Role = role
+		}
+	}
 }
 
 func (m *MockHouseholdRepo) GetMembers(ctx context.Context, householdID string) ([]models.HouseholdMember, error) {
@@ -268,7 +368,26 @@ func (m *MockHouseholdRepo) JoinHousehold(ctx context.Context, code, userID, dis
 		}
 	}
 
+	if m.memberElsewhere(userID, inv.HouseholdID) {
+		return nil, ErrAlreadyInHousehold
+	}
+
+	// As in the SQL repo: two full members at most.
+	full := 0
+	for _, mem := range members {
+		if mem.Role == "member" {
+			full++
+		}
+	}
+	if full >= 2 {
+		return nil, ErrHouseholdFull
+	}
+
+	// As in usedSlotsSQL: a person left in the shared document keeps the slot taken.
 	usedSlots := make(map[string]bool)
+	if m.docs != nil {
+		usedSlots = m.docs.peopleSlots(inv.HouseholdID)
+	}
 	for _, mem := range members {
 		usedSlots[mem.Slot] = true
 	}
@@ -294,7 +413,7 @@ func (m *MockHouseholdRepo) JoinHousehold(ctx context.Context, code, userID, dis
 		Slot:        assignedSlot,
 		DisplayName: displayName,
 		Role:        "member",
-		JoinedAt:    time.Now(),
+		JoinedAt:    m.joinTime(),
 	}
 	m.members[inv.HouseholdID] = append(m.members[inv.HouseholdID], newMember)
 
@@ -367,6 +486,33 @@ func (m *MockDocRepo) InitDocs(householdID, creatorID string) error {
 		UpdatedAt:   time.Now(),
 	}
 	return nil
+}
+
+// peopleSlots returns the ids of people in the household document (see usedSlotsSQL).
+func (m *MockDocRepo) peopleSlots(householdID string) map[string]bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	slots := make(map[string]bool)
+	doc, ok := m.householdDocs[householdID]
+	if !ok {
+		return slots
+	}
+	var data struct {
+		People []json.RawMessage `json:"people"`
+	}
+	if json.Unmarshal(doc.Data, &data) != nil {
+		return slots
+	}
+	for _, raw := range data.People {
+		var p struct {
+			ID *string `json:"id"`
+		}
+		if json.Unmarshal(raw, &p) == nil && p.ID != nil {
+			slots[*p.ID] = true
+		}
+	}
+	return slots
 }
 
 func (m *MockDocRepo) InitPrivateDoc(householdID, userID string) error {

@@ -5,7 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory } from 'vue-router'
 import { createAppRouter } from '@/router'
 import { renderScreen, screenMixin } from '@/test/screenState'
-import Access from './Access.vue'
+import Landing from './Landing.vue'
 import Money from './Money.vue'
 import Week from './Week.vue'
 import Dreams from './Dreams.vue'
@@ -49,16 +49,16 @@ describe('B2C-45: демо — «Деньги» с данными во всех 
     const pinia = createPinia()
     setActivePinia(pinia)
     const router = createAppRouter(createMemoryHistory())
-    await router.push('/access')
+    await router.push('/')
     await router.isReady()
     const root = document.createElement('div')
     document.body.appendChild(root)
-    app = createApp(Access)
+    app = createApp(Landing)
     app.use(pinia)
     app.use(router)
     app.mount(root)
     await nextTick()
-    ;[...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('демо'))!.click()
+    ;[...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('Попробовать'))!.click()
     await nextTick()
     await nextTick()
 
@@ -96,16 +96,16 @@ describe('B2C-52: демо — итоги из демо-операций той 
     const pinia = createPinia()
     setActivePinia(pinia)
     const router = createAppRouter(createMemoryHistory())
-    await router.push('/access')
+    await router.push('/')
     await router.isReady()
     const root = document.createElement('div')
     document.body.appendChild(root)
-    app = createApp(Access)
+    app = createApp(Landing)
     app.use(pinia)
     app.use(router)
     app.mount(root)
     await nextTick()
-    ;[...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('демо'))!.click()
+    ;[...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('Попробовать'))!.click()
     await nextTick()
     await nextTick()
   }
@@ -175,16 +175,16 @@ describe('B2C-110 (Р-118): демо — фото из приложения, л�
     const pinia = createPinia()
     setActivePinia(pinia)
     const router = createAppRouter(createMemoryHistory())
-    await router.push('/access')
+    await router.push('/')
     await router.isReady()
     const root = document.createElement('div')
     document.body.appendChild(root)
-    app = createApp(Access)
+    app = createApp(Landing)
     app.use(pinia)
     app.use(router)
     app.mount(root)
     await nextTick()
-    ;[...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('демо'))!.click()
+    ;[...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('Попробовать'))!.click()
     await nextTick()
     await nextTick()
 

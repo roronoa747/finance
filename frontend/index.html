@@ -9,7 +9,33 @@
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#121214" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="FF" />
-    <title>Family Finance</title>
+    <title>Family Finance — Реально.</title>
+    <!-- Лэндинг и превью ссылки (B2C-27, DESIGN.md §6): фраза-идея, описание, картинка. -->
+    <meta name="description" content="Фото цели и одна цифра — сколько до неё. Семейный бюджет для пар и одиночек в Казахстане: выписка Kaspi или Freedom остаётся на телефоне." />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Family Finance" />
+    <meta property="og:title" content="Реально. — Family Finance" />
+    <meta property="og:description" content="Фото цели и одна цифра — сколько до неё. Для пар и одиночек в Казахстане." />
+    <meta property="og:image" content="https://family-finance-ff.vercel.app/landing/og.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="ru_RU" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <!-- Лэндинг (B2C-27): аноним — картинка героя грузится сразу, параллельно с JS (LCP); вошедшему — ничего. -->
+    <script>
+      try {
+        if (!localStorage.getItem('ff_auth_token') && location.pathname === '/') {
+          var t = localStorage.getItem('ff_theme')
+          var dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
+          var l = document.createElement('link')
+          l.rel = 'preload'
+          l.as = 'image'
+          l.href = '/landing/hero-' + (dark ? 'dark' : 'light') + '.webp'
+          l.setAttribute('fetchpriority', 'high')
+          document.head.appendChild(l)
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="app"></div>

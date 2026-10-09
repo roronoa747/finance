@@ -51,9 +51,9 @@ describe('B2C-13: /settings и /money (SSR)', () => {
     expect(html).toContain('Обмен между телефонами')
     expect(html).toContain('синхронизировано')
     expect(html).toContain('Выйти из аккаунта')
-    // Напоминание и удаление аккаунта — Блоки 5 и 4: секций нет.
+    // Напоминание — Блок 5: секции нет. Удаление аккаунта (B2C-25) — после выхода.
     expect(html).not.toContain('Напоминание')
-    expect(html).not.toContain('Удалить аккаунт')
+    expect(html.indexOf('Выйти из аккаунта')).toBeLessThan(html.indexOf('Удалить аккаунт и данные'))
     // Возврат смоука (g7, правило 12): порядок «Оформление» → «С кем» → выход; разбор выписок — свёрнут
     // (<details> без open), выход — своей карточкой после «С кем». «Цвета разделов» сняты (клинап Б9, Р-33).
     expect(html.indexOf('Оформление')).toBeLessThan(html.indexOf('С кем'))

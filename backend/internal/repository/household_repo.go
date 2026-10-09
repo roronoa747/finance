@@ -20,7 +20,30 @@ var (
 	ErrInviteExpired      = errors.New("invite code has expired")
 	ErrInviteAlreadyUsed  = errors.New("invite code has already been used")
 	ErrHouseholdFull      = errors.New("household has reached maximum members")
+	// ErrAlreadyInHousehold: a user belongs to at most one household (B2C-23); moving
+	// between households is out of scope.
+	ErrAlreadyInHousehold = errors.New("user already belongs to a household")
 )
+
+// lockUserWithoutHousehold locks the user's row for the transaction and fails with
+// ErrAlreadyInHousehold when they already belong to a household other than except:
+// two taps of "Создать семью" must not make two households.
+func lockUserWithoutHousehold(ctx context.Context, tx *sql.Tx, userID, except string) error {
+	var id string
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM app.users WHERE id = $1 FOR UPDATE;`, userID).Scan(&id); err != nil {
+		return fmt.Errorf("failed to lock user: %w", err)
+	}
+	var taken bool
+	if err := tx.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM app.household_members WHERE user_id = $1 AND household_id::text <> $2);`,
+		userID, except).Scan(&taken); err != nil {
+		return fmt.Errorf("failed to check membership: %w", err)
+	}
+	if taken {
+		return ErrAlreadyInHousehold
+	}
+	return nil
+}
 
 type HouseholdRepository interface {
 	CreateHousehold(ctx context.Context, name, creatorID, creatorDisplayName string) (*models.Household, *models.HouseholdMember, error)
@@ -53,6 +76,10 @@ func (r *sqlHouseholdRepository) CreateHousehold(ctx context.Context, name, crea
 		return nil, nil, fmt.Errorf("failed to begin tx: %w", err)
 	}
 	defer tx.Rollback()
+
+	if err := lockUserWithoutHousehold(ctx, tx, creatorID, ""); err != nil {
+		return nil, nil, err
+	}
 
 	// 1. Insert household
 	h := &models.Household{}
@@ -214,6 +241,16 @@ func (r *sqlHouseholdRepository) GetInvite(ctx context.Context, code string) (*m
 	return inv, nil
 }
 
+// usedSlotsSQL lists slots held by members plus the ids of people in the shared
+// document (non-objects and a missing or non-array `people` are ignored).
+const usedSlotsSQL = `
+		SELECT slot FROM app.household_members WHERE household_id = $1
+		UNION
+		SELECT p->>'id'
+		FROM app.household_docs d,
+			jsonb_array_elements(CASE WHEN jsonb_typeof(d.data->'people') = 'array' THEN d.data->'people' ELSE '[]'::jsonb END) p
+		WHERE d.household_id = $1 AND jsonb_typeof(p) = 'object' AND p->>'id' IS NOT NULL;`
+
 func (r *sqlHouseholdRepository) JoinHousehold(ctx context.Context, code, userID, displayName string) (*models.HouseholdMember, error) {
 	cleanedCode := strings.ToUpper(strings.TrimSpace(code))
 	if strings.TrimSpace(displayName) == "" {
@@ -273,8 +310,26 @@ func (r *sqlHouseholdRepository) JoinHousehold(ctx context.Context, code, userID
 		return nil, fmt.Errorf("failed to check existing membership: %w", err)
 	}
 
-	// 3. Find available slot ('a', 'b', 'c')
-	usedSlotsRows, err := tx.QueryContext(ctx, `SELECT slot FROM app.household_members WHERE household_id = $1;`, inv.HouseholdID)
+	if err := lockUserWithoutHousehold(ctx, tx, userID, inv.HouseholdID); err != nil {
+		return nil, err
+	}
+
+	// A family is two full members (a viewer is added by SQL only): an old code must not
+	// let in a third, while a newcomer after a leaver gets the free place.
+	var members int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM app.household_members WHERE household_id = $1 AND role = 'member';`,
+		inv.HouseholdID).Scan(&members); err != nil {
+		return nil, fmt.Errorf("failed to count members: %w", err)
+	}
+	if members >= 2 {
+		return nil, ErrHouseholdFull
+	}
+
+	// 3. Find available slot ('a', 'b', 'c'). A slot is taken while a member holds it
+	// or while the shared document still has a person under it: after an account
+	// deletion the leaver's record stays (name, salary, onboardedAt, records by slot),
+	// and a newcomer must not inherit it.
+	usedSlotsRows, err := tx.QueryContext(ctx, usedSlotsSQL, inv.HouseholdID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query used slots: %w", err)
 	}

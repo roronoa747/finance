@@ -13,7 +13,7 @@ import { weekKey, weekRange, weekRangeLabel } from '../src/lib/dates'
 import { freeByFact, spendRows, type Decision } from '../src/lib/finance'
 import { planFamilyDoc } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
-import Access from '../src/views/Access.vue'
+import { startDemo } from '../src/lib/demo'
 import Dreams from '../src/views/Dreams.vue'
 import Money from '../src/views/Money.vue'
 import Month from '../src/views/Month.vue'
@@ -205,7 +205,8 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
 
   it('часть 5 — демо: итоги недели участника a = spendTotals демо-операций; сумма недели = операции + итоги партнёра; три вопроса за «!»; «Мечты» — 2 цели и 3 желания', async () => {
     const pinia = createPinia()
-    await screen(pinia, Access, '/access', undefined, [screenMixin({}, (s) => (s.startDemoMode as () => void)())])
+    setActivePinia(pinia)
+    startDemo()
     await nextTick()
     setActivePinia(pinia)
     const finance = useFinanceStore()

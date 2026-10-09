@@ -4,7 +4,7 @@ import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { mergeDocs, mergePrivateDocs, isEmptyDoc } from '@/lib/merge'
 import { monthKey, monthLastNoon, todayIso } from '@/lib/dates'
 import { clearPhotoDisk } from '@/lib/photos/store'
-import { FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, readStorage } from '@/lib/storage'
+import { DEMO_PENDING_KEY, EVENTS_QUEUE_KEY, FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, readStorage } from '@/lib/storage'
 import {
   accountBalance,
   allocationFor,
@@ -155,6 +155,10 @@ const LOCAL_KEYS = [
   LINK_PHOTO_TRIED_KEY,
   // Книга курсов (B2C-77): курсы публичные, но кэш — этого входа.
   FX_BOOK_KEY,
+  // Вопрос «взять демо?» (B2C-27) — этого входа.
+  DEMO_PENDING_KEY,
+  // Неотправленные события удержания (B2C-28) — этого входа.
+  EVENTS_QUEUE_KEY,
 ]
 
 // Запрос не дошёл до сервера (fetch бросил не ApiError) — это «нет сети», а не «не
@@ -406,10 +410,13 @@ export const useFinanceStore = defineStore('finance', () => {
    * «Да» после регистрации из демо (Р-32): весь демо-документ, общий и личный,
    * становится первым документом новой семьи; участник a — под именем из регистрации.
    * Сервер у новой семьи пуст, поэтому синк заливает документ как есть.
+   * `forPartner` («Создать семью», Р-124 п. 2): демо-«Партнёр» (`b`) уходит из `people` без надгробия —
+   * настоящий партнёр по коду получает `b` и свой первый запуск; демо-записи по `b` — его стартовый пример.
    */
-  async function adoptDemo(householdId: string, name: string, client: ApiClient = apiClient) {
+  async function adoptDemo(householdId: string, name: string, client: ApiClient = apiClient, forPartner = false) {
     docHousehold.value = householdId
     unsent.value = true
+    if (forPartner) householdDoc.value.people = householdDoc.value.people.filter((p) => p.id !== 'b')
     saveLocalState()
     setPerson('a', { name })
     await syncHousehold(client)

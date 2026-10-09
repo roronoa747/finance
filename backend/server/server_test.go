@@ -50,6 +50,27 @@ func TestNewHandlerRefusesMocksInProduction(t *testing.T) {
 	}
 }
 
+// Production has no password sign-up (critic of Block 4): an account taken in advance under
+// someone else's address would get that person's Google sign-in. Login stays — old users.
+func TestProductionHasNoPasswordSignUp(t *testing.T) {
+	mocks := repository.NewMockRepositories()
+	cfg := &config.Config{Env: "production", JWTSecret: strings.Repeat("s", 32)}
+	r := NewRouter(cfg, nil, Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos, Fx: mocks.Fx},
+		auth.NewTokenService(cfg.JWTSecret, time.Hour), fx.NewClient(), nil)
+
+	post := func(path string) int {
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"email":"x@example.com"}`)))
+		return rec.Code
+	}
+	if code := post("/api/auth/register"); code != http.StatusNotFound && code != http.StatusMethodNotAllowed {
+		t.Errorf("register in production: expected no route, got %d", code)
+	}
+	if code := post("/api/auth/login"); code == http.StatusNotFound || code == http.StatusMethodNotAllowed {
+		t.Errorf("login in production must stay, got %d", code)
+	}
+}
+
 func TestRouterServesFxRateFromStub(t *testing.T) {
 	bank := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`<rates><item><title>EUR</title><description>513.46</description></item></rates>`))
@@ -61,7 +82,7 @@ func TestRouterServesFxRateFromStub(t *testing.T) {
 	mocks := repository.NewMockRepositories()
 	cfg := devConfig()
 	r := NewRouter(cfg, nil, Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos, Fx: mocks.Fx},
-		auth.NewTokenService(cfg.JWTSecret, time.Hour), fxClient)
+		auth.NewTokenService(cfg.JWTSecret, time.Hour), fxClient, nil)
 
 	rec := get(t, r, "/api/fx-rate") // public: no token
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"EUR":513.46`) {

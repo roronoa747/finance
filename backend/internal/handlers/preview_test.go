@@ -26,7 +26,7 @@ func setupPreviewApp(t *testing.T, fetch func(context.Context, string) (linkprev
 	app := setupPhotosApp(t) // users and tokens; the router is the preview's own
 	tokens := auth.NewTokenService("photos-test-signing-key", 2*time.Hour)
 	r := chi.NewRouter()
-	r.With(auth.Middleware(tokens)).Post("/api/photos/preview", NewPreviewHandler(fetch).Preview)
+	r.With(auth.Middleware(tokens, nil)).Post("/api/photos/preview", NewPreviewHandler(fetch).Preview)
 	app.router = r
 	return app
 }

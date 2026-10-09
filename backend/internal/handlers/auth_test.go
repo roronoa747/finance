@@ -22,8 +22,8 @@ func setupTestApp() (*chi.Mux, *repository.MockRepositories, *auth.TokenService)
 	repos.Households.SetDocRepo(repos.Docs)
 	tokens := auth.NewTokenService("test-secret-salt-key", 2*time.Hour)
 
-	authHandler := NewAuthHandler(repos.Users, repos.Households, tokens)
-	householdHandler := NewHouseholdHandler(repos.Households, tokens)
+	authHandler := NewAuthHandler(repos.Users, repos.Households, tokens, nil, nil)
+	householdHandler := NewHouseholdHandler(repos.Users, repos.Households, tokens)
 
 	r := chi.NewRouter()
 	r.Route("/api", func(api chi.Router) {
@@ -32,7 +32,7 @@ func setupTestApp() (*chi.Mux, *repository.MockRepositories, *auth.TokenService)
 
 		// Protected routes
 		api.Group(func(protected chi.Router) {
-			protected.Use(auth.Middleware(tokens))
+			protected.Use(auth.Middleware(tokens, nil))
 			protected.Get("/auth/me", authHandler.Me)
 			protected.Post("/household/invites", householdHandler.CreateInvite)
 			protected.Post("/household/join", householdHandler.JoinHousehold)
@@ -58,7 +58,7 @@ func makeAuthJSON(email, pass, displayName, householdName string) []byte {
 }
 
 func TestAuthAndHouseholdFlow(t *testing.T) {
-	router, _, _ := setupTestApp()
+	router, repos, tokens := setupTestApp()
 
 	// 1. Register User 1
 	regBody1 := makeAuthJSON("alice@example.com", "UserSecret123", "Алиса", "Семья Алисы")
@@ -146,19 +146,12 @@ func TestAuthAndHouseholdFlow(t *testing.T) {
 		t.Fatal("expected non-empty invite code")
 	}
 
-	// 7. Register User 2
-	regBody2 := makeAuthJSON("bob@example.com", "UserSecret456", "Боб", "Временная казна Боба")
-	req2 := httptest.NewRequest(http.MethodPost, "/api/auth/register", bytes.NewReader(regBody2))
-	req2.Header.Set("Content-Type", "application/json")
-	rec2 := httptest.NewRecorder()
-	router.ServeHTTP(rec2, req2)
-
-	if rec2.Code != http.StatusCreated {
-		t.Fatalf("expected 201 Created for register user 2, got %d", rec2.Code)
+	// 7. User 2 signed in without a household (Google, B2C-22): "по коду" is for them.
+	bob, err := repos.Users.CreateGoogle(t.Context(), "bob@example.com", "sub-bob", "Боб")
+	if err != nil {
+		t.Fatalf("create Bob: %v", err)
 	}
-	var regResp2 AuthResponse
-	_ = json.NewDecoder(rec2.Body).Decode(&regResp2)
-	bobInitialToken := regResp2.Token
+	bobInitialToken, _ := tokens.GenerateToken(bob.ID, "", "", "")
 
 	// 8. User 2 joins User 1's household using invite code
 	joinBody := `{"code":"` + inviteResp.Code + `","display_name":"Боб"}`
@@ -262,6 +255,8 @@ func TestHouseholdInviteEdgeCases(t *testing.T) {
 	// Create viewer user
 	u2, _ := repos.Users.Create(ctx, "viewer@invite.test", "hash")
 	viewerToken, _ := tokens.GenerateToken(u2.ID, hh.ID, "viewer", "b")
+	// Before joining u2 has no household: "по коду" (B2C-23) is for such a user.
+	partnerToken, _ := tokens.GenerateToken(u2.ID, "", "", "")
 
 	// 2. Viewer tries to create invite -> 403 Forbidden (§3 rights matrix)
 	viewerInviteReq := httptest.NewRequest(http.MethodPost, "/api/household/invites", nil)
@@ -289,7 +284,7 @@ func TestHouseholdInviteEdgeCases(t *testing.T) {
 
 	// 4. Partner joins with non-existent invite code -> 404
 	joinBadReq := httptest.NewRequest(http.MethodPost, "/api/household/join", bytes.NewBufferString(`{"code":"BADCODE1","display_name":"Partner"}`))
-	joinBadReq.Header.Set("Authorization", "Bearer "+viewerToken)
+	joinBadReq.Header.Set("Authorization", "Bearer "+partnerToken)
 	joinBadReq.Header.Set("Content-Type", "application/json")
 	joinBadRec := httptest.NewRecorder()
 	router.ServeHTTP(joinBadRec, joinBadReq)
@@ -300,7 +295,7 @@ func TestHouseholdInviteEdgeCases(t *testing.T) {
 
 	// 5. Valid join
 	joinValidReq := httptest.NewRequest(http.MethodPost, "/api/household/join", bytes.NewBufferString(`{"code":"`+inv.Code+`","display_name":"Partner"}`))
-	joinValidReq.Header.Set("Authorization", "Bearer "+viewerToken)
+	joinValidReq.Header.Set("Authorization", "Bearer "+partnerToken)
 	joinValidReq.Header.Set("Content-Type", "application/json")
 	joinValidRec := httptest.NewRecorder()
 	router.ServeHTTP(joinValidRec, joinValidReq)
@@ -311,7 +306,7 @@ func TestHouseholdInviteEdgeCases(t *testing.T) {
 
 	// 6. Reuse the same invite code -> 400 Bad Request
 	u3, _ := repos.Users.Create(ctx, "third@invite.test", "hash")
-	thirdToken, _ := tokens.GenerateToken(u3.ID, "hh-temp", "member", "a")
+	thirdToken, _ := tokens.GenerateToken(u3.ID, "", "", "")
 
 	reuseReq := httptest.NewRequest(http.MethodPost, "/api/household/join", bytes.NewBufferString(`{"code":"`+inv.Code+`","display_name":"Third"}`))
 	reuseReq.Header.Set("Authorization", "Bearer "+thirdToken)
@@ -351,7 +346,7 @@ func TestRegisterCompensatesOrphanUser(t *testing.T) {
 	repos := repository.NewMockRepositories()
 	users := &ctxCheckingUserRepo{MockUserRepo: repos.Users}
 	tokens := auth.NewTokenService("test-secret-salt-key", 2*time.Hour)
-	failing := NewAuthHandler(users, failingHouseholdRepo{repos.Households}, tokens)
+	failing := NewAuthHandler(users, failingHouseholdRepo{repos.Households}, tokens, nil, nil)
 
 	// Client disconnects: the request context is already cancelled
 	ctx, cancel := context.WithCancel(context.Background())
@@ -372,7 +367,7 @@ func TestRegisterCompensatesOrphanUser(t *testing.T) {
 	}
 
 	// The same email can register again once the household step works
-	working := NewAuthHandler(repos.Users, repos.Households, tokens)
+	working := NewAuthHandler(repos.Users, repos.Households, tokens, nil, nil)
 	rec = httptest.NewRecorder()
 	working.Register(rec, httptest.NewRequest(http.MethodPost, "/api/auth/register",
 		bytes.NewReader(makeAuthJSON("orphan@example.com", "secret123", "", ""))))
@@ -381,7 +376,8 @@ func TestRegisterCompensatesOrphanUser(t *testing.T) {
 	}
 }
 
-func TestLoginWithoutMembershipReturns404(t *testing.T) {
+// Р-25 (B2C-22): a user without a household gets a token without one — then "с кем".
+func TestLoginWithoutMembershipReturnsTokenWithoutHousehold(t *testing.T) {
 	router, repos, _ := setupTestApp()
 
 	hash, err := auth.HashPassword("secret123")
@@ -395,8 +391,10 @@ func TestLoginWithoutMembershipReturns404(t *testing.T) {
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/auth/login",
 		bytes.NewReader(makeAuthJSON("lonely@example.com", "secret123", "", ""))))
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	var got AuthResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &got)
+	if rec.Code != http.StatusOK || got.Token == "" || got.Household != nil || got.Member != nil {
+		t.Fatalf("expected 200 without household, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -415,6 +413,22 @@ func TestAuthOversizedBodyReturns413(t *testing.T) {
 
 		if rec.Code != http.StatusRequestEntityTooLarge {
 			t.Errorf("%s: expected 413 for body over the limit, got %d", path, rec.Code)
+		}
+	}
+}
+
+// Review backend Block 4, Н-4: a member's name is trimmed and bounded wherever it enters
+// (create, join by code, Google).
+func TestCleanName(t *testing.T) {
+	long := strings.Repeat("Ә", 100)
+	cases := map[string]string{
+		"  Дана  ":                      "Дана",
+		long:                            strings.Repeat("Ә", maxNameRunes),
+		strings.Repeat("a", 59) + "  b": strings.Repeat("a", 59),
+	}
+	for in, want := range cases {
+		if got := cleanName(in); got != want {
+			t.Errorf("cleanName(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

@@ -4,15 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"sync"
 	"testing"
 
 	"finance-backend/internal/testdb"
 )
 
-// Н-3: parallel joins into one household must get distinct slots, never a
-// UNIQUE (household_id, slot) violation.
+// Н-3: parallel joins into one household are serialized — never a UNIQUE
+// (household_id, slot) violation, never a third member.
 func TestPostgresConcurrentJoinAssignsDistinctSlots(t *testing.T) {
 	database := testdb.Open(t)
 	ctx := context.Background()
@@ -60,14 +59,18 @@ func TestPostgresConcurrentJoinAssignsDistinctSlots(t *testing.T) {
 		}
 		wg.Wait()
 
+		// Two members at most (review backend Block 4): one joiner gets b, the other is refused.
+		var joined []string
 		for i, err := range errs {
-			if err != nil {
+			switch {
+			case err == nil:
+				joined = append(joined, slots[i])
+			case err != ErrHouseholdFull:
 				t.Fatalf("round %d: join %d failed: %v", round, i, err)
 			}
 		}
-		sort.Strings(slots)
-		if slots[0] != "b" || slots[1] != "c" {
-			t.Fatalf("round %d: expected slots [b c], got %v", round, slots)
+		if len(joined) != 1 || joined[0] != "b" {
+			t.Fatalf("round %d: expected one join into slot b, got %v (errs %v)", round, joined, errs)
 		}
 	}
 }

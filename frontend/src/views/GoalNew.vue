@@ -2,6 +2,7 @@
 import { computed, inject, onBeforeUnmount, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useFinanceStore } from '@/stores/finance'
+import { useEventsStore } from '@/stores/events'
 import { useFxStore } from '@/stores/fx'
 import { useAuthStore } from '@/stores/auth'
 import { money, parseMoney } from '@/lib/money'
@@ -128,6 +129,8 @@ async function create() {
     template: tpl?.id ?? null,
   })
   const next = nextPath()
+  // Цель выбрана в первом запуске (B2C-28): событие воронки.
+  if (next?.startsWith('/start')) useEventsStore().track('first_run_goal')
   const here = `/goals/${id}`
   await router.push(next ?? here)
   // Картинка — после перехода: цель уже есть, фото догрузится (шаблон — и при следующей сети).

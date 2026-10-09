@@ -9,25 +9,37 @@ import (
 	"strings"
 
 	"finance-backend/internal/auth"
+	"finance-backend/internal/googleauth"
 	"finance-backend/internal/models"
 	"finance-backend/internal/repository"
 )
+
+// GoogleVerifier checks a Google ID token (googleauth.Verifier; a fake in tests).
+type GoogleVerifier interface {
+	Verify(ctx context.Context, idToken string) (*googleauth.Identity, error)
+}
 
 type AuthHandler struct {
 	userRepo      repository.UserRepository
 	householdRepo repository.HouseholdRepository
 	tokens        *auth.TokenService
+	google        GoogleVerifier // nil: GOOGLE_CLIENT_IDS is not set
+	admins        []string       // ADMIN_EMAILS: /auth/me answers admin: true (B2C-28)
 }
 
 func NewAuthHandler(
 	userRepo repository.UserRepository,
 	householdRepo repository.HouseholdRepository,
 	tokens *auth.TokenService,
+	google GoogleVerifier,
+	admins []string,
 ) *AuthHandler {
 	return &AuthHandler{
 		userRepo:      userRepo,
 		householdRepo: householdRepo,
 		tokens:        tokens,
+		google:        google,
+		admins:        admins,
 	}
 }
 
@@ -124,35 +136,107 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !auth.CheckPassword(user.PasswordHash, req.Password) {
+	// A Google-only user has no hash to check — the same answer as a wrong one.
+	if user.PasswordHash == "" || !auth.CheckPassword(user.PasswordHash, req.Password) {
 		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid email or password"})
 		return
 	}
 
-	member, household, err := h.householdRepo.GetMembership(r.Context(), user.ID)
+	// Without a household — a token without one, as for Google (Р-25): then "с кем".
+	resp, err := h.authResponse(r.Context(), user)
 	if err != nil {
-		if errors.Is(err, repository.ErrMembershipNotFound) {
-			respondJSON(w, http.StatusNotFound, map[string]string{"error": "household membership not found"})
-			return
-		}
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load household membership"})
 		return
 	}
+	respondJSON(w, http.StatusOK, resp)
+}
 
-	token, err := h.tokens.GenerateToken(user.ID, household.ID, member.Role, member.Slot)
-	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate token"})
+type GoogleLoginRequest struct {
+	IDToken string `json:"id_token"`
+}
+
+// GoogleLogin signs in with a Google ID token (B2C-22, Р-13): the user by Google account,
+// else by email (an existing user is linked), else a new one — without a password and
+// without a household (Р-25: then "с кем"). 201 for a new user, 200 otherwise.
+func (h *AuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
+	if h.google == nil {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "google sign-in is not configured"})
+		return
+	}
+	var req GoogleLoginRequest
+	if !decodeJSONBody(w, r, 16<<10, &req) {
+		return
+	}
+	if strings.TrimSpace(req.IDToken) == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "id_token is required"})
 		return
 	}
 
-	respondJSON(w, http.StatusOK, AuthResponse{
-		Token:     token,
-		User:      user,
-		Household: household,
-		Member:    member,
-	})
+	id, err := h.google.Verify(r.Context(), strings.TrimSpace(req.IDToken))
+	if err != nil {
+		if errors.Is(err, googleauth.ErrUnavailable) {
+			log.Printf("google sign-in: keys unavailable")
+			respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "google sign-in is unavailable"})
+			return
+		}
+		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid google token"})
+		return
+	}
+
+	status := http.StatusOK
+	user, err := h.userRepo.GetByGoogleSub(r.Context(), id.Sub)
+	if errors.Is(err, repository.ErrUserNotFound) {
+		user, err = h.userRepo.GetByEmail(r.Context(), id.Email)
+		switch {
+		case err == nil && user.GoogleSub != "" && user.GoogleSub != id.Sub:
+			// The email belongs to an account linked to another Google account.
+			respondJSON(w, http.StatusConflict, map[string]string{"error": "email is linked to another google account"})
+			return
+		case err == nil:
+			user, err = h.userRepo.LinkGoogle(r.Context(), user.ID, id.Sub, cleanName(id.Name))
+		case errors.Is(err, repository.ErrUserNotFound):
+			user, err = h.userRepo.CreateGoogle(r.Context(), id.Email, id.Sub, cleanName(id.Name))
+			status = http.StatusCreated
+		}
+	}
+	if err != nil {
+		if errors.Is(err, repository.ErrUserAlreadyExists) {
+			// A concurrent first sign-in won the race: the client retries and is found.
+			respondJSON(w, http.StatusConflict, map[string]string{"error": "user already exists"})
+			return
+		}
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to sign in"})
+		return
+	}
+
+	resp, err := h.authResponse(r.Context(), user)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to sign in"})
+		return
+	}
+	respondJSON(w, status, resp)
 }
 
+// authResponse issues a token for the user's household now — or one without a household
+// (Household and Member null) for a user who has none yet.
+func (h *AuthHandler) authResponse(ctx context.Context, user *models.User) (*AuthResponse, error) {
+	member, household, err := h.householdRepo.GetMembership(ctx, user.ID)
+	if err != nil && !errors.Is(err, repository.ErrMembershipNotFound) {
+		return nil, err
+	}
+	var token string
+	if member != nil {
+		token, err = h.tokens.GenerateToken(user.ID, household.ID, member.Role, member.Slot)
+	} else {
+		token, err = h.tokens.GenerateToken(user.ID, "", "", "")
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &AuthResponse{Token: token, User: user, Household: household, Member: member}, nil
+}
+
+// Me answers who is signed in; household and member are null for a user without a household.
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	userID, ok := auth.GetUserID(r.Context())
 	if !ok {
@@ -161,14 +245,18 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user, err := h.userRepo.GetByID(r.Context(), userID)
+	if errors.Is(err, repository.ErrUserNotFound) {
+		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
 	if err != nil {
-		respondJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load user"})
 		return
 	}
 
 	member, household, err := h.householdRepo.GetMembership(r.Context(), userID)
-	if err != nil {
-		respondJSON(w, http.StatusNotFound, map[string]string{"error": "membership not found"})
+	if err != nil && !errors.Is(err, repository.ErrMembershipNotFound) {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load household membership"})
 		return
 	}
 
@@ -176,6 +264,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		"user":      user,
 		"household": household,
 		"member":    member,
+		"admin":     isAdmin(h.admins, user.Email),
 	})
 }
 

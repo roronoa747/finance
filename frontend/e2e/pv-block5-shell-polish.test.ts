@@ -141,9 +141,6 @@ describe('e2e / PV Блок 5 — оболочка на двух телефон�
         [{ mode: 'login', email: 'a@b.kz', pass: 'wrong1' }, () => goReply(401, 'invalid email or password'), 'Почта или пароль не подходят.'],
         [{ mode: 'register', email: 'a@b.kz', pass: '123', displayName: 'Ильяс', householdName: 'Семья' }, () => goReply(400, 'password must be at least 6 characters long'), 'Пароль слишком короткий: нужно хотя бы 6 символов.'],
         [{ mode: 'register', email: 'a@b.kz', pass: 'password1', displayName: 'Ильяс', householdName: 'Семья' }, () => goReply(409, 'user already exists'), 'Такая почта уже зарегистрирована. Войдите с ней на вкладке «Войти».'],
-        [{ mode: 'join', inviteCode: 'ZZZZ9999', displayName: 'Аруна' }, () => goReply(401, 'unauthorized'), 'Чтобы войти по коду, сначала войдите в аккаунт.'],
-        [{ mode: 'join', inviteCode: 'ZZZZ9999', displayName: 'Аруна' }, () => goReply(404, 'invite code not found'), 'Код не найден. Проверьте, нет ли опечатки.'],
-        [{ mode: 'join', inviteCode: 'ZZZZ9999', displayName: 'Аруна' }, () => goReply(400, 'invite code has already been used'), 'Этот код уже использован. Попросите партнёра создать новый.'],
         [{ mode: 'login', email: 'a@b.kz', pass: 'wrong1' }, () => new Response('<html>Bad Gateway</html>', { status: 502, statusText: 'Bad Gateway', headers: { 'Content-Type': 'text/html' } }), 'Не получилось связаться с сервером. Попробуйте ещё раз.'],
         [{ mode: 'login', email: 'a@b.kz', pass: 'wrong1' }, () => Promise.reject(new TypeError('Failed to fetch')), 'Не получилось связаться с сервером. Попробуйте ещё раз.'],
       ]
