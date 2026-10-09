@@ -3,8 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { PhCaretDown, PhCaretRight, PhCopy } from '@phosphor-icons/vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { useFinanceStore } from '@/stores/finance'
-import { useInvite } from '@/components/useInvite'
+import { useInvite, useMembers } from '@/components/useInvite'
 import AppearancePanel from '@/components/AppearancePanel.vue'
 import ParseSettings from '@/components/ParseSettings.vue'
 import SyncBadge from '@/components/SyncBadge.vue'
@@ -12,7 +11,6 @@ import Avatar from '@/components/kit/Avatar.vue'
 import Card from '@/components/kit/Card.vue'
 import DangerZone from '@/components/kit/DangerZone.vue'
 import Button from '@/components/ui/Button.vue'
-import type { PersonId } from '@/types/finance'
 
 /**
  * Настройки (DESIGN.md §2 g7; B2C-13): «Оформление» с именем прямо на экране
@@ -23,25 +21,12 @@ import type { PersonId } from '@/types/finance'
  */
 const router = useRouter()
 const authStore = useAuthStore()
-const financeStore = useFinanceStore()
 
 const me = computed(() => authStore.slot)
 const canStyle = (slot: string) => slot === me.value && !authStore.isViewer
 
-/**
- * Участники: с сервера — все, включая viewer, с ролями (B2C-23); кружок и имя — из документа по
- * слоту (смайлик и цвет участник выбирает сам). Сервер ещё не ответил (нет сети, демо) — люди
- * документа.
- */
-const rows = computed(() => {
-  const people = financeStore.people.filter((p) => !p.deletedAt)
-  if (!authStore.members.length) return people.map((p) => ({ id: p.id as PersonId, name: p.name, role: p.id === me.value && authStore.isViewer ? 'viewer' : 'member' }))
-  return authStore.members.map((m) => ({
-    id: m.slot as PersonId,
-    name: people.find((p) => p.id === m.slot)?.name || m.display_name,
-    role: m.role,
-  }))
-})
+// Участники — одним местом с шторкой синка и «Пригласить» (`useMembers`); кружок — из документа по слоту.
+const { rows } = useMembers()
 const joined = (r: { id: string; role: string }) =>
   r.role === 'viewer' ? (r.id === me.value ? 'вы · только просмотр' : 'только просмотр') : r.id === me.value ? 'вы · участник' : 'участник'
 
@@ -51,16 +36,15 @@ onMounted(() => {
   if (!authStore.isDemo && authStore.token) void authStore.fetchMe().catch(() => {})
 })
 
-// Дом приглашения (приёмка Блока 3 п. 8): код создаёт участник с правом правки, в демо сервера нет;
-// в семье уже двое участников (по серверу) — кода нет: третий вошёл бы участником.
-const { code: inviteCode, canInvite: docAllowsInvite, busy: inviteBusy, error: inviteError, copied, make: makeInvite, copy: copyInvite } = useInvite()
-const canInvite = computed(() => docAllowsInvite.value && authStore.members.filter((m) => m.role === 'member').length < 2)
+// Дом приглашения (приёмка Блока 3 п. 8): правило «кому виден код» — в `useInvite`.
+const { code: inviteCode, canInvite, busy: inviteBusy, error: inviteError, copied, make: makeInvite, copy: copyInvite } = useInvite()
 
 // Удаление аккаунта (B2C-25, Р-14): что уйдёт и что останется у семьи — одной строкой предупреждения.
+// Состав — тот же, что в «С кем»: без ответа сервера — живые люди документа (ревью frontend Б4 Н-3).
 const deleting = ref(false)
 const deleteError = ref('')
 const deleteWarning = computed(() =>
-  authStore.hasHousehold && authStore.members.length > 1
+  authStore.hasHousehold && rows.value.length > 1
     ? 'Удалятся ваш аккаунт, операции, выписки и ваши фото — безвозвратно. Общий бюджет останется у семьи.'
     : 'Удалятся аккаунт и все данные — бюджет, мечты, операции и фото — безвозвратно.',
 )

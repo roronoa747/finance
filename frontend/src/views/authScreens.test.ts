@@ -244,6 +244,19 @@ describe('Settings — участники с сервера и удаление 
     expect(useFinanceStore().people).toEqual([])
   })
 
+  it('состав с сервера не пришёл, в документе двое — предупреждение «общий бюджет останется» (ревью frontend Б4 Н-3)', async () => {
+    family()
+    useAuthStore().members = []
+    vi.spyOn(apiClient, 'householdMembers').mockRejectedValue(new TypeError('Failed to fetch'))
+    const vm = await screen(Settings, '/settings', 'deleteWarning')
+    expect(vm.deleteWarning).toContain('Общий бюджет останется у семьи')
+
+    // Один в документе — уйдёт всё.
+    useFinanceStore().householdDoc.people = useFinanceStore().householdDoc.people.slice(0, 1)
+    const alone = await screen(Settings, '/settings', 'deleteWarning')
+    expect(alone.deleteWarning).toContain('бюджет, мечты, операции и фото')
+  })
+
   it('без сети — текст под кнопкой, ничего не стёрто', async () => {
     family()
     vi.spyOn(apiClient, 'deleteAccount').mockRejectedValue(new TypeError('Failed to fetch'))

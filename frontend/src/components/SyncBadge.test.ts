@@ -72,6 +72,18 @@ describe('PV-21: шторка синка (Б-18)', () => {
     expect(html).not.toContain('Начать бюджет заново')
   })
 
+  it('партнёр-viewer с сервера: «только просмотр» у него, а не у себя (ревью frontend Б4 Н-2)', async () => {
+    signIn('member')
+    useFinanceStore().householdDoc.people = [person('a', 'Ильяс'), person('b', 'Аруна')]
+    useAuthStore().members = [
+      { slot: 'a', display_name: 'Ильяс', role: 'member', joined_at: T0 },
+      { slot: 'b', display_name: 'Аруна', role: 'viewer', joined_at: T0 },
+    ]
+    const html = await sheet()
+    expect(html).toMatch(/Аруна\s*<span[^>]*>\s*только просмотр\s*<\/span>/)
+    expect(html).toMatch(/Ильяс\s*<span[^>]*>это вы<\/span>\s*<\/div>/)
+  })
+
   it('один в бюджете — приглашения в шторке нет: его дом — «С кем» в Настройках (ревью Блока 3, Н-11)', async () => {
     signIn('member')
     useFinanceStore().householdDoc.people = [person('a', 'Ильяс')]

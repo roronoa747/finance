@@ -87,6 +87,8 @@ async function fakeGo(input: RequestInfo | URL, init: RequestInit = {}): Promise
     if (!hid || !families.has(hid)) return json(404, { error: 'invite code not found' })
     invites.delete(String(body.code))
     const fam = families.get(hid)!
+    // Как Go (ревью backend Б4 Н-3): полноправных участников не больше двух.
+    if ([...users.values()].filter((o) => o.household === hid && o.role === 'member').length >= 2) return json(400, { error: 'household has maximum members' })
     // Как Go (В-1): слот занят участником или записью в `people` документа (ушедший её оставляет).
     const taken = new Set([...[...users.values()].filter((o) => o.household === hid).map((o) => o.slot), ...(fam.data.people ?? []).map((p) => p.id)])
     const slot = ['a', 'b', 'c'].find((s) => !taken.has(s))
@@ -355,7 +357,10 @@ describe('e2e / B2C Блок 4 — чужая семья: Google → «с кем
     await vm.deleteAccount()
     expect(families.get(hid)!.data.people?.map((p) => `${p.id}:${p.name}`)).toEqual(['a:Дана', 'b:Ильяс'])
 
+    // Р-124 п. 1: запись Даны в документе осталась, а сервер считает одного — у Ильяса снова «Пригласить».
     on(ilyas)
+    await useAuthStore().fetchMembers()
+    expect((await act(ilyas, Settings, '/settings', 'canInvite')).canInvite).toBe(true)
     const code2 = (await useAuthStore().createInvite()).code
     const bek = phone()
     vm = await act(bek, Access, '/access', 'onGoogleToken')
@@ -376,6 +381,7 @@ describe('e2e / B2C Блок 4 — чужая семья: Google → «с кем
     on(ilyas)
     await useAuthStore().fetchMembers()
     expect(useAuthStore().members.map((m) => `${m.slot}:${m.display_name}`)).toEqual(['b:Ilyas', 'c:Bek'])
+    expect((await act(ilyas, Settings, '/settings', 'canInvite')).canInvite).toBe(false)
   })
   it('B2C-27: аноним «/» → «Попробовать» — демо без запросов; демо → Google → «с кем» → закрыли/открыли → «Взять?» → «Да» — документ семьи = демо', async () => {
     const phoneA = phone()

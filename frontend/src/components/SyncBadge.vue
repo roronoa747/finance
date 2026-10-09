@@ -8,6 +8,7 @@ import { memberColor } from '@/lib/palette'
 import Button from '@/components/ui/Button.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import DangerZone from '@/components/kit/DangerZone.vue'
+import { useMembers } from '@/components/useInvite'
 
 /**
  * Состояние синхронизации словами и шторка по нему (React `SyncBadge.tsx`, Б-18): дата
@@ -36,11 +37,7 @@ const lastError = computed(() => financeStore.lastError)
 // Ушедшие (надгробие `deletedAt`) в шторке не числятся — как в «С кем» настроек.
 const people = computed(() => financeStore.people.filter((p) => !p.deletedAt))
 const me = computed(() => authStore.slot)
-const rows = computed(() =>
-  authStore.members.length
-    ? authStore.members.map((m) => ({ id: m.slot, name: people.value.find((p) => p.id === m.slot)?.name || m.display_name, viewer: m.role === 'viewer' }))
-    : people.value.map((p) => ({ id: p.id, name: p.name, viewer: p.id === me.value && authStore.isViewer })),
-)
+const { rows } = useMembers()
 
 function openSheet() {
   open.value = true
@@ -166,7 +163,7 @@ function startOver() {
             />
             {{ p.name }}
             <span v-if="p.id === me" class="text-[12px] text-ink-2">это вы</span>
-            <span v-if="p.viewer" class="text-[12px] text-ink-2">
+            <span v-if="p.role === 'viewer'" class="text-[12px] text-ink-2">
               только просмотр
             </span>
           </div>
