@@ -79,7 +79,7 @@ describe('useMembers — состав семьи одним местом (рев
     setActivePinia(createPinia())
   })
 
-  const member = (slot: string, name: string, role: 'member' | 'viewer' = 'member') => ({ slot, display_name: name, role, joined_at: T0 })
+  const member = (slot: 'a' | 'b' | 'c', name: string, role: 'member' | 'viewer' = 'member') => ({ slot, display_name: name, role, joined_at: T0 })
 
   it('партнёр ушёл: запись Даны осталась в документе, сервер считает одного — «Пригласить» снова есть', () => {
     signIn('h-members-1')
