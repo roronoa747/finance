@@ -26,6 +26,11 @@ const emit = defineEmits<{
 const confirm = ref(false)
 const typed = ref('')
 const ready = computed(() => !props.confirmWord || typed.value.trim().toLowerCase() === props.confirmWord.toLowerCase())
+// «Отмена» стирает слово: иначе при следующем открытии необратимое действие — в одно нажатие.
+function cancel() {
+  confirm.value = false
+  typed.value = ''
+}
 </script>
 
 <template>
@@ -56,7 +61,7 @@ const ready = computed(() => !props.confirmWord || typed.value.trim().toLowerCas
         autocomplete="off"
       />
       <div class="flex gap-2">
-        <Button variant="outline" class="flex-1 bg-surface" @click="confirm = false">
+        <Button variant="outline" class="flex-1 bg-surface" @click="cancel">
           Отмена
         </Button>
         <Button
