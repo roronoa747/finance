@@ -47,15 +47,18 @@ const line = computed(() => lines.value.find((s) => s.person === open.value) ?? 
         <button type="button" class="row-open flex min-w-0 flex-1 flex-col gap-px text-left" data-row-open>
           <span class="text-[15px] font-semibold text-ink">{{ s.name }}</span>
         </button>
+        <!--
+          Одна отметка на счёт прошлого раза, лист строки не открывает; без прошлого счёта — лист отметки.
+          Кнопка — слева от суммы, как «Обменял» в «Месяце» (/ux Блока 1): суммы строк в одной колонке до и после отметки.
+        -->
+        <span v-if="s.canMark" class="relative z-10 shrink-0" @click.stop>
+          <SalaryRow button small :person-id="s.person" :period="key" />
+        </span>
         <span class="flex shrink-0 flex-col items-end gap-px">
           <b class="font-num text-[16px] num whitespace-nowrap" :class="s.came ? 'text-ink' : 'text-ink-2'">
             <span v-if="s.came" class="font-extrabold text-ok" data-came>✓ </span>{{ money(s.amount) }}
           </b>
           <span v-if="s.fx" class="type-meta num whitespace-nowrap" data-salary-fx>{{ moneyIn(s.fx.amount, s.fx.currency) }}</span>
-        </span>
-        <!-- Одна отметка на счёт прошлого раза, лист строки не открывает; без прошлого счёта — лист отметки. -->
-        <span v-if="s.canMark" class="relative z-10 shrink-0" @click.stop>
-          <SalaryRow button small :person-id="s.person" :period="key" />
         </span>
       </div>
     </template>

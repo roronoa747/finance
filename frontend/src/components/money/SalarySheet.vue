@@ -42,6 +42,12 @@ const year = computed(() => {
   const p = finance.people.find((x) => x.id === l.person && !x.deletedAt)
   return p ? fxYearDelta(p, props.monthKey, fx.book) : null
 })
+/** «Евро за год» — с заглавной, как подписи «Когда» и «Хватает» в той же карточке (/ux Блока 1). */
+const yearLabel = computed(() => {
+  if (!year.value) return ''
+  const w = CURRENCY_WORD[year.value.currency].nom
+  return `${w.charAt(0).toUpperCase()}${w.slice(1)} за год`
+})
 
 /** Лист отметки пришедшей своей зарплаты (когда, счёт, другая сумма, снять), лист оклада (сумма, день, валюта), лист курса. */
 const paid = ref<{ person: PersonId; name: string } | null>(null)
@@ -89,7 +95,7 @@ watch(
           data-fx-year
           @click="next('rate')"
         >
-          <span class="text-ink-2">{{ CURRENCY_WORD[year.currency].nom }} за год</span>
+          <span class="text-ink-2">{{ yearLabel }}</span>
           <span class="flex items-center gap-1">
             <b class="font-num num" :class="signTone(year.tenge, 'text-ink')">{{ moneySigned(year.perUnit) }}</b>
             <PhCaretRight :size="14" class="text-ink-3" />

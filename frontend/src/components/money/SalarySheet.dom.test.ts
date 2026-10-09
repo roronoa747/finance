@@ -82,7 +82,7 @@ describe('PN-02: «евро за год» в листе зарплаты', () =>
     const row = q('[role="dialog"] [data-fx-year]')
     expect(row).not.toBeNull()
     // Подпись и число — соседние span без текста между ними: сравниваем без пробелов.
-    expect(txt(row).replace(/\s/g, '')).toBe(`евро за год ${moneySigned(-134)}`.replace(/\s/g, ''))
+    expect(txt(row).replace(/\s/g, '')).toBe(`Евро за год ${moneySigned(-134)}`.replace(/\s/g, ''))
     // В той же карточке, что «Когда» и «Хватает» (одна карточка, строки через линию).
     expect(row!.parentElement).toBe(q('[role="dialog"] [data-salary-status]')!.parentElement)
     expect(q('[role="dialog"] [data-salary-exchanges]')).toBeNull()
@@ -97,7 +97,7 @@ describe('PN-02: «евро за год» в листе зарплаты', () =>
   it('валютный оклад, пришла: строка есть и после отметки (вместе с «обменяно … из …»); тенговый оклад — строки нет', async () => {
     await open({ euro: true, book: BOOK, payments: [came] })
     expect(q('[role="dialog"] [data-salary-exchanges]')).not.toBeNull()
-    expect(txt(q('[role="dialog"] [data-fx-year]'))).toContain('евро за год')
+    expect(txt(q('[role="dialog"] [data-fx-year]'))).toContain('Евро за год')
 
     app?.unmount()
     document.body.innerHTML = ''
@@ -115,7 +115,7 @@ describe('PN-02: «евро за год» в листе зарплаты', () =>
     app?.unmount()
     document.body.innerHTML = ''
     await open({ euro: true, book: BOOK, role: 'viewer' })
-    expect(txt(q('[role="dialog"] [data-fx-year]'))).toContain('евро за год')
+    expect(txt(q('[role="dialog"] [data-fx-year]'))).toContain('Евро за год')
     expect([...document.querySelectorAll('[role="dialog"] button')].map((b) => txt(b))).not.toContain('Пришла зарплата')
     expect(q('[role="dialog"] [data-salary-edit]')).toBeNull()
   })

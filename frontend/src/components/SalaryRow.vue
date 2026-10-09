@@ -74,14 +74,10 @@ const toAccount = computed(() => {
     <Button v-if="canMark" :variant="quiet ? 'secondary' : 'default'" class="mt-3 w-full" @click="tap">
       Пришла зарплата
     </Button>
-    <button
-      v-if="canMark"
-      type="button"
-      class="mt-2 w-full text-center text-[12.5px] text-brand hover:underline cursor-pointer"
-      @click="openMore"
-    >
+    <!-- Тихая 44, как «Другая сумма или снять» и «Изменить оклад» в том же листе (/ux Блока 1: один размер на уровень). -->
+    <Button v-if="canMark" variant="ghost" size="md" class="mt-2 w-full" @click="openMore">
       Другая сумма или счёт
-    </button>
+    </Button>
   </template>
 
   <Row

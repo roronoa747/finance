@@ -153,11 +153,11 @@ describe('e2e / понятность Блок 1 — настройки везд�
 
     const sheet = await screen(A.pinia, Month, '/month', undefined, [screenMixin({ salaryFor: 'a' })])
     expect(sheet).toContain('data-fx-year')
-    expect(text(sheet)).toContain(`евро за год ${moneySigned(-134)}`.replace(/[  ]/g, ' '))
+    expect(text(sheet)).toContain(`Евро за год ${moneySigned(-134)}`.replace(/[  ]/g, ' '))
     // Из «Капитала» — тот же лист (`CapitalSalaries.open`).
     const capital = await screen(A.pinia, Money, '/money', undefined, [screenMixin({}, (s) => { void s.lines; s.open = 'a' })])
     expect(capital).toContain('data-fx-year')
-    expect(text(capital)).toContain('евро за год')
+    expect(text(capital)).toContain('Евро за год')
     // Нажатие строки — лист курса (`SalarySheet.next('rate')`), заголовок «Курс евро». `year` и `rate` — только у листа
     // зарплаты (у `MarkSheet` строки тоже есть `next`).
     const rate = await screen(A.pinia, Month, '/month', undefined, [

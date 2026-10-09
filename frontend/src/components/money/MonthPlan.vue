@@ -381,16 +381,20 @@ function addFund(kind: 'reserve' | 'cushion') {
           <span v-if="s.came && s.foreign" class="relative z-10 shrink-0" @click.stop>
             <SalaryExchange :person-id="s.person" :period="monthKey" part="button" />
           </span>
+          <!--
+            Одна отметка на счёт прошлого раза, лист строки не открывает; без прошлого счёта — лист отметки.
+            Кнопка — в слоте «Обменял», слева от суммы (/ux Блока 1 «понятность»): суммы строк в одной колонке
+            и до, и после отметки, число не прыгает.
+          -->
+          <span v-if="s.canMark" class="relative z-10 shrink-0" @click.stop>
+            <SalaryRow button small :person-id="s.person" :period="monthKey" />
+          </span>
           <div class="flex flex-col items-end">
             <b class="font-num text-[16px] num whitespace-nowrap" :class="s.came ? 'text-ink' : 'text-ink-2'">
               <span v-if="s.came" class="font-extrabold text-ok" data-came>✓ </span>{{ money(s.amount) }}
             </b>
             <span v-if="s.fx" class="text-[12.5px] font-semibold text-ink-2 num whitespace-nowrap" data-salary-fx>{{ moneyIn(s.fx.amount, s.fx.currency) }}</span>
           </div>
-          <!-- Одна отметка на счёт прошлого раза, лист строки не открывает; без прошлого счёта — лист отметки. -->
-          <span v-if="s.canMark" class="relative z-10 shrink-0" @click.stop>
-            <SalaryRow button small :person-id="s.person" :period="monthKey" />
-          </span>
         </div>
       </template>
       <template v-if="canEdit">
