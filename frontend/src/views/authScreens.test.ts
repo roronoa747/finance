@@ -145,7 +145,8 @@ describe('Who — «С кем ведём?» (B2C-25)', () => {
     const adopt = vi.spyOn(useFinanceStore(), 'adoptDemo').mockResolvedValue()
     vm = await screen(Who, '/who', 'answerDemo')
     await vm.answerDemo(true)
-    expect(adopt).toHaveBeenCalledWith('h-1', 'Дана')
+    // «Создать семью» — демо-«Партнёр» не переносится (Р-124 п. 2).
+    expect(adopt).toHaveBeenCalledWith('h-1', 'Дана', undefined, true)
     expect(readDemoPending()).toBe(false)
     expect(apiClient.createInvite).toHaveBeenCalledTimes(1)
     expect(vm.invite).toBe('AB12CD34')

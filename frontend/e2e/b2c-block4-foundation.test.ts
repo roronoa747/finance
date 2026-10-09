@@ -426,6 +426,35 @@ describe('e2e / B2C Блок 4 — чужая семья: Google → «с кем
     expect(readDemoPending()).toBe(false)
   })
 
+  it('Р-124 п. 2: демо → «Создать семью» → «Да» — демо-«Партнёра» нет; партнёр по коду получает b и свой первый запуск', async () => {
+    const dana = phone()
+    let vm = await act(dana, Landing, '/', 'tryDemo')
+    vm.tryDemo()
+    await settle()
+    expect(useFinanceStore().people.some((p) => p.id === 'b')).toBe(true)
+    useAuthStore().clearAuth()
+    vm = await act(dana, Access, '/access', 'onGoogleToken')
+    await vm.onGoogleToken('id:sub-dana:dana@example.com')
+    vm = await act(dana, Who, '/who', 'create')
+    await vm.create('family')
+    vm = await act(dana, Who, '/who', 'answerDemo')
+    await vm.answerDemo(true)
+    const code = vm.invite as string
+    await settle(5000)
+    const hid = useAuthStore().household!.id
+    expect(families.get(hid)!.data.people?.map((p) => p.id)).toEqual(['a'])
+    expect((families.get(hid)!.data.goals ?? []).length).toBeGreaterThan(0)
+
+    const ilyas = phone()
+    vm = await act(ilyas, Access, '/access', 'onGoogleToken')
+    await vm.onGoogleToken('id:sub-ilyas:ilyas@example.com')
+    vm = await act(ilyas, Who, '/who', 'join')
+    vm.code = code
+    await vm.join()
+    expect(useAuthStore().slot).toBe('b')
+    expect(landingPath(useAuthStore(), useFinanceStore())).toBe('/start')
+  })
+
   it('B2C-27: из демо по коду — демо не переносится, у семьи свои данные', async () => {
     const dana = phone()
     let vm = await act(dana, Access, '/access', 'onGoogleToken')

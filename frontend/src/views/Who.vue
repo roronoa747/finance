@@ -81,9 +81,9 @@ async function answerDemo(take: boolean) {
   if (!household) return
   busy.value = true
   try {
-    if (take) await financeStore.adoptDemo(household.id, name.value)
-    else financeStore.startNewFamily(household.id)
     const kind = choice.value === 'family' || choice.value === 'alone' ? choice.value : readDemoPendingKind()
+    if (take) await financeStore.adoptDemo(household.id, name.value, undefined, kind === 'family')
+    else financeStore.startNewFamily(household.id)
     writeDemoPending(false)
     demoPending.value = false
     await afterCreate(kind)

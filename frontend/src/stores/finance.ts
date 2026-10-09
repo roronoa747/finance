@@ -410,10 +410,13 @@ export const useFinanceStore = defineStore('finance', () => {
    * «Да» после регистрации из демо (Р-32): весь демо-документ, общий и личный,
    * становится первым документом новой семьи; участник a — под именем из регистрации.
    * Сервер у новой семьи пуст, поэтому синк заливает документ как есть.
+   * `forPartner` («Создать семью», Р-124 п. 2): демо-«Партнёр» (`b`) уходит из `people` без надгробия —
+   * настоящий партнёр по коду получает `b` и свой первый запуск; демо-записи по `b` — его стартовый пример.
    */
-  async function adoptDemo(householdId: string, name: string, client: ApiClient = apiClient) {
+  async function adoptDemo(householdId: string, name: string, client: ApiClient = apiClient, forPartner = false) {
     docHousehold.value = householdId
     unsent.value = true
+    if (forPartner) householdDoc.value.people = householdDoc.value.people.filter((p) => p.id !== 'b')
     saveLocalState()
     setPerson('a', { name })
     await syncHousehold(client)
