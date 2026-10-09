@@ -31,6 +31,20 @@ func (r *sqlAccountRepository) DeleteAccount(ctx context.Context, userID string)
 	}
 	defer tx.Rollback()
 
+	// Lock order: user → their invites → households. CreateHousehold locks the user row
+	// first, so it waits for this deletion instead of leaving a household behind it;
+	// JoinHousehold (invite → household → the joiner, never the leaver) forms no cycle with it.
+	// NO KEY UPDATE, not UPDATE: a partner deleting at the same time hands the household to
+	// this user (created_by FK check takes KEY SHARE on this row) and must not wait on it.
+	// Invites both ways: deleting the user also clears used_by in the partner's invite, so
+	// two partners deleting at once queue up here, before the household.
+	if _, err := tx.ExecContext(ctx, `SELECT id FROM app.users WHERE id = $1 FOR NO KEY UPDATE;`, userID); err != nil {
+		return fmt.Errorf("failed to lock user: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `SELECT code FROM app.household_invites WHERE created_by = $1 OR used_by = $1 ORDER BY code FOR UPDATE;`, userID); err != nil {
+		return fmt.Errorf("failed to lock invites: %w", err)
+	}
+
 	// Households the user is in or created. Locked like JoinHousehold locks them, so a
 	// concurrent join or a partner's own deletion sees the result of this one.
 	rows, err := tx.QueryContext(ctx, `

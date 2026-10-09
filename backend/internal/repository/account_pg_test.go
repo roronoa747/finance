@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"finance-backend/internal/models"
+	"finance-backend/internal/testdb"
 )
 
 // fillUser gives a member a photo, an upload with an operation and a private doc edit.
@@ -170,6 +171,32 @@ func TestPostgresJoinTombstonedPersonHoldsSlot(t *testing.T) {
 	inv, _ := households.CreateInvite(ctx, f.householdID, f.aliceID)
 	if m, err := households.JoinHousehold(ctx, inv.Code, carol.ID, "Каршыга"); err != nil || m.Slot != "c" {
 		t.Fatalf("newcomer next to a tombstone: %+v %v, want slot c", m, err)
+	}
+}
+
+// Н-2 (review backend Block 4): "Create a family" in another tab while the account is being
+// deleted — the deletion succeeds and no household of the deleted user is left behind.
+func TestPostgresDeleteAccountWhileCreatingHousehold(t *testing.T) {
+	database := testdb.Open(t)
+	users := NewSQLUserRepository(database)
+	households := NewSQLHouseholdRepository(database)
+	accounts := NewSQLAccountRepository(database)
+	for round := range 10 {
+		ctx := context.Background()
+		u, err := users.CreateGoogle(ctx, fmt.Sprintf("race%d@st.pg", round), fmt.Sprintf("sub-race%d", round), "Гонка")
+		if err != nil {
+			t.Fatalf("create user: %v", err)
+		}
+		deleted := make(chan error, 1)
+		go func() { deleted <- accounts.DeleteAccount(ctx, u.ID) }()
+		_, _, _ = households.CreateHousehold(ctx, "Семья", u.ID, "Гонка") // either side may win
+		if err := <-deleted; err != nil {
+			t.Fatalf("round %d: deletion next to CreateHousehold: %v", round, err)
+		}
+		var left int
+		if err := database.QueryRowContext(ctx, `SELECT count(*) FROM app.households WHERE created_by = $1`, u.ID).Scan(&left); err != nil || left != 0 {
+			t.Fatalf("round %d: households of the deleted user: %d %v", round, left, err)
+		}
 	}
 }
 
