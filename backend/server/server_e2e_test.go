@@ -210,7 +210,7 @@ func runLiveServerE2EFlow(
 	})
 
 	// Step 5: Register User 2 (Bob)
-	var bobToken string
+	var bobToken, bobUserID string
 	t.Run("Bob signs in with Google, without a household", func(t *testing.T) {
 		resp, body := sendJSON(http.MethodPost, "/api/auth/google", map[string]string{"id_token": "id:sub-bob:bob@e2e.test"}, "")
 		if resp.StatusCode != http.StatusCreated {
@@ -244,7 +244,7 @@ func runLiveServerE2EFlow(
 			t.Errorf("expected slot 'b' for partner, got %s", joinResp.Member.Slot)
 		}
 		// Update bobToken with the new token issued for Alice's household
-		bobToken = joinResp.Token
+		bobToken, bobUserID = joinResp.Token, joinResp.Member.UserID
 	})
 
 	// Step 7: Bob checks /api/auth/me to verify common household
@@ -646,10 +646,14 @@ func runLiveServerE2EFlow(
 		if err != nil {
 			t.Fatalf("viewer invite: %v", err)
 		}
+		// A viewer is added by SQL only; the code lets in two full members at most, so Bob
+		// steps aside for the join.
+		setRole(t, database, householdRepo, aliceHouseholdID, bobUserID, "viewer")
 		if _, err := householdRepo.JoinHousehold(context.Background(), invite.Code, viewer.ID, "Гость"); err != nil {
 			t.Fatalf("viewer join: %v", err)
 		}
 		setRole(t, database, householdRepo, aliceHouseholdID, viewer.ID, "viewer")
+		setRole(t, database, householdRepo, aliceHouseholdID, bobUserID, "member")
 		// The token still says "member": the database wins.
 		viewerToken, err := tokenService.GenerateToken(viewer.ID, aliceHouseholdID, "member", "c")
 		if err != nil {

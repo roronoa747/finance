@@ -372,6 +372,17 @@ func (m *MockHouseholdRepo) JoinHousehold(ctx context.Context, code, userID, dis
 		return nil, ErrAlreadyInHousehold
 	}
 
+	// As in the SQL repo: two full members at most.
+	full := 0
+	for _, mem := range members {
+		if mem.Role == "member" {
+			full++
+		}
+	}
+	if full >= 2 {
+		return nil, ErrHouseholdFull
+	}
+
 	// As in usedSlotsSQL: a person left in the shared document keeps the slot taken.
 	usedSlots := make(map[string]bool)
 	if m.docs != nil {

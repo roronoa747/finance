@@ -314,6 +314,17 @@ func (r *sqlHouseholdRepository) JoinHousehold(ctx context.Context, code, userID
 		return nil, err
 	}
 
+	// A family is two full members (a viewer is added by SQL only): an old code must not
+	// let in a third, while a newcomer after a leaver gets the free place.
+	var members int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM app.household_members WHERE household_id = $1 AND role = 'member';`,
+		inv.HouseholdID).Scan(&members); err != nil {
+		return nil, fmt.Errorf("failed to count members: %w", err)
+	}
+	if members >= 2 {
+		return nil, ErrHouseholdFull
+	}
+
 	// 3. Find available slot ('a', 'b', 'c'). A slot is taken while a member holds it
 	// or while the shared document still has a person under it: after an account
 	// deletion the leaver's record stays (name, salary, onboardedAt, records by slot),

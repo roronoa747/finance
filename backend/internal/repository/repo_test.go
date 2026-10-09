@@ -118,27 +118,14 @@ func TestHouseholdRepository(t *testing.T) {
 		t.Fatal("expected error on reusing invite, got nil")
 	}
 
-	// Invite third member
+	// A second code does not let in a third full member (review backend Block 4, Н-3).
 	inv2, err := hRepo.CreateInvite(ctx, h.ID, creatorID)
 	if err != nil {
 		t.Fatalf("failed to create second invite: %v", err)
 	}
-	thirdMember, err := hRepo.JoinHousehold(ctx, inv2.Code, "user-3", "Чарли")
-	if err != nil {
-		t.Fatalf("third member failed to join: %v", err)
-	}
-	if thirdMember.Slot != "c" {
-		t.Errorf("expected slot 'c', got %s", thirdMember.Slot)
-	}
-
-	// Fourth member should fail (slots a, b, c full)
-	inv3, err := hRepo.CreateInvite(ctx, h.ID, creatorID)
-	if err != nil {
-		t.Fatalf("failed to create third invite: %v", err)
-	}
-	_, err = hRepo.JoinHousehold(ctx, inv3.Code, "user-4", "Давид")
+	_, err = hRepo.JoinHousehold(ctx, inv2.Code, "user-3", "Чарли")
 	if err != ErrHouseholdFull {
-		t.Fatalf("expected ErrHouseholdFull, got %v", err)
+		t.Fatalf("third member: expected ErrHouseholdFull, got %v", err)
 	}
 }
 
@@ -169,7 +156,7 @@ func TestJoinSkipsLeaverSlot(t *testing.T) {
 	if err != nil || m.Slot != "c" {
 		t.Fatalf("newcomer after the leaver: %+v %v, want slot c", m, err)
 	}
-	// Every slot is now held by a member or a leaver's record.
+	// Two members again: the family is full.
 	inv3, _ := repos.Households.CreateInvite(ctx, h.ID, "aru")
 	if _, err := repos.Households.JoinHousehold(ctx, inv3.Code, "dan", "Дан"); err != ErrHouseholdFull {
 		t.Fatalf("fourth: %v, want ErrHouseholdFull", err)

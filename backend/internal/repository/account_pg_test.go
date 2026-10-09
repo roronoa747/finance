@@ -122,16 +122,34 @@ func TestPostgresJoinSkipsLeaverSlot(t *testing.T) {
 	dan, _ := f.users.Create(ctx, "dan@st.pg", "hash")
 	inv2, _ := households.CreateInvite(ctx, f.householdID, f.bobID)
 	if _, err := households.JoinHousehold(ctx, inv2.Code, dan.ID, "Дан"); err != ErrHouseholdFull {
-		t.Fatalf("fourth: %v, want ErrHouseholdFull", err)
+		t.Fatalf("third while two members: %v, want ErrHouseholdFull", err)
 	}
 
 	// A household whose document has no people (or a non-array) frees the leaver's slot as before.
+	if err := NewSQLAccountRepository(f.db).DeleteAccount(ctx, carol.ID); err != nil {
+		t.Fatalf("delete carol: %v", err)
+	}
 	if _, _, err := docs.PushHouseholdDoc(ctx, f.householdID, 2, []byte(`{"people":{"a":1}}`), f.bobID); err != nil {
 		t.Fatalf("push 2: %v", err)
 	}
 	inv3, _ := households.CreateInvite(ctx, f.householdID, f.bobID)
 	if m, err := households.JoinHousehold(ctx, inv3.Code, dan.ID, "Дан"); err != nil || m.Slot != "a" {
 		t.Fatalf("without people: %+v %v, want slot a", m, err)
+	}
+}
+
+// Н-3 (review backend Block 4): two full members — an old code does not let in a third.
+func TestPostgresJoinCapsTwoMembers(t *testing.T) {
+	f := newStatementFixture(t)
+	ctx := context.Background()
+	households := NewSQLHouseholdRepository(f.db)
+	carol, _ := f.users.Create(ctx, "carol@st.pg", "hash")
+	inv, _ := households.CreateInvite(ctx, f.householdID, f.aliceID)
+	if _, err := households.JoinHousehold(ctx, inv.Code, carol.ID, "Каршыга"); err != ErrHouseholdFull {
+		t.Fatalf("third: %v, want ErrHouseholdFull", err)
+	}
+	if n := countRows(t, f, `SELECT count(*) FROM app.household_members WHERE user_id = $1`, carol.ID); n != 0 {
+		t.Errorf("third got a membership: %d", n)
 	}
 }
 
