@@ -162,7 +162,9 @@ func (v *Verifier) key(ctx context.Context, kid string) (*rsa.PublicKey, error) 
 		return nil, fmt.Errorf("%w: keys failed to load a moment ago", ErrUnavailable)
 	}
 
-	keys, ttl, err := v.fetch(ctx)
+	// A client that hung up must not arm the cooldown for every sign-in on this instance:
+	// the fetch outlives the request and is bounded by HTTP.Timeout alone.
+	keys, ttl, err := v.fetch(context.WithoutCancel(ctx))
 	if err != nil {
 		v.failedAt = now
 		// Stale keys still verify a known kid better than refusing everyone.

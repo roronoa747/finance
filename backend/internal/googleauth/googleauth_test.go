@@ -222,6 +222,23 @@ func TestVerifyFailedFetchIsNotRepeatedWithinCooldown(t *testing.T) {
 	}
 }
 
+// A sign-in whose client hung up while the keys were loading does not switch Google
+// sign-in off for a minute on a cold instance (review backend Block 4, Н-1).
+func TestVerifyCanceledRequestDoesNotArmCooldown(t *testing.T) {
+	g := newFakeGoogle(t, "k1")
+	g.delay = 200 * time.Millisecond
+	v := g.verifier()
+	tok := g.token(t, "k1", nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, _ = v.Verify(ctx, tok)
+
+	g.delay = 0
+	if _, err := v.Verify(context.Background(), tok); err != nil {
+		t.Fatalf("next sign-in after a canceled one: %v", err)
+	}
+}
+
 func TestNewWithoutClientIDsIsOff(t *testing.T) {
 	if New(nil) != nil {
 		t.Error("New(nil) should switch Google sign-in off")
