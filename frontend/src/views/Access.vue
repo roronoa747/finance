@@ -114,10 +114,11 @@ const editsWaitLogin = computed(() => financeStore.hasUnsent && !financeStore.is
 
     <!-- Главное действие — кнопка Google (её рисует GIS: цвета Google, не бренд). -->
     <div class="mt-7 flex flex-col gap-2.5">
-      <!-- Пока идёт вход — кнопка не нажимается: второй вход той же почтой гонялся бы с первым (ревью frontend Б4 Н-4). -->
+      <!-- color-scheme light: iframe Google светлый — при тёмной схеме страницы браузер залил бы его белым (смоук владельца Б4).
+           Пока идёт вход — кнопка не нажимается: второй вход той же почтой гонялся бы с первым (ревью frontend Б4 Н-4). -->
       <div
         ref="googleEl"
-        class="flex min-h-[44px] justify-center"
+        class="flex min-h-[44px] justify-center [color-scheme:light]"
         :class="busy && 'pointer-events-none opacity-60'"
         :aria-busy="busy"
         data-testid="google-button"
