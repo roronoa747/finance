@@ -49,6 +49,18 @@ func inHousehold(r *http.Request) bool {
 	return strings.TrimSpace(id) != ""
 }
 
+// maxNameRunes bounds a member's name: it goes to the whole family in GET /household/members.
+const maxNameRunes = 60
+
+// cleanName trims a member's name (typed or from Google) and keeps at most maxNameRunes.
+func cleanName(s string) string {
+	s = strings.TrimSpace(s)
+	if r := []rune(s); len(r) > maxNameRunes {
+		s = strings.TrimSpace(string(r[:maxNameRunes]))
+	}
+	return s
+}
+
 // CreateHousehold is "с кем → один / создать семью" (B2C-23, Р-7): a user without a
 // household creates one (slot a, documents) and gets a token with it. One person is a
 // household too.
@@ -57,7 +69,7 @@ func (h *HouseholdHandler) CreateHousehold(w http.ResponseWriter, r *http.Reques
 	if !decodeJSONBody(w, r, 16<<10, &req) {
 		return
 	}
-	req.DisplayName = strings.TrimSpace(req.DisplayName)
+	req.DisplayName = cleanName(req.DisplayName)
 	if req.DisplayName == "" {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "display_name is required"})
 		return
@@ -154,7 +166,7 @@ func (h *HouseholdHandler) CreateInvite(w http.ResponseWriter, r *http.Request) 
 
 func (h *HouseholdHandler) JoinHousehold(w http.ResponseWriter, r *http.Request) {
 	var req JoinRequest
-	if !decodeJSONBody(w, r, 1<<20, &req) {
+	if !decodeJSONBody(w, r, 16<<10, &req) {
 		return
 	}
 
@@ -175,7 +187,7 @@ func (h *HouseholdHandler) JoinHousehold(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	member, err := h.householdRepo.JoinHousehold(r.Context(), req.Code, userID, req.DisplayName)
+	member, err := h.householdRepo.JoinHousehold(r.Context(), req.Code, userID, cleanName(req.DisplayName))
 	if err != nil {
 		switch {
 		case errors.Is(err, repository.ErrInviteNotFound):

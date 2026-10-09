@@ -416,3 +416,19 @@ func TestAuthOversizedBodyReturns413(t *testing.T) {
 		}
 	}
 }
+
+// Review backend Block 4, Н-4: a member's name is trimmed and bounded wherever it enters
+// (create, join by code, Google).
+func TestCleanName(t *testing.T) {
+	long := strings.Repeat("Ә", 100)
+	cases := map[string]string{
+		"  Дана  ":                      "Дана",
+		long:                            strings.Repeat("Ә", maxNameRunes),
+		strings.Repeat("a", 59) + "  b": strings.Repeat("a", 59),
+	}
+	for in, want := range cases {
+		if got := cleanName(in); got != want {
+			t.Errorf("cleanName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

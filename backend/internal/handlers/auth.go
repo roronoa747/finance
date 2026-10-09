@@ -193,9 +193,9 @@ func (h *AuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 			respondJSON(w, http.StatusConflict, map[string]string{"error": "email is linked to another google account"})
 			return
 		case err == nil:
-			user, err = h.userRepo.LinkGoogle(r.Context(), user.ID, id.Sub, id.Name)
+			user, err = h.userRepo.LinkGoogle(r.Context(), user.ID, id.Sub, cleanName(id.Name))
 		case errors.Is(err, repository.ErrUserNotFound):
-			user, err = h.userRepo.CreateGoogle(r.Context(), id.Email, id.Sub, id.Name)
+			user, err = h.userRepo.CreateGoogle(r.Context(), id.Email, id.Sub, cleanName(id.Name))
 			status = http.StatusCreated
 		}
 	}
