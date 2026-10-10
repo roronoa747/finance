@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PhCaretRight } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
@@ -37,6 +37,7 @@ import { plural } from '@/lib/utils'
 import Avatar from '@/components/kit/Avatar.vue'
 import Card from '@/components/kit/Card.vue'
 import Field from '@/components/kit/Field.vue'
+import { useFlash } from '@/components/kit/useFlash'
 import { useFormCheck } from '@/components/kit/useFormCheck'
 import Hint from '@/components/kit/Hint.vue'
 import NumField from '@/components/kit/NumField.vue'
@@ -105,16 +106,7 @@ const extras = computed(() =>
 )
 /* «Ближе на N дней» (PN-09, Р-15): один тост на «Отложил» и «Отложил всё» — первая цель по очереди и «и ещё M»; фонды и
  * долг дней не дают; ни у одной цели нет темпа — тоста нет. Темп и остаток — до записи взносов. */
-const closerNote = ref<string | null>(null)
-let closerTimer: ReturnType<typeof setTimeout> | null = null
-function flashCloser(text: string, ms = 4000) {
-  if (closerTimer) clearTimeout(closerTimer)
-  closerNote.value = text
-  closerTimer = setTimeout(() => (closerNote.value = null), ms)
-}
-onBeforeUnmount(() => {
-  if (closerTimer) clearTimeout(closerTimer)
-})
+const { note: closerNote, flash: flashCloser } = useFlash()
 function savePuts(list: PlanPut[]) {
   const closer = list.flatMap((p) => {
     if (p.kind !== 'goal' || !p.goalId || p.left <= 0) return []

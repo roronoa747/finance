@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 import { useRouter, useRoute, RouterLink } from 'vue-router'
 import { PhCamera, PhCaretRight, PhDotsThree, PhPause, PhPencilSimple, PhPlay, PhMinus, PhShareNetwork, PhStar } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
@@ -36,6 +36,7 @@ import Callout from '@/components/kit/Callout.vue'
 import Chip from '@/components/kit/Chip.vue'
 import DreamHero from '@/components/kit/DreamHero.vue'
 import Field from '@/components/kit/Field.vue'
+import { useFlash } from '@/components/kit/useFlash'
 import { useFormCheck } from '@/components/kit/useFormCheck'
 import HeaderActions from '@/components/kit/HeaderActions.vue'
 import Hint from '@/components/kit/Hint.vue'
@@ -198,16 +199,7 @@ const monthOf = (iso: string) => MONTHS_NOM[parseMonthKey(movementMonth(iso)).mo
 const form = useFormCheck(() => [['amount', parseMoney(depositAmount.value) <= 0 && 'Введите сумму']])
 
 /* ---------- тост «ближе на N дней» после пополнения (PN-09, Р-15): 4 с, снятие — без тоста ---------- */
-const closerNote = ref<string | null>(null)
-let closerTimer: ReturnType<typeof setTimeout> | null = null
-function flashCloser(text: string, ms = 4000) {
-  if (closerTimer) clearTimeout(closerTimer)
-  closerNote.value = text
-  closerTimer = setTimeout(() => (closerNote.value = null), ms)
-}
-onBeforeUnmount(() => {
-  if (closerTimer) clearTimeout(closerTimer)
-})
+const { note: closerNote, flash: flashCloser } = useFlash()
 
 function applyDeposit() {
   const v = parseMoney(depositAmount.value)

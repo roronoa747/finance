@@ -10,6 +10,7 @@ import DecisionCard from '@/components/kit/DecisionCard.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Toast from '@/components/kit/Toast.vue'
+import { useFlash } from '@/components/kit/useFlash'
 import UnknownBatch from '@/components/UnknownBatch.vue'
 import PlanSwitch from '@/components/plan/PlanSwitch.vue'
 import SectionSheet from '@/components/week/SectionSheet.vue'
@@ -128,13 +129,7 @@ function toMonth() {
 }
 
 /* ---------- тост: одна фраза, у загрузки — «Отменить» (Р-97) ---------- */
-const note = ref<string | null>(null)
-let noteTimer: ReturnType<typeof setTimeout> | null = null
-function flash(text: string, ms = 2400) {
-  if (noteTimer) clearTimeout(noteTimer)
-  note.value = text
-  noteTimer = setTimeout(() => (note.value = null), ms)
-}
+const { note, flash } = useFlash(2400)
 const heldText = computed(() => {
   const n = store.draftOps.length
   const known = store.draftOps.filter((o) => o.id in store.ops).length
@@ -312,7 +307,6 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onHide)
-  if (noteTimer) clearTimeout(noteTimer)
   void store.commitUpload()
 })
 </script>

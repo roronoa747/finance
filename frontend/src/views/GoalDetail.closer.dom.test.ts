@@ -83,7 +83,8 @@ describe('PN-09: тост «ближе на N дней» на экране це�
   })
 
   it('склонение: 21 день, 2 дня; снятие — без тоста', async () => {
-    await open()
+    const finance = await open()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     button('Пополнить').click()
     await nextTick()
     // 27 632 / 40 000 × 30,4 = 21,0 → 21 день.
@@ -91,16 +92,20 @@ describe('PN-09: тост «ближе на N дней» на экране це�
     expect(closer()).toBe('Отпуск ближе на 21 день')
     button('Пополнить').click()
     await nextTick()
-    // 2 632 / 40 000 × 30,4 = 2,0 → 2 дня.
+    // 2 632 / 40 000 × 30,4 = 2,0 → 2 дня; новый тост перебивает прежний.
     await enter('2 632', 'Внести')
     expect(closer()).toBe('Отпуск ближе на 2 дня')
+    vi.advanceTimersByTime(4_000)
+    await nextTick()
+    expect(closer()).toBeNull()
 
     const withdraw = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Снять'))!
     withdraw.click()
     await nextTick()
     await enter('5 000', 'Снять')
-    // Снятие тост не трогает и своего не показывает: прежний («2 дня») ещё висит или уже нет — но не «Снять».
-    expect(closer() === null || closer() === 'Отпуск ближе на 2 дня').toBe(true)
+    expect(finance.goals.find((g) => g.id === 'trip')!.movements).toHaveLength(3)
+    // Снятие записано, тоста нет — ни своего, ни прежнего.
+    expect(closer()).toBeNull()
   })
 
   it('без плана взноса и без прошлых движений темпа нет — тоста нет', async () => {
