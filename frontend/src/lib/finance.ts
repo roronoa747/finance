@@ -3257,6 +3257,84 @@ export function monthSalaries(plan: MonthPlan, state: { people?: Person[]; payme
   })
 }
 
+/* ---------------- Капитал со статистикой (понятность, Блок 2: Р-2, Р-3) ---------------- */
+
+export type CapitalPartKey = 'credits' | 'payments' | 'goals' | 'rest'
+
+/** Доля дохода месяца на плашке Капитала: сумма, доля 0…1 для полоски, целые проценты дохода для строки. */
+export type CapitalPart = { key: CapitalPartKey; amount: number; share: number; pct: number }
+
+export type CapitalStats = {
+  /** Доход месяца плана (`plan.income.total`). */
+  income: number
+  /** Доли дохода: кредиты · платежи · в цели · остаётся; пусто без дохода; «кредиты» нет, когда их 0. */
+  parts: CapitalPart[]
+  /** Не хватает на платежи и траты (`plan.short`) — подпись у «остаётся». */
+  short: number
+  /** На сколько растёт капитал в месяц: тело платежей по кредитам + досрочка карточки долга + взносы в цели и фонды. */
+  growth: number
+  /** Когда долги закроются (`debtsOverview.freeMonth`), сколько это месяцев и зарплат; без открытых кредитов — null. */
+  debtFree: { month: string | null; months: number | null; salaries: number | null }
+  /** Переплата банку по процентным долгам (с планом «Сначала долги» — за вычетом его экономии); null — не закрывается. */
+  overpay: { amount: number | null; salaries: number | null }
+}
+
+/** Сумма в зарплатах семьи: 450 000 при доходе 300 000 → 1,5 (одна десятая, не деньги); дохода нет — null. Блок 5 использует. */
+export function inSalaries(amount: number, income: number): number | null {
+  return income > 0 ? Math.round((amount / income) * 10) / 10 : null
+}
+
+/**
+ * Статистика плашки Капитала (Р-3) — от уже посчитанного плана месяца (`finance.monthPlanOf(key)`), второго прогона
+ * очереди нет. Доли дохода: «кредиты» — платежи по кредитам и долгам из графика плюс досрочка карточки долга;
+ * «платежи» — остальной график (аренда, коммуналка, подписки, людям); «в цели» — что очередь даёт целям и фондам в
+ * этом месяце; «остаётся» — на жизнь (траты планов внутри: владелец видит четыре доли, не пять), не меньше 0.
+ * Тождество: кредиты + платежи + в цели + остаётся = max(доход, кредиты + платежи + в цели); `share` — от этой суммы,
+ * чтобы полоска при нехватке была заполнена целиком, `pct` — от дохода. Рост капитала — тело кредитов (`creditSplit`)
+ * + досрочка + взносы. Срок — `debtsOverview`, переплата — `creditOutlook` открытых процентных долгов (с активным
+ * планом — минус `planForecast.savedInterest`); «в зарплатах» — `inSalaries` (ритм — месяц; Блок 7 заменит на число
+ * приходов). Ничего не пишется, новых данных нет.
+ */
+export function capitalStats(plan: MonthPlan, state: PlanState & { plans?: DebtPlan[] }, key: string): CapitalStats {
+  const income = plan.income.total
+  const creditDues = plan.dues.filter((d): d is PlanDue & { kind: 'credit' } => d.kind === 'credit')
+  const debtGiven = plan.queue.filter((q) => q.kind === 'debt').reduce((a, q) => a + q.given, 0)
+  const credits = creditDues.reduce((a, d) => a + d.amount, 0) + debtGiven
+  const payments = plan.dues.filter((d) => d.kind === 'obligation').reduce((a, d) => a + d.amount, 0)
+  const goals = plan.queue.filter((q) => q.kind !== 'debt').reduce((a, q) => a + q.given, 0)
+  const rest = Math.max(0, income - credits - payments - goals)
+  const total = Math.max(income, credits + payments + goals)
+  const part = (k: CapitalPartKey, amount: number): CapitalPart => ({ key: k, amount, share: amount / total, pct: Math.round((amount / income) * 100) })
+  const parts = income > 0 ? [...(credits > 0 ? [part('credits', credits)] : []), part('payments', payments), part('goals', goals), part('rest', rest)] : []
+  const body = creditDues.reduce((a, d) => a + creditSplit(d.credit.principal, d.credit.annualRate, d.amount).body, 0)
+  const open = openCredits(state.credits ?? [])
+  const month = open.length ? debtsOverview(state, key).freeMonth : null
+  const months = month === null ? null : monthsBetween(key, month)
+  let overpay: number | null = 0
+  for (const c of open) {
+    if (!(c.annualRate > 0)) continue
+    const o = creditOutlook(c)
+    if (!o.closes) {
+      overpay = null
+      break
+    }
+    overpay += o.overpay
+  }
+  const active = activePlan(state.plans)
+  if (overpay !== null && active) {
+    const saved = planForecast(active, state, key).savedInterest
+    if (saved !== null) overpay = Math.max(0, overpay - saved)
+  }
+  return {
+    income,
+    parts,
+    short: plan.short,
+    growth: body + debtGiven + goals,
+    debtFree: { month, months, salaries: months },
+    overpay: { amount: overpay, salaries: overpay === null ? null : inSalaries(overpay, income) },
+  }
+}
+
 /**
  * Подсказка «всё в долг — закроете к N» (Р-83): все цели и фонды выключены, весь свободный остаток месяца —
  * досрочкой в самый дорогой долг; тот же прогон, что у дат плана. null — долгов с процентами нет, остатка нет
