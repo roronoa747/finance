@@ -7,10 +7,11 @@ import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
 import { money, pct } from '@/lib/money'
 import { monthKey } from '@/lib/dates'
-import { goalTerm, planForecast, wishQueue } from '@/lib/finance'
+import { closerThisMonth, goalTerm, planForecast, wishQueue } from '@/lib/finance'
 import type { Goal } from '@/types/finance'
 import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
+import { plural } from '@/lib/utils'
 import { GOAL_TEMPLATES, type GoalTemplate } from '@/lib/goalTemplates'
 import { attachFile, attachTemplate, retryTemplatePhotos } from '@/lib/photos/goalPhoto'
 import { usePhoto, usePhotos } from '@/lib/photos/usePhoto'
@@ -71,6 +72,13 @@ function whenOf(g: Goal): string {
 const heroPercent = computed(() => (main.value ? pct(main.value.have, main.value.need) : 0))
 // Под героем — название; месяц, когда мечта будет вашей, — на экране цели (Р-116). На паузе — так и сказано.
 const heroMonth = computed(() => (main.value && termOf(main.value).off ? 'на паузе' : null))
+// «Ближе на N дней» (PN-09, Р-15): взносы этого месяца при темпе цели — строка под процентом; на паузе — нет. Viewer видит то же.
+const heroCloser = computed(() => {
+  const g = main.value
+  if (!g || termOf(g).off) return null
+  const days = closerThisMonth(g, key.value)
+  return days && days > 0 ? `ближе на ${days} ${plural(days, 'день', 'дня', 'дней')}` : null
+})
 
 /* ---------- фото (B2C-17) ---------- */
 const heroSrc = usePhoto(() => main.value?.photoId)
@@ -125,6 +133,7 @@ onMounted(refresh)
       :title="main.name"
       :percent="heroPercent"
       :month="heroMonth"
+      :closer="heroCloser"
       :src="heroSrc"
       :author="main.photoCredit?.author"
       @open="router.push(`/goals/${main.id}`)"

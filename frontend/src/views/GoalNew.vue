@@ -10,6 +10,8 @@ import { monthIn, monthKey } from '@/lib/dates'
 import { budgetAmounts, goalDoneMonth, goalMonthly } from '@/lib/finance'
 import { GOAL_TEMPLATES, GOAL_TYPES, TRAVEL_DIRECTIONS, templateImageUrl, themePhotos, type GoalTemplate } from '@/lib/goalTemplates'
 import { attachFile, attachTemplate } from '@/lib/photos/goalPhoto'
+import type { LinkFound } from '@/lib/photos/useLinkPreview'
+import LinkPhotoField from '@/components/goals/LinkPhotoField.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Chip from '@/components/kit/Chip.vue'
@@ -27,6 +29,7 @@ import TemplateTile from '@/components/kit/TemplateTile.vue'
  * цель семьи — главная (стор). Тот же экран — из «+» и из первого запуска (`?next=`).
  * Картинка грузится после создания (`lib/photos/goalPhoto`), офлайн — при следующей сети; не
  * загрузилась — экран цели узнаёт об этом из адреса (`?photo=failed|later`), в первом запуске — нет.
+ * «По ссылке» (PN-08): картинка со страницы — как своё фото, название — со страницы, если своего нет.
  */
 /** Куда идти после мечты: первый запуск (B2C-19) рендерит экран внутри себя и задаёт следующий шаг. */
 const props = defineProps<{ next?: string }>()
@@ -45,6 +48,8 @@ const pickedType = ref<GoalTemplate['type'] | null>(null)
 const ownFile = ref<File | null>(null)
 const ownPreview = ref<string | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
+// Поле ссылки — под сеткой, раскрыто плиткой «По ссылке»; выбор темы его сворачивает.
+const linkOpen = ref(false)
 
 const name = ref('')
 const needText = ref('')
@@ -92,22 +97,34 @@ function pickType(type: GoalTemplate['type']) {
   pickedType.value = type
   template.value = byType(type)
   ownFile.value = null
+  linkOpen.value = false
   dropPreview()
 }
 function pickTemplate(t: GoalTemplate) {
   template.value = t
 }
+/** Своё фото — из галереи или со страницы по ссылке: шаблон снимается, превью из object URL, дальше форма. */
+function pickOwn(file: File) {
+  ownFile.value = file
+  template.value = null
+  pickedType.value = null
+  // Фото выбрано — поле ссылки сворачивается: «Назад» из формы не возвращает его раскрытым с клавиатурой (`/ux` Блока 3).
+  linkOpen.value = false
+  dropPreview()
+  ownPreview.value = typeof URL !== 'undefined' && 'createObjectURL' in URL ? URL.createObjectURL(file) : null
+  next()
+}
 function onFile(e: Event) {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
-  if (!file) return
-  ownFile.value = file
-  template.value = null
-  pickedType.value = null
-  dropPreview()
-  ownPreview.value = typeof URL !== 'undefined' && 'createObjectURL' in URL ? URL.createObjectURL(file) : null
-  next()
+  if (file) pickOwn(file)
+}
+function onLink(found: LinkFound) {
+  if (!found.file) return
+  // Название со страницы — если своего ещё нет (как у желаний).
+  if (!name.value.trim() && found.title) name.value = found.title
+  pickOwn(found.file)
 }
 function next() {
   if (template.value && !name.value) name.value = template.value.name
@@ -161,9 +178,11 @@ const inShell = inject<boolean>('ff-shell-actions', false)
             @click="pickType(k.type)"
           />
           <TemplateTile name="Своё фото" camera @click="fileInput?.click()" />
+          <TemplateTile name="По ссылке" link :selected="linkOpen" data-link-tile @click="linkOpen = !linkOpen" />
         </div>
       </Field>
       <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFile" />
+      <LinkPhotoField v-if="linkOpen" @found="onLink" />
       <template v-if="directions.length">
         <div class="mt-1 px-1 type-section">Куда</div>
         <div class="flex flex-wrap gap-2">

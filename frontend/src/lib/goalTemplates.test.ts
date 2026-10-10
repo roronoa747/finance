@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { GOAL_TEMPLATES, GOAL_TYPES, TRAVEL_DIRECTIONS, templateById, templateCredit, templateImageUrl, themePhotos } from './goalTemplates'
+import { GOAL_TEMPLATES, GOAL_TYPES, TRAVEL_DIRECTIONS, templateById, templateCredit, templateImageUrl, themePhotos, type GoalTemplateType } from './goalTemplates'
 import { HUE_KEYS } from './palette'
 
 describe('lib/goalTemplates — шаблоны целей (Р-28, B2C-17)', () => {
@@ -47,13 +47,34 @@ describe('lib/goalTemplates — шаблоны целей (Р-28, B2C-17)', () =
     expect(TRAVEL_DIRECTIONS.some((t) => /-\d$/.test(t.id))).toBe(false)
   })
 
-  it('типы из брифа и пула B2C-64 (одиннадцать) и 8–12 направлений путешествий', () => {
-    expect(GOAL_TYPES.map((k) => k.type)).toEqual(['car', 'home', 'travel', 'tech', 'health', 'wedding', 'baby', 'study', 'renovation', 'cushion', 'hajj'])
+  it('типы из брифа, пула B2C-64 и PN-07 (девятнадцать, в порядке Р-4) и 8–12 направлений путешествий', () => {
+    expect(GOAL_TYPES.map((k) => k.type)).toEqual([
+      'car', 'home', 'travel', 'tech', 'health', 'wedding', 'baby', 'study', 'renovation', 'cushion', 'hajj',
+      'business', 'moving', 'furniture', 'sport', 'celebration', 'gift', 'dacha', 'pet',
+    ])
     for (const k of GOAL_TYPES) expect(templateById(k.type)?.type).toBe(k.type)
     expect(TRAVEL_DIRECTIONS.length).toBeGreaterThanOrEqual(8)
     expect(TRAVEL_DIRECTIONS.length).toBeLessThanOrEqual(12)
     expect(TRAVEL_DIRECTIONS.every((t) => t.type === 'travel' && t.id !== 'travel')).toBe(true)
     expect(TRAVEL_DIRECTIONS.map((t) => t.name)).toContain('Япония')
+  })
+
+  it('PN-07 (Р-4): восемь новых тем — имена из решения, ровно пять фото у каждой, автор и страница у всех', () => {
+    const themes = { business: 'Бизнес', moving: 'Переезд', furniture: 'Мебель', sport: 'Спорт', celebration: 'Той / юбилей', gift: 'Подарок', dacha: 'Дача / земля', pet: 'Животное' }
+    for (const [type, name] of Object.entries(themes)) {
+      expect(GOAL_TYPES.find((k) => k.type === type)?.name, type).toBe(name)
+      const list = themePhotos(type as GoalTemplateType)
+      expect(list.length, type).toBe(5)
+      expect(list.map((t) => t.id)).toEqual([type, `${type}-2`, `${type}-3`, `${type}-4`, `${type}-5`])
+      for (const t of list) {
+        expect(t.name).toBe(name)
+        expect(t.photo.author.trim().length).toBeGreaterThan(0)
+        expect(t.photo.pageId).toMatch(/^[\w-]{11}$/)
+        expect(templateImageUrl(t, 400)).toMatch(/^https:\/\/images\.unsplash\.com\/photo-\d+-[0-9a-f]+\?w=400&q=80&fm=jpg&fit=crop$/)
+      }
+    }
+    // Новые темы идут после «Хадж, Умра» — в порядке Р-4.
+    expect(GOAL_TYPES.slice(11).map((k) => k.type)).toEqual(Object.keys(themes))
   })
 
   it('возврат приёмки п. 6: фото направления снято в том месте, которое оно называет — место со страницы Unsplash; Дубай и Париж из ТЗ есть', () => {

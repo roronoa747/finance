@@ -20,8 +20,30 @@
 - **Ветка `pn-block-4-done` от `main`** после 🏁 Блока 3. Go и миграций нет (событие `goal_done` — хвост, Р-17).
 - **Две сессии.** Ч. 1 — PN-12: снимки «до», макет, артефакт → **стоп: ворота** («Ворота макета», `AskUserQuestion`).
   Ч. 2 (ворота ✅) — PN-13 → PN-14 → PN-15.
-- Факты Блока 3 (критик допишет): <номера строк `GoalDetail.vue`, `Dreams.vue`, `StorySheet.vue`, `storyCard.ts`
-  после PN-09/PN-10>.
+- **Факты Блока 3 (критик Б3, 2026-10-10; ветка `pn-block-3-dreams`, до мёржа — смотреть `origin/pn-block-3-dreams`):**
+  - `views/GoalDetail.vue` (571 строка): `goal` :76 (`liveGoals`), `menu(action)` :85, `isFund` :102, `term` :108, `remaining` :114,
+    `doneMonth` :116, `progress` :117, `doneTitle` :119, `doneLine` :127, `applyDeposit` :204 (тост «ближе на N дней» — `useFlash`,
+    `closerNote`), `openEditModal` :228, `photoSrc` :231, `onFile` :259, `removePhoto` :269, `storySrc` :283, **`wallpaperSrc` :290**,
+    `storyData` :295, `share()` :296. Шаблон: «Поделиться» `data-goal-share` :318, меню «···» :330-345 («Сделать главной» :336,
+    пауза :342), `DreamHero` :351-373, `PhotoPicker` :375, карточка срока :387-412 (`doneTitle` :389, «Пополнить» :399),
+    `<details>` «Подробнее» :416-484, «Взносы» :486+ (`history` :490), окно «Пополнить / Снять» :518, `Toast data-closer` :558,
+    `StorySheet` :561 (`:src` и `:wallpaper-src`), `GoalSheet` :564.
+  - `views/Dreams.vue` (219): `key` :42, `main` :47, `others` :48, `whenOf` :68, `heroPercent` :72, `heroMonth` :74, `heroCloser`
+    :76-82 (`closerThisMonth`), `onTemplate` :89, `onFile` :96; шаблон: герой `DreamCenter` :131-144 (пропы `month`, **`closer`**),
+    пустой :145, `PhotoPicker` :148, «Цели» :159-188 (`SortableList` :166, `ThumbRow` :168), «Желания» :190-215. Гвард тишины
+    `Dreams.test.ts` (`WEEKLY`) и `data-hero-closer` — не ломать: альбом по нажатию — `v-if`.
+  - `components/goals/StorySheet.vue` (124): пропсы :17-28 (`wallpaperSrc?` :27), `draw` :43, `share`/`save` :71/:76, обои :82-104
+    (`wallpaper()` :85), кнопка `data-story-wallpaper` :120, строка :121. Момент «Сбылось» карточку не дублирует — зовёт этот лист.
+  - `lib/storyCard.ts` (258): `STORY_SIZE` :9, `WALLPAPER_SIZE` :11, `StoryKind` :12 (`goal | leaks | wallpaper`), `storySize` :13,
+    `StoryData` :14, `StoryTexts` :22, `withoutMoney` :40, `storyText` :53, `StoryLayout` :67 (`app`/`label` nullable), `layoutStory`
+    :86, `drawStory` :124, `loadStoryImage` :195, `renderStory` :206 (`size?`), `STORY_FILE`/`WALLPAPER_FILE` :222-223, `shareStory` :228.
+  - `lib/finance.ts` (4 453): `goalHave` :207, `liveGoals` :728, `capitalGoals` :1275, `movementMonth` :2229, `contributionStreak` :2231,
+    **`goalPace` :2252, `closerDays` :2262, `closerThisMonth` :2268**, `monthsBetween` :2274; всё ниже :2249 сдвинуто Блоком 3 на +25:
+    точки `liveGoals(` для PN-13 — :685, :1111, :1243, :1255, :1277, :1940, :2098, :2340, :2545, :2672, :2736, :2861, :2891, :3587,
+    :3711, :4306; `fundsOf` :2860, `queueOf` :2885, `capitalStats` :3323, `goalTerm` :3398, `planPuts` :3710. Стор без сдвигов:
+    `updateGoal` :1736, `heroGoal` :1775, `contribute` :1918.
+  - `kit/useFlash.ts` — тост одной фразой (`{ note, flash, clear }`); тост момента/альбома, если понадобится, — через него.
+    База тестов после Блока 3: 175 файлов / 1766 ✅ + 1 пропуск (hash `main` после мёржа запишет приёмка Б3).
 - `liveGoals` → `openGoals`: решение по каждой точке вызова — строкой комментария (ТЗ PN-13, список точек там);
   история и фото — живые, деньги и очередь — активные.
 - Правило 12: «Сбылось» — у предмета (карточка цели на 100 %), альбом свёрнут, один момент без лишнего текста;

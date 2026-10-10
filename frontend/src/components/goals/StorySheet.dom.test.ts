@@ -9,7 +9,12 @@ import { shareStory } from '@/lib/storyCard'
  */
 vi.mock('@/lib/storyCard', async (orig) => {
   const mod = await orig<typeof import('@/lib/storyCard')>()
-  return { ...mod, renderStory: vi.fn(async () => new Blob(['png'], { type: 'image/png' })) }
+  return {
+    ...mod,
+    renderStory: vi.fn(async () => new Blob(['png'], { type: 'image/png' })),
+    // Картинка в happy-dom не грузится — заглушка запоминает, какой адрес просили (обои — свой, критик Б3).
+    loadStoryImage: vi.fn(async (src: string) => ({ width: 1200, height: 800, source: { src } as unknown as CanvasImageSource })),
+  }
 })
 
 let app: App | null = null
@@ -64,12 +69,20 @@ describe('StorySheet', () => {
     Object.assign(URL, { createObjectURL: () => 'blob:story', revokeObjectURL: () => {} })
   })
 
-  async function mount(state: { open: boolean }, kind: 'goal' | 'leaks' = 'goal') {
+  async function mount(state: { open: boolean }, kind: 'goal' | 'leaks' = 'goal', srcs: { src?: string | null; wallpaperSrc?: string | null } = {}) {
     const { default: StorySheet } = await import('./StorySheet.vue')
     const root = document.createElement('div')
     document.body.appendChild(root)
     app = createApp({
-      render: () => h(StorySheet, { open: state.open, kind, data: kind === 'goal' ? { percent: 62, goalName: 'Япония', doneMonth: 'мае 2027' } : { count: 3 }, src: null, onClose: () => (state.open = false) }),
+      render: () =>
+        h(StorySheet, {
+          open: state.open,
+          kind,
+          data: kind === 'goal' ? { percent: 62, goalName: 'Япония', doneMonth: 'мае 2027' } : { count: 3 },
+          src: srcs.src ?? null,
+          ...(srcs.wallpaperSrc !== undefined ? { wallpaperSrc: srcs.wallpaperSrc } : {}),
+          onClose: () => (state.open = false),
+        }),
     })
     app.mount(root)
     await nextTick()
@@ -96,6 +109,64 @@ describe('StorySheet', () => {
     expect(share).toHaveBeenCalledTimes(1)
     expect(share.mock.calls[0][0].title).toBe('62 % до мечты')
     expect(text()).toContain('Отправлено')
+  })
+
+  it('PN-10: «Сохранить как обои» — у мечты, не у утечек; нажатие рисует вариант wallpaper в своём canvas и шлёт файл обоев', async () => {
+    const share = vi.fn<(d: ShareData) => Promise<void>>(async () => {})
+    Object.assign(navigator, { share, canShare: () => true })
+    const state = reactive({ open: true })
+    await mount(state)
+    const { renderStory } = await import('@/lib/storyCard')
+    const render = renderStory as unknown as ReturnType<typeof vi.fn>
+    const previewCanvas = document.querySelector('canvas')!
+    const wallpaper = document.querySelector('[data-story-wallpaper]') as HTMLButtonElement
+    expect(wallpaper).toBeTruthy()
+    expect(wallpaper.textContent?.trim()).toBe('Сохранить как обои')
+    expect(wallpaper.disabled).toBe(false)
+    const before = render.mock.calls.length
+    wallpaper.click()
+    await flush()
+    await nextTick()
+    await flush()
+    expect(render.mock.calls.length).toBe(before + 1)
+    const [canvas, opts] = render.mock.calls.at(-1)! as [HTMLCanvasElement, { texts: { kind: string; app: string; big: string; line: string } }]
+    expect(canvas).not.toBe(previewCanvas)
+    expect(opts.texts).toMatchObject({ kind: 'wallpaper', app: '', big: '62 %', line: 'Япония · будет нашей в мае 2027' })
+    expect(share).toHaveBeenCalledTimes(1)
+    const data = share.mock.calls[0][0]
+    expect(data.title).toBe('Обои · Япония')
+    expect(data.files?.[0].name).toBe('family-finance-wallpaper.png')
+    expect(document.querySelector('[data-story-wallpaper-note]')?.textContent).toContain('поставьте на экран блокировки')
+
+    app?.unmount()
+    document.body.innerHTML = ''
+    await mount(reactive({ open: true }), 'leaks')
+    expect(document.querySelector('[data-story-wallpaper]')).toBeNull()
+  })
+
+  it('критик Б3: обои берут `wallpaperSrc` (картинка шаблона 2400 с CDN), предпросмотр — `src`; без `wallpaperSrc` — тот же `src`', async () => {
+    Object.assign(navigator, { share: vi.fn(async () => {}), canShare: () => true })
+    const { loadStoryImage } = await import('@/lib/storyCard')
+    const loads = loadStoryImage as unknown as ReturnType<typeof vi.fn>
+    const preview = 'https://images.unsplash.com/photo-1?w=1080&q=80&fm=jpg&fit=crop'
+    const big = 'https://images.unsplash.com/photo-1?w=2400&q=80&fm=jpg&fit=crop'
+    await mount(reactive({ open: true }), 'goal', { src: preview, wallpaperSrc: big })
+    expect(loads.mock.calls.map((c) => c[0])).toEqual([preview])
+    ;(document.querySelector('[data-story-wallpaper]') as HTMLButtonElement).click()
+    await flush()
+    await nextTick()
+    await flush()
+    expect(loads.mock.calls.map((c) => c[0])).toEqual([preview, big])
+
+    app?.unmount()
+    document.body.innerHTML = ''
+    loads.mockClear()
+    await mount(reactive({ open: true }), 'goal', { src: preview })
+    ;(document.querySelector('[data-story-wallpaper]') as HTMLButtonElement).click()
+    await flush()
+    await nextTick()
+    await flush()
+    expect(loads.mock.calls.map((c) => c[0])).toEqual([preview, preview])
   })
 
   it('без navigator.share — только «Сохранить»; утечки — «Карточка месяца»', async () => {

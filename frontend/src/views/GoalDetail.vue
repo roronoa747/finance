@@ -7,9 +7,11 @@ import { useAuthStore } from '@/stores/auth'
 import { money, pct, plain, parseMoney, ratePct } from '@/lib/money'
 import {
   INFLATION,
+  closerDays,
   contributionStreak,
   fundMonthsOf,
   goalMonthly,
+  goalPace,
   goalTerm,
   indexedNeed,
   liveGoals,
@@ -34,6 +36,7 @@ import Callout from '@/components/kit/Callout.vue'
 import Chip from '@/components/kit/Chip.vue'
 import DreamHero from '@/components/kit/DreamHero.vue'
 import Field from '@/components/kit/Field.vue'
+import { useFlash } from '@/components/kit/useFlash'
 import { useFormCheck } from '@/components/kit/useFormCheck'
 import HeaderActions from '@/components/kit/HeaderActions.vue'
 import Hint from '@/components/kit/Hint.vue'
@@ -45,6 +48,7 @@ import Segmented from '@/components/kit/Segmented.vue'
 import Select from '@/components/kit/Select.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Tag from '@/components/kit/Tag.vue'
+import Toast from '@/components/kit/Toast.vue'
 import { useSavedMark } from '@/components/kit/useSavedMark'
 import GoalSheet from '@/components/goals/GoalSheet.vue'
 import PhotoPicker from '@/components/goals/PhotoPicker.vue'
@@ -194,14 +198,20 @@ const monthOf = (iso: string) => MONTHS_NOM[parseMonthKey(movementMonth(iso)).mo
 
 const form = useFormCheck(() => [['amount', parseMoney(depositAmount.value) <= 0 && 'Введите сумму']])
 
+/* ---------- тост «ближе на N дней» после пополнения (PN-09, Р-15): 4 с, снятие — без тоста ---------- */
+const { note: closerNote, flash: flashCloser } = useFlash()
+
 function applyDeposit() {
   const v = parseMoney(depositAmount.value)
   if (!v || !goal.value) return
 
   if (depositOperation.value === 'deposit') {
+    // Темп — до записи взноса (без плана он считается по движениям); нет темпа — тоста нет.
+    const days = closerDays(v, goalPace(goal.value, monthKey()))
     financeStore.contribute(goal.value.id, v, depositBy.value, depositNote.value.trim() || undefined)
     // Сдвиг остатка, а не сверка: отметки оплат до взноса продолжают считаться.
     if (depositAccountId.value) financeStore.shiftAccountAmount(depositAccountId.value, -v)
+    if (days) flashCloser(`${goal.value.name} ближе на ${days} ${plural(days, 'день', 'дня', 'дней')}`)
   } else {
     financeStore.withdraw(goal.value.id, v, depositBy.value, depositNote.value.trim() || undefined)
     if (depositAccountId.value) financeStore.shiftAccountAmount(depositAccountId.value, v)
@@ -274,6 +284,13 @@ const storySrc = computed(() => {
   if (photoSrc.value) return photoSrc.value
   const t = templateById(goal.value?.template)
   return t ? templateImageUrl(t, 1080) : null
+})
+// Обои 1170 × 2532 (PN-10) кроют горизонтальное фото по высоте: шаблону с CDN — картинка 2400 (не 1080), иначе
+// растяжение в 3,5 раза; своё фото уже сжато при загрузке (≤ 1600) — крупнее нет (критик Блока 3 «понятность»).
+const wallpaperSrc = computed(() => {
+  if (photoSrc.value) return photoSrc.value
+  const t = templateById(goal.value?.template)
+  return t ? templateImageUrl(t, 2400) : null
 })
 const storyData = computed(() => ({ percent: progress.value, goalName: goal.value?.name, doneMonth: doneMonth.value ? monthIn(doneMonth.value) : null }))
 function share() {
@@ -537,8 +554,11 @@ function share() {
       </Button>
     </Sheet>
 
+    <!-- «Ближе на N дней» (PN-09): тост после пополнения, в оболочке — над вкладками -->
+    <Toast v-if="closerNote"><span data-closer>{{ closerNote }}</span></Toast>
+
     <!-- Карточка для сторис (B2C-20): без сумм -->
-    <StorySheet :open="storyOpen" kind="goal" :data="storyData" :src="storySrc" @close="storyOpen = false" />
+    <StorySheet :open="storyOpen" kind="goal" :data="storyData" :src="storySrc" :wallpaper-src="wallpaperSrc" @close="storyOpen = false" />
 
     <!-- Окно: Изменить цель -->
     <GoalSheet

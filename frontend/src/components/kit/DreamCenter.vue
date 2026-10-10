@@ -19,10 +19,12 @@ const props = withDefaults(
     author?: string | null
     /** «май 2027» — месяц, когда мечта будет вашей; нет срока — только название. */
     month?: string | null
+    /** «ближе на 12 дней» (PN-09, Р-15) — взносы месяца приблизили мечту; показывается, когда нет `month`. */
+    closer?: string | null
     empty?: boolean
     canPick?: boolean
   }>(),
-  { title: '', percent: 0, src: null, author: null, month: null, empty: false, canPick: true },
+  { title: '', percent: 0, src: null, author: null, month: null, closer: null, empty: false, canPick: true },
 )
 
 const emit = defineEmits<{ (e: 'open'): void; (e: 'pick'): void }>()
@@ -30,7 +32,9 @@ const emit = defineEmits<{ (e: 'open'): void; (e: 'pick'): void }>()
 const pct = computed(() => Math.max(0, Math.min(100, Math.round(props.percent))))
 // «·» держится за название, месяц с годом — одним куском (смоук владельца Блока 3, п. 4).
 const NBSP = ' '
-const line = computed(() => (props.month ? `${props.title}${NBSP}· ${props.month.replace(/ /g, NBSP)}` : props.title))
+// Месяц или «ближе на N дней» — одним куском после «·».
+const tail = computed(() => props.month ?? props.closer)
+const line = computed(() => (tail.value ? `${props.title}${NBSP}· ${tail.value.replace(/ /g, NBSP)}` : props.title))
 const percentText = (n: number) => `${n}${NBSP}%`
 </script>
 
@@ -57,7 +61,7 @@ const percentText = (n: number) => `${n}${NBSP}%`
         <span v-if="author" class="absolute right-3 top-2 text-[11px]" :class="src ? 'text-on-photo opacity-75' : 'text-ink-2'">Фото: {{ author }}</span>
       </span>
       <span class="type-percent num leading-none text-ink"><CountUp :value="pct" :format="percentText" /></span>
-      <span class="text-[15px] text-ink-2">{{ line }}</span>
+      <span class="text-[15px] text-ink-2" :data-hero-closer="!month && closer ? '' : undefined">{{ line }}</span>
     </button>
     <div v-if="$slots.actions" class="flex flex-wrap justify-center gap-2">
       <slot name="actions" />

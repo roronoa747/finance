@@ -2245,6 +2245,31 @@ export function contributionStreak(movements: { date: string; amount: number }[]
   return streak
 }
 
+/**
+ * Темп взносов в цель, ₸ в месяц (PN-09, Р-15): план взноса (`monthly`), а без плана — среднее положительных
+ * движений за три последних месяца до `key` включительно (сумма / 3); движений нет — 0.
+ */
+export function goalPace(goal: { monthly: number; movements?: { date: string; amount: number }[] }, key: string): number {
+  if (goal.monthly > 0) return goal.monthly
+  const from = addMonths(key, -2)
+  const sum = (goal.movements ?? [])
+    .filter((m) => m.amount > 0 && movementMonth(m.date) >= from && movementMonth(m.date) <= key)
+    .reduce((a, m) => a + m.amount, 0)
+  return sum > 0 ? Math.round(sum / 3) : 0
+}
+
+/** На сколько дней взнос `amount` приблизил мечту при темпе `pace` в месяц (30,4 дня): целые дни; нет взноса или темпа — null. */
+export function closerDays(amount: number, pace: number): number | null {
+  if (amount <= 0 || pace <= 0) return null
+  return Math.round((amount / pace) * 30.4)
+}
+
+/** «Ближе на N дней» под героем «Мечт»: все положительные движения месяца `key` при темпе цели; null — нечего сказать. */
+export function closerThisMonth(goal: { monthly: number; movements?: { date: string; amount: number }[] }, key: string): number | null {
+  const put = (goal.movements ?? []).filter((m) => m.amount > 0 && movementMonth(m.date) === key).reduce((a, m) => a + m.amount, 0)
+  return closerDays(put, goalPace(goal, key))
+}
+
 /** Сколько месяцев от `from` до `to` («2026-09» → «2027-05» = 8); отрицательное — 0. */
 export function monthsBetween(from: string, to: string): number {
   const a = parseMonthKey(from)

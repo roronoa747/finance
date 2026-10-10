@@ -7,7 +7,8 @@ import { apiClient } from '@/api/client'
 import { money, pct } from '@/lib/money'
 import { HUES } from '@/lib/palette'
 import { OPERATIONS_STORAGE_KEYS, writeStorage } from '@/lib/storage'
-import type { SyncDoc, WishItem } from '@/types/finance'
+import { closerThisMonth } from '@/lib/finance'
+import type { Goal, SyncDoc, WishItem } from '@/types/finance'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
 import { renderScreen } from '@/test/screenState'
@@ -104,6 +105,39 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
     // Ни одной брендовой кнопки: «+ Новая» и «Все N» — ссылки, желания — строки целиком.
     expect(brandButtons(html)).toEqual([])
     for (const w of WEEKLY) expect(html).not.toContain(w)
+  })
+
+  it('PN-09: взнос этого месяца у героя — «Машина · ближе на N дней» под процентом (viewer тоже); без взносов строки нет; на паузе — «на паузе»', async () => {
+    const movement = { id: 'm1', date: '2026-09-15T07:00:00.000Z', amount: 100_000, by: 'a' as const }
+    const withMove = (extra: Partial<Goal> = {}): Partial<SyncDoc> => ({
+      goals: planFamilyDoc().goals.map((g) => (g.id === 'car' ? { ...g, main: true, have: g.have + 100_000, movements: [movement], ...extra } : g)),
+    })
+    await family('member', 'a', withMove())
+    const html = await renderScreen(Dreams, '/')
+    // 100 000 при темпе 60 000 в месяц → 51 день; строка — под процентом, после названия.
+    const days = closerThisMonth({ monthly: 60_000, movements: [movement] }, '2026-09')
+    expect(days).toBe(51)
+    expect(html).toContain('data-hero-closer')
+    expect(html).toContain(`Машина${NBSP}· ближе${NBSP}на${NBSP}51${NBSP}день</span>`)
+    for (const w of WEEKLY) expect(html).not.toContain(w)
+
+    setActivePinia(createPinia())
+    await family('viewer', 'b', withMove())
+    expect(await renderScreen(Dreams, '/')).toContain(`ближе${NBSP}на${NBSP}51${NBSP}день`)
+
+    setActivePinia(createPinia())
+    await family('member', 'a', withMain())
+    const plain = await renderScreen(Dreams, '/')
+    expect(plain).not.toContain('data-hero-closer')
+    expect(plain).not.toContain('ближе')
+
+    // Единственная цель на паузе — герой она же: «на паузе», без «ближе».
+    setActivePinia(createPinia())
+    await family('member', 'a', { goals: withMove({ pausedAt: T0 }).goals!.filter((g) => g.id === 'car') })
+    const paused = await renderScreen(Dreams, '/')
+    expect(paused).not.toContain('data-hero-closer')
+    expect(paused).not.toContain('ближе')
+    expect(paused).toContain(`на${NBSP}паузе`)
   })
 
   it('строки «Свободно · до зарплаты» на «Мечтах» нет и при выписке месяца (числа — в подсказке «Месяца», B2C-108)', async () => {

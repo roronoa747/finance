@@ -15,7 +15,7 @@ import { useOperationsStore } from '@/stores/operations'
 import { spendTotals, unknownGroups } from '@/lib/statements/model'
 import type { SpendTotal } from '@/lib/statements/types'
 import { monthKey, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
-import { amountTotal, capitalGoals, capitalStats, liveAccounts, liveCredits, liveGoals, myWeek, netWorth, openDebt, spendRows } from '@/lib/finance'
+import { amountTotal, capitalGoals, capitalStats, closerThisMonth, liveAccounts, liveCredits, liveGoals, myWeek, netWorth, openDebt, spendRows } from '@/lib/finance'
 import { money, plain } from '@/lib/money'
 import { useAuthStore } from '@/stores/auth'
 import { demoPhotoUrl, photoUrl } from '@/lib/photos/store'
@@ -200,6 +200,16 @@ describe('B2C-110 (Р-118): демо — фото из приложения, л�
     }
     // Цель из шаблона — с автором фото (Р-28), как заведённая из шаблона.
     expect(doc.goals.find((g) => g.id === 'g-trip')?.photoCredit?.author).toBe('Roméo A.')
+    // Блок 3 «понятность» (PN-11): «Новый диван» — новая тема «Мебель» (PN-07), картинка — демо-файл; у героя — взнос этого
+    // месяца 50 000 при 100 000 в месяц → под героем «ближе на 15 дней» (PN-09); накопленное прежнее.
+    expect(doc.goals.find((g) => g.id === 'g-sofa')).toMatchObject({ template: 'furniture', photoId: 'demo:sofa' })
+    const trip = doc.goals.find((g) => g.id === 'g-trip')!
+    expect(trip.have).toBe(600_000)
+    expect(trip.movements.filter((m) => m.date.startsWith(monthKey())).map((m) => m.amount)).toEqual([50_000])
+    expect(closerThisMonth(trip, monthKey())).toBe(15)
+    const hero = await renderScreen(Dreams, '/')
+    expect(hero).toContain('data-hero-closer')
+    expect(text(hero)).toMatch(/Поездка в Японию\s·\sближе\sна\s15\sдней/)
 
     const auth = useAuthStore()
     const all = JSON.stringify({ doc, user: auth.user, household: auth.household, member: auth.member })

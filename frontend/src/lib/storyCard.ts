@@ -7,7 +7,10 @@ import { plural } from '@/lib/utils'
  * Композиция и тексты — чистые функции (тесты в Node без canvas), рисование — в браузере.
  */
 export const STORY_SIZE = { width: 1080, height: 1920 } as const
-export type StoryKind = 'goal' | 'leaks'
+/** Обои экрана блокировки (PN-10, Р-15): iPhone 19,5:9 — на других телефонах масштабируется системой. */
+export const WALLPAPER_SIZE = { width: 1170, height: 2532 } as const
+export type StoryKind = 'goal' | 'leaks' | 'wallpaper'
+export const storySize = (kind: StoryKind): { width: number; height: number } => (kind === 'wallpaper' ? WALLPAPER_SIZE : STORY_SIZE)
 export type StoryData = {
   /** Мечта: процент собранного, имя, «в мае 2027». */
   percent?: number
@@ -56,7 +59,9 @@ export function storyText(kind: StoryKind, data: StoryData): StoryTexts {
   const percent = clamp(Math.round(data.percent ?? 0), 0, 100)
   const name = withoutMoney(data.goalName ?? '') || 'Мечта'
   const line = withoutMoney(data.doneMonth ? `${name} · будет нашей в ${data.doneMonth}` : name)
-  return { kind, app: APP, label: 'До мечты', big: `${percent} %`, line, percent }
+  // Обои (PN-10): те же процент и строка, подписей сверху нет — верх экрана блокировки занят часами.
+  const top = kind === 'wallpaper' ? { app: '', label: '' } : { app: APP, label: 'До мечты' }
+  return { kind, ...top, big: `${percent} %`, line, percent }
 }
 
 export type StoryLayout = {
@@ -64,32 +69,41 @@ export type StoryLayout = {
   height: number
   margin: number
   gradient: { from: number; to: number; color: string }
-  app: { x: number; y: number; font: string; alpha: number }
-  label: { x: number; y: number; font: string; alpha: number }
+  /** Имя приложения сверху; у обоев — null (верх — часам). */
+  app: { x: number; y: number; font: string; alpha: number } | null
+  /** «До мечты» над процентом; у обоев — null. */
+  label: { x: number; y: number; font: string; alpha: number } | null
   big: { x: number; y: number; font: string; size: number; lineHeight: number }
   line: { x: number; y: number; font: string; size: number; maxWidth: number }
   bar: { x: number; y: number; width: number; height: number; radius: number } | null
 }
 
-/** Координаты слоёв по DESIGN.md §7 (в масштабе от 1080 × 1920); `y` — базовая линия текста. */
-export function layoutStory(kind: StoryKind = 'goal', size: { width: number; height: number } = STORY_SIZE): StoryLayout {
+/**
+ * Координаты слоёв по DESIGN.md §7 (в масштабе от 1080 × 1920); `y` — базовая линия текста. Обои (PN-10): фото во
+ * весь кадр, затемнение снизу от половины высоты, процент и имя — в нижней трети над нижним полем (кнопки iOS снизу),
+ * без подписей сверху.
+ */
+export function layoutStory(kind: StoryKind = 'goal', size: { width: number; height: number } = storySize(kind)): StoryLayout {
   const { width: w, height: h } = size
   const k = w / STORY_SIZE.width
   const m = 96 * k
   const barH = 12 * k
-  const bar = kind === 'goal' ? { x: m, y: h - m - barH, width: w - 2 * m, height: barH, radius: 6 * k } : null
+  const wallpaper = kind === 'wallpaper'
+  // У обоев нижнее поле больше: фонарик и камера экрана блокировки — в нижних 12 %.
+  const bottom = wallpaper ? Math.max(m, 0.12 * h) : m
+  const bar = kind === 'goal' || wallpaper ? { x: m, y: h - bottom - barH, width: w - 2 * m, height: barH, radius: 6 * k } : null
   const lineSize = 56 * k
   const lineY = (bar ? bar.y : h - m) - 40 * k
-  const bigSize = (kind === 'goal' ? 300 : 220) * k
+  const bigSize = (kind === 'leaks' ? 220 : 300) * k
   const bigY = lineY - lineSize - 32 * k
   const labelY = bigY - bigSize * 0.9 - 24 * k
   return {
     width: w,
     height: h,
     margin: m,
-    gradient: { from: 0.3 * h, to: h, color: 'rgba(24,18,14,0.82)' },
-    app: { x: m, y: m + 44 * k, font: `700 ${44 * k}px ${DISPLAY}`, alpha: 0.95 },
-    label: { x: m, y: labelY, font: `500 ${40 * k}px ${TEXT}`, alpha: 0.9 },
+    gradient: { from: (wallpaper ? 0.5 : 0.3) * h, to: h, color: 'rgba(24,18,14,0.82)' },
+    app: wallpaper ? null : { x: m, y: m + 44 * k, font: `700 ${44 * k}px ${DISPLAY}`, alpha: 0.95 },
+    label: wallpaper ? null : { x: m, y: labelY, font: `500 ${40 * k}px ${TEXT}`, alpha: 0.9 },
     big: { x: m, y: bigY, font: `700 ${bigSize}px ${NUM}`, size: bigSize, lineHeight: 0.9 },
     line: { x: m, y: lineY, font: lineFont(lineSize), size: lineSize, maxWidth: w - 2 * m },
     bar,
@@ -129,13 +143,17 @@ export function drawStory(ctx: StoryContext, image: StoryImage, texts: StoryText
   ctx.textBaseline = 'alphabetic'
   ctx.textAlign = 'left'
 
-  ctx.font = layout.app.font
-  ctx.fillStyle = `rgba(${ink},${layout.app.alpha})`
-  ctx.fillText(texts.app, layout.app.x, layout.app.y)
+  if (layout.app) {
+    ctx.font = layout.app.font
+    ctx.fillStyle = `rgba(${ink},${layout.app.alpha})`
+    ctx.fillText(texts.app, layout.app.x, layout.app.y)
+  }
 
-  ctx.font = layout.label.font
-  ctx.fillStyle = `rgba(${ink},${layout.label.alpha})`
-  ctx.fillText(texts.label, layout.label.x, layout.label.y)
+  if (layout.label) {
+    ctx.font = layout.label.font
+    ctx.fillStyle = `rgba(${ink},${layout.label.alpha})`
+    ctx.fillText(texts.label, layout.label.x, layout.label.y)
+  }
 
   ctx.font = layout.big.font
   ctx.fillStyle = `rgb(${ink})`
@@ -170,7 +188,7 @@ export function drawStory(ctx: StoryContext, image: StoryImage, texts: StoryText
 export async function loadStoryFonts(layout: StoryLayout): Promise<void> {
   const fonts = typeof document !== 'undefined' ? document.fonts : undefined
   if (!fonts?.load) return
-  await Promise.all([layout.app.font, layout.label.font, layout.big.font, layout.line.font].map((f) => fonts.load(f).catch(() => null)))
+  await Promise.all([layout.app?.font, layout.label?.font, layout.big.font, layout.line.font].flatMap((f) => (f ? [fonts.load(f).catch(() => null)] : [])))
 }
 
 /** Картинка по адресу (object URL или CDN с CORS) — для canvas; сбой — карточка без фото. */
@@ -184,9 +202,12 @@ export function loadStoryImage(src: string): Promise<StoryImage> {
   })
 }
 
-/** Рисует карточку в canvas и отдаёт PNG (DESIGN.md §7). */
-export async function renderStory(canvas: HTMLCanvasElement, opts: { image: StoryImage; texts: StoryTexts; layout?: StoryLayout }): Promise<Blob> {
-  const layout = opts.layout ?? layoutStory(opts.texts.kind)
+/** Рисует карточку в canvas и отдаёт PNG (DESIGN.md §7); размер — по `kind` (обои — `WALLPAPER_SIZE`) или `size`. */
+export async function renderStory(
+  canvas: HTMLCanvasElement,
+  opts: { image: StoryImage; texts: StoryTexts; layout?: StoryLayout; size?: { width: number; height: number } },
+): Promise<Blob> {
+  const layout = opts.layout ?? layoutStory(opts.texts.kind, opts.size)
   canvas.width = layout.width
   canvas.height = layout.height
   const ctx = canvas.getContext('2d')
@@ -199,6 +220,7 @@ export async function renderStory(canvas: HTMLCanvasElement, opts: { image: Stor
 }
 
 export const STORY_FILE = 'family-finance-story.png'
+export const WALLPAPER_FILE = 'family-finance-wallpaper.png'
 
 type ShareNavigator = { canShare?: (data: ShareData) => boolean; share?: (data: ShareData) => Promise<void> }
 

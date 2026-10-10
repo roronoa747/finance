@@ -1,19 +1,23 @@
 <script setup lang="ts">
-import { PhCamera } from '@phosphor-icons/vue'
+import { computed } from 'vue'
+import { PhCamera, PhLink } from '@phosphor-icons/vue'
 
 /**
- * Плитка шаблона цели (DESIGN.md §5): пять типов с фото и «Своё фото» (`camera`); выбранная —
- * обводка `--brand` 3 px внутрь. Фото шаблона — `templateImageUrl` (B2C-17), не встроено.
+ * Плитка шаблона цели (DESIGN.md §5): типы с фото, «Своё фото» (`camera`) и «По ссылке» (`link`, PN-08) —
+ * пунктирные плитки со значком; выбранная — обводка `--brand` 3 px внутрь. Фото шаблона — `templateImageUrl`
+ * (B2C-17), не встроено.
  */
-withDefaults(
+const props = withDefaults(
   defineProps<{
     name: string
     src?: string | null
     selected?: boolean
     camera?: boolean
+    link?: boolean
   }>(),
-  { src: null, selected: false, camera: false },
+  { src: null, selected: false, camera: false, link: false },
 )
+const dashed = computed(() => props.camera || props.link)
 
 const emit = defineEmits<{ (e: 'click'): void }>()
 </script>
@@ -24,7 +28,7 @@ const emit = defineEmits<{ (e: 'click'): void }>()
     :aria-pressed="selected"
     class="relative isolate flex h-[150px] min-w-0 flex-1 flex-col overflow-hidden rounded-tile p-3 text-left press cursor-pointer"
     :class="[
-      camera
+      dashed
         ? 'items-center justify-center gap-1.5 border border-dashed border-line-strong bg-surface text-center text-ink-2'
         : src
           ? 'justify-end text-on-photo'
@@ -33,8 +37,9 @@ const emit = defineEmits<{ (e: 'click'): void }>()
     ]"
     @click="emit('click')"
   >
-    <template v-if="camera">
-      <PhCamera :size="22" />
+    <template v-if="dashed">
+      <PhLink v-if="link" :size="22" />
+      <PhCamera v-else :size="22" />
       <span class="text-[13px]">{{ name }}</span>
     </template>
     <template v-else>

@@ -10,7 +10,8 @@ import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
 import { apiClient } from '@/api/client'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
-import { monthPlan, monthPlanPast, planPuts, untilPayday, type MonthPlanCtx } from '@/lib/finance'
+import { closerDays, goalPace, monthPlan, monthPlanPast, pendingPuts, planPuts, untilPayday, type MonthPlanCtx } from '@/lib/finance'
+import { plural } from '@/lib/utils'
 import type { SpendTotal } from '@/lib/statements/types'
 import { monthKey } from '@/lib/dates'
 import { money, plain } from '@/lib/money'
@@ -336,6 +337,47 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(finance.planCall()).toBeNull()
     // План считает от начала месяца — суммы строк прежние.
     expect(planOf(finance).queue.map((x) => x.given)).toEqual(plan.queue.map((x) => x.given))
+  })
+
+  it('PN-09: «Отложил всё» — один тост «{первая цель} ближе на N дней · и ещё M целей» (фонд не считается); «Отложил» у одной — без «и ещё»', async () => {
+    // «Подушка» — фонд (Р-82), машина просит 60 000 — остатка хватает всем троим: ждут две цели и фонд.
+    const doc = familyDoc()
+    doc.goals = doc.goals.map((g) => (g.id === 'cushion' ? { ...g, fund: 'cushion' as const } : g.id === 'car' ? { ...g, monthly: 60_000 } : g))
+    const finance = await open('member', doc)
+    const goalsOf = () => pendingPuts(putsOf(finance)).filter((p) => p.kind === 'goal' && p.left > 0)
+    const daysOf = (p: { goalId: string | null; left: number }) => closerDays(p.left, goalPace(finance.goals.find((g) => g.id === p.goalId)!, KEY))!
+    const all0 = goalsOf()
+    expect(all0.map((p) => p.name)).toEqual(['Отпуск', 'Машина'])
+    expect(pendingPuts(putsOf(finance)).map((p) => p.kind)).toEqual(['goal', 'goal', 'fund'])
+    const d = daysOf(all0[0])
+    await press(section('queue'))
+    await press(q('[data-put-all]'))
+    expect(txt(q('[data-closer]'))).toBe(`Отпуск ближе на ${d} ${plural(d, 'день', 'дня', 'дней')} · и ещё 1 цель`)
+
+    // Одна цель: лист «Отложил» → тост без «и ещё».
+    app?.unmount()
+    document.body.innerHTML = ''
+    const finance2 = await open()
+    const trip = pendingPuts(putsOf(finance2)).find((p) => p.id === 'trip')!
+    const d2 = closerDays(trip.left, goalPace(finance2.goals.find((g) => g.id === 'trip')!, KEY))!
+    await press(section('queue'))
+    await press(q('[data-queue="trip"]'))
+    await press(dialogButton('Отложил'))
+    expect(txt(q('[data-closer]'))).toBe(`Отпуск ближе на ${d2} ${plural(d2, 'день', 'дня', 'дней')}`)
+  })
+
+  it('PN-09: ни одной цели с темпом (только фонд ждёт «Отложил») — тоста нет', async () => {
+    const doc = familyDoc()
+    // Отпуск и машина выключены — ждёт только «Подушка» (фонд): у подушки «дней» нет.
+    doc.goals = doc.goals.map((g) => (g.id === 'cushion' ? { ...g, fund: 'cushion' as const } : { ...g, pausedAt: T0 }))
+    const finance = await open('member', doc)
+    const pending = pendingPuts(putsOf(finance))
+    expect(pending.length).toBeGreaterThan(0)
+    expect(pending.every((p) => p.kind !== 'goal')).toBe(true)
+    await press(section('queue'))
+    await press(q('[data-put-all]'))
+    expect(q('[data-closer]')).toBeNull()
+    expect(all('[data-put-done]')).toHaveLength(pending.length)
   })
 
   it('«Отложил» у одной цели и «Не отложено»: взнос остатком до плана, запись — надгробие после снятия; второй раз не кладётся', async () => {

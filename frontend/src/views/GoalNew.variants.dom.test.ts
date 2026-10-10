@@ -10,10 +10,17 @@ import { authAs, planFamilyDoc } from '@/test/planFamily'
 import { templateById, themePhotos } from '@/lib/goalTemplates'
 import GoalNew from './GoalNew.vue'
 
-// Загрузка фото шаблона — без сети: цель уже записана с template, фото догружается потом.
+import { apiClient } from '@/api/client'
+
+// Загрузка фото шаблона — без сети: цель уже записана с template, фото догружается потом; своё фото (и по ссылке) — заглушка.
+const attached = vi.hoisted(() => ({ files: [] as [string, Blob][] }))
 vi.mock('@/lib/photos/goalPhoto', async (orig) => ({
   ...(await orig<typeof import('@/lib/photos/goalPhoto')>()),
   attachTemplate: vi.fn(async () => 'deferred'),
+  attachFile: vi.fn(async (_store: unknown, id: string, file: Blob) => {
+    attached.files.push([id, file])
+    return true
+  }),
 }))
 
 /** B2C-64-а: несколько фото на тему — ряд вариантов под сеткой; выбранный вариант уходит в цель вместе с автором. */
@@ -23,6 +30,9 @@ afterEach(() => {
   app?.unmount()
   app = null
   document.body.innerHTML = ''
+  attached.files = []
+  vi.restoreAllMocks()
+  vi.useRealTimers()
 })
 
 async function open() {
@@ -84,5 +94,71 @@ describe('B2C-64-а: фото-варианты темы в «Новой цели
     const goal = finance.goals.find((g) => g.name === 'Ремонт')!
     expect(goal.template).toBe('renovation-3')
     expect(goal.hue).toBe(tpl.hue)
+  })
+})
+
+describe('PN-08: «По ссылке» в «Новой мечте»', () => {
+  it('плитка раскрывает поле; ссылка → шаг «form» с названием со страницы; цель без шаблона, картинка — своим фото', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(apiClient, 'linkPreview').mockResolvedValue({ title: 'Угловой диван Askona', blob: new Blob(['jpeg'], { type: 'image/jpeg' }) })
+    const finance = await open()
+    // Тема выбрана, потом ссылка: ссылка побеждает — шаблона у цели нет.
+    button('Мебель').click()
+    await nextTick()
+    const tile = document.querySelector('[data-link-tile]') as HTMLButtonElement
+    expect(tile).not.toBeNull()
+    expect(document.querySelector('[data-link-photo]')).toBeNull()
+    tile.click()
+    await nextTick()
+    const link = document.querySelector('input[placeholder="Вставьте ссылку"]') as HTMLInputElement
+    link.value = 'https://kaspi.kz/shop/p/sofa-askona/'
+    link.dispatchEvent(new Event('input'))
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(300)
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    await nextTick()
+
+    const name = document.querySelector('input[placeholder="Япония"]') as HTMLInputElement
+    expect(name, 'шаг «form»').not.toBeNull()
+    expect(name.value).toBe('Угловой диван Askona')
+    const need = document.querySelector('input[placeholder="1 800 000"]') as HTMLInputElement
+    need.value = '450 000'
+    need.dispatchEvent(new Event('input'))
+    await nextTick()
+    // Создание ждёт переход роутера — настоящие таймеры и короткое ожидание.
+    vi.useRealTimers()
+    button('Готово — к мечте').click()
+    for (let i = 0; i < 40 && !attached.files.length; i++) await new Promise((r) => setTimeout(r, 50))
+    await nextTick()
+    const goal = finance.goals.find((g) => g.name === 'Угловой диван Askona')!
+    expect(goal).toBeDefined()
+    // `addGoal` при `template: null` ключ не пишет; `null` ставит `attachFile` (здесь — заглушка).
+    expect(goal.template).toBeFalsy()
+    expect(goal.hue).toBe('blue')
+    expect(goal.need).toBe(450_000)
+    expect(attached.files).toHaveLength(1)
+    expect(attached.files[0][0]).toBe(goal.id)
+    expect(attached.files[0][1]).toBeInstanceOf(File)
+  })
+
+  it('/ux: ссылка → форма → «Назад» — поле ссылки свёрнуто (не берёт фокус с клавиатурой)', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(apiClient, 'linkPreview').mockResolvedValue({ title: 'Диван', blob: new Blob(['jpeg'], { type: 'image/jpeg' }) })
+    await open()
+    ;(document.querySelector('[data-link-tile]') as HTMLButtonElement).click()
+    await nextTick()
+    const link = document.querySelector('input[placeholder="Вставьте ссылку"]') as HTMLInputElement
+    link.value = 'https://kaspi.kz/shop/p/sofa/'
+    link.dispatchEvent(new Event('input'))
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(300)
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    await nextTick()
+    expect(document.querySelector('input[placeholder="Япония"]'), 'шаг «form»').not.toBeNull()
+    button('Назад').click()
+    await nextTick()
+    expect(document.querySelector('[data-link-tile]'), 'шаг «pick»').not.toBeNull()
+    expect(document.querySelector('[data-link-photo]')).toBeNull()
+    expect(document.querySelector('[data-link-tile]')!.getAttribute('aria-pressed')).toBe('false')
   })
 })

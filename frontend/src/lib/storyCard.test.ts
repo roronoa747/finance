@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { STORY_SIZE, drawStory, layoutStory, lineFont, storyText, withoutMoney, type StoryContext } from './storyCard'
+import { STORY_SIZE, WALLPAPER_SIZE, drawStory, layoutStory, lineFont, storySize, storyText, withoutMoney, type StoryContext } from './storyCard'
 
 // Светлые токены — из style.css (ревью Блока 3 Н-14): смена токена не разъедется с карточкой молча.
 // CSS в Vitest приходит пустым — читается через node:fs, как в `style.tokens.test.ts`.
@@ -63,17 +63,17 @@ describe('storyCard — композиция', () => {
     const l = layoutStory('goal')
     expect(l).toMatchObject({ width: 1080, height: 1920, margin: 96 })
     expect(l.app).toMatchObject({ x: 96, y: 140, font: `700 44px ${DISPLAY}`, alpha: 0.95 })
-    expect(l.label.font).toBe(`500 40px ${TEXT}`)
+    expect(l.label!.font).toBe(`500 40px ${TEXT}`)
     expect(l.big).toMatchObject({ font: `700 300px ${NUM}`, size: 300, lineHeight: 0.9 })
     expect(l.line).toMatchObject({ font: lineFont(56), maxWidth: 888 })
-    for (const font of [l.app.font, l.label.font, l.big.font, l.line.font]) expect(font).not.toMatch(/Piazzolla|Golos/)
+    for (const font of [l.app!.font, l.label!.font, l.big.font, l.line.font]) expect(font).not.toMatch(/Piazzolla|Golos/)
     expect(l.bar).toEqual({ x: 96, y: 1812, width: 888, height: 12, radius: 6 })
     expect(l.gradient).toMatchObject({ from: 576, to: 1920, color: 'rgba(24,18,14,0.82)' })
     // Снизу вверх: полоса → строка → процент → подпись, всё выше нижнего поля.
     expect(l.line.y).toBeLessThan(l.bar!.y)
     expect(l.big.y).toBeLessThan(l.line.y)
-    expect(l.label.y).toBeLessThan(l.big.y)
-    expect(l.label.y).toBeGreaterThan(l.app.y)
+    expect(l.label!.y).toBeLessThan(l.big.y)
+    expect(l.label!.y).toBeGreaterThan(l.app!.y)
   })
 
   it('утечки: число 220 px и без полосы; половинный размер — всё в масштабе', () => {
@@ -140,5 +140,45 @@ describe('storyCard — композиция', () => {
     drawStory(leaks.ctx, null, storyText('leaks', { count: 3 }))
     expect(leaks.calls.filter((c) => c.fn === 'fillText').map((c) => c.args[0])).toEqual(['Family Finance', 'За месяц', '−3', 'подписки, без которых можно'])
     expect(leaks.calls.some((c) => c.fn === 'roundRect')).toBe(false)
+  })
+
+  /** PN-10 (Р-15): обои экрана блокировки — 1170 × 2532, тексты в нижней трети, без подписей сверху, сумм нет. */
+  it('обои: storyText без сумм и без подписей сверху; layoutStory 1170 × 2532 — текст ниже 60 % высоты, app/label нет, затемнение с половины', () => {
+    const t = storyText('wallpaper', { percent: 62.4, goalName: 'Япония 1 800 000 ₸', doneMonth: 'мае 2027' })
+    expect(t).toEqual({ kind: 'wallpaper', app: '', label: '', big: '62 %', line: 'Япония · будет нашей в мае 2027', percent: 62 })
+    for (const s of [t.big, t.line]) expect(s).not.toMatch(/₸|\d{1,3}(?:[\s ]\d{3})+/)
+    expect(storyText('wallpaper', { percent: 100, goalName: 'Дом 45 млн' })).toMatchObject({ big: '100 %', line: 'Дом' })
+
+    expect(WALLPAPER_SIZE).toEqual({ width: 1170, height: 2532 })
+    expect(storySize('wallpaper')).toEqual(WALLPAPER_SIZE)
+    expect(storySize('goal')).toEqual(STORY_SIZE)
+    const l = layoutStory('wallpaper')
+    expect(l).toMatchObject({ width: 1170, height: 2532, app: null, label: null })
+    const h = l.height
+    // Верх крупной цифры — ниже 60 % высоты: верхняя треть — часам.
+    expect(l.big.y - l.big.size * 0.9).toBeGreaterThan(0.6 * h)
+    expect(l.line.y).toBeGreaterThan(l.big.y)
+    expect(l.bar).not.toBeNull()
+    expect(l.bar!.y).toBeGreaterThan(l.line.y)
+    // Нижнее поле — 12 % высоты (кнопки экрана блокировки), полоса выше него.
+    expect(l.bar!.y + l.bar!.height).toBeLessThanOrEqual(h - 0.12 * h)
+    expect(l.gradient).toMatchObject({ from: 0.5 * h, to: h })
+    expect(l.big.font).toBe(`700 ${300 * (1170 / 1080)}px ${NUM}`)
+    // Сторис и утечки — как были: подписи сверху на месте.
+    expect(layoutStory('goal').app).not.toBeNull()
+    expect(layoutStory('leaks').label).not.toBeNull()
+  })
+
+  it('обои рисуются без имени приложения и «До мечты»: только процент и строка; полоса на процент', () => {
+    const { ctx, calls } = recorder()
+    const texts = storyText('wallpaper', { percent: 62, goalName: 'Япония', doneMonth: 'мае 2027' })
+    drawStory(ctx, { width: 1200, height: 800, source: {} as CanvasImageSource }, texts)
+    const draw = calls.find((c) => c.fn === 'drawImage')!
+    // 1200 × 800 в 1170 × 2532: масштаб 3,165 — cover по высоте, по центру.
+    expect(draw.args[4]).toBe(2532)
+    expect(calls.filter((c) => c.fn === 'fillText').map((c) => c.args[0])).toEqual(['62 %', 'Япония · будет нашей в мае 2027'])
+    const bars = calls.filter((c) => c.fn === 'roundRect').map((c) => c.args)
+    expect(bars).toHaveLength(2)
+    expect(bars[1][2]).toBeCloseTo((bars[0][2] as number) * 0.62, 5)
   })
 })
