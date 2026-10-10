@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { PhDownloadSimple, PhShareNetwork } from '@phosphor-icons/vue'
-import { loadStoryImage, renderStory, shareStory, storyText, type StoryData, type StoryKind, type StoryTexts } from '@/lib/storyCard'
+import { WALLPAPER_FILE, loadStoryImage, renderStory, shareStory, storyText, withoutMoney, type StoryData, type StoryKind, type StoryTexts } from '@/lib/storyCard'
 import Button from '@/components/ui/Button.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -10,6 +10,9 @@ import Sheet from '@/components/kit/Sheet.vue'
  * Предпросмотр карточки для сторис и «Поделиться» / «Сохранить» (Р-10, B2C-20). Рисуется
  * при открытии в canvas 1080 × 1920 (показан в масштабе), сумм на карточке нет —
  * `storyText`. Viewer тоже может поделиться: карточка ничего не меняет.
+ * «Сохранить как обои» (PN-10, Р-15, только у мечты): тихая кнопка — вариант `wallpaper` 1170 × 2532 рисуется
+ * в отдельном canvas без предпросмотра (одно нажатие) и уходит в системный лист или скачивается; на iOS обои
+ * ставятся руками из «Фото».
  */
 const props = defineProps<{
   open: boolean
@@ -70,6 +73,28 @@ async function save() {
   const r = await shareStory(blob.value, { title: shareTitle.value }, null)
   if (r !== 'cancelled') result.value = r
 }
+
+/* ---------- обои (PN-10) ---------- */
+const wallpaperBusy = ref(false)
+const wallpaperNote = ref<string | null>(null)
+async function wallpaper() {
+  if (wallpaperBusy.value) return
+  wallpaperBusy.value = true
+  wallpaperNote.value = null
+  error.value = null
+  try {
+    const image = props.src ? await loadStoryImage(props.src) : null
+    const png = await renderStory(document.createElement('canvas'), { image, texts: storyText('wallpaper', props.data) })
+    const name = withoutMoney(props.data.goalName ?? '') || 'Мечта'
+    const r = await shareStory(png, { title: `Обои · ${name}`, fileName: WALLPAPER_FILE })
+    if (r === 'shared') wallpaperNote.value = 'Сохранено — поставьте на экран блокировки из «Фото»'
+    else if (r === 'downloaded') wallpaperNote.value = 'Сохранено в загрузки'
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    wallpaperBusy.value = false
+  }
+}
 </script>
 
 <template>
@@ -85,6 +110,9 @@ async function save() {
         <Button :variant="canShare ? 'secondary' : 'default'" class="flex-1" :disabled="busy || !blob" @click="save"><PhDownloadSimple :size="16" /> Сохранить</Button>
       </div>
       <p v-if="result" class="text-[12.5px] text-ink-2" aria-live="polite">{{ result === 'shared' ? 'Отправлено' : 'Сохранено в загрузки' }}</p>
+      <!-- Обои — тихо, под главными кнопками; без предпросмотра (одно нажатие). -->
+      <Button v-if="kind === 'goal'" variant="ghost" size="md" class="w-full" :disabled="busy || wallpaperBusy" data-story-wallpaper @click="wallpaper">Сохранить как обои</Button>
+      <p v-if="wallpaperNote" class="text-center text-[12.5px] text-ink-2" aria-live="polite" data-story-wallpaper-note>{{ wallpaperNote }}</p>
     </div>
   </Sheet>
 </template>

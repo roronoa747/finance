@@ -98,6 +98,39 @@ describe('StorySheet', () => {
     expect(text()).toContain('Отправлено')
   })
 
+  it('PN-10: «Сохранить как обои» — у мечты, не у утечек; нажатие рисует вариант wallpaper в своём canvas и шлёт файл обоев', async () => {
+    const share = vi.fn<(d: ShareData) => Promise<void>>(async () => {})
+    Object.assign(navigator, { share, canShare: () => true })
+    const state = reactive({ open: true })
+    await mount(state)
+    const { renderStory } = await import('@/lib/storyCard')
+    const render = renderStory as unknown as ReturnType<typeof vi.fn>
+    const previewCanvas = document.querySelector('canvas')!
+    const wallpaper = document.querySelector('[data-story-wallpaper]') as HTMLButtonElement
+    expect(wallpaper).toBeTruthy()
+    expect(wallpaper.textContent?.trim()).toBe('Сохранить как обои')
+    expect(wallpaper.disabled).toBe(false)
+    const before = render.mock.calls.length
+    wallpaper.click()
+    await flush()
+    await nextTick()
+    await flush()
+    expect(render.mock.calls.length).toBe(before + 1)
+    const [canvas, opts] = render.mock.calls.at(-1)! as [HTMLCanvasElement, { texts: { kind: string; app: string; big: string; line: string } }]
+    expect(canvas).not.toBe(previewCanvas)
+    expect(opts.texts).toMatchObject({ kind: 'wallpaper', app: '', big: '62 %', line: 'Япония · будет нашей в мае 2027' })
+    expect(share).toHaveBeenCalledTimes(1)
+    const data = share.mock.calls[0][0]
+    expect(data.title).toBe('Обои · Япония')
+    expect(data.files?.[0].name).toBe('family-finance-wallpaper.png')
+    expect(document.querySelector('[data-story-wallpaper-note]')?.textContent).toContain('поставьте на экран блокировки')
+
+    app?.unmount()
+    document.body.innerHTML = ''
+    await mount(reactive({ open: true }), 'leaks')
+    expect(document.querySelector('[data-story-wallpaper]')).toBeNull()
+  })
+
   it('без navigator.share — только «Сохранить»; утечки — «Карточка месяца»', async () => {
     const nav = navigator as unknown as Record<string, unknown>
     delete nav.share
