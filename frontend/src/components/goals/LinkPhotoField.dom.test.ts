@@ -109,4 +109,19 @@ describe('PN-08: LinkPhotoField — фото цели по ссылке', () => 
     expect(found).toHaveLength(0)
     expect(note()).toBe(LINK_PHOTO_NEEDS_NET)
   })
+
+  it('офлайн (navigator.onLine false) — та же строка «при сети» без запроса; сеть вернулась — следующая ссылка идёт в ручку (критик Б3)', async () => {
+    const preview = vi.spyOn(apiClient, 'linkPreview').mockResolvedValue({ title: 'Диван', blob: new Blob(['jpeg'], { type: 'image/jpeg' }) })
+    const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    mount()
+    await paste('https://shop.kz/p/4')
+    expect(preview).not.toHaveBeenCalled()
+    expect(note()).toBe(LINK_PHOTO_NEEDS_NET)
+
+    online.mockReturnValue(true)
+    await paste('https://shop.kz/p/5')
+    expect(preview).toHaveBeenCalledWith('https://shop.kz/p/5')
+    expect(found).toHaveLength(1)
+    expect(note()).toBeNull()
+  })
 })
