@@ -117,7 +117,9 @@ function savePuts(list: PlanPut[]) {
   finance.putPlan(planPutSaves(plan.value, list), { by: me.value, note: 'по плану месяца' })
   if (!closer.length) return
   const [first] = closer
-  flashCloser(`${first.name} ближе на ${first.days} ${plural(first.days, 'день', 'дня', 'дней')}${closer.length > 1 ? ` · и ещё ${closer.length - 1}` : ''}`)
+  // «и ещё 2 цели», а не «и ещё 2» — без слова новичок не понимает, чего ещё (`/ux` Блока 3).
+  const more = closer.length - 1
+  flashCloser(`${first.name} ближе на ${first.days} ${plural(first.days, 'день', 'дня', 'дней')}${more > 0 ? ` · и ещё ${more} ${plural(more, 'цель', 'цели', 'целей')}` : ''}`)
 }
 function onFreed() {
   const f = extras.value.freed

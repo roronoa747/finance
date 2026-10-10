@@ -339,7 +339,7 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(planOf(finance).queue.map((x) => x.given)).toEqual(plan.queue.map((x) => x.given))
   })
 
-  it('PN-09: «Отложил всё» — один тост «{первая цель} ближе на N дней · и ещё M» (фонд не считается); «Отложил» у одной — без «и ещё»', async () => {
+  it('PN-09: «Отложил всё» — один тост «{первая цель} ближе на N дней · и ещё M целей» (фонд не считается); «Отложил» у одной — без «и ещё»', async () => {
     // «Подушка» — фонд (Р-82), машина просит 60 000 — остатка хватает всем троим: ждут две цели и фонд.
     const doc = familyDoc()
     doc.goals = doc.goals.map((g) => (g.id === 'cushion' ? { ...g, fund: 'cushion' as const } : g.id === 'car' ? { ...g, monthly: 60_000 } : g))
@@ -352,7 +352,7 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     const d = daysOf(all0[0])
     await press(section('queue'))
     await press(q('[data-put-all]'))
-    expect(txt(q('[data-closer]'))).toBe(`Отпуск ближе на ${d} ${plural(d, 'день', 'дня', 'дней')} · и ещё 1`)
+    expect(txt(q('[data-closer]'))).toBe(`Отпуск ближе на ${d} ${plural(d, 'день', 'дня', 'дней')} · и ещё 1 цель`)
 
     // Одна цель: лист «Отложил» → тост без «и ещё».
     app?.unmount()
