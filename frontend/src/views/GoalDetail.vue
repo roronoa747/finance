@@ -73,7 +73,7 @@ const authStore = useAuthStore()
 const goalId = computed(() => route.params.id as string)
 // Удалил партнёр — «Цель не найдена», как окно правки (`GoalSheet`): пополнение ушло бы в
 // надгробие, а счёт списался бы.
-const goal = computed(() => liveGoals(financeStore.goals).find((g) => g.id === goalId.value))
+const goal = computed(() => liveGoals(financeStore.goals).find((g) => g.id === goalId.value)) // Сбылось (PN-13): все живые — сбывшаяся открывается
 const people = computed(() => financeStore.people)
 const canEdit = computed(() => !authStore.isViewer)
 const isMain = computed(() => financeStore.heroGoal?.id === goalId.value)

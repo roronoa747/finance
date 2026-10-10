@@ -77,7 +77,7 @@ const header = computed<{ title: string; sub?: string }>(() => {
   if (p === '/goals/new') return { title: 'Новая мечта' }
   if (p.startsWith('/goals/')) {
     // Имя цели заголовком (g4 «Экран цели»), без «мечта · имена» (Р-116).
-    const goal = liveGoals(financeStore.goals).find((g) => g.id === route.params.id)
+    const goal = liveGoals(financeStore.goals).find((g) => g.id === route.params.id) // Сбылось (PN-13): все живые — заголовок и у сбывшейся
     return { title: goal?.name ?? 'Цель' }
   }
   if (p === '/wishes' || p.startsWith('/people/')) return { title: 'Желания' }

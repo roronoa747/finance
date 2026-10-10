@@ -6,7 +6,7 @@ import { useOperationsStore } from '@/stores/operations'
 import { useFinanceStore } from '@/stores/finance'
 import { money, plain } from '@/lib/money'
 import { monthKey } from '@/lib/dates'
-import { amountTotal, capitalGoals, capitalStats, liveAccounts, liveCredits, liveGoals, netWorth, openDebt } from '@/lib/finance'
+import { amountTotal, capitalGoals, capitalStats, liveAccounts, liveCredits, openGoals, netWorth, openDebt } from '@/lib/finance'
 import Card from '@/components/kit/Card.vue'
 import MoneySquares from '@/components/money/MoneySquares.vue'
 import DebtsWidget from '@/components/money/DebtsWidget.vue'
@@ -30,7 +30,7 @@ const ops = useOperationsStore()
 const finance = useFinanceStore()
 
 const square = computed(() => (route.params.square === 'debts' || route.params.square === 'history' ? route.params.square : 'capital'))
-const worth = computed(() => netWorth(liveAccounts(finance.accounts), liveCredits(finance.credits), liveGoals(finance.goals)))
+const worth = computed(() => netWorth(liveAccounts(finance.accounts), liveCredits(finance.credits), openGoals(finance.goals))) // Сбылось (PN-13): деньги сбывшейся ушли покупкой — не в капитале
 // Формула под суммой: «Счета» (счета и цели вне счетов, Р-109) и долги — те же функции, что у списков «Капитала».
 const assets = computed(() => amountTotal(liveAccounts(finance.accounts)) + capitalGoals(finance.goals, finance.accounts).total)
 const debt = computed(() => openDebt(finance.credits))

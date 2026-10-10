@@ -7,6 +7,7 @@ import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY, plannedElsewhere } from '@/
 import { addDaysIso, addMonths, dayLabel, daysInMonth, isoIn, monthFrom, monthKey, parseMonthKey, today, todayIso, weekdayShort, weekKey, weekRange } from '@/lib/dates'
 import { spendColor } from '@/lib/palette'
 import { money, pct } from '@/lib/money'
+import { plural } from '@/lib/utils'
 /**
  * Расчётное ядро. Чистые функции: ни сети, ни состояния, ни ИИ.
  *
@@ -682,7 +683,7 @@ export function strategyInputs(opts: {
   useSaved: boolean
 }): StrategyInputs {
   const credits = openCredits(opts.credits)
-  const goals = liveGoals(opts.goals)
+  const goals = openGoals(opts.goals) // Сбылось (PN-13): сбывшаяся не копится — стратегии её не видят
   const kept = goals.filter((g) => opts.kept.includes(g.id))
   const free = goals.filter((g) => !opts.kept.includes(g.id))
   const have = (list: Goal[]) => list.reduce((a, g) => a + Math.max(0, g.have), 0)
@@ -726,6 +727,13 @@ export const strategyGain = (a: StrategyResult, b: StrategyResult) => Math.round
 const alive = <T extends { deletedAt?: string | null }>(x: T) => !x.deletedAt;
 
 export const liveGoals = (goals: Goal[]) => (goals || []).filter(alive);
+/** Активные цели (PN-13): живые без «Сбылось» — деньги, очередь и план считают только их. */
+export const openGoals = (goals: Goal[]) => liveGoals(goals).filter((g) => !g.doneAt);
+/** Сбывшиеся (PN-13, альбом «Сбылось»): живые с `doneAt`, новые первыми. */
+export const doneGoals = (goals: Goal[]) =>
+  liveGoals(goals)
+    .filter((g) => !!g.doneAt)
+    .sort((a, b) => (b.doneAt! < a.doneAt! ? -1 : b.doneAt! > a.doneAt! ? 1 : 0));
 /**
  * Живые обязательства — то, что платится. Группа подписок (RP-09) — не платёж и
  * сюда не входит: ни в бюджет, ни в календарь, ни в «до зарплаты», ни в отметки.
@@ -1108,7 +1116,7 @@ export function hasBudgetData(state: {
     people.some((p) => salaryOf(p).amount > 0) ||
     liveObligations(obligations).length > 0 ||
     liveCredits(credits).length > 0 ||
-    liveGoals(goals).length > 0 ||
+    liveGoals(goals).length > 0 || // Сбылось (PN-13): сбывшаяся — тоже данные семьи
     liveAccounts(accounts).length > 0
   );
 }
@@ -1240,7 +1248,7 @@ export function budgetAmounts(state: {
       .filter((o) => o.category === 'd2')
       .reduce((a, o) => a + monthlyAmount(o, key, state.book), 0);
   const paused = new Set(plan ? pausedGoals(plan, goalsList).map((g) => g.id) : []);
-  const goals = liveGoals(goalsList)
+  const goals = openGoals(goalsList) // Сбылось (PN-13): деньги сбывшейся ушли покупкой — в бюджете их нет
     .filter((g) => !paused.has(g.id))
     .reduce((a, g) => a + g.monthly, 0);
   const extra = plan ? planExtra(plan, goalsList, credits, payments, key) : 0;
@@ -1252,7 +1260,7 @@ export function budgetAmounts(state: {
 }
 
 export const goalSavings = (goals: Goal[]) =>
-  liveGoals(goals)
+  openGoals(goals) // Сбылось (PN-13): сбывшаяся — не актив, деньги ушли покупкой
     .filter((g) => !g.accountId)
     .reduce((a, g) => a + Math.max(0, g.have), 0);
 
@@ -1274,7 +1282,7 @@ export type CapitalGoal = { goalId: string; name: string; amount: number; accoun
  */
 export function capitalGoals(goals: Goal[], accounts: Account[]): { count: number; total: number; items: CapitalGoal[] } {
   const named = new Map(accounts.map((a) => [a.id, a.name]))
-  const items = liveGoals(goals)
+  const items = openGoals(goals) // Сбылось (PN-13): деньги сбывшейся ушли покупкой — в «Цели · N» её нет
     .filter((g) => g.have > 0)
     .map((g) => ({ goalId: g.id, name: g.name, amount: g.have, accountName: g.accountId ? (named.get(g.accountId) ?? 'счёт') : null }))
     .sort((a, b) => Number(!!a.accountName) - Number(!!b.accountName) || b.amount - a.amount)
@@ -1937,7 +1945,7 @@ export function progressMoments(state: { credits?: Credit[]; goals?: Goal[]; pay
     }
   }
 
-  for (const g of liveGoals(state.goals ?? [])) {
+  for (const g of openGoals(state.goals ?? [])) { // Сбылось (PN-13): моменты прогресса — у активных
     if (!(g.need > 0)) continue;
     const half = g.need / 2;
     let sum = g.seed ?? 0;
@@ -2095,7 +2103,7 @@ export function monthSummary(
   let fromGoals = 0;
   let closest: MonthSummary['closest'] = null;
   let closestHave = -1;
-  for (const g of liveGoals(state.goals ?? [])) {
+  for (const g of openGoals(state.goals ?? [])) { // Сбылось (PN-13): итог месяца — по активным
     const moves = (g.movements ?? []).filter((m) => inMonth(m.date));
     for (const m of moves) {
       if (m.amount > 0) toGoals += m.amount;
@@ -2277,6 +2285,20 @@ export function monthsBetween(from: string, to: string): number {
   return Math.max(0, (b.year - a.year) * 12 + (b.month - a.month))
 }
 
+/**
+ * За сколько месяцев сбылась мечта (PN-13): от месяца первого положительного взноса до месяца `doneAt`; взносов нет —
+ * от `seedSetAt`; нет и его — 1. Не меньше 1. Без `doneAt` — до текущего месяца.
+ */
+export function doneTerm(goal: Pick<Goal, 'doneAt' | 'seedSetAt' | 'movements'>): number {
+  const puts = (goal.movements ?? []).filter((m) => m.amount > 0).map((m) => movementMonth(m.date))
+  const from = puts.length ? puts.reduce((a, b) => (b < a ? b : a)) : goal.seedSetAt ? movementMonth(goal.seedSetAt) : null
+  if (!from) return 1
+  return Math.max(1, monthsBetween(from, goal.doneAt ? monthKey(new Date(goal.doneAt)) : monthKey()))
+}
+
+/** «за 14 месяцев» — срок сбывшейся словами (момент, экран, карточка). */
+export const doneLabel = (months: number) => `за ${months} ${plural(months, 'месяц', 'месяца', 'месяцев')}`
+
 export type CloserWish = {
   wish: WishItem
   /** На сколько ближе: сумма покрывает цену целиком (`covers`) или её часть, ₸. */
@@ -2337,7 +2359,7 @@ export function activePlan(plans: DebtPlan[] = []): DebtPlan | null {
 
 /** Цели на паузе ради плана (Р-9): живые, кроме «не останавливать» и подушки. Выводится, а не хранится. */
 export const pausedGoals = (plan: DebtPlan, goals: Goal[]) =>
-  liveGoals(goals).filter((g) => !plan.keptGoalIds.includes(g.id) && g.id !== plan.cushionGoalId)
+  openGoals(goals).filter((g) => !plan.keptGoalIds.includes(g.id) && g.id !== plan.cushionGoalId) // Сбылось (PN-13): сбывшаяся не стоит на паузе плана
 
 /**
  * Закрытые долги плана, чей платёж уже свободен (Р-5): остаток 0, не удалены и выпали
@@ -2542,7 +2564,7 @@ export function planStep(plan: DebtPlan, state: PlanState, key: string): PlanSte
     return { kind: 'prepay', creditId: last.targetId, amount: total, period: key, applied: last }
   }
 
-  const cushion = liveGoals(state.goals ?? []).find((g) => g.id === plan.cushionGoalId)
+  const cushion = openGoals(state.goals ?? []).find((g) => g.id === plan.cushionGoalId) // Сбылось (PN-13): сбывшаяся — не подушка плана
   if (cushion) {
     const missing = planMandatory(state, key) - Math.max(0, cushion.have)
     const extra = planExtra(plan, state.goals ?? [], credits, state.payments ?? [], key)
@@ -2669,7 +2691,7 @@ function planRuns(plan: DebtPlan, state: PlanState, key: string) {
     cushion: false,
     useSaved: false,
   })
-  const cushion = liveGoals(state.goals ?? []).find((g) => g.id === plan.cushionGoalId)
+  const cushion = openGoals(state.goals ?? []).find((g) => g.id === plan.cushionGoalId) // Сбылось (PN-13): сбывшаяся — не подушка плана
   const buffer = cushion ? Math.max(0, inputs.mandatory - Math.max(0, cushion.have)) : 0
   const lump = key === planStartMonth(plan) && !planPrepays(payments, key).length ? plan.lump : 0
   const released = releasedCredits(plan, credits, payments, key).reduce((a, c) => a + c.payment, 0)
@@ -2733,7 +2755,7 @@ export function planMonths(plan: DebtPlan, state: PlanState, key: string): PlanM
   const steps = planFact(plan, payments).steps
   const step = planStep(plan, state, key)
   const due = stepDue(step)?.amount ?? 0
-  const cushion = liveGoals(state.goals ?? []).find((g) => g.id === plan.cushionGoalId)
+  const cushion = openGoals(state.goals ?? []).find((g) => g.id === plan.cushionGoalId) // Сбылось (PN-13): сбывшаяся — не подушка плана
   const rows: PlanMonth[] = []
   for (let period = start; period <= key; period = addMonths(period, 1)) {
     const own = steps.filter((s) => s.period === period)
@@ -2858,7 +2880,7 @@ export function payerOf(item: { payer?: PersonId | null; who?: PersonId | null }
  * нет — ею считается копилка Блока 11 (`moneySettings.potGoalId`), пока стор не пометит её (`ensureFund`).
  */
 export function fundsOf(doc: { goals?: Goal[]; moneySettings?: MoneySettings | null }): { reserve: Goal | null; cushion: Goal | null } {
-  const live = liveGoals(doc.goals ?? [])
+  const live = openGoals(doc.goals ?? []) // Сбылось (PN-13): сбывшаяся подушка — не фонд семьи
   const first = (kind: 'reserve' | 'cushion') =>
     live.filter((g) => g.fund === kind).sort((a, b) => a.id.localeCompare(b.id))[0] ?? null
   const reserve = first('reserve')
@@ -2888,7 +2910,7 @@ export function queueOf(doc: {
   credits?: Credit[]
   moneySettings?: MoneySettings | null
 }): QueueItem[] {
-  const live = liveGoals(doc.goals ?? [])
+  const live = openGoals(doc.goals ?? []) // Сбылось (PN-13): в очереди только активные — сбывшаяся не герой и не взнос
   const byId = new Map(live.map((g) => [g.id, g]))
   const debt = costliestCredits(doc.credits ?? []).length > 0
   const ids: string[] = []
@@ -3584,7 +3606,7 @@ export function planFromSource(
 
   // Разово — до суммы цели, порога фонда, остатка долга: на сейчас, а не на начало месяца.
   const plan = monthPlan(state, ctx)
-  const goals = new Map(liveGoals(state.goals ?? []).map((g) => [g.id, g]))
+  const goals = new Map(liveGoals(state.goals ?? []).map((g) => [g.id, g])) // Сбылось (PN-13): все живые — записи плана могут ссылаться на сбывшуюся
   let left = amount
   const contributions: { goalId: string; amount: number }[] = []
   let prepay: PlanSave['prepay'] = null
@@ -3708,7 +3730,7 @@ export type PlanPut = {
  * начала месяца — отметка сумму строки не меняет.
  */
 export function planPuts(state: MonthPlanState, plan: MonthPlan): PlanPut[] {
-  const goals = new Map(liveGoals(state.goals ?? []).map((g) => [g.id, g]))
+  const goals = new Map(liveGoals(state.goals ?? []).map((g) => [g.id, g])) // Сбылось (PN-13): все живые — записи плана могут ссылаться на сбывшуюся
   const came = new Set(plan.income.byPerson.filter((x) => x.came).map((x) => x.person))
   const records = (state.allocations ?? []).filter((a) => !a.deletedAt && a.kind === 'plan' && a.source === 'salary' && a.period === plan.key)
   const recorded = (target: string) => records.reduce((s, a) => s + a.parts.filter((p) => p.target === target).reduce((x, p) => x + p.amount, 0), 0)
@@ -4303,7 +4325,7 @@ export function allocatedBeyondPlan(
   // Последняя — среди записей не-плана: запись плана того же источника позже её не вытесняет (критик ML-02).
   const loose = month.filter((a) => a.kind !== 'plan')
   const records = month.filter((a) => a.kind === 'plan' || allocationFor(loose, a) === a)
-  const goals = new Map(liveGoals(state.goals ?? []).map((g) => [g.id, g]))
+  const goals = new Map(liveGoals(state.goals ?? []).map((g) => [g.id, g])) // Сбылось (PN-13): все живые — записи истории могут ссылаться на сбывшуюся
   const plan = activePlan(state.plans ?? [])
   const paused = new Set(plan ? pausedGoals(plan, state.goals ?? []).map((g) => g.id) : [])
   const toGoal = new Map<string, number>()

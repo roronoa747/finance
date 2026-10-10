@@ -1856,6 +1856,26 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
+  /**
+   * «Сбылось» (PN-13, Р-13): деньги цели ушли покупкой. Цель на счёте — счёт уменьшается на `have` (покупка
+   * списана); без счёта накопление просто перестаёт быть активом (`openGoals`). Офлайн с двух телефонов счёт
+   * сдвинется дважды — принятое ограничение, как у пополнений.
+   */
+  function markGoalDone(id: string, at?: string) {
+    const cur = goals.value.find((g) => g.id === id && !g.deletedAt)
+    if (!cur || cur.doneAt) return
+    updateGoal(id, { doneAt: at ?? new Date().toISOString() })
+    if (cur.accountId && cur.have > 0) shiftAccountAmount(cur.accountId, -cur.have)
+  }
+
+  /** «Вернуть в мечты» (PN-13): снять `doneAt` (null — LWW очистка); цель на счёте — деньги назад на счёт. */
+  function undoGoalDone(id: string) {
+    const cur = goals.value.find((g) => g.id === id && !g.deletedAt)
+    if (!cur?.doneAt) return
+    updateGoal(id, { doneAt: null })
+    if (cur.accountId && cur.have > 0) shiftAccountAmount(cur.accountId, cur.have)
+  }
+
   /** Сумма трат участника по разделу на месяц (Р-81), целые тенге; одна запись на пару — LWW по id. */
   function setSpendPlan(by: PersonId, categoryId: string, amount: number) {
     const id = `${by}:${categoryId}`
@@ -2245,6 +2265,8 @@ export const useFinanceStore = defineStore('finance', () => {
     setDebtCard,
     setPayer,
     pauseGoal,
+    markGoalDone,
+    undoGoalDone,
     setSpendPlan,
     ensureFund,
     setFundMonths,

@@ -128,6 +128,8 @@ export type Goal = Tracked & {
   fundMonths?: number
   /** Цель выключена в плане месяца (Р-83) — с этой даты, пока не включат; null — включена. */
   pausedAt?: string | null
+  /** «Сбылось» (PN-13, Р-13): ISO момента отметки — деньги ушли покупкой, цель в альбоме; null — вернули в мечты. */
+  doneAt?: string | null
 }
 
 export type WishItem = Tracked & {

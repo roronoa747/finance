@@ -93,7 +93,7 @@ export async function attachFile(store: GoalPhotoStore, goalId: string, file: Bl
 export async function retryTemplatePhotos(store: GoalPhotoStore, templates: GoalTemplate[], deps: PhotoDeps = defaults()): Promise<number> {
   if (store.isDemo || !deps.online()) return 0
   let n = 0
-  for (const g of liveGoals(store.goals)) {
+  for (const g of liveGoals(store.goals)) { // Сбылось (PN-13): все живые — альбому нужны фото
     if (g.photoId || !g.template) continue
     const t = templates.find((x) => x.id === g.template)
     if (t && (await uploadTemplate(store, g.id, t, deps))) n += 1

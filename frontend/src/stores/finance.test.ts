@@ -2443,3 +2443,77 @@ describe('B2C-54: план разбора в сторе', () => {
     expect(store.householdDoc.allocations).toHaveLength(1)
   })
 })
+
+describe('«Сбылось» (PN-13): markGoalDone / undoGoalDone — деньги уходят покупкой', () => {
+  const storage = new Map<string, string>()
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => storage.set(k, String(v)),
+      removeItem: (k: string) => storage.delete(k),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-10T08:00:00Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  function family() {
+    const store = useFinanceStore()
+    store.addAccount({ name: 'Kaspi', kind: 'card', amount: 1_000_000 })
+    const card = store.accounts[0].id
+    const trip = store.addGoal({ name: 'Япония', need: 400_000, have: 400_000, monthly: 50_000, hue: 'plum' })
+    const pot = store.addGoal({ name: 'Подушка на карте', need: 300_000, have: 300_000, monthly: 0, hue: 'teal' })
+    store.updateGoal(pot, { accountId: card })
+    return { store, card, trip, pot }
+  }
+  const balance = (store: ReturnType<typeof useFinanceStore>, id: string) => store.accounts.find((a) => a.id === id)!.amount
+  const worth = (store: ReturnType<typeof useFinanceStore>) => netWorth(store.accounts, store.credits, store.goals)
+
+  it('цель вне счёта: doneAt стоит, капитал −have (1 400 000 → 1 000 000), очередь без неё; «Вернуть» — всё назад', () => {
+    const { store, trip } = family()
+    // Капитал: карта 1 000 000 + Япония 400 000 (Подушка на карте — внутри её остатка) = 1 400 000.
+    expect(worth(store)).toBe(1_400_000)
+    expect(store.queue.map((q) => q.id)).toContain(trip)
+
+    store.markGoalDone(trip)
+    expect(store.goals.find((g) => g.id === trip)!.doneAt).toBe('2026-10-10T08:00:00.000Z')
+    expect(worth(store)).toBe(1_000_000)
+    expect(store.queue.map((q) => q.id)).not.toContain(trip)
+    // Накопленное не трогается — альбом и история показывают сумму покупки.
+    expect(store.goals.find((g) => g.id === trip)!.have).toBe(400_000)
+
+    store.undoGoalDone(trip)
+    expect(store.goals.find((g) => g.id === trip)!.doneAt).toBeNull()
+    expect(worth(store)).toBe(1_400_000)
+    expect(store.queue.map((q) => q.id)).toContain(trip)
+  })
+
+  it('цель на счёте: покупка списана со счёта (1 000 000 → 700 000), «Вернуть» — счёт назад', () => {
+    const { store, card, pot } = family()
+    store.markGoalDone(pot)
+    expect(balance(store, card)).toBe(700_000)
+    expect(worth(store)).toBe(1_100_000)
+    // Повтор не списывает второй раз.
+    store.markGoalDone(pot)
+    expect(balance(store, card)).toBe(700_000)
+
+    store.undoGoalDone(pot)
+    expect(balance(store, card)).toBe(1_000_000)
+    expect(worth(store)).toBe(1_400_000)
+    // Повтор «Вернуть» тоже ничего не делает.
+    store.undoGoalDone(pot)
+    expect(balance(store, card)).toBe(1_000_000)
+  })
+
+  it('пауза и место в порядке не трогаются; heroGoal — следующая', () => {
+    const { store, trip } = family()
+    expect(store.heroGoal?.id).toBe(trip)
+    store.markGoalDone(trip, '2026-10-01T06:00:00.000Z')
+    expect(store.goals.find((g) => g.id === trip)!).toMatchObject({ doneAt: '2026-10-01T06:00:00.000Z' })
+    expect(store.goals.find((g) => g.id === trip)!.pausedAt).toBeUndefined()
+    expect(store.heroGoal?.id).not.toBe(trip)
+  })
+})

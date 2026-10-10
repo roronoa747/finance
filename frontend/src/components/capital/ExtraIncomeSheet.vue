@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { parseMoney } from '@/lib/money'
-import { liveGoals, payableAccounts } from '@/lib/finance'
+import { openGoals, payableAccounts } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
 
@@ -19,7 +19,7 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 
 const financeStore = useFinanceStore()
 const people = computed(() => financeStore.people)
-const goals = computed(() => liveGoals(financeStore.goals))
+const goals = computed(() => openGoals(financeStore.goals)) // Сбылось (PN-13): внеплановый доход — в активные цели
 // Куда ложится внеплановый доход (как и досрочка калькулятора): у валютного счёта тенге —
 // по курсу, и следующая правка курса или суммы в валюте молча стёрла бы сдвиг.
 const payAccounts = computed(() => payableAccounts(financeStore.accounts))
