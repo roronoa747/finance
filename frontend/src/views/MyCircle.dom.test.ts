@@ -27,10 +27,10 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function open(emoji?: string) {
+async function open(emoji?: string, role: 'member' | 'viewer' = 'member') {
   const pinia = createPinia()
   setActivePinia(pinia)
-  useAuthStore().setAuthData(authAs('member', 'a'))
+  useAuthStore().setAuthData(authAs(role, 'a'))
   const finance = useFinanceStore()
   const doc = planFamilyDoc()
   if (emoji) doc.people[0].emoji = emoji
@@ -115,6 +115,50 @@ describe('B2C-69: свой смайлик с клавиатуры', () => {
     const select = vi.spyOn(field(), 'select')
     field().dispatchEvent(new Event('focus'))
     expect(select).toHaveBeenCalledTimes(1)
+  })
+
+  it('PN-01: поле «Имя» над кружком — пишет setPerson(slot, { name }) по blur; пустое и то же имя — не пишется; «Сохранено» горит и гаснет', async () => {
+    vi.useFakeTimers()
+    const finance = await open()
+    const name = document.querySelector('input[aria-label="Имя"]') as HTMLInputElement
+    expect(name).not.toBeNull()
+    expect(name.value).toBe('Ильяс')
+    expect(name.compareDocumentPosition(bigCircle()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(document.body.textContent).not.toContain('Сохранено')
+    const set = vi.spyOn(finance, 'setPerson')
+    // Как в браузере: ввод отрисовывается до ухода из поля (иначе Vue не перепатчит `value` на прежнее).
+    const blur = async (text: string) => {
+      name.value = text
+      name.dispatchEvent(new Event('input'))
+      await nextTick()
+      name.dispatchEvent(new Event('blur'))
+      await nextTick()
+    }
+
+    await blur('   ')
+    expect(set).not.toHaveBeenCalled()
+    expect(name.value).toBe('Ильяс')
+    await blur(' Ильяс ')
+    expect(set).not.toHaveBeenCalled()
+
+    await blur('Ильяс М.')
+    expect(set).toHaveBeenCalledWith('a', { name: 'Ильяс М.' })
+    expect(me().name).toBe('Ильяс М.')
+    expect(bigCircle().textContent?.trim()).toBe('И')
+    expect(document.body.textContent).toContain('Сохранено')
+    // Гаснет через 1,8 с; уход — `Transition` (кадр rAF и его таймер) — ещё один тик таймеров после рендера.
+    await vi.advanceTimersByTimeAsync(2000)
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(100)
+    await nextTick()
+    expect(document.body.textContent).not.toContain('Сохранено')
+    vi.useRealTimers()
+  })
+
+  it('PN-01: viewer поля «Имя» не видит (маршрут и так member — запись в общий документ сервер не примет)', async () => {
+    await open(undefined, 'viewer')
+    expect(document.querySelector('input[aria-label="Имя"]')).toBeNull()
+    expect(bigCircle()).not.toBeNull()
   })
 
   it('свой смайлик из документа (флаг, семья) стоит в плитке как выбранный; выбор из списка освобождает плитку', async () => {

@@ -186,7 +186,9 @@ describe('e2e / B2C Блок 16 — «Деньги» по макету на дв
   it('часть 4 — viewer: зарплаты открывают лист, без «+ Кредит», месяцы «Истории» те же', async () => {
     const V = await phone(server, 'a', 'viewer')
     const capital = await screen(V.pinia, Money, '/money')
-    expect(capital).toMatch(/<button[^>]*data-salary="a"/)
+    // Строка — div с кнопкой имени (PN-02: рядом живёт «Пришла» участника, кнопки в кнопке нет); у viewer кнопки «Пришла» нет.
+    expect(capital).toMatch(/<div[^>]*data-salary="a"[^>]*>[\s\S]*?<button[^>]*data-row-open/)
+    expect(capital).not.toContain('data-salary-came-btn')
     expect(await screen(V.pinia, Money, '/money/debts')).not.toContain('data-add-credit')
     const history = await screen(V.pinia, Money, '/money/history')
     expect(history.match(/data-history-month=/g)).toHaveLength(2)

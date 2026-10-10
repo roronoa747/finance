@@ -1,18 +1,18 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref } from 'vue'
 import type { ThemeChoice } from '@/lib/palette'
 import { readThemeChoice, setThemeChoice } from '@/lib/theme'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import Segmented from '@/components/kit/Segmented.vue'
-import Input from '@/components/ui/Input.vue'
 import Button from '@/components/ui/Button.vue'
 import Callout from '@/components/kit/Callout.vue'
 import { useRouter } from 'vue-router'
 
 /**
- * Оформление устройства (тема) и имя; внизу — выход или «Создать семью» из демо.
+ * Оформление устройства (тема); внизу — выход или «Создать семью» из демо.
  * `section` — какая часть: в Настройках они в разных карточках (g7 «Оформление» и «Выйти»).
+ * Имя участника — в «Свой кружок» (`MyCircle`, PN-01): одно место правки.
  */
 const props = defineProps<{ section: 'look' | 'account' }>()
 
@@ -24,26 +24,9 @@ const router = useRouter()
 // пользователя нет — бренд один (DESIGN.md §3, B2C-12).
 const currentTheme = ref<ThemeChoice>(readThemeChoice())
 
-// Имя — из документа (React `AppearancePanel.tsx:45-64`): переименование в зарплатах видно здесь.
-const myName = computed(() => financeStore.people.find((p) => p.id === authStore.slot)?.name ?? '')
-const userName = ref(myName.value)
-watch(myName, (name) => {
-  userName.value = name
-})
-
 function updateTheme(th: ThemeChoice) {
   currentTheme.value = th
   setThemeChoice(th)
-}
-
-// Пустое имя не пишется — в поле возвращается прежнее.
-function saveName() {
-  const trimmed = userName.value.trim()
-  if (!trimmed) {
-    userName.value = myName.value
-    return
-  }
-  if (authStore.slot && trimmed !== myName.value) financeStore.setPerson(authStore.slot, { name: trimmed })
 }
 
 // Выход при неотправленных правках сначала спрашивает (RP-04): 'ask' — предложить
@@ -85,19 +68,6 @@ function leave(choice: 'keep' | 'discard') {
 <template>
   <div class="flex flex-col gap-4 text-left">
     <template v-if="props.section === 'look'">
-    <!-- Имя пишется в общий документ — у viewer поля нет (его запись сервер не примет). -->
-    <div v-if="!authStore.isViewer">
-      <div class="mb-1.5 type-section">
-        Ваше имя
-      </div>
-      <Input
-        v-model="userName"
-        placeholder="Имя"
-        @blur="saveName"
-      />
-      <p class="mt-1 type-meta">Так вас видит партнёр</p>
-    </div>
-
     <div>
       <div class="mb-1.5 type-section">
         Тема

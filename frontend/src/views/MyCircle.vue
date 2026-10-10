@@ -1,16 +1,20 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import Avatar from '@/components/kit/Avatar.vue'
 import Card from '@/components/kit/Card.vue'
+import SavedMark from '@/components/kit/SavedMark.vue'
+import { useSavedMark } from '@/components/kit/useSavedMark'
+import Input from '@/components/ui/Input.vue'
 import { PERSON_COLORS, PERSON_EMOJI, lastEmoji, personColor, slotColor } from '@/lib/palette'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import type { PersonColor } from '@/types/finance'
 
 /**
- * «Свой кружок» (Р-61, макет `money-breakdown.html` вопрос 4): большой кружок, «Смайлик» (буква имени + 11 + своя
- * плитка-поле: любой смайлик с клавиатуры, B2C-69) и «Цвет» (6 токенов). Только свой участник (маршрут — member);
- * выбор пишется сразу, синк — как у имени (`setPerson`).
+ * «Свой кружок» (Р-61, макет `money-breakdown.html` вопрос 4): поле «Имя» (PN-01 — единственное место правки имени,
+ * переехало из «Оформления»; пишется по уходу из поля, «Сохранено» — `SavedMark`), большой кружок, «Смайлик»
+ * (буква имени + 11 + своя плитка-поле: любой смайлик с клавиатуры, B2C-69) и «Цвет» (6 токенов). Только свой
+ * участник (маршрут — member); выбор пишется сразу (`setPerson`).
  */
 const auth = useAuthStore()
 const finance = useFinanceStore()
@@ -24,6 +28,27 @@ const color = computed<string>(() => me.value?.color ?? (me.value ? slotColor(me
 const set = (patch: { emoji?: string | null; color?: PersonColor }) => {
   if (auth.slot) finance.setPerson(auth.slot, patch)
 }
+
+// Имя — из документа (как прежде в `AppearancePanel`): переименование с другого телефона видно здесь.
+const myName = computed(() => me.value?.name ?? '')
+const userName = ref(myName.value)
+watch(myName, (name) => {
+  userName.value = name
+})
+// Пустое имя не пишется — в поле возвращается прежнее; то же имя — не пишется.
+function saveName() {
+  const trimmed = userName.value.trim()
+  if (!trimmed) {
+    userName.value = myName.value
+    return
+  }
+  if (auth.slot && trimmed !== myName.value) finance.setPerson(auth.slot, { name: trimmed })
+}
+// «Сохранено» — на смене имени в документе (а не смайлика или цвета: отметка стоит у поля имени).
+const nameSaved = useSavedMark(
+  () => me.value?.id,
+  () => me.value?.name,
+)
 
 // Свой смайлик (B2C-69): текущий не из списка — он и стоит в плитке-поле как выбранный.
 const custom = computed(() => (emoji.value && !PERSON_EMOJI.includes(emoji.value) ? emoji.value : ''))
@@ -42,6 +67,15 @@ const selectAll = (e: Event) => (e.target as HTMLInputElement).select()
 
 <template>
   <div v-if="me" class="flex flex-col gap-3 pt-1">
+    <!-- Имя пишется в общий документ — у viewer поля нет (его запись сервер не примет; маршрут и так member). -->
+    <Card v-if="!auth.isViewer" class="flex flex-col gap-2">
+      <div class="flex items-center justify-between gap-3">
+        <span class="type-label">Имя</span>
+        <SavedMark :on="nameSaved" />
+      </div>
+      <Input v-model="userName" placeholder="Имя" aria-label="Имя" @blur="saveName" />
+    </Card>
+
     <div class="fx-in flex justify-center py-3">
       <Avatar :id="me.id" :name="me.name" :size="96" />
     </div>

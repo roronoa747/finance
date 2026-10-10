@@ -13,10 +13,11 @@ import DangerZone from '@/components/kit/DangerZone.vue'
 import Button from '@/components/ui/Button.vue'
 
 /**
- * Настройки (DESIGN.md §2 g7; B2C-13): «Оформление» с именем прямо на экране
- * (`AppearancePanel`), «С кем» — участники семьи с ролями с сервера (B2C-25; своя строка — «Свой
- * кружок», B2C-63), код для партнёра и состояние обмена; «Выйти» и «Удалить аккаунт» (B2C-25,
- * Р-14). Без семьи («с кем» не пройдено) — только выход и удаление.
+ * Настройки (DESIGN.md §2 g7; B2C-13): «С кем» первым — сюда ведут аватары шапки (Р-1 «понятность»:
+ * нажал на лица — видит лица): участники семьи с ролями с сервера (B2C-25; своя строка — «Свой
+ * кружок» с именем, смайликом и цветом, B2C-63, PN-01), код для партнёра и состояние обмена; затем
+ * «Оформление» (тема, `AppearancePanel`); «Выйти» и «Удалить аккаунт» (B2C-25, Р-14). Без семьи
+ * («с кем» не пройдено) — только выход и удаление.
  * Напоминание о выписке — Блок 5.
  */
 const router = useRouter()
@@ -65,12 +66,8 @@ async function deleteAccount() {
 <template>
   <div class="flex flex-col gap-3 pt-1">
     <template v-if="authStore.hasHousehold || authStore.isDemo">
-      <!-- Порядок макета g7: «Оформление» → «С кем» → выход; разбор выписок — свёрнут (правило 12). -->
-      <Card>
-        <h2 class="type-h3 mb-3 text-ink">Оформление</h2>
-        <AppearancePanel section="look" />
-      </Card>
-
+      <!-- Порядок: «С кем» → «Оформление» → выход (Р-1 «понятность» поверх макета g7: аватары шапки ведут сюда —
+           лица первыми); разбор выписок — свёрнут (правило 12). -->
       <Card>
         <h2 class="type-h3 text-ink">С кем</h2>
         <div class="mt-2 flex flex-col">
@@ -116,6 +113,11 @@ async function deleteAccount() {
           <span class="text-[14px] text-ink-2">Обмен между телефонами</span>
           <SyncBadge />
         </div>
+      </Card>
+
+      <Card>
+        <h2 class="type-h3 mb-3 text-ink">Оформление</h2>
+        <AppearancePanel section="look" />
       </Card>
 
       <!-- Разбор выписок (B2C-21): разделы трат и память разбора — свёрнуты; viewer выписок не грузит -->
