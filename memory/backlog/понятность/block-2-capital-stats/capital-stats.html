@@ -136,7 +136,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
     <button type="button" data-t="dark" aria-pressed="false">Тёмная</button>
   </div>
   <nav class="toc" aria-label="Экраны">
-    <a href="#plaque">Плашка</a><a href="#open">Раскрыта</a><a href="#cases">Долгов нет · viewer</a>
+    <a href="#plaque">Плашка</a><a href="#open">Раскрыта</a><a href="#cases">Долгов нет · viewer</a><a href="#ux">/ux · не хватает</a>
   </nav>
   <div class="legend" aria-label="Доли дохода месяца">
     <div class="lr"><span><span class="st-dot" style="width:10px;height:10px;border-radius:50%;background:var(--s12);display:inline-block"></span>кредиты</span><span>платежи по кредитам и долгам, досрочка по плану</span></div>
@@ -255,6 +255,15 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
   <div class="col stand"><span class="tagc">стенд · viewer</span><div class="phone"><div class="shot"><img data-shot="after-viewer" alt="Стенд: viewer раскрыл статистику"></div></div></div>
 </div>
 <p class="r12"><b>Долгов нет:</b> полоска из трёх долей, в формуле «долгов нет» вместо «− долги 0», внизу одна строка «Долгов нет» вместо срока и переплаты. <b>Viewer</b> видит и раскрывает то же самое (он читает, не правит); отличие экрана — нет «+» внизу, как и сейчас. <b>Доход 0</b> (оклады не заданы): полоски и строк нет — одна строка «Нет дохода месяца — задайте оклад».</p>
+</section>
+
+<!-- /ux (v3): не хватает на платежи — проценты от дохода убраны -->
+<section class="pair" id="ux"><h2>/ux · не хватает на платежи</h2>
+<div class="row">
+  <div class="col"><span class="tagc">стенд · до правки</span><div class="phone"><div class="shot"><img src="shots/ux-short-before-light.jpg" alt="До: строки долей с процентами 97 % и 208 %"></div></div></div>
+  <div class="col stand"><span class="tagc">стенд · после</span><div class="phone"><div class="shot"><img data-shot="ux-short-after" alt="После: строки без процентов, подпись «не хватает N»"></div></div></div>
+</div>
+<p class="r12"><b>Что было:</b> доход 150 000 меньше платежей — проценты «от дохода» давали «97 %» и «208 %»: шумная цифра, непонятно, от чего. <b>Что стало:</b> при нехватке проценты у строк не показываются — полоска и строка «не хватает 562 495 ₸» говорят то же без чисел больше ста. Расчёт не менялся, в обычном месяце проценты на месте. Кадр снят на демо с окладами 100 000 и 50 000.</p>
 </section>
 </div>
 

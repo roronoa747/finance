@@ -1,8 +1,8 @@
 # Бэклог «понятность» (PN)
 
 > **Статус:** в работе — блок 1 «Настройки везде» 🏁 (приёмка 2026-10-10: принято, мёрж `2176a8c`, прод `dpl_EhQbKr7RxaWYctjjjeybMmWuTGuy`, откат — promote `dpl_5T6yETZ6kGHP5kHTnnMFgXjZAqWi`; смоук владельца на iPhone — за ним); блок 2 «Капитал со статистикой» 🔄 — ч. 1 PN-03: макет и артефакт готовы
-> (2026-10-10, ветка `pn-block-2-capital-stats`), ворота владельца ✅ «Ок»; ч. 2 (PN-04…PN-06) ✅ исполнитель и критик
-> 2026-10-10 — следующий шаг `/ux понятность 2`.
+> (2026-10-10, ветка `pn-block-2-capital-stats`), ворота владельца ✅ «Ок»; ч. 2 (PN-04…PN-06) ✅ исполнитель, критик и
+> `/ux` 2026-10-10 — следующий шаг `/accept понятность 2`.
 > Девять блоков: понятность (1–2) → мечты (3–4) → деньги (5–9); каждый блок — на прод отдельно в своей приёмке.
 
 Источник: `понятность-brief.md` (резюме интервью подтверждено 2026-10-09, 6 раундов). Формат —
@@ -328,7 +328,8 @@ Production `dpl_EhQbKr7RxaWYctjjjeybMmWuTGuy`, откат — promote `dpl_5T6yE
   Space), `data-worth` 34 px, `data-worth-formula` «счета {plain} − долги {plain}» / «счета N · долгов нет», `PhCaretRight`
   (`rotate-90` раскрыта), `statsOpen` — локальный `ref` (при заходе закрыто); `stats` — computed, считается только при
   раскрытии (`v-if`). `money/CapitalStats.vue` (`stats`, `debt`): `data-capital-stats-body`, `StackBar`, строки
-  `data-stat-row="credits|payments|goals|rest"` с `data-stat-amount`/`data-stat-pct`, `data-short` (`--warn`),
+  `data-stat-row="credits|payments|goals|rest"` с `data-stat-amount`/`data-stat-pct` (при `short > 0` процентов нет —
+  от дохода они больше 100, ux Б2), `data-short` (`--warn`),
   `data-growth`, `data-debt-free` («Без долгов {monthBy(month)} · ещё N зарплат» · «Долги не закрываются при текущих
   платежах» `--warn` · «Долгов нет» `--ok`), `data-overpay` («Переплата N ₸ · M зарплаты» · «не считается — платёж не
   покрывает проценты»; 0 — строки нет), `data-no-income`. Слово к числу зарплат: дробь — «зарплаты», целое — `plural`;
