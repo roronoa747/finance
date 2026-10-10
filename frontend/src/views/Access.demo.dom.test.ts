@@ -156,6 +156,9 @@ describe('B2C-52: демо — итоги из демо-операций той 
     // Блок 11: плюс копилка разбора «Подушка» (Р-66); Блок 14 — фонды «Подушка» и «Запас» в очереди (Р-82, Р-84),
     // главная — первая в очереди, `main` не пишется.
     expect(finance.queue.map((x) => x.goal?.name ?? x.id)).toEqual(['Поездка в Японию', 'Запас', 'debt', 'Машина', 'Подушка', 'Новый диван'])
+    // PN-15: «Велосипед» сбылся «за 4 месяца» — не в очереди, в альбоме «Сбылось · 1» (свёрнут).
+    expect(finance.householdDoc.goals.find((g) => g.id === 'g-bike')).toMatchObject({ doneAt: expect.any(String), have: 230_000 })
+    expect(dreams).toContain('Сбылось · 1')
     expect(finance.householdDoc.goals.some((g) => g.main)).toBe(false)
     for (const w of ['Машина', 'Новый диван', 'Все 3', 'Кофемашина', 'общие', 'Велосипед', 'Вы', 'Сапоги', 'Партнёр']) expect(dreams).toContain(w)
     expect(dreams).not.toContain('+ Желание')
@@ -191,7 +194,7 @@ describe('B2C-110 (Р-118): демо — фото из приложения, л�
     const finance = useFinanceStore()
     const doc = finance.householdDoc
     const photoIds = [...doc.goals.filter((g) => !g.deletedAt), ...doc.wishlist].map((x) => x.photoId)
-    expect(photoIds).toHaveLength(8)
+    expect(photoIds).toHaveLength(9) // PN-15: + сбывшийся «Велосипед»
     for (const id of photoIds) {
       expect(id).toMatch(/^demo:/)
       // Один путь показа фото: `photoUrl` отдаёт адрес картинки бандла сразу, не зовя сервер.

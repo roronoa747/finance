@@ -190,7 +190,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
     <button type="button" data-t="dark" aria-pressed="false">Тёмная</button>
   </div>
   <nav class="toc" aria-label="Экраны">
-    <a href="#full">100 % · «Купили?»</a><a href="#menu">Меню «···»</a><a href="#moment">Момент</a><a href="#done">Сбывшаяся</a><a href="#album">«Мечты» · альбом</a><a href="#viewer">Viewer</a>
+    <a href="#full">100 % · «Купили?»</a><a href="#menu">Меню «···»</a><a href="#moment">Момент</a><a href="#done">Сбывшаяся</a><a href="#album">«Мечты» · альбом</a><a href="#viewer">Viewer</a><a href="#stand">Стенд ветки</a>
   </nav>
 </header>
 
@@ -347,6 +347,25 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
 </div>
 <p class="r12"><b>Viewer</b> видит то же, но без кнопок: на 100 % — «Накоплено» без «Купили?», у сбывшейся — нет «···» (нельзя «Вернуть»); альбом на «Мечтах» и «Поделиться» — есть. <b>Про числа:</b> «за 14 месяцев» в кадрах — пример; в демо срок посчитает <code>finance.ts</code> от первого взноса (у «Велосипеда» демо — «за 4 месяца»).</p>
 </section>
+
+<!-- v2 (PN-15): стенд ветки pn-block-4-done, демо :5291, 10 октября 2026 -->
+<section class="pair" id="stand"><h2>Стенд ветки · как получилось</h2>
+<div class="row">
+  <div class="col after"><span class="tagc">100 % · «Купили?»</span><div class="phone"><div class="shot"><img data-after="ask" alt="Стенд: «Накоплено! · Купили?», «Ещё нет» и «Сбылось»"></div></div></div>
+  <div class="col after"><span class="tagc">момент</span><div class="phone"><div class="shot"><img data-after="moment" alt="Стенд: лист «Сбылось!» с фото, «за 1 месяц», «Поделиться», «Готово»"></div></div></div>
+  <div class="col after"><span class="tagc">экран сбывшейся</span><div class="phone"><div class="shot"><img data-after="done" alt="Стенд: «Сбылось в октябре 2026 · за 1 месяц», история взносов"></div></div></div>
+</div>
+<div class="row">
+  <div class="col after"><span class="tagc">меню мечты · «Сбылось»</span><div class="phone"><div class="shot"><img data-after="menu" alt="Стенд: меню «Машины» с пунктом «Сбылось»"></div></div></div>
+  <div class="col after"><span class="tagc">меню сбывшейся</span><div class="phone"><div class="shot"><img data-after="done-menu" alt="Стенд: «Вернуть в мечты», «Изменить цель»"></div></div></div>
+  <div class="col after"><span class="tagc">«Мечты» · альбом раскрыт</span><div class="phone"><div class="shot"><img data-after="album-open" alt="Стенд: альбом «Сбылось · 2» раскрыт"></div></div></div>
+</div>
+<div class="row">
+  <div class="col after"><span class="tagc">viewer · альбом</span><div class="phone"><div class="shot"><img data-after="viewer-album" alt="Стенд, viewer: альбом «Сбылось · 1» с «Велосипедом»"></div></div></div>
+  <div class="col after"><span class="tagc">viewer · сбывшаяся</span><div class="phone"><div class="shot"><img data-after="viewer-done" alt="Стенд, viewer: «Велосипед» — «Сбылось в июле 2026 · за 4 месяца», без меню"></div></div></div>
+</div>
+<p class="r12"><b>Что сверено:</b> демо, «Поездка в Японию» пополнена до 2 000 000 → капитал 3 493 986 ₸; «Сбылось» → 1 493 986 ₸ (ровно −2 000 000, деньги ушли покупкой); «Вернуть в мечты» → снова 3 493 986 ₸. Демо со сбывшимся «Велосипедом» — капитал прежний, 2 093 986 ₸. У «Японии» в демо первый взнос в сентябре — поэтому «за 1 месяц», а не «за 14» из примера макета. <b>Отличие от макета:</b> «Сбылось!» — заголовок листа над фото (у листа кита заголовок всегда сверху), а не под фото. Обе темы, 390 px без прокрутки вбок, консоль чистая.</p>
+</section>
 </div>
 
 <script>
@@ -358,6 +377,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
     if(mode==='auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme',mode);
     var t=dark()?'dark':'light';
     document.querySelectorAll('img[data-shot]').forEach(function(i){ i.src='shots/before-'+i.dataset.shot+'-'+t+'.jpg' });
+    document.querySelectorAll('img[data-after]').forEach(function(i){ i.src='shots/after-'+i.dataset.after+'-'+t+'.jpg' });
     document.querySelectorAll('.theme button').forEach(function(b){ b.setAttribute('aria-pressed', String(b.dataset.t===mode)) });
   }
   document.querySelectorAll('.theme button').forEach(function(b){

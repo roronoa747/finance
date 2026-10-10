@@ -5,8 +5,8 @@
 > **`dpl_GAuRNsHXbQtuAMeB7zxwYhaPcQfy`**, откат — promote `dpl_CkrpNJtdvVPGDN2531VPDg5rtFbz`; смоук агента 59/59; смоук владельца
 > на iPhone и перезапуск PWA — за ним); **блок 3 «Мечты наряднее» 🏁** (приёмка 2026-10-10: принято — сверка с ТЗ PN-07…PN-11
 > без расхождений, стенд с Go-моками, e2e 32 / 210; мёрж `2ca5a20`, прод **`dpl_Fh6vRtoaqe6bC1pZTfUYDzit8uQR`**, откат — promote
-> `dpl_EsjHTZS9bcb2At7KGRkogggzuqm1`; смоук владельца на iPhone и перезапуск PWA — за ним). Следующий шаг — `/worker понятность 4`
-> (ч. 1 — макет PN-12, ворота).
+> `dpl_EsjHTZS9bcb2At7KGRkogggzuqm1`; смоук владельца на iPhone и перезапуск PWA — за ним). **блок 4 «Сбылось» 🔄** (исполнитель ✅ 2026-10-10: ворота макета «Ок», PN-12…PN-15, ветка `pn-block-4-done`). Следующий шаг — `/critic понятность 4`
+> (дифф `main..pn-block-4-done`).
 > Девять блоков: понятность (1–2) → мечты (3–4) → деньги (5–9); каждый блок — на прод отдельно в своей приёмке.
 
 Источник: `понятность-brief.md` (резюме интервью подтверждено 2026-10-09, 6 раундов). Формат —
@@ -129,7 +129,7 @@
 | 4. Сбылось 🔄 *(M + ворота макета, Р-19)* | PN-12 Макет «до \| после» и ворота | `block-4-done/PN-12-mockup-gate.md` | Блок 3 🏁 | ✅ (ворота «Ок» 2026-10-10) |
 | | PN-13 Модель и расчёты: `doneAt`, деньги как покупка | `block-4-done/PN-13-model-finance.md` | PN-12 (ворота ✅) | ✅ |
 | | PN-14 Экраны: «Купили?», «Сбылось», момент, альбом | `block-4-done/PN-14-screens.md` | PN-13 | ✅ |
-| | PN-15 Демо, e2e и доки | `block-4-done/PN-15-demo-e2e-docs.md` | PN-14 | ⬜ |
+| | PN-15 Демо, e2e и доки | `block-4-done/PN-15-demo-e2e-docs.md` | PN-14 | ✅ |
 | 5. Прикинуть ⬜ | PN-16 Расчёты `tryCredit` и `canAfford` | `block-5-estimate/PN-16-estimate-finance.md` | Блок 4 🏁 (расчёт — Блок 2) | ⬜ |
 | | PN-17 Листы «Прикинуть кредит» и «Хватит?» | `block-5-estimate/PN-17-estimate-sheets.md` | PN-16 | ⬜ |
 | | PN-18 e2e и доки | `block-5-estimate/PN-18-e2e-docs.md` | PN-17 | ⬜ |
@@ -166,6 +166,7 @@
 |---|---|---|
 | `SalaryRow` — режим строки (`Row`: пилюля «Пришла», «пришла 10 сентября · счёт», ✓-кружок) с Блока 16 не рендерит ни один экран: живёт только в `SalaryRow.test.ts` (RP-10, SSR) и e2e Б13 (`b2c-block13-fx-salary.test.ts:298, :310` — через него смотрят строку `SalaryExchange`). После PN-02 компонент = две кнопки + мёртвая строка (~70 строк, props `note`/`clickable`/`dense`). Убрать режим, тесты перевести на малую кнопку и `SalaryExchange` напрямую | критик Блока 1, 2026-10-09 | ⏳ владелец (рек.: сделать в Блоке 7 «Ритм зарплаты» — он всё равно правит `useSalaryTap`/`SalaryRow`) |
 | Имя правится не в одном месте: кроме «Свой кружок» (PN-01) поле «Имя» есть в листе «Изменить оклад» (`SalaryDialog.vue:154`, `onNameBlur` → `setPerson`) — его видит любой участник и может переименовать партнёра (больше негде). Оставить как «имя участника» или убрать ради Р-1 «одно место»? | критик Блока 1, 2026-10-09 | ⏳ владелец (`/ux` 2026-10-09: на стенде не мешает — имя и так в заголовке листа, оклад под ним; у себя дублирует «Свой кружок». Рек.: оставить — единственный способ назвать партнёра; в Блоке 7 при переделке форм опустить под «День зарплаты») |
+| Событие аналитики `goal_done` («Сбылось») не пишется: `CHECK kind` в миграции `000006_events` его не пускает, а новые миграции в этом бэклоге запрещены (Р-17). Нужна миграция `000NNN` (расширить `CHECK`) + вызов из `markGoalDone` | исполнитель Блока 4 (PN-13), 2026-10-10 | ⏳ владелец |
 | После «Пришла» в строке «Капитала» тенговая отметка уводит на «План · Месяц» (Р-78 — так вела кнопка листа; валютная остаётся, в «Месяце» ✓ на месте). Новичок ждёт ✓ на месте, как у «Оплатил» / «Отдал». Артефакт «до \| после» (реальные экраны): https://claude.ai/artifact/KPuqGPzvPs98TJUYMjprzH — **А** остаться с ✓ · **Б** как есть · **В** остаться + тост «К плану ›» | `/ux` Блока 1, 2026-10-09 | ⏳ владелец (рек.: А; правка небольшая — `useSalaryTap`: кнопка строки без `toAllocation`; в приёмке Блока 1 возвратом исполнителю или в Блоке 7; приёмку не блокирует) |
 
 ## 5. Протокол
@@ -390,6 +391,34 @@ Production `dpl_Fh6vRtoaqe6bC1pZTfUYDzit8uQR`, откат — promote `dpl_EsjHT
   записи, строка героя (`closerThisMonth`) — **после**; с `monthly` числа совпадают (ТЗ PN-09 п. 1/4 — так и задано). Мутации красные:
   `closerDays` 30 вместо 30,4 · окно `goalPace` −3 месяца · фонд в тосте «Отложил всё» · темп после взноса (`open(0)` → «91 день») ·
   обои из `src`. Фото PN-07: CDN 80/80, пять страниц Unsplash — авторы совпадают. База после критика: **175 файлов / 1766 ✅ + 1 пропуск**.
+
+**После Блока 4 (Сбылось; исполнитель, 2026-10-10)**
+- **Модель:** `Goal.doneAt?: string | null` (null — «Вернуть в мечты», LWW-очистка). `finance.ts`: `openGoals` (живые без `doneAt`) и
+  `doneGoals` (живые с `doneAt`, новые первыми) рядом с `liveGoals`; `doneTerm(goal)` — месяцев от первого положительного взноса
+  (нет — от `seedSetAt`, нет — 1) до месяца `doneAt`, не меньше 1; `doneLabel(n)` — «за N месяцев». **Активные** (`openGoals`):
+  `strategyInputs`, `budgetAmounts`, `goalSavings`, `capitalGoals`, `progressMoments`, `monthSummary`, `pausedGoals`, подушка плана
+  (`planStep`/`planRuns`/`planMonths`), `fundsOf`, `queueOf`; экраны `Money.vue` (капитал), `PlanSquare`, `ExtraIncomeSheet`,
+  `AccountSheet`. **Все живые** (`liveGoals`): `hasBudgetData`, карты целей для записей (`planFromSource`, `planPuts`,
+  `allocatedBeyondPlan`), `retryTemplatePhotos`, `AppShell` (заголовок), `GoalDetail`, `GoalSheet`. Решение — комментарием у каждой точки.
+  Новая точка, считающая деньги или очередь, — `openGoals`.
+- **Стор:** `markGoalDone(id, at?)` — `doneAt` + цель на счёте → `shiftAccountAmount(accountId, −have)`; `undoGoalDone(id)` — `doneAt:
+  null` + счёт `+have`; повтор — ничего. **Принятые ограничения:** «Сбылось» с двух телефонов офлайн сдвинет счёт дважды (как
+  пополнения); если остаток счёта меньше `have`, сдвиг срезается до 0, а «Вернуть» вернёт `have` целиком (тот же срез у
+  `shiftAccountAmount` для снятий). Кто отметил — не хранится (поля нет в Р-21; `by` из ТЗ не заведён).
+- **Экраны:** `GoalDetail` — `isDone`, `askBought` (мечта из очереди `kind: 'goal'`, `remaining ≤ 0`, не «Ещё нет»), `notYet` (ref до
+  ухода с экрана), `doneOpen`, `markDone`, `shareDone`; карточки `data-goal-ask` (`data-goal-done`, `data-goal-not-yet`) и
+  `data-goal-done-at`; меню — `data-goal-done-menu` (мечта) / `data-goal-undo` (сбывшаяся); у сбывшейся нет «Пополнить»,
+  «Подробнее», плашки плана и смены фото. Момент — `components/goals/DoneSheet.vue` (`goalId`, эмиты `close`/`share`; заголовок листа
+  «Сбылось!», `data-done-sheet`, `data-done-term`, `data-done-share`, `data-done-ok`); «Поделиться» открывает `StorySheet` экрана —
+  `StoryData.doneTerm` → строка «<имя> · сбылось за N месяцев», подпись «Сбылось». `Dreams.vue` — `done`, `albumOpen`,
+  `data-done-album` (кнопка `aria-expanded`), строки `data-done-row` (`ThumbRow`, «<monthShort> · за N мес.»); `heroCloser` — null при
+  `remaining ≤ 0`.
+- **Демо:** `g-bike` «Велосипед» — 4 взноса по 57 500 (M−7…M−4), `doneAt` M−3 → «за 4 месяца», альбом «Сбылось · 1»; капитал демо
+  прежний (2 093 986 ₸). Желание «Велосипед» осталось (ТЗ его не трогало) — дубль имени, наблюдение для `/ux`.
+- **Тесты:** `lib/done.test.ts` (11), стор «Сбылось» (3), `merge.test.ts` PN-13 (2), `GoalDetail.done.dom.test.ts` (8), `Dreams.test.ts`
+  (+2), `storyCard.test.ts` (+1), гвард демо, e2e `pn-block4-done.test.ts` (5). Мутации красные: «`goalSavings` со сбывшимися»,
+  «вопрос у фонда», «без списания со счёта». База: **178 файлов / 1802 ✅ + 1 пропуск**, e2e 33 файла.
+- Снимки «макет | стенд» — `block-4-done/shots/after-*.jpg`, артефакт https://claude.ai/artifact/Dmnr7TmYy5sAACNsTowvvL (v2).
 
 **Связки между блоками** (чтобы критик следил за промптами): Блок 2 → 5 (`inSalaries`, `capitalStats`); Блок 3 → 4
 (`GoalDetail`/`Dreams`/`StorySheet` после PN-09/10), → 5 (`goalPace`/`closerDays`), → 9 (`GoalNew` travel); Блок 7 → 8
