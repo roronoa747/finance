@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PhCaretRight } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
@@ -10,8 +10,10 @@ import { money, moneyIn, parseMoney, plain } from '@/lib/money'
 import { dayLabel, monthBy, monthFrom, monthKey as monthNow, monthShort, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
 import {
   DEBT_CARD,
+  closerDays,
   freeByFact,
   allInDebt,
+  goalPace,
   lastAccountFor,
   liveSpendCategories,
   monthPlan,
@@ -41,6 +43,7 @@ import NumField from '@/components/kit/NumField.vue'
 import Select from '@/components/kit/Select.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import SortableList from '@/components/kit/SortableList.vue'
+import Toast from '@/components/kit/Toast.vue'
 import Toggle from '@/components/kit/Toggle.vue'
 import Button from '@/components/ui/Button.vue'
 import MarkSheet from '@/components/MarkSheet.vue'
@@ -100,7 +103,30 @@ const pendingTotal = computed(() => putsLeft(pending.value))
 const extras = computed(() =>
   canEdit.value ? planExtras(state.value, { ...ctx.value, rawCredits: finance.householdDoc.credits }) : { freed: null, closed: null },
 )
-const savePuts = (list: PlanPut[]) => finance.putPlan(planPutSaves(plan.value, list), { by: me.value, note: 'по плану месяца' })
+/* «Ближе на N дней» (PN-09, Р-15): один тост на «Отложил» и «Отложил всё» — первая цель по очереди и «и ещё M»; фонды и
+ * долг дней не дают; ни у одной цели нет темпа — тоста нет. Темп и остаток — до записи взносов. */
+const closerNote = ref<string | null>(null)
+let closerTimer: ReturnType<typeof setTimeout> | null = null
+function flashCloser(text: string, ms = 4000) {
+  if (closerTimer) clearTimeout(closerTimer)
+  closerNote.value = text
+  closerTimer = setTimeout(() => (closerNote.value = null), ms)
+}
+onBeforeUnmount(() => {
+  if (closerTimer) clearTimeout(closerTimer)
+})
+function savePuts(list: PlanPut[]) {
+  const closer = list.flatMap((p) => {
+    if (p.kind !== 'goal' || !p.goalId || p.left <= 0) return []
+    const g = finance.goals.find((x) => x.id === p.goalId && !x.deletedAt)
+    const days = g ? closerDays(p.left, goalPace(g, props.monthKey)) : null
+    return days ? [{ name: p.name, days }] : []
+  })
+  finance.putPlan(planPutSaves(plan.value, list), { by: me.value, note: 'по плану месяца' })
+  if (!closer.length) return
+  const [first] = closer
+  flashCloser(`${first.name} ближе на ${first.days} ${plural(first.days, 'день', 'дня', 'дней')}${closer.length > 1 ? ` · и ещё ${closer.length - 1}` : ''}`)
+}
 function onFreed() {
   const f = extras.value.freed
   if (f) finance.applyPlan(f, { by: me.value, note: 'освободившийся платёж' })
@@ -702,5 +728,8 @@ function addFund(kind: 'reserve' | 'cushion') {
         <Button class="w-full" @click="saveDebt">Готово</Button>
       </template>
     </Sheet>
+
+    <!-- «Ближе на N дней» (PN-09): тост после «Отложил», в оболочке — над вкладками -->
+    <Toast v-if="closerNote"><span data-closer>{{ closerNote }}</span></Toast>
   </div>
 </template>
