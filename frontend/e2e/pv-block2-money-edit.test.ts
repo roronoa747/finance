@@ -523,8 +523,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       const before = await page(B.pinia, Money, '/money')
       expect(capitalNote(before)).toBe(money(500_000))
       // Блок 16 (Р-109): «Счета и цели» — счета 1 300 000 + цели вне счетов 200 000; минус долг = капитал.
-      // Р-116: это число — в подсказке «Что такое капитал» у суммы.
-      expect(before).toContain('data-worth-hint')
+      // Понятность Р-2: это число — в формуле «счета − долги» под суммой.
+      expect(before).toContain('data-worth-formula')
       expect(assetsOf(B.store)).toBe(1_500_000)
       expect(goalSavings(B.store.goals)).toBe(200_000)
 
@@ -590,8 +590,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(row).toContain(money(640_771))
       expect(row).not.toContain(money(512_340))
       expect(row).not.toContain(money(479_260))
-      // 1 000 000 на карте + 640 771 — «Счета и цели» подсказки капитала (Р-116), тем же расчётом.
-      expect(capital).toContain('data-worth-hint')
+      // 1 000 000 на карте + 640 771 — «счета» в формуле под капиталом (понятность Р-2), тем же расчётом.
+      expect(capital).toContain('data-worth-formula')
       expect(assetsOf(B.store)).toBe(1_640_771)
       const modal = await page(B.pinia, Money, '/money', { state: { selectedAccountId: 'usd' } })
       expect(modal).toContain(`value="${plain(1_337)}"`)

@@ -1,6 +1,9 @@
 # Бэклог «понятность» (PN)
 
-> **Статус:** в работе — блок 1 «Настройки везде» 🏁 (приёмка 2026-10-10: принято, мёрж `2176a8c`, прод `dpl_EhQbKr7RxaWYctjjjeybMmWuTGuy`, откат — promote `dpl_5T6yETZ6kGHP5kHTnnMFgXjZAqWi`; смоук владельца на iPhone — за ним); следующий — блок 2 «Капитал со статистикой» (`/worker понятность 2`, ч. 1 — макет PN-03).
+> **Статус:** в работе — блок 1 «Настройки везде» 🏁 (приёмка 2026-10-10: принято, мёрж `2176a8c`, прод `dpl_EhQbKr7RxaWYctjjjeybMmWuTGuy`, откат — promote `dpl_5T6yETZ6kGHP5kHTnnMFgXjZAqWi`; смоук владельца на iPhone — за ним); блок 2 «Капитал со статистикой» ✅ принят
+> (приёмка 2026-10-10, ветка `pn-block-2-capital-stats`: сверка с ТЗ PN-03…PN-06 без расхождений, стенд 61/61, e2e 31 / 204;
+> ворота ✅ «Ок», критик и `/ux` ✅) — **деплой после «да» владельца**, откат — promote `dpl_CkrpNJtdvVPGDN2531VPDg5rtFbz`;
+> затем 🏁 и `/worker понятность 3`.
 > Девять блоков: понятность (1–2) → мечты (3–4) → деньги (5–9); каждый блок — на прод отдельно в своей приёмке.
 
 Источник: `понятность-brief.md` (резюме интервью подтверждено 2026-10-09, 6 раундов). Формат —
@@ -111,10 +114,10 @@
 |---|---|---|---|---|
 | 1. Настройки везде 🏁 | PN-01 Аватары ведут в Настройки | `block-1-settings/PN-01-avatars-to-settings.md` | — | ✅ |
 | | PN-02 «Евро за год» и «Пришла зарплата» находятся без подсказки (хвост 1022) · e2e блока | `block-1-settings/PN-02-salary-findability.md` | PN-01 | ✅ |
-| 2. Капитал со статистикой ⬜ *(M + ворота макета, Р-19)* | PN-03 Макет «до \| после» и ворота | `block-2-capital-stats/PN-03-mockup-gate.md` | Блок 1 🏁 | ⬜ |
-| | PN-04 Расчёт `capitalStats` в `finance.ts` | `block-2-capital-stats/PN-04-capital-stats-finance.md` | PN-03 (ворота ✅) | ⬜ |
-| | PN-05 Плашка «счета − долги» и аккордеон | `block-2-capital-stats/PN-05-capital-plaque-accordion.md` | PN-04 | ⬜ |
-| | PN-06 Демо, e2e и доки | `block-2-capital-stats/PN-06-demo-e2e-docs.md` | PN-05 | ⬜ |
+| 2. Капитал со статистикой ✅ *(M + ворота макета, Р-19; принят 2026-10-10, деплой — после «да» владельца)* | PN-03 Макет «до \| после» и ворота | `block-2-capital-stats/PN-03-mockup-gate.md` | Блок 1 🏁 | ✅ (ворота «Ок» 2026-10-10) |
+| | PN-04 Расчёт `capitalStats` в `finance.ts` | `block-2-capital-stats/PN-04-capital-stats-finance.md` | PN-03 (ворота ✅) | ✅ |
+| | PN-05 Плашка «счета − долги» и аккордеон | `block-2-capital-stats/PN-05-capital-plaque-accordion.md` | PN-04 | ✅ |
+| | PN-06 Демо, e2e и доки | `block-2-capital-stats/PN-06-demo-e2e-docs.md` | PN-05 | ✅ |
 | 3. Мечты наряднее ⬜ | PN-07 +8 тем × 5 фото | `block-3-dreams/PN-07-themes-photos.md` | Блок 2 🏁 | ⬜ |
 | | PN-08 Фото по ссылке у цели | `block-3-dreams/PN-08-goal-photo-by-link.md` | PN-07 | ⬜ |
 | | PN-09 «Ближе на N дней» | `block-3-dreams/PN-09-closer-by-days.md` | PN-08 | ⬜ |
@@ -184,7 +187,7 @@ Production `dpl_EhQbKr7RxaWYctjjjeybMmWuTGuy`, откат — promote `dpl_5T6yE
 
 **Где что лежит**
 - Go — `backend/` (функция Vercel `api/index.go`), Vue 3 — `frontend/` (экраны `src/views/*.vue`, компоненты
-  `src/components/{kit,money,goals,capital,week,plan}/`, расчёты `src/lib/finance.ts` (4 355 строк), типы
+  `src/components/{kit,money,goals,capital,week,plan}/`, расчёты `src/lib/finance.ts` (4 433 строки после Блока 2), типы
   `src/types/finance.ts`, стор `src/stores/finance.ts`, операции выписок `src/stores/operations.ts` +
   `src/lib/statements/`). Прод — `https://family-finance-ff.vercel.app` (`family-finance.vercel.app` — чужой). Живой
   дизайн-док — **`memory/backlog/идея-и-редизайн/block-2-design/DESIGN.md`** (§2 карта экранов и шапка, §4 токены,
@@ -216,14 +219,14 @@ Production `dpl_EhQbKr7RxaWYctjjjeybMmWuTGuy`, откат — promote `dpl_5T6yE
   `countedPayments` (:1353, ключ `kind:targetId:period`), `salaryOpen` (:1851), `untilPayday` (:1747-1833 →
   `shortfall`, `knowsCash`, `inDays`), `monthSalaries → SalaryLine[]` (:3236); стор `markSalary` (:1372). Блок 7
   заменяет «день» на `payEvents` (события по ритму; `period` события не-месячного ритма — ISO-день).
-- Цели: `goalHave` (:207), `goalRemaining` (:772), `goalTerm(item, goal, key, forecast?)` (:3300), `queueOf` (:2860),
+- Цели: `goalHave` (:207), `goalRemaining` (:772), `goalTerm(item, goal, key, forecast?)` (:3378), `queueOf` (:2860),
   `fundsOf`/`fundMonthsOf` (:2835/:2846), `goalSavings`/`netWorth`/`capitalGoals` (:1254-1283), `liveGoals` (:728;
   Блок 4 вводит `openGoals`/`doneGoals`). Движения — `Goal.movements` (стор `contribute`/`withdraw` :1918/:1932,
   «Отложил» — `putPlan` :2031). Темп и «ближе на N дней» — `goalPace`/`closerDays` (Блок 3).
 - Долги: `creditSplit` (:1300 → `{ amount, interest, body }`), `creditOutlook` (:292), `debtsOverview` (:2607 →
   `freeMonth`), `openCredits`/`costliestCredits` (:748/:758), `overpayNoPlan` (:2553), `planForecast` (:2536);
   аннуитет `annuityPayment` (:23). Подписка — `isSubscription` (:910), группы — `subscriptionGroup`/`rowsGroup`/
-  `monthSubscriptions` (:3544-3581). Капитал — `capitalStats`, `inSalaries` (Блок 2).
+  `monthSubscriptions` (:3622-3655; номера ниже :3257 сдвинуты Блоком 2 на +78). Капитал — `capitalStats`, `inSalaries` (Блок 2).
 - Выписки: `Operation` (`lib/statements/types.ts:14-33`, личные), `isSpend`/`spendTotals` (`model.ts:275-304`),
   `markedOps` (`matching.ts:136`), кандидат зарплаты (`matching.ts:245-253`), стор `writeTotals` (`operations.ts:354`).
 - Даты — `lib/dates.ts` (`monthKey`, `addMonths`, `monthIn`, `monthsBetween` в `finance.ts:2249`, `todayIso`,
@@ -305,6 +308,44 @@ Production `dpl_EhQbKr7RxaWYctjjjeybMmWuTGuy`, откат — promote `dpl_5T6yE
   с `s.next(...)` ловит `MarkSheet` раньше `SalarySheet` — трогать `s.year`, `s.rate` первыми); e2e Б16 ч. 4 и PV Б-19
   переписаны под `div`-строку и `MyCircle`. Гварды `Money.test.ts:321` (строки) и `:329` (нет брендовых) не ослаблены.
   База после блока: **166 файлов / 1699 ✅ + 1 пропуск**.
+
+**После Блока 2 (Капитал со статистикой; исполнитель и критик, 2026-10-10)**
+- **Расчёт:** `capitalStats(plan: MonthPlan, state: PlanState & { plans? }, key) → CapitalStats` и `inSalaries(amount, income)`
+  (`finance.ts`, раздел «Капитал со статистикой» после `monthSalaries`). Вход — готовый `finance.monthPlanOf(key)` и
+  `{ ...finance.planState(), plans: finance.plans }` (`payments` стора нужны — тело считается от отметок). Доли: `credits`
+  = Σ `dues` kind `credit` + Σ `queue` kind `debt` `given`; `payments` = Σ `dues` kind `obligation`; `goals` = Σ `queue`
+  goal|fund `given`; `rest` = max(0, доход − …); `share` = amount / max(доход, credits + payments + goals) (сумма долей
+  всегда 1 — полоска заполнена и при нехватке), `pct` = `pct(amount, доход)` из `lib/money.ts`; `income ≤ 0` → `parts: []`;
+  `credits` 0 → доли нет. `growth` = Σ `creditSplit(principal **на начало месяца** = `credit.principal + creditBodyIn(credit,
+  payments, key)`, rate, due.amount).body` + досрочка карточки + взносы (точное; «~» до тысяч — экран): кредиты стора уже
+  без тела отмеченного месяца, а закрытый этим платежом — с остатком 0 (критик Б2: от текущего остатка тело завышалось на
+  ~1 % или терялось целиком). `debtFree.month` = `debtsOverview(state, key).freeMonth` (только при открытых кредитах,
+  иначе null), `months` = `monthsBetween(key, month)`, `salaries` = `months` (Блок 7 заменит на число приходов).
+  `overpay.amount` = `overpayNoPlan(openCredits)` — то же число, что «без плана» у `planOutlook` (только беспроцентные →
+  0; любой не закрывается → null, тогда и `month` null — экран пишет «не закрываются»); активный план → минус
+  `planForecast(...).savedInterest` (не ниже 0); `salaries` = `inSalaries` (одна десятая). Блок 5 берёт `inSalaries` и
+  `overpayNoPlan`/`creditOutlook`-логику отсюда.
+- **Экран:** `Money.vue` — плашка `Card … role="button" aria-expanded data-capital data-capital-stats` (клик, Enter,
+  Space), `data-worth` 34 px, `data-worth-formula` «счета {plain} − долги {plain}» / «счета N · долгов нет», `PhCaretRight`
+  (`rotate-90` раскрыта), `statsOpen` — локальный `ref` (при заходе закрыто); `stats` — computed, считается только при
+  раскрытии (`v-if`). `money/CapitalStats.vue` (`stats`, `debt`): `data-capital-stats-body`, `StackBar`, строки
+  `data-stat-row="credits|payments|goals|rest"` с `data-stat-amount`/`data-stat-pct` (при `short > 0` процентов нет —
+  от дохода они больше 100, ux Б2), `data-short` (`--warn`),
+  `data-growth`, `data-debt-free` («Без долгов {monthBy(month)} · ещё N зарплат» · «Долги не закрываются при текущих
+  платежах» `--warn` · «Долгов нет» `--ok`), `data-overpay` («Переплата N ₸ · M зарплаты» · «не считается — платёж не
+  покрывает проценты»; 0 — строки нет), `data-no-income`. Слово к числу зарплат: дробь — «зарплаты», целое — `plural`;
+  единица при 0 (меньше 0,05 зарплаты) не пишется — ни у переплаты, ни у срока (критик Б2).
+  Цвета — токены макета (`--s12/--s1/--s3/--ok`). `Hint` «Что такое капитал» и `data-worth-hint` удалены — тесты и e2e
+  переведены на `data-worth-formula` (`Money.test.ts`, `Money.b16.dom.test.ts`, e2e `b2c-block16-money-screens`
+  `worthParts`, `pv-block2-money-edit`).
+- **Гвард тишины** `Money.test.ts:321` цел: закрытый SSR — ни `data-stat-row`, ни `data-growth`; раскрытие в SSR —
+  `screenMixin({ statsOpen: true })`. Мутации «`v-if` → `v-show`», «без досрочки карточки», «`pct` без округления», «тело
+  от текущего остатка», «единица при 0 зарплат» — красные. Тесты блока: `lib/capitalStats.test.ts` (15; фикстура
+  `planFamilyDoc` + отметки через `derived` — остаток из `creditBalance`, как стор), `views/Money.stats.dom.test.ts` (11),
+  e2e `pn-block2-capital-stats.test.ts` (5), гвард демо `Access.demo.dom.test.ts`. База после блока: **169 файлов / 1734 ✅
+  + 1 пропуск**.
+- **Снимки «макет | стенд»** — `block-2-capital-stats/shots/after-*.jpg` (демо :5203, 2026-10-10), артефакт
+  https://claude.ai/artifact/1eFVmvTvqTpsYUgzzLKTqe (v2 — с колонкой «стенд»).
 
 **Связки между блоками** (чтобы критик следил за промптами): Блок 2 → 5 (`inSalaries`, `capitalStats`); Блок 3 → 4
 (`GoalDetail`/`Dreams`/`StorySheet` после PN-09/10), → 5 (`goalPace`/`closerDays`), → 9 (`GoalNew` travel); Блок 7 → 8

@@ -15,8 +15,8 @@ import { useOperationsStore } from '@/stores/operations'
 import { spendTotals, unknownGroups } from '@/lib/statements/model'
 import type { SpendTotal } from '@/lib/statements/types'
 import { monthKey, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
-import { myWeek, spendRows } from '@/lib/finance'
-import { money } from '@/lib/money'
+import { amountTotal, capitalGoals, capitalStats, liveAccounts, liveCredits, liveGoals, myWeek, netWorth, openDebt, spendRows } from '@/lib/finance'
+import { money, plain } from '@/lib/money'
 import { useAuthStore } from '@/stores/auth'
 import { demoPhotoUrl, photoUrl } from '@/lib/photos/store'
 
@@ -207,6 +207,56 @@ describe('B2C-110 (Р-118): демо — фото из приложения, л�
     expect(doc.people.map((p) => p.name)).toEqual(['Вы', 'Партнёр'])
     const dreams = text(await renderScreen(Dreams, '/'))
     expect(dreams).not.toMatch(/Ильяс|Аруна/)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+})
+
+describe('PN-06 (понятность Р-2, Р-3): демо — плашка Капитала с формулой и осмысленной статистикой', () => {
+  it('формула «счета − долги» = netWorth; статистика демо — четыре доли, рост, «без долгов к», переплата в зарплатах; закрытый экран без строк', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const router = createAppRouter(createMemoryHistory())
+    await router.push('/')
+    await router.isReady()
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app = createApp(Landing)
+    app.use(pinia)
+    app.use(router)
+    app.mount(root)
+    await nextTick()
+    ;[...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('Попробовать'))!.click()
+    await nextTick()
+    await nextTick()
+
+    const finance = useFinanceStore()
+    const key = monthKey()
+    const stats = capitalStats(finance.monthPlanOf(key), { ...finance.planState(), plans: finance.plans }, key)
+    // Демо-цифры дают все четыре доли (автокредит и долг брату, аренда и подписки, взносы по плану, остаток), рост,
+    // срок с планом «Сначала долги» и переплату — статистика осмысленна без правки сумм демо.
+    expect(stats.parts.map((p) => p.key)).toEqual(['credits', 'payments', 'goals', 'rest'])
+    for (const p of stats.parts) expect(p.amount, p.key).toBeGreaterThan(0)
+    expect(stats.short).toBe(0)
+    expect(stats.growth).toBeGreaterThan(0)
+    expect(stats.debtFree.month).not.toBeNull()
+    expect(stats.debtFree.salaries).toBeGreaterThan(0)
+    expect(stats.overpay.amount).toBeGreaterThan(0)
+    expect(stats.overpay.salaries).not.toBeNull()
+
+    const worth = netWorth(liveAccounts(finance.accounts), liveCredits(finance.credits), liveGoals(finance.goals))
+    const assets = amountTotal(liveAccounts(finance.accounts)) + capitalGoals(finance.goals, finance.accounts).total
+    const debt = openDebt(finance.credits)
+    expect(debt).toBeGreaterThan(0)
+    expect(assets - debt).toBe(worth)
+    const raw = await renderScreen(Money, '/money')
+    expect(raw).toContain(`data-worth-formula>счета ${plain(assets)} − долги ${plain(debt)}<`)
+    expect(raw).not.toContain('Что такое капитал')
+    expect(raw).not.toContain('data-stat-row')
+    const opened = text(await renderScreen(Money, '/money', undefined, [screenMixin({ statsOpen: true })]))
+    for (const p of stats.parts) expect(opened).toContain(`${text(money(p.amount))} ${p.pct} %`)
+    expect(opened).toContain('Капитал растёт на')
+    expect(opened).toContain('Без долгов')
+    expect(opened).toContain('Переплата')
     expect(fetch).not.toHaveBeenCalled()
   })
 })

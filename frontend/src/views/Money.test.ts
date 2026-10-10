@@ -298,9 +298,18 @@ describe('views/Money.vue — финансовые показатели (рас�
       const worth = netWorth(store.accounts, store.credits, store.goals)
       const raw = await renderScreen(Money, '/money')
       const html = text(raw)
-      // Слова «Капитал» над суммой нет — оно на чипе; сумма одна, рядом — подсказка (Р-116).
+      // Слова «Капитал» над суммой нет — оно на чипе; сумма одна, под ней формула «счета − долги» (понятность Р-2), подсказки «?» нет.
       expect(raw).toMatch(new RegExp(`data-worth[^>]*>${money(worth)}<`))
-      expect(raw).toContain('aria-label="Что такое капитал"')
+      expect(raw).not.toContain('Что такое капитал')
+      const assets = amountTotal(liveAccounts(store.accounts)) + capitalGoals(store.goals, store.accounts).total
+      expect(raw).toContain(`data-worth-formula>счета ${plain(assets)} − долги ${plain(openDebt(store.credits))}<`)
+      // Статистика (Р-3) закрыта: плашка — кнопка с aria-expanded, в SSR закрытого экрана строк долей нет; раскрытая — есть.
+      expect(raw).toMatch(/data-capital[^>]*aria-expanded="false"|aria-expanded="false"[^>]*data-capital/)
+      for (const attr of ['data-stat-row', 'data-growth', 'data-debt-free', 'data-capital-stats-body']) expect(raw).not.toContain(attr)
+      const opened = await renderScreen(Money, '/money', undefined, [screenMixin({ statsOpen: true })])
+      expect(opened).toContain('data-stat-row="credits"')
+      expect(opened).toContain('data-growth')
+      expect(opened).toContain('data-debt-free')
       // «Кредиты» — без итога у заголовка (он — «долги» в подсказке у капитала): 969 500 + 300 000 + 240 000 = 1 509 500.
       const credits = text(raw.slice(raw.indexOf('data-credits'), raw.indexOf('data-payments')))
       expect(openDebt(store.credits)).toBe(1_509_500)
@@ -338,9 +347,10 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(squares(html)).not.toContain(plain(worth))
       expect(squares(html).match(/aria-current="page"/g)).toHaveLength(1)
       expect(squares(html)).toMatch(/aria-current="page"[^>]*>\s*Капитал/)
-      // Подсказка «Что такое капитал» — не на чипе, а у суммы капитала (одна на экране).
-      expect(squares(html)).not.toContain('Что такое капитал')
-      expect(html.match(/aria-label="Что такое капитал"/g)).toHaveLength(1)
+      // Формула «счета − долги» — не на чипе, а под суммой капитала (одна на экране; подсказки «?» нет — понятность Р-2).
+      expect(squares(html)).not.toContain('data-worth-formula')
+      expect(html.match(/data-worth-formula/g)).toHaveLength(1)
+      expect(html).not.toContain('Что такое капитал')
       html = await renderScreen(Money, '/money/debts')
       expect(squares(html)).toMatch(/aria-current="page"[^>]*>\s*Долги/)
       // Остаток долгов — на экране «Долгов», не на чипе.
