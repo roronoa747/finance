@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { capitalStats, creditOutlook, creditSplit, debtsOverview, inSalaries, monthPlan, monthsBetween, planForecast, type MonthPlanCtx, type MonthPlanState } from './finance'
+import { capitalStats, creditBalance, creditOutlook, creditSplit, debtsOverview, inSalaries, monthPlan, monthsBetween, planForecast, type MonthPlanCtx, type MonthPlanState } from './finance'
 import { planFamilyDoc, planOf, T0 } from '@/test/planFamily'
-import type { SyncDoc } from '@/types/finance'
+import type { Payment, SyncDoc } from '@/types/finance'
 
 /**
  * PN-04 (понятность Р-3): статистика плашки Капитала против плана месяца и ручного расчёта (правило 6 — числа в
@@ -25,6 +25,12 @@ const statsOf = (state: MonthPlanState & SyncDoc) => {
 }
 const sum = (xs: number[]) => xs.reduce((a, x) => a + x, 0)
 const by = (parts: { key: string; amount: number }[], key: string) => parts.find((p) => p.key === key)?.amount ?? 0
+const givenOf = (plan: ReturnType<typeof monthPlan>, kind: 'debt' | 'goals') => sum(plan.queue.filter((q) => (kind === 'debt') === (q.kind === 'debt')).map((q) => q.given))
+const pay = (p: Partial<Payment> & Pick<Payment, 'id' | 'kind' | 'targetId' | 'period' | 'amount'>): Payment => ({
+  accountId: 'card', by: 'a', at: '2026-09-15T10:00:00Z', updatedAt: '2026-09-15T10:00:00Z', ...p,
+})
+/** Как стор отдаёт кредиты экранам: остаток — из отметок (`derivedCredits`). */
+const derived = (state: MonthPlanState & SyncDoc) => ({ ...state, credits: state.credits!.map((c) => ({ ...c, principal: creditBalance(c, state.payments) })) })
 
 describe('capitalStats — доли дохода', () => {
   it('четыре доли = план месяца: кредиты (график + досрочка карточки), платежи, в цели (given), остаётся; тождество и проценты', () => {
@@ -156,5 +162,59 @@ describe('capitalStats — рост, срок и переплата', () => {
     expect(inSalaries(130_598, 1_211_310)).toBe(0.1)
     expect(inSalaries(0, 300_000)).toBe(0)
     expect(inSalaries(100, 0)).toBeNull()
+  })
+})
+
+describe('capitalStats — отметки месяца (критик Блока 2): кредиты стора уже без тела этого месяца', () => {
+  it('кредит оплачен в этом месяце: тело — как в отметке (от остатка на начало месяца), не от уменьшенного; доля «кредиты» — сумма отметки', () => {
+    const state = derived(stateOf({ payments: [pay({ id: 'l', kind: 'credit', targetId: 'loan', period: KEY, amount: 58_000, principal: 30_500 })] }))
+    expect(state.credits!.find((c) => c.id === 'loan')!.principal).toBe(969_500)
+    const { plan, stats } = statsOf(state)
+    // От уменьшенного остатка 969 500 тело вышло бы 31 339 (проценты 26 661) — на 839 ₸ больше, чем ушло в долг.
+    expect(creditSplit(969_500, 0.33, 58_000).body).toBe(31_339)
+    expect(givenOf(plan, 'debt')).toBe(40_000)
+    expect(stats.growth).toBe(30_500 + 15_000 + 20_000 + 40_000 + givenOf(plan, 'goals'))
+    expect(by(stats.parts, 'credits')).toBe(143_000)
+  })
+
+  it('кредит закрыт платежом этого месяца: в доле «кредиты» и в росте — его тело целиком; из срока и переплаты он ушёл', () => {
+    const state = derived(stateOf({ payments: [pay({ id: 'i', kind: 'credit', targetId: 'inst', period: KEY, amount: 240_000, principal: 240_000 })] }))
+    expect(state.credits!.find((c) => c.id === 'inst')!.principal).toBe(0)
+    const { plan, stats } = statsOf(state)
+    // Платёж месяца закрытого долга в бюджете остаётся (`creditMonthPayment`), а остаток 0 дал бы тело 0.
+    expect(plan.dues.find((d) => d.targetId === 'inst')?.amount).toBe(240_000)
+    expect(creditSplit(0, 0, 240_000).body).toBe(0)
+    expect(givenOf(plan, 'debt')).toBe(40_000)
+    expect(by(stats.parts, 'credits')).toBe(58_000 + 25_000 + 240_000 + 40_000)
+    expect(stats.growth).toBe(30_500 + 15_000 + 240_000 + 40_000 + givenOf(plan, 'goals'))
+    const o = debtsOverview({ ...state, plans: state.plans }, KEY)
+    expect(o.rows.map((r) => r.creditId).sort()).toEqual(['cc', 'loan'])
+    expect(stats.debtFree.month).toBe(o.freeMonth)
+    const open = state.credits!.filter((c) => c.principal > 0)
+    expect(stats.overpay.amount).toBe(sum(open.map((c) => creditOutlook(c).overpay)))
+  })
+
+  it('долг человеку без ежемесячного платежа не закрывается: срок и переплата null вместе (как debtsOverview) — экран скажет «не закрываются»', () => {
+    const base = stateOf()
+    const bro = { id: 'bro', name: 'Брату', note: '', principal: 300_000, annualRate: 0, payment: 0, day: 25, person: true, updatedAt: T0 }
+    const state = { ...base, credits: [...base.credits!, bro] }
+    const { plan, stats } = statsOf(state)
+    expect(plan.dues.some((d) => d.targetId === 'bro')).toBe(false)
+    expect(creditOutlook(bro).closes).toBe(false)
+    expect(debtsOverview({ ...state, plans: state.plans }, KEY).freeMonth).toBeNull()
+    expect(stats.debtFree.month).toBeNull()
+    expect(stats.overpay).toEqual({ amount: null, salaries: null })
+  })
+
+  it('только беспроцентная рассрочка: срок — по графику (12 платежей), переплата 0 — строки на экране нет; «кредиты» и рост — её платёж', () => {
+    const base = stateOf()
+    const state = { ...base, credits: base.credits!.filter((c) => c.id === 'inst') }
+    const { plan, stats } = statsOf(state)
+    expect(givenOf(plan, 'debt')).toBe(0)
+    expect(stats.overpay).toEqual({ amount: 0, salaries: 0 })
+    expect(stats.debtFree.month).toBe(debtsOverview({ ...state, plans: state.plans }, KEY).freeMonth)
+    expect(stats.debtFree.months).toBe(12)
+    expect(by(stats.parts, 'credits')).toBe(20_000)
+    expect(stats.growth).toBe(20_000 + givenOf(plan, 'goals'))
   })
 })

@@ -6,7 +6,7 @@ import type { Operation, SpendCategory, SpendTotal } from '@/lib/statements/type
 import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY, plannedElsewhere } from '@/lib/statements/dictionary'
 import { addDaysIso, addMonths, dayLabel, daysInMonth, isoIn, monthFrom, monthKey, parseMonthKey, today, todayIso, weekdayShort, weekKey, weekRange } from '@/lib/dates'
 import { spendColor } from '@/lib/palette'
-import { money } from '@/lib/money'
+import { money, pct } from '@/lib/money'
 /**
  * Расчётное ядро. Чистые функции: ни сети, ни состояния, ни ИИ.
  *
@@ -3290,10 +3290,10 @@ export function inSalaries(amount: number, income: number): number | null {
  * «платежи» — остальной график (аренда, коммуналка, подписки, людям); «в цели» — что очередь даёт целям и фондам в
  * этом месяце; «остаётся» — на жизнь (траты планов внутри: владелец видит четыре доли, не пять), не меньше 0.
  * Тождество: кредиты + платежи + в цели + остаётся = max(доход, кредиты + платежи + в цели); `share` — от этой суммы,
- * чтобы полоска при нехватке была заполнена целиком, `pct` — от дохода. Рост капитала — тело кредитов (`creditSplit`)
- * + досрочка + взносы. Срок — `debtsOverview`, переплата — `creditOutlook` открытых процентных долгов (с активным
- * планом — минус `planForecast.savedInterest`); «в зарплатах» — `inSalaries` (ритм — месяц; Блок 7 заменит на число
- * приходов). Ничего не пишется, новых данных нет.
+ * чтобы полоска при нехватке была заполнена целиком, `pct` — от дохода. Рост капитала — тело кредитов (`creditSplit` от
+ * остатка на начало месяца, у отмеченного — то же тело, что в отметке) + досрочка + взносы. Срок — `debtsOverview`,
+ * переплата — `overpayNoPlan` открытых долгов (с активным планом — минус `planForecast.savedInterest`);
+ * «в зарплатах» — `inSalaries` (ритм — месяц; Блок 7 заменит на число приходов). Ничего не пишется, новых данных нет.
  */
 export function capitalStats(plan: MonthPlan, state: PlanState & { plans?: DebtPlan[] }, key: string): CapitalStats {
   const income = plan.income.total
@@ -3304,22 +3304,17 @@ export function capitalStats(plan: MonthPlan, state: PlanState & { plans?: DebtP
   const goals = plan.queue.filter((q) => q.kind !== 'debt').reduce((a, q) => a + q.given, 0)
   const rest = Math.max(0, income - credits - payments - goals)
   const total = Math.max(income, credits + payments + goals)
-  const part = (k: CapitalPartKey, amount: number): CapitalPart => ({ key: k, amount, share: amount / total, pct: Math.round((amount / income) * 100) })
+  const part = (k: CapitalPartKey, amount: number): CapitalPart => ({ key: k, amount, share: amount / total, pct: pct(amount, income) })
   const parts = income > 0 ? [...(credits > 0 ? [part('credits', credits)] : []), part('payments', payments), part('goals', goals), part('rest', rest)] : []
-  const body = creditDues.reduce((a, d) => a + creditSplit(d.credit.principal, d.credit.annualRate, d.amount).body, 0)
+  // Тело — от остатка на начало месяца (как карточка долга в `monthPlan`): у отмеченного кредита стор уже вычел тело этого
+  // месяца, у закрытого этим платежом остаток 0 — от них тело вышло бы меньше или 0 (критик Блока 2).
+  const paid = state.payments ?? []
+  const body = creditDues.reduce((a, d) => a + creditSplit(d.credit.principal + creditBodyIn(d.credit, paid, key), d.credit.annualRate, d.amount).body, 0)
   const open = openCredits(state.credits ?? [])
   const month = open.length ? debtsOverview(state, key).freeMonth : null
   const months = month === null ? null : monthsBetween(key, month)
-  let overpay: number | null = 0
-  for (const c of open) {
-    if (!(c.annualRate > 0)) continue
-    const o = creditOutlook(c)
-    if (!o.closes) {
-      overpay = null
-      break
-    }
-    overpay += o.overpay
-  }
+  // То же число, что «без плана» у квадрата «Долги» (`planOutlook`); null — какой-то долг не закрывается, тогда и `month` null.
+  let overpay = overpayNoPlan(open)
   const active = activePlan(state.plans)
   if (overpay !== null && active) {
     const saved = planForecast(active, state, key).savedInterest
