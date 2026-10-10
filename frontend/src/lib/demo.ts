@@ -170,12 +170,14 @@ export function startDemo(): boolean {
         id: 'g-trip',
         name: 'Поездка в Японию',
         need: 2_000_000,
-        seed: 600_000,
+        // Взнос этого месяца (PN-09): под героем «Мечт» — «ближе на 15 дней» (50 000 при 100 000 в месяц); накопленное
+        // прежнее — `have` = `seed` + взносы.
+        seed: 550_000,
         have: 600_000,
         monthly: 100_000,
         hue: 'plum',
         planPct: 0.3,
-        movements: [],
+        movements: [{ id: 'demo-put-trip', date: `${monthKey()}-01T06:00:00.000Z`, amount: 50_000, by: 'a', note: 'отложил' }],
         // Фото демо — из приложения (Р-118): сервера в демо нет, картинка шаблона лежит в бандле.
         template: 'japan',
         ...demoPhoto('japan', 'japan'),
@@ -244,6 +246,8 @@ export function startDemo(): boolean {
         hue: 'ochre',
         planPct: 0,
         movements: [],
+        // Тема «Мебель» (PN-07) — новая тема видна в демо; картинка остаётся демо-файлом.
+        template: 'furniture',
         photoId: DEMO_PHOTO + 'sofa',
         // Выключена в плане месяца (Р-83): на «Мечтах» — «на паузе».
         pausedAt: new Date().toISOString(),

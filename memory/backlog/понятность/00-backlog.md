@@ -118,11 +118,11 @@
 | | PN-04 Расчёт `capitalStats` в `finance.ts` | `block-2-capital-stats/PN-04-capital-stats-finance.md` | PN-03 (ворота ✅) | ✅ |
 | | PN-05 Плашка «счета − долги» и аккордеон | `block-2-capital-stats/PN-05-capital-plaque-accordion.md` | PN-04 | ✅ |
 | | PN-06 Демо, e2e и доки | `block-2-capital-stats/PN-06-demo-e2e-docs.md` | PN-05 | ✅ |
-| 3. Мечты наряднее ⬜ | PN-07 +8 тем × 5 фото | `block-3-dreams/PN-07-themes-photos.md` | Блок 2 🏁 | ⬜ |
-| | PN-08 Фото по ссылке у цели | `block-3-dreams/PN-08-goal-photo-by-link.md` | PN-07 | ⬜ |
-| | PN-09 «Ближе на N дней» | `block-3-dreams/PN-09-closer-by-days.md` | PN-08 | ⬜ |
-| | PN-10 «На обои» | `block-3-dreams/PN-10-wallpaper.md` | PN-09 | ⬜ |
-| | PN-11 Демо, e2e и доки | `block-3-dreams/PN-11-demo-e2e-docs.md` | PN-10 | ⬜ |
+| 3. Мечты наряднее 🔄 *(исполнитель ✅ 2026-10-10, ветка `pn-block-3-dreams`; дальше — критик)* | PN-07 +8 тем × 5 фото | `block-3-dreams/PN-07-themes-photos.md` | Блок 2 🏁 | ✅ |
+| | PN-08 Фото по ссылке у цели | `block-3-dreams/PN-08-goal-photo-by-link.md` | PN-07 | ✅ |
+| | PN-09 «Ближе на N дней» | `block-3-dreams/PN-09-closer-by-days.md` | PN-08 | ✅ |
+| | PN-10 «На обои» | `block-3-dreams/PN-10-wallpaper.md` | PN-09 | ✅ |
+| | PN-11 Демо, e2e и доки | `block-3-dreams/PN-11-demo-e2e-docs.md` | PN-10 | ✅ |
 | 4. Сбылось ⬜ *(M + ворота макета, Р-19)* | PN-12 Макет «до \| после» и ворота | `block-4-done/PN-12-mockup-gate.md` | Блок 3 🏁 | ⬜ |
 | | PN-13 Модель и расчёты: `doneAt`, деньги как покупка | `block-4-done/PN-13-model-finance.md` | PN-12 (ворота ✅) | ⬜ |
 | | PN-14 Экраны: «Купили?», «Сбылось», момент, альбом | `block-4-done/PN-14-screens.md` | PN-13 | ⬜ |
@@ -346,6 +346,38 @@ Production `dpl_GAuRNsHXbQtuAMeB7zxwYhaPcQfy`, откат — promote `dpl_CkrpN
   + 1 пропуск**.
 - **Снимки «макет | стенд»** — `block-2-capital-stats/shots/after-*.jpg` (демо :5203, 2026-10-10), артефакт
   https://claude.ai/artifact/1eFVmvTvqTpsYUgzzLKTqe (v2 — с колонкой «стенд»).
+
+**После Блока 3 (Мечты наряднее; исполнитель, 2026-10-10)**
+- **Библиотека:** `goalTemplates.ts` — `GoalTemplateType` 19 типов, `GOAL_TYPES` в порядке Р-4 (новые после `hajj`: `business`,
+  `moving`, `furniture`, `sport`, `celebration`, `gift`, `dacha`, `pet`), `GOAL_TEMPLATES` +40 записей `<тип>`, `<тип>-2…-5` (оттенки:
+  indigo · steel · brick · ochre · plum · blue · green · teal — соседние плитки сетки 3 × N не сливаются). Формат `pageId` 11 символов,
+  `unsplashId` `photo-…` — гварды `goalTemplates.test.ts` (7). Плитки показывают `GOAL_TYPES` целиком — сетка 19 + «Своё фото» +
+  «По ссылке» (21 кнопка `aria-pressed`).
+- **Фото по ссылке:** `components/goals/LinkPhotoField.vue` (`data-link-photo`; `useLinkPreview()` по умолчанию с `apiClient`; эмит
+  `found(LinkFound)` только с файлом; `LINK_PHOTO_MISSED` из composable; экспорт `LINK_PHOTO_NEEDS_NET` = «Фото по ссылке — при сети» —
+  в демо (`finance.isDemo`) и офлайн (`navigator.onLine === false`) ручка не зовётся; фокус в поле при монтировании). `TemplateTile` —
+  проп `link` (значок `PhLink`, пунктир как у `camera`). `PhotoPicker.vue`: плитка `data-link-tile` после «Своё фото», `linkOpen` → поле
+  под сеткой, `found.file` → `emit('file')`; при каждом открытии листа свёрнуто. `GoalNew.vue`: та же плитка, `pickOwn(file)` общий для
+  файла и ссылки (шаблон null, превью object URL, шаг `form`), имя — `found.title`, если своего нет; выбор темы сворачивает поле.
+  `addGoal` при `template: null` ключ не пишет — `null` ставит `attachFile`. Тесты: `LinkPhotoField.dom` (5), `PhotoPicker.dom` (2),
+  `GoalNew.variants.dom` (+1).
+- **«Ближе на N дней»:** `finance.ts` после `contributionStreak` — `goalPace(goal, key)` (план взноса, иначе Σ положительных движений
+  за 3 месяца / 3), `closerDays(amount, pace)` (`round(amount / pace × 30,4)`, null без темпа или взноса), `closerThisMonth(goal, key)`.
+  `GoalDetail.vue` — `closerNote`/`flashCloser` 4 с, темп считается **до** `contribute`; `<Toast><span data-closer>`. `MonthPlan.vue` —
+  `savePuts(list)` стал функцией: дни по `p.left` для `kind === 'goal'`, один тост «{первая} ближе на N дней · и ещё M». `Dreams.vue` —
+  `heroCloser` → `DreamCenter` **новый проп `closer`** (подпись `title · closer`, `data-hero-closer` на span; `month` сильнее — «на
+  паузе»). Тосты и строка при 0 днях не показываются. Тесты: `lib/closer.test.ts` (3), `GoalDetail.closer.dom.test.ts` (3),
+  `MonthPlan.dom.test.ts` (+2; «Подушка» семьи плана — обычная цель, фонд в тестах — `fund: 'cushion'`), `Dreams.test.ts` (+1).
+- **Обои:** `storyCard.ts` — `StoryKind` += `wallpaper`, `WALLPAPER_SIZE` 1170 × 2532, `storySize(kind)`, `WALLPAPER_FILE`;
+  `StoryLayout.app`/`label` теперь `| null` (у обоев null; `drawStory`, `loadStoryFonts` пропускают); `layoutStory('wallpaper')` —
+  нижнее поле 12 % высоты, полоса на процент остаётся, градиент с 0,5 h; `renderStory(canvas, { …, size? })`. `StorySheet.vue` —
+  `data-story-wallpaper` (ghost, только `kind === 'goal'`), offscreen canvas, `shareStory(blob, { title: 'Обои · <мечта>', fileName })`,
+  `data-story-wallpaper-note`. Тесты: `storyCard.test.ts` (+2), `StorySheet.dom.test.ts` (+1).
+- **Демо:** `g-sofa.template = 'furniture'`; `g-trip` — `seed 550 000` + движение `demo-put-trip` 50 000 первого числа текущего месяца
+  (`have` прежние 600 000 → «ближе на 15 дней»; в «Месяце» у «Отпуска» теперь «уже отложено 50 000»). Гвард `Access.demo.dom.test.ts`.
+- **e2e** `pn-block3-dreams.test.ts` (5; `vi.mock` сжатия — в Node `compressImage` не декодирует и `attachFile` тихо даёт false). База
+  после блока: **174 файла / 1762 ✅ + 1 пропуск**. Снимки «до | после» — `block-3-dreams/shots/` (стенд `:5281` + Go-моки `:8080`,
+  прод-демо «до»), артефакт https://claude.ai/artifact/4WsRPKMdsxgkKqUyS6qRyM.
 
 **Связки между блоками** (чтобы критик следил за промптами): Блок 2 → 5 (`inSalaries`, `capitalStats`); Блок 3 → 4
 (`GoalDetail`/`Dreams`/`StorySheet` после PN-09/10), → 5 (`goalPace`/`closerDays`), → 9 (`GoalNew` travel); Блок 7 → 8
