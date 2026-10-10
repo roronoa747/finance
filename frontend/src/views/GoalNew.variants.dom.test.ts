@@ -140,4 +140,25 @@ describe('PN-08: «По ссылке» в «Новой мечте»', () => {
     expect(attached.files[0][0]).toBe(goal.id)
     expect(attached.files[0][1]).toBeInstanceOf(File)
   })
+
+  it('/ux: ссылка → форма → «Назад» — поле ссылки свёрнуто (не берёт фокус с клавиатурой)', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(apiClient, 'linkPreview').mockResolvedValue({ title: 'Диван', blob: new Blob(['jpeg'], { type: 'image/jpeg' }) })
+    await open()
+    ;(document.querySelector('[data-link-tile]') as HTMLButtonElement).click()
+    await nextTick()
+    const link = document.querySelector('input[placeholder="Вставьте ссылку"]') as HTMLInputElement
+    link.value = 'https://kaspi.kz/shop/p/sofa/'
+    link.dispatchEvent(new Event('input'))
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(300)
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    await nextTick()
+    expect(document.querySelector('input[placeholder="Япония"]'), 'шаг «form»').not.toBeNull()
+    button('Назад').click()
+    await nextTick()
+    expect(document.querySelector('[data-link-tile]'), 'шаг «pick»').not.toBeNull()
+    expect(document.querySelector('[data-link-photo]')).toBeNull()
+    expect(document.querySelector('[data-link-tile]')!.getAttribute('aria-pressed')).toBe('false')
+  })
 })

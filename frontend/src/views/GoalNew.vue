@@ -108,6 +108,8 @@ function pickOwn(file: File) {
   ownFile.value = file
   template.value = null
   pickedType.value = null
+  // Фото выбрано — поле ссылки сворачивается: «Назад» из формы не возвращает его раскрытым с клавиатурой (`/ux` Блока 3).
+  linkOpen.value = false
   dropPreview()
   ownPreview.value = typeof URL !== 'undefined' && 'createObjectURL' in URL ? URL.createObjectURL(file) : null
   next()

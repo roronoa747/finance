@@ -65,6 +65,8 @@ const form = useFormCheck(() => [['photo', !picked.value && 'Выберите к
 function pickType(type: GoalTemplateType) {
   pickedType.value = type
   pickedId.value = type
+  // Как в «Новой мечте»: выбор темы сворачивает поле ссылки — выделена одна плитка (`/ux` Блока 3).
+  linkOpen.value = false
 }
 
 function confirm() {

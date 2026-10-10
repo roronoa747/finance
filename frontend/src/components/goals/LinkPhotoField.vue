@@ -1,10 +1,14 @@
 <script lang="ts">
 /** Демо и офлайн: ручки превью нет — строка вместо запроса. */
 export const LINK_PHOTO_NEEDS_NET = 'Фото по ссылке — при сети'
+/** В поле текст, но ссылки https нет — без строки поле молчит и новичок ждёт (`/ux` Блока 3). */
+export const LINK_PHOTO_NOT_LINK = 'Нужна ссылка https://…'
+/** Пауза перед «нужна ссылка»: пока человек набирает адрес руками, строка не мигает. */
+export const NOT_LINK_PAUSE_MS = 800
 </script>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { PhCircleNotch } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { linkIn, useLinkPreview, type LinkFound } from '@/lib/photos/useLinkPreview'
@@ -28,9 +32,16 @@ const root = ref<HTMLElement | null>(null)
 const note = computed(() => netNote.value ?? link.note.value)
 const offline = () => typeof navigator !== 'undefined' && navigator.onLine === false
 
+let notLinkTimer: ReturnType<typeof setTimeout> | undefined
+onBeforeUnmount(() => clearTimeout(notLinkTimer))
+
 watch(text, (t) => {
   netNote.value = null
-  if (!linkIn(t)) return
+  clearTimeout(notLinkTimer)
+  if (!linkIn(t)) {
+    if (t.trim()) notLinkTimer = setTimeout(() => (netNote.value = LINK_PHOTO_NOT_LINK), NOT_LINK_PAUSE_MS)
+    return
+  }
   if (finance.isDemo || offline()) {
     netNote.value = LINK_PHOTO_NEEDS_NET
     return

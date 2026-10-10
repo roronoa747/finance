@@ -5,7 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { DEMO_HOUSEHOLD, useFinanceStore } from '@/stores/finance'
 import { apiClient, LinkPreviewError } from '@/api/client'
 import { LINK_PHOTO_MISSED, type LinkFound } from '@/lib/photos/useLinkPreview'
-import LinkPhotoField, { LINK_PHOTO_NEEDS_NET } from './LinkPhotoField.vue'
+import LinkPhotoField, { LINK_PHOTO_NEEDS_NET, LINK_PHOTO_NOT_LINK, NOT_LINK_PAUSE_MS } from './LinkPhotoField.vue'
 
 // Размер картинки со страницы (B2C-75): null — не узнать (Node без createImageBitmap); маленькая — через `size`.
 const size = vi.hoisted(() => ({ value: null as { width: number; height: number } | null }))
@@ -81,6 +81,27 @@ describe('PN-08: LinkPhotoField — фото цели по ссылке', () => 
     await paste('')
     expect(preview).not.toHaveBeenCalled()
     expect(found).toHaveLength(0)
+    expect(note()).toBeNull()
+  })
+
+  it('/ux: текст без https-ссылки — после паузы «Нужна ссылка https://…»; пока набирают — тихо; ссылка — строка уходит', async () => {
+    const preview = vi.spyOn(apiClient, 'linkPreview').mockResolvedValue({ title: 'Диван', blob: new Blob(['jpeg'], { type: 'image/jpeg' }) })
+    mount()
+    await paste('http://shop.kz/p/1')
+    expect(note()).toBeNull() // 300 мс — ещё набирают
+    await vi.advanceTimersByTimeAsync(NOT_LINK_PAUSE_MS)
+    await nextTick()
+    expect(note()).toBe(LINK_PHOTO_NOT_LINK)
+    expect(preview).not.toHaveBeenCalled()
+    await paste('https://shop.kz/p/1')
+    await vi.advanceTimersByTimeAsync(NOT_LINK_PAUSE_MS)
+    await nextTick()
+    expect(note()).toBeNull()
+    expect(found).toHaveLength(1)
+    // Стёрли — пустое поле молчит.
+    await paste('')
+    await vi.advanceTimersByTimeAsync(NOT_LINK_PAUSE_MS)
+    await nextTick()
     expect(note()).toBeNull()
   })
 

@@ -86,4 +86,18 @@ describe('PN-08: PhotoPicker — «По ссылке»', () => {
     await nextTick()
     expect(field()).toBeNull()
   })
+
+  it('/ux: поле раскрыто → выбор темы сворачивает его — выделена одна плитка (как в «Новой мечте»)', async () => {
+    mount()
+    await nextTick()
+    linkTile().click()
+    await nextTick()
+    expect(field()).not.toBeNull()
+    const sport = [...document.querySelectorAll<HTMLButtonElement>('button[aria-pressed]')].find((b) => b.textContent?.includes('Спорт'))!
+    sport.click()
+    await nextTick()
+    expect(field()).toBeNull()
+    expect(linkTile().getAttribute('aria-pressed')).toBe('false')
+    expect(sport.getAttribute('aria-pressed')).toBe('true')
+  })
 })
