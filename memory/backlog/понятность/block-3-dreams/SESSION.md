@@ -22,7 +22,13 @@
   (`playwright-core`, `channel: 'chrome'`): автор, страница, без лиц/логотипов; проверка CDN скриптом в scratchpad.
   Это самая долгая задача блока — не экономить на уместности картинок (владелец смотрит глазами).
 - Стенд для PN-08 — с Go (`cd backend && go run ./cmd/server`, моки) — превью ссылки ходит в Go; демо превью не даёт.
-- Факты Блока 2 (критик допишет): <…>.
+- Факты Блока 2 (критик Б2, 2026-10-10): код мечт **не задет** — Блок 2 менял только `views/Money.vue`,
+  `components/money/CapitalStats.vue` (новый) и `lib/finance.ts` (раздел «Капитал со статистикой» после `monthSalaries`,
+  +78 строк: всё ниже :3257 сдвинулось — `goalTerm` :3378, `subscriptionGroup` :3622, `monthSubscriptions` :3655,
+  `historyMonths` :3821, `myWeek` :3992; ссылки ТЗ PN-07…PN-11 на `PhotoPicker`/`GoalNew`/`GoalDetail`/`Dreams`/
+  `StorySheet`, `goalTemplates.ts`, `photos/store.ts` и `finance.ts` до :3257 (`goalHave` :207, `goalRemaining` :772,
+  `contribute`/`withdraw` :1918/:1932, `monthsBetween` :2249) — верны). База тестов после Блока 2: 169 файлов / 1734 ✅
+  + 1 пропуск (`main` после мёржа — см. §4/§6 бэклога, hash запишет приёмка Б2).
 - Правило 12: в `PhotoPicker` одна главная «Выбрать это», ссылка — тихий вход; процент героя — одна крупная цифра,
   «ближе на N дней» — строка под ним; обои — тихая кнопка в листе.
 - Среда — §6. Следующий шаг — `/critic понятность 3`.

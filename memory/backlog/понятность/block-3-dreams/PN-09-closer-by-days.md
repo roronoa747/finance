@@ -10,7 +10,7 @@
   `money/MonthPlan.vue:102`. Экран цели: `applyDeposit()` (`GoalDetail.vue:197-214`) → `contribute` + сдвиг счёта.
 - Темп: `Goal.monthly` (план взноса); месяц движения — `movementMonth(date)` (`finance.ts:2229`); серия —
   `contributionStreak` (:2231); остаток — `goalRemaining` (:772); срок — `goalTerm(item, goal, key, forecast?)`
-  (:3300 → `{ off, afterPlan, need, remaining, doneMonth, months }`), `goalMonths(remaining, monthly)` (:212).
+  (:3378 после Блока 2 → `{ off, afterPlan, need, remaining, doneMonth, months }`), `goalMonths(remaining, monthly)` (:212).
 - Герой «Мечт» — `views/Dreams.vue:71-73, 123-136`: `DreamCenter` с `percent` (`heroPercent`) и `month`
   (`heroMonth` — только «на паузе», иначе null — Р-116: срок на экране цели); строки целей — `ThumbRow` + `%`.
 - Тост — `kit/Toast.vue` (слот, `action?`; внутри `AppShell` встаёт в `#shell-toast`); образец — `views/Week.vue:492-493`
