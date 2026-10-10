@@ -128,7 +128,7 @@
 | | PN-11 Демо, e2e и доки | `block-3-dreams/PN-11-demo-e2e-docs.md` | PN-10 | ✅ |
 | 4. Сбылось 🔄 *(M + ворота макета, Р-19)* | PN-12 Макет «до \| после» и ворота | `block-4-done/PN-12-mockup-gate.md` | Блок 3 🏁 | ✅ (ворота «Ок» 2026-10-10) |
 | | PN-13 Модель и расчёты: `doneAt`, деньги как покупка | `block-4-done/PN-13-model-finance.md` | PN-12 (ворота ✅) | ✅ |
-| | PN-14 Экраны: «Купили?», «Сбылось», момент, альбом | `block-4-done/PN-14-screens.md` | PN-13 | ⬜ |
+| | PN-14 Экраны: «Купили?», «Сбылось», момент, альбом | `block-4-done/PN-14-screens.md` | PN-13 | ✅ |
 | | PN-15 Демо, e2e и доки | `block-4-done/PN-15-demo-e2e-docs.md` | PN-14 | ⬜ |
 | 5. Прикинуть ⬜ | PN-16 Расчёты `tryCredit` и `canAfford` | `block-5-estimate/PN-16-estimate-finance.md` | Блок 4 🏁 (расчёт — Блок 2) | ⬜ |
 | | PN-17 Листы «Прикинуть кредит» и «Хватит?» | `block-5-estimate/PN-17-estimate-sheets.md` | PN-16 | ⬜ |

@@ -11,7 +11,7 @@ import { closerThisMonth } from '@/lib/finance'
 import type { Goal, SyncDoc, WishItem } from '@/types/finance'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
-import { renderScreen } from '@/test/screenState'
+import { renderScreen, screenMixin } from '@/test/screenState'
 import Dreams from './Dreams.vue'
 
 // Дозагрузка шаблонных фото — счётчик вызовов вместо сети (Unsplash и сервер фото).
@@ -138,6 +138,54 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
     expect(paused).not.toContain('data-hero-closer')
     expect(paused).not.toContain('ближе')
     expect(paused).toContain(`на${NBSP}паузе`)
+  })
+
+  it('PN-14: альбом «Сбылось · N» свёрнут — строк сбывшихся нет; герой и «Цели» — без сбывшейся; нет сбывшихся — строки нет', async () => {
+    const done = (extra: Partial<Goal> = {}): Partial<SyncDoc> => ({
+      goals: planFamilyDoc().goals.map((g) =>
+        g.id === 'car'
+          ? { ...g, main: true, doneAt: '2026-09-05T07:00:00.000Z', movements: [{ id: 'm', date: '2026-05-10T07:00:00.000Z', amount: 50_000, by: 'a' as const }], ...extra }
+          : g,
+      ),
+    })
+    await family('member', 'a', done())
+    const html = await renderScreen(Dreams, '/')
+    const text = html
+    expect(html).toContain('data-done-album')
+    expect(html).toContain('aria-expanded="false"')
+    expect(text).toContain('Сбылось · 1')
+    expect(html).not.toContain('data-done-row')
+    // Главная «Машина» сбылась — героем стала первая активная, «Машины» нет ни в герое, ни в «Целях».
+    expect(html).not.toContain('Машина')
+    for (const w of WEEKLY) expect(html).not.toContain(w)
+
+    // Раскрыто: строка с фото, именем и «сен 2026 · за 4 мес.» (май → сентябрь).
+    setActivePinia(createPinia())
+    await family('member', 'a', done())
+    const open = (await renderScreen(Dreams, '/', undefined, [screenMixin({ albumOpen: true })]))
+    expect(open).toContain('data-done-row')
+    expect(open).toContain('Машина')
+    expect(open).toContain('сен 2026 · за 4 мес.')
+
+    // Viewer видит альбом.
+    setActivePinia(createPinia())
+    await family('viewer', 'b', done())
+    expect(await renderScreen(Dreams, '/')).toContain('data-done-album')
+
+    setActivePinia(createPinia())
+    await family('member', 'a', withMain())
+    expect(await renderScreen(Dreams, '/')).not.toContain('data-done-album')
+  })
+
+  it('ворота PN-12: герой накоплен целиком — под процентом только имя, без «ближе на N дней»', async () => {
+    const movement = { id: 'm1', date: '2026-09-15T07:00:00.000Z', amount: 100_000, by: 'a' as const }
+    await family('member', 'a', {
+      goals: planFamilyDoc().goals.map((g) => (g.id === 'car' ? { ...g, main: true, seed: 2_900_000, have: 3_000_000, movements: [movement] } : g)),
+    })
+    const html = await renderScreen(Dreams, '/')
+    expect(html).toContain(`100${NBSP}%`)
+    expect(html).not.toContain('data-hero-closer')
+    expect(html).not.toContain('ближе')
   })
 
   it('строки «Свободно · до зарплаты» на «Мечтах» нет и при выписке месяца (числа — в подсказке «Месяца», B2C-108)', async () => {

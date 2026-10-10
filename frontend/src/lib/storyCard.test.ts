@@ -32,6 +32,13 @@ describe('storyCard — тексты', () => {
     expect(storyText('goal', {}).line).toBe('Мечта')
   })
 
+  it('сбылось (PN-14): «Сбылось», строка «<имя> · сбылось за N месяцев», сумм нет', () => {
+    expect(storyText('goal', { percent: 100, goalName: 'Япония 2 000 000 ₸', doneTerm: 14, doneMonth: 'мае 2027' })).toMatchObject({
+      kind: 'goal', app: 'Family Finance', label: 'Сбылось', line: 'Япония · сбылось за 14 месяцев', percent: 100,
+    })
+    expect(storyText('goal', { percent: 100, goalName: 'Велосипед', doneTerm: 4 }).line).toBe('Велосипед · сбылось за 4 месяца')
+  })
+
   it('утечки: «За месяц», «−N», склонения 1 / 3 / 5', () => {
     expect(storyText('leaks', { count: 1 })).toEqual({ kind: 'leaks', app: 'Family Finance', label: 'За месяц', big: '−1', line: 'подписка, без которой можно', percent: null })
     expect(storyText('leaks', { count: 3 }).line).toBe('подписки, без которых можно')
