@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setActivePinia, type Pinia } from 'pinia'
 import { useAuthStore } from '../src/stores/auth'
-import { amountTotal, capitalGoals, capitalStats, debtsOverview, liveAccounts, liveCredits, liveGoals, netWorth, openDebt } from '../src/lib/finance'
+import { amountTotal, capitalGoals, capitalStats, debtsOverview, liveAccounts, liveCredits, liveGoals, netWorth, openDebt, planForecast } from '../src/lib/finance'
 import { money } from '../src/lib/money'
 import { monthBy } from '../src/lib/dates'
 import { authAs, planFamilyDoc, T0 } from '../src/test/planFamily'
@@ -14,8 +14,10 @@ import { at, fakeServer, phone, screen, type FakeServer } from './support/family
  * viewer на фейковом сервере (`support/family`), 12 октября 2026. (а) формула «счета − долги» под числом равна
  * `netWorth` до тенге, в закрытом экране статистики нет; (б) раскрытие — доли равны плану месяца (`monthPlanOf`),
  * тождество долей, рост = тело + досрочка + взносы, «без долгов к» = `debtsOverview.freeMonth`; (в) viewer видит формулу
- * и раскрывает; (г) партнёр добавил кредит → после синка у первого выросли доля «кредиты» и переплата. Экраны — SSR
- * (`screen`), раскрытие — состоянием `statsOpen` (`screenMixin`); браузер — на стенде §6.
+ * и раскрывает; (г) партнёр добавил кредит → после синка у первого выросли доля «кредиты» и переплата. Приёмка: (д) не
+ * хватает на платежи — «остаётся» 0, «не хватает N», процентов нет (ux Б2); (е) партнёр выбрал план «Сначала долги» →
+ * после синка у первого переплата меньше на экономию плана, срок — из плана. Экраны — SSR (`screen`), раскрытие —
+ * состоянием `statsOpen` (`screenMixin`); браузер — на стенде §6.
  */
 const KEY = '2026-10'
 
@@ -79,6 +81,12 @@ describe('e2e / понятность Блок 2 — плашка Капитал�
     const ends = ['data-stat-row="', 'data-short', 'data-growth', 'data-debt-free'].map((m) => html.indexOf(m, start + 1)).filter((i) => i > start)
     const row = html.slice(start, ends.length ? Math.min(...ends) : undefined)
     return { amount: amountAt(row, 'data-stat-amount'), pct: digits(row.match(/data-stat-pct[^>]*>([^<]*)</)![1]) }
+  }
+  /** Сумма строки доли без процентов (при нехватке колонки процентов нет). */
+  const rowAmount = (html: string, key: string) => {
+    const start = html.indexOf(`data-stat-row="${key}"`)
+    expect(start, `строка ${key}`).toBeGreaterThan(-1)
+    return amountAt(html.slice(start), 'data-stat-amount')
   }
   const rows = (html: string) => [...html.matchAll(/data-stat-row="([a-z]+)"/g)].map((m) => m[1])
   const statsOf = (p: Phone) => capitalStats(p.store.monthPlanOf(KEY), { ...p.store.planState(), plans: p.store.plans }, KEY)
@@ -188,5 +196,59 @@ describe('e2e / понятность Блок 2 — плашка Капитал�
     expect(rows(html)).toEqual(['payments', 'goals', 'rest'])
     expect(text(html)).toContain('Долгов нет')
     expect(html).not.toContain('data-overpay')
+  })
+
+  it('(д) приёмка: не хватает на платежи — «остаётся» 0, подпись «не хватает N», процентов нет (ux Б2), полоска из четырёх долей', async () => {
+    const base = planFamilyDoc()
+    // Оклады 100 000 и 50 000: платежи 220 000 и кредиты 143 000 больше дохода 150 000.
+    server = fakeServer(planFamilyDoc({ people: base.people.map((p) => ({ ...p, salary: p.id === 'a' ? 100_000 : 50_000 })), debtCard: { monthly: 40_000, payer: 'a', updatedAt: T0 } }))
+    const A = await as('member', 'a')
+    const s = statsOf(A)
+    expect(s.income).toBe(150_000)
+    expect(s.short).toBeGreaterThan(0)
+    expect(s.parts.some((p) => p.pct > 100)).toBe(true)
+    const closed = await screen(A.pinia, Money, '/money')
+    expect(closed).not.toContain('data-short')
+    const html = await opened(A)
+    expect(rows(html)).toEqual(['credits', 'payments', 'goals', 'rest'])
+    expect(rowAmount(html, 'rest')).toBe(0)
+    expect(text(html)).toContain(sp(`не хватает ${money(s.short)}`))
+    expect(html).not.toContain('data-stat-pct')
+    // Тождество долей: показанное в сумме = кредиты + платежи + в цели — больше дохода, полоска заполнена целиком.
+    const shown = ['credits', 'payments', 'goals', 'rest'].map((k) => rowAmount(html, k))
+    expect(shown.reduce((a, b) => a + b, 0)).toBe(s.parts.reduce((a, p) => a + p.amount, 0))
+    expect(shown.reduce((a, b) => a + b, 0)).toBeGreaterThan(150_000)
+    expect(rowAmount(html, 'payments')).toBe(220_000)
+  })
+
+  it('(е) приёмка: партнёр выбрал план «Сначала долги» → после синка у первого переплата меньше на экономию плана, срок — из плана', async () => {
+    const A = await as('member', 'a')
+    const B = await as('member', 'b')
+    const before = statsOf(on(A))
+    expect(before.overpay.amount).toBeGreaterThan(0)
+    expect(A.store.activePlan).toBeFalsy()
+
+    on(B)
+    at('2026-10-12T07:02:00Z')
+    const plan = B.store.choosePlan({ keptGoalIds: [], cushionGoalId: 'cushion', months: 24, lump: 0 }, 'b')
+    expect(plan).not.toBeNull()
+    await B.store.syncHousehold(B.client)
+    await on(A).store.syncHousehold(A.client)
+    const active = A.store.plans.find((p) => p.id === plan!.id)
+    expect(active?.status).toBe('active')
+
+    const state = { ...A.store.planState(), plans: A.store.plans }
+    const saved = planForecast(active!, state, KEY).savedInterest
+    expect(saved).toBeGreaterThan(0)
+    const after = statsOf(A)
+    expect(after.overpay.amount).toBe(Math.max(0, before.overpay.amount! - saved!))
+    expect(after.overpay.amount).toBeLessThan(before.overpay.amount!)
+    expect(after.debtFree.month).toBe(debtsOverview(state, KEY).freeMonth)
+    const html = await opened(A)
+    expect(text(html)).toContain(sp(`Переплата ${money(after.overpay.amount!)}`))
+    expect(text(html)).toContain(`Без долгов ${monthBy(after.debtFree.month!)}`)
+    // Платежи по графику планом не меняются; доля «кредиты» с досрочками плана — не меньше прежней.
+    expect(rowOf(html, 'payments').amount).toBe(220_000)
+    expect(rowOf(html, 'credits').amount).toBeGreaterThanOrEqual(143_000)
   })
 })

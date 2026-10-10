@@ -136,7 +136,7 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
     <button type="button" data-t="dark" aria-pressed="false">Тёмная</button>
   </div>
   <nav class="toc" aria-label="Экраны">
-    <a href="#plaque">Плашка</a><a href="#open">Раскрыта</a><a href="#cases">Долгов нет · viewer</a><a href="#ux">/ux · не хватает</a>
+    <a href="#plaque">Плашка</a><a href="#open">Раскрыта</a><a href="#cases">Долгов нет · viewer</a><a href="#ux">/ux · не хватает</a><a href="#accept">Приёмка · прод | стенд</a>
   </nav>
   <div class="legend" aria-label="Доли дохода месяца">
     <div class="lr"><span><span class="st-dot" style="width:10px;height:10px;border-radius:50%;background:var(--s12);display:inline-block"></span>кредиты</span><span>платежи по кредитам и долгам, досрочка по плану</span></div>
@@ -255,6 +255,20 @@ h2{font-size:21px;margin:0;letter-spacing:-.01em;text-wrap:balance}
   <div class="col stand"><span class="tagc">стенд · viewer</span><div class="phone"><div class="shot"><img data-shot="after-viewer" alt="Стенд: viewer раскрыл статистику"></div></div></div>
 </div>
 <p class="r12"><b>Долгов нет:</b> полоска из трёх долей, в формуле «долгов нет» вместо «− долги 0», внизу одна строка «Долгов нет» вместо срока и переплаты. <b>Viewer</b> видит и раскрывает то же самое (он читает, не правит); отличие экрана — нет «+» внизу, как и сейчас. <b>Доход 0</b> (оклады не заданы): полоски и строк нет — одна строка «Нет дохода месяца — задайте оклад».</p>
+</section>
+
+<!-- Приёмка (v4): «до» — прод сегодня (код main), «после» — стенд ветки; снимки приёмки, демо 10 октября 2026 -->
+<section class="pair" id="accept"><h2>Приёмка · прод сегодня | стенд ветки</h2>
+<div class="row">
+  <div class="col"><span class="tagc">до · прод, нажали «?»</span><div class="phone"><div class="shot"><img data-shot="before-hint" alt="Прод: число капитала и раскрытая подсказка «Что такое капитал»"></div></div></div>
+  <div class="col after"><span class="tagc">после · стенд, плашка свёрнута</span><div class="phone"><div class="shot"><img data-shot="accept-closed" alt="Стенд ветки: число и формула «счета − долги», шеврон"></div></div></div>
+  <div class="col stand"><span class="tagc">после · стенд, нажали на плашку</span><div class="phone"><div class="shot"><img data-shot="accept-open" alt="Стенд ветки: статистика раскрыта"></div></div></div>
+</div>
+<div class="row">
+  <div class="col after"><span class="tagc">после · долги удалены</span><div class="phone"><div class="shot"><img data-shot="accept-nodebt" alt="Стенд ветки: без долгов — три доли и «Долгов нет»"></div></div></div>
+  <div class="col stand"><span class="tagc">после · viewer</span><div class="phone"><div class="shot"><img data-shot="accept-viewer" alt="Стенд ветки: viewer раскрыл статистику, «+» внизу нет"></div></div></div>
+</div>
+<p class="r12"><b>Что сверено:</b> на стенде формула «счета 3 991 310 − долги 1 897 324» и капитал 2 093 986 ₸ — те же числа, что считает <code>finance.ts</code> и что показывает прод в подсказке «?»; доли 235 000 · 19 % / 312 495 · 26 % / 180 000 · 15 % / 483 815 · 40 % в сумме дают доход 1 211 310, полоска — те же доли; рост ~390 000 (точно 389 709: тело автокредита 69 709 + брату 50 000 + досрочка 90 000 + взносы 180 000), «к июлю 2027 · ещё 9 зарплат», «130 598 ₸ · 0,1 зарплаты» — до тенге как в макете. Нажатие, Enter и Space раскрывают и сворачивают, после ухода на «План» и возврата плашка свёрнута; viewer читает так же, «+» у него нет; обе темы без горизонтальной прокрутки, консоль чистая. <b>Без долгов</b> демо даёт «в цели 240 000 · 20 %» и «растёт на ~240 000» — больше, чем в макете (180 000): без кредитов очередь месяца отдаёт целям больше; макет это считал руками, экран — <code>finance.ts</code>.</p>
 </section>
 
 <!-- /ux (v3): не хватает на платежи — проценты от дохода убраны -->
