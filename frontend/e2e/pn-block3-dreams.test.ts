@@ -5,6 +5,7 @@ import { apiClient } from '../src/api/client'
 import { closerDays, closerThisMonth, goalPace } from '../src/lib/finance'
 import { GOAL_TYPES, templateById, templateCredit, themePhotos, type GoalTemplateType } from '../src/lib/goalTemplates'
 import { attachTemplate } from '../src/lib/photos/goalPhoto'
+import { plural } from '../src/lib/utils'
 import { layoutStory, storyText } from '../src/lib/storyCard'
 import type { LinkFound } from '../src/lib/photos/useLinkPreview'
 import { authAs, planFamilyDoc, T0 } from '../src/test/planFamily'
@@ -12,6 +13,7 @@ import { screenMixin } from '../src/test/screenState'
 import Dreams from '../src/views/Dreams.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
 import GoalNew from '../src/views/GoalNew.vue'
+import MonthPlan from '../src/components/money/MonthPlan.vue'
 import { at, fakeServer, phone, screen, type FakeServer } from './support/family'
 
 // Сжатие в Node не декодирует картинку (нет canvas) — как в DOM-тестах фото: байты идут как есть.
@@ -25,7 +27,7 @@ vi.mock('../src/lib/photos/compress', async (orig) => ({
  * (`support/family`), 12 октября 2026. (а) 19 тем, у восьми новых — по 5 фото; выбор новой темы → `attachTemplate` →
  * `photoId` и автор; (б) фото по ссылке — заглушка превью → у новой цели и у существующей `photoId`, `template` null,
  * автора нет; (в) взнос → тост «ближе на N дней» на экране цели, под героем «Мечт» — та же строка; (г) второй телефон
- * после синка видит фото и строку; (д) обои — тексты без сумм (Node). Экраны — SSR (`screen`), действия — методами
+ * после синка видит фото и строку; (д) обои — тексты без сумм (Node); (е) приёмка — взнос с экрана цели и «Отложил всё». Экраны — SSR (`screen`), действия — методами
  * экрана (`screenMixin`); браузер — на стенде §6.
  */
 const KEY = '2026-10'
@@ -209,6 +211,46 @@ describe('e2e / понятность Блок 3 — мечты наряднее'
     const viewer = await screen(V.pinia, Dreams, '/')
     expect(text(viewer)).toContain('Отпуск · ближе на 76 дней')
     expect(viewer).not.toContain('Добавить фото')
+  })
+
+  it('(е) приёмка: взнос с экрана цели закрыл план месяца «Отпуска» → «Отложил всё» в «Месяце» говорит о «Машине», не об «Отпуске»; фонд не считается; партнёр видит взносы', async () => {
+    // «Подушка» — фонд (Р-82): у фонда «дней» нет. Найдено в браузере приёмки на демо: после взноса на экране цели
+    // «Отложил всё» не упоминает закрытую цель.
+    const base = planFamilyDoc()
+    server = fakeServer(planFamilyDoc({ goals: base.goals.map((g) => (g.id === 'cushion' ? { ...g, fund: 'cushion' as const } : g)) }))
+    const A = await as('member', 'a')
+    const B = await as('member', 'b')
+    on(A)
+    // Зарплата Ильяса пришла — «Отложил всё» откладывает его часть плана.
+    A.store.markSalary('a', { period: KEY })
+    let deposit: { apply: () => void; get: (k: string) => unknown } | null = null
+    await screen(A.pinia, GoalDetail, '/goals/trip', undefined, [
+      screenMixin({ depositOperation: 'deposit', depositAmount: '40 000' }, (s) => {
+        deposit = { apply: s.applyDeposit as () => void, get: (k) => Reflect.get(s, k) }
+      }),
+    ])
+    deposit!.apply()
+    expect(deposit!.get('closerNote')).toBe('Отпуск ближе на 30 дней')
+
+    type Put = { kind: string; goalId: string | null; name: string; left: number }
+    let month: { pending: () => Put[]; save: (l: Put[]) => void; note: () => unknown } | null = null
+    await screen(A.pinia, MonthPlan, '/month', { monthKey: KEY }, [
+      screenMixin({}, (s) => {
+        month = { pending: () => Reflect.get(s, 'pending') as Put[], save: s.savePuts as (l: Put[]) => void, note: () => Reflect.get(s, 'closerNote') }
+      }),
+    ])
+    const pending = month!.pending()
+    const goals = pending.filter((p) => p.kind === 'goal' && p.left > 0)
+    expect(goals.map((p) => p.name)).toEqual(['Машина'])
+    expect(pending.some((p) => p.kind === 'fund')).toBe(true)
+    const car = A.store.goals.find((g) => g.id === 'car')!
+    const days = closerDays(goals[0].left, goalPace(car, KEY))!
+    month!.save(pending)
+    expect(month!.note()).toBe(`Машина ближе на ${days} ${plural(days, 'день', 'дня', 'дней')}`)
+
+    await sync(A, B)
+    expect(B.store.goals.find((g) => g.id === 'trip')!.movements.map((m) => m.amount)).toEqual([40_000])
+    expect(B.store.goals.find((g) => g.id === 'car')!.have).toBe(A.store.goals.find((g) => g.id === 'car')!.have)
   })
 
   it('(д) обои: тексты без сумм и без подписей сверху, 1170 × 2532, процент и имя в нижней трети', () => {
