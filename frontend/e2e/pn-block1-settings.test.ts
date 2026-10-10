@@ -174,4 +174,72 @@ describe('e2e / понятность Блок 1 — настройки везд�
     expect(tenge).not.toContain('data-fx-year')
     expect(text(tenge)).not.toContain('за год')
   })
+
+  /*
+   * Приёмка Блока 1 (2026-10-10): сценарии стенда, которых не было в (а)–(в) — партнёр со своей открытой зарплатой,
+   * имя через синк в шапке второго телефона, лист валютной зарплаты у viewer.
+   */
+  it('приёмка (г): партнёр 18 октября — «Пришла» у своей строки (b) в «Месяце» и «Капитале», у чужой (a) нет; нажатие из «Капитала» — тенговая запись b на счёт прошлого раза, у Ильяса после синка ✓', async () => {
+    at('2026-10-18T07:00:00Z')
+    // Сентябрьская зарплата Аруны пришла на карту — счёт для одного нажатия в октябре (Р-5).
+    server.data.payments = [...(server.data.payments ?? []), { id: 'sal-b-09', kind: 'salary', targetId: 'b', period: '2026-09', amount: 500_000, accountId: 'card', by: 'b', at: '2026-09-20T05:00:00.000Z', updatedAt: T0 }]
+    const B = await as('member', 'b')
+    const A = await as('member', 'a')
+    for (const [view, path] of [[Month, '/month'], [Money, '/money']] as const) {
+      const b = await screen(on(B).pinia, view, path)
+      expect(b, path).toMatch(/data-salary="b" data-can-mark="true"/)
+      expect(rowOf(b, 'b'), path).toContain('data-salary-came-btn')
+      expect(rowOf(b, 'a'), path).not.toContain('data-salary-came-btn')
+      // Ильяс (его 10-е тоже открыто) — кнопка только у своей строки.
+      const a = await screen(on(A).pinia, view, path)
+      expect(rowOf(a, 'a'), path).toContain('data-salary-came-btn')
+      expect(rowOf(a, 'b'), path).not.toContain('data-salary-came-btn')
+    }
+    on(B)
+    at('2026-10-18T07:01:00Z')
+    await screen(B.pinia, Money, '/money', undefined, [screenMixin({}, (s) => (s.tap as () => void)())])
+    const mine = salaries(B).filter((p) => p.targetId === 'b')
+    expect(mine).toHaveLength(1)
+    expect(mine[0]).toMatchObject({ kind: 'salary', targetId: 'b', period: KEY, amount: 500_000, accountId: 'card', by: 'b' })
+    const after = await screen(B.pinia, Money, '/money')
+    expect(rowOf(after, 'b')).toContain('data-came')
+    expect(rowOf(after, 'b')).not.toContain('data-salary-came-btn')
+    await B.store.syncHousehold(B.client)
+    await on(A).store.syncHousehold(A.client)
+    expect(rowOf(await screen(A.pinia, Month, '/month'), 'b')).toContain('data-came')
+  })
+
+  it('приёмка (д): Ильяс переименовал себя в «Своём кружке» → у партнёра и viewer после синка новое имя в шапке («Настройки · Ильяс М») и в «С кем»', async () => {
+    const A = await as('member', 'a')
+    const B = await as('member', 'b')
+    const V = await as('viewer', 'b')
+    on(A)
+    at('2026-10-12T07:02:00Z')
+    await screen(A.pinia, MyCircle, '/settings/me', undefined, [screenMixin({ userName: ' Ильяс М ' }, (s) => (s.saveName as () => void)())])
+    expect(A.store.people.find((p) => p.id === 'a')).toMatchObject({ name: 'Ильяс М' })
+    await A.store.syncHousehold(A.client)
+    for (const P of [B, V]) {
+      await on(P).store.syncHousehold(P.client)
+      const shell = await screen(P.pinia, AppShell, '/month')
+      expect(shell).toContain('aria-label="Настройки · Ильяс М"')
+      expect(shell).not.toContain('aria-label="Настройки · Ильяс"')
+      expect(text(await screen(P.pinia, Settings, '/settings'))).toContain('Ильяс М')
+    }
+  })
+
+  it('приёмка (е): viewer открывает лист валютной зарплаты — «Евро за год» виден (справка), кнопок «Пришла зарплата», «Другая сумма», «Изменить оклад» нет; в строках кнопки нет', async () => {
+    storage.set(FX_BOOK_KEY, JSON.stringify({ book: NB, covered: {} }))
+    const A = await as('member', 'a')
+    A.store.amendSalary('a', '2025-10', 1_500, undefined, { currency: 'EUR', rate: 622.23 })
+    await A.store.syncHousehold(A.client)
+    const V = await as('viewer', 'b')
+    const html = await screen(V.pinia, Month, '/month', undefined, [screenMixin({ salaryFor: 'a' })])
+    expect(html).not.toContain('data-salary-came-btn')
+    const dialog = html.slice(html.indexOf('role="dialog"'))
+    expect(dialog).toContain('data-fx-year')
+    expect(text(dialog)).toContain('Евро за год')
+    expect(dialog).not.toContain('Пришла зарплата')
+    expect(dialog).not.toContain('data-salary-edit')
+    expect(dialog).not.toContain('data-salary-paid')
+  })
 })
