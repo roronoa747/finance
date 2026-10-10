@@ -126,7 +126,7 @@
 | | PN-09 «Ближе на N дней» | `block-3-dreams/PN-09-closer-by-days.md` | PN-08 | ✅ |
 | | PN-10 «На обои» | `block-3-dreams/PN-10-wallpaper.md` | PN-09 | ✅ |
 | | PN-11 Демо, e2e и доки | `block-3-dreams/PN-11-demo-e2e-docs.md` | PN-10 | ✅ |
-| 4. Сбылось ⬜ *(M + ворота макета, Р-19)* | PN-12 Макет «до \| после» и ворота | `block-4-done/PN-12-mockup-gate.md` | Блок 3 🏁 | ⬜ |
+| 4. Сбылось 🔄 *(M + ворота макета, Р-19)* | PN-12 Макет «до \| после» и ворота | `block-4-done/PN-12-mockup-gate.md` | Блок 3 🏁 | ✅ (ворота «Ок» 2026-10-10) |
 | | PN-13 Модель и расчёты: `doneAt`, деньги как покупка | `block-4-done/PN-13-model-finance.md` | PN-12 (ворота ✅) | ⬜ |
 | | PN-14 Экраны: «Купили?», «Сбылось», момент, альбом | `block-4-done/PN-14-screens.md` | PN-13 | ⬜ |
 | | PN-15 Демо, e2e и доки | `block-4-done/PN-15-demo-e2e-docs.md` | PN-14 | ⬜ |
