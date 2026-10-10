@@ -20,6 +20,11 @@ const props = defineProps<{
   data: StoryData
   /** Фото мечты (object URL или CDN шаблона); null — фон без фото. */
   src: string | null
+  /**
+   * Фото для обоев, если оно крупнее `src` (критик Блока 3 «понятность»): кадр 1170 × 2532 растягивает горизонтальное
+   * фото по высоте в 2–3,5 раза — шаблону с CDN нужна картинка шире 1080. Не задано — то же, что `src`.
+   */
+  wallpaperSrc?: string | null
 }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
@@ -83,7 +88,8 @@ async function wallpaper() {
   wallpaperNote.value = null
   error.value = null
   try {
-    const image = props.src ? await loadStoryImage(props.src) : null
+    const src = props.wallpaperSrc === undefined ? props.src : props.wallpaperSrc
+    const image = src ? await loadStoryImage(src) : null
     const png = await renderStory(document.createElement('canvas'), { image, texts: storyText('wallpaper', props.data) })
     const name = withoutMoney(props.data.goalName ?? '') || 'Мечта'
     const r = await shareStory(png, { title: `Обои · ${name}`, fileName: WALLPAPER_FILE })

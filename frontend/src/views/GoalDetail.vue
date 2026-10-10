@@ -285,6 +285,13 @@ const storySrc = computed(() => {
   const t = templateById(goal.value?.template)
   return t ? templateImageUrl(t, 1080) : null
 })
+// Обои 1170 × 2532 (PN-10) кроют горизонтальное фото по высоте: шаблону с CDN — картинка 2400 (не 1080), иначе
+// растяжение в 3,5 раза; своё фото уже сжато при загрузке (≤ 1600) — крупнее нет (критик Блока 3 «понятность»).
+const wallpaperSrc = computed(() => {
+  if (photoSrc.value) return photoSrc.value
+  const t = templateById(goal.value?.template)
+  return t ? templateImageUrl(t, 2400) : null
+})
 const storyData = computed(() => ({ percent: progress.value, goalName: goal.value?.name, doneMonth: doneMonth.value ? monthIn(doneMonth.value) : null }))
 function share() {
   storyOpen.value = true
@@ -551,7 +558,7 @@ function share() {
     <Toast v-if="closerNote"><span data-closer>{{ closerNote }}</span></Toast>
 
     <!-- Карточка для сторис (B2C-20): без сумм -->
-    <StorySheet :open="storyOpen" kind="goal" :data="storyData" :src="storySrc" @close="storyOpen = false" />
+    <StorySheet :open="storyOpen" kind="goal" :data="storyData" :src="storySrc" :wallpaper-src="wallpaperSrc" @close="storyOpen = false" />
 
     <!-- Окно: Изменить цель -->
     <GoalSheet
