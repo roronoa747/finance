@@ -28,7 +28,7 @@ const LABEL: Record<CapitalPartKey, { name: string; color: string }> = {
 const parts = computed(() => props.stats.parts.map((p) => ({ ...p, ...LABEL[p.key] })))
 /** «~390 000 ₸» — до тысяч, только на экране (`finance.ts` отдаёт точное тело). */
 const growth = computed(() => Math.round(props.stats.growth / 1000) * 1000)
-/** «1,5 зарплаты», «9 зарплат», «1 зарплата»: дробь — всегда «зарплаты», целое — по числу. */
+/** «1,5 зарплаты», «9 зарплат», «1 зарплата»: дробь — всегда «зарплаты», целое — по числу. Ноль (меньше 0,05 зарплаты) — единицы нет. */
 function salaries(n: number): string {
   const word = Number.isInteger(n) ? plural(n, 'зарплата', 'зарплаты', 'зарплат') : 'зарплаты'
   return `${n.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} ${word}`
@@ -56,12 +56,12 @@ function salaries(n: number): string {
         <template v-else>
           <p class="text-[14.5px] text-ink" data-debt-free>
             Без долгов <b class="font-semibold">{{ monthBy(stats.debtFree.month) }}</b>
-            <span v-if="stats.debtFree.salaries !== null" class="num text-[13.5px] text-ink-2"> · ещё {{ salaries(stats.debtFree.salaries) }}</span>
+            <span v-if="stats.debtFree.salaries" class="num text-[13.5px] text-ink-2"> · ещё {{ salaries(stats.debtFree.salaries) }}</span>
           </p>
           <p v-if="stats.overpay.amount === null" class="text-[14px] text-ink-2" data-overpay>Переплата не считается — платёж не покрывает проценты</p>
           <p v-else-if="stats.overpay.amount > 0" class="text-[14.5px] text-ink" data-overpay>
             Переплата <b class="font-semibold num">{{ money(stats.overpay.amount) }}</b>
-            <span v-if="stats.overpay.salaries !== null" class="num text-[13.5px] text-ink-2"> · {{ salaries(stats.overpay.salaries) }}</span>
+            <span v-if="stats.overpay.salaries" class="num text-[13.5px] text-ink-2"> · {{ salaries(stats.overpay.salaries) }}</span>
           </p>
         </template>
       </template>

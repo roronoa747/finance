@@ -188,6 +188,28 @@ describe('PN-05: плашка Капитала — формула «счета �
     expect(txt(q('[data-debt-free]'))).toContain(monthBy(s.debtFree.month!))
   })
 
+  it('только беспроцентная рассрочка: «Без долгов к …» есть, строки переплаты нет — переплачивать нечего (критик)', async () => {
+    const base = familyDoc()
+    const finance = await open('member', familyDoc({ credits: base.credits!.filter((c) => c.id === 'inst') }))
+    const s = statsOf(finance)
+    expect(s.overpay).toEqual({ amount: 0, salaries: 0 })
+    await press(plaque())
+    expect(txt(q('[data-debt-free]'))).toBe(`Без долгов ${monthBy(s.debtFree.month!)} · ещё ${salaries(s.debtFree.salaries!)}`)
+    expect(q('[data-overpay]')).toBeNull()
+  })
+
+  it('переплата меньше 0,05 зарплаты: сумма есть, «0 зарплат» не пишется (критик: шумной цифры нет)', async () => {
+    const base = familyDoc()
+    // Одна кредитка 300 000 под 40 % с платежом 100 000: закроется за 4 платежа, переплата ≈ 21 000 — 0,02 дохода 1 200 000.
+    const finance = await open('member', familyDoc({ credits: base.credits!.filter((c) => c.id === 'cc').map((c) => ({ ...c, payment: 100_000 })) }))
+    const s = statsOf(finance)
+    expect(s.overpay.amount).toBeGreaterThan(0)
+    expect(s.overpay.salaries).toBe(0)
+    await press(plaque())
+    expect(txt(q('[data-overpay]'))).toBe(`Переплата ${norm(money(s.overpay.amount!))}`)
+    expect(txt(q('[data-debt-free]'))).toContain('· ещё')
+  })
+
   it('при новом заходе на экран — снова закрыто', async () => {
     await open()
     await press(plaque())
