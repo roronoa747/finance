@@ -170,6 +170,10 @@ describe('PN-05: плашка Капитала — формула «счета �
     expect(num(q('[data-stat-row="rest"] [data-stat-amount]'))).toBe(0)
     expect(txt(q('[data-short]'))).toBe(`не хватает ${norm(money(s.short))}`)
     expect(q('[data-short]')!.classList.contains('text-warn')).toBe(true)
+    // Процентов от дохода нет — они были бы больше 100 (платежи 323 000 от 150 000 — 215 %), шумная цифра (ux Б2).
+    expect(s.parts.some((p) => p.pct > 100)).toBe(true)
+    expect(all('[data-stat-row]')).toHaveLength(4)
+    expect(q('[data-stat-pct]')).toBeNull()
   })
 
   it('кредит не закрывается при нынешнем платеже — «Долги не закрываются при текущих платежах», переплаты нет', async () => {

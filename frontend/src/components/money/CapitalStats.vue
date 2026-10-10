@@ -40,11 +40,12 @@ function salaries(n: number): string {
     <p v-if="stats.income <= 0" class="text-[14px] text-ink-2" data-no-income>Нет дохода месяца — задайте оклад</p>
     <template v-else>
       <StackBar :segments="parts.map((p) => ({ key: p.key, share: p.share, color: p.color }))" />
-      <div v-for="p in parts" :key="p.key" class="grid grid-cols-[10px_1fr_auto_42px] items-center gap-2.5 text-[14.5px]" :data-stat-row="p.key">
+      <!-- Проценты — от дохода; при нехватке они больше 100 («208 %») — шумная цифра, полоска и «не хватает N» говорят то же (ux Б2) -->
+      <div v-for="p in parts" :key="p.key" class="grid items-center gap-2.5 text-[14.5px]" :class="stats.short > 0 ? 'grid-cols-[10px_1fr_auto]' : 'grid-cols-[10px_1fr_auto_42px]'" :data-stat-row="p.key">
         <i class="block size-2.5 rounded-full" :style="{ background: p.color }" />
         <span class="text-ink-2">{{ p.name }}</span>
         <span class="font-semibold num text-ink" data-stat-amount>{{ money(p.amount) }}</span>
-        <span class="text-right num text-ink-2" data-stat-pct>{{ p.pct }} %</span>
+        <span v-if="!(stats.short > 0)" class="text-right num text-ink-2" data-stat-pct>{{ p.pct }} %</span>
       </div>
       <p v-if="stats.short > 0" class="text-[13px] text-warn num" data-short>не хватает {{ money(stats.short) }}</p>
       <p v-if="stats.growth > 0" class="mt-0.5 text-[14.5px] text-ink" data-growth>
