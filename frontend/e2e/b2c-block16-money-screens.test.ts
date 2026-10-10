@@ -55,10 +55,10 @@ const amountAt = (html: string, attr: string) => {
 }
 /** Открытые подсказки `Hint` (в SSR текст подсказки есть только у открытой). */
 const hintsOpen = () => screenMixin({ at: { left: 0, top: 0, width: 300 } })
-/** «Что такое капитал»: «Счета и цели — N, долги — M.» (Р-116: итоги «Счета»/«Кредиты» переехали в подсказку). */
+/** Формула под числом капитала «счета N − долги M» (понятность Р-2; Р-116 держал эти итоги в подсказке «Что такое капитал»). */
 const worthParts = (html: string) => {
-  const m = text(html).match(/Счета и цели — ([^,]+), долги — ([^.]+)\./)
-  if (!m) throw new Error('нет подсказки «Что такое капитал»')
+  const m = text(html).match(/счета\s([\d\s]+?)\s−\sдолги\s([\d\s]+\d)/)
+  if (!m) throw new Error('нет формулы «счета − долги»')
   return { assets: Number(m[1].replace(/\D/g, '')), debt: Number(m[2].replace(/\D/g, '')) }
 }
 const mark = (kind: Payment['kind'], targetId: string, period: string, amount: number, extra: Partial<Payment> = {}): Payment => ({
@@ -105,7 +105,7 @@ describe('e2e / B2C Блок 16 — «Деньги» по макету на дв
     const A = await phone(server, 'a')
     const B = await phone(server, 'b')
     const html = await screen(A.pinia, Money, '/money', undefined, [screenMixin({ goalsOpen: true }), hintsOpen()])
-    // Итогов у заголовков «Счета» / «Кредиты» нет — оба числа в подсказке «Что такое капитал» у суммы (Р-116).
+    // Итогов у заголовков «Счета» / «Кредиты» нет — оба числа в формуле «счета − долги» под суммой (понятность Р-2).
     expect(html).not.toContain('data-accounts-total')
     expect(html).not.toContain('data-credits-total')
     const { assets, debt } = worthParts(html)

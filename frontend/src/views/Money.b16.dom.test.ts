@@ -103,17 +103,15 @@ const dialog = () => q('[role="dialog"]')
 const dialogButton = (label: string) => all('[role="dialog"] button').find((b) => txt(b).startsWith(label))
 
 describe('B2C-100: «Капитал» — зарплаты для справки и «Цели · N» в «Счетах»', () => {
-  it('«Счета» − «Кредиты» = «Капитал» на экране (итоги — в подсказке у суммы, Р-116); цели вне счетов — в итоге «Счетов»', async () => {
+  it('«Счета» − «Кредиты» = «Капитал» на экране (формула под числом, понятность Р-2); цели вне счетов — в итоге «Счетов»', async () => {
     const finance = await open()
     const goals = capitalGoals(finance.goals, finance.accounts)
-    // Итогов у заголовков «Счета» и «Кредиты» нет — они в подсказке «Что такое капитал».
+    // Итогов у заголовков «Счета» и «Кредиты» нет — оба числа в формуле под суммой капитала (подсказки «?» больше нет).
     expect(q('[data-accounts-total]')).toBeNull()
     expect(q('[data-credits-total]')).toBeNull()
     expect(num(q('[data-goals-total]'))).toBe(goals.total)
-    await press(q('button[aria-label="Что такое капитал"]'))
-    const note = txt(q('[role="note"]'))
-    expect(note).toContain('Всё, что есть, минус всё, что должны.')
-    expect(note).toContain(`Счета и цели — ${norm(money(2_250_000))}, долги — ${norm(money(1_540_000))}.`)
+    expect(q('button[aria-label="Что такое капитал"]')).toBeNull()
+    expect(txt(q('[data-worth-formula]'))).toBe(`счета ${norm(plain(2_250_000))} − долги ${norm(plain(1_540_000))}`)
     expect(2_250_000 - 1_540_000).toBe(num(q('[data-worth]')))
     expect(num(q('[data-worth]'))).toBe(710_000)
     // Брендовой кнопки на экране нет (правило 12).
