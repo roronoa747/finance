@@ -107,8 +107,9 @@ let settle: ReturnType<typeof setTimeout> | null = null
 
 /** Жест не трогает: выделение текста, бегунок, вложенную прокрутку, которую ещё есть куда листать вверх. */
 function busy(target: EventTarget | null) {
+  // Только выделение в листе: забытое за ним (экран стоит) не должно отключать жест навсегда.
   const sel = document.getSelection?.()
-  if (sel && !sel.isCollapsed) return true
+  if (sel && !sel.isCollapsed && card.value?.contains(sel.anchorNode)) return true
   for (let el = target instanceof Element ? target : null; el && el !== card.value; el = el.parentElement) {
     if (el instanceof HTMLInputElement && el.type === 'range') return true
     // Выделение внутри поля getSelection() видит не во всех браузерах.
@@ -137,6 +138,8 @@ function onTouchMove(e: TouchEvent) {
   const t = e.touches[0]
   const dy = t.clientY - y0
   if (gesture === 'idle') {
+    // Палец ещё не сдвинулся (субпиксели Android) — направление решит следующее движение.
+    if (dy === 0 && t.clientX === x0) return
     // Вверх, вбок или содержимое успело уехать — это прокрутка, лист на весь жест не трогаем.
     if (dy <= 0 || Math.abs(t.clientX - x0) > dy || card.value.scrollTop > 0) {
       gesture = 'skip'

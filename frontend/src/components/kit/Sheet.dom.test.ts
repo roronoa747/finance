@@ -404,4 +404,52 @@ describe('PN-35: лист закрывается стягиванием вниз
     expect(grip.getAttribute('aria-hidden')).toBe('true')
     expect(grip.className).toContain('sm:hidden')
   })
+
+  // Критик 5а: исключения сверх ТЗ и две правки жеста.
+  it('бегунок и вложенная прокрутка, которую есть куда листать вверх, — жест не тянет лист', async () => {
+    const s = reactive({ open: true })
+    mount(() =>
+      h(Sheet, { open: s.open, title: 'Окно', onClose: () => (s.open = false) }, () => [
+        h('input', { id: 'range', type: 'range' }),
+        h('div', { id: 'inner' }, [h('p', { id: 'deep' }, 'строка')]),
+      ]),
+    )
+    await nextTick()
+    tall(dialogs()[0])
+    await swipe(document.getElementById('range')!, 300)
+    Object.defineProperty(document.getElementById('inner')!, 'scrollTop', { value: 40, configurable: true })
+    await swipe(document.getElementById('deep')!, 300)
+    expect(s.open).toBe(true)
+  })
+
+  it('первое движение без сдвига не решает жест: дальше палец вниз — лист стянут', async () => {
+    const { s } = one()
+    await nextTick()
+    const dialog = tall(dialogs()[0])
+    touch(dialog, 'touchstart', 100)
+    vi.advanceTimersByTime(100)
+    expect(touch(dialog, 'touchmove', 100).defaultPrevented).toBe(false)
+    vi.advanceTimersByTime(100)
+    expect(touch(dialog, 'touchmove', 300).defaultPrevented).toBe(true)
+    touch(dialog, 'touchend', 300)
+    vi.advanceTimersByTime(200)
+    await nextTick()
+    expect(s.open).toBe(false)
+  })
+
+  it('выделение текста за листом жест не отключает', async () => {
+    const outside = document.body.appendChild(document.createElement('p'))
+    outside.textContent = 'текст экрана'
+    const { s } = one()
+    await nextTick()
+    const range = document.createRange()
+    range.selectNodeContents(outside)
+    document.getSelection()!.removeAllRanges()
+    document.getSelection()!.addRange(range)
+    expect(document.getSelection()!.isCollapsed).toBe(false)
+    await swipe(tall(dialogs()[0]), 300)
+    document.getSelection()!.removeAllRanges()
+    outside.remove()
+    expect(s.open).toBe(false)
+  })
 })
