@@ -3540,14 +3540,6 @@ export function monthSalaries(plan: MonthPlan, state: { people?: Person[]; payme
 }
 
 /**
- * Первый приход месяца `key`, который «Пришла» отметит сейчас (Б7): открытый по `salaryOpen`, ранний по дню; нет —
- * null. Месячный ритм — месяц, если открыт. Отметка всегда идёт по ключу события, не по месяцу экрана.
- */
-export function openPayPeriod(p: Person, payments: Payment[], key: string, now = today()): string | null {
-  return payEvents(p, key).find((e) => salaryOpen(p, payments, e.period, now))?.period ?? null
-}
-
-/**
  * Ключ отметки «Пришла» (стор `markSalary`): ISO-день и месячный ритм — как есть; месяц у аванса и недели — первый
  * открытый приход месяца, иначе первый неотмеченный, иначе последний (отмечен — `markSalary` вернёт его запись).
  */
