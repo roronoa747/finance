@@ -12,7 +12,7 @@ import { ruleFor, ruleMatchOf } from '@/lib/statements/model'
 import { BUDGET_BY_KIND, firstRunQuestions, paymentOpOfMonth, salaryOpOfMonth, type IncomeCandidate, type RecurringCandidate, type RecurringKind } from '@/lib/statements/firstRun'
 import { matchCandidates, matchCategory, nearestEvent, operationAt, SALARY_TOLERANCE } from '@/lib/statements/matching'
 import type { Operation } from '@/lib/statements/types'
-import { budgetAmounts, spendRows } from '@/lib/finance'
+import { advanceDefault, budgetAmounts, monthlyFromWeekly, spendRows, weeklyFromMonthly } from '@/lib/finance'
 import { money, parseMoney, plain } from '@/lib/money'
 import { addMonths, monthKey, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
 import { START_ANSWERED_KEY, readStorage, writeStorage } from '@/lib/storage'
@@ -85,9 +85,31 @@ const manualPayday = ref('10')
 /** Ритм ручного ввода (PN-23): тот же блок, что в «Изменить оклад»; пишется вместе с окладом. */
 const manualRhythm = ref<Partial<Person>>({ payRhythm: 'month' })
 const manualWeekly = computed(() => manualRhythm.value.payRhythm === 'week')
+/**
+ * Аванс — половина оклада, пока его не вписали руками (`/ux` Б7, наблюдение критика): «С авансом» до оклада оставлял
+ * «Аванс 0» — и месяц одним приходом. Оклад набран «в месяц» или «за неделю» — по ритму в момент набора; ритм сменили
+ * через неделю — тихая подсказка пересчёта, как в «Изменить оклад» (подпись поля меняется, а число — нет).
+ */
+const advanceTyped = ref(false)
+const salaryWeekly = ref(false)
+watch(manualSalary, () => {
+  salaryWeekly.value = manualWeekly.value
+  if (manualRhythm.value.payRhythm === 'advance' && !advanceTyped.value) {
+    manualRhythm.value = { ...manualRhythm.value, salary2: advanceDefault(parseMoney(manualSalary.value)) }
+  }
+})
 function onManualRhythm(patch: Partial<Person>) {
   if (patch.payday) manualPayday.value = String(patch.payday)
+  if (patch.salary2 !== undefined && !patch.payRhythm) advanceTyped.value = true
   manualRhythm.value = { ...manualRhythm.value, ...patch }
+}
+const salaryHint = computed(() => {
+  const a = parseMoney(manualSalary.value)
+  if (a <= 0 || manualWeekly.value === salaryWeekly.value) return null
+  return manualWeekly.value ? { amount: weeklyFromMonthly(a), per: 'за неделю' } : { amount: monthlyFromWeekly(a), per: 'в месяц' }
+})
+function useSalaryHint() {
+  if (salaryHint.value) manualSalary.value = plain(salaryHint.value.amount)
 }
 /** Поля ритма в участника: месячный — без полей (документ как раньше). */
 const rhythmFields = (): Partial<Person> => {
@@ -203,7 +225,7 @@ const KIND_NAME: Record<RecurringKind, string | null> = { credit: null, rent: '�
 /** «по пятницам» — недельный приход (PN-24); иначе «24-го». */
 const BY_WEEKDAY = ['', 'по понедельникам', 'по вторникам', 'по средам', 'по четвергам', 'по пятницам', 'по субботам', 'по воскресеньям']
 const incomeWhen = (c: IncomeCandidate) => (c.rhythm === 'week' && c.weekday ? BY_WEEKDAY[c.weekday] : `${c.day}-го`)
-const incomeMeta = (c: IncomeCandidate) => `${money(c.amount)} · ${incomeWhen(c)} · ${c.name}${c.count > 1 ? ` · ${c.count} раз` : ''}`
+const incomeMeta = (c: IncomeCandidate) => `${money(c.amount)} · ${incomeWhen(c)} · ${c.name}${c.count > 1 ? ` · ${c.count} ${plural(c.count, 'раз', 'раза', 'раз')}` : ''}`
 const recurringMeta = (c: RecurringCandidate) => `${money(c.amount)} · примерно ${c.day}-го${c.count > 1 ? ` · ${c.count} раз за период` : ''}`
 
 /**
@@ -400,21 +422,25 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
         </div>
       </template>
       <template v-else>
-        <Field :label="manualWeekly ? 'Зарплата за неделю, ₸' : 'Зарплата в месяц, ₸'" name="salary">
-          <NumField v-model="manualSalary" placeholder="450 000" class="bg-surface" />
-        </Field>
-        <PayRhythmFields
-          :rhythm="manualRhythm.payRhythm ?? 'month'"
-          :payday="clampDay(manualPayday, 10)"
-          :payday2="manualRhythm.payday2"
-          :salary2="manualRhythm.salary2"
-          :weekday="manualRhythm.weekday"
-          :salary="parseMoney(manualSalary)"
-          currency="KZT"
-          field-class="bg-surface"
-          @change="onManualRhythm"
-        />
-        <p class="text-[12.5px] leading-relaxed text-ink-2">Оклад без премий.</p>
+        <!-- Поля ручного ввода — одним блоком: отступы между ними ровные (14 px, как в «Изменить оклад»), не 14 и 30 (`/ux` Б7). -->
+        <div data-manual-income>
+          <Field :label="manualWeekly ? 'Зарплата за неделю, ₸' : 'Зарплата в месяц, ₸'" name="salary">
+            <NumField v-model="manualSalary" placeholder="450 000" class="bg-surface" />
+          </Field>
+          <Button v-if="salaryHint" variant="ghost" size="sm" class="-mt-2 mb-2 -ml-2" data-week-hint @click="useSalaryHint">≈ {{ plain(salaryHint.amount) }} {{ salaryHint.per }}</Button>
+          <PayRhythmFields
+            :rhythm="manualRhythm.payRhythm ?? 'month'"
+            :payday="clampDay(manualPayday, 10)"
+            :payday2="manualRhythm.payday2"
+            :salary2="manualRhythm.salary2"
+            :weekday="manualRhythm.weekday"
+            :salary="parseMoney(manualSalary)"
+            currency="KZT"
+            field-class="bg-surface"
+            @change="onManualRhythm"
+          />
+          <p class="text-[12.5px] leading-relaxed text-ink-2">Оклад без премий.</p>
+        </div>
         <div class="mt-auto flex flex-col gap-2 pt-2">
           <Button size="lg" class="w-full" @click="form.submit(manualNext)">Дальше</Button>
           <Button variant="ghost" size="md" class="w-full" @click="manual = false">Лучше загружу выписку</Button>
@@ -446,20 +472,24 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
         </DecisionCard>
       </template>
       <template v-else-if="!salaryKnown">
-        <Field :label="manualWeekly ? 'Зарплата за неделю, ₸' : 'Зарплата в месяц, ₸'" name="salary">
-          <NumField v-model="manualSalary" placeholder="450 000" class="bg-surface" />
-        </Field>
-        <PayRhythmFields
-          :rhythm="manualRhythm.payRhythm ?? 'month'"
-          :payday="clampDay(manualPayday, 10)"
-          :payday2="manualRhythm.payday2"
-          :salary2="manualRhythm.salary2"
-          :weekday="manualRhythm.weekday"
-          :salary="parseMoney(manualSalary)"
-          currency="KZT"
-          field-class="bg-surface"
-          @change="onManualRhythm"
-        />
+        <!-- Поля ручного ввода — одним блоком: отступы между ними ровные (14 px, как в «Изменить оклад»), не 14 и 30 (`/ux` Б7). -->
+        <div data-manual-income>
+          <Field :label="manualWeekly ? 'Зарплата за неделю, ₸' : 'Зарплата в месяц, ₸'" name="salary">
+            <NumField v-model="manualSalary" placeholder="450 000" class="bg-surface" />
+          </Field>
+          <Button v-if="salaryHint" variant="ghost" size="sm" class="-mt-2 mb-2 -ml-2" data-week-hint @click="useSalaryHint">≈ {{ plain(salaryHint.amount) }} {{ salaryHint.per }}</Button>
+          <PayRhythmFields
+            :rhythm="manualRhythm.payRhythm ?? 'month'"
+            :payday="clampDay(manualPayday, 10)"
+            :payday2="manualRhythm.payday2"
+            :salary2="manualRhythm.salary2"
+            :weekday="manualRhythm.weekday"
+            :salary="parseMoney(manualSalary)"
+            currency="KZT"
+            field-class="bg-surface"
+            @change="onManualRhythm"
+          />
+        </div>
         <div class="mt-auto flex flex-col gap-2 pt-2">
           <Button size="lg" class="w-full" @click="form.submit(manualAfterQuestions)">{{ joining ? 'Готово' : 'Дальше' }}</Button>
         </div>

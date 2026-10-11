@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { monthKey } from '@/lib/dates'
 import { money, parseMoney } from '@/lib/money'
-import { salariesLabel, tryCredit } from '@/lib/finance'
+import { hasWeeklyPay, salariesLabel, tryCredit } from '@/lib/finance'
 import { plural } from '@/lib/utils'
 import Chip from '@/components/kit/Chip.vue'
 import Field from '@/components/kit/Field.vue'
@@ -61,8 +61,8 @@ const overpayLine = computed(() => {
   const r = result.value
   if (!r) return null
   if (r.overpay <= 0) return 'Без переплаты'
-  // «0,2 зарплаты» — как в статистике Капитала; 0 зарплат — единицы нет.
-  return r.overpaySalaries ? `Переплата ${money(r.overpay)} · ${salariesLabel(r.overpaySalaries)}` : `Переплата ${money(r.overpay)}`
+  // «0,2 зарплаты» — как в статистике Капитала (недельная зарплата в семье — «месяца дохода», `/ux` Б7); 0 — единицы нет.
+  return r.overpaySalaries ? `Переплата ${money(r.overpay)} · ${salariesLabel(r.overpaySalaries, hasWeeklyPay(finance.people))}` : `Переплата ${money(r.overpay)}`
 })
 </script>
 

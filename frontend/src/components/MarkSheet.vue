@@ -285,8 +285,9 @@ const unmarkNote = computed(() => {
         </p>
       </AccountChoice>
 
+      <!-- У аванса кнопка зовёт его по имени, как подпись суммы над ней (`/ux` Б7). -->
       <Button class="w-full" @click="form.submit(confirmMark)">
-        {{ record ? 'Сохранить' : salary ? 'Отметить зарплату' : credit?.person ? 'Отдал' : 'Отметить оплату' }}
+        {{ record ? 'Сохранить' : salary ? (event?.kind === 'advance' ? 'Отметить аванс' : 'Отметить зарплату') : credit?.person ? 'Отдал' : 'Отметить оплату' }}
       </Button>
     </template>
   </Sheet>

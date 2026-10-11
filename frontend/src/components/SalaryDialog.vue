@@ -4,7 +4,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, plain, parseMoney } from '@/lib/money'
 import { monthKey, monthTitle, monthFrom, addMonths } from '@/lib/dates'
-import { payEventAt, payEvents, payRhythmOf, salaryAt, salaryOf, weeklyFromMonthly } from '@/lib/finance'
+import { monthlyFromWeekly, payEventAt, payEvents, payRhythmOf, salaryAt, salaryOf, weeklyFromMonthly } from '@/lib/finance'
 import { CURRENCY_SIGN } from '@/lib/fx'
 import type { Currency, Person, PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
@@ -78,7 +78,7 @@ watch(
     manualRate.value = ''
     fromMonth.value = addMonths(monthKey(), 1)
     personName.value = person.value?.name ?? ''
-    weekHint.value = null
+    amountWeekly.value = weekly.value
   },
 )
 
@@ -118,23 +118,31 @@ function onSalaryCommit(text: string) {
   const v = parseMoney(text)
   if (v > 0 && v !== current.value.amount) {
     financeStore.correctSalary(person.value.id, v)
+    amountWeekly.value = weekly.value
   }
 }
 
 /** Ритм (PN-23): `PayRhythmFields` отдаёт правку — пишется сразу (`SavedMark`). */
 const rhythm = computed(() => (person.value ? payRhythmOf(person.value) : 'month'))
 const weekly = computed(() => rhythm.value === 'week')
-/** Сменили «месяц → неделя»: оклад ещё месячный — подсказка «≈ N за неделю» (нажатие — исправить оклад, не сама). */
-const weekHint = ref<number | null>(null)
+/**
+ * Оклад вписан «за неделю» или «в месяц» — по ритму, с которым лист открыли или оклад вписали. Ритм сменили через эту
+ * границу — тихая подсказка пересчёта (нажатие — исправить оклад, не сама): «≈ N за неделю» (× 12 / 52) или «≈ N в
+ * месяц» (× 52 / 12). Промах «неделя → месяц → неделя» подсказки не даёт (`/ux` Б7: недельные 150 000 предлагались
+ * как «≈ 34 615 за неделю»).
+ */
+const amountWeekly = ref(weekly.value)
+const weekHint = computed(() => {
+  const a = current.value.amount
+  if (!person.value || a <= 0 || weekly.value === amountWeekly.value) return null
+  return weekly.value ? { amount: weeklyFromMonthly(a), per: 'за неделю' } : { amount: monthlyFromWeekly(a), per: 'в месяц' }
+})
 function onRhythm(patch: Partial<Person>) {
-  if (!person.value) return
-  if (patch.payRhythm === 'week' && rhythm.value !== 'week') weekHint.value = weeklyFromMonthly(current.value.amount)
-  else if (patch.payRhythm) weekHint.value = null
-  financeStore.setPerson(person.value.id, patch)
+  if (person.value) financeStore.setPerson(person.value.id, patch)
 }
 function useWeekHint() {
-  if (person.value && weekHint.value) financeStore.correctSalary(person.value.id, weekHint.value)
-  weekHint.value = null
+  if (person.value && weekHint.value) financeStore.correctSalary(person.value.id, weekHint.value.amount)
+  amountWeekly.value = weekly.value
 }
 function onFloating(v: boolean) {
   if (person.value) financeStore.setPerson(person.value.id, { floating: v })
@@ -181,9 +189,9 @@ function handlePlanSubmit() {
         <template #hint><Hint label="Оклад сейчас">Только исправить ошибку: оклад был введён неверно. Если зарплата действительно меняется — не трогайте это поле, а измените оклад с нужного месяца ниже.</Hint></template>
         <NumFieldBlur :initial="plain(current.amount)" :currency="current.currency" data-salary-now @commit="onSalaryCommit" />
       </Field>
-      <!-- Сменили на неделю: оклад ещё месячный — тихое предложение, запись только нажатием. -->
-      <Button v-if="weekHint && weekly" variant="ghost" size="sm" class="-mt-2 mb-2 -ml-2" data-week-hint @click="useWeekHint">
-        ≈ {{ plain(weekHint) }} за неделю
+      <!-- Сменили ритм через «неделю»: оклад ещё прежний — тихое предложение, запись только нажатием. -->
+      <Button v-if="weekHint" variant="ghost" size="sm" class="-mt-2 mb-2 -ml-2" data-week-hint @click="useWeekHint">
+        ≈ {{ plain(weekHint.amount) }} {{ weekHint.per }}
       </Button>
       <p v-if="current.currency !== 'KZT'" class="-mt-1 mb-3 text-[12.5px] text-ink-2 num">≈ {{ money(currentTenge) }} по курсу Нацбанка</p>
 

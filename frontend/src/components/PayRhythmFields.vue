@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { moneyIn, parseMoney, plain } from '@/lib/money'
 import { CURRENCY_SIGN } from '@/lib/fx'
 import { advanceRest, rhythmDefaults } from '@/lib/finance'
@@ -44,19 +44,36 @@ const rest = computed(() => advanceRest(props.salary, props.salary2))
 
 function pickRhythm(r: PayRhythm) {
   if (r === props.rhythm) return
+  clash.value = null
   emit('change', rhythmDefaults(props, r, props.salary))
 }
 
 const day = (text: string) => Math.min(28, Math.max(1, parseMoney(text) || 1))
 
+/**
+ * Аванс и зарплата в один день — не ритм аванса; такой день не принимаем. Молча — нельзя (`/ux` Б7, наблюдение критика):
+ * поле показывало бы набранное, а документ — прежний. Поле возвращает записанный день (`rev` — новый ключ поля), под ним —
+ * строка «что не так»; нажали в поле снова — строка уходит.
+ */
+const clash = ref<'payday' | 'payday2' | null>(null)
+const rev = ref({ payday: 0, payday2: 0 })
+const CLASH = 'Аванс и зарплата — в разные дни'
+function reject(field: 'payday' | 'payday2') {
+  clash.value = field
+  rev.value[field]++
+}
+
 function onPayday(text: string) {
   const v = day(text)
-  // Аванс и зарплата в один день — не ритм аванса; такой день не принимаем.
-  if (v !== props.payday && !(props.rhythm === 'advance' && v === props.payday2)) emit('change', { payday: v })
+  if (props.rhythm === 'advance' && v === props.payday2) return reject('payday')
+  clash.value = null
+  if (v !== props.payday) emit('change', { payday: v })
 }
 function onPayday2(text: string) {
   const v = day(text)
-  if (v !== props.payday2 && v !== props.payday) emit('change', { payday2: v })
+  if (v === props.payday) return reject('payday2')
+  clash.value = null
+  if (v !== props.payday2) emit('change', { payday2: v })
 }
 function onSalary2(text: string) {
   const v = Math.max(0, parseMoney(text))
@@ -78,15 +95,15 @@ function onSalary2(text: string) {
 
     <template v-else-if="rhythm === 'advance'">
       <div class="grid grid-cols-2 gap-2.5">
-        <Field label="День аванса">
-          <NumFieldBlur :class="fieldClass" :initial="String(payday2 ?? '')" kind="int" data-payday2 @commit="onPayday2" />
+        <Field label="День аванса" :error="clash === 'payday2' ? CLASH : undefined" @focusin="clash = null">
+          <NumFieldBlur :key="`d2-${rev.payday2}`" :class="fieldClass" :initial="String(payday2 ?? '')" kind="int" data-payday2 @commit="onPayday2" />
         </Field>
         <Field :label="`Аванс, ${sign}`">
           <NumFieldBlur :class="fieldClass" :initial="plain(salary2 ?? 0)" :currency="currency" data-salary2 @commit="onSalary2" />
         </Field>
       </div>
-      <Field label="День зарплаты">
-        <NumFieldBlur :class="fieldClass" :initial="String(payday)" kind="int" data-payday @commit="onPayday" />
+      <Field label="День зарплаты" :error="clash === 'payday' ? CLASH : undefined" @focusin="clash = null">
+        <NumFieldBlur :key="`d-${rev.payday}`" :class="fieldClass" :initial="String(payday)" kind="int" data-payday @commit="onPayday" />
         <span class="text-[12.5px] text-ink-2 num" data-rest>остальное — {{ moneyIn(rest, currency) }}</span>
       </Field>
     </template>

@@ -58,8 +58,8 @@ const line = computed(() => lines.value.find((s) => s.person === open.value) ?? 
           <b class="font-num text-[16px] num whitespace-nowrap" :class="s.came ? 'text-ink' : 'text-ink-2'">
             <span v-if="s.came && s.rhythm === 'month'" class="font-extrabold text-ok" data-came>✓ </span>{{ s.floating && !s.came ? '≈ ' : '' }}{{ money(s.amount) }}
           </b>
-          <!-- Аванс и неделя (Б7): «✓ 2 из 4» под суммой месяца; плавающая — «≈» до прихода. -->
-          <span v-if="s.rhythm !== 'month'" class="text-[12.5px] font-semibold text-ink-2 num whitespace-nowrap" data-came-count><span v-if="s.cameCount" class="font-extrabold text-ok">✓ </span>{{ s.cameCount }} из {{ s.eventCount }}</span>
+          <!-- Аванс и неделя (Б7): «✓ 2 из 4 пришли» под суммой месяца; плавающая — «≈» до прихода. -->
+          <span v-if="s.rhythm !== 'month'" class="text-[12.5px] font-semibold text-ink-2 num whitespace-nowrap" data-came-count><span v-if="s.cameCount" class="font-extrabold text-ok">✓ </span>{{ s.cameCount }} из {{ s.eventCount }} пришли</span>
           <span v-if="s.fx" class="type-meta num whitespace-nowrap" data-salary-fx>{{ moneyIn(s.fx.amount, s.fx.currency) }}</span>
         </span>
       </div>

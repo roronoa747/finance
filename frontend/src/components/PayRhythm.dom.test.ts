@@ -1,17 +1,20 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, h, nextTick, type App } from 'vue'
+import { createApp, h, nextTick, ref, type App } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { routes } from '@/router'
 import { useAuthStore } from '@/stores/auth'
-import { useFinanceStore } from '@/stores/finance'
+import { defaultSyncDoc, useFinanceStore } from '@/stores/finance'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
 import { FX_BOOK_KEY, writeStorage } from '@/lib/storage'
+import { plain } from '@/lib/money'
 import type { Payment, Person, SyncDoc } from '@/types/finance'
 import SalaryDialog from './SalaryDialog.vue'
 import MarkSheet from './MarkSheet.vue'
 import Month from '@/views/Month.vue'
+import Money from '@/views/Money.vue'
+import Start from '@/views/Start.vue'
 
 vi.mock('@/lib/photos/store', async (orig) => ({
   ...(await orig<typeof import('@/lib/photos/store')>()),
@@ -119,9 +122,22 @@ describe('PN-23: «Изменить оклад» — как приходит з�
     await commit(qi('input[data-payday2]'), '15')
     expect(finance.people[0]).toMatchObject({ payRhythm: 'advance', payday2: 15, salary2: 200_000 })
     expect(txt(q('[data-rest]'))).toBe('остальное — 500 000 ₸')
-    // День аванса = дню зарплаты — не принимается (иначе ритм не аванс).
+    // День аванса = дню зарплаты — не принимается (иначе ритм не аванс); `/ux` Б7: не молча — строка «что не так», поле
+    // возвращает записанный день.
     await commit(qi('input[data-payday2]'), '10')
     expect(finance.people[0].payday2).toBe(15)
+    expect(document.body.textContent).toContain('Аванс и зарплата — в разные дни')
+    expect(qi('input[data-payday2]')!.value).toBe('15')
+    expect(qi('input[data-payday2]')!.getAttribute('aria-invalid')).toBe('true')
+    // То же с другой стороны: день зарплаты = дню аванса.
+    await commit(qi('input[data-payday]'), '15')
+    expect(finance.people[0].payday).toBe(10)
+    expect(qi('input[data-payday]')!.value).toBe('10')
+    expect(qi('input[data-payday]')!.getAttribute('aria-invalid')).toBe('true')
+    // Верный день — строка уходит, день пишется.
+    await commit(qi('input[data-payday]'), '28')
+    expect(finance.people[0].payday).toBe(28)
+    expect(document.body.textContent).not.toContain('Аванс и зарплата — в разные дни')
   })
 
   it('неделя: день недели чипами, подпись «за неделю», подсказка «≈ N за неделю» — запись только нажатием', async () => {
@@ -152,7 +168,7 @@ describe('PN-23: «Изменить оклад» — как приходит з�
   it('критик Б7: лист отметки — остаток после аванса «Зарплата — 300 000 ₸» (не «Оклад месяца»), аванс — «Аванс — 200 000 ₸»', async () => {
     const doc = planFamilyDoc()
     doc.people[0] = { ...doc.people[0], salary: 500_000, payday: 30, payRhythm: 'advance', payday2: 15, salary2: 200_000 }
-    for (const [period, label] of [['2026-09-30', 'Зарплата — 300 000 ₸.'], ['2026-09-15', 'Аванс — 200 000 ₸.']]) {
+    for (const [period, label, button] of [['2026-09-30', 'Зарплата — 300 000 ₸.', 'Отметить зарплату'], ['2026-09-15', 'Аванс — 200 000 ₸.', 'Отметить аванс']]) {
       const pinia = createPinia()
       setActivePinia(pinia)
       useAuthStore().setAuthData(authAs('member', 'a'))
@@ -165,6 +181,8 @@ describe('PN-23: «Изменить оклад» — как приходит з�
       await flush()
       expect(txt(document.body)).toContain(label)
       expect(txt(document.body)).not.toContain('Оклад месяца')
+      // `/ux` Б7: кнопка зовёт приход по имени — у аванса «Отметить аванс».
+      expect(byText('button', button)).toBeTruthy()
       app.unmount()
       app = null
       document.body.innerHTML = ''
@@ -182,16 +200,16 @@ describe('PN-23: «Изменить оклад» — как приходит з�
 })
 
 describe('PN-23: строка «Месяца» и лист зарплаты по неделям', () => {
-  it('строка — «✓ 1 из 4», сумма месяца 600 000; «Пришла» отмечает ближайшую открытую пятницу (11-е) на счёт прошлого раза', async () => {
+  it('строка — «✓ 1 из 4 пришли», сумма месяца 600 000; «Пришла» отмечает ближайшую открытую пятницу (11-е) на счёт прошлого раза', async () => {
     const { finance, router } = await openMonth(weeklyDoc(), 'member', '/month?from=row')
-    expect(txt(q('[data-salary="a"] [data-came-count]'))).toBe('✓ 1 из 4')
+    expect(txt(q('[data-salary="a"] [data-came-count]'))).toBe('✓ 1 из 4 пришли')
     expect(q('[data-salary="a"] [data-came]')).toBeNull()
     await press(q('[data-salary="a"] [data-salary-came-btn]'))
     expect(salaries(finance).map((p) => [p.period, p.amount, p.accountId])).toEqual([
       ['2026-09-04', 150_000, 'card'],
       ['2026-09-11', 150_000, 'card'],
     ])
-    expect(txt(q('[data-salary="a"] [data-came-count]'))).toBe('✓ 2 из 4')
+    expect(txt(q('[data-salary="a"] [data-came-count]'))).toBe('✓ 2 из 4 пришли')
     // 18-е ещё не близко (6 дней) — кнопки нет; в план не уводит, пока месяц не пришёл.
     expect(q('[data-salary="a"] [data-salary-came-btn]')).toBeNull()
     await new Promise((r) => setTimeout(r, 20))
@@ -202,7 +220,7 @@ describe('PN-23: строка «Месяца» и лист зарплаты по
     vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
     const doc = weeklyDoc({}, [came('2026-09-04', 150_000), came('2026-09-11', 150_000), came('2026-09-18', 150_000)])
     const { finance, router } = await openMonth(doc, 'member', '/month?from=row')
-    expect(txt(q('[data-salary="a"] [data-came-count]'))).toBe('✓ 3 из 4')
+    expect(txt(q('[data-salary="a"] [data-came-count]'))).toBe('✓ 3 из 4 пришли')
     await press(q('[data-salary="a"] [data-salary-came-btn]'))
     expect(salaries(finance).map((p) => p.period)).toEqual(['2026-09-04', '2026-09-11', '2026-09-18', '2026-09-25'])
     await new Promise((r) => setTimeout(r, 20))
@@ -223,9 +241,9 @@ describe('PN-23: строка «Месяца» и лист зарплаты по
     expect(document.body.textContent).toContain('Снять отметку')
   })
 
-  it('viewer: строка «✓ 1 из 4» без кнопок; лист — приходы без «Пришла» и без «Изменить оклад»', async () => {
+  it('viewer: строка «✓ 1 из 4 пришли» без кнопок; лист — приходы без «Пришла» и без «Изменить оклад»', async () => {
     await openMonth(weeklyDoc(), 'viewer')
-    expect(txt(q('[data-salary="a"] [data-came-count]'))).toBe('✓ 1 из 4')
+    expect(txt(q('[data-salary="a"] [data-came-count]'))).toBe('✓ 1 из 4 пришли')
     expect(q('[data-salary-came-btn]')).toBeNull()
     await press(q('[data-salary="a"] [data-row-open]'))
     expect(all('[data-pay-event]')).toHaveLength(4)
@@ -251,5 +269,133 @@ describe('PN-23: плавающая сумма (Р-6)', () => {
     await flush()
     await press(byText('[role="dialog"] button', 'Отметить зарплату'))
     expect(salaries(finance).filter((p) => p.period === KEY).map((p) => p.amount)).toEqual([725_000])
+  })
+})
+
+/**
+ * `/ux` Б7 (свежий взгляд на стенде): подсказка пересчёта оклада только через границу «неделя», первый запуск — аванс
+ * за окладом и подсказка «≈ N за неделю», «в зарплатах» при недельной зарплате — месяцами дохода.
+ */
+async function openView(view: typeof Money, path: string, doc: SyncDoc) {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  useAuthStore().setAuthData(authAs('member', 'a'))
+  const finance = useFinanceStore()
+  finance.setHouseholdDoc(doc, 1)
+  const router = createRouter({ history: createMemoryHistory(), routes })
+  await router.push(path)
+  await router.isReady()
+  const root = document.createElement('div')
+  document.body.appendChild(root)
+  app = createApp(view)
+  app.use(pinia)
+  app.use(router)
+  app.mount(root)
+  await flush()
+  return finance
+}
+
+/** Первый запуск новой семьи — шаг 1, «Введу вручную». */
+async function openStartManual() {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  useAuthStore().setAuthData(authAs('member', 'a'))
+  const finance = useFinanceStore()
+  finance.claimFor('h-family')
+  finance.setHouseholdDoc(defaultSyncDoc(), 1)
+  const router = createRouter({ history: createMemoryHistory(), routes })
+  await router.push('/start/upload')
+  await router.isReady()
+  const root = document.createElement('div')
+  document.body.appendChild(root)
+  app = createApp(Start)
+  app.use(pinia)
+  app.use(router)
+  app.mount(root)
+  await flush()
+  await press(byText('button', 'Введу вручную'))
+  return finance
+}
+const salaryInput = () =>
+  all('label').find((l) => /^Зарплата (в месяц|за неделю), ₸$/.test(txt(l.querySelector('span'))))!.querySelector('input') as HTMLInputElement
+async function typeIn(input: HTMLInputElement, value: string) {
+  input.value = value
+  input.dispatchEvent(new Event('input'))
+  await flush()
+}
+
+describe('/ux Б7: подсказка пересчёта оклада, первый запуск, «в зарплатах» при неделе', () => {
+  it('«Изменить оклад» недельного: промах «неделя → месяц → неделя» подсказки не даёт; «неделя → месяц» — «≈ N в месяц» (× 52 / 12)', async () => {
+    // Лист в приложении живёт закрытым (`id` null) и открывается сменой `id` — ритм оклада берётся в момент открытия.
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    useAuthStore().setAuthData(authAs('member', 'a'))
+    const finance = useFinanceStore()
+    finance.setHouseholdDoc(weeklyDoc(), 1)
+    const id = ref<'a' | null>(null)
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app = createApp({ render: () => h(SalaryDialog, { id: id.value }) })
+    app.use(pinia)
+    app.mount(root)
+    await flush()
+    id.value = 'a'
+    await flush()
+    expect(q('[data-week-hint]')).toBeNull()
+    await press(byText('[data-pay-rhythm] button', 'Раз в месяц'))
+    // 150 000 × 52 / 12 = 650 000 — оклад недели теперь читается как месячный.
+    expect(txt(q('[data-week-hint]'))).toBe('≈ 650 000 в месяц')
+    await press(byText('[data-pay-rhythm] button', 'Раз в неделю'))
+    // Раньше: «≈ 34 615 за неделю» — недельный оклад ещё раз делился на 4,33.
+    expect(q('[data-week-hint]')).toBeNull()
+    expect(finance.people[0].salary).toBe(150_000)
+    await press(byText('[data-pay-rhythm] button', 'С авансом'))
+    await press(q('[data-week-hint]'))
+    expect(finance.people[0].salary).toBe(650_000)
+    expect(q('[data-week-hint]')).toBeNull()
+  })
+
+  it('первый запуск: «С авансом» до оклада — аванс идёт за окладом (половина), пока его не вписали руками; «Дальше» — два прихода', async () => {
+    const finance = await openStartManual()
+    await press(byText('[data-pay-rhythm] button', 'С авансом'))
+    // Раньше: «Аванс 0» и «остальное — 0 ₸» — и после оклада аванс оставался 0 (один приход).
+    await typeIn(salaryInput(), '450000')
+    expect(qi('input[data-salary2]')!.value).toBe(plain(225_000))
+    expect(txt(q('[data-rest]'))).toBe('остальное — 225 000 ₸')
+    // Вписали аванс руками — оклад его больше не двигает.
+    await commit(qi('input[data-salary2]'), '150 000')
+    await typeIn(salaryInput(), '500000')
+    expect(qi('input[data-salary2]')!.value).toBe(plain(150_000))
+    await press(byText('button', 'Дальше'))
+    expect(finance.people.find((p) => p.id === 'a')).toMatchObject({ salary: 500_000, payRhythm: 'advance', payday2: 25, salary2: 150_000 })
+  })
+
+  it('первый запуск: оклад набран «в месяц», выбрали «Раз в неделю» — подсказка «≈ N за неделю», нажатие вписывает', async () => {
+    const finance = await openStartManual()
+    await typeIn(salaryInput(), '650000')
+    expect(q('[data-week-hint]')).toBeNull()
+    await press(byText('[data-pay-rhythm] button', 'Раз в неделю'))
+    // Подпись поля уже «за неделю», а число — месячное: 650 000 × 12 / 52 = 150 000.
+    expect(txt(q('[data-week-hint]'))).toBe('≈ 150 000 за неделю')
+    await press(q('[data-week-hint]'))
+    expect(salaryInput().value).toBe(plain(150_000))
+    expect(q('[data-week-hint]')).toBeNull()
+    await press(byText('button', 'Дальше'))
+    expect(finance.people.find((p) => p.id === 'a')).toMatchObject({ salary: 150_000, payRhythm: 'week', weekday: 5 })
+  })
+
+  it('статистика Капитала: недельная зарплата в семье — «месяца дохода» и «ещё N месяцев», без «зарплат»; месячная — как было', async () => {
+    await openView(Money, '/money', weeklyDoc())
+    await press(q('[data-capital-stats]'))
+    const weekly = txt(q('[data-capital-stats-body]'))
+    expect(weekly).toMatch(/Переплата [\d\s]+₸ · [\d,]+ месяца дохода/)
+    expect(weekly).toMatch(/· ещё \d+ месяц(а|ев)?$|· ещё \d+ месяц(а|ев)? /)
+    expect(weekly).not.toContain('зарплат')
+    app?.unmount()
+    app = null
+    document.body.innerHTML = ''
+    await openView(Money, '/money', planFamilyDoc())
+    await press(q('[data-capital-stats]'))
+    expect(txt(q('[data-capital-stats-body]'))).toContain('зарплат')
   })
 })

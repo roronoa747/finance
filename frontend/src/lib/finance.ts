@@ -1042,11 +1042,17 @@ export const advanceRest = (salary: number, salary2 = 0) => salary - Math.min(Ma
 /** Подсказка при смене ритма «месяц → неделя» (PN-23): оклад месяца за неделю — × 12 / 52 (≈ ÷ 4,33), целые. */
 export const weeklyFromMonthly = (amount: number) => Math.round((amount * 12) / 52);
 
+/** Обратная подсказка «неделя → месяц» (`/ux` Б7): оклад недели за месяц — × 52 / 12, целые. */
+export const monthlyFromWeekly = (amount: number) => Math.round((amount * 52) / 12);
+
+/** Аванс по умолчанию — половина оклада, целые (PN-23; первый запуск держит его за окладом, пока аванс не вписан руками). */
+export const advanceDefault = (salary: number) => Math.round(salary / 2);
+
 /** Ритм по умолчанию при выборе в форме (PN-23): аванс — 25-го при зарплате до 15-го, иначе 15-го; половина оклада; неделя — пятница. */
 export function rhythmDefaults(p: Pick<Person, 'payday' | 'payday2' | 'salary2' | 'weekday'>, rhythm: PayRhythm, salary: number): Partial<Person> {
   if (rhythm === 'advance') {
     const day = p.payday2 && p.payday2 !== p.payday ? p.payday2 : p.payday <= 15 ? 25 : 15;
-    return { payRhythm: 'advance', payday2: day, salary2: p.salary2 ?? Math.round(salary / 2) };
+    return { payRhythm: 'advance', payday2: day, salary2: p.salary2 ?? advanceDefault(salary) };
   }
   if (rhythm === 'week') return { payRhythm: 'week', weekday: p.weekday ?? 5 };
   return { payRhythm: 'month' };
@@ -3585,9 +3591,18 @@ export function inSalaries(amount: number, income: number): number | null {
 /** Одна десятая — для «1,5 зарплаты», «хватит на 1,2 месяца» (не деньги). */
 export const round1 = (x: number) => Math.round(x * 10) / 10
 
-/** Подпись к `inSalaries`: «1,5 зарплаты», «9 зарплат», «1 зарплата» — дробь всегда «зарплаты», целое — по числу. */
-export const salariesLabel = (n: number) =>
-  `${n.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} ${Number.isInteger(n) ? plural(n, 'зарплата', 'зарплаты', 'зарплат') : 'зарплаты'}`
+/**
+ * Подпись к `inSalaries`: «1,5 зарплаты», «9 зарплат», «1 зарплата» — дробь всегда «зарплаты», целое — по числу.
+ * `weekly` — в семье есть недельная зарплата (`hasWeeklyPay`): «зарплата» там читается как неделя, а единица — месячный
+ * доход семьи, поэтому «1,5 месяца дохода», «9 месяцев дохода» (`/ux` Б7, ТЗ PN-24 п. 3).
+ */
+export const salariesLabel = (n: number, weekly = false) =>
+  weekly
+    ? `${monthsLabel(n)} дохода`
+    : `${n.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} ${Number.isInteger(n) ? plural(n, 'зарплата', 'зарплаты', 'зарплат') : 'зарплаты'}`
+
+/** Есть ли в семье недельная зарплата (Б7) — тогда «в зарплатах» подписывается месяцами дохода (`salariesLabel`). */
+export const hasWeeklyPay = (people: Person[]) => people.some((p) => !p.deletedAt && payRhythmOf(p) === 'week')
 
 /**
  * Статистика плашки Капитала (Р-3) — от уже посчитанного плана месяца (`finance.monthPlanOf(key)`), второго прогона
