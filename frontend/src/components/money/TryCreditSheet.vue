@@ -42,7 +42,14 @@ const result = computed(() => {
   return tryCredit(state, ctx, { principal, months: months.value, annualRate: annualRate.value })
 })
 
-const monthsWord = (n: number) => `${n} ${plural(n, 'месяц', 'месяца', 'месяцев')}`
+// Пустая форма говорит, чего не хватает (`/ux` Б5): сумма есть, ставки нет — «Введите ставку», а не «сумму и срок».
+const emptyHint = computed(() => {
+  if (parseMoney(sum.value) <= 0) return 'Введите сумму'
+  if (months.value <= 0) return 'Введите срок'
+  return 'Введите ставку'
+})
+
+const monthsWord =(n: number) => `${n} ${plural(n, 'месяц', 'месяца', 'месяцев')}`
 const heroLine = computed(() => {
   const h = result.value?.hero
   if (!h || h.delayMonths === null) return null
@@ -104,6 +111,6 @@ const overpayLine = computed(() => {
       <p v-if="heroLine" class="text-[14px] text-ink-2" data-try-hero>{{ heroLine }}</p>
       <p class="text-[14px] num text-ink-2" data-try-overpay>{{ overpayLine }}</p>
     </div>
-    <p v-else class="text-[14px] text-ink-2" data-try-empty>Введите сумму и срок</p>
+    <p v-else class="text-[14px] text-ink-2" data-try-empty>{{ emptyHint }}</p>
   </Sheet>
 </template>

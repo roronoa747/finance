@@ -78,7 +78,8 @@ describe('PN-17: «Хватит?»', () => {
     expect(r.inDays).not.toBeNull()
     expect(txt(q('[data-afford-yes]'))).toBe('Да')
     expect(norm(txt(q('[data-afford-left]')))).toContain(norm(`до зарплаты останется ${money(r.left)}`))
-    expect(txt(q('[data-afford-left]'))).toContain(`через ${r.inDays}`)
+    // Срок зарплаты — своей строкой, как строки «Нет» (`/ux` Б5: в одной строке переносился на 390 px).
+    expect(txt(q('[data-afford-payday]'))).toContain(`зарплата через ${r.inDays}`)
     expect(JSON.stringify(store.householdDoc)).toBe(before)
   })
 
@@ -102,6 +103,7 @@ describe('PN-17: «Хватит?»', () => {
     await type(String(rest - 1000))
     expect(txt(q('[data-afford-yes]'))).toBe('Да')
     expect(norm(txt(q('[data-afford-left]')))).toBe(norm(`до зарплаты останется ${money(1000)}`))
+    expect(q('[data-afford-payday]')).toBeNull()
     await type(String(rest + 1000))
     expect(norm(txt(q('[data-afford-short]')))).toBe(norm(`не хватает ${money(1000)}`))
   })

@@ -62,10 +62,14 @@ describe('PN-17: «Прикинуть кредит»', () => {
   it('пустые поля — подсказка, результата нет', async () => {
     await open()
     expect(q('[data-try-result]')).toBeNull()
-    expect(txt(q('[data-try-empty]'))).toBe('Введите сумму и срок')
-    // Сумма есть, ставки нет — ещё не считаем.
+    expect(txt(q('[data-try-empty]'))).toBe('Введите сумму')
+    // Сумма есть, ставки нет — ещё не считаем; подсказка называет, чего не хватает (`/ux` Б5).
     await type('[data-try-sum]', '1000000')
     expect(q('[data-try-result]')).toBeNull()
+    expect(txt(q('[data-try-empty]'))).toBe('Введите ставку')
+    await chip('свой').click()
+    await flush()
+    expect(txt(q('[data-try-empty]'))).toBe('Введите срок')
   })
 
   it('1 000 000 на 24 месяца под 20 %: платёж, нагрузка, мечта, переплата — из tryCredit; документ не меняется', async () => {

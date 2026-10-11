@@ -39,9 +39,8 @@ const days = (n: number) => `${n} ${plural(n, 'день', 'дня', 'дней')}
     <div v-if="result" class="flex flex-col gap-1.5 rounded-xl border border-card-border bg-surface-2 px-4 py-3.5" data-afford-result>
       <template v-if="result.ok">
         <span class="type-big text-ok" data-afford-yes>Да</span>
-        <p class="text-[14px] num text-ink-2" data-afford-left>
-          до зарплаты останется {{ money(result.left) }}<template v-if="result.inDays !== null"> · зарплата через {{ days(result.inDays) }}</template>
-        </p>
+        <p class="text-[14px] num text-ink-2" data-afford-left>до зарплаты останется {{ money(result.left) }}</p>
+        <p v-if="result.inDays !== null" class="text-[14px] num text-ink-2" data-afford-payday>зарплата через {{ days(result.inDays) }}</p>
       </template>
       <template v-else>
         <span class="type-big text-warn" data-afford-no>Нет</span>
