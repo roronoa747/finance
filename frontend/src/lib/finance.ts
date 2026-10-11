@@ -1,4 +1,4 @@
-import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard } from '@/types/finance'
+import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
 import { isSpend, normalizeCounterparty, normalizeMerchant } from '@/lib/statements/model'
@@ -979,17 +979,90 @@ export function salaryOf(p: Person, key = monthKey()): { amount: number; currenc
 /** День зарплаты месяца `key`, `YYYY-MM-DD` (31-е в сентябре — 30-е). */
 export const paydayIso = (p: Pick<Person, 'payday'>, key: string) => isoIn(key, p.payday);
 
+/* ---------------- Ритм зарплаты (понятность, Блок 7: Р-5, Р-6) ---------------- */
+
+/**
+ * Приход зарплаты месяца по ритму. `period` — ключ отметки «Пришла» (`Payment.period`): у месячного ритма — месяц
+ * (старые отметки действуют), у аванса и недели — ISO-день события (уникален: `countedPayments` не схлопывает
+ * соседние недели). `amount` — в валюте оклада.
+ */
+export type PayEvent = { period: string; day: string; amount: number; currency: Currency; kind: 'salary' | 'advance' | 'week' }
+
+/** Месяц отметки: «2026-10» из «2026-10» и из «2026-10-02». */
+export const periodMonth = (period: string) => period.slice(0, 7);
+
+/** ISO-день недели даты `YYYY-MM-DD`: понедельник 1 … воскресенье 7. */
+export const isoWeekday = (iso: string) => ((new Date(`${iso}T00:00:00Z`).getUTCDay() + 6) % 7) + 1;
+
+/**
+ * Ритм участника (Р-5): нет поля — `month`. Неполный ритм (аванс без своего дня или в день зарплаты, неделя без дня
+ * недели) считается месячным — отметки не теряются, числа прежние.
+ */
+export function payRhythmOf(p: Pick<Person, 'payRhythm' | 'payday' | 'payday2' | 'weekday'>): PayRhythm {
+  if (p.payRhythm === 'advance' && p.payday2 && p.payday2 >= 1 && p.payday2 <= 31 && p.payday2 !== p.payday) return 'advance';
+  if (p.payRhythm === 'week' && p.weekday && p.weekday >= 1 && p.weekday <= 7) return 'week';
+  return 'month';
+}
+
+/**
+ * Приходы месяца по ритму (Р-5), по дням: месяц — один (`period = key`, день зарплаты); аванс — аванс в `payday2`
+ * (`salary2`, не больше оклада) и остаток в `payday`; неделя — по одному на каждый `weekday` месяца (оклад — за
+ * неделю). Аванс и зарплата в один день (31-е в феврале) — один приход всей суммой.
+ */
+export function payEvents(p: Person, key: string): PayEvent[] {
+  const s = salaryOf(p, key);
+  const rhythm = payRhythmOf(p);
+  if (rhythm === 'week') {
+    const out: PayEvent[] = [];
+    for (let d = 1; d <= daysInMonth(key); d++) {
+      const day = isoIn(key, d);
+      if (isoWeekday(day) === p.weekday) out.push({ period: day, day, amount: s.amount, currency: s.currency, kind: 'week' });
+    }
+    return out;
+  }
+  if (rhythm === 'advance') {
+    const advance = Math.min(Math.max(0, Math.round(p.salary2 ?? 0)), s.amount);
+    const a = isoIn(key, p.payday2!);
+    const b = isoIn(key, p.payday);
+    if (a === b) return [{ period: b, day: b, amount: s.amount, currency: s.currency, kind: 'salary' }];
+    const events: PayEvent[] = [
+      { period: a, day: a, amount: advance, currency: s.currency, kind: 'advance' },
+      { period: b, day: b, amount: s.amount - advance, currency: s.currency, kind: 'salary' },
+    ];
+    return events.sort((x, y) => x.day.localeCompare(y.day));
+  }
+  return [{ period: key, day: paydayIso(p, key), amount: s.amount, currency: s.currency, kind: 'salary' }];
+}
+
+/** Приход по ключу отметки (`period` месяца или ISO-дня); не нашёлся (ритм сменили) — null. */
+export const payEventOf = (p: Person, period: string): PayEvent | null =>
+  payEvents(p, periodMonth(period)).find((e) => e.period === period) ?? null;
+
+/** Оклад месяца в валюте оклада по ритму — сумма приходов (неделя — × число недель месяца). */
+export const salaryMonthly = (p: Person, key = monthKey()) => payEvents(p, key).reduce((a, e) => a + e.amount, 0);
+
+/** Тенге прихода по окладу: тенговый — как есть; валютный — по курсу Нацбанка на день прихода (нет — курс версии). */
+export function payEventTenge(ev: PayEvent, book?: RateBook | null, fallbackRate?: number): number {
+  if (ev.currency === 'KZT') return ev.amount;
+  const rate = rateOn(book, ev.currency, ev.day, fallbackRate);
+  return rate ? fxToTenge(ev.amount, rate) : 0;
+}
+
 /**
  * Оклад месяца в тенге (Р-70, Р-72). Тенговый — как записан. Валютный — по курсу Нацбанка на
  * день зарплаты месяца из книги (выходной — пятница; день ещё не наступил — последний курс
  * книги); книги или дня в ней нет — по курсу версии на момент ввода. Это оклад (форма, подписи);
- * тенге зарплаты месяца с обменами — `salaryTenge` (Р-74).
+ * тенге зарплаты месяца с обменами — `salaryTenge` (Р-74). По ритму (Б7) — сумма приходов, каждый по курсу своего дня.
  */
 export function salaryAt(p: Person, key = monthKey(), book?: RateBook | null): number {
   const s = salaryOf(p, key);
-  if (s.currency === 'KZT') return s.amount;
-  const rate = rateOn(book, s.currency, paydayIso(p, key), s.rate);
-  return rate ? fxToTenge(s.amount, rate) : 0;
+  return payEvents(p, key).reduce((a, e) => a + payEventTenge(e, book, s.rate), 0);
+}
+
+/** Тенге одного прихода по окладу (лист «Пришла», сумма по умолчанию): `period` — месяц или ISO-день. */
+export function payEventAt(p: Person, period: string, book?: RateBook | null): number {
+  const ev = payEventOf(p, period);
+  return ev ? payEventTenge(ev, book, salaryOf(p, periodMonth(period)).rate) : 0;
 }
 
 /** Из чего считаются тенге зарплаты месяца (Р-74): книга курсов, отметки «Пришла», обмены. */
@@ -1025,6 +1098,7 @@ export type SalaryTenge = {
  * Пришла в тенге (отметка без `foreign`: выписка тенгового счёта — банк уже обменял) — сумма отметки.
  */
 export function salaryTenge(p: Person, key = monthKey(), ctx: SalaryCtx = {}): SalaryTenge {
+  if (payRhythmOf(p) !== 'month') return rhythmSalaryTenge(p, key, ctx);
   const s = salaryOf(p, key);
   const rateDay = paydayIso(p, key);
   const none = { exchanged: 0, exchangedTenge: 0, left: 0, rateDay };
@@ -1038,6 +1112,41 @@ export function salaryTenge(p: Person, key = monthKey(), ctx: SalaryCtx = {}): S
   const left = Math.max(0, (record?.foreign ?? s.amount) - exchanged);
   const rate = rateOn(ctx.book, currency, rateDay, s.rate);
   return { tenge: exchangedTenge + (rate ? fxToTenge(left, rate) : 0), currency, exchanged, exchangedTenge, left, rate, rateDay };
+}
+
+/**
+ * `salaryTenge` аванса и недели (Б7): тенговый — оклад месяца (сумма приходов); валютный — каждый приход по курсу
+ * своего дня, пришедший в тенге — суммой отметки; обмены месяца (`FxExchange.period` — месяц) гасят необменянное с
+ * первых приходов. Курс и день строки — первого прихода.
+ */
+function rhythmSalaryTenge(p: Person, key: string, ctx: SalaryCtx): SalaryTenge {
+  const s = salaryOf(p, key);
+  const events = payEvents(p, key);
+  const rateDay = events[0]?.day ?? paydayIso(p, key);
+  const none = { exchanged: 0, exchangedTenge: 0, left: 0, rateDay };
+  if (s.currency === 'KZT') return { ...none, tenge: events.reduce((a, e) => a + e.amount, 0), currency: 'KZT', rate: 1 };
+  const records = events.map((e) => paidFor(ctx.payments, 'salary', p.id, e.period));
+  const currency = records.find((r) => r?.currency)?.currency ?? s.currency;
+  const xs = liveExchanges(ctx.exchanges).filter((x) => x.by === p.id && x.period === key);
+  const exchanged = xs.reduce((a, x) => a + x.foreign, 0);
+  const exchangedTenge = xs.reduce((a, x) => a + x.tenge, 0);
+  let cover = exchanged;
+  let tenge = exchangedTenge;
+  let left = 0;
+  events.forEach((e, i) => {
+    const r = records[i];
+    if (r && !r.foreign) {
+      tenge += r.amount;
+      return;
+    }
+    const f = r?.foreign ?? e.amount;
+    const take = Math.min(f, cover);
+    cover -= take;
+    left += f - take;
+    const rate = rateOn(ctx.book, currency, e.day, s.rate);
+    tenge += rate ? fxToTenge(f - take, rate) : 0;
+  });
+  return { tenge, currency, exchanged, exchangedTenge, left, rate: rateOn(ctx.book, currency, rateDay, s.rate), rateDay };
 }
 
 /**
@@ -1060,17 +1169,22 @@ export function fxYearDelta(p: Person, key = monthKey(), book?: RateBook | null)
 export function fxMonthDelta(p: Person, key: string, otherKey: string, book?: RateBook | null) {
   const s = salaryOf(p, key);
   if (s.currency === 'KZT') return null;
-  const rateNow = rateOn(book, s.currency, paydayIso(p, key), s.rate);
-  const rate = rateOn(book, s.currency, paydayIso(p, otherKey));
+  // Ритм (Б7): оклад месяца — сумма приходов, курс — на день первого прихода.
+  const amount = salaryMonthly(p, key);
+  const rateNow = rateOn(book, s.currency, firstPayDay(p, key), s.rate);
+  const rate = rateOn(book, s.currency, firstPayDay(p, otherKey));
   if (!rateNow || !rate) return null;
   return {
     currency: s.currency,
     rateNow,
     rate,
     perUnit: Math.round(rate - rateNow),
-    tenge: fxToTenge(s.amount, rate) - fxToTenge(s.amount, rateNow),
+    tenge: fxToTenge(amount, rate) - fxToTenge(amount, rateNow),
   };
 }
+
+/** День первого прихода месяца (месячный ритм — день зарплаты): курс строки «евро за год» и графика курса. */
+export const firstPayDay = (p: Person, key: string) => payEvents(p, key)[0]?.day ?? paydayIso(p, key);
 
 /** Курсы валюты по книге за период `[from, to]` по дням — линия графика листа курса. */
 export function rateSeries(book: RateBook | null | undefined, code: Currency, from: string, to: string): { day: string; rate: number }[] {
@@ -1089,7 +1203,7 @@ export function paydayRates(p: Person, key: string, book: RateBook | null | unde
   for (let i = n; i >= 1; i--) {
     const k = addMonths(key, -i);
     const d = fxMonthDelta(p, key, k, book);
-    if (d) out.push({ key: k, day: paydayIso(p, k), rate: d.rate, tenge: d.tenge });
+    if (d) out.push({ key: k, day: firstPayDay(p, k), rate: d.rate, tenge: d.tenge });
   }
   return out;
 }
@@ -1467,7 +1581,66 @@ export function paidTenge(
   record: Payment,
 ): number {
   const p = record.foreign ? (state.people ?? []).find((x) => x.id === personId) : undefined;
-  return p ? salaryTenge(p, period, salaryCtxOf(state)).tenge : record.amount;
+  if (!p) return record.amount;
+  // Приход аванса или недели (Б7, `period` — ISO-день): валюта по курсу дня прихода; обмены — у месячной строки.
+  if (period.length > 7) {
+    const rate = rateOn(state.book, record.currency ?? 'KZT', period);
+    return rate ? fxToTenge(record.foreign!, rate) : record.amount;
+  }
+  return salaryTenge(p, period, salaryCtxOf(state)).tenge;
+}
+
+/* ---------------- Ожидание и отметки по ритму (Б7) ---------------- */
+
+/**
+ * Сколько ждать от прихода `ev`, тенге. Плавающая сумма (Р-6) — среднее трёх последних отметок участника того же
+ * вида прихода (месяц — месячные, аванс — авансы, неделя — недели; по `at`, не позже месяца прихода; меньше трёх —
+ * среднее имеющихся; нет — оклад). Иначе — оклад: месячный ритм — `salaryTenge` (обмены, Р-74), прочие — по курсу дня.
+ */
+export function expectedEventTenge(p: Person, ev: PayEvent, ctx: SalaryCtx = {}): number {
+  if (p.floating) {
+    const monthly = ev.period.length === 7;
+    const kindOf = (r: Payment) => (r.period.length === 7 ? 'salary' : payEventOf(p, r.period)?.kind);
+    const last = countedPayments(ctx.payments)
+      .filter((r) => r.kind === 'salary' && r.targetId === p.id && periodMonth(r.period) <= periodMonth(ev.period))
+      .filter((r) => (r.period.length === 7) === monthly && kindOf(r) === ev.kind)
+      .sort((a, b) => b.at.localeCompare(a.at))
+      .slice(0, 3);
+    if (last.length) return Math.round(last.reduce((a, r) => a + r.amount, 0) / last.length);
+  }
+  if (ev.period.length === 7) return salaryTenge(p, ev.period, ctx).tenge;
+  return payEventTenge(ev, ctx.book, salaryOf(p, periodMonth(ev.period)).rate);
+}
+
+/** Сколько ждём за месяц по ритму, тенге (без отметок): сумма ожиданий приходов. */
+export const expectedSalaryTenge = (p: Person, key: string, ctx: SalaryCtx = {}) =>
+  payEvents(p, key).reduce((a, e) => a + expectedEventTenge(p, e, ctx), 0);
+
+/** Отметки «Пришла» по приходам месяца — по одной на событие (`paidFor` по `event.period`), null — не пришёл. */
+export const salaryRecords = (payments: Payment[] = [], p: Person, key: string) =>
+  payEvents(p, key).map((e) => paidFor(payments, 'salary', p.id, e.period));
+
+/** Последняя по времени отметка «Пришла» участника за месяц `key` (любой приход ритма); нет — null. */
+export const lastSalaryRecord = (payments: Payment[] = [], personId: string, key: string): Payment | null =>
+  countedPayments(payments)
+    .filter((r) => r.kind === 'salary' && r.targetId === personId && periodMonth(r.period) === key)
+    .sort((a, b) => b.at.localeCompare(a.at))[0] ?? null;
+
+/** Приход месяца плана: тенге (пришёл — факт `paidTenge`, нет — ожидание) и пришёл ли. */
+export type IncomeEvent = { period: string; day: string; kind: PayEvent['kind']; amount: number; came: boolean };
+
+/** Приходы участника за месяц с фактом и ожиданием — доход плана (`monthPlan`) и строки зарплат. */
+export function incomeEvents(
+  state: { payments?: Payment[]; book?: RateBook | null; fxExchanges?: FxExchange[]; people?: Person[] },
+  p: Person,
+  key: string,
+): IncomeEvent[] {
+  const ctx = salaryCtxOf(state);
+  return payEvents(p, key).map((e) => {
+    const rec = paidFor(state.payments, 'salary', p.id, e.period);
+    const amount = rec ? paidTenge(state, p.id, e.period, rec) : expectedEventTenge(p, e, ctx);
+    return { period: e.period, day: e.day, kind: e.kind, amount, came: !!rec };
+  });
 }
 
 /**
@@ -1771,25 +1944,22 @@ export function untilPayday(
   const payments = state.payments || [];
 
   const key = now.key;
-  const dayIn = (k: string, p: Person) => Math.min(p.payday, daysInMonth(k));
+  const todayNo = dayNo(key, now.day);
 
-  // Ближайшая непришедшая зарплата: этого месяца — с сегодняшнего дня, затем следующих.
-  const slots: { p: Person; k: string; inDays: number; day: number }[] = [];
-  let passed = daysInMonth(key) - now.day;
+  // Ближайший непришедший приход (Б7: события ритма — аванс, недели): этого месяца — с сегодняшнего дня, затем следующих.
+  const slots: { p: Person; k: string; ev: PayEvent; inDays: number; day: number }[] = [];
   for (let i = 0; i <= PAYDAY_HORIZON; i++) {
     const k = addMonths(key, i);
     for (const p of people) {
-      const day = dayIn(k, p);
-      if (i === 0) {
-        if (day >= now.day) slots.push({ p, k, inDays: day - now.day, day });
-      } else {
-        slots.push({ p, k, inDays: passed + day, day });
+      for (const ev of payEvents(p, k)) {
+        const day = Number(ev.day.slice(8, 10));
+        const inDays = dayNo(k, day) - todayNo;
+        if (inDays >= 0) slots.push({ p, k, ev, inDays, day });
       }
     }
-    if (i > 0) passed += daysInMonth(k);
   }
   slots.sort((a, b) => a.inDays - b.inDays);
-  const slot = slots.find((s) => !paidFor(payments, 'salary', s.p.id, s.k));
+  const slot = slots.find((s) => !paidFor(payments, 'salary', s.p.id, s.ev.period));
   if (!slot) return null;
 
   const who = slot.p;
@@ -1827,10 +1997,13 @@ export function untilPayday(
 
   return {
     who,
-    income: salaryTenge(who, nextKey, salaryCtxOf(state)).tenge,
+    income: expectedEventTenge(who, slot.ev, salaryCtxOf(state)),
     inDays,
     day: slot.day,
     key: nextKey,
+    /** Ключ отметки прихода (`Payment.period`): месяц или ISO-день события (Б7). */
+    period: slot.ev.period,
+    kind: slot.ev.kind,
     due,
     paid,
     dueTotal,
@@ -1857,11 +2030,12 @@ export const SALARY_EARLY_DAYS = 3;
  * в месяце нет — отмечать нечего (как «Оплатил» при сумме 0): одно нажатие записало бы «+0».
  */
 export function salaryOpen(p: Person, payments: Payment[], period: string, now = today()): boolean {
-  if (salaryOf(p, period).amount <= 0 || paidFor(payments, 'salary', p.id, period)) return false;
-  const day = Math.min(p.payday, daysInMonth(period));
-  if (period === now.key) return now.day >= day - SALARY_EARLY_DAYS;
-  if (period === addMonths(now.key, 1)) return daysInMonth(now.key) - now.day + day <= SALARY_EARLY_DAYS;
-  return false;
+  // Б7: `period` — ключ прихода по ритму (месяц или ISO-день); приход другого ритма (сменили) — не ждёт.
+  const ev = payEventOf(p, period);
+  if (!ev || ev.amount <= 0 || paidFor(payments, 'salary', p.id, period)) return false;
+  const month = periodMonth(period);
+  if (month !== now.key && month !== addMonths(now.key, 1)) return false;
+  return dayNo(month, Number(ev.day.slice(8, 10))) - dayNo(now.key, now.day) <= SALARY_EARLY_DAYS;
 }
 
 /**
@@ -1876,7 +2050,7 @@ export function salaryAsk(
   now = today(),
 ): NonNullable<ReturnType<typeof untilPayday>> | null {
   const near = me ? untilPayday(state, now) : null;
-  return near && near.who.id === me && salaryOpen(near.who, state.payments ?? [], near.key, now) ? near : null;
+  return near && near.who.id === me && salaryOpen(near.who, state.payments ?? [], near.period, now) ? near : null;
 }
 
 /* ---------------- вопрос в конце месяца (RP-11) ---------------- */
@@ -2054,13 +2228,15 @@ export function salaryToAllocate(
   // (возврат приёмки 3 п. 2) — карточка скакала бы по дням, главный, «Неделя» и «Деньги» расходились.
   const asked = salaryAsk(state, me, now)
   const months = [addMonths(now.key, 1), now.key, addMonths(now.key, -1)].filter((k) => !asked || k > asked.key)
-  const found = record ?? months.map((k) => paidFor(payments, 'salary', me, k)).find(Boolean)
+  // Ритм (Б7): приходов в месяце несколько — последняя отметка месяца; раскладка и план — по месяцу (`periodMonth`).
+  const found = record ?? months.map((k) => lastSalaryRecord(payments, me, k)).find(Boolean)
   // Ручная тенговая сразу ведёт в план месяца; валютная (B2C-79) — сначала «Обменял» на этой карточке.
   if (!found || found.kind !== 'salary' || found.targetId !== me || (found.source !== 'statement' && !found.foreign) || found.amount <= 0) return null
-  if (allocationFor(state.allocations, { source: 'salary', sourceId: me, period: found.period })) return null
-  const plan = monthPlan(state, { key: found.period, totals: [], spendCategories: state.spendCategories ?? [], uploads: [] })
+  const period = periodMonth(found.period)
+  if (allocationFor(state.allocations, { source: 'salary', sourceId: me, period })) return null
+  const plan = monthPlan(state, { key: period, totals: [], spendCategories: state.spendCategories ?? [], uploads: [] })
   if (!planSave(plan, me)) return null
-  return { person, period: found.period, record: found }
+  return { person, period, record: found }
 }
 
 /**
@@ -2093,7 +2269,8 @@ export function monthSummary(
   },
   key: string,
 ): MonthSummary {
-  const records = countedPayments(state.payments ?? []).filter((p) => p.period === key);
+  // Б7: приход аванса или недели помечен ISO-днём — месяц по `periodMonth`.
+  const records = countedPayments(state.payments ?? []).filter((p) => periodMonth(p.period) === key);
   const scheduled = records.filter((p) => p.kind === 'obligation' || p.kind === 'credit');
   const liveIds = new Set(liveCredits(state.credits ?? []).map((c) => c.id));
   const prepays = records.filter((p) => p.kind === 'prepay' && liveIds.has(p.targetId));
@@ -2125,7 +2302,7 @@ export function monthSummary(
   return {
     key,
     paid: { count: scheduled.length, amount: scheduled.reduce((a, p) => a + p.amount, 0) },
-    income: records.filter((p) => p.kind === 'salary').reduce((a, p) => a + paidTenge(state, p.targetId as PersonId, key, p), 0),
+    income: records.filter((p) => p.kind === 'salary').reduce((a, p) => a + paidTenge(state, p.targetId as PersonId, p.period, p), 0),
     closed: progressMoments({ credits: state.credits, payments: state.payments })
       .filter((m): m is Extract<Moment, { kind: 'closed' }> => m.kind === 'closed' && inMonth(m.at))
       .map((m) => ({ creditId: m.creditId, name: m.name })),
@@ -3013,9 +3190,17 @@ export type MonthPlanCtx = {
 export type PlanIncome = {
   person: PersonId
   name: string
-  /** Тенге месяца: пришла — сколько пришло (`paidTenge`), нет — сколько ждём (`salaryTenge`). */
+  /**
+   * Тенге месяца: пришла — сколько пришло (`paidTenge`), нет — сколько ждём (`salaryTenge`; плавающая — среднее,
+   * Р-6). По ритму (Б7) — сумма приходов: пришедшие фактом, остальные ожиданием.
+   */
   amount: number
+  /** Пришли все приходы месяца (у месячного ритма — зарплата). */
   came: boolean
+  /** Приходы месяца по ритму (Б7): месячный — один. */
+  events: IncomeEvent[]
+  cameCount: number
+  eventCount: number
 }
 
 export type PlanDue = MonthDue & { payer: PersonId | null }
@@ -3150,17 +3335,18 @@ export function monthPlan(state: MonthPlanState, ctx: MonthPlanCtx): MonthPlan {
   const { key } = ctx
   const people = (state.people ?? []).filter(alive)
   const payments = state.payments ?? []
-  const salaryCtx = salaryCtxOf(state)
   const settings = moneySettingsOf(state)
 
   // Доход.
+  // Ритм (Б7): сумма приходов месяца — пришедшие фактом, остальные ожиданием; месячный ритм — как раньше.
   const income: PlanIncome[] = people
     .map((p) => {
-      const rec = paidFor(payments, 'salary', p.id, key)
-      const amount = rec ? paidTenge(state, p.id, key, rec) : salaryTenge(p, key, salaryCtx).tenge
-      return { person: p.id, name: p.name, amount, came: !!rec }
+      const events = incomeEvents(state, p, key)
+      const cameCount = events.filter((e) => e.came).length
+      const amount = amountTotal(events)
+      return { person: p.id, name: p.name, amount, came: events.length > 0 && cameCount === events.length, events, cameCount, eventCount: events.length }
     })
-    .filter((x) => x.amount > 0 || x.came)
+    .filter((x) => x.amount > 0 || x.cameCount > 0)
   const incomeTotal = amountTotal(income)
 
   // Платежи.
@@ -3276,10 +3462,20 @@ export function monthPlan(state: MonthPlanState, ctx: MonthPlanCtx): MonthPlan {
   }
 }
 
+/** Приход строки зарплаты (Б7): `open` — «Пришла» можно отметить сейчас (`salaryOpen` по событию). */
+export type SalaryLineEvent = IncomeEvent & { open: boolean }
+
 /** Строка зарплаты месяца (Р-97, Р-108): одна для «Месяца» и карточки «Зарплаты» «Капитала». */
-export type SalaryLine = PlanIncome & {
-  /** День зарплаты участника («ждём <дата>»). */
+export type SalaryLine = Omit<PlanIncome, 'events'> & {
+  /** День зарплаты участника («ждём <дата>»); по ритму (Б7) — день ближайшего непришедшего прихода (все пришли — первого). */
   payday: number
+  /** Приходы месяца с `open` (месячный ритм — один). */
+  events: SalaryLineEvent[]
+  /** Ритм и плавающая сумма — экран выбирает вид строки и листа. */
+  rhythm: PayRhythm
+  floating: boolean
+  /** Приход, который отметит «Пришла» сейчас: первый открытый по дню; нет — null. */
+  openPeriod: string | null
   /** «Хватает ли»: зарплата минус свои платежи, траты, цели и фонды (`byPerson.left`). */
   left: number
   /** Оклад месяца в валюте — у пришедшей строка обмена. */
@@ -3300,24 +3496,53 @@ export function monthSalaries(plan: MonthPlan, state: { people?: Person[]; payme
   const payments = state.payments ?? []
   return plan.income.byPerson.map((inc) => {
     const p = (state.people ?? []).find((x) => x.id === inc.person && !x.deletedAt)
-    const record = paidFor(payments, 'salary', inc.person, plan.key)
     const own = p ? salaryOf(p, plan.key) : null
-    const fx =
-      record?.foreign && record.currency && record.currency !== 'KZT'
-        ? { amount: record.foreign, currency: record.currency }
-        : !record && own && own.currency !== 'KZT'
-          ? { amount: own.amount, currency: own.currency }
-          : null
-    return {
-      ...inc,
-      payday: p?.payday ?? 1,
-      left: plan.byPerson.find((x) => x.person === inc.person)?.left ?? 0,
-      foreign: !!own && own.currency !== 'KZT',
-      fx,
-      at: record?.at ?? null,
-      open: !!p && !record && salaryOpen(p, payments, plan.key, now),
+    const left = plan.byPerson.find((x) => x.person === inc.person)?.left ?? 0
+    const foreign = !!own && own.currency !== 'KZT'
+    const events: SalaryLineEvent[] = inc.events.map((e) => ({ ...e, open: !!p && !e.came && salaryOpen(p, payments, e.period, now) }))
+    const openPeriod = events.find((e) => e.open)?.period ?? null
+    const rhythm = p ? payRhythmOf(p) : 'month'
+    const base = { ...inc, events, rhythm, floating: !!p?.floating, openPeriod, left, foreign, open: !!openPeriod }
+    if (rhythm === 'month') {
+      const record = paidFor(payments, 'salary', inc.person, plan.key)
+      const fx =
+        record?.foreign && record.currency && record.currency !== 'KZT'
+          ? { amount: record.foreign, currency: record.currency }
+          : !record && own && own.currency !== 'KZT'
+            ? { amount: own.amount, currency: own.currency }
+            : null
+      return { ...base, payday: p?.payday ?? 1, fx, at: record?.at ?? null }
     }
+    // Аванс и неделя (Б7): день — ближайшего непришедшего, валюта — пришедшее + ждём, «пришла» — последняя отметка.
+    const records = p ? salaryRecords(payments, p, plan.key) : []
+    const next = events.find((e) => !e.came) ?? events[0]
+    const inCurrency = p ? payEvents(p, plan.key).reduce((a, e, i) => a + (records[i] ? records[i]!.foreign ?? 0 : e.amount), 0) : 0
+    const fx = foreign && own ? { amount: inCurrency, currency: own.currency } : null
+    const at = records.reduce<string | null>((a, r) => (r && (!a || r.at > a) ? r.at : a), null)
+    return { ...base, payday: next ? Number(next.day.slice(8, 10)) : p?.payday ?? 1, fx, at }
   })
+}
+
+/**
+ * Первый приход месяца `key`, который «Пришла» отметит сейчас (Б7): открытый по `salaryOpen`, ранний по дню; нет —
+ * null. Месячный ритм — месяц, если открыт. Отметка всегда идёт по ключу события, не по месяцу экрана.
+ */
+export function openPayPeriod(p: Person, payments: Payment[], key: string, now = today()): string | null {
+  return payEvents(p, key).find((e) => salaryOpen(p, payments, e.period, now))?.period ?? null
+}
+
+/**
+ * Ключ отметки «Пришла» (стор `markSalary`): ISO-день и месячный ритм — как есть; месяц у аванса и недели — первый
+ * открытый приход месяца, иначе первый неотмеченный, иначе последний (отмечен — `markSalary` вернёт его запись).
+ */
+export function salaryMarkPeriod(p: Person, payments: Payment[], period: string, now = today()): string {
+  if (period.length > 7 || payRhythmOf(p) === 'month') return period
+  const events = payEvents(p, period)
+  const pick =
+    events.find((e) => salaryOpen(p, payments, e.period, now)) ??
+    events.find((e) => !paidFor(payments, 'salary', p.id, e.period)) ??
+    events[events.length - 1]
+  return pick?.period ?? period
 }
 
 /* ---------------- Капитал со статистикой (понятность, Блок 2: Р-2, Р-3) ---------------- */
@@ -3959,10 +4184,15 @@ export function monthPlanPast(
   state: MonthPlanState & { spendTotals?: SpendTotal[]; spendCategories?: SpendCategory[] },
   key: string,
 ): MonthPlanPast {
-  const counted = countedPayments(state.payments ?? []).filter((p) => p.period === key)
-  const cameBy = counted
-    .filter((p) => p.kind === 'salary')
-    .map((p) => ({ person: p.targetId as PersonId, amount: paidTenge(state, p.targetId as PersonId, key, p) }))
+  // Б7: приходы аванса и недели помечены ISO-днём — месяц по `periodMonth`; у участника одна строка — сумма приходов.
+  const counted = countedPayments(state.payments ?? []).filter((p) => periodMonth(p.period) === key)
+  const cameBy: { person: PersonId; amount: number }[] = []
+  for (const p of counted.filter((x) => x.kind === 'salary')) {
+    const amount = paidTenge(state, p.targetId as PersonId, p.period, p)
+    const row = cameBy.find((x) => x.person === p.targetId)
+    if (row) row.amount += amount
+    else cameBy.push({ person: p.targetId as PersonId, amount })
+  }
   const totals = (state.spendTotals ?? []).filter((t) => !t.deletedAt && t.kind === 'month' && t.period === key && t.amount > 0)
   const live = (state.spendCategories ?? []).filter(alive)
   const goals = queueOf(state)

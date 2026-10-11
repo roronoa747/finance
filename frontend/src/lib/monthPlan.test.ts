@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { allInDebt, budgetAmounts, creditOutlook, goalDoneMonth, goalMonths, goalTerm, monthPlan, monthSubscriptions, livingPlan, monthPlanPast, monthsBetween, pendingPuts, planExtras, putsLeft, queueStatus, spendFact, planFromSource, planPutSaves, planPuts, planSave, planSpendTotal, subscriptionGroup, type MonthPlanCtx, type MonthPlanState } from './finance'
+import { allInDebt, budgetAmounts, monthSalaries, untilPayday, creditOutlook, goalDoneMonth, goalMonths, goalTerm, monthPlan, monthSubscriptions, livingPlan, monthPlanPast, monthsBetween, pendingPuts, planExtras, putsLeft, queueStatus, spendFact, planFromSource, planPutSaves, planPuts, planSave, planSpendTotal, subscriptionGroup, type MonthPlanCtx, type MonthPlanState } from './finance'
 import { addMonths } from './dates'
 import type { Allocation, Goal, SpendPlan } from '@/types/finance'
 
@@ -93,7 +93,7 @@ describe('monthPlan — ручной расчёт семьи', () => {
   const plan = monthPlan(family(), ctx)
 
   it('доход, платежи, траты — до тенге', () => {
-    expect(plan.income.byPerson).toEqual([
+    expect(plan.income.byPerson.map(({ person, name, amount, came }) => ({ person, name, amount, came }))).toEqual([
       { person: 'a', name: 'Ильяс', amount: 774_000, came: true },
       { person: 'b', name: 'Аруна', amount: 450_000, came: false },
     ])
@@ -620,5 +620,27 @@ describe('ревью frontend Б15, Н-4: суммы строк «Месяца»
     const debt = byId(plan, 'debt')
     expect(queueStatus({ ...debt, want: 0 }, { debtPlan: true })).toEqual({ kind: 'debtByPlan' })
     expect(queueStatus({ ...debt, want: 0 }, { debtPlan: false })).toEqual({ kind: 'debtNoAmount' })
+  })
+})
+
+describe('PN-22: старый документ без ритма — прежние числа до тенге', () => {
+  it('ритм «месяц» явно и неполный ритм (неделя без дня, аванс без дня) — тот же план, строки и «до зарплаты»', () => {
+    const base = family()
+    const variants = [
+      { payRhythm: 'month' as const },
+      { payRhythm: 'week' as const },
+      { payRhythm: 'advance' as const, salary2: 100_000 },
+    ]
+    for (const v of variants) {
+      const state = family({ people: base.people!.map((p) => ({ ...p, ...v })) })
+      expect(monthPlan(state, ctx)).toEqual(monthPlan(base, ctx))
+      const now = { key: KEY, day: 8 }
+      const strip = (xs: ReturnType<typeof monthSalaries>) => xs.map(({ rhythm: _r, ...x }) => x)
+      expect(strip(monthSalaries(monthPlan(state, ctx), state, now))).toEqual(strip(monthSalaries(monthPlan(base, ctx), base, now)))
+      expect(untilPayday({ ...state, accounts: [] }, now)?.income).toBe(untilPayday({ ...base, accounts: [] }, now)?.income)
+    }
+    // Месячный ритм — один приход, ключ отметки — месяц.
+    const [a] = monthPlan(base, ctx).income.byPerson
+    expect(a.events).toEqual([{ period: KEY, day: '2026-10-10', kind: 'salary', amount: 774_000, came: true }])
   })
 })

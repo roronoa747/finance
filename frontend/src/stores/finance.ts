@@ -47,7 +47,10 @@ import {
   planForecast,
   planLumpTakes,
   planStep,
-  salaryAt,
+  payEventAt,
+  payEventOf,
+  periodMonth,
+  salaryMarkPeriod,
   settlePlans,
   stepDue,
   shiftedBase,
@@ -1375,15 +1378,16 @@ export const useFinanceStore = defineStore('finance', () => {
   ): Payment | null {
     const p = people.value.find((x) => x.id === personId && !x.deletedAt)
     if (!p) return null
-    const period = opts.period ?? monthKey()
+    // Ритм (Б7): месяц экрана у аванса и недели — ближайший открытый приход этого месяца (`period` — его ISO-день).
+    const period = salaryMarkPeriod(p, payments.value, opts.period ?? monthKey())
     const existing = paidFor(payments.value, 'salary', personId, period)
     if (existing) return existing
-    const own = salaryOf(p, period)
+    const own = salaryOf(p, periodMonth(period))
     // Из тенговой выписки валютная зарплата приходит уже в тенге (банк обменял, B2C-80) — тенговая запись.
     const record =
       own.currency === 'KZT' || opts.source === 'statement'
         ? newPayment(
-            { kind: 'salary', targetId: personId, period, amount: opts.amount ?? salaryAt(p, period), by: personId, ...sourceOf(opts) },
+            { kind: 'salary', targetId: personId, period, amount: opts.amount ?? payEventAt(p, period), by: personId, ...sourceOf(opts) },
             opts.accountId,
             opts.at,
           )
@@ -1407,7 +1411,7 @@ export const useFinanceStore = defineStore('finance', () => {
     period: string,
     opts: { amount?: number; foreign?: number; accountId?: string | null; source?: Payment['source']; opId?: string; at?: string },
   ): Payment {
-    const foreign = opts.foreign ?? own.amount
+    const foreign = opts.foreign ?? payEventOf(p, period)?.amount ?? own.amount
     const rate = rateOn(useFxStore().book, own.currency, todayIso(opts.at ? new Date(opts.at) : undefined), own.rate)
     const fits = (id: string | null | undefined) => accounts.value.some((a) => a.id === id && !a.deletedAt && a.currency === own.currency)
     const last = lastAccountFor(payments.value, p.id, accounts.value)

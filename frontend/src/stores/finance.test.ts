@@ -2517,3 +2517,32 @@ describe('«Сбылось» (PN-13): markGoalDone / undoGoalDone — деньг
     expect(store.heroGoal?.id).not.toBe(trip)
   })
 })
+
+describe('PN-22: «Пришла» по ритму — ключ прихода', () => {
+  beforeEach(() => {
+    const m = new Map<string, string>()
+    vi.stubGlobal('localStorage', { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => m.set(k, String(v)), removeItem: (k: string) => m.delete(k), clear: () => m.clear() })
+    setActivePinia(createPinia())
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-10T06:00:00.000Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('неделя: месяц экрана → первая открытая пятница (2-е), затем 9-е; сумма — оклад недели; повтор — та же запись', () => {
+    const store = useFinanceStore()
+    store.setPerson('a', { name: 'Ильяс', salary: 150_000, payday: 10, payRhythm: 'week', weekday: 5 })
+    const first = store.markSalary('a', { period: '2026-10', accountId: null })!
+    expect(first).toMatchObject({ period: '2026-10-02', amount: 150_000 })
+    expect(store.markSalary('a', { accountId: null })!).toMatchObject({ period: '2026-10-09', amount: 150_000 })
+    expect(store.markSalary('a', { period: '2026-10-02' })!.id).toBe(first.id)
+  })
+
+  it('аванс: отметка аванса — сумма аванса, остатка — оклад минус аванс; старый месячный — period месяца', () => {
+    const store = useFinanceStore()
+    store.setPerson('b', { name: 'Аруна', salary: 500_000, payday: 30, payRhythm: 'advance', payday2: 15, salary2: 200_000 })
+    expect(store.markSalary('b', { period: '2026-10-15', accountId: null })!).toMatchObject({ amount: 200_000 })
+    expect(store.markSalary('b', { period: '2026-10-30', accountId: null })!).toMatchObject({ amount: 300_000 })
+    store.setPerson('a', { name: 'Ильяс', salary: 700_000, payday: 10 })
+    expect(store.markSalary('a', { accountId: null })!).toMatchObject({ period: '2026-10', amount: 700_000 })
+  })
+})

@@ -89,7 +89,7 @@ describe('тенге зарплаты в расчётах — таблица н�
 
   it('план месяца (Блок 14): зарплата Ильяса пришла — 763 350 ₸; ждём Аруну — 500 000 ₸; пришла и она — оба пришли', () => {
     const ctx = { key: '2026-10', totals: [], spendCategories: [], uploads: [] }
-    expect(monthPlan(state, ctx).income.byPerson).toEqual([
+    expect(monthPlan(state, ctx).income.byPerson.map(({ person, name, amount, came }) => ({ person, name, amount, came }))).toEqual([
       { person: 'a', name: 'Ильяс', amount: 763_350, came: true },
       { person: 'b', name: state.people!.find((p) => p.id === 'b')!.name, amount: 500_000, came: false },
     ])
