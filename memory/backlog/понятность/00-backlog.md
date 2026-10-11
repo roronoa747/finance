@@ -445,11 +445,13 @@ Production `dpl_Fh6vRtoaqe6bC1pZTfUYDzit8uQR`, откат — promote `dpl_EsjHT
   … pb-9`; с `bottom-0` под блоком просвечивает сетка — Chrome держит его над нижним отступом `Sheet`); `watch(open)` — `immediate`
   (смонтированный открытым лист отмечает тему варианта). Новые листы с длинной сеткой и главной кнопкой — тот же приём.
 - **«Уже купили» свёрнуто** (`Wishes.vue`): `data-bought-card` / `data-bought-toggle` (`aria-expanded`), `boughtOpen` из
-  `history.state.boughtOpen` (`toggleBoughtOpen` → `history.replace`), сумма `data-bought-sum` — только раскрыто. SSR-тесты и e2e,
+  `history.state.boughtOpen`, сумма `data-bought-sum` — только раскрыто. Раскрытие в записи истории — один composable
+  `components/useHistoryFlag.ts` (`useHistoryFlag(key) → { open, toggle }`; альбом «Сбылось» — `'doneAlbum'`, здесь — `'boughtOpen'`;
+  критик Б4а) — новые «свёрнуто при заходе, назад — как оставили» только через него. SSR-тесты и e2e,
   смотрящие купленное, раскрывают `screenMixin({ boughtOpen: true })` (`Wishes.test.ts`, `GoalDetail.test.ts` PV-18, e2e PV Б4).
 - Демо фото мечты не меняет (загрузки нет — «Нет сети — фото не сменилось»); замену героя проверять на Go-моках (рецепт —
   Handoff Б4а). Тесты: `PhotoPicker.dom` (+3), `Wishes.bought.dom` (3), e2e `pn-block4a-polish` (2). База: **181 файл / 1815 ✅ +
-  1 пропуск**, `e2e/` — 34 / 218.
+  1 пропуск**, `e2e/` — 34 / 218; после критика (+1 тест вида «списком» в `Wishes.bought.dom`) — **181 / 1816 ✅ + 1**.
 
 **Связки между блоками** (чтобы критик следил за промптами): Блок 2 → 5 (`inSalaries`, `capitalStats`); Блок 3 → 4
 (`GoalDetail`/`Dreams`/`StorySheet` после PN-09/10), → 5 (`goalPace`/`closerDays`), → 9 (`GoalNew` travel); Блок 7 → 8
