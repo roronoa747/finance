@@ -2272,6 +2272,16 @@ export function closerDays(amount: number, pace: number): number | null {
   return Math.round((amount / pace) * 30.4)
 }
 
+/**
+ * На сколько месяцев взносов тянет сумма `amount` при темпе `pace` в месяц («Хватит? — нет», владелец Б5: прикидки — в
+ * месяцах): меньше одного месяца — 0 («почти не сдвинется»), дальше — округление; нет суммы или темпа — null.
+ */
+export function paceMonths(amount: number, pace: number): number | null {
+  if (amount <= 0 || pace <= 0) return null
+  const months = amount / pace
+  return months < 1 ? 0 : Math.round(months)
+}
+
 /** «Ближе на N дней» под героем «Мечт»: все положительные движения месяца `key` при темпе цели; null — нечего сказать. */
 export function closerThisMonth(goal: { monthly: number; movements?: { date: string; amount: number }[] }, key: string): number | null {
   const put = (goal.movements ?? []).filter((m) => m.amount > 0 && movementMonth(m.date) === key).reduce((a, m) => a + m.amount, 0)
@@ -2993,6 +3003,11 @@ export type MonthPlanCtx = {
   totals: SpendTotal[]
   spendCategories: SpendCategory[]
   uploads: UploadPeriod[]
+  /**
+   * Платежи, которые кончатся (прикидка, Блок 5 «понятность»): с месяца `after` прогона очереди `amount` снова
+   * свободен. Без поля платежи считаются вечными — даты плана осторожные.
+   */
+  ends?: { amount: number; after: number }[]
 }
 
 export type PlanIncome = {
@@ -3079,13 +3094,14 @@ type RunItem = { on: boolean; cap: number; left: number; debt?: { rate: number; 
  * Прогон очереди по месяцам (B2C-86 п. 2): каждый месяц — тот же свободный остаток сверху вниз, каждой не
  * больше её взноса и остатка; собранная выпадает — её деньги идут ниже. Долг: сначала платёж по графику
  * (`creditSplit`, проценты до тенге), затем доплата карточки. Ответ — месяц (смещение от первого), когда
- * цель собрана или долг закрыт; null — не в горизонте. Платежи и траты считаются прежними — дата осторожная.
+ * цель собрана или долг закрыт; null — не в горизонте. Платежи и траты считаются прежними — дата осторожная;
+ * только `ends` (прикидка кредита на срок) с месяца `after` возвращает свой платёж в остаток.
  */
-function queueRun(items: RunItem[], free: number): (number | null)[] {
+function queueRun(items: RunItem[], free: number, ends: { amount: number; after: number }[] = []): (number | null)[] {
   const left = items.map((x) => x.left)
   const done: (number | null)[] = items.map((x, i) => (x.debt ? null : left[i] <= 0 ? 0 : null))
   for (let m = 0; m < PLAN_HORIZON && done.some((d) => d === null); m++) {
-    let avail = Math.max(0, free)
+    let avail = Math.max(0, free + ends.reduce((s, e) => s + (m >= e.after ? e.amount : 0), 0))
     items.forEach((x, i) => {
       if (done[i] !== null) return
       if (x.debt) left[i] -= creditSplit(left[i], x.debt.rate, x.debt.payment).body
@@ -3218,7 +3234,7 @@ export function monthPlan(state: MonthPlanState, ctx: MonthPlanCtx): MonthPlan {
     avail -= given
     return { ...item, given, doneMonth: null }
   })
-  const done = queueRun(shape.map(({ item, run }) => ({ ...run, on: !item.paused })), free)
+  const done = queueRun(shape.map(({ item, run }) => ({ ...run, on: !item.paused })), free, ctx.ends)
   queue.forEach((q, i) => {
     // Долг на паузе всё равно закрывается по графику; цель на паузе — нет.
     const d = done[i]
@@ -3331,6 +3347,10 @@ export function inSalaries(amount: number, income: number): number | null {
   return income > 0 ? Math.round((amount / income) * 10) / 10 : null
 }
 
+/** Подпись к `inSalaries`: «1,5 зарплаты», «9 зарплат», «1 зарплата» — дробь всегда «зарплаты», целое — по числу. */
+export const salariesLabel = (n: number) =>
+  `${n.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} ${Number.isInteger(n) ? plural(n, 'зарплата', 'зарплаты', 'зарплат') : 'зарплаты'}`
+
 /**
  * Статистика плашки Капитала (Р-3) — от уже посчитанного плана месяца (`finance.monthPlanOf(key)`), второго прогона
  * очереди нет. Доли дохода: «кредиты» — платежи по кредитам и долгам из графика плюс досрочка карточки долга;
@@ -3375,6 +3395,92 @@ export function capitalStats(plan: MonthPlan, state: PlanState & { plans?: DebtP
     debtFree: { month, months, salaries: months },
     overpay: { amount: overpay, salaries: overpay === null ? null : inSalaries(overpay, income) },
   }
+}
+
+/* ---------------- Прикинуть (понятность, Блок 5: Р-11) ---------------- */
+
+/** «Прикинуть кредит»: платёж, нагрузка, сдвиг главной мечты, переплата — целые тенге и проценты (зарплаты — одна десятая). */
+export type TryCredit = {
+  /** Платёж в месяц: аннуитет вверх до тенге (ставка 0 — рассрочка, `ceil(principal / months)`). */
+  payment: number
+  /** Платежи месяца / доход сейчас, целые проценты; дохода нет — null. */
+  loadNowPct: number | null
+  /** То же с платежом нового кредита. */
+  loadPct: number | null
+  /** Главная мечта (первая цель очереди): когда соберём без кредита и с ним; `delayMonths` Infinity — с кредитом не соберём. */
+  hero: { name: string; doneBefore: string | null; doneAfter: string | null; delayMonths: number | null } | null
+  /** Сверх суммы банку: платёж × срок − сумма; рассрочка — 0. */
+  overpay: number
+  /** Переплата в зарплатах семьи (`inSalaries`). */
+  overpaySalaries: number | null
+}
+
+const firstGoal = (plan: MonthPlan) => plan.queue.find((q) => q.kind === 'goal') ?? null
+
+/**
+ * «Прикинуть кредит» (PN-16, Р-11) — ничего не пишет. Сдвиг мечты — тот же `monthPlan` с фиктивным кредитом в
+ * `credits`: его платёж ложится в платежи месяца, очередь пересчитывается сама (копии формул нет), а через `months`
+ * месяцев прогон возвращает платёж в остаток (`ctx.ends`, критик Б5: без этого кредит платился бы вечно — «не
+ * соберётся» там, где мечта соберётся после него). Ставка — доля (0,2 = 20 %), 0 — рассрочка.
+ */
+export function tryCredit(
+  state: MonthPlanState,
+  ctx: MonthPlanCtx,
+  input: { principal: number; months: number; annualRate: number },
+): TryCredit {
+  const { principal, months, annualRate } = input
+  const payment = Math.ceil(annuityPayment(principal, annualRate, months))
+  const before = monthPlan(state, ctx)
+  const fake: Credit = { id: 'try', name: 'Прикинуть', note: '', principal, annualRate, payment, day: 1, updatedAt: new Date().toISOString() }
+  const after = monthPlan({ ...state, credits: [...(state.credits ?? []), fake] }, { ...ctx, ends: [{ amount: payment, after: months }] })
+  const income = before.income.total
+  const loadOf = (dues: number) => (income > 0 ? Math.round((dues / income) * 100) : null)
+  const goal = firstGoal(before)
+  const doneBefore = goal?.doneMonth ?? null
+  const doneAfter = goal ? after.queue.find((q) => q.goalId === goal.goalId)?.doneMonth ?? null : null
+  const overpay = annualRate > 0 ? payment * months - principal : 0
+  return {
+    payment,
+    loadNowPct: loadOf(before.duesTotal),
+    loadPct: loadOf(before.duesTotal + payment),
+    hero: goal && {
+      name: goal.name,
+      doneBefore,
+      doneAfter,
+      delayMonths: doneBefore === null ? null : doneAfter === null ? Infinity : monthsBetween(doneBefore, doneAfter),
+    },
+    overpay,
+    overpaySalaries: inSalaries(overpay, income),
+  }
+}
+
+/**
+ * «Хватит?»: да — сколько останется до зарплаты; нет — сколько не хватает и на сколько месяцев отодвинется главная
+ * мечта (`months` 0 — меньше месяца).
+ */
+export type CanAfford =
+  | { ok: true; left: number; inDays: number | null }
+  | { ok: false; short: number; goal: string | null; months: number | null }
+
+/**
+ * «Хватит?» (PN-16, Р-11) — ничего не пишет. Со счетами — от «до зарплаты» (`untilPayday.shortfall`: на счетах минус
+ * платежи до зарплаты); счетов нет — от остатка плана месяца (`rest`). Нехватка — в месяцах взносов главной мечты
+ * (`paceMonths` при её темпе `goalPace`, владелец Б5 — не дни); мечты или темпа нет — месяцев нет.
+ */
+export function canAfford(
+  state: Parameters<typeof untilPayday>[0] & MonthPlanState,
+  ctx: MonthPlanCtx,
+  amount: number,
+  now = today(),
+): CanAfford {
+  const up = untilPayday(state, now)
+  const cash = up && up.knowsCash
+  const plan = cash ? null : monthPlan(state, ctx)
+  const left = (cash ? up.shortfall : plan!.rest) - amount
+  if (left >= 0) return { ok: true, left, inDays: cash ? up.inDays : null }
+  const item = firstGoal(plan ?? monthPlan(state, ctx))
+  const hero = item ? (state.goals ?? []).find((g) => g.id === item.goalId) ?? null : null
+  return { ok: false, short: -left, goal: item?.name ?? null, months: hero ? paceMonths(-left, goalPace(hero, ctx.key)) : null }
 }
 
 /**

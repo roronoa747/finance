@@ -18,7 +18,30 @@
 - **Ветка `pn-block-6-cushion` от `main`** после 🏁 Блока 5. Документ: новых полей нет (фонд есть, Р-12 факт кода);
   Go нет.
 - Порядок: PN-19 → PN-20 → PN-21. «Нужно» — из строки очереди плана (`PlanQueueItem.need`), не пересчёт.
-- Факты Блоков 3–5 (критик допишет): <номера строк `GoalNew.vue`, `GoalDetail.vue`, `MonthPlan.vue`>.
+- **Факты кода (критик Блока 5, 2026-10-11, ветка `pn-block-5-estimate`; перепроверены критиком возврата приёмки того же
+  дня; номера ТЗ PN-19/PN-20 — до Блоков 3–5, брать эти):**
+  - `types/finance.ts`: `Goal.fund?: 'reserve' | 'cushion' | null` :126, `fundMonths?` :128.
+  - `lib/finance.ts` (4 581): `DEFAULT_MONEY_SETTINGS` (`cushionMonths: 3`) :1140, `cushionMonths(liquid, mandatory)` :2228
+    (старая функция «на сколько месяцев хватит счетов» — прежде чем писать свою, сверить), `paceMonths` :2279 (возврат Б5:
+    сумма в месяцах взносов, < 1 → 0 — для «хватит на N» подушки не годится, там делитель — траты), `fundsOf` :2892,
+    `queueOf` :2917 (фонд — `kind: 'fund'` :2944), `monthPlan` :3149 (`monthSpend = duesTotal + spendTotal` :3193),
+    `inSalaries` :3346 и **`salariesLabel`** :3351 (подпись «1,5 зарплаты» — для «хватит на N месяцев» не годится, слово
+    своё), `tryCredit` :3426, `canAfford` :3470, `goalTerm` :3526. `MonthPlanCtx.ends?` — только прикидка Блока 5, экранам не задавать.
+  - Стор `stores/finance.ts`: `planInput` :278, `heroGoal` :1775, **`ensureFund(kind, need = 0)` :1899** (есть фонд — его id;
+    копилка Блока 11 помечается `fund` и, без картинки, `template: 'cushion'`; иначе новая «Подушка» `template: 'cushion'`),
+    `setFundMonths` :1933.
+  - `views/GoalNew.vue` (232): шаг `step` :46 (`'pick' | 'form'`), `pickType` :97-103, `pickOwn` :108-117, `next()` :130-133
+    (имя из шаблона → шаг `form`), `create()` :138-160 (`addGoal({ name, need, monthly, hue, template })` :142 → `router.push`
+    → `attachTemplate`). Тип `cushion` — `GOAL_TYPES` (`goalTemplates.ts:48`), шаблоны `cushion`, `cushion-2…` (:75, :102-104).
+    Развилку «Подушка → фонд» ставить в `pickType`/`next` (до формы), не в `create`.
+  - `views/GoalDetail.vue` (637): `isDone` :100 / `doneAtTitle` :102 / `markGoalDone` :109 (Блок 4), `isFund` :126, `term` :132,
+    `progress` :141, «Купили?» только у мечты, не у фонда — :142, `doneTitle` :145, `doneLine` :153, `fundKind` :183, `fundSaved`
+    :188, `onFundMonths` :192, тост `useFlash` :228 (Блок 3), `DreamHero` :396, карточка срока с «Пополнить» :432-462, строка
+    «Подушка плана — взносы идут» :474, «Подробнее» `<details v-if="!isDone">` :479 с полем «Месяцев трат» :508.
+  - `components/money/MonthPlan.vue` (740): `missingFunds` :364-366 и **`addFund` → `ensureFund` → `/goals/<id>` :367-370**;
+    кнопки «+ Запас» / «+ Подушка» :628-636. В центре кольца под суммой — тихая «Хватит?» (`data-afford-open`, возврат Б5);
+    слот `MonthRing` `pointer-events-none` — свою кнопку в кольцо ставить с `pointer-events-auto`. Блок 5 добавил `useQuerySheet('afford')` (`components/useQuerySheet.ts` — лист по
+    `?<key>=1`, адрес снимается при закрытии): новый адресный лист — через него.
 - Правило 12: на экране подушки одна крупная цифра (процент героя), «хватит на N» — заголовок карточки, «нужно» —
   строкой; расчёт — в `Hint` «Подробнее».
 - Среда — §6. Следующий шаг — `/critic понятность 6`.

@@ -51,7 +51,8 @@
    `up = untilPayday(state, now)`: `up && up.knowsCash` → `left = up.shortfall − amount`; иначе (счетов нет) →
    `left = monthPlan(state, ctx).rest − amount`, `inDays: null`. `left ≥ 0` → ok. Иначе `short = −left`, `goal` — имя
    главной мечты, `days = closerDays(short, goalPace(hero, ctx.key))` (из PN-09: столько дней взносов съест
-   покупка); героя нет или темпа нет → `days: null`.
+   покупка); героя нет или темпа нет → `days: null`. **Возврат приёмки (владелец 2026-10-11,
+   `memory/decisions/pn-block-5-afford-months.md`):** вместо `days` — `months = paceMonths(short, …)`, меньше месяца — 0.
 3. Обе функции — чистые, без записи; экраны зовут их через стор (`planInput(key)` даёт `state`/`ctx`; гвард
    `legacy.test.ts:75` — `monthPlan(` только в `finance.ts`).
 

@@ -11,6 +11,8 @@ import {
   PhCoins,
   PhRepeat,
   PhCreditCard,
+  PhCalculator,
+  PhQuestion,
   PhCaretLeft,
 } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
@@ -30,8 +32,8 @@ import Tabs from '@/components/kit/Tabs.vue'
  * подписью, аватары участников (точка при «не сошлось» — `SyncBadge` compact) и шестерёнка — оба →
  * `/settings` (Р-1 «понятность»: нажал на лица — видишь лица в «С кем»; желания — с «Мечт»);
  * капсула вкладок «Мечты · План · Деньги» и «+»; лист «+» на `Sheet` — шесть
- * действий; у viewer «+» нет вовсе (ТЗ B2C-13 п. 3: лист без действий правки — а добавить
- * покупку viewer тоже не может, критик Блока 3). «Советника» нет.
+ * действий и две прикидки (PN-17: «Прикинуть кредит», «Хватит ли?»); у viewer «+» нет вовсе (ТЗ B2C-13 п. 3: лист
+ * без действий правки — а добавить покупку viewer тоже не может, критик Блока 3). «Советника» нет.
  *
  * Шапка — как в макетах (возврат смоука): у вкладок справа аватары (шестерёнка — только на
  * «Мечтах», §2; на «Неделе» аватаров нет — кружки участников стоят в её строке загрузки, Р-96), у вложенных экранов слева «назад», справа — действия
@@ -117,6 +119,9 @@ const actions = computed(() => {
     edit && { to: '/month?income=1', title: 'Внеплановый доход', note: 'премия, подарок, возврат', icon: PhCoins },
     edit && { to: '/money?add=payment', title: 'Обязательство или подписка', note: 'аренда, связь, страховка', icon: PhRepeat },
     edit && { to: '/money?add=debt', title: 'Долг', note: 'кредит, рассрочка, человеку', icon: PhCreditCard },
+    // Прикидки ничего не пишут (Р-11), но у viewer «+» нет вовсе — «Прикинуть кредит» ему с «Долгов» (PN-17).
+    edit && { to: '/money/debts?try=1', title: 'Прикинуть кредит', note: 'нагрузка, мечта, переплата', icon: PhCalculator },
+    edit && { to: '/month?afford=1', title: 'Хватит ли?', note: 'покупка до зарплаты', icon: PhQuestion },
   ].filter((a): a is Exclude<typeof a, false> => Boolean(a))
 })
 
