@@ -5,7 +5,7 @@
 > **`dpl_GAuRNsHXbQtuAMeB7zxwYhaPcQfy`**, откат — promote `dpl_CkrpNJtdvVPGDN2531VPDg5rtFbz`; смоук агента 59/59; смоук владельца
 > на iPhone и перезапуск PWA — за ним); **блок 3 «Мечты наряднее» 🏁** (приёмка 2026-10-10: принято — сверка с ТЗ PN-07…PN-11
 > без расхождений, стенд с Go-моками, e2e 32 / 210; мёрж `2ca5a20`, прод **`dpl_Fh6vRtoaqe6bC1pZTfUYDzit8uQR`**, откат — promote
-> `dpl_EsjHTZS9bcb2At7KGRkogggzuqm1`; смоук владельца на iPhone и перезапуск PWA — за ним). **блок 4 «Сбылось» 🔄** (исполнитель ✅ 2026-10-10: ворота макета «Ок», PN-12…PN-15, ветка `pn-block-4-done`). Следующий шаг — `/critic понятность 4`
+> `dpl_EsjHTZS9bcb2At7KGRkogggzuqm1`; смоук владельца на iPhone и перезапуск PWA — за ним). **блок 4 «Сбылось» 🔄** (исполнитель ✅ 2026-10-10: ворота макета «Ок», PN-12…PN-15, ветка `pn-block-4-done`; критик ✅ 2026-10-11). Следующий шаг — `/ux понятность 4`
 > (дифф `main..pn-block-4-done`).
 > Девять блоков: понятность (1–2) → мечты (3–4) → деньги (5–9); каждый блок — на прод отдельно в своей приёмке.
 
@@ -419,6 +419,12 @@ Production `dpl_Fh6vRtoaqe6bC1pZTfUYDzit8uQR`, откат — promote `dpl_EsjHT
   (+2), `storyCard.test.ts` (+1), гвард демо, e2e `pn-block4-done.test.ts` (5). Мутации красные: «`goalSavings` со сбывшимися»,
   «вопрос у фонда», «без списания со счёта». База: **178 файлов / 1802 ✅ + 1 пропуск**, e2e 33 файла.
 - Снимки «макет | стенд» — `block-4-done/shots/after-*.jpg`, артефакт https://claude.ai/artifact/Dmnr7TmYy5sAACNsTowvvL (v2).
+- **Критик (2026-10-11):** обход `openGoals` проверен по всем `.goals` фронта — остальные точки идут через `queueOf`/`pausedGoals`/
+  `capitalGoals`/`progressMoments`/`monthSummary` (`mainGoal`, `planLumpTakes`, `planExtra`, `StrategyCompare`, `HistorySquare`); Go
+  целей не читает. **`DoneSheet` получает фото пропом `src`** (= `GoalDetail.storySrc`: своё, иначе шаблон 1080) — своего `usePhoto`
+  нет; новые листы экрана цели берут фото так же. Тесты: `Dreams.done.dom.test.ts` (2 — альбом нажатием, переход `/goals/:id`, свёрнут
+  при новом заходе), `GoalDetail.done.dom.test.ts` (+1 — фото момента). Мутация «строка альбома без перехода» красная. База после
+  критика: **179 файлов / 1805 ✅ + 1 пропуск**.
 
 **Связки между блоками** (чтобы критик следил за промптами): Блок 2 → 5 (`inSalaries`, `capitalStats`); Блок 3 → 4
 (`GoalDetail`/`Dreams`/`StorySheet` после PN-09/10), → 5 (`goalPace`/`closerDays`), → 9 (`GoalNew` travel); Блок 7 → 8
