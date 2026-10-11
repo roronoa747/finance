@@ -7,6 +7,7 @@ import { startDemo } from '../src/lib/demo'
 import { canAfford, creditOutlook, monthPlan, monthsBetween, tryCredit } from '../src/lib/finance'
 import { monthKey } from '../src/lib/dates'
 import { money } from '../src/lib/money'
+import { plural } from '../src/lib/utils'
 import { authAs, planFamilyDoc } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
 import Money from '../src/views/Money.vue'
@@ -17,7 +18,7 @@ import { at, fakeServer, phone, screen, type FakeServer } from './support/family
  * Блок 5 «понятность» (PN-16…PN-18), 12 октября 2026: (а) демо — «Прикинуть кредит» на условиях автокредита демо
  * (1 800 000 под 19 %, срок — сколько платежей ему осталось) даёт нагрузку = (платежи месяца + платёж) / доход и сдвиг
  * «Поездки в Японию» = разнице `doneMonth` плана с этим кредитом и без; (б) «Хватит?» на демо — «Да» с остатком до
- * зарплаты, большая сумма — «Нет» с днями; (в) после обоих листов документ прежний — rev, «не отправлено» и сервер те же;
+ * зарплаты, большая сумма — «Нет» с месяцами; (в) после обоих листов документ прежний — rev, «не отправлено» и сервер те же;
  * (г) viewer — «Прикинуть кредит» с «Долгов». Экраны — SSR (`screen`), ввод — полями листов (`screenMixin`).
  */
 const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
@@ -100,7 +101,7 @@ describe('e2e / понятность Блок 5 — прикинуть', () => {
     expect(html).toContain(r.hero!.delayMonths ? `Поездка в Японию отодвинется на ${r.hero!.delayMonths}` : "Поездка в Японию не сдвинется")
   })
 
-  it('(б) демо: «Хватит?» — «Да» с остатком до зарплаты; большая сумма — «Нет» с днями', async () => {
+  it('(б) демо: «Хватит?» — «Да» с остатком до зарплаты; большая сумма — «Нет» с месяцами', async () => {
     const { pinia, finance } = await demo()
     const { state, ctx } = finance.planInput(monthKey())
     const input = { ...state, accounts: finance.householdAccounts }
@@ -115,10 +116,12 @@ describe('e2e / понятность Блок 5 — прикинуть', () => {
     expect(no.ok).toBe(false)
     if (no.ok) return
     expect(no.goal).toBe('Поездка в Японию')
-    expect(no.days).toBeGreaterThan(0)
+    // Владелец Б5: сдвиг — в месяцах, не в днях; на 50 млн — больше месяца.
+    expect(no.months).toBeGreaterThan(1)
     const noHtml = text(await screen(pinia, Month, '/month?afford=1', undefined, [screenMixin({ sum: '50000000' })]))
     expect(noHtml).toContain(`не хватает ${text(money(no.short))}`)
-    expect(noHtml).toContain(`Поездка в Японию отодвинется на ${no.days}`)
+    expect(noHtml).toContain(`Поездка в Японию отодвинется на ${no.months} ${plural(no.months!, 'месяц', 'месяца', 'месяцев')}`)
+    expect(noHtml).not.toMatch(/отодвинется на \d+ дн/)
   })
 
   describe('семья на сервере', () => {

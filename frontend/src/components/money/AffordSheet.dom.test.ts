@@ -6,6 +6,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { planFamilyDoc } from '@/test/planFamily'
 import { canAfford } from '@/lib/finance'
 import { money } from '@/lib/money'
+import { plural } from '@/lib/utils'
 import type { SyncDoc } from '@/types/finance'
 import AffordSheet from './AffordSheet.vue'
 
@@ -83,7 +84,7 @@ describe('PN-17: «Хватит?»', () => {
     expect(JSON.stringify(store.householdDoc)).toBe(before)
   })
 
-  it('со счетами: большая сумма — «Нет», сколько не хватает и на сколько дней отодвинется мечта', async () => {
+  it('со счетами: большая сумма — «Нет», сколько не хватает и на сколько месяцев отодвинется мечта', async () => {
     const store = await open()
     await type('5000000')
     const r = expected(store, 5_000_000)
@@ -92,8 +93,21 @@ describe('PN-17: «Хватит?»', () => {
     expect(txt(q('[data-afford-no]'))).toBe('Нет')
     expect(q('[data-afford-no]')!.className).toContain('text-warn')
     expect(norm(txt(q('[data-afford-short]')))).toBe(norm(`не хватает ${money(r.short)}`))
-    expect(r.goal && r.days).toBeTruthy()
-    expect(txt(q('[data-afford-goal]'))).toContain(`${r.goal} отодвинется на ${r.days}`)
+    // Владелец Б5: сдвиг — в месяцах («никто в днях не прикидывает»), дней в строке нет.
+    expect(r.goal && r.months).toBeTruthy()
+    expect(r.months!).toBeGreaterThan(1)
+    expect(txt(q('[data-afford-goal]'))).toBe(`${r.goal} отодвинется на ${r.months} ${plural(r.months!, 'месяц', 'месяца', 'месяцев')}`)
+    expect(txt(q('[data-afford-goal]'))).not.toMatch(/дн/)
+  })
+
+  it('со счетами: нехватка меньше месяца взносов — «почти не сдвинется»', async () => {
+    const store = await open()
+    const up = expected(store, 0)
+    if (!up.ok) return expect.unreachable('на демо-счетах хватает на 0')
+    await type(String(up.left + 1000))
+    const r = expected(store, up.left + 1000)
+    expect(!r.ok && r.months).toBe(0)
+    expect(txt(q('[data-afford-goal]'))).toBe(`${!r.ok && r.goal} почти не сдвинется`)
   })
 
   it('без счетов — от остатка плана месяца, без «через N дней»', async () => {

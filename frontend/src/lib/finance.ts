@@ -2272,6 +2272,16 @@ export function closerDays(amount: number, pace: number): number | null {
   return Math.round((amount / pace) * 30.4)
 }
 
+/**
+ * На сколько месяцев взносов тянет сумма `amount` при темпе `pace` в месяц («Хватит? — нет», владелец Б5: прикидки — в
+ * месяцах): меньше одного месяца — 0 («почти не сдвинется»), дальше — округление; нет суммы или темпа — null.
+ */
+export function paceMonths(amount: number, pace: number): number | null {
+  if (amount <= 0 || pace <= 0) return null
+  const months = amount / pace
+  return months < 1 ? 0 : Math.round(months)
+}
+
 /** «Ближе на N дней» под героем «Мечт»: все положительные движения месяца `key` при темпе цели; null — нечего сказать. */
 export function closerThisMonth(goal: { monthly: number; movements?: { date: string; amount: number }[] }, key: string): number | null {
   const put = (goal.movements ?? []).filter((m) => m.amount > 0 && movementMonth(m.date) === key).reduce((a, m) => a + m.amount, 0)
@@ -3444,15 +3454,18 @@ export function tryCredit(
   }
 }
 
-/** «Хватит?»: да — сколько останется до зарплаты; нет — сколько не хватает и на сколько дней отодвинется главная мечта. */
+/**
+ * «Хватит?»: да — сколько останется до зарплаты; нет — сколько не хватает и на сколько месяцев отодвинется главная
+ * мечта (`months` 0 — меньше месяца).
+ */
 export type CanAfford =
   | { ok: true; left: number; inDays: number | null }
-  | { ok: false; short: number; goal: string | null; days: number | null }
+  | { ok: false; short: number; goal: string | null; months: number | null }
 
 /**
  * «Хватит?» (PN-16, Р-11) — ничего не пишет. Со счетами — от «до зарплаты» (`untilPayday.shortfall`: на счетах минус
- * платежи до зарплаты); счетов нет — от остатка плана месяца (`rest`). Нехватка — в днях взносов главной мечты
- * (`closerDays` при её темпе `goalPace`); мечты или темпа нет — дней нет.
+ * платежи до зарплаты); счетов нет — от остатка плана месяца (`rest`). Нехватка — в месяцах взносов главной мечты
+ * (`paceMonths` при её темпе `goalPace`, владелец Б5 — не дни); мечты или темпа нет — месяцев нет.
  */
 export function canAfford(
   state: Parameters<typeof untilPayday>[0] & MonthPlanState,
@@ -3467,7 +3480,7 @@ export function canAfford(
   if (left >= 0) return { ok: true, left, inDays: cash ? up.inDays : null }
   const item = firstGoal(plan ?? monthPlan(state, ctx))
   const hero = item ? (state.goals ?? []).find((g) => g.id === item.goalId) ?? null : null
-  return { ok: false, short: -left, goal: item?.name ?? null, days: hero ? closerDays(-left, goalPace(hero, ctx.key)) : null }
+  return { ok: false, short: -left, goal: item?.name ?? null, months: hero ? paceMonths(-left, goalPace(hero, ctx.key)) : null }
 }
 
 /**

@@ -27,6 +27,7 @@ const result = computed(() => {
   return canAfford({ ...state, accounts: finance.householdAccounts }, ctx, amount)
 })
 const days = (n: number) => `${n} ${plural(n, 'день', 'дня', 'дней')}`
+const months = (n: number) => `${n} ${plural(n, 'месяц', 'месяца', 'месяцев')}`
 </script>
 
 <template>
@@ -45,8 +46,8 @@ const days = (n: number) => `${n} ${plural(n, 'день', 'дня', 'дней')}
       <template v-else>
         <span class="type-big text-warn" data-afford-no>Нет</span>
         <p class="text-[14px] num text-ink-2" data-afford-short>не хватает {{ money(result.short) }}</p>
-        <p v-if="result.goal && result.days" class="text-[14px] num text-ink-2" data-afford-goal>
-          {{ result.goal }} отодвинется на {{ days(result.days) }}
+        <p v-if="result.goal && result.months !== null" class="text-[14px] num text-ink-2" data-afford-goal>
+          {{ result.goal }} {{ result.months ? `отодвинется на ${months(result.months)}` : 'почти не сдвинется' }}
         </p>
       </template>
     </div>

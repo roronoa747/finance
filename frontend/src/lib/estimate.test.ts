@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { annuityPayment, canAfford, closerDays, goalPace, inSalaries, monthPlan, tryCredit, untilPayday, type MonthPlanCtx, type MonthPlanState } from './finance'
+import { annuityPayment, canAfford, goalPace, inSalaries, monthPlan, paceMonths, tryCredit, untilPayday, type MonthPlanCtx, type MonthPlanState } from './finance'
 import { planFamilyDoc, T0 } from '@/test/planFamily'
 import type { Goal, SyncDoc } from '@/types/finance'
 
@@ -141,17 +141,34 @@ describe('canAfford — «Хватит?»', () => {
     expect(canAfford(state, ctx, 150_000, now)).toEqual({ ok: true, left: 50_000, inDays: null })
   })
 
-  it('нехватка — сколько не хватает и на сколько дней отодвинется главная мечта (closerDays при её темпе)', () => {
+  it('нехватка меньше месяца взносов — 0 месяцев («почти не сдвинется»)', () => {
     const state = small()
     const r = canAfford(state, ctx, 250_000, now)
-    // Не хватает 50 000; темп 100 000 в месяц → 50 000 / 100 000 × 30,4 = 15,2 → 15 дней.
-    expect(r).toEqual({ ok: false, short: 50_000, goal: 'Япония', days: 15 })
-    expect(r.ok === false && r.days).toBe(closerDays(50_000, goalPace(dream(), KEY)))
+    // Остаток 200 000 − 250 000 → не хватает 50 000; темп 100 000 в месяц → 0,5 месяца < 1 → 0.
+    expect(r).toEqual({ ok: false, short: 50_000, goal: 'Япония', months: 0 })
+    expect(r.ok === false && r.months).toBe(paceMonths(50_000, goalPace(dream(), KEY)))
   })
 
-  it('без героя или без темпа — дней нет', () => {
-    expect(canAfford(small({ goals: [] }), ctx, 500_000, now)).toEqual({ ok: false, short: 200_000, goal: null, days: null })
+  it('крупная нехватка — в месяцах взносов главной мечты (владелец Б5: не в днях)', () => {
+    const state = small()
+    // Не хватает 5 200 000 − 200 000 = 5 000 000; при 100 000 в месяц — 50 месяцев (было бы 1520 дней).
+    expect(canAfford(state, ctx, 5_200_000, now)).toEqual({ ok: false, short: 5_000_000, goal: 'Япония', months: 50 })
+    // Ровно месяц: не хватает 100 000 → 1; 1,4 месяца → 1; 1,5 → 2 (округление).
+    expect(canAfford(state, ctx, 300_000, now)).toMatchObject({ short: 100_000, months: 1 })
+    expect(canAfford(state, ctx, 340_000, now)).toMatchObject({ short: 140_000, months: 1 })
+    expect(canAfford(state, ctx, 350_000, now)).toMatchObject({ short: 150_000, months: 2 })
+  })
+
+  it('paceMonths: граница месяца — меньше одного 0, ровно один 1; без суммы или темпа — null', () => {
+    expect(paceMonths(99_999, 100_000)).toBe(0)
+    expect(paceMonths(100_000, 100_000)).toBe(1)
+    expect(paceMonths(0, 100_000)).toBeNull()
+    expect(paceMonths(50_000, 0)).toBeNull()
+  })
+
+  it('без героя или без темпа — месяцев нет', () => {
+    expect(canAfford(small({ goals: [] }), ctx, 500_000, now)).toEqual({ ok: false, short: 200_000, goal: null, months: null })
     const idle = canAfford(small({ goals: [dream({ monthly: 0 })] }), ctx, 500_000, now)
-    expect(idle).toEqual({ ok: false, short: 200_000, goal: 'Япония', days: null })
+    expect(idle).toEqual({ ok: false, short: 200_000, goal: 'Япония', months: null })
   })
 })
