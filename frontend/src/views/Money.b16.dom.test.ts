@@ -468,4 +468,29 @@ describe('PN-17: «Прикинуть кредит» с «Долгов» и «Х
     await press(q('[role="dialog"] button[aria-label="Закрыть"]'))
     await vi.waitFor(() => expect(router.currentRoute.value.query.afford).toBeUndefined())
   })
+
+  it('тихая «Хватит?» под «Остаётся» — у member и viewer; viewer открывает лист, считает, документ прежний', async () => {
+    await open('member', familyDoc(), '/month', Month)
+    await flush()
+    expect(txt(q('[data-afford-open]'))).toBe('Хватит?')
+    app?.unmount()
+    document.body.innerHTML = ''
+
+    const finance = await open('viewer', familyDoc(), '/month', Month)
+    await flush()
+    const btn = q('[data-afford-open]')!
+    // Владелец, приёмка Б5: кнопка у своего предмета — в центре кольца рядом с остатком, тихая (не брендовая).
+    expect(btn.parentElement).toBe(q('[data-rest]')!.parentElement)
+    expect(btn.className).not.toContain('bg-brand')
+    const before = JSON.stringify(finance.householdDoc)
+    await press(btn)
+    expect(txt(dialog())).toContain('Хватит?')
+    const input = q<HTMLInputElement>('[data-afford-sum]')!
+    input.value = '150000'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await flush()
+    expect(q('[data-afford-result]')).not.toBeNull()
+    expect(JSON.stringify(finance.householdDoc)).toBe(before)
+    expect(router.currentRoute.value.query.afford).toBeUndefined()
+  })
 })

@@ -19,7 +19,7 @@ import { at, fakeServer, phone, screen, type FakeServer } from './support/family
  * (1 800 000 под 19 %, срок — сколько платежей ему осталось) даёт нагрузку = (платежи месяца + платёж) / доход и сдвиг
  * «Поездки в Японию» = разнице `doneMonth` плана с этим кредитом и без; (б) «Хватит?» на демо — «Да» с остатком до
  * зарплаты, большая сумма — «Нет» с месяцами; (в) после обоих листов документ прежний — rev, «не отправлено» и сервер те же;
- * (г) viewer — «Прикинуть кредит» с «Долгов». Экраны — SSR (`screen`), ввод — полями листов (`screenMixin`).
+ * (г) viewer — «Прикинуть кредит» с «Долгов» и «Хватит?» с «Месяца» (кнопка под «Остаётся»). Экраны — SSR (`screen`), ввод — полями листов (`screenMixin`).
  */
 const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
 
@@ -161,6 +161,18 @@ describe('e2e / понятность Блок 5 — прикинуть', () => {
       const r = tryCredit(state, ctx, { principal: 1_000_000, months: 24, annualRate: 0.2 })
       expect(html).toContain(text(money(r.payment)))
       expect(html).toContain(`Нагрузка станет ${r.loadPct} % дохода`)
+    })
+
+    it('(г) viewer: «Хватит?» с «Месяца» — тихая кнопка под «Остаётся», лист считает так же (владелец, приёмка Б5)', async () => {
+      const V = await as('viewer')
+      const plain = await screen(V.pinia, Month, '/month')
+      expect(plain).toContain('data-afford-open')
+      // Кнопка открывает тот же лист, что `?afford=1` из «+»: `affordOpen` — его состояние на «Месяце».
+      const html = text(await screen(V.pinia, Month, '/month', undefined, [screenMixin({ affordOpen: true, sum: '150000' })]))
+      setActivePinia(V.pinia)
+      const { state, ctx } = V.store.planInput(monthKey())
+      const r = canAfford({ ...state, accounts: V.store.householdAccounts }, ctx, 150_000)
+      expect(html).toContain(r.ok ? `до зарплаты останется ${text(money(r.left))}` : `не хватает ${text(money(r.short))}`)
     })
   })
 })

@@ -216,7 +216,10 @@ watch(
   { immediate: true },
 )
 
-/* ---------- «Хватит?» из «+» (`?afford=1`, PN-17): ничего не пишет — гарда viewer нет ---------- */
+/*
+ * ---------- «Хватит?» из «+» (`?afford=1`, PN-17) и тихой кнопкой под «Остаётся» (владелец, приёмка Б5 — вход для
+ * всех ролей): ничего не пишет — гарда viewer нет ----------
+ */
 const { open: affordOpen, close: closeAfford } = useQuerySheet('afford')
 
 /* ---------- кто платит (Р-80) ---------- */
@@ -382,6 +385,8 @@ function addFund(kind: 'reserve' | 'cushion') {
       </span>
       <span v-if="plan.short > 0" class="font-num text-[24px] font-bold leading-tight num text-warn">{{ money(plan.short) }}</span>
       <span v-else class="font-num text-[24px] font-bold leading-tight num text-ink" data-rest>{{ money(plan.rest) }}</span>
+      <!-- Действие у своего предмета (правило 12): «Хватит?» — у остатка; слот кольца не ловит нажатия — кнопке свои. -->
+      <Button variant="ghost" size="sm" class="pointer-events-auto relative z-10 mt-1" data-afford-open @click.stop="affordOpen = true">Хватит?</Button>
     </MonthRing>
 
     <!--
