@@ -28,7 +28,7 @@ const emit = defineEmits<{ (e: 'close'): void; (e: 'removed'): void }>()
 
 const financeStore = useFinanceStore()
 
-const goal = computed(() => liveGoals(financeStore.goals).find((g) => g.id === props.goalId))
+const goal = computed(() => liveGoals(financeStore.goals).find((g) => g.id === props.goalId)) // Сбылось (PN-13): все живые — сбывшуюся можно править и удалить
 const saved = useSavedMark(
   () => goal.value?.id,
   () => goal.value?.updatedAt,

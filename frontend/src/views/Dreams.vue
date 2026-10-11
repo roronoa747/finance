@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
-import { PhCamera } from '@phosphor-icons/vue'
+import { PhCamera, PhCaretRight, PhCheck } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
 import { money, pct } from '@/lib/money'
-import { monthKey } from '@/lib/dates'
-import { closerThisMonth, goalTerm, planForecast, wishQueue } from '@/lib/finance'
+import { monthKey, monthShort } from '@/lib/dates'
+import { closerThisMonth, doneGoals, doneTerm, goalTerm, planForecast, wishQueue } from '@/lib/finance'
 import type { Goal } from '@/types/finance'
 import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
@@ -75,7 +75,8 @@ const heroMonth = computed(() => (main.value && termOf(main.value).off ? 'на �
 // «Ближе на N дней» (PN-09, Р-15): взносы этого месяца при темпе цели — строка под процентом; на паузе — нет. Viewer видит то же.
 const heroCloser = computed(() => {
   const g = main.value
-  if (!g || termOf(g).off) return null
+  // Накоплено целиком (ворота PN-12): ближе некуда — под героем только имя, мечта ждёт «Сбылось».
+  if (!g || termOf(g).off || termOf(g).remaining <= 0) return null
   const days = closerThisMonth(g, key.value)
   return days && days > 0 ? `ближе на ${days} ${plural(days, 'день', 'дня', 'дней')}` : null
 })
@@ -99,6 +100,20 @@ async function onFile(file: File) {
   const ok = await attachFile(financeStore, main.value.id, file)
   photoNote.value = ok ? null : 'Фото не загрузилось — попробуйте при сети.'
 }
+
+/* ---------- альбом «Сбылось» (PN-14, Р-13; ворота done.html): свёрнут при новом заходе ---------- */
+const done = computed(() => doneGoals(financeStore.goals))
+// Раскрытие живёт в записи истории: «назад» со сбывшейся — альбом как оставили (прокрутка оболочки на месте),
+// новый заход (вкладка) — новая запись, свёрнут (`/ux` Б4 «понятность»).
+const history = router?.options.history
+const albumOpen = ref(history?.state?.doneAlbum === true)
+function toggleAlbum() {
+  albumOpen.value = !albumOpen.value
+  history?.replace(history.location, { ...history.state, doneAlbum: albumOpen.value })
+}
+const doneSrc = usePhotos(() => done.value.map((g) => g.photoId))
+const doneSrcOf = (g: Goal) => (g.photoId ? doneSrc.value[g.photoId] : null)
+const doneMeta = (g: Goal) => `${monthShort(monthKey(new Date(g.doneAt!)))} · за ${doneTerm(g)} мес.`
 
 /* ---------- желания ---------- */
 const openWishes = computed(() => wishQueue({ wishlist: financeStore.wishlist, wishOrder: financeStore.wishOrder }).filter((w) => !w.bought))
@@ -186,6 +201,49 @@ onMounted(refresh)
         </SortableList>
       </Card>
     </template>
+
+    <!-- Альбом «Сбылось» (PN-14): одна свёрнутая строка — фото, «Сбылось · N», шеврон; раскрыта — строки сбывшихся. -->
+    <Card v-if="done.length" flush class="px-3.5 py-1" data-done-album-card>
+      <button
+        type="button"
+        class="press flex w-full cursor-pointer items-center gap-3 py-[11px] text-left"
+        :aria-expanded="albumOpen"
+        data-done-album
+        @click="toggleAlbum"
+      >
+        <span class="flex shrink-0">
+          <span
+            v-for="(g, i) in done.slice(0, 3)"
+            :key="g.id"
+            class="block size-[30px] overflow-hidden rounded-full border-2 border-surface bg-surface-3"
+            :class="i > 0 && '-ml-2.5'"
+            :style="!doneSrcOf(g) ? { background: hueColor(g.hue, isDark) } : undefined"
+          >
+            <img v-if="doneSrcOf(g)" :src="doneSrcOf(g)!" alt="" class="size-full object-cover" />
+          </span>
+        </span>
+        <span class="min-w-0 flex-1 truncate text-[16px] font-semibold text-ink">Сбылось · {{ done.length }}</span>
+        <PhCaretRight :size="14" class="shrink-0 text-ink-3 transition-transform" :class="albumOpen && 'rotate-90'" />
+      </button>
+      <template v-if="albumOpen">
+        <ThumbRow
+          v-for="(g, i) in done"
+          :key="g.id"
+          :title="g.name"
+          :src="doneSrcOf(g)"
+          :tone="hueColor(g.hue, isDark)"
+          :index="i + 1"
+          clickable
+          data-done-row
+          @click="router.push(`/goals/${g.id}`)"
+        >
+          <span class="truncate type-meta num">{{ doneMeta(g) }}</span>
+          <template #end>
+            <PhCheck :size="16" weight="bold" class="text-ok" />
+          </template>
+        </ThumbRow>
+      </template>
+    </Card>
 
     <!-- Желания: первые три, «Все N» — путь к списку есть всегда -->
     <div class="flex items-baseline justify-between px-1 pt-1.5">

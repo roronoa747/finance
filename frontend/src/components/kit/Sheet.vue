@@ -17,6 +17,8 @@ const props = withDefaults(
   defineProps<{
     open: boolean
     title: string
+    /** Заголовок только для диктора: лист сам говорит крупно (момент «Сбылось!», `/ux` Б4 «понятность»). */
+    titleHidden?: boolean
     z?: number
   }>(),
   { z: 50 },
@@ -150,7 +152,7 @@ onUnmounted(() => {
         <div class="mb-4 flex items-center justify-between gap-3">
           <!-- Отметка рядом с заголовком, а не внутри: имя окна и заголовок — только title. -->
           <div class="flex min-w-0 items-center gap-2">
-            <h3 :id="titleId" class="min-w-0 type-sheet text-ink">{{ title }}</h3>
+            <h3 :id="titleId" class="min-w-0 type-sheet text-ink" :class="{ 'sr-only': titleHidden }">{{ title }}</h3>
             <slot name="mark" />
           </div>
           <button

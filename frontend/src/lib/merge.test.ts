@@ -770,6 +770,35 @@ describe('PV-19: правка «Уже накоплено» против офл�
   })
 })
 
+describe('PN-13: «Сбылось» — doneAt едет полем записи', () => {
+  const T0 = '2026-09-20T10:00:00.000Z'
+  const base: Goal = {
+    id: 'g', name: 'Япония', need: 400_000, seed: 350_000, have: 400_000, monthly: 50_000, hue: 'plum', planPct: 0,
+    movements: [{ id: 'm1', date: T0, amount: 50_000, by: 'a' }], updatedAt: T0,
+  }
+  const doc = (g: Goal): SyncDoc => ({ ...createEmptyDoc(), goals: [g] })
+
+  it('A «Сбылось» офлайн, B взнос офлайн позже — doneAt стоит, have пересчитан со взносом B', () => {
+    const TA = '2026-10-10T08:00:00.000Z'
+    const a = doc({ ...base, doneAt: TA, updatedAt: TA })
+    // B не видел «Сбылось»: его взнос позже двигает updatedAt цели — запись выигрывает B, но без поля doneAt.
+    const m2 = { id: 'm2', date: '2026-10-10T09:00:00.000Z', amount: 20_000, by: 'b' as const }
+    const b = doc({ ...base, have: 420_000, movements: [...base.movements, m2], updatedAt: m2.date })
+    for (const merged of [mergeDocs(a, b), mergeDocs(b, a)]) {
+      const g = merged.goals[0]
+      expect(g.doneAt).toBe(TA)
+      expect(g.movements.map((m) => m.id).sort()).toEqual(['m1', 'm2'])
+      expect(g.have).toBe(420_000)
+    }
+  })
+
+  it('«Вернуть в мечты» — null очищает doneAt у партнёра', () => {
+    const a = doc({ ...base, doneAt: '2026-10-10T08:00:00.000Z', updatedAt: '2026-10-10T08:00:00.000Z' })
+    const back = doc({ ...base, doneAt: null, updatedAt: '2026-10-10T09:00:00.000Z' })
+    for (const merged of [mergeDocs(a, back), mergeDocs(back, a)]) expect(merged.goals[0].doneAt).toBeNull()
+  })
+})
+
 describe('PV-21: «Начать бюджет заново» — метка сброса resetAt', () => {
   const T = '2026-09-26T08:00:00.000Z'
   const goal = (id: string, name: string): Goal => ({

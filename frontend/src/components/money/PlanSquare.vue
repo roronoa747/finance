@@ -12,7 +12,7 @@ import {
   budgetInterest,
   debtAdvice,
   liveCredits,
-  liveGoals,
+  openGoals,
   openCredits,
   pauseMissed,
   pauseShift,
@@ -53,7 +53,7 @@ const authStore = useAuthStore()
 const key = computed(() => monthKey())
 const credits = computed(() => liveCredits(financeStore.credits))
 const open = computed(() => openCredits(credits.value))
-const goals = computed(() => liveGoals(financeStore.goals))
+const goals = computed(() => openGoals(financeStore.goals)) // Сбылось (PN-13): в плане долгов только активные
 const creditName = (id: string | null) => financeStore.credits.find((c) => c.id === id)?.name ?? ''
 
 /* ------------------ Самая дорогая ставка ------------------ */

@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { todayIso } from '@/lib/dates'
 import { money, plain, parseMoney, rateField, ratePct } from '@/lib/money'
-import { INFLATION, deposit as calcDeposit, fxToTenge, liveAccounts, liveGoals, rateOn, realRate } from '@/lib/finance'
+import { INFLATION, deposit as calcDeposit, fxToTenge, liveAccounts, openGoals, rateOn, realRate } from '@/lib/finance'
 import type { Account } from '@/types/finance'
 import { cn } from '@/lib/utils'
 import { CURRENCY_SIGN } from '@/lib/fx'
@@ -89,7 +89,7 @@ function onDepositRate(text: string) {
 /* ------------------ Удаление ------------------ */
 const isPrivate = computed(() => liveAccounts(financeStore.privateAccounts).some((a) => a.id === props.accountId))
 /** Цели, чьи накопления лежат на открытом счёте: при удалении они отвяжутся. */
-const accountGoals = computed(() => liveGoals(financeStore.goals).filter((g) => g.accountId === props.accountId))
+const accountGoals = computed(() => openGoals(financeStore.goals).filter((g) => g.accountId === props.accountId)) // Сбылось (PN-13): деньги сбывшейся со счёта ушли — она не «на счёте»
 const accountRemoveWarning = computed(() => {
   // Личный счёт партнёр не видит (React личных счетов не знал) — «у обоих» только у общего.
   const both = isPrivate.value ? '' : ' у обоих участников'

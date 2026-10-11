@@ -18,7 +18,22 @@
 - **Ветка `pn-block-5-estimate` от `main`** после 🏁 Блока 4. Документ не меняется, Go нет.
 - Порядок: PN-16 → PN-17 → PN-18. Сдвиг мечты — тем же `monthPlan` с фиктивным кредитом, не копией очереди;
   `inSalaries` (Блок 2), `goalPace`/`closerDays` (Блок 3) — переиспользовать.
-- Факты Блока 4 (критик допишет): <номера строк `AppShell.vue` `actions`, `DebtsWidget.vue`, `MonthPlan.vue` query>.
+- **Факты кода (критик Блока 4, 2026-10-11; ветка `pn-block-4-done`, до мёржа — `origin/pn-block-4-done`):**
+  - `components/AppShell.vue` (195): `actions` :111-121 — **шесть** пунктов, все под `edit && …` (`/week?upload=1`, `/goals/new`,
+    `/wishes`, `/month?income=1`, `/money?add=payment`, `/money?add=debt`); `navigateAndClose` :123; таб-бар `:plus="!authStore.isViewer"`
+    :185 — **у viewer «+» нет вовсе**, лист «Добавить» :187-191. Матрица §3 даёт viewer «Прикинуть» и «Хватит?» (✅): либо «+» у viewer
+    с двумя этими пунктами, либо вход только с «Долгов» — минимальное решение по ТЗ PN-17 + запись в Handoff (правило 2).
+  - Адресные листы: `CapitalLists.vue` `watch` на `?add=` :145-152 (только участнику — комментарий :143), `MonthPlan.vue` `?income=1` :208-215
+    (`canEdit`). Новый адрес для «Прикинуть»/«Хватит?» viewer-у такой гард не ставить.
+  - `components/money/DebtsWidget.vue` (187): «Как закрыть быстрее» :155-163, «+ Долг» :166-169 (`data-add-credit`, только участник),
+    листы :171-175 (`NewDebtSheet :open="addOpen"`).
+  - `lib/finance.ts` (4 475): `annuityPayment` :24, `annuityMonths` :32, `annuityTotal` :41, `rateFromSchedule` :57, `installmentMonths`
+    :83, `creditOutlook` :293, `creditDueAmount` :1330, `monthDues` :1716, `untilPayday` :1755, `goalPace` :2260, `closerDays` :2270,
+    `monthsBetween` :2282, `mainGoal` :2857, `PlanQueueItem` :3017, `queueRun` :3084, `monthPlan` :3133, **`inSalaries` :3330**,
+    `capitalStats` :3345. Стор: `planState` :260, `planInput` :278, `monthPlanOf` :288, `heroGoal` :1775.
+  - **Блок 4:** сбывшиеся мечты (`doneAt`) из очереди выпали (`openGoals` → `queueOf`) — «<главная мечта> отодвинется» берёт героя
+    `monthPlan.queue`, сбывшуюся не увидит; свой список целей — только `openGoals`, не `liveGoals`.
+  - База тестов после критика Б4: 179 файлов / 1805 ✅ + 1 пропуск.
 - Правило 12: листы, не экраны; результат живой, одна крупная цифра; в Handoff — что показано, что скрыто.
 - Среда — §6. Следующий шаг — `/critic понятность 5`.
 

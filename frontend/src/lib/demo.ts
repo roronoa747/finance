@@ -254,6 +254,29 @@ export function startDemo(): boolean {
         payer: 'b',
         updatedAt: new Date().toISOString(),
       },
+      // Сбылась (PN-15, Р-13): четыре взноса, куплена три месяца назад — «за 4 месяца», альбом «Сбылось · 1»; деньги ушли
+      // покупкой — в капитале и очереди её нет. Фото — то же, что у желания «Велосипед» (Mikkel Bech), автора у цели нет.
+      {
+        id: 'g-bike',
+        name: 'Велосипед',
+        need: 230_000,
+        seed: 0,
+        have: 230_000,
+        monthly: 57_500,
+        hue: 'green',
+        planPct: 0,
+        movements: [-7, -6, -5, -4].map((n) => ({
+          id: `demo-put-bike${n}`,
+          date: `${addMonths(monthKey(), n)}-12T06:00:00.000Z`,
+          amount: 57_500,
+          by: 'a' as const,
+        })),
+        template: 'sport',
+        photoId: DEMO_PHOTO + 'bike',
+        doneAt: `${addMonths(monthKey(), -3)}-12T08:00:00.000Z`,
+        payer: 'a',
+        updatedAt: new Date().toISOString(),
+      },
     ]
     // Желания «как в макете» (приёмка Б10): у каждого участника и общее; фото — из приложения (Р-118), Unsplash:
     // велосипед — Mikkel Bech, кофемашина — Kevin Schmid, сапоги — Zac Wolff; диван у цели — картинка макета Б17.

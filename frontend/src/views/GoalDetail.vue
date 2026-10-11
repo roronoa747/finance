@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue'
 import { useRouter, useRoute, RouterLink } from 'vue-router'
-import { PhCamera, PhCaretRight, PhDotsThree, PhPause, PhPencilSimple, PhPlay, PhMinus, PhShareNetwork, PhStar } from '@phosphor-icons/vue'
+import { PhArrowUUpLeft, PhCamera, PhCaretRight, PhCheck, PhDotsThree, PhPause, PhPencilSimple, PhPlay, PhMinus, PhShareNetwork, PhStar } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, pct, plain, parseMoney, ratePct } from '@/lib/money'
@@ -9,6 +9,8 @@ import {
   INFLATION,
   closerDays,
   contributionStreak,
+  doneLabel,
+  doneTerm,
   fundMonthsOf,
   goalMonthly,
   goalPace,
@@ -50,6 +52,7 @@ import Sheet from '@/components/kit/Sheet.vue'
 import Tag from '@/components/kit/Tag.vue'
 import Toast from '@/components/kit/Toast.vue'
 import { useSavedMark } from '@/components/kit/useSavedMark'
+import DoneSheet from '@/components/goals/DoneSheet.vue'
 import GoalSheet from '@/components/goals/GoalSheet.vue'
 import PhotoPicker from '@/components/goals/PhotoPicker.vue'
 import StorySheet from '@/components/goals/StorySheet.vue'
@@ -73,7 +76,7 @@ const authStore = useAuthStore()
 const goalId = computed(() => route.params.id as string)
 // Удалил партнёр — «Цель не найдена», как окно правки (`GoalSheet`): пополнение ушло бы в
 // надгробие, а счёт списался бы.
-const goal = computed(() => liveGoals(financeStore.goals).find((g) => g.id === goalId.value))
+const goal = computed(() => liveGoals(financeStore.goals).find((g) => g.id === goalId.value)) // Сбылось (PN-13): все живые — сбывшаяся открывается
 const people = computed(() => financeStore.people)
 const canEdit = computed(() => !authStore.isViewer)
 const isMain = computed(() => financeStore.heroGoal?.id === goalId.value)
@@ -82,12 +85,33 @@ const isDream = computed(() => financeStore.queue.find((x) => x.id === goalId.va
 // Выключена в плане месяца (Р-83): стоит, пока не включат; срок сдвигается.
 const off = computed(() => !!goal.value?.pausedAt)
 const menuOpen = ref(false)
-function menu(action: 'main' | 'edit' | 'pause') {
+function menu(action: 'main' | 'edit' | 'pause' | 'done' | 'undo') {
   menuOpen.value = false
   if (!goal.value) return
   if (action === 'main') financeStore.makeMain(goal.value.id)
   else if (action === 'edit') openEditModal.value = true
+  else if (action === 'done') markDone()
+  else if (action === 'undo') financeStore.undoGoalDone(goal.value.id)
   else financeStore.pauseGoal(goal.value.id, !off.value)
+}
+
+/* ------------------ «Сбылось» (PN-14, Р-13; макет done.html) ------------------ */
+// Сбывшаяся: деньги ушли покупкой (PN-13) — в очереди её нет; экран — память: 100 %, месяц и срок, история.
+const isDone = computed(() => !!goal.value?.doneAt)
+const doneTermLine = computed(() => (goal.value && isDone.value ? doneLabel(doneTerm(goal.value)) : ''))
+const doneAtTitle = computed(() => (goal.value?.doneAt ? `Сбылось в ${monthIn(monthKey(new Date(goal.value.doneAt)))}` : ''))
+// «Ещё нет» прячет вопрос до следующего открытия экрана (ref живёт, пока экран открыт).
+const notYet = ref(false)
+watch(goalId, () => (notYet.value = false))
+const doneOpen = ref(false)
+function markDone() {
+  if (!goal.value) return
+  financeStore.markGoalDone(goal.value.id)
+  doneOpen.value = true
+}
+function shareDone() {
+  doneOpen.value = false
+  storyOpen.value = true
 }
 // Пополнение и снятие двигают тенговую базу счёта: валютный счёт пересчитал бы её по
 // курсу при следующей правке и молча потерял сдвиг. Удалённые счета — тоже не сюда.
@@ -114,7 +138,9 @@ const need = computed(() => term.value?.need ?? 0)
 const remaining = computed(() => term.value?.remaining ?? 0)
 const months = computed(() => term.value?.months ?? Infinity)
 const doneMonth = computed(() => term.value?.doneMonth ?? null)
-const progress = computed(() => (goal.value ? pct(goal.value.have, need.value) : 0))
+const progress = computed(() => (isDone.value ? 100 : goal.value ? pct(goal.value.have, need.value) : 0))
+// «Купили?» (PN-14): мечта (не фонд — у фонда «Собрано», он не сбывается) накоплена целиком и ещё не отмечена.
+const askBought = computed(() => !!goal.value && !isDone.value && isDream.value && remaining.value <= 0 && !notYet.value)
 
 const doneTitle = computed(() => {
   if (term.value?.off) return 'На паузе'
@@ -292,7 +318,13 @@ const wallpaperSrc = computed(() => {
   const t = templateById(goal.value?.template)
   return t ? templateImageUrl(t, 2400) : null
 })
-const storyData = computed(() => ({ percent: progress.value, goalName: goal.value?.name, doneMonth: doneMonth.value ? monthIn(doneMonth.value) : null }))
+const storyData = computed(() => ({
+  percent: progress.value,
+  goalName: goal.value?.name,
+  doneMonth: doneMonth.value ? monthIn(doneMonth.value) : null,
+  // Сбывшаяся (PN-14): «<имя> · сбылось за N месяцев».
+  doneTerm: goal.value && isDone.value ? doneTerm(goal.value) : null,
+}))
 function share() {
   storyOpen.value = true
 }
@@ -331,12 +363,25 @@ function share() {
       </button>
     </HeaderActions>
     <Sheet v-if="canEdit" :open="menuOpen" :title="goal.name" @close="menuOpen = false">
-      <div class="flex flex-col">
+      <!-- Сбывшаяся (PN-14, ворота): «Вернуть в мечты» и «Изменить цель» — удаление внутри листа правки, как у всех. -->
+      <div v-if="isDone" class="flex flex-col">
+        <button type="button" class="press flex w-full cursor-pointer items-center gap-3 border-t border-line px-1 py-[13px] text-left text-[16px] font-semibold first:border-t-0 text-ink" data-goal-undo @click="menu('undo')">
+          <span class="grid size-[34px] shrink-0 place-items-center rounded-[11px] bg-surface-2 text-ink-2"><PhArrowUUpLeft :size="18" /></span>Вернуть в мечты
+        </button>
+        <button type="button" class="press flex w-full cursor-pointer items-center gap-3 border-t border-line px-1 py-[13px] text-left text-[16px] font-semibold first:border-t-0 text-ink" @click="menu('edit')">
+          <span class="grid size-[34px] shrink-0 place-items-center rounded-[11px] bg-surface-2 text-ink-2"><PhPencilSimple :size="18" /></span>Изменить цель
+        </button>
+      </div>
+      <div v-else class="flex flex-col">
         <button v-if="isDream && !isMain" type="button" class="press flex w-full cursor-pointer items-center gap-3 border-t border-line px-1 py-[13px] text-left text-[16px] font-semibold first:border-t-0 text-brand" @click="menu('main')">
           <span class="grid size-[34px] shrink-0 place-items-center rounded-[11px] bg-brand-soft text-brand"><PhStar :size="18" weight="fill" /></span>Сделать главной
         </button>
         <button type="button" class="press flex w-full cursor-pointer items-center gap-3 border-t border-line px-1 py-[13px] text-left text-[16px] font-semibold first:border-t-0 text-ink" @click="menu('edit')">
           <span class="grid size-[34px] shrink-0 place-items-center rounded-[11px] bg-surface-2 text-ink-2"><PhPencilSimple :size="18" /></span>Изменить цель
+        </button>
+        <!-- «Сбылось» — у мечты всегда (купили раньше, чем накопили), цветом «готово», не брендом (ворота PN-12). -->
+        <button v-if="isDream" type="button" class="press flex w-full cursor-pointer items-center gap-3 border-t border-line px-1 py-[13px] text-left text-[16px] font-semibold first:border-t-0 text-ok" data-goal-done-menu @click="menu('done')">
+          <span class="grid size-[34px] shrink-0 place-items-center rounded-[11px] bg-ok-soft text-ok"><PhCheck :size="18" weight="bold" /></span>Сбылось
         </button>
         <button type="button" class="press flex w-full cursor-pointer items-center gap-3 border-t border-line px-1 py-[13px] text-left text-[16px] font-semibold first:border-t-0 text-ink" @click="menu('pause')">
           <span class="grid size-[34px] shrink-0 place-items-center rounded-[11px] bg-surface-2 text-ink-2"><component :is="off ? PhPlay : PhPause" :size="18" /></span>{{ off ? 'Снять с паузы' : 'Поставить на паузу' }}
@@ -350,14 +395,14 @@ function share() {
          Строка — только «накоплено из нужно» (макет g4): имя уже в шапке, месяц — в карточке. -->
     <DreamHero
       :percent="progress"
-      :line="`${plain(goal.have)} из ${money(need)}`"
-      :eyebrow="isFund ? 'Собрано' : undefined"
+      :line="isDone ? money(goal.have) : `${plain(goal.have)} из ${money(need)}`"
+      :eyebrow="isDone ? 'Сбылось' : isFund ? 'Собрано' : undefined"
       :src="photoSrc"
       :author="goal.photoCredit?.author"
       :author-url="goal.photoCredit?.url"
       size="goal"
     >
-      <template v-if="canEdit && goal.photoId" #corner>
+      <template v-if="canEdit && goal.photoId && !isDone" #corner>
         <button
           type="button"
           aria-label="Сменить фото"
@@ -367,7 +412,7 @@ function share() {
           <PhCamera :size="18" />
         </button>
       </template>
-      <template v-if="canEdit && !goal.photoId" #actions>
+      <template v-if="canEdit && !goal.photoId && !isDone" #actions>
         <Chip quiet @click="pickerOpen = true"><PhCamera /> Добавить фото</Chip>
       </template>
     </DreamHero>
@@ -385,7 +430,25 @@ function share() {
     />
 
     <!-- Карточка g4: срок цели (живёт здесь, Р-116), взнос в месяц и одна главная — «Пополнить» у срока. -->
-    <Card>
+    <!-- Сбывшаяся (PN-14): вместо срока — месяц и «за N месяцев»; действий нет. -->
+    <Card v-if="isDone">
+      <h2 class="type-h2 flex items-center gap-2 text-ink" data-goal-done-at>
+        <span class="grid size-[22px] shrink-0 place-items-center rounded-full bg-ok text-surface"><PhCheck :size="13" weight="bold" /></span>{{ doneAtTitle }}
+      </h2>
+      <p class="mt-1.5 text-[15px] text-ink-2">{{ doneTermLine }}</p>
+    </Card>
+    <!-- Накоплено целиком (PN-14): «Купили?» — брендовая «Сбылось» у предмета, тихая «Ещё нет»; «Пополнить» нет. -->
+    <Card v-else-if="askBought" data-goal-ask>
+      <h2 class="type-h2 text-ink">{{ canEdit ? 'Накоплено!' : 'Накоплено' }}</h2>
+      <template v-if="canEdit">
+        <p class="mt-1.5 text-[15px] text-ink-2">Купили?</p>
+        <div class="mt-3.5 flex gap-2.5">
+          <Button variant="secondary" size="md" class="flex-1" data-goal-not-yet @click="notYet = true">Ещё нет</Button>
+          <Button size="md" class="flex-1" data-goal-done @click="markDone">Сбылось</Button>
+        </div>
+      </template>
+    </Card>
+    <Card v-else>
       <h2 class="type-h2 text-ink">{{ doneTitle }}</h2>
       <p v-if="doneLine" class="mt-1.5 text-[15px] text-ink-2">{{ doneLine }}</p>
       <Button
@@ -402,7 +465,7 @@ function share() {
 
     <!-- Пауза плана и подушка — строкой к плану долгов на «Закрыть быстрее» (Б17, принято на воротах); абзаца нет. -->
     <RouterLink
-      v-if="paused || planCushion"
+      v-if="(paused || planCushion) && !isDone"
       to="/money/debts/faster"
       class="press flex items-center gap-2.5 rounded-[16px] px-3.5 py-3 text-[14.5px] font-semibold"
       :class="paused ? 'bg-warn-soft text-warn' : 'bg-ok-soft text-ok'"
@@ -413,7 +476,7 @@ function share() {
     </RouterLink>
 
     <!-- Взнос полем, «Снять», расчёты и график — за «Подробнее», по умолчанию свёрнуты (правило 12; в макете g4 их нет) -->
-    <details>
+    <details v-if="!isDone">
       <summary :class="cn(buttonVariants({ variant: 'ghost' }), 'flex w-full list-none [&::-webkit-details-marker]:hidden')">Подробнее</summary>
       <div class="mt-2 flex flex-col gap-3">
         <p v-if="leftLine" class="px-1 text-[14px] text-ink-2 num" data-goal-left>{{ leftLine }}</p>
@@ -558,6 +621,9 @@ function share() {
     <Toast v-if="closerNote"><span data-closer>{{ closerNote }}</span></Toast>
 
     <!-- Карточка для сторис (B2C-20): без сумм -->
+    <!-- Момент «Сбылось» (PN-14): «Поделиться» — та же карточка ниже, со строкой «сбылось за N месяцев» -->
+    <DoneSheet :goal-id="doneOpen ? goal.id : null" :src="storySrc" @close="doneOpen = false" @share="shareDone" />
+
     <StorySheet :open="storyOpen" kind="goal" :data="storyData" :src="storySrc" :wallpaper-src="wallpaperSrc" @close="storyOpen = false" />
 
     <!-- Окно: Изменить цель -->

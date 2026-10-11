@@ -16,6 +16,8 @@ export type StoryData = {
   percent?: number
   goalName?: string
   doneMonth?: string | null
+  /** Сбылось (PN-14): за сколько месяцев — строка «<имя> · сбылось за N месяцев», подпись «Сбылось». */
+  doneTerm?: number | null
   /** Утечки: сколько подписок отменили за месяц. */
   count?: number
 }
@@ -58,9 +60,14 @@ export function storyText(kind: StoryKind, data: StoryData): StoryTexts {
   }
   const percent = clamp(Math.round(data.percent ?? 0), 0, 100)
   const name = withoutMoney(data.goalName ?? '') || 'Мечта'
-  const line = withoutMoney(data.doneMonth ? `${name} · будет нашей в ${data.doneMonth}` : name)
+  const tail = data.doneTerm
+    ? ` · сбылось за ${data.doneTerm} ${plural(data.doneTerm, 'месяц', 'месяца', 'месяцев')}`
+    : data.doneMonth
+      ? ` · будет нашей в ${data.doneMonth}`
+      : ''
+  const line = withoutMoney(name + tail)
   // Обои (PN-10): те же процент и строка, подписей сверху нет — верх экрана блокировки занят часами.
-  const top = kind === 'wallpaper' ? { app: '', label: '' } : { app: APP, label: 'До мечты' }
+  const top = kind === 'wallpaper' ? { app: '', label: '' } : { app: APP, label: data.doneTerm ? 'Сбылось' : 'До мечты' }
   return { kind, ...top, big: `${percent} %`, line, percent }
 }
 
