@@ -134,8 +134,8 @@
 | | PN-13 Модель и расчёты: `doneAt`, деньги как покупка | `block-4-done/PN-13-model-finance.md` | PN-12 (ворота ✅) | ✅ |
 | | PN-14 Экраны: «Купили?», «Сбылось», момент, альбом | `block-4-done/PN-14-screens.md` | PN-13 | ✅ |
 | | PN-15 Демо, e2e и доки | `block-4-done/PN-15-demo-e2e-docs.md` | PN-14 | ✅ |
-| 4а. Мечты: доводка ⬜ *(M без ворот; владелец 2026-10-11)* | PN-33 «Другие фото» темы у существующей мечты | `block-4a-dreams-polish/PN-33-photo-variants.md` | Блок 4 🏁 | ⬜ |
-| | PN-34 «Уже купили» свёрнуто · e2e и доки | `block-4a-dreams-polish/PN-34-bought-collapsed.md` | PN-33 | ⬜ |
+| 4а. Мечты: доводка 🔄 *(M без ворот; владелец 2026-10-11)* | PN-33 «Другие фото» темы у существующей мечты | `block-4a-dreams-polish/PN-33-photo-variants.md` | Блок 4 🏁 | ✅ |
+| | PN-34 «Уже купили» свёрнуто · e2e и доки | `block-4a-dreams-polish/PN-34-bought-collapsed.md` | PN-33 | ✅ |
 | 5. Прикинуть ⬜ | PN-16 Расчёты `tryCredit` и `canAfford` | `block-5-estimate/PN-16-estimate-finance.md` | Блок 4а 🏁 (расчёт — Блок 2) | ⬜ |
 | | PN-17 Листы «Прикинуть кредит» и «Хватит?» | `block-5-estimate/PN-17-estimate-sheets.md` | PN-16 | ⬜ |
 | | PN-18 e2e и доки | `block-5-estimate/PN-18-e2e-docs.md` | PN-17 | ⬜ |
@@ -437,6 +437,19 @@ Production `dpl_Fh6vRtoaqe6bC1pZTfUYDzit8uQR`, откат — promote `dpl_EsjHT
   истории); e2e `pn-block4-done` (е) приёмки — «Сбылось» из меню у мечты не на 100 %. `main` = `744d732` (мёрж Блока 4), Production
   **`dpl_Epab2F7Bs3xm5dBYLNyHQpHgCeqC`**, откат — promote `dpl_8pJxRwqU4S1hWLX6DC9yM8bCztQy`; база на `main` — **179 файлов / 1807 ✅ +
   1 пропуск**, `e2e/` — 33 / 216. Id Production перед следующим деплоем перечитать — docs-push тоже создаёт новый.
+
+**После Блока 4а (Мечты: доводка; исполнитель, 2026-10-11)**
+- **Ряд фото темы — один компонент** `components/goals/ThemePhotoRow.vue` (`photos`, `selected`, эмит `pick`; `data-theme-photos`,
+  кнопки `aria-label` «Фото N», `aria-pressed`) — в `GoalNew` и `PhotoPicker`; копий разметки не заводить. `PhotoPicker`: `variants =
+  themePhotos(pickedType)`, ряд + «Выбрать это» (+ «Пропустить»/«Убрать фото») — **липкий низ листа** (`sticky -bottom-9 -mx-5 -mb-9
+  … pb-9`; с `bottom-0` под блоком просвечивает сетка — Chrome держит его над нижним отступом `Sheet`); `watch(open)` — `immediate`
+  (смонтированный открытым лист отмечает тему варианта). Новые листы с длинной сеткой и главной кнопкой — тот же приём.
+- **«Уже купили» свёрнуто** (`Wishes.vue`): `data-bought-card` / `data-bought-toggle` (`aria-expanded`), `boughtOpen` из
+  `history.state.boughtOpen` (`toggleBoughtOpen` → `history.replace`), сумма `data-bought-sum` — только раскрыто. SSR-тесты и e2e,
+  смотрящие купленное, раскрывают `screenMixin({ boughtOpen: true })` (`Wishes.test.ts`, `GoalDetail.test.ts` PV-18, e2e PV Б4).
+- Демо фото мечты не меняет (загрузки нет — «Нет сети — фото не сменилось»); замену героя проверять на Go-моках (рецепт —
+  Handoff Б4а). Тесты: `PhotoPicker.dom` (+3), `Wishes.bought.dom` (3), e2e `pn-block4a-polish` (2). База: **181 файл / 1815 ✅ +
+  1 пропуск**, `e2e/` — 34 / 218.
 
 **Связки между блоками** (чтобы критик следил за промптами): Блок 2 → 5 (`inSalaries`, `capitalStats`); Блок 3 → 4
 (`GoalDetail`/`Dreams`/`StorySheet` после PN-09/10), → 5 (`goalPace`/`closerDays`), → 9 (`GoalNew` travel); Блок 7 → 8

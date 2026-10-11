@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onScopeDispose } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { PhCheck, PhGift, PhListBullets, PhPlus, PhSquaresFour } from '@phosphor-icons/vue'
+import { PhCaretRight, PhCheck, PhGift, PhListBullets, PhPlus, PhSquaresFour } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, parseMoney } from '@/lib/money'
@@ -76,6 +76,14 @@ const activeById = computed(() => new Map(activeWish.value.map((w) => [w.id, w])
 // Перестановка внутри видимой вкладки: прочие желания семьи стоят на своих местах.
 const moveActive = (id: string, index: number) => financeStore.moveWish(id, index, activeIds.value)
 const boughtSum = computed(() => wishTotal(boughtWish.value))
+// «Уже купили» свёрнуто при новом заходе (PN-34, как альбом «Сбылось» на «Мечтах»): раскрытие живёт в записи
+// истории — «назад» возвращает как оставили, новая вкладка или заход — новая запись, свёрнуто.
+const history = router?.options.history
+const boughtOpen = ref(history?.state?.boughtOpen === true)
+function toggleBoughtOpen() {
+  boughtOpen.value = !boughtOpen.value
+  history?.replace(history.location, { ...history.state, boughtOpen: boughtOpen.value })
+}
 
 function nameOf(id: PersonId) {
   return people.value.find((p) => p.id === id)?.name || 'Участник'
@@ -269,13 +277,32 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
       <GiftSheet :open="!!editGiftId" :gift-id="editGiftId" :for-slot="person.id" :for-name="person.name" @close="editGiftId = null" />
     </template>
 
-    <!-- «Уже купили» — только когда есть что показать (правило 12: без пустых секций). -->
-    <Section v-if="boughtWish.length" title="Уже купили">
-      <template #action>
-        <span class="type-meta num">{{ money(boughtSum) }}</span>
-      </template>
-    </Section>
-    <div v-if="boughtWish.length && view === 'grid'" class="grid grid-cols-2 gap-2.5">
+    <!-- «Уже купили» — только когда есть что показать (правило 12: без пустых секций). Свёрнуто, как альбом «Сбылось»
+         (PN-34): строка — стопка фото, «Уже купили · N», шеврон; сумма — только в раскрытом (нет шумных цифр). -->
+    <Card v-if="boughtWish.length" flush class="mt-4 px-3.5 py-1" data-bought-card>
+      <button
+        type="button"
+        class="press flex w-full cursor-pointer items-center gap-3 py-[11px] text-left"
+        :aria-expanded="boughtOpen"
+        data-bought-toggle
+        @click="toggleBoughtOpen"
+      >
+        <span class="flex shrink-0">
+          <span
+            v-for="(w, i) in boughtWish.slice(0, 3)"
+            :key="w.id"
+            class="block size-[30px] overflow-hidden rounded-full border-2 border-surface bg-surface-3"
+            :class="i > 0 && '-ml-2.5'"
+          >
+            <img v-if="w.photoId && wishSrc[w.photoId]" :src="wishSrc[w.photoId]!" alt="" class="size-full object-cover" />
+          </span>
+        </span>
+        <span class="min-w-0 flex-1 truncate text-[16px] font-semibold text-ink">Уже купили · {{ boughtWish.length }}</span>
+        <span v-if="boughtOpen" class="shrink-0 type-meta num" data-bought-sum>{{ money(boughtSum) }}</span>
+        <PhCaretRight :size="14" class="shrink-0 text-ink-3 transition-transform" :class="boughtOpen && 'rotate-90'" />
+      </button>
+    </Card>
+    <div v-if="boughtOpen && boughtWish.length && view === 'grid'" class="mt-2.5 grid grid-cols-2 gap-2.5">
       <WishTile
         v-for="w in boughtWish"
         :key="w.id"
@@ -288,7 +315,7 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
         @toggle="financeStore.toggleBought(w.id)"
       />
     </div>
-    <Card v-else-if="boughtWish.length" flush>
+    <Card v-else-if="boughtOpen && boughtWish.length" flush class="mt-2.5">
       <WishRow
         v-for="w in boughtWish"
         :key="w.id"

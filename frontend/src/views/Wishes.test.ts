@@ -64,17 +64,26 @@ describe('views/Wishes.vue — желания по людям и сюрприз�
   it('/wishes — «Общие»: весь список семьи, вкладки участников и «Общие», итог «Уже купили», сюрпризов нет', async () => {
     family('member', 'a', { wishlist: list() })
     const html = await renderScreen(Wishes, '/wishes')
-    for (const n of ['Сковорода', 'Чайник', 'Лампа', 'Диван', 'Пылесос']) expect(html).toContain(n)
+    for (const n of ['Сковорода', 'Чайник', 'Лампа', 'Диван']) expect(html).toContain(n)
     expect(pressed(html, 'Общие')).toBe(true)
     expect(pressed(html, 'Ильяс')).toBe(false)
-    expect(html).toContain(money(180_000))
     expect(html).not.toContain('Сюрпризы для')
+    // PN-34: «Уже купили» свёрнуто при заходе — строка со счётчиком, ни плиток, ни суммы.
+    expect(html).toMatch(/aria-expanded="false"[^>]*data-bought-toggle/)
+    expect(html).toContain('Уже купили · 1')
+    expect(html).not.toContain('Пылесос')
+    expect(html).not.toContain('data-bought-sum')
+    expect(html).not.toContain(money(180_000))
+    const open = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ boughtOpen: true })])
+    expect(open).toMatch(/aria-expanded="true"[^>]*data-bought-toggle/)
+    expect(open).toContain('Пылесос')
+    expect(open).toContain(money(180_000))
   })
 
   it('/people/b — список Аруны: её записи и добавленные в её список, чужих нет; «Сюрпризы для Аруна» видит автор, себе — нет', async () => {
     const store = family('member', 'a', { wishlist: list() })
     store.addGift({ forSlot: 'b', name: 'Наушники', price: 90_000 })
-    const html = await renderScreen(Wishes, '/people/b')
+    const html = await renderScreen(Wishes, '/people/b', undefined, [screenMixin({ boughtOpen: true })])
     expect(pressed(html, 'Аруна')).toBe(true)
     expect(html).toContain('Чайник')
     expect(html).toContain('Лампа')
@@ -414,14 +423,14 @@ describe('views/Wishes.vue — галерея и список с переклю�
 
   it('по умолчанию галерея: плитки без автора и даты, одна кнопка «Списком» в строке вкладок; в списке — строки с автором и датой, ссылкой и картинкой, кнопка «Галереей»; выбор — на устройстве', async () => {
     family('member', 'a', { wishlist: list() })
-    const grid = await renderScreen(Wishes, '/wishes')
+    const grid = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ boughtOpen: true })])
     expect(grid).toContain('aria-label="Списком"')
     expect(grid).not.toContain('aria-label="Галереей"')
     expect(grid).toMatch(/<button type="button"[^>]*data-wish="pan"/)
     expect(grid).not.toContain('Ильяс · 10 сентября')
     expect(grid).toContain('Аруна · куплено 20 сентября')
 
-    const rows = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ view: 'list' })])
+    const rows = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ view: 'list', boughtOpen: true })])
     expect(rows).toContain('aria-label="Галереей"')
     expect(rows).not.toContain('aria-label="Списком"')
     expect(rows).toContain('Ильяс · 10 сентября')
