@@ -19,13 +19,15 @@ const term = computed(() => (goal.value ? doneLabel(doneTerm(goal.value)) : ''))
 </script>
 
 <template>
-  <Sheet :open="!!goal" title="Сбылось!" @close="emit('close')">
+  <!-- Слово момента — крупно под фото, как в макете; заголовок листа остаётся для диктора (`/ux` Б4). -->
+  <Sheet :open="!!goal" title="Сбылось!" title-hidden @close="emit('close')">
     <div v-if="goal" class="flex flex-col items-center gap-1 text-center" data-done-sheet>
-      <div class="relative mb-3 h-[300px] w-full overflow-hidden rounded-[22px] bg-surface-3">
+      <div class="relative mb-3.5 h-[300px] w-full overflow-hidden rounded-[22px] bg-surface-3">
         <img v-if="src" :src="src" alt="" class="size-full object-cover" />
         <span class="absolute bottom-3.5 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-surface px-3 py-1.5 text-[14px] font-bold text-ok num">✓ 100 %</span>
       </div>
-      <b class="text-[19px] font-semibold text-ink">{{ goal.name }}</b>
+      <span class="type-sheet text-[34px] leading-[1.05] text-ink" aria-hidden="true">Сбылось!</span>
+      <b class="type-h3 text-ink">{{ goal.name }}</b>
       <span class="text-[15px] text-ink-2" data-done-term>{{ term }}</span>
       <Button class="mt-4 w-full" data-done-share @click="emit('share')">Поделиться</Button>
       <Button variant="ghost" size="md" class="w-full" data-done-ok @click="emit('close')">Готово</Button>

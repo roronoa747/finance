@@ -101,9 +101,16 @@ async function onFile(file: File) {
   photoNote.value = ok ? null : 'Фото не загрузилось — попробуйте при сети.'
 }
 
-/* ---------- альбом «Сбылось» (PN-14, Р-13; ворота done.html): свёрнут при каждом заходе ---------- */
+/* ---------- альбом «Сбылось» (PN-14, Р-13; ворота done.html): свёрнут при новом заходе ---------- */
 const done = computed(() => doneGoals(financeStore.goals))
-const albumOpen = ref(false)
+// Раскрытие живёт в записи истории: «назад» со сбывшейся — альбом как оставили (прокрутка оболочки на месте),
+// новый заход (вкладка) — новая запись, свёрнут (`/ux` Б4 «понятность»).
+const history = router?.options.history
+const albumOpen = ref(history?.state?.doneAlbum === true)
+function toggleAlbum() {
+  albumOpen.value = !albumOpen.value
+  history?.replace(history.location, { ...history.state, doneAlbum: albumOpen.value })
+}
 const doneSrc = usePhotos(() => done.value.map((g) => g.photoId))
 const doneSrcOf = (g: Goal) => (g.photoId ? doneSrc.value[g.photoId] : null)
 const doneMeta = (g: Goal) => `${monthShort(monthKey(new Date(g.doneAt!)))} · за ${doneTerm(g)} мес.`
@@ -202,7 +209,7 @@ onMounted(refresh)
         class="press flex w-full cursor-pointer items-center gap-3 py-[11px] text-left"
         :aria-expanded="albumOpen"
         data-done-album
-        @click="albumOpen = !albumOpen"
+        @click="toggleAlbum"
       >
         <span class="flex shrink-0">
           <span

@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, nextTick, type App } from 'vue'
+import { createApp, h, nextTick, type App } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
-import { createRouter, createMemoryHistory } from 'vue-router'
+import { RouterView, createRouter, createMemoryHistory, createWebHistory } from 'vue-router'
 import { routes } from '@/router'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
@@ -88,5 +88,45 @@ describe('PN-14: альбом «Сбылось» нажатием', () => {
     await open()
     expect(album().getAttribute('aria-expanded')).toBe('false')
     expect(rows()).toHaveLength(0)
+  })
+
+  it('«назад» со сбывшейся — альбом раскрыт, как оставили; новый заход — свёрнут (`/ux` Б4)', async () => {
+    // Настоящая история браузера и RouterView: «Мечты» уходят со строки и возвращаются «назад», как в оболочке.
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    useAuthStore().setAuthData(authAs('member', 'a'))
+    const doc = planFamilyDoc()
+    doc.goals = doc.goals.map((g) => (g.id === 'car' ? { ...g, doneAt: '2026-09-05T07:00:00.000Z' } : g))
+    useFinanceStore().setHouseholdDoc(doc, 1)
+    const router = createRouter({
+      history: createWebHistory(),
+      routes: [
+        { path: '/', component: Dreams },
+        { path: '/goals/:id', component: { render: () => null } },
+      ],
+    })
+    await router.push('/')
+    await router.isReady()
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app = createApp({ render: () => h(RouterView) })
+    app.use(pinia)
+    app.use(router)
+    app.mount(root)
+    await nextTick()
+
+    album().click()
+    await nextTick()
+    rows()[0]!.click()
+    await vi.waitFor(() => expect(document.querySelector('[data-done-album]')).toBeNull())
+
+    router.back()
+    await vi.waitFor(() => expect(album().getAttribute('aria-expanded')).toBe('true'))
+    expect(rows()).toHaveLength(1)
+
+    await router.push('/goals/car')
+    await router.push('/')
+    await nextTick()
+    expect(album().getAttribute('aria-expanded')).toBe('false')
   })
 })
