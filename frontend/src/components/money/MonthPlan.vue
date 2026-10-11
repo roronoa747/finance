@@ -51,6 +51,7 @@ import MarkSheet from '@/components/MarkSheet.vue'
 import SalaryExchange from '@/components/SalaryExchange.vue'
 import SalaryRow from '@/components/SalaryRow.vue'
 import ExtraIncomeSheet from '@/components/capital/ExtraIncomeSheet.vue'
+import AffordSheet from '@/components/money/AffordSheet.vue'
 import DueRow from '@/components/money/DueRow.vue'
 import MonthRing from '@/components/money/MonthRing.vue'
 import SalarySheet from '@/components/money/SalarySheet.vue'
@@ -213,6 +214,24 @@ watch(
   },
   { immediate: true },
 )
+
+/* ---------- «Хватит?» из «+» (`?afford=1`, PN-17): ничего не пишет — гарда viewer нет ---------- */
+const affordOpen = ref(false)
+watch(
+  () => route.query.afford,
+  (v) => {
+    if (v === '1') affordOpen.value = true
+  },
+  { immediate: true },
+)
+// Закрыли — адрес очищается: «+» снова открывает лист.
+function closeAfford() {
+  affordOpen.value = false
+  if (!('afford' in route.query)) return
+  const q = { ...route.query }
+  delete q.afford
+  void router.replace({ query: q })
+}
 
 /* ---------- кто платит (Р-80) ---------- */
 type PayerTarget = { kind: 'obligation' | 'credit' | 'goal' | 'debt'; id: string; name: string; payer: PersonId | null }
@@ -634,6 +653,7 @@ function addFund(kind: 'reserve' | 'cushion') {
     <!-- Зарплата: своя и ждём — «Пришла» (и «Другая сумма или счёт»); тихо — отметка пришедшей и «Изменить оклад» -->
     <SalarySheet :month-key="monthKey" :line="salarySheet" @close="salaryFor = null" />
     <ExtraIncomeSheet :open="incomeOpen" @close="incomeOpen = false" />
+    <AffordSheet :open="affordOpen" @close="closeAfford" />
 
     <!-- Платёж: одна кнопка «Оплатил»; тихо — «Изменить платёж» -->
     <Sheet :open="!!paySheet" :title="paySheet?.name ?? ''" @close="payFor = null">

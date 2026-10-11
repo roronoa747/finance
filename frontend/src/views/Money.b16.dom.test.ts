@@ -441,3 +441,31 @@ describe('ML-17: «Долги» — долг человеку, «Людям · N
     expect(txt(dialog())).not.toContain('Удалить долг')
   })
 })
+
+describe('PN-17: «Прикинуть кредит» с «Долгов» и «Хватит?» с «Месяца» — по адресу из «+»', () => {
+  it('?try=1 открывает лист; закрыли — адрес без ?try', async () => {
+    await open('member', familyDoc(), '/money/debts?try=1')
+    await flush()
+    expect(txt(dialog())).toContain('Прикинуть кредит')
+    await press(q('[role="dialog"] button[aria-label="Закрыть"]'))
+    expect(dialog()).toBeNull()
+    await vi.waitFor(() => expect(router.currentRoute.value.query.try).toBeUndefined())
+  })
+
+  it('viewer: тихая кнопка «Прикинуть кредит» видна и открывает лист; «+ Долг» нет', async () => {
+    await open('viewer', familyDoc(), '/money/debts')
+    expect(q('[data-add-credit]')).toBeNull()
+    expect(txt(q('[data-try-credit]'))).toBe('Прикинуть кредит')
+    await press(q('[data-try-credit]'))
+    expect(txt(dialog())).toContain('Прикинуть кредит')
+    expect(q('[data-try-sum]')).not.toBeNull()
+  })
+
+  it('?afford=1 на «Месяце» открывает «Хватит?» — и у viewer; закрыли — адрес без ?afford', async () => {
+    await open('viewer', familyDoc(), '/month?afford=1', Month)
+    await flush()
+    expect(txt(dialog())).toContain('Хватит?')
+    await press(q('[role="dialog"] button[aria-label="Закрыть"]'))
+    await vi.waitFor(() => expect(router.currentRoute.value.query.afford).toBeUndefined())
+  })
+})

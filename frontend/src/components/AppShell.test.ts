@@ -164,13 +164,22 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     expect(html).toContain('Kaspi или Freedom — траты недели по разделам')
   })
 
+  it('PN-17: в «+» после «Долга» — «Прикинуть кредит» (→ /money/debts?try=1) и «Хватит ли?» (→ /month?afford=1)', async () => {
+    const html = await renderScreen(AppShell, '/', undefined, [screenMixin({ addOpen: true })])
+    const at = ['кредит, рассрочка, человеку', 'Прикинуть кредит', 'Хватит ли?'].map((t) => html.indexOf(t))
+    expect(at.every((i) => i >= 0)).toBe(true)
+    expect([...at].sort((a, b) => a - b)).toEqual(at)
+    expect(html).toContain('нагрузка, мечта, переплата')
+    expect(html).toContain('покупка до зарплаты')
+  })
+
   // Критик Блока 3: у viewer нет ни «+», ни строки желаний — добавить покупку он всё равно не может.
   it('viewer: кнопки «+» нет, лист без действий', async () => {
     setActivePinia(createPinia())
     signIn('viewer', 'b')
     const html = await renderScreen(AppShell, '/', undefined, [screenMixin({ addOpen: true })])
     expect(html).not.toContain('aria-label="Добавить"')
-    for (const t of ['Покупка в список желаний', 'Загрузить выписку', 'Новая мечта', 'Внеплановый доход', 'Обязательство или подписка', 'кредит, рассрочка, человеку']) {
+    for (const t of ['Покупка в список желаний', 'Загрузить выписку', 'Новая мечта', 'Внеплановый доход', 'Обязательство или подписка', 'кредит, рассрочка, человеку', 'Прикинуть кредит', 'Хватит ли?']) {
       expect(html).not.toContain(t)
     }
   })

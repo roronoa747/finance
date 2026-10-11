@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { RouterLink } from 'vue-router'
-import { PhCaretRight, PhCheck, PhPlus, PhUsers } from '@phosphor-icons/vue'
+import { computed, ref, watch } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { PhCalculator, PhCaretRight, PhCheck, PhPlus, PhUsers } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
@@ -19,6 +19,7 @@ import ObligationSheet from '@/components/capital/ObligationSheet.vue'
 import MarkSheet from '@/components/MarkSheet.vue'
 import PaymentLine from '@/components/money/PaymentLine.vue'
 import PlanSquare from '@/components/money/PlanSquare.vue'
+import TryCreditSheet from '@/components/money/TryCreditSheet.vue'
 
 /**
  * Экран «Долги» (Блок 16, Р-110; макет money-b16.html): карточка — сумма остатков и «без долгов — к <месяц>»; кредиты
@@ -73,6 +74,26 @@ const people = computed(() =>
 const peopleOpen = ref(false)
 const obligationId = ref<string | null>(null)
 const addPeopleOpen = ref(false)
+
+/* ---------- «Прикинуть кредит» (PN-17): тихая кнопка и адрес `?try=1` из «+»; ничего не пишет — и viewer ---------- */
+const route = useRoute()
+const router = useRouter()
+const tryOpen = ref(false)
+watch(
+  () => route.query.try,
+  (v) => {
+    if (v === '1') tryOpen.value = true
+  },
+  { immediate: true },
+)
+// Закрыли — адрес очищается: тот же «+» снова ведёт на новый адрес и открывает лист.
+function closeTry() {
+  tryOpen.value = false
+  if (!('try' in route.query)) return
+  const q = { ...route.query }
+  delete q.try
+  void router.replace({ query: q })
+}
 </script>
 
 <template>
@@ -164,13 +185,15 @@ const addPeopleOpen = ref(false)
   </template>
   <PlanSquare v-else-if="pastPlans" />
 
-  <div v-if="!authStore.isViewer">
-    <Button variant="ghost" class="px-2.5" data-add-credit @click="addOpen = true"><PhPlus :size="16" weight="bold" /> Долг</Button>
+  <div class="flex flex-wrap gap-1">
+    <Button v-if="!authStore.isViewer" variant="ghost" class="px-2.5" data-add-credit @click="addOpen = true"><PhPlus :size="16" weight="bold" /> Долг</Button>
+    <Button variant="ghost" class="px-2.5" data-try-credit @click="tryOpen = true"><PhCalculator :size="16" /> Прикинуть кредит</Button>
   </div>
 
   <CreditSheet :credit-id="creditId" @close="creditId = null" @payoff="(id) => { payoffId = id; creditId = null }" />
   <PayoffSheet :credit-id="payoffId" @close="payoffId = null" />
   <NewDebtSheet :open="addOpen" @close="addOpen = false" />
+  <TryCreditSheet :open="tryOpen" @close="closeTry" />
   <ObligationSheet :obligation-id="obligationId" @close="obligationId = null" />
   <NewObligationSheet :open="addPeopleOpen" people @close="addPeopleOpen = false" />
   <MarkSheet
