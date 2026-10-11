@@ -170,6 +170,7 @@ describe('PN-19: «Подушка» в «Новой мечте» — фонд с
   })
 
   // Возврат приёмки Б6 (решение владельца А, `pn-block-6-first-run-cushion.md`): «Что копим?» первого запуска — только мечты.
+  // Вне первого запуска (без `next`) плитка есть и ведёт в фонд — первый тест этого блока.
   const tiles = () => [...document.querySelectorAll('button')].map((b) => b.textContent?.trim())
 
   it('первый запуск (`next`): плитки «Подушка» нет, остальные темы и «Своё фото» на месте', async () => {
@@ -178,19 +179,6 @@ describe('PN-19: «Подушка» в «Новой мечте» — фонд с
     expect(tiles()).toContain('Свадьба')
     expect(tiles()).toContain('Своё фото')
     expect(tiles()).toContain('По ссылке')
-  })
-
-  it('вне первого запуска (без `next`): «Подушка» есть и ведёт в фонд', async () => {
-    const finance = await open()
-    const router = app!.config.globalProperties.$router
-    expect(button('Подушка')).toBeDefined()
-    button('Подушка').click()
-    await nextTick()
-    button('Дальше').click()
-    await settle(router, /^\/goals\/(?!new)/)
-    const fund = finance.goals.find((g) => g.fund === 'cushion')!
-    expect(fund).toBeDefined()
-    expect(router.currentRoute.value.path).toBe(`/goals/${fund.id}`)
   })
 })
 
