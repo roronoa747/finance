@@ -10,7 +10,7 @@ import { useOperationsStore, type Draft, type DraftFile } from '@/stores/operati
 import { readStatementFiles } from '@/lib/statements/read'
 import { ruleFor, ruleMatchOf } from '@/lib/statements/model'
 import { BUDGET_BY_KIND, firstRunQuestions, paymentOpOfMonth, salaryOpOfMonth, type IncomeCandidate, type RecurringCandidate, type RecurringKind } from '@/lib/statements/firstRun'
-import { matchCandidates, matchCategory, operationAt } from '@/lib/statements/matching'
+import { matchCandidates, matchCategory, nearestEvent, operationAt, SALARY_TOLERANCE } from '@/lib/statements/matching'
 import type { Operation } from '@/lib/statements/types'
 import { budgetAmounts, spendRows } from '@/lib/finance'
 import { money, parseMoney, plain } from '@/lib/money'
@@ -200,7 +200,10 @@ const KINDS: { value: RecurringKind; label: string }[] = [
 ]
 const KIND_NAME: Record<RecurringKind, string | null> = { credit: null, rent: 'Аренда', utilities: 'Коммуналка', subscription: null, obligation: null }
 
-const incomeMeta = (c: IncomeCandidate) => `${money(c.amount)} · ${c.day}-го · ${c.name}${c.count > 1 ? ` · ${c.count} раз` : ''}`
+/** «по пятницам» — недельный приход (PN-24); иначе «24-го». */
+const BY_WEEKDAY = ['', 'по понедельникам', 'по вторникам', 'по средам', 'по четвергам', 'по пятницам', 'по субботам', 'по воскресеньям']
+const incomeWhen = (c: IncomeCandidate) => (c.rhythm === 'week' && c.weekday ? BY_WEEKDAY[c.weekday] : `${c.day}-го`)
+const incomeMeta = (c: IncomeCandidate) => `${money(c.amount)} · ${incomeWhen(c)} · ${c.name}${c.count > 1 ? ` · ${c.count} раз` : ''}`
 const recurringMeta = (c: RecurringCandidate) => `${money(c.amount)} · примерно ${c.day}-го${c.count > 1 ? ` · ${c.count} раз за период` : ''}`
 
 /**
@@ -214,7 +217,9 @@ function answerIncome(yes = true) {
   if (yes) {
     const salary = parseMoney(incomeSalary.value)
     if (salary <= 0) return
-    financeStore.setPerson(slot.value, { name: knownName.value, salary, payday: clampDay(incomePayday.value, q.candidate.day) })
+    // Еженедельный приход (PN-24): ритм «каждую неделю» и недельная сумма; иначе — месяц, как раньше.
+    const weekly = q.candidate.rhythm === 'week' && q.candidate.weekday ? { payRhythm: 'week' as const, weekday: q.candidate.weekday } : {}
+    financeStore.setPerson(slot.value, { name: knownName.value, salary, payday: clampDay(incomePayday.value, q.candidate.day), ...weekly })
     const op = ops.all.find((o) => o.id === q.candidate.opIds[0])
     if (op && (op.counterparty || q.candidate.regular)) {
       // Правило зарплаты без раздела — пересчитывать операции нечего.
@@ -223,7 +228,8 @@ function answerIncome(yes = true) {
       // отправителя в этом месяце — не зарплата, месяц остаётся неотмеченным.
       // Этот и прошлый месяц — как «Да» в «Неделе» (`acceptMatch`, хвост 959): иначе прошлый месяц займёт приход
       // другого отправителя вопросом «Это зарплата?», а «Да» на нём напишет второе правило зарплаты.
-      for (const period of [addMonths(monthKey(), -1), monthKey()]) {
+      if (q.candidate.rhythm === 'week') markWeeks(groupOps(q.candidate.opIds), salary)
+      else for (const period of [addMonths(monthKey(), -1), monthKey()]) {
         const cur = salaryOpOfMonth(groupOps(q.candidate.opIds), salary, period)
         if (cur) financeStore.markSalary(slot.value, { period, amount: Math.abs(cur.amount), source: 'statement', opId: cur.id, at: operationAt(cur.date) })
       }
@@ -231,6 +237,21 @@ function answerIncome(yes = true) {
   }
   markAnswered('income')
   advance()
+}
+
+/**
+ * Недельный доход из выписки (PN-24): каждый приход этого и прошлого месяца в допуске недельной суммы — отметка своей
+ * пятницы (`nearestEvent`, ключ — ISO-день); одна неделя — один приход.
+ */
+function markWeeks(list: Operation[], salary: number) {
+  const p = financeStore.people.find((x) => x.id === slot.value)
+  if (!p) return
+  const from = `${addMonths(monthKey(), -1)}-01`
+  for (const op of list) {
+    if (op.date < from || op.amount <= 0 || Math.abs(op.amount - salary) > salary * SALARY_TOLERANCE) continue
+    const near = nearestEvent(op.date, p)
+    if (near && near.gap <= 3) financeStore.markSalary(slot.value, { period: near.event.period, amount: op.amount, source: 'statement', opId: op.id, at: operationAt(op.date) })
+  }
 }
 
 /**
@@ -407,8 +428,8 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
         <DecisionCard question="Это ваш доход?" :meta="incomeMeta(current.candidate)" :progress="progress" :actions="{ primary: 'Да, это зарплата', secondary: 'Нет' }" @primary="answerIncome(true)" @secondary="answerIncome(false)">
           <template #inner>
             <div class="flex gap-3">
-              <Field label="Оклад, ₸" class="flex-1"><NumField v-model="incomeSalary" placeholder="450 000" /></Field>
-              <Field label="День" class="w-24"><NumField v-model="incomePayday" kind="int" placeholder="10" /></Field>
+              <Field :label="current.candidate.rhythm === 'week' ? 'За неделю, ₸' : 'Оклад, ₸'" class="flex-1"><NumField v-model="incomeSalary" placeholder="450 000" /></Field>
+              <Field v-if="current.candidate.rhythm !== 'week'" label="День" class="w-24"><NumField v-model="incomePayday" kind="int" placeholder="10" /></Field>
             </div>
           </template>
         </DecisionCard>

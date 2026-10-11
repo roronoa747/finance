@@ -218,3 +218,16 @@ describe('capitalStats — отметки месяца (критик Блока 
     expect(stats.growth).toBe(20_000 + givenOf(plan, 'goals'))
   })
 })
+
+describe('PN-24: доход полоски по ритму', () => {
+  it('недельный оклад 150 000 × 5 пятниц октября — доход 750 000; «переплата · зарплат» — от него', () => {
+    const okt: MonthPlanCtx = { key: '2026-10', totals: [], spendCategories: [], uploads: [] }
+    const doc = stateOf()
+    const state = { ...doc, people: [{ ...doc.people[0], salary: 150_000, payRhythm: 'week' as const, weekday: 5 }] }
+    const plan = monthPlan(state, okt)
+    expect(plan.income.total).toBe(750_000)
+    const stats = capitalStats(plan, { ...state, plans: state.plans }, '2026-10')
+    expect(stats.income).toBe(750_000)
+    expect(stats.overpay?.salaries).toBe(inSalaries(stats.overpay!.amount ?? 0, 750_000))
+  })
+})

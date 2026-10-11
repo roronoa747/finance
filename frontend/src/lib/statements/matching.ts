@@ -1,7 +1,7 @@
 import type { Credit, FxExchange, Obligation, Payment, Person, PersonId, RateBook } from '@/types/finance'
 import type { MerchantRule, Operation, PaymentRule } from './types'
 import { dayNumber, ruleFor } from './model'
-import { amountAt, creditDueAmount, dueIn, isSubscription, liveCredits, liveExchanges, liveObligations, paidFor, salaryTenge, type SalaryCtx } from '@/lib/finance'
+import { amountAt, creditDueAmount, dueIn, expectedEventTenge, isSubscription, liveCredits, liveExchanges, liveObligations, paidFor, payEventOf, payEvents, type PayEvent, type SalaryCtx } from '@/lib/finance'
 import { addMonths, dayLabel, daysInMonth, monthKey, todayIso } from '@/lib/dates'
 import { money } from '@/lib/money'
 
@@ -39,6 +39,8 @@ export const AMOUNT_TOLERANCE = 0.02
 export const ESTIMATE_TOLERANCE = 0.3
 /** Допуск суммы зарплаты (премия, вычеты). */
 export const SALARY_TOLERANCE = 0.1
+/** Допуск плавающей зарплаты (Р-6, понятность Б7): сумма меняется — от среднего трёх последних. */
+export const SALARY_FLOATING_TOLERANCE = 0.3
 /** Окно дат вокруг дня платежа, дней. */
 export const DAY_WINDOW = 5
 /** Окно дат вокруг дня зарплаты, дней. */
@@ -58,6 +60,31 @@ export function nearestPeriod(date: string, day: number): { period: string; gap:
   return best
 }
 
+/**
+ * Ближайший к дате операции приход зарплаты по ритму (понятность Б7, Р-5): события `payEvents` прошлого, этого и
+ * следующего месяца; месячный ритм — тот же ответ, что `nearestPeriod` по дню зарплаты. Нет событий — null.
+ */
+export function nearestEvent(date: string, p: Person): { event: PayEvent; gap: number } | null {
+  const month = date.slice(0, 7)
+  let best: { event: PayEvent; gap: number } | null = null
+  for (const key of [addMonths(month, -1), month, addMonths(month, 1)]) {
+    for (const event of payEvents(p, key)) {
+      const gap = Math.abs(dayNumber(date) - dayNumber(event.day))
+      if (!best || gap < best.gap) best = { event, gap }
+    }
+  }
+  return best
+}
+
+/** Зарплата в допуске прихода `event`: ±10 % ожидаемого, плавающая — ±30 % от среднего (`expectedEventTenge`). */
+function salaryFits(amount: number, p: Person, event: PayEvent, ctx?: SalaryCtx): boolean {
+  return within(amount, expectedEventTenge(p, event, ctx), p.floating ? SALARY_FLOATING_TOLERANCE : SALARY_TOLERANCE)
+}
+
+/** Вопрос по приходу: «Это аванс Ильяса?», «Это зарплата Ильяса за неделю?», иначе «Это зарплата Ильяса?». */
+export const salaryQuestion = (name: string, kind: PayEvent['kind'] = 'salary') =>
+  kind === 'advance' ? `Это аванс ${name}?` : kind === 'week' ? `Это зарплата ${name} за неделю?` : `Это зарплата ${name}?`
+
 /** Раздел трат операции, отмеченной платежом (плановые разделы — `plannedElsewhere`). */
 export function matchCategory(kind: MatchKind, target: Obligation | Credit | Person): string | null {
   if (kind === 'credit') return 'sc_credit'
@@ -74,7 +101,7 @@ type RuleTargets = { obligations: Obligation[]; credits: Credit[]; people: Perso
 
 /**
  * «Такая» строка правила «это платёж по …» (Р-6: «дальше *такие* строки отмечаются сами»): знак и
- * сумма в допуске — зарплата ±10 % оклада, кредит ±2 % `creditDueAmount` или ровно платёж,
+ * сумма в допуске — зарплата ±10 % ближайшего прихода по ритму (плавающая — ±30 % среднего; Б7), кредит ±2 % `creditDueAmount` или ровно платёж,
  * обязательство ±2 % суммы месяца в должный месяц (`dueIn`); оценка (коммуналка) суммой не
  * ограничена — зимой уходит за 30 %. Окна дат нет: поздний платёж — тоже платёж. Под одним продавцом идут и зарплата, и мелкие
  * пополнения, и платежи всех кредитов Kaspi, а «Перевод с карты на карту» Freedom — все переводы
@@ -85,8 +112,8 @@ export function ruleHit(op: Operation, payment: PaymentRule, targets: RuleTarget
   if (payment.kind === 'salary') {
     const p = targets.people.find((x) => x.id === payment.targetId)
     if (!p || op.amount <= 0) return null
-    const { period } = nearestPeriod(op.date, p.payday)
-    return within(amount, salaryTenge(p, period, targets.salary).tenge, SALARY_TOLERANCE) ? { target: p, period } : null
+    const near = nearestEvent(op.date, p)
+    return near && salaryFits(amount, p, near.event, targets.salary) ? { target: p, period: near.event.period } : null
   }
   if (op.amount >= 0) return null
   if (payment.kind === 'credit') {
@@ -189,9 +216,9 @@ export function matchCandidates(
   const linked = new Set(payments.map((p) => p.opId).filter((id): id is string => !!id))
   // Вторая строка — факт из выписки: сумма и дата операции, строка банка (DESIGN.md §6).
   const when = (op: Operation) => dayLabel(Number(op.date.slice(8, 10)), op.date.slice(0, 7))
-  const text = (kind: MatchKind, name: string, op: Operation) =>
+  const text = (kind: MatchKind, name: string, op: Operation, pay?: PayEvent['kind']) =>
     kind === 'salary'
-      ? { question: `Это зарплата ${name}?`, meta: `${money(Math.abs(op.amount))} · ${when(op)} · поступление` }
+      ? { question: salaryQuestion(name, pay), meta: `${money(Math.abs(op.amount))} · ${when(op)} · поступление` }
       : { question: `Похоже, это платёж по ${name} — отметить?`, meta: `${money(Math.abs(op.amount))} · ${when(op)} · «${op.merchant}»` }
   const near = (amount: number, expected: number) => (expected > 0 ? Math.abs(amount - expected) / expected : 0)
 
@@ -217,9 +244,10 @@ export function matchCandidates(
     if (rule && 'payment' in rule.to && hit) {
       const { kind, targetId, categoryId } = rule.to.payment
       const t = hit.target
+      const event = kind === 'salary' ? payEventOf(t as Person, hit.period) : null
       const expected =
-        kind === 'salary' ? salaryTenge(t as Person, hit.period, salary).tenge : kind === 'credit' ? creditDueAmount(t as Credit) : amountAt(t as Obligation, hit.period, salary.book)
-      add({ opId: op.id, kind, targetId, period: hit.period, amount, confidence: 'rule', categoryId: categoryId ?? matchCategory(kind, t), ...text(kind, t.name, op) }, 0, near(amount, expected))
+        kind === 'salary' ? (event ? expectedEventTenge(t as Person, event, salary) : 0) : kind === 'credit' ? creditDueAmount(t as Credit) : amountAt(t as Obligation, hit.period, salary.book)
+      add({ opId: op.id, kind, targetId, period: hit.period, amount, confidence: 'rule', categoryId: categoryId ?? matchCategory(kind, t), ...text(kind, t.name, op, event?.kind) }, 0, near(amount, expected))
     }
 
     if (op.amount < 0) {
@@ -243,12 +271,14 @@ export function matchCandidates(
     }
 
     if (op.amount > 0 && (op.kind === 'transfer-in' || op.kind === 'income')) {
+      // Ритм (Б7): ближайший приход — аванс, неделя или зарплата месяца; `period` кандидата — ключ прихода.
       for (const p of people) {
-        const { period, gap } = nearestPeriod(op.date, p.payday)
-        if (gap > SALARY_WINDOW) continue
-        const expected = salaryTenge(p, period, salary).tenge
-        if (!within(amount, expected, SALARY_TOLERANCE)) continue
-        add({ opId: op.id, kind: 'salary', targetId: p.id, period, amount, confidence: 'likely', categoryId: null, ...text('salary', p.name, op) }, 1, near(amount, expected) + gap / 100)
+        const hitEvent = nearestEvent(op.date, p)
+        if (!hitEvent || hitEvent.gap > SALARY_WINDOW) continue
+        const { event, gap } = hitEvent
+        if (!salaryFits(amount, p, event, salary)) continue
+        const expected = expectedEventTenge(p, event, salary)
+        add({ opId: op.id, kind: 'salary', targetId: p.id, period: event.period, amount, confidence: 'likely', categoryId: null, ...text('salary', p.name, op, event.kind) }, 1, near(amount, expected) + gap / 100)
       }
     }
   })
