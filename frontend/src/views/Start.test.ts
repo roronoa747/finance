@@ -125,7 +125,7 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     const html = await renderScreen(Start, '/start', undefined, [screenMixin({ manual: true, manualRhythm: { payRhythm: 'week', weekday: 5 } })])
     expect(html).toContain('>Зарплата за неделю, ₸</span>')
     expect(html).toContain('>День недели</span>')
-    expect(html).toContain('Каждую неделю')
+    expect(html).toContain('Раз в неделю')
     await renderScreen(Start, '/start', undefined, [
       act('manualNext', { manual: true, manualSalary: '150 000', manualPayday: '10', manualRhythm: { payRhythm: 'week', weekday: 5 } }),
     ])

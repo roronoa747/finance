@@ -110,7 +110,7 @@ const salaries = (finance: ReturnType<typeof useFinanceStore>) => finance.paymen
 describe('PN-23: «Изменить оклад» — как приходит зарплата', () => {
   it('аванс: выбор пишет ритм с днём и суммой аванса, правки — сразу; подпись «остальное»', async () => {
     const finance = await openDialog()
-    await press(byText('[data-pay-rhythm] button', 'Аванс и зарплата'))
+    await press(byText('[data-pay-rhythm] button', 'С авансом'))
     // День зарплаты 10-го — аванс по умолчанию 25-го, половина оклада.
     expect(finance.people[0]).toMatchObject({ payRhythm: 'advance', payday2: 25, salary2: 350_000 })
     await commit(qi('input[data-salary2]'), '200 000')
@@ -124,7 +124,7 @@ describe('PN-23: «Изменить оклад» — как приходит з�
 
   it('неделя: день недели чипами, подпись «за неделю», подсказка «≈ N за неделю» — запись только нажатием', async () => {
     const finance = await openDialog()
-    await press(byText('[data-pay-rhythm] button', 'Каждую неделю'))
+    await press(byText('[data-pay-rhythm] button', 'Раз в неделю'))
     expect(finance.people[0]).toMatchObject({ payRhythm: 'week', weekday: 5, salary: 700_000 })
     expect(document.body.textContent).toContain('Оклад сейчас — за неделю, ₸')
     // 700 000 × 12 / 52 = 161 538.
@@ -140,7 +140,7 @@ describe('PN-23: «Изменить оклад» — как приходит з�
     const finance = await openDialog()
     await press(q('[data-floating] [role="switch"]'))
     expect(finance.people[0].floating).toBe(true)
-    await press(byText('[data-pay-rhythm] button', 'Каждую неделю'))
+    await press(byText('[data-pay-rhythm] button', 'Раз в неделю'))
     await press(byText('[data-pay-rhythm] button', 'Раз в месяц'))
     expect(finance.people[0].payRhythm).toBe('month')
   })
