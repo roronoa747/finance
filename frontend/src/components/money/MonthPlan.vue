@@ -386,7 +386,7 @@ function addFund(kind: 'reserve' | 'cushion') {
       <span v-if="plan.short > 0" class="font-num text-[24px] font-bold leading-tight num text-warn">{{ money(plan.short) }}</span>
       <span v-else class="font-num text-[24px] font-bold leading-tight num text-ink" data-rest>{{ money(plan.rest) }}</span>
       <!-- Действие у своего предмета (правило 12): «Хватит?» — у остатка; слот кольца не ловит нажатия — кнопке свои. -->
-      <Button variant="ghost" size="sm" class="pointer-events-auto relative z-10 mt-1" data-afford-open @click.stop="affordOpen = true">Хватит?</Button>
+      <Button variant="secondary" size="sm" class="pointer-events-auto relative z-10 mt-1" data-afford-open @click.stop="affordOpen = true">Хватит?</Button>
     </MonthRing>
 
     <!--
