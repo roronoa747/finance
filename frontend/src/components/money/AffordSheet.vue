@@ -40,7 +40,7 @@ const days = (n: number) => `${n} ${plural(n, 'день', 'дня', 'дней')}
       <template v-if="result.ok">
         <span class="type-big text-ok" data-afford-yes>Да</span>
         <p class="text-[14px] num text-ink-2" data-afford-left>
-          до зарплаты останется {{ money(result.left) }}<template v-if="result.inDays !== null"> · через {{ days(result.inDays) }}</template>
+          до зарплаты останется {{ money(result.left) }}<template v-if="result.inDays !== null"> · зарплата через {{ days(result.inDays) }}</template>
         </p>
       </template>
       <template v-else>
