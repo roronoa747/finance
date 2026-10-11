@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import { useAuthStore } from '../src/stores/auth'
-import { useFinanceStore } from '../src/stores/finance'
+import { defaultSyncDoc, useFinanceStore } from '../src/stores/finance'
 import { startDemo } from '../src/lib/demo'
 import { monthsLabel } from '../src/lib/finance'
 import { monthKey } from '../src/lib/dates'
@@ -11,6 +11,9 @@ import { authAs, planFamilyDoc } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
 import GoalDetail from '../src/views/GoalDetail.vue'
 import GoalNew from '../src/views/GoalNew.vue'
+import Dreams from '../src/views/Dreams.vue'
+import Start from '../src/views/Start.vue'
+import { templateById } from '../src/lib/goalTemplates'
 import { at, fakeServer, phone, screen, type FakeServer } from './support/family'
 
 // Фото шаблона — без сети: подушка записана с шаблоном, картинка догрузится потом (как в DOM-тесте «Новой мечты»).
@@ -23,7 +26,8 @@ vi.mock('../src/lib/photos/goalPhoto', async (orig) => ({
  * Блок 6 «понятность» (PN-19…PN-21, Р-12) на двух телефонах с фейковым сервером, 12 октября 2026: (а) семья без подушки —
  * «Новая мечта → Подушка» → фонд, `need` = 3 × (платежи + траты) плана, «Хватит на 0 месяцев» → взнос → «на 1,2 месяца»;
  * (б) второй раз — тот же id, тост; (в) «Месяцев трат» 2 → «нужно на 2 месяца», `need` плана пересчитан; (г) демо — «хватит на N»
- * по демо-цифрам; (д) второй телефон после синка видит те же числа. Экраны — SSR (`screen`), нажатия — методами экрана.
+ * по демо-цифрам; (д) второй телефон после синка видит те же числа; возврат приёмки — первый запуск без «Подушки», мечта —
+ * герой. Экраны — SSR (`screen`), нажатия — методами экрана.
  */
 type Phone = Awaited<ReturnType<typeof phone>>
 const text = (html: string) => html.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;|\s+/g, ' ')
@@ -148,5 +152,30 @@ describe('e2e / понятность Блок 6 — подушка', () => {
     expect(page).toContain(`Хватит на ${monthsLabel(months)}`)
     expect(page).toContain('нужно на 3 месяца')
     expect(page).toContain(text(`из ${money(item.need)}`))
+  })
+
+  it('возврат приёмки (решение владельца А): первый запуск новой семьи — «Что копим?» без «Подушки», мечта → герой на «Мечтах»', async () => {
+    server = fakeServer(defaultSyncDoc())
+    const A = await as('member', 'a')
+    expect(on(A).store.goals).toEqual([])
+
+    // «Что копим?» первого запуска (`GoalNew next="/start/invite"`) — только мечты; в «Новой мечте» плитка есть.
+    const dream = text(await screen(on(A).pinia, Start, '/start/dream'))
+    expect(dream).toContain('На что копим?')
+    expect(dream).toContain('Машина')
+    expect(dream).not.toContain('Подушка')
+    expect(text(await screen(on(A).pinia, GoalNew, '/goals/new'))).toContain('Подушка')
+
+    // Мечта → «Пригласить» → «Позже»: на «Мечтах» — герой с этой мечтой, а не пустое «Выбрать мечту».
+    await screen(on(A).pinia, Start, '/start/dream', undefined, [
+      screenMixin({ step: 'form', template: templateById('car'), name: 'Машина', needText: '3 000 000', term: '18' }, (s) => void (s.create as () => Promise<void>)()),
+    ])
+    expect(fundId(A)).toEqual([])
+    expect(on(A).store.heroGoal?.name).toBe('Машина')
+    await screen(on(A).pinia, Start, '/start/invite', undefined, [screenMixin({}, (s) => (s.finish as () => void)())])
+    expect(on(A).store.setupDone).toBe(true)
+    const dreams = await screen(on(A).pinia, Dreams, '/')
+    expect(text(dreams)).toContain('Машина')
+    expect(dreams).not.toContain('Выбрать мечту')
   })
 })

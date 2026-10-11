@@ -35,7 +35,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-async function open() {
+async function open(props: { next?: string } = {}) {
   const pinia = createPinia()
   setActivePinia(pinia)
   useAuthStore().setAuthData(authAs('member', 'a'))
@@ -46,7 +46,7 @@ async function open() {
   await router.isReady()
   const root = document.createElement('div')
   document.body.appendChild(root)
-  app = createApp(GoalNew)
+  app = createApp(GoalNew, props)
   app.use(pinia)
   app.use(router)
   app.mount(root)
@@ -167,6 +167,30 @@ describe('PN-19: «Подушка» в «Новой мечте» — фонд с
     expect(fund.id).not.toBe(old)
     expect(router.currentRoute.value.fullPath).not.toContain('fund=exists')
     expect(finance.goals.find((g) => g.id === old)!.fund ?? null).toBeNull()
+  })
+
+  // Возврат приёмки Б6 (решение владельца А, `pn-block-6-first-run-cushion.md`): «Что копим?» первого запуска — только мечты.
+  const tiles = () => [...document.querySelectorAll('button')].map((b) => b.textContent?.trim())
+
+  it('первый запуск (`next`): плитки «Подушка» нет, остальные темы и «Своё фото» на месте', async () => {
+    await open({ next: '/start/invite' })
+    expect(button('Подушка'), 'плитки «Подушка» нет').toBeUndefined()
+    expect(tiles()).toContain('Свадьба')
+    expect(tiles()).toContain('Своё фото')
+    expect(tiles()).toContain('По ссылке')
+  })
+
+  it('вне первого запуска (без `next`): «Подушка» есть и ведёт в фонд', async () => {
+    const finance = await open()
+    const router = app!.config.globalProperties.$router
+    expect(button('Подушка')).toBeDefined()
+    button('Подушка').click()
+    await nextTick()
+    button('Дальше').click()
+    await settle(router, /^\/goals\/(?!new)/)
+    const fund = finance.goals.find((g) => g.fund === 'cushion')!
+    expect(fund).toBeDefined()
+    expect(router.currentRoute.value.path).toBe(`/goals/${fund.id}`)
   })
 })
 
