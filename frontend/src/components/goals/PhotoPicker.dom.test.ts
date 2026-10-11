@@ -4,7 +4,7 @@ import { createApp, h, nextTick, reactive, type App } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { useFinanceStore } from '@/stores/finance'
 import { apiClient } from '@/api/client'
-import { GOAL_TYPES } from '@/lib/goalTemplates'
+import { GOAL_TYPES, type GoalTemplate } from '@/lib/goalTemplates'
 import { planFamilyDoc } from '@/test/planFamily'
 import PhotoPicker from './PhotoPicker.vue'
 
@@ -29,14 +29,20 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-function mount() {
+let picked: string[] = []
+
+function mount(selected: string | null = null) {
+  picked = []
   const pinia = createPinia()
   setActivePinia(pinia)
   useFinanceStore().setHouseholdDoc(planFamilyDoc({ goals: [] }), 1)
   const state = reactive({ open: true })
   const root = document.createElement('div')
   document.body.appendChild(root)
-  app = createApp({ render: () => h(PhotoPicker, { open: state.open, onFile: (f: File) => files.push(f) }) })
+  app = createApp({
+    render: () =>
+      h(PhotoPicker, { open: state.open, selected, onFile: (f: File) => files.push(f), onTemplate: (t: GoalTemplate) => picked.push(t.id) }),
+  })
   app.use(pinia)
   app.mount(root)
   return state
@@ -99,5 +105,47 @@ describe('PN-08: PhotoPicker — «По ссылке»', () => {
     expect(field()).toBeNull()
     expect(linkTile().getAttribute('aria-pressed')).toBe('false')
     expect(sport.getAttribute('aria-pressed')).toBe('true')
+  })
+})
+
+const tile = (name: string) => [...document.querySelectorAll<HTMLButtonElement>('button[aria-pressed]')].find((b) => b.textContent?.trim() === name)!
+const row = () => [...document.querySelectorAll<HTMLButtonElement>('[data-theme-photos] button')]
+const choose = () => [...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.trim() === 'Выбрать это')!
+
+describe('PN-33: PhotoPicker — другие фото темы у существующей мечты', () => {
+  it('без темы ряда нет; тема → ряд из 5, первое отмечено; 3-е → «Выбрать это» отдаёт `<тип>-3`', async () => {
+    mount()
+    await nextTick()
+    expect(row()).toHaveLength(0)
+    tile('Спорт').click()
+    await nextTick()
+    expect(row()).toHaveLength(5)
+    expect(row().map((b) => b.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false', 'false', 'false'])
+    row()[2].click()
+    await nextTick()
+    expect(row()[2].getAttribute('aria-pressed')).toBe('true')
+    expect(tile('Спорт').getAttribute('aria-pressed')).toBe('true')
+    choose().click()
+    await nextTick()
+    expect(picked).toEqual(['sport-3'])
+  })
+
+  it('лист открыт с выбранным `sport-3` — тема выделена, ряд показан, третий отмечен', async () => {
+    mount('sport-3')
+    await nextTick()
+    expect(tile('Спорт').getAttribute('aria-pressed')).toBe('true')
+    expect(row().map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'true', 'false', 'false'])
+    choose().click()
+    await nextTick()
+    expect(picked).toEqual(['sport-3'])
+  })
+
+  it('«Путешествие» — ряда нет, направления на месте', async () => {
+    mount()
+    await nextTick()
+    tile('Путешествие').click()
+    await nextTick()
+    expect(row()).toHaveLength(0)
+    expect(document.body.textContent).toContain('Куда')
   })
 })

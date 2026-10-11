@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { GOAL_TEMPLATES, GOAL_TYPES, TRAVEL_DIRECTIONS, templateImageUrl, type GoalTemplate, type GoalTemplateType } from '@/lib/goalTemplates'
+import { GOAL_TEMPLATES, GOAL_TYPES, TRAVEL_DIRECTIONS, templateImageUrl, themePhotos, type GoalTemplate, type GoalTemplateType } from '@/lib/goalTemplates'
 import type { LinkFound } from '@/lib/photos/useLinkPreview'
 import Button from '@/components/ui/Button.vue'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -8,6 +8,7 @@ import TemplateTile from '@/components/kit/TemplateTile.vue'
 import Chip from '@/components/kit/Chip.vue'
 import Field from '@/components/kit/Field.vue'
 import LinkPhotoField from '@/components/goals/LinkPhotoField.vue'
+import ThemePhotoRow from '@/components/goals/ThemePhotoRow.vue'
 import { useFormCheck } from '@/components/kit/useFormCheck'
 
 /**
@@ -16,7 +17,7 @@ import { useFormCheck } from '@/components/kit/useFormCheck'
  * «По ссылке» (PN-08: поле под сеткой, картинка со страницы — как своё фото); у «Путешествия» —
  * второй шаг с направлениями. Ничего не грузит сам — отдаёт выбор родителю (`template` / `file`),
  * тот скачивает, сжимает и загружает (`lib/photos/goalPhoto`). Одно главное действие — «Выбрать это»;
- * ссылка и своё фото — тихие входы (правило 12).
+ * ссылка и своё фото — тихие входы (правило 12). Другие фото темы — `ThemePhotoRow` над «Выбрать это» (PN-33).
  */
 const props = withDefaults(
   defineProps<{
@@ -56,9 +57,13 @@ watch(
     pickedType.value = t?.type ?? null
     linkOpen.value = false
   },
+  // Смонтирован уже открытым — тема и ряд выбранного фото тоже отмечены (PN-33).
+  { immediate: true },
 )
 
 const directions = computed(() => (pickedType.value === 'travel' ? TRAVEL_DIRECTIONS : []))
+// Другие фото темы (PN-33) — тот же ряд, что в «Новой мечте»; у «Путешествия» вместо него направления.
+const variants = computed(() => (pickedType.value ? themePhotos(pickedType.value) : []))
 const picked = computed(() => GOAL_TEMPLATES.find((t) => t.id === pickedId.value) ?? null)
 const form = useFormCheck(() => [['photo', !picked.value && 'Выберите картинку']])
 
@@ -114,10 +119,14 @@ function onLink(found: LinkFound) {
         </div>
       </template>
 
-      <!-- Автор — один раз, на самом фото героя после выбора (владелец): здесь строкой не повторяем. -->
-      <Button size="lg" class="w-full" @click="form.submit(confirm)">Выбрать это</Button>
-      <Button v-if="skippable" variant="ghost" size="md" class="w-full" @click="emit('skip')">Пропустить</Button>
-      <Button v-if="removable" variant="ghost" size="md" class="w-full" @click="emit('remove')">Убрать фото</Button>
+      <!-- Низ листа липкий (PN-33): сетка выше листа на 390 px, а ряд фото темы и «Выбрать это» видны сразу после
+           нажатия на тему. Автор — один раз, на самом фото героя после выбора (владелец): здесь строкой не повторяем. -->
+      <div class="sticky -bottom-9 -mx-5 -mb-9 flex flex-col gap-3 border-t border-line bg-surface px-5 pb-9 pt-3 sm:-bottom-5 sm:-mb-5 sm:pb-5">
+        <ThemePhotoRow v-if="variants.length > 1" :photos="variants" :selected="pickedId" @pick="pickedId = $event.id" />
+        <Button size="lg" class="w-full" @click="form.submit(confirm)">Выбрать это</Button>
+        <Button v-if="skippable" variant="ghost" size="md" class="w-full" @click="emit('skip')">Пропустить</Button>
+        <Button v-if="removable" variant="ghost" size="md" class="w-full" @click="emit('remove')">Убрать фото</Button>
+      </div>
     </div>
   </Sheet>
 </template>
