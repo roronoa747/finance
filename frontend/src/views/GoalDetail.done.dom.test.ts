@@ -7,6 +7,7 @@ import { routes } from '@/router'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { authAs, planFamilyDoc } from '@/test/planFamily'
+import { templateById, templateImageUrl } from '@/lib/goalTemplates'
 import type { Goal } from '@/types/finance'
 import GoalDetail from './GoalDetail.vue'
 
@@ -102,6 +103,13 @@ describe('PN-14: «Купили?» на 100 %', () => {
     expect(button('Пополнить')).toBeUndefined()
     expect(text()).not.toContain('Подробнее')
     expect(q('[data-goal-ask]')).toBeNull()
+  })
+
+  it('момент — фото карточки сторис: без своего фото — шаблон с CDN в 1080 (критик Блока 4)', async () => {
+    await open({ goals: full({ template: 'travel', photoId: null }) })
+    ;(q('[data-goal-done]') as HTMLButtonElement).click()
+    await nextTick()
+    expect(q('[data-done-sheet] img')?.getAttribute('src')).toBe(templateImageUrl(templateById('travel')!, 1080))
   })
 
   it('«Поделиться» в моменте — карточка для сторис, момент закрыт', async () => {

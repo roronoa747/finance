@@ -622,7 +622,7 @@ function share() {
 
     <!-- Карточка для сторис (B2C-20): без сумм -->
     <!-- Момент «Сбылось» (PN-14): «Поделиться» — та же карточка ниже, со строкой «сбылось за N месяцев» -->
-    <DoneSheet :goal-id="doneOpen ? goal.id : null" @close="doneOpen = false" @share="shareDone" />
+    <DoneSheet :goal-id="doneOpen ? goal.id : null" :src="storySrc" @close="doneOpen = false" @share="shareDone" />
 
     <StorySheet :open="storyOpen" kind="goal" :data="storyData" :src="storySrc" :wallpaper-src="wallpaperSrc" @close="storyOpen = false" />
 

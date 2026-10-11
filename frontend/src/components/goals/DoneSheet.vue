@@ -2,26 +2,19 @@
 import { computed } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { doneLabel, doneTerm, liveGoals } from '@/lib/finance'
-import { templateById, templateImageUrl } from '@/lib/goalTemplates'
-import { usePhoto } from '@/lib/photos/usePhoto'
 import Sheet from '@/components/kit/Sheet.vue'
 import Button from '@/components/ui/Button.vue'
 
 /**
  * Момент «Сбылось» (PN-14, Р-13; макет `done.html`, ворота 2026-10-10): фото мечты, имя, «за N месяцев» от первого
  * взноса; брендовая «Поделиться» — карточка для сторис экрана цели (`StorySheet`, не копия), «Готово» — тихо закрыть.
+ * Фото — то же, что у карточки сторис (`GoalDetail.storySrc`: своё, иначе шаблон с CDN), не своё вычисление.
  */
-const props = defineProps<{ goalId: string | null }>()
+const props = defineProps<{ goalId: string | null; src?: string | null }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'share'): void }>()
 
 const finance = useFinanceStore()
 const goal = computed(() => (props.goalId ? liveGoals(finance.goals).find((g) => g.id === props.goalId) : undefined))
-const own = usePhoto(() => goal.value?.photoId)
-const src = computed(() => {
-  if (own.value) return own.value
-  const t = templateById(goal.value?.template)
-  return t ? templateImageUrl(t, 1080) : null
-})
 const term = computed(() => (goal.value ? doneLabel(doneTerm(goal.value)) : ''))
 </script>
 
