@@ -1021,7 +1021,7 @@ export function payEvents(p: Person, key: string): PayEvent[] {
     return out;
   }
   if (rhythm === 'advance') {
-    const advance = Math.min(Math.max(0, Math.round(p.salary2 ?? 0)), s.amount);
+    const advance = s.amount - advanceRest(s.amount, p.salary2);
     const a = isoIn(key, p.payday2!);
     const b = isoIn(key, p.payday);
     if (a === b) return [{ period: b, day: b, amount: s.amount, currency: s.currency, kind: 'salary' }];
@@ -1032,6 +1032,22 @@ export function payEvents(p: Person, key: string): PayEvent[] {
     return events.sort((x, y) => x.day.localeCompare(y.day));
   }
   return [{ period: key, day: paydayIso(p, key), amount: s.amount, currency: s.currency, kind: 'salary' }];
+}
+
+/** Остаток зарплаты после аванса (в валюте оклада): аванс не больше оклада и не меньше нуля. */
+export const advanceRest = (salary: number, salary2 = 0) => salary - Math.min(Math.max(0, Math.round(salary2)), salary);
+
+/** Подсказка при смене ритма «месяц → неделя» (PN-23): оклад месяца за неделю — × 12 / 52 (≈ ÷ 4,33), целые. */
+export const weeklyFromMonthly = (amount: number) => Math.round((amount * 12) / 52);
+
+/** Ритм по умолчанию при выборе в форме (PN-23): аванс — 25-го при зарплате до 15-го, иначе 15-го; половина оклада; неделя — пятница. */
+export function rhythmDefaults(p: Pick<Person, 'payday' | 'payday2' | 'salary2' | 'weekday'>, rhythm: PayRhythm, salary: number): Partial<Person> {
+  if (rhythm === 'advance') {
+    const day = p.payday2 && p.payday2 !== p.payday ? p.payday2 : p.payday <= 15 ? 25 : 15;
+    return { payRhythm: 'advance', payday2: day, salary2: p.salary2 ?? Math.round(salary / 2) };
+  }
+  if (rhythm === 'week') return { payRhythm: 'week', weekday: p.weekday ?? 5 };
+  return { payRhythm: 'month' };
 }
 
 /** Приход по ключу отметки (`period` месяца или ISO-дня); не нашёлся (ритм сменили) — null. */

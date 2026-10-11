@@ -4,9 +4,9 @@ import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, plain, parseMoney } from '@/lib/money'
 import { monthKey, monthTitle, monthFrom, addMonths } from '@/lib/dates'
-import { salaryAt, salaryOf } from '@/lib/finance'
+import { payRhythmOf, salaryAt, salaryOf, weeklyFromMonthly } from '@/lib/finance'
 import { CURRENCY_SIGN } from '@/lib/fx'
-import type { Currency, PersonId } from '@/types/finance'
+import type { Currency, Person, PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
 import CurrencyChips from '@/components/kit/CurrencyChips.vue'
 import Field from '@/components/kit/Field.vue'
@@ -22,6 +22,8 @@ import { useSavedMark } from '@/components/kit/useSavedMark'
 import { useNbRate } from '@/components/kit/useNbRate'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
+import Toggle from '@/components/kit/Toggle.vue'
+import PayRhythmFields from '@/components/PayRhythmFields.vue'
 
 /**
  * Оклад участника: имя, исправление текущего оклада, день зарплаты и новая версия оклада с
@@ -76,6 +78,7 @@ watch(
     manualRate.value = ''
     fromMonth.value = addMonths(monthKey(), 1)
     personName.value = person.value?.name ?? ''
+    weekHint.value = null
   },
 )
 
@@ -90,7 +93,8 @@ const months = computed(() =>
 )
 const planned = computed(() => parseMoney(newAmount.value))
 const plannedTenge = computed(() => nb.tenge(planned.value))
-const delta = computed(() => (planned.value > 0 && rateOk.value ? plannedTenge.value - currentTenge.value : 0))
+// Неделя (PN-23): оклад за неделю против месячного дохода не сравнивается — строки «вырастет на» нет.
+const delta = computed(() => (planned.value > 0 && rateOk.value && !weekly.value ? plannedTenge.value - currentTenge.value : 0))
 const history = computed(() =>
   [...(person.value?.salaryVersions ?? [])].sort((a, b) => b.from.localeCompare(a.from)),
 )
@@ -111,12 +115,23 @@ function onSalaryCommit(text: string) {
   }
 }
 
-function onPaydayCommit(text: string) {
+/** Ритм (PN-23): `PayRhythmFields` отдаёт правку — пишется сразу (`SavedMark`). */
+const rhythm = computed(() => (person.value ? payRhythmOf(person.value) : 'month'))
+const weekly = computed(() => rhythm.value === 'week')
+/** Сменили «месяц → неделя»: оклад ещё месячный — подсказка «≈ N за неделю» (нажатие — исправить оклад, не сама). */
+const weekHint = ref<number | null>(null)
+function onRhythm(patch: Partial<Person>) {
   if (!person.value) return
-  const v = Math.min(28, Math.max(1, parseMoney(text) || 1))
-  if (v !== person.value.payday) {
-    financeStore.setPerson(person.value.id, { payday: v })
-  }
+  if (patch.payRhythm === 'week' && rhythm.value !== 'week') weekHint.value = weeklyFromMonthly(current.value.amount)
+  else if (patch.payRhythm) weekHint.value = null
+  financeStore.setPerson(person.value.id, patch)
+}
+function useWeekHint() {
+  if (person.value && weekHint.value) financeStore.correctSalary(person.value.id, weekHint.value)
+  weekHint.value = null
+}
+function onFloating(v: boolean) {
+  if (person.value) financeStore.setPerson(person.value.id, { floating: v })
 }
 
 // «Новый оклад» — сразу под пальцем (React `Budget.tsx:426-427` `autoFocus`), как PV-11; валюта — нынешняя.
@@ -155,16 +170,31 @@ function handlePlanSubmit() {
         <Input v-model="personName" @blur="onNameBlur" />
       </Field>
 
-      <Field :label="`Оклад сейчас, ${sign}`">
+      <Field :label="weekly ? `Оклад сейчас — за неделю, ${sign}` : `Оклад сейчас, ${sign}`">
         <!-- «только исправить ошибку» — в подсказке у поля (макет Б17), не строкой. -->
         <template #hint><Hint label="Оклад сейчас">Только исправить ошибку: оклад был введён неверно. Если зарплата действительно меняется — не трогайте это поле, а измените оклад с нужного месяца ниже.</Hint></template>
-        <NumFieldBlur :initial="plain(current.amount)" :currency="current.currency" @commit="onSalaryCommit" />
+        <NumFieldBlur :initial="plain(current.amount)" :currency="current.currency" data-salary-now @commit="onSalaryCommit" />
       </Field>
+      <!-- Сменили на неделю: оклад ещё месячный — тихое предложение, запись только нажатием. -->
+      <Button v-if="weekHint && weekly" variant="ghost" size="sm" class="-mt-2 mb-2 -ml-2" data-week-hint @click="useWeekHint">
+        ≈ {{ plain(weekHint) }} за неделю
+      </Button>
       <p v-if="current.currency !== 'KZT'" class="-mt-1 mb-3 text-[12.5px] text-ink-2 num">≈ {{ money(currentTenge) }} по курсу Нацбанка</p>
 
-      <Field label="День зарплаты">
-        <NumFieldBlur :initial="String(person.payday)" kind="int" @commit="onPaydayCommit" />
-      </Field>
+      <PayRhythmFields
+        :rhythm="rhythm"
+        :payday="person.payday"
+        :payday2="person.payday2"
+        :salary2="person.salary2"
+        :weekday="person.weekday"
+        :salary="current.amount"
+        :currency="current.currency"
+        @change="onRhythm"
+      />
+      <div class="mb-3.5 flex items-center justify-between gap-3" data-floating>
+        <span class="flex items-center gap-1 text-[14.5px] text-ink">Сумма меняется<Hint label="Сумма меняется">«Пришла» спросит сумму; в плане — среднее трёх последних.</Hint></span>
+        <Toggle :model-value="!!person.floating" label="Сумма меняется" tone="ok" @update:model-value="onFloating" />
+      </div>
 
       <div v-if="!planning" class="mb-3">
         <!-- Главная листа — брендовая (была серой, макет Б17). -->
@@ -178,7 +208,7 @@ function handlePlanSubmit() {
           <CurrencyChips v-model="newCurrency" />
         </Field>
 
-        <Field :label="`Новый оклад, ${CURRENCY_SIGN[newCurrency]}`" name="newAmount">
+        <Field :label="weekly ? `Новый оклад за неделю, ${CURRENCY_SIGN[newCurrency]}` : `Новый оклад, ${CURRENCY_SIGN[newCurrency]}`" name="newAmount">
           <NumField v-model="newAmount" :currency="newCurrency" :placeholder="plain(current.currency === newCurrency ? current.amount : 0)" />
         </Field>
         <NbRateLine :amount="planned" :currency="newCurrency" :nb="nb" />

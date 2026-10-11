@@ -17,7 +17,7 @@ import { money, parseMoney, plain } from '@/lib/money'
 import { addMonths, monthKey, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
 import { START_ANSWERED_KEY, readStorage, writeStorage } from '@/lib/storage'
 import { useInvite } from '@/components/useInvite'
-import type { PersonId } from '@/types/finance'
+import type { Person, PersonId } from '@/types/finance'
 import { plural } from '@/lib/utils'
 import GoalNew from '@/views/GoalNew.vue'
 import Button from '@/components/ui/Button.vue'
@@ -30,6 +30,7 @@ import { useFormCheck } from '@/components/kit/useFormCheck'
 import FreeCard from '@/components/kit/FreeCard.vue'
 import Hint from '@/components/kit/Hint.vue'
 import NumField from '@/components/kit/NumField.vue'
+import PayRhythmFields from '@/components/PayRhythmFields.vue'
 import Stepper from '@/components/kit/Stepper.vue'
 import WeekCard, { type WeekSegment } from '@/components/kit/WeekCard.vue'
 
@@ -81,6 +82,20 @@ const manual = ref(false)
 const manualSalary = ref('')
 const form = useFormCheck(() => [['salary', parseMoney(manualSalary.value) <= 0 && 'Введите зарплату']])
 const manualPayday = ref('10')
+/** Ритм ручного ввода (PN-23): тот же блок, что в «Изменить оклад»; пишется вместе с окладом. */
+const manualRhythm = ref<Partial<Person>>({ payRhythm: 'month' })
+const manualWeekly = computed(() => manualRhythm.value.payRhythm === 'week')
+function onManualRhythm(patch: Partial<Person>) {
+  if (patch.payday) manualPayday.value = String(patch.payday)
+  manualRhythm.value = { ...manualRhythm.value, ...patch }
+}
+/** Поля ритма в участника: месячный — без полей (документ как раньше). */
+const rhythmFields = (): Partial<Person> => {
+  const r = manualRhythm.value
+  if (r.payRhythm === 'week') return { payRhythm: 'week', weekday: r.weekday }
+  if (r.payRhythm === 'advance') return { payRhythm: 'advance', payday2: r.payday2, salary2: r.salary2 }
+  return {}
+}
 
 async function pick(e: Event) {
   const input = e.target as HTMLInputElement
@@ -108,7 +123,7 @@ async function uploadParsed(files: DraftFile[]) {
 function manualNext() {
   const salary = parseMoney(manualSalary.value)
   if (salary <= 0) return
-  financeStore.setPerson(slot.value, { name: knownName.value, salary, payday: clampDay(manualPayday.value, 10) })
+  financeStore.setPerson(slot.value, { name: knownName.value, salary, payday: clampDay(manualPayday.value, 10), ...rhythmFields() })
   if (joining.value) finish()
   else go('dream')
 }
@@ -277,7 +292,7 @@ function advance() {
 function manualAfterQuestions() {
   const salary = parseMoney(manualSalary.value)
   if (salary <= 0) return
-  financeStore.setPerson(slot.value, { name: knownName.value, salary, payday: clampDay(manualPayday.value, 10) })
+  financeStore.setPerson(slot.value, { name: knownName.value, salary, payday: clampDay(manualPayday.value, 10), ...rhythmFields() })
   advance()
 }
 
@@ -364,12 +379,20 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
         </div>
       </template>
       <template v-else>
-        <Field label="Зарплата в месяц, ₸" name="salary">
+        <Field :label="manualWeekly ? 'Зарплата за неделю, ₸' : 'Зарплата в месяц, ₸'" name="salary">
           <NumField v-model="manualSalary" placeholder="450 000" class="bg-surface" />
         </Field>
-        <Field label="День зарплаты (1–28)">
-          <NumField v-model="manualPayday" kind="int" placeholder="10" class="bg-surface" />
-        </Field>
+        <PayRhythmFields
+          :rhythm="manualRhythm.payRhythm ?? 'month'"
+          :payday="clampDay(manualPayday, 10)"
+          :payday2="manualRhythm.payday2"
+          :salary2="manualRhythm.salary2"
+          :weekday="manualRhythm.weekday"
+          :salary="parseMoney(manualSalary)"
+          currency="KZT"
+          field-class="bg-surface"
+          @change="onManualRhythm"
+        />
         <p class="text-[12.5px] leading-relaxed text-ink-2">Оклад без премий.</p>
         <div class="mt-auto flex flex-col gap-2 pt-2">
           <Button size="lg" class="w-full" @click="form.submit(manualNext)">Дальше</Button>
@@ -402,12 +425,20 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
         </DecisionCard>
       </template>
       <template v-else-if="!salaryKnown">
-        <Field label="Зарплата в месяц, ₸" name="salary">
+        <Field :label="manualWeekly ? 'Зарплата за неделю, ₸' : 'Зарплата в месяц, ₸'" name="salary">
           <NumField v-model="manualSalary" placeholder="450 000" class="bg-surface" />
         </Field>
-        <Field label="День зарплаты (1–28)">
-          <NumField v-model="manualPayday" kind="int" placeholder="10" class="bg-surface" />
-        </Field>
+        <PayRhythmFields
+          :rhythm="manualRhythm.payRhythm ?? 'month'"
+          :payday="clampDay(manualPayday, 10)"
+          :payday2="manualRhythm.payday2"
+          :salary2="manualRhythm.salary2"
+          :weekday="manualRhythm.weekday"
+          :salary="parseMoney(manualSalary)"
+          currency="KZT"
+          field-class="bg-surface"
+          @change="onManualRhythm"
+        />
         <div class="mt-auto flex flex-col gap-2 pt-2">
           <Button size="lg" class="w-full" @click="form.submit(manualAfterQuestions)">{{ joining ? 'Готово' : 'Дальше' }}</Button>
         </div>

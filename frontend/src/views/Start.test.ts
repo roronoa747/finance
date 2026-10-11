@@ -111,11 +111,25 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     const store = family()
     const html = await renderScreen(Start, '/start', undefined, [screenMixin({ manual: true })])
     expect(html).toContain('>Зарплата в месяц, ₸</span>')
-    expect(html).toContain('>День зарплаты (1–28)</span>')
+    expect(html).toContain('>День зарплаты</span>')
     expect(html).toContain('Лучше загружу выписку')
     await renderScreen(Start, '/start', undefined, [act('manualNext', { manual: true, manualSalary: '450 000', manualPayday: '12' })])
     expect(store.people).toEqual([expect.objectContaining({ id: 'a', name: 'a', salary: 450_000, payday: 12 })])
+    // Месячный ритм — документ как раньше: полей ритма нет.
+    expect(store.people[0].payRhythm).toBeUndefined()
     expect(store.householdDoc.spendTotals ?? []).toEqual([])
+  })
+
+  it('PN-23: «Введу вручную» с ритмом «каждую неделю» — недельный оклад и день недели; подпись «за неделю»', async () => {
+    const store = family()
+    const html = await renderScreen(Start, '/start', undefined, [screenMixin({ manual: true, manualRhythm: { payRhythm: 'week', weekday: 5 } })])
+    expect(html).toContain('>Зарплата за неделю, ₸</span>')
+    expect(html).toContain('>День недели</span>')
+    expect(html).toContain('Каждую неделю')
+    await renderScreen(Start, '/start', undefined, [
+      act('manualNext', { manual: true, manualSalary: '150 000', manualPayday: '10', manualRhythm: { payRhythm: 'week', weekday: 5 } }),
+    ])
+    expect(store.people[0]).toMatchObject({ salary: 150_000, payRhythm: 'week', weekday: 5 })
   })
 
   it('шаг 2 на фикстуре Kaspi: «Нашли 7 повторяющихся», «2 из 5», первый вопрос — доход с суммой и днём в полях, «1 из 7»', async () => {

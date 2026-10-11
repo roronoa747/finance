@@ -5,8 +5,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, moneySigned, signTone } from '@/lib/money'
-import { atLabel, dayLabel } from '@/lib/dates'
-import { fxYearDelta, type SalaryLine } from '@/lib/finance'
+import { atLabel, dayLabel, dayWeekdayLabel } from '@/lib/dates'
+import { fxYearDelta, type SalaryLine, type SalaryLineEvent } from '@/lib/finance'
 import { CURRENCY_WORD } from '@/lib/fx'
 import type { PersonId } from '@/types/finance'
 import Hint from '@/components/kit/Hint.vue'
@@ -24,6 +24,8 @@ import FxRateSheet from '@/components/money/FxRateSheet.vue'
  * «Пришла» отмечена — лист закрывается сам (✓ уже у суммы в строке). Viewer открывает лист только для чтения: дата,
  * «хватает» и обмены живут лишь здесь (Р-116), кнопок у него нет. У валютного оклада (пришёл или нет) — строка
  * «евро за год · −134 ₸» (PN-02, хвост 1022: раньше — только внизу листов обменов), нажатие — лист курса (`FxRateSheet`).
+ * Аванс и неделя (понятность Б7): вместо одной даты — приходы месяца строками, «Пришла» — у своего открытого прихода,
+ * пришедший свой — нажатием «другая сумма или снять» (`MarkSheet` по ключу прихода); «Когда» — «N из M пришли».
  */
 const props = defineProps<{ monthKey: string; line: SalaryLine | null }>()
 const emit = defineEmits<{ close: [] }>()
@@ -50,16 +52,27 @@ const yearLabel = computed(() => {
 })
 
 /** Лист отметки пришедшей своей зарплаты (когда, счёт, другая сумма, снять), лист оклада (сумма, день, валюта), лист курса. */
-const paid = ref<{ person: PersonId; name: string } | null>(null)
+const paid = ref<{ person: PersonId; name: string; period: string } | null>(null)
 const edit = ref<PersonId | null>(null)
 const rate = ref<PersonId | null>(null)
 function next(to: 'paid' | 'edit' | 'rate') {
   const l = props.line
   emit('close')
   if (!l) return
-  if (to === 'paid') paid.value = { person: l.person, name: l.name }
+  if (to === 'paid') paid.value = { person: l.person, name: l.name, period: props.monthKey }
   else if (to === 'edit') edit.value = l.person
   else rate.value = l.person
+}
+/** Приходы аванса и недели — строками; месячный ритм — одной датой «Когда». */
+const events = computed(() => (props.line && props.line.rhythm !== 'month' ? props.line.events : []))
+const eventLabel = (e: SalaryLineEvent) =>
+  e.kind === 'week' ? dayWeekdayLabel(e.day) : `${e.kind === 'advance' ? 'Аванс' : 'Зарплата'} · ${dayLabel(Number(e.day.slice(8, 10)), e.day.slice(0, 7))}`
+/** Свой пришедший приход — лист отметки этого прихода (другая сумма, счёт, снять). */
+function openEvent(e: SalaryLineEvent) {
+  const l = props.line
+  if (!l || !mine.value || !e.came) return
+  emit('close')
+  paid.value = { person: l.person, name: l.name, period: e.period }
 }
 watch(
   () => props.line?.came,
@@ -72,13 +85,31 @@ watch(
 <template>
   <Sheet :open="!!line" :title="line ? `Зарплата · ${line.name}` : ''" @close="emit('close')">
     <template v-if="line">
-      <p class="font-num text-[28px] font-bold leading-tight num text-ink">{{ money(line.amount) }}</p>
+      <p class="font-num text-[28px] font-bold leading-tight num text-ink" data-salary-total>{{ line.floating && !line.came ? "≈ " : "" }}{{ money(line.amount) }}</p>
       <p v-if="line.fx" class="type-meta num">{{ moneyIn(line.fx.amount, line.fx.currency) }}</p>
       <!-- Переехало со строк «Месяца» и «Капитала» (Р-116): дата, «хватает ли», обмены валютной. -->
       <div class="mb-1 mt-3 flex flex-col rounded-[16px] bg-surface-2 px-3.5">
         <div class="flex items-center justify-between gap-3 py-2.5 text-[14.5px]" data-salary-status>
           <span class="text-ink-2">Когда</span>
-          <span class="font-semibold text-ink">{{ line.came && line.at ? `пришла ${atLabel(line.at)}` : `ждём ${dayLabel(line.payday, monthKey)}` }}</span>
+          <span v-if="events.length" class="font-semibold text-ink num">{{ line.cameCount }} из {{ line.eventCount }} пришли</span>
+          <span v-else class="font-semibold text-ink">{{ line.came && line.at ? `пришла ${atLabel(line.at)}` : `ждём ${dayLabel(line.payday, monthKey)}` }}</span>
+        </div>
+        <!-- Аванс и неделя: приход — строка; «Пришла» — у своего открытого (правило 12: действие у предмета). -->
+        <div
+          v-for="e in events"
+          :key="e.period"
+          class="flex items-center justify-between gap-3 border-t border-line py-2.5 text-[14.5px]"
+          :class="mine && e.came ? 'press cursor-pointer' : ''"
+          :data-pay-event="e.period"
+          @click="openEvent(e)"
+        >
+          <span class="text-ink-2">{{ eventLabel(e) }}</span>
+          <span class="flex items-center gap-2">
+            <span v-if="mine && e.open" @click.stop><SalaryRow button small :person-id="line.person" :period="e.period" /></span>
+            <b class="font-num num" :class="e.came ? 'text-ink' : 'text-ink-2'">
+              <span v-if="e.came" class="font-extrabold text-ok" data-event-came>✓ </span>{{ line.floating && !e.came ? '≈ ' : '' }}{{ money(e.amount) }}
+            </b>
+          </span>
         </div>
         <div class="flex items-center justify-between gap-3 border-t border-line py-2.5 text-[14.5px]">
           <span class="flex items-center gap-1 text-ink-2">Хватает<Hint label="Хватает ли">Зарплата минус свои платежи, траты, цели и фонды</Hint></span>
@@ -102,9 +133,9 @@ watch(
           </span>
         </button>
       </div>
-      <SalaryRow v-if="mine && line.open" button :person-id="line.person" :period="monthKey" />
+      <SalaryRow v-if="mine && line.open && !events.length" button :person-id="line.person" :period="monthKey" />
       <div class="mt-2 flex flex-col gap-1.5">
-        <Button v-if="mine && line.came" variant="ghost" size="md" class="w-full" data-salary-paid @click="next('paid')">Другая сумма или снять</Button>
+        <Button v-if="mine && line.came && !events.length" variant="ghost" size="md" class="w-full" data-salary-paid @click="next('paid')">Другая сумма или снять</Button>
         <Button v-if="canEdit" variant="ghost" size="md" class="w-full" data-salary-edit @click="next('edit')">Изменить оклад</Button>
       </div>
     </template>
@@ -114,7 +145,7 @@ watch(
     open="paid"
     kind="salary"
     :target-id="paid.person"
-    :period="monthKey"
+    :period="paid.period"
     :title="`Зарплата · ${paid.name}`"
     @close="paid = null"
   />
