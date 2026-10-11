@@ -3,7 +3,7 @@ import { setActivePinia, type Pinia } from 'pinia'
 import { useAuthStore } from '../src/stores/auth'
 import { apiClient } from '../src/api/client'
 import { money } from '../src/lib/money'
-import { templateById, templateCredit, themePhotos, type GoalTemplate } from '../src/lib/goalTemplates'
+import { TRAVEL_DIRECTIONS, templateById, templateCredit, themePhotos, type GoalTemplate } from '../src/lib/goalTemplates'
 import type { WishItem } from '../src/types/finance'
 import { authAs, planFamilyDoc, T0 } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
@@ -117,6 +117,41 @@ describe('e2e / понятность Блок 4а — мечты: доводка
     expect(on(B).store.goals.find((g) => g.id === 'car')).toMatchObject({ template: 'car-3', photoId: 'ph-car-3' })
     const sheetB = await screen(B.pinia, GoalDetail, '/goals/car', undefined, [screenMixin({ pickerOpen: true })])
     expect(row(sheetB)).toEqual(car.map((_, i) => String(i === 2)))
+  })
+
+  it('(в) приёмка: в листе другая тема — ряд её фото, 2-е → `furniture-2`; «Путешествие» — без ряда; viewer — смены фото нет', async () => {
+    const A = await as('member', 'a')
+    const V = await as('viewer', 'b')
+    await sync(A, V)
+    const furniture = themePhotos('furniture')
+    expect(furniture.length).toBeGreaterThan(1)
+    const pickType = (t: string) => (s: Record<string, unknown>) => (s.pickType as (t: string) => void)(t)
+
+    // Нажатие на другую тему: ряд — её фото, отмечено первое (фото плитки).
+    const other = await screen(on(A).pinia, GoalDetail, '/goals/car', undefined, [screenMixin({ pickerOpen: true }), screenMixin({}, pickType('furniture'))])
+    expect(row(other)).toEqual(furniture.map((_, i) => String(i === 0)))
+    const travel = await screen(A.pinia, GoalDetail, '/goals/car', undefined, [screenMixin({ pickerOpen: true }), screenMixin({}, pickType('travel'))])
+    expect(travel).not.toContain('data-theme-photos')
+    expect(travel).toContain(TRAVEL_DIRECTIONS[0].name)
+
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: 'image/jpeg' }))))
+    vi.spyOn(apiClient, 'uploadPhoto').mockResolvedValue({ id: 'ph-furniture-2' })
+    await screen(A.pinia, GoalDetail, '/goals/car', undefined, [
+      screenMixin({ pickerOpen: true }),
+      screenMixin({}, (s) => {
+        pickType('furniture')(s)
+        s.pickedId = (s.variants as GoalTemplate[])[1].id
+        ;(s.confirm as () => void)()
+      }),
+    ])
+    await vi.waitFor(() => expect(A.store.goals.find((g) => g.id === 'car')).toMatchObject({ template: 'furniture-2', photoId: 'ph-furniture-2' }))
+    expect(A.store.goals.find((g) => g.id === 'car')!.photoCredit).toEqual(templateCredit(furniture[1]))
+
+    await sync(A, V)
+    expect(on(V).store.goals.find((g) => g.id === 'car')).toMatchObject({ template: 'furniture-2', photoId: 'ph-furniture-2' })
+    const viewer = await screen(V.pinia, GoalDetail, '/goals/car')
+    expect(viewer).not.toContain('Сменить фото')
+    expect(viewer).not.toContain('data-theme-photos')
   })
 
   it('(б) «Желания»: «Уже купили · 2» свёрнуто — купленного и суммы нет; раскрытие показывает; viewer — то же', async () => {
