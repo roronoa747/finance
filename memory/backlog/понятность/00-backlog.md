@@ -149,7 +149,7 @@
 | 6. Подушка 🏁 *(принят и на проде 2026-10-11, мёрж `5a42ff7`; был возврат приёмки — первый запуск без плитки «Подушка», решение владельца А)* | PN-19 Шаблон «Подушка» → фонд; «хватит на N месяцев» | `block-6-cushion/PN-19-cushion-template-finance.md` | Блок 5а 🏁 (шаблоны — Блок 3) | ✅ |
 | | PN-20 Экран подушки: нужно · есть · хватит | `block-6-cushion/PN-20-cushion-screen.md` | PN-19 | ✅ |
 | | PN-21 e2e и доки | `block-6-cushion/PN-21-e2e-docs.md` | PN-20 | ✅ |
-| 7. Ритм зарплаты 🔄 *(исполнитель ✅ 2026-10-12, ветка `pn-block-7-pay-rhythm`)* | PN-22 Модель и расчёты ритма и плавающего дохода | `block-7-pay-rhythm/PN-22-rhythm-model-finance.md` | Блок 6 🏁 (полоска — Блок 2) | ✅ |
+| 7. Ритм зарплаты 🔄 *(исполнитель ✅, критик ✅ 2026-10-12, ветка `pn-block-7-pay-rhythm`)* | PN-22 Модель и расчёты ритма и плавающего дохода | `block-7-pay-rhythm/PN-22-rhythm-model-finance.md` | Блок 6 🏁 (полоска — Блок 2) | ✅ |
 | | PN-23 Формы: первый запуск, «Изменить оклад», лист «Пришла» | `block-7-pay-rhythm/PN-23-rhythm-forms-sheet.md` | PN-22 | ✅ |
 | | PN-24 Выписка и план по ритму; доход полоски Капитала | `block-7-pay-rhythm/PN-24-rhythm-statement-plan.md` | PN-23 | ✅ |
 | | PN-25 Демо, e2e и доки | `block-7-pay-rhythm/PN-25-demo-e2e-docs.md` | PN-24 | ✅ |
@@ -547,6 +547,13 @@ Production `dpl_Fh6vRtoaqe6bC1pZTfUYDzit8uQR`, откат — promote `dpl_EsjHT
   `salaryQuestion`; первый запуск — `firstRun.ts` `weeklyOf` → `IncomeCandidate.rhythm/weekday`. Демо: партнёр b — аванс 15-го 150 000,
   остаток 30-го. Тесты: `lib/rhythm.test.ts`, `components/PayRhythm.dom.test.ts`, `lib/statements/matching.rhythm.test.ts`, e2e
   `pn-block7-pay-rhythm` (5). База: **193 файла / 1937 ✅ + 1 пропуск**, `e2e/` — 38 / 236.
+- *Критик Б7 (2026-10-12):* старые месячные документы — числа `main` до тенге (временная дифф-проверка `finance.ts`/`matching.ts`
+  `main` против ветки, 400 случайных семей, >10 000 сравнений: план, строки, «до зарплаты», «Пришла?», история, итог, Капитал,
+  «Хватит?», курс, выписка — 0 расхождений). **`payEvents` аванса не отдаёт приход 0** (аванс не вписан или оклад не больше аванса) —
+  один приход всей суммой, иначе месяц не «приходил» (`came` — все приходы) и плана после зарплаты не было; новый код, считающий
+  приходы, — только через `payEvents`, не по `payday`/`payday2`. `MarkSheet` — подпись остатка «Зарплата — N»; `SalaryDialog` — «≈ ₸»
+  недельного валютного оклада за неделю (`payEventAt`). Ключ ISO-дня и откат — «Итоги критика» SESSION.md Б7. База: **193 / 1941 ✅ + 1**,
+  `e2e/` — 38 / 236.
 
 **Связки между блоками** (чтобы критик следил за промптами): Блок 2 → 5 (`inSalaries`, `capitalStats`); Блок 3 → 4
 (`GoalDetail`/`Dreams`/`StorySheet` после PN-09/10), → 5 (`goalPace`/`closerDays`), → 9 (`GoalNew` travel); Блок 7 → 8

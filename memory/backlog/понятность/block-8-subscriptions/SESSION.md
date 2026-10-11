@@ -19,8 +19,29 @@ N» и «<имя> · N» с пакетами внутри; платежи и д�
 - **Ветка `pn-block-8-subscriptions` от `main`** после 🏁 Блока 7. Документ: новых полей нет (`who` есть); Go нет.
 - Порядок: PN-26 → PN-27 → PN-28 → PN-29. `.ics` — чистые функции с тестами в Node; общий `shareFile` — вынести из
   `storyCard.ts`, не копировать.
-- Факты Блока 7 (критик допишет): <`payEvents` сигнатура и файл; номера строк `NewObligationSheet`, `CapitalLists`,
-  `MonthPlan` подписки>.
+- **Факты кода после Блока 7 (критик Б7, 2026-10-12, ветка `pn-block-7-pay-rhythm`; номера в ТЗ PN-26…PN-28 — до Блоков 2–7,
+  брать эти; после мёржа Б7 в `main` — те же):**
+  - **Зарплата для «В календарь» (PN-28) — только через ритм Б7, без своей копии дней:** `lib/finance.ts` — `payRhythmOf(p) →
+    'month' | 'advance' | 'week'` :1001 (неполный ритм — `month`), `payEvents(p: Person, key: string): PayEvent[]` :1012, `PayEvent
+    { period, day /* ISO */, amount, currency, kind: 'salary' | 'advance' | 'week' }` :989, `isoWeekday(iso)` :995 (пн 1 … вс 7).
+    Неделя — `p.weekday` (ISO 1–7) → `BYDAY` `MO…SU`; аванс — **один или два прихода**: `payEvents` даёт один, если дни совпали
+    в месяце, аванс 0 или не меньше оклада (критик Б7) — число событий `.ics` брать из `payEvents(p, monthKey())`, дни — `p.payday2`
+    (аванс) и `p.payday` (остаток), `> 28` → `BYMONTHDAY=-1` (как у платежей). Сумм зарплаты в `.ics` нет (ТЗ) — оклад недели не нужен.
+  - `lib/finance.ts` (4 850): `liveObligations` :742 (без групп), `liveCredits` :744, `openCredits` :756, `amountIn` :815,
+    `isSubscription` :918, `isPeoplePayment` :920; подписки — `SubsItem` :4011, `SubsGroup` :4014, `SUBS_GROUP_MIN` :4027,
+    `subscriptionGroup` :4034, `peopleGroup` :4042, `rowsGroup` :4046, `monthSubscriptions` :4067 (ТЗ PN-27 :3521-3581 устарели).
+  - `types/finance.ts` (614): `Obligation` :198 (`category` :204, `who` — пусто = общее). Стор: `addObligation` :783.
+  - `components/capital/NewObligationSheet.vue` (189): чипы разделов `['d1','d2','d4']` :55, `addObligation` :64, «Людям» :88-93,
+    «Что оплачиваем / Кому» :96, «Как часто» :100, «Валюта» :111, «Месяц списания» :125, «День платежа» :140, **«Чьё это» :144-163**,
+    **«В какой раздел бюджета» :165-178** (убрать), «Сумма плавает» :180-183. `ObligationSheet.vue` (341): чипы :62, «Группа» :160,
+    **раздел :244-256** (комментарий «исключение из Р-2» — PN-26 п. 3).
+  - `components/money/CapitalLists.vue` (347): `addKind('payment' | 'debt' | 'group')` :136-140, адрес `?add=` :145-159 (сейчас
+    `debt`/`payment`, viewer — нет; `housing` — новый), `QUERY_KEYS` :162; `Section «Платежи»` :250, `data-payments` :251,
+    **«Подписки · N» `data-subs` :259** (части ручных групп — цикл :267), «+ Добавить» :302, лист «Добавить» :308-320 (три пункта
+    :310/:313/:316), `GroupSheets` :338. `AppShell.vue` (200): `actions` :113-125, «Обязательство или подписка» :120.
+  - `components/money/MonthPlan.vue` (749): `grouped = monthSubscriptions(plan.dues, finance.obligations)` :237, **«Подписки · N»**
+    :483-496 (`data-subs` :484, `data-subs-status` :491, `data-subs-done` :496).
+  - `lib/storyCard.ts` (265): `shareStory` :235, `downloadBlob` :255 (ТЗ PN-28 :206-226 устарели) — `shareFile` выносить отсюда.
 - Правило 12: форма — одна «Добавить»; «В календарь» — тихая кнопка у списка платежей; части «Общие/имя» — свёрнуто
   внутри «Подписки · N».
 - Среда — §6. Следующий шаг — `/critic понятность 8`.
