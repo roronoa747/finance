@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createApp, nextTick, type App } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
-import { createRouter, createMemoryHistory } from 'vue-router'
+import { createRouter, createMemoryHistory, type Router } from 'vue-router'
 import { routes } from '@/router'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
@@ -94,6 +94,65 @@ describe('B2C-64-а: фото-варианты темы в «Новой цели
     const goal = finance.goals.find((g) => g.name === 'Ремонт')!
     expect(goal.template).toBe('renovation-3')
     expect(goal.hue).toBe(tpl.hue)
+  })
+})
+
+describe('PN-19: «Подушка» в «Новой мечте» — фонд семьи без формы', () => {
+  const settle = async (router: Router, path: RegExp) => {
+    for (let i = 0; i < 40 && !path.test(router.currentRoute.value.fullPath); i++) await new Promise((r) => setTimeout(r, 10))
+  }
+
+  it('«Подушка» → «Дальше»: формы нет, `ensureFund`, а не `addGoal`; переход на экран фонда; вариант фото — у фонда', async () => {
+    const finance = await open()
+    const router = app!.config.globalProperties.$router
+    const addGoal = vi.spyOn(finance, 'addGoal')
+    const ensureFund = vi.spyOn(finance, 'ensureFund')
+    button('Подушка').click()
+    await nextTick()
+    variants()[1].click()
+    await nextTick()
+    button('Дальше').click()
+    await settle(router, /^\/goals\/(?!new)/)
+    expect(document.querySelector('input[placeholder="1 800 000"]'), 'формы суммы нет').toBeNull()
+    expect(addGoal).not.toHaveBeenCalled()
+    expect(ensureFund).toHaveBeenCalledWith('cushion')
+    const fund = finance.goals.find((g) => g.fund === 'cushion')!
+    expect(fund).toBeDefined()
+    // Заглушка загрузки — «отложено»: экран фонда с заметкой «Картинка появится при сети», как у мечты.
+    expect(router.currentRoute.value.fullPath).toBe(`/goals/${fund.id}?photo=later`)
+    const { attachTemplate } = await import('@/lib/photos/goalPhoto')
+    expect(attachTemplate).toHaveBeenCalledWith(finance, fund.id, templateById('cushion-2'))
+  })
+
+  it('подушка уже есть — тот же id, переход к ней с `?fund=exists` (тост), новой цели нет, фото не трогаем', async () => {
+    const finance = await open()
+    const router = app!.config.globalProperties.$router
+    const first = finance.ensureFund('cushion')
+    const count = finance.goals.length
+    const { attachTemplate } = await import('@/lib/photos/goalPhoto')
+    vi.mocked(attachTemplate).mockClear()
+    button('Подушка').click()
+    await nextTick()
+    button('Дальше').click()
+    await settle(router, /fund=exists/)
+    expect(router.currentRoute.value.fullPath).toBe(`/goals/${first}?fund=exists`)
+    expect(finance.goals).toHaveLength(count)
+    expect(attachTemplate).not.toHaveBeenCalled()
+  })
+
+  it('копилка Блока 11 — та же подушка: помечается фондом, новой цели нет', async () => {
+    const finance = await open()
+    const router = app!.config.globalProperties.$router
+    const pot = finance.addGoal({ name: 'Копилка', need: 500_000, monthly: 0, hue: 'teal', template: null })
+    finance.setMoneySettings({ potGoalId: pot })
+    const count = finance.goals.length
+    button('Подушка').click()
+    await nextTick()
+    button('Дальше').click()
+    await settle(router, /fund=exists/)
+    expect(router.currentRoute.value.fullPath).toBe(`/goals/${pot}?fund=exists`)
+    expect(finance.goals).toHaveLength(count)
+    expect(finance.goals.find((g) => g.id === pot)!.fund).toBe('cushion')
   })
 })
 

@@ -3344,8 +3344,11 @@ export type CapitalStats = {
 
 /** Сумма в зарплатах семьи: 450 000 при доходе 300 000 → 1,5 (одна десятая, не деньги); дохода нет — null. Блок 5 использует. */
 export function inSalaries(amount: number, income: number): number | null {
-  return income > 0 ? Math.round((amount / income) * 10) / 10 : null
+  return income > 0 ? round1(amount / income) : null
 }
+
+/** Одна десятая — для «1,5 зарплаты», «хватит на 1,2 месяца» (не деньги). */
+export const round1 = (x: number) => Math.round(x * 10) / 10
 
 /** Подпись к `inSalaries`: «1,5 зарплаты», «9 зарплат», «1 зарплата» — дробь всегда «зарплаты», целое — по числу. */
 export const salariesLabel = (n: number) =>
@@ -3543,6 +3546,28 @@ export function goalTerm(
   // Собрана сейчас (взнос этого месяца уже лёг) — ваша в этом месяце, хотя план считает от начала месяца.
   const doneMonth = remaining <= 0 ? key : item.doneMonth
   return { off: false, afterPlan: false, need, remaining, doneMonth, months: doneMonth ? monthsBetween(key, doneMonth) + 1 : Infinity }
+}
+
+export type CushionCover = {
+  /** Порог подушки — из строки очереди плана (`PlanQueueItem.need`), не пересчёт; строки нет — 0. */
+  need: number
+  /** Накоплено сейчас. */
+  have: number
+  /** Месяц трат по плану (платежи + траты планов) — `need / monthsNeeded`; строки нет — 0. */
+  monthSpend: number
+  /** Порог в месяцах: свой `fundMonths` или умолчание семьи. */
+  monthsNeeded: number
+  /** «Хватит на 1,2 месяца» — одна десятая; трат нет — null. */
+  months: number | null
+}
+
+/** Подушка (Р-12, PN-19): на сколько месяцев трат хватит накопленного — от строки плана месяца, как «нужно» в «Месяце». */
+export function cushionCover(item: PlanQueueItem | undefined, goal: Pick<Goal, 'have' | 'fundMonths'>, settings: MoneySettings): CushionCover {
+  const monthsNeeded = fundMonthsOf('cushion', goal, settings)
+  const need = item?.need ?? 0
+  const have = Math.max(0, goal.have)
+  const monthSpend = item && monthsNeeded > 0 ? need / monthsNeeded : 0
+  return { need, have, monthSpend, monthsNeeded, months: monthSpend > 0 ? round1(have / monthSpend) : null }
 }
 
 /** Что записывает «Отложить по плану» (Р-78) — стор только исполняет. */

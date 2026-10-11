@@ -7,7 +7,7 @@ import { useFxStore } from '@/stores/fx'
 import { useAuthStore } from '@/stores/auth'
 import { money, parseMoney } from '@/lib/money'
 import { monthIn, monthKey } from '@/lib/dates'
-import { budgetAmounts, goalDoneMonth, goalMonthly } from '@/lib/finance'
+import { budgetAmounts, fundsOf, goalDoneMonth, goalMonthly } from '@/lib/finance'
 import { GOAL_TEMPLATES, GOAL_TYPES, TRAVEL_DIRECTIONS, templateImageUrl, themePhotos, type GoalTemplate } from '@/lib/goalTemplates'
 import { attachFile, attachTemplate } from '@/lib/photos/goalPhoto'
 import type { LinkFound } from '@/lib/photos/useLinkPreview'
@@ -31,6 +31,7 @@ import TemplateTile from '@/components/kit/TemplateTile.vue'
  * Картинка грузится после создания (`lib/photos/goalPhoto`), офлайн — при следующей сети; не
  * загрузилась — экран цели узнаёт об этом из адреса (`?photo=failed|later`), в первом запуске — нет.
  * «По ссылке» (PN-08): картинка со страницы — как своё фото, название — со страницы, если своего нет.
+ * «Подушка» (PN-19): без формы — фонд семьи (`ensureFund`), «нужно» считает план месяца.
  */
 /** Куда идти после мечты: первый запуск (B2C-19) рендерит экран внутри себя и задаёт следующий шаг. */
 const props = defineProps<{ next?: string }>()
@@ -128,6 +129,8 @@ function onLink(found: LinkFound) {
   pickOwn(found.file)
 }
 function next() {
+  // «Подушка» (PN-19, Р-12) — фонд семьи, а не мечта: «нужно» считает план месяца, формы нет.
+  if (pickedType.value === 'cushion') return void createCushion()
   if (template.value && !name.value) name.value = template.value.name
   step.value = 'form'
 }
@@ -146,17 +149,35 @@ async function create() {
     hue: tpl?.hue ?? 'blue',
     template: tpl?.id ?? null,
   })
+  await land(id, () => (file ? attachFile(financeStore, id, file) : tpl ? attachTemplate(financeStore, id, tpl).then((r) => r === 'uploaded') : Promise.resolve(true)), file ? 'failed' : 'later')
+}
+
+/**
+ * Подушка одна на семью (`ensureFund`): есть (в том числе копилка Блока 11) — ведём к ней с тостом «Подушка уже есть»
+ * (`?fund=exists`), фото не трогаем; новая — с выбранным вариантом фото темы.
+ */
+async function createCushion() {
+  if (authStore.isViewer) return
+  const tpl = template.value
+  const existed = fundsOf(financeStore.householdDoc).cushion
+  const id = financeStore.ensureFund('cushion')
+  if (existed) return void (await land(id, null, 'later', { fund: 'exists' }))
+  await land(id, () => (tpl ? attachTemplate(financeStore, id, tpl).then((r) => r === 'uploaded') : Promise.resolve(true)), 'later')
+}
+
+/** Цель записана → на её экран (или дальше первого запуска), потом картинка. */
+async function land(id: string, upload: (() => Promise<boolean>) | null, failed: 'failed' | 'later', query: Record<string, string> = {}) {
   const next = nextPath()
   // Цель выбрана в первом запуске (B2C-28): событие воронки.
   if (next?.startsWith('/start')) useEventsStore().track('first_run_goal')
   const here = `/goals/${id}`
-  await router.push(next ?? here)
+  await router.push(next ?? { path: here, query })
   // Картинка — после перехода: цель уже есть, фото догрузится (шаблон — и при следующей сети).
-  const done = file ? await attachFile(financeStore, id, file) : tpl ? (await attachTemplate(financeStore, id, tpl)) === 'uploaded' : true
+  const done = upload ? await upload() : true
   // Не загрузилось — экран цели скажет об этом (своё фото само не догрузится); первый запуск и
   // демо (сервера нет) — без заметки.
   if (done || next || financeStore.isDemo || router.currentRoute.value.path !== here) return
-  await router.replace({ path: here, query: { photo: file ? 'failed' : 'later' } })
+  await router.replace({ path: here, query: { photo: failed } })
 }
 
 // Внутри AppShell (/goals/new) шапка экрана уже есть; в первом запуске (/start/dream) — нет.
