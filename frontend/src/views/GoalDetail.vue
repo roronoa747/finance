@@ -464,10 +464,10 @@ function share() {
       </template>
     </Card>
     <Card v-else>
-      <!-- Подушка (PN-20): «хватит на N месяцев» — заголовок, «нужно» строкой; собрано — ✓ цветом «готово», «Собрано» не пишем. -->
+      <!-- Подушка (PN-20): «хватит на N месяцев» — заголовок, «нужно на M месяцев» строкой (сумма — в герое, /ux Б6); собрано — ✓ цветом «готово», «Собрано» не пишем. -->
       <template v-if="cover">
         <h2 class="type-h2" :class="coverFull ? 'text-ok' : 'text-ink'" data-cushion-cover>{{ coverTitle }}{{ coverFull ? ' ✓' : '' }}</h2>
-        <p class="mt-1.5 text-[15px] text-ink-2 num" data-cushion-need>нужно {{ monthsLabel(cover.monthsNeeded) }} · {{ money(cover.need) }}</p>
+        <p class="mt-1.5 text-[15px] text-ink-2 num" data-cushion-need>нужно на {{ monthsLabel(cover.monthsNeeded) }}</p>
       </template>
       <template v-else>
         <h2 class="type-h2 text-ink">{{ doneTitle }}</h2>

@@ -80,7 +80,7 @@ describe('PN-20: экран подушки — нужно · есть · хва�
     return plan.duesTotal + plan.spendTotal
   }
 
-  it('частично: «Хватит на 1,2 месяца», строка «нужно 3 месяца · N»; «Соберём в …» — только в «Подробнее»', async () => {
+  it('частично: «Хватит на 1,2 месяца», строка «нужно на 3 месяца», сумма — в герое; «Соберём в …» — только в «Подробнее»', async () => {
     let finance = await open('/goals/pot')
     const spend = spendOf(finance)
     expect(spend).toBeGreaterThan(0)
@@ -93,7 +93,8 @@ describe('PN-20: экран подушки — нужно · есть · хва�
     expect(item.need).toBe(3 * spend)
     expect(card()?.textContent).toBe('Хватит на 1,2 месяца')
     expect(card()?.className).not.toContain('text-ok')
-    expect(norm(document.querySelector('[data-cushion-need]')!.textContent!)).toBe(norm(`нужно 3 месяца · ${money(item.need)}`))
+    // Сумма «нужно» — одна, в герое (/ux Б6: не дублировать в карточке).
+    expect(norm(document.querySelector('[data-cushion-need]')!.textContent!)).toBe('нужно на 3 месяца')
     // Герой — «есть из нужно», как у всех.
     expect(page()).toContain(norm(`из ${money(item.need)}`))
     const card0 = card()!.closest('div')!.textContent!
@@ -125,9 +126,10 @@ describe('PN-20: экран подушки — нужно · есть · хва�
     expect(card()?.textContent).toBe('Пока не на что считать')
   })
 
-  it('свой порог 2 месяца — «нужно 2 месяца»', async () => {
+  it('свой порог 2 месяца — «нужно на 2 месяца»', async () => {
     const finance = await open('/goals/pot', [pot({ fundMonths: 2 })])
-    expect(norm(document.querySelector('[data-cushion-need]')!.textContent!)).toBe(norm(`нужно 2 месяца · ${money(2 * spendOf(finance))}`))
+    expect(norm(document.querySelector('[data-cushion-need]')!.textContent!)).toBe('нужно на 2 месяца')
+    expect(page()).toContain(norm(`из ${money(2 * spendOf(finance))}`))
   })
 
   it('viewer видит то же, без поля порога', async () => {

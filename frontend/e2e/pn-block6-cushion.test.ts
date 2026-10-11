@@ -22,7 +22,7 @@ vi.mock('../src/lib/photos/goalPhoto', async (orig) => ({
 /**
  * Блок 6 «понятность» (PN-19…PN-21, Р-12) на двух телефонах с фейковым сервером, 12 октября 2026: (а) семья без подушки —
  * «Новая мечта → Подушка» → фонд, `need` = 3 × (платежи + траты) плана, «Хватит на 0 месяцев» → взнос → «на 1,2 месяца»;
- * (б) второй раз — тот же id, тост; (в) «Месяцев трат» 2 → «нужно 2 месяца», `need` плана пересчитан; (г) демо — «хватит на N»
+ * (б) второй раз — тот же id, тост; (в) «Месяцев трат» 2 → «нужно на 2 месяца», `need` плана пересчитан; (г) демо — «хватит на N»
  * по демо-цифрам; (д) второй телефон после синка видит те же числа. Экраны — SSR (`screen`), нажатия — методами экрана.
  */
 type Phone = Awaited<ReturnType<typeof phone>>
@@ -96,7 +96,8 @@ describe('e2e / понятность Блок 6 — подушка', () => {
     expect(item.need).toBe(3 * spend)
     let page = await cushionScreen(A, `/goals/${id}`)
     expect(page).toContain('Хватит на 0 месяцев')
-    expect(page).toContain(text(`нужно 3 месяца · ${money(3 * spend)}`))
+    expect(page).toContain('нужно на 3 месяца')
+    expect(page).toContain(text(`из ${money(3 * spend)}`))
 
     // Взнос 1,2 месяца трат (целое) → «Хватит на 1,2 месяца».
     on(A).store.contribute(id, Math.round(spend * 1.2), 'a')
@@ -109,11 +110,12 @@ describe('e2e / понятность Блок 6 — подушка', () => {
     expect(on(A).store.goals).toHaveLength(before + 1)
     expect(await cushionScreen(A, `/goals/${id}?fund=exists`)).toContain('Подушка уже есть')
 
-    // (в) «Месяцев трат» 2 → «нужно 2 месяца», `need` плана — 2 × траты; 1,2 месяца по-прежнему.
+    // (в) «Месяцев трат» 2 → «нужно на 2 месяца», `need` плана — 2 × траты; 1,2 месяца по-прежнему.
     on(A).store.setFundMonths(id, 2)
     expect(planOf(A).queue.find((q) => q.goalId === id)!.need).toBe(2 * spend)
     page = await cushionScreen(A, `/goals/${id}`)
-    expect(page).toContain(text(`нужно 2 месяца · ${money(2 * spend)}`))
+    expect(page).toContain('нужно на 2 месяца')
+    expect(page).toContain(text(`из ${money(2 * spend)}`))
     expect(page).toContain('Хватит на 1,2 месяца')
 
     // (д) Второй телефон после синка — та же подушка и те же числа; «Новая мечта → Подушка» ведёт к ней же.
@@ -121,7 +123,8 @@ describe('e2e / понятность Блок 6 — подушка', () => {
     expect(fundId(B)).toEqual([id])
     const pageB = await cushionScreen(B, `/goals/${id}`)
     expect(pageB).toContain('Хватит на 1,2 месяца')
-    expect(pageB).toContain(text(`нужно 2 месяца · ${money(2 * spend)}`))
+    expect(pageB).toContain('нужно на 2 месяца')
+    expect(pageB).toContain(text(`из ${money(2 * spend)}`))
     await pickCushion(B)
     expect(fundId(B)).toEqual([id])
   })
@@ -143,6 +146,7 @@ describe('e2e / понятность Блок 6 — подушка', () => {
     const months = Math.round((have / spend) * 10) / 10
     const page = text(await screen(pinia, GoalDetail, '/goals/g-pot'))
     expect(page).toContain(`Хватит на ${monthsLabel(months)}`)
-    expect(page).toContain(text(`нужно 3 месяца · ${money(item.need)}`))
+    expect(page).toContain('нужно на 3 месяца')
+    expect(page).toContain(text(`из ${money(item.need)}`))
   })
 })
