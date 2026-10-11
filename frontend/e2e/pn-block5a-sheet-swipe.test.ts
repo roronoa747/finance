@@ -104,4 +104,22 @@ describe('e2e / понятность Блок 5а — лист стянут вн
     expect(document.activeElement).toBe(field)
     expect(kaspi().amount).toBe(was)
   })
+
+  // Приёмка 2026-10-11: на стенде тап с дрожью 3–9 px за кадр лист не стягивал — здесь тот же тап по полю.
+  it('тап по полю с дрожью пальца вниз — лист на месте, поле в фокусе', async () => {
+    const { open, dialog, field } = await kaspiSheet()
+    field.focus()
+    touch(field, 'touchstart', 300)
+    vi.advanceTimersByTime(16)
+    touch(field, 'touchmove', 303)
+    vi.advanceTimersByTime(60)
+    touch(field, 'touchend', 303)
+    vi.advanceTimersByTime(200)
+    await nextTick()
+
+    expect(open.value).toBe('acc-kaspi')
+    expect(dialog.isConnected).toBe(true)
+    expect(dialog.style.transform).toBe('')
+    expect(document.activeElement).toBe(field)
+  })
 })
