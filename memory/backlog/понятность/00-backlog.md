@@ -145,9 +145,9 @@
 | | PN-17 Листы «Прикинуть кредит» и «Хватит?» | `block-5-estimate/PN-17-estimate-sheets.md` | PN-16 | ✅ |
 | | PN-18 e2e и доки | `block-5-estimate/PN-18-e2e-docs.md` | PN-17 | ✅ |
 | 5а. Листы: стянуть вниз 🏁 *(принят и на проде 2026-10-11, мёрж `7a4ebb0`)* | PN-35 Лист закрывается стягиванием вниз · ручка · e2e и доки | `block-5a-sheet-swipe/PN-35-sheet-swipe.md` | Блок 5 🏁 | ✅ |
-| 6. Подушка ⬜ | PN-19 Шаблон «Подушка» → фонд; «хватит на N месяцев» | `block-6-cushion/PN-19-cushion-template-finance.md` | Блок 5а 🏁 (шаблоны — Блок 3) | ⬜ |
-| | PN-20 Экран подушки: нужно · есть · хватит | `block-6-cushion/PN-20-cushion-screen.md` | PN-19 | ⬜ |
-| | PN-21 e2e и доки | `block-6-cushion/PN-21-e2e-docs.md` | PN-20 | ⬜ |
+| 6. Подушка 🔄 | PN-19 Шаблон «Подушка» → фонд; «хватит на N месяцев» | `block-6-cushion/PN-19-cushion-template-finance.md` | Блок 5а 🏁 (шаблоны — Блок 3) | ✅ |
+| | PN-20 Экран подушки: нужно · есть · хватит | `block-6-cushion/PN-20-cushion-screen.md` | PN-19 | ✅ |
+| | PN-21 e2e и доки | `block-6-cushion/PN-21-e2e-docs.md` | PN-20 | ✅ |
 | 7. Ритм зарплаты ⬜ | PN-22 Модель и расчёты ритма и плавающего дохода | `block-7-pay-rhythm/PN-22-rhythm-model-finance.md` | Блок 6 🏁 (полоска — Блок 2) | ⬜ |
 | | PN-23 Формы: первый запуск, «Изменить оклад», лист «Пришла» | `block-7-pay-rhythm/PN-23-rhythm-forms-sheet.md` | PN-22 | ⬜ |
 | | PN-24 Выписка и план по ритму; доход полоски Капитала | `block-7-pay-rhythm/PN-24-rhythm-statement-plan.md` | PN-23 | ⬜ |
@@ -496,6 +496,22 @@ Production `dpl_Fh6vRtoaqe6bC1pZTfUYDzit8uQR`, откат — promote `dpl_EsjHT
   (светлеет при жесте; клик по фону по-прежнему `@click.self` внешнего слоя). Ручка — `absolute top-2`, `bg-line-strong`,
   `sm:hidden`: отступы, заголовок и крестик не сдвинулись. В happy-dom тесты сами задают `matchMedia` (там 1024 px) и
   `offsetHeight`; время событий — фейковый `performance`. База: **186 / 1866 ✅ + 1** (критик), `e2e/` — 36 / 227.
+
+**После Блока 6 (Подушка; исполнитель, 2026-10-11)**
+- `finance.ts`: **`cushionCover(item, goal, settings)`** (рядом с `goalTerm`) → `{ need, have, monthSpend, monthsNeeded, months }` — `need`
+  из строки плана (`PlanQueueItem.need`), `monthSpend = need / monthsNeeded`, `months` — `round1(have / monthSpend)`, трат нет — null;
+  подпись **`monthsLabel(n)`** («1,2 месяца», «1 месяц», «0 месяцев»); **`round1`** экспортирован (им же `inSalaries`). Старая
+  `cushionMonths(liquid, …)` («счета в месяцах») не тронута — другое число. Тесты `lib/cushion.test.ts`.
+- Путь создания: `GoalNew` `next()` — `pickedType === 'cushion'` → `createCushion()` (формы нет): `fundsOf(doc).cushion` до вызова →
+  `ensureFund('cushion')`; был (и копилка Блока 11) — `/goals/<id>?fund=exists` (тост «Подушка уже есть» на экране цели, `watch`
+  `route.query.fund` → `flashCloser`), фото не трогается; новый — `attachTemplate` с выбранным вариантом. Хвост перехода общий —
+  `land(id, upload, failed, query)` (`?photo=` как у мечты). Старые мечты с `template: 'cushion'` остаются мечтами.
+- `GoalDetail`: `planItem` (строка плана — одна на `term` и `cover`); `cover` только у `fundKind === 'cushion'` и не на паузе;
+  карточка срока — `data-cushion-cover` / `data-cushion-need`; «Соберём в …» — в `leftLine` «Подробнее»; `Hint` у «Месяцев трат»
+  (только member — поле и раньше было только у него); «Чтобы успеть за год» у фонда больше нет. `MonthPlan` `statusOf`: подушка
+  без статуса или «собрано» — «хватит на N мес.»; пауза и нехватка важнее. «Запас» — прежний вид.
+- Демо стартует с лендинга `/` («Попробовать» / «Вернуться в демо»), не с `/access` (там его больше нет). База: **189 / 1887 ✅ + 1**,
+  `e2e/` — 37 / 230.
 
 **Связки между блоками** (чтобы критик следил за промптами): Блок 2 → 5 (`inSalaries`, `capitalStats`); Блок 3 → 4
 (`GoalDetail`/`Dreams`/`StorySheet` после PN-09/10), → 5 (`goalPace`/`closerDays`), → 9 (`GoalNew` travel); Блок 7 → 8
