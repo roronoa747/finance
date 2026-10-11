@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick, reactive, type App } from 'vue'
 import Sheet from './Sheet.vue'
 import Row from './Row.vue'
@@ -198,7 +198,7 @@ describe('Н-2: kit/Row в DOM', () => {
 })
 
 describe('ворота Б17: экран за открытым листом не прокручивается', () => {
-  it('два листа: экран заперт, пока открыт хоть один; закрыли оба — снова прокручивается; ручки нет', async () => {
+  it('два листа: экран заперт, пока открыт хоть один; закрыли оба — снова прокручивается', async () => {
     const s = reactive({ a: false, b: false })
     mount(() =>
       h('div', [
@@ -212,7 +212,6 @@ describe('ворота Б17: экран за открытым листом не 
     s.a = true
     await nextTick()
     expect(locked()).toBe(true)
-    expect(dialogs()[0].querySelector('.bg-line-strong')).toBeNull()
     s.b = true
     await nextTick()
     s.b = false
@@ -221,5 +220,236 @@ describe('ворота Б17: экран за открытым листом не 
     s.a = false
     await nextTick()
     expect(locked()).toBe(false)
+  })
+})
+
+describe('PN-35: лист закрывается стягиванием вниз', () => {
+  let wide = false
+  let reduce = false
+
+  beforeEach(() => {
+    wide = false
+    reduce = false
+    // happy-dom — 1024 px (окно `sm:`), высоты нет: телефон и лист в 600 px задаём сами; время событий — фейковое.
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (q: string) => ({ matches: q.includes('min-width') ? wide : q.includes('reduced-motion') ? reduce : false, media: q }) as MediaQueryList,
+    )
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  function tall(dialog: HTMLElement, h = 600) {
+    Object.defineProperty(dialog, 'offsetHeight', { value: h, configurable: true })
+    return dialog
+  }
+
+  function touch(el: HTMLElement, type: string, y: number, x = 0) {
+    const t = new Touch({ identifier: 1, target: el, clientX: x, clientY: y })
+    const end = type === 'touchend' || type === 'touchcancel'
+    const ev = new TouchEvent(type, { touches: end ? [] : [t], changedTouches: [t], bubbles: true, cancelable: true })
+    el.dispatchEvent(ev)
+    return ev
+  }
+
+  /** Палец ставят на `el`, ведут на `dy` (и `dx`) за `ms` четырьмя шагами и отпускают; лист доезжает. */
+  async function swipe(el: HTMLElement, dy: number, { ms = 400, dx = 0, end = 'touchend' } = {}) {
+    touch(el, 'touchstart', 100)
+    const moves: TouchEvent[] = []
+    for (let k = 1; k <= 4; k++) {
+      vi.advanceTimersByTime(ms / 4)
+      moves.push(touch(el, 'touchmove', 100 + (dy * k) / 4, (dx * k) / 4))
+    }
+    await nextTick()
+    const during = { transform: dialogs().at(-1)!.style.transform }
+    touch(el, end, 100 + dy)
+    vi.advanceTimersByTime(200)
+    await nextTick()
+    return { moves, during }
+  }
+
+  function one() {
+    const s = reactive({ open: true })
+    const seen: boolean[] = []
+    mount(() =>
+      h(Sheet, { open: s.open, title: 'Окно', onClose: () => (s.open = false) }, () =>
+        h('input', { id: 'field', onBlur: () => seen.push(s.open) }),
+      ),
+    )
+    return { s, seen }
+  }
+
+  it('стянул за порог — закрыт через close(): поле с фокусом получает blur до close; во время жеста лист едет за пальцем, затемнение светлеет', async () => {
+    const { s, seen } = one()
+    await nextTick()
+    const dialog = tall(dialogs()[0])
+    document.getElementById('field')!.focus()
+
+    touch(dialog, 'touchstart', 100)
+    vi.advanceTimersByTime(100)
+    const move = touch(dialog, 'touchmove', 250)
+    await nextTick()
+    expect(move.defaultPrevented).toBe(true)
+    expect(dialog.style.transform).toBe('translateY(150px)')
+    expect(Number((scrimOf(dialog).firstElementChild as HTMLElement).style.opacity)).toBeCloseTo(0.75)
+    expect(s.open).toBe(true)
+
+    touch(dialog, 'touchend', 250)
+    vi.advanceTimersByTime(200)
+    await nextTick()
+    expect({ open: s.open, seen }).toEqual({ open: false, seen: [true] })
+  })
+
+  it('недотянул медленно — открыт, лист вернулся на место без сдвига', async () => {
+    const { s } = one()
+    await nextTick()
+    const dialog = tall(dialogs()[0])
+    const { during } = await swipe(dialog, 80)
+    expect(during.transform).toBe('translateY(80px)')
+    expect(s.open).toBe(true)
+    expect(dialog.style.transform).toBe('')
+  })
+
+  it('короткий лист: порог — 30 % высоты (лист 200 px закрывается с 70 px)', async () => {
+    const { s } = one()
+    await nextTick()
+    await swipe(tall(dialogs()[0], 200), 70)
+    expect(s.open).toBe(false)
+  })
+
+  it('быстрое смахивание закрывает и с короткого хода', async () => {
+    const { s } = one()
+    await nextTick()
+    await swipe(tall(dialogs()[0]), 60, { ms: 40 })
+    expect(s.open).toBe(false)
+  })
+
+  it('содержимое прокручено (scrollTop > 0) — жест прокручивает, лист не трогается', async () => {
+    const { s } = one()
+    await nextTick()
+    const dialog = tall(dialogs()[0])
+    Object.defineProperty(dialog, 'scrollTop', { value: 50, configurable: true })
+    const { moves, during } = await swipe(dialog, 300)
+    expect(moves.some((m) => m.defaultPrevented)).toBe(false)
+    expect(during.transform).toBe('')
+    expect(s.open).toBe(true)
+  })
+
+  it('вверх и вбок — не трогает; touchcancel — назад, не закрывает', async () => {
+    const { s } = one()
+    await nextTick()
+    const dialog = tall(dialogs()[0])
+    expect((await swipe(dialog, -300)).moves.some((m) => m.defaultPrevented)).toBe(false)
+    expect((await swipe(dialog, 100, { dx: 200 })).moves.some((m) => m.defaultPrevented)).toBe(false)
+    await swipe(dialog, 300, { end: 'touchcancel' })
+    expect(s.open).toBe(true)
+    expect(dialog.style.transform).toBe('')
+  })
+
+  it('выделение текста в поле — жест не тянет лист', async () => {
+    const { s } = one()
+    await nextTick()
+    const field = document.getElementById('field') as HTMLInputElement
+    field.value = 'Kaspi Gold'
+    field.setSelectionRange(0, 5)
+    await swipe(field, 300)
+    expect(s.open).toBe(true)
+  })
+
+  it('лист поверх листа: тянется только верхний, нижний остаётся', async () => {
+    const s = reactive({ a: true, b: true })
+    mount(() =>
+      h('div', [
+        h(Sheet, { open: s.a, title: 'Окно', onClose: () => (s.a = false) }, () => h('p', 'нижнее')),
+        h(Sheet, { open: s.b, title: 'Лист', z: 60, onClose: () => (s.b = false) }, () => h('p', 'верхнее')),
+      ]),
+    )
+    await nextTick()
+    const [low, top] = dialogs().map((d) => tall(d))
+    await swipe(low, 300)
+    expect(s).toEqual({ a: true, b: true })
+    await swipe(top, 300)
+    expect(s).toEqual({ a: true, b: false })
+  })
+
+  it('окно по центру (sm:) не тянется', async () => {
+    wide = true
+    const { s } = one()
+    await nextTick()
+    await swipe(tall(dialogs()[0]), 300)
+    expect(s.open).toBe(true)
+  })
+
+  it('«Уменьшить движение» — закрывается сразу, без доезда', async () => {
+    reduce = true
+    const { s } = one()
+    await nextTick()
+    const dialog = tall(dialogs()[0])
+    touch(dialog, 'touchstart', 100)
+    vi.advanceTimersByTime(300)
+    touch(dialog, 'touchmove', 400)
+    touch(dialog, 'touchend', 400)
+    vi.advanceTimersByTime(0)
+    await nextTick()
+    expect(s.open).toBe(false)
+  })
+
+  it('ручка-полоска у листа — токен line-strong, на широком экране скрыта', async () => {
+    one()
+    await nextTick()
+    const grip = dialogs()[0].querySelector<HTMLElement>('.bg-line-strong')!
+    expect(grip.getAttribute('aria-hidden')).toBe('true')
+    expect(grip.className).toContain('sm:hidden')
+  })
+
+  // Критик 5а: исключения сверх ТЗ и две правки жеста.
+  it('бегунок и вложенная прокрутка, которую есть куда листать вверх, — жест не тянет лист', async () => {
+    const s = reactive({ open: true })
+    mount(() =>
+      h(Sheet, { open: s.open, title: 'Окно', onClose: () => (s.open = false) }, () => [
+        h('input', { id: 'range', type: 'range' }),
+        h('div', { id: 'inner' }, [h('p', { id: 'deep' }, 'строка')]),
+      ]),
+    )
+    await nextTick()
+    tall(dialogs()[0])
+    await swipe(document.getElementById('range')!, 300)
+    Object.defineProperty(document.getElementById('inner')!, 'scrollTop', { value: 40, configurable: true })
+    await swipe(document.getElementById('deep')!, 300)
+    expect(s.open).toBe(true)
+  })
+
+  it('первое движение без сдвига не решает жест: дальше палец вниз — лист стянут', async () => {
+    const { s } = one()
+    await nextTick()
+    const dialog = tall(dialogs()[0])
+    touch(dialog, 'touchstart', 100)
+    vi.advanceTimersByTime(100)
+    expect(touch(dialog, 'touchmove', 100).defaultPrevented).toBe(false)
+    vi.advanceTimersByTime(100)
+    expect(touch(dialog, 'touchmove', 300).defaultPrevented).toBe(true)
+    touch(dialog, 'touchend', 300)
+    vi.advanceTimersByTime(200)
+    await nextTick()
+    expect(s.open).toBe(false)
+  })
+
+  it('выделение текста за листом жест не отключает', async () => {
+    const outside = document.body.appendChild(document.createElement('p'))
+    outside.textContent = 'текст экрана'
+    const { s } = one()
+    await nextTick()
+    const range = document.createRange()
+    range.selectNodeContents(outside)
+    document.getSelection()!.removeAllRanges()
+    document.getSelection()!.addRange(range)
+    expect(document.getSelection()!.isCollapsed).toBe(false)
+    await swipe(tall(dialogs()[0]), 300)
+    document.getSelection()!.removeAllRanges()
+    outside.remove()
+    expect(s.open).toBe(false)
   })
 })

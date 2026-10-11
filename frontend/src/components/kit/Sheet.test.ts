@@ -40,10 +40,10 @@ describe('PV-09: kit/Sheet — окно на ките (SSR)', () => {
   it('затемнение и тень — токены, не литеральный цвет; слой задаётся пропом z', async () => {
     const html = await render({ open: true, title: 'Лист', z: 60 })
     expect(html).toContain('bg-scrim')
-    // Тень только у листа (DESIGN.md §4 `--shadow-sheet`), радиус 28; ручки-полоски нет — лист не тянется (ворота Б17).
+    // Тень только у листа (DESIGN.md §4 `--shadow-sheet`), радиус 28; ручка-полоска — токеном, лист тянется вниз (PN-35).
     expect(html).toContain('shadow-sheet')
     expect(html).toContain('rounded-t-[28px]')
-    expect(html).not.toContain('bg-line-strong')
+    expect(html).toMatch(/aria-hidden="true" class="[^"]*bg-line-strong sm:hidden"/)
     expect(html).not.toMatch(/bg-black|shadow-2xl|shadow-lift/)
     expect(html).toContain('z-index:60')
     expect(await render({ open: true, title: 'Окно' })).toContain('z-index:50')
