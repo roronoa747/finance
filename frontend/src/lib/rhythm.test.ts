@@ -7,6 +7,7 @@ import {
   monthSummary,
   payEvents,
   payRhythmOf,
+  planSave,
   salaryAsk,
   salaryAt,
   salaryMarkPeriod,
@@ -17,6 +18,7 @@ import {
   type MonthPlanCtx,
 } from './finance'
 import type { Payment, Person } from '@/types/finance'
+import { planFamilyDoc } from '@/test/planFamily'
 
 /**
  * Ритм зарплаты (понятность Б7, PN-22; Р-5, Р-6). Числа — руками в комментариях (правило 6).
@@ -48,8 +50,27 @@ describe('payEvents — приходы месяца по ритму', () => {
     expect(payEvents({ ...advance, payday: 31, payday2: 28 }, '2027-02')).toEqual([
       { period: '2027-02-28', day: '2027-02-28', amount: 500_000, currency: 'KZT', kind: 'salary' },
     ])
-    // Аванс больше оклада — не больше оклада, остаток 0.
-    expect(payEvents({ ...advance, salary2: 900_000 }, '2026-10').map((e) => e.amount)).toEqual([500_000, 0])
+    // Аванс больше оклада — не больше оклада; остаток 0 — не приход (критик Б7): один аванс всей суммой.
+    expect(payEvents({ ...advance, salary2: 900_000 }, '2026-10')).toEqual([
+      { period: '2026-10-15', day: '2026-10-15', amount: 500_000, currency: 'KZT', kind: 'advance' },
+    ])
+    // Аванс не вписан (0 или нет поля) — один приход зарплаты 30-го всей суммой.
+    for (const salary2 of [0, undefined]) {
+      expect(payEvents({ ...advance, salary2 }, '2026-10')).toEqual([
+        { period: '2026-10-30', day: '2026-10-30', amount: 500_000, currency: 'KZT', kind: 'salary' },
+      ])
+    }
+  })
+
+  it('критик Б7: аванс 0 — пришла зарплата, значит пришёл месяц: «✓», «Отложить по плану» есть', () => {
+    // «С авансом» выбрали в первом запуске до оклада — `rhythmDefaults` дал salary2 0; раньше пустой аванс 15-го
+    // нельзя было отметить, месяц навсегда «1 из 2», плана после зарплаты не было.
+    // Семья плана: очередь целей платит Ильяс (оклад 700 000, 10-го) — у него аванс 25-го без суммы.
+    const doc = planFamilyDoc({ payments: [paid('a', '2026-10-10', 700_000)] })
+    doc.people[0] = { ...doc.people[0], payRhythm: 'advance', payday2: 25, salary2: 0 }
+    const plan = monthPlan(doc, ctxOf('2026-10'))
+    expect(plan.income.byPerson[0]).toMatchObject({ person: 'a', amount: 700_000, came: true, cameCount: 1, eventCount: 1 })
+    expect(planSave(plan, 'a')).toMatchObject({ put: 130_000 })
   })
 
   it('неделя — каждая пятница: октябрь 5, ноябрь 4; оклад за неделю', () => {

@@ -1007,7 +1007,7 @@ export function payRhythmOf(p: Pick<Person, 'payRhythm' | 'payday' | 'payday2' |
 /**
  * Приходы месяца по ритму (Р-5), по дням: месяц — один (`period = key`, день зарплаты); аванс — аванс в `payday2`
  * (`salary2`, не больше оклада) и остаток в `payday`; неделя — по одному на каждый `weekday` месяца (оклад — за
- * неделю). Аванс и зарплата в один день (31-е в феврале) — один приход всей суммой.
+ * неделю). Аванс и зарплата в один день (31-е в феврале) или одна из сумм 0 — один приход всей суммой.
  */
 export function payEvents(p: Person, key: string): PayEvent[] {
   const s = salaryOf(p, key);
@@ -1024,11 +1024,13 @@ export function payEvents(p: Person, key: string): PayEvent[] {
     const advance = s.amount - advanceRest(s.amount, p.salary2);
     const a = isoIn(key, p.payday2!);
     const b = isoIn(key, p.payday);
-    if (a === b) return [{ period: b, day: b, amount: s.amount, currency: s.currency, kind: 'salary' }];
-    const events: PayEvent[] = [
+    // Приход 0 (аванс не вписан — 0; оклад не больше аванса — остаток 0) не приход: его не отметить, и месяц не
+    // «пришёл» бы никогда — ни «✓», ни «Отложить по плану» (критик Б7). Остаётся один приход всей суммой.
+    const events = ([
       { period: a, day: a, amount: advance, currency: s.currency, kind: 'advance' },
       { period: b, day: b, amount: s.amount - advance, currency: s.currency, kind: 'salary' },
-    ];
+    ] as PayEvent[]).filter((e) => e.amount > 0);
+    if (a === b || !events.length) return [{ period: b, day: b, amount: s.amount, currency: s.currency, kind: 'salary' }];
     return events.sort((x, y) => x.day.localeCompare(y.day));
   }
   return [{ period: key, day: paydayIso(p, key), amount: s.amount, currency: s.currency, kind: 'salary' }];

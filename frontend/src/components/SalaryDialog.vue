@@ -4,7 +4,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, plain, parseMoney } from '@/lib/money'
 import { monthKey, monthTitle, monthFrom, addMonths } from '@/lib/dates'
-import { payRhythmOf, salaryAt, salaryOf, weeklyFromMonthly } from '@/lib/finance'
+import { payEventAt, payEvents, payRhythmOf, salaryAt, salaryOf, weeklyFromMonthly } from '@/lib/finance'
 import { CURRENCY_SIGN } from '@/lib/fx'
 import type { Currency, Person, PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
@@ -84,7 +84,13 @@ watch(
 
 /** Оклад этого месяца в своей валюте и в тенге (валютный — по курсу дня зарплаты). */
 const current = computed(() => (person.value ? salaryOf(person.value, key.value) : { amount: 0, currency: 'KZT' as Currency }))
-const currentTenge = computed(() => (person.value ? salaryAt(person.value, key.value, fx.book) : 0))
+// Неделя (Б7): поле — оклад за неделю, «≈ ₸» под ним — тоже за неделю (первый приход месяца), не сумма месяца.
+const currentTenge = computed(() => {
+  const p = person.value
+  if (!p) return 0
+  const first = payRhythmOf(p) === 'week' ? payEvents(p, key.value)[0] : null
+  return first ? payEventAt(p, first.period, fx.book) : salaryAt(p, key.value, fx.book)
+})
 const sign = computed(() => CURRENCY_SIGN[current.value.currency])
 
 /** Месяцы версии: 24 назад (задним числом, Р-70) … 12 вперёд. */

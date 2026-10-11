@@ -86,6 +86,10 @@ const own = computed(() => (person.value ? salaryOf(person.value, periodMonth(pr
 /** Приход зарплаты по ритму (Б7): `period` — месяц или ISO-день аванса и недели. */
 const event = computed(() => (person.value ? payEventOf(person.value, props.period) : null))
 const floating = computed(() => !!person.value?.floating)
+/** Подпись суммы прихода: остаток после аванса — «Зарплата», не «Оклад месяца» (критик Б7: оклад месяца больше). */
+const dueLabel = computed(() =>
+  event.value?.kind === 'advance' ? 'Аванс' : event.value?.kind === 'week' ? 'За неделю' : props.period.length > 7 ? 'Зарплата' : 'Оклад месяца',
+)
 const fxSalary = computed(() => !!own.value && own.value.currency !== 'KZT')
 const sign = computed(() => (own.value ? CURRENCY_SIGN[own.value.currency] : '₸'))
 /**
@@ -261,7 +265,7 @@ const unmarkNote = computed(() => {
       <Field :label="`Сумма, ${salary ? sign : '₸'}`" name="amount">
         <NumField v-model="amountText" :currency="own?.currency ?? null" />
         <span v-if="salary && !floating" class="text-[12px] leading-relaxed text-ink-2">
-          {{ event?.kind === 'advance' ? 'Аванс' : event?.kind === 'week' ? 'За неделю' : 'Оклад месяца' }} — {{ fxSalary ? moneyIn(due, own!.currency) : money(due) }}. С премией впишите всю сумму: премия целиком ляжет в остаток.
+          {{ dueLabel }} — {{ fxSalary ? moneyIn(due, own!.currency) : money(due) }}. С премией впишите всю сумму: премия целиком ляжет в остаток.
         </span>
       </Field>
 

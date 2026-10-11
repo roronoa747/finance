@@ -7,8 +7,10 @@ import { routes } from '@/router'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
+import { FX_BOOK_KEY, writeStorage } from '@/lib/storage'
 import type { Payment, Person, SyncDoc } from '@/types/finance'
 import SalaryDialog from './SalaryDialog.vue'
+import MarkSheet from './MarkSheet.vue'
 import Month from '@/views/Month.vue'
 
 vi.mock('@/lib/photos/store', async (orig) => ({
@@ -136,6 +138,39 @@ describe('PN-23: «Изменить оклад» — как приходит з�
     expect(q('[data-week-hint]')).toBeNull()
   })
 
+  it('критик Б7: валютный оклад за неделю — «≈ ₸» под полем тоже за неделю (300 € × 510 = 153 000), не сумма месяца', async () => {
+    // Книга с устройства — до создания стора; в сентябре 2026 пятницы 4, 11, 18, 25 — курс 510 у всех (последний в книге).
+    writeStorage(FX_BOOK_KEY, { book: { EUR: { '2026-09-04': 510 } }, covered: {} })
+    const doc = planFamilyDoc()
+    doc.people[0] = { ...doc.people[0], payRhythm: 'week', weekday: 5, salaryVersions: [{ from: '2000-01', amount: 700_000 }, { from: '2026-01', amount: 300, currency: 'EUR', rate: 500 }] }
+    await openDialog(doc)
+    expect(document.body.textContent).toContain('Оклад сейчас — за неделю, €')
+    // Раньше — 612 000 ₸ (четыре пятницы месяца) под полем «за неделю».
+    expect(txt(all('p').find((p) => txt(p).includes('по курсу Нацбанка')) ?? null)).toBe('≈ 153 000 ₸ по курсу Нацбанка')
+  })
+
+  it('критик Б7: лист отметки — остаток после аванса «Зарплата — 300 000 ₸» (не «Оклад месяца»), аванс — «Аванс — 200 000 ₸»', async () => {
+    const doc = planFamilyDoc()
+    doc.people[0] = { ...doc.people[0], salary: 500_000, payday: 30, payRhythm: 'advance', payday2: 15, salary2: 200_000 }
+    for (const [period, label] of [['2026-09-30', 'Зарплата — 300 000 ₸.'], ['2026-09-15', 'Аванс — 200 000 ₸.']]) {
+      const pinia = createPinia()
+      setActivePinia(pinia)
+      useAuthStore().setAuthData(authAs('member', 'a'))
+      useFinanceStore().setHouseholdDoc(doc, 1)
+      const root = document.createElement('div')
+      document.body.appendChild(root)
+      app = createApp({ render: () => h(MarkSheet, { open: 'mark', kind: 'salary', targetId: 'a', period, title: 'Зарплата · Ильяс' }) })
+      app.use(pinia)
+      app.mount(root)
+      await flush()
+      expect(txt(document.body)).toContain(label)
+      expect(txt(document.body)).not.toContain('Оклад месяца')
+      app.unmount()
+      app = null
+      document.body.innerHTML = ''
+    }
+  })
+
   it('«Сумма меняется» — Toggle пишет floating; «Раз в месяц» возвращает месяц', async () => {
     const finance = await openDialog()
     await press(q('[data-floating] [role="switch"]'))
@@ -161,6 +196,17 @@ describe('PN-23: строка «Месяца» и лист зарплаты по
     expect(q('[data-salary="a"] [data-salary-came-btn]')).toBeNull()
     await new Promise((r) => setTimeout(r, 20))
     expect(router.currentRoute.value.fullPath).toBe('/month?from=row')
+  })
+
+  it('критик Б7: последняя пятница месяца — «Пришла» ведёт в план (Р-78): месяц пришёл целиком', async () => {
+    vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
+    const doc = weeklyDoc({}, [came('2026-09-04', 150_000), came('2026-09-11', 150_000), came('2026-09-18', 150_000)])
+    const { finance, router } = await openMonth(doc, 'member', '/month?from=row')
+    expect(txt(q('[data-salary="a"] [data-came-count]'))).toBe('✓ 3 из 4')
+    await press(q('[data-salary="a"] [data-salary-came-btn]'))
+    expect(salaries(finance).map((p) => p.period)).toEqual(['2026-09-04', '2026-09-11', '2026-09-18', '2026-09-25'])
+    await new Promise((r) => setTimeout(r, 20))
+    expect(router.currentRoute.value.fullPath).toBe('/month')
   })
 
   it('лист: приходы строками, «1 из 4 пришли», «Пришла» — у своего открытого; пришедший — лист отметки этого прихода', async () => {
