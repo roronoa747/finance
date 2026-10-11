@@ -256,6 +256,14 @@ describe('PN-06 (понятность Р-2, Р-3): демо — плашка К�
     expect(stats.overpay.amount).toBeGreaterThan(0)
     expect(stats.overpay.salaries).not.toBeNull()
 
+    // PN-25: партнёр — «аванс и зарплата» (аванс 15-го 150 000, остаток 30-го 300 000), сумма месяца прежняя — 450 000.
+    const b = finance.monthPlanOf(key).income.byPerson.find((x) => x.person === 'b')!
+    expect(b).toMatchObject({ amount: 450_000, eventCount: 2, cameCount: 0 })
+    expect(b.events.map((e) => [e.day, e.amount, e.kind])).toEqual([
+      [`${key}-15`, 150_000, 'advance'],
+      [`${key}-30`, 300_000, 'salary'],
+    ])
+
     const worth = netWorth(liveAccounts(finance.accounts), liveCredits(finance.credits), liveGoals(finance.goals))
     const assets = amountTotal(liveAccounts(finance.accounts)) + capitalGoals(finance.goals, finance.accounts).total
     const debt = openDebt(finance.credits)
