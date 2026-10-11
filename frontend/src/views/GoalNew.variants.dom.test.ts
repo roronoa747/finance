@@ -180,6 +180,18 @@ describe('PN-19: «Подушка» в «Новой мечте» — фонд с
     expect(tiles()).toContain('Своё фото')
     expect(tiles()).toContain('По ссылке')
   })
+
+  // `/ux` возврата Б6: тем 18 — ряды полные; «Своё фото · По ссылке» — свой ряд пополам, а не две плитки и пустая ячейка.
+  it('сетка без пустой ячейки: первый запуск — «Своё фото · По ссылке» рядом пополам; «Новая мечта» — в ряду с «Животным»', async () => {
+    await open({ next: '/start/invite' })
+    const own = () => document.querySelector('[data-own-tiles]') as HTMLElement
+    expect(own().classList.contains('col-span-3'), 'свой ряд на всю ширину').toBe(true)
+    expect([...own().querySelectorAll('button')].map((b) => b.textContent?.trim())).toEqual(['Своё фото', 'По ссылке'])
+    app?.unmount()
+    document.body.innerHTML = ''
+    await open()
+    expect(own().classList.contains('contents'), 'вне первого запуска — ячейки общей сетки').toBe(true)
+  })
 })
 
 describe('PN-08: «По ссылке» в «Новой мечте»', () => {

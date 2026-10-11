@@ -85,6 +85,8 @@ const form = useFormCheck(() =>
 // Первый запуск (`next` задаёт только `Start.vue`) — только мечты: подушка героем не бывает, «Мечты» новичка остались бы
 // пустыми (решение владельца, `pn-block-6-first-run-cushion.md`). Подушку заводят позже — «Новая мечта» или «Месяц».
 const types = computed(() => (props.next ? GOAL_TYPES.filter((k) => k.type !== 'cushion') : GOAL_TYPES))
+// Темы заполнили ряды ровно (первый запуск — 18): «Своё фото · По ссылке» делят свой ряд пополам — без пустой ячейки (`/ux` возврата Б6).
+const ownRow = computed(() => types.value.length % 3 === 0)
 const directions = computed(() => (pickedType.value === 'travel' ? TRAVEL_DIRECTIONS : []))
 // Несколько фото на тему (B2C-64-а): ряд под сеткой, первое — фото плитки.
 const variants = computed(() => (pickedType.value ? themePhotos(pickedType.value) : []))
@@ -202,8 +204,10 @@ const inShell = inject<boolean>('ff-shell-actions', false)
             :selected="pickedType === k.type"
             @click="pickType(k.type)"
           />
-          <TemplateTile name="Своё фото" camera @click="fileInput?.click()" />
-          <TemplateTile name="По ссылке" link :selected="linkOpen" data-link-tile @click="linkOpen = !linkOpen" />
+          <div :class="ownRow ? 'col-span-3 grid grid-cols-2 gap-2.5' : 'contents'" data-own-tiles>
+            <TemplateTile name="Своё фото" camera @click="fileInput?.click()" />
+            <TemplateTile name="По ссылке" link :selected="linkOpen" data-link-tile @click="linkOpen = !linkOpen" />
+          </div>
         </div>
       </Field>
       <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFile" />
