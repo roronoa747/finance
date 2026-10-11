@@ -482,6 +482,8 @@ describe('PN-17: «Прикинуть кредит» с «Долгов» и «Х
     // Владелец, приёмка Б5: кнопка у своего предмета — в центре кольца рядом с остатком, тихая (не брендовая).
     expect(btn.parentElement).toBe(q('[data-rest]')!.parentElement)
     expect(btn.className).not.toContain('bg-brand')
+    // Слот `MonthRing` — `pointer-events-none` (нажатие уходит SVG); jsdom CSS не видит — закрепка класса (грабли `/ux` Б5).
+    expect(btn.className).toContain('pointer-events-auto')
     const before = JSON.stringify(finance.householdDoc)
     await press(btn)
     expect(txt(dialog())).toContain('Хватит?')
