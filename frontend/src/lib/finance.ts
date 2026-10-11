@@ -3377,6 +3377,88 @@ export function capitalStats(plan: MonthPlan, state: PlanState & { plans?: DebtP
   }
 }
 
+/* ---------------- Прикинуть (понятность, Блок 5: Р-11) ---------------- */
+
+/** «Прикинуть кредит»: платёж, нагрузка, сдвиг главной мечты, переплата — целые тенге и проценты (зарплаты — одна десятая). */
+export type TryCredit = {
+  /** Платёж в месяц: аннуитет вверх до тенге (ставка 0 — рассрочка, `ceil(principal / months)`). */
+  payment: number
+  /** Платежи месяца / доход сейчас, целые проценты; дохода нет — null. */
+  loadNowPct: number | null
+  /** То же с платежом нового кредита. */
+  loadPct: number | null
+  /** Главная мечта (первая цель очереди): когда соберём без кредита и с ним; `delayMonths` Infinity — с кредитом не соберём. */
+  hero: { name: string; doneBefore: string | null; doneAfter: string | null; delayMonths: number | null } | null
+  /** Сверх суммы банку: платёж × срок − сумма; рассрочка — 0. */
+  overpay: number
+  /** Переплата в зарплатах семьи (`inSalaries`). */
+  overpaySalaries: number | null
+}
+
+const firstGoal = (plan: MonthPlan) => plan.queue.find((q) => q.kind === 'goal') ?? null
+
+/**
+ * «Прикинуть кредит» (PN-16, Р-11) — ничего не пишет. Сдвиг мечты — тот же `monthPlan` с фиктивным кредитом в
+ * `credits`: его платёж ложится в платежи месяца, очередь пересчитывается сама (копии формул нет). Ставка — доля
+ * (0,2 = 20 %), 0 — рассрочка.
+ */
+export function tryCredit(
+  state: MonthPlanState,
+  ctx: MonthPlanCtx,
+  input: { principal: number; months: number; annualRate: number },
+): TryCredit {
+  const { principal, months, annualRate } = input
+  const payment = Math.ceil(annuityPayment(principal, annualRate, months))
+  const before = monthPlan(state, ctx)
+  const fake: Credit = { id: 'try', name: 'Прикинуть', note: '', principal, annualRate, payment, day: 1, updatedAt: new Date().toISOString() }
+  const after = monthPlan({ ...state, credits: [...(state.credits ?? []), fake] }, ctx)
+  const income = before.income.total
+  const loadOf = (dues: number) => (income > 0 ? Math.round((dues / income) * 100) : null)
+  const goal = firstGoal(before)
+  const doneBefore = goal?.doneMonth ?? null
+  const doneAfter = goal ? after.queue.find((q) => q.goalId === goal.goalId)?.doneMonth ?? null : null
+  const overpay = annualRate > 0 ? payment * months - principal : 0
+  return {
+    payment,
+    loadNowPct: loadOf(before.duesTotal),
+    loadPct: loadOf(before.duesTotal + payment),
+    hero: goal && {
+      name: goal.name,
+      doneBefore,
+      doneAfter,
+      delayMonths: doneBefore === null ? null : doneAfter === null ? Infinity : monthsBetween(doneBefore, doneAfter),
+    },
+    overpay,
+    overpaySalaries: inSalaries(overpay, income),
+  }
+}
+
+/** «Хватит?»: да — сколько останется до зарплаты; нет — сколько не хватает и на сколько дней отодвинется главная мечта. */
+export type CanAfford =
+  | { ok: true; left: number; inDays: number | null }
+  | { ok: false; short: number; goal: string | null; days: number | null }
+
+/**
+ * «Хватит?» (PN-16, Р-11) — ничего не пишет. Со счетами — от «до зарплаты» (`untilPayday.shortfall`: на счетах минус
+ * платежи до зарплаты); счетов нет — от остатка плана месяца (`rest`). Нехватка — в днях взносов главной мечты
+ * (`closerDays` при её темпе `goalPace`); мечты или темпа нет — дней нет.
+ */
+export function canAfford(
+  state: Parameters<typeof untilPayday>[0] & MonthPlanState,
+  ctx: MonthPlanCtx,
+  amount: number,
+  now = today(),
+): CanAfford {
+  const up = untilPayday(state, now)
+  const cash = up && up.knowsCash
+  const plan = cash ? null : monthPlan(state, ctx)
+  const left = (cash ? up.shortfall : plan!.rest) - amount
+  if (left >= 0) return { ok: true, left, inDays: cash ? up.inDays : null }
+  const item = firstGoal(plan ?? monthPlan(state, ctx))
+  const hero = item ? (state.goals ?? []).find((g) => g.id === item.goalId) ?? null : null
+  return { ok: false, short: -left, goal: item?.name ?? null, days: hero ? closerDays(-left, goalPace(hero, ctx.key)) : null }
+}
+
 /**
  * Подсказка «всё в долг — закроете к N» (Р-83): все цели и фонды выключены, весь свободный остаток месяца —
  * досрочкой в самый дорогой долг; тот же прогон, что у дат плана. null — долгов с процентами нет, остатка нет
