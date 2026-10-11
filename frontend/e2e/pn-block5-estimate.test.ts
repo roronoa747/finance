@@ -19,7 +19,8 @@ import { at, fakeServer, phone, screen, type FakeServer } from './support/family
  * (1 800 000 под 19 %, срок — сколько платежей ему осталось) даёт нагрузку = (платежи месяца + платёж) / доход и сдвиг
  * «Поездки в Японию» = разнице `doneMonth` плана с этим кредитом и без; (б) «Хватит?» на демо — «Да» с остатком до
  * зарплаты, большая сумма — «Нет» с месяцами; (в) после обоих листов документ прежний — rev, «не отправлено» и сервер те же;
- * (г) viewer — «Прикинуть кредит» с «Долгов» и «Хватит?» с «Месяца» (кнопка под «Остаётся»). Экраны — SSR (`screen`), ввод — полями листов (`screenMixin`).
+ * (г) viewer — «Прикинуть кредит» с «Долгов» и «Хватит?» с «Месяца» (кнопка под «Остаётся»); (д) приёмка — платёж и
+ * переплата листа руками, «Рассрочка 0 %» — без переплаты. Экраны — SSR (`screen`), ввод — полями листов (`screenMixin`).
  */
 const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
 
@@ -122,6 +123,22 @@ describe('e2e / понятность Блок 5 — прикинуть', () => {
     expect(noHtml).toContain(`не хватает ${text(money(no.short))}`)
     expect(noHtml).toContain(`Поездка в Японию отодвинется на ${no.months} ${plural(no.months!, 'месяц', 'месяца', 'месяцев')}`)
     expect(noHtml).not.toMatch(/отодвинется на \d+ дн/)
+  })
+
+  it('(д) приёмка Б5: демо 5 000 000 на 12 месяцев — платёж и переплата руками; «Рассрочка 0 %» — без переплаты', async () => {
+    const { pinia } = await demo()
+    // Аннуитет руками: 5 000 000 · r / (1 − (1 + r)^−12), r = 19 % / 12 ≈ 460 782,6 → вверх до тенге.
+    const r = 0.19 / 12
+    const payment = Math.ceil((5_000_000 * r) / (1 - (1 + r) ** -12))
+    expect(payment).toBe(460_783)
+    const rated = text(await screen(pinia, Money, '/money/debts?try=1', undefined, [screenMixin({ sum: '5000000', term: 12, rate: '19' })]))
+    expect(rated).toContain(text(money(460_783)))
+    expect(rated).toContain(`Переплата ${text(money(460_783 * 12 - 5_000_000))}`)
+    // Рассрочка: 5 000 000 / 12 вверх до тенге, переплаты нет.
+    const zero = text(await screen(pinia, Money, '/money/debts?try=1', undefined, [screenMixin({ sum: '5000000', term: 12, mode: 'zero' })]))
+    expect(zero).toContain(text(money(416_667)))
+    expect(zero).toContain('Без переплаты')
+    expect(zero).not.toContain('Переплата')
   })
 
   describe('семья на сервере', () => {
