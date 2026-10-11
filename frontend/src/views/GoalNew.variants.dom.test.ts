@@ -154,6 +154,20 @@ describe('PN-19: «Подушка» в «Новой мечте» — фонд с
     expect(finance.goals).toHaveLength(count)
     expect(finance.goals.find((g) => g.id === pot)!.fund).toBe('cushion')
   })
+
+  it('старая мечта с картинкой подушки — не фонд: «Подушка» заводит новую, мечта остаётся мечтой (критик Б6)', async () => {
+    const finance = await open()
+    const router = app!.config.globalProperties.$router
+    const old = finance.addGoal({ name: 'На чёрный день', need: 900_000, monthly: 0, hue: 'teal', template: 'cushion' })
+    button('Подушка').click()
+    await nextTick()
+    button('Дальше').click()
+    await settle(router, /^\/goals\/(?!new)/)
+    const fund = finance.goals.find((g) => g.fund === 'cushion')!
+    expect(fund.id).not.toBe(old)
+    expect(router.currentRoute.value.fullPath).not.toContain('fund=exists')
+    expect(finance.goals.find((g) => g.id === old)!.fund ?? null).toBeNull()
+  })
 })
 
 describe('PN-08: «По ссылке» в «Новой мечте»', () => {

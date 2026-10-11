@@ -24,8 +24,37 @@
 - `period` отметки не-месячного ритма — ISO-день события; всё, что фильтрует `period === key`, переводится на
   `periodMonth(period)` — grep по `'salary'` в `finance.ts`, `stores/finance.ts`, `matching.ts`, `MarkSheet.vue`,
   `SalaryRow.vue` и списком в Handoff.
-- Факты Блоков 1–6 (критик Блока 6 допишет): <номера строк `SalarySheet`, `SalaryRow`/`useSalaryTap` (PN-02),
-  `MonthPlan`, `CapitalSalaries`, `Start.vue`, `SalaryDialog`, `matching.ts`, `finance.ts` после правок>.
+- **Факты кода после Блоков 1–6 (критик Блока 6, 2026-10-11, ветка `pn-block-6-cushion`; номера ТЗ PN-22…PN-25 — до
+  Блоков 2–6, брать эти; после мёржа Б6 в `main` номера те же — Б6 правил `finance.ts` только ниже :3344):**
+  - `types/finance.ts` (597): `Person` :22 (`salary` :29, `salaryVersions?` :36, `payday` :38, `onboardedAt?` :46),
+    `Payment` :320.
+  - `lib/finance.ts` (4 610): `salaryOf` :971, `paydayIso` :980, `salaryAt` :988, `SalaryCtx` :996, `salaryTenge` :1027
+    (отметка — `paidFor(…, key)` :1032), `totalIncome` :1098, `MonthlyKind` :1298, `countedPayments` :1361, `paidFor` :1378,
+    `paidTenge` :1463 (`period` в :1453), `PAYDAY_HORIZON` :1741, **`untilPayday` :1755-1841** (слот — `paidFor(…, s.k)` :1792,
+    доход следующего — :1830), `SALARY_EARLY_DAYS` :1849, **`salaryOpen` :1859**, `salaryAsk` :1873, `salaryToAllocate` :2042
+    (по месяцам — :2057), `monthSummary` :2083 (доход — :2128), **`monthPlan` :3149, доход на участника :3159-3160**,
+    распределения `source: 'salary'` по `period: key` — :3256, :3652, :3870, :3905, :4459; **`monthSalaries` :3299-3321**,
+    `inSalaries`/`round1`/`salariesLabel` :3346-3354 (Блок 2/6), **`capitalStats` :3368** (доход — `plan.income.total` :3369),
+    `tryCredit` :3429, `canAfford` :3473, `monthPlanPast` :3958 (приходы — `kind === 'salary'` :3964), `historyMonths` :3998.
+    Все места `period === key`/`paidFor(…, 'salary', …, key)` выше — кандидаты на `periodMonth` (список — в Handoff).
+  - Стор `stores/finance.ts` (2 300): **`markSalary` :1372** (идемпотентность — `paidFor` :1379; запись :1386, валютная :1419),
+    `unmarkPaid` :1462, `editPaid` :1478, распределение по `period` — :2066.
+  - Выписка: `matching.ts` (301) — `SALARY_TOLERANCE` :41, `SALARY_WINDOW` :45, `nearestPeriod` :50, `ruleHit` :83 (зарплата
+    :85-89), `SalaryCtx` предложений :184, кандидат зарплаты :249-251; `operations.ts` `markByOperation` :170-172;
+    `firstRun.ts` (189) `detectIncome` :97, `salaryOpOfMonth` :133.
+  - Экраны: `components/useSalaryTap.ts` (91: `sheet` :34, `toAllocation` :47, `mark` :51, `onMarked` :63, `tap` :68, `openMore`
+    :83); **`components/SalaryRow.vue`** (152; не `money/`): `button small` :70-71 (`data-salary-came-btn`), мёртвый режим строки
+    (`note`/`clickable`/`dense` :29-33, :87-100 — хвост §4, рек. убрать здесь), `MarkSheet` :139; **`components/MarkSheet.vue`**
+    (283: `period` :47, `record` :75, `own` — `salaryOf(…, period)` :83, сумма :98, «после» `addMonths(period, 1)` :107);
+    **`components/SalaryDialog.vue`** (237): `onNameBlur` :98, `onPaydayCommit` :114, `Sheet` :151, «Имя» :154 (хвост §4 — опустить
+    под «День зарплаты»), «Оклад сейчас» :158, «День зарплаты» :165-166, новый оклад :177-190 — сюда ритм; `money/MonthPlan.vue`
+    (747): `salaries` :169-173 (`canMark`), `untilPayday` :194, `salaryFor` :207, `?income=1` :210, `afford` :224 и тихая «Хватит?»
+    :396, карточка зарплат :404-438 (строка :409-411, `SalaryExchange` :419, `SalaryRow button small` :426-427), `SalarySheet` :652;
+    `money/CapitalSalaries.vue` (67): `lines` :25-29, строка :42-55, `SalarySheet` :66; `money/SalarySheet.vue` (123): `mine` :36,
+    `fxYearDelta` :43, «Когда / Хватает» :80-84, `data-fx-year` :95-96, `SalaryRow button` :105, «Другая сумма» :107;
+    `views/Start.vue` (463): ручной ввод `manualSalary` :81, запись :109-111 и :278-280, «Зарплата в месяц, ₸» :367, доход
+    из выписки `incomeSalary`/`incomePayday` :158-170, запись + `markSalary` по `salaryOpOfMonth` :198-217.
+  - Листы — просто `Sheet` (Блок 5а: ручка и стягивание уже есть); адресный лист — `useQuerySheet` (Блок 5).
 - Правило 12: «Пришла» — у своей строки/события; ритм — в «Изменить оклад», не на экранах; текста минимум.
 - Среда — §6; стенд с Go для выписки (PN-24). Следующий шаг — `/critic понятность 7`.
 

@@ -148,4 +148,11 @@ describe('PN-20: экран подушки — нужно · есть · хва�
     expect(card()).toBeNull()
     expect(page()).not.toContain('Хватит на')
   })
+
+  it('старая мечта с картинкой подушки (до блока, без `fund`) — мечта: без «хватит», «за год» на месте (критик Б6)', async () => {
+    await open('/goals/old', [pot(), pot({ id: 'old', name: 'На чёрный день', need: 900_000, fund: null, template: 'cushion' })])
+    expect(card()).toBeNull()
+    expect(page()).not.toContain('Хватит на')
+    expect(page()).toContain('Чтобы успеть за год')
+  })
 })
