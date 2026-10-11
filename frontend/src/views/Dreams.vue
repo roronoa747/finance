@@ -24,6 +24,7 @@ import DreamCenter from '@/components/kit/DreamCenter.vue'
 import ProgressBar from '@/components/kit/ProgressBar.vue'
 import SortableList from '@/components/kit/SortableList.vue'
 import ThumbRow from '@/components/kit/ThumbRow.vue'
+import { useHistoryFlag } from '@/components/useHistoryFlag'
 
 /**
  * «Мечты» (пивот 3, Р-42; макет dreams-week.html «А · Строки»; тишина Б17 — Р-116): мечта по центру,
@@ -103,14 +104,7 @@ async function onFile(file: File) {
 
 /* ---------- альбом «Сбылось» (PN-14, Р-13; ворота done.html): свёрнут при новом заходе ---------- */
 const done = computed(() => doneGoals(financeStore.goals))
-// Раскрытие живёт в записи истории: «назад» со сбывшейся — альбом как оставили (прокрутка оболочки на месте),
-// новый заход (вкладка) — новая запись, свёрнут (`/ux` Б4 «понятность»).
-const history = router?.options.history
-const albumOpen = ref(history?.state?.doneAlbum === true)
-function toggleAlbum() {
-  albumOpen.value = !albumOpen.value
-  history?.replace(history.location, { ...history.state, doneAlbum: albumOpen.value })
-}
+const { open: albumOpen, toggle: toggleAlbum } = useHistoryFlag('doneAlbum')
 const doneSrc = usePhotos(() => done.value.map((g) => g.photoId))
 const doneSrcOf = (g: Goal) => (g.photoId ? doneSrc.value[g.photoId] : null)
 const doneMeta = (g: Goal) => `${monthShort(monthKey(new Date(g.doneAt!)))} · за ${doneTerm(g)} мес.`

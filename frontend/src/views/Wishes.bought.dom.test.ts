@@ -32,6 +32,8 @@ afterEach(() => {
   app?.unmount()
   app = null
   document.body.innerHTML = ''
+  // История окна общая на файл: раскрытие прошлого теста не должно стать «назад» следующего.
+  window.history.replaceState(null, '', '/')
   vi.useRealTimers()
   vi.unstubAllGlobals()
 })
@@ -96,6 +98,18 @@ describe('PN-34: «Уже купили» свёрнуто', () => {
       expect(text()).not.toContain('Пылесос')
     })
   }
+
+  it('вид «списком» — свёрнуто так же; раскрытие показывает строки купленного (критик)', async () => {
+    localStorage.setItem('ff_wishes_view', JSON.stringify('list'))
+    await open()
+    expect(toggle().getAttribute('aria-expanded')).toBe('false')
+    expect(text()).not.toContain('Пылесос')
+
+    toggle().click()
+    await nextTick()
+    expect(text()).toContain('Пылесос')
+    expect(text()).toContain('Утюг')
+  })
 
   it('«назад» с другого экрана — раскрыто, как оставили; новый заход — свёрнуто', async () => {
     const router = await open()

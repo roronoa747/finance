@@ -35,6 +35,7 @@ import SortableList from '@/components/kit/SortableList.vue'
 import WishSheet from '@/components/goals/WishSheet.vue'
 import WishTile from '@/components/goals/WishTile.vue'
 import PhotoSlot from '@/components/goals/PhotoSlot.vue'
+import { useHistoryFlag } from '@/components/useHistoryFlag'
 
 /**
  * «Желания» (DESIGN.md §2 g4 «Желания по людям», «Подарок-сюрприз»; B2C-18): вкладки участников и
@@ -76,14 +77,8 @@ const activeById = computed(() => new Map(activeWish.value.map((w) => [w.id, w])
 // Перестановка внутри видимой вкладки: прочие желания семьи стоят на своих местах.
 const moveActive = (id: string, index: number) => financeStore.moveWish(id, index, activeIds.value)
 const boughtSum = computed(() => wishTotal(boughtWish.value))
-// «Уже купили» свёрнуто при новом заходе (PN-34, как альбом «Сбылось» на «Мечтах»): раскрытие живёт в записи
-// истории — «назад» возвращает как оставили, новая вкладка или заход — новая запись, свёрнуто.
-const history = router?.options.history
-const boughtOpen = ref(history?.state?.boughtOpen === true)
-function toggleBoughtOpen() {
-  boughtOpen.value = !boughtOpen.value
-  history?.replace(history.location, { ...history.state, boughtOpen: boughtOpen.value })
-}
+// «Уже купили» свёрнуто при новом заходе (PN-34, как альбом «Сбылось» на «Мечтах»).
+const { open: boughtOpen, toggle: toggleBoughtOpen } = useHistoryFlag('boughtOpen')
 
 function nameOf(id: PersonId) {
   return people.value.find((p) => p.id === id)?.name || 'Участник'
