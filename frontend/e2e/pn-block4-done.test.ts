@@ -20,7 +20,8 @@ vi.mock('../src/lib/photos/store', async (orig) => ({
  * 2026. «Отпуск» накоплен целиком: 3 000 000 (взнос 50 000 в августе 2025 → «за 14 месяцев»). (а) «Сбылось» с экрана →
  * `doneAt`, капитал −3 000 000, очередь и «Цели» без неё, альбом с ней, экран «за 14 месяцев»; (б) цель на Kaspi Gold —
  * счёт −have, «Вернуть в мечты» — всё назад; (в) A «Сбылось» офлайн, B взнос офлайн → после синка `doneAt` стоит, `have`
- * со взносом, альбом у обоих; (г) viewer — альбом есть, кнопок нет; (д) старый документ без `doneAt` — прежние числа.
+ * со взносом, альбом у обоих; (г) viewer — альбом есть, кнопок нет; (д) старый документ без `doneAt` — прежние числа;
+ * (е, приёмка) «Ещё нет» и «Сбылось» из меню у мечты не на 100 %, партнёр после синка.
  * Экраны — SSR (`screen`), действия — методами экрана (`screenMixin`); браузер — на стенде §6.
  */
 type Phone = Awaited<ReturnType<typeof phone>>
@@ -164,5 +165,32 @@ describe('e2e / понятность Блок 4 — «Сбылось»', () => {
     expect(worth(a)).toBe(2_000_000 + 400_000 + 3_000_000 + 200_000 - (1_000_000 + 300_000 + 240_000))
     expect(a.store.queue.map((q) => q.id)).toContain('trip')
     expect(await screen(a.pinia, Dreams, '/')).not.toContain('data-done-album')
+  })
+
+  it('(е) приёмка: «Ещё нет» прячет вопрос; «Сбылось» из меню у мечты не на 100 % — капитал −have, партнёр видит после синка', async () => {
+    const a = await as('member', 'a')
+    // «Ещё нет» — вопроса нет до следующего открытия, на месте прежняя карточка срока; doneAt не пишется.
+    const later = text(await screen(a.pinia, GoalDetail, '/goals/trip', undefined, [screenMixin({ notYet: true })]))
+    expect(later).not.toContain('Купили?')
+    expect(a.store.goals.find((g) => g.id === 'trip')!.doneAt).toBeUndefined()
+
+    // «Машина» — 200 000 из 3 000 000: вопроса нет, но «Сбылось» в меню есть (купили раньше, чем накопили).
+    const car = await screen(a.pinia, GoalDetail, '/goals/car', undefined, [screenMixin({ menuOpen: true })])
+    expect(car).not.toContain('data-goal-ask')
+    expect(car).toContain('data-goal-done-menu')
+    const before = worth(a)
+    const moment = text(await screen(a.pinia, GoalDetail, '/goals/car', undefined, [screenMixin({}, (s) => (s.menu as (x: string) => void)('done'))]))
+    expect(moment).toContain('Сбылось!')
+    // Ни взносов, ни seedSetAt — «за 1 месяц».
+    expect(moment).toContain('за 1 месяц')
+    expect(worth(a)).toBe(before - 200_000)
+    expect(a.store.queue.map((q) => q.id)).not.toContain('car')
+
+    const b = await as('member', 'b')
+    await on(a).store.syncHousehold(a.client)
+    await on(b).store.syncHousehold(b.client)
+    expect(worth(b)).toBe(worth(a))
+    expect(text(await screen(b.pinia, Dreams, '/'))).toContain('Сбылось · 1')
+    expect(text(await screen(b.pinia, GoalDetail, '/goals/car'))).toContain('Сбылось в октябре 2026')
   })
 })
