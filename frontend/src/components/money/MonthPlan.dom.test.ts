@@ -808,3 +808,32 @@ describe('B2C-108: подсказка у «Остаётся» — «Свобод
     expect(txt(q('[role="note"] [data-payday]'))).toBe('До зарплаты 3 дня.')
   })
 })
+
+describe('PN-20: строка «Подушки» в «Цели и фонды» — «хватит на N мес.»', () => {
+  const asFund = (have: number, extra: Partial<SyncDoc> = {}) => {
+    const doc = familyDoc(extra)
+    return { ...doc, goals: doc.goals.map((g) => (g.id === 'cushion' ? { ...g, fund: 'cushion' as const, have, seed: have, movements: [] } : g)) }
+  }
+
+  it('подушка-фонд: подпись — месяцы одной десятой (та же `cushionCover`), у мечты подписи нет', async () => {
+    const finance = await open('member', asFund(0))
+    const spend = planOf(finance).duesTotal + planOf(finance).spendTotal
+    app?.unmount()
+    document.body.innerHTML = ''
+    // 1,5 месяца трат: 1,5 × месяц трат плана.
+    // Подушка первой в очереди — взнос даётся целиком, нехватки (она важнее подписи) нет.
+    await open('member', asFund(Math.round(spend * 1.5), { goalOrder: { ids: ['cushion', 'trip', 'car'], updatedAt: T0 } }))
+    await press(section('queue'))
+    expect(txt(q('[data-queue="cushion"] [data-status]'))).toBe('хватит на 1,5 мес.')
+    expect(q('[data-queue="cushion"] [data-status]')!.className).toContain('text-ink-2')
+    expect(q('[data-queue="trip"] [data-status]')?.textContent ?? '').not.toContain('хватит')
+  })
+
+  it('на паузе — «на паузе», как у всех', async () => {
+    const finance = await open('member', asFund(100_000))
+    finance.pauseGoal('cushion', true)
+    await flush()
+    await press(section('queue'))
+    expect(txt(q('[data-queue="cushion"] [data-status]'))).toBe('на паузе')
+  })
+})

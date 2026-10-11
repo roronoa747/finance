@@ -11,6 +11,7 @@ import { dayLabel, monthBy, monthFrom, monthKey as monthNow, monthShort, MONTHS_
 import {
   DEBT_CARD,
   closerDays,
+  cushionCover,
   freeByFact,
   allInDebt,
   goalPace,
@@ -300,6 +301,12 @@ const queueById = computed(() => new Map(plan.value.queue.map((q) => [q.id, q]))
 /** Строка состояния — только когда есть что сказать (правило 12): пауза, нехватка, собрано (`queueStatus`). */
 function statusOf(q: PlanQueueItem): { text: string; warn?: boolean } | null {
   const st = queueStatus(q, { debtPlan: !!finance.activePlan })
+  // Подушка (PN-20): когда сказать нечего или собрано — «хватит на N мес.» (та же `cushionCover`, что экран); пауза и нехватка — как у всех.
+  if (q.fund === 'cushion' && (!st || st.kind === 'collected')) {
+    const goal = finance.goals.find((g) => g.id === q.goalId)
+    const months = goal ? cushionCover(q, goal, finance.moneySettings).months : null
+    if (months != null) return { text: `хватит на ${months.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} мес.` }
+  }
   if (!st) return null
   switch (st.kind) {
     case 'off':
