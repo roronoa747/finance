@@ -573,7 +573,7 @@ describe('PV-18: покупки — правка, «Уже купили», viewe
 
   it('галерея: плитки с ценой в ₸, автор и дата — в окне покупки, «Уже купили» с итогом, «Вернуть в список»', async () => {
     family('member', list())
-    const html = await renderScreen(Wishes, '/wishes')
+    const html = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ boughtOpen: true })]) // «Уже купили» раскрыто (PN-34)
     // Автор и дата — в окне покупки, не на плитке (галерея: фото, название, цена).
     expect(html).not.toContain('Ильяс · 10 сентября')
     expect(await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ editWishId: 'pan' })])).toContain('Ильяс · 10 сентября')
@@ -607,6 +607,7 @@ describe('PV-18: покупки — правка, «Уже купили», viewe
   it('отметили купленным — одна строка «Куплено — …» без абзаца, строка ушла в «Уже купили»', async () => {
     const store = family('member', list())
     const html = await renderScreen(Wishes, '/wishes', undefined, [
+      screenMixin({ boughtOpen: true }),
       screenMixin({}, (s) => (s.markBought as (id: string, name: string) => void)('pan', 'Сковорода')),
     ])
     expect(html).toContain('Куплено — Сковорода')
@@ -645,7 +646,7 @@ describe('PV-18: покупки — правка, «Уже купили», viewe
 
   it('viewer: список и итог видны, кнопок и окна правки нет', async () => {
     family('viewer', list())
-    const html = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ editWishId: 'pan' })])
+    const html = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ editWishId: 'pan', boughtOpen: true })])
     expect(html).toContain('Сковорода')
     expect(html).toContain(money(205_000))
     expect(html).toContain('Аруна · куплено 20 сентября')

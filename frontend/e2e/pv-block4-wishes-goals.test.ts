@@ -91,7 +91,8 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
 
       const live = liveWishlist(B.store.wishlist)
       expect(live.map((w) => w.id)).not.toContain('kettle')
-      const html = await screen(B.pinia, Wishes, '/wishes')
+      // «Уже купили» свёрнуто при заходе (PN-34) — раскрыто, как после нажатия.
+      const html = await screen(B.pinia, Wishes, '/wishes', undefined, [screenMixin({ boughtOpen: true })])
       expect(html).not.toContain('Чайник')
       const bought = live.filter((w) => w.bought)
       expect(bought.map((w) => w.id).sort()).toEqual(['pan', 'vac'])
@@ -222,7 +223,7 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       await A.store.syncHousehold(A.client)
       await on(V).store.pullHousehold(V.client)
 
-      const wishV = await screen(V.pinia, Wishes, '/wishes')
+      const wishV = await screen(V.pinia, Wishes, '/wishes', undefined, [screenMixin({ boughtOpen: true })])
       expect(wishV).toContain('Чайник Bosch')
       expect(wishV).toContain(`>${money(15_000)}</span>`)
       expect(wishV).toContain(money(198_000))

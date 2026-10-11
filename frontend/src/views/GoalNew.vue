@@ -12,6 +12,7 @@ import { GOAL_TEMPLATES, GOAL_TYPES, TRAVEL_DIRECTIONS, templateImageUrl, themeP
 import { attachFile, attachTemplate } from '@/lib/photos/goalPhoto'
 import type { LinkFound } from '@/lib/photos/useLinkPreview'
 import LinkPhotoField from '@/components/goals/LinkPhotoField.vue'
+import ThemePhotoRow from '@/components/goals/ThemePhotoRow.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Chip from '@/components/kit/Chip.vue'
@@ -190,20 +191,7 @@ const inShell = inject<boolean>('ff-shell-actions', false)
           <Chip quiet :on="template?.id === 'travel'" @click="pickTemplate(byType('travel'))">Своё</Chip>
         </div>
       </template>
-      <div v-if="variants.length > 1" class="flex gap-2">
-        <button
-          v-for="(v, i) in variants"
-          :key="v.id"
-          type="button"
-          :aria-label="`Фото ${i + 1}`"
-          :aria-pressed="template?.id === v.id"
-          class="press size-14 shrink-0 overflow-hidden rounded-xl cursor-pointer"
-          :class="template?.id === v.id && 'outline outline-[2.5px] outline-offset-2 outline-brand'"
-          @click="pickTemplate(v)"
-        >
-          <img :src="templateImageUrl(v, 160)" alt="" class="size-full object-cover" loading="lazy" />
-        </button>
-      </div>
+      <ThemePhotoRow v-if="variants.length > 1" :photos="variants" :selected="template?.id" @pick="pickTemplate" />
       <!-- Механика (Unsplash, сжатие) на экране не объясняется — автор виден на фото (правило интерфейса). -->
       <div class="mt-auto flex flex-col gap-2 pt-2">
         <Button size="lg" class="w-full" @click="form.submit(next)">Дальше</Button>
