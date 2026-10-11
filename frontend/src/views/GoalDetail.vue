@@ -9,6 +9,7 @@ import {
   INFLATION,
   closerDays,
   contributionStreak,
+  cushionCover,
   doneLabel,
   doneTerm,
   fundMonthsOf,
@@ -18,6 +19,7 @@ import {
   indexedNeed,
   liveGoals,
   monthsBetween,
+  monthsLabel,
   movementMonth,
   payableAccounts,
   planForecast,
@@ -129,11 +131,8 @@ const isFund = computed(() => financeStore.queue.find((x) => x.id === goalId.val
 // frontend Б14 Н-2). Цель на паузе плана «Сначала долги» стоит, пока план не закроет долги с процентами (Н-8 ревью
 // Блока 3): дата — от месяца без процентных долгов по прогнозу плана; не закрываются — месяца нет.
 const forecast = computed(() => (paused.value && plan.value ? planForecast(plan.value, financeStore.planState(), monthKey()) : null))
-const term = computed(() => {
-  if (!goal.value) return null
-  const item = financeStore.monthPlanOf(monthKey()).queue.find((x) => x.goalId === goal.value!.id)
-  return goalTerm(item, goal.value, monthKey(), forecast.value ?? undefined)
-})
+const planItem = computed(() => (goal.value ? financeStore.monthPlanOf(monthKey()).queue.find((x) => x.goalId === goal.value!.id) : undefined))
+const term = computed(() => (goal.value ? goalTerm(planItem.value, goal.value, monthKey(), forecast.value ?? undefined) : null))
 const need = computed(() => term.value?.need ?? 0)
 const remaining = computed(() => term.value?.remaining ?? 0)
 const months = computed(() => term.value?.months ?? Infinity)
@@ -159,6 +158,8 @@ const doneLine = computed(() => {
 // Сколько взносов осталось и «после плана» — в «Подробнее» (Р-116): под сроком одна строка.
 const leftLine = computed(() => {
   if (!goal.value || term.value?.off || remaining.value <= 0 || !Number.isFinite(months.value)) return ''
+  // Подушка (PN-20): срок «Соберём в …» уходит сюда — в карточке «хватит на N».
+  if (cover.value && doneMonth.value) return `Соберём в ${monthIn(doneMonth.value)} · осталось ${months.value} ${plural(months.value, 'взнос', 'взноса', 'взносов')}`
   return `Осталось ${months.value} ${plural(months.value, 'взнос', 'взноса', 'взносов')}${term.value?.afterPlan && doneMonth.value ? ' · после плана' : ''}`
 })
 // Во сколько обойдётся та же цель к сроку (хвост PV: горизонт — до месяца закрытия, у паузы — позже). Фонд — не покупка.
@@ -189,6 +190,12 @@ const fundSaved = useSavedMark(
   () => goal.value?.id,
   () => (goal.value && fundKind.value ? String(fundMonths.value) : undefined),
 )
+// Подушка (PN-20, Р-12): карточка срока — «Хватит на N месяцев», под ней «нужно M месяцев · сумма»; на паузе — как у всех.
+const cover = computed(() =>
+  goal.value && fundKind.value === 'cushion' && !term.value?.off ? cushionCover(planItem.value, goal.value, financeStore.moneySettings) : null,
+)
+const coverFull = computed(() => !!cover.value && cover.value.need > 0 && cover.value.have >= cover.value.need)
+const coverTitle = computed(() => (cover.value?.months == null ? 'Пока не на что считать' : `Хватит на ${monthsLabel(cover.value.months)}`))
 function onFundMonths(text: string) {
   const v = parseMoney(text)
   if (goal.value && v > 0 && v !== fundMonths.value) financeStore.setFundMonths(goal.value.id, v)
@@ -457,8 +464,15 @@ function share() {
       </template>
     </Card>
     <Card v-else>
-      <h2 class="type-h2 text-ink">{{ doneTitle }}</h2>
-      <p v-if="doneLine" class="mt-1.5 text-[15px] text-ink-2">{{ doneLine }}</p>
+      <!-- Подушка (PN-20): «хватит на N месяцев» — заголовок, «нужно» строкой; собрано — ✓ цветом «готово», «Собрано» не пишем. -->
+      <template v-if="cover">
+        <h2 class="type-h2" :class="coverFull ? 'text-ok' : 'text-ink'" data-cushion-cover>{{ coverTitle }}{{ coverFull ? ' ✓' : '' }}</h2>
+        <p class="mt-1.5 text-[15px] text-ink-2 num" data-cushion-need>нужно {{ monthsLabel(cover.monthsNeeded) }} · {{ money(cover.need) }}</p>
+      </template>
+      <template v-else>
+        <h2 class="type-h2 text-ink">{{ doneTitle }}</h2>
+        <p v-if="doneLine" class="mt-1.5 text-[15px] text-ink-2">{{ doneLine }}</p>
+      </template>
       <Button
         v-if="canEdit"
         class="mt-3.5 w-full"
@@ -514,11 +528,13 @@ function share() {
             <SavedMark :on="fundSaved" />
           </div>
           <Field label="Месяцев трат">
+            <template v-if="cover" #hint><Hint label="Как считается «нужно»">Нужно = месяцы × (платежи + траты по плану)</Hint></template>
             <NumFieldBlur :initial="String(fundMonths)" aria-label="Порог фонда — месяцев трат" @commit="onFundMonths" />
           </Field>
         </Card>
 
-        <p v-if="remaining > 0" class="px-1 text-[13px] text-ink-2">
+        <!-- Фонд — не покупка к сроку: «за год» и «дорожает» только у мечты (PN-20). -->
+        <p v-if="remaining > 0 && !isFund" class="px-1 text-[13px] text-ink-2">
           Чтобы успеть за год, нужно {{ money(goalMonthly(remaining, 12)) }} в месяц.
         </p>
 

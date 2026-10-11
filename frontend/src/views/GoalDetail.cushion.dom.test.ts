@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
 import type { Goal, SyncDoc } from '@/types/finance'
+import { money } from '@/lib/money'
 import GoalDetail from './GoalDetail.vue'
 
 vi.mock('@/lib/photos/store', async (orig) => ({
@@ -58,6 +59,7 @@ async function open(path: string, goals: Goal[] = [pot()], extra: Partial<SyncDo
 }
 
 const page = () => (document.body.textContent ?? '').replace(/\s+/g, ' ')
+const norm = (s: string) => s.replace(/\s+/g, ' ')
 
 describe('PN-19: «Новая мечта → Подушка», а подушка уже есть', () => {
   it('`?fund=exists` — тост «Подушка уже есть»; без адреса — тоста нет', async () => {
@@ -68,5 +70,82 @@ describe('PN-19: «Новая мечта → Подушка», а подушка
     await open('/goals/pot')
     expect(document.querySelector('[data-closer]')).toBeNull()
     expect(page()).not.toContain('Подушка уже есть')
+  })
+})
+
+describe('PN-20: экран подушки — нужно · есть · хватит на N месяцев', () => {
+  const card = () => document.querySelector('[data-cushion-cover]')
+  const spendOf = (finance: ReturnType<typeof useFinanceStore>) => {
+    const plan = finance.monthPlanOf('2026-09')
+    return plan.duesTotal + plan.spendTotal
+  }
+
+  it('частично: «Хватит на 1,2 месяца», строка «нужно 3 месяца · N»; «Соберём в …» — только в «Подробнее»', async () => {
+    let finance = await open('/goals/pot')
+    const spend = spendOf(finance)
+    expect(spend).toBeGreaterThan(0)
+    // 1,2 месяца трат: have = 1,2 × месяц трат плана (целое).
+    const have = Math.round(spend * 1.2)
+    app?.unmount()
+    document.body.innerHTML = ''
+    finance = await open('/goals/pot', [pot({ have, seed: have })])
+    const item = finance.monthPlanOf('2026-09').queue.find((q) => q.goalId === 'pot')!
+    expect(item.need).toBe(3 * spend)
+    expect(card()?.textContent).toBe('Хватит на 1,2 месяца')
+    expect(card()?.className).not.toContain('text-ok')
+    expect(norm(document.querySelector('[data-cushion-need]')!.textContent!)).toBe(norm(`нужно 3 месяца · ${money(item.need)}`))
+    // Герой — «есть из нужно», как у всех.
+    expect(page()).toContain(norm(`из ${money(item.need)}`))
+    const card0 = card()!.closest('div')!.textContent!
+    expect(card0).not.toContain('Соберём')
+    expect(document.querySelector('[data-goal-left]')?.textContent ?? '').toMatch(/^Соберём в .+ · осталось \d+ взнос/)
+    // «Чтобы успеть за год» и «дорожает» у фонда нет.
+    expect(page()).not.toContain('Чтобы успеть за год')
+    expect(page()).not.toContain('дорожает')
+    // Поле порога и подсказка формулы — в «Подробнее».
+    expect(document.querySelector('input[aria-label="Порог фонда — месяцев трат"]')).not.toBeNull()
+    expect(document.querySelector('[aria-label="Как считается «нужно»"]')).not.toBeNull()
+  })
+
+  it('пусто — «Хватит на 0 месяцев»; собрано — «✓» цветом «готово», «Собрано» в карточке нет', async () => {
+    let finance = await open('/goals/pot')
+    expect(card()?.textContent).toBe('Хватит на 0 месяцев')
+    const need = 3 * spendOf(finance)
+    app?.unmount()
+    document.body.innerHTML = ''
+    finance = await open('/goals/pot', [pot({ have: need + 10_000, seed: need + 10_000 })])
+    expect(card()?.textContent).toMatch(/^Хватит на 3(,\d)? месяца ✓$/)
+    expect(card()?.className).toContain('text-ok')
+    expect(card()!.parentElement!.textContent).not.toContain('Собрано')
+  })
+
+  it('без платежей и трат плана — «Пока не на что считать»', async () => {
+    const finance = await open('/goals/pot', [pot({ have: 100_000, seed: 100_000 })], { obligations: [], credits: [], spendPlans: [], spendTotals: [] })
+    expect(spendOf(finance)).toBe(0)
+    expect(card()?.textContent).toBe('Пока не на что считать')
+  })
+
+  it('свой порог 2 месяца — «нужно 2 месяца»', async () => {
+    const finance = await open('/goals/pot', [pot({ fundMonths: 2 })])
+    expect(norm(document.querySelector('[data-cushion-need]')!.textContent!)).toBe(norm(`нужно 2 месяца · ${money(2 * spendOf(finance))}`))
+  })
+
+  it('viewer видит то же, без поля порога', async () => {
+    await open('/goals/pot', [pot()], {}, 'viewer')
+    expect(card()?.textContent).toBe('Хватит на 0 месяцев')
+    expect(document.querySelector('[data-cushion-need]')).not.toBeNull()
+    expect(document.querySelector('input[aria-label="Порог фонда — месяцев трат"]')).toBeNull()
+  })
+
+  it('«Запас» — прежний вид («Соберём в …»), мечта — без «хватит»', async () => {
+    const res: Goal = { ...pot({ id: 'res', name: 'Запас', fund: 'reserve', template: 'cushion-3' }) }
+    await open('/goals/res', [res])
+    expect(card()).toBeNull()
+    expect(page()).toMatch(/Соберём в |Срока пока нет|Взнос не задан/)
+    app?.unmount()
+    document.body.innerHTML = ''
+    await open('/goals/trip', [pot(), { ...pot({ id: 'trip', name: 'Отпуск', need: 500_000, fund: null, template: null }) }])
+    expect(card()).toBeNull()
+    expect(page()).not.toContain('Хватит на')
   })
 })

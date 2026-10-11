@@ -3570,6 +3570,10 @@ export function cushionCover(item: PlanQueueItem | undefined, goal: Pick<Goal, '
   return { need, have, monthSpend, monthsNeeded, months: monthSpend > 0 ? round1(have / monthSpend) : null }
 }
 
+/** Подпись к `cushionCover`: «1,2 месяца», «1 месяц», «0 месяцев» — дробь всегда «месяца», целое — по числу. */
+export const monthsLabel = (n: number) =>
+  `${n.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} ${Number.isInteger(n) ? plural(n, 'месяц', 'месяца', 'месяцев') : 'месяца'}`
+
 /** Что записывает «Отложить по плану» (Р-78) — стор только исполняет. */
 export type PlanSave = {
   record: { source: 'salary'; sourceId: PersonId; period: string }
