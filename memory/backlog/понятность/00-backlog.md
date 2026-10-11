@@ -137,7 +137,7 @@
 | | PN-15 Демо, e2e и доки | `block-4-done/PN-15-demo-e2e-docs.md` | PN-14 | ✅ |
 | 4а. Мечты: доводка 🏁 *(принят и на проде 2026-10-11, мёрж `463c5a4`)* | PN-33 «Другие фото» темы у существующей мечты | `block-4a-dreams-polish/PN-33-photo-variants.md` | Блок 4 🏁 | ✅ |
 | | PN-34 «Уже купили» свёрнуто · e2e и доки | `block-4a-dreams-polish/PN-34-bought-collapsed.md` | PN-33 | ✅ |
-| 5. Прикинуть ⬜ *(исполнитель ✅ 2026-10-11)* | PN-16 Расчёты `tryCredit` и `canAfford` | `block-5-estimate/PN-16-estimate-finance.md` | Блок 4а 🏁 (расчёт — Блок 2) | ✅ |
+| 5. Прикинуть ⬜ *(исполнитель ✅, критик ✅ 2026-10-11)* | PN-16 Расчёты `tryCredit` и `canAfford` | `block-5-estimate/PN-16-estimate-finance.md` | Блок 4а 🏁 (расчёт — Блок 2) | ✅ |
 | | PN-17 Листы «Прикинуть кредит» и «Хватит?» | `block-5-estimate/PN-17-estimate-sheets.md` | PN-16 | ✅ |
 | | PN-18 e2e и доки | `block-5-estimate/PN-18-e2e-docs.md` | PN-17 | ✅ |
 | 6. Подушка ⬜ | PN-19 Шаблон «Подушка» → фонд; «хватит на N месяцев» | `block-6-cushion/PN-19-cushion-template-finance.md` | Блок 5 🏁 (шаблоны — Блок 3) | ⬜ |
@@ -466,6 +466,13 @@ Production `dpl_Fh6vRtoaqe6bC1pZTfUYDzit8uQR`, откат — promote `dpl_EsjHT
   счета «Хватит?» — `finance.householdAccounts` (как «до зарплаты» `MonthPlan`). Адреса: `/money/debts?try=1` (`DebtsWidget`),
   `/month?afford=1` (`MonthPlan`) — без гарда viewer, при закрытии query снимается `router.replace`. «+» — восемь пунктов (оба новых
   под `edit`, у viewer «+» нет); на «Долгах» тихое `data-try-credit` видно и viewer. База: **185 файлов / 1843 ✅ + 1**, `e2e/` — 35 / 223.
+- **Критик (2026-10-11):** прогон очереди считал свободный остаток постоянным — платёж прикидки «платился» до горизонта:
+  рассрочка на 4 мес. сдвигала мечту на 3 вместо 2, «съедает весь остаток на 10 мес.» давало «не соберётся», демо 5 млн / 12 мес. —
+  24 мес. вместо 8. Теперь **`MonthPlanCtx.ends?: { amount, after }[]`** — `queueRun` с месяца `after` возвращает `amount` в
+  остаток; задаёт только `tryCredit` (`after = months`), экраны и прочие даты плана не меняются (платежи там по-прежнему вечные —
+  даты осторожные). `delayMonths` Infinity — только кредит дольше горизонта 600. Подпись «N зарплат» — **`salariesLabel(n)`**
+  рядом с `inSalaries` (`CapitalStats`, `TryCreditSheet`); лист по адресу `?<key>=1` со снятием при закрытии —
+  **`components/useQuerySheet.ts`** (`DebtsWidget` `try`, `MonthPlan` `afford`). Мутации «без `ends`», «`m > after`» — красные.
 
 **Связки между блоками** (чтобы критик следил за промптами): Блок 2 → 5 (`inSalaries`, `capitalStats`); Блок 3 → 4
 (`GoalDetail`/`Dreams`/`StorySheet` после PN-09/10), → 5 (`goalPace`/`closerDays`), → 9 (`GoalNew` travel); Блок 7 → 8

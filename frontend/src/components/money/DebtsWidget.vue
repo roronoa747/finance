@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { computed, ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import { PhCalculator, PhCaretRight, PhCheck, PhPlus, PhUsers } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
@@ -20,6 +20,7 @@ import MarkSheet from '@/components/MarkSheet.vue'
 import PaymentLine from '@/components/money/PaymentLine.vue'
 import PlanSquare from '@/components/money/PlanSquare.vue'
 import TryCreditSheet from '@/components/money/TryCreditSheet.vue'
+import { useQuerySheet } from '@/components/useQuerySheet'
 
 /**
  * Экран «Долги» (Блок 16, Р-110; макет money-b16.html): карточка — сумма остатков и «без долгов — к <месяц>»; кредиты
@@ -76,24 +77,7 @@ const obligationId = ref<string | null>(null)
 const addPeopleOpen = ref(false)
 
 /* ---------- «Прикинуть кредит» (PN-17): тихая кнопка и адрес `?try=1` из «+»; ничего не пишет — и viewer ---------- */
-const route = useRoute()
-const router = useRouter()
-const tryOpen = ref(false)
-watch(
-  () => route.query.try,
-  (v) => {
-    if (v === '1') tryOpen.value = true
-  },
-  { immediate: true },
-)
-// Закрыли — адрес очищается: тот же «+» снова ведёт на новый адрес и открывает лист.
-function closeTry() {
-  tryOpen.value = false
-  if (!('try' in route.query)) return
-  const q = { ...route.query }
-  delete q.try
-  void router.replace({ query: q })
-}
+const { open: tryOpen, close: closeTry } = useQuerySheet('try')
 </script>
 
 <template>

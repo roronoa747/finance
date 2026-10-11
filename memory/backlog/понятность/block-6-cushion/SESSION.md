@@ -18,7 +18,27 @@
 - **Ветка `pn-block-6-cushion` от `main`** после 🏁 Блока 5. Документ: новых полей нет (фонд есть, Р-12 факт кода);
   Go нет.
 - Порядок: PN-19 → PN-20 → PN-21. «Нужно» — из строки очереди плана (`PlanQueueItem.need`), не пересчёт.
-- Факты Блоков 3–5 (критик допишет): <номера строк `GoalNew.vue`, `GoalDetail.vue`, `MonthPlan.vue`>.
+- **Факты кода (критик Блока 5, 2026-10-11, ветка `pn-block-5-estimate` после правок критика; номера ТЗ PN-19/PN-20 —
+  до Блоков 3–5, брать эти):**
+  - `types/finance.ts`: `Goal.fund?: 'reserve' | 'cushion' | null` :126, `fundMonths?` :128.
+  - `lib/finance.ts` (4 568): `DEFAULT_MONEY_SETTINGS` (`cushionMonths: 3`) :1140, `fundsOf` :2882, `queueOf` :2907 (фонд —
+    `kind: 'fund'` :2934), `monthPlan` :3139 (`monthSpend = duesTotal + spendTotal` :3183), `inSalaries` :3336 и **`salariesLabel`**
+    :3341 (подпись «1,5 зарплаты» — для «хватит на N месяцев» не годится, слово своё), `tryCredit` :3416, `canAfford` :3457,
+    `goalTerm` :3513. `MonthPlanCtx.ends?` — только прикидка Блока 5, экранам не задавать.
+  - Стор `stores/finance.ts`: `planInput` :278, `heroGoal` :1775, **`ensureFund(kind, need = 0)` :1899** (есть фонд — его id;
+    копилка Блока 11 помечается `fund` и, без картинки, `template: 'cushion'`; иначе новая «Подушка» `template: 'cushion'`),
+    `setFundMonths` :1933.
+  - `views/GoalNew.vue` (232): шаг `step` :46 (`'pick' | 'form'`), `pickType` :97-103, `pickOwn` :108-117, `next()` :130-133
+    (имя из шаблона → шаг `form`), `create()` :138-160 (`addGoal({ name, need, monthly, hue, template })` :142 → `router.push`
+    → `attachTemplate`). Тип `cushion` — `GOAL_TYPES` (`goalTemplates.ts:48`), шаблоны `cushion`, `cushion-2…` (:75, :102-104).
+    Развилку «Подушка → фонд» ставить в `pickType`/`next` (до формы), не в `create`.
+  - `views/GoalDetail.vue` (637): `isDone` :100 / `doneAtTitle` :102 / `markGoalDone` :109 (Блок 4), `isFund` :126, `term` :132,
+    `progress` :141, «Купили?» только у мечты, не у фонда — :142, `doneTitle` :145, `doneLine` :153, `fundKind` :183, `fundSaved`
+    :188, `onFundMonths` :192, тост `useFlash` :228 (Блок 3), `DreamHero` :396, карточка срока с «Пополнить» :432-462, строка
+    «Подушка плана — взносы идут» :474, «Подробнее» `<details v-if="!isDone">` :479 с полем «Месяцев трат» :508.
+  - `components/money/MonthPlan.vue` (735): `missingFunds` :361-363 и **`addFund` → `ensureFund` → `/goals/<id>` :364-367**;
+    кнопки «+ Запас» / «+ Подушка» :622-631. Блок 5 добавил `useQuerySheet('afford')` (`components/useQuerySheet.ts` — лист по
+    `?<key>=1`, адрес снимается при закрытии): новый адресный лист — через него.
 - Правило 12: на экране подушки одна крупная цифра (процент героя), «хватит на N» — заголовок карточки, «нужно» —
   строкой; расчёт — в `Hint` «Подробнее».
 - Среда — §6. Следующий шаг — `/critic понятность 6`.

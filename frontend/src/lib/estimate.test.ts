@@ -60,14 +60,16 @@ describe('tryCredit — «Прикинуть кредит»', () => {
   it('герой: сдвиг — тот же план с кредитом; маленькая семья — руками', () => {
     const state = small()
     // Без кредита: 100 000 в месяц → 300 000 к «2026-11».
-    // Рассрочка 1 000 000 на 4 месяца — платёж 250 000: свободно 50 000 → взнос 50 000 → шесть месяцев → «2027-02».
+    // Рассрочка 1 000 000 на 4 месяца — платёж 250 000 с сентября по декабрь: свободно 50 000 → 4 × 50 000 = 200 000;
+    // в январе платежа уже нет — взнос снова 100 000 → 300 000 → «2027-01», на 2 месяца позже (критик Б5: без конца
+    // платежа выходило «2027-02» — кредит платился бы вечно).
     const r = tryCredit(state, ctx, { principal: 1_000_000, months: 4, annualRate: 0 })
     expect(r.payment).toBe(250_000)
-    expect(r.hero).toEqual({ name: 'Япония', doneBefore: '2026-11', doneAfter: '2027-02', delayMonths: 3 })
-    // Тот же ответ даёт сам план с кредитом в платежах.
+    expect(r.hero).toEqual({ name: 'Япония', doneBefore: '2026-11', doneAfter: '2027-01', delayMonths: 2 })
+    // Тот же ответ даёт сам план с кредитом в платежах, который кончается через 4 месяца.
     const withCredit = monthPlan(
       { ...state, credits: [{ id: 'x', name: 'x', note: '', principal: 1_000_000, annualRate: 0, payment: 250_000, day: 1, updatedAt: T0 }] },
-      ctx,
+      { ...ctx, ends: [{ amount: 250_000, after: 4 }] },
     )
     expect(withCredit.duesTotal).toBe(250_000)
     expect(withCredit.queue.find((q) => q.goalId === 'trip')!.doneMonth).toBe(r.hero!.doneAfter)
@@ -76,11 +78,17 @@ describe('tryCredit — «Прикинуть кредит»', () => {
     expect(r.loadPct).toBe(83)
   })
 
-  it('кредит съедает весь остаток — мечта «не соберётся» (Infinity); маленький — «не сдвинется» (0)', () => {
+  it('кредит съедает весь остаток — мечта ждёт его конца; вечный — «не соберётся» (Infinity); маленький — «не сдвинется» (0)', () => {
+    // 3 000 000 на 10 месяцев: платёж 300 000 — весь доход; с июля 2027 (10-й месяц) взнос 100 000 → июль, август,
+    // сентябрь → «2027-09», на 10 месяцев позже. Не «не соберётся»: кредит кончится.
     const all = tryCredit(small(), ctx, { principal: 3_000_000, months: 10, annualRate: 0 })
     expect(all.payment).toBe(300_000)
-    expect(all.hero!.delayMonths).toBe(Infinity)
-    expect(all.hero!.doneAfter).toBeNull()
+    expect(all.hero!.doneAfter).toBe('2027-09')
+    expect(all.hero!.delayMonths).toBe(10)
+    // Кредит дольше горизонта прогона (600 месяцев) — мечта с ним не соберётся.
+    const forever = tryCredit(small(), ctx, { principal: 180_000_000, months: 600, annualRate: 0 })
+    expect(forever.hero!.delayMonths).toBe(Infinity)
+    expect(forever.hero!.doneAfter).toBeNull()
     // Платёж 1 000: свободно 299 000 ≥ взноса 100 000 — срок прежний.
     const tiny = tryCredit(small(), ctx, { principal: 12_000, months: 12, annualRate: 0 })
     expect(tiny.hero!.delayMonths).toBe(0)
@@ -114,6 +122,16 @@ describe('canAfford — «Хватит?»', () => {
     expect(up.shortfall).toBe(1_780_000)
     expect(canAfford(state, ctx, 500_000, now)).toEqual({ ok: true, left: 1_280_000, inDays: 5 })
     expect(canAfford(state, ctx, 1_780_000, now)).toEqual({ ok: true, left: 0, inDays: 5 })
+  })
+
+  it('на счетах меньше платежей до зарплаты — «Нет» на любую сумму, нехватка с прежней дырой (критик Б5)', () => {
+    // На карте 100 000, до зарплаты аренда 220 000 → shortfall −120 000; покупка 1 000 → не хватает 121 000.
+    const state = family()
+    const poor = { ...state, accounts: state.accounts!.map((a) => ({ ...a, amount: 100_000 })) }
+    expect(untilPayday(poor, now)!.shortfall).toBe(-120_000)
+    const r = canAfford(poor, ctx, 1_000, now)
+    expect(r.ok).toBe(false)
+    expect(!r.ok && r.short).toBe(121_000)
   })
 
   it('без счетов — от остатка плана месяца', () => {

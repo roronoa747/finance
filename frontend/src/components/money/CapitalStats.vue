@@ -3,8 +3,7 @@ import { computed } from 'vue'
 import StackBar from '@/components/kit/StackBar.vue'
 import { money } from '@/lib/money'
 import { monthBy } from '@/lib/dates'
-import { plural } from '@/lib/utils'
-import type { CapitalPartKey, CapitalStats } from '@/lib/finance'
+import { salariesLabel, type CapitalPartKey, type CapitalStats } from '@/lib/finance'
 
 /**
  * Аккордеон статистики на плашке Капитала (понятность Р-3, эталон — `capital-stats.html` Блока 2): полоска долей
@@ -28,11 +27,8 @@ const LABEL: Record<CapitalPartKey, { name: string; color: string }> = {
 const parts = computed(() => props.stats.parts.map((p) => ({ ...p, ...LABEL[p.key] })))
 /** «~390 000 ₸» — до тысяч, только на экране (`finance.ts` отдаёт точное тело). */
 const growth = computed(() => Math.round(props.stats.growth / 1000) * 1000)
-/** «1,5 зарплаты», «9 зарплат», «1 зарплата»: дробь — всегда «зарплаты», целое — по числу. Ноль (меньше 0,05 зарплаты) — единицы нет. */
-function salaries(n: number): string {
-  const word = Number.isInteger(n) ? plural(n, 'зарплата', 'зарплаты', 'зарплат') : 'зарплаты'
-  return `${n.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} ${word}`
-}
+/** Ноль (меньше 0,05 зарплаты) — единицы нет (`v-if` в шаблоне). */
+const salaries = salariesLabel
 </script>
 
 <template>

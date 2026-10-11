@@ -68,7 +68,8 @@ describe('e2e / понятность Блок 5 — прикинуть', () => {
 
     // Сдвиг героя — тот же план с ещё одним таким кредитом в платежах.
     const twin = { ...car, id: 'twin', principal: car.principal, payment: r.payment }
-    const after = monthPlan({ ...state, credits: [...state.credits!, twin] }, ctx)
+    // Платёж кончается через `months` месяцев — с тех пор снова свободен (`ctx.ends`, критик Б5).
+    const after = monthPlan({ ...state, credits: [...state.credits!, twin] }, { ...ctx, ends: [{ amount: r.payment, after: months }] })
     const trip = (p: typeof plan) => p.queue.find((q) => q.goalId === 'g-trip')!.doneMonth
     expect(r.hero?.name).toBe('Поездка в Японию')
     expect(r.hero!.doneBefore).toBe(trip(plan))
@@ -80,10 +81,15 @@ describe('e2e / понятность Блок 5 — прикинуть', () => {
     // Крупный кредит (5 000 000 на 12 месяцев под 19 %) съедает остаток выше её взноса — тогда она отодвигается, на столько
     // же, сколько даёт план с ним.
     const big = tryCredit(state, ctx, { principal: 5_000_000, months: 12, annualRate: 0.19 })
-    const bigPlan = monthPlan({ ...state, credits: [...state.credits!, { ...car, id: "big", principal: 5_000_000, payment: big.payment }] }, ctx)
+    const bigPlan = monthPlan(
+      { ...state, credits: [...state.credits!, { ...car, id: "big", principal: 5_000_000, payment: big.payment }] },
+      { ...ctx, ends: [{ amount: big.payment, after: 12 }] },
+    )
     expect(big.hero!.doneAfter).toBe(trip(bigPlan))
     expect(big.hero!.delayMonths).toBe(monthsBetween(trip(plan)!, trip(bigPlan)!))
     expect(big.hero!.delayMonths).toBeGreaterThan(0)
+    // Кредит на 12 месяцев не может отодвинуть мечту больше чем на свой срок (критик Б5: без конца платежа было 24).
+    expect(big.hero!.delayMonths).toBeLessThanOrEqual(12)
 
     // Лист на «Долгах» (вход из «+»): те же числа на экране.
     const html = text(

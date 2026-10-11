@@ -2993,6 +2993,11 @@ export type MonthPlanCtx = {
   totals: SpendTotal[]
   spendCategories: SpendCategory[]
   uploads: UploadPeriod[]
+  /**
+   * Платежи, которые кончатся (прикидка, Блок 5 «понятность»): с месяца `after` прогона очереди `amount` снова
+   * свободен. Без поля платежи считаются вечными — даты плана осторожные.
+   */
+  ends?: { amount: number; after: number }[]
 }
 
 export type PlanIncome = {
@@ -3079,13 +3084,14 @@ type RunItem = { on: boolean; cap: number; left: number; debt?: { rate: number; 
  * Прогон очереди по месяцам (B2C-86 п. 2): каждый месяц — тот же свободный остаток сверху вниз, каждой не
  * больше её взноса и остатка; собранная выпадает — её деньги идут ниже. Долг: сначала платёж по графику
  * (`creditSplit`, проценты до тенге), затем доплата карточки. Ответ — месяц (смещение от первого), когда
- * цель собрана или долг закрыт; null — не в горизонте. Платежи и траты считаются прежними — дата осторожная.
+ * цель собрана или долг закрыт; null — не в горизонте. Платежи и траты считаются прежними — дата осторожная;
+ * только `ends` (прикидка кредита на срок) с месяца `after` возвращает свой платёж в остаток.
  */
-function queueRun(items: RunItem[], free: number): (number | null)[] {
+function queueRun(items: RunItem[], free: number, ends: { amount: number; after: number }[] = []): (number | null)[] {
   const left = items.map((x) => x.left)
   const done: (number | null)[] = items.map((x, i) => (x.debt ? null : left[i] <= 0 ? 0 : null))
   for (let m = 0; m < PLAN_HORIZON && done.some((d) => d === null); m++) {
-    let avail = Math.max(0, free)
+    let avail = Math.max(0, free + ends.reduce((s, e) => s + (m >= e.after ? e.amount : 0), 0))
     items.forEach((x, i) => {
       if (done[i] !== null) return
       if (x.debt) left[i] -= creditSplit(left[i], x.debt.rate, x.debt.payment).body
@@ -3218,7 +3224,7 @@ export function monthPlan(state: MonthPlanState, ctx: MonthPlanCtx): MonthPlan {
     avail -= given
     return { ...item, given, doneMonth: null }
   })
-  const done = queueRun(shape.map(({ item, run }) => ({ ...run, on: !item.paused })), free)
+  const done = queueRun(shape.map(({ item, run }) => ({ ...run, on: !item.paused })), free, ctx.ends)
   queue.forEach((q, i) => {
     // Долг на паузе всё равно закрывается по графику; цель на паузе — нет.
     const d = done[i]
@@ -3331,6 +3337,10 @@ export function inSalaries(amount: number, income: number): number | null {
   return income > 0 ? Math.round((amount / income) * 10) / 10 : null
 }
 
+/** Подпись к `inSalaries`: «1,5 зарплаты», «9 зарплат», «1 зарплата» — дробь всегда «зарплаты», целое — по числу. */
+export const salariesLabel = (n: number) =>
+  `${n.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} ${Number.isInteger(n) ? plural(n, 'зарплата', 'зарплаты', 'зарплат') : 'зарплаты'}`
+
 /**
  * Статистика плашки Капитала (Р-3) — от уже посчитанного плана месяца (`finance.monthPlanOf(key)`), второго прогона
  * очереди нет. Доли дохода: «кредиты» — платежи по кредитам и долгам из графика плюс досрочка карточки долга;
@@ -3399,8 +3409,9 @@ const firstGoal = (plan: MonthPlan) => plan.queue.find((q) => q.kind === 'goal')
 
 /**
  * «Прикинуть кредит» (PN-16, Р-11) — ничего не пишет. Сдвиг мечты — тот же `monthPlan` с фиктивным кредитом в
- * `credits`: его платёж ложится в платежи месяца, очередь пересчитывается сама (копии формул нет). Ставка — доля
- * (0,2 = 20 %), 0 — рассрочка.
+ * `credits`: его платёж ложится в платежи месяца, очередь пересчитывается сама (копии формул нет), а через `months`
+ * месяцев прогон возвращает платёж в остаток (`ctx.ends`, критик Б5: без этого кредит платился бы вечно — «не
+ * соберётся» там, где мечта соберётся после него). Ставка — доля (0,2 = 20 %), 0 — рассрочка.
  */
 export function tryCredit(
   state: MonthPlanState,
@@ -3411,7 +3422,7 @@ export function tryCredit(
   const payment = Math.ceil(annuityPayment(principal, annualRate, months))
   const before = monthPlan(state, ctx)
   const fake: Credit = { id: 'try', name: 'Прикинуть', note: '', principal, annualRate, payment, day: 1, updatedAt: new Date().toISOString() }
-  const after = monthPlan({ ...state, credits: [...(state.credits ?? []), fake] }, ctx)
+  const after = monthPlan({ ...state, credits: [...(state.credits ?? []), fake] }, { ...ctx, ends: [{ amount: payment, after: months }] })
   const income = before.income.total
   const loadOf = (dues: number) => (income > 0 ? Math.round((dues / income) * 100) : null)
   const goal = firstGoal(before)

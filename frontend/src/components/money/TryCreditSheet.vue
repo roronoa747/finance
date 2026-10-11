@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { monthKey } from '@/lib/dates'
 import { money, parseMoney } from '@/lib/money'
-import { tryCredit } from '@/lib/finance'
+import { salariesLabel, tryCredit } from '@/lib/finance'
 import { plural } from '@/lib/utils'
 import Chip from '@/components/kit/Chip.vue'
 import Field from '@/components/kit/Field.vue'
@@ -50,16 +50,12 @@ const heroLine = computed(() => {
   if (h.delayMonths === 0) return `${h.name} не сдвинется`
   return `${h.name} отодвинется на ${monthsWord(h.delayMonths)}`
 })
-/** «0,2 зарплаты», «3 зарплаты» — как в статистике Капитала. */
-function salaries(n: number): string {
-  const word = Number.isInteger(n) ? plural(n, 'зарплата', 'зарплаты', 'зарплат') : 'зарплаты'
-  return `${n.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} ${word}`
-}
 const overpayLine = computed(() => {
   const r = result.value
   if (!r) return null
   if (r.overpay <= 0) return 'Без переплаты'
-  return r.overpaySalaries ? `Переплата ${money(r.overpay)} · ${salaries(r.overpaySalaries)}` : `Переплата ${money(r.overpay)}`
+  // «0,2 зарплаты» — как в статистике Капитала; 0 зарплат — единицы нет.
+  return r.overpaySalaries ? `Переплата ${money(r.overpay)} · ${salariesLabel(r.overpaySalaries)}` : `Переплата ${money(r.overpay)}`
 })
 </script>
 
