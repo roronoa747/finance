@@ -17,7 +17,9 @@ import {
   payableAccounts,
   paymentSplit,
   liveAccounts,
-  salaryAt,
+  payEventAt,
+  payEventOf,
+  periodMonth,
   salaryOf,
   salaryToAllocate,
   type MonthlyKind,
@@ -80,7 +82,14 @@ const recordTenge = computed(() =>
     : 0,
 )
 /** Оклад в валюте (B2C-79): сумма отметки — в валюте, счёт — только валютный той же валюты. */
-const own = computed(() => (person.value ? salaryOf(person.value, props.period) : null))
+const own = computed(() => (person.value ? salaryOf(person.value, periodMonth(props.period)) : null))
+/** Приход зарплаты по ритму (Б7): `period` — месяц или ISO-день аванса и недели. */
+const event = computed(() => (person.value ? payEventOf(person.value, props.period) : null))
+const floating = computed(() => !!person.value?.floating)
+/** Подпись суммы прихода: остаток после аванса — «Зарплата», не «Оклад месяца» (критик Б7: оклад месяца больше). */
+const dueLabel = computed(() =>
+  event.value?.kind === 'advance' ? 'Аванс' : event.value?.kind === 'week' ? 'За неделю' : props.period.length > 7 ? 'Зарплата' : 'Оклад месяца',
+)
 const fxSalary = computed(() => !!own.value && own.value.currency !== 'KZT')
 const sign = computed(() => (own.value ? CURRENCY_SIGN[own.value.currency] : '₸'))
 /**
@@ -88,14 +97,14 @@ const sign = computed(() => (own.value ? CURRENCY_SIGN[own.value.currency] : '�
  * приёмки п. 2; ревью frontend Б14 Н-1: то же условие, что у карточки «Недели» и кнопки плана).
  */
 const canAllocate = computed(
-  () => salary.value && !!record.value && !!salaryToAllocate(finance.planInput(props.period).state, auth.slot, undefined, record.value),
+  () => salary.value && !!record.value && !!salaryToAllocate(finance.planInput(periodMonth(props.period)).state, auth.slot, undefined, record.value),
 )
 
 /** Сколько платить (у зарплаты — оклад) за этот месяц по графику. */
 const due = computed(() => {
   if (obligation.value) return amountAt(obligation.value, props.period, fx.book)
   if (credit.value) return creditDueAmount(credit.value)
-  if (person.value) return fxSalary.value ? own.value!.amount : salaryAt(person.value, props.period)
+  if (person.value) return fxSalary.value ? (event.value?.amount ?? own.value!.amount) : payEventAt(person.value, props.period)
   return 0
 })
 
@@ -137,7 +146,8 @@ watch(
   ([open]) => {
     confirmUnmark.value = false
     if (open === 'mark') {
-      amountText.value = plain(props.amount)
+      // Плавающая зарплата (Р-6) открывается с пустой суммой — её вписывают.
+      amountText.value = props.amount > 0 ? plain(props.amount) : ''
       chosen.value = props.account
     }
   },
@@ -254,8 +264,8 @@ const unmarkNote = computed(() => {
     <template v-else-if="mode === 'mark'">
       <Field :label="`Сумма, ${salary ? sign : '₸'}`" name="amount">
         <NumField v-model="amountText" :currency="own?.currency ?? null" />
-        <span v-if="salary" class="text-[12px] leading-relaxed text-ink-2">
-          Оклад месяца — {{ fxSalary ? moneyIn(due, own!.currency) : money(due) }}. С премией впишите всю сумму: премия целиком ляжет в остаток.
+        <span v-if="salary && !floating" class="text-[12px] leading-relaxed text-ink-2">
+          {{ dueLabel }} — {{ fxSalary ? moneyIn(due, own!.currency) : money(due) }}. С премией впишите всю сумму: премия целиком ляжет в остаток.
         </span>
       </Field>
 
@@ -275,8 +285,9 @@ const unmarkNote = computed(() => {
         </p>
       </AccountChoice>
 
+      <!-- У аванса кнопка зовёт его по имени, как подпись суммы над ней (`/ux` Б7). -->
       <Button class="w-full" @click="form.submit(confirmMark)">
-        {{ record ? 'Сохранить' : salary ? 'Отметить зарплату' : credit?.person ? 'Отдал' : 'Отметить оплату' }}
+        {{ record ? 'Сохранить' : salary ? (event?.kind === 'advance' ? 'Отметить аванс' : 'Отметить зарплату') : credit?.person ? 'Отдал' : 'Отметить оплату' }}
       </Button>
     </template>
   </Sheet>

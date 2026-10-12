@@ -111,11 +111,25 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     const store = family()
     const html = await renderScreen(Start, '/start', undefined, [screenMixin({ manual: true })])
     expect(html).toContain('>Зарплата в месяц, ₸</span>')
-    expect(html).toContain('>День зарплаты (1–28)</span>')
+    expect(html).toContain('>День зарплаты</span>')
     expect(html).toContain('Лучше загружу выписку')
     await renderScreen(Start, '/start', undefined, [act('manualNext', { manual: true, manualSalary: '450 000', manualPayday: '12' })])
     expect(store.people).toEqual([expect.objectContaining({ id: 'a', name: 'a', salary: 450_000, payday: 12 })])
+    // Месячный ритм — документ как раньше: полей ритма нет.
+    expect(store.people[0].payRhythm).toBeUndefined()
     expect(store.householdDoc.spendTotals ?? []).toEqual([])
+  })
+
+  it('PN-23: «Введу вручную» с ритмом «каждую неделю» — недельный оклад и день недели; подпись «за неделю»', async () => {
+    const store = family()
+    const html = await renderScreen(Start, '/start', undefined, [screenMixin({ manual: true, manualRhythm: { payRhythm: 'week', weekday: 5 } })])
+    expect(html).toContain('>Зарплата за неделю, ₸</span>')
+    expect(html).toContain('>День недели</span>')
+    expect(html).toContain('Раз в неделю')
+    await renderScreen(Start, '/start', undefined, [
+      act('manualNext', { manual: true, manualSalary: '150 000', manualPayday: '10', manualRhythm: { payRhythm: 'week', weekday: 5 } }),
+    ])
+    expect(store.people[0]).toMatchObject({ salary: 150_000, payRhythm: 'week', weekday: 5 })
   })
 
   it('шаг 2 на фикстуре Kaspi: «Нашли 7 повторяющихся», «2 из 5», первый вопрос — доход с суммой и днём в полях, «1 из 7»', async () => {
@@ -313,6 +327,29 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     const paid = paidFor(store.payments, 'credit', credit.id, '2026-09')!
     expect(paid).toMatchObject({ amount: 152_000, opId: 'c9', source: 'statement' })
     expect(paid.at < store.householdDoc.credits[0].principalSetAt!).toBe(true)
+  })
+
+  it('PN-24: доход каждую пятницу — «по пятницам», «Да» ставит ритм недели и отмечает каждую пятницу своим днём', async () => {
+    const store = family()
+    seedOps(
+      parsed([
+        op('w1', '2026-08-28', 150_000, 'ТОО Смена', 'income'),
+        op('w2', '2026-09-04', 150_000, 'ТОО Смена', 'income'),
+        op('w3', '2026-09-11', 152_000, 'ТОО Смена', 'income'),
+        op('w4', '2026-09-18', 150_000, 'ТОО Смена', 'income'),
+      ]),
+    )
+    const html = await renderScreen(Start, '/start/questions')
+    expect(html).toContain(`${money(150_000)} · по пятницам`)
+    expect(html).toContain('>За неделю, ₸</span>')
+    await renderScreen(Start, '/start/questions', undefined, [act('answerIncome')])
+    expect(store.people[0]).toMatchObject({ salary: 150_000, payRhythm: 'week', weekday: 5 })
+    expect(store.payments.filter((p) => p.kind === 'salary').map((p) => [p.period, p.amount, p.opId])).toEqual([
+      ['2026-08-28', 150_000, 'w1'],
+      ['2026-09-04', 150_000, 'w2'],
+      ['2026-09-11', 152_000, 'w3'],
+      ['2026-09-18', 150_000, 'w4'],
+    ])
   })
 
   it('ML-06 (хвост 959): перевод другого отправителя перед зарплатой — «Да» отмечает август и сентябрь строками правила; вопроса «Это зарплата?» и второго правила нет', async () => {

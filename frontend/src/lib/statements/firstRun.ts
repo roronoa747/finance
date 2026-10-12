@@ -1,5 +1,6 @@
 import type { Operation } from './types'
-import { categorize, normalizeCounterparty, normalizeMerchant } from './model'
+import { categorize, dayNumber, normalizeCounterparty, normalizeMerchant } from './model'
+import { isoWeekday } from '@/lib/finance'
 import { AMOUNT_TOLERANCE, SALARY_TOLERANCE } from './matching'
 
 /**
@@ -24,6 +25,12 @@ export type IncomeCandidate = {
   /** Суммы в группе близки (±15 %) и их ≥ 2. */
   regular: boolean
   opIds: string[]
+  /**
+   * Приходит каждую неделю (понятность Б7, PN-24): ≥ 3 прихода с шагом 7 ± 1 день — тогда `amount` — за неделю, `weekday` —
+   * ISO-день недели (понедельник 1). Аванс не определяется — его ставят руками.
+   */
+  rhythm?: 'week'
+  weekday?: number
 }
 
 export type RecurringKind = 'credit' | 'rent' | 'utilities' | 'subscription' | 'obligation'
@@ -93,6 +100,25 @@ function groups(ops: Operation[]): Map<string, Operation[]> {
   return out
 }
 
+/** Шаг между приходами недели: 7 ± 1 день. */
+const WEEK_STEP = [6, 8] as const
+
+/**
+ * Еженедельный ли приход (PN-24): по датам, старые первыми, шагов 7 ± 1 день — не меньше двух (три прихода) и не меньше
+ * половины всех шагов (пропущенная неделя — шаг 14 — не ломает). День недели — самый частый.
+ */
+export function weeklyOf(ops: Pick<Operation, 'date'>[]): { weekday: number } | null {
+  const dates = [...new Set(ops.map((o) => o.date))].sort()
+  if (dates.length < 3) return null
+  const steps = dates.slice(1).map((d, i) => dayNumber(d) - dayNumber(dates[i]))
+  const weekly = steps.filter((x) => x >= WEEK_STEP[0] && x <= WEEK_STEP[1]).length
+  if (weekly < 2 || weekly * 2 < steps.length) return null
+  const counts = new Map<number, number>()
+  for (const d of dates) counts.set(isoWeekday(d), (counts.get(isoWeekday(d)) ?? 0) + 1)
+  const weekday = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0]
+  return { weekday }
+}
+
 /** Кандидаты дохода: приходы не от своих счетов; регулярные первыми, затем по сумме. */
 export function detectIncome(ops: Operation[]): IncomeCandidate[] {
   const incoming = ops.filter((o) => o.amount > 0 && !o.internal && (o.kind === 'income' || o.kind === 'transfer-in') && !NOT_INCOME.test(o.merchant))
@@ -107,7 +133,11 @@ export function detectIncome(ops: Operation[]): IncomeCandidate[] {
     if (!regular && !big) continue
     const typical = regular ? amount : Math.max(...amounts)
     const days = list.filter((o) => o.amount === typical || regular).map(dayOf)
-    out.push({ key, name: list[0].counterparty ?? list[0].merchant, amount: typical, day: median(days), count: list.length, regular, opIds: list.map((o) => o.id) })
+    const week = regular ? weeklyOf(list.filter((o) => Math.abs(o.amount - amount) <= amount * INCOME_TOLERANCE)) : null
+    out.push({
+      key, name: list[0].counterparty ?? list[0].merchant, amount: typical, day: median(days), count: list.length, regular, opIds: list.map((o) => o.id),
+      ...(week ? { rhythm: 'week' as const, weekday: week.weekday } : {}),
+    })
   }
   return out.sort((a, b) => Number(b.regular) - Number(a.regular) || b.amount - a.amount)
 }

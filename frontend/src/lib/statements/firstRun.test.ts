@@ -44,6 +44,27 @@ describe('firstRun — доход', () => {
   })
 })
 
+describe('PN-24: еженедельный доход в первом запуске', () => {
+  it('четыре прихода по пятницам — rhythm week, weekday 5, сумма — за неделю', () => {
+    const ops = assignIds([
+      op('2026-09-04', 150_000, 'ТОО Смена'),
+      op('2026-09-11', 150_000, 'ТОО Смена'),
+      op('2026-09-18', 155_000, 'ТОО Смена'),
+      op('2026-09-25', 150_000, 'ТОО Смена'),
+    ])
+    expect(detectIncome(ops)[0]).toMatchObject({ amount: 150_000, regular: true, rhythm: 'week', weekday: 5, count: 4 })
+  })
+
+  it('пропущенная неделя не ломает; месячный и два прихода — без ритма', () => {
+    const gap = assignIds([op('2026-09-04', 150_000, 'A'), op('2026-09-11', 150_000, 'A'), op('2026-09-25', 150_000, 'A'), op('2026-10-02', 150_000, 'A')])
+    expect(detectIncome(gap)[0]).toMatchObject({ rhythm: 'week', weekday: 5 })
+    const two = assignIds([op('2026-09-04', 150_000, 'B'), op('2026-09-11', 150_000, 'B')])
+    expect(detectIncome(two)[0].rhythm).toBeUndefined()
+    const monthly = assignIds([op('2026-07-10', 500_000, 'C'), op('2026-08-10', 520_000, 'C'), op('2026-09-11', 510_000, 'C')])
+    expect(detectIncome(monthly)[0].rhythm).toBeUndefined()
+  })
+})
+
 describe('firstRun — отметка зарплаты месяца (возврат приёмки п. 7)', () => {
   it('salaryOpOfMonth: приход месяца в допуске оклада ±10 %, ближайший к окладу; вне допуска и чужой месяц — нет', () => {
     const list = assignIds([

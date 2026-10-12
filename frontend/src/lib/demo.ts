@@ -57,7 +57,8 @@ export function startDemo(): boolean {
         salaryVersions: [{ from: '2000-01', amount: 750_000 }, { from: addMonths(monthKey(), -12), amount: 1_500, currency: 'EUR', rate: 506 }],
       },
       // Свой кружок (B2C-63/67): у партнёра — свой цвет, у обоих — буква, как по умолчанию (макет Б17: «В», «П»).
-      { id: 'b', name: 'Партнёр', salary: 450_000, payday: 20, color: 's6', onboardedAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      // Ритм «аванс и зарплата» (понятность Б7, PN-25): аванс 15-го 150 000, остаток 300 000 — 30-го; сумма месяца прежняя.
+      { id: 'b', name: 'Партнёр', salary: 450_000, payday: 30, payRhythm: 'advance', payday2: 15, salary2: 150_000, color: 's6', onboardedAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
     ]
     doc.categories = [
       { key: 'd1', name: 'Жильё', note: 'аренда и коммуналка', amount: 250_000, updatedAt: new Date().toISOString() },

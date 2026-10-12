@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import StackBar from '@/components/kit/StackBar.vue'
+import { useFinanceStore } from '@/stores/finance'
 import { money } from '@/lib/money'
 import { monthBy } from '@/lib/dates'
-import { salariesLabel, type CapitalPartKey, type CapitalStats } from '@/lib/finance'
+import { hasWeeklyPay, monthsLabel, salariesLabel, type CapitalPartKey, type CapitalStats } from '@/lib/finance'
 
 /**
  * Аккордеон статистики на плашке Капитала (понятность Р-3, эталон — `capital-stats.html` Блока 2): полоска долей
@@ -27,8 +28,14 @@ const LABEL: Record<CapitalPartKey, { name: string; color: string }> = {
 const parts = computed(() => props.stats.parts.map((p) => ({ ...p, ...LABEL[p.key] })))
 /** «~390 000 ₸» — до тысяч, только на экране (`finance.ts` отдаёт точное тело). */
 const growth = computed(() => Math.round(props.stats.growth / 1000) * 1000)
-/** Ноль (меньше 0,05 зарплаты) — единицы нет (`v-if` в шаблоне). */
-const salaries = salariesLabel
+/**
+ * Ноль (меньше 0,05 зарплаты) — единицы нет (`v-if` в шаблоне). Недельная зарплата в семье (`/ux` Б7): «23 зарплаты»
+ * читались бы неделями — переплата в месяцах дохода, срок — просто месяцами («ещё 23 месяца»).
+ */
+const finance = useFinanceStore()
+const weekly = computed(() => hasWeeklyPay(finance.people))
+const salaries = (n: number) => salariesLabel(n, weekly.value)
+const term = (n: number) => (weekly.value ? monthsLabel(n) : salariesLabel(n))
 </script>
 
 <template>
@@ -53,7 +60,7 @@ const salaries = salariesLabel
         <template v-else>
           <p class="text-[14.5px] text-ink" data-debt-free>
             Без долгов <b class="font-semibold">{{ monthBy(stats.debtFree.month) }}</b>
-            <span v-if="stats.debtFree.salaries" class="num text-[13.5px] text-ink-2"> · ещё {{ salaries(stats.debtFree.salaries) }}</span>
+            <span v-if="stats.debtFree.salaries" class="num text-[13.5px] text-ink-2"> · ещё {{ term(stats.debtFree.salaries) }}</span>
           </p>
           <p v-if="stats.overpay.amount === null" class="text-[14px] text-ink-2" data-overpay>Переплата не считается — платёж не покрывает проценты</p>
           <p v-else-if="stats.overpay.amount > 0" class="text-[14.5px] text-ink" data-overpay>

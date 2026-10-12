@@ -1088,3 +1088,20 @@ describe('ML-15: долг человеку и платёж людям при с�
     expect(mergeDocs(local, remote).credits[0]).toMatchObject({ person: true, principal: 450_000, payment: 50_000 })
   })
 })
+
+describe('PN-22: ритм зарплаты — поля Person едут записью (LWW)', () => {
+  const T0 = '2026-10-01T10:00:00.000Z'
+  const base: Person = { id: 'a', name: 'Ильяс', salary: 750_000, payday: 10, updatedAt: T0 }
+  const doc = (p: Person): SyncDoc => ({ ...createEmptyDoc(), people: [p] })
+
+  it('позже выбранный ритм побеждает целиком; старый документ без полей их не стирает у нового', () => {
+    const weekly = doc({ ...base, salary: 150_000, payRhythm: 'week', weekday: 5, floating: true, updatedAt: '2026-10-02T10:00:00.000Z' })
+    for (const merged of [mergeDocs(doc(base), weekly), mergeDocs(weekly, doc(base))]) {
+      expect(merged.people[0]).toMatchObject({ salary: 150_000, payRhythm: 'week', weekday: 5, floating: true })
+    }
+    const back = doc({ ...base, payRhythm: 'advance', payday2: 15, salary2: 300_000, weekday: undefined, updatedAt: '2026-10-03T10:00:00.000Z' })
+    for (const merged of [mergeDocs(weekly, back), mergeDocs(back, weekly)]) {
+      expect(merged.people[0]).toMatchObject({ payRhythm: 'advance', payday2: 15, salary2: 300_000 })
+    }
+  })
+})

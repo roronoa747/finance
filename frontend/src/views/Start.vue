@@ -10,14 +10,14 @@ import { useOperationsStore, type Draft, type DraftFile } from '@/stores/operati
 import { readStatementFiles } from '@/lib/statements/read'
 import { ruleFor, ruleMatchOf } from '@/lib/statements/model'
 import { BUDGET_BY_KIND, firstRunQuestions, paymentOpOfMonth, salaryOpOfMonth, type IncomeCandidate, type RecurringCandidate, type RecurringKind } from '@/lib/statements/firstRun'
-import { matchCandidates, matchCategory, operationAt } from '@/lib/statements/matching'
+import { matchCandidates, matchCategory, nearestEvent, operationAt, SALARY_TOLERANCE } from '@/lib/statements/matching'
 import type { Operation } from '@/lib/statements/types'
-import { budgetAmounts, spendRows } from '@/lib/finance'
+import { advanceDefault, budgetAmounts, monthlyFromWeekly, spendRows, weeklyFromMonthly } from '@/lib/finance'
 import { money, parseMoney, plain } from '@/lib/money'
 import { addMonths, monthKey, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
 import { START_ANSWERED_KEY, readStorage, writeStorage } from '@/lib/storage'
 import { useInvite } from '@/components/useInvite'
-import type { PersonId } from '@/types/finance'
+import type { Person, PersonId } from '@/types/finance'
 import { plural } from '@/lib/utils'
 import GoalNew from '@/views/GoalNew.vue'
 import Button from '@/components/ui/Button.vue'
@@ -30,6 +30,7 @@ import { useFormCheck } from '@/components/kit/useFormCheck'
 import FreeCard from '@/components/kit/FreeCard.vue'
 import Hint from '@/components/kit/Hint.vue'
 import NumField from '@/components/kit/NumField.vue'
+import PayRhythmFields from '@/components/PayRhythmFields.vue'
 import Stepper from '@/components/kit/Stepper.vue'
 import WeekCard, { type WeekSegment } from '@/components/kit/WeekCard.vue'
 
@@ -81,6 +82,42 @@ const manual = ref(false)
 const manualSalary = ref('')
 const form = useFormCheck(() => [['salary', parseMoney(manualSalary.value) <= 0 && 'Введите зарплату']])
 const manualPayday = ref('10')
+/** Ритм ручного ввода (PN-23): тот же блок, что в «Изменить оклад»; пишется вместе с окладом. */
+const manualRhythm = ref<Partial<Person>>({ payRhythm: 'month' })
+const manualWeekly = computed(() => manualRhythm.value.payRhythm === 'week')
+/**
+ * Аванс — половина оклада, пока его не вписали руками (`/ux` Б7, наблюдение критика): «С авансом» до оклада оставлял
+ * «Аванс 0» — и месяц одним приходом. Оклад набран «в месяц» или «за неделю» — по ритму в момент набора; ритм сменили
+ * через неделю — тихая подсказка пересчёта, как в «Изменить оклад» (подпись поля меняется, а число — нет).
+ */
+const advanceTyped = ref(false)
+const salaryWeekly = ref(false)
+watch(manualSalary, () => {
+  salaryWeekly.value = manualWeekly.value
+  if (manualRhythm.value.payRhythm === 'advance' && !advanceTyped.value) {
+    manualRhythm.value = { ...manualRhythm.value, salary2: advanceDefault(parseMoney(manualSalary.value)) }
+  }
+})
+function onManualRhythm(patch: Partial<Person>) {
+  if (patch.payday) manualPayday.value = String(patch.payday)
+  if (patch.salary2 !== undefined && !patch.payRhythm) advanceTyped.value = true
+  manualRhythm.value = { ...manualRhythm.value, ...patch }
+}
+const salaryHint = computed(() => {
+  const a = parseMoney(manualSalary.value)
+  if (a <= 0 || manualWeekly.value === salaryWeekly.value) return null
+  return manualWeekly.value ? { amount: weeklyFromMonthly(a), per: 'за неделю' } : { amount: monthlyFromWeekly(a), per: 'в месяц' }
+})
+function useSalaryHint() {
+  if (salaryHint.value) manualSalary.value = plain(salaryHint.value.amount)
+}
+/** Поля ритма в участника: месячный — без полей (документ как раньше). */
+const rhythmFields = (): Partial<Person> => {
+  const r = manualRhythm.value
+  if (r.payRhythm === 'week') return { payRhythm: 'week', weekday: r.weekday }
+  if (r.payRhythm === 'advance') return { payRhythm: 'advance', payday2: r.payday2, salary2: r.salary2 }
+  return {}
+}
 
 async function pick(e: Event) {
   const input = e.target as HTMLInputElement
@@ -108,7 +145,7 @@ async function uploadParsed(files: DraftFile[]) {
 function manualNext() {
   const salary = parseMoney(manualSalary.value)
   if (salary <= 0) return
-  financeStore.setPerson(slot.value, { name: knownName.value, salary, payday: clampDay(manualPayday.value, 10) })
+  financeStore.setPerson(slot.value, { name: knownName.value, salary, payday: clampDay(manualPayday.value, 10), ...rhythmFields() })
   if (joining.value) finish()
   else go('dream')
 }
@@ -185,7 +222,10 @@ const KINDS: { value: RecurringKind; label: string }[] = [
 ]
 const KIND_NAME: Record<RecurringKind, string | null> = { credit: null, rent: 'Аренда', utilities: 'Коммуналка', subscription: null, obligation: null }
 
-const incomeMeta = (c: IncomeCandidate) => `${money(c.amount)} · ${c.day}-го · ${c.name}${c.count > 1 ? ` · ${c.count} раз` : ''}`
+/** «по пятницам» — недельный приход (PN-24); иначе «24-го». */
+const BY_WEEKDAY = ['', 'по понедельникам', 'по вторникам', 'по средам', 'по четвергам', 'по пятницам', 'по субботам', 'по воскресеньям']
+const incomeWhen = (c: IncomeCandidate) => (c.rhythm === 'week' && c.weekday ? BY_WEEKDAY[c.weekday] : `${c.day}-го`)
+const incomeMeta = (c: IncomeCandidate) => `${money(c.amount)} · ${incomeWhen(c)} · ${c.name}${c.count > 1 ? ` · ${c.count} ${plural(c.count, 'раз', 'раза', 'раз')}` : ''}`
 const recurringMeta = (c: RecurringCandidate) => `${money(c.amount)} · примерно ${c.day}-го${c.count > 1 ? ` · ${c.count} раз за период` : ''}`
 
 /**
@@ -199,7 +239,9 @@ function answerIncome(yes = true) {
   if (yes) {
     const salary = parseMoney(incomeSalary.value)
     if (salary <= 0) return
-    financeStore.setPerson(slot.value, { name: knownName.value, salary, payday: clampDay(incomePayday.value, q.candidate.day) })
+    // Еженедельный приход (PN-24): ритм «каждую неделю» и недельная сумма; иначе — месяц, как раньше.
+    const weekly = q.candidate.rhythm === 'week' && q.candidate.weekday ? { payRhythm: 'week' as const, weekday: q.candidate.weekday } : {}
+    financeStore.setPerson(slot.value, { name: knownName.value, salary, payday: clampDay(incomePayday.value, q.candidate.day), ...weekly })
     const op = ops.all.find((o) => o.id === q.candidate.opIds[0])
     if (op && (op.counterparty || q.candidate.regular)) {
       // Правило зарплаты без раздела — пересчитывать операции нечего.
@@ -208,7 +250,8 @@ function answerIncome(yes = true) {
       // отправителя в этом месяце — не зарплата, месяц остаётся неотмеченным.
       // Этот и прошлый месяц — как «Да» в «Неделе» (`acceptMatch`, хвост 959): иначе прошлый месяц займёт приход
       // другого отправителя вопросом «Это зарплата?», а «Да» на нём напишет второе правило зарплаты.
-      for (const period of [addMonths(monthKey(), -1), monthKey()]) {
+      if (q.candidate.rhythm === 'week') markWeeks(groupOps(q.candidate.opIds), salary)
+      else for (const period of [addMonths(monthKey(), -1), monthKey()]) {
         const cur = salaryOpOfMonth(groupOps(q.candidate.opIds), salary, period)
         if (cur) financeStore.markSalary(slot.value, { period, amount: Math.abs(cur.amount), source: 'statement', opId: cur.id, at: operationAt(cur.date) })
       }
@@ -216,6 +259,21 @@ function answerIncome(yes = true) {
   }
   markAnswered('income')
   advance()
+}
+
+/**
+ * Недельный доход из выписки (PN-24): каждый приход этого и прошлого месяца в допуске недельной суммы — отметка своей
+ * пятницы (`nearestEvent`, ключ — ISO-день); одна неделя — один приход.
+ */
+function markWeeks(list: Operation[], salary: number) {
+  const p = financeStore.people.find((x) => x.id === slot.value)
+  if (!p) return
+  const from = `${addMonths(monthKey(), -1)}-01`
+  for (const op of list) {
+    if (op.date < from || op.amount <= 0 || Math.abs(op.amount - salary) > salary * SALARY_TOLERANCE) continue
+    const near = nearestEvent(op.date, p)
+    if (near && near.gap <= 3) financeStore.markSalary(slot.value, { period: near.event.period, amount: op.amount, source: 'statement', opId: op.id, at: operationAt(op.date) })
+  }
 }
 
 /**
@@ -277,7 +335,7 @@ function advance() {
 function manualAfterQuestions() {
   const salary = parseMoney(manualSalary.value)
   if (salary <= 0) return
-  financeStore.setPerson(slot.value, { name: knownName.value, salary, payday: clampDay(manualPayday.value, 10) })
+  financeStore.setPerson(slot.value, { name: knownName.value, salary, payday: clampDay(manualPayday.value, 10), ...rhythmFields() })
   advance()
 }
 
@@ -364,13 +422,25 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
         </div>
       </template>
       <template v-else>
-        <Field label="Зарплата в месяц, ₸" name="salary">
-          <NumField v-model="manualSalary" placeholder="450 000" class="bg-surface" />
-        </Field>
-        <Field label="День зарплаты (1–28)">
-          <NumField v-model="manualPayday" kind="int" placeholder="10" class="bg-surface" />
-        </Field>
-        <p class="text-[12.5px] leading-relaxed text-ink-2">Оклад без премий.</p>
+        <!-- Поля ручного ввода — одним блоком: отступы между ними ровные (14 px, как в «Изменить оклад»), не 14 и 30 (`/ux` Б7). -->
+        <div data-manual-income>
+          <Field :label="manualWeekly ? 'Зарплата за неделю, ₸' : 'Зарплата в месяц, ₸'" name="salary">
+            <NumField v-model="manualSalary" placeholder="450 000" class="bg-surface" />
+          </Field>
+          <Button v-if="salaryHint" variant="ghost" size="sm" class="-mt-2 mb-2 -ml-2" data-week-hint @click="useSalaryHint">≈ {{ plain(salaryHint.amount) }} {{ salaryHint.per }}</Button>
+          <PayRhythmFields
+            :rhythm="manualRhythm.payRhythm ?? 'month'"
+            :payday="clampDay(manualPayday, 10)"
+            :payday2="manualRhythm.payday2"
+            :salary2="manualRhythm.salary2"
+            :weekday="manualRhythm.weekday"
+            :salary="parseMoney(manualSalary)"
+            currency="KZT"
+            field-class="bg-surface"
+            @change="onManualRhythm"
+          />
+          <p class="text-[12.5px] leading-relaxed text-ink-2">Оклад без премий.</p>
+        </div>
         <div class="mt-auto flex flex-col gap-2 pt-2">
           <Button size="lg" class="w-full" @click="form.submit(manualNext)">Дальше</Button>
           <Button variant="ghost" size="md" class="w-full" @click="manual = false">Лучше загружу выписку</Button>
@@ -384,8 +454,8 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
         <DecisionCard question="Это ваш доход?" :meta="incomeMeta(current.candidate)" :progress="progress" :actions="{ primary: 'Да, это зарплата', secondary: 'Нет' }" @primary="answerIncome(true)" @secondary="answerIncome(false)">
           <template #inner>
             <div class="flex gap-3">
-              <Field label="Оклад, ₸" class="flex-1"><NumField v-model="incomeSalary" placeholder="450 000" /></Field>
-              <Field label="День" class="w-24"><NumField v-model="incomePayday" kind="int" placeholder="10" /></Field>
+              <Field :label="current.candidate.rhythm === 'week' ? 'За неделю, ₸' : 'Оклад, ₸'" class="flex-1"><NumField v-model="incomeSalary" placeholder="450 000" /></Field>
+              <Field v-if="current.candidate.rhythm !== 'week'" label="День" class="w-24"><NumField v-model="incomePayday" kind="int" placeholder="10" /></Field>
             </div>
           </template>
         </DecisionCard>
@@ -402,12 +472,24 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
         </DecisionCard>
       </template>
       <template v-else-if="!salaryKnown">
-        <Field label="Зарплата в месяц, ₸" name="salary">
-          <NumField v-model="manualSalary" placeholder="450 000" class="bg-surface" />
-        </Field>
-        <Field label="День зарплаты (1–28)">
-          <NumField v-model="manualPayday" kind="int" placeholder="10" class="bg-surface" />
-        </Field>
+        <!-- Поля ручного ввода — одним блоком: отступы между ними ровные (14 px, как в «Изменить оклад»), не 14 и 30 (`/ux` Б7). -->
+        <div data-manual-income>
+          <Field :label="manualWeekly ? 'Зарплата за неделю, ₸' : 'Зарплата в месяц, ₸'" name="salary">
+            <NumField v-model="manualSalary" placeholder="450 000" class="bg-surface" />
+          </Field>
+          <Button v-if="salaryHint" variant="ghost" size="sm" class="-mt-2 mb-2 -ml-2" data-week-hint @click="useSalaryHint">≈ {{ plain(salaryHint.amount) }} {{ salaryHint.per }}</Button>
+          <PayRhythmFields
+            :rhythm="manualRhythm.payRhythm ?? 'month'"
+            :payday="clampDay(manualPayday, 10)"
+            :payday2="manualRhythm.payday2"
+            :salary2="manualRhythm.salary2"
+            :weekday="manualRhythm.weekday"
+            :salary="parseMoney(manualSalary)"
+            currency="KZT"
+            field-class="bg-surface"
+            @change="onManualRhythm"
+          />
+        </div>
         <div class="mt-auto flex flex-col gap-2 pt-2">
           <Button size="lg" class="w-full" @click="form.submit(manualAfterQuestions)">{{ joining ? 'Готово' : 'Дальше' }}</Button>
         </div>
