@@ -516,6 +516,16 @@ describe('subscriptionsByWho — «Общие · N», «<имя> · N» (PN-27)'
     expect(subscriptionsByWho(items, s.obligations!, []).map((w) => w.who)).toEqual(['all'])
   })
 
+  it('старый платёж в «Кредитах» (d2, форма до Б8) — в плане месяца строкой, не в «Подписках» и не в частях', () => {
+    const base = doc({ gym: 'b' })
+    const s = { ...base, obligations: [...base.obligations!, { id: 'old', name: 'Рассрочка', note: '', day: 9, category: 'd2' as const, versions: [{ from: '2026-01', amount: 20_000 }], updatedAt: T0 }] }
+    const plan = monthPlan(s, ctx)
+    expect(plan.dues.find((d) => d.targetId === 'old')).toMatchObject({ amount: 20_000 })
+    const p = monthSubscriptions(plan.dues, s.obligations, s.people!)
+    expect(p.rest.map((d) => d.targetId)).toContain('old')
+    expect(p.byWho.flatMap((w) => w.group.parts.flatMap((g) => g.rows.map((d) => d.targetId)))).not.toContain('old')
+  })
+
   it('без подписок группой (одна подписка) — byWho пусто, subs null', () => {
     const one = family()
     expect(monthSubscriptions(monthPlan(one, ctx).dues, one.obligations!, one.people!)).toMatchObject({ subs: null, byWho: [] })

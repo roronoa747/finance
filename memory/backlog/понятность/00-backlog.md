@@ -157,7 +157,7 @@
 | | PN-23 Формы: первый запуск, «Изменить оклад», лист «Пришла» | `block-7-pay-rhythm/PN-23-rhythm-forms-sheet.md` | PN-22 | ✅ |
 | | PN-24 Выписка и план по ритму; доход полоски Капитала | `block-7-pay-rhythm/PN-24-rhythm-statement-plan.md` | PN-23 | ✅ |
 | | PN-25 Демо, e2e и доки | `block-7-pay-rhythm/PN-25-demo-e2e-docs.md` | PN-24 | ✅ |
-| 8. Подписки 🔄 *(исполнитель ✅ 2026-10-12, ветка `pn-block-8-subscriptions`)* | PN-26 Форма без разделов, «чья» | `block-8-subscriptions/PN-26-subscription-form.md` | Блок 7 🏁 | ✅ |
+| 8. Подписки 🔄 *(исполнитель ✅, критик ✅ 2026-10-12, ветка `pn-block-8-subscriptions`)* | PN-26 Форма без разделов, «чья» | `block-8-subscriptions/PN-26-subscription-form.md` | Блок 7 🏁 | ✅ |
 | | PN-27 «Общие · N», «<имя> · N» (хвост 1024) | `block-8-subscriptions/PN-27-subscription-groups.md` | PN-26 | ✅ |
 | | PN-28 «В календарь» (.ics) | `block-8-subscriptions/PN-28-calendar-ics.md` | PN-27 | ✅ |
 | | PN-29 e2e и доки | `block-8-subscriptions/PN-29-e2e-docs.md` | PN-28 | ✅ |
@@ -584,8 +584,8 @@ Production `dpl_Fh6vRtoaqe6bC1pZTfUYDzit8uQR`, откат — promote `dpl_EsjHT
   участника нет), затем `people` по порядку; пакет не рвётся (разные `who` — целиком в «Общих»); внутри — `rowsGroup`.
   `monthSubscriptions(dues, all, people = [])` → + `byWho`. Экраны — подзаголовки `data-subs-who` только при двух частях и больше.
 - **`lib/calendar.ts`**: `calendarEvents({ obligations, credits, people }, now)` → `CalEvent { uid, summary, start, rrule }` (платежи
-  `liveObligations`, кредиты `openCredits` — **производные** из стора, зарплата — `payRhythmOf`/`payEvents`, без оклада — нет; `>28`
-  → `BYMONTHDAY=-1`); `icsText(events, now)` (CRLF, `icsEscape`, `icsFold` по 75 октетам, весь день + `DTEND`, `VALARM` `PT9H`,
+  `liveObligations`, кредиты `openCredits` — **производные** из стора, зарплата — `payRhythmOf`/`payEvents`, без оклада — нет; день — как `isoIn`:
+  31-е → `BYMONTHDAY=-1`, 29–30 → `BYMONTHDAY=28,…,N;BYSETPOS=-1` (критик), ≤ 28 — свой); `icsText(events, now)` (CRLF, `icsEscape`, `icsFold` по 75 октетам, весь день + `DTEND`, `VALARM` `PT9H`,
   `UID` `ff-<id>@family-finance`, зарплата — `ff-salary-<p>`/`ff-advance-<p>`). **`lib/share.ts`** — `shareFile(blob, { title,
   fileName }, nav?)` и `downloadBlob`; `shareStory` из `storyCard.ts` убран — сторис, обои и календарь через `shareFile`.
   `CapitalLists` — `toCalendar`, `data-calendar` у `Section «Платежи»` (слот `#action`), подсказка `data-calendar-note` (`useFlash` 4 с).
@@ -593,6 +593,10 @@ Production `dpl_Fh6vRtoaqe6bC1pZTfUYDzit8uQR`, откат — promote `dpl_EsjHT
   `type="checkbox"[^>]*checked` молча зелёная (была в `CapitalLists.test.ts`; заменена на `checkedBox`). Тесты:
   `NewObligationSheet.dom` (5), `CapitalLists.test` (+4), `monthPlan.test` (+5), `MonthPlan.dom` (+2), `calendar.test` (10),
   `CapitalLists.calendar.dom` (3), гвард демо, e2e `pn-block8-subscriptions` (5). База: **197 файлов / 1978 ✅ + 1 пропуск**, `e2e/` — 39 / 242.
+- **Критик (2026-10-12):** `byMonthDay` в `calendar.ts` — `-1` для 29–30 ставил платёж 30-го на 31-е (напоминание после срока);
+  `nextMonthly`/`nextYearly` — прямо `isoIn` (кодировки `-1` в дате нет). Тесты: `calendar.test` (+1: 29/30/годовой в феврале),
+  `monthPlan.test` (+1: старый d2 — в плане строкой, не в частях), **`share.dom.test`** (3: лист · скачать · отмена). База:
+  **198 файлов / 1983 ✅ + 1 пропуск**.
 
 **Связки между блоками** (чтобы критик следил за промптами): Блок 2 → 5 (`inSalaries`, `capitalStats`); Блок 3 → 4
 (`GoalDetail`/`Dreams`/`StorySheet` после PN-09/10), → 5 (`goalPace`/`closerDays`), → 9 (`GoalNew` travel); Блок 7 → 8

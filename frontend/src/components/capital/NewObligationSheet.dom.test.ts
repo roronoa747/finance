@@ -54,7 +54,7 @@ async function type(label: string, text: string) {
 
 describe('PN-26: форма подписки — без разделов, «Чья»', () => {
   it('подписка: разделов нет, «Чья» — Общая по умолчанию; выбор участника пишет who, раздел — d4', async () => {
-    const { store } = mountSheet()
+    const { store, open } = mountSheet()
     await nextTick()
     const text = dialog().textContent!
     expect(text).toContain('Регулярный платёж')
@@ -74,6 +74,11 @@ describe('PN-26: форма подписки — без разделов, «Чь
     const ob = store.householdDoc.obligations.find((o) => o.name === 'Spotify')!
     expect(ob).toMatchObject({ category: 'd4', who: 'b', estimate: false })
     expect(isSubscription(ob)).toBe(true)
+
+    // Следующее открытие — снова «Общая» (критик Б8: выбор партнёра не переживал закрытие формы).
+    open.value = true
+    await nextTick()
+    expect(button('Общая').getAttribute('aria-pressed')).toBe('true')
   })
 
   it('«Общая» — who пусто (null)', async () => {

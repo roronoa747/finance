@@ -1,5 +1,5 @@
 import type { Credit, Obligation, Person } from '@/types/finance'
-import { addDaysIso, addMonths, daysInMonth, isoIn, monthKey, todayIso } from '@/lib/dates'
+import { addDaysIso, addMonths, isoIn, monthKey, todayIso } from '@/lib/dates'
 import { amountIn, isoWeekday, liveObligations, openCredits, payEvents, payRhythmOf, salaryOf } from '@/lib/finance'
 import { money, moneyIn } from '@/lib/money'
 
@@ -16,21 +16,28 @@ export type CalendarState = { obligations: Obligation[]; credits: Credit[]; peop
 
 const BYDAY = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'] as const
 
-/** 29–31 есть не в каждом месяце — такой платёж в календаре в последний день месяца (`BYMONTHDAY=-1`). */
-const monthDay = (day: number) => (day > 28 ? -1 : day)
-const dayIn = (key: string, day: number) => (day === -1 ? isoIn(key, daysInMonth(key)) : isoIn(key, day))
+/**
+ * День месяца в `RRULE` — как в приложении (`isoIn`): свой день, в коротком месяце — последний. 31-е — последний
+ * всегда (`-1`); 29–30 — «N-е или последний, если короче» (`BYMONTHDAY=28,29,30;BYSETPOS=-1`, RFC 5545 3.3.10):
+ * просто `-1` поставил бы зарплату 30-го на 31-е — напоминание о платеже после срока (критик Б8).
+ */
+function byMonthDay(day: number): string {
+  if (day >= 31) return 'BYMONTHDAY=-1'
+  if (day <= 28) return `BYMONTHDAY=${day}`
+  return `BYMONTHDAY=${Array.from({ length: day - 27 }, (_, i) => 28 + i).join(',')};BYSETPOS=-1`
+}
 
-/** Ближайший день `day` (−1 — последний) от `today` включительно, каждый месяц. */
+/** Ближайший день `day` (в коротком месяце — последний) от `today` включительно, каждый месяц. */
 function nextMonthly(today: string, day: number): string {
   const key = today.slice(0, 7)
-  const here = dayIn(key, day)
-  return here >= today ? here : dayIn(addMonths(key, 1), day)
+  const here = isoIn(key, day)
+  return here >= today ? here : isoIn(addMonths(key, 1), day)
 }
 
 /** Ближайший `day` месяца `month` (1–12) от `today`, раз в год. */
 function nextYearly(today: string, month: number, day: number): string {
   const year = Number(today.slice(0, 4))
-  const at = (y: number) => dayIn(`${y}-${String(month).padStart(2, '0')}`, day)
+  const at = (y: number) => isoIn(`${y}-${String(month).padStart(2, '0')}`, day)
   return at(year) >= today ? at(year) : at(year + 1)
 }
 
@@ -39,10 +46,9 @@ function nextWeekly(today: string, weekday: number): string {
   return addDaysIso(today, (weekday - isoWeekday(today) + 7) % 7)
 }
 
-const monthly = (uid: string, summary: string, today: string, day: number): CalEvent => {
-  const d = monthDay(day)
-  return { uid, summary, start: nextMonthly(today, d), rrule: `FREQ=MONTHLY;BYMONTHDAY=${d}` }
-}
+const monthly = (uid: string, summary: string, today: string, day: number): CalEvent => ({
+  uid, summary, start: nextMonthly(today, day), rrule: `FREQ=MONTHLY;${byMonthDay(day)}`,
+})
 
 /** Платежи, открытые кредиты (производные — из стора) и приходы зарплаты по ритму (`payEvents`, Блок 7). */
 export function calendarEvents(state: CalendarState, now = new Date()): CalEvent[] {
@@ -54,8 +60,7 @@ export function calendarEvents(state: CalendarState, now = new Date()): CalEvent
     const summary = `${o.name} · ${o.estimate ? '≈ ' : ''}${moneyIn(amount, currency)}`
     if (o.every === 'year') {
       const month = Math.min(12, Math.max(1, o.month ?? 1))
-      const d = monthDay(o.day)
-      out.push({ uid: o.id, summary, start: nextYearly(today, month, d), rrule: `FREQ=YEARLY;BYMONTH=${month};BYMONTHDAY=${d}` })
+      out.push({ uid: o.id, summary, start: nextYearly(today, month, o.day), rrule: `FREQ=YEARLY;BYMONTH=${month};${byMonthDay(o.day)}` })
     } else out.push(monthly(o.id, summary, today, o.day))
   }
   for (const c of openCredits(state.credits)) out.push(monthly(c.id, `${c.name} · ${money(c.payment)}`, today, c.day))

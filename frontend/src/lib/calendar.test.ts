@@ -6,7 +6,7 @@ import type { Credit, Obligation, Person } from '@/types/finance'
  * PN-28: «В календарь». Сегодня — понедельник 12 октября 2026 (Алматы). Платежи: аренда 5-го (ближайшая — 5 ноября),
  * Netflix $15 31-го (последний день месяца — 31 октября), страховка раз в год 12 марта (2027), налог раз в год
  * 20 октября (этот год), коммуналка 12-го с оценкой (сегодня же); кредит 24-го. Ильяс — раз в месяц 10-го, Аруна —
- * аванс 15-го и остаток 30-го (→ последний день), Тимур — каждую среду (14 октября).
+ * аванс 15-го и остаток 30-го (30-е, в коротком месяце — последний), Тимур — каждую среду (14 октября).
  */
 const T0 = '2026-09-01T00:00:00.000Z'
 const NOW = new Date('2026-10-12T05:00:00Z')
@@ -65,11 +65,11 @@ describe('calendarEvents (PN-28)', () => {
     expect(e.closed).toBeUndefined()
   })
 
-  it('зарплата по ритму: месяц — день зарплаты, аванс — два события (30-е → последний день), неделя — BYDAY', () => {
+  it('зарплата по ритму: месяц — день зарплаты, аванс — два события (30-е — своим днём), неделя — BYDAY', () => {
     const e = byUid()
     expect(e['salary-a']).toEqual({ uid: 'salary-a', summary: 'Зарплата · Ильяс', start: '2026-11-10', rrule: 'FREQ=MONTHLY;BYMONTHDAY=10' })
     expect(e['advance-b']).toMatchObject({ summary: 'Аванс · Аруна', start: '2026-10-15', rrule: 'FREQ=MONTHLY;BYMONTHDAY=15' })
-    expect(e['salary-b']).toMatchObject({ summary: 'Зарплата · Аруна', start: '2026-10-31', rrule: 'FREQ=MONTHLY;BYMONTHDAY=-1' })
+    expect(e['salary-b']).toMatchObject({ summary: 'Зарплата · Аруна', start: '2026-10-30', rrule: 'FREQ=MONTHLY;BYMONTHDAY=28,29,30;BYSETPOS=-1' })
     expect(e['salary-c']).toMatchObject({ summary: 'Зарплата · Тимур', start: '2026-10-14', rrule: 'FREQ=WEEKLY;BYDAY=WE' })
     expect(e['advance-c']).toBeUndefined()
   })
@@ -86,6 +86,25 @@ describe('calendarEvents (PN-28)', () => {
     expect(e['salary-a']).toMatchObject({ rrule: 'FREQ=MONTHLY;BYMONTHDAY=10' })
     expect(e['salary-b']).toMatchObject({ rrule: 'FREQ=MONTHLY;BYMONTHDAY=10' })
     expect(e['salary-c']).toBeUndefined()
+  })
+
+  it('29–30-е — свой день, в коротком месяце последний (как isoIn в приложении); 31-е — последний', () => {
+    // Критик Б8: `BYMONTHDAY=-1` для 30-го ставил платёж на 31-е — напоминание после срока.
+    const feb = new Date('2027-02-01T05:00:00Z')
+    const e = Object.fromEntries(calendarEvents(state({
+      obligations: [
+        ob('p29', 'Связь', 29, 5_000),
+        ob('p30', 'Школа', 30, 40_000),
+        ob('y30', 'Каско', 30, 90_000, { every: 'year', month: 2 }),
+      ],
+      credits: [],
+      people: [],
+    }), feb).map((x) => [x.uid, x]))
+    expect(e.p29).toMatchObject({ start: '2027-02-28', rrule: 'FREQ=MONTHLY;BYMONTHDAY=28,29;BYSETPOS=-1' })
+    expect(e.p30).toMatchObject({ start: '2027-02-28', rrule: 'FREQ=MONTHLY;BYMONTHDAY=28,29,30;BYSETPOS=-1' })
+    expect(e.y30).toMatchObject({ start: '2027-02-28', rrule: 'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=28,29,30;BYSETPOS=-1' })
+    // 28-е и раньше — без BYSETPOS.
+    expect(byUid().kaspi.rrule).toBe('FREQ=MONTHLY;BYMONTHDAY=24')
   })
 
   it('сумм зарплаты нет нигде в файле', () => {

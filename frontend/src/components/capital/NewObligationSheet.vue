@@ -42,12 +42,13 @@ const obMonth = ref(String(parseMonthKey(monthKey()).month + 1))
 const obDay = ref('10')
 const obWho = ref<'all' | PersonId>('all')
 const obEstimate = ref(false)
-// Открытие (и смена вида формы) — заново: «Людям» из пропа, у жилья сумма плавает по умолчанию.
+// Открытие (и смена вида формы) — заново: «Людям» из пропа, у жилья сумма плавает по умолчанию, «Чья» — «Общая».
 watch(
   () => props.open && (props.housing ? 'housing' : 'payment'),
   (v) => {
     if (!v) return
     obPeople.value = !!props.people && !props.housing
+    obWho.value = 'all'
     obEstimate.value = !!props.housing
   },
   { immediate: true },

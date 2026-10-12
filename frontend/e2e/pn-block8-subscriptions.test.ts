@@ -174,7 +174,7 @@ describe('e2e / понятность Блок 8 — подписки', () => {
     expect(rule('loan')).toBe('FREQ=MONTHLY;BYMONTHDAY=15')
     expect(rule('salary-a')).toBe('FREQ=WEEKLY;BYDAY=FR')
     expect(rule('advance-b')).toBe('FREQ=MONTHLY;BYMONTHDAY=15')
-    expect(rule('salary-b')).toBe('FREQ=MONTHLY;BYMONTHDAY=-1')
+    expect(rule('salary-b')).toBe('FREQ=MONTHLY;BYMONTHDAY=28,29,30;BYSETPOS=-1')
     expect(ics).toContain('SUMMARY:Зарплата · Ильяс\r\n')
     expect(ics).toContain('SUMMARY:Аванс · Аруна\r\n')
     expect(ics).not.toMatch(/(150|200|300|500) 000/)
