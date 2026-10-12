@@ -310,8 +310,8 @@ function planObligation() {
 
       <DangerZone
         v-if="!authStore.isViewer"
-        label="Удалить обязательство"
-        warning="Обязательство исчезнет у обоих участников вместе с историей суммы. Отменить нельзя."
+        label="Удалить платёж"
+        warning="Платёж исчезнет у обоих участников вместе с историей суммы. Отменить нельзя."
         @confirm="() => { financeStore.removeObligation(activeObligation!.id); emit('close') }"
       />
     </template>

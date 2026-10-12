@@ -337,10 +337,10 @@ watch(queryModalOpen, (open) => {
         <PhHouse :size="16" /> Аренда и коммуналка
       </Button>
       <Button variant="secondary" class="w-full justify-start" @click="addKind('payment')">
-        <PhPlus :size="16" weight="bold" /> Подписка или услуга
+        <PhArrowsClockwise :size="16" /> Подписка или услуга
       </Button>
       <Button variant="secondary" class="w-full justify-start" @click="addKind('debt')">
-        <PhPlus :size="16" weight="bold" /> Долг — банку или человеку
+        <PhCreditCard :size="16" /> Долг — банку или человеку
       </Button>
       <Button variant="secondary" class="w-full justify-start" @click="addKind('group')">
         <PhFolderSimple :size="16" /> Группа подписок

@@ -107,7 +107,6 @@ function createObligation() {
           { value: 'month', label: 'Каждый месяц' },
           { value: 'year', label: 'Раз в год' },
         ]"
-        class="mb-3"
       />
     </Field>
 
@@ -148,7 +147,6 @@ function createObligation() {
       <Segmented
         v-model="obWho"
         :options="[{ value: 'all', label: 'Общая' }, ...people.map((p) => ({ value: p.id, label: p.name }))]"
-        class="mb-3"
       />
     </Field>
 

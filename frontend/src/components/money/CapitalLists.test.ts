@@ -820,7 +820,7 @@ describe('PV-11: форма платежа и модалка обязатель�
     expect(history.indexOf('станет с ноября 2026')).toBeLessThan(history.indexOf('с января 2026'))
     expect(history).toContain(money(220_000))
     expect(history).toContain('индексация')
-    expect(html).toContain('Удалить обязательство')
+    expect(html).toContain('Удалить платёж')
   })
 
   it('PN-26: модалка — раздела бюджета нет, запись остаётся в своём разделе (старые d2 — как были)', async () => {
@@ -879,7 +879,7 @@ describe('PV-11: форма платежа и модалка обязатель�
     const html = await render('/capital?obligation=rent')
     expect(html).not.toContain('Сумма сейчас, ₸')
     expect(html).not.toContain('Запланировать изменение')
-    expect(html).not.toContain('Удалить обязательство')
+    expect(html).not.toContain('Удалить платёж')
     expect(html).not.toContain('<input')
     expect(html).not.toContain('В какой раздел бюджета')
     expect(html).toContain('Сумма сейчас')
