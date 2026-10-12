@@ -157,7 +157,7 @@
 | | PN-23 Формы: первый запуск, «Изменить оклад», лист «Пришла» | `block-7-pay-rhythm/PN-23-rhythm-forms-sheet.md` | PN-22 | ✅ |
 | | PN-24 Выписка и план по ритму; доход полоски Капитала | `block-7-pay-rhythm/PN-24-rhythm-statement-plan.md` | PN-23 | ✅ |
 | | PN-25 Демо, e2e и доки | `block-7-pay-rhythm/PN-25-demo-e2e-docs.md` | PN-24 | ✅ |
-| 8. Подписки 🔄 *(исполнитель ✅, критик ✅ 2026-10-12, ветка `pn-block-8-subscriptions`)* | PN-26 Форма без разделов, «чья» | `block-8-subscriptions/PN-26-subscription-form.md` | Блок 7 🏁 | ✅ |
+| 8. Подписки 🔄 *(исполнитель ✅, критик ✅, ux ✅ 2026-10-12, ветка `pn-block-8-subscriptions`)* | PN-26 Форма без разделов, «чья» | `block-8-subscriptions/PN-26-subscription-form.md` | Блок 7 🏁 | ✅ |
 | | PN-27 «Общие · N», «<имя> · N» (хвост 1024) | `block-8-subscriptions/PN-27-subscription-groups.md` | PN-26 | ✅ |
 | | PN-28 «В календарь» (.ics) | `block-8-subscriptions/PN-28-calendar-ics.md` | PN-27 | ✅ |
 | | PN-29 e2e и доки | `block-8-subscriptions/PN-29-e2e-docs.md` | PN-28 | ✅ |
