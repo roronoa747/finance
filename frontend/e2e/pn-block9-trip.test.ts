@@ -24,7 +24,7 @@ vi.mock('../src/lib/photos/store', async (orig) => ({
  * выписок (`support/family`). «Отпуск» — 10–15 октября 2026, бюджет 150 000; «сейчас» — 15-е, последний день. (а) до поездки — карточки нет, даты в
  * «Подробнее»; (б) в пути: выписка Ильяса с тратами в датах и вне, кредит по выписке в датах (отметка `opId`) → «Потрачено»
  * только из трат; «Убрать» и «Вернуть» меняют сумму и `tripSpends`; (в) выписка Аруны на её телефоне → общий итог = сумма
- * двух записей, чужих строк нет; (г) после — «За поездку»; (д) viewer — итог без строк и действий; (е) старая цель без дат —
+ * двух записей, чужих строк нет; (г) после — «За поездку» и «Съездили?» («Сбылось» — в альбом); (д) viewer — итог без строк и действий; (е) старая цель без дат —
  * ничего не пишется. Экраны — SSR (`screen`), нажатия — функциями компонента (`screenMixin`); браузер — стенд §6.
  */
 type Phone = { pinia: Pinia; client: ApiClient; store: ReturnType<typeof useFinanceStore> }
@@ -179,14 +179,22 @@ describe('e2e / понятность Блок 9 — поездка с бюдже
     expect(text(await screen(a.pinia, Dreams, '/'))).toContain('Отпуск · потрачено 120 000 из 150 000 ₸')
   })
 
-  it('(г) после поездки — «За поездку — N из M», запись остаётся', async () => {
+  it('(г) после поездки — «За поездку — N из M», запись остаётся; «Съездили?» вместо «Пополнить», «Сбылось» — в альбом', async () => {
     const a = await phone('a')
     await upload(a, ILYAS.slice(0, 3))
     await sync(a)
     at('2026-10-20T08:00:00Z')
     const later = await phone('a')
-    expect(text(await tripScreen(later))).toContain('За поездку 82 000 из 150 000 ₸')
+    const after = text(await tripScreen(later))
+    expect(after).toContain('За поездку 82 000 из 150 000 ₸')
     expect(record(later, 'a')).toMatchObject({ amount: 82_000, ops: 2 })
+    // Решение владельца Б (возврат приёмки): «Съездили?» вместо срока и «Пополнить»; «Сбылось» — мечта в альбом.
+    expect(after).toContain('Съездили? Отметьте — поездка уйдёт в «Сбылось» Ещё нет Сбылось')
+    expect(after).not.toContain('Пополнить')
+    const done = text(await tripScreen(later, [screenMixin({}, (s) => (s.markDone as () => void)())]))
+    expect(on(later).store.goals.find((g) => g.id === 'trip')?.doneAt).toBeTruthy()
+    expect(done).not.toContain('Съездили?')
+    expect(done).toContain('За поездку 82 000 из 150 000 ₸')
   })
 
   it('(д) viewer — итог без строк и действий', async () => {

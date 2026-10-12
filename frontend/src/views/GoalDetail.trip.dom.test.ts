@@ -129,6 +129,44 @@ describe('PN-31: экран цели-поездки', () => {
     expect(title()).toBe('82 000 из 150 000 ₸')
   })
 
+  const hasTopUp = () => all('button').some((b) => b.textContent?.trim() === 'Пополнить')
+
+  it('после поездки — «Съездили?» вместо срока и «Пополнить»; «Ещё нет» возвращает срок', async () => {
+    vi.setSystemTime(new Date('2026-10-20T08:00:00Z'))
+    await open({ ops: MINE })
+    expect(norm(q('[data-trip-ask] h2')?.textContent)).toBe('Съездили?')
+    expect(norm(q('[data-trip-ask] p')?.textContent)).toBe('Отметьте — поездка уйдёт в «Сбылось»')
+    expect(hasTopUp(), 'у прошедшей поездки «Пополнить» нет').toBe(false)
+    await click(q('[data-trip-ask] [data-goal-not-yet]'))
+    expect(q('[data-trip-ask]')).toBeNull()
+    expect(hasTopUp(), '«Ещё нет» — срок и «Пополнить»').toBe(true)
+  })
+
+  it('в последний день поездки — ещё не спрашиваем', async () => {
+    vi.setSystemTime(new Date('2026-10-15T08:00:00Z'))
+    await open({ ops: MINE })
+    expect(q('[data-trip-ask]')).toBeNull()
+    expect(hasTopUp()).toBe(true)
+  })
+
+  it('«Сбылось» у прошедшей поездки — мечта сбылась, «За поездку» остаётся', async () => {
+    vi.setSystemTime(new Date('2026-10-20T08:00:00Z'))
+    const finance = await open({ ops: MINE })
+    await click(q('[data-trip-ask] [data-goal-done]'))
+    expect(finance.householdDoc.goals.find((g) => g.id === 'trip')?.doneAt).toBeTruthy()
+    expect(q('[data-trip-ask]')).toBeNull()
+    expect(q('[data-goal-done-at]')).not.toBeNull()
+    expect(title()).toBe('82 000 из 150 000 ₸')
+  })
+
+  it('viewer после поездки — «Съездили?» без строки и кнопок', async () => {
+    vi.setSystemTime(new Date('2026-10-20T08:00:00Z'))
+    const spendA: TripSpend = { id: 'trip:a', goalId: 'trip', by: 'a', amount: 82_000, ops: 2, updatedAt: T0 }
+    await open({ role: 'viewer', slot: 'b', spends: [spendA] })
+    expect(norm(q('[data-trip-ask]')?.textContent)).toBe('Съездили?')
+    expect(q('[data-trip-ask] button')).toBeNull()
+  })
+
   it('партнёр: общий итог и «кто сколько», чужих строк нет', async () => {
     const spendA: TripSpend = { id: 'trip:a', goalId: 'trip', by: 'a', amount: 82_000, ops: 2, updatedAt: T0 }
     await open({ slot: 'b', ops: [op('Taxi', '2026-10-12', -8_000)], spends: [spendA] })

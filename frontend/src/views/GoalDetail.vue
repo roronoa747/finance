@@ -173,6 +173,9 @@ const indexed = computed(() =>
 // До поездки — экран как обычно, даты строкой в «Подробнее»; с первого дня — карточка «Потрачено N из M» под героем.
 const trip = computed(() => (goal.value ? tripStatus(goal.value, todayIso()) : 'none'))
 const tripDates = computed(() => (goal.value?.from && goal.value.to ? `Поездка ${weekRangeLabel({ from: goal.value.from, to: goal.value.to })}` : ''))
+// «Съездили?» (возврат приёмки Б9, решение владельца Б): после последнего дня вместо срока и «Пополнить» — как «Купили?»;
+// «Ещё нет» — тот же `notYet`: срок и «Пополнить» на этот заход.
+const askTrip = computed(() => trip.value === 'after' && !isDone.value && isDream.value && !notYet.value)
 
 /* ------------------ Взнос полем (исключение из Р-2, владелец 2026-09-25) ------------------ */
 // «Сохранено» — по самому взносу, а не по updatedAt цели: пополнение тоже меняет цель, но
@@ -451,7 +454,7 @@ function share() {
       @remove="removePhoto"
     />
 
-    <!-- Поездка (PN-31): в пути и после — «Потрачено N из M» у мечты; срок и «Пополнить» ниже остаются (копить можно). -->
+    <!-- Поездка (PN-31): в пути и после — «Потрачено N из M» у мечты; в пути срок и «Пополнить» ниже остаются (копить можно), после — «Съездили?». -->
     <TripCard v-if="trip === 'during' || trip === 'after'" :goal="goal" :status="trip" />
 
     <!-- Карточка g4: срок цели (живёт здесь, Р-116), взнос в месяц и одна главная — «Пополнить» у срока. -->
@@ -467,6 +470,17 @@ function share() {
       <h2 class="type-h2 text-ink">{{ canEdit ? 'Накоплено!' : 'Накоплено' }}</h2>
       <template v-if="canEdit">
         <p class="mt-1.5 text-[15px] text-ink-2">Купили?</p>
+        <div class="mt-3.5 flex gap-2.5">
+          <Button variant="secondary" size="md" class="flex-1" data-goal-not-yet @click="notYet = true">Ещё нет</Button>
+          <Button size="md" class="flex-1" data-goal-done @click="markDone">Сбылось</Button>
+        </div>
+      </template>
+    </Card>
+    <!-- Поездка прошла (решение владельца Б, Б9): «Съездили?» — брендовая «Сбылось», тихая «Ещё нет»; срока и «Пополнить» нет. -->
+    <Card v-else-if="askTrip" data-trip-ask>
+      <h2 class="type-h2 text-ink">Съездили?</h2>
+      <template v-if="canEdit">
+        <p class="mt-1.5 text-[15px] text-ink-2">Отметьте — поездка уйдёт в «Сбылось»</p>
         <div class="mt-3.5 flex gap-2.5">
           <Button variant="secondary" size="md" class="flex-1" data-goal-not-yet @click="notYet = true">Ещё нет</Button>
           <Button size="md" class="flex-1" data-goal-done @click="markDone">Сбылось</Button>
