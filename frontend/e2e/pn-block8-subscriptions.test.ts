@@ -201,4 +201,26 @@ describe('e2e / понятность Блок 8 — подписки', () => {
     await screen(on(V).pinia, Money, '/money', undefined, [screenMixin({}, (s) => void (s.toCalendar as () => Promise<void>)())])
     expect(shareFile).toHaveBeenCalledTimes(1)
   })
+
+  it('(ж) приёмка: подписка и «Свет» из форм — в файле календаря своими правилами; второй телефон и viewer выгружают те же события', async () => {
+    const A = await phone(server, 'a')
+    at('2026-10-12T05:01:00Z')
+    // День платежа формы — до 28-го (как до блока); 29–31 в файле бывают у зарплат — проверено в (г).
+    await submit(A, '/money?add=payment', { obName: 'Spotify', obAmount: '2 990', obDay: '22', obWho: 'b' })
+    await submit(A, '/money?add=housing', { obName: 'Свет', obAmount: '12 000', obDay: '31' })
+    await A.store.syncHousehold(A.client)
+
+    const icsOf = async (p: Phone) => {
+      shareFile.mockClear()
+      await screen(on(p).pinia, Money, '/money', undefined, [screenMixin({}, (s) => void (s.toCalendar as () => Promise<void>)())])
+      return (await shareFile.mock.calls[0][0].text()).replace(/DTSTAMP:\S+/g, '')
+    }
+    const mine = await icsOf(A)
+    expect(mine).toMatch(/DTSTART;VALUE=DATE:20261022\r\n.*\r\nRRULE:FREQ=MONTHLY;BYMONTHDAY=22\r\nSUMMARY:Spotify · 2 990 ₸\r\n/)
+    expect(mine).toMatch(/RRULE:FREQ=MONTHLY;BYMONTHDAY=28\r\nSUMMARY:Свет · ≈ 12 000 ₸\r\n/)
+    expect(mine.match(/TRIGGER:PT9H/g)).toHaveLength(mine.match(/BEGIN:VEVENT/g)!.length)
+
+    expect(await icsOf(await phone(server, 'b'))).toBe(mine)
+    expect(await icsOf(await phone(server, 'b', 'viewer'))).toBe(mine)
+  })
 })
