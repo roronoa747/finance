@@ -14,6 +14,7 @@
 > авансом/неделей/плавающей, откат), e2e 38 / 237; мёрж `f48cd5d`, прод **`dpl_Ba3Pk15X6DUnKKpx2A9BqSsVi8jt`**, откат — promote
 > `dpl_BWtTeYYuLDgCorMGxxyM3ZCyCosA`; смоук агента 19/19; снимки — https://claude.ai/artifact/5L8Ct9wZmzmko8by32BowA; смоук владельца
 > на iPhone и перезапуск PWA — за ним).
+> **Блок 8 «Подписки» 🏁** (приёмка 2026-10-12: принято — стенд 42/42, e2e 39 / 243; мёрж `6a92247`, прод **`dpl_CWvCFKbi4i6GBpZyqq5krRAHiTsC`**, откат — promote `dpl_7MfSVW4op58D4mpjJSn2jdPKnUKh`; смоук агента на проде 42/42; смоук владельца на iPhone («В календарь» → «Календарь», зарплата партнёра 30-го) и перезапуск PWA — за ним).
 > Девять блоков: понятность (1–2) → мечты (3–4) → деньги (5–9); каждый блок — на прод отдельно в своей приёмке.
 
 Источник: `понятность-brief.md` (резюме интервью подтверждено 2026-10-09, 6 раундов). Формат —
@@ -157,7 +158,7 @@
 | | PN-23 Формы: первый запуск, «Изменить оклад», лист «Пришла» | `block-7-pay-rhythm/PN-23-rhythm-forms-sheet.md` | PN-22 | ✅ |
 | | PN-24 Выписка и план по ритму; доход полоски Капитала | `block-7-pay-rhythm/PN-24-rhythm-statement-plan.md` | PN-23 | ✅ |
 | | PN-25 Демо, e2e и доки | `block-7-pay-rhythm/PN-25-demo-e2e-docs.md` | PN-24 | ✅ |
-| 8. Подписки 🔄 *(исполнитель ✅, критик ✅, ux ✅ 2026-10-12, ветка `pn-block-8-subscriptions`)* | PN-26 Форма без разделов, «чья» | `block-8-subscriptions/PN-26-subscription-form.md` | Блок 7 🏁 | ✅ |
+| 8. Подписки 🏁 *(принят и на проде 2026-10-12, мёрж `6a92247`, Production `dpl_CWvCFKbi4i6GBpZyqq5krRAHiTsC`; откат — promote `dpl_7MfSVW4op58D4mpjJSn2jdPKnUKh`)* | PN-26 Форма без разделов, «чья» | `block-8-subscriptions/PN-26-subscription-form.md` | Блок 7 🏁 | ✅ |
 | | PN-27 «Общие · N», «<имя> · N» (хвост 1024) | `block-8-subscriptions/PN-27-subscription-groups.md` | PN-26 | ✅ |
 | | PN-28 «В календарь» (.ics) | `block-8-subscriptions/PN-28-calendar-ics.md` | PN-27 | ✅ |
 | | PN-29 e2e и доки | `block-8-subscriptions/PN-29-e2e-docs.md` | PN-28 | ✅ |
