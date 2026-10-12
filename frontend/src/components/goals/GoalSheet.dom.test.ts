@@ -94,3 +94,36 @@ describe('PV-23 (хвосты Б4): «Готово» через close() кита
     expect(labels.some((t) => t.includes('Уже накоплено'))).toBe(true)
   })
 })
+
+describe('PN-31 (критик Б9): даты и бюджет поездки в листе правки', () => {
+  it('поля — только у «Путешествия»; неверная пара не пишется, верная — сразу; бюджет — по уходу; пустой — null', async () => {
+    const { store } = await openTrip()
+    expect(document.querySelector('[data-trip-fields]')).toBeNull()
+    store.updateGoal('trip', { template: 'japan' })
+    await nextTick()
+    const input = (sel: string) => document.querySelector<HTMLInputElement>(`input${sel}, ${sel} input`)!
+    const goal = () => store.goals.find((g) => g.id === 'trip')!
+
+    await type(input('[data-trip-from]'), '2026-11-12')
+    expect(goal().from ?? null).toBeNull() // одна дата — «Нужны обе даты», в цель не пишется
+    await type(input('[data-trip-to]'), '2026-11-02')
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain('Последний день — не раньше первого')
+    expect(goal().to ?? null).toBeNull()
+    await type(input('[data-trip-to]'), '2026-11-20')
+    expect(goal()).toMatchObject({ from: '2026-11-12', to: '2026-11-20' })
+
+    await type(input('[data-trip-budget]'), '300 000')
+    expect(goal().budget ?? null).toBeNull()
+    input('[data-trip-budget]').dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
+    await nextTick()
+    expect(goal().budget).toBe(300_000)
+    await type(input('[data-trip-budget]'), '')
+    input('[data-trip-budget]').dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
+    await nextTick()
+    expect(goal().budget).toBeNull()
+
+    await type(input('[data-trip-from]'), '')
+    await type(input('[data-trip-to]'), '')
+    expect(goal()).toMatchObject({ from: null, to: null })
+  })
+})

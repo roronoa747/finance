@@ -1896,7 +1896,7 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   /* ---------------- операции, снятые с поездки (PN-30) — личный документ ---------------- */
-  const tripExcluded = computed(() => ((privateDoc.value.tripExcluded as TripExcluded[] | undefined) ?? []).filter((x) => !x.deletedAt))
+  const tripExcluded = computed(() => ((privateDoc.value.tripExcluded as TripExcluded[] | undefined) ?? []).filter((x) => !x.deletedAt && x.goalId))
 
   /** «Убрать» у строки поездки: операция не удаляется — снимается с итога поездки (личная запись по id операции). */
   function excludeFromTrip(goalId: string, opId: string) {
@@ -1909,12 +1909,12 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
-  /** «Вернуть»: надгробие — операция снова в поездке. */
+  /** «Вернуть»: `goalId: null` — операция снова в поездке (не надгробие — см. `TripExcluded`). */
   function includeInTrip(opId: string) {
     if (!tripExcluded.value.some((x) => x.id === opId)) return
     const t = new Date().toISOString()
     mutatePrivateDoc((doc) => {
-      doc.tripExcluded = ((doc.tripExcluded as TripExcluded[] | undefined) ?? []).map((x) => (x.id === opId ? { ...x, deletedAt: t, updatedAt: t } : x))
+      doc.tripExcluded = ((doc.tripExcluded as TripExcluded[] | undefined) ?? []).map((x) => (x.id === opId ? { ...x, goalId: null, updatedAt: t } : x))
     })
   }
 

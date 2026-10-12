@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { nextTick, watch } from 'vue'
+import { nextTick, toRaw, watch } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { apiClient, type ApiClient } from '@/api/client'
 import { useAuthStore, DEMO_TOKEN } from './auth'
@@ -18,6 +18,7 @@ import type { OperationsPage, OperationWire, StatementUploadResponse } from '@/t
 import kaspi01 from '@/lib/statements/fixtures/kaspi-01.rows.json'
 import { planFamilyDoc } from '@/test/planFamily'
 import { freeByFact } from '@/lib/finance'
+import { mergePrivateDocs } from '@/lib/merge'
 import { LINK_PHOTO_TRIED_KEY, readMonthEnd, readStorage, writeMonthEnd, writeStorage } from '@/lib/storage'
 
 const storage = new Map<string, string>()
@@ -1062,6 +1063,14 @@ describe('stores/operations — итог поездки (PN-30)', () => {
     await nextTick()
     expect(trip()[0]).toMatchObject({ amount: 15_000, ops: 2 })
     expect(finance.tripExcluded).toEqual([])
+    // Снова «Убрать» (критик Б9): слияние с копией сервера после «Вернуть» не возвращает строку в поездку.
+    const server = structuredClone(toRaw(finance.privateDoc))
+    vi.setSystemTime(new Date('2026-09-20T08:00:00Z'))
+    finance.excludeFromTrip('trip', hotel.id)
+    await nextTick()
+    expect(trip()[0]).toMatchObject({ amount: 5_000, ops: 1 })
+    const merged = mergePrivateDocs(toRaw(finance.privateDoc), server).tripExcluded as { id: string; goalId: string | null; deletedAt?: string | null }[]
+    expect(merged.filter((x) => !x.deletedAt && x.goalId).map((x) => x.id)).toEqual([hotel.id])
   })
 
   it('даты поставили после выписки — итог пишется; поездка ещё не началась — нет', async () => {

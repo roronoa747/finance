@@ -165,10 +165,13 @@ export type TripSpend = Tracked & {
   ops: number
 }
 
-/** Операция, снятая с поездки (личный документ, PN-30): id — id операции; «Вернуть» — надгробие. */
+/**
+ * Операция, снятая с поездки (личный документ, PN-30): id — id операции. «Вернуть» — `goalId: null`, не надгробие:
+ * надгробие при слиянии сильнее правки, и повторное «Убрать» той же строки пропало бы после синка (критик Б9).
+ */
 export type TripExcluded = Tracked & {
   id: string
-  goalId: string
+  goalId: string | null
 }
 
 export type WishItem = Tracked & {

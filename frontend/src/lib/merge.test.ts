@@ -1123,12 +1123,22 @@ describe('PN-30: поездка — итоги участников и снят�
     }
   })
 
-  it('tripExcluded — личный список по id; «Вернуть» (надгробие) поздней правкой побеждает', () => {
+  it('tripExcluded — личный список по id; «Вернуть» (goalId: null) поздней правкой побеждает', () => {
     const phone = { tripExcluded: [{ id: 'op1', goalId: 'g-trip', updatedAt: T1 }] }
-    const laptop = { tripExcluded: [{ id: 'op1', goalId: 'g-trip', deletedAt: T2, updatedAt: T2 }, { id: 'op2', goalId: 'g-trip', updatedAt: T1 }] }
+    const laptop = { tripExcluded: [{ id: 'op1', goalId: null, updatedAt: T2 }, { id: 'op2', goalId: 'g-trip', updatedAt: T1 }] }
     for (const merged of [mergePrivateDocs(phone, laptop), mergePrivateDocs(laptop, phone)]) {
-      const list = (merged.tripExcluded as { id: string; deletedAt?: string }[]).sort((x, y) => x.id.localeCompare(y.id))
-      expect(list.map((x) => [x.id, x.deletedAt ?? null])).toEqual([['op1', T2], ['op2', null]])
+      const list = (merged.tripExcluded as { id: string; goalId: string | null }[]).sort((x, y) => x.id.localeCompare(y.id))
+      expect(list.map((x) => [x.id, x.goalId])).toEqual([['op1', null], ['op2', 'g-trip']])
+    }
+  })
+
+  it('tripExcluded: «Убрать» → «Вернуть» → снова «Убрать» переживает слияние с прежней копией сервера (критик Б9)', () => {
+    const T3 = '2026-10-03T05:00:00.000Z'
+    const server = { tripExcluded: [{ id: 'op1', goalId: null, updatedAt: T2 }] }
+    const phone = { tripExcluded: [{ id: 'op1', goalId: 'g-trip', updatedAt: T3 }] }
+    for (const merged of [mergePrivateDocs(phone, server), mergePrivateDocs(server, phone)]) {
+      const [x] = merged.tripExcluded as { goalId: string | null; deletedAt?: string | null }[]
+      expect([x!.goalId, x!.deletedAt ?? null]).toEqual(['g-trip', null])
     }
   })
 
