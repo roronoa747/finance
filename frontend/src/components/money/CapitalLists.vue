@@ -20,6 +20,7 @@ import {
   liveObligations,
   monthlyAmount,
   subscriptionGroup,
+  subscriptionsByWho,
 } from '@/lib/finance'
 import type { Account, Credit, Obligation } from '@/types/finance'
 
@@ -85,12 +86,12 @@ function creditMeta(c: Credit): string {
 
 /* ------------------ Платежи — справочник ------------------ */
 // Подписки — одной группой (`subscriptionGroup`, та же функция, что в «Месяце»): сумма — в месяц (годовая — долей).
-const subs = computed(() =>
-  subscriptionGroup(
-    obligations.value.filter(isSubscription).map((o) => ({ obligation: o, amount: monthlyAmount(o, key.value, fx.book), paid: false, day: o.day })),
-    financeStore.obligations,
-  ),
+const subItems = computed(() =>
+  obligations.value.filter(isSubscription).map((o) => ({ obligation: o, amount: monthlyAmount(o, key.value, fx.book), paid: false, day: o.day })),
 )
+const subs = computed(() => subscriptionGroup(subItems.value, financeStore.obligations))
+// Раскрытые — по «чья» (PN-27): «Общие · N», «<имя> · N»; одна часть — без подзаголовков.
+const subsByWho = computed(() => (subs.value ? subscriptionsByWho(subItems.value, financeStore.obligations, financeStore.people) : []))
 const subsOpen = ref(false)
 const inSubs = (o: Obligation) => !!subs.value && isSubscription(o)
 
@@ -267,17 +268,20 @@ watch(queryModalOpen, (open) => {
         <PhCaretRight :size="14" class="shrink-0 text-ink-3 transition-transform" :class="subsOpen && 'rotate-90'" />
       </button>
       <div v-if="subsOpen" class="mb-2 ml-[33px] border-l-2 border-line pl-3">
-        <template v-for="g in subs.parts" :key="g.groupId ?? ''">
-          <button
-            v-if="g.groupId"
-            type="button"
-            class="press block cursor-pointer pb-0.5 pt-2.5 text-left text-[11.5px] font-semibold uppercase tracking-[0.04em] text-ink-2"
-            :aria-label="`Группа «${g.name}»`"
-            @click="selectedGroupId = g.groupId"
-          >
-            {{ g.name }} ›
-          </button>
-          <PaymentLine v-for="x in g.rows" :key="x.obligation.id" dense :item="{ kind: 'obligation', obligation: x.obligation }" :period="key" @open="selectedObligationId = x.obligation.id" />
+        <template v-for="w in subsByWho" :key="w.who">
+          <p v-if="subsByWho.length > 1" class="pb-0.5 pt-3 text-[13px] font-semibold text-ink" :data-subs-who="w.who">{{ w.name }} · {{ w.group.count }}</p>
+          <template v-for="g in w.group.parts" :key="g.groupId ?? ''">
+            <button
+              v-if="g.groupId"
+              type="button"
+              class="press block cursor-pointer pb-0.5 pt-2.5 text-left text-[11.5px] font-semibold uppercase tracking-[0.04em] text-ink-2"
+              :aria-label="`Группа «${g.name}»`"
+              @click="selectedGroupId = g.groupId"
+            >
+              {{ g.name }} ›
+            </button>
+            <PaymentLine v-for="x in g.rows" :key="x.obligation.id" dense :item="{ kind: 'obligation', obligation: x.obligation }" :period="key" @open="selectedObligationId = x.obligation.id" />
+          </template>
         </template>
       </div>
     </div>

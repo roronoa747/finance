@@ -268,6 +268,31 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(finance.payments.filter((p) => !p.deletedAt && p.period === KEY && ['netflix', 'spotify', 'icloud'].includes(p.targetId))).toHaveLength(3)
   })
 
+  it('PN-27: «Подписки» по «чья» — «Общие · 2» (с пакетом), «Аруна · 1»; «N из M» — у всей группы; viewer видит', async () => {
+    const doc = familyDoc()
+    doc.obligations = doc.obligations.map((o) => (o.id === 'icloud' ? { ...o, who: 'b' as const } : o))
+    for (const role of ['member', 'viewer'] as const) {
+      app?.unmount()
+      document.body.innerHTML = ''
+      await open(role, doc)
+      await press(section('dues'))
+      expect(txt(q('[data-subs-status]'))).toBe('1 из 3 списались')
+      await press(q('[data-subs]')!.querySelector('button'))
+      expect(all('[data-subs-who]').map((el) => [el.dataset.subsWho, txt(el)])).toEqual([['all', 'Общие · 2'], ['b', 'Аруна · 1']])
+      // Пакет «Кино и музыка» — внутри «Общих», iCloud — после подзаголовка Аруны.
+      const order = all('[data-subs-who], [data-subs] p, [data-subs] [data-due]').map((el) => el.dataset.subsWho ?? el.dataset.dueId ?? txt(el))
+      expect(order).toEqual(['all', 'Кино и музыка', 'obligation:netflix', 'obligation:spotify', 'b', 'obligation:icloud'])
+    }
+  })
+
+  it('PN-27: один «чья» у всех подписок — подзаголовков нет', async () => {
+    await open()
+    await press(section('dues'))
+    await press(q('[data-subs]')!.querySelector('button'))
+    expect(all('[data-subs-who]')).toHaveLength(0)
+    expect(all('[data-subs] [data-due]')).toHaveLength(3)
+  })
+
   it('нажатие платежа → лист «Оплатил»: отметка пишется один раз; «Не оплачено» снимает; первая оплата спрашивает счёт', async () => {
     const finance = await open()
     await press(section('dues'))

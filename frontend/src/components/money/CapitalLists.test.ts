@@ -771,6 +771,21 @@ describe('PV-11: форма платежа и модалка обязатель�
     expect(html).toMatch(checkedBox)
   })
 
+  it('PN-27: «Подписки» раскрыты — «Общие · 1», «Аруна · 1» (data-subs-who); viewer видит; свёрнуто — частей нет', async () => {
+    for (const role of ['member', 'viewer'] as const) {
+      await family(role)
+      useFinanceStore().addObligation({ name: 'Spotify', day: 7, category: 'd4', who: 'b', amount: 3_000 })
+      const closed = await render('/capital')
+      expect(closed).toContain('Подписки · 2')
+      expect(closed).not.toContain('data-subs-who')
+      const html = await render('/capital', { subsOpen: true })
+      const parts = [...html.matchAll(/data-subs-who="(\w+)"[^>]*>([^<]*)</g)].map((m) => [m[1], m[2]])
+      expect(parts).toEqual([['all', 'Общие · 1'], ['b', 'Аруна · 1']])
+      expect(html.indexOf('Страховка')).toBeLessThan(html.indexOf('data-subs-who="b"'))
+      expect(html.indexOf('Spotify')).toBeGreaterThan(html.indexOf('data-subs-who="b"'))
+    }
+  })
+
   it('PN-26: viewer — ?add=housing формы не открывает', async () => {
     await family('viewer')
     const html = await render('/capital?add=housing')
