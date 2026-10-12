@@ -4,7 +4,7 @@ import { PhCaretRight } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
-import { money } from '@/lib/money'
+import { money, plain } from '@/lib/money'
 import { dayLabel } from '@/lib/dates'
 import { tripSpent, type TripStatus } from '@/lib/finance'
 import { spendColor } from '@/lib/palette'
@@ -13,6 +13,8 @@ import type { Goal } from '@/types/finance'
 import Card from '@/components/kit/Card.vue'
 import OpRow from '@/components/kit/OpRow.vue'
 import ProgressBar from '@/components/kit/ProgressBar.vue'
+import Toast from '@/components/kit/Toast.vue'
+import { useFlash } from '@/components/kit/useFlash'
 import Button from '@/components/ui/Button.vue'
 
 /**
@@ -29,7 +31,9 @@ const canEdit = computed(() => !auth.isViewer)
 
 const spent = computed(() => tripSpent(props.goal, finance.householdDoc.tripSpends, finance.people))
 const over = computed(() => spent.value.total > spent.value.budget)
-const title = computed(() => `${props.status === 'during' ? 'Потрачено' : 'За поездку —'} ${money(spent.value.total)} из ${money(spent.value.budget)}`)
+// Подпись отдельно, число — одной строкой, как «N из M ₸» у героя (/ux Б9: «За поездку — N ₸ из M ₸» на 390 px — в две).
+const label = computed(() => (props.status === 'during' ? 'Потрачено' : 'За поездку'))
+const title = computed(() => `${plain(spent.value.total)} из ${money(spent.value.budget)}`)
 // Кто сколько — только когда тратили оба: у одного строка повторила бы итог.
 const split = computed(() =>
   spent.value.byPerson.length > 1 ? spent.value.byPerson.map((x) => `${x.person === auth.slot ? 'Вы' : x.name} ${money(x.amount)}`).join(' · ') : '',
@@ -39,7 +43,12 @@ const lists = computed(() => (canEdit.value ? operations.tripLists(props.goal) :
 const opsOpen = ref(false)
 const excludedOpen = ref(false)
 // «Убрать» — не удаление: строка остаётся в выписке и на «Неделе», только не в итоге поездки (личная запись).
-const exclude = (o: Operation) => finance.excludeFromTrip(props.goal.id, o.id)
+// Тост отвечает новичку на «удалилось?» в момент нажатия (/ux Б9).
+const { note, flash } = useFlash()
+const exclude = (o: Operation) => {
+  finance.excludeFromTrip(props.goal.id, o.id)
+  flash('Убрано из поездки — операция осталась')
+}
 const include = (o: Operation) => finance.includeInTrip(o.id)
 
 const categories = computed(() => finance.householdDoc.spendCategories ?? [])
@@ -52,7 +61,8 @@ const day = (iso: string) => dayLabel(Number(iso.slice(8, 10)), iso.slice(0, 7))
 
 <template>
   <Card data-trip :data-trip-status="status">
-    <h2 class="type-h2 num text-ink" data-trip-title>{{ title }}</h2>
+    <p class="text-[14.5px] font-medium text-ink-2" data-trip-label>{{ label }}</p>
+    <h2 class="mt-0.5 type-h2 num text-ink" data-trip-title>{{ title }}</h2>
     <ProgressBar class="mt-3" :value="spent.budget > 0 ? spent.total / spent.budget : 0" :tone="over ? 'warn' : 'brand'" />
     <p v-if="split" class="mt-2 text-[13.5px] text-ink-2 num" data-trip-split>{{ split }}</p>
 
@@ -93,5 +103,6 @@ const day = (iso: string) => dayLabel(Number(iso.slice(8, 10)), iso.slice(0, 7))
         </div>
       </div>
     </template>
+    <Toast v-if="note"><span data-trip-toast>{{ note }}</span></Toast>
   </Card>
 </template>

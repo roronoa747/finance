@@ -94,14 +94,16 @@ describe('PN-31: экран цели-поездки', () => {
 
   it('в пути — «Потрачено N из M» без платежа по отметке и трат вне дат; «Убрать» и «Вернуть» меняют сумму и списки', async () => {
     const finance = await open({ ops: MINE })
-    expect(title()).toBe('Потрачено 82 000 ₸ из 150 000 ₸')
+    expect(title()).toBe('82 000 из 150 000 ₸')
+    expect(norm(q('[data-trip-label]')?.textContent)).toBe('Потрачено')
     expect(q('[data-trip-ops]'), 'строки свёрнуты').toBeNull()
     expect(norm(q('[data-trip-ops-toggle]')?.textContent)).toBe('Операции · 2')
     await click(q('[data-trip-ops-toggle]'))
     expect(all('[data-trip-op]').map((x) => x.dataset.tripOp)).toEqual(['Cafe', 'Hotel'])
 
     await click(q('[data-trip-op="Hotel"] [data-trip-exclude]'))
-    expect(title()).toBe('Потрачено 12 000 ₸ из 150 000 ₸')
+    expect(title()).toBe('12 000 из 150 000 ₸')
+    expect(norm(q('[data-trip-toast]')?.textContent), 'тост: не удалено').toBe('Убрано из поездки — операция осталась')
     expect(finance.householdDoc.tripSpends).toMatchObject([{ id: 'trip:a', amount: 12_000, ops: 1 }])
     expect(all('[data-trip-op]').map((x) => x.dataset.tripOp)).toEqual(['Cafe'])
     expect(norm(q('[data-trip-excluded-toggle]')?.textContent)).toBe('Убрано · 1')
@@ -109,27 +111,28 @@ describe('PN-31: экран цели-поездки', () => {
 
     await click(q('[data-trip-excluded-toggle]'))
     await click(q('[data-trip-excluded-op="Hotel"] [data-trip-include]'))
-    expect(title()).toBe('Потрачено 82 000 ₸ из 150 000 ₸')
+    expect(title()).toBe('82 000 из 150 000 ₸')
     expect(q('[data-trip-excluded-toggle]')).toBeNull()
   })
 
   it('сверх бюджета — полоса цветом предупреждения; срок и «Пополнить» остаются', async () => {
     await open({ ops: [...MINE, op('Ski', '2026-10-14', -100_000)] })
-    expect(title()).toBe('Потрачено 182 000 ₸ из 150 000 ₸')
+    expect(title()).toBe('182 000 из 150 000 ₸')
     expect(q('[data-trip] [role="progressbar"] i')!.className).toContain('bg-warn')
     expect([...document.querySelectorAll('button')].some((b) => b.textContent?.trim() === 'Пополнить')).toBe(true)
   })
 
-  it('после поездки — «За поездку — N из M»', async () => {
+  it('после поездки — «За поездку» и «N из M»', async () => {
     vi.setSystemTime(new Date('2026-10-20T08:00:00Z'))
     await open({ ops: MINE })
-    expect(title()).toBe('За поездку — 82 000 ₸ из 150 000 ₸')
+    expect(norm(q('[data-trip-label]')?.textContent)).toBe('За поездку')
+    expect(title()).toBe('82 000 из 150 000 ₸')
   })
 
   it('партнёр: общий итог и «кто сколько», чужих строк нет', async () => {
     const spendA: TripSpend = { id: 'trip:a', goalId: 'trip', by: 'a', amount: 82_000, ops: 2, updatedAt: T0 }
     await open({ slot: 'b', ops: [op('Taxi', '2026-10-12', -8_000)], spends: [spendA] })
-    expect(title()).toBe('Потрачено 90 000 ₸ из 150 000 ₸')
+    expect(title()).toBe('90 000 из 150 000 ₸')
     expect(norm(q('[data-trip-split]')?.textContent)).toBe('Ильяс 82 000 ₸ · Вы 8 000 ₸')
     await click(q('[data-trip-ops-toggle]'))
     expect(all('[data-trip-op]').map((x) => x.dataset.tripOp)).toEqual(['Taxi'])
@@ -138,7 +141,7 @@ describe('PN-31: экран цели-поездки', () => {
   it('viewer — итог без строк и действий', async () => {
     const spendA: TripSpend = { id: 'trip:a', goalId: 'trip', by: 'a', amount: 82_000, ops: 2, updatedAt: T0 }
     await open({ role: 'viewer', slot: 'b', spends: [spendA] })
-    expect(title()).toBe('Потрачено 82 000 ₸ из 150 000 ₸')
+    expect(title()).toBe('82 000 из 150 000 ₸')
     expect(q('[data-trip-ops-toggle]')).toBeNull()
     expect(q('[data-trip-exclude]')).toBeNull()
   })

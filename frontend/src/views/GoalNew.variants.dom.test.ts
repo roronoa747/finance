@@ -287,6 +287,7 @@ describe('PN-31: «Путешествие» — даты и бюджет пое�
     await toForm('Путешествие', 'Япония')
     expect(document.querySelector('[data-trip-fields]')).not.toBeNull()
     expect(field('input[data-trip-from]').type).toBe('date')
+    expect(field('input[data-trip-from]').className, 'на фоне страницы — подложка `bg-surface`').toMatch(/(^|\s)bg-surface(\s|$)/)
     expect(document.querySelector('[data-trip-budget]')).not.toBeNull()
   })
 

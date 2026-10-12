@@ -104,6 +104,8 @@ describe('PN-31 (критик Б9): даты и бюджет поездки в �
     const input = (sel: string) => document.querySelector<HTMLInputElement>(`input${sel}, ${sel} input`)!
     const goal = () => store.goals.find((g) => g.id === 'trip')!
 
+    // Подложка полей в листе — своя у `Input` (`bg-surface-2`), не цвет листа (/ux Б9).
+    expect(input('[data-trip-from]').className).not.toMatch(/(^|\s)bg-surface(\s|$)/)
     await type(input('[data-trip-from]'), '2026-11-12')
     expect(goal().from ?? null).toBeNull() // одна дата — «Нужны обе даты», в цель не пишется
     await type(input('[data-trip-to]'), '2026-11-02')

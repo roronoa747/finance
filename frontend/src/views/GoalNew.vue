@@ -250,7 +250,7 @@ const inShell = inject<boolean>('ff-shell-actions', false)
       <Field label="Сколько нужно" name="need">
         <NumField v-model="needText" placeholder="1 800 000" class="bg-surface" />
       </Field>
-      <TripFields v-if="isTrip" v-model:from="tripFrom" v-model:to="tripTo" v-model:budget="tripBudget" />
+      <TripFields v-if="isTrip" v-model:from="tripFrom" v-model:to="tripTo" v-model:budget="tripBudget" field-class="bg-surface" />
       <Field label="Когда" group>
         <Segmented v-model="term" :options="TERMS" />
         <NumField v-if="term === 'custom'" v-model="customMonths" kind="int" placeholder="месяцев" class="mt-2 bg-surface" />
