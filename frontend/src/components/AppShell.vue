@@ -117,7 +117,7 @@ const actions = computed(() => {
     edit && { to: '/goals/new', title: 'Новая мечта', note: 'фото, сумма и срок', icon: PhHeart },
     edit && { to: '/wishes', title: 'Покупка в список желаний', note: 'себе, партнёру или сюрприз', icon: PhShoppingBag },
     edit && { to: '/month?income=1', title: 'Внеплановый доход', note: 'премия, подарок, возврат', icon: PhCoins },
-    edit && { to: '/money?add=payment', title: 'Обязательство или подписка', note: 'аренда, связь, страховка', icon: PhRepeat },
+    edit && { to: '/money?add=payment', title: 'Подписка или платёж', note: 'связь, подписки, страховка', icon: PhRepeat },
     edit && { to: '/money?add=debt', title: 'Долг', note: 'кредит, рассрочка, человеку', icon: PhCreditCard },
     // Прикидки ничего не пишут (Р-11), но у viewer «+» нет вовсе — «Прикинуть кредит» ему с «Долгов» (PN-17).
     edit && { to: '/money/debts?try=1', title: 'Прикинуть кредит', note: 'нагрузка, мечта, переплата', icon: PhCalculator },

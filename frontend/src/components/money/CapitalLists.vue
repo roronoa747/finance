@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { PhArrowsClockwise, PhBank, PhCaretRight, PhCoins, PhCreditCard, PhFolderSimple, PhPlus, PhWallet } from '@phosphor-icons/vue'
+import { PhArrowsClockwise, PhBank, PhCaretRight, PhCoins, PhCreditCard, PhFolderSimple, PhHouse, PhPlus, PhWallet } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
@@ -131,12 +131,13 @@ const accountOpen = ref(false)
 const addOpen = ref(false)
 const addDebtOpen = ref(false)
 const addObligationOpen = ref(false)
+const addHousingOpen = ref(false)
 const addGroupOpen = ref(false)
 
-/** «+ Добавить» в «Платежах» — выбор из трёх, дальше — форма. */
-function addKind(kind: 'payment' | 'debt' | 'group') {
+/** «+ Добавить» в «Платежах» — выбор из четырёх, дальше — форма. */
+function addKind(kind: 'housing' | 'payment' | 'debt' | 'group') {
   addOpen.value = false
-  ;({ payment: addObligationOpen, debt: addDebtOpen, group: addGroupOpen })[kind].value = true
+  ;({ housing: addHousingOpen, payment: addObligationOpen, debt: addDebtOpen, group: addGroupOpen })[kind].value = true
 }
 
 // Окна открываются и по адресу: «+» в шапке, сводка, старые закладки. Формы добавления —
@@ -148,6 +149,7 @@ watch(
     if (!authStore.isViewer) {
       if (q.add === 'debt') addDebtOpen.value = true
       if (q.add === 'payment') addObligationOpen.value = true
+      if (q.add === 'housing') addHousingOpen.value = true
     }
     if (typeof q.credit === 'string') selectedCreditId.value = q.credit
     if (typeof q.obligation === 'string') selectedObligationId.value = q.obligation
@@ -164,6 +166,7 @@ const queryModalOpen = computed(
   () =>
     addDebtOpen.value ||
     addObligationOpen.value ||
+    addHousingOpen.value ||
     // Окно показано, а не только id в ref: удалённая синком запись закрывает лист,
     // но id остаётся — адрес тогда не очистился бы никогда.
     credits.value.some((c) => c.id === selectedCreditId.value || c.id === payoffCreditId.value) ||
@@ -304,9 +307,12 @@ watch(queryModalOpen, (open) => {
     </div>
   </Card>
 
-  <!-- Что добавить: три вида платежа -->
+  <!-- Что добавить: четыре вида платежа; жильё — своим входом (Р-7 «понятность») -->
   <Sheet :open="addOpen" title="Добавить" @close="addOpen = false">
     <div class="flex flex-col gap-2">
+      <Button variant="secondary" class="w-full justify-start" @click="addKind('housing')">
+        <PhHouse :size="16" /> Аренда и коммуналка
+      </Button>
       <Button variant="secondary" class="w-full justify-start" @click="addKind('payment')">
         <PhPlus :size="16" weight="bold" /> Подписка или услуга
       </Button>
@@ -343,5 +349,9 @@ watch(queryModalOpen, (open) => {
     @open-obligation="(id) => { selectedGroupId = null; selectedObligationId = id }"
   />
   <NewDebtSheet :open="addDebtOpen" @close="addDebtOpen = false" />
-  <NewObligationSheet :open="addObligationOpen" @close="addObligationOpen = false" />
+  <NewObligationSheet
+    :open="addObligationOpen || addHousingOpen"
+    :housing="addHousingOpen"
+    @close="addObligationOpen = false; addHousingOpen = false"
+  />
 </template>

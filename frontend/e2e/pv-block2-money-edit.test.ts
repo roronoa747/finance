@@ -137,8 +137,9 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     const B = await phone(server)
 
     at('2026-09-24T08:00:00Z')
-    await submit(A.pinia, '/capital?add=payment', { obName: 'Коммуналка', obAmount: '35 000', obDay: '8', obCategory: 'd1', obEstimate: true }, 'createObligation')
-    await submit(A.pinia, '/capital?add=payment', { obName: 'Гараж', obAmount: '30 000', obDay: '9', obCategory: 'd1' }, 'createObligation')
+    // Жильё — своим входом «Аренда и коммуналка» (PN-26): раздел d1 без чипов, «Сумма плавает» включена по умолчанию.
+    await submit(A.pinia, '/capital?add=housing', { obName: 'Коммуналка', obAmount: '35 000', obDay: '8' }, 'createObligation')
+    await submit(A.pinia, '/capital?add=housing', { obName: 'Гараж', obAmount: '30 000', obDay: '9', obEstimate: false }, 'createObligation')
     const util = A.store.obligations.find((o) => o.name === 'Коммуналка')!
     expect(util).toMatchObject({ category: 'd1', estimate: true, day: 8 })
     await A.store.syncHousehold(A.client)
@@ -391,7 +392,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       ])
     }
 
-    it('приёмка: PV-11 — «Интернет» из формы без оценки — подписка (второй спрашивает «Оставить?»); день и «Чьё это» аренды — у второго в Бюджете и Капитале', async () => {
+    it('приёмка: PV-11 — «Интернет» из формы без оценки — подписка (второй спрашивает «Оставить?»); день и «Чья» аренды — у второго в Бюджете и Капитале', async () => {
       const A = await phone(server)
       const B = await phone(server)
 
@@ -403,7 +404,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(A.store.obligations.find((o) => o.name === 'Интернет')).toMatchObject({ category: 'd4', estimate: false, day: 12 })
       expect(A.store.obligations.find((o) => o.name === 'Свет')).toMatchObject({ category: 'd4', estimate: true })
 
-      // Окно аренды на A: день 5 → 3, «Чьё это» — Аруна.
+      // Окно аренды на A: день 5 → 3, «Чья» — Аруна.
       at('2026-09-24T08:10:00Z')
       await page(A.pinia, Money, '/money?obligation=rent', {
         act: (s) => {
@@ -424,11 +425,11 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       const rentRow = between(list, 'Аренда', '</button>')
       expect(rentRow).toContain('3-го')
       expect(rentRow).not.toContain('5-го')
-      // Капитал второго: у аренды хозяйка в подписи; в окне «Чьё это» нажата Аруна.
+      // Капитал второго: у аренды хозяйка в подписи; в окне «Чья» нажата Аруна.
       expect(between(await page(B.pinia, Money, '/money'), 'Аренда', '</button>')).toContain('Аруна')
       expect(await page(B.pinia, Money, '/money?obligation=rent')).toMatch(pressed('Аруна'))
 
-      // «Общее» на втором — хозяина нет (null, а не строка 'all').
+      // «Общая» на втором — хозяина нет (null, а не строка 'all').
       at('2026-09-24T08:20:00Z')
       await page(B.pinia, Money, '/money?obligation=rent', { act: (s) => press(s, 'setObligationWho', 'all') })
       expect(rentB().who).toBeNull()
