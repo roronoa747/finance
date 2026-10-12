@@ -10,6 +10,9 @@ import { templateById, templateCredit } from '@/lib/goalTemplates'
 import { DEMO_PHOTO } from '@/lib/photos/store'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
 
+/** День `ago` суток назад — как у демо-операций (`day` ниже): даты поездки и операции совпадают. */
+const daysAgo = (ago: number) => new Date(Date.now() - ago * 86_400_000).toISOString().slice(0, 10)
+
 /** Фото цели демо из бандла (`assets/demo`) с автором шаблона — как у цели, заведённой из шаблона (Р-28). */
 function demoPhoto(file: string, template: string) {
   const t = templateById(template)
@@ -185,6 +188,12 @@ export function startDemo(): boolean {
         template: 'japan',
         ...demoPhoto('japan', 'japan'),
         payer: 'a',
+        // Поездка (PN-32): прошла 26…20 дней назад — на экране цели «За поездку — N из M» (траты a — его демо-операции
+        // этих дней, партнёра b — записью ниже). Дни — «N дней назад», как у операций: в даты всегда те же четыре строки, от
+        // дня недели не зависит; «в пути» заменило бы у героя «ближе на 15 дней» и забрало бы сегодняшние «ИП …».
+        from: daysAgo(26),
+        to: daysAgo(20),
+        budget: 400_000,
         updatedAt: new Date().toISOString(),
       },
       // Вторая мечта — её взнос план «Сначала долги» направляет в автокредит (квадрат «Долги», пивот 3).
@@ -324,6 +333,8 @@ export function startDemo(): boolean {
       total('week', week, 'sc_food', 20_000, 4), total('week', week, 'sc_shopping', 34_000, 2),
       total('month', month, 'sc_food', 40_000, 8), total('month', month, 'sc_shopping', 34_000, 2),
     ]
+    // Итог поездки партнёра b (PN-32) — руками, как её итоги разделов: общий итог «За поездку» — двоих.
+    doc.tripSpends = [{ id: 'g-trip:b', goalId: 'g-trip', by: 'b', amount: 64_000, ops: 5, updatedAt: at }]
   })
   // «Деньги» в демо — все три квадрата с данными (пивот 3, B2C-45): план «Сначала долги» (машина на
   // паузе ради автокредита) и отметки месяца — аренда оплачена партнёром b, зарплата участника a пришла. Фонды «Запас» и

@@ -34,7 +34,7 @@ const emit = defineEmits<{ (e: 'change', patch: RhythmPatch): void }>()
 
 const RHYTHMS: { value: PayRhythm; label: string }[] = [
   { value: 'month', label: 'Раз в месяц' },
-  { value: 'advance', label: 'С авансом' },
+  { value: 'advance', label: 'Дважды' },
   { value: 'week', label: 'Раз в неделю' },
 ]
 const WEEKDAYS = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс']

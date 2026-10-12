@@ -10,12 +10,13 @@ import Money from './Money.vue'
 import Week from './Week.vue'
 import Dreams from './Dreams.vue'
 import DebtFaster from './DebtFaster.vue'
+import GoalDetail from './GoalDetail.vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
 import { spendTotals, unknownGroups } from '@/lib/statements/model'
 import type { SpendTotal } from '@/lib/statements/types'
-import { monthKey, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
-import { amountTotal, capitalGoals, capitalStats, closerThisMonth, liveAccounts, liveCredits, liveGoals, myWeek, netWorth, openDebt, spendRows } from '@/lib/finance'
+import { monthKey, todayIso, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
+import { amountTotal, capitalGoals, capitalStats, closerThisMonth, liveAccounts, liveCredits, liveGoals, myWeek, netWorth, openDebt, spendRows, tripOps, tripSpent, tripStatus, tripTotal } from '@/lib/finance'
 import { money, plain } from '@/lib/money'
 import { useAuthStore } from '@/stores/auth'
 import { demoPhotoUrl, photoUrl } from '@/lib/photos/store'
@@ -286,5 +287,46 @@ describe('PN-06 (понятность Р-2, Р-3): демо — плашка К�
       ['b', 'Партнёр · 1'],
     ])
     expect(fetch).not.toHaveBeenCalled()
+  })
+})
+
+describe('PN-32 (понятность Р-14): демо — прошедшая поездка «Поездка в Японию»', () => {
+  // Начало месяца и середина, понедельник и воскресенье — даты поездки и операции демо считаются «N дней назад».
+  it.each(['2026-10-01T07:00:00Z', '2026-10-15T07:00:00Z', '2026-10-18T07:00:00Z'])('%s: «За поездку — N из M» — четыре своих операции и запись партнёра; герой «Мечт» прежний', async (iso) => {
+    vi.setSystemTime(new Date(iso))
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const router = createAppRouter(createMemoryHistory())
+    await router.push('/')
+    await router.isReady()
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app = createApp(Landing)
+    app.use(pinia)
+    app.use(router)
+    app.mount(root)
+    await nextTick()
+    ;[...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('Попробовать'))!.click()
+    await nextTick()
+    await nextTick()
+
+    const finance = useFinanceStore()
+    const ops = useOperationsStore()
+    const trip = finance.goals.find((g) => g.id === 'g-trip')!
+    expect(tripStatus(trip, todayIso())).toBe('after')
+    const mine = tripOps(ops.all, trip, new Set(), new Set())
+    expect(mine.map((o) => o.merchant).sort()).toEqual(['Del Papa Cafe', 'Magnum', 'Small', 'Yandex Go'])
+    const own = tripTotal(mine)
+    expect(finance.householdDoc.tripSpends!.find((t) => t.id === 'g-trip:a')).toMatchObject({ amount: own.amount, ops: 4 })
+    const spent = tripSpent(trip, finance.householdDoc.tripSpends, finance.people)
+    expect(spent).toMatchObject({ total: own.amount + 64_000, budget: 400_000 })
+
+    const screen = text(await renderScreen(GoalDetail, '/goals/g-trip')).replace(/\s+/g, ' ')
+    expect(screen).toContain(`За поездку ${plain(spent.total)} из ${money(400_000)}`.replace(/\s+/g, ' '))
+    // Поездка прошла (решение владельца Б): «Съездили?» вместо срока и «Пополнить».
+    expect(screen).toContain('Съездили?')
+    expect(screen).not.toContain('Пополнить')
+    // Герой «Мечт» — как в Блоке 3: «ближе на 15 дней», не «потрачено».
+    expect(text(await renderScreen(Dreams, '/'))).toMatch(/Поездка в Японию\s·\sближе\sна\s15\sдней/)
   })
 })

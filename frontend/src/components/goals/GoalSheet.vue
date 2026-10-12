@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { plain, parseMoney } from '@/lib/money'
 import { liveGoals } from '@/lib/finance'
+import { templateById } from '@/lib/goalTemplates'
 import { deletePhoto } from '@/lib/photos/store'
 import type { HueKey } from '@/lib/palette'
 import type { Goal } from '@/types/finance'
@@ -14,6 +15,7 @@ import Sheet from '@/components/kit/Sheet.vue'
 import DangerZone from '@/components/kit/DangerZone.vue'
 import { useSavedMark } from '@/components/kit/useSavedMark'
 import HuePicker from '@/components/goals/HuePicker.vue'
+import TripFields, { tripDatesError } from '@/components/goals/TripFields.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 
@@ -22,6 +24,7 @@ import Input from '@/components/ui/Input.vue'
  * пишется по уходу из него, цвет — сразу; закрыть окно фоном, крестиком или «Готово» —
  * ничего не потерять. «Уже накоплено» правит seed (`updateGoal`): история взносов остаётся.
  * «Откладывать в месяц» — на экране цели, как React (в окне его нет).
+ * Поездка (PN-31): у «Путешествия» и у любой цели с датами — даты (пишутся, когда пара верна) и бюджет (по уходу).
  */
 const props = defineProps<{ goalId: string | null }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'removed'): void }>()
@@ -33,6 +36,29 @@ const saved = useSavedMark(
   () => goal.value?.id,
   () => goal.value?.updatedAt,
 )
+
+/* ---------- поездка (PN-31) ---------- */
+const isTrip = computed(() => !!goal.value && (templateById(goal.value.template)?.type === 'travel' || !!goal.value.from || !!goal.value.to))
+const tripFrom = ref('')
+const tripTo = ref('')
+const tripBudget = ref('')
+watch(
+  () => goal.value?.id,
+  () => {
+    tripFrom.value = goal.value?.from ?? ''
+    tripTo.value = goal.value?.to ?? ''
+    tripBudget.value = goal.value?.budget ? plain(goal.value.budget) : ''
+  },
+  { immediate: true },
+)
+const tripError = computed(() => tripDatesError(tripFrom.value, tripTo.value))
+watch([tripFrom, tripTo], ([from, to]) => {
+  if (goal.value && !tripError.value && (from !== (goal.value.from ?? '') || to !== (goal.value.to ?? ''))) financeStore.setTripDates(goal.value.id, { from, to })
+})
+function onTripBudget() {
+  const v = parseMoney(tripBudget.value)
+  if (goal.value && v !== (goal.value.budget ?? 0)) financeStore.setTripDates(goal.value.id, { budget: v })
+}
 
 function edit(patch: Partial<Goal>) {
   if (goal.value) financeStore.updateGoal(goal.value.id, patch)
@@ -82,6 +108,8 @@ function remove() {
         Взносы ({{ goal.movements.length }}) останутся в истории: правится только та часть,
         с которой цель завели.
       </p>
+
+      <TripFields v-if="isTrip" v-model:from="tripFrom" v-model:to="tripTo" v-model:budget="tripBudget" :error="tripError" @budget-blur="onTripBudget" />
 
       <HuePicker :model-value="goal.hue" @update:model-value="onHue" />
 

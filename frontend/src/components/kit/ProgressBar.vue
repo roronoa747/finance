@@ -4,13 +4,13 @@ import { useGrow } from '@/lib/motion'
 
 /**
  * Полоса прогресса `.bar` (DESIGN.md §5): дорожка `--track`, заливка бренд / `--ok` /
- * белая поверх фото (`photo`) / `--ink` (`ink` — тонкая полоса строки цели, макет `.tbar`).
+ * белая поверх фото (`photo`) / `--ink` (`ink` — тонкая полоса строки цели, макет `.tbar`) / `--warn` (сверх бюджета поездки, PN-31).
  * `value` — доля 0…1, обрезается. При появлении заполняется от нуля (Р-45, `useGrow`).
  */
 const props = withDefaults(
   defineProps<{
     value: number
-    tone?: 'brand' | 'ok' | 'photo' | 'muted' | 'ink'
+    tone?: 'brand' | 'ok' | 'photo' | 'muted' | 'ink' | 'warn'
     height?: number
   }>(),
   { tone: 'brand', height: 6 },
@@ -18,7 +18,7 @@ const props = withDefaults(
 
 const pct = computed(() => Math.round(Math.min(1, Math.max(0, props.value || 0)) * 100))
 const grown = useGrow()
-const FILL: Record<string, string> = { ok: 'bg-ok', photo: 'bg-on-photo', muted: 'bg-s12', ink: 'bg-ink', brand: 'bg-brand' }
+const FILL: Record<string, string> = { ok: 'bg-ok', photo: 'bg-on-photo', muted: 'bg-s12', ink: 'bg-ink', brand: 'bg-brand', warn: 'bg-warn' }
 </script>
 
 <template>

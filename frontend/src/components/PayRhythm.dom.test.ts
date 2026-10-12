@@ -115,7 +115,7 @@ const salaries = (finance: ReturnType<typeof useFinanceStore>) => finance.paymen
 describe('PN-23: «Изменить оклад» — как приходит зарплата', () => {
   it('аванс: выбор пишет ритм с днём и суммой аванса, правки — сразу; подпись «остальное»', async () => {
     const finance = await openDialog()
-    await press(byText('[data-pay-rhythm] button', 'С авансом'))
+    await press(byText('[data-pay-rhythm] button', 'Дважды'))
     // День зарплаты 10-го — аванс по умолчанию 25-го, половина оклада.
     expect(finance.people[0]).toMatchObject({ payRhythm: 'advance', payday2: 25, salary2: 350_000 })
     await commit(qi('input[data-salary2]'), '200 000')
@@ -349,15 +349,15 @@ describe('/ux Б7: подсказка пересчёта оклада, перв�
     // Раньше: «≈ 34 615 за неделю» — недельный оклад ещё раз делился на 4,33.
     expect(q('[data-week-hint]')).toBeNull()
     expect(finance.people[0].salary).toBe(150_000)
-    await press(byText('[data-pay-rhythm] button', 'С авансом'))
+    await press(byText('[data-pay-rhythm] button', 'Дважды'))
     await press(q('[data-week-hint]'))
     expect(finance.people[0].salary).toBe(650_000)
     expect(q('[data-week-hint]')).toBeNull()
   })
 
-  it('первый запуск: «С авансом» до оклада — аванс идёт за окладом (половина), пока его не вписали руками; «Дальше» — два прихода', async () => {
+  it('первый запуск: «Дважды» до оклада — аванс идёт за окладом (половина), пока его не вписали руками; «Дальше» — два прихода', async () => {
     const finance = await openStartManual()
-    await press(byText('[data-pay-rhythm] button', 'С авансом'))
+    await press(byText('[data-pay-rhythm] button', 'Дважды'))
     // Раньше: «Аванс 0» и «остальное — 0 ₸» — и после оклада аванс оставался 0 (один приход).
     await typeIn(salaryInput(), '450000')
     expect(qi('input[data-salary2]')!.value).toBe(plain(225_000))

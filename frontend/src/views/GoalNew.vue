@@ -13,6 +13,7 @@ import { attachFile, attachTemplate } from '@/lib/photos/goalPhoto'
 import type { LinkFound } from '@/lib/photos/useLinkPreview'
 import LinkPhotoField from '@/components/goals/LinkPhotoField.vue'
 import ThemePhotoRow from '@/components/goals/ThemePhotoRow.vue'
+import TripFields, { tripDatesError } from '@/components/goals/TripFields.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Chip from '@/components/kit/Chip.vue'
@@ -32,6 +33,7 @@ import TemplateTile from '@/components/kit/TemplateTile.vue'
  * загрузилась — экран цели узнаёт об этом из адреса (`?photo=failed|later`), в первом запуске — нет.
  * «По ссылке» (PN-08): картинка со страницы — как своё фото, название — со страницы, если своего нет.
  * «Подушка» (PN-19): без формы — фонд семьи (`ensureFund`), «нужно» считает план месяца; в первом запуске плитки нет.
+ * «Путешествие» и направления (PN-31): под суммой — даты и бюджет поездки, необязательные (`setTripDates` после `addGoal`).
  */
 /** Куда идти после мечты: первый запуск (B2C-19) рендерит экран внутри себя и задаёт следующий шаг. */
 const props = defineProps<{ next?: string }>()
@@ -65,6 +67,11 @@ const term = ref('12')
 const customMonths = ref('24')
 
 const need = computed(() => parseMoney(needText.value))
+// Поездка (PN-31): даты и бюджет — только у «Путешествия» (и направлений); своё фото — мечта без дат.
+const isTrip = computed(() => template.value?.type === 'travel')
+const tripFrom = ref('')
+const tripTo = ref('')
+const tripBudget = ref('')
 const months = computed(() => (term.value === 'custom' ? Math.max(1, parseMoney(customMonths.value) || 1) : Number(term.value)))
 const monthly = computed(() => (need.value > 0 ? goalMonthly(need.value, months.value) : 0))
 // Та же дата, что покажут экран цели и герой (`goalDoneMonth`); срок здесь всегда конечен.
@@ -79,6 +86,7 @@ const form = useFormCheck(() =>
     : [
         ['name', !name.value.trim() && 'Введите название'],
         ['need', need.value <= 0 && 'Введите сумму'],
+        ['tripDates', isTrip.value && tripDatesError(tripFrom.value, tripTo.value)],
       ],
 )
 
@@ -154,6 +162,8 @@ async function create() {
     hue: tpl?.hue ?? 'blue',
     template: tpl?.id ?? null,
   })
+  const budget = parseMoney(tripBudget.value)
+  if (isTrip.value && (tripFrom.value || budget > 0)) financeStore.setTripDates(id, { from: tripFrom.value, to: tripTo.value, budget })
   await land(id, () => (file ? attachFile(financeStore, id, file) : tpl ? attachTemplate(financeStore, id, tpl).then((r) => r === 'uploaded') : Promise.resolve(true)), file ? 'failed' : 'later')
 }
 
@@ -240,6 +250,7 @@ const inShell = inject<boolean>('ff-shell-actions', false)
       <Field label="Сколько нужно" name="need">
         <NumField v-model="needText" placeholder="1 800 000" class="bg-surface" />
       </Field>
+      <TripFields v-if="isTrip" v-model:from="tripFrom" v-model:to="tripTo" v-model:budget="tripBudget" field-class="bg-surface" />
       <Field label="Когда" group>
         <Segmented v-model="term" :options="TERMS" />
         <NumField v-if="term === 'custom'" v-model="customMonths" kind="int" placeholder="месяцев" class="mt-2 bg-surface" />

@@ -5,9 +5,9 @@ import { PhCamera, PhCaretRight, PhCheck } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
-import { money, pct } from '@/lib/money'
-import { monthKey, monthShort } from '@/lib/dates'
-import { closerThisMonth, doneGoals, doneTerm, goalTerm, planForecast, wishQueue } from '@/lib/finance'
+import { money, pct, plain } from '@/lib/money'
+import { monthKey, monthShort, todayIso } from '@/lib/dates'
+import { closerThisMonth, doneGoals, doneTerm, goalTerm, planForecast, tripSpent, tripStatus, wishQueue } from '@/lib/finance'
 import type { Goal } from '@/types/finance'
 import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
@@ -77,7 +77,13 @@ const heroMonth = computed(() => (main.value && termOf(main.value).off ? 'на �
 const heroCloser = computed(() => {
   const g = main.value
   // Накоплено целиком (ворота PN-12): ближе некуда — под героем только имя, мечта ждёт «Сбылось».
-  if (!g || termOf(g).off || termOf(g).remaining <= 0) return null
+  if (!g || termOf(g).off) return null
+  // В поездке (PN-31) — «потрачено N из M» вместо «ближе»: одна строка, итог семьи.
+  if (tripStatus(g, todayIso()) === 'during') {
+    const t = tripSpent(g, financeStore.householdDoc.tripSpends, financeStore.people)
+    return `потрачено ${plain(t.total)} из ${money(t.budget)}`
+  }
+  if (termOf(g).remaining <= 0) return null
   const days = closerThisMonth(g, key.value)
   return days && days > 0 ? `ближе на ${days} ${plural(days, 'день', 'дня', 'дней')}` : null
 })

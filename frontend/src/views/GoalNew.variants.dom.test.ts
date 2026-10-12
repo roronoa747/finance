@@ -259,3 +259,69 @@ describe('PN-08: «По ссылке» в «Новой мечте»', () => {
     expect(document.querySelector('[data-link-tile]')!.getAttribute('aria-pressed')).toBe('false')
   })
 })
+
+describe('PN-31: «Путешествие» — даты и бюджет поездки в форме', () => {
+  const field = (sel: string) => document.querySelector<HTMLInputElement>(sel)!
+  const type = async (el: HTMLInputElement, value: string) => {
+    el.value = value
+    el.dispatchEvent(new Event('input'))
+    await nextTick()
+  }
+  async function toForm(theme: string, direction?: string) {
+    button(theme).click()
+    await nextTick()
+    if (direction) {
+      button(direction).click()
+      await nextTick()
+    }
+    button('Дальше').click()
+    await nextTick()
+  }
+
+  it('поля дат и бюджета — только у «Путешествия» (и направления), не у других тем', async () => {
+    await open()
+    await toForm('Свадьба')
+    expect(document.querySelector('[data-trip-fields]')).toBeNull()
+    button('Назад').click()
+    await nextTick()
+    await toForm('Путешествие', 'Япония')
+    expect(document.querySelector('[data-trip-fields]')).not.toBeNull()
+    expect(field('input[data-trip-from]').type).toBe('date')
+    expect(field('input[data-trip-from]').className, 'на фоне страницы — подложка `bg-surface`').toMatch(/(^|\s)bg-surface(\s|$)/)
+    expect(document.querySelector('[data-trip-budget]')).not.toBeNull()
+  })
+
+  it('даты и бюджет пишутся `setTripDates` после создания мечты', async () => {
+    const finance = await open()
+    const setTripDates = vi.spyOn(finance, 'setTripDates')
+    await toForm('Путешествие', 'Япония')
+    await type(field('input[placeholder="1 800 000"]'), '1 200 000')
+    await type(field('input[data-trip-from]'), '2026-11-02')
+    await type(field('input[data-trip-to]'), '2026-11-12')
+    await type(field('[data-trip-budget] input, input[data-trip-budget]'), '500 000')
+    button('Готово — к мечте').click()
+    await nextTick()
+    const goal = finance.goals.find((g) => g.name === 'Япония')!
+    expect(setTripDates).toHaveBeenCalledWith(goal.id, { from: '2026-11-02', to: '2026-11-12', budget: 500_000 })
+    expect(goal).toMatchObject({ from: '2026-11-02', to: '2026-11-12', budget: 500_000, template: 'japan' })
+  })
+
+  it('последний день раньше первого — ошибка формы, мечта не создаётся; без дат — мечта без поездки', async () => {
+    const finance = await open()
+    await toForm('Путешествие')
+    await type(field('input[placeholder="1 800 000"]'), '900 000')
+    await type(field('input[data-trip-from]'), '2026-11-12')
+    await type(field('input[data-trip-to]'), '2026-11-02')
+    button('Готово — к мечте').click()
+    await nextTick()
+    expect(document.body.textContent).toContain('Последний день — не раньше первого')
+    expect(finance.goals).toHaveLength(0)
+
+    await type(field('input[data-trip-from]'), '')
+    await type(field('input[data-trip-to]'), '')
+    button('Готово — к мечте').click()
+    await nextTick()
+    expect(finance.goals).toHaveLength(1)
+    expect(finance.goals[0].from ?? null).toBeNull()
+  })
+})

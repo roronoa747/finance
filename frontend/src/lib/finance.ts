@@ -1,4 +1,4 @@
-import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard } from '@/types/finance'
+import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard, TripSpend } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
 import { isSpend, normalizeCounterparty, normalizeMerchant } from '@/lib/statements/model'
@@ -4906,4 +4906,54 @@ export function articleParts(rec: Pick<Allocation, 'parts' | 'total'>) {
     (p) => p.amount > 0,
   )
   return { parts, rest: Math.max(0, rec.total - parts.reduce((s, p) => s + p.amount, 0)) }
+}
+
+/* ---------------- Поездка с бюджетом (понятность, Блок 9: Р-14) ---------------- */
+
+export type TripStatus = 'none' | 'before' | 'during' | 'after'
+
+/** Где поездка относительно дня `today` (`YYYY-MM-DD`): даты включительно; нет обеих дат — `none` (копим как обычно). */
+export function tripStatus(goal: Pick<Goal, 'from' | 'to'>, today: string = todayIso()): TripStatus {
+  if (!goal.from || !goal.to) return 'none'
+  if (today < goal.from) return 'before'
+  return today > goal.to ? 'after' : 'during'
+}
+
+/**
+ * Свои траты поездки: списания (не переводы между своими, `isSpend`) с `from` по `to` включительно, кроме платежей и
+ * подписок по отметкам (`marked` — `markedOps`) и снятых с поездки (`excluded`). Новые первыми.
+ */
+export function tripOps(
+  ops: Operation[],
+  goal: Pick<Goal, 'from' | 'to'>,
+  marked: ReadonlySet<string>,
+  excluded: ReadonlySet<string>,
+): Operation[] {
+  const { from, to } = goal
+  if (!from || !to) return []
+  return ops
+    .filter((op) => isSpend(op) && op.date >= from && op.date <= to && !marked.has(op.id) && !excluded.has(op.id))
+    .sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id))
+}
+
+/** Сумма трат (положительная, целые тенге) и число строк. */
+export function tripTotal(ops: Pick<Operation, 'amount'>[]): { amount: number; ops: number } {
+  return { amount: ops.reduce((s, op) => s + Math.round(-op.amount), 0), ops: ops.length }
+}
+
+export type TripSpent = {
+  total: number
+  /** У кого есть траты, в порядке участников семьи. */
+  byPerson: { person: PersonId; name: string; amount: number }[]
+  budget: number
+}
+
+/** Итог поездки семьи из записей `tripSpends` (каждый телефон — своя); бюджет — `budget`, пусто — сумма мечты. */
+export function tripSpent(goal: Pick<Goal, 'id' | 'need' | 'budget'>, tripSpends: TripSpend[] | undefined, people: Person[]): TripSpent {
+  const mine = (tripSpends ?? []).filter((t) => t.goalId === goal.id && !t.deletedAt)
+  const byPerson = people
+    .filter(alive)
+    .map((p) => ({ person: p.id, name: p.name, amount: mine.filter((t) => t.by === p.id).reduce((s, t) => s + t.amount, 0) }))
+    .filter((x) => x.amount > 0)
+  return { total: mine.reduce((s, t) => s + t.amount, 0), byPerson, budget: goal.budget ?? goal.need }
 }

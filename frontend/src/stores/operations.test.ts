@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { nextTick, watch } from 'vue'
+import { nextTick, toRaw, watch } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { apiClient, type ApiClient } from '@/api/client'
 import { useAuthStore, DEMO_TOKEN } from './auth'
@@ -18,6 +18,7 @@ import type { OperationsPage, OperationWire, StatementUploadResponse } from '@/t
 import kaspi01 from '@/lib/statements/fixtures/kaspi-01.rows.json'
 import { planFamilyDoc } from '@/test/planFamily'
 import { freeByFact } from '@/lib/finance'
+import { mergePrivateDocs } from '@/lib/merge'
 import { LINK_PHOTO_TRIED_KEY, readMonthEnd, readStorage, writeMonthEnd, writeStorage } from '@/lib/storage'
 
 const storage = new Map<string, string>()
@@ -1011,5 +1012,101 @@ describe('stores/operations — «сразу готово» с «Отменит�
     await store.upload([], fakeServer().client)
     expect(store.held).toBe(false)
     expect(store.draft).toBeNull()
+  })
+})
+
+describe('stores/operations — итог поездки (PN-30)', () => {
+  const op = (date: string, amount: number, merchant: string): Omit<Operation, 'id'> => ({
+    bank: 'kaspi', date, amount, kind: amount < 0 ? 'purchase' : 'transfer-in', merchant, categoryId: null, internal: false,
+  })
+  const statement = (...list: Omit<Operation, 'id'>[]): ParsedStatement => ({ bank: 'kaspi', from: '2026-09-01', to: '2026-09-20', operations: assignIds(list), skipped: 0 })
+
+  /** Семья плана; «Отпуск» (`trip`) — с датами `dates`, если заданы. */
+  function family(dates?: { from: string; to: string }) {
+    signIn('a')
+    const doc = planFamilyDoc()
+    if (dates) doc.goals = doc.goals.map((g) => (g.id === 'trip' ? { ...g, ...dates } : g))
+    useFinanceStore().setHouseholdDoc(doc, 1)
+    vi.setSystemTime(new Date('2026-09-20T07:00:00Z'))
+    return useFinanceStore()
+  }
+  const trip = () => useFinanceStore().householdDoc.tripSpends ?? []
+  const septTrip = statement(
+    op('2026-09-09', -3_000, 'Magnum до поездки'),
+    op('2026-09-10', -10_000, 'Hotel Almaty'),
+    op('2026-09-14', -5_000, 'Cafe Shymbulak'),
+    op('2026-09-14', -58_000, 'Оплата Kaspi Кредита'),
+    op('2026-09-16', -4_000, 'Magnum после'),
+  )
+
+  it('пишет запись `<цель>:<я>` из своих операций за даты — без платежа по выписке; повтор не пишется; снятие и возврат меняют сумму', async () => {
+    const finance = family({ from: '2026-09-10', to: '2026-09-15' })
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    store.setDraft(draftOf(septTrip))
+    await store.send(client)
+    // Платёж кредита ждёт ответа — уже не трата поездки; после «да» — тем более.
+    expect(trip().map((t) => [t.id, t.goalId, t.by, t.amount, t.ops])).toEqual([['trip:a', 'trip', 'a', 15_000, 2]])
+    await store.acceptMatch(store.pendingMatches.find((c) => c.kind === 'credit')!, client)
+    expect(trip()[0]).toMatchObject({ amount: 15_000, ops: 2 })
+
+    const writes = vi.spyOn(finance, 'mutateHouseholdDoc')
+    store.writeTripTotals()
+    expect(writes).not.toHaveBeenCalled()
+
+    const hotel = store.all.find((o) => o.merchant === 'Hotel Almaty')!
+    finance.excludeFromTrip('trip', hotel.id)
+    await nextTick()
+    expect(trip()[0]).toMatchObject({ amount: 5_000, ops: 1 })
+    expect(finance.tripExcluded.map((x) => [x.id, x.goalId])).toEqual([[hotel.id, 'trip']])
+    finance.includeInTrip(hotel.id)
+    await nextTick()
+    expect(trip()[0]).toMatchObject({ amount: 15_000, ops: 2 })
+    expect(finance.tripExcluded).toEqual([])
+    // Снова «Убрать» (критик Б9): слияние с копией сервера после «Вернуть» не возвращает строку в поездку.
+    const server = structuredClone(toRaw(finance.privateDoc))
+    vi.setSystemTime(new Date('2026-09-20T08:00:00Z'))
+    finance.excludeFromTrip('trip', hotel.id)
+    await nextTick()
+    expect(trip()[0]).toMatchObject({ amount: 5_000, ops: 1 })
+    const merged = mergePrivateDocs(toRaw(finance.privateDoc), server).tripExcluded as { id: string; goalId: string | null; deletedAt?: string | null }[]
+    expect(merged.filter((x) => !x.deletedAt && x.goalId).map((x) => x.id)).toEqual([hotel.id])
+  })
+
+  it('даты поставили после выписки — итог пишется; поездка ещё не началась — нет', async () => {
+    const finance = family()
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    store.setDraft(draftOf(septTrip))
+    await store.send(client)
+    expect(trip()).toEqual([])
+
+    finance.setTripDates('trip', { from: '2026-09-25', to: '2026-09-30', budget: 300_000 })
+    await nextTick()
+    expect(trip()).toEqual([])
+    expect(finance.goals.find((g) => g.id === 'trip')).toMatchObject({ from: '2026-09-25', to: '2026-09-30', budget: 300_000 })
+
+    finance.setTripDates('trip', { from: '2026-09-09', to: '2026-09-10', budget: 0 })
+    await nextTick()
+    expect(trip()).toMatchObject([{ id: 'trip:a', amount: 13_000, ops: 2 }])
+    expect(finance.goals.find((g) => g.id === 'trip')!.budget).toBeNull()
+  })
+
+  it('на телефоне ещё нет своих операций (новый вход) — своя запись с другого устройства не затирается нулём', () => {
+    const finance = family({ from: '2026-09-10', to: '2026-09-15' })
+    finance.mutateHouseholdDoc((doc) => void (doc.tripSpends = [{ id: 'trip:a', goalId: 'trip', by: 'a', amount: 15_000, ops: 2, updatedAt: '2026-09-16T00:00:00Z' }]))
+    const store = useOperationsStore()
+    store.writeTripTotals()
+    expect(trip()).toMatchObject([{ id: 'trip:a', amount: 15_000, ops: 2 }])
+  })
+
+  it('старые цели без дат — ничего не пишется', async () => {
+    family()
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    store.setDraft(draftOf(septTrip))
+    await store.send(client)
+    store.writeTripTotals()
+    expect(useFinanceStore().householdDoc.tripSpends ?? []).toEqual([])
   })
 })
