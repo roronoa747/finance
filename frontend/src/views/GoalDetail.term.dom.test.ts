@@ -93,6 +93,25 @@ describe('хотфикс 2026-10-12: правка суммы мечты — ср
     expect(q('[data-term]')).toBeNull()
   })
 
+  it('на паузе — срока нет: сумма правится, взнос прежний, тоста нет', async () => {
+    const finance = await open()
+    finance.pauseGoal('car', true)
+    await settle()
+    q('[aria-label="Меню цели"]')!.click()
+    await settle()
+    button('Изменить цель')!.click()
+    await settle()
+    const need = field('Сколько нужно')
+    need.value = '1 300 000'
+    need.dispatchEvent(new Event('input', { bubbles: true }))
+    need.dispatchEvent(new Event('blur'))
+    await settle()
+    button('Готово')!.click()
+    await settle()
+    expect(finance.goals.find((g) => g.id === 'car')).toMatchObject({ need: 1_300_000, monthly: 60_000 })
+    expect(q('[data-term]')).toBeNull()
+  })
+
   it('правили только название — тоста нет, взнос прежний', async () => {
     const finance = await open()
     q('[aria-label="Меню цели"]')!.click()

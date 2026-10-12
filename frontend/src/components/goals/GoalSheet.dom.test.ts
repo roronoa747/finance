@@ -141,7 +141,7 @@ describe('хотфикс 2026-10-12: сумму или накопленное п
     const terms: { prev: number; next: number }[] = []
     const root = document.createElement('div')
     document.body.appendChild(root)
-    app = createApp({ render: () => h(GoalSheet, { goalId: 'car', onTerm: (c: { prev: number; next: number }) => terms.push(c) }) })
+    app = createApp({ render: () => h(GoalSheet, { goalId: 'car', termMonths: 47, onTerm: (c: { prev: number; next: number }) => terms.push(c) }) })
     app.use(pinia)
     app.mount(root)
     await nextTick()

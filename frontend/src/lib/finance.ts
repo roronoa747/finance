@@ -235,12 +235,12 @@ export function goalMonthly(remaining: number, months: number): number {
 
 /**
  * Взнос, при котором срок цели прежний после правки суммы или накопленного (хотфикс 2026-10-12, владелец: «по текущему
- * сроку»): взносов столько же, сколько было при прежних остатке и взносе. Взноса нет, прежний или новый остаток 0 — взнос
- * прежний.
+ * сроку»): новый остаток на те же `months` взносов, что показывает экран (`goalTerm` — с очередью плана). Срока нет,
+ * взноса нет или новый остаток 0 — взнос прежний.
  */
-export function keepTermMonthly(prevRemaining: number, monthly: number, remaining: number): number {
-  if (monthly <= 0 || prevRemaining <= 0 || remaining <= 0) return monthly
-  return goalMonthly(remaining, goalMonths(prevRemaining, monthly))
+export function keepTermMonthly(months: number, monthly: number, remaining: number): number {
+  if (!Number.isFinite(months) || months <= 0 || monthly <= 0 || remaining <= 0) return monthly
+  return goalMonthly(remaining, months)
 }
 
 /**

@@ -25,10 +25,11 @@ import Input from '@/components/ui/Input.vue'
  * ничего не потерять. «Уже накоплено» правит seed (`updateGoal`): история взносов остаётся.
  * «Откладывать в месяц» — на экране цели, как React (в окне его нет).
  * Сумма и «уже накоплено» (хотфикс 2026-10-12): срок прежний — взнос пересчитывается той же записью (`keepTermMonthly`),
- * экран цели тостом предлагает «Оставить взнос» (тогда сдвигается срок). Фонд — взнос не трогаем (порог — в плане).
+ * экран цели тостом предлагает «Оставить взнос» (тогда сдвигается срок). Взносов — сколько показывает экран (`termMonths`);
+ * его нет (фонд, пауза, на паузе ради плана — взнос идёт в долг) — взнос не трогаем.
  * Поездка (PN-31): у «Путешествия» и у любой цели с датами — даты (пишутся, когда пара верна) и бюджет (по уходу).
  */
-const props = defineProps<{ goalId: string | null }>()
+const props = defineProps<{ goalId: string | null; termMonths?: number | null }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'removed'): void; (e: 'term', change: { prev: number; next: number }): void }>()
 
 const financeStore = useFinanceStore()
@@ -74,7 +75,7 @@ function editKeepTerm(patch: { need?: number; have?: number }) {
   const g = goal.value
   if (!g) return
   const remaining = (need: number, have: number) => Math.max(0, need - Math.max(0, have))
-  const monthly = g.fund ? g.monthly : keepTermMonthly(remaining(g.need, g.have), g.monthly, remaining(patch.need ?? g.need, patch.have ?? g.have))
+  const monthly = g.fund || props.termMonths == null ? g.monthly : keepTermMonthly(props.termMonths, g.monthly, remaining(patch.need ?? g.need, patch.have ?? g.have))
   const prev = g.monthly // до записи: цель в сторе меняется на месте
   if (monthly === prev) return edit(patch)
   edit({ ...patch, monthly })

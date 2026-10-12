@@ -93,7 +93,10 @@ function menu(action: 'main' | 'edit' | 'pause' | 'done' | 'undo') {
   menuOpen.value = false
   if (!goal.value) return
   if (action === 'main') financeStore.makeMain(goal.value.id)
-  else if (action === 'edit') openEditModal.value = true
+  else if (action === 'edit') {
+    termDoneBefore.value = doneMonth.value
+    openEditModal.value = true
+  }
   else if (action === 'done') markDone()
   else if (action === 'undo') financeStore.undoGoalDone(goal.value.id)
   else financeStore.pauseGoal(goal.value.id, !off.value)
@@ -246,7 +249,11 @@ const { note: closerNote, flash: flashCloser } = useFlash()
 
 /* ---------- сумму правили — срок прежний (хотфикс 2026-10-12): тост с новым взносом, «Оставить взнос» — сдвинуть срок ---------- */
 // Тост — когда лист закрыт (над листом его не видно); правили несколько раз — «Оставить взнос» вернёт взнос до листа.
+// Взносов — сколько на экране; на паузе (и ради плана — взнос идёт в долг) взнос не трогаем. «Срок прежний» — только если
+// месяц на экране не сдвинулся (очередь плана может не дать нового взноса целиком).
 const { note: termNote, flash: flashTerm, clear: clearTerm } = useFlash(6000)
+const termMonths = computed(() => (term.value && !term.value.off && !term.value.afterPlan && Number.isFinite(term.value.months) ? term.value.months : null))
+const termDoneBefore = ref<string | null>(null)
 const termChange = ref<{ prev: number; next: number } | null>(null)
 const termPrev = ref(0)
 function onTerm(change: { prev: number; next: number }) {
@@ -258,7 +265,7 @@ function closeEdit() {
   termChange.value = null
   if (!c || c.prev === c.next) return
   termPrev.value = c.prev
-  flashTerm(`Взнос ${money(c.next)} в месяц — срок прежний`)
+  flashTerm(`Взнос ${money(c.next)} в месяц${doneMonth.value === termDoneBefore.value ? ' — срок прежний' : ''}`)
 }
 function keepMonthly() {
   if (goal.value) financeStore.setGoalMonthly(goal.value.id, termPrev.value)
@@ -700,6 +707,7 @@ function share() {
     <!-- Окно: Изменить цель -->
     <GoalSheet
       :goal-id="openEditModal && canEdit ? goal.id : null"
+      :term-months="termMonths"
       @close="closeEdit"
       @term="onTerm"
       @removed="router.push('/')"
