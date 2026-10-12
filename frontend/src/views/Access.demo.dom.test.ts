@@ -278,6 +278,13 @@ describe('PN-06 (понятность Р-2, Р-3): демо — плашка К�
     expect(opened).toContain('Капитал растёт на')
     expect(opened).toContain('Без долгов')
     expect(opened).toContain('Переплата')
+
+    // PN-29: Spotify — подписка партнёра; раскрытые «Подписки · 3» делятся на «Общие · 2» и «Партнёр · 1».
+    const subs = await renderScreen(Money, '/money', undefined, [screenMixin({ subsOpen: true })])
+    expect([...subs.matchAll(/data-subs-who="(\w+)"[^>]*>([^<]*)</g)].map((m) => [m[1], m[2].trim()])).toEqual([
+      ['all', 'Общие · 2'],
+      ['b', 'Партнёр · 1'],
+    ])
     expect(fetch).not.toHaveBeenCalled()
   })
 })

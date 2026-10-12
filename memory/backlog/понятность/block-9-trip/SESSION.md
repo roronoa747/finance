@@ -20,8 +20,28 @@
   (регистрация в `defaultSyncDoc` и `mergeDocs` — обязательна), личный документ `tripExcluded`; Go нет.
 - Порядок: PN-30 → PN-31 → PN-32. Итог поездки — по образцу `spendTotals` (каждый телефон пишет свою запись);
   операции партнёра построчно не видны (Р-5).
-- Факты Блоков 3–8 (критик Блока 8 допишет): <`operations.ts` `writeTotals`/`totalMarks` строки, `markedOps`,
-  `GoalNew`/`GoalSheet`/`GoalDetail` после «Сбылось», «ближе на N дней», подушки>.
+- **Факты кода после Блоков 3–8 (критик Б8, 2026-10-12, ветка `pn-block-8-subscriptions`; номера в ТЗ PN-30/PN-31 — до блоков,
+  брать эти; после мёржа Б8 в `main` — те же):**
+  - `stores/operations.ts` (684): `all` :142 (свои операции), `shown` :315 (+ черновик ждущей выписки), `shownTotals` :321;
+    **`writeTotals(periods)` :354-379** — образец итога «каждый телефон — своя запись»: `by = me()`, обнуление своих
+    исчезнувших записей, `sameTotal` — тот же итог второй раз не пишется (синк не дёргается), запись — `mutateHouseholdDoc`;
+    зовётся из :195/:206/:410/:441. `totalMarks(list)` :382-384 → `{ marked: markedOps(...), categories }`.
+  - `lib/statements/model.ts` (353): `isSpend` :275 (`amount < 0 && !internal`), `spendTotals(...)` :282.
+    `lib/statements/matching.ts` (331): **`markedOps(ops, state, rules, me, declined)` :163-174** — `Payment.opId` + живые
+    кандидаты = операции платежей/подписок по отметкам (их в «потрачено» нет, Р-14).
+  - Слияние: `lib/merge.ts` (260) `mergeDocs` :175, `known` :184 (новый ключ `tripSpends` — сюда), `mergePrivateDocs` :235,
+    `known` :242 (`accounts`, `merchantRules`, `gifts` — `tripExcluded` сюда). Стор `stores/finance.ts` (2304): `defaultSyncDoc`
+    :98, `mutateHouseholdDoc` :444, `mutatePrivateDoc` :1017, `markGoalDone` :1868, `ensureFund` :1903.
+  - Типы `types/finance.ts` (614): `Goal` :93 (`template?` :138 — id шаблона; «Путешествие» — `templateById(g.template)?.type ===
+    'travel'` (`lib/goalTemplates.ts:171`; направления `TRAVEL_DIRECTIONS` :165 — тоже `travel`), `fund?`, `pausedAt?`,
+    **`doneAt?` :148**), `SyncDoc` :552 (`spendTotals?` :567 — образец списка).
+  - Цели: `openGoals` :731 / `doneGoals` :733 (`lib/finance.ts`, 4909) — сбывшаяся поездка «потрачено» не считает; фонд
+    (`fund`) поездкой не бывает. `goalPace` :2461, `closerDays` :2471 («ближе на N дней» — у взноса, не трогать).
+  - Экраны: `views/GoalNew.vue` (260) — `types` :87 (в первом запуске без `cushion`, `props.next`), `TRAVEL_DIRECTIONS`;
+    `components/goals/GoalSheet.vue` (97) — лист правки (поля пишутся по уходу из поля; viewer не открывает);
+    `views/GoalDetail.vue` (661) — метки `data-closer`, `data-cushion-*`, `data-goal-done*` / `-ask` / `-undo` / `-share` /
+    `-plan` / `-left`: «потрачено N из M» — новым предметом в шапке цели, «Сбылось» и подушку не задевать.
+  - Блок 8: `lib/share.ts` `shareFile` (если понадобится выгрузка), `subscriptionsByWho` — подписки по «чья»; `Obligation.who`.
 - Стенд — с Go и выпиской (фикстуры парсеров `lib/statements/fixtures`, настоящие — `memory/secrets/statements`, в
   репо не класть).
 - Правило 12: одна крупная цифра — «потрачено N из M» в предмете (экран цели); операции и «Убрано» — свёрнуты;

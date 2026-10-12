@@ -6,7 +6,6 @@ import { MONTHS_NOM, monthKey, parseMonthKey } from '@/lib/dates'
 import { yearShare } from '@/lib/finance'
 import { CURRENCY_SIGN } from '@/lib/fx'
 import type { Currency, PersonId } from '@/types/finance'
-import { categoryName, type CategoryKey } from '@/lib/palette'
 import { cn } from '@/lib/utils'
 
 import CurrencyChips from '@/components/kit/CurrencyChips.vue'
@@ -26,34 +25,38 @@ import { useNbRate } from '@/components/kit/useNbRate'
  * Новый регулярный платёж — подписка или услуга (бывшее окно Капитала, PV-11). Сумма — в валюте платежа
  * (Р-75, чипы, тенге по умолчанию); у валютного — тихая строка «≈ N ₸ по курсу Нацбанка», курс версии —
  * Нацбанк сегодня (нет — поле курса руками). «Людям» (мелочи Р-5) — платёж маме, алименты, школа: строкой «Людям · N»
- * в «Долгах»; `people` — открыть с включённым (из «+ Людям»).
+ * в «Долгах»; `people` — открыть с включённым (из «+ Людям»). Раздела бюджета в форме нет (Р-7 «понятность»):
+ * подписка и услуга — всегда быт `d4`, `housing` — «Аренда и коммуналка» в жильё `d1`, сумма плавает по умолчанию.
  */
-const props = defineProps<{ open: boolean; people?: boolean }>()
+const props = defineProps<{ open: boolean; people?: boolean; housing?: boolean }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const financeStore = useFinanceStore()
 const people = computed(() => financeStore.people)
 
 const obPeople = ref(false)
-watch(() => props.open, (v) => { if (v) obPeople.value = !!props.people }, { immediate: true })
 const obName = ref('')
 const obAmount = ref('')
 const obEvery = ref<'month' | 'year'>('month')
 const obMonth = ref(String(parseMonthKey(monthKey()).month + 1))
 const obDay = ref('10')
 const obWho = ref<'all' | PersonId>('all')
-const obCategory = ref<CategoryKey>('d4')
 const obEstimate = ref(false)
+// Открытие (и смена вида формы) — заново: «Людям» из пропа, у жилья сумма плавает по умолчанию, «Чья» — «Общая».
+watch(
+  () => props.open && (props.housing ? 'housing' : 'payment'),
+  (v) => {
+    if (!v) return
+    obPeople.value = !!props.people && !props.housing
+    obWho.value = 'all'
+    obEstimate.value = !!props.housing
+  },
+  { immediate: true },
+)
 const obCurrency = ref<Currency>('KZT')
 const nb = useNbRate(obCurrency, () => props.open)
 /** Сумма в тенге по курсу (тенговая — как введена). */
 const obTenge = computed(() => nb.tenge(parseMoney(obAmount.value)))
-
-// Разделы, куда кладётся платёж (React `AddObligationDialog`): цели и свободный
-// остаток — не корзины. Разделы заводятся лениво — имя берётся из запасных.
-const obBuckets = computed(() =>
-  (['d1', 'd2', 'd4'] as CategoryKey[]).map((key) => ({ key, name: categoryName(financeStore.categories, key) })),
-)
 
 const form = useFormCheck(() => [
   ['name', !obName.value.trim() && (obPeople.value ? 'Введите, кому' : 'Введите название')],
@@ -65,7 +68,7 @@ function createObligation() {
     name: obName.value.trim(),
     note: obEvery.value === 'year' ? 'раз в год' : 'ежемесячно',
     day: Math.min(28, Math.max(1, parseMoney(obDay.value) || 1)),
-    category: obCategory.value,
+    category: props.housing ? 'd1' : 'd4',
     estimate: obEstimate.value,
     every: obEvery.value,
     month: obEvery.value === 'year' ? Math.min(12, Math.max(1, parseMoney(obMonth.value) || 1)) : undefined,
@@ -84,8 +87,8 @@ function createObligation() {
 </script>
 
 <template>
-  <Sheet :open="open" title="Регулярный платёж" @close="emit('close')">
-    <div class="mb-3.5 flex items-center justify-between gap-3">
+  <Sheet :open="open" :title="housing ? 'Аренда и коммуналка' : 'Регулярный платёж'" @close="emit('close')">
+    <div v-if="!housing" class="mb-3.5 flex items-center justify-between gap-3">
       <span class="flex items-center gap-1 text-[13.5px] font-medium text-ink">
         Людям
         <Hint label="Людям">Маме, алименты, школа — строкой «Людям» в «Долгах»</Hint>
@@ -94,7 +97,7 @@ function createObligation() {
     </div>
 
     <Field :label="obPeople ? 'Кому' : 'Что оплачиваем'" name="name">
-      <Input v-model="obName" :placeholder="obPeople ? 'Например, маме или школе' : 'Например, интернет или абонемент'" />
+      <Input v-model="obName" :placeholder="housing ? 'Например, аренда или свет' : obPeople ? 'Например, маме или школе' : 'Например, интернет или абонемент'" />
     </Field>
 
     <Field label="Как часто" group>
@@ -104,7 +107,6 @@ function createObligation() {
           { value: 'month', label: 'Каждый месяц' },
           { value: 'year', label: 'Раз в год' },
         ]"
-        class="mb-3"
       />
     </Field>
 
@@ -141,40 +143,11 @@ function createObligation() {
       <NumField v-model="obDay" kind="int" />
     </Field>
 
-    <Field v-if="people.length > 1" label="Чьё это" group>
-      <div class="flex gap-1.5 mb-3">
-        <button
-          type="button"
-          :class="cn('rounded-lg border px-3 py-1.5 text-[12.5px] cursor-pointer', obWho === 'all' ? 'border-brand bg-brand-soft text-brand font-medium' : 'border-line text-ink-2')"
-          @click="obWho = 'all'"
-        >
-          Общее
-        </button>
-        <button
-          v-for="p in people"
-          :key="p.id"
-          type="button"
-          :class="cn('rounded-lg border px-3 py-1.5 text-[12.5px] cursor-pointer', obWho === p.id ? 'border-brand bg-brand-soft text-brand font-medium' : 'border-line text-ink-2')"
-          @click="obWho = p.id"
-        >
-          {{ p.name }}
-        </button>
-      </div>
-    </Field>
-
-    <Field label="В какой раздел бюджета" group>
-      <div class="flex flex-wrap gap-1.5">
-        <button
-          v-for="c in obBuckets"
-          :key="c.key"
-          type="button"
-          :aria-pressed="obCategory === c.key"
-          :class="cn('rounded-lg border px-2.5 py-1.5 text-[12.5px] cursor-pointer', obCategory === c.key ? 'border-brand bg-brand-soft font-semibold text-brand' : 'border-line text-ink-2')"
-          @click="obCategory = c.key"
-        >
-          {{ c.name }}
-        </button>
-      </div>
+    <Field v-if="people.length > 1" label="Чья" group>
+      <Segmented
+        v-model="obWho"
+        :options="[{ value: 'all', label: 'Общая' }, ...people.map((p) => ({ value: p.id, label: p.name }))]"
+      />
     </Field>
 
     <label class="mb-3 flex items-center gap-2.5 text-[13.5px] text-ink">

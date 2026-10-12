@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { allInDebt, budgetAmounts, monthSalaries, untilPayday, creditOutlook, goalDoneMonth, goalMonths, goalTerm, monthPlan, monthSubscriptions, livingPlan, monthPlanPast, monthsBetween, pendingPuts, planExtras, putsLeft, queueStatus, spendFact, planFromSource, planPutSaves, planPuts, planSave, planSpendTotal, subscriptionGroup, type MonthPlanCtx, type MonthPlanState } from './finance'
+import { allInDebt, budgetAmounts, monthSalaries, untilPayday, creditOutlook, goalDoneMonth, goalMonths, goalTerm, monthPlan, monthSubscriptions, livingPlan, monthPlanPast, monthsBetween, pendingPuts, planExtras, putsLeft, queueStatus, spendFact, planFromSource, planPutSaves, planPuts, planSave, planSpendTotal, subscriptionGroup, subscriptionsByWho, type MonthPlanCtx, type MonthPlanState } from './finance'
 import { addMonths } from './dates'
-import type { Allocation, Goal, SpendPlan } from '@/types/finance'
+import type { Allocation, Goal, PersonId, SpendPlan } from '@/types/finance'
 
 /**
  * B2C-86: план месяца против ручного расчёта (правило 6 — числа в комментариях).
@@ -460,6 +460,75 @@ describe('monthSubscriptions — подписки одной группой (Р-
     const items = s.obligations!.filter((o) => !o.group && o.category === 'd4' && !o.estimate).map((o) => ({ obligation: o, amount: o.versions[0]!.amount, paid: false, day: o.day }))
     expect(subscriptionGroup(items, s.obligations!)).toMatchObject({ count: 3, paid: 0, allPaid: false, day: 7 })
     expect(subscriptionGroup(items.slice(0, 1), s.obligations!)).toBeNull()
+  })
+})
+
+/**
+ * PN-27 (Р-7, хвост 1024): «Подписки · N» по «чья». Та же семья: подписка $15 (общая), пакет «Развлечения» — «Музыка»
+ * и «Кино»; `who` задаёт тест.
+ */
+describe('subscriptionsByWho — «Общие · N», «<имя> · N» (PN-27)', () => {
+  const doc = (who: Record<string, PersonId | null>) =>
+    family({
+      obligations: [
+        ...family().obligations!.map((o) => (o.id in who ? { ...o, who: who[o.id] } : o)),
+        { id: 'fun', name: 'Развлечения', note: '', day: 1, category: 'd4', group: true, versions: [], updatedAt: T0 },
+        { id: 'music', name: 'Музыка', note: '', day: 7, category: 'd4', parentId: 'fun', who: who.music ?? null, versions: [{ from: '2026-01', amount: 3_000 }], updatedAt: T0 },
+        { id: 'kino', name: 'Кино', note: '', day: 20, category: 'd4', parentId: 'fun', who: who.kino ?? null, versions: [{ from: '2026-01', amount: 5_000 }], updatedAt: T0 },
+        { id: 'gym', name: 'Зал', note: '', day: 3, category: 'd4', who: who.gym ?? null, versions: [{ from: '2026-01', amount: 15_000 }], updatedAt: T0 },
+      ],
+    })
+  const parts = (who: Record<string, PersonId | null>) => {
+    const s = doc(who)
+    return monthSubscriptions(monthPlan(s, ctx).dues, s.obligations!, s.people!)
+  }
+  const shape = (p: ReturnType<typeof parts>) =>
+    p.byWho.map((w) => [w.who, w.name, w.group.count, w.group.parts.map((g) => [g.name, g.rows.map((d) => d.targetId)])])
+
+  it('разные «чья» — «Общие», затем участники по порядку people; сумма и «N из M» — у всей группы, как раньше', () => {
+    const p = parts({ gym: 'b', music: 'a', kino: 'a' })
+    expect(shape(p)).toEqual([
+      ['all', 'Общие', 1, [['', ['sub']]]],
+      ['a', 'Ильяс', 2, [['Развлечения', ['music', 'kino']]]],
+      ['b', 'Аруна', 1, [['', ['gym']]]],
+    ])
+    expect(p.subs).toMatchObject({ count: 4, total: 7_200 + 3_000 + 5_000 + 15_000, paid: 0 })
+  })
+
+  it('пакет не рвётся: у подписок пакета разные «чья» — пакет целиком в «Общих»', () => {
+    const p = parts({ gym: 'b', music: 'a', kino: 'b' })
+    expect(shape(p)).toEqual([
+      ['all', 'Общие', 3, [['', ['sub']], ['Развлечения', ['music', 'kino']]]],
+      ['b', 'Аруна', 1, [['', ['gym']]]],
+    ])
+  })
+
+  it('один «чья» на всех — одна часть (экран без подзаголовков); участника нет в семье — «Общие»', () => {
+    expect(shape(parts({}))).toEqual([['all', 'Общие', 4, [['', ['gym', 'sub']], ['Развлечения', ['music', 'kino']]]]])
+    expect(parts({ gym: 'c' }).byWho.map((w) => w.who)).toEqual(['all'])
+    expect(parts({ sub: 'b', gym: 'b', music: 'b', kino: 'b' }).byWho.map((w) => [w.who, w.group.count])).toEqual([['b', 4]])
+  })
+
+  it('прямой вызов: части без подписок нет; без people — всё в «Общих»', () => {
+    const s = doc({ gym: 'b' })
+    const items = s.obligations!.filter((o) => !o.group && o.category === 'd4' && !o.estimate).map((o) => ({ obligation: o, amount: o.versions[0]!.amount, paid: false, day: o.day }))
+    expect(subscriptionsByWho(items, s.obligations!, s.people!).map((w) => w.who)).toEqual(['all', 'b'])
+    expect(subscriptionsByWho(items, s.obligations!, []).map((w) => w.who)).toEqual(['all'])
+  })
+
+  it('старый платёж в «Кредитах» (d2, форма до Б8) — в плане месяца строкой, не в «Подписках» и не в частях', () => {
+    const base = doc({ gym: 'b' })
+    const s = { ...base, obligations: [...base.obligations!, { id: 'old', name: 'Рассрочка', note: '', day: 9, category: 'd2' as const, versions: [{ from: '2026-01', amount: 20_000 }], updatedAt: T0 }] }
+    const plan = monthPlan(s, ctx)
+    expect(plan.dues.find((d) => d.targetId === 'old')).toMatchObject({ amount: 20_000 })
+    const p = monthSubscriptions(plan.dues, s.obligations, s.people!)
+    expect(p.rest.map((d) => d.targetId)).toContain('old')
+    expect(p.byWho.flatMap((w) => w.group.parts.flatMap((g) => g.rows.map((d) => d.targetId)))).not.toContain('old')
+  })
+
+  it('без подписок группой (одна подписка) — byWho пусто, subs null', () => {
+    const one = family()
+    expect(monthSubscriptions(monthPlan(one, ctx).dues, one.obligations!, one.people!)).toMatchObject({ subs: null, byWho: [] })
   })
 })
 

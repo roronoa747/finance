@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { PhArrowsClockwise, PhBank, PhCaretRight, PhCoins, PhCreditCard, PhFolderSimple, PhPlus, PhWallet } from '@phosphor-icons/vue'
+import { PhArrowsClockwise, PhBank, PhCalendarPlus, PhCaretRight, PhCoins, PhCreditCard, PhFolderSimple, PhHouse, PhPlus, PhWallet } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, rateField } from '@/lib/money'
 import { monthKey } from '@/lib/dates'
+import { calendarEvents, icsText } from '@/lib/calendar'
+import { shareFile } from '@/lib/share'
 import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
 import {
@@ -20,6 +22,7 @@ import {
   liveObligations,
   monthlyAmount,
   subscriptionGroup,
+  subscriptionsByWho,
 } from '@/lib/finance'
 import type { Account, Credit, Obligation } from '@/types/finance'
 
@@ -28,6 +31,7 @@ import Row from '@/components/kit/Row.vue'
 import Section from '@/components/kit/Section.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Button from '@/components/ui/Button.vue'
+import { useFlash } from '@/components/kit/useFlash'
 import AccountSheet from '@/components/capital/AccountSheet.vue'
 import CreditSheet from '@/components/capital/CreditSheet.vue'
 import ObligationSheet from '@/components/capital/ObligationSheet.vue'
@@ -85,12 +89,12 @@ function creditMeta(c: Credit): string {
 
 /* ------------------ Платежи — справочник ------------------ */
 // Подписки — одной группой (`subscriptionGroup`, та же функция, что в «Месяце»): сумма — в месяц (годовая — долей).
-const subs = computed(() =>
-  subscriptionGroup(
-    obligations.value.filter(isSubscription).map((o) => ({ obligation: o, amount: monthlyAmount(o, key.value, fx.book), paid: false, day: o.day })),
-    financeStore.obligations,
-  ),
+const subItems = computed(() =>
+  obligations.value.filter(isSubscription).map((o) => ({ obligation: o, amount: monthlyAmount(o, key.value, fx.book), paid: false, day: o.day })),
 )
+const subs = computed(() => subscriptionGroup(subItems.value, financeStore.obligations))
+// Раскрытые — по «чья» (PN-27): «Общие · N», «<имя> · N»; одна часть — без подзаголовков.
+const subsByWho = computed(() => (subs.value ? subscriptionsByWho(subItems.value, financeStore.obligations, financeStore.people) : []))
 const subsOpen = ref(false)
 const inSubs = (o: Obligation) => !!subs.value && isSubscription(o)
 
@@ -121,6 +125,15 @@ function openClosedCredit(id: string) {
   selectedCreditId.value = id
 }
 
+/* ------------------ В календарь (PN-28) ------------------ */
+// Платежи, кредиты и дни зарплаты — файлом .ics на своё устройство (viewer тоже: ничего не пишет); после — строка-подсказка.
+const calendarNote = useFlash(4000)
+async function toCalendar() {
+  const ics = icsText(calendarEvents({ obligations: financeStore.obligations, credits: financeStore.credits, people: financeStore.people }))
+  const r = await shareFile(new Blob([ics], { type: 'text/calendar' }), { title: 'Платежи · Family Finance', fileName: 'family-finance.ics' })
+  if (r !== 'cancelled') calendarNote.flash('Открыть в календаре — «Добавить все»')
+}
+
 /* ------------------ Листы ------------------ */
 const selectedAccountId = ref<string | null>(null)
 const selectedCreditId = ref<string | null>(null)
@@ -131,12 +144,13 @@ const accountOpen = ref(false)
 const addOpen = ref(false)
 const addDebtOpen = ref(false)
 const addObligationOpen = ref(false)
+const addHousingOpen = ref(false)
 const addGroupOpen = ref(false)
 
-/** «+ Добавить» в «Платежах» — выбор из трёх, дальше — форма. */
-function addKind(kind: 'payment' | 'debt' | 'group') {
+/** «+ Добавить» в «Платежах» — выбор из четырёх, дальше — форма. */
+function addKind(kind: 'housing' | 'payment' | 'debt' | 'group') {
   addOpen.value = false
-  ;({ payment: addObligationOpen, debt: addDebtOpen, group: addGroupOpen })[kind].value = true
+  ;({ housing: addHousingOpen, payment: addObligationOpen, debt: addDebtOpen, group: addGroupOpen })[kind].value = true
 }
 
 // Окна открываются и по адресу: «+» в шапке, сводка, старые закладки. Формы добавления —
@@ -148,6 +162,7 @@ watch(
     if (!authStore.isViewer) {
       if (q.add === 'debt') addDebtOpen.value = true
       if (q.add === 'payment') addObligationOpen.value = true
+      if (q.add === 'housing') addHousingOpen.value = true
     }
     if (typeof q.credit === 'string') selectedCreditId.value = q.credit
     if (typeof q.obligation === 'string') selectedObligationId.value = q.obligation
@@ -164,6 +179,7 @@ const queryModalOpen = computed(
   () =>
     addDebtOpen.value ||
     addObligationOpen.value ||
+    addHousingOpen.value ||
     // Окно показано, а не только id в ref: удалённая синком запись закрывает лист,
     // но id остаётся — адрес тогда не очистился бы никогда.
     credits.value.some((c) => c.id === selectedCreditId.value || c.id === payoffCreditId.value) ||
@@ -247,7 +263,14 @@ watch(queryModalOpen, (open) => {
 
   <!-- Платежи — справочник: один список по дню, без отметок месяца; подписки — одной строкой -->
   <!-- Сумма платежей месяца — строка «Платежи» в «Месяце» (Р-116). -->
-  <Section title="Платежи" />
+  <Section title="Платежи">
+    <template #action>
+      <Button variant="ghost" size="sm" class="-my-1 px-2" data-calendar @click="toCalendar">
+        <PhCalendarPlus :size="15" /> В календарь
+      </Button>
+    </template>
+  </Section>
+  <p v-if="calendarNote.note.value" class="-mt-0.5 mb-1.5 px-1 text-[12.5px] text-ink-2" data-calendar-note>{{ calendarNote.note.value }}</p>
   <Card flush data-payments>
     <PaymentLine
       v-for="l in lines"
@@ -264,17 +287,20 @@ watch(queryModalOpen, (open) => {
         <PhCaretRight :size="14" class="shrink-0 text-ink-3 transition-transform" :class="subsOpen && 'rotate-90'" />
       </button>
       <div v-if="subsOpen" class="mb-2 ml-[33px] border-l-2 border-line pl-3">
-        <template v-for="g in subs.parts" :key="g.groupId ?? ''">
-          <button
-            v-if="g.groupId"
-            type="button"
-            class="press block cursor-pointer pb-0.5 pt-2.5 text-left text-[11.5px] font-semibold uppercase tracking-[0.04em] text-ink-2"
-            :aria-label="`Группа «${g.name}»`"
-            @click="selectedGroupId = g.groupId"
-          >
-            {{ g.name }} ›
-          </button>
-          <PaymentLine v-for="x in g.rows" :key="x.obligation.id" dense :item="{ kind: 'obligation', obligation: x.obligation }" :period="key" @open="selectedObligationId = x.obligation.id" />
+        <template v-for="w in subsByWho" :key="w.who">
+          <p v-if="subsByWho.length > 1" class="pb-0.5 pt-3 text-[13px] font-semibold text-ink" :data-subs-who="w.who">{{ w.name }} · {{ w.group.count }}</p>
+          <template v-for="g in w.group.parts" :key="g.groupId ?? ''">
+            <button
+              v-if="g.groupId"
+              type="button"
+              class="press block cursor-pointer pb-0.5 pt-2.5 text-left text-[11.5px] font-semibold uppercase tracking-[0.04em] text-ink-2"
+              :aria-label="`Группа «${g.name}»`"
+              @click="selectedGroupId = g.groupId"
+            >
+              {{ g.name }} ›
+            </button>
+            <PaymentLine v-for="x in g.rows" :key="x.obligation.id" dense :item="{ kind: 'obligation', obligation: x.obligation }" :period="key" @open="selectedObligationId = x.obligation.id" />
+          </template>
         </template>
       </div>
     </div>
@@ -304,14 +330,17 @@ watch(queryModalOpen, (open) => {
     </div>
   </Card>
 
-  <!-- Что добавить: три вида платежа -->
+  <!-- Что добавить: четыре вида платежа; жильё — своим входом (Р-7 «понятность») -->
   <Sheet :open="addOpen" title="Добавить" @close="addOpen = false">
     <div class="flex flex-col gap-2">
+      <Button variant="secondary" class="w-full justify-start" @click="addKind('housing')">
+        <PhHouse :size="16" /> Аренда и коммуналка
+      </Button>
       <Button variant="secondary" class="w-full justify-start" @click="addKind('payment')">
-        <PhPlus :size="16" weight="bold" /> Подписка или услуга
+        <PhArrowsClockwise :size="16" /> Подписка или услуга
       </Button>
       <Button variant="secondary" class="w-full justify-start" @click="addKind('debt')">
-        <PhPlus :size="16" weight="bold" /> Долг — банку или человеку
+        <PhCreditCard :size="16" /> Долг — банку или человеку
       </Button>
       <Button variant="secondary" class="w-full justify-start" @click="addKind('group')">
         <PhFolderSimple :size="16" /> Группа подписок
@@ -343,5 +372,9 @@ watch(queryModalOpen, (open) => {
     @open-obligation="(id) => { selectedGroupId = null; selectedObligationId = id }"
   />
   <NewDebtSheet :open="addDebtOpen" @close="addDebtOpen = false" />
-  <NewObligationSheet :open="addObligationOpen" @close="addObligationOpen = false" />
+  <NewObligationSheet
+    :open="addObligationOpen || addHousingOpen"
+    :housing="addHousingOpen"
+    @close="addObligationOpen = false; addHousingOpen = false"
+  />
 </template>

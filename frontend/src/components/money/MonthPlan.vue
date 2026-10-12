@@ -234,7 +234,7 @@ function pick(person: PersonId) {
 
 /* ---------- платежи: подписки группой (Р-93), «Оплатил» нажатием строки (Р-94) ---------- */
 const dueKey = (d: PlanDue) => `${d.kind}:${d.targetId}`
-const grouped = computed(() => monthSubscriptions(plan.value.dues, finance.obligations))
+const grouped = computed(() => monthSubscriptions(plan.value.dues, finance.obligations, finance.people))
 type DueLine = { key: string; day: number; due: PlanDue | null }
 const dueLines = computed<DueLine[]>(() => {
   const lines: DueLine[] = grouped.value.rest.map((d) => ({ key: dueKey(d), day: d.day, due: d }))
@@ -497,21 +497,25 @@ function addFund(kind: 'reserve' | 'cushion') {
                 </span>
                 <PhCaretRight :size="15" class="shrink-0 text-ink-3 transition-transform" :class="subsOpen && 'rotate-90'" />
               </button>
+              <!-- Раскрыто — по «чья» (PN-27): «Общие · N», «<имя> · N»; одна часть — без подзаголовков -->
               <div v-if="subsOpen" class="mb-2 ml-[18px] border-l-2 border-line pl-3.5">
-                <template v-for="g in grouped.subs.parts" :key="g.groupId ?? ''">
-                  <p v-if="g.name" class="pb-0.5 pt-2.5 text-[11.5px] font-semibold uppercase tracking-[0.04em] text-ink-2">{{ g.name }}</p>
-                  <DueRow
-                    v-for="d in g.rows"
-                    :id="dueKey(d)"
-                    :key="d.targetId"
-                    :due="d"
-                    :mon="mon"
-                    :payer-name="personName(d.payer)"
-                    :note="dueNote(d)"
-                    :can-edit="canEdit"
-                    @open="payFor = dueKey(d)"
-                    @payer="askPayer(d)"
-                  />
+                <template v-for="w in grouped.byWho" :key="w.who">
+                  <p v-if="grouped.byWho.length > 1" class="pb-0.5 pt-3 text-[13px] font-semibold text-ink" :data-subs-who="w.who">{{ w.name }} · {{ w.group.count }}</p>
+                  <template v-for="g in w.group.parts" :key="g.groupId ?? ''">
+                    <p v-if="g.name" class="pb-0.5 pt-2.5 text-[11.5px] font-semibold uppercase tracking-[0.04em] text-ink-2">{{ g.name }}</p>
+                    <DueRow
+                      v-for="d in g.rows"
+                      :id="dueKey(d)"
+                      :key="d.targetId"
+                      :due="d"
+                      :mon="mon"
+                      :payer-name="personName(d.payer)"
+                      :note="dueNote(d)"
+                      :can-edit="canEdit"
+                      @open="payFor = dueKey(d)"
+                      @payer="askPayer(d)"
+                    />
+                  </template>
                 </template>
               </div>
             </div>

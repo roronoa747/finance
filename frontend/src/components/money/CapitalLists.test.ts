@@ -741,23 +741,55 @@ describe('PV-11: форма платежа и модалка обязатель�
 
   const pressed = (html: string, label: string) => new RegExp(`aria-pressed="true"[^>]*>\\s*${label}\\s*<`).test(html)
   const button = (label: string) => new RegExp(`>\\s*${label}\\s*</button>`)
+  // SSR ставит `checked` перед `type` — проверяем атрибут в самом теге флажка.
+  const checkedBox = /<input(?=[^>]*type="checkbox")[^>]*\schecked[\s>]/
 
-  it('форма: «В какой раздел бюджета» — жильё, кредиты, быт (имена семьи), быт по умолчанию; флажок оценки', async () => {
+  it('PN-26: форма подписки — разделов бюджета нет, «Чья» — Общая по умолчанию; флажок оценки выключен', async () => {
     await family()
     const html = await render('/capital?add=payment')
-    expect(html).toContain('В какой раздел бюджета')
-    for (const name of ['Дом', 'Кредиты', 'Еда и быт']) expect(html).toMatch(button(name))
-    expect(html).not.toMatch(button('Цели'))
-    expect(html).not.toMatch(button('Свободно'))
-    expect(pressed(html, 'Еда и быт')).toBe(true)
+    expect(html).toContain('Регулярный платёж')
+    expect(html).not.toContain('В какой раздел бюджета')
+    for (const name of ['Дом', 'Кредиты', 'Еда и быт']) expect(html).not.toMatch(button(name))
+    expect(html).toContain('>Чья</span>')
+    expect(pressed(html, 'Общая')).toBe(true)
     expect(html).toContain('Сумма плавает — показывать как оценку')
-    expect(html).not.toMatch(/type="checkbox"[^>]*checked/)
+    expect(html).not.toMatch(checkedBox)
   })
 
-  it('форма в пустом документе — запасные имена разделов', async () => {
-    await family('member', false)
-    const html = await render('/capital?add=payment')
-    for (const name of ['Жильё', 'Кредиты', 'Еда и быт']) expect(html).toMatch(button(name))
+  it('PN-26: «+ Добавить» — четыре пункта, «Аренда и коммуналка» первой; ?add=housing — форма жилья', async () => {
+    await family()
+    const list = await render('/capital', { addOpen: true })
+    const at = ['Аренда и коммуналка', 'Подписка или услуга', 'Долг — банку или человеку', 'Группа подписок'].map((t) => list.indexOf(t))
+    expect(at.every((i) => i >= 0)).toBe(true)
+    expect([...at].sort((x, y) => x - y)).toEqual(at)
+
+    const html = await render('/capital?add=housing')
+    expect(html).toContain('Аренда и коммуналка')
+    expect(html).toContain('placeholder="Например, аренда или свет"')
+    expect(html).not.toContain('В какой раздел бюджета')
+    expect(html).not.toContain('aria-label="Людям"')
+    expect(html).toMatch(checkedBox)
+  })
+
+  it('PN-27: «Подписки» раскрыты — «Общие · 1», «Аруна · 1» (data-subs-who); viewer видит; свёрнуто — частей нет', async () => {
+    for (const role of ['member', 'viewer'] as const) {
+      await family(role)
+      useFinanceStore().addObligation({ name: 'Spotify', day: 7, category: 'd4', who: 'b', amount: 3_000 })
+      const closed = await render('/capital')
+      expect(closed).toContain('Подписки · 2')
+      expect(closed).not.toContain('data-subs-who')
+      const html = await render('/capital', { subsOpen: true })
+      const parts = [...html.matchAll(/data-subs-who="(\w+)"[^>]*>([^<]*)</g)].map((m) => [m[1], m[2]])
+      expect(parts).toEqual([['all', 'Общие · 1'], ['b', 'Аруна · 1']])
+      expect(html.indexOf('Страховка')).toBeLessThan(html.indexOf('data-subs-who="b"'))
+      expect(html.indexOf('Spotify')).toBeGreaterThan(html.indexOf('data-subs-who="b"'))
+    }
+  })
+
+  it('PN-26: viewer — ?add=housing формы не открывает', async () => {
+    await family('viewer')
+    const html = await render('/capital?add=housing')
+    expect(html).not.toContain('Например, аренда или свет')
   })
 
   it('форма «Раз в год»: сетка месяцев и подсказка про двенадцатую часть', async () => {
@@ -771,11 +803,11 @@ describe('PV-11: форма платежа и модалка обязатель�
     )
   })
 
-  it('модалка обязательства: поля React, «Чьё это», история суммы с причиной, удаление', async () => {
+  it('модалка обязательства: поля React, «Чья», история суммы с причиной, удаление', async () => {
     const { money } = await import('@/lib/money')
     await family()
     const html = await render('/capital?obligation=rent')
-    for (const label of ['Название', 'Сумма сейчас, ₸', 'День платежа', 'Как часто', 'Чьё это']) {
+    for (const label of ['Название', 'Сумма сейчас, ₸', 'День платежа', 'Как часто', 'Чья']) {
       expect(html).toContain(`>${label}</span>`)
     }
     // Пояснение исправления — в подсказке (?) у строки, как в форме оклада (правило 12, ревью Б13 Н-7).
@@ -788,26 +820,17 @@ describe('PV-11: форма платежа и модалка обязатель�
     expect(history.indexOf('станет с ноября 2026')).toBeLessThan(history.indexOf('с января 2026'))
     expect(history).toContain(money(220_000))
     expect(history).toContain('индексация')
-    expect(html).toContain('Удалить обязательство')
+    expect(html).toContain('Удалить платёж')
   })
 
-  it('модалка: «В какой раздел бюджета» — раздел меняется правкой, а не удалением (исключение из Р-2, Р-14)', async () => {
+  it('PN-26: модалка — раздела бюджета нет, запись остаётся в своём разделе (старые d2 — как были)', async () => {
     await family()
     const store = useFinanceStore()
     const html = await render('/capital?obligation=ins')
-    const section = html.slice(html.indexOf('В какой раздел бюджета'))
-    for (const name of ['Дом', 'Кредиты', 'Еда и быт']) expect(section).toMatch(button(name))
-    expect(pressed(section, 'Еда и быт')).toBe(true)
-
-    // «Страховка» из быта в жильё: тот же id и история, подпиской больше не считается.
-    const { isSubscription } = await import('@/lib/finance')
-    expect(isSubscription(store.obligations.find((o) => o.id === 'ins')!)).toBe(true)
-    await render('/capital?obligation=ins', {}, (s) => (s.editObligation as (p: object) => void)({ category: 'd1' }))
-    const moved = store.obligations.find((o) => o.id === 'ins')!
-    expect(moved).toMatchObject({ id: 'ins', category: 'd1', versions: [{ from: '2000-01', amount: 60_000 }] })
-    expect(isSubscription(moved)).toBe(false)
-    const after = await render('/capital?obligation=ins')
-    expect(pressed(after.slice(after.indexOf('В какой раздел бюджета')), 'Дом')).toBe(true)
+    expect(html).not.toContain('В какой раздел бюджета')
+    for (const name of ['Дом', 'Кредиты', 'Еда и быт']) expect(html).not.toMatch(button(name))
+    expect(store.obligations.find((o) => o.id === 'ins')).toMatchObject({ category: 'd4' })
+    expect(store.obligations.find((o) => o.id === 'rent')).toMatchObject({ category: 'd1' })
   })
 
   it('годовое: сетка месяцев с отмеченным и доля в плане месяца', async () => {
@@ -856,7 +879,7 @@ describe('PV-11: форма платежа и модалка обязатель�
     const html = await render('/capital?obligation=rent')
     expect(html).not.toContain('Сумма сейчас, ₸')
     expect(html).not.toContain('Запланировать изменение')
-    expect(html).not.toContain('Удалить обязательство')
+    expect(html).not.toContain('Удалить платёж')
     expect(html).not.toContain('<input')
     expect(html).not.toContain('В какой раздел бюджета')
     expect(html).toContain('Сумма сейчас')

@@ -17,7 +17,6 @@ import {
 } from '@/lib/finance'
 import type { Currency, Obligation, PersonId } from '@/types/finance'
 import { CURRENCY_SIGN } from '@/lib/fx'
-import { categoryName, type CategoryKey } from '@/lib/palette'
 import { cn } from '@/lib/utils'
 
 import CurrencyChips from '@/components/kit/CurrencyChips.vue'
@@ -54,12 +53,6 @@ const people = computed(() => financeStore.people)
 const groups = computed(() => liveGroups(financeStore.obligations))
 const activeObligation = computed(() =>
   liveObligations(financeStore.obligations).find((o) => o.id === props.obligationId),
-)
-
-// Разделы, куда кладётся платёж (как в форме нового платежа): цели и свободный остаток —
-// не корзины.
-const obBuckets = computed(() =>
-  (['d1', 'd2', 'd4'] as CategoryKey[]).map((key) => ({ key, name: categoryName(financeStore.categories, key) })),
 )
 
 const obPlanning = ref(false)
@@ -233,30 +226,15 @@ function planObligation() {
           </p>
         </template>
 
-        <Field v-if="people.length > 1" label="Чьё это" group>
+        <Field v-if="people.length > 1" label="Чья" group>
           <Segmented
             :model-value="activeObligation.who ?? 'all'"
-            :options="[{ value: 'all', label: 'Общее' }, ...people.map((p) => ({ value: p.id, label: p.name }))]"
+            :options="[{ value: 'all', label: 'Общая' }, ...people.map((p) => ({ value: p.id, label: p.name }))]"
             @update:model-value="setObligationWho"
           />
         </Field>
 
-        <!-- Раздела в модалке React нет — исключение из Р-2: иначе испорченный раздел не поправить (Р-14). -->
-        <Field label="В какой раздел бюджета" group>
-          <div class="flex flex-wrap gap-1.5">
-            <button
-              v-for="c in obBuckets"
-              :key="c.key"
-              type="button"
-              :aria-pressed="activeObligation.category === c.key"
-              :class="cn('rounded-lg border px-2.5 py-1.5 text-[12.5px] cursor-pointer', activeObligation.category === c.key ? 'border-brand bg-brand-soft font-semibold text-brand' : 'border-line text-ink-2')"
-              @click="editObligation({ category: c.key })"
-            >
-              {{ c.name }}
-            </button>
-          </div>
-        </Field>
-
+        <!-- Раздела бюджета в листе нет (Р-7 «понятность»): `category` записи остаётся как была, старые платежи в d2 — там же. -->
         <label class="mb-3 flex items-center gap-2.5 text-[13.5px] text-ink">
           <input
             type="checkbox"
@@ -332,8 +310,8 @@ function planObligation() {
 
       <DangerZone
         v-if="!authStore.isViewer"
-        label="Удалить обязательство"
-        warning="Обязательство исчезнет у обоих участников вместе с историей суммы. Отменить нельзя."
+        label="Удалить платёж"
+        warning="Платёж исчезнет у обоих участников вместе с историей суммы. Отменить нельзя."
         @confirm="() => { financeStore.removeObligation(activeObligation!.id); emit('close') }"
       />
     </template>

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { PhDownloadSimple, PhShareNetwork } from '@phosphor-icons/vue'
-import { WALLPAPER_FILE, loadStoryImage, renderStory, shareStory, storyText, withoutMoney, type StoryData, type StoryKind, type StoryTexts } from '@/lib/storyCard'
+import { STORY_FILE, WALLPAPER_FILE, loadStoryImage, renderStory, storyText, withoutMoney, type StoryData, type StoryKind, type StoryTexts } from '@/lib/storyCard'
+import { shareFile } from '@/lib/share'
 import Button from '@/components/ui/Button.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -70,12 +71,12 @@ watch(
 
 async function share() {
   if (!blob.value) return
-  const r = await shareStory(blob.value, { title: shareTitle.value })
+  const r = await shareFile(blob.value, { title: shareTitle.value, fileName: STORY_FILE })
   if (r !== 'cancelled') result.value = r
 }
 async function save() {
   if (!blob.value) return
-  const r = await shareStory(blob.value, { title: shareTitle.value }, null)
+  const r = await shareFile(blob.value, { title: shareTitle.value, fileName: STORY_FILE }, null)
   if (r !== 'cancelled') result.value = r
 }
 
@@ -92,7 +93,7 @@ async function wallpaper() {
     const image = src ? await loadStoryImage(src) : null
     const png = await renderStory(document.createElement('canvas'), { image, texts: storyText('wallpaper', props.data) })
     const name = withoutMoney(props.data.goalName ?? '') || 'Мечта'
-    const r = await shareStory(png, { title: `Обои · ${name}`, fileName: WALLPAPER_FILE })
+    const r = await shareFile(png, { title: `Обои · ${name}`, fileName: WALLPAPER_FILE })
     if (r === 'shared') wallpaperNote.value = 'Сохранено — поставьте на экран блокировки из «Фото»'
     else if (r === 'downloaded') wallpaperNote.value = 'Сохранено в загрузки'
   } catch (err) {

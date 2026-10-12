@@ -157,11 +157,15 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     const html = await renderScreen(AppShell, '/', undefined, [screenMixin({ addOpen: true })])
     expect(html).toContain('role="dialog"')
     expect(html).toContain('bg-scrim')
-    const order = ['Загрузить выписку', 'Новая мечта', 'Покупка в список желаний', 'Внеплановый доход', 'Обязательство или подписка', 'кредит, рассрочка, человеку']
+    const order = ['Загрузить выписку', 'Новая мечта', 'Покупка в список желаний', 'Внеплановый доход', 'Подписка или платёж', 'кредит, рассрочка, человеку']
     const at = order.map((t) => html.indexOf(t))
     expect(at.every((i) => i >= 0)).toBe(true)
     expect([...at].sort((a, b) => a - b)).toEqual(at)
     expect(html).toContain('Kaspi или Freedom — траты недели по разделам')
+    // PN-26: пункт платежа — без «аренды» (жильё — свой вход в «Капитале»), ведёт в форму подписки.
+    expect(html).toContain('связь, подписки, страховка')
+    expect(html).not.toContain('Обязательство или подписка')
+    expect(html).not.toContain('аренда, связь')
   })
 
   it('PN-17: в «+» после «Долга» — «Прикинуть кредит» (→ /money/debts?try=1) и «Хватит ли?» (→ /month?afford=1)', async () => {
@@ -179,7 +183,7 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     signIn('viewer', 'b')
     const html = await renderScreen(AppShell, '/', undefined, [screenMixin({ addOpen: true })])
     expect(html).not.toContain('aria-label="Добавить"')
-    for (const t of ['Покупка в список желаний', 'Загрузить выписку', 'Новая мечта', 'Внеплановый доход', 'Обязательство или подписка', 'кредит, рассрочка, человеку', 'Прикинуть кредит', 'Хватит ли?']) {
+    for (const t of ['Покупка в список желаний', 'Загрузить выписку', 'Новая мечта', 'Внеплановый доход', 'Подписка или платёж', 'кредит, рассрочка, человеку', 'Прикинуть кредит', 'Хватит ли?']) {
       expect(html).not.toContain(t)
     }
   })

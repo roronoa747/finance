@@ -4078,11 +4078,55 @@ function rowsGroup<T extends SubsItem>(items: T[], all: Obligation[]): SubsGroup
   }
 }
 
-/** Платежи месяца для списка (Р-93): подписки — группой, остальные — строками как были. */
-export function monthSubscriptions<T extends MonthDue>(dues: T[], all: Obligation[]): { rest: T[]; subs: SubsGroup<Extract<T, { kind: 'obligation' }>> | null } {
+/** Часть «Подписок» по «чья» (Р-7 «понятность», PN-27): `'all'` — «Общие», иначе участник. */
+export type SubsWhoPart<T> = { who: PersonId | 'all'; name: string; group: SubsGroup<T> }
+
+/**
+ * «Подписки · N» по «чья» (Р-7, хвост 1024): «Общие» (`who` пусто или участника больше нет), затем участники в порядке
+ * `people`; части без подписок нет. Внутри части — те же подгруппы, что у `subscriptionGroup`. Ручной пакет не рвётся:
+ * у всех его подписок один `who` — пакет в части этого участника, разные — целиком в «Общих». Одна часть — экран
+ * подзаголовков не рисует.
+ */
+export function subscriptionsByWho<T extends SubsItem>(items: T[], all: Obligation[], people: Person[]): SubsWhoPart<T>[] {
+  const known = new Set(people.map((p) => p.id))
+  const whoOf = (o: Obligation): PersonId | 'all' => (o.who && known.has(o.who) ? o.who : 'all')
+  const groupIds = new Set(liveGroups(all).map((g) => g.id))
+  const packWho = new Map<string, PersonId | 'all'>()
+  for (const x of items) {
+    const id = x.obligation.parentId
+    if (!id || !groupIds.has(id)) continue
+    const w = whoOf(x.obligation)
+    packWho.set(id, packWho.has(id) && packWho.get(id) !== w ? 'all' : w)
+  }
+  const keyOf = (x: T) => {
+    const id = x.obligation.parentId
+    return id && packWho.has(id) ? packWho.get(id)! : whoOf(x.obligation)
+  }
+  const order: { who: PersonId | 'all'; name: string }[] = [
+    { who: 'all', name: 'Общие' },
+    ...people.map((p) => ({ who: p.id, name: p.name })),
+  ]
+  return order.flatMap(({ who, name }) => {
+    const rows = items.filter((x) => keyOf(x) === who)
+    return rows.length ? [{ who, name, group: rowsGroup(rows, all) }] : []
+  })
+}
+
+/**
+ * Платежи месяца для списка (Р-93): подписки — группой, остальные — строками как были; `byWho` — та же группа по
+ * «чья» (PN-27; `people` не дали — одна часть «Общие»).
+ */
+export function monthSubscriptions<T extends MonthDue>(
+  dues: T[],
+  all: Obligation[],
+  people: Person[] = [],
+): { rest: T[]; subs: SubsGroup<Extract<T, { kind: 'obligation' }>> | null; byWho: SubsWhoPart<Extract<T, { kind: 'obligation' }>>[] } {
   const isSub = (d: T): d is Extract<T, { kind: 'obligation' }> => d.kind === 'obligation' && isSubscription(d.obligation)
-  const subs = subscriptionGroup(dues.filter(isSub), all)
-  return subs ? { rest: dues.filter((d) => !isSub(d)), subs } : { rest: dues, subs: null }
+  const items = dues.filter(isSub)
+  const subs = subscriptionGroup(items, all)
+  return subs
+    ? { rest: dues.filter((d) => !isSub(d)), subs, byWho: subscriptionsByWho(items, all, people) }
+    : { rest: dues, subs: null, byWho: [] }
 }
 
 /** Дело «отложить» месяца (Р-97, ворота B2C-91): строка очереди как пункт списка — «Отложил» ✓. */
