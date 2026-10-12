@@ -213,4 +213,59 @@ describe('e2e / понятность Блок 7 — ритм зарплаты', 
     expect(salaries(A).map((p) => [p.period, p.amount, p.accountId])).toEqual([[KEY, 700_000, 'card']])
     expect(text(rowOf(await screen(A.pinia, Month, '/month'), 'a'))).toContain('✓')
   })
+
+  /**
+   * Приёмка Б7 (стенд, 2026-10-12): неделя не по пятницам и плавающая сумма у недели; первый аванс партнёра — листом со
+   * счётом. Лист отметки в SSR открыт сразу: поле суммы вписывает смесь, «Отметить …» — `confirmMark` того листа, что
+   * открыт на зарплату (листы платежей пропускаются обращением к несуществующему полю).
+   */
+  const confirmSalarySheet = (amount: string) =>
+    screenMixin({}, (s) => {
+      void (s.salary && s.mode === 'mark' ? s.confirmMark : s.notThisSheet)
+      s.amountText = amount
+      s.chosen = 'card'
+      ;(s.confirmMark as () => void)()
+    })
+
+  it('(ж) приёмка: среда, сумма меняется — «≈ 480 000», «Пришла» листом 130 000 → ждём 123 333 за последнюю среду; аванс Аруны первым разом — лист «Отметить аванс» со счётом', async () => {
+    const before = ['2026-09-30', '2026-10-07', '2026-10-14'].map((d) => salaryRec('a', d, 120_000))
+    server = fakeServer(rhythmDoc({ salary: 120_000, weekday: 3, floating: true }, before))
+    at('2026-10-21T07:00:00Z')
+    const A = await phone(server, st, 'a')
+    expect(incomeOf(A, 'a')).toMatchObject({ amount: 480_000, cameCount: 2, eventCount: 4, came: false })
+    expect(incomeOf(A, 'a').events.map((e) => e.day)).toEqual(['2026-10-07', '2026-10-14', '2026-10-21', '2026-10-28'])
+    const row = text(rowOf(await screen(on(A).pinia, Month, '/month'), 'a'))
+    expect(row).toMatch(/≈\s480\s000/)
+    expect(row).toContain('✓ 2 из 4 пришли')
+
+    // «Пришла» у плавающей — только лист: одной отметки без суммы нет.
+    expect(text(await screen(A.pinia, Month, '/month', undefined, tap()))).toContain('Отметить зарплату')
+    expect(salaries(A).map((p) => p.period)).toEqual(['2026-10-07', '2026-10-14'])
+    await screen(A.pinia, Month, '/month', undefined, [...tap(), confirmSalarySheet('130 000')])
+    expect(salaries(A).map((p) => [p.period, p.amount, p.accountId])).toEqual([
+      ['2026-10-07', 120_000, 'card'], ['2026-10-14', 120_000, 'card'], ['2026-10-21', 130_000, 'card'],
+    ])
+    // Последняя среда — среднее трёх последних недель (120 / 120 / 130 тысяч), целое.
+    expect(incomeOf(A, 'a')).toMatchObject({ amount: 120_000 + 120_000 + 130_000 + 123_333, cameCount: 3, came: false })
+    const after = text(rowOf(await screen(A.pinia, Month, '/month'), 'a'))
+    expect(after).toMatch(/≈\s493\s333/)
+    expect(after).toContain('✓ 3 из 4 пришли')
+
+    // Аруна: аванс 15-го прошёл и не отмечен — «Пришла» в её строке; прошлого счёта нет — лист со счётом.
+    await on(A).store.syncHousehold(A.client)
+    const B = await phone(server, st, 'b')
+    const rowB = rowOf(await screen(on(B).pinia, Month, '/month'), 'b')
+    expect(rowB).toContain('data-salary-came-btn')
+    const sheet = text(await screen(B.pinia, Month, '/month', undefined, tap()))
+    expect(sheet).toMatch(/Аванс\s—\s200\s000\s₸/)
+    expect(sheet).toContain('Отметить аванс')
+    expect(salaries(B, 'b')).toEqual([])
+    await screen(B.pinia, Month, '/month', undefined, [...tap(), confirmSalarySheet('200 000')])
+    expect(salaries(B, 'b').map((p) => [p.period, p.amount, p.accountId])).toEqual([['2026-10-15', 200_000, 'card']])
+    expect(text(rowOf(await screen(B.pinia, Month, '/month'), 'b'))).toContain('✓ 1 из 2 пришли')
+    // «До зарплаты» — последняя среда Ильяса (7 дней), раньше остатка Аруны 30-го; ждём среднее.
+    expect(untilPayday({ people: B.store.people, payments: B.store.payments }, { key: KEY, day: 21 })).toMatchObject({
+      who: { id: 'a' }, period: '2026-10-28', inDays: 7, income: 123_333, kind: 'week',
+    })
+  })
 })
