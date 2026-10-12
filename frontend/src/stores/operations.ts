@@ -20,7 +20,7 @@ import {
 import { markedOps, matchCandidates, matchKey, operationAt, paymentFits, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
 import type { MerchantRule, Operation, ParsedStatement, SpendTotal } from '@/lib/statements/types'
 import type { OperationWire, StatementUploadResponse } from '@/types/api'
-import type { PersonId, TripSpend } from '@/types/finance'
+import type { Goal, PersonId, TripSpend } from '@/types/finance'
 
 // Операции выписок (B2C-07): личная копия своих операций, очередь неотправленного, записи
 // загрузок семьи и черновик разбора. Файл выписки разбирается на телефоне и никуда не уходит
@@ -385,6 +385,18 @@ export const useOperationsStore = defineStore('operations', () => {
   const tripExcludedOf = (goalId: string) => new Set(finance.tripExcluded.filter((x) => x.goalId === goalId).map((x) => x.id))
 
   /**
+   * Свои строки поездки (PN-31): `ops` — в итоге (`tripOps`, те же, что пишет `writeTripTotals`), `excluded` — снятые
+   * «Убрать» и всё ещё свои за даты; `marked` — платежи по отметкам один раз на оба списка.
+   */
+  function tripLists(goal: Pick<Goal, 'id' | 'from' | 'to'>, marked = totalMarks(all.value).marked): { ops: Operation[]; excluded: Operation[] } {
+    const excludedIds = tripExcludedOf(goal.id)
+    return {
+      ops: tripOps(all.value, goal, marked, excludedIds),
+      excluded: tripOps(all.value, goal, marked, new Set()).filter((o) => excludedIds.has(o.id)),
+    }
+  }
+
+  /**
    * Итог поездки этого участника (PN-30, Р-14) — запись `tripSpends` `<цель>:<я>` из своих операций за даты поездки
    * (`tripOps`: без отметок платежей и снятых). Поездки с датами, кроме ещё не начавшихся; сбывшаяся цель не
    * пересчитывается (запись остаётся). Тот же итог второй раз не пишется; пустой итог без прежней записи — тоже.
@@ -397,14 +409,15 @@ export const useOperationsStore = defineStore('operations', () => {
       const s = tripStatus(g, today)
       return s === 'during' || s === 'after'
     })
-    if (!trips.length) return
+    // На телефоне ещё нет своих операций (новый вход до `pull`) — записи не трогаем: ноль затёр бы итог с другого устройства.
+    if (!trips.length || !all.value.length) return
     const at = new Date().toISOString()
     const marked = totalMarks(all.value).marked
     const byId = new Map((finance.householdDoc.tripSpends ?? []).map((t) => [t.id, t]))
     const writes: TripSpend[] = []
     for (const g of trips) {
       const id = `${g.id}:${by}`
-      const { amount, ops: n } = tripTotal(tripOps(all.value, g, marked, tripExcludedOf(g.id)))
+      const { amount, ops: n } = tripTotal(tripLists(g, marked).ops)
       const prev = byId.get(id)
       if (prev && !prev.deletedAt ? prev.amount === amount && prev.ops === n : !amount && !n) continue
       writes.push({ id, goalId: g.id, by, amount, ops: n, updatedAt: at })
@@ -732,6 +745,7 @@ export const useOperationsStore = defineStore('operations', () => {
     seedDemoUploads,
     seedDemoOperations,
     writeTripTotals,
+    tripLists,
     clear,
   }
 })

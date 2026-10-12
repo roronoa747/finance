@@ -23,8 +23,9 @@ import {
   movementMonth,
   payableAccounts,
   planForecast,
+  tripStatus,
 } from '@/lib/finance'
-import { addMonths, atLabel, monthIn, monthKey, monthTitle, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
+import { addMonths, atLabel, monthIn, monthKey, monthTitle, MONTHS_NOM, parseMonthKey, todayIso, weekRangeLabel } from '@/lib/dates'
 import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
 import { cn, plural } from '@/lib/utils'
@@ -58,6 +59,7 @@ import DoneSheet from '@/components/goals/DoneSheet.vue'
 import GoalSheet from '@/components/goals/GoalSheet.vue'
 import PhotoPicker from '@/components/goals/PhotoPicker.vue'
 import StorySheet from '@/components/goals/StorySheet.vue'
+import TripCard from '@/components/goals/TripCard.vue'
 import Button from '@/components/ui/Button.vue'
 import { buttonVariants } from '@/components/ui/button'
 import Input from '@/components/ui/Input.vue'
@@ -166,6 +168,11 @@ const leftLine = computed(() => {
 const indexed = computed(() =>
   goal.value && !isFund.value && doneMonth.value ? indexedNeed(goal.value.need, monthsBetween(monthKey(), doneMonth.value)) : null,
 )
+
+/* ------------------ Поездка (PN-31, Р-14) ------------------ */
+// До поездки — экран как обычно, даты строкой в «Подробнее»; с первого дня — карточка «Потрачено N из M» под героем.
+const trip = computed(() => (goal.value ? tripStatus(goal.value, todayIso()) : 'none'))
+const tripDates = computed(() => (goal.value?.from && goal.value.to ? `Поездка ${weekRangeLabel({ from: goal.value.from, to: goal.value.to })}` : ''))
 
 /* ------------------ Взнос полем (исключение из Р-2, владелец 2026-09-25) ------------------ */
 // «Сохранено» — по самому взносу, а не по updatedAt цели: пополнение тоже меняет цель, но
@@ -444,6 +451,9 @@ function share() {
       @remove="removePhoto"
     />
 
+    <!-- Поездка (PN-31): в пути и после — «Потрачено N из M» у мечты; срок и «Пополнить» ниже остаются (копить можно). -->
+    <TripCard v-if="trip === 'during' || trip === 'after'" :goal="goal" :status="trip" />
+
     <!-- Карточка g4: срок цели (живёт здесь, Р-116), взнос в месяц и одна главная — «Пополнить» у срока. -->
     <!-- Сбывшаяся (PN-14): вместо срока — месяц и «за N месяцев»; действий нет. -->
     <Card v-if="isDone">
@@ -502,6 +512,7 @@ function share() {
       <summary :class="cn(buttonVariants({ variant: 'ghost' }), 'flex w-full list-none [&::-webkit-details-marker]:hidden')">Подробнее</summary>
       <div class="mt-2 flex flex-col gap-3">
         <p v-if="leftLine" class="px-1 text-[14px] text-ink-2 num" data-goal-left>{{ leftLine }}</p>
+        <p v-if="tripDates" class="px-1 text-[14px] text-ink-2 num" data-trip-dates>{{ tripDates }}</p>
         <!-- Взнос вводится числом, а не ползунком (исключение из Р-2, владелец 2026-09-25). Viewer — только сумма. -->
         <Card v-if="canEdit">
           <div class="-mb-3.5 flex justify-end">

@@ -177,6 +177,27 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
     expect(await renderScreen(Dreams, '/')).not.toContain('data-done-album')
   })
 
+  it('PN-31: герой в поездке — «потрачено N из M» (итог семьи) вместо «ближе на N дней»; до поездки — как было', async () => {
+    const movement = { id: 'm1', date: '2026-09-15T07:00:00.000Z', amount: 100_000, by: 'a' as const }
+    const trip = (from: string, to: string): Partial<SyncDoc> => ({
+      goals: planFamilyDoc().goals.map((g) => (g.id === 'car' ? { ...g, main: true, have: g.have + 100_000, movements: [movement], from, to, budget: 400_000 } : g)),
+      tripSpends: [
+        { id: 'car:a', goalId: 'car', by: 'a', amount: 120_000, ops: 4, updatedAt: T0 },
+        { id: 'car:b', goalId: 'car', by: 'b', amount: 30_000, ops: 1, updatedAt: T0 },
+      ],
+    })
+    await family('member', 'a', trip('2026-09-15', '2026-09-20'))
+    const html = await renderScreen(Dreams, '/')
+    expect(html).toContain(`Машина${NBSP}· потрачено${NBSP}150${NBSP}000${NBSP}из${NBSP}400${NBSP}000${NBSP}₸</span>`)
+    expect(html).not.toContain('ближе')
+
+    setActivePinia(createPinia())
+    await family('member', 'a', trip('2026-09-25', '2026-09-30'))
+    const before = await renderScreen(Dreams, '/')
+    expect(before).not.toContain('потрачено')
+    expect(before).toContain('ближе')
+  })
+
   it('ворота PN-12: герой накоплен целиком — под процентом только имя, без «ближе на N дней»', async () => {
     const movement = { id: 'm1', date: '2026-09-15T07:00:00.000Z', amount: 100_000, by: 'a' as const }
     await family('member', 'a', {

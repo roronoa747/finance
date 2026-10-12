@@ -1083,6 +1083,14 @@ describe('stores/operations — итог поездки (PN-30)', () => {
     expect(finance.goals.find((g) => g.id === 'trip')!.budget).toBeNull()
   })
 
+  it('на телефоне ещё нет своих операций (новый вход) — своя запись с другого устройства не затирается нулём', () => {
+    const finance = family({ from: '2026-09-10', to: '2026-09-15' })
+    finance.mutateHouseholdDoc((doc) => void (doc.tripSpends = [{ id: 'trip:a', goalId: 'trip', by: 'a', amount: 15_000, ops: 2, updatedAt: '2026-09-16T00:00:00Z' }]))
+    const store = useOperationsStore()
+    store.writeTripTotals()
+    expect(trip()).toMatchObject([{ id: 'trip:a', amount: 15_000, ops: 2 }])
+  })
+
   it('старые цели без дат — ничего не пишется', async () => {
     family()
     const { client } = fakeServer()
