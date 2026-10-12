@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { PhArrowsClockwise, PhBank, PhCaretRight, PhCoins, PhCreditCard, PhFolderSimple, PhHouse, PhPlus, PhWallet } from '@phosphor-icons/vue'
+import { PhArrowsClockwise, PhBank, PhCalendarPlus, PhCaretRight, PhCoins, PhCreditCard, PhFolderSimple, PhHouse, PhPlus, PhWallet } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, rateField } from '@/lib/money'
 import { monthKey } from '@/lib/dates'
+import { calendarEvents, icsText } from '@/lib/calendar'
+import { shareFile } from '@/lib/share'
 import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
 import {
@@ -29,6 +31,7 @@ import Row from '@/components/kit/Row.vue'
 import Section from '@/components/kit/Section.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Button from '@/components/ui/Button.vue'
+import { useFlash } from '@/components/kit/useFlash'
 import AccountSheet from '@/components/capital/AccountSheet.vue'
 import CreditSheet from '@/components/capital/CreditSheet.vue'
 import ObligationSheet from '@/components/capital/ObligationSheet.vue'
@@ -120,6 +123,15 @@ const closedOpen = ref(false)
 function openClosedCredit(id: string) {
   closedOpen.value = false
   selectedCreditId.value = id
+}
+
+/* ------------------ В календарь (PN-28) ------------------ */
+// Платежи, кредиты и дни зарплаты — файлом .ics на своё устройство (viewer тоже: ничего не пишет); после — строка-подсказка.
+const calendarNote = useFlash(4000)
+async function toCalendar() {
+  const ics = icsText(calendarEvents({ obligations: financeStore.obligations, credits: financeStore.credits, people: financeStore.people }))
+  const r = await shareFile(new Blob([ics], { type: 'text/calendar' }), { title: 'Платежи · Family Finance', fileName: 'family-finance.ics' })
+  if (r !== 'cancelled') calendarNote.flash('Открыть в календаре — «Добавить все»')
 }
 
 /* ------------------ Листы ------------------ */
@@ -251,7 +263,14 @@ watch(queryModalOpen, (open) => {
 
   <!-- Платежи — справочник: один список по дню, без отметок месяца; подписки — одной строкой -->
   <!-- Сумма платежей месяца — строка «Платежи» в «Месяце» (Р-116). -->
-  <Section title="Платежи" />
+  <Section title="Платежи">
+    <template #action>
+      <Button variant="ghost" size="sm" class="-my-1 px-2" data-calendar @click="toCalendar">
+        <PhCalendarPlus :size="15" /> В календарь
+      </Button>
+    </template>
+  </Section>
+  <p v-if="calendarNote.note.value" class="-mt-0.5 mb-1.5 px-1 text-[12.5px] text-ink-2" data-calendar-note>{{ calendarNote.note.value }}</p>
   <Card flush data-payments>
     <PaymentLine
       v-for="l in lines"

@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick, reactive, type App } from 'vue'
-import { shareStory } from '@/lib/storyCard'
+import { STORY_FILE } from '@/lib/storyCard'
+import { shareFile } from '@/lib/share'
 
 /**
  * Кнопки карточки (B2C-20): есть `canShare` — системный лист с файлом; нет — скачивание
@@ -28,12 +29,12 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('shareStory', () => {
+describe('shareFile (сторис)', () => {
   it('canShare с файлом → navigator.share с файлом и заголовком; отмена — «cancelled», сбой — скачивание', async () => {
     const share = vi.fn<(d: ShareData) => Promise<void>>(async () => {})
     const canShare = vi.fn(() => true)
     const blob = new Blob(['x'], { type: 'image/png' })
-    expect(await shareStory(blob, { title: '62 % до мечты' }, { share, canShare })).toBe('shared')
+    expect(await shareFile(blob, { title: '62 % до мечты', fileName: STORY_FILE }, { share, canShare })).toBe('shared')
     const data = share.mock.calls[0][0]
     expect(data.title).toBe('62 % до мечты')
     expect(data.files?.[0]).toBeInstanceOf(File)
@@ -41,10 +42,10 @@ describe('shareStory', () => {
     expect(canShare).toHaveBeenCalledWith({ files: [data.files![0]] })
 
     const abort = Object.assign(new Error('abort'), { name: 'AbortError' })
-    expect(await shareStory(blob, { title: 't' }, { share: vi.fn(async () => { throw abort }), canShare })).toBe('cancelled')
+    expect(await shareFile(blob, { title: 't', fileName: STORY_FILE }, { share: vi.fn(async () => { throw abort }), canShare })).toBe('cancelled')
 
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
-    expect(await shareStory(blob, { title: 't' }, { share: vi.fn(async () => { throw new Error('boom') }), canShare })).toBe('downloaded')
+    expect(await shareFile(blob, { title: 't', fileName: STORY_FILE }, { share: vi.fn(async () => { throw new Error('boom') }), canShare })).toBe('downloaded')
     expect(click).toHaveBeenCalledTimes(1)
   })
 
@@ -53,8 +54,8 @@ describe('shareStory', () => {
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
       seen.push({ download: this.download, rel: this.rel })
     })
-    expect(await shareStory(new Blob(['x']), { title: 't' }, null)).toBe('downloaded')
-    expect(await shareStory(new Blob(['x']), { title: 't' }, {})).toBe('downloaded')
+    expect(await shareFile(new Blob(['x']), { title: 't', fileName: STORY_FILE }, null)).toBe('downloaded')
+    expect(await shareFile(new Blob(['x']), { title: 't', fileName: STORY_FILE }, {})).toBe('downloaded')
     expect(seen).toEqual([
       { download: 'family-finance-story.png', rel: 'noopener' },
       { download: 'family-finance-story.png', rel: 'noopener' },
