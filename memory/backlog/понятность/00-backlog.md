@@ -15,6 +15,8 @@
 > `dpl_BWtTeYYuLDgCorMGxxyM3ZCyCosA`; смоук агента 19/19; снимки — https://claude.ai/artifact/5L8Ct9wZmzmko8by32BowA; смоук владельца
 > на iPhone и перезапуск PWA — за ним).
 > **Блок 8 «Подписки» 🏁** (приёмка 2026-10-12: принято — стенд 42/42, e2e 39 / 243; мёрж `6a92247`, прод **`dpl_CWvCFKbi4i6GBpZyqq5krRAHiTsC`**, откат — promote `dpl_7MfSVW4op58D4mpjJSn2jdPKnUKh`; смоук агента на проде 42/42; смоук владельца на iPhone («В календарь» → «Календарь», зарплата партнёра 30-го) и перезапуск PWA — за ним).
+> **Блок 9 «Поездка с бюджетом» 🔄** (исполнитель ✅ 2026-10-12, ветка `pn-block-9-trip`: PN-30…PN-32; ждёт критика, `/ux` и приёмки). **Все блоки
+> сделаны — после приёмки Блока 9 бэклог закрывается (DoD).**
 > Девять блоков: понятность (1–2) → мечты (3–4) → деньги (5–9); каждый блок — на прод отдельно в своей приёмке.
 
 Источник: `понятность-brief.md` (резюме интервью подтверждено 2026-10-09, 6 раундов). Формат —
@@ -162,9 +164,9 @@
 | | PN-27 «Общие · N», «<имя> · N» (хвост 1024) | `block-8-subscriptions/PN-27-subscription-groups.md` | PN-26 | ✅ |
 | | PN-28 «В календарь» (.ics) | `block-8-subscriptions/PN-28-calendar-ics.md` | PN-27 | ✅ |
 | | PN-29 e2e и доки | `block-8-subscriptions/PN-29-e2e-docs.md` | PN-28 | ✅ |
-| 9. Поездка с бюджетом ⬜ | PN-30 Модель и расчёт `tripSpent` | `block-9-trip/PN-30-trip-model-finance.md` | Блок 8 🏁 (мечты — Блок 3, ритм — Блок 7) | ⬜ |
-| | PN-31 Экраны: даты и бюджет, «потрачено N из M» | `block-9-trip/PN-31-trip-screens.md` | PN-30 | ⬜ |
-| | PN-32 Демо, e2e и доки | `block-9-trip/PN-32-demo-e2e-docs.md` | PN-31 | ⬜ |
+| 9. Поездка с бюджетом 🔄 | PN-30 Модель и расчёт `tripSpent` | `block-9-trip/PN-30-trip-model-finance.md` | Блок 8 🏁 (мечты — Блок 3, ритм — Блок 7) | ✅ |
+| | PN-31 Экраны: даты и бюджет, «потрачено N из M» | `block-9-trip/PN-31-trip-screens.md` | PN-30 | ✅ |
+| | PN-32 Демо, e2e и доки | `block-9-trip/PN-32-demo-e2e-docs.md` | PN-31 | ✅ |
 
 Трассировка бриф → задачи (хвосты — номера строк §4 `идея-и-редизайн` на 2026-10-09): Р-1 → PN-01 · Р-8 (хвост 1022) → PN-02 · Р-2, Р-3 → PN-03…PN-06 · Р-4 → PN-07, PN-08 ·
 Р-15 → PN-09, PN-10 · Р-13 → PN-12…PN-15 · Р-11 → PN-16…PN-18 · Р-12 → PN-19…PN-21 · Р-5, Р-6 → PN-22…PN-25 ·
@@ -598,6 +600,36 @@ Production `dpl_Fh6vRtoaqe6bC1pZTfUYDzit8uQR`, откат — promote `dpl_EsjHT
   `nextMonthly`/`nextYearly` — прямо `isoIn` (кодировки `-1` в дате нет). Тесты: `calendar.test` (+1: 29/30/годовой в феврале),
   `monthPlan.test` (+1: старый d2 — в плане строкой, не в частях), **`share.dom.test`** (3: лист · скачать · отмена). База:
   **198 файлов / 1983 ✅ + 1 пропуск**.
+
+**После Блока 9 (Поездка с бюджетом; исполнитель, 2026-10-12)**
+- **Модель:** `Goal.from?/to?` (`YYYY-MM-DD` включительно, null — дат нет), `Goal.budget?` (целые тенге, null — `need`); общий
+  `SyncDoc.tripSpends?: TripSpend[]` (`id = <goalId>:<by>`, `amount`, `ops` — итог участника по его выписке; каждый телефон пишет свою
+  запись, слияние по id), личный `tripExcluded: TripExcluded[]` (`id` — id операции, `goalId`; «Вернуть» — надгробие). Регистрация —
+  `defaultSyncDoc`, `known` в `mergeDocs` и `mergePrivateDocs`; гвард `merge.test.ts` PN-30 — **каждый список `defaultSyncDoc()`
+  есть в `known`** (пустым приходит и без ключа; незнакомый ключ так не умеет).
+- **Расчёт** (`finance.ts`, раздел «Поездка с бюджетом» в конце): `tripStatus(goal, today) → 'none' | 'before' | 'during' | 'after'`
+  (нет обеих дат — `none`), `tripOps(ops, goal, marked, excluded)` (`isSpend`, даты включительно, без `markedOps` и снятых; новые
+  первыми), `tripTotal(ops) → { amount, ops }`, `tripSpent(goal, tripSpends, people) → { total, byPerson, budget }`.
+- **Стор:** финансы — `setTripDates(goalId, { from?, to?, budget? })` (пусто / 0 → null), `tripExcluded`, `excludeFromTrip`,
+  `includeInTrip`; операции — `tripLists(goal) → { ops, excluded }` (одни строки для экрана и записи) и `writeTripTotals()`: открытые
+  цели (`openGoals`) в `during`/`after`, тот же итог второй раз не пишется, ноль без прежней записи — тоже; **на телефоне без своих
+  операций (новый вход до `pull`) не пишет ничего** — иначе ноль затёр бы итог с другого устройства; viewer не пишет. Зовётся из
+  `writeTotals` (все его входы: `send`, отметки, `settleReleased`, демо) и наблюдателем «даты / сбылось / снятые» (`immediate`) —
+  стор финансов стор операций не зовёт.
+- **Экраны:** `goals/TripFields.vue` (даты `Input type="date"` + бюджет с `Hint`; `tripDatesError` — «Нужны обе даты» / «Последний
+  день — не раньше первого») — `GoalNew` (только `template.type === 'travel'`, `setTripDates` после `addGoal`) и `GoalSheet` (travel
+  или есть даты; даты пишутся, когда пара верна, бюджет — по уходу). `goals/TripCard.vue` (`data-trip`, `data-trip-title`,
+  `data-trip-split` — только когда тратили оба, `data-trip-ops-toggle` / `data-trip-op` / `data-trip-exclude`,
+  `data-trip-excluded-toggle` / `data-trip-include`; функции `exclude`/`include` — для `screenMixin`) — в `GoalDetail` под героем
+  при `during`/`after`; `data-trip-dates` «Поездка 10–15 октября» — в «Подробнее». `Dreams` `heroCloser` в `during` — «потрачено N из
+  M ₸». `ProgressBar` — тон `warn`.
+- **Демо:** `g-trip` — `from/to` 26…20 дней назад (`daysAgo` — те же сутки, что у демо-операций), `budget` 400 000; в даты попадают
+  четыре операции недели `older[1]`; партнёр b — запись `g-trip:b` 64 000. «За поездку — 89 800 ₸ из 400 000 ₸»; герой «Мечт» прежний
+  («ближе на 15 дней»).
+- **Тесты:** `lib/trip.test.ts` (6), `stores/operations.test.ts` PN-30 (4), `merge.test.ts` PN-30 (3), `GoalNew.variants.dom` (+3),
+  `GoalDetail.trip.dom` (6), `Dreams.test` (+1), гвард демо (+3 даты), e2e `pn-block9-trip` (6). Мутации красные: «`marked` не
+  исключены», «повтор пишется», «`tripSpends` не в `known`», «запись с телефона без операций». База: **201 файл / 2016 ✅ + 1 пропуск**,
+  `e2e/` — 40 / 249.
 
 **Связки между блоками** (чтобы критик следил за промптами): Блок 2 → 5 (`inSalaries`, `capitalStats`); Блок 3 → 4
 (`GoalDetail`/`Dreams`/`StorySheet` после PN-09/10), → 5 (`goalPace`/`closerDays`), → 9 (`GoalNew` travel); Блок 7 → 8

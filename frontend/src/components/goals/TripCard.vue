@@ -38,6 +38,9 @@ const split = computed(() =>
 const lists = computed(() => (canEdit.value ? operations.tripLists(props.goal) : { ops: [], excluded: [] }))
 const opsOpen = ref(false)
 const excludedOpen = ref(false)
+// «Убрать» — не удаление: строка остаётся в выписке и на «Неделе», только не в итоге поездки (личная запись).
+const exclude = (o: Operation) => finance.excludeFromTrip(props.goal.id, o.id)
+const include = (o: Operation) => finance.includeInTrip(o.id)
 
 const categories = computed(() => finance.householdDoc.spendCategories ?? [])
 const category = (o: Operation) => {
@@ -67,7 +70,7 @@ const day = (iso: string) => dayLabel(Number(iso.slice(8, 10)), iso.slice(0, 7))
       <div v-if="opsOpen" class="mt-1" data-trip-ops>
         <div v-for="o in lists.ops" :key="o.id" class="flex items-center gap-2 border-t border-line py-2.5 first:border-t-0" :data-trip-op="o.id">
           <OpRow class="min-w-0 flex-1 !border-t-0 !py-0" :merchant="o.merchant" :category="category(o)" :amount="o.amount" :date="day(o.date)" />
-          <Button variant="ghost" size="sm" class="shrink-0 px-2" data-trip-exclude @click="finance.excludeFromTrip(goal.id, o.id)">Убрать</Button>
+          <Button variant="ghost" size="sm" class="shrink-0 px-2" data-trip-exclude @click="exclude(o)">Убрать</Button>
         </div>
       </div>
     </template>
@@ -86,7 +89,7 @@ const day = (iso: string) => dayLabel(Number(iso.slice(8, 10)), iso.slice(0, 7))
       <div v-if="excludedOpen" class="mt-1" data-trip-excluded>
         <div v-for="o in lists.excluded" :key="o.id" class="flex items-center gap-2 border-t border-line py-2.5 first:border-t-0" :data-trip-excluded-op="o.id">
           <OpRow class="min-w-0 flex-1 !border-t-0 !py-0" :merchant="o.merchant" :category="category(o)" :amount="o.amount" :date="day(o.date)" muted />
-          <Button variant="ghost" size="sm" class="shrink-0 px-2" data-trip-include @click="finance.includeInTrip(o.id)">Вернуть</Button>
+          <Button variant="ghost" size="sm" class="shrink-0 px-2" data-trip-include @click="include(o)">Вернуть</Button>
         </div>
       </div>
     </template>
