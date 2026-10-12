@@ -6,7 +6,8 @@ import { useFinanceStore } from '@/stores/finance'
 import { useEventsStore } from './events'
 import { useFxStore } from '@/stores/fx'
 import { OPERATIONS_STORAGE_KEYS, readStorage, writeStorage } from '@/lib/storage'
-import { creditDueAmount } from '@/lib/finance'
+import { creditDueAmount, openGoals, tripOps, tripStatus, tripTotal } from '@/lib/finance'
+import { todayIso } from '@/lib/dates'
 import {
   applyRules,
   pairInternalTransfers,
@@ -19,7 +20,7 @@ import {
 import { markedOps, matchCandidates, matchKey, operationAt, paymentFits, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
 import type { MerchantRule, Operation, ParsedStatement, SpendTotal } from '@/lib/statements/types'
 import type { OperationWire, StatementUploadResponse } from '@/types/api'
-import type { PersonId } from '@/types/finance'
+import type { PersonId, TripSpend } from '@/types/finance'
 
 // Операции выписок (B2C-07): личная копия своих операций, очередь неотправленного, записи
 // загрузок семьи и черновик разбора. Файл выписки разбирается на телефоне и никуда не уходит
@@ -370,11 +371,49 @@ export const useOperationsStore = defineStore('operations', () => {
       // Тот же итог второй раз не пишется: наблюдатель отметок будит пересчёт, а запись — синк.
       for (const t of next) if (!sameTotal(byId.get(t.id), t)) writes.push(t)
     }
+    // Поездка — из тех же операций и отметок (PN-30): где пересчитываются итоги, там и она.
+    writeTripTotals()
     if (!writes.length) return
     finance.mutateHouseholdDoc((doc) => {
       const merged = new Map((doc.spendTotals ?? []).map((t) => [t.id, t]))
       for (const t of writes) merged.set(t.id, t)
       doc.spendTotals = [...merged.values()]
+    })
+  }
+
+  /** Снятые с поездки операции этого телефона (личный документ) — по цели. */
+  const tripExcludedOf = (goalId: string) => new Set(finance.tripExcluded.filter((x) => x.goalId === goalId).map((x) => x.id))
+
+  /**
+   * Итог поездки этого участника (PN-30, Р-14) — запись `tripSpends` `<цель>:<я>` из своих операций за даты поездки
+   * (`tripOps`: без отметок платежей и снятых). Поездки с датами, кроме ещё не начавшихся; сбывшаяся цель не
+   * пересчитывается (запись остаётся). Тот же итог второй раз не пишется; пустой итог без прежней записи — тоже.
+   */
+  function writeTripTotals() {
+    if (auth.isViewer) return
+    const by = me()
+    const today = todayIso()
+    const trips = openGoals(finance.goals).filter((g) => {
+      const s = tripStatus(g, today)
+      return s === 'during' || s === 'after'
+    })
+    if (!trips.length) return
+    const at = new Date().toISOString()
+    const marked = totalMarks(all.value).marked
+    const byId = new Map((finance.householdDoc.tripSpends ?? []).map((t) => [t.id, t]))
+    const writes: TripSpend[] = []
+    for (const g of trips) {
+      const id = `${g.id}:${by}`
+      const { amount, ops: n } = tripTotal(tripOps(all.value, g, marked, tripExcludedOf(g.id)))
+      const prev = byId.get(id)
+      if (prev && !prev.deletedAt ? prev.amount === amount && prev.ops === n : !amount && !n) continue
+      writes.push({ id, goalId: g.id, by, amount, ops: n, updatedAt: at })
+    }
+    if (!writes.length) return
+    finance.mutateHouseholdDoc((doc) => {
+      const merged = new Map((doc.tripSpends ?? []).map((t) => [t.id, t]))
+      for (const t of writes) merged.set(t.id, t)
+      doc.tripSpends = [...merged.values()]
     })
   }
 
@@ -642,6 +681,19 @@ export const useOperationsStore = defineStore('operations', () => {
     },
   )
 
+  /*
+   * Поездки (PN-30): даты, «Сбылось» или снятые операции изменились — у себя или синком партнёра (даты), со второго
+   * своего телефона (снятые) — итог переписывается. Подпись — строкой: прочие правки целей не будят.
+   */
+  watch(
+    () => [
+      ...finance.goals.filter((g) => g.from || g.to).map((g) => [g.id, g.from ?? '', g.to ?? '', g.deletedAt ? '×' : '', g.doneAt ? '✓' : ''].join(':')),
+      ...finance.tripExcluded.map((x) => `${x.goalId}:${x.id}`),
+    ].sort().join(' '),
+    () => writeTripTotals(),
+    { immediate: true },
+  )
+
   return {
     ops,
     all,
@@ -679,6 +731,7 @@ export const useOperationsStore = defineStore('operations', () => {
     loadUploads,
     seedDemoUploads,
     seedDemoOperations,
+    writeTripTotals,
     clear,
   }
 })

@@ -208,6 +208,8 @@ export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
     // `участник:вид:период:раздел`, её целиком заменяет свежий пересчёт (Р-21).
     spendCategories: mergeList(local.spendCategories ?? [], remote.spendCategories ?? [], (x) => x.id),
     spendTotals: mergeList(local.spendTotals ?? [], remote.spendTotals ?? [], (x) => x.id),
+    // Итог поездки (PN-30): запись участника `цель:участник` — каждый телефон пишет свою, партнёра не затирает.
+    tripSpends: mergeList(local.tripSpends ?? [], remote.tripSpends ?? [], (x) => x.id),
     // Раскладки (B2C-21): по id, надгробия как у всех.
     allocations: mergeList(local.allocations ?? [], remote.allocations ?? [], (x) => x.id),
     // План разбора (B2C-54): статьи — по id (LWW, надгробия); пороги — один объект, поздний целиком.
@@ -239,7 +241,13 @@ export function mergePrivateDocs(
   const list = (key: string) =>
     mergeList((local[key] as WithId[] | undefined) ?? [], (remote[key] as WithId[] | undefined) ?? [], (x) => x.id)
   // gifts — подарки-сюрпризы (B2C-18): в личном документе, адресат их не видит.
-  const known = { accounts: list('accounts'), merchantRules: list('merchantRules'), gifts: list('gifts') }
+  // tripExcluded — операции, снятые с поездки (PN-30): по id операции, «Вернуть» — надгробие.
+  const known = {
+    accounts: list('accounts'),
+    merchantRules: list('merchantRules'),
+    gifts: list('gifts'),
+    tripExcluded: list('tripExcluded'),
+  }
   return { ...mergeUnknownKeys(local, remote, known), ...known }
 }
 

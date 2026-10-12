@@ -146,6 +146,29 @@ export type Goal = Tracked & {
   pausedAt?: string | null
   /** «Сбылось» (PN-13, Р-13): ISO момента отметки — деньги ушли покупкой, цель в альбоме; null — вернули в мечты. */
   doneAt?: string | null
+  /** Поездка (PN-30, Р-14): первый и последний день `YYYY-MM-DD` включительно; null — дат нет. */
+  from?: string | null
+  to?: string | null
+  /** Бюджет поездки, целые тенге; пусто — `need` (`tripSpent`). */
+  budget?: number | null
+}
+
+/**
+ * Итог трат участника за поездку по его выписке (PN-30, Р-14): каждый телефон пишет свою запись `<goalId>:<by>`, как
+ * `spendTotals` — слияние по id не затирает партнёра; операции остаются личными.
+ */
+export type TripSpend = Tracked & {
+  id: string
+  goalId: string
+  by: PersonId
+  amount: number
+  ops: number
+}
+
+/** Операция, снятая с поездки (личный документ, PN-30): id — id операции; «Вернуть» — надгробие. */
+export type TripExcluded = Tracked & {
+  id: string
+  goalId: string
 }
 
 export type WishItem = Tracked & {
@@ -565,6 +588,8 @@ export type SyncDoc = {
   spendCategories?: SpendCategory[]
   /** Итоги трат участников по разделам за неделю и месяц (Р-21); операции — личные, на сервере. */
   spendTotals?: SpendTotal[]
+  /** Итоги трат участников за поездку (PN-30). До Блока 9 «понятность» — без ключа. */
+  tripSpends?: TripSpend[]
   /** Записи разбора (Блок 11) и прежних раскладок (B2C-21): второй заход и партнёр видят решение, а не разбирают снова. */
   allocations?: Allocation[]
   /** План разбора зарплаты по статьям (B2C-54, Р-68). До Блока 11 — без ключа: умолчания `moneyArticlesOf`. */

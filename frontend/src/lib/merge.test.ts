@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { mergeDocs, mergePrivateDocs, isEmptyDoc } from './merge'
 import { accountBalance, activePlan, creditBalance, goalHave, paidFor, shiftedBase } from './finance'
-import type { SyncDoc, Goal, Obligation, Person, Category, Account, Credit, DebtPlan, Payment, WishItem } from '@/types/finance'
+import type { SyncDoc, Goal, Obligation, Person, Category, Account, Credit, DebtPlan, Payment, WishItem, TripSpend } from '@/types/finance'
 import type { MerchantRule, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { defaultSyncDoc } from '@/stores/finance'
 
@@ -929,7 +929,7 @@ describe('B2C-05: личный документ с двух устройств �
     expect((merged.tags as { id: string }[]).map((t) => t.id).sort()).toEqual(['t1', 't2'])
     expect(merged.note).toBe('сервер')
     expect((merged.accounts as Account[]).map((a) => a.id)).toEqual(['card'])
-    expect(mergePrivateDocs({}, {})).toEqual({ accounts: [], merchantRules: [], gifts: [] })
+    expect(mergePrivateDocs({}, {})).toEqual({ accounts: [], merchantRules: [], gifts: [], tripExcluded: [] })
   })
 })
 
@@ -1103,5 +1103,40 @@ describe('PN-22: ритм зарплаты — поля Person едут запи
     for (const merged of [mergeDocs(weekly, back), mergeDocs(back, weekly)]) {
       expect(merged.people[0]).toMatchObject({ payRhythm: 'advance', payday2: 15, salary2: 300_000 })
     }
+  })
+})
+
+describe('PN-30: поездка — итоги участников и снятые операции', () => {
+  const T1 = '2026-10-01T05:00:00.000Z'
+  const T2 = '2026-10-02T05:00:00.000Z'
+  const spend = (id: string, p: Partial<TripSpend> = {}): TripSpend => {
+    const [goalId, by] = id.split(':')
+    return { id, goalId, by: by as TripSpend['by'], amount: 1000, ops: 1, updatedAt: T1, ...p }
+  }
+
+  it('tripSpends — по id: свой пересчёт заменяет старый, запись партнёра не затирается', () => {
+    const phoneA: SyncDoc = { ...createEmptyDoc(), tripSpends: [spend('g-trip:a', { amount: 5000, ops: 3, updatedAt: T2 })] }
+    const phoneB: SyncDoc = { ...createEmptyDoc(), tripSpends: [spend('g-trip:a'), spend('g-trip:b', { amount: 7000, ops: 2 })] }
+    for (const merged of [mergeDocs(phoneA, phoneB), mergeDocs(phoneB, phoneA)]) {
+      const list = [...merged.tripSpends!].sort((x, y) => x.id.localeCompare(y.id))
+      expect(list.map((t) => [t.id, t.amount, t.ops])).toEqual([['g-trip:a', 5000, 3], ['g-trip:b', 7000, 2]])
+    }
+  })
+
+  it('tripExcluded — личный список по id; «Вернуть» (надгробие) поздней правкой побеждает', () => {
+    const phone = { tripExcluded: [{ id: 'op1', goalId: 'g-trip', updatedAt: T1 }] }
+    const laptop = { tripExcluded: [{ id: 'op1', goalId: 'g-trip', deletedAt: T2, updatedAt: T2 }, { id: 'op2', goalId: 'g-trip', updatedAt: T1 }] }
+    for (const merged of [mergePrivateDocs(phone, laptop), mergePrivateDocs(laptop, phone)]) {
+      const list = (merged.tripExcluded as { id: string; deletedAt?: string }[]).sort((x, y) => x.id.localeCompare(y.id))
+      expect(list.map((x) => [x.id, x.deletedAt ?? null])).toEqual([['op1', T2], ['op2', null]])
+    }
+  })
+
+  it('гвард: каждый список defaultSyncDoc() зарегистрирован в mergeDocs (пустым приходит и из документов без ключа)', () => {
+    const merged = mergeDocs(createEmptyDoc(), createEmptyDoc()) as unknown as Record<string, unknown>
+    for (const [key, value] of Object.entries(defaultSyncDoc())) {
+      if (Array.isArray(value)) expect(merged[key], key).toEqual([])
+    }
+    expect(defaultSyncDoc().tripSpends).toEqual([])
   })
 })

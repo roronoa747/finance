@@ -86,6 +86,7 @@ import type {
   Currency,
   FxExchange,
   DebtCard,
+  TripExcluded,
 } from '@/types/finance'
 import type { MerchantRule } from '@/lib/statements/types'
 import { useAuthStore } from '@/stores/auth'
@@ -110,6 +111,8 @@ export function defaultSyncDoc(): SyncDoc {
     plans: [],
     spendCategories: [],
     spendTotals: [],
+    // Итоги поездок (PN-30): ключ и пустым — как у payments (RP-03).
+    tripSpends: [],
     // План разбора (B2C-54): пустой — умолчания `moneyArticlesOf` / `moneySettingsOf`.
     moneyArticles: [],
     moneySettings: null,
@@ -1880,6 +1883,41 @@ export const useFinanceStore = defineStore('finance', () => {
     if (cur.accountId && cur.have > 0) shiftAccountAmount(cur.accountId, cur.have)
   }
 
+  /**
+   * Даты и бюджет поездки (PN-30, Р-14): `YYYY-MM-DD` включительно, бюджет — целые тенге; пусто или 0 — null (бюджет —
+   * сумма мечты). Итог `tripSpends` перепишет наблюдатель стора операций.
+   */
+  function setTripDates(goalId: string, trip: { from?: string | null; to?: string | null; budget?: number | null }) {
+    const patch: Partial<Goal> = {}
+    if (trip.from !== undefined) patch.from = trip.from || null
+    if (trip.to !== undefined) patch.to = trip.to || null
+    if (trip.budget !== undefined) patch.budget = trip.budget && trip.budget > 0 ? Math.round(trip.budget) : null
+    updateGoal(goalId, patch)
+  }
+
+  /* ---------------- операции, снятые с поездки (PN-30) — личный документ ---------------- */
+  const tripExcluded = computed(() => ((privateDoc.value.tripExcluded as TripExcluded[] | undefined) ?? []).filter((x) => !x.deletedAt))
+
+  /** «Убрать» у строки поездки: операция не удаляется — снимается с итога поездки (личная запись по id операции). */
+  function excludeFromTrip(goalId: string, opId: string) {
+    if (tripExcluded.value.some((x) => x.id === opId && x.goalId === goalId)) return
+    const t = new Date().toISOString()
+    mutatePrivateDoc((doc) => {
+      const list = (doc.tripExcluded as TripExcluded[] | undefined) ?? []
+      const rec: TripExcluded = { id: opId, goalId, updatedAt: t }
+      doc.tripExcluded = list.some((x) => x.id === opId) ? list.map((x) => (x.id === opId ? rec : x)) : [...list, rec]
+    })
+  }
+
+  /** «Вернуть»: надгробие — операция снова в поездке. */
+  function includeInTrip(opId: string) {
+    if (!tripExcluded.value.some((x) => x.id === opId)) return
+    const t = new Date().toISOString()
+    mutatePrivateDoc((doc) => {
+      doc.tripExcluded = ((doc.tripExcluded as TripExcluded[] | undefined) ?? []).map((x) => (x.id === opId ? { ...x, deletedAt: t, updatedAt: t } : x))
+    })
+  }
+
   /** Сумма трат участника по разделу на месяц (Р-81), целые тенге; одна запись на пару — LWW по id. */
   function setSpendPlan(by: PersonId, categoryId: string, amount: number) {
     const id = `${by}:${categoryId}`
@@ -2271,6 +2309,10 @@ export const useFinanceStore = defineStore('finance', () => {
     pauseGoal,
     markGoalDone,
     undoGoalDone,
+    setTripDates,
+    tripExcluded,
+    excludeFromTrip,
+    includeInTrip,
     setSpendPlan,
     ensureFund,
     setFundMonths,
