@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { plain, parseMoney } from '@/lib/money'
-import { liveGoals } from '@/lib/finance'
+import { keepTermMonthly, liveGoals } from '@/lib/finance'
 import { templateById } from '@/lib/goalTemplates'
 import { deletePhoto } from '@/lib/photos/store'
 import type { HueKey } from '@/lib/palette'
@@ -24,10 +24,12 @@ import Input from '@/components/ui/Input.vue'
  * пишется по уходу из него, цвет — сразу; закрыть окно фоном, крестиком или «Готово» —
  * ничего не потерять. «Уже накоплено» правит seed (`updateGoal`): история взносов остаётся.
  * «Откладывать в месяц» — на экране цели, как React (в окне его нет).
+ * Сумма и «уже накоплено» (хотфикс 2026-10-12): срок прежний — взнос пересчитывается той же записью (`keepTermMonthly`),
+ * экран цели тостом предлагает «Оставить взнос» (тогда сдвигается срок). Фонд — взнос не трогаем (порог — в плане).
  * Поездка (PN-31): у «Путешествия» и у любой цели с датами — даты (пишутся, когда пара верна) и бюджет (по уходу).
  */
 const props = defineProps<{ goalId: string | null }>()
-const emit = defineEmits<{ (e: 'close'): void; (e: 'removed'): void }>()
+const emit = defineEmits<{ (e: 'close'): void; (e: 'removed'): void; (e: 'term', change: { prev: number; next: number }): void }>()
 
 const financeStore = useFinanceStore()
 
@@ -67,13 +69,24 @@ function onName(e: Event) {
   const v = (e.target as HTMLInputElement).value.trim()
   if (v && v !== goal.value?.name) edit({ name: v })
 }
+/** Сумма или накопленное — срок прежний: новый взнос в той же записи, экрану — что был (для «Оставить взнос»). */
+function editKeepTerm(patch: { need?: number; have?: number }) {
+  const g = goal.value
+  if (!g) return
+  const remaining = (need: number, have: number) => Math.max(0, need - Math.max(0, have))
+  const monthly = g.fund ? g.monthly : keepTermMonthly(remaining(g.need, g.have), g.monthly, remaining(patch.need ?? g.need, patch.have ?? g.have))
+  const prev = g.monthly // до записи: цель в сторе меняется на месте
+  if (monthly === prev) return edit(patch)
+  edit({ ...patch, monthly })
+  emit('term', { prev, next: monthly })
+}
 function onNeed(text: string) {
   const v = parseMoney(text)
-  if (v > 0 && v !== goal.value?.need) edit({ need: v })
+  if (v > 0 && v !== goal.value?.need) editKeepTerm({ need: v })
 }
 function onHave(text: string) {
   const v = parseMoney(text)
-  if (v >= 0 && v !== goal.value?.have) edit({ have: v })
+  if (v >= 0 && v !== goal.value?.have) editKeepTerm({ have: v })
 }
 function onHue(hue: HueKey) {
   edit({ hue })
