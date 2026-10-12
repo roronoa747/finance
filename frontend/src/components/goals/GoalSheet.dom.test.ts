@@ -129,3 +129,53 @@ describe('PN-31 (критик Б9): даты и бюджет поездки в �
     expect(goal()).toMatchObject({ from: null, to: null })
   })
 })
+
+describe('хотфикс 2026-10-12: сумму или накопленное правят — срок прежний, взнос пересчитан', () => {
+  async function openCar(fund = false) {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useFinanceStore()
+    const doc = planFamilyDoc()
+    if (fund) doc.goals = doc.goals.map((g) => (g.id === 'car' ? { ...g, fund: 'reserve' as const } : g))
+    store.setHouseholdDoc(doc, 1)
+    const terms: { prev: number; next: number }[] = []
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app = createApp({ render: () => h(GoalSheet, { goalId: 'car', onTerm: (c: { prev: number; next: number }) => terms.push(c) }) })
+    app.use(pinia)
+    app.mount(root)
+    await nextTick()
+    await nextTick()
+    const field = (label: string) =>
+      [...document.querySelectorAll('[role="dialog"] label')].find((l) => l.textContent?.includes(label))!.querySelector('input')!
+    const car = () => store.goals.find((g) => g.id === 'car')!
+    return { car, field, terms }
+  }
+  async function commit(input: HTMLInputElement, text: string) {
+    await type(input, text)
+    input.dispatchEvent(new Event('blur'))
+    input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
+    await nextTick()
+  }
+
+  it('«Сколько нужно» 3 000 000 → 1 300 000: 47 взносов по 60 000 → 47 по 23 405; экрану — прежний и новый взнос', async () => {
+    const { car, field, terms } = await openCar()
+    await commit(field('Сколько нужно'), '1 300 000')
+    expect(car()).toMatchObject({ need: 1_300_000, monthly: 23_405 })
+    expect(terms).toEqual([{ prev: 60_000, next: 23_405 }])
+  })
+
+  it('«Уже накоплено» 200 000 → 1 260 000: остаток 1 740 000 на те же 47 взносов', async () => {
+    const { car, field, terms } = await openCar()
+    await commit(field('Уже накоплено'), '1 260 000')
+    expect(car()).toMatchObject({ have: 1_260_000, monthly: 37_022 })
+    expect(terms).toEqual([{ prev: 60_000, next: 37_022 }])
+  })
+
+  it('фонд — взнос не трогаем (порог — в плане)', async () => {
+    const { car, field, terms } = await openCar(true)
+    await commit(field('Сколько нужно'), '1 300 000')
+    expect(car()).toMatchObject({ need: 1_300_000, monthly: 60_000 })
+    expect(terms).toEqual([])
+  })
+})

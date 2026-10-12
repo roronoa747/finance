@@ -234,6 +234,16 @@ export function goalMonthly(remaining: number, months: number): number {
 }
 
 /**
+ * Взнос, при котором срок цели прежний после правки суммы или накопленного (хотфикс 2026-10-12, владелец: «по текущему
+ * сроку»): взносов столько же, сколько было при прежних остатке и взносе. Взноса нет, прежний или новый остаток 0 — взнос
+ * прежний.
+ */
+export function keepTermMonthly(prevRemaining: number, monthly: number, remaining: number): number {
+  if (monthly <= 0 || prevRemaining <= 0 || remaining <= 0) return monthly
+  return goalMonthly(remaining, goalMonths(prevRemaining, monthly))
+}
+
+/**
  * Размер подушки. Не «шесть расходов вслепую», а максимум из базового пола
  * и сценария: при потере работы одним партнёром покрывается только дефицит,
  * а не все расходы семьи.

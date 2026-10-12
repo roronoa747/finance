@@ -13,6 +13,7 @@ import {
   realRate,
   goalMonths,
   goalMonthly,
+  keepTermMonthly,
   goalHave,
   indexedNeed,
   INFLATION,
@@ -239,6 +240,17 @@ describe('finance.ts — депозиты, цели, подушка безопа
 
     expect(goalMonthly(1_000_000, 5)).toBe(200_000)
     expect(goalMonthly(1_000_000, 0)).toBe(1_000_000)
+  })
+
+  it('keepTermMonthly — правка суммы или накопленного: срок прежний, взнос под него (хотфикс 2026-10-12)', () => {
+    // «Машина» владельца: 13 000 000, накоплено 10 000, 2 166 667 в месяц — 6 взносов; сумму правят на 1 300 000.
+    expect(keepTermMonthly(12_990_000, 2_166_667, 1_290_000)).toBe(215_000)
+    // Сумму подняли — взнос растёт, взносов те же 6.
+    expect(keepTermMonthly(1_200_000, 200_000, 1_800_000)).toBe(300_000)
+    // Взноса нет, цель была собрана или собрана теперь — взнос прежний.
+    expect(keepTermMonthly(1_000_000, 0, 500_000)).toBe(0)
+    expect(keepTermMonthly(0, 50_000, 500_000)).toBe(50_000)
+    expect(keepTermMonthly(1_000_000, 50_000, 0)).toBe(50_000)
   })
 
   it('emergencyTarget — целевой размер подушки', () => {

@@ -244,6 +244,27 @@ const form = useFormCheck(() => [['amount', parseMoney(depositAmount.value) <= 0
 /* ---------- тост «ближе на N дней» после пополнения (PN-09, Р-15): 4 с, снятие — без тоста ---------- */
 const { note: closerNote, flash: flashCloser } = useFlash()
 
+/* ---------- сумму правили — срок прежний (хотфикс 2026-10-12): тост с новым взносом, «Оставить взнос» — сдвинуть срок ---------- */
+// Тост — когда лист закрыт (над листом его не видно); правили несколько раз — «Оставить взнос» вернёт взнос до листа.
+const { note: termNote, flash: flashTerm, clear: clearTerm } = useFlash(6000)
+const termChange = ref<{ prev: number; next: number } | null>(null)
+const termPrev = ref(0)
+function onTerm(change: { prev: number; next: number }) {
+  termChange.value = { prev: termChange.value?.prev ?? change.prev, next: change.next }
+}
+function closeEdit() {
+  openEditModal.value = false
+  const c = termChange.value
+  termChange.value = null
+  if (!c || c.prev === c.next) return
+  termPrev.value = c.prev
+  flashTerm(`Взнос ${money(c.next)} в месяц — срок прежний`)
+}
+function keepMonthly() {
+  if (goal.value) financeStore.setGoalMonthly(goal.value.id, termPrev.value)
+  clearTerm()
+}
+
 function applyDeposit() {
   const v = parseMoney(depositAmount.value)
   if (!v || !goal.value) return
@@ -668,6 +689,7 @@ function share() {
 
     <!-- «Ближе на N дней» (PN-09): тост после пополнения, в оболочке — над вкладками -->
     <Toast v-if="closerNote"><span data-closer>{{ closerNote }}</span></Toast>
+    <Toast v-if="termNote" action="Оставить взнос" @action="keepMonthly"><span data-term>{{ termNote }}</span></Toast>
 
     <!-- Карточка для сторис (B2C-20): без сумм -->
     <!-- Момент «Сбылось» (PN-14): «Поделиться» — та же карточка ниже, со строкой «сбылось за N месяцев» -->
@@ -678,7 +700,8 @@ function share() {
     <!-- Окно: Изменить цель -->
     <GoalSheet
       :goal-id="openEditModal && canEdit ? goal.id : null"
-      @close="openEditModal = false"
+      @close="closeEdit"
+      @term="onTerm"
       @removed="router.push('/')"
     />
   </div>
