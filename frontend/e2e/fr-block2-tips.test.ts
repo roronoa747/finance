@@ -260,6 +260,35 @@ describe('e2e / бэклог «первый», Блок 2 — подсказки
     }
   })
 
+  it('повторная приёмка — «Разобрать» в карточке разделов «Недели» тоже нажатие предмета: лист вопросов, пузыря нет, навсегда', async () => {
+    // Подписка без ответа — вопрос разбора, у разделов появляется «Разобрать».
+    const doc = withOwnWeek(planFamilyDoc())
+    server = fakeServer({
+      ...doc,
+      people: doc.people.map((p) => ({ ...p, onboardedAt: '2026-09-01T07:00:00.000Z' })),
+      obligations: [...(doc.obligations ?? []), { id: 'nf', name: 'Netflix', note: '', day: 3, category: 'd4', versions: [{ from: '2000-01', amount: 4_990 }], updatedAt: '' }],
+    } as SyncDoc)
+    const A = await phone('a')
+    await launch(A.pinia, '/week')
+    expect(shown()).toEqual(['tab-week'])
+    const bang = document.querySelector<HTMLElement>('[data-week-list] [data-bang]')
+    expect(bang, '«Разобрать»').not.toBeNull()
+    vi.setSystemTime(Date.now() + 1000)
+    bang!.click()
+    await settle()
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Вопросы')
+    expect(shown()).toEqual([])
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await settle()
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+    expect(shown()).toEqual([])
+    expect(readTipsSeen()).toEqual(['tab-week'])
+    // Перезагрузка — пузыря «Недели» нет.
+    const again = await launch(A.pinia, '/week')
+    expect(again.currentRoute.value.path).toBe('/week')
+    expect(shown()).toEqual([])
+  })
+
   it('(д) выход стирает «видел»: следующий вход на этом телефоне видит подсказки снова', async () => {
     const A = await phone('a')
     await launch(A.pinia, '/')
