@@ -1,10 +1,10 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -56,18 +56,15 @@ func (h *AdminAIHandler) SetAI(w http.ResponseWriter, r *http.Request) {
 		errorJSON(w, http.StatusNotFound, "not found")
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxAIToggleBody)
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
+	// Postgres answers ids in lower case; the row is found by string below.
+	id = strings.ToLower(id)
 	var req struct {
 		On *bool `json:"on"`
 	}
-	if err := dec.Decode(&req); err != nil || req.On == nil {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
-			errorJSON(w, http.StatusRequestEntityTooLarge, "request body too large")
-			return
-		}
+	if !decodeStrictJSONBody(w, r, maxAIToggleBody, &req) {
+		return
+	}
+	if req.On == nil {
 		errorJSON(w, http.StatusBadRequest, "invalid request body")
 		return
 	}

@@ -125,8 +125,8 @@ type MockAIUsage struct {
 	CostMicros                int64
 }
 
-// MockAIRepo keeps the flags and counters in memory. A family is known when the mock
-// households have it (the stand) or it already has a flag (tests without households).
+// MockAIRepo keeps the flags and counters in memory over the mock households and users, like
+// the SQL over app.households.
 type MockAIRepo struct {
 	mu         sync.Mutex
 	households *MockHouseholdRepo
@@ -140,12 +140,6 @@ func NewMockAIRepo(households *MockHouseholdRepo, users *MockUserRepo) *MockAIRe
 }
 
 func (m *MockAIRepo) known(householdID string) bool {
-	if _, ok := m.Flags[householdID]; ok {
-		return true
-	}
-	if m.households == nil {
-		return false
-	}
 	_, err := m.households.GetHousehold(context.Background(), householdID)
 	return err == nil
 }
@@ -187,40 +181,25 @@ func (m *MockAIRepo) AddUsage(ctx context.Context, householdID, month string, re
 	return nil
 }
 
-// Families lists the mock households (and flag-only families of tests) like the SQL does.
+// Families lists the mock households like the SQL does.
 func (m *MockAIRepo) Families(ctx context.Context, month string) ([]AIFamily, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	byID := map[string]*AIFamily{}
-	for id := range m.Flags {
-		byID[id] = &AIFamily{ID: id, Emails: []string{}}
-	}
-	if m.households != nil {
-		m.households.mu.RLock()
-		for id, h := range m.households.households {
-			f := &AIFamily{ID: id, CreatedAt: h.CreatedAt, Emails: []string{}}
-			members := slices.Clone(m.households.members[id])
-			sort.Slice(members, func(i, j int) bool { return members[i].Slot < members[j].Slot })
-			for _, mem := range members {
-				if m.users == nil {
-					continue
-				}
-				if u, err := m.users.GetByID(ctx, mem.UserID); err == nil {
-					f.Emails = append(f.Emails, u.Email)
-				}
-			}
-			byID[id] = f
-		}
-		m.households.mu.RUnlock()
-	}
-	families := make([]AIFamily, 0, len(byID))
-	for id, f := range byID {
-		f.AI = m.Flags[id]
-		f.Month = month
+	m.households.mu.RLock()
+	families := make([]AIFamily, 0, len(m.households.households))
+	for id, h := range m.households.households {
 		u := m.Usage[id][month]
-		f.Requests, f.CostMicros = u.Requests, u.CostMicros
-		families = append(families, *f)
+		f := AIFamily{ID: id, CreatedAt: h.CreatedAt, Emails: []string{}, AI: m.Flags[id], Month: month, Requests: u.Requests, CostMicros: u.CostMicros}
+		members := slices.Clone(m.households.members[id])
+		sort.Slice(members, func(i, j int) bool { return members[i].Slot < members[j].Slot })
+		for _, mem := range members {
+			if u, err := m.users.GetByID(ctx, mem.UserID); err == nil {
+				f.Emails = append(f.Emails, u.Email)
+			}
+		}
+		families = append(families, f)
 	}
+	m.households.mu.RUnlock()
 	sort.Slice(families, func(i, j int) bool {
 		a, b := families[i], families[j]
 		if a.AI != b.AI {

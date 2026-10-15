@@ -294,8 +294,21 @@ func (h *AuthHandler) aiOn(ctx context.Context, household *models.Household) boo
 // decodeJSONBody reads at most limit bytes of JSON into dst. On failure it has
 // already answered: 413 when the body exceeds the limit, 400 when it is malformed.
 func decodeJSONBody(w http.ResponseWriter, r *http.Request, limit int64, dst interface{}) bool {
+	return decodeBody(w, r, limit, dst, false)
+}
+
+// decodeStrictJSONBody is decodeJSONBody that also answers 400 to a field dst does not have.
+func decodeStrictJSONBody(w http.ResponseWriter, r *http.Request, limit int64, dst interface{}) bool {
+	return decodeBody(w, r, limit, dst, true)
+}
+
+func decodeBody(w http.ResponseWriter, r *http.Request, limit int64, dst interface{}, strict bool) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, limit)
-	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+	dec := json.NewDecoder(r.Body)
+	if strict {
+		dec.DisallowUnknownFields()
+	}
+	if err := dec.Decode(dst); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
 			respondJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request body too large"})

@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
-	"errors"
 	"log"
 	"net/http"
 	"slices"
@@ -44,17 +42,8 @@ func (h *EventsHandler) Record(w http.ResponseWriter, r *http.Request) {
 	userID, _ := auth.GetUserID(r.Context())
 	householdID, _ := auth.GetHouseholdID(r.Context())
 
-	r.Body = http.MaxBytesReader(w, r.Body, maxEventBody)
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
 	var req eventRequest
-	if err := dec.Decode(&req); err != nil {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
-			respondJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request body too large"})
-			return
-		}
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	if !decodeStrictJSONBody(w, r, maxEventBody, &req) {
 		return
 	}
 	if !slices.Contains(repository.EventKinds, req.Kind) {

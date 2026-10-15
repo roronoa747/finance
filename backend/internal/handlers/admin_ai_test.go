@@ -173,6 +173,11 @@ func TestAdminSetAI(t *testing.T) {
 	if code, body := f.do(t, f.admin, http.MethodPut, path, `{"on":false}`); code != http.StatusOK || !strings.Contains(body, `"ai":false`) {
 		t.Fatalf("off: %d %s", code, body)
 	}
+	// An upper-case id is the same family (Postgres compares uuids, answers lower case).
+	upper := "/api/admin/families/" + strings.ToUpper(f.familyB) + "/ai"
+	if code, body := f.do(t, f.admin, http.MethodPut, upper, `{"on":false}`); code != http.StatusOK || !strings.Contains(body, f.familyB) {
+		t.Fatalf("upper-case id: %d %s", code, body)
+	}
 
 	for _, c := range []struct {
 		path, body string
