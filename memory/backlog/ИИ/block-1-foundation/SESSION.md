@@ -4,7 +4,7 @@
 переключателем и расходом в админке; человек один раз даёт согласие (или выключает в настройках), политика честно
 называет Claude. Функций ИИ ещё нет — блок готовит всё, на что опираются Блоки 2–4.
 
-Сессии: исполнитель ⬜ · критик ⬜ · ux ⬜ · приёмка ⬜ · ревью backend ⬜ · ревью frontend ⬜ · клинап ⬜
+Сессии: исполнитель ✅ · критик ⬜ · ux ⬜ · приёмка ⬜ · ревью backend ⬜ · ревью frontend ⬜ · клинап ⬜
 
 ---
 
@@ -118,17 +118,103 @@
 - **Откат:** promote предыдущего Production (id — перечитать перед деплоем); убрать ключ из env — ИИ выключен везде;
   миграция обратима `DROP TABLE app.ai_usage; ALTER TABLE app.households DROP COLUMN ai_enabled;` (только если
   откатываем код).
+- **Шаги владельцу (исполнитель, AI-06):** (1) console.anthropic.com → API Keys → создать ключ → значение в
+  `memory/secrets/anthropic.md` (вне git) и в Vercel → Project → Settings → Environment Variables → `ANTHROPIC_API_KEY`,
+  окружение **Production**; (2) там же в консоли Anthropic — Limits → месячный потолок расхода (общий для всех семей,
+  Р-8); (3) прод-миграция 000007 — `cmd/migrate` по прямому подключению (порт 5432), команду даёт клинап.
+- **Первый деплой с `functions` в `vercel.json`** (AI-01): проверить, что сборка Vercel приняла `api/index.go` с
+  `maxDuration: 60` (Preview до Production, если владелец разрешит push ветки).
 - 🏁 блока в §4, строка в `memory/STATE.md`. Следующий шаг — `/worker ИИ 2 ultrathink`.
 
 ---
 
 ## Handoff (заполняет исполнитель)
 
-- **Коммиты:**
+Исполнитель 2026-10-15, ветка `ai-block-1-foundation` от `main` `e1f4aeb`, не запушена.
+
+- **Коммиты:** `c29583e` AI-01 · `6874668` AI-02 · `bc89666` AI-03 · `dc1e9c1` AI-04 · `df28b19` AI-05 · `5a6bf8e` AI-02
+  (тест миграций 13 → 14 таблиц) · `f20af12` AI-06 · + коммит Handoff.
+- **Проверка платформы (AI-01 п. 1, 2026-10-15, живые источники):**
+  - API из Южной Кореи — **доступен**: «South Korea» в списке https://www.anthropic.com/supported-countries (список
+    покрывает «our API and developer platform»).
+  - Обучение — «By default, we will not use your inputs or outputs from our commercial products»
+    (https://privacy.claude.com/en/articles/7996868-is-my-data-used-for-model-training); хранение по умолчанию — 30 дней
+    (https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data).
+  - Модели (https://platform.claude.com/docs/en/about-claude/models/overview): `claude-opus-5-5`, `claude-haiku-5-5`
+    существуют, зрение — у всех текущих; structured outputs (`output_config.format`) — обе в списке
+    (https://platform.claude.com/docs/en/build-with-claude/structured-outputs). Цены
+    (https://platform.claude.com/docs/en/about-claude/pricing): Opus 5.5 $4/$20, Sonnet 5.5 $2/$10, Haiku 5.5 $0.10/$0.50
+    (до 100K промпта; выше — $0.50/$2.50) — совпало с ТЗ.
+  - Vercel: с Fluid — дефолт и максимум 300 с (Hobby), 300/800 с (Pro) (https://vercel.com/docs/functions/limitations);
+    **Go в списке рантаймов Fluid не назван** (https://vercel.com/docs/fluid-compute), а KB о таймаутах его называет;
+    без Fluid Hobby был ≤ 60 с (changelog 2024-05-09). Тариф через MCP не виден (`get_project`/`get_team` без плана).
+    **Решение:** явно `functions: {"api/index.go": {"maxDuration": 60}}` — допустимо на любом тарифе и в любом режиме;
+    клиент — один дедлайн 45 с на весь вызов, запас 15 с.
 - **Что сделано:**
+  - AI-01 — пакет `internal/ai`: `New(key, baseURL)` (без ключа `nil`), `Call(ctx, Request, &out) (Usage, error)`,
+    `Request{Model, System, Text, Image{MediaType, Data}, Schema, Effort, MaxTokens}`, ошибки `ErrRateLimited` /
+    `ErrRefused` / `ErrFailed`; `CostMicros(Usage)` по таблице `price.go`. Конфиг: `AnthropicAPIKey`, `AIModelReview` /
+    `Sellers` / `Wish`, `AIMonthlyLimit` (не в `ValidateProduction`). SDK `github.com/anthropics/anthropic-sdk-go` v1.81.0.
+  - AI-02 — миграция `000007_ai.sql`; `repository.AIRepository` (`Enabled`, `SetEnabled`, `Used`, `AddUsage`, `Families`)
+    + `MockAIRepo(households, users)`; `ai.MonthKey`, `ai.LimitReached`; `Repos.AI`; `/auth/me` → `ai`
+    (`handlers.AIFlags`, nil без ключа); фронт `MeResponse.ai`, `authStore.ai`.
+  - AI-03 — `handlers.AdminAIHandler`: `GET /api/admin/families`, `PUT /api/admin/families/{id}/ai`,
+    `POST /api/admin/ai-check`; админ-проверка — общий `adminOnly` (и у `Metrics`).
+  - AI-04 — `Admin.vue` раздел «Семьи»; `apiClient.adminFamilies / setFamilyAi / aiCheck`; `lib/money.usdFromMicros`.
+  - AI-05 — `stores/ai.ts` (`available`, `consent`, `setConsent`, `ensureConsent`, `answer`, `sheetOpen`);
+    `components/ai/AiConsentSheet.vue` (один, в `AppShell`); карточка «ИИ» в `Settings.vue`; `Privacy.vue`.
+  - AI-06 — `e2e/ai-block1-foundation.test.ts`; доки: `backend/README.md` (env, раздел «ИИ»), DESIGN.md (`/settings`,
+    `/admin`, §6).
+- **Правило 12 по экранам:**
+  - `/admin` «Семьи»: главное действие — тумблер ИИ **у каждой семьи** (в её строке); второстепенное — тихая «Проверить
+    связь» (`ghost sm`) в шапке раздела. В подсказке: лимит на семью и потолок в консоли Anthropic; причина «Нет связи».
+    Скрыто: расход у семей без ИИ и без трат; метрики ниже — как были.
+  - Настройки, карточка «ИИ»: действие — тумблер «Помощник» у своего предмета; одна строка «Без имён · Anthropic»,
+    три пункта «что уходит» — в «?». Видна только участнику семьи с ИИ.
+  - Лист согласия: одна брендовая «Включить» во всю ширину (подтверждение в листе), «Не надо» — `ghost`; три строки с
+    иконками, куда — одной строкой, подробности — ссылкой «Подробнее» → `/privacy`.
 - **Отклонения от ТЗ:**
+  - AI-01: таймаут — **один дедлайн контекста 45 с на весь вызов**, а не `WithRequestTimeout` на попытку: в SDK таймаут
+    — на каждую попытку, с ретраем вызов мог бы идти 90 с > `maxDuration`.
+  - AI-01: SDK попал в корневой `go.mod` коммитом AI-02 (`go mod tidy` держит только то, что импортирует `api/`; сервер
+    стал импортировать `internal/ai` в AI-02).
+  - AI-02: мок `MockAIRepo` — рядом с SQL в `ai_repo.go` (как `MockEventRepo` в `events_repo.go`), не в `mock_repo.go`.
+    `AI_MONTHLY_LIMIT` ≤ 0 / не число → 30 — разбор в `config.positiveInt` (AI-01), не в репозитории.
+  - AI-02: ошибка чтения флага в `/auth/me` → `ai: false` + лог, `/me` не падает (в ТЗ не сказано).
+  - AI-03: `ai-check` — `max_tokens` 1024 (не «малый» в десятки): у Haiku 5.5 адаптивное мышление включено, малый
+    потолок мог съесться мышлением → `max_tokens` → «failed»; платится только реальный вывод. PUT без `on` → 400.
+  - AI-04: типы — в `types/api.ts` (как в ТЗ), хотя `AdminMetrics` живёт в `api/client.ts`. `usdFromMicros` не знает
+    модель — «≈ —» для неизвестной модели (Р-14) не показывается (в ответе нет модели; расход такой модели = 0 → «$0»).
+  - AI-05: `newerObject` получил необязательный параметр «поле времени» — `aiConsent` сливается по `at` (как в ТЗ), а не
+    по `updatedAt`; прежние вызовы не менялись. Тип — `AiConsent` в `types/finance.ts`. `ensureConsent` без доступа →
+    `false` без листа; повторный вызов при открытом листе ждёт тот же ответ; ушли с экрана с открытым листом → «нет».
 - **Грабли среды:**
+  - `python` висит (известно) — правки только Edit/node; `node -e` с CRLF-файлами — замены промахиваются, Edit надёжнее.
+  - `cd X && cmd &` в Bash уводит `cd` в фоновую подоболочку — пути к бинарникам стенда только полные.
+  - Первый прогон PG-тестов на свежем кластере: `TestPostgresMigrationsLiveInAppSchema` — таймаут 30 с на 000002,
+    повтор — 1,5 с (медленный старт, не код).
+  - `cmd/migrate` тест держит жёсткое число таблиц — при новой миграции +1 (пропустил в AI-02, нашёл в регрессии).
+  - Стенд живёт между прогонами браузера — сценарий не должен ждать «не спрошено» на старте (согласие осталось с
+    прошлого прогона); скрипт читает стартовое состояние с сервера.
+  - На `/` у пустой семьи — экран первого запуска вне оболочки: стор `ai` там не создан; лист согласия — с `/settings`.
+  - Стенд: Postgres 16 из `~/.embedded-postgres-go` (initdb в scratchpad, порт 54397), база `stand` отдельно от
+    тестовой (PG-тесты стирают свою); SQL — свой `sqlrun.exe` (lib/pq); viewer — SQL-переносом членства.
 - **Верификация:**
+  - Go: `cd backend && go build ./... && go vet ./... && go test ./...` ✅; PG `go test -p 1 -count=1 -run Postgres ./...`
+    ✅ (вкл. `TestPostgresAIFlagAndUsage`, `TestPostgresAIFamilies`, каскад `ai_usage`); корень `go vet ./api/... &&
+    go test ./api/...` ✅. Живой тест `TestLiveCall` — **skip: ключа нет** (`memory/secrets/anthropic.md` не создан).
+  - Фронт: `npm run build` ✅, `npx vitest run` — **210 файлов, 2112 ✅ + 1 skip** (вместе с `e2e/`).
+  - Миграция 000007: на чистой базе (PG-тесты) и на **существующей** — сервер из `main` (миграции 1–6) + семья →
+    новый сервер накатил 000007, `ai_enabled = false`; с ключом и флагом `/auth/me` → `ai: true`, без ключа — `false`.
+  - curl `cmd/server` + БД: список семей, PUT, `ai-check` без ключа → `no_key`, без токена 401; лог chi — только метод,
+    путь, статус.
+  - Браузер (Chrome 390 px, Go+Postgres :8080, Vue :5174): админка **10/10** (обе темы, переключение держится после
+    перезагрузки и поднимает семью наверх, расход «7 запросов · ≈ $0.42», «Проверить связь» с фальшивым ключом →
+    «Нет связи» + причина в «?», не-админ — «Нет такой страницы»); согласие **16/16** (карточка у участника, тумблер с
+    сервера, перезагрузка держит, согласие в личном документе и не в общем, второй телефон того же человека — «вкл»,
+    «?» с тремя пунктами, лист в обеих темах — «Включить» / «Не надо», семья без ИИ и viewer — карточки нет, ошибок
+    консоли нет).
+  - CI ветки — **не запущен**: ветка не запушена (push — с согласия владельца).
 
 ## Итоги критика
 
