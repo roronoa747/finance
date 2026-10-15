@@ -25,6 +25,12 @@ type AuthHandler struct {
 	tokens        *auth.TokenService
 	google        GoogleVerifier // nil: GOOGLE_CLIENT_IDS is not set
 	admins        []string       // ADMIN_EMAILS: /auth/me answers admin: true (B2C-28)
+	ai            AIFlags        // nil: no ANTHROPIC_API_KEY, /auth/me answers ai: false
+}
+
+// AIFlags reads a family's AI flag (repository.AIRepository).
+type AIFlags interface {
+	Enabled(ctx context.Context, householdID string) (bool, error)
 }
 
 func NewAuthHandler(
@@ -33,6 +39,7 @@ func NewAuthHandler(
 	tokens *auth.TokenService,
 	google GoogleVerifier,
 	admins []string,
+	ai AIFlags,
 ) *AuthHandler {
 	return &AuthHandler{
 		userRepo:      userRepo,
@@ -40,6 +47,7 @@ func NewAuthHandler(
 		tokens:        tokens,
 		google:        google,
 		admins:        admins,
+		ai:            ai,
 	}
 }
 
@@ -265,7 +273,22 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		"household": household,
 		"member":    member,
 		"admin":     isAdmin(h.admins, user.Email),
+		"ai":        h.aiOn(r.Context(), household),
 	})
+}
+
+// aiOn is the family's AI: a key is set and the owner turned it on. A failed read is "off" —
+// the app works without AI, and /auth/me must not fail over it.
+func (h *AuthHandler) aiOn(ctx context.Context, household *models.Household) bool {
+	if h.ai == nil || household == nil {
+		return false
+	}
+	on, err := h.ai.Enabled(ctx, household.ID)
+	if err != nil {
+		log.Printf("auth/me: ai flag: %v", err)
+		return false
+	}
+	return on
 }
 
 // decodeJSONBody reads at most limit bytes of JSON into dst. On failure it has

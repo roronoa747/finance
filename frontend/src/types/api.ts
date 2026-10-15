@@ -38,6 +38,8 @@ export interface MeResponse {
   member: HouseholdMember | null
   /** Почта в `ADMIN_EMAILS` (B2C-28) — пункт «Цифры» в настройках. */
   admin?: boolean
+  /** ИИ у семьи (бэклог «ИИ», Р-7): ключ на сервере задан и владелец включил ИИ семье. */
+  ai?: boolean
 }
 
 /** Участник семьи из `GET /api/household/members` (B2C-23): без почты и id. */

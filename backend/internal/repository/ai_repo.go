@@ -1,0 +1,144 @@
+package repository
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"sync"
+)
+
+// AIRepository holds the family AI flag and the monthly counters (бэклог «ИИ», Р-7, Р-8).
+type AIRepository interface {
+	// Enabled is the family's flag; an unknown family is off.
+	Enabled(ctx context.Context, householdID string) (bool, error)
+	// SetEnabled flips the flag; an unknown family is ErrHouseholdNotFound.
+	SetEnabled(ctx context.Context, householdID string, on bool) error
+	// Used is the family's requests in month ('YYYY-MM', ai.MonthKey); no row is 0.
+	Used(ctx context.Context, householdID, month string) (int, error)
+	// AddUsage adds a successful call to the month's counters.
+	AddUsage(ctx context.Context, householdID, month string, requests int, in, out, costMicros int64) error
+}
+
+type sqlAIRepository struct{ db *sql.DB }
+
+func NewSQLAIRepository(db *sql.DB) AIRepository { return &sqlAIRepository{db: db} }
+
+func (r *sqlAIRepository) Enabled(ctx context.Context, householdID string) (bool, error) {
+	var on bool
+	err := r.db.QueryRowContext(ctx, `SELECT ai_enabled FROM app.households WHERE id = $1`, householdID).Scan(&on)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to read ai flag: %w", err)
+	}
+	return on, nil
+}
+
+func (r *sqlAIRepository) SetEnabled(ctx context.Context, householdID string, on bool) error {
+	res, err := r.db.ExecContext(ctx, `UPDATE app.households SET ai_enabled = $2 WHERE id = $1`, householdID, on)
+	if err != nil {
+		return fmt.Errorf("failed to set ai flag: %w", err)
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return ErrHouseholdNotFound
+	}
+	return nil
+}
+
+func (r *sqlAIRepository) Used(ctx context.Context, householdID, month string) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx, `SELECT requests FROM app.ai_usage WHERE household_id = $1 AND month = $2`, householdID, month).Scan(&n)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("failed to read ai usage: %w", err)
+	}
+	return n, nil
+}
+
+func (r *sqlAIRepository) AddUsage(ctx context.Context, householdID, month string, requests int, in, out, costMicros int64) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO app.ai_usage (household_id, month, requests, input_tokens, output_tokens, cost_micros)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (household_id, month) DO UPDATE SET
+			requests = app.ai_usage.requests + EXCLUDED.requests,
+			input_tokens = app.ai_usage.input_tokens + EXCLUDED.input_tokens,
+			output_tokens = app.ai_usage.output_tokens + EXCLUDED.output_tokens,
+			cost_micros = app.ai_usage.cost_micros + EXCLUDED.cost_micros;`,
+		householdID, month, requests, in, out, costMicros)
+	if err != nil {
+		return fmt.Errorf("failed to add ai usage: %w", err)
+	}
+	return nil
+}
+
+// MockAIUsage is one family's month in MockAIRepo.
+type MockAIUsage struct {
+	Requests                  int
+	InputTokens, OutputTokens int64
+	CostMicros                int64
+}
+
+// MockAIRepo keeps the flags and counters in memory. A family is known when the mock
+// households have it (the stand) or it already has a flag (tests without households).
+type MockAIRepo struct {
+	mu         sync.Mutex
+	households *MockHouseholdRepo
+	Flags      map[string]bool                   // household id → ai_enabled
+	Usage      map[string]map[string]MockAIUsage // household id → month → counters
+}
+
+func NewMockAIRepo(households *MockHouseholdRepo) *MockAIRepo {
+	return &MockAIRepo{households: households, Flags: map[string]bool{}, Usage: map[string]map[string]MockAIUsage{}}
+}
+
+func (m *MockAIRepo) known(householdID string) bool {
+	if _, ok := m.Flags[householdID]; ok {
+		return true
+	}
+	if m.households == nil {
+		return false
+	}
+	_, err := m.households.GetHousehold(context.Background(), householdID)
+	return err == nil
+}
+
+func (m *MockAIRepo) Enabled(ctx context.Context, householdID string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.Flags[householdID], nil
+}
+
+func (m *MockAIRepo) SetEnabled(ctx context.Context, householdID string, on bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.known(householdID) {
+		return ErrHouseholdNotFound
+	}
+	m.Flags[householdID] = on
+	return nil
+}
+
+func (m *MockAIRepo) Used(ctx context.Context, householdID, month string) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.Usage[householdID][month].Requests, nil
+}
+
+func (m *MockAIRepo) AddUsage(ctx context.Context, householdID, month string, requests int, in, out, costMicros int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.Usage[householdID] == nil {
+		m.Usage[householdID] = map[string]MockAIUsage{}
+	}
+	u := m.Usage[householdID][month]
+	u.Requests += requests
+	u.InputTokens += in
+	u.OutputTokens += out
+	u.CostMicros += costMicros
+	m.Usage[householdID][month] = u
+	return nil
+}
