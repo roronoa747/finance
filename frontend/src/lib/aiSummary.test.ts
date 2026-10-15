@@ -9,7 +9,6 @@ import {
   monthPlan,
   openGoals,
   spendFact,
-  spendRows,
   untilPayday,
 } from './finance'
 import { defaultSyncDoc, useFinanceStore } from '@/stores/finance'
@@ -60,6 +59,8 @@ function familyDoc(): SyncDoc {
       { id: `a:month:${KEY}:sc_food`, by: 'a', kind: 'month', period: KEY, categoryId: 'sc_food', amount: 85_000, ops: 9, updatedAt: T0 },
       { id: `b:month:${KEY}:sc_cafe`, by: 'b', kind: 'month', period: KEY, categoryId: 'sc_cafe', amount: 32_000, ops: 4, updatedAt: T0 },
       { id: `a:month:${KEY}:_unknown`, by: 'a', kind: 'month', period: KEY, categoryId: '_unknown', amount: 12_500, ops: 3, updatedAt: T0 },
+      // Раздел платежей: в «потрачено» — только неотмеченная часть (`spentOf`).
+      { id: `a:month:${KEY}:sc_telecom`, by: 'a', kind: 'month', period: KEY, categoryId: 'sc_telecom', amount: 15_000, ops: 2, unmarked: 4_000, updatedAt: T0 },
     ],
     spendPlans: [
       { id: 'a:sc_food', by: 'a', categoryId: 'sc_food', amount: 90_000, updatedAt: T0 },
@@ -99,6 +100,30 @@ describe('AI-07: сводка месяца без имён', () => {
     }
   })
 
+  // Критик Блока 2: имя на -а/-я/-ь/-й меняет последнюю букву («Дана» → «Даны»), у части — беглая гласная
+  // («Павел» → «Павла»), «ё» пишут и через «е» — сито по падежам, а не только по именительному.
+  it('сито по падежам: имя участника не выходит ни в одной форме', () => {
+    const forms: Record<string, string[]> = {
+      Дана: ['Даны', 'Дане', 'Дану', 'Даной'],
+      Мария: ['Марии', 'Марию', 'Марией'],
+      Айгуль: ['Айгули', 'Айгулью'],
+      Андрей: ['Андрея', 'Андрею', 'Андреем'],
+      Павел: ['Павла', 'Павлу', 'Павлом'],
+      Пётр: ['Петра', 'Петру', 'Пётра'],
+      Алия: ['Алии', 'Алию'],
+      Ася: ['Аси', 'Асе'],
+      Ян: ['Яна', 'Яну', 'Яном'],
+      Тимур: ['Тимура', 'Тимуру'],
+    }
+    for (const [name, list] of Object.entries(forms)) {
+      const people = [{ id: 'a' as const, name }]
+      for (const f of list) expect(maskNames(`Подарок ${f}`, people), `${name} → ${f}`).toBe('Подарок участник 1')
+    }
+    // И не шире: соседние слова не становятся участником.
+    expect(maskNames('Алименты', [{ id: 'a', name: 'Алия' }])).toBe('Алименты')
+    expect(maskNames('Данные Даны', [{ id: 'a', name: 'Дана' }])).toBe('Данные участник 1')
+  })
+
   it('короткое имя — только целым словом: «Вы» не съедает «Выплату»', () => {
     const people = [{ id: 'a' as const, name: 'Вы' }, { id: 'b' as const, name: 'Партнёр' }]
     expect(maskNames('Выплата Вы', people)).toBe('Выплата участник 1')
@@ -124,8 +149,14 @@ describe('AI-07: сводка месяца без имён', () => {
     expect(s.spend.fact).toBe(spendFact(plan.spend))
     expect([s.rest, s.short, s.free, s.saved]).toEqual([plan.rest, plan.short, plan.free, plan.putTotal])
 
-    const picture = spendRows(doc.spendTotals ?? [], doc.spendCategories ?? [], { kind: 'month', period: KEY })
-    expect(s.spend.byCategory).toEqual([...picture.rows.map((r) => ({ name: r.name, amount: r.amount })), { name: 'Без раздела', amount: picture.unknown }])
+    // Разделы — «потрачено» по разделам (критик Блока 2): участник 2 без выписки за месяц в «потрачено» не входит —
+    // и в разделы тоже; раздел платежей — неотмеченной частью. Вместе с «Без раздела» — ровно `spend.fact`.
+    expect(s.spend.byCategory).toEqual([
+      { name: 'Продукты', amount: 85_000 },
+      { name: 'Связь и интернет', amount: 4_000 },
+      { name: 'Без раздела', amount: 12_500 },
+    ])
+    expect(s.spend.byCategory.reduce((a, x) => a + x.amount, 0)).toBe(s.spend.fact)
 
     const debts = debtsOverview(state, KEY)
     expect(s.debts.total).toBe(debts.total)

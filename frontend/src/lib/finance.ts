@@ -1700,7 +1700,10 @@ export function creditBalance(c: Credit, payments: Payment[] = []): number {
 /** Кредиты с остатком из отметок (RP-06) — как их отдаёт стор экранам (`financeStore.credits`) и сводка ИИ. */
 export const derivedCredits = (list: Credit[], payments: Payment[]) => list.map((c) => ({ ...c, principal: creditBalance(c, payments) }))
 
-/** Ставка в процентах до сотых: 0.19 → 19, 0.165 → 16.5 — как её пишут экраны (`ratePct`), числом (сводка ИИ). */
+/**
+ * Ставка в процентах до сотых, числом (сводка ИИ): 0.19 → 19, 0.165 → 16.5 — как поле ставки (`rateField`, money.ts;
+ * ту же формулу не переиспользовать оттуда — money.ts не тянет finance.ts, иначе цикл импортов).
+ */
 export const ratePercent = (r: number) => Math.round(r * 10_000) / 100
 
 /**
@@ -3868,6 +3871,37 @@ function planParts(contributions: { goalId: string; amount: number }[], prepay: 
 export function spendFact(spend: PlanSpend[]): number | null {
   const known = spend.filter((s) => s.fact !== null)
   return known.length ? amountTotal(known.map((s) => ({ amount: s.fact! }))) : null
+}
+
+/**
+ * «Потрачено» месяца по разделам (сводка ИИ, Р-3; критик Блока 2 «ИИ») — та же правда, что `spendFact` у `monthPlan`:
+ * итоги участников, чьи выписки покрывают месяц (`uploadedBy`), раздел, учтённый платежами, — неотмеченной частью
+ * (`spentOf`). Сумма строк и `unknown` («не разобрано») = `spendFact`; выписок нет — пусто. По убыванию суммы.
+ */
+export function monthSpendByCategory(
+  people: Person[],
+  totals: SpendTotal[],
+  categories: SpendCategory[],
+  key: string,
+  uploads: UploadPeriod[],
+): { rows: { categoryId: string; name: string; amount: number }[]; unknown: number } {
+  const live = categories.filter(alive)
+  const named = liveSpendCategories(categories)
+  const sums = new Map<string, number>()
+  for (const p of people.filter(alive)) {
+    if (!uploadedBy(p.id, key, uploads)) continue
+    for (const t of totals) {
+      if (t.deletedAt || t.by !== p.id || t.kind !== 'month' || t.period !== key || t.amount <= 0) continue
+      sums.set(t.categoryId, (sums.get(t.categoryId) ?? 0) + spentOf(t, live))
+    }
+  }
+  const unknown = sums.get(UNKNOWN_CATEGORY) ?? 0
+  sums.delete(UNKNOWN_CATEGORY)
+  const rows = [...sums]
+    .filter(([, amount]) => amount > 0)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([categoryId, amount]) => ({ categoryId, name: spendCategoryName(named, categoryId), amount }))
+  return { rows, unknown }
 }
 
 /** Состояние строки очереди «Месяца» — только когда есть что сказать (правило 12); текст — в экране. */

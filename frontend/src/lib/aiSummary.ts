@@ -8,12 +8,11 @@ import {
   openGoals,
   planForecast,
   ratePercent,
+  monthSpendByCategory,
   spendFact,
-  spendRows,
   untilPayday,
   type UploadPeriod,
 } from '@/lib/finance'
-import { plannedElsewhere } from '@/lib/statements/dictionary'
 import { today } from '@/lib/dates'
 
 /**
@@ -32,7 +31,8 @@ export type MonthSummaryAI = {
   dues: { total: number; items: { name: string; amount: number }[] }
   /**
    * Траты: `total` — план трат месяца (раздел «Траты» «Месяца»), `fact` — потрачено по выпискам (null — выписок за
-   * месяц нет), `byCategory` — факт по разделам выписок (кроме учтённых платежами), «Без раздела» — неразобранное.
+   * месяц нет), `byCategory` — он же по разделам (`monthSpendByCategory`: вместе дают `fact`), «Без раздела» —
+   * неразобранное.
    */
   spend: { total: number; fact: number | null; byCategory: { name: string; amount: number }[] }
   /** Остаётся после платежей, трат и целей (крупная цифра «Месяца»). */
@@ -55,19 +55,35 @@ const SLOT_NO: Record<PersonId, number> = { a: 1, b: 2, c: 3 }
 const who = (id: PersonId) => `участник ${SLOT_NO[id]}`
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/** «ё» пишут и через «е»: «Пётр» — и «Петра». */
+const yo = (s: string) => s.replace(/[её]/giu, '[её]')
+/** Окончания падежей имени после основы: Дан-ы, Мари-ей, Айгул-ью, Андре-я, Павл-ом. */
+const CASE = '(?:а|я|ы|и|е|у|ю|ь|й|ой|ей|ою|ею|ом|ем|ём|ью)'
 
 /**
- * Имя участника в тексте («Кредит Айгуль», «Подарок Ерлану») → «участник N». Каждое слово имени — без учёта регистра;
- * слово из 3+ букв — и с окончанием (падежи), короче («Вы», «Ян») — только целым словом, иначе «Выплата» стала бы
- * участником. Удалённые участники — тоже: их имя могло остаться в названии статьи.
+ * Формы слова имени: «Ерлан» — с любым хвостом («Ерлану», «Ерланова»); на гласную, -ь, -й — основа без последней буквы
+ * и окончание падежа («Дана» → «Даны», «Мария» → «Марии», «Айгуль» → «Айгули»); беглая гласная — «Павел» → «Павла».
+ * Короче 3 букв («Вы», «Ян») — целым словом или с окончанием, иначе «Выплата» стала бы участником.
+ */
+function nameForms(word: string): string {
+  const w = yo(escapeRe(word))
+  if (word.length < 3) return `${w}${CASE}?`
+  const forms = [`${w}\\p{L}*`]
+  if (/[аяьйеёоиыуюэ]$/iu.test(word)) forms.push(`${yo(escapeRe(word.slice(0, -1)))}${CASE}`)
+  else if (word.length >= 4 && /[еёо]$/iu.test(word.slice(0, -1))) forms.push(`${yo(escapeRe(word.slice(0, -2) + word.slice(-1)))}${CASE}`)
+  return `(?:${forms.join('|')})`
+}
+
+/**
+ * Имя участника в тексте («Кредит Айгуль», «Подарок Ерлану», «Кружок Даны») → «участник N». Каждое слово имени — без
+ * учёта регистра, во всех падежах (`nameForms`). Удалённые участники — тоже: их имя могло остаться в названии статьи.
  */
 export function maskNames(text: string, people: Pick<Person, 'id' | 'name'>[]): string {
   let out = text
   for (const p of people) {
     for (const word of (p.name ?? '').split(/[\s\p{P}]+/u)) {
       if (word.length < 2) continue
-      const tail = word.length >= 3 ? '\\p{L}*' : ''
-      const re = new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRe(word)}${tail}(?![\\p{L}\\p{N}])`, 'giu')
+      const re = new RegExp(`(^|[^\\p{L}\\p{N}])${nameForms(word)}(?![\\p{L}\\p{N}])`, 'giu')
       out = out.replace(re, (_m, before: string) => `${before}${who(p.id)}`)
     }
   }
@@ -94,11 +110,9 @@ export function buildMonthSummary(doc: SyncDoc, key: string, now: Date, env: Sum
     today(now),
   )
 
-  const live = spendCategories.filter((c) => !c.deletedAt)
-  const picture = spendRows(totals, spendCategories, { kind: 'month', period: key })
-  const byCategory = picture.rows
-    .filter((r) => !plannedElsewhere(r.categoryId, live))
-    .map((r) => ({ name: mask(r.name), amount: r.amount }))
+  // Разделы — та же правда, что «потрачено» (`spend.fact`): вместе с «Без раздела» дают его же.
+  const picture = monthSpendByCategory(people, totals, spendCategories, key, env.uploads ?? [])
+  const byCategory = picture.rows.map((r) => ({ name: mask(r.name), amount: r.amount }))
   if (picture.unknown > 0) byCategory.push({ name: 'Без раздела', amount: picture.unknown })
 
   const debts = debtsOverview({ ...state, plans: doc.plans }, key)
