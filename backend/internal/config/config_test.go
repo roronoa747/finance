@@ -177,7 +177,7 @@ func TestAIDefaults(t *testing.T) {
 func TestAIFromEnv(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("ANTHROPIC_API_KEY", " key ")
-	t.Setenv("AI_MODEL_REVIEW", "claude-sonnet-5-5")
+	t.Setenv("AI_MODEL_REVIEW", " claude-sonnet-5-5\n")
 	t.Setenv("AI_MONTHLY_LIMIT", "50")
 	cfg, err := Load()
 	if err != nil {

@@ -197,6 +197,50 @@ func TestCallRetriesOnce(t *testing.T) {
 	}
 }
 
+// A 429 asking to wait half a minute answers ErrRateLimited at once: no retry, no sleep into the
+// call's deadline (which would end as a timeout).
+func TestCall429IsNotRetried(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("retry-after", "30")
+		w.WriteHeader(429)
+		_, _ = io.WriteString(w, `{"type":"error","error":{"type":"rate_limit_error","message":"slow down"}}`)
+	}))
+	t.Cleanup(srv.Close)
+	c := New("test-key", srv.URL+"/")
+	c.Timeout = 2 * time.Second
+
+	start := time.Now()
+	var out okAnswer
+	_, err := c.Call(context.Background(), okRequest(), &out)
+	if !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("err = %v, want ErrRateLimited", err)
+	}
+	if calls != 1 {
+		t.Errorf("calls = %d, want 1 (429 is not retried)", calls)
+	}
+	if took := time.Since(start); took > time.Second {
+		t.Errorf("took %v, a 429 must answer at once", took)
+	}
+}
+
+// A blank Effort leaves the model's default: the field is not sent at all.
+func TestCallBlankEffortIsOmitted(t *testing.T) {
+	f := &fakeClaude{status: 200, body: message("end_turn", `{"ok":true}`)}
+	c := f.start(t)
+	req := okRequest()
+	req.Effort = ""
+	var out okAnswer
+	if _, err := c.Call(context.Background(), req, &out); err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	if oc, _ := f.sent["output_config"].(map[string]any); oc == nil || oc["effort"] != nil || oc["format"] == nil {
+		t.Errorf("output_config = %v, want format without effort", f.sent["output_config"])
+	}
+}
+
 func TestCallTimeout(t *testing.T) {
 	f := &fakeClaude{status: 200, body: message("end_turn", `{"ok":true}`), delay: 2 * time.Second}
 	c := f.start(t)

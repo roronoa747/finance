@@ -121,8 +121,10 @@ REST API приложения: вход, домохозяйство, синхр�
 
 - **Клиент** — `ai.New(key, baseURL)` (без ключа `nil`), `Call(ctx, Request, &out)` → `Usage`; ответ —
   структурный JSON по схеме (`output_config.format`). Один дедлайн 45 с на весь вызов (ретрай SDK ≤ 1
-  внутри), функция Vercel — `maxDuration: 60` (`vercel.json`). Ошибки — `ErrRateLimited`, `ErrRefused`,
-  `ErrFailed`, только со статусом. Цены — `price.go` (центы за MTok), `CostMicros`; неизвестная модель — 0.
+  внутри — на 5xx и сеть; 429 не повторяется, сразу `ErrRateLimited`), функция Vercel — `maxDuration: 60`
+  (`vercel.json`), `cmd/server` — `WriteTimeout` 60 с: оба выше дедлайна. Без стриминга `max_tokens` ≤ ~21 000
+  (больше SDK отказывает до отправки → `ErrFailed`). Ошибки — `ErrRateLimited`, `ErrRefused`, `ErrFailed`,
+  только со статусом. Цены — `price.go` (центы за MTok), `CostMicros`; неизвестная модель — 0 (в админке «≈ —»).
 - **Админка** (только `ADMIN_EMAILS`, остальным и без переменной — 404, хелпер `adminOnly`):
   `GET /api/admin/families` → `{families: [{id, created_at, emails, ai, month, requests, cost_micros}],
   limit, key}` за текущий месяц (ИИ сверху, затем новые); `PUT /api/admin/families/{id}/ai` `{on}` →

@@ -66,9 +66,9 @@ func Load() (*Config, error) {
 		AdminEmails:     splitList(strings.ToLower(getEnv("ADMIN_EMAILS", ""))),
 
 		AnthropicAPIKey: strings.TrimSpace(getEnv("ANTHROPIC_API_KEY", "")),
-		AIModelReview:   getEnv("AI_MODEL_REVIEW", DefaultAIModelReview),
-		AIModelSellers:  getEnv("AI_MODEL_SELLERS", DefaultAIModelSellers),
-		AIModelWish:     getEnv("AI_MODEL_WISH", DefaultAIModelWish),
+		AIModelReview:   strings.TrimSpace(getEnv("AI_MODEL_REVIEW", DefaultAIModelReview)),
+		AIModelSellers:  strings.TrimSpace(getEnv("AI_MODEL_SELLERS", DefaultAIModelSellers)),
+		AIModelWish:     strings.TrimSpace(getEnv("AI_MODEL_WISH", DefaultAIModelWish)),
 		AIMonthlyLimit:  positiveInt(getEnv("AI_MONTHLY_LIMIT", ""), DefaultAIMonthlyLimit),
 	}
 	if cfg.IsProduction() {

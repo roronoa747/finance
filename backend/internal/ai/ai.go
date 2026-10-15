@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -22,7 +23,9 @@ const DefaultBaseURL = "https://api.anthropic.com/"
 // (vercel.json maxDuration), so a slow model still leaves time to answer 502.
 const DefaultTimeout = 45 * time.Second
 
-// maxRetries is the SDK retry budget (429, 5xx, network); the timeout covers it too.
+// maxRetries is the SDK retry budget (5xx, network); the timeout covers it too. A 429 is not
+// retried: Anthropic asks to wait (retry-after, up to a minute), longer than the call may take,
+// and the wait would end as a timeout instead of ErrRateLimited.
 const maxRetries = 1
 
 var (
@@ -55,6 +58,7 @@ func New(apiKey, baseURL string) *Client {
 			option.WithAPIKey(apiKey),
 			option.WithBaseURL(baseURL),
 			option.WithMaxRetries(maxRetries),
+			option.WithMiddleware(noRetryOn429),
 		),
 		Timeout: DefaultTimeout,
 	}
@@ -138,6 +142,15 @@ func (c *Client) Call(ctx context.Context, req Request, out any) (Usage, error) 
 		return Usage{}, fmt.Errorf("%w: answer off schema", ErrFailed)
 	}
 	return Usage{Model: req.Model, InputTokens: msg.Usage.InputTokens, OutputTokens: msg.Usage.OutputTokens}, nil
+}
+
+// noRetryOn429 tells the SDK not to retry a 429 (see maxRetries).
+func noRetryOn429(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+	res, err := next(req)
+	if err == nil && res.StatusCode == http.StatusTooManyRequests {
+		res.Header.Set("x-should-retry", "false")
+	}
+	return res, err
 }
 
 // classify maps an SDK error to ours, keeping only the status: the SDK's own message
