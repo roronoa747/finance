@@ -19,7 +19,17 @@ let app: App | null = null
 
 beforeEach(() => {
   localStorage.clear()
-  vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('офлайн'))))
+  // Сервер знает только личный документ (AI-09: `ensureConsent` сначала подтягивает его; запись — эхом, как Go);
+  // прочее — «нет сети».
+  let priv: { rev: number; data: Record<string, unknown> } = { rev: 1, data: {} }
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (!String(url).endsWith('/sync/private')) throw new Error('офлайн')
+      if (init?.method === 'POST') priv = { rev: priv.rev + 1, data: (JSON.parse(String(init.body)) as { data: Record<string, unknown> }).data }
+      return new Response(JSON.stringify(priv), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }),
+  )
   setActivePinia(createPinia())
 })
 

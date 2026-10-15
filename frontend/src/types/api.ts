@@ -42,6 +42,13 @@ export interface MeResponse {
   ai?: boolean
 }
 
+/** Ответ `POST /api/ai/review` (бэклог «ИИ», AI-08): что хорошо, где риск, 2–3 шага; экран — из белого списка или null. */
+export interface AiReviewAnswer {
+  good: string
+  risk: string
+  steps: { text: string; screen: string | null }[]
+}
+
 /** Участник семьи из `GET /api/household/members` (B2C-23): без почты и id. */
 export interface MemberView {
   slot: 'a' | 'b' | 'c'

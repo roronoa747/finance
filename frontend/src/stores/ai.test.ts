@@ -22,6 +22,18 @@ describe('stores/ai — доступность и согласие', () => {
     setActivePinia(createPinia())
   })
 
+  /** Сервер отдаёт личный документ `data` (AI-09: `ensureConsent` сначала подтягивает его); запись — эхом, как Go. */
+  function online(data: Record<string, unknown> = {}) {
+    let rev = 1
+    const fetchFn = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') data = (JSON.parse(String(init.body)) as { data: Record<string, unknown> }).data
+      if (init?.method === 'POST') rev++
+      return new Response(JSON.stringify({ rev, data }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    })
+    vi.stubGlobal('fetch', fetchFn)
+    return fetchFn
+  }
+
   // Лист согласия смонтирован, как в оболочке (`AiConsentSheet`).
   function member(ai = true) {
     const auth = useAuthStore()
@@ -71,10 +83,11 @@ describe('stores/ai — доступность и согласие', () => {
   })
 
   it('не спрошено → лист; «Включить» → true и on; повторный вызов ждёт тот же ответ', async () => {
+    online()
     const ai = member()
     const first = ai.ensureConsent()
     const second = ai.ensureConsent()
-    expect(ai.sheetOpen).toBe(true)
+    await vi.waitFor(() => expect(ai.sheetOpen).toBe(true))
     ai.answer(true)
     await expect(first).resolves.toBe(true)
     await expect(second).resolves.toBe(true)
@@ -83,22 +96,44 @@ describe('stores/ai — доступность и согласие', () => {
   })
 
   it('«Не надо» → false и off (больше не спрашиваем)', async () => {
+    online()
     const ai = member()
     const p = ai.ensureConsent()
+    await vi.waitFor(() => expect(ai.sheetOpen).toBe(true))
     ai.answer(false)
     await expect(p).resolves.toBe(false)
     expect(ai.consent).toBe('off')
   })
 
   it('свайп (закрыли) → false без записи: спросим в следующий раз', async () => {
+    online()
     const ai = member()
     const p = ai.ensureConsent()
+    await vi.waitFor(() => expect(ai.sheetOpen).toBe(true))
     ai.answer(null)
     await expect(p).resolves.toBe(false)
     expect(ai.consent).toBe('unknown')
     expect('aiConsent' in useFinanceStore().privateDoc).toBe(false)
     void ai.ensureConsent()
-    expect(ai.sheetOpen).toBe(true)
+    await vi.waitFor(() => expect(ai.sheetOpen).toBe(true))
+  })
+
+  // Хвост §4 ревью frontend Блока 1 (Н-4), AI-09: новый телефон до синка не спрашивает второй раз.
+  it('не спрошено здесь, а на сервере «да» (другой телефон человека) → true без листа', async () => {
+    const fetchFn = online({ aiConsent: { on: true, at: '2026-10-15T08:00:00.000Z' } })
+    const ai = member()
+    await expect(ai.ensureConsent()).resolves.toBe(true)
+    expect(ai.sheetOpen).toBe(false)
+    expect(ai.consent).toBe('on')
+    expect(String(fetchFn.mock.calls[0]?.[0])).toContain('/sync/private')
+  })
+
+  it('не спрошено и нет сети → false без листа, consentFailed; «Не надо» отсюда не перепишет чужое «да»', async () => {
+    const ai = member()
+    await expect(ai.ensureConsent()).resolves.toBe(false)
+    expect(ai.sheetOpen).toBe(false)
+    expect(ai.consentFailed).toBe(true)
+    expect('aiConsent' in useFinanceStore().privateDoc).toBe(false)
   })
 
   it('листа нет (экран вне оболочки) — false сразу, а не вечное ожидание', async () => {

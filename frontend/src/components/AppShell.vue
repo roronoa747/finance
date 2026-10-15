@@ -1,5 +1,10 @@
+<script lang="ts">
+/** Вход, для которого оболочка уже освежила `/auth/me` (AI-09): повторный монтаж («назад» с `/privacy`) не зовёт снова. */
+let freshFor: string | null = null
+</script>
+
 <script setup lang="ts">
-import { ref, computed, provide } from 'vue'
+import { ref, computed, provide, onMounted } from 'vue'
 import { useRoute, useRouter, RouterLink, RouterView } from 'vue-router'
 import {
   PhHeart,
@@ -48,6 +53,18 @@ const authStore = useAuthStore()
 
 const addOpen = ref(false)
 provide('ff-shell-actions', true)
+
+/*
+ * Флаг ИИ и роль — свежие с сервера при старте оболочки (хвост §4 критика Блока 1 «ИИ», AI-09): раньше `/auth/me`
+ * звали только настройки и вход в семью — после перезагрузки кнопок ИИ не было, пока не откроешь настройки. Нет
+ * сети — остаётся сохранённое на телефоне (`ff_ai`); 401 уводит на вход, как у синка.
+ */
+onMounted(() => {
+  const token = authStore.token
+  if (!token || authStore.isDemo || freshFor === token) return
+  freshFor = token
+  void authStore.fetchMe().catch(() => {})
+})
 
 const people = computed(() => financeStore.people.filter((p) => !p.deletedAt))
 

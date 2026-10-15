@@ -227,6 +227,8 @@ export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
     goalOrder: newerObject(local.goalOrder, remote.goalOrder),
     wishOrder: newerObject(local.wishOrder, remote.wishOrder),
     debtCard: newerObject(local.debtCard, remote.debtCard),
+    // Разборы месяца ИИ (AI-09): по id, надгробия как у всех; какой показать — последний по `at` (стор).
+    aiReviews: mergeList(local.aiReviews ?? [], remote.aiReviews ?? [], (x) => x.id),
     // Метки равны (или их нет) — сброс один и тот же.
     ...(lr ? { resetAt: lr } : {}),
   }

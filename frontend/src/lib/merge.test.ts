@@ -1169,3 +1169,28 @@ describe('AI-05: согласие на ИИ в личном документе',
     expect('aiConsent' in mergePrivateDocs({ accounts: [] }, {})).toBe(false)
   })
 })
+
+// AI-09 (бэклог «ИИ», Р-4): разборы месяца — список с id в общем документе.
+describe('merge.ts — разборы месяца ИИ (aiReviews)', () => {
+  const review = (id: string, at: string, extra: Record<string, unknown> = {}) => ({
+    id, month: '2026-10', at, by: 'a' as const, good: `хорошо ${id}`, risk: 'риск', steps: [], sent: null, updatedAt: at, ...extra,
+  })
+
+  it('разборы двух телефонов сливаются по id; надгробие сильнее', () => {
+    const one = { ...createEmptyDoc(), aiReviews: [review('r1', '2026-10-01T08:00:00.000Z'), review('r2', '2026-10-02T08:00:00.000Z')] }
+    const two = {
+      ...createEmptyDoc(),
+      aiReviews: [review('r3', '2026-10-03T08:00:00.000Z'), { ...review('r1', '2026-10-01T08:00:00.000Z'), deletedAt: '2026-10-05T08:00:00.000Z', updatedAt: '2026-10-05T08:00:00.000Z' }],
+    }
+    const merged = mergeDocs(one, two).aiReviews ?? []
+    expect(merged.map((r) => r.id).sort()).toEqual(['r1', 'r2', 'r3'])
+    expect(merged.find((r) => r.id === 'r1')?.deletedAt).toBe('2026-10-05T08:00:00.000Z')
+    expect(mergeDocs(two, one).aiReviews?.find((r) => r.id === 'r1')?.deletedAt).toBe('2026-10-05T08:00:00.000Z')
+  })
+
+  it('документ без ключа (старый клиент) — разборы другой стороны не теряются', () => {
+    const merged = mergeDocs(createEmptyDoc(), { ...createEmptyDoc(), aiReviews: [review('r1', '2026-10-01T08:00:00.000Z')] })
+    expect(merged.aiReviews?.map((r) => r.id)).toEqual(['r1'])
+    expect(defaultSyncDoc().aiReviews).toEqual([])
+  })
+})

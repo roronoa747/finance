@@ -318,3 +318,52 @@ describe('B2C-25: вход через Google, «с кем», истёкший в
     expect(storageMap.get('ff_doc_household')).toBe('"h-g"')
   })
 })
+
+// Хвост §4 критика Блока 1 «ИИ» (AI-09): флаг ИИ не ждёт открытия настроек — он на телефоне, как участник.
+describe('stores/auth — флаг ИИ переживает перезагрузку', () => {
+  const map = new Map<string, string>()
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => map.set(k, String(v)),
+      removeItem: (k: string) => map.delete(k),
+      clear: () => map.clear(),
+    })
+    map.clear()
+    setActivePinia(createPinia())
+  })
+
+  const me = (ai: boolean): MeResponse => ({
+    user: { id: 'u-a', email: 'a@example.com', created_at: '2026-10-01T00:00:00Z' },
+    household: { id: 'h-1', name: 'Семья', created_by: 'u-a', created_at: '2026-10-01T00:00:00Z' },
+    member: { household_id: 'h-1', user_id: 'u-a', slot: 'a', display_name: 'a', role: 'member', joined_at: '2026-10-01T00:00:00Z' },
+    ai,
+  })
+
+  it('fetchMe с ai → ff_ai; новый запуск — ai сразу; ai снят — ключ стёрт; выход стирает', async () => {
+    map.set('ff_auth_token', 't')
+    vi.spyOn(apiClient, 'me').mockResolvedValueOnce(me(true))
+    await useAuthStore().fetchMe()
+    expect(map.get('ff_ai')).toBe('1')
+
+    setActivePinia(createPinia())
+    const auth = useAuthStore()
+    expect(auth.ai).toBe(true)
+
+    vi.spyOn(apiClient, 'me').mockResolvedValueOnce(me(false))
+    await auth.fetchMe()
+    expect(auth.ai).toBe(false)
+    expect(map.has('ff_ai')).toBe(false)
+
+    map.set('ff_ai', '1')
+    setActivePinia(createPinia())
+    useAuthStore().clearAuth()
+    expect(map.has('ff_ai')).toBe(false)
+  })
+
+  it('демо-токен — ИИ нет, даже если ключ остался', () => {
+    map.set('ff_auth_token', 'demo-token')
+    map.set('ff_ai', '1')
+    expect(useAuthStore().ai).toBe(false)
+  })
+})

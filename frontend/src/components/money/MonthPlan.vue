@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { PhCaretRight } from '@phosphor-icons/vue'
+import { PhCaretRight, PhSparkle } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
+import { useAiStore } from '@/stores/ai'
+import { readAiReviewSeen, writeAiReviewSeen } from '@/lib/storage'
 import { money, moneyIn, parseMoney, plain } from '@/lib/money'
 import { dayLabel, monthBy, monthFrom, monthKey as monthNow, monthShort, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
 import {
@@ -54,6 +56,7 @@ import SalaryExchange from '@/components/SalaryExchange.vue'
 import SalaryRow from '@/components/SalaryRow.vue'
 import ExtraIncomeSheet from '@/components/capital/ExtraIncomeSheet.vue'
 import AffordSheet from '@/components/money/AffordSheet.vue'
+import AiReviewSheet from '@/components/ai/AiReviewSheet.vue'
 import { useQuerySheet } from '@/components/useQuerySheet'
 import DueRow from '@/components/money/DueRow.vue'
 import MonthRing from '@/components/money/MonthRing.vue'
@@ -226,6 +229,46 @@ watch(
  */
 const { open: affordOpen, close: closeAfford } = useQuerySheet('afford')
 
+/*
+ * ---------- разбор месяца ИИ (бэклог «ИИ», Р-4, AI-09): у остатка рядом с «Хватит?» (правило 12) ----------
+ * Есть разбор месяца — лист с ним без запроса (партнёр, viewer); нет — согласие (Р-9), запрос, разбор в общий
+ * документ. Только текущий месяц. Точка — разбор есть, а на этом телефоне его не открывали.
+ */
+const ai = useAiStore()
+const review = computed(() => finance.aiReviewOf(props.monthKey))
+const reviewShown = computed(() => props.monthKey === monthNow() && (ai.available || (!!review.value && auth.ai)))
+const seenReview = ref(readAiReviewSeen())
+const reviewDot = computed(() => !!review.value && review.value.id !== seenReview.value)
+const reviewOpen = ref(false)
+function markReviewSeen() {
+  const r = review.value
+  if (!r) return
+  writeAiReviewSeen(r.id)
+  seenReview.value = r.id
+}
+async function openReview() {
+  if (review.value) {
+    if (ai.reviewState !== 'thinking') ai.reviewState = 'idle'
+    reviewOpen.value = true
+    markReviewSeen()
+    return
+  }
+  if (!ai.available) return
+  if (!(await ai.ensureConsent())) {
+    // Личный документ не подтянулся (нет сети) — сказать, а не молчать; «Не надо» и свайп — просто ничего.
+    if (ai.consentFailed) {
+      ai.reviewState = 'failed'
+      reviewOpen.value = true
+    }
+    return
+  }
+  reviewOpen.value = true
+  if (await ai.runReview(props.monthKey)) markReviewSeen()
+}
+async function refreshReview() {
+  if ((await ai.ensureConsent()) && (await ai.runReview(props.monthKey))) markReviewSeen()
+}
+
 /* ---------- кто платит (Р-80) ---------- */
 type PayerTarget = { kind: 'obligation' | 'credit' | 'goal' | 'debt'; id: string; name: string; payer: PersonId | null }
 const payerFor = ref<PayerTarget | null>(null)
@@ -395,8 +438,25 @@ function addFund(kind: 'reserve' | 'cushion') {
       </span>
       <span v-if="plan.short > 0" class="font-num text-[24px] font-bold leading-tight num text-warn">{{ money(plan.short) }}</span>
       <span v-else class="font-num text-[24px] font-bold leading-tight num text-ink" data-rest>{{ money(plan.rest) }}</span>
-      <!-- Действие у своего предмета (правило 12): «Хватит?» — у остатка; слот кольца не ловит нажатия — кнопке свои. -->
-      <Button variant="secondary" size="sm" class="pointer-events-auto relative z-10 mt-1" data-afford-open @click.stop="affordOpen = true">Хватит?</Button>
+      <!--
+        Действие у своего предмета (правило 12): «Хватит?» и разбор месяца — у остатка; слот кольца не ловит нажатия —
+        кнопкам свои. Разбор — круглая кнопка той же высоты: слово рядом с «Хватит?» в круг 150 px не помещается.
+      -->
+      <span class="pointer-events-auto relative z-10 mt-1 flex items-center gap-1.5">
+        <Button variant="secondary" size="sm" data-afford-open @click.stop="affordOpen = true">Хватит?</Button>
+        <Button
+          v-if="reviewShown"
+          variant="secondary"
+          size="sm"
+          class="relative w-8 px-0"
+          :aria-label="review ? 'Разбор месяца' : 'Разобрать месяц'"
+          data-review-open
+          @click.stop="openReview"
+        >
+          <PhSparkle :size="16" />
+          <span v-if="reviewDot" class="absolute -right-0.5 -top-0.5 size-2.5 rounded-full border-2 border-canvas bg-brand" data-review-dot aria-hidden="true" />
+        </Button>
+      </span>
     </MonthRing>
 
     <!--
@@ -663,6 +723,7 @@ function addFund(kind: 'reserve' | 'cushion') {
     <SalarySheet :month-key="monthKey" :line="salarySheet" @close="salaryFor = null" />
     <ExtraIncomeSheet :open="incomeOpen" @close="incomeOpen = false" />
     <AffordSheet :open="affordOpen" @close="closeAfford" />
+    <AiReviewSheet :open="reviewOpen" :month-key="monthKey" :review="review" @close="reviewOpen = false" @refresh="refreshReview" />
 
     <!-- Платёж: одна кнопка «Оплатил»; тихо — «Изменить платёж» -->
     <Sheet :open="!!paySheet" :title="paySheet?.name ?? ''" @close="payFor = null">

@@ -13,6 +13,7 @@ import type {
   AdminFamilies,
   AdminFamily,
   AiCheck,
+  AiReviewAnswer,
 } from '@/types/api'
 import type { SyncDoc } from '@/types/finance'
 
@@ -183,6 +184,14 @@ export class ApiClient {
   /** Проверка связи с Claude: лёгкая модель, в расход семей не идёт. */
   async aiCheck(): Promise<AiCheck> {
     return this.request<AiCheck>('/admin/ai-check', { method: 'POST' })
+  }
+
+  /**
+   * Разбор месяца ИИ (бэклог «ИИ», AI-08/AI-09): уходит только сводка `buildMonthSummary` — без имён, заметок,
+   * операций. Ошибки — `ApiError` с кодом ручки: `ai_limit` (429), `ai_off` (503), `ai_failed` (502), 403.
+   */
+  async aiReview(summary: object): Promise<AiReviewAnswer> {
+    return this.request<AiReviewAnswer>('/ai/review', { method: 'POST', body: JSON.stringify({ summary }) })
   }
 
   /** Удаление аккаунта вместе с данными (B2C-24). */

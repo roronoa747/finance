@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, nextTick, type App } from 'vue'
-import { createPinia } from 'pinia'
+import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createMemoryHistory, RouterView } from 'vue-router'
 import AppShell from './AppShell.vue'
 import HeaderActions from './kit/HeaderActions.vue'
@@ -272,4 +272,78 @@ it('вложенный экран: «назад» к корню, каранда�
   // «Неделя» — корень без шестерёнки и аватаров (g2).
   expect(document.querySelector('header a[aria-label="Настройки"]')).toBeNull()
   expect(document.querySelector('header button[aria-label="Назад"]')).toBeNull()
+})
+
+// Хвост §4 `/ux` Блока 1 «ИИ» (AI-09): `/privacy` — вне оболочки, оболочка размонтируется; «назад» — то же место.
+it('AI-09: «Месяц» → «/privacy» (вне оболочки) → назад — место «Месяца» на месте', async () => {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', component: AppShell, children: [{ path: 'month', component: page('Месяц') }, { path: 'goals/:id', component: page('Цель') }] },
+      { path: '/privacy', component: page('Политика') },
+    ],
+  })
+  await router.push('/month')
+  await router.isReady()
+  const root = document.createElement('div')
+  document.body.appendChild(root)
+  app = createApp({ render: () => h(RouterView) })
+  app.use(createPinia())
+  app.use(router)
+  app.mount(root)
+  await nextTick()
+  document.querySelector('main')!.scrollTop = 490
+
+  await router.push('/privacy')
+  await nextTick()
+  expect(document.querySelector('main')).toBeNull()
+  expect(document.body.textContent).toContain('Политика')
+
+  router.back()
+  await vi.waitFor(() => expect(document.querySelector('main')?.textContent).toContain('Месяц'))
+  await nextTick()
+  expect(document.querySelector('main')!.scrollTop).toBe(490)
+
+  // Вперёд с вернувшейся оболочки — по-прежнему сверху.
+  await router.push('/goals/g1')
+  await nextTick()
+  await nextTick()
+  expect(document.querySelector('main')!.scrollTop).toBe(0)
+})
+
+// Хвост §4 критика Блока 1 «ИИ» (AI-09): оболочка освежает `/auth/me` при старте — один раз на вход.
+it('AI-09: оболочка зовёт /auth/me при монтировании один раз на вход; флаг ИИ — из ответа', async () => {
+  const { apiClient } = await import('@/api/client')
+  const { useAuthStore } = await import('@/stores/auth')
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  const auth = useAuthStore()
+  auth.setAuthData({
+    token: 'tok-ai-09',
+    user: { id: 'u-a', email: 'a@example.com', created_at: '2026-10-01T00:00:00Z' },
+    household: { id: 'h-1', name: 'Семья', created_by: 'u-a', created_at: '2026-10-01T00:00:00Z' },
+    member: { household_id: 'h-1', user_id: 'u-a', slot: 'a', display_name: 'a', role: 'member', joined_at: '2026-10-01T00:00:00Z' },
+  })
+  const me = vi.spyOn(apiClient, 'me').mockResolvedValue({ user: auth.user!, household: auth.household, member: auth.member, ai: true })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/', component: AppShell, children: [{ path: 'month', component: page('Месяц') }] }, { path: '/privacy', component: page('Политика') }],
+  })
+  await router.push('/month')
+  await router.isReady()
+  const root = document.createElement('div')
+  document.body.appendChild(root)
+  app = createApp({ render: () => h(RouterView) })
+  app.use(pinia)
+  app.use(router)
+  app.mount(root)
+  await vi.waitFor(() => expect(auth.ai).toBe(true))
+  expect(me).toHaveBeenCalledTimes(1)
+
+  // «Политика» и назад — оболочка смонтирована заново, но вход тот же: второго запроса нет.
+  await router.push('/privacy')
+  router.back()
+  await vi.waitFor(() => expect(document.querySelector('main')).not.toBeNull())
+  expect(me).toHaveBeenCalledTimes(1)
+  me.mockRestore()
 })
