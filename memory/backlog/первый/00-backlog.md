@@ -58,10 +58,10 @@ Go и миграций нет.
 
 | Блок | Задача | Файл | Зависит от | Статус |
 |---|---|---|---|---|
-| 1. Настройка ⬜ | FR-01 Порядок «мечта → зарплата», выписка опцией, без «Ваш месяц» | `block-1-setup/FR-01-order-dream-salary.md` | — | ⬜ |
-| | FR-02 Вступление — 3 экрана-образа | `block-1-setup/FR-02-intro.md` | FR-01 | ⬜ |
-| | FR-03 «Пропустить» в шапке | `block-1-setup/FR-03-skip-header.md` | FR-02 | ⬜ |
-| | FR-04 e2e первого запуска, доки | `block-1-setup/FR-04-e2e-docs.md` | FR-03 | ⬜ |
+| 1. Настройка 🔄 | FR-01 Порядок «мечта → зарплата», выписка опцией, без «Ваш месяц» | `block-1-setup/FR-01-order-dream-salary.md` | — | ✅ |
+| | FR-02 Вступление — 3 экрана-образа | `block-1-setup/FR-02-intro.md` | FR-01 | ✅ |
+| | FR-03 «Пропустить» в шапке | `block-1-setup/FR-03-skip-header.md` | FR-02 | ✅ |
+| | FR-04 e2e первого запуска, доки | `block-1-setup/FR-04-e2e-docs.md` | FR-03 | ✅ |
 | 2. Подсказки ⬜ | FR-05 Пузырь у предмета и «видел» | `block-2-tips/FR-05-tip-kit.md` | Блок 1 🏁 (выкладка) | ⬜ |
 | | FR-06 Подсказки на главных вкладках | `block-2-tips/FR-06-tips-tabs.md` | FR-05 | ⬜ |
 | | FR-07 e2e подсказок, доки | `block-2-tips/FR-07-e2e-docs.md` | FR-06 | ⬜ |
@@ -77,7 +77,7 @@ Go и миграций нет.
 
 | Хвост | Откуда | Судьба |
 |---|---|---|
-| — | | |
+| Перезапуск PWA посреди первого запуска начинает с начала: гард и «С кем» ведут на `/start` без шага → вступление, затем снова «На что копим?» — мечту, выбранную до закрытия, можно завести второй раз. Так было и раньше (с выписки), но теперь первым стоит шаг, который пишет цель. Варианты: `Start.vue` на `/start` без шага ведёт к первому непройденному (цель есть → зарплата) или помнит шаг на устройстве. Перезагрузка с адресом шаг держит. | Исполнитель Блока 1 (FR-02, стенд) | |
 
 ## 5. Протокол
 
@@ -126,6 +126,27 @@ Go и миграций нет.
 - Ключи устройства — `lib/storage.ts` (`readStorage`/`writeStorage`; `START_ANSWERED_KEY`); ключи, которые выход
   стирает, — `LOCAL_KEYS` в `stores/finance.ts:147`.
 - События — `stores/events.ts` (`EventKind` :10, пять видов; новых не заводить — Р-10).
+
+**После Блока 1** (исполнитель, 2026-10-15; ветка `fr-block-1-setup`, номера строк — на её HEAD)
+- Шаги `Start.vue` :44-70: `Step = 'intro' | 'dream' | 'salary' | 'questions' | 'invite'`; новая семья `intro → dream → salary →
+  (questions) → invite`, партнёр по коду (`joining` = `setupDone`) `intro → salary → (questions)`. `/start` без шага и чужой шаг —
+  `steps[0]` (вступление); `OLD_STEPS` :46: `upload` → `salary`, `month` → `invite`. «n из k» — `counted` :70 (без `intro` и
+  `questions`): новая семья 1·2·3 из 3, партнёр 1 из 1.
+- Вступление :84-110: `INTRO` (ключ картинки, заголовок, строка — черновик до `/ux`), `introPage` в состоянии, `leaveIntro` —
+  `router.replace` на `steps[1]`, свайп `swipe(dx)` ±40 px; картинки — `/landing/<key>-<light|dark>.webp` по `isDark`.
+- Зарплата: форма — один кусок шаблона `v-else-if="salaryForm"` :482 (`salaryForm` :374: шаг `salary` без раскрытия или
+  `questions` без вопроса и без зарплаты), запись — `saveSalary` :186 (на `questions` → `advance`, иначе `afterSalary` :77 →
+  `invite` / `finish`). «Есть PDF из банка» — `pdf` :119, раскрытие — прежний выбор файла (`pick`/`uploadParsed` → `questions`).
+- Шапка шага :439 `[data-start-head]` — липкая (`bg-canvas`), строка высотой 32: `Stepper` (у вступления точки
+  `[data-intro-dots]`) + «Пропустить» (`ghost sm`, `[data-skip]`) при `skippable` :384; действия — `skipStep` :385. `Stepper.vue`
+  не менялся.
+- Убрано: шаг `month` с `WeekCard`/`FreeCard`/`spendRows`/`budgetAmounts`/`useFxStore`; «Введу вручную» / «Лучше загружу
+  выписку»; «Потом» у `DecisionCard` в первом запуске; «Позже» и строка под ним (пояснение — в `Hint`, «Создать код» — главной
+  внизу). `GoalNew.vue` при `props.next`: без «Пока без мечты» :238, «при остатке» :265 и «реально» :82 (вне первого запуска —
+  как было).
+- Тесты: `Start.test.ts` (SSR, содержимое шагов), `Start.dom.test.ts` (роутер: путь, вступление, «Пропустить»), e2e
+  `fr-block1-setup.test.ts` (сценарии брифа (а)–(д) на Go-моке; фоновый синк направлен в мок — `apiClient.getHouseholdDoc` /
+  `pushHouseholdDoc`). В DOM-тестах переход роутера ждать `vi.dynamicImportSettled()` (ленивые экраны).
 
 **Тесты и стенд**
 - Юнит/DOM — Vitest рядом с кодом (`Start.test.ts` 475 строк, `Start.dom.test.ts`, `GoalNew.variants.dom.test.ts`,
