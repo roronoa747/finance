@@ -6,9 +6,9 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 import { routes } from '@/router'
 import { apiClient } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
-import { useFinanceStore, defaultSyncDoc } from '@/stores/finance'
+import { useFinanceStore } from '@/stores/finance'
 import { readTipsSeen } from '@/lib/storage'
-import { authAs, planFamilyDoc } from '@/test/planFamily'
+import { authAs, planFamilyDoc, withOwnWeek } from '@/test/planFamily'
 import type { SyncDoc } from '@/types/finance'
 import Dreams from './Dreams.vue'
 import Week from './Week.vue'
@@ -79,7 +79,9 @@ const ok = () => document.querySelector<HTMLButtonElement>('[data-tip-ok]')!
 describe('FR-06: подсказки на главных вкладках', () => {
   for (const t of TABS.filter((x) => x.subject.startsWith('['))) {
     it(`${t.path}: один пузырь «${t.id}» у главного предмета; «Понятно» — нет, и после перезахода тоже`, async () => {
-      await open(t.view, t.path)
+      // «Неделя» — со своими тратами: пустая неделя пузыря не показывает (FR-06 п. 2).
+      const doc = t.id === 'tab-week' ? withOwnWeek(planFamilyDoc()) : planFamilyDoc()
+      await open(t.view, t.path, 'member', doc)
       expect(bubbles().map((b) => b.dataset.tip)).toEqual([t.id])
       // Пузырь — рядом с предметом в той же обёртке: ничего не закрывает, едет с ним. «Месяц» — над разделами (под ними
       // на 390 px пузырь уходил под панель вкладок — стенд FR-06), остальные — под предметом.
@@ -90,7 +92,7 @@ describe('FR-06: подсказки на главных вкладках', () =>
       await nextTick()
       expect(bubbles()).toEqual([])
       expect(readTipsSeen()).toEqual([t.id])
-      await open(t.view, t.path)
+      await open(t.view, t.path, 'member', doc)
       expect(bubbles()).toEqual([])
     })
   }
@@ -142,8 +144,17 @@ describe('FR-06: подсказки на главных вкладках', () =>
     expect(readTipsSeen()).toEqual(['tab-money'])
   })
 
-  it('«Неделя»: своей недели нет — куда нажать («Загрузить»); тексты участника — с призывом', async () => {
-    await open(Week, '/week', 'member', { ...defaultSyncDoc(), people: planFamilyDoc().people, setupDoneAt: planFamilyDoc().setupDoneAt })
-    expect(bubbles()[0].textContent).toContain('«Загрузить»')
+  it('пустая «Неделя» (своих трат нет — ведёт брендовое «Загрузить») — без пузыря и без отметки; траты появились — пузырь', async () => {
+    await open(Week, '/week', 'member', planFamilyDoc())
+    expect(document.querySelector('[data-upload="lead"]')).not.toBeNull()
+    expect(bubbles()).toEqual([])
+    // Нажатие пустой суммы недели не съедает подсказку про разделы.
+    document.querySelector<HTMLElement>('[data-week-sum]')!.click()
+    expect(readTipsSeen()).toEqual([])
+    useFinanceStore().householdDoc.spendTotals = withOwnWeek(planFamilyDoc()).spendTotals
+    await nextTick()
+    await nextTick()
+    expect(bubbles().map((b) => b.dataset.tip)).toEqual(['tab-week'])
+    expect(bubbles()[0].textContent).toContain('Нажмите раздел')
   })
 })

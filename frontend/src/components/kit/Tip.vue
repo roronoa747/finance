@@ -15,9 +15,11 @@ const props = defineProps<{
   text: string
   /** Пузырь над предметом (под ним — главная кнопка или конец экрана). */
   above?: boolean
+  /** Предмета ещё нет (пустая неделя) — пузырь ждёт его появления и очередь не держит (FR-06 п. 2). */
+  wait?: boolean
 }>()
 
-const tip = useTip(props.id)
+const tip = useTip(props.id, () => !props.wait)
 
 /** Нажатие предмета работает как обычно и закрывает пузырь (только показанный: ждущий своей очереди — нет). */
 function onSubject() {

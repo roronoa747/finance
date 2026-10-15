@@ -9,7 +9,7 @@ import { useAuthStore } from '../src/stores/auth'
 import { defaultSyncDoc, useFinanceStore } from '../src/stores/finance'
 import { readTipsSeen } from '../src/lib/storage'
 import { startDemo } from '../src/lib/demo'
-import { authAs, planFamilyDoc } from '../src/test/planFamily'
+import { authAs, planFamilyDoc, withOwnWeek } from '../src/test/planFamily'
 import type { SyncDoc } from '../src/types/finance'
 import { at, backend, fakeServer, type FakeServer } from './support/family'
 
@@ -140,11 +140,15 @@ describe('e2e / бэклог «первый», Блок 2 — подсказки
     expect(shown()).toEqual(['tab-month'])
     await go(router, '/')
     expect(shown()).toEqual([])
+    // «Неделя» новой семьи пустая — ведёт брендовое «Загрузить», пузыря нет (FR-06 п. 2).
+    await go(router, '/week')
+    expect(shown()).toEqual([])
     expect(readTipsSeen()).toEqual(['tab-dreams'])
   })
 
   it('(б) нынешняя семья (onboardedAt есть): пузыри на четырёх вкладках по одному, «Понятно» — навсегда; первый запуск не перезапускается', async () => {
-    const doc = planFamilyDoc()
+    // Со своими тратами недели — иначе «Неделя» пустая и без пузыря.
+    const doc = withOwnWeek(planFamilyDoc())
     server = fakeServer({ ...doc, people: doc.people.map((p) => ({ ...p, onboardedAt: '2026-09-01T07:00:00.000Z' })) } as SyncDoc)
     const A = await phone('a')
     const router = await launch(A.pinia, '/')

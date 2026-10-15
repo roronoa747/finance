@@ -110,10 +110,11 @@ const letter = (r: MyWeekRow) => (r.categoryId === UNKNOWN_CATEGORY ? '?' : r.na
 const uploadRows = computed(() => weekUploads(people.value, week.value, store.shownUploads))
 const mineIn = computed(() => uploadRows.value.some((r) => r.person.id === me.value && r.day !== null))
 /**
- * Подсказка у суммы недели (бэклог «первый» Р-7; черновик до `/ux`, Р-9): своей недели ещё нет — куда нажать
- * («Загрузить» вверху), есть — что в ней. Viewer «Неделю» не видит (гард → «Месяц»).
+ * Подсказка у суммы недели (бэклог «первый» Р-7; черновик до `/ux`, Р-9) — когда есть разделы с тратами: пустую неделю
+ * ведёт брендовое «Загрузить» (FR-06 п. 2), и «Понятно» на ней не должно съесть подсказку про разделы. Viewer «Неделю»
+ * не видит (гард → «Месяц»).
  */
-const tipText = computed(() => (mineIn.value ? 'Траты недели. Нажмите раздел — на что ушло' : 'Траты недели появятся после «Загрузить»'))
+const TIP_WEEK = 'Траты недели. Нажмите раздел — на что ушло'
 
 /** Тренд 8 недель (Р-98) — свёрнут (правило 12). */
 const trend = computed(() => weekTrend(spendTotals.value, spendCategories.value, me.value, week.value))
@@ -375,7 +376,7 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- Сумма недели: моя, крупно; ‹ › — недели. Сравнение с прошлой — в «8 недель» (Р-116). Подсказка — под ней. -->
-    <Tip id="tab-week" :text="tipText">
+    <Tip id="tab-week" :text="TIP_WEEK" :wait="!mine.rows.length">
       <Card tight class="flex flex-col gap-1" data-week-sum>
         <div class="flex items-center gap-1.5">
           <button type="button" class="press -ml-1.5 grid size-7 cursor-pointer place-items-center text-ink-3 disabled:opacity-30" :disabled="!canBack" aria-label="Прошлая неделя" @click="turn(-1)">

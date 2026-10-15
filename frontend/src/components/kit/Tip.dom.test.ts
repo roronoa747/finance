@@ -101,6 +101,21 @@ describe('kit/Tip — подсказка у предмета', () => {
     expect(tips()).toEqual(['tab-month'])
   })
 
+  it('`wait` (предмета ещё нет) — пузыря нет, очередь не держит, нажатие не отмечает; предмет появился — пузырь', async () => {
+    const empty = ref(true)
+    mount(() => [h(Tip, { id: 'tab-week', text: 'Подсказка tab-week', wait: empty.value }, () => h('button', { 'data-subject': 'tab-week' }, 'tab-week')), tip('tab-month')])
+    await nextTick()
+    expect(tips()).toEqual(['tab-month'])
+    subject('tab-week').click()
+    ok().click()
+    await nextTick()
+    expect(readTipsSeen()).toEqual(['tab-month'])
+    expect(tips()).toEqual([])
+    empty.value = false
+    await nextTick()
+    expect(tips()).toEqual(['tab-week'])
+  })
+
   it('открыт лист — пузыря нет; лист закрыли — пузырь на месте', async () => {
     const open = ref(true)
     mount(() => [tip('tab-dreams'), h(Sheet, { open: open.value, title: 'Лист', onClose: () => (open.value = false) }, () => 'внутри')])

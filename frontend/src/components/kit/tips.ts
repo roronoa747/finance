@@ -6,7 +6,7 @@ import { markTipSeen, readTipsSeen } from '@/lib/storage'
  * смонтированный из ещё не увиденных, остальные ждут его «Понятно»; пока открыт лист (`Sheet`) или тост (`Toast`) —
  * ни одного: пузырь ждёт их закрытия.
  */
-const mounted = reactive<{ key: symbol; id: string }[]>([])
+const mounted = reactive<{ key: symbol; id: string; ready: () => boolean }[]>([])
 /** Открытые листы и тосты. */
 const overlays = ref(0)
 /** «Видел» — на устройстве; число растёт при отметке, чтобы очередь перечитала хранилище. */
@@ -16,16 +16,16 @@ const active = computed(() => {
   void marks.value
   if (overlays.value > 0) return null
   const seen = readTipsSeen()
-  return mounted.find((t) => !seen.includes(t.id))?.key ?? null
+  return mounted.find((t) => t.ready() && !seen.includes(t.id))?.key ?? null
 })
 
 /**
- * Пузырь `id` в очереди, пока смонтирован (в DOM; SSR-рендер очередь не трогает): `shown` — он сейчас тот самый
- * один, `done` — «Понятно».
+ * Пузырь `id` в очереди, пока смонтирован (в DOM; SSR-рендер очередь не трогает) и `ready` (предмет есть — пустой экран
+ * пузыря не показывает и очередь не держит): `shown` — он сейчас тот самый один, `done` — «Понятно».
  */
-export function useTip(id: string) {
+export function useTip(id: string, ready: () => boolean = () => true) {
   const key = Symbol(id)
-  onMounted(() => mounted.push({ key, id }))
+  onMounted(() => mounted.push({ key, id, ready }))
   onUnmounted(() => {
     const i = mounted.findIndex((t) => t.key === key)
     if (i >= 0) mounted.splice(i, 1)
