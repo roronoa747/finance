@@ -295,7 +295,7 @@ async function openView(view: typeof Money, path: string, doc: SyncDoc) {
   return finance
 }
 
-/** Первый запуск новой семьи — шаг 1, «Введу вручную». */
+/** Первый запуск новой семьи — шаг «Зарплата» (FR-01: поля сразу, без «Введу вручную»). */
 async function openStartManual() {
   const pinia = createPinia()
   setActivePinia(pinia)
@@ -304,7 +304,7 @@ async function openStartManual() {
   finance.claimFor('h-family')
   finance.setHouseholdDoc(defaultSyncDoc(), 1)
   const router = createRouter({ history: createMemoryHistory(), routes })
-  await router.push('/start/upload')
+  await router.push('/start/salary')
   await router.isReady()
   const root = document.createElement('div')
   document.body.appendChild(root)
@@ -313,7 +313,6 @@ async function openStartManual() {
   app.use(router)
   app.mount(root)
   await flush()
-  await press(byText('button', 'Введу вручную'))
   return finance
 }
 const salaryInput = () =>

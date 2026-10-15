@@ -487,9 +487,19 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     vi.unstubAllGlobals()
   })
 
-  it('новая семья: выписка Kaspi → 7 вопросов → документ (оклад, кредит с остатком и отметкой июля, «Kaspi Red» обязательством, подписка), картина июля, мечта главная, setupDoneAt; партнёр по коду — свои шаги → people[b]', async () => {
+  it('новая семья: мечта → «Есть PDF из банка» Kaspi → 7 вопросов → документ (оклад, кредит с остатком и отметкой июля, «Kaspi Red» обязательством, подписка), мечта главная, setupDoneAt; партнёр по коду — свои шаги → people[b]', async () => {
     const A = await phone(server, st, 'a')
     expect(A.store.setupDone).toBe(false)
+    // FR-01/02: после вступления мечта — первой, до зарплаты и выписки; главная — первая в очереди (Р-84).
+    expect(await screen(A.pinia, Start, '/start')).toContain('data-intro-page')
+    expect(await screen(A.pinia, Start, '/start/dream')).toContain('На что копим?')
+    await screen(A.pinia, Start, '/start/dream', undefined, [
+      screenMixin({ step: 'form', template: templateById('car'), name: 'Машина', needText: '3 000 000', term: '18' }, (s) => void (s.create as () => Promise<void>)()),
+    ])
+    expect(A.store.goals[0]).toMatchObject({ name: 'Машина', template: 'car' })
+    // Шаг зарплаты: выписка — тихой кнопкой, раскрывает выбор файла; дальше — как после «Отправить».
+    expect(await screen(A.pinia, Start, '/start/salary')).toContain('Есть PDF из банка')
+    expect(await screen(A.pinia, Start, '/start/salary', undefined, [screenMixin({ pdf: true })])).toContain('Выбрать файл')
     await upload(A, kaspi('kaspi-01'))
     // Один телефон — как после «Отправить»: своя копия операций и итоги в документе.
     expect(useOperationsStore().all).toHaveLength(60)
@@ -520,18 +530,13 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     expect(A.store.obligations.find((o) => o.name === 'Яндекс Плюс')).toMatchObject({ category: 'd4' })
     await screen(A.pinia, Start, '/start/questions', undefined, [act('skipRest')])
 
-    // Картина июля — итоги своей выписки; «Остаток по плану» (доход минус кредит, Red и подписка).
+    // Экрана «Ваш <месяц>» нет (Р-3): старый адрес ведёт к партнёру; итоги выписки — в документе (их покажут «Деньги»).
     const month = await screen(A.pinia, Start, '/start/month')
-    const mine = A.store.householdDoc.spendTotals!.filter((t) => t.by === 'a' && t.kind === 'month' && t.period === '2025-07')
-    expect(month).toContain('Ваш июль')
-    expect(month).toContain(money(mine.reduce((s, t) => s + t.amount, 0)))
-    expect(month).toContain(money(budgetAmounts({ ...A.store.householdDoc, credits: A.store.credits }).d5))
+    expect(month).not.toContain('Ваш июль')
+    expect(month).toContain('Пригласите партнёра')
+    expect(A.store.householdDoc.spendTotals!.some((t) => t.by === 'a' && t.kind === 'month' && t.period === '2025-07')).toBe(true)
 
     // Мечта — главная (первая в очереди, Р-84); «Позже» — семья настроена, участник отмечен; всё на сервере.
-    await screen(A.pinia, Start, '/start/dream', undefined, [
-      screenMixin({ step: 'form', template: templateById('car'), name: 'Машина', needText: '3 000 000', term: '18' }, (s) => void (s.create as () => Promise<void>)()),
-    ])
-    expect(A.store.goals[0]).toMatchObject({ name: 'Машина', template: 'car' })
     expect(A.store.queue[0].goal?.name).toBe('Машина')
     await screen(A.pinia, Start, '/start/invite', undefined, [act('finish')])
     expect(A.store.setupDone).toBe(true)
@@ -547,7 +552,7 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     expect(landingPath(useAuthStore(), B.store)).toBe('/start')
     await upload(B, kaspi('kaspi-02'))
     const qb = await screen(B.pinia, Start, '/start/questions')
-    expect(qb).toContain('2 из 2')
+    expect(qb).not.toContain('1 из 1')
     expect(qb).toContain(`${money(160_000)} · 12-го`)
     await screen(B.pinia, Start, '/start/questions', undefined, [act('answerIncome')])
     await screen(B.pinia, Start, '/start/questions', undefined, [act('finish')])
@@ -695,7 +700,7 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     expect({ a: await free(A), b: await free(B) }).toEqual(before)
   })
 
-  it('возврат приёмки 3 п. 1: новая семья — Go отдаёт документ `{}`; фоновый pull (focus) до выписки не ломает первый запуск: «Да, это зарплата», «Записать», «Введу вручную» пишут в документ', async () => {
+  it('возврат приёмки 3 п. 1: новая семья — Go отдаёт документ `{}`; фоновый pull (focus) до выписки не ломает первый запуск: «Да, это зарплата», «Записать», зарплата руками пишут в документ', async () => {
     // Документ новой семьи на сервере Go — `data '{}'` (household_repo.go), не полный.
     server = fakeServer({} as SyncDoc)
     const A = await phone(server, st, 'a')
@@ -712,21 +717,21 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     await A.store.syncHousehold(A.client)
     expect(server.data.people).toEqual([expect.objectContaining({ id: 'a', salary: 120_000 })])
 
-    // «Введу вручную» на том же пустом документе.
+    // Зарплата руками на том же пустом документе.
     storage.clear()
     server = fakeServer({} as SyncDoc)
     const M = await phone(server, st, 'a')
     await M.store.pullHousehold(M.client)
-    await screen(M.pinia, Start, '/start', undefined, [act('manualNext', { manual: true, manualSalary: '500 000', manualPayday: '5' })])
+    await screen(M.pinia, Start, '/start/salary', undefined, [act('saveSalary', { manualSalary: '500 000', manualPayday: '5' })])
     expect(M.store.people).toEqual([expect.objectContaining({ id: 'a', salary: 500_000, payday: 5 })])
   })
 
-  it('«Введу вручную»: оклад и день без выписки — участник записан, итогов нет, дальше — к мечте', async () => {
+  it('зарплата руками: оклад и день без выписки — участник записан, итогов нет; партнёр — следующий шаг', async () => {
     const A = await phone(server, st, 'a')
-    await screen(A.pinia, Start, '/start', undefined, [act('manualNext', { manual: true, manualSalary: '500 000', manualPayday: '5' })])
+    await screen(A.pinia, Start, '/start/salary', undefined, [act('saveSalary', { manualSalary: '500 000', manualPayday: '5' })])
     expect(A.store.people).toEqual([expect.objectContaining({ id: 'a', salary: 500_000, payday: 5 })])
     expect(A.store.householdDoc.spendTotals ?? []).toEqual([])
-    expect(await screen(A.pinia, Start, '/start/dream')).toContain('На что копим?')
+    expect(await screen(A.pinia, Start, '/start/invite')).toContain('Пригласите партнёра')
   })
 })
 

@@ -4,7 +4,7 @@ import { useFinanceStore, defaultSyncDoc } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import type { PdfRow } from '@/lib/statements/pdf'
 import { parseStatement } from '@/lib/statements/parsers'
-import type { Operation, SpendTotal } from '@/lib/statements/types'
+import type { Operation } from '@/lib/statements/types'
 import { applyRules, periodOf, spendTotals, unknownGroups } from '@/lib/statements/model'
 import { beyondLimit } from '@/lib/statements/firstRun'
 import { OPERATIONS_STORAGE_KEYS, writeStorage } from '@/lib/storage'
@@ -19,9 +19,9 @@ import Start from './Start.vue'
 import { useInvite } from '@/components/useInvite'
 
 /**
- * Первый запуск из выписки (B2C-19, SSR): каждый шаг, «введу вручную», вопросы на фикстуре
- * Kaspi и что они пишут, партнёр по коду без шагов 4–5. Операции — в своей копии стора
- * (`ff_operations`), как после «Отправить».
+ * Первый запуск (B2C-19, бэклог «первый» FR-01, SSR): мечта → зарплата руками (выписка опцией) →
+ * партнёр; вопросы на фикстуре Kaspi и что они пишут, партнёр по коду — только зарплата и вопросы.
+ * Операции — в своей копии стора (`ff_operations`), как после «Отправить». Куда ведут кнопки — DOM-тест.
  */
 const fixtures = import.meta.glob<PdfRow[]>('../lib/statements/fixtures/*.rows.json', { eager: true, import: 'default' })
 const kaspiOps = (name = 'kaspi-01') => parseStatement(fixtures[`../lib/statements/fixtures/${name}.rows.json`]).operations
@@ -62,7 +62,7 @@ const parsed = (list: Operation[]) => applyRules(list, [])
 const brandButtons = (html: string) =>
   [...html.matchAll(/<button[^>]*class="(?:[^"]*\s)?bg-brand\s[^"]*"[^>]*>([\s\S]*?)<\/button>/g)].map((m) => m[1].replace(/<[^>]+>/g, '').trim())
 
-describe('views/Start.vue — первый запуск из выписки (B2C-19, SSR)', () => {
+describe('views/Start.vue — первый запуск (B2C-19, FR-01, SSR)', () => {
   beforeEach(() => {
     stubStorage()
     setActivePinia(createPinia())
@@ -76,25 +76,44 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     vi.unstubAllGlobals()
   })
 
-  it('шаг 1: «Ваш банк» (Б17: механика не в заголовке), «1 из 5», файл остаётся на телефоне, «Выбрать файл» и «Введу вручную»; партнёр — тот же заголовок, «1 из 2»', async () => {
+  it('FR-01: после вступления новая семья начинает с мечты («1 из 3»); шаг «Зарплата» — поля и главная «Дальше», выписка — тихой кнопкой «Есть PDF из банка», без механики в заголовке', async () => {
     family()
-    const html = await renderScreen(Start, '/start')
+    const dream = await renderScreen(Start, '/start/dream')
+    expect(dream).toContain('На что копим?')
+    expect(dream).toContain('1 из 3')
+
+    const html = await renderScreen(Start, '/start/salary')
+    expect(html).toContain('>Зарплата</h1>')
+    expect(html).toContain('Сколько и когда приходит')
+    expect(html).toContain('2 из 3')
+    expect(html).toContain('>Зарплата в месяц, ₸</span>')
+    expect(html).toContain('>День зарплаты</span>')
+    // Одна брендовая кнопка (правило 12): «Дальше»; выписка — тихая, файл не выбирается с порога.
+    expect(brandButtons(html)).toEqual(['Дальше'])
+    expect(html).toContain('Есть PDF из банка')
+    expect(html).not.toContain('Выбрать файл')
+    // Р-9: «выписка» / «PDF» — не в заголовке и подписи шага.
+    const head = html.slice(html.indexOf('<h1'), html.indexOf('</p>', html.indexOf('<h1')))
+    expect(head).not.toMatch(/выписк|PDF/i)
+  })
+
+  it('FR-01: «Есть PDF из банка» раскрывает прежний выбор файла на том же шаге — «Ваш банк», файл остаётся на телефоне, «Выбрать файл» и тихое «Назад»; партнёр — один шаг, без «1 из 1»', async () => {
+    family()
+    const html = await renderScreen(Start, '/start/salary', undefined, [screenMixin({ pdf: true })])
     expect(html).toContain('Ваш банк')
-    expect(html).not.toContain('Загрузите первую выписку')
     expect(html).toContain('Найдём зарплату, кредиты и подписки')
-    expect(html).toContain('1 из 5')
+    expect(html).toContain('2 из 3')
     // Одна строка, подробности — в подсказке (правило интерфейса, критик Блока 3).
     expect(html).toContain('Файл остаётся на телефоне')
     expect(html).toContain('aria-label="Пояснение"')
-    expect(html).not.toContain('никуда не уходит')
-    expect(html).toContain('Выбрать файл')
-    expect(html).toContain('Введу вручную')
     expect(html).toContain('accept="application/pdf,.pdf"')
-    // Возврат смоука (g3 «Шаг 2 — первая выписка»): откуда взять PDF — карточкой банков, цвет — токенами.
-    // Путь к PDF — в подсказке у банка (Б17): на экране — кнопка «?», текст — в открытой подсказке.
+    expect(brandButtons(html)).toEqual(['Выбрать файл'])
+    expect(html).toMatch(/<button[^>]*>(?:\s|<!---->)*Назад/)
+    expect(html).not.toContain('Зарплата в месяц, ₸')
+    // Откуда взять PDF — карточкой банков, путь — в подсказке у банка (Б17), цвет — токенами.
     expect(html).toContain('aria-label="Выписка Kaspi"')
     expect(html).toContain('aria-label="Выписка Freedom"')
-    const hints = await renderScreen(Start, '/start', undefined, [screenMixin({ at: { left: 0, top: 0, width: 300 } })])
+    const hints = await renderScreen(Start, '/start/salary', undefined, [screenMixin({ pdf: true, at: { left: 0, top: 0, width: 300 } })])
     expect(hints).toContain('Мой банк → Выписка → PDF → Поделиться')
     expect(hints).toContain('Счёт → Выписка → за 3 месяца → PDF')
     expect(html).toContain('bg-destructive')
@@ -102,43 +121,61 @@ describe('views/Start.vue — первый запуск из выписки (B2C
 
     setActivePinia(createPinia())
     family('member', 'b', { ...planFamilyDoc(), people: [planFamilyDoc().people[0]] })
-    const partner = await renderScreen(Start, '/start/upload')
-    expect(partner).toContain('Ваш банк')
-    expect(partner).toContain('1 из 2')
+    const partner = await renderScreen(Start, '/start/salary')
+    expect(partner).toContain('>Зарплата</h1>')
+    // `/ux`: единственный шаг — без полосы «1 из 1».
+    expect(partner).not.toContain('1 из 1')
+    expect(partner).not.toContain('На что копим?')
+    expect(brandButtons(partner)).toEqual(['Готово'])
   })
 
-  it('«Введу вручную»: оклад и день зарплаты — участнику с именем регистрации; без выписки картины месяца нет', async () => {
+  it('FR-01: старые адреса — `/start/upload` → зарплата, `/start/month` → партнёр; чужой шаг → первый (вступление)', async () => {
+    family('member', 'a', { ...defaultSyncDoc(), people: [{ id: 'a', name: 'Ильяс', salary: 600_000, payday: 10, updatedAt: T0 }] })
+    expect(await renderScreen(Start, '/start/upload')).toContain('>Зарплата</h1>')
+    const month = await renderScreen(Start, '/start/month')
+    expect(month).toContain('Пригласите партнёра')
+    expect(month).toContain('3 из 3')
+    expect(month).not.toContain('Ваш июль')
+    expect(await renderScreen(Start, '/start/nope')).toContain('data-intro-page')
+
+    setActivePinia(createPinia())
+    family('member', 'b', { ...planFamilyDoc(), people: [planFamilyDoc().people[0]] })
+    expect(await renderScreen(Start, '/start/upload')).toContain('>Зарплата</h1>')
+    for (const path of ['/start/month', '/start/dream', '/start/invite']) {
+      const html = await renderScreen(Start, path)
+      expect(html).toContain('data-intro-page')
+      expect(html).not.toContain('На что копим?')
+    }
+  })
+
+  it('зарплата руками: оклад и день — участнику с именем регистрации; итогов выписки нет', async () => {
     const store = family()
-    const html = await renderScreen(Start, '/start', undefined, [screenMixin({ manual: true })])
-    expect(html).toContain('>Зарплата в месяц, ₸</span>')
-    expect(html).toContain('>День зарплаты</span>')
-    expect(html).toContain('Лучше загружу выписку')
-    await renderScreen(Start, '/start', undefined, [act('manualNext', { manual: true, manualSalary: '450 000', manualPayday: '12' })])
+    await renderScreen(Start, '/start/salary', undefined, [act('saveSalary', { manualSalary: '450 000', manualPayday: '12' })])
     expect(store.people).toEqual([expect.objectContaining({ id: 'a', name: 'a', salary: 450_000, payday: 12 })])
     // Месячный ритм — документ как раньше: полей ритма нет.
     expect(store.people[0].payRhythm).toBeUndefined()
     expect(store.householdDoc.spendTotals ?? []).toEqual([])
   })
 
-  it('PN-23: «Введу вручную» с ритмом «каждую неделю» — недельный оклад и день недели; подпись «за неделю»', async () => {
+  it('PN-23: зарплата руками с ритмом «каждую неделю» — недельный оклад и день недели; подпись «за неделю»', async () => {
     const store = family()
-    const html = await renderScreen(Start, '/start', undefined, [screenMixin({ manual: true, manualRhythm: { payRhythm: 'week', weekday: 5 } })])
+    const html = await renderScreen(Start, '/start/salary', undefined, [screenMixin({ manualRhythm: { payRhythm: 'week', weekday: 5 } })])
     expect(html).toContain('>Зарплата за неделю, ₸</span>')
     expect(html).toContain('>День недели</span>')
     expect(html).toContain('Раз в неделю')
-    await renderScreen(Start, '/start', undefined, [
-      act('manualNext', { manual: true, manualSalary: '150 000', manualPayday: '10', manualRhythm: { payRhythm: 'week', weekday: 5 } }),
+    await renderScreen(Start, '/start/salary', undefined, [
+      act('saveSalary', { manualSalary: '150 000', manualPayday: '10', manualRhythm: { payRhythm: 'week', weekday: 5 } }),
     ])
     expect(store.people[0]).toMatchObject({ salary: 150_000, payRhythm: 'week', weekday: 5 })
   })
 
-  it('шаг 2 на фикстуре Kaspi: «Нашли 7 повторяющихся», «2 из 5», первый вопрос — доход с суммой и днём в полях, «1 из 7»', async () => {
+  it('вопросы на фикстуре Kaspi — подшаг зарплаты: «Нашли 7 повторяющихся», «2 из 3», первый вопрос — доход с суммой и днём в полях, «1 из 7»', async () => {
     family()
     seedOps(kaspiOps())
     const html = await renderScreen(Start, '/start/questions')
     expect(html).toContain('Нашли 7 повторяющихся')
     expect(html).toContain('Подтвердите по одному — дальше отметим сами.')
-    expect(html).toContain('2 из 5')
+    expect(html).toContain('2 из 3')
     expect(html).toContain('Это ваш доход?')
     expect(html).toContain(`${money(120_000)} · 24-го · С карты другого банка · 3 раз`)
     expect(html).toContain(`value="${plain(120_000)}"`)
@@ -227,37 +264,33 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     expect(form).toContain('В выписке зарплата не нашлась — впишите её.')
     expect(form).not.toContain('план месяца не сложится')
     expect(form).toContain('>Зарплата в месяц, ₸</span>')
-    await renderScreen(Start, '/start/questions', undefined, [act('manualAfterQuestions', { manualSalary: '400 000', manualPayday: '3' })])
+    // Одна форма зарплаты на два места: та же, что на шаге зарплаты, но без «Есть PDF из банка».
+    expect(form).not.toContain('Есть PDF из банка')
+    await renderScreen(Start, '/start/questions', undefined, [act('saveSalary', { manualSalary: '400 000', manualPayday: '3' })])
     expect(store.people[0]).toMatchObject({ salary: 400_000, payday: 3 })
   })
 
-  it('шаг 3: «Ваш июль» — месяц выписки, картина по разделам с «не разобрано», «Остаток по плану»', async () => {
-    const total = (categoryId: string, amount: number): SpendTotal => ({ id: `a:month:2025-07:${categoryId}`, by: 'a', kind: 'month', period: '2025-07', categoryId, amount, ops: 3, updatedAt: T0 })
-    const store = family('member', 'a', {
-      ...defaultSyncDoc(),
-      people: [{ id: 'a', name: 'Ильяс', salary: 600_000, payday: 10, updatedAt: T0 }],
-      obligations: [{ id: 'red', name: 'Оплата Kaspi Red', note: '', day: 9, category: 'd2', versions: [{ from: '2000-01', amount: 45_000 }], updatedAt: T0 }],
-      spendTotals: [total('sc_food', 40_000), total('sc_credit', 151_790), total('_unknown', 5_000)],
-    })
-    const html = await renderScreen(Start, '/start/month')
-    expect(html).toContain('Ваш июль')
-    expect(html).toContain('3 из 5')
-    expect(html).toContain(money(196_790))
-    expect(html).toContain('Кредиты и рассрочки')
-    expect(html).toContain('Продукты')
-    expect(html).toContain(`не разобрано ${money(5_000)}`)
-    expect(html).toContain('Остаток по плану')
-    expect(html).toContain(money(budgetAmounts({ ...store.householdDoc, credits: store.credits }).d5))
-    expect(html).toContain(money(555_000))
-    expect(html).toContain('Из него и складывается мечта — дальше выберем её.')
+  it('FR-01: зарплату ввели руками, потом выписка — вопрос дохода остаётся (выписка точнее), «Да» перезаписывает оклад; все закрыты — «Дальше» без «впишите её»', async () => {
+    const store = family('member', 'a', { ...defaultSyncDoc(), people: [{ id: 'a', name: 'Ильяс', salary: 500_000, payday: 5, updatedAt: T0 }] })
+    seedOps(kaspiOps())
+    expect(await renderScreen(Start, '/start/questions')).toContain('Это ваш доход?')
+    await renderScreen(Start, '/start/questions', undefined, [act('answerIncome')])
+    expect(store.people[0]).toMatchObject({ salary: 120_000, payday: 24 })
+    await renderScreen(Start, '/start/questions', undefined, [act('skipRest')])
+    const done = await renderScreen(Start, '/start/questions')
+    expect(done).not.toContain('впишите её')
+    expect(done).not.toContain('Зарплата в месяц, ₸')
+    expect(brandButtons(done)).toEqual(['Дальше'])
   })
 
-  it('шаг 4 — «На что копим?» внутри первого запуска («4 из 5»); шаг 5 — код партнёра; «Позже» ставит setupDoneAt и onboardedAt', async () => {
+  it('шаг 1 — «На что копим?» внутри первого запуска («1 из 3»); шаг 3 — код партнёра; «Пропустить» в шапке, внизу одна главная; finish ставит setupDoneAt и onboardedAt', async () => {
     const store = family('member', 'a', { ...defaultSyncDoc(), people: [{ id: 'a', name: 'Ильяс', salary: 600_000, payday: 10, updatedAt: T0 }] })
     const dream = await renderScreen(Start, '/start/dream')
     expect(dream).toContain('На что копим?')
-    expect(dream).toContain('4 из 5')
-    expect(dream).toContain('Пока без мечты')
+    expect(dream).toContain('1 из 3')
+    // FR-03: «Пока без мечты» внизу нет — «Пропустить» в шапке.
+    expect(dream).not.toContain('Пока без мечты')
+    expect(dream).toContain('data-skip')
     await renderScreen(Start, '/start/dream', undefined, [
       screenMixin({ step: 'form', template: templateById('car'), name: 'Машина', needText: '3 000 000', term: '18' }, (s) => void (s.create as () => Promise<void>)()),
     ])
@@ -268,11 +301,13 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     expect(invite).toContain('Пригласите партнёра')
     expect(invite).toContain('Мечты и покупки — одни на двоих.')
     expect(invite).not.toContain('Бюджет общий')
-    expect(invite).toContain('5 из 5')
+    expect(invite).toContain('3 из 3')
     expect(invite).toContain('Создать код')
-    expect(invite).toContain('Позже')
-    expect(invite).toContain('Один человек — тоже семья.')
-    // Одна брендовая кнопка: до кода — «Создать код» («Позже» тихая), с кодом — «Готово».
+    // FR-03: «Позже» и строка под ним ушли — без партнёра «Пропустить» в шапке, пояснение — в подсказке.
+    expect(invite).not.toContain('Позже')
+    expect(invite).not.toContain('Один человек — тоже семья.')
+    expect(invite).toContain('data-skip')
+    // Одна брендовая кнопка внизу: до кода — «Создать код», с кодом — «Готово».
     expect(brandButtons(invite)).toEqual(['Создать код'])
     // Код общий на сессию и семью (`useInvite`, Н-11): создан — виден и шагу первого запуска.
     vi.spyOn(useAuthStore(), 'createInvite').mockResolvedValue({ code: 'K7Q2M9' } as never)
@@ -280,18 +315,20 @@ describe('views/Start.vue — первый запуск из выписки (B2C
     const withCode = await renderScreen(Start, '/start/invite')
     expect(withCode).toContain('Готово')
     expect(brandButtons(withCode)).toEqual(['Готово'])
+    // `/ux`: с кодом «Пропустить» в шапке делало бы то же, что «Готово», — его нет.
+    expect(withCode).not.toContain('data-skip')
     expect(store.setupDone).toBe(false)
     await renderScreen(Start, '/start/invite', undefined, [act('finish')])
     expect(store.setupDone).toBe(true)
     expect(store.people[0].onboardedAt).toBe('2026-09-24T07:00:00.000Z')
   })
 
-  it('партнёр по коду: выписка и вопросы про себя, «Готово» — people[b] с доходом и onboardedAt, семья не трогается', async () => {
+  it('партнёр по коду: зарплата из выписки и вопросы про себя, «Готово» — people[b] с доходом и onboardedAt, семья не трогается', async () => {
     const base = planFamilyDoc()
     const store = family('member', 'b', { ...base, people: [base.people[0]] })
     seedOps(kaspiOps('kaspi-02'), 'u-b')
     const html = await renderScreen(Start, '/start/questions')
-    expect(html).toContain('2 из 2')
+    expect(html).not.toContain('1 из 1')
     expect(html).toContain('Это ваш доход?')
     expect(html).toContain(`${money(160_000)} · 12-го`)
     await renderScreen(Start, '/start/questions', undefined, [act('answerIncome')])
