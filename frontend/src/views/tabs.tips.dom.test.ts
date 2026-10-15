@@ -78,11 +78,13 @@ const ok = () => document.querySelector<HTMLButtonElement>('[data-tip-ok]')!
 
 describe('FR-06: подсказки на главных вкладках', () => {
   for (const t of TABS.filter((x) => x.subject.startsWith('['))) {
-    it(`${t.path}: один пузырь «${t.id}» под главным предметом; «Понятно» — нет, и после перезахода тоже`, async () => {
+    it(`${t.path}: один пузырь «${t.id}» у главного предмета; «Понятно» — нет, и после перезахода тоже`, async () => {
       await open(t.view, t.path)
       expect(bubbles().map((b) => b.dataset.tip)).toEqual([t.id])
-      // Пузырь — сразу за предметом в той же обёртке: ничего не закрывает, едет с ним.
-      expect(bubbles()[0].previousElementSibling?.matches(t.subject), 'пузырь под предметом').toBe(true)
+      // Пузырь — рядом с предметом в той же обёртке: ничего не закрывает, едет с ним. «Месяц» — над разделами (под ними
+      // на 390 px пузырь уходил под панель вкладок — стенд FR-06), остальные — под предметом.
+      expect(bubbles()[0].previousElementSibling?.matches(t.subject), 'пузырь рядом с предметом').toBe(true)
+      expect(bubbles()[0].classList.contains('order-first'), 'над предметом').toBe(t.id === 'tab-month')
       expect(bubbles()[0].textContent).not.toMatch(/выписк|PDF/i)
       ok().click()
       await nextTick()

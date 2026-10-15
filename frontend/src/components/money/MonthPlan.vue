@@ -445,8 +445,8 @@ function addFund(kind: 'reserve' | 'cushion') {
       </template>
     </Card>
 
-    <!-- Три раздела: строка — сумма и «N из M»; раскрытие — под кругом, один за раз. Подсказка — под ними. -->
-    <Tip id="tab-month" :text="tipText">
+    <!-- Три раздела: строка — сумма и «N из M»; раскрытие — под кругом, один за раз. Подсказка — над ними: под ними на 390 px она ушла бы под панель вкладок. -->
+    <Tip id="tab-month" :text="tipText" above>
       <Card flush class="px-3.5 py-0.5" data-sections>
         <template v-for="s in sections" :key="s.key">
           <button
