@@ -112,3 +112,27 @@ export interface OperationsPage {
   operations: OperationWire[]
   next: string | null
 }
+
+/** Семья в админке ИИ (бэклог «ИИ», AI-03): почты участников по slot, флаг, расход за месяц Алматы. */
+export interface AdminFamily {
+  id: string
+  created_at: string
+  emails: string[]
+  ai: boolean
+  month: string
+  requests: number
+  /** Расход ≈ $ целыми микродолларами. */
+  cost_micros: number
+}
+
+/** Ответ `GET /api/admin/families`: `limit` — одно значение на все семьи, `key` — ключ Claude задан. */
+export interface AdminFamilies {
+  families: AdminFamily[]
+  limit: number
+  key: boolean
+}
+
+/** Ответ `POST /api/admin/ai-check`. */
+export type AiCheck =
+  | { ok: true; model: string; ms: number }
+  | { ok: false; reason: 'no_key' | 'failed' | 'rate_limited' | 'refused' }

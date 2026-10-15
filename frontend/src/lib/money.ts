@@ -50,6 +50,16 @@ export function parseMoney(s: string): number {
   return Number.isFinite(n) ? n : 0
 }
 
+/**
+ * Расход ИИ-сервиса из целых микродолларов (бэклог «ИИ», AI-04): «≈ $0.42», вверх до цента; 0 → «$0».
+ * Это цена запросов к Claude для владельца, не деньги семьи — `finance.ts` тут ни при чём.
+ */
+export function usdFromMicros(micros: number): string {
+  if (micros <= 0) return '$0'
+  const cents = Math.floor((micros + 9_999) / 10_000)
+  return `≈ $${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`
+}
+
 /** Доля в процентах, округлённая до целого. */
 export function pct(part: number, whole: number): number {
   if (!whole) return 0
