@@ -8,6 +8,9 @@ import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
 import { useAiStore } from '@/stores/ai'
 import { readAiReviewSeen, writeAiReviewSeen } from '@/lib/storage'
+import { buildMonthSummary } from '@/lib/aiSummary'
+import { DEMO_REVIEW } from '@/lib/demo'
+import type { AiReview } from '@/types/finance'
 import { money, moneyIn, parseMoney, plain } from '@/lib/money'
 import { dayLabel, monthBy, monthFrom, monthKey as monthNow, monthShort, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
 import {
@@ -235,8 +238,17 @@ const { open: affordOpen, close: closeAfford } = useQuerySheet('afford')
  * документ. Только текущий месяц. Точка — разбор есть, а на этом телефоне его не открывали.
  */
 const ai = useAiStore()
-const review = computed(() => finance.aiReviewOf(props.monthKey))
-const reviewShown = computed(() => props.monthKey === monthNow() && (ai.available || (!!review.value && auth.ai)))
+/** Демо (Р-10, AI-10): заранее написанный разбор с «что ушло» — сводкой демо-семьи; без запроса, в документ не пишется. */
+const demoReview = computed<AiReview | null>(() =>
+  auth.isDemo
+    ? {
+        id: 'demo-review', month: props.monthKey, at: new Date().toISOString(), by: 'a', updatedAt: '', ...DEMO_REVIEW,
+        sent: buildMonthSummary(finance.householdDoc, props.monthKey, new Date(), { book: fx.book, uploads: ops.uploads }),
+      }
+    : null,
+)
+const review = computed(() => demoReview.value ?? finance.aiReviewOf(props.monthKey))
+const reviewShown = computed(() => props.monthKey === monthNow() && (ai.available || auth.isDemo || (!!review.value && auth.ai)))
 const seenReview = ref(readAiReviewSeen())
 const reviewDot = computed(() => !!review.value && review.value.id !== seenReview.value)
 const reviewOpen = ref(false)
@@ -723,7 +735,7 @@ function addFund(kind: 'reserve' | 'cushion') {
     <SalarySheet :month-key="monthKey" :line="salarySheet" @close="salaryFor = null" />
     <ExtraIncomeSheet :open="incomeOpen" @close="incomeOpen = false" />
     <AffordSheet :open="affordOpen" @close="closeAfford" />
-    <AiReviewSheet :open="reviewOpen" :month-key="monthKey" :review="review" @close="reviewOpen = false" @refresh="refreshReview" />
+    <AiReviewSheet :open="reviewOpen" :month-key="monthKey" :review="review" :example="auth.isDemo" @close="reviewOpen = false" @refresh="refreshReview" />
 
     <!-- Платёж: одна кнопка «Оплатил»; тихо — «Изменить платёж» -->
     <Sheet :open="!!paySheet" :title="paySheet?.name ?? ''" @close="payFor = null">

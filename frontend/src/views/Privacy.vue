@@ -8,7 +8,7 @@ import { RouterLink } from 'vue-router'
  * ревью магазинов.
  */
 const CONTACT = 'ilyas.muratbek.99@gmail.com'
-const UPDATED = '15 октября 2026'
+const UPDATED = '16 октября 2026'
 </script>
 
 <template>
@@ -34,6 +34,8 @@ const UPDATED = '15 октября 2026'
         <li>Фото целей и желаний, которые вы добавили.</li>
         <li>Подписки на уведомления, если вы их включите.</li>
         <li>События использования (открыли приложение, завершили неделю) — только для наших цифр удержания, без сторонней аналитики.</li>
+        <li>Если семье включён ИИ-помощник: ваше согласие на него, разбор месяца вместе с цифрами, которые ушли в ИИ, и
+          число запросов семьи за месяц — без их содержимого.</li>
       </ul>
     </section>
 
@@ -49,7 +51,7 @@ const UPDATED = '15 октября 2026'
       <h2 class="type-h3 text-ink">Где хранится</h2>
       <p class="mt-1.5">
         Сервер приложения — Vercel, база данных — Supabase (PostgreSQL); оба размещены в регионе Сеул (Южная Корея).
-        Соединение защищено HTTPS.
+        Запросы ИИ-помощника обрабатывает Anthropic на своих серверах — вне Сеула. Соединение защищено HTTPS.
       </p>
     </section>
 
@@ -58,7 +60,7 @@ const UPDATED = '15 октября 2026'
       <p class="mt-1.5">
         Google — только для входа. ИИ-помощник (Claude, Anthropic) — только если его включили семье и вы дали согласие:
         уходят цифры месяца без имён и заметок, названия продавцов без сумм, скриншот товара; на ваших данных не
-        обучается. Для рекламы и третьим лицам — ничего.
+        обучается, запросы хранит до 30 дней и удаляет. Для рекламы и третьим лицам — ничего.
       </p>
     </section>
 
@@ -85,9 +87,10 @@ const UPDATED = '15 октября 2026'
         on Vercel and Supabase in Seoul (South Korea). We share nothing for advertising; Google is used for sign-in only.
         The AI helper (Claude by Anthropic) runs only if it is enabled for your household and you consent: it receives the
         month's figures without names or notes, merchant names without amounts, and product screenshots; Anthropic does
-        not train on this data.
+        not train on this data, processes it outside Seoul and keeps requests for up to 30 days. We store your consent,
+        the household's month reviews with the figures sent, and monthly AI request counts.
         Delete your account and data any time in Settings → “Удалить аккаунт и данные”. Contact:
-        <a :href="`mailto:${CONTACT}`" class="text-brand">{{ CONTACT }}</a>. Updated October 15, 2026.
+        <a :href="`mailto:${CONTACT}`" class="text-brand">{{ CONTACT }}</a>. Updated October 16, 2026.
       </p>
     </section>
   </article>

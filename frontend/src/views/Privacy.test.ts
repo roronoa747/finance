@@ -33,6 +33,11 @@ describe('B2C-26: /privacy — публичная политика конфид�
     const html = await renderScreen(Privacy, '/privacy')
     expect(html).not.toContain('Gemini')
     expect(html).toContain('Anthropic')
+    // Хвост §4 ревью frontend Блока 1 (Н-1), AI-10: срок хранения у Anthropic, где обрабатывается, что храним сами.
+    expect(html).toContain('запросы хранит до 30 дней')
+    expect(html).toContain('вне Сеула')
+    expect(html).toContain('число запросов семьи за месяц')
+    expect(html).toContain('keeps requests for up to 30 days')
     expect(html).toContain('не обучается')
     expect(html).toContain('вы дали согласие')
     expect(html).toContain('does not train on this data')
