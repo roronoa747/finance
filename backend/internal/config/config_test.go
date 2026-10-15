@@ -8,7 +8,7 @@ import (
 // clearEnv blanks every variable Load reads; getEnv treats "" as unset.
 func clearEnv(t *testing.T) {
 	t.Helper()
-	for _, key := range []string{"PORT", "DATABASE_URL", "JWT_SECRET", "CORS_ORIGIN", "APP_ENV", "GOOGLE_CLIENT_IDS", "ADMIN_EMAILS"} {
+	for _, key := range []string{"PORT", "DATABASE_URL", "JWT_SECRET", "CORS_ORIGIN", "APP_ENV", "GOOGLE_CLIENT_IDS", "ADMIN_EMAILS", "APPLEPAY_SHORTCUT_URL", "APPLEPAY_SHORTCUT_URL_LEGACY"} {
 		t.Setenv(key, "")
 	}
 }
@@ -153,5 +153,30 @@ func TestAdminEmailsLowercased(t *testing.T) {
 	}
 	if strings.Join(cfg.AdminEmails, "|") != "owner@example.com" {
 		t.Errorf("AdminEmails = %v", cfg.AdminEmails)
+	}
+}
+
+func TestLoadApplePayShortcutLinks(t *testing.T) {
+	clearEnv(t)
+	cfg, _ := Load()
+	if cfg.ApplePayShortcutURL != "" || cfg.ApplePayShortcutURLLegacy != "" {
+		t.Fatalf("links without env: %+v", cfg)
+	}
+	t.Setenv("APPLEPAY_SHORTCUT_URL", " https://www.icloud.com/shortcuts/abc123 ")
+	t.Setenv("APPLEPAY_SHORTCUT_URL_LEGACY", "https://evil.example/shortcuts/abc")
+	cfg, _ = Load()
+	if cfg.ApplePayShortcutURL != "https://www.icloud.com/shortcuts/abc123" {
+		t.Errorf("iCloud link: %q", cfg.ApplePayShortcutURL)
+	}
+	if cfg.ApplePayShortcutURLLegacy != "" {
+		t.Errorf("a non-iCloud link must count as unset: %q", cfg.ApplePayShortcutURLLegacy)
+	}
+	// Production does not require the links.
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("DATABASE_URL", "postgres://x")
+	t.Setenv("JWT_SECRET", prodSecret)
+	t.Setenv("APPLEPAY_SHORTCUT_URL", "")
+	if _, err := Load(); err != nil {
+		t.Errorf("production without Apple Pay links: %v", err)
 	}
 }

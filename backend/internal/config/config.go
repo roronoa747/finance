@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"log"
 	"os"
 	"strings"
 )
@@ -25,6 +26,27 @@ type Config struct {
 	// AdminEmails see the owner's numbers page /admin (ADMIN_EMAILS, comma-separated, B2C-28).
 	// Optional: without it /api/admin/metrics is 404 for everyone.
 	AdminEmails []string
+	// Apple Pay shortcut links (бэклог «Apple Pay», Р-17): iOS 27 with the trigger inside
+	// (APPLEPAY_SHORTCUT_URL) and iOS 17–26 without it (APPLEPAY_SHORTCUT_URL_LEGACY). Optional:
+	// without a link that phone path has no Apple Pay card. Only iCloud shortcut links count.
+	ApplePayShortcutURL       string
+	ApplePayShortcutURLLegacy string
+}
+
+// shortcutPrefix is the only kind of link the phone may open for the Apple Pay command.
+const shortcutPrefix = "https://www.icloud.com/shortcuts/"
+
+// shortcutURL reads an Apple Pay link: anything but an iCloud shortcut link counts as unset.
+func shortcutURL(key string) string {
+	v := strings.TrimSpace(getEnv(key, ""))
+	if v == "" {
+		return ""
+	}
+	if !strings.HasPrefix(v, shortcutPrefix) {
+		log.Printf("config: %s is not an iCloud shortcut link (%s…) — ignored", key, shortcutPrefix)
+		return ""
+	}
+	return v
 }
 
 // Load loads configuration from environment variables with fallback defaults.
@@ -41,6 +63,9 @@ func Load() (*Config, error) {
 
 		GoogleClientIDs: splitList(getEnv("GOOGLE_CLIENT_IDS", "")),
 		AdminEmails:     splitList(strings.ToLower(getEnv("ADMIN_EMAILS", ""))),
+
+		ApplePayShortcutURL:       shortcutURL("APPLEPAY_SHORTCUT_URL"),
+		ApplePayShortcutURLLegacy: shortcutURL("APPLEPAY_SHORTCUT_URL_LEGACY"),
 	}
 	if cfg.IsProduction() {
 		if err := cfg.ValidateProduction(); err != nil {

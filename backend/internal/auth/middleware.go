@@ -142,3 +142,9 @@ func GetSlot(ctx context.Context) (string, bool) {
 	}
 	return "", false
 }
+
+// WithMembership puts a caller resolved without a JWT (an Apple Pay phone key) into the context
+// the same way Middleware does, so GetUserID, GetHouseholdID and GetRole work in its handlers.
+func WithMembership(ctx context.Context, userID string, m Membership) context.Context {
+	return context.WithValue(ctx, claimsKey, &Claims{UserID: userID, HouseholdID: m.HouseholdID, Role: m.Role, Slot: m.Slot})
+}

@@ -120,6 +120,8 @@ REST API приложения: вход, домохозяйство, синхр�
 | `PORT`, `CORS_ORIGIN` | только `cmd/server` | дефолты `8080` и `localhost:5173` |
 | `ADMIN_EMAILS` | прод, опционально | почты владельца через запятую — страница цифр `/admin`; без неё `/api/admin/metrics` — 404 всем. Значение — `memory/secrets/` |
 | `GOOGLE_CLIENT_IDS` | прод, опционально | id клиентов OAuth Google через запятую (веб, Android, iOS) — допустимые `aud`; без неё вход через Google отвечает 503. Значения — `memory/secrets/google-oauth.md` |
+| `APPLEPAY_SHORTCUT_URL` | прод, опционально | ссылка iCloud на команду «Траты сами» для iOS 27 (триггер внутри); принимается только `https://www.icloud.com/shortcuts/…`, иное — как не задано (предупреждение в логе без значения). Без неё у iPhone с iOS 27 нет карточки «Apple Pay» |
+| `APPLEPAY_SHORTCUT_URL_LEGACY` | прод, опционально | то же для iOS 17–26 (команда без триггера, автоматизация руками). Ссылки — не секрет, но в git не кладутся: живут в env Vercel |
 | `VITE_GOOGLE_CLIENT_ID` | прод (сборка фронта) | id веб-клиента OAuth (тот же, что в `GOOGLE_CLIENT_IDS`). **Константа сборки**: Vite вшивает её в JS, без неё сборщик выбрасывает код Google — в проде нет входа (формы пароля в проде нет). Заводить в Vercel для **Production** до сборки; после деплоя — `gsi/client` в главном JS прода или кнопка Google на `/access` |
 
 Строки подключения к Supabase — только в `memory/secrets/` и env Vercel, в доки не пишутся.

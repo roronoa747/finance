@@ -154,3 +154,47 @@ func TestPostgresApplePayKeysCascade(t *testing.T) {
 		t.Fatalf("after deleting the user: %d keys, %d debug rows", keys, debug)
 	}
 }
+
+func TestPostgresPhoneKeys(t *testing.T) {
+	f := newStatementFixture(t)
+	ctx := context.Background()
+	keys := NewSQLPhoneKeyRepository(f.db)
+	hash := func(b byte) []byte { return []byte{b, 0xAA} }
+
+	if phones, last, err := keys.Status(ctx, f.aliceID); err != nil || phones != 0 || last != nil {
+		t.Fatalf("empty status: %d %v %v", phones, last, err)
+	}
+	if _, err := keys.UserByHash(ctx, hash(1)); err != ErrPhoneKeyNotFound {
+		t.Fatalf("unknown key: %v", err)
+	}
+	for i := byte(1); i <= 6; i++ {
+		if err := keys.Add(ctx, f.aliceID, hash(i)); err != nil {
+			t.Fatalf("add %d: %v", i, err)
+		}
+		time.Sleep(2 * time.Millisecond) // distinct created_at: "the oldest" is well defined
+	}
+	if err := keys.Add(ctx, f.bobID, hash(9)); err != nil {
+		t.Fatalf("bob: %v", err)
+	}
+	// The sixth key pushed out the first; Bob's keys do not count against Alice.
+	if _, err := keys.UserByHash(ctx, hash(1)); err != ErrPhoneKeyNotFound {
+		t.Fatalf("oldest key survived: %v", err)
+	}
+	user, err := keys.UserByHash(ctx, hash(2))
+	if err != nil || user != f.aliceID {
+		t.Fatalf("second key: %q %v", user, err)
+	}
+	phones, last, err := keys.Status(ctx, f.aliceID)
+	if err != nil || phones != 5 || last == nil || time.Since(*last) > time.Minute {
+		t.Fatalf("status after use: %d %v %v", phones, last, err)
+	}
+	if err := keys.DeleteAll(ctx, f.aliceID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if phones, _, _ := keys.Status(ctx, f.aliceID); phones != 0 {
+		t.Fatalf("after delete: %d", phones)
+	}
+	if user, err := keys.UserByHash(ctx, hash(9)); err != nil || user != f.bobID {
+		t.Fatalf("Bob's key after Alice disconnected: %q %v", user, err)
+	}
+}

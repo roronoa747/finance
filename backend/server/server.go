@@ -40,6 +40,8 @@ type Repos struct {
 	Accounts   repository.AccountRepository
 	Events     repository.EventRepository
 	Metrics    repository.MetricsRepository
+	// Apple Pay phone keys (бэклог «Apple Pay»).
+	PhoneKeys repository.PhoneKeyRepository
 }
 
 // NewHandler builds the API over database. A nil database means in-memory
@@ -57,6 +59,7 @@ func NewHandler(cfg *config.Config, database *sql.DB) (http.Handler, error) {
 			Accounts:   repository.NewSQLAccountRepository(database),
 			Events:     repository.NewSQLEventRepository(database),
 			Metrics:    repository.NewSQLMetricsRepository(database),
+			PhoneKeys:  repository.NewSQLPhoneKeyRepository(database),
 		}
 	} else {
 		if cfg.IsProduction() {
@@ -66,6 +69,7 @@ func NewHandler(cfg *config.Config, database *sql.DB) (http.Handler, error) {
 		mocks := repository.NewMockRepositories()
 		mocks.Households.SetDocRepo(mocks.Docs)
 		repos = Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos, Fx: mocks.Fx, Accounts: repository.NewMockAccountRepo(mocks), Events: &repository.MockEventRepo{}, Metrics: repository.MockMetricsRepo{}}
+		repos.PhoneKeys = repository.NewMockPhoneKeyRepo()
 	}
 
 	tokens := auth.NewTokenService(cfg.JWTSecret, tokenTTL)
@@ -155,6 +159,7 @@ func NewRouter(
 	previewHandler := handlers.NewPreviewHandler(linkpreview.New().Fetch)
 	accountHandler := handlers.NewAccountHandler(repos.Accounts)
 	eventsHandler := handlers.NewEventsHandler(repos.Events, repos.Metrics, repos.Users, cfg.AdminEmails)
+	walletHandler := handlers.NewWalletHandler(repos.PhoneKeys, repos.Households, cfg.ApplePayShortcutURL, cfg.ApplePayShortcutURLLegacy)
 
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", handlers.HealthHandler(database))
@@ -215,6 +220,11 @@ func NewRouter(
 
 				// История курсов Нацбанка (B2C-76, Р-71): member и viewer.
 				family.Get("/fx-rates", handlers.FxRatesHandler(fxClient, repos.Fx))
+
+				// Apple Pay (бэклог «Apple Pay», Р-5, Р-13): свой iPhone подключает и отключает member.
+				family.Get("/wallet", walletHandler.Status)
+				family.Post("/wallet/connect", walletHandler.Connect)
+				family.Delete("/wallet", walletHandler.Disconnect)
 			})
 		})
 	})
