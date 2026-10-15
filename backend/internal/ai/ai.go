@@ -82,7 +82,7 @@ type Request struct {
 	MaxTokens int64
 }
 
-// Usage is what one successful call spent.
+// Usage is what one call spent: the tokens Anthropic billed.
 type Usage struct {
 	Model        string
 	InputTokens  int64
@@ -90,7 +90,9 @@ type Usage struct {
 }
 
 // Call sends req and decodes the answer into out (unknown fields are a schema miss).
-// Usage is filled only on success: failures are not counted (Р-14).
+// Usage is filled whenever Anthropic answered — on a refusal, a cut or an off-schema answer
+// too, since those are billed (хвост §4, решение владельца 2026-10-16: расход неудачных — в
+// «≈ $», лимит они не трогают); an HTTP error, timeout or network failure is zero.
 func (c *Client) Call(ctx context.Context, req Request, out any) (Usage, error) {
 	timeout := c.Timeout
 	if timeout <= 0 {
@@ -123,11 +125,12 @@ func (c *Client) Call(ctx context.Context, req Request, out any) (Usage, error) 
 	if err != nil {
 		return Usage{}, classify(err)
 	}
+	usage := Usage{Model: req.Model, InputTokens: msg.Usage.InputTokens, OutputTokens: msg.Usage.OutputTokens}
 	if msg.StopReason == anthropic.StopReasonRefusal {
-		return Usage{}, ErrRefused
+		return usage, ErrRefused
 	}
 	if msg.StopReason == anthropic.StopReasonMaxTokens {
-		return Usage{}, fmt.Errorf("%w: max_tokens", ErrFailed)
+		return usage, fmt.Errorf("%w: max_tokens", ErrFailed)
 	}
 	var text string
 	for _, block := range msg.Content {
@@ -139,9 +142,9 @@ func (c *Client) Call(ctx context.Context, req Request, out any) (Usage, error) 
 	dec := json.NewDecoder(bytes.NewReader([]byte(text)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(out); err != nil {
-		return Usage{}, fmt.Errorf("%w: answer off schema", ErrFailed)
+		return usage, fmt.Errorf("%w: answer off schema", ErrFailed)
 	}
-	return Usage{Model: req.Model, InputTokens: msg.Usage.InputTokens, OutputTokens: msg.Usage.OutputTokens}, nil
+	return usage, nil
 }
 
 // noRetryOn429 tells the SDK not to retry a 429 (see maxRetries).
