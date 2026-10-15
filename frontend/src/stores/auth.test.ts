@@ -165,6 +165,20 @@ describe('stores/auth.ts — Pinia хранилище авторизации и 
     expect(auth.user).toBeNull()
   })
 
+  it('fetchMe: ответ старого входа не пишется в новый (вышел и вошёл другим, пока шёл запрос)', async () => {
+    const auth = useAuthStore()
+    auth.token = 'old-token'
+    let reply!: (v: unknown) => void
+    vi.spyOn(apiClient, 'me').mockReturnValue(new Promise((r) => (reply = r)) as never)
+    const pending = auth.fetchMe()
+    auth.token = 'new-token'
+    auth.ai = false
+    reply({ user: { id: 'u-old', email: 'old@example.com', created_at: '' }, household: null, member: null, ai: true })
+    await expect(pending).resolves.toBeNull()
+    expect(auth.ai).toBe(false)
+    expect(auth.user?.id).not.toBe('u-old')
+  })
+
   it('fetchMe при сетевой ошибке сохраняет локальную сессию', async () => {
     const auth = useAuthStore()
     auth.token = 'valid-token'

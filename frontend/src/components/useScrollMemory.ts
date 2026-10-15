@@ -16,6 +16,8 @@ import { useRoute, useRouter, type Router } from 'vue-router'
  * возвращается при монтировании.
  */
 type Memory = {
+  /** Чей вход запомнен (токен): другой человек на том же телефоне без перезагрузки — места с нуля. */
+  owner: string | null
   saved: Map<string, number>
   popping: boolean
   lastWasPop: boolean
@@ -29,7 +31,7 @@ const memories = new WeakMap<Router, Memory>()
 function memoryOf(router: Router): Memory {
   const known = memories.get(router)
   if (known) return known
-  const mem: Memory = { saved: new Map(), popping: false, lastWasPop: false, box: null }
+  const mem: Memory = { owner: null, saved: new Map(), popping: false, lastWasPop: false, box: null }
   // История сообщает только о переходах по ней (назад / вперёд), не о push.
   router.options.history.listen(() => {
     mem.popping = true
@@ -47,10 +49,17 @@ function memoryOf(router: Router): Memory {
   return mem
 }
 
-export function useScrollMemory(el: Ref<HTMLElement | null>, isRoot: (path: string) => boolean) {
+export function useScrollMemory(el: Ref<HTMLElement | null>, isRoot: (path: string) => boolean, owner: string | null = null) {
   const router = useRouter()
   const route = useRoute()
   const mem = memoryOf(router)
+  // Выход и вход другим человеком (или демо → своя семья) идут без перезагрузки: места прежнего входа не его
+  // (критик Блока 2 «ИИ»; раньше память умирала с оболочкой, теперь живёт у роутера).
+  if (mem.owner !== owner) {
+    mem.saved.clear()
+    mem.lastWasPop = false
+    mem.owner = owner
+  }
   const box = () => el.value
   mem.box = box
   let frame = 0

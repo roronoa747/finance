@@ -6,7 +6,7 @@ import { useAiStore } from '@/stores/ai'
 import { useAuthStore } from '@/stores/auth'
 import type { AiReview } from '@/types/finance'
 import type { MonthSummaryAI } from '@/lib/aiSummary'
-import { money } from '@/lib/money'
+import { money, plain } from '@/lib/money'
 import { monthBy } from '@/lib/dates'
 import { plural } from '@/lib/utils'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -32,9 +32,15 @@ const ai = useAiStore()
 const auth = useAuthStore()
 
 const DAY_MS = 86_400_000
-/** «Обновить» — не чаще раза в день (Р-4): только участнику с ИИ и разбору старше суток. */
+/** «Обновить» — не чаще раза в день (Р-4): только участнику с ИИ без «Не надо» (Р-9) и разбору старше суток. */
 const canRefresh = computed(
-  () => !props.example && !!props.review && ai.available && ai.reviewState !== 'thinking' && Date.now() - Date.parse(props.review.at) >= DAY_MS,
+  () =>
+    !props.example &&
+    !!props.review &&
+    ai.available &&
+    ai.consent !== 'off' &&
+    ai.reviewState !== 'thinking' &&
+    Date.now() - Date.parse(props.review.at) >= DAY_MS,
 )
 
 /**
@@ -42,7 +48,12 @@ const canRefresh = computed(
  * как у `money()`; так же пробел перед «₸» и «%». Текст в документе не меняется.
  */
 const NBSP = '\u00a0'
-const keep = (t: string) => t.replace(/(\d) (?=\d{3}(?!\d))/g, `$1${NBSP}`).replace(/(\d) (?=[₸%])/g, `$1${NBSP}`)
+/** Разряды, которых модель не поставила («499641» — живой ответ, критик Блока 2): 5+ цифр — как `plain`; годы не задевает. */
+const keep = (t: string) =>
+  t
+    .replace(/(?<![\d,.])\d{5,}(?![\d,.])/g, (d) => plain(Number(d)))
+    .replace(/(\d) (?=\d{3}(?!\d))/g, `$1${NBSP}`)
+    .replace(/(\d) (?=[₸%])/g, `$1${NBSP}`)
 
 /** Слова состояний запроса (черновик — владельцу «до | после»). */
 const stateText = computed(() =>

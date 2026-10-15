@@ -17,6 +17,8 @@ afterEach(() => {
   app?.unmount()
   app = null
   document.body.innerHTML = ''
+  // Тесты входа оставляют токен и флаг ИИ — следующий тест начинает без них.
+  localStorage.clear()
 })
 
 const page = (name: string) => defineComponent({ render: () => h('div', { style: 'height: 3000px' }, name) })
@@ -346,4 +348,50 @@ it('AI-09: оболочка зовёт /auth/me при монтировании 
   await vi.waitFor(() => expect(document.querySelector('main')).not.toBeNull())
   expect(me).toHaveBeenCalledTimes(1)
   me.mockRestore()
+})
+
+// Критик Блока 2 «ИИ»: память места живёт у роутера — выход и вход другим человеком без перезагрузки
+// (`Root.vue`: оболочка по `isAuthenticated`) не возвращает ему места прежнего входа.
+it('выход и вход другим человеком — «Месяц» сверху, а не на месте прежнего входа', async () => {
+  const { apiClient } = await import('@/api/client')
+  const { useAuthStore } = await import('@/stores/auth')
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  const auth = useAuthStore()
+  const login = (token: string) =>
+    auth.setAuthData({
+      token,
+      user: { id: token, email: `${token}@example.com`, created_at: '2026-10-01T00:00:00Z' },
+      household: { id: 'h-1', name: 'Семья', created_by: token, created_at: '2026-10-01T00:00:00Z' },
+      member: { household_id: 'h-1', user_id: token, slot: 'a', display_name: 'a', role: 'member', joined_at: '2026-10-01T00:00:00Z' },
+    })
+  login('tok-first')
+  const me = vi.spyOn(apiClient, 'me').mockImplementation(async () => ({ user: auth.user!, household: auth.household, member: auth.member }))
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/', component: AppShell, children: [{ path: 'month', component: page('Месяц') }] }, { path: '/access', component: page('Вход') }],
+  })
+  try {
+    await router.push('/month')
+    await router.isReady()
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app = createApp({ render: () => h(RouterView) })
+    app.use(pinia)
+    app.use(router)
+    app.mount(root)
+    await nextTick()
+    document.querySelector('main')!.scrollTop = 640
+
+    // Выход — на «Вход» (вне оболочки), вход другим — снова «Месяц».
+    await router.push('/access')
+    auth.clearAuth()
+    login('tok-second')
+    await router.push('/month')
+    await vi.waitFor(() => expect(document.querySelector('main')?.textContent).toContain('Месяц'))
+    await nextTick()
+    expect(document.querySelector('main')!.scrollTop).toBe(0)
+  } finally {
+    me.mockRestore()
+  }
 })

@@ -125,7 +125,7 @@ const tabs = computed(() => [
 
 // Прокручивается не окно, а <main>: новый экран — сверху, «назад» и вкладка — на своё место (Р-115).
 const mainEl = ref<HTMLElement | null>(null)
-useScrollMemory(mainEl, (p) => ROOTS.includes(p))
+useScrollMemory(mainEl, (p) => ROOTS.includes(p), authStore.token)
 
 /** Лист «+» (DESIGN.md §2): порядок действий — как в макете; у viewer кнопки «+» нет. */
 const actions = computed(() => {

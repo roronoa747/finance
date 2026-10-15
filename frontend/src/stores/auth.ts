@@ -126,10 +126,14 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function fetchMe() {
     if (!token.value) return null
+    // Ответ старого входа не пишется в новый (выход и вход, пока шёл запрос; критик Блока 2 «ИИ»: оболочка зовёт
+    // `/auth/me` при старте).
+    const sent = token.value
     loading.value = true
     error.value = null
     try {
       const res = await apiClient.me()
+      if (token.value !== sent) return null
       user.value = res.user
       household.value = res.household
       member.value = res.member
@@ -143,7 +147,7 @@ export const useAuthStore = defineStore('auth', () => {
       setItem('ff_member', JSON.stringify(res.member))
       return res
     } catch (err) {
-      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+      if (token.value === sent && err instanceof ApiError && (err.status === 401 || err.status === 403)) {
         clearAuth()
       }
       throw err

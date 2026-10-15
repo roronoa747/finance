@@ -137,6 +137,14 @@ describe('AI-09: разбор месяца у остатка', () => {
     expect(q('[data-review-refresh]')).toBeNull()
   })
 
+  it('числа на показе не рвутся строкой: разряды и «₸»/«%» — неразрывно, «499641» — разрядами, год как есть', async () => {
+    await open({ doc: planFamilyDoc({ aiReviews: [saved({ good: 'Остаётся 95 000 ₸ и 499641 ₸ к июню 2028 под 19 %.' })] }) })
+    await press(q('[data-review-open]'))
+    expect(q('[data-review-good]')!.textContent).toBe('Остаётся 95 000 ₸ и 499 641 ₸ к июню 2028 под 19 %.')
+    // В документе — как пришло.
+    expect(useFinanceStore().aiReviewOf(KEY)!.good).toBe('Остаётся 95 000 ₸ и 499641 ₸ к июню 2028 под 19 %.')
+  })
+
   it('нет разбора: согласие → запрос сводкой без имён → разбор в общем документе → лист', async () => {
     const spy = vi.spyOn(apiClient, 'aiReview').mockResolvedValue(answer)
     const finance = await open()
@@ -188,6 +196,19 @@ describe('AI-09: разбор месяца у остатка', () => {
     await flush()
     expect(spy).not.toHaveBeenCalled()
     expect(dialog()).toBeNull()
+    // Критик Блока 2: «Не надо» — как без ИИ (Р-9): кнопка, которая больше ничего не делает, уходит.
+    expect(q('[data-review-open]')).toBeNull()
+  })
+
+  it('согласие «нет»: разбор партнёра — читается, «Обновить» нет (нажатие ничего бы не сделало)', async () => {
+    const spy = vi.spyOn(apiClient, 'aiReview')
+    await open({ doc: planFamilyDoc({ aiReviews: [saved({ at: '2026-09-01T06:00:00.000Z' })] }) })
+    useAiStore().setConsent(false)
+    await flush()
+    await press(q('[data-review-open]'))
+    expect(txt(q('[data-review-good]'))).toBe('Сохранённое хорошо.')
+    expect(q('[data-review-refresh]')).toBeNull()
+    expect(spy).not.toHaveBeenCalled()
   })
 
   it('лимит месяца (429 ai_limit) — «ИИ вернётся 1-го»; сбой — «Не вышло. Попробуйте позже»', async () => {

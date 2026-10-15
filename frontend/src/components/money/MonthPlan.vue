@@ -248,7 +248,10 @@ const demoReview = computed<AiReview | null>(() =>
     : null,
 )
 const review = computed(() => demoReview.value ?? finance.aiReviewOf(props.monthKey))
-const reviewShown = computed(() => props.monthKey === monthNow() && (ai.available || auth.isDemo || (!!review.value && auth.ai)))
+/** Запустить может участник с ИИ, не сказавший «Не надо» (Р-9: тогда — как без ИИ); прочитать — любой, если разбор есть. */
+const reviewShown = computed(
+  () => props.monthKey === monthNow() && ((ai.available && ai.consent !== 'off') || auth.isDemo || (!!review.value && auth.ai)),
+)
 const seenReview = ref(readAiReviewSeen())
 const reviewDot = computed(() => !!review.value && review.value.id !== seenReview.value)
 const reviewOpen = ref(false)
