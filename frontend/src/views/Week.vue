@@ -10,6 +10,7 @@ import DecisionCard from '@/components/kit/DecisionCard.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Toast from '@/components/kit/Toast.vue'
+import Tip from '@/components/kit/Tip.vue'
 import { useFlash } from '@/components/kit/useFlash'
 import UnknownBatch from '@/components/UnknownBatch.vue'
 import PlanSwitch from '@/components/plan/PlanSwitch.vue'
@@ -108,6 +109,11 @@ const letter = (r: MyWeekRow) => (r.categoryId === UNKNOWN_CATEGORY ? '?' : r.na
 /** Строка загрузки (Р-96): кто загрузил выписку за неделю — только ✓, цифр партнёра нет. */
 const uploadRows = computed(() => weekUploads(people.value, week.value, store.shownUploads))
 const mineIn = computed(() => uploadRows.value.some((r) => r.person.id === me.value && r.day !== null))
+/**
+ * Подсказка у суммы недели (бэклог «первый» Р-7; черновик до `/ux`, Р-9): своей недели ещё нет — куда нажать
+ * («Загрузить» вверху), есть — что в ней. Viewer «Неделю» не видит (гард → «Месяц»).
+ */
+const tipText = computed(() => (mineIn.value ? 'Траты недели. Нажмите раздел — на что ушло' : 'Траты недели появятся после «Загрузить»'))
 
 /** Тренд 8 недель (Р-98) — свёрнут (правило 12). */
 const trend = computed(() => weekTrend(spendTotals.value, spendCategories.value, me.value, week.value))
@@ -368,22 +374,24 @@ onBeforeUnmount(() => {
       </template>
     </div>
 
-    <!-- Сумма недели: моя, крупно; ‹ › — недели. Сравнение с прошлой — в «8 недель» (Р-116). -->
-    <Card tight class="flex flex-col gap-1" data-week-sum>
-      <div class="flex items-center gap-1.5">
-        <button type="button" class="press -ml-1.5 grid size-7 cursor-pointer place-items-center text-ink-3 disabled:opacity-30" :disabled="!canBack" aria-label="Прошлая неделя" @click="turn(-1)">
-          <PhCaretLeft :size="16" />
-        </button>
-        <span class="type-section" data-week-label>{{ weekRangeLabel(mine.range) }}</span>
-        <button type="button" class="press grid size-7 cursor-pointer place-items-center text-ink-3 disabled:opacity-30" :disabled="!canForward" aria-label="Следующая неделя" @click="turn(1)">
-          <PhCaretRight :size="16" />
-        </button>
-      </div>
-      <span class="font-num text-[34px] font-bold leading-none num" :class="mine.total ? 'text-ink' : 'text-ink-2'" data-week-total>{{ money(mine.total) }}</span>
-      <div v-if="!hasPlan && mine.rows.length" class="pt-1">
-        <Button variant="secondary" size="sm" data-to-plan @click="toMonth">План трат — в «Месяце» ›</Button>
-      </div>
-    </Card>
+    <!-- Сумма недели: моя, крупно; ‹ › — недели. Сравнение с прошлой — в «8 недель» (Р-116). Подсказка — под ней. -->
+    <Tip id="tab-week" :text="tipText">
+      <Card tight class="flex flex-col gap-1" data-week-sum>
+        <div class="flex items-center gap-1.5">
+          <button type="button" class="press -ml-1.5 grid size-7 cursor-pointer place-items-center text-ink-3 disabled:opacity-30" :disabled="!canBack" aria-label="Прошлая неделя" @click="turn(-1)">
+            <PhCaretLeft :size="16" />
+          </button>
+          <span class="type-section" data-week-label>{{ weekRangeLabel(mine.range) }}</span>
+          <button type="button" class="press grid size-7 cursor-pointer place-items-center text-ink-3 disabled:opacity-30" :disabled="!canForward" aria-label="Следующая неделя" @click="turn(1)">
+            <PhCaretRight :size="16" />
+          </button>
+        </div>
+        <span class="font-num text-[34px] font-bold leading-none num" :class="mine.total ? 'text-ink' : 'text-ink-2'" data-week-total>{{ money(mine.total) }}</span>
+        <div v-if="!hasPlan && mine.rows.length" class="pt-1">
+          <Button variant="secondary" size="sm" data-to-plan @click="toMonth">План трат — в «Месяце» ›</Button>
+        </div>
+      </Card>
+    </Tip>
 
     <!--
       Разделы списком: потрачено за неделю, полоса и остаток на месяц («из N» — в листе раздела). Вопросы разбора —

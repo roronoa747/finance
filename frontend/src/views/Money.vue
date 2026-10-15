@@ -4,10 +4,12 @@ import { useRoute } from 'vue-router'
 import { PhCaretRight } from '@phosphor-icons/vue'
 import { useOperationsStore } from '@/stores/operations'
 import { useFinanceStore } from '@/stores/finance'
+import { useAuthStore } from '@/stores/auth'
 import { money, plain } from '@/lib/money'
 import { monthKey } from '@/lib/dates'
 import { amountTotal, capitalGoals, capitalStats, liveAccounts, liveCredits, openGoals, netWorth, openDebt } from '@/lib/finance'
 import Card from '@/components/kit/Card.vue'
+import Tip from '@/components/kit/Tip.vue'
 import MoneySquares from '@/components/money/MoneySquares.vue'
 import DebtsWidget from '@/components/money/DebtsWidget.vue'
 import CapitalSalaries from '@/components/money/CapitalSalaries.vue'
@@ -28,6 +30,9 @@ import HistoryMonths from '@/components/money/HistoryMonths.vue'
 const route = useRoute()
 const ops = useOperationsStore()
 const finance = useFinanceStore()
+const auth = useAuthStore()
+/** Подсказка у квадратов (бэклог «первый» Р-7; черновик до `/ux`, Р-9): три части «Денег» — здесь; viewer — без призыва. */
+const tipText = computed(() => (auth.isViewer ? 'Что есть, долги и история семьи' : 'Что есть, долги и история — нажмите нужное'))
 
 const square = computed(() => (route.params.square === 'debts' || route.params.square === 'history' ? route.params.square : 'capital'))
 const worth = computed(() => netWorth(liveAccounts(finance.accounts), liveCredits(finance.credits), openGoals(finance.goals))) // Сбылось (PN-13): деньги сбывшейся ушли покупкой — не в капитале
@@ -46,7 +51,7 @@ onMounted(() => void ops.loadUploads())
 
 <template>
   <div class="flex flex-col gap-3 pt-1 text-left">
-    <MoneySquares />
+    <Tip id="tab-money" :text="tipText"><MoneySquares /></Tip>
 
     <template v-if="square === 'capital'">
       <!-- Плашка (понятность Р-2, Р-3): число, под ним формула «счета − долги»; нажатие раскрывает статистику на месте -->

@@ -24,6 +24,7 @@ import DreamCenter from '@/components/kit/DreamCenter.vue'
 import ProgressBar from '@/components/kit/ProgressBar.vue'
 import SortableList from '@/components/kit/SortableList.vue'
 import ThumbRow from '@/components/kit/ThumbRow.vue'
+import Tip from '@/components/kit/Tip.vue'
 import { useHistoryFlag } from '@/components/useHistoryFlag'
 
 /**
@@ -42,6 +43,8 @@ const ops = useOperationsStore()
 const NBSP = ' '
 const key = computed(() => monthKey())
 const canEdit = computed(() => !authStore.isViewer)
+/** Подсказка у главной мечты (бэклог «первый» Р-7; тексты — черновик до `/ux`, Р-9); viewer — без призыва. */
+const tipText = computed(() => (canEdit.value ? 'Главная мечта. Нажмите — когда сбудется' : 'Главная мечта семьи и когда сбудется'))
 const people = computed(() => financeStore.people.filter((p) => !p.deletedAt))
 
 /* ---------- мечта по центру и цели ---------- */
@@ -142,21 +145,22 @@ onMounted(refresh)
 
 <template>
   <div class="flex flex-col gap-3 pt-1 text-left">
-    <!-- Мечта по центру -->
-    <DreamCenter
-      v-if="main"
-      :title="main.name"
-      :percent="heroPercent"
-      :month="heroMonth"
-      :closer="heroCloser"
-      :src="heroSrc"
-      :author="main.photoCredit?.author"
-      @open="router.push(`/goals/${main.id}`)"
-    >
-      <template v-if="canEdit && !main.photoId" #actions>
-        <Chip quiet @click="pickerOpen = true"><PhCamera /> Добавить фото</Chip>
-      </template>
-    </DreamCenter>
+    <!-- Мечта по центру; подсказка — под ней (пустой экран «Новая мечта» — сам первый шаг, без подсказки) -->
+    <Tip v-if="main" id="tab-dreams" :text="tipText">
+      <DreamCenter
+        :title="main.name"
+        :percent="heroPercent"
+        :month="heroMonth"
+        :closer="heroCloser"
+        :src="heroSrc"
+        :author="main.photoCredit?.author"
+        @open="router.push(`/goals/${main.id}`)"
+      >
+        <template v-if="canEdit && !main.photoId" #actions>
+          <Chip quiet @click="pickerOpen = true"><PhCamera /> Добавить фото</Chip>
+        </template>
+      </DreamCenter>
+    </Tip>
     <DreamCenter v-else empty :can-pick="canEdit" @pick="router.push('/goals/new')" />
     <Callout v-if="photoNote" tone="neutral" icon="info">{{ photoNote }}</Callout>
 

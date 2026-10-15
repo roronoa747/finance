@@ -45,6 +45,7 @@ import NumField from '@/components/kit/NumField.vue'
 import Select from '@/components/kit/Select.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import SortableList from '@/components/kit/SortableList.vue'
+import Tip from '@/components/kit/Tip.vue'
 import Toast from '@/components/kit/Toast.vue'
 import Toggle from '@/components/kit/Toggle.vue'
 import Button from '@/components/ui/Button.vue'
@@ -75,6 +76,8 @@ const finance = useFinanceStore()
 const auth = useAuthStore()
 
 const canEdit = computed(() => !auth.isViewer)
+/** Подсказка у разделов месяца (бэклог «первый» Р-7; черновик до `/ux`, Р-9): отметки живут внутри них; viewer — без призыва. */
+const tipText = computed(() => (canEdit.value ? 'Раскройте раздел — и отмечайте, что оплатили' : 'Платежи, траты и цели месяца'))
 const me = computed<PersonId>(() => auth.slot ?? 'a')
 const people = computed(() => finance.people.filter((p) => !p.deletedAt))
 const personName = (id: PersonId | null) => people.value.find((p) => p.id === id)?.name ?? ''
@@ -442,215 +445,217 @@ function addFund(kind: 'reserve' | 'cushion') {
       </template>
     </Card>
 
-    <!-- Три раздела: строка — сумма и «N из M»; раскрытие — под кругом, один за раз -->
-    <Card flush class="px-3.5 py-0.5" data-sections>
-      <template v-for="s in sections" :key="s.key">
-        <button
-          type="button"
-          class="press flex w-full cursor-pointer items-center gap-2.5 border-t border-line py-[13px] text-left first:border-t-0"
-          :aria-expanded="opened === s.key"
-          :data-section="s.key"
-          @click="toggleSection(s.key)"
-        >
-          <span class="size-3 shrink-0 rounded-full" :style="{ background: `var(${s.color})` }" aria-hidden="true" />
-          <span class="flex min-w-0 flex-1 flex-col leading-[1.2]">
-            <span class="text-[16.5px] font-bold text-ink">
-              {{ s.name
-              }}<template v-if="s.dot"><span class="ml-1.5 inline-block size-2 rounded-full bg-brand align-middle" data-section-dot aria-hidden="true" /><span class="sr-only">, есть что сделать</span></template>
+    <!-- Три раздела: строка — сумма и «N из M»; раскрытие — под кругом, один за раз. Подсказка — под ними. -->
+    <Tip id="tab-month" :text="tipText">
+      <Card flush class="px-3.5 py-0.5" data-sections>
+        <template v-for="s in sections" :key="s.key">
+          <button
+            type="button"
+            class="press flex w-full cursor-pointer items-center gap-2.5 border-t border-line py-[13px] text-left first:border-t-0"
+            :aria-expanded="opened === s.key"
+            :data-section="s.key"
+            @click="toggleSection(s.key)"
+          >
+            <span class="size-3 shrink-0 rounded-full" :style="{ background: `var(${s.color})` }" aria-hidden="true" />
+            <span class="flex min-w-0 flex-1 flex-col leading-[1.2]">
+              <span class="text-[16.5px] font-bold text-ink">
+                {{ s.name
+                }}<template v-if="s.dot"><span class="ml-1.5 inline-block size-2 rounded-full bg-brand align-middle" data-section-dot aria-hidden="true" /><span class="sr-only">, есть что сделать</span></template>
+              </span>
+              <span class="text-[12.5px] text-ink-2 num" data-section-meta>{{ s.meta }}</span>
             </span>
-            <span class="text-[12.5px] text-ink-2 num" data-section-meta>{{ s.meta }}</span>
-          </span>
-          <span class="font-num text-[16px] font-bold num text-ink">{{ plain(s.total) }}</span>
-          <PhCaretRight :size="15" class="shrink-0 text-ink-3 transition-transform" :class="opened === s.key && 'rotate-90'" />
-        </button>
-
-        <!-- Платежи: по дням; подписки — одной строкой -->
-        <div v-if="opened === 'dues' && s.key === 'dues'" class="pb-2.5" data-dues>
-          <p v-if="!dueLines.length" class="py-2 type-meta">Платежей нет</p>
-          <template v-for="l in dueLines" :key="l.key">
-            <DueRow
-              v-if="l.due"
-              :id="l.key"
-              :due="l.due"
-              :mon="mon"
-              :payer-name="personName(l.due.payer)"
-              :note="dueNote(l.due)"
-              :can-edit="canEdit"
-              @open="payFor = l.key"
-              @payer="askPayer(l.due)"
-            />
-
-            <!-- Подписки · N — свёрнуто; ✓ у группы — когда списались все; ручные группы — подзаголовками -->
-            <div v-else-if="grouped.subs" class="border-t border-line first:border-t-0" data-subs>
-              <button type="button" class="press flex w-full cursor-pointer items-center gap-2.5 py-[11px] text-left" :aria-expanded="subsOpen" @click="subsOpen = !subsOpen">
-                <span class="grid w-[38px] shrink-0 place-items-center">
-                  <span class="grid size-[30px] place-items-center rounded-[9px] bg-surface-2 text-[15px] text-ink-2" aria-hidden="true">↻</span>
-                </span>
-                <span class="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span class="truncate text-[15.5px] font-semibold text-ink">Подписки · {{ grouped.subs.count }}</span>
-                  <span class="text-[12.5px] text-ink-2 num" data-subs-status>
-                    {{ grouped.subs.allPaid ? 'все списались' : `${grouped.subs.paid} из ${grouped.subs.count} списались` }}
-                  </span>
-                </span>
-                <span class="font-num text-[15px] font-bold num whitespace-nowrap" :class="grouped.subs.allPaid ? 'font-semibold text-ink-2' : 'text-ink'">
-                  <span v-if="grouped.subs.allPaid" class="font-extrabold text-ok" data-subs-done>✓ </span>{{ plain(grouped.subs.total) }}
-                </span>
-                <PhCaretRight :size="15" class="shrink-0 text-ink-3 transition-transform" :class="subsOpen && 'rotate-90'" />
-              </button>
-              <!-- Раскрыто — по «чья» (PN-27): «Общие · N», «<имя> · N»; одна часть — без подзаголовков -->
-              <div v-if="subsOpen" class="mb-2 ml-[18px] border-l-2 border-line pl-3.5">
-                <template v-for="w in grouped.byWho" :key="w.who">
-                  <p v-if="grouped.byWho.length > 1" class="pb-0.5 pt-3 text-[13px] font-semibold text-ink" :data-subs-who="w.who">{{ w.name }} · {{ w.group.count }}</p>
-                  <template v-for="g in w.group.parts" :key="g.groupId ?? ''">
-                    <p v-if="g.name" class="pb-0.5 pt-2.5 text-[11.5px] font-semibold uppercase tracking-[0.04em] text-ink-2">{{ g.name }}</p>
-                    <DueRow
-                      v-for="d in g.rows"
-                      :id="dueKey(d)"
-                      :key="d.targetId"
-                      :due="d"
-                      :mon="mon"
-                      :payer-name="personName(d.payer)"
-                      :note="dueNote(d)"
-                      :can-edit="canEdit"
-                      @open="payFor = dueKey(d)"
-                      @payer="askPayer(d)"
-                    />
-                  </template>
-                </template>
-              </div>
-            </div>
-
-            <!-- «Освободится» — у своего платежа; пока зарплата не отложена, кнопка тихая -->
-            <div v-if="extras.freed && freedAt === l.key" class="mb-2.5 flex items-center gap-2.5 rounded-[14px] bg-surface-2 px-3 py-[9px] text-[13.5px] text-ink num" data-freed>
-              <span class="min-w-0 flex-1">{{ freedMeta }}</span>
-              <Button size="sm" :variant="pending.length ? 'secondary' : 'default'" @click="onFreed">К «{{ extras.freed.name }}»</Button>
-            </div>
-          </template>
-        </div>
-
-        <!-- Траты каждого: план и факт по разделам -->
-        <div v-if="opened === 'spend' && s.key === 'spend'" class="pb-1" data-spends>
-          <div v-for="sp in plan.spend" :key="sp.by" class="flex flex-col gap-[9px] border-t border-line py-2.5 first:border-t-0" :data-spend="sp.by">
-            <div class="flex items-center gap-2">
-              <Avatar :id="sp.by" :name="personName(sp.by)" :size="24" />
-              <b class="flex-1 text-[15.5px] text-ink">{{ personName(sp.by) }}</b>
-              <span class="type-meta num">{{ sp.fact === null ? `план ${plain(sp.plan)}` : `${plain(sp.fact)} из ${plain(sp.plan)}` }}</span>
-            </div>
-            <component
-              :is="canEdit ? 'button' : 'div'"
-              v-for="r in sp.rows"
-              :key="r.categoryId"
-              :type="canEdit ? 'button' : undefined"
-              class="flex flex-col gap-1 pl-8 text-left"
-              :class="canEdit && 'press cursor-pointer'"
-              :data-spend-row="r.categoryId"
-              @click="editSpend(sp.by, r.categoryId, r.plan)"
-            >
-              <span class="flex w-full justify-between gap-2 text-[14px]">
-                <span class="text-ink">{{ r.name }}</span>
-                <span class="whitespace-nowrap text-ink-2 num"><b v-if="r.fact !== null" class="font-semibold text-ink">{{ plain(r.fact) }}</b>{{ r.fact !== null ? ' из ' : '' }}{{ plain(r.plan) }}</span>
-              </span>
-              <span class="block h-[5px] w-full overflow-hidden rounded-pill bg-track">
-                <i class="block h-full rounded-pill bg-s8" :style="{ width: `${spendShare(r.fact, r.plan)}%` }" />
-              </span>
-            </component>
-            <button v-if="canEdit" type="button" class="press self-start cursor-pointer pl-8 text-[13.5px] font-semibold text-ink-2" @click="editSpend(sp.by)">+ Раздел</button>
-          </div>
-          <button
-            v-for="p in canEdit ? spendless : []"
-            :key="p.id"
-            type="button"
-            class="press flex w-full cursor-pointer items-center gap-2 border-t border-line py-2.5 text-left first:border-t-0"
-            @click="editSpend(p.id)"
-          >
-            <Avatar :id="p.id" :name="p.name" :size="24" />
-            <span class="text-[14.5px] font-semibold text-ink-2">+ Траты · {{ p.name }}</span>
+            <span class="font-num text-[16px] font-bold num text-ink">{{ plain(s.total) }}</span>
+            <PhCaretRight :size="15" class="shrink-0 text-ink-3 transition-transform" :class="opened === s.key && 'rotate-90'" />
           </button>
-          <p v-if="!plan.spend.length && !canEdit" class="py-3 type-meta">Плана трат нет</p>
-        </div>
 
-        <!-- Цели и фонды по очереди: короткие строки; ⋮⋮ — выше раньше получает деньги; нажатие — «Отложил» -->
-        <div v-if="opened === 'queue' && s.key === 'queue'" class="pb-1" data-queue-list>
-          <div v-if="extras.closed" class="mb-2.5 flex items-center gap-2.5 rounded-[14px] bg-surface-2 px-3 py-[9px] text-[13.5px] text-ink num" data-closed>
-            <span class="min-w-0 flex-1">{{ extras.closed.name }} закрыт · {{ money(extras.closed.amount) }}</span>
-            <Button size="sm" :variant="pending.length ? 'secondary' : 'default'" @click="onClosed">Отложить</Button>
-          </div>
-          <div v-if="pending.length" class="pb-2 pt-0.5">
-            <Button size="sm" data-put-all @click="savePuts(pending)">Отложил всё · {{ money(pendingTotal) }}</Button>
-          </div>
-          <SortableList
-            :ids="queueIds"
-            :disabled="!canEdit"
-            :label="(id) => `Переставить: ${queueById.get(id)?.name ?? ''}`"
-            @move="(id, i) => finance.moveInQueue(id, i)"
-          >
-            <template #default="{ id }">
-              <template v-if="queueById.get(id)">
-                <div
-                  class="press relative flex cursor-pointer items-center gap-2.5 py-2.5"
-                  :data-queue="id"
-                  @click="openItem(queueById.get(id)!)"
-                >
-                  <button type="button" class="row-open flex min-w-0 flex-1 flex-col gap-px text-left" data-row-open>
-                    <span class="truncate text-[15.5px] font-semibold" :class="queueById.get(id)!.paused ? 'text-ink-2' : 'text-ink'">{{ queueById.get(id)!.name }}</span>
-                    <span v-if="statusOf(queueById.get(id)!)" class="text-[12px] num" :class="statusOf(queueById.get(id)!)!.warn ? 'text-warn' : 'text-ink-2'" data-status>
-                      {{ statusOf(queueById.get(id)!)!.text }}
+          <!-- Платежи: по дням; подписки — одной строкой -->
+          <div v-if="opened === 'dues' && s.key === 'dues'" class="pb-2.5" data-dues>
+            <p v-if="!dueLines.length" class="py-2 type-meta">Платежей нет</p>
+            <template v-for="l in dueLines" :key="l.key">
+              <DueRow
+                v-if="l.due"
+                :id="l.key"
+                :due="l.due"
+                :mon="mon"
+                :payer-name="personName(l.due.payer)"
+                :note="dueNote(l.due)"
+                :can-edit="canEdit"
+                @open="payFor = l.key"
+                @payer="askPayer(l.due)"
+              />
+
+              <!-- Подписки · N — свёрнуто; ✓ у группы — когда списались все; ручные группы — подзаголовками -->
+              <div v-else-if="grouped.subs" class="border-t border-line first:border-t-0" data-subs>
+                <button type="button" class="press flex w-full cursor-pointer items-center gap-2.5 py-[11px] text-left" :aria-expanded="subsOpen" @click="subsOpen = !subsOpen">
+                  <span class="grid w-[38px] shrink-0 place-items-center">
+                    <span class="grid size-[30px] place-items-center rounded-[9px] bg-surface-2 text-[15px] text-ink-2" aria-hidden="true">↻</span>
+                  </span>
+                  <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span class="truncate text-[15.5px] font-semibold text-ink">Подписки · {{ grouped.subs.count }}</span>
+                    <span class="text-[12.5px] text-ink-2 num" data-subs-status>
+                      {{ grouped.subs.allPaid ? 'все списались' : `${grouped.subs.paid} из ${grouped.subs.count} списались` }}
                     </span>
-                  </button>
-                  <button
-                    v-if="canEdit && queueById.get(id)!.payer"
-                    type="button"
-                    data-no-drag
-                    class="press relative z-10 shrink-0 cursor-pointer rounded-full"
-                    :aria-label="`Платит ${personName(queueById.get(id)!.payer)}. Сменить`"
-                    @click.stop="
-                      payerFor = {
-                        kind: queueById.get(id)!.kind === 'debt' ? 'debt' : 'goal',
-                        id: queueById.get(id)!.goalId ?? DEBT_CARD,
-                        name: queueById.get(id)!.name,
-                        payer: queueById.get(id)!.payer,
-                      }
-                    "
-                  >
-                    <Avatar :id="queueById.get(id)!.payer!" :name="personName(queueById.get(id)!.payer)" :size="24" />
-                  </button>
-                  <Avatar v-else-if="queueById.get(id)!.payer" :id="queueById.get(id)!.payer!" :name="personName(queueById.get(id)!.payer)" :size="24" />
-                  <span
-                    class="font-num text-[15px] num whitespace-nowrap"
-                    :class="putById.get(id)?.done || queueById.get(id)!.paused ? 'font-semibold text-ink-2' : 'font-bold text-ink'"
-                    data-given
-                  >
-                    <span v-if="putById.get(id)?.done" class="font-extrabold text-ok" data-put-done>✓ </span>{{ plain(queueById.get(id)!.given) }}
                   </span>
-                  <span v-if="canEdit" data-no-drag class="relative z-10 shrink-0" @click.stop>
-                    <Toggle
-                      :model-value="queueById.get(id)!.paused !== 'off'"
-                      :label="queueById.get(id)!.name"
-                      tone="ok"
-                      @update:model-value="toggle(id, $event)"
-                    />
+                  <span class="font-num text-[15px] font-bold num whitespace-nowrap" :class="grouped.subs.allPaid ? 'font-semibold text-ink-2' : 'text-ink'">
+                    <span v-if="grouped.subs.allPaid" class="font-extrabold text-ok" data-subs-done>✓ </span>{{ plain(grouped.subs.total) }}
                   </span>
+                  <PhCaretRight :size="15" class="shrink-0 text-ink-3 transition-transform" :class="subsOpen && 'rotate-90'" />
+                </button>
+                <!-- Раскрыто — по «чья» (PN-27): «Общие · N», «<имя> · N»; одна часть — без подзаголовков -->
+                <div v-if="subsOpen" class="mb-2 ml-[18px] border-l-2 border-line pl-3.5">
+                  <template v-for="w in grouped.byWho" :key="w.who">
+                    <p v-if="grouped.byWho.length > 1" class="pb-0.5 pt-3 text-[13px] font-semibold text-ink" :data-subs-who="w.who">{{ w.name }} · {{ w.group.count }}</p>
+                    <template v-for="g in w.group.parts" :key="g.groupId ?? ''">
+                      <p v-if="g.name" class="pb-0.5 pt-2.5 text-[11.5px] font-semibold uppercase tracking-[0.04em] text-ink-2">{{ g.name }}</p>
+                      <DueRow
+                        v-for="d in g.rows"
+                        :id="dueKey(d)"
+                        :key="d.targetId"
+                        :due="d"
+                        :mon="mon"
+                        :payer-name="personName(d.payer)"
+                        :note="dueNote(d)"
+                        :can-edit="canEdit"
+                        @open="payFor = dueKey(d)"
+                        @payer="askPayer(d)"
+                      />
+                    </template>
+                  </template>
                 </div>
-                <!-- Одна готовая подсказка (Р-83): весь свободный остаток — в долг -->
-                <div v-if="id === DEBT_CARD && debtTip" class="mb-2.5 rounded-[14px] bg-surface-2 px-3 py-[9px] text-[13.5px] text-ink num" data-debt-tip>
-                  Всё в долг — закроете {{ by(debtTip.month) }}
-                </div>
-              </template>
+              </div>
+
+              <!-- «Освободится» — у своего платежа; пока зарплата не отложена, кнопка тихая -->
+              <div v-if="extras.freed && freedAt === l.key" class="mb-2.5 flex items-center gap-2.5 rounded-[14px] bg-surface-2 px-3 py-[9px] text-[13.5px] text-ink num" data-freed>
+                <span class="min-w-0 flex-1">{{ freedMeta }}</span>
+                <Button size="sm" :variant="pending.length ? 'secondary' : 'default'" @click="onFreed">К «{{ extras.freed.name }}»</Button>
+              </div>
             </template>
-          </SortableList>
-          <button
-            v-for="k in missingFunds"
-            :key="k"
-            type="button"
-            class="press flex w-full cursor-pointer items-center border-t border-line py-2.5 text-left text-[14.5px] font-semibold text-ink-2 first:border-t-0"
-            @click="addFund(k)"
-          >
-            + {{ k === 'reserve' ? 'Запас' : 'Подушка' }}
-          </button>
-          <p v-if="!queueIds.length && !missingFunds.length" class="py-3 type-meta">Целей нет</p>
-        </div>
-      </template>
-    </Card>
+          </div>
+
+          <!-- Траты каждого: план и факт по разделам -->
+          <div v-if="opened === 'spend' && s.key === 'spend'" class="pb-1" data-spends>
+            <div v-for="sp in plan.spend" :key="sp.by" class="flex flex-col gap-[9px] border-t border-line py-2.5 first:border-t-0" :data-spend="sp.by">
+              <div class="flex items-center gap-2">
+                <Avatar :id="sp.by" :name="personName(sp.by)" :size="24" />
+                <b class="flex-1 text-[15.5px] text-ink">{{ personName(sp.by) }}</b>
+                <span class="type-meta num">{{ sp.fact === null ? `план ${plain(sp.plan)}` : `${plain(sp.fact)} из ${plain(sp.plan)}` }}</span>
+              </div>
+              <component
+                :is="canEdit ? 'button' : 'div'"
+                v-for="r in sp.rows"
+                :key="r.categoryId"
+                :type="canEdit ? 'button' : undefined"
+                class="flex flex-col gap-1 pl-8 text-left"
+                :class="canEdit && 'press cursor-pointer'"
+                :data-spend-row="r.categoryId"
+                @click="editSpend(sp.by, r.categoryId, r.plan)"
+              >
+                <span class="flex w-full justify-between gap-2 text-[14px]">
+                  <span class="text-ink">{{ r.name }}</span>
+                  <span class="whitespace-nowrap text-ink-2 num"><b v-if="r.fact !== null" class="font-semibold text-ink">{{ plain(r.fact) }}</b>{{ r.fact !== null ? ' из ' : '' }}{{ plain(r.plan) }}</span>
+                </span>
+                <span class="block h-[5px] w-full overflow-hidden rounded-pill bg-track">
+                  <i class="block h-full rounded-pill bg-s8" :style="{ width: `${spendShare(r.fact, r.plan)}%` }" />
+                </span>
+              </component>
+              <button v-if="canEdit" type="button" class="press self-start cursor-pointer pl-8 text-[13.5px] font-semibold text-ink-2" @click="editSpend(sp.by)">+ Раздел</button>
+            </div>
+            <button
+              v-for="p in canEdit ? spendless : []"
+              :key="p.id"
+              type="button"
+              class="press flex w-full cursor-pointer items-center gap-2 border-t border-line py-2.5 text-left first:border-t-0"
+              @click="editSpend(p.id)"
+            >
+              <Avatar :id="p.id" :name="p.name" :size="24" />
+              <span class="text-[14.5px] font-semibold text-ink-2">+ Траты · {{ p.name }}</span>
+            </button>
+            <p v-if="!plan.spend.length && !canEdit" class="py-3 type-meta">Плана трат нет</p>
+          </div>
+
+          <!-- Цели и фонды по очереди: короткие строки; ⋮⋮ — выше раньше получает деньги; нажатие — «Отложил» -->
+          <div v-if="opened === 'queue' && s.key === 'queue'" class="pb-1" data-queue-list>
+            <div v-if="extras.closed" class="mb-2.5 flex items-center gap-2.5 rounded-[14px] bg-surface-2 px-3 py-[9px] text-[13.5px] text-ink num" data-closed>
+              <span class="min-w-0 flex-1">{{ extras.closed.name }} закрыт · {{ money(extras.closed.amount) }}</span>
+              <Button size="sm" :variant="pending.length ? 'secondary' : 'default'" @click="onClosed">Отложить</Button>
+            </div>
+            <div v-if="pending.length" class="pb-2 pt-0.5">
+              <Button size="sm" data-put-all @click="savePuts(pending)">Отложил всё · {{ money(pendingTotal) }}</Button>
+            </div>
+            <SortableList
+              :ids="queueIds"
+              :disabled="!canEdit"
+              :label="(id) => `Переставить: ${queueById.get(id)?.name ?? ''}`"
+              @move="(id, i) => finance.moveInQueue(id, i)"
+            >
+              <template #default="{ id }">
+                <template v-if="queueById.get(id)">
+                  <div
+                    class="press relative flex cursor-pointer items-center gap-2.5 py-2.5"
+                    :data-queue="id"
+                    @click="openItem(queueById.get(id)!)"
+                  >
+                    <button type="button" class="row-open flex min-w-0 flex-1 flex-col gap-px text-left" data-row-open>
+                      <span class="truncate text-[15.5px] font-semibold" :class="queueById.get(id)!.paused ? 'text-ink-2' : 'text-ink'">{{ queueById.get(id)!.name }}</span>
+                      <span v-if="statusOf(queueById.get(id)!)" class="text-[12px] num" :class="statusOf(queueById.get(id)!)!.warn ? 'text-warn' : 'text-ink-2'" data-status>
+                        {{ statusOf(queueById.get(id)!)!.text }}
+                      </span>
+                    </button>
+                    <button
+                      v-if="canEdit && queueById.get(id)!.payer"
+                      type="button"
+                      data-no-drag
+                      class="press relative z-10 shrink-0 cursor-pointer rounded-full"
+                      :aria-label="`Платит ${personName(queueById.get(id)!.payer)}. Сменить`"
+                      @click.stop="
+                        payerFor = {
+                          kind: queueById.get(id)!.kind === 'debt' ? 'debt' : 'goal',
+                          id: queueById.get(id)!.goalId ?? DEBT_CARD,
+                          name: queueById.get(id)!.name,
+                          payer: queueById.get(id)!.payer,
+                        }
+                      "
+                    >
+                      <Avatar :id="queueById.get(id)!.payer!" :name="personName(queueById.get(id)!.payer)" :size="24" />
+                    </button>
+                    <Avatar v-else-if="queueById.get(id)!.payer" :id="queueById.get(id)!.payer!" :name="personName(queueById.get(id)!.payer)" :size="24" />
+                    <span
+                      class="font-num text-[15px] num whitespace-nowrap"
+                      :class="putById.get(id)?.done || queueById.get(id)!.paused ? 'font-semibold text-ink-2' : 'font-bold text-ink'"
+                      data-given
+                    >
+                      <span v-if="putById.get(id)?.done" class="font-extrabold text-ok" data-put-done>✓ </span>{{ plain(queueById.get(id)!.given) }}
+                    </span>
+                    <span v-if="canEdit" data-no-drag class="relative z-10 shrink-0" @click.stop>
+                      <Toggle
+                        :model-value="queueById.get(id)!.paused !== 'off'"
+                        :label="queueById.get(id)!.name"
+                        tone="ok"
+                        @update:model-value="toggle(id, $event)"
+                      />
+                    </span>
+                  </div>
+                  <!-- Одна готовая подсказка (Р-83): весь свободный остаток — в долг -->
+                  <div v-if="id === DEBT_CARD && debtTip" class="mb-2.5 rounded-[14px] bg-surface-2 px-3 py-[9px] text-[13.5px] text-ink num" data-debt-tip>
+                    Всё в долг — закроете {{ by(debtTip.month) }}
+                  </div>
+                </template>
+              </template>
+            </SortableList>
+            <button
+              v-for="k in missingFunds"
+              :key="k"
+              type="button"
+              class="press flex w-full cursor-pointer items-center border-t border-line py-2.5 text-left text-[14.5px] font-semibold text-ink-2 first:border-t-0"
+              @click="addFund(k)"
+            >
+              + {{ k === 'reserve' ? 'Запас' : 'Подушка' }}
+            </button>
+            <p v-if="!queueIds.length && !missingFunds.length" class="py-3 type-meta">Целей нет</p>
+          </div>
+        </template>
+      </Card>
+    </Tip>
 
     <!-- Итога «Отложим · Потратим · Остаётся» нет (Р-116): повтор кольца и строк разделов. -->
 
