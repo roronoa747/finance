@@ -195,6 +195,17 @@ describe('views/GoalNew.vue — «Новая мечта» (B2C-18, SSR)', () => 
     expect(disabled(html, 'Дальше')).toBe(false)
   })
 
+  it('FR-01: в первом запуске (`next`) мечта — до зарплаты: «По N в месяц · будет вашей в …» без «при остатке» и «реально»', async () => {
+    family()
+    const html = await renderScreen(GoalNew, '/start/dream', { next: '/start/salary' }, [
+      screenMixin({ step: 'form', template: templateById('japan'), name: 'Япония', needText: '1 800 000', term: '12' }),
+    ])
+    expect(html).toContain(`По ${money(150_000)} в месяц`)
+    expect(html).toContain(`будет вашей в ${monthIn(addMonths('2026-09', 11))}`)
+    expect(html).not.toContain('при остатке')
+    expect(html).not.toContain('реально')
+  })
+
   it('шаг «Сумма и срок»: взнос считается, «реально» при остатке плана, «будет вашей в …»; свой срок — числом', async () => {
     const store = family()
     const free = budgetAmounts({ ...store.householdDoc, credits: store.credits }).d5

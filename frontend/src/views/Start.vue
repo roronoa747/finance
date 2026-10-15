@@ -5,16 +5,15 @@ import { PhCopy, PhFileArrowUp, PhUserPlus } from '@phosphor-icons/vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useEventsStore } from '@/stores/events'
-import { useFxStore } from '@/stores/fx'
 import { useOperationsStore, type Draft, type DraftFile } from '@/stores/operations'
 import { readStatementFiles } from '@/lib/statements/read'
 import { ruleFor, ruleMatchOf } from '@/lib/statements/model'
 import { BUDGET_BY_KIND, firstRunQuestions, paymentOpOfMonth, salaryOpOfMonth, type IncomeCandidate, type RecurringCandidate, type RecurringKind } from '@/lib/statements/firstRun'
 import { matchCandidates, matchCategory, nearestEvent, operationAt, SALARY_TOLERANCE } from '@/lib/statements/matching'
 import type { Operation } from '@/lib/statements/types'
-import { advanceDefault, budgetAmounts, monthlyFromWeekly, spendRows, weeklyFromMonthly } from '@/lib/finance'
+import { advanceDefault, monthlyFromWeekly, weeklyFromMonthly } from '@/lib/finance'
 import { money, parseMoney, plain } from '@/lib/money'
-import { addMonths, monthKey, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
+import { addMonths, monthKey } from '@/lib/dates'
 import { START_ANSWERED_KEY, readStorage, writeStorage } from '@/lib/storage'
 import { useInvite } from '@/components/useInvite'
 import type { Person, PersonId } from '@/types/finance'
@@ -27,28 +26,29 @@ import Chip from '@/components/kit/Chip.vue'
 import DecisionCard from '@/components/kit/DecisionCard.vue'
 import Field from '@/components/kit/Field.vue'
 import { useFormCheck } from '@/components/kit/useFormCheck'
-import FreeCard from '@/components/kit/FreeCard.vue'
 import Hint from '@/components/kit/Hint.vue'
 import NumField from '@/components/kit/NumField.vue'
 import PayRhythmFields from '@/components/PayRhythmFields.vue'
 import Stepper from '@/components/kit/Stepper.vue'
-import WeekCard, { type WeekSegment } from '@/components/kit/WeekCard.vue'
 
 /**
- * Первый запуск из выписки (Р-7, DESIGN.md §2 `/start/*`, §6; B2C-19): загрузить выписку →
- * вопросы по одному (доход, повторяющиеся списания — не больше семи) → картина месяца → «На что
- * копим?» (`GoalNew`) → пригласить партнёра → главный. Шаг — в адресе (`/start/:step`), ответы
- * пишутся сразу (§8 п. 7): перезагрузка не теряет ни шаг, ни ответы. Партнёр по коду — только
- * выписка и вопросы про себя. Ничего не считается здесь: `firstRun.ts`, `finance.ts`.
+ * Первый запуск (DESIGN.md §2 `/start/*`, §6; B2C-19, бэклог «первый» Р-2…Р-6): «На что копим?»
+ * (`GoalNew`) → зарплата и день руками → пригласить партнёра → главный. Выписка — не обязательна:
+ * тихое «Есть PDF из банка» на шаге зарплаты раскрывает выбор файла, прочитанная выписка ведёт к
+ * вопросам по одному (доход, повторяющиеся списания — не больше семи), они — подшаг зарплаты.
+ * Шаг — в адресе (`/start/:step`), ответы пишутся сразу (§8 п. 7): перезагрузка не теряет ни шаг, ни
+ * ответы. Партнёр по коду — только зарплата (и выписка с вопросами) про себя: мечта общая.
+ * Ничего не считается здесь: `firstRun.ts`, `finance.ts`.
  */
-type Step = 'upload' | 'questions' | 'month' | 'dream' | 'invite'
+type Step = 'dream' | 'salary' | 'questions' | 'invite'
+/** Адреса прежнего потока (перезагрузка у тех, кто был посреди него): выписка — шаг зарплаты, «Ваш месяц» — партнёр. */
+const OLD_STEPS: Record<string, Step> = { upload: 'salary', month: 'invite' }
 const KEY_ANSWERED = START_ANSWERED_KEY
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const financeStore = useFinanceStore()
-const fx = useFxStore()
 const ops = useOperationsStore()
 
 const slot = computed<PersonId>(() => authStore.slot || 'a')
@@ -59,26 +59,31 @@ const knownName = computed(() => {
 // Партнёр по коду: семья уже настроена первым участником — от него нужны только свои выписка и доход.
 // Считается по `setupDoneAt`, а не по данным: первая же запись дохода сделала бы первого участника «партнёром».
 const joining = computed(() => financeStore.setupDone)
-const steps = computed<Step[]>(() => (joining.value ? ['upload', 'questions'] : ['upload', 'questions', 'month', 'dream', 'invite']))
+const steps = computed<Step[]>(() => (joining.value ? ['salary', 'questions'] : ['dream', 'salary', 'questions', 'invite']))
 const step = computed<Step>(() => {
-  const s = String(route.params.step ?? 'upload') as Step
-  return steps.value.includes(s) ? s : 'upload'
+  const raw = String(route.params.step ?? '')
+  const s = OLD_STEPS[raw] ?? (raw as Step)
+  return steps.value.includes(s) ? s : steps.value[0]
 })
-const stepIndex = computed(() => steps.value.indexOf(step.value) + 1)
+// «n из k» — по видимым шагам: вопросы — подшаг зарплаты, «n» на них не растёт.
+const counted = computed(() => steps.value.filter((s) => s !== 'questions'))
+const stepIndex = computed(() => counted.value.indexOf(step.value === 'questions' ? 'salary' : step.value) + 1)
 
 function go(next: Step) {
   void router.push(`/start/${next}`)
 }
-function after(current: Step): Step | null {
-  const i = steps.value.indexOf(current)
-  return steps.value[i + 1] ?? null
+/** После зарплаты (с вопросами или без): партнёр по коду — главный, новая семья — пригласить партнёра. */
+function afterSalary() {
+  if (joining.value) finish()
+  else go('invite')
 }
 
-/* ------------------ Шаг 1: выписка ------------------ */
+/* ------------------ Шаг 2: зарплата (и выписка опцией) ------------------ */
 const fileInput = ref<HTMLInputElement | null>(null)
 const reading = ref(false)
 const errors = ref<Draft['errors']>([])
-const manual = ref(false)
+/** «Есть PDF из банка»: выбор файла раскрыт на шаге зарплаты вместо полей. */
+const pdf = ref(false)
 const manualSalary = ref('')
 const form = useFormCheck(() => [['salary', parseMoney(manualSalary.value) <= 0 && 'Введите зарплату']])
 const manualPayday = ref('10')
@@ -141,18 +146,21 @@ async function uploadParsed(files: DraftFile[]) {
   go('questions')
 }
 
-/** «Введу вручную»: доход и день зарплаты — картины месяца без выписки не будет, дальше к мечте. */
-function manualNext() {
+/**
+ * Зарплата руками — на своём шаге и в короткой форме после вопросов, когда в выписке дохода не нашлось:
+ * оклад, день и ритм — в участника, дальше — партнёр (или главный); после вопросов — как ответ на них.
+ */
+function saveSalary() {
   const salary = parseMoney(manualSalary.value)
   if (salary <= 0) return
   financeStore.setPerson(slot.value, { name: knownName.value, salary, payday: clampDay(manualPayday.value, 10), ...rhythmFields() })
-  if (joining.value) finish()
-  else go('dream')
+  if (step.value === 'questions') advance()
+  else afterSalary()
 }
 
 const clampDay = (v: string | number, fallback: number) => Math.min(28, Math.max(1, (typeof v === 'number' ? v : parseMoney(v)) || fallback))
 
-/* ------------------ Шаг 2: вопросы по одному ------------------ */
+/* ------------------ Подшаг зарплаты: вопросы по одному ------------------ */
 // Ответы — в документе (доход, обязательства, правила); какие вопросы уже показаны — на устройстве:
 // «нет» записи не оставляет, а второй раз спрашивать не надо.
 const answered = ref<string[]>(readStorage<string[]>(KEY_ANSWERED, []))
@@ -326,31 +334,13 @@ function skipRest() {
 function advance() {
   if (pending.value.length) return
   if (!salaryKnown.value) return // без дохода дальше нельзя — короткая форма ниже
-  const next = after('questions')
-  if (next) go(next)
-  else finish()
+  afterSalary()
 }
 
-/** Дохода в выписке не нашлось — впишите: та же короткая форма, что у «Введу вручную». */
-function manualAfterQuestions() {
-  const salary = parseMoney(manualSalary.value)
-  if (salary <= 0) return
-  financeStore.setPerson(slot.value, { name: knownName.value, salary, payday: clampDay(manualPayday.value, 10), ...rhythmFields() })
-  advance()
-}
+/** Поля зарплаты: свой шаг (кроме раскрытой выписки) и короткая форма, когда в выписке дохода не нашлось. */
+const salaryForm = computed(() => (step.value === 'salary' && !pdf.value) || (step.value === 'questions' && !current.value && !salaryKnown.value))
 
-/* ------------------ Шаг 3: картина месяца ------------------ */
-const myTotals = computed(() => (financeStore.householdDoc.spendTotals ?? []).filter((t) => t.by === slot.value && t.kind === 'month' && !t.deletedAt && t.amount > 0))
-// Месяц выписки — последний, за который есть итоги (выписку за прошлый месяц грузят в начале нового).
-const pictureMonth = computed(() => myTotals.value.map((t) => t.period).sort().pop() ?? monthKey())
-const monthName = computed(() => MONTHS_NOM[parseMonthKey(pictureMonth.value).month].toLowerCase())
-const spendCategories = computed(() => financeStore.householdDoc.spendCategories ?? [])
-// Суммы и доли — `spendRows` (finance.ts), экран только раскладывает строки в полосу.
-const picture = computed(() => spendRows(financeStore.householdDoc.spendTotals ?? [], spendCategories.value, { kind: 'month', period: pictureMonth.value, by: slot.value }))
-const segments = computed<WeekSegment[]>(() => picture.value.rows.map((r) => ({ id: r.categoryId, name: r.name, amount: r.amount, share: r.share, color: r.color })))
-const free = computed(() => budgetAmounts({ ...financeStore.householdDoc, credits: financeStore.credits, book: fx.book }).d5)
-
-/* ------------------ Шаг 5: партнёр ------------------ */
+/* ------------------ Шаг 3: партнёр ------------------ */
 const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: handleMakeInvite, copy: handleCopy } = useInvite()
 
 /** Семья настроена (или партнёр прошёл своё): участник отмечен, дальше — главный. */
@@ -369,86 +359,97 @@ const BANK_HOWTO = [
 ]
 
 const titles: Record<Step, { title: string; sub: string }> = {
-  // «Выписка» — механика, не заголовок (правило 12, макет Б17): заголовок — про банк, путь к PDF — в подсказке у банка.
-  upload: { title: 'Ваш банк', sub: 'Найдём зарплату, кредиты и подписки' },
-  questions: { title: 'Нашли повторяющиеся', sub: 'Подтвердите по одному — дальше отметим сами.' },
-  month: { title: 'Ваш месяц', sub: '' },
+  // Заголовок «На что копим?» — у самого `GoalNew`.
   dream: { title: '', sub: '' },
+  // Выписка — механика, не заголовок (правило 12, Р-9): она только на тихой кнопке и внутри раскрытия.
+  salary: { title: 'Зарплата', sub: 'Сколько и когда приходит' },
+  questions: { title: 'Нашли повторяющиеся', sub: 'Подтвердите по одному — дальше отметим сами.' },
   invite: { title: 'Пригласите партнёра', sub: 'Мечты и покупки — одни на двоих.' },
 }
+// Раскрытый выбор файла (макет Б17): заголовок — про банк, путь к PDF — в подсказке у банка.
+const PDF_TITLE = { title: 'Ваш банк', sub: 'Найдём зарплату, кредиты и подписки' }
 const title = computed(() => {
-  if (step.value === 'upload') return titles.upload.title
+  if (step.value === 'salary' && pdf.value) return PDF_TITLE.title
   if (step.value === 'questions') return current.value ? `Нашли ${questions.value.length} ${plural(questions.value.length, 'повторяющийся', 'повторяющихся', 'повторяющихся')}` : 'Доход'
-  if (step.value === 'month') return `Ваш ${monthName.value}`
   return titles[step.value].title
 })
-const sub = computed(() => (step.value === 'questions' && !current.value ? 'В выписке зарплата не нашлась — впишите её.' : titles[step.value].sub))
+const sub = computed(() => {
+  if (step.value === 'salary' && pdf.value) return PDF_TITLE.sub
+  // Только над короткой формой: зарплату уже ввели руками — просить её снова не о чем.
+  if (step.value === 'questions' && salaryForm.value) return 'В выписке зарплата не нашлась — впишите её.'
+  if (step.value === 'questions' && !current.value) return ''
+  return titles[step.value].sub
+})
 </script>
 
 <template>
   <div class="mx-auto flex min-h-dvh w-full max-w-[440px] flex-col gap-4 px-5 pb-6 pt-5 text-left">
-    <Stepper :n="stepIndex" :k="steps.length" />
+    <Stepper :n="stepIndex" :k="counted.length" />
 
     <div v-if="title">
       <h1 class="type-h2-lg text-ink">{{ title }}</h1>
       <p v-if="sub" class="mt-1.5 text-[14px] leading-relaxed text-ink-2">{{ sub }}</p>
     </div>
 
-    <!-- Шаг 1: выписка -->
-    <template v-if="step === 'upload'">
-      <template v-if="!manual">
-        <!-- Откуда взять файл (g3 «Шаг 2 — первая выписка»): банк и путь в его приложении одной строкой. -->
-        <Card tight>
-          <div v-for="b in BANK_HOWTO" :key="b.name" class="flex items-center gap-3 border-t border-line py-3 first:border-t-0 first:pt-0 last:pb-0">
-            <span class="grid size-9 shrink-0 place-items-center rounded-[10px] text-[12px] font-bold text-on-photo" :class="b.tone" aria-hidden="true">{{ b.name[0] }}</span>
-            <span class="min-w-0 flex-1 font-medium text-ink">{{ b.name }}</span>
-            <Hint :label="`Выписка ${b.name}`">{{ b.path }}</Hint>
-          </div>
-        </Card>
-        <!-- Одна строка + подсказка (правило интерфейса: пояснение длиннее строки — в Hint). -->
-        <Callout tone="neutral" icon="lock">
-          <span class="inline-flex items-center gap-1.5">Файл остаётся на телефоне <Hint>На сервер попадают только продавец, дата, сумма и раздел — без номеров и ФИО.</Hint></span>
-        </Callout>
-        <Callout v-for="e in errors" :key="e.name" tone="warn">
-          {{ e.name }}: {{ e.message }}<span v-if="e.detail" class="block text-[12px] text-ink-2">{{ e.detail }}</span>
-        </Callout>
-        <input ref="fileInput" type="file" accept="application/pdf,.pdf" multiple class="hidden" @change="pick" />
-        <div class="mt-auto flex flex-col gap-2 pt-2">
-          <Button size="lg" class="w-full" :disabled="reading" @click="fileInput?.click()">
-            <PhFileArrowUp :size="18" />
-            {{ reading ? 'Читаем выписку…' : 'Выбрать файл' }}
-          </Button>
-          <Button variant="ghost" size="md" class="w-full" @click="manual = true">Введу вручную</Button>
-        </div>
-      </template>
-      <template v-else>
-        <!-- Поля ручного ввода — одним блоком: отступы между ними ровные (14 px, как в «Изменить оклад»), не 14 и 30 (`/ux` Б7). -->
-        <div data-manual-income>
-          <Field :label="manualWeekly ? 'Зарплата за неделю, ₸' : 'Зарплата в месяц, ₸'" name="salary">
-            <NumField v-model="manualSalary" placeholder="450 000" class="bg-surface" />
-          </Field>
-          <Button v-if="salaryHint" variant="ghost" size="sm" class="-mt-2 mb-2 -ml-2" data-week-hint @click="useSalaryHint">≈ {{ plain(salaryHint.amount) }} {{ salaryHint.per }}</Button>
-          <PayRhythmFields
-            :rhythm="manualRhythm.payRhythm ?? 'month'"
-            :payday="clampDay(manualPayday, 10)"
-            :payday2="manualRhythm.payday2"
-            :salary2="manualRhythm.salary2"
-            :weekday="manualRhythm.weekday"
-            :salary="parseMoney(manualSalary)"
-            currency="KZT"
-            field-class="bg-surface"
-            @change="onManualRhythm"
-          />
-          <p class="text-[12.5px] leading-relaxed text-ink-2">Оклад без премий.</p>
-        </div>
-        <div class="mt-auto flex flex-col gap-2 pt-2">
-          <Button size="lg" class="w-full" @click="form.submit(manualNext)">Дальше</Button>
-          <Button variant="ghost" size="md" class="w-full" @click="manual = false">Лучше загружу выписку</Button>
-        </div>
-      </template>
+    <!-- Шаг 1: на что копим (B2C-18) — первым, до зарплаты (Р-2). -->
+    <GoalNew v-if="step === 'dream'" next="/start/salary" />
+
+    <!-- Шаг 2: зарплата руками; та же форма — после вопросов, когда в выписке дохода не нашлось. -->
+    <template v-else-if="salaryForm">
+      <!-- Поля ручного ввода — одним блоком: отступы между ними ровные (14 px, как в «Изменить оклад»), не 14 и 30 (`/ux` Б7). -->
+      <div data-manual-income>
+        <Field :label="manualWeekly ? 'Зарплата за неделю, ₸' : 'Зарплата в месяц, ₸'" name="salary">
+          <NumField v-model="manualSalary" placeholder="450 000" class="bg-surface" />
+        </Field>
+        <Button v-if="salaryHint" variant="ghost" size="sm" class="-mt-2 mb-2 -ml-2" data-week-hint @click="useSalaryHint">≈ {{ plain(salaryHint.amount) }} {{ salaryHint.per }}</Button>
+        <PayRhythmFields
+          :rhythm="manualRhythm.payRhythm ?? 'month'"
+          :payday="clampDay(manualPayday, 10)"
+          :payday2="manualRhythm.payday2"
+          :salary2="manualRhythm.salary2"
+          :weekday="manualRhythm.weekday"
+          :salary="parseMoney(manualSalary)"
+          currency="KZT"
+          field-class="bg-surface"
+          @change="onManualRhythm"
+        />
+        <p class="text-[12.5px] leading-relaxed text-ink-2">Оклад без премий.</p>
+      </div>
+      <div class="mt-auto flex flex-col gap-2 pt-2">
+        <Button size="lg" class="w-full" @click="form.submit(saveSalary)">{{ joining ? 'Готово' : 'Дальше' }}</Button>
+        <!-- Выписка — опция, не главная (Р-2): тихо, под главной. -->
+        <Button v-if="step === 'salary'" variant="ghost" size="md" class="w-full" @click="pdf = true">Есть PDF из банка</Button>
+      </div>
     </template>
 
-    <!-- Шаг 2: вопросы по одному -->
+    <!-- Шаг 2, раскрыто «Есть PDF из банка»: выбор файла. -->
+    <template v-else-if="step === 'salary'">
+      <!-- Откуда взять файл (g3 «Шаг 2 — первая выписка»): банк и путь в его приложении одной строкой. -->
+      <Card tight>
+        <div v-for="b in BANK_HOWTO" :key="b.name" class="flex items-center gap-3 border-t border-line py-3 first:border-t-0 first:pt-0 last:pb-0">
+          <span class="grid size-9 shrink-0 place-items-center rounded-[10px] text-[12px] font-bold text-on-photo" :class="b.tone" aria-hidden="true">{{ b.name[0] }}</span>
+          <span class="min-w-0 flex-1 font-medium text-ink">{{ b.name }}</span>
+          <Hint :label="`Выписка ${b.name}`">{{ b.path }}</Hint>
+        </div>
+      </Card>
+      <!-- Одна строка + подсказка (правило интерфейса: пояснение длиннее строки — в Hint). -->
+      <Callout tone="neutral" icon="lock">
+        <span class="inline-flex items-center gap-1.5">Файл остаётся на телефоне <Hint>На сервер попадают только продавец, дата, сумма и раздел — без номеров и ФИО.</Hint></span>
+      </Callout>
+      <Callout v-for="e in errors" :key="e.name" tone="warn">
+        {{ e.name }}: {{ e.message }}<span v-if="e.detail" class="block text-[12px] text-ink-2">{{ e.detail }}</span>
+      </Callout>
+      <input ref="fileInput" type="file" accept="application/pdf,.pdf" multiple class="hidden" @change="pick" />
+      <div class="mt-auto flex flex-col gap-2 pt-2">
+        <Button size="lg" class="w-full" :disabled="reading" @click="fileInput?.click()">
+          <PhFileArrowUp :size="18" />
+          {{ reading ? 'Читаем выписку…' : 'Выбрать файл' }}
+        </Button>
+        <Button variant="ghost" size="md" class="w-full" @click="pdf = false">Назад</Button>
+      </div>
+    </template>
+
+    <!-- Подшаг зарплаты: вопросы по одному -->
     <template v-else-if="step === 'questions'">
       <template v-if="current && current.type === 'income'">
         <DecisionCard question="Это ваш доход?" :meta="incomeMeta(current.candidate)" :progress="progress" :actions="{ primary: 'Да, это зарплата', secondary: 'Нет' }" @primary="answerIncome(true)" @secondary="answerIncome(false)">
@@ -471,48 +472,13 @@ const sub = computed(() => (step.value === 'questions' && !current.value ? 'В �
           </template>
         </DecisionCard>
       </template>
-      <template v-else-if="!salaryKnown">
-        <!-- Поля ручного ввода — одним блоком: отступы между ними ровные (14 px, как в «Изменить оклад»), не 14 и 30 (`/ux` Б7). -->
-        <div data-manual-income>
-          <Field :label="manualWeekly ? 'Зарплата за неделю, ₸' : 'Зарплата в месяц, ₸'" name="salary">
-            <NumField v-model="manualSalary" placeholder="450 000" class="bg-surface" />
-          </Field>
-          <Button v-if="salaryHint" variant="ghost" size="sm" class="-mt-2 mb-2 -ml-2" data-week-hint @click="useSalaryHint">≈ {{ plain(salaryHint.amount) }} {{ salaryHint.per }}</Button>
-          <PayRhythmFields
-            :rhythm="manualRhythm.payRhythm ?? 'month'"
-            :payday="clampDay(manualPayday, 10)"
-            :payday2="manualRhythm.payday2"
-            :salary2="manualRhythm.salary2"
-            :weekday="manualRhythm.weekday"
-            :salary="parseMoney(manualSalary)"
-            currency="KZT"
-            field-class="bg-surface"
-            @change="onManualRhythm"
-          />
-        </div>
-        <div class="mt-auto flex flex-col gap-2 pt-2">
-          <Button size="lg" class="w-full" @click="form.submit(manualAfterQuestions)">{{ joining ? 'Готово' : 'Дальше' }}</Button>
-        </div>
-      </template>
       <!-- Все вопросы закрыты (перезагрузка после ответов) — просто дальше. -->
       <div v-else class="mt-auto pt-2">
         <Button size="lg" class="w-full" @click="advance">{{ joining ? 'Готово' : 'Дальше' }}</Button>
       </div>
     </template>
 
-    <!-- Шаг 3: картина месяца -->
-    <template v-else-if="step === 'month'">
-      <WeekCard :total="picture.total" :segments="segments" :unknown="picture.unknown" :unknown-share="picture.unknownShare" :rows="5" />
-      <FreeCard :amount="free" note="Из него и складывается мечта — дальше выберем её." />
-      <div class="mt-auto pt-2">
-        <Button size="lg" class="w-full" @click="go('dream')">Дальше</Button>
-      </div>
-    </template>
-
-    <!-- Шаг 4: на что копим (B2C-18) -->
-    <GoalNew v-else-if="step === 'dream'" next="/start/invite" />
-
-    <!-- Шаг 5: партнёр -->
+    <!-- Шаг 3: партнёр -->
     <template v-else-if="step === 'invite'">
       <Card class="flex flex-col items-center gap-4 p-6 text-center">
         <span class="grid size-12 place-items-center rounded-2xl bg-brand-soft text-brand"><PhUserPlus :size="24" /></span>

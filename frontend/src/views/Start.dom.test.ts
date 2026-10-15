@@ -9,10 +9,16 @@ import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore, defaultSyncDoc } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
 import { applyRules } from '@/lib/statements/model'
+import { parseStatement } from '@/lib/statements/parsers'
+import { readStatementFiles } from '@/lib/statements/read'
+import type { PdfRow } from '@/lib/statements/pdf'
 import { plain } from '@/lib/money'
 import type { Operation } from '@/lib/statements/types'
 import type { SyncDoc } from '@/types/finance'
 import Start from './Start.vue'
+
+// Чтение PDF — в браузере (pdf.js); здесь — готовый разбор фикстуры Kaspi (FR-01: «Есть PDF из банка» → вопросы).
+vi.mock('@/lib/statements/read', () => ({ readStatementFiles: vi.fn() }))
 
 /**
  * Возврат приёмки 2 п. 1: первый запуск не стирает введённое, когда приходит синк. Вопросы
@@ -163,5 +169,111 @@ describe('views/Start.vue — синк посреди вопроса не сти
     expect(field('День').value).toBe('25')
     await click(button('Да, это зарплата'))
     expect(finance.people.find((p) => p.id === 'a')).toMatchObject({ salary: 500_000, payday: 25 })
+  })
+})
+
+/* ------------------ FR-01: путь первого запуска (бэклог «первый») ------------------ */
+
+const fixtures = import.meta.glob<PdfRow[]>('../lib/statements/fixtures/*.rows.json', { eager: true, import: 'default' })
+const kaspi = () => parseStatement(fixtures['../lib/statements/fixtures/kaspi-01.rows.json'])
+
+/** Первый запуск по адресу: новая семья (`a`) или партнёр по коду (`b` в настроенной семье). */
+async function mountStart(path: string, slot: 'a' | 'b' = 'a') {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  useAuthStore().setAuthData({
+    token: 't', user: { id: `u-${slot}`, email: `${slot}@b.kz`, created_at: '' },
+    household: { id: 'h1', name: 'Семья', created_by: 'u-a', created_at: '' },
+    member: { household_id: 'h1', user_id: `u-${slot}`, slot, display_name: slot === 'a' ? 'Алихан' : 'Дана', role: 'member', joined_at: '' },
+  })
+  const finance = useFinanceStore()
+  finance.claimFor('h1')
+  const doc = defaultSyncDoc()
+  if (slot === 'b') Object.assign(doc, { people: [{ id: 'a', name: 'Алихан', salary: 600_000, payday: 10, updatedAt: '2026-09-01T00:00:00.000Z' }], setupDoneAt: '2026-09-01T00:00:00.000Z' })
+  finance.setHouseholdDoc(doc, 1)
+  const router = createRouter({ history: createMemoryHistory(), routes })
+  await router.push(path)
+  await router.isReady()
+  const root = document.createElement('div')
+  document.body.appendChild(root)
+  app = createApp(Start)
+  app.use(pinia)
+  app.use(router)
+  app.mount(root)
+  await nextTick()
+  return { finance, router, ops: useOperationsStore() }
+}
+/** Переход роутера (ленивый экран — динамический импорт) и перерисовка; `setTimeout` в тесте поддельный. */
+async function settle() {
+  for (let i = 0; i < 5; i++) await vi.dynamicImportSettled()
+  await nextTick()
+  await nextTick()
+}
+const stepper = () => document.querySelector('.type-meta')?.textContent?.replace(/\s+/g, ' ').trim()
+
+describe('FR-01: мечта → зарплата → партнёр; выписка — опцией у зарплаты (DOM, роутер)', () => {
+  it('без выписки: «Пока без мечты» → зарплата («2 из 3») → «Дальше» — партнёр без вопросов → «Позже» — главный, семья настроена', async () => {
+    const { finance, router } = await mountStart('/start')
+    expect(page()).toContain('На что копим?')
+    expect(stepper()).toBe('1 из 3')
+    await click(button('Пока без мечты'))
+    await settle()
+    expect(router.currentRoute.value.path).toBe('/start/salary')
+    expect(stepper()).toBe('2 из 3')
+    await type(field('Зарплата в месяц, ₸'), '450000')
+    await click(button('Дальше'))
+    await settle()
+    expect(router.currentRoute.value.path).toBe('/start/invite')
+    expect(finance.people[0]).toMatchObject({ id: 'a', salary: 450_000, payday: 10 })
+    expect(stepper()).toBe('3 из 3')
+    await click(button('Позже'))
+    await settle()
+    expect(router.currentRoute.value.path).toBe('/')
+    expect(finance.setupDone).toBe(true)
+    expect(finance.people[0].onboardedAt).toBe('2026-09-24T07:00:00.000Z')
+  })
+
+  it('«Есть PDF из банка» → «Назад» к полям; файл → вопросы («2 из 3») → «Да, это зарплата», «Потом» → партнёр', async () => {
+    const { finance, router, ops } = await mountStart('/start/salary')
+    await click(button('Есть PDF из банка'))
+    expect(page()).toContain('Ваш банк')
+    expect(button('Выбрать файл')).toBeTruthy()
+    await click(button('Назад'))
+    expect(field('Зарплата в месяц, ₸')).toBeTruthy()
+    await click(button('Есть PDF из банка'))
+
+    const parsed = kaspi()
+    vi.mocked(readStatementFiles).mockResolvedValue({ ok: [{ name: 'выписка.pdf', parsed }], errors: [] })
+    // Отправка — как после «Отправить»: операции в своей копии стора (сеть в тесте не отвечает).
+    vi.spyOn(ops, 'send').mockImplementation(async () => {
+      for (const o of applyRules(parsed.operations, [])) ops.ops[o.id] = o
+    })
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    Object.defineProperty(input, 'files', { value: [new File(['%PDF'], 'выписка.pdf', { type: 'application/pdf' })] })
+    input.dispatchEvent(new Event('change'))
+    await settle()
+    await settle()
+    expect(router.currentRoute.value.path).toBe('/start/questions')
+    expect(stepper()).toBe('2 из 3')
+    expect(page()).toContain('Это ваш доход?')
+    await click(button('Да, это зарплата'))
+    expect(finance.people[0]).toMatchObject({ salary: 120_000, payday: 24 })
+    await click(button('Потом'))
+    await settle()
+    expect(router.currentRoute.value.path).toBe('/start/invite')
+  })
+
+  it('партнёр по коду: `/start` — сразу зарплата («1 из 1»), «Готово» — главный: свой оклад и onboardedAt, finishSetup не зовётся', async () => {
+    const { finance, router } = await mountStart('/start', 'b')
+    const finishSetup = vi.spyOn(finance, 'finishSetup')
+    expect(page()).not.toContain('На что копим?')
+    expect(stepper()).toBe('1 из 1')
+    await type(field('Зарплата в месяц, ₸'), '300000')
+    await click(button('Готово'))
+    await settle()
+    expect(router.currentRoute.value.path).toBe('/')
+    expect(finance.people.find((p) => p.id === 'b')).toMatchObject({ salary: 300_000, onboardedAt: '2026-09-24T07:00:00.000Z' })
+    expect(finishSetup).not.toHaveBeenCalled()
+    expect(finance.householdDoc.setupDoneAt).toBe('2026-09-01T00:00:00.000Z')
   })
 })

@@ -76,9 +76,10 @@ const months = computed(() => (term.value === 'custom' ? Math.max(1, parseMoney(
 const monthly = computed(() => (need.value > 0 ? goalMonthly(need.value, months.value) : 0))
 // Та же дата, что покажут экран цели и герой (`goalDoneMonth`); срок здесь всегда конечен.
 const doneMonth = computed(() => monthIn(goalDoneMonth(months.value, monthKey())!))
-// «Реально» — взнос укладывается в свободное по плану месяца.
+// «Реально» — взнос укладывается в свободное по плану месяца. В первом запуске мечта — до зарплаты:
+// свободного ещё нет, ни «при остатке», ни «реально» не показываем (бэклог «первый» FR-01).
 const free = computed(() => budgetAmounts({ ...financeStore.householdDoc, credits: financeStore.credits, book: fx.book }).d5)
-const realistic = computed(() => monthly.value > 0 && monthly.value <= free.value)
+const realistic = computed(() => !props.next && monthly.value > 0 && monthly.value <= free.value)
 // Одна форма на экран (provide один): правила — по шагу.
 const form = useFormCheck(() =>
   step.value === 'pick'
@@ -260,7 +261,7 @@ const inShell = inject<boolean>('ff-shell-actions', false)
           <span class="font-medium text-ink">По {{ money(monthly) }} в месяц</span>
           <Tag v-if="realistic" tone="ok">реально</Tag>
         </div>
-        <div class="mt-1 text-[13px] text-ink-2">при остатке ≈ {{ money(Math.max(0, free)) }} · будет вашей в {{ doneMonth }}</div>
+        <div class="mt-1 text-[13px] text-ink-2"><template v-if="!props.next">при остатке ≈ {{ money(Math.max(0, free)) }} · </template>будет вашей в {{ doneMonth }}</div>
       </div>
       <div class="mt-auto flex flex-col gap-2 pt-2">
         <Button size="lg" class="w-full" @click="form.submit(create)">Готово — к мечте</Button>
