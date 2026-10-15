@@ -161,7 +161,7 @@ describe('B2C-52: демо — итоги из демо-операций той 
     expect(finance.householdDoc.goals.find((g) => g.id === 'g-bike')).toMatchObject({ doneAt: expect.any(String), have: 230_000 })
     expect(dreams).toContain('Сбылось · 1')
     expect(finance.householdDoc.goals.some((g) => g.main)).toBe(false)
-    for (const w of ['Машина', 'Новый диван', 'Все 3', 'Кофемашина', 'общие', 'Велосипед', 'Вы', 'Сапоги', 'Партнёр']) expect(dreams).toContain(w)
+    for (const w of ['Машина', 'Новый диван', 'Желания 3', 'Кофемашина', 'общие', 'Велосипед', 'Вы', 'Сапоги', 'Партнёр']) expect(dreams).toContain(w)
     expect(dreams).not.toContain('+ Желание')
     // Разделы демо-операций — те, что дают словарь и правила: ответ на одного продавца раскладывает
     // операции заново (`reapply`), и остальные не возвращаются в «не разобрано» (стенд B2C-52).

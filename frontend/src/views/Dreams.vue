@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
-import { PhCamera, PhCaretRight, PhCheck } from '@phosphor-icons/vue'
+import { PhCamera, PhCaretRight, PhCheck, PhPlus } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
@@ -157,9 +157,12 @@ onMounted(refresh)
 
     <!-- Цели: остальные мечты строками -->
     <template v-if="main">
-      <div class="flex items-baseline justify-between px-1 pt-1.5">
+      <div class="flex items-center justify-between px-1 pt-1.5">
         <h2 class="text-[20px] font-bold tracking-[-0.01em] text-ink">Цели</h2>
-        <RouterLink v-if="canEdit" to="/goals/new" class="text-[14px] font-semibold text-brand">+ Новая</RouterLink>
+        <!-- Новая цель — круглым «+» у заголовка, без слова (владелец, 2026-10-15, FR-09). -->
+        <RouterLink v-if="canEdit" to="/goals/new" class="press grid size-8 place-items-center rounded-full bg-brand-soft text-brand" aria-label="Новая цель" data-new-goal>
+          <PhPlus :size="16" weight="bold" />
+        </RouterLink>
       </div>
       <Card v-if="others.length" flush class="px-3.5 py-1">
         <SortableList :ids="otherIds" :label="nameOf" :disabled="!canEdit" @move="moveOther">
@@ -229,10 +232,15 @@ onMounted(refresh)
       </template>
     </Card>
 
-    <!-- Желания: первые три, «Все N» — путь к списку есть всегда -->
-    <div class="flex items-baseline justify-between px-1 pt-1.5">
-      <h2 class="text-[20px] font-bold tracking-[-0.01em] text-ink">Желания</h2>
-      <RouterLink to="/wishes" class="text-[14px] font-semibold text-brand">{{ openWishes.length ? `Все ${openWishes.length}` : 'Все' }}</RouterLink>
+    <!-- Желания: первые три, «›» — путь к списку есть всегда -->
+    <div class="flex items-center justify-between px-1 pt-1.5">
+      <!-- Сколько желаний — серой «таблеткой» у заголовка; ко всему списку — круглым «›», как «+» у «Целей» (FR-09). -->
+      <h2 class="flex items-center gap-2 text-[20px] font-bold tracking-[-0.01em] text-ink">
+        Желания<span v-if="openWishes.length" class="rounded-pill bg-surface-3 px-2 py-px text-[13px] font-semibold tracking-normal text-ink-2 num" data-wish-count>{{ openWishes.length }}</span>
+      </h2>
+      <RouterLink to="/wishes" class="press grid size-8 place-items-center rounded-full bg-surface-3 text-ink-2" aria-label="Все желания" data-all-wishes>
+        <PhCaretRight :size="16" weight="bold" />
+      </RouterLink>
     </div>
     <Card v-if="firstWishes.length" flush class="px-3.5 py-1">
       <!-- Желание — нажатием на всю строку (без «Открыть»), цена — справа, чьё — подписью (Б17). -->
