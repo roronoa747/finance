@@ -17,6 +17,7 @@ import {
   amountAt,
   costliestCredits,
   creditBalance,
+  derivedCredits,
   creditResplit,
   creditSplit,
   endedPlan,
@@ -257,7 +258,6 @@ export const useFinanceStore = defineStore('finance', () => {
   const merchantRules = computed(() =>
     ((privateDoc.value.merchantRules as MerchantRule[] | undefined) ?? []).filter((r) => !r.deletedAt),
   )
-  const derivedCredits = (list: Credit[], pays: Payment[]) => list.map((c) => ({ ...c, principal: creditBalance(c, pays) }))
   const credits = computed(() => derivedCredits(householdDoc.value.credits || [], payments.value))
   const wishlist = computed(() => householdDoc.value.wishlist || [])
   const setupDone = computed(() => Boolean(householdDoc.value.setupDoneAt))

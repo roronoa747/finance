@@ -1697,6 +1697,12 @@ export function creditBalance(c: Credit, payments: Payment[] = []): number {
   return Math.max(0, c.principal - paid)
 }
 
+/** Кредиты с остатком из отметок (RP-06) — как их отдаёт стор экранам (`financeStore.credits`) и сводка ИИ. */
+export const derivedCredits = (list: Credit[], payments: Payment[]) => list.map((c) => ({ ...c, principal: creditBalance(c, payments) }))
+
+/** Ставка в процентах до сотых: 0.19 → 19, 0.165 → 16.5 — как её пишут экраны (`ratePct`), числом (сводка ИИ). */
+export const ratePercent = (r: number) => Math.round(r * 10_000) / 100
+
 /**
  * Сколько процентов не отдадим банку по всем применённым досрочкам (Р-6): живые
  * досрочки живых кредитов. Удалённый кредит из счётчика уходит вместе со своими
