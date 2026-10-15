@@ -118,3 +118,12 @@ export interface OperationsPage {
   operations: OperationWire[]
   next: string | null
 }
+
+/** `GET /api/wallet` (Apple Pay, AP-02): свои подключённые телефоны и ссылки на команду; ссылки нет — пусто. */
+export interface WalletStatus {
+  connected: boolean
+  phones: number
+  last_used_at?: string
+  shortcut_url: string
+  shortcut_url_legacy: string
+}

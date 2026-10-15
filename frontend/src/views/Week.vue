@@ -16,6 +16,7 @@ import UnknownBatch from '@/components/UnknownBatch.vue'
 import PlanSwitch from '@/components/plan/PlanSwitch.vue'
 import SectionSheet from '@/components/week/SectionSheet.vue'
 import UploadsSheet from '@/components/week/UploadsSheet.vue'
+import ApplePayWeekLine from '@/components/applepay/ApplePayWeekLine.vue'
 import { recentOperations, type MatchCandidate } from '@/lib/statements/matching'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
@@ -374,6 +375,8 @@ onBeforeUnmount(() => {
         </button>
       </template>
     </div>
+    <!-- Apple Pay (AP-06, Р-6): тихая строка под «Загрузить» — iPhone, пока не подключено. -->
+    <ApplePayWeekLine />
 
     <!-- Сумма недели: моя, крупно; ‹ › — недели. Сравнение с прошлой — в «8 недель» (Р-116). -->
     <Card tight class="flex flex-col gap-1" data-week-sum>

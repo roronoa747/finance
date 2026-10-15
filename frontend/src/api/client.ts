@@ -10,6 +10,7 @@ import type {
   StatementUploadResponse,
   OperationWire,
   OperationsPage,
+  WalletStatus,
 } from '@/types/api'
 import type { SyncDoc } from '@/types/finance'
 
@@ -258,6 +259,24 @@ export class ApiClient {
     const q = new URLSearchParams({ limit: String(limit) })
     if (since) q.set('since', since)
     return this.request<OperationsPage>(`/operations?${q}`, { method: 'GET' })
+  }
+
+  // Apple Pay (бэклог «Apple Pay», AP-02): свой iPhone — подключить (ключ один раз), статус, отключить все.
+  async walletStatus(): Promise<WalletStatus> {
+    return this.request<WalletStatus>('/wallet', { method: 'GET' })
+  }
+
+  async walletConnect(): Promise<{ key: string }> {
+    return this.request<{ key: string }>('/wallet/connect', { method: 'POST' })
+  }
+
+  async walletDisconnect(): Promise<void> {
+    await this.request<unknown>('/wallet', { method: 'DELETE' })
+  }
+
+  /** Последнее касание, которое сервер разбирал из текста (Р-13а), — только админу; `{}` — нет. */
+  async adminWalletDebug(): Promise<{ body?: string; at?: string }> {
+    return this.request<{ body?: string; at?: string }>('/admin/wallet-debug', { method: 'GET' })
   }
 
   // Фото целей и желаний (B2C-16/17): байты — телом запроса, тип — заголовком.

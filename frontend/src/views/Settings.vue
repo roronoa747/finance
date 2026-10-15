@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useInvite, useMembers } from '@/components/useInvite'
 import AppearancePanel from '@/components/AppearancePanel.vue'
 import ParseSettings from '@/components/ParseSettings.vue'
+import ApplePayCard from '@/components/applepay/ApplePayCard.vue'
 import SyncBadge from '@/components/SyncBadge.vue'
 import Avatar from '@/components/kit/Avatar.vue'
 import Card from '@/components/kit/Card.vue'
@@ -132,6 +133,9 @@ async function deleteAccount() {
           <div class="mt-3 border-t border-line pt-3"><ParseSettings /></div>
         </details>
       </Card>
+
+      <!-- Apple Pay (бэклог «Apple Pay», AP-06): свой iPhone — траты сами; карточка сама решает, видна ли. -->
+      <ApplePayCard />
     </template>
 
     <Card tight>

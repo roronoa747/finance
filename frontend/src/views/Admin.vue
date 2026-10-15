@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { apiClient, ApiError, type AdminMetrics } from '@/api/client'
 import Card from '@/components/kit/Card.vue'
+import AdminWalletDebug from '@/components/applepay/AdminWalletDebug.vue'
 import { pct as share } from '@/lib/money'
 
 /**
@@ -100,6 +101,8 @@ const funnel = computed(() => {
           </tbody>
         </table>
       </Card>
+      <!-- Apple Pay (Р-13а): формат команды владельца — по первому касанию. -->
+      <AdminWalletDebug />
     </template>
   </div>
 </template>
