@@ -142,10 +142,35 @@ export function statementsFor(st: FakeStatements, user: string, slot: 'a' | 'b')
     listStatementUploads: vi.fn(async () => ({ uploads: st.uploads.map(({ user: _user, ...u }) => u) })),
     upsertOperations: vi.fn(async (ops: OperationWire[]) => {
       const mine = st.ops.get(user) ?? new Map<string, OperationWire>()
-      for (const o of ops) mine.set(o.id, JSON.parse(JSON.stringify(o)))
+      for (const o of ops) {
+        // Как Go (AP-01): source, момент и валюту пишет только сервер; надгробие необратимо.
+        const prev = mine.get(o.id)
+        const next: OperationWire = JSON.parse(JSON.stringify(o))
+        delete next.source
+        delete next.occurred_at
+        delete next.fx_currency
+        delete next.fx_amount
+        if (prev?.source) next.source = prev.source
+        if (prev?.occurred_at) next.occurred_at = prev.occurred_at
+        if (prev?.fx_currency) Object.assign(next, { fx_currency: prev.fx_currency, fx_amount: prev.fx_amount })
+        if (prev?.deleted || o.deleted) next.deleted = true
+        else delete next.deleted
+        mine.set(o.id, next)
+      }
       st.ops.set(user, mine)
       return { upserted: ops.length }
     }),
+    // Лента отдаёт и надгробия (AP-01).
     listOperations: vi.fn(async () => ({ operations: [...(st.ops.get(user)?.values() ?? [])], next: null })),
   }
+}
+
+/**
+ * Трата пришла с телефона (Apple Pay, AP-03): сервер пишет её сам — `source: 'tap'`, без раздела, момент приёма;
+ * валюта — `amount` 0 и `fx_*`.
+ */
+export function serverTap(st: FakeStatements, user: string, op: Pick<OperationWire, 'id' | 'date' | 'amount' | 'merchant'> & Partial<OperationWire>) {
+  const mine = st.ops.get(user) ?? new Map<string, OperationWire>()
+  mine.set(op.id, { bank: 'kaspi', kind: 'purchase', category_id: null, internal: false, source: 'tap', occurred_at: new Date().toISOString(), ...op })
+  st.ops.set(user, mine)
 }

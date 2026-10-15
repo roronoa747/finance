@@ -70,6 +70,21 @@ REST API приложения: вход, домохозяйство, синхр�
   выпиской старше 14 дней; считаются записи загрузок), активные за 7 и 28 дней (`app_open`),
   воронка семей за 28 дней (создали → выписка → цель → первый запуск), 8 недель Алматы (новые
   семьи, загрузки, `week_done`). `/auth/me` отдаёт `admin: true|false`.
+- Apple Pay (`handlers/applepay.go`, `internal/applepay`, `repository/phonekey_repo.go`, миграция `000008`, бэклог
+  «Apple Pay»): `GET /api/wallet` (member) — `{connected, phones, last_used_at?, shortcut_url, shortcut_url_legacy}`;
+  `POST /api/wallet/connect` — 201 `{key}` с `Cache-Control: no-store`, **единственный раз**, когда ключ `ffk_…`
+  уходит с сервера: в базе только SHA-256 (`app.phone_keys`), свой ключ на каждый телефон, не больше 5 (шестой
+  вытесняет самый старый); `DELETE /api/wallet` — отзыв всех, 204. viewer — 403. `POST /api/wallet/tap` — вне JWT:
+  `Authorization: Bearer ffk_…`, роль и семья из базы на каждый запрос (нет / отозван — 401, viewer или без семьи —
+  403); тело ≤ 4 КБ `{merchant?, amount?, card?, name?, at?, raw?}`, лишние поля игнорируются; без `amount` сумма
+  ищется в тексте (команда шлёт всю транзакцию в `merchant`). Тенге — `amount` (тиыны отбрасываются), USD/EUR/RUB/CNY —
+  `amount 0` + `fx_*` (курс считает телефон), без валюты — не угадывается; ответ 200
+  `{ok, status: saved|duplicate|skipped, reason?}` без операции; та же сумма ≤ 2 мин — `duplicate`; 200 операций с
+  телефона за сутки Алматы — 429 `{"error":"limit"}`. Операция — в `app.operations` (`source: tap`, `occurred_at`,
+  `category_id` null, банк по названию карты: kaspi/freedom/halyk/card). Батч `/operations/batch` поля сервера не
+  меняет; `deleted: true` — надгробие (выписка заменила трату), необратимо, лента его отдаёт. Ключ и тело не пишутся
+  в лог; тело, которое пришлось разбирать из текста, хранится **только у почт `ADMIN_EMAILS`** — одна строка, ≤ 2 КБ,
+  сутки (`app.wallet_debug`, `GET /api/admin/wallet-debug`, остальным 404).
 - Синк (`handlers/sync.go`, `repository/doc_repo.go`): push с верной ревизией сохраняет ключи
   верхнего уровня, которых нет в присланном документе (`data || pushed` в том же `UPDATE`, что
   и проверка ревизии), — старый PWA не стирает списки нового кода; присланные `[]` и `null`
