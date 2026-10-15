@@ -200,6 +200,56 @@ describe('e2e / бэклог «первый», Блок 2 — подсказки
     expect(shown()).toEqual(['tab-month'])
   })
 
+  it('приёмка — нажатие самого предмета вместо «Понятно» закрывает навсегда на всех четырёх вкладках; лист поверх — без пузыря', async () => {
+    const doc = withOwnWeek(planFamilyDoc())
+    server = fakeServer({ ...doc, people: doc.people.map((p) => ({ ...p, onboardedAt: '2026-09-01T07:00:00.000Z' })) } as SyncDoc)
+    const A = await phone('a')
+    const router = await launch(A.pinia, '/')
+    // Нажатие внутри обёртки при замёрзших часах Vue отбрасывает — сдвигать часы перед каждым (§6 бэклога).
+    const press = async (el: Element | null | undefined, what: string) => {
+      expect(el, what).toBeTruthy()
+      vi.setSystemTime(Date.now() + 1000)
+      ;(el as HTMLElement).click()
+      await settle()
+    }
+    const subject = () => bubbles()[0]?.parentElement
+
+    // «Мечты»: нажатие мечты — экран цели; назад — пузыря нет.
+    expect(shown()).toEqual(['tab-dreams'])
+    await press(subject()!.querySelector('button'), 'мечта')
+    expect(router.currentRoute.value.path).toMatch(/^\/goals\//)
+    await go(router, '/')
+    expect(shown()).toEqual([])
+
+    // «Месяц»: открыт лист — пузыря нет, закрыт — вернулся; нажатие раздела — ушёл.
+    await go(router, '/month')
+    expect(shown()).toEqual(['tab-month'])
+    await press(document.querySelector('[data-afford-open]'), '«Хватит?»')
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(shown()).toEqual([])
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await settle()
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+    expect(shown()).toEqual(['tab-month'])
+    await press(document.querySelector('[data-sections] > button'), 'раздел месяца')
+    expect(shown()).toEqual([])
+
+    // «Деньги»: нажатие квадрата.
+    await go(router, '/money')
+    expect(shown()).toEqual(['tab-money'])
+    await press(subject()!.querySelector('[aria-label="Деньги"] button:nth-child(2)'), 'квадрат «Долги»')
+    expect(shown()).toEqual([])
+
+    // «Неделя» — шаг дописывает исполнитель возврата приёмки (нажатие раздела пузырь не убирало).
+    expect([...readTipsSeen()].sort()).toEqual(['tab-dreams', 'tab-money', 'tab-month'])
+    // Перезагрузка — ни одного.
+    const again = await launch(A.pinia, '/')
+    for (const path of ['/', '/month', '/money']) {
+      await go(again, path)
+      expect(shown(), path).toEqual([])
+    }
+  })
+
   it('(д) выход стирает «видел»: следующий вход на этом телефоне видит подсказки снова', async () => {
     const A = await phone('a')
     await launch(A.pinia, '/')
