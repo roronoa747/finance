@@ -174,9 +174,11 @@ describe('e2e / понятность Блок 9 — поездка с бюдже
     expect(seenByB).toContain('Ильяс 82 000 ₸ · Вы 38 000 ₸')
     expect(seenByB).toContain('Sulpak')
     expect(seenByB).not.toContain('Hotel Shymbulak')
-    // Герой «Мечт» — первая цель очереди; поездка в пути у героя — «потрачено N из M».
+    // Герой «Мечт» — первая цель очереди; под фото — «название · N %» (FR-09), траты поездки — только на её экране.
     on(a).store.makeMain('trip')
-    expect(text(await screen(a.pinia, Dreams, '/'))).toContain('Отпуск · потрачено 120 000 из 150 000 ₸')
+    const hero = text(await screen(a.pinia, Dreams, '/'))
+    expect(hero).toMatch(/Отпуск ·\s+[0-9]+ %/)
+    expect(hero).not.toContain('потрачено')
   })
 
   it('(г) после поездки — «За поездку — N из M», запись остаётся; «Съездили?» вместо «Пополнить», «Сбылось» — в альбом', async () => {

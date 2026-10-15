@@ -11,7 +11,7 @@ import { ruleFor, ruleMatchOf } from '@/lib/statements/model'
 import { BUDGET_BY_KIND, firstRunQuestions, paymentOpOfMonth, salaryOpOfMonth, type IncomeCandidate, type RecurringCandidate, type RecurringKind } from '@/lib/statements/firstRun'
 import { matchCandidates, matchCategory, nearestEvent, operationAt, SALARY_TOLERANCE } from '@/lib/statements/matching'
 import type { Operation } from '@/lib/statements/types'
-import { advanceDefault, monthlyFromWeekly, weeklyFromMonthly } from '@/lib/finance'
+import { advanceDefault, liveGoals, monthlyFromWeekly, weeklyFromMonthly } from '@/lib/finance'
 import { money, parseMoney, plain } from '@/lib/money'
 import { addMonths, monthKey } from '@/lib/dates'
 import { START_ANSWERED_KEY, readStorage, writeStorage } from '@/lib/storage'
@@ -58,13 +58,25 @@ const knownName = computed(() => {
   return existing?.name || authStore.member?.display_name || authStore.user?.email?.split('@')[0] || 'Участник'
 })
 // Партнёр по коду: семья уже настроена первым участником — от него нужны только свои выписка и доход.
-// Считается по `setupDoneAt`, а не по данным: первая же запись дохода сделала бы первого участника «партнёром».
-const joining = computed(() => financeStore.setupDone)
+// Считается по `setupDoneAt`, а не по своим данным: первая же запись дохода сделала бы первого участника «партнёром».
+// Первый участник закрыл приложение на шаге партнёра (код уже выдан, `setupDoneAt` ещё нет) — партнёра выдаёт
+// чужой доход: код создаётся только после зарплаты (FR-08).
+const joining = computed(() => financeStore.setupDone || financeStore.people.some((p) => p.id !== slot.value && (p.salary ?? 0) > 0))
 const steps = computed<Step[]>(() => (joining.value ? ['intro', 'salary', 'questions'] : ['intro', 'dream', 'salary', 'questions', 'invite']))
+/**
+ * `/start` без шага (новый вход, холодный запуск PWA посреди потока — гард ведёт сюда) и чужой шаг — первый
+ * непройденный (FR-08): своя зарплата есть — партнёр (у партнёра по коду — его последний шаг), цель есть — зарплата
+ * (мечта второй раз не заводится), иначе — вступление.
+ */
+const resume = computed<Step>(() => {
+  if (salaryKnown.value) return joining.value ? 'questions' : 'invite'
+  if (!joining.value && liveGoals(financeStore.goals).length) return 'salary'
+  return 'intro'
+})
 const step = computed<Step>(() => {
   const raw = String(route.params.step ?? '')
   const s = OLD_STEPS[raw] ?? (raw as Step)
-  return steps.value.includes(s) ? s : steps.value[0]
+  return steps.value.includes(s) ? s : resume.value
 })
 // «n из k» — по видимым шагам: вступление в счёт не входит, вопросы — подшаг зарплаты, «n» на них не растёт.
 const counted = computed<Step[]>(() => steps.value.filter((s) => s !== 'intro' && s !== 'questions'))
@@ -390,10 +402,13 @@ function skipStep() {
   else if (step.value === 'invite') finish()
 }
 
-/** Семья настроена (или партнёр прошёл своё): участник отмечен, дальше — главный. */
+/**
+ * Семья настроена (или партнёр прошёл своё): участник отмечен, дальше — главный. Не настроена — отмечается тем, кто
+ * закончил первым: партнёр, пришедший раньше возврата первого участника (FR-08), тоже.
+ */
 function finish() {
   financeStore.setPerson(slot.value, { name: knownName.value, onboardedAt: new Date().toISOString() })
-  if (!joining.value) financeStore.finishSetup()
+  if (!financeStore.setupDone) financeStore.finishSetup()
   useEventsStore().track('first_run_done')
   void financeStore.syncHousehold()
   void router.push('/')

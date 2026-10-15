@@ -9,6 +9,7 @@ import Chip from '@/components/kit/Chip.vue'
 import Field from '@/components/kit/Field.vue'
 import LinkPhotoField from '@/components/goals/LinkPhotoField.vue'
 import ThemePhotoRow from '@/components/goals/ThemePhotoRow.vue'
+import ThemePhotoViewer from '@/components/goals/ThemePhotoViewer.vue'
 import { useFormCheck } from '@/components/kit/useFormCheck'
 
 /**
@@ -72,7 +73,18 @@ function pickType(type: GoalTemplateType) {
   pickedId.value = type
   // Как в «Новой мечте»: выбор темы сворачивает поле ссылки — выделена одна плитка (`/ux` Блока 3).
   linkOpen.value = false
+  // Фото темы — на весь экран, листаются (владелец, FR-09); у «Путешествия» — направления чипами.
+  viewerOpen.value = variants.value.length > 1
 }
+/** Просмотр фото темы на весь экран (FR-09); «Выбрать это» в нём — сразу выбор, как внизу листа. */
+const viewerOpen = ref(false)
+function onViewerPick(t: GoalTemplate) {
+  pickedId.value = t.id
+  viewerOpen.value = false
+  confirm()
+}
+/** Тем по две в ряд (FR-09): тем нечётно — «По ссылке» на весь последний ряд, низкой плиткой (`/ux` «первый» Б2). */
+const linkWide = GOAL_TYPES.length % 2 === 1
 
 function confirm() {
   if (picked.value) emit('template', picked.value)
@@ -95,7 +107,7 @@ function onLink(found: LinkFound) {
   <Sheet :open="open" :title="title" @close="emit('close')">
     <div class="flex flex-col gap-3">
       <Field name="photo" group class="!mb-0">
-        <div class="grid grid-cols-3 gap-2.5">
+        <div class="grid grid-cols-2 gap-2.5">
           <TemplateTile
             v-for="k in GOAL_TYPES"
             :key="k.type"
@@ -105,7 +117,7 @@ function onLink(found: LinkFound) {
             @click="pickType(k.type)"
           />
           <TemplateTile name="Своё фото" camera @click="fileInput?.click()" />
-          <TemplateTile name="По ссылке" link :selected="linkOpen" data-link-tile @click="linkOpen = !linkOpen" />
+          <TemplateTile name="По ссылке" link :selected="linkOpen" :class="linkWide && 'col-span-2 !h-24'" data-link-tile @click="linkOpen = !linkOpen" />
         </div>
       </Field>
       <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFile" />
@@ -128,5 +140,6 @@ function onLink(found: LinkFound) {
         <Button v-if="removable" variant="ghost" size="md" class="w-full" @click="emit('remove')">Убрать фото</Button>
       </div>
     </div>
+    <ThemePhotoViewer v-if="open && viewerOpen" :photos="variants" @pick="onViewerPick" @close="viewerOpen = false" />
   </Sheet>
 </template>

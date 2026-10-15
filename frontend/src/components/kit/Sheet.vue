@@ -6,6 +6,7 @@ const stack: symbol[] = []
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, useId, watch } from 'vue'
 import { PhX } from '@phosphor-icons/vue'
+import { holdTips } from './tips'
 
 /**
  * Окно поверх экрана: на телефоне — лист снизу, на широком экране — по центру.
@@ -34,6 +35,8 @@ const titleId = useId()
 const card = ref<HTMLElement | null>(null)
 const me = Symbol('sheet')
 let back: HTMLElement | null = null
+/** Пока лист открыт, подсказки у предмета (`Tip`) ждут его закрытия. */
+let releaseTips: (() => void) | null = null
 
 const FOCUSABLE =
   'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
@@ -210,6 +213,7 @@ function lockScreen() {
 function show() {
   stack.push(me)
   lockScreen()
+  releaseTips = holdTips()
   back = document.activeElement instanceof HTMLElement ? document.activeElement : null
   document.addEventListener('keydown', onKeydown)
   void nextTick(() => {
@@ -222,6 +226,8 @@ function hide() {
   if (i < 0) return
   stack.splice(i, 1)
   lockScreen()
+  releaseTips?.()
+  releaseTips = null
   document.removeEventListener('keydown', onKeydown)
   if (settle) clearTimeout(settle)
   settle = null

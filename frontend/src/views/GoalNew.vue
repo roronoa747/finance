@@ -13,6 +13,7 @@ import { attachFile, attachTemplate } from '@/lib/photos/goalPhoto'
 import type { LinkFound } from '@/lib/photos/useLinkPreview'
 import LinkPhotoField from '@/components/goals/LinkPhotoField.vue'
 import ThemePhotoRow from '@/components/goals/ThemePhotoRow.vue'
+import ThemePhotoViewer from '@/components/goals/ThemePhotoViewer.vue'
 import TripFields, { tripDatesError } from '@/components/goals/TripFields.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
@@ -94,8 +95,9 @@ const form = useFormCheck(() =>
 // Первый запуск (`next` задаёт только `Start.vue`) — только мечты: подушка героем не бывает, «Мечты» новичка остались бы
 // пустыми (решение владельца, `pn-block-6-first-run-cushion.md`). Подушку заводят позже — «Новая мечта» или «Месяц».
 const types = computed(() => (props.next ? GOAL_TYPES.filter((k) => k.type !== 'cushion') : GOAL_TYPES))
-// Темы заполнили ряды ровно (первый запуск — 18): «Своё фото · По ссылке» делят свой ряд пополам — без пустой ячейки (`/ux` возврата Б6).
-const ownRow = computed(() => types.value.length % 3 === 0)
+// Темы по две в ряд (FR-09): тем нечётно — «По ссылке» на весь последний ряд, без пустой ячейки (`/ux` возврата Б6), низкой
+// плиткой — пустая пунктирная 180 во всю ширину была бы самой крупной на экране (`/ux` бэклога «первый» Б2).
+const linkWide = computed(() => types.value.length % 2 === 1)
 const directions = computed(() => (pickedType.value === 'travel' ? TRAVEL_DIRECTIONS : []))
 // Несколько фото на тему (B2C-64-а): ряд под сеткой, первое — фото плитки.
 const variants = computed(() => (pickedType.value ? themePhotos(pickedType.value) : []))
@@ -115,6 +117,16 @@ function pickType(type: GoalTemplate['type']) {
   ownFile.value = null
   linkOpen.value = false
   dropPreview()
+  // Фото темы — на весь экран, листаются (владелец, FR-09); у «Путешествия» — направления чипами, просмотра нет.
+  viewerOpen.value = variants.value.length > 1
+}
+/** Просмотр фото темы на весь экран (FR-09). */
+const viewerOpen = ref(false)
+/** «Выбрать это» в просмотре — это фото, дальше форма (как «Дальше» под сеткой). */
+function onViewerPick(t: GoalTemplate) {
+  template.value = t
+  viewerOpen.value = false
+  next()
 }
 function pickTemplate(t: GoalTemplate) {
   template.value = t
@@ -206,7 +218,7 @@ const inShell = inject<boolean>('ff-shell-actions', false)
       <!-- В оболочке заголовок «Новая мечта» уже в шапке — второй заголовок подряд не нужен (возврат смоука); в первом запуске это заголовок шага. -->
       <h2 v-if="!inShell" class="type-h2-lg text-ink">На что копим?</h2>
       <Field name="photo" group class="!mb-0">
-        <div class="grid grid-cols-3 gap-2.5">
+        <div class="grid grid-cols-2 gap-2.5">
           <TemplateTile
             v-for="k in types"
             :key="k.type"
@@ -215,9 +227,9 @@ const inShell = inject<boolean>('ff-shell-actions', false)
             :selected="pickedType === k.type"
             @click="pickType(k.type)"
           />
-          <div :class="ownRow ? 'col-span-3 grid grid-cols-2 gap-2.5' : 'contents'" data-own-tiles>
+          <div class="contents" data-own-tiles>
             <TemplateTile name="Своё фото" camera @click="fileInput?.click()" />
-            <TemplateTile name="По ссылке" link :selected="linkOpen" data-link-tile @click="linkOpen = !linkOpen" />
+            <TemplateTile name="По ссылке" link :selected="linkOpen" :class="linkWide && 'col-span-2 !h-24'" data-link-tile @click="linkOpen = !linkOpen" />
           </div>
         </div>
       </Field>
@@ -231,6 +243,7 @@ const inShell = inject<boolean>('ff-shell-actions', false)
         </div>
       </template>
       <ThemePhotoRow v-if="variants.length > 1" :photos="variants" :selected="template?.id" @pick="pickTemplate" />
+      <ThemePhotoViewer v-if="viewerOpen" :photos="variants" @pick="onViewerPick" @close="viewerOpen = false" />
       <!-- Механика (Unsplash, сжатие) на экране не объясняется — автор виден на фото (правило интерфейса). -->
       <div class="mt-auto flex flex-col gap-2 pt-2">
         <Button size="lg" class="w-full" @click="form.submit(next)">Дальше</Button>

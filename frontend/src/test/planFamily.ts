@@ -1,4 +1,5 @@
 import { defaultSyncDoc } from '@/stores/finance'
+import { weekKey } from '@/lib/dates'
 import type { DebtPlan, Goal, SyncDoc } from '@/types/finance'
 
 /**
@@ -46,6 +47,15 @@ export function planOf(p: Partial<DebtPlan> = {}): DebtPlan {
     id: 'plan', status: 'active', by: 'a', startedAt: '2026-09-10T05:00:00.000Z', endedAt: null,
     keptGoalIds: [], cushionGoalId: 'cushion', creditIds: ['cc', 'loan'], months: 24, lump: 0,
     forecast: { gain: 250_000, savedInterest: 180_000, debtFreeMonth: '2028-01' }, result: null, updatedAt: T0, ...p,
+  }
+}
+
+/** Траты участника `a` за эту неделю (по часам теста) — в «Неделе» есть раздел «Продукты»; без них неделя пустая. */
+export function withOwnWeek(doc: SyncDoc): SyncDoc {
+  const period = weekKey()
+  return {
+    ...doc,
+    spendTotals: [...(doc.spendTotals ?? []), { id: `a:week:${period}:sc_food`, by: 'a', kind: 'week', period, categoryId: 'sc_food', amount: 12_000, ops: 2, updatedAt: T0 }],
   }
 }
 

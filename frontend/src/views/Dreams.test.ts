@@ -7,7 +7,6 @@ import { apiClient } from '@/api/client'
 import { money, pct } from '@/lib/money'
 import { HUES } from '@/lib/palette'
 import { OPERATIONS_STORAGE_KEYS, writeStorage } from '@/lib/storage'
-import { closerThisMonth } from '@/lib/finance'
 import type { Goal, SyncDoc, WishItem } from '@/types/finance'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
@@ -83,15 +82,17 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
   }
   const withMain = (): Partial<SyncDoc> => ({ goals: planFamilyDoc().goals.map((g) => (g.id === 'car' ? { ...g, main: true } : g)) })
 
-  it('мечта по центру: процент и название (срок — на экране цели, Р-116); «Цели» — все мечты, кроме главной, с процентом; «+ Новая» — ссылка', async () => {
+  it('мечта по центру: процент и название (срок — на экране цели, Р-116); «Цели» — все мечты, кроме главной, с процентом; новая цель — круглый «+» (FR-09)', async () => {
     await family('member', 'a', withMain())
     const html = await renderScreen(Dreams, '/')
     // Машина: 200 000 из 3 000 000 → 7 %; месяца «· июль 2030» под мечтой нет — он на экране цели.
     expect(html).toContain(`7${NBSP}%`)
-    expect(html).toContain('text-ink-2">Машина</span>')
+    // Под фото — одна строка «Машина · 7 %» (FR-09).
+    expect(html.slice(html.indexOf('data-hero-line')).replace(/<[^>]*>/g, '')).toContain(`Машина${NBSP}·${NBSP}7${NBSP}%`)
     expect(html).not.toContain(`июль${NBSP}2030`)
     expect(html).toContain('href="/goals/new"')
-    expect(html).toContain('+ Новая')
+    expect(html).toContain('aria-label="Новая цель"')
+    expect(html).not.toContain('+ Новая')
     expect(html).toContain('Добавить фото')
     expect(html).toContain('>Цели<')
     for (const g of planFamilyDoc().goals.filter((x) => x.id !== 'car')) {
@@ -102,42 +103,33 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
     expect(html).not.toContain('font-semibold text-ink">Машина</span>')
     // У строк целей срока «к <месяц>» нет (Р-116).
     expect(html).not.toMatch(/>к [а-я]+/)
-    // Ни одной брендовой кнопки: «+ Новая» и «Все N» — ссылки, желания — строки целиком.
+    // Ни одной брендовой кнопки: «+» и «›» — ссылки, желания — строки целиком.
     expect(brandButtons(html)).toEqual([])
     for (const w of WEEKLY) expect(html).not.toContain(w)
   })
 
-  it('PN-09: взнос этого месяца у героя — «Машина · ближе на N дней» под процентом (viewer тоже); без взносов строки нет; на паузе — «на паузе»', async () => {
+  it('FR-09 (владелец, 2026-10-15): под фото героя — одна строка «название · N %»; «ближе на N дней», «на паузе» и «потрачено» — на экране цели, не здесь', async () => {
     const movement = { id: 'm1', date: '2026-09-15T07:00:00.000Z', amount: 100_000, by: 'a' as const }
-    const withMove = (extra: Partial<Goal> = {}): Partial<SyncDoc> => ({
+    const car = (extra: Partial<Goal> = {}): Partial<SyncDoc> => ({
       goals: planFamilyDoc().goals.map((g) => (g.id === 'car' ? { ...g, main: true, have: g.have + 100_000, movements: [movement], ...extra } : g)),
     })
-    await family('member', 'a', withMove())
-    const html = await renderScreen(Dreams, '/')
-    // 100 000 при темпе 60 000 в месяц → 51 день; строка — под процентом, после названия.
-    const days = closerThisMonth({ monthly: 60_000, movements: [movement] }, '2026-09')
-    expect(days).toBe(51)
-    expect(html).toContain('data-hero-closer')
-    expect(html).toContain(`Машина${NBSP}· ближе${NBSP}на${NBSP}51${NBSP}день</span>`)
-    for (const w of WEEKLY) expect(html).not.toContain(w)
-
-    setActivePinia(createPinia())
-    await family('viewer', 'b', withMove())
-    expect(await renderScreen(Dreams, '/')).toContain(`ближе${NBSP}на${NBSP}51${NBSP}день`)
-
-    setActivePinia(createPinia())
-    await family('member', 'a', withMain())
-    const plain = await renderScreen(Dreams, '/')
-    expect(plain).not.toContain('data-hero-closer')
-    expect(plain).not.toContain('ближе')
-
-    // Единственная цель на паузе — герой она же: «на паузе», без «ближе».
-    setActivePinia(createPinia())
-    await family('member', 'a', { goals: withMove({ pausedAt: T0 }).goals!.filter((g) => g.id === 'car') })
-    const paused = await renderScreen(Dreams, '/')
-    expect(paused).not.toContain('data-hero-closer')
-    expect(paused).not.toContain('ближе')
-    expect(paused).toContain(`на${NBSP}паузе`)
+    const heroLine = (html: string) => html.slice(html.indexOf('data-hero-line'), html.indexOf('</span></span>', html.indexOf('data-hero-line')))
+    const cases: [string, Partial<SyncDoc>][] = [
+      ['взнос месяца', car()],
+      ['на паузе', { goals: car({ pausedAt: T0 }).goals!.filter((g) => g.id === 'car') }],
+      ['в поездке', { ...car({ from: '2026-09-15', to: '2026-09-20', budget: 400_000 }), tripSpends: [{ id: 'car:a', goalId: 'car', by: 'a', amount: 120_000, ops: 4, updatedAt: T0 }] }],
+    ]
+    for (const [what, doc] of cases) {
+      for (const role of ['member', 'viewer'] as const) {
+        setActivePinia(createPinia())
+        await family(role, role === 'viewer' ? 'b' : 'a', doc)
+        const html = await renderScreen(Dreams, '/')
+        const line = heroLine(html).replace(/<[^>]*>/g, '')
+        expect(line, `${what} / ${role}`).toMatch(new RegExp(`Машина${NBSP}·${NBSP}[0-9]+${NBSP}%`))
+        expect(html, what).not.toMatch(/ближе|потрачено|data-hero-closer/)
+        expect(line, what).not.toContain('паузе')
+      }
+    }
   })
 
   it('PN-14: альбом «Сбылось · N» свёрнут — строк сбывшихся нет; герой и «Цели» — без сбывшейся; нет сбывшихся — строки нет', async () => {
@@ -177,27 +169,6 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
     expect(await renderScreen(Dreams, '/')).not.toContain('data-done-album')
   })
 
-  it('PN-31: герой в поездке — «потрачено N из M» (итог семьи) вместо «ближе на N дней»; до поездки — как было', async () => {
-    const movement = { id: 'm1', date: '2026-09-15T07:00:00.000Z', amount: 100_000, by: 'a' as const }
-    const trip = (from: string, to: string): Partial<SyncDoc> => ({
-      goals: planFamilyDoc().goals.map((g) => (g.id === 'car' ? { ...g, main: true, have: g.have + 100_000, movements: [movement], from, to, budget: 400_000 } : g)),
-      tripSpends: [
-        { id: 'car:a', goalId: 'car', by: 'a', amount: 120_000, ops: 4, updatedAt: T0 },
-        { id: 'car:b', goalId: 'car', by: 'b', amount: 30_000, ops: 1, updatedAt: T0 },
-      ],
-    })
-    await family('member', 'a', trip('2026-09-15', '2026-09-20'))
-    const html = await renderScreen(Dreams, '/')
-    expect(html).toContain(`Машина${NBSP}· потрачено${NBSP}150${NBSP}000${NBSP}из${NBSP}400${NBSP}000${NBSP}₸</span>`)
-    expect(html).not.toContain('ближе')
-
-    setActivePinia(createPinia())
-    await family('member', 'a', trip('2026-09-25', '2026-09-30'))
-    const before = await renderScreen(Dreams, '/')
-    expect(before).not.toContain('потрачено')
-    expect(before).toContain('ближе')
-  })
-
   it('ворота PN-12: герой накоплен целиком — под процентом только имя, без «ближе на N дней»', async () => {
     const movement = { id: 'm1', date: '2026-09-15T07:00:00.000Z', amount: 100_000, by: 'a' as const }
     await family('member', 'a', {
@@ -231,11 +202,12 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
     expect(html).not.toContain('До зарплаты')
   })
 
-  it('«Желания» — первые три некупленных: фото-плашка, вся строка — кнопка, цена справа, подпись — чьё; «Все N» = некупленных → /wishes', async () => {
+  it('«Желания» — первые три некупленных: фото-плашка, вся строка — кнопка, цена справа, подпись — чьё; «Желания N» = некупленных, «›» → /wishes', async () => {
     await family('member', 'a', { ...withMain(), wishlist: WISHES })
     const html = await renderScreen(Dreams, '/')
-    expect(html).toContain('>Желания<')
-    expect(html).toMatch(/href="\/wishes"[^>]*>Все 4</)
+    expect(html).toContain('Желания<span')
+    expect(html).toMatch(/data-wish-count>4</)
+    expect(html).toMatch(/href="\/wishes"[^>]*aria-label="Все желания"/)
     expect(html).toContain('Наушники')
     // Строка — кнопка целиком: название, подпись «чьё», цена справа (Р-116; кнопки «Открыть» нет).
     const row = (name: string, whose: string, price: number) =>
@@ -254,7 +226,8 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
     expect(html).toContain('На что копим?')
     expect(brandButtons(html)).toEqual(['Выбрать мечту'])
     expect(html).not.toContain('>Цели<')
-    expect(html).toMatch(/href="\/wishes"[^>]*>Все 4</)
+    expect(html).toMatch(/data-wish-count>4</)
+    expect(html).toMatch(/href="\/wishes"[^>]*aria-label="Все желания"/)
     expect(html).toContain('Наушники')
 
     setActivePinia(createPinia())
@@ -262,7 +235,7 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
     const viewer = await renderScreen(Dreams, '/')
     expect(viewer).toContain('На что копим?')
     expect(viewer).not.toContain('Выбрать мечту')
-    expect(viewer).toMatch(/href="\/wishes"[^>]*>Все</)
+    expect(viewer).toMatch(/href="\/wishes"[^>]*aria-label="Все желания"/)
     expect(viewer).not.toContain('+ Желание')
   })
 
@@ -273,12 +246,12 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
     expect(html.match(/\+ Желание/g)?.length).toBe(1)
   })
 
-  it('viewer — мечта и списки; без «+ Новая», «Добавить фото», «+ Желание»; желания — строками-кнопками (ведут в список)', async () => {
+  it('viewer — мечта и списки; без «+» новой цели, «Добавить фото», «+ Желание»; желания — строками-кнопками (ведут в список)', async () => {
     await family('viewer', 'b', { ...withMain(), wishlist: WISHES })
     const html = await renderScreen(Dreams, '/')
     expect(html).toContain(`7${NBSP}%`)
     expect(html).toContain('Подушка')
-    expect(html).not.toContain('+ Новая')
+    expect(html).not.toContain('data-new-goal')
     expect(html).not.toContain('Добавить фото')
     expect(html).not.toContain('+ Желание')
     expect(html).toMatch(/<button[^>]*>(?:(?!<\/button>)[\s\S])*>Наушники<\/span>/)

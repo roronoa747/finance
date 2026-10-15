@@ -26,7 +26,7 @@ const emit = defineEmits<{ (e: 'click'): void }>()
   <button
     type="button"
     :aria-pressed="selected"
-    class="relative isolate flex h-[150px] min-w-0 flex-1 flex-col overflow-hidden rounded-tile p-3 text-left press cursor-pointer"
+    class="relative isolate flex h-[180px] min-w-0 flex-1 flex-col overflow-hidden rounded-tile p-3 text-left press cursor-pointer"
     :class="[
       dashed
         ? 'items-center justify-center gap-1.5 border border-dashed border-line-strong bg-surface text-center text-ink-2'
@@ -45,7 +45,7 @@ const emit = defineEmits<{ (e: 'click'): void }>()
     <template v-else>
       <img v-if="src" :src="src" alt="" class="absolute inset-0 -z-20 size-full object-cover" loading="lazy" />
       <div v-if="src" class="absolute inset-x-0 bottom-0 top-[40%] -z-10 photo-scrim" aria-hidden="true" />
-      <div class="w-full truncate text-[13px] font-medium" :class="src ? '' : 'text-ink'">{{ name }}</div>
+      <div class="w-full truncate text-[14px] font-semibold" :class="src ? '' : 'text-ink'">{{ name }}</div>
     </template>
   </button>
 </template>

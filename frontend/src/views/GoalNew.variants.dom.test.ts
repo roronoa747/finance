@@ -99,7 +99,11 @@ describe('B2C-64-а: фото-варианты темы в «Новой цели
 
 describe('PN-19: «Подушка» в «Новой мечте» — фонд семьи без формы', () => {
   const settle = async (router: Router, path: RegExp) => {
-    for (let i = 0; i < 40 && !path.test(router.currentRoute.value.fullPath); i++) await new Promise((r) => setTimeout(r, 10))
+    // Экран цели — ленивый: холодный импорт дольше 400 мс, ждём его, а не только часы (`/ux` Блока 2 «первый»: флак на чистом HEAD).
+    for (let i = 0; i < 200 && !path.test(router.currentRoute.value.fullPath); i++) {
+      await vi.dynamicImportSettled()
+      await new Promise((r) => setTimeout(r, 10))
+    }
   }
 
   it('«Подушка» → «Дальше»: формы нет, `ensureFund`, а не `addGoal`; переход на экран фонда; вариант фото — у фонда', async () => {
@@ -191,15 +195,17 @@ describe('PN-19: «Подушка» в «Новой мечте» — фонд с
   })
 
   // `/ux` возврата Б6: тем 18 — ряды полные; «Своё фото · По ссылке» — свой ряд пополам, а не две плитки и пустая ячейка.
-  it('сетка без пустой ячейки: первый запуск — «Своё фото · По ссылке» рядом пополам; «Новая мечта» — в ряду с «Животным»', async () => {
+  it('сетка по две в ряд (FR-09) без пустой ячейки: первый запуск (18 тем) — «Своё фото · По ссылке» своим рядом; «Новая мечта» (19) — «По ссылке» на всю ширину', async () => {
     await open({ next: '/start/salary' })
-    const own = () => document.querySelector('[data-own-tiles]') as HTMLElement
-    expect(own().classList.contains('col-span-3'), 'свой ряд на всю ширину').toBe(true)
-    expect([...own().querySelectorAll('button')].map((b) => b.textContent?.trim())).toEqual(['Своё фото', 'По ссылке'])
+    const grid = () => document.querySelector('[data-own-tiles]')!.parentElement as HTMLElement
+    const link = () => document.querySelector('[data-link-tile]') as HTMLElement
+    expect(grid().classList.contains('grid-cols-2')).toBe(true)
+    expect([...document.querySelectorAll('[data-own-tiles] button')].map((b) => b.textContent?.trim())).toEqual(['Своё фото', 'По ссылке'])
+    expect(link().classList.contains('col-span-2'), 'тем чётно — ссылка в паре со своим фото').toBe(false)
     app?.unmount()
     document.body.innerHTML = ''
     await open()
-    expect(own().classList.contains('contents'), 'вне первого запуска — ячейки общей сетки').toBe(true)
+    expect(link().classList.contains('col-span-2'), 'тем нечётно — ссылка на весь ряд').toBe(true)
   })
 })
 
@@ -332,5 +338,65 @@ describe('PN-31: «Путешествие» — даты и бюджет пое�
     await nextTick()
     expect(finance.goals).toHaveLength(1)
     expect(finance.goals[0].from ?? null).toBeNull()
+  })
+})
+
+describe('FR-09: фото темы на весь экран (владелец, 2026-10-15: «маленькие, нельзя пролистать»)', () => {
+  const viewer = () => document.querySelector('[data-photo-viewer]')
+  const count = () => document.querySelector('[data-viewer-count]')?.textContent?.trim()
+  function swipe(dx: number) {
+    const box = document.querySelector('[data-viewer-photo]')!.parentElement!.parentElement!
+    const touch = (type: string, x: number) => {
+      const e = new Event(type, { bubbles: true })
+      Object.defineProperty(e, type === 'touchstart' ? 'touches' : 'changedTouches', { value: [{ clientX: x }] })
+      box.dispatchEvent(e)
+    }
+    touch('touchstart', 200)
+    touch('touchend', 200 + dx)
+  }
+
+  it('тема → просмотр «1 из N»; свайп влево — следующее, вправо — назад; Escape — назад к сетке, тема выбрана', async () => {
+    await open()
+    button('Машина').click()
+    await nextTick()
+    const n = themePhotos('car').length
+    expect(n).toBeGreaterThan(1)
+    expect(viewer()).not.toBeNull()
+    expect(count()).toBe(`1 из ${n}`)
+    swipe(-80)
+    await nextTick()
+    expect(count()).toBe(`2 из ${n}`)
+    swipe(30) // короче порога — не жест
+    await nextTick()
+    expect(count()).toBe(`2 из ${n}`)
+    swipe(80)
+    await nextTick()
+    expect(count()).toBe(`1 из ${n}`)
+    // Автор — на самом фото (Р-28).
+    expect(viewer()!.textContent).toContain(`Фото: ${themePhotos('car')[0]!.photo.author}`)
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await nextTick()
+    expect(viewer()).toBeNull()
+    expect(button('Машина').getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('«Выбрать это» — пролистанное фото, дальше форма мечты', async () => {
+    await open()
+    button('Машина').click()
+    await nextTick()
+    swipe(-80)
+    await nextTick()
+    ;(document.querySelector('[data-viewer-pick]') as HTMLButtonElement).click()
+    await nextTick()
+    expect(viewer()).toBeNull()
+    expect(document.querySelector('input[placeholder="1 800 000"]'), 'форма').not.toBeNull()
+    expect(document.body.innerHTML).toContain(themePhotos('car')[1]!.photo.unsplashId)
+  })
+
+  it('«Путешествие» — направления чипами, просмотра нет', async () => {
+    await open()
+    button('Путешествие').click()
+    await nextTick()
+    expect(viewer()).toBeNull()
   })
 })

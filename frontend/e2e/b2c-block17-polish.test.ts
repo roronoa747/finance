@@ -239,6 +239,6 @@ describe('e2e / B2C Блок 17 — полировка на двух телеф�
     expect(page()).not.toContain('Пополнить')
     await router.push('/')
     await tick()
-    expect(page()).not.toContain('+ Новая')
+    expect(document.querySelector('[data-new-goal]')).toBeNull()
   })
 })

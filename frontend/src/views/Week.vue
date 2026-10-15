@@ -10,6 +10,7 @@ import DecisionCard from '@/components/kit/DecisionCard.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Toast from '@/components/kit/Toast.vue'
+import Tip from '@/components/kit/Tip.vue'
 import { useFlash } from '@/components/kit/useFlash'
 import UnknownBatch from '@/components/UnknownBatch.vue'
 import PlanSwitch from '@/components/plan/PlanSwitch.vue'
@@ -108,6 +109,12 @@ const letter = (r: MyWeekRow) => (r.categoryId === UNKNOWN_CATEGORY ? '?' : r.na
 /** Строка загрузки (Р-96): кто загрузил выписку за неделю — только ✓, цифр партнёра нет. */
 const uploadRows = computed(() => weekUploads(people.value, week.value, store.shownUploads))
 const mineIn = computed(() => uploadRows.value.some((r) => r.person.id === me.value && r.day !== null))
+/**
+ * Подсказка у суммы недели (бэклог «первый» Р-7; слова — владелец на `/ux`, Р-9) — когда есть разделы с тратами: пустую неделю
+ * ведёт брендовое «Загрузить» (FR-06 п. 2), и «Понятно» на ней не должно съесть подсказку про разделы. Viewer «Неделю»
+ * не видит (гард → «Месяц»).
+ */
+const TIP_WEEK = 'Нажмите на раздел, чтобы посмотреть, на что ушли деньги'
 
 /** Тренд 8 недель (Р-98) — свёрнут (правило 12). */
 const trend = computed(() => weekTrend(spendTotals.value, spendCategories.value, me.value, week.value))
@@ -388,43 +395,47 @@ onBeforeUnmount(() => {
     <!--
       Разделы списком: потрачено за неделю, полоса и остаток на месяц («из N» — в листе раздела). Вопросы разбора —
       «Разобрать» у строки «Не разобрано» (Р-116: действие у своего предмета); нет такой строки — своя строка «Вопросы».
+      Подсказка — над разделами (между суммой и ними): нажатие раздела или «Разобрать» её закрывает (приёмка, возврат);
+      своих трат нет — ждёт.
     -->
-    <Card v-if="mine.rows.length || queue.length" flush class="px-3.5 py-0.5" data-week-list>
-      <div v-if="queue.length && !hasUnknownRow" class="flex items-center gap-2.5 py-3" data-questions-row>
-        <span class="grid size-8 shrink-0 place-items-center rounded-[10px] bg-surface-2 text-[13px] font-bold text-ink-2" aria-hidden="true">?</span>
-        <span class="min-w-0 flex-1">
-          <span class="block truncate text-[15.5px] font-semibold text-ink">Вопросы</span>
-          <span class="block type-meta num">{{ queue.length }} {{ plural(queue.length, 'вопрос', 'вопроса', 'вопросов') }}</span>
-        </span>
-        <Button variant="soft" size="sm" data-bang @click="questionsOpen = true">Разобрать</Button>
-      </div>
-      <div
-        v-for="r in mine.rows"
-        :key="r.categoryId"
-        class="relative flex w-full flex-col gap-1.5 border-t border-line py-3 text-left first:border-t-0"
-        :data-row="r.categoryId"
-      >
-        <span class="flex items-center gap-2.5">
-          <span class="grid size-8 shrink-0 place-items-center rounded-[10px] text-[13px] font-bold text-on-photo" :style="{ background: r.color }" aria-hidden="true">{{ letter(r) }}</span>
+    <Tip v-if="mine.rows.length || queue.length" id="tab-week" :text="TIP_WEEK" above :wait="!mine.rows.length">
+      <Card flush class="px-3.5 py-0.5" data-week-list>
+        <div v-if="queue.length && !hasUnknownRow" class="flex items-center gap-2.5 py-3" data-questions-row>
+          <span class="grid size-8 shrink-0 place-items-center rounded-[10px] bg-surface-2 text-[13px] font-bold text-ink-2" aria-hidden="true">?</span>
           <span class="min-w-0 flex-1">
-            <button type="button" class="row-open block w-full truncate text-left text-[15.5px] font-semibold text-ink" @click="sectionFor = r.categoryId">{{ r.name }}</button>
-            <span v-if="r.categoryId === UNKNOWN_CATEGORY && queue.length" class="block type-meta num">{{ queue.length }} {{ plural(queue.length, 'вопрос', 'вопроса', 'вопросов') }}</span>
+            <span class="block truncate text-[15.5px] font-semibold text-ink">Вопросы</span>
+            <span class="block type-meta num">{{ queue.length }} {{ plural(queue.length, 'вопрос', 'вопроса', 'вопросов') }}</span>
           </span>
-          <Button v-if="r.categoryId === UNKNOWN_CATEGORY && queue.length" variant="soft" size="sm" class="relative z-10" data-bang @click="questionsOpen = true">Разобрать</Button>
-          <span class="font-num text-[16px] font-bold num text-ink" data-amount>{{ plain(r.amount) }}</span>
-        </span>
-        <template v-if="r.plan !== null && r.rest !== null">
-          <span class="ml-[42px] block h-1.5 overflow-hidden rounded-pill bg-track">
-            <i class="block h-full rounded-pill" :style="{ width: `${barShare(r)}%`, background: r.low ? 'var(--warn)' : r.color }" />
+          <Button variant="soft" size="sm" data-bang @click="questionsOpen = true">Разобрать</Button>
+        </div>
+        <div
+          v-for="r in mine.rows"
+          :key="r.categoryId"
+          class="relative flex w-full flex-col gap-1.5 border-t border-line py-3 text-left first:border-t-0"
+          :data-row="r.categoryId"
+        >
+          <span class="flex items-center gap-2.5">
+            <span class="grid size-8 shrink-0 place-items-center rounded-[10px] text-[13px] font-bold text-on-photo" :style="{ background: r.color }" aria-hidden="true">{{ letter(r) }}</span>
+            <span class="min-w-0 flex-1">
+              <button type="button" class="row-open block w-full truncate text-left text-[15.5px] font-semibold text-ink" @click="sectionFor = r.categoryId">{{ r.name }}</button>
+              <span v-if="r.categoryId === UNKNOWN_CATEGORY && queue.length" class="block type-meta num">{{ queue.length }} {{ plural(queue.length, 'вопрос', 'вопроса', 'вопросов') }}</span>
+            </span>
+            <Button v-if="r.categoryId === UNKNOWN_CATEGORY && queue.length" variant="soft" size="sm" class="relative z-10" data-bang @click="questionsOpen = true">Разобрать</Button>
+            <span class="font-num text-[16px] font-bold num text-ink" data-amount>{{ plain(r.amount) }}</span>
           </span>
-          <span class="ml-[42px] text-[12.5px] text-ink-2 num" data-rest>
-            <template v-if="r.rest >= 0">осталось <b class="font-semibold" :class="r.low ? 'text-warn' : 'text-ink-2'">{{ plain(r.rest) }}</b></template>
-            <template v-else>сверх плана <b class="font-semibold text-warn">{{ plain(-r.rest) }}</b></template>
-          </span>
-        </template>
-        <span v-else-if="hasPlan && r.categoryId !== UNKNOWN_CATEGORY" class="ml-[42px] text-[12.5px] text-ink-2" data-rest>вне плана</span>
-      </div>
-    </Card>
+          <template v-if="r.plan !== null && r.rest !== null">
+            <span class="ml-[42px] block h-1.5 overflow-hidden rounded-pill bg-track">
+              <i class="block h-full rounded-pill" :style="{ width: `${barShare(r)}%`, background: r.low ? 'var(--warn)' : r.color }" />
+            </span>
+            <span class="ml-[42px] text-[12.5px] text-ink-2 num" data-rest>
+              <template v-if="r.rest >= 0">осталось <b class="font-semibold" :class="r.low ? 'text-warn' : 'text-ink-2'">{{ plain(r.rest) }}</b></template>
+              <template v-else>сверх плана <b class="font-semibold text-warn">{{ plain(-r.rest) }}</b></template>
+            </span>
+          </template>
+          <span v-else-if="hasPlan && r.categoryId !== UNKNOWN_CATEGORY" class="ml-[42px] text-[12.5px] text-ink-2" data-rest>вне плана</span>
+        </div>
+      </Card>
+    </Tip>
 
     <!-- Тренд 8 недель — свёрнут -->
     <div v-if="trendMax > 0" data-week-trend>

@@ -216,7 +216,7 @@ describe('e2e / B2C Блок 3 — часть 1: главный «Мечты» (
     expect(htmlV).toContain(`7${NBSP}%`)
     expect(await restHint(V)).toContain(`Свободно по выпискам — ${money(483_000)}`)
     expect(htmlV).not.toContain('Пришла зарплата')
-    expect(htmlV).not.toContain('+ Новая')
+    expect(htmlV).not.toContain('data-new-goal')
   })
 })
 

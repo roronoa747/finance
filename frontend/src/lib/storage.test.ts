@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MONTH_END_KEY, PLAN_VIEW_KEY, readMonthEnd, readPlanView, writeMonthEnd, writePlanView } from './storage'
+import { MONTH_END_KEY, PLAN_VIEW_KEY, TIPS_SEEN_KEY, markTipSeen, readMonthEnd, readPlanView, readTipsSeen, writeMonthEnd, writePlanView } from './storage'
+import { createPinia, setActivePinia } from 'pinia'
+import { useAuthStore } from '@/stores/auth'
+import { authAs } from '@/test/planFamily'
 
 // Ответ «остались деньги?» (Р-19): «Мечты» и «Неделя» пишут и читают одним форматом (критик Блока 3).
 describe('readMonthEnd / writeMonthEnd', () => {
@@ -75,5 +78,48 @@ describe('readPlanView / writePlanView', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     expect(readPlanView()).toBe('week')
     expect(() => writePlanView('month')).not.toThrow()
+  })
+})
+
+// Подсказки у предмета (бэклог «первый» FR-05): «видел» — список id на устройстве; выход его стирает.
+describe('readTipsSeen / markTipSeen', () => {
+  afterEach(() => vi.unstubAllGlobals())
+  const stub = () => {
+    const map = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => void map.set(k, String(v)),
+      removeItem: (k: string) => void map.delete(k),
+    })
+    return map
+  }
+
+  it('пусто → отметка → «видел»; повтор не дублирует', () => {
+    const map = stub()
+    expect(readTipsSeen()).toEqual([])
+    markTipSeen('tab-dreams')
+    markTipSeen('tab-month')
+    markTipSeen('tab-dreams')
+    expect(readTipsSeen()).toEqual(['tab-dreams', 'tab-month'])
+    expect(JSON.parse(map.get(TIPS_SEEN_KEY)!)).toEqual(['tab-dreams', 'tab-month'])
+  })
+
+  it('мусор в ключе — пустой список (не массив, не JSON, не строки в массиве — мимо)', () => {
+    const map = stub()
+    for (const raw of ['{"a":1}', '42', 'не json', '"tab-dreams"']) {
+      map.set(TIPS_SEEN_KEY, raw)
+      expect(readTipsSeen(), raw).toEqual([])
+    }
+    map.set(TIPS_SEEN_KEY, '["tab-week", 7, null]')
+    expect(readTipsSeen()).toEqual(['tab-week'])
+  })
+
+  it('ключ — в LOCAL_KEYS: выход стирает «видел»', () => {
+    const map = stub()
+    setActivePinia(createPinia())
+    useAuthStore().setAuthData(authAs('member', 'a'))
+    markTipSeen('tab-dreams')
+    useAuthStore().logout('discard')
+    expect(map.has(TIPS_SEEN_KEY)).toBe(false)
   })
 })

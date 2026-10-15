@@ -5,11 +5,11 @@ import Button from '@/components/ui/Button.vue'
 import CountUp from './CountUp.vue'
 
 /**
- * Мечта по центру (пивот 3, Р-42; макет dreams-week.html «А · Строки»): фото квадратом 236 со
- * скруглением 32, под ним процент 40 (`--font-num`, бежит — `CountUp`) и «<название> · <месяц год>».
- * Нажатие на фото, процент или подпись — `open` (экран цели). Слот `actions` — под подписью
- * («Добавить фото»). `empty` — «На что копим?» с одной брендовой «Выбрать мечту» (у viewer без кнопки).
- * Процент и месяц считает `finance.ts` — здесь только вывод.
+ * Мечта по центру (пивот 3, Р-42): фото квадратом 236 со скруглением 32, под ним одна строка «<название> · N %»
+ * средним размером (владелец, 2026-10-15, FR-09: процент не крупной цифрой, серой строки «ближе на N дней» / «на паузе» нет —
+ * срок, пауза и траты поездки живут на экране цели). Процент бежит (`CountUp`). Нажатие на фото или строку — `open`
+ * (экран цели). Слот `actions` — под строкой («Добавить фото»). `empty` — «На что копим?» с одной брендовой «Выбрать
+ * мечту» (у viewer без кнопки). Процент считает `finance.ts` — здесь только вывод.
  */
 const props = withDefaults(
   defineProps<{
@@ -17,24 +17,17 @@ const props = withDefaults(
     percent?: number
     src?: string | null
     author?: string | null
-    /** «май 2027» — месяц, когда мечта будет вашей; нет срока — только название. */
-    month?: string | null
-    /** «ближе на 12 дней» (PN-09, Р-15) — взносы месяца приблизили мечту; показывается, когда нет `month`. */
-    closer?: string | null
     empty?: boolean
     canPick?: boolean
   }>(),
-  { title: '', percent: 0, src: null, author: null, month: null, closer: null, empty: false, canPick: true },
+  { title: '', percent: 0, src: null, author: null, empty: false, canPick: true },
 )
 
 const emit = defineEmits<{ (e: 'open'): void; (e: 'pick'): void }>()
 
 const pct = computed(() => Math.max(0, Math.min(100, Math.round(props.percent))))
-// «·» держится за название, месяц с годом — одним куском (смоук владельца Блока 3, п. 4).
+// «·» и процент держатся за название — одним куском.
 const NBSP = ' '
-// Месяц или «ближе на N дней» — одним куском после «·».
-const tail = computed(() => props.month ?? props.closer)
-const line = computed(() => (tail.value ? `${props.title}${NBSP}· ${tail.value.replace(/ /g, NBSP)}` : props.title))
 const percentText = (n: number) => `${n}${NBSP}%`
 </script>
 
@@ -60,8 +53,9 @@ const percentText = (n: number) => `${n}${NBSP}%`
         <!-- Автор — на самом фото, как в герое (Р-28: требование Unsplash). -->
         <span v-if="author" class="absolute right-3 top-2 text-[11px]" :class="src ? 'text-on-photo opacity-75' : 'text-ink-2'">Фото: {{ author }}</span>
       </span>
-      <span class="type-percent num leading-none text-ink"><CountUp :value="pct" :format="percentText" /></span>
-      <span class="text-[15px] text-ink-2" :data-hero-closer="!month && closer ? '' : undefined">{{ line }}</span>
+      <span class="max-w-[300px] text-balance text-[20px] font-semibold leading-snug text-ink" data-hero-line>
+        {{ title }}{{ NBSP }}·{{ NBSP }}<span class="font-num font-bold num"><CountUp :value="pct" :format="percentText" /></span>
+      </span>
     </button>
     <div v-if="$slots.actions" class="flex flex-wrap justify-center gap-2">
       <slot name="actions" />

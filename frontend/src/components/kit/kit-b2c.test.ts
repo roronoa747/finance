@@ -84,17 +84,15 @@ describe('DreamHero', () => {
 })
 
 describe('DreamCenter / ThumbRow (пивот 3, Р-42)', () => {
-  it('мечта по центру: фото 236 со скруглением 32, процент type-percent (34, Р-116; конечный в SSR), «название · месяц год» одним куском', async () => {
-    const html = await render(DreamCenter, { title: 'Япония', percent: 62, src: 'blob:p', month: 'май 2027', author: 'Matthew Skinner' })
+  it('мечта по центру: фото 236 со скруглением 32, под ним одна строка «название · N %» средним размером (FR-09), без крупной цифры', async () => {
+    const html = await render(DreamCenter, { title: 'Япония', percent: 62, src: 'blob:p', author: 'Matthew Skinner' })
     expect(html).toContain('size-[236px]')
     expect(html).toContain('rounded-[32px]')
-    expect(html).toContain('type-percent')
-    expect(html).not.toContain('text-[40px]')
-    expect(html).toContain(pctText(62))
-    expect(html).toContain(`Япония${NBSP}· май${NBSP}2027`)
+    expect(html).not.toContain('type-percent')
+    expect(html).toContain('text-[20px]')
+    expect(html.replace(/<[^>]*>/g, '')).toContain(`Япония${NBSP}·${NBSP}${pctText(62)}`)
     expect(html).toContain('Фото: Matthew Skinner')
     expect(html).not.toContain('Выбрать мечту')
-    expect(await render(DreamCenter, { title: 'Машина', percent: 18 })).not.toContain('·')
     expect(await render(DreamCenter, { title: 'Х', percent: 140 })).toContain(pctText(100))
     noLiterals(html)
   })
@@ -109,6 +107,8 @@ describe('DreamCenter / ThumbRow (пивот 3, Р-42)', () => {
 
   it('строка: мини-фото 48 со скруглением 14, без фото — плашка оттенка; кнопкой — только `clickable`', async () => {
     const goal = await render(ThumbRow, { title: 'Машина', tone: 'var(--s3)', clickable: true, index: 2 })
+    // Тонкая рамка поверх края мини-фото (FR-09): светлое фото не сливается с белой карточкой.
+    expect(goal).toContain('outline-line-strong')
     expect(goal).toContain('<button')
     expect(goal).toContain('size-12')
     expect(goal).toContain('rounded-[14px]')

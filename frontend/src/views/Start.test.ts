@@ -129,14 +129,15 @@ describe('views/Start.vue — первый запуск (B2C-19, FR-01, SSR)', (
     expect(brandButtons(partner)).toEqual(['Готово'])
   })
 
-  it('FR-01: старые адреса — `/start/upload` → зарплата, `/start/month` → партнёр; чужой шаг → первый (вступление)', async () => {
+  it('FR-01: старые адреса — `/start/upload` → зарплата, `/start/month` → партнёр; чужой шаг → первый непройденный (FR-08)', async () => {
     family('member', 'a', { ...defaultSyncDoc(), people: [{ id: 'a', name: 'Ильяс', salary: 600_000, payday: 10, updatedAt: T0 }] })
     expect(await renderScreen(Start, '/start/upload')).toContain('>Зарплата</h1>')
     const month = await renderScreen(Start, '/start/month')
     expect(month).toContain('Пригласите партнёра')
     expect(month).toContain('3 из 3')
     expect(month).not.toContain('Ваш июль')
-    expect(await renderScreen(Start, '/start/nope')).toContain('data-intro-page')
+    // Своя зарплата уже есть — дальше партнёр, а не вступление заново.
+    expect(await renderScreen(Start, '/start/nope')).toContain('Пригласите партнёра')
 
     setActivePinia(createPinia())
     family('member', 'b', { ...planFamilyDoc(), people: [planFamilyDoc().people[0]] })
@@ -146,6 +147,31 @@ describe('views/Start.vue — первый запуск (B2C-19, FR-01, SSR)', (
       expect(html).toContain('data-intro-page')
       expect(html).not.toContain('На что копим?')
     }
+  })
+
+  it('FR-08: `/start` без шага — первый непройденный: ничего нет → вступление; цель есть → зарплата; своя зарплата → партнёр; партнёр семьи, где первый участник не закончил, — свой путь без мечты', async () => {
+    const store = family()
+    expect(await renderScreen(Start, '/start')).toContain('data-intro-page')
+    store.addGoal({ name: 'Машина', need: 3_000_000, monthly: 0, hue: 'blue' })
+    const salary = await renderScreen(Start, '/start')
+    expect(salary).toContain('>Зарплата</h1>')
+    expect(salary).toContain('2 из 3')
+    store.setPerson('a', { name: 'Ильяс', salary: 450_000, payday: 12 })
+    expect(await renderScreen(Start, '/start')).toContain('Пригласите партнёра')
+
+    // Код выдан, первый участник закрыл приложение до «Готово» (`setupDoneAt` нет): партнёр — не новая семья.
+    setActivePinia(createPinia())
+    family('member', 'b', { ...defaultSyncDoc(), people: [{ id: 'a', name: 'Ильяс', salary: 450_000, payday: 12, updatedAt: T0 }], goals: store.householdDoc.goals })
+    expect(await renderScreen(Start, '/start')).toContain('data-intro-page')
+    for (const path of ['/start/dream', '/start/invite']) expect(await renderScreen(Start, path)).not.toContain('На что копим?')
+    expect(await renderScreen(Start, '/start/salary')).toContain('Готово')
+  })
+
+  it('FR-08: партнёр закончил раньше первого участника — семья отмечена настроенной им', async () => {
+    const store = family('member', 'b', { ...defaultSyncDoc(), people: [{ id: 'a', name: 'Ильяс', salary: 450_000, payday: 12, updatedAt: T0 }] })
+    await renderScreen(Start, '/start/salary', undefined, [act('saveSalary', { manualSalary: '300 000', manualPayday: '20' })])
+    expect(store.people.find((p) => p.id === 'b')).toMatchObject({ salary: 300_000, onboardedAt: expect.any(String) })
+    expect(store.setupDone).toBe(true)
   })
 
   it('зарплата руками: оклад и день — участнику с именем регистрации; итогов выписки нет', async () => {

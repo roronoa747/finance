@@ -1,17 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
-import { PhCamera, PhCaretRight, PhCheck } from '@phosphor-icons/vue'
+import { PhCamera, PhCaretRight, PhCheck, PhPlus } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
-import { money, pct, plain } from '@/lib/money'
-import { monthKey, monthShort, todayIso } from '@/lib/dates'
-import { closerThisMonth, doneGoals, doneTerm, goalTerm, planForecast, tripSpent, tripStatus, wishQueue } from '@/lib/finance'
+import { money, pct } from '@/lib/money'
+import { monthKey, monthShort } from '@/lib/dates'
+import { doneGoals, doneTerm, goalTerm, planForecast, wishQueue } from '@/lib/finance'
 import type { Goal } from '@/types/finance'
 import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
-import { plural } from '@/lib/utils'
 import { GOAL_TEMPLATES, type GoalTemplate } from '@/lib/goalTemplates'
 import { attachFile, attachTemplate, retryTemplatePhotos } from '@/lib/photos/goalPhoto'
 import { usePhoto, usePhotos } from '@/lib/photos/usePhoto'
@@ -24,6 +23,7 @@ import DreamCenter from '@/components/kit/DreamCenter.vue'
 import ProgressBar from '@/components/kit/ProgressBar.vue'
 import SortableList from '@/components/kit/SortableList.vue'
 import ThumbRow from '@/components/kit/ThumbRow.vue'
+import Tip from '@/components/kit/Tip.vue'
 import { useHistoryFlag } from '@/components/useHistoryFlag'
 
 /**
@@ -42,6 +42,8 @@ const ops = useOperationsStore()
 const NBSP = ' '
 const key = computed(() => monthKey())
 const canEdit = computed(() => !authStore.isViewer)
+/** Подсказка у главной мечты (бэклог «первый» Р-7; слова — владелец на `/ux`, Р-9: «Нажмите на…, чтобы…»); viewer — без призыва. */
+const tipText = computed(() => (canEdit.value ? 'Нажмите на мечту, чтобы посмотреть подробнее' : 'Главная мечта семьи'))
 const people = computed(() => financeStore.people.filter((p) => !p.deletedAt))
 
 /* ---------- мечта по центру и цели ---------- */
@@ -71,23 +73,6 @@ function whenOf(g: Goal): string {
 }
 
 const heroPercent = computed(() => (main.value ? pct(main.value.have, main.value.need) : 0))
-// Под героем — название; месяц, когда мечта будет вашей, — на экране цели (Р-116). На паузе — так и сказано.
-const heroMonth = computed(() => (main.value && termOf(main.value).off ? 'на паузе' : null))
-// «Ближе на N дней» (PN-09, Р-15): взносы этого месяца при темпе цели — строка под процентом; на паузе — нет. Viewer видит то же.
-const heroCloser = computed(() => {
-  const g = main.value
-  // Накоплено целиком (ворота PN-12): ближе некуда — под героем только имя, мечта ждёт «Сбылось».
-  if (!g || termOf(g).off) return null
-  // В поездке (PN-31) — «потрачено N из M» вместо «ближе»: одна строка, итог семьи.
-  if (tripStatus(g, todayIso()) === 'during') {
-    const t = tripSpent(g, financeStore.householdDoc.tripSpends, financeStore.people)
-    return `потрачено ${plain(t.total)} из ${money(t.budget)}`
-  }
-  if (termOf(g).remaining <= 0) return null
-  const days = closerThisMonth(g, key.value)
-  return days && days > 0 ? `ближе на ${days} ${plural(days, 'день', 'дня', 'дней')}` : null
-})
-
 /* ---------- фото (B2C-17) ---------- */
 const heroSrc = usePhoto(() => main.value?.photoId)
 const goalSrc = usePhotos(() => others.value.map((g) => g.photoId))
@@ -142,21 +127,20 @@ onMounted(refresh)
 
 <template>
   <div class="flex flex-col gap-3 pt-1 text-left">
-    <!-- Мечта по центру -->
-    <DreamCenter
-      v-if="main"
-      :title="main.name"
-      :percent="heroPercent"
-      :month="heroMonth"
-      :closer="heroCloser"
-      :src="heroSrc"
-      :author="main.photoCredit?.author"
-      @open="router.push(`/goals/${main.id}`)"
-    >
-      <template v-if="canEdit && !main.photoId" #actions>
-        <Chip quiet @click="pickerOpen = true"><PhCamera /> Добавить фото</Chip>
-      </template>
-    </DreamCenter>
+    <!-- Мечта по центру; подсказка — под ней (пустой экран «Новая мечта» — сам первый шаг, без подсказки) -->
+    <Tip v-if="main" id="tab-dreams" :text="tipText">
+      <DreamCenter
+        :title="main.name"
+        :percent="heroPercent"
+        :src="heroSrc"
+        :author="main.photoCredit?.author"
+        @open="router.push(`/goals/${main.id}`)"
+      >
+        <template v-if="canEdit && !main.photoId" #actions>
+          <Chip quiet @click="pickerOpen = true"><PhCamera /> Добавить фото</Chip>
+        </template>
+      </DreamCenter>
+    </Tip>
     <DreamCenter v-else empty :can-pick="canEdit" @pick="router.push('/goals/new')" />
     <Callout v-if="photoNote" tone="neutral" icon="info">{{ photoNote }}</Callout>
 
@@ -173,9 +157,12 @@ onMounted(refresh)
 
     <!-- Цели: остальные мечты строками -->
     <template v-if="main">
-      <div class="flex items-baseline justify-between px-1 pt-1.5">
+      <div class="flex items-center justify-between px-1 pt-1.5">
         <h2 class="text-[20px] font-bold tracking-[-0.01em] text-ink">Цели</h2>
-        <RouterLink v-if="canEdit" to="/goals/new" class="text-[14px] font-semibold text-brand">+ Новая</RouterLink>
+        <!-- Новая цель — круглым «+» у заголовка, без слова (владелец, 2026-10-15, FR-09). -->
+        <RouterLink v-if="canEdit" to="/goals/new" class="press grid size-8 place-items-center rounded-full bg-brand-soft text-brand" aria-label="Новая цель" data-new-goal>
+          <PhPlus :size="16" weight="bold" />
+        </RouterLink>
       </div>
       <Card v-if="others.length" flush class="px-3.5 py-1">
         <SortableList :ids="otherIds" :label="nameOf" :disabled="!canEdit" @move="moveOther">
@@ -245,10 +232,15 @@ onMounted(refresh)
       </template>
     </Card>
 
-    <!-- Желания: первые три, «Все N» — путь к списку есть всегда -->
-    <div class="flex items-baseline justify-between px-1 pt-1.5">
-      <h2 class="text-[20px] font-bold tracking-[-0.01em] text-ink">Желания</h2>
-      <RouterLink to="/wishes" class="text-[14px] font-semibold text-brand">{{ openWishes.length ? `Все ${openWishes.length}` : 'Все' }}</RouterLink>
+    <!-- Желания: первые три, «›» — путь к списку есть всегда -->
+    <div class="flex items-center justify-between px-1 pt-1.5">
+      <!-- Сколько желаний — серой «таблеткой» у заголовка; ко всему списку — круглым «›», как «+» у «Целей» (FR-09). -->
+      <h2 class="flex items-center gap-2 text-[20px] font-bold tracking-[-0.01em] text-ink">
+        Желания<span v-if="openWishes.length" class="rounded-pill bg-surface-3 px-2 py-px text-[13px] font-semibold tracking-normal text-ink-2 num" data-wish-count>{{ openWishes.length }}</span>
+      </h2>
+      <RouterLink to="/wishes" class="press grid size-8 place-items-center rounded-full bg-surface-3 text-ink-2" aria-label="Все желания" data-all-wishes>
+        <PhCaretRight :size="16" weight="bold" />
+      </RouterLink>
     </div>
     <Card v-if="firstWishes.length" flush class="px-3.5 py-1">
       <!-- Желание — нажатием на всю строку (без «Открыть»), цена — справа, чьё — подписью (Б17). -->
