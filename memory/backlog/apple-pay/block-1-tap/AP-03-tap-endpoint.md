@@ -34,8 +34,18 @@
 4. Репозиторий (в `statement_repo.go` или `phonekey_repo.go` — по месту): `InsertPhoneOperation(ctx, userID,
    householdID, op)`, `FindRecentPhoneOperation(ctx, userID, source, currency, amountOrMinor, since time.Time)`,
    `CountPhoneOperationsSince(ctx, userID, since)` — по индексу AP-01.
-5. Хендлер `POST /api/applepay/tap` (вне JWT-группы, мидлварь ключа AP-02), тело `{merchant, amount, card, name?}`
-   ≤ 4 КБ, лишние поля игнорируются (без `DisallowUnknownFields`), `now` инжектируется:
+5. Хендлер `POST /api/wallet/tap` (вне JWT-группы, мидлварь ключа AP-02), тело `{merchant?, amount?, card?, name?,
+   at?, raw?}` — все строки необязательны (Р-13а: **команда владельца уже шлёт всю транзакцию текстом в одном поле
+   `merchant`**, формат текста неизвестен) ≤ 4 КБ, лишние поля игнорируются (без `DisallowUnknownFields`), `now`
+   инжектируется:
+   - `amount` пуст → денежный токен ищется в `merchant`, `raw`, `name` (`applepay.FindAmount(text) (currency, minor,
+     rest, ok)` — первый токен «число + символ/код валюты» или «символ/код + число»; `rest` — текст без токена); продавец
+     — `rest` без названия карты, если оно узнаётся (`BankOfCard`), затем `CleanMerchant`; банк — по `card`, иначе по
+     тексту;
+   - сумма так и не разобрана и ключ принадлежит пользователю из `ADMIN_EMAILS` → тело (≤ 2 КБ, обрезка) пишется в
+     `app.wallet_debug` (перезапись; строки старше 24 ч удаляются при каждой записи) и показывается в `/admin` одной
+     строкой «Последнее нераспознанное касание» с временем (только своё — админ видит своё); у всех остальных тело не
+     хранится нигде;
    - сумма не разобрана → 200 `{"status":"skipped","reason":"amount"|"currency"}`;
    - за сутки (Алматы) ≥ 200 операций с телефона → 429 `{"error":"limit"}`;
    - та же валюта и сумма с `source = 'tap'` за последние 2 мин → 200 `{"status":"duplicate"}`;
@@ -45,6 +55,10 @@
 
 ## Тесты
 
+- Р-13а: тело `{"merchant": "<вся транзакция текстом>"}` — `FindAmount` вынимает сумму из вариантов «MAGNUM 5 000 ₸
+  Kaspi Gold», «5 000 ₸ · MAGNUM», «Kaspi Gold\nMAGNUM\n5 000,00 ₸» → saved, продавец «MAGNUM»; текст без суммы →
+  skipped; у админа тело в `wallet_debug` (перезапись, ≤ 2 КБ), у не-админа — таблица пуста; запись старше 24 ч
+  удаляется.
 - `ParseAmount` таблицей (≥ 25 строк): «1 234,50 ₸», «₸1 234», «1 234 ₸» с NBSP и U+202F, «KZT 5 000», «5000 тг»,
   «$6.22», «US$6.22» (→ USD), «€5,00», «5,00 EUR», «₽1 200», «¥88», «1,234.56 $», «1.234,56 €», «£3», «6.22» (без
   валюты), «-$5», «$0.00», «», «abc», «₸ 12 345 678,9» (одна цифра дроби).
@@ -58,7 +72,7 @@
 ## Критерии приёмки
 
 - `go build ./... && go vet ./... && go test ./...` + PG — зелёные.
-- Стенд: `curl -X POST localhost:8141/api/applepay/tap -H "Authorization: Bearer <ключ стенда>" -H
+- Стенд: `curl -X POST localhost:8141/api/wallet/tap -H "Authorization: Bearer <ключ стенда>" -H
   "Content-Type: application/json" -d '{"merchant":"Magnum","amount":"1 234,50 ₸","card":"Kaspi Gold"}'` → saved; тот же
   через минуту → duplicate; `GET /api/operations` с JWT того же человека — операция с `source: "tap"`, `amount: -1234`.
 

@@ -8,7 +8,7 @@
   внутренние; входящие — приход), Р-9 (касание и пуш одной покупки — равная сумма, ≤ 10 мин → одна; тот же источник ≤ 2
   мин → одна), Р-10 (незнакомое не записывается, счётчик в админке), Р-21 (склейка: продавец касания, если не пуст и не
   «Apple Pay», иначе из пуша; банк и вид — из пуша), Р-23 (счётчик — таблица миграции `000009`).
-- Из Блока 1: мидлварь ключа, `POST /api/applepay/tap` (образец хендлера), поиск недавней операции с телефона и лимит
+- Из Блока 1: мидлварь ключа, `POST /api/wallet/tap` (образец хендлера), поиск недавней операции с телефона и лимит
   200/сутки, колонки `source` / `occurred_at` / `fx_*` (AP-01). `pairInternalTransfers` фронта не трогает операции с
   `counterparty`; пары пушей помечает сервер (`internal = true` у обеих), телефон их уважает (`categorize` без правила
   `internal` не снимает).
@@ -22,7 +22,7 @@
 1. Миграция `000009_push.sql`: `app.push_stats (day DATE, bank TEXT, parsed INT NOT NULL DEFAULT 0, ignored INT NOT
    NULL DEFAULT 0, unknown INT NOT NULL DEFAULT 0, PRIMARY KEY (day, bank))` — без пользователя и текста (Р-11); `bank`
    не узнан — `unknown`.
-2. `POST /api/applepay/push` (мидлварь ключа), тело `{app?, title, body}` ≤ 4 КБ: `ParsePush` → счётчик дня (+1 в свою
+2. `POST /api/wallet/push` (мидлварь ключа), тело `{app?, title, body}` ≤ 4 КБ: `ParsePush` → счётчик дня (+1 в свою
    колонку) → `ignore` / `unknown` → 200 `{"status":"skipped","reason":"format"}`; `op` →
    - лимит 200/сутки (общий с касанием) → 429;
    - тот же источник `push`, та же сумма и валюта, ≤ 2 мин → `duplicate`;
@@ -37,7 +37,7 @@
 3. Метрики админа: `push_stats` за 7 и 30 дней по банкам (разобрано / пропущено / не разобрано) — поле в ответе
    `/api/admin/metrics`.
 4. Env `APPLEPAY_PUSH_SHORTCUT_URL` (Р-17; та же проверка префикса iCloud) → поле `push_shortcut_url` в `GET
-   /api/applepay`. `backend/README.md` — строка env и абзац о ручке пуша.
+   /api/wallet`. `backend/README.md` — строка env и абзац о ручке пуша.
 
 ## Тесты
 

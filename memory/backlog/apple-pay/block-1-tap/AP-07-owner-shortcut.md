@@ -8,7 +8,7 @@
   инструкции; ссылки становятся env бэкенда (Р-17: `APPLEPAY_SHORTCUT_URL` — iOS 27, `APPLEPAY_SHORTCUT_URL_LEGACY` —
   iOS 17–26). Р-18: ключ — «вопросом при импорте». Р-3: на iOS 27 триггер — внутри команды (у получателя команда
   приходит выключенной, включается тумблером); на iOS 17–26 — команда без триггера + автоматизация руками.
-- Контракт ручки — §6 индекса и AP-03: `POST https://family-finance-ff.vercel.app/api/applepay/tap`, заголовки
+- Контракт ручки — §6 индекса и AP-03: `POST https://family-finance-ff.vercel.app/api/wallet/tap`, заголовки
   `Authorization: Bearer <ключ>` и `Content-Type: application/json`, тело `{"merchant": …, "amount": …, "card": …,
   "name": …}` — строки из триггера «Транзакция». Прод-домен — `family-finance-ff.vercel.app` (не `family-finance`).
 - Память владельца: инструкции — полной фразой «Нажмите на…, чтобы…», коротко, без механики там, где можно; владелец

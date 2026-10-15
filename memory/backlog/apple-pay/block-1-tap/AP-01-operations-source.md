@@ -26,9 +26,12 @@
      ('USD','EUR','RUB','CNY'))`, `fx_amount BIGINT NULL CHECK (fx_amount > 0)` (минорные единицы), `deleted_at
      TIMESTAMPTZ NULL`; CHECK «`fx_currency` и `fx_amount` оба заданы или оба пусты».
    - Индекс для дублей и лимита ручек телефона: `(user_id, occurred_at) WHERE source <> 'statement'`.
-   - `CREATE TABLE app.phone_keys (user_id UUID PRIMARY KEY REFERENCES app.users(id) ON DELETE CASCADE, key_hash BYTEA
-     NOT NULL UNIQUE, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), last_used_at TIMESTAMPTZ NULL)` (Р-13; используют
-     AP-02, AP-03).
+   - `CREATE TABLE app.phone_keys (key_hash BYTEA PRIMARY KEY, user_id UUID NOT NULL REFERENCES app.users(id) ON DELETE
+     CASCADE, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), last_used_at TIMESTAMPTZ NULL)` + индекс `(user_id)` (Р-13 —
+     свой ключ на каждый телефон, ≤ 5 на человека; используют AP-02, AP-03).
+   - `CREATE TABLE app.wallet_debug (user_id UUID PRIMARY KEY REFERENCES app.users(id) ON DELETE CASCADE, body TEXT NOT
+     NULL CHECK (length(body) <= 2048), at TIMESTAMPTZ NOT NULL DEFAULT now())` — диагностика формата только для админов
+     (Р-13а; пишет AP-03).
    - Откат — одной строкой в Handoff (`DROP TABLE app.phone_keys; ALTER TABLE app.operations DROP COLUMN …` + строка
      `schema_migrations`, как откат 000007 у ИИ).
 2. Модель и провод: `models.Operation` + `Source string json:"source"`, `OccurredAt *time.Time json:"occurred_at,
