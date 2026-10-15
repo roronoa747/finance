@@ -15,6 +15,7 @@ import type { PdfRow } from '@/lib/statements/pdf'
 import { plain } from '@/lib/money'
 import type { Operation } from '@/lib/statements/types'
 import type { SyncDoc } from '@/types/finance'
+import { isDark } from '@/lib/theme'
 import Start from './Start.vue'
 
 // Чтение PDF — в браузере (pdf.js); здесь — готовый разбор фикстуры Kaspi (FR-01: «Есть PDF из банка» → вопросы).
@@ -213,7 +214,7 @@ const stepper = () => document.querySelector('.type-meta')?.textContent?.replace
 
 describe('FR-01: мечта → зарплата → партнёр; выписка — опцией у зарплаты (DOM, роутер)', () => {
   it('без выписки: «Пока без мечты» → зарплата («2 из 3») → «Дальше» — партнёр без вопросов → «Позже» — главный, семья настроена', async () => {
-    const { finance, router } = await mountStart('/start')
+    const { finance, router } = await mountStart('/start/dream')
     expect(page()).toContain('На что копим?')
     expect(stepper()).toBe('1 из 3')
     await click(button('Пока без мечты'))
@@ -263,8 +264,8 @@ describe('FR-01: мечта → зарплата → партнёр; выпис�
     expect(router.currentRoute.value.path).toBe('/start/invite')
   })
 
-  it('партнёр по коду: `/start` — сразу зарплата («1 из 1»), «Готово» — главный: свой оклад и onboardedAt, finishSetup не зовётся', async () => {
-    const { finance, router } = await mountStart('/start', 'b')
+  it('партнёр по коду: после вступления — сразу зарплата («1 из 1»), «Готово» — главный: свой оклад и onboardedAt, finishSetup не зовётся', async () => {
+    const { finance, router } = await mountStart('/start/salary', 'b')
     const finishSetup = vi.spyOn(finance, 'finishSetup')
     expect(page()).not.toContain('На что копим?')
     expect(stepper()).toBe('1 из 1')
@@ -275,5 +276,78 @@ describe('FR-01: мечта → зарплата → партнёр; выпис�
     expect(finance.people.find((p) => p.id === 'b')).toMatchObject({ salary: 300_000, onboardedAt: '2026-09-24T07:00:00.000Z' })
     expect(finishSetup).not.toHaveBeenCalled()
     expect(finance.householdDoc.setupDoneAt).toBe('2026-09-01T00:00:00.000Z')
+  })
+})
+
+/* ------------------ FR-02: вступление — три образа ------------------ */
+
+describe('FR-02: вступление — три экрана-образа перед первым шагом (DOM, роутер)', () => {
+  afterEach(() => {
+    isDark.value = false
+  })
+  const current = () => [...document.querySelectorAll<HTMLElement>('[data-intro-page]')].find((s) => s.getAttribute('aria-hidden') === 'false')!
+
+  it('новая семья: `/start` — вступление без «n из k», точки и «Пропустить»; «Дальше» × 3 → мечта, назад к вступлению не ведёт', async () => {
+    const { router } = await mountStart('/start')
+    expect(document.querySelectorAll('[data-intro-page]')).toHaveLength(3)
+    expect(document.querySelector('[data-intro-dots]')).not.toBeNull()
+    expect(page()).not.toMatch(/\d из \d/)
+    expect(button('Пропустить')).toBeTruthy()
+    expect(current().querySelector('h1')!.textContent).toBe('Мечта')
+    // Картинка в теме экрана: светлая — `-light.webp`; первая грузится сразу, остальные — лениво.
+    const imgs = [...document.querySelectorAll('[data-intro-page] img')]
+    expect(imgs.map((i) => i.getAttribute('src'))).toEqual(['/landing/dream-light.webp', '/landing/free-light.webp', '/landing/leaks-light.webp'])
+    expect(imgs.map((i) => i.getAttribute('loading'))).toEqual([null, 'lazy', 'lazy'])
+    await click(button('Дальше'))
+    expect(current().querySelector('h1')!.textContent).toBe('Свободно')
+    await click(button('Дальше'))
+    expect(current().querySelector('h1')!.textContent).toBe('Утечки')
+    await click(button('Дальше'))
+    await settle()
+    expect(router.currentRoute.value.path).toBe('/start/dream')
+    expect(page()).toContain('На что копим?')
+    expect(stepper()).toBe('1 из 3')
+    // `replace`: в истории вступления нет — «назад» к нему не возвращает.
+    router.back()
+    await settle()
+    expect(router.currentRoute.value.path).not.toBe('/start')
+  })
+
+  it('«Пропустить» — сразу мечта; партнёр по коду: вступление → зарплата; тёмная тема — `-dark.webp`', async () => {
+    const { router } = await mountStart('/start')
+    await click(button('Пропустить'))
+    await settle()
+    expect(router.currentRoute.value.path).toBe('/start/dream')
+    app?.unmount()
+    document.body.innerHTML = ''
+
+    isDark.value = true
+    const partner = await mountStart('/start', 'b')
+    expect(document.querySelector('[data-intro-page] img')!.getAttribute('src')).toBe('/landing/dream-dark.webp')
+    await click(button('Пропустить'))
+    await settle()
+    expect(partner.router.currentRoute.value.path).toBe('/start/salary')
+  })
+
+  it('свайп: влево — следующий экран, вправо — предыдущий; короткий жест и края ленты — без смены', async () => {
+    await mountStart('/start/intro')
+    const strip = document.querySelector('[data-intro-page]')!.parentElement!.parentElement!
+    const swipe = async (from: number, to: number) => {
+      strip.dispatchEvent(Object.assign(new Event('touchstart'), { touches: [{ clientX: from }] }))
+      strip.dispatchEvent(Object.assign(new Event('touchend'), { changedTouches: [{ clientX: to }] }))
+      await nextTick()
+    }
+    const title = () => current().querySelector('h1')!.textContent
+    await swipe(100, 130)
+    expect(title()).toBe('Мечта')
+    await swipe(300, 100)
+    expect(title()).toBe('Свободно')
+    await swipe(300, 290)
+    expect(title()).toBe('Свободно')
+    await swipe(300, 100)
+    await swipe(300, 100)
+    expect(title()).toBe('Утечки')
+    await swipe(100, 300)
+    expect(title()).toBe('Свободно')
   })
 })

@@ -76,9 +76,9 @@ describe('views/Start.vue — первый запуск (B2C-19, FR-01, SSR)', (
     vi.unstubAllGlobals()
   })
 
-  it('FR-01: новая семья начинает с мечты («1 из 3»); шаг «Зарплата» — поля и главная «Дальше», выписка — тихой кнопкой «Есть PDF из банка», без механики в заголовке', async () => {
+  it('FR-01: после вступления новая семья начинает с мечты («1 из 3»); шаг «Зарплата» — поля и главная «Дальше», выписка — тихой кнопкой «Есть PDF из банка», без механики в заголовке', async () => {
     family()
-    const dream = await renderScreen(Start, '/start')
+    const dream = await renderScreen(Start, '/start/dream')
     expect(dream).toContain('На что копим?')
     expect(dream).toContain('1 из 3')
 
@@ -121,27 +121,30 @@ describe('views/Start.vue — первый запуск (B2C-19, FR-01, SSR)', (
 
     setActivePinia(createPinia())
     family('member', 'b', { ...planFamilyDoc(), people: [planFamilyDoc().people[0]] })
-    const partner = await renderScreen(Start, '/start')
+    const partner = await renderScreen(Start, '/start/salary')
     expect(partner).toContain('>Зарплата</h1>')
     expect(partner).toContain('1 из 1')
     expect(partner).not.toContain('На что копим?')
     expect(brandButtons(partner)).toEqual(['Готово'])
   })
 
-  it('FR-01: старые адреса — `/start/upload` → зарплата, `/start/month` → партнёр; у партнёра по коду чужой шаг → первый', async () => {
+  it('FR-01: старые адреса — `/start/upload` → зарплата, `/start/month` → партнёр; чужой шаг → первый (вступление)', async () => {
     family('member', 'a', { ...defaultSyncDoc(), people: [{ id: 'a', name: 'Ильяс', salary: 600_000, payday: 10, updatedAt: T0 }] })
     expect(await renderScreen(Start, '/start/upload')).toContain('>Зарплата</h1>')
     const month = await renderScreen(Start, '/start/month')
     expect(month).toContain('Пригласите партнёра')
     expect(month).toContain('3 из 3')
     expect(month).not.toContain('Ваш июль')
-    expect(await renderScreen(Start, '/start/nope')).toContain('На что копим?')
+    expect(await renderScreen(Start, '/start/nope')).toContain('data-intro-page')
 
     setActivePinia(createPinia())
     family('member', 'b', { ...planFamilyDoc(), people: [planFamilyDoc().people[0]] })
-    expect(await renderScreen(Start, '/start/month')).toContain('>Зарплата</h1>')
-    expect(await renderScreen(Start, '/start/dream')).toContain('>Зарплата</h1>')
-    expect(await renderScreen(Start, '/start/invite')).toContain('>Зарплата</h1>')
+    expect(await renderScreen(Start, '/start/upload')).toContain('>Зарплата</h1>')
+    for (const path of ['/start/month', '/start/dream', '/start/invite']) {
+      const html = await renderScreen(Start, path)
+      expect(html).toContain('data-intro-page')
+      expect(html).not.toContain('На что копим?')
+    }
   })
 
   it('зарплата руками: оклад и день — участнику с именем регистрации; итогов выписки нет', async () => {

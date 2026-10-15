@@ -15,6 +15,7 @@ import { advanceDefault, monthlyFromWeekly, weeklyFromMonthly } from '@/lib/fina
 import { money, parseMoney, plain } from '@/lib/money'
 import { addMonths, monthKey } from '@/lib/dates'
 import { START_ANSWERED_KEY, readStorage, writeStorage } from '@/lib/storage'
+import { isDark } from '@/lib/theme'
 import { useInvite } from '@/components/useInvite'
 import type { Person, PersonId } from '@/types/finance'
 import { plural } from '@/lib/utils'
@@ -32,15 +33,15 @@ import PayRhythmFields from '@/components/PayRhythmFields.vue'
 import Stepper from '@/components/kit/Stepper.vue'
 
 /**
- * Первый запуск (DESIGN.md §2 `/start/*`, §6; B2C-19, бэклог «первый» Р-2…Р-6): «На что копим?»
- * (`GoalNew`) → зарплата и день руками → пригласить партнёра → главный. Выписка — не обязательна:
+ * Первый запуск (DESIGN.md §2 `/start/*`, §6; B2C-19, бэклог «первый» Р-1…Р-6): вступление из трёх
+ * образов → «На что копим?» (`GoalNew`) → зарплата и день руками → пригласить партнёра → главный. Выписка — не обязательна:
  * тихое «Есть PDF из банка» на шаге зарплаты раскрывает выбор файла, прочитанная выписка ведёт к
  * вопросам по одному (доход, повторяющиеся списания — не больше семи), они — подшаг зарплаты.
  * Шаг — в адресе (`/start/:step`), ответы пишутся сразу (§8 п. 7): перезагрузка не теряет ни шаг, ни
- * ответы. Партнёр по коду — только зарплата (и выписка с вопросами) про себя: мечта общая.
+ * ответы. Партнёр по коду — вступление и зарплата (и выписка с вопросами) про себя: мечта общая.
  * Ничего не считается здесь: `firstRun.ts`, `finance.ts`.
  */
-type Step = 'dream' | 'salary' | 'questions' | 'invite'
+type Step = 'intro' | 'dream' | 'salary' | 'questions' | 'invite'
 /** Адреса прежнего потока (перезагрузка у тех, кто был посреди него): выписка — шаг зарплаты, «Ваш месяц» — партнёр. */
 const OLD_STEPS: Record<string, Step> = { upload: 'salary', month: 'invite' }
 const KEY_ANSWERED = START_ANSWERED_KEY
@@ -59,14 +60,14 @@ const knownName = computed(() => {
 // Партнёр по коду: семья уже настроена первым участником — от него нужны только свои выписка и доход.
 // Считается по `setupDoneAt`, а не по данным: первая же запись дохода сделала бы первого участника «партнёром».
 const joining = computed(() => financeStore.setupDone)
-const steps = computed<Step[]>(() => (joining.value ? ['salary', 'questions'] : ['dream', 'salary', 'questions', 'invite']))
+const steps = computed<Step[]>(() => (joining.value ? ['intro', 'salary', 'questions'] : ['intro', 'dream', 'salary', 'questions', 'invite']))
 const step = computed<Step>(() => {
   const raw = String(route.params.step ?? '')
   const s = OLD_STEPS[raw] ?? (raw as Step)
   return steps.value.includes(s) ? s : steps.value[0]
 })
-// «n из k» — по видимым шагам: вопросы — подшаг зарплаты, «n» на них не растёт.
-const counted = computed(() => steps.value.filter((s) => s !== 'questions'))
+// «n из k» — по видимым шагам: вступление в счёт не входит, вопросы — подшаг зарплаты, «n» на них не растёт.
+const counted = computed<Step[]>(() => steps.value.filter((s) => s !== 'intro' && s !== 'questions'))
 const stepIndex = computed(() => counted.value.indexOf(step.value === 'questions' ? 'salary' : step.value) + 1)
 
 function go(next: Step) {
@@ -76,6 +77,38 @@ function go(next: Step) {
 function afterSalary() {
   if (joining.value) finish()
   else go('invite')
+}
+
+/* ------------------ Вступление: три образа (Р-1) ------------------ */
+// Снимки лэндинга в теме экрана (`Landing.vue`); строки — свои, короче лэндинга (Р-9: финальные слова — `/ux`).
+const INTRO = [
+  { key: 'dream', title: 'Мечта', line: 'Цель с фото — и видно, сколько осталось' },
+  { key: 'free', title: 'Свободно', line: 'Сколько можно тратить до зарплаты' },
+  { key: 'leaks', title: 'Утечки', line: 'Куда тихо уходят деньги' },
+]
+const introImg = (key: string) => `/landing/${key}-${isDark.value ? 'dark' : 'light'}.webp`
+// Экран вступления — в состоянии: перезагрузка на `/start/intro` начинает с первого (допустимо, FR-02 п. 4).
+const introPage = ref(0)
+/** Вступление пройдено или пропущено — первый настоящий шаг; `replace`: «назад» к вступлению не ведёт. */
+function leaveIntro() {
+  void router.replace(`/start/${steps.value[1]}`)
+}
+function introNext() {
+  if (introPage.value < INTRO.length - 1) introPage.value++
+  else leaveIntro()
+}
+/** Свайп: влево — следующий экран, вправо — предыдущий; короче 40 px — не жест. */
+const SWIPE = 40
+function swipe(dx: number) {
+  if (dx <= -SWIPE && introPage.value < INTRO.length - 1) introPage.value++
+  else if (dx >= SWIPE && introPage.value > 0) introPage.value--
+}
+let touchX: number | null = null
+const onTouchStart = (e: TouchEvent) => (touchX = e.touches[0]?.clientX ?? null)
+function onTouchEnd(e: TouchEvent) {
+  const x = e.changedTouches[0]?.clientX
+  if (touchX !== null && x !== undefined) swipe(x - touchX)
+  touchX = null
 }
 
 /* ------------------ Шаг 2: зарплата (и выписка опцией) ------------------ */
@@ -359,6 +392,8 @@ const BANK_HOWTO = [
 ]
 
 const titles: Record<Step, { title: string; sub: string }> = {
+  // Заголовки вступления — на его экранах.
+  intro: { title: '', sub: '' },
   // Заголовок «На что копим?» — у самого `GoalNew`.
   dream: { title: '', sub: '' },
   // Выписка — механика, не заголовок (правило 12, Р-9): она только на тихой кнопке и внутри раскрытия.
@@ -384,15 +419,45 @@ const sub = computed(() => {
 
 <template>
   <div class="mx-auto flex min-h-dvh w-full max-w-[440px] flex-col gap-4 px-5 pb-6 pt-5 text-left">
-    <Stepper :n="stepIndex" :k="counted.length" />
+    <!-- Вступление: вместо «n из k» — точки экранов; «Пропустить» — тихо, вверху справа (Р-4). -->
+    <div v-if="step === 'intro'" class="flex min-h-8 items-center justify-between gap-3">
+      <div class="flex items-center gap-1.5" aria-hidden="true" data-intro-dots>
+        <span v-for="(s, i) in INTRO" :key="s.key" class="h-1.5 rounded-full transition-all" :class="i === introPage ? 'w-5 bg-brand' : 'w-1.5 bg-track'" />
+      </div>
+      <Button variant="ghost" size="sm" class="-mr-2" @click="leaveIntro">Пропустить</Button>
+    </div>
+    <Stepper v-else :n="stepIndex" :k="counted.length" />
 
     <div v-if="title">
       <h1 class="type-h2-lg text-ink">{{ title }}</h1>
       <p v-if="sub" class="mt-1.5 text-[14px] leading-relaxed text-ink-2">{{ sub }}</p>
     </div>
 
+    <!-- Вступление: три образа лентой — листаются свайпом и «Дальше» (Р-1). -->
+    <template v-if="step === 'intro'">
+      <div class="-mx-5 overflow-hidden" @touchstart.passive="onTouchStart" @touchend="onTouchEnd">
+        <div class="flex transition-transform duration-300" :style="{ transform: `translateX(-${introPage * 100}%)` }">
+          <section v-for="(s, i) in INTRO" :key="s.key" class="w-full shrink-0 px-5" :aria-hidden="i !== introPage" data-intro-page>
+            <img
+              :src="introImg(s.key)"
+              :alt="s.title"
+              width="390"
+              height="300"
+              :loading="i === 0 ? undefined : 'lazy'"
+              class="aspect-[13/10] w-full rounded-card border border-line bg-surface object-cover object-top"
+            />
+            <h1 class="mt-5 type-h2-lg text-ink">{{ s.title }}</h1>
+            <p class="mt-1.5 text-[15px] leading-relaxed text-ink-2">{{ s.line }}</p>
+          </section>
+        </div>
+      </div>
+      <div class="mt-auto pt-2">
+        <Button size="lg" class="w-full" @click="introNext">Дальше</Button>
+      </div>
+    </template>
+
     <!-- Шаг 1: на что копим (B2C-18) — первым, до зарплаты (Р-2). -->
-    <GoalNew v-if="step === 'dream'" next="/start/salary" />
+    <GoalNew v-else-if="step === 'dream'" next="/start/salary" />
 
     <!-- Шаг 2: зарплата руками; та же форма — после вопросов, когда в выписке дохода не нашлось. -->
     <template v-else-if="salaryForm">

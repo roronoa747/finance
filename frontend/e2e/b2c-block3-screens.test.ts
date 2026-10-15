@@ -490,8 +490,9 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
   it('новая семья: мечта → «Есть PDF из банка» Kaspi → 7 вопросов → документ (оклад, кредит с остатком и отметкой июля, «Kaspi Red» обязательством, подписка), мечта главная, setupDoneAt; партнёр по коду — свои шаги → people[b]', async () => {
     const A = await phone(server, st, 'a')
     expect(A.store.setupDone).toBe(false)
-    // FR-01: мечта — первой, до зарплаты и выписки; главная — первая в очереди (Р-84).
-    expect(await screen(A.pinia, Start, '/start')).toContain('На что копим?')
+    // FR-01/02: после вступления мечта — первой, до зарплаты и выписки; главная — первая в очереди (Р-84).
+    expect(await screen(A.pinia, Start, '/start')).toContain('data-intro-page')
+    expect(await screen(A.pinia, Start, '/start/dream')).toContain('На что копим?')
     await screen(A.pinia, Start, '/start/dream', undefined, [
       screenMixin({ step: 'form', template: templateById('car'), name: 'Машина', needText: '3 000 000', term: '18' }, (s) => void (s.create as () => Promise<void>)()),
     ])
