@@ -107,3 +107,21 @@ export const writePlanView = (view: PlanView) => writeStorage(PLAN_VIEW_KEY, vie
 
 /** Ключ прежнего вида «Недели» (список / плитки, Р-100). Плиток нет с Блока 17 — значение на устройстве ни на что не влияет. */
 export const WEEK_VIEW_KEY = 'ff_week_view'
+
+/**
+ * Увиденные подсказки у предмета (`kit/Tip.vue`, бэклог «первый» Р-7): список id на устройстве, как ответы первого
+ * запуска; выход стирает (`LOCAL_KEYS`) — следующий вход на этом телефоне видит подсказки снова.
+ */
+export const TIPS_SEEN_KEY = 'ff_tips_seen'
+
+/** Список увиденных; пусто, мусор или хранилище недоступно — пустой. */
+export function readTipsSeen(): string[] {
+  const list = readStorage<unknown>(TIPS_SEEN_KEY, [])
+  return Array.isArray(list) ? list.filter((x): x is string => typeof x === 'string') : []
+}
+
+/** «Понятно» — подсказка `id` больше не показывается. */
+export function markTipSeen(id: string) {
+  const list = readTipsSeen()
+  if (!list.includes(id)) writeStorage(TIPS_SEEN_KEY, [...list, id])
+}

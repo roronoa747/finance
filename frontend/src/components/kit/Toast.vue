@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { inject } from 'vue'
+import { inject, onMounted, onUnmounted } from 'vue'
+import { holdTips } from './tips'
 
 /**
  * Тост (макет week-month.html `.toast`): тёмная плашка над капсулой вкладок — короткая фраза и не больше одного
  * тихого действия («Отменить»). Внутри `AppShell` встаёт в его слот `#shell-toast`; без оболочки (тесты экрана) —
- * на месте. Сколько висит и что делает действие — решает родитель.
+ * на месте. Сколько висит и что делает действие — решает родитель. Пока он виден, подсказки у предмета (`Tip`) ждут.
  */
 defineProps<{ action?: string }>()
 const emit = defineEmits<{ (e: 'action'): void }>()
 const inShell = inject<boolean>('ff-shell-actions', false)
+let releaseTips: (() => void) | null = null
+onMounted(() => (releaseTips = holdTips()))
+onUnmounted(() => releaseTips?.())
 </script>
 
 <template>
