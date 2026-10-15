@@ -100,7 +100,7 @@ iOS-приложения. FinanceKit для карт Казахстана нед
 
 - **Касание (Блок 1):** `POST https://family-finance-ff.vercel.app/api/wallet/tap`, заголовок
   `Authorization: Bearer <ключ>`, тело JSON: `{"merchant": Merchant, "amount": Amount (текст, «5 000 ₸» / «$6.22»),
-  "card": Card (текст), "name": Name, "at": Текущая дата ISO 8601}`. Любое поле может прийти пустой строкой.
+  "card": Card (текст), "name": Name}` (+ необязательное `"at"` ISO 8601; нет — время приёма сервером, по Алматы). Любое поле может прийти пустой строкой.
 - **Пуш (Блок 2, iOS 27, триггер «Уведомление» от Kaspi.kz / Freedom / Halyk):**
   `POST https://family-finance-ff.vercel.app/api/wallet/push`, тот же заголовок, тело
   `{"app": имя приложения, "title": заголовок, "body": текст, "at": дата ISO 8601}`.
