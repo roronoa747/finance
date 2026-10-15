@@ -18,6 +18,7 @@ import {
   spendTotals,
 } from '@/lib/statements/model'
 import { markedOps, matchCandidates, matchKey, operationAt, paymentFits, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
+import { replacedByStatement } from '@/lib/statements/phone'
 import type { MerchantRule, Operation, ParsedStatement, SpendTotal } from '@/lib/statements/types'
 import type { OperationWire, StatementUploadResponse } from '@/types/api'
 import type { Goal, PersonId, TripSpend } from '@/types/finance'
@@ -62,6 +63,8 @@ export interface PendingJob {
   upload?: UploadInput
   uploadId?: string
   ops: Operation[]
+  /** Надгробия: траты с телефона, которые заменила выписка (Р-16). */
+  deleted?: true
 }
 
 export interface DraftFile {
@@ -325,10 +328,20 @@ export const useOperationsStore = defineStore('operations', () => {
     cancelDraft()
   }
 
-  /** Свои операции вместе с выпиской, которая ещё ждёт тост. */
+  /** Траты с телефона, которые заменит выписка черновика (Р-16), — `send` уберёт их надгробиями. */
+  const draftReplaced = computed<Operation[]>(() => {
+    if (!draft.value) return []
+    const phone = all.value.filter((o) => o.source)
+    if (!phone.length) return []
+    const spans = draft.value.files.map((f) => ({ bank: f.parsed.bank, from: f.parsed.from, to: f.parsed.to }))
+    const ids = replacedByStatement(draftOps.value, phone, spans)
+    return phone.filter((o) => ids.has(o.id))
+  })
+
+  /** Свои операции вместе с выпиской, которая ещё ждёт тост, — без трат с телефона, которые она заменит. */
   const shown = computed<Operation[]>(() => {
     if (!held.value) return all.value
-    const ids = new Set(draftOps.value.map((o) => o.id))
+    const ids = new Set([...draftOps.value, ...draftReplaced.value].map((o) => o.id))
     return [...all.value.filter((o) => !ids.has(o.id)), ...draftOps.value]
   })
   /** Итоги семьи, где свои периоды ждущей выписки пересчитаны с ней — тем же `spendTotals`, что запишет `send`. */
@@ -336,7 +349,7 @@ export const useOperationsStore = defineStore('operations', () => {
     const base = finance.householdDoc.spendTotals ?? []
     if (!held.value) return base
     const by = me()
-    const periods = periodsOf(draftOps.value)
+    const periods = periodsOf([...draftOps.value, ...draftReplaced.value])
     const marks = totalMarks(shown.value)
     const touched = (t: { by: PersonId; kind: string; period: string }) => t.by === by && periods.some((p) => p.kind === t.kind && p.period === t.period)
     return [...base.filter((t) => !touched(t)), ...periods.flatMap(({ kind, period }) => spendTotals(shown.value, by, kind, period, undefined, marks))]
@@ -463,12 +476,15 @@ export const useOperationsStore = defineStore('operations', () => {
     if (!finance.householdDoc.spendCategories?.length) finance.mutateHouseholdDoc((doc) => void seedSpendCategories(doc))
 
     const fresh = draftOps.value
+    // Выписка — истина (Р-16): траты с телефона, которые она заменила, уходят из копии и итогов, на сервер — надгробием.
+    const replaced = draftReplaced.value
+    for (const o of replaced) delete ops.value[o.id]
     const ids = new Set(fresh.map((o) => o.id))
     // Пара с операцией прошлой выписки другого банка делает внутренней и её — она тоже уходит.
     const paired = pairInternalTransfers([...fresh, ...all.value.filter((o) => !ids.has(o.id))])
     const changed = paired.slice(fresh.length).filter((o) => o.internal !== ops.value[o.id]?.internal)
     remember([...fresh, ...changed])
-    const periods = periodsOf([...fresh, ...changed])
+    const periods = periodsOf([...fresh, ...changed, ...replaced])
     // Правила «это платёж по …» отмечают платежи сами (Р-6); отмеченный месяц второй записи не получает.
     // Отметки — раньше итогов: отмеченные строки разделов платежей не траты (`unmarked`, хвосты 952/967).
     lastAutoMarked.value = autoMark(fresh)
@@ -494,6 +510,7 @@ export const useOperationsStore = defineStore('operations', () => {
         for (const id of own) queued.add(id)
       }
       if (changed.length) pending.value.push({ key: newKey(), ops: changed })
+      if (replaced.length) pending.value.push({ key: newKey(), ops: replaced, deleted: true })
     }
     draft.value = null
     save()
@@ -501,7 +518,7 @@ export const useOperationsStore = defineStore('operations', () => {
     // дописывает их ещё раз, иначе устаревшая копия оставила бы неполные итоги (LWW по id).
     // Неделя разобрана — выписка отправлена (B2C-28: «финиша недели» после решений больше нет, Блок 15).
     if (!demo.value) useEventsStore().track('week_done')
-    const sent = new Set([...fresh, ...changed].map((o) => o.id))
+    const sent = new Set([...fresh, ...changed, ...replaced].map((o) => o.id))
     const got = await pull(client)
     if (got.some((id) => !sent.has(id))) writeTotals(periods)
   }
@@ -588,7 +605,7 @@ export const useOperationsStore = defineStore('operations', () => {
           }
           while (job.ops.length) {
             const chunk = job.ops.slice(0, BATCH_SIZE)
-            await client.upsertOperations(chunk.map((o) => toWire({ ...o, uploadId: job.uploadId ?? o.uploadId })))
+            await client.upsertOperations(chunk.map((o) => (job.deleted ? tombstoneWire(o) : toWire({ ...o, uploadId: job.uploadId ?? o.uploadId }))))
             job.ops = job.ops.slice(chunk.length)
             save()
           }

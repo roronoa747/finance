@@ -195,3 +195,64 @@ describe('stores/operations — траты с телефона (pull)', () => {
     expect(calls.listOperations).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('stores/operations — выписка заменяет траты с телефона (AP-05)', () => {
+  const statement = (merchant = 'MAGNUM ALMATY KZ') => [{
+    name: 'kaspi.pdf',
+    parsed: {
+      bank: 'kaspi' as const, from: '2026-10-01', to: '2026-10-15', skipped: 0,
+      operations: [{ id: 'f0000001', bank: 'kaspi' as const, date: '2026-10-14', amount: -5000, kind: 'purchase' as const, merchant, categoryId: null, internal: false }],
+    },
+  }]
+
+  async function withTap() {
+    signIn()
+    const store = useOperationsStore()
+    const fake = fakeServer()
+    Object.assign(fake.calls, {
+      createStatementUpload: vi.fn(async (u: object) => ({ id: '00000000-0000-4000-8000-000000000001', slot: 'a', ...u, created_at: '' })),
+    })
+    fake.server.feed = [tap('a1', 'Magnum', -5000)]
+    await store.pull(fake.client)
+    fake.server.sent = []
+    return { store, ...fake }
+  }
+
+  it('совпадающая покупка: в копии одна (из выписки), надгробие ушло, итог недели не удвоен — и во время тоста', async () => {
+    const { store, server, client } = await withTap()
+    expect(weekTotal('sc_food')).toMatchObject({ amount: 5000, ops: 1 })
+
+    await store.upload(statement(), client)
+    // Тост «Отменить» ещё висит — показ уже без дубля.
+    const shownFood = store.shownTotals.find((t) => t.by === 'a' && t.kind === 'week' && t.period === '2026-W42' && t.categoryId === 'sc_food')
+    expect(shownFood).toMatchObject({ amount: 5000, ops: 1 })
+    expect(store.shown.map((o) => o.id)).toEqual(['f0000001'])
+
+    await vi.advanceTimersByTimeAsync(6_000)
+
+    expect(store.all.map((o) => o.id)).toEqual(['f0000001'])
+    expect(server.sent.filter((o) => o.deleted).map((o) => o.id)).toEqual(['a1'])
+    expect(server.sent.find((o) => o.id === 'f0000001')?.deleted).toBeUndefined()
+    expect(weekTotal('sc_food')).toMatchObject({ amount: 5000, ops: 1 })
+  })
+
+  it('«Отменить» — трата с телефона на месте, надгробия нет', async () => {
+    const { store, server, client } = await withTap()
+    await store.upload(statement(), client)
+    store.undoUpload()
+    await vi.advanceTimersByTimeAsync(6_000)
+    expect(store.all.map((o) => o.id)).toEqual(['a1'])
+    expect(server.sent).toEqual([])
+  })
+
+  it('выписка без операций с телефона — прежний путь (без надгробий)', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const { server, client, calls } = fakeServer()
+    Object.assign(calls, { createStatementUpload: vi.fn(async (u: object) => ({ id: '00000000-0000-4000-8000-000000000001', slot: 'a', ...u, created_at: '' })) })
+    await store.upload(statement(), client)
+    await vi.advanceTimersByTimeAsync(6_000)
+    expect(store.all.map((o) => o.id)).toEqual(['f0000001'])
+    expect(server.sent.some((o) => o.deleted)).toBe(false)
+  })
+})

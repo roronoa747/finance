@@ -815,6 +815,10 @@ export function phoneOpTenge(op: { date: string; fx?: { currency: Currency; amou
   return rate === null ? null : -fxToTenge(op.fx.amount / 100, rate);
 }
 
+/** Сумма `actual` в пределах доли `share` от `expected` (модули сумм; знак сравнивает вызывающий). */
+export const withinShare = (actual: number, expected: number, share: number) =>
+  expected !== 0 && Math.abs(Math.abs(actual) - Math.abs(expected)) <= Math.abs(expected) * share;
+
 /** Валюты документа, которым нужна книга курсов (Р-72): счета, оклады и платежи (Р-75); без тенге. */
 export function docCurrencies(doc: { accounts?: Account[]; people?: Person[]; obligations?: Obligation[] }): Currency[] {
   const out = new Set<Currency>();
