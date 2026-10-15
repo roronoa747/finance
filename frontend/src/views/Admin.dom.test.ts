@@ -164,6 +164,29 @@ describe('AI-04: админка — семьи и ИИ', () => {
     expect(el.textContent).toContain('Не получилось загрузить цифры.')
   })
 
+  it('семьи не загрузились (не 404) — строка alert, цифры ниже видны', async () => {
+    vi.spyOn(apiClient, 'adminFamilies').mockRejectedValue(new ApiError('boom', 500))
+    const el = await mount()
+    expect(el.querySelector('[data-families]')).toBeNull()
+    expect(el.querySelector('[role="alert"]')!.textContent).toBe('Не получилось загрузить семьи.')
+    expect(el.textContent).toContain('Пользователи')
+    expect(el.textContent).toContain('Вторая выписка')
+  })
+
+  it('«Проверить связь» без сети — «Нет связи», в подсказке «Сервер не ответил.»', async () => {
+    vi.spyOn(apiClient, 'adminFamilies').mockResolvedValue(list())
+    vi.spyOn(apiClient, 'aiCheck').mockRejectedValue(new TypeError('Failed to fetch'))
+    const el = await mount()
+
+    el.querySelector<HTMLButtonElement>('[data-ai-check]')!.click()
+    await settle()
+    expect(el.querySelector('[data-check-note]')!.textContent).toBe('Нет связи')
+    expect(el.querySelector('[data-check-fail]')!.textContent).toContain('Нет связи')
+    el.querySelector<HTMLButtonElement>('[data-check-fail] button[aria-label="Почему нет связи"]')!.click()
+    await settle()
+    expect(el.querySelector('[data-check-reason]')!.textContent).toContain('Сервер не ответил.')
+  })
+
   it('запросы есть, а расход 0 (модели нет в таблице цен) — «≈ —», не «$0»', async () => {
     vi.spyOn(apiClient, 'adminFamilies').mockResolvedValue(list({ families: [fam({ requests: 2, cost_micros: 0 })] }))
     const el = await mount()
