@@ -54,12 +54,46 @@ func TestCheckNumbers(t *testing.T) {
 		{"К 2029 году.", []string{"2029"}},
 		{"Остаток 1 200 001.", []string{"1 200 001"}},
 		{"Два числа: 7 и 7 тыс.", []string{"7", "7 тыс"}},
+		// Numbers in words cannot be matched — a defect whatever the value (критик Блока 2).
+		{"Доход — миллион.", []string{"миллион"}},
+		{"Платим около двухсот тысяч.", []string{"двухсот", "тысяч"}},
+		{"Пятьдесят тысяч свободно.", []string{"Пятьдесят", "тысяч"}},
+		{"Доход — полтора миллиона, на квартиру нужно 10 млн.", []string{"полтора", "миллиона"}},
+		{"Половина дохода уходит на платежи.", []string{"Половина"}},
+		{"Доход вдвое больше платежей.", []string{"вдвое"}},
+		{"Кредит закроем через полгода, а за сто дней накопим.", []string{"полгода", "сто"}},
+		{"Без выписок не видно — млн или тыс.", []string{"млн", "тыс"}},
+		// A ratio is a computation, even with 1–3.
+		{"Доход в 3 раза больше платежей.", []string{"в 3 раза"}},
+		{"Платежи в два раза меньше дохода.", []string{"в два раза"}},
+		{"Траты в 1,5 раза выше плана.", []string{"1,5", "в 1,5 раза"}},
+		// Not numbers: counting 1–3 in words, ordinals, look-alike words, a scale after digits, frequency.
+		{"Поддержим семью: три шага, оба простые, первый — главный, четвёртого не будет.", nil},
+		{"Опять просто: место для взноса есть, 150 тысяч в месяц.", nil},
+		{"Сверим траты 2 раза в месяц, в этот раз — по разделам.", nil},
+		{"Доход 1 200 000 — это 1,2 миллиона.", nil},
 	}
 	for _, tc := range cases {
 		got := CheckNumbers([]string{tc.text}, in)
 		if !slices.Equal(got, tc.bad) {
 			t.Errorf("%q: bad = %q, want %q", tc.text, got, tc.bad)
 		}
+	}
+}
+
+// A number word of the summary's own strings (a name the family wrote) may be repeated.
+func TestCheckNumbersWordsFromInput(t *testing.T) {
+	var in any
+	dec := json.NewDecoder(strings.NewReader(`{"goals":[{"name":"Тысяча мелочей","want":50000}],"dues":[{"name":"Сто дорог в 2 раза","amount":7000}]}`))
+	dec.UseNumber()
+	if err := dec.Decode(&in); err != nil {
+		t.Fatal(err)
+	}
+	if bad := CheckNumbers([]string{"Цель «тысяча мелочей» — 50 000; «Сто дорог в 2 раза» — 7 000."}, in); bad != nil {
+		t.Errorf("bad = %q, want none", bad)
+	}
+	if bad := CheckNumbers([]string{"Двести дорог."}, in); !slices.Equal(bad, []string{"Двести"}) {
+		t.Errorf("bad = %q, want [Двести]", bad)
 	}
 }
 

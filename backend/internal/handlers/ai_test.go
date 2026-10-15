@@ -229,7 +229,7 @@ func TestReviewModelErrorFailsWithoutSpend(t *testing.T) {
 func TestReviewScreenOutsideListIsNull(t *testing.T) {
 	// The schema's enum keeps the model in the list; a stray path is still dropped here.
 	odd := answer("Остаётся 310 000 ₸.", "Риск.", [2]any{"Шаг один.", "/admin"}, [2]any{"Шаг два.", "/month"},
-		[2]any{"Шаг три.", nil}, [2]any{"Шаг четыре.", "/"})
+		[2]any{"Шаг три.", nil}, [2]any{"Последний шаг.", "/"})
 	f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{odd}}, true)
 	rec := f.post(t, f.member, `{"summary": `+reviewSummary+`}`)
 	var got ReviewAnswer
