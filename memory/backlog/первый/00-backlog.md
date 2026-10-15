@@ -167,12 +167,14 @@ Go и миграций нет.
 - Подсказки: `kit/Tip.vue` + очередь `kit/tips.ts` (`useTip` — регистрация в `onMounted`: SSR-рендер очередь не трогает;
   `holdTips` — зовут `Sheet` при открытии и `Toast` пока смонтирован); «видел» — `lib/storage.ts` `TIPS_SEEN_KEY`
   (`readTipsSeen`/`markTipSeen`), в `LOCAL_KEYS`. Пузырь — `role="status"` (`role="note"` у окна `Hint` — по нему ищут тесты).
-  Id и места: `tab-dreams` (`Dreams.vue`, под `DreamCenter`, только при `main`), `tab-week` (`Week.vue`, под `[data-week-sum]`),
+  Id и места: `tab-dreams` (`Dreams.vue`, под `DreamCenter`, только при `main`), `tab-week` (`Week.vue`, `above` над `[data-week-list]` — возврат приёмки: предмет — разделы),
   `tab-month` (`MonthPlan.vue`, `above` над `[data-sections]`), `tab-money` (`Money.vue`, под `MoneySquares`).
 - Тесты: `Tip.dom.test.ts`, `views/tabs.tips.dom.test.ts`, e2e `fr-block2-tips.test.ts` ((а)–(д), всё приложение через
   `RouterView` и `createAppRouter`); FR-08 — `landing.test.ts`, `Start.test.ts`, e2e (е)/(ж) в `fr-block1-setup.test.ts`.
-  DOM-тесты с `toFake: ['Date']`: нажатие предмета внутри `Tip` доходит до обёртки только после сдвига часов
-  (`vi.setSystemTime`) — Vue отбрасывает вложенный обработчик при замёрзшей метке.
+  Нажатие предмета `Tip` слушает нативным `click` в перехвате (возврат приёмки): настоящее касание выполняет микрозадачи
+  между обработчиками — предмет, открывший лист («Неделя» — раздел), прятал пузырь до всплытия, отметки не было; JS-`click()`
+  в тестах так не делает — тест держит лист прямо в обработчике предмета (`Tip.dom`). `@click.capture` нельзя — Vue при
+  равной метке (`toFake: ['Date']`) отбросил бы вложенный обработчик предмета.
 - Критик (2026-10-15): у `Tip` проп `wait` (`useTip(id, ready)`) — предмета нет, пузырь ждёт и очередь не держит; «Неделя» —
   `:wait="!mine.rows.length"`, один текст про разделы (пустую неделю ведёт «Загрузить»; прежний текст-заглушка съедал id
   `tab-week`). Фикстура «своя неделя с тратами» — `withOwnWeek` в `src/test/planFamily.ts`. FR-09 убрал из `Dreams.vue`

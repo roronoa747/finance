@@ -5,6 +5,7 @@ import { TIPS_SEEN_KEY, readTipsSeen } from '@/lib/storage'
 import Tip from './Tip.vue'
 import Sheet from './Sheet.vue'
 import Toast from './Toast.vue'
+import { holdTips } from './tips'
 
 /**
  * Подсказка у предмета (бэклог «первый» FR-05) в DOM: показ по «видел», «Понятно» и нажатие предмета, одна за раз,
@@ -62,6 +63,33 @@ describe('kit/Tip — подсказка у предмета', () => {
     expect(presses.value).toBe(1)
     expect(tips()).toEqual([])
     expect(readTipsSeen()).toEqual(['tab-money'])
+  })
+
+  it('предмет, сразу открывший лист, — пузырь всё равно отмечен (настоящее касание перерисовывает экран до всплытия)', async () => {
+    // Возврат приёмки Блока 2: раздел «Недели» открывает лист; в браузере микрозадачи между обработчиками успевают
+    // открыть его до всплытия клика к обёртке. Здесь лист «открывается» прямо в обработчике предмета.
+    let release: (() => void) | null = null
+    mount(() => h(Tip, { id: 'tab-week', text: 'Подсказка' }, () => h('button', { 'data-subject': 'tab-week', onClick: () => (release = holdTips()) }, 'раздел')))
+    await nextTick()
+    try {
+      subject('tab-week').click()
+      await nextTick()
+      expect(readTipsSeen()).toEqual(['tab-week'])
+    } finally {
+      // Удержание очереди общее для файла — снять, даже если проверка упала.
+      ;(release as (() => void) | null)?.()
+    }
+    await nextTick()
+    expect(tips(), 'лист закрыт — пузырь не вернулся').toEqual([])
+  })
+
+  it('нажатие в самом пузыре (текст) — не предмет: отметки нет', async () => {
+    mount(() => tip('tab-money'))
+    await nextTick()
+    document.querySelector<HTMLElement>('[data-tip] p')!.click()
+    await nextTick()
+    expect(tips()).toEqual(['tab-money'])
+    expect(readTipsSeen()).toEqual([])
   })
 
   it('«Понятно» не нажимает предмет', async () => {

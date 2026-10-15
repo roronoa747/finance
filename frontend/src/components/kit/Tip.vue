@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { PhLightbulb } from '@phosphor-icons/vue'
 import { useTip } from './tips'
 
@@ -20,18 +21,30 @@ const props = defineProps<{
 }>()
 
 const tip = useTip(props.id, () => !props.wait)
+const root = ref<HTMLElement | null>(null)
+const bubble = ref<HTMLElement | null>(null)
 
-/** Нажатие предмета работает как обычно и закрывает пузырь (только показанный: ждущий своей очереди — нет). */
-function onSubject() {
+/**
+ * Нажатие предмета работает как обычно и закрывает пузырь (только показанный: ждущий своей очереди — нет). Слушаем в
+ * перехвате, до обработчика предмета: настоящее нажатие между обработчиками выполняет микрозадачи — предмет, открывший
+ * лист («Неделя» — раздел), успел бы перерисовать экран и спрятать пузырь до всплытия (возврат приёмки Блока 2). Нативный
+ * слушатель, а не `@click.capture`: Vue сверяет метку события с навешиванием, и вложенный обработчик предмета при равной
+ * метке отбросился бы. Нажатия в самом пузыре — не предмет.
+ */
+function onSubject(e: MouseEvent) {
+  if (bubble.value?.contains(e.target as Node)) return
   if (tip.shown.value) tip.done()
 }
+onMounted(() => root.value?.addEventListener('click', onSubject, true))
+onBeforeUnmount(() => root.value?.removeEventListener('click', onSubject, true))
 </script>
 
 <template>
-  <div class="flex flex-col" @click="onSubject">
+  <div ref="root" class="flex flex-col">
     <slot />
     <div
       v-if="tip.shown.value"
+      ref="bubble"
       role="status"
       :data-tip="id"
       :class="['fx-in relative flex items-center gap-3 rounded-2xl border border-tip-line bg-tip-soft py-2.5 pl-3 pr-1.5 text-ink', above ? 'order-first mb-2.5' : 'mt-2.5']"

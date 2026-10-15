@@ -46,7 +46,7 @@ afterEach(() => {
 
 const TABS: { id: string; path: string; view: Component; subject: string }[] = [
   { id: 'tab-dreams', path: '/', view: Dreams, subject: 'Главная мечта' },
-  { id: 'tab-week', path: '/week', view: Week, subject: '[data-week-sum]' },
+  { id: 'tab-week', path: '/week', view: Week, subject: '[data-week-list]' },
   { id: 'tab-month', path: '/month', view: Month, subject: '[data-sections]' },
   { id: 'tab-money', path: '/money', view: Money, subject: '[role="group"][aria-label="Деньги"]' },
 ]
@@ -84,10 +84,12 @@ describe('FR-06: подсказки на главных вкладках', () =>
       await open(t.view, t.path, 'member', doc)
       expect(bubbles().map((b) => b.dataset.tip)).toEqual([t.id])
       // Пузырь — рядом с предметом в той же обёртке: ничего не закрывает, едет с ним. «Месяц» — над разделами (под ними
-      // на 390 px пузырь уходил под панель вкладок — стенд FR-06), остальные — под предметом.
+      // на 390 px пузырь уходил под панель вкладок — стенд FR-06), «Неделя» — над разделами, под суммой (предмет — разделы:
+      // нажатие раздела закрывает пузырь — возврат приёмки), остальные — под предметом.
       expect(bubbles()[0].previousElementSibling?.matches(t.subject), 'пузырь рядом с предметом').toBe(true)
-      expect(bubbles()[0].classList.contains('order-first'), 'над предметом').toBe(t.id === 'tab-month')
+      expect(bubbles()[0].classList.contains('order-first'), 'над предметом').toBe(t.id === 'tab-month' || t.id === 'tab-week')
       expect(bubbles()[0].textContent).not.toMatch(/выписк|PDF/i)
+      if (t.id === 'tab-money') expect(bubbles()[0].textContent).toContain('Нажмите «Долги» или «История», чтобы открыть их')
       ok().click()
       await nextTick()
       expect(bubbles()).toEqual([])
@@ -109,6 +111,25 @@ describe('FR-06: подсказки на главных вкладках', () =>
     await nextTick()
     expect(bubbles()).toEqual([])
     expect(readTipsSeen()).toEqual(['tab-dreams'])
+  })
+
+  it('«Неделя»: нажатие раздела открывает его лист и закрывает пузырь с отметкой; лист закрыт — пузырь не вернулся', async () => {
+    await open(Week, '/week', 'member', withOwnWeek(planFamilyDoc()))
+    expect(bubbles().map((b) => b.dataset.tip)).toEqual(['tab-week'])
+    // Между суммой и разделами — сразу под суммой недели.
+    expect(bubbles()[0].parentElement!.previousElementSibling?.matches('[data-week-sum]')).toBe(true)
+    vi.setSystemTime(new Date('2026-09-12T07:00:01Z'))
+    document.querySelector<HTMLButtonElement>('[data-week-list] .row-open')!.click()
+    await nextTick()
+    await nextTick()
+    expect(document.querySelector('[role="dialog"]'), 'лист раздела открыт').not.toBeNull()
+    expect(bubbles()).toEqual([])
+    expect(readTipsSeen()).toEqual(['tab-week'])
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await nextTick()
+    await nextTick()
+    expect(document.querySelector('[role="dialog"]'), 'лист закрыт').toBeNull()
+    expect(bubbles()).toEqual([])
   })
 
   it('«Понятно» одной вкладки не трогает другие: на «Месяце» после «Мечт» — свой пузырь, на «Мечтах» — нет', async () => {

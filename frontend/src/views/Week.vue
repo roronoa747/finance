@@ -375,65 +375,67 @@ onBeforeUnmount(() => {
       </template>
     </div>
 
-    <!-- Сумма недели: моя, крупно; ‹ › — недели. Сравнение с прошлой — в «8 недель» (Р-116). Подсказка — под ней. -->
-    <Tip id="tab-week" :text="TIP_WEEK" :wait="!mine.rows.length">
-      <Card tight class="flex flex-col gap-1" data-week-sum>
-        <div class="flex items-center gap-1.5">
-          <button type="button" class="press -ml-1.5 grid size-7 cursor-pointer place-items-center text-ink-3 disabled:opacity-30" :disabled="!canBack" aria-label="Прошлая неделя" @click="turn(-1)">
-            <PhCaretLeft :size="16" />
-          </button>
-          <span class="type-section" data-week-label>{{ weekRangeLabel(mine.range) }}</span>
-          <button type="button" class="press grid size-7 cursor-pointer place-items-center text-ink-3 disabled:opacity-30" :disabled="!canForward" aria-label="Следующая неделя" @click="turn(1)">
-            <PhCaretRight :size="16" />
-          </button>
-        </div>
-        <span class="font-num text-[34px] font-bold leading-none num" :class="mine.total ? 'text-ink' : 'text-ink-2'" data-week-total>{{ money(mine.total) }}</span>
-        <div v-if="!hasPlan && mine.rows.length" class="pt-1">
-          <Button variant="secondary" size="sm" data-to-plan @click="toMonth">План трат — в «Месяце» ›</Button>
-        </div>
-      </Card>
-    </Tip>
+    <!-- Сумма недели: моя, крупно; ‹ › — недели. Сравнение с прошлой — в «8 недель» (Р-116). -->
+    <Card tight class="flex flex-col gap-1" data-week-sum>
+      <div class="flex items-center gap-1.5">
+        <button type="button" class="press -ml-1.5 grid size-7 cursor-pointer place-items-center text-ink-3 disabled:opacity-30" :disabled="!canBack" aria-label="Прошлая неделя" @click="turn(-1)">
+          <PhCaretLeft :size="16" />
+        </button>
+        <span class="type-section" data-week-label>{{ weekRangeLabel(mine.range) }}</span>
+        <button type="button" class="press grid size-7 cursor-pointer place-items-center text-ink-3 disabled:opacity-30" :disabled="!canForward" aria-label="Следующая неделя" @click="turn(1)">
+          <PhCaretRight :size="16" />
+        </button>
+      </div>
+      <span class="font-num text-[34px] font-bold leading-none num" :class="mine.total ? 'text-ink' : 'text-ink-2'" data-week-total>{{ money(mine.total) }}</span>
+      <div v-if="!hasPlan && mine.rows.length" class="pt-1">
+        <Button variant="secondary" size="sm" data-to-plan @click="toMonth">План трат — в «Месяце» ›</Button>
+      </div>
+    </Card>
 
     <!--
       Разделы списком: потрачено за неделю, полоса и остаток на месяц («из N» — в листе раздела). Вопросы разбора —
       «Разобрать» у строки «Не разобрано» (Р-116: действие у своего предмета); нет такой строки — своя строка «Вопросы».
+      Подсказка — над разделами (между суммой и ними): нажатие раздела или «Разобрать» её закрывает (приёмка, возврат);
+      своих трат нет — ждёт.
     -->
-    <Card v-if="mine.rows.length || queue.length" flush class="px-3.5 py-0.5" data-week-list>
-      <div v-if="queue.length && !hasUnknownRow" class="flex items-center gap-2.5 py-3" data-questions-row>
-        <span class="grid size-8 shrink-0 place-items-center rounded-[10px] bg-surface-2 text-[13px] font-bold text-ink-2" aria-hidden="true">?</span>
-        <span class="min-w-0 flex-1">
-          <span class="block truncate text-[15.5px] font-semibold text-ink">Вопросы</span>
-          <span class="block type-meta num">{{ queue.length }} {{ plural(queue.length, 'вопрос', 'вопроса', 'вопросов') }}</span>
-        </span>
-        <Button variant="soft" size="sm" data-bang @click="questionsOpen = true">Разобрать</Button>
-      </div>
-      <div
-        v-for="r in mine.rows"
-        :key="r.categoryId"
-        class="relative flex w-full flex-col gap-1.5 border-t border-line py-3 text-left first:border-t-0"
-        :data-row="r.categoryId"
-      >
-        <span class="flex items-center gap-2.5">
-          <span class="grid size-8 shrink-0 place-items-center rounded-[10px] text-[13px] font-bold text-on-photo" :style="{ background: r.color }" aria-hidden="true">{{ letter(r) }}</span>
+    <Tip v-if="mine.rows.length || queue.length" id="tab-week" :text="TIP_WEEK" above :wait="!mine.rows.length">
+      <Card flush class="px-3.5 py-0.5" data-week-list>
+        <div v-if="queue.length && !hasUnknownRow" class="flex items-center gap-2.5 py-3" data-questions-row>
+          <span class="grid size-8 shrink-0 place-items-center rounded-[10px] bg-surface-2 text-[13px] font-bold text-ink-2" aria-hidden="true">?</span>
           <span class="min-w-0 flex-1">
-            <button type="button" class="row-open block w-full truncate text-left text-[15.5px] font-semibold text-ink" @click="sectionFor = r.categoryId">{{ r.name }}</button>
-            <span v-if="r.categoryId === UNKNOWN_CATEGORY && queue.length" class="block type-meta num">{{ queue.length }} {{ plural(queue.length, 'вопрос', 'вопроса', 'вопросов') }}</span>
+            <span class="block truncate text-[15.5px] font-semibold text-ink">Вопросы</span>
+            <span class="block type-meta num">{{ queue.length }} {{ plural(queue.length, 'вопрос', 'вопроса', 'вопросов') }}</span>
           </span>
-          <Button v-if="r.categoryId === UNKNOWN_CATEGORY && queue.length" variant="soft" size="sm" class="relative z-10" data-bang @click="questionsOpen = true">Разобрать</Button>
-          <span class="font-num text-[16px] font-bold num text-ink" data-amount>{{ plain(r.amount) }}</span>
-        </span>
-        <template v-if="r.plan !== null && r.rest !== null">
-          <span class="ml-[42px] block h-1.5 overflow-hidden rounded-pill bg-track">
-            <i class="block h-full rounded-pill" :style="{ width: `${barShare(r)}%`, background: r.low ? 'var(--warn)' : r.color }" />
+          <Button variant="soft" size="sm" data-bang @click="questionsOpen = true">Разобрать</Button>
+        </div>
+        <div
+          v-for="r in mine.rows"
+          :key="r.categoryId"
+          class="relative flex w-full flex-col gap-1.5 border-t border-line py-3 text-left first:border-t-0"
+          :data-row="r.categoryId"
+        >
+          <span class="flex items-center gap-2.5">
+            <span class="grid size-8 shrink-0 place-items-center rounded-[10px] text-[13px] font-bold text-on-photo" :style="{ background: r.color }" aria-hidden="true">{{ letter(r) }}</span>
+            <span class="min-w-0 flex-1">
+              <button type="button" class="row-open block w-full truncate text-left text-[15.5px] font-semibold text-ink" @click="sectionFor = r.categoryId">{{ r.name }}</button>
+              <span v-if="r.categoryId === UNKNOWN_CATEGORY && queue.length" class="block type-meta num">{{ queue.length }} {{ plural(queue.length, 'вопрос', 'вопроса', 'вопросов') }}</span>
+            </span>
+            <Button v-if="r.categoryId === UNKNOWN_CATEGORY && queue.length" variant="soft" size="sm" class="relative z-10" data-bang @click="questionsOpen = true">Разобрать</Button>
+            <span class="font-num text-[16px] font-bold num text-ink" data-amount>{{ plain(r.amount) }}</span>
           </span>
-          <span class="ml-[42px] text-[12.5px] text-ink-2 num" data-rest>
-            <template v-if="r.rest >= 0">осталось <b class="font-semibold" :class="r.low ? 'text-warn' : 'text-ink-2'">{{ plain(r.rest) }}</b></template>
-            <template v-else>сверх плана <b class="font-semibold text-warn">{{ plain(-r.rest) }}</b></template>
-          </span>
-        </template>
-        <span v-else-if="hasPlan && r.categoryId !== UNKNOWN_CATEGORY" class="ml-[42px] text-[12.5px] text-ink-2" data-rest>вне плана</span>
-      </div>
-    </Card>
+          <template v-if="r.plan !== null && r.rest !== null">
+            <span class="ml-[42px] block h-1.5 overflow-hidden rounded-pill bg-track">
+              <i class="block h-full rounded-pill" :style="{ width: `${barShare(r)}%`, background: r.low ? 'var(--warn)' : r.color }" />
+            </span>
+            <span class="ml-[42px] text-[12.5px] text-ink-2 num" data-rest>
+              <template v-if="r.rest >= 0">осталось <b class="font-semibold" :class="r.low ? 'text-warn' : 'text-ink-2'">{{ plain(r.rest) }}</b></template>
+              <template v-else>сверх плана <b class="font-semibold text-warn">{{ plain(-r.rest) }}</b></template>
+            </span>
+          </template>
+          <span v-else-if="hasPlan && r.categoryId !== UNKNOWN_CATEGORY" class="ml-[42px] text-[12.5px] text-ink-2" data-rest>вне плана</span>
+        </div>
+      </Card>
+    </Tip>
 
     <!-- Тренд 8 недель — свёрнут -->
     <div v-if="trendMax > 0" data-week-trend>

@@ -240,11 +240,21 @@ describe('e2e / бэклог «первый», Блок 2 — подсказки
     await press(subject()!.querySelector('[aria-label="Деньги"] button:nth-child(2)'), 'квадрат «Долги»')
     expect(shown()).toEqual([])
 
-    // «Неделя» — шаг дописывает исполнитель возврата приёмки (нажатие раздела пузырь не убирало).
-    expect([...readTipsSeen()].sort()).toEqual(['tab-dreams', 'tab-money', 'tab-month'])
+    // «Неделя»: нажатие раздела — его лист, пузыря нет; лист закрыт — не вернулся (возврат приёмки: пузырь стоял у суммы).
+    await go(router, '/week')
+    expect(shown()).toEqual(['tab-week'])
+    await press(document.querySelector('[data-week-list] .row-open'), 'раздел недели')
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(shown()).toEqual([])
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await settle()
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+    expect(shown()).toEqual([])
+
+    expect([...readTipsSeen()].sort()).toEqual(['tab-dreams', 'tab-money', 'tab-month', 'tab-week'])
     // Перезагрузка — ни одного.
     const again = await launch(A.pinia, '/')
-    for (const path of ['/', '/month', '/money']) {
+    for (const path of ['/', '/week', '/month', '/money']) {
       await go(again, path)
       expect(shown(), path).toEqual([])
     }
