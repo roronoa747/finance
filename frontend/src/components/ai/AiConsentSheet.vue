@@ -41,7 +41,7 @@ onUnmounted(() => {
     </p>
     <div class="mt-5 flex flex-col gap-2">
       <Button class="w-full" data-ai-yes @click="ai.answer(true)">Включить</Button>
-      <Button variant="ghost" class="w-full" data-ai-no @click="ai.answer(false)">Не надо</Button>
+      <Button variant="ghost" size="md" class="w-full" data-ai-no @click="ai.answer(false)">Не надо</Button>
     </div>
   </Sheet>
 </template>

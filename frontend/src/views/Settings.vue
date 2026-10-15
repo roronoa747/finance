@@ -138,7 +138,7 @@ async function deleteAccount() {
         </details>
       </Card>
 
-      <Card v-if="ai.available" tight data-ai-card>
+      <Card v-if="ai.available" data-ai-card>
         <h2 class="type-h3 text-ink">ИИ</h2>
         <div class="mt-2 flex items-center gap-3">
           <div class="min-w-0 flex-1">
