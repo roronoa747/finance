@@ -1,4 +1,4 @@
-import type { DebtPlan, Goal, Obligation, SyncDoc, Tracked } from '@/types/finance'
+import type { AiConsent, DebtPlan, Goal, Obligation, SyncDoc, Tracked } from '@/types/finance'
 import { goalHave } from '@/lib/finance'
 
 /**
@@ -134,12 +134,16 @@ function mergeObligation(winner: Obligation, a: Obligation, b: Obligation): Obli
 /**
  * Объект настроек целиком (B2C-54 `moneySettings`): поздний `updatedAt` побеждает, нет с одной
  * стороны — берётся другая. При равных метках и разном содержимом — детерминированно по
- * содержимому, чтобы слияние оставалось коммутативным.
+ * содержимому, чтобы слияние оставалось коммутативным. `stamp` — своё поле времени (`aiConsent.at`).
  */
-function newerObject<T extends Tracked>(a: T | null | undefined, b: T | null | undefined): T | null {
+function newerObject<T extends object>(
+  a: T | null | undefined,
+  b: T | null | undefined,
+  stamp: (x: T) => string = (x) => ts(x as Tracked),
+): T | null {
   if (!a) return b ?? null
   if (!b) return a
-  if (ts(a) !== ts(b)) return ts(b) > ts(a) ? b : a
+  if (stamp(a) !== stamp(b)) return stamp(b) > stamp(a) ? b : a
   return JSON.stringify(a) >= JSON.stringify(b) ? a : b
 }
 
@@ -242,13 +246,20 @@ export function mergePrivateDocs(
     mergeList((local[key] as WithId[] | undefined) ?? [], (remote[key] as WithId[] | undefined) ?? [], (x) => x.id)
   // gifts — подарки-сюрпризы (B2C-18): в личном документе, адресат их не видит.
   // tripExcluded — операции, снятые с поездки (PN-30): по id операции, «Вернуть» — надгробие.
+  // aiConsent — согласие человека на ИИ (бэклог «ИИ», Р-9): позднее `at` побеждает.
+  const consent = newerObject(
+    local.aiConsent as AiConsent | undefined,
+    remote.aiConsent as AiConsent | undefined,
+    (c) => c.at,
+  )
   const known = {
     accounts: list('accounts'),
     merchantRules: list('merchantRules'),
     gifts: list('gifts'),
     tripExcluded: list('tripExcluded'),
+    ...(consent ? { aiConsent: consent } : {}),
   }
-  return { ...mergeUnknownKeys(local, remote, known), ...known }
+  return { ...mergeUnknownKeys(local, remote, { ...known, aiConsent: null }), ...known }
 }
 
 /**
