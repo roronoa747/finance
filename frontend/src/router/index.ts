@@ -1,7 +1,6 @@
 import { createRouter, createWebHistory, createMemoryHistory, type Router, type RouteRecordRaw, type RouteLocationRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
-import { hasBudgetData } from '@/lib/finance'
 import { landingPath } from '@/router/landing'
 import { readDemoPending } from '@/lib/storage'
 
@@ -189,18 +188,18 @@ export function createAppRouter(history = typeof window !== 'undefined' ? create
       return next(typeof to.meta.viewerTo === 'string' ? { path: to.meta.viewerTo, query: to.query } : '/')
     }
 
-    // 4. Первый запуск (`landingPath`): семья без данных — только `/start`; семья с данными, но не
-    // настроенная (ответы посреди потока) — и `/start`, и главный; настроенной семье `/start` открыт
-    // участнику без своей записи (партнёр по коду) и участнику посреди своего запуска (доход уже
-    // записан, `onboardedAt` ещё нет — перезагрузка на вопросах их не теряет), остальным — главный.
-    // Viewer — мимо.
+    // 4. Первый запуск (`landingPath`): семья не настроена и участник свой запуск не прошёл — только
+    // `/start`, даже если цель или доход уже записаны (холодный запуск PWA посреди потока открывает `/`:
+    // без этого — «Мечты» без зарплаты и без `setupDoneAt`; FR-08); `Start` сам ведёт к первому
+    // непройденному шагу. Настроенной семье `/start` открыт участнику без своей записи (партнёр по коду)
+    // и участнику посреди своего запуска (доход уже записан, `onboardedAt` ещё нет — перезагрузка на
+    // вопросах их не теряет), остальным — главный. Viewer — мимо.
     const onStart = to.path === '/start' || to.path.startsWith('/start/')
     const landing = landingPath(authStore, financeStore)
-    const setupCompleted = financeStore.setupDone || hasBudgetData(financeStore.householdDoc)
     const me = financeStore.people.find((p) => p.id === authStore.slot)
     const joining = financeStore.setupDone && !authStore.isViewer && !!me && !me.onboardedAt
 
-    if (!onStart && landing === '/start' && !setupCompleted && !OPEN_ANYTIME.has(to.path)) return next('/start')
+    if (!onStart && landing === '/start' && !financeStore.setupDone && !OPEN_ANYTIME.has(to.path)) return next('/start')
     if (onStart && landing !== '/start' && !joining) return next('/')
 
     next()

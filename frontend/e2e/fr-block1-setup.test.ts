@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, nextTick, type App } from 'vue'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import { createRouter, createMemoryHistory, type Router } from 'vue-router'
-import { routes } from '../src/router'
+import { createAppRouter, routes } from '../src/router'
 import { apiClient, type ApiClient } from '../src/api/client'
 import { useAuthStore } from '../src/stores/auth'
 import { defaultSyncDoc, useFinanceStore } from '../src/stores/finance'
@@ -360,5 +360,72 @@ describe('e2e / бэклог «первый», Блок 1 — выписка о�
     await open(A, '/start/month')
     expect(title()).toBe('Пригласите партнёра')
     expect(head()).toContain('3 из 3')
+  })
+})
+
+describe('e2e / бэклог «первый», Блок 2 FR-08 — холодный запуск посреди первого запуска (хвост §4 Блока 1)', () => {
+  /** Холодный запуск PWA: `start_url` «/» через настоящий гард; экран — тот, куда он привёл. */
+  async function coldStart(p: Phone): Promise<Router> {
+    app?.unmount()
+    document.body.innerHTML = ''
+    setActivePinia(p.pinia)
+    const router = createAppRouter(createMemoryHistory())
+    await router.push('/')
+    await router.isReady()
+    expect(router.currentRoute.value.path, 'гард не пустил на «Мечты»').toBe('/start')
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app = createApp(Start)
+    app.use(p.pinia)
+    app.use(router)
+    app.mount(root)
+    await nextTick()
+    return router
+  }
+
+  it('(е) мечта записана, PWA закрыли до зарплаты → холодный запуск: зарплата (не вступление и не вторая мечта) → партнёр → «Мечты»; цель одна, setupDoneAt и onboardedAt', async () => {
+    const A = await phone('a')
+    await open(A, '/start/intro')
+    await tap('Пропустить')
+    await tap('Машина')
+    await tap('Дальше')
+    await type(document.querySelector<HTMLInputElement>('input[placeholder="1 800 000"]')!, '3000000')
+    await tap('Дальше')
+    await synced(A)
+
+    const router = await coldStart(A)
+    expect(title()).toBe('Зарплата')
+    expect(head()).toContain('2 из 3')
+    expect(document.querySelector('[data-intro-page]')).toBeNull()
+    await type(field('Зарплата в месяц, ₸'), '450000')
+    await tap('Дальше')
+    expect(router.currentRoute.value.path).toBe('/start/invite')
+
+    // Закрыли и на шаге партнёра — снова он, а не начало.
+    await coldStart(A)
+    expect(title()).toBe('Пригласите партнёра')
+    await tap('Пропустить')
+    expect(A.finance.goals.map((g) => g.name)).toEqual(['Машина'])
+    expect(A.finance.setupDone).toBe(true)
+    expect(A.finance.people[0].onboardedAt).toBeTruthy()
+    expect(landingPath(useAuthStore(), A.finance)).toBe('/')
+  })
+
+  it('(ж) код выдан, первый участник закрыл приложение до «Готово» → партнёр по коду: путь партнёра (без мечты и без приглашения) и семья настроена', async () => {
+    server = fakeServer({
+      ...defaultSyncDoc(),
+      people: [{ id: 'a', name: 'Алихан', salary: 600_000, payday: 10, updatedAt: '2025-07-26T07:00:00.000Z' }],
+      goals: [],
+    } as SyncDoc)
+    const B = await phone('b')
+    expect(landingPath(useAuthStore(), B.finance)).toBe('/start')
+    const router = await coldStart(B)
+    expect(await throughIntro(router)).toBe('/start/salary')
+    expect(page()).not.toContain('На что копим?')
+    await type(field('Зарплата в месяц, ₸'), '350000')
+    await tap('Готово')
+    expect(router.currentRoute.value.path).toBe('/')
+    expect(B.finance.setupDone).toBe(true)
+    expect(B.finance.people.find((p) => p.id === 'b')).toMatchObject({ salary: 350_000, onboardedAt: '2025-07-27T07:00:00.000Z' })
   })
 })

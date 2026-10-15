@@ -77,10 +77,15 @@ describe('router/landing — первый запуск', () => {
     }
     await router.push('/start/month')
     expect(router.currentRoute.value.path).toBe('/start/month')
-    // Посреди потока (доход записан, семья не настроена): и /start, и главный открыты.
+    // Посреди потока (доход записан, семья не настроена, участник не отмечен): /start открыт, главный — нет
+    // (холодный запуск PWA открывает «/» — FR-08).
     useFinanceStore().setPerson('a', { name: 'Ильяс', salary: 700_000, payday: 10 })
     await router.push('/start/questions')
     expect(router.currentRoute.value.path).toBe('/start/questions')
+    await router.push('/')
+    expect(router.currentRoute.value.path).toBe('/start')
+    // Отметился «Готово» — главный.
+    useFinanceStore().setPerson('a', { onboardedAt: '2026-09-24T07:00:00.000Z' })
     await router.push('/')
     expect(router.currentRoute.value.path).toBe('/')
 
@@ -91,6 +96,31 @@ describe('router/landing — первый запуск', () => {
     expect(viewer.currentRoute.value.path).toBe('/')
     await viewer.push('/start')
     expect(viewer.currentRoute.value.path).toBe('/')
+  })
+
+  // Хвост §4 Блока 1 (FR-08): мечта записана, зарплаты и `onboardedAt` нет, PWA закрыли — холодный запуск
+  // открывает «/» (`start_url`). Раньше цель («данные семьи») пускала на «Мечты» без зарплаты навсегда.
+  it('гард: холодный запуск после мечты — «/» и вкладки ведут на /start; настройки открыты; партнёр такой семьи — тоже на /start', async () => {
+    const plan = planFamilyDoc()
+    family('member', 'a', { ...defaultSyncDoc(), goals: [plan.goals[0]] })
+    const router = createAppRouter(createMemoryHistory())
+    for (const path of ['/', '/week', '/month', '/money']) {
+      await router.push(path)
+      expect(router.currentRoute.value.path, path).toBe('/start')
+    }
+    await router.push('/settings')
+    expect(router.currentRoute.value.path).toBe('/settings')
+    await router.push('/access')
+    expect(router.currentRoute.value.path).toBe('/start')
+
+    // Код выдан на шаге партнёра (зарплата есть), первый участник не нажал «Готово»: партнёр входит — свой запуск.
+    setActivePinia(createPinia())
+    family('member', 'b', { ...defaultSyncDoc(), goals: [plan.goals[0]], people: [{ ...plan.people[0], onboardedAt: null }] })
+    const partner = createAppRouter(createMemoryHistory())
+    await partner.push('/')
+    expect(partner.currentRoute.value.path).toBe('/start')
+    await partner.push('/start/salary')
+    expect(partner.currentRoute.value.path).toBe('/start/salary')
   })
 
   it('гард: настроенная семья — /start открыт партнёру без записи и закрыт участнику, прошедшему свой запуск; /access ведёт по landingPath', async () => {
