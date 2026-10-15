@@ -37,6 +37,13 @@ const canRefresh = computed(
   () => !props.example && !!props.review && ai.available && ai.reviewState !== 'thinking' && Date.now() - Date.parse(props.review.at) >= DAY_MS,
 )
 
+/**
+ * Число не рвётся строкой (стенд: «95 / 000 ₸»): модель пишет разряды обычным пробелом — на показе он неразрывный,
+ * как у `money()`; так же пробел перед «₸» и «%». Текст в документе не меняется.
+ */
+const NBSP = '\u00a0'
+const keep = (t: string) => t.replace(/(\d) (?=\d{3}(?!\d))/g, `$1${NBSP}`).replace(/(\d) (?=[₸%])/g, `$1${NBSP}`)
+
 /** Слова состояний запроса (черновик — владельцу «до | после»). */
 const stateText = computed(() =>
   ai.reviewState === 'thinking' ? 'Думаю…' : ai.reviewState === 'limit' ? 'ИИ вернётся 1-го' : 'Не вышло. Попробуйте позже',
@@ -98,11 +105,11 @@ function sentLines(s: MonthSummaryAI, key: string): { title: string; rows: strin
     <div v-if="review" class="flex flex-col gap-4" data-review>
       <section>
         <h3 class="type-section text-ok">Хорошо</h3>
-        <p class="mt-1 text-[15px] leading-snug text-ink num" data-review-good>{{ review.good }}</p>
+        <p class="mt-1 text-[15px] leading-snug text-ink num" data-review-good>{{ keep(review.good) }}</p>
       </section>
       <section>
         <h3 class="type-section text-warn">Риск</h3>
-        <p class="mt-1 text-[15px] leading-snug text-ink num" data-review-risk>{{ review.risk }}</p>
+        <p class="mt-1 text-[15px] leading-snug text-ink num" data-review-risk>{{ keep(review.risk) }}</p>
       </section>
       <section>
         <h3 class="type-section text-ink">Шаги</h3>
@@ -116,12 +123,12 @@ function sentLines(s: MonthSummaryAI, key: string): { title: string; rows: strin
               @click="emit('close')"
             >
               <span class="grid size-6 shrink-0 place-items-center rounded-full bg-surface-2 text-[12.5px] font-bold text-ink-2">{{ i + 1 }}</span>
-              <span class="min-w-0 flex-1">{{ s.text }}</span>
+              <span class="min-w-0 flex-1">{{ keep(s.text) }}</span>
               <PhCaretRight :size="15" class="shrink-0 text-ink-3" />
             </RouterLink>
             <p v-else class="flex items-center gap-2.5 py-2.5 text-[15px] leading-snug text-ink num" data-review-step>
               <span class="grid size-6 shrink-0 place-items-center rounded-full bg-surface-2 text-[12.5px] font-bold text-ink-2">{{ i + 1 }}</span>
-              <span class="min-w-0 flex-1">{{ s.text }}</span>
+              <span class="min-w-0 flex-1">{{ keep(s.text) }}</span>
             </p>
           </li>
         </ol>

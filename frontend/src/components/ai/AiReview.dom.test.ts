@@ -159,6 +159,9 @@ describe('AI-09: разбор месяца у остатка', () => {
     expect(list[0].sent).toEqual(spy.mock.calls[0][0])
     expect(finance.unsent).toBe(true)
     expect(txt(q('[data-review-risk]'))).toBe('Кредитка под 40%.')
+    // Число не рвётся строкой: разряды и «₸» — через неразрывный пробел (стенд: «95 / 000 ₸»); документ — как пришло.
+    expect(q('[data-review-good]')!.textContent).toContain('120 000 ₸')
+    expect(list[0].good).toBe('Остаётся 120 000 ₸.')
     // Свой разбор — без точки.
     expect(q('[data-review-dot]')).toBeNull()
 
