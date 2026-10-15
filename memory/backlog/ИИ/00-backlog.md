@@ -1,6 +1,6 @@
 # Бэклог «ИИ» (AI)
 
-> **Статус:** Блок 1 — исполнитель ✅ 2026-10-15 (ветка `ai-block-1-foundation`). Следующий шаг — `/critic ИИ 1 ultracode`.
+> **Статус:** Блок 1 — исполнитель ✅, критик ✅ 2026-10-15 (ветка `ai-block-1-foundation`). Следующий шаг — `/ux ИИ 1`.
 
 Источник: `ИИ-brief.md` (резюме интервью подтверждено владельцем 2026-10-15, 3 раунда, без правок). Формат —
 `memory/process/BACKLOG-GUIDE.md`. **Решения §2 зафиксированы — рабочие сессии их не пересматривают.**
@@ -123,7 +123,7 @@ AI-15 · Р-1 — состав блоков · Р-12 — запись в `memory
 
 | Хвост | Откуда | Судьба |
 |---|---|---|
-| — | — | — |
+| Флаг ИИ при старте приложения: `authStore.ai` заполняет только `fetchMe` (зовут `Settings.vue:42` и вход в семью) — после перезагрузки кнопок ИИ на «Месяце»/«Неделе» не будет, пока человек не откроет настройки. Нужен `fetchMe` при старте оболочки (или хранить `ff_ai` как `ff_member`) — меняет старт приложения (лишний запрос, 401 → выход), поэтому не правкой критика | критик Блока 1 | ⏳ предложение: блок 2, в AI-09 (первая кнопка ИИ вне настроек) |
 
 ## 5. Протокол
 
@@ -149,6 +149,22 @@ AI-15 · Р-1 — состав блоков · Р-12 — запись в `memory
 перечитать — docs-push в `main` тоже создаёт новый). ИИ-кода в репо нет ни строчки (ни SDK, ни вызовов); следы — только
 текст `Privacy.vue:59-60` (Gemini) и доктрина `lib/finance.ts:11-18` («ИИ-советник получает готовые результаты и только
 объясняет»). Критик каждого блока дописывает строку «После Блока N».
+
+**После Блока 1** (критик, 2026-10-15, ветка `ai-block-1-foundation`): Go — пакет `internal/ai`: `ai.New(key, baseURL)`
+(без ключа `nil` = ИИ выключен), `(*Client).Call(ctx, ai.Request{Model, System, Text, Image *ai.Image{MediaType, Data},
+Schema, Effort, MaxTokens}, &out) (ai.Usage, error)`, ошибки `ErrRateLimited` / `ErrRefused` / `ErrFailed` (только
+статус), `ai.CostMicros`, `ai.MonthKey`, `ai.LimitReached`; дедлайн 45 с, 429 не повторяется, без стриминга
+`MaxTokens` ≤ ~21 000. Клиент собирается один раз в `NewRouter` (`aiClient := ai.New(cfg.AnthropicAPIKey, "")`) —
+гейт `aiGate` (AI-08) берёт его оттуда же. `Repos.AI` = `repository.AIRepository` (`Enabled`, `SetEnabled`, `Used`,
+`AddUsage`, `Families`; мок `NewMockAIRepo(households, users)` в `ai_repo.go`). Конфиг — `AnthropicAPIKey`,
+`AIModelReview/Sellers/Wish`, `AIMonthlyLimit`. Хелперы: `adminOnly` (`events.go`), `decodeStrictJSONBody`
+(`auth.go`, 400 на лишнее поле). Последняя миграция — **`000007_ai.sql`** → следующая `000008_*`. `vercel.json` —
+`functions: {"api/index.go": {"maxDuration": 60}}`; `cmd/server` `WriteTimeout` 60 с. Фронт — `stores/ai.ts`
+(`available`, `consent`, `ensureConsent()`, `setConsent`, `sheetOpen`, `sheetMounted`; слова «что уходит» —
+`AI_SENDS`), лист `components/ai/AiConsentSheet.vue` один в `AppShell` (z 70 — поверх любых листов), согласие —
+ключ `aiConsent {on, at}` **личного** документа (слияние `newerObject(…, c => c.at)`). **`authStore.ai` приходит
+только из `fetchMe`**, а его зовут лишь `Settings.vue` и вход в семью — после перезагрузки `available` ложно, пока не
+открыть настройки (хвост §4). `apiClient.adminFamilies / setFamilyAi / aiCheck`, `lib/money.usdFromMicros`.
 
 **Бэкенд (Go) — где что**
 - Два модуля: `backend/go.mod` (`finance-backend`, go 1.27.0; прямые зависимости — chi, cors, jwt, uuid, pq, x/crypto,
