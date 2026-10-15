@@ -552,7 +552,7 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     expect(landingPath(useAuthStore(), B.store)).toBe('/start')
     await upload(B, kaspi('kaspi-02'))
     const qb = await screen(B.pinia, Start, '/start/questions')
-    expect(qb).toContain('1 из 1')
+    expect(qb).not.toContain('1 из 1')
     expect(qb).toContain(`${money(160_000)} · 12-го`)
     await screen(B.pinia, Start, '/start/questions', undefined, [act('answerIncome')])
     await screen(B.pinia, Start, '/start/questions', undefined, [act('finish')])

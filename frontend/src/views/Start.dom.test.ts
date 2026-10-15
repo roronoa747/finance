@@ -264,11 +264,11 @@ describe('FR-01: мечта → зарплата → партнёр; выпис�
     expect(router.currentRoute.value.path).toBe('/start/invite')
   })
 
-  it('партнёр по коду: после вступления — сразу зарплата («1 из 1»), «Готово» — главный: свой оклад и onboardedAt, finishSetup не зовётся', async () => {
+  it('партнёр по коду: после вступления — сразу зарплата (единственный шаг — без «1 из 1»), «Готово» — главный: свой оклад и onboardedAt, finishSetup не зовётся', async () => {
     const { finance, router } = await mountStart('/start/salary', 'b')
     const finishSetup = vi.spyOn(finance, 'finishSetup')
     expect(page()).not.toContain('На что копим?')
-    expect(stepper()).toBe('1 из 1')
+    expect(stepper()).toBeUndefined()
     await type(field('Зарплата в месяц, ₸'), '300000')
     await click(button('Готово'))
     await settle()

@@ -80,7 +80,7 @@ function afterSalary() {
 }
 
 /* ------------------ Вступление: три образа (Р-1) ------------------ */
-// Снимки лэндинга в теме экрана (`Landing.vue`); строки — свои, короче лэндинга (Р-9: финальные слова — `/ux`).
+// Снимки лэндинга в теме экрана (`Landing.vue`); строки — свои, короче лэндинга (Р-9: утверждены владельцем на `/ux`).
 const INTRO = [
   { key: 'dream', title: 'Мечта', line: 'Цель с фото — и видно, сколько осталось' },
   { key: 'free', title: 'Свободно', line: 'Сколько можно тратить до зарплаты' },
@@ -381,7 +381,8 @@ const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: ha
  * встретят пустым «Новая мечта»), вопросы → остальные закрыты без записи (без зарплаты — короткая форма), партнёр →
  * главный. Зарплата обязательна — там его нет; на короткой форме и «Дальше» после вопросов пропускать нечего.
  */
-const skippable = computed(() => step.value === 'intro' || step.value === 'dream' || step.value === 'invite' || (step.value === 'questions' && !!current.value))
+// Код создан — «Готово» внизу делает то же самое: второй кнопки с тем же действием нет (`/ux` Блока 1).
+const skippable = computed(() => step.value === 'intro' || step.value === 'dream' || (step.value === 'invite' && !inviteCode.value) || (step.value === 'questions' && !!current.value))
 function skipStep() {
   if (step.value === 'intro') leaveIntro()
   else if (step.value === 'dream') go('salary')
@@ -442,7 +443,9 @@ const sub = computed(() => {
         <div v-if="step === 'intro'" class="flex flex-1 items-center gap-1.5" aria-hidden="true" data-intro-dots>
           <span v-for="(s, i) in INTRO" :key="s.key" class="h-1.5 rounded-full transition-all" :class="i === introPage ? 'w-5 bg-brand' : 'w-1.5 bg-track'" />
         </div>
-        <Stepper v-else :n="stepIndex" :k="counted.length" class="flex-1" />
+        <!-- Один шаг (партнёр по коду) — без полосы: «1 из 1» ничего не говорит (`/ux` Блока 1). -->
+        <Stepper v-else-if="counted.length > 1" :n="stepIndex" :k="counted.length" class="flex-1" />
+        <span v-else class="flex-1" />
         <Button v-if="skippable" variant="ghost" size="sm" class="-mr-2 shrink-0" data-skip @click="skipStep">Пропустить</Button>
       </div>
     </div>
@@ -575,8 +578,9 @@ const sub = computed(() => {
               <PhCopy :size="18" class="text-ink-3" />
             </button>
           </div>
-          <p class="inline-flex max-w-[280px] items-center gap-1.5 text-[12.5px] leading-relaxed text-ink-2">
-            Продиктуйте партнёру — он выберет «По коду» <Hint>Партнёр открывает тот же адрес, входит через Google и выбирает «По коду». Код действует две недели и срабатывает один раз.</Hint>
+          <!-- Знак «?» — сразу за последним словом, «По коду» не рвётся (`/ux` Блока 1: было «По / коду» и знак сбоку). -->
+          <p class="max-w-[300px] text-balance text-[12.5px] leading-relaxed text-ink-2">
+            Продиктуйте партнёру — он выберет «По&nbsp;коду» <Hint class="align-middle">Партнёр открывает тот же адрес, входит через Google и выбирает «По коду». Код действует две недели и срабатывает один раз.</Hint>
           </p>
           <span v-if="copied" class="text-[12px] font-medium text-brand">Скопировано</span>
         </template>

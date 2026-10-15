@@ -156,7 +156,9 @@ describe('e2e / бэклог «первый», Блок 1 — первый за�
     await type(document.querySelector<HTMLInputElement>('input[placeholder="1 800 000"]')!, '3000000')
     expect(page()).toContain('будет вашей в')
     expect(page()).not.toContain('при остатке')
-    await tap('Готово — к мечте')
+    // `/ux`: в первом запуске дальше зарплата — кнопка «Дальше», а не «Готово — к мечте».
+    expect(page()).not.toContain('Готово — к мечте')
+    await tap('Дальше')
     expect(router.currentRoute.value.path).toBe('/start/salary')
     expect(events()).toEqual(['first_run_goal'])
 
@@ -266,7 +268,7 @@ describe('e2e / бэклог «первый», Блок 1 — выписка о�
     expect(server.data.spendTotals!.some((t) => t.by === 'a' && t.kind === 'month' && t.period === '2025-07')).toBe(true)
   })
 
-  it('(г) партнёр по коду: вступление → зарплата («1 из 1») → главный; шагов мечты и партнёра нет, finishSetup не зовётся', async () => {
+  it('(г) партнёр по коду: вступление → зарплата (один шаг — без «n из k») → главный; шагов мечты и партнёра нет, finishSetup не зовётся', async () => {
     server = fakeServer({
       ...defaultSyncDoc(),
       setupDoneAt: '2025-07-20T07:00:00.000Z',
@@ -277,7 +279,7 @@ describe('e2e / бэклог «первый», Блок 1 — выписка о�
     const finishSetup = vi.spyOn(B.finance, 'finishSetup')
     const router = await open(B, '/start')
     expect(await throughIntro(router)).toBe('/start/salary')
-    expect(head()).toContain('1 из 1')
+    expect(head()).not.toMatch(/\d из \d/)
     expect(page()).not.toContain('На что копим?')
     // Старые и чужие адреса партнёра — его первый шаг (вступление), не мечта и не приглашение.
     for (const path of ['/start/dream', '/start/invite', '/start/month']) {
@@ -302,7 +304,7 @@ describe('e2e / бэклог «первый», Блок 1 — выписка о�
     await tap('Машина')
     await tap('Дальше')
     await type(document.querySelector<HTMLInputElement>('input[placeholder="1 800 000"]')!, '3000000')
-    await tap('Готово — к мечте')
+    await tap('Дальше')
     expect(router.currentRoute.value.path).toBe('/start/salary')
 
     // Перезагрузка: тот же адрес — тот же шаг; цель записана, гард с `/start` не выкидывает (своей записи ещё нет).

@@ -265,7 +265,8 @@ const inShell = inject<boolean>('ff-shell-actions', false)
         <div class="mt-1 text-[13px] text-ink-2"><template v-if="!props.next">при остатке ≈ {{ money(Math.max(0, free)) }} · </template>будет вашей в {{ doneMonth }}</div>
       </div>
       <div class="mt-auto flex flex-col gap-2 pt-2">
-        <Button size="lg" class="w-full" @click="form.submit(create)">Готово — к мечте</Button>
+        <!-- В первом запуске дальше — зарплата, а не мечта (`/ux` Блока 1 «первый»): кнопка называет следующий шаг. -->
+        <Button size="lg" class="w-full" @click="form.submit(create)">{{ props.next ? 'Дальше' : 'Готово — к мечте' }}</Button>
         <Button variant="ghost" size="md" class="w-full" @click="step = 'pick'">Назад</Button>
       </div>
     </template>

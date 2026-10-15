@@ -97,7 +97,7 @@ describe('views/Start.vue — первый запуск (B2C-19, FR-01, SSR)', (
     expect(head).not.toMatch(/выписк|PDF/i)
   })
 
-  it('FR-01: «Есть PDF из банка» раскрывает прежний выбор файла на том же шаге — «Ваш банк», файл остаётся на телефоне, «Выбрать файл» и тихое «Назад»; партнёр — «1 из 1»', async () => {
+  it('FR-01: «Есть PDF из банка» раскрывает прежний выбор файла на том же шаге — «Ваш банк», файл остаётся на телефоне, «Выбрать файл» и тихое «Назад»; партнёр — один шаг, без «1 из 1»', async () => {
     family()
     const html = await renderScreen(Start, '/start/salary', undefined, [screenMixin({ pdf: true })])
     expect(html).toContain('Ваш банк')
@@ -123,7 +123,8 @@ describe('views/Start.vue — первый запуск (B2C-19, FR-01, SSR)', (
     family('member', 'b', { ...planFamilyDoc(), people: [planFamilyDoc().people[0]] })
     const partner = await renderScreen(Start, '/start/salary')
     expect(partner).toContain('>Зарплата</h1>')
-    expect(partner).toContain('1 из 1')
+    // `/ux`: единственный шаг — без полосы «1 из 1».
+    expect(partner).not.toContain('1 из 1')
     expect(partner).not.toContain('На что копим?')
     expect(brandButtons(partner)).toEqual(['Готово'])
   })
@@ -314,6 +315,8 @@ describe('views/Start.vue — первый запуск (B2C-19, FR-01, SSR)', (
     const withCode = await renderScreen(Start, '/start/invite')
     expect(withCode).toContain('Готово')
     expect(brandButtons(withCode)).toEqual(['Готово'])
+    // `/ux`: с кодом «Пропустить» в шапке делало бы то же, что «Готово», — его нет.
+    expect(withCode).not.toContain('data-skip')
     expect(store.setupDone).toBe(false)
     await renderScreen(Start, '/start/invite', undefined, [act('finish')])
     expect(store.setupDone).toBe(true)
@@ -325,7 +328,7 @@ describe('views/Start.vue — первый запуск (B2C-19, FR-01, SSR)', (
     const store = family('member', 'b', { ...base, people: [base.people[0]] })
     seedOps(kaspiOps('kaspi-02'), 'u-b')
     const html = await renderScreen(Start, '/start/questions')
-    expect(html).toContain('1 из 1')
+    expect(html).not.toContain('1 из 1')
     expect(html).toContain('Это ваш доход?')
     expect(html).toContain(`${money(160_000)} · 12-го`)
     await renderScreen(Start, '/start/questions', undefined, [act('answerIncome')])
