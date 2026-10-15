@@ -39,8 +39,11 @@ const (
 )
 
 var (
-	knownBanks = map[string]bool{"kaspi": true, "freedom": true}
-	opKinds    = map[string]bool{
+	// Operations may come from Apple Pay too (Р-14): Halyk, or "card" when the card's bank is
+	// not recognised. Statements are still parsed for Kaspi and Freedom only.
+	knownBanks  = map[string]bool{"kaspi": true, "freedom": true, "halyk": true, "card": true}
+	uploadBanks = map[string]bool{"kaspi": true, "freedom": true}
+	opKinds     = map[string]bool{
 		"purchase": true, "transfer-out": true, "transfer-in": true, "income": true,
 		"cash": true, "fee": true, "other": true,
 	}
@@ -116,7 +119,7 @@ func (h *StatementHandler) CreateUpload(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	switch {
-	case !knownBanks[req.Bank]:
+	case !uploadBanks[req.Bank]:
 		errorJSON(w, http.StatusBadRequest, "unknown bank")
 		return
 	case !validDate(req.PeriodFrom) || !validDate(req.PeriodTo) || req.PeriodFrom > req.PeriodTo:

@@ -207,7 +207,7 @@ func TestOperationsValidation(t *testing.T) {
 		"merchant too long":         with("merchant", strings.Repeat("m", 201)),
 		"id not hex":                with("id", "XYZ12345"),
 		"id too short":              with("id", "abc"),
-		"unknown bank":              with("bank", "halyk"),
+		"unknown bank":              with("bank", "bcc"),
 		"upload_id not uuid":        with("upload_id", "not-a-uuid"),
 		// uuid.Validate принимает urn:uuid: и {…}, Postgres на urn:uuid: падал — батч уходил в 500.
 		"upload_id urn":    with("upload_id", "urn:uuid:00000000-0000-4000-8000-000000000000"),
@@ -223,6 +223,13 @@ func TestOperationsValidation(t *testing.T) {
 		}
 		if strings.Contains(rec.Body.String(), "123456") || strings.Contains(rec.Body.String(), "0022412") {
 			t.Errorf("%s: response echoes the text: %s", name, rec.Body.String())
+		}
+	}
+	// Операции с телефона (Apple Pay, Р-14): Halyk и «карта» без банка — банки операций, но
+	// не выписок (загрузка halyk — 400 в TestStatementUploadsRolesAndFamily).
+	for _, bank := range []string{"halyk", "card"} {
+		if rec := app.do(t, http.MethodPost, "/api/operations/batch", app.alice, map[string]any{"operations": []any{with("bank", bank)}}); rec.Code != http.StatusOK {
+			t.Errorf("bank %s: want 200, got %d %s", bank, rec.Code, rec.Body.String())
 		}
 	}
 	// Пять цифр подряд — можно (хвост карты, «555 MARKET»).

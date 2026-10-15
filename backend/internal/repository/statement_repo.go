@@ -93,7 +93,7 @@ func (r *sqlStatementRepository) ListUploads(ctx context.Context, householdID st
 // upsertChunk keeps one INSERT well under PostgreSQL's 65535 parameters.
 const upsertChunk = 500
 
-const operationColumns = 11
+const operationColumns = 12
 
 func (r *sqlStatementRepository) UpsertOperations(ctx context.Context, userID, householdID string, ops []models.Operation) (int, error) {
 	ops = lastByID(ops)
@@ -117,15 +117,18 @@ func (r *sqlStatementRepository) UpsertOperations(ctx context.Context, userID, h
 			n := len(args)
 			p := func(i int) string { return fmt.Sprintf("$%d", n+i) }
 			// The upload counts only if it is the user's own; otherwise NULL.
+			// source, occurred_at and fx_* are the server's (Apple Pay): a batch never writes them,
+			// a new row from a batch is a statement line (the column default).
 			values = append(values, fmt.Sprintf(
-				"($1, %s, $2, (SELECT u.id FROM app.statement_uploads u WHERE u.id = %s::uuid AND u.user_id = $1), %s, %s::date, %s, %s, %s, %s, %s, %s, %s)",
-				p(1), p(2), p(3), p(4), p(5), p(6), p(7), p(8), p(9), p(10), p(11)))
+				"($1, %s, $2, (SELECT u.id FROM app.statement_uploads u WHERE u.id = %s::uuid AND u.user_id = $1), %s, %s::date, %s, %s, %s, %s, %s, %s, %s, CASE WHEN %s THEN now() END)",
+				p(1), p(2), p(3), p(4), p(5), p(6), p(7), p(8), p(9), p(10), p(11), p(12)))
 			args = append(args, op.ID, op.UploadID, op.Bank, op.Date, op.Amount, op.Kind, op.Merchant,
-				op.Counterparty, op.Note, op.CategoryID, op.Internal)
+				op.Counterparty, op.Note, op.CategoryID, op.Internal, op.Deleted)
 		}
+		// The tombstone is one-way: a later batch without "deleted" (an old client) keeps it.
 		query := `
 			INSERT INTO app.operations
-				(user_id, id, household_id, upload_id, bank, op_date, amount, kind, merchant, counterparty, note, category_id, internal)
+				(user_id, id, household_id, upload_id, bank, op_date, amount, kind, merchant, counterparty, note, category_id, internal, deleted_at)
 			VALUES ` + strings.Join(values, ",\n") + `
 			ON CONFLICT (user_id, id) DO UPDATE SET
 				household_id = EXCLUDED.household_id,
@@ -139,6 +142,7 @@ func (r *sqlStatementRepository) UpsertOperations(ctx context.Context, userID, h
 				note = EXCLUDED.note,
 				category_id = EXCLUDED.category_id,
 				internal = EXCLUDED.internal,
+				deleted_at = COALESCE(app.operations.deleted_at, EXCLUDED.deleted_at),
 				updated_at = now();`
 		res, err := tx.ExecContext(ctx, query, args...)
 		if err != nil {
@@ -159,7 +163,7 @@ func (r *sqlStatementRepository) UpsertOperations(ctx context.Context, userID, h
 
 const operationSelect = `
 	SELECT id, bank, op_date::text, amount, kind, merchant, counterparty, note, category_id, internal,
-	       upload_id::text, updated_at
+	       upload_id::text, updated_at, source, occurred_at, fx_currency, fx_amount, deleted_at IS NOT NULL
 	FROM app.operations`
 
 func (r *sqlStatementRepository) ListOperations(ctx context.Context, userID string, since time.Time, limit int) ([]models.Operation, error) {
@@ -191,7 +195,8 @@ func (r *sqlStatementRepository) queryOperations(ctx context.Context, query stri
 	for rows.Next() {
 		var op models.Operation
 		if err := rows.Scan(&op.ID, &op.Bank, &op.Date, &op.Amount, &op.Kind, &op.Merchant, &op.Counterparty,
-			&op.Note, &op.CategoryID, &op.Internal, &op.UploadID, &op.UpdatedAt); err != nil {
+			&op.Note, &op.CategoryID, &op.Internal, &op.UploadID, &op.UpdatedAt,
+			&op.Source, &op.OccurredAt, &op.FxCurrency, &op.FxAmount, &op.Deleted); err != nil {
 			return nil, fmt.Errorf("failed to scan operation: %w", err)
 		}
 		ops = append(ops, op)

@@ -711,8 +711,14 @@ func (m *MockStatementRepo) UpsertOperations(ctx context.Context, userID, househ
 		if op.UploadID != nil && !m.ownsUpload(userID, *op.UploadID) {
 			op.UploadID = nil
 		}
-		if prev, ok := m.ops[userID][op.ID]; ok && op.UploadID == nil {
-			op.UploadID = prev.op.UploadID
+		// As in SQL: source, occurred_at and fx_* stay the server's; the tombstone is one-way.
+		op.Source, op.OccurredAt, op.FxCurrency, op.FxAmount = "statement", nil, nil, nil
+		if prev, ok := m.ops[userID][op.ID]; ok {
+			if op.UploadID == nil {
+				op.UploadID = prev.op.UploadID
+			}
+			op.Source, op.OccurredAt, op.FxCurrency, op.FxAmount = prev.op.Source, prev.op.OccurredAt, prev.op.FxCurrency, prev.op.FxAmount
+			op.Deleted = op.Deleted || prev.op.Deleted
 		}
 		m.ops[userID][op.ID] = &mockOperation{op: op, householdID: householdID}
 	}
