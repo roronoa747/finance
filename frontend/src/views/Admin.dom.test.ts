@@ -154,6 +154,20 @@ describe('AI-04: админка — семьи и ИИ', () => {
     expect(el.querySelector('[data-check-reason]')!.textContent).toContain('Claude не ответил')
   })
 
+  it('цифры не загрузились — семьи и тумблеры всё равно видны', async () => {
+    vi.spyOn(apiClient, 'adminMetrics').mockRejectedValue(new ApiError('boom', 500))
+    vi.spyOn(apiClient, 'adminFamilies').mockResolvedValue(list())
+    const el = await mount()
+    expect(rows(el)).toHaveLength(2)
+    expect(el.textContent).toContain('Не получилось загрузить цифры.')
+  })
+
+  it('запросы есть, а расход 0 (модели нет в таблице цен) — «≈ —», не «$0»', async () => {
+    vi.spyOn(apiClient, 'adminFamilies').mockResolvedValue(list({ families: [fam({ requests: 2, cost_micros: 0 })] }))
+    const el = await mount()
+    expect(rows(el)[0].querySelector('[data-spent]')!.textContent).toBe('2 запроса · ≈ —')
+  })
+
   it('не владельцу — «Нет такой страницы», семей нет', async () => {
     vi.spyOn(apiClient, 'adminMetrics').mockRejectedValue(new ApiError('not found', 404))
     vi.spyOn(apiClient, 'adminFamilies').mockRejectedValue(new ApiError('not found', 404))

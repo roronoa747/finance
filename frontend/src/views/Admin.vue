@@ -81,8 +81,9 @@ async function check() {
   }
 }
 
+// Запросы были, а расход 0 — модели нет в таблице цен сервера (Р-14): «≈ —», а не «$0».
 const spent = (requests: number, micros: number) =>
-  `${requests} ${plural(requests, 'запрос', 'запроса', 'запросов')} · ${usdFromMicros(micros)}`
+  `${requests} ${plural(requests, 'запрос', 'запроса', 'запросов')} · ${requests > 0 && micros === 0 ? '≈ —' : usdFromMicros(micros)}`
 
 onMounted(async () => {
   void loadFamilies()
@@ -121,47 +122,48 @@ const funnel = computed(() => {
 
 <template>
   <div class="flex flex-col gap-3 pt-1 text-left">
+    <!-- Семьи — своя ручка: видны, даже если цифры ниже не загрузились (не-админу обе — 404). -->
+    <Card v-if="families" data-families>
+      <div class="mb-1 flex items-center gap-1.5">
+        <h2 class="type-h3 text-ink">Семьи</h2>
+        <Hint label="Про лимит">
+          До {{ families.limit }} {{ plural(families.limit, 'запроса', 'запросов', 'запросов') }} ИИ в месяц на семью.
+          Потолок денег — в консоли Anthropic.
+        </Hint>
+        <span class="flex-1" />
+        <Hint v-if="checkFail" label="Почему нет связи"><span data-check-reason>{{ checkFail }}</span></Hint>
+        <Button variant="ghost" size="sm" :disabled="checking" data-ai-check @click="check">Проверить связь</Button>
+      </div>
+      <p v-if="!families.key" class="mb-1 text-[13px] text-warn" data-no-key>Ключ не задан — ИИ выключен везде</p>
+      <p v-if="familiesError" role="alert" class="mb-1 text-[13px] text-warn">{{ familiesError }}</p>
+      <p v-if="!families.families.length" class="text-[14px] text-ink-2">Семей пока нет.</p>
+      <ul v-else>
+        <li
+          v-for="f in families.families"
+          :key="f.id"
+          class="flex items-center gap-3 border-t border-line py-2.5 first:border-0"
+          :data-family="f.id"
+        >
+          <div class="min-w-0 flex-1">
+            <div class="truncate text-[14px] text-ink" data-emails>{{ f.emails.join(' · ') || '—' }}</div>
+            <div v-if="f.ai || f.requests > 0" class="type-meta mt-0.5 num" data-spent>{{ spent(f.requests, f.cost_micros) }}</div>
+          </div>
+          <Toggle
+            :model-value="f.ai"
+            :label="`ИИ: ${f.emails.join(', ') || 'семья'}`"
+            :disabled="pending.has(f.id)"
+            @update:model-value="(on) => setAi(f.id, on)"
+          />
+        </li>
+      </ul>
+    </Card>
+    <p v-else-if="familiesError" role="alert" class="text-[14px] text-warn">{{ familiesError }}</p>
+
     <p v-if="state === 'loading'" class="text-[14px] text-ink-2">Минуту…</p>
     <p v-else-if="state === 'none'" class="text-[14px] text-ink-2">Нет такой страницы.</p>
     <p v-else-if="state === 'error'" role="alert" class="text-[14px] text-warn">Не получилось загрузить цифры.</p>
 
     <template v-else-if="metrics">
-      <Card v-if="families" data-families>
-        <div class="mb-1 flex items-center gap-1.5">
-          <h2 class="type-h3 text-ink">Семьи</h2>
-          <Hint label="Про лимит">
-            До {{ families.limit }} {{ plural(families.limit, 'запроса', 'запросов', 'запросов') }} ИИ в месяц на семью.
-            Потолок денег — в консоли Anthropic.
-          </Hint>
-          <span class="flex-1" />
-          <Hint v-if="checkFail" label="Почему нет связи"><span data-check-reason>{{ checkFail }}</span></Hint>
-          <Button variant="ghost" size="sm" :disabled="checking" data-ai-check @click="check">Проверить связь</Button>
-        </div>
-        <p v-if="!families.key" class="mb-1 text-[13px] text-warn" data-no-key>Ключ не задан — ИИ выключен везде</p>
-        <p v-if="familiesError" role="alert" class="mb-1 text-[13px] text-warn">{{ familiesError }}</p>
-        <p v-if="!families.families.length" class="text-[14px] text-ink-2">Семей пока нет.</p>
-        <ul v-else>
-          <li
-            v-for="f in families.families"
-            :key="f.id"
-            class="flex items-center gap-3 border-t border-line py-2.5 first:border-0"
-            :data-family="f.id"
-          >
-            <div class="min-w-0 flex-1">
-              <div class="truncate text-[14px] text-ink" data-emails>{{ f.emails.join(' · ') || '—' }}</div>
-              <div v-if="f.ai || f.requests > 0" class="type-meta mt-0.5 num" data-spent>{{ spent(f.requests, f.cost_micros) }}</div>
-            </div>
-            <Toggle
-              :model-value="f.ai"
-              :label="`ИИ: ${f.emails.join(', ') || 'семья'}`"
-              :disabled="pending.has(f.id)"
-              @update:model-value="(on) => setAi(f.id, on)"
-            />
-          </li>
-        </ul>
-      </Card>
-      <p v-else-if="familiesError" role="alert" class="text-[14px] text-warn">{{ familiesError }}</p>
-
       <Card>
         <div class="type-meta">Вторая выписка за 14 дней</div>
         <div class="type-big num mt-1" data-metric="second">{{ pct(second!.retained, second!.eligible) }}</div>

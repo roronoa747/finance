@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { onUnmounted } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { PhChartBar, PhImage, PhStorefront } from '@phosphor-icons/vue'
-import { useAiStore } from '@/stores/ai'
+import { AI_NO_TRAINING, AI_SENDS, useAiStore } from '@/stores/ai'
 import Sheet from '@/components/kit/Sheet.vue'
 import Button from '@/components/ui/Button.vue'
 
@@ -13,20 +13,20 @@ import Button from '@/components/ui/Button.vue'
  */
 const ai = useAiStore()
 
-const items = [
-  { icon: PhChartBar, text: 'Цифры месяца — без имён' },
-  { icon: PhStorefront, text: 'Названия продавцов' },
-  { icon: PhImage, text: 'Скриншот товара' },
-]
+const items = [PhChartBar, PhStorefront, PhImage].map((icon, i) => ({ icon, text: AI_SENDS[i] }))
 
-// Ушли с экрана с открытым листом (ссылка «Подробнее», выход) — ждущий ответа получает «нет».
+// Лист есть — стору есть чем спросить. Ушли с экрана с открытым листом (ссылка «Подробнее», выход) — ждущий
+// ответа получает «нет».
+onMounted(() => (ai.sheetMounted = true))
 onUnmounted(() => {
+  ai.sheetMounted = false
   if (ai.sheetOpen) ai.answer(null)
 })
 </script>
 
 <template>
-  <Sheet :open="ai.sheetOpen" title="ИИ-помощник" @close="ai.answer(null)">
+  <!-- z 70 — над листами экранов (50) и вложенными (60): согласие спрашивают и изнутри листа («Новое желание»). -->
+  <Sheet :open="ai.sheetOpen" title="ИИ-помощник" :z="70" @close="ai.answer(null)">
     <ul class="flex flex-col gap-3" data-ai-consent>
       <li v-for="it in items" :key="it.text" class="flex items-center gap-3 text-[15px] text-ink">
         <span class="grid size-9 shrink-0 place-items-center rounded-[12px] bg-surface-2 text-ink-2">
@@ -36,7 +36,7 @@ onUnmounted(() => {
       </li>
     </ul>
     <p class="mt-4 text-[13.5px] text-ink-2">
-      Уходит в Anthropic (Claude). Не обучается на ваших данных.
+      Уходит в Anthropic (Claude). {{ AI_NO_TRAINING }}.
       <RouterLink to="/privacy" class="text-brand" data-ai-privacy @click="ai.answer(null)">Подробнее</RouterLink>
     </p>
     <div class="mt-5 flex flex-col gap-2">

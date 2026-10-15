@@ -118,4 +118,41 @@ describe('AI-05: лист согласия', () => {
     await expect(answer).resolves.toBe(false)
     expect(ai.consent).toBe('off')
   })
+
+  it('крестик, «Подробнее», уход с экрана — на этот раз нет, вопрос остаётся', async () => {
+    signIn('member', true)
+    await mount(AiConsentSheet, '/settings')
+    const ai = useAiStore()
+
+    let answer = ai.ensureConsent()
+    await settle()
+    document.querySelector<HTMLButtonElement>('[aria-label="Закрыть"]')!.click()
+    await expect(answer).resolves.toBe(false)
+
+    answer = ai.ensureConsent()
+    await settle()
+    document.querySelector<HTMLAnchorElement>('[data-ai-privacy]')!.click()
+    await expect(answer).resolves.toBe(false)
+
+    answer = ai.ensureConsent()
+    await settle()
+    expect(ai.sheetOpen).toBe(true)
+    app!.unmount()
+    app = null
+    await expect(answer).resolves.toBe(false)
+    expect(ai.sheetOpen).toBe(false)
+    expect(ai.sheetMounted).toBe(false)
+    expect(ai.consent).toBe('unknown')
+    expect('aiConsent' in useFinanceStore().privateDoc).toBe(false)
+  })
+
+  it('поверх листа экрана: согласие спрашивают и изнутри листа', async () => {
+    signIn('member', true)
+    await mount(AiConsentSheet, '/settings')
+    void useAiStore().ensureConsent()
+    await settle()
+    const layer = document.querySelector('[data-ai-consent]')!.closest<HTMLElement>('[style*="z-index"]')!
+    // Листы экранов — 50, вложенные («Оплатил», «Обменял») — 60.
+    expect(Number(layer.style.zIndex)).toBeGreaterThan(60)
+  })
 })

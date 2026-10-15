@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { PhCaretDown, PhCaretRight, PhCopy } from '@phosphor-icons/vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { useAiStore } from '@/stores/ai'
+import { AI_NO_TRAINING, AI_SENDS, useAiStore } from '@/stores/ai'
 import { useInvite, useMembers } from '@/components/useInvite'
 import AppearancePanel from '@/components/AppearancePanel.vue'
 import ParseSettings from '@/components/ParseSettings.vue'
@@ -146,7 +146,7 @@ async function deleteAccount() {
             <div class="mt-0.5 flex items-center gap-1.5 type-meta">
               Без имён · Anthropic
               <Hint label="Что уходит">
-                Цифры месяца — без имён. Названия продавцов. Скриншот товара. На ваших данных не обучается.
+                {{ AI_SENDS.join('. ') }}. {{ AI_NO_TRAINING }}.
               </Hint>
             </div>
           </div>

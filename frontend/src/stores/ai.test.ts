@@ -22,11 +22,14 @@ describe('stores/ai — доступность и согласие', () => {
     setActivePinia(createPinia())
   })
 
+  // Лист согласия смонтирован, как в оболочке (`AiConsentSheet`).
   function member(ai = true) {
     const auth = useAuthStore()
     auth.setAuthData(authAs('member'))
     auth.ai = ai
-    return useAiStore()
+    const store = useAiStore()
+    store.sheetMounted = true
+    return store
   }
 
   it('available — только участнику семьи с ИИ: не без флага, не viewer, не в демо', () => {
@@ -96,6 +99,14 @@ describe('stores/ai — доступность и согласие', () => {
     expect('aiConsent' in useFinanceStore().privateDoc).toBe(false)
     void ai.ensureConsent()
     expect(ai.sheetOpen).toBe(true)
+  })
+
+  it('листа нет (экран вне оболочки) — false сразу, а не вечное ожидание', async () => {
+    const ai = member()
+    ai.sheetMounted = false
+    await expect(ai.ensureConsent()).resolves.toBe(false)
+    expect(ai.sheetOpen).toBe(false)
+    expect(ai.consent).toBe('unknown')
   })
 
   it('без доступа — false и листа нет', async () => {

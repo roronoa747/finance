@@ -23,6 +23,8 @@ export const useAiStore = defineStore('ai', () => {
 
   /** Лист «что уходит» открыт — ждёт ответа на `ensureConsent`. */
   const sheetOpen = ref(false)
+  /** Лист смонтирован (оболочка): без него спросить нечем — «нет», а не вечное ожидание (экран первого запуска). */
+  const sheetMounted = ref(false)
   let pending: Promise<boolean> | null = null
   let resolve: ((on: boolean) => void) | null = null
 
@@ -37,6 +39,7 @@ export const useAiStore = defineStore('ai', () => {
     if (!available.value || consent.value === 'off') return Promise.resolve(false)
     if (consent.value === 'on') return Promise.resolve(true)
     if (pending) return pending
+    if (!sheetMounted.value) return Promise.resolve(false)
     sheetOpen.value = true
     pending = new Promise<boolean>((r) => (resolve = r))
     return pending
@@ -52,5 +55,9 @@ export const useAiStore = defineStore('ai', () => {
     r?.(on === true)
   }
 
-  return { available, consent, sheetOpen, setConsent, ensureConsent, answer }
+  return { available, consent, sheetOpen, sheetMounted, setConsent, ensureConsent, answer }
 })
+
+/** Что уходит в Claude (Р-9) — одни слова для листа согласия и подсказки в настройках. */
+export const AI_SENDS = ['Цифры месяца — без имён', 'Названия продавцов', 'Скриншот товара'] as const
+export const AI_NO_TRAINING = 'Не обучается на ваших данных'

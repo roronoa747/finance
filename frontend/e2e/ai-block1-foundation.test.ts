@@ -104,6 +104,8 @@ describe('e2e / ИИ Блок 1 — фундамент: флаг семьи, с�
     setActivePinia(partner.pinia)
     const ai = useAiStore()
     expect(ai.consent).toBe('unknown')
+    // Оболочка с листом открыта (screen рисует строкой — onMounted листа не бывает).
+    ai.sheetMounted = true
     void ai.ensureConsent()
     expect(ai.sheetOpen).toBe(true)
     const shell = await screen(partner.pinia, AppShell, '/settings')
