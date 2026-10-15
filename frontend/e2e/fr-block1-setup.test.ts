@@ -210,6 +210,44 @@ describe('e2e / бэклог «первый», Блок 1 — первый за�
     expect(events()).toEqual(['first_run_done'])
     expect(landingPath(useAuthStore(), A.finance)).toBe('/')
   })
+
+  it('приёмка — весь путь новой семьи: на каждом экране не больше одной брендовой кнопки, и ни главная, ни заголовок не про выписку', async () => {
+    const A = await phone('a')
+    const router = await open(A, '/start')
+    const seen: string[] = []
+    const check = (where: string) => {
+      const live = (el: Element) => !el.closest('[aria-hidden="true"]')
+      const brand = [...document.querySelectorAll('button')].filter((b) => live(b) && /(^|\s)bg-brand(\s|$)/.test(b.className))
+      const texts = brand.map((b) => b.textContent!.trim())
+      expect(brand.length, `${where}: брендовых ${texts.join(' | ')}`).toBeLessThanOrEqual(1)
+      expect(texts.join(' '), `${where}: главная`).not.toMatch(/выписк|PDF/i)
+      const h1 = [...document.querySelectorAll('h1')].filter(live).map((h) => h.textContent!.trim())
+      expect(h1.join(' '), `${where}: заголовок`).not.toMatch(/выписк|PDF/i)
+      seen.push(`${where}: ${texts[0] ?? '—'}`)
+    }
+    for (let i = 0; i < 3; i++) {
+      check(`вступление ${i + 1}`)
+      await tap('Дальше')
+    }
+    check('мечта')
+    await tap('Машина')
+    await tap('Дальше')
+    await type(document.querySelector<HTMLInputElement>('input[placeholder="1 800 000"]')!, '3000000')
+    check('форма мечты')
+    await tap('Дальше')
+    check('зарплата')
+    await tap('Есть PDF из банка')
+    check('раскрытие «Есть PDF из банка»')
+    await tap('Назад')
+    await type(field('Зарплата в месяц, ₸'), '450000')
+    await tap('Дальше')
+    expect(router.currentRoute.value.path).toBe('/start/invite')
+    check('партнёр')
+    expect(seen).toEqual([
+      'вступление 1: Дальше', 'вступление 2: Дальше', 'вступление 3: Дальше', 'мечта: Дальше', 'форма мечты: Дальше',
+      'зарплата: Дальше', 'раскрытие «Есть PDF из банка»: Выбрать файл', 'партнёр: Создать код',
+    ])
+  })
 })
 
 describe('e2e / бэклог «первый», Блок 1 — выписка опцией, партнёр, перезагрузка (FR-01…FR-03)', () => {
