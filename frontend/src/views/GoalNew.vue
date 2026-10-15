@@ -234,7 +234,8 @@ const inShell = inject<boolean>('ff-shell-actions', false)
       <!-- Механика (Unsplash, сжатие) на экране не объясняется — автор виден на фото (правило интерфейса). -->
       <div class="mt-auto flex flex-col gap-2 pt-2">
         <Button size="lg" class="w-full" @click="form.submit(next)">Дальше</Button>
-        <Button variant="ghost" size="md" class="w-full" @click="skip">Пока без мечты</Button>
+        <!-- В первом запуске — «Пропустить» в шапке шага (FR-03); вне его «Пока без мечты» ведёт на главный. -->
+        <Button v-if="!props.next" variant="ghost" size="md" class="w-full" @click="skip">Пока без мечты</Button>
       </div>
     </template>
 

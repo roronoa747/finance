@@ -174,16 +174,25 @@ describe('PN-19: «Подушка» в «Новой мечте» — фонд с
   const tiles = () => [...document.querySelectorAll('button')].map((b) => b.textContent?.trim())
 
   it('первый запуск (`next`): плитки «Подушка» нет, остальные темы и «Своё фото» на месте', async () => {
-    await open({ next: '/start/invite' })
+    await open({ next: '/start/salary' })
     expect(button('Подушка'), 'плитки «Подушка» нет').toBeUndefined()
     expect(tiles()).toContain('Свадьба')
     expect(tiles()).toContain('Своё фото')
     expect(tiles()).toContain('По ссылке')
   })
 
+  it('FR-03: «Пока без мечты» — только вне первого запуска; в нём — «Пропустить» в шапке шага', async () => {
+    await open({ next: '/start/salary' })
+    expect(button('Пока без мечты')).toBeUndefined()
+    app?.unmount()
+    document.body.innerHTML = ''
+    await open()
+    expect(button('Пока без мечты')).toBeDefined()
+  })
+
   // `/ux` возврата Б6: тем 18 — ряды полные; «Своё фото · По ссылке» — свой ряд пополам, а не две плитки и пустая ячейка.
   it('сетка без пустой ячейки: первый запуск — «Своё фото · По ссылке» рядом пополам; «Новая мечта» — в ряду с «Животным»', async () => {
-    await open({ next: '/start/invite' })
+    await open({ next: '/start/salary' })
     const own = () => document.querySelector('[data-own-tiles]') as HTMLElement
     expect(own().classList.contains('col-span-3'), 'свой ряд на всю ширину').toBe(true)
     expect([...own().querySelectorAll('button')].map((b) => b.textContent?.trim())).toEqual(['Своё фото', 'По ссылке'])

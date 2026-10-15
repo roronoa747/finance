@@ -213,11 +213,11 @@ async function settle() {
 const stepper = () => document.querySelector('.type-meta')?.textContent?.replace(/\s+/g, ' ').trim()
 
 describe('FR-01: мечта → зарплата → партнёр; выписка — опцией у зарплаты (DOM, роутер)', () => {
-  it('без выписки: «Пока без мечты» → зарплата («2 из 3») → «Дальше» — партнёр без вопросов → «Позже» — главный, семья настроена', async () => {
+  it('без выписки: «Пропустить» мечту → зарплата («2 из 3») → «Дальше» — партнёр без вопросов → «Пропустить» — главный, семья настроена', async () => {
     const { finance, router } = await mountStart('/start/dream')
     expect(page()).toContain('На что копим?')
     expect(stepper()).toBe('1 из 3')
-    await click(button('Пока без мечты'))
+    await click(button('Пропустить'))
     await settle()
     expect(router.currentRoute.value.path).toBe('/start/salary')
     expect(stepper()).toBe('2 из 3')
@@ -227,14 +227,14 @@ describe('FR-01: мечта → зарплата → партнёр; выпис�
     expect(router.currentRoute.value.path).toBe('/start/invite')
     expect(finance.people[0]).toMatchObject({ id: 'a', salary: 450_000, payday: 10 })
     expect(stepper()).toBe('3 из 3')
-    await click(button('Позже'))
+    await click(button('Пропустить'))
     await settle()
     expect(router.currentRoute.value.path).toBe('/')
     expect(finance.setupDone).toBe(true)
     expect(finance.people[0].onboardedAt).toBe('2026-09-24T07:00:00.000Z')
   })
 
-  it('«Есть PDF из банка» → «Назад» к полям; файл → вопросы («2 из 3») → «Да, это зарплата», «Потом» → партнёр', async () => {
+  it('«Есть PDF из банка» → «Назад» к полям; файл → вопросы («2 из 3») → «Да, это зарплата», «Пропустить» → партнёр', async () => {
     const { finance, router, ops } = await mountStart('/start/salary')
     await click(button('Есть PDF из банка'))
     expect(page()).toContain('Ваш банк')
@@ -259,7 +259,7 @@ describe('FR-01: мечта → зарплата → партнёр; выпис�
     expect(page()).toContain('Это ваш доход?')
     await click(button('Да, это зарплата'))
     expect(finance.people[0]).toMatchObject({ salary: 120_000, payday: 24 })
-    await click(button('Потом'))
+    await click(button('Пропустить'))
     await settle()
     expect(router.currentRoute.value.path).toBe('/start/invite')
   })
@@ -349,5 +349,66 @@ describe('FR-02: вступление — три экрана-образа пе�
     expect(title()).toBe('Утечки')
     await swipe(100, 300)
     expect(title()).toBe('Свободно')
+  })
+})
+
+/* ------------------ FR-03: «Пропустить» в шапке ------------------ */
+
+describe('FR-03: «Пропустить» — в шапке необязательных шагов, внизу одна главная (DOM, роутер)', () => {
+  const head = () => document.querySelector('[data-start-head]')!
+  const skipInHead = () => [...head().querySelectorAll('button')].some((b) => b.textContent?.trim() === 'Пропустить')
+  const skips = () => [...document.querySelectorAll('button')].filter((b) => b.textContent?.trim() === 'Пропустить')
+
+  it('есть на вступлении, мечте, вопросах и партнёре — одной кнопкой в шапке; на зарплате нет; шапка липкая', async () => {
+    for (const path of ['/start/intro', '/start/dream', '/start/invite']) {
+      await mountStart(path)
+      expect(skipInHead(), path).toBe(true)
+      expect(skips(), path).toHaveLength(1)
+      expect(head().className).toContain('sticky')
+      app?.unmount()
+      document.body.innerHTML = ''
+    }
+    await mountStart('/start/salary')
+    expect(skips()).toHaveLength(0)
+    await click(button('Есть PDF из банка'))
+    expect(skips()).toHaveLength(0)
+  })
+
+  it('мечта: «Пока без мечты» внизу нет, «Пропустить» → зарплата без цели; партнёр: внизу одна «Создать код», «Пропустить» — onboardedAt и first_run_done', async () => {
+    const { finance, router } = await mountStart('/start/dream')
+    expect(button('Пока без мечты')).toBeUndefined()
+    await click(button('Пропустить'))
+    await settle()
+    expect(router.currentRoute.value.path).toBe('/start/salary')
+    expect(finance.goals).toEqual([])
+    app?.unmount()
+    document.body.innerHTML = ''
+
+    const invite = await mountStart('/start/invite')
+    const { useEventsStore } = await import('@/stores/events')
+    const track = vi.spyOn(useEventsStore(), 'track')
+    expect(button('Позже')).toBeUndefined()
+    expect(page()).not.toContain('Один человек — тоже семья')
+    const bottom = [...document.querySelectorAll('button')].filter((b) => !head().contains(b) && b.className.includes('bg-brand'))
+    expect(bottom.map((b) => b.textContent?.trim())).toEqual(['Создать код'])
+    await click(button('Пропустить'))
+    await settle()
+    expect(invite.router.currentRoute.value.path).toBe('/')
+    expect(invite.finance.people.find((p) => p.id === 'a')?.onboardedAt).toBe('2026-09-24T07:00:00.000Z')
+    expect(track).toHaveBeenCalledWith('first_run_done')
+  })
+
+  it('вопросы: у карточки нет «Потом»; «Пропустить» закрывает остальные без записи; без зарплаты — короткая форма, «Пропустить» на ней нет', async () => {
+    const { finance } = await openQuestions()
+    expect(page()).toContain('Это ваш доход?')
+    expect(button('Потом')).toBeUndefined()
+    expect(skipInHead()).toBe(true)
+    await click(button('Пропустить'))
+    // Доход не подтверждён — дальше нельзя: короткая форма зарплаты.
+    expect(finance.people).toEqual([])
+    expect(finance.obligations).toEqual([])
+    expect(page()).toContain('впишите её')
+    expect(field('Зарплата в месяц, ₸')).toBeTruthy()
+    expect(skips()).toHaveLength(0)
   })
 })

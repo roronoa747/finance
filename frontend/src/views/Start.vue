@@ -376,6 +376,19 @@ const salaryForm = computed(() => (step.value === 'salary' && !pdf.value) || (st
 /* ------------------ Шаг 3: партнёр ------------------ */
 const { code: inviteCode, busy: inviteBusy, error: inviteError, copied, make: handleMakeInvite, copy: handleCopy } = useInvite()
 
+/**
+ * «Пропустить» в шапке (Р-4) — на необязательных шагах: вступление → первый шаг, мечта → зарплата («Мечты» потом
+ * встретят пустым «Новая мечта»), вопросы → остальные закрыты без записи (без зарплаты — короткая форма), партнёр →
+ * главный. Зарплата обязательна — там его нет; на короткой форме и «Дальше» после вопросов пропускать нечего.
+ */
+const skippable = computed(() => step.value === 'intro' || step.value === 'dream' || step.value === 'invite' || (step.value === 'questions' && !!current.value))
+function skipStep() {
+  if (step.value === 'intro') leaveIntro()
+  else if (step.value === 'dream') go('salary')
+  else if (step.value === 'questions') skipRest()
+  else if (step.value === 'invite') finish()
+}
+
 /** Семья настроена (или партнёр прошёл своё): участник отмечен, дальше — главный. */
 function finish() {
   financeStore.setPerson(slot.value, { name: knownName.value, onboardedAt: new Date().toISOString() })
@@ -419,14 +432,20 @@ const sub = computed(() => {
 
 <template>
   <div class="mx-auto flex min-h-dvh w-full max-w-[440px] flex-col gap-4 px-5 pb-6 pt-5 text-left">
-    <!-- Вступление: вместо «n из k» — точки экранов; «Пропустить» — тихо, вверху справа (Р-4). -->
-    <div v-if="step === 'intro'" class="flex min-h-8 items-center justify-between gap-3">
-      <div class="flex items-center gap-1.5" aria-hidden="true" data-intro-dots>
-        <span v-for="(s, i) in INTRO" :key="s.key" class="h-1.5 rounded-full transition-all" :class="i === introPage ? 'w-5 bg-brand' : 'w-1.5 bg-track'" />
+    <!--
+      Шапка шага: «n из k» (у вступления — точки экранов) и тихое «Пропустить» справа на необязательных шагах (Р-4).
+      Липкая — «Пропустить» видно и над сеткой 18 плиток мечты без прокрутки (FR-03).
+    -->
+    <div class="sticky top-0 z-10 -mx-5 -mt-5 bg-canvas px-5 pb-2 pt-5" data-start-head>
+      <!-- Высота строки — по кнопке (32): без «Пропустить» (зарплата) полоса не прыгает вверх. -->
+      <div class="flex min-h-8 items-center gap-3">
+        <div v-if="step === 'intro'" class="flex flex-1 items-center gap-1.5" aria-hidden="true" data-intro-dots>
+          <span v-for="(s, i) in INTRO" :key="s.key" class="h-1.5 rounded-full transition-all" :class="i === introPage ? 'w-5 bg-brand' : 'w-1.5 bg-track'" />
+        </div>
+        <Stepper v-else :n="stepIndex" :k="counted.length" class="flex-1" />
+        <Button v-if="skippable" variant="ghost" size="sm" class="-mr-2 shrink-0" data-skip @click="skipStep">Пропустить</Button>
       </div>
-      <Button variant="ghost" size="sm" class="-mr-2" @click="leaveIntro">Пропустить</Button>
     </div>
-    <Stepper v-else :n="stepIndex" :k="counted.length" />
 
     <div v-if="title">
       <h1 class="type-h2-lg text-ink">{{ title }}</h1>
@@ -527,7 +546,8 @@ const sub = computed(() => {
         </DecisionCard>
       </template>
       <template v-else-if="current && current.type === 'recurring'">
-        <DecisionCard :question="`${current.candidate.name} — это что?`" :meta="recurringMeta(current.candidate)" :progress="progress" :actions="{ primary: 'Записать', secondary: 'Нет, разовое', ghost: 'Потом' }" @primary="answerRecurring(true)" @secondary="answerRecurring(false)" @ghost="skipRest">
+        <!-- «Потом» — «Пропустить» в шапке (FR-03). -->
+        <DecisionCard :question="`${current.candidate.name} — это что?`" :meta="recurringMeta(current.candidate)" :progress="progress" :actions="{ primary: 'Записать', secondary: 'Нет, разовое' }" @primary="answerRecurring(true)" @secondary="answerRecurring(false)">
           <template #chips>
             <Chip v-for="k in KINDS" :key="k.value" :on="recurringKind === k.value" @click="recurringKind = k.value">{{ k.label }}</Chip>
           </template>
@@ -561,15 +581,16 @@ const sub = computed(() => {
           <span v-if="copied" class="text-[12px] font-medium text-brand">Скопировано</span>
         </template>
         <template v-else>
-          <p class="text-[13px] leading-relaxed text-ink-2">Короткий код — продиктовать вслух.</p>
-          <Button class="w-full" :disabled="inviteBusy" @click="handleMakeInvite">{{ inviteBusy ? 'Минуту…' : 'Создать код' }}</Button>
+          <p class="inline-flex items-center gap-1.5 text-[13px] leading-relaxed text-ink-2">
+            Короткий код — продиктовать вслух <Hint>Один человек — тоже семья: «Пропустить» вверху. Код есть и в настройках.</Hint>
+          </p>
           <p v-if="inviteError" role="alert" class="text-[12.5px] text-warn">{{ inviteError }}</p>
         </template>
       </Card>
-      <div class="mt-auto flex flex-col gap-2 pt-2">
-        <!-- Одна брендовая кнопка (правило 12): до кода главная — «Создать код», «Позже» — тихая. -->
-        <Button size="lg" class="w-full" :variant="inviteCode ? 'default' : 'ghost'" @click="finish">{{ inviteCode ? 'Готово' : 'Позже' }}</Button>
-        <p v-if="!inviteCode" class="text-center text-[12px] text-ink-2">Один человек — тоже семья. Код есть и в настройках.</p>
+      <!-- Внизу одна главная кнопка (FR-03): до кода — «Создать код», с кодом — «Готово»; без партнёра — «Пропустить» вверху. -->
+      <div class="mt-auto pt-2">
+        <Button v-if="inviteCode" size="lg" class="w-full" @click="finish">Готово</Button>
+        <Button v-else size="lg" class="w-full" :disabled="inviteBusy" @click="handleMakeInvite">{{ inviteBusy ? 'Минуту…' : 'Создать код' }}</Button>
       </div>
     </template>
   </div>

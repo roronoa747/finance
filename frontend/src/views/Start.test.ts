@@ -282,12 +282,14 @@ describe('views/Start.vue — первый запуск (B2C-19, FR-01, SSR)', (
     expect(brandButtons(done)).toEqual(['Дальше'])
   })
 
-  it('шаг 1 — «На что копим?» внутри первого запуска («1 из 3»); шаг 3 — код партнёра; «Позже» ставит setupDoneAt и onboardedAt', async () => {
+  it('шаг 1 — «На что копим?» внутри первого запуска («1 из 3»); шаг 3 — код партнёра; «Пропустить» в шапке, внизу одна главная; finish ставит setupDoneAt и onboardedAt', async () => {
     const store = family('member', 'a', { ...defaultSyncDoc(), people: [{ id: 'a', name: 'Ильяс', salary: 600_000, payday: 10, updatedAt: T0 }] })
     const dream = await renderScreen(Start, '/start/dream')
     expect(dream).toContain('На что копим?')
     expect(dream).toContain('1 из 3')
-    expect(dream).toContain('Пока без мечты')
+    // FR-03: «Пока без мечты» внизу нет — «Пропустить» в шапке.
+    expect(dream).not.toContain('Пока без мечты')
+    expect(dream).toContain('data-skip')
     await renderScreen(Start, '/start/dream', undefined, [
       screenMixin({ step: 'form', template: templateById('car'), name: 'Машина', needText: '3 000 000', term: '18' }, (s) => void (s.create as () => Promise<void>)()),
     ])
@@ -300,9 +302,11 @@ describe('views/Start.vue — первый запуск (B2C-19, FR-01, SSR)', (
     expect(invite).not.toContain('Бюджет общий')
     expect(invite).toContain('3 из 3')
     expect(invite).toContain('Создать код')
-    expect(invite).toContain('Позже')
-    expect(invite).toContain('Один человек — тоже семья.')
-    // Одна брендовая кнопка: до кода — «Создать код» («Позже» тихая), с кодом — «Готово».
+    // FR-03: «Позже» и строка под ним ушли — без партнёра «Пропустить» в шапке, пояснение — в подсказке.
+    expect(invite).not.toContain('Позже')
+    expect(invite).not.toContain('Один человек — тоже семья.')
+    expect(invite).toContain('data-skip')
+    // Одна брендовая кнопка внизу: до кода — «Создать код», с кодом — «Готово».
     expect(brandButtons(invite)).toEqual(['Создать код'])
     // Код общий на сессию и семью (`useInvite`, Н-11): создан — виден и шагу первого запуска.
     vi.spyOn(useAuthStore(), 'createInvite').mockResolvedValue({ code: 'K7Q2M9' } as never)
