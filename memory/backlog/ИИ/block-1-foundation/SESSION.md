@@ -202,7 +202,10 @@
 - **Верификация:**
   - Go: `cd backend && go build ./... && go vet ./... && go test ./...` ✅; PG `go test -p 1 -count=1 -run Postgres ./...`
     ✅ (вкл. `TestPostgresAIFlagAndUsage`, `TestPostgresAIFamilies`, каскад `ai_usage`); корень `go vet ./api/... &&
-    go test ./api/...` ✅. Живой тест `TestLiveCall` — **skip: ключа нет** (`memory/secrets/anthropic.md` не создан).
+    go test ./api/...` ✅. Живой тест `TestLiveCall` — ✅ (владелец положил ключ в
+    `memory/secrets/anthropic.md` после Handoff; `AI_LIVE=1`, Haiku 5.5, 2,6 с); живой `POST /api/admin/ai-check` через
+    `cmd/server` (моки) → `{ok: true, model: claude-haiku-5-5, ms: 1602}`, ключа в логе сервера нет. Ключ — рабочая
+    область по умолчанию, без срока; кредиты API — $100 из плана Max владельца. Проверка **из `icn1`** — смоук клинапа.
   - Фронт: `npm run build` ✅, `npx vitest run` — **210 файлов, 2112 ✅ + 1 skip** (вместе с `e2e/`).
   - Миграция 000007: на чистой базе (PG-тесты) и на **существующей** — сервер из `main` (миграции 1–6) + семья →
     новый сервер накатил 000007, `ai_enabled = false`; с ключом и флагом `/auth/me` → `ai: true`, без ключа — `false`.
