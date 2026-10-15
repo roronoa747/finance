@@ -2,7 +2,7 @@
 import { onMounted, onUnmounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { PhChartBar, PhImage, PhStorefront } from '@phosphor-icons/vue'
-import { AI_NO_TRAINING, AI_SENDS, useAiStore } from '@/stores/ai'
+import { AI_NO_TRAINING, AI_SENDS, AI_TO, useAiStore } from '@/stores/ai'
 import Sheet from '@/components/kit/Sheet.vue'
 import Button from '@/components/ui/Button.vue'
 
@@ -27,7 +27,8 @@ onUnmounted(() => {
 <template>
   <!-- z 70 — над листами экранов (50) и вложенными (60): согласие спрашивают и изнутри листа («Новое желание»). -->
   <Sheet :open="ai.sheetOpen" title="ИИ-помощник" :z="70" @close="ai.answer(null)">
-    <ul class="flex flex-col gap-3" data-ai-consent>
+    <p class="text-[14px] text-ink-2" data-ai-to>{{ AI_TO }} получит:</p>
+    <ul class="mt-3 flex flex-col gap-3" data-ai-consent>
       <li v-for="it in items" :key="it.text" class="flex items-center gap-3 text-[15px] text-ink">
         <span class="grid size-9 shrink-0 place-items-center rounded-[12px] bg-surface-2 text-ink-2">
           <component :is="it.icon" :size="18" />
@@ -36,7 +37,7 @@ onUnmounted(() => {
       </li>
     </ul>
     <p class="mt-4 text-[13.5px] text-ink-2">
-      Уходит в Anthropic (Claude). {{ AI_NO_TRAINING }}.
+      {{ AI_NO_TRAINING }}.
       <RouterLink to="/privacy" class="text-brand" data-ai-privacy @click="ai.answer(null)">Подробнее</RouterLink>
     </p>
     <div class="mt-5 flex flex-col gap-2">

@@ -58,6 +58,7 @@ export const useAiStore = defineStore('ai', () => {
   return { available, consent, sheetOpen, sheetMounted, setConsent, ensureConsent, answer }
 })
 
-/** Что уходит в Claude (Р-9) — одни слова для листа согласия и подсказки в настройках. */
-export const AI_SENDS = ['Цифры месяца — без имён', 'Названия продавцов', 'Скриншот товара'] as const
-export const AI_NO_TRAINING = 'Не обучается на ваших данных'
+/** Кто получает и что уходит (Р-9) — одни слова для листа согласия и подсказки в настройках. */
+export const AI_TO = 'Claude от Anthropic'
+export const AI_SENDS = ['Цифры месяца без имён', 'Названия продавцов', 'Скриншот товара'] as const
+export const AI_NO_TRAINING = 'На ваших данных не обучается'
