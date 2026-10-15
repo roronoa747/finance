@@ -31,8 +31,8 @@ const route = useRoute()
 const ops = useOperationsStore()
 const finance = useFinanceStore()
 const auth = useAuthStore()
-/** Подсказка у квадратов (бэклог «первый» Р-7; черновик до `/ux`, Р-9): три части «Денег» — здесь; viewer — без призыва. */
-const tipText = computed(() => (auth.isViewer ? 'Что есть, долги и история семьи' : 'Что есть, долги и история — нажмите нужное'))
+/** Подсказка у квадратов (бэклог «первый» Р-7; слова — владелец на `/ux`, Р-9): три части «Денег» — здесь; viewer — без призыва. */
+const tipText = computed(() => (auth.isViewer ? 'Сверху — капитал, долги и история семьи' : 'Нажмите сверху, чтобы открыть долги или историю'))
 
 const square = computed(() => (route.params.square === 'debts' || route.params.square === 'history' ? route.params.square : 'capital'))
 const worth = computed(() => netWorth(liveAccounts(finance.accounts), liveCredits(finance.credits), openGoals(finance.goals))) // Сбылось (PN-13): деньги сбывшейся ушли покупкой — не в капитале

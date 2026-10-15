@@ -110,11 +110,11 @@ const letter = (r: MyWeekRow) => (r.categoryId === UNKNOWN_CATEGORY ? '?' : r.na
 const uploadRows = computed(() => weekUploads(people.value, week.value, store.shownUploads))
 const mineIn = computed(() => uploadRows.value.some((r) => r.person.id === me.value && r.day !== null))
 /**
- * Подсказка у суммы недели (бэклог «первый» Р-7; черновик до `/ux`, Р-9) — когда есть разделы с тратами: пустую неделю
+ * Подсказка у суммы недели (бэклог «первый» Р-7; слова — владелец на `/ux`, Р-9) — когда есть разделы с тратами: пустую неделю
  * ведёт брендовое «Загрузить» (FR-06 п. 2), и «Понятно» на ней не должно съесть подсказку про разделы. Viewer «Неделю»
  * не видит (гард → «Месяц»).
  */
-const TIP_WEEK = 'Траты недели. Нажмите раздел — на что ушло'
+const TIP_WEEK = 'Нажмите на раздел, чтобы посмотреть, на что ушли деньги'
 
 /** Тренд 8 недель (Р-98) — свёрнут (правило 12). */
 const trend = computed(() => weekTrend(spendTotals.value, spendCategories.value, me.value, week.value))

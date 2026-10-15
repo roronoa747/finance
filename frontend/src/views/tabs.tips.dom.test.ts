@@ -100,7 +100,7 @@ describe('FR-06: подсказки на главных вкладках', () =>
   it('«Мечты»: пузырь у главной мечты; нажатие мечты закрывает его с отметкой', async () => {
     await open(Dreams, '/')
     expect(bubbles().map((b) => b.dataset.tip)).toEqual(['tab-dreams'])
-    expect(bubbles()[0].textContent).toContain('Главная мечта')
+    expect(bubbles()[0].textContent).toContain('Нажмите на мечту')
     expect(bubbles()[0].parentElement!.textContent).toContain(planFamilyDoc().goals[0].name)
     const dream = bubbles()[0].parentElement!.querySelector('section button') as HTMLButtonElement
     // Поддельные часы стоят — Vue отбросил бы клик у обёртки (метка события не позже её навешивания): сдвигаем.
@@ -155,6 +155,6 @@ describe('FR-06: подсказки на главных вкладках', () =>
     await nextTick()
     await nextTick()
     expect(bubbles().map((b) => b.dataset.tip)).toEqual(['tab-week'])
-    expect(bubbles()[0].textContent).toContain('Нажмите раздел')
+    expect(bubbles()[0].textContent).toContain('Нажмите на раздел')
   })
 })

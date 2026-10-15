@@ -42,8 +42,8 @@ const ops = useOperationsStore()
 const NBSP = ' '
 const key = computed(() => monthKey())
 const canEdit = computed(() => !authStore.isViewer)
-/** Подсказка у главной мечты (бэклог «первый» Р-7; тексты — черновик до `/ux`, Р-9); viewer — без призыва. */
-const tipText = computed(() => (canEdit.value ? 'Главная мечта. Нажмите — когда сбудется' : 'Главная мечта семьи и когда сбудется'))
+/** Подсказка у главной мечты (бэклог «первый» Р-7; слова — владелец на `/ux`, Р-9: «Нажмите на…, чтобы…»); viewer — без призыва. */
+const tipText = computed(() => (canEdit.value ? 'Нажмите на мечту, чтобы посмотреть подробнее' : 'Главная мечта семьи'))
 const people = computed(() => financeStore.people.filter((p) => !p.deletedAt))
 
 /* ---------- мечта по центру и цели ---------- */

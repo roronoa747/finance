@@ -76,8 +76,8 @@ const finance = useFinanceStore()
 const auth = useAuthStore()
 
 const canEdit = computed(() => !auth.isViewer)
-/** Подсказка у разделов месяца (бэклог «первый» Р-7; черновик до `/ux`, Р-9): отметки живут внутри них; viewer — без призыва. */
-const tipText = computed(() => (canEdit.value ? 'Раскройте раздел — и отмечайте, что оплатили' : 'Платежи, траты и цели месяца'))
+/** Подсказка у разделов месяца (бэклог «первый» Р-7; слова — владелец на `/ux`, Р-9): отметки живут внутри них; viewer — без призыва. */
+const tipText = computed(() => (canEdit.value ? 'Нажмите на раздел и отметьте, что оплатили' : 'Платежи, траты и цели месяца'))
 const me = computed<PersonId>(() => auth.slot ?? 'a')
 const people = computed(() => finance.people.filter((p) => !p.deletedAt))
 const personName = (id: PersonId | null) => people.value.find((p) => p.id === id)?.name ?? ''
