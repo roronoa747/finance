@@ -81,9 +81,13 @@ async function check() {
   }
 }
 
-// Запросы были, а расход 0 — модели нет в таблице цен сервера (Р-14): «≈ —», а не «$0».
-const spent = (requests: number, micros: number) =>
-  `${requests} ${plural(requests, 'запрос', 'запроса', 'запросов')} · ${requests > 0 && micros === 0 ? '≈ —' : usdFromMicros(micros)}`
+// Запросы были, а расход 0 — модели нет в таблице цен сервера (Р-14): «≈ —», а не «$0». Запросов нет —
+// одна цифра «0 запросов», «$0» рядом ничего не добавляет (правило 12, шумные цифры).
+const spent = (requests: number, micros: number) => {
+  const n = `${requests} ${plural(requests, 'запрос', 'запроса', 'запросов')}`
+  if (requests === 0 && micros === 0) return n
+  return `${n} · ${micros === 0 ? '≈ —' : usdFromMicros(micros)}`
+}
 
 onMounted(async () => {
   void loadFamilies()
@@ -131,10 +135,15 @@ const funnel = computed(() => {
           Потолок денег — в консоли Anthropic.
         </Hint>
         <span class="flex-1" />
-        <Hint v-if="checkFail" label="Почему нет связи"><span data-check-reason>{{ checkFail }}</span></Hint>
-        <Button variant="ghost" size="sm" :disabled="checking" data-ai-check @click="check">Проверить связь</Button>
+        <!-- -mr-3: текст кнопки — по правому краю тумблеров (у ghost sm поле 12). -->
+        <Button variant="ghost" size="sm" class="-mr-3" :disabled="checking" data-ai-check @click="check">Проверить связь</Button>
       </div>
       <p v-if="!families.key" class="mb-1 text-[13px] text-warn" data-no-key>Ключ не задан — ИИ выключен везде</p>
+      <!-- Тост уходит, а «Нет связи» остаётся словом — «?» без слова рядом не понять. -->
+      <p v-if="checkFail" class="mb-1 flex items-center gap-1.5 text-[13px] text-warn" data-check-fail>
+        Нет связи
+        <Hint label="Почему нет связи"><span data-check-reason>{{ checkFail }}</span></Hint>
+      </p>
       <p v-if="familiesError" role="alert" class="mb-1 text-[13px] text-warn">{{ familiesError }}</p>
       <p v-if="!families.families.length" class="text-[14px] text-ink-2">Семей пока нет.</p>
       <ul v-else>

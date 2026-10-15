@@ -110,7 +110,7 @@ describe('AI-04: админка — семьи и ИИ', () => {
     await settle()
     expect(toggle(b).disabled).toBe(false)
     expect(toggle(b).getAttribute('aria-checked')).toBe('true')
-    expect(b.querySelector('[data-spent]')!.textContent).toBe('0 запросов · $0')
+    expect(b.querySelector('[data-spent]')!.textContent).toBe('0 запросов')
   })
 
   it('ошибка PUT — тумблер возвращается и строка alert', async () => {
@@ -146,7 +146,9 @@ describe('AI-04: админка — семьи и ИИ', () => {
     el.querySelector<HTMLButtonElement>('[data-ai-check]')!.click()
     await settle()
     expect(el.querySelector('[data-check-note]')!.textContent).toBe('Нет связи')
-    const why = el.querySelector<HTMLButtonElement>('button[aria-label="Почему нет связи"]')!
+    // Тост уйдёт — слово «Нет связи» остаётся в карточке рядом с «?».
+    expect(el.querySelector('[data-check-fail]')!.textContent).toContain('Нет связи')
+    const why = el.querySelector<HTMLButtonElement>('[data-check-fail] button[aria-label="Почему нет связи"]')!
     expect(why).not.toBeNull()
     expect(el.textContent).not.toContain('Claude не ответил')
     why.click()
