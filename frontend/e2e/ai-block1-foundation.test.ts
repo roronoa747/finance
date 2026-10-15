@@ -106,8 +106,9 @@ describe('e2e / ИИ Блок 1 — фундамент: флаг семьи, с�
     expect(ai.consent).toBe('unknown')
     // Оболочка с листом открыта (screen рисует строкой — onMounted листа не бывает).
     ai.sheetMounted = true
-    void ai.ensureConsent()
-    expect(ai.sheetOpen).toBe(true)
+    // AI-09 (хвост Н-4): сначала личный документ с сервера — там тоже не спрошено, тогда лист.
+    void ai.ensureConsent(partner.priv)
+    await vi.waitFor(() => expect(ai.sheetOpen).toBe(true))
     const shell = await screen(partner.pinia, AppShell, '/settings')
     expect(shell).toContain('data-ai-consent')
     expect(shell).toContain('Названия продавцов')
@@ -128,8 +129,8 @@ describe('e2e / ИИ Блок 1 — фундамент: флаг семьи, с�
     setActivePinia(one.pinia)
     let ai = useAiStore()
     ai.sheetMounted = true
-    const asked = ai.ensureConsent()
-    expect(ai.sheetOpen).toBe(true)
+    const asked = ai.ensureConsent(one.priv)
+    await vi.waitFor(() => expect(ai.sheetOpen).toBe(true))
     ai.answer(false)
     await expect(asked).resolves.toBe(false)
     expect(ai.sheetOpen).toBe(false)
@@ -144,7 +145,7 @@ describe('e2e / ИИ Блок 1 — фундамент: флаг семьи, с�
     setActivePinia(two.pinia)
     ai = useAiStore()
     ai.sheetMounted = true
-    await expect(ai.ensureConsent()).resolves.toBe(false)
+    await expect(ai.ensureConsent(two.priv)).resolves.toBe(false)
     expect(ai.sheetOpen).toBe(false)
 
     // Передумал на телефоне 2 (тумблер в настройках) — позже по времени; телефон 1 после синка — «да».
@@ -162,14 +163,15 @@ describe('e2e / ИИ Блок 1 — фундамент: флаг семьи, с�
     setActivePinia(p.pinia)
     const ai = useAiStore()
     ai.sheetMounted = true
-    const asked = ai.ensureConsent()
+    const asked = ai.ensureConsent(p.priv)
+    await vi.waitFor(() => expect(ai.sheetOpen).toBe(true))
     ai.answer(null)
     await expect(asked).resolves.toBe(false)
     await useFinanceStore().syncPrivate(p.priv)
     expect(pv.docs.get('u-a')?.data.aiConsent).toBeUndefined()
     expect(ai.consent).toBe('unknown')
-    void ai.ensureConsent()
-    expect(ai.sheetOpen).toBe(true)
+    void ai.ensureConsent(p.priv)
+    await vi.waitFor(() => expect(ai.sheetOpen).toBe(true))
   })
 
   it('(г) админ: список семей → включить ИИ семье → ушёл PUT {on: true}', async () => {
