@@ -34,6 +34,8 @@ type StatementRepository interface {
 	// one batch share it (one transaction), so a cursor cut there would skip the
 	// rest. The page may therefore exceed limit by up to one batch.
 	ListOperations(ctx context.Context, userID string, since time.Time, limit int) ([]models.Operation, error)
+	// Operations from a phone (Apple Pay, Р-14).
+	PhoneOperationRepository
 }
 
 type sqlStatementRepository struct {
@@ -218,4 +220,66 @@ func lastByID(ops []models.Operation) []models.Operation {
 		out = append(out, op)
 	}
 	return out
+}
+
+// PhoneOperation is a purchase the server writes from an Apple Pay tap (Р-14): kept in
+// app.operations with its source, the moment it arrived and, for a foreign currency, the amount
+// in that currency (amount stays 0 until the phone converts it, Р-15).
+type PhoneOperation struct {
+	ID         string
+	Bank       string
+	Date       string // YYYY-MM-DD, Almaty
+	Amount     int64
+	Merchant   string
+	Source     string // tap | push
+	OccurredAt time.Time
+	FxCurrency *string
+	FxAmount   *int64
+}
+
+// PhoneOperationRepository writes and checks operations that come from a phone.
+type PhoneOperationRepository interface {
+	InsertPhoneOperation(ctx context.Context, userID, householdID string, op PhoneOperation) error
+	// FindRecentPhoneOperation reports a phone operation of this source with the same money
+	// since the given moment: tenge — amount; a foreign currency — fx_currency and fx_amount.
+	FindRecentPhoneOperation(ctx context.Context, userID, source, currency string, amount int64, since time.Time) (bool, error)
+	// CountPhoneOperationsSince counts the person's phone operations since the moment (the daily limit).
+	CountPhoneOperationsSince(ctx context.Context, userID string, since time.Time) (int, error)
+}
+
+func (r *sqlStatementRepository) InsertPhoneOperation(ctx context.Context, userID, householdID string, op PhoneOperation) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO app.operations (user_id, id, household_id, bank, op_date, amount, kind, merchant, source, occurred_at, fx_currency, fx_amount)
+		VALUES ($1, $2, $3, $4, $5::date, $6, 'purchase', $7, $8, $9, $10, $11)`,
+		userID, op.ID, householdID, op.Bank, op.Date, op.Amount, op.Merchant, op.Source, op.OccurredAt, op.FxCurrency, op.FxAmount)
+	if err != nil {
+		return fmt.Errorf("failed to insert phone operation: %w", err)
+	}
+	return nil
+}
+
+func (r *sqlStatementRepository) FindRecentPhoneOperation(ctx context.Context, userID, source, currency string, amount int64, since time.Time) (bool, error) {
+	var found bool
+	err := r.db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM app.operations
+			WHERE user_id = $1 AND source = $2 AND source <> 'statement' AND occurred_at >= $3
+			  AND CASE WHEN $4 = 'KZT' THEN fx_currency IS NULL AND amount = $5
+			           ELSE fx_currency = $4 AND fx_amount = $5 END
+		)`, userID, source, since, currency, amount).Scan(&found)
+	if err != nil {
+		return false, fmt.Errorf("failed to find phone operation: %w", err)
+	}
+	return found, nil
+}
+
+func (r *sqlStatementRepository) CountPhoneOperationsSince(ctx context.Context, userID string, since time.Time) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx, `
+		SELECT count(*) FROM app.operations WHERE user_id = $1 AND source <> 'statement' AND occurred_at >= $2`,
+		userID, since).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count phone operations: %w", err)
+	}
+	return n, nil
 }

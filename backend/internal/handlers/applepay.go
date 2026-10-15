@@ -1,9 +1,14 @@
 package handlers
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"finance-backend/internal/applepay"
@@ -17,14 +22,36 @@ import (
 type WalletHandler struct {
 	keys       repository.PhoneKeyRepository
 	households repository.HouseholdRepository
+	ops        repository.PhoneOperationRepository
+	users      repository.UserRepository
+	admins     []string
 	// Shortcut links from the environment (Р-17); empty — no Apple Pay card for that path.
 	shortcutURL, shortcutURLLegacy string
 	now                            func() time.Time
 }
 
-func NewWalletHandler(keys repository.PhoneKeyRepository, households repository.HouseholdRepository, shortcutURL, shortcutURLLegacy string) *WalletHandler {
-	return &WalletHandler{keys: keys, households: households, shortcutURL: shortcutURL, shortcutURLLegacy: shortcutURLLegacy, now: time.Now}
+func NewWalletHandler(keys repository.PhoneKeyRepository, households repository.HouseholdRepository, ops repository.PhoneOperationRepository,
+	users repository.UserRepository, admins []string, shortcutURL, shortcutURLLegacy string) *WalletHandler {
+	return &WalletHandler{keys: keys, households: households, ops: ops, users: users, admins: admins,
+		shortcutURL: shortcutURL, shortcutURLLegacy: shortcutURLLegacy, now: time.Now}
 }
+
+const (
+	// maxTapBody: a transaction is a few short strings (§6 of the backlog: ≤ 4 KB).
+	maxTapBody = 4 << 10
+	// maxDebugBody: the admin's unparsed body is kept up to 2 KB (Р-13а).
+	maxDebugBody = 2 << 10
+	// tapRepeat: the trigger fires twice for one payment — the same money within it is one (Р-9).
+	tapRepeat = 2 * time.Minute
+	// maxPhoneOpsPerDay protects the family from a looping automation (Р-13).
+	maxPhoneOpsPerDay = 200
+	// tapPast / tapFuture bound the command's optional "at"; outside — the server's time.
+	tapPast   = 48 * time.Hour
+	tapFuture = 5 * time.Minute
+)
+
+// almaty is Kazakhstan's single time zone (UTC+5): the day of a phone operation and of the limit.
+var almaty = time.FixedZone("Asia/Almaty", 5*60*60)
 
 type walletStatus struct {
 	Connected         bool       `json:"connected"`
@@ -124,4 +151,205 @@ func (h *WalletHandler) KeyAuth(next http.Handler) http.Handler {
 		ctx := auth.WithMembership(r.Context(), userID, auth.Membership{HouseholdID: m.HouseholdID, Role: m.Role, Slot: m.Slot})
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// tapField reads one field of the tap body as text: a string as is, a number as written; an
+// object or array (a Shortcuts variable sent whole) as its JSON — FindAmount looks into it.
+func tapField(body map[string]json.RawMessage, key string) string {
+	raw, ok := body[key]
+	if !ok {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	if t := strings.TrimSpace(string(raw)); t != "null" {
+		return t
+	}
+	return ""
+}
+
+// tapResult is the whole answer of a tap: never the operation itself.
+func tapResult(w http.ResponseWriter, status, reason string) {
+	out := map[string]any{"ok": status != "skipped", "status": status}
+	if reason != "" {
+		out["reason"] = reason
+	}
+	respondJSON(w, http.StatusOK, out)
+}
+
+// Tap — POST /api/wallet/tap (phone key): a purchase from the Shortcuts "Transaction" trigger
+// (Р-7, Р-9, Р-13, Р-13а, Р-14, Р-15). Body {merchant?, amount?, card?, name?, at?, raw?} —
+// all strings, unknown fields ignored. The owner's command sends the whole transaction as
+// text in "merchant": without "amount" the money is looked for in the text. The server only
+// reads the amount string: tenge go to amount (tiyn dropped), USD/EUR/RUB/CNY stay in fx_*
+// with amount 0 until the phone converts them. The body is never logged; for an admin the
+// body the server had to search through is kept a day for tuning the parser.
+func (h *WalletHandler) Tap(w http.ResponseWriter, r *http.Request) {
+	householdID, userID, ok := member(w, r)
+	if !ok {
+		return
+	}
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxTapBody))
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			errorJSON(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return
+		}
+		errorJSON(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &body); err != nil || body == nil {
+		errorJSON(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	now := h.now()
+	at := now
+	if t, err := time.Parse(time.RFC3339, strings.TrimSpace(tapField(body, "at"))); err == nil && t.After(now.Add(-tapPast)) && t.Before(now.Add(tapFuture)) {
+		at = t
+	}
+
+	merchantText, amountText := tapField(body, "merchant"), tapField(body, "amount")
+	card, name, rawText := tapField(body, "card"), tapField(body, "name"), tapField(body, "raw")
+	var (
+		currency, merchant, reason string
+		minor                      int64
+		parsed, searched           bool
+	)
+	if strings.TrimSpace(amountText) != "" {
+		currency, minor, parsed = applepay.ParseAmount(amountText)
+		if !parsed {
+			reason = applepay.SkipReason(amountText)
+		}
+		text := merchantText
+		if strings.TrimSpace(text) == "" {
+			text = name
+		}
+		merchant = applepay.CleanMerchant(text)
+	} else {
+		// Р-13а: the whole transaction as text.
+		searched = true
+		reason = "amount"
+		for _, text := range []string{merchantText, rawText, name} {
+			c, m, rest, found := applepay.FindAmount(text)
+			if c == applepay.Unsupported {
+				reason = "currency"
+			}
+			if !found {
+				continue
+			}
+			currency, minor, parsed, reason = c, m, true, ""
+			if text == merchantText || strings.TrimSpace(merchantText) == "" {
+				merchant = applepay.MerchantFrom(rest, card)
+			} else {
+				merchant = applepay.MerchantFrom(merchantText, card)
+			}
+			break
+		}
+	}
+	if searched {
+		h.keepForAdmin(r, userID, raw)
+	}
+	if !parsed {
+		tapResult(w, "skipped", reason)
+		return
+	}
+
+	bank := applepay.BankOfCard(card)
+	if strings.TrimSpace(card) == "" {
+		bank = applepay.BankOfCard(merchantText + "\n" + rawText + "\n" + name)
+	}
+	op := repository.PhoneOperation{
+		Bank: bank, Date: at.In(almaty).Format(time.DateOnly), Merchant: merchant, Source: "tap", OccurredAt: at,
+	}
+	var same int64
+	if currency == "KZT" {
+		op.Amount = -(minor / 100) // the only arithmetic of the server: reading the string, as a statement does
+		same = op.Amount
+	} else {
+		op.FxCurrency, op.FxAmount = &currency, &minor
+		same = minor
+	}
+
+	nowAlmaty := now.In(almaty)
+	dayStart := time.Date(nowAlmaty.Year(), nowAlmaty.Month(), nowAlmaty.Day(), 0, 0, 0, 0, almaty)
+	n, err := h.ops.CountPhoneOperationsSince(r.Context(), userID, dayStart)
+	if err != nil {
+		log.Printf("wallet: tap count: %v", err)
+		errorJSON(w, http.StatusInternalServerError, "failed to save")
+		return
+	}
+	if n >= maxPhoneOpsPerDay {
+		errorJSON(w, http.StatusTooManyRequests, "limit")
+		return
+	}
+	dup, err := h.ops.FindRecentPhoneOperation(r.Context(), userID, "tap", currency, same, at.Add(-tapRepeat))
+	if err != nil {
+		log.Printf("wallet: tap repeat: %v", err)
+		errorJSON(w, http.StatusInternalServerError, "failed to save")
+		return
+	}
+	if dup {
+		tapResult(w, "duplicate", "")
+		return
+	}
+	id := make([]byte, 8)
+	if _, err := rand.Read(id); err != nil {
+		log.Printf("wallet: tap id: %v", err)
+		errorJSON(w, http.StatusInternalServerError, "failed to save")
+		return
+	}
+	op.ID = hex.EncodeToString(id)
+	if err := h.ops.InsertPhoneOperation(r.Context(), userID, householdID, op); err != nil {
+		log.Printf("wallet: tap save: %v", err)
+		errorJSON(w, http.StatusInternalServerError, "failed to save")
+		return
+	}
+	tapResult(w, "saved", "")
+}
+
+// keepForAdmin stores the body the server had to search through — only for a person in
+// ADMIN_EMAILS (Р-13а), at most 2 KB. Everyone else's body is kept nowhere.
+func (h *WalletHandler) keepForAdmin(r *http.Request, userID string, raw []byte) {
+	if len(h.admins) == 0 {
+		return
+	}
+	user, err := h.users.GetByID(r.Context(), userID)
+	if err != nil || !isAdmin(h.admins, user.Email) {
+		return
+	}
+	body := strings.ReplaceAll(string(raw), "\x00", "")
+	if len(body) > maxDebugBody {
+		body = body[:maxDebugBody] // a rune cut in half is dropped below
+	}
+	body = strings.ToValidUTF8(body, "")
+	if err := h.keys.SaveDebug(r.Context(), userID, body); err != nil {
+		log.Printf("wallet: debug: %v", err)
+	}
+}
+
+// AdminDebug — GET /api/admin/wallet-debug: the admin's own last searched tap body of the day
+// ({} when none); everyone else, and everyone without ADMIN_EMAILS, gets 404.
+func (h *WalletHandler) AdminDebug(w http.ResponseWriter, r *http.Request) {
+	userID, _ := auth.GetUserID(r.Context())
+	user, err := h.users.GetByID(r.Context(), userID)
+	if err != nil || !isAdmin(h.admins, user.Email) {
+		errorJSON(w, http.StatusNotFound, "not found")
+		return
+	}
+	d, err := h.keys.LastDebug(r.Context(), userID)
+	if err != nil {
+		log.Printf("wallet: debug: %v", err)
+		errorJSON(w, http.StatusInternalServerError, "failed to read")
+		return
+	}
+	if d == nil {
+		respondJSON(w, http.StatusOK, map[string]any{})
+		return
+	}
+	respondJSON(w, http.StatusOK, d)
 }

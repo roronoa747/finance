@@ -198,3 +198,82 @@ func TestPostgresPhoneKeys(t *testing.T) {
 		t.Fatalf("Bob's key after Alice disconnected: %q %v", user, err)
 	}
 }
+
+func TestPostgresPhoneOperationsAndDebug(t *testing.T) {
+	f := newStatementFixture(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	usd, cents := "USD", int64(622)
+
+	for _, op := range []PhoneOperation{
+		{ID: "a1a1a1a1a1a1a1a1", Bank: "kaspi", Date: "2026-10-16", Amount: -5000, Merchant: "MAGNUM", Source: "tap", OccurredAt: now},
+		{ID: "b2b2b2b2b2b2b2b2", Bank: "card", Date: "2026-10-16", Amount: 0, Merchant: "Apple Store", Source: "tap", OccurredAt: now, FxCurrency: &usd, FxAmount: &cents},
+	} {
+		if err := f.repo.InsertPhoneOperation(ctx, f.aliceID, f.householdID, op); err != nil {
+			t.Fatalf("insert %s: %v", op.ID, err)
+		}
+	}
+	// The CHECKs of 000002 still hold: a merchant with a card number never reaches the table.
+	bad := PhoneOperation{ID: "c3c3c3c3c3c3c3c3", Bank: "kaspi", Date: "2026-10-16", Amount: -1, Merchant: "Card 1234567", Source: "tap", OccurredAt: now}
+	if err := f.repo.InsertPhoneOperation(ctx, f.aliceID, f.householdID, bad); err == nil {
+		t.Fatal("a merchant with 7 digits was stored")
+	}
+
+	for _, c := range []struct {
+		source, currency string
+		amount           int64
+		since            time.Time
+		want             bool
+	}{
+		{"tap", "KZT", -5000, now.Add(-2 * time.Minute), true},
+		{"tap", "KZT", -5001, now.Add(-2 * time.Minute), false},
+		{"push", "KZT", -5000, now.Add(-2 * time.Minute), false},
+		{"tap", "KZT", -5000, now.Add(time.Second), false},
+		{"tap", "USD", 622, now.Add(-2 * time.Minute), true},
+		{"tap", "EUR", 622, now.Add(-2 * time.Minute), false},
+		{"tap", "KZT", 0, now.Add(-2 * time.Minute), false}, // a foreign op is not 0 tenge
+	} {
+		got, err := f.repo.FindRecentPhoneOperation(ctx, f.aliceID, c.source, c.currency, c.amount, c.since)
+		if err != nil || got != c.want {
+			t.Errorf("find %+v: %v %v", c, got, err)
+		}
+	}
+	// Statement lines do not count against the daily limit.
+	if _, err := f.repo.UpsertOperations(ctx, f.aliceID, f.householdID, []models.Operation{pgOp("dddd0001", -1)}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := f.repo.CountPhoneOperationsSince(ctx, f.aliceID, now.Add(-time.Hour)); err != nil || n != 2 {
+		t.Fatalf("count: %d %v", n, err)
+	}
+	ops, _ := f.repo.ListOperations(ctx, f.aliceID, time.Time{}, 10)
+	for _, op := range ops {
+		if op.ID == "a1a1a1a1a1a1a1a1" && (op.Source != "tap" || op.Kind != "purchase" || op.CategoryID != nil || op.OccurredAt == nil || !op.OccurredAt.Equal(now)) {
+			t.Fatalf("tap row: %+v", op)
+		}
+	}
+
+	keys := NewSQLPhoneKeyRepository(f.db)
+	if d, err := keys.LastDebug(ctx, f.aliceID); err != nil || d != nil {
+		t.Fatalf("no debug yet: %+v %v", d, err)
+	}
+	_ = keys.SaveDebug(ctx, f.aliceID, "first")
+	if err := keys.SaveDebug(ctx, f.aliceID, "second"); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if d, err := keys.LastDebug(ctx, f.aliceID); err != nil || d == nil || d.Body != "second" {
+		t.Fatalf("debug: %+v %v", d, err)
+	}
+	// Rows older than a day go on the next write and are not shown.
+	if _, err := f.db.ExecContext(ctx, `UPDATE app.wallet_debug SET at = now() - interval '25 hours'`); err != nil {
+		t.Fatal(err)
+	}
+	if d, _ := keys.LastDebug(ctx, f.aliceID); d != nil {
+		t.Fatalf("old debug shown: %+v", d)
+	}
+	_ = keys.SaveDebug(ctx, f.bobID, "bob")
+	var rows int
+	_ = f.db.QueryRow(`SELECT count(*) FROM app.wallet_debug`).Scan(&rows)
+	if rows != 1 {
+		t.Fatalf("old rows kept: %d", rows)
+	}
+}

@@ -159,7 +159,8 @@ func NewRouter(
 	previewHandler := handlers.NewPreviewHandler(linkpreview.New().Fetch)
 	accountHandler := handlers.NewAccountHandler(repos.Accounts)
 	eventsHandler := handlers.NewEventsHandler(repos.Events, repos.Metrics, repos.Users, cfg.AdminEmails)
-	walletHandler := handlers.NewWalletHandler(repos.PhoneKeys, repos.Households, cfg.ApplePayShortcutURL, cfg.ApplePayShortcutURLLegacy)
+	walletHandler := handlers.NewWalletHandler(repos.PhoneKeys, repos.Households, repos.Statements, repos.Users, cfg.AdminEmails,
+		cfg.ApplePayShortcutURL, cfg.ApplePayShortcutURLLegacy)
 
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", handlers.HealthHandler(database))
@@ -179,6 +180,9 @@ func NewRouter(
 		api.Post("/auth/login", authHandler.Login)
 		api.Post("/auth/google", authHandler.GoogleLogin)
 
+		// Касание Apple Pay (бэклог «Apple Pay», Р-13): вне JWT — личный ключ телефона, роль и семья из базы.
+		api.With(walletHandler.KeyAuth).Post("/wallet/tap", walletHandler.Tap)
+
 		// Protected endpoints: the household, role and slot come from the database (B2C-22).
 		api.Group(func(protected chi.Router) {
 			protected.Use(auth.Middleware(tokenService, membershipResolver(repos)))
@@ -192,6 +196,7 @@ func NewRouter(
 			// События удержания и цифры владельца (B2C-28): события — любому вошедшему.
 			protected.Post("/events", eventsHandler.Record)
 			protected.Get("/admin/metrics", eventsHandler.Metrics)
+			protected.Get("/admin/wallet-debug", walletHandler.AdminDebug)
 
 			// Household routes: 409 "no household" until "с кем" is done.
 			protected.Group(func(family chi.Router) {

@@ -18,6 +18,7 @@ var ErrPhoneKeyNotFound = errors.New("phone key not found")
 
 // PhoneKeyRepository stores Apple Pay phone keys as SHA-256 hashes only (Р-5, Р-13).
 type PhoneKeyRepository interface {
+	WalletDebugRepository
 	// Add stores a new key; a person with MaxPhoneKeys keys loses the oldest in the same transaction.
 	Add(ctx context.Context, userID string, hash []byte) error
 	// DeleteAll revokes every key of the person ("Отключить").
@@ -100,9 +101,10 @@ type mockPhoneKey struct {
 
 // MockPhoneKeyRepo keeps hashes in memory, oldest first.
 type MockPhoneKeyRepo struct {
-	mu   sync.Mutex
-	keys []mockPhoneKey
-	Now  func() time.Time
+	mu    sync.Mutex
+	keys  []mockPhoneKey
+	debug map[string]WalletDebug
+	Now   func() time.Time
 }
 
 func NewMockPhoneKeyRepo() *MockPhoneKeyRepo { return &MockPhoneKeyRepo{Now: time.Now} }
@@ -176,4 +178,79 @@ func (m *MockPhoneKeyRepo) Hashes() [][]byte {
 		out = append(out, bytes.Clone(k.hash))
 	}
 	return out
+}
+
+// WalletDebug is the last tap body the server could not read on its own — admins only (Р-13а).
+type WalletDebug struct {
+	Body string    `json:"body"`
+	At   time.Time `json:"at"`
+}
+
+// walletDebugTTL: the body lives a day, then any new write drops it.
+const walletDebugTTL = 24 * time.Hour
+
+// WalletDebugRepository keeps one body per admin (overwritten) for tuning the tap parser.
+type WalletDebugRepository interface {
+	// SaveDebug overwrites the person's row and drops every row older than a day.
+	SaveDebug(ctx context.Context, userID, body string) error
+	// LastDebug is the person's body of the last day, nil when there is none.
+	LastDebug(ctx context.Context, userID string) (*WalletDebug, error)
+}
+
+func (r *sqlPhoneKeyRepository) SaveDebug(ctx context.Context, userID, body string) error {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM app.wallet_debug WHERE at < now() - interval '24 hours'`); err != nil {
+		return fmt.Errorf("failed to drop old wallet debug: %w", err)
+	}
+	if _, err := r.db.ExecContext(ctx, `
+		INSERT INTO app.wallet_debug (user_id, body) VALUES ($1, $2)
+		ON CONFLICT (user_id) DO UPDATE SET body = EXCLUDED.body, at = now()`, userID, body); err != nil {
+		return fmt.Errorf("failed to save wallet debug: %w", err)
+	}
+	return nil
+}
+
+func (r *sqlPhoneKeyRepository) LastDebug(ctx context.Context, userID string) (*WalletDebug, error) {
+	d := &WalletDebug{}
+	err := r.db.QueryRowContext(ctx, `SELECT body, at FROM app.wallet_debug WHERE user_id = $1 AND at >= now() - interval '24 hours'`,
+		userID).Scan(&d.Body, &d.At)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to read wallet debug: %w", err)
+	}
+	return d, nil
+}
+
+func (m *MockPhoneKeyRepo) SaveDebug(ctx context.Context, userID, body string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	now := m.Now()
+	if m.debug == nil {
+		m.debug = map[string]WalletDebug{}
+	}
+	for id, d := range m.debug {
+		if now.Sub(d.At) > walletDebugTTL {
+			delete(m.debug, id)
+		}
+	}
+	m.debug[userID] = WalletDebug{Body: body, At: now}
+	return nil
+}
+
+func (m *MockPhoneKeyRepo) LastDebug(ctx context.Context, userID string) (*WalletDebug, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	d, ok := m.debug[userID]
+	if !ok || m.Now().Sub(d.At) > walletDebugTTL {
+		return nil, nil
+	}
+	return &d, nil
+}
+
+// DebugRows is how many debug bodies the mock keeps (tests: nobody but admins gets one).
+func (m *MockPhoneKeyRepo) DebugRows() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.debug)
 }

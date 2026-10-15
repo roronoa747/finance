@@ -22,17 +22,18 @@ const (
 )
 
 type walletApp struct {
-	router      *chi.Mux
-	repos       *repository.MockRepositories
-	keys        *repository.MockPhoneKeyRepo
-	handler     *WalletHandler
-	familyID    string
-	aliceID     string
-	viewerID    string
-	loneID      string
-	alice       string // JWT
-	viewer      string // JWT
-	adminEmails []string
+	router   *chi.Mux
+	repos    *repository.MockRepositories
+	keys     *repository.MockPhoneKeyRepo
+	handler  *WalletHandler
+	familyID string
+	aliceID  string
+	viewerID string
+	loneID   string
+	alice    string // JWT
+	viewer   string // JWT
+	admin    string // JWT
+	adminID  string
 }
 
 func setupWalletApp(t *testing.T) walletApp {
@@ -41,7 +42,7 @@ func setupWalletApp(t *testing.T) walletApp {
 	repos.Households.SetDocRepo(repos.Docs)
 	keys := repository.NewMockPhoneKeyRepo()
 	tokens := auth.NewTokenService("wallet-test-signing-key", 2*time.Hour)
-	h := NewWalletHandler(keys, repos.Households, testShortcut, testShortcutLegacy)
+	h := NewWalletHandler(keys, repos.Households, repos.Statements, repos.Users, []string{"admin@wallet.test"}, testShortcut, testShortcutLegacy)
 
 	ctx := t.Context()
 	a, _ := repos.Users.Create(ctx, "alice@wallet.test", "h")
@@ -51,10 +52,13 @@ func setupWalletApp(t *testing.T) walletApp {
 	_, _ = repos.Households.JoinHousehold(ctx, inv.Code, v.ID, "Гость")
 	repos.Households.SetRole(family.ID, v.ID, "viewer")
 	lone, _ := repos.Users.Create(ctx, "lone@wallet.test", "h")
+	admin, _ := repos.Users.Create(ctx, "admin@wallet.test", "h")
+	_, _, _ = repos.Households.CreateHousehold(ctx, "Админ", admin.ID, "Админ")
 
 	r := chi.NewRouter()
 	r.Route("/api", func(api chi.Router) {
 		// A phone endpoint stand-in: who the key resolved to.
+		api.With(h.KeyAuth).Post("/wallet/tap", h.Tap)
 		api.With(h.KeyAuth).Get("/wallet/whoami", func(w http.ResponseWriter, r *http.Request) {
 			householdID, userID, ok := member(w, r)
 			if ok {
@@ -66,6 +70,7 @@ func setupWalletApp(t *testing.T) walletApp {
 			protected.Get("/wallet", h.Status)
 			protected.Post("/wallet/connect", h.Connect)
 			protected.Delete("/wallet", h.Disconnect)
+			protected.Get("/admin/wallet-debug", h.AdminDebug)
 		})
 	})
 
@@ -78,8 +83,8 @@ func setupWalletApp(t *testing.T) walletApp {
 	}
 	return walletApp{
 		router: r, repos: repos, keys: keys, handler: h, familyID: family.ID,
-		aliceID: a.ID, viewerID: v.ID, loneID: lone.ID,
-		alice: token(a.ID, "member"), viewer: token(v.ID, "viewer"),
+		aliceID: a.ID, viewerID: v.ID, loneID: lone.ID, adminID: admin.ID,
+		alice: token(a.ID, "member"), viewer: token(v.ID, "viewer"), admin: token(admin.ID, "member"),
 	}
 }
 

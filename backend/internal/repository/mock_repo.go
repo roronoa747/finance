@@ -751,6 +751,48 @@ func (m *MockStatementRepo) ListOperations(ctx context.Context, userID string, s
 	return all[:end], nil
 }
 
+func (m *MockStatementRepo) InsertPhoneOperation(ctx context.Context, userID, householdID string, op PhoneOperation) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.ops[userID] == nil {
+		m.ops[userID] = make(map[string]*mockOperation)
+	}
+	at := op.OccurredAt
+	m.ops[userID][op.ID] = &mockOperation{householdID: householdID, op: models.Operation{
+		ID: op.ID, Bank: op.Bank, Date: op.Date, Amount: op.Amount, Kind: "purchase", Merchant: op.Merchant,
+		UpdatedAt: m.stamp(), Source: op.Source, OccurredAt: &at, FxCurrency: op.FxCurrency, FxAmount: op.FxAmount,
+	}}
+	return nil
+}
+
+func (m *MockStatementRepo) FindRecentPhoneOperation(ctx context.Context, userID, source, currency string, amount int64, since time.Time) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, o := range m.ops[userID] {
+		op := o.op
+		if op.Source != source || op.OccurredAt == nil || op.OccurredAt.Before(since) {
+			continue
+		}
+		if currency == "KZT" && op.FxCurrency == nil && op.Amount == amount ||
+			currency != "KZT" && op.FxCurrency != nil && *op.FxCurrency == currency && op.FxAmount != nil && *op.FxAmount == amount {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (m *MockStatementRepo) CountPhoneOperationsSince(ctx context.Context, userID string, since time.Time) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for _, o := range m.ops[userID] {
+		if o.op.Source != "statement" && o.op.OccurredAt != nil && !o.op.OccurredAt.Before(since) {
+			n++
+		}
+	}
+	return n, nil
+}
+
 func (m *MockStatementRepo) ownsUpload(userID, uploadID string) bool {
 	for _, u := range m.uploads {
 		if u.upload.ID == uploadID && u.userID == userID {
