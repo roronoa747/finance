@@ -3,6 +3,7 @@ import { onMounted, onUnmounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { PhChartBar, PhImage, PhStorefront } from '@phosphor-icons/vue'
 import { AI_NO_TRAINING, AI_SENDS, AI_TO, useAiStore } from '@/stores/ai'
+import IconBox from '@/components/kit/IconBox.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Button from '@/components/ui/Button.vue'
 
@@ -30,9 +31,7 @@ onUnmounted(() => {
     <p class="text-[14px] text-ink-2" data-ai-to>{{ AI_TO }} получит:</p>
     <ul class="mt-3 flex flex-col gap-3" data-ai-consent>
       <li v-for="it in items" :key="it.text" class="flex items-center gap-3 text-[15px] text-ink">
-        <span class="grid size-9 shrink-0 place-items-center rounded-[12px] bg-surface-2 text-ink-2">
-          <component :is="it.icon" :size="18" />
-        </span>
+        <IconBox><component :is="it.icon" :size="20" /></IconBox>
         {{ it.text }}
       </li>
     </ul>
