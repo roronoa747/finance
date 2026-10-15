@@ -73,7 +73,9 @@ onBeforeUnmount(() => {
         <div class="flex h-full transition-transform duration-300" :style="{ transform: `translateX(-${page * 100}%)` }">
           <div v-for="(p, i) in photos" :key="p.id" class="relative h-full w-full shrink-0" :aria-hidden="i !== page" data-viewer-photo>
             <img :src="templateImageUrl(p, 1200)" :alt="p.name" class="size-full object-cover" :loading="Math.abs(i - page) <= 1 ? undefined : 'lazy'" />
-            <span class="absolute right-4 top-3 text-[11px] text-on-photo opacity-80">Фото: {{ p.photo.author }}</span>
+            <!-- Полоса под автором: на светлом небе белая подпись иначе пропадает (Р-28 — автор виден всегда). -->
+            <div class="absolute inset-x-0 top-0 h-14 opacity-50 photo-scrim-top" aria-hidden="true" />
+            <span class="absolute right-4 top-3 text-[11px] text-on-photo opacity-90">Фото: {{ p.photo.author }}</span>
           </div>
         </div>
         <!-- Широкий экран (мышь): ‹ › по краям фото; на телефоне — свайп. -->

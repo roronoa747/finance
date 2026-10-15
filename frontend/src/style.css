@@ -360,6 +360,10 @@
   letter-spacing: -0.01em;
 }
 /* Нижний градиент на фото: 0 → --photo-scrim с 35 % высоты (герой), 40 % (плитка). */
+@utility photo-scrim-top {
+  /* Верхняя полоса под подписью автора на светлом фото (просмотр фото темы, `/ux` бэклога «первый» Б2). */
+  background: linear-gradient(to top, transparent, var(--photo-scrim));
+}
 @utility photo-scrim {
   background: linear-gradient(to bottom, transparent, var(--photo-scrim));
 }

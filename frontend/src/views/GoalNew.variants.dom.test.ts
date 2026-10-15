@@ -99,7 +99,11 @@ describe('B2C-64-а: фото-варианты темы в «Новой цели
 
 describe('PN-19: «Подушка» в «Новой мечте» — фонд семьи без формы', () => {
   const settle = async (router: Router, path: RegExp) => {
-    for (let i = 0; i < 40 && !path.test(router.currentRoute.value.fullPath); i++) await new Promise((r) => setTimeout(r, 10))
+    // Экран цели — ленивый: холодный импорт дольше 400 мс, ждём его, а не только часы (`/ux` Блока 2 «первый»: флак на чистом HEAD).
+    for (let i = 0; i < 200 && !path.test(router.currentRoute.value.fullPath); i++) {
+      await vi.dynamicImportSettled()
+      await new Promise((r) => setTimeout(r, 10))
+    }
   }
 
   it('«Подушка» → «Дальше»: формы нет, `ensureFund`, а не `addGoal`; переход на экран фонда; вариант фото — у фонда', async () => {

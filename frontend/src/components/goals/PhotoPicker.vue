@@ -83,7 +83,7 @@ function onViewerPick(t: GoalTemplate) {
   viewerOpen.value = false
   confirm()
 }
-/** Тем по две в ряд (FR-09): тем нечётно — «По ссылке» на весь последний ряд. */
+/** Тем по две в ряд (FR-09): тем нечётно — «По ссылке» на весь последний ряд, низкой плиткой (`/ux` «первый» Б2). */
 const linkWide = GOAL_TYPES.length % 2 === 1
 
 function confirm() {
@@ -117,7 +117,7 @@ function onLink(found: LinkFound) {
             @click="pickType(k.type)"
           />
           <TemplateTile name="Своё фото" camera @click="fileInput?.click()" />
-          <TemplateTile name="По ссылке" link :selected="linkOpen" :class="linkWide && 'col-span-2'" data-link-tile @click="linkOpen = !linkOpen" />
+          <TemplateTile name="По ссылке" link :selected="linkOpen" :class="linkWide && 'col-span-2 !h-24'" data-link-tile @click="linkOpen = !linkOpen" />
         </div>
       </Field>
       <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFile" />
