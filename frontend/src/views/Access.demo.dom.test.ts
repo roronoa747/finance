@@ -205,15 +205,15 @@ describe('B2C-110 (Р-118): демо — фото из приложения, л�
     // Цель из шаблона — с автором фото (Р-28), как заведённая из шаблона.
     expect(doc.goals.find((g) => g.id === 'g-trip')?.photoCredit?.author).toBe('Roméo A.')
     // Блок 3 «понятность» (PN-11): «Новый диван» — новая тема «Мебель» (PN-07), картинка — демо-файл; у героя — взнос этого
-    // месяца 50 000 при 100 000 в месяц → под героем «ближе на 15 дней» (PN-09); накопленное прежнее.
+    // месяца 50 000 при 100 000 в месяц → «ближе на 15 дней» (PN-09) — на экране цели; под героем — «название · N %» (FR-09).
     expect(doc.goals.find((g) => g.id === 'g-sofa')).toMatchObject({ template: 'furniture', photoId: 'demo:sofa' })
     const trip = doc.goals.find((g) => g.id === 'g-trip')!
     expect(trip.have).toBe(600_000)
     expect(trip.movements.filter((m) => m.date.startsWith(monthKey())).map((m) => m.amount)).toEqual([50_000])
     expect(closerThisMonth(trip, monthKey())).toBe(15)
     const hero = await renderScreen(Dreams, '/')
-    expect(hero).toContain('data-hero-closer')
-    expect(text(hero)).toMatch(/Поездка в Японию\s·\sближе\sна\s15\sдней/)
+    expect(hero).not.toContain('ближе')
+    expect(text(hero)).toMatch(/Поездка в Японию\s·\s+[0-9]+\s%/)
 
     const auth = useAuthStore()
     const all = JSON.stringify({ doc, user: auth.user, household: auth.household, member: auth.member })
@@ -292,7 +292,7 @@ describe('PN-06 (понятность Р-2, Р-3): демо — плашка К�
 
 describe('PN-32 (понятность Р-14): демо — прошедшая поездка «Поездка в Японию»', () => {
   // Начало месяца и середина, понедельник и воскресенье — даты поездки и операции демо считаются «N дней назад».
-  it.each(['2026-10-01T07:00:00Z', '2026-10-15T07:00:00Z', '2026-10-18T07:00:00Z'])('%s: «За поездку — N из M» — четыре своих операции и запись партнёра; герой «Мечт» прежний', async (iso) => {
+  it.each(['2026-10-01T07:00:00Z', '2026-10-15T07:00:00Z', '2026-10-18T07:00:00Z'])('%s: «За поездку — N из M» — четыре своих операции и запись партнёра; герой «Мечт» — «название · N %»', async (iso) => {
     vi.setSystemTime(new Date(iso))
     const pinia = createPinia()
     setActivePinia(pinia)
@@ -326,7 +326,9 @@ describe('PN-32 (понятность Р-14): демо — прошедшая п
     // Поездка прошла (решение владельца Б): «Съездили?» вместо срока и «Пополнить».
     expect(screen).toContain('Съездили?')
     expect(screen).not.toContain('Пополнить')
-    // Герой «Мечт» — как в Блоке 3: «ближе на 15 дней», не «потрачено».
-    expect(text(await renderScreen(Dreams, '/'))).toMatch(/Поездка в Японию\s·\sближе\sна\s15\sдней/)
+    // Герой «Мечт» — «название · N %» (FR-09), не «потрачено».
+    const hero = text(await renderScreen(Dreams, '/'))
+    expect(hero).toMatch(/Поездка в Японию\s·\s+[0-9]+\s%/)
+    expect(hero).not.toContain('потрачено')
   })
 })

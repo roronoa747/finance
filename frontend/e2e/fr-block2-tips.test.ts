@@ -117,7 +117,8 @@ describe('e2e / бэклог «первый», Блок 2 — подсказки
     expect(shown()).toEqual([])
     await tap('Пропустить')
     await tap('Машина')
-    await tap('Дальше')
+    // Тема — фото на весь экран (FR-09): «Выбрать это» — дальше форма.
+    await tap('Выбрать это')
     const need = document.querySelector<HTMLInputElement>('input[placeholder="1 800 000"]')!
     need.value = '3000000'
     need.dispatchEvent(new Event('input'))

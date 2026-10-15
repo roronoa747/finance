@@ -152,7 +152,8 @@ describe('e2e / бэклог «первый», Блок 1 — первый за�
 
     expect(head()).toContain('1 из 3')
     await tap('Машина')
-    await tap('Дальше')
+    // Тема — фото на весь экран (FR-09): «Выбрать это» — дальше форма.
+    await tap('Выбрать это')
     await type(document.querySelector<HTMLInputElement>('input[placeholder="1 800 000"]')!, '3000000')
     expect(page()).toContain('будет вашей в')
     expect(page()).not.toContain('при остатке')
@@ -231,7 +232,8 @@ describe('e2e / бэклог «первый», Блок 1 — первый за�
     }
     check('мечта')
     await tap('Машина')
-    await tap('Дальше')
+    // Тема — фото на весь экран (FR-09): «Выбрать это» — дальше форма.
+    await tap('Выбрать это')
     await type(document.querySelector<HTMLInputElement>('input[placeholder="1 800 000"]')!, '3000000')
     check('форма мечты')
     await tap('Дальше')
@@ -340,7 +342,8 @@ describe('e2e / бэклог «первый», Блок 1 — выписка о�
     const router = await open(A, '/start/intro')
     await tap('Пропустить')
     await tap('Машина')
-    await tap('Дальше')
+    // Тема — фото на весь экран (FR-09): «Выбрать это» — дальше форма.
+    await tap('Выбрать это')
     await type(document.querySelector<HTMLInputElement>('input[placeholder="1 800 000"]')!, '3000000')
     await tap('Дальше')
     expect(router.currentRoute.value.path).toBe('/start/salary')
@@ -388,7 +391,8 @@ describe('e2e / бэклог «первый», Блок 2 FR-08 — холодн
     await open(A, '/start/intro')
     await tap('Пропустить')
     await tap('Машина')
-    await tap('Дальше')
+    // Тема — фото на весь экран (FR-09): «Выбрать это» — дальше форма.
+    await tap('Выбрать это')
     await type(document.querySelector<HTMLInputElement>('input[placeholder="1 800 000"]')!, '3000000')
     await tap('Дальше')
     await synced(A)

@@ -138,6 +138,13 @@ describe('SortableList', () => {
     expect(s.moves).toEqual([])
   })
 
+  it('FR-09 (владелец): ⋮⋮ не видно — ручка только для клавиатуры (видна при фокусе); перенос — удержанием строки', () => {
+    const s = mount()
+    const cls = s.grip('a')!.className
+    expect(cls).toContain('sr-only')
+    expect(cls).toContain('focus-visible:not-sr-only')
+  })
+
   it('клавиатура: стрелки на ⋮⋮ — выше/ниже, фокус остаётся на ⋮⋮; за краем — ничего', async () => {
     const s = mount()
     expect(s.grip('c')!.getAttribute('aria-label')).toContain('Переставить: c')
