@@ -68,7 +68,7 @@ func NewHandler(cfg *config.Config, database *sql.DB) (http.Handler, error) {
 		log.Println("using in-memory mock repositories (development mode)")
 		mocks := repository.NewMockRepositories()
 		mocks.Households.SetDocRepo(mocks.Docs)
-		repos = Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos, Fx: mocks.Fx, Accounts: repository.NewMockAccountRepo(mocks), Events: &repository.MockEventRepo{}, Metrics: repository.MockMetricsRepo{}, AI: repository.NewMockAIRepo(mocks.Households)}
+		repos = Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos, Fx: mocks.Fx, Accounts: repository.NewMockAccountRepo(mocks), Events: &repository.MockEventRepo{}, Metrics: repository.MockMetricsRepo{}, AI: repository.NewMockAIRepo(mocks.Households, mocks.Users)}
 	}
 
 	tokens := auth.NewTokenService(cfg.JWTSecret, tokenTTL)
@@ -165,6 +165,7 @@ func NewRouter(
 	previewHandler := handlers.NewPreviewHandler(linkpreview.New().Fetch)
 	accountHandler := handlers.NewAccountHandler(repos.Accounts)
 	eventsHandler := handlers.NewEventsHandler(repos.Events, repos.Metrics, repos.Users, cfg.AdminEmails)
+	adminAIHandler := handlers.NewAdminAIHandler(repos.AI, repos.Users, cfg.AdminEmails, aiClient, cfg.AIModelSellers, cfg.AIMonthlyLimit)
 
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", handlers.HealthHandler(database))
@@ -197,6 +198,10 @@ func NewRouter(
 			// События удержания и цифры владельца (B2C-28): события — любому вошедшему.
 			protected.Post("/events", eventsHandler.Record)
 			protected.Get("/admin/metrics", eventsHandler.Metrics)
+			// ИИ семей (бэклог «ИИ», AI-03): список с расходом, переключатель, проверка связи.
+			protected.Get("/admin/families", adminAIHandler.Families)
+			protected.Put("/admin/families/{id}/ai", adminAIHandler.SetAI)
+			protected.Post("/admin/ai-check", adminAIHandler.AICheck)
 
 			// Household routes: 409 "no household" until "с кем" is done.
 			protected.Group(func(family chi.Router) {

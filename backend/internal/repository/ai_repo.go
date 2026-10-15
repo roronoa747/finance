@@ -5,7 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
+	"sort"
 	"sync"
+	"time"
+
+	"github.com/lib/pq"
 )
 
 // AIRepository holds the family AI flag and the monthly counters (бэклог «ИИ», Р-7, Р-8).
@@ -18,11 +23,49 @@ type AIRepository interface {
 	Used(ctx context.Context, householdID, month string) (int, error)
 	// AddUsage adds a successful call to the month's counters.
 	AddUsage(ctx context.Context, householdID, month string, requests int, in, out, costMicros int64) error
+	// Families is every family for the admin page with month's requests and cost: AI on
+	// first, then newest first.
+	Families(ctx context.Context, month string) ([]AIFamily, error)
+}
+
+// AIFamily is one row of the admin list (AI-03).
+type AIFamily struct {
+	ID         string    `json:"id"`
+	CreatedAt  time.Time `json:"created_at"`
+	Emails     []string  `json:"emails"` // members by slot
+	AI         bool      `json:"ai"`
+	Month      string    `json:"month"`
+	Requests   int       `json:"requests"`
+	CostMicros int64     `json:"cost_micros"`
 }
 
 type sqlAIRepository struct{ db *sql.DB }
 
 func NewSQLAIRepository(db *sql.DB) AIRepository { return &sqlAIRepository{db: db} }
+
+func (r *sqlAIRepository) Families(ctx context.Context, month string) ([]AIFamily, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT h.id, h.created_at, h.ai_enabled,
+			COALESCE((SELECT array_agg(u.email ORDER BY m.slot) FROM app.household_members m
+				JOIN app.users u ON u.id = m.user_id WHERE m.household_id = h.id), '{}'),
+			COALESCE(a.requests, 0), COALESCE(a.cost_micros, 0)
+		FROM app.households h
+		LEFT JOIN app.ai_usage a ON a.household_id = h.id AND a.month = $1
+		ORDER BY h.ai_enabled DESC, h.created_at DESC;`, month)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list families: %w", err)
+	}
+	defer rows.Close()
+	families := []AIFamily{}
+	for rows.Next() {
+		f := AIFamily{Month: month}
+		if err := rows.Scan(&f.ID, &f.CreatedAt, &f.AI, pq.Array(&f.Emails), &f.Requests, &f.CostMicros); err != nil {
+			return nil, fmt.Errorf("failed to scan family: %w", err)
+		}
+		families = append(families, f)
+	}
+	return families, rows.Err()
+}
 
 func (r *sqlAIRepository) Enabled(ctx context.Context, householdID string) (bool, error) {
 	var on bool
@@ -87,12 +130,13 @@ type MockAIUsage struct {
 type MockAIRepo struct {
 	mu         sync.Mutex
 	households *MockHouseholdRepo
+	users      *MockUserRepo
 	Flags      map[string]bool                   // household id → ai_enabled
 	Usage      map[string]map[string]MockAIUsage // household id → month → counters
 }
 
-func NewMockAIRepo(households *MockHouseholdRepo) *MockAIRepo {
-	return &MockAIRepo{households: households, Flags: map[string]bool{}, Usage: map[string]map[string]MockAIUsage{}}
+func NewMockAIRepo(households *MockHouseholdRepo, users *MockUserRepo) *MockAIRepo {
+	return &MockAIRepo{households: households, users: users, Flags: map[string]bool{}, Usage: map[string]map[string]MockAIUsage{}}
 }
 
 func (m *MockAIRepo) known(householdID string) bool {
@@ -141,4 +185,51 @@ func (m *MockAIRepo) AddUsage(ctx context.Context, householdID, month string, re
 	u.CostMicros += costMicros
 	m.Usage[householdID][month] = u
 	return nil
+}
+
+// Families lists the mock households (and flag-only families of tests) like the SQL does.
+func (m *MockAIRepo) Families(ctx context.Context, month string) ([]AIFamily, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	byID := map[string]*AIFamily{}
+	for id := range m.Flags {
+		byID[id] = &AIFamily{ID: id, Emails: []string{}}
+	}
+	if m.households != nil {
+		m.households.mu.RLock()
+		for id, h := range m.households.households {
+			f := &AIFamily{ID: id, CreatedAt: h.CreatedAt, Emails: []string{}}
+			members := slices.Clone(m.households.members[id])
+			sort.Slice(members, func(i, j int) bool { return members[i].Slot < members[j].Slot })
+			for _, mem := range members {
+				if m.users == nil {
+					continue
+				}
+				if u, err := m.users.GetByID(ctx, mem.UserID); err == nil {
+					f.Emails = append(f.Emails, u.Email)
+				}
+			}
+			byID[id] = f
+		}
+		m.households.mu.RUnlock()
+	}
+	families := make([]AIFamily, 0, len(byID))
+	for id, f := range byID {
+		f.AI = m.Flags[id]
+		f.Month = month
+		u := m.Usage[id][month]
+		f.Requests, f.CostMicros = u.Requests, u.CostMicros
+		families = append(families, *f)
+	}
+	sort.Slice(families, func(i, j int) bool {
+		a, b := families[i], families[j]
+		if a.AI != b.AI {
+			return a.AI
+		}
+		if !a.CreatedAt.Equal(b.CreatedAt) {
+			return a.CreatedAt.After(b.CreatedAt)
+		}
+		return a.ID < b.ID
+	})
+	return families, nil
 }

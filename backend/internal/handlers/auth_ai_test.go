@@ -19,7 +19,7 @@ func meAI(t *testing.T, withFamily, flagOn, withKey bool) bool {
 	ctx := context.Background()
 	repos := repository.NewMockRepositories()
 	tokens := auth.NewTokenService("test-secret-salt-key", time.Hour)
-	aiRepo := repository.NewMockAIRepo(repos.Households)
+	aiRepo := repository.NewMockAIRepo(repos.Households, repos.Users)
 
 	user, err := repos.Users.Create(ctx, "ai@example.com", "hash")
 	if err != nil {
