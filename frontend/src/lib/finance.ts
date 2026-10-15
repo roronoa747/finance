@@ -805,6 +805,16 @@ export function rateOn(book: RateBook | null | undefined, code: Currency, day: s
   return fallback && fallback > 0 ? fallback : null;
 }
 
+/**
+ * Тенге покупки Apple Pay в валюте (Р-15): минорные единицы → по курсу Нацбанка на день операции (`rateOn`) → целые
+ * тенге со знаком списания. Курса ещё нет — `null` (операция ждёт и в итоги не входит); операция без валюты — `null`.
+ */
+export function phoneOpTenge(op: { date: string; fx?: { currency: Currency; amount: number } }, book: RateBook | null | undefined): number | null {
+  if (!op.fx) return null;
+  const rate = rateOn(book, op.fx.currency, op.date);
+  return rate === null ? null : -fxToTenge(op.fx.amount / 100, rate);
+}
+
 /** Валюты документа, которым нужна книга курсов (Р-72): счета, оклады и платежи (Р-75); без тенге. */
 export function docCurrencies(doc: { accounts?: Account[]; people?: Person[]; obligations?: Obligation[] }): Currency[] {
   const out = new Set<Currency>();

@@ -6,8 +6,8 @@ import { useFinanceStore } from '@/stores/finance'
 import { useEventsStore } from './events'
 import { useFxStore } from '@/stores/fx'
 import { OPERATIONS_STORAGE_KEYS, readStorage, writeStorage } from '@/lib/storage'
-import { creditDueAmount, openGoals, tripOps, tripStatus, tripTotal } from '@/lib/finance'
-import { todayIso } from '@/lib/dates'
+import { creditDueAmount, openGoals, phoneOpTenge, tripOps, tripStatus, tripTotal } from '@/lib/finance'
+import { addDaysIso, todayIso } from '@/lib/dates'
 import {
   applyRules,
   pairInternalTransfers,
@@ -51,6 +51,8 @@ export const PULL_LIMIT = 2000
  * строк безвреден — копия пишется по id.
  */
 export const CURSOR_OVERLAP_MS = 60_000
+/** Возврат в приложение подтягивает траты с телефона не чаще раза в столько (Р-19). */
+export const PHONE_PULL_MS = 30_000
 
 export type UploadInput = { bank: string; period_from: string; period_to: string; ops_count: number }
 
@@ -89,8 +91,12 @@ export function toWire(op: Operation): OperationWire {
     category_id: op.categoryId,
     internal: op.internal,
     upload_id: op.uploadId ?? null,
+    // source, at и fx пишет только сервер (Р-14): батч их не шлёт.
   }
 }
+
+/** Надгробие операции с телефона (Р-16): выписка её заменила — уходит тем же батчем, сервер не воскрешает. */
+export const tombstoneWire = (op: Operation): OperationWire => ({ ...toWire(op), deleted: true })
 
 export function fromWire(w: OperationWire): Operation {
   return {
@@ -105,6 +111,9 @@ export function fromWire(w: OperationWire): Operation {
     categoryId: w.category_id ?? null,
     internal: w.internal,
     ...(w.upload_id ? { uploadId: w.upload_id } : {}),
+    ...(w.source === 'tap' || w.source === 'push' ? { source: w.source } : {}),
+    ...(w.occurred_at ? { at: w.occurred_at } : {}),
+    ...(w.fx_currency && w.fx_amount ? { fx: { currency: w.fx_currency, amount: w.fx_amount } } : {}),
   }
 }
 
@@ -136,6 +145,7 @@ export const useOperationsStore = defineStore('operations', () => {
   /** Сколько строк последней отправки отметилось по правилам («Отмечено по выписке: N»). */
   const lastAutoMarked = ref(0)
   let flushing: Promise<void> | null = null
+  let lastPullAt = 0
 
   const demo = computed(() => auth.isDemo || finance.isDemo)
   const me = (): PersonId => auth.slot ?? 'a'
@@ -207,10 +217,13 @@ export const useOperationsStore = defineStore('operations', () => {
     if (op) writeTotals(periodsOf([op]))
   }
 
-  /** Автоотметка по правилам среди только что отправленных строк; сколько отметилось. */
+  /**
+   * Автоотметка по правилам среди только что отправленных строк; сколько отметилось. Операции с телефона — нет: отметки
+   * сами ставит выписка (Р-2 «выписка — истина»), вопрос «это платёж?» по ним задаётся как по любым.
+   */
   function autoMark(list: Operation[]): number {
     let n = 0
-    for (const c of matchCandidates(list, matchState(), finance.merchantRules, me())) {
+    for (const c of matchCandidates(list.filter((o) => !o.source), matchState(), finance.merchantRules, me())) {
       if (c.confidence !== 'rule') continue
       const op = list.find((o) => o.id === c.opId)
       if (op && markByOperation(c, op)) n += 1
@@ -599,6 +612,7 @@ export const useOperationsStore = defineStore('operations', () => {
   async function pull(client: ApiClient = apiClient): Promise<string[]> {
     const got: string[] = []
     if (demo.value || !auth.isMember) return got
+    lastPullAt = Date.now()
     await flush(client)
     if (offline() || pending.value.length) return got
     try {
@@ -606,11 +620,21 @@ export const useOperationsStore = defineStore('operations', () => {
       // курсора; пустая страница курсор не двигает (назад он не уезжает).
       let since = cursor.value
       let from = since && new Date(Date.parse(since) - CURSOR_OVERLAP_MS).toISOString()
+      // Apple Pay (Р-14, Р-16): операции с телефона — на раскладку; надгробия — прочь из копии, их периоды — в итоги.
+      const phone = new Set<string>()
+      const gone: Operation[] = []
       for (;;) {
         const page = await client.listOperations(from, PULL_LIMIT)
         for (const w of page.operations) {
-          ops.value[w.id] = fromWire(w)
           got.push(w.id)
+          if (w.deleted) {
+            const prev = ops.value[w.id]
+            if (prev) gone.push(prev)
+            delete ops.value[w.id]
+            continue
+          }
+          ops.value[w.id] = fromWire(w)
+          if (w.source === 'tap' || w.source === 'push') phone.add(w.id)
         }
         if (page.next) since = from = page.next
         if (page.operations.length < PULL_LIMIT) break
@@ -621,10 +645,49 @@ export const useOperationsStore = defineStore('operations', () => {
       // наблюдатель `released` уже отработал на пустом списке: такие операции снова трата (критик возврата).
       const stale = new Set(got.filter((id) => released.value.has(id)))
       if (stale.size) await settleReleased(stale, client)
+      await settlePhone(phone, gone, client)
     } catch (err) {
       lastError.value = err instanceof Error ? err.message : String(err)
     }
     return got
+  }
+
+  /**
+   * Раскладка операций с телефона (Р-2, Р-15): пришедшие и все свои в валюте без тенге (курса не было) — курс дня
+   * (`phoneOpTenge`), раздел и «между своими» по правилам; изменённые — на сервер; итоги их периодов и периодов
+   * надгробий `gone` — в общий документ. Строки выписок `pull` не трогает.
+   */
+  async function settlePhone(arrived: Set<string>, gone: Operation[], client: ApiClient) {
+    const list = all.value.filter((o) => arrived.has(o.id) || (o.fx && o.amount === 0))
+    if (!list.length && !gone.length) return
+    const waiting = list.filter((o) => o.fx && o.amount === 0)
+    if (waiting.length) {
+      const days = waiting.map((o) => o.date).sort()
+      // Неделя запаса: в выходные курс — пятничный (`rateOn`).
+      await useFxStore().ensureRates([...new Set(waiting.map((o) => o.fx!.currency))], addDaysIso(days[0], -7), days[days.length - 1], client)
+    }
+    const book = useFxStore().book
+    const priced = list.map((o) => {
+      if (!o.fx || o.amount !== 0) return o
+      const tenge = phoneOpTenge(o, book)
+      return tenge === null ? o : { ...o, amount: tenge }
+    })
+    const next = reapply(priced)
+    const changed = next.filter((o) => {
+      const prev = ops.value[o.id]
+      return o.amount !== prev.amount || o.categoryId !== prev.categoryId || o.internal !== prev.internal
+    })
+    remember(changed)
+    writeTotals(periodsOf([...next, ...gone]))
+    if (changed.length) pending.value.push({ key: newKey(), ops: changed })
+    save()
+    if (changed.length) await flush(client)
+  }
+
+  /** Возврат в приложение (Р-19): подтянуть траты с телефона, не чаще раза в `PHONE_PULL_MS`. */
+  function pullOnReturn(client: ApiClient = apiClient) {
+    if (demo.value || !auth.isMember || Date.now() - lastPullAt < PHONE_PULL_MS) return
+    void pull(client)
   }
 
   /** Демо-пример (B2C-19 п. 4): записи загрузок обоих, чтобы главный показывал картину недели. */
@@ -741,6 +804,7 @@ export const useOperationsStore = defineStore('operations', () => {
     settleReleased,
     flush,
     pull,
+    pullOnReturn,
     loadUploads,
     seedDemoUploads,
     seedDemoOperations,

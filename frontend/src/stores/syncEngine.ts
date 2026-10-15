@@ -109,7 +109,10 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
   })
   win.addEventListener('focus', sync)
   doc.addEventListener('visibilitychange', () => {
-    if (doc.visibilityState === 'visible') sync()
+    if (doc.visibilityState !== 'visible') return
+    sync()
+    // Вернулся после оплаты телефоном (Apple Pay, Р-19) — трата уже в «Неделе».
+    if (signedIn()) useOperationsStore().pullOnReturn()
   })
   win.setInterval(() => {
     if (doc.visibilityState === 'visible') sync()

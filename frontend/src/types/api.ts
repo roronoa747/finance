@@ -104,6 +104,14 @@ export interface OperationWire {
   internal: boolean
   upload_id?: string | null
   updated_at?: string
+  /** Apple Pay (Р-14): пишет только сервер — батч их не меняет. Нет или `statement` — строка выписки. */
+  source?: 'statement' | 'tap' | 'push'
+  occurred_at?: string
+  fx_currency?: 'USD' | 'EUR' | 'RUB' | 'CNY'
+  /** Минорные единицы `fx_currency`. */
+  fx_amount?: number
+  /** Надгробие: выписка заменила операцию с телефона (Р-16) — необратимо. */
+  deleted?: boolean
 }
 
 export interface OperationsPage {
