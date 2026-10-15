@@ -116,8 +116,8 @@
   `icn1`** — закрывает проверку Р-2); у участника `/auth/me` → `ai: true`, карточка «ИИ» в настройках; у семьи без
   флага — ничего.
 - **Откат:** promote предыдущего Production (id — перечитать перед деплоем); убрать ключ из env — ИИ выключен везде;
-  миграция обратима `DROP TABLE app.ai_usage; ALTER TABLE app.households DROP COLUMN ai_enabled;` (только если
-  откатываем код).
+  миграция обратима `DROP TABLE app.ai_usage; ALTER TABLE app.households DROP COLUMN ai_enabled; DELETE FROM
+  app.schema_migrations WHERE version = '000007_ai.sql';` (только если откатываем код; клинап — ревью backend Н-1).
 - **Шаги владельцу (исполнитель, AI-06):** (1) console.anthropic.com → API Keys → создать ключ → значение в
   `memory/secrets/anthropic.md` (вне git) и в Vercel → Project → Settings → Environment Variables → `ANTHROPIC_API_KEY`,
   окружение **Production**; (2) там же в консоли Anthropic — Limits → месячный потолок расхода (общий для всех семей,
