@@ -122,6 +122,56 @@ describe('e2e / ИИ Блок 1 — фундамент: флаг семьи, с�
     expect(useAiStore().sheetOpen).toBe(false)
   })
 
+  // Приёмка Блока 1: ответ из листа (а не тумблером) — один на все телефоны человека; позднее решение побеждает.
+  it('(д) лист: «Не надо» на телефоне 1 → телефон 2 того же человека — «выкл» без листа; включил там позже → телефон 1 «да»', async () => {
+    const one = await as('member', 'a', true)
+    setActivePinia(one.pinia)
+    let ai = useAiStore()
+    ai.sheetMounted = true
+    const asked = ai.ensureConsent()
+    expect(ai.sheetOpen).toBe(true)
+    ai.answer(false)
+    await expect(asked).resolves.toBe(false)
+    expect(ai.sheetOpen).toBe(false)
+    await useFinanceStore().syncPrivate(one.priv)
+    expect(pv.docs.get('u-a')?.data.aiConsent).toMatchObject({ on: false })
+
+    // Телефон 2 того же человека: «нет» уже знает — тумблер выключен, лист не открывается.
+    storage.clear()
+    at('2026-10-15T08:00:00Z')
+    const two = await as('member', 'a', true)
+    expect(switchOn(await screen(two.pinia, Settings, '/settings'))).toBe(false)
+    setActivePinia(two.pinia)
+    ai = useAiStore()
+    ai.sheetMounted = true
+    await expect(ai.ensureConsent()).resolves.toBe(false)
+    expect(ai.sheetOpen).toBe(false)
+
+    // Передумал на телефоне 2 (тумблер в настройках) — позже по времени; телефон 1 после синка — «да».
+    ai.setConsent(true)
+    await useFinanceStore().syncPrivate(two.priv)
+    setActivePinia(one.pinia)
+    await useFinanceStore().pullPrivateDoc(one.priv)
+    expect(switchOn(await screen(one.pinia, Settings, '/settings'))).toBe(true)
+    setActivePinia(one.pinia)
+    await expect(useAiStore().ensureConsent()).resolves.toBe(true)
+  })
+
+  it('(е) лист: закрыли крестиком — «нет на этот раз», ничего не записано, в следующий раз лист снова спросит', async () => {
+    const p = await as('member', 'a', true)
+    setActivePinia(p.pinia)
+    const ai = useAiStore()
+    ai.sheetMounted = true
+    const asked = ai.ensureConsent()
+    ai.answer(null)
+    await expect(asked).resolves.toBe(false)
+    await useFinanceStore().syncPrivate(p.priv)
+    expect(pv.docs.get('u-a')?.data.aiConsent).toBeUndefined()
+    expect(ai.consent).toBe('unknown')
+    void ai.ensureConsent()
+    expect(ai.sheetOpen).toBe(true)
+  })
+
   it('(г) админ: список семей → включить ИИ семье → ушёл PUT {on: true}', async () => {
     setActivePinia(createPinia())
     useAuthStore().setAuthData(authAs('member', 'a'))
