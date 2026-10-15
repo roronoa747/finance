@@ -119,6 +119,22 @@ REST API приложения: вход, домохозяйство, синхр�
 `AI_MONTHLY_LIMIT` — одно значение на все семьи; списывается только успешный ответ. Два
 одновременных запроса на последнем месте могут пройти оба — перерасход в 1–2 запроса допустим.
 
+- **Клиент** — `ai.New(key, baseURL)` (без ключа `nil`), `Call(ctx, Request, &out)` → `Usage`; ответ —
+  структурный JSON по схеме (`output_config.format`). Один дедлайн 45 с на весь вызов (ретрай SDK ≤ 1
+  внутри), функция Vercel — `maxDuration: 60` (`vercel.json`). Ошибки — `ErrRateLimited`, `ErrRefused`,
+  `ErrFailed`, только со статусом. Цены — `price.go` (центы за MTok), `CostMicros`; неизвестная модель — 0.
+- **Админка** (только `ADMIN_EMAILS`, остальным и без переменной — 404, хелпер `adminOnly`):
+  `GET /api/admin/families` → `{families: [{id, created_at, emails, ai, month, requests, cost_micros}],
+  limit, key}` за текущий месяц (ИИ сверху, затем новые); `PUT /api/admin/families/{id}/ai` `{on}` →
+  строка (неизвестная семья — 404, лишнее поле — 400, > 64 Б — 413); `POST /api/admin/ai-check` —
+  короткий вызов лёгкой модели (`AI_MODEL_SELLERS`) → `{ok, model, ms}` или `{ok: false, reason:
+  no_key|failed|rate_limited|refused}`, в расход семей не пишется.
+- **Ничего лишнего (Р-15):** ни ключ, ни тело запроса, ни ответ модели, ни картинка не пишутся в логи
+  и в базу; логгер chi пишет только метод, путь и статус. Сервер ничего не добавляет к присланному
+  (тест `ai_test.go` фиксирует состав исходящего тела).
+- **Откат миграции** (только вместе с кодом): `DROP TABLE app.ai_usage; ALTER TABLE app.households
+  DROP COLUMN ai_enabled;`.
+
 ## Переменные окружения
 
 | Переменная | Где | Значение |
