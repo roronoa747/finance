@@ -49,7 +49,7 @@ async function disconnect() {
       <IconBox :tone="ap.connected ? 'brand' : 'neutral'"><PhContactlessPayment /></IconBox>
       <div class="min-w-0 flex-1">
         <h2 class="type-h3 text-ink">Apple Pay</h2>
-        <p class="truncate text-[13.5px] text-ink-2" data-applepay-line>{{ line }}</p>
+        <p class="text-[13.5px] leading-snug text-ink-2" data-applepay-line>{{ line }}</p>
       </div>
       <Button v-if="!ap.connected" size="sm" data-connect @click="sheet.open.value = true">Подключить</Button>
     </div>
