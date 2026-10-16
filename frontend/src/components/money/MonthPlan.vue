@@ -31,6 +31,8 @@ import {
   planPuts,
   putsLeft,
   queueStatus,
+  rkShare,
+  spendCompare,
   spendFact,
   untilPayday,
   type PlanDue,
@@ -64,6 +66,7 @@ import { useQuerySheet } from '@/components/useQuerySheet'
 import DueRow from '@/components/money/DueRow.vue'
 import MonthRing from '@/components/money/MonthRing.vue'
 import SalarySheet from '@/components/money/SalarySheet.vue'
+import SpendCategorySheet from '@/components/money/SpendCategorySheet.vue'
 
 /**
  * «План · Месяц» (Блок 15, Р-90; макет week-month.html, ворота B2C-91): круг — оглавление. Под кругом зарплаты и
@@ -71,7 +74,7 @@ import SalarySheet from '@/components/money/SalarySheet.vue'
  * строки, один за раз, по умолчанию всё свёрнуто. Месяц — список дел одним языком (правило 12 «Смысловой флоу»):
  * платёж — «Оплатил» ✓ (Р-94), цель — «Отложил» ✓, зарплата — «Пришла» ✓ (Р-97); действие — нажатием своей строки,
  * лист с одной кнопкой. Подписки — одной строкой (Р-93), цели — короткими строками без фото (Р-92). Управление
- * Блока 14 — то же: плательщик, вкл/выкл, ⋮⋮, траты каждого. Всё считает `finance.ts`; здесь — показ и правки
+ * Блока 14 — то же: плательщик, вкл/выкл, ⋮⋮; траты — разделы всей семьи, план каждого — в листе раздела (Р-5). Всё считает `finance.ts`; здесь — показ и правки
  * документа через стор. Viewer — тот же план без переключателей, плательщиков, листов и кнопок.
  */
 const props = defineProps<{ monthKey: string }>()
@@ -147,6 +150,8 @@ const freedMeta = computed(() => {
 })
 
 const spentFact = computed(() => spendFact(plan.value.spend))
+/** Траты в сравнении (Р-5, AU-01): разделы всей семьи; точка — у раздела выше обычного и у заголовка «Траты». */
+const compare = computed(() => spendCompare(state.value, ctx.value))
 const sections = computed(() => [
   {
     key: 'dues' as const,
@@ -162,7 +167,7 @@ const sections = computed(() => [
     color: '--s8',
     total: plan.value.spendTotal,
     meta: spentFact.value !== null ? `потрачено ${plain(spentFact.value)}` : 'по плану',
-    dot: false,
+    dot: compare.value.rows.some((r) => r.over),
   },
   {
     key: 'queue' as const,
@@ -337,12 +342,29 @@ function editDue(d: PlanDue) {
 const dueNote = (d: PlanDue) => (d.kind === 'obligation' && d.obligation.estimate ? 'примерно' : '')
 const askPayer = (d: PlanDue) => (payerFor.value = { kind: d.kind, id: d.targetId, name: d.name, payer: d.payer })
 
-/* ---------- траты каждого (Р-81) ---------- */
+/* ---------- траты: разделы семьи (Р-5), план каждого — в листе раздела (Р-81) ---------- */
 const categories = computed(() => {
   const all = finance.householdDoc.spendCategories ?? []
   return liveSpendCategories(all).filter((c) => !plannedElsewhere(c.id, all))
 })
-const spendShare = (fact: number | null, planned: number) => (fact === null || planned <= 0 ? 0 : Math.min(100, Math.round((fact / planned) * 100)))
+const spendShare = (fact: number | null, planned: number | null) =>
+  fact === null || !planned || planned <= 0 ? 0 : Math.min(100, Math.round((fact / planned) * 100))
+const catFor = ref<string | null>(null)
+const catRow = computed(() => compare.value.rows.find((r) => r.categoryId === catFor.value) ?? null)
+const catRk = computed(() => (catRow.value?.group ? rkShare(state.value, ctx.value, catRow.value.group) : null))
+/** План раздела по участникам — строки `monthPlan().spend`; у кого плана нет — 0. */
+const catPlans = computed(() =>
+  people.value.map((p) => ({
+    by: p.id,
+    name: p.name,
+    amount: plan.value.spend.find((s) => s.by === p.id)?.rows.find((r) => r.categoryId === catFor.value)?.plan ?? 0,
+  })),
+)
+function editCatPlan(personId: PersonId, amount: number) {
+  const id = catFor.value
+  catFor.value = null
+  if (id) editSpend(personId, id, amount)
+}
 const spendEdit = ref<{ by: PersonId; categoryId: string; amount: string; fresh: boolean } | null>(null)
 function editSpend(personId: PersonId, categoryId?: string, amount = 0) {
   if (!canEdit.value) return
@@ -354,7 +376,6 @@ function saveSpend() {
   spendEdit.value = null
   if (e?.categoryId) finance.setSpendPlan(e.by, e.categoryId, parseMoney(e.amount))
 }
-const spendless = computed(() => people.value.filter((p) => !plan.value.spend.some((s) => s.by === p.id)))
 
 /* ---------- цели и фонды — короткие строки (Р-92), очередь ⋮⋮ (Р-84), «Отложил» нажатием ---------- */
 const queueIds = computed(() => plan.value.queue.map((q) => q.id))
@@ -608,45 +629,44 @@ function addFund(kind: 'reserve' | 'cushion') {
             </template>
           </div>
 
-          <!-- Траты каждого: план и факт по разделам -->
+          <!--
+            Траты — разделы всей семьи (Р-5): одна цифра у строки (факт; выписок нет — план), полоса факт/план, точка —
+            трат больше обычного; нажатие — лист раздела (обычно, план каждого, справка). Участников не сравниваем.
+          -->
           <div v-if="opened === 'spend' && s.key === 'spend'" class="pb-1" data-spends>
-            <div v-for="sp in plan.spend" :key="sp.by" class="flex flex-col gap-[9px] border-t border-line py-2.5 first:border-t-0" :data-spend="sp.by">
-              <div class="flex items-center gap-2">
-                <Avatar :id="sp.by" :name="personName(sp.by)" :size="24" />
-                <b class="flex-1 text-[15.5px] text-ink">{{ personName(sp.by) }}</b>
-                <span class="type-meta num">{{ sp.fact === null ? `план ${plain(sp.plan)}` : `${plain(sp.fact)} из ${plain(sp.plan)}` }}</span>
-              </div>
-              <component
-                :is="canEdit ? 'button' : 'div'"
-                v-for="r in sp.rows"
-                :key="r.categoryId"
-                :type="canEdit ? 'button' : undefined"
-                class="flex flex-col gap-1 pl-8 text-left"
-                :class="canEdit && 'press cursor-pointer'"
-                :data-spend-row="r.categoryId"
-                @click="editSpend(sp.by, r.categoryId, r.plan)"
-              >
-                <span class="flex w-full justify-between gap-2 text-[14px]">
-                  <span class="text-ink">{{ r.name }}</span>
-                  <span class="whitespace-nowrap text-ink-2 num"><b v-if="r.fact !== null" class="font-semibold text-ink">{{ plain(r.fact) }}</b>{{ r.fact !== null ? ' из ' : '' }}{{ plain(r.plan) }}</span>
-                </span>
-                <span class="block h-[5px] w-full overflow-hidden rounded-pill bg-track">
-                  <i class="block h-full rounded-pill bg-s8" :style="{ width: `${spendShare(r.fact, r.plan)}%` }" />
-                </span>
-              </component>
-              <button v-if="canEdit" type="button" class="press self-start cursor-pointer pl-8 text-[13.5px] font-semibold text-ink-2" @click="editSpend(sp.by)">+ Раздел</button>
-            </div>
             <button
-              v-for="p in canEdit ? spendless : []"
-              :key="p.id"
+              v-for="r in compare.rows"
+              :key="r.categoryId"
               type="button"
-              class="press flex w-full cursor-pointer items-center gap-2 border-t border-line py-2.5 text-left first:border-t-0"
-              @click="editSpend(p.id)"
+              class="press flex w-full cursor-pointer flex-col gap-1 border-t border-line py-2.5 text-left first:border-t-0"
+              :data-spend-row="r.categoryId"
+              :data-over="r.over || undefined"
+              @click="catFor = r.categoryId"
             >
-              <Avatar :id="p.id" :name="p.name" :size="24" />
-              <span class="text-[14.5px] font-semibold text-ink-2">+ Траты · {{ p.name }}</span>
+              <span class="flex w-full items-center justify-between gap-2 text-[15px]">
+                <span class="min-w-0 truncate text-ink">
+                  {{ r.name
+                  }}<template v-if="r.over"><span class="ml-1.5 inline-block size-2 rounded-full bg-brand align-middle" data-spend-dot aria-hidden="true" /><span class="sr-only">, больше обычного</span></template>
+                </span>
+                <span class="whitespace-nowrap num" data-spend-amount>
+                  <b v-if="r.amount !== null" class="font-semibold text-ink">{{ plain(r.amount) }}</b>
+                  <span v-else class="text-ink-2">план {{ plain(r.plan ?? 0) }}</span>
+                </span>
+              </span>
+              <span v-if="r.plan" class="block h-[5px] w-full overflow-hidden rounded-pill bg-track">
+                <i class="block h-full rounded-pill bg-s8" :style="{ width: `${spendShare(r.amount, r.plan)}%` }" />
+              </span>
             </button>
-            <p v-if="!plan.spend.length && !canEdit" class="py-3 type-meta">Плана трат нет</p>
+            <button
+              v-if="canEdit"
+              type="button"
+              class="press flex w-full cursor-pointer items-center border-t border-line py-2.5 text-left text-[14.5px] font-semibold text-ink-2 first:border-t-0"
+              data-spend-add
+              @click="editSpend(me)"
+            >
+              + Раздел
+            </button>
+            <p v-if="!compare.rows.length && !canEdit" class="py-3 type-meta">Плана трат нет</p>
           </div>
 
           <!-- Цели и фонды по очереди: короткие строки; ⋮⋮ — выше раньше получает деньги; нажатие — «Отложил» -->
@@ -806,11 +826,18 @@ function addFund(kind: 'reserve' | 'cushion') {
       </div>
     </Sheet>
 
+    <!-- Раздел трат: факт, обычно, план, «до плана», справка РК; план каждого — «Изменить» (member) -->
+    <SpendCategorySheet :row="catRow" :rk="catRk" :plans="catPlans" :can-edit="canEdit" @close="catFor = null" @edit="editCatPlan" />
+
     <!-- Сумма раздела трат -->
     <Sheet :open="!!spendEdit" :title="spendEdit?.fresh ? 'Траты на месяц' : 'Сколько в месяц'" @close="spendEdit = null">
       <template v-if="spendEdit">
         <Field v-if="spendEdit.fresh" label="Раздел" name="category">
           <Select v-model="spendEdit.categoryId" :options="categories.map((c) => ({ value: c.id, label: c.name }))" class="mb-3" />
+        </Field>
+        <!-- Новый раздел в семье из двух — чей план (участник по умолчанию — свой) -->
+        <Field v-if="spendEdit.fresh && people.length > 1" label="Чей" name="by">
+          <Select v-model="spendEdit.by" :options="people.map((p) => ({ value: p.id, label: p.name }))" class="mb-3" data-spend-by />
         </Field>
         <Field :label="`${personName(spendEdit.by)}, ₸ в месяц`">
           <NumField v-model="spendEdit.amount" placeholder="50 000" />

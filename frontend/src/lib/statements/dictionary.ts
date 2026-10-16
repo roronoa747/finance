@@ -50,9 +50,9 @@ export type RkGroup = 'food' | 'goods' | 'services'
  * денежных расходов населения», строка «г.Алматы» (опубликовано 18.09.2025): 53,8 / 19,1 / 24,3 → 54 / 19 / 24.
  */
 export const RK_SPEND_GROUPS: Record<RkGroup, { share: number; label: string; source: string; period: string; checkedAt: string }> = {
-  food: { share: 54, label: 'продуктов', source: 'stat.gov.kz', period: 'Алматы, II кв. 2025', checkedAt: '2026-10-16' },
-  goods: { share: 19, label: 'покупок', source: 'stat.gov.kz', period: 'Алматы, II кв. 2025', checkedAt: '2026-10-16' },
-  services: { share: 24, label: 'услуг', source: 'stat.gov.kz', period: 'Алматы, II кв. 2025', checkedAt: '2026-10-16' },
+  food: { share: 54, label: 'продуктов', source: 'stat.gov.kz', period: 'II кв. 2025', checkedAt: '2026-10-16' },
+  goods: { share: 19, label: 'покупок', source: 'stat.gov.kz', period: 'II кв. 2025', checkedAt: '2026-10-16' },
+  services: { share: 24, label: 'услуг', source: 'stat.gov.kz', period: 'II кв. 2025', checkedAt: '2026-10-16' },
 }
 
 /** Сведение разделов словаря к группам РК (Р-5); прочие и свои разделы семьи — без группы (справки нет). */
