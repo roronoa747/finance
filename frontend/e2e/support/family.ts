@@ -174,3 +174,37 @@ export function serverTap(st: FakeStatements, user: string, op: Pick<OperationWi
   mine.set(op.id, { bank: 'kaspi', kind: 'purchase', category_id: null, internal: false, source: 'tap', occurred_at: new Date().toISOString(), ...op })
   st.ops.set(user, mine)
 }
+
+/**
+ * Пуш банка пришёл на сервер (бэклог «Apple Pay», Блок 2, AP-10) — как `InsertPhoneOperation` Go: покупка и касание той
+ * же суммы ≤ 10 минут — одна операция (банк — пуша, продавец — касания; ответ `duplicate`); перевод из одного банка и
+ * пополнение той же суммы в другом ≤ 10 минут — обе `internal`; иначе новая операция `source: 'push'`. Момент — «сейчас».
+ */
+export function serverPush(
+  st: FakeStatements,
+  user: string,
+  op: Pick<OperationWire, 'id' | 'date' | 'amount' | 'merchant' | 'kind' | 'bank'>,
+): 'saved' | 'duplicate' {
+  const mine = st.ops.get(user) ?? new Map<string, OperationWire>()
+  st.ops.set(user, mine)
+  const now = Date.now()
+  const near = (o: OperationWire) => !!o.occurred_at && Math.abs(Date.parse(o.occurred_at) - now) <= 10 * 60_000 && !o.deleted
+  if (op.kind === 'purchase') {
+    const tap = [...mine.values()].find((o) => o.source === 'tap' && o.kind === 'purchase' && o.amount === op.amount && near(o))
+    if (tap) {
+      mine.set(tap.id, { ...tap, bank: op.bank })
+      return 'duplicate'
+    }
+  }
+  let internal = false
+  const opposite = op.kind === 'transfer-out' ? 'transfer-in' : op.kind === 'transfer-in' ? 'transfer-out' : null
+  if (opposite) {
+    const half = [...mine.values()].find((o) => o.source && o.kind === opposite && !o.internal && o.bank !== op.bank && o.amount === -op.amount && near(o))
+    if (half) {
+      mine.set(half.id, { ...half, internal: true, category_id: null })
+      internal = true
+    }
+  }
+  mine.set(op.id, { category_id: null, ...op, internal, source: 'push', occurred_at: new Date(now).toISOString() })
+  return 'saved'
+}

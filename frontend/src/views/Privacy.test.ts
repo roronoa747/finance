@@ -52,9 +52,10 @@ describe('B2C-26: /privacy — публичная политика конфид�
 
   it('AP-06: Apple Pay — и в русском списке, и в английской сводке (ревью frontend Н-7)', async () => {
     const html = await renderScreen(Privacy, '/privacy')
-    expect(html).toContain('Apple Pay, если подключите')
+    expect(html).toContain('Apple Pay и пуши банков, если подключите')
+    expect(html).toContain('без номера карты, остатка и текста пуша')
     const english = html.slice(html.indexOf('Privacy policy (summary)'))
     expect(english).toContain('Apple Pay')
-    expect(english).toContain('no card number or balance')
+    expect(english.replace(/\s+/g, ' ')).toContain('no card number, balance or notification text')
   })
 })

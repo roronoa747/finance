@@ -31,7 +31,7 @@ const UPDATED = '15 октября 2026'
         <li>Почту, имя и идентификатор аккаунта Google — чтобы вы входили.</li>
         <li>Общий документ семьи: доходы, платежи, цели, желания, итоги трат по разделам — его видят участники семьи.</li>
         <li>Ваши операции из выписок — продавец, дата, сумма, раздел и банк. Без ФИО, номеров карт и счетов. Видны только вам.</li>
-        <li>Apple Pay, если подключите: название магазина, сумма, банк и время оплаты — без номера карты и остатка. Видно только вам, отключается в настройках.</li>
+        <li>Apple Pay и пуши банков, если подключите: магазин или получатель («Имя Ф.»), сумма, банк и время — без номера карты, остатка и текста пуша. Видно только вам, отключается в настройках.</li>
         <li>Фото целей и желаний, которые вы добавили.</li>
         <li>Подписки на уведомления, если вы их включите.</li>
         <li>События использования (открыли приложение, завершили неделю) — только для наших цифр удержания, без сторонней аналитики.</li>
@@ -82,7 +82,8 @@ const UPDATED = '15 октября 2026'
       <p class="mt-1.5">
         Family Finance stores your Google email, name and account id; your household's shared budget document; your own
         statement transactions (merchant, date, amount, category, bank — no names or card/account numbers), Apple Pay
-        purchases if you connect it (store name, amount, bank and time — no card number or balance; visible only to you,
+        purchases and bank notifications if you connect them (store or recipient as "Name I.", amount, bank and time — no
+        card number, balance or notification text; visible only to you,
         turned off in Settings), goal photos,
         notification subscriptions and first-party usage events. Bank statement files never leave your phone. Data is hosted
         on Vercel and Supabase in Seoul (South Korea). We share nothing for advertising; Google is used for sign-in only.
