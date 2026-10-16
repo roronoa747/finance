@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"finance-backend/internal/applepay"
 	"finance-backend/internal/models"
 )
 
@@ -807,13 +808,13 @@ func (m *MockStatementRepo) InsertPhoneOperation(ctx context.Context, userID, ho
 			return PhoneMerged, nil
 		}
 	}
-	// (3) A transfer between own banks.
+	// (3) A transfer between own banks: neither half names a person.
 	internal, result := op.Internal, PhoneSaved
 	stamp := m.stamp()
 	if opposite := oppositeTransfer(op); opposite != "" && w.Pair > 0 {
 		if o := m.nearest(userID, op.OccurredAt, w.Pair, func(prev models.Operation) bool {
 			return prev.Source != "statement" && prev.Kind == opposite && !prev.Internal && !prev.Deleted &&
-				prev.Bank != op.Bank && prev.FxCurrency == nil && prev.Amount == -op.Amount
+				prev.Bank != op.Bank && prev.FxCurrency == nil && prev.Amount == -op.Amount && prev.Merchant == applepay.Placeholder(opposite)
 		}); o != nil {
 			o.op.Internal, o.op.CategoryID, o.op.UpdatedAt = true, nil, stamp
 			internal, result = true, PhonePaired

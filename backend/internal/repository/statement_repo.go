@@ -281,10 +281,12 @@ type PhoneOperationRepository interface {
 	// purchase and the other source (a tap for a push, a push for a tap) has one with the same
 	// money within Pair — merged into the nearest one: the bank of the push, the merchant of the
 	// tap unless it is empty (Р-21), the section cleared when the merchant changes. (3) A
-	// transfer in or out of one bank with a
-	// phone transfer the other way, of the same tenge, of another bank within Pair — both become
-	// internal (Р-8). The checks and the write hold the person's lock, so two firings at the same
-	// moment (two serverless instances) still make one operation, in any order of arrival.
+	// transfer in or out of one bank with a phone transfer the other way, of the same tenge, of
+	// another bank within Pair, neither naming a person (the kind's word as the merchant, AP-10 —
+	// "sent a friend 5 000, got 5 000 from someone" is a spend, as pairInternalTransfers of the
+	// statements) — both become internal (Р-8). The checks and the write hold the person's lock,
+	// so two firings at the same moment (two serverless instances) still make one operation, in
+	// any order of arrival.
 	InsertPhoneOperation(ctx context.Context, userID, householdID string, op PhoneOperation, w PhoneWindows) (PhoneInsert, error)
 	// CountPhoneOperationsSince counts the person's phone operations since the moment (the daily limit).
 	CountPhoneOperationsSince(ctx context.Context, userID string, since time.Time) (int, error)
@@ -331,9 +333,10 @@ func otherSource(source string) string {
 	return "push"
 }
 
-// oppositeTransfer: the kind of the other half of a transfer between own banks; "" — not a transfer.
+// oppositeTransfer: the kind of the other half of a transfer between own banks; "" — not a
+// transfer, or one that names a person ("Перевод Айгерим С." is a spend, AP-10 "без получателя").
 func oppositeTransfer(op PhoneOperation) string {
-	if op.Internal || op.FxCurrency != nil {
+	if op.Internal || op.FxCurrency != nil || op.Merchant != applepay.Placeholder(phoneKind(op)) {
 		return ""
 	}
 	switch phoneKind(op) {
@@ -414,9 +417,10 @@ func (r *sqlStatementRepository) InsertPhoneOperation(ctx context.Context, userI
 			SELECT id FROM app.operations
 			WHERE user_id = $1 AND source <> 'statement' AND kind = $2 AND NOT internal AND deleted_at IS NULL
 			  AND bank <> $3 AND fx_currency IS NULL AND amount = $4 AND occurred_at BETWEEN $5 AND $6
+			  AND merchant = $8 -- the other half names no person either
 			ORDER BY abs(extract(epoch FROM occurred_at - $7::timestamptz)), id
 			LIMIT 1`, userID, opposite, op.Bank, -op.Amount, op.OccurredAt.Add(-w.Pair), op.OccurredAt.Add(w.Pair),
-			op.OccurredAt).Scan(&id)
+			op.OccurredAt, applepay.Placeholder(opposite)).Scan(&id)
 		switch {
 		case err == nil:
 			if _, err := tx.ExecContext(ctx, `

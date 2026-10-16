@@ -172,23 +172,33 @@ func TestPushMergesWithTap(t *testing.T) {
 
 // Р-8: money out of one own bank and the same money into another within 10 minutes — both internal.
 func TestPushTransferBetweenOwnBanks(t *testing.T) {
+	const anonymousOut = "Перевод: 20 000 ₸\nНа карту другого банка\nДоступно: 1 ₸"
 	cases := []struct {
 		name       string
+		out        string
 		inBank     func(string) map[string]any
 		gap        time.Duration
 		wantPaired bool
 	}{
-		{"Kaspi → Freedom in 4 min", func(s string) map[string]any {
+		{"Kaspi → Freedom in 4 min", anonymousOut, func(s string) map[string]any {
 			return freedom("Пополнение с карты др…", "+"+s+"\nДоступно 1 ₸")
 		}, 4 * time.Minute, true},
-		{"the same bank", func(s string) map[string]any {
+		{"the same bank", anonymousOut, func(s string) map[string]any {
 			return kaspi("Пополнение: " + s + "\nС карты другого банка")
 		}, 4 * time.Minute, false},
-		{"11 minutes", func(s string) map[string]any { return freedom("Пополнение", "+"+s) }, 11 * time.Minute, false},
+		{"11 minutes", anonymousOut, func(s string) map[string]any { return freedom("Пополнение", "+"+s) }, 11 * time.Minute, false},
+		// Критик Б2 (AP-10 «без получателя»): a transfer naming a person is a spend, whatever came in —
+		// "sent a friend 20 000, got 20 000 from someone in another bank" is not a transfer to oneself.
+		{"a friend out, a top-up in", "Перевод: 20 000 ₸\nАйгерим С.", func(s string) map[string]any {
+			return freedom("Пополнение с карты др…", "+"+s)
+		}, 4 * time.Minute, false},
+		{"out, a person's transfer in", anonymousOut, func(s string) map[string]any {
+			return freedom("Входящий перевод", "+"+s+"\nЕрлан Б.")
+		}, 4 * time.Minute, false},
 	}
 	for _, c := range cases {
 		app, clock, key := setupTap(t)
-		if s := pushStatus(t, app.push(t, key, kaspi("Перевод: 20 000 ₸\nНа карту другого банка\nДоступно: 1 ₸"))); s != "saved" {
+		if s := pushStatus(t, app.push(t, key, kaspi(c.out))); s != "saved" {
 			t.Fatalf("%s: out %s", c.name, s)
 		}
 		clock.t = clock.t.Add(c.gap)

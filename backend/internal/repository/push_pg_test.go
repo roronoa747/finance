@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"finance-backend/internal/applepay"
 	"finance-backend/internal/db"
 	"finance-backend/internal/models"
 	"finance-backend/internal/testdb"
@@ -130,16 +131,21 @@ func TestPostgresPhoneOwnTransferPair(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 	n := 0
-	insert := func(bank, kind string, amount int64, at time.Time) (string, PhoneInsert) {
+	insertNamed := func(bank, kind, merchant string, amount int64, at time.Time) (string, PhoneInsert) {
 		t.Helper()
 		n++
 		id := fmt.Sprintf("%016x", n)
 		done, err := f.repo.InsertPhoneOperation(ctx, f.aliceID, f.householdID, PhoneOperation{ID: id, Bank: bank, Date: "2026-10-16",
-			Amount: amount, Merchant: "Перевод", Kind: kind, Source: "push", OccurredAt: at}, phoneWindows)
+			Amount: amount, Merchant: merchant, Kind: kind, Source: "push", OccurredAt: at}, phoneWindows)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return id, done
+	}
+	// Without a person: the kind's word ("Перевод", "Пополнение") is the merchant, as ParsePush writes it.
+	insert := func(bank, kind string, amount int64, at time.Time) (string, PhoneInsert) {
+		t.Helper()
+		return insertNamed(bank, kind, applepay.Placeholder(kind), amount, at)
 	}
 	out, _ := insert("kaspi", "transfer-out", -20000, now)
 	in, done := insert("freedom", "transfer-in", 20000, now.Add(4*time.Minute))
@@ -165,6 +171,15 @@ func TestPostgresPhoneOwnTransferPair(t *testing.T) {
 		if done != PhoneSaved || opsByID(t, f, f.aliceID)[id].Internal {
 			t.Errorf("%+v: %s", c, done)
 		}
+	}
+	// Критик Б2: a half naming a person never pairs — a friend's transfer stays a spend.
+	friend, _ := insertNamed("kaspi", "transfer-out", "Перевод Айгерим С.", -40000, now.Add(2*time.Hour))
+	in2, done := insert("freedom", "transfer-in", 40000, now.Add(2*time.Hour+3*time.Minute))
+	out2, done2 := insert("kaspi", "transfer-out", -50000, now.Add(3*time.Hour))
+	from, done3 := insertNamed("freedom", "transfer-in", "Перевод Ерлан Б.", 50000, now.Add(3*time.Hour+3*time.Minute))
+	ops = opsByID(t, f, f.aliceID)
+	if done != PhoneSaved || done2 != PhoneSaved || done3 != PhoneSaved || ops[friend].Internal || ops[in2].Internal || ops[out2].Internal || ops[from].Internal {
+		t.Fatalf("a named half paired: %s %s %s %+v", done, done2, done3, ops)
 	}
 }
 
