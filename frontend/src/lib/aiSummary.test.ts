@@ -8,6 +8,7 @@ import {
   goalTerm,
   monthPlan,
   openGoals,
+  planForecast,
   spendFact,
   untilPayday,
 } from './finance'
@@ -172,6 +173,9 @@ describe('AI-07: сводка месяца без имён', () => {
         return [term.need, g.have, item?.given ?? 0, term.doneMonth, term.off || !!item?.paused]
       }),
     )
+    // Досрочка — строка долга очереди месяца, если план её даёт; иначе null (своего счёта нет).
+    const debtRow = plan.queue.find((q) => q.kind === 'debt' && !q.paused && q.given > 0)
+    expect(s.prepay).toEqual(debtRow ? { name: debtRow.name, monthlyPut: debtRow.given, doneMonth: debtRow.doneMonth } : null)
     // Выключенная цель — на паузе, без срока.
     expect(s.goals.find((g) => g.name === 'Свадьба участник 2')).toMatchObject({ paused: true, doneMonth: null, monthlyPut: 0 })
   })
@@ -226,5 +230,33 @@ describe('AI-07: демо-семья', () => {
     expect(s.debts.items.map((x) => x.name)).toEqual(['Автокредит', 'Брату'])
     expect(s.goals.map((x) => x.name)).toContain('Поездка в Японию')
     expect(JSON.stringify(s)).not.toContain('Кофемашина')
+  })
+
+  // Ревью frontend Блока 2, Н-1 и Н-4: с планом «Сначала долги» досрочка в долг — строка очереди месяца, модель её
+  // видит; цель на паузе ради плана отличается от выключенной, срок у неё — после плана, как у экрана цели.
+  it('досрочка по плану и цели на паузе ради плана — те же строки, что у «Месяца» и экрана цели', async () => {
+    expect(startDemo()).toBe(true)
+    await nextTick()
+    await nextTick()
+    const finance = useFinanceStore()
+    const s = buildMonthSummary(finance.householdDoc, monthKey(), new Date(), { book: useFxStore().book, uploads: useOperationsStore().uploads })
+    const plan = finance.monthPlanOf(KEY)
+    const debt = plan.queue.find((q) => q.kind === 'debt')!
+    expect(debt.planId).toBeTruthy()
+    expect(debt.given).toBeGreaterThan(0)
+    expect(s.prepay).toEqual({ name: debt.name, monthlyPut: debt.given, doneMonth: debt.doneMonth })
+    expect(summaryNumbers(s)).toContain(debt.given)
+
+    const car = s.goals.find((g) => g.name === 'Машина')!
+    const sofa = s.goals.find((g) => g.name === 'Новый диван')!
+    expect(car).toMatchObject({ paused: true, afterPlan: true })
+    expect(sofa).toMatchObject({ paused: true, afterPlan: false, doneMonth: null })
+    // Срок «после плана» — тот же вызов, что у экрана цели (`GoalDetail.vue`: `goalTerm` с `planForecast`).
+    const g = finance.householdDoc.goals.find((x) => x.name === 'Машина')!
+    const item = plan.queue.find((q) => q.goalId === g.id)
+    expect(item?.paused).toBe('plan')
+    const term = goalTerm(item, g, KEY, planForecast(finance.activePlan!, finance.planState(), KEY))
+    expect(term.doneMonth).toBeTruthy()
+    expect(car.doneMonth).toBe(term.doneMonth)
   })
 })

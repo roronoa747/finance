@@ -44,8 +44,17 @@ export type MonthSummaryAI = {
   /** Уже отложено в этом месяце по очереди. */
   saved: number
   debts: { total: number; items: { name: string; left: number; payment: number; ratePercent: number | null; endMonth: string | null }[] }
-  /** Цели и фонды: `want` — сколько собрать, `have` — собрано, `monthlyPut` — сколько план даёт в этом месяце. */
-  goals: { name: string; want: number; have: number; monthlyPut: number; doneMonth: string | null; paused: boolean }[]
+  /**
+   * Досрочка в долг — строка долга очереди месяца (карточка «закрыть кредит» или шаг плана «Сначала долги»):
+   * `monthlyPut` — сколько план отводит в этом месяце, `doneMonth` — когда закроем с ней; null — досрочки нет.
+   * Необязательна: разборы, сохранённые до неё, её не знают (ревью frontend Блока 2, Н-1).
+   */
+  prepay?: { name: string; monthlyPut: number; doneMonth: string | null } | null
+  /**
+   * Цели и фонды: `want` — сколько собрать, `have` — собрано, `monthlyPut` — сколько план даёт в этом месяце;
+   * `afterPlan` — на паузе ради плана «Сначала долги» (срок — после плана), а не выключена (необязательно — как `prepay`).
+   */
+  goals: { name: string; want: number; have: number; monthlyPut: number; doneMonth: string | null; paused: boolean; afterPlan?: boolean }[]
 }
 
 /** Что ещё нужно сводке, кроме документа: книга курсов (валютные оклады и платежи) и загрузки выписок (факт трат). */
@@ -129,8 +138,12 @@ export function buildMonthSummary(doc: SyncDoc, key: string, now: Date, env: Sum
       monthlyPut: item?.given ?? 0,
       doneMonth: term.doneMonth,
       paused: term.off || !!item?.paused,
+      afterPlan: term.afterPlan,
     }
   })
+  // Досрочка — строка долга очереди: её доля уже в `rest` (`free − queueTotal`), модель должна её видеть.
+  const prepayRow = plan.queue.find((q) => q.kind === 'debt' && !q.paused && q.given > 0)
+  const prepay = prepayRow ? { name: mask(prepayRow.name), monthlyPut: prepayRow.given, doneMonth: prepayRow.doneMonth } : null
 
   return {
     month: key,
@@ -152,6 +165,7 @@ export function buildMonthSummary(doc: SyncDoc, key: string, now: Date, env: Sum
         endMonth: r.endMonth,
       })),
     },
+    prepay,
     goals,
   }
 }

@@ -64,7 +64,7 @@ func answer(good, risk string, steps ...[2]any) string {
 	return string(b)
 }
 
-const reviewSummary = `{"month":"2026-10","daysToPayday":12,"income":{"total":1200000,"byPerson":[{"who":"участник 1","amount":700000},{"who":"участник 2","amount":500000}]},"dues":{"total":220000,"items":[{"name":"Аренда","amount":220000}]},"spend":{"total":120000,"fact":85000,"byCategory":[{"name":"Продукты","amount":85000}]},"rest":310000,"short":0,"free":860000,"saved":0,"debts":{"total":1000000,"items":[{"name":"Кредит","left":1000000,"payment":58000,"ratePercent":16.5,"endMonth":"2028-06"}]},"goals":[{"name":"Квартира","want":10000000,"have":1000000,"monthlyPut":150000,"doneMonth":"2031-02","paused":false}]}`
+const reviewSummary = `{"month":"2026-10","daysToPayday":12,"income":{"total":1200000,"byPerson":[{"who":"участник 1","amount":700000},{"who":"участник 2","amount":500000}]},"dues":{"total":220000,"items":[{"name":"Аренда","amount":220000}]},"spend":{"total":120000,"fact":85000,"byCategory":[{"name":"Продукты","amount":85000}]},"rest":310000,"short":0,"free":860000,"saved":0,"debts":{"total":1000000,"items":[{"name":"Кредит","left":1000000,"payment":58000,"ratePercent":16.5,"endMonth":"2028-06"}]},"prepay":{"name":"Кредит","monthlyPut":90000,"doneMonth":"2027-07"},"goals":[{"name":"Квартира","want":10000000,"have":1000000,"monthlyPut":150000,"doneMonth":"2031-02","paused":false,"afterPlan":false}]}`
 
 var cleanAnswer = answer("Остаётся 310 000 ₸ после целей.", "Кредит под 16,5% — до июня 2028.",
 	[2]any{"Отложим 150 000 ₸ на квартиру.", "/month"}, [2]any{"Посмотрим долги.", "/money/debts"})
@@ -127,6 +127,31 @@ func (f *reviewFixture) post(t *testing.T, token, body string) *httptest.Respons
 
 func (f *reviewFixture) usage() repository.MockAIUsage {
 	return f.aiRepo.Usage[f.family][f.month]
+}
+
+// The instruction names every field of the summary the model reads (ревью frontend Блока 2, Н-1: prepay and
+// goals[].afterPlan — without them a plan «Сначала долги» is invisible and the model advises what it already does).
+func TestReviewSystemNamesSummaryFields(t *testing.T) {
+	var s map[string]any
+	if err := json.Unmarshal([]byte(reviewSummary), &s); err != nil {
+		t.Fatal(err)
+	}
+	fields := []string{}
+	for k := range s {
+		fields = append(fields, k)
+	}
+	for _, part := range []map[string]any{s["prepay"].(map[string]any), s["goals"].([]any)[0].(map[string]any)} {
+		for k := range part {
+			if k != "name" {
+				fields = append(fields, k)
+			}
+		}
+	}
+	for _, f := range fields {
+		if !strings.Contains(reviewSystem, f) {
+			t.Errorf("reviewSystem does not name %q", f)
+		}
+	}
 }
 
 func TestReviewSendsOnlyInstructionAndSummary(t *testing.T) {

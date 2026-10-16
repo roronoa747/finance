@@ -97,14 +97,21 @@ function sentLines(s: MonthSummaryAI, key: string): { title: string; rows: strin
   if (s.debts.items.length)
     out.push({
       title: `Долги · ${money(s.debts.total)}`,
-      rows: s.debts.items.map(
-        (d) => `${d.name} — ${money(d.left)}, ${money(d.payment)} в месяц${d.ratePercent ? `, ${String(d.ratePercent).replace('.', ',')} %` : ''}, ${by(d.endMonth)}`,
-      ),
+      rows: [
+        ...s.debts.items.map(
+          (d) => `${d.name} — ${money(d.left)}, ${money(d.payment)} в месяц${d.ratePercent ? `, ${String(d.ratePercent).replace('.', ',')} %` : ''}, ${by(d.endMonth)}`,
+        ),
+        // Досрочка очереди месяца (ревью frontend Блока 2, Н-1); сводки до неё её не знают.
+        ...(s.prepay ? [`досрочно — ${s.prepay.name}, ${money(s.prepay.monthlyPut)} в месяц, ${by(s.prepay.doneMonth)}`] : []),
+      ],
     })
   if (s.goals.length)
     out.push({
       title: 'Цели',
-      rows: s.goals.map((g) => `${g.name} — ${money(g.have)} из ${money(g.want)}${g.paused ? ', на паузе' : `, ${money(g.monthlyPut)} в месяц, ${by(g.doneMonth)}`}`),
+      rows: s.goals.map(
+        (g) =>
+          `${g.name} — ${money(g.have)} из ${money(g.want)}${g.paused ? `, на паузе${g.afterPlan ? ' ради плана' : ''}` : `, ${money(g.monthlyPut)} в месяц, ${by(g.doneMonth)}`}`,
+      ),
     })
   return out
 }

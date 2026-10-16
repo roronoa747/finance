@@ -10,6 +10,7 @@ import { useAiStore } from '@/stores/ai'
 import { useFinanceStore } from '@/stores/finance'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
 import type { AiReview, SyncDoc } from '@/types/finance'
+import type { MonthSummaryAI } from '@/lib/aiSummary'
 import Month from '@/views/Month.vue'
 
 vi.mock('@/lib/photos/store', async (orig) => ({
@@ -63,6 +64,28 @@ const saved = (extra: Partial<AiReview> = {}): AiReview => ({
   id: 'r1', month: KEY, at: '2026-09-12T06:00:00.000Z', by: 'b', good: 'Сохранённое хорошо.', risk: 'Сохранённый риск.',
   steps: [{ text: 'Шаг к долгам.', screen: '/money/debts' }, { text: 'Шаг словами.', screen: null }],
   sent: null, updatedAt: T0, ...extra,
+})
+
+/** Ушедшая сводка с досрочкой по плану, целями на паузе (ради плана и выключенной) и ставками 0 и «не знаем». */
+const sentFull = (): MonthSummaryAI => ({
+  month: KEY, daysToPayday: 5,
+  income: { total: 900_000, byPerson: [{ who: 'участник 1', amount: 900_000 }] },
+  dues: { total: 100_000, items: [{ name: 'Аренда', amount: 100_000 }] },
+  spend: { total: 200_000, fact: null, byCategory: [] },
+  rest: 300_000, short: 0, free: 600_000, saved: 0,
+  debts: {
+    total: 1_500_000,
+    items: [
+      { name: 'Автокредит', left: 1_000_000, payment: 95_000, ratePercent: 19, endMonth: '2028-06' },
+      { name: 'Брату', left: 300_000, payment: 50_000, ratePercent: 0, endMonth: '2027-03' },
+      { name: 'Кредитка', left: 200_000, payment: 20_000, ratePercent: null, endMonth: null },
+    ],
+  },
+  prepay: { name: 'Автокредит', monthlyPut: 90_000, doneMonth: '2027-07' },
+  goals: [
+    { name: 'Машина', want: 5_000_000, have: 500_000, monthlyPut: 0, doneMonth: '2034-08', paused: true, afterPlan: true },
+    { name: 'Новый диван', want: 300_000, have: 0, monthlyPut: 0, doneMonth: null, paused: true, afterPlan: false },
+  ],
 })
 
 async function open(opts: { role?: 'member' | 'viewer'; ai?: boolean; doc?: SyncDoc } = {}) {
@@ -219,6 +242,26 @@ describe('AI-09: разбор месяца у остатка', () => {
     await vi.waitFor(() => expect(q('[data-review-good]')).not.toBeNull())
     await press(q('[data-review-sent-open]'))
     expect(txt(q('[data-review-sent]'))).toMatch(/свободно до целей — [\d\s ]+₸/)
+  })
+
+  // Ревью frontend Блока 2, Н-1: досрочка по плану и пауза ради плана уходят в модель — и видны в «что ушло».
+  it('«что ушло»: досрочка в долг строкой под «Долгами», цель на паузе — «ради плана»; старая сводка без них читается', async () => {
+    await open({ doc: planFamilyDoc({ aiReviews: [saved({ sent: sentFull() })] }) })
+    await press(q('[data-review-open]'))
+    await press(q('[data-review-sent-open]'))
+    const shown = txt(q('[data-review-sent]'))
+    expect(shown).toContain('досрочно — Автокредит, 90 000 ₸ в месяц, к июлю 2027')
+    expect(shown).toContain('Машина — 500 000 ₸ из 5 000 000 ₸, на паузе ради плана')
+    expect(shown).not.toContain('Новый диван — 0 ₸ из 300 000 ₸, на паузе ради плана')
+    app!.unmount()
+    document.body.innerHTML = ''
+
+    const { prepay: _p, ...old } = sentFull()
+    await open({ doc: planFamilyDoc({ aiReviews: [saved({ sent: { ...old, goals: old.goals.map(({ afterPlan: _a, ...g }) => g) } })] }) })
+    await press(q('[data-review-open]'))
+    await press(q('[data-review-sent-open]'))
+    expect(txt(q('[data-review-sent]'))).not.toContain('досрочно')
+    expect(txt(q('[data-review-sent]'))).toContain('Машина — 500 000 ₸ из 5 000 000 ₸, на паузе')
   })
 
   it('«Не надо» — запроса нет, лист разбора не открыт', async () => {
