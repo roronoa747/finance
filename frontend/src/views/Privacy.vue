@@ -80,7 +80,9 @@ const UPDATED = '8 октября 2026'
       <h2 class="type-h3 text-ink">Privacy policy (summary)</h2>
       <p class="mt-1.5">
         Family Finance stores your Google email, name and account id; your household's shared budget document; your own
-        statement transactions (merchant, date, amount, category, bank — no names or card/account numbers), goal photos,
+        statement transactions (merchant, date, amount, category, bank — no names or card/account numbers), Apple Pay
+        purchases if you connect it (store name, amount, bank and time — no card number or balance; visible only to you,
+        turned off in Settings), goal photos,
         notification subscriptions and first-party usage events. Bank statement files never leave your phone. Data is hosted
         on Vercel and Supabase in Seoul (South Korea). We share nothing for advertising; Google is used for sign-in only.
         Delete your account and data any time in Settings → “Удалить аккаунт и данные”. Contact:

@@ -40,4 +40,12 @@ describe('B2C-26: /privacy — публичная политика конфид�
     await router.push('/privacy')
     expect(router.currentRoute.value.path).toBe('/privacy')
   })
+
+  it('AP-06: Apple Pay — и в русском списке, и в английской сводке (ревью frontend Н-7)', async () => {
+    const html = await renderScreen(Privacy, '/privacy')
+    expect(html).toContain('Apple Pay, если подключите')
+    const english = html.slice(html.indexOf('Privacy policy (summary)'))
+    expect(english).toContain('Apple Pay')
+    expect(english).toContain('no card number or balance')
+  })
 })
