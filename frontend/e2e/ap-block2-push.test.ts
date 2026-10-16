@@ -127,6 +127,24 @@ describe('e2e / Apple Pay Блок 2 — пуши банков', () => {
     await pull(A)
     expect(weekTotal(A)).toBe(7_000)
     expect(unknownGroups(opsOf(A)).map((g) => g.label)).toEqual(['Перевод Айгерим С.'])
+
+    // Критик Б2: пополнение той же суммы без отправителя в другом банке — не пара переводу человеку: ни пушем (сервер),
+    // ни строкой выписки (`pairInternalTransfers` не берёт операции с телефона) — трата другу не пропадает.
+    minutes(3)
+    serverPush(st, 'u-a', { id: 'c000000000000004', date: '2026-10-15', amount: 7_000, merchant: 'Пополнение', kind: 'transfer-in', bank: 'kaspi' })
+    await pull(A)
+    expect(opsOf(A).find((o) => o.id === 'c000000000000003')?.internal).toBe(false)
+    expect(weekTotal(A)).toBe(7_000)
+    const topUp: Omit<Operation, 'id'>[] = [
+      { bank: 'kaspi', date: '2026-10-15', amount: 7_000, kind: 'transfer-in', merchant: 'С карты другого банка', categoryId: null, internal: false },
+    ]
+    setActivePinia(A.pinia)
+    const ops = useOperationsStore()
+    ops.setDraft([{ name: 'kaspi.pdf', parsed: { bank: 'kaspi', from: '2026-10-01', to: '2026-10-15', skipped: 0, operations: assignIds(topUp) } }])
+    await ops.send(A.client)
+    await A.store.syncHousehold(A.client)
+    expect(opsOf(A).find((o) => o.id === 'c000000000000003')).toMatchObject({ internal: false, source: 'push' })
+    expect(weekTotal(A)).toBe(7_000)
   })
 
   it('приход зарплаты из пуша → точка у «Пришла» Ильяса; «Пришла» — отметка суммой прихода, точка ушла; у Аруны точки нет', async () => {

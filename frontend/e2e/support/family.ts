@@ -178,7 +178,8 @@ export function serverTap(st: FakeStatements, user: string, op: Pick<OperationWi
 /**
  * Пуш банка пришёл на сервер (бэклог «Apple Pay», Блок 2, AP-10) — как `InsertPhoneOperation` Go: покупка и касание той
  * же суммы ≤ 10 минут — одна операция (банк — пуша, продавец — касания; ответ `duplicate`); перевод из одного банка и
- * пополнение той же суммы в другом ≤ 10 минут — обе `internal`; иначе новая операция `source: 'push'`. Момент — «сейчас».
+ * пополнение той же суммы в другом ≤ 10 минут, обе без получателя (продавец — слово вида: «Перевод», «Пополнение») —
+ * обе `internal`; иначе новая операция `source: 'push'`. Момент — «сейчас».
  */
 export function serverPush(
   st: FakeStatements,
@@ -197,9 +198,13 @@ export function serverPush(
     }
   }
   let internal = false
+  // Без получателя — слово вида продавцом (`applepay.Placeholder` Go): перевод человеку не пара (критик Б2).
+  const anonymous: Record<string, string> = { 'transfer-out': 'Перевод', 'transfer-in': 'Пополнение' }
   const opposite = op.kind === 'transfer-out' ? 'transfer-in' : op.kind === 'transfer-in' ? 'transfer-out' : null
-  if (opposite) {
-    const half = [...mine.values()].find((o) => o.source && o.kind === opposite && !o.internal && o.bank !== op.bank && o.amount === -op.amount && near(o))
+  if (opposite && op.merchant === anonymous[op.kind]) {
+    const half = [...mine.values()].find(
+      (o) => o.source && o.kind === opposite && o.merchant === anonymous[opposite] && !o.internal && o.bank !== op.bank && o.amount === -op.amount && near(o),
+    )
     if (half) {
       mine.set(half.id, { ...half, internal: true, category_id: null })
       internal = true
