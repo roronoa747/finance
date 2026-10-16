@@ -404,4 +404,15 @@ describe('AI-19: «ИП + фамилия» по привычке — «Прод�
     expect(q('[data-ai-hint]')).toBeNull()
     expect(q('[data-ai-sellers]')).toBeNull()
   })
+
+  it('«Продукты» удалены семьёй — подсказки правила нет (критик AI-19, п. 2 ТЗ)', async () => {
+    vi.spyOn(apiClient, 'aiSellers').mockResolvedValue(ANSWER)
+    const { ai, finance } = await openWeek({ ops: HABIT })
+    ai.setConsent(true)
+    const gone = '2026-09-20T00:00:00.000Z'
+    finance.householdDoc.spendCategories = DEFAULT_SPEND_CATEGORIES.map((c) => ({ ...c, updatedAt: '', ...(c.id === 'sc_food' ? { deletedAt: gone } : {}) }))
+    await openBatch()
+    await vi.waitFor(() => expect(txt(q('[data-ai-sellers]'))).toBe('ИИ предлагает · 1'))
+    expect(rowOf('ИП Абенова')!.querySelector('[data-ai-hint], [data-ai-accept]')).toBeNull()
+  })
 })

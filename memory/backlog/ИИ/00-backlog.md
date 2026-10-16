@@ -8,7 +8,7 @@
 > **Блок 3 🔄** — исполнитель ✅, критик ✅, `/ux` ✅ 2026-10-16 (ветка `ai-block-3-sellers`, без деплоя); **возврат
 > исполнителю** (владелец 2026-10-16): AI-17 подсказки сверху, AI-18 замер «ИП + фамилия» по привычке; затем критик → приёмка.
 > Возврат 2026-10-16: **AI-17 ✅** (`9abf195`, критик ✅ — находок нет); **AI-18 — замер ✅, владелец выбрал Б (правило кодом) → AI-19, `/worker ИИ 3`**
-> (отметки — `memory/secrets/ai18/`, счёт — SESSION блока); **AI-19 ✅** `ae85f01`; дальше критик → `/ux` → приёмка.
+> (отметки — `memory/secrets/ai18/`, счёт — SESSION блока); **AI-19 ✅** `ae85f01`, критик ✅ (находок нет); дальше `/ux` → приёмка.
 > Р-8 (лимит) изменён: лимит в деньгах с Блока 3 «ИИ-польза».
 
 Источник: `ИИ-brief.md` (резюме интервью подтверждено владельцем 2026-10-15, 3 раунда, без правок). Формат —
@@ -233,8 +233,10 @@ client?)` (сначала отсеивает спрошенных, потом б
 общий текст лимита (`stores/ai.ts`); `apiClient.aiSellers`, `AiSellersAnswer`. `UnknownBatch.vue` — строка
 `div[data-unknown-row]` (кнопка-отметка + ✓ `data-ai-accept`), шапка `data-ai-sellers`; порядок показа — `ordered`
 (AI-17: с подсказкой первыми, только вид — `unknownGroups` / `decisionQueue` по сумме), перестановка — `move` у
-`TransitionGroup`, появление `fx-in` — `enter-active-class` (постоянная анимация строки глушит `move`). Миграций нет —
-следующая `000008_*`.
+`TransitionGroup`, появление `fx-in` — `enter-active-class` (постоянная анимация строки глушит `move`). AI-19 —
+`habitHints(groups, ops, today)` (`model.ts`, рядом с `entrepreneurName`; `HABIT_DAYS` 90 / `HABIT_MIN_COUNT` 4 /
+`HABIT_MAX_AVG` 5 000) → `merchant → 'sc_food'` по `useOperationsStore().all`; в `UnknownBatch` — `sellerHint(…) ??
+habit`, показ при `ai.available && consent === 'on'`, в сеть ничего. Миграций нет — следующая `000008_*`.
 
 **Бэкенд (Go) — где что**
 - Два модуля: `backend/go.mod` (`finance-backend`, go 1.27.0; прямые зависимости — chi, cors, jwt, uuid, pq, x/crypto,
