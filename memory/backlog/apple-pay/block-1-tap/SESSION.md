@@ -3,7 +3,7 @@
 **Цель блока:** оплатил телефоном в магазине (Apple Pay) — через секунды трата в «Неделе» с разделом; выписка потом
 заменяет её без дублей. Каждый участник подключает свой iPhone в настройках личным ключом; «Отключить» — трат больше нет.
 
-Сессии: исполнитель ✅ · критик ✅ · ux ✅ · приёмка ✅ · ревью backend ✅ · ревью frontend ✅ · клинап ⬜
+Сессии: исполнитель ✅ · критик ✅ · ux ✅ · приёмка ✅ · ревью backend ✅ · ревью frontend ✅ · клинап ✅ (без деплоя; деплой — утром с владельцем)
 
 ---
 
@@ -449,3 +449,115 @@ L-блок — **без деплоя**: `main`, Vercel Production, прод-БД
 - **Следующий шаг:** `/dir-review apple-pay 1 backend`.
 
 ## Итоги пост-приёмки
+
+Клинап 2026-10-16 (ночной прогон, §5: **без деплоя** — env ссылок, прод-миграция `000008`, мёрж в `main` и смоук —
+утром с владельцем; 🏁 блок не получает). Ветка `ap-block-1-tap`, worktree `C:\Users\SW\finance-applepay`.
+
+- **Клинап-вердикты обоих ревью — все выполнены, по коммиту на правку, у каждой тест, красный до правки** (у правок
+  только тестов — мутант красный):
+  - backend `d5bd67f` AP-03 — **Н-1 + Н-7**: эталон ревью (`git apply --check` чисто): время/дата вплотную к валюте — не
+    сумма, буква вплотную к числу начинает слово, код-слово перед суммой со своей валютой справа — слово; одна константа
+    разделителей (`groupRunes`). Тест `TestFindAmountEdges` + 10 случаев (5 строк приёмки, NBSP, перевод строки, «USD
+    5 004 Kaspi» → $, зеркало «ALMATY 2 ₸500») — 6 красных до правки.
+  - backend `aaf79fa` AP-03 — **Н-3**: `keepForAdmin` при `searched || !parsed`, ниже проверки «меньше тенге»; тест
+    `TestTapWholeTransactionText`: админ «6.22» → `skipped/currency` и «0,50 ₸» → `skipped/amount` — тело в `/admin`;
+    не-админ — нет; разобранное поле `amount` нового тела не пишет.
+  - backend `8bf3e2a` AP-01 — **Н-4**: строка отката `000008` первой командой `DELETE FROM app.operations WHERE source <>
+    'statement' OR deleted_at IS NOT NULL;` + пояснение; устаревшие фразы (шапка, `maxDebugBody`, `WalletDebug`,
+    «the repository drops the longest idle»). Новый PG-тест `TestPostgresApplePayRollbackLine` **исполняет строку отката
+    из шапки** (остаётся только строка выписки; `000008` накатывается снова) — со старой строкой красный (надгробие и
+    живое касание остаются).
+  - backend `18c0f70` AP-02 — **Н-6**: `userTables` + `fillUser` — ключ телефона и тело админа; мутант без `ON DELETE
+    CASCADE` — красный (FK при `DeleteAccount`).
+  - frontend `5a3ec11` AP-05 — **Н-5**: кейс «две строки Magnum 14.10, касания 14 и 15» → `['p1','p2']`; мутант без
+    `out.has` в п. 1 — красный.
+  - frontend `8884bd3` AP-05 — **Н-1, вариант V** (не X приёмки): фантом этой выписки не делает строку неоднозначной, если
+    единственный не-фантом ближе; кейсы A, B (оба убраны), C (касание после выгрузки остаётся); тест критика «вторая
+    выписка с перекрытием» и «два кандидата — не заменять» — без правок, зелёные.
+  - frontend `af93a67` AP-04 — **Н-2**: `settlePhone` раскладывает только пришедшие без раздела и ждущие курса; итоги —
+    по периодам всех пришедших. Тест: пришла с `sc_cafe` при отставших правилах — раздел цел, назад ничего.
+  - frontend `c913f49` AP-04 — **Н-3**: после `ensureRates` список пересобирается из текущей копии (не `prev?.`). Тест
+    сценария ревью (Magnum Kaspi + Coffee Boom Halyk с правилом + USD, выписка во время ожидания курса): ни ошибки, ни
+    воскрешения, Coffee Boom в «Кафе», USD → −2 989, итоги «Еда» 5 000 / «Кафе» 1 500.
+  - frontend `e7b0e16` AP-06 — **Н-4**: `available` — iOS ≥ 17 или версия не распознана; тест `Version/16.6`.
+  - frontend `725318d` AP-04 — **Н-9**: `syncEngine.test.ts` — видимость → `pullOnReturn`, скрытие и демо — нет; мутанты
+    «без вызова» и «без `signedIn()`» — красные.
+  - frontend `1a0e43c` AP-06 — **Н-7**: английская сводка политики — Apple Pay (магазин, сумма, банк, время — без номера
+    карты и остатка; видно только вам, отключается в настройках) вслед за русской строкой; дата `UPDATED` не тронута;
+    тест `Privacy.test.ts` (в конце файла — с тестом «ИИ» `main` не конфликтует). `git merge-tree` — нового конфликта в
+    `Privacy.vue` нет.
+  - frontend `4fc0878` AP-06 — **Н-8**: «Открыть команду» — `cn(buttonVariants(), 'w-full')`; DOM-тест сверяет классы с
+    китом.
+- **Отклонений от рекомендаций нет.** Мелочь: «по коммиту на правку» — Н-1 и Н-7 backend одним коммитом (Н-7 «попутно с
+  Н-1», та же функция, как записано в ревью). Хвосты и «не делаем» — как записаны (§4: Н-5 backend, Н-6/Н-10/Н-11
+  frontend).
+- **Мёрж `origin/main` в ветку — `b3aca7f`** (ИИ Блок 1 `0163494`), по указаниям ревью: `server.go` — `Repos` с `AI` и
+  `PhoneKeys`, в ветке моков литерал `main` (с `AI: NewMockAIRepo`) + строка `repos.PhoneKeys` (ловушка «затирает AI» не
+  допущена), роуты «Семьи» ИИ + `wallet-debug`; `config.go` — поля ИИ, затем Apple Pay, `}` и `shortcutURL` (порядок
+  «сначала main»); `config_test.go` — оба списка ключей в `clearEnv`, `TestProductionValidWithoutAIKey` закрыт, затем
+  `TestLoadApplePayShortcutLinks`; `cmd/migrate/main_test.go` — **16 таблиц**, комментарий `main` + `000008`; README —
+  строки env ИИ, затем Apple Pay; `AdminDebug` → `adminOnly` из `main` (404 тот же); frontend `client.ts`, `types/api.ts`
+  — оба, `Admin.vue` — импорт `main` (`pct as share, usdFromMicros`) + `AdminWalletDebug` (дубля `share` нет), `Settings.vue`
+  — «Разбор трат» → «Apple Pay» → «ИИ»; DESIGN.md строка `/settings` — из обеих (+ «iOS 17+» по Н-4). После мёржа на `main`
+  пришёл только docs-коммит ИИ `5b8105c` (`SESSION.md` ИИ, конфликтов нет) — влит последним шагом этой сессии.
+- **Верификация (после мёржа):** `go build ./... && go vet ./... && go test ./...` ✅; PG на своём Postgres 16 (:54561,
+  `000007` + `000008` вместе) `-p 1 -count=1 -run Postgres ./...` — **32 PASS**, 0 FAIL/skip (в т. ч.
+  `TestPostgresMigrateTwiceIsIdempotent` 16 таблиц, PG «ИИ», `ApplePayRollbackLine`, `DeleteAccount`); корень `go vet
+  ./api/... && go test ./api/...` ✅; `npm run build` ✅; `npx vitest run` (с e2e) — **216 файлов, 2174 ✅ + 1 skip** (до
+  мёржа 212 / 2139).
+- **Стенд** (Postgres :54561, Go :8241, Vite :5341; файлы — scratchpad `ap1cl/`): контракт касания `curl`-ом — 5 строк
+  приёмки теперь верно (500, 5 001, 5 003, 502, 5 004 ₸), «Apple USD 6.07 Kaspi» → $6.07, зеркало «ALMATY 2 ₸507» → 507;
+  тело админа при `amount` «6.22» и «0,50 ₸» видно в `/api/admin/wallet-debug`, участнику — 404; 401 без ключа и с JWT,
+  400 не JSON, 413 > 4 КБ, повтор → `duplicate`, ИИ-ручка `/admin/families` в том же сервере — 200, отключить → 204 →
+  касание 401. Chrome 390 px **обе темы 10 ✓**: «Открыть команду» — брендовая кнопка кита 52 px (фокус-кольцо,
+  `select-none`), iOS 16 — ни карточки, ни строки «Недели», iOS 27 — карточка есть, `/settings` у семьи с ИИ: «Разбор
+  трат → Apple Pay → ИИ», брендовая кнопка одна; EN политики с Apple Pay; консоль чистая. Стенд остановлен, временных
+  `backend/cmd/_xxx` нет. Продавец из текста касания по-прежнему держит время/дату («MAGNUM 10:23», «16.10.2026») и
+  «Apple Pay» при карте первой — это хвост критика §4 (правка `MerchantFrom` по живому телу утром), не регресс.
+- **CI ветки** на мёрже `b3aca7f`: `ci-backend` run `38864548109` — **success** (build, vet, unit + integration на
+  postgres:16); `ci-frontend` run `38864548089` — **success**. Коммит этих итогов + влитый docs-коммит `main` `5b8105c` —
+  CI следующим push (код не меняется).
+- **Утренний план деплоя Apple Pay Блока 1 (с «да» владельца; вопрос перечисляет, что уходит, и откат):**
+  - **Что уходит на прод:** весь Блок 1 «Касание» — миграция `000008` (колонки операций `source`, `occurred_at`,
+    `fx_currency`, `fx_amount`, `deleted_at`; таблицы `phone_keys`, `wallet_debug`), ручки `GET/DELETE /api/wallet`,
+    `POST /api/wallet/connect`, `POST /api/wallet/tap` (ключ телефона), `GET /api/admin/wallet-debug`; телефон
+    подтягивает и раскладывает траты (курс, раздел, итоги), выписка заменяет их надгробием; карточка «Apple Pay» и лист
+    подключения в настройках, строка «Траты сами» на «Неделе», карточка «Последнее касание» в `/admin`, строка политики
+    (RU + EN) — и 12 правок клинапа. Без env ссылок карточки нет ни у кого.
+  - **Шаг 1 — владелец, команды:** собрать «Траты сами» по `block-1-tap/OWNER-SHORTCUT.md` (iOS 27 и iOS 17–26), дать две
+    ссылки iCloud `https://www.icloud.com/shortcuts/…`.
+  - **Шаг 2 — env Vercel** (проект `family-finance.vercel.app`, **Production**): `APPLEPAY_SHORTCUT_URL` (iOS 27) и
+    `APPLEPAY_SHORTCUT_URL_LEGACY` (iOS 17–26) — ссылки владельца (не секрет, но в git не кладутся). Env действует со
+    следующей сборки — ставить до мёржа.
+  - **Шаг 3 — владелец, прод-миграция `000008`** (до мёржа: только добавляет, старый код её не замечает), в своём
+    PowerShell по одной строке, ветка `ap-block-1-tap` (или `main` после мёржа):
+    `cd C:\Users\SW\finance-applepay\backend` ·
+    `$env:DATABASE_URL = (Select-String -Path C:\Users\SW\finance\memory\secrets\supabase-db.md -Pattern '^DATABASE_URL_SESSION=').Line -replace '^DATABASE_URL_SESSION=', ''` ·
+    `$env:DATABASE_URL -match 'tpkyopaovfdkcmdhauws'` (→ `True`, порт 5432) · `go run ./cmd/migrate` (ждать
+    `applied migration: 000008_applepay.sql` и `schema app is up to date`; `000007` уже на проде) ·
+    `Remove-Item Env:DATABASE_URL`. Агент секрет не читает.
+  - **Шаг 4 — агент:** `git merge --no-ff ap-block-1-tap` в `main` (конфликтов нет — `main` уже влит в ветку; если на
+    `main` появилось новое — `git merge-tree` перед мёржем) → дата `UPDATED` / «Updated» в `Privacy.vue` — день деплоя
+    Apple Pay, если ИИ Блок 2 не принёс ту же → push → Production READY; логи Vercel — нет 500 (`/api/wallet`,
+    `/api/wallet/tap`, `/api/admin/wallet-debug`; «не та база» = 500).
+  - **Шаг 5 — смоук владельца на iPhone:** настройки → «Подключить» → лист (ключ, команда, «Добавить») → оплатить Apple
+    Pay → через секунды трата в «Неделе» с разделом; `/admin` → карточка **«Последнее касание»** — тело первой транзакции
+    (формат текста команды: если сумма/продавец разобраны криво — правка `MerchantFrom`/разбора по этому телу, хвост
+    критика §4; «MAGNUM 5 000 ₸10», «500 ₸16 окт.» — двусмысленные по Н-1 ревью); шаг 6 iOS 17–26 — подставляет ли iOS
+    вход команды (Н-11); «Отключить» → касание больше не пишется. Критерии брифа.
+  - **Откат (исправленная последовательность):** (1) promote прошлого Production — **сейчас `dpl_4a3xPN1qCv2NPG61Yw9iW3srECGB`**
+    (`main` `5b8105c`, пересборка ИИ Блока 1 с ключом `ANTHROPIC_API_KEY`, READY, rollback-кандидат; перечитано Vercel
+    MCP 2026-10-16 — `dpl_3vC6sgci14mv1vWwx18oPdTaubak` старше и **без ключа ИИ**, на него не откатывать; перед деплоем
+    перечитать); (2) убрать env ссылок — карточки нет; (3) миграция — **только вместе с откатом кода**, строка из шапки
+    `000008_applepay.sql`, **первой командой** `DELETE FROM app.operations WHERE source <> 'statement' OR deleted_at IS NOT
+    NULL;` (иначе заменённые выпиской траты оживут вторым рядом, а живые касания старый код удвоит выпиской), затем
+    `DROP TABLE app.wallet_debug; DROP TABLE app.phone_keys; DROP INDEX app.operations_phone_idx; ALTER TABLE
+    app.operations DROP CONSTRAINT operations_fx_pair, DROP COLUMN source, DROP COLUMN occurred_at, DROP COLUMN
+    fx_currency, DROP COLUMN fx_amount, DROP COLUMN deleted_at; DELETE FROM app.schema_migrations WHERE version =
+    '000008_applepay.sql';` (строка проверена PG-тестом). Телефон, уже подтянувший касания, держит их у себя — на
+    утреннем откате это только касания смоука.
+- **Открытые решения владельца (утро):** «да» на деплой (шаги выше); артефакт `/ux` https://claude.ai/artifact/FHzqh9qnDAqivFxmVRjn4s
+  — вопрос 1 («Подключено» после открытия листа; вместе с хвостом `last_used_at` Н-5 backend) **до прода семье**,
+  вопросы 2–4 (слова); хвост Н-6 frontend одной строкой: «у карты неизвестного банка выписка снимает касание по
+  ближайшей дате, а перевод человеку касанием не считается — да/нет» (лучше до Блока 2); остальные хвосты §4 — судьба.
+- **Следующий шаг:** `/worker apple-pay 2` (ветка `ap-block-2-push` от `ap-block-1-tap`, уже поверх ИИ).
