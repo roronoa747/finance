@@ -236,7 +236,7 @@ client?)` (сначала отсеивает спрошенных, потом б
 `TransitionGroup`, появление `fx-in` — `enter-active-class` (постоянная анимация строки глушит `move`). AI-19 —
 `habitHints(groups, ops, today)` (`model.ts`, рядом с `entrepreneurName`; `HABIT_DAYS` 90 / `HABIT_MIN_COUNT` 4 /
 `HABIT_MAX_AVG` 5 000) → `merchant → 'sc_food'` по `useOperationsStore().all`; в `UnknownBatch` — `sellerHint(…) ??
-habit`, показ при `ai.available && consent === 'on'`, в сеть ничего. Миграций нет — следующая `000008_*`.
+habit`, показ при `ai.available && consent === 'on'` и после конца `suggestSellers` (`asked`, не при `thinking` — `/ux` `cdafefc`: одна перестановка), в сеть ничего. Миграций нет — следующая `000008_*`.
 
 **Бэкенд (Go) — где что**
 - Два модуля: `backend/go.mod` (`finance-backend`, go 1.27.0; прямые зависимости — chi, cors, jwt, uuid, pq, x/crypto,
