@@ -1,6 +1,6 @@
 # AU-09 — Лимит в деньгах: гейт, конфиг, админка (бэкенд + фронт)
 
-Блок 3 · MVP · Каталог: `backend/internal/config/`, `internal/ai/limit.go`, `internal/repository/ai_repo.go`, `internal/handlers/ai.go`, `internal/handlers/admin_ai.go`, `server/server.go`, `backend/README.md`, `frontend/src/views/Admin.vue`, `types/api.ts` · Зависит от: Блок 2 🏁 · Роли: admin, member
+Блок 3 · MVP · Каталог: `backend/internal/config/`, `internal/ai/limit.go`, `internal/repository/ai_repo.go`, `internal/handlers/ai.go`, `internal/handlers/admin_ai.go`, `server/server.go`, `backend/README.md`, `frontend/src/views/Admin.vue`, `types/api.ts` · Зависит от: Блок 7 🏁 (идёт после Блока 2) · Роли: admin, member
 
 ## Контекст (что уже есть)
 

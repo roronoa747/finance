@@ -10,7 +10,8 @@
   («80 000 ₸», «июнь 2028», «2 недели»); `raw` — число или `YYYY-MM` (для `CheckNumbers` в Go). Р-5: разбор берёт 1–2
   главных раздела. Р-3: кандидаты шага — из кода.
 - Готовые расчёты (Блоки 1–2): `spendCompare(state, ctx)` (строки разделов: `amount`, `usual`, `plan`, `share`,
-  `over`), `dreamShift(state, ctx, snap, goalId)` + `shiftLabel`, `stepCandidates(state, ctx)` → `StepCandidate {id,
+  `over`), образы трат (Блок 7: `habitImages(state, key)`, `interestImage(state)`, `imageLine`; дополнение брифа Р-24 —
+  разбор называет главный образ месяца), `dreamShift(state, ctx, snap, goalId)` + `shiftLabel`, `stepCandidates(state, ctx)` → `StepCandidate {id,
   kind, shift, effect}`, `affordWhy`, `firstDebt`, `debtsOverview().freeMonth`, `cushionCover`, `monthPlan` (доход,
   платежи, остаток, очередь с `doneMonth`). Снимок месяца — `doc.termSnaps`.
 - v1: `buildMonthSummary(doc, key, now, {book, uploads})` (`lib/aiSummary.ts:106`) — образец, как собрать состояние и
@@ -26,6 +27,8 @@
    - мечты очереди (до 3, первая — главная): срок, сдвиг месяца с причиной (`dreamShift`), сколько осталось;
    - подушка — на сколько месяцев хватит; долги — дата «без долгов», первый долг и ставка;
    - 1–2 главных раздела трат (`over` первыми, иначе крупнейший сверх плана): факт, обычно, план, % дохода;
+   - главный образ месяца (крупнейший из `habitImages` и `interestImage`): привычка, сумма в месяц, во что складывается
+     (`value` — строка образа, `raw` — числа образа);
    - для повода `month` — итог закрытого прошлого месяца (траты против плана), если выписки его покрывают.
 2. Кандидаты (`c1…`, до 3) — из `stepCandidates`: `{ id, kind, about (без цифр: «из плана «Кафе» в мечту «Море»»),
    value (сумма), effect (строкой: «на 2 недели раньше») }`.
