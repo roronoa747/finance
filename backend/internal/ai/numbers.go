@@ -235,7 +235,7 @@ type number struct {
 
 // isGroupSpace is a thousands separator: space, NBSP, narrow NBSP, thin space.
 func isGroupSpace(r rune) bool {
-	return r == ' ' || r == ' ' || r == ' ' || r == ' '
+	return r == ' ' || r == '\u00a0' || r == '\u202f' || r == '\u2009'
 }
 
 func isDigit(r rune) bool { return r >= '0' && r <= '9' }
