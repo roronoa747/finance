@@ -5,7 +5,7 @@
 > закрыт** 2026-10-16 — мёрж `40310b1`, Production `dpl_6ZJG9BWJoTPjdagTgdkNjjuKXAaZ` (откат — флаг семьи в админке или
 > promote `dpl_Gz12ZBUdJb2xngZrVYdAurbTrVqW`); разбор короткий; смоук владельца — живой разбор настоящего месяца ✅.
 > Дальше — порядок Р-15 «ИИ-польза» (владелец 2026-10-16): **Блок 3** → Блоки 1–3 «ИИ-польза» → **Блок 4** → Google Play.
-> **Блок 3 🔄** — исполнитель ✅ 2026-10-16 (ветка `ai-block-3-sellers`, без деплоя); дальше критик → `/ux` → приёмка.
+> **Блок 3 🔄** — исполнитель ✅, критик ✅ 2026-10-16 (ветка `ai-block-3-sellers`, без деплоя); дальше `/ux` → приёмка.
 > Р-8 (лимит) изменён: лимит в деньгах с Блока 3 «ИИ-польза».
 
 Источник: `ИИ-brief.md` (резюме интервью подтверждено владельцем 2026-10-15, 3 раунда, без правок). Формат —
@@ -211,6 +211,18 @@ usages...)` (успех — `requests +1`, неудача — `0`; оплаче�
 `authStore.ai` хранится (`ff_ai`), оболочка зовёт `/auth/me` раз на вход; `useScrollMemory` — память у роутера по входу
 (токену). **«Не надо» — кнопок запуска ИИ нет** (`MonthPlan.reviewShown`). `LOCAL_KEYS` — `stores/finance.ts:154`
 (+ `ff_ai_review_seen`). Миграций нет — следующая `000008_*`.
+
+**После Блока 3** (критик, 2026-10-16, ветка `ai-block-3-sellers`): Go — `POST /api/ai/sellers` (`AISellersHandler`,
+`handlers/ai.go`; тот же `aiGate`, роут `server.go:241`): `sellersInput{Names, Categories []SellerCategory{ID, Name}}
+.valid()` (1…50 разных ≤ 80 рун без `longDigits`, 1…40 разделов, id без дублей) → Haiku `low`, 8 000 токенов,
+`sellersSystem` / `sellersSchema` → `in.suggestions(items)` (по `names`, чужой id → `null`, имя — без регистра и лишних
+пробелов). Тесты — `newReviewFixture` (`f.sellers`, `postTo(t, path, …)`), `sellersBody` / `sellersAnswer`,
+`TestSellersGate` (лимит — `AddUsage(…, 30, …)` при `NewAIGate(…, 30)`), живой `TestLiveSellers` (`AI_LIVE_NAMES`).
+Фронт — `aiSellerNames(groups)` (`lib/statements/model.ts`, `AI_SELLERS_MAX`), `useAiStore().suggestSellers(groups,
+client?)` (сначала отсеивает спрошенных, потом берёт ≤ 50) / `sellerHint(match)` / `sellersState`; кэш `ff_ai_sellers`
+(`AI_SELLERS_KEY`, `{JSON(match): {to, at}}`, 60 дней, запись чистит старое, в `LOCAL_KEYS`); **`aiLimitText()`** —
+общий текст лимита (`stores/ai.ts`); `apiClient.aiSellers`, `AiSellersAnswer`. `UnknownBatch.vue` — строка
+`div[data-unknown-row]` (кнопка-отметка + ✓ `data-ai-accept`), шапка `data-ai-sellers`. Миграций нет — следующая `000008_*`.
 
 **Бэкенд (Go) — где что**
 - Два модуля: `backend/go.mod` (`finance-backend`, go 1.27.0; прямые зависимости — chi, cors, jwt, uuid, pq, x/crypto,

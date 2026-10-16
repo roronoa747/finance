@@ -167,7 +167,8 @@ export const useAiStore = defineStore('ai', () => {
     if (!available.value || sellersState.value === 'thinking') return
     sellersState.value = 'idle'
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return
-    const ask = aiSellerNames(groups).filter((s) => !(sellerKey(s.match) in sellerHints.value))
+    // Спрошенные — до отбора 50: иначе продавцы сверх 50 не спросятся, пока верхние висят в пачке.
+    const ask = aiSellerNames(groups.filter((g) => !(sellerKey(g.match) in sellerHints.value)))
     if (!ask.length || !(await ensureConsent(client))) return
     sellersState.value = 'thinking'
     const categories = liveSpendCategories(finance.householdDoc.spendCategories)

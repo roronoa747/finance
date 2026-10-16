@@ -4,6 +4,8 @@ import { useAuthStore, DEMO_TOKEN } from './auth'
 import { useFinanceStore } from './finance'
 import { useAiStore } from './ai'
 import { authAs } from '@/test/planFamily'
+import type { ApiClient } from '@/api/client'
+import { AI_SELLERS_KEY } from '@/lib/storage'
 
 /**
  * AI-05 (бэклог «ИИ», Р-7, Р-9, Р-10): ИИ виден только участнику семьи с флагом (не viewer, не демо); согласие —
@@ -148,5 +150,58 @@ describe('stores/ai — доступность и согласие', () => {
     const ai = member(false)
     await expect(ai.ensureConsent()).resolves.toBe(false)
     expect(ai.sheetOpen).toBe(false)
+  })
+})
+
+/**
+ * AI-12, критик Блока 3: продавцов больше 50 — запрос берёт 50 ещё не спрошенных, следующее открытие пачки — остальных
+ * (иначе хвост сверх 50 не спросился бы никогда, пока верхние 50 висят в пачке); запись кэша чистит просроченное.
+ */
+describe('stores/ai — suggestSellers', () => {
+  let map: Map<string, string>
+  beforeEach(() => {
+    map = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => map.set(k, String(v)),
+      removeItem: (k: string) => map.delete(k),
+      clear: () => map.clear(),
+    })
+    setActivePinia(createPinia())
+    const auth = useAuthStore()
+    auth.setAuthData(authAs('member'))
+    auth.ai = true
+    useAiStore().setConsent(true)
+  })
+
+  const groups = Array.from({ length: 60 }, (_, i) => ({ match: { merchant: `m${i}` }, label: `Продавец ${i}`, count: 1, amount: 1000 - i }))
+  /** Ручка ИИ: всем — «Продукты»; запоминает присланные названия. */
+  function sellersClient() {
+    const asked: string[][] = []
+    const client = {
+      aiSellers: vi.fn(async (names: string[]) => {
+        asked.push(names)
+        return { items: names.map((name) => ({ name, categoryId: 'sc_food' })) }
+      }),
+    } as unknown as ApiClient
+    return { client, asked }
+  }
+
+  it('больше 50 — первое открытие спрашивает верхние 50, следующее — остальные 10, третье — никого', async () => {
+    const { client, asked } = sellersClient()
+    const ai = useAiStore()
+    await ai.suggestSellers(groups, client)
+    await ai.suggestSellers(groups, client)
+    await ai.suggestSellers(groups, client)
+    expect(asked.map((a) => a.length)).toEqual([50, 10])
+    expect(asked[1][0]).toBe('Продавец 50')
+    expect(ai.sellerHint({ merchant: 'm59' })).toBe('sc_food')
+  })
+
+  it('запись кэша выбрасывает предложения старше 60 дней — кэш не растёт', async () => {
+    map.set(AI_SELLERS_KEY, JSON.stringify({ '{"merchant":"old"}': { to: 'sc_cafe', at: new Date(Date.now() - 61 * 86_400_000).toISOString() } }))
+    const { client } = sellersClient()
+    await useAiStore().suggestSellers(groups.slice(0, 1), client)
+    expect(Object.keys(JSON.parse(map.get(AI_SELLERS_KEY)!) as object)).toEqual(['{"merchant":"m0"}'])
   })
 })

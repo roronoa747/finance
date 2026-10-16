@@ -19,7 +19,19 @@
   согласие v2 включает скриншот). Ветка `ai-block-4-wish-shot` от `main`.
 - Задачи: AI-14 → AI-15 → AI-16. Гейт и клиент — из Блоков 1–2.
 - Скриншоты для живой проверки — свои (не в git); в Handoff — только описания.
-- **Факты кода после Блока 3** (заполняет критик Блока 3): —
+- **Факты кода после Блока 3** (критик Блока 3, 2026-10-16; полный список — §6 индекса «После Блока 3»; Блоки 1–3
+  «ИИ-польза» идут раньше и меняют лимит (деньги, AU-09) и согласие — их «После Блока N» перечитать):
+  - Ручка — по образцу `AISellersHandler` (`handlers/ai.go`): `gate.Open` → `decodeStrictJSONBody(w, r, лимит, &in)` →
+    `in.valid()` → один `gate.client.Call(ctx, ai.Request{…, Image: &ai.Image{MediaType, Data}})` (`ai.go:68`) →
+    `gate.Spend(ctx, call, err == nil, u)`; роут — `family.Post("/ai/wish", …)` рядом с `/ai/sellers` (`server.go:241`),
+    обработчик собирается рядом с `aiSellersHandler` (`server.go:172`). Тесты — `newReviewFixture` (добавить поле, как
+    `f.sellers`) и `postTo(t, "/api/ai/wish", …)`; гейт — образец `TestSellersGate`.
+  - Магические байты — `handlers/photos.go:33-40` (webp, jpeg; png — добавить в ручку, не в фото).
+  - Фронт: текст лимита — `aiLimitText()` из `stores/ai.ts` («ИИ вернётся 1 <месяца>», не «1-го» из ТЗ AI-15 — решение
+    владельца по `/ux` Блока 2); состояния запроса — `ReviewState` (`thinking` / `limit` / `failed`), образец —
+    `suggestSellers` / `sellersState`; `ai_off` → `auth.fetchMe()`; без сети (`navigator.onLine === false`) — не звать.
+  - Строки ТЗ AI-15 сдвинулись: `AppShell.vue` — `<Tabs :plus>` :208, лист «Добавить» :210, пункт «Покупка в список
+    желаний» :136; `Wishes.vue` — без сдвига (:134 `createWish`, :330 лист, :336 `PhotoSlot`).
 - Следующий шаг — `/critic ИИ 4`.
 
 ---

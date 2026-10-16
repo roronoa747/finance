@@ -10,6 +10,7 @@ import { useAiStore } from '@/stores/ai'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
 import { AI_SELLERS_KEY } from '@/lib/storage'
+import { DEFAULT_SPEND_CATEGORIES } from '@/lib/statements/dictionary'
 import type { MerchantRule, Operation } from '@/lib/statements/types'
 import Week from '@/views/Week.vue'
 
@@ -251,5 +252,22 @@ describe('AI-12: предложения ИИ в «Без раздела»', () =
     expect(txt(rowOf('Respect Boutique')!.querySelector('[data-ai-hint]'))).toBe('Одежда и покупки')
     expect(txt(rowOf('Tau Lider')!.querySelector('[data-ai-hint]'))).toBe('Здоровье и аптеки')
     expect(txt(q('[data-ai-sellers]'))).toBe('ИИ предлагает · 2')
+  })
+
+  it('предложенный раздел семья удалила — ни чипа, ни ✓, в счёт шапки не идёт (критик Блока 3)', async () => {
+    const spy = vi.spyOn(apiClient, 'aiSellers')
+    const fresh = '2026-09-20T00:00:00.000Z'
+    localStorage.setItem(
+      AI_SELLERS_KEY,
+      JSON.stringify({ '{"merchant":"respect boutique"}': { to: 'sc_cafe', at: fresh }, '{"merchant":"tau lider"}': { to: 'sc_food', at: fresh } }),
+    )
+    const { ai, finance } = await openWeek()
+    ai.setConsent(true)
+    finance.householdDoc.spendCategories = DEFAULT_SPEND_CATEGORIES.map((c) => ({ ...c, updatedAt: '', ...(c.id === 'sc_cafe' ? { deletedAt: fresh } : {}) }))
+    await openBatch()
+    expect(spy).not.toHaveBeenCalled()
+    expect(rowOf('Respect Boutique')!.querySelector('[data-ai-hint], [data-ai-accept]')).toBeNull()
+    expect(txt(rowOf('Tau Lider')!.querySelector('[data-ai-hint]'))).toBe('Продукты')
+    expect(txt(q('[data-ai-sellers]'))).toBe('ИИ предлагает · 1')
   })
 })
