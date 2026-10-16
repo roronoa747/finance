@@ -7,7 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import type { AiReview } from '@/types/finance'
 import type { MonthSummaryAI } from '@/lib/aiSummary'
 import { money, plain } from '@/lib/money'
-import { monthBy } from '@/lib/dates'
+import { MONTHS_GEN, addMonths, monthBy, monthKey, parseMonthKey } from '@/lib/dates'
 import { plural } from '@/lib/utils'
 import Sheet from '@/components/kit/Sheet.vue'
 import Button from '@/components/ui/Button.vue'
@@ -15,8 +15,9 @@ import Button from '@/components/ui/Button.vue'
 /**
  * Лист разбора месяца (бэклог «ИИ», Р-4, AI-09): три блока — «Хорошо», «Риск», «Шаги» (шаг с экраном — ссылка,
  * лист закрывается). Внизу тихо — откуда текст и «что ушло» (сводка, ушедшая в модель, списком — Р-9) и «Обновить»
- * (участник с ИИ, разбору больше суток). Пока идёт запрос — «Думаю…»; лимит — «ИИ вернётся 1-го». Viewer — только
- * чтение. Пример демо (AI-10) — `example`: без «Обновить», с пометкой. Слова — владельцу на `/ux` («до | после»).
+ * (участник с ИИ, разбору больше суток). Пока идёт запрос — «Думаю…»; лимит — «ИИ вернётся 1 ноября» (следующий месяц
+ * по Алматы — лимит семьи сбрасывается 1-го, Р-8). Viewer — только чтение. Пример демо (AI-10) — `example`: без
+ * «Обновить», с пометкой. Слова утвердил владелец (артефакт `/ux`, 2026-10-16).
  */
 const props = defineProps<{
   open: boolean
@@ -56,9 +57,13 @@ const keep = (t: string) =>
     .replace(/(\d) (?=\d{3}(?!\d))/g, `$1${NBSP}`)
     .replace(/(\d) (?=[₸%]|тенге)/g, `$1${NBSP}`)
 
-/** Слова состояний запроса (черновик — владельцу «до | после»). */
+/** Слова состояний запроса. Лимит — с месяцем: «1-го» заставляло думать, какого (владелец, `/ux` п. 3). */
 const stateText = computed(() =>
-  ai.reviewState === 'thinking' ? 'Думаю…' : ai.reviewState === 'limit' ? 'ИИ вернётся 1-го' : 'Не вышло. Попробуйте позже',
+  ai.reviewState === 'thinking'
+    ? 'Думаю…'
+    : ai.reviewState === 'limit'
+      ? `ИИ вернётся 1 ${MONTHS_GEN[parseMonthKey(addMonths(monthKey(), 1)).month]}`
+      : 'Не вышло. Попробуйте позже',
 )
 
 const sentOpen = ref(false)
@@ -157,7 +162,7 @@ function sentLines(s: MonthSummaryAI, key: string): { title: string; rows: strin
 
       <div class="flex flex-col gap-1 border-t border-line pt-3">
         <p class="text-[12.5px] text-ink-2">
-          Подсказка ИИ по цифрам приложения ·
+          Подсказка ИИ ·
           <button type="button" class="cursor-pointer font-semibold text-ink-2 underline underline-offset-2" :aria-expanded="sentOpen" data-review-sent-open @click="sentOpen = !sentOpen">что ушло</button>
         </p>
         <!-- Сводка, ушедшая в модель (Р-9): без имён, заметок и операций — та же, что видит человек. -->

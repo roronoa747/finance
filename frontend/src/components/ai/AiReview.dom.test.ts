@@ -321,19 +321,28 @@ describe('AI-09: разбор месяца у остатка', () => {
     expect(spy).not.toHaveBeenCalled()
   })
 
-  it('лимит месяца (429 ai_limit) — «ИИ вернётся 1-го»; сбой — «Не вышло. Попробуйте позже»', async () => {
+  it('лимит месяца (429 ai_limit) — «ИИ вернётся 1 <следующего месяца>»; сбой — «Не вышло. Попробуйте позже»', async () => {
     const spy = vi.spyOn(apiClient, 'aiReview').mockRejectedValueOnce(new ApiError('ai_limit', 429))
     await open()
     useAiStore().setConsent(true)
     await press(q('[data-review-open]'))
-    await vi.waitFor(() => expect(txt(dialog())).toContain('ИИ вернётся 1-го'))
+    await vi.waitFor(() => expect(txt(dialog())).toContain('ИИ вернётся 1 октября'))
     expect(useFinanceStore().householdDoc.aiReviews ?? []).toHaveLength(0)
 
     spy.mockRejectedValueOnce(new ApiError('ai_failed', 502))
-    q<HTMLButtonElement>('[role="dialog"] button[aria-label="Закрыть"]')?.click()
-    await flush()
-    await press(q('[data-review-open]'))
+    const reopen = async () => {
+      q<HTMLButtonElement>('[role="dialog"] button[aria-label="Закрыть"]')?.click()
+      await flush()
+      await press(q('[data-review-open]'))
+    }
+    await reopen()
     await vi.waitFor(() => expect(txt(dialog())).toContain('Не вышло. Попробуйте позже'))
+
+    // Месяц — по Алматы (лимит семьи сбрасывается 1-го по Алматы, Р-8): 31 декабря 20:00 UTC там уже 1 января.
+    vi.setSystemTime(new Date('2026-12-31T20:00:00Z'))
+    spy.mockRejectedValueOnce(new ApiError('ai_limit', 429))
+    await reopen()
+    await vi.waitFor(() => expect(txt(dialog())).toContain('ИИ вернётся 1 февраля'))
   })
 
   it('«Обновить» — участнику, когда разбору больше суток; новый разбор заменяет показ', async () => {

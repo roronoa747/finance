@@ -17,7 +17,7 @@ import { at, fakePrivate, fakeServer, phone, privateFor, screen, type FakePrivat
  * Блок 2 «ИИ» (AI-07…AI-10): разбор месяца на двух телефонах против фейкового сервера документа и фейковой ручки
  * `/api/ai/review`. (а) участник запускает разбор → партнёр после синка видит тот же текст без своего запроса; в
  * исходящем теле нет имён, заметок, желаний и личного документа; (б) viewer читает, не запускает; (в) лимит — «ИИ
- * вернётся 1-го»; (г) демо — заготовка «Пример» без запросов. Экраны — SSR (`screen`), браузер — стенд §6.
+ * вернётся 1 ноября»; (г) демо — заготовка «Пример» без запросов. Экраны — SSR (`screen`), браузер — стенд §6.
  */
 const answer = {
   good: 'Платежи и траты покрыты.',
@@ -150,14 +150,14 @@ describe('e2e / ИИ Блок 2 — разбор месяца', () => {
     expect(await screen(v2.pinia, Month, '/month')).not.toContain('data-review-open')
   })
 
-  it('(в) лимит семьи (429 ai_limit) — «ИИ вернётся 1-го», в документе ничего', async () => {
+  it('(в) лимит семьи (429 ai_limit) — «ИИ вернётся 1 ноября», в документе ничего', async () => {
     vi.spyOn(apiClient, 'aiReview').mockRejectedValue(new ApiError('ai_limit', 429, { error: 'ai_limit' }))
     const one = await as('member', 'a')
     useAiStore().setConsent(true)
     await tapReview(one)
     expect(useAiStore().reviewState).toBe('limit')
     expect(one.store.householdDoc.aiReviews ?? []).toHaveLength(0)
-    expect(sheet(await opened(one))).toContain('ИИ вернётся 1-го')
+    expect(sheet(await opened(one))).toContain('ИИ вернётся 1 ноября')
   })
 
   it('(г) демо: «Разобрать» → заготовка «Пример» со сводкой демо, без запросов и без записи в документ', async () => {
