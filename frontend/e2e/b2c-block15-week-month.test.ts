@@ -266,9 +266,9 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     expect(weekB).toMatch(/data-uploaded="true" data-partner="a"/)
     expect(weekB).toContain('data-upload="lead"')
     for (const n of [22_500, 12_000, 7_000, 40_000]) expect(text(weekB)).not.toContain(sp(plain(n)))
-    // Его траты она видит в «Месяце» — факт рядом с планом.
-    const spendB = text(between(await month(B, { opened: 'spend' }), 'data-spend="a"', 'data-spend="b"'))
-    expect(spendB).toContain(`${sp(plain(42_000))} из ${sp(plain(150_000))}`)
+    // Его траты она видит в «Месяце» — в разделе семьи (AU-02: строки — разделы, не участники): продукты — факт 42 000.
+    const spendB = text(between(await month(B, { opened: 'spend' }), 'data-spend-row="sc_food"', '</button>'))
+    expect(spendB).toContain(sp(plain(42_000)))
   })
 
   it('часть 3 — загрузка «сразу готово»: тост «Загружено N · Отменить», неделя уже с выпиской; «Отменить» — как было; без отмены — записано и видно партнёру', async () => {
