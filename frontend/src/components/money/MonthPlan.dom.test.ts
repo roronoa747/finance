@@ -10,7 +10,7 @@ import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
 import { apiClient } from '@/api/client'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
-import { closerDays, goalPace, monthPlan, monthPlanPast, pendingPuts, planPuts, untilPayday, type MonthPlanCtx } from '@/lib/finance'
+import { closerDays, goalPace, lastAccountFor, monthPlan, monthPlanPast, pendingPuts, planPuts, untilPayday, type MonthPlanCtx } from '@/lib/finance'
 import { plural } from '@/lib/utils'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
 import { monthKey } from '@/lib/dates'
@@ -787,15 +787,31 @@ describe('AP-11: точка «Пришла?» у зарплаты — прихо
     expect(txt(q('[role="dialog"] [data-salary-arrival] b'))).toBe(norm(`${money(690_000)} в Freedom · 11 сентября`))
     await press(dialogButton('Пришла зарплата'))
     expect(salaries(finance)).toHaveLength(1)
-    expect(salaries(finance)[0]).toMatchObject({ targetId: 'a', amount: 690_000, opId: 'aa00aa00aa00aa01', source: 'statement' })
+    expect(salaries(finance)[0]).toMatchObject({ targetId: 'a', amount: 690_000, opId: 'aa00aa00aa00aa01', source: 'statement', accountId: 'card' })
     expect(q('[data-arrival-dot]')).toBeNull()
   })
 
-  it('«Пришла» в строке — та же отметка приходом (не окладом), лист не открывается', async () => {
+  it('«Пришла» в строке — та же отметка приходом (не окладом) на счёт прошлой зарплаты, лист не открывается', async () => {
     const finance = await withIncome(income())
+    // Остаток счёта в сторе — уже с отметками (`accountBalance`).
+    const before = finance.accounts[0].amount
     await press(q('[data-salary="a"] [data-salary-came-btn]'))
     expect(q('[role="dialog"]')).toBeNull()
-    expect(salaries(finance)[0]).toMatchObject({ amount: 690_000, opId: 'aa00aa00aa00aa01' })
+    // Критик Б2: приход зачислен, как обычной «Пришла», — остаток счёта вырос, следующая «Пришла» помнит счёт.
+    expect(salaries(finance)[0]).toMatchObject({ amount: 690_000, opId: 'aa00aa00aa00aa01', accountId: 'card' })
+    expect(finance.accounts[0].amount - before).toBe(690_000)
+    expect(lastAccountFor(finance.payments, 'a', finance.accounts)).toBe('card')
+  })
+
+  it('первая зарплата (счёта ещё не было) — лист отметки с суммой прихода, счёт спросить один раз', async () => {
+    const doc = waiting()
+    const finance = await open('member', { ...doc, payments: (doc.payments ?? []).filter((p) => p.kind !== 'salary') })
+    useOperationsStore().ops[income().id] = income()
+    await flush()
+    await press(q('[data-salary="a"] [data-salary-came-btn]'))
+    expect(q('[role="dialog"]')).not.toBeNull()
+    expect(salaries(finance)).toHaveLength(0)
+    expect(document.body.innerHTML).toContain(plain(690_000))
   })
 
   it('точки нет: приход из выписки (там — вопрос «Недели»), сумма вне допуска, уже отмечено, viewer', async () => {

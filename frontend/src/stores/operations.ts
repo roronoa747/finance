@@ -196,9 +196,10 @@ export const useOperationsStore = defineStore('operations', () => {
   /**
    * Запись отметки по строке выписки: сумма операции, «не списывать» — выписка уже факт (Р-6);
    * момент — день операции (`operationAt`): платёж до сверки остатка его второй раз не уменьшает.
+   * `accountId` — «Пришла» по пушу банка (Apple Pay Б2): зарплата зачисляется, как обычной «Пришла».
    */
-  function markByOperation(c: MatchCandidate, op: Operation) {
-    const opts = { period: c.period, amount: Math.abs(op.amount), accountId: null, source: 'statement' as const, opId: op.id, at: operationAt(op.date) }
+  function markByOperation(c: MatchCandidate, op: Operation, accountId: string | null = null) {
+    const opts = { period: c.period, amount: Math.abs(op.amount), accountId, source: 'statement' as const, opId: op.id, at: operationAt(op.date) }
     return c.kind === 'salary' ? finance.markSalary(c.targetId as PersonId, opts) : finance.markPaid(c.kind, c.targetId, me(), opts)
   }
 
@@ -207,12 +208,13 @@ export const useOperationsStore = defineStore('operations', () => {
    * Остальные строки того же продавца этого и прошлого месяца по новому правилу стали «rule» — из
    * вопросов они ушли, поэтому отмечаются сразу (те, что прошли проверку суммы правила); сколько —
    * прибавляется к «Отмечено по выписке». Правило пишется до первого ожидания в `recategorize`, так
-   * что отметка не ждёт сети.
+   * что отметка не ждёт сети. `accountId` — счёт зачисления (только «Пришла» по пушу, `useSalaryTap`);
+   * вопрос «Недели» — «не зачислять», как было.
    */
-  async function acceptMatch(c: MatchCandidate, client: ApiClient = apiClient) {
+  async function acceptMatch(c: MatchCandidate, client: ApiClient = apiClient, accountId: string | null = null) {
     const op = ops.value[c.opId]
     if (!op) return
-    markByOperation(c, op)
+    markByOperation(c, op, accountId)
     const match = ruleMatchOf(op)
     const saving = recategorize(match, { payment: { kind: c.kind, targetId: c.targetId, categoryId: c.categoryId } }, client)
     const same = recentOperations(all.value).filter((o) => {

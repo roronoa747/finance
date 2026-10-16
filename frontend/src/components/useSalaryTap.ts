@@ -53,7 +53,8 @@ export function useSalaryTap(personId: MaybeRefOrGetter<PersonId>, period: Maybe
   const canMark = computed(() => mine.value && !!person.value && salaryOpen(person.value, finance.payments, target.value))
   /**
    * Приход из пуша банка, похожий на эту зарплату (бэклог «Apple Pay», Блок 2, Р-22): точка у «Пришла»; нажатие
-   * отмечает его суммой — как «Да» в вопросе «Недели». Тенговая только: валютная приходит на валютный счёт (Р-73).
+   * отмечает его суммой и операцией на счёт прошлой зарплаты (`tap`). Тенговая только: валютная приходит на валютный
+   * счёт (Р-73).
    */
   const ops = useOperationsStore()
   const arrival = computed(() => (canMark.value && !fxSalary.value ? ops.salaryArrival(toValue(personId), target.value) : null))
@@ -109,15 +110,18 @@ export function useSalaryTap(personId: MaybeRefOrGetter<PersonId>, period: Maybe
       else openMark(floating.value ? 0 : due.value, undefined)
       return
     }
-    // Пришло пушем банка — эта сумма и эта операция (та же отметка, что «Да» в вопросе «Недели»).
+    const last = lastAccountFor(finance.payments, toValue(personId), finance.accounts)
+    firstTime.value = last === undefined
+    // Пришло пушем банка — эта сумма и эта операция (отметка «Да» вопроса «Недели») на счёт прошлой зарплаты, как
+    // обычная «Пришла» (критик Б2: без счёта приход не попадал в остаток, и следующая «Пришла» тоже «не зачисляла»);
+    // счёта ещё не было — лист с суммой прихода: спросить счёт один раз.
     const came = arrival.value
-    if (came) {
-      void ops.acceptMatch(came.candidate)
+    if (came && last !== undefined) {
+      void ops.acceptMatch(came.candidate, undefined, last)
       if (monthCame()) toAllocation()
       return
     }
-    const last = lastAccountFor(finance.payments, toValue(personId), finance.accounts)
-    firstTime.value = last === undefined
+    if (came) return openMark(came.op.amount, last)
     if (floating.value) openMark(0, last)
     else if (last === undefined) openMark(due.value, last)
     else mark(due.value, last)
