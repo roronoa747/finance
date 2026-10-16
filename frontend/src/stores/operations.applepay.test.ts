@@ -173,6 +173,20 @@ describe('stores/operations — траты с телефона (pull)', () => {
     expect(server.sent.map((o) => [o.id, o.amount])).toEqual([['a4', -2989]])
   })
 
+  it('трата с разделом от другого устройства — раздел цел при отставших правилах, назад ничего (ревью frontend Н-2)', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const { server, client } = fakeServer()
+    // На компьютере ответили «куда отнести?» → «Кафе»; правило на этот iPhone ещё не доехало.
+    server.feed = [tap('a6', 'ZZ Unknown Shop', -1500, { category_id: 'sc_cafe' })]
+
+    await store.pull(client)
+
+    expect(store.ops.a6.categoryId).toBe('sc_cafe')
+    expect(server.sent).toEqual([])
+    expect(weekTotal('sc_cafe')).toMatchObject({ amount: 1500, ops: 1 })
+  })
+
   it('строки выписки из pull — без изменений и не уходят назад (регрессия)', async () => {
     signIn()
     const store = useOperationsStore()

@@ -687,13 +687,15 @@ export const useOperationsStore = defineStore('operations', () => {
   }
 
   /**
-   * Раскладка операций с телефона (Р-2, Р-15): пришедшие и все свои в валюте без тенге (курса не было) — курс дня
-   * (`phoneOpTenge`), раздел и «между своими» по правилам; изменённые — на сервер; итоги их периодов и периодов
-   * надгробий `gone` — в общий документ. Строки выписок `pull` не трогает.
+   * Раскладка операций с телефона (Р-2, Р-15): пришедшие без раздела и все свои в валюте без тенге (курса не было) —
+   * курс дня (`phoneOpTenge`), раздел и «между своими» по правилам; изменённые — на сервер; итоги периодов всех
+   * пришедших и надгробий `gone` — в общий документ. Пришедшая с разделом уже разложена другим устройством (правила
+   * этого могут отставать — раздел откатился бы); строки выписок `pull` не трогает.
    */
   async function settlePhone(arrived: Set<string>, gone: Operation[], client: ApiClient) {
-    const list = all.value.filter((o) => arrived.has(o.id) || (o.fx && o.amount === 0))
-    if (!list.length && !gone.length) return
+    const list = all.value.filter((o) => (arrived.has(o.id) && o.categoryId === null) || (o.fx && o.amount === 0))
+    const settled = all.value.filter((o) => arrived.has(o.id) && !list.includes(o))
+    if (!list.length && !settled.length && !gone.length) return
     const waiting = list.filter((o) => o.fx && o.amount === 0)
     if (waiting.length) {
       const days = waiting.map((o) => o.date).sort()
@@ -712,7 +714,7 @@ export const useOperationsStore = defineStore('operations', () => {
       return o.amount !== prev.amount || o.categoryId !== prev.categoryId || o.internal !== prev.internal
     })
     remember(changed)
-    writeTotals(periodsOf([...next, ...gone]))
+    writeTotals(periodsOf([...next, ...settled, ...gone]))
     if (changed.length) pending.value.push({ key: newKey(), ops: changed })
     save()
     if (changed.length) await flush(client)
