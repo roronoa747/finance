@@ -83,10 +83,17 @@ function choose(to: MerchantRule['to']) {
 const ai = useAiStore()
 const finance = useFinanceStore()
 const operations = useOperationsStore()
-onMounted(() => void ai.suggestSellers(props.groups))
+// Вопрос ИИ на этом открытии кончился (согласие, запрос — или спрашивать некого).
+const asked = ref(false)
+onMounted(() => void ai.suggestSellers(props.groups).finally(() => (asked.value = true)))
 const categories = computed(() => liveSpendCategories(finance.householdDoc.spendCategories))
 // «ИП + фамилия» по привычке (AI-19) — правило кодом, в сеть ничего; показ — как у подсказок ИИ (ИИ и согласие).
-const habit = computed(() => (ai.available && ai.consent === 'on' ? habitHints(props.groups, operations.all) : new Map<string, string>()))
+// До конца вопроса ИИ — не показываем: иначе строки переставляются дважды, второй раз — под пальцем у ✓ (`/ux` возврата).
+const habit = computed(() =>
+  ai.available && ai.consent === 'on' && asked.value && ai.sellersState !== 'thinking'
+    ? habitHints(props.groups, operations.all)
+    : new Map<string, string>(),
+)
 /** Предложенный раздел продавца — если он ещё есть у семьи; переводы людям ИИ не спрашиваются. */
 const hints = computed(() => {
   const out = new Map<string, (typeof categories.value)[number]>()

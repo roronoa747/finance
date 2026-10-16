@@ -379,6 +379,27 @@ describe('AI-19: «ИП + фамилия» по привычке — «Прод�
     await vi.waitFor(() => expect(rowOf('ИП Абенова')).toBeNull())
   })
 
+  it('пока ИИ думает — подсказки правила нет и порядок по сумме; ответ — все подсказки одной перестановкой; лимит — правило работает (`/ux` возврата)', async () => {
+    let reply: (a: typeof ANSWER) => void = () => {}
+    const spy = vi.spyOn(apiClient, 'aiSellers').mockImplementation(() => new Promise((ok) => (reply = ok)))
+    const { ai } = await openWeek({ ops: HABIT })
+    ai.setConsent(true)
+    await openBatch()
+    await vi.waitFor(() => expect(txt(q('[data-ai-sellers]'))).toBe('ИИ думает…'))
+    expect(order()).toEqual(['Respect Boutique', 'Дана К.', 'ИП Абенова', 'Tau Lider'])
+    expect(q('[data-ai-hint]')).toBeNull()
+    reply(ANSWER)
+    await vi.waitFor(() => expect(txt(q('[data-ai-sellers]'))).toBe('ИИ предлагает · 2'))
+    await vi.waitFor(() => expect(order()).toEqual(['Respect Boutique', 'ИП Абенова', 'Дана К.', 'Tau Lider']))
+
+    spy.mockRejectedValue(new ApiError('ai_limit', 429))
+    localStorage.removeItem(AI_SELLERS_KEY)
+    await closeSheet()
+    await openBatch()
+    await vi.waitFor(() => expect(txt(q('[data-ai-sellers]'))).toBe('ИИ вернётся 1 октября'))
+    expect(txt(rowOf('ИП Абенова')!.querySelector('[data-ai-hint]'))).toBe('Продукты')
+  })
+
   it('три покупки — без подсказки; без ИИ и при «Не надо» — тоже', async () => {
     vi.spyOn(apiClient, 'aiSellers').mockResolvedValue(ANSWER)
     const few = await openWeek({ ops: HABIT.filter((o) => o.date !== '2026-07-10') })
