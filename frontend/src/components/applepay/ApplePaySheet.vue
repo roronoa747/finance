@@ -4,6 +4,8 @@ import { useApplePayStore } from '@/stores/applepay'
 import Sheet from '@/components/kit/Sheet.vue'
 import Stepper from '@/components/kit/Stepper.vue'
 import Button from '@/components/ui/Button.vue'
+import { buttonVariants } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import ApplePayStepArt, { type StepArt } from './ApplePayStepArt.vue'
 
 /**
@@ -118,7 +120,7 @@ async function copy() {
         :href="ap.link"
         target="_blank"
         rel="noopener"
-        class="press inline-flex h-13 w-full items-center justify-center rounded-pill bg-brand px-6 text-[15.5px] font-semibold text-brand-ink"
+        :class="cn(buttonVariants(), 'w-full')"
         data-main
         @click="next"
       >

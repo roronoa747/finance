@@ -9,6 +9,8 @@ import { DEMO_TOKEN, useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useApplePayStore } from '@/stores/applepay'
 import type { WalletStatus } from '@/types/api'
+import { buttonVariants } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import Settings from '@/views/Settings.vue'
 import Week from '@/views/Week.vue'
 
@@ -117,6 +119,8 @@ describe('настройки — карточка «Apple Pay»', () => {
     expect(writeText).toHaveBeenCalledWith(KEY)
     expect(txt(q('[data-step-text]'))).toBe('Откройте команду «Траты сами»')
     expect(q<HTMLAnchorElement>('a[data-main]')?.getAttribute('href')).toBe(STATUS.shortcut_url)
+    // Ссылка — брендовая кнопка кита (`buttonVariants`), а не скопированные руками классы (ревью frontend Н-8).
+    expect(q('a[data-main]')!.className.split(' ').sort()).toEqual(cn(buttonVariants(), 'w-full').split(' ').sort())
     // Ключ — только в памяти листа: в хранилище его нет.
     for (let i = 0; i < localStorage.length; i++) expect(localStorage.getItem(localStorage.key(i)!)).not.toContain(KEY)
   })
