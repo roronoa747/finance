@@ -15,8 +15,9 @@ import (
 // summary decoded with json.Decoder.UseNumber (json.Number) or plain float64.
 //
 // A number is read the Russian way: thousands split by a space, NBSP or narrow NBSP
-// ("220 000"), a decimal comma or dot ("1,5"), a scale word after it ("1,2 млн" = 1 200 000,
-// "тыс." = ×1000); signs, "₸" and "%" are ignored (a percent is matched as its number). The
+// ("220 000") or by a comma or dot in groups of 3 ("2,000,000", "150.000" — no number of the
+// summary has 3 decimals), a decimal comma or dot ("1,5"), a scale word after it ("1,2 млн" =
+// 1 200 000, "1,250 млн" = 1 250 000, "тыс." = ×1000); signs, "₸" and "%" are ignored (a percent is matched as its number). The
 // input's numbers count by absolute value (free −50 000 is "не хватает 50 000"), and so do the
 // numbers written inside its strings (a month "2026-10" allows 2026 and 10, "iPhone 15" — 15).
 // 1–3 are always allowed: "2 шага", "первый" is counting, not money. No tolerance:
@@ -216,8 +217,22 @@ func scanNumbers(s string) []number {
 			first++
 		}
 		// Thousands: a group of 1–3 digits, then groups of exactly 3 after a space.
+		spaced := false
 		if first <= 3 {
 			for i < len(rs) && isGroupSpace(rs[i]) && threeDigits(rs, i+1) {
+				for _, r := range rs[i+1 : i+4] {
+					digits.WriteRune(r)
+				}
+				i += 4
+				spaced = true
+			}
+		}
+		// Thousands by comma or dot ("2,000,000", "150.000"): exactly 3 digits after it, then
+		// groups by the same mark — no number of the summary has 3 decimals (money is whole, a
+		// rate has 2), unless a scale follows ("1,250 млн" is a fraction).
+		if first <= 3 && !spaced && i < len(rs) && (rs[i] == ',' || rs[i] == '.') && threeDigits(rs, i+1) && !scaleAt(rs, i+4) {
+			mark := rs[i]
+			for i < len(rs) && rs[i] == mark && threeDigits(rs, i+1) {
 				for _, r := range rs[i+1 : i+4] {
 					digits.WriteRune(r)
 				}
@@ -256,6 +271,20 @@ func scanNumbers(s string) []number {
 		i = end
 	}
 	return out
+}
+
+// scaleAt is a scale word at i, after spaces.
+func scaleAt(rs []rune, i int) bool {
+	for i < len(rs) && isGroupSpace(rs[i]) {
+		i++
+	}
+	rest := strings.ToLower(string(rs[min(i, len(rs)):]))
+	for _, sc := range scales {
+		if strings.HasPrefix(rest, sc.prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // threeDigits is exactly three digits at i, not followed by a fourth.
