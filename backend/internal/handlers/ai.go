@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"finance-backend/internal/ai"
 	"finance-backend/internal/auth"
@@ -266,4 +267,165 @@ func (a ReviewAnswer) clean() ReviewAnswer {
 	}
 	a.Steps = steps
 	return a
+}
+
+// Bounds of POST /api/ai/sellers (AI-11): one batch «Без раздела» of a statement.
+const (
+	maxSellersBody       = 16 << 10
+	maxSellerNames       = 50
+	maxSellerNameRunes   = 80
+	maxSellersCategories = 40
+)
+
+// sellersSystem is the fixed instruction of the seller suggestions (Р-5). Only the names and the
+// family's sections go with it — no sums, dates or ids (Р-15).
+const sellersSystem = `Ты раскладываешь траты семьи по разделам бюджета. Тебе дают JSON: names — названия продавцов и сервисов из банковских выписок Казахстана (Kaspi, Freedom и другие банки; названия бывают латиницей, сокращены, с правовой формой ТОО или ИП и городом), categories — разделы трат семьи: id и название.
+
+Для каждого названия из names верни один элемент items в том же порядке: name — название ровно как во входе, categoryId — id подходящего раздела из categories. Если не знаешь, что это за продавец, или ни один раздел не подходит, — categoryId: null; лучше null, чем догадка. Переводы на карту или счёт, возвраты, возмещения и кешбэк — тоже null: по названию не понять, чьи это деньги. Бери только id из categories, новых разделов не придумывай. «ИП», «IP», «ТОО», «TOO» в начале — форма предприятия: суди по словам после неё. Слова в названии подсказывают: FARM, PHARM, APTEKA, DARIKHANA — аптека; MARKET, MART, SUPERMARKET — продукты; RESTAURANT, CAFE, COFFEE — кафе.`
+
+// sellersSchema is the answer (structured outputs; the count of items is checked here).
+var sellersSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"items": map[string]any{
+			"type": "array",
+			"items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string"},
+					"categoryId": map[string]any{"anyOf": []any{
+						map[string]any{"type": "string"},
+						map[string]any{"type": "null"},
+					}},
+				},
+				"required":             []string{"name", "categoryId"},
+				"additionalProperties": false,
+			},
+		},
+	},
+	"required":             []string{"items"},
+	"additionalProperties": false,
+}
+
+// SellerCategory is one section of the family as the phone sends it.
+type SellerCategory struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// SellerSuggestion is the section suggested for a name; CategoryID is null when the model is not sure.
+type SellerSuggestion struct {
+	Name       string  `json:"name"`
+	CategoryID *string `json:"categoryId"`
+}
+
+// sellersInput is what goes to the model, and only it.
+type sellersInput struct {
+	Names      []string         `json:"names"`
+	Categories []SellerCategory `json:"categories"`
+}
+
+// valid: 1…50 distinct names of ≤ 80 characters without 6+ digits (the phone's `sanitize` guard,
+// repeated as for operations — `longDigits`, statements.go), 1…40 sections with id and name.
+func (in sellersInput) valid() bool {
+	if len(in.Names) == 0 || len(in.Names) > maxSellerNames || len(in.Categories) == 0 || len(in.Categories) > maxSellersCategories {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, n := range in.Names {
+		if strings.TrimSpace(n) == "" || utf8.RuneCountInString(n) > maxSellerNameRunes || longDigits.MatchString(n) || seen[n] {
+			return false
+		}
+		seen[n] = true
+	}
+	ids := map[string]bool{}
+	for _, c := range in.Categories {
+		if strings.TrimSpace(c.ID) == "" || strings.TrimSpace(c.Name) == "" || ids[c.ID] {
+			return false
+		}
+		ids[c.ID] = true
+	}
+	return true
+}
+
+// AISellersHandler is POST /api/ai/sellers (бэклог «ИИ», AI-11).
+type AISellersHandler struct {
+	gate   *AIGate
+	model  string
+	effort string
+}
+
+func NewAISellersHandler(gate *AIGate, model string) *AISellersHandler {
+	return &AISellersHandler{gate: gate, model: model, effort: "low"}
+}
+
+// Sellers — {names, categories} → {items: [{name, categoryId|null}]} in the order of names. One
+// batch is one request of the limit (Р-14); nothing is applied here — the phone shows the
+// suggestions and the person accepts each (Р-5). Nothing of the body or the answer is logged.
+func (h *AISellersHandler) Sellers(w http.ResponseWriter, r *http.Request) {
+	call, ok := h.gate.Open(w, r)
+	if !ok {
+		return
+	}
+	var in sellersInput
+	if !decodeStrictJSONBody(w, r, maxSellersBody, &in) {
+		return
+	}
+	if !in.valid() {
+		errorJSON(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	var text bytes.Buffer
+	enc := json.NewEncoder(&text)
+	enc.SetEscapeHTML(false) // «Cash&Carry» as printed, not &
+	if err := enc.Encode(in); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	var answer struct {
+		Items []SellerSuggestion `json:"items"`
+	}
+	u, err := h.gate.client.Call(r.Context(), ai.Request{
+		Model: h.model, System: sellersSystem, Text: strings.TrimSpace(text.String()), Schema: sellersSchema, Effort: h.effort, MaxTokens: 8_000,
+	}, &answer)
+	if err != nil {
+		h.gate.Spend(r.Context(), call, false, u)
+		errorJSON(w, http.StatusBadGateway, "ai_failed")
+		return
+	}
+	h.gate.Spend(r.Context(), call, true, u)
+	respondJSON(w, http.StatusOK, map[string]any{"items": in.suggestions(answer.Items)})
+}
+
+// suggestions puts the model's items in the order of the names: a name the input has not is
+// dropped, a missing one is null, and so is a section outside the family's list. The model may
+// change the case or the spaces of a name — it is still found; the first item for a name wins.
+func (in sellersInput) suggestions(items []SellerSuggestion) []SellerSuggestion {
+	key := func(s string) string { return strings.ToLower(strings.Join(strings.Fields(s), " ")) }
+	at := map[string]int{}
+	out := make([]SellerSuggestion, len(in.Names))
+	for i, n := range in.Names {
+		out[i] = SellerSuggestion{Name: n}
+		if _, dup := at[key(n)]; !dup {
+			at[key(n)] = i
+		}
+	}
+	ids := map[string]bool{}
+	for _, c := range in.Categories {
+		ids[c.ID] = true
+	}
+	done := make([]bool, len(in.Names))
+	for _, it := range items {
+		i, found := at[key(it.Name)]
+		if !found || done[i] {
+			continue
+		}
+		done[i] = true
+		if it.CategoryID != nil && ids[*it.CategoryID] {
+			id := *it.CategoryID
+			out[i].CategoryID = &id
+		}
+	}
+	return out
 }

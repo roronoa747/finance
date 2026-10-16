@@ -169,6 +169,7 @@ func NewRouter(
 	// Гейт ИИ-ручек (AI-08; Блоки 3–4 берут его же): ключ и флаг семьи, member, лимит месяца.
 	aiGate := handlers.NewAIGate(repos.AI, aiClient, cfg.AIMonthlyLimit)
 	aiReviewHandler := handlers.NewAIReviewHandler(aiGate, cfg.AIModelReview)
+	aiSellersHandler := handlers.NewAISellersHandler(aiGate, cfg.AIModelSellers)
 
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", handlers.HealthHandler(database))
@@ -236,6 +237,8 @@ func NewRouter(
 
 				// ИИ (бэклог «ИИ», AI-08): разбор месяца — только member семьи с ИИ, в пределах лимита.
 				family.Post("/ai/review", aiReviewHandler.Review)
+				// AI-11: разделы незнакомым продавцам — уходят только названия продавцов и разделов.
+				family.Post("/ai/sellers", aiSellersHandler.Sellers)
 			})
 		})
 	})

@@ -19,7 +19,7 @@ import kaspi01 from '@/lib/statements/fixtures/kaspi-01.rows.json'
 import { planFamilyDoc } from '@/test/planFamily'
 import { freeByFact } from '@/lib/finance'
 import { mergePrivateDocs } from '@/lib/merge'
-import { LINK_PHOTO_TRIED_KEY, readMonthEnd, readStorage, writeMonthEnd, writeStorage } from '@/lib/storage'
+import { AI_SELLERS_KEY, LINK_PHOTO_TRIED_KEY, readMonthEnd, readStorage, writeMonthEnd, writeStorage } from '@/lib/storage'
 
 const storage = new Map<string, string>()
 
@@ -312,6 +312,13 @@ describe('stores/operations — курсор, семья, демо', () => {
     expect(readStorage<string[]>(LINK_PHOTO_TRIED_KEY, [])).toHaveLength(1)
     useFinanceStore().clearLocal()
     expect(readStorage<string[]>(LINK_PHOTO_TRIED_KEY, [])).toEqual([])
+  })
+
+  it('выход стирает предложения ИИ продавцам (AI-12): продавцы этого входа другому не нужны', () => {
+    signIn()
+    writeStorage(AI_SELLERS_KEY, { '{"merchant":"respect boutique"}': { to: 'sc_shopping', at: '2026-09-20T00:00:00.000Z' } })
+    useFinanceStore().clearLocal()
+    expect(readStorage(AI_SELLERS_KEY, null)).toBeNull()
   })
 
   it('копия чужой семьи на диске при старте не подхватывается', () => {

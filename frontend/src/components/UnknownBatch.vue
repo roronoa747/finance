@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
-import { PhCheck } from '@phosphor-icons/vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { PhCheck, PhCircleNotch } from '@phosphor-icons/vue'
 import Button from '@/components/ui/Button.vue'
 import ProgressBar from '@/components/kit/ProgressBar.vue'
 import CategoryChips from '@/components/CategoryChips.vue'
-import { amountTotal } from '@/lib/finance'
+import { amountTotal, liveSpendCategories } from '@/lib/finance'
 import { reducedMotion } from '@/lib/motion'
 import { money } from '@/lib/money'
+import { spendColor } from '@/lib/palette'
 import { plural } from '@/lib/utils'
-import type { UnknownGroup } from '@/lib/statements/model'
+import { aiLimitText, useAiStore } from '@/stores/ai'
+import { useFinanceStore } from '@/stores/finance'
+import { useOperationsStore } from '@/stores/operations'
+import { habitHints, type UnknownGroup } from '@/lib/statements/model'
 import type { MerchantRule } from '@/lib/statements/types'
 
 /**
@@ -16,6 +20,14 @@ import type { MerchantRule } from '@/lib/statements/types'
  * строки с отметкой (первые шесть, хвост — «Ещё K · сумма ›»), «Выбрать все»; отмечено ≥ 1 — внизу «Выбрано N ·
  * сумма» и «куда?» (`CategoryChips` с «Не помню»). Ответ — всем отмеченным разом; что с ним делать (черновик или
  * задним числом), решает родитель. Отвеченные уходят из списка сами — группы приходят заново.
+ *
+ * ИИ (бэклог «ИИ», AI-12, Р-5): открыли пачку — `suggestSellers` спрашивает раздел продавцам без предложения; у
+ * продавца с предложением под подписью — чип раздела, справа ✓ — тот же ответ, что чипами, одному продавцу. Само
+ * ничего не применяется; «Принять все» нет. В шапке — «ИИ предлагает · N» строкой, ошибки — тихо, той же строкой.
+ * Продавцы с предложением — первыми (AI-17, владелец после `/ux` Блока 3): иначе на настоящих выписках они уходили в
+ * «Ещё» под переводы людям и «ИП + фамилия», которых ИИ не спрашивает. Меняется только вид — очередь «Недели» прежняя.
+ * «ИП + фамилия» с привычкой «часто и по мелочи» — подсказка «Продукты» правилом кодом (`habitHints`, AI-19), тем же
+ * чипом и ✓.
  */
 const SHOWN = 6
 
@@ -35,8 +47,6 @@ watch(
   (keys) => (picked.value = picked.value.filter((k) => keys.includes(k))),
 )
 
-const shown = computed(() => (open.value ? props.groups : props.groups.slice(0, SHOWN)))
-const tail = computed(() => (open.value ? [] : props.groups.slice(SHOWN)))
 const chosen = computed(() => props.groups.filter((g) => picked.value.includes(keyOf(g))))
 const allPicked = computed(() => chosen.value.length === props.groups.length)
 // «Кому → что» — только когда все отмеченные — переводы людям.
@@ -69,6 +79,59 @@ function choose(to: MerchantRule['to']) {
   )
   picked.value = []
 }
+
+const ai = useAiStore()
+const finance = useFinanceStore()
+const operations = useOperationsStore()
+// Вопрос ИИ на этом открытии кончился (согласие, запрос — или спрашивать некого).
+const asked = ref(false)
+onMounted(() => void ai.suggestSellers(props.groups).finally(() => (asked.value = true)))
+const categories = computed(() => liveSpendCategories(finance.householdDoc.spendCategories))
+// «ИП + фамилия» по привычке (AI-19) — правило кодом, в сеть ничего; показ — как у подсказок ИИ (ИИ и согласие).
+// До конца вопроса ИИ — не показываем: иначе строки переставляются дважды, второй раз — под пальцем у ✓ (`/ux` возврата).
+const habit = computed(() =>
+  ai.available && ai.consent === 'on' && asked.value && ai.sellersState !== 'thinking'
+    ? habitHints(props.groups, operations.all)
+    : new Map<string, string>(),
+)
+/** Предложенный раздел продавца — если он ещё есть у семьи; переводы людям ИИ не спрашиваются. */
+const hints = computed(() => {
+  const out = new Map<string, (typeof categories.value)[number]>()
+  for (const g of props.groups) {
+    const id = ai.sellerHint(g.match) ?? habit.value.get(g.match.merchant ?? '') ?? null
+    const c = id ? categories.value.find((x) => x.id === id) : undefined
+    if (c) out.set(keyOf(g), c)
+  }
+  return out
+})
+const hintOf = (g: UnknownGroup) => hints.value.get(keyOf(g)) ?? null
+/** С предложением — первыми, остальные — после; внутри обеих частей — как пришли (по сумме). Без предложений — как было. */
+const ordered = computed(() => {
+  if (!hints.value.size) return props.groups
+  const has = (g: UnknownGroup) => hints.value.has(keyOf(g))
+  return [...props.groups.filter(has), ...props.groups.filter((g) => !has(g))]
+})
+const shown = computed(() => (open.value ? ordered.value : ordered.value.slice(0, SHOWN)))
+const tail = computed(() => (open.value ? [] : ordered.value.slice(SHOWN)))
+// Место ✓ держится и пока ответ идёт: иначе через 3–6 с все суммы съезжают влево на ширину ✓ (`/ux` Блока 3).
+const aiColumn = computed(() => hints.value.size > 0 || ai.sellersState === 'thinking')
+/** Строка шапки: идёт запрос, лимит, не пришли — или сколько предложений. */
+const aiLine = computed(() =>
+  ai.sellersState === 'thinking'
+    ? 'ИИ думает…'
+    : ai.sellersState === 'limit'
+      ? aiLimitText()
+      : ai.sellersState === 'failed'
+        ? 'Подсказки не пришли'
+        : hints.value.size
+          ? `ИИ предлагает · ${hints.value.size}`
+          : '',
+)
+/** ✓ — тот же ответ, что выбор раздела чипами, одному продавцу: то же правило «продавец → раздел». */
+function accept(g: UnknownGroup, categoryId: string) {
+  picked.value = picked.value.filter((k) => k !== keyOf(g))
+  emit('answer', [g.match], { categoryId })
+}
 </script>
 
 <template>
@@ -78,35 +141,76 @@ function choose(to: MerchantRule['to']) {
         <ProgressBar :value="progress.k ? progress.n / progress.k : 0" :height="4" class="flex-1" />
         <span class="num shrink-0">{{ progress.n }} из {{ progress.k }}</span>
       </div>
-      <div class="flex items-baseline justify-between gap-3">
-        <h2 class="type-h2 text-ink">Без раздела · <span class="num">{{ groups.length }}</span></h2>
-        <button type="button" class="shrink-0 text-[14px] font-medium text-ink-2 hover:text-ink cursor-pointer" @click="toggleAll">
-          {{ allPicked ? 'Снять все' : 'Выбрать все' }}
-        </button>
+      <div class="flex flex-col gap-0.5">
+        <div class="flex items-baseline justify-between gap-3">
+          <h2 class="type-h2 text-ink">Без раздела · <span class="num">{{ groups.length }}</span></h2>
+          <button type="button" class="shrink-0 text-[14px] font-medium text-ink-2 hover:text-ink cursor-pointer" @click="toggleAll">
+            {{ allPicked ? 'Снять все' : 'Выбрать все' }}
+          </button>
+        </div>
+        <p v-if="aiLine" class="type-meta num flex items-center gap-1.5" data-ai-sellers>
+          <PhCircleNotch v-if="ai.sellersState === 'thinking'" :size="13" class="shrink-0 animate-spin" aria-hidden="true" data-ai-spin />
+          <i v-else-if="hints.size && ai.sellersState === 'idle'" class="size-1.5 shrink-0 rounded-full bg-brand" aria-hidden="true" />{{ aiLine }}
+        </p>
       </div>
-      <TransitionGroup tag="div" class="flex flex-col" leave-active-class="transition-opacity duration-150" leave-to-class="opacity-0">
-        <button
+      <!-- Перестановка (ответ ИИ, ✓) — плавно: соседи едут (`move`), ушедшая гаснет вне потока. Блок, не flex: в flex
+           `absolute` встал бы к верху списка. Граница — по индексу, не `first:`: гаснущая строка ещё первая в DOM.
+           Появление `fx-in` — классом входа, не постоянным: с анимацией на строке Vue считает её «анимацией» и `move`
+           не включает (320 мс `fx-in` длиннее 150 мс перехода). -->
+      <TransitionGroup
+        tag="div"
+        class="relative"
+        appear
+        enter-active-class="fx-in"
+        move-class="transition-transform duration-(--motion-fast) ease-(--ease-out)"
+        leave-active-class="absolute inset-x-0 transition-opacity duration-150"
+        leave-to-class="opacity-0"
+      >
+        <div
           v-for="(g, i) in shown"
           :key="keyOf(g)"
-          type="button"
-          :aria-pressed="isOn(g)"
-          class="fx-in flex w-full items-center gap-3 border-t border-line py-2.5 text-left first:border-t-0 first:pt-0 cursor-pointer"
+          class="flex w-full items-center gap-3 pb-2.5"
+          :class="i > 0 && 'border-t border-line pt-2.5'"
           :style="{ '--i': i }"
-          @click="toggle(g)"
+          data-unknown-row
         >
-          <span
-            class="grid size-6 shrink-0 place-items-center rounded-full border-2 transition-colors"
-            :class="isOn(g) ? 'border-ink bg-ink text-canvas' : 'border-line-strong'"
-            aria-hidden="true"
+          <button type="button" :aria-pressed="isOn(g)" class="flex min-w-0 flex-1 items-center gap-3 text-left cursor-pointer" @click="toggle(g)">
+            <span
+              class="grid size-6 shrink-0 place-items-center rounded-full border-2 transition-colors"
+              :class="isOn(g) ? 'border-ink bg-ink text-canvas' : 'border-line-strong'"
+              aria-hidden="true"
+            >
+              <PhCheck v-if="isOn(g)" :size="13" weight="bold" />
+            </span>
+            <span class="min-w-0 flex-1">
+              <span class="block truncate font-semibold text-ink">{{ g.label }}</span>
+              <span class="flex min-w-0 items-center gap-1.5 type-meta num">
+                <span class="shrink-0">{{ g.count }} {{ plural(g.count, 'раз', 'раза', 'раз') }}</span>
+                <span
+                  v-if="hintOf(g)"
+                  class="-my-px inline-flex min-w-0 items-center gap-1 rounded-pill bg-surface-3 px-2 py-px text-[12.5px] font-medium text-ink"
+                  data-ai-hint
+                >
+                  <i class="size-2 shrink-0 rounded-full" :style="{ background: spendColor(hintOf(g)) }" aria-hidden="true" />
+                  <span class="truncate">{{ hintOf(g)!.name }}</span>
+                </span>
+              </span>
+            </span>
+            <span class="money shrink-0 text-ink">{{ money(g.amount) }}</span>
+          </button>
+          <Button
+            v-if="hintOf(g)"
+            variant="soft"
+            size="sm"
+            class="w-8 shrink-0 px-0"
+            :aria-label="`Принять: ${hintOf(g)!.name}`"
+            data-ai-accept
+            @click="accept(g, hintOf(g)!.id)"
           >
-            <PhCheck v-if="isOn(g)" :size="13" weight="bold" />
-          </span>
-          <span class="min-w-0 flex-1">
-            <span class="block truncate font-semibold text-ink">{{ g.label }}</span>
-            <span class="block type-meta num">{{ g.count }} {{ plural(g.count, 'раз', 'раза', 'раз') }}</span>
-          </span>
-          <span class="money shrink-0 text-ink">{{ money(g.amount) }}</span>
-        </button>
+            <PhCheck :size="16" weight="bold" />
+          </Button>
+          <span v-else-if="aiColumn" class="w-8 shrink-0" aria-hidden="true" />
+        </div>
         <button
           v-if="tail.length"
           key="tail"

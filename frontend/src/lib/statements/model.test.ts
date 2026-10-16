@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest'
 import type { Person, SyncDoc } from '@/types/finance'
 import { DEFAULT_SPEND_CATEGORIES, DICTIONARY } from './dictionary'
 import {
+  AI_SELLERS_MAX,
+  aiSellerNames,
   applyRules,
   assignIds,
   categorize,
   fingerprint,
+  habitHints,
   matchPerson,
   normalizeMerchant,
   pairInternalTransfers,
@@ -309,6 +312,57 @@ describe('функции экрана выписок (B2C-07)', () => {
       { match: { merchant: 'zhansaya' }, label: 'IP ZHANSAYA ALMATY KZ', count: 2, amount: 300 },
     ])
     expect(unknownGroups(ops, 'sc_food').map((g) => g.label)).toEqual(['Magnum'])
+  })
+
+  it('aiSellerNames — только продавцы без чисел 6+ и без «ИП + фамилия», по сумме, ≤ 50, дубли один раз (AI-12)', () => {
+    const ops = [
+      op({ merchant: 'Magnum Cash&Carry', amount: -5_000 }),
+      op({ merchant: 'ИП Сулейменов Аптека Плюс', amount: -9_000 }),
+      op({ merchant: 'ИП Абенова', amount: -20_000 }),
+      op({ merchant: 'IP SERIKBAEV A.A. ASTANA KZ', amount: -15_000 }),
+      op({ merchant: 'ИП Дана К.', amount: -14_000 }),
+      op({ merchant: 'IP IVANOV IVAN PETROVICH', amount: -13_000 }),
+      op({ merchant: 'IP KINOPARK 8 ASTANA', amount: -1_000 }),
+      op({ merchant: 'KASPI 1234567', amount: -30_000 }),
+      op({ kind: 'transfer-out', merchant: 'Перевод', counterparty: 'Дана К.', amount: -50_000 }),
+    ]
+    const groups = unknownGroups(ops)
+    expect(aiSellerNames(groups)).toEqual([
+      { name: 'ИП Сулейменов Аптека Плюс', match: { merchant: 'сулейменов аптека плюс' } },
+      { name: 'Magnum Cash&Carry', match: { merchant: 'magnum cash&carry' } },
+      { name: 'IP KINOPARK 8 ASTANA', match: { merchant: 'kinopark' } },
+    ])
+    // Порядок — по сумме, даже если группы пришли иначе; длинное название обрезано до 80 знаков.
+    const long = 'Республиканская главная мечеть. Оплата за вход на обзорную площадку Минарета Астана'
+    const many = Array.from({ length: 60 }, (_, i) => ({ match: { merchant: `m${i}` }, label: `Продавец ${i}`, count: 1, amount: 100 + i }))
+    const names = aiSellerNames([...many, { match: { merchant: 'long' }, label: long, count: 1, amount: 50 }, { match: { merchant: 'dup' }, label: 'Продавец 59', count: 1, amount: 1 }])
+    expect(names).toHaveLength(AI_SELLERS_MAX)
+    expect(names[0].name).toBe('Продавец 59')
+    expect(names.filter((n) => n.name === 'Продавец 59')).toHaveLength(1)
+    expect(aiSellerNames([{ match: { merchant: 'long' }, label: long, count: 1, amount: 50 }])[0].name).toBe(long.slice(0, 80).trim())
+  })
+
+  it('habitHints — «ИП + фамилия»: ≥ 4 покупок за 90 дней и средний чек ≤ 5 000 → «Продукты» (AI-19)', () => {
+    const today = '2026-09-27'
+    const times = (merchant: string, n: number, amount: number, date = '2026-09-20') =>
+      Array.from({ length: n }, () => op({ merchant, amount: -amount, date }))
+    const ops = [
+      ...times('ИП Абенова', 4, 5_000), // ровно на порогах — подсказка
+      ...times('ИП Серикова', 3, 1_000), // 3 покупки — мало
+      ...times('ИП Жумабаев', 3, 5_000), op({ merchant: 'ИП Жумабаев', amount: -5_004 }), // средний 5 001
+      ...times('IP OMAROVA ALMATY KZ', 2, 2_000), ...times('IP OMAROVA ASTANA KZ', 2, 2_000, '2026-06-29'), // 90-й день — в счёте
+      ...times('ИП Нуртаев', 3, 2_000), op({ merchant: 'ИП Нуртаев', amount: -2_000, date: '2026-06-28' }), // 91-й — нет
+      ...times('ИП Сулейменов Аптека Плюс', 5, 1_000), // дело, не фамилия — его спрашивает ИИ
+      ...times('Дана К.', 5, 1_000).map((o) => ({ ...o, counterparty: 'Дана К.' })), // перевод человеку
+    ]
+    // Группы — из окна пачки; привычка — по всем операциям окна 90 дней.
+    const groups = unknownGroups(ops.filter((o) => o.date >= '2026-08-01'))
+    expect([...habitHints(groups, ops, today)]).toEqual([
+      ['абенова', 'sc_food'],
+      ['omarova', 'sc_food'],
+    ])
+    // Продавца нет в пачке — подсказки нет, даже если привычка есть.
+    expect(habitHints(groups.filter((g) => g.match.merchant !== 'абенова'), ops, today).has('абенова')).toBe(false)
   })
 
 

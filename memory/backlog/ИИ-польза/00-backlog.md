@@ -239,6 +239,15 @@ AU-12, AU-16, AU-19, AU-24 · Р-15 — порядок блоков и запи�
 критик добавит факты продавцов в §6 «ИИ», критик Блока 3 «ИИ» или исполнитель Блока 1 здесь переносит нужное сюда).
 Критик каждого блока дописывает строку «После Блока N».
 
+**После Блока 3 «ИИ»** (его критик, 2026-10-16; полностью — §6 «ИИ» «После Блока 3»): ручка продавцов —
+`AISellersHandler` / `sellersInput` / `sellersSchema` / `in.suggestions` в `handlers/ai.go` (AU-16 расширяет схему и ответ
+здесь), фронт — `aiSellerNames` (`lib/statements/model.ts`), `useAiStore().suggestSellers` / `sellerHint`, кэш
+`ff_ai_sellers`. Лимит в тестах продавцов (AU-09) — `TestSellersGate` «limit 429» (`AddUsage(…, 30, …)`) и
+`newReviewFixture` (`NewAIGate(aiRepo, client, 30)`), `server/ai_test.go` `TestAIOffWithoutKey`. Текст лимита — один,
+`aiLimitText()` (`stores/ai.ts`). «ИП + фамилия» в ИИ не уходят; частым ИП с мелким чеком подсказка «Продукты»
+ставится кодом — `habitHints` (`model.ts`, AI-19; пороги 90 дней / 4 покупки / 5 000 ₸) — AU-16 и AU-27 (привычки по
+операциям) её не дублируют, а при надобности берут.
+
 **Команды и среда**
 - Фронт: `cd frontend && npm run build && npx vitest run` (Vitest берёт и `src/**`, и `e2e/**`; на 2026-10-16 — vitest
   216 файлов / 2173 теста, e2e 45 / 280). Бэкенд: `cd backend && go build ./... && go vet ./... && go test ./...` + в
