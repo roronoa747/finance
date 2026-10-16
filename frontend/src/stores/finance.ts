@@ -135,6 +135,8 @@ export function defaultSyncDoc(): SyncDoc {
     termSnaps: [],
     // Сдвиги месяца (AU-05): ключ и пустым — как у payments (RP-03).
     planShifts: [],
+    // Итоги привычек (AU-27): ключ и пустым — как у payments (RP-03).
+    habitTotals: [],
     setupDoneAt: null,
   }
 }

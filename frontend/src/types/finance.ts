@@ -1,5 +1,5 @@
 import type { CategoryKey, HueKey, ThemeChoice } from '@/lib/palette'
-import type { SpendCategory, SpendTotal } from '@/lib/statements/types'
+import type { HabitTotal, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import type { MonthSummaryAI } from '@/lib/aiSummary'
 
 export type PersonId = 'a' | 'b' | 'c'
@@ -668,6 +668,8 @@ export type SyncDoc = {
   termSnaps?: TermSnap[]
   /** Сдвиги месяца «Сделать» / «Вернуть срок» (бэклог «ИИ-польза», Р-17, AU-05): отмена — надгробие. До Блока 2 — без ключа. */
   planShifts?: PlanShift[]
+  /** Итоги привычек трат участников за месяц (бэклог «ИИ-польза», Р-24, AU-27): только счётчик и сумма. До Блока 7 — без ключа. */
+  habitTotals?: HabitTotal[]
   /**
    * Когда закончили первичную настройку бюджета. Пустое значит, что показываем
    * первый запуск (`/start`). Живёт в общем документе, а не в настройках устройства: второй

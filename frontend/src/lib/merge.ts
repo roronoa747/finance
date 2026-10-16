@@ -237,6 +237,9 @@ export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
     }),
     // Сдвиги месяца (AU-05): записи двух телефонов по id; отмена — надгробие, сильнее правки.
     planShifts: mergeList(local.planShifts ?? [], remote.planShifts ?? [], (x) => x.id),
+    // Итоги привычек (AU-27): запись участника `участник:месяц:привычка` — свежий пересчёт заменяет целиком, как итоги
+    // разделов; партнёра не затирает.
+    habitTotals: mergeList(local.habitTotals ?? [], remote.habitTotals ?? [], (x) => x.id),
     // Метки равны (или их нет) — сброс один и тот же.
     ...(lr ? { resetAt: lr } : {}),
   }
