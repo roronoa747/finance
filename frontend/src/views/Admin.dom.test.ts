@@ -193,6 +193,13 @@ describe('AI-04: админка — семьи и ИИ', () => {
     expect(rows(el)[0].querySelector('[data-spent]')!.textContent).toBe('2 запроса · ≈ —')
   })
 
+  // Ревью frontend Блока 2, Н-4: оплаченные неудачи (requests 0, расход > 0) видны и у семьи, которой ИИ уже выключили.
+  it('ИИ выключен, запросов 0, а расход есть (брак модели) — строка расхода видна', async () => {
+    vi.spyOn(apiClient, 'adminFamilies').mockResolvedValue(list({ families: [fam({ ai: false, requests: 0, cost_micros: 21_000 })] }))
+    const el = await mount()
+    expect(rows(el)[0].querySelector('[data-spent]')!.textContent).toBe('0 запросов · ≈ $0.03') // центы вверх (`usdFromMicros`)
+  })
+
   it('не владельцу — «Нет такой страницы», семей нет', async () => {
     vi.spyOn(apiClient, 'adminMetrics').mockRejectedValue(new ApiError('not found', 404))
     vi.spyOn(apiClient, 'adminFamilies').mockRejectedValue(new ApiError('not found', 404))

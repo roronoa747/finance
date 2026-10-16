@@ -280,6 +280,22 @@ describe('AI-09: разбор месяца у остатка', () => {
     expect(shown).toContain('Кредитка — 200 000 ₸, 20 000 ₸ в месяц, ставку уточните, не закроем')
   })
 
+  // Ревью frontend Блока 2, Н-4: согласие не спрошено, а личный документ не подтянуть (нет сети) — «Не вышло», без
+  // листа согласия и без запроса разбора (иначе «Не надо» с нового телефона переписало бы «да» — хвост Н-4 Блока 1).
+  it('нет сети на первом ✦: «Не вышло. Попробуйте позже», листа согласия нет, запроса нет', async () => {
+    const spy = vi.spyOn(apiClient, 'aiReview')
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch') }))
+    await open()
+    const ai = useAiStore()
+    await press(q('[data-review-open]'))
+    await vi.waitFor(() => expect(q('[data-review-state]')?.getAttribute('data-review-state')).toBe('failed'))
+    expect(txt(q('[data-review-state]'))).toBe('Не вышло. Попробуйте позже')
+    expect(ai.consentFailed).toBe(true)
+    expect(ai.sheetOpen).toBe(false)
+    expect(ai.consent).toBe('unknown')
+    expect(spy).not.toHaveBeenCalled()
+  })
+
   it('«Не надо» — запроса нет, лист разбора не открыт', async () => {
     const spy = vi.spyOn(apiClient, 'aiReview')
     await open()
