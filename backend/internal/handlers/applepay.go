@@ -25,15 +25,16 @@ type WalletHandler struct {
 	ops        repository.PhoneOperationRepository
 	users      repository.UserRepository
 	admins     []string
-	// Shortcut links from the environment (Р-17); empty — no Apple Pay card for that path.
-	shortcutURL, shortcutURLLegacy string
-	now                            func() time.Time
+	// Shortcut links from the environment (Р-17); empty — no Apple Pay card for that path, no
+	// bank pushes step in the sheet.
+	shortcutURL, shortcutURLLegacy, pushShortcutURL string
+	now                                             func() time.Time
 }
 
 func NewWalletHandler(keys repository.PhoneKeyRepository, households repository.HouseholdRepository, ops repository.PhoneOperationRepository,
-	users repository.UserRepository, admins []string, shortcutURL, shortcutURLLegacy string) *WalletHandler {
+	users repository.UserRepository, admins []string, shortcutURL, shortcutURLLegacy, pushShortcutURL string) *WalletHandler {
 	return &WalletHandler{keys: keys, households: households, ops: ops, users: users, admins: admins,
-		shortcutURL: shortcutURL, shortcutURLLegacy: shortcutURLLegacy, now: time.Now}
+		shortcutURL: shortcutURL, shortcutURLLegacy: shortcutURLLegacy, pushShortcutURL: pushShortcutURL, now: time.Now}
 }
 
 const (
@@ -43,6 +44,9 @@ const (
 	maxDebugBody = 2 << 10
 	// tapRepeat: the trigger fires twice for one payment — the same money within it is one (Р-9).
 	tapRepeat = 2 * time.Minute
+	// phonePair: a tap and a push of one purchase (Р-9, Р-21), a transfer out of one own bank and
+	// into another (Р-8) — within it, in any order of arrival.
+	phonePair = 10 * time.Minute
 	// maxPhoneOpsPerDay protects the family from a looping automation (Р-13).
 	maxPhoneOpsPerDay = 200
 	// tapPast / tapFuture bound the command's optional "at"; outside — the server's time.
@@ -59,6 +63,7 @@ type walletStatus struct {
 	LastUsedAt        *time.Time `json:"last_used_at,omitempty"`
 	ShortcutURL       string     `json:"shortcut_url"`
 	ShortcutURLLegacy string     `json:"shortcut_url_legacy"`
+	PushShortcutURL   string     `json:"push_shortcut_url"`
 }
 
 // Status — GET /api/wallet (member): connected phones and the shortcut links.
@@ -75,7 +80,7 @@ func (h *WalletHandler) Status(w http.ResponseWriter, r *http.Request) {
 	}
 	respondJSON(w, http.StatusOK, walletStatus{
 		Connected: phones > 0, Phones: phones, LastUsedAt: last,
-		ShortcutURL: h.shortcutURL, ShortcutURLLegacy: h.shortcutURLLegacy,
+		ShortcutURL: h.shortcutURL, ShortcutURLLegacy: h.shortcutURLLegacy, PushShortcutURL: h.pushShortcutURL,
 	})
 }
 
@@ -192,14 +197,8 @@ func (h *WalletHandler) Tap(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxTapBody))
-	if err != nil {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
-			errorJSON(w, http.StatusRequestEntityTooLarge, "request body too large")
-			return
-		}
-		errorJSON(w, http.StatusBadRequest, "invalid request body")
+	raw, ok := readPhoneBody(w, r)
+	if !ok {
 		return
 	}
 	var body map[string]json.RawMessage
@@ -209,10 +208,7 @@ func (h *WalletHandler) Tap(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := h.now()
-	at := now
-	if t, err := time.Parse(time.RFC3339, strings.TrimSpace(tapField(body, "at"))); err == nil && t.After(now.Add(-tapPast)) && t.Before(now.Add(tapFuture)) {
-		at = t
-	}
+	at := commandTime(body, now)
 
 	merchantText, amountText := tapField(body, "merchant"), tapField(body, "amount")
 	card, name, rawText := tapField(body, "card"), tapField(body, "name"), tapField(body, "raw")
@@ -277,11 +273,19 @@ func (h *WalletHandler) Tap(w http.ResponseWriter, r *http.Request) {
 		op.FxCurrency, op.FxAmount = &currency, &minor
 	}
 
+	h.save(w, r, userID, householdID, op, now)
+}
+
+// save writes a phone operation of a tap or a push: the daily limit shared by both (Р-13), then
+// one repository call that finds a repeat, the other half of the same purchase (a tap and a
+// push, Р-21) or of a transfer between own banks (Р-8) under the person's lock. A repeat or a
+// merge answers "duplicate".
+func (h *WalletHandler) save(w http.ResponseWriter, r *http.Request, userID, householdID string, op repository.PhoneOperation, now time.Time) {
 	nowAlmaty := now.In(almaty)
 	dayStart := time.Date(nowAlmaty.Year(), nowAlmaty.Month(), nowAlmaty.Day(), 0, 0, 0, 0, almaty)
 	n, err := h.ops.CountPhoneOperationsSince(r.Context(), userID, dayStart)
 	if err != nil {
-		log.Printf("wallet: tap count: %v", err)
+		log.Printf("wallet: %s count: %v", op.Source, err)
 		errorJSON(w, http.StatusInternalServerError, "failed to save")
 		return
 	}
@@ -291,22 +295,204 @@ func (h *WalletHandler) Tap(w http.ResponseWriter, r *http.Request) {
 	}
 	id := make([]byte, 8)
 	if _, err := rand.Read(id); err != nil {
-		log.Printf("wallet: tap id: %v", err)
+		log.Printf("wallet: %s id: %v", op.Source, err)
 		errorJSON(w, http.StatusInternalServerError, "failed to save")
 		return
 	}
 	op.ID = hex.EncodeToString(id)
-	saved, err := h.ops.InsertPhoneOperation(r.Context(), userID, householdID, op, tapRepeat)
+	done, err := h.ops.InsertPhoneOperation(r.Context(), userID, householdID, op, repository.PhoneWindows{Repeat: tapRepeat, Pair: phonePair})
 	if err != nil {
-		log.Printf("wallet: tap save: %v", err)
+		log.Printf("wallet: %s save: %v", op.Source, err)
 		errorJSON(w, http.StatusInternalServerError, "failed to save")
 		return
 	}
-	if !saved {
+	if done == repository.PhoneRepeat || done == repository.PhoneMerged {
 		tapResult(w, "duplicate", "")
 		return
 	}
 	tapResult(w, "saved", "")
+}
+
+// readPhoneBody reads a phone endpoint's body (≤ 4 KB); false — answered 400 / 413.
+func readPhoneBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxTapBody))
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			errorJSON(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return nil, false
+		}
+		errorJSON(w, http.StatusBadRequest, "invalid request body")
+		return nil, false
+	}
+	return raw, true
+}
+
+// commandTime is the command's optional "at" when sane (−48 h … +5 min), otherwise now.
+func commandTime(body map[string]json.RawMessage, now time.Time) time.Time {
+	if t, err := time.Parse(time.RFC3339, strings.TrimSpace(tapField(body, "at"))); err == nil && t.After(now.Add(-tapPast)) && t.Before(now.Add(tapFuture)) {
+		return t
+	}
+	return now
+}
+
+// pushFields reads the app, title and text of a push. The contract is {app, title, body} of
+// strings; a command may send the trigger's notification whole (an object in a field, or the
+// whole body as one string) — then every string in it, in its order, becomes the text and the
+// parser finds the bank and the kind there.
+func pushFields(raw []byte) (app, title, text string, ok bool) {
+	var whole string
+	if err := json.Unmarshal(raw, &whole); err == nil {
+		return "", "", whole, true
+	}
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &body); err != nil || body == nil {
+		return "", "", "", false
+	}
+	app, title, text = plainField(body, "app"), plainField(body, "title"), plainField(body, "body")
+	if strings.TrimSpace(text) != "" && plainOrAbsent(body, "app") && plainOrAbsent(body, "title") {
+		return app, title, text, true
+	}
+	// Not the plain contract: the strings of the whole body, "at" aside.
+	var leaves []string
+	collectStrings(raw, &leaves, 0)
+	return app, "", strings.Join(leaves, "\n"), true
+}
+
+// plainField: the field when it is a string, "" otherwise.
+func plainField(body map[string]json.RawMessage, key string) string {
+	var s string
+	if raw, ok := body[key]; ok && json.Unmarshal(raw, &s) == nil {
+		return s
+	}
+	return ""
+}
+
+func plainOrAbsent(body map[string]json.RawMessage, key string) bool {
+	raw, ok := body[key]
+	var s string
+	return !ok || string(raw) == "null" || json.Unmarshal(raw, &s) == nil
+}
+
+// collectStrings appends the strings of a JSON value in document order, the "at" field aside
+// (depth-limited: the body is ≤ 4 KB anyway).
+func collectStrings(raw []byte, out *[]string, depth int) {
+	if depth > 4 {
+		return
+	}
+	dec := json.NewDecoder(strings.NewReader(string(raw)))
+	tok, err := dec.Token()
+	if err != nil {
+		return
+	}
+	switch t := tok.(type) {
+	case string:
+		if strings.TrimSpace(t) != "" {
+			*out = append(*out, t)
+		}
+	case json.Delim:
+		switch t {
+		case '{':
+			for dec.More() {
+				keyTok, err := dec.Token()
+				if err != nil {
+					return
+				}
+				var v json.RawMessage
+				if err := dec.Decode(&v); err != nil {
+					return
+				}
+				if key, _ := keyTok.(string); key != "at" {
+					collectStrings(v, out, depth+1)
+				}
+			}
+		case '[':
+			for dec.More() {
+				var v json.RawMessage
+				if err := dec.Decode(&v); err != nil {
+					return
+				}
+				collectStrings(v, out, depth+1)
+			}
+		}
+	}
+}
+
+// pushStatBank: the push counter's bank — a push that named no bank counts as unknown.
+func pushStatBank(bank string) string {
+	if bank == "card" {
+		return "unknown"
+	}
+	return bank
+}
+
+// Push — POST /api/wallet/push (phone key): a bank push from the Shortcuts "Notification"
+// trigger (iOS 27; Р-8, Р-10, Р-21, Р-23). Body {app, title, body, at?} — strings; the
+// notification sent whole is read too. Every push counts in the day's counter of its bank
+// (read / not an operation / not read); an operation is written like a tap — the daily limit,
+// a repeat in 2 minutes, the tap of the same purchase or the other half of a transfer between
+// own banks in 10. The text is never logged or kept — only for an admin, the last push the
+// server could not read (Р-13а).
+func (h *WalletHandler) Push(w http.ResponseWriter, r *http.Request) {
+	householdID, userID, ok := member(w, r)
+	if !ok {
+		return
+	}
+	raw, ok := readPhoneBody(w, r)
+	if !ok {
+		return
+	}
+	app, title, text, ok := pushFields(raw)
+	if !ok {
+		errorJSON(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	var body map[string]json.RawMessage
+	_ = json.Unmarshal(raw, &body)
+	now := h.now()
+	at := commandTime(body, now)
+
+	p, result := applepay.ParsePush(app, title, text)
+	column := map[applepay.Result]string{
+		applepay.ResultOp: repository.PushParsed, applepay.ResultIgnore: repository.PushIgnored, applepay.ResultUnknown: repository.PushUnknown,
+	}[result]
+	if err := h.ops.CountPush(r.Context(), now.In(almaty).Format(time.DateOnly), pushStatBank(p.Bank), column); err != nil {
+		log.Printf("wallet: push count: %v", err) // the counter never stops the push
+	}
+
+	incoming := p.Sign > 0
+	reason := ""
+	switch {
+	case result == applepay.ResultUnknown:
+		reason = "format"
+	case p.Currency == applepay.Unsupported, result == applepay.ResultOp && incoming && p.Currency != "KZT":
+		reason = "currency" // a foreign income would need a rate the phone only applies to spending
+	case result != applepay.ResultOp:
+		reason = "format"
+	case p.Currency == "KZT" && p.Minor < 100:
+		reason = "amount"
+	}
+	if reason != "" {
+		if reason != "format" || result == applepay.ResultUnknown {
+			h.keepForAdmin(r, userID, raw)
+		}
+		tapResult(w, "skipped", reason)
+		return
+	}
+
+	op := repository.PhoneOperation{
+		Bank: p.Bank, Date: at.In(almaty).Format(time.DateOnly), Merchant: p.Merchant, Kind: p.Kind, Internal: p.Own,
+		Source: "push", OccurredAt: at,
+	}
+	switch {
+	case p.Currency != "KZT":
+		op.FxCurrency, op.FxAmount = &p.Currency, &p.Minor
+	case incoming:
+		op.Amount = p.Minor / 100
+	default:
+		op.Amount = -(p.Minor / 100)
+	}
+	h.save(w, r, userID, householdID, op, now)
 }
 
 // keepForAdmin stores the body the server had to search through or could not read the amount

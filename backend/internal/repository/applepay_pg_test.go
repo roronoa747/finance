@@ -288,13 +288,13 @@ func TestPostgresPhoneOperationsAndDebug(t *testing.T) {
 		{ID: "a1a1a1a1a1a1a1a1", Bank: "kaspi", Date: "2026-10-16", Amount: -5000, Merchant: "MAGNUM", Source: "tap", OccurredAt: now},
 		{ID: "b2b2b2b2b2b2b2b2", Bank: "card", Date: "2026-10-16", Amount: 0, Merchant: "Apple Store", Source: "tap", OccurredAt: now, FxCurrency: &usd, FxAmount: &cents},
 	} {
-		if saved, err := f.repo.InsertPhoneOperation(ctx, f.aliceID, f.householdID, op, 2*time.Minute); err != nil || !saved {
-			t.Fatalf("insert %s: %v %v", op.ID, saved, err)
+		if done, err := f.repo.InsertPhoneOperation(ctx, f.aliceID, f.householdID, op, repeatOnly); err != nil || done != PhoneSaved {
+			t.Fatalf("insert %s: %v %v", op.ID, done, err)
 		}
 	}
 	// The CHECKs of 000002 still hold: a merchant with a card number never reaches the table.
 	bad := PhoneOperation{ID: "c3c3c3c3c3c3c3c3", Bank: "kaspi", Date: "2026-10-16", Amount: -1, Merchant: "Card 1234567", Source: "tap", OccurredAt: now}
-	if _, err := f.repo.InsertPhoneOperation(ctx, f.aliceID, f.householdID, bad, 2*time.Minute); err == nil {
+	if _, err := f.repo.InsertPhoneOperation(ctx, f.aliceID, f.householdID, bad, repeatOnly); err == nil {
 		t.Fatal("a merchant with 7 digits was stored")
 	}
 
@@ -324,9 +324,9 @@ func TestPostgresPhoneOperationsAndDebug(t *testing.T) {
 			minor := c.amount
 			op.Amount, op.FxCurrency, op.FxAmount = 0, c.currency, &minor
 		}
-		saved, err := f.repo.InsertPhoneOperation(ctx, f.aliceID, f.householdID, op, 2*time.Minute)
-		if err != nil || saved != c.want {
-			t.Errorf("insert %d %+v: %v %v", i, c, saved, err)
+		done, err := f.repo.InsertPhoneOperation(ctx, f.aliceID, f.householdID, op, repeatOnly)
+		if err != nil || (done == PhoneSaved) != c.want {
+			t.Errorf("insert %d %+v: %v %v", i, c, done, err)
 		}
 		if _, err := f.db.ExecContext(ctx, `DELETE FROM app.operations WHERE user_id = $1 AND id = $2`, f.aliceID, op.ID); err != nil {
 			t.Fatal(err)
@@ -339,12 +339,12 @@ func TestPostgresPhoneOperationsAndDebug(t *testing.T) {
 	for i := range 2 {
 		go func() {
 			<-start
-			saved, err := f.repo.InsertPhoneOperation(ctx, f.bobID, f.householdID, PhoneOperation{ID: strings.Repeat(string(rune('0'+i)), 16),
-				Bank: "kaspi", Date: "2026-10-16", Amount: -777, Merchant: "Twice", Source: "tap", OccurredAt: now}, 2*time.Minute)
+			done, err := f.repo.InsertPhoneOperation(ctx, f.bobID, f.householdID, PhoneOperation{ID: strings.Repeat(string(rune('0'+i)), 16),
+				Bank: "kaspi", Date: "2026-10-16", Amount: -777, Merchant: "Twice", Source: "tap", OccurredAt: now}, repeatOnly)
 			if err != nil {
 				t.Errorf("concurrent insert: %v", err)
 			}
-			results <- saved
+			results <- done == PhoneSaved
 		}()
 	}
 	close(start)

@@ -44,8 +44,11 @@ type Config struct {
 	// Apple Pay shortcut links (бэклог «Apple Pay», Р-17): iOS 27 with the trigger inside
 	// (APPLEPAY_SHORTCUT_URL) and iOS 17–26 without it (APPLEPAY_SHORTCUT_URL_LEGACY). Optional:
 	// without a link that phone path has no Apple Pay card. Only iCloud shortcut links count.
+	// Блок 2: the bank pushes command (APPLEPAY_PUSH_SHORTCUT_URL, iOS 27) — without it the sheet
+	// has no bank pushes step.
 	ApplePayShortcutURL       string
 	ApplePayShortcutURLLegacy string
+	ApplePayPushShortcutURL   string
 }
 
 // shortcutPrefix is the only kind of link the phone may open for the Apple Pay command.
@@ -94,6 +97,7 @@ func Load() (*Config, error) {
 		AIMonthlyLimit:  positiveInt(getEnv("AI_MONTHLY_LIMIT", ""), DefaultAIMonthlyLimit),
 		ApplePayShortcutURL:       shortcutURL("APPLEPAY_SHORTCUT_URL"),
 		ApplePayShortcutURLLegacy: shortcutURL("APPLEPAY_SHORTCUT_URL_LEGACY"),
+		ApplePayPushShortcutURL:   shortcutURL("APPLEPAY_PUSH_SHORTCUT_URL"),
 	}
 	if cfg.IsProduction() {
 		if err := cfg.ValidateProduction(); err != nil {

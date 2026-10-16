@@ -139,7 +139,7 @@ func TestTapRepeatLimitAndRefusals(t *testing.T) {
 		_, _ = app.repos.Statements.InsertPhoneOperation(ctx, app.aliceID, app.familyID, repository.PhoneOperation{
 			ID: fmt.Sprintf("%016x", i+1), Bank: "kaspi", Date: "2026-10-16", Amount: -int64(i + 1), Merchant: "Loop",
 			Source: "tap", OccurredAt: clock.t,
-		}, tapRepeat)
+		}, repository.PhoneWindows{Repeat: tapRepeat})
 	}
 	if rec := app.tap(t, key, map[string]any{"merchant": "One more", "amount": "7 ₸"}); rec.Code != http.StatusTooManyRequests ||
 		strings.TrimSpace(rec.Body.String()) != `{"error":"limit"}` {

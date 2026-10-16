@@ -653,6 +653,7 @@ type MockStatementRepo struct {
 	uploads    []mockUpload
 	ops        map[string]map[string]*mockOperation // userID -> id -> operation
 	lastStamp  time.Time
+	pushStats  map[string]*PushStat // "day bank" -> counts
 }
 
 func NewMockStatementRepo(households *MockHouseholdRepo) *MockStatementRepo {
@@ -751,31 +752,115 @@ func (m *MockStatementRepo) ListOperations(ctx context.Context, userID string, s
 	return all[:end], nil
 }
 
-func (m *MockStatementRepo) InsertPhoneOperation(ctx context.Context, userID, householdID string, op PhoneOperation, repeat time.Duration) (bool, error) {
+// sameMoney: as moneyMatch in SQL — tenge by amount, a foreign currency by fx_*.
+func sameMoney(prev models.Operation, op PhoneOperation) bool {
+	if op.FxCurrency == nil {
+		return prev.FxCurrency == nil && prev.Amount == op.Amount
+	}
+	return op.FxAmount != nil && prev.FxCurrency != nil && prev.FxAmount != nil &&
+		*prev.FxCurrency == *op.FxCurrency && *prev.FxAmount == *op.FxAmount
+}
+
+// nearest: the operation of the person matching ok within `window` of the moment, nearest first.
+func (m *MockStatementRepo) nearest(userID string, at time.Time, window time.Duration, ok func(models.Operation) bool) *mockOperation {
+	var best *mockOperation
+	var bestGap time.Duration
+	for _, o := range m.ops[userID] {
+		prev := o.op
+		if prev.OccurredAt == nil || prev.OccurredAt.Before(at.Add(-window)) || prev.OccurredAt.After(at.Add(window)) || !ok(prev) {
+			continue
+		}
+		gap := prev.OccurredAt.Sub(at)
+		if gap < 0 {
+			gap = -gap
+		}
+		if best == nil || gap < bestGap || gap == bestGap && prev.ID < best.op.ID {
+			best, bestGap = o, gap
+		}
+	}
+	return best
+}
+
+func (m *MockStatementRepo) InsertPhoneOperation(ctx context.Context, userID, householdID string, op PhoneOperation, w PhoneWindows) (PhoneInsert, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.ops[userID] == nil {
 		m.ops[userID] = make(map[string]*mockOperation)
 	}
-	// As in SQL: the same source and money within `repeat` of the moment is a repeat.
-	for _, o := range m.ops[userID] {
-		prev := o.op
-		if prev.Source != op.Source || prev.OccurredAt == nil || prev.OccurredAt.Before(op.OccurredAt.Add(-repeat)) || prev.OccurredAt.After(op.OccurredAt.Add(repeat)) {
-			continue
+	kind := phoneKind(op)
+	// As in SQL: (1) the same source and money within Repeat is a repeat.
+	if m.nearest(userID, op.OccurredAt, w.Repeat, func(prev models.Operation) bool {
+		return prev.Source == op.Source && sameMoney(prev, op) && (op.Source == "tap" || prev.Bank == op.Bank && prev.Kind == kind)
+	}) != nil {
+		return PhoneRepeat, nil
+	}
+	// (2) A tap and a push of one purchase.
+	if kind == "purchase" && w.Pair > 0 {
+		if o := m.nearest(userID, op.OccurredAt, w.Pair, func(prev models.Operation) bool {
+			return prev.Source == otherSource(op.Source) && prev.Kind == "purchase" && !prev.Deleted && sameMoney(prev, op)
+		}); o != nil {
+			bank, merchant := mergedFields(op, o.op.Bank, o.op.Merchant)
+			if merchant != o.op.Merchant {
+				o.op.CategoryID = nil
+			}
+			o.op.Bank, o.op.Merchant, o.op.UpdatedAt = bank, merchant, m.stamp()
+			return PhoneMerged, nil
 		}
-		tenge := op.FxCurrency == nil && prev.FxCurrency == nil && prev.Amount == op.Amount
-		foreign := op.FxCurrency != nil && op.FxAmount != nil && prev.FxCurrency != nil && prev.FxAmount != nil &&
-			*prev.FxCurrency == *op.FxCurrency && *prev.FxAmount == *op.FxAmount
-		if tenge || foreign {
-			return false, nil
+	}
+	// (3) A transfer between own banks.
+	internal, result := op.Internal, PhoneSaved
+	stamp := m.stamp()
+	if opposite := oppositeTransfer(op); opposite != "" && w.Pair > 0 {
+		if o := m.nearest(userID, op.OccurredAt, w.Pair, func(prev models.Operation) bool {
+			return prev.Source != "statement" && prev.Kind == opposite && !prev.Internal && !prev.Deleted &&
+				prev.Bank != op.Bank && prev.FxCurrency == nil && prev.Amount == -op.Amount
+		}); o != nil {
+			o.op.Internal, o.op.CategoryID, o.op.UpdatedAt = true, nil, stamp
+			internal, result = true, PhonePaired
 		}
 	}
 	at := op.OccurredAt
 	m.ops[userID][op.ID] = &mockOperation{householdID: householdID, op: models.Operation{
-		ID: op.ID, Bank: op.Bank, Date: op.Date, Amount: op.Amount, Kind: "purchase", Merchant: op.Merchant,
-		UpdatedAt: m.stamp(), Source: op.Source, OccurredAt: &at, FxCurrency: op.FxCurrency, FxAmount: op.FxAmount,
+		ID: op.ID, Bank: op.Bank, Date: op.Date, Amount: op.Amount, Kind: kind, Merchant: op.Merchant, Internal: internal,
+		UpdatedAt: stamp, Source: op.Source, OccurredAt: &at, FxCurrency: op.FxCurrency, FxAmount: op.FxAmount,
 	}}
-	return true, nil
+	return result, nil
+}
+
+// PushStat is one row of the mock push counter.
+type PushStat struct{ Parsed, Ignored, Unknown int }
+
+func (m *MockStatementRepo) CountPush(ctx context.Context, day, bank, column string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.pushStats == nil {
+		m.pushStats = map[string]*PushStat{}
+	}
+	key := day + " " + bank
+	s := m.pushStats[key]
+	if s == nil {
+		s = &PushStat{}
+		m.pushStats[key] = s
+	}
+	switch column {
+	case PushParsed:
+		s.Parsed++
+	case PushIgnored:
+		s.Ignored++
+	case PushUnknown:
+		s.Unknown++
+	}
+	return nil
+}
+
+// PushStats returns the counter of a day and bank (tests).
+func (m *MockStatementRepo) PushStats(day, bank string) PushStat {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s := m.pushStats[day+" "+bank]; s != nil {
+		return *s
+	}
+	return PushStat{}
 }
 
 func (m *MockStatementRepo) CountPhoneOperationsSince(ctx context.Context, userID string, since time.Time) (int, error) {

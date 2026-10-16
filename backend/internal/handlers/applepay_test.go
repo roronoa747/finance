@@ -19,6 +19,7 @@ import (
 const (
 	testShortcut       = "https://www.icloud.com/shortcuts/stub-ios27"
 	testShortcutLegacy = "https://www.icloud.com/shortcuts/stub-legacy"
+	testPushShortcut   = "https://www.icloud.com/shortcuts/stub-push"
 )
 
 type walletApp struct {
@@ -42,7 +43,7 @@ func setupWalletApp(t *testing.T) walletApp {
 	repos.Households.SetDocRepo(repos.Docs)
 	keys := repository.NewMockPhoneKeyRepo()
 	tokens := auth.NewTokenService("wallet-test-signing-key", 2*time.Hour)
-	h := NewWalletHandler(keys, repos.Households, repos.Statements, repos.Users, []string{"admin@wallet.test"}, testShortcut, testShortcutLegacy)
+	h := NewWalletHandler(keys, repos.Households, repos.Statements, repos.Users, []string{"admin@wallet.test"}, testShortcut, testShortcutLegacy, testPushShortcut)
 
 	ctx := t.Context()
 	a, _ := repos.Users.Create(ctx, "alice@wallet.test", "h")
@@ -59,6 +60,7 @@ func setupWalletApp(t *testing.T) walletApp {
 	r.Route("/api", func(api chi.Router) {
 		// A phone endpoint stand-in: who the key resolved to.
 		api.With(h.KeyAuth).Post("/wallet/tap", h.Tap)
+		api.With(h.KeyAuth).Post("/wallet/push", h.Push)
 		api.With(h.KeyAuth).Get("/wallet/whoami", func(w http.ResponseWriter, r *http.Request) {
 			householdID, userID, ok := member(w, r)
 			if ok {
@@ -139,7 +141,7 @@ func TestWalletConnectStatusDisconnect(t *testing.T) {
 	tick := time.Date(2026, 10, 16, 0, 0, 0, 0, time.UTC)
 	app.keys.Now = func() time.Time { tick = tick.Add(time.Second); return tick }
 
-	if s := app.status(t); s.Connected || s.Phones != 0 || s.ShortcutURL != testShortcut || s.ShortcutURLLegacy != testShortcutLegacy || s.LastUsedAt != nil {
+	if s := app.status(t); s.Connected || s.Phones != 0 || s.ShortcutURL != testShortcut || s.ShortcutURLLegacy != testShortcutLegacy || s.PushShortcutURL != testPushShortcut || s.LastUsedAt != nil {
 		t.Fatalf("fresh status: %+v", s)
 	}
 
@@ -210,8 +212,8 @@ func TestWalletViewerAndLinks(t *testing.T) {
 		}
 	}
 	// No links configured: the status says so (the app hides the card).
-	app.handler.shortcutURL, app.handler.shortcutURLLegacy = "", ""
-	if s := app.status(t); s.ShortcutURL != "" || s.ShortcutURLLegacy != "" {
+	app.handler.shortcutURL, app.handler.shortcutURLLegacy, app.handler.pushShortcutURL = "", "", ""
+	if s := app.status(t); s.ShortcutURL != "" || s.ShortcutURLLegacy != "" || s.PushShortcutURL != "" {
 		t.Fatalf("links without config: %+v", s)
 	}
 }

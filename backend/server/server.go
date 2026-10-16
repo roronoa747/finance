@@ -171,7 +171,7 @@ func NewRouter(
 	eventsHandler := handlers.NewEventsHandler(repos.Events, repos.Metrics, repos.Users, cfg.AdminEmails)
 	adminAIHandler := handlers.NewAdminAIHandler(repos.AI, repos.Users, cfg.AdminEmails, aiClient, cfg.AIModelSellers, cfg.AIMonthlyLimit)
 	walletHandler := handlers.NewWalletHandler(repos.PhoneKeys, repos.Households, repos.Statements, repos.Users, cfg.AdminEmails,
-		cfg.ApplePayShortcutURL, cfg.ApplePayShortcutURLLegacy)
+		cfg.ApplePayShortcutURL, cfg.ApplePayShortcutURLLegacy, cfg.ApplePayPushShortcutURL)
 
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", handlers.HealthHandler(database))
@@ -193,6 +193,8 @@ func NewRouter(
 
 		// Касание Apple Pay (бэклог «Apple Pay», Р-13): вне JWT — личный ключ телефона, роль и семья из базы.
 		api.With(walletHandler.KeyAuth).Post("/wallet/tap", walletHandler.Tap)
+		// Пуши банков (Блок 2, Р-10): тот же ключ телефона.
+		api.With(walletHandler.KeyAuth).Post("/wallet/push", walletHandler.Push)
 
 		// Protected endpoints: the household, role and slot come from the database (B2C-22).
 		api.Group(func(protected chi.Router) {
