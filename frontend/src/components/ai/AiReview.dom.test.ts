@@ -145,6 +145,12 @@ describe('AI-09: разбор месяца у остатка', () => {
     expect(useFinanceStore().aiReviewOf(KEY)!.good).toBe('Остаётся 95 000 ₸ и 499641 ₸ к июню 2028 под 19 %.')
   })
 
+  it('«тенге» словом не отрывается от числа (живой короткий ответ: «627 000 / тенге», `/ux`)', async () => {
+    await open({ doc: planFamilyDoc({ aiReviews: [saved({ risk: 'Остаётся 627 000 тенге.' })] }) })
+    await press(q('[data-review-open]'))
+    expect(q('[data-review-risk]')!.textContent).toBe('Остаётся 627 000 тенге.')
+  })
+
   it('нет разбора: согласие → запрос сводкой без имён → разбор в общем документе → лист', async () => {
     const spy = vi.spyOn(apiClient, 'aiReview').mockResolvedValue(answer)
     const finance = await open()
