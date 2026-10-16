@@ -4256,8 +4256,13 @@ export const SHIFT_REASON_TEXT: Record<DreamShiftReason, (name?: string) => stri
   income: () => 'доход больше',
 }
 
-/** Время метки: недели (`round(days / 7)`), от 9 недель — месяцы (`round(days / 30,4)`). */
-function shiftSpan(days: number): string {
+/**
+ * Время метки (Р-18): недели (`round(days / 7)`), от 9 недель — месяцы (`round(days / 30,4)`). Одна шкала для метки,
+ * листа «Сделать» и его тоста — чтобы «+2 недели» у мечты и «на … раньше» в листе не расходились.
+ */
+export function shiftSpan(days: number): string {
+  // Меньше недели бывает только у листа «Сделать» (метка — от 7 дней): дни, а не «0 недель».
+  if (days < SHIFT_MIN_DAYS) return `${days} ${plural(days, 'день', 'дня', 'дней')}`
   const w = Math.round(days / 7)
   if (w < 9) return `${w} ${plural(w, 'неделю', 'недели', 'недель')}`
   const m = Math.round(days / 30.4)

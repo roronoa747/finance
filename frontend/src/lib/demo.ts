@@ -5,7 +5,7 @@ import { useOperationsStore } from '@/stores/operations'
 import { useFxStore } from '@/stores/fx'
 import { seedSpendCategories } from '@/lib/statements/model'
 import { addMonths, monthKey, weekKey, weekRange } from '@/lib/dates'
-import { monthPlan, planSave } from '@/lib/finance'
+import { monthPlan, planSave, termSnapOf } from '@/lib/finance'
 import { templateById, templateCredit } from '@/lib/goalTemplates'
 import { DEMO_PHOTO } from '@/lib/photos/store'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
@@ -171,6 +171,18 @@ export function startDemo(): boolean {
         payment: 95_000,
         day: 18,
         payer: 'a',
+        updatedAt: new Date().toISOString(),
+      },
+      // Второй долг с процентами (AU-08, Р-7): на «Долгах» — строка «первым — Автокредит: ставка 19 % — самая высокая».
+      {
+        id: 'cr-repair',
+        name: 'Кредит на ремонт',
+        note: 'Halyk',
+        principal: 400_000,
+        annualRate: 0.14,
+        payment: 25_000,
+        day: 8,
+        payer: 'b',
         updatedAt: new Date().toISOString(),
       },
       // Долг человеку (мелочи Р-5): без процентов, «Отдал» в строке «Долгов»; план «Сначала долги» его не досрочит.
@@ -396,6 +408,17 @@ export function startDemo(): boolean {
   // часть уже обменяли (B2C-79): 500 € по 512 ₸ на Kaspi Gold — строка «обменяно 500 € из 1 500 €».
   financeStore.markSalary('a', { accountId: 'acc-eur' })
   financeStore.addExchange({ by: 'a', accountId: 'acc-eur', toAccountId: 'acc-kaspi', foreign: 500, rate: 512, period: monthKey() })
+  // Снимок срока месяца (AU-08, Р-6): «на начало месяца» герою «Поездка» план давал на 40 000 больше, чем сейчас — у героя
+  // «Мечт» метка «+2 недели · кафе и рестораны выше плана» (40 000 при 100 000 в месяц — 12 дней), на экране цели —
+  // «Вернуть срок». Остальное в снимке — нынешний план (доход и платежи прежние — причина не «новый платёж»).
+  {
+    const at = `${monthKey()}-01T03:00:00.000Z`
+    const snap = termSnapOf(monthPlan({ ...financeStore.householdDoc, credits: financeStore.credits, book: useFxStore().book }, { key: monthKey(), totals: [], spendCategories: [], uploads: [] }), at)
+    snap.goals = snap.goals.map((g) => (g.goalId === 'g-trip' ? { ...g, given: g.given + 40_000 } : g))
+    financeStore.mutateHouseholdDoc((doc) => {
+      doc.termSnaps = [{ ...snap, updatedAt: at }]
+    })
+  }
   // Записи загрузок и свои операции демо — когда стор операций уже переключился на демо-семью (watch по владельцу).
   void nextTick().then(() => {
     // Девятнадцать недель своих операций (0…131 день назад, Блок 15, AU-03): у «Недели» есть сравнение с прошлой и тренд

@@ -227,7 +227,7 @@ describe('AI-07: демо-семья', () => {
     expect(s.month).toBe(KEY)
     expect(s.income.byPerson.map((x) => x.who)).toEqual(['участник 1', 'участник 2'])
     expect(s.rest).toBe(finance.monthPlanOf(KEY).rest)
-    expect(s.debts.items.map((x) => x.name)).toEqual(['Автокредит', 'Брату'])
+    expect(s.debts.items.map((x) => x.name)).toEqual(['Автокредит', 'Кредит на ремонт', 'Брату']) // AU-08: второй долг с процентами в демо
     expect(s.goals.map((x) => x.name)).toContain('Поездка в Японию')
     expect(JSON.stringify(s)).not.toContain('Кофемашина')
   })

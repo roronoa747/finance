@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dreamShift, monthPlan, shiftLabel, termSnapOf, type MonthPlanCtx, type UploadPeriod } from './finance'
+import { dreamShift, monthPlan, shiftLabel, shiftSpan, termSnapOf, type MonthPlanCtx, type UploadPeriod } from './finance'
 import type { SpendTotal } from './statements/types'
 import { planFamilyDoc, T0 } from '@/test/planFamily'
 import type { PersonId, SpendPlan, SyncDoc, TermSnap } from '@/types/finance'
@@ -111,5 +111,13 @@ describe('dreamShift — сдвиг мечты к снимку', () => {
     expect(dreamShift(doc, factCtx(77_000), snap, 'car')).toEqual({ days: 15, reason: 'less' })
     expect(shiftLabel({ days: 70, reason: 'less' })).toBe('+2 месяца · в мечту меньше')
     expect(shiftLabel({ days: 8, reason: 'spend', name: 'Кафе' })).toBe('+1 неделя · кафе выше плана')
+  })
+})
+
+describe('shiftSpan — одна шкала метки и листа «Сделать»', () => {
+  it('дни до недели, недели до 8, дальше месяцы', () => {
+    expect(shiftSpan(3)).toBe('3 дня')
+    expect(shiftSpan(12)).toBe('2 недели')
+    expect(shiftSpan(60)).toBe('2 месяца') // 60 / 7 = 8,6 → 9 недель → месяцы: 60 / 30,4 = 2
   })
 })
