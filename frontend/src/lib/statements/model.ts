@@ -1,4 +1,4 @@
-import { weekKey } from '@/lib/dates'
+import { addDaysIso, todayIso, weekKey } from '@/lib/dates'
 import type { Person, PersonId, SyncDoc } from '@/types/finance'
 import { DEFAULT_SPEND_CATEGORIES, DICTIONARY, KIND_CATEGORY, UNKNOWN_CATEGORY, plannedElsewhere } from './dictionary'
 import type { MerchantRule, Operation, PaymentRule, SpendCategory, SpendTotal } from './types'
@@ -390,5 +390,34 @@ function entrepreneurName(name: string): boolean {
     .split(' ')
     .filter((w) => w.length > 1)
   return words.length <= 2 || (words.length === 3 && LATIN_PATRONYMIC.test(words[2]))
+}
+
+/** Привычка «часто и по мелочи» (AI-19): окно, сколько покупок и какой средний чек — пороги замера AI-18. */
+export const HABIT_DAYS = 90
+export const HABIT_MIN_COUNT = 4
+export const HABIT_MAX_AVG = 5_000
+
+/**
+ * «ИП + фамилия» по привычке (AI-19, решение владельца после замера AI-18: 9 из 9 верно): ИИ их не спрашивают, а
+ * частый ИП с мелким чеком — магазин у дома. Своих покупок за 90 дней (окно замера, шире пачки) ≥ 4 и средний чек
+ * ≤ 5 000 ₸ → «Продукты»; остальные — без подсказки. Средний — без деления: сумма ≤ 5 000 × покупок. Ключ — `merchant`.
+ */
+export function habitHints(groups: UnknownGroup[], ops: Operation[], today = todayIso()): Map<string, string> {
+  const ips = new Set(groups.filter((g) => g.match.merchant && entrepreneurName(g.label)).map((g) => g.match.merchant!))
+  const out = new Map<string, string>()
+  if (!ips.size) return out
+  const from = addDaysIso(today, -HABIT_DAYS)
+  const habit = new Map<string, { count: number; amount: number }>()
+  for (const op of ops) {
+    if (op.amount >= 0 || op.internal || op.counterparty || op.date < from || op.date > today) continue
+    const m = normalizeMerchant(op.merchant)
+    if (!ips.has(m)) continue
+    const h = habit.get(m) ?? { count: 0, amount: 0 }
+    h.count += 1
+    h.amount += -op.amount
+    habit.set(m, h)
+  }
+  for (const [m, h] of habit) if (h.count >= HABIT_MIN_COUNT && h.amount <= HABIT_MAX_AVG * h.count) out.set(m, 'sc_food')
+  return out
 }
 

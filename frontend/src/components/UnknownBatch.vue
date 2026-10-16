@@ -11,7 +11,8 @@ import { spendColor } from '@/lib/palette'
 import { plural } from '@/lib/utils'
 import { aiLimitText, useAiStore } from '@/stores/ai'
 import { useFinanceStore } from '@/stores/finance'
-import type { UnknownGroup } from '@/lib/statements/model'
+import { useOperationsStore } from '@/stores/operations'
+import { habitHints, type UnknownGroup } from '@/lib/statements/model'
 import type { MerchantRule } from '@/lib/statements/types'
 
 /**
@@ -25,6 +26,8 @@ import type { MerchantRule } from '@/lib/statements/types'
  * ничего не применяется; «Принять все» нет. В шапке — «ИИ предлагает · N» строкой, ошибки — тихо, той же строкой.
  * Продавцы с предложением — первыми (AI-17, владелец после `/ux` Блока 3): иначе на настоящих выписках они уходили в
  * «Ещё» под переводы людям и «ИП + фамилия», которых ИИ не спрашивает. Меняется только вид — очередь «Недели» прежняя.
+ * «ИП + фамилия» с привычкой «часто и по мелочи» — подсказка «Продукты» правилом кодом (`habitHints`, AI-19), тем же
+ * чипом и ✓.
  */
 const SHOWN = 6
 
@@ -79,13 +82,16 @@ function choose(to: MerchantRule['to']) {
 
 const ai = useAiStore()
 const finance = useFinanceStore()
+const operations = useOperationsStore()
 onMounted(() => void ai.suggestSellers(props.groups))
 const categories = computed(() => liveSpendCategories(finance.householdDoc.spendCategories))
+// «ИП + фамилия» по привычке (AI-19) — правило кодом, в сеть ничего; показ — как у подсказок ИИ (ИИ и согласие).
+const habit = computed(() => (ai.available && ai.consent === 'on' ? habitHints(props.groups, operations.all) : new Map<string, string>()))
 /** Предложенный раздел продавца — если он ещё есть у семьи; переводы людям ИИ не спрашиваются. */
 const hints = computed(() => {
   const out = new Map<string, (typeof categories.value)[number]>()
   for (const g of props.groups) {
-    const id = ai.sellerHint(g.match)
+    const id = ai.sellerHint(g.match) ?? habit.value.get(g.match.merchant ?? '') ?? null
     const c = id ? categories.value.find((x) => x.id === id) : undefined
     if (c) out.set(keyOf(g), c)
   }

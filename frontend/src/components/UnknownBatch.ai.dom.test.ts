@@ -357,3 +357,51 @@ describe('AI-17: продавцы с подсказкой ИИ — первым�
     expect(order().slice(6)).toEqual(['Kemel Atelier', 'Айгерим С.', 'ИП Каримова', 'Болат Н.', 'ИП Жумабаев', 'Arman Style'])
   })
 })
+
+describe('AI-19: «ИП + фамилия» по привычке — «Продукты» правилом кодом (владелец после замера AI-18)', () => {
+  // ИП Абенова — 4 покупки за 90 дней (одна — в июле, вне окна пачки), средний чек 3 375 ₸.
+  const HABIT = [...OPS, op('2026-07-10', 1_500, 'ИП Абенова'), op('2026-08-15', 3_000, 'ИП Абенова'), op('2026-09-10', 4_000, 'ИП Абенова')]
+
+  it('частый ИП с мелким чеком — чип «Продукты» и ✓ сверху; ✓ пишет правило sc_food; в запрос ИИ не уходит', async () => {
+    const spy = vi.spyOn(apiClient, 'aiSellers').mockResolvedValue(ANSWER)
+    const { ai, finance } = await openWeek({ ops: HABIT })
+    ai.setConsent(true)
+    await openBatch()
+    await vi.waitFor(() => expect(spy).toHaveBeenCalledTimes(1))
+    await flush()
+    expect(spy.mock.calls[0][0]).toEqual(['Respect Boutique', 'Tau Lider'])
+    expect(txt(q('[data-ai-sellers]'))).toBe('ИИ предлагает · 2')
+    expect(order()).toEqual(['Respect Boutique', 'ИП Абенова', 'Дана К.', 'Tau Lider'])
+    const ip = rowOf('ИП Абенова')!
+    expect(txt(ip.querySelector('[data-ai-hint]'))).toBe('Продукты')
+    await press(ip.querySelector<HTMLElement>('[data-ai-accept]'))
+    expect(ruleOf(finance, 'абенова')!.to).toEqual({ categoryId: 'sc_food' })
+    await vi.waitFor(() => expect(rowOf('ИП Абенова')).toBeNull())
+  })
+
+  it('три покупки — без подсказки; без ИИ и при «Не надо» — тоже', async () => {
+    vi.spyOn(apiClient, 'aiSellers').mockResolvedValue(ANSWER)
+    const few = await openWeek({ ops: HABIT.filter((o) => o.date !== '2026-07-10') })
+    few.ai.setConsent(true)
+    await openBatch()
+    await vi.waitFor(() => expect(q('[data-ai-sellers]')).toBeTruthy())
+    await flush()
+    expect(rowOf('ИП Абенова')!.querySelector('[data-ai-hint], [data-ai-accept]')).toBeNull()
+    app!.unmount()
+    document.body.innerHTML = ''
+    localStorage.clear()
+
+    await openWeek({ ai: false, ops: HABIT })
+    await openBatch()
+    expect(q('[data-ai-hint]')).toBeNull()
+    app!.unmount()
+    document.body.innerHTML = ''
+    localStorage.clear()
+
+    const off = await openWeek({ ops: HABIT })
+    off.ai.setConsent(false)
+    await openBatch()
+    expect(q('[data-ai-hint]')).toBeNull()
+    expect(q('[data-ai-sellers]')).toBeNull()
+  })
+})
