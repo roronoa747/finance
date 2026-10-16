@@ -1194,3 +1194,32 @@ describe('merge.ts — разборы месяца ИИ (aiReviews)', () => {
     expect(defaultSyncDoc().aiReviews).toEqual([])
   })
 })
+
+// AU-04 (бэклог «ИИ-польза», Р-6): снимки срока мечт — по месяцу, ранний снимок побеждает.
+describe('merge.ts — снимки срока мечт (termSnaps)', () => {
+  const snap = (id: string, at: string, given: number, extra: Record<string, unknown> = {}) => ({
+    id, at, income: 1_000_000, dueIds: ['rent'], goals: [{ goalId: 'car', given, doneMonth: '2027-05' }], updatedAt: at, ...extra,
+  })
+
+  it('два телефона записали один месяц — побеждает ранний at в обе стороны', () => {
+    const early = { ...createEmptyDoc(), termSnaps: [snap('2026-10', '2026-10-01T03:00:00.000Z', 60_000)] }
+    const late = { ...createEmptyDoc(), termSnaps: [snap('2026-10', '2026-10-01T09:00:00.000Z', 30_000)] }
+    for (const merged of [mergeDocs(early, late), mergeDocs(late, early)]) {
+      expect(merged.termSnaps).toHaveLength(1)
+      expect(merged.termSnaps![0]).toMatchObject({ at: '2026-10-01T03:00:00.000Z', goals: [{ given: 60_000 }] })
+    }
+  })
+
+  it('разные месяцы — оба; надгробие старшего сильнее; старый клиент без ключа не теряет', () => {
+    const one = { ...createEmptyDoc(), termSnaps: [snap('2026-09', '2026-09-01T03:00:00.000Z', 1), snap('2026-10', '2026-10-01T03:00:00.000Z', 2)] }
+    const two = {
+      ...createEmptyDoc(),
+      termSnaps: [{ ...snap('2026-09', '2026-09-01T03:00:00.000Z', 0), goals: [], deletedAt: '2026-12-01T03:00:00.000Z', updatedAt: '2026-12-01T03:00:00.000Z' }],
+    }
+    const merged = mergeDocs(one, two).termSnaps ?? []
+    expect(merged.map((s) => s.id).sort()).toEqual(['2026-09', '2026-10'])
+    expect(merged.find((s) => s.id === '2026-09')?.deletedAt).toBe('2026-12-01T03:00:00.000Z')
+    expect(mergeDocs(createEmptyDoc(), one).termSnaps).toHaveLength(2)
+    expect(defaultSyncDoc().termSnaps).toEqual([])
+  })
+})

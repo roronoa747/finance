@@ -87,13 +87,24 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
     () => rates(),
   )
 
+  /**
+   * Снимок срока мечт месяца (AU-04) — только после того, как документ пришёл с сервера (иначе телефон без сети
+   * записал бы свой снимок поверх раннего снимка партнёра); тот же круг ловит и смену месяца. Стор сам проверяет
+   * viewer и «уже есть».
+   */
+  const afterPull = (pulled: boolean) => {
+    // Обход фото ждёт 'idle' — до записи снимка (она ставит 'dirty' до отправки).
+    linkPhotos()
+    if (pulled) finance.ensureTermSnap()
+  }
+
   const sync = () => {
     if (!signedIn()) return
     rates()
     // Только 'idle' значит «локально всё уже на сервере». Правка без сети оставляет
     // 'offline', сбой — 'error': их нужно слить и отправить, а не затереть серверной копией.
-    if (finance.status === 'idle') void finance.pullHousehold().then(linkPhotos)
-    else void finance.syncHousehold().then(linkPhotos)
+    if (finance.status === 'idle') void finance.pullHousehold().then((doc) => afterPull(!!doc))
+    else void finance.syncHousehold().then(() => afterPull(finance.status === 'idle'))
     syncPrivate()
     // Открытие приложения (B2C-28): раз в день; тем же кругом — неотправленные события.
     useEventsStore().track('app_open')
@@ -116,7 +127,11 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
   }, BACKGROUND_SYNC_MS)
 
   // Демо, начатое до RP-05: документ помечается демо и больше не ходит на сервер.
-  if (auth.isDemo) finance.claimFor(DEMO_HOUSEHOLD)
+  if (auth.isDemo) {
+    finance.claimFor(DEMO_HOUSEHOLD)
+    // Демо — без сервера: снимок срока пишется локально сразу (AU-04).
+    finance.ensureTermSnap()
+  }
 
   if (signedIn()) {
     // Документ, записанный до RP-04, получает хозяина — семью, в которой вошли.

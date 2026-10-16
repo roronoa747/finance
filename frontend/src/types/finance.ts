@@ -44,6 +44,19 @@ export type AiReview = Tracked & {
   sent: MonthSummaryAI | null
 }
 
+/**
+ * Снимок плана месяца для метки «мечта сдвинулась» (бэклог «ИИ-польза», Р-6, AU-04): первый участник, открывший месяц,
+ * пишет, сколько план даёт каждой цели и фонду (`given`) и к какому месяцу их соберём; доход и платежи — для причины.
+ * `id` — месяц `YYYY-MM`; при двух снимках месяца побеждает ранний `at`.
+ */
+export type TermSnap = Tracked & {
+  id: string
+  at: string
+  income: number
+  dueIds: string[]
+  goals: { goalId: string; given: number; doneMonth: string | null }[]
+}
+
 export type Person = Tracked & {
   id: PersonId
   name: string
@@ -636,6 +649,8 @@ export type SyncDoc = {
   debtCard?: DebtCard | null
   /** Разборы месяца ИИ (бэклог «ИИ», AI-09): не больше 12 живых, старые — надгробия. До Блока 2 «ИИ» — без ключа. */
   aiReviews?: AiReview[]
+  /** Снимки срока мечт на начало месяца (бэклог «ИИ-польза», Р-6, AU-04): не больше 3 живых. До Блока 2 — без ключа. */
+  termSnaps?: TermSnap[]
   /**
    * Когда закончили первичную настройку бюджета. Пустое значит, что показываем
    * первый запуск (`/start`). Живёт в общем документе, а не в настройках устройства: второй

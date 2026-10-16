@@ -1,4 +1,4 @@
-import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard, TripSpend } from '@/types/finance'
+import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard, TripSpend, TermSnap } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
 import { isSpend, normalizeCounterparty, normalizeMerchant } from '@/lib/statements/model'
@@ -3228,6 +3228,11 @@ export type MonthPlanCtx = {
    * свободен. Без поля платежи считаются вечными — даты плана осторожные.
    */
   ends?: { amount: number; after: number }[]
+  /**
+   * Траты по факту (Р-18, AU-04 — только для метки «мечта сдвинулась»): траты участника = max(план, факт), факта нет —
+   * план. Порог фонда считается от плана, как без флага. Без флага — план (экраны).
+   */
+  byFact?: boolean
 }
 
 export type PlanIncome = {
@@ -3416,10 +3421,12 @@ export function monthPlan(state: MonthPlanState, ctx: MonthPlanCtx): MonthPlan {
       return { by: p.id, plan: rows.reduce((s, r) => s + r.plan, 0), fact, rows }
     })
     .filter((s) => s.rows.length > 0 || (s.fact ?? 0) > 0)
-  const spendTotal = spend.reduce((s, x) => s + x.plan, 0)
+  const spendPlanned = spend.reduce((s, x) => s + x.plan, 0)
+  const spendTotal = ctx.byFact ? spend.reduce((s, x) => s + Math.max(x.plan, x.fact ?? x.plan), 0) : spendPlanned
 
   const free = incomeTotal - duesTotal - spendTotal
-  const monthSpend = duesTotal + spendTotal
+  // Порог фонда — от плана и при `byFact`: метка меряет деньги месяца, а не новый порог.
+  const monthSpend = duesTotal + spendPlanned
 
   // Очередь.
   const plan = activePlan(state.plans ?? [])
@@ -3493,7 +3500,7 @@ export function monthPlan(state: MonthPlanState, ctx: MonthPlanCtx): MonthPlan {
     duesTotal,
     spend,
     spendTotal,
-    outTotal: monthSpend,
+    outTotal: duesTotal + spendTotal,
     free,
     queue,
     queueTotal,
@@ -4089,6 +4096,110 @@ export function earlierLabel(days: number): string {
   }
   const m = Math.round(days / 30.4)
   return `${m} ${plural(m, 'месяц', 'месяца', 'месяцев')}`
+}
+
+/* ---------------- мечта сдвинулась (Р-6, Р-18, AU-04) ---------------- */
+
+/** Снимок плана месяца (`TermSnap` без `Tracked`): цели и фонды очереди (не карточка долга) — `given` и `doneMonth`. */
+export function termSnapOf(plan: MonthPlan, at: string): Omit<TermSnap, 'updatedAt' | 'deletedAt'> {
+  return {
+    id: plan.key,
+    at,
+    income: plan.income.total,
+    dueIds: [...new Set(plan.dues.map((d) => d.targetId))],
+    goals: plan.queue.filter((q) => q.kind !== 'debt' && q.goalId).map((q) => ({ goalId: q.goalId!, given: q.given, doneMonth: q.doneMonth })),
+  }
+}
+
+/** Метка — от недели (Р-18): меньше — не шумим. */
+export const SHIFT_MIN_DAYS = 7
+
+/**
+ * Причина сдвига (Р-6) — самый крупный вклад в деньгах. Дальше: `spend` — раздел выше плана, `due` — новый платёж,
+ * `less` — прочее (доход меньше, взнос меньше). Ближе: `put` — отложили больше, `freed` — платёж ушёл, `income` — доход
+ * больше.
+ */
+export type DreamShiftReason = 'spend' | 'due' | 'less' | 'put' | 'freed' | 'income'
+
+/** Сдвиг срока мечты к снимку: `days` > 0 — дальше, < 0 — ближе; `name` — раздел или платёж причины. */
+export type DreamShift = { days: number; reason: DreamShiftReason; name?: string }
+
+/**
+ * «Мечта сдвинулась» (Р-6, Р-18): сколько мечта получит в этом месяце сейчас — `max(given по факту, put)`, где `given`
+ * — из `monthPlan` с тратами по факту (`byFact`) — против `given` снимка начала месяца; разница переводится в дни
+ * темпом цели (`closerDays`). Меньше недели, нет снимка, цели в снимке, темпа; цель на паузе или собрана — null.
+ */
+export function dreamShift(state: MonthPlanState, ctx: MonthPlanCtx, snap: TermSnap | null | undefined, goalId: string): DreamShift | null {
+  if (!snap || snap.deletedAt || snap.id !== ctx.key) return null
+  const was = snap.goals.find((g) => g.goalId === goalId)
+  const goal = (state.goals ?? []).find((g) => g.id === goalId && !g.deletedAt)
+  if (!was || !goal) return null
+  const plan = monthPlan(state, { ...ctx, byFact: true })
+  const item = plan.queue.find((q) => q.goalId === goalId)
+  if (!item || item.paused || item.have >= item.need) return null
+  const now = Math.max(item.given, item.put)
+  const delta = was.given - now
+  const days = closerDays(Math.abs(delta), goalPace(goal, ctx.key))
+  if (days === null || days < SHIFT_MIN_DAYS) return null
+
+  const incomeDiff = plan.income.total - snap.income
+  if (delta > 0) {
+    // Дальше: крупнейший раздел выше плана, крупнейший новый платёж, падение дохода — что больше, то и причина.
+    const over = spendCompare(state, ctx)
+      .rows.filter((r) => r.amount !== null && r.plan !== null && r.amount > r.plan)
+      .map((r) => ({ name: r.name, value: r.amount! - r.plan! }))
+      .sort((a, b) => b.value - a.value)[0]
+    const known = new Set(snap.dueIds)
+    const fresh = plan.dues.filter((d) => !known.has(d.targetId)).sort((a, b) => b.amount - a.amount)[0]
+    const options: { reason: DreamShiftReason; value: number; name?: string }[] = [
+      { reason: 'spend', value: over?.value ?? 0, name: over?.name },
+      { reason: 'due', value: fresh?.amount ?? 0, name: fresh?.name },
+      { reason: 'less', value: Math.max(0, -incomeDiff) },
+    ]
+    const top = options.reduce((a, b) => (b.value > a.value ? b : a))
+    return top.value > 0 ? { days, reason: top.reason, ...(top.name ? { name: top.name } : {}) } : { days, reason: 'less' }
+  }
+  // Ближе: отложили больше, доход больше; остаток — ушедший платёж (сумм ушедших снимок не хранит).
+  const putMore = Math.max(0, item.put - was.given)
+  const incomeMore = Math.max(0, incomeDiff)
+  const current = new Set(plan.dues.map((d) => d.targetId))
+  const gone = snap.dueIds.some((id) => !current.has(id))
+  const freed = gone ? Math.max(0, -delta - putMore - incomeMore) : 0
+  const options: { reason: DreamShiftReason; value: number }[] = [
+    { reason: 'put', value: putMore },
+    { reason: 'income', value: incomeMore },
+    { reason: 'freed', value: freed },
+  ]
+  return { days: -days, reason: options.reduce((a, b) => (b.value > a.value ? b : a)).reason }
+}
+
+/** Слова причин метки (Р-6; финал — `/ux`). `spend` и `due` — с именем раздела или платежа. */
+export const SHIFT_REASON_TEXT: Record<DreamShiftReason, (name?: string) => string> = {
+  spend: (name) => `${name ? name.charAt(0).toLowerCase() + name.slice(1) : 'траты'} выше плана`,
+  due: (name) => (name ? `новый платёж «${name}»` : 'новый платёж'),
+  less: () => 'в мечту меньше',
+  put: () => 'отложили больше',
+  freed: () => 'платёж ушёл',
+  income: () => 'доход больше',
+}
+
+/** Время метки: недели (`round(days / 7)`), от 9 недель — месяцы (`round(days / 30,4)`). */
+function shiftSpan(days: number): string {
+  const w = Math.round(days / 7)
+  if (w < 9) return `${w} ${plural(w, 'неделю', 'недели', 'недель')}`
+  const m = Math.round(days / 30.4)
+  return `${m} ${plural(m, 'месяц', 'месяца', 'месяцев')}`
+}
+
+/** Метка мечты: «+2 недели · кафе выше плана» / «на 3 недели ближе · отложили больше». */
+export function shiftLabel(shift: DreamShift): string {
+  const why = SHIFT_REASON_TEXT[shift.reason](shift.name)
+  if (shift.days > 0) {
+    const span = shiftSpan(shift.days)
+    // «+2 недели» — именительный: «неделю» → «неделя».
+    return `+${span.replace(/^1 неделю$/, '1 неделя')} · ${why}`
+  }
+  return `на ${shiftSpan(-shift.days)} ближе · ${why}`
 }
 
 /** Состояние строки очереди «Месяца» — только когда есть что сказать (правило 12); текст — в экране. */
