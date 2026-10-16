@@ -12,7 +12,7 @@ import Hint from '@/components/kit/Hint.vue'
  */
 const props = defineProps<{ stats: PushStats[] }>()
 
-const BANKS: Record<string, string> = { kaspi: 'Kaspi', freedom: 'Freedom', halyk: 'Halyk', unknown: 'Банк не узнан' }
+const BANKS: Record<string, string> = { kaspi: 'Kaspi', freedom: 'Freedom', halyk: 'Halyk', unknown: 'Другой' }
 const sum = (key: 'd7' | 'd30') =>
   props.stats.reduce<PushCounts>((t, s) => ({ parsed: t.parsed + s[key].parsed, ignored: t.ignored + s[key].ignored, unknown: t.unknown + s[key].unknown }), {
     parsed: 0,
@@ -38,21 +38,21 @@ const any = computed(() => props.stats.some((s) => s.d30.parsed + s.d30.ignored 
         <thead>
           <tr class="text-ink-2">
             <th class="py-1 text-left font-normal">Банк</th>
-            <th class="py-1 text-right font-normal">Операции</th>
-            <th class="py-1 text-right font-normal">Не операции</th>
-            <th class="py-1 text-right font-normal">Не разобрано</th>
+            <th class="py-1 text-right font-normal whitespace-nowrap">Операции</th>
+            <th class="py-1 text-right font-normal whitespace-nowrap">Пропуск</th>
+            <th class="py-1 text-right font-normal whitespace-nowrap">Непонятно</th>
           </tr>
         </thead>
         <tbody>
           <template v-for="s in stats" :key="s.bank">
             <tr class="border-t border-line" :data-push-bank="s.bank">
-              <td class="py-1.5 text-ink">{{ BANKS[s.bank] ?? s.bank }} · 7 дн.</td>
+              <td class="py-1.5 text-ink">{{ BANKS[s.bank] ?? s.bank }}</td>
               <td class="py-1.5 text-right num text-ink">{{ s.d7.parsed }}</td>
               <td class="py-1.5 text-right num text-ink-2">{{ s.d7.ignored }}</td>
               <td class="py-1.5 text-right num" :class="s.d7.unknown ? 'text-warn' : 'text-ink'">{{ s.d7.unknown }}</td>
             </tr>
             <tr>
-              <td class="pb-1.5 text-ink-2">30 дн.</td>
+              <td class="pb-1.5 text-[12.5px] text-ink-2 whitespace-nowrap">за 30 дней</td>
               <td class="pb-1.5 text-right num text-ink-2">{{ s.d30.parsed }}</td>
               <td class="pb-1.5 text-right num text-ink-2">{{ s.d30.ignored }}</td>
               <td class="pb-1.5 text-right num text-ink-2">{{ s.d30.unknown }}</td>

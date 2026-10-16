@@ -222,7 +222,7 @@ describe('AP-11: «Цифры» — пуши банков', () => {
     // Банки — в свёрнутом «Подробнее», не на экране сразу (правило 12: сложное скрыто).
     expect(card.querySelector('details')!.open).toBe(false)
     const kaspi = card.querySelector<HTMLElement>('[data-push-bank="kaspi"]')!
-    expect([...kaspi.querySelectorAll('td')].map((td) => td.textContent)).toEqual(['Kaspi · 7 дн.', '4', '0', '1'])
+    expect([...kaspi.querySelectorAll('td')].map((td) => td.textContent)).toEqual(['Kaspi', '4', '0', '1'])
   })
 
   it('пушей за 30 дней не было или старый сервер — карточки нет', async () => {
