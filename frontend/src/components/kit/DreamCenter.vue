@@ -60,8 +60,8 @@ const percentText = (n: number) => `${n}${NBSP}%`
       <span class="max-w-[300px] text-balance text-[20px] font-semibold leading-snug text-ink" data-hero-line>
         {{ title }}{{ NBSP }}·{{ NBSP }}<span class="font-num font-bold num"><CountUp :value="pct" :format="percentText" /></span>
       </span>
-      <span v-if="note" class="-mt-1 flex max-w-[300px] items-center gap-1.5 text-[13px] text-ink-2" data-hero-note>
-        <i class="size-1.5 shrink-0 rounded-full" :class="noteTone === 'ok' ? 'bg-ok' : 'bg-warn'" aria-hidden="true" />{{ note }}
+      <span v-if="note" class="-mt-1 flex max-w-[300px] items-start gap-1.5 text-[13px] text-ink-2" data-hero-note>
+        <i class="mt-1.5 size-1.5 shrink-0 rounded-full" :class="noteTone === 'ok' ? 'bg-ok' : 'bg-warn'" aria-hidden="true" />{{ note }}
       </span>
     </button>
     <div v-if="$slots.actions" class="flex flex-wrap justify-center gap-2">

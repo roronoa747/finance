@@ -543,8 +543,9 @@ function share() {
       </template>
       <!-- Метка «мечта сдвинулась» (AU-06, Р-6) и «Вернуть срок» у неё — тихо, главная остаётся «Пополнить» -->
       <div v-if="shift" class="mt-2 flex items-center justify-between gap-2">
-        <p class="flex min-w-0 items-center gap-1.5 text-[13px] text-ink-2" data-goal-shift>
-          <i class="size-1.5 shrink-0 rounded-full" :class="shift.days > 0 ? 'bg-warn' : 'bg-ok'" aria-hidden="true" />{{ shiftText }}
+        <p class="flex min-w-0 items-start gap-1.5 text-[13px] text-ink-2" data-goal-shift>
+          <!-- Точка — у первой строки: метка рядом с «Вернуть срок» переносится на две -->
+          <i class="mt-1.5 size-1.5 shrink-0 rounded-full" :class="shift.days > 0 ? 'bg-warn' : 'bg-ok'" aria-hidden="true" />{{ shiftText }}
         </p>
         <Button v-if="canEdit && returnShift" variant="secondary" size="sm" class="shrink-0" data-return-term @click="returnOpen = true">Вернуть срок</Button>
       </div>

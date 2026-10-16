@@ -103,9 +103,12 @@ describe('AU-06: метка на «Мечтах»', () => {
   it('у героя и у строки цели при сдвиге от недели', async () => {
     await open(Dreams, '/dreams')
     expect(txt(q('[data-hero-note]'))).toBe('+4 недели · кафе и рестораны выше плана')
-    expect(document.body.textContent).toContain('+4 недели · кафе и рестораны выше плана') // строка «Отпуска»
+    expect(txt(document.body)).toContain('+4 недели · кафе и рестораны выше плана') // строка «Отпуска»
     const rows = [...document.querySelectorAll('[data-id]')].map((el) => txt(el))
     expect(rows.find((t) => t.includes('Отпуск'))).toContain('+4 недели')
+    // `/ux`: в строке цели — та же точка тона, что у героя (дальше — `warn`).
+    const note = [...document.querySelectorAll('[data-row-note]')].find((el) => txt(el).startsWith('+4'))
+    expect(note?.querySelector('i')?.className).toContain('bg-warn')
   })
   it('нет снимка — метки нет', async () => {
     await open(Dreams, '/dreams', 'member', familyDoc({ snap: false }))

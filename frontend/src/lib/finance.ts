@@ -4261,12 +4261,14 @@ export const SHIFT_REASON_TEXT: Record<DreamShiftReason, (name?: string) => stri
  * листа «Сделать» и его тоста — чтобы «+2 недели» у мечты и «на … раньше» в листе не расходились.
  */
 export function shiftSpan(days: number): string {
+  // Число и слово — через неразрывный пробел: метка, лист и тост не рвут «2 / недели» (`/ux` Блока 2).
+  const nb = ' '
   // Меньше недели бывает только у листа «Сделать» (метка — от 7 дней): дни, а не «0 недель».
-  if (days < SHIFT_MIN_DAYS) return `${days} ${plural(days, 'день', 'дня', 'дней')}`
+  if (days < SHIFT_MIN_DAYS) return `${days}${nb}${plural(days, 'день', 'дня', 'дней')}`
   const w = Math.round(days / 7)
-  if (w < 9) return `${w} ${plural(w, 'неделю', 'недели', 'недель')}`
+  if (w < 9) return `${w}${nb}${plural(w, 'неделю', 'недели', 'недель')}`
   const m = Math.round(days / 30.4)
-  return `${m} ${plural(m, 'месяц', 'месяца', 'месяцев')}`
+  return `${m}${nb}${plural(m, 'месяц', 'месяца', 'месяцев')}`
 }
 
 /* ---------------- «Сделать»: кандидаты сдвига месяца (Р-3, Р-17, AU-05) ---------------- */
@@ -4395,7 +4397,7 @@ export function shiftLabel(shift: DreamShift): string {
   if (shift.days > 0) {
     const span = shiftSpan(shift.days)
     // «+2 недели» — именительный: «неделю» → «неделя».
-    return `+${span.replace(/^1 неделю$/, '1 неделя')} · ${why}`
+    return `+${span.replace(/^1\sнеделю$/, '1 неделя')} · ${why}`
   }
   return `на ${shiftSpan(-shift.days)} ближе · ${why}`
 }

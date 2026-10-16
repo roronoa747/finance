@@ -75,7 +75,7 @@ function familyDoc(): SyncDoc {
     spendTotals: [total('a', '2026-08', 'sc_food', 400_000), total('a', '2026-09', 'sc_food', 400_000), total('a', K, 'sc_food', 400_000), total('a', K, 'sc_cafe', 177_000)],
   })
 }
-const LABEL = '+4 недели · кафе и рестораны выше плана'
+const LABEL = '+4\u00a0недели · кафе и рестораны выше плана'
 const dreams = (p: Phone) => screen(p.pinia, Dreams, '/dreams')
 const goal = (p: Phone, act?: (s: Record<string, unknown>) => void) => screen(p.pinia, GoalDetail, '/goals/car', undefined, act ? [screenMixin({ returnOpen: true }, act)] : [])
 

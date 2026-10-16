@@ -42,7 +42,7 @@ describe('демо — мечта и строки', () => {
       expect(f.heroGoal?.id).toBe('g-trip')
       const shift = dreamShift(state, ctx, snap, 'g-trip')
       expect(shift).toEqual({ days: 12, reason: 'spend', name: 'Кафе и рестораны' })
-      expect(shiftLabel(shift!)).toBe('+2 недели · кафе и рестораны выше плана')
+      expect(shiftLabel(shift!)).toBe('+2\u00a0недели · кафе и рестораны выше плана')
       expect(returnTermShift(state, ctx, snap, 'g-trip')).toMatchObject({ kind: 'move', shift: { from: 'rest', to: { goalId: 'g-trip' }, amount: 40_000 } })
       expect(firstDebt(f.planState())).toEqual({ name: 'Автокредит', rate: 19 })
     })

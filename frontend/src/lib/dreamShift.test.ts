@@ -67,7 +67,7 @@ describe('dreamShift — сдвиг мечты к снимку', () => {
     const doc = family()
     const shift = dreamShift(doc, factCtx(77_000), snapOf(doc), 'car')
     expect(shift).toEqual({ days: 15, reason: 'spend', name: 'Кафе и рестораны' })
-    expect(shiftLabel(shift!)).toBe('+2 недели · кафе и рестораны выше плана')
+    expect(shiftLabel(shift!)).toBe('+2\u00a0недели · кафе и рестораны выше плана')
     // Отпуск и подушка выше в очереди — их не задело.
     expect(dreamShift(doc, factCtx(77_000), snapOf(doc), 'trip')).toBeNull()
   })
@@ -78,7 +78,7 @@ describe('dreamShift — сдвиг мечты к снимку', () => {
     const gym = { id: 'gym', name: 'Спортзал', note: '', day: 12, category: 'd4' as const, versions: [{ from: '2000-01', amount: 25_000 }], updatedAt: T0 }
     const shift = dreamShift(family({ obligations: [...doc.obligations, gym] }), ctxOf(), snap, 'car')
     expect(shift).toEqual({ days: 13, reason: 'due', name: 'Спортзал' })
-    expect(shiftLabel(shift!)).toBe('+2 недели · новый платёж «Спортзал»')
+    expect(shiftLabel(shift!)).toBe('+2\u00a0недели · новый платёж «Спортзал»')
   })
   it('отложили сверх плана → ближе, причина «put»', () => {
     const doc = family()
@@ -87,7 +87,7 @@ describe('dreamShift — сдвиг мечты к снимку', () => {
     const goals = doc.goals.map((g) => (g.id === 'car' ? { ...g, movements: [{ id: 'm1', date: '2026-10-11', amount: 120_000, by: 'a' as const }] } : g))
     const shift = dreamShift(family({ goals }), ctxOf(), snap, 'car')
     expect(shift).toEqual({ days: -30, reason: 'put' })
-    expect(shiftLabel(shift!)).toBe('на 4 недели ближе · отложили больше')
+    expect(shiftLabel(shift!)).toBe('на 4\u00a0недели ближе · отложили больше')
   })
   it('сдвиг меньше недели → null', () => {
     const doc = family()
@@ -109,15 +109,15 @@ describe('dreamShift — сдвиг мечты к снимку', () => {
     const snap = { ...snapOf(doc), income: 1_300_000 }
     // Снимок обещал машине 60 000 + доход выше; сейчас машине 30 000 из-за кафе (30 000) — а падение дохода 100 000 крупнее.
     expect(dreamShift(doc, factCtx(77_000), snap, 'car')).toEqual({ days: 15, reason: 'less' })
-    expect(shiftLabel({ days: 70, reason: 'less' })).toBe('+2 месяца · в мечту меньше')
-    expect(shiftLabel({ days: 8, reason: 'spend', name: 'Кафе' })).toBe('+1 неделя · кафе выше плана')
+    expect(shiftLabel({ days: 70, reason: 'less' })).toBe('+2\u00a0месяца · в мечту меньше')
+    expect(shiftLabel({ days: 8, reason: 'spend', name: 'Кафе' })).toBe('+1\u00a0неделя · кафе выше плана')
   })
 })
 
 describe('shiftSpan — одна шкала метки и листа «Сделать»', () => {
   it('дни до недели, недели до 8, дальше месяцы', () => {
-    expect(shiftSpan(3)).toBe('3 дня')
-    expect(shiftSpan(12)).toBe('2 недели')
-    expect(shiftSpan(60)).toBe('2 месяца') // 60 / 7 = 8,6 → 9 недель → месяцы: 60 / 30,4 = 2
+    expect(shiftSpan(3)).toBe('3\u00a0дня')
+    expect(shiftSpan(12)).toBe('2\u00a0недели')
+    expect(shiftSpan(60)).toBe('2\u00a0месяца') // 60 / 7 = 8,6 → 9 недель → месяцы: 60 / 30,4 = 2
   })
 })
