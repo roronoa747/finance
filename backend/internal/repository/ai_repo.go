@@ -21,7 +21,8 @@ type AIRepository interface {
 	SetEnabled(ctx context.Context, householdID string, on bool) error
 	// Used is the family's requests in month ('YYYY-MM', ai.MonthKey); no row is 0.
 	Used(ctx context.Context, householdID, month string) (int, error)
-	// AddUsage adds a successful call to the month's counters.
+	// AddUsage adds a call's spend to the month's counters: requests (1 on success, 0 on a
+	// billed failure — Блок 2 «ИИ»), tokens and cost.
 	AddUsage(ctx context.Context, householdID, month string, requests int, in, out, costMicros int64) error
 	// Families is every family for the admin page with month's requests and cost: AI on
 	// first, then newest first.
