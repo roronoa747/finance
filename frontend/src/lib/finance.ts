@@ -3971,7 +3971,13 @@ export const OVER_MIN = 5_000
 
 /** Трат раздела больше обычного с порогом шума; ровно порог — ещё нет. Одно правило для текущего и прошлых месяцев. */
 const spendOver = (amount: number | null, usual: number | null) =>
-  usual !== null && amount !== null && amount - usual > OVER_MIN && (amount - usual) * 100 > usual * OVER_SHARE
+  usual !== null && usual > 0 && amount !== null && amount - usual > OVER_MIN && (amount - usual) * 100 > usual * OVER_SHARE
+
+/**
+ * Разделы «в конце строк, без точки» (Х-3, приёмка Блока 1 на настоящих выписках): переводы людям и наличные — не траты
+ * в привычном смысле (в переводах — и между своими счетами), «обычно» у них шумное; первой строкой они заслоняют траты.
+ */
+export const SPEND_LAST: readonly string[] = ['sc_people', 'sc_cash']
 
 /** Рекомендация раздела: обычно тратите `amount` сверх плана — столько в мечту; `days` — на сколько раньше (нет мечты или темпа — null). */
 export type SpendAdvice = { amount: number; goalId: string | null; goalName: string | null; days: number | null }
@@ -4000,14 +4006,18 @@ export type SpendCompareRow = {
  * участников. Рекомендация — когда обычно тратите больше плана: разница — в первую мечту очереди; `days` — насколько
  * раньше её соберём при темпе +N в месяц (`(остаток / темп − остаток / (темп + N)) × 30,4`).
  */
-export function spendCompare(state: MonthPlanState, ctx: MonthPlanCtx): { income: number; usualFrom: string[]; rows: SpendCompareRow[] } {
+export function spendCompare(
+  state: MonthPlanState,
+  ctx: MonthPlanCtx,
+): { income: number; usualFrom: string[]; rows: SpendCompareRow[]; unknown: number } {
   const { key } = ctx
   const people = (state.people ?? []).filter(alive)
   const live = ctx.spendCategories.filter(alive)
   const named = liveSpendCategories(ctx.spendCategories)
   const income = monthPlan(state, ctx).income.total
   const hasFact = people.some((p) => uploadedBy(p.id, key, ctx.uploads))
-  const facts = new Map(monthSpendByCategory(people, ctx.totals, ctx.spendCategories, key, ctx.uploads).rows.map((r) => [r.categoryId, r.amount]))
+  const byCategory = monthSpendByCategory(people, ctx.totals, ctx.spendCategories, key, ctx.uploads)
+  const facts = new Map(byCategory.rows.map((r) => [r.categoryId, r.amount]))
   const ids = new Set(people.map((p) => p.id))
   const plans = new Map<string, number>()
   for (const x of state.spendPlans ?? []) {
@@ -4036,14 +4046,20 @@ export function spendCompare(state: MonthPlanState, ctx: MonthPlanCtx): { income
         plan,
         usual: u,
         share: amount !== null && income > 0 ? Math.round((amount * 100) / income) : null,
-        over: spendOver(amount, u),
+        over: !SPEND_LAST.includes(categoryId) && spendOver(amount, u),
         advice: adviceOf(plan, u),
         group: RK_GROUP_BY_CATEGORY[categoryId] ?? null,
       }
     })
     .filter((r) => (r.amount ?? 0) > 0 || (r.plan ?? 0) > 0)
-    .sort((a, b) => (b.amount ?? b.plan ?? 0) - (a.amount ?? a.plan ?? 0) || a.categoryId.localeCompare(b.categoryId))
-  return { income, usualFrom: usual?.months ?? [], rows }
+    .sort(
+      (a, b) =>
+        Number(SPEND_LAST.includes(a.categoryId)) - Number(SPEND_LAST.includes(b.categoryId)) ||
+        (b.amount ?? b.plan ?? 0) - (a.amount ?? a.plan ?? 0) ||
+        a.categoryId.localeCompare(b.categoryId),
+    )
+  // «Не разобрано» (Х-1): тихая строка внизу «Трат», чтобы строки сходились с «потрачено» заголовка; выписок нет — 0.
+  return { income, usualFrom: usual?.months ?? [], rows, unknown: hasFact ? byCategory.unknown : 0 }
 }
 
 /**

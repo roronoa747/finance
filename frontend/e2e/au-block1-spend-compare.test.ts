@@ -143,7 +143,7 @@ describe('e2e / ИИ-польза Блок 1 — траты в сравнени�
     expect(part(sheet, 'data-cat-share')).toBe('4 % дохода')
     expect(part(sheet, 'data-cat-usual')).toBe(sp(`обычно у вас ${plain(30_000)}`))
     expect(part(sheet, 'data-cat-plan')).toBe(sp(`план ${plain(20_000)}`))
-    expect(part(sheet, 'data-cat-advice')).toBe(sp(`до плана: +${plain(10_000)} в «Подушка» · на 22 месяца раньше`))
+    expect(part(sheet, 'data-cat-advice')).toBe(sp(`до плана: +${plain(10_000)} в мечту «Подушка» · на 22 месяца раньше`))
     expect(sheet).toContain('data-cat-edit')
 
     // Партнёр после синка — те же строки и точки (одна правда документа и записей загрузок).

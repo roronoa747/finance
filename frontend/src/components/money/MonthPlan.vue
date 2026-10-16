@@ -658,6 +658,15 @@ function addFund(kind: 'reserve' | 'cushion') {
                 <i class="block h-full rounded-pill bg-s8" :style="{ width: `${spendShare(r.amount, r.plan)}%` }" />
               </span>
             </button>
+            <!-- «Не разобрано» (Х-1): тихо, без листа и точки — чтобы строки сходились с «потрачено» заголовка -->
+            <div
+              v-if="compare.unknown > 0"
+              class="flex w-full items-center justify-between gap-2 border-t border-line py-2.5 text-[15px] text-ink-2 first:border-t-0"
+              data-spend-unknown
+            >
+              <span>Не разобрано</span>
+              <span class="whitespace-nowrap num">{{ plain(compare.unknown) }}</span>
+            </div>
             <button
               v-if="canEdit"
               type="button"
