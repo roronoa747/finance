@@ -223,6 +223,13 @@ describe('pairInternalTransfers', () => {
     expect(pairInternalTransfers([out({ counterparty: 'Дана К.' }), inc({})]).some((o) => o.internal)).toBe(false)
   })
 
+  it('операция с телефона — не кандидат (критик Apple Pay Б2): перевод другу из пуша и пополнение выписки — трата', () => {
+    // Пуш пишет получателя в продавца, `counterparty` пуст (Р-23) — без этой проверки «Перевод Айгерим С.» стал бы своим.
+    const friend = out({ bank: 'kaspi', merchant: 'Перевод Айгерим С.', source: 'push', at: '2026-09-20T05:00:00Z' })
+    expect(pairInternalTransfers([friend, inc({})]).some((o) => o.internal)).toBe(false)
+    expect(pairInternalTransfers([out({}), inc({ merchant: 'Перевод Ерлан Б.', source: 'push' })]).some((o) => o.internal)).toBe(false)
+  })
+
   it('одна операция — не в двух парах; ближайшая по дате побеждает', () => {
     const o = out({ date: '2026-09-20' })
     const far = inc({ date: '2026-09-21' })
