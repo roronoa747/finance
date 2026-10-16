@@ -71,6 +71,7 @@ import SalarySheet from '@/components/money/SalarySheet.vue'
 import SpendCategorySheet from '@/components/money/SpendCategorySheet.vue'
 import ImageMoveSheet from '@/components/plan/ImageMoveSheet.vue'
 import { templateById } from '@/lib/goalTemplates'
+import { attachTemplate } from '@/lib/photos/goalPhoto'
 
 /**
  * «План · Месяц» (Блок 15, Р-90; макет week-month.html, ворота B2C-91): круг — оглавление. Под кругом зарплаты и
@@ -374,7 +375,10 @@ function imageAct(a: ImageAction) {
   if (!canEdit.value) return
   catFor.value = null
   if (a.kind === 'goal') {
-    const id = finance.addGoal({ name: a.name, need: a.need, monthly: a.monthly, hue: templateById(a.template)?.hue ?? 'steel', template: a.template })
+    const tpl = templateById(a.template)
+    const id = finance.addGoal({ name: a.name, need: a.need, monthly: a.monthly, hue: tpl?.hue ?? 'steel', template: a.template })
+    // Картинка шаблона — как у новой мечты из `GoalNew` (без сети — позже, `retryTemplatePhotos`).
+    if (tpl) void attachTemplate(finance, id, tpl)
     void router.push(`/goals/${id}`)
   } else if (a.kind === 'wish') {
     finance.addWish({ name: a.name, price: a.price, by: me.value })
