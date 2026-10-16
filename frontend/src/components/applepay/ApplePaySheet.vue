@@ -16,8 +16,10 @@ const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 type Step = { art: StepArt; text: string; action?: 'copy' | 'open' | 'done' }
+/** Имя команды не рвётся переносом строки (ux). */
+const NAME = '«Траты сами»'
 const KEY: Step = { art: 'key', text: 'Скопируйте ключ этого iPhone', action: 'copy' }
-const OPEN: Step = { art: 'open', text: 'Откройте команду «Траты сами»', action: 'open' }
+const OPEN: Step = { art: 'open', text: `Откройте команду ${NAME}`, action: 'open' }
 const ADD: Step = { art: 'add', text: 'Нажмите «Добавить» и вставьте ключ' }
 const DONE: Step = { art: 'done', text: 'Готово — оплатите что-нибудь телефоном', action: 'done' }
 const STEPS: Record<'ios27' | 'legacy', Step[]> = {
@@ -28,7 +30,7 @@ const STEPS: Record<'ios27' | 'legacy', Step[]> = {
     ADD,
     { art: 'automation', text: 'Автоматизация → + → «Транзакция»' },
     { art: 'cards', text: 'Выберите карты и «Запускать сразу»' },
-    { art: 'action', text: 'Действие «Запустить команду» → «Траты сами»' },
+    { art: 'action', text: `Действие «Запустить команду» → ${NAME}` },
     DONE,
   ],
 }
@@ -41,9 +43,10 @@ const step = computed(() => steps.value[Math.min(index.value, steps.value.length
 const key = ref<string | null>(null)
 const busy = ref(false)
 const failed = ref(false)
-/** Буфер недоступен — ключ показывается целиком, чтобы скопировать руками. */
+/** Буфер недоступен — ключ показывается целиком, чтобы скопировать руками (иначе ключа на экране нет — ux). */
 const manual = ref(false)
-const masked = computed(() => (key.value ? `${key.value.slice(0, 4)}…${key.value.slice(-4)}` : ''))
+/** Версия iOS не распознана — тихий выбор пути на первом шаге. */
+const legacyChoice = computed(() => !ap.pathKnown && !!ap.status?.shortcut_url && !!ap.status?.shortcut_url_legacy)
 
 async function makeKey() {
   if (key.value || busy.value) return
@@ -91,11 +94,11 @@ async function copy() {
     <div class="flex flex-col gap-4" data-applepay-sheet :data-path="ap.path" :data-step="index + 1">
       <Stepper :n="index + 1" :k="steps.length" />
       <ApplePayStepArt :art="step.art" />
-      <p class="text-center text-[16px] font-semibold text-ink" data-step-text>{{ step.text }}</p>
+      <!-- Строке шага — место на две строки, тихому ряду ниже — одна высота: лист не прыгает от шага к шагу (ux). -->
+      <p class="flex min-h-[2lh] items-center justify-center text-center text-[16px] font-semibold text-ink" data-step-text>{{ step.text }}</p>
 
       <template v-if="step.action === 'copy'">
         <p v-if="failed" role="alert" class="text-center text-[13.5px] text-warn">Не получилось. Проверьте сеть.</p>
-        <p v-else-if="key && !manual" class="text-center type-meta num" data-key-masked>{{ masked }}</p>
         <input
           v-if="key && manual"
           :value="key"
@@ -108,17 +111,6 @@ async function copy() {
         <Button class="w-full" :disabled="busy" data-main @click="failed ? makeKey() : copy()">
           {{ busy ? 'Минуту…' : failed ? 'Ещё раз' : manual ? 'Скопировать ещё раз' : 'Скопировать ключ' }}
         </Button>
-        <Button v-if="manual" variant="ghost" size="md" class="w-full" @click="next">Скопировал — дальше</Button>
-        <!-- Версия не распознана (PWA с экрана «Домой») — путь iOS 27 и тихий выбор старого. -->
-        <button
-          v-if="!ap.pathKnown && ap.status?.shortcut_url && ap.status?.shortcut_url_legacy"
-          type="button"
-          class="mx-auto cursor-pointer text-[13.5px] text-ink-2 underline underline-offset-4"
-          data-legacy-toggle
-          @click="ap.chooseLegacy(ap.path === 'ios27')"
-        >
-          {{ ap.path === 'ios27' ? 'У меня iOS 26 или старше' : 'У меня iOS 27' }}
-        </button>
       </template>
 
       <a
@@ -136,7 +128,21 @@ async function copy() {
       <Button v-else-if="step.action === 'done'" class="w-full" data-main @click="emit('close')">Готово</Button>
       <Button v-else class="w-full" data-main @click="next">Дальше</Button>
 
-      <Button v-if="index > 0 && step.action !== 'done'" variant="ghost" size="md" class="w-full" data-back @click="back">Назад</Button>
+      <!-- Тихий ряд под главной кнопкой: «Скопировал — дальше», выбор старого iOS (версия не распознана — PWA с экрана
+           «Домой»: путь iOS 27) или «Назад»; на первом и последнем шаге пустой — той же высоты. -->
+      <div class="flex h-11 items-center justify-center">
+        <Button v-if="step.action === 'copy' && manual" variant="ghost" size="md" class="w-full" @click="next">Скопировал — дальше</Button>
+        <button
+          v-else-if="step.action === 'copy' && legacyChoice"
+          type="button"
+          class="cursor-pointer text-[13.5px] text-ink-2 underline underline-offset-4"
+          data-legacy-toggle
+          @click="ap.chooseLegacy(ap.path === 'ios27')"
+        >
+          {{ ap.path === 'ios27' ? 'У меня iOS 26 или старше' : 'У меня iOS 27' }}
+        </button>
+        <Button v-else-if="index > 0 && step.action !== 'done'" variant="ghost" size="md" class="w-full" data-back @click="back">Назад</Button>
+      </div>
     </div>
   </Sheet>
 </template>

@@ -18,9 +18,10 @@ const shown = computed(() => ap.available && ap.isIPhone && !!ap.status && !ap.c
   <RouterLink
     v-if="shown"
     to="/settings?applepay=1"
-    class="flex items-center gap-1.5 self-start text-[13.5px] text-ink-2 underline-offset-4 hover:underline"
+    class="-my-2 flex items-center gap-1.5 self-start py-2 text-[13.5px] text-ink-2 underline-offset-4 hover:underline"
     data-applepay-week
   >
-    <PhContactlessPayment :size="16" class="text-ink-3" />Траты сами с Apple Pay
+    <!-- py-2 при -my-2: место нажатия ~36 px при прежней раскладке (ux); значок — как строка, не бледнее. -->
+    <PhContactlessPayment :size="16" />Траты сами с Apple Pay
   </RouterLink>
 </template>

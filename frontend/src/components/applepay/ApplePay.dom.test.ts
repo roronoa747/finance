@@ -109,7 +109,8 @@ describe('настройки — карточка «Apple Pay»', () => {
     expect(txt(q('[data-step-text]'))).toBe('Скопируйте ключ этого iPhone')
     expect(txt(document.body)).toContain('1 из 5')
     expect(connect).toHaveBeenCalledOnce()
-    expect(txt(q('[data-key-masked]'))).toBe('ffk_…wxyz')
+    // Ключа на экране нет даже маской (ux: «ffk_…» — механика); целиком — только когда буфер недоступен.
+    expect(txt(document.body)).not.toContain('ffk')
 
     q('[data-main]')!.click()
     await flush()
@@ -123,6 +124,8 @@ describe('настройки — карточка «Apple Pay»', () => {
   it('подключено — «Отключить» → подтверждение → отключено, снова «Подключить»', async () => {
     const { disconnect } = await open(Settings, '/settings', { status: { ...STATUS, connected: true, phones: 1, last_used_at: '2026-10-16T05:00:00Z' } })
     expect(txt(q('[data-applepay-line]'))).toBe('Подключено · последняя трата 16 октября')
+    // Дата не рвётся переносом (ux).
+    expect(q('[data-applepay-line]')!.textContent).toContain('16 октября')
     expect(q('[data-connect]')).toBeNull()
 
     q('[data-disconnect]')!.click()
@@ -137,6 +140,39 @@ describe('настройки — карточка «Apple Pay»', () => {
   it('адрес ?applepay=1 открывает лист сразу (строка «Недели» ведёт сюда)', async () => {
     await open(Settings, '/settings?applepay=1')
     expect(q('[data-applepay-sheet]')).not.toBeNull()
+  })
+
+  it('не iPhone (Android, компьютер): карточки нет, пока не подключено; подключено — только «Отключить», листа нет (ux)', async () => {
+    const off = await open(Settings, '/settings?applepay=1', { ua: ANDROID })
+    expect(off.status).toHaveBeenCalled()
+    expect(q('[data-applepay-card]')).toBeNull()
+    expect(q('[data-applepay-sheet]')).toBeNull()
+    expect(off.connect).not.toHaveBeenCalled()
+    app?.unmount()
+
+    await open(Settings, '/settings', { ua: ANDROID, status: { ...STATUS, connected: true, phones: 1 } })
+    expect(q('[data-applepay-card]')).not.toBeNull()
+    expect(q('[data-disconnect]')).not.toBeNull()
+    expect(q('[data-more]')).toBeNull()
+    expect(q('[data-connect]')).toBeNull()
+  })
+})
+
+describe('лист подключения — геометрия (ux)', () => {
+  it('тихий ряд под главной кнопкой есть на каждом шаге — лист не прыгает; «Назад» — со второго шага до последнего', async () => {
+    const writeText = vi.fn(async () => {})
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText }, userAgent: IPHONE_27 })
+    await open(Settings, '/settings?applepay=1')
+    const row = () => q('[data-main]')!.nextElementSibling as HTMLElement
+    const seen: string[] = []
+    for (let i = 0; i < 5; i++) {
+      expect(row().className).toContain('h-11')
+      seen.push(row().querySelector('[data-back]') ? 'назад' : '—')
+      // «Открыть команду» — ссылка (target _blank): в happy-dom клик не уводит со страницы.
+      q('[data-main]')!.click()
+      await flush()
+    }
+    expect(seen).toEqual(['—', 'назад', 'назад', 'назад', '—'])
   })
 })
 

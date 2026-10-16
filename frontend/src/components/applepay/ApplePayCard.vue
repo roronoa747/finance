@@ -12,7 +12,8 @@ import ApplePaySheet from './ApplePaySheet.vue'
 /**
  * Карточка «Apple Pay» в настройках (AP-06, Р-6, Р-13): не подключено — строка и «Подключить» (лист `?applepay=1`);
  * подключено — когда пришла последняя трата, тихие «Ещё iPhone» и «Отключить» (подтверждение в один шаг; отключает
- * все телефоны человека). Только member с ссылкой на команду для пути этого телефона (`available`).
+ * все телефоны человека). Только member с ссылкой на команду для пути этого телефона (`available`); не iPhone — только
+ * подключённая (`shown`).
  */
 const ap = useApplePayStore()
 const sheet = useQuerySheet('applepay')
@@ -25,9 +26,15 @@ onMounted(() => void ap.load())
 const line = computed(() => {
   const s = ap.status
   if (!s?.connected) return 'Траты появятся сами после оплаты'
-  const phones = s.phones > 1 ? ` · ${s.phones} iPhone` : ''
-  return s.last_used_at ? `Подключено${phones} · последняя трата ${atLabel(s.last_used_at)}` : `Подключено${phones} · ждём первую оплату`
+  const phones = s.phones > 1 ? ` · ${s.phones} iPhone` : ''
+  // «16 октября» не рвётся переносом (ux: на 390 px «16» оставалось в первой строке).
+  return s.last_used_at ? `Подключено${phones} · последняя трата ${atLabel(s.last_used_at).replace(' ', ' ')}` : `Подключено${phones} · ждём первую оплату`
 })
+/**
+ * Подключают только с iPhone (Р-3): на Android и компьютере карточка — только когда уже подключено (чтобы «Отключить»
+ * было под рукой), без «Подключить» и листа (ux: иначе лист «ключ этого iPhone» создавал ключ на Android).
+ */
+const shown = computed(() => ap.available && (ap.isIPhone || ap.connected))
 
 async function disconnect() {
   busy.value = true
@@ -44,7 +51,7 @@ async function disconnect() {
 </script>
 
 <template>
-  <Card v-if="ap.available" tight data-applepay-card :data-connected="ap.connected">
+  <Card v-if="shown" tight data-applepay-card :data-connected="ap.connected">
     <div class="flex items-center gap-3">
       <IconBox :tone="ap.connected ? 'brand' : 'neutral'"><PhContactlessPayment /></IconBox>
       <div class="min-w-0 flex-1">
@@ -67,5 +74,5 @@ async function disconnect() {
       <p v-if="error" role="alert" class="text-[12.5px] text-warn">Не получилось. Проверьте сеть.</p>
     </div>
   </Card>
-  <ApplePaySheet v-if="ap.available" :open="sheet.open.value" @close="sheet.close()" />
+  <ApplePaySheet v-if="ap.available && ap.isIPhone" :open="sheet.open.value" @close="sheet.close()" />
 </template>
