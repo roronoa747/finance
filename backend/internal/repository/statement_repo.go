@@ -389,9 +389,11 @@ func (r *sqlStatementRepository) InsertPhoneOperation(ctx context.Context, userI
 			SELECT id, bank, merchant FROM app.operations
 			WHERE user_id = $1 AND source = $2 AND kind = 'purchase' AND deleted_at IS NULL
 			  AND occurred_at BETWEEN $3 AND $4 AND `+moneyMatch+`
+			  -- Two known banks that differ are two purchases (a Halyk card tap is not a Kaspi push).
+			  AND (bank = 'card' OR $8 = 'card' OR bank = $8)
 			ORDER BY abs(extract(epoch FROM occurred_at - $7::timestamptz)), id
 			LIMIT 1`, userID, otherSource(op.Source), op.OccurredAt.Add(-w.Pair), op.OccurredAt.Add(w.Pair),
-			op.FxCurrency, money, op.OccurredAt).Scan(&id, &bank, &merchant)
+			op.FxCurrency, money, op.OccurredAt, op.Bank).Scan(&id, &bank, &merchant)
 		switch {
 		case err == nil:
 			bank, merchant = mergedFields(op, bank, merchant)

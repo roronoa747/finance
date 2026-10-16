@@ -798,7 +798,8 @@ func (m *MockStatementRepo) InsertPhoneOperation(ctx context.Context, userID, ho
 	// (2) A tap and a push of one purchase.
 	if kind == "purchase" && w.Pair > 0 {
 		if o := m.nearest(userID, op.OccurredAt, w.Pair, func(prev models.Operation) bool {
-			return prev.Source == otherSource(op.Source) && prev.Kind == "purchase" && !prev.Deleted && sameMoney(prev, op)
+			return prev.Source == otherSource(op.Source) && prev.Kind == "purchase" && !prev.Deleted && sameMoney(prev, op) &&
+				(prev.Bank == "card" || op.Bank == "card" || prev.Bank == op.Bank)
 		}); o != nil {
 			bank, merchant := mergedFields(op, o.op.Bank, o.op.Merchant)
 			if merchant != o.op.Merchant {

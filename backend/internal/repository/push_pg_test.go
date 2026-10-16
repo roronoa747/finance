@@ -100,6 +100,13 @@ func TestPostgresPhoneMergeTapAndPush(t *testing.T) {
 		Kind: "purchase", Source: "push", OccurredAt: now.Add(3*time.Hour + time.Minute)}); done != PhoneSaved {
 		t.Errorf("merge into a tombstone: %s", done)
 	}
+	// Критик Б2: a Halyk card tap and a Kaspi push of the same sum — two purchases.
+	insert(PhoneOperation{ID: "e000000000000003", Bank: "halyk", Date: "2026-10-16", Amount: -4400, Merchant: "Small", Source: "tap",
+		OccurredAt: now.Add(4 * time.Hour)})
+	if done := insert(PhoneOperation{ID: "e000000000000004", Bank: "kaspi", Date: "2026-10-16", Amount: -4400, Merchant: "SMALL",
+		Kind: "purchase", Source: "push", OccurredAt: now.Add(4*time.Hour + 2*time.Minute)}); done != PhoneSaved {
+		t.Errorf("merge across known banks: %s", done)
+	}
 
 	// A tap and a push of one purchase at the same moment (two instances): one operation.
 	start := make(chan struct{})

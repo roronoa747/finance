@@ -168,6 +168,14 @@ func TestPushMergesWithTap(t *testing.T) {
 	if s := pushStatus(t, app3.push(t, key3, kaspi("Покупка: 1 000 ₸\nMAGNUM\nДоступно: 1 ₸"))); s != "duplicate" {
 		t.Fatalf("push repeat: %s", s)
 	}
+
+	// Критик Б2: a Halyk card tap and a Kaspi push of the same sum are two purchases, not one.
+	clock3.t = clock3.t.Add(time.Hour)
+	tapStatus(t, app3.tap(t, key3, map[string]any{"merchant": "Small", "amount": "3 300 ₸", "card": "Halyk Visa"}))
+	clock3.t = clock3.t.Add(3 * time.Minute)
+	if s := pushStatus(t, app3.push(t, key3, kaspi("Покупка: 3 300 ₸\nMAGNUM\nДоступно: 1 ₸"))); s != "saved" {
+		t.Fatalf("Kaspi push after a Halyk tap: %s", s)
+	}
 }
 
 // Р-8: money out of one own bank and the same money into another within 10 minutes — both internal.
