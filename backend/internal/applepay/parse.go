@@ -34,8 +34,6 @@ var currencyTokens = []struct{ token, code string }{
 	{"inr", Unsupported}, {"сом", Unsupported}, {"сум", Unsupported}, {"₫", Unsupported},
 }
 
-const groupSeps = "   '’"
-
 var (
 	numberPart = `\d{1,3}(?:[ \x{00A0}\x{202F}'’.,]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?`
 	moneyToken = func() *regexp.Regexp {
@@ -96,7 +94,7 @@ func ParseAmount(s string) (currency string, minor int64, ok bool) {
 		return "", 0, false
 	}
 	// "1 200 руб." leaves the abbreviation's dot behind.
-	num := strings.TrimRight(strings.Trim(rest, groupSeps+"\t\n\r"), ".   ")
+	num := strings.TrimRight(strings.Trim(rest, groupRunes+"\t\n\r"), ".   ")
 	if num == "" || strings.ContainsAny(num, "-−+()") {
 		return "", 0, false
 	}
@@ -217,6 +215,11 @@ func FindAmount(text string) (currency string, minor int64, rest string, ok bool
 		if end = tokenEnd(text, start, end); end < 0 {
 			continue
 		}
+		// "Kaspi Gold USD 5 004 ₸": a code word before a number with its own currency after it
+		// belongs to the words before; the number is the ₸ one (tried from the next character).
+		if isLetter(first) && currencyFirst(text[end:]) {
+			continue
+		}
 		code, m, parsed := ParseAmount(text[start:end])
 		if !parsed {
 			// "NAIL GEL 5 000 ₸": a word like a currency code — the tenge may still follow.
@@ -240,7 +243,14 @@ func tokenEnd(text string, start, end int) int {
 	for limit := end; ; {
 		last, _ := utf8.DecodeLastRuneInString(text[start:end])
 		after, _ := utf8.DecodeRuneInString(text[end:])
-		if end == len(text) || !unicode.IsDigit(after) && !(isLetter(after) && wordy(last)) {
+		// A letter after a number starts a word ("₸5 003Kaspi" is 5 003 ₸); after a code it
+		// continues the word ("500 тгк" is not тг).
+		if end == len(text) || !unicode.IsDigit(after) && !(isLetter(after) && isLetter(last)) {
+			return end
+		}
+		// A time or a date glued to the currency is not the next amount: "500 ₸10:23" is 500 ₸
+		// (the mirror of "10:23 500 ₸"); "ALMATY 2 ₸500" stays ₸500.
+		if !unicode.IsDigit(last) && timeOrDate.MatchString(text[end:]) {
 			return end
 		}
 		i := strings.LastIndexAny(text[start:limit], groupRunes)
@@ -324,3 +334,24 @@ func CleanMerchant(s string) string {
 	}
 	return s
 }
+
+// currencyFirst: s starts (after one space) with a currency token — a code only as a whole word.
+func currencyFirst(s string) bool {
+	if r, size := utf8.DecodeRuneInString(s); strings.ContainsRune("   ", r) {
+		s = s[size:]
+	}
+	lower := strings.ToLower(s)
+	for _, c := range currencyTokens {
+		if !strings.HasPrefix(lower, c.token) {
+			continue
+		}
+		if r, _ := utf8.DecodeRuneInString(lower[len(c.token):]); isLetter([]rune(c.token)[0]) && isLetter(r) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// timeOrDate: digits glued to more digits by a time or date separator ("10:23", "16.10.2026").
+var timeOrDate = regexp.MustCompile(`^\d{1,4}[:./-]\d`)

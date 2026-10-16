@@ -151,6 +151,28 @@ func TestFindAmountEdges(t *testing.T) {
 			t.Errorf("FindAmount(%q) = %q %d: a signed amount taken as a purchase", text, c, m)
 		}
 	}
+	// Glued tokens (acceptance tails): a time or date glued to the currency is not the amount, a
+	// letter glued to the number starts a word, and a code word before a number with its own
+	// currency belongs to the words before.
+	for text, want := range map[string]struct {
+		code  string
+		minor int64
+	}{
+		"MAGNUM 500 ₸10:23":                     {"KZT", 50000},
+		"5 001 ₸16.10.2026":                     {"KZT", 500100},
+		"MAGNUM₸5 003Kaspi Gold":                {"KZT", 500300},
+		"MAGNUM 500 KZT10:23":                   {"KZT", 50000},
+		"Kaspi Gold USD 5 004 ₸":                {"KZT", 500400},
+		"Kaspi Gold USD\u00a05\u00a0004\u00a0₸": {"KZT", 500400},
+		"Kaspi Gold USD\n5 004 ₸":               {"KZT", 500400},
+		"500 ₸\n10:23 MAGNUM":                   {"KZT", 50000},
+		"USD 5 004 Kaspi":                       {"USD", 500400},
+		"ALMATY 2 ₸500":                         {"KZT", 50000}, // the mirror: no time or date after ₸
+	} {
+		if c, m, _, ok := FindAmount(text); !ok || c != want.code || m != want.minor {
+			t.Errorf("FindAmount(%q) = %q %d %v, want %q %d", text, c, m, ok, want.code, want.minor)
+		}
+	}
 	// Only unsupported money — Unsupported.
 	if c, _, _, ok := FindAmount("GEL 5 000 Tbilisi"); ok || c != Unsupported {
 		t.Errorf("lari only: %q %v", c, ok)
