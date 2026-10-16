@@ -3789,6 +3789,52 @@ export function canAfford(
   return { ok: false, short: -left, goal: item?.name ?? null, months: hero ? paceMonths(-left, goalPace(hero, ctx.key)) : null }
 }
 
+/** Где тесно до зарплаты (Р-7, AU-07): `short` — уйдёт в минус, `tight` — останется меньше 15 % прихода. */
+export type AffordWhy = { kind: 'short' | 'tight'; from: { day: number; key: string }; to: { day: number; key: string }; name: string }
+
+/**
+ * «Хватит?» с причиной (Р-7, AU-07) — из того же «до зарплаты»: только когда знаем счета. На счетах минус покупка, платежи
+ * окна по порядку: первый, после которого баланс ниже нуля, — `short` (окно — от его дня до дня перед зарплатой); иначе,
+ * если после всех платежей остаётся меньше `LOW_REST_SHARE` прихода, — `tight` (окно — от дня самого крупного платежа).
+ * Иначе — null.
+ */
+export function affordWhy(state: Parameters<typeof untilPayday>[0], amount: number, now = today()): AffordWhy | null {
+  const up = untilPayday(state, now)
+  if (!up || !up.knowsCash || !up.due.length) return null
+  // День перед зарплатой; зарплата 1-го — последний день прошлого месяца.
+  const before = up.day > 1 ? { day: up.day - 1, key: up.key } : { day: daysInMonth(addMonths(up.key, -1)), key: addMonths(up.key, -1) }
+  const window = (from: { day: number; when: string }, name: string, kind: AffordWhy['kind']): AffordWhy => {
+    const start = { day: from.day, key: from.when }
+    // Платёж в сам день зарплаты: окно — один его день.
+    const late = start.key > before.key || (start.key === before.key && start.day > before.day)
+    return { kind, from: start, to: late ? start : before, name }
+  }
+  let balance = up.onAccounts - amount
+  for (const d of up.due) {
+    balance -= d.value
+    if (balance < 0) return window(d, d.name, 'short')
+  }
+  if (balance >= LOW_REST_SHARE * up.income) return null
+  const biggest = up.due.reduce((a, d) => (d.value > a.value ? d : a))
+  return window(biggest, biggest.name, 'tight')
+}
+
+/** Строка под вердиктом: «тесно 20–24-го — Автокредит»; окно через месяц — «тесно с 28-го до 5-го — …»; один день — «тесно 25-го — …». */
+export function affordWhyText(why: AffordWhy): string {
+  const { from, to } = why
+  const span = from.key !== to.key ? `с ${from.day}-го до ${to.day}-го` : from.day === to.day ? `${from.day}-го` : `${from.day}–${to.day}-го`
+  return `тесно ${span} — ${why.name}`
+}
+
+/**
+ * Первый долг (Р-7, AU-07): самый дорогой из открытых с процентами (`costliestCredits`; ставка неизвестна — мимо) — только
+ * когда таких хотя бы два (при одном «первый» не нужен). Ставка — в процентах (`ratePercent`).
+ */
+export function firstDebt(state: { credits?: Credit[] }): { name: string; rate: number } | null {
+  const list = costliestCredits(state.credits ?? []).filter((c) => !c.rateUnknown)
+  return list.length >= 2 ? { name: list[0]!.name, rate: ratePercent(list[0]!.annualRate) } : null
+}
+
 /**
  * Подсказка «всё в долг — закроете к N» (Р-83): все цели и фонды выключены, весь свободный остаток месяца —
  * досрочкой в самый дорогой долг; тот же прогон, что у дат плана. null — долгов с процентами нет, остатка нет

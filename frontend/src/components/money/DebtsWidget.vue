@@ -7,7 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { money, plain } from '@/lib/money'
 import { monthBy, monthKey } from '@/lib/dates'
-import { debtsOverview, isPeoplePayment, lastAccountFor, liveObligations, monthlyAmount, paidFor, peopleGroup, type DebtRow } from '@/lib/finance'
+import { debtsOverview, firstDebt, isPeoplePayment, lastAccountFor, liveObligations, monthlyAmount, paidFor, peopleGroup, type DebtRow } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
 import Card from '@/components/kit/Card.vue'
 import Button from '@/components/ui/Button.vue'
@@ -39,6 +39,7 @@ const me = computed<PersonId>(() => authStore.slot ?? 'a')
 
 const key = computed(() => monthKey())
 const overview = computed(() => debtsOverview({ ...financeStore.planState(), plans: financeStore.plans }, key.value))
+const first = computed(() => firstDebt(financeStore.planState()))
 const hasPlan = computed(() => !!financeStore.activePlan)
 // Без открытых долгов и плана — прошлые планы и поздравление плана видны сразу, без свёртки (как раньше).
 const pastPlans = computed(() => financeStore.plans.some((p) => !p.deletedAt && p.status !== 'active'))
@@ -86,6 +87,8 @@ const { open: tryOpen, close: closeTry } = useQuerySheet('try')
     <template v-if="overview.total > 0">
       <span class="font-num text-[34px] font-bold leading-none num text-ink" data-debts-total>{{ money(overview.total) }}</span>
       <span v-if="overview.freeMonth" class="type-meta" data-debts-free>без долгов — {{ monthBy(overview.freeMonth, key) }}</span>
+      <!-- Первый долг (Р-7, AU-07): какой гасить первым и почему; советов о рефинансировании нет. -->
+      <span v-if="first" class="type-meta num" data-debts-first>первым — {{ first.name }}: ставка {{ String(first.rate).replace('.', ',') }} % — самая высокая</span>
     </template>
     <span v-else class="type-num text-[24px] text-ok">Долгов нет</span>
   </Card>

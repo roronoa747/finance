@@ -252,6 +252,20 @@ describe('B2C-101: «Долги» по макету', () => {
     expect(q<HTMLButtonElement>('[data-plan-main] [role="switch"]')!.disabled).toBe(true)
   })
 
+  // AU-07 (Р-7): первый долг — кредитка 40 % дороже кредита 33 % (рассрочка без процентов не в счёт).
+  it('AU-07: строка первого долга при двух долгах с процентами; viewer видит; при одном — нет', async () => {
+    await open('member', familyDoc(), '/money/debts')
+    expect(txt(q('[data-debts-first]'))).toBe('первым — Кредитка: ставка 40 % — самая высокая')
+    app?.unmount()
+    document.body.innerHTML = ''
+    await open('viewer', familyDoc(), '/money/debts')
+    expect(q('[data-debts-first]')).not.toBeNull()
+    app?.unmount()
+    document.body.innerHTML = ''
+    await open('member', familyDoc({ credits: planFamilyDoc().credits.filter((c) => c.id !== 'loan') }), '/money/debts')
+    expect(q('[data-debts-first]')).toBeNull()
+  })
+
   it('без долгов — «Долгов нет», без расчёта и строк', async () => {
     await open('member', familyDoc({ credits: [] }), '/money/debts')
     expect(txt(q('[data-debts]'))).toContain('Долгов нет')

@@ -122,3 +122,30 @@ describe('PN-17: «Хватит?»', () => {
     expect(norm(txt(q('[data-afford-short]')))).toBe(norm(`не хватает ${money(1000)}`))
   })
 })
+
+/** AU-07 (Р-7): строка «где тесно» под вердиктом — из `affordWhy` (12 сентября: «Кредит» 15-го, зарплата Аруны 20-го). */
+describe('AU-07: «Хватит?» с причиной', () => {
+  it('«Нет» — строка «тесно …» с платежом', async () => {
+    await open()
+    await type('2100000')
+    expect(q('[data-afford-no]')).not.toBeNull()
+    expect(txt(q('[data-afford-why]'))).toBe('тесно 15–19-го — Кредит')
+  })
+  it('«Да», но тесно — строка есть', async () => {
+    await open()
+    await type('1900000')
+    expect(q('[data-afford-yes]')).not.toBeNull()
+    expect(txt(q('[data-afford-why]'))).toBe('тесно 15–19-го — Кредит')
+  })
+  it('запас есть или счетов нет — строки нет', async () => {
+    await open()
+    await type('100000')
+    expect(q('[data-afford-why]')).toBeNull()
+    app!.unmount()
+    document.body.innerHTML = ''
+    await open({ accounts: [] })
+    await type('5000000')
+    expect(q('[data-afford-no]')).not.toBeNull()
+    expect(q('[data-afford-why]')).toBeNull()
+  })
+})
