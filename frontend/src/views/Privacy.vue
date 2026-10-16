@@ -8,7 +8,7 @@ import { RouterLink } from 'vue-router'
  * ревью магазинов.
  */
 const CONTACT = 'ilyas.muratbek.99@gmail.com'
-const UPDATED = '8 октября 2026'
+const UPDATED = '15 октября 2026'
 </script>
 
 <template>
@@ -57,8 +57,9 @@ const UPDATED = '8 октября 2026'
     <section class="mt-6">
       <h2 class="type-h3 text-ink">Кому передаём</h2>
       <p class="mt-1.5">
-        Google — только для входа. ИИ-разбор (Google Gemini) — лишь если вы его включите и сами нажмёте: уходит название
-        продавца, без сумм и имён; сейчас эта функция выключена. Для рекламы и третьим лицам — ничего.
+        Google — только для входа. ИИ-помощник (Claude, Anthropic) — только если его включили семье и вы дали согласие:
+        уходят цифры месяца без имён и заметок, названия продавцов без сумм, скриншот товара; на ваших данных не
+        обучается. Для рекламы и третьим лицам — ничего.
       </p>
     </section>
 
@@ -85,8 +86,11 @@ const UPDATED = '8 октября 2026'
         turned off in Settings), goal photos,
         notification subscriptions and first-party usage events. Bank statement files never leave your phone. Data is hosted
         on Vercel and Supabase in Seoul (South Korea). We share nothing for advertising; Google is used for sign-in only.
+        The AI helper (Claude by Anthropic) runs only if it is enabled for your household and you consent: it receives the
+        month's figures without names or notes, merchant names without amounts, and product screenshots; Anthropic does
+        not train on this data.
         Delete your account and data any time in Settings → “Удалить аккаунт и данные”. Contact:
-        <a :href="`mailto:${CONTACT}`" class="text-brand">{{ CONTACT }}</a>. Updated October 8, 2026.
+        <a :href="`mailto:${CONTACT}`" class="text-brand">{{ CONTACT }}</a>. Updated October 15, 2026.
       </p>
     </section>
   </article>

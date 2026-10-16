@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { money, moneyIn, moneyShort, moneySigned, parseMoney, plain, signTone } from './money'
+import { money, moneyIn, moneyShort, moneySigned, parseMoney, plain, signTone, usdFromMicros } from './money'
 
 /** Ожидание с обычными пробелами → неразрывные, как печатает `money`. */
 const nb = (s: string) => s.replace(/ /g, '\u00a0')
@@ -40,5 +40,15 @@ describe('moneyIn и moneySigned (Блок 13)', () => {
     expect(signTone(1)).toBe('text-ok')
     expect(signTone(0)).toBe('text-ink')
     expect(signTone(0, 'text-ink-3')).toBe('text-ink-3')
+  })
+})
+
+describe('usdFromMicros — расход ИИ для владельца (бэклог «ИИ», AI-04)', () => {
+  it('целые микродоллары → «≈ $X.XX», вверх до цента; 0 → «$0»', () => {
+    expect(usdFromMicros(0)).toBe('$0')
+    expect(usdFromMicros(1)).toBe('≈ $0.01')
+    expect(usdFromMicros(420_000)).toBe('≈ $0.42')
+    expect(usdFromMicros(6_000_000)).toBe('≈ $6.00')
+    expect(usdFromMicros(123_450_001)).toBe('≈ $123.46')
   })
 })

@@ -8,7 +8,9 @@ import (
 // clearEnv blanks every variable Load reads; getEnv treats "" as unset.
 func clearEnv(t *testing.T) {
 	t.Helper()
-	for _, key := range []string{"PORT", "DATABASE_URL", "JWT_SECRET", "CORS_ORIGIN", "APP_ENV", "GOOGLE_CLIENT_IDS", "ADMIN_EMAILS", "APPLEPAY_SHORTCUT_URL", "APPLEPAY_SHORTCUT_URL_LEGACY"} {
+	for _, key := range []string{"PORT", "DATABASE_URL", "JWT_SECRET", "CORS_ORIGIN", "APP_ENV", "GOOGLE_CLIENT_IDS", "ADMIN_EMAILS",
+		"ANTHROPIC_API_KEY", "AI_MODEL_REVIEW", "AI_MODEL_SELLERS", "AI_MODEL_WISH", "AI_MONTHLY_LIMIT",
+		"APPLEPAY_SHORTCUT_URL", "APPLEPAY_SHORTCUT_URL_LEGACY"} {
 		t.Setenv(key, "")
 	}
 }
@@ -153,6 +155,61 @@ func TestAdminEmailsLowercased(t *testing.T) {
 	}
 	if strings.Join(cfg.AdminEmails, "|") != "owner@example.com" {
 		t.Errorf("AdminEmails = %v", cfg.AdminEmails)
+	}
+}
+
+func TestAIDefaults(t *testing.T) {
+	clearEnv(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AnthropicAPIKey != "" {
+		t.Errorf("AnthropicAPIKey = %q, want blank", cfg.AnthropicAPIKey)
+	}
+	if cfg.AIModelReview != "claude-opus-5-5" || cfg.AIModelSellers != "claude-haiku-5-5" || cfg.AIModelWish != "claude-opus-5-5" {
+		t.Errorf("models = %s / %s / %s", cfg.AIModelReview, cfg.AIModelSellers, cfg.AIModelWish)
+	}
+	if cfg.AIMonthlyLimit != 30 {
+		t.Errorf("AIMonthlyLimit = %d, want 30", cfg.AIMonthlyLimit)
+	}
+}
+
+func TestAIFromEnv(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("ANTHROPIC_API_KEY", " key ")
+	t.Setenv("AI_MODEL_REVIEW", " claude-sonnet-5-5\n")
+	t.Setenv("AI_MONTHLY_LIMIT", "50")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AnthropicAPIKey != "key" || cfg.AIModelReview != "claude-sonnet-5-5" || cfg.AIMonthlyLimit != 50 {
+		t.Errorf("cfg = %q / %s / %d", cfg.AnthropicAPIKey, cfg.AIModelReview, cfg.AIMonthlyLimit)
+	}
+}
+
+func TestAIMonthlyLimitTypoFallsBack(t *testing.T) {
+	for _, v := range []string{"0", "-5", "тридцать", "30x"} {
+		clearEnv(t)
+		t.Setenv("AI_MONTHLY_LIMIT", v)
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.AIMonthlyLimit != 30 {
+			t.Errorf("AI_MONTHLY_LIMIT=%q → %d, want 30", v, cfg.AIMonthlyLimit)
+		}
+	}
+}
+
+func TestProductionValidWithoutAIKey(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("JWT_SECRET", prodSecret)
+	if _, err := Load(); err != nil {
+		t.Fatalf("production without ANTHROPIC_API_KEY must load: %v", err)
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
+	"finance-backend/internal/ai"
 	"finance-backend/internal/auth"
 	"finance-backend/internal/config"
 	"finance-backend/internal/db"
@@ -40,6 +41,7 @@ type Repos struct {
 	Accounts   repository.AccountRepository
 	Events     repository.EventRepository
 	Metrics    repository.MetricsRepository
+	AI         repository.AIRepository
 	// Apple Pay phone keys (бэклог «Apple Pay»).
 	PhoneKeys repository.PhoneKeyRepository
 }
@@ -59,6 +61,7 @@ func NewHandler(cfg *config.Config, database *sql.DB) (http.Handler, error) {
 			Accounts:   repository.NewSQLAccountRepository(database),
 			Events:     repository.NewSQLEventRepository(database),
 			Metrics:    repository.NewSQLMetricsRepository(database),
+			AI:         repository.NewSQLAIRepository(database),
 			PhoneKeys:  repository.NewSQLPhoneKeyRepository(database),
 		}
 	} else {
@@ -68,7 +71,7 @@ func NewHandler(cfg *config.Config, database *sql.DB) (http.Handler, error) {
 		log.Println("using in-memory mock repositories (development mode)")
 		mocks := repository.NewMockRepositories()
 		mocks.Households.SetDocRepo(mocks.Docs)
-		repos = Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos, Fx: mocks.Fx, Accounts: repository.NewMockAccountRepo(mocks), Events: &repository.MockEventRepo{}, Metrics: repository.MockMetricsRepo{}}
+		repos = Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos, Fx: mocks.Fx, Accounts: repository.NewMockAccountRepo(mocks), Events: &repository.MockEventRepo{}, Metrics: repository.MockMetricsRepo{}, AI: repository.NewMockAIRepo(mocks.Households, mocks.Users)}
 		repos.PhoneKeys = repository.NewMockPhoneKeyRepo()
 	}
 
@@ -151,7 +154,14 @@ func NewRouter(
 		MaxAge:           300,
 	}))
 
-	authHandler := handlers.NewAuthHandler(repos.Users, repos.Households, tokenService, google, cfg.AdminEmails)
+	// No key — no client: AI is off everywhere and /auth/me says ai: false (Р-2).
+	aiClient := ai.New(cfg.AnthropicAPIKey, "")
+	var aiFlags handlers.AIFlags
+	if aiClient != nil && repos.AI != nil {
+		aiFlags = repos.AI
+	}
+
+	authHandler := handlers.NewAuthHandler(repos.Users, repos.Households, tokenService, google, cfg.AdminEmails, aiFlags)
 	householdHandler := handlers.NewHouseholdHandler(repos.Users, repos.Households, tokenService)
 	syncHandler := handlers.NewSyncHandler(repos.Docs)
 	statementHandler := handlers.NewStatementHandler(repos.Statements)
@@ -159,6 +169,7 @@ func NewRouter(
 	previewHandler := handlers.NewPreviewHandler(linkpreview.New().Fetch)
 	accountHandler := handlers.NewAccountHandler(repos.Accounts)
 	eventsHandler := handlers.NewEventsHandler(repos.Events, repos.Metrics, repos.Users, cfg.AdminEmails)
+	adminAIHandler := handlers.NewAdminAIHandler(repos.AI, repos.Users, cfg.AdminEmails, aiClient, cfg.AIModelSellers, cfg.AIMonthlyLimit)
 	walletHandler := handlers.NewWalletHandler(repos.PhoneKeys, repos.Households, repos.Statements, repos.Users, cfg.AdminEmails,
 		cfg.ApplePayShortcutURL, cfg.ApplePayShortcutURLLegacy)
 
@@ -196,6 +207,11 @@ func NewRouter(
 			// События удержания и цифры владельца (B2C-28): события — любому вошедшему.
 			protected.Post("/events", eventsHandler.Record)
 			protected.Get("/admin/metrics", eventsHandler.Metrics)
+			// ИИ семей (бэклог «ИИ», AI-03): список с расходом, переключатель, проверка связи.
+			protected.Get("/admin/families", adminAIHandler.Families)
+			protected.Put("/admin/families/{id}/ai", adminAIHandler.SetAI)
+			protected.Post("/admin/ai-check", adminAIHandler.AICheck)
+			// Тело последнего касания админа (бэклог «Apple Pay», Р-13а).
 			protected.Get("/admin/wallet-debug", walletHandler.AdminDebug)
 
 			// Household routes: 409 "no household" until "с кем" is done.

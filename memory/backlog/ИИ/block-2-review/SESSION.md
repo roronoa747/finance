@@ -19,7 +19,24 @@
 - Задачи: AI-07 → AI-08 → AI-09 → AI-10.
 - Живые вызовы — только с ключом из `memory/secrets/anthropic.md`, на демо-семье и обезличенной копии; содержимое
   ответов в Handoff — только обезличенные примеры. Время ответа модели замерить (effort `medium` / `low`) и записать.
-- **Факты кода после Блока 1** (заполняет критик Блока 1): —
+- **Факты кода после Блока 1** (критик Блока 1, 2026-10-15; полный список — §6 индекса «После Блока 1»):
+  - Клиент — `ai.New(key, baseURL)` / `(*Client).Call(ctx, ai.Request{…}, &out) (ai.Usage, error)`; ответ разбирается
+    строго (`DisallowUnknownFields`) — схема `ReviewAnswer` с `"additionalProperties": false` на **каждом** объекте.
+    `Effort: ""` не отправляется (дефолт модели). **`MaxTokens` ≤ ~21 000** — больше SDK без стриминга отказывает до
+    отправки (`ErrFailed`, выглядит как «сеть»); у Opus 5.5 мышление не выключается — потолок с запасом на него.
+  - 429 Anthropic не повторяется — сразу `ErrRateLimited` (гейт: 502 `ai_failed`, не 429 `ai_limit` — тот только для
+    лимита семьи). Дедлайн 45 с на вызов; повтор проверки чисел (Р-3) — **второй** `Call` в тех же 60 с функции:
+    второй вызов дать с `context` на остаток (или `Client.Timeout` короче), замерить время Opus на `medium`/`low`.
+  - Гейт `aiGate` (AI-08) — новый `handlers/ai.go`; клиент — тот же `aiClient` из `NewRouter` (`server.go`, рядом с
+    `adminAIHandler`), репозиторий — `repos.AI`, лимит — `cfg.AIMonthlyLimit`, модель — `cfg.AIModelReview`; тело —
+    `decodeJSONBody`/`decodeStrictJSONBody` (`auth.go`). В тестах `server/` `Repos` без `AI` — добавить
+    `NewMockAIRepo(mocks.Households, mocks.Users)` там, где ручки ИИ вызываются (образец — `server/ai_test.go`).
+  - Фронт: `useAiStore()` — `available` (флаг семьи, member, не демо), `ensureConsent()` (лист в `AppShell`, без
+    смонтированного листа → `false`). **`authStore.ai` после перезагрузки ложно, пока не открыты настройки** —
+    хвост §4 (предложение: закрыть в AI-09: `fetchMe` при старте оболочки или `ff_ai`); без этого кнопки «Разобрать»
+    на «Месяце» не будет. Для viewer (`AI-09` п. 3) `authStore.ai` тоже приходит (сервер не смотрит роль) — `available`
+    у него ложно, сохранённый разбор показывается по `authStore.ai`.
+  - Стенд: `cmd/server` держит ответ до 60 с (`WriteTimeout`); Vite проксирует `/api` → :8080.
 - Следующий шаг — `/critic ИИ 2 ultracode`.
 
 ---

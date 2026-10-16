@@ -1150,3 +1150,22 @@ describe('PN-30: поездка — итоги участников и снят�
     expect(defaultSyncDoc().tripSpends).toEqual([])
   })
 })
+
+describe('AI-05: согласие на ИИ в личном документе', () => {
+  const T1 = '2026-10-15T08:00:00.000Z'
+  const T2 = '2026-10-15T09:00:00.000Z'
+
+  it('aiConsent с двух устройств — побеждает более позднее at, в обе стороны', () => {
+    const phone = { aiConsent: { on: true, at: T1 } }
+    const laptop = { aiConsent: { on: false, at: T2 } }
+    for (const merged of [mergePrivateDocs(phone, laptop), mergePrivateDocs(laptop, phone)]) {
+      expect(merged.aiConsent).toEqual({ on: false, at: T2 })
+    }
+  })
+
+  it('с одной стороны — берётся она; ни с одной — ключа нет («не спрошено»)', () => {
+    expect(mergePrivateDocs({}, { aiConsent: { on: true, at: T1 } }).aiConsent).toEqual({ on: true, at: T1 })
+    expect(mergePrivateDocs({ aiConsent: { on: true, at: T1 } }, {}).aiConsent).toEqual({ on: true, at: T1 })
+    expect('aiConsent' in mergePrivateDocs({ accounts: [] }, {})).toBe(false)
+  })
+})

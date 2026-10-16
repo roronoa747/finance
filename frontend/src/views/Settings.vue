@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { PhCaretDown, PhCaretRight, PhCopy } from '@phosphor-icons/vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { AI_NO_TRAINING, AI_SENDS, AI_TO, useAiStore } from '@/stores/ai'
 import { useInvite, useMembers } from '@/components/useInvite'
 import AppearancePanel from '@/components/AppearancePanel.vue'
 import ParseSettings from '@/components/ParseSettings.vue'
@@ -11,6 +12,8 @@ import SyncBadge from '@/components/SyncBadge.vue'
 import Avatar from '@/components/kit/Avatar.vue'
 import Card from '@/components/kit/Card.vue'
 import DangerZone from '@/components/kit/DangerZone.vue'
+import Hint from '@/components/kit/Hint.vue'
+import Toggle from '@/components/kit/Toggle.vue'
 import Button from '@/components/ui/Button.vue'
 
 /**
@@ -23,6 +26,11 @@ import Button from '@/components/ui/Button.vue'
  */
 const router = useRouter()
 const authStore = useAuthStore()
+// ИИ-помощник (бэклог «ИИ», Р-9): карточка — только участнику семьи с ИИ; тумблер — своё согласие, без листа.
+const ai = useAiStore()
+// Подсказка — одной фразой: «Claude от Anthropic получает цифры месяца без имён, названия продавцов и скриншот товара».
+const sends = AI_SENDS.map((s) => s[0].toLowerCase() + s.slice(1))
+const aiHint = `${AI_TO} получает ${sends.slice(0, -1).join(', ')} и ${sends.at(-1)}. ${AI_NO_TRAINING}.`
 
 const me = computed(() => authStore.slot)
 const canStyle = (slot: string) => slot === me.value && !authStore.isViewer
@@ -136,6 +144,20 @@ async function deleteAccount() {
 
       <!-- Apple Pay (бэклог «Apple Pay», AP-06): свой iPhone — траты сами; карточка сама решает, видна ли. -->
       <ApplePayCard />
+
+      <Card v-if="ai.available" data-ai-card>
+        <h2 class="type-h3 text-ink">ИИ</h2>
+        <div class="mt-2 flex items-center gap-3">
+          <div class="min-w-0 flex-1">
+            <div class="text-[14px] text-ink">Помощник</div>
+            <div class="mt-0.5 flex items-center gap-1.5 type-meta">
+              Claude · без имён
+              <Hint label="Что уходит">{{ aiHint }}</Hint>
+            </div>
+          </div>
+          <Toggle :model-value="ai.consent === 'on'" label="Помощник" @update:model-value="ai.setConsent" />
+        </div>
+      </Card>
     </template>
 
     <Card tight>

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -26,6 +27,20 @@ type Config struct {
 	// AdminEmails see the owner's numbers page /admin (ADMIN_EMAILS, comma-separated, B2C-28).
 	// Optional: without it /api/admin/metrics is 404 for everyone.
 	AdminEmails []string
+
+	// AnthropicAPIKey turns the AI helper on (ANTHROPIC_API_KEY, the value lives in
+	// memory/secrets/anthropic.md). Optional: without it AI is off everywhere and production
+	// is still valid, so ValidateProduction does not ask for it.
+	AnthropicAPIKey string
+	// AIModelReview, AIModelSellers and AIModelWish pick the model per feature
+	// (AI_MODEL_REVIEW, AI_MODEL_SELLERS, AI_MODEL_WISH).
+	AIModelReview  string
+	AIModelSellers string
+	AIModelWish    string
+	// AIMonthlyLimit is the requests a family gets per Almaty month (AI_MONTHLY_LIMIT, one
+	// value for every family). Zero, negative or not a number falls back to the default:
+	// "no limit" is not a setting.
+	AIMonthlyLimit int
 	// Apple Pay shortcut links (бэклог «Apple Pay», Р-17): iOS 27 with the trigger inside
 	// (APPLEPAY_SHORTCUT_URL) and iOS 17–26 without it (APPLEPAY_SHORTCUT_URL_LEGACY). Optional:
 	// without a link that phone path has no Apple Pay card. Only iCloud shortcut links count.
@@ -49,6 +64,14 @@ func shortcutURL(key string) string {
 	return v
 }
 
+// Defaults for the AI settings above.
+const (
+	DefaultAIModelReview  = "claude-opus-5-5"
+	DefaultAIModelSellers = "claude-haiku-5-5"
+	DefaultAIModelWish    = "claude-opus-5-5"
+	DefaultAIMonthlyLimit = 30
+)
+
 // Load loads configuration from environment variables with fallback defaults.
 // With APP_ENV=production it fails instead of falling back: without a database
 // the server would silently serve in-memory mocks, and the default secret
@@ -64,6 +87,11 @@ func Load() (*Config, error) {
 		GoogleClientIDs: splitList(getEnv("GOOGLE_CLIENT_IDS", "")),
 		AdminEmails:     splitList(strings.ToLower(getEnv("ADMIN_EMAILS", ""))),
 
+		AnthropicAPIKey: strings.TrimSpace(getEnv("ANTHROPIC_API_KEY", "")),
+		AIModelReview:   strings.TrimSpace(getEnv("AI_MODEL_REVIEW", DefaultAIModelReview)),
+		AIModelSellers:  strings.TrimSpace(getEnv("AI_MODEL_SELLERS", DefaultAIModelSellers)),
+		AIModelWish:     strings.TrimSpace(getEnv("AI_MODEL_WISH", DefaultAIModelWish)),
+		AIMonthlyLimit:  positiveInt(getEnv("AI_MONTHLY_LIMIT", ""), DefaultAIMonthlyLimit),
 		ApplePayShortcutURL:       shortcutURL("APPLEPAY_SHORTCUT_URL"),
 		ApplePayShortcutURLLegacy: shortcutURL("APPLEPAY_SHORTCUT_URL_LEGACY"),
 	}
@@ -112,6 +140,15 @@ func splitList(v string) []string {
 		}
 	}
 	return out
+}
+
+// positiveInt parses v, falling back to def for blanks, typos and values below 1.
+func positiveInt(v string, def int) int {
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n < 1 {
+		return def
+	}
+	return n
 }
 
 func getEnv(key, defaultVal string) string {

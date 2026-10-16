@@ -25,6 +25,7 @@ import Avatar from '@/components/kit/Avatar.vue'
 import IconBox from '@/components/kit/IconBox.vue'
 import Row from '@/components/kit/Row.vue'
 import Sheet from '@/components/kit/Sheet.vue'
+import AiConsentSheet from '@/components/ai/AiConsentSheet.vue'
 import Tabs from '@/components/kit/Tabs.vue'
 
 /**
@@ -196,5 +197,8 @@ function navigateAndClose(to: string) {
         </Row>
       </div>
     </Sheet>
+
+    <!-- Согласие на ИИ (бэклог «ИИ», Р-9): один лист на приложение, открывает `useAiStore().ensureConsent()`. -->
+    <AiConsentSheet />
   </div>
 </template>

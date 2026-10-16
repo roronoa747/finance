@@ -126,6 +126,29 @@ describe('stores/auth.ts — Pinia хранилище авторизации и 
 
     expect(auth.user?.email).toBe('me@example.com')
     expect(auth.household?.name).toBe('Наша Семья')
+    expect(auth.ai).toBe(false)
+  })
+
+  it('ИИ (бэклог «ИИ», AI-02): ai из /auth/me, сброс при выходе; в демо — false', async () => {
+    const auth = useAuthStore()
+    auth.token = 'existing-token'
+    const meRes: MeResponse = {
+      user: { id: 'u-1', email: 'me@example.com', created_at: '' },
+      household: { id: 'h-1', name: '', created_by: 'u-1', created_at: '' },
+      member: null,
+      ai: true,
+    }
+    vi.spyOn(apiClient, 'me').mockResolvedValue(meRes)
+
+    await auth.fetchMe()
+    expect(auth.ai).toBe(true)
+
+    auth.logout()
+    expect(auth.ai).toBe(false)
+
+    auth.token = 'demo-token'
+    await auth.fetchMe()
+    expect(auth.ai).toBe(false)
   })
 
   it('fetchMe при 401 очищает токен и сессию', async () => {

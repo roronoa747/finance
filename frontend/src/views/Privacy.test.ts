@@ -29,6 +29,15 @@ describe('B2C-26: /privacy — публичная политика конфид�
     expect(html).toContain('Privacy policy (summary)')
   })
 
+  it('AI-05: ИИ-помощник — Claude (Anthropic) при флаге семьи и согласии, без обучения; Gemini нет', async () => {
+    const html = await renderScreen(Privacy, '/privacy')
+    expect(html).not.toContain('Gemini')
+    expect(html).toContain('Anthropic')
+    expect(html).toContain('не обучается')
+    expect(html).toContain('вы дали согласие')
+    expect(html).toContain('does not train on this data')
+  })
+
   it('открывается без входа и пользователю без семьи; вошедший тоже видит', async () => {
     const router = createAppRouter(createMemoryHistory())
     await router.push('/privacy')

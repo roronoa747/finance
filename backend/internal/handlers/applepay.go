@@ -333,12 +333,10 @@ func (h *WalletHandler) keepForAdmin(r *http.Request, userID string, raw []byte)
 // AdminDebug — GET /api/admin/wallet-debug: the admin's own last searched tap body of the day
 // ({} when none); everyone else, and everyone without ADMIN_EMAILS, gets 404.
 func (h *WalletHandler) AdminDebug(w http.ResponseWriter, r *http.Request) {
-	userID, _ := auth.GetUserID(r.Context())
-	user, err := h.users.GetByID(r.Context(), userID)
-	if err != nil || !isAdmin(h.admins, user.Email) {
-		errorJSON(w, http.StatusNotFound, "not found")
+	if !adminOnly(w, r, h.users, h.admins) {
 		return
 	}
+	userID, _ := auth.GetUserID(r.Context())
 	d, err := h.keys.LastDebug(r.Context(), userID)
 	if err != nil {
 		log.Printf("wallet: debug: %v", err)

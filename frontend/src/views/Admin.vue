@@ -1,9 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { apiClient, ApiError, type AdminMetrics } from '@/api/client'
+import type { AdminFamilies, AiCheck } from '@/types/api'
 import Card from '@/components/kit/Card.vue'
 import AdminWalletDebug from '@/components/applepay/AdminWalletDebug.vue'
-import { pct as share } from '@/lib/money'
+import Hint from '@/components/kit/Hint.vue'
+import Toast from '@/components/kit/Toast.vue'
+import Toggle from '@/components/kit/Toggle.vue'
+import { useFlash } from '@/components/kit/useFlash'
+import Button from '@/components/ui/Button.vue'
+import { pct as share, usdFromMicros } from '@/lib/money'
+import { plural } from '@/lib/utils'
 
 /**
  * Цифры для владельца (B2C-28, Р-16): удержание и воронка — таблицами, без графиков. Ручка
@@ -12,7 +19,79 @@ import { pct as share } from '@/lib/money'
 const metrics = ref<AdminMetrics | null>(null)
 const state = ref<'loading' | 'ok' | 'none' | 'error'>('loading')
 
+/**
+ * ИИ семей (бэклог «ИИ», AI-04, Р-7): у каждой семьи свой тумблер — действие у предмета; расход
+ * тихой строкой только там, где ИИ включён или уже тратил; лимит один на всех — в подсказке шапки.
+ */
+const families = ref<AdminFamilies | null>(null)
+const familiesError = ref<string | null>(null)
+const pending = ref<Set<string>>(new Set())
+const checking = ref(false)
+const checkFail = ref<string | null>(null)
+const { note, flash } = useFlash()
+
+async function loadFamilies() {
+  try {
+    families.value = await apiClient.adminFamilies()
+  } catch (e) {
+    if (!(e instanceof ApiError && e.status === 404)) familiesError.value = 'Не получилось загрузить семьи.'
+  }
+}
+
+async function setAi(id: string, on: boolean) {
+  const row = families.value?.families.find((f) => f.id === id)
+  if (!row || pending.value.has(id)) return
+  pending.value = new Set(pending.value).add(id)
+  familiesError.value = null
+  row.ai = on
+  try {
+    Object.assign(row, await apiClient.setFamilyAi(id, on))
+  } catch {
+    row.ai = !on
+    familiesError.value = on ? 'Не получилось включить ИИ.' : 'Не получилось выключить ИИ.'
+  } finally {
+    const next = new Set(pending.value)
+    next.delete(id)
+    pending.value = next
+  }
+}
+
+const CHECK_REASONS: Record<Extract<AiCheck, { ok: false }>['reason'], string> = {
+  no_key: 'Ключ не задан: ANTHROPIC_API_KEY в env Vercel.',
+  failed: 'Claude не ответил: сеть, ключ или сбой у Anthropic.',
+  rate_limited: 'Лимит запросов у Anthropic — попробуйте позже.',
+  refused: 'Модель отказалась отвечать.',
+}
+
+async function check() {
+  checking.value = true
+  checkFail.value = null
+  try {
+    const res = await apiClient.aiCheck()
+    if (res.ok) {
+      flash(`Связь есть · ${res.ms} мс`)
+    } else {
+      checkFail.value = CHECK_REASONS[res.reason]
+      flash('Нет связи')
+    }
+  } catch {
+    checkFail.value = 'Сервер не ответил.'
+    flash('Нет связи')
+  } finally {
+    checking.value = false
+  }
+}
+
+// Запросы были, а расход 0 — модели нет в таблице цен сервера (Р-14): «≈ —», а не «$0». Запросов нет —
+// одна цифра «0 запросов», «$0» рядом ничего не добавляет (правило 12, шумные цифры).
+const spent = (requests: number, micros: number) => {
+  const n = `${requests} ${plural(requests, 'запрос', 'запроса', 'запросов')}`
+  if (requests === 0 && micros === 0) return n
+  return `${n} · ${micros === 0 ? '≈ —' : usdFromMicros(micros)}`
+}
+
 onMounted(async () => {
+  void loadFamilies()
   try {
     metrics.value = await apiClient.adminMetrics()
     state.value = 'ok'
@@ -48,6 +127,48 @@ const funnel = computed(() => {
 
 <template>
   <div class="flex flex-col gap-3 pt-1 text-left">
+    <!-- Семьи — своя ручка: видны, даже если цифры ниже не загрузились (не-админу обе — 404). -->
+    <Card v-if="families" data-families>
+      <div class="mb-1 flex items-center gap-1.5">
+        <h2 class="type-h3 text-ink">Семьи</h2>
+        <Hint label="Про лимит">
+          До {{ families.limit }} {{ plural(families.limit, 'запроса', 'запросов', 'запросов') }} ИИ в месяц на семью.
+          Потолок денег — в консоли Anthropic.
+        </Hint>
+        <span class="flex-1" />
+        <!-- -mr-3: текст кнопки — по правому краю тумблеров (у ghost sm поле 12). -->
+        <Button variant="ghost" size="sm" class="-mr-3" :disabled="checking" data-ai-check @click="check">Проверить связь</Button>
+      </div>
+      <p v-if="!families.key" class="mb-1 text-[13px] text-warn" data-no-key>Ключ не задан — ИИ выключен везде</p>
+      <!-- Тост уходит, а «Нет связи» остаётся словом — «?» без слова рядом не понять. -->
+      <p v-if="checkFail" class="mb-1 flex items-center gap-1.5 text-[13px] text-warn" data-check-fail>
+        Нет связи
+        <Hint label="Почему нет связи"><span data-check-reason>{{ checkFail }}</span></Hint>
+      </p>
+      <p v-if="familiesError" role="alert" class="mb-1 text-[13px] text-warn">{{ familiesError }}</p>
+      <p v-if="!families.families.length" class="text-[14px] text-ink-2">Семей пока нет.</p>
+      <ul v-else>
+        <li
+          v-for="f in families.families"
+          :key="f.id"
+          class="flex items-center gap-3 border-t border-line py-2.5 first:border-0"
+          :data-family="f.id"
+        >
+          <div class="min-w-0 flex-1">
+            <div class="truncate text-[14px] text-ink" data-emails>{{ f.emails.join(' · ') || '—' }}</div>
+            <div v-if="f.ai || f.requests > 0" class="type-meta mt-0.5 num" data-spent>{{ spent(f.requests, f.cost_micros) }}</div>
+          </div>
+          <Toggle
+            :model-value="f.ai"
+            :label="`ИИ: ${f.emails.join(', ') || 'семья'}`"
+            :disabled="pending.has(f.id)"
+            @update:model-value="(on) => setAi(f.id, on)"
+          />
+        </li>
+      </ul>
+    </Card>
+    <p v-else-if="familiesError" role="alert" class="text-[14px] text-warn">{{ familiesError }}</p>
+
     <p v-if="state === 'loading'" class="text-[14px] text-ink-2">Минуту…</p>
     <p v-else-if="state === 'none'" class="text-[14px] text-ink-2">Нет такой страницы.</p>
     <p v-else-if="state === 'error'" role="alert" class="text-[14px] text-warn">Не получилось загрузить цифры.</p>
@@ -104,5 +225,6 @@ const funnel = computed(() => {
       <!-- Apple Pay (Р-13а): формат команды владельца — по первому касанию. -->
       <AdminWalletDebug />
     </template>
+    <Toast v-if="note"><span data-check-note>{{ note }}</span></Toast>
   </div>
 </template>
