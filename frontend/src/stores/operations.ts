@@ -693,14 +693,20 @@ export const useOperationsStore = defineStore('operations', () => {
    * этого могут отставать — раздел откатился бы); строки выписок `pull` не трогает.
    */
   async function settlePhone(arrived: Set<string>, gone: Operation[], client: ApiClient) {
-    const list = all.value.filter((o) => (arrived.has(o.id) && o.categoryId === null) || (o.fx && o.amount === 0))
-    const settled = all.value.filter((o) => arrived.has(o.id) && !list.includes(o))
+    let list = all.value.filter((o) => (arrived.has(o.id) && o.categoryId === null) || (o.fx && o.amount === 0))
+    let settled = all.value.filter((o) => arrived.has(o.id) && !list.includes(o))
     if (!list.length && !settled.length && !gone.length) return
     const waiting = list.filter((o) => o.fx && o.amount === 0)
     if (waiting.length) {
       const days = waiting.map((o) => o.date).sort()
       // Неделя запаса: в выходные курс — пятничный (`rateOn`).
       await useFxStore().ensureRates([...new Set(waiting.map((o) => o.fx!.currency))], addDaysIso(days[0], -7), days[days.length - 1], client)
+      // Пока ждали курс, выписка могла убрать трату надгробием (`send`) — список из текущей копии: убранная не
+      // воскреснет (`remember`), остальные разложатся (ревью frontend Н-3).
+      const ids = new Set(list.map((o) => o.id))
+      const kept = new Set(settled.map((o) => o.id))
+      list = all.value.filter((o) => ids.has(o.id))
+      settled = all.value.filter((o) => kept.has(o.id))
     }
     const book = useFxStore().book
     const priced = list.map((o) => {

@@ -309,6 +309,40 @@ describe('stores/operations — выписка заменяет траты с т
     expect(store.ops.c1).toBeDefined()
   })
 
+  it('курс пришёл после замены выпиской — ни ошибки, ни воскрешения, остальные разложены (ревью frontend Н-3)', async () => {
+    signIn()
+    const store = useOperationsStore()
+    useFinanceStore().addMerchantRules([{ match: { merchant: normalizeMerchant('Coffee Boom') }, to: { categoryId: 'sc_cafe' } }], 'a')
+    const { server, client, calls } = fakeServer()
+    Object.assign(calls, { createStatementUpload: vi.fn(async (u: object) => ({ id: '00000000-0000-4000-8000-000000000001', slot: 'a', ...u, created_at: '' })) })
+    // Курс дня отвечает долго (partial и повторы) — отдаём его после тоста выписки.
+    let rate!: () => void
+    calls.fxRates.mockImplementationOnce(
+      () => new Promise((resolve) => (rate = () => resolve({ code: 'USD', rates: { '2026-10-14': 480.5 }, partial: false }))),
+    )
+    server.feed = [
+      tap('a1', 'Magnum', -5000),
+      tap('h1', 'Coffee Boom', -1500, { bank: 'halyk' }),
+      tap('u1', 'Apple Store', 0, { bank: 'card', fx_currency: 'USD', fx_amount: 622 }),
+    ]
+    const pulling = store.pull(client)
+    await vi.advanceTimersByTimeAsync(0)
+    await store.upload(statement(), client)
+    await vi.advanceTimersByTimeAsync(6_000)
+    expect(store.ops.a1).toBeUndefined()
+
+    rate()
+    await pulling
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(store.lastError).toBeNull()
+    expect(store.ops.a1).toBeUndefined()
+    expect(store.ops.h1.categoryId).toBe('sc_cafe')
+    expect(store.ops.u1.amount).toBe(-2989)
+    expect(weekTotal('sc_food')).toMatchObject({ amount: 5000, ops: 1 })
+    expect(weekTotal('sc_cafe')).toMatchObject({ amount: 1500, ops: 1 })
+  })
+
   it('выписка без операций с телефона — прежний путь (без надгробий)', async () => {
     signIn()
     const store = useOperationsStore()
