@@ -7,6 +7,8 @@ import { clearPhotoDisk } from '@/lib/photos/store'
 import { AI_REVIEW_SEEN_KEY, AI_SELLERS_KEY, DEMO_PENDING_KEY, EVENTS_QUEUE_KEY, FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, TIPS_SEEN_KEY, readStorage } from '@/lib/storage'
 import {
   accountBalance,
+  termSnapOf,
+  type PlanShiftDraft,
   allocationFor,
   accountForeign,
   fxToTenge,
@@ -68,6 +70,8 @@ import {
 } from '@/lib/finance'
 import type {
   AiReview,
+  TermSnap,
+  PlanShift,
   AllocationPart,
   SyncDoc,
   SyncStatus,
@@ -127,6 +131,10 @@ export function defaultSyncDoc(): SyncDoc {
     debtCard: null,
     // Разборы месяца ИИ (AI-09): ключ и пустым — как у payments (RP-03).
     aiReviews: [],
+    // Снимки срока мечт (AU-04): ключ и пустым — как у payments (RP-03).
+    termSnaps: [],
+    // Сдвиги месяца (AU-05): ключ и пустым — как у payments (RP-03).
+    planShifts: [],
     setupDoneAt: null,
   }
 }
@@ -141,6 +149,9 @@ function withDefaults(doc: SyncDoc): SyncDoc {
 
 /** Сколько разборов месяца ИИ живёт в общем документе (AI-09): год помесячно. */
 export const AI_REVIEWS_KEPT = 12
+
+/** Сколько снимков срока мечт живёт в общем документе (AU-04): этот месяц и два прошлых. */
+export const TERM_SNAPS_KEPT = 3
 
 /** Семья демо-режима: её документ не уходит на сервер (Р-32). */
 export const DEMO_HOUSEHOLD = 'demo-household-1'
@@ -1051,6 +1062,56 @@ export const useFinanceStore = defineStore('finance', () => {
       )
     })
     return review
+  }
+
+  /** Снимок срока месяца `month` (AU-04); нет — null. */
+  const termSnapFor = (month: string): TermSnap | null =>
+    (householdDoc.value.termSnaps ?? []).find((s) => !s.deletedAt && s.id === month) ?? null
+
+  /**
+   * Снимок срока мечт на начало месяца (Р-6, AU-04): зовётся после подтягивания общего документа (движок синка) и в
+   * демо. Участник (не viewer), снимка текущего месяца нет — записать один раз; живых — не больше `TERM_SNAPS_KEPT`,
+   * старшие — надгробия без данных. Два телефона записали один месяц — слияние оставит ранний (`mergeDocs`).
+   */
+  function ensureTermSnap(): boolean {
+    if (useAuthStore().isViewer || !people.value.length) return false
+    const key = monthKey()
+    if ((householdDoc.value.termSnaps ?? []).some((s) => s.id === key)) return false
+    const t = new Date().toISOString()
+    const snap: TermSnap = { ...termSnapOf(monthPlanOf(key), t), updatedAt: t }
+    // Целей и фондов нет — метке нечего показывать: документ (и ревизию) не трогаем.
+    if (!snap.goals.length) return false
+    mutateHouseholdDoc((doc) => {
+      const list = [...(doc.termSnaps ?? []), snap]
+      const live = list.filter((x) => !x.deletedAt).sort((a, b) => b.id.localeCompare(a.id))
+      const drop = new Set(live.slice(TERM_SNAPS_KEPT).map((x) => x.id))
+      doc.termSnaps = list.map((x) => (drop.has(x.id) ? { ...x, income: 0, dueIds: [], goals: [], deletedAt: t, updatedAt: t } : x))
+    })
+    return true
+  }
+
+  /**
+   * «Сделать» / «Вернуть срок» (Р-3, Р-17, AU-05): запись сдвига этого месяца в общий документ — план месяца пересчитает
+   * `monthPlan`. Viewer — нет (кнопок нет, сервер не примет). Возвращает запись (для «Отменить»).
+   */
+  function addPlanShift(draft: PlanShiftDraft): PlanShift | null {
+    const auth = useAuthStore()
+    if (auth.isViewer || draft.amount <= 0) return null
+    const t = new Date().toISOString()
+    const shift: PlanShift = { ...draft, id: Math.random().toString(36).slice(2, 10), by: (auth.slot ?? 'a') as PersonId, at: t, updatedAt: t }
+    mutateHouseholdDoc((doc) => {
+      doc.planShifts = [...(doc.planShifts ?? []), shift]
+    })
+    return shift
+  }
+
+  /** «Отменить» сдвиг — надгробие (слияние: удаление сильнее правки). */
+  function undoPlanShift(id: string) {
+    if (useAuthStore().isViewer) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      doc.planShifts = (doc.planShifts ?? []).map((s) => (s.id === id && !s.deletedAt ? { ...s, deletedAt: t, updatedAt: t } : s))
+    })
   }
 
   function mutatePrivateDoc(mutator: (data: Record<string, unknown>) => void) {
@@ -2277,6 +2338,10 @@ export const useFinanceStore = defineStore('finance', () => {
     mutateHouseholdDoc,
     aiReviewOf,
     saveAiReview,
+    termSnapFor,
+    ensureTermSnap,
+    addPlanShift,
+    undoPlanShift,
     mutatePrivateDoc,
     addMerchantRule,
     addMerchantRules,

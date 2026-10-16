@@ -229,6 +229,14 @@ export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
     debtCard: newerObject(local.debtCard, remote.debtCard),
     // Разборы месяца ИИ (AI-09): по id, надгробия как у всех; какой показать — последний по `at` (стор).
     aiReviews: mergeList(local.aiReviews ?? [], remote.aiReviews ?? [], (x) => x.id),
+    // Снимки срока (AU-04): по месяцу; два телефона записали один месяц — побеждает ранний `at` (снимок начала месяца),
+    // надгробие сильнее, как у всех.
+    termSnaps: mergeList(local.termSnaps ?? [], remote.termSnaps ?? [], (x) => x.id, (merged, a, b) => {
+      const early = a.at <= b.at ? a : b
+      return { ...merged, at: early.at, income: early.income, dueIds: early.dueIds, goals: early.goals }
+    }),
+    // Сдвиги месяца (AU-05): записи двух телефонов по id; отмена — надгробие, сильнее правки.
+    planShifts: mergeList(local.planShifts ?? [], remote.planShifts ?? [], (x) => x.id),
     // Метки равны (или их нет) — сброс один и тот же.
     ...(lr ? { resetAt: lr } : {}),
   }

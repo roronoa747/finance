@@ -24,7 +24,24 @@
   (лимит в деньгах), поведение 429 то же.
 - Разбор сам (AU-13) — главный риск расхода: фоновые запросы считать в e2e счётчиком; на стенде — не больше одного
   запроса на повод на телефон.
-- **Факты кода после Блоков 2 и 7** (заполняют критики Блоков 2 и 7): —
+- **Факты кода после Блоков 2 и 7** (заполняют критики Блоков 2 и 7):
+  - **Блок 2** (критик, 2026-10-16; строки — `lib/finance.ts` ветки `au-block-2-dream-lines`, перечитать grep-ом):
+    - Факты разделов (AU-11) — `spendCompare(state, ctx)` :4089 → `{income, usualFrom, rows, unknown}`; `plan` строки —
+      план **этого месяца** (с урезкой `planShifts`), `over` уже без `SPEND_LAST` и без `usual = 0`.
+    - Сдвиг мечты (AU-11) — `dreamShift(state, ctx, snap, goalId)` :4205 → `{days, reason, name?}` | null (`days` > 0 —
+      дальше; < 7 дней — null), снимок — `useFinanceStore().termSnapFor(month)`; слова причин — `SHIFT_REASON_TEXT`
+      :4250, метка — `shiftLabel` :4393, время — `shiftSpan` :4263. Причина без цифр годится фактом `about`.
+    - Кандидаты (AU-11) — `stepCandidates(state, ctx)` :4316 → `StepCandidate[]` (:4281, по одному `move` / `prepay` /
+      `cushion`; **id стабильны**: `move:<categoryId>`, `prepay`, `cushion`; у «Вернуть срок» — `return:<goalId>`).
+      AU-13 «кандидат ещё применим» = в свежем `stepCandidates` есть тот же id (сумма и эффект — оттуда, не из
+      сохранённого разбора). Строки на паузе (карточка долга, подушка) кандидатов не дают (правка критика).
+    - Лист (AU-13) — `components/plan/DoSheet.vue`: пропы `candidate: StepCandidate | null`, `returning?`; сам пишет
+      `addPlanShift`, сам показывает тост «Отменить» → `undoPlanShift`; emits `close`, `done(id)`; viewer лист не
+      открывает. Открывать — `:candidate="x ? cand : null"`, как в `GoalDetail.vue`.
+    - Документ: `SyncDoc.termSnaps` (снимок пишет `ensureTermSnap` после pull, хук `afterPull` в `syncEngine.ts:95` —
+      туда же можно повесить «разбор сам» AU-13: документ уже подтянут), `SyncDoc.planShifts`. «Хватит?» с причиной —
+      `affordWhy` :3801 / `affordWhyText`; первый долг — `firstDebt` :3833 (факты «риска» без счёта заново).
+    - Гейт и ручки «ИИ» — §6 индекса «После Блока 3 «ИИ»» (лимит в тестах — `TestSellersGate`, `newReviewFixture`).
 - Следующий шаг — `/critic ИИ-польза 3 ultracode`.
 
 ---

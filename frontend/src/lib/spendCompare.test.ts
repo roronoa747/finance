@@ -170,6 +170,32 @@ describe('spendCompare — порог точки и текущий месяц', 
     // 20 000 за 5 дней: пропорция дала бы 124 000 за месяц (точку), но сравнивается сама сумма 20 000 < обычных 30 000.
     expect(at(30_000, 20_000)).toBe(false)
   })
+  it('«обычно» 0 (новый раздел) — без точки (Х-3)', () => {
+    expect(at(0, 50_000)).toBe(false)
+  })
+})
+
+describe('spendCompare — «не разобрано» и переводы в конце (Х-1, Х-3)', () => {
+  it('«не разобрано» — отдельным полем: строки + оно + платежи = потрачено месяца', () => {
+    const r = spendCompare(family(), ctxOf())
+    expect(r.unknown).toBe(5_000)
+    // 100 000 + 60 000 + 0 (строки) + 5 000 (не разобрано) + 25 000 (коммуналка — раздел платежей) = 190 000 итогов октября.
+    const rows = r.rows.reduce((s, x) => s + (x.amount ?? 0), 0)
+    expect(rows + r.unknown + 25_000).toBe(TOTALS.filter((t) => t.period === KEY).reduce((s, t) => s + t.amount, 0))
+    expect(spendCompare(family(), ctxOf({ uploads: UPLOADS.filter((u) => u.period_from < KEY) })).unknown).toBe(0)
+  })
+  it('переводы людям и наличные — последними и без точки, даже крупнейшие и выше обычного', () => {
+    // Переводы: обычно 10 000, октябрь 500 000 — по сумме первые и выше порога, но идут после трат и точки не дают.
+    const totals = [
+      ...TOTALS,
+      total('a', '2026-08', 'sc_people', 10_000), total('a', '2026-09', 'sc_people', 10_000), total('a', KEY, 'sc_people', 500_000),
+      total('a', KEY, 'sc_cash', 200_000),
+    ]
+    const r = spendCompare(family(), ctxOf({ totals }))
+    expect(r.rows.map((x) => x.categoryId)).toEqual(['sc_food', 'sc_cafe', 'sc_transport', 'sc_people', 'sc_cash'])
+    expect(row(r, 'sc_people')).toMatchObject({ amount: 500_000, over: false })
+    expect(row(r, 'sc_cash')!.over).toBe(false)
+  })
 })
 
 describe('справка РК', () => {

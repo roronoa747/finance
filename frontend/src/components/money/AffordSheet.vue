@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { monthKey } from '@/lib/dates'
 import { money, parseMoney } from '@/lib/money'
-import { canAfford } from '@/lib/finance'
+import { affordWhy, affordWhyText, canAfford } from '@/lib/finance'
 import { plural } from '@/lib/utils'
 import Field from '@/components/kit/Field.vue'
 import NumField from '@/components/kit/NumField.vue'
@@ -25,6 +25,13 @@ const result = computed(() => {
   const { state, ctx } = finance.planInput(monthKey())
   // Счета — те же, что у «до зарплаты» на «Месяце».
   return canAfford({ ...state, accounts: finance.householdAccounts }, ctx, amount)
+})
+/** Где тесно и почему (Р-7, AU-07) — одной строкой под вердиктом; счетов нет или запас есть — строки нет. */
+const why = computed(() => {
+  const amount = parseMoney(sum.value)
+  if (amount <= 0) return null
+  const w = affordWhy({ ...finance.planInput(monthKey()).state, accounts: finance.householdAccounts }, amount)
+  return w ? affordWhyText(w) : null
 })
 const days = (n: number) => `${n} ${plural(n, 'день', 'дня', 'дней')}`
 const months = (n: number) => `${n} ${plural(n, 'месяц', 'месяца', 'месяцев')}`
@@ -50,6 +57,7 @@ const months = (n: number) => `${n} ${plural(n, 'месяц', 'месяца', '�
           {{ result.goal }} {{ result.months ? `отодвинется на ${months(result.months)}` : 'почти не сдвинется' }}
         </p>
       </template>
+      <p v-if="why" class="text-[14px] num text-ink-2" data-afford-why>{{ why }}</p>
     </div>
     <p v-else class="text-[14px] text-ink-2" data-afford-empty>Введите сумму</p>
   </Sheet>

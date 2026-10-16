@@ -1194,3 +1194,49 @@ describe('merge.ts — разборы месяца ИИ (aiReviews)', () => {
     expect(defaultSyncDoc().aiReviews).toEqual([])
   })
 })
+
+// AU-04 (бэклог «ИИ-польза», Р-6): снимки срока мечт — по месяцу, ранний снимок побеждает.
+describe('merge.ts — снимки срока мечт (termSnaps)', () => {
+  const snap = (id: string, at: string, given: number, extra: Record<string, unknown> = {}) => ({
+    id, at, income: 1_000_000, dueIds: ['rent'], goals: [{ goalId: 'car', given, doneMonth: '2027-05' }], updatedAt: at, ...extra,
+  })
+
+  it('два телефона записали один месяц — побеждает ранний at в обе стороны', () => {
+    const early = { ...createEmptyDoc(), termSnaps: [snap('2026-10', '2026-10-01T03:00:00.000Z', 60_000)] }
+    const late = { ...createEmptyDoc(), termSnaps: [snap('2026-10', '2026-10-01T09:00:00.000Z', 30_000)] }
+    for (const merged of [mergeDocs(early, late), mergeDocs(late, early)]) {
+      expect(merged.termSnaps).toHaveLength(1)
+      expect(merged.termSnaps![0]).toMatchObject({ at: '2026-10-01T03:00:00.000Z', goals: [{ given: 60_000 }] })
+    }
+  })
+
+  it('разные месяцы — оба; надгробие старшего сильнее; старый клиент без ключа не теряет', () => {
+    const one = { ...createEmptyDoc(), termSnaps: [snap('2026-09', '2026-09-01T03:00:00.000Z', 1), snap('2026-10', '2026-10-01T03:00:00.000Z', 2)] }
+    const two = {
+      ...createEmptyDoc(),
+      termSnaps: [{ ...snap('2026-09', '2026-09-01T03:00:00.000Z', 0), goals: [], deletedAt: '2026-12-01T03:00:00.000Z', updatedAt: '2026-12-01T03:00:00.000Z' }],
+    }
+    const merged = mergeDocs(one, two).termSnaps ?? []
+    expect(merged.map((s) => s.id).sort()).toEqual(['2026-09', '2026-10'])
+    expect(merged.find((s) => s.id === '2026-09')?.deletedAt).toBe('2026-12-01T03:00:00.000Z')
+    expect(mergeDocs(createEmptyDoc(), one).termSnaps).toHaveLength(2)
+    expect(defaultSyncDoc().termSnaps).toEqual([])
+  })
+})
+
+// AU-05 (Р-17): сдвиги месяца — записи по id; отмена (надгробие) побеждает.
+describe('merge.ts — сдвиги месяца (planShifts)', () => {
+  const s = (id: string, extra: Record<string, unknown> = {}) => ({
+    id, period: '2026-10', by: 'a' as const, from: 'rest' as const, to: { goalId: 'car' }, amount: 20_000, at: '2026-10-05T08:00:00.000Z', updatedAt: '2026-10-05T08:00:00.000Z', ...extra,
+  })
+
+  it('сдвиги с двух телефонов — оба; отмена на одном побеждает правку на другом в обе стороны', () => {
+    const one = { ...createEmptyDoc(), planShifts: [s('x1'), s('x2', { amount: 30_000, updatedAt: '2026-10-07T08:00:00.000Z' })] }
+    const two = { ...createEmptyDoc(), planShifts: [s('x3'), s('x2', { deletedAt: '2026-10-06T08:00:00.000Z', updatedAt: '2026-10-06T08:00:00.000Z' })] }
+    for (const merged of [mergeDocs(one, two), mergeDocs(two, one)]) {
+      expect((merged.planShifts ?? []).map((x) => x.id).sort()).toEqual(['x1', 'x2', 'x3'])
+      expect(merged.planShifts!.find((x) => x.id === 'x2')!.deletedAt).toBe('2026-10-06T08:00:00.000Z')
+    }
+    expect(defaultSyncDoc().planShifts).toEqual([])
+  })
+})

@@ -908,6 +908,25 @@ describe('AU-02: траты на «Месяце» — разделы семьи,
     expect(all('[data-spend-row]').map((el) => el.dataset.spendRow)).toEqual(['sc_food', 'sc_cafe'])
     expect(all('[data-spend-dot]').map((el) => el.closest<HTMLElement>('[data-spend-row]')!.dataset.spendRow)).toEqual(['sc_cafe'])
     expect(txt(q('[data-spend-row="sc_cafe"] [data-spend-amount]'))).toBe(norm(plain(50_000)))
+    // «Не разобрано» в сентябре нет — тихой строки нет.
+    expect(q('[data-spend-unknown]')).toBeNull()
+  })
+
+  it('Х-1, Х-3: «Не разобрано · N» внизу без листа и точки; переводы людям — после трат, без точки', async () => {
+    // «Не разобрано» 12 000; переводы: обычно 0, сентябрь 300 000 — крупнейшие, но последними и без точки.
+    totals.push(total(KEY, '_unknown', 12_000), total(KEY, 'sc_people', 300_000))
+    try {
+      await openSpend()
+      await press(section('spend'))
+      expect(all('[data-spend-row]').map((el) => el.dataset.spendRow)).toEqual(['sc_food', 'sc_cafe', 'sc_people'])
+      expect(q('[data-spend-row="sc_people"] [data-spend-dot]')).toBeNull()
+      const unknown = q('[data-spend-unknown]')!
+      expect([...unknown.children].map((el) => txt(el))).toEqual(['Не разобрано', norm(plain(12_000))])
+      expect(unknown.tagName).not.toBe('BUTTON')
+      expect(unknown.nextElementSibling?.hasAttribute('data-spend-add')).toBe(true)
+    } finally {
+      totals.splice(-2)
+    }
   })
 
   it('лист раздела: факт, обычно, план, «до плана» в мечту; «Изменить» — «Сколько в месяц» с суммой участника', async () => {
@@ -920,7 +939,7 @@ describe('AU-02: траты на «Месяце» — разделы семьи,
     expect(txt(q('[role="dialog"] [data-cat-amount]'))).toBe(norm(money(50_000)))
     expect(txt(q('[role="dialog"] [data-cat-usual]'))).toBe(norm(`обычно у вас ${plain(30_000)}`))
     expect(txt(q('[role="dialog"] [data-cat-plan]'))).toBe(norm(`план ${plain(20_000)}`))
-    expect(txt(q('[role="dialog"] [data-cat-advice]'))).toContain(norm(`до плана: +${plain(10_000)} в «${cafe.advice!.goalName}»`))
+    expect(txt(q('[role="dialog"] [data-cat-advice]'))).toContain(norm(`до плана: +${plain(10_000)} в мечту «${cafe.advice!.goalName}»`))
     expect(q('[role="dialog"] [data-cat-rk]')).not.toBeNull()
     await press(q('[role="dialog"] [data-cat-person="a"] [data-cat-edit]'))
     expect(txt(q('[role="dialog"] h3'))).toBe('Сколько в месяц')

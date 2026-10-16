@@ -46,8 +46,9 @@ describe('SpendCategorySheet', () => {
     expect(txt(q('[data-cat-share]'))).toBe('5 % дохода')
     expect(txt(q('[data-cat-usual]'))).toBe(norm(`обычно у вас ${plain(30_000)}`))
     expect(txt(q('[data-cat-plan]'))).toBe(norm(`план ${plain(20_000)}`))
-    expect(txt(q('[data-cat-advice]'))).toBe(norm(`до плана: +${plain(10_000)} в «Отпуск» · на 3 недели раньше`))
-    expect(txt(q('[data-cat-rk]'))).toContain('у вас 45 % · в Алматы 24 %')
+    // Х-2: «в мечту «<мечта>»» без склонения имени; справка называет группу (у кафе и транспорта одна доля).
+    expect(txt(q('[data-cat-advice]'))).toBe(norm(`до плана: +${plain(10_000)} в мечту «Отпуск» · на 3 недели раньше`))
+    expect(txt(q('[data-cat-rk]'))).toContain('услуги: у вас 45 % · в Алматы 24 %')
     // Hint — сначала открыть.
     q('[data-cat-rk] button')!.click()
     await nextTick()
@@ -81,6 +82,7 @@ describe('SpendCategorySheet', () => {
 
   it('план по участникам; «Изменить» отдаёт участника и сумму; viewer — без «Изменить»', async () => {
     const edits = await mount()
+    expect(txt(q('[data-cat-plans-title]'))).toBe('План каждого')
     expect(txt(q('[data-cat-person="a"]'))).toContain(norm(plain(20_000)))
     expect(txt(q('[data-cat-person="b"]'))).toContain('—')
     q('[data-cat-person="a"] [data-cat-edit]')!.click()
