@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { PhCheck } from '@phosphor-icons/vue'
+import { PhCheck, PhCircleNotch } from '@phosphor-icons/vue'
 import Button from '@/components/ui/Button.vue'
 import ProgressBar from '@/components/kit/ProgressBar.vue'
 import CategoryChips from '@/components/CategoryChips.vue'
@@ -92,6 +92,8 @@ const hints = computed(() => {
   return out
 })
 const hintOf = (g: UnknownGroup) => hints.value.get(keyOf(g)) ?? null
+// Место ✓ держится и пока ответ идёт: иначе через 3–6 с все суммы съезжают влево на ширину ✓ (`/ux` Блока 3).
+const aiColumn = computed(() => hints.value.size > 0 || ai.sellersState === 'thinking')
 /** Строка шапки: идёт запрос, лимит, не пришли — или сколько предложений. */
 const aiLine = computed(() =>
   ai.sellersState === 'thinking'
@@ -126,7 +128,8 @@ function accept(g: UnknownGroup, categoryId: string) {
           </button>
         </div>
         <p v-if="aiLine" class="type-meta num flex items-center gap-1.5" data-ai-sellers>
-          <i v-if="hints.size && ai.sellersState === 'idle'" class="size-1.5 shrink-0 rounded-full bg-brand" aria-hidden="true" />{{ aiLine }}
+          <PhCircleNotch v-if="ai.sellersState === 'thinking'" :size="13" class="shrink-0 animate-spin" aria-hidden="true" data-ai-spin />
+          <i v-else-if="hints.size && ai.sellersState === 'idle'" class="size-1.5 shrink-0 rounded-full bg-brand" aria-hidden="true" />{{ aiLine }}
         </p>
       </div>
       <TransitionGroup tag="div" class="flex flex-col" leave-active-class="transition-opacity duration-150" leave-to-class="opacity-0">
@@ -151,7 +154,7 @@ function accept(g: UnknownGroup, categoryId: string) {
                 <span class="shrink-0">{{ g.count }} {{ plural(g.count, 'раз', 'раза', 'раз') }}</span>
                 <span
                   v-if="hintOf(g)"
-                  class="inline-flex min-w-0 items-center gap-1 rounded-pill bg-surface-3 px-2 py-px text-[12.5px] font-medium text-ink"
+                  class="-my-px inline-flex min-w-0 items-center gap-1 rounded-pill bg-surface-3 px-2 py-px text-[12.5px] font-medium text-ink"
                   data-ai-hint
                 >
                   <i class="size-2 shrink-0 rounded-full" :style="{ background: spendColor(hintOf(g)) }" aria-hidden="true" />
@@ -172,7 +175,7 @@ function accept(g: UnknownGroup, categoryId: string) {
           >
             <PhCheck :size="16" weight="bold" />
           </Button>
-          <span v-else-if="hints.size" class="w-8 shrink-0" aria-hidden="true" />
+          <span v-else-if="aiColumn" class="w-8 shrink-0" aria-hidden="true" />
         </div>
         <button
           v-if="tail.length"

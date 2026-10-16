@@ -220,6 +220,22 @@ describe('AI-12: предложения ИИ в «Без раздела»', () =
     expect(spy).toHaveBeenCalledTimes(2)
   })
 
+  it('ответ идёт — крутилка и место ✓ уже стоят: суммы не съезжают, когда ответ придёт (`/ux` Блока 3)', async () => {
+    let reply: (a: typeof ANSWER) => void = () => {}
+    vi.spyOn(apiClient, 'aiSellers').mockImplementation(() => new Promise((ok) => (reply = ok)))
+    const { ai } = await openWeek()
+    ai.setConsent(true)
+    await openBatch()
+    await vi.waitFor(() => expect(txt(q('[data-ai-sellers]'))).toBe('ИИ думает…'))
+    expect(q('[data-ai-spin]')).toBeTruthy()
+    expect(rowOf('Respect Boutique')!.lastElementChild!.className).toContain('w-8')
+    expect(rowOf('Tau Lider')!.lastElementChild!.className).toContain('w-8')
+    reply(ANSWER)
+    await vi.waitFor(() => expect(txt(q('[data-ai-sellers]'))).toBe('ИИ предлагает · 1'))
+    expect(q('[data-ai-spin]')).toBeNull()
+    expect(rowOf('Tau Lider')!.lastElementChild!.className).toContain('w-8')
+  })
+
   it('«Не надо» — запросов нет ни сейчас, ни при следующем открытии', async () => {
     const spy = vi.spyOn(apiClient, 'aiSellers').mockResolvedValue(ANSWER)
     const { ai } = await openWeek()
