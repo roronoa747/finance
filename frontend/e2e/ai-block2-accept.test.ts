@@ -1,0 +1,206 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
+import { createPinia, setActivePinia } from 'pinia'
+import { apiClient, ApiError, type ApiClient } from '../src/api/client'
+import { startDemo } from '../src/lib/demo'
+import { useAuthStore } from '../src/stores/auth'
+import { useAiStore } from '../src/stores/ai'
+import { useFinanceStore } from '../src/stores/finance'
+import { authAs, planFamilyDoc, T0 } from '../src/test/planFamily'
+import { screenMixin } from '../src/test/screenState'
+import type { MeResponse } from '../src/types/api'
+import type { AiReview, SyncDoc } from '../src/types/finance'
+import Month from '../src/views/Month.vue'
+import { at, fakePrivate, fakeServer, phone, privateFor, screen, type FakePrivate, type FakeServer } from './support/family'
+
+/**
+ * Приёмка Блока 2 «ИИ» (2026-10-16): сценарии стенда приёмки, которых не было в наборе. (д) партнёр с ИИ и своим
+ * согласием открывает сохранённый разбор — без запроса (в `ai-block2-review` (а) партнёр без согласия — запроса не
+ * было бы и при ошибке); (е) флаг сняли, пока экран открыт: `ai_off` → `/auth/me` → ✦ нет, в документе ничего;
+ * (ж) флаг снят — ✦ нет и при сохранённом разборе (участник и viewer); (з) «Обновить» через сутки — новый разбор,
+ * в документе оба, показан последний, партнёр видит новый; (и) демо — нажатие ✦ без запроса и записи; (к) имена в
+ * падежах в названиях статей, долгов и целей не уходят, а `sent` в общем документе = ушедшая сводка.
+ */
+const answer = (good: string) => ({
+  good,
+  risk: 'Кредитка под 40% — самый дорогой долг.',
+  steps: [
+    { text: 'Посмотрим долги.', screen: '/money/debts' },
+    { text: 'Обсудим план трат вдвоём.', screen: null },
+  ],
+})
+const saved = (good: string, atIso: string): AiReview => ({
+  id: 'r0', month: '2026-10', at: atIso, by: 'a', ...answer(good), sent: null, updatedAt: atIso,
+})
+
+/** Имена участников в падежах — в названиях статьи, кредита и цели (заметки — тоже с именами). */
+function namedDoc(): SyncDoc {
+  const doc = planFamilyDoc()
+  return planFamilyDoc({
+    obligations: [
+      ...doc.obligations,
+      { id: 'club', name: 'Кружок Аруны', note: 'водит Ильяс', day: 12, category: 'd1', versions: [{ from: '2026-01', amount: 35_000 }], updatedAt: T0 },
+    ],
+    credits: doc.credits.map((c) => (c.id === 'loan' ? { ...c, name: 'Кредит Ильяса', note: 'платит Аруна' } : c)),
+    goals: doc.goals.map((g) => (g.id === 'car' ? { ...g, name: 'Машина для Аруны' } : g)),
+  })
+}
+
+const visible = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ')
+const sheet = (html: string) => {
+  const i = html.search(/data-review-(example|good|state)/)
+  if (i < 0) return ''
+  const d = html.lastIndexOf('role="dialog"', i)
+  return visible(html.slice(d < 0 ? i : d))
+}
+const canon = (v: unknown): unknown =>
+  Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon((v as Record<string, unknown>)[k])])) : v
+
+describe('e2e / ИИ Блок 2 — приёмка', () => {
+  const storage = new Map<string, string>()
+  let server: FakeServer
+  let pv: FakePrivate
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => storage.set(k, String(v)),
+      removeItem: (k: string) => storage.delete(k),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('офлайн'))))
+    vi.useFakeTimers({ toFake: ['Date'] })
+    at('2026-10-12T07:00:00Z')
+    server = fakeServer(planFamilyDoc())
+    pv = fakePrivate()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  /** Телефон человека: документ семьи с сервера, вход и `/auth/me` (флаг ИИ), свой личный документ. */
+  async function as(role: 'member' | 'viewer', slot: 'a' | 'b', ai = true) {
+    storage.clear()
+    const p = await phone(server)
+    setActivePinia(p.pinia)
+    const auth = useAuthStore()
+    auth.setAuthData(authAs(role, slot))
+    vi.spyOn(apiClient, 'me').mockResolvedValueOnce({ ...(authAs(role, slot) as unknown as MeResponse), ai })
+    await auth.fetchMe()
+    await useFinanceStore().pullPrivateDoc(privateFor(pv, `u-${slot}`) as unknown as ApiClient)
+    return p
+  }
+  type Phone = Awaited<ReturnType<typeof as>>
+
+  /** Нажатие ✦ у остатка (`MonthPlan.openReview`) или «Обновить» (`refreshReview`) и ожидание исхода. */
+  async function tap(p: Phone, action: 'openReview' | 'refreshReview' = 'openReview') {
+    await screen(p.pinia, Month, '/month', undefined, [screenMixin({}, (s) => void (s[action] as () => Promise<void>)())])
+    setActivePinia(p.pinia)
+    await vi.waitFor(() => expect(useAiStore().reviewState).not.toBe('thinking'))
+  }
+  const opened = (p: Phone) => screen(p.pinia, Month, '/month', undefined, [screenMixin({ reviewOpen: true })])
+  const consent = (slot: 'a' | 'b') => pv.docs.set(`u-${slot}`, { rev: 1, data: { aiConsent: { on: true, at: T0 } } })
+
+  it('(д) партнёр с ИИ и своим согласием: ✦ у сохранённого разбора открывает его без запроса', async () => {
+    server.data.aiReviews = [saved('Платежи и траты покрыты.', '2026-10-12T06:00:00.000Z')]
+    consent('b')
+    const review = vi.spyOn(apiClient, 'aiReview').mockResolvedValue(answer('другой'))
+    const two = await as('member', 'b')
+    expect(useAiStore().available).toBe(true)
+    expect(useAiStore().consent).toBe('on')
+    await tap(two)
+    expect(review).not.toHaveBeenCalled()
+    expect(sheet(await opened(two))).toContain('Платежи и траты покрыты.')
+  })
+
+  it('(е) флаг сняли, пока экран открыт: 503 ai_off → /auth/me → ✦ нет, в документе ничего', async () => {
+    consent('a')
+    vi.spyOn(apiClient, 'aiReview').mockRejectedValue(new ApiError('ai_off', 503, { error: 'ai_off' }))
+    const one = await as('member', 'a')
+    expect(await screen(one.pinia, Month, '/month')).toContain('data-review-open')
+    const me = vi.spyOn(apiClient, 'me').mockResolvedValue({ ...(authAs('member', 'a') as unknown as MeResponse), ai: false })
+    await tap(one)
+    await vi.waitFor(() => expect(me).toHaveBeenCalled())
+    setActivePinia(one.pinia)
+    await vi.waitFor(() => expect(useAuthStore().ai).toBe(false))
+    expect(useAiStore().reviewState).toBe('failed')
+    expect(one.store.householdDoc.aiReviews ?? []).toHaveLength(0)
+    expect(await screen(one.pinia, Month, '/month')).not.toContain('data-review-open')
+  })
+
+  it('(ж) флаг снят в админке: ✦ нет и при сохранённом разборе — у участника и у viewer', async () => {
+    server.data.aiReviews = [saved('Платежи и траты покрыты.', '2026-10-12T06:00:00.000Z')]
+    consent('a')
+    const review = vi.spyOn(apiClient, 'aiReview')
+    for (const [role, slot] of [['member', 'a'], ['viewer', 'b']] as const) {
+      const p = await as(role, slot, false)
+      const html = await screen(p.pinia, Month, '/month')
+      expect(html, role).toContain('data-afford-open')
+      expect(html, role).not.toContain('data-review-open')
+    }
+    expect(review).not.toHaveBeenCalled()
+  })
+
+  it('(з) «Обновить» через сутки: новый разбор в документе рядом со старым, показан последний; партнёр видит новый', async () => {
+    server.data.aiReviews = [saved('Старый разбор.', '2026-10-11T06:00:00.000Z')]
+    consent('a')
+    const review = vi.spyOn(apiClient, 'aiReview').mockResolvedValue(answer('Новый разбор.'))
+    const one = await as('member', 'a')
+    expect(await opened(one)).toContain('data-review-refresh')
+    await tap(one, 'refreshReview')
+    expect(review).toHaveBeenCalledTimes(1)
+    setActivePinia(one.pinia)
+    const live = (one.store.householdDoc.aiReviews ?? []).filter((r) => !r.deletedAt)
+    expect(live).toHaveLength(2)
+    expect(one.store.aiReviewOf('2026-10')?.good).toBe('Новый разбор.')
+    const html = await opened(one)
+    expect(sheet(html)).toContain('Новый разбор.')
+    expect(html).not.toContain('data-review-refresh')
+    await one.store.syncHousehold(one.client)
+
+    review.mockClear()
+    const two = await as('member', 'b')
+    expect(sheet(await opened(two))).toContain('Новый разбор.')
+    expect(review).not.toHaveBeenCalled()
+  })
+
+  it('(и) демо: ✦ видна, нажатие открывает «Пример» — без запроса и без записи в документ', async () => {
+    const review = vi.spyOn(apiClient, 'aiReview')
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    expect(startDemo()).toBe(true)
+    await nextTick()
+    await nextTick()
+    expect(await screen(pinia, Month, '/month')).toContain('data-review-open')
+    const before = JSON.stringify(useFinanceStore().householdDoc)
+    await screen(pinia, Month, '/month', undefined, [screenMixin({}, (s) => void (s.openReview as () => Promise<void>)())])
+    setActivePinia(pinia)
+    expect(review).not.toHaveBeenCalled()
+    expect(useAiStore().reviewState).toBe('idle')
+    expect(JSON.stringify(useFinanceStore().householdDoc)).toBe(before)
+    expect(sheet(await screen(pinia, Month, '/month', undefined, [screenMixin({ reviewOpen: true })]))).toContain('Пример')
+  })
+
+  it('(к) имена в падежах в названиях статьи, кредита и цели не уходят; `sent` в общем документе = ушедшая сводка', async () => {
+    server = fakeServer(namedDoc())
+    consent('a')
+    const review = vi.spyOn(apiClient, 'aiReview').mockResolvedValue(answer('Платежи и траты покрыты.'))
+    const one = await as('member', 'a')
+    await tap(one)
+    expect(review).toHaveBeenCalledTimes(1)
+    const body = review.mock.calls[0][0]
+    const text = JSON.stringify(body)
+    for (const bad of ['Ильяс', 'Арун', 'водит', 'платит']) expect(text, bad).not.toContain(bad)
+    for (const masked of ['Кружок участник', 'Кредит участник', 'Машина для участник']) expect(text, masked).toContain(masked)
+
+    setActivePinia(one.pinia)
+    await one.store.syncHousehold(one.client)
+    const stored = (server.data.aiReviews ?? []).find((r) => !r.deletedAt)
+    expect(canon(stored?.sent)).toEqual(canon(body))
+    expect(JSON.stringify(server.data.aiReviews)).not.toMatch(/Ильяс|Арун/)
+  })
+})
