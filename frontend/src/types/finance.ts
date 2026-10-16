@@ -1,5 +1,6 @@
 import type { CategoryKey, HueKey, ThemeChoice } from '@/lib/palette'
 import type { SpendCategory, SpendTotal } from '@/lib/statements/types'
+import type { MonthSummaryAI } from '@/lib/aiSummary'
 
 export type PersonId = 'a' | 'b' | 'c'
 
@@ -24,6 +25,24 @@ export type Tracked = {
  * устройств, партнёр не видит. Нет ключа — не спрошено. `at` — ISO-время ответа, позднее побеждает при слиянии.
  */
 export type AiConsent = { on: boolean; at: string }
+
+/** Шаг разбора месяца (бэклог «ИИ», Р-4): текст и экран из белого списка сервера; нет экрана — null. */
+export type AiReviewStep = { text: string; screen: string | null }
+
+/**
+ * Разбор месяца ИИ (бэклог «ИИ», Р-4, AI-09) — в общем документе: партнёр и viewer видят тот же текст без запроса.
+ * `sent` — сводка, ушедшая в модель («что ушло», Р-9); `by` — кто запросил; месяц показывает последний по `at`.
+ */
+export type AiReview = Tracked & {
+  id: string
+  month: string
+  at: string
+  by: PersonId
+  good: string
+  risk: string
+  steps: AiReviewStep[]
+  sent: MonthSummaryAI | null
+}
 
 export type Person = Tracked & {
   id: PersonId
@@ -615,6 +634,8 @@ export type SyncDoc = {
   wishOrder?: QueueOrder | null
   /** Карточка «закрыть кредит» (Р-82). */
   debtCard?: DebtCard | null
+  /** Разборы месяца ИИ (бэклог «ИИ», AI-09): не больше 12 живых, старые — надгробия. До Блока 2 «ИИ» — без ключа. */
+  aiReviews?: AiReview[]
   /**
    * Когда закончили первичную настройку бюджета. Пустое значит, что показываем
    * первый запуск (`/start`). Живёт в общем документе, а не в настройках устройства: второй

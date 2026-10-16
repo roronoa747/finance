@@ -27,7 +27,8 @@ const router = useRouter()
 const authStore = useAuthStore()
 // ИИ-помощник (бэклог «ИИ», Р-9): карточка — только участнику семьи с ИИ; тумблер — своё согласие, без листа.
 const ai = useAiStore()
-// Подсказка — одной фразой: «Claude от Anthropic получает цифры месяца без имён, названия продавцов и скриншот товара».
+// Подсказка — одной фразой: «Claude от Anthropic получает цифры месяца и названия статей без ваших имён, названия
+// продавцов и скриншот товара».
 const sends = AI_SENDS.map((s) => s[0].toLowerCase() + s.slice(1))
 const aiHint = `${AI_TO} получает ${sends.slice(0, -1).join(', ')} и ${sends.at(-1)}. ${AI_NO_TRAINING}.`
 
@@ -147,7 +148,7 @@ async function deleteAccount() {
           <div class="min-w-0 flex-1">
             <div class="text-[14px] text-ink">Помощник</div>
             <div class="mt-0.5 flex items-center gap-1.5 type-meta">
-              Claude · без имён
+              Claude · без ваших имён
               <Hint label="Что уходит">{{ aiHint }}</Hint>
             </div>
           </div>

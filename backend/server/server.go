@@ -166,6 +166,9 @@ func NewRouter(
 	accountHandler := handlers.NewAccountHandler(repos.Accounts)
 	eventsHandler := handlers.NewEventsHandler(repos.Events, repos.Metrics, repos.Users, cfg.AdminEmails)
 	adminAIHandler := handlers.NewAdminAIHandler(repos.AI, repos.Users, cfg.AdminEmails, aiClient, cfg.AIModelSellers, cfg.AIMonthlyLimit)
+	// Гейт ИИ-ручек (AI-08; Блоки 3–4 берут его же): ключ и флаг семьи, member, лимит месяца.
+	aiGate := handlers.NewAIGate(repos.AI, aiClient, cfg.AIMonthlyLimit)
+	aiReviewHandler := handlers.NewAIReviewHandler(aiGate, cfg.AIModelReview)
 
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", handlers.HealthHandler(database))
@@ -230,6 +233,9 @@ func NewRouter(
 
 				// История курсов Нацбанка (B2C-76, Р-71): member и viewer.
 				family.Get("/fx-rates", handlers.FxRatesHandler(fxClient, repos.Fx))
+
+				// ИИ (бэклог «ИИ», AI-08): разбор месяца — только member семьи с ИИ, в пределах лимита.
+				family.Post("/ai/review", aiReviewHandler.Review)
 			})
 		})
 	})

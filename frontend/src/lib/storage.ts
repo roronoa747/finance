@@ -114,6 +114,14 @@ export const WEEK_VIEW_KEY = 'ff_week_view'
  */
 export const TIPS_SEEN_KEY = 'ff_tips_seen'
 
+/** Id разбора месяца ИИ, открытого на этом телефоне (AI-09): другой — точка на кнопке у остатка. */
+export const AI_REVIEW_SEEN_KEY = 'ff_ai_review_seen'
+export const readAiReviewSeen = (): string | null => {
+  const v = readStorage<unknown>(AI_REVIEW_SEEN_KEY, null)
+  return typeof v === 'string' ? v : null
+}
+export const writeAiReviewSeen = (id: string) => writeStorage(AI_REVIEW_SEEN_KEY, id)
+
 /** Список увиденных; пусто, мусор или хранилище недоступно — пустой. */
 export function readTipsSeen(): string[] {
   const list = readStorage<unknown>(TIPS_SEEN_KEY, [])

@@ -155,7 +155,7 @@ const funnel = computed(() => {
         >
           <div class="min-w-0 flex-1">
             <div class="truncate text-[14px] text-ink" data-emails>{{ f.emails.join(' · ') || '—' }}</div>
-            <div v-if="f.ai || f.requests > 0" class="type-meta mt-0.5 num" data-spent>{{ spent(f.requests, f.cost_micros) }}</div>
+            <div v-if="f.ai || f.requests > 0 || f.cost_micros > 0" class="type-meta mt-0.5 num" data-spent>{{ spent(f.requests, f.cost_micros) }}</div>
           </div>
           <Toggle
             :model-value="f.ai"

@@ -4,7 +4,7 @@ import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { mergeDocs, mergePrivateDocs, isEmptyDoc } from '@/lib/merge'
 import { monthKey, monthLastNoon, todayIso } from '@/lib/dates'
 import { clearPhotoDisk } from '@/lib/photos/store'
-import { DEMO_PENDING_KEY, EVENTS_QUEUE_KEY, FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, TIPS_SEEN_KEY, readStorage } from '@/lib/storage'
+import { AI_REVIEW_SEEN_KEY, DEMO_PENDING_KEY, EVENTS_QUEUE_KEY, FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, TIPS_SEEN_KEY, readStorage } from '@/lib/storage'
 import {
   accountBalance,
   allocationFor,
@@ -17,6 +17,7 @@ import {
   amountAt,
   costliestCredits,
   creditBalance,
+  derivedCredits,
   creditResplit,
   creditSplit,
   endedPlan,
@@ -66,6 +67,7 @@ import {
   type MonthPlanState,
 } from '@/lib/finance'
 import type {
+  AiReview,
   AllocationPart,
   SyncDoc,
   SyncStatus,
@@ -123,6 +125,8 @@ export function defaultSyncDoc(): SyncDoc {
     goalOrder: null,
     wishOrder: null,
     debtCard: null,
+    // Разборы месяца ИИ (AI-09): ключ и пустым — как у payments (RP-03).
+    aiReviews: [],
     setupDoneAt: null,
   }
 }
@@ -134,6 +138,9 @@ export function defaultSyncDoc(): SyncDoc {
 function withDefaults(doc: SyncDoc): SyncDoc {
   return { ...defaultSyncDoc(), ...doc }
 }
+
+/** Сколько разборов месяца ИИ живёт в общем документе (AI-09): год помесячно. */
+export const AI_REVIEWS_KEPT = 12
 
 /** Семья демо-режима: её документ не уходит на сервер (Р-32). */
 export const DEMO_HOUSEHOLD = 'demo-household-1'
@@ -167,6 +174,8 @@ const LOCAL_KEYS = [
   EVENTS_QUEUE_KEY,
   // Увиденные подсказки у предмета (бэклог «первый» Р-7): другой вход на этом телефоне — подсказки снова.
   TIPS_SEEN_KEY,
+  // Открытый на этом телефоне разбор месяца ИИ (AI-09): точка на кнопке — для этого входа.
+  AI_REVIEW_SEEN_KEY,
 ]
 
 // Запрос не дошёл до сервера (fetch бросил не ApiError) — это «нет сети», а не «не
@@ -257,7 +266,6 @@ export const useFinanceStore = defineStore('finance', () => {
   const merchantRules = computed(() =>
     ((privateDoc.value.merchantRules as MerchantRule[] | undefined) ?? []).filter((r) => !r.deletedAt),
   )
-  const derivedCredits = (list: Credit[], pays: Payment[]) => list.map((c) => ({ ...c, principal: creditBalance(c, pays) }))
   const credits = computed(() => derivedCredits(householdDoc.value.credits || [], payments.value))
   const wishlist = computed(() => householdDoc.value.wishlist || [])
   const setupDone = computed(() => Boolean(householdDoc.value.setupDoneAt))
@@ -1017,6 +1025,30 @@ export const useFinanceStore = defineStore('finance', () => {
         g.updatedAt = t
       }
     })
+  }
+
+  /** Разбор месяца ИИ (AI-09): последний живой по `at`; нет — null. */
+  const aiReviewOf = (month: string): AiReview | null =>
+    (householdDoc.value.aiReviews ?? [])
+      .filter((r) => !r.deletedAt && r.month === month)
+      .reduce<AiReview | null>((a, r) => (!a || r.at > a.at ? r : a), null)
+
+  /**
+   * Разбор месяца — в общий документ (AI-09, Р-4): партнёр и viewer видят его после синка. Живых — не больше
+   * `AI_REVIEWS_KEPT`: старшие по `at` становятся надгробиями без текста и сводки (документ не растёт).
+   */
+  function saveAiReview(r: Omit<AiReview, 'id' | 'updatedAt'>): AiReview {
+    const t = new Date().toISOString()
+    const review: AiReview = { ...r, id: Math.random().toString(36).slice(2, 10), updatedAt: t }
+    mutateHouseholdDoc((doc) => {
+      const list = [...(doc.aiReviews ?? []), review]
+      const live = list.filter((x) => !x.deletedAt).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+      const drop = new Set(live.slice(AI_REVIEWS_KEPT).map((x) => x.id))
+      doc.aiReviews = list.map((x) =>
+        drop.has(x.id) ? { ...x, good: '', risk: '', steps: [], sent: null, deletedAt: t, updatedAt: t } : x,
+      )
+    })
+    return review
   }
 
   function mutatePrivateDoc(mutator: (data: Record<string, unknown>) => void) {
@@ -2241,6 +2273,8 @@ export const useFinanceStore = defineStore('finance', () => {
     saveLocalState,
     setHouseholdDoc,
     mutateHouseholdDoc,
+    aiReviewOf,
+    saveAiReview,
     mutatePrivateDoc,
     addMerchantRule,
     addMerchantRules,

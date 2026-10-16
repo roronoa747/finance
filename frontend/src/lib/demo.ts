@@ -10,6 +10,22 @@ import { templateById, templateCredit } from '@/lib/goalTemplates'
 import { DEMO_PHOTO } from '@/lib/photos/store'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
 
+/**
+ * Разбор месяца демо-семьи (бэклог «ИИ», Р-10, AI-10): заранее написанный, без запроса — в демо «Разобрать» показывает
+ * его с пометкой «Пример». Дисциплина Р-3: каждое число — из сводки демо (`buildMonthSummary`) и не зависит от дня
+ * месяца (тест `demo.review.test.ts` сверяет на разных датах). Слова утвердил владелец (артефакт `/ux`, 2026-10-16):
+ * короткий, как живой разбор; шаг 3 — досрочка в автокредит по плану «Сначала долги» уже идёт, совет её держать.
+ */
+export const DEMO_REVIEW = {
+  good: 'На поездку в Японию уже собрано 600 000 ₸.',
+  risk: 'Автокредит под 19% — самый дорогой долг.',
+  steps: [
+    { text: 'Разнести траты без раздела', screen: '/week' },
+    { text: 'Сверить траты с планом', screen: '/month' },
+    { text: 'Держать досрочку автокредита', screen: '/money/debts' },
+  ],
+}
+
 /** День `ago` суток назад — как у демо-операций (`day` ниже): даты поездки и операции совпадают. */
 const daysAgo = (ago: number) => new Date(Date.now() - ago * 86_400_000).toISOString().slice(0, 10)
 
