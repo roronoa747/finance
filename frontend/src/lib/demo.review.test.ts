@@ -42,9 +42,17 @@ describe('DEMO_REVIEW — числа ⊂ сводке демо', () => {
         book: useFxStore().book,
         uploads: useOperationsStore().uploads,
       })
-      // Слова заготовки верны и без чисел: «покрыты» — нехватки нет, «самый дорогой» — у автокредита наибольшая ставка.
-      expect(s.short).toBe(0)
+      // Слова заготовки верны и без чисел: «самый дорогой» — у автокредита наибольшая ставка; «держать досрочку» —
+      // план месяца уже отводит досрочку в автокредит (ревью frontend Блока 2 Н-1), а не советует начать её.
       expect(Math.max(...s.debts.items.map((d) => d.ratePercent ?? 0))).toBe(s.debts.items.find((d) => d.name === 'Автокредит')!.ratePercent)
+      expect(s.prepay?.name).toBe('Автокредит')
+      expect(s.prepay!.monthlyPut).toBeGreaterThan(0)
+      // Короткий, как живой разбор (владелец, `/ux` пп. 2, 4): блок — одно предложение до 12 слов, шаг — до 6 слов без чисел.
+      for (const t of [DEMO_REVIEW.good, DEMO_REVIEW.risk]) expect(t.split(/\s+/).length, t).toBeLessThanOrEqual(12)
+      for (const x of DEMO_REVIEW.steps) {
+        expect(x.text.split(/\s+/).length, x.text).toBeLessThanOrEqual(6)
+        expect(textNumbers(x.text), x.text).toEqual([])
+      }
       const allowed = new Set([1, 2, 3, ...summaryNumbers(s).map(Math.abs)])
       const texts = [DEMO_REVIEW.good, DEMO_REVIEW.risk, ...DEMO_REVIEW.steps.map((x) => x.text)]
       for (const t of texts) for (const n of textNumbers(t)) expect(allowed.has(n), `${n} в «${t}»`).toBe(true)
