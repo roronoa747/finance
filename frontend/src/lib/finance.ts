@@ -4094,15 +4094,15 @@ export function spendCompare(
   const people = (state.people ?? []).filter(alive)
   const live = ctx.spendCategories.filter(alive)
   const named = liveSpendCategories(ctx.spendCategories)
-  const income = monthPlan(state, ctx).income.total
+  const month = monthPlan(state, ctx)
+  const income = month.income.total
   const hasFact = people.some((p) => uploadedBy(p.id, key, ctx.uploads))
   const byCategory = monthSpendByCategory(people, ctx.totals, ctx.spendCategories, key, ctx.uploads)
   const facts = new Map(byCategory.rows.map((r) => [r.categoryId, r.amount]))
-  const ids = new Set(people.map((p) => p.id))
+  // План раздела — строки плана месяца (с урезкой сдвигами `planShifts`, AU-05): строка раздела, «План каждого» и
+  // итог «Трат» говорят одно и то же.
   const plans = new Map<string, number>()
-  for (const x of state.spendPlans ?? []) {
-    if (ids.has(x.by) && planSpendOn(x, live)) plans.set(x.categoryId, (plans.get(x.categoryId) ?? 0) + x.amount)
-  }
+  for (const s of month.spend) for (const r of s.rows) plans.set(r.categoryId, (plans.get(r.categoryId) ?? 0) + r.plan)
   const usual = usualSpend(people, ctx.totals, ctx.spendCategories, ctx.uploads, key)
   const goal = mainGoal(state.goals ?? [], state.goalOrder, state.moneySettings)
   const pace = goal ? goalPace(goal, key) : 0
@@ -4319,8 +4319,10 @@ export function stepCandidates(state: MonthPlanState, ctx: MonthPlanCtx): StepCa
   const dream = firstDream(plan)
   const goal = dream ? (state.goals ?? []).find((g) => g.id === dream.goalId) : undefined
   if (dream && goal) {
+    // Не больше, чем мечта примет в этом месяце (сдвиг упрётся в остаток до суммы — лишнее ушло бы в остаток).
+    const room = dream.need - dream.have - dream.given
     const best = spendSlack(state, ctx, plan)
-      .map((r) => ({ ...r, owner: r.owners[0], amount: roundStep(Math.min(r.slack, r.owners[0]?.plan ?? 0)) }))
+      .map((r) => ({ ...r, owner: r.owners[0], amount: roundStep(Math.min(r.slack, r.owners[0]?.plan ?? 0, room)) }))
       .filter((r) => r.owner && r.amount >= STEP_MIN)
       .sort((a, b) => b.amount - a.amount || a.categoryId.localeCompare(b.categoryId))[0]
     if (best) {
@@ -4333,7 +4335,8 @@ export function stepCandidates(state: MonthPlanState, ctx: MonthPlanCtx): StepCa
     }
   }
   const restStep = roundStep(plan.rest)
-  const debt = plan.queue.find((q) => q.kind === 'debt' && q.creditId)
+  // На паузе строка очереди не получает ничего (`given` 0) — сдвиг в неё остался бы в остатке: кандидата нет.
+  const debt = plan.queue.find((q) => q.kind === 'debt' && q.creditId && !q.paused)
   const credit = debt ? (state.credits ?? []).find((c) => c.id === debt.creditId) : undefined
   if (credit && restStep >= STEP_MIN) {
     const o = prepayOutcome(credit, restStep, 'once')
@@ -4343,7 +4346,7 @@ export function stepCandidates(state: MonthPlanState, ctx: MonthPlanCtx): StepCa
   }
   const cushion = fundsOf(state).cushion
   const cItem = cushion ? plan.queue.find((q) => q.goalId === cushion.id) : undefined
-  if (cushion && cItem) {
+  if (cushion && cItem && !cItem.paused) {
     const amount = roundStep(Math.min(plan.rest, cItem.need - cItem.have - cItem.given))
     if (amount >= STEP_MIN) {
       const months = cushionCover(cItem, { ...cushion, have: cushion.have + amount }, moneySettingsOf(state)).months

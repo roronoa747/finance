@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  STEP_MIN, cushionCover, dreamShift, monthPlan, moneySettingsOf, prepayOutcome, returnTermShift, stepCandidates, termSnapOf,
+  STEP_MIN, cushionCover, dreamShift, monthPlan, moneySettingsOf, prepayOutcome, returnTermShift, spendCompare, stepCandidates, termSnapOf,
   type MonthPlanCtx, type UploadPeriod,
 } from './finance'
 import type { SpendTotal } from './statements/types'
@@ -56,6 +56,12 @@ describe('monthPlan — сдвиги месяца (planShifts)', () => {
     const p = monthPlan(family({ planShifts: [shift({ to: 'debt' })] }), ctxOf())
     expect(p.queue.find((q) => q.kind === 'debt')!.given).toBe(before + 20_000)
     expect(p.rest).toBe(30_000)
+  })
+  it('«Траты» на «Месяце» — тот же план: строка раздела `spendCompare` урезана сдвигом, как строка участника (критик)', () => {
+    const doc = family({ planShifts: [shift({ from: { spend: 'a', categoryId: 'sc_food' } })] })
+    const rows = spendCompare(doc, ctxOf()).rows
+    expect(rows.find((r) => r.categoryId === 'sc_food')!.plan).toBe(630_000) // 400 000 − 20 000 + 250 000
+    expect(rows.reduce((s, r) => s + (r.plan ?? 0), 0)).toBe(monthPlan(doc, ctxOf()).spendTotal)
   })
   it('сдвиг чужого месяца, надгробие, раздел без строки плана — не применяются', () => {
     for (const s of [
@@ -134,6 +140,21 @@ describe('stepCandidates', () => {
     expect(stepCandidates(family(), cctx()).some((c) => c.kind === 'cushion')).toBe(false)
     const full = family().goals.map((g) => (g.id === 'cushion' ? { ...g, fund: 'cushion' as const, have: 9_000_000, seed: 9_000_000 } : g))
     expect(stepCandidates(family({ goals: full }), cctx()).some((c) => c.kind === 'cushion')).toBe(false)
+  })
+  it('карточка долга или подушка на паузе — кандидата нет (сдвиг в паузу остался бы в остатке; критик)', () => {
+    const fund = family().goals.map((g) => (g.id === 'cushion' ? { ...g, fund: 'cushion' as const } : g))
+    expect(stepCandidates(family({ goals: fund }), cctx()).map((c) => c.kind)).toEqual(['move', 'prepay', 'cushion'])
+    const goals = fund.map((g) => (g.id === 'cushion' ? { ...g, pausedAt: T0 } : g))
+    const doc = family({ goals, debtCard: { monthly: 0, pausedAt: T0, payer: null, updatedAt: T0 } })
+    expect(stepCandidates(doc, cctx()).map((c) => c.kind)).toEqual(['move'])
+  })
+  it('перенос — не больше, чем мечта примет в этом месяце (критик)', () => {
+    // Отпуску осталось 3 000 000 − 2 900 000 = 100 000, план даёт 40 000 → примет ещё 60 000 (запас продуктов — 330 000).
+    const goals = family().goals.map((g) =>
+      g.id === 'trip' ? { ...g, have: 2_900_000, seed: 2_900_000 } : g.id === 'cushion' ? { ...g, fund: 'cushion' as const } : g,
+    )
+    const move = stepCandidates(family({ goals }), cctx()).find((c) => c.kind === 'move')!
+    expect(move.shift).toMatchObject({ to: { goalId: 'trip' }, amount: 60_000 })
   })
   it('выписок за месяцы «обычно» нет — переноса нет', () => {
     expect(stepCandidates(family(), ctxOf()).some((c) => c.kind === 'move')).toBe(false)
