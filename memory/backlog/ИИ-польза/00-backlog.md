@@ -1,6 +1,6 @@
 # Бэклог «ИИ-польза» (AU)
 
-> **Статус:** бэклог составлен 2026-10-16; **Блок 1 🏁 2026-10-16** — на проде (мёрж `441ee5a`, `dpl_HFbG8qE2pS2hXQ3X3iwwXifRhDx9`); **Блок 2 — исполнитель ✅ 2026-10-16** (ветка `au-block-2-dream-lines`, хвосты Х-1…Х-3 сделаны); дальше `/critic ИИ-польза 2`; в тот же день добавлен Блок 7 «Образы трат» (дополнение брифа,
+> **Статус:** бэклог составлен 2026-10-16; **Блок 1 🏁 2026-10-16** — на проде (мёрж `441ee5a`, `dpl_HFbG8qE2pS2hXQ3X3iwwXifRhDx9`); **Блок 2 — исполнитель ✅ · критик ✅ 2026-10-16** (ветка `au-block-2-dream-lines`, хвосты Х-1…Х-3 сделаны); дальше `/ux ИИ-польза 2`; в тот же день добавлен Блок 7 «Образы трат» (дополнение брифа,
 > подтверждено владельцем) — идёт между Блоками 2 и 3. Старт — после 🏁 Блока 3 «Продавцы» бэклога «ИИ» (Р-15):
 > `/worker ИИ 3` → потом `/worker ИИ-польза 1`.
 
@@ -258,6 +258,16 @@ plan, usual, share, over, advice, group`; зовёт `monthPlan` — из `month
 план участника — `editCatPlan` → «Сколько в месяц»). AU-04 (причина `spend`), AU-05 (`move`), AU-11 (факты разделов
 выше обычного и плана) берут `spendCompare`; AU-28/AU-29 кладут строку-образ в `SpendCategorySheet`. Тест-семья —
 шапка `lib/spendCompare.test.ts`; e2e — `e2e/au-block1-spend-compare.test.ts`.
+
+**После Блока 2** (критик, 2026-10-16): документ — `SyncDoc.termSnaps` (`TermSnap`, ранний `at` побеждает, ≤ 3 живых;
+пишет `ensureTermSnap` из хука `afterPull` движка синка, без целей не пишет — B2C-25) и `SyncDoc.planShifts`
+(`PlanShift`, только месяц `period`; стор `addPlanShift` / `undoPlanShift`). `monthPlan`: `ctx.byFact` (траты max(план,
+факт) — только для метки) и сдвиги (`RunItem.first`, `queueRun(…, firstExtra)`); `spendCompare.plan` — план месяца со
+сдвигами. Расчёты: `dreamShift` / `shiftLabel` / `shiftSpan` / `SHIFT_REASON_TEXT`, `stepCandidates` (id `move:<cat>`,
+`prepay`, `cushion`; паузу пропускает) / `returnTermShift` (`return:<goalId>`), `affordWhy` / `affordWhyText`, `firstDebt`.
+Экран — общий лист `components/plan/DoSheet.vue` (сам пишет сдвиг и тост «Отменить»). Тест-семьи — шапки
+`lib/planShift.test.ts`, `lib/dreamShift.test.ts`; e2e — `e2e/au-block2-dream-lines.test.ts`. Метка появляется и в первом
+месяце после выката: снимок — план месяца (не факт на момент записи), сравнение — с фактом.
 
 **Команды и среда**
 - Фронт: `cd frontend && npm run build && npx vitest run` (Vitest берёт и `src/**`, и `e2e/**`; на 2026-10-16 — vitest
