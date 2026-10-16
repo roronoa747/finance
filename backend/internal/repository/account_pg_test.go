@@ -10,7 +10,7 @@ import (
 	"finance-backend/internal/testdb"
 )
 
-// fillUser gives a member a photo, an upload with an operation and a private doc edit.
+// fillUser gives a member a photo, an upload with an operation, a phone key and a tap body.
 func fillUser(t *testing.T, f statementFixture, userID string) {
 	t.Helper()
 	ctx := context.Background()
@@ -26,6 +26,14 @@ func fillUser(t *testing.T, f statementFixture, userID string) {
 	if _, err := f.repo.UpsertOperations(ctx, userID, f.householdID, []models.Operation{op}); err != nil {
 		t.Fatalf("operations: %v", err)
 	}
+	// Apple Pay (000008): a phone key and the admin's tap body.
+	keys := NewSQLPhoneKeyRepository(f.db)
+	if err := keys.Add(ctx, userID, []byte("key-of-"+userID)); err != nil {
+		t.Fatalf("phone key: %v", err)
+	}
+	if err := keys.SaveDebug(ctx, userID, `{"merchant":"MAGNUM"}`); err != nil {
+		t.Fatalf("wallet debug: %v", err)
+	}
 }
 
 func countRows(t *testing.T, f statementFixture, query string, arg string) int {
@@ -37,7 +45,7 @@ func countRows(t *testing.T, f statementFixture, query string, arg string) int {
 	return n
 }
 
-// userTables are every place a user's own rows live (migrations 000001–000006).
+// userTables are every place a user's own rows live (migrations 000001–000006, 000008).
 var userTables = []string{
 	`SELECT count(*) FROM app.users WHERE id = $1`,
 	`SELECT count(*) FROM app.household_members WHERE user_id = $1`,
@@ -49,6 +57,8 @@ var userTables = []string{
 	`SELECT count(*) FROM app.households WHERE created_by = $1`,
 	`SELECT count(*) FROM app.household_docs WHERE updated_by = $1`,
 	`SELECT count(*) FROM app.events WHERE user_id = $1`,
+	`SELECT count(*) FROM app.phone_keys WHERE user_id = $1`,
+	`SELECT count(*) FROM app.wallet_debug WHERE user_id = $1`,
 }
 
 func TestPostgresDeleteAccount(t *testing.T) {
