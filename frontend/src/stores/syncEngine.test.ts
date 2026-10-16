@@ -109,6 +109,24 @@ describe('startSyncEngine — правки партнёра без собств�
     expect(sync).not.toHaveBeenCalled()
   })
 
+  it('возврат в приложение — траты с телефона подтягиваются; скрытие и демо — нет (Р-19, ревью frontend Н-9)', () => {
+    const { doc } = setup('real-token')
+    const back = vi.spyOn(useOperationsStore(), 'pullOnReturn').mockImplementation(() => {})
+    doc.visibilityState = 'hidden'
+    doc.dispatchEvent(new Event('visibilitychange'))
+    expect(back).not.toHaveBeenCalled()
+    doc.visibilityState = 'visible'
+    doc.dispatchEvent(new Event('visibilitychange'))
+    expect(back).toHaveBeenCalledTimes(1)
+
+    setActivePinia(createPinia())
+    resetSyncEngineForTests()
+    const demo = setup(DEMO_TOKEN)
+    const demoBack = vi.spyOn(useOperationsStore(), 'pullOnReturn').mockImplementation(() => {})
+    demo.doc.dispatchEvent(new Event('visibilitychange'))
+    expect(demoBack).not.toHaveBeenCalled()
+  })
+
   it('правка без сети: offline → online — полный круг со слиянием, а не затирание', () => {
     const { finance, pull, sync, win } = setup('real-token')
     sync.mockClear()
