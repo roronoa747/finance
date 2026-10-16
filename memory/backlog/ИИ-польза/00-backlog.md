@@ -1,6 +1,6 @@
 # Бэклог «ИИ-польза» (AU)
 
-> **Статус:** бэклог составлен 2026-10-16; Блок 1 🔄 — исполнитель ✅ 2026-10-16 (ветка `au-block-1-spend-compare`), дальше `/critic ИИ-польза 1`; в тот же день добавлен Блок 7 «Образы трат» (дополнение брифа,
+> **Статус:** бэклог составлен 2026-10-16; Блок 1 🔄 — исполнитель ✅, критик ✅ 2026-10-16 (ветка `au-block-1-spend-compare`), дальше `/ux ИИ-польза 1`; в тот же день добавлен Блок 7 «Образы трат» (дополнение брифа,
 > подтверждено владельцем) — идёт между Блоками 2 и 3. Старт — после 🏁 Блока 3 «Продавцы» бэклога «ИИ» (Р-15):
 > `/worker ИИ 3` → потом `/worker ИИ-польза 1`.
 
@@ -247,6 +247,15 @@ AU-12, AU-16, AU-19, AU-24 · Р-15 — порядок блоков и запи�
 `aiLimitText()` (`stores/ai.ts`). «ИП + фамилия» в ИИ не уходят; частым ИП с мелким чеком подсказка «Продукты»
 ставится кодом — `habitHints` (`model.ts`, AI-19; пороги 90 дней / 4 покупки / 5 000 ₸) — AU-16 и AU-27 (привычки по
 операциям) её не дублируют, а при надобности берут.
+
+**После Блока 1** (критик, 2026-10-16): траты в сравнении — `finance.ts` `monthCovered` / `usualMonths` / `usualSpend`
+(«обычно у вас»: ≤ 3 полных месяца, < 2 → null), `spendCompare(state, ctx)` → строки семьи `SpendCompareRow` (`amount,
+plan, usual, share, over, advice, group`; зовёт `monthPlan` — из `monthPlan` не звать), порог `OVER_SHARE` / `OVER_MIN`,
+`rkShare` (знаменатель — траты с группой РК), `earlierLabel(days)`; справка — `RK_SPEND_GROUPS` / `RK_GROUP_BY_CATEGORY`
+(`statements/dictionary.ts`). Экран — `MonthPlan.vue` (`compare`, лист `money/SpendCategorySheet.vue`, `catFor`,
+план участника — `editCatPlan` → «Сколько в месяц»). AU-04 (причина `spend`), AU-05 (`move`), AU-11 (факты разделов
+выше обычного и плана) берут `spendCompare`; AU-28/AU-29 кладут строку-образ в `SpendCategorySheet`. Тест-семья —
+шапка `lib/spendCompare.test.ts`; e2e — `e2e/au-block1-spend-compare.test.ts`.
 
 **Команды и среда**
 - Фронт: `cd frontend && npm run build && npx vitest run` (Vitest берёт и `src/**`, и `e2e/**`; на 2026-10-16 — vitest

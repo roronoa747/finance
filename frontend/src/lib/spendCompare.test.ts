@@ -102,6 +102,15 @@ describe('usualSpend — «обычно у вас»', () => {
     expect(u.amounts.get('sc_food')).toBe(150_000)
     expect(u.amounts.get('sc_cafe')).toBe(25_000)
   })
+  it('удалённый итог и удалённый участник не считаются (критик)', () => {
+    // b удалена: месяцы держатся на a — продукты (80 + 100 + 90) / 3 = 90 000; удалённый итог кафе a в сентябре — мимо.
+    const people = planFamilyDoc().people.map((p) => (p.id === 'b' ? { ...p, deletedAt: T0 } : p))
+    const totals = [...TOTALS, { ...total('a', '2026-09', 'sc_cafe', 90_000), id: 'x', deletedAt: T0 }]
+    const u = usualSpend(people, totals, [], UPLOADS.filter((x) => x.slot === 'a'), KEY)!
+    expect(u.months).toEqual(['2026-09', '2026-08', '2026-07'])
+    expect(u.amounts.get('sc_food')).toBe(90_000)
+    expect(u.amounts.get('sc_cafe')).toBe(30_000)
+  })
 })
 
 describe('spendCompare — строки разделов семьи', () => {
@@ -158,7 +167,7 @@ describe('spendCompare — порог точки и текущий месяц', 
     expect(at(100_000, 110_001)).toBe(true)
   })
   it('текущий месяц — сумма за весь месяц, без пропорции дней', () => {
-    // 20 000 за 5 дней «в темпе» — 124 000 за месяц, но это меньше обычного 30 000 → точки нет.
+    // 20 000 за 5 дней: пропорция дала бы 124 000 за месяц (точку), но сравнивается сама сумма 20 000 < обычных 30 000.
     expect(at(30_000, 20_000)).toBe(false)
   })
 })
@@ -169,12 +178,24 @@ describe('справка РК', () => {
     expect(RK_SPEND_GROUPS.food.source).toBe('stat.gov.kz')
     expect(new Set(Object.values(RK_GROUP_BY_CATEGORY))).toEqual(new Set(['food', 'goods', 'services']))
   })
-  it('доля группы — сумма её разделов (и разделов платежей целиком) от всех трат месяца', () => {
-    // Октябрь a: продукты 100 000, кафе 60 000, коммуналка 25 000, не разобрано 5 000 → всего 190 000.
-    // Продукты 100 / 190 = 52,6 → 53; услуги (кафе + коммуналка) 85 / 190 = 44,7 → 45; покупки 0.
-    expect(rkShare(family(), ctxOf(), 'food')).toBe(53)
-    expect(rkShare(family(), ctxOf(), 'services')).toBe(45)
+  it('доля группы — сумма её разделов (и разделов платежей с группой целиком) от трат с группой', () => {
+    // Октябрь a: продукты 100 000, кафе 60 000, коммуналка 25 000 → с группой 185 000 («не разобрано» 5 000 — нет).
+    // Продукты 100 / 185 = 54,05 → 54; услуги (кафе + коммуналка) 85 / 185 = 45,9 → 46; покупки 0.
+    expect(rkShare(family(), ctxOf(), 'food')).toBe(54)
+    expect(rkShare(family(), ctxOf(), 'services')).toBe(46)
     expect(rkShare(family(), ctxOf(), 'goods')).toBe(0)
+  })
+  it('кредит, переводы людям, наличные и удалённый итог долю не размывают (критик)', () => {
+    const totals = [
+      ...TOTALS,
+      total('a', KEY, 'sc_credit', 300_000), total('a', KEY, 'sc_people', 50_000), total('a', KEY, 'sc_cash', 20_000),
+      { ...total('b', KEY, 'sc_food', 400_000), deletedAt: T0 },
+    ]
+    // Те же 100 / 185 → 54: без группы — мимо знаменателя, удалённое — мимо всего.
+    expect(rkShare(family(), ctxOf({ totals }), 'food')).toBe(54)
+  })
+  it('трат с группой нет — null', () => {
+    expect(rkShare(family(), ctxOf({ totals: [total('a', KEY, 'sc_credit', 300_000)] }), 'food')).toBeNull()
   })
   it('выписок месяца нет — null', () => {
     expect(rkShare(family(), ctxOf({ uploads: [] }), 'food')).toBeNull()

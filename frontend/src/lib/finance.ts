@@ -4047,14 +4047,17 @@ export function spendCompare(state: MonthPlanState, ctx: MonthPlanCtx): { income
 }
 
 /**
- * Доля группы РК в тратах семьи за месяц (справка «у вас X % · в Алматы Y %», Р-5): итоги участников с выпиской месяца,
- * все разделы с группой — и разделы платежей целиком (как в статистике); знаменатель — все траты месяца, «не разобрано»
- * тоже. Целые %; выписок или трат нет — null.
+ * Доля группы РК в тратах семьи за месяц (справка «у вас X % · в Алматы Y %», Р-5): итоги участников с выпиской месяца
+ * по разделам с группой — и разделам платежей с группой целиком (коммуналка, аренда, связь). Знаменатель — те же
+ * разделы с группой (потребительские траты, как три группы статистики — 97,2 % денежных расходов): кредиты, переводы
+ * людям, наличные и «не разобрано» долю не размывают. Целые %; выписок или трат с группой нет — null.
  */
 export function rkShare(state: MonthPlanState, ctx: MonthPlanCtx, group: RkGroup): number | null {
   const people = (state.people ?? []).filter(alive).filter((p) => uploadedBy(p.id, ctx.key, ctx.uploads))
   const ids = new Set(people.map((p) => p.id))
-  const mine = ctx.totals.filter((t) => !t.deletedAt && ids.has(t.by) && t.kind === 'month' && t.period === ctx.key && t.amount > 0)
+  const mine = ctx.totals.filter(
+    (t) => !t.deletedAt && ids.has(t.by) && t.kind === 'month' && t.period === ctx.key && t.amount > 0 && RK_GROUP_BY_CATEGORY[t.categoryId],
+  )
   const total = mine.reduce((s, t) => s + t.amount, 0)
   if (total <= 0) return null
   const part = mine.filter((t) => RK_GROUP_BY_CATEGORY[t.categoryId] === group).reduce((s, t) => s + t.amount, 0)
