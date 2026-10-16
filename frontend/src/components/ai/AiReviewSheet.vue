@@ -99,7 +99,8 @@ function sentLines(s: MonthSummaryAI, key: string): { title: string; rows: strin
       title: `Долги · ${money(s.debts.total)}`,
       rows: [
         ...s.debts.items.map(
-          (d) => `${d.name} — ${money(d.left)}, ${money(d.payment)} в месяц${d.ratePercent ? `, ${String(d.ratePercent).replace('.', ',')} %` : ''}, ${by(d.endMonth)}`,
+          // Ставка 0 и «не знаем» тоже ушли в модель (ревью frontend Блока 2, Н-2): «0 %», «ставку уточните» — как «Долги».
+          (d) => `${d.name} — ${money(d.left)}, ${money(d.payment)} в месяц, ${d.ratePercent === null ? 'ставку уточните' : `${String(d.ratePercent).replace('.', ',')} %`}, ${by(d.endMonth)}`,
         ),
         // Досрочка очереди месяца (ревью frontend Блока 2, Н-1); сводки до неё её не знают.
         ...(s.prepay ? [`досрочно — ${s.prepay.name}, ${money(s.prepay.monthlyPut)} в месяц, ${by(s.prepay.doneMonth)}`] : []),
@@ -110,7 +111,7 @@ function sentLines(s: MonthSummaryAI, key: string): { title: string; rows: strin
       title: 'Цели',
       rows: s.goals.map(
         (g) =>
-          `${g.name} — ${money(g.have)} из ${money(g.want)}${g.paused ? `, на паузе${g.afterPlan ? ' ради плана' : ''}` : `, ${money(g.monthlyPut)} в месяц, ${by(g.doneMonth)}`}`,
+          `${g.name} — ${money(g.have)} из ${money(g.want)}${g.paused ? `, на паузе${g.afterPlan ? ' ради плана' : ''}${g.doneMonth ? `, ${by(g.doneMonth)}` : ''}` : `, ${money(g.monthlyPut)} в месяц, ${by(g.doneMonth)}`}`,
       ),
     })
   return out

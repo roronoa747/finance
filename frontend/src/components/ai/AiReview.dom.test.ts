@@ -264,6 +264,20 @@ describe('AI-09: разбор месяца у остатка', () => {
     expect(txt(q('[data-review-sent]'))).toContain('Машина — 500 000 ₸ из 5 000 000 ₸, на паузе')
   })
 
+  // Ревью frontend Блока 2, Н-2: всё, что ушло в модель, видно — месяц цели на паузе, ставка 0 % и «не знаем».
+  it('«что ушло»: срок цели на паузе ради плана, ставка «0 %» и «ставку уточните»', async () => {
+    await open({ doc: planFamilyDoc({ aiReviews: [saved({ sent: sentFull() })] }) })
+    await press(q('[data-review-open]'))
+    await press(q('[data-review-sent-open]'))
+    const shown = txt(q('[data-review-sent]'))
+    expect(shown).toContain('Машина — 500 000 ₸ из 5 000 000 ₸, на паузе ради плана, к августу 2034')
+    expect(shown).toContain('Новый диван — 0 ₸ из 300 000 ₸, на паузе')
+    expect(shown).not.toContain('Новый диван — 0 ₸ из 300 000 ₸, на паузе,')
+    expect(shown).toContain('Автокредит — 1 000 000 ₸, 95 000 ₸ в месяц, 19 %, к июню 2028')
+    expect(shown).toContain('Брату — 300 000 ₸, 50 000 ₸ в месяц, 0 %, к марту 2027')
+    expect(shown).toContain('Кредитка — 200 000 ₸, 20 000 ₸ в месяц, ставку уточните, не закроем')
+  })
+
   it('«Не надо» — запроса нет, лист разбора не открыт', async () => {
     const spy = vi.spyOn(apiClient, 'aiReview')
     await open()
