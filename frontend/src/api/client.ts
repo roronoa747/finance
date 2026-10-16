@@ -357,7 +357,13 @@ export type AdminMetrics = {
   active_28d: number
   funnel_28d: { created: number; uploaded: number; goal: number; done: number }
   weeks: { week: string; new_households: number; uploads: number; week_done: number }[]
+  /** Пуши банков (бэклог «Apple Pay», Блок 2): по банку за 7 и 30 дней Алматы. */
+  push_stats?: PushStats[]
 }
+
+/** Пуши одного банка: разобраны в операцию, разобраны как «не операция» (код, отказ, реклама), не разобраны. */
+export type PushCounts = { parsed: number; ignored: number; unknown: number }
+export type PushStats = { bank: string; d7: PushCounts; d30: PushCounts }
 
 export type FxRatesResponse = { code: string; rates: Record<string, number>; partial: boolean; source?: string }
 

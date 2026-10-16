@@ -56,6 +56,11 @@ export const useApplePayStore = defineStore('applepay', () => {
    */
   const available = computed(() => canUse.value && !!link.value && (iosMajor.value === null || iosMajor.value >= 17))
   const connected = computed(() => !!status.value?.connected)
+  /**
+   * Вторая команда «Пуши банков» (Блок 2, Р-17, Р-23): только путь iOS 27 (триггера «Уведомление» раньше нет) и
+   * только когда ссылка есть; пусто — шагов пушей в листе и кнопки в карточке нет.
+   */
+  const pushLink = computed(() => (available.value && path.value === 'ios27' ? (status.value?.push_shortcut_url ?? '') : ''))
 
   /**
    * Статус — раз за сессию (`force` — после подключения и отключения: новый запрос, даже если прежний ещё в пути — его
@@ -99,5 +104,5 @@ export const useApplePayStore = defineStore('applepay', () => {
     legacyChosen.value = on
   }
 
-  return { userAgent, status, isIPhone, iosMajor, pathKnown, path, link, available, connected, load, connect, disconnect, chooseLegacy }
+  return { userAgent, status, isIPhone, iosMajor, pathKnown, path, link, pushLink, available, connected, load, connect, disconnect, chooseLegacy }
 })

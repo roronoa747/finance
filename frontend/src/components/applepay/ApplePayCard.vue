@@ -17,6 +17,12 @@ import ApplePaySheet from './ApplePaySheet.vue'
  */
 const ap = useApplePayStore()
 const sheet = useQuerySheet('applepay')
+/** Блок 2: лист сразу на шагах второй команды «Пуши банков» (`?applepush=1`). */
+const pushSheet = useQuerySheet('applepush')
+function closeSheets() {
+  sheet.close()
+  pushSheet.close()
+}
 const confirming = ref(false)
 const busy = ref(false)
 const error = ref(false)
@@ -62,6 +68,7 @@ async function disconnect() {
     </div>
 
     <div v-if="ap.connected && !confirming" class="mt-3 flex items-center justify-end gap-1 border-t border-line pt-2">
+      <Button v-if="ap.isIPhone && ap.pushLink" variant="ghost" size="sm" data-push @click="pushSheet.open.value = true">Пуши банков</Button>
       <Button v-if="ap.isIPhone" variant="ghost" size="sm" data-more @click="sheet.open.value = true">Ещё iPhone</Button>
       <Button variant="ghost" size="sm" data-disconnect @click="confirming = true">Отключить</Button>
     </div>
@@ -74,5 +81,10 @@ async function disconnect() {
       <p v-if="error" role="alert" class="text-[12.5px] text-warn">Не получилось. Проверьте сеть.</p>
     </div>
   </Card>
-  <ApplePaySheet v-if="ap.available && ap.isIPhone" :open="sheet.open.value" @close="sheet.close()" />
+  <ApplePaySheet
+    v-if="ap.available && ap.isIPhone"
+    :open="sheet.open.value || pushSheet.open.value"
+    :mode="pushSheet.open.value && !!ap.pushLink ? 'push' : 'tap'"
+    @close="closeSheets"
+  />
 </template>

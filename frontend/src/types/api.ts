@@ -151,4 +151,6 @@ export interface WalletStatus {
   last_used_at?: string
   shortcut_url: string
   shortcut_url_legacy: string
+  /** Вторая команда «Пуши банков» (Блок 2, iOS 27); пусто — шага в листе нет. Старый сервер поля не отдаёт. */
+  push_shortcut_url?: string
 }

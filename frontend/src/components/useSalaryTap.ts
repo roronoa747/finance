@@ -2,6 +2,7 @@ import { computed, ref, toValue, type MaybeRefOrGetter } from 'vue'
 import { useRouter } from 'vue-router'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
+import { useOperationsStore } from '@/stores/operations'
 import {
   lastAccountFor,
   liveAccounts,
@@ -50,6 +51,12 @@ export function useSalaryTap(personId: MaybeRefOrGetter<PersonId>, period: Maybe
 
   const mine = computed(() => !auth.isViewer && auth.slot === toValue(personId))
   const canMark = computed(() => mine.value && !!person.value && salaryOpen(person.value, finance.payments, target.value))
+  /**
+   * Приход из пуша банка, похожий на эту зарплату (бэклог «Apple Pay», Блок 2, Р-22): точка у «Пришла»; нажатие
+   * отмечает его суммой — как «Да» в вопросе «Недели». Тенговая только: валютная приходит на валютный счёт (Р-73).
+   */
+  const ops = useOperationsStore()
+  const arrival = computed(() => (canMark.value && !fxSalary.value ? ops.salaryArrival(toValue(personId), target.value) : null))
   const title = computed(() => `Зарплата · ${person.value?.name ?? ''}`)
 
   const sheet = ref<'mark' | 'paid' | null>(null)
@@ -102,6 +109,13 @@ export function useSalaryTap(personId: MaybeRefOrGetter<PersonId>, period: Maybe
       else openMark(floating.value ? 0 : due.value, undefined)
       return
     }
+    // Пришло пушем банка — эта сумма и эта операция (та же отметка, что «Да» в вопросе «Недели»).
+    const came = arrival.value
+    if (came) {
+      void ops.acceptMatch(came.candidate)
+      if (monthCame()) toAllocation()
+      return
+    }
     const last = lastAccountFor(finance.payments, toValue(personId), finance.accounts)
     firstTime.value = last === undefined
     if (floating.value) openMark(0, last)
@@ -113,8 +127,9 @@ export function useSalaryTap(personId: MaybeRefOrGetter<PersonId>, period: Maybe
     if (fxSalary.value) return openMark(floating.value ? 0 : due.value, undefined)
     const last = lastAccountFor(finance.payments, toValue(personId), finance.accounts)
     firstTime.value = last === undefined
-    openMark(floating.value ? 0 : due.value, last)
+    // Пришло пушем — сумма прихода вместо оклада («другая сумма» — правка от неё).
+    openMark(arrival.value ? arrival.value.op.amount : floating.value ? 0 : due.value, last)
   }
 
-  return { person, target, record, own, fxSalary, due, floating, mine, canMark, title, sheet, markAmount, markAccount, firstTime, tap, openMore, onMarked, toAllocation }
+  return { person, target, record, own, fxSalary, due, floating, mine, canMark, arrival, title, sheet, markAmount, markAccount, firstTime, tap, openMore, onMarked, toAllocation }
 }

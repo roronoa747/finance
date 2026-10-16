@@ -49,7 +49,7 @@ const emit = defineEmits<{
 
 const finance = useFinanceStore()
 
-const { target, record, own, fxSalary, due, mine, canMark, title, sheet, markAmount, markAccount, firstTime, tap, openMore, onMarked, toAllocation } = useSalaryTap(
+const { target, record, own, fxSalary, due, mine, canMark, arrival, title, sheet, markAmount, markAccount, firstTime, tap, openMore, onMarked, toAllocation } = useSalaryTap(
   () => props.personId,
   () => props.period,
 )
@@ -68,7 +68,14 @@ const toAccount = computed(() => {
 
 <template>
   <template v-if="button && small">
-    <Button v-if="canMark" variant="soft" size="sm" data-salary-came-btn @click="tap">Пришла</Button>
+    <!-- Точка — пришло пушем банка (Блок 2 «Apple Pay», Р-22: звать точкой, сумма — в листе зарплаты). -->
+    <span v-if="canMark" class="relative inline-flex">
+      <Button variant="soft" size="sm" data-salary-came-btn @click="tap">Пришла</Button>
+      <template v-if="arrival">
+        <span class="pointer-events-none absolute -right-0.5 -top-0.5 size-2 rounded-full bg-brand" data-arrival-dot aria-hidden="true" />
+        <span class="sr-only">, пришло на карту</span>
+      </template>
+    </span>
   </template>
   <template v-else-if="button">
     <Button v-if="canMark" :variant="quiet ? 'secondary' : 'default'" class="mt-3 w-full" @click="tap">

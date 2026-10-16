@@ -4,6 +4,7 @@ import { apiClient, ApiError, type AdminMetrics } from '@/api/client'
 import type { AdminFamilies, AiCheck } from '@/types/api'
 import Card from '@/components/kit/Card.vue'
 import AdminWalletDebug from '@/components/applepay/AdminWalletDebug.vue'
+import AdminPushStats from '@/components/applepay/AdminPushStats.vue'
 import Hint from '@/components/kit/Hint.vue'
 import Toast from '@/components/kit/Toast.vue'
 import Toggle from '@/components/kit/Toggle.vue'
@@ -222,6 +223,8 @@ const funnel = computed(() => {
           </tbody>
         </table>
       </Card>
+      <!-- Пуши банков (Блок 2 «Apple Pay»): разобрано и не разобрано за 7 дней, банки — под «Подробнее». -->
+      <AdminPushStats v-if="metrics.push_stats" :stats="metrics.push_stats" />
       <!-- Apple Pay (Р-13а): формат команды владельца — по первому касанию. -->
       <AdminWalletDebug />
     </template>

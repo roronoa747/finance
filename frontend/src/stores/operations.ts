@@ -160,14 +160,29 @@ export const useOperationsStore = defineStore('operations', () => {
   /* ---------- сопоставление с отметками (B2C-15) ---------- */
   // Обмены и книга — тенге валютной зарплаты (B2C-80, `salaryTenge`) и зачисления обменов.
   const matchState = () => ({ obligations: finance.obligations, credits: finance.credits, people: finance.people, payments: finance.payments, fxExchanges: finance.fxExchanges, book: useFxStore().book })
-  /** Предложения по своим операциям этого и прошлого месяца — только те, что ждут ответа. */
-  const pendingMatches = computed<MatchCandidate[]>(() =>
+  /** Все предложения по своим операциям этого и прошлого месяца, кроме отклонённых «нет» на этом устройстве. */
+  const openMatches = computed<MatchCandidate[]>(() =>
     auth.isViewer
       ? []
-      : matchCandidates(recentOperations(all.value), matchState(), finance.merchantRules, me()).filter(
-          (c) => c.confidence !== 'rule' && !declined.value.includes(matchKey(c)),
-        ),
+      : matchCandidates(recentOperations(all.value), matchState(), finance.merchantRules, me()).filter((c) => !declined.value.includes(matchKey(c))),
   )
+  /** Предложения, что ждут ответа (вопросы «Недели»). */
+  const pendingMatches = computed<MatchCandidate[]>(() => openMatches.value.filter((c) => c.confidence !== 'rule'))
+  /**
+   * «Пришла?» у зарплаты (бэклог «Apple Pay», Блок 2, Р-22): приход из пуша, который `matchCandidates` считает зарплатой
+   * своей неотмеченной строки — те же допуски и окна, что у выписки, новых порогов нет; по правилу семьи тоже (отметки
+   * с телефона сами не ставятся — их ставит человек). Точка у «Пришла» этой зарплаты; «Пришла» отмечает приход так же,
+   * как «Да» в вопросе «Недели» (`acceptMatch`). «Нет» в вопросе снимает и точку. Viewer — пусто.
+   */
+  const salaryArrivals = computed(() =>
+    openMatches.value.flatMap((c) => {
+      const op = ops.value[c.opId]
+      return c.kind === 'salary' && op?.source === 'push' ? [{ candidate: c, op }] : []
+    }),
+  )
+  /** Приход из пуша для зарплаты `person` за `period` (месяц или ключ аванса/недели) — или null. */
+  const salaryArrival = (person: PersonId, period: string) =>
+    salaryArrivals.value.find((a) => a.candidate.targetId === person && a.candidate.period === period) ?? null
   /** Операции со снятой отметкой из выписки (у себя или у партнёра): правило платежа им раздел не ставит. */
   const released = computed(() => releasedOps(finance.payments))
   /**
@@ -831,6 +846,8 @@ export const useOperationsStore = defineStore('operations', () => {
     undoUpload,
     draftOps,
     pendingMatches,
+    salaryArrivals,
+    salaryArrival,
     draftAutoMatches,
     lastAutoMarked,
     acceptMatch,

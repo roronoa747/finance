@@ -4,6 +4,7 @@ import { PhCaretRight } from '@phosphor-icons/vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
+import { useOperationsStore } from '@/stores/operations'
 import { money, moneyIn, moneySigned, signTone } from '@/lib/money'
 import { atLabel, dayLabel, dayWeekdayLabel } from '@/lib/dates'
 import { fxYearDelta, type SalaryLine, type SalaryLineEvent } from '@/lib/finance'
@@ -36,6 +37,23 @@ const fx = useFxStore()
 const canEdit = computed(() => !auth.isViewer)
 // Свою зарплату отмечает только сам участник (Р-13), когда её день настал или близко.
 const mine = computed(() => canEdit.value && !!props.line && auth.slot === props.line.person)
+
+/**
+ * Пришло пушем банка (бэклог «Apple Pay», Блок 2, Р-22): сумма, банк и день прихода — здесь, у «Пришла» (на строке
+ * «Месяца» — только точка, правило 12). «Пришла зарплата» отметит именно его (`useSalaryTap`). Месячный ритм; у аванса
+ * и недели точка — у «Пришла» своего прихода в строках выше.
+ */
+const ops = useOperationsStore()
+const BANK_NAMES: Record<string, string> = { kaspi: 'Kaspi', freedom: 'Freedom', halyk: 'Halyk' }
+const arrivalText = computed(() => {
+  const l = props.line
+  if (!l || !mine.value || !l.open || l.rhythm !== 'month' || l.foreign) return ''
+  const a = ops.salaryArrival(l.person, props.monthKey)
+  if (!a) return ''
+  const bank = BANK_NAMES[a.op.bank]
+  const day = dayLabel(Number(a.op.date.slice(8, 10)), a.op.date.slice(0, 7))
+  return `${money(a.op.amount)}${bank ? ` в ${bank}` : ''} · ${day}`
+})
 
 /** Курс за год (Р-76, `fxYearDelta`): тенговый оклад или книга короче года — null, строки нет. */
 const year = computed(() => {
@@ -93,6 +111,11 @@ watch(
           <span class="text-ink-2">Когда</span>
           <span v-if="events.length" class="font-semibold text-ink num">{{ line.cameCount }} из {{ line.eventCount }} пришли</span>
           <span v-else class="font-semibold text-ink">{{ line.came && line.at ? `пришла ${atLabel(line.at)}` : `ждём ${dayLabel(line.payday, monthKey)}` }}</span>
+        </div>
+        <!-- Пришло пушем банка (Блок 2): сумма и день — здесь, «Пришла зарплата» ниже отметит этот приход. -->
+        <div v-if="arrivalText" class="flex items-center justify-between gap-3 border-t border-line py-2.5 text-[14.5px]" data-salary-arrival>
+          <span class="flex items-center gap-1.5 text-ink-2"><span class="size-2 rounded-full bg-brand" aria-hidden="true" />Пришло?</span>
+          <b class="font-num text-ink num">{{ arrivalText }}</b>
         </div>
         <!-- Аванс и неделя: приход — строка; «Пришла» — у своего открытого (правило 12: действие у предмета). -->
         <div

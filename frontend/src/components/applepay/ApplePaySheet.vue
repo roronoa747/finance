@@ -14,7 +14,14 @@ import ApplePayStepArt, { type StepArt } from './ApplePayStepArt.vue'
  * «вопросом при импорте». iOS 27 — пять шагов (триггер внутри команды), iOS 17–26 — ещё автоматизация руками.
  * Названия пунктов iOS — из инструкции владельцу `OWNER-SHORTCUT.md` (одно место правды).
  */
-const props = defineProps<{ open: boolean }>()
+const props = defineProps<{
+  open: boolean
+  /**
+   * Блок 2: `push` — сразу шаги второй команды «Пуши банков» (из карточки подключённого iPhone). Из шагов касания к
+   * ним ведёт тихая «Ещё — пуши банков» на последнем шаге — с тем же ключом, он ещё в памяти листа.
+   */
+  mode?: 'tap' | 'push'
+}>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 type Step = { art: StepArt; text: string; action?: 'copy' | 'open' | 'done' }
@@ -37,8 +44,28 @@ const STEPS: Record<'ios27' | 'legacy', Step[]> = {
   ],
 }
 
+/** Имя второй команды — тоже без переноса внутри. */
+const PUSH_NAME = '«Пуши банков»'
+/**
+ * Вторая команда (Блок 2, AP-11): триггер «Уведомление» iOS 27 внутри неё — выбрать приложения банков и включить.
+ * Kaspi не шлёт пуш на Kaspi QR и переводы клиентам Kaspi — финал их не обещает (они придут с выпиской).
+ */
+const PUSH_STEPS: Step[] = [
+  KEY,
+  { art: 'open', text: `Откройте команду ${PUSH_NAME}`, action: 'open' },
+  ADD,
+  { art: 'apps', text: 'Выберите Kaspi, Freedom и Halyk' },
+  { art: 'toggle', text: 'Включите автоматизацию тумблером' },
+  { art: 'done', text: 'Готово — покупки и переводы из пушей придут сами', action: 'done' },
+]
+
 const ap = useApplePayStore()
-const steps = computed(() => STEPS[ap.path])
+/** Какая команда в листе: касание или пуши (Блок 2). */
+const flow = ref<'tap' | 'push'>(props.mode ?? 'tap')
+const steps = computed(() => (flow.value === 'push' ? PUSH_STEPS : STEPS[ap.path]))
+const link = computed(() => (flow.value === 'push' ? ap.pushLink : ap.link))
+/** «Ещё — пуши банков» на последнем шаге касания: путь iOS 27 и ссылка второй команды есть. */
+const morePush = computed(() => flow.value === 'tap' && !!ap.pushLink)
 const index = ref(0)
 const step = computed(() => steps.value[Math.min(index.value, steps.value.length - 1)])
 /** Ключ этого телефона — только в памяти листа. */
@@ -66,8 +93,10 @@ async function makeKey() {
 watch(
   () => props.open,
   (open) => {
-    if (open) void makeKey()
-    else {
+    if (open) {
+      flow.value = props.mode ?? 'tap'
+      void makeKey()
+    } else {
       key.value = null
       index.value = 0
       manual.value = false
@@ -79,6 +108,12 @@ watch(
 
 const next = () => (index.value = Math.min(index.value + 1, steps.value.length - 1))
 const back = () => (index.value = Math.max(index.value - 1, 0))
+/** К шагам второй команды — с тем же ключом (он ещё в памяти листа): копировать его снова. */
+function toPush() {
+  flow.value = 'push'
+  index.value = 0
+  manual.value = false
+}
 
 async function copy() {
   if (!key.value) return makeKey()
@@ -93,7 +128,7 @@ async function copy() {
 
 <template>
   <Sheet :open="open" title="Apple Pay" @close="emit('close')">
-    <div class="flex flex-col gap-4" data-applepay-sheet :data-path="ap.path" :data-step="index + 1">
+    <div class="flex flex-col gap-4" data-applepay-sheet :data-path="ap.path" :data-flow="flow" :data-step="index + 1">
       <Stepper :n="index + 1" :k="steps.length" />
       <ApplePayStepArt :art="step.art" />
       <!-- Строке шага — место на две строки, тихому ряду ниже — одна высота: лист не прыгает от шага к шагу (ux). -->
@@ -117,7 +152,7 @@ async function copy() {
 
       <a
         v-else-if="step.action === 'open'"
-        :href="ap.link"
+        :href="link"
         target="_blank"
         rel="noopener"
         :class="cn(buttonVariants(), 'w-full')"
@@ -135,7 +170,7 @@ async function copy() {
       <div class="flex h-11 items-center justify-center">
         <Button v-if="step.action === 'copy' && manual" variant="ghost" size="md" class="w-full" @click="next">Скопировал — дальше</Button>
         <button
-          v-else-if="step.action === 'copy' && legacyChoice"
+          v-else-if="step.action === 'copy' && legacyChoice && flow === 'tap'"
           type="button"
           class="cursor-pointer text-[13.5px] text-ink-2 underline underline-offset-4"
           data-legacy-toggle
@@ -144,6 +179,10 @@ async function copy() {
           {{ ap.path === 'ios27' ? 'У меня iOS 26 или старше' : 'У меня iOS 27' }}
         </button>
         <Button v-else-if="index > 0 && step.action !== 'done'" variant="ghost" size="md" class="w-full" data-back @click="back">Назад</Button>
+        <!-- Блок 2: вторая команда — тихо, после первой (правило 12: одно действие за раз). -->
+        <Button v-else-if="step.action === 'done' && morePush" variant="ghost" size="md" class="w-full" data-more-push @click="toPush">
+          Ещё — пуши банков
+        </Button>
       </div>
     </div>
   </Sheet>
