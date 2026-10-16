@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { Person, SyncDoc } from '@/types/finance'
 import { DEFAULT_SPEND_CATEGORIES, DICTIONARY } from './dictionary'
 import {
+  AI_SELLERS_MAX,
+  aiSellerNames,
   applyRules,
   assignIds,
   categorize,
@@ -309,6 +311,34 @@ describe('функции экрана выписок (B2C-07)', () => {
       { match: { merchant: 'zhansaya' }, label: 'IP ZHANSAYA ALMATY KZ', count: 2, amount: 300 },
     ])
     expect(unknownGroups(ops, 'sc_food').map((g) => g.label)).toEqual(['Magnum'])
+  })
+
+  it('aiSellerNames — только продавцы без чисел 6+ и без «ИП + фамилия», по сумме, ≤ 50, дубли один раз (AI-12)', () => {
+    const ops = [
+      op({ merchant: 'Magnum Cash&Carry', amount: -5_000 }),
+      op({ merchant: 'ИП Сулейменов Аптека Плюс', amount: -9_000 }),
+      op({ merchant: 'ИП Абенова', amount: -20_000 }),
+      op({ merchant: 'IP SERIKBAEV A.A. ASTANA KZ', amount: -15_000 }),
+      op({ merchant: 'ИП Дана К.', amount: -14_000 }),
+      op({ merchant: 'IP IVANOV IVAN PETROVICH', amount: -13_000 }),
+      op({ merchant: 'IP KINOPARK 8 ASTANA', amount: -1_000 }),
+      op({ merchant: 'KASPI 1234567', amount: -30_000 }),
+      op({ kind: 'transfer-out', merchant: 'Перевод', counterparty: 'Дана К.', amount: -50_000 }),
+    ]
+    const groups = unknownGroups(ops)
+    expect(aiSellerNames(groups)).toEqual([
+      { name: 'ИП Сулейменов Аптека Плюс', match: { merchant: 'сулейменов аптека плюс' } },
+      { name: 'Magnum Cash&Carry', match: { merchant: 'magnum cash&carry' } },
+      { name: 'IP KINOPARK 8 ASTANA', match: { merchant: 'kinopark' } },
+    ])
+    // Порядок — по сумме, даже если группы пришли иначе; длинное название обрезано до 80 знаков.
+    const long = 'Республиканская главная мечеть. Оплата за вход на обзорную площадку Минарета Астана'
+    const many = Array.from({ length: 60 }, (_, i) => ({ match: { merchant: `m${i}` }, label: `Продавец ${i}`, count: 1, amount: 100 + i }))
+    const names = aiSellerNames([...many, { match: { merchant: 'long' }, label: long, count: 1, amount: 50 }, { match: { merchant: 'dup' }, label: 'Продавец 59', count: 1, amount: 1 }])
+    expect(names).toHaveLength(AI_SELLERS_MAX)
+    expect(names[0].name).toBe('Продавец 59')
+    expect(names.filter((n) => n.name === 'Продавец 59')).toHaveLength(1)
+    expect(aiSellerNames([{ match: { merchant: 'long' }, label: long, count: 1, amount: 50 }])[0].name).toBe(long.slice(0, 80).trim())
   })
 
 

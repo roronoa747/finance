@@ -122,6 +122,9 @@ export const readAiReviewSeen = (): string | null => {
 }
 export const writeAiReviewSeen = (id: string) => writeStorage(AI_REVIEW_SEEN_KEY, id)
 
+/** Предложения ИИ продавцам пачки «Без раздела» (AI-12): `{ match → {to, at} }` на этом телефоне, 60 дней. */
+export const AI_SELLERS_KEY = 'ff_ai_sellers'
+
 /** Список увиденных; пусто, мусор или хранилище недоступно — пустой. */
 export function readTipsSeen(): string[] {
   const list = readStorage<unknown>(TIPS_SEEN_KEY, [])

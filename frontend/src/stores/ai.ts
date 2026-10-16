@@ -2,14 +2,43 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { apiClient, ApiError, type ApiClient } from '@/api/client'
 import { buildMonthSummary } from '@/lib/aiSummary'
+import { MONTHS_GEN, addMonths, monthKey, parseMonthKey } from '@/lib/dates'
+import { liveSpendCategories } from '@/lib/finance'
+import { AI_SELLERS_KEY, readStorage, writeStorage } from '@/lib/storage'
+import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
+import { aiSellerNames, type UnknownGroup } from '@/lib/statements/model'
+import type { MerchantRule } from '@/lib/statements/types'
 import { useAuthStore } from './auth'
 import { useFinanceStore } from './finance'
 import { useFxStore } from './fx'
 import { useOperationsStore } from './operations'
 import type { AiConsent, AiReview } from '@/types/finance'
 
-/** Состояние запроса разбора (AI-09): идёт, лимит месяца кончился, не вышло. */
+/** Состояние запроса разбора (AI-09) и предложений продавцам (AI-12): идёт, лимит месяца кончился, не вышло. */
 export type ReviewState = 'idle' | 'thinking' | 'limit' | 'failed'
+
+/** Предложение раздела продавцу на этом телефоне: `to` — id раздела или null (ИИ не уверен), `at` — когда спросили. */
+export interface SellerHint {
+  to: string | null
+  at: string
+}
+/** Сколько помнить предложение: старше — продавец спрашивается заново, кэш не растёт (AI-12). */
+const SELLER_HINT_MS = 60 * 24 * 60 * 60 * 1000
+/** Разделов в запросе — не больше, чем берёт ручка (AI-11). */
+const SELLERS_CATEGORIES_MAX = 40
+
+const sellerKey = (match: MerchantRule['match']) => JSON.stringify(match)
+
+/** Кэш предложений без просроченных; мусор — пусто. */
+function freshSellerHints(now = Date.now()): Record<string, SellerHint> {
+  const all = readStorage<Record<string, SellerHint> | null>(AI_SELLERS_KEY, null)
+  const out: Record<string, SellerHint> = {}
+  if (!all || typeof all !== 'object') return out
+  for (const [k, h] of Object.entries(all)) {
+    if (h && typeof h.at === 'string' && now - Date.parse(h.at) < SELLER_HINT_MS) out[k] = h
+  }
+  return out
+}
 
 /**
  * ИИ-помощник (бэклог «ИИ», Р-7, Р-9, Р-10): доступен ли человеку и его согласие. Согласие — один раз на человека,
@@ -116,8 +145,73 @@ export const useAiStore = defineStore('ai', () => {
     }
   }
 
-  return { available, consent, sheetOpen, sheetMounted, consentFailed, setConsent, ensureConsent, answer, reviewState, runReview }
+  /** Предложения продавцам: запрос идёт или чем кончился последний (шапка пачки «Без раздела»). */
+  const sellersState = ref<ReviewState>('idle')
+  /** Предложения на этом телефоне по продавцу пачки (`match`); читаются заново при каждом открытии — выход их стирает. */
+  const sellerHints = ref<Record<string, SellerHint>>({})
+
+  /** Предложенный раздел продавцу или null: только с ИИ и согласием — «Не надо» и выключенный ИИ — как без него. */
+  function sellerHint(match: MerchantRule['match']): string | null {
+    if (!available.value || consent.value !== 'on') return null
+    return sellerHints.value[sellerKey(match)]?.to ?? null
+  }
+
+  /**
+   * Открыли пачку «Без раздела» (AI-12, Р-5): продавцам без предложения (`aiSellerNames` — без переводов людям,
+   * «ИП + фамилия» и чисел 6+) — согласие и один запрос; ответ — в кэш телефона на 60 дней, и `null` тоже: повторное
+   * открытие не спрашивает уже спрошенных. Ничего не применяется — человек принимает ✓ у продавца. Ошибки — тихо:
+   * состояние для шапки; `ai_off` — `/auth/me` уберёт ИИ. Без сети не спрашиваем.
+   */
+  async function suggestSellers(groups: UnknownGroup[], client: ApiClient = apiClient): Promise<void> {
+    sellerHints.value = freshSellerHints()
+    if (!available.value || sellersState.value === 'thinking') return
+    sellersState.value = 'idle'
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+    const ask = aiSellerNames(groups).filter((s) => !(sellerKey(s.match) in sellerHints.value))
+    if (!ask.length || !(await ensureConsent(client))) return
+    sellersState.value = 'thinking'
+    const categories = liveSpendCategories(finance.householdDoc.spendCategories)
+      .filter((c) => c.id !== UNKNOWN_CATEGORY && c.name.trim())
+      .slice(0, SELLERS_CATEGORIES_MAX)
+      .map((c) => ({ id: c.id, name: c.name }))
+    try {
+      const res = await client.aiSellers(
+        ask.map((s) => s.name),
+        categories,
+      )
+      const to = new Map(res.items.map((i) => [i.name, i.categoryId]))
+      const at = new Date().toISOString()
+      const next = freshSellerHints()
+      for (const s of ask) next[sellerKey(s.match)] = { to: to.get(s.name) ?? null, at }
+      writeStorage(AI_SELLERS_KEY, next)
+      sellerHints.value = next
+      sellersState.value = 'idle'
+    } catch (err) {
+      const code = err instanceof ApiError ? err.message : ''
+      sellersState.value = code === 'ai_limit' ? 'limit' : 'failed'
+      if (code === 'ai_off') void auth.fetchMe().catch(() => {})
+    }
+  }
+
+  return {
+    available,
+    consent,
+    sheetOpen,
+    sheetMounted,
+    consentFailed,
+    setConsent,
+    ensureConsent,
+    answer,
+    reviewState,
+    runReview,
+    sellersState,
+    sellerHint,
+    suggestSellers,
+  }
 })
+
+/** Лимит месяца кончился: «ИИ вернётся 1 ноября» — с месяцем, «1-го» заставляло думать, какого (владелец, `/ux` Блока 2). */
+export const aiLimitText = () => `ИИ вернётся 1 ${MONTHS_GEN[parseMonthKey(addMonths(monthKey(), 1)).month]}`
 
 /** Кто получает и что уходит (Р-9) — одни слова для листа согласия и подсказки в настройках. */
 export const AI_TO = 'Claude от Anthropic'

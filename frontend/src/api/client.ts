@@ -14,6 +14,7 @@ import type {
   AdminFamily,
   AiCheck,
   AiReviewAnswer,
+  AiSellersAnswer,
 } from '@/types/api'
 import type { SyncDoc } from '@/types/finance'
 
@@ -192,6 +193,14 @@ export class ApiClient {
    */
   async aiReview(summary: object): Promise<AiReviewAnswer> {
     return this.request<AiReviewAnswer>('/ai/review', { method: 'POST', body: JSON.stringify({ summary }) })
+  }
+
+  /**
+   * Разделы незнакомым продавцам (AI-11/AI-12, Р-5): уходят только названия продавцов и разделы семьи `{id, name}` —
+   * без сумм, дат и ФИО. Ошибки — как у разбора.
+   */
+  async aiSellers(names: string[], categories: { id: string; name: string }[]): Promise<AiSellersAnswer> {
+    return this.request<AiSellersAnswer>('/ai/sellers', { method: 'POST', body: JSON.stringify({ names, categories }) })
   }
 
   /** Удаление аккаунта вместе с данными (B2C-24). */

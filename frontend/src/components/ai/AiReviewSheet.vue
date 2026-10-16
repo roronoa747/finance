@@ -2,12 +2,12 @@
 import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { PhCaretRight, PhCircleNotch } from '@phosphor-icons/vue'
-import { useAiStore } from '@/stores/ai'
+import { aiLimitText, useAiStore } from '@/stores/ai'
 import { useAuthStore } from '@/stores/auth'
 import type { AiReview } from '@/types/finance'
 import type { MonthSummaryAI } from '@/lib/aiSummary'
 import { money, plain } from '@/lib/money'
-import { MONTHS_GEN, addMonths, monthBy, monthKey, parseMonthKey } from '@/lib/dates'
+import { monthBy } from '@/lib/dates'
 import { plural } from '@/lib/utils'
 import Sheet from '@/components/kit/Sheet.vue'
 import Button from '@/components/ui/Button.vue'
@@ -62,7 +62,7 @@ const stateText = computed(() =>
   ai.reviewState === 'thinking'
     ? 'Думаю…'
     : ai.reviewState === 'limit'
-      ? `ИИ вернётся 1 ${MONTHS_GEN[parseMonthKey(addMonths(monthKey(), 1)).month]}`
+      ? aiLimitText()
       : 'Не вышло. Попробуйте позже',
 )
 

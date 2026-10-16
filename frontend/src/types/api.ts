@@ -49,6 +49,11 @@ export interface AiReviewAnswer {
   steps: { text: string; screen: string | null }[]
 }
 
+/** Ответ `POST /api/ai/sellers` (AI-11): по названию — id раздела из присланных или null; порядок — как ушло. */
+export interface AiSellersAnswer {
+  items: { name: string; categoryId: string | null }[]
+}
+
 /** Участник семьи из `GET /api/household/members` (B2C-23): без почты и id. */
 export interface MemberView {
   slot: 'a' | 'b' | 'c'

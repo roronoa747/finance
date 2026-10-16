@@ -4,7 +4,7 @@ import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { mergeDocs, mergePrivateDocs, isEmptyDoc } from '@/lib/merge'
 import { monthKey, monthLastNoon, todayIso } from '@/lib/dates'
 import { clearPhotoDisk } from '@/lib/photos/store'
-import { AI_REVIEW_SEEN_KEY, DEMO_PENDING_KEY, EVENTS_QUEUE_KEY, FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, TIPS_SEEN_KEY, readStorage } from '@/lib/storage'
+import { AI_REVIEW_SEEN_KEY, AI_SELLERS_KEY, DEMO_PENDING_KEY, EVENTS_QUEUE_KEY, FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, TIPS_SEEN_KEY, readStorage } from '@/lib/storage'
 import {
   accountBalance,
   allocationFor,
@@ -176,6 +176,8 @@ const LOCAL_KEYS = [
   TIPS_SEEN_KEY,
   // Открытый на этом телефоне разбор месяца ИИ (AI-09): точка на кнопке — для этого входа.
   AI_REVIEW_SEEN_KEY,
+  // Предложения ИИ продавцам (AI-12): продавцы этого входа другому не нужны.
+  AI_SELLERS_KEY,
 ]
 
 // Запрос не дошёл до сервера (fetch бросил не ApiError) — это «нет сети», а не «не
