@@ -751,34 +751,31 @@ func (m *MockStatementRepo) ListOperations(ctx context.Context, userID string, s
 	return all[:end], nil
 }
 
-func (m *MockStatementRepo) InsertPhoneOperation(ctx context.Context, userID, householdID string, op PhoneOperation) error {
+func (m *MockStatementRepo) InsertPhoneOperation(ctx context.Context, userID, householdID string, op PhoneOperation, repeat time.Duration) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.ops[userID] == nil {
 		m.ops[userID] = make(map[string]*mockOperation)
+	}
+	// As in SQL: the same source and money within `repeat` of the moment is a repeat.
+	for _, o := range m.ops[userID] {
+		prev := o.op
+		if prev.Source != op.Source || prev.OccurredAt == nil || prev.OccurredAt.Before(op.OccurredAt.Add(-repeat)) || prev.OccurredAt.After(op.OccurredAt.Add(repeat)) {
+			continue
+		}
+		tenge := op.FxCurrency == nil && prev.FxCurrency == nil && prev.Amount == op.Amount
+		foreign := op.FxCurrency != nil && op.FxAmount != nil && prev.FxCurrency != nil && prev.FxAmount != nil &&
+			*prev.FxCurrency == *op.FxCurrency && *prev.FxAmount == *op.FxAmount
+		if tenge || foreign {
+			return false, nil
+		}
 	}
 	at := op.OccurredAt
 	m.ops[userID][op.ID] = &mockOperation{householdID: householdID, op: models.Operation{
 		ID: op.ID, Bank: op.Bank, Date: op.Date, Amount: op.Amount, Kind: "purchase", Merchant: op.Merchant,
 		UpdatedAt: m.stamp(), Source: op.Source, OccurredAt: &at, FxCurrency: op.FxCurrency, FxAmount: op.FxAmount,
 	}}
-	return nil
-}
-
-func (m *MockStatementRepo) FindRecentPhoneOperation(ctx context.Context, userID, source, currency string, amount int64, since time.Time) (bool, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for _, o := range m.ops[userID] {
-		op := o.op
-		if op.Source != source || op.OccurredAt == nil || op.OccurredAt.Before(since) {
-			continue
-		}
-		if currency == "KZT" && op.FxCurrency == nil && op.Amount == amount ||
-			currency != "KZT" && op.FxCurrency != nil && *op.FxCurrency == currency && op.FxAmount != nil && *op.FxAmount == amount {
-			return true, nil
-		}
-	}
-	return false, nil
+	return true, nil
 }
 
 func (m *MockStatementRepo) CountPhoneOperationsSince(ctx context.Context, userID string, since time.Time) (int, error) {

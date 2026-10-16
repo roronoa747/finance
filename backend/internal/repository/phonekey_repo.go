@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// MaxPhoneKeys is how many phones one person connects (Р-13): the sixth key drops the oldest.
+// MaxPhoneKeys is how many phones one person connects (Р-13): the sixth key drops the longest idle.
 const MaxPhoneKeys = 5
 
 // ErrPhoneKeyNotFound: no such key (never issued or revoked).
@@ -19,7 +19,8 @@ var ErrPhoneKeyNotFound = errors.New("phone key not found")
 // PhoneKeyRepository stores Apple Pay phone keys as SHA-256 hashes only (Р-5, Р-13).
 type PhoneKeyRepository interface {
 	WalletDebugRepository
-	// Add stores a new key; a person with MaxPhoneKeys keys loses the oldest in the same transaction.
+	// Add stores a new key; a person with MaxPhoneKeys keys loses the longest idle one (never used
+	// first, then the least recently used) in the same transaction.
 	Add(ctx context.Context, userID string, hash []byte) error
 	// DeleteAll revokes every key of the person ("Отключить").
 	DeleteAll(ctx context.Context, userID string) error
@@ -43,10 +44,13 @@ func (r *sqlPhoneKeyRepository) Add(ctx context.Context, userID string, hash []b
 	if _, err := tx.ExecContext(ctx, `SELECT 1 FROM app.users WHERE id = $1 FOR UPDATE`, userID); err != nil {
 		return fmt.Errorf("failed to lock user: %w", err)
 	}
+	// The one to go is the longest idle: never-used keys first (every opening of the connect
+	// sheet makes one), then the least recently used — a working phone is not pushed out by
+	// sheets opened and closed (критик Б1).
 	if _, err := tx.ExecContext(ctx, `
 		DELETE FROM app.phone_keys WHERE key_hash IN (
 			SELECT key_hash FROM app.phone_keys WHERE user_id = $1
-			ORDER BY created_at DESC, key_hash OFFSET $2
+			ORDER BY last_used_at DESC NULLS LAST, created_at DESC, key_hash OFFSET $2
 		)`, userID, MaxPhoneKeys-1); err != nil {
 		return fmt.Errorf("failed to drop old phone keys: %w", err)
 	}
@@ -119,7 +123,18 @@ func (m *MockPhoneKeyRepo) Add(ctx context.Context, userID string, hash []byte) 
 		}
 	}
 	if len(mine) >= MaxPhoneKeys {
-		m.keys = append(m.keys[:mine[0]], m.keys[mine[0]+1:]...)
+		// As in SQL: never used (oldest first), then the least recently used.
+		gone := mine[0]
+		for _, i := range mine[1:] {
+			k, g := m.keys[i], m.keys[gone]
+			switch {
+			case g.lastUsed == nil:
+				// an older never-used key is already the one
+			case k.lastUsed == nil || k.lastUsed.Before(*g.lastUsed):
+				gone = i
+			}
+		}
+		m.keys = append(m.keys[:gone], m.keys[gone+1:]...)
 	}
 	m.keys = append(m.keys, mockPhoneKey{hash: bytes.Clone(hash), userID: userID, created: m.Now()})
 	return nil

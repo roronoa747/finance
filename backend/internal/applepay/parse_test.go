@@ -114,6 +114,49 @@ func TestFindAmountInWholeTransaction(t *testing.T) {
 	}
 }
 
+// Критик Б1 (скептик): the whole-transaction text around the amount.
+func TestFindAmountEdges(t *testing.T) {
+	// A time, date or number right before the amount is not its thousands group.
+	for text, want := range map[string]int64{
+		"16.10.2026, 10:23 500 ₸ MAGNUM": 50000,
+		"MAGNUM 10:23 150 000 ₸":         15000000,
+		"MAGNUM 10:23:45 500 ₸":          50000,
+		"MAGNUM 16.10 500 ₸":             50000,
+		"2026-10-16 500 ₸ MAGNUM":        50000,
+		"Магазин №1 500 ₸":               50000,
+		"10:23 1 234 ₸":                  123400,
+		"Сумма:5 000 ₸":                  500000,
+		"MAGNUM, 5 000 ₸":                500000,
+		"MAGNUM - 5 000 ₸":               500000, // a dash between words is not a sign
+		// A greedy group running into the next number is cut back at the separator.
+		"MAGNUM ₸500 2026-10-16":      50000,
+		"KZT 1 500 2026-10-16 MAGNUM": 150000,
+		// A word equal to a currency code the app does not keep does not hide the tenge.
+		"NAIL GEL 5 000 ₸":       500000,
+		"Pizza Try 2 Go 5 000 ₸": 500000,
+		// A currency symbol may touch a letter.
+		"MAGNUM₸500":       50000,
+		"500₸MAGNUM":       50000,
+		"Apple Store$6.22": 622,
+	} {
+		if _, m, _, ok := FindAmount(text); !ok || m != want {
+			t.Errorf("FindAmount(%q) = %d %v, want %d", text, m, ok, want)
+		}
+	}
+	// A signed amount is a refund or incoming money: no purchase in the text.
+	for _, text := range []string{
+		"Возврат −5 000 ₸ MAGNUM", "MAGNUM -5 000 ₸", "MAGNUM +5 000 ₸", "MAGNUM (5 000 ₸)", "MAGNUM -$5", "MAGNUM −₸5 000",
+	} {
+		if c, m, _, ok := FindAmount(text); ok {
+			t.Errorf("FindAmount(%q) = %q %d: a signed amount taken as a purchase", text, c, m)
+		}
+	}
+	// Only unsupported money — Unsupported.
+	if c, _, _, ok := FindAmount("GEL 5 000 Tbilisi"); ok || c != Unsupported {
+		t.Errorf("lari only: %q %v", c, ok)
+	}
+}
+
 func TestBankOfCard(t *testing.T) {
 	for card, want := range map[string]string{
 		"Kaspi Gold": "kaspi", "KASPI RED": "kaspi", "Каспи": "kaspi",

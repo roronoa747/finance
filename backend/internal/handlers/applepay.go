@@ -254,6 +254,10 @@ func (h *WalletHandler) Tap(w http.ResponseWriter, r *http.Request) {
 	if searched {
 		h.keepForAdmin(r, userID, raw)
 	}
+	// Less than a tenge would be written as a 0 ₸ purchase (tiyn are dropped): not money.
+	if parsed && currency == "KZT" && minor < 100 {
+		parsed, reason = false, "amount"
+	}
 	if !parsed {
 		tapResult(w, "skipped", reason)
 		return
@@ -266,13 +270,10 @@ func (h *WalletHandler) Tap(w http.ResponseWriter, r *http.Request) {
 	op := repository.PhoneOperation{
 		Bank: bank, Date: at.In(almaty).Format(time.DateOnly), Merchant: merchant, Source: "tap", OccurredAt: at,
 	}
-	var same int64
 	if currency == "KZT" {
 		op.Amount = -(minor / 100) // the only arithmetic of the server: reading the string, as a statement does
-		same = op.Amount
 	} else {
 		op.FxCurrency, op.FxAmount = &currency, &minor
-		same = minor
 	}
 
 	nowAlmaty := now.In(almaty)
@@ -287,16 +288,6 @@ func (h *WalletHandler) Tap(w http.ResponseWriter, r *http.Request) {
 		errorJSON(w, http.StatusTooManyRequests, "limit")
 		return
 	}
-	dup, err := h.ops.FindRecentPhoneOperation(r.Context(), userID, "tap", currency, same, at.Add(-tapRepeat))
-	if err != nil {
-		log.Printf("wallet: tap repeat: %v", err)
-		errorJSON(w, http.StatusInternalServerError, "failed to save")
-		return
-	}
-	if dup {
-		tapResult(w, "duplicate", "")
-		return
-	}
 	id := make([]byte, 8)
 	if _, err := rand.Read(id); err != nil {
 		log.Printf("wallet: tap id: %v", err)
@@ -304,9 +295,14 @@ func (h *WalletHandler) Tap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	op.ID = hex.EncodeToString(id)
-	if err := h.ops.InsertPhoneOperation(r.Context(), userID, householdID, op); err != nil {
+	saved, err := h.ops.InsertPhoneOperation(r.Context(), userID, householdID, op, tapRepeat)
+	if err != nil {
 		log.Printf("wallet: tap save: %v", err)
 		errorJSON(w, http.StatusInternalServerError, "failed to save")
+		return
+	}
+	if !saved {
+		tapResult(w, "duplicate", "")
 		return
 	}
 	tapResult(w, "saved", "")

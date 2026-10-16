@@ -239,38 +239,54 @@ type PhoneOperation struct {
 
 // PhoneOperationRepository writes and checks operations that come from a phone.
 type PhoneOperationRepository interface {
-	InsertPhoneOperation(ctx context.Context, userID, householdID string, op PhoneOperation) error
-	// FindRecentPhoneOperation reports a phone operation of this source with the same money
-	// since the given moment: tenge — amount; a foreign currency — fx_currency and fx_amount.
-	FindRecentPhoneOperation(ctx context.Context, userID, source, currency string, amount int64, since time.Time) (bool, error)
+	// InsertPhoneOperation writes the operation unless the person already has one of the same
+	// source and money within `repeat` of its moment (tenge — amount; a foreign currency —
+	// fx_currency and fx_amount): the trigger fires twice for one payment (Р-9). false — a
+	// repeat, nothing written. The check and the write hold the person's lock, so two firings at
+	// the same moment (two serverless instances) still make one operation.
+	InsertPhoneOperation(ctx context.Context, userID, householdID string, op PhoneOperation, repeat time.Duration) (bool, error)
 	// CountPhoneOperationsSince counts the person's phone operations since the moment (the daily limit).
 	CountPhoneOperationsSince(ctx context.Context, userID string, since time.Time) (int, error)
 }
 
-func (r *sqlStatementRepository) InsertPhoneOperation(ctx context.Context, userID, householdID string, op PhoneOperation) error {
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO app.operations (user_id, id, household_id, bank, op_date, amount, kind, merchant, source, occurred_at, fx_currency, fx_amount)
-		VALUES ($1, $2, $3, $4, $5::date, $6, 'purchase', $7, $8, $9, $10, $11)`,
-		userID, op.ID, householdID, op.Bank, op.Date, op.Amount, op.Merchant, op.Source, op.OccurredAt, op.FxCurrency, op.FxAmount)
+func (r *sqlStatementRepository) InsertPhoneOperation(ctx context.Context, userID, householdID string, op PhoneOperation, repeat time.Duration) (bool, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("failed to insert phone operation: %w", err)
+		return false, fmt.Errorf("failed to start tx: %w", err)
 	}
-	return nil
-}
-
-func (r *sqlStatementRepository) FindRecentPhoneOperation(ctx context.Context, userID, source, currency string, amount int64, since time.Time) (bool, error) {
-	var found bool
-	err := r.db.QueryRowContext(ctx, `
+	defer tx.Rollback()
+	// Transaction-scoped: holds through the transaction pooler, released at commit.
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('phone-op:' || $1))`, userID); err != nil {
+		return false, fmt.Errorf("failed to lock phone operations: %w", err)
+	}
+	money := op.Amount
+	if op.FxCurrency != nil && op.FxAmount != nil {
+		money = *op.FxAmount
+	}
+	var repeated bool
+	err = tx.QueryRowContext(ctx, `
 		SELECT EXISTS (
 			SELECT 1 FROM app.operations
-			WHERE user_id = $1 AND source = $2 AND source <> 'statement' AND occurred_at >= $3
-			  AND CASE WHEN $4 = 'KZT' THEN fx_currency IS NULL AND amount = $5
-			           ELSE fx_currency = $4 AND fx_amount = $5 END
-		)`, userID, source, since, currency, amount).Scan(&found)
+			WHERE user_id = $1 AND source = $2 AND source <> 'statement' AND occurred_at BETWEEN $3 AND $4
+			  AND CASE WHEN $5::text IS NULL THEN fx_currency IS NULL AND amount = $6
+			           ELSE fx_currency = $5::text AND fx_amount = $6 END
+		)`, userID, op.Source, op.OccurredAt.Add(-repeat), op.OccurredAt.Add(repeat), op.FxCurrency, money).Scan(&repeated)
 	if err != nil {
 		return false, fmt.Errorf("failed to find phone operation: %w", err)
 	}
-	return found, nil
+	if repeated {
+		return false, nil
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO app.operations (user_id, id, household_id, bank, op_date, amount, kind, merchant, source, occurred_at, fx_currency, fx_amount)
+		VALUES ($1, $2, $3, $4, $5::date, $6, 'purchase', $7, $8, $9, $10, $11)`,
+		userID, op.ID, householdID, op.Bank, op.Date, op.Amount, op.Merchant, op.Source, op.OccurredAt, op.FxCurrency, op.FxAmount); err != nil {
+		return false, fmt.Errorf("failed to insert phone operation: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("failed to commit phone operation: %w", err)
+	}
+	return true, nil
 }
 
 func (r *sqlStatementRepository) CountPhoneOperationsSince(ctx context.Context, userID string, since time.Time) (int, error) {

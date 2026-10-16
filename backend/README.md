@@ -74,12 +74,14 @@ REST API приложения: вход, домохозяйство, синхр�
   «Apple Pay»): `GET /api/wallet` (member) — `{connected, phones, last_used_at?, shortcut_url, shortcut_url_legacy}`;
   `POST /api/wallet/connect` — 201 `{key}` с `Cache-Control: no-store`, **единственный раз**, когда ключ `ffk_…`
   уходит с сервера: в базе только SHA-256 (`app.phone_keys`), свой ключ на каждый телефон, не больше 5 (шестой
-  вытесняет самый старый); `DELETE /api/wallet` — отзыв всех, 204. viewer — 403. `POST /api/wallet/tap` — вне JWT:
+  вытесняет тот, что дольше всех не работал: сначала ни разу не использованный — каждое открытие листа подключения
+  делает ключ); `DELETE /api/wallet` — отзыв всех, 204. viewer — 403. `POST /api/wallet/tap` — вне JWT:
   `Authorization: Bearer ffk_…`, роль и семья из базы на каждый запрос (нет / отозван — 401, viewer или без семьи —
   403); тело ≤ 4 КБ `{merchant?, amount?, card?, name?, at?, raw?}`, лишние поля игнорируются; без `amount` сумма
   ищется в тексте (команда шлёт всю транзакцию в `merchant`). Тенге — `amount` (тиыны отбрасываются), USD/EUR/RUB/CNY —
-  `amount 0` + `fx_*` (курс считает телефон), без валюты — не угадывается; ответ 200
-  `{ok, status: saved|duplicate|skipped, reason?}` без операции; та же сумма ≤ 2 мин — `duplicate`; 200 операций с
+  `amount 0` + `fx_*` (курс считает телефон), без валюты и меньше тенге — не пишется; ответ 200
+  `{ok, status: saved|duplicate|skipped, reason?}` без операции; та же сумма в пределах 2 мин — `duplicate` (проверка
+  и запись — одна транзакция под блокировкой человека: два срабатывания разом дают одну трату); 200 операций с
   телефона за сутки Алматы — 429 `{"error":"limit"}`. Операция — в `app.operations` (`source: tap`, `occurred_at`,
   `category_id` null, банк по названию карты: kaspi/freedom/halyk/card). Батч `/operations/batch` поля сервера не
   меняет; `deleted: true` — надгробие (выписка заменила трату), необратимо, лента его отдаёт. Ключ и тело не пишутся

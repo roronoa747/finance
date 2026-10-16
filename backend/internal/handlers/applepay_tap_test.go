@@ -125,7 +125,8 @@ func TestTapRepeatLimitAndRefusals(t *testing.T) {
 		t.Fatalf("ops after repeats: %d", len(app.aliceOps(t)))
 	}
 
-	for in, reason := range map[string]string{"6.22": "currency", "£3": "currency", "-$5": "amount", "$0.00": "amount"} {
+	// "0,50 ₸" is less than a tenge: tiyn are dropped, a 0 ₸ purchase is not written (критик Б1).
+	for in, reason := range map[string]string{"6.22": "currency", "£3": "currency", "-$5": "amount", "$0.00": "amount", "0,50 ₸": "amount"} {
 		out := tapStatus(t, app.tap(t, key, map[string]any{"merchant": "X", "amount": in}))
 		if out["status"] != "skipped" || out["reason"] != reason || out["ok"] != false {
 			t.Errorf("amount %q: %v", in, out)
@@ -135,10 +136,10 @@ func TestTapRepeatLimitAndRefusals(t *testing.T) {
 	// 200 a day, then 429 (Almaty day).
 	ctx := t.Context()
 	for i := range 198 {
-		_ = app.repos.Statements.InsertPhoneOperation(ctx, app.aliceID, app.familyID, repository.PhoneOperation{
+		_, _ = app.repos.Statements.InsertPhoneOperation(ctx, app.aliceID, app.familyID, repository.PhoneOperation{
 			ID: fmt.Sprintf("%016x", i+1), Bank: "kaspi", Date: "2026-10-16", Amount: -int64(i + 1), Merchant: "Loop",
 			Source: "tap", OccurredAt: clock.t,
-		})
+		}, tapRepeat)
 	}
 	if rec := app.tap(t, key, map[string]any{"merchant": "One more", "amount": "7 ₸"}); rec.Code != http.StatusTooManyRequests ||
 		strings.TrimSpace(rec.Body.String()) != `{"error":"limit"}` {

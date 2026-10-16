@@ -167,37 +167,91 @@ func SkipReason(s string) string {
 	return "amount"
 }
 
+const (
+	// signRunes right before an amount make it a refund or incoming money, not a purchase (as in
+	// ParseAmount) — unless a digit stands before them ("2026-10-16 500 ₸" is a date).
+	signRunes = "-−+("
+	// After a digit these glue the next digits to it: "10:23 500 ₸" is not 23 500 ₸, "16.10 500 ₸"
+	// is not 10 500 ₸.
+	numberGlue = ":.,/-−"
+	// numberMarks always start a number of their own: "№1 500 ₸" is not 1 500 ₸.
+	numberMarks = "№#"
+	// groupRunes split thousands; a match running into the next number is cut back at one.
+	groupRunes = "   '’"
+)
+
+// moneyTokenWhole is moneyToken over a whole string.
+var moneyTokenWhole = regexp.MustCompile(`^(?:` + moneyToken.String() + `)$`)
+
+// wordy: a digit or a letter — a token edge that must not touch another word or number.
+// A currency symbol may touch a letter ("MAGNUM₸500").
+func wordy(r rune) bool { return unicode.IsDigit(r) || isLetter(r) }
+
 // FindAmount looks for the first money token ("5 000 ₸", "$6.22") in free text — the owner's
 // command sends the whole transaction as one string (Р-13а). rest is the text without the
-// token. A token in a currency the app does not keep gives currency Unsupported, not ok.
+// token. A signed amount ("−5 000 ₸", a refund) means no purchase in the text. Only tokens in
+// currencies the app does not keep — currency Unsupported, not ok.
 func FindAmount(text string) (currency string, minor int64, rest string, ok bool) {
+	unsupported := false
 	for offset := 0; offset < len(text); {
 		loc := moneyToken.FindStringIndex(text[offset:])
 		if loc == nil {
 			break
 		}
 		start, end := offset+loc[0], offset+loc[1]
-		before, _ := utf8.DecodeLastRuneInString(text[:start])
-		after, _ := utf8.DecodeRuneInString(text[end:])
-		// Not a piece of a longer number or word: "1234 000 ₸" is not 234 000, "тгк" is not тг.
-		if start > 0 && (unicode.IsDigit(before) || isLetter(before)) || end < len(text) && (unicode.IsDigit(after) || isLetter(after)) {
-			_, size := utf8.DecodeRuneInString(text[start:])
-			offset = start + size
+		first, size := utf8.DecodeRuneInString(text[start:])
+		offset = start + size // a refused match: the next try starts one character later
+		if start > 0 {
+			before, bsize := utf8.DecodeLastRuneInString(text[:start])
+			prev, _ := utf8.DecodeLastRuneInString(text[:start-bsize])
+			afterDigit := unicode.IsDigit(prev)
+			switch {
+			case strings.ContainsRune(signRunes, before) && !afterDigit:
+				return "", 0, text, false
+			// Not the tail of a longer number or word: "1234 000 ₸" is not 234 000, "тгк" is not тг.
+			case unicode.IsDigit(before), strings.ContainsRune(numberMarks, before),
+				afterDigit && strings.ContainsRune(numberGlue, before), isLetter(before) && wordy(first):
+				continue
+			}
+		}
+		if end = tokenEnd(text, start, end); end < 0 {
 			continue
 		}
-		token := text[start:end]
-		code, m, parsed := ParseAmount(token)
+		code, m, parsed := ParseAmount(text[start:end])
 		if !parsed {
-			if c, _, _ := currencyIn(token); c == Unsupported {
-				return Unsupported, 0, "", false
+			// "NAIL GEL 5 000 ₸": a word like a currency code — the tenge may still follow.
+			if c, _, _ := currencyIn(text[start:end]); c == Unsupported {
+				unsupported = true
 			}
-			_, size := utf8.DecodeRuneInString(text[start:])
-			offset = start + size
 			continue
 		}
 		return code, m, text[:start] + "\n" + text[end:], true
 	}
+	if unsupported {
+		return Unsupported, 0, "", false
+	}
 	return "", 0, text, false
+}
+
+// tokenEnd is where the money token text[start:end] really ends: there, when the next character
+// does not continue it; otherwise cut back at a thousands separator that still leaves a whole
+// token ("₸500 2026-10-16" is ₸500); -1 when there is none.
+func tokenEnd(text string, start, end int) int {
+	for limit := end; ; {
+		last, _ := utf8.DecodeLastRuneInString(text[start:end])
+		after, _ := utf8.DecodeRuneInString(text[end:])
+		if end == len(text) || !unicode.IsDigit(after) && !(isLetter(after) && wordy(last)) {
+			return end
+		}
+		i := strings.LastIndexAny(text[start:limit], groupRunes)
+		if i <= 0 {
+			return -1
+		}
+		limit = start + i
+		if moneyTokenWhole.MatchString(text[start:limit]) {
+			end = limit
+		}
+	}
 }
 
 // BankOfCard maps the Wallet card name to a bank: Kaspi, Freedom, Halyk, otherwise "card".

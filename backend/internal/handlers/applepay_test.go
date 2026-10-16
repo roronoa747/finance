@@ -135,6 +135,9 @@ func (app walletApp) whoami(t *testing.T, key string) int {
 
 func TestWalletConnectStatusDisconnect(t *testing.T) {
 	app := setupWalletApp(t)
+	// Every key event a second apart: "the longest idle" is well defined.
+	tick := time.Date(2026, 10, 16, 0, 0, 0, 0, time.UTC)
+	app.keys.Now = func() time.Time { tick = tick.Add(time.Second); return tick }
 
 	if s := app.status(t); s.Connected || s.Phones != 0 || s.ShortcutURL != testShortcut || s.ShortcutURLLegacy != testShortcutLegacy || s.LastUsedAt != nil {
 		t.Fatalf("fresh status: %+v", s)
@@ -160,15 +163,27 @@ func TestWalletConnectStatusDisconnect(t *testing.T) {
 		t.Fatalf("two phones: %+v", s)
 	}
 
-	// The sixth key pushes out the oldest.
+	// The sixth key pushes out the longest idle: a never-used key (the connect sheet opened and
+	// closed makes one), not a working phone (критик Б1).
+	var more []string
 	for range 4 {
-		app.connect(t)
+		more = append(more, app.connect(t))
 	}
-	if app.whoami(t, first) != http.StatusUnauthorized || app.whoami(t, second) != http.StatusOK {
-		t.Fatal("sixth key: the oldest must die, the rest live")
+	if app.whoami(t, more[0]) != http.StatusUnauthorized || app.whoami(t, first) != http.StatusOK || app.whoami(t, second) != http.StatusOK {
+		t.Fatal("sixth key: the oldest never-used key must die, the working phones live")
 	}
 	if s := app.status(t); s.Phones != 5 {
 		t.Fatalf("after six connects: %+v", s)
+	}
+	// All five used: the least recently used goes.
+	for _, k := range append(more[1:], first) {
+		if app.whoami(t, k) != http.StatusOK {
+			t.Fatal("a live key failed")
+		}
+	}
+	app.connect(t)
+	if app.whoami(t, second) != http.StatusUnauthorized || app.whoami(t, first) != http.StatusOK {
+		t.Fatal("seventh key: the least recently used must die")
 	}
 
 	// "Отключить" revokes every phone; twice is fine.

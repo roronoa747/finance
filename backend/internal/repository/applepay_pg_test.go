@@ -188,6 +188,16 @@ func TestPostgresPhoneKeys(t *testing.T) {
 	if err != nil || phones != 5 || last == nil || time.Since(*last) > time.Minute {
 		t.Fatalf("status after use: %d %v %v", phones, last, err)
 	}
+	// A working key outlives never-used ones (критик Б1): the next drops the oldest never-used (3), not 2.
+	if err := keys.Add(ctx, f.aliceID, hash(7)); err != nil {
+		t.Fatalf("add 7: %v", err)
+	}
+	if _, err := keys.UserByHash(ctx, hash(3)); err != ErrPhoneKeyNotFound {
+		t.Fatalf("a never-used key outlived a working one: %v", err)
+	}
+	if user, err := keys.UserByHash(ctx, hash(2)); err != nil || user != f.aliceID {
+		t.Fatalf("the working key was pushed out: %q %v", user, err)
+	}
 	if err := keys.DeleteAll(ctx, f.aliceID); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
@@ -209,34 +219,68 @@ func TestPostgresPhoneOperationsAndDebug(t *testing.T) {
 		{ID: "a1a1a1a1a1a1a1a1", Bank: "kaspi", Date: "2026-10-16", Amount: -5000, Merchant: "MAGNUM", Source: "tap", OccurredAt: now},
 		{ID: "b2b2b2b2b2b2b2b2", Bank: "card", Date: "2026-10-16", Amount: 0, Merchant: "Apple Store", Source: "tap", OccurredAt: now, FxCurrency: &usd, FxAmount: &cents},
 	} {
-		if err := f.repo.InsertPhoneOperation(ctx, f.aliceID, f.householdID, op); err != nil {
-			t.Fatalf("insert %s: %v", op.ID, err)
+		if saved, err := f.repo.InsertPhoneOperation(ctx, f.aliceID, f.householdID, op, 2*time.Minute); err != nil || !saved {
+			t.Fatalf("insert %s: %v %v", op.ID, saved, err)
 		}
 	}
 	// The CHECKs of 000002 still hold: a merchant with a card number never reaches the table.
 	bad := PhoneOperation{ID: "c3c3c3c3c3c3c3c3", Bank: "kaspi", Date: "2026-10-16", Amount: -1, Merchant: "Card 1234567", Source: "tap", OccurredAt: now}
-	if err := f.repo.InsertPhoneOperation(ctx, f.aliceID, f.householdID, bad); err == nil {
+	if _, err := f.repo.InsertPhoneOperation(ctx, f.aliceID, f.householdID, bad, 2*time.Minute); err == nil {
 		t.Fatal("a merchant with 7 digits was stored")
 	}
 
-	for _, c := range []struct {
-		source, currency string
-		amount           int64
-		since            time.Time
-		want             bool
+	// A repeat is the same source and money within the window on either side of the moment (Alice
+	// has −5000 ₸ and $6.22 at `now`). A written case is deleted again: it must not become the
+	// base of the next one.
+	eur := "EUR"
+	for i, c := range []struct {
+		source   string
+		currency *string
+		amount   int64
+		at       time.Time
+		want     bool // written
 	}{
-		{"tap", "KZT", -5000, now.Add(-2 * time.Minute), true},
-		{"tap", "KZT", -5001, now.Add(-2 * time.Minute), false},
-		{"push", "KZT", -5000, now.Add(-2 * time.Minute), false},
-		{"tap", "KZT", -5000, now.Add(time.Second), false},
-		{"tap", "USD", 622, now.Add(-2 * time.Minute), true},
-		{"tap", "EUR", 622, now.Add(-2 * time.Minute), false},
-		{"tap", "KZT", 0, now.Add(-2 * time.Minute), false}, // a foreign op is not 0 tenge
+		{"tap", nil, -5000, now.Add(90 * time.Second), false},
+		{"tap", nil, -5000, now.Add(-90 * time.Second), false},
+		{"tap", nil, -5001, now, true},
+		{"push", nil, -5000, now, true},
+		{"tap", nil, -5000, now.Add(3 * time.Minute), true},
+		{"tap", &usd, 622, now.Add(time.Minute), false},
+		{"tap", &eur, 622, now, true},
+		{"tap", nil, 0, now, true}, // a foreign op is not 0 tenge
 	} {
-		got, err := f.repo.FindRecentPhoneOperation(ctx, f.aliceID, c.source, c.currency, c.amount, c.since)
-		if err != nil || got != c.want {
-			t.Errorf("find %+v: %v %v", c, got, err)
+		op := PhoneOperation{ID: strings.Repeat(string("123456789"[i]), 16), Bank: "kaspi", Date: "2026-10-16", Amount: c.amount,
+			Merchant: "X", Source: c.source, OccurredAt: c.at}
+		if c.currency != nil {
+			minor := c.amount
+			op.Amount, op.FxCurrency, op.FxAmount = 0, c.currency, &minor
 		}
+		saved, err := f.repo.InsertPhoneOperation(ctx, f.aliceID, f.householdID, op, 2*time.Minute)
+		if err != nil || saved != c.want {
+			t.Errorf("insert %d %+v: %v %v", i, c, saved, err)
+		}
+		if _, err := f.db.ExecContext(ctx, `DELETE FROM app.operations WHERE user_id = $1 AND id = $2`, f.aliceID, op.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Two firings of the trigger at the same moment (two serverless instances): one operation.
+	start := make(chan struct{})
+	results := make(chan bool, 2)
+	for i := range 2 {
+		go func() {
+			<-start
+			saved, err := f.repo.InsertPhoneOperation(ctx, f.bobID, f.householdID, PhoneOperation{ID: strings.Repeat(string(rune('0'+i)), 16),
+				Bank: "kaspi", Date: "2026-10-16", Amount: -777, Merchant: "Twice", Source: "tap", OccurredAt: now}, 2*time.Minute)
+			if err != nil {
+				t.Errorf("concurrent insert: %v", err)
+			}
+			results <- saved
+		}()
+	}
+	close(start)
+	if a, b := <-results, <-results; a == b {
+		t.Fatalf("two firings at once: saved %v and %v, want exactly one", a, b)
 	}
 	// Statement lines do not count against the daily limit.
 	if _, err := f.repo.UpsertOperations(ctx, f.aliceID, f.householdID, []models.Operation{pgOp("dddd0001", -1)}); err != nil {
