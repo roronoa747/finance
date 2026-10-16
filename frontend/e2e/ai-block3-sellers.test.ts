@@ -201,6 +201,70 @@ describe('e2e / ИИ Блок 3 — незнакомые продавцы', () =
     expect(wire).toHaveLength(1)
   })
 
+  // Приёмка Блока 3 (AI-19): «ИП + фамилия» с привычкой — подсказка «Продукты» правилом кодом, по проводу ИП не уходит.
+  it('частый ИП с мелким чеком: «Продукты» с ✓ без ИИ по проводу → правило sc_food у телефона 1, партнёр видит итог', async () => {
+    const A = await phone('a')
+    const operations = [
+      op('2026-09-21', -59_500, 'Respect Boutique'),
+      op('2026-09-05', -2_500, 'ИП Жакупов'),
+      op('2026-09-12', -2_500, 'ИП Жакупов'),
+      op('2026-09-21', -3_000, 'ИП Жакупов'),
+      op('2026-09-22', -3_000, 'ИП Жакупов'),
+      op('2026-09-23', -3_000, 'ИП Жакупов'),
+      op('2026-09-22', -5_000, 'ИП Абенова'),
+    ]
+    const parsed: ParsedStatement = { bank: 'kaspi', from: '2026-09-01', to: '2026-09-24', skipped: 0, operations: assignIds(operations) }
+    setActivePinia(A.pinia)
+    const ops = useOperationsStore()
+    ops.setDraft([{ name: 'a.pdf', parsed }])
+    await ops.send(A.client)
+    await A.store.syncHousehold(A.client)
+    const B = await phone('b')
+
+    await openBatch(A, true)
+    // По проводу — только бренд: ни частый ИП, ни редкий.
+    expect(wire).toHaveLength(1)
+    expect(JSON.parse(wire[0]).names).toEqual(['Respect Boutique'])
+    for (const bad of ['Жакупов', 'Абенова']) expect(wire[0], bad).not.toContain(bad)
+
+    // `asked` — флаг «вопрос ИИ на этом открытии кончился» (ставит `onMounted`, в SSR его нет).
+    const open = { questionsOpen: true, asked: true }
+    // Поля пачки — первыми: `props` есть у многих компонентов.
+    const hint = (label: string) => (s: Record<string, unknown>) => {
+      const hintOf = s.hintOf as (g: UnknownGroup) => { id: string } | null
+      return hintOf((s.props as { groups: UnknownGroup[] }).groups.find((x) => x.label === label)!)
+    }
+    let seen: Record<string, string | null> = {}
+    let html = text(await screen(A.pinia, Week, '/week', undefined, [screenMixin(open, (s) => {
+      seen = { ip: hint('ИП Жакупов')(s)?.id ?? null, rare: hint('ИП Абенова')(s)?.id ?? null, brand: hint('Respect Boutique')(s)?.id ?? null }
+    })]))
+    expect(seen).toEqual({ ip: 'sc_food', rare: null, brand: 'sc_shopping' })
+    expect(html).toContain('ИИ предлагает · 2')
+
+    // ✓ у частого ИП — то же правило «продавец → раздел», что ответ чипами.
+    await screen(A.pinia, Week, '/week', undefined, [screenMixin(open, (s) => {
+      const accept = s.accept as (g: UnknownGroup, id: string) => void
+      const id = hint('ИП Жакупов')(s)!.id
+      accept((s.props as { groups: UnknownGroup[] }).groups.find((x) => x.label === 'ИП Жакупов')!, id)
+    })])
+    await ops.flush(A.client)
+    setActivePinia(A.pinia)
+    await A.store.syncPrivate(A.client)
+    await A.store.syncHousehold(A.client)
+    html = await week(A)
+    expect(html).not.toContain('ИП Жакупов')
+    const rulesA = (pv.docs.get('u-a')?.data.merchantRules ?? []) as { match: Record<string, string>; to: unknown }[]
+    expect(rulesA.map((r) => [Object.keys(r.match), r.to])).toEqual([[['merchant'], { categoryId: 'sc_food' }]])
+    expect(pv.docs.get('u-b')).toEqual({ rev: 3, data: { merchantRules: [] } })
+
+    // Партнёр: покупки ИП этой недели — в «Продуктах», правил у него нет.
+    setActivePinia(B.pinia)
+    await B.store.pullHousehold(B.client)
+    await B.store.pullPrivateDoc(B.client)
+    expect(weekOf(B, 'sc_food')).toBe(9_000)
+    expect(B.store.privateDoc.merchantRules).toEqual([])
+  })
+
   it('«Не надо» — запросов нет, пачка как без ИИ', async () => {
     const A = await phone('a')
     await uploadA(A)
