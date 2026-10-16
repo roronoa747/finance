@@ -1223,3 +1223,20 @@ describe('merge.ts — снимки срока мечт (termSnaps)', () => {
     expect(defaultSyncDoc().termSnaps).toEqual([])
   })
 })
+
+// AU-05 (Р-17): сдвиги месяца — записи по id; отмена (надгробие) побеждает.
+describe('merge.ts — сдвиги месяца (planShifts)', () => {
+  const s = (id: string, extra: Record<string, unknown> = {}) => ({
+    id, period: '2026-10', by: 'a' as const, from: 'rest' as const, to: { goalId: 'car' }, amount: 20_000, at: '2026-10-05T08:00:00.000Z', updatedAt: '2026-10-05T08:00:00.000Z', ...extra,
+  })
+
+  it('сдвиги с двух телефонов — оба; отмена на одном побеждает правку на другом в обе стороны', () => {
+    const one = { ...createEmptyDoc(), planShifts: [s('x1'), s('x2', { amount: 30_000, updatedAt: '2026-10-07T08:00:00.000Z' })] }
+    const two = { ...createEmptyDoc(), planShifts: [s('x3'), s('x2', { deletedAt: '2026-10-06T08:00:00.000Z', updatedAt: '2026-10-06T08:00:00.000Z' })] }
+    for (const merged of [mergeDocs(one, two), mergeDocs(two, one)]) {
+      expect((merged.planShifts ?? []).map((x) => x.id).sort()).toEqual(['x1', 'x2', 'x3'])
+      expect(merged.planShifts!.find((x) => x.id === 'x2')!.deletedAt).toBe('2026-10-06T08:00:00.000Z')
+    }
+    expect(defaultSyncDoc().planShifts).toEqual([])
+  })
+})

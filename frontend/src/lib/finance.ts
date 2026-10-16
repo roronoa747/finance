@@ -1,4 +1,4 @@
-import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard, TripSpend, TermSnap } from '@/types/finance'
+import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard, TripSpend, TermSnap, PlanShift } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
 import { isSpend, normalizeCounterparty, normalizeMerchant } from '@/lib/statements/model'
@@ -3215,6 +3215,7 @@ export type MonthPlanState = {
   debtCard?: DebtCard | null
   book?: RateBook | null
   fxExchanges?: FxExchange[]
+  planShifts?: PlanShift[]
 }
 
 export type MonthPlanCtx = {
@@ -3321,7 +3322,8 @@ export type MonthPlan = {
 /** Горизонт прогона очереди — как у графика кредита. */
 const PLAN_HORIZON = 600
 
-type RunItem = { on: boolean; cap: number; left: number; debt?: { rate: number; payment: number } }
+/** `first` — добавка к взносу только в первом месяце прогона (сдвиг месяца `planShifts`, AU-05). */
+type RunItem = { on: boolean; cap: number; first?: number; left: number; debt?: { rate: number; payment: number } }
 
 /**
  * Прогон очереди по месяцам (B2C-86 п. 2): каждый месяц — тот же свободный остаток сверху вниз, каждой не
@@ -3330,15 +3332,16 @@ type RunItem = { on: boolean; cap: number; left: number; debt?: { rate: number; 
  * цель собрана или долг закрыт; null — не в горизонте. Платежи и траты считаются прежними — дата осторожная;
  * только `ends` (прикидка кредита на срок) с месяца `after` возвращает свой платёж в остаток.
  */
-function queueRun(items: RunItem[], free: number, ends: { amount: number; after: number }[] = []): (number | null)[] {
+function queueRun(items: RunItem[], free: number, ends: { amount: number; after: number }[] = [], firstExtra = 0): (number | null)[] {
   const left = items.map((x) => x.left)
   const done: (number | null)[] = items.map((x, i) => (x.debt ? null : left[i] <= 0 ? 0 : null))
   for (let m = 0; m < PLAN_HORIZON && done.some((d) => d === null); m++) {
-    let avail = Math.max(0, free + ends.reduce((s, e) => s + (m >= e.after ? e.amount : 0), 0))
+    // `firstExtra` — план трат, урезанный сдвигом только этого месяца (AU-05): в следующих месяцах его нет.
+    let avail = Math.max(0, free + (m === 0 ? firstExtra : 0) + ends.reduce((s, e) => s + (m >= e.after ? e.amount : 0), 0))
     items.forEach((x, i) => {
       if (done[i] !== null) return
       if (x.debt) left[i] -= creditSplit(left[i], x.debt.rate, x.debt.payment).body
-      const give = x.on ? Math.max(0, Math.min(x.cap, left[i], avail)) : 0
+      const give = x.on ? Math.max(0, Math.min(x.cap + (m === 0 ? x.first ?? 0 : 0), left[i], avail)) : 0
       left[i] -= give
       avail -= give
       if (left[i] <= 0) done[i] = m
@@ -3407,6 +3410,20 @@ export function monthPlan(state: MonthPlanState, ctx: MonthPlanCtx): MonthPlan {
   // Траты каждого.
   const live = ctx.spendCategories.filter(alive)
   const named = liveSpendCategories(ctx.spendCategories)
+  // Сдвиги этого месяца (Р-17): из раздела — только когда у участника есть строка плана этого раздела.
+  const planRow = (by: PersonId, categoryId: string) =>
+    (state.spendPlans ?? []).some((x) => x.by === by && x.categoryId === categoryId && planSpendOn(x, live))
+  const shifts = (state.planShifts ?? []).filter(
+    (s) => !s.deletedAt && s.period === key && s.amount > 0 && (s.from === 'rest' || planRow(s.from.spend, s.from.categoryId)),
+  )
+  let spendCut = 0 // сколько плана трат сдвиги сняли в этом месяце (строка не ниже 0)
+  const cutOf = (by: PersonId, categoryId: string, amount: number) => {
+    const cut = Math.min(amount, shifts.reduce((a, s) => a + (s.from !== 'rest' && s.from.spend === by && s.from.categoryId === categoryId ? s.amount : 0), 0))
+    spendCut += cut
+    return amount - cut
+  }
+  const addOf = (to: { goalId: string } | 'debt') =>
+    shifts.reduce((a, s) => a + ((to === 'debt' ? s.to === 'debt' : s.to !== 'debt' && s.to.goalId === to.goalId) ? s.amount : 0), 0)
   const spend: PlanSpend[] = people
     .map((p): PlanSpend => {
       const has = uploadedBy(p.id, key, ctx.uploads)
@@ -3414,7 +3431,12 @@ export function monthPlan(state: MonthPlanState, ctx: MonthPlanCtx): MonthPlan {
       const factOf = (categoryId: string) => (has ? mine.filter((t) => t.categoryId === categoryId).reduce((s, t) => s + t.amount, 0) : null)
       const rows = (state.spendPlans ?? [])
         .filter((x) => x.by === p.id && planSpendOn(x, live))
-        .map((x) => ({ categoryId: x.categoryId, name: spendCategoryName(named, x.categoryId), plan: x.amount, fact: factOf(x.categoryId) }))
+        .map((x) => ({
+          categoryId: x.categoryId,
+          name: spendCategoryName(named, x.categoryId),
+          plan: cutOf(p.id, x.categoryId, x.amount),
+          fact: factOf(x.categoryId),
+        }))
       const fact = has
         ? mine.reduce((s, t) => s + spentOf(t, live), 0)
         : null
@@ -3425,8 +3447,8 @@ export function monthPlan(state: MonthPlanState, ctx: MonthPlanCtx): MonthPlan {
   const spendTotal = ctx.byFact ? spend.reduce((s, x) => s + Math.max(x.plan, x.fact ?? x.plan), 0) : spendPlanned
 
   const free = incomeTotal - duesTotal - spendTotal
-  // Порог фонда — от плана и при `byFact`: метка меряет деньги месяца, а не новый порог.
-  const monthSpend = duesTotal + spendPlanned
+  // Порог фонда — от плана (и при `byFact`: метка меряет деньги месяца, а не новый порог), без сдвигов этого месяца.
+  const monthSpend = duesTotal + spendPlanned + spendCut
 
   // Очередь.
   const plan = activePlan(state.plans ?? [])
@@ -3439,7 +3461,9 @@ export function monthPlan(state: MonthPlanState, ctx: MonthPlanCtx): MonthPlan {
       const c = plan && step?.kind === 'prepay' ? (state.credits ?? []).find((x) => x.id === step.creditId) ?? target : target
       const start = c.principal + creditBodyIn(c, payments, key)
       const afterRegular = start - creditSplit(start, c.annualRate, c.payment).body
-      const want = plan ? (step?.kind === 'prepay' ? Math.min(step.amount, afterRegular) : 0) : Math.min(Math.max(0, card.monthly), afterRegular)
+      const base = plan ? (step?.kind === 'prepay' ? Math.min(step.amount, afterRegular) : 0) : Math.min(Math.max(0, card.monthly), afterRegular)
+      // Сдвиг в долг (AU-05) — только этот месяц, не больше остатка после платежа по графику.
+      const want = Math.max(base, Math.min(base + addOf('debt'), afterRegular))
       const put = countedPayments(payments)
         .filter((p) => p.kind === 'prepay' && p.targetId === c.id && p.period === key)
         .reduce((s, p) => s + p.amount, 0)
@@ -3448,20 +3472,22 @@ export function monthPlan(state: MonthPlanState, ctx: MonthPlanCtx): MonthPlan {
           id: q.id, kind: 'debt' as const, goalId: null, creditId: c.id, ...(plan && step?.kind === 'prepay' ? { planId: plan.id } : {}),
           name: c.name, payer: payerOf(card, people), want, paused: card.pausedAt ? ('off' as const) : (false as const), have: start, need: start, put,
         },
-        run: { cap: want, left: start, debt: { rate: c.annualRate, payment: c.payment } },
+        run: { cap: base, first: want - base, left: start, debt: { rate: c.annualRate, payment: c.payment } },
       }
     }
     const g = q.goal
     const have = goalHaveBefore(g, key)
     const need = q.kind === 'fund' ? fundMonthsOf(q.fund, g, settings) * monthSpend : g.need
-    const want = Math.min(Math.max(0, g.monthly), Math.max(0, need - have))
+    const base = Math.min(Math.max(0, g.monthly), Math.max(0, need - have))
+    // Сдвиг в цель или фонд (AU-05) — только этот месяц, не больше остатка до суммы или порога.
+    const want = Math.max(base, Math.min(base + addOf({ goalId: g.id }), Math.max(0, need - have)))
     const paused = g.pausedAt ? ('off' as const) : planPaused.has(g.id) ? ('plan' as const) : (false as const)
     return {
       item: {
         id: q.id, kind: q.kind, ...(q.kind === 'fund' ? { fund: q.fund } : {}), goalId: g.id,
         name: g.name, payer: payerOf(g, people), want, paused, have, need, put: goalPutIn(g, key),
       },
-      run: { cap: want, left: Math.max(0, need - have) },
+      run: { cap: base, first: want - base, left: Math.max(0, need - have) },
     }
   })
   let avail = free
@@ -3470,7 +3496,8 @@ export function monthPlan(state: MonthPlanState, ctx: MonthPlanCtx): MonthPlan {
     avail -= given
     return { ...item, given, doneMonth: null }
   })
-  const done = queueRun(shape.map(({ item, run }) => ({ ...run, on: !item.paused })), free, ctx.ends)
+  // Урезанный сдвигами план трат свободен только в первом месяце прогона.
+  const done = queueRun(shape.map(({ item, run }) => ({ ...run, on: !item.paused })), free - spendCut, ctx.ends, spendCut)
   queue.forEach((q, i) => {
     // Долг на паузе всё равно закрывается по графику; цель на паузе — нет.
     const d = done[i]
@@ -4189,6 +4216,123 @@ function shiftSpan(days: number): string {
   if (w < 9) return `${w} ${plural(w, 'неделю', 'недели', 'недель')}`
   const m = Math.round(days / 30.4)
   return `${m} ${plural(m, 'месяц', 'месяца', 'месяцев')}`
+}
+
+/* ---------------- «Сделать»: кандидаты сдвига месяца (Р-3, Р-17, AU-05) ---------------- */
+
+/** Суммы кандидатов — вниз до 1 000 ₸, не меньше 5 000 ₸ (мелочь не предлагаем). */
+export const STEP_ROUND = 1_000
+export const STEP_MIN = 5_000
+
+export type PlanShiftDraft = Pick<PlanShift, 'period' | 'from' | 'to' | 'amount'>
+
+/** Эффект кандидата: мечта — на `days` раньше; досрочка — на `months` раньше и `saved` процентов; подушка — хватит на `months`. */
+export type StepCandidate =
+  | { id: string; kind: 'move'; shift: PlanShiftDraft; effect: { days: number | null } }
+  | { id: string; kind: 'prepay'; shift: PlanShiftDraft; effect: { months: number; saved: number } }
+  | { id: string; kind: 'cushion'; shift: PlanShiftDraft; effect: { months: number | null } }
+
+const roundStep = (n: number) => Math.floor(n / STEP_ROUND) * STEP_ROUND
+
+/** Запас плана раздела: «обычно» ниже плана — разница с бо́льшим из «обычно» и факта; планы — с учётом сдвигов месяца. */
+function spendSlack(state: MonthPlanState, ctx: MonthPlanCtx, plan: MonthPlan) {
+  const byCat = (id: string) =>
+    plan.spend
+      .flatMap((s) => s.rows.filter((r) => r.categoryId === id).map((r) => ({ by: s.by, plan: r.plan })))
+      .sort((a, b) => b.plan - a.plan || a.by.localeCompare(b.by))
+  return spendCompare(state, ctx)
+    .rows.filter((r) => r.usual !== null && r.plan !== null)
+    .map((r) => {
+      const owners = byCat(r.categoryId)
+      const total = owners.reduce((s, o) => s + o.plan, 0)
+      return { categoryId: r.categoryId, slack: total - Math.max(r.usual!, r.amount ?? 0), owners }
+    })
+    .filter((r) => r.slack > 0)
+    .sort((a, b) => b.slack - a.slack || a.categoryId.localeCompare(b.categoryId))
+}
+
+/** Первая мечта очереди — цель (не фонд, не карточка долга), не на паузе и не собранная. */
+const firstDream = (plan: MonthPlan) => plan.queue.find((q) => q.kind === 'goal' && !q.paused && q.goalId && q.have < q.need) ?? null
+
+/**
+ * Кандидаты «Сделать» (Р-3) — до трёх, по одному каждого вида; данных нет — кандидата нет:
+ * - `move` — раздел, где «обычно» ниже плана: `план − max(обычно, факт)` из плана участника с бо́льшим планом раздела
+ *   (не больше его строки) в первую мечту очереди; эффект — `closerDays`;
+ * - `prepay` — есть карточка долга и остаток месяца: весь остаток досрочно, эффект — `prepayOutcome(…, 'once')`;
+ * - `cushion` — подушка не собрана и есть остаток: `min(остаток, сколько не хватает после взноса плана)`, эффект —
+ *   на сколько месяцев хватит после (`cushionCover`).
+ */
+export function stepCandidates(state: MonthPlanState, ctx: MonthPlanCtx): StepCandidate[] {
+  const plan = monthPlan(state, ctx)
+  const out: StepCandidate[] = []
+  const dream = firstDream(plan)
+  const goal = dream ? (state.goals ?? []).find((g) => g.id === dream.goalId) : undefined
+  if (dream && goal) {
+    const best = spendSlack(state, ctx, plan)
+      .map((r) => ({ ...r, owner: r.owners[0], amount: roundStep(Math.min(r.slack, r.owners[0]?.plan ?? 0)) }))
+      .filter((r) => r.owner && r.amount >= STEP_MIN)
+      .sort((a, b) => b.amount - a.amount || a.categoryId.localeCompare(b.categoryId))[0]
+    if (best) {
+      out.push({
+        id: `move:${best.categoryId}`,
+        kind: 'move',
+        shift: { period: ctx.key, from: { spend: best.owner.by, categoryId: best.categoryId }, to: { goalId: goal.id }, amount: best.amount },
+        effect: { days: closerDays(best.amount, goalPace(goal, ctx.key)) },
+      })
+    }
+  }
+  const restStep = roundStep(plan.rest)
+  const debt = plan.queue.find((q) => q.kind === 'debt' && q.creditId)
+  const credit = debt ? (state.credits ?? []).find((c) => c.id === debt.creditId) : undefined
+  if (credit && restStep >= STEP_MIN) {
+    const o = prepayOutcome(credit, restStep, 'once')
+    if (o) {
+      out.push({ id: 'prepay', kind: 'prepay', shift: { period: ctx.key, from: 'rest', to: 'debt', amount: restStep }, effect: { months: o.monthsSaved, saved: o.saved } })
+    }
+  }
+  const cushion = fundsOf(state).cushion
+  const cItem = cushion ? plan.queue.find((q) => q.goalId === cushion.id) : undefined
+  if (cushion && cItem) {
+    const amount = roundStep(Math.min(plan.rest, cItem.need - cItem.have - cItem.given))
+    if (amount >= STEP_MIN) {
+      const months = cushionCover(cItem, { ...cushion, have: cushion.have + amount }, moneySettingsOf(state)).months
+      out.push({ id: 'cushion', kind: 'cushion', shift: { period: ctx.key, from: 'rest', to: { goalId: cushion.id }, amount }, effect: { months } })
+    }
+  }
+  return out
+}
+
+/**
+ * «Вернуть срок» (Р-3, AU-05): мечта сдвинулась дальше — вернуть недобор этого месяца (вверх до 1 000 ₸) из остатка,
+ * а не хватает — из плана раздела с запасом (как у `move`, участники по убыванию плана). Каждый источник проверяется
+ * тем же расчётом, что метка: после сдвига мечта получает не меньше снимка. Ни один не вернул — null (кнопки нет).
+ */
+export function returnTermShift(state: MonthPlanState, ctx: MonthPlanCtx, snap: TermSnap | null | undefined, goalId: string): StepCandidate | null {
+  const shift = dreamShift(state, ctx, snap, goalId)
+  const goal = (state.goals ?? []).find((g) => g.id === goalId)
+  const was = snap?.goals.find((g) => g.goalId === goalId)
+  if (!shift || shift.days <= 0 || !goal || !was) return null
+  const gets = (s: MonthPlanState) => {
+    const item = monthPlan(s, { ...ctx, byFact: true }).queue.find((q) => q.goalId === goalId)
+    return item ? Math.max(item.given, item.put) : 0
+  }
+  const amount = Math.ceil((was.given - gets(state)) / STEP_ROUND) * STEP_ROUND
+  if (amount <= 0) return null
+  const plan = monthPlan(state, ctx)
+  const sources: PlanShiftDraft['from'][] = [
+    'rest',
+    ...spendSlack(state, ctx, plan)
+      .filter((r) => r.slack >= amount)
+      .flatMap((r) => r.owners.filter((o) => o.plan >= amount).map((o) => ({ spend: o.by, categoryId: r.categoryId }))),
+  ]
+  for (const from of sources) {
+    const draft: PlanShiftDraft = { period: ctx.key, from, to: { goalId }, amount }
+    const trial: PlanShift = { ...draft, id: '_trial', by: from === 'rest' ? 'a' : from.spend, at: '', updatedAt: '' }
+    if (gets({ ...state, planShifts: [...(state.planShifts ?? []), trial] }) >= was.given) {
+      return { id: `return:${goalId}`, kind: 'move', shift: draft, effect: { days: closerDays(amount, goalPace(goal, ctx.key)) } }
+    }
+  }
+  return null
 }
 
 /** Метка мечты: «+2 недели · кафе выше плана» / «на 3 недели ближе · отложили больше». */

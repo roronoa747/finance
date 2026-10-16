@@ -8,6 +8,7 @@ import { AI_REVIEW_SEEN_KEY, AI_SELLERS_KEY, DEMO_PENDING_KEY, EVENTS_QUEUE_KEY,
 import {
   accountBalance,
   termSnapOf,
+  type PlanShiftDraft,
   allocationFor,
   accountForeign,
   fxToTenge,
@@ -70,6 +71,7 @@ import {
 import type {
   AiReview,
   TermSnap,
+  PlanShift,
   AllocationPart,
   SyncDoc,
   SyncStatus,
@@ -131,6 +133,8 @@ export function defaultSyncDoc(): SyncDoc {
     aiReviews: [],
     // Снимки срока мечт (AU-04): ключ и пустым — как у payments (RP-03).
     termSnaps: [],
+    // Сдвиги месяца (AU-05): ключ и пустым — как у payments (RP-03).
+    planShifts: [],
     setupDoneAt: null,
   }
 }
@@ -1084,6 +1088,30 @@ export const useFinanceStore = defineStore('finance', () => {
       doc.termSnaps = list.map((x) => (drop.has(x.id) ? { ...x, income: 0, dueIds: [], goals: [], deletedAt: t, updatedAt: t } : x))
     })
     return true
+  }
+
+  /**
+   * «Сделать» / «Вернуть срок» (Р-3, Р-17, AU-05): запись сдвига этого месяца в общий документ — план месяца пересчитает
+   * `monthPlan`. Viewer — нет (кнопок нет, сервер не примет). Возвращает запись (для «Отменить»).
+   */
+  function addPlanShift(draft: PlanShiftDraft): PlanShift | null {
+    const auth = useAuthStore()
+    if (auth.isViewer || draft.amount <= 0) return null
+    const t = new Date().toISOString()
+    const shift: PlanShift = { ...draft, id: Math.random().toString(36).slice(2, 10), by: (auth.slot ?? 'a') as PersonId, at: t, updatedAt: t }
+    mutateHouseholdDoc((doc) => {
+      doc.planShifts = [...(doc.planShifts ?? []), shift]
+    })
+    return shift
+  }
+
+  /** «Отменить» сдвиг — надгробие (слияние: удаление сильнее правки). */
+  function undoPlanShift(id: string) {
+    if (useAuthStore().isViewer) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      doc.planShifts = (doc.planShifts ?? []).map((s) => (s.id === id && !s.deletedAt ? { ...s, deletedAt: t, updatedAt: t } : s))
+    })
   }
 
   function mutatePrivateDoc(mutator: (data: Record<string, unknown>) => void) {
@@ -2312,6 +2340,8 @@ export const useFinanceStore = defineStore('finance', () => {
     saveAiReview,
     termSnapFor,
     ensureTermSnap,
+    addPlanShift,
+    undoPlanShift,
     mutatePrivateDoc,
     addMerchantRule,
     addMerchantRules,

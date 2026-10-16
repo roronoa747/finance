@@ -235,6 +235,8 @@ export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
       const early = a.at <= b.at ? a : b
       return { ...merged, at: early.at, income: early.income, dueIds: early.dueIds, goals: early.goals }
     }),
+    // Сдвиги месяца (AU-05): записи двух телефонов по id; отмена — надгробие, сильнее правки.
+    planShifts: mergeList(local.planShifts ?? [], remote.planShifts ?? [], (x) => x.id),
     // Метки равны (или их нет) — сброс один и тот же.
     ...(lr ? { resetAt: lr } : {}),
   }

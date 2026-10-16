@@ -57,6 +57,21 @@ export type TermSnap = Tracked & {
   goals: { goalId: string; given: number; doneMonth: string | null }[]
 }
 
+/**
+ * Сдвиг месяца (бэклог «ИИ-польза», Р-3, Р-17, AU-05): только в месяце `period` план раздела участника (`from.spend`)
+ * или остаток месяца (`rest`) отдаёт `amount` цели или фонду (`to.goalId`) либо карточке долга (`debt`). Постоянные
+ * `SpendPlan` и `Goal.monthly` не меняются; деньги двигают, как всегда, «Отложил» / «Оплатил».
+ */
+export type PlanShift = Tracked & {
+  id: string
+  period: string
+  by: PersonId
+  from: 'rest' | { spend: PersonId; categoryId: string }
+  to: { goalId: string } | 'debt'
+  amount: number
+  at: string
+}
+
 export type Person = Tracked & {
   id: PersonId
   name: string
@@ -651,6 +666,8 @@ export type SyncDoc = {
   aiReviews?: AiReview[]
   /** Снимки срока мечт на начало месяца (бэклог «ИИ-польза», Р-6, AU-04): не больше 3 живых. До Блока 2 — без ключа. */
   termSnaps?: TermSnap[]
+  /** Сдвиги месяца «Сделать» / «Вернуть срок» (бэклог «ИИ-польза», Р-17, AU-05): отмена — надгробие. До Блока 2 — без ключа. */
+  planShifts?: PlanShift[]
   /**
    * Когда закончили первичную настройку бюджета. Пустое значит, что показываем
    * первый запуск (`/start`). Живёт в общем документе, а не в настройках устройства: второй

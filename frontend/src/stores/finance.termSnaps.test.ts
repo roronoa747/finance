@@ -59,3 +59,37 @@ describe('stores/finance — снимок срока мечт', () => {
     expect(dead.goals).toEqual([])
   })
 })
+
+/** AU-05 (Р-17): сдвиг месяца — запись участника, «Отменить» — надгробие; viewer не пишет. */
+describe('stores/finance — сдвиги месяца', () => {
+  beforeEach(() => {
+    const map = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => map.set(k, String(v)),
+      removeItem: (k: string) => map.delete(k),
+      clear: () => map.clear(),
+    })
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('офлайн'))))
+    setActivePinia(createPinia())
+  })
+  const draft = { period: '2026-10', from: 'rest' as const, to: { goalId: 'car' }, amount: 20_000 }
+
+  it('участник пишет сдвиг со своим слотом; «Отменить» — надгробие', () => {
+    useAuthStore().setAuthData(authAs('member', 'b'))
+    const f = useFinanceStore()
+    f.householdDoc = planFamilyDoc()
+    const s = f.addPlanShift(draft)!
+    expect(f.householdDoc.planShifts).toEqual([s])
+    expect(s).toMatchObject({ ...draft, by: 'b' })
+    f.undoPlanShift(s.id)
+    expect(f.householdDoc.planShifts![0].deletedAt).toBeTruthy()
+  })
+  it('viewer — не пишет и не отменяет', () => {
+    useAuthStore().setAuthData(authAs('viewer'))
+    const f = useFinanceStore()
+    f.householdDoc = planFamilyDoc()
+    expect(f.addPlanShift(draft)).toBeNull()
+    expect(f.householdDoc.planShifts ?? []).toEqual([])
+  })
+})
