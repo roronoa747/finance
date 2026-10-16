@@ -1,6 +1,6 @@
 // Package applepay holds the pieces of the Apple Pay endpoints that need no database: phone keys
 // (бэклог «Apple Pay», Р-5, Р-13) and parsing what the Shortcuts "Transaction" trigger sends
-// (Р-7, Р-13а, Р-15).
+// (Р-7, Р-13а, Р-15) and bank pushes of the "Notification" trigger (Блок 2, Р-8, Р-10, Р-23).
 package applepay
 
 import (
