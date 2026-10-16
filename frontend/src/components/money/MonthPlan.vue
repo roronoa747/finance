@@ -465,7 +465,7 @@ function addFund(kind: 'reserve' | 'cushion') {
           variant="secondary"
           size="sm"
           class="relative w-8 px-0"
-          :aria-label="review ? 'Разбор месяца' : 'Разобрать месяц'"
+          :aria-label="review ? (reviewDot ? 'Разбор месяца, новый' : 'Разбор месяца') : 'Разобрать месяц'"
           data-review-open
           @click.stop="openReview"
         >

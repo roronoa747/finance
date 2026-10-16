@@ -147,12 +147,14 @@ describe('AI-09: разбор месяца у остатка', () => {
   it('разбор месяца есть — лист без запроса; точка до первого открытия на этом телефоне', async () => {
     const spy = vi.spyOn(apiClient, 'aiReview')
     await open({ doc: planFamilyDoc({ aiReviews: [saved()] }) })
-    expect(q('[data-review-open]')!.getAttribute('aria-label')).toBe('Разбор месяца')
+    // Точку слышит и диктор (ревью frontend Блока 2, Н-5): «новый», пока не открыли.
+    expect(q('[data-review-open]')!.getAttribute('aria-label')).toBe('Разбор месяца, новый')
     expect(q('[data-review-dot]')).not.toBeNull()
     await press(q('[data-review-open]'))
     expect(spy).not.toHaveBeenCalled()
     expect(txt(q('[data-review-good]'))).toBe('Сохранённое хорошо.')
     expect(q('[data-review-dot]')).toBeNull()
+    expect(q('[data-review-open]')!.getAttribute('aria-label')).toBe('Разбор месяца')
     // Шаг с экраном — ссылка, без — текст.
     expect(q<HTMLAnchorElement>('[data-review-step-link]')!.getAttribute('href')).toBe('/money/debts')
     expect(txt(q('[data-review-step]'))).toContain('Шаг словами.')
