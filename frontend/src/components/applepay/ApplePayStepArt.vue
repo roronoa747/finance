@@ -3,7 +3,7 @@
  * Схема шага подключения Apple Pay (AP-06, Р-3): простой макет экрана iPhone на токенах, не скриншот — что нажать
  * на этом шаге. Видео владельца позже заменит схемы (после MVP).
  */
-export type StepArt = 'key' | 'open' | 'add' | 'toggle' | 'automation' | 'cards' | 'action' | 'apps' | 'done'
+export type StepArt = 'key' | 'open' | 'add' | 'toggle' | 'automation' | 'cards' | 'action' | 'apps' | 'pushDone' | 'done'
 defineProps<{ art: StepArt }>()
 </script>
 
@@ -87,6 +87,16 @@ defineProps<{ art: StepArt }>()
         <circle cx="112" :cy="72 + i * 34" r="7" fill="var(--ok)" />
         <path :d="`m108.5 ${72 + i * 34} 2.5 2.5 4.5-5`" stroke="var(--surface)" stroke-width="2" fill="none" stroke-linecap="round" />
       </g>
+    </g>
+
+    <!-- Готово для пушей (ux Б2): уведомление банка вверху экрана и ✓ — не волны касания, пуши не про оплату телефоном -->
+    <g v-else-if="art === 'pushDone'">
+      <rect x="34" y="34" width="92" height="34" rx="10" fill="var(--surface-2)" />
+      <rect x="40" y="41" width="20" height="20" rx="5" fill="var(--s1)" />
+      <rect x="66" y="44" width="50" height="6" rx="3" fill="var(--ink-2)" />
+      <rect x="66" y="55" width="34" height="6" rx="3" fill="var(--ink-3)" />
+      <circle cx="80" cy="124" r="28" fill="var(--ok-soft)" />
+      <path d="m67 124 9 9 18-19" stroke="var(--ok)" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round" />
     </g>
 
     <!-- Готово: оплата касанием -->

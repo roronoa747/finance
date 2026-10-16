@@ -29,6 +29,8 @@ const KEY = ['ffk', 'C'.repeat(39) + 'push'].join('_')
 let app: App | null = null
 const q = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)
 const txt = (el: Element | null) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim()
+/** Заголовок открытого листа (`kit/Sheet` — `h3` по `aria-labelledby`). */
+const title = () => txt(q(`#${q('[role="dialog"]')!.getAttribute('aria-labelledby')}`))
 const flush = async () => {
   for (let i = 0; i < 6; i++) {
     await Promise.resolve()
@@ -91,6 +93,8 @@ describe('лист подключения — вторая команда «Пу
     const { connect, writeText } = await open('/settings?applepay=1')
     for (let i = 0; i < 4; i++) await main() // ключ → команда → «Добавить» → тумблер → «Готово»
     expect(txt(q('[data-step-text]'))).toBe('Готово — оплатите что-нибудь телефоном')
+    expect(title()).toBe('Apple Pay')
+    expect(q('[data-art]')!.dataset.art).toBe('done')
     // Брендовая — одна («Готово»); пуши — тихой кнопкой под ней (правило 12).
     const more = q('[data-more-push]')!
     expect(txt(more)).toBe('Ещё — пуши банков')
@@ -100,6 +104,8 @@ describe('лист подключения — вторая команда «Пу
     await flush()
     expect(q('[data-applepay-sheet]')!.dataset.flow).toBe('push')
     expect(txt(document.body)).toContain('1 из 6')
+    // ux Б2: лист назван командой, к которой перешли.
+    expect(title()).toBe('Пуши банков')
     await main()
     // Тот же ключ: второй раз сервер не спрашивали, в буфер — тот же.
     expect(connect).toHaveBeenCalledOnce()
@@ -118,8 +124,9 @@ describe('лист подключения — вторая команда «Пу
       'Включите автоматизацию тумблером',
       'Готово — покупки и переводы из пушей придут сами',
     ])
-    // На финале пушей второй раз «Ещё — пуши» не предлагается.
+    // На финале пушей второй раз «Ещё — пуши» не предлагается; схема — уведомление банка, не волны касания (ux Б2).
     expect(q('[data-more-push]')).toBeNull()
+    expect(q('[data-art]')!.dataset.art).toBe('pushDone')
   })
 
   it('без ссылки второй команды и на iOS 26 — ни «Ещё — пуши банков», ни кнопки в карточке', async () => {
@@ -142,6 +149,7 @@ describe('лист подключения — вторая команда «Пу
     await flush()
     expect(q('[data-applepay-sheet]')!.dataset.flow).toBe('push')
     expect(txt(document.body)).toContain('1 из 6')
+    expect(title()).toBe('Пуши банков')
     expect(connect).toHaveBeenCalledOnce()
   })
 })

@@ -56,7 +56,7 @@ const PUSH_STEPS: Step[] = [
   ADD,
   { art: 'apps', text: 'Выберите Kaspi, Freedom и Halyk' },
   { art: 'toggle', text: 'Включите автоматизацию тумблером' },
-  { art: 'done', text: 'Готово — покупки и переводы из пушей придут сами', action: 'done' },
+  { art: 'pushDone', text: 'Готово — покупки и переводы из пушей придут сами', action: 'done' },
 ]
 
 const ap = useApplePayStore()
@@ -127,7 +127,8 @@ async function copy() {
 </script>
 
 <template>
-  <Sheet :open="open" title="Apple Pay" @close="emit('close')">
+  <!-- Заголовок — по команде в листе: «Пуши банков» открыли — «Пуши банков» и видят (ux Б2: нажатие ведёт, куда ждёшь). -->
+  <Sheet :open="open" :title="flow === 'push' ? 'Пуши банков' : 'Apple Pay'" @close="emit('close')">
     <div class="flex flex-col gap-4" data-applepay-sheet :data-path="ap.path" :data-flow="flow" :data-step="index + 1">
       <Stepper :n="index + 1" :k="steps.length" />
       <ApplePayStepArt :art="step.art" />
