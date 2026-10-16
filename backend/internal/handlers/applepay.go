@@ -39,7 +39,7 @@ func NewWalletHandler(keys repository.PhoneKeyRepository, households repository.
 const (
 	// maxTapBody: a transaction is a few short strings (§6 of the backlog: ≤ 4 KB).
 	maxTapBody = 4 << 10
-	// maxDebugBody: the admin's unparsed body is kept up to 2 KB (Р-13а).
+	// maxDebugBody: the admin's tap body (searched for the amount or not read) is kept up to 2 KB (Р-13а).
 	maxDebugBody = 2 << 10
 	// tapRepeat: the trigger fires twice for one payment — the same money within it is one (Р-9).
 	tapRepeat = 2 * time.Minute
@@ -310,8 +310,8 @@ func (h *WalletHandler) Tap(w http.ResponseWriter, r *http.Request) {
 }
 
 // keepForAdmin stores the body the server had to search through or could not read the amount
-// of — only for a person in
-// ADMIN_EMAILS (Р-13а), at most 2 KB. Everyone else's body is kept nowhere.
+// of — only for a person in ADMIN_EMAILS (Р-13а), at most 2 KB. Everyone else's body is kept
+// nowhere.
 func (h *WalletHandler) keepForAdmin(r *http.Request, userID string, raw []byte) {
 	if len(h.admins) == 0 {
 		return

@@ -132,6 +132,75 @@ func TestPostgresApplePayTombstoneAndServerFields(t *testing.T) {
 	}
 }
 
+// rollbackOf is the rollback line of a migration's header: the comment text after
+// "Rollback (with the code only):" up to its schema_migrations DELETE.
+func rollbackOf(t *testing.T, name string) string {
+	t.Helper()
+	data, err := fs.ReadFile(migrations.FS, name)
+	if err != nil {
+		t.Fatalf("read %s: %v", name, err)
+	}
+	var parts []string
+	for _, line := range strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n") {
+		text, comment := strings.CutPrefix(line, "-- ")
+		if !comment {
+			break
+		}
+		if _, after, found := strings.Cut(text, "Rollback (with the code only):"); found {
+			text = after
+		} else if parts == nil {
+			continue
+		}
+		end := "version = '" + name + "';"
+		if before, _, found := strings.Cut(text, end); found {
+			return strings.Join(append(parts, strings.TrimSpace(before)+end), " ")
+		}
+		parts = append(parts, strings.TrimSpace(text))
+	}
+	t.Fatalf("no rollback line in %s: %q", name, parts)
+	return ""
+}
+
+// The rollback line of 000008 leaves only statement lines: a tombstone it kept would turn into
+// a live operation (no deleted_at), a live tap would sit next to its statement line in the old
+// code, which does not replace. The file applies again after it.
+func TestPostgresApplePayRollbackLine(t *testing.T) {
+	f := newStatementFixture(t)
+	ctx := context.Background()
+	if _, err := f.db.ExecContext(ctx, `INSERT INTO app.operations (user_id, id, household_id, bank, op_date, amount, kind, merchant, source, occurred_at, deleted_at)
+		VALUES ($1, 'aaaa0001', $2, 'kaspi', '2026-09-21', -1200, 'purchase', 'MAGNUM', 'statement', NULL, NULL),
+		       ($1, 'cccc0001', $2, 'kaspi', '2026-09-21', -1200, 'purchase', 'Magnum', 'tap', now(), now()),
+		       ($1, 'cccc0002', $2, 'kaspi', '2026-09-22', -900, 'purchase', 'Coffee', 'tap', now(), NULL)`, f.aliceID, f.householdID); err != nil {
+		t.Fatalf("rows: %v", err)
+	}
+	tx, err := f.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, rollbackOf(t, "000008_applepay.sql")); err != nil {
+		t.Fatalf("rollback line: %v", err)
+	}
+	var ids []string
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM app.operations ORDER BY id`)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	for rows.Next() {
+		var id string
+		_ = rows.Scan(&id)
+		ids = append(ids, id)
+	}
+	_ = rows.Close()
+	if strings.Join(ids, ",") != "aaaa0001" {
+		t.Errorf("after the rollback line: %v, want only the statement line", ids)
+	}
+	file, _ := fs.ReadFile(migrations.FS, "000008_applepay.sql")
+	if _, err := tx.ExecContext(ctx, string(file)); err != nil {
+		t.Errorf("000008 again after the rollback line: %v", err)
+	}
+}
+
 func TestPostgresApplePayKeysCascade(t *testing.T) {
 	f := newStatementFixture(t)
 	ctx := context.Background()

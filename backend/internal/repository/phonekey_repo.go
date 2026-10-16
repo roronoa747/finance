@@ -195,7 +195,8 @@ func (m *MockPhoneKeyRepo) Hashes() [][]byte {
 	return out
 }
 
-// WalletDebug is the last tap body the server could not read on its own — admins only (Р-13а).
+// WalletDebug is the last tap body the server searched for the amount, or could not read the
+// amount of — admins only (Р-13а).
 type WalletDebug struct {
 	Body string    `json:"body"`
 	At   time.Time `json:"at"`
