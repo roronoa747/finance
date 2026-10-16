@@ -41,6 +41,28 @@ export function plannedElsewhere(categoryId: string, categories: Pick<SpendCateg
 /** Разделы статьи «Траты» по умолчанию (B2C-54, Р-56); остальные несоставные — «Жизнь». */
 export const SPEND_ARTICLE_CATEGORIES = ['sc_cafe', 'sc_shopping', 'sc_fun', 'sc_travel']
 
+/** Группа справки РК (Р-5): продукты, непродовольственные товары, платные услуги. */
+export type RkGroup = 'food' | 'goods' | 'services'
+
+/**
+ * Справка РК (Р-5, AU-01): доля группы в денежных расходах населения г. Алматы, целые % — данные, обновляются руками
+ * раз в квартал. Источник — «Расходы и доходы населения Республики Казахстан (II квартал 2025г.)», таблица «Структура
+ * денежных расходов населения», строка «г.Алматы» (опубликовано 18.09.2025): 53,8 / 19,1 / 24,3 → 54 / 19 / 24.
+ */
+export const RK_SPEND_GROUPS: Record<RkGroup, { share: number; label: string; source: string; period: string; checkedAt: string }> = {
+  food: { share: 54, label: 'продуктов', source: 'stat.gov.kz', period: 'Алматы, II кв. 2025', checkedAt: '2026-10-16' },
+  goods: { share: 19, label: 'покупок', source: 'stat.gov.kz', period: 'Алматы, II кв. 2025', checkedAt: '2026-10-16' },
+  services: { share: 24, label: 'услуг', source: 'stat.gov.kz', period: 'Алматы, II кв. 2025', checkedAt: '2026-10-16' },
+}
+
+/** Сведение разделов словаря к группам РК (Р-5); прочие и свои разделы семьи — без группы (справки нет). */
+export const RK_GROUP_BY_CATEGORY: Record<string, RkGroup> = {
+  sc_food: 'food',
+  sc_home: 'goods', sc_shopping: 'goods', sc_health: 'goods',
+  sc_cafe: 'services', sc_transport: 'services', sc_fun: 'services', sc_education: 'services', sc_travel: 'services',
+  sc_telecom: 'services', sc_subscriptions: 'services', sc_utilities: 'services', sc_rent: 'services',
+}
+
 /**
  * Статья разбора раздела (B2C-54): поле документа, а без него — умолчание: учтённый планом
  * раздел (`plannedElsewhere`) — «Обязательное», кафе, покупки, развлечения, путешествия —

@@ -3,7 +3,7 @@ import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
 import { isSpend, normalizeCounterparty, normalizeMerchant } from '@/lib/statements/model'
 import type { Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
-import { DEFAULT_SPEND_CATEGORIES, UNKNOWN_CATEGORY, plannedElsewhere } from '@/lib/statements/dictionary'
+import { DEFAULT_SPEND_CATEGORIES, RK_GROUP_BY_CATEGORY, UNKNOWN_CATEGORY, plannedElsewhere, type RkGroup } from '@/lib/statements/dictionary'
 import { addDaysIso, addMonths, dayLabel, daysInMonth, isoIn, monthFrom, monthKey, parseMonthKey, today, todayIso, weekdayShort, weekKey, weekRange } from '@/lib/dates'
 import { spendColor } from '@/lib/palette'
 import { money, pct } from '@/lib/money'
@@ -3902,6 +3902,174 @@ export function monthSpendByCategory(
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .map(([categoryId, amount]) => ({ categoryId, name: spendCategoryName(named, categoryId), amount }))
   return { rows, unknown }
+}
+
+/* ---------------- траты в сравнении (Р-5, AU-01) ---------------- */
+
+/** Сколько месяцев назад искать полные месяцы для «обычно у вас». */
+const USUAL_LOOKBACK = 6
+
+/**
+ * Загрузки участника `by` вместе покрывают каждый день месяца `key` («полный» месяц для «обычно»): выписка с 20-го дала
+ * бы треть трат и заниженное «обычно». Загрузки встык и внахлёст склеиваются; дыра хоть в день — не полный.
+ */
+export function monthCovered(key: string, uploads: UploadPeriod[], by: PersonId): boolean {
+  const start = `${key}-01`
+  const end = `${key}-${String(daysInMonth(key)).padStart(2, '0')}`
+  const mine = uploads
+    .filter((u) => u.slot === by)
+    .map((u) => ({ from: u.period_from.slice(0, 10), to: u.period_to.slice(0, 10) }))
+    .filter((u) => u.to >= start && u.from <= end)
+    .sort((a, b) => a.from.localeCompare(b.from))
+  let next = start // первый ещё не покрытый день
+  for (const u of mine) {
+    if (u.from > next) return false
+    if (u.to >= next) next = addDaysIso(u.to, 1)
+    if (next > end) return true
+  }
+  return false
+}
+
+/**
+ * Месяцы для «обычно у вас» (Р-5): до `n` последних месяцев строго до `key` (не дальше 6 назад), где итоги месяца есть
+ * хотя бы у одного живого участника и у каждого такого выписки покрывают месяц целиком (`monthCovered`). Новые первыми.
+ */
+export function usualMonths(people: Person[], totals: SpendTotal[], uploads: UploadPeriod[], key: string, n = 3): string[] {
+  const live = people.filter(alive)
+  const out: string[] = []
+  for (let i = 1; i <= USUAL_LOOKBACK && out.length < n; i++) {
+    const m = addMonths(key, -i)
+    const spent = live.filter((p) => totals.some((t) => !t.deletedAt && t.by === p.id && t.kind === 'month' && t.period === m && t.amount > 0))
+    if (spent.length && spent.every((p) => monthCovered(m, uploads, p.id))) out.push(m)
+  }
+  return out
+}
+
+/**
+ * «Обычно у вас» по разделам (Р-5): среднее трат семьи за `usualMonths` — та же правда месяца, что `monthSpendByCategory`;
+ * раздел без трат в месяце — 0 в этом месяце; целые тенге. Меньше 2 полных месяцев — null («обычно» нет, только план).
+ */
+export function usualSpend(
+  people: Person[],
+  totals: SpendTotal[],
+  categories: SpendCategory[],
+  uploads: UploadPeriod[],
+  key: string,
+): { months: string[]; amounts: Map<string, number> } | null {
+  const months = usualMonths(people, totals, uploads, key)
+  if (months.length < 2) return null
+  const sums = new Map<string, number>()
+  for (const m of months) {
+    for (const r of monthSpendByCategory(people, totals, categories, m, uploads).rows) sums.set(r.categoryId, (sums.get(r.categoryId) ?? 0) + r.amount)
+  }
+  return { months, amounts: new Map([...sums].map(([id, sum]) => [id, Math.round(sum / months.length)])) }
+}
+
+/** Порог точки «больше обычного» (Р-5, дефолт составителя): выше обычного и на 10 %, и на 5 000 ₸ — мелочь не мигает. */
+export const OVER_SHARE = 10 // %
+export const OVER_MIN = 5_000
+
+/** Трат раздела больше обычного с порогом шума; ровно порог — ещё нет. Одно правило для текущего и прошлых месяцев. */
+const spendOver = (amount: number | null, usual: number | null) =>
+  usual !== null && amount !== null && amount - usual > OVER_MIN && (amount - usual) * 100 > usual * OVER_SHARE
+
+/** Рекомендация раздела: обычно тратите `amount` сверх плана — столько в мечту; `days` — на сколько раньше (нет мечты или темпа — null). */
+export type SpendAdvice = { amount: number; goalId: string | null; goalName: string | null; days: number | null }
+
+export type SpendCompareRow = {
+  categoryId: string
+  name: string
+  /** Факт месяца семьи; выписок за месяц нет ни у кого — null. */
+  amount: number | null
+  /** Сумма планов участников; плана нет — null. */
+  plan: number | null
+  /** «Обычно у вас»; меньше 2 полных месяцев — null. */
+  usual: number | null
+  /** % дохода месяца от факта, целые; дохода или факта нет — null. */
+  share: number | null
+  /** Точка: трат больше обычного (порог `OVER_SHARE` / `OVER_MIN`). */
+  over: boolean
+  advice: SpendAdvice | null
+  /** Группа справки РК; свой раздел — null. */
+  group: RkGroup | null
+}
+
+/**
+ * Траты в сравнении на «Месяце» (Р-5): разделы всей семьи с фактом или планом — кроме разделов платежей
+ * (`plannedElsewhere`) и «не разобрано»; по убыванию `amount ?? plan`. Участников не сравниваем: план — сумма планов
+ * участников. Рекомендация — когда обычно тратите больше плана: разница — в первую мечту очереди; `days` — насколько
+ * раньше её соберём при темпе +N в месяц (`(остаток / темп − остаток / (темп + N)) × 30,4`).
+ */
+export function spendCompare(state: MonthPlanState, ctx: MonthPlanCtx): { income: number; usualFrom: string[]; rows: SpendCompareRow[] } {
+  const { key } = ctx
+  const people = (state.people ?? []).filter(alive)
+  const live = ctx.spendCategories.filter(alive)
+  const named = liveSpendCategories(ctx.spendCategories)
+  const income = monthPlan(state, ctx).income.total
+  const hasFact = people.some((p) => uploadedBy(p.id, key, ctx.uploads))
+  const facts = new Map(monthSpendByCategory(people, ctx.totals, ctx.spendCategories, key, ctx.uploads).rows.map((r) => [r.categoryId, r.amount]))
+  const ids = new Set(people.map((p) => p.id))
+  const plans = new Map<string, number>()
+  for (const x of state.spendPlans ?? []) {
+    if (ids.has(x.by) && planSpendOn(x, live)) plans.set(x.categoryId, (plans.get(x.categoryId) ?? 0) + x.amount)
+  }
+  const usual = usualSpend(people, ctx.totals, ctx.spendCategories, ctx.uploads, key)
+  const goal = mainGoal(state.goals ?? [], state.goalOrder, state.moneySettings)
+  const pace = goal ? goalPace(goal, key) : 0
+  const remaining = goal ? goalRemaining(goal) : 0
+  const adviceOf = (plan: number | null, usualAmount: number | null): SpendAdvice | null => {
+    if (plan === null || usualAmount === null || usualAmount <= plan) return null
+    const amount = usualAmount - plan
+    const days = pace > 0 && remaining > 0 ? Math.round((remaining / pace - remaining / (pace + amount)) * 30.4) : null
+    return { amount, goalId: goal?.id ?? null, goalName: goal?.name ?? null, days }
+  }
+  const rows = [...new Set([...facts.keys(), ...plans.keys()])]
+    .filter((id) => id !== UNKNOWN_CATEGORY && !plannedElsewhere(id, live))
+    .map((categoryId): SpendCompareRow => {
+      const amount = hasFact ? facts.get(categoryId) ?? 0 : null
+      const plan = plans.get(categoryId) ?? null
+      const u = usual ? usual.amounts.get(categoryId) ?? 0 : null
+      return {
+        categoryId,
+        name: spendCategoryName(named, categoryId),
+        amount,
+        plan,
+        usual: u,
+        share: amount !== null && income > 0 ? Math.round((amount * 100) / income) : null,
+        over: spendOver(amount, u),
+        advice: adviceOf(plan, u),
+        group: RK_GROUP_BY_CATEGORY[categoryId] ?? null,
+      }
+    })
+    .filter((r) => (r.amount ?? 0) > 0 || (r.plan ?? 0) > 0)
+    .sort((a, b) => (b.amount ?? b.plan ?? 0) - (a.amount ?? a.plan ?? 0) || a.categoryId.localeCompare(b.categoryId))
+  return { income, usualFrom: usual?.months ?? [], rows }
+}
+
+/**
+ * Доля группы РК в тратах семьи за месяц (справка «у вас X % · в Алматы Y %», Р-5): итоги участников с выпиской месяца,
+ * все разделы с группой — и разделы платежей целиком (как в статистике); знаменатель — все траты месяца, «не разобрано»
+ * тоже. Целые %; выписок или трат нет — null.
+ */
+export function rkShare(state: MonthPlanState, ctx: MonthPlanCtx, group: RkGroup): number | null {
+  const people = (state.people ?? []).filter(alive).filter((p) => uploadedBy(p.id, ctx.key, ctx.uploads))
+  const ids = new Set(people.map((p) => p.id))
+  const mine = ctx.totals.filter((t) => !t.deletedAt && ids.has(t.by) && t.kind === 'month' && t.period === ctx.key && t.amount > 0)
+  const total = mine.reduce((s, t) => s + t.amount, 0)
+  if (total <= 0) return null
+  const part = mine.filter((t) => RK_GROUP_BY_CATEGORY[t.categoryId] === group).reduce((s, t) => s + t.amount, 0)
+  return Math.round((part * 100) / total)
+}
+
+/** «на 5 дней» / «на 3 недели» / «на 2 месяца» раньше — подпись `days` рекомендации: < 14 — дни, < 61 — недели, дальше — месяцы. */
+export function earlierLabel(days: number): string {
+  if (days < 14) return `${days} ${plural(days, 'день', 'дня', 'дней')}`
+  if (days < 61) {
+    const w = Math.round(days / 7)
+    return `${w} ${plural(w, 'неделю', 'недели', 'недель')}`
+  }
+  const m = Math.round(days / 30.4)
+  return `${m} ${plural(m, 'месяц', 'месяца', 'месяцев')}`
 }
 
 /** Состояние строки очереди «Месяца» — только когда есть что сказать (правило 12); текст — в экране. */
