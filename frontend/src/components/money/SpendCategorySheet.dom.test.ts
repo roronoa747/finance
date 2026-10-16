@@ -68,6 +68,12 @@ describe('SpendCategorySheet', () => {
     expect(q('[data-cat-share]')).toBeNull()
   })
 
+  it('доля дохода округлилась до 0 — строки «0 % дохода» нет (ux: шумная цифра)', async () => {
+    await mount({ amount: 5_400, share: 0 })
+    expect(q('[data-cat-share]')).toBeNull()
+    expect(txt(q('[data-cat-amount]'))).toBe(norm(money(5_400)))
+  })
+
   it('свой раздел — без справки РК', async () => {
     await mount({ categoryId: 'my_dog', name: 'Собака', group: null }, { rk: null })
     expect(q('[data-cat-rk]')).toBeNull()

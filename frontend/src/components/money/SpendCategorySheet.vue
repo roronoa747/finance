@@ -34,12 +34,12 @@ defineEmits<{
         {{ money(row.amount ?? row.plan ?? 0) }}<span v-if="row.amount === null" class="ml-1.5 text-[15px] font-semibold text-ink-2">план</span>
       </p>
       <div class="mt-1 flex flex-col gap-0.5 text-[14px] text-ink-2 num">
-        <span v-if="row.share !== null" data-cat-share>{{ row.share }} % дохода</span>
+        <span v-if="row.share" data-cat-share>{{ row.share }} % дохода</span>
         <span data-cat-usual>{{ row.usual !== null ? `обычно у вас ${plain(row.usual)}` : 'обычно — когда будет 2 месяца выписок' }}</span>
         <span data-cat-plan>{{ row.plan !== null ? `план ${plain(row.plan)}` : 'плана нет' }}</span>
       </div>
       <p v-if="row.advice" class="mt-3 rounded-[14px] bg-surface-2 px-3 py-[9px] text-[14px] font-semibold text-ink num" data-cat-advice>
-        до плана: +{{ plain(row.advice.amount) }} {{ row.advice.goalName ? `в «${row.advice.goalName}»` : 'в мечту' }}<template v-if="row.advice.days"> · на {{ earlierLabel(row.advice.days) }} раньше</template>
+        до плана: +{{ plain(row.advice.amount) }} {{ row.advice.goalName ? `в «${row.advice.goalName}»` : 'в мечту' }}<template v-if="row.advice.days"> · <span class="whitespace-nowrap">на {{ earlierLabel(row.advice.days) }} раньше</span></template>
       </p>
       <p v-if="row.group && rk !== null" class="mt-2 flex items-center gap-1 text-[12.5px] text-ink-2 num" data-cat-rk>
         у вас {{ rk }} % · в Алматы {{ RK_SPEND_GROUPS[row.group].share }} %

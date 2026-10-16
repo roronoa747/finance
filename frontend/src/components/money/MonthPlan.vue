@@ -168,6 +168,7 @@ const sections = computed(() => [
     total: plan.value.spendTotal,
     meta: spentFact.value !== null ? `потрачено ${plain(spentFact.value)}` : 'по плану',
     dot: compare.value.rows.some((r) => r.over),
+    dotLabel: 'больше обычного',
   },
   {
     key: 'queue' as const,
@@ -557,7 +558,7 @@ function addFund(kind: 'reserve' | 'cushion') {
             <span class="flex min-w-0 flex-1 flex-col leading-[1.2]">
               <span class="text-[16.5px] font-bold text-ink">
                 {{ s.name
-                }}<template v-if="s.dot"><span class="ml-1.5 inline-block size-2 rounded-full bg-brand align-middle" data-section-dot aria-hidden="true" /><span class="sr-only">, есть что сделать</span></template>
+                }}<template v-if="s.dot"><span class="ml-1.5 inline-block size-2 rounded-full bg-brand align-middle" data-section-dot aria-hidden="true" /><span class="sr-only">, {{ 'dotLabel' in s ? s.dotLabel : 'есть что сделать' }}</span></template>
               </span>
               <span class="text-[12.5px] text-ink-2 num" data-section-meta>{{ s.meta }}</span>
             </span>
@@ -839,7 +840,7 @@ function addFund(kind: 'reserve' | 'cushion') {
         <Field v-if="spendEdit.fresh && people.length > 1" label="Чей" name="by">
           <Select v-model="spendEdit.by" :options="people.map((p) => ({ value: p.id, label: p.name }))" class="mb-3" data-spend-by />
         </Field>
-        <Field :label="`${personName(spendEdit.by)}, ₸ в месяц`">
+        <Field :label="spendEdit.fresh && people.length > 1 ? '₸ в месяц' : `${personName(spendEdit.by)}, ₸ в месяц`">
           <NumField v-model="spendEdit.amount" placeholder="50 000" />
         </Field>
         <Button class="w-full" @click="spendForm.submit(saveSpend)">Готово</Button>
