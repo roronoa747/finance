@@ -50,8 +50,11 @@ export const useApplePayStore = defineStore('applepay', () => {
   const pathKnown = computed(() => iosMajor.value !== null)
   const path = computed<ApplePayPath>(() => (legacyChosen.value || (iosMajor.value !== null && iosMajor.value < 27) ? 'legacy' : 'ios27'))
   const link = computed(() => (status.value ? (path.value === 'ios27' ? status.value.shortcut_url : status.value.shortcut_url_legacy) : ''))
-  /** Карточка и строка видны: member, не демо, ссылка на команду для пути этого телефона есть. */
-  const available = computed(() => canUse.value && !!link.value)
+  /**
+   * Карточка и строка видны: member, не демо, ссылка на команду для пути этого телефона есть, iOS 17+ или версия не
+   * распознана (триггера «Транзакция» до iOS 17 нет, Р-3).
+   */
+  const available = computed(() => canUse.value && !!link.value && (iosMajor.value === null || iosMajor.value >= 17))
   const connected = computed(() => !!status.value?.connected)
 
   /**

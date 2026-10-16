@@ -92,6 +92,19 @@ describe('stores/applepay', () => {
     expect(ap.available).toBe(true)
   })
 
+  it('iOS 16 и ниже — карточки нет: триггера «Транзакция» до iOS 17 нет (Р-3, ревью frontend Н-4)', async () => {
+    signIn()
+    const ap = useApplePayStore()
+    await ap.load(fakeClient().client)
+    ap.userAgent = UA.ios17.replace('Version/17.5', 'Version/16.6')
+    expect(ap.available).toBe(false)
+    ap.userAgent = UA.ios17
+    expect(ap.available).toBe(true)
+    // Версия не распознана (PWA с экрана «Домой») — путь iOS 27 с выбором «старше», как было.
+    ap.userAgent = UA.pwa
+    expect(ap.available).toBe(true)
+  })
+
   it('viewer и демо — load не зовёт сервер, карточки нет', async () => {
     for (const setup of [() => signIn('viewer'), () => signIn('member', DEMO_TOKEN)]) {
       setActivePinia(createPinia())
