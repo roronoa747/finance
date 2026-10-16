@@ -2,6 +2,7 @@ package ai
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"regexp"
 	"strconv"
@@ -17,9 +18,12 @@ import (
 // A number is read the Russian way: thousands split by a space, NBSP or narrow NBSP
 // ("220 000") or by a comma or dot in groups of 3 ("2,000,000", "150.000" — no number of the
 // summary has 3 decimals), a decimal comma or dot ("1,5"), a scale word after it ("1,2 млн" =
-// 1 200 000, "1,250 млн" = 1 250 000, "тыс." = ×1000); signs, "₸" and "%" are ignored (a percent is matched as its number). The
-// input's numbers count by absolute value (free −50 000 is "не хватает 50 000"), and so do the
-// numbers written inside its strings (a month "2026-10" allows 2026 and 10, "iPhone 15" — 15).
+// 1 200 000, "1,250 млн" = 1 250 000, "тыс." = ×1000); signs, "₸" and "%" are ignored (a
+// percent is matched as its number). The input's numbers count by absolute value (free −50 000
+// is "не хватает 50 000"), and so do the numbers written inside its strings ("iPhone 15" — 15).
+// A date is matched as month and year together: a month "2028-06" of the summary allows
+// "к июню 2028" and "2028-06" and the year 2028 alone, not the number 6 ("к марту 2028",
+// "через 6 месяцев" are defects); a month without a year ("в ноябре") is not checked.
 // 1–3 are always allowed: "2 шага", "первый" is counting, not money. No tolerance:
 // "≈ 1,2 млн" for 1 234 000 is a defect.
 //
@@ -33,7 +37,8 @@ func CheckNumbers(texts []string, input any) []string {
 		allowed[new(big.Rat).SetInt64(n).RatString()] = true
 	}
 	words := map[string]bool{}
-	collectNumbers(input, allowed, words)
+	dates := map[string]bool{}
+	collectNumbers(input, allowed, words, dates)
 
 	var bad []string
 	seen := map[string]bool{}
@@ -44,6 +49,23 @@ func CheckNumbers(texts []string, input any) []string {
 		}
 	}
 	for _, t := range texts {
+		// A date — "к июню 2028" or "2028-06" — is a month of the summary; "2028-06" is then
+		// blanked so that its month number is not read as a number.
+		for _, m := range monthYear.FindAllStringSubmatchIndex(t, -1) {
+			if m[5] < len(t) && isDigit(rune(t[m[5]])) {
+				continue // "мае 20250" is not a year
+			}
+			word, year := t[m[2]:m[3]], t[m[4]:m[5]]
+			if !dates[year+"-"+monthNumber(word)] {
+				add(word + " " + year)
+			}
+		}
+		t = isoMonth.ReplaceAllStringFunc(t, func(s string) string {
+			if !dates[s] {
+				add(s)
+			}
+			return strings.Repeat(" ", len(s))
+		})
 		for _, n := range scanNumbers(t) {
 			if !allowed[n.value.RatString()] {
 				add(n.raw)
@@ -64,8 +86,9 @@ func CheckNumbers(texts []string, input any) []string {
 }
 
 // collectNumbers adds every number of v (absolute) and every number written in its strings;
-// words gets the number words and ratios of its strings.
-func collectNumbers(v any, into, words map[string]bool) {
+// words gets the number words and ratios of its strings, dates — its months "2028-06" (their
+// year goes to into, the month number does not).
+func collectNumbers(v any, into, words, dates map[string]bool) {
 	switch x := v.(type) {
 	case json.Number:
 		if r, ok := new(big.Rat).SetString(x.String()); ok {
@@ -77,6 +100,13 @@ func collectNumbers(v any, into, words map[string]bool) {
 			into[r.Abs(r).RatString()] = true
 		}
 	case string:
+		if isoMonthOnly.MatchString(x) {
+			dates[x] = true
+			if r, ok := new(big.Rat).SetString(x[:4]); ok {
+				into[r.RatString()] = true
+			}
+			return
+		}
 		for _, n := range scanNumbers(x) {
 			into[n.value.RatString()] = true
 		}
@@ -88,13 +118,36 @@ func collectNumbers(v any, into, words map[string]bool) {
 		}
 	case []any:
 		for _, e := range x {
-			collectNumbers(e, into, words)
+			collectNumbers(e, into, words, dates)
 		}
 	case map[string]any:
 		for _, e := range x {
-			collectNumbers(e, into, words)
+			collectNumbers(e, into, words, dates)
 		}
 	}
+}
+
+var (
+	// isoMonthOnly is a summary string that is a month ("2028-06").
+	isoMonthOnly = regexp.MustCompile(`^\d{4}-\d{2}$`)
+	// isoMonth is a month in a text ("к 2028-06").
+	isoMonth = regexp.MustCompile(`\b\d{4}-\d{2}\b`)
+	// monthYear is a month in words in any case, then a year ("к июню 2028", "в мае 2031").
+	monthYear = regexp.MustCompile(`(?i)(?:^|[^\p{L}])(январ\p{L}*|феврал\p{L}*|март\p{L}*|апрел\p{L}*|ма[йяюе]|июн\p{L}*|июл\p{L}*|август\p{L}*|сентябр\p{L}*|октябр\p{L}*|ноябр\p{L}*|декабр\p{L}*)[\s\x{00a0}\x{202f}]+(\d{4})`)
+)
+
+// monthStems are the months in order; "март" goes before "ма" (май).
+var monthStems = []string{"январ", "феврал", "март", "апрел", "ма", "июн", "июл", "август", "сентябр", "октябр", "ноябр", "декабр"}
+
+// monthNumber is "06" for "июню".
+func monthNumber(word string) string {
+	w := strings.ToLower(word)
+	for i, st := range monthStems {
+		if strings.HasPrefix(w, st) {
+			return fmt.Sprintf("%02d", i+1)
+		}
+	}
+	return "00"
 }
 
 // foldWord compares words: lower case, "ё" as "е", spaces as one.
