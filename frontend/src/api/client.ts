@@ -10,6 +10,9 @@ import type {
   StatementUploadResponse,
   OperationWire,
   OperationsPage,
+  AdminFamilies,
+  AdminFamily,
+  AiCheck,
 } from '@/types/api'
 import type { SyncDoc } from '@/types/finance'
 
@@ -162,6 +165,24 @@ export class ApiClient {
   /** Цифры для владельца (B2C-28); не владельцу — 404. */
   async adminMetrics(): Promise<AdminMetrics> {
     return this.request<AdminMetrics>('/admin/metrics', { method: 'GET' })
+  }
+
+  /** Семьи с флагом ИИ и расходом за месяц (бэклог «ИИ», AI-03); не владельцу — 404. */
+  async adminFamilies(): Promise<AdminFamilies> {
+    return this.request<AdminFamilies>('/admin/families', { method: 'GET' })
+  }
+
+  /** Включить или выключить ИИ семье → обновлённая строка. */
+  async setFamilyAi(id: string, on: boolean): Promise<AdminFamily> {
+    return this.request<AdminFamily>(`/admin/families/${encodeURIComponent(id)}/ai`, {
+      method: 'PUT',
+      body: JSON.stringify({ on }),
+    })
+  }
+
+  /** Проверка связи с Claude: лёгкая модель, в расход семей не идёт. */
+  async aiCheck(): Promise<AiCheck> {
+    return this.request<AiCheck>('/admin/ai-check', { method: 'POST' })
   }
 
   /** Удаление аккаунта вместе с данными (B2C-24). */

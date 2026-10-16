@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
-	"errors"
 	"log"
 	"net/http"
 	"slices"
@@ -44,17 +42,8 @@ func (h *EventsHandler) Record(w http.ResponseWriter, r *http.Request) {
 	userID, _ := auth.GetUserID(r.Context())
 	householdID, _ := auth.GetHouseholdID(r.Context())
 
-	r.Body = http.MaxBytesReader(w, r.Body, maxEventBody)
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
 	var req eventRequest
-	if err := dec.Decode(&req); err != nil {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
-			respondJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request body too large"})
-			return
-		}
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	if !decodeStrictJSONBody(w, r, maxEventBody, &req) {
 		return
 	}
 	if !slices.Contains(repository.EventKinds, req.Kind) {
@@ -79,13 +68,21 @@ func isAdmin(admins []string, email string) bool {
 	return len(admins) > 0 && slices.Contains(admins, strings.ToLower(strings.TrimSpace(email)))
 }
 
-// Metrics is GET /api/admin/metrics — only for ADMIN_EMAILS; everyone else, and everyone
-// without the variable, gets 404 (the page does not exist for them).
-func (h *EventsHandler) Metrics(w http.ResponseWriter, r *http.Request) {
+// adminOnly lets ADMIN_EMAILS through; everyone else, and everyone without the variable,
+// gets 404 (the admin pages do not exist for them).
+func adminOnly(w http.ResponseWriter, r *http.Request, users repository.UserRepository, admins []string) bool {
 	userID, _ := auth.GetUserID(r.Context())
-	user, err := h.users.GetByID(r.Context(), userID)
-	if err != nil || !isAdmin(h.admins, user.Email) {
+	user, err := users.GetByID(r.Context(), userID)
+	if err != nil || !isAdmin(admins, user.Email) {
 		respondJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return false
+	}
+	return true
+}
+
+// Metrics is GET /api/admin/metrics — only for ADMIN_EMAILS (adminOnly).
+func (h *EventsHandler) Metrics(w http.ResponseWriter, r *http.Request) {
+	if !adminOnly(w, r, h.users, h.admins) {
 		return
 	}
 	m, err := h.metrics.Metrics(r.Context(), h.now())

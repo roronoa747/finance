@@ -47,11 +47,13 @@ func main() {
 		log.Fatalf("fatal: %v", err)
 	}
 
+	// WriteTimeout is above the Claude call deadline (ai.DefaultTimeout, 45 s), like maxDuration 60
+	// on Vercel: a slow AI answer must still reach the stand.
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
 		Handler:      handler,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 

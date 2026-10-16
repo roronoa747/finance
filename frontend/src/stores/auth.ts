@@ -36,6 +36,8 @@ export const useAuthStore = defineStore('auth', () => {
   const members = ref<MemberView[]>([])
   /** Почта владельца из `ADMIN_EMAILS` (B2C-28) — `/auth/me`. */
   const admin = ref(false)
+  /** ИИ у семьи (бэклог «ИИ», Р-7) — `/auth/me`; в демо — никогда (Р-10). */
+  const ai = ref(false)
 
   const isAuthenticated = computed(() => Boolean(token.value && user.value))
   /** Вошёл, но «с кем» ещё не пройдено (Р-13): без семьи — только `/who` и настройки. */
@@ -70,6 +72,7 @@ export const useAuthStore = defineStore('auth', () => {
     error.value = null
     members.value = []
     admin.value = false
+    ai.value = false
 
     removeItem('ff_auth_token')
     removeItem('ff_user')
@@ -127,6 +130,7 @@ export const useAuthStore = defineStore('auth', () => {
       household.value = res.household
       member.value = res.member
       admin.value = res.admin === true
+      ai.value = !isDemo.value && res.ai === true
 
       setItem('ff_user', JSON.stringify(res.user))
       setItem('ff_household', JSON.stringify(res.household))
@@ -266,6 +270,7 @@ export const useAuthStore = defineStore('auth', () => {
     error,
     members,
     admin,
+    ai,
     isAuthenticated,
     hasHousehold,
     isDemo,

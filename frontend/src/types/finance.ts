@@ -19,6 +19,12 @@ export type Tracked = {
   deletedAt?: string | null
 }
 
+/**
+ * Согласие человека на ИИ-помощника (бэклог «ИИ», Р-9) — ключ `aiConsent` личного документа: общее для его
+ * устройств, партнёр не видит. Нет ключа — не спрошено. `at` — ISO-время ответа, позднее побеждает при слиянии.
+ */
+export type AiConsent = { on: boolean; at: string }
+
 export type Person = Tracked & {
   id: PersonId
   name: string

@@ -110,6 +110,35 @@ REST API приложения: вход, домохозяйство, синхр�
   **Новый код в `fx.Supported`** сам в историю не догрузится (отметка дня общая на все коды):
   `DELETE FROM app.fx_days`, затем `cmd/fxbackfill`.
 
+## ИИ (бэклог «ИИ»)
+
+Клиент Claude — `internal/ai` (Go SDK): без `ANTHROPIC_API_KEY` клиента нет, ИИ выключен
+везде (`/auth/me` → `ai: false`). Флаг семьи — `app.households.ai_enabled` (по умолчанию
+выключен), счётчики — `app.ai_usage` (семья × месяц `YYYY-MM` по Алматы: запросы, токены,
+`cost_micros` — целые микродоллары; удаляются с семьёй), миграция `000007_ai.sql`. Лимит
+`AI_MONTHLY_LIMIT` — одно значение на все семьи; списывается только успешный ответ. Два
+одновременных запроса на последнем месте могут пройти оба — перерасход в 1–2 запроса допустим.
+
+- **Клиент** — `ai.New(key, baseURL)` (без ключа `nil`), `Call(ctx, Request, &out)` → `Usage`; ответ —
+  структурный JSON по схеме (`output_config.format`). Один дедлайн 45 с на весь вызов (ретрай SDK ≤ 1
+  внутри — на 5xx и сеть; 429 не повторяется, сразу `ErrRateLimited`), функция Vercel — `maxDuration: 60`
+  (`vercel.json`), `cmd/server` — `WriteTimeout` 60 с: оба выше дедлайна. Без стриминга `max_tokens` ≤ ~21 000
+  (больше SDK отказывает до отправки → `ErrFailed`). Ошибки — `ErrRateLimited`, `ErrRefused`, `ErrFailed`,
+  только со статусом. Цены — `price.go` (центы за MTok), `CostMicros`; неизвестная модель — 0 (в админке «≈ —»).
+- **Админка** (только `ADMIN_EMAILS`, остальным и без переменной — 404, хелпер `adminOnly`):
+  `GET /api/admin/families` → `{families: [{id, created_at, emails, ai, month, requests, cost_micros}],
+  limit, key}` за текущий месяц (ИИ сверху, затем новые); `PUT /api/admin/families/{id}/ai` `{on}` →
+  строка (неизвестная семья — 404, лишнее поле — 400, > 64 Б — 413); `POST /api/admin/ai-check` —
+  короткий вызов лёгкой модели (`AI_MODEL_SELLERS`) → `{ok, model, ms}` или `{ok: false, reason:
+  no_key|failed|rate_limited|refused}`, в расход семей не пишется.
+- **Ничего лишнего (Р-15):** ни ключ, ни тело запроса, ни ответ модели, ни картинка не пишутся в логи
+  и в базу; логгер chi пишет только метод, путь и статус. Сервер ничего не добавляет к присланному
+  (тест `ai_test.go` фиксирует состав исходящего тела).
+- **Откат миграции** (только вместе с кодом): `DROP TABLE app.ai_usage; ALTER TABLE app.households
+  DROP COLUMN ai_enabled; DELETE FROM app.schema_migrations WHERE version = '000007_ai.sql';` —
+  без последней команды раннер при повторном выкате пропустит файл по имени, и ручки ИИ в админке
+  ответят 500.
+
 ## Переменные окружения
 
 | Переменная | Где | Значение |
@@ -120,6 +149,9 @@ REST API приложения: вход, домохозяйство, синхр�
 | `PORT`, `CORS_ORIGIN` | только `cmd/server` | дефолты `8080` и `localhost:5173` |
 | `ADMIN_EMAILS` | прод, опционально | почты владельца через запятую — страница цифр `/admin`; без неё `/api/admin/metrics` — 404 всем. Значение — `memory/secrets/` |
 | `GOOGLE_CLIENT_IDS` | прод, опционально | id клиентов OAuth Google через запятую (веб, Android, iOS) — допустимые `aud`; без неё вход через Google отвечает 503. Значения — `memory/secrets/google-oauth.md` |
+| `ANTHROPIC_API_KEY` | прод, опционально | ключ Claude (Anthropic API) — ИИ-помощник; без него ИИ выключен везде, прод валиден. Значение — `memory/secrets/anthropic.md` |
+| `AI_MODEL_REVIEW`, `AI_MODEL_SELLERS`, `AI_MODEL_WISH` | опционально | модель по функции: разбор месяца, продавцы, скриншот; дефолты `claude-opus-5-5`, `claude-haiku-5-5`, `claude-opus-5-5` |
+| `AI_MONTHLY_LIMIT` | опционально | запросов ИИ на семью в месяц (Алматы), одно значение на все семьи; дефолт `30`, `0`/минус/не число → `30` |
 | `VITE_GOOGLE_CLIENT_ID` | прод (сборка фронта) | id веб-клиента OAuth (тот же, что в `GOOGLE_CLIENT_IDS`). **Константа сборки**: Vite вшивает её в JS, без неё сборщик выбрасывает код Google — в проде нет входа (формы пароля в проде нет). Заводить в Vercel для **Production** до сборки; после деплоя — `gsi/client` в главном JS прода или кнопка Google на `/access` |
 
 Строки подключения к Supabase — только в `memory/secrets/` и env Vercel, в доки не пишутся.

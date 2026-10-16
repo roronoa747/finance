@@ -38,6 +38,8 @@ export interface MeResponse {
   member: HouseholdMember | null
   /** Почта в `ADMIN_EMAILS` (B2C-28) — пункт «Цифры» в настройках. */
   admin?: boolean
+  /** ИИ у семьи (бэклог «ИИ», Р-7): ключ на сервере задан и владелец включил ИИ семье. */
+  ai?: boolean
 }
 
 /** Участник семьи из `GET /api/household/members` (B2C-23): без почты и id. */
@@ -110,3 +112,27 @@ export interface OperationsPage {
   operations: OperationWire[]
   next: string | null
 }
+
+/** Семья в админке ИИ (бэклог «ИИ», AI-03): почты участников по slot, флаг, расход за месяц Алматы. */
+export interface AdminFamily {
+  id: string
+  created_at: string
+  emails: string[]
+  ai: boolean
+  month: string
+  requests: number
+  /** Расход ≈ $ целыми микродолларами. */
+  cost_micros: number
+}
+
+/** Ответ `GET /api/admin/families`: `limit` — одно значение на все семьи, `key` — ключ Claude задан. */
+export interface AdminFamilies {
+  families: AdminFamily[]
+  limit: number
+  key: boolean
+}
+
+/** Ответ `POST /api/admin/ai-check`. */
+export type AiCheck =
+  | { ok: true; model: string; ms: number }
+  | { ok: false; reason: 'no_key' | 'failed' | 'rate_limited' | 'refused' }
