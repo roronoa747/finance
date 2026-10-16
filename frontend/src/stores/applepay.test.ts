@@ -119,6 +119,36 @@ describe('stores/applepay', () => {
     expect(JSON.stringify(ap.$state)).not.toContain(key)
   })
 
+  it('ответ прошлого входа не пишется в новый, и новый вход спрашивает свой статус (критик Б1)', async () => {
+    signIn('member', 't-a')
+    const ap = useApplePayStore()
+    const { client, calls } = fakeClient()
+    let answerA!: (s: WalletStatus) => void
+    calls.walletStatus.mockImplementationOnce(() => new Promise<WalletStatus>((r) => (answerA = r)))
+    const first = ap.load(client)
+    signIn('member', 't-b')
+    const second = ap.load(client)
+    answerA({ ...STATUS, connected: true, phones: 2 })
+    await Promise.all([first, second])
+    expect(calls.walletStatus).toHaveBeenCalledTimes(2)
+    expect(ap.status).toMatchObject({ connected: false, phones: 0 })
+  })
+
+  it('«Подключить», пока первый статус в пути, — статус после подключения, а не до (критик Б1)', async () => {
+    signIn()
+    const ap = useApplePayStore()
+    const { client, calls } = fakeClient()
+    let answerBefore!: (s: WalletStatus) => void
+    calls.walletStatus.mockImplementationOnce(() => new Promise<WalletStatus>((r) => (answerBefore = r)))
+    const first = ap.load(client)
+    calls.walletStatus.mockResolvedValue({ ...STATUS, connected: true, phones: 1 })
+    await ap.connect(client)
+    await vi.waitFor(() => expect(ap.connected).toBe(true))
+    answerBefore({ ...STATUS })
+    await first
+    expect(ap.connected).toBe(true)
+  })
+
   it('disconnect — статус «не подключено», телефонов 0', async () => {
     signIn()
     const ap = useApplePayStore()

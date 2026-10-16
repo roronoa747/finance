@@ -24,7 +24,8 @@ const time = (iso: string) => `${atLabel(iso)}, ${new Date(iso).toLocaleTimeStri
 
 <template>
   <Card v-if="debug" data-wallet-debug>
-    <h2 class="type-h3 text-ink">Последнее нераспознанное касание</h2>
+    <!-- Не «нераспознанное»: сервер хранит тело и когда нашёл сумму в тексте (отклонение 4 исполнителя). -->
+    <h2 class="type-h3 text-ink">Последнее касание</h2>
     <p class="type-meta mt-1">{{ time(debug.at) }}</p>
     <pre class="mt-2 max-h-60 overflow-auto whitespace-pre-wrap break-all rounded-[12px] bg-surface-2 p-3 text-[12.5px] text-ink">{{ debug.body }}</pre>
   </Card>

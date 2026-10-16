@@ -30,7 +30,11 @@ export const useApplePayStore = defineStore('applepay', () => {
   /** «У меня iOS 26 или старше» — выбор человека в листе. */
   const legacyChosen = ref(false)
   let loading: Promise<void> | null = null
-  // Другой вход — другой человек: статус прошлого не показываем.
+  /** Номер последнего запроса статуса: ответ более раннего (до «Подключить», прошлого входа) не пишется. */
+  let asked = 0
+  /** Чей вход ждёт `loading`. */
+  let loadingFor: string | null = null
+  // Другой вход — другой человек: статус прошлого не показываем (его запрос в пути `load` не ждёт и не пишет).
   watch(
     () => auth.token,
     () => {
@@ -50,21 +54,29 @@ export const useApplePayStore = defineStore('applepay', () => {
   const available = computed(() => canUse.value && !!link.value)
   const connected = computed(() => !!status.value?.connected)
 
-  /** Статус — раз за сессию (`force` — после подключения и отключения). */
+  /**
+   * Статус — раз за сессию (`force` — после подключения и отключения: новый запрос, даже если прежний ещё в пути — его
+   * ответ уже устарел, критик Б1).
+   */
   async function load(client: ApiClient = apiClient, force = false) {
     if (!canUse.value) return
     if (status.value && !force) return
-    if (loading) return loading
-    loading = (async () => {
+    const token = auth.token
+    if (loading && !force && loadingFor === token) return loading
+    const mine = ++asked
+    loadingFor = token
+    const run = (async () => {
       try {
-        status.value = await client.walletStatus()
+        const s = await client.walletStatus()
+        if (mine === asked && auth.token === token) status.value = s
       } catch {
         // Без сети или сбой — карточки просто нет; следующий заход спросит снова.
       } finally {
-        loading = null
+        if (mine === asked) loading = null
       }
     })()
-    return loading
+    loading = run
+    return run
   }
 
   /** Новый ключ этого телефона — отдаётся вызывающему (лист) и больше нигде не хранится. */
