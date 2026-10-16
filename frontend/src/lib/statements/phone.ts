@@ -19,9 +19,15 @@ const sameMoney = (st: Operation, ph: Operation) =>
 const gap = (st: Operation, ph: Operation) => Math.abs(dayNumber(st.date) - dayNumber(ph.date))
 
 /**
+ * Банк касания может быть строкой этой выписки: тот же или не узнан (`card`). Касание Halyk не строка выписки Kaspi, даже
+ * с тем же продавцом и суммой: кофе за 1 200 ₸ в понедельник с Halyk и во вторник Kaspi QR — две траты (критик Б1).
+ */
+const sameBank = (st: Operation, ph: Operation) => ph.bank === st.bank || ph.bank === 'card'
+
+/**
  * Какие траты с телефона заменяет выписка (Р-2 «выписка — истина», порядок Р-16). Для каждой строки выписки:
- * (1) операция с телефона того же знака, суммы (из валюты — в пределах 3 %), даты ±1 день и того же продавца по
- * `normalizeMerchant`; (2) нет — **единственная** такая же по сумме и дате у того же банка или у банка `card`;
+ * (1) операция с телефона того же банка (или `card`), знака, суммы (из валюты — в пределах 3 %), даты ±1 день и того
+ * же продавца по `normalizeMerchant`; (2) нет — **единственная** такая же по сумме и дате у того же банка или `card`;
  * (3) операции с телефона банка выписки с датой в `[from, to − 1 день]` без пары — фантом (отклонённая оплата, повтор
  * триггера), тоже уходят: последний день выписки бывает неполным. Каждая операция с телефона — не больше чем в одной
  * паре, ближайшая по дате побеждает. Отдаёт id операций с телефона.
@@ -37,7 +43,7 @@ export function replacedByStatement(statementOps: Operation[], phoneOps: Operati
     const merchant = normalizeMerchant(st.merchant)
     let best: Operation | undefined
     for (const ph of phone) {
-      if (out.has(ph.id) || !sameMoney(st, ph) || gap(st, ph) > 1 || normalizeMerchant(ph.merchant) !== merchant) continue
+      if (out.has(ph.id) || !sameBank(st, ph) || !sameMoney(st, ph) || gap(st, ph) > 1 || normalizeMerchant(ph.merchant) !== merchant) continue
       if (!best || gap(st, ph) < gap(st, best)) best = ph
     }
     if (best) out.add(best.id)
@@ -46,7 +52,7 @@ export function replacedByStatement(statementOps: Operation[], phoneOps: Operati
 
   // (2) единственный кандидат того же банка или «карты».
   for (const st of left) {
-    const candidates = phone.filter((ph) => !out.has(ph.id) && (ph.bank === st.bank || ph.bank === 'card') && sameMoney(st, ph) && gap(st, ph) <= 1)
+    const candidates = phone.filter((ph) => !out.has(ph.id) && sameBank(st, ph) && sameMoney(st, ph) && gap(st, ph) <= 1)
     if (candidates.length === 1) out.add(candidates[0].id)
   }
 

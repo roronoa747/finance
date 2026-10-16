@@ -83,6 +83,14 @@ describe('lib/finance — phoneOpTenge', () => {
     expect(phoneOpTenge({ date: '2026-10-13', fx: { currency: 'USD', amount: 622 } }, book)).toBeNull()
     expect(phoneOpTenge({ date: '2026-10-14' }, book)).toBeNull()
   })
+
+  it('курс старше недели — null: курс июня не курс октября (критик Б1)', () => {
+    const book = { USD: { '2026-06-01': 400, '2026-10-07': 480 } }
+    // Ровно неделя — ещё курс (праздники и выходные); восемь дней — ждём курс дня.
+    expect(phoneOpTenge({ date: '2026-10-14', fx: { currency: 'USD', amount: 100 } }, book)).toBe(-480)
+    expect(phoneOpTenge({ date: '2026-10-15', fx: { currency: 'USD', amount: 100 } }, book)).toBeNull()
+    expect(phoneOpTenge({ date: '2026-10-14', fx: { currency: 'USD', amount: 100 } }, { USD: { '2026-06-01': 400 } })).toBeNull()
+  })
 })
 
 describe('провод — новые поля', () => {
@@ -243,6 +251,48 @@ describe('stores/operations — выписка заменяет траты с т
     await vi.advanceTimersByTimeAsync(6_000)
     expect(store.all.map((o) => o.id)).toEqual(['a1'])
     expect(server.sent).toEqual([])
+  })
+
+  it('медленный pull, начатый до выписки, не возвращает убранную трату (критик Б1)', async () => {
+    const { store, server, client, calls } = await withTap()
+    let release!: (p: OperationsPage) => void
+    calls.listOperations.mockImplementationOnce(() => new Promise<OperationsPage>((r) => (release = r)))
+    const slow = store.pull(client)
+    await vi.advanceTimersByTimeAsync(0)
+    await store.upload(statement(), client)
+    await vi.advanceTimersByTimeAsync(6_000)
+    // Страница медленного pull пришла после замены: на ней трата ещё живая.
+    release({ operations: [tap('a1', 'Magnum', -5000, { category_id: 'sc_food' })], next: '2026-10-16T10:00:00Z' })
+    await slow
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(store.all.map((o) => o.id)).toEqual(['f0000001'])
+    expect(weekTotal('sc_food')).toMatchObject({ amount: 5000, ops: 1 })
+    expect(server.sent.filter((o) => o.deleted).map((o) => o.id)).toEqual(['a1'])
+  })
+
+  it('вторая выписка с перекрытием не сопоставляет уже учтённую строку ещё раз (критик Б1)', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const { server, client, calls } = fakeServer()
+    Object.assign(calls, { createStatementUpload: vi.fn(async (u: object) => ({ id: '00000000-0000-4000-8000-000000000001', slot: 'a', ...u, created_at: '' })) })
+    // Kaspi «Coffee Boom» и неузнанная карта «Coffee» — по 1 200 ₸; в выписке Kaspi — «IP AHMETOV» 1 200 ₸.
+    server.feed = [tap('k1', 'Coffee Boom', -1200), tap('c1', 'Coffee', -1200, { bank: 'card', date: '2026-10-15' })]
+    await store.pull(client)
+    const line = { id: 'f0000002', bank: 'kaspi' as const, date: '2026-10-14', amount: -1200, kind: 'purchase' as const, merchant: 'IP AHMETOV', categoryId: null, internal: false }
+    const file = (from: string, to: string, extra: (typeof line)[] = []) => [{ name: 'kaspi.pdf', parsed: { bank: 'kaspi' as const, from, to, skipped: 0, operations: [line, ...extra] } }]
+
+    // Первая: два кандидата по сумме — пары нет; k1 — фантом периода; c1 (карта) остаётся.
+    await store.upload(file('2026-10-01', '2026-10-15'), client)
+    await vi.advanceTimersByTimeAsync(6_000)
+    expect(server.sent.filter((o) => o.deleted).map((o) => o.id)).toEqual(['k1'])
+
+    // Вторая перекрывает 14-е и несёт ту же строку: c1 по-прежнему не её пара.
+    const other = { ...line, id: 'f0000003', date: '2026-10-20', amount: -300, merchant: 'SMALL' }
+    await store.upload(file('2026-10-14', '2026-10-22', [other]), client)
+    await vi.advanceTimersByTimeAsync(6_000)
+    expect(server.sent.filter((o) => o.deleted).map((o) => o.id)).toEqual(['k1'])
+    expect(store.ops.c1).toBeDefined()
   })
 
   it('выписка без операций с телефона — прежний путь (без надгробий)', async () => {

@@ -40,6 +40,13 @@ describe('replacedByStatement', () => {
     expect(ids(replacedByStatement([line], [ph('p1', '2026-10-16', -1200, 'Coffee')], NO_SPAN))).toEqual([])
   })
 
+  it('п. 1 — касание другого узнанного банка не строка выписки, даже с тем же продавцом (критик Б1)', () => {
+    // Кофе с Halyk в понедельник, Kaspi QR во вторник: две траты.
+    expect(ids(replacedByStatement([st('s1', '2026-10-14', -1200, 'COFFEE BOOM')], [ph('h1', '2026-10-13', -1200, 'Coffee Boom', 'halyk')], NO_SPAN))).toEqual([])
+    // Банк не узнан (card) — может быть этой строкой.
+    expect(ids(replacedByStatement([st('s1', '2026-10-14', -1200, 'COFFEE BOOM')], [ph('c1', '2026-10-13', -1200, 'Coffee Boom', 'card')], NO_SPAN))).toEqual(['c1'])
+  })
+
   it('п. 3 — фантом внутри периода убран; в последний день и другого банка — остаётся', () => {
     const span = [{ bank: 'kaspi' as const, from: '2026-10-01', to: '2026-10-15' }]
     const phone = [

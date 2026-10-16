@@ -148,6 +148,7 @@ export const useOperationsStore = defineStore('operations', () => {
   /** Сколько строк последней отправки отметилось по правилам («Отмечено по выписке: N»). */
   const lastAutoMarked = ref(0)
   let flushing: Promise<void> | null = null
+  let pulling: Promise<unknown> = Promise.resolve()
   let lastPullAt = 0
 
   const demo = computed(() => auth.isDemo || finance.isDemo)
@@ -334,7 +335,9 @@ export const useOperationsStore = defineStore('operations', () => {
     const phone = all.value.filter((o) => o.source)
     if (!phone.length) return []
     const spans = draft.value.files.map((f) => ({ bank: f.parsed.bank, from: f.parsed.from, to: f.parsed.to }))
-    const ids = replacedByStatement(draftOps.value, phone, spans)
+    // Строки прошлой выписки (перекрытие периодов) свою пару уже взяли — второй раз не сопоставляются (критик Б1):
+    // иначе та же строка уберёт ещё одно касание, которого в выписке нет. Фантомы — по периодам, как прежде.
+    const ids = replacedByStatement(draftOps.value.filter((o) => !(o.id in ops.value)), phone, spans)
     return phone.filter((o) => ids.has(o.id))
   })
 
@@ -625,11 +628,22 @@ export const useOperationsStore = defineStore('operations', () => {
     return flushing
   }
 
-  /** Свои операции с сервера по курсору (правки со второго устройства); сначала — очередь. Отдаёт id полученных. */
-  async function pull(client: ApiClient = apiClient): Promise<string[]> {
+  /**
+   * Свои операции с сервера по курсору (правки со второго устройства); сначала — очередь. Отдаёт id полученных.
+   * Подтягивания идут по очереди (старт и «Неделя» зовут разом): медленное старое не вернёт в копию трату с телефона,
+   * которую выписка уже убрала надгробием (критик Б1).
+   */
+  function pull(client: ApiClient = apiClient): Promise<string[]> {
+    if (demo.value || !auth.isMember) return Promise.resolve([])
+    lastPullAt = Date.now()
+    const run = pulling.then(() => pullOnce(client))
+    pulling = run.catch(() => [])
+    return run
+  }
+
+  async function pullOnce(client: ApiClient): Promise<string[]> {
     const got: string[] = []
     if (demo.value || !auth.isMember) return got
-    lastPullAt = Date.now()
     await flush(client)
     if (offline() || pending.value.length) return got
     try {
@@ -642,8 +656,11 @@ export const useOperationsStore = defineStore('operations', () => {
       const gone: Operation[] = []
       for (;;) {
         const page = await client.listOperations(from, PULL_LIMIT)
+        // Выписка убрала трату, пока страница шла (надгробие ещё в очереди), — живая копия с сервера её не вернёт.
+        const buried = new Set(pending.value.filter((j) => j.deleted).flatMap((j) => j.ops.map((o) => o.id)))
         for (const w of page.operations) {
           got.push(w.id)
+          if (buried.has(w.id) && !w.deleted) continue
           if (w.deleted) {
             const prev = ops.value[w.id]
             if (prev) gone.push(prev)
