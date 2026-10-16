@@ -62,9 +62,10 @@ describe('replacedByStatement', () => {
   it('приход и расход одной суммы — не пара; одна телефонная — максимум одна пара', () => {
     expect(ids(replacedByStatement([st('s1', '2026-10-14', 5000, 'Magnum', 'kaspi', { kind: 'transfer-in' })], [ph('p1', '2026-10-14', -5000, 'Magnum')], NO_SPAN))).toEqual([])
     const two = [st('s1', '2026-10-14', -5000, 'Magnum'), st('s2', '2026-10-14', -5000, 'Magnum', 'kaspi', { id: 's2' })]
-    const res = replacedByStatement(two, [ph('p1', '2026-10-14', -5000, 'Magnum'), ph('p2', '2026-10-17', -5000, 'Magnum')], NO_SPAN)
-    // p2 дальше дня — ни одна строка его не берёт; p1 — одна пара на две строки.
-    expect(ids(res)).toEqual(['p1'])
+    const res = replacedByStatement(two, [ph('p1', '2026-10-14', -5000, 'Magnum'), ph('p2', '2026-10-15', -5000, 'Magnum')], NO_SPAN)
+    // Две строки — две пары: p1 уже занят первой строкой, вторая берёт p2 (ревью frontend Н-5: без проверки занятого
+    // вторая строка снова взяла бы ближайший p1, и p2 остался бы вторым рядом).
+    expect(ids(res)).toEqual(['p1', 'p2'])
   })
 
   it('ближайшая по дате побеждает', () => {
