@@ -10,6 +10,7 @@ import { useAiStore } from '@/stores/ai'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
 import { AI_SELLERS_KEY } from '@/lib/storage'
+import { money } from '@/lib/money'
 import { DEFAULT_SPEND_CATEGORIES } from '@/lib/statements/dictionary'
 import type { MerchantRule, Operation } from '@/lib/statements/types'
 import Week from '@/views/Week.vue'
@@ -66,7 +67,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function openWeek(o: { ai?: boolean } = {}) {
+async function openWeek(o: { ai?: boolean; ops?: Operation[] } = {}) {
   const pinia = createPinia()
   setActivePinia(pinia)
   const auth = useAuthStore()
@@ -82,7 +83,7 @@ async function openWeek(o: { ai?: boolean } = {}) {
   // Лист согласия живёт в оболочке; здесь экран без неё — стор «спрашивает», ответ даёт тест.
   useAiStore().sheetMounted = true
   const store = useOperationsStore()
-  for (const x of OPS) store.ops[x.id] = { ...x }
+  for (const x of o.ops ?? OPS) store.ops[x.id] = { ...x }
   const router = createRouter({ history: createMemoryHistory(), routes })
   await router.push('/week')
   await router.isReady()
@@ -112,6 +113,9 @@ const press = async (el: HTMLElement | null | undefined) => {
 }
 const sheet = () => q('[role="dialog"]')
 const rowOf = (label: string) => all('[data-unknown-row]').find((r) => txt(r).startsWith(label)) ?? null
+/** Названия строк пачки сверху вниз. */
+const order = () => all('[data-unknown-row]').map((r) => txt(r.querySelector('.font-semibold')))
+const BY_SUM = ['Respect Boutique', 'Дана К.', 'Tau Lider', 'ИП Абенова']
 const openBatch = () => press(q('[data-bang]'))
 const closeSheet = () => press(q('[role="dialog"] [aria-label="Закрыть"]'))
 const ruleOf = (finance: ReturnType<typeof useFinanceStore>, merchant: string) =>
@@ -123,6 +127,7 @@ describe('AI-12: предложения ИИ в «Без раздела»', () =
     await openWeek({ ai: false })
     await openBatch()
     expect(txt(sheet())).toContain('Без раздела · 4')
+    expect(order()).toEqual(BY_SUM)
     expect(spy).not.toHaveBeenCalled()
     expect(useAiStore().sheetOpen).toBe(false)
     expect(q('[data-ai-sellers]')).toBeNull()
@@ -248,6 +253,7 @@ describe('AI-12: предложения ИИ в «Без раздела»', () =
     expect(ai.sheetOpen).toBe(false)
     expect(spy).not.toHaveBeenCalled()
     expect(q('[data-ai-sellers]')).toBeNull()
+    expect(order()).toEqual(BY_SUM)
   })
 
   it('предложения старше 60 дней — спрашиваются заново; свежие — нет', async () => {
@@ -285,5 +291,69 @@ describe('AI-12: предложения ИИ в «Без раздела»', () =
     expect(rowOf('Respect Boutique')!.querySelector('[data-ai-hint], [data-ai-accept]')).toBeNull()
     expect(txt(rowOf('Tau Lider')!.querySelector('[data-ai-hint]'))).toBe('Продукты')
     expect(txt(q('[data-ai-sellers]'))).toBe('ИИ предлагает · 1')
+  })
+})
+
+describe('AI-17: продавцы с подсказкой ИИ — первыми (владелец после `/ux` Блока 3)', () => {
+  it('подсказка у меньшей суммы — её строка первая, остальные ниже по сумме; отметка переживает приход ответа', async () => {
+    let reply: (a: typeof ANSWER) => void = () => {}
+    vi.spyOn(apiClient, 'aiSellers').mockImplementation(() => new Promise((ok) => (reply = ok)))
+    const { ai } = await openWeek()
+    ai.setConsent(true)
+    await openBatch()
+    await vi.waitFor(() => expect(txt(q('[data-ai-sellers]'))).toBe('ИИ думает…'))
+    // Пока думает — по сумме, как было.
+    expect(order()).toEqual(BY_SUM)
+    await press(rowOf('Дана К.')!.querySelector('button'))
+    expect(rowOf('Дана К.')!.querySelector('button')!.getAttribute('aria-pressed')).toBe('true')
+
+    // Подсказка — только у Tau Lider (8 000 при 42 000 у бутика).
+    reply({ items: [{ name: 'Respect Boutique', categoryId: null }, { name: 'Tau Lider', categoryId: 'sc_food' }] })
+    await vi.waitFor(() => expect(txt(q('[data-ai-sellers]'))).toBe('ИИ предлагает · 1'))
+    expect(order()).toEqual(['Tau Lider', 'Respect Boutique', 'Дана К.', 'ИП Абенова'])
+    expect(rowOf('Дана К.')!.querySelector('button')!.getAttribute('aria-pressed')).toBe('true')
+    expect(txt(sheet())).toContain('Выбрано 1')
+  })
+
+  it('✓ у первой — следующая подсказка встаёт первой', async () => {
+    vi.spyOn(apiClient, 'aiSellers').mockResolvedValue({
+      items: [
+        { name: 'Respect Boutique', categoryId: 'sc_shopping' },
+        { name: 'Tau Lider', categoryId: 'sc_food' },
+      ],
+    })
+    const { ai } = await openWeek()
+    ai.setConsent(true)
+    await openBatch()
+    await vi.waitFor(() => expect(order()).toEqual(['Respect Boutique', 'Tau Lider', 'Дана К.', 'ИП Абенова']))
+    await press(rowOf('Respect Boutique')!.querySelector<HTMLElement>('[data-ai-accept]'))
+    await vi.waitFor(() => expect(order()).toEqual(['Tau Lider', 'Дана К.', 'ИП Абенова']))
+    expect(rowOf('Tau Lider')!.querySelector('[data-ai-accept]')).toBeTruthy()
+  })
+
+  it('подсказок больше шести — первые шесть строк с ✓, «Ещё K · сумма» — остальные, в нём сначала подсказки', async () => {
+    const brands = ['Respect Boutique', 'Tau Lider', 'Nomad Look', 'Orbita Home', 'Zentra Shop', 'Velo Stan', 'Arman Style', 'Kemel Atelier']
+    const ops = [
+      op('2026-09-21', 90_000, 'Айгерим С.', { counterparty: 'Айгерим С.' }),
+      op('2026-09-21', 80_000, 'ИП Каримова'),
+      op('2026-09-22', 70_000, 'Болат Н.', { counterparty: 'Болат Н.' }),
+      op('2026-09-22', 60_000, 'ИП Жумабаев'),
+      ...brands.map((b, i) => op('2026-09-23', 9_000 - i * 500, b)),
+    ]
+    // Arman Style — без раздела (null), остальные семь — с подсказкой.
+    vi.spyOn(apiClient, 'aiSellers').mockResolvedValue({ items: brands.map((name) => ({ name, categoryId: name === 'Arman Style' ? null : 'sc_shopping' })) })
+    const tailText = () => txt(all('[role="dialog"] button').find((b) => txt(b).startsWith('Ещё') && txt(b).endsWith('›')) ?? null)
+    const { ai } = await openWeek({ ops })
+    ai.setConsent(true)
+    await openBatch()
+    await vi.waitFor(() => expect(txt(q('[data-ai-sellers]'))).toBe('ИИ предлагает · 7'))
+
+    // Ушедшие в хвост строки гаснут — ждём, пока покинут DOM.
+    await vi.waitFor(() => expect(order()).toEqual(['Respect Boutique', 'Tau Lider', 'Nomad Look', 'Orbita Home', 'Zentra Shop', 'Velo Stan']))
+    expect(all('[data-unknown-row]').every((r) => r.querySelector('[data-ai-accept]'))).toBe(true)
+    // Хвост — седьмая подсказка, переводы людям и «ИП + фамилия», продавец без подсказки.
+    expect(tailText()).toBe(`Ещё 6 · ${money(5_500 + 90_000 + 80_000 + 70_000 + 60_000 + 6_000).replace(/\s+/g, ' ')} ›`)
+    await press(all('[role="dialog"] button').find((b) => txt(b).startsWith('Ещё') && txt(b).endsWith('›')))
+    expect(order().slice(6)).toEqual(['Kemel Atelier', 'Айгерим С.', 'ИП Каримова', 'Болат Н.', 'ИП Жумабаев', 'Arman Style'])
   })
 })

@@ -23,6 +23,8 @@ import type { MerchantRule } from '@/lib/statements/types'
  * ИИ (бэклог «ИИ», AI-12, Р-5): открыли пачку — `suggestSellers` спрашивает раздел продавцам без предложения; у
  * продавца с предложением под подписью — чип раздела, справа ✓ — тот же ответ, что чипами, одному продавцу. Само
  * ничего не применяется; «Принять все» нет. В шапке — «ИИ предлагает · N» строкой, ошибки — тихо, той же строкой.
+ * Продавцы с предложением — первыми (AI-17, владелец после `/ux` Блока 3): иначе на настоящих выписках они уходили в
+ * «Ещё» под переводы людям и «ИП + фамилия», которых ИИ не спрашивает. Меняется только вид — очередь «Недели» прежняя.
  */
 const SHOWN = 6
 
@@ -42,8 +44,6 @@ watch(
   (keys) => (picked.value = picked.value.filter((k) => keys.includes(k))),
 )
 
-const shown = computed(() => (open.value ? props.groups : props.groups.slice(0, SHOWN)))
-const tail = computed(() => (open.value ? [] : props.groups.slice(SHOWN)))
 const chosen = computed(() => props.groups.filter((g) => picked.value.includes(keyOf(g))))
 const allPicked = computed(() => chosen.value.length === props.groups.length)
 // «Кому → что» — только когда все отмеченные — переводы людям.
@@ -92,6 +92,14 @@ const hints = computed(() => {
   return out
 })
 const hintOf = (g: UnknownGroup) => hints.value.get(keyOf(g)) ?? null
+/** С предложением — первыми, остальные — после; внутри обеих частей — как пришли (по сумме). Без предложений — как было. */
+const ordered = computed(() => {
+  if (!hints.value.size) return props.groups
+  const has = (g: UnknownGroup) => hints.value.has(keyOf(g))
+  return [...props.groups.filter(has), ...props.groups.filter((g) => !has(g))]
+})
+const shown = computed(() => (open.value ? ordered.value : ordered.value.slice(0, SHOWN)))
+const tail = computed(() => (open.value ? [] : ordered.value.slice(SHOWN)))
 // Место ✓ держится и пока ответ идёт: иначе через 3–6 с все суммы съезжают влево на ширину ✓ (`/ux` Блока 3).
 const aiColumn = computed(() => hints.value.size > 0 || ai.sellersState === 'thinking')
 /** Строка шапки: идёт запрос, лимит, не пришли — или сколько предложений. */
@@ -132,11 +140,24 @@ function accept(g: UnknownGroup, categoryId: string) {
           <i v-else-if="hints.size && ai.sellersState === 'idle'" class="size-1.5 shrink-0 rounded-full bg-brand" aria-hidden="true" />{{ aiLine }}
         </p>
       </div>
-      <TransitionGroup tag="div" class="flex flex-col" leave-active-class="transition-opacity duration-150" leave-to-class="opacity-0">
+      <!-- Перестановка (ответ ИИ, ✓) — плавно: соседи едут (`move`), ушедшая гаснет вне потока. Блок, не flex: в flex
+           `absolute` встал бы к верху списка. Граница — по индексу, не `first:`: гаснущая строка ещё первая в DOM.
+           Появление `fx-in` — классом входа, не постоянным: с анимацией на строке Vue считает её «анимацией» и `move`
+           не включает (320 мс `fx-in` длиннее 150 мс перехода). -->
+      <TransitionGroup
+        tag="div"
+        class="relative"
+        appear
+        enter-active-class="fx-in"
+        move-class="transition-transform duration-(--motion-fast) ease-(--ease-out)"
+        leave-active-class="absolute inset-x-0 transition-opacity duration-150"
+        leave-to-class="opacity-0"
+      >
         <div
           v-for="(g, i) in shown"
           :key="keyOf(g)"
-          class="fx-in flex w-full items-center gap-3 border-t border-line py-2.5 first:border-t-0 first:pt-0"
+          class="flex w-full items-center gap-3 pb-2.5"
+          :class="i > 0 && 'border-t border-line pt-2.5'"
           :style="{ '--i': i }"
           data-unknown-row
         >
