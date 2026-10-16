@@ -5647,6 +5647,22 @@ export function habitImages(state: ImageState, key: string): HabitImage[] {
   return [...best.values()].sort((a, b) => b.monthly - a.monthly)
 }
 
+/**
+ * «Перенести в мечту» каждый месяц (Р-27, AU-29): откуда урезать — постоянный план раздела участника с бо́льшим планом
+ * (`SpendPlan`, не сдвиги месяца); новый план — не ниже 0. Плана раздела нет ни у кого — null (только взнос).
+ */
+export function imageMoveFrom(
+  state: { people?: Person[]; spendPlans?: SpendPlan[] },
+  categoryId: string,
+  amount: number,
+): { by: PersonId; plan: number; next: number } | null {
+  const live = new Set((state.people ?? []).filter(alive).map((p) => p.id))
+  const top = (state.spendPlans ?? [])
+    .filter((s) => !s.deletedAt && live.has(s.by) && s.categoryId === categoryId && s.amount > 0)
+    .sort((a, b) => b.amount - a.amount || a.by.localeCompare(b.by))[0]
+  return top ? { by: top.by, plan: top.amount, next: Math.max(0, top.amount - amount) } : null
+}
+
 /** Проценты банку за год (Р-24): `budgetInterest × 12` → мерка; процентных долгов нет — null. Кредиты — производные. */
 export function interestImage(state: { credits?: Credit[] }): InterestImage | null {
   const perMonth = budgetInterest(state.credits ?? [])
