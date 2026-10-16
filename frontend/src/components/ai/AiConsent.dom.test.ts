@@ -82,12 +82,13 @@ describe('AI-05: карточка «ИИ» в настройках', () => {
     signIn('member', true)
     const el = await mount(Settings, '/settings')
     const card = el.querySelector('[data-ai-card]')!
-    expect(card.textContent).toContain('Claude · без имён')
-    // Подсказка — одной фразой, кто получает и что (слова утвердил владелец на /ux, 2026-10-15).
+    expect(card.textContent).toContain('Claude · без ваших имён')
+    // Подсказка — одной фразой, кто получает и что (слова утвердил владелец на /ux, 2026-10-15; названия статей уходят
+    // как есть — «без ваших имён», владелец 2026-10-16, ревью frontend Блока 2 Н-3).
     card.querySelector<HTMLButtonElement>('button[aria-label="Что уходит"]')!.click()
     await settle()
     expect(document.body.textContent).toContain(
-      'Claude от Anthropic получает цифры месяца без имён, названия продавцов и скриншот товара. На ваших данных не обучается.',
+      'Claude от Anthropic получает цифры месяца и названия статей без ваших имён, названия продавцов и скриншот товара. На ваших данных не обучается.',
     )
     const sw = card.querySelector<HTMLButtonElement>('[role="switch"]')!
     expect(sw.getAttribute('aria-checked')).toBe('false')
@@ -114,7 +115,7 @@ describe('AI-05: лист согласия', () => {
 
     const items = [...document.querySelectorAll('[data-ai-consent] li')].map((li) => li.textContent!.trim())
     expect(document.querySelector('[data-ai-to]')!.textContent).toBe('Claude от Anthropic получит:')
-    expect(items).toEqual(['Цифры месяца без имён', 'Названия продавцов', 'Скриншот товара'])
+    expect(items).toEqual(['Цифры месяца и названия статей без ваших имён', 'Названия продавцов', 'Скриншот товара'])
     expect(document.body.textContent).toContain('На ваших данных не обучается.')
     expect(document.querySelector('[data-ai-privacy]')!.getAttribute('href')).toBe('/privacy')
 

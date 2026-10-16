@@ -86,7 +86,7 @@ export const useAiStore = defineStore('ai', () => {
   /**
    * Разбор месяца `key` (AI-09, Р-4): сводка без имён (`buildMonthSummary`, AI-07) → ручка → разбор в общий
    * документ (партнёр видит без запроса). Согласие спрашивает вызывающий (`ensureConsent`). `ai_limit` — «ИИ
-   * вернётся 1-го»; `ai_off` — флаг сняли: `/auth/me` уберёт кнопку; прочее и сеть — «не вышло».
+   * вернётся 1 <следующего месяца>»; `ai_off` — флаг сняли: `/auth/me` уберёт кнопку; прочее и сеть — «не вышло».
    */
   async function runReview(key: string): Promise<AiReview | null> {
     if (reviewState.value === 'thinking' || !available.value) return null
@@ -121,5 +121,5 @@ export const useAiStore = defineStore('ai', () => {
 
 /** Кто получает и что уходит (Р-9) — одни слова для листа согласия и подсказки в настройках. */
 export const AI_TO = 'Claude от Anthropic'
-export const AI_SENDS = ['Цифры месяца без имён', 'Названия продавцов', 'Скриншот товара'] as const
+export const AI_SENDS = ['Цифры месяца и названия статей без ваших имён', 'Названия продавцов', 'Скриншот товара'] as const
 export const AI_NO_TRAINING = 'На ваших данных не обучается'
