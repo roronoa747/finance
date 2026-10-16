@@ -185,7 +185,8 @@ func tapResult(w http.ResponseWriter, status, reason string) {
 // text in "merchant": without "amount" the money is looked for in the text. The server only
 // reads the amount string: tenge go to amount (tiyn dropped), USD/EUR/RUB/CNY stay in fx_*
 // with amount 0 until the phone converts them. The body is never logged; for an admin the
-// body the server had to search through is kept a day for tuning the parser.
+// body the server had to search through, or whose amount it could not read, is kept a day
+// for tuning the parser.
 func (h *WalletHandler) Tap(w http.ResponseWriter, r *http.Request) {
 	householdID, userID, ok := member(w, r)
 	if !ok {
@@ -251,12 +252,12 @@ func (h *WalletHandler) Tap(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	if searched {
-		h.keepForAdmin(r, userID, raw)
-	}
 	// Less than a tenge would be written as a 0 ₸ purchase (tiyn are dropped): not money.
 	if parsed && currency == "KZT" && minor < 100 {
 		parsed, reason = false, "amount"
+	}
+	if searched || !parsed {
+		h.keepForAdmin(r, userID, raw)
 	}
 	if !parsed {
 		tapResult(w, "skipped", reason)
@@ -308,7 +309,8 @@ func (h *WalletHandler) Tap(w http.ResponseWriter, r *http.Request) {
 	tapResult(w, "saved", "")
 }
 
-// keepForAdmin stores the body the server had to search through — only for a person in
+// keepForAdmin stores the body the server had to search through or could not read the amount
+// of — only for a person in
 // ADMIN_EMAILS (Р-13а), at most 2 KB. Everyone else's body is kept nowhere.
 func (h *WalletHandler) keepForAdmin(r *http.Request, userID string, raw []byte) {
 	if len(h.admins) == 0 {

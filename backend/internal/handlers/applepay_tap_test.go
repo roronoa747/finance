@@ -217,4 +217,29 @@ func TestTapWholeTransactionText(t *testing.T) {
 	if app.keys.DebugRows() != 1 {
 		t.Fatalf("old rows kept: %d", app.keys.DebugRows())
 	}
+
+	// An "amount" field the server could not read: the admin sees the body (AP-03 п. 5), others — no.
+	_ = app.keys.SaveDebug(t.Context(), app.aliceID, "x") // the row the test wrote above, refreshed
+	if out := tapStatus(t, app.tap(t, key, map[string]any{"merchant": "Magnum", "amount": "6.22"})); out["status"] != "skipped" {
+		t.Fatalf("non-admin unparsed amount: %v", out)
+	}
+	if d, _ := app.keys.LastDebug(t.Context(), app.aliceID); d == nil || d.Body != "x" {
+		t.Fatalf("a non-admin body was stored: %q", d.Body)
+	}
+	for body, reason := range map[string]string{"6.22": "currency", "0,50 ₸": "amount"} {
+		out := tapStatus(t, app.tap(t, adminKey, map[string]any{"merchant": "Magnum", "amount": body}))
+		rec := app.call(t, http.MethodGet, "/api/admin/wallet-debug", "Bearer "+app.admin, nil)
+		var d repository.WalletDebug
+		_ = json.Unmarshal(rec.Body.Bytes(), &d)
+		if out["status"] != "skipped" || out["reason"] != reason || !strings.Contains(d.Body, body) {
+			t.Errorf("admin unparsed amount %q: %v, debug %q", body, out, d.Body)
+		}
+	}
+	// A read "amount" field keeps nothing new.
+	clock.t = clock.t.Add(3 * time.Minute)
+	tapStatus(t, app.tap(t, adminKey, map[string]any{"merchant": "Magnum", "amount": "7 000 ₸"}))
+	rec = app.call(t, http.MethodGet, "/api/admin/wallet-debug", "Bearer "+app.admin, nil)
+	if strings.Contains(rec.Body.String(), "7 000") {
+		t.Errorf("a read amount kept the body: %s", rec.Body.String())
+	}
 }
