@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { PhCaretRight } from '@phosphor-icons/vue'
+import { PhCaretRight, PhCircleNotch } from '@phosphor-icons/vue'
 import { useAiStore } from '@/stores/ai'
 import { useAuthStore } from '@/stores/auth'
 import type { AiReview } from '@/types/finance'
@@ -86,7 +86,8 @@ function sentLines(s: MonthSummaryAI, key: string): { title: string; rows: strin
     {
       title: s.short > 0 ? `Не хватает · ${money(s.short)}` : `Остаётся · ${money(s.rest)}`,
       rows: [
-        `до целей — ${money(s.free)}`,
+        // Как в инструкции модели и в тексте разбора («свободно до целей»), а не «до целей» — читалось сроком (`/ux`).
+        `свободно до целей — ${money(s.free)}`,
         `отложено — ${money(s.saved)}`,
         ...(s.daysToPayday !== null ? [`до зарплаты — ${s.daysToPayday} ${plural(s.daysToPayday, 'день', 'дня', 'дней')}`] : []),
       ],
@@ -161,11 +162,11 @@ function sentLines(s: MonthSummaryAI, key: string): { title: string; rows: strin
           <Button variant="ghost" size="sm" class="-ml-3" data-review-refresh @click="emit('refresh')">Обновить</Button>
         </div>
         <!-- «Обновить» идёт или не вышло — под прежним разбором, он остаётся. -->
-        <p v-if="ai.reviewState !== 'idle'" class="mt-1 text-[12.5px] text-ink-2" data-review-refresh-state>{{ stateText }}</p>
+        <p v-if="ai.reviewState !== 'idle'" class="mt-1 flex items-center gap-1.5 text-[12.5px] text-ink-2" data-review-refresh-state><PhCircleNotch v-if="ai.reviewState === 'thinking'" :size="13" class="shrink-0 animate-spin" aria-hidden="true" data-review-spin /><span>{{ stateText }}</span></p>
       </div>
     </div>
 
-    <!-- Запрос и его исход — на месте разбора. -->
-    <p v-else class="py-6 text-center text-[15px]" :class="ai.reviewState === 'thinking' ? 'text-ink-2' : 'text-ink'" :data-review-state="ai.reviewState">{{ stateText }}</p>
+    <!-- Запрос и его исход — на месте разбора; ответ идёт 4–12 с — крутилка, чтобы «Думаю…» не читалось зависшим (`/ux`). -->
+    <p v-else class="flex items-center justify-center gap-2 py-6 text-[15px]" :class="ai.reviewState === 'thinking' ? 'text-ink-2' : 'text-ink'" :data-review-state="ai.reviewState"><PhCircleNotch v-if="ai.reviewState === 'thinking'" :size="17" class="shrink-0 animate-spin" aria-hidden="true" data-review-spin /><span>{{ stateText }}</span></p>
   </Sheet>
 </template>

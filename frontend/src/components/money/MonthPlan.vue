@@ -278,10 +278,11 @@ async function openReview() {
     return
   }
   reviewOpen.value = true
-  if (await ai.runReview(props.monthKey)) markReviewSeen()
+  // Лист закрыли, пока «Думаю…», — разбор не видели: позовёт точка на ✦ (правило 12, `/ux`).
+  if ((await ai.runReview(props.monthKey)) && reviewOpen.value) markReviewSeen()
 }
 async function refreshReview() {
-  if ((await ai.ensureConsent()) && (await ai.runReview(props.monthKey))) markReviewSeen()
+  if ((await ai.ensureConsent()) && (await ai.runReview(props.monthKey)) && reviewOpen.value) markReviewSeen()
 }
 
 /* ---------- кто платит (Р-80) ---------- */

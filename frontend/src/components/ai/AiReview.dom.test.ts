@@ -186,6 +186,35 @@ describe('AI-09: разбор месяца у остатка', () => {
     expect(spy).toHaveBeenCalledTimes(1)
   })
 
+  it('«Думаю…» с крутилкой; лист закрыли до ответа — готовый разбор зовёт точкой, открыли — точка ушла (`/ux`)', async () => {
+    let reply!: (a: typeof answer) => void
+    vi.spyOn(apiClient, 'aiReview').mockImplementation(() => new Promise((r) => (reply = r)))
+    await open()
+    useAiStore().setConsent(true)
+    await press(q('[data-review-open]'))
+    expect(txt(q('[data-review-state="thinking"]'))).toBe('Думаю…')
+    expect(q('[data-review-state="thinking"] [data-review-spin]')).not.toBeNull()
+    q<HTMLButtonElement>('[role="dialog"] button[aria-label="Закрыть"]')?.click()
+    await flush()
+    reply(answer)
+    await vi.waitFor(() => expect(useFinanceStore().householdDoc.aiReviews ?? []).toHaveLength(1))
+    await flush()
+    expect(q('[data-review-dot]')).not.toBeNull()
+    await press(q('[data-review-open]'))
+    expect(txt(q('[data-review-good]'))).toBe(answer.good)
+    expect(q('[data-review-dot]')).toBeNull()
+  })
+
+  it('«что ушло»: свободное до целей — «свободно до целей», как в тексте разбора', async () => {
+    vi.spyOn(apiClient, 'aiReview').mockResolvedValue(answer)
+    await open()
+    useAiStore().setConsent(true)
+    await press(q('[data-review-open]'))
+    await vi.waitFor(() => expect(q('[data-review-good]')).not.toBeNull())
+    await press(q('[data-review-sent-open]'))
+    expect(txt(q('[data-review-sent]'))).toMatch(/свободно до целей — [\d\s ]+₸/)
+  })
+
   it('«Не надо» — запроса нет, лист разбора не открыт', async () => {
     const spy = vi.spyOn(apiClient, 'aiReview')
     await open()
