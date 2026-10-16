@@ -79,6 +79,7 @@ type reviewFixture struct {
 	limit   int
 	month   string
 	handler *AIReviewHandler
+	sellers *AISellersHandler
 }
 
 // newReviewFixture: a family with AI on, its member and viewer; client nil = no key.
@@ -106,19 +107,26 @@ func newReviewFixture(t *testing.T, claude *fakeClaudeQueue, withKey bool) *revi
 	gate := NewAIGate(aiRepo, client, 30)
 	gate.now = func() time.Time { return time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC) }
 	handler := NewAIReviewHandler(gate, "claude-opus-5-5")
+	sellers := NewAISellersHandler(gate, "claude-haiku-5-5")
 	r := chi.NewRouter()
 	r.Group(func(p chi.Router) {
 		p.Use(auth.Middleware(tokens, nil))
 		p.Post("/api/ai/review", handler.Review)
+		p.Post("/api/ai/sellers", sellers.Sellers)
 	})
 	member, _ := tokens.GenerateToken(u.ID, h.ID, "member", "a")
 	viewer, _ := tokens.GenerateToken("viewer-1", h.ID, "viewer", "c")
-	return &reviewFixture{router: r, aiRepo: aiRepo, claude: claude, family: h.ID, member: member, viewer: viewer, limit: 30, month: "2026-10", handler: handler}
+	return &reviewFixture{router: r, aiRepo: aiRepo, claude: claude, family: h.ID, member: member, viewer: viewer, limit: 30, month: "2026-10", handler: handler, sellers: sellers}
 }
 
 func (f *reviewFixture) post(t *testing.T, token, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/api/ai/review", strings.NewReader(body))
+	return f.postTo(t, "/api/ai/review", token, body)
+}
+
+func (f *reviewFixture) postTo(t *testing.T, path, token, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	f.router.ServeHTTP(rec, req)
@@ -347,6 +355,256 @@ func TestLiveReview(t *testing.T) {
 		start := time.Now()
 		rec := f.post(t, f.member, `{"summary": `+summary+`}`)
 		t.Logf("run %d: %d in %v: %s", i+1, rec.Code, time.Since(start).Round(100*time.Millisecond), rec.Body.String())
+	}
+	u := f.usage()
+	t.Logf("usage: %d requests, %d in, %d out, %d µ$", u.Requests, u.InputTokens, u.OutputTokens, u.CostMicros)
+}
+
+// sellersCategories are the starting sections (DEFAULT_SPEND_CATEGORIES, dictionary.ts) as the phone sends them.
+const sellersCategories = `[{"id":"sc_food","name":"Продукты"},{"id":"sc_cafe","name":"Кафе и рестораны"},{"id":"sc_transport","name":"Транспорт"},{"id":"sc_telecom","name":"Связь и интернет"},{"id":"sc_subscriptions","name":"Подписки"},{"id":"sc_health","name":"Здоровье и аптеки"},{"id":"sc_home","name":"Дом и быт"},{"id":"sc_shopping","name":"Одежда и покупки"},{"id":"sc_fun","name":"Развлечения"},{"id":"sc_people","name":"Переводы людям"},{"id":"sc_credit","name":"Кредиты и рассрочки"},{"id":"sc_utilities","name":"Коммуналка"},{"id":"sc_education","name":"Образование"},{"id":"sc_travel","name":"Путешествия"},{"id":"sc_cash","name":"Наличные"},{"id":"sc_fees","name":"Комиссии"},{"id":"sc_other","name":"Прочее"},{"id":"sc_rent","name":"Аренда"}]`
+
+func sellersBody(names ...string) string {
+	b, _ := json.Marshal(names)
+	return `{"names":` + string(b) + `,"categories":` + sellersCategories + `}`
+}
+
+// sellersAnswer is a model answer: pairs of name and section id ("" — null).
+func sellersAnswer(pairs ...[2]string) string {
+	items := []map[string]any{}
+	for _, p := range pairs {
+		var id any
+		if p[1] != "" {
+			id = p[1]
+		}
+		items = append(items, map[string]any{"name": p[0], "categoryId": id})
+	}
+	b, _ := json.Marshal(map[string]any{"items": items})
+	return string(b)
+}
+
+func decodeSellers(t *testing.T, rec *httptest.ResponseRecorder) []SellerSuggestion {
+	t.Helper()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d %s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		Items []SellerSuggestion `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	return got.Items
+}
+
+func suggested(s SellerSuggestion) string {
+	if s.CategoryID == nil {
+		return "null"
+	}
+	return *s.CategoryID
+}
+
+func TestSellersSendsOnlyNamesAndSections(t *testing.T) {
+	names := []string{"Magnum Cash&Carry", "ИП Сулейменов Аптека Плюс", "YANDEX.GO"}
+	f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{sellersAnswer(
+		[2]string{"ИП Сулейменов Аптека Плюс", "sc_health"}, [2]string{"Magnum Cash&Carry", "sc_food"},
+		[2]string{"Лишний продавец", "sc_food"}, [2]string{"YANDEX.GO", "sc_taxi"},
+	)}}, true)
+	rec := f.postTo(t, "/api/ai/sellers", f.member, sellersBody(names...))
+	got := decodeSellers(t, rec)
+
+	if len(f.claude.sent) != 1 {
+		t.Fatalf("calls = %d, want 1", len(f.claude.sent))
+	}
+	sent := f.claude.sent[0]
+	keys := make([]string, 0, len(sent))
+	for k := range sent {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	if want := []string{"max_tokens", "messages", "model", "output_config", "system"}; !slices.Equal(keys, want) {
+		t.Fatalf("body keys = %v, want %v", keys, want)
+	}
+	sys, _ := json.Marshal(sent["system"])
+	wantSys, _ := json.Marshal([]any{map[string]any{"text": sellersSystem, "type": "text"}})
+	if !bytes.Equal(sys, wantSys) {
+		t.Errorf("system = %s", sys)
+	}
+	// The user message is the names and the sections — nothing else: no ids, emails, sums, dates.
+	wantText := `{"names":["Magnum Cash&Carry","ИП Сулейменов Аптека Плюс","YANDEX.GO"],"categories":` + sellersCategories + `}`
+	msgs, _ := json.Marshal(sent["messages"])
+	wantMsgs, _ := json.Marshal([]any{map[string]any{"content": []any{map[string]any{"text": wantText, "type": "text"}}, "role": "user"}})
+	if !bytes.Equal(msgs, wantMsgs) {
+		t.Errorf("messages = %s\nwant %s", msgs, wantMsgs)
+	}
+	raw, _ := json.Marshal(sent)
+	for _, leak := range []string{f.family, "a@example.com", "2026-10", "₸"} {
+		if bytes.Contains(raw, []byte(leak)) {
+			t.Errorf("request leaks %q", leak)
+		}
+	}
+	if sent["model"] != "claude-haiku-5-5" {
+		t.Errorf("model = %v", sent["model"])
+	}
+	if oc, _ := sent["output_config"].(map[string]any); oc["effort"] != "low" {
+		t.Errorf("effort = %v", oc["effort"])
+	}
+
+	// In the order of the names; a section outside the list is null; a name not sent is dropped.
+	if len(got) != 3 || got[0].Name != names[0] || suggested(got[0]) != "sc_food" || got[1].Name != names[1] ||
+		suggested(got[1]) != "sc_health" || got[2].Name != names[2] || suggested(got[2]) != "null" {
+		t.Errorf("items = %s", rec.Body.String())
+	}
+	if u := f.usage(); u.Requests != 1 || u.InputTokens != 1000 || u.OutputTokens != 200 || u.CostMicros != ai.CostMicros(ai.Usage{Model: "claude-haiku-5-5", InputTokens: 1000, OutputTokens: 200}) {
+		t.Errorf("usage = %+v", u)
+	}
+}
+
+func TestSellersMissingNameIsNull(t *testing.T) {
+	// The model skipped one name, changed the case of another and repeated a third: the first item wins.
+	f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{sellersAnswer(
+		[2]string{"magnum  cash&carry", "sc_food"}, [2]string{"Аптека Плюс", ""}, [2]string{"Аптека Плюс", "sc_health"},
+	)}}, true)
+	got := decodeSellers(t, f.postTo(t, "/api/ai/sellers", f.member, sellersBody("Magnum Cash&Carry", "YANDEX.GO", "Аптека Плюс")))
+	if len(got) != 3 || suggested(got[0]) != "sc_food" || got[0].Name != "Magnum Cash&Carry" || suggested(got[1]) != "null" ||
+		got[1].Name != "YANDEX.GO" || suggested(got[2]) != "null" {
+		t.Errorf("items = %+v", got)
+	}
+}
+
+func TestSellersGuard(t *testing.T) {
+	f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{sellersAnswer()}}, true)
+	many := make([]string, 51)
+	for i := range many {
+		many[i] = "Продавец " + strconv.Itoa(i)
+	}
+	cats := make([]string, 41)
+	for i := range cats {
+		cats[i] = `{"id":"c` + strconv.Itoa(i) + `","name":"Раздел"}`
+	}
+	one := `{"names":["Magnum"],`
+	for body, want := range map[string]int{
+		sellersBody("KASPI 1234567"):                                        http.StatusBadRequest, // 6+ digits — a card or an account
+		sellersBody("Magnum", "ИИН 870101300123 ИП"):                        http.StatusBadRequest,
+		sellersBody(many...):                                                http.StatusBadRequest,
+		sellersBody():                                                       http.StatusBadRequest,
+		sellersBody("Magnum", "Magnum"):                                     http.StatusBadRequest,
+		sellersBody("  "):                                                   http.StatusBadRequest,
+		sellersBody(strings.Repeat("я", 81)):                                http.StatusBadRequest,
+		one + `"categories":[]}`:                                            http.StatusBadRequest,
+		one + `"categories":[` + strings.Join(cats, ",") + `]}`:             http.StatusBadRequest,
+		one + `"categories":[{"id":"sc_food","name":""}]}`:                  http.StatusBadRequest,
+		one + `"categories":[{"id":"a","name":"A"},{"id":"a","name":"B"}]}`: http.StatusBadRequest,
+		one + `"categories":[{"id":"sc_food","name":"Продукты","hue":"green"}]}`:    http.StatusBadRequest,
+		one + `"amounts":[5000],"categories":[{"id":"sc_food","name":"Продукты"}]}`: http.StatusBadRequest,
+		`not json`: http.StatusBadRequest,
+		`{"names":["` + strings.Repeat("a", 17<<10) + `"],"categories":[]}`: http.StatusRequestEntityTooLarge,
+	} {
+		if rec := f.postTo(t, "/api/ai/sellers", f.member, body); rec.Code != want {
+			t.Errorf("%.60s: status %d, want %d", body, rec.Code, want)
+		}
+	}
+	// 50 names of 80 characters fit.
+	ok := make([]string, 50)
+	for i := range ok {
+		ok[i] = strings.Repeat("я", 78) + strconv.Itoa(10+i)
+	}
+	if rec := f.postTo(t, "/api/ai/sellers", f.member, sellersBody(ok...)); rec.Code != http.StatusOK {
+		t.Errorf("50 × 80: status %d %s", rec.Code, rec.Body.String())
+	}
+	if len(f.claude.sent) != 1 {
+		t.Errorf("calls = %d, want 1: a bad body must not reach the model", len(f.claude.sent))
+	}
+}
+
+func TestSellersGate(t *testing.T) {
+	body := sellersBody("Magnum")
+	t.Run("viewer 403", func(t *testing.T) {
+		f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{sellersAnswer()}}, true)
+		if rec := f.postTo(t, "/api/ai/sellers", f.viewer, body); rec.Code != http.StatusForbidden {
+			t.Errorf("status %d %s", rec.Code, rec.Body.String())
+		}
+		if len(f.claude.sent) != 0 {
+			t.Error("viewer must not reach the model")
+		}
+	})
+	t.Run("no key 503", func(t *testing.T) {
+		f := newReviewFixture(t, &fakeClaudeQueue{}, false)
+		if rec := f.postTo(t, "/api/ai/sellers", f.member, body); rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `"ai_off"`) {
+			t.Errorf("status %d %s", rec.Code, rec.Body.String())
+		}
+	})
+	t.Run("family off 503", func(t *testing.T) {
+		f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{sellersAnswer()}}, true)
+		_ = f.aiRepo.SetEnabled(context.Background(), f.family, false)
+		if rec := f.postTo(t, "/api/ai/sellers", f.member, body); rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `"ai_off"`) {
+			t.Errorf("status %d %s", rec.Code, rec.Body.String())
+		}
+	})
+	t.Run("limit 429", func(t *testing.T) {
+		f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{sellersAnswer()}}, true)
+		_ = f.aiRepo.AddUsage(context.Background(), f.family, f.month, 30, 0, 0, 0)
+		if rec := f.postTo(t, "/api/ai/sellers", f.member, body); rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), `"ai_limit"`) {
+			t.Errorf("status %d %s", rec.Code, rec.Body.String())
+		}
+		if len(f.claude.sent) != 0 {
+			t.Error("over the limit must not reach the model")
+		}
+	})
+	t.Run("model error 502 without spend", func(t *testing.T) {
+		f := newReviewFixture(t, &fakeClaudeQueue{status: 500}, true)
+		if rec := f.postTo(t, "/api/ai/sellers", f.member, body); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), `"ai_failed"`) {
+			t.Errorf("status %d %s", rec.Code, rec.Body.String())
+		}
+		if _, ok := f.aiRepo.Usage[f.family]; ok {
+			t.Errorf("an unbilled failure must not write usage: %+v", f.usage())
+		}
+	})
+	t.Run("off-schema 502, tokens billed", func(t *testing.T) {
+		f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{`{"items":[],"note":"x"}`}}, true)
+		if rec := f.postTo(t, "/api/ai/sellers", f.member, body); rec.Code != http.StatusBadGateway {
+			t.Errorf("status %d %s", rec.Code, rec.Body.String())
+		}
+		if u := f.usage(); u.Requests != 0 || u.InputTokens != 1000 {
+			t.Errorf("usage = %+v, want 0 requests and the billed tokens", u)
+		}
+	})
+}
+
+// liveSellers are de-identified names in the style of unknown sellers of real statements (no «ИП + фамилия»).
+var liveSellers = []string{"SMALL ALMATY", "IP ZHANNA COFFEE", "TOO SULPAK", "WOLT KZ", "CHOCOFOOD", "AIRBA FRESH",
+	"Kaspi Магазин", "EUROPHARMA", "INVIVO", "TOO KINOPARK 8"}
+
+// TestLiveSellers asks the real API: AI_LIVE=1, ANTHROPIC_API_KEY (memory/secrets/anthropic.md),
+// AI_LIVE_NAMES — a file with one name per line (default: liveSellers). It logs the time and the answer.
+func TestLiveSellers(t *testing.T) {
+	key := os.Getenv("ANTHROPIC_API_KEY")
+	if key == "" || os.Getenv("AI_LIVE") != "1" {
+		t.Skip("live sellers: set AI_LIVE=1 and ANTHROPIC_API_KEY")
+	}
+	names := liveSellers
+	if p := os.Getenv("AI_LIVE_NAMES"); p != "" {
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		names = nil
+		for _, l := range strings.Split(string(raw), "\n") {
+			if l = strings.TrimSpace(l); l != "" {
+				names = append(names, l)
+			}
+		}
+	}
+	f := newReviewFixture(t, &fakeClaudeQueue{}, false)
+	f.sellers.gate.client = ai.New(key, "")
+	start := time.Now()
+	rec := f.postTo(t, "/api/ai/sellers", f.member, sellersBody(names...))
+	t.Logf("%d in %v", rec.Code, time.Since(start).Round(100*time.Millisecond))
+	if rec.Code == http.StatusOK {
+		for _, s := range decodeSellers(t, rec) {
+			t.Logf("  %-28s → %s", s.Name, suggested(s))
+		}
+	} else {
+		t.Log(rec.Body.String())
 	}
 	u := f.usage()
 	t.Logf("usage: %d requests, %d in, %d out, %d µ$", u.Requests, u.InputTokens, u.OutputTokens, u.CostMicros)

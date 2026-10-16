@@ -72,6 +72,10 @@ func TestAIOffWithoutKey(t *testing.T) {
 			if rec := a.do(t, http.MethodPost, "/api/ai/review", hh.Token, map[string]any{"summary": []int{1}}); rec.Code != wantReview {
 				t.Errorf("/ai/review: %d %s, want %d", rec.Code, rec.Body.String(), wantReview)
 			}
+			// Продавцы (AI-11) — тот же гейт; название с 6+ цифрами — 400 до модели.
+			if rec := a.do(t, http.MethodPost, "/api/ai/sellers", hh.Token, map[string]any{"names": []string{"KASPI 1234567"}, "categories": []map[string]string{{"id": "sc_food", "name": "Продукты"}}}); rec.Code != wantReview {
+				t.Errorf("/ai/sellers: %d %s, want %d", rec.Code, rec.Body.String(), wantReview)
+			}
 		})
 	}
 }
