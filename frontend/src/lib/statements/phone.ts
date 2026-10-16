@@ -27,7 +27,8 @@ const sameBank = (st: Operation, ph: Operation) => ph.bank === st.bank || ph.ban
 /**
  * Какие траты с телефона заменяет выписка (Р-2 «выписка — истина», порядок Р-16). Для каждой строки выписки:
  * (1) операция с телефона того же банка (или `card`), знака, суммы (из валюты — в пределах 3 %), даты ±1 день и того
- * же продавца по `normalizeMerchant`; (2) нет — **единственная** такая же по сумме и дате у того же банка или `card`;
+ * же продавца по `normalizeMerchant`; (2) нет — **единственная** такая же по сумме и дате у того же банка или `card`
+ * (фантом п. 3 не в счёт, если единственное касание не-фантом ближе его по дате);
  * (3) операции с телефона банка выписки с датой в `[from, to − 1 день]` без пары — фантом (отклонённая оплата, повтор
  * триггера), тоже уходят: последний день выписки бывает неполным. Каждая операция с телефона — не больше чем в одной
  * паре, ближайшая по дате побеждает. Отдаёт id операций с телефона.
@@ -50,18 +51,24 @@ export function replacedByStatement(statementOps: Operation[], phoneOps: Operati
     else left.push(st)
   }
 
-  // (2) единственный кандидат того же банка или «карты».
+  // Фантом этой выписки: банк выписки, дата в `[from, to − 1 день]` — уходит по п. 3 в любом случае.
+  const phantom = (ph: Operation) => files.some((f) => ph.bank === f.bank && ph.date >= f.from && dayNumber(ph.date) < dayNumber(f.to))
+
+  // (2) единственный кандидат того же банка или «карты». Фантом этой выписки не делает строку неоднозначной, если
+  // единственный не-фантом ближе любого фантома (кофе каждый день: касание последнего дня — пара своей строке).
   for (const st of left) {
     const candidates = phone.filter((ph) => !out.has(ph.id) && sameBank(st, ph) && sameMoney(st, ph) && gap(st, ph) <= 1)
-    if (candidates.length === 1) out.add(candidates[0].id)
+    const real = candidates.filter((ph) => !phantom(ph))
+    const pick =
+      candidates.length === 1
+        ? candidates[0]
+        : real.length === 1 && candidates.every((ph) => ph === real[0] || gap(st, ph) > gap(st, real[0]))
+          ? real[0]
+          : undefined
+    if (pick) out.add(pick.id)
   }
 
   // (3) фантомы внутри периода выписки своего банка, кроме последнего дня.
-  for (const f of files) {
-    const last = dayNumber(f.to)
-    for (const ph of phone) {
-      if (ph.bank === f.bank && ph.date >= f.from && dayNumber(ph.date) < last) out.add(ph.id)
-    }
-  }
+  for (const ph of phone) if (phantom(ph)) out.add(ph.id)
   return out
 }

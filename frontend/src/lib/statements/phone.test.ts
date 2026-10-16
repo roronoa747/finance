@@ -68,6 +68,18 @@ describe('replacedByStatement', () => {
     expect(ids(res)).toEqual(['p1', 'p2'])
   })
 
+  it('п. 2 — фантом этой выписки не спорит с более близким касанием (кофе каждый день, ревью frontend Н-1)', () => {
+    const span = [{ bank: 'kaspi' as const, from: '2026-10-01', to: '2026-10-15' }]
+    const coffee = (id: string, date: string) => ph(id, date, -1200, 'Coffee')
+    const line = (id: string, date: string) => st(id, date, -1200, 'IP AHMETOV')
+    // A: строки 14 и 15, касания 14 и 15 — оба убраны (было: касание 15 вторым рядом со строкой 15).
+    expect(ids(replacedByStatement([line('s14', '2026-10-14'), line('s15', '2026-10-15')], [coffee('p14', '2026-10-14'), coffee('p15', '2026-10-15')], span))).toEqual(['p14', 'p15'])
+    // B: строка 15; касание 14 отклонено банком, касание 15 — оба убраны.
+    expect(ids(replacedByStatement([line('s15', '2026-10-15')], [coffee('p14', '2026-10-14'), coffee('p15', '2026-10-15')], span))).toEqual(['p14', 'p15'])
+    // C: строка 14; касание 15 после выгрузки выписки (его в ней нет) — остаётся.
+    expect(ids(replacedByStatement([line('s14', '2026-10-14')], [coffee('p14', '2026-10-14'), coffee('p15', '2026-10-15')], span))).toEqual(['p14'])
+  })
+
   it('ближайшая по дате побеждает', () => {
     const res = replacedByStatement(
       [st('s1', '2026-10-14', -5000, 'Magnum')],
