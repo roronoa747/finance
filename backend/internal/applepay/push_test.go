@@ -153,3 +153,52 @@ func TestParsePushIgnoreAndUnknown(t *testing.T) {
 		t.Errorf("pounds: %v %+v", res, op)
 	}
 }
+
+// Критик Б2: the balance under a longer label is never the amount nor the merchant; an advert's
+// "до / от N ₸" is no money moved; a refund in any line is not an operation; a phone or card
+// number split by spaces never reaches the merchant.
+func TestParsePushBalanceAdvertsRefunds(t *testing.T) {
+	for _, c := range []struct {
+		app, title, body string
+		want             Result
+		minor            int64
+		merchant         string
+	}{
+		// Balance labels with words before the money: cut with the money.
+		{"Kaspi.kz", "Kaspi Gold", "Покупка: 500 ₸\nMAGNUM\nДоступно на карте: 1 529,82 ₸", ResultOp, 50000, "MAGNUM"},
+		{"Homebank", "Halyk Bank", "Покупка 700 KZT SMALL. Остаток на счёте 9 000 KZT", ResultOp, 70000, "SMALL"},
+		{"Freedom SuperApp", "Покупка", "-300 ₸\nДоступный остаток 2 000 ₸\nMAGNUM", ResultOp, 30000, "MAGNUM"},
+		// Only the balance has money: no operation (the balance is never a purchase).
+		{"Kaspi.kz", "Kaspi Gold", "Покупка в MAGNUM\nДоступно на карте: 1 529,82 ₸", ResultIgnore, 0, ""},
+		{"Homebank", "Halyk Bank", "Покупка MAGNUM. Остаток на счёте 1 000 KZT", ResultIgnore, 0, ""},
+		// Adverts: a range is not money moved — not written (digits stay: «не разобрано»).
+		{"Kaspi.kz", "Kaspi.kz", "Переводите без комиссии до 1 000 000 ₸", ResultUnknown, 0, ""},
+		{"Kaspi.kz", "Kaspi Red", "Покупки в рассрочку 0-0-24 от 50 000 ₸", ResultUnknown, 0, ""},
+		{"Freedom SuperApp", "Пополните депозит", "Ставка 15% на сумму свыше 100 000 ₸", ResultUnknown, 0, ""},
+		// A refund or a cancellation in any line: not money of its own (отклонение 3 исполнителя).
+		{"Kaspi.kz", "Kaspi Gold", "Пополнение: 5 000 ₸\nВозврат покупки MAGNUM\nДоступно: 1 ₸", ResultIgnore, 0, ""},
+		{"Freedom SuperApp", "Пополнение", "+5 000 ₸\nОтмена покупки\nДоступно 1 ₸", ResultIgnore, 0, ""},
+		// Digits of a phone or a card split by spaces never reach the merchant (Р-11).
+		{"Kaspi.kz", "Kaspi Gold", "Покупка: 2 000 ₸\nОплата по номеру +7 701 123 45 67", ResultOp, 200000, "по номеру"},
+		{"Homebank", "Halyk Bank", "Покупка 5 000 KZT MAGNUM. Карта 4400 43** **** 0166. Доступно 1 KZT", ResultOp, 500000, "MAGNUM"},
+	} {
+		op, res := ParsePush(c.app, c.title, c.body)
+		if res != c.want || res == ResultOp && (op.Minor != c.minor || op.Merchant != c.merchant) {
+			t.Errorf("%q / %q: %v %d %q, want %v %d %q", c.title, c.body, res, op.Minor, op.Merchant, c.want, c.minor, c.merchant)
+		}
+		if strings.ContainsAny(op.Merchant, "0123456789") || strings.Contains(strings.ToLower(op.Merchant), "доступ") {
+			t.Errorf("%q: digits or the balance label in the merchant %q", c.body, op.Merchant)
+		}
+	}
+	// The owner's two samples (sums replaced, NBSP as on the lock screen): top-ups, never purchases.
+	const nbsp = " "
+	for _, s := range [][3]string{
+		{"Kaspi.kz", "Kaspi Gold", "Пополнение: 200" + nbsp + "₸\nС карты другого банка\nДоступно: 1" + nbsp + "529,82" + nbsp + "₸"},
+		{"Freedom SuperApp", "Пополнение с карты др…", "+200" + nbsp + "₸\nДоступно 19" + nbsp + "539,74" + nbsp + "₸\nПополнено SuperCard **0166"},
+	} {
+		op, res := ParsePush(s[0], s[1], s[2])
+		if res != ResultOp || op.Kind != "transfer-in" || op.Sign != +1 || op.Minor != 20000 || !op.Placeholder || op.Merchant != Placeholder("transfer-in") {
+			t.Errorf("owner's top-up %q: %v %+v", s[1], res, op)
+		}
+	}
+}

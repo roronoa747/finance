@@ -85,8 +85,15 @@ var (
 	// exchange-rate difference (Kaspi's later correction of a foreign purchase — not a spend).
 	ignoreWords = words(`отклон|отказ|недостаточно|не выполн|не прош|отмен|код|парол|никому|` +
 		`возврат|курсов\S*\s+разниц|кэшбэк|кешбэк|cashback|бонус|акци|скидк|розыгрыш|подарок|declined|code`)
-	// balance: "Доступно: 1 529,82 ₸" — the rest of the account, never an operation (Р-8, Р-11).
-	balance = regexp.MustCompile(`(?i)` + wordStart + `(?:доступно|остаток|баланс|available|balance)[^\p{L}\d]{0,3}(?:` + moneyToken.String() + `)`)
+	// balance: "Доступно: 1 529,82 ₸", "Доступно на карте: …", "Остаток на счёте …" — the rest of the
+	// account, never an operation (Р-8, Р-11): the label and the nearest money after it on its line.
+	balance = regexp.MustCompile(`(?i)` + wordStart + `(?:доступн\p{L}*|остаток|баланс|available|balance)[^\d\n]{0,30}?(?:` + moneyToken.String() + `)`)
+	// reversalWords anywhere in the text: a refund or a cancellation, not an operation (отклонение 3).
+	reversalWords = words(`возврат|отмен|сторно`)
+	// rangeBefore: "до 1 000 000 ₸", "от 50 000 ₸" — an advert's range, never an operation's amount.
+	rangeBefore = regexp.MustCompile(`(?i)` + wordStart + `(?:от|до|свыше|from|up to)[ \x{00A0}\x{202F}]*$`)
+	// spacedDigits: a phone or a card number split by spaces ("+7 701 123 45 67") — 6+ digits never stored.
+	spacedDigits = regexp.MustCompile(`\+?\d(?:[ \x{00A0}\x{202F}()\-]*\d){5,}`)
 	// cardMask: "**0166", "*1234", "•• 1234" — never stored.
 	cardMask = regexp.MustCompile(`[*•·]+\s?\d{2,4}`)
 	// lineSplit: one-line texts split at "/", "|", ";" and at ". " before a capital letter.
@@ -117,6 +124,10 @@ var placeholders = map[string]string{
 	"cash":         "Снятие наличных",
 }
 
+// Placeholder is the merchant of a push of this kind that named nobody ("Перевод", "Пополнение"):
+// a transfer between own banks names no person on either side (Р-8, AP-10).
+func Placeholder(kind string) string { return placeholders[kind] }
+
 // PushBank names the bank of a push: by the app first (Kaspi.kz, Freedom, Halyk / Homebank),
 // then by the title and the text; "card" when none names one.
 func PushBank(app, title, body string) string {
@@ -143,10 +154,11 @@ func ParsePush(app, title, body string) (PushOp, Result) {
 		return op, ResultIgnore
 	}
 	lead := strings.Join(lines[:leadLines(title, lines)], "\n")
-	if ignoreWords.MatchString(lead) {
+	all := strings.Join(lines, "\n")
+	// A refund anywhere ("Пополнение: 5 000 ₸ / Возврат покупки") — not money of its own.
+	if ignoreWords.MatchString(lead) || reversalWords.MatchString(all) {
 		return op, ResultIgnore
 	}
-	all := strings.Join(lines, "\n")
 	sign, currency, minor, found := pushAmount(all)
 	if !found {
 		if currency == Unsupported {
@@ -259,6 +271,9 @@ func pushAmount(text string) (sign int, currency string, minor int64, found bool
 		if end = tokenEnd(text, start, end); end < 0 {
 			continue
 		}
+		if rangeBefore.MatchString(text[:start]) {
+			continue // "Переводите без комиссии до 1 000 000 ₸": an advert's range, not the money moved
+		}
 		code, m, ok := ParseAmount(text[start:end])
 		if !ok {
 			if c, _, _ := currencyIn(text[start:end]); c == Unsupported {
@@ -291,6 +306,7 @@ func pushMerchant(kind string, lines []string) (string, bool) {
 	details := make([]string, 0, len(lines))
 	for _, l := range lines {
 		l = moneyToken.ReplaceAllString(l, " ")
+		l = spacedDigits.ReplaceAllString(l, " ")
 		l = strings.Trim(strings.Join(strings.Fields(l), " "), " +-−.,:;…")
 		l = kindWordAtStart.ReplaceAllString(l, "")
 		// The bank and the product ("Kaspi Gold", "Kaspi QR · Coffee", "SuperCard") are not the merchant.
