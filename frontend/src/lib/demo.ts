@@ -344,10 +344,17 @@ export function startDemo(): boolean {
     const week = weekKey()
     const prevWeek = weekKey(new Date(Date.now() - 7 * 86_400_000))
     const month = monthKey()
+    // Три прошлых месяца b — для «обычно у вас» на «Месяце» (AU-03, Р-5): кафе обычно ~18 000, в этом месяце — 62 000
+    // (точка у «Кафе и рестораны» и «до плана» в мечту при любом дне месяца).
+    const past = ([[-3, 70_000, 66_000, 16_000], [-2, 76_000, 78_000, 20_000], [-1, 73_000, 76_000, 18_000]] as const).flatMap(([n, food, shop, cafe]) => {
+      const p = addMonths(month, n)
+      return [total('month', p, 'sc_food', food, 11), total('month', p, 'sc_shopping', shop, 3), total('month', p, 'sc_cafe', cafe, 4)]
+    })
     doc.spendTotals = [
+      ...past,
       total('week', prevWeek, 'sc_food', 24_000, 5),
       total('week', week, 'sc_food', 20_000, 4), total('week', week, 'sc_shopping', 34_000, 2),
-      total('month', month, 'sc_food', 40_000, 8), total('month', month, 'sc_shopping', 34_000, 2),
+      total('month', month, 'sc_food', 40_000, 8), total('month', month, 'sc_shopping', 34_000, 2), total('month', month, 'sc_cafe', 62_000, 3),
     ]
     // Итог поездки партнёра b (PN-32) — руками, как её итоги разделов: общий итог «За поездку» — двоих.
     doc.tripSpends = [{ id: 'g-trip:b', goalId: 'g-trip', by: 'b', amount: 64_000, ops: 5, updatedAt: at }]
@@ -391,11 +398,12 @@ export function startDemo(): boolean {
   financeStore.addExchange({ by: 'a', accountId: 'acc-eur', toAccountId: 'acc-kaspi', foreign: 500, rate: 512, period: monthKey() })
   // Записи загрузок и свои операции демо — когда стор операций уже переключился на демо-семью (watch по владельцу).
   void nextTick().then(() => {
-    // Девять недель своих операций (0…62 дня назад, Блок 15): у «Недели» есть сравнение с прошлой и тренд
-    // «8 недель»; одна загрузка покрывает их все.
+    // Девятнадцать недель своих операций (0…131 день назад, Блок 15, AU-03): у «Недели» есть сравнение с прошлой и тренд
+    // «8 недель», у «Месяца» — «обычно у вас»; одна загрузка покрывает их все.
     const day = (ago: number) => new Date(Date.now() - ago * 86_400_000).toISOString().slice(0, 10)
     const today = day(0)
-    const from = day(63)
+    // Выписка a — с 1-го числа три месяца назад (AU-03): три полных месяца для «обычно у вас»; операции — ниже, до 131 дня.
+    const from = `${addMonths(monthKey(), -3)}-01`
     const ops = useOperationsStore()
     // «Выписки» недели (B2C-62/67): участник a загрузил, партнёр b — ещё нет (галочка и «ещё нет»). У партнёра b — выписка
     // месяца до этой недели: план месяца показывает факт трат обоих (B2C-90); в первые дни месяца, когда
@@ -403,9 +411,11 @@ export function startDemo(): boolean {
     const monthStart = `${monthKey()}-01`
     const weekStart = weekRange(weekKey()).from
     const arunaTo = weekStart > monthStart ? new Date(Date.parse(weekStart) - 86_400_000).toISOString().slice(0, 10) : today
+    const prevEnd = new Date(Date.parse(`${monthStart}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10)
     ops.seedDemoUploads([
-      { id: 'demo-upload-a', slot: 'a', bank: 'kaspi', period_from: from, period_to: today, ops_count: 55, created_at: new Date().toISOString() },
-      { id: 'demo-upload-b', slot: 'b', bank: 'kaspi', period_from: monthStart, period_to: arunaTo, ops_count: 10, created_at: new Date().toISOString() },
+      { id: 'demo-upload-a', slot: 'a', bank: 'kaspi', period_from: from, period_to: today, ops_count: 95, created_at: new Date().toISOString() },
+      { id: 'demo-upload-b-prev', slot: 'b', bank: 'kaspi', period_from: `${addMonths(monthKey(), -3)}-01`, period_to: prevEnd, ops_count: 54, created_at: new Date().toISOString() },
+      { id: 'demo-upload-b', slot: 'b', bank: 'kaspi', period_from: monthStart, period_to: arunaTo, ops_count: 13, created_at: new Date().toISOString() },
     ])
     // Пять разделов, продавцы — только из словаря (иначе ответ на продавца, переразложив операции правилами,
     // вернёт их в «не разобрано»; суммы — вне окна оценки «Коммуналки» 21–39 тыс., иначе «платёж по
@@ -414,9 +424,10 @@ export function startDemo(): boolean {
     const op = (n: number, ago: number, amount: number, merchant: string, categoryId: string | null, extra: Partial<Operation> = {}): Operation => ({
       id: `demo-op-${n}`, bank: 'kaspi', date: day(ago), amount, kind: 'purchase', merchant, categoryId, internal: false, ...extra,
     })
-    // Ещё семь недель назад (14…62 дня, Блок 15): у тренда «8 недель», сравнения недель и остатка разделов есть
-    // данные. Суммы — вне допусков платежей (подписки 3–5 тыс., «Коммуналка» 21–39 тыс.): вопросов не добавляют.
-    const older = [1, 0.8, 1.15, 0.9, 1.3, 0.7, 1.05].flatMap((k, w) => {
+    // Ещё семнадцать недель назад (14…131 день, Блок 15; AU-03 — до начала месяца три месяца назад): у тренда «8 недель»,
+    // сравнения недель, остатка разделов и «обычно у вас» есть данные. Суммы — вне допусков платежей (подписки 3–5 тыс.,
+    // «Коммуналка» 21–39 тыс.): вопросов не добавляют.
+    const older = [1, 0.8, 1.15, 0.9, 1.3, 0.7, 1.05, 1.1, 0.95, 1.2, 0.85, 1, 0.9, 1.15, 0.8, 1.05, 1].flatMap((k, w) => {
       const ago = 14 + w * 7
       const sum = (n: number) => -Math.round((n * k) / 100) * 100
       return [
