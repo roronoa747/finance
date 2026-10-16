@@ -12,6 +12,7 @@ import {
   cushionCover,
   doneLabel,
   doneTerm,
+  dreamShift,
   fundMonthsOf,
   goalMonthly,
   goalPace,
@@ -23,6 +24,8 @@ import {
   movementMonth,
   payableAccounts,
   planForecast,
+  returnTermShift,
+  shiftLabel,
   tripStatus,
 } from '@/lib/finance'
 import { addMonths, atLabel, monthIn, monthKey, monthTitle, MONTHS_NOM, parseMonthKey, todayIso, weekRangeLabel } from '@/lib/dates'
@@ -56,6 +59,7 @@ import Tag from '@/components/kit/Tag.vue'
 import Toast from '@/components/kit/Toast.vue'
 import { useSavedMark } from '@/components/kit/useSavedMark'
 import DoneSheet from '@/components/goals/DoneSheet.vue'
+import DoSheet from '@/components/plan/DoSheet.vue'
 import GoalSheet from '@/components/goals/GoalSheet.vue'
 import PhotoPicker from '@/components/goals/PhotoPicker.vue'
 import StorySheet from '@/components/goals/StorySheet.vue'
@@ -153,6 +157,18 @@ const doneTitle = computed(() => {
   // Взнос есть, но остатка месяца на него не хватает (план даёт 0) — срока нет, как на «Мечтах».
   return goal.value && goal.value.monthly > 0 && remaining.value > 0 ? 'Срока пока нет' : 'Взнос не задан'
 })
+/**
+ * «Мечта сдвинулась» (AU-06, Р-6): метка к снимку начала месяца — тот же расчёт, что на «Мечтах» (`dreamShift`);
+ * «Вернуть срок» — кандидат `returnTermShift` (денег нет — кнопки нет), лист `DoSheet`.
+ */
+const shiftInput = computed(() => financeStore.planInput(monthKey()))
+const shiftSnap = computed(() => financeStore.termSnapFor(monthKey()))
+const shift = computed(() => (goal.value && !isDone.value ? dreamShift(shiftInput.value.state, shiftInput.value.ctx, shiftSnap.value, goal.value.id) : null))
+const shiftText = computed(() => (shift.value ? shiftLabel(shift.value) : ''))
+const returnShift = computed(() =>
+  shift.value && shift.value.days > 0 && goal.value ? returnTermShift(shiftInput.value.state, shiftInput.value.ctx, shiftSnap.value, goal.value.id) : null,
+)
+const returnOpen = ref(false)
 // Выключенная в плане — без строки взносов: её нет в этом месяце.
 const doneLine = computed(() => {
   if (!goal.value || term.value?.off) return ''
@@ -525,6 +541,13 @@ function share() {
         <h2 class="type-h2 text-ink">{{ doneTitle }}</h2>
         <p v-if="doneLine" class="mt-1.5 text-[15px] text-ink-2">{{ doneLine }}</p>
       </template>
+      <!-- Метка «мечта сдвинулась» (AU-06, Р-6) и «Вернуть срок» у неё — тихо, главная остаётся «Пополнить» -->
+      <div v-if="shift" class="mt-2 flex items-center justify-between gap-2">
+        <p class="flex min-w-0 items-center gap-1.5 text-[13px] text-ink-2" data-goal-shift>
+          <i class="size-1.5 shrink-0 rounded-full" :class="shift.days > 0 ? 'bg-warn' : 'bg-ok'" aria-hidden="true" />{{ shiftText }}
+        </p>
+        <Button v-if="canEdit && returnShift" variant="secondary" size="sm" class="shrink-0" data-return-term @click="returnOpen = true">Вернуть срок</Button>
+      </div>
       <Button
         v-if="canEdit"
         class="mt-3.5 w-full"
@@ -695,6 +718,7 @@ function share() {
     </Sheet>
 
     <!-- «Ближе на N дней» (PN-09): тост после пополнения, в оболочке — над вкладками -->
+    <DoSheet :candidate="returnOpen ? returnShift : null" returning @close="returnOpen = false" />
     <Toast v-if="closerNote"><span data-closer>{{ closerNote }}</span></Toast>
     <Toast v-if="termNote" action="Оставить взнос" @action="keepMonthly"><span data-term>{{ termNote }}</span></Toast>
 

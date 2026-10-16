@@ -7,7 +7,8 @@ import CountUp from './CountUp.vue'
 /**
  * Мечта по центру (пивот 3, Р-42): фото квадратом 236 со скруглением 32, под ним одна строка «<название> · N %»
  * средним размером (владелец, 2026-10-15, FR-09: процент не крупной цифрой, серой строки «ближе на N дней» / «на паузе» нет —
- * срок, пауза и траты поездки живут на экране цели). Процент бежит (`CountUp`). Нажатие на фото или строку — `open`
+ * срок, пауза и траты поездки живут на экране цели; исключение — метка «мечта сдвинулась» `note`, Р-6 «ИИ-польза», только
+ * при сдвиге от недели). Процент бежит (`CountUp`). Нажатие на фото или строку — `open`
  * (экран цели). Слот `actions` — под строкой («Добавить фото»). `empty` — «На что копим?» с одной брендовой «Выбрать
  * мечту» (у viewer без кнопки). Процент считает `finance.ts` — здесь только вывод.
  */
@@ -19,8 +20,11 @@ const props = withDefaults(
     author?: string | null
     empty?: boolean
     canPick?: boolean
+    /** Метка «мечта сдвинулась» (AU-06, Р-6): тихая строка под названием, точка — `warn` дальше, `ok` ближе. */
+    note?: string | null
+    noteTone?: 'warn' | 'ok'
   }>(),
-  { title: '', percent: 0, src: null, author: null, empty: false, canPick: true },
+  { title: '', percent: 0, src: null, author: null, empty: false, canPick: true, note: null, noteTone: 'warn' },
 )
 
 const emit = defineEmits<{ (e: 'open'): void; (e: 'pick'): void }>()
@@ -55,6 +59,9 @@ const percentText = (n: number) => `${n}${NBSP}%`
       </span>
       <span class="max-w-[300px] text-balance text-[20px] font-semibold leading-snug text-ink" data-hero-line>
         {{ title }}{{ NBSP }}·{{ NBSP }}<span class="font-num font-bold num"><CountUp :value="pct" :format="percentText" /></span>
+      </span>
+      <span v-if="note" class="-mt-1 flex max-w-[300px] items-center gap-1.5 text-[13px] text-ink-2" data-hero-note>
+        <i class="size-1.5 shrink-0 rounded-full" :class="noteTone === 'ok' ? 'bg-ok' : 'bg-warn'" aria-hidden="true" />{{ note }}
       </span>
     </button>
     <div v-if="$slots.actions" class="flex flex-wrap justify-center gap-2">

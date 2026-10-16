@@ -7,7 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
 import { money, pct } from '@/lib/money'
 import { monthKey, monthShort } from '@/lib/dates'
-import { doneGoals, doneTerm, goalTerm, planForecast, wishQueue } from '@/lib/finance'
+import { doneGoals, doneTerm, dreamShift, goalTerm, planForecast, shiftLabel, wishQueue } from '@/lib/finance'
 import type { Goal } from '@/types/finance'
 import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
@@ -67,9 +67,20 @@ function termOf(g: Goal) {
   const item = plan.value.queue.find((x) => x.goalId === g.id)
   return goalTerm(item, g, key.value, item?.paused === 'plan' ? forecast.value : undefined)
 }
-/** Подпись цели в строке — только «на паузе»; срок цели — на её экране (Р-116). */
+/**
+ * Метка «мечта сдвинулась» (AU-06, Р-6): сдвиг срока к снимку начала месяца и причина — `dreamShift`; снимка нет или
+ * сдвиг меньше недели — ничего. Тот же расчёт, что у экрана цели.
+ */
+const snap = computed(() => financeStore.termSnapFor(key.value))
+function shiftOf(g: Goal) {
+  const { state, ctx } = financeStore.planInput(key.value)
+  const s = dreamShift(state, ctx, snap.value, g.id)
+  return s ? { text: shiftLabel(s), tone: s.days > 0 ? ('warn' as const) : ('ok' as const) } : null
+}
+const heroShift = computed(() => (main.value ? shiftOf(main.value) : null))
+/** Подпись цели в строке — «на паузе» или метка сдвига; срок цели — на её экране (Р-116). */
 function whenOf(g: Goal): string {
-  return termOf(g).off ? 'на паузе' : ''
+  return termOf(g).off ? 'на паузе' : (shiftOf(g)?.text ?? '')
 }
 
 const heroPercent = computed(() => (main.value ? pct(main.value.have, main.value.need) : 0))
@@ -134,6 +145,8 @@ onMounted(refresh)
         :percent="heroPercent"
         :src="heroSrc"
         :author="main.photoCredit?.author"
+        :note="heroShift?.text"
+        :note-tone="heroShift?.tone"
         @open="router.push(`/goals/${main.id}`)"
       >
         <template v-if="canEdit && !main.photoId" #actions>
