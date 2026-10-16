@@ -23,7 +23,24 @@
 - Форматы пушей — `C:\Users\SW\finance\memory\secrets\push-samples\web-formats.md` (сеть) +
   `…\push-samples\README.md` (образцы владельца); в git и доки — только формы строк с синтетическими суммами.
 - Задачи: AP-09 → AP-10 → AP-11 → AP-12. Миграция — **`000009`**.
-- **Факты кода после Блока 1** (заполняет критик Блока 1): —
+- **Факты кода после Блока 1** (критик Блока 1, 2026-10-16; полный список — §6 индекса «После Блока 1»):
+  - Образец ручки — `handlers/applepay.go` `Tap`: `member(w, r)` после `KeyAuth` → тело `map[string]json.RawMessage`
+    (`tapField`: строка, число, объект → текст) → разбор → лимит `CountPhoneOperationsSince` (сутки Алматы, `almaty`)
+    → запись → `tapResult(w, status, reason)`. Тело для админа — `keepForAdmin` (только `ADMIN_EMAILS`).
+  - **Запись операции с телефона — только `InsertPhoneOperation(ctx, user, household, op, repeat) (saved, err)`**:
+    повтор того же `source` и денег в ±`repeat` и вставка — одна транзакция под `pg_advisory_xact_lock(hashtext(
+    'phone-op:' || user))`. Склейку касания и пуша (≤ 10 мин, любой порядок, Р-21) и пару «перевод себе» (Р-8) делать
+    **в той же транзакции под той же блокировкой** (расширить этот метод или его соседа в `statement_repo.go`; мок —
+    `mock_repo.go` под мьютексом) — иначе два срабатывания разом дают две операции (критик Б1 поймал на PG: 3 из 5).
+    `FindRecentPhoneOperation` удалён критиком (гонка «проверил → записал»).
+  - Разбор: `applepay.ParseAmount` (строка суммы), `FindAmount` (сумма в тексте: знак — не покупка, время/дата/№ перед
+    суммой не приклеиваются), `BankOfCard`, `CleanMerchant`, `MerchantFrom`; `Unsupported` — валюта не из приложения.
+  - Фронт: пуши идут той же веткой, что касания (`source: 'push'` в `fromWire`, `settlePhone`, `replacedByStatement`;
+    правила 1–2 — тот же банк или `card`). Статус и ссылки — `stores/applepay.ts` (`status`, `load(client, force)`,
+    `link`, `path`); вторая команда в листе — `components/applepay/ApplePaySheet.vue` (`STEPS`); карточка —
+    `ApplePayCard.vue`. e2e-фейк — `serverTap` и надгробия в `e2e/support/family.ts`.
+  - **Хвост §4 «отметка платежа на заменённом касании»**: пуши переводов и платежей станут кандидатами «это платёж по
+    …» — решение владельца (перенос `opId` / `tripExcluded` на строку выписки) нужно до AP-11.
 - Handoff по правилу 12: точка у зарплаты, шаги второй команды, строка «Цифр».
 - Следующий шаг — `/critic apple-pay 2`.
 
