@@ -170,9 +170,8 @@ func NewRouter(
 	aiGate := handlers.NewAIGate(repos.AI, aiClient, cfg.AIMonthlyLimitMicros)
 	aiReviewHandler := handlers.NewAIReviewHandler(aiGate, cfg.AIModelReview)
 	aiSellersHandler := handlers.NewAISellersHandler(aiGate, cfg.AIModelSellers)
-	aiWishHandler := handlers.NewAIWishHandler(aiGate, cfg.AIModelWish)
 	// The limit is money: a model with no price is billed as the priciest — say so in the logs.
-	for _, m := range []string{cfg.AIModelReview, cfg.AIModelSellers, cfg.AIModelWish} {
+	for _, m := range []string{cfg.AIModelReview, cfg.AIModelSellers} {
 		if aiClient != nil && !ai.KnownPrice(m) {
 			log.Printf("ai: no price for model %q — billing it as the priciest", m)
 		}
@@ -246,8 +245,6 @@ func NewRouter(
 				family.Post("/ai/review", aiReviewHandler.Review)
 				// AI-11: разделы незнакомым продавцам — уходят только названия продавцов и разделов.
 				family.Post("/ai/sellers", aiSellersHandler.Sellers)
-				// AI-14: желание из скриншота — картинка уходит в модель и нигде не хранится.
-				family.Post("/ai/wish", aiWishHandler.Wish)
 			})
 		})
 	})
