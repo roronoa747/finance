@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { liveSpendCategories, monthsLabel, shiftSpan, spendCategoryName, type StepCandidate } from '@/lib/finance'
+import { liveSpendCategories, shiftSpan, spendCategoryName, stepEffectText, type StepCandidate } from '@/lib/finance'
 import { monthKey } from '@/lib/dates'
-import { money, plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -42,10 +42,7 @@ const view = computed(() => {
       ? 'из остатка месяца'
       : `из плана «${spendCategoryName(liveSpendCategories(finance.householdDoc.spendCategories ?? []), from.categoryId)}» · ${finance.people.find((p) => p.id === from.spend)?.name ?? ''}`
   const toText = to === 'debt' ? `в «${debtName.value}»` : `в «${goalName(to.goalId)}»`
-  let effect = ''
-  if (c.kind === 'move' && c.effect.days) effect = `на ${shiftSpan(c.effect.days)} раньше`
-  if (c.kind === 'prepay') effect = [c.effect.months > 0 ? `на ${c.effect.months} мес. раньше` : '', c.effect.saved > 0 ? `−${plain(c.effect.saved)} процентов` : ''].filter(Boolean).join(' · ')
-  if (c.kind === 'cushion' && c.effect.months !== null) effect = `подушки хватит на ${monthsLabel(c.effect.months)}`
+  const effect = stepEffectText(c)
   return {
     title: props.returning ? 'Вернуть срок' : TITLES[c.kind],
     confirm: props.returning ? 'Вернуть' : CONFIRM[c.kind],

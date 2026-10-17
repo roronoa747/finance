@@ -4402,6 +4402,57 @@ export function shiftLabel(shift: DreamShift): string {
   return `на ${shiftSpan(-shift.days)} ближе · ${why}`
 }
 
+/**
+ * Эффект кандидата «Сделать» строкой (Р-3) — одни слова для листа `DoSheet` и для разбора v2 (AU-11, кандидат уходит
+ * в модель вместе с ним): «на 2 недели раньше», «на 3 мес. раньше · −41 000 процентов», «подушки хватит на 1,2 месяца».
+ * Эффекта нет — пустая строка.
+ */
+export function stepEffectText(c: StepCandidate): string {
+  if (c.kind === 'move') return c.effect.days ? `на ${shiftSpan(c.effect.days)} раньше` : ''
+  if (c.kind === 'prepay') {
+    return [c.effect.months > 0 ? `на ${c.effect.months} мес. раньше` : '', c.effect.saved > 0 ? `−${plain(c.effect.saved)} процентов` : '']
+      .filter(Boolean)
+      .join(' · ')
+  }
+  return c.effect.months !== null ? `подушки хватит на ${monthsLabel(c.effect.months)}` : ''
+}
+
+/* ---------------- разбор v2: что изменилось к прошлому месяцу (Р-2, AU-11) ---------------- */
+
+/**
+ * Месяц `ctx.key` против прошлого (Р-2: «что изменилось»): доход больше / меньше — оба ≥ 0, одно из них 0; новые
+ * платежи — платежи месяца, которых не было в прошлом (по `targetId`; с суммой 0 — не было), крупные первыми; `prevIncome` — доход прошлого.
+ */
+export function monthChanges(
+  state: MonthPlanState,
+  ctx: MonthPlanCtx,
+): { prevIncome: number; incomeMore: number; incomeLess: number; newDues: PlanDue[] } {
+  const now = monthPlan(state, ctx)
+  const prev = monthPlan(state, { ...ctx, key: addMonths(ctx.key, -1) })
+  const diff = now.income.total - prev.income.total
+  // Платёж с версией «с этого месяца» в прошлом месяце стоит с суммой 0 — его там не было.
+  const known = new Set(prev.dues.filter((d) => d.amount > 0).map((d) => d.targetId))
+  return {
+    prevIncome: prev.income.total,
+    incomeMore: Math.max(0, diff),
+    incomeLess: Math.max(0, -diff),
+    newDues: now.dues.filter((d) => !known.has(d.targetId)).sort((a, b) => b.amount - a.amount),
+  }
+}
+
+/**
+ * Главные разделы трат для разбора (Р-5: 1–2): сначала с точкой «больше обычного» (`over`, по убыванию факта), иначе —
+ * крупнейшие сверх плана (по убыванию «факт − план»). Порядок строк `spendCompare` сохраняется внутри групп.
+ */
+export function reviewSpendRows(rows: SpendCompareRow[], n = 2): SpendCompareRow[] {
+  const over = rows.filter((r) => r.over)
+  if (over.length) return over.slice(0, n)
+  return rows
+    .filter((r) => r.amount !== null && r.plan !== null && r.amount > r.plan)
+    .sort((a, b) => b.amount! - b.plan! - (a.amount! - a.plan!))
+    .slice(0, n)
+}
+
 /** Состояние строки очереди «Месяца» — только когда есть что сказать (правило 12); текст — в экране. */
 export type QueueStatus =
   | { kind: 'off' }

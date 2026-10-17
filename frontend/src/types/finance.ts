@@ -46,6 +46,22 @@ export type AiReview = Tracked & {
   sent: MonthSummaryAI | null
 }
 
+/** Повод разбора v2 (бэклог «ИИ-польза», Р-20): первый вход в месяце, первая «Пришла» зарплаты, «Обновить». */
+export type ReviewReason = 'month' | 'salary' | 'refresh'
+
+/**
+ * Факт разбора v2 (Р-2, Р-19, AU-11): `about` — о чём, без цифр и без имён участников; `value` — как напишет
+ * приложение («80 000 ₸», «к июню 2028», «2 недели»); `raw` — число расчёта `finance.ts`, месяц `YYYY-MM` или числа
+ * строки-образа (для проверки чисел на сервере). Модель ссылается на факт `{f3}`, цифру подставляет сервер.
+ */
+export type ReviewFact = { id: string; about: string; value: string; raw: number | string | number[] }
+
+/** Кандидат шага «Сделать» (Р-3) для модели: `about` без цифр, `value` — сумма, `effect` — эффект строкой. */
+export type ReviewCandidate = { id: string; kind: 'move' | 'prepay' | 'cushion'; about: string; value: string; effect: string }
+
+/** Тело разбора v2 без повода: всё, что уходит в модель, и «что ушло» в листе (Р-9). */
+export type ReviewPayload = { facts: ReviewFact[]; candidates: ReviewCandidate[] }
+
 /**
  * Снимок плана месяца для метки «мечта сдвинулась» (бэклог «ИИ-польза», Р-6, AU-04): первый участник, открывший месяц,
  * пишет, сколько план даёт каждой цели и фонду (`given`) и к какому месяцу их соберём; доход и платежи — для причины.
