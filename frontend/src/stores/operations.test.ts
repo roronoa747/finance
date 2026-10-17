@@ -18,7 +18,7 @@ import type { OperationsPage, OperationWire, StatementUploadResponse } from '@/t
 import kaspi01 from '@/lib/statements/fixtures/kaspi-01.rows.json'
 import { planFamilyDoc } from '@/test/planFamily'
 import { freeByFact } from '@/lib/finance'
-import { mergePrivateDocs } from '@/lib/merge'
+import { mergeDocs, mergePrivateDocs } from '@/lib/merge'
 import { AI_SELLERS_KEY, LINK_PHOTO_TRIED_KEY, readMonthEnd, readStorage, writeMonthEnd, writeStorage } from '@/lib/storage'
 
 const storage = new Map<string, string>()
@@ -1115,5 +1115,61 @@ describe('stores/operations — итог поездки (PN-30)', () => {
     await store.send(client)
     store.writeTripTotals()
     expect(useFinanceStore().householdDoc.tripSpends ?? []).toEqual([])
+  })
+})
+
+describe('stores/operations — итоги привычек (AU-27)', () => {
+  const taxi = (k: number, month: string) =>
+    Array.from({ length: k }, (_, i) => ({
+      bank: 'kaspi' as const, date: `${month}-${String(i + 1).padStart(2, '0')}`, amount: -2_000,
+      kind: 'purchase' as const, merchant: 'YANDEX GO', categoryId: null, internal: false,
+    }))
+  const statement = (ops: ReturnType<typeof taxi>, from: string, to: string): ParsedStatement => ({ bank: 'kaspi', from, to, operations: assignIds(ops), skipped: 0 })
+
+  it('загрузка выписки → итоги привычек в документе; повтор — без записи; партнёр видит итог, продавцов — нет', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const finance = useFinanceStore()
+    const { client } = fakeServer()
+    store.setDraft(draftOf(statement([...taxi(9, '2026-08'), ...taxi(5, '2026-09')], '2026-08-01', '2026-09-20')))
+    await store.send(client)
+
+    const habits = () => (finance.householdDoc.habitTotals ?? []).map((t) => [t.id, t.count, t.amount])
+    // Сентябрь ниже порога (5 < 8) — не пишется.
+    expect(habits()).toEqual([['a:2026-08:taxi', 9, 18_000]])
+    const before = JSON.stringify(finance.householdDoc.habitTotals)
+    const mutate = vi.spyOn(finance, 'mutateHouseholdDoc')
+    store.setDraft(draftOf(statement([...taxi(9, '2026-08'), ...taxi(5, '2026-09')], '2026-08-01', '2026-09-20')))
+    await store.send(client)
+    expect(JSON.stringify(finance.householdDoc.habitTotals)).toBe(before)
+    expect(mutate.mock.calls.length).toBe(0)
+
+    // Партнёр получает документ слиянием: итог есть, ни продавца, ни дат.
+    const partner = mergeDocs({ ...finance.householdDoc, habitTotals: [] }, finance.householdDoc)
+    expect(partner.habitTotals?.map((t) => t.id)).toEqual(['a:2026-08:taxi'])
+    expect(JSON.stringify(partner.habitTotals)).not.toMatch(/yandex|2026-08-0/i)
+  })
+
+  it('привычка упала ниже порога — итог обнуляется; месяцы старше четырёх от последнего — надгробия', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const finance = useFinanceStore()
+    const { client } = fakeServer()
+    store.setDraft(draftOf(statement(taxi(8, '2026-03'), '2026-03-01', '2026-03-31')))
+    await store.send(client)
+    expect(finance.householdDoc.habitTotals?.find((t) => t.id === 'a:2026-03:taxi')?.count).toBe(8)
+
+    // Поездки марта ушли в «Прочее» правилом семьи — привычки больше нет.
+    store.answer({ merchant: normalizeMerchant('YANDEX GO') }, { categoryId: 'sc_other' })
+    store.setDraft(draftOf(statement(taxi(8, '2026-03'), '2026-03-01', '2026-03-31')))
+    await store.send(client)
+    expect(finance.householdDoc.habitTotals?.find((t) => t.id === 'a:2026-03:taxi')).toMatchObject({ count: 0, amount: 0 })
+
+    store.answer({ merchant: normalizeMerchant('YANDEX GO') }, { categoryId: 'sc_transport' })
+    store.setDraft(draftOf(statement(taxi(8, '2026-09'), '2026-09-01', '2026-09-30')))
+    await store.send(client)
+    const march = finance.householdDoc.habitTotals?.find((t) => t.id === 'a:2026-03:taxi')
+    expect(march?.deletedAt).toBeTruthy()
+    expect(finance.householdDoc.habitTotals?.find((t) => t.id === 'a:2026-09:taxi')?.count).toBe(8)
   })
 })

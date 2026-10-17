@@ -72,6 +72,7 @@ import type {
   AiReview,
   TermSnap,
   PlanShift,
+  ImageMove,
   AllocationPart,
   SyncDoc,
   SyncStatus,
@@ -135,6 +136,10 @@ export function defaultSyncDoc(): SyncDoc {
     termSnaps: [],
     // Сдвиги месяца (AU-05): ключ и пустым — как у payments (RP-03).
     planShifts: [],
+    // Итоги привычек (AU-27): ключ и пустым — как у payments (RP-03).
+    habitTotals: [],
+    // Переносы образов (AU-31): ключ и пустым — как у payments (RP-03).
+    imageMoves: [],
     setupDoneAt: null,
   }
 }
@@ -1111,6 +1116,27 @@ export const useFinanceStore = defineStore('finance', () => {
     const t = new Date().toISOString()
     mutateHouseholdDoc((doc) => {
       doc.planShifts = (doc.planShifts ?? []).map((s) => (s.id === id && !s.deletedAt ? { ...s, deletedAt: t, updatedAt: t } : s))
+    })
+  }
+
+  /** «Перенести в мечту» у образа сделан (Х-9, AU-31) — запись, у образа вместо кнопки ✓; id — для «Отменить». */
+  function addImageMove(draft: { categoryId: string; goalId: string; amount: number }): string | null {
+    const auth = useAuthStore()
+    if (auth.isViewer) return null
+    const t = new Date().toISOString()
+    const move: ImageMove = { ...draft, id: Math.random().toString(36).slice(2, 10), by: (auth.slot ?? 'a') as PersonId, at: t, updatedAt: t }
+    mutateHouseholdDoc((doc) => {
+      doc.imageMoves = [...(doc.imageMoves ?? []), move]
+    })
+    return move.id
+  }
+
+  /** «Отменить» перенос — надгробие (слияние: удаление сильнее правки). */
+  function undoImageMove(id: string) {
+    if (useAuthStore().isViewer) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      doc.imageMoves = (doc.imageMoves ?? []).map((m) => (m.id === id && !m.deletedAt ? { ...m, deletedAt: t, updatedAt: t } : m))
     })
   }
 
@@ -2342,6 +2368,8 @@ export const useFinanceStore = defineStore('finance', () => {
     ensureTermSnap,
     addPlanShift,
     undoPlanShift,
+    addImageMove,
+    undoImageMove,
     mutatePrivateDoc,
     addMerchantRule,
     addMerchantRules,

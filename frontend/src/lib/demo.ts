@@ -356,17 +356,24 @@ export function startDemo(): boolean {
     const week = weekKey()
     const prevWeek = weekKey(new Date(Date.now() - 7 * 86_400_000))
     const month = monthKey()
-    // Три прошлых месяца b — для «обычно у вас» на «Месяце» (AU-03, Р-5): кафе обычно ~18 000, в этом месяце — 62 000
-    // (точка у «Кафе и рестораны» и «до плана» в мечту при любом дне месяца).
-    const past = ([[-3, 70_000, 66_000, 16_000], [-2, 76_000, 78_000, 20_000], [-1, 73_000, 76_000, 18_000]] as const).flatMap(([n, food, shop, cafe]) => {
+    // Три прошлых месяца b — для «обычно у вас» на «Месяце» (AU-03, Р-5): кафе обычно ~47 000 (в нём доставка), в этом
+    // месяце — 95 000 (точка у «Кафе и рестораны» и «до плана» в мечту при любом дне месяца).
+    const past = ([[-3, 70_000, 66_000, 44_000], [-2, 76_000, 78_000, 50_000], [-1, 73_000, 76_000, 47_000]] as const).flatMap(([n, food, shop, cafe]) => {
       const p = addMonths(month, n)
       return [total('month', p, 'sc_food', food, 11), total('month', p, 'sc_shopping', shop, 3), total('month', p, 'sc_cafe', cafe, 4)]
+    })
+    // Привычка b (AU-30, Р-24): доставка 4 раза в месяц на ~40 000 три прошлых месяца, как на настоящей выписке (Х-11) —
+    // внутри её итогов «Кафе» (44–50 тыс.); итоги руками, как её итоги разделов. Такси a — из его демо-поездок ниже (тот
+    // же `writeTotals`, что у выписки).
+    doc.habitTotals = ([[-3, 38_000], [-2, 42_000], [-1, 40_000]] as const).map(([n, amount]) => {
+      const period = addMonths(month, n)
+      return { id: `b:${period}:delivery`, by: 'b' as const, period, habit: 'delivery' as const, count: 4, amount, updatedAt: at }
     })
     doc.spendTotals = [
       ...past,
       total('week', prevWeek, 'sc_food', 24_000, 5),
       total('week', week, 'sc_food', 20_000, 4), total('week', week, 'sc_shopping', 34_000, 2),
-      total('month', month, 'sc_food', 40_000, 8), total('month', month, 'sc_shopping', 34_000, 2), total('month', month, 'sc_cafe', 62_000, 3),
+      total('month', month, 'sc_food', 40_000, 8), total('month', month, 'sc_shopping', 34_000, 2), total('month', month, 'sc_cafe', 95_000, 5),
     ]
     // Итог поездки партнёра b (PN-32) — руками, как её итоги разделов: общий итог «За поездку» — двоих.
     doc.tripSpends = [{ id: 'g-trip:b', goalId: 'g-trip', by: 'b', amount: 64_000, ops: 5, updatedAt: at }]
@@ -460,8 +467,20 @@ export function startDemo(): boolean {
         op(103 + w * 4, ago + 5, sum(1_700), 'Yandex Go', 'sc_transport'),
       ]
     })
+    // Такси a (AU-30, Р-24): 14 поездок Yandex Go в каждом из трёх прошлых месяцев (5 600–6 900 ₸, с недельными
+    // ~95 000 в месяц, как на настоящей выписке — Х-11; вне допуска подписки «Яндекс Плюс», вопросов не добавляют) —
+    // вместе с недельными выше привычка «такси» держится 3 месяца: у «Транспорта» на «Месяце» есть образ. В дни прошедшей поездки (20–26 дней назад) поездок нет — её итог прежний (PN-32).
+    const rides = [3, 2, 1]
+      .flatMap((n) =>
+        Array.from({ length: 14 }, (_, i) => ({
+          ...op(600 + n * 20 + i, 0, -(5_600 + i * 100), 'Yandex Go', 'sc_transport'),
+          date: `${addMonths(monthKey(), -n)}-${String(2 + i * 2).padStart(2, '0')}`,
+        })),
+      )
+      .filter((r) => r.date < day(26) || r.date > day(20))
     ops.seedDemoOperations([
       ...older,
+      ...rides,
       op(1, 0, -6_800, 'Galmart', 'sc_food'),
       op(2, 0, -4_990, 'Яндекс Плюс', 'sc_subscriptions'),
       op(3, 0, -7_600, 'ИП Абенова', null),

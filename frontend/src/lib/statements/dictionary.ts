@@ -88,7 +88,7 @@ export const KIND_CATEGORY: Partial<Record<OperationKind, string>> = {
  * Слова названия целиком (граница — не буква и не цифра: `\b` в JS кириллицу не видит);
  * `*` в конце — «слово начинается с». Фраза из нескольких слов — через пробел.
  */
-function words(...list: string[]): RegExp {
+export function words(...list: string[]): RegExp {
   const parts = list.map((w) => {
     const prefix = w.endsWith('*')
     const body = (prefix ? w.slice(0, -1) : w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

@@ -20,6 +20,7 @@ import {
   freeByFact,
   allInDebt,
   goalPace,
+  habitImages,
   lastAccountFor,
   liveSpendCategories,
   monthPlan,
@@ -35,6 +36,7 @@ import {
   spendCompare,
   spendFact,
   untilPayday,
+  type ImageAction,
   type PlanDue,
   type PlanPut,
   type PlanQueueItem,
@@ -67,6 +69,9 @@ import DueRow from '@/components/money/DueRow.vue'
 import MonthRing from '@/components/money/MonthRing.vue'
 import SalarySheet from '@/components/money/SalarySheet.vue'
 import SpendCategorySheet from '@/components/money/SpendCategorySheet.vue'
+import ImageMoveSheet from '@/components/plan/ImageMoveSheet.vue'
+import { templateById } from '@/lib/goalTemplates'
+import { attachTemplate } from '@/lib/photos/goalPhoto'
 
 /**
  * «План · Месяц» (Блок 15, Р-90; макет week-month.html, ворота B2C-91): круг — оглавление. Под кругом зарплаты и
@@ -361,6 +366,26 @@ const catPlans = computed(() =>
     amount: plan.value.spend.find((s) => s.by === p.id)?.rows.find((r) => r.categoryId === catFor.value)?.plan ?? 0,
   })),
 )
+/** Образ привычки раздела (Р-24, AU-29): один, самый крупный; считает `habitImages` по 3 закрытым месяцам. */
+const images = computed(() => habitImages(state.value, props.monthKey))
+const catImage = computed(() => images.value.find((i) => i.categoryId === catFor.value) ?? null)
+const moveAction = ref<Extract<ImageAction, { kind: 'move' }> | null>(null)
+/** Действие образа: мечта — сразу на её экран; желание — тост; «Перенести в мечту» — лист с цифрами. */
+function imageAct(a: ImageAction) {
+  if (!canEdit.value) return
+  catFor.value = null
+  if (a.kind === 'goal') {
+    const tpl = templateById(a.template)
+    const id = finance.addGoal({ name: a.name, need: a.need, monthly: a.monthly, hue: tpl?.hue ?? 'steel', template: a.template })
+    // Картинка шаблона — как у новой мечты из `GoalNew` (без сети — позже, `retryTemplatePhotos`).
+    if (tpl) void attachTemplate(finance, id, tpl)
+    void router.push(`/goals/${id}`)
+  } else if (a.kind === 'wish') {
+    finance.addWish({ name: a.name, price: a.price, by: me.value })
+    flashCloser('В желаниях')
+  } else if (a.kind === 'move') moveAction.value = a
+  else void router.push('/money/debts/faster')
+}
 function editCatPlan(personId: PersonId, amount: number) {
   const id = catFor.value
   catFor.value = null
@@ -837,7 +862,8 @@ function addFund(kind: 'reserve' | 'cushion') {
     </Sheet>
 
     <!-- Раздел трат: факт, обычно, план, «до плана», справка РК; план каждого — «Изменить» (member) -->
-    <SpendCategorySheet :row="catRow" :rk="catRk" :plans="catPlans" :can-edit="canEdit" @close="catFor = null" @edit="editCatPlan" />
+    <SpendCategorySheet :row="catRow" :rk="catRk" :plans="catPlans" :can-edit="canEdit" :image="catImage" @close="catFor = null" @edit="editCatPlan" @image="imageAct" />
+    <ImageMoveSheet :action="moveAction" @close="moveAction = null" />
 
     <!-- Сумма раздела трат -->
     <Sheet :open="!!spendEdit" :title="spendEdit?.fresh ? 'Траты на месяц' : 'Сколько в месяц'" @close="spendEdit = null">

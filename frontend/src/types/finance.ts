@@ -1,5 +1,5 @@
 import type { CategoryKey, HueKey, ThemeChoice } from '@/lib/palette'
-import type { SpendCategory, SpendTotal } from '@/lib/statements/types'
+import type { HabitTotal, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import type { MonthSummaryAI } from '@/lib/aiSummary'
 
 export type PersonId = 'a' | 'b' | 'c'
@@ -69,6 +69,19 @@ export type PlanShift = Tracked & {
   from: 'rest' | { spend: PersonId; categoryId: string }
   to: { goalId: string } | 'debt'
   amount: number
+  at: string
+}
+
+/**
+ * «Перенести в мечту» у образа сделан (Х-9, AU-31): план раздела уже урезан на `amount`, взнос мечты `goalId` прибавлен —
+ * у образа вместо кнопки «✓ N в мечту». id случайный: «Отменить» — надгробие (слияние: удаление сильнее правки).
+ */
+export type ImageMove = Tracked & {
+  id: string
+  categoryId: string
+  goalId: string
+  amount: number
+  by: PersonId
   at: string
 }
 
@@ -668,6 +681,10 @@ export type SyncDoc = {
   termSnaps?: TermSnap[]
   /** Сдвиги месяца «Сделать» / «Вернуть срок» (бэклог «ИИ-польза», Р-17, AU-05): отмена — надгробие. До Блока 2 — без ключа. */
   planShifts?: PlanShift[]
+  /** Итоги привычек трат участников за месяц (бэклог «ИИ-польза», Р-24, AU-27): только счётчик и сумма. До Блока 7 — без ключа. */
+  habitTotals?: HabitTotal[]
+  /** Переносы «в мечту» у образов (бэклог «ИИ-польза», Х-9, AU-31): отмена — надгробие. До AU-31 — без ключа. */
+  imageMoves?: ImageMove[]
   /**
    * Когда закончили первичную настройку бюджета. Пустое значит, что показываем
    * первый запуск (`/start`). Живёт в общем документе, а не в настройках устройства: второй

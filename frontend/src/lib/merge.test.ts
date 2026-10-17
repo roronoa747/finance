@@ -1240,3 +1240,20 @@ describe('merge.ts — сдвиги месяца (planShifts)', () => {
     expect(defaultSyncDoc().planShifts).toEqual([])
   })
 })
+
+// AU-31 (Х-9): переносы образов — записи по id; отмена (надгробие) побеждает.
+describe('merge.ts — переносы образов (imageMoves)', () => {
+  const m = (id: string, extra: Record<string, unknown> = {}) => ({
+    id, categoryId: 'sc_cafe', goalId: 'trip', amount: 20_000, by: 'a' as const, at: '2026-10-05T08:00:00.000Z', updatedAt: '2026-10-05T08:00:00.000Z', ...extra,
+  })
+
+  it('переносы с двух телефонов — оба; отмена на одном сильнее в обе стороны', () => {
+    const one = { ...createEmptyDoc(), imageMoves: [m('m1'), m('m2')] }
+    const two = { ...createEmptyDoc(), imageMoves: [m('m3', { by: 'b' }), m('m2', { deletedAt: '2026-10-06T08:00:00.000Z', updatedAt: '2026-10-06T08:00:00.000Z' })] }
+    for (const merged of [mergeDocs(one, two), mergeDocs(two, one)]) {
+      expect((merged.imageMoves ?? []).map((x) => x.id).sort()).toEqual(['m1', 'm2', 'm3'])
+      expect(merged.imageMoves!.find((x) => x.id === 'm2')!.deletedAt).toBe('2026-10-06T08:00:00.000Z')
+    }
+    expect(defaultSyncDoc().imageMoves).toEqual([])
+  })
+})

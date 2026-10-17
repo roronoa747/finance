@@ -1,12 +1,15 @@
-import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard, TripSpend, TermSnap, PlanShift } from '@/types/finance'
+import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard, TripSpend, TermSnap, PlanShift, ImageMove } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
 import { isSpend, normalizeCounterparty, normalizeMerchant } from '@/lib/statements/model'
-import type { Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
+import type { HabitId, HabitTotal, Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
+import { HABITS } from '@/lib/statements/habits'
+import { COFFEE_CUP, MEASURES, PRICES, type PriceId } from '@/lib/prices'
+import { templateById } from '@/lib/goalTemplates'
 import { DEFAULT_SPEND_CATEGORIES, RK_GROUP_BY_CATEGORY, UNKNOWN_CATEGORY, plannedElsewhere, type RkGroup } from '@/lib/statements/dictionary'
 import { addDaysIso, addMonths, dayLabel, daysInMonth, isoIn, monthFrom, monthKey, parseMonthKey, today, todayIso, weekdayShort, weekKey, weekRange } from '@/lib/dates'
 import { spendColor } from '@/lib/palette'
-import { money, pct } from '@/lib/money'
+import { money, pct, plain } from '@/lib/money'
 import { plural } from '@/lib/utils'
 /**
  * Расчётное ядро. Чистые функции: ни сети, ни состояния, ни ИИ.
@@ -4105,13 +4108,10 @@ export function spendCompare(
   for (const s of month.spend) for (const r of s.rows) plans.set(r.categoryId, (plans.get(r.categoryId) ?? 0) + r.plan)
   const usual = usualSpend(people, ctx.totals, ctx.spendCategories, ctx.uploads, key)
   const goal = mainGoal(state.goals ?? [], state.goalOrder, state.moneySettings)
-  const pace = goal ? goalPace(goal, key) : 0
-  const remaining = goal ? goalRemaining(goal) : 0
   const adviceOf = (plan: number | null, usualAmount: number | null): SpendAdvice | null => {
     if (plan === null || usualAmount === null || usualAmount <= plan) return null
     const amount = usualAmount - plan
-    const days = pace > 0 && remaining > 0 ? Math.round((remaining / pace - remaining / (pace + amount)) * 30.4) : null
-    return { amount, goalId: goal?.id ?? null, goalName: goal?.name ?? null, days }
+    return { amount, goalId: goal?.id ?? null, goalName: goal?.name ?? null, days: goal ? earlierDays(goal, key, amount) : null }
   }
   const rows = [...new Set([...facts.keys(), ...plans.keys()])]
     .filter((id) => id !== UNKNOWN_CATEGORY && !plannedElsewhere(id, live))
@@ -5504,4 +5504,231 @@ export function tripSpent(goal: Pick<Goal, 'id' | 'need' | 'budget'>, tripSpends
     .map((p) => ({ person: p.id, name: p.name, amount: mine.filter((t) => t.by === p.id).reduce((s, t) => s + t.amount, 0) }))
     .filter((x) => x.amount > 0)
   return { total: mine.reduce((s, t) => s + t.amount, 0), byPerson, budget: goal.budget ?? goal.need }
+}
+
+/* ---------------- образы трат (Р-24…Р-31, AU-28) ---------------- */
+
+/** Перенос «в мечту» — доля привычки (Р-27, дефолт AU-28), вниз до 1 000 ₸. */
+export const IMAGE_MOVE_SHARE: Partial<Record<HabitId, number>> = { delivery: 50, lunch: 40, marketplace: 50 }
+/** «Окупится» — не дольше (Р-30). */
+export const PAYBACK_MAX_MONTHS = 12
+/** Привычка — в каждом из стольких закрытых месяцев подряд (Р-30). */
+export const IMAGE_MONTHS = 3
+
+/** Как привычка называется в строке и в «Как посчитали». */
+export const HABIT_NAMES: Record<HabitId, string> = {
+  taxi: 'Такси', coffee: 'Кофе навынос', delivery: 'Доставка', lunch: 'Обеды в будни', marketplace: 'Мелкие покупки',
+}
+
+/** Цена образа: своя мечта / желание семьи (Р-26) или мерка справочника. */
+export type ImagePrice =
+  | { from: 'goal'; goalId: string; name: string; price: number }
+  | { from: 'wish'; wishId: string; name: string; price: number }
+  | { from: 'ref'; id: PriceId; name: string; price: number }
+
+export type ImageAction =
+  | { kind: 'goal'; name: string; need: number; monthly: number; template: string }
+  | { kind: 'wish'; name: string; price: number }
+  | { kind: 'move'; categoryId: string; goalId: string; goalName: string; amount: number; days: number | null }
+  | { kind: 'faster' }
+
+export type HabitImage = {
+  habit: HabitId
+  categoryId: string
+  /** Сумма семьи за месяц — среднее 3 закрытых месяцев, целые ₸. */
+  monthly: number
+  /** Операций в месяц — среднее, целое. */
+  count: number
+  /** `save` — накопить без кредита (Р-25), `payback` — окупится, `dream` — сумма за год образом. */
+  kind: 'save' | 'payback' | 'dream'
+  /** Цена; `dream` без мечты и без мерки дешевле суммы за год — null (строка — сумма). */
+  price: ImagePrice | null
+  /** `save`: сколько собрать (цена или остаток своей мечты «Машина»). */
+  left: number | null
+  /** `save` — месяцев накопления; `payback` — месяцев окупаемости. */
+  months: number | null
+  /** `payback`: расход дома в месяц (зерно, молоко) и экономия в месяц. */
+  cost: number | null
+  saving: number | null
+  /** `dream`: сумма за год и доля мечты семьи, целые %. */
+  yearly: number | null
+  share: number | null
+  action: ImageAction | null
+  /** «Перенести в мечту» уже сделан на эту мечту (запись `imageMoves`, Х-9) — сколько в месяц; кнопки тогда нет. */
+  moved: number | null
+}
+
+export type InterestImage = { yearly: number; perMonth: number; price: ImagePrice | null; action: { kind: 'faster' } }
+
+type ImageState = {
+  people?: Person[]
+  goals?: Goal[]
+  wishlist?: WishItem[]
+  habitTotals?: HabitTotal[]
+  imageMoves?: ImageMove[]
+  goalOrder?: QueueOrder | null
+  moneySettings?: MoneySettings | null
+}
+
+/** Мерка справочника — самая дорогая, что по карману сумме `amount`; дешевле суммы нет — null. */
+function measureFor(amount: number): ImagePrice | null {
+  const fit = MEASURES.map((id) => PRICES[id]).filter((p) => p.price <= amount).sort((a, b) => b.price - a.price)[0]
+  return fit ? { from: 'ref', id: fit.id, name: fit.name, price: fit.price } : null
+}
+
+/** Расход кофемашины на чашку, целые ₸ (зерно + молоко, `COFFEE_CUP`). */
+export function coffeeCupCost(): number {
+  const c = COFFEE_CUP
+  return Math.round((c.beansPerKg * c.beansGrams) / 1000 + (c.milkPerLiter * c.milkMl) / 1000)
+}
+
+/** На сколько дней раньше соберём мечту при темпе +`amount` в месяц — рекомендация «Трат» (AU-01) и перенос образа (AU-29). */
+function earlierDays(goal: Goal, key: string, amount: number): number | null {
+  const pace = goalPace(goal, key)
+  const remaining = goalRemaining(goal)
+  return pace > 0 && remaining > 0 && amount > 0 ? Math.round((remaining / pace - remaining / (pace + amount)) * 30.4) : null
+}
+
+/**
+ * Образы трат семьи (Р-24, AU-28): по разделу один — самый крупный по сумме. Привычка — только при итоге семьи в каждом
+ * из 3 закрытых месяцев до `key` (Р-30); сумма — среднее этих месяцев. Такси → накопить на машину (мечта «Машина» семьи
+ * или `car_used`; без кредита, Р-25); кофе → кофемашина окупится (> 12 месяцев или расход ≥ трат — образа нет); доставка,
+ * обеды, покупки → сумма за год долей первой мечты очереди или меркой; перенос — доля привычки (`IMAGE_MOVE_SHARE`).
+ */
+export function habitImages(state: ImageState, key: string): HabitImage[] {
+  const live = new Set((state.people ?? []).filter(alive).map((p) => p.id))
+  const months = Array.from({ length: IMAGE_MONTHS }, (_, i) => addMonths(key, -(i + 1)))
+  const totals = (state.habitTotals ?? []).filter((t) => !t.deletedAt && live.has(t.by) && t.count > 0 && t.amount > 0 && months.includes(t.period))
+  const goals = openGoals(state.goals ?? []).filter((g) => !g.fund)
+  const main = mainGoal(state.goals ?? [], state.goalOrder, state.moneySettings)
+  const images: HabitImage[] = []
+  for (const h of HABITS) {
+    const mine = totals.filter((t) => t.habit === h.id)
+    if (!months.every((m) => mine.some((t) => t.period === m))) continue
+    const monthly = Math.round(mine.reduce((s, t) => s + t.amount, 0) / IMAGE_MONTHS)
+    const count = Math.round(mine.reduce((s, t) => s + t.count, 0) / IMAGE_MONTHS)
+    const base = { habit: h.id, categoryId: h.categoryId, monthly, count, left: null, months: null, cost: null, saving: null, yearly: null, share: null, moved: null }
+    if (h.id === 'taxi') {
+      const car = goals.find((g) => g.need > 0 && (templateById(g.template)?.type === 'car' || /машин|авто/i.test(g.name)))
+      const price: ImagePrice = car
+        ? { from: 'goal', goalId: car.id, name: car.name, price: car.need }
+        : { from: 'ref', id: 'car_used', name: PRICES.car_used.name, price: PRICES.car_used.price }
+      const left = car ? goalRemaining(car) : price.price
+      if (left <= 0) continue
+      const action: ImageAction | null = car ? null : { kind: 'goal', name: 'Машина', need: price.price, monthly, template: 'car' }
+      images.push({ ...base, kind: 'save', price, left, months: Math.ceil(left / monthly), action })
+    } else if (h.id === 'coffee') {
+      const wish = (state.wishlist ?? []).find((w) => alive(w) && !w.bought && w.price > 0 && /кофемашин/i.test(w.name))
+      const price: ImagePrice = wish
+        ? { from: 'wish', wishId: wish.id, name: wish.name, price: wish.price }
+        : { from: 'ref', id: 'coffee_machine', name: PRICES.coffee_machine.name, price: PRICES.coffee_machine.price }
+      const cost = count * coffeeCupCost()
+      const saving = monthly - cost
+      if (saving <= 0) continue
+      const payback = Math.ceil(price.price / saving)
+      if (payback > PAYBACK_MAX_MONTHS) continue
+      const action: ImageAction | null = wish ? null : { kind: 'wish', name: 'Кофемашина', price: price.price }
+      images.push({ ...base, kind: 'payback', price, months: payback, cost, saving, action })
+    } else {
+      const yearly = monthly * 12
+      const dream = main && main.need > 0 ? main : null
+      const price: ImagePrice | null = dream ? { from: 'goal', goalId: dream.id, name: dream.name, price: dream.need } : measureFor(yearly)
+      const amount = Math.floor((monthly * (IMAGE_MOVE_SHARE[h.id] ?? 0)) / 100 / 1000) * 1000
+      // Перенос на эту мечту уже сделан (Х-9) — вместо кнопки «✓ N в мечту»; новая мечта первой — кнопка снова. Два
+      // телефона до синка перенесли оба — урезано дважды, ✓ показывает сумму.
+      const done = dream ? (state.imageMoves ?? []).filter((m) => !m.deletedAt && m.categoryId === h.categoryId && m.goalId === dream.id) : []
+      const moved = done.reduce((s, m) => s + m.amount, 0)
+      const action: ImageAction | null =
+        dream && amount >= 1000 && !moved
+          ? { kind: 'move', categoryId: h.categoryId, goalId: dream.id, goalName: dream.name, amount, days: earlierDays(dream, key, amount) }
+          : null
+      images.push({ ...base, kind: 'dream', price, yearly, share: dream ? Math.round((yearly * 100) / dream.need) : null, action, moved: moved || null })
+    }
+  }
+  // Один образ на раздел — самый крупный по сумме.
+  const best = new Map<string, HabitImage>()
+  for (const img of images) if ((best.get(img.categoryId)?.monthly ?? -1) < img.monthly) best.set(img.categoryId, img)
+  return [...best.values()].sort((a, b) => b.monthly - a.monthly)
+}
+
+/**
+ * «Перенести в мечту» каждый месяц (Р-27, AU-29): откуда урезать — постоянный план раздела участника с бо́льшим планом
+ * (`SpendPlan`, не сдвиги месяца); новый план — не ниже 0. Плана раздела нет ни у кого — null (только взнос).
+ */
+export function imageMoveFrom(
+  state: { people?: Person[]; spendPlans?: SpendPlan[] },
+  categoryId: string,
+  amount: number,
+): { by: PersonId; plan: number; next: number } | null {
+  const live = new Set((state.people ?? []).filter(alive).map((p) => p.id))
+  const top = (state.spendPlans ?? [])
+    .filter((s) => !s.deletedAt && live.has(s.by) && s.categoryId === categoryId && s.amount > 0)
+    .sort((a, b) => b.amount - a.amount || a.by.localeCompare(b.by))[0]
+  return top ? { by: top.by, plan: top.amount, next: Math.max(0, top.amount - amount) } : null
+}
+
+/** Проценты банку за год (Р-24): `budgetInterest × 12` → мерка; процентных долгов нет — null. Кредиты — производные. */
+export function interestImage(state: { credits?: Credit[] }): InterestImage | null {
+  const perMonth = budgetInterest(state.credits ?? [])
+  if (perMonth <= 0) return null
+  const yearly = perMonth * 12
+  return { yearly, perMonth, price: measureFor(yearly), action: { kind: 'faster' } }
+}
+
+/** «4 года 4 месяца» / «9 месяцев» / «2 года». */
+export function yearsMonths(months: number): string {
+  const y = Math.floor(months / 12)
+  const m = months % 12
+  const ys = y ? `${y} ${plural(y, 'год', 'года', 'лет')}` : ''
+  const ms = m ? `${m} ${plural(m, 'месяц', 'месяца', 'месяцев')}` : ''
+  return [ys, ms].filter(Boolean).join(' ') || '0 месяцев'
+}
+
+/** Строка-образ (черновик слов, финал — `/ux`); `goalName: false` — «N % мечты» без имени (в плашке, где мечта названа, Х-10). */
+export function imageLine(image: HabitImage | InterestImage, { goalName = true } = {}): string {
+  if (!('habit' in image)) return `За год банку уходит ${image.price ? image.price.name : money(image.yearly)}`
+  const name = HABIT_NAMES[image.habit]
+  const p = image.price
+  if (image.kind === 'save') {
+    return `${name} за ${yearsMonths(image.months!)} — ${p?.from === 'goal' ? `мечта «${p.name}»` : 'своя машина'} без долга`
+  }
+  if (image.kind === 'payback') return `${p?.from === 'wish' ? p.name : 'Кофемашина'} окупится за ${yearsMonths(image.months!)}`
+  if (p?.from === 'goal') return `${name} за год — ${image.share} % мечты${goalName ? ` «${p.name}»` : ''}`
+  return `${name} за год — ${p ? p.name : money(image.yearly!)}`
+}
+
+/** «Как посчитали» (Р-31): цена с источником и датой (или «из вашей мечты») и арифметика 2–3 строками. */
+export type ImageMath = { item: string; source: { name: string; url: string } | null; checkedAt: string | null; lines: string[] }
+
+export function imageMath(image: HabitImage | InterestImage): ImageMath {
+  const p = image.price
+  const ref = p?.from === 'ref' ? PRICES[p.id] : null
+  const own = p && p.from !== 'ref' ? `цена из ${p.from === 'goal' ? 'вашей мечты' : 'ваших желаний'} «${p.name}» — ${money(p.price)}` : ''
+  const item = ref ? `${ref.model} — ${money(ref.price)}` : own
+  const out = (lines: string[]): ImageMath => ({ item, source: ref ? { name: ref.source, url: ref.url } : null, checkedAt: ref?.checkedAt ?? null, lines })
+  const n = plain
+  if (!('habit' in image)) {
+    const lines = [`проценты в месяц: ${money(image.perMonth)} · за год: ${n(image.perMonth)} × 12 = ${money(image.yearly)}`]
+    if (p) lines.push(`${n(image.yearly)} ≥ ${n(p.price)} — ${p.name}`)
+    return out(lines)
+  }
+  const head = `${HABIT_NAMES[image.habit].toLowerCase()}: ${money(image.monthly)} в месяц, среднее за ${IMAGE_MONTHS} месяца`
+  if (image.kind === 'save') {
+    const left = p?.from === 'goal' ? `осталось ${n(image.left!)}` : n(image.left!)
+    return out([head, `${left} ÷ ${n(image.monthly)} = ${image.months} ${plural(image.months!, 'месяц', 'месяца', 'месяцев')} — ${yearsMonths(image.months!)}`])
+  }
+  if (image.kind === 'payback') {
+    const ratio = (p!.price / image.saving!).toFixed(1).replace('.', ',')
+    return out([
+      head,
+      `дома: ${image.count} × ${n(coffeeCupCost())} = ${money(image.cost!)} (зерно ${COFFEE_CUP.beansGrams} г и молоко ${COFFEE_CUP.milkMl} мл на чашку)`,
+      `${n(image.monthly)} − ${n(image.cost!)} = ${money(image.saving!)} в месяц · ${n(p!.price)} ÷ ${n(image.saving!)} = ${ratio} → ${yearsMonths(image.months!)}`,
+    ])
+  }
+  const lines = [`${head} · за год: ${n(image.monthly)} × 12 = ${money(image.yearly!)}`]
+  if (p?.from === 'goal') lines.push(`${n(image.yearly!)} ÷ ${n(p.price)} = ${image.share} % мечты «${p.name}»`)
+  else if (p) lines.push(`${n(image.yearly!)} ≥ ${n(p.price)} — ${p.name}`)
+  const a = image.action
+  if (a?.kind === 'move') lines.push(`в мечту — ${IMAGE_MOVE_SHARE[image.habit]} % привычки: ${money(a.amount)} в месяц`)
+  return out(lines)
 }

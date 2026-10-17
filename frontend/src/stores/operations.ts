@@ -18,7 +18,8 @@ import {
   spendTotals,
 } from '@/lib/statements/model'
 import { markedOps, matchCandidates, matchKey, operationAt, paymentFits, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
-import type { MerchantRule, Operation, ParsedStatement, SpendTotal } from '@/lib/statements/types'
+import { habitKeepFrom, habitTotals } from '@/lib/statements/habits'
+import type { HabitTotal, MerchantRule, Operation, ParsedStatement, SpendTotal } from '@/lib/statements/types'
 import type { OperationWire, StatementUploadResponse } from '@/types/api'
 import type { Goal, PersonId, TripSpend } from '@/types/finance'
 
@@ -373,11 +374,44 @@ export const useOperationsStore = defineStore('operations', () => {
     }
     // Поездка — из тех же операций и отметок (PN-30): где пересчитываются итоги, там и она.
     writeTripTotals()
+    writeHabitTotals(periods.filter((p) => p.kind === 'month').map((p) => p.period))
     if (!writes.length) return
     finance.mutateHouseholdDoc((doc) => {
       const merged = new Map((doc.spendTotals ?? []).map((t) => [t.id, t]))
       for (const t of writes) merged.set(t.id, t)
       doc.spendTotals = [...merged.values()]
+    })
+  }
+
+  /**
+   * Итоги привычек участника (AU-27, Р-24) — те же месяцы, что итоги разделов, из всех своих операций месяца. Привычка
+   * ниже порога обнуляется (надгробие закрыло бы id навсегда); месяцы старше `HABIT_KEEP_MONTHS` от последнего своего —
+   * не пишутся, прежние становятся надгробиями. Тот же итог второй раз не пишется (B2C-25: открытие ревизию не растит).
+   */
+  function writeHabitTotals(months: string[]) {
+    if (!months.length) return
+    const by = me()
+    const at = new Date().toISOString()
+    const list = finance.householdDoc.habitTotals ?? []
+    const mine = list.filter((t) => t.by === by && !t.deletedAt)
+    const from = habitKeepFrom([...mine.map((t) => t.period), ...months])!
+    const byId = new Map(list.map((t) => [t.id, t]))
+    const writes: HabitTotal[] = []
+    for (const period of months.filter((m) => m >= from)) {
+      const next = habitTotals(all.value, by, period, at)
+      const ids = new Set(next.map((t) => t.id))
+      for (const t of mine) if (t.period === period && !ids.has(t.id) && (t.count || t.amount)) writes.push({ ...t, count: 0, amount: 0, updatedAt: at })
+      for (const t of next) {
+        const prev = byId.get(t.id)
+        if (!prev || prev.deletedAt || prev.count !== t.count || prev.amount !== t.amount) writes.push(t)
+      }
+    }
+    for (const t of mine) if (t.period < from) writes.push({ ...t, count: 0, amount: 0, deletedAt: at, updatedAt: at })
+    if (!writes.length) return
+    finance.mutateHouseholdDoc((doc) => {
+      const merged = new Map((doc.habitTotals ?? []).map((t) => [t.id, t]))
+      for (const t of writes) merged.set(t.id, t)
+      doc.habitTotals = [...merged.values()]
     })
   }
 
