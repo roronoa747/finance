@@ -15,6 +15,9 @@ const props = defineProps<{ image: HabitImage | InterestImage; label?: string | 
 defineEmits<{ (e: 'act'): void }>()
 
 const line = computed(() => imageLine(props.image))
+/** Последнее слово строки — вместе с «?», чтобы «?» не переносился один на свою строку. */
+const head = computed(() => line.value.replace(/\S+$/, ''))
+const tail = computed(() => line.value.slice(head.value.length))
 const math = computed(() => imageMath(props.image))
 /** Дата сверки цены: «17 октября 2026». */
 const checked = computed(() => {
@@ -26,8 +29,7 @@ const checked = computed(() => {
 <template>
   <div class="flex items-center gap-2" data-image>
     <p class="min-w-0 flex-1 text-[15px] text-ink num">
-      <span data-image-line>{{ line }}</span>
-      <span class="ml-1 inline-flex align-middle">
+      <span data-image-line>{{ head }}<span class="whitespace-nowrap">{{ tail }}</span></span><span class="whitespace-nowrap">&NoBreak;<span class="ml-1 inline-flex align-middle">
         <Hint label="Как посчитали">
           <span class="flex flex-col gap-1" data-image-math>
             <span v-if="math.item" class="font-semibold text-ink" data-image-item>{{ math.item }}</span>
@@ -37,7 +39,7 @@ const checked = computed(() => {
             <span v-for="(l, i) in math.lines" :key="i" data-image-calc>{{ l }}</span>
           </span>
         </Hint>
-      </span>
+      </span></span>
     </p>
     <Button v-if="label" variant="secondary" size="sm" class="shrink-0" data-image-act @click="$emit('act')">{{ label }}</Button>
   </div>
