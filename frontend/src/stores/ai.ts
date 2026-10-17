@@ -3,14 +3,14 @@ import { computed, ref } from 'vue'
 import { apiClient, ApiError, type ApiClient } from '@/api/client'
 import { buildReviewFacts } from '@/lib/aiFacts'
 import { MONTHS_GEN, addMonths, monthKey, parseMonthKey } from '@/lib/dates'
-import { liveSpendCategories, periodMonth } from '@/lib/finance'
+import { countedPayments, liveSpendCategories, periodMonth } from '@/lib/finance'
 import { AI_SELLERS_KEY, readAiAuto, readAiReviewSeen, readStorage, writeAiAuto, writeAiReviewSeen, writeStorage } from '@/lib/storage'
 import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import { aiSellerNames, type UnknownGroup } from '@/lib/statements/model'
 import type { MerchantRule } from '@/lib/statements/types'
 import { useAuthStore } from './auth'
 import { useFinanceStore } from './finance'
-import type { AiConsent, AiReview, ReviewReason } from '@/types/finance'
+import type { AiConsent, AiReview, Payment, ReviewReason } from '@/types/finance'
 
 /** Состояние запроса разбора (AI-09) и предложений продавцам (AI-12): идёт, лимит месяца кончился, не вышло. */
 export type ReviewState = 'idle' | 'thinking' | 'limit' | 'failed'
@@ -178,6 +178,16 @@ export const useAiStore = defineStore('ai', () => {
   }
 
   /**
+   * Свои отметки зарплаты месяца `key` (аванс и недели — тоже), ранняя запись первой; дубли офлайн-отметок с двух
+   * телефонов схлопнуты (`countedPayments`). Одно правило повода `salary` для `autoReason` и оболочки.
+   */
+  function salaryMarks(key: string): Payment[] {
+    return countedPayments(finance.householdDoc.payments ?? [])
+      .filter((p) => p.kind === 'salary' && p.targetId === auth.slot && periodMonth(p.period) === key)
+      .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
+  }
+
+  /**
    * Повод разбора сам в месяце `key` (Р-20) по общему документу: нет разбора `month:<key>` — `month`; иначе своя
    * первая отметка зарплаты месяца (аванс и недели — та же отметка месяца, не новые поводы) без разбора
    * `salary:<я>:<key>` и без разбора месяца позже неё (тот уже видел зарплату) — `salary`; иначе ничего. Надгробия
@@ -187,9 +197,7 @@ export const useAiStore = defineStore('ai', () => {
     const reviews = (finance.householdDoc.aiReviews ?? []).filter((r) => r.month === key)
     if (!reviews.some((r) => r.reasonKey === `month:${key}`)) return 'month'
     const me = auth.slot
-    const mark = (finance.householdDoc.payments ?? [])
-      .filter((p) => !p.deletedAt && p.kind === 'salary' && p.targetId === me && periodMonth(p.period) === key)
-      .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))[0]
+    const mark = salaryMarks(key)[0]
     // Когда отметку записали (`updatedAt`), а не день прихода (`at` аванса — его день): разбор позже записи её видел.
     if (!mark || reviews.some((r) => r.reasonKey === `salary:${me}:${key}` || r.at > mark.updatedAt)) return null
     return 'salary'
@@ -305,6 +313,7 @@ export const useAiStore = defineStore('ai', () => {
     reviewState,
     runReview,
     autoReview,
+    salaryMarks,
     seenReview,
     markReviewSeen,
     reviewUnseen,

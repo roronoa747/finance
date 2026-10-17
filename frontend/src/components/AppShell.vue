@@ -24,7 +24,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useAiStore } from '@/stores/ai'
 import { readPlanView } from '@/lib/storage'
-import { liveGoals, periodMonth } from '@/lib/finance'
+import { liveGoals } from '@/lib/finance'
 import { monthKey } from '@/lib/dates'
 import { useScrollMemory } from './useScrollMemory'
 import SyncBadge from '@/components/SyncBadge.vue'
@@ -74,12 +74,7 @@ const people = computed(() => financeStore.people.filter((p) => !p.deletedAt))
  * Разбор сам после своей «Пришла» (AU-13, Р-20): первая отметка зарплаты участника в месяце — повод `salary`. Стор
  * сам решает, повод ли это (аванс и недели — нет) и можно ли (согласие, сеть, лимит). Синк зовёт его после pull.
  */
-const mySalaryMarks = computed(
-  () =>
-    (financeStore.householdDoc.payments ?? []).filter(
-      (p) => !p.deletedAt && p.kind === 'salary' && p.targetId === authStore.slot && periodMonth(p.period) === monthKey(),
-    ).length,
-)
+const mySalaryMarks = computed(() => useAiStore().salaryMarks(monthKey()).length)
 watch(mySalaryMarks, (n, was) => {
   if (n > (was ?? 0)) void useAiStore().autoReview()
 })

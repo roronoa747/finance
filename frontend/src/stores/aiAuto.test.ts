@@ -129,6 +129,18 @@ describe('autoReview — повод «зарплата»', () => {
     expect(aiReview).toHaveBeenCalledTimes(1)
   })
 
+  it('одна «Пришла» с двух телефонов офлайн — одна отметка (`salaryMarks` на `countedPayments`), повод один', async () => {
+    const { finance, ai } = family({ doc: planFamilyDoc({ aiReviews: [review({})] }) })
+    const { client, aiReview } = fakeClient()
+    finance.markSalary('a')
+    const first = finance.householdDoc.payments!.find((p) => p.kind === 'salary' && p.targetId === 'a')!
+    finance.mutateHouseholdDoc((d) => void d.payments!.push({ ...first, id: 'twin', at: '2026-09-12T08:00:00.000Z' }))
+    expect(ai.salaryMarks(KEY)).toHaveLength(1)
+    expect(ai.salaryMarks(KEY)[0].id).toBe(first.id)
+    await ai.autoReview(client)
+    expect(aiReview).toHaveBeenCalledTimes(1)
+  })
+
   it('отметка задним числом (`at` — день аванса раньше разбора месяца) — всё равно повод: важен момент записи', async () => {
     const { finance, ai } = family({ doc: planFamilyDoc({ aiReviews: [review({ at: '2026-09-10T03:00:00.000Z' })] }) })
     const { client, aiReview } = fakeClient()
