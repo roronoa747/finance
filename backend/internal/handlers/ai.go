@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -99,97 +100,285 @@ func (g *AIGate) Spend(ctx context.Context, c aiCall, ok bool, usages ...ai.Usag
 	}
 }
 
-// maxReviewBody bounds POST /api/ai/review: the AI-07 summary is a few KB.
+// maxReviewBody bounds POST /api/ai/review: the facts of a month are a few KB (AU-11).
 const maxReviewBody = 32 << 10
 
 // reviewDeadline is the whole review, the strict retry included: the Vercel function has 60 s
 // (vercel.json), each call is bounded by ai.DefaultTimeout as well.
 const reviewDeadline = 55 * time.Second
 
-// reviewScreens are the screens a step may link to (§6 индекса); anything else becomes null.
-var reviewScreens = []string{"/", "/week", "/month", "/money", "/money/debts", "/money/history", "/wishes", "/settings"}
+// Bounds of the review v2 body (бэклог «ИИ-польза», AU-12).
+const (
+	maxReviewFacts      = 30
+	maxReviewCandidates = 3
+	maxReviewRunes      = 200
+	maxReviewRaw        = 5 // numbers of an image line (AU-11)
+)
 
-// reviewSystem is the fixed instruction of the month review (Р-3, Р-4). The server adds
-// nothing else to what the phone sent — no ids, emails or dates (Р-15).
-const reviewSystem = `Ты — семейный финансовый помощник в приложении для семейного бюджета. Тебе дают сводку месяца семьи в JSON. Все суммы — в тенге, целыми числами; ratePercent — годовая ставка долга в процентах. Люди названы «участник 1», «участник 2».
+var (
+	// reviewReasons are the occasions of a review (Р-20).
+	reviewReasons = []string{"month", "salary", "refresh"}
+	// reviewKinds are the step candidates of the code (Р-3).
+	reviewKinds = []string{"move", "prepay", "cushion"}
+	factID      = regexp.MustCompile(`^f[1-9][0-9]?$`)
+	candidateID = regexp.MustCompile(`^c[1-9]$`)
+	// reviewRef is a reference of the model's text — "{f3}"; anything in braces is checked.
+	reviewRef = regexp.MustCompile(`\{([^{}]*)\}`)
+	// quotedName is a name in «» — a goal «iPhone 17» may have digits of its own.
+	quotedName  = regexp.MustCompile(`«[^«»]*»`)
+	isoMonthRaw = regexp.MustCompile(`^\d{4}-\d{2}$`)
+)
 
-Поля сводки: month — месяц; daysToPayday — дней до ближайшей зарплаты; income — доход месяца (byPerson — по участникам); dues — платежи месяца; spend.total — план трат, spend.fact — потрачено по выпискам (null — выписок нет), spend.byCategory — потрачено по разделам (вместе — spend.fact); free — свободно до взносов в цели по плану: доход минус платежи и план трат (меньше нуля — не хватает); rest — «Остаётся» на экране: что остаётся после взносов в цели (слово «остаётся» — только для rest, free называй «свободно до целей»); short — не хватает на платежи и траты; saved — уже отложено в этом месяце в цели и фонды и внесено досрочно в долги; debts — долги: left — остаток, payment — платёж в месяц, endMonth — месяц последнего платежа; prepay — досрочка в долг по плану месяца, она уже идёт (null — нет): monthlyPut — сколько план отводит в этом месяце, doneMonth — когда закроем с ней; goals — цели и фонды: want — сколько собрать, have — уже собрано, monthlyPut — сколько план отводит цели в этом месяце (это ещё не значит, что отложено: отложенное — в saved), doneMonth — когда соберём (null — не соберём), paused — на паузе, afterPlan — на паузе ради плана «Сначала долги»: соберём после него.
+// reviewSystem is the fixed instruction of the month review v2 (Р-2, Р-19): the model writes no
+// number — only references to the facts the phone counted. The server adds nothing else to what
+// the phone sent — no ids, emails or dates (Р-15 «ИИ»).
+const reviewSystem = `Ты — семейный финансовый помощник в приложении для семейного бюджета. Тебе дают JSON: reason — повод разбора (month — начался новый месяц, salary — пришла зарплата, refresh — попросили обновить); facts — факты месяца, которые посчитало приложение: id, about — о чём факт, value — значение, как его покажет приложение; candidates — шаги, которые приложение может сделать одной кнопкой: id, kind (move — перенести деньги из плана трат в мечту в этом месяце, prepay — внести досрочно в долг, cushion — отложить в подушку), about — откуда и куда, value — сумма, effect — что это даст. Люди названы «участник 1», «участник 2».
 
-Напиши короткий разбор месяца по-русски от лица семьи — «мы»:
-- good — что хорошо: одно предложение до 12 слов и одно число;
-- risk — где риск: одно предложение до 12 слов и одно число;
-- steps — 2–3 конкретных шага, каждый до 6 слов и без чисел (числа человек увидит на экране шага).
-Без упрёков и оценок людей. Не сравнивай участников между собой и не называй их. Не пиши названия полей сводки и нулевые суммы — вместо «отложено 0» скажи «пока ничего не отложили».
+Напиши короткий разбор месяца по-русски от лица семьи — «мы»: что изменилось и почему — через мечту, подушку или свободу от долгов.
+- good — что хорошо: одно предложение до 14 слов;
+- risk — где риск: одно предложение до 14 слов;
+- step.text — один конкретный шаг до 8 слов; step.candidate — id кандидата, если шаг про него, иначе null. Если кандидат отвечает на риск — выбери его.
+Без упрёков и оценок людей. Не сравнивай участников между собой и не называй их.
 
-Числа. Ничего не вычисляй и не вводи новых чисел: ни сумм, ни разниц, ни процентов, ни долей, ни округлений. Каждое число в тексте бери из сводки и пиши так же, как в ней (разряды тысяч — через пробел). Месяц пиши словом с годом («к июню 2028»). Если для мысли нужно число, которого в сводке нет, скажи её без числа.
+Числа. Не пиши ни одной цифры и ни одного числа словами. Каждую сумму, срок, время, долю или месяц пиши только ссылкой на факт в фигурных скобках — {f3}: приложение подставит value факта как есть. Ссылайся только на id из facts. value уже в своей форме: суммы — «80 000 ₸», сроки — «к июню 2028», время — «2 недели», доли — «11 %»; строй фразу так, чтобы value встало без изменений: «соберём {f5}», «отодвинулась на {f6}», «на кафе ушло {f13}». Ничего не вычисляй: ни разниц, ни сумм, ни долей, ни сравнений «в N раз». Если для мысли нужно число, которого нет в facts, скажи её без числа. Названия мечт, разделов и долгов пиши как в about, в кавычках «».`
 
-screen — экран, где сделать шаг: "/month" — план месяца (платежи, траты, взносы в цели), "/money/debts" — долги, "/" — мечты и цели, "/wishes" — желания, "/money" — деньги и счета, "/money/history" — прошлые месяцы, "/week" — траты недели, "/settings" — настройки; null — если подходящего экрана нет.`
+// reviewRetry is added to the instruction when the first answer was a defect.
+const reviewRetry = "\n\nПрошлый ответ не принят: %s. Числа — только ссылками {fN} на присланные факты, без цифр в тексте."
 
-// reviewRetry is added to the instruction when the first answer had numbers the summary has not.
-const reviewRetry = "\n\nВ прошлом ответе были числа, которых нет во входе: %s. Используй только числа входа."
-
-// reviewSchema is the whole answer (structured outputs: every object closes its properties;
-// the API takes no array bounds — 2–3 steps are checked here).
-var reviewSchema = map[string]any{
-	"type": "object",
-	"properties": map[string]any{
-		"good": map[string]any{"type": "string"},
-		"risk": map[string]any{"type": "string"},
-		"steps": map[string]any{
-			"type": "array",
-			"items": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"text": map[string]any{"type": "string"},
-					"screen": map[string]any{"anyOf": []any{
-						map[string]any{"type": "string", "enum": reviewScreens},
-						map[string]any{"type": "null"},
-					}},
-				},
-				"required":             []string{"text", "screen"},
-				"additionalProperties": false,
-			},
-		},
-	},
-	"required":             []string{"good", "risk", "steps"},
-	"additionalProperties": false,
+// reviewFact is a fact of the phone (AU-11): about has no digits of the code, value is shown as
+// written, raw is the number, the month "YYYY-MM" or the numbers of an image line.
+type reviewFact struct {
+	ID    string          `json:"id"`
+	About string          `json:"about"`
+	Value string          `json:"value"`
+	Raw   json.RawMessage `json:"raw"`
 }
 
-// ReviewStep is one step of the review; Screen is a path of reviewScreens or null.
-type ReviewStep struct {
-	Text   string  `json:"text"`
-	Screen *string `json:"screen"`
+type reviewCandidate struct {
+	ID     string `json:"id"`
+	Kind   string `json:"kind"`
+	About  string `json:"about"`
+	Value  string `json:"value"`
+	Effect string `json:"effect"`
 }
 
-// ReviewAnswer is the model's answer and the endpoint's 200.
-type ReviewAnswer struct {
-	Good  string       `json:"good"`
-	Risk  string       `json:"risk"`
-	Steps []ReviewStep `json:"steps"`
+type reviewRequest struct {
+	Reason     string            `json:"reason"`
+	Facts      []reviewFact      `json:"facts"`
+	Candidates []reviewCandidate `json:"candidates"`
 }
 
-func (a ReviewAnswer) texts() []string {
-	t := []string{a.Good, a.Risk}
-	for _, s := range a.Steps {
-		t = append(t, s.Text)
-	}
-	return t
+// shortText: not blank (blank allowed when may), at most maxReviewRunes.
+func shortText(s string, may bool) bool {
+	return (may || strings.TrimSpace(s) != "") && utf8.RuneCountInString(s) <= maxReviewRunes
 }
 
-// usable: something in every part. More than 3 steps are cut, not a defect.
-func (a ReviewAnswer) usable() bool {
-	if strings.TrimSpace(a.Good) == "" || strings.TrimSpace(a.Risk) == "" || len(a.Steps) == 0 {
+// validRaw: a number, a month "YYYY-MM", or 1–5 numbers.
+func validRaw(raw json.RawMessage) bool {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err != nil {
 		return false
 	}
-	for _, s := range a.Steps {
-		if strings.TrimSpace(s.Text) == "" {
+	switch x := v.(type) {
+	case json.Number:
+		return true
+	case string:
+		return isoMonthRaw.MatchString(x)
+	case []any:
+		if len(x) == 0 || len(x) > maxReviewRaw {
 			return false
 		}
+		for _, e := range x {
+			if _, ok := e.(json.Number); !ok {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// valid checks the body (AU-12): reason, 1–30 facts f<N>, 0–3 candidates c<N>, no duplicates,
+// short strings.
+func (q reviewRequest) valid() bool {
+	if !slices.Contains(reviewReasons, q.Reason) || len(q.Facts) == 0 || len(q.Facts) > maxReviewFacts || len(q.Candidates) > maxReviewCandidates {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, f := range q.Facts {
+		if !factID.MatchString(f.ID) || seen[f.ID] || !shortText(f.About, false) || !shortText(f.Value, false) || !validRaw(f.Raw) {
+			return false
+		}
+		seen[f.ID] = true
+	}
+	for _, c := range q.Candidates {
+		if !candidateID.MatchString(c.ID) || seen[c.ID] || !slices.Contains(reviewKinds, c.Kind) ||
+			!shortText(c.About, false) || !shortText(c.Value, false) || !shortText(c.Effect, true) {
+			return false
+		}
+		seen[c.ID] = true
 	}
 	return true
 }
 
-// AIReviewHandler is POST /api/ai/review (бэклог «ИИ», AI-08).
+// modelText is what the model reads: the phone's facts without raw (the model does not count),
+// the candidates and the reason — nothing else (the outgoing body is fixed by the tests).
+func (q reviewRequest) modelText() string {
+	type fact struct {
+		ID    string `json:"id"`
+		About string `json:"about"`
+		Value string `json:"value"`
+	}
+	facts := make([]fact, len(q.Facts))
+	for i, f := range q.Facts {
+		facts[i] = fact{f.ID, f.About, f.Value}
+	}
+	candidates := q.Candidates
+	if candidates == nil {
+		candidates = []reviewCandidate{}
+	}
+	b, _ := json.Marshal(map[string]any{"reason": q.Reason, "facts": facts, "candidates": candidates})
+	return string(b)
+}
+
+// numbers is the input of the second check (ai.CheckNumbers): every about, value and raw sent.
+func (q reviewRequest) numbers() any {
+	var out []any
+	for _, f := range q.Facts {
+		dec := json.NewDecoder(bytes.NewReader(f.Raw))
+		dec.UseNumber()
+		var raw any
+		_ = dec.Decode(&raw)
+		out = append(out, f.About, f.Value, raw)
+	}
+	for _, c := range q.Candidates {
+		out = append(out, c.About, c.Value, c.Effect)
+	}
+	return out
+}
+
+// reviewSchema is the answer (structured outputs: every object closes its properties); the
+// candidate is one of the ids sent or null.
+func reviewSchema(candidates []reviewCandidate) map[string]any {
+	choice := []any{map[string]any{"type": "null"}}
+	if len(candidates) > 0 {
+		ids := make([]string, len(candidates))
+		for i, c := range candidates {
+			ids[i] = c.ID
+		}
+		choice = append([]any{map[string]any{"type": "string", "enum": ids}}, choice...)
+	}
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"good": map[string]any{"type": "string"},
+			"risk": map[string]any{"type": "string"},
+			"step": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"text":      map[string]any{"type": "string"},
+					"candidate": map[string]any{"anyOf": choice},
+				},
+				"required":             []string{"text", "candidate"},
+				"additionalProperties": false,
+			},
+		},
+		"required":             []string{"good", "risk", "step"},
+		"additionalProperties": false,
+	}
+}
+
+// ReviewStep is the one step of the review; Candidate is an id of the candidates sent or null.
+type ReviewStep struct {
+	Text      string  `json:"text"`
+	Candidate *string `json:"candidate"`
+}
+
+// ReviewAnswer is the model's answer and, with the facts put in, the endpoint's 200.
+type ReviewAnswer struct {
+	Good string     `json:"good"`
+	Risk string     `json:"risk"`
+	Step ReviewStep `json:"step"`
+}
+
+func (a ReviewAnswer) texts() []string { return []string{a.Good, a.Risk, a.Step.Text} }
+
+// usable: something in every part.
+func (a ReviewAnswer) usable() bool {
+	return strings.TrimSpace(a.Good) != "" && strings.TrimSpace(a.Risk) != "" && strings.TrimSpace(a.Step.Text) != ""
+}
+
+// defects are the first check (Р-19): a reference to a fact not sent, a digit outside the
+// references. A name in «» that the phone sent (a goal «iPhone 17») keeps its digits.
+func (a ReviewAnswer) defects(q reviewRequest) []string {
+	sent := map[string]bool{}
+	for _, f := range q.Facts {
+		sent[f.ID] = true
+	}
+	names := map[string]bool{}
+	for _, s := range q.texts() {
+		for _, n := range quotedName.FindAllString(s, -1) {
+			names[n] = true
+		}
+	}
+	var bad []string
+	add := func(s string) {
+		if !slices.Contains(bad, s) {
+			bad = append(bad, s)
+		}
+	}
+	for _, t := range a.texts() {
+		for _, m := range reviewRef.FindAllStringSubmatch(t, -1) {
+			if !sent[m[1]] {
+				add("ссылка {" + m[1] + "} — такого факта нет")
+			}
+		}
+		t = reviewRef.ReplaceAllString(t, " ")
+		t = quotedName.ReplaceAllStringFunc(t, func(n string) string {
+			if names[n] {
+				return " "
+			}
+			return n
+		})
+		if strings.ContainsAny(t, "0123456789") {
+			add("цифры в тексте")
+		}
+	}
+	return bad
+}
+
+// texts are the phone's strings: the names in «» of the facts and candidates come from them.
+func (q reviewRequest) texts() []string {
+	var out []string
+	for _, f := range q.Facts {
+		out = append(out, f.About, f.Value)
+	}
+	for _, c := range q.Candidates {
+		out = append(out, c.About, c.Value, c.Effect)
+	}
+	return out
+}
+
+// filled puts every fact's value in place of its reference; a candidate outside the list is null
+// (not a defect).
+func (a ReviewAnswer) filled(q reviewRequest) ReviewAnswer {
+	values := map[string]string{}
+	for _, f := range q.Facts {
+		values[f.ID] = f.Value
+	}
+	put := func(t string) string {
+		return reviewRef.ReplaceAllStringFunc(t, func(m string) string { return values[m[1:len(m)-1]] })
+	}
+	out := ReviewAnswer{Good: put(a.Good), Risk: put(a.Risk), Step: ReviewStep{Text: put(a.Step.Text)}}
+	if c := a.Step.Candidate; c != nil && slices.ContainsFunc(q.Candidates, func(x reviewCandidate) bool { return x.ID == *c }) {
+		out.Step.Candidate = c
+	}
+	return out
+}
+
+// AIReviewHandler is POST /api/ai/review (бэклог «ИИ», AI-08; v2 — «ИИ-польза», AU-12).
 type AIReviewHandler struct {
 	gate   *AIGate
 	model  string
@@ -200,30 +389,22 @@ func NewAIReviewHandler(gate *AIGate, model string) *AIReviewHandler {
 	return &AIReviewHandler{gate: gate, model: model, effort: "medium"}
 }
 
-// Review — {summary} → {good, risk, steps[{text, screen|null}]}. Only the summary (as JSON text)
-// and the fixed instruction go to the model. An answer with a number the summary has not is
-// asked again once with the numbers named; a second defect is 502 ai_failed (Р-3). Nothing of
-// the body or the answer is logged.
+// Review — {reason, facts, candidates} → {good, risk, step: {text, candidate|null}} with the facts'
+// values put in. Only the facts, the candidates and the fixed instruction go to the model. A digit
+// outside the references or a reference to a fact not sent is a defect; so is a number of the
+// filled text that the body has not (ai.CheckNumbers — the second guard). A defect is asked again
+// once with what was wrong; a second is 502 ai_failed. The old body {summary} is 400 (v1 is gone,
+// Р-19). Nothing of the body or the answer is logged.
 func (h *AIReviewHandler) Review(w http.ResponseWriter, r *http.Request) {
 	call, ok := h.gate.Open(w, r)
 	if !ok {
 		return
 	}
-	var req struct {
-		Summary json.RawMessage `json:"summary"`
-	}
+	var req reviewRequest
 	if !decodeStrictJSONBody(w, r, maxReviewBody, &req) {
 		return
 	}
-	var text bytes.Buffer
-	if err := json.Compact(&text, req.Summary); err != nil || !bytes.HasPrefix(text.Bytes(), []byte("{")) {
-		errorJSON(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	dec := json.NewDecoder(bytes.NewReader(text.Bytes()))
-	dec.UseNumber()
-	var summary any
-	if err := dec.Decode(&summary); err != nil {
+	if !req.valid() {
 		errorJSON(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -231,42 +412,33 @@ func (h *AIReviewHandler) Review(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), reviewDeadline)
 	defer cancel()
 	system := reviewSystem
+	schema := reviewSchema(req.Candidates)
+	text := req.modelText()
 	var usages []ai.Usage
 	for attempt := 0; attempt < 2; attempt++ {
 		var answer ReviewAnswer
 		u, err := h.gate.client.Call(ctx, ai.Request{
-			Model: h.model, System: system, Text: text.String(), Schema: reviewSchema, Effort: h.effort, MaxTokens: 16_000,
+			Model: h.model, System: system, Text: text, Schema: schema, Effort: h.effort, MaxTokens: 16_000,
 		}, &answer)
 		usages = append(usages, u)
 		if err != nil || !answer.usable() {
 			break
 		}
-		bad := ai.CheckNumbers(answer.texts(), summary)
+		bad := answer.defects(req)
 		if len(bad) == 0 {
-			h.gate.Spend(r.Context(), call, true, usages...)
-			respondJSON(w, http.StatusOK, answer.clean())
-			return
+			out := answer.filled(req)
+			wrong := ai.CheckNumbers(out.texts(), req.numbers())
+			if len(wrong) == 0 {
+				h.gate.Spend(r.Context(), call, true, usages...)
+				respondJSON(w, http.StatusOK, out)
+				return
+			}
+			bad = append(bad, "числа не из фактов: "+strings.Join(wrong, "; "))
 		}
 		system = reviewSystem + fmt.Sprintf(reviewRetry, strings.Join(bad, "; "))
 	}
 	h.gate.Spend(r.Context(), call, false, usages...)
 	errorJSON(w, http.StatusBadGateway, "ai_failed")
-}
-
-// clean keeps at most 3 steps and drops a screen outside the list (the text stays).
-func (a ReviewAnswer) clean() ReviewAnswer {
-	if len(a.Steps) > 3 {
-		a.Steps = a.Steps[:3]
-	}
-	steps := make([]ReviewStep, len(a.Steps))
-	for i, s := range a.Steps {
-		if s.Screen != nil && !slices.Contains(reviewScreens, *s.Screen) {
-			s.Screen = nil
-		}
-		steps[i] = s
-	}
-	a.Steps = steps
-	return a
 }
 
 // Bounds of POST /api/ai/sellers (AI-11): one batch «Без раздела» of a statement.

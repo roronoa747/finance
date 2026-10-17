@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -54,20 +56,23 @@ func (f *fakeClaudeQueue) start(t *testing.T) *ai.Client {
 	return ai.New("test-key", srv.URL+"/")
 }
 
-// answer is a model answer as JSON text.
-func answer(good, risk string, steps ...[2]any) string {
-	list := []map[string]any{}
-	for _, s := range steps {
-		list = append(list, map[string]any{"text": s[0], "screen": s[1]})
-	}
-	b, _ := json.Marshal(map[string]any{"good": good, "risk": risk, "steps": list})
+// answer is a model answer v2 as JSON text; candidate is nil or an id.
+func answer(good, risk, step string, candidate any) string {
+	b, _ := json.Marshal(map[string]any{"good": good, "risk": risk, "step": map[string]any{"text": step, "candidate": candidate}})
 	return string(b)
 }
 
-const reviewSummary = `{"month":"2026-10","daysToPayday":12,"income":{"total":1200000,"byPerson":[{"who":"участник 1","amount":700000},{"who":"участник 2","amount":500000}]},"dues":{"total":220000,"items":[{"name":"Аренда","amount":220000}]},"spend":{"total":120000,"fact":85000,"byCategory":[{"name":"Продукты","amount":85000}]},"rest":310000,"short":0,"free":860000,"saved":0,"debts":{"total":1000000,"items":[{"name":"Кредит","left":1000000,"payment":58000,"ratePercent":16.5,"endMonth":"2028-06"}]},"prepay":{"name":"Кредит","monthlyPut":90000,"doneMonth":"2027-07"},"goals":[{"name":"Квартира","want":10000000,"have":1000000,"monthlyPut":150000,"doneMonth":"2031-02","paused":false,"afterPlan":false}]}`
+// reviewBody is a review v2 body as the phone sends it (AU-11): facts with about/value/raw, one candidate.
+const reviewBody = `{"reason":"month","facts":[` +
+	`{"id":"f1","about":"доход месяца","value":"1 200 000 ₸","raw":1200000},` +
+	`{"id":"f2","about":"траты на «Кафе» в этом месяце","value":"80 000 ₸","raw":80000},` +
+	`{"id":"f3","about":"главная мечта «Море» — срок","value":"к июню 2028","raw":"2028-06"},` +
+	`{"id":"f4","about":"срок мечты «Море» за месяц отодвинулся (кафе выше плана) на","value":"2 недели","raw":15},` +
+	`{"id":"f5","about":"первым закрываем «Кредит» — самая высокая ставка","value":"16,5 %","raw":16.5},` +
+	`{"id":"f6","about":"во что складывается привычка «Такси»","value":"Такси за 4 года 10 месяцев — мечта «iPhone 17» без долга","raw":[58]}` +
+	`],"candidates":[{"id":"c1","kind":"move","about":"из плана «Кафе» в мечту «Море»","value":"40 000 ₸","effect":"на 2 недели раньше"}]}`
 
-var cleanAnswer = answer("Остаётся 310 000 ₸ после целей.", "Кредит под 16,5% — до июня 2028.",
-	[2]any{"Отложим 150 000 ₸ на квартиру.", "/month"}, [2]any{"Посмотрим долги.", "/money/debts"})
+var cleanAnswer = answer("Мечту «Море» соберём {f3}.", "На «Кафе» ушло {f2} — мечта отодвинулась на {f4}.", "Перенесём из «Кафе» в «Море»", "c1")
 
 type reviewFixture struct {
 	router  *chi.Mux
@@ -137,37 +142,41 @@ func (f *reviewFixture) usage() repository.MockAIUsage {
 	return f.aiRepo.Usage[f.family][f.month]
 }
 
-// The instruction names every field of the summary the model reads (ревью frontend Блока 2, Н-1: prepay and
-// goals[].afterPlan — without them a plan «Сначала долги» is invisible and the model advises what it already does).
-func TestReviewSystemNamesSummaryFields(t *testing.T) {
-	var s map[string]any
-	if err := json.Unmarshal([]byte(reviewSummary), &s); err != nil {
-		t.Fatal(err)
+// systemOf is the instruction of the n-th call.
+func (f *reviewFixture) systemOf(n int) string {
+	list, _ := f.claude.sent[n]["system"].([]any)
+	if len(list) == 0 {
+		return ""
 	}
-	fields := []string{}
-	for k := range s {
-		fields = append(fields, k)
+	s, _ := list[0].(map[string]any)["text"].(string)
+	return s
+}
+
+func decodeReview(t *testing.T, rec *httptest.ResponseRecorder) ReviewAnswer {
+	t.Helper()
+	var got ReviewAnswer
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("status %d %s", rec.Code, rec.Body.String())
 	}
-	for _, part := range []map[string]any{s["prepay"].(map[string]any), s["goals"].([]any)[0].(map[string]any)} {
-		for k := range part {
-			if k != "name" {
-				fields = append(fields, k)
-			}
+	return got
+}
+
+// The instruction (Р-2, Р-19): no number of its own — only references; one step with a candidate; «мы».
+func TestReviewSystemV2(t *testing.T) {
+	for _, want := range []string{"{f3}", "Не пиши ни одной цифры", "step.candidate", "«мы»", "до 14 слов", "до 8 слов", "Не сравнивай участников", "мечту, подушку или свободу от долгов"} {
+		if !strings.Contains(reviewSystem, want) {
+			t.Errorf("reviewSystem has no %q", want)
 		}
 	}
-	for _, f := range fields {
-		if !strings.Contains(reviewSystem, f) {
-			t.Errorf("reviewSystem does not name %q", f)
-		}
+	if strings.Contains(reviewSystem, "summary") || strings.Contains(reviewSystem, "screen") {
+		t.Error("reviewSystem still speaks of v1")
 	}
 }
 
-func TestReviewSendsOnlyInstructionAndSummary(t *testing.T) {
+func TestReviewSendsOnlyInstructionFactsAndCandidates(t *testing.T) {
 	f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{cleanAnswer}}, true)
-	rec := f.post(t, f.member, `{"summary": `+reviewSummary+`}`)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status %d %s", rec.Code, rec.Body.String())
-	}
+	rec := f.post(t, f.member, reviewBody)
+	got := decodeReview(t, rec)
 	if len(f.claude.sent) != 1 {
 		t.Fatalf("calls = %d, want 1", len(f.claude.sent))
 	}
@@ -180,18 +189,22 @@ func TestReviewSendsOnlyInstructionAndSummary(t *testing.T) {
 	if want := []string{"max_tokens", "messages", "model", "output_config", "system"}; !slices.Equal(keys, want) {
 		t.Fatalf("body keys = %v, want %v", keys, want)
 	}
-	sys, _ := json.Marshal(sent["system"])
-	wantSys, _ := json.Marshal([]any{map[string]any{"text": reviewSystem, "type": "text"}})
-	if !bytes.Equal(sys, wantSys) {
-		t.Errorf("system = %s", sys)
+	if f.systemOf(0) != reviewSystem {
+		t.Errorf("system = %s", f.systemOf(0))
 	}
-	// The user message is the summary as sent (compacted) — nothing added: no ids, emails, dates.
-	msgs, _ := json.Marshal(sent["messages"])
-	wantMsgs, _ := json.Marshal([]any{map[string]any{"content": []any{map[string]any{"text": reviewSummary, "type": "text"}}, "role": "user"}})
-	if !bytes.Equal(msgs, wantMsgs) {
-		t.Errorf("messages = %s", msgs)
+	// The user message is the body as sent without raw — nothing added: no ids, emails, dates.
+	msgs, _ := sent["messages"].([]any)
+	content := msgs[0].(map[string]any)["content"].([]any)[0].(map[string]any)["text"].(string)
+	var gotText, want map[string]any
+	_ = json.Unmarshal([]byte(content), &gotText)
+	_ = json.Unmarshal([]byte(reviewBody), &want)
+	for _, fact := range want["facts"].([]any) {
+		delete(fact.(map[string]any), "raw")
 	}
-	for _, leak := range []string{f.family, "a@example.com", "2026-10-15"} {
+	if !reflect.DeepEqual(gotText, want) {
+		t.Errorf("model text = %s", content)
+	}
+	for _, leak := range []string{f.family, "a@example.com", "2026-10-15", `"raw"`} {
 		if raw, _ := json.Marshal(sent); bytes.Contains(raw, []byte(leak)) {
 			t.Errorf("request leaks %q", leak)
 		}
@@ -199,58 +212,107 @@ func TestReviewSendsOnlyInstructionAndSummary(t *testing.T) {
 	if sent["model"] != "claude-opus-5-5" {
 		t.Errorf("model = %v", sent["model"])
 	}
-	if oc, _ := sent["output_config"].(map[string]any); oc["effort"] != "medium" {
+	oc, _ := sent["output_config"].(map[string]any)
+	if oc["effort"] != "medium" {
 		t.Errorf("effort = %v", oc["effort"])
 	}
+	// The candidate is one of the ids sent or null.
+	if schema, _ := json.Marshal(oc["format"]); !bytes.Contains(schema, []byte(`"enum":["c1"]`)) {
+		t.Errorf("schema = %s", schema)
+	}
 
-	var got ReviewAnswer
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || got.Good == "" || len(got.Steps) != 2 || *got.Steps[0].Screen != "/month" {
-		t.Errorf("answer = %s", rec.Body.String())
+	// The answer comes with the values put in.
+	if got.Good != "Мечту «Море» соберём к июню 2028." || got.Risk != "На «Кафе» ушло 80 000 ₸ — мечта отодвинулась на 2 недели." {
+		t.Errorf("answer = %+v", got)
+	}
+	if got.Step.Text != "Перенесём из «Кафе» в «Море»" || got.Step.Candidate == nil || *got.Step.Candidate != "c1" {
+		t.Errorf("step = %+v", got.Step)
 	}
 	if u := f.usage(); u.Requests != 1 || u.InputTokens != 1000 || u.OutputTokens != 200 || u.CostMicros != ai.CostMicros(ai.Usage{Model: "claude-opus-5-5", InputTokens: 1000, OutputTokens: 200}) {
 		t.Errorf("usage = %+v", u)
 	}
 }
 
-func TestReviewRetriesOnInventedNumber(t *testing.T) {
-	invented := answer("Платежи — 18% дохода.", "Риск — 215 000 ₸ лишних трат.", [2]any{"Отложим.", "/month"}, [2]any{"Сверим.", nil})
-	f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{invented, cleanAnswer}}, true)
-	rec := f.post(t, f.member, `{"summary": `+reviewSummary+`}`)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status %d %s", rec.Code, rec.Body.String())
+func TestReviewNoCandidatesSchemaIsNull(t *testing.T) {
+	f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{answer("Доход месяца — {f1}.", "Риск небольшой.", "Посмотрим план месяца", nil)}}, true)
+	body := `{"reason":"refresh","facts":[{"id":"f1","about":"доход месяца","value":"1 200 000 ₸","raw":1200000}]}`
+	got := decodeReview(t, f.post(t, f.member, body))
+	if got.Good != "Доход месяца — 1 200 000 ₸." || got.Step.Candidate != nil {
+		t.Errorf("answer = %+v", got)
 	}
-	if len(f.claude.sent) != 2 {
-		t.Fatalf("calls = %d, want 2", len(f.claude.sent))
+	oc, _ := f.claude.sent[0]["output_config"].(map[string]any)
+	if schema, _ := json.Marshal(oc["format"]); bytes.Contains(schema, []byte(`"enum"`)) {
+		t.Errorf("no candidates — no enum: %s", schema)
 	}
-	sys, _ := json.Marshal(f.claude.sent[1]["system"])
-	if !strings.Contains(string(sys), "В прошлом ответе были числа, которых нет во входе: 18; 215 000. Используй только числа входа.") {
-		t.Errorf("retry system = %s", sys)
+}
+
+// A defect is asked again once with what was wrong (Р-19); the retry's answer is checked the same way.
+func TestReviewDefectsRetry(t *testing.T) {
+	cases := []struct {
+		name, first, violation string
+	}{
+		{"digit", answer("Доход — 1 200 000 ₸.", "Риск.", "Шаг.", nil), "цифры в тексте"},
+		{"digit in the step", answer("Хорошо.", "Риск.", "Отложим 5 000 ₸", nil), "цифры в тексте"},
+		{"ratio", answer("Кафе в 2 раза выше.", "Риск.", "Шаг.", nil), "цифры в тексте"},
+		{"fact not sent", answer("Доход — {f99}.", "Риск.", "Шаг.", nil), "ссылка {f99} — такого факта нет"},
+		{"candidate as a fact", answer("Хорошо.", "Перенесём {c1}.", "Шаг.", nil), "ссылка {c1} — такого факта нет"},
+		{"name not sent", answer("Копим на «iPhone 18».", "Риск.", "Шаг.", nil), "цифры в тексте"},
+		{"number in words", answer("Сэкономим двести тысяч.", "Риск.", "Шаг.", nil), "числа не из фактов: двести; тысяч"},
+		{"comparison in words", answer("Кафе вдвое выше {f2}.", "Риск.", "Шаг.", nil), "числа не из фактов: вдвое"},
 	}
-	// Both attempts are spent, one request of the limit (Р-14).
-	if u := f.usage(); u.Requests != 1 || u.InputTokens != 2000 || u.OutputTokens != 400 {
-		t.Errorf("usage = %+v", u)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{tc.first, cleanAnswer}}, true)
+			decodeReview(t, f.post(t, f.member, reviewBody))
+			if len(f.claude.sent) != 2 {
+				t.Fatalf("calls = %d, want 2", len(f.claude.sent))
+			}
+			if want := fmt.Sprintf(reviewRetry, tc.violation); f.systemOf(1) != reviewSystem+want {
+				t.Errorf("retry system tail = %q, want %q", strings.TrimPrefix(f.systemOf(1), reviewSystem), want)
+			}
+			// Both attempts are spent, one request of the limit.
+			if u := f.usage(); u.Requests != 1 || u.InputTokens != 2000 {
+				t.Errorf("usage = %+v", u)
+			}
+		})
 	}
 }
 
 func TestReviewTwoDefectsFail(t *testing.T) {
-	invented := answer("Платежи — 18% дохода.", "Риск.", [2]any{"Отложим.", "/month"})
+	invented := answer("Доход — 1 200 000 ₸.", "Риск.", "Шаг.", nil)
 	f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{invented}}, true)
-	rec := f.post(t, f.member, `{"summary": `+reviewSummary+`}`)
+	rec := f.post(t, f.member, reviewBody)
 	if rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), `"ai_failed"`) {
 		t.Fatalf("status %d %s, want 502 ai_failed", rec.Code, rec.Body.String())
 	}
-	if strings.Contains(rec.Body.String(), "18%") {
+	if strings.Contains(rec.Body.String(), "1 200 000") {
 		t.Error("an unchecked answer must not be shown")
 	}
-	// Not a request of the limit; the billed tokens go into «≈ $» (хвост §4).
+	// Not a request of the limit; the billed tokens go into «≈ $» (хвост §4 «ИИ»).
 	if u := f.usage(); u.Requests != 0 || u.InputTokens != 2000 || u.CostMicros == 0 {
 		t.Errorf("usage = %+v, want 0 requests and both attempts' tokens", u)
 	}
 }
 
+func TestReviewKeepsNamesAndDropsForeignCandidate(t *testing.T) {
+	// A goal «iPhone 17» sent in an about keeps its digits; a candidate the phone did not send is null.
+	odd := answer("Такси копит на «iPhone 17»: {f6}.", "Ставка «Кредит» — {f5}.", "Перенесём из «Кафе»", "c7")
+	f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{odd}}, true)
+	got := decodeReview(t, f.post(t, f.member, reviewBody))
+	if len(f.claude.sent) != 1 {
+		t.Fatalf("calls = %d, want 1 (no defect)", len(f.claude.sent))
+	}
+	if got.Good != "Такси копит на «iPhone 17»: Такси за 4 года 10 месяцев — мечта «iPhone 17» без долга." || got.Risk != "Ставка «Кредит» — 16,5 %." {
+		t.Errorf("answer = %+v", got)
+	}
+	if got.Step.Candidate != nil {
+		t.Errorf("foreign candidate = %v, want null", *got.Step.Candidate)
+	}
+}
+
 func TestReviewModelErrorFailsWithoutSpend(t *testing.T) {
 	f := newReviewFixture(t, &fakeClaudeQueue{status: 500}, true)
-	rec := f.post(t, f.member, `{"summary": `+reviewSummary+`}`)
+	rec := f.post(t, f.member, reviewBody)
 	if rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), `"ai_failed"`) {
 		t.Fatalf("status %d %s", rec.Code, rec.Body.String())
 	}
@@ -259,25 +321,62 @@ func TestReviewModelErrorFailsWithoutSpend(t *testing.T) {
 	}
 }
 
-func TestReviewScreenOutsideListIsNull(t *testing.T) {
-	// The schema's enum keeps the model in the list; a stray path is still dropped here.
-	odd := answer("Остаётся 310 000 ₸.", "Риск.", [2]any{"Шаг один.", "/admin"}, [2]any{"Шаг два.", "/month"},
-		[2]any{"Шаг три.", nil}, [2]any{"Последний шаг.", "/"})
-	f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{odd}}, true)
-	rec := f.post(t, f.member, `{"summary": `+reviewSummary+`}`)
-	var got ReviewAnswer
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || rec.Code != http.StatusOK {
-		t.Fatalf("status %d %s", rec.Code, rec.Body.String())
+// reviewWith is reviewBody with its facts replaced.
+func reviewWith(facts string) string {
+	return `{"reason":"month","facts":[` + facts + `],"candidates":[]}`
+}
+
+func TestReviewBody(t *testing.T) {
+	f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{cleanAnswer}}, true)
+	fact := func(id string) string { return `{"id":"` + id + `","about":"доход","value":"1 ₸","raw":1}` }
+	many := make([]string, 31)
+	for i := range many {
+		many[i] = fact(fmt.Sprintf("f%d", i+1))
 	}
-	if len(got.Steps) != 3 || got.Steps[0].Screen != nil || got.Steps[0].Text != "Шаг один." || *got.Steps[1].Screen != "/month" {
-		t.Errorf("steps = %+v", got.Steps)
+	cand := `{"id":"c1","kind":"move","about":"из «Кафе»","value":"1 ₸","effect":""}`
+	big := reviewWith(`{"id":"f1","about":"доход","value":"` + strings.Repeat("а", 33<<10) + `","raw":1}`)
+	for name, tc := range map[string]struct {
+		body string
+		want int
+	}{
+		"v1 summary":        {`{"summary":{"month":"2026-10"}}`, http.StatusBadRequest},
+		"extra field":       {`{"reason":"month","facts":[` + fact("f1") + `],"household":"x"}`, http.StatusBadRequest},
+		"extra fact field":  {reviewWith(`{"id":"f1","about":"доход","value":"1 ₸","raw":1,"name":"Ильяс"}`), http.StatusBadRequest},
+		"no facts":          {reviewWith(``), http.StatusBadRequest},
+		"31 facts":          {reviewWith(strings.Join(many, ",")), http.StatusBadRequest},
+		"duplicate id":      {reviewWith(fact("f1") + "," + fact("f1")), http.StatusBadRequest},
+		"bad fact id":       {reviewWith(fact("x1")), http.StatusBadRequest},
+		"bad reason":        {`{"reason":"week","facts":[` + fact("f1") + `]}`, http.StatusBadRequest},
+		"long about":        {reviewWith(`{"id":"f1","about":"` + strings.Repeat("а", 201) + `","value":"1 ₸","raw":1}`), http.StatusBadRequest},
+		"blank value":       {reviewWith(`{"id":"f1","about":"доход","value":" ","raw":1}`), http.StatusBadRequest},
+		"raw text":          {reviewWith(`{"id":"f1","about":"доход","value":"1 ₸","raw":"много"}`), http.StatusBadRequest},
+		"raw object":        {reviewWith(`{"id":"f1","about":"доход","value":"1 ₸","raw":{"a":1}}`), http.StatusBadRequest},
+		"raw 6 numbers":     {reviewWith(`{"id":"f1","about":"доход","value":"1 ₸","raw":[1,2,3,4,5,6]}`), http.StatusBadRequest},
+		"bad kind":          {`{"reason":"month","facts":[` + fact("f1") + `],"candidates":[{"id":"c1","kind":"loan","about":"x","value":"1 ₸","effect":""}]}`, http.StatusBadRequest},
+		"4 candidates":      {`{"reason":"month","facts":[` + fact("f1") + `],"candidates":[` + strings.Repeat(cand+",", 3) + cand + `]}`, http.StatusBadRequest},
+		"candidate fact id": {`{"reason":"month","facts":[` + fact("f1") + `],"candidates":[{"id":"f1","kind":"move","about":"x","value":"1 ₸","effect":""}]}`, http.StatusBadRequest},
+		"too large":         {big, http.StatusRequestEntityTooLarge},
+		"not json":          {`not json`, http.StatusBadRequest},
+	} {
+		if rec := f.post(t, f.member, tc.body); rec.Code != tc.want {
+			t.Errorf("%s: status %d, want %d (%s)", name, rec.Code, tc.want, rec.Body.String())
+		}
+	}
+	if len(f.claude.sent) != 0 {
+		t.Errorf("a bad body must not reach the model: calls = %d", len(f.claude.sent))
+	}
+	// raw: a month and a list of numbers are fine; no candidates key at all — too.
+	ok := newReviewFixture(t, &fakeClaudeQueue{texts: []string{answer("Соберём {f1}.", "Образ — {f2}.", "Посмотрим план", nil)}}, true)
+	body := `{"reason":"salary","facts":[{"id":"f1","about":"срок","value":"к июню 2028","raw":"2028-06"},{"id":"f2","about":"образ","value":"Доставка за год — 40 % мечты","raw":[480000,40]}]}`
+	if got := decodeReview(t, ok.post(t, ok.member, body)); got.Good != "Соберём к июню 2028." || got.Risk != "Образ — Доставка за год — 40 % мечты." {
+		t.Errorf("answer = %+v", got)
 	}
 }
 
 func TestReviewGate(t *testing.T) {
 	t.Run("viewer 403", func(t *testing.T) {
 		f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{cleanAnswer}}, true)
-		if rec := f.post(t, f.viewer, `{"summary": `+reviewSummary+`}`); rec.Code != http.StatusForbidden {
+		if rec := f.post(t, f.viewer, reviewBody); rec.Code != http.StatusForbidden {
 			t.Errorf("status %d %s", rec.Code, rec.Body.String())
 		}
 		if len(f.claude.sent) != 0 {
@@ -286,21 +385,21 @@ func TestReviewGate(t *testing.T) {
 	})
 	t.Run("no key 503", func(t *testing.T) {
 		f := newReviewFixture(t, &fakeClaudeQueue{}, false)
-		if rec := f.post(t, f.member, `{"summary": `+reviewSummary+`}`); rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `"ai_off"`) {
+		if rec := f.post(t, f.member, reviewBody); rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `"ai_off"`) {
 			t.Errorf("status %d %s", rec.Code, rec.Body.String())
 		}
 	})
 	t.Run("family off 503", func(t *testing.T) {
 		f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{cleanAnswer}}, true)
 		_ = f.aiRepo.SetEnabled(context.Background(), f.family, false)
-		if rec := f.post(t, f.member, `{"summary": `+reviewSummary+`}`); rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `"ai_off"`) {
+		if rec := f.post(t, f.member, reviewBody); rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `"ai_off"`) {
 			t.Errorf("status %d %s", rec.Code, rec.Body.String())
 		}
 	})
 	t.Run("limit 429", func(t *testing.T) {
 		f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{cleanAnswer}}, true)
 		_ = f.aiRepo.AddUsage(context.Background(), f.family, f.month, 3, 0, 0, f.limit)
-		if rec := f.post(t, f.member, `{"summary": `+reviewSummary+`}`); rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), `"ai_limit"`) {
+		if rec := f.post(t, f.member, reviewBody); rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), `"ai_limit"`) {
 			t.Errorf("status %d %s", rec.Code, rec.Body.String())
 		}
 		if len(f.claude.sent) != 0 {
@@ -311,65 +410,47 @@ func TestReviewGate(t *testing.T) {
 		// Many requests, little money: the limit is dollars, not requests (Р-11).
 		f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{cleanAnswer}}, true)
 		_ = f.aiRepo.AddUsage(context.Background(), f.family, f.month, 500, 0, 0, f.limit-1)
-		if rec := f.post(t, f.member, `{"summary": `+reviewSummary+`}`); rec.Code != http.StatusOK {
+		if rec := f.post(t, f.member, reviewBody); rec.Code != http.StatusOK {
 			t.Errorf("status %d %s", rec.Code, rec.Body.String())
 		}
 	})
 	t.Run("billed failure spends toward the limit", func(t *testing.T) {
 		// Two defective attempts: no request of the limit, but their cost (2 × 8 000 µ$) crosses
 		// the edge, so the next call is 429.
-		invented := answer("Платежи — 18% дохода.", "Риск.", [2]any{"Отложим.", "/month"})
+		invented := answer("Доход — 1 200 000 ₸.", "Риск.", "Шаг.", nil)
 		f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{invented}}, true)
 		_ = f.aiRepo.AddUsage(context.Background(), f.family, f.month, 0, 0, 0, f.limit-10_000)
-		if rec := f.post(t, f.member, `{"summary": `+reviewSummary+`}`); rec.Code != http.StatusBadGateway {
+		if rec := f.post(t, f.member, reviewBody); rec.Code != http.StatusBadGateway {
 			t.Fatalf("status %d %s, want 502", rec.Code, rec.Body.String())
 		}
 		if u := f.usage(); u.Requests != 0 || u.CostMicros != f.limit+6_000 {
 			t.Errorf("usage = %+v, want 0 requests and %d µ$", u, f.limit+6_000)
 		}
-		if rec := f.post(t, f.member, `{"summary": `+reviewSummary+`}`); rec.Code != http.StatusTooManyRequests {
+		if rec := f.post(t, f.member, reviewBody); rec.Code != http.StatusTooManyRequests {
 			t.Errorf("after the billed failure: status %d, want 429", rec.Code)
 		}
 		if len(f.claude.sent) != 2 {
 			t.Errorf("calls = %d, want 2 (the 429 must not reach the model)", len(f.claude.sent))
 		}
 	})
-	t.Run("body", func(t *testing.T) {
-		f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{cleanAnswer}}, true)
-		big := `{"summary":{"x":"` + strings.Repeat("a", 33<<10) + `"}}`
-		for body, want := range map[string]int{
-			big:                                   http.StatusRequestEntityTooLarge,
-			`{"summary":[1,2]}`:                   http.StatusBadRequest,
-			`{"summary":{"a":1},"household":"x"}`: http.StatusBadRequest,
-			`{}`:                                  http.StatusBadRequest,
-			`not json`:                            http.StatusBadRequest,
-		} {
-			if rec := f.post(t, f.member, body); rec.Code != want {
-				t.Errorf("%.40s: status %d, want %d", body, rec.Code, want)
-			}
-		}
-		if len(f.claude.sent) != 0 {
-			t.Error("a bad body must not reach the model")
-		}
-	})
 }
 
-// TestLiveReview runs the review against the real API: AI_LIVE=1, ANTHROPIC_API_KEY
-// (memory/secrets/anthropic.md), AI_LIVE_SUMMARY — a file with an AI-07 summary (default: the
-// synthetic one above), AI_LIVE_EFFORT — low/medium (default medium), AI_LIVE_N — runs.
-// It logs the time and the answer: run it on the demo or a de-identified copy only.
-func TestLiveReview(t *testing.T) {
+// TestLiveReviewV2 runs the review v2 against the real API: AI_LIVE=1, ANTHROPIC_API_KEY
+// (memory/secrets/anthropic.md), AI_LIVE_BODY — a file with a review body (AU-11 payload of the demo
+// or a de-identified copy; default: the synthetic one above), AI_LIVE_EFFORT — low/medium (default
+// medium), AI_LIVE_N — runs. It logs each run's time, attempts (by tokens) and the answer.
+func TestLiveReviewV2(t *testing.T) {
 	key := os.Getenv("ANTHROPIC_API_KEY")
 	if key == "" || os.Getenv("AI_LIVE") != "1" {
 		t.Skip("live review: set AI_LIVE=1 and ANTHROPIC_API_KEY")
 	}
-	summary := reviewSummary
-	if p := os.Getenv("AI_LIVE_SUMMARY"); p != "" {
+	body := reviewBody
+	if p := os.Getenv("AI_LIVE_BODY"); p != "" {
 		raw, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)
 		}
-		summary = string(raw)
+		body = string(raw)
 	}
 	runs, _ := strconv.Atoi(os.Getenv("AI_LIVE_N"))
 	runs = max(runs, 1)
@@ -378,13 +459,20 @@ func TestLiveReview(t *testing.T) {
 	if e := os.Getenv("AI_LIVE_EFFORT"); e != "" {
 		f.handler.effort = e
 	}
+	ok := 0
 	for i := range runs {
+		before := f.usage()
 		start := time.Now()
-		rec := f.post(t, f.member, `{"summary": `+summary+`}`)
-		t.Logf("run %d: %d in %v: %s", i+1, rec.Code, time.Since(start).Round(100*time.Millisecond), rec.Body.String())
+		rec := f.post(t, f.member, body)
+		after := f.usage()
+		if rec.Code == http.StatusOK {
+			ok++
+		}
+		t.Logf("run %d: %d in %v, %d in / %d out tokens, %d µ$: %s", i+1, rec.Code, time.Since(start).Round(100*time.Millisecond),
+			after.InputTokens-before.InputTokens, after.OutputTokens-before.OutputTokens, after.CostMicros-before.CostMicros, rec.Body.String())
 	}
 	u := f.usage()
-	t.Logf("usage: %d requests, %d in, %d out, %d µ$", u.Requests, u.InputTokens, u.OutputTokens, u.CostMicros)
+	t.Logf("total: %d/%d ok, %d requests, %d in, %d out, %d µ$", ok, runs, u.Requests, u.InputTokens, u.OutputTokens, u.CostMicros)
 }
 
 // sellersCategories are the starting sections (DEFAULT_SPEND_CATEGORIES, dictionary.ts) as the phone sends them.
