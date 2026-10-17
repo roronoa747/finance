@@ -259,6 +259,9 @@ func TestReviewDefectsRetry(t *testing.T) {
 		{"name not sent", answer("Копим на «iPhone 18».", "Риск.", "Шаг.", nil), "цифры в тексте"},
 		{"number in words", answer("Сэкономим двести тысяч.", "Риск.", "Шаг.", nil), "числа не из фактов: двести; тысяч"},
 		{"comparison in words", answer("Кафе вдвое выше {f2}.", "Риск.", "Шаг.", nil), "числа не из фактов: вдвое"},
+		// Приёмка Блока 3 «ИИ-польза»: shares, multiples and a month without a year are numbers too.
+		{"share in words", answer("На «Кафе» ушла пятая часть дохода.", "Траты выросли дважды.", "Шаг.", nil), "числа не из фактов: пятая; дважды"},
+		{"month without a year", answer("Хорошо.", "Риск.", "Соберём к декабрю", nil), "числа не из фактов: декабрю"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

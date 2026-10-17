@@ -85,8 +85,18 @@ func TestCheckNumbers(t *testing.T) {
 		{"Доход в 3 раза больше платежей.", []string{"в 3 раза"}},
 		{"Платежи в два раза меньше дохода.", []string{"в два раза"}},
 		{"Траты в 1,5 раза выше плана.", []string{"1,5", "в 1,5 раза"}},
-		// Not numbers: counting 1–3 in words, ordinals, look-alike words, a scale after digits, frequency.
-		{"Поддержим семью: три шага, оба простые, первый — главный, четвёртого не будет.", nil},
+		// Ordinals 4+, shares, multiples, "пол-" words, a month without a year (приёмка Блока 3
+		// «ИИ-польза»): the code did not count them.
+		{"На «Кафе» ушла пятая часть дохода.", []string{"пятая"}},
+		{"Каждый десятый тенге — в мечту, десятую часть — в подушку.", []string{"десятый", "десятую"}},
+		{"Траты выросли дважды, а платежи — трижды.", []string{"дважды", "трижды"}},
+		{"Платим вдвойне, кредит двукратно дороже.", []string{"вдвойне", "двукратно"}},
+		{"До мечты полпути, десятки тысяч свободно.", []string{"полпути", "десятки", "тысяч"}},
+		{"Соберём к декабрю, а в мае отдохнём.", []string{"декабрю", "мае"}},
+		{"Четвёртого шага не будет.", []string{"Четвёртого"}},
+		// Not numbers: counting 1–3 in words, ordinals 1–3, look-alike words, a scale after digits, frequency.
+		{"Поддержим семью: три шага, оба простые, первый — главный, второй и третий — потом.", nil},
+		{"Пятница, мама, майка и марка — не числа; в этом месяце — по плану.", nil},
 		{"Опять просто: место для взноса есть, 150 тысяч в месяц.", nil},
 		{"Сверим траты 2 раза в месяц, в этот раз — по разделам.", nil},
 		{"Доход 1 200 000 — это 1,2 миллиона.", nil},
@@ -112,6 +122,19 @@ func TestCheckNumbersWordsFromInput(t *testing.T) {
 	}
 	if bad := CheckNumbers([]string{"Двести дорог."}, in); !slices.Equal(bad, []string{"Двести"}) {
 		t.Errorf("bad = %q, want [Двести]", bad)
+	}
+	// An ordinal or a month the family wrote in a name — not a defect; a month of a fact value with
+	// its year stays a date (приёмка Блока 3 «ИИ-польза»).
+	dec = json.NewDecoder(strings.NewReader(`{"facts":[{"about":"мечта «Пятый элемент»","value":"к декабрю 2027","raw":"2027-12"},{"about":"мечта «Отпуск в мае»","value":"80 000 ₸","raw":80000}]}`))
+	dec.UseNumber()
+	if err := dec.Decode(&in); err != nil {
+		t.Fatal(err)
+	}
+	if bad := CheckNumbers([]string{"«Пятый элемент» соберём к декабрю 2027, «Отпуск в мае» — 80 000 ₸."}, in); bad != nil {
+		t.Errorf("bad = %q, want none", bad)
+	}
+	if bad := CheckNumbers([]string{"«Пятый элемент» — к декабрю."}, in); !slices.Equal(bad, []string{"декабрю"}) {
+		t.Errorf("bad = %q, want [декабрю]", bad)
 	}
 }
 

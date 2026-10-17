@@ -23,12 +23,13 @@ import (
 // is "не хватает 50 000"), and so do the numbers written inside its strings ("iPhone 15" — 15).
 // A date is matched as month and year together: a month "2028-06" of the summary allows
 // "к июню 2028" and "2028-06" and the year 2028 alone, not the number 6 ("к марту 2028",
-// "через 6 месяцев" are defects); a month without a year ("в ноябре") is not checked.
-// 1–3 are always allowed: "2 шага", "первый" is counting, not money. No tolerance:
+// "через 6 месяцев" are defects); a month in words without a year ("к декабрю") is a defect
+// unless that word is in the summary's strings — in v2 a month comes only as a fact (приёмка Блока
+// 3 «ИИ-польза»). 1–3 are always allowed: "2 шага", "первый" is counting, not money. No tolerance:
 // "≈ 1,2 млн" for 1 234 000 is a defect.
 //
-// A number in words ("двести тысяч", "миллион", "половина", "вдвое", "полгода") cannot be
-// matched — the instruction wants the summary's digits — so it is a defect, unless the same word
+// A number in words ("двести тысяч", "миллион", "половина", "вдвое", "полгода", "пятая часть",
+// "дважды", "полпути") cannot be matched — the instruction wants the summary's digits — so it is a defect, unless the same word
 // is in the summary's strings (a goal «Тысяча мелочей»). So is a ratio "в 2 раза": a comparison
 // is a computation even with 1–3 (критик Блока 2 «ИИ»).
 func CheckNumbers(texts []string, input any) []string {
@@ -155,9 +156,10 @@ func foldWord(s string) string {
 	return strings.Join(strings.FieldsFunc(strings.ReplaceAll(strings.ToLower(s), "ё", "е"), unicode.IsSpace), " ")
 }
 
-// cardinalWords are numbers 4–900 in words, in their cases (folded). 1–3 (один, два, три, двух,
-// трёх, оба, двое, трое) are counting and ordinals are not amounts, so neither is here; "семью"
-// is the family, not «семью» (7).
+// cardinalWords are numbers 4–900 in words, in their cases (folded), their ordinals and shares
+// ("пятая часть", "каждый десятый"), multiples ("дважды", "вдвойне") and "пол-" words ("полпути").
+// 1–3 (один, два, три, двух, трёх, оба, двое, трое, первый, второй, третий) are counting, so not
+// here; "семью" is the family, not «семью» (7).
 var cardinalWords = func() map[string]bool {
 	m := map[string]bool{}
 	for _, w := range strings.Fields(`четыре четырех четырем четырьмя пять пяти пятью шесть шести шестью семь семи
@@ -169,14 +171,46 @@ var cardinalWords = func() map[string]bool {
 		сто ста двести двухсот двумстам триста трехсот тремстам четыреста четырехсот пятьсот пятисот шестьсот
 		шестисот семьсот семисот восемьсот восьмисот девятьсот девятисот
 		вдвое втрое вчетверо впятеро вдесятеро вполовину полгода полугода треть трети четверть четверти
-		тыс млн млрд`) {
+		тыс млн млрд
+		дважды трижды четырежды вдвойне втройне вчетверне десяток сотен
+		полпути полдороги полцены полмесяца полсуммы полдохода ползарплаты полплана`) {
 		m[w] = true
+	}
+	// Ordinals 4+ in every case: "пятая", "десятую", "сотый".
+	for _, st := range strings.Fields(`четверт пят шест седьм восьм девят десят одиннадцат двенадцат тринадцат
+		четырнадцат пятнадцат шестнадцат семнадцат восемнадцат девятнадцат двадцат тридцат сороков пятидесят
+		шестидесят семидесят восьмидесят девяност сот`) {
+		for _, end := range strings.Fields(`ый ий ой ая ое ую ого ому ым ом ые ых ыми`) {
+			m[st+end] = true
+		}
 	}
 	return m
 }()
 
-// numberStems start a number word in any case: "тысяча", "миллионов", "полтора", "половину".
-var numberStems = []string{"тысяч", "миллион", "миллиард", "полмиллион", "полтысяч", "полтор", "полутор", "половин"}
+// numberStems start a number word in any case: "тысяча", "миллионов", "полтора", "половину",
+// "двукратно", "десятки", "сотни", "дюжина".
+var numberStems = []string{"тысяч", "миллион", "миллиард", "полмиллион", "полтысяч", "полтор", "полутор", "половин",
+	"двукрат", "трехкрат", "четырехкрат", "пятикрат", "десятикрат", "стократ", "десятк", "сотн", "дюжин"}
+
+// monthWord is a month in words in any case (folded): "декабрю", "мае", "марта".
+var monthWord = regexp.MustCompile(`^(?:(?:январ|феврал|апрел|июн|июл|сентябр|октябр|ноябр|декабр)(?:ь|я|ю|е|ем)|март(?:а|у|е|ом)?|ма(?:й|я|ю|е|ем)|август(?:а|у|е|ом)?)$`)
+
+// yearAt is a year right after spaces at i ("декабрю 2027" — monthYear checks that one).
+func yearAt(rs []rune, i int) bool {
+	k := i
+	for k < len(rs) && isGroupSpace(rs[k]) {
+		k++
+	}
+	if k == i || k+4 > len(rs) {
+		return false
+	}
+	for _, r := range rs[k : k+4] {
+		if !isDigit(r) {
+			return false
+		}
+	}
+	return k+4 == len(rs) || !isDigit(rs[k+4])
+}
 
 // scaleWord is the scale of a number in digits ("1,2 млн", "300 тысяч") — scanNumbers reads it.
 func scaleWord(w string) bool {
@@ -188,7 +222,8 @@ func scaleWord(w string) bool {
 	return false
 }
 
-// numberWords finds the numbers of s written in words, as written. A scale right after digits
+// numberWords finds the numbers of s written in words, as written, and its months in words without
+// a year ("к декабрю"; "к декабрю 2027" is monthYear's). A scale right after digits
 // ("300 тысяч") belongs to that number, not here.
 func numberWords(s string) []string {
 	rs := []rune(s)
@@ -203,7 +238,7 @@ func numberWords(s string) []string {
 			i++
 		}
 		w := foldWord(string(rs[start:i]))
-		isNumber := cardinalWords[w]
+		isNumber := cardinalWords[w] || monthWord.MatchString(w) && !yearAt(rs, i)
 		for _, st := range numberStems {
 			isNumber = isNumber || strings.HasPrefix(w, st)
 		}
