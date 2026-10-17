@@ -8,7 +8,7 @@ import { RouterLink } from 'vue-router'
  * ревью магазинов.
  */
 const CONTACT = 'ilyas.muratbek.99@gmail.com'
-const UPDATED = '16 октября 2026'
+const UPDATED = '17 октября 2026'
 </script>
 
 <template>
@@ -35,7 +35,7 @@ const UPDATED = '16 октября 2026'
         <li>Подписки на уведомления, если вы их включите.</li>
         <li>События использования (открыли приложение, завершили неделю) — только для наших цифр удержания, без сторонней аналитики.</li>
         <li>Если семье включён ИИ-помощник: ваше согласие на него, разбор месяца вместе с цифрами, которые ушли в ИИ, и
-          число запросов семьи за месяц — без их содержимого.</li>
+          число запросов и расход семьи за месяц — без их содержимого.</li>
       </ul>
     </section>
 
@@ -43,7 +43,7 @@ const UPDATED = '16 октября 2026'
       <h2 class="type-h3 text-ink">Что не храним</h2>
       <p class="mt-1.5">
         Файл выписки не покидает телефон: PDF разбирается на устройстве, на сервер уходят только строки операций из списка выше.
-        Пароли банков и данные карт мы не получаем никогда.
+        Пароли банков и данные карт мы не получаем никогда. Фото чека уходит ИИ-помощнику и нигде не сохраняется.
       </p>
     </section>
 
@@ -59,9 +59,10 @@ const UPDATED = '16 октября 2026'
       <h2 class="type-h3 text-ink">Кому передаём</h2>
       <p class="mt-1.5">
         Google — только для входа. ИИ-помощник (Claude, Anthropic) — только если его включили семье и вы дали согласие:
-        уходят цифры месяца и названия статей и целей без ваших имён и заметок, названия продавцов без сумм, скриншот
-        товара; на ваших данных не
-        обучается, запросы хранит до 30 дней и удаляет. Для рекламы и третьим лицам — ничего.
+        уходят цифры месяца и названия статей и целей без ваших имён и заметок, названия продавцов и подписок без сумм,
+        скриншот товара, фото чека и фраза о мечте — как вы её написали. Разбор месяца приходит сам, без нажатия:
+        1-го числа и после отметки зарплаты. На ваших данных не обучается, запросы хранит до 30 дней и удаляет. Для
+        рекламы и третьим лицам — ничего.
       </p>
     </section>
 
@@ -87,12 +88,13 @@ const UPDATED = '16 октября 2026'
         notification subscriptions and first-party usage events. Bank statement files never leave your phone. Data is hosted
         on Vercel and Supabase in Seoul (South Korea). We share nothing for advertising; Google is used for sign-in only.
         The AI helper (Claude by Anthropic) runs only if it is enabled for your household and you consent: it receives the
-        month's figures and the titles of budget items and goals without your names or notes, merchant names without
-        amounts, and product screenshots; Anthropic does
-        not train on this data, processes it outside Seoul and keeps requests for up to 30 days. We store your consent,
-        the household's month reviews with the figures sent, and monthly AI request counts.
+        month's figures and the titles of budget items and goals without your names or notes, merchant and subscription
+        names without amounts, product screenshots, receipt photos (never stored) and your dream phrase as written. The
+        month review arrives by itself, without a tap: on the 1st and after a salary is marked. Anthropic does not train
+        on this data, processes it outside Seoul and keeps requests for up to 30 days. We store your consent, the
+        household's month reviews with the figures sent, and monthly AI request counts and spend.
         Delete your account and data any time in Settings → “Удалить аккаунт и данные”. Contact:
-        <a :href="`mailto:${CONTACT}`" class="text-brand">{{ CONTACT }}</a>. Updated October 16, 2026.
+        <a :href="`mailto:${CONTACT}`" class="text-brand">{{ CONTACT }}</a>. Updated October 17, 2026.
       </p>
     </section>
   </article>

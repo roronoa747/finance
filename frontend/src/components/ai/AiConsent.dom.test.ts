@@ -88,7 +88,7 @@ describe('AI-05: карточка «ИИ» в настройках', () => {
     card.querySelector<HTMLButtonElement>('button[aria-label="Что уходит"]')!.click()
     await settle()
     expect(document.body.textContent).toContain(
-      'Claude от Anthropic получает цифры месяца и названия статей без ваших имён, названия продавцов и скриншот товара. На ваших данных не обучается.',
+      'Claude от Anthropic получает цифры месяца и названия статей без ваших имён, названия продавцов и подписок, скриншот товара, фото чека и фразу о мечте. Разбор приходит сам — 1-го и после зарплаты. На ваших данных не обучается.',
     )
     const sw = card.querySelector<HTMLButtonElement>('[role="switch"]')!
     expect(sw.getAttribute('aria-checked')).toBe('false')
@@ -106,7 +106,7 @@ describe('AI-05: карточка «ИИ» в настройках', () => {
 })
 
 describe('AI-05: лист согласия', () => {
-  it('три пункта, Anthropic, «Подробнее» → /privacy; «Включить» — согласие, лист закрыт', async () => {
+  it('шесть пунктов (v2), Anthropic, «Подробнее» → /privacy; «Включить» — согласие, лист закрыт', async () => {
     signIn('member', true)
     await mount(AiConsentSheet, '/settings')
     const ai = useAiStore()
@@ -115,7 +115,14 @@ describe('AI-05: лист согласия', () => {
 
     const items = [...document.querySelectorAll('[data-ai-consent] li')].map((li) => li.textContent!.trim())
     expect(document.querySelector('[data-ai-to]')!.textContent).toBe('Claude от Anthropic получит:')
-    expect(items).toEqual(['Цифры месяца и названия статей без ваших имён', 'Названия продавцов', 'Скриншот товара'])
+    expect(items).toEqual([
+      'Цифры месяца и названия статей без ваших имён',
+      'Разбор приходит сам — 1-го и после зарплаты',
+      'Названия продавцов и подписок',
+      'Скриншот товара',
+      'Фото чека',
+      'Фраза о мечте',
+    ])
     expect(document.body.textContent).toContain('На ваших данных не обучается.')
     expect(document.querySelector('[data-ai-privacy]')!.getAttribute('href')).toBe('/privacy')
 
@@ -162,6 +169,61 @@ describe('AI-05: лист согласия', () => {
     expect(ai.sheetMounted).toBe(false)
     expect(ai.consent).toBe('unknown')
     expect('aiConsent' in useFinanceStore().privateDoc).toBe(false)
+  })
+
+  // AU-10 (бэклог «ИИ-польза», Р-12, Р-22): список вырос — «да» прежней версии спрашивается ещё раз ровно один раз.
+  it('«да» v1 → лист ещё раз → «Включить» пишет v: 2 → второй раз листа нет', async () => {
+    signIn('member', true)
+    await mount(AiConsentSheet, '/settings')
+    const finance = useFinanceStore()
+    finance.mutatePrivateDoc((d) => void (d.aiConsent = { on: true, at: '2026-10-01T00:00:00Z' }))
+    const ai = useAiStore()
+    expect(ai.consent).toBe('unknown')
+
+    const first = ai.ensureConsent()
+    await settle()
+    expect(ai.sheetOpen).toBe(true)
+    expect(document.querySelectorAll('[data-ai-consent] li')).toHaveLength(6)
+    document.querySelector<HTMLButtonElement>('[data-ai-yes]')!.click()
+    await expect(first).resolves.toBe(true)
+    expect(finance.privateDoc.aiConsent).toMatchObject({ on: true, v: 2 })
+
+    await expect(ai.ensureConsent()).resolves.toBe(true)
+    await settle()
+    expect(ai.sheetOpen).toBe(false)
+  })
+
+  it('«Не надо» v1 остаётся «нет» без листа; «да» v2 — без листа', async () => {
+    signIn('member', true)
+    await mount(AiConsentSheet, '/settings')
+    const finance = useFinanceStore()
+    const ai = useAiStore()
+    finance.mutatePrivateDoc((d) => void (d.aiConsent = { on: false, at: '2026-10-01T00:00:00Z' }))
+    expect(ai.consent).toBe('off')
+    await expect(ai.ensureConsent()).resolves.toBe(false)
+    await settle()
+    expect(ai.sheetOpen).toBe(false)
+
+    finance.mutatePrivateDoc((d) => void (d.aiConsent = { on: true, at: '2026-10-02T00:00:00Z', v: 2 }))
+    expect(ai.consent).toBe('on')
+    await expect(ai.ensureConsent()).resolves.toBe(true)
+    await settle()
+    expect(ai.sheetOpen).toBe(false)
+  })
+
+  it('настройки: выключить — «нет» с v: 2; подсказка называет новые пункты и «приходит сам»', async () => {
+    signIn('member', true)
+    const el = await mount(Settings, '/settings')
+    useAiStore().setConsent(true)
+    await settle()
+    el.querySelector<HTMLButtonElement>('[data-ai-card] [role="switch"]')!.click()
+    await settle()
+    expect(useFinanceStore().privateDoc.aiConsent).toMatchObject({ on: false, v: 2 })
+    el.querySelector<HTMLButtonElement>('[data-ai-card] button[aria-label="Что уходит"]')!.click()
+    await settle()
+    const hint = el.querySelector('[data-ai-card]')!.textContent!
+    expect(hint).toContain('фото чека и фразу о мечте.')
+    expect(hint).toContain('Разбор приходит сам — 1-го и после зарплаты.')
   })
 
   it('поверх листа экрана: согласие спрашивают и изнутри листа', async () => {

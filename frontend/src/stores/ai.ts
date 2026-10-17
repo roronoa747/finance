@@ -52,9 +52,15 @@ export const useAiStore = defineStore('ai', () => {
   /** Семье включён ИИ (ключ и флаг на сервере), человек — участник, не демо: viewer кнопок ИИ не видит (Р-7). */
   const available = computed(() => auth.ai && !auth.isViewer && !auth.isDemo)
 
+  /**
+   * «Да» старого списка (v1 — без разбора сам, чека и фразы) — снова «не спрошено»: лист покажется ещё раз один раз
+   * (Р-12, Р-22). «Не надо» любой версии — «нет»: не переспрашиваем, включить — в настройках.
+   */
   const consent = computed<'unknown' | 'on' | 'off'>(() => {
     const c = finance.privateDoc.aiConsent as AiConsent | undefined
-    return !c ? 'unknown' : c.on ? 'on' : 'off'
+    if (!c) return 'unknown'
+    if (!c.on) return 'off'
+    return (c.v ?? 1) >= AI_CONSENT_V ? 'on' : 'unknown'
   })
 
   /** Лист «что уходит» открыт — ждёт ответа на `ensureConsent`. */
@@ -68,7 +74,7 @@ export const useAiStore = defineStore('ai', () => {
 
   function setConsent(on: boolean) {
     finance.mutatePrivateDoc((d) => {
-      d.aiConsent = { on, at: new Date().toISOString() } satisfies AiConsent
+      d.aiConsent = { on, at: new Date().toISOString(), v: AI_CONSENT_V } satisfies AiConsent
     })
   }
 
@@ -214,7 +220,21 @@ export const useAiStore = defineStore('ai', () => {
 /** Лимит месяца кончился: «ИИ вернётся 1 ноября» — с месяцем, «1-го» заставляло думать, какого (владелец, `/ux` Блока 2). */
 export const aiLimitText = () => `ИИ вернётся 1 ${MONTHS_GEN[parseMonthKey(addMonths(monthKey(), 1)).month]}`
 
-/** Кто получает и что уходит (Р-9) — одни слова для листа согласия и подсказки в настройках. */
+/** Версия согласия (бэклог «ИИ-польза», Р-12): список ниже вырос — «да» прежней версии спрашивается ещё раз. */
+export const AI_CONSENT_V = 2
+
+/**
+ * Кто получает и что уходит (Р-9; v2 — бэклог «ИИ-польза», Р-12) — одни слова для листа согласия и подсказки в
+ * настройках. `AI_AUTO` — не «что», а «когда»: разбор без нажатия; в подсказке настроек — отдельной фразой.
+ */
 export const AI_TO = 'Claude от Anthropic'
-export const AI_SENDS = ['Цифры месяца и названия статей без ваших имён', 'Названия продавцов', 'Скриншот товара'] as const
+export const AI_AUTO = 'Разбор приходит сам — 1-го и после зарплаты'
+export const AI_SENDS = [
+  'Цифры месяца и названия статей без ваших имён',
+  AI_AUTO,
+  'Названия продавцов и подписок',
+  'Скриншот товара',
+  'Фото чека',
+  'Фраза о мечте',
+] as const
 export const AI_NO_TRAINING = 'На ваших данных не обучается'

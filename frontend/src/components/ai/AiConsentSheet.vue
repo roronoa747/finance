@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue'
 import { RouterLink } from 'vue-router'
-import { PhChartBar, PhImage, PhStorefront } from '@phosphor-icons/vue'
+import { PhCalendarCheck, PhChartBar, PhChatCircleText, PhImage, PhReceipt, PhStorefront } from '@phosphor-icons/vue'
 import { AI_NO_TRAINING, AI_SENDS, AI_TO, useAiStore } from '@/stores/ai'
 import IconBox from '@/components/kit/IconBox.vue'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -9,12 +9,13 @@ import Button from '@/components/ui/Button.vue'
 
 /**
  * Лист согласия на ИИ-помощника (бэклог «ИИ», Р-9): один на приложение, в оболочке; открывает его
- * `useAiStore().ensureConsent()`. Что уходит — три строки с иконками, куда — одной строкой, «Включить» — главная,
- * «Не надо» — тихая. Закрыли свайпом или крестиком — на этот раз нет, вопрос остаётся. Финальные слова — `/ux`.
+ * `useAiStore().ensureConsent()`. Что уходит — строки с иконками (v2 — шесть, бэклог «ИИ-польза», Р-12), куда —
+ * одной строкой, «Включить» — главная, «Не надо» — тихая. Закрыли свайпом или крестиком — на этот раз нет, вопрос
+ * остаётся. Финальные слова — `/ux`.
  */
 const ai = useAiStore()
 
-const items = [PhChartBar, PhStorefront, PhImage].map((icon, i) => ({ icon, text: AI_SENDS[i] }))
+const items = [PhChartBar, PhCalendarCheck, PhStorefront, PhImage, PhReceipt, PhChatCircleText].map((icon, i) => ({ icon, text: AI_SENDS[i] }))
 
 // Лист есть — стору есть чем спросить. Ушли с экрана с открытым листом (ссылка «Подробнее», выход) — ждущий
 // ответа получает «нет».

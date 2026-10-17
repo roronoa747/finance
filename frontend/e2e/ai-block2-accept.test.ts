@@ -103,7 +103,7 @@ describe('e2e / ИИ Блок 2 — приёмка', () => {
     await vi.waitFor(() => expect(useAiStore().reviewState).not.toBe('thinking'))
   }
   const opened = (p: Phone) => screen(p.pinia, Month, '/month', undefined, [screenMixin({ reviewOpen: true })])
-  const consent = (slot: 'a' | 'b') => pv.docs.set(`u-${slot}`, { rev: 1, data: { aiConsent: { on: true, at: T0 } } })
+  const consent = (slot: 'a' | 'b') => pv.docs.set(`u-${slot}`, { rev: 1, data: { aiConsent: { on: true, at: T0, v: 2 } } })
 
   it('(д) партнёр с ИИ и своим согласием: ✦ у сохранённого разбора открывает его без запроса', async () => {
     server.data.aiReviews = [saved('Платежи и траты покрыты.', '2026-10-12T06:00:00.000Z')]
