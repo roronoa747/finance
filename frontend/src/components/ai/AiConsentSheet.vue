@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue'
 import { RouterLink } from 'vue-router'
-import { PhChartBar, PhChatCircleText, PhImage, PhReceipt, PhStorefront } from '@phosphor-icons/vue'
+import { PhChartBar, PhChatCircleText, PhReceipt, PhStorefront } from '@phosphor-icons/vue'
 import { AI_AUTO, AI_NO_TRAINING, AI_SENDS, AI_TO, useAiStore } from '@/stores/ai'
 import IconBox from '@/components/kit/IconBox.vue'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -15,7 +15,7 @@ import Button from '@/components/ui/Button.vue'
  */
 const ai = useAiStore()
 
-const items = [PhChartBar, PhStorefront, PhImage, PhReceipt, PhChatCircleText].map((icon, i) => ({ icon, text: AI_SENDS[i] }))
+const items = [PhChartBar, PhStorefront, PhReceipt, PhChatCircleText].map((icon, i) => ({ icon, text: AI_SENDS[i] }))
 
 // Лист есть — стору есть чем спросить. Ушли с экрана с открытым листом (ссылка «Подробнее», выход) — ждущий
 // ответа получает «нет».

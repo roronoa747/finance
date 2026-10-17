@@ -195,7 +195,7 @@ REST API приложения: вход, домохозяйство, синхр�
 | `ADMIN_EMAILS` | прод, опционально | почты владельца через запятую — страница цифр `/admin`; без неё `/api/admin/metrics` — 404 всем. Значение — `memory/secrets/` |
 | `GOOGLE_CLIENT_IDS` | прод, опционально | id клиентов OAuth Google через запятую (веб, Android, iOS) — допустимые `aud`; без неё вход через Google отвечает 503. Значения — `memory/secrets/google-oauth.md` |
 | `ANTHROPIC_API_KEY` | прод, опционально | ключ Claude (Anthropic API) — ИИ-помощник; без него ИИ выключен везде, прод валиден. Значение — `memory/secrets/anthropic.md` |
-| `AI_MODEL_REVIEW`, `AI_MODEL_SELLERS`, `AI_MODEL_WISH` | опционально | модель по функции: разбор месяца, продавцы, скриншот; дефолты `claude-opus-5-5`, `claude-haiku-5-5`, `claude-opus-5-5` |
+| `AI_MODEL_REVIEW`, `AI_MODEL_SELLERS` | опционально | модель по функции: разбор месяца, продавцы; дефолты `claude-opus-5-5`, `claude-haiku-5-5` |
 | `AI_MONTHLY_LIMIT_USD` | опционально | лимит ИИ на семью в месяц (Алматы) в целых долларах, одно значение на все семьи; дефолт `2`, `0`/минус/не число → `2`. Прежний `AI_MONTHLY_LIMIT` (запросы) не читается — можно удалить |
 | `VITE_GOOGLE_CLIENT_ID` | прод (сборка фронта) | id веб-клиента OAuth (тот же, что в `GOOGLE_CLIENT_IDS`). **Константа сборки**: Vite вшивает её в JS, без неё сборщик выбрасывает код Google — в проде нет входа (формы пароля в проде нет). Заводить в Vercel для **Production** до сборки; после деплоя — `gsi/client` в главном JS прода или кнопка Google на `/access` |
 

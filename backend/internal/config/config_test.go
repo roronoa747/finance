@@ -9,7 +9,7 @@ import (
 func clearEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{"PORT", "DATABASE_URL", "JWT_SECRET", "CORS_ORIGIN", "APP_ENV", "GOOGLE_CLIENT_IDS", "ADMIN_EMAILS",
-		"ANTHROPIC_API_KEY", "AI_MODEL_REVIEW", "AI_MODEL_SELLERS", "AI_MODEL_WISH", "AI_MONTHLY_LIMIT_USD", "AI_MONTHLY_LIMIT"} {
+		"ANTHROPIC_API_KEY", "AI_MODEL_REVIEW", "AI_MODEL_SELLERS", "AI_MONTHLY_LIMIT_USD", "AI_MONTHLY_LIMIT"} {
 		t.Setenv(key, "")
 	}
 }
@@ -166,8 +166,8 @@ func TestAIDefaults(t *testing.T) {
 	if cfg.AnthropicAPIKey != "" {
 		t.Errorf("AnthropicAPIKey = %q, want blank", cfg.AnthropicAPIKey)
 	}
-	if cfg.AIModelReview != "claude-opus-5-5" || cfg.AIModelSellers != "claude-haiku-5-5" || cfg.AIModelWish != "claude-opus-5-5" {
-		t.Errorf("models = %s / %s / %s", cfg.AIModelReview, cfg.AIModelSellers, cfg.AIModelWish)
+	if cfg.AIModelReview != "claude-opus-5-5" || cfg.AIModelSellers != "claude-haiku-5-5" {
+		t.Errorf("models = %s / %s", cfg.AIModelReview, cfg.AIModelSellers)
 	}
 	if cfg.AIMonthlyLimitMicros != 2_000_000 {
 		t.Errorf("AIMonthlyLimitMicros = %d, want 2 000 000 ($2)", cfg.AIMonthlyLimitMicros)
