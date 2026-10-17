@@ -4,7 +4,7 @@ import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { mergeDocs, mergePrivateDocs, isEmptyDoc } from '@/lib/merge'
 import { monthKey, monthLastNoon, todayIso } from '@/lib/dates'
 import { clearPhotoDisk } from '@/lib/photos/store'
-import { AI_REVIEW_SEEN_KEY, AI_SELLERS_KEY, DEMO_PENDING_KEY, EVENTS_QUEUE_KEY, FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, TIPS_SEEN_KEY, readStorage } from '@/lib/storage'
+import { AI_AUTO_KEY, AI_REVIEW_SEEN_KEY, AI_SELLERS_KEY, DEMO_PENDING_KEY, EVENTS_QUEUE_KEY, FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, TIPS_SEEN_KEY, readStorage } from '@/lib/storage'
 import {
   accountBalance,
   termSnapOf,
@@ -194,6 +194,8 @@ const LOCAL_KEYS = [
   AI_REVIEW_SEEN_KEY,
   // Предложения ИИ продавцам (AI-12): продавцы этого входа другому не нужны.
   AI_SELLERS_KEY,
+  // Разбор сам (AU-13): попытки и спрошенное согласие по поводам — этого входа.
+  AI_AUTO_KEY,
 ]
 
 // Запрос не дошёл до сервера (fetch бросил не ApiError) — это «нет сети», а не «не
@@ -1063,7 +1065,7 @@ export const useFinanceStore = defineStore('finance', () => {
       const live = list.filter((x) => !x.deletedAt).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
       const drop = new Set(live.slice(AI_REVIEWS_KEPT).map((x) => x.id))
       doc.aiReviews = list.map((x) =>
-        drop.has(x.id) ? { ...x, good: '', risk: '', steps: [], sent: null, deletedAt: t, updatedAt: t } : x,
+        drop.has(x.id) ? { ...x, good: '', risk: '', steps: [], step: undefined, sent: null, deletedAt: t, updatedAt: t } : x,
       )
     })
     return review

@@ -18,6 +18,7 @@ import SectionSheet from '@/components/week/SectionSheet.vue'
 import UploadsSheet from '@/components/week/UploadsSheet.vue'
 import { recentOperations, type MatchCandidate } from '@/lib/statements/matching'
 import { useAuthStore } from '@/stores/auth'
+import { useAiStore } from '@/stores/ai'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore, type Draft } from '@/stores/operations'
 import { money, parseMoney, plain } from '@/lib/money'
@@ -56,6 +57,7 @@ import { readMonthEnd, writeMonthEnd, writePlanView } from '@/lib/storage'
  * за «! N» (`decisionQueue`); зарплата и «освободится» — дела «Месяца».
  */
 const auth = useAuthStore()
+const ai = useAiStore()
 const finance = useFinanceStore()
 const store = useOperationsStore()
 const route = useRoute()
@@ -320,7 +322,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="flex flex-col gap-3 pt-1 text-left">
-    <PlanSwitch view="week" :month="planCall !== null && planCall !== month ? planCall : null" />
+    <PlanSwitch view="week" :month="planCall !== null && planCall !== month ? planCall : null" :dot="ai.reviewUnseen" />
     <input v-if="canUpload" ref="fileInput" type="file" accept="application/pdf,.pdf" multiple class="hidden" @change="pick" />
     <Callout v-if="store.pendingCount && !store.held" tone="neutral">{{ store.pendingCount }} операций отправятся при сети. Итоги уже посчитаны.</Callout>
 

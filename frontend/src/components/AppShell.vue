@@ -4,7 +4,7 @@ let freshFor: string | null = null
 </script>
 
 <script setup lang="ts">
-import { ref, computed, provide, onMounted } from 'vue'
+import { ref, computed, provide, onMounted, watch } from 'vue'
 import { useRoute, useRouter, RouterLink, RouterView } from 'vue-router'
 import {
   PhHeart,
@@ -22,8 +22,10 @@ import {
 } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
+import { useAiStore } from '@/stores/ai'
 import { readPlanView } from '@/lib/storage'
-import { liveGoals } from '@/lib/finance'
+import { liveGoals, periodMonth } from '@/lib/finance'
+import { monthKey } from '@/lib/dates'
 import { useScrollMemory } from './useScrollMemory'
 import SyncBadge from '@/components/SyncBadge.vue'
 import Avatar from '@/components/kit/Avatar.vue'
@@ -67,6 +69,20 @@ onMounted(() => {
 })
 
 const people = computed(() => financeStore.people.filter((p) => !p.deletedAt))
+
+/*
+ * Разбор сам после своей «Пришла» (AU-13, Р-20): первая отметка зарплаты участника в месяце — повод `salary`. Стор
+ * сам решает, повод ли это (аванс и недели — нет) и можно ли (согласие, сеть, лимит). Синк зовёт его после pull.
+ */
+const mySalaryMarks = computed(
+  () =>
+    (financeStore.householdDoc.payments ?? []).filter(
+      (p) => !p.deletedAt && p.kind === 'salary' && p.targetId === authStore.slot && periodMonth(p.period) === monthKey(),
+    ).length,
+)
+watch(mySalaryMarks, (n, was) => {
+  if (n > (was ?? 0)) void useAiStore().autoReview()
+})
 
 /** Вкладки — корни (у «Денег» — все три квадрата, пивот 3); остальное — вложенные экраны со стрелкой «назад». */
 const ROOTS = ['/', '/week', '/month', '/money', '/money/debts', '/money/history']
@@ -117,9 +133,11 @@ const planTo = computed(() => {
   return authStore.isViewer || readPlanView() === 'month' ? '/month' : '/week'
 })
 
+const ai = useAiStore()
 const tabs = computed(() => [
   { to: '/', label: 'Мечты', icon: PhHeart, active: route.path === '/' || route.path.startsWith('/goals') || route.path === '/wishes' || route.path.startsWith('/people/') },
-  { to: planTo.value, label: 'План', icon: PhCalendarBlank, active: route.path.startsWith('/week') || route.path === '/month' },
+  // Точка — новый разбор месяца не открыт на этом телефоне (бэклог «ИИ-польза», Р-4).
+  { to: planTo.value, label: 'План', icon: PhCalendarBlank, active: route.path.startsWith('/week') || route.path === '/month', dot: ai.reviewUnseen },
   { to: '/money', label: 'Деньги', icon: PhWallet, active: route.path.startsWith('/money') },
 ])
 

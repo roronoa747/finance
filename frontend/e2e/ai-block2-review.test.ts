@@ -19,7 +19,8 @@ import { at, fakePrivate, fakeServer, phone, privateFor, screen, type FakePrivat
  * исходящем теле нет имён, заметок, желаний и личного документа; (б) viewer читает, не запускает; (в) лимит — «ИИ
  * вернётся 1 ноября»; (г) демо — заготовка «Пример» без запросов. Экраны — SSR (`screen`), браузер — стенд §6.
  */
-const answer = {
+/** Разбор v1, сохранённый в документе до v2 (читается как раньше). */
+const stored = {
   good: 'Платежи и траты покрыты.',
   risk: 'Кредитка под 40% — самый дорогой долг.',
   steps: [
@@ -27,6 +28,8 @@ const answer = {
     { text: 'Обсудим план трат вдвоём.', screen: null },
   ],
 }
+/** Ответ ручки — v2 (бэклог «ИИ-польза», AU-12): шаг один, кандидата нет. */
+const answer = { good: stored.good, risk: stored.risk, step: { text: 'Посмотрим долги.', candidate: null } }
 
 /** Семья с тем, что не должно уйти: имена, заметки, причина версии, желание; личный документ — отдельно. */
 function familyDoc(): SyncDoc {
@@ -105,10 +108,10 @@ describe('e2e / ИИ Блок 2 — разбор месяца', () => {
     expect(review).toHaveBeenCalledTimes(1)
     expect(one.store.householdDoc.aiReviews).toHaveLength(1)
 
-    // Исходящее тело: сводка AI-07 — ни имён, ни заметок, ни причины версии, ни желаний, ни личного документа.
+    // Исходящее тело: факты разбора v2 (AU-11) — ни имён, ни заметок, ни причины версии, ни желаний, ни личного документа.
     const body = JSON.stringify(review.mock.calls[0][0])
     for (const bad of ['Ильяс', 'Аруна', 'секрет', 'Галина', 'кольцо', 'Депозит']) expect(body, bad).not.toContain(bad)
-    expect(body).toContain('участник 1')
+    expect(body).toContain('"facts"')
 
     let html = sheet(await opened(one))
     expect(html).toContain(answer.good)
@@ -133,7 +136,7 @@ describe('e2e / ИИ Блок 2 — разбор месяца', () => {
   it('(б) viewer: видит сохранённый разбор, кнопки запуска и «Обновить» нет, запросов нет', async () => {
     const review = vi.spyOn(apiClient, 'aiReview').mockResolvedValue(answer)
     // Разбор семьи — суточной давности: участнику «Обновить» было бы видно.
-    server.data.aiReviews = [{ id: 'r0', month: '2026-10', at: '2026-10-10T07:00:00.000Z', by: 'a', ...answer, sent: null, updatedAt: T0 }]
+    server.data.aiReviews = [{ id: 'r0', month: '2026-10', at: '2026-10-10T07:00:00.000Z', by: 'a', ...stored, sent: null, updatedAt: T0 }]
     const v = await as('viewer', 'b')
     expect(useAiStore().available).toBe(false)
     const html = await opened(v)

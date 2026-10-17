@@ -1,23 +1,29 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
-import { PhCaretRight, PhCircleNotch } from '@phosphor-icons/vue'
+import { RouterLink, useRoute } from 'vue-router'
+import { PhCaretRight, PhCheck, PhCircleNotch } from '@phosphor-icons/vue'
 import { aiLimitText, useAiStore } from '@/stores/ai'
 import { useAuthStore } from '@/stores/auth'
-import type { AiReview } from '@/types/finance'
+import { useFinanceStore } from '@/stores/finance'
+import type { AiReview, PlanShift, ReviewPayload } from '@/types/finance'
 import type { MonthSummaryAI } from '@/lib/aiSummary'
+import { factsLines } from '@/lib/aiFacts'
+import { stepCandidates } from '@/lib/finance'
 import { money, plain } from '@/lib/money'
 import { monthBy } from '@/lib/dates'
 import { plural } from '@/lib/utils'
 import Sheet from '@/components/kit/Sheet.vue'
 import Button from '@/components/ui/Button.vue'
+import DoSheet from '@/components/plan/DoSheet.vue'
 
 /**
- * Лист разбора месяца (бэклог «ИИ», Р-4, AI-09): три блока — «Хорошо», «Риск», «Шаги» (шаг с экраном — ссылка,
- * лист закрывается). Внизу тихо — откуда текст и «что ушло» (сводка, ушедшая в модель, списком — Р-9) и «Обновить»
- * (участник с ИИ, разбору больше суток). Пока идёт запрос — «Думаю…»; лимит — «ИИ вернётся 1 ноября» (следующий месяц
- * по Алматы — лимит семьи сбрасывается 1-го, Р-8). Viewer — только чтение. Пример демо (AI-10) — `example`: без
- * «Обновить», с пометкой. Слова утвердил владелец (артефакт `/ux`, 2026-10-16).
+ * Лист разбора месяца (бэклог «ИИ», Р-4, AI-09; v2 — «ИИ-польза», Р-2, Р-3, AU-13): «Хорошо», «Риск», «Шаг». У шага v2
+ * справа — небольшая «Сделать» (участник, кандидат ещё применим: сумма и эффект пересчитаны `stepCandidates` при
+ * открытии) → лист `DoSheet` с готовыми цифрами; подтвердил — лист разбора остаётся, у шага «✓ Сделано» (сдвиг месяца в
+ * ту же цель). Разбор v1 — прежние шаги-ссылки; ссылка на экран, где лист открыт, — текст без стрелки (Х-13). Внизу
+ * тихо — откуда текст и «что ушло» (v2 — факты кода, v1 — сводка; Р-9) и «Обновить» (участник с ИИ, разбору больше
+ * суток). Пока идёт запрос — «Думаю…»; лимит — «ИИ вернётся 1 ноября». Viewer — только чтение. Пример демо — `example`:
+ * без «Обновить», с пометкой.
  */
 const props = defineProps<{
   open: boolean
@@ -31,6 +37,8 @@ const emit = defineEmits<{ close: []; refresh: [] }>()
 
 const ai = useAiStore()
 const auth = useAuthStore()
+const finance = useFinanceStore()
+const route = useRoute()
 
 const DAY_MS = 86_400_000
 /** «Обновить» — не чаще раза в день (Р-4): только участнику с ИИ без «Не надо» (Р-9) и разбору старше суток. */
@@ -49,7 +57,7 @@ const canRefresh = computed(
  * как у `money()`; так же пробел перед «₸», «%» и словом «тенге» (живые ответы пишут и так — «627 000 / тенге», `/ux`).
  * Текст в документе не меняется.
  */
-const NBSP = '\u00a0'
+const NBSP = ' '
 /** Разряды, которых модель не поставила («499641» — живой ответ, критик Блока 2): 5+ цифр — как `plain`; годы не задевает. */
 const keep = (t: string) =>
   t
@@ -66,16 +74,44 @@ const stateText = computed(() =>
       : 'Не вышло. Попробуйте позже',
 )
 
+/* ---------- шаг v2: «Сделать» у шага (Р-3) ---------- */
+const v2 = computed(() => props.review?.v === 2)
+const saved = computed(() => (v2.value ? props.review?.step?.candidate ?? null : null))
+const sameTo = (a: PlanShift['to'], b: PlanShift['to']) => (a === 'debt' || b === 'debt' ? a === b : a.goalId === b.goalId)
+/** Сделано: в этом месяце уже есть сдвиг в ту же цель (или карточку долга). */
+const done = computed(() => {
+  const c = saved.value
+  return !!c && (finance.householdDoc.planShifts ?? []).some((s) => !s.deletedAt && s.period === props.monthKey && sameTo(s.to, c.shift.to))
+})
+/** Кандидат ещё применим — тот же id в свежих кандидатах кода; цифры — свежие (не из сохранённого разбора). */
+const fresh = computed(() => {
+  const c = saved.value
+  if (!c || auth.isViewer || done.value) return null
+  const { state, ctx } = finance.planInput(props.monthKey)
+  return stepCandidates(state, ctx).find((x) => x.id === c.id) ?? null
+})
+const doOpen = ref(false)
+
+/** Шаг v1 на экран, где лист открыт (`/month` с «Месяца»), — не ссылка: она только закрывала лист (Х-13). */
+const linkOf = (screen: string | null) => (screen && screen !== route.path ? screen : null)
+
 const sentOpen = ref(false)
 watch(
   () => props.open,
   (v) => {
-    if (!v) sentOpen.value = false
+    if (!v) {
+      sentOpen.value = false
+      doOpen.value = false
+    }
   },
 )
 
-/** «Что ушло» читаемым списком, не JSON: разделы сводки с суммами. */
-const sentRows = computed(() => (props.review?.sent ? sentLines(props.review.sent, props.monthKey) : []))
+/** «Что ушло» читаемым списком, не JSON: v2 — факты и шаги кода, v1 — разделы сводки с суммами. */
+const sentRows = computed(() => {
+  const s = props.review?.sent
+  if (!s) return []
+  return 'facts' in s ? [{ title: 'Факты месяца', rows: factsLines(s as ReviewPayload) }] : sentLines(s, props.monthKey)
+})
 
 function sentLines(s: MonthSummaryAI, key: string): { title: string; rows: string[] }[] {
   const by = (m: string | null) => (m ? monthBy(m, key) : 'не закроем')
@@ -137,13 +173,22 @@ function sentLines(s: MonthSummaryAI, key: string): { title: string; rows: strin
         <h3 class="type-section text-warn">Риск</h3>
         <p class="mt-1 text-[15px] leading-snug text-ink num" data-review-risk>{{ keep(review.risk) }}</p>
       </section>
-      <section>
+      <!-- v2: шаг один, действие — у него (правило 12: «Сделать» живёт у своего предмета). -->
+      <section v-if="v2 && review.step">
+        <h3 class="type-section text-ink">Шаг</h3>
+        <div class="mt-1 flex items-center gap-3" data-review-step-v2>
+          <p class="min-w-0 flex-1 text-[15px] leading-snug text-ink num" data-review-step-text>{{ keep(review.step.text) }}</p>
+          <span v-if="done" class="flex shrink-0 items-center gap-1 text-[13.5px] font-semibold text-ok" data-review-done><PhCheck :size="15" weight="bold" aria-hidden="true" />Сделано</span>
+          <Button v-else-if="fresh" variant="secondary" size="sm" class="shrink-0" data-review-do @click="doOpen = true">Сделать</Button>
+        </div>
+      </section>
+      <section v-else-if="review.steps.length">
         <h3 class="type-section text-ink">Шаги</h3>
         <ol class="mt-1 flex flex-col" data-review-steps>
           <li v-for="(s, i) in review.steps" :key="i" class="border-t border-line first:border-t-0">
             <RouterLink
-              v-if="s.screen"
-              :to="s.screen"
+              v-if="linkOf(s.screen)"
+              :to="linkOf(s.screen)!"
               class="press flex items-center gap-2.5 py-2.5 text-[15px] leading-snug text-ink num"
               data-review-step-link
               @click="emit('close')"
@@ -165,7 +210,7 @@ function sentLines(s: MonthSummaryAI, key: string): { title: string; rows: strin
           Подсказка ИИ ·
           <button type="button" class="cursor-pointer font-semibold text-ink-2 underline underline-offset-2" :aria-expanded="sentOpen" data-review-sent-open @click="sentOpen = !sentOpen">что ушло</button>
         </p>
-        <!-- Сводка, ушедшая в модель (Р-9): без имён, заметок и операций — та же, что видит человек. -->
+        <!-- Что ушло в модель (Р-9): без имён, заметок и операций — то же, что видит человек. -->
         <div v-if="sentOpen" class="mt-2 flex flex-col gap-2.5 rounded-[14px] bg-surface-2 px-3 py-2.5" data-review-sent>
           <div v-for="b in sentRows" :key="b.title">
             <p class="text-[13px] font-semibold text-ink num">{{ b.title }}</p>
@@ -183,4 +228,6 @@ function sentLines(s: MonthSummaryAI, key: string): { title: string; rows: strin
     <!-- Запрос и его исход — на месте разбора; ответ идёт 4–12 с — крутилка, чтобы «Думаю…» не читалось зависшим (`/ux`). -->
     <p v-else class="flex items-center justify-center gap-2 py-6 text-[15px]" :class="ai.reviewState === 'thinking' ? 'text-ink-2' : 'text-ink'" :data-review-state="ai.reviewState"><PhCircleNotch v-if="ai.reviewState === 'thinking'" :size="17" class="shrink-0 animate-spin" aria-hidden="true" data-review-spin /><span>{{ stateText }}</span></p>
   </Sheet>
+  <!-- Лист «Сделать» поверх разбора (z 60, как вложенные листы); разбор под ним остаётся. -->
+  <DoSheet :candidate="open && doOpen ? fresh : null" :z="60" @close="doOpen = false" />
 </template>

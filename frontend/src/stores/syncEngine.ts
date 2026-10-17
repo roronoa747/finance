@@ -4,6 +4,7 @@ import { useFinanceStore, DEMO_HOUSEHOLD } from './finance'
 import { useOperationsStore } from './operations'
 import { useFxStore } from './fx'
 import { useEventsStore } from './events'
+import { useAiStore } from './ai'
 import { docCurrencies } from '@/lib/finance'
 import { readDemoPending } from '@/lib/storage'
 
@@ -90,12 +91,15 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
   /**
    * Снимок срока мечт месяца (AU-04) — только после того, как документ пришёл с сервера (иначе телефон без сети
    * записал бы свой снимок поверх раннего снимка партнёра); тот же круг ловит и смену месяца. Стор сам проверяет
-   * viewer и «уже есть».
+   * viewer и «уже есть». Затем — разбор сам (AU-13, Р-4): «один на повод на семью» решается по свежему документу;
+   * стор ИИ сам проверяет участника, согласие, сеть и повод.
    */
   const afterPull = (pulled: boolean) => {
     // Обход фото ждёт 'idle' — до записи снимка (она ставит 'dirty' до отправки).
     linkPhotos()
-    if (pulled) finance.ensureTermSnap()
+    if (!pulled) return
+    finance.ensureTermSnap()
+    void useAiStore().autoReview()
   }
 
   const sync = () => {

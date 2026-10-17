@@ -20,6 +20,8 @@ const props = defineProps<{
   candidate: StepCandidate | null
   /** Открыт из «Вернуть срок» у мечты: заголовок «Вернуть срок», кнопка «Вернуть». */
   returning?: boolean
+  /** Слой листа: из листа разбора (AU-13) — 60, над ним. */
+  z?: number
 }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'done', id: string): void }>()
 
@@ -77,7 +79,7 @@ function undo() {
 </script>
 
 <template>
-  <Sheet :open="open" :title="view?.title ?? ''" @close="emit('close')">
+  <Sheet :open="open" :title="view?.title ?? ''" :z="z" @close="emit('close')">
     <template v-if="view">
       <p class="font-num text-[32px] font-bold leading-tight num text-ink" data-do-amount>{{ view.amount }}</p>
       <div class="mt-1 flex flex-col gap-0.5 text-[14px] text-ink-2">

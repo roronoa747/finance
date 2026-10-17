@@ -21,16 +21,12 @@ import { at, fakePrivate, fakeServer, phone, privateFor, screen, type FakePrivat
  * в документе оба, показан последний, партнёр видит новый; (и) демо — нажатие ✦ без запроса и записи; (к) имена в
  * падежах в названиях статей, долгов и целей не уходят, а `sent` в общем документе = ушедшая сводка.
  */
-const answer = (good: string) => ({
-  good,
-  risk: 'Кредитка под 40% — самый дорогой долг.',
-  steps: [
-    { text: 'Посмотрим долги.', screen: '/money/debts' },
-    { text: 'Обсудим план трат вдвоём.', screen: null },
-  ],
-})
+/** Ответ ручки — v2 (бэклог «ИИ-польза», AU-12): шаг один, кандидата нет. */
+const answer = (good: string) => ({ good, risk: 'Кредитка под 40% — самый дорогой долг.', step: { text: 'Посмотрим долги.', candidate: null } })
+/** Разбор v1, сохранённый в документе до v2 (читается как раньше). */
 const saved = (good: string, atIso: string): AiReview => ({
-  id: 'r0', month: '2026-10', at: atIso, by: 'a', ...answer(good), sent: null, updatedAt: atIso,
+  id: 'r0', month: '2026-10', at: atIso, by: 'a', good, risk: 'Кредитка под 40% — самый дорогой долг.',
+  steps: [{ text: 'Посмотрим долги.', screen: '/money/debts' }, { text: 'Обсудим план трат вдвоём.', screen: null }], sent: null, updatedAt: atIso,
 })
 
 /** Имена участников в падежах — в названиях статьи, кредита и цели (заметки — тоже с именами). */
@@ -195,12 +191,14 @@ describe('e2e / ИИ Блок 2 — приёмка', () => {
     const body = review.mock.calls[0][0]
     const text = JSON.stringify(body)
     for (const bad of ['Ильяс', 'Арун', 'водит', 'платит']) expect(text, bad).not.toContain(bad)
-    for (const masked of ['Кружок участник', 'Кредит участник', 'Машина для участник']) expect(text, masked).toContain(masked)
+    // Факты v2 (AU-11) называют главную мечту и первый долг — имена в них заменены.
+    expect(text).toContain('участник')
 
     setActivePinia(one.pinia)
     await one.store.syncHousehold(one.client)
     const stored = (server.data.aiReviews ?? []).find((r) => !r.deletedAt)
-    expect(canon(stored?.sent)).toEqual(canon(body))
+    const { reason: _reason, ...payload } = body
+    expect(canon(stored?.sent)).toEqual(canon(payload))
     expect(JSON.stringify(server.data.aiReviews)).not.toMatch(/Ильяс|Арун/)
   })
 })

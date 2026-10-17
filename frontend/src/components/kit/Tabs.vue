@@ -8,9 +8,10 @@ import { PhPlus } from '@phosphor-icons/vue'
  * бренда справа. Активная вкладка — `aria-current="page"`, иконка залита. Снизу — 8 px: зону под
  * полоской «домой» iPhone уже оставляет сам (смоук владельца Блока 9 — 24 px съедали экран).
  * Капсула парит над контентом (`absolute`, тень `shadow-lift`): карточки уходят под неё, серой
- * полосы фона вокруг нет (решение владельца на смоуке Блока 9, 2026-10-02).
+ * полосы фона вокруг нет (решение владельца на смоуке Блока 9, 2026-10-02). `dot` — точка `--brand` у иконки: позвать
+ * издалека (правило 12) — «План» с неоткрытым разбором месяца (бэклог «ИИ-польза», Р-4).
  */
-export type TabItem = { to: string; label: string; icon: Component; active: boolean }
+export type TabItem = { to: string; label: string; icon: Component; active: boolean; dot?: boolean }
 
 withDefaults(
   defineProps<{
@@ -35,8 +36,11 @@ const emit = defineEmits<{ (e: 'plus'): void }>()
       :class="t.active ? 'text-ink' : 'text-ink-3 hover:text-ink-2'"
       :aria-current="t.active ? 'page' : undefined"
     >
-      <component :is="t.icon" :size="22" :weight="t.active ? 'fill' : 'regular'" />
-      <span class="truncate">{{ t.label }}</span>
+      <span class="relative">
+        <component :is="t.icon" :size="22" :weight="t.active ? 'fill' : 'regular'" />
+        <span v-if="t.dot" class="absolute -right-1 -top-0.5 size-2 rounded-full bg-brand" data-tab-dot aria-hidden="true" />
+      </span>
+      <span class="truncate">{{ t.label }}<span v-if="t.dot" class="sr-only">, новый разбор</span></span>
     </RouterLink>
     <button
       v-if="plus"

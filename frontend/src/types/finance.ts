@@ -1,6 +1,7 @@
 import type { CategoryKey, HueKey, ThemeChoice } from '@/lib/palette'
 import type { HabitTotal, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import type { MonthSummaryAI } from '@/lib/aiSummary'
+import type { StepCandidate } from '@/lib/finance'
 
 export type PersonId = 'a' | 'b' | 'c'
 
@@ -33,7 +34,10 @@ export type AiReviewStep = { text: string; screen: string | null }
 
 /**
  * Разбор месяца ИИ (бэклог «ИИ», Р-4, AI-09) — в общем документе: партнёр и viewer видят тот же текст без запроса.
- * `sent` — сводка, ушедшая в модель («что ушло», Р-9); `by` — кто запросил; месяц показывает последний по `at`.
+ * `sent` — что ушло в модель («что ушло», Р-9): v1 — сводка, v2 — факты и кандидаты; `by` — кто запросил; месяц
+ * показывает последний по `at`. v2 (бэклог «ИИ-польза», AU-13): `steps` пуст, шаг один — `step` с кандидатом «Сделать»
+ * (сумма и эффект пересчитываются при открытии); `reason` и `reasonKey` — повод (`month:<YYYY-MM>`,
+ * `salary:<personId>:<YYYY-MM>`; у «Обновить» ключа нет): «один разбор на повод на семью» (Р-4, Р-20).
  */
 export type AiReview = Tracked & {
   id: string
@@ -43,7 +47,11 @@ export type AiReview = Tracked & {
   good: string
   risk: string
   steps: AiReviewStep[]
-  sent: MonthSummaryAI | null
+  sent: MonthSummaryAI | ReviewPayload | null
+  v?: 2
+  reason?: ReviewReason
+  reasonKey?: string
+  step?: { text: string; candidate: StepCandidate | null }
 }
 
 /** Повод разбора v2 (бэклог «ИИ-польза», Р-20): первый вход в месяце, первая «Пришла» зарплаты, «Обновить». */
