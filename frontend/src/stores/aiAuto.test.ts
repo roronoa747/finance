@@ -122,6 +122,15 @@ describe('autoReview — повод «зарплата»', () => {
     expect(aiReview).toHaveBeenCalledTimes(1)
   })
 
+  it('отметка задним числом (`at` — день аванса раньше разбора месяца) — всё равно повод: важен момент записи', async () => {
+    const { finance, ai } = family({ doc: planFamilyDoc({ aiReviews: [review({ at: '2026-09-10T03:00:00.000Z' })] }) })
+    const { client, aiReview } = fakeClient()
+    finance.markSalary('a', { at: '2026-09-05T03:00:00.000Z' })
+    await ai.autoReview(client)
+    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect((aiReview.mock.calls[0][0] as { reason: string }).reason).toBe('salary')
+  })
+
   it('зарплата партнёра — не мой повод; разбор месяца позже моей отметки — зарплата уже учтена', async () => {
     const { finance, ai } = family({ doc: planFamilyDoc({ aiReviews: [review({})] }) })
     const { client, aiReview } = fakeClient()

@@ -83,6 +83,14 @@ const mySalaryMarks = computed(
 watch(mySalaryMarks, (n, was) => {
   if (n > (was ?? 0)) void useAiStore().autoReview()
 })
+// Флаг ИИ пришёл с `/auth/me` позже, чем подтянулся документ (первый вход после включения ИИ семье): синк уже
+// отработал — разбор сам не ждёт следующего круга. Только по документу с сервера (`idle`), не по черновику телефона.
+watch(
+  () => useAiStore().available,
+  (on) => {
+    if (on && financeStore.status === 'idle') void useAiStore().autoReview()
+  },
+)
 
 /** Вкладки — корни (у «Денег» — все три квадрата, пивот 3); остальное — вложенные экраны со стрелкой «назад». */
 const ROOTS = ['/', '/week', '/month', '/money', '/money/debts', '/money/history']

@@ -190,8 +190,9 @@ export const useAiStore = defineStore('ai', () => {
     const me = auth.slot
     const mark = (finance.householdDoc.payments ?? [])
       .filter((p) => !p.deletedAt && p.kind === 'salary' && p.targetId === me && periodMonth(p.period) === key)
-      .sort((a, b) => a.at.localeCompare(b.at))[0]
-    if (!mark || reviews.some((r) => r.reasonKey === `salary:${me}:${key}` || r.at > mark.at)) return null
+      .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))[0]
+    // Когда отметку записали (`updatedAt`), а не день прихода (`at` аванса — его день): разбор позже записи её видел.
+    if (!mark || reviews.some((r) => r.reasonKey === `salary:${me}:${key}` || r.at > mark.updatedAt)) return null
     return 'salary'
   }
 
