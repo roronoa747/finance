@@ -19,17 +19,17 @@ import (
 
 // AIGate is the common check of the AI endpoints (бэклог «ИИ», контракт §6; AI-11 and AI-14
 // reuse it): no key or the family's flag off → 503 ai_off; not a member → 403; the month's
-// limit used up → 429 ai_limit. The endpoint decodes its body after Open and records the
+// money limit spent → 429 ai_limit. The endpoint decodes its body after Open and records the
 // spend with Spend.
 type AIGate struct {
 	repo   repository.AIRepository // nil: AI is off (a router without the AI repository)
 	client *ai.Client              // nil: no ANTHROPIC_API_KEY
-	limit  int
+	limit  int64                   // micro-dollars a family may spend per Almaty month (Р-11)
 	now    func() time.Time
 }
 
-func NewAIGate(repo repository.AIRepository, client *ai.Client, limit int) *AIGate {
-	return &AIGate{repo: repo, client: client, limit: limit, now: time.Now}
+func NewAIGate(repo repository.AIRepository, client *ai.Client, limitMicros int64) *AIGate {
+	return &AIGate{repo: repo, client: client, limit: limitMicros, now: time.Now}
 }
 
 // aiCall is one opened request: the family and the Almaty month it is counted in.
@@ -63,13 +63,13 @@ func (g *AIGate) Open(w http.ResponseWriter, r *http.Request) (aiCall, bool) {
 		return aiCall{}, false
 	}
 	month := ai.MonthKey(g.now())
-	used, err := g.repo.Used(r.Context(), household, month)
+	spent, err := g.repo.Spent(r.Context(), household, month)
 	if err != nil {
 		log.Printf("ai gate: usage: %v", err)
 		errorJSON(w, http.StatusInternalServerError, "failed to read ai usage")
 		return aiCall{}, false
 	}
-	if ai.LimitReached(used, g.limit) {
+	if ai.LimitReached(spent, g.limit) {
 		errorJSON(w, http.StatusTooManyRequests, "ai_limit")
 		return aiCall{}, false
 	}

@@ -76,7 +76,7 @@ type reviewFixture struct {
 	family  string
 	member  string // token
 	viewer  string // token
-	limit   int
+	limit   int64  // micro-dollars
 	month   string
 	handler *AIReviewHandler
 	sellers *AISellersHandler
@@ -104,7 +104,7 @@ func newReviewFixture(t *testing.T, claude *fakeClaudeQueue, withKey bool) *revi
 	if withKey {
 		client = claude.start(t)
 	}
-	gate := NewAIGate(aiRepo, client, 30)
+	gate := NewAIGate(aiRepo, client, 2_000_000)
 	gate.now = func() time.Time { return time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC) }
 	handler := NewAIReviewHandler(gate, "claude-opus-5-5")
 	sellers := NewAISellersHandler(gate, "claude-haiku-5-5")
@@ -116,7 +116,7 @@ func newReviewFixture(t *testing.T, claude *fakeClaudeQueue, withKey bool) *revi
 	})
 	member, _ := tokens.GenerateToken(u.ID, h.ID, "member", "a")
 	viewer, _ := tokens.GenerateToken("viewer-1", h.ID, "viewer", "c")
-	return &reviewFixture{router: r, aiRepo: aiRepo, claude: claude, family: h.ID, member: member, viewer: viewer, limit: 30, month: "2026-10", handler: handler, sellers: sellers}
+	return &reviewFixture{router: r, aiRepo: aiRepo, claude: claude, family: h.ID, member: member, viewer: viewer, limit: 2_000_000, month: "2026-10", handler: handler, sellers: sellers}
 }
 
 func (f *reviewFixture) post(t *testing.T, token, body string) *httptest.ResponseRecorder {
@@ -299,12 +299,39 @@ func TestReviewGate(t *testing.T) {
 	})
 	t.Run("limit 429", func(t *testing.T) {
 		f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{cleanAnswer}}, true)
-		_ = f.aiRepo.AddUsage(context.Background(), f.family, f.month, 30, 0, 0, 0)
+		_ = f.aiRepo.AddUsage(context.Background(), f.family, f.month, 3, 0, 0, f.limit)
 		if rec := f.post(t, f.member, `{"summary": `+reviewSummary+`}`); rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), `"ai_limit"`) {
 			t.Errorf("status %d %s", rec.Code, rec.Body.String())
 		}
 		if len(f.claude.sent) != 0 {
 			t.Error("over the limit must not reach the model")
+		}
+	})
+	t.Run("under the money limit 200", func(t *testing.T) {
+		// Many requests, little money: the limit is dollars, not requests (Р-11).
+		f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{cleanAnswer}}, true)
+		_ = f.aiRepo.AddUsage(context.Background(), f.family, f.month, 500, 0, 0, f.limit-1)
+		if rec := f.post(t, f.member, `{"summary": `+reviewSummary+`}`); rec.Code != http.StatusOK {
+			t.Errorf("status %d %s", rec.Code, rec.Body.String())
+		}
+	})
+	t.Run("billed failure spends toward the limit", func(t *testing.T) {
+		// Two defective attempts: no request of the limit, but their cost (2 × 8 000 µ$) crosses
+		// the edge, so the next call is 429.
+		invented := answer("Платежи — 18% дохода.", "Риск.", [2]any{"Отложим.", "/month"})
+		f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{invented}}, true)
+		_ = f.aiRepo.AddUsage(context.Background(), f.family, f.month, 0, 0, 0, f.limit-10_000)
+		if rec := f.post(t, f.member, `{"summary": `+reviewSummary+`}`); rec.Code != http.StatusBadGateway {
+			t.Fatalf("status %d %s, want 502", rec.Code, rec.Body.String())
+		}
+		if u := f.usage(); u.Requests != 0 || u.CostMicros != f.limit+6_000 {
+			t.Errorf("usage = %+v, want 0 requests and %d µ$", u, f.limit+6_000)
+		}
+		if rec := f.post(t, f.member, `{"summary": `+reviewSummary+`}`); rec.Code != http.StatusTooManyRequests {
+			t.Errorf("after the billed failure: status %d, want 429", rec.Code)
+		}
+		if len(f.claude.sent) != 2 {
+			t.Errorf("calls = %d, want 2 (the 429 must not reach the model)", len(f.claude.sent))
 		}
 	})
 	t.Run("body", func(t *testing.T) {
@@ -542,7 +569,7 @@ func TestSellersGate(t *testing.T) {
 	})
 	t.Run("limit 429", func(t *testing.T) {
 		f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{sellersAnswer()}}, true)
-		_ = f.aiRepo.AddUsage(context.Background(), f.family, f.month, 30, 0, 0, 0)
+		_ = f.aiRepo.AddUsage(context.Background(), f.family, f.month, 3, 0, 0, f.limit)
 		if rec := f.postTo(t, "/api/ai/sellers", f.member, body); rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), `"ai_limit"`) {
 			t.Errorf("status %d %s", rec.Code, rec.Body.String())
 		}

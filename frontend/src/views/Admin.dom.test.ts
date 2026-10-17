@@ -37,7 +37,7 @@ const fam = (over: Partial<AdminFamily>): AdminFamily => ({
 
 const list = (over: Partial<AdminFamilies> = {}): AdminFamilies => ({
   families: [fam({}), fam({ id: 'h-2', emails: ['bota@example.com'], ai: false, requests: 0, cost_micros: 0 })],
-  limit: 30,
+  limit_micros: 2_000_000,
   key: true,
   ...over,
 })
@@ -87,7 +87,7 @@ describe('AI-04: админка — семьи и ИИ', () => {
     expect(a.dataset.family).toBe('h-1')
     expect(a.querySelector('[data-emails]')!.textContent).toBe('aigul@example.com · ilyas@example.com')
     expect(toggle(a).getAttribute('aria-checked')).toBe('true')
-    expect(a.querySelector('[data-spent]')!.textContent).toBe('3 запроса · ≈ $0.42')
+    expect(a.querySelector('[data-spent]')!.textContent).toBe('3 запроса · ≈ $0.42 из $2')
     expect(toggle(b).getAttribute('aria-checked')).toBe('false')
     expect(b.querySelector('[data-spent]')).toBeNull()
     expect(el.querySelector('[data-no-key]')).toBeNull()
@@ -187,6 +187,17 @@ describe('AI-04: админка — семьи и ИИ', () => {
     expect(el.querySelector('[data-check-reason]')!.textContent).toContain('Сервер не ответил.')
   })
 
+  // AU-09 (бэклог «ИИ-польза», Р-11): лимит — деньги; в подсказке — «До $N», у семьи — «≈ $ из $N».
+  it('лимит в долларах: в подсказке «До $2 …», у семьи «из $2»; другой лимит — своё число', async () => {
+    vi.spyOn(apiClient, 'adminFamilies').mockResolvedValue(list({ limit_micros: 5_000_000 }))
+    const el = await mount()
+    el.querySelector<HTMLButtonElement>('[data-families] button[aria-label="Про лимит"]')!.click()
+    await settle()
+    expect(el.querySelector('[data-limit]')!.textContent).toBe('До $5 ИИ в месяц на семью.')
+    expect(el.textContent).not.toContain('запросов ИИ')
+    expect(rows(el)[0].querySelector('[data-spent]')!.textContent).toBe('3 запроса · ≈ $0.42 из $5')
+  })
+
   it('запросы есть, а расход 0 (модели нет в таблице цен) — «≈ —», не «$0»', async () => {
     vi.spyOn(apiClient, 'adminFamilies').mockResolvedValue(list({ families: [fam({ requests: 2, cost_micros: 0 })] }))
     const el = await mount()
@@ -197,7 +208,7 @@ describe('AI-04: админка — семьи и ИИ', () => {
   it('ИИ выключен, запросов 0, а расход есть (брак модели) — строка расхода видна', async () => {
     vi.spyOn(apiClient, 'adminFamilies').mockResolvedValue(list({ families: [fam({ ai: false, requests: 0, cost_micros: 21_000 })] }))
     const el = await mount()
-    expect(rows(el)[0].querySelector('[data-spent]')!.textContent).toBe('0 запросов · ≈ $0.03') // центы вверх (`usdFromMicros`)
+    expect(rows(el)[0].querySelector('[data-spent]')!.textContent).toBe('0 запросов · ≈ $0.03 из $2') // центы вверх (`usdFromMicros`)
   })
 
   it('не владельцу — «Нет такой страницы», семей нет', async () => {

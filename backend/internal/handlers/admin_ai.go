@@ -24,15 +24,15 @@ type AdminAIHandler struct {
 	admins     []string
 	client     *ai.Client // nil: no ANTHROPIC_API_KEY
 	checkModel string     // the light model (AI_MODEL_SELLERS)
-	limit      int
+	limit      int64      // micro-dollars per family per month (AI_MONTHLY_LIMIT_USD)
 	now        func() time.Time
 }
 
-func NewAdminAIHandler(aiRepo repository.AIRepository, users repository.UserRepository, admins []string, client *ai.Client, checkModel string, limit int) *AdminAIHandler {
-	return &AdminAIHandler{ai: aiRepo, users: users, admins: admins, client: client, checkModel: checkModel, limit: limit, now: time.Now}
+func NewAdminAIHandler(aiRepo repository.AIRepository, users repository.UserRepository, admins []string, client *ai.Client, checkModel string, limitMicros int64) *AdminAIHandler {
+	return &AdminAIHandler{ai: aiRepo, users: users, admins: admins, client: client, checkModel: checkModel, limit: limitMicros, now: time.Now}
 }
 
-// Families is GET /api/admin/families → {families, limit, key} for the current Almaty month.
+// Families is GET /api/admin/families → {families, limit_micros, key} for the current Almaty month.
 func (h *AdminAIHandler) Families(w http.ResponseWriter, r *http.Request) {
 	if !adminOnly(w, r, h.users, h.admins) {
 		return
@@ -43,7 +43,7 @@ func (h *AdminAIHandler) Families(w http.ResponseWriter, r *http.Request) {
 		errorJSON(w, http.StatusInternalServerError, "failed to list families")
 		return
 	}
-	respondJSON(w, http.StatusOK, map[string]any{"families": families, "limit": h.limit, "key": h.client != nil})
+	respondJSON(w, http.StatusOK, map[string]any{"families": families, "limit_micros": h.limit, "key": h.client != nil})
 }
 
 // SetAI is PUT /api/admin/families/{id}/ai {on} → the updated row; an unknown family is 404.

@@ -60,6 +60,11 @@ export function usdFromMicros(micros: number): string {
   return `≈ $${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`
 }
 
+/** Лимит ИИ в целых долларах (`AI_MONTHLY_LIMIT_USD`, бэклог «ИИ-польза» Р-11): 2 000 000 µ$ → «$2». */
+export function usdWhole(micros: number): string {
+  return `$${Math.floor(micros / 1_000_000)}`
+}
+
 /** Доля в процентах, округлённая до целого. */
 export function pct(part: number, whole: number): number {
   if (!whole) return 0

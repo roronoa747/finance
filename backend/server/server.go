@@ -165,9 +165,9 @@ func NewRouter(
 	previewHandler := handlers.NewPreviewHandler(linkpreview.New().Fetch)
 	accountHandler := handlers.NewAccountHandler(repos.Accounts)
 	eventsHandler := handlers.NewEventsHandler(repos.Events, repos.Metrics, repos.Users, cfg.AdminEmails)
-	adminAIHandler := handlers.NewAdminAIHandler(repos.AI, repos.Users, cfg.AdminEmails, aiClient, cfg.AIModelSellers, cfg.AIMonthlyLimit)
+	adminAIHandler := handlers.NewAdminAIHandler(repos.AI, repos.Users, cfg.AdminEmails, aiClient, cfg.AIModelSellers, cfg.AIMonthlyLimitMicros)
 	// Гейт ИИ-ручек (AI-08; Блоки 3–4 берут его же): ключ и флаг семьи, member, лимит месяца.
-	aiGate := handlers.NewAIGate(repos.AI, aiClient, cfg.AIMonthlyLimit)
+	aiGate := handlers.NewAIGate(repos.AI, aiClient, cfg.AIMonthlyLimitMicros)
 	aiReviewHandler := handlers.NewAIReviewHandler(aiGate, cfg.AIModelReview)
 	aiSellersHandler := handlers.NewAISellersHandler(aiGate, cfg.AIModelSellers)
 

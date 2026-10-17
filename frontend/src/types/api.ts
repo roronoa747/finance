@@ -137,10 +137,13 @@ export interface AdminFamily {
   cost_micros: number
 }
 
-/** Ответ `GET /api/admin/families`: `limit` — одно значение на все семьи, `key` — ключ Claude задан. */
+/**
+ * Ответ `GET /api/admin/families`: `limit_micros` — лимит ИИ на семью в месяц микродолларами (одно значение на все
+ * семьи, бэклог «ИИ-польза» Р-11), `key` — ключ Claude задан.
+ */
 export interface AdminFamilies {
   families: AdminFamily[]
-  limit: number
+  limit_micros: number
   key: boolean
 }
 

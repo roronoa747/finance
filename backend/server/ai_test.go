@@ -32,7 +32,7 @@ func TestAIOffWithoutKey(t *testing.T) {
 			cfg := devConfig()
 			cfg.AdminEmails = []string{"dana@example.com"}
 			cfg.AnthropicAPIKey = tc.key
-			cfg.AIMonthlyLimit = 30
+			cfg.AIMonthlyLimitMicros = 2_000_000
 			tokens := auth.NewTokenService(cfg.JWTSecret, time.Hour)
 			r := NewRouter(cfg, nil, Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos, Fx: mocks.Fx,
 				Accounts: repository.NewMockAccountRepo(mocks), Events: &repository.MockEventRepo{}, Metrics: repository.MockMetricsRepo{}, AI: aiRepo}, tokens, fx.NewClient(), fakeGoogle{})

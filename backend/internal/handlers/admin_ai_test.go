@@ -71,7 +71,7 @@ func newAdminAIFixture(t *testing.T, admins []string, client *ai.Client) *adminA
 	_ = aiRepo.AddUsage(ctx, hA.ID, "2026-10", 3, 300, 60, 420_000)
 	_ = aiRepo.AddUsage(ctx, hA.ID, "2026-09", 9, 900, 90, 9_000_000)
 
-	h := NewAdminAIHandler(aiRepo, repos.Users, admins, client, "claude-haiku-5-5", 30)
+	h := NewAdminAIHandler(aiRepo, repos.Users, admins, client, "claude-haiku-5-5", 2_000_000)
 	h.now = func() time.Time { return now }
 
 	r := chi.NewRouter()
@@ -131,14 +131,14 @@ func TestAdminFamiliesList(t *testing.T) {
 	}
 	var resp struct {
 		Families []repository.AIFamily `json:"families"`
-		Limit    int                   `json:"limit"`
+		Limit    int64                 `json:"limit_micros"`
 		Key      bool                  `json:"key"`
 	}
 	if err := json.Unmarshal([]byte(body), &resp); err != nil {
 		t.Fatal(err)
 	}
-	if resp.Limit != 30 || resp.Key {
-		t.Errorf("limit/key = %d/%v, want 30/false", resp.Limit, resp.Key)
+	if resp.Limit != 2_000_000 || resp.Key || strings.Contains(body, `"limit":`) {
+		t.Errorf("limit_micros/key = %d/%v, want 2 000 000/false (and no old \"limit\"): %s", resp.Limit, resp.Key, body)
 	}
 	if len(resp.Families) != 2 {
 		t.Fatalf("families = %+v", resp.Families)

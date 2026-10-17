@@ -21,10 +21,10 @@ func TestMonthKeyIsAlmaty(t *testing.T) {
 }
 
 func TestLimitReached(t *testing.T) {
-	if LimitReached(29, 30) {
-		t.Error("29 of 30 leaves one")
+	if LimitReached(1_999_999, 2_000_000) {
+		t.Error("a micro-dollar under $2 leaves room")
 	}
-	if !LimitReached(30, 30) || !LimitReached(31, 30) {
-		t.Error("30 of 30 is the end")
+	if !LimitReached(2_000_000, 2_000_000) || !LimitReached(2_000_001, 2_000_000) {
+		t.Error("$2 of $2 is the end")
 	}
 }

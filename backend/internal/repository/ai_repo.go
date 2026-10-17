@@ -19,8 +19,9 @@ type AIRepository interface {
 	Enabled(ctx context.Context, householdID string) (bool, error)
 	// SetEnabled flips the flag; an unknown family is ErrHouseholdNotFound.
 	SetEnabled(ctx context.Context, householdID string, on bool) error
-	// Used is the family's requests in month ('YYYY-MM', ai.MonthKey); no row is 0.
-	Used(ctx context.Context, householdID, month string) (int, error)
+	// Spent is the family's AI cost in month ('YYYY-MM', ai.MonthKey) in micro-dollars —
+	// successes and billed failures alike (the limit is money, Р-11); no row is 0.
+	Spent(ctx context.Context, householdID, month string) (int64, error)
 	// AddUsage adds a call's spend to the month's counters: requests (1 on success, 0 on a
 	// billed failure — Блок 2 «ИИ»), tokens and cost.
 	AddUsage(ctx context.Context, householdID, month string, requests int, in, out, costMicros int64) error
@@ -91,9 +92,9 @@ func (r *sqlAIRepository) SetEnabled(ctx context.Context, householdID string, on
 	return nil
 }
 
-func (r *sqlAIRepository) Used(ctx context.Context, householdID, month string) (int, error) {
-	var n int
-	err := r.db.QueryRowContext(ctx, `SELECT requests FROM app.ai_usage WHERE household_id = $1 AND month = $2`, householdID, month).Scan(&n)
+func (r *sqlAIRepository) Spent(ctx context.Context, householdID, month string) (int64, error) {
+	var n int64
+	err := r.db.QueryRowContext(ctx, `SELECT cost_micros FROM app.ai_usage WHERE household_id = $1 AND month = $2`, householdID, month).Scan(&n)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
@@ -161,10 +162,10 @@ func (m *MockAIRepo) SetEnabled(ctx context.Context, householdID string, on bool
 	return nil
 }
 
-func (m *MockAIRepo) Used(ctx context.Context, householdID, month string) (int, error) {
+func (m *MockAIRepo) Spent(ctx context.Context, householdID, month string) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.Usage[householdID][month].Requests, nil
+	return m.Usage[householdID][month].CostMicros, nil
 }
 
 func (m *MockAIRepo) AddUsage(ctx context.Context, householdID, month string, requests int, in, out, costMicros int64) error {
