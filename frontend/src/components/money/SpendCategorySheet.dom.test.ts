@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, h, nextTick, type App } from 'vue'
-import type { SpendCompareRow } from '@/lib/finance'
+import type { HabitImage, SpendCompareRow } from '@/lib/finance'
 import { money, plain } from '@/lib/money'
 import type { PersonId } from '@/types/finance'
 import SpendCategorySheet from './SpendCategorySheet.vue'
@@ -20,13 +20,13 @@ const ROW: SpendCompareRow = {
 }
 const PLANS = [{ by: 'a' as PersonId, name: 'Ильяс', amount: 20_000 }, { by: 'b' as PersonId, name: 'Аруна', amount: 0 }]
 
-async function mount(row: Partial<SpendCompareRow> = {}, extra: { rk?: number | null; canEdit?: boolean } = {}) {
+async function mount(row: Partial<SpendCompareRow> = {}, extra: { rk?: number | null; canEdit?: boolean; image?: HabitImage } = {}) {
   const edits: [PersonId, number][] = []
   const root = document.createElement('div')
   document.body.appendChild(root)
   app = createApp({
     render: () => h(SpendCategorySheet, {
-      row: { ...ROW, ...row }, rk: extra.rk === undefined ? 45 : extra.rk, plans: PLANS, canEdit: extra.canEdit ?? true,
+      row: { ...ROW, ...row }, rk: extra.rk === undefined ? 45 : extra.rk, plans: PLANS, canEdit: extra.canEdit ?? true, image: extra.image ?? null,
       onEdit: (by: PersonId, amount: number) => edits.push([by, amount]),
     }),
   })
@@ -53,6 +53,23 @@ describe('SpendCategorySheet', () => {
     q('[data-cat-rk] button')!.click()
     await nextTick()
     expect(txt(q('[role="note"]'))).toBe('Доля услуг в тратах семей Алматы, stat.gov.kz, II кв. 2025')
+  })
+
+  it('Х-10: образ «N % мечты» той же мечты — внутри плашки «до плана», одной плашкой; другая мечта — строкой под ней', async () => {
+    const IMG: HabitImage = {
+      habit: 'delivery', categoryId: 'sc_cafe', monthly: 40_000, count: 4, kind: 'dream', price: { from: 'goal', goalId: 'trip', name: 'Отпуск', price: 2_000_000 },
+      left: null, months: null, cost: null, saving: null, yearly: 480_000, share: 24, moved: null,
+      action: { kind: 'move', categoryId: 'sc_cafe', goalId: 'trip', goalName: 'Отпуск', amount: 20_000, days: 30 },
+    }
+    await mount({}, { image: IMG })
+    expect(document.querySelectorAll('[data-image]').length).toBe(1)
+    expect(txt(q('[data-cat-advice-box] [data-image-line]'))).toBe('Доставка за год — 24 % мечты «Отпуск»')
+    expect(txt(q('[data-cat-advice-box] [data-image-act]'))).toBe('Перенести в мечту')
+    app!.unmount()
+    document.body.innerHTML = ''
+    await mount({}, { image: { ...IMG, price: { from: 'goal', goalId: 'car', name: 'Машина', price: 4_750_000 } } })
+    expect(q('[data-cat-advice-box] [data-image]')).toBeNull()
+    expect(q('[data-image]')).not.toBeNull()
   })
 
   it('«обычно» нет — подпись; плана нет; рекомендации нет', async () => {
