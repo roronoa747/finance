@@ -396,6 +396,13 @@ func TestReviewBody(t *testing.T) {
 	if got := decodeReview(t, ok.post(t, ok.member, body)); got.Good != "Соберём к июню 2028." || got.Risk != "Образ — Доставка за год — 40 % мечты." {
 		t.Errorf("answer = %+v", got)
 	}
+	// A term of this year comes without a year (monthBy: «к декабрю»): put in by a reference, it is not a
+	// month the model wrote (критик возврата Блока 3 «ИИ-польза»).
+	cur := newReviewFixture(t, &fakeClaudeQueue{texts: []string{answer("Соберём {f1}.", "Риск.", "Посмотрим план", nil)}}, true)
+	body = `{"reason":"month","facts":[{"id":"f1","about":"главная мечта «Море» — срок","value":"к декабрю","raw":"2026-12"}]}`
+	if got := decodeReview(t, cur.post(t, cur.member, body)); got.Good != "Соберём к декабрю." || len(cur.claude.sent) != 1 {
+		t.Errorf("answer = %+v, calls = %d", got, len(cur.claude.sent))
+	}
 }
 
 func TestReviewGate(t *testing.T) {
