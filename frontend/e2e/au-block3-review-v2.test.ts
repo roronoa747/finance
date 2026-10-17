@@ -103,7 +103,11 @@ describe('e2e / ИИ-польза Блок 3 — разбор v2 приходи�
   it('оба телефона входят разом (до синка) — не больше 2 запросов, оба разбора сходятся в документе', async () => {
     const one = await as('member', 'a')
     const two = await as('member', 'b', { clear: false })
-    await Promise.all([one.ai.autoReview(one.aiClient), two.ai.autoReview(two.aiClient)])
+    // Телефоны в тесте делят одно хранилище; попытку повода телефон 1 пишет до запроса (возврат AU-33) — у телефона 2
+    // своё хранилище, где её нет.
+    const first = one.ai.autoReview(one.aiClient)
+    storage.delete('ff_ai_auto')
+    await Promise.all([first, two.ai.autoReview(two.aiClient)])
     // До синка каждый телефон не видит разбор другого — ровно 2 (редкий двойной, Р-4), не больше.
     expect(aiReview).toHaveBeenCalledTimes(2)
     await sync(one)
