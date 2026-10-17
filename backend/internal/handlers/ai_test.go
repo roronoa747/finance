@@ -173,6 +173,15 @@ func TestReviewSystemV2(t *testing.T) {
 	}
 }
 
+// A name is sent as written: «&» escaped to a \u code would put digits the second check never saw.
+func TestReviewModelTextKeepsAmpersand(t *testing.T) {
+	q := reviewRequest{Reason: "month", Facts: []reviewFact{{ID: "f1", About: "мечта «Дом & сад»", Value: "к маю 2027"}}}
+	text := q.modelText()
+	if !strings.Contains(text, "«Дом & сад»") || strings.Contains(text, "u0026") {
+		t.Errorf("model text = %s", text)
+	}
+}
+
 func TestReviewSendsOnlyInstructionFactsAndCandidates(t *testing.T) {
 	f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{cleanAnswer}}, true)
 	rec := f.post(t, f.member, reviewBody)

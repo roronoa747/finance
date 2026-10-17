@@ -248,8 +248,11 @@ func (q reviewRequest) modelText() string {
 	if candidates == nil {
 		candidates = []reviewCandidate{}
 	}
-	b, _ := json.Marshal(map[string]any{"reason": q.Reason, "facts": facts, "candidates": candidates})
-	return string(b)
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false) // «Дом & сад» as named, not a \u code — as the sellers handler
+	_ = enc.Encode(map[string]any{"reason": q.Reason, "facts": facts, "candidates": candidates})
+	return strings.TrimSpace(b.String())
 }
 
 // numbers is the input of the second check (ai.CheckNumbers): every about, value and raw sent.
