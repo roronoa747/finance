@@ -3,7 +3,7 @@ import { nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 import { startDemo } from './demo'
 import { monthKey } from './dates'
-import { habitImages, interestImage, spendCompare } from './finance'
+import { habitImages, imageLine, interestImage, spendCompare } from './finance'
 import { useFinanceStore } from '@/stores/finance'
 
 afterEach(() => {
@@ -39,6 +39,10 @@ describe('демо — образы трат', () => {
       // Цена такси — своя мечта «Машина» демо (Р-26); доставка — доля первой мечты очереди с «Перенести в мечту».
       expect(images[0].price).toMatchObject({ from: 'goal', name: 'Машина' })
       expect(images[1].action).toMatchObject({ kind: 'move', goalName: 'Поездка в Японию' })
+      // Суммы — как на настоящей выписке (Х-11): такси ≈ 95 000, доставка ≈ 40 000 в месяц.
+      expect(images[0].monthly).toBeGreaterThan(85_000)
+      expect(images[1].monthly).toBe(40_000)
+      expect(imageLine(images[1])).toBe('Доставка за год — 24 % мечты «Поездка в Японию»')
       expect(interestImage(state)).not.toBeNull()
       // Продавцов и дат в общем документе нет — только счётчик и сумма.
       for (const t of finance.householdDoc.habitTotals ?? []) expect(Object.keys(t).sort()).toEqual(['amount', 'by', 'count', 'habit', 'id', 'period', 'updatedAt'])
