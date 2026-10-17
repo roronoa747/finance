@@ -202,7 +202,7 @@ export const useAiStore = defineStore('ai', () => {
    * «Пришла». Участник с ИИ (`available`: не viewer, не демо), в сети, есть повод текущего месяца. Согласие v2 «да» —
    * запрос в фоне, без «Думаю…»; «да» v1 — лист согласия v2 один раз на повод (закрыл — до следующего повода); не
    * спрошено никогда или «Не надо» — молча ничего. 429 / 502 / сеть — молча, тот же повод на этом телефоне — не чаще
-   * раза в сутки (`ff_ai_auto`). Один запрос за раз.
+   * раза в сутки (`ff_ai_auto`, попытка пишется до запроса). Один запрос за раз.
    */
   async function autoReview(client: ApiClient = apiClient): Promise<AiReview | null> {
     if (!available.value || consent.value === 'off' || inflight) return null
@@ -226,12 +226,11 @@ export const useAiStore = defineStore('ai', () => {
       if (consentFailed.value) writeAiAuto({ ...mine(), [rk]: { ...mine()[rk], asked: undefined } })
       if (!ok || autoReason(key) !== reason) return null
     }
+    // Попытка — до запроса: закрыли PWA посреди него (ответ 5–55 с) — повод не платится снова до суток (приёмка).
+    // Удачный разбор закрывает повод сам (`autoReason`).
+    writeAiAuto({ ...mine(), [rk]: { ...mine()[rk], at: new Date().toISOString() } })
     const r = await requestReview(key, reason, client)
-    if (typeof r === 'string') {
-      writeAiAuto({ ...mine(), [rk]: { ...mine()[rk], at: new Date().toISOString() } })
-      return null
-    }
-    return r
+    return typeof r === 'string' ? null : r
   }
 
   /** Открытый на этом телефоне разбор (`ff_ai_review_seen`): другой — точка у ✦, на «Месяце» и на «Плане». */

@@ -215,6 +215,32 @@ describe('autoReview — молча', () => {
     expect(ai.reviewState).toBe('idle')
   })
 
+  it('закрыли PWA посреди запроса (приёмка): перезапуск в тот же день — 0 новых запросов, через сутки — снова', async () => {
+    const { client, aiReview } = fakeClient()
+    aiReview.mockImplementationOnce(() => new Promise(() => {}))
+    void family().ai.autoReview(client)
+    await Promise.resolve()
+    expect(aiReview).toHaveBeenCalledTimes(1)
+    // Перезапуск: новый стор, тот же localStorage (family() его чистит — собираем «телефон» руками).
+    const restart = () => {
+      setActivePinia(createPinia())
+      const auth = useAuthStore()
+      auth.setAuthData(authAs('member', 'a'))
+      auth.ai = true
+      useFinanceStore().setHouseholdDoc(planFamilyDoc(), 1)
+      const ai = useAiStore()
+      ai.sheetMounted = true
+      ai.setConsent(true)
+      return ai
+    }
+    vi.setSystemTime(new Date('2026-09-12T07:04:00Z'))
+    expect(await restart().autoReview(client)).toBeNull()
+    expect(aiReview).toHaveBeenCalledTimes(1)
+    vi.setSystemTime(new Date('2026-09-13T08:00:00Z'))
+    expect(await restart().autoReview(client)).not.toBeNull()
+    expect(aiReview).toHaveBeenCalledTimes(2)
+  })
+
   it('разбор повода ушёл в надгробие обрезкой «живых ≤ 12» — повод всё равно был: 0', async () => {
     const { ai } = family({ doc: planFamilyDoc({ aiReviews: [review({ deletedAt: '2026-09-11T10:00:00.000Z' })] }) })
     const { client, aiReview } = fakeClient()
