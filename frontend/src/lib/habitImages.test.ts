@@ -4,7 +4,7 @@ import { MEASURES, PRICES } from './prices'
 import { money } from './money'
 import type { HabitId, HabitTotal } from './statements/types'
 import { planFamilyDoc, T0 } from '@/test/planFamily'
-import type { Goal, PersonId, SpendPlan, WishItem } from '@/types/finance'
+import type { Goal, ImageMove, PersonId, SpendPlan, WishItem } from '@/types/finance'
 
 /**
  * AU-28: образы трат против ручного расчёта (правило 6 — числа в комментариях). Месяц `2026-10`, закрытые — июль,
@@ -86,6 +86,16 @@ describe('habitImages — образы', () => {
     // 600 000 / 50 000 = 12 мес.; 600 000 / 70 000 = 8,571; (12 − 8,571) × 30,4 = 104,2 → 104.
     expect(img.action).toEqual({ kind: 'move', categoryId: 'sc_cafe', goalId: 'jp', goalName: 'Япония', amount: 20_000, days: 104 })
     expect(imageLine(img)).toBe('Доставка за год — 80 % мечты «Япония»')
+    expect(img.moved).toBeNull()
+  })
+
+  it('перенос записан (Х-9): на ту же мечту — «✓» вместо кнопки; на другую мечту или отменён — кнопка есть', () => {
+    const japan = goal('jp', 'Япония', 600_000, 0, 50_000)
+    const move = (goalId: string, deletedAt: string | null = null): ImageMove => ({ id: `m-${goalId}`, categoryId: 'sc_cafe', goalId, amount: 20_000, by: 'a', at: T0, updatedAt: T0, deletedAt })
+    const of = (imageMoves: ImageMove[]) => habitImages({ ...state(every('delivery', [8, 40_000]), { goals: [japan] }), imageMoves }, KEY)[0]
+    expect(of([move('jp')])).toMatchObject({ action: null, moved: 20_000 })
+    expect(of([move('car')])).toMatchObject({ action: { kind: 'move', goalId: 'jp' }, moved: null })
+    expect(of([move('jp', T0)])).toMatchObject({ action: { kind: 'move', goalId: 'jp' }, moved: null })
   })
 
   it('без мечты — мерка ближайшая снизу: обеды 60 000 × 12 = 720 000 → неделя в Анталье (637 000); меньше всех мерок — сумма', () => {

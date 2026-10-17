@@ -16,7 +16,8 @@ type Move = Extract<ImageAction, { kind: 'move' }>
  * Лист «Перенести в мечту» у образа (Р-27, AU-29): **каждый месяц**, в отличие от «Сделать» (этот месяц, `DoSheet`) —
  * постоянный план раздела участника с бо́льшим планом −N (`setSpendPlan`; плана нет — только взнос) и взнос мечты +N
  * (`setGoalMonthly`). Крупно — сумма, строками — откуда → куда и эффект; одна брендовая подтверждения во всю ширину.
- * Тост «Отменить» возвращает оба прежних значения. Viewer лист не открывает. Числа — из образа и `imageMoveFrom`.
+ * Перенос записывается (`imageMoves`, Х-9) — у образа вместо кнопки «✓ N в мечту». Тост «Отменить» возвращает оба
+ * прежних значения и снимает запись. Viewer лист не открывает. Числа — из образа и `imageMoveFrom`.
  */
 const props = defineProps<{ action: Move | null }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -40,8 +41,8 @@ const view = computed(() => {
   }
 })
 
-/** Что вернуть «Отменить»: план участника и взнос мечты до переноса. */
-const undoTo = ref<{ plan: { by: PersonId; categoryId: string; amount: number } | null; goalId: string; monthly: number } | null>(null)
+/** Что вернуть «Отменить»: план участника и взнос мечты до переноса, запись переноса (Х-9). */
+const undoTo = ref<{ plan: { by: PersonId; categoryId: string; amount: number } | null; goalId: string; monthly: number; moveId: string | null } | null>(null)
 const { note, flash, clear } = useFlash(6000)
 
 function confirm() {
@@ -49,9 +50,13 @@ function confirm() {
   const goal = a ? finance.goals.find((g) => g.id === a.goalId) : null
   if (!a || !goal) return
   const f = from.value
-  undoTo.value = { plan: f ? { by: f.by, categoryId: a.categoryId, amount: f.plan } : null, goalId: goal.id, monthly: goal.monthly }
+  const plan = f ? { by: f.by, categoryId: a.categoryId, amount: f.plan } : null
+  const monthly = goal.monthly
   if (f) finance.setSpendPlan(f.by, a.categoryId, f.next)
-  finance.setGoalMonthly(goal.id, goal.monthly + a.amount)
+  finance.setGoalMonthly(goal.id, monthly + a.amount)
+  // Перенос запомнен (Х-9): у образа вместо кнопки «✓ N в мечту» — второй раз план не урежется.
+  const moveId = finance.addImageMove({ categoryId: a.categoryId, goalId: goal.id, amount: a.amount })
+  undoTo.value = { plan, goalId: goal.id, monthly, moveId }
   emit('close')
   flash(a.days ? `«${a.goalName}» ближе на ${shiftSpan(a.days)}` : `+${plain(a.amount)} в «${a.goalName}» каждый месяц`)
 }
@@ -61,6 +66,7 @@ function undo() {
   if (u) {
     if (u.plan) finance.setSpendPlan(u.plan.by, u.plan.categoryId, u.plan.amount)
     finance.setGoalMonthly(u.goalId, u.monthly)
+    if (u.moveId) finance.undoImageMove(u.moveId)
   }
   undoTo.value = null
   clear()

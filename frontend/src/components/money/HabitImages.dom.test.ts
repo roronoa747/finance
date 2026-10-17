@@ -157,8 +157,22 @@ describe('строка-образ в листе раздела', () => {
     expect([cafeA(), trip()]).toEqual([30_000, 60_000])
     expect(finance.householdDoc.spendPlans!.find((s) => s.id === 'b:sc_cafe')!.amount).toBe(20_000)
     expect(q('[data-move-toast]')).not.toBeNull()
+    // Перенос запомнен (Х-9): в листе раздела вместо кнопки — «✓ 20 000 в мечту».
+    expect(imagesOf(finance).find((i) => i.categoryId === 'sc_cafe')).toMatchObject({ action: null, moved: 20_000 })
     await press(q('[data-toast-action]'))
     expect([cafeA(), trip()]).toEqual([50_000, 40_000])
+    expect(finance.householdDoc.imageMoves!.every((x) => x.deletedAt)).toBe(true)
+    await press(q('[data-spend-row="sc_cafe"]'))
+    expect(txt(q('[data-image-act]'))).toBe('Перенести в мечту')
+    expect(q('[data-image-moved]')).toBeNull()
+  })
+
+  it('перенос уже сделан (Х-9): «✓ 20 000 в мечту» вместо кнопки — и у viewer', async () => {
+    const move = { id: 'm1', categoryId: 'sc_cafe', goalId: 'trip', amount: 20_000, by: 'a' as const, at: T0, updatedAt: T0 }
+    await open('viewer', { ...familyDoc(), imageMoves: [move] })
+    await openCategory('sc_cafe')
+    expect(txt(q('[data-image-moved]'))).toBe(norm('✓ 20 000 в мечту'))
+    expect(q('[data-image-act]')).toBeNull()
   })
 
   it('кофе → «В желания»: желание «Кофемашина» с ценой справочника, тост', async () => {

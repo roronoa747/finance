@@ -183,6 +183,10 @@ describe('e2e / ИИ-польза Блок 7 — образы трат', () => {
     expect([cafeA(B), trip(B)]).toEqual([34_000, 56_000])
     // Каждый месяц — не сдвиг этого месяца.
     expect(on(B).householdDoc.planShifts ?? []).toEqual([])
+    // Перенос запомнен (Х-9): у телефона 2 вместо кнопки «✓ 16 000 в мечту» — второй раз план не урежется.
+    const afterB = await month(B, 'sc_cafe')
+    expect(part(afterB, 'data-image-moved')).toMatch(/^✓\s16\s000\sв\sмечту$/)
+    expect(afterB).not.toContain('data-image-act')
 
     at('2026-10-05T05:01:00Z')
     await month(A, 'sc_cafe', { catFor: null, undoTo: saved }, (s) => {
@@ -191,5 +195,6 @@ describe('e2e / ИИ-польза Блок 7 — образы трат', () => {
     })
     await sync(A, B)
     expect([cafeA(B), trip(B)]).toEqual([50_000, 40_000])
+    expect(part(await month(B, 'sc_cafe'), 'data-image-act')).toBe('Перенести в мечту')
   })
 })

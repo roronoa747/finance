@@ -1,4 +1,4 @@
-import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard, TripSpend, TermSnap, PlanShift } from '@/types/finance'
+import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard, TripSpend, TermSnap, PlanShift, ImageMove } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
 import { isSpend, normalizeCounterparty, normalizeMerchant } from '@/lib/statements/model'
@@ -5554,6 +5554,8 @@ export type HabitImage = {
   yearly: number | null
   share: number | null
   action: ImageAction | null
+  /** «Перенести в мечту» уже сделан на эту мечту (запись `imageMoves`, Х-9) — сколько в месяц; кнопки тогда нет. */
+  moved: number | null
 }
 
 export type InterestImage = { yearly: number; perMonth: number; price: ImagePrice | null; action: { kind: 'faster' } }
@@ -5563,6 +5565,7 @@ type ImageState = {
   goals?: Goal[]
   wishlist?: WishItem[]
   habitTotals?: HabitTotal[]
+  imageMoves?: ImageMove[]
   goalOrder?: QueueOrder | null
   moneySettings?: MoneySettings | null
 }
@@ -5604,7 +5607,7 @@ export function habitImages(state: ImageState, key: string): HabitImage[] {
     if (!months.every((m) => mine.some((t) => t.period === m))) continue
     const monthly = Math.round(mine.reduce((s, t) => s + t.amount, 0) / IMAGE_MONTHS)
     const count = Math.round(mine.reduce((s, t) => s + t.count, 0) / IMAGE_MONTHS)
-    const base = { habit: h.id, categoryId: h.categoryId, monthly, count, left: null, months: null, cost: null, saving: null, yearly: null, share: null }
+    const base = { habit: h.id, categoryId: h.categoryId, monthly, count, left: null, months: null, cost: null, saving: null, yearly: null, share: null, moved: null }
     if (h.id === 'taxi') {
       const car = goals.find((g) => g.need > 0 && (templateById(g.template)?.type === 'car' || /машин|авто/i.test(g.name)))
       const price: ImagePrice = car
@@ -5631,11 +5634,13 @@ export function habitImages(state: ImageState, key: string): HabitImage[] {
       const dream = main && main.need > 0 ? main : null
       const price: ImagePrice | null = dream ? { from: 'goal', goalId: dream.id, name: dream.name, price: dream.need } : measureFor(yearly)
       const amount = Math.floor((monthly * (IMAGE_MOVE_SHARE[h.id] ?? 0)) / 100 / 1000) * 1000
+      // Перенос на эту мечту уже сделан (Х-9) — вместо кнопки «✓ N в мечту»; новая мечта первой — кнопка снова.
+      const done = dream ? (state.imageMoves ?? []).find((m) => !m.deletedAt && m.categoryId === h.categoryId && m.goalId === dream.id) : undefined
       const action: ImageAction | null =
-        dream && amount >= 1000
+        dream && amount >= 1000 && !done
           ? { kind: 'move', categoryId: h.categoryId, goalId: dream.id, goalName: dream.name, amount, days: earlierDays(dream, key, amount) }
           : null
-      images.push({ ...base, kind: 'dream', price, yearly, share: dream ? Math.round((yearly * 100) / dream.need) : null, action })
+      images.push({ ...base, kind: 'dream', price, yearly, share: dream ? Math.round((yearly * 100) / dream.need) : null, action, moved: done?.amount ?? null })
     }
   }
   // Один образ на раздел — самый крупный по сумме.

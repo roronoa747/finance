@@ -72,6 +72,19 @@ export type PlanShift = Tracked & {
   at: string
 }
 
+/**
+ * «Перенести в мечту» у образа сделан (Х-9, AU-31): план раздела уже урезан на `amount`, взнос мечты `goalId` прибавлен —
+ * у образа вместо кнопки «✓ N в мечту». id случайный: «Отменить» — надгробие (слияние: удаление сильнее правки).
+ */
+export type ImageMove = Tracked & {
+  id: string
+  categoryId: string
+  goalId: string
+  amount: number
+  by: PersonId
+  at: string
+}
+
 export type Person = Tracked & {
   id: PersonId
   name: string
@@ -670,6 +683,8 @@ export type SyncDoc = {
   planShifts?: PlanShift[]
   /** Итоги привычек трат участников за месяц (бэклог «ИИ-польза», Р-24, AU-27): только счётчик и сумма. До Блока 7 — без ключа. */
   habitTotals?: HabitTotal[]
+  /** Переносы «в мечту» у образов (бэклог «ИИ-польза», Х-9, AU-31): отмена — надгробие. До AU-31 — без ключа. */
+  imageMoves?: ImageMove[]
   /**
    * Когда закончили первичную настройку бюджета. Пустое значит, что показываем
    * первый запуск (`/start`). Живёт в общем документе, а не в настройках устройства: второй
