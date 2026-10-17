@@ -197,4 +197,43 @@ describe('e2e / ИИ-польза Блок 7 — образы трат', () => {
     expect([cafeA(B), trip(B)]).toEqual([50_000, 40_000])
     expect(part(await month(B, 'sc_cafe'), 'data-image-act')).toBe('Перенести в мечту')
   })
+
+  // Приёмка Блока 7 (AU-32, Х-14): план «Кафе» ниже «обычно» — в листе «до плана»; после переноса у телефона 2 её нет
+  // (в плашке образ с именем мечты и ✓), «Отменить» на телефоне 1 — строка и кнопка снова.
+  it('«до плана» при живом переносе у телефона 2 нет, «Отменить» её возвращает', async () => {
+    server.data.spendPlans = [plan('a', 'sc_transport', 30_000), plan('a', 'sc_cafe', 30_000), plan('b', 'sc_food', 300_000)]
+    const A = await phone(server, st, 'a')
+    await uploadA(A)
+    const B = await phone(server, st, 'b')
+    const lunch = habitImages(on(A).planInput(K).state, K).find((i) => i.categoryId === 'sc_cafe')!
+    const before = await month(B, 'sc_cafe')
+    expect(before).toMatch(/data-cat-advice[\s>]/)
+    expect(text(before)).not.toContain(sp(imageLine(lunch)))
+    expect(part(before, 'data-image-act')).toBe('Перенести в мечту')
+
+    let saved: unknown = null
+    await month(A, 'sc_cafe', { catFor: null, moveAction: lunch.action }, (s) => {
+      void s.undoTo
+      ;(s.confirm as () => void)()
+      saved = s.undoTo
+    })
+    await sync(A, B)
+    const moved = await month(B, 'sc_cafe')
+    expect(moved).not.toMatch(/data-cat-advice[\s>]/)
+    expect(moved).toContain('data-cat-advice-box')
+    // Имя мечты — в строке образа (не `short`); `part` режет по первому вложенному `</span>`, поэтому — текст листа.
+    expect(text(moved)).toContain(`${sp(imageLine(lunch))} `)
+    expect(part(moved, 'data-image-moved')).toMatch(/^✓\s16\s000\sв\sмечту$/)
+    expect(moved).not.toContain('data-image-act')
+
+    at('2026-10-05T05:01:00Z')
+    await month(A, 'sc_cafe', { catFor: null, undoTo: saved }, (s) => {
+      void s.undoTo
+      ;(s.undo as () => void)()
+    })
+    await sync(A, B)
+    const back = await month(B, 'sc_cafe')
+    expect(back).toMatch(/data-cat-advice[\s>]/)
+    expect(part(back, 'data-image-act')).toBe('Перенести в мечту')
+  })
 })
