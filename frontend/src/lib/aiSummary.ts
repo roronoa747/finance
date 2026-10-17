@@ -1,25 +1,9 @@
-import type { Person, PersonId, RateBook, SyncDoc } from '@/types/finance'
-import {
-  activePlan,
-  debtsOverview,
-  derivedCredits,
-  goalTerm,
-  monthPlan,
-  openGoals,
-  planForecast,
-  ratePercent,
-  monthSpendByCategory,
-  spendFact,
-  untilPayday,
-  type UploadPeriod,
-} from '@/lib/finance'
-import { today } from '@/lib/dates'
+import type { Person, PersonId } from '@/types/finance'
 
 /**
- * Сводка месяца для разбора ИИ (бэклог «ИИ», Р-3): цифры месяца, посчитанные `finance.ts`, и траты по разделам.
- * Это и есть всё, что уходит в модель, и то, что человек видит в «что ушло» (Р-9). Значения — целые тенге (ставки —
- * проценты); имена людей заменены на «участник N» (по слоту: a — 1, b — 2, c — 3). Нет заметок, операций, продавцов,
- * желаний и личного документа.
+ * Сводка месяца разбора v1 (бэклог «ИИ», Р-3) — только чтение: так «что ушло» рисует разборы, сохранённые до v2
+ * (до 12 в документе). Новые разборы шлют факты (`aiFacts.ts`). Значения — целые тенге (ставки — проценты); имена
+ * людей — «участник N» (по слоту: a — 1, b — 2, c — 3).
  */
 export type MonthSummaryAI = {
   /** Месяц `YYYY-MM`. */
@@ -56,9 +40,6 @@ export type MonthSummaryAI = {
    */
   goals: { name: string; want: number; have: number; monthlyPut: number; doneMonth: string | null; paused: boolean; afterPlan?: boolean }[]
 }
-
-/** Что ещё нужно сводке, кроме документа: книга курсов (валютные оклады и платежи) и загрузки выписок (факт трат). */
-export type SummaryEnv = { book?: RateBook | null; uploads?: UploadPeriod[] }
 
 const SLOT_NO: Record<PersonId, number> = { a: 1, b: 2, c: 3 }
 const who = (id: PersonId) => `участник ${SLOT_NO[id]}`
@@ -97,83 +78,4 @@ export function maskNames(text: string, people: Pick<Person, 'id' | 'name'>[]): 
     }
   }
   return out
-}
-
-/**
- * Сводка месяца `key` (Р-3) — только вызывает `finance.ts` и раскладывает ответы: своей арифметики над деньгами нет.
- * Кредиты — производные (остаток из отметок), как у экранов; вход плана — тот же, что `financeStore.planInput`.
- */
-export function buildMonthSummary(doc: SyncDoc, key: string, now: Date, env: SummaryEnv = {}): MonthSummaryAI {
-  const people = doc.people ?? []
-  const mask = (s: string) => maskNames(s, people)
-  const payments = doc.payments ?? []
-  const credits = derivedCredits(doc.credits ?? [], payments)
-  const book = env.book ?? null
-  const state = { ...doc, credits, book }
-  const spendCategories = doc.spendCategories ?? []
-  const totals = doc.spendTotals ?? []
-  const plan = monthPlan(state, { key, totals, spendCategories, uploads: env.uploads ?? [] })
-
-  const payday = untilPayday(
-    { people, obligations: doc.obligations, credits, accounts: doc.accounts, payments, book, fxExchanges: doc.fxExchanges },
-    today(now),
-  )
-
-  // Разделы — та же правда, что «потрачено» (`spend.fact`): вместе с «Без раздела» дают его же.
-  const picture = monthSpendByCategory(people, totals, spendCategories, key, env.uploads ?? [])
-  const byCategory = picture.rows.map((r) => ({ name: mask(r.name), amount: r.amount }))
-  if (picture.unknown > 0) byCategory.push({ name: 'Без раздела', amount: picture.unknown })
-
-  const debts = debtsOverview({ ...state, plans: doc.plans }, key)
-
-  const plans = activePlan(doc.plans ?? [])
-  const goals = openGoals(doc.goals ?? []).map((g) => {
-    const item = plan.queue.find((q) => q.goalId === g.id)
-    const forecast = plans && item?.paused === 'plan' ? planForecast(plans, { goals: doc.goals, credits, obligations: doc.obligations, payments }, key) : undefined
-    const term = goalTerm(item, g, key, forecast)
-    return {
-      name: mask(g.name),
-      want: term.need,
-      have: g.have,
-      monthlyPut: item?.given ?? 0,
-      doneMonth: term.doneMonth,
-      paused: term.off || !!item?.paused,
-      afterPlan: term.afterPlan,
-    }
-  })
-  // Досрочка — строка долга очереди: её доля уже в `rest` (`free − queueTotal`), модель должна её видеть.
-  const prepayRow = plan.queue.find((q) => q.kind === 'debt' && !q.paused && q.given > 0)
-  const prepay = prepayRow ? { name: mask(prepayRow.name), monthlyPut: prepayRow.given, doneMonth: prepayRow.doneMonth } : null
-
-  return {
-    month: key,
-    daysToPayday: payday ? payday.inDays : null,
-    income: { total: plan.income.total, byPerson: plan.income.byPerson.map((x) => ({ who: who(x.person), amount: x.amount })) },
-    dues: { total: plan.duesTotal, items: plan.dues.map((d) => ({ name: mask(d.name), amount: d.amount })) },
-    spend: { total: plan.spendTotal, fact: spendFact(plan.spend), byCategory },
-    rest: plan.rest,
-    short: plan.short,
-    free: plan.free,
-    saved: plan.putTotal,
-    debts: {
-      total: debts.total,
-      items: debts.rows.map((r) => ({
-        name: mask(r.name),
-        left: r.left,
-        payment: r.payment,
-        ratePercent: r.rateUnknown ? null : ratePercent(r.rate),
-        endMonth: r.endMonth,
-      })),
-    },
-    prepay,
-    goals,
-  }
-}
-
-/** Все числа сводки по порядку обхода (Р-3: число ответа, которого здесь нет, — брак; та же проверка у заготовки демо). */
-export function summaryNumbers(s: unknown): number[] {
-  if (typeof s === 'number') return [s]
-  if (Array.isArray(s)) return s.flatMap(summaryNumbers)
-  if (s && typeof s === 'object') return Object.values(s).flatMap(summaryNumbers)
-  return []
 }

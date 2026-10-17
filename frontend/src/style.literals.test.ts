@@ -93,3 +93,12 @@ describe('lib/storyCard.ts — копии светлых токенов равн
     expect(new Set(used)).toEqual(new Set([rgb]))
   })
 })
+
+describe('тост поверх открытого листа (Х-15 Блока 3 «ИИ-польза»)', () => {
+  it('html[data-sheet-open] #shell-toast — z выше листов (50 / 60) и ниже просмотра фото (70)', () => {
+    const z = Number(read('style.css').match(/html\[data-sheet-open\] #shell-toast\s*\{\s*z-index:\s*(\d+)/)?.[1])
+    expect(z).toBeGreaterThan(60)
+    expect(z).toBeLessThan(70)
+    expect(read('components/AppShell.vue')).toContain('id="shell-toast"')
+  })
+})

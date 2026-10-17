@@ -1163,6 +1163,15 @@ describe('AI-05: согласие на ИИ в личном документе',
     }
   })
 
+  // AU-10: v1 «да» с телефона и v2 «да» с ноутбука — позднее `at` целиком, с версией.
+  it('aiConsent v1 и v2 с двух телефонов — позднее at целиком, с v', () => {
+    const old = { aiConsent: { on: true, at: T1 } }
+    const fresh = { aiConsent: { on: true, at: T2, v: 2 } }
+    for (const merged of [mergePrivateDocs(old, fresh), mergePrivateDocs(fresh, old)]) {
+      expect(merged.aiConsent).toEqual({ on: true, at: T2, v: 2 })
+    }
+  })
+
   it('с одной стороны — берётся она; ни с одной — ключа нет («не спрошено»)', () => {
     expect(mergePrivateDocs({}, { aiConsent: { on: true, at: T1 } }).aiConsent).toEqual({ on: true, at: T1 })
     expect(mergePrivateDocs({ aiConsent: { on: true, at: T1 } }, {}).aiConsent).toEqual({ on: true, at: T1 })

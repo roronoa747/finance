@@ -165,11 +165,17 @@ func NewRouter(
 	previewHandler := handlers.NewPreviewHandler(linkpreview.New().Fetch)
 	accountHandler := handlers.NewAccountHandler(repos.Accounts)
 	eventsHandler := handlers.NewEventsHandler(repos.Events, repos.Metrics, repos.Users, cfg.AdminEmails)
-	adminAIHandler := handlers.NewAdminAIHandler(repos.AI, repos.Users, cfg.AdminEmails, aiClient, cfg.AIModelSellers, cfg.AIMonthlyLimit)
+	adminAIHandler := handlers.NewAdminAIHandler(repos.AI, repos.Users, cfg.AdminEmails, aiClient, cfg.AIModelSellers, cfg.AIMonthlyLimitMicros)
 	// Гейт ИИ-ручек (AI-08; Блоки 3–4 берут его же): ключ и флаг семьи, member, лимит месяца.
-	aiGate := handlers.NewAIGate(repos.AI, aiClient, cfg.AIMonthlyLimit)
+	aiGate := handlers.NewAIGate(repos.AI, aiClient, cfg.AIMonthlyLimitMicros)
 	aiReviewHandler := handlers.NewAIReviewHandler(aiGate, cfg.AIModelReview)
 	aiSellersHandler := handlers.NewAISellersHandler(aiGate, cfg.AIModelSellers)
+	// The limit is money: a model with no price is billed as the priciest — say so in the logs.
+	for _, m := range []string{cfg.AIModelReview, cfg.AIModelSellers} {
+		if aiClient != nil && !ai.KnownPrice(m) {
+			log.Printf("ai: no price for model %q — billing it as the priciest", m)
+		}
+	}
 
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", handlers.HealthHandler(database))

@@ -30,8 +30,18 @@
   - Фронт: текст лимита — `aiLimitText()` из `stores/ai.ts` («ИИ вернётся 1 <месяца>», не «1-го» из ТЗ AI-15 — решение
     владельца по `/ux` Блока 2); состояния запроса — `ReviewState` (`thinking` / `limit` / `failed`), образец —
     `suggestSellers` / `sellersState`; `ai_off` → `auth.fetchMe()`; без сети (`navigator.onLine === false`) — не звать.
-  - Строки ТЗ AI-15 сдвинулись: `AppShell.vue` — `<Tabs :plus>` :208, лист «Добавить» :210, пункт «Покупка в список
-    желаний» :136; `Wishes.vue` — без сдвига (:134 `createWish`, :330 лист, :336 `PhotoSlot`).
+  - Строки ТЗ AI-15 сдвинулись (после Блока 3 «ИИ-польза»): `AppShell.vue` — `<Tabs :plus>` :234, лист «Добавить»
+    :236, пункт «Покупка в список желаний» :162; `Wishes.vue` — перечитать grep-ом (`createWish`, `PhotoSlot`).
+- **Факты после Блока 3 «Разбор v2» «ИИ-польза»** (критик, 2026-10-17; перечитать grep-ом):
+  - Лимит — **деньги**: `NewAIGate(repo, client, limitMicros int64)`, гейт сравнивает `AIRepository.Spent` (`cost_micros`
+    месяца) с `config.AIMonthlyLimitMicros` (`AI_MONTHLY_LIMIT_USD`, дефолт $2); `Used` и `AI_MONTHLY_LIMIT` удалены.
+    Тест лимита ручки — как `TestSellersGate` «limit 429»: `f.aiRepo.AddUsage(ctx, f.family, f.month, 3, 0, 0, f.limit)`
+    (последний аргумент — **микродоллары**, `f.limit` — лимит фикстуры). Оплаченная неудача (502) списывает токены, не
+    запрос, — образец «billed failure spends toward the limit» в `TestReviewGate`.
+  - Согласие v2 (`AI_CONSENT_V = 2`, `aiConsent {on, at, v}`) **уже** перечисляет «Скриншот товара» в `AI_SENDS` и в
+    политике RU/EN — версию не поднимать, слова листа не менять; ручка зовёт `ensureConsent()` как продавцы. Кто сказал
+    «да» v2, листа не увидит; «да» v1 увидит лист один раз (уже сделано Блоком 3).
+  - Один запрос в полёте у разбора (`requestReview`) — к желанию не относится: свое состояние по образцу `sellersState`.
 - Следующий шаг — `/critic ИИ 4`.
 
 ---

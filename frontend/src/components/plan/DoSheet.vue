@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { liveSpendCategories, monthsLabel, shiftSpan, spendCategoryName, type StepCandidate } from '@/lib/finance'
+import { liveSpendCategories, shiftSpan, spendCategoryName, stepEffectText, type StepCandidate } from '@/lib/finance'
 import { monthKey } from '@/lib/dates'
-import { money, plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -20,6 +20,8 @@ const props = defineProps<{
   candidate: StepCandidate | null
   /** Открыт из «Вернуть срок» у мечты: заголовок «Вернуть срок», кнопка «Вернуть». */
   returning?: boolean
+  /** Слой листа: из листа разбора (AU-13) — 60, над ним. */
+  z?: number
 }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'done', id: string): void }>()
 
@@ -42,10 +44,7 @@ const view = computed(() => {
       ? 'из остатка месяца'
       : `из плана «${spendCategoryName(liveSpendCategories(finance.householdDoc.spendCategories ?? []), from.categoryId)}» · ${finance.people.find((p) => p.id === from.spend)?.name ?? ''}`
   const toText = to === 'debt' ? `в «${debtName.value}»` : `в «${goalName(to.goalId)}»`
-  let effect = ''
-  if (c.kind === 'move' && c.effect.days) effect = `на ${shiftSpan(c.effect.days)} раньше`
-  if (c.kind === 'prepay') effect = [c.effect.months > 0 ? `на ${c.effect.months} мес. раньше` : '', c.effect.saved > 0 ? `−${plain(c.effect.saved)} процентов` : ''].filter(Boolean).join(' · ')
-  if (c.kind === 'cushion' && c.effect.months !== null) effect = `подушки хватит на ${monthsLabel(c.effect.months)}`
+  const effect = stepEffectText(c)
   return {
     title: props.returning ? 'Вернуть срок' : TITLES[c.kind],
     confirm: props.returning ? 'Вернуть' : CONFIRM[c.kind],
@@ -80,7 +79,7 @@ function undo() {
 </script>
 
 <template>
-  <Sheet :open="open" :title="view?.title ?? ''" @close="emit('close')">
+  <Sheet :open="open" :title="view?.title ?? ''" :z="z" @close="emit('close')">
     <template v-if="view">
       <p class="font-num text-[32px] font-bold leading-tight num text-ink" data-do-amount>{{ view.amount }}</p>
       <div class="mt-1 flex flex-col gap-0.5 text-[14px] text-ink-2">

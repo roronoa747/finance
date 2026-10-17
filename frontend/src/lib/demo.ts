@@ -9,21 +9,33 @@ import { monthPlan, planSave, termSnapOf } from '@/lib/finance'
 import { templateById, templateCredit } from '@/lib/goalTemplates'
 import { DEMO_PHOTO } from '@/lib/photos/store'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
+import { buildReviewFacts, type PlanInput } from '@/lib/aiFacts'
+import type { AiReview, SyncDoc } from '@/types/finance'
 
 /**
- * Разбор месяца демо-семьи (бэклог «ИИ», Р-10, AI-10): заранее написанный, без запроса — в демо «Разобрать» показывает
- * его с пометкой «Пример». Дисциплина Р-3: каждое число — из сводки демо (`buildMonthSummary`) и не зависит от дня
- * месяца (тест `demo.review.test.ts` сверяет на разных датах). Слова утвердил владелец (артефакт `/ux`, 2026-10-16):
- * короткий, как живой разбор; шаг 3 — досрочка в автокредит по плану «Сначала долги» уже идёт, совет её держать.
+ * Разбор месяца демо-семьи v2 (бэклог «ИИ-польза», Р-13, AU-14): заранее написанный, без запроса — в демо «Разобрать»
+ * показывает его с пометкой «Пример». Хорошо · Риск · Шаг через мечту демо (поездка), **без цифр** — как живой разбор v2,
+ * где цифры подставляет сервер; слова верны в любой день месяца (тест `demo.review.test.ts` сверяет на разных датах).
+ * Шаг — «Сделать» с кандидатом демо-семьи `cushion` (подушки почти нет). Черновик слов — финал `/ux` с владельцем.
  */
 export const DEMO_REVIEW = {
-  good: 'На поездку в Японию уже собрано 600 000 ₸.',
-  risk: 'Автокредит под 19% — самый дорогой долг.',
-  steps: [
-    { text: 'Разнести траты без раздела', screen: '/week' },
-    { text: 'Сверить траты с планом', screen: '/month' },
-    { text: 'Держать досрочку автокредита', screen: '/money/debts' },
-  ],
+  good: 'Копим на поездку в Японию каждый месяц.',
+  risk: 'Подушки почти нет — неожиданный расход ударит по поездке.',
+  step: 'Отложим остаток месяца в подушку',
+}
+
+/**
+ * Разбор демо в форме v2: заготовка, кандидат «Сделать» — `cushion` из кандидатов кода демо-семьи (его нет — шаг без
+ * кнопки), «что ушло» — факты демо (`buildReviewFacts`). В документ не пишется. Строится по документу без сдвигов этого
+ * месяца — как разбор, сохранённый до «Сделать»: после подтверждения кандидат не пропадает, у шага — «✓ Сделано».
+ */
+export function demoReview(doc: SyncDoc, input: PlanInput): Omit<AiReview, 'id' | 'month' | 'at' | 'by' | 'updatedAt'> {
+  const key = input.ctx.key
+  const planShifts = (doc.planShifts ?? []).filter((s) => s.period !== key)
+  const before = { ...doc, planShifts }
+  const { payload, byId } = buildReviewFacts(before, { state: { ...input.state, planShifts }, ctx: input.ctx }, 'month')
+  const candidate = [...byId.values()].find((c) => c.kind === 'cushion') ?? null
+  return { v: 2, reason: 'month', good: DEMO_REVIEW.good, risk: DEMO_REVIEW.risk, steps: [], step: { text: DEMO_REVIEW.step, candidate }, sent: payload }
 }
 
 /** День `ago` суток назад — как у демо-операций (`day` ниже): даты поездки и операции совпадают. */

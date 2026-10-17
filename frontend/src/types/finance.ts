@@ -1,6 +1,7 @@
 import type { CategoryKey, HueKey, ThemeChoice } from '@/lib/palette'
 import type { HabitTotal, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import type { MonthSummaryAI } from '@/lib/aiSummary'
+import type { StepCandidate } from '@/lib/finance'
 
 export type PersonId = 'a' | 'b' | 'c'
 
@@ -23,15 +24,20 @@ export type Tracked = {
 /**
  * Согласие человека на ИИ-помощника (бэклог «ИИ», Р-9) — ключ `aiConsent` личного документа: общее для его
  * устройств, партнёр не видит. Нет ключа — не спрошено. `at` — ISO-время ответа, позднее побеждает при слиянии.
+ * `v` — версия списка «что уходит» (бэклог «ИИ-польза», Р-12, Р-22): «да» старой версии (или без `v`) спрашивается
+ * ещё раз один раз; «нет» любой версии остаётся «нет».
  */
-export type AiConsent = { on: boolean; at: string }
+export type AiConsent = { on: boolean; at: string; v?: number }
 
 /** Шаг разбора месяца (бэклог «ИИ», Р-4): текст и экран из белого списка сервера; нет экрана — null. */
 export type AiReviewStep = { text: string; screen: string | null }
 
 /**
  * Разбор месяца ИИ (бэклог «ИИ», Р-4, AI-09) — в общем документе: партнёр и viewer видят тот же текст без запроса.
- * `sent` — сводка, ушедшая в модель («что ушло», Р-9); `by` — кто запросил; месяц показывает последний по `at`.
+ * `sent` — что ушло в модель («что ушло», Р-9): v1 — сводка, v2 — факты и кандидаты; `by` — кто запросил; месяц
+ * показывает последний по `at`. v2 (бэклог «ИИ-польза», AU-13): `steps` пуст, шаг один — `step` с кандидатом «Сделать»
+ * (сумма и эффект пересчитываются при открытии); `reason` и `reasonKey` — повод (`month:<YYYY-MM>`,
+ * `salary:<personId>:<YYYY-MM>`; у «Обновить» ключа нет): «один разбор на повод на семью» (Р-4, Р-20).
  */
 export type AiReview = Tracked & {
   id: string
@@ -41,8 +47,28 @@ export type AiReview = Tracked & {
   good: string
   risk: string
   steps: AiReviewStep[]
-  sent: MonthSummaryAI | null
+  sent: MonthSummaryAI | ReviewPayload | null
+  v?: 2
+  reason?: ReviewReason
+  reasonKey?: string
+  step?: { text: string; candidate: StepCandidate | null }
 }
+
+/** Повод разбора v2 (бэклог «ИИ-польза», Р-20): первый вход в месяце, первая «Пришла» зарплаты, «Обновить». */
+export type ReviewReason = 'month' | 'salary' | 'refresh'
+
+/**
+ * Факт разбора v2 (Р-2, Р-19, AU-11): `about` — о чём, без цифр и без имён участников; `value` — как напишет
+ * приложение («80 000 ₸», «к июню 2028», «2 недели»); `raw` — число расчёта `finance.ts`, месяц `YYYY-MM` или числа
+ * строки-образа (для проверки чисел на сервере). Модель ссылается на факт `{f3}`, цифру подставляет сервер.
+ */
+export type ReviewFact = { id: string; about: string; value: string; raw: number | string | number[] }
+
+/** Кандидат шага «Сделать» (Р-3) для модели: `about` без цифр, `value` — сумма, `effect` — эффект строкой. */
+export type ReviewCandidate = { id: string; kind: 'move' | 'prepay' | 'cushion'; about: string; value: string; effect: string }
+
+/** Тело разбора v2 без повода: всё, что уходит в модель, и «что ушло» в листе (Р-9). */
+export type ReviewPayload = { facts: ReviewFact[]; candidates: ReviewCandidate[] }
 
 /**
  * Снимок плана месяца для метки «мечта сдвинулась» (бэклог «ИИ-польза», Р-6, AU-04): первый участник, открывший месяц,

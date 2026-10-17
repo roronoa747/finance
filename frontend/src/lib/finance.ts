@@ -4279,6 +4279,17 @@ export const STEP_MIN = 5_000
 
 export type PlanShiftDraft = Pick<PlanShift, 'period' | 'from' | 'to' | 'amount'>
 
+/**
+ * Шаг сделан: живой сдвиг того же месяца, в ту же цель (или карточку долга) и из того же источника (остаток или тот же
+ * раздел участника). «Вернуть срок» из остатка в ту же мечту — не перенос из раздела (ревью frontend Блока 3, Н-2).
+ */
+export function shiftMade(shifts: PlanShift[], draft: PlanShiftDraft): boolean {
+  const sameFrom = (a: PlanShift['from'], b: PlanShift['from']) =>
+    a === 'rest' || b === 'rest' ? a === b : a.spend === b.spend && a.categoryId === b.categoryId
+  const sameTo = (a: PlanShift['to'], b: PlanShift['to']) => (a === 'debt' || b === 'debt' ? a === b : a.goalId === b.goalId)
+  return shifts.some((s) => !s.deletedAt && s.period === draft.period && sameTo(s.to, draft.to) && sameFrom(s.from, draft.from))
+}
+
 /** Эффект кандидата: мечта — на `days` раньше; досрочка — на `months` раньше и `saved` процентов; подушка — хватит на `months`. */
 export type StepCandidate =
   | { id: string; kind: 'move'; shift: PlanShiftDraft; effect: { days: number | null } }
@@ -4400,6 +4411,58 @@ export function shiftLabel(shift: DreamShift): string {
     return `+${span.replace(/^1\sнеделю$/, '1 неделя')} · ${why}`
   }
   return `на ${shiftSpan(-shift.days)} ближе · ${why}`
+}
+
+/**
+ * Эффект кандидата «Сделать» строкой (Р-3) — одни слова для листа `DoSheet` и для разбора v2 (AU-11, кандидат уходит
+ * в модель вместе с ним): «на 2 недели раньше», «на 3 мес. раньше · −41 000 процентов», «подушки хватит на 1,2 месяца».
+ * Эффекта нет — пустая строка.
+ */
+export function stepEffectText(c: StepCandidate): string {
+  if (c.kind === 'move') return c.effect.days ? `на ${shiftSpan(c.effect.days)} раньше` : ''
+  if (c.kind === 'prepay') {
+    return [c.effect.months > 0 ? `на ${c.effect.months} мес. раньше` : '', c.effect.saved > 0 ? `−${plain(c.effect.saved)} процентов` : '']
+      .filter(Boolean)
+      .join(' · ')
+  }
+  return c.effect.months !== null ? `подушки хватит на ${monthsLabel(c.effect.months)}` : ''
+}
+
+/* ---------------- разбор v2: что изменилось к прошлому месяцу (Р-2, AU-11) ---------------- */
+
+/**
+ * Месяц `ctx.key` против прошлого (Р-2: «что изменилось»): доход больше / меньше — оба ≥ 0, одно из них 0; новые
+ * платежи — платежи месяца, которых не было в прошлом (по `targetId`; с суммой 0 — не было), крупные первыми; `prevIncome` — доход прошлого.
+ */
+export function monthChanges(
+  state: MonthPlanState,
+  ctx: MonthPlanCtx,
+  now: MonthPlan = monthPlan(state, ctx),
+): { prevIncome: number; incomeMore: number; incomeLess: number; newDues: PlanDue[] } {
+  const prev = monthPlan(state, { ...ctx, key: addMonths(ctx.key, -1) })
+  const diff = now.income.total - prev.income.total
+  // Платёж с версией «с этого месяца» в прошлом месяце стоит с суммой 0 — его там не было.
+  const known = new Set(prev.dues.filter((d) => d.amount > 0).map((d) => d.targetId))
+  return {
+    prevIncome: prev.income.total,
+    incomeMore: Math.max(0, diff),
+    incomeLess: Math.max(0, -diff),
+    // Нулевой сейчас (версия позже, пауза, валюта без курса) — не новый платёж.
+    newDues: now.dues.filter((d) => d.amount > 0 && !known.has(d.targetId)).sort((a, b) => b.amount - a.amount),
+  }
+}
+
+/**
+ * Главные разделы трат для разбора (Р-5: 1–2): сначала с точкой «больше обычного» (`over`, по убыванию факта), иначе —
+ * крупнейшие сверх плана (по убыванию «факт − план»). Порядок строк `spendCompare` сохраняется внутри групп.
+ */
+export function reviewSpendRows(rows: SpendCompareRow[], n = 2): SpendCompareRow[] {
+  const over = rows.filter((r) => r.over)
+  if (over.length) return over.slice(0, n)
+  return rows
+    .filter((r) => r.amount !== null && r.plan !== null && r.amount > r.plan)
+    .sort((a, b) => b.amount! - b.plan! - (a.amount! - a.plan!))
+    .slice(0, n)
 }
 
 /** Состояние строки очереди «Месяца» — только когда есть что сказать (правило 12); текст — в экране. */

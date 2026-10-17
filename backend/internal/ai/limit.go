@@ -11,9 +11,9 @@ func MonthKey(now time.Time) string {
 	return now.In(almaty).Format("2006-01")
 }
 
-// LimitReached reports whether a family that used `used` requests this month may not make
-// another. Two requests racing on the last one may both pass (at most a request or two
-// over) — accepted, see backend/README.md.
-func LimitReached(used, limit int) bool {
-	return used >= limit
+// LimitReached reports whether a family that spent `spentMicros` micro-dollars this month
+// may not make another request (the limit is money, Р-11). Two requests racing at the edge
+// may both pass (at most a request or two over) — accepted, see backend/README.md.
+func LimitReached(spentMicros, limitMicros int64) bool {
+	return spentMicros >= limitMicros
 }

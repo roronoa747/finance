@@ -122,6 +122,18 @@ export const readAiReviewSeen = (): string | null => {
 }
 export const writeAiReviewSeen = (id: string) => writeStorage(AI_REVIEW_SEEN_KEY, id)
 
+/**
+ * Разбор сам на этом телефоне (бэклог «ИИ-польза», AU-13, Р-4): по поводу (`reasonKey`) — когда пробовали в последний
+ * раз (неудача — повтор не чаще раза в сутки) и спросили ли согласие v2 (закрыл лист — до следующего повода).
+ */
+export const AI_AUTO_KEY = 'ff_ai_auto'
+export type AiAutoTry = { at?: string; asked?: boolean }
+export const readAiAuto = (): Record<string, AiAutoTry> => {
+  const v = readStorage<unknown>(AI_AUTO_KEY, {})
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, AiAutoTry>) : {}
+}
+export const writeAiAuto = (v: Record<string, AiAutoTry>) => writeStorage(AI_AUTO_KEY, v)
+
 /** Предложения ИИ продавцам пачки «Без раздела» (AI-12): `{ match → {to, at} }` на этом телефоне, 60 дней. */
 export const AI_SELLERS_KEY = 'ff_ai_sellers'
 

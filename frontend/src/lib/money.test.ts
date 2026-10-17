@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { money, moneyIn, moneyShort, moneySigned, parseMoney, plain, signTone, usdFromMicros } from './money'
+import { money, moneyIn, moneyShort, moneySigned, parseMoney, plain, signTone, usdFromMicros, usdWhole } from './money'
 
 /** Ожидание с обычными пробелами → неразрывные, как печатает `money`. */
 const nb = (s: string) => s.replace(/ /g, '\u00a0')
@@ -40,6 +40,13 @@ describe('moneyIn и moneySigned (Блок 13)', () => {
     expect(signTone(1)).toBe('text-ok')
     expect(signTone(0)).toBe('text-ink')
     expect(signTone(0, 'text-ink-3')).toBe('text-ink-3')
+  })
+})
+
+describe('usdWhole — лимит ИИ в целых долларах (бэклог «ИИ-польза», AU-09)', () => {
+  it('микродоллары → «$N»', () => {
+    expect(usdWhole(2_000_000)).toBe('$2')
+    expect(usdWhole(15_000_000)).toBe('$15')
   })
 })
 

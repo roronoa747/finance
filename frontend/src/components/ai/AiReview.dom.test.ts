@@ -9,8 +9,10 @@ import { useAuthStore } from '@/stores/auth'
 import { useAiStore } from '@/stores/ai'
 import { useFinanceStore } from '@/stores/finance'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
-import type { AiReview, SyncDoc } from '@/types/finance'
+import type { AiReview, Goal, SyncDoc } from '@/types/finance'
 import type { MonthSummaryAI } from '@/lib/aiSummary'
+import { stepCandidates, type StepCandidate } from '@/lib/finance'
+import { money } from '@/lib/money'
 import Month from '@/views/Month.vue'
 
 vi.mock('@/lib/photos/store', async (orig) => ({
@@ -21,6 +23,8 @@ vi.mock('@/lib/photos/store', async (orig) => ({
 /**
  * AI-09 (бэклог «ИИ», Р-4, Р-7, Р-9): кнопка разбора у остатка «Месяца», лист разбора, разбор в общем документе.
  * Ручка — подменённый `apiClient.aiReview` со счётчиком; личный документ — фейковый сервер (`ensureConsent` тянет его).
+ * AU-13 (бэклог «ИИ-польза», Р-2, Р-3): разбор v2 — факты в запросе, шаг с «Сделать» → `DoSheet`, «✓ Сделано»;
+ * разборы v1 читаются как раньше, шаг на этот же экран — текст (Х-13).
  */
 let app: App | null = null
 let router: Router
@@ -51,14 +55,24 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+/** Ответ ручки v2 (значения фактов уже подставлены сервером). */
 const answer = {
   good: 'Остаётся 120 000 ₸.',
   risk: 'Кредитка под 40%.',
-  steps: [
-    { text: 'Посмотрим долги.', screen: '/money/debts' },
-    { text: 'Обсудим вдвоём.', screen: null },
-  ],
+  step: { text: 'Посмотрим долги', candidate: null as string | null },
 }
+
+/** Фонд-подушка: у семьи появляются кандидаты «Сделать» — досрочка и подушка (`stepCandidates`). */
+const cushionFund: Goal = { id: 'fund', name: 'Подушка безопасности', need: 0, seed: 100_000, have: 100_000, monthly: 0, hue: 'teal', planPct: 0, movements: [], fund: 'cushion', updatedAt: T0 }
+const withFund = (extra: Partial<SyncDoc> = {}) => planFamilyDoc({ goals: [...planFamilyDoc().goals, cushionFund], ...extra })
+/** Кандидат кода по id — из того же входа плана, что у листа. */
+const candidateOf = (id: string) => {
+  const { state, ctx } = useFinanceStore().planInput(KEY)
+  return stepCandidates(state, ctx).find((c) => c.id === id)!
+}
+/** Разбор v2 в документе: шаг с кандидатом (или без). */
+const savedV2 = (candidate: StepCandidate | null, extra: Partial<AiReview> = {}): AiReview =>
+  saved({ v: 2, reason: 'month', reasonKey: `month:${KEY}`, steps: [], step: { text: 'Отложим остаток в подушку', candidate }, sent: { facts: [{ id: 'f1', about: 'доход месяца', value: '1 200 000 ₸', raw: 1_200_000 }], candidates: [] }, ...extra })
 
 const saved = (extra: Partial<AiReview> = {}): AiReview => ({
   id: 'r1', month: KEY, at: '2026-09-12T06:00:00.000Z', by: 'b', good: 'Сохранённое хорошо.', risk: 'Сохранённый риск.',
@@ -176,7 +190,7 @@ describe('AI-09: разбор месяца у остатка', () => {
     expect(q('[data-review-risk]')!.textContent).toBe('Остаётся 627 000 тенге.')
   })
 
-  it('нет разбора: согласие → запрос сводкой без имён → разбор в общем документе → лист', async () => {
+  it('нет разбора: согласие → запрос фактами без имён (повод «месяц») → разбор v2 в общем документе → лист', async () => {
     const spy = vi.spyOn(apiClient, 'aiReview').mockResolvedValue(answer)
     const finance = await open()
     const ai = useAiStore()
@@ -187,15 +201,17 @@ describe('AI-09: разбор месяца у остатка', () => {
     await vi.waitFor(() => expect(spy).toHaveBeenCalledTimes(1))
     await flush()
 
-    // Исходящее тело — сводка AI-07: без имён семьи.
-    const sent = JSON.stringify(spy.mock.calls[0][0])
+    // Исходящее тело — повод, факты и кандидаты AU-11: без имён семьи.
+    const body = spy.mock.calls[0][0]
+    expect(body.reason).toBe('month')
+    expect(body.facts.length).toBeGreaterThan(3)
+    const sent = JSON.stringify(body)
     for (const name of ['Ильяс', 'Аруна']) expect(sent).not.toContain(name)
-    expect(sent).toContain('участник 1')
 
     const list = finance.householdDoc.aiReviews ?? []
     expect(list).toHaveLength(1)
-    expect(list[0]).toMatchObject({ month: KEY, by: 'a', good: answer.good, steps: answer.steps })
-    expect(list[0].sent).toEqual(spy.mock.calls[0][0])
+    expect(list[0]).toMatchObject({ month: KEY, by: 'a', good: answer.good, v: 2, reason: 'month', reasonKey: `month:${KEY}`, steps: [], step: { text: 'Посмотрим долги', candidate: null } })
+    expect(list[0].sent).toEqual({ facts: body.facts, candidates: body.candidates })
     expect(finance.unsent).toBe(true)
     expect(txt(q('[data-review-risk]'))).toBe('Кредитка под 40%.')
     // Число не рвётся строкой: разряды и «₸» — через неразрывный пробел (стенд: «95 / 000 ₸»); документ — как пришло.
@@ -204,10 +220,11 @@ describe('AI-09: разбор месяца у остатка', () => {
     // Свой разбор — без точки.
     expect(q('[data-review-dot]')).toBeNull()
 
-    // «Что ушло» — разделы сводки списком, не JSON.
+    // «Что ушло» — факты строками «о чём: значение», не JSON.
     await press(q('[data-review-sent-open]'))
     const shown = txt(q('[data-review-sent]'))
-    for (const part of ['Доход', 'Платежи', 'Траты', 'Долги', 'Цели', 'участник 1']) expect(shown).toContain(part)
+    expect(shown).toContain('доход месяца: 1 200 000 ₸')
+    expect(shown).toContain('платежи месяца')
     expect(shown).not.toContain('{')
 
     // Второе нажатие — тот же разбор, без запроса.
@@ -236,12 +253,9 @@ describe('AI-09: разбор месяца у остатка', () => {
     expect(q('[data-review-dot]')).toBeNull()
   })
 
-  it('«что ушло»: свободное до целей — «свободно до целей», как в тексте разбора', async () => {
-    vi.spyOn(apiClient, 'aiReview').mockResolvedValue(answer)
-    await open()
-    useAiStore().setConsent(true)
+  it('«что ушло» разбора v1 (сохранён до v2): свободное до целей — «свободно до целей»', async () => {
+    await open({ doc: planFamilyDoc({ aiReviews: [saved({ sent: sentFull() })] }) })
     await press(q('[data-review-open]'))
-    await vi.waitFor(() => expect(q('[data-review-good]')).not.toBeNull())
     await press(q('[data-review-sent-open]'))
     expect(txt(q('[data-review-sent]'))).toMatch(/свободно до целей — [\d\s ]+₸/)
   })
@@ -345,13 +359,15 @@ describe('AI-09: разбор месяца у остатка', () => {
     await vi.waitFor(() => expect(txt(dialog())).toContain('ИИ вернётся 1 февраля'))
   })
 
-  it('«Обновить» — участнику, когда разбору больше суток; новый разбор заменяет показ', async () => {
+  it('«Обновить» — участнику, когда разбору больше суток; повод «refresh», новый разбор заменяет показ', async () => {
     const spy = vi.spyOn(apiClient, 'aiReview').mockResolvedValue(answer)
     await open({ doc: planFamilyDoc({ aiReviews: [saved({ at: '2026-09-11T06:00:00.000Z' })] }) })
     useAiStore().setConsent(true)
     await press(q('[data-review-open]'))
     await press(q('[data-review-refresh]'))
     await vi.waitFor(() => expect(spy).toHaveBeenCalledTimes(1))
+    expect(spy.mock.calls[0][0].reason).toBe('refresh')
+    expect(useFinanceStore().aiReviewOf(KEY)!.reasonKey).toBeUndefined()
     await flush()
     expect(txt(q('[data-review-good]'))).toBe(answer.good)
     expect(q('[data-review-refresh]')).toBeNull()
@@ -369,5 +385,92 @@ describe('AI-09: разбор месяца у остатка', () => {
 
     await open({ role: 'viewer' })
     expect(q('[data-review-open]')).toBeNull()
+  })
+})
+
+describe('AU-13: лист разбора v2 — «Сделать» у шага', () => {
+  it('шаг с применимым кандидатом — «Сделать» → лист с готовыми цифрами → подтвердил: сдвиг месяца, разбор открыт, «✓ Сделано»', async () => {
+    const doc = withFund()
+    await open({ doc })
+    const c = candidateOf('cushion')
+    useFinanceStore().setHouseholdDoc(withFund({ aiReviews: [savedV2(c)] }), 2)
+    await flush()
+    await press(q('[data-review-open]'))
+    expect(txt(q('[data-review-step-text]'))).toBe('Отложим остаток в подушку')
+    expect(q('[data-review-steps]')).toBeNull()
+    const doBtn = q<HTMLButtonElement>('[data-review-do]')!
+    expect(doBtn.textContent!.trim()).toBe('Сделать')
+    // Небольшая тихая кнопка у предмета (правило 12), не брендовая во всю ширину.
+    expect(doBtn.className).toContain('h-8')
+    expect(doBtn.className).not.toContain('w-full')
+    await press(doBtn)
+    // Цифры листа — свежего кандидата кода.
+    expect(q('[data-do-amount]')!.textContent).toBe(money(c.shift.amount))
+    await press(q('[data-do-confirm]'))
+    const shifts = (useFinanceStore().householdDoc.planShifts ?? []).filter((s) => !s.deletedAt)
+    expect(shifts).toHaveLength(1)
+    expect(shifts[0]).toMatchObject({ period: KEY, from: 'rest', to: { goalId: 'fund' }, amount: c.shift.amount })
+    expect(dialog()).not.toBeNull()
+    expect(txt(q('[data-review-done]'))).toBe('Сделано')
+    expect(q('[data-review-do]')).toBeNull()
+  })
+
+  it('кандидат больше не применим (нет в свежих `stepCandidates`) — кнопки нет, текст шага есть', async () => {
+    const doc = withFund()
+    await open({ doc })
+    const c = candidateOf('cushion')
+    // Подушки больше нет — кандидата `cushion` у семьи нет.
+    useFinanceStore().setHouseholdDoc(planFamilyDoc({ aiReviews: [savedV2(c)] }), 2)
+    await flush()
+    await press(q('[data-review-open]'))
+    expect(txt(q('[data-review-step-text]'))).toBe('Отложим остаток в подушку')
+    expect(q('[data-review-do]')).toBeNull()
+    expect(q('[data-review-done]')).toBeNull()
+  })
+
+  it('шаг без кандидата — только текст', async () => {
+    await open({ doc: withFund({ aiReviews: [savedV2(null)] }) })
+    await press(q('[data-review-open]'))
+    expect(txt(q('[data-review-step-text]'))).toBe('Отложим остаток в подушку')
+    expect(q('[data-review-do]')).toBeNull()
+  })
+
+  it('viewer — разбор v2 читает, «Сделать» нет', async () => {
+    const doc = withFund()
+    await open({ doc })
+    const c = candidateOf('cushion')
+    app!.unmount()
+    document.body.innerHTML = ''
+    await open({ role: 'viewer', doc: withFund({ aiReviews: [savedV2(c)] }) })
+    await press(q('[data-review-open]'))
+    expect(txt(q('[data-review-step-text]'))).toBe('Отложим остаток в подушку')
+    expect(q('[data-review-do]')).toBeNull()
+  })
+
+  it('дата разбора в нижней строке — день по Алматы (Х-18): «Подсказка ИИ · 13 сентября · что ушло»', async () => {
+    // 20:30 UTC 12-го — уже 13-е в Алматы.
+    await open({ doc: withFund({ aiReviews: [savedV2(null, { at: '2026-09-12T20:30:00.000Z' })] }) })
+    await press(q('[data-review-open]'))
+    expect(txt(q('[data-review-day]'))).toBe('13 сентября')
+    expect(txt(q('[data-review-sent-open]')!.parentElement)).toBe('Подсказка ИИ · 13 сентября · что ушло')
+  })
+
+  it('«что ушло» v2 — факты строками', async () => {
+    await open({ doc: withFund({ aiReviews: [savedV2(null)] }) })
+    await press(q('[data-review-open]'))
+    await press(q('[data-review-sent-open]'))
+    expect(txt(q('[data-review-sent]'))).toContain('доход месяца: 1 200 000 ₸')
+  })
+
+  // Х-13 (владелец, 2026-10-17): «клики по рекомендациям никуда не ведут, просто закрывают экран».
+  it('v1: шаг на «/month» с «Месяца» — текст без стрелки, лист не закрывается; на другой экран — ссылка', async () => {
+    await open({ doc: planFamilyDoc({ aiReviews: [saved({ steps: [{ text: 'Сверить траты с планом', screen: '/month' }, { text: 'Шаг к долгам.', screen: '/money/debts' }] })] }) })
+    await press(q('[data-review-open]'))
+    const links = [...document.querySelectorAll<HTMLAnchorElement>('[data-review-step-link]')]
+    expect(links.map((a) => a.getAttribute('href'))).toEqual(['/money/debts'])
+    const plain = q('[data-review-step]')!
+    expect(txt(plain)).toContain('Сверить траты с планом')
+    await press(plain)
+    expect(dialog()).not.toBeNull()
   })
 })

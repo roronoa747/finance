@@ -36,19 +36,23 @@ type Config struct {
 	AIModelReview  string
 	AIModelSellers string
 	AIModelWish    string
-	// AIMonthlyLimit is the requests a family gets per Almaty month (AI_MONTHLY_LIMIT, one
-	// value for every family). Zero, negative or not a number falls back to the default:
-	// "no limit" is not a setting.
-	AIMonthlyLimit int
+	// AIMonthlyLimitMicros is the money a family may spend on AI per Almaty month, in
+	// micro-dollars (AI_MONTHLY_LIMIT_USD — whole dollars, one value for every family). Zero,
+	// negative or not a number falls back to the default: "no limit" is not a setting. The old
+	// AI_MONTHLY_LIMIT (requests) is no longer read.
+	AIMonthlyLimitMicros int64
 }
 
 // Defaults for the AI settings above.
 const (
-	DefaultAIModelReview  = "claude-opus-5-5"
-	DefaultAIModelSellers = "claude-haiku-5-5"
-	DefaultAIModelWish    = "claude-opus-5-5"
-	DefaultAIMonthlyLimit = 30
+	DefaultAIModelReview     = "claude-opus-5-5"
+	DefaultAIModelSellers    = "claude-haiku-5-5"
+	DefaultAIModelWish       = "claude-opus-5-5"
+	DefaultAIMonthlyLimitUSD = 2
 )
+
+// microsPerUSD turns whole dollars into the micro-dollars app.ai_usage.cost_micros keeps.
+const microsPerUSD = 1_000_000
 
 // Load loads configuration from environment variables with fallback defaults.
 // With APP_ENV=production it fails instead of falling back: without a database
@@ -65,11 +69,11 @@ func Load() (*Config, error) {
 		GoogleClientIDs: splitList(getEnv("GOOGLE_CLIENT_IDS", "")),
 		AdminEmails:     splitList(strings.ToLower(getEnv("ADMIN_EMAILS", ""))),
 
-		AnthropicAPIKey: strings.TrimSpace(getEnv("ANTHROPIC_API_KEY", "")),
-		AIModelReview:   strings.TrimSpace(getEnv("AI_MODEL_REVIEW", DefaultAIModelReview)),
-		AIModelSellers:  strings.TrimSpace(getEnv("AI_MODEL_SELLERS", DefaultAIModelSellers)),
-		AIModelWish:     strings.TrimSpace(getEnv("AI_MODEL_WISH", DefaultAIModelWish)),
-		AIMonthlyLimit:  positiveInt(getEnv("AI_MONTHLY_LIMIT", ""), DefaultAIMonthlyLimit),
+		AnthropicAPIKey:      strings.TrimSpace(getEnv("ANTHROPIC_API_KEY", "")),
+		AIModelReview:        strings.TrimSpace(getEnv("AI_MODEL_REVIEW", DefaultAIModelReview)),
+		AIModelSellers:       strings.TrimSpace(getEnv("AI_MODEL_SELLERS", DefaultAIModelSellers)),
+		AIModelWish:          strings.TrimSpace(getEnv("AI_MODEL_WISH", DefaultAIModelWish)),
+		AIMonthlyLimitMicros: int64(positiveInt(getEnv("AI_MONTHLY_LIMIT_USD", ""), DefaultAIMonthlyLimitUSD)) * microsPerUSD,
 	}
 	if cfg.IsProduction() {
 		if err := cfg.ValidateProduction(); err != nil {

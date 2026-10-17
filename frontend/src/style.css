@@ -474,3 +474,9 @@ html[data-sheet-open] body,
 html[data-sheet-open] main {
   overflow: hidden;
 }
+
+/* Тост «Отменить» (`kit/Toast` в `#shell-toast` оболочки, `z-20`) при открытом листе — поверх листов (`z` 50/60), иначе
+   отменить нечем (Х-15 Блока 3 «ИИ-польза»); ниже просмотра фото во весь экран (`z-[70]`). */
+html[data-sheet-open] #shell-toast {
+  z-index: 65;
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  STEP_MIN, cushionCover, dreamShift, monthPlan, moneySettingsOf, prepayOutcome, returnTermShift, spendCompare, stepCandidates, termSnapOf,
+  STEP_MIN, cushionCover, dreamShift, monthPlan, moneySettingsOf, prepayOutcome, returnTermShift, spendCompare, shiftMade, stepCandidates, termSnapOf,
   type MonthPlanCtx, type UploadPeriod,
 } from './finance'
 import type { SpendTotal } from './statements/types'
@@ -198,3 +198,24 @@ describe('returnTermShift', () => {
 })
 
 const roundDown = (n: number) => Math.floor(n / 1_000) * 1_000
+
+// Ревью frontend Блока 3, Н-2: «✓ Сделано» у шага разбора — по цели и источнику, а не по одной цели.
+describe('shiftMade', () => {
+  const move = { period: KEY, from: { spend: 'a' as const, categoryId: 'sc_cafe' }, to: { goalId: 'car' }, amount: 20_000 }
+  it('«Вернуть срок» из остатка в ту же мечту — шаг «из раздела» не сделан', () => {
+    expect(shiftMade([shift({ from: 'rest' })], move)).toBe(false)
+  })
+  it('свой сдвиг из того же раздела в ту же мечту — сделан; другой участник, раздел, месяц или надгробие — нет', () => {
+    expect(shiftMade([shift({ from: move.from, amount: 5_000 })], move)).toBe(true)
+    expect(shiftMade([shift({ from: { spend: 'b', categoryId: 'sc_cafe' } })], move)).toBe(false)
+    expect(shiftMade([shift({ from: { spend: 'a', categoryId: 'sc_food' } })], move)).toBe(false)
+    expect(shiftMade([shift({ from: move.from, period: '2026-09' })], move)).toBe(false)
+    expect(shiftMade([shift({ from: move.from, deletedAt: T0 })], move)).toBe(false)
+  })
+  it('остаток в подушку и долг — по своей цели', () => {
+    const cushion = { period: KEY, from: 'rest' as const, to: { goalId: 'fund' }, amount: 10_000 }
+    expect(shiftMade([shift({ to: { goalId: 'fund' } })], cushion)).toBe(true)
+    expect(shiftMade([shift({})], cushion)).toBe(false)
+    expect(shiftMade([shift({ to: 'debt' })], { ...cushion, to: 'debt' })).toBe(true)
+  })
+})

@@ -7,9 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
 import { useAiStore } from '@/stores/ai'
-import { readAiReviewSeen, writeAiReviewSeen } from '@/lib/storage'
-import { buildMonthSummary } from '@/lib/aiSummary'
-import { DEMO_REVIEW } from '@/lib/demo'
+import { demoReview as demoReviewOf } from '@/lib/demo'
 import type { AiReview } from '@/types/finance'
 import { money, moneyIn, parseMoney, plain } from '@/lib/money'
 import { dayLabel, monthBy, monthFrom, monthKey as monthNow, monthShort, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
@@ -244,17 +242,18 @@ watch(
 const { open: affordOpen, close: closeAfford } = useQuerySheet('afford')
 
 /*
- * ---------- разбор месяца ИИ (бэклог «ИИ», Р-4, AI-09): у остатка рядом с «Хватит?» (правило 12) ----------
- * Есть разбор месяца — лист с ним без запроса (партнёр, viewer); нет — согласие (Р-9), запрос, разбор в общий
- * документ. Только текущий месяц. Точка — разбор есть, а на этом телефоне его не открывали.
+ * ---------- разбор месяца ИИ (бэклог «ИИ», Р-4, AI-09; v2 — «ИИ-польза», AU-13): у остатка рядом с «Хватит?» ----------
+ * Есть разбор месяца — лист с ним без запроса (партнёр, viewer); нет — согласие (Р-9), запрос (повод `month`), разбор в
+ * общий документ. Обычно он уже пришёл сам (`ai.autoReview`). Только текущий месяц. Точка — разбор есть, а на этом
+ * телефоне его не открывали (общее с точками «Плана» и «Месяца» — `ai.seenReview`).
  */
 const ai = useAiStore()
-/** Демо (Р-10, AI-10): заранее написанный разбор с «что ушло» — сводкой демо-семьи; без запроса, в документ не пишется. */
+/** Демо (Р-13, AU-14): заранее написанный разбор v2 с «Сделать» и «что ушло» — фактами демо; без запроса, в документ не пишется. */
 const demoReview = computed<AiReview | null>(() =>
   auth.isDemo
     ? {
-        id: 'demo-review', month: props.monthKey, at: new Date().toISOString(), by: 'a', updatedAt: '', ...DEMO_REVIEW,
-        sent: buildMonthSummary(finance.householdDoc, props.monthKey, new Date(), { book: fx.book, uploads: ops.uploads }),
+        id: 'demo-review', month: props.monthKey, at: new Date().toISOString(), by: 'a', updatedAt: '',
+        ...demoReviewOf(finance.householdDoc, finance.planInput(props.monthKey)),
       }
     : null,
 )
@@ -263,14 +262,10 @@ const review = computed(() => demoReview.value ?? finance.aiReviewOf(props.month
 const reviewShown = computed(
   () => props.monthKey === monthNow() && ((ai.available && ai.consent !== 'off') || auth.isDemo || (!!review.value && auth.ai)),
 )
-const seenReview = ref(readAiReviewSeen())
-const reviewDot = computed(() => !!review.value && review.value.id !== seenReview.value)
+const reviewDot = computed(() => !!review.value && review.value.id !== ai.seenReview)
 const reviewOpen = ref(false)
 function markReviewSeen() {
-  const r = review.value
-  if (!r) return
-  writeAiReviewSeen(r.id)
-  seenReview.value = r.id
+  if (review.value) ai.markReviewSeen(review.value.id)
 }
 async function openReview() {
   if (review.value) {
@@ -290,10 +285,10 @@ async function openReview() {
   }
   reviewOpen.value = true
   // Лист закрыли, пока «Думаю…», — разбор не видели: позовёт точка на ✦ (правило 12, `/ux`).
-  if ((await ai.runReview(props.monthKey)) && reviewOpen.value) markReviewSeen()
+  if ((await ai.runReview(props.monthKey, 'month')) && reviewOpen.value) markReviewSeen()
 }
 async function refreshReview() {
-  if ((await ai.ensureConsent()) && (await ai.runReview(props.monthKey)) && reviewOpen.value) markReviewSeen()
+  if ((await ai.ensureConsent()) && (await ai.runReview(props.monthKey, 'refresh')) && reviewOpen.value) markReviewSeen()
 }
 
 /* ---------- кто платит (Р-80) ---------- */
