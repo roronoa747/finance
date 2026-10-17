@@ -59,7 +59,7 @@ const imageLabel = computed(() => (props.canEdit && props.image?.action ? IMAGE_
         <p class="text-[14px] font-semibold text-ink num" data-cat-advice>
           до плана: +{{ plain(row.advice.amount) }} в мечту{{ row.advice.goalName ? ` «${row.advice.goalName}»` : '' }}<template v-if="row.advice.days"> · <span class="whitespace-nowrap">на {{ earlierLabel(row.advice.days) }} раньше</span></template>
         </p>
-        <HabitImageRow v-if="image && imageInAdvice" class="mt-2" :image="image" :label="imageLabel" @act="$emit('image', image.action!)" />
+        <HabitImageRow v-if="image && imageInAdvice" class="mt-2" short :image="image" :label="imageLabel" @act="$emit('image', image.action!)" />
       </div>
       <!-- Образ привычки раздела (Р-24, AU-29): строка, «?» и небольшая кнопка действия; viewer — без кнопки. -->
       <HabitImageRow v-if="image && !imageInAdvice" class="mt-3" :image="image" :label="imageLabel" @act="$emit('image', image.action!)" />

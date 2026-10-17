@@ -5684,8 +5684,8 @@ export function yearsMonths(months: number): string {
   return [ys, ms].filter(Boolean).join(' ') || '0 месяцев'
 }
 
-/** Строка-образ (черновик слов, финал — `/ux`). */
-export function imageLine(image: HabitImage | InterestImage): string {
+/** Строка-образ (черновик слов, финал — `/ux`); `goalName: false` — «N % мечты» без имени (в плашке, где мечта названа, Х-10). */
+export function imageLine(image: HabitImage | InterestImage, { goalName = true } = {}): string {
   if (!('habit' in image)) return `За год банку уходит ${image.price ? image.price.name : money(image.yearly)}`
   const name = HABIT_NAMES[image.habit]
   const p = image.price
@@ -5693,7 +5693,7 @@ export function imageLine(image: HabitImage | InterestImage): string {
     return `${name} за ${yearsMonths(image.months!)} — ${p?.from === 'goal' ? `мечта «${p.name}»` : 'своя машина'} без долга`
   }
   if (image.kind === 'payback') return `${p?.from === 'wish' ? p.name : 'Кофемашина'} окупится за ${yearsMonths(image.months!)}`
-  if (p?.from === 'goal') return `${name} за год — ${image.share} % мечты «${p.name}»`
+  if (p?.from === 'goal') return `${name} за год — ${image.share} % мечты${goalName ? ` «${p.name}»` : ''}`
   return `${name} за год — ${p ? p.name : money(image.yearly!)}`
 }
 

@@ -12,12 +12,13 @@ import Button from '@/components/ui/Button.vue'
  * небольшая тихая кнопка действия — у своего предмета (правило 12); нет `label` (viewer, действия нет) — строка без
  * кнопки. Перенос уже сделан (`moved`, Х-9) — вместо кнопки тихое «✓ N в мечту», видно всем ролям. Все числа — `finance.ts`.
  */
-const props = defineProps<{ image: HabitImage | InterestImage; label?: string | null }>()
+const props = defineProps<{ image: HabitImage | InterestImage; label?: string | null; short?: boolean }>()
 defineEmits<{ (e: 'act'): void }>()
 
-const line = computed(() => imageLine(props.image))
-/** Последнее слово строки — вместе с «?», чтобы «?» не переносился один на свою строку. */
-const head = computed(() => line.value.replace(/\S+$/, ''))
+/** `short` — в плашке «до плана», где мечта уже названа: «N % мечты» без имени. */
+const line = computed(() => imageLine(props.image, { goalName: !props.short }))
+/** Последнее слово строки — вместе с «?», чтобы «?» не переносился один на свою строку; «24 % мечты» — не рвётся у «%». */
+const head = computed(() => line.value.replace(/(\d+ % )?\S+$/, ''))
 const tail = computed(() => line.value.slice(head.value.length))
 const math = computed(() => imageMath(props.image))
 /** «✓ 7 000 в мечту» — перенос сделан. */

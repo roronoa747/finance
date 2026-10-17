@@ -63,7 +63,7 @@ describe('SpendCategorySheet', () => {
     }
     await mount({}, { image: IMG })
     expect(document.querySelectorAll('[data-image]').length).toBe(1)
-    expect(txt(q('[data-cat-advice-box] [data-image-line]'))).toBe('Доставка за год — 24 % мечты «Отпуск»')
+    expect(txt(q('[data-cat-advice-box] [data-image-line]'))).toBe('Доставка за год — 24 % мечты')
     expect(txt(q('[data-cat-advice-box] [data-image-act]'))).toBe('Перенести в мечту')
     app!.unmount()
     document.body.innerHTML = ''
