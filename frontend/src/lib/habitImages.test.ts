@@ -96,6 +96,8 @@ describe('habitImages — образы', () => {
     expect(of([move('jp')])).toMatchObject({ action: null, moved: 20_000 })
     expect(of([move('car')])).toMatchObject({ action: { kind: 'move', goalId: 'jp' }, moved: null })
     expect(of([move('jp', T0)])).toMatchObject({ action: { kind: 'move', goalId: 'jp' }, moved: null })
+    // Два телефона перенесли до синка — урезано дважды: 20 000 + 20 000 = 40 000.
+    expect(of([move('jp'), { ...move('jp'), id: 'm-jp-2', by: 'b' }])).toMatchObject({ action: null, moved: 40_000 })
   })
 
   it('без мечты — мерка ближайшая снизу: обеды 60 000 × 12 = 720 000 → неделя в Анталье (637 000); меньше всех мерок — сумма', () => {

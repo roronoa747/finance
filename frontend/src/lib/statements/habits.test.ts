@@ -63,6 +63,9 @@ describe('habitTotals — итоги месяца', () => {
     const big = habitTotals(times(3, () => op('WOLT.COM', -10_000, 'sc_cafe', '2026-09-19')), 'b', '2026-09')
     expect(big.map((t) => [t.habit, t.count, t.amount])).toEqual([['delivery', 3, 30_000]])
     expect(habitTotals(times(5, () => op('WOLT.COM', -3_000, 'sc_cafe', '2026-09-19')), 'b', '2026-09')).toEqual([])
+    // Граница: ровно 20 000 — привычка, 19 999 — нет.
+    expect(habitTotals([op('WOLT.COM', -20_000, 'sc_cafe', '2026-09-19')], 'b', '2026-09').map((t) => t.amount)).toEqual([20_000])
+    expect(habitTotals([op('WOLT.COM', -19_999, 'sc_cafe', '2026-09-19')], 'b', '2026-09')).toEqual([])
   })
 
   it('только операции месяца; операция — в одной привычке (кофе не считается обедом)', () => {

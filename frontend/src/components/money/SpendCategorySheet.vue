@@ -40,6 +40,8 @@ const imageInAdvice = computed(() => {
   const img = props.image
   return !!img && img.price?.from === 'goal' && img.kind === 'dream' && props.row?.advice?.goalId === img.price.goalId
 })
+/** Подпись кнопки образа; viewer и образ без действия — без кнопки. */
+const imageLabel = computed(() => (props.canEdit && props.image?.action ? IMAGE_ACTION_LABEL[props.image.action.kind] : null))
 </script>
 
 <template>
@@ -57,10 +59,10 @@ const imageInAdvice = computed(() => {
         <p class="text-[14px] font-semibold text-ink num" data-cat-advice>
           до плана: +{{ plain(row.advice.amount) }} в мечту{{ row.advice.goalName ? ` «${row.advice.goalName}»` : '' }}<template v-if="row.advice.days"> · <span class="whitespace-nowrap">на {{ earlierLabel(row.advice.days) }} раньше</span></template>
         </p>
-        <HabitImageRow v-if="image && imageInAdvice" class="mt-2" :image="image" :label="canEdit && image.action ? IMAGE_ACTION_LABEL[image.action.kind] : null" @act="$emit('image', image.action!)" />
+        <HabitImageRow v-if="image && imageInAdvice" class="mt-2" :image="image" :label="imageLabel" @act="$emit('image', image.action!)" />
       </div>
       <!-- Образ привычки раздела (Р-24, AU-29): строка, «?» и небольшая кнопка действия; viewer — без кнопки. -->
-      <HabitImageRow v-if="image && !imageInAdvice" class="mt-3" :image="image" :label="canEdit && image.action ? IMAGE_ACTION_LABEL[image.action.kind] : null" @act="$emit('image', image.action!)" />
+      <HabitImageRow v-if="image && !imageInAdvice" class="mt-3" :image="image" :label="imageLabel" @act="$emit('image', image.action!)" />
       <p v-if="row.group && rk !== null" class="mt-2 flex items-center gap-1 text-[12.5px] text-ink-2 num" data-cat-rk>
         {{ RK_SPEND_GROUPS[row.group].name }}: у вас {{ rk }} % · в Алматы {{ RK_SPEND_GROUPS[row.group].share }} %
         <Hint label="Справка">Доля {{ RK_SPEND_GROUPS[row.group].label }} в тратах семей Алматы, {{ RK_SPEND_GROUPS[row.group].source }}, {{ RK_SPEND_GROUPS[row.group].period }}</Hint>

@@ -5634,13 +5634,15 @@ export function habitImages(state: ImageState, key: string): HabitImage[] {
       const dream = main && main.need > 0 ? main : null
       const price: ImagePrice | null = dream ? { from: 'goal', goalId: dream.id, name: dream.name, price: dream.need } : measureFor(yearly)
       const amount = Math.floor((monthly * (IMAGE_MOVE_SHARE[h.id] ?? 0)) / 100 / 1000) * 1000
-      // Перенос на эту мечту уже сделан (Х-9) — вместо кнопки «✓ N в мечту»; новая мечта первой — кнопка снова.
-      const done = dream ? (state.imageMoves ?? []).find((m) => !m.deletedAt && m.categoryId === h.categoryId && m.goalId === dream.id) : undefined
+      // Перенос на эту мечту уже сделан (Х-9) — вместо кнопки «✓ N в мечту»; новая мечта первой — кнопка снова. Два
+      // телефона до синка перенесли оба — урезано дважды, ✓ показывает сумму.
+      const done = dream ? (state.imageMoves ?? []).filter((m) => !m.deletedAt && m.categoryId === h.categoryId && m.goalId === dream.id) : []
+      const moved = done.reduce((s, m) => s + m.amount, 0)
       const action: ImageAction | null =
-        dream && amount >= 1000 && !done
+        dream && amount >= 1000 && !moved
           ? { kind: 'move', categoryId: h.categoryId, goalId: dream.id, goalName: dream.name, amount, days: earlierDays(dream, key, amount) }
           : null
-      images.push({ ...base, kind: 'dream', price, yearly, share: dream ? Math.round((yearly * 100) / dream.need) : null, action, moved: done?.amount ?? null })
+      images.push({ ...base, kind: 'dream', price, yearly, share: dream ? Math.round((yearly * 100) / dream.need) : null, action, moved: moved || null })
     }
   }
   // Один образ на раздел — самый крупный по сумме.
