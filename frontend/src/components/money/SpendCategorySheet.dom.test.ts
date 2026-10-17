@@ -70,6 +70,14 @@ describe('SpendCategorySheet', () => {
     await mount({}, { image: { ...IMG, price: { from: 'goal', goalId: 'car', name: 'Машина', price: 4_750_000 } } })
     expect(q('[data-cat-advice-box] [data-image]')).toBeNull()
     expect(q('[data-image]')).not.toBeNull()
+    app!.unmount()
+    document.body.innerHTML = ''
+    // Х-14: перенос сделан — «до плана» нет (выросла бы на перенесённое), в плашке образ с именем мечты и ✓.
+    await mount({}, { image: { ...IMG, action: null, moved: 20_000 } })
+    expect(q('[data-cat-advice]')).toBeNull()
+    expect(txt(q('[data-cat-advice-box] [data-image-line]'))).toBe('Доставка за год — 24 % мечты «Отпуск»')
+    expect(txt(q('[data-cat-advice-box] [data-image-moved]'))).toBe(norm(`✓ ${plain(20_000)} в мечту`))
+    expect(q('[data-image-act]')).toBeNull()
   })
 
   it('«обычно» нет — подпись; плана нет; рекомендации нет', async () => {

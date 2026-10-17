@@ -40,6 +40,8 @@ const imageInAdvice = computed(() => {
   const img = props.image
   return !!img && img.price?.from === 'goal' && img.kind === 'dream' && props.row?.advice?.goalId === img.price.goalId
 })
+/** Перенос раздела уже сделан (✓, Х-14) — строки «до плана» нет: она выросла бы на перенесённое и звала бы ещё раз. */
+const adviceLine = computed(() => !!props.row?.advice && !props.image?.moved)
 /** Подпись кнопки образа; viewer и образ без действия — без кнопки. */
 const imageLabel = computed(() => (props.canEdit && props.image?.action ? IMAGE_ACTION_LABEL[props.image.action.kind] : null))
 </script>
@@ -55,11 +57,11 @@ const imageLabel = computed(() => (props.canEdit && props.image?.action ? IMAGE_
         <span data-cat-usual>{{ row.usual !== null ? `обычно у вас ${plain(row.usual)}` : 'обычно — когда будет 2 месяца выписок' }}</span>
         <span data-cat-plan>{{ row.plan !== null ? `план ${plain(row.plan)}` : 'плана нет' }}</span>
       </div>
-      <div v-if="row.advice" class="mt-3 rounded-[14px] bg-surface-2 px-3 py-[9px]" data-cat-advice-box>
-        <p class="text-[14px] font-semibold text-ink num" data-cat-advice>
+      <div v-if="adviceLine || imageInAdvice" class="mt-3 rounded-[14px] bg-surface-2 px-3 py-[9px]" data-cat-advice-box>
+        <p v-if="adviceLine && row.advice" class="text-[14px] font-semibold text-ink num" data-cat-advice>
           до плана: +{{ plain(row.advice.amount) }} в мечту{{ row.advice.goalName ? ` «${row.advice.goalName}»` : '' }}<template v-if="row.advice.days"> · <span class="whitespace-nowrap">на {{ earlierLabel(row.advice.days) }} раньше</span></template>
         </p>
-        <HabitImageRow v-if="image && imageInAdvice" class="mt-2" short :image="image" :label="imageLabel" @act="$emit('image', image.action!)" />
+        <HabitImageRow v-if="image && imageInAdvice" :class="{ 'mt-2': adviceLine }" :short="adviceLine" :image="image" :label="imageLabel" @act="$emit('image', image.action!)" />
       </div>
       <!-- Образ привычки раздела (Р-24, AU-29): строка, «?» и небольшая кнопка действия; viewer — без кнопки. -->
       <HabitImageRow v-if="image && !imageInAdvice" class="mt-3" :image="image" :label="imageLabel" @act="$emit('image', image.action!)" />
