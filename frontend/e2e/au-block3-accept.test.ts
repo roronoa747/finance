@@ -61,7 +61,7 @@ describe('e2e / приёмка ИИ-польза Блок 3 — 1-е число 
     vi.restoreAllMocks()
   })
 
-  async function member() {
+  async function member({ waitReview = true } = {}) {
     const p = await phone(server)
     const auth = useAuthStore()
     auth.setAuthData(authAs('member', 'a'))
@@ -71,7 +71,8 @@ describe('e2e / приёмка ИИ-польза Блок 3 — 1-е число 
     await useFinanceStore().pullPrivateDoc(priv as unknown as ApiClient)
     const ai = useAiStore()
     ai.sheetMounted = true
-    await ai.autoReview({ ...priv, aiReview } as unknown as ApiClient)
+    const run = ai.autoReview({ ...priv, aiReview } as unknown as ApiClient)
+    if (waitReview) await run
     return { ...p, ai }
   }
 
@@ -115,5 +116,28 @@ describe('e2e / приёмка ИИ-польза Блок 3 — 1-е число 
     const seg = await segment(one.pinia)
     expect(seg.dot).toBe(false)
     expect(seg.month).toBe('2026-09')
+  })
+
+  /**
+   * Повторная приёмка (2026-10-17), п. 2 возврата AU-33 на стенде: телефон закрыли, пока ответ Claude не пришёл
+   * (5–11 с, до 55 с с повтором). Ответ оплачен, но в документ не попал. Перезапуск в тот же день — без нового
+   * запроса (попытка записана до запроса), назавтра — повод снова.
+   */
+  it('(г) закрыли телефон посреди запроса — в тот же день перезапуск не платит, назавтра — снова', async () => {
+    aiReview = vi.fn(() => new Promise<typeof ANSWER>(() => {}))
+    const one = await member({ waitReview: false })
+    await vi.waitFor(() => expect(aiReview).toHaveBeenCalledTimes(1))
+    expect(one.store.aiReviewOf('2026-10')).toBeFalsy()
+
+    aiReview = vi.fn(async (_body: unknown) => ANSWER)
+    at('2026-10-01T13:00:00Z')
+    const again = await member()
+    expect(aiReview).not.toHaveBeenCalled()
+    expect(again.store.aiReviewOf('2026-10')).toBeFalsy()
+
+    at('2026-10-02T05:00:00Z')
+    const tomorrow = await member()
+    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect(tomorrow.store.aiReviewOf('2026-10')).toBeTruthy()
   })
 })
