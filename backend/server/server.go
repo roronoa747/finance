@@ -170,6 +170,12 @@ func NewRouter(
 	aiGate := handlers.NewAIGate(repos.AI, aiClient, cfg.AIMonthlyLimitMicros)
 	aiReviewHandler := handlers.NewAIReviewHandler(aiGate, cfg.AIModelReview)
 	aiSellersHandler := handlers.NewAISellersHandler(aiGate, cfg.AIModelSellers)
+	// The limit is money: a model with no price is billed as the priciest — say so in the logs.
+	for _, m := range []string{cfg.AIModelReview, cfg.AIModelSellers} {
+		if aiClient != nil && !ai.KnownPrice(m) {
+			log.Printf("ai: no price for model %q — billing it as the priciest", m)
+		}
+	}
 
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", handlers.HealthHandler(database))

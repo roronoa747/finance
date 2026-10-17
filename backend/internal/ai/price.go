@@ -11,12 +11,30 @@ var prices = map[string]price{
 	"claude-haiku-5-5":  {in: 10, out: 50},
 }
 
-// CostMicros is what u cost in whole microdollars (cents/MTok × tokens / 100); an unknown
-// model costs 0 and the admin page shows "≈ —".
+// priciest is what a model missing from prices costs: the family limit is money (Р-11
+// «ИИ-польза»), so a dated snapshot or a new model must reach it sooner, never not at all.
+var priciest = func() price {
+	var top price
+	for _, p := range prices {
+		if p.out > top.out {
+			top = p
+		}
+	}
+	return top
+}()
+
+// KnownPrice says whether model is in the price table; the server logs the ones that are not.
+func KnownPrice(model string) bool {
+	_, ok := prices[model]
+	return ok
+}
+
+// CostMicros is what u cost in whole microdollars (cents/MTok × tokens / 100); a model
+// missing from the table is billed as the priciest one.
 func CostMicros(u Usage) int64 {
 	p, ok := prices[u.Model]
 	if !ok {
-		return 0
+		p = priciest
 	}
 	return (u.InputTokens*p.in + u.OutputTokens*p.out) / 100
 }

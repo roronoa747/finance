@@ -270,7 +270,8 @@ func TestCostMicros(t *testing.T) {
 	}{
 		{Usage{Model: "claude-opus-5-5", InputTokens: 1_000_000, OutputTokens: 100_000}, 6_000_000},
 		{Usage{Model: "claude-haiku-5-5", InputTokens: 10_000, OutputTokens: 2_000}, 2_000},
-		{Usage{Model: "claude-unknown", InputTokens: 10_000, OutputTokens: 2_000}, 0},
+		// A model missing from the table is billed as the priciest (Opus), not free.
+		{Usage{Model: "claude-unknown", InputTokens: 10_000, OutputTokens: 2_000}, 80_000},
 	}
 	for _, tc := range cases {
 		if got := CostMicros(tc.u); got != tc.want {

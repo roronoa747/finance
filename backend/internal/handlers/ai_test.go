@@ -446,6 +446,21 @@ func TestReviewGate(t *testing.T) {
 			t.Errorf("status %d %s", rec.Code, rec.Body.String())
 		}
 	})
+	t.Run("model missing from the price table still reaches the limit", func(t *testing.T) {
+		// A dated snapshot in AI_MODEL_REVIEW: billed as the priciest model, so the edge holds.
+		f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{cleanAnswer}}, true)
+		f.handler.model = "claude-opus-5-5-20261001"
+		_ = f.aiRepo.AddUsage(context.Background(), f.family, f.month, 0, 0, 0, f.limit-1_000)
+		if rec := f.post(t, f.member, reviewBody); rec.Code != http.StatusOK {
+			t.Fatalf("status %d %s", rec.Code, rec.Body.String())
+		}
+		if u := f.usage(); u.CostMicros <= f.limit {
+			t.Errorf("cost = %d µ$, want past the %d µ$ limit", u.CostMicros, f.limit)
+		}
+		if rec := f.post(t, f.member, reviewBody); rec.Code != http.StatusTooManyRequests {
+			t.Errorf("next call: status %d, want 429", rec.Code)
+		}
+	})
 	t.Run("billed failure spends toward the limit", func(t *testing.T) {
 		// Two defective attempts: no request of the limit, but their cost (2 × 8 000 µ$) crosses
 		// the edge, so the next call is 429.
