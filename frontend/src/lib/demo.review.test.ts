@@ -59,6 +59,12 @@ describe('DEMO_REVIEW v2 — без цифр, верен в любой день,
       expect(r.step!.candidate).toEqual(fresh)
       // «Что ушло» — факты демо.
       expect(r.sent && 'facts' in r.sent && r.sent.facts.length).toBeGreaterThan(5)
+
+      // «Сделать» → подтвердил: остатка уже нет, но кандидат заготовки тот же — у шага «✓ Сделано», а не пусто.
+      finance.addPlanShift(fresh!.shift)
+      expect(stepCandidates(finance.planInput(key).state, finance.planInput(key).ctx).find((c) => c.id === 'cushion')).toBeUndefined()
+      const after = demoReview(finance.householdDoc, key, { book: useFxStore().book, uploads: useOperationsStore().uploads })
+      expect(after.step!.candidate).toEqual(fresh)
     })
   }
 })

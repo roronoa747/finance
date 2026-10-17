@@ -115,8 +115,15 @@ describe('autoReview — повод «зарплата»', () => {
     expect(aiReview).toHaveBeenCalledTimes(1)
     expect((aiReview.mock.calls[0][0] as { reason: string }).reason).toBe('salary')
     expect(finance.aiReviewOf(KEY)!.reasonKey).toBe(`salary:a:${KEY}`)
-    // Вторая отметка того же месяца (аванс — тот же повод) — нет.
+    // Вторая своя отметка того же месяца (аванс — `period` днём, как пишет ритм) — тот же повод, нет.
     vi.setSystemTime(new Date('2026-09-20T07:00:00Z'))
+    const first = finance.householdDoc.payments!.find((p) => p.kind === 'salary' && p.targetId === 'a')!
+    finance.mutateHouseholdDoc((d) => {
+      d.payments!.push({ ...first, id: 'advance', period: '2026-09-25', updatedAt: new Date().toISOString() })
+    })
+    await ai.autoReview(client)
+    expect(aiReview).toHaveBeenCalledTimes(1)
+    // Отметка партнёра — не мой повод.
     finance.markSalary('b')
     await ai.autoReview(client)
     expect(aiReview).toHaveBeenCalledTimes(1)
@@ -189,15 +196,30 @@ describe('autoReview — молча', () => {
     expect(finance.aiReviewOf(KEY)).not.toBeNull()
   })
 
-  it('502 и сеть — так же молча', async () => {
+  it('502 и сеть — так же молча; повтор того же повода — не раньше суток (каждый pull не платит заново)', async () => {
     const { ai } = family()
     const { client, aiReview } = fakeClient()
     aiReview.mockRejectedValueOnce(new ApiError('ai_failed', 502)).mockRejectedValueOnce(new TypeError('Failed to fetch'))
     await ai.autoReview(client)
+    // Тот же день: focus, visibility, круг синка — без запроса.
+    vi.setSystemTime(new Date('2026-09-12T12:00:00Z'))
+    await ai.autoReview(client)
+    expect(aiReview).toHaveBeenCalledTimes(1)
     vi.setSystemTime(new Date('2026-09-13T08:00:00Z'))
     await ai.autoReview(client)
     expect(aiReview).toHaveBeenCalledTimes(2)
+    // Сеть мигнула — тоже сутки.
+    vi.setSystemTime(new Date('2026-09-13T15:00:00Z'))
+    await ai.autoReview(client)
+    expect(aiReview).toHaveBeenCalledTimes(2)
     expect(ai.reviewState).toBe('idle')
+  })
+
+  it('разбор повода ушёл в надгробие обрезкой «живых ≤ 12» — повод всё равно был: 0', async () => {
+    const { ai } = family({ doc: planFamilyDoc({ aiReviews: [review({ deletedAt: '2026-09-11T10:00:00.000Z' })] }) })
+    const { client, aiReview } = fakeClient()
+    expect(await ai.autoReview(client)).toBeNull()
+    expect(aiReview).not.toHaveBeenCalled()
   })
 })
 
@@ -212,6 +234,31 @@ describe('autoReview — согласие v1', () => {
     await run
     expect(aiReview).toHaveBeenCalledTimes(1)
     expect(finance.privateDoc.aiConsent).toMatchObject({ on: true, v: 2 })
+  })
+
+  it('личный документ не подтянулся — лист не показан, повод не «спрошен»: на следующем круге лист всплывает', async () => {
+    const { ai } = family({ consent: 'v1' })
+    const { client, aiReview } = fakeClient({ aiConsent: { on: true, at: T0 } })
+    const failing = { ...client, getPrivateDoc: vi.fn(async () => Promise.reject(new ApiError('server', 500))) } as unknown as ApiClient
+    expect(await ai.autoReview(failing)).toBeNull()
+    expect(ai.sheetOpen).toBe(false)
+    const run = ai.autoReview(client)
+    await vi.waitFor(() => expect(ai.sheetOpen).toBe(true))
+    ai.answer(true)
+    await run
+    expect(aiReview).toHaveBeenCalledTimes(1)
+  })
+
+  it('листа нет (экран без оболочки) — повод не тратится; оболочка смонтирована — лист', async () => {
+    const { ai } = family({ consent: 'v1' })
+    const { client } = fakeClient({ aiConsent: { on: true, at: T0 } })
+    ai.sheetMounted = false
+    expect(await ai.autoReview(client)).toBeNull()
+    ai.sheetMounted = true
+    const run = ai.autoReview(client)
+    await vi.waitFor(() => expect(ai.sheetOpen).toBe(true))
+    ai.answer(null)
+    await run
   })
 
   it('закрыл лист без ответа — запроса нет, и до следующего повода лист не всплывает', async () => {

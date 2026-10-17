@@ -1,6 +1,6 @@
 # Бэклог «ИИ-польза» (AU)
 
-> **Статус:** бэклог составлен 2026-10-16; **Блок 1 🏁 2026-10-16** — на проде (мёрж `441ee5a`, `dpl_HFbG8qE2pS2hXQ3X3iwwXifRhDx9`); **Блок 2 🏁 2026-10-16** — на проде (мёрж `8f246b8`, `dpl_BGRaRdrjNQGa9S4wZU5wAgTkgLNt`; хвосты Х-1…Х-3 сделаны, Х-4…Х-8 — владельцу); **Блок 7 — исполнитель ✅, критик ✅, `/ux` ✅, возврат AU-31: исполнитель ✅, критик ✅, `/ux` ✅; возврат AU-32 (Х-14, только ✓): исполнитель ✅, критик ✅, `/ux` ✅; приёмка ✅; **🏁 2026-10-17** — на проде (мёрж `4322a8d`, `dpl_GbCh2Fv1YbVFbefy7EwFdw2wUABW`; откат — promote `dpl_E2RGutrwp4A7EtAZRpyAX3qWYqqL`); **Блок 3 — исполнитель ✅ 2026-10-17** (ветка `au-block-3-review-v2`, без деплоя); дальше — `/critic ИИ-польза 3 ultracode`; в тот же день добавлен Блок 7 «Образы трат» (дополнение брифа,
+> **Статус:** бэклог составлен 2026-10-16; **Блок 1 🏁 2026-10-16** — на проде (мёрж `441ee5a`, `dpl_HFbG8qE2pS2hXQ3X3iwwXifRhDx9`); **Блок 2 🏁 2026-10-16** — на проде (мёрж `8f246b8`, `dpl_BGRaRdrjNQGa9S4wZU5wAgTkgLNt`; хвосты Х-1…Х-3 сделаны, Х-4…Х-8 — владельцу); **Блок 7 — исполнитель ✅, критик ✅, `/ux` ✅, возврат AU-31: исполнитель ✅, критик ✅, `/ux` ✅; возврат AU-32 (Х-14, только ✓): исполнитель ✅, критик ✅, `/ux` ✅; приёмка ✅; **🏁 2026-10-17** — на проде (мёрж `4322a8d`, `dpl_GbCh2Fv1YbVFbefy7EwFdw2wUABW`; откат — promote `dpl_E2RGutrwp4A7EtAZRpyAX3qWYqqL`); **Блок 3 — исполнитель ✅, критик ✅ 2026-10-17** (ветка `au-block-3-review-v2`, без деплоя); дальше — `/ux ИИ-польза 3`; в тот же день добавлен Блок 7 «Образы трат» (дополнение брифа,
 > подтверждено владельцем) — идёт между Блоками 2 и 3. Старт — после 🏁 Блока 3 «Продавцы» бэклога «ИИ» (Р-15):
 > `/worker ИИ 3` → потом `/worker ИИ-польза 1`.
 
@@ -295,6 +295,20 @@ plan, usual, share, over, advice, group`; зовёт `monthPlan` — из `month
 `undoImageMove`), `HabitImage.moved` — сумма живых переносов раздела на ту же мечту (тогда `action: null`, у строки
 «✓ N в мечту»); образ той же мечты, что «до плана», — внутри плашки `data-cat-advice-box`. Возврат AU-32: при
 `moved` строки «до плана» в листе нет (только показ — `spendCompare.advice` по-прежнему растёт на перенесённое).
+
+**После Блока 3** (критик, 2026-10-17): лимит — деньги: `config.AIMonthlyLimitMicros` (`AI_MONTHLY_LIMIT_USD`, дефолт $2),
+`AIRepository.Spent` (`cost_micros` месяца; `Used` удалён), `NewAIGate(repo, client, limitMicros)`; тест лимита ручки —
+`AddUsage(…, f.limit)` (микродоллары, образец `TestSellersGate` «limit 429»). Согласие v2 — `AI_CONSENT_V = 2`,
+`aiConsent {on, at, v}`, `AI_SENDS` уже перечисляет подписки, скриншот, чек и фразу мечты — Блокам 4–6 версию не
+поднимать. Разбор v2: факты — `lib/aiFacts.ts` (`buildReviewFacts` → `{payload, byId}`, `factsLines`, названия ≤ 40
+знаков, строки ≤ `REVIEW_TEXT_MAX` 200 — иначе ручка 400), `finance.ts` `monthChanges` / `reviewSpendRows` /
+`stepEffectText`; ручка — `POST /api/ai/review {reason, facts, candidates}` (`reviewRequest.valid`, брак — `defects`,
+подстановка `{fN}`, `CheckNumbers` второй защитой; цифры внутри «» присланных названий — можно). Разбор сам —
+`useAiStore().autoReview()` (поводы `autoReason`, попытки устройства `ff_ai_auto`), зовут `syncEngine.afterPull`,
+вотчеры `AppShell` (своя «Пришла»; флаг ИИ после `financeStore.pulledOnce`); один запрос в полёте — `requestReview`.
+Точки «издалека» — `TabItem.dot` (`kit/Tabs.vue`), проп `dot` у `PlanSwitch`. Лист — `AiReviewSheet` (v2 «Сделать» →
+`DoSheet` с пропом `z`; v1 — прежние шаги). Демо — `demoReview()` (`lib/demo.ts`, по документу без сдвигов месяца).
+e2e — `e2e/au-block3-review-v2.test.ts`; тест-семья фактов — шапка `lib/aiFacts.test.ts`.
 
 **Команды и среда**
 - Фронт: `cd frontend && npm run build && npx vitest run` (Vitest берёт и `src/**`, и `e2e/**`; на 2026-10-16 — vitest

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { buildReviewFacts, factsLines, REVIEW_FACTS_MAX } from './aiFacts'
+import { buildReviewFacts, factsLines, REVIEW_FACTS_MAX, REVIEW_TEXT_MAX } from './aiFacts'
 import {
+  cushionCover,
   debtsOverview,
   derivedCredits,
   dreamShift,
@@ -9,6 +10,7 @@ import {
   habitImages,
   imageLine,
   interestImage,
+  moneySettingsOf,
   monthPlan,
   shiftSpan,
   spendCompare,
@@ -97,6 +99,12 @@ describe('buildReviewFacts — факты разбора v2 (AU-11)', () => {
     expect(find(facts, 'новый платёж «Спортзал»')).toMatchObject({ value: money(25_000), raw: 25_000 })
   })
 
+  it('платёж с суммой 0 в этом месяце (версия позже) — не «новый платёж»', () => {
+    const base = family()
+    const later = { id: 'later', name: 'Netflix', note: '', day: 5, category: 'd4' as const, versions: [{ from: '2026-12', amount: 30_000 }], updatedAt: T0 }
+    expect(find(build(family({ obligations: [...base.obligations, later] })).payload.facts, /новый платёж/)).toBeUndefined()
+  })
+
   it('мечты очереди (до 3): срок месяцем, сдвиг с причиной, сколько осталось — `goalTerm` и `dreamShift`', () => {
     const doc = family()
     const state = stateOf(doc)
@@ -115,7 +123,7 @@ describe('buildReviewFacts — факты разбора v2 (AU-11)', () => {
     // Кафе выше плана на 30 000 → машина +15 дней (как в `dreamShift.test.ts`).
     const shift = dreamShift(state, ctx, doc.termSnaps![0], 'car')!
     expect(shift.days).toBe(15)
-    expect(find(facts, /^срок мечты «Машина» за месяц отодвинулся \(кафе и рестораны выше плана\) на$/)).toMatchObject({ raw: 15, value: shiftSpan(15) })
+    expect(find(facts, /^срок мечты «Машина» за месяц отодвинулся \(«Кафе и рестораны» выше плана\) на$/)).toMatchObject({ raw: 15, value: shiftSpan(15) })
   })
 
   it('долги: «без долгов» — `debtsOverview().freeMonth`, первый долг — `firstDebt` со ставкой', () => {
@@ -132,9 +140,11 @@ describe('buildReviewFacts — факты разбора v2 (AU-11)', () => {
     const doc = family({
       goals: [...planFamilyDoc().goals, { id: 'fund', name: 'Подушка безопасности', need: 0, seed: 600_000, have: 600_000, monthly: 0, hue: 'teal', planPct: 0, movements: [], fund: 'cushion', updatedAt: T0 }],
     })
+    const state = stateOf(doc)
+    const fund = doc.goals.find((g) => g.id === 'fund')!
+    const cover = cushionCover(monthPlan(state, ctxOf(doc)).queue.find((q) => q.goalId === 'fund'), fund, moneySettingsOf(state))
     const f = find(build(doc).payload.facts, 'подушки хватит на')
-    expect(f).toBeDefined()
-    expect(typeof f!.raw).toBe('number')
+    expect(f).toMatchObject({ raw: cover.months })
     expect(f!.value).toMatch(/месяц/)
   })
 
@@ -172,14 +182,14 @@ describe('buildReviewFacts — факты разбора v2 (AU-11)', () => {
   it('перенос образа уже сделан — «уже переносим …», а не строка образа', () => {
     const doc = family({
       habitTotals: CLOSED.map((m) => ht(m, 'delivery', 10, 40_000)),
-      imageMoves: [{ id: 'mv', categoryId: 'sc_delivery', goalId: 'cushion', amount: 20_000, by: 'a', at: T0, updatedAt: T0 }],
+      // Доставка — привычка раздела «Кафе» (`HABITS`), перенос — оттуда в первую мечту семьи.
+      imageMoves: [{ id: 'mv', categoryId: 'sc_cafe', goalId: 'cushion', amount: 20_000, by: 'a', at: T0, updatedAt: T0 }],
     })
-    const img = habitImages(stateOf(doc), KEY)[0]
+    const img = habitImages(stateOf(doc), KEY)[0]!
+    expect(img.moved).toBe(20_000)
     const { facts } = build(doc).payload
-    if (img?.moved) {
-      expect(find(facts, /^уже переносим из/)).toMatchObject({ raw: img.moved })
-      expect(find(facts, /^во что складывается/)).toBeUndefined()
-    }
+    expect(find(facts, /^уже переносим из/)).toMatchObject({ raw: 20_000, value: money(20_000) })
+    expect(find(facts, /^во что складывается/)).toBeUndefined()
   })
 
   it('повод «месяц» — итог закрытого сентября (выписки покрывают); другой повод — нет', () => {
@@ -199,6 +209,7 @@ describe('buildReviewFacts — факты разбора v2 (AU-11)', () => {
     const doc = family()
     const direct = stepCandidates(stateOf(doc), ctxOf(doc))
     const { payload, byId } = build(doc)
+    expect(direct.length).toBeGreaterThan(0)
     expect(payload.candidates.map((c) => c.id)).toEqual(direct.map((_, i) => `c${i + 1}`))
     payload.candidates.forEach((c, i) => {
       expect(byId.get(c.id)).toEqual(direct[i])
@@ -206,6 +217,53 @@ describe('buildReviewFacts — факты разбора v2 (AU-11)', () => {
       expect(c.value).toBe(money(direct[i]!.shift.amount))
       expect(c.effect).toBe(stepEffectText(direct[i]!))
     })
+  })
+
+  it('кандидаты «досрочно» и «в подушку» — из остатка месяца: about без цифр и имён, сумма и эффект — из кода', () => {
+    const base = family()
+    // Остаток месяца: доход Аруны 2 000 000, плюс подушка-фонд — даёт кандидатов prepay и cushion.
+    const doc = family({
+      people: base.people.map((p) => (p.id === 'b' ? { ...p, name: 'Дана', salary: 2_000_000, salaryVersions: undefined } : p)),
+      credits: base.credits.map((c) => ({ ...c, name: `${c.name} Дана` })),
+      goals: [...base.goals, { id: 'fund', name: 'Подушка безопасности', need: 0, seed: 0, have: 0, monthly: 0, hue: 'teal', planPct: 0, movements: [], fund: 'cushion', updatedAt: T0 }],
+    })
+    const direct = stepCandidates(stateOf(doc), ctxOf(doc))
+    const { payload } = build(doc)
+    const kinds = payload.candidates.map((c) => c.kind)
+    expect(kinds).toEqual(direct.map((c) => c.kind))
+    expect(kinds.some((k) => k === 'prepay' || k === 'cushion')).toBe(true)
+    payload.candidates.forEach((c, i) => {
+      expect(c.about, c.about).not.toContain('Дана')
+      expect(c.about.replace(/«[^»]*»/g, ''), c.about).not.toMatch(/\d/)
+      expect(c.value).toBe(money(direct[i]!.shift.amount))
+      expect(c.effect).toBe(stepEffectText(direct[i]!))
+    })
+    const prepay = payload.candidates.find((c) => c.kind === 'prepay')
+    if (prepay) expect(prepay.about).toMatch(/^досрочно в «.+» из остатка месяца$/)
+    const cushion = payload.candidates.find((c) => c.kind === 'cushion')
+    if (cushion) expect(cushion.about).toBe('из остатка месяца в подушку')
+  })
+
+  it('длинные названия и цифры в названиях: строки ≤ 200 (иначе 400 всему разбору), цифры about — только внутри «»', () => {
+    const base = family()
+    const long = (s: string) => `${s} ${'очень '.repeat(25)}длинно`
+    const doc = family({
+      goals: base.goals.map((g) => ({ ...g, name: long(g.name) })),
+      credits: base.credits.map((c) => ({ ...c, name: long(c.name) })),
+      spendCategories: [{ id: 'sc_cafe', name: 'Кафе 24', updatedAt: T0 } as never],
+      obligations: [...base.obligations, { id: 'gym', name: long('Спортзал 2'), note: '', day: 12, category: 'd4' as const, versions: [{ from: KEY, amount: 25_000 }], updatedAt: T0 }],
+    })
+    const { payload } = build(doc, 'month')
+    for (const f of payload.facts) {
+      expect(f.about.length, f.about).toBeLessThanOrEqual(REVIEW_TEXT_MAX)
+      expect(f.value.length, f.value).toBeLessThanOrEqual(REVIEW_TEXT_MAX)
+      expect(f.about.replace(/«[^»]*»/g, ''), f.about).not.toMatch(/\d/)
+    }
+    for (const c of payload.candidates) {
+      expect(c.about.length, c.about).toBeLessThanOrEqual(REVIEW_TEXT_MAX)
+      expect(c.about.replace(/«[^»]*»/g, ''), c.about).not.toMatch(/\d/)
+    }
+    expect(find(payload.facts, /^новый платёж «Спортзал 2 очень/)).toBeDefined()
   })
 
   it('сито: в about нет цифр; id по порядку f1…; не больше 30; value каждого денежного факта — `money(raw)`', () => {

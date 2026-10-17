@@ -233,6 +233,8 @@ export const useFinanceStore = defineStore('finance', () => {
   const isDemo = computed(() => docHousehold.value === DEMO_HOUSEHOLD)
 
   const status = ref<SyncStatus>(unsent.value ? 'dirty' : 'idle')
+  /** Документ в этом запуске уже сверен с сервером (pull или синк): `idle` при старте — лишь «нечего отправлять». */
+  const pulledOnce = ref(false)
   const lastSyncedAt = ref<string | null>(null)
   const lastError = ref<string | null>(null)
   const forceReplace = ref<boolean>(false)
@@ -405,6 +407,7 @@ export const useFinanceStore = defineStore('finance', () => {
     privateUnsent.value = false
     docHousehold.value = null
     status.value = 'idle'
+    pulledOnce.value = false
     lastSyncedAt.value = null
     lastError.value = null
     forceReplace.value = false
@@ -615,6 +618,7 @@ export const useFinanceStore = defineStore('finance', () => {
       }
       unsent.value = false
       status.value = 'idle'
+      pulledOnce.value = true
       lastSyncedAt.value = new Date().toISOString()
       lastError.value = null
       forceReplace.value = false
@@ -656,6 +660,7 @@ export const useFinanceStore = defineStore('finance', () => {
           householdRev.value = serverDoc.rev
           status.value = 'idle'
         }
+        pulledOnce.value = true
         saveLocalState()
         settlePlan()
       }
@@ -1051,7 +1056,8 @@ export const useFinanceStore = defineStore('finance', () => {
   const aiReviewOf = (month: string): AiReview | null =>
     (householdDoc.value.aiReviews ?? [])
       .filter((r) => !r.deletedAt && r.month === month)
-      .reduce<AiReview | null>((a, r) => (!a || r.at > a.at ? r : a), null)
+      // Равное `at` (два телефона разом) — по id: оба телефона показывают один и тот же разбор.
+      .reduce<AiReview | null>((a, r) => (!a || r.at > a.at || (r.at === a.at && r.id > a.id) ? r : a), null)
 
   /**
    * Разбор месяца — в общий документ (AI-09, Р-4): партнёр и viewer видят его после синка. Живых — не больше
@@ -2328,6 +2334,7 @@ export const useFinanceStore = defineStore('finance', () => {
     privateDoc,
     privateRev,
     status,
+    pulledOnce,
     syncStatus,
     unsent,
     privateUnsent,

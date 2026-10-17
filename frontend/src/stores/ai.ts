@@ -182,10 +182,11 @@ export const useAiStore = defineStore('ai', () => {
   /**
    * Повод разбора сам в месяце `key` (Р-20) по общему документу: нет разбора `month:<key>` — `month`; иначе своя
    * первая отметка зарплаты месяца (аванс и недели — та же отметка месяца, не новые поводы) без разбора
-   * `salary:<я>:<key>` и без разбора месяца позже неё (тот уже видел зарплату) — `salary`; иначе ничего.
+   * `salary:<я>:<key>` и без разбора месяца позже неё (тот уже видел зарплату) — `salary`; иначе ничего. Надгробия
+   * обрезки «живых ≤ 12» (`saveAiReview`) тоже считаются: повод их уже был — иначе частое «Обновить» вернёт повод.
    */
   function autoReason(key: string): 'month' | 'salary' | null {
-    const reviews = (finance.householdDoc.aiReviews ?? []).filter((r) => !r.deletedAt && r.month === key)
+    const reviews = (finance.householdDoc.aiReviews ?? []).filter((r) => r.month === key)
     if (!reviews.some((r) => r.reasonKey === `month:${key}`)) return 'month'
     const me = auth.slot
     const mark = (finance.householdDoc.payments ?? [])
@@ -217,9 +218,13 @@ export const useAiStore = defineStore('ai', () => {
     if (consent.value === 'unknown') {
       // Не спрошено никогда — ИИ ещё не включали: сам не зовём. «Да» прежней версии — спросить v2 один раз на повод.
       const c = finance.privateDoc.aiConsent as AiConsent | undefined
-      if (!c?.on || tried?.asked) return null
+      // Листа нет (экран без оболочки) — спросить нечем: повод не тратим.
+      if (!c?.on || tried?.asked || !sheetMounted.value) return null
       writeAiAuto({ ...mine(), [rk]: { ...tried, asked: true } })
-      if (!(await ensureConsent(client)) || autoReason(key) !== reason) return null
+      const ok = await ensureConsent(client)
+      // Личный документ не подтянулся — лист не показан: повод не «спрошен», спросим на следующем круге.
+      if (consentFailed.value) writeAiAuto({ ...mine(), [rk]: { ...mine()[rk], asked: undefined } })
+      if (!ok || autoReason(key) !== reason) return null
     }
     const r = await requestReview(key, reason, client)
     if (typeof r === 'string') {

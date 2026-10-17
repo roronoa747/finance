@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"regexp"
 	"slices"
@@ -77,9 +78,9 @@ func (g *AIGate) Open(w http.ResponseWriter, r *http.Request) (aiCall, bool) {
 	return aiCall{household: household, month: month}, true
 }
 
-// Spend records what the call's attempts cost: one request of the limit on success (Р-14),
-// none on a failure — but the tokens Anthropic billed go into «≈ $» either way (хвост §4,
-// владелец 2026-10-16). The answer is not held back by a failed write: it is logged.
+// Spend records what the call's attempts cost: +1 request (the admin counter) only on success; the
+// tokens Anthropic billed — success or failure — go into cost_micros, which is the monthly limit (Р-11,
+// AU-09). The answer is not held back by a failed write: it is logged.
 func (g *AIGate) Spend(ctx context.Context, c aiCall, ok bool, usages ...ai.Usage) {
 	var in, out, cost int64
 	for _, u := range usages {
@@ -113,6 +114,7 @@ const (
 	maxReviewCandidates = 3
 	maxReviewRunes      = 200
 	maxReviewRaw        = 5 // numbers of an image line (AU-11)
+	maxReviewNumber     = 1e15
 )
 
 var (
@@ -183,7 +185,7 @@ func validRaw(raw json.RawMessage) bool {
 	}
 	switch x := v.(type) {
 	case json.Number:
-		return true
+		return saneNumber(x)
 	case string:
 		return isoMonthRaw.MatchString(x)
 	case []any:
@@ -191,13 +193,19 @@ func validRaw(raw json.RawMessage) bool {
 			return false
 		}
 		for _, e := range x {
-			if _, ok := e.(json.Number); !ok {
+			if n, ok := e.(json.Number); !ok || !saneNumber(n) {
 				return false
 			}
 		}
 		return true
 	}
 	return false
+}
+
+// saneNumber: a finite number within money range — «1e999999» would cost CheckNumbers seconds of big.Rat.
+func saneNumber(n json.Number) bool {
+	f, err := n.Float64()
+	return err == nil && math.Abs(f) <= maxReviewNumber
 }
 
 // valid checks the body (AU-12): reason, 1–30 facts f<N>, 0–3 candidates c<N>, no duplicates,

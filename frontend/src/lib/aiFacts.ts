@@ -51,6 +51,16 @@ import { money } from '@/lib/money'
 export const REVIEW_FACTS_MAX = 30
 /** Мечт очереди в фактах: первая — главная. */
 const REVIEW_DREAMS = 3
+/** Ручка берёт строку до 200 знаков (иначе 400 всему разбору) — длинное название своё укорачиваем. */
+export const REVIEW_TEXT_MAX = 200
+const NAME_MAX = 40
+
+/** Обрезка по знакам (не по половинкам суррогатной пары) с «…». */
+function clip(s: string, max: number): string {
+  const chars = [...s]
+  return chars.length > max ? `${chars.slice(0, max - 1).join('')}…` : s
+}
+const nm = (s: string) => clip(s, NAME_MAX)
 
 /** Что ещё нужно, кроме документа: книга курсов, загрузки выписок (факт трат) и повод разбора. */
 export type ReviewEnv = { book?: RateBook | null; uploads?: UploadPeriod[]; reason?: ReviewReason }
@@ -79,15 +89,16 @@ export function buildReviewFacts(doc: SyncDoc, key: string, env: ReviewEnv = {})
   const plan = monthPlan(state, ctx)
 
   const facts: ReviewFact[] = []
-  const fact = (about: string, value: string, raw: ReviewFact['raw']) => facts.push({ id: `f${facts.length + 1}`, about: mask(about), value, raw })
+  const fact = (about: string, value: string, raw: ReviewFact['raw']) =>
+    facts.push({ id: `f${facts.length + 1}`, about: clip(mask(about), REVIEW_TEXT_MAX), value: clip(value, REVIEW_TEXT_MAX), raw })
 
   // Доход, платежи, остаток — и что изменилось к прошлому месяцу.
-  const changes = monthChanges(state, ctx)
+  const changes = monthChanges(state, ctx, plan)
   if (plan.income.total > 0) fact('доход месяца', money(plan.income.total), plan.income.total)
   if (changes.prevIncome > 0 && changes.incomeMore > 0) fact('доход больше прошлого месяца на', money(changes.incomeMore), changes.incomeMore)
   if (changes.prevIncome > 0 && changes.incomeLess > 0) fact('доход меньше прошлого месяца на', money(changes.incomeLess), changes.incomeLess)
   if (plan.duesTotal > 0) fact('платежи месяца', money(plan.duesTotal), plan.duesTotal)
-  for (const d of changes.newDues.slice(0, 2)) fact(`новый платёж «${d.name}»`, money(d.amount), d.amount)
+  for (const d of changes.newDues.slice(0, 2)) fact(`новый платёж «${nm(d.name)}»`, money(d.amount), d.amount)
   if (plan.short > 0) fact('не хватает на платежи и траты', money(plan.short), plan.short)
   else fact('остаётся в месяце после платежей, трат и целей', money(plan.rest), plan.rest)
 
@@ -100,11 +111,12 @@ export function buildReviewFacts(doc: SyncDoc, key: string, env: ReviewEnv = {})
     if (!goal) return
     const forecast = plans && item.paused === 'plan' ? planForecast(plans, state, key) : undefined
     const term = goalTerm(item, goal, key, forecast)
-    const name = `«${goal.name}»`
+    const name = `«${nm(goal.name)}»`
     if (term.doneMonth) fact(`${i === 0 ? 'главная мечта' : 'мечта'} ${name} — срок`, monthBy(term.doneMonth, key), term.doneMonth)
     const shift = dreamShift(state, ctx, snap, goal.id)
     if (shift) {
-      const why = SHIFT_REASON_TEXT[shift.reason](shift.name)
+      // Раздел — в «ёлочках», как пишет его модель: цифры названия («Кафе 24») сервер пропускает только внутри «».
+      const why = shift.reason === 'spend' && shift.name ? `«${nm(shift.name)}» выше плана` : SHIFT_REASON_TEXT[shift.reason](shift.name && nm(shift.name))
       const days = Math.abs(shift.days)
       fact(`срок мечты ${name} за месяц ${shift.days > 0 ? 'отодвинулся' : 'приблизился'} (${why}) на`, shiftSpan(days), days)
     }
@@ -122,11 +134,11 @@ export function buildReviewFacts(doc: SyncDoc, key: string, env: ReviewEnv = {})
   const debts = debtsOverview({ ...state, plans: doc.plans }, key)
   if (debts.total > 0 && debts.freeMonth) fact('без долгов — срок', monthBy(debts.freeMonth, key), debts.freeMonth)
   const first = firstDebt(state)
-  if (first) fact(`первым закрываем «${first.name}» — самая высокая ставка`, pctText(first.rate), first.rate)
+  if (first) fact(`первым закрываем «${nm(first.name)}» — самая высокая ставка`, pctText(first.rate), first.rate)
 
   // 1–2 главных раздела трат: факт, обычно, план, % дохода.
   for (const r of reviewSpendRows(spendCompare(state, ctx).rows)) {
-    const cat = `«${r.name}»`
+    const cat = `«${nm(r.name)}»`
     if (r.amount !== null) fact(`траты на ${cat} в этом месяце`, money(r.amount), r.amount)
     if (r.usual !== null) fact(`обычно у вас на ${cat} в месяц`, money(r.usual), r.usual)
     if (r.plan !== null) fact(`план на ${cat} в месяц`, money(r.plan), r.plan)
@@ -169,11 +181,11 @@ export function buildReviewFacts(doc: SyncDoc, key: string, env: ReviewEnv = {})
     const { from, to } = c.shift
     const about =
       c.kind === 'move' && from !== 'rest' && to !== 'debt'
-        ? `из плана «${spendCategoryName(categories, from.categoryId)}» в мечту «${goalName(to.goalId)}»`
+        ? `из плана «${nm(spendCategoryName(categories, from.categoryId))}» в мечту «${nm(goalName(to.goalId))}»`
         : c.kind === 'prepay'
-          ? `досрочно в «${debtName}» из остатка месяца`
+          ? `досрочно в «${nm(debtName)}» из остатка месяца`
           : 'из остатка месяца в подушку'
-    return { id, kind: c.kind, about: mask(about), value: money(c.shift.amount), effect: stepEffectText(c) }
+    return { id, kind: c.kind, about: clip(mask(about), REVIEW_TEXT_MAX), value: money(c.shift.amount), effect: stepEffectText(c) }
   })
 
   return { payload: { facts: facts.slice(0, REVIEW_FACTS_MAX), candidates }, byId }

@@ -84,11 +84,12 @@ watch(mySalaryMarks, (n, was) => {
   if (n > (was ?? 0)) void useAiStore().autoReview()
 })
 // Флаг ИИ пришёл с `/auth/me` позже, чем подтянулся документ (первый вход после включения ИИ семье): синк уже
-// отработал — разбор сам не ждёт следующего круга. Только по документу с сервера (`idle`), не по черновику телефона.
+// отработал — разбор сам не ждёт следующего круга. Только по документу, сверенному с сервером в этом запуске
+// (`pulledOnce`; `idle` при старте — лишь «нечего отправлять», документ может быть днями старым), и не по черновику.
 watch(
   () => useAiStore().available,
   (on) => {
-    if (on && financeStore.status === 'idle') void useAiStore().autoReview()
+    if (on && financeStore.pulledOnce && financeStore.status === 'idle') void useAiStore().autoReview()
   },
 )
 

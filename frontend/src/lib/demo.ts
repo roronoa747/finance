@@ -26,10 +26,12 @@ export const DEMO_REVIEW = {
 
 /**
  * Разбор демо в форме v2: заготовка, кандидат «Сделать» — `cushion` из кандидатов кода демо-семьи (его нет — шаг без
- * кнопки), «что ушло» — факты демо (`buildReviewFacts`). В документ не пишется.
+ * кнопки), «что ушло» — факты демо (`buildReviewFacts`). В документ не пишется. Строится по документу без сдвигов этого
+ * месяца — как разбор, сохранённый до «Сделать»: после подтверждения кандидат не пропадает, у шага — «✓ Сделано».
  */
 export function demoReview(doc: SyncDoc, key: string, env: ReviewEnv): Omit<AiReview, 'id' | 'month' | 'at' | 'by' | 'updatedAt'> {
-  const { payload, byId } = buildReviewFacts(doc, key, { ...env, reason: 'month' })
+  const before = { ...doc, planShifts: (doc.planShifts ?? []).filter((s) => s.period !== key) }
+  const { payload, byId } = buildReviewFacts(before, key, { ...env, reason: 'month' })
   const candidate = [...byId.values()].find((c) => c.kind === 'cushion') ?? null
   return { v: 2, reason: 'month', good: DEMO_REVIEW.good, risk: DEMO_REVIEW.risk, steps: [], step: { text: DEMO_REVIEW.step, candidate }, sent: payload }
 }

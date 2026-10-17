@@ -3,6 +3,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore, DEMO_TOKEN } from './auth'
 import { useFinanceStore } from './finance'
 import { useOperationsStore } from './operations'
+import { useAiStore } from './ai'
 import { apiClient } from '@/api/client'
 import { startSyncEngine, resetSyncEngineForTests, afterFamilyLoaded, BACKGROUND_SYNC_MS } from './syncEngine'
 import { fillWishPhotos } from '@/lib/photos/wishLinkPhotos'
@@ -107,6 +108,18 @@ describe('startSyncEngine — правки партнёра без собств�
     doc.dispatchEvent(new Event('visibilitychange'))
     expect(pull).toHaveBeenCalledTimes(2)
     expect(sync).not.toHaveBeenCalled()
+  })
+
+  it('AU-13: разбор сам — после подтянутого документа; pull без документа (сеть, сбой) — нет', async () => {
+    const auto = vi.spyOn(useAiStore(), 'autoReview').mockResolvedValue(null)
+    const { finance, pull, win } = setup('real-token')
+    await vi.waitFor(() => expect(pull).toHaveBeenCalledTimes(1))
+    await Promise.resolve()
+    expect(auto).not.toHaveBeenCalled()
+    pull.mockResolvedValue({ rev: 2, data: {} } as never)
+    finance.status = 'idle'
+    win.dispatchEvent(new Event('focus'))
+    await vi.waitFor(() => expect(auto).toHaveBeenCalledTimes(1))
   })
 
   it('правка без сети: offline → online — полный круг со слиянием, а не затирание', () => {

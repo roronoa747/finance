@@ -88,6 +88,37 @@ describe('AU-13: точка «новый разбор» на «Плане» и �
     expect(document.querySelector('[data-plan-dot]')).toBeNull()
   })
 
+  it('разбор сам из оболочки: своя первая «Пришла» — зовёт, отметка партнёра — нет', async () => {
+    await mount()
+    const auto = vi.spyOn(useAiStore(), 'autoReview').mockResolvedValue(null)
+    useFinanceStore().markSalary('b')
+    await flush()
+    expect(auto).not.toHaveBeenCalled()
+    useFinanceStore().markSalary('a')
+    await flush()
+    expect(auto).toHaveBeenCalledTimes(1)
+  })
+
+  it('флаг ИИ пришёл позже: по документу прошлого запуска — нет, после сверки с сервером — да (84c2ab2)', async () => {
+    await mount()
+    const auth = useAuthStore()
+    const finance = useFinanceStore()
+    const auto = vi.spyOn(useAiStore(), 'autoReview').mockResolvedValue(null)
+    auth.ai = false
+    await flush()
+    finance.status = 'idle'
+    finance.pulledOnce = false
+    auth.ai = true
+    await flush()
+    expect(auto).not.toHaveBeenCalled()
+    auth.ai = false
+    await flush()
+    finance.pulledOnce = true
+    auth.ai = true
+    await flush()
+    expect(auto).toHaveBeenCalledTimes(1)
+  })
+
   it('viewer — точка на вкладке тоже', async () => {
     await mount('viewer')
     expect(document.querySelector('[data-tab-dot]')).not.toBeNull()

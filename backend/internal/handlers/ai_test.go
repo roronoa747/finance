@@ -321,6 +321,26 @@ func TestReviewModelErrorFailsWithoutSpend(t *testing.T) {
 	}
 }
 
+func TestReviewBilledFailures(t *testing.T) {
+	// Not a defect: an answer off the schema or with a blank block is not retried, but its tokens are paid
+	// and count toward the money limit (AU-09).
+	for name, text := range map[string]string{
+		"not json":    "not json",
+		"blank block": answer("", "Риск.", "Шаг", nil),
+	} {
+		f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{text}}, true)
+		if rec := f.post(t, f.member, reviewBody); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), `"ai_failed"`) {
+			t.Errorf("%s: status %d %s", name, rec.Code, rec.Body.String())
+		}
+		if len(f.claude.sent) != 1 {
+			t.Errorf("%s: calls = %d, want 1 (no retry)", name, len(f.claude.sent))
+		}
+		if u := f.usage(); u.Requests != 0 || u.InputTokens == 0 || u.CostMicros == 0 {
+			t.Errorf("%s: usage = %+v, want 0 requests and the billed tokens", name, u)
+		}
+	}
+}
+
 // reviewWith is reviewBody with its facts replaced.
 func reviewWith(facts string) string {
 	return `{"reason":"month","facts":[` + facts + `],"candidates":[]}`
@@ -351,6 +371,8 @@ func TestReviewBody(t *testing.T) {
 		"blank value":       {reviewWith(`{"id":"f1","about":"доход","value":" ","raw":1}`), http.StatusBadRequest},
 		"raw text":          {reviewWith(`{"id":"f1","about":"доход","value":"1 ₸","raw":"много"}`), http.StatusBadRequest},
 		"raw object":        {reviewWith(`{"id":"f1","about":"доход","value":"1 ₸","raw":{"a":1}}`), http.StatusBadRequest},
+		"raw huge exponent": {reviewWith(`{"id":"f1","about":"доход","value":"1 ₸","raw":1e999999}`), http.StatusBadRequest},
+		"raw huge in list":  {reviewWith(`{"id":"f1","about":"доход","value":"1 ₸","raw":[1,1e999999]}`), http.StatusBadRequest},
 		"raw 6 numbers":     {reviewWith(`{"id":"f1","about":"доход","value":"1 ₸","raw":[1,2,3,4,5,6]}`), http.StatusBadRequest},
 		"bad kind":          {`{"reason":"month","facts":[` + fact("f1") + `],"candidates":[{"id":"c1","kind":"loan","about":"x","value":"1 ₸","effect":""}]}`, http.StatusBadRequest},
 		"4 candidates":      {`{"reason":"month","facts":[` + fact("f1") + `],"candidates":[` + strings.Repeat(cand+",", 3) + cand + `]}`, http.StatusBadRequest},

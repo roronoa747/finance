@@ -127,8 +127,8 @@ REST API приложения: вход, домохозяйство, синхр�
   ошибка, таймаут или брак модели → 502 `{"error":"ai_failed"}` · успех → `AddUsage(1, …)` и 200.
 - **Разбор месяца v2** (бэклог «ИИ-польза», AU-12) — `POST /api/ai/review` (семейная группа) `{reason, facts,
   candidates}` ≤ 32 КБ, строго: `reason` — `month|salary|refresh`; `facts` — 1…30 фактов `{id: f<N>, about, value,
-  raw}` (`lib/aiFacts.ts`: `about` — о чём, без цифр и имён; `value` — как напишет приложение; `raw` — число, месяц
-  `YYYY-MM` или 1–5 чисел строки-образа); `candidates` — 0…3 шага кода `{id: c<N>, kind: move|prepay|cushion, about,
+  raw}` (`lib/aiFacts.ts`: `about` — о чём, без цифр и имён; `value` — как напишет приложение; `raw` — число (по модулю
+  ≤ 10¹⁵), месяц `YYYY-MM` или 1–5 таких чисел строки-образа); `candidates` — 0…3 шага кода `{id: c<N>, kind: move|prepay|cushion, about,
   value, effect}`; id без дублей, строки ≤ 200 символов, лишнее поле → 400; старое тело `{summary}` (v1) → 400. В модель
   (`AI_MODEL_REVIEW`, effort `medium`, `max_tokens` 16 000) уходят только факты (без `raw`), кандидаты и повод JSON-текстом
   и инструкция `reviewSystem`: «Хорошо · Риск · Шаг» через мечту, подушку или свободу от долгов, «мы», **ни одной цифры** —

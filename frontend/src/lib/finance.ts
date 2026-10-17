@@ -4426,8 +4426,8 @@ export function stepEffectText(c: StepCandidate): string {
 export function monthChanges(
   state: MonthPlanState,
   ctx: MonthPlanCtx,
+  now: MonthPlan = monthPlan(state, ctx),
 ): { prevIncome: number; incomeMore: number; incomeLess: number; newDues: PlanDue[] } {
-  const now = monthPlan(state, ctx)
   const prev = monthPlan(state, { ...ctx, key: addMonths(ctx.key, -1) })
   const diff = now.income.total - prev.income.total
   // Платёж с версией «с этого месяца» в прошлом месяце стоит с суммой 0 — его там не было.
@@ -4436,7 +4436,8 @@ export function monthChanges(
     prevIncome: prev.income.total,
     incomeMore: Math.max(0, diff),
     incomeLess: Math.max(0, -diff),
-    newDues: now.dues.filter((d) => !known.has(d.targetId)).sort((a, b) => b.amount - a.amount),
+    // Нулевой сейчас (версия позже, пауза, валюта без курса) — не новый платёж.
+    newDues: now.dues.filter((d) => d.amount > 0 && !known.has(d.targetId)).sort((a, b) => b.amount - a.amount),
   }
 }
 

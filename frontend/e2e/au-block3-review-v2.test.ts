@@ -104,17 +104,21 @@ describe('e2e / ИИ-польза Блок 3 — разбор v2 приходи�
     const one = await as('member', 'a')
     const two = await as('member', 'b', { clear: false })
     await Promise.all([one.ai.autoReview(one.aiClient), two.ai.autoReview(two.aiClient)])
-    expect(aiReview.mock.calls.length).toBeLessThanOrEqual(2)
+    // До синка каждый телефон не видит разбор другого — ровно 2 (редкий двойной, Р-4), не больше.
+    expect(aiReview).toHaveBeenCalledTimes(2)
     await sync(one)
     await sync(two)
-    expect((server.data.aiReviews ?? []).filter((r) => !r.deletedAt).length).toBeLessThanOrEqual(2)
+    await sync(one)
+    expect((server.data.aiReviews ?? []).filter((r) => !r.deletedAt).length).toBe(2)
+    // Сошлись: оба показывают один и тот же разбор месяца.
+    expect(one.store.aiReviewOf('2026-10')!.id).toBe(two.store.aiReviewOf('2026-10')!.id)
     // После синка ни один телефон больше не спрашивает.
     await one.ai.autoReview(one.aiClient)
     await two.ai.autoReview(two.aiClient)
-    expect(aiReview.mock.calls.length).toBeLessThanOrEqual(2)
+    expect(aiReview).toHaveBeenCalledTimes(2)
   })
 
-  it('«Пришла» на телефоне 2 → разбор `salary`; вторая отметка месяца — без запроса', async () => {
+  it('«Пришла» на телефоне 2 → разбор `salary`; отметка партнёра с того же телефона — без запроса', async () => {
     const one = await as('member', 'a')
     await one.ai.autoReview(one.aiClient)
     await sync(one)
