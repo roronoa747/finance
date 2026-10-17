@@ -10,7 +10,7 @@ import type { MonthSummaryAI } from '@/lib/aiSummary'
 import { factsLines } from '@/lib/aiFacts'
 import { stepCandidates } from '@/lib/finance'
 import { money, plain } from '@/lib/money'
-import { monthBy } from '@/lib/dates'
+import { dayLabel, monthBy, today } from '@/lib/dates'
 import { plural } from '@/lib/utils'
 import Sheet from '@/components/kit/Sheet.vue'
 import Button from '@/components/ui/Button.vue'
@@ -94,6 +94,13 @@ const doOpen = ref(false)
 
 /** Шаг v1 на экран, где лист открыт (`/month` с «Месяца»), — не ссылка: она только закрывала лист (Х-13). */
 const linkOf = (screen: string | null) => (screen && screen !== route.path ? screen : null)
+
+/** День разбора по Алматы — «17 октября» (Х-18): текст хранит цифры своего дня. У «Примера» демо дня нет. */
+const reviewDay = computed(() => {
+  if (props.example || !props.review) return null
+  const d = today(new Date(props.review.at))
+  return dayLabel(d.day, d.key)
+})
 
 const sentOpen = ref(false)
 watch(
@@ -208,6 +215,7 @@ function sentLines(s: MonthSummaryAI, key: string): { title: string; rows: strin
       <div class="flex flex-col gap-1 border-t border-line pt-3">
         <p class="text-[12.5px] text-ink-2">
           Подсказка ИИ ·
+          <template v-if="reviewDay"><span data-review-day>{{ reviewDay }}</span> · </template>
           <button type="button" class="cursor-pointer font-semibold text-ink-2 underline underline-offset-2" :aria-expanded="sentOpen" data-review-sent-open @click="sentOpen = !sentOpen">что ушло</button>
         </p>
         <!-- Что ушло в модель (Р-9): без имён, заметок и операций — то же, что видит человек. -->

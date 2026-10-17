@@ -106,7 +106,7 @@ describe('AI-05: карточка «ИИ» в настройках', () => {
 })
 
 describe('AI-05: лист согласия', () => {
-  it('шесть пунктов (v2), Anthropic, «Подробнее» → /privacy; «Включить» — согласие, лист закрыт', async () => {
+  it('пять пунктов (v2), «когда» — строкой под ними (Х-16), Anthropic, «Подробнее» → /privacy; «Включить» — согласие, лист закрыт', async () => {
     signIn('member', true)
     await mount(AiConsentSheet, '/settings')
     const ai = useAiStore()
@@ -117,12 +117,12 @@ describe('AI-05: лист согласия', () => {
     expect(document.querySelector('[data-ai-to]')!.textContent).toBe('Claude от Anthropic получит:')
     expect(items).toEqual([
       'Цифры месяца и названия статей без ваших имён',
-      'Разбор приходит сам — 1-го и после зарплаты',
       'Названия продавцов и подписок',
       'Скриншот товара',
       'Фото чека',
       'Фраза о мечте',
     ])
+    expect(document.querySelector('[data-ai-auto]')!.textContent).toBe('Разбор приходит сам — 1-го и после зарплаты.')
     expect(document.body.textContent).toContain('На ваших данных не обучается.')
     expect(document.querySelector('[data-ai-privacy]')!.getAttribute('href')).toBe('/privacy')
 
@@ -183,7 +183,7 @@ describe('AI-05: лист согласия', () => {
     const first = ai.ensureConsent()
     await settle()
     expect(ai.sheetOpen).toBe(true)
-    expect(document.querySelectorAll('[data-ai-consent] li')).toHaveLength(6)
+    expect(document.querySelectorAll('[data-ai-consent] li')).toHaveLength(5)
     document.querySelector<HTMLButtonElement>('[data-ai-yes]')!.click()
     await expect(first).resolves.toBe(true)
     expect(finance.privateDoc.aiConsent).toMatchObject({ on: true, v: 2 })

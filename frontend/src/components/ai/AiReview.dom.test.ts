@@ -447,6 +447,14 @@ describe('AU-13: лист разбора v2 — «Сделать» у шага',
     expect(q('[data-review-do]')).toBeNull()
   })
 
+  it('дата разбора в нижней строке — день по Алматы (Х-18): «Подсказка ИИ · 13 сентября · что ушло»', async () => {
+    // 20:30 UTC 12-го — уже 13-е в Алматы.
+    await open({ doc: withFund({ aiReviews: [savedV2(null, { at: '2026-09-12T20:30:00.000Z' })] }) })
+    await press(q('[data-review-open]'))
+    expect(txt(q('[data-review-day]'))).toBe('13 сентября')
+    expect(txt(q('[data-review-sent-open]')!.parentElement)).toBe('Подсказка ИИ · 13 сентября · что ушло')
+  })
+
   it('«что ушло» v2 — факты строками', async () => {
     await open({ doc: withFund({ aiReviews: [savedV2(null)] }) })
     await press(q('[data-review-open]'))

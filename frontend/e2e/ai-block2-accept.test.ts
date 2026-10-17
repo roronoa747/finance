@@ -178,7 +178,10 @@ describe('e2e / ИИ Блок 2 — приёмка', () => {
     expect(review).not.toHaveBeenCalled()
     expect(useAiStore().reviewState).toBe('idle')
     expect(JSON.stringify(useFinanceStore().householdDoc)).toBe(before)
-    expect(sheet(await screen(pinia, Month, '/month', undefined, [screenMixin({ reviewOpen: true })]))).toContain('Пример')
+    const demoSheet = sheet(await screen(pinia, Month, '/month', undefined, [screenMixin({ reviewOpen: true })]))
+    expect(demoSheet).toContain('Пример')
+    // У «Примера» дня разбора нет (Х-18 Блока 3 «ИИ-польза»).
+    expect(demoSheet).not.toContain('data-review-day')
   })
 
   it('(к) имена в падежах в названиях статьи, кредита и цели не уходят; `sent` в общем документе = ушедшая сводка', async () => {
