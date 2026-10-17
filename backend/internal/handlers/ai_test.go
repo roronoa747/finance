@@ -282,7 +282,7 @@ func TestReviewDefectsRetry(t *testing.T) {
 			if want := fmt.Sprintf(reviewRetry, tc.violation); f.systemOf(1) != reviewSystem+want {
 				t.Errorf("retry system tail = %q, want %q", strings.TrimPrefix(f.systemOf(1), reviewSystem), want)
 			}
-			// Both attempts are spent, one request of the limit.
+			// Both attempts are spent, one request in the admin counter.
 			if u := f.usage(); u.Requests != 1 || u.InputTokens != 2000 {
 				t.Errorf("usage = %+v", u)
 			}
@@ -300,7 +300,7 @@ func TestReviewTwoDefectsFail(t *testing.T) {
 	if strings.Contains(rec.Body.String(), "1 200 000") {
 		t.Error("an unchecked answer must not be shown")
 	}
-	// Not a request of the limit; the billed tokens go into «≈ $» (хвост §4 «ИИ»).
+	// Not a request in the admin counter; the billed tokens go into «≈ $» (хвост §4 «ИИ»).
 	if u := f.usage(); u.Requests != 0 || u.InputTokens != 2000 || u.CostMicros == 0 {
 		t.Errorf("usage = %+v, want 0 requests and both attempts' tokens", u)
 	}
@@ -471,7 +471,7 @@ func TestReviewGate(t *testing.T) {
 		}
 	})
 	t.Run("billed failure spends toward the limit", func(t *testing.T) {
-		// Two defective attempts: no request of the limit, but their cost (2 × 8 000 µ$) crosses
+		// Two defective attempts: no request in the admin counter, but their cost (2 × 8 000 µ$) crosses
 		// the edge, so the next call is 429.
 		invented := answer("Доход — 1 200 000 ₸.", "Риск.", "Шаг.", nil)
 		f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{invented}}, true)

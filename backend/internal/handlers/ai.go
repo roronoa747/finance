@@ -544,7 +544,7 @@ func NewAISellersHandler(gate *AIGate, model string) *AISellersHandler {
 }
 
 // Sellers — {names, categories} → {items: [{name, categoryId|null}]} in the order of names. One
-// batch is one request of the limit (Р-14); nothing is applied here — the phone shows the
+// batch is one request in the admin counter, its cost goes to the limit (Р-11); nothing is applied here — the phone shows the
 // suggestions and the person accepts each (Р-5). Nothing of the body or the answer is logged.
 func (h *AISellersHandler) Sellers(w http.ResponseWriter, r *http.Request) {
 	call, ok := h.gate.Open(w, r)

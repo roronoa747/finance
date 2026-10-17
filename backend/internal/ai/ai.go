@@ -92,7 +92,8 @@ type Usage struct {
 // Call sends req and decodes the answer into out (unknown fields are a schema miss).
 // Usage is filled whenever Anthropic answered — on a refusal, a cut or an off-schema answer
 // too, since those are billed (хвост §4, решение владельца 2026-10-16: расход неудачных — в
-// «≈ $», лимит они не трогают); an HTTP error, timeout or network failure is zero.
+// «≈ $», а с лимитом в деньгах (Р-11 «ИИ-польза») — и в лимит); an HTTP error, timeout or
+// network failure is zero.
 func (c *Client) Call(ctx context.Context, req Request, out any) (Usage, error) {
 	timeout := c.Timeout
 	if timeout <= 0 {
