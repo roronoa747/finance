@@ -78,6 +78,13 @@ describe('SpendCategorySheet', () => {
     expect(txt(q('[data-cat-advice-box] [data-image-line]'))).toBe('Доставка за год — 24 % мечты «Отпуск»')
     expect(txt(q('[data-cat-advice-box] [data-image-moved]'))).toBe(norm(`✓ ${plain(20_000)} в мечту`))
     expect(q('[data-image-act]')).toBeNull()
+    app!.unmount()
+    document.body.innerHTML = ''
+    // Перенос жив, а «до плана» нет (план потом подняли выше «обычно») — плашки нет, образ строкой с ✓.
+    await mount({ advice: null }, { image: { ...IMG, action: null, moved: 20_000 }, canEdit: false })
+    expect(q('[data-cat-advice-box]')).toBeNull()
+    expect(txt(q('[data-image-line]'))).toBe('Доставка за год — 24 % мечты «Отпуск»')
+    expect(q('[data-image-moved]')).not.toBeNull()
   })
 
   it('«обычно» нет — подпись; плана нет; рекомендации нет', async () => {
