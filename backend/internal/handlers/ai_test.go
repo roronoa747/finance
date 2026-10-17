@@ -85,6 +85,7 @@ type reviewFixture struct {
 	month   string
 	handler *AIReviewHandler
 	sellers *AISellersHandler
+	wish    *AIWishHandler
 }
 
 // newReviewFixture: a family with AI on, its member and viewer; client nil = no key.
@@ -113,15 +114,17 @@ func newReviewFixture(t *testing.T, claude *fakeClaudeQueue, withKey bool) *revi
 	gate.now = func() time.Time { return time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC) }
 	handler := NewAIReviewHandler(gate, "claude-opus-5-5")
 	sellers := NewAISellersHandler(gate, "claude-haiku-5-5")
+	wish := NewAIWishHandler(gate, "claude-opus-5-5")
 	r := chi.NewRouter()
 	r.Group(func(p chi.Router) {
 		p.Use(auth.Middleware(tokens, nil))
 		p.Post("/api/ai/review", handler.Review)
 		p.Post("/api/ai/sellers", sellers.Sellers)
+		p.Post("/api/ai/wish", wish.Wish)
 	})
 	member, _ := tokens.GenerateToken(u.ID, h.ID, "member", "a")
 	viewer, _ := tokens.GenerateToken("viewer-1", h.ID, "viewer", "c")
-	return &reviewFixture{router: r, aiRepo: aiRepo, claude: claude, family: h.ID, member: member, viewer: viewer, limit: 2_000_000, month: "2026-10", handler: handler, sellers: sellers}
+	return &reviewFixture{router: r, aiRepo: aiRepo, claude: claude, family: h.ID, member: member, viewer: viewer, limit: 2_000_000, month: "2026-10", handler: handler, sellers: sellers, wish: wish}
 }
 
 func (f *reviewFixture) post(t *testing.T, token, body string) *httptest.ResponseRecorder {

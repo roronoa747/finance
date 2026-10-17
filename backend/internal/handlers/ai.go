@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -580,6 +581,150 @@ func (h *AISellersHandler) Sellers(w http.ResponseWriter, r *http.Request) {
 	}
 	h.gate.Spend(r.Context(), call, true, u)
 	respondJSON(w, http.StatusOK, map[string]any{"items": in.suggestions(answer.Items)})
+}
+
+// Bounds of POST /api/ai/wish (AI-14): the phone sends a screenshot ≤ 1568 px as JPEG — a few
+// hundred KB; 3 MB of base64 keeps the body under the Vercel ceiling (≈ 4.5 MB).
+const (
+	maxWishBody       = 3 << 20
+	maxWishTitleRunes = 80
+	maxWishPrice      = 1_000_000_000
+	minWishBoxSide    = 0.1
+)
+
+// wishTypes are the pictures the wish endpoint takes: the photo signatures (photos.go) and PNG —
+// a screenshot is often one; the photo store itself stays webp/jpeg.
+var wishTypes = map[string]func([]byte) bool{
+	"image/jpeg": photoTypes["image/jpeg"],
+	"image/webp": photoTypes["image/webp"],
+	"image/png": func(b []byte) bool {
+		return len(b) >= 8 && bytes.Equal(b[0:8], []byte("\x89PNG\r\n\x1a\n"))
+	},
+}
+
+// wishSystem is the fixed instruction of the wish from a screenshot (Р-6). Only the picture goes
+// with it (Р-15). The model reads the price as printed and converts nothing: not tenge is null.
+const wishSystem = `Это скриншот карточки товара из интернет-магазина (Kaspi, Wildberries, Ozon, Halyk Market и другие). Найди на нём один главный товар — тот, которому посвящена карточка.
+
+- title — название товара коротко, по-русски, как его назовёт человек: что это и модель, если она важна («Пылесос Dyson V15», «Кроссовки Nike Air Max 90»). Без артикулов, кодов, рекламных слов и перечня характеристик. Не видно товара — null.
+- price — цена товара, только если она в тенге (₸, тг, KZT): целое число ровно как написано, без копеек и пробелов. Если цен несколько — нынешняя цена покупки, не зачёркнутая старая и не платёж в месяц за рассрочку. Цена в рублях, долларах или другой валюте, или цены нет — null. Ничего не пересчитывай.
+- box — где на скриншоте фото товара: x, y — левый верхний угол, w, h — ширина и высота, всё в долях ширины и высоты картинки (от 0 до 1). Только само фото товара, без текста и кнопок. Фото нет — null.`
+
+// wishSchema is the answer (structured outputs).
+var wishSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"title": map[string]any{"anyOf": []any{map[string]any{"type": "string"}, map[string]any{"type": "null"}}},
+		"price": map[string]any{"anyOf": []any{map[string]any{"type": "integer"}, map[string]any{"type": "null"}}},
+		"box": map[string]any{"anyOf": []any{
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"x": map[string]any{"type": "number"},
+					"y": map[string]any{"type": "number"},
+					"w": map[string]any{"type": "number"},
+					"h": map[string]any{"type": "number"},
+				},
+				"required":             []string{"x", "y", "w", "h"},
+				"additionalProperties": false,
+			},
+			map[string]any{"type": "null"},
+		}},
+	},
+	"required":             []string{"title", "price", "box"},
+	"additionalProperties": false,
+}
+
+// WishBox is the product photo on the screenshot in fractions of its width and height.
+type WishBox struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+	W float64 `json:"w"`
+	H float64 `json:"h"`
+}
+
+// WishAnswer is the model's answer and, checked, the endpoint's 200.
+type WishAnswer struct {
+	Title *string  `json:"title"`
+	Price *int64   `json:"price"`
+	Box   *WishBox `json:"box"`
+}
+
+// checked drops what the phone must not take: a box outside the picture or thinner than a tenth,
+// a price ≤ 0 or above a billion; the title is trimmed to 80 characters, blank is null.
+func (a WishAnswer) checked() WishAnswer {
+	var out WishAnswer
+	if a.Title != nil {
+		t := strings.Join(strings.Fields(*a.Title), " ")
+		if r := []rune(t); len(r) > maxWishTitleRunes {
+			t = strings.TrimSpace(string(r[:maxWishTitleRunes]))
+		}
+		if t != "" {
+			out.Title = &t
+		}
+	}
+	if a.Price != nil && *a.Price > 0 && *a.Price <= maxWishPrice {
+		p := *a.Price
+		out.Price = &p
+	}
+	if b := a.Box; b != nil && b.X >= 0 && b.Y >= 0 && b.W >= minWishBoxSide && b.H >= minWishBoxSide && b.X+b.W <= 1 && b.Y+b.H <= 1 {
+		box := *b
+		out.Box = &box
+	}
+	return out
+}
+
+type wishRequest struct {
+	Image string `json:"image"`
+	Type  string `json:"type"`
+}
+
+// AIWishHandler is POST /api/ai/wish (бэклог «ИИ», AI-14).
+type AIWishHandler struct {
+	gate   *AIGate
+	model  string
+	effort string
+}
+
+func NewAIWishHandler(gate *AIGate, model string) *AIWishHandler {
+	return &AIWishHandler{gate: gate, model: model, effort: "low"}
+}
+
+// Wish — {image (base64), type} → {title|null, price|null, box|null}. The picture is checked by its
+// signature and goes to the model with the fixed instruction only; it is kept nowhere and nothing of
+// it or of the answer is logged (Р-6, Р-15). The phone cuts the photo by the box.
+func (h *AIWishHandler) Wish(w http.ResponseWriter, r *http.Request) {
+	call, ok := h.gate.Open(w, r)
+	if !ok {
+		return
+	}
+	var req wishRequest
+	if !decodeStrictJSONBody(w, r, maxWishBody, &req) {
+		return
+	}
+	signature, known := wishTypes[req.Type]
+	if !known {
+		errorJSON(w, http.StatusBadRequest, "unsupported type: image/jpeg, image/webp or image/png")
+		return
+	}
+	data, err := base64.StdEncoding.DecodeString(req.Image)
+	if err != nil || len(data) == 0 || !signature(data) {
+		errorJSON(w, http.StatusBadRequest, "image is not a "+req.Type+" picture")
+		return
+	}
+
+	var answer WishAnswer
+	u, err := h.gate.client.Call(r.Context(), ai.Request{
+		Model: h.model, System: wishSystem, Image: &ai.Image{MediaType: req.Type, Data: req.Image},
+		Schema: wishSchema, Effort: h.effort, MaxTokens: 4_000,
+	}, &answer)
+	if err != nil {
+		h.gate.Spend(r.Context(), call, false, u)
+		errorJSON(w, http.StatusBadGateway, "ai_failed")
+		return
+	}
+	h.gate.Spend(r.Context(), call, true, u)
+	respondJSON(w, http.StatusOK, answer.checked())
 }
 
 // suggestions puts the model's items in the order of the names: a name the input has not is
