@@ -136,3 +136,31 @@ describe('SalaryDialog — оклад в валюте', () => {
     expect(v).not.toHaveProperty('rate')
   })
 })
+
+// Хотфикс 2026-10-17 (смоук владельца): повышение до дня зарплаты записывалось «с ноября», а 20 октября ждали старую сумму.
+describe('SalaryDialog — с какого месяца новый оклад', () => {
+  const fromSelect = () => document.querySelector('select') as HTMLSelectElement
+
+  it('зарплата этого месяца не отмечена — по умолчанию этот месяц; сохранили — оклад месяца уже новый', async () => {
+    const store = await mount()
+    button('Изменить оклад').click()
+    await flush()
+    expect(fromSelect().value).toBe('2026-09')
+    const amount = document.querySelector('[class*="border-brand"] input[inputmode]') as HTMLInputElement
+    amount.value = '800000'
+    amount.dispatchEvent(new Event('input'))
+    await flush()
+    button('Сохранить').click()
+    await flush()
+    expect(salaryAt(store.people.find((p) => p.id === 'a')!, '2026-09', null)).toBe(800_000)
+  })
+
+  it('зарплата этого месяца уже пришла — по умолчанию следующий месяц', async () => {
+    const store = await mount()
+    store.markSalary('a')
+    await flush()
+    button('Изменить оклад').click()
+    await flush()
+    expect(fromSelect().value).toBe('2026-10')
+  })
+})
