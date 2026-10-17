@@ -5,10 +5,10 @@ import { PhCaretRight, PhCheck, PhCircleNotch } from '@phosphor-icons/vue'
 import { aiLimitText, useAiStore } from '@/stores/ai'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
-import type { AiReview, PlanShift, ReviewPayload } from '@/types/finance'
+import type { AiReview, ReviewPayload } from '@/types/finance'
 import type { MonthSummaryAI } from '@/lib/aiSummary'
 import { factsLines } from '@/lib/aiFacts'
-import { stepCandidates } from '@/lib/finance'
+import { shiftMade, stepCandidates } from '@/lib/finance'
 import { money, plain } from '@/lib/money'
 import { dayLabel, monthBy, today } from '@/lib/dates'
 import { plural } from '@/lib/utils'
@@ -77,11 +77,10 @@ const stateText = computed(() =>
 /* ---------- шаг v2: «Сделать» у шага (Р-3) ---------- */
 const v2 = computed(() => props.review?.v === 2)
 const saved = computed(() => (v2.value ? props.review?.step?.candidate ?? null : null))
-const sameTo = (a: PlanShift['to'], b: PlanShift['to']) => (a === 'debt' || b === 'debt' ? a === b : a.goalId === b.goalId)
-/** Сделано: в этом месяце уже есть сдвиг в ту же цель (или карточку долга). */
+/** Сделано: в этом месяце уже есть сдвиг в ту же цель (или карточку долга) из того же источника. */
 const done = computed(() => {
   const c = saved.value
-  return !!c && (finance.householdDoc.planShifts ?? []).some((s) => !s.deletedAt && s.period === props.monthKey && sameTo(s.to, c.shift.to))
+  return !!c && shiftMade(finance.householdDoc.planShifts ?? [], { ...c.shift, period: props.monthKey })
 })
 /** Кандидат ещё применим — тот же id в свежих кандидатах кода; цифры — свежие (не из сохранённого разбора). */
 const fresh = computed(() => {

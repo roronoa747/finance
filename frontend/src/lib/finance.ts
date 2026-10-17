@@ -4279,6 +4279,17 @@ export const STEP_MIN = 5_000
 
 export type PlanShiftDraft = Pick<PlanShift, 'period' | 'from' | 'to' | 'amount'>
 
+/**
+ * Шаг сделан: живой сдвиг того же месяца, в ту же цель (или карточку долга) и из того же источника (остаток или тот же
+ * раздел участника). «Вернуть срок» из остатка в ту же мечту — не перенос из раздела (ревью frontend Блока 3, Н-2).
+ */
+export function shiftMade(shifts: PlanShift[], draft: PlanShiftDraft): boolean {
+  const sameFrom = (a: PlanShift['from'], b: PlanShift['from']) =>
+    a === 'rest' || b === 'rest' ? a === b : a.spend === b.spend && a.categoryId === b.categoryId
+  const sameTo = (a: PlanShift['to'], b: PlanShift['to']) => (a === 'debt' || b === 'debt' ? a === b : a.goalId === b.goalId)
+  return shifts.some((s) => !s.deletedAt && s.period === draft.period && sameTo(s.to, draft.to) && sameFrom(s.from, draft.from))
+}
+
 /** Эффект кандидата: мечта — на `days` раньше; досрочка — на `months` раньше и `saved` процентов; подушка — хватит на `months`. */
 export type StepCandidate =
   | { id: string; kind: 'move'; shift: PlanShiftDraft; effect: { days: number | null } }
