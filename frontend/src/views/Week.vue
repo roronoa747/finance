@@ -322,7 +322,8 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="flex flex-col gap-3 pt-1 text-left">
-    <PlanSwitch view="week" :month="planCall !== null && planCall !== month ? planCall : null" :dot="ai.reviewUnseen" />
+    <!-- Точка нового разбора — «Месяц» ведёт в этот месяц, где ✦ (приёмка Блока 3 «ИИ-польза»); открыл — снова `planCall`. -->
+    <PlanSwitch view="week" :month="planCall !== null && planCall !== month && !ai.reviewUnseen ? planCall : null" :dot="ai.reviewUnseen" />
     <input v-if="canUpload" ref="fileInput" type="file" accept="application/pdf,.pdf" multiple class="hidden" @change="pick" />
     <Callout v-if="store.pendingCount && !store.held" tone="neutral">{{ store.pendingCount }} операций отправятся при сети. Итоги уже посчитаны.</Callout>
 

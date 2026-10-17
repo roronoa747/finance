@@ -17,7 +17,7 @@ import { at, fakePrivate, fakeServer, phone, privateFor, screen, type FakePrivat
  * = прошлый месяц, Р-97) — «Месяц» с «Недели» ведёт в прошлый месяц (`?month=`), где ✦ нет: разбор этого месяца там не
  * открыть, точка не гаснет. На стенде — та же картина (1 и 17 ноября: «Месяц» → октябрь, разбор ноября — только через
  * «›»): не только 1-го, а весь месяц, пока своя зарплата прошлого месяца не разложена.
- * (б) — расхождение приёмки: `it.fails`, пока исполнитель его не закроет (тогда — обычный `it`).
+ * (б) — расхождение приёмки, закрыто возвратом AU-33: пока точка нового разбора есть, «Месяц» ведёт в этот месяц.
  */
 const ANSWER = { good: 'Копим на «Машину».', risk: 'Подушки мало.', step: { text: 'Отложим в подушку', candidate: 'c1' as string | null } }
 const fund: Goal = { id: 'fund', name: 'Подушка безопасности', need: 0, seed: 100_000, have: 100_000, monthly: 0, hue: 'teal', planPct: 0, movements: [], fund: 'cushion', updatedAt: T0 }
@@ -100,11 +100,20 @@ describe('e2e / приёмка ИИ-польза Блок 3 — 1-е число 
     expect(await screen(one.pinia, Month, '/month')).toContain('data-review-dot')
   })
 
-  it.fails('(б) расхождение приёмки: сегмент «Месяц» с точкой ведёт туда, где разбор виден (✦)', async () => {
+  it('(б) сегмент «Месяц» с точкой ведёт туда, где разбор виден (✦)', async () => {
     const one = await member()
     const seg = await segment(one.pinia)
     expect(seg.dot).toBe(true)
     const html = await screen(one.pinia, Month, seg.month ? `/month?month=${seg.month}` : '/month')
     expect(html).toContain('data-review-open')
+  })
+
+  it('(в) открыл разбор — точка ушла, «Месяц» снова зовёт в прошлый месяц (planCall)', async () => {
+    const one = await member()
+    expect((await segment(one.pinia)).month).toBeNull()
+    one.ai.markReviewSeen(one.store.aiReviewOf('2026-10')!.id)
+    const seg = await segment(one.pinia)
+    expect(seg.dot).toBe(false)
+    expect(seg.month).toBe('2026-09')
   })
 })
