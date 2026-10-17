@@ -42,6 +42,20 @@
       туда же можно повесить «разбор сам» AU-13: документ уже подтянут), `SyncDoc.planShifts`. «Хватит?» с причиной —
       `affordWhy` :3801 / `affordWhyText`; первый долг — `firstDebt` :3833 (факты «риска» без счёта заново).
     - Гейт и ручки «ИИ» — §6 индекса «После Блока 3 «ИИ»» (лимит в тестах — `TestSellersGate`, `newReviewFixture`).
+  - **Блок 7** (критик, 2026-10-17; строки — `lib/finance.ts` ветки `au-block-7-habit-images`, перечитать grep-ом):
+    - Главный образ (AU-11) — `habitImages(state, key)` :5595 → `HabitImage[]`, уже **по убыванию `monthly`** (один на
+      раздел; `[0]` — крупнейшая привычка); `interestImage(state)` :5664 → `InterestImage {yearly, perMonth, price, action}`
+      | null. «Крупнейший из двух» — сравнивать `HabitImage.monthly` с `InterestImage.perMonth` (оба — ₸ в месяц).
+      `state` — `planInput(key).state` (там `people, goals, wishlist, habitTotals, goalOrder, moneySettings` и
+      **производные** кредиты — `interestImage` от сырых `doc.credits` даст не те проценты).
+    - `value` факта — `imageLine(image)` :5681 («Такси за 4 года 4 месяца — своя машина без долга», «Доставка за год —
+      80 % мечты «Япония»», «За год банку уходит iPhone 17»): в строке **несколько чисел** (годы и месяцы, %, сумма) —
+      `raw` должен нести их все (`months`, `share`, `yearly` / `monthly`), иначе `CheckNumbers` по подставленному тексту
+      забракует. Название мечты в строке — как есть; имён участников там нет. `about` без цифр — `HABIT_NAMES[habit]`.
+    - Образ — только при итогах привычки в каждом из 3 закрытых месяцев до `key` (`SyncDoc.habitTotals`, пишет телефон
+      участника при загрузке выписки — `writeHabitTotals`, `stores/operations.ts:391`); в демо — такси a и доставка b.
+      Кандидатом шага образ **не** становится: «Перенести в мечту» образа — каждый месяц (`setSpendPlan` +
+      `setGoalMonthly`, `plan/ImageMoveSheet.vue`), а «Сделать» разбора — этот месяц (`planShifts`, Р-17).
 - Следующий шаг — `/critic ИИ-польза 3 ultracode`.
 
 ---

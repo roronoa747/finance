@@ -4108,13 +4108,10 @@ export function spendCompare(
   for (const s of month.spend) for (const r of s.rows) plans.set(r.categoryId, (plans.get(r.categoryId) ?? 0) + r.plan)
   const usual = usualSpend(people, ctx.totals, ctx.spendCategories, ctx.uploads, key)
   const goal = mainGoal(state.goals ?? [], state.goalOrder, state.moneySettings)
-  const pace = goal ? goalPace(goal, key) : 0
-  const remaining = goal ? goalRemaining(goal) : 0
   const adviceOf = (plan: number | null, usualAmount: number | null): SpendAdvice | null => {
     if (plan === null || usualAmount === null || usualAmount <= plan) return null
     const amount = usualAmount - plan
-    const days = pace > 0 && remaining > 0 ? Math.round((remaining / pace - remaining / (pace + amount)) * 30.4) : null
-    return { amount, goalId: goal?.id ?? null, goalName: goal?.name ?? null, days }
+    return { amount, goalId: goal?.id ?? null, goalName: goal?.name ?? null, days: goal ? earlierDays(goal, key, amount) : null }
   }
   const rows = [...new Set([...facts.keys(), ...plans.keys()])]
     .filter((id) => id !== UNKNOWN_CATEGORY && !plannedElsewhere(id, live))
@@ -5582,7 +5579,7 @@ export function coffeeCupCost(): number {
   return Math.round((c.beansPerKg * c.beansGrams) / 1000 + (c.milkPerLiter * c.milkMl) / 1000)
 }
 
-/** На сколько дней раньше соберём мечту при темпе +`amount` в месяц — тот же расчёт, что у рекомендации «Трат» (AU-01). */
+/** На сколько дней раньше соберём мечту при темпе +`amount` в месяц — рекомендация «Трат» (AU-01) и перенос образа (AU-29). */
 function earlierDays(goal: Goal, key: string, amount: number): number | null {
   const pace = goalPace(goal, key)
   const remaining = goalRemaining(goal)

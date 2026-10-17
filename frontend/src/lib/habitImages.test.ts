@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { coffeeCupCost, habitImages, imageLine, imageMath, interestImage, yearsMonths } from './finance'
+import { coffeeCupCost, habitImages, imageLine, imageMath, imageMoveFrom, interestImage, yearsMonths } from './finance'
 import { MEASURES, PRICES } from './prices'
 import { money } from './money'
 import type { HabitId, HabitTotal } from './statements/types'
 import { planFamilyDoc, T0 } from '@/test/planFamily'
-import type { Goal, PersonId, WishItem } from '@/types/finance'
+import type { Goal, PersonId, SpendPlan, WishItem } from '@/types/finance'
 
 /**
  * AU-28: образы трат против ручного расчёта (правило 6 — числа в комментариях). Месяц `2026-10`, закрытые — июль,
@@ -101,6 +101,39 @@ describe('habitImages — образы', () => {
   it('один образ на раздел — самый крупный: обеды 45 000 и доставка 40 000 в «Кафе» → обеды', () => {
     const images = habitImages(state([...every('delivery', [8, 40_000]), ...every('lunch', [15, 45_000]), ...every('taxi', [30, 60_000])]), KEY)
     expect(images.map((i) => [i.categoryId, i.habit])).toEqual([['sc_transport', 'taxi'], ['sc_cafe', 'lunch']])
+  })
+
+  // Критик Блока 7: честность Р-30 на краях.
+  it('текущий месяц не закрыт: итоги августа, сентября и октября при ключе октября — образа нет', () => {
+    const open = ['2026-08', '2026-09', '2026-10'].map((m) => ht('a', m, 'taxi', 30, 60_000))
+    expect(habitImages(state(open), KEY)).toEqual([])
+  })
+
+  it('кофе дешевле расхода дома: 20 чашек на 4 000 ₸ < 20 × 244 = 4 880 — образа нет и при дешёвом желании', () => {
+    expect(habitImages(state(every('coffee', [20, 4_000]), { wishlist: [wish('Кофемашина', 10_000)] }), KEY)).toEqual([])
+  })
+
+  it('мечта «Машина» уже собрана — копить нечего, образа такси нет', () => {
+    const car = goal('car', 'Машина', 3_000_000, 3_000_000, 0, { template: 'car' })
+    expect(habitImages(state(every('taxi', [46, 92_000]), { goals: [car] }), KEY)).toEqual([])
+  })
+})
+
+describe('imageMoveFrom — откуда урезать план', () => {
+  const plan = (by: PersonId, amount: number, extra: Partial<SpendPlan> = {}): SpendPlan => ({
+    id: `${by}:sc_cafe`, by, categoryId: 'sc_cafe', amount, updatedAt: T0, ...extra,
+  })
+
+  it('план участника с бо́льшим планом: 50 000 − 20 000 = 30 000; больше плана — до 0', () => {
+    const plans = [plan('a', 30_000), plan('b', 50_000)]
+    expect(imageMoveFrom({ people, spendPlans: plans }, 'sc_cafe', 20_000)).toEqual({ by: 'b', plan: 50_000, next: 30_000 })
+    expect(imageMoveFrom({ people, spendPlans: plans }, 'sc_cafe', 70_000)).toEqual({ by: 'b', plan: 50_000, next: 0 })
+  })
+
+  it('плана нет, план удалён или участника нет в семье — null (только взнос)', () => {
+    expect(imageMoveFrom({ people, spendPlans: [] }, 'sc_cafe', 20_000)).toBeNull()
+    expect(imageMoveFrom({ people, spendPlans: [plan('a', 50_000, { deletedAt: T0 })] }, 'sc_cafe', 20_000)).toBeNull()
+    expect(imageMoveFrom({ people, spendPlans: [plan('c' as PersonId, 50_000)] }, 'sc_cafe', 20_000)).toBeNull()
   })
 })
 

@@ -32,7 +32,8 @@ export const PRICES: Record<PriceId, Price> = {
   },
   iphone: {
     id: 'iphone', name: 'iPhone 17', model: 'iPhone 17, 256 ГБ', price: 624_990,
-    source: 'Freedom Mobile, официальная цена', url: 'https://bes.media/news/iphone-17-nazvana-ofitsialnaya-tsena-v-kazahstane-188442/', checkedAt: '2026-10-17',
+    // Цена старта продаж (сентябрь 2025): свежее на 17.10.2026 не нашлось — дата в названии источника, чтобы «?» не выдавал её за свежую.
+    source: 'Freedom Mobile, официальная цена на старте продаж, сентябрь 2025', url: 'https://bes.media/news/iphone-17-nazvana-ofitsialnaya-tsena-v-kazahstane-188442/', checkedAt: '2026-10-17',
   },
   laptop: {
     id: 'laptop', name: 'MacBook Air', model: 'MacBook Air 13″ M4, 16/256 ГБ', price: 479_900,

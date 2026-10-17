@@ -93,7 +93,6 @@ const { open: tryOpen, close: closeTry } = useQuerySheet('try')
       <span v-if="first" class="type-meta num" data-debts-first>первым — {{ first.name }}: ставка {{ String(first.rate).replace('.', ',') }} % — самая высокая</span>
       <!-- Проценты банку за год образом (Р-24, AU-29) с «?»; «Как закрыть быстрее» — уже ниже на экране, второй кнопки нет. -->
       <HabitImageRow v-if="interest" class="mt-1" :image="interest" data-debts-interest />
-
     </template>
     <span v-else class="type-num text-[24px] text-ok">Долгов нет</span>
   </Card>
