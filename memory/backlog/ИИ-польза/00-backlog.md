@@ -1,6 +1,6 @@
 # Бэклог «ИИ-польза» (AU)
 
-> **Статус:** бэклог составлен 2026-10-16; **Блок 1 🏁 2026-10-16** — на проде (мёрж `441ee5a`, `dpl_HFbG8qE2pS2hXQ3X3iwwXifRhDx9`); **Блок 2 🏁 2026-10-16** — на проде (мёрж `8f246b8`, `dpl_BGRaRdrjNQGa9S4wZU5wAgTkgLNt`; хвосты Х-1…Х-3 сделаны, Х-4…Х-8 — владельцу); **Блок 7 — исполнитель ✅, критик ✅ 2026-10-17** (ветка `au-block-7-habit-images`), дальше `/ux ИИ-польза 7`; в тот же день добавлен Блок 7 «Образы трат» (дополнение брифа,
+> **Статус:** бэклог составлен 2026-10-16; **Блок 1 🏁 2026-10-16** — на проде (мёрж `441ee5a`, `dpl_HFbG8qE2pS2hXQ3X3iwwXifRhDx9`); **Блок 2 🏁 2026-10-16** — на проде (мёрж `8f246b8`, `dpl_BGRaRdrjNQGa9S4wZU5wAgTkgLNt`; хвосты Х-1…Х-3 сделаны, Х-4…Х-8 — владельцу); **Блок 7 — исполнитель ✅, критик ✅, `/ux` ✅, возврат AU-31: исполнитель ✅, критик ✅ 2026-10-17** (ветка `au-block-7-habit-images`), дальше `/ux ИИ-польза 7` (экраны возврата) → `/accept ИИ-польза 7`; в тот же день добавлен Блок 7 «Образы трат» (дополнение брифа,
 > подтверждено владельцем) — идёт между Блоками 2 и 3. Старт — после 🏁 Блока 3 «Продавцы» бэклога «ИИ» (Р-15):
 > `/worker ИИ 3` → потом `/worker ИИ-польза 1`.
 
@@ -287,7 +287,11 @@ plan, usual, share, over, advice, group`; зовёт `monthPlan` — из `month
 `interestImage` / `imageLine` / `imageMath` / `imageMoveFrom`, `earlierDays` (общий с рекомендацией «Трат»); цены —
 `lib/prices.ts` (`PRICES`, `MEASURES`, `COFFEE_CUP`; раз в квартал руками). Экран — `money/HabitImageRow.vue` (в
 `SpendCategorySheet` и `DebtsWidget`), лист `plan/ImageMoveSheet.vue` (постоянно: `setSpendPlan` + `setGoalMonthly`, тост
-«Отменить»). Тест-семья — шапка `lib/habitImages.test.ts`; e2e — `e2e/au-block7-habit-images.test.ts`.
+«Отменить»). Тест-семья — шапка `lib/habitImages.test.ts`; e2e — `e2e/au-block7-habit-images.test.ts`. Возврат AU-31
+(критик, 2026-10-17): доставка — привычка по сумме `HABIT_MIN_AMOUNT` (20 000 ₸; у неё нет `HABIT_MIN_PER_MONTH`);
+перенос запомнен — `SyncDoc.imageMoves` (`ImageMove`, id случайный, отмена — надгробие; стор `addImageMove` /
+`undoImageMove`), `HabitImage.moved` — сумма живых переносов раздела на ту же мечту (тогда `action: null`, у строки
+«✓ N в мечту»); образ той же мечты, что «до плана», — внутри плашки `data-cat-advice-box`.
 
 **Команды и среда**
 - Фронт: `cd frontend && npm run build && npx vitest run` (Vitest берёт и `src/**`, и `e2e/**`; на 2026-10-16 — vitest
