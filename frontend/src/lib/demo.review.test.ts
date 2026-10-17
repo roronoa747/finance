@@ -1,28 +1,24 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
-import { buildMonthSummary, summaryNumbers } from './aiSummary'
-import { DEMO_REVIEW, startDemo } from './demo'
+import { DEMO_REVIEW, demoReview, startDemo } from './demo'
 import { monthKey } from './dates'
+import { cushionCover, fundsOf, moneySettingsOf, stepCandidates } from './finance'
 import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
-
-/**
- * Числа текста по-русски: «600 000 ₸», «19%», «1,5» — как их читает проверка сервера (`ai.CheckNumbers`): разряды
- * через пробел или NBSP, дробь через запятую; 1–3 — счёт.
- */
-function textNumbers(text: string): number[] {
-  return [...text.matchAll(/\d{1,3}(?:[\s  ]\d{3})+(?![\d])|\d+(?:[.,]\d+)?/g)].map((m) => Number(m[0].replace(/\s/g, '').replace(',', '.')))
-}
 
 afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
-/** AI-10 (Р-10, Р-3): заготовка разбора демо — только числа сводки демо-семьи, в любой день месяца. */
-describe('DEMO_REVIEW — числа ⊂ сводке демо', () => {
+/**
+ * AU-14 (бэклог «ИИ-польза», Р-13, Р-2): заготовка разбора демо v2 — без цифр (как живой ответ модели, где цифры
+ * подставляет сервер), короткая, слова верны в любой день месяца; шаг — «Сделать» с кандидатом демо-семьи `cushion`,
+ * он применим; «что ушло» — факты демо.
+ */
+describe('DEMO_REVIEW v2 — без цифр, верен в любой день, «Сделать» применим', () => {
   for (const day of ['2026-10-01T06:00:00Z', '2026-10-16T06:00:00Z', '2026-10-31T15:00:00Z', '2027-02-28T06:00:00Z', '2027-06-15T06:00:00Z']) {
     it(day, async () => {
       vi.useFakeTimers({ toFake: ['Date'] })
@@ -38,26 +34,31 @@ describe('DEMO_REVIEW — числа ⊂ сводке демо', () => {
       expect(startDemo()).toBe(true)
       await nextTick()
       await nextTick()
-      const s = buildMonthSummary(useFinanceStore().householdDoc, monthKey(), new Date(), {
-        book: useFxStore().book,
-        uploads: useOperationsStore().uploads,
-      })
-      // Слова заготовки верны и без чисел: «самый дорогой» — у автокредита наибольшая ставка; «держать досрочку» —
-      // план месяца уже отводит досрочку в автокредит (ревью frontend Блока 2 Н-1), а не советует начать её.
-      expect(Math.max(...s.debts.items.map((d) => d.ratePercent ?? 0))).toBe(s.debts.items.find((d) => d.name === 'Автокредит')!.ratePercent)
-      expect(s.prepay?.name).toBe('Автокредит')
-      expect(s.prepay!.monthlyPut).toBeGreaterThan(0)
-      // Короткий, как живой разбор (владелец, `/ux` пп. 2, 4): блок — одно предложение до 12 слов, шаг — до 6 слов без чисел.
-      for (const t of [DEMO_REVIEW.good, DEMO_REVIEW.risk]) expect(t.split(/\s+/).length, t).toBeLessThanOrEqual(12)
-      for (const x of DEMO_REVIEW.steps) {
-        expect(x.text.split(/\s+/).length, x.text).toBeLessThanOrEqual(6)
-        expect(textNumbers(x.text), x.text).toEqual([])
-      }
-      const allowed = new Set([1, 2, 3, ...summaryNumbers(s).map(Math.abs)])
-      const texts = [DEMO_REVIEW.good, DEMO_REVIEW.risk, ...DEMO_REVIEW.steps.map((x) => x.text)]
-      for (const t of texts) for (const n of textNumbers(t)) expect(allowed.has(n), `${n} в «${t}»`).toBe(true)
-      // Сито работает: число не из сводки ловится.
-      expect(textNumbers('215 000 ₸ и 16,5%')).toEqual([215000, 16.5])
+      const finance = useFinanceStore()
+      const key = monthKey()
+
+      // Без цифр и коротко — как разбор v2 (Р-2: «Хорошо» и «Риск» до 14 слов, шаг до 8).
+      for (const t of [DEMO_REVIEW.good, DEMO_REVIEW.risk, DEMO_REVIEW.step]) expect(t, t).not.toMatch(/\d/)
+      for (const t of [DEMO_REVIEW.good, DEMO_REVIEW.risk]) expect(t.split(/\s+/).length, t).toBeLessThanOrEqual(14)
+      expect(DEMO_REVIEW.step.split(/\s+/).length).toBeLessThanOrEqual(8)
+
+      // Слова верны: в поездку план даёт каждый месяц; подушки — меньше месяца трат.
+      const { state, ctx } = finance.planInput(key)
+      const plan = finance.monthPlanOf(key)
+      const trip = plan.queue.find((q) => q.name === 'Поездка в Японию')
+      expect(trip?.given ?? 0, 'взнос в поездку').toBeGreaterThan(0)
+      const cushion = fundsOf(state).cushion!
+      const cover = cushionCover(plan.queue.find((q) => q.goalId === cushion.id), cushion, moneySettingsOf(state)).months
+      expect(cover ?? 0, 'подушки на месяцев').toBeLessThan(1)
+
+      // Шаг — кандидат кода `cushion`, тот же, что посчитает лист при открытии.
+      const r = demoReview(finance.householdDoc, key, { book: useFxStore().book, uploads: useOperationsStore().uploads })
+      expect(r.v).toBe(2)
+      const fresh = stepCandidates(state, ctx).find((c) => c.id === 'cushion')
+      expect(fresh, 'кандидат «Отложить в подушку»').toBeDefined()
+      expect(r.step!.candidate).toEqual(fresh)
+      // «Что ушло» — факты демо.
+      expect(r.sent && 'facts' in r.sent && r.sent.facts.length).toBeGreaterThan(5)
     })
   }
 })

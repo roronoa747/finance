@@ -7,8 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
 import { useAiStore } from '@/stores/ai'
-import { buildMonthSummary } from '@/lib/aiSummary'
-import { DEMO_REVIEW } from '@/lib/demo'
+import { demoReview as demoReviewOf } from '@/lib/demo'
 import type { AiReview } from '@/types/finance'
 import { money, moneyIn, parseMoney, plain } from '@/lib/money'
 import { dayLabel, monthBy, monthFrom, monthKey as monthNow, monthShort, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
@@ -249,12 +248,12 @@ const { open: affordOpen, close: closeAfford } = useQuerySheet('afford')
  * телефоне его не открывали (общее с точками «Плана» и «Месяца» — `ai.seenReview`).
  */
 const ai = useAiStore()
-/** Демо (Р-10, AI-10): заранее написанный разбор с «что ушло» — сводкой демо-семьи; без запроса, в документ не пишется. */
+/** Демо (Р-13, AU-14): заранее написанный разбор v2 с «Сделать» и «что ушло» — фактами демо; без запроса, в документ не пишется. */
 const demoReview = computed<AiReview | null>(() =>
   auth.isDemo
     ? {
-        id: 'demo-review', month: props.monthKey, at: new Date().toISOString(), by: 'a', updatedAt: '', ...DEMO_REVIEW,
-        sent: buildMonthSummary(finance.householdDoc, props.monthKey, new Date(), { book: fx.book, uploads: ops.uploads }),
+        id: 'demo-review', month: props.monthKey, at: new Date().toISOString(), by: 'a', updatedAt: '',
+        ...demoReviewOf(finance.householdDoc, props.monthKey, { book: fx.book, uploads: ops.uploads }),
       }
     : null,
 )
