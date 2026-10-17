@@ -21,8 +21,19 @@ export const LUNCH_MIN = 1_500
 export const LUNCH_MAX = 7_000
 export const MARKETPLACE_MAX = 5_000
 
-/** Порог привычки — операций в месяц (Р-30, дефолт AU-27). */
-export const HABIT_MIN_PER_MONTH: Record<HabitId, number> = { taxi: 8, coffee: 10, delivery: 4, lunch: 8, marketplace: 10 }
+/** Порог привычки — операций в месяц (Р-30, дефолт AU-27); у привычки с порогом по сумме (`HABIT_MIN_AMOUNT`) его нет. */
+export const HABIT_MIN_PER_MONTH: Partial<Record<HabitId, number>> = { taxi: 8, coffee: 10, lunch: 8, marketplace: 10 }
+/**
+ * Порог привычки по сумме месяца, целые ₸ (Х-12, владелец 2026-10-17): доставку заказывают реже, но дорого — на выписке
+ * семьи 3 раза в месяц на 27–39 тыс.
+ */
+export const HABIT_MIN_AMOUNT: Partial<Record<HabitId, number>> = { delivery: 20_000 }
+
+/** Итог месяца — привычка: по сумме, если у привычки порог по сумме, иначе по числу операций. */
+const overThreshold = (t: HabitTotal) => {
+  const min = HABIT_MIN_AMOUNT[t.habit]
+  return min !== undefined ? t.amount >= min : t.count >= (HABIT_MIN_PER_MONTH[t.habit] ?? Infinity)
+}
 
 /** Сколько последних месяцев итогов держит участник в документе (AU-27): текущий и 3 закрытых для образа. */
 export const HABIT_KEEP_MONTHS = 4
@@ -64,7 +75,7 @@ export function habitTotals(ops: Operation[], by: PersonId, period: string, at =
     t.amount += -op.amount
     out.set(habit, t)
   }
-  return [...out.values()].filter((t) => t.count >= HABIT_MIN_PER_MONTH[t.habit]).sort((a, b) => a.habit.localeCompare(b.habit))
+  return [...out.values()].filter(overThreshold).sort((a, b) => a.habit.localeCompare(b.habit))
 }
 
 /** Самый ранний месяц, который участник держит: от его последнего месяца с итогом или записью назад. */

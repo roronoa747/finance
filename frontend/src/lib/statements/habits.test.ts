@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { HABIT_MIN_PER_MONTH, habitKeepFrom, habitOf, habitTotals } from './habits'
+import { HABIT_MIN_AMOUNT, HABIT_MIN_PER_MONTH, habitKeepFrom, habitOf, habitTotals } from './habits'
 import type { Operation } from './types'
 
 // Привычки AU-27: правила по продавцу, разделу, чеку и дню; порог месяца; одна привычка на операцию.
@@ -56,6 +56,13 @@ describe('habitTotals — итоги месяца', () => {
       { id: 'a:2026-09:taxi', by: 'a', period: '2026-09', habit: 'taxi', count: 8, amount: 17_000, updatedAt: 'T' },
     ])
     expect(HABIT_MIN_PER_MONTH.taxi).toBe(8)
+  })
+
+  it('доставка — по сумме месяца (Х-12): 3 заказа на 30 000 — привычка, 5 на 15 000 — нет', () => {
+    expect(HABIT_MIN_AMOUNT.delivery).toBe(20_000)
+    const big = habitTotals(times(3, () => op('WOLT.COM', -10_000, 'sc_cafe', '2026-09-19')), 'b', '2026-09')
+    expect(big.map((t) => [t.habit, t.count, t.amount])).toEqual([['delivery', 3, 30_000]])
+    expect(habitTotals(times(5, () => op('WOLT.COM', -3_000, 'sc_cafe', '2026-09-19')), 'b', '2026-09')).toEqual([])
   })
 
   it('только операции месяца; операция — в одной привычке (кофе не считается обедом)', () => {
