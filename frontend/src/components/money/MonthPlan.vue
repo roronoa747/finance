@@ -253,7 +253,7 @@ const demoReview = computed<AiReview | null>(() =>
   auth.isDemo
     ? {
         id: 'demo-review', month: props.monthKey, at: new Date().toISOString(), by: 'a', updatedAt: '',
-        ...demoReviewOf(finance.householdDoc, props.monthKey, { book: fx.book, uploads: ops.uploads }),
+        ...demoReviewOf(finance.householdDoc, finance.planInput(props.monthKey)),
       }
     : null,
 )

@@ -5,8 +5,6 @@ import { DEMO_REVIEW, demoReview, startDemo } from './demo'
 import { monthKey } from './dates'
 import { cushionCover, fundsOf, moneySettingsOf, stepCandidates } from './finance'
 import { useFinanceStore } from '@/stores/finance'
-import { useFxStore } from '@/stores/fx'
-import { useOperationsStore } from '@/stores/operations'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -52,7 +50,7 @@ describe('DEMO_REVIEW v2 — без цифр, верен в любой день,
       expect(cover ?? 0, 'подушки на месяцев').toBeLessThan(1)
 
       // Шаг — кандидат кода `cushion`, тот же, что посчитает лист при открытии.
-      const r = demoReview(finance.householdDoc, key, { book: useFxStore().book, uploads: useOperationsStore().uploads })
+      const r = demoReview(finance.householdDoc, finance.planInput(key))
       expect(r.v).toBe(2)
       const fresh = stepCandidates(state, ctx).find((c) => c.id === 'cushion')
       expect(fresh, 'кандидат «Отложить в подушку»').toBeDefined()
@@ -63,7 +61,7 @@ describe('DEMO_REVIEW v2 — без цифр, верен в любой день,
       // «Сделать» → подтвердил: остатка уже нет, но кандидат заготовки тот же — у шага «✓ Сделано», а не пусто.
       finance.addPlanShift(fresh!.shift)
       expect(stepCandidates(finance.planInput(key).state, finance.planInput(key).ctx).find((c) => c.id === 'cushion')).toBeUndefined()
-      const after = demoReview(finance.householdDoc, key, { book: useFxStore().book, uploads: useOperationsStore().uploads })
+      const after = demoReview(finance.householdDoc, finance.planInput(key))
       expect(after.step!.candidate).toEqual(fresh)
     })
   }

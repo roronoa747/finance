@@ -10,8 +10,6 @@ import { aiSellerNames, type UnknownGroup } from '@/lib/statements/model'
 import type { MerchantRule } from '@/lib/statements/types'
 import { useAuthStore } from './auth'
 import { useFinanceStore } from './finance'
-import { useFxStore } from './fx'
-import { useOperationsStore } from './operations'
 import type { AiConsent, AiReview, ReviewReason } from '@/types/finance'
 
 /** Состояние запроса разбора (AI-09) и предложений продавцам (AI-12): идёт, лимит месяца кончился, не вышло. */
@@ -135,7 +133,7 @@ export const useAiStore = defineStore('ai', () => {
   function requestReview(key: string, reason: ReviewReason, client: ApiClient): Promise<AiReview | string> {
     if (inflight) return inflight
     inflight = (async () => {
-      const { payload, byId } = buildReviewFacts(finance.householdDoc, key, { book: useFxStore().book, uploads: useOperationsStore().uploads, reason })
+      const { payload, byId } = buildReviewFacts(finance.householdDoc, finance.planInput(key), reason)
       // Фактов нет (пустая семья) — ручка ответит 400: не спрашиваем.
       if (!payload.facts.length) return 'ai_failed'
       try {

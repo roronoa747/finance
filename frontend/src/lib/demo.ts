@@ -9,7 +9,7 @@ import { monthPlan, planSave, termSnapOf } from '@/lib/finance'
 import { templateById, templateCredit } from '@/lib/goalTemplates'
 import { DEMO_PHOTO } from '@/lib/photos/store'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
-import { buildReviewFacts, type ReviewEnv } from '@/lib/aiFacts'
+import { buildReviewFacts, type PlanInput } from '@/lib/aiFacts'
 import type { AiReview, SyncDoc } from '@/types/finance'
 
 /**
@@ -29,9 +29,11 @@ export const DEMO_REVIEW = {
  * кнопки), «что ушло» — факты демо (`buildReviewFacts`). В документ не пишется. Строится по документу без сдвигов этого
  * месяца — как разбор, сохранённый до «Сделать»: после подтверждения кандидат не пропадает, у шага — «✓ Сделано».
  */
-export function demoReview(doc: SyncDoc, key: string, env: ReviewEnv): Omit<AiReview, 'id' | 'month' | 'at' | 'by' | 'updatedAt'> {
-  const before = { ...doc, planShifts: (doc.planShifts ?? []).filter((s) => s.period !== key) }
-  const { payload, byId } = buildReviewFacts(before, key, { ...env, reason: 'month' })
+export function demoReview(doc: SyncDoc, input: PlanInput): Omit<AiReview, 'id' | 'month' | 'at' | 'by' | 'updatedAt'> {
+  const key = input.ctx.key
+  const planShifts = (doc.planShifts ?? []).filter((s) => s.period !== key)
+  const before = { ...doc, planShifts }
+  const { payload, byId } = buildReviewFacts(before, { state: { ...input.state, planShifts }, ctx: input.ctx }, 'month')
   const candidate = [...byId.values()].find((c) => c.kind === 'cushion') ?? null
   return { v: 2, reason: 'month', good: DEMO_REVIEW.good, risk: DEMO_REVIEW.risk, steps: [], step: { text: DEMO_REVIEW.step, candidate }, sent: payload }
 }

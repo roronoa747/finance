@@ -1,11 +1,10 @@
-import type { RateBook, ReviewCandidate, ReviewFact, ReviewPayload, ReviewReason, SyncDoc } from '@/types/finance'
+import type { ReviewCandidate, ReviewFact, ReviewPayload, ReviewReason, SyncDoc } from '@/types/finance'
 import {
   HABIT_NAMES,
   SHIFT_REASON_TEXT,
   activePlan,
   cushionCover,
   debtsOverview,
-  derivedCredits,
   dreamShift,
   firstDebt,
   fundsOf,
@@ -32,7 +31,6 @@ import {
   type MonthPlanCtx,
   type MonthPlanState,
   type StepCandidate,
-  type UploadPeriod,
 } from '@/lib/finance'
 import { maskNames } from '@/lib/aiSummary'
 import { addMonths, monthBy } from '@/lib/dates'
@@ -62,8 +60,8 @@ function clip(s: string, max: number): string {
 }
 const nm = (s: string) => clip(s, NAME_MAX)
 
-/** Что ещё нужно, кроме документа: книга курсов, загрузки выписок (факт трат) и повод разбора. */
-export type ReviewEnv = { book?: RateBook | null; uploads?: UploadPeriod[]; reason?: ReviewReason }
+/** Вход плана месяца — `financeStore.planInput(key)`: тот же, что у экранов и «Сделать» листа разбора. */
+export type PlanInput = { state: MonthPlanState; ctx: MonthPlanCtx }
 
 /** Факты и кандидаты для ручки и, локально, кандидат по id ответа (`c1` → `StepCandidate` для `DoSheet`). */
 export type ReviewFacts = { payload: ReviewPayload; byId: Map<string, StepCandidate> }
@@ -78,14 +76,14 @@ function imageRaw(image: HabitImage | InterestImage): number[] {
 }
 
 /**
- * Факты месяца `key` по общему документу (Р-2). Вход плана — как у экранов (`financeStore.planInput`): документ с
- * производными кредитами и книгой курсов, итоги трат, загрузки выписок. Пустая семья — мало фактов, без падений.
+ * Факты месяца `input.ctx.key` по общему документу (Р-2). Вход плана — `financeStore.planInput(key)`, один на экраны,
+ * факты и «Сделать» листа (ревью frontend Блока 3, Н-3). Пустая семья — мало фактов, без падений.
  */
-export function buildReviewFacts(doc: SyncDoc, key: string, env: ReviewEnv = {}): ReviewFacts {
+export function buildReviewFacts(doc: SyncDoc, input: PlanInput, reason?: ReviewReason): ReviewFacts {
   const people = doc.people ?? []
   const mask = (s: string) => maskNames(s, people)
-  const state: MonthPlanState = { ...doc, credits: derivedCredits(doc.credits ?? [], doc.payments ?? []), book: env.book ?? null }
-  const ctx: MonthPlanCtx = { key, totals: doc.spendTotals ?? [], spendCategories: doc.spendCategories ?? [], uploads: env.uploads ?? [] }
+  const { state, ctx } = input
+  const key = ctx.key
   const plan = monthPlan(state, ctx)
 
   const facts: ReviewFact[] = []
@@ -131,7 +129,7 @@ export function buildReviewFacts(doc: SyncDoc, key: string, env: ReviewEnv = {})
   }
 
   // Долги — когда без долгов и какой первым.
-  const debts = debtsOverview({ ...state, plans: doc.plans }, key)
+  const debts = debtsOverview(state, key)
   if (debts.total > 0 && debts.freeMonth) fact('без долгов — срок', monthBy(debts.freeMonth, key), debts.freeMonth)
   const first = firstDebt(state)
   if (first) fact(`первым закрываем «${nm(first.name)}» — самая высокая ставка`, pctText(first.rate), first.rate)
@@ -163,7 +161,7 @@ export function buildReviewFacts(doc: SyncDoc, key: string, env: ReviewEnv = {})
 
   // Итог закрытого прошлого месяца — для повода «месяц», если выписки его покрывают целиком.
   const prev = addMonths(key, -1)
-  if (env.reason === 'month' && usualMonths(people, ctx.totals, ctx.uploads, key, 1)[0] === prev) {
+  if (reason === 'month' && usualMonths(people, ctx.totals, ctx.uploads, key, 1)[0] === prev) {
     const past = monthPlan(state, { ...ctx, key: prev })
     const spent = spendFact(past.spend)
     if (spent !== null) fact('прошлый месяц — потрачено', money(spent), spent)

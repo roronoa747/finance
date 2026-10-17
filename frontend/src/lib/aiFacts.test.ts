@@ -65,7 +65,9 @@ function family(extra: Partial<SyncDoc> = {}): SyncDoc {
 
 const stateOf = (doc: SyncDoc) => ({ ...doc, credits: derivedCredits(doc.credits ?? [], doc.payments ?? []), book: null })
 const ctxOf = (doc: SyncDoc): MonthPlanCtx => ({ key: KEY, totals: doc.spendTotals ?? [], spendCategories: doc.spendCategories ?? [], uploads: UPLOADS })
-const build = (doc: SyncDoc, reason: 'month' | 'salary' | 'refresh' = 'refresh') => buildReviewFacts(doc, KEY, { uploads: UPLOADS, reason })
+/** Вход плана — как `financeStore.planInput` (стор строит его так же). */
+const inputOf = (doc: SyncDoc, uploads = UPLOADS) => ({ state: stateOf(doc), ctx: { ...ctxOf(doc), uploads } })
+const build = (doc: SyncDoc, reason: 'month' | 'salary' | 'refresh' = 'refresh') => buildReviewFacts(doc, inputOf(doc), reason)
 const find = (facts: ReviewFact[], about: string | RegExp) =>
   facts.find((f) => (typeof about === 'string' ? f.about === about : about.test(f.about)))
 
@@ -201,7 +203,7 @@ describe('buildReviewFacts — факты разбора v2 (AU-11)', () => {
     expect(find(month, 'прошлый месяц — план трат')).toMatchObject({ raw: past.spendTotal })
     expect(find(build(doc, 'salary').payload.facts, /прошлый месяц/)).toBeUndefined()
     // Выписки не покрывают сентябрь — итога нет.
-    const short = buildReviewFacts(doc, KEY, { uploads: [{ slot: 'a', period_from: '2026-09-10', period_to: '2026-10-15' }], reason: 'month' })
+    const short = buildReviewFacts(doc, inputOf(doc, [{ slot: 'a', period_from: '2026-09-10', period_to: '2026-10-15' }]), 'month')
     expect(find(short.payload.facts, /прошлый месяц/)).toBeUndefined()
   })
 
@@ -297,7 +299,7 @@ describe('buildReviewFacts — факты разбора v2 (AU-11)', () => {
   })
 
   it('пустая семья — без падений, мало фактов и без кандидатов', () => {
-    const { payload, byId } = buildReviewFacts(defaultSyncDoc(), KEY, { reason: 'month' })
+    const { payload, byId } = buildReviewFacts(defaultSyncDoc(), inputOf(defaultSyncDoc(), []), 'month')
     expect(payload.facts.length).toBeLessThanOrEqual(2)
     expect(payload.candidates).toEqual([])
     expect(byId.size).toBe(0)
