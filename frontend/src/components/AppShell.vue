@@ -155,7 +155,7 @@ const actions = computed(() => {
   return [
     edit && { to: '/week?upload=1', title: 'Загрузить выписку', note: 'Kaspi или Freedom — траты недели по разделам', icon: PhFileArrowUp },
     edit && { to: '/goals/new', title: 'Новая мечта', note: 'фото, сумма и срок', icon: PhHeart },
-    edit && { to: '/wishes', title: 'Покупка в список желаний', note: 'себе, партнёру или сюрприз', icon: PhShoppingBag },
+    edit && { to: '/wishes?new=1', title: 'Покупка в список желаний', note: 'себе, партнёру или сюрприз', icon: PhShoppingBag },
     edit && { to: '/month?income=1', title: 'Внеплановый доход', note: 'премия, подарок, возврат', icon: PhCoins },
     edit && { to: '/money?add=payment', title: 'Подписка или платёж', note: 'связь, подписки, страховка', icon: PhRepeat },
     edit && { to: '/money?add=debt', title: 'Долг', note: 'кредит, рассрочка, человеку', icon: PhCreditCard },

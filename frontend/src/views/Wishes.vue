@@ -36,6 +36,7 @@ import WishSheet from '@/components/goals/WishSheet.vue'
 import WishTile from '@/components/goals/WishTile.vue'
 import PhotoSlot from '@/components/goals/PhotoSlot.vue'
 import { useHistoryFlag } from '@/components/useHistoryFlag'
+import { useQuerySheet } from '@/components/useQuerySheet'
 
 /**
  * «Желания» (DESIGN.md §2 g4 «Желания по людям», «Подарок-сюрприз»; B2C-18): вкладки участников и
@@ -85,7 +86,8 @@ function nameOf(id: PersonId) {
 }
 
 /* ------------------ Покупки ------------------ */
-const openWishModal = ref(false)
+// Лист открывается и адресом `?new=1`: «+» → «Покупка в список желаний» ведёт сразу в форму (AI-15).
+const { open: openWishModal, close: closeWishModal } = useQuerySheet('new')
 const wishName = ref('')
 const form = useFormCheck(() => [['wishName', !wishName.value.trim() && 'Введите, что покупаем']])
 const wishPrice = ref('')
@@ -149,7 +151,7 @@ async function createWish() {
   wishPhotoNote.value = null
   linkName = ''
   link.reset()
-  openWishModal.value = false
+  closeWishModal()
   // Запись — сразу, фото — следом: без сети желание останется без картинки, добавить можно в окне правки.
   if (file && !financeStore.isDemo) {
     try {
@@ -327,7 +329,7 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
     <WishSheet :wish-id="canEdit ? editWishId : null" @close="editWishId = null" />
 
     <!-- Окно: новое желание в список вкладки (React `Goals.tsx:284-305`) -->
-    <Sheet :open="openWishModal && canEdit" title="Новое желание" @close="openWishModal = false">
+    <Sheet :open="openWishModal && canEdit" title="Новое желание" @close="closeWishModal">
       <!-- Ссылка — первой (макет «Желание по ссылке»): вставили — фото и название подтянулись; в демо сервера нет -->
       <Field v-if="!financeStore.isDemo" label="Ссылка на товар">
         <Input v-model="wishUrl" inputmode="url" placeholder="Вставьте ссылку" />
