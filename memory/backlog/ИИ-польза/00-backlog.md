@@ -174,7 +174,7 @@ https://claude.ai/artifact/DFzFgiXn7L7SEBVGBKJGdV):
 | | AU-28 Образы: справочник цен и мерок, расчёт (`finance.ts`) | `block-7-habit-images/AU-28-images-calc.md` | AU-27 | ✅ |
 | | AU-29 Строка-образ у раздела и на «Долгах», действия (фронт) | `block-7-habit-images/AU-29-images-ui.md` | AU-28 | ✅ |
 | | AU-30 Демо, e2e, доки | `block-7-habit-images/AU-30-demo-e2e-docs.md` | AU-29 | ✅ |
-| | AU-31 Хвосты Х-9…Х-12: перенос запомнен, одна плашка, демо, порог доставки (фронт) | `block-7-habit-images/AU-31-tails-x9-x12.md` | AU-30 | 🔄 |
+| | AU-31 Хвосты Х-9…Х-12: перенос запомнен, одна плашка, демо, порог доставки (фронт) | `block-7-habit-images/AU-31-tails-x9-x12.md` | AU-30 | ✅ |
 | 3. Разбор v2 ⬜ *(L: лимит и гейт, ИИ без нажатия, факты наружу, новое согласие)* | AU-09 Лимит в деньгах: гейт, конфиг, админка (Go + фронт) | `block-3-review-v2/AU-09-limit-money.md` | Блок 7 🏁 | ⬜ |
 | | AU-10 Согласие v2 и политика (фронт) | `block-3-review-v2/AU-10-consent-v2.md` | AU-09 | ⬜ |
 | | AU-11 Факты и кандидаты разбора (фронт, `lib/aiFacts.ts`) | `block-3-review-v2/AU-11-review-facts.md` | AU-10 | ⬜ |
