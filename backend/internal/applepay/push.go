@@ -92,7 +92,8 @@ var (
 	// notAnOp anywhere in the text: a refund or a cancellation (отклонение 3), a decline, a
 	// confirmation code — the bank may say it in any line ("Покупка: 5 000 ₸ / Недостаточно
 	// средств", "… MAGNUM. Declined", "Одноразовый код: …"; приёмка Б2 п. 1).
-	notAnOp = words(`возврат|отмен|сторно|отклон|отказ|недостаточно|не выполн|не прош|declined|` +
+	// "Отмен…", not "отменн…": the adjective ("Отменный вкус", a café) cancels nothing.
+	notAnOp = words(`возврат|отмен(?:[^н]|$)|сторно|отклон|отказ|недостаточно|не выполн|не прош|declined|` +
 		`код подтвержд|одноразов\p{L}*\s+код|никому не сообщ|confirmation code|verification code|one-time code`)
 	// rangeBefore: "до 1 000 000 ₸", "от 50 000 ₸" — an advert's range, never an operation's amount.
 	rangeBefore = regexp.MustCompile(`(?i)` + wordStart + `(?:от|до|свыше|from|up to)[ \x{00A0}\x{202F}]*$`)
@@ -102,8 +103,11 @@ var (
 	// "16.10" stays: it may be "$16.10".
 	timeOrDateWord = regexp.MustCompile(`\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}\.\d{1,2}\.\d{2,4}|` +
 		`\d{1,2}\.\d{1,2}\s+\d{1,2}:\d{2}(?::\d{2})?|\d{1,2}:\d{2}(?::\d{2})?)\b`)
-	// cardMask: "**0166", "*1234", "•• 1234" — never stored.
-	cardMask = regexp.MustCompile(`[*•·]+\s?\d{2,4}`)
+	// cardMask: "**0166", "*1234", "•• 1234" — never stored. One mark and a space before digits may
+	// be a separator before the amount ("Покупка · 12 500 ₸"): see cutMasks.
+	cardMask = regexp.MustCompile(`[*•·]{2,}\s?\d{2,4}|[*•·]\d{2,4}|[*•·]\s(\d{2,4})`)
+	// moneyAtStart: a money token right at the start of the text.
+	moneyAtStart = regexp.MustCompile(`^(?:` + moneyToken.String() + `)`)
 	// lineSplit: one-line texts split at "/", "|", ";" and at ". " before a capital letter.
 	sentence = regexp.MustCompile(`\.\s+(\p{Lu})`)
 	// kindWordAtStart: the kind's own words leading a line ("Покупка:", "Пополнено", "Перевод от").
@@ -224,7 +228,7 @@ func pushLines(title, body string) []string {
 	text := title + "\n" + body
 	// Masks first: their digits inside the balance label ("Доступно по карте *4321: 9 999 ₸") would
 	// stop the label before the money (приёмка Б2 п. 2).
-	text = cardMask.ReplaceAllString(text, " ")
+	text = cutMasks(text)
 	text = balance.ReplaceAllString(text, "\n")
 	text = sentence.ReplaceAllString(text, "\n$1")
 	text = strings.ReplaceAll(text, " / ", "\n") // "APPLE.COM/BILL" stays whole
@@ -243,6 +247,22 @@ func pushLines(title, body string) []string {
 		}
 	}
 	return out
+}
+
+// cutMasks blanks the card masks out of text. "· 12 500 ₸", "• 500 ₸" — one mark, a space and the
+// digits of money — is a separator, not a mask: cut, it would leave "500 ₸" or no amount at all.
+func cutMasks(text string) string {
+	var b strings.Builder
+	last := 0
+	for _, m := range cardMask.FindAllStringSubmatchIndex(text, -1) {
+		if m[2] >= 0 && moneyAtStart.MatchString(text[m[2]:]) {
+			continue
+		}
+		b.WriteString(text[last:m[0]])
+		b.WriteByte(' ')
+		last = m[1]
+	}
+	return b.String() + text[last:]
 }
 
 // leadLines: the title and the first line of the text; without a title — the first three lines
@@ -287,7 +307,10 @@ func pushAmount(text string) (sign int, currency string, minor int64, found bool
 			continue
 		}
 		if rangeBefore.MatchString(text[:start]) {
-			continue // "Переводите без комиссии до 1 000 000 ₸": an advert's range, not the money moved
+			// "Переводите без комиссии до 1 500 000 ₸": an advert's range, not the money moved — nor is
+			// a number inside it ("500 000 ₸" after "1 "): the next try starts after the whole token.
+			offset = end
+			continue
 		}
 		code, m, ok := ParseAmount(text[start:end])
 		if !ok {

@@ -175,6 +175,10 @@ func TestParsePushBalanceAdvertsRefunds(t *testing.T) {
 		{"Kaspi.kz", "Kaspi.kz", "Переводите без комиссии до 1 000 000 ₸", ResultUnknown, 0, ""},
 		{"Kaspi.kz", "Kaspi Red", "Покупки в рассрочку 0-0-24 от 50 000 ₸", ResultUnknown, 0, ""},
 		{"Freedom SuperApp", "Пополните депозит", "Ставка 15% на сумму свыше 100 000 ₸", ResultUnknown, 0, ""},
+		// Критик возврата Б2: no number inside the range is the money either ("500 000 ₸" after "1 ").
+		{"Kaspi.kz", "Kaspi.kz", "Переводите без комиссии до 1 500 000 ₸", ResultUnknown, 0, ""},
+		{"Kaspi.kz", "Kaspi Red", "Покупки в рассрочку от 1 250 ₸", ResultUnknown, 0, ""},
+		{"Kaspi.kz", "Kaspi Red", "Покупки в рассрочку от 1 250 ₸ до 3 500 000 ₸", ResultUnknown, 0, ""},
 		// A refund or a cancellation in any line: not money of its own (отклонение 3 исполнителя).
 		{"Kaspi.kz", "Kaspi Gold", "Пополнение: 5 000 ₸\nВозврат покупки MAGNUM\nДоступно: 1 ₸", ResultIgnore, 0, ""},
 		{"Freedom SuperApp", "Пополнение", "+5 000 ₸\nОтмена покупки\nДоступно 1 ₸", ResultIgnore, 0, ""},
@@ -258,6 +262,38 @@ func TestParsePushBalanceWithCardMask(t *testing.T) {
 		}
 		if l := strings.ToLower(op.Merchant); strings.Contains(l, "доступ") || strings.Contains(l, "остат") {
 			t.Errorf("%q: the balance label in the merchant %q", c.body, op.Merchant)
+		}
+	}
+}
+
+// Критик возврата Б2: one mark and a space before money is a separator, not a card mask — the mask
+// cut ate the amount's first digits ("· 12 500 ₸" → 500 ₸, "• 500 ₸" → no amount); masks stay cut.
+// "Отменный" (a café) is no cancellation; "отмена", "отменена", "ОТМЕНЕНО" are.
+func TestParsePushSeparatorMarkAndCancelWord(t *testing.T) {
+	for _, c := range []struct {
+		app, title, body string
+		minor            int64
+		merchant         string
+	}{
+		{"Kaspi.kz", "Kaspi Gold", "Покупка · 12 500 ₸\nMAGNUM", 1250000, "MAGNUM"},
+		{"Kaspi.kz", "Kaspi Gold", "Kaspi QR · 500 ₸ · Coffee Boom", 50000, "Coffee Boom"},
+		{"Kaspi.kz", "Kaspi Gold", "Покупка • 15 000 ₸\nMAGNUM", 1500000, "MAGNUM"},
+		{"Homebank", "Halyk Bank", "Покупка · KZT 2 500 · SMALL", 250000, "SMALL"},
+		// Masks are still cut: one mark without a space, two marks, one mark before digits that are not money.
+		{"Homebank", "Halyk Bank", "Покупка 5 000 KZT MAGNUM · 1234", 500000, "MAGNUM"},
+		{"Homebank", "Halyk Bank", "Покупка\n*1234 KZT 5 000,00\nMAGNUM", 500000, "MAGNUM"},
+		{"Freedom SuperApp", "Покупка", "-5 000 ₸\nMAGNUM\nОплачено SuperCard ** 0166", 500000, "MAGNUM"},
+		{"Kaspi.kz", "Kaspi Gold", "Покупка: 5 000 ₸\nОтменный вкус", 500000, "Отменный вкус"},
+		{"Kaspi.kz", "Kaspi Gold", "Покупка: 5 000 ₸\nОТМЕННЫЙ ВКУС", 500000, "ОТМЕННЫЙ ВКУС"},
+	} {
+		op, res := ParsePush(c.app, c.title, c.body)
+		if res != ResultOp || op.Sign != -1 || op.Minor != c.minor || op.Merchant != c.merchant {
+			t.Errorf("%q / %q: %v %+v, want −%d %q", c.title, c.body, res, op, c.minor, c.merchant)
+		}
+	}
+	for _, body := range []string{"Покупка: 5 000 ₸\nMAGNUM\nПокупка отменена", "Покупка 5 000 KZT MAGNUM. ОТМЕНЕНО", "Покупка: 5 000 ₸\nMAGNUM\nОтмена"} {
+		if op, res := ParsePush("Kaspi.kz", "Kaspi Gold", body); res != ResultIgnore {
+			t.Errorf("%q: %v %+v, want ignore", body, res, op)
 		}
 	}
 }
