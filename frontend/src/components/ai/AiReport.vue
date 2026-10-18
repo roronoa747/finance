@@ -23,8 +23,8 @@ import WhereBars from './WhereBars.vue'
  * (как Stories): «Работа ИИ» (счётчик кода на момент разбора) → «Куда ушло» (полосы кода за месяц находок и строка модели)
  * → советы (до 3, у каждого одна кнопка: «Сделать» → `DoSheet` поверх или «Открыть» — экран предмета) → «Итог прошлого
  * месяца» (только по v3 прошлого месяца, считает `reviewOutcome`). Разбор v1/v2 — одной карточкой «Разбор»; разбора нет —
- * одна карточка состояния («Думаю…», лимит, «Не вышло»). Листается свайпом (`scroll-snap`) и нажатием по правой / левой
- * трети; ✕, Escape и свайп вниз — закрыть. Внизу последней карточки тихо — день, «что ушло» и «Обновить». Viewer — без
+ * одна карточка состояния («Думаю…», лимит, «Не вышло»). Листается свайпом (`scroll-snap`), нажатием по правой / левой
+ * трети и стрелками; ✕, Escape и свайп вниз — закрыть; соседние карточки `inert`, Tab — по кругу внутри. Внизу последней карточки тихо — день, «что ушло» и «Обновить». Viewer — без
  * «Сделать» («Открыть» — чтение, есть). Пример демо — `example`: без дня и «Обновить». Все числа — из `finance.ts` и
  * сохранённого разбора; здесь — показ.
  */
@@ -280,10 +280,37 @@ const me = Symbol('report')
 const root = ref<HTMLElement | null>(null)
 let back: HTMLElement | null = null
 let releaseTips: (() => void) | null = null
+const FOCUSABLE = 'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+/**
+ * Клавиатура (`/ux` Блока 2): Escape — закрыть; стрелки — листать (соседние карточки `inert`, Tab до них не доходит);
+ * Tab не уводит фокус под отчёт — по кругу внутри, как у `Sheet`.
+ */
 function onKeydown(e: KeyboardEvent) {
-  if (e.defaultPrevented || !isTopSheet(me) || e.key !== 'Escape') return
-  e.preventDefault()
-  emit('close')
+  if (e.defaultPrevented || !isTopSheet(me)) return
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    emit('close')
+    return
+  }
+  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+    e.preventDefault()
+    go(active.value + (e.key === 'ArrowRight' ? 1 : -1))
+    return
+  }
+  if (e.key !== 'Tab' || !root.value) return
+  const items = [...root.value.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => !el.closest('[inert]'))
+  if (!items.length) return
+  const first = items[0]
+  const last = items[items.length - 1]
+  const at = document.activeElement
+  const inside = at instanceof HTMLElement && root.value.contains(at) && !at.closest('[inert]')
+  if (e.shiftKey && (!inside || at === first || at === root.value)) {
+    e.preventDefault()
+    last.focus()
+  } else if (!e.shiftKey && (!inside || at === last)) {
+    e.preventDefault()
+    first.focus()
+  }
 }
 function show() {
   pushSheet(me)
@@ -378,7 +405,7 @@ onUnmounted(() => {
           class="h-full w-full shrink-0 snap-center overflow-y-auto"
           :data-report-card="c.kind"
           :data-active="ci === active || undefined"
-          :aria-hidden="ci === active ? undefined : 'true'"
+          :inert="ci !== active"
         >
           <div class="mx-auto flex min-h-full w-full max-w-[480px] flex-col px-6 pb-[max(28px,env(safe-area-inset-bottom))] pt-6">
             <!-- Работа ИИ (Р-8): одна крупная цифра — операций; «нашёл · ≈ в год» строкой -->
@@ -408,7 +435,8 @@ onUnmounted(() => {
                 <h2 class="mt-2 type-h2-lg text-ink" data-review-advice-title>{{ c.row.a.title }}</h2>
                 <template v-if="c.row.a.figure">
                   <p class="mt-6 type-big num text-ink" data-review-figure>{{ c.row.a.figure.value }}</p>
-                  <p class="mt-1.5 truncate text-[14px] text-ink-2" data-review-figure-about>{{ c.row.a.figure.about }}</p>
+                  <!-- Переносом, не обрезкой: единица («— за год») стоит в конце подписи (`/ux`). -->
+                  <p class="mt-1.5 text-[14px] leading-snug text-ink-2" data-review-figure-about>{{ c.row.a.figure.about }}</p>
                 </template>
                 <p class="mt-5 text-[17px] leading-snug text-ink num" data-review-advice-text>{{ keep(c.row.a.text) }}</p>
                 <div class="mt-6">

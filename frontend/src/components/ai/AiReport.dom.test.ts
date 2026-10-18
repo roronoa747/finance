@@ -649,6 +649,50 @@ describe('RZ-07: отчёт разбора v3', () => {
     expect(dialog()).toBeNull()
   })
 
+  it('клавиатура (`/ux`): соседние карточки `inert`, стрелки листают, Tab по кругу внутри отчёта — не под него', async () => {
+    await openV3()
+    const inert = () => [...document.querySelectorAll('[data-report-card]')].map((c) => c.hasAttribute('inert'))
+    expect(inert()).toEqual([false, true, true, true])
+    const key = (k: string, shiftKey = false) => {
+      const e = new KeyboardEvent('keydown', { key: k, shiftKey, cancelable: true })
+      document.dispatchEvent(e)
+      return e
+    }
+    key('ArrowRight')
+    await flush()
+    expect(activeKind()).toBe('where')
+    expect(inert()).toEqual([true, false, true, true])
+    key('ArrowLeft')
+    await flush()
+    expect(activeKind()).toBe('work')
+    // Последняя карточка: ✕ → «Открыть» → «что ушло»; «Сделать» соседней (inert) карточки в круг не входит.
+    for (let i = 0; i < 3; i++) key('ArrowRight')
+    await flush()
+    expect(activeKind()).toBe('advice')
+    expect(inert()).toEqual([true, true, true, false])
+    const close = q('[data-report-close]')!
+    const sent = q('[data-review-sent-open]')!
+    sent.focus()
+    expect(key('Tab').defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(close)
+    expect(key('Tab', true).defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(sent)
+    // Фокус ушёл из отчёта (за ним — экран) — Tab возвращает на первую кнопку отчёта.
+    q<HTMLElement>('[data-afford-open]')!.focus()
+    expect(key('Tab').defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(close)
+    // Открыт лист «Сделать» поверх — стрелки отчёт не листают.
+    key('ArrowLeft')
+    await flush()
+    const title = () => txt(q('[data-report-card][data-active] [data-review-advice-title]'))
+    expect(title()).toBe('В подушку')
+    await press(q('[data-report-card][data-active] [data-review-do]'))
+    expect(q('[data-do-amount]')).not.toBeNull()
+    key('ArrowRight')
+    await flush()
+    expect(title()).toBe('В подушку')
+  })
+
   it('«что ушло» — на последней карточке, раскрывается фактами и «открыть — …»; «Обновить» — разбору больше суток', async () => {
     await openV3({ extra: { at: '2026-09-11T06:00:00.000Z' } })
     useAiStore().setConsent(true)
