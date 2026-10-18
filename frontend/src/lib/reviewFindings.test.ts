@@ -136,11 +136,12 @@ describe('reviewFindings — находки семьи', () => {
     expect(leak.image).toEqual(m ? { kind: 'measure', name: m.name, price: m.price } : null)
   })
 
-  it('«раздуло» покупкой (35 000 ≥ ½ прироста 60 000) и частотой (14 операций против 10); без причины — строки нет', () => {
+  it('«раздуло» покупкой (35 000 ≥ ½ прироста 60 000) и частотой (14 операций против 10); без причины — строки нет; ₸ в год — прирост без × 12', () => {
     const grew = of(findingsOf(family()), 'grew')
     expect(grew.map((g) => g.categoryId)).toEqual(['sc_food', 'sc_cafe'])
-    expect(grew[1]).toMatchObject({ amount: 150_000, usual: 90_000, growth: 60_000, yearly: 720_000, why: { kind: 'purchases', items: [{ name: 'Restoran X', amount: 35_000 }] } })
-    expect(grew[0]).toMatchObject({ amount: 450_000, usual: 380_000, growth: 70_000, why: { kind: 'often', count: 14, usualCount: 10 } })
+    // Цена в год у «раздуло» — прирост месяца, без × 12 (владелец 2026-10-18, Х-8): разовый рост не повторяется.
+    expect(grew[1]).toMatchObject({ amount: 150_000, usual: 90_000, growth: 60_000, yearly: 60_000, why: { kind: 'purchases', items: [{ name: 'Restoran X', amount: 35_000 }] } })
+    expect(grew[0]).toMatchObject({ amount: 450_000, usual: 380_000, growth: 70_000, yearly: 70_000, why: { kind: 'often', count: 14, usualCount: 10 } })
     // Развлечения выше обычного, но ни покупок, ни частоты — не находка (Р-1).
     expect(grew.some((g) => g.categoryId === 'sc_fun')).toBe(false)
   })
@@ -250,7 +251,9 @@ describe('reviewWork — счётчик', () => {
     expect(months).toEqual([KEY, '2026-09', '2026-08', '2026-07'])
     const ops = TOTALS.filter((t) => months.includes(t.period)).reduce((s, t) => s + t.ops, 0)
     const used = [list[0], of(list, 'leak')[0], of(list, 'leak')[0]]
-    expect(reviewWork(stateOf(doc), ctxOf(doc), list, used)).toEqual({ ops, found: list.length, yearly: list[0].yearly + 189_000 })
+    // «Раздуло» «Продуктов» — прирост 70 000 как есть (не × 12), утечка — 15 750 × 12, каждая один раз.
+    expect(list[0]).toMatchObject({ kind: 'grew', growth: 70_000 })
+    expect(reviewWork(stateOf(doc), ctxOf(doc), list, used)).toEqual({ ops, found: list.length, yearly: 70_000 + 189_000 })
   })
 })
 

@@ -5822,7 +5822,10 @@ const FIND_MONTH_MIN_DAY = 7
 /** Образ находки: доля главной мечты за год или мерка справочника (`measureFor`). */
 export type FindImage = { kind: 'dream'; goalId: string; name: string; share: number } | { kind: 'measure'; name: string; price: number }
 
-/** Находка семьи (Р-5): всё в целых тенге; `yearly` — цена в год по формулам Р-19. */
+/**
+ * Находка семьи (Р-5): всё в целых тенге; `yearly` — цена в год по формулам Р-19; у «раздуло» — прирост месяца без × 12
+ * (разовый рост не повторяется каждый месяц; владелец 2026-10-18, `memory/decisions/rz-grew-yearly.md`).
+ */
 export type ReviewFinding =
   | { kind: 'leak'; key: string; name: string; categoryId: string | null; monthly: number; count: number; months: number; yearly: number; image: FindImage | null }
   | {
@@ -5929,7 +5932,7 @@ export function reviewFindings(state: MonthPlanState, ctx: MonthPlanCtx): Review
       const usualCount = Math.round(usualOf.reduce((s, m) => s + opsOf(r.categoryId, m), 0) / usualOf.length)
       if (usualCount > 0 && count * 10 >= usualCount * OFTEN_TENTHS) why = { kind: 'often', count, usualCount }
     }
-    if (why) grew.push({ kind: 'grew', categoryId: r.categoryId, name: spendCategoryName(named, r.categoryId), amount: r.amount, usual: r.usual, growth, yearly: growth * 12, why })
+    if (why) grew.push({ kind: 'grew', categoryId: r.categoryId, name: spendCategoryName(named, r.categoryId), amount: r.amount, usual: r.usual, growth, yearly: growth, why })
   }
   grew.sort((a, b) => b.growth - a.growth)
 
