@@ -311,10 +311,13 @@ describe('autoReview — молча', () => {
     expect(finance.aiReviewOf(KEY)).not.toBeNull()
   })
 
-  it('502 и сеть — так же молча; повтор того же повода — не раньше суток (каждый pull не платит заново)', async () => {
+  it('502 — молча и сутки (каждый pull не платит заново); сеть — ответ мог потеряться: один повтор после окна, затем сутки', async () => {
     const { ai } = family()
     const { client, aiReview } = fakeClient()
-    aiReview.mockRejectedValueOnce(new ApiError('ai_failed', 502)).mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    aiReview
+      .mockRejectedValueOnce(new ApiError('ai_failed', 502))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
     await ai.autoReview(client)
     // Тот же день: focus, visibility, круг синка — без запроса.
     vi.setSystemTime(new Date('2026-09-12T12:00:00Z'))
@@ -323,37 +326,86 @@ describe('autoReview — молча', () => {
     vi.setSystemTime(new Date('2026-09-13T08:00:00Z'))
     await ai.autoReview(client)
     expect(aiReview).toHaveBeenCalledTimes(2)
-    // Сеть мигнула — тоже сутки.
-    vi.setSystemTime(new Date('2026-09-13T15:00:00Z'))
+    // Сеть оборвалась (перезагрузка посреди запроса рвёт fetch так же, RZ-HF2): в окне ответа — ждём…
+    vi.setSystemTime(new Date('2026-09-13T08:01:00Z'))
     await ai.autoReview(client)
     expect(aiReview).toHaveBeenCalledTimes(2)
+    // …после окна — один повтор; оборвался и он — до суток тишина.
+    vi.setSystemTime(new Date('2026-09-13T08:03:00Z'))
+    await ai.autoReview(client)
+    expect(aiReview).toHaveBeenCalledTimes(3)
+    vi.setSystemTime(new Date('2026-09-13T15:00:00Z'))
+    await ai.autoReview(client)
+    expect(aiReview).toHaveBeenCalledTimes(3)
     expect(ai.reviewState).toBe('idle')
   })
 
-  it('закрыли PWA посреди запроса (приёмка): перезапуск в тот же день — 0 новых запросов, через сутки — снова', async () => {
+  // Перезапуск: новый стор, тот же localStorage (family() его чистит — собираем «телефон» руками).
+  const restart = (doc = planFamilyDoc()) => {
+    setActivePinia(createPinia())
+    const auth = useAuthStore()
+    auth.setAuthData(authAs('member', 'a'))
+    auth.ai = true
+    useFinanceStore().setHouseholdDoc(doc, 1)
+    const ai = useAiStore()
+    ai.sheetMounted = true
+    ai.setConsent(true)
+    return ai
+  }
+
+  it('закрыли PWA посреди запроса (RZ-HF2): в окне ответа — 0; после окна — повтор один раз; оборвался и он — сутки', async () => {
     const { client, aiReview } = fakeClient()
-    aiReview.mockImplementationOnce(() => new Promise(() => {}))
+    aiReview.mockImplementation(() => new Promise(() => {}))
     void family().ai.autoReview(client)
     await Promise.resolve()
     expect(aiReview).toHaveBeenCalledTimes(1)
-    // Перезапуск: новый стор, тот же localStorage (family() его чистит — собираем «телефон» руками).
-    const restart = () => {
-      setActivePinia(createPinia())
-      const auth = useAuthStore()
-      auth.setAuthData(authAs('member', 'a'))
-      auth.ai = true
-      useFinanceStore().setHouseholdDoc(planFamilyDoc(), 1)
-      const ai = useAiStore()
-      ai.sheetMounted = true
-      ai.setConsent(true)
-      return ai
-    }
+    // Через 30 с: запрос, возможно, ещё идёт (вторая вкладка) — не дублируем.
+    vi.setSystemTime(new Date('2026-09-12T07:00:30Z'))
+    expect(await restart().autoReview(client)).toBeNull()
+    expect(aiReview).toHaveBeenCalledTimes(1)
+    // Через 4 минуты: ответ на мёртвую страницу потерян — повод повторяется сам (владелец 2026-10-18 ждал бы сутки).
+    vi.setSystemTime(new Date('2026-09-12T07:04:00Z'))
+    void restart().autoReview(client)
+    await Promise.resolve()
+    expect(aiReview).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(localStorage.getItem('ff_ai_auto')!)[`month:${KEY}`]).toMatchObject({ retry: true })
+    // Повтор тоже оборвался — больше не платим до суток.
+    vi.setSystemTime(new Date('2026-09-12T07:10:00Z'))
+    expect(await restart().autoReview(client)).toBeNull()
+    vi.setSystemTime(new Date('2026-09-12T20:00:00Z'))
+    expect(await restart().autoReview(client)).toBeNull()
+    expect(aiReview).toHaveBeenCalledTimes(2)
+    // Через сутки — заново (и без `retry` прошлой попытки).
+    aiReview.mockImplementation(async () => ANSWER)
+    vi.setSystemTime(new Date('2026-09-13T08:00:00Z'))
+    expect(await restart().autoReview(client)).not.toBeNull()
+    expect(aiReview).toHaveBeenCalledTimes(3)
+    expect(JSON.parse(localStorage.getItem('ff_ai_auto')!)[`month:${KEY}`]).toMatchObject({ done: true })
+    expect(JSON.parse(localStorage.getItem('ff_ai_auto')!)[`month:${KEY}`].retry).toBeUndefined()
+  })
+
+  it('исход дошёл до стора (502) → `done`: перезапуск через 4 минуты — 0, повтора оборванной нет', async () => {
+    const { client, aiReview } = fakeClient()
+    aiReview.mockRejectedValueOnce(new ApiError('ai_failed', 502))
+    await family().ai.autoReview(client)
+    expect(JSON.parse(localStorage.getItem('ff_ai_auto')!)[`month:${KEY}`]).toMatchObject({ done: true })
     vi.setSystemTime(new Date('2026-09-12T07:04:00Z'))
     expect(await restart().autoReview(client)).toBeNull()
     expect(aiReview).toHaveBeenCalledTimes(1)
-    vi.setSystemTime(new Date('2026-09-13T08:00:00Z'))
-    expect(await restart().autoReview(client)).not.toBeNull()
-    expect(aiReview).toHaveBeenCalledTimes(2)
+  })
+
+  it('телефон владельца 2026-10-18: запись `v3:month` без исхода (до RZ-HF2) и v2 месяца → один запрос v3 сразу после деплоя', async () => {
+    const doc = planFamilyDoc({ aiReviews: [reviewV2({ at: '2026-09-12T03:00:00.000Z' })] })
+    const { finance, ai } = family({ doc })
+    // Так писал код до хотфикса: попытка 2 часа назад, ответ пришёл на мёртвую страницу.
+    localStorage.setItem('ff_ai_auto', JSON.stringify({ [`v3:month:${KEY}`]: { at: '2026-09-12T05:00:00.000Z' } }))
+    const { client, aiReview } = fakeClient()
+    const r = await ai.autoReview(client)
+    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect(r).toMatchObject({ v: 3, reasonKey: `month:${KEY}` })
+    expect(finance.aiReviewOf(KEY)!.v).toBe(3)
+    await restart(finance.householdDoc).autoReview(client)
+    expect(aiReview).toHaveBeenCalledTimes(1)
   })
 
   it('разбор повода ушёл в надгробие обрезкой «живых ≤ 12» — повод всё равно был: 0', async () => {

@@ -24,6 +24,11 @@ export interface SellerHint {
 const SELLER_HINT_MS = 60 * 24 * 60 * 60 * 1000
 /** Повтор неудавшегося разбора сам — не чаще (Р-4). */
 const DAY_MS = 24 * 60 * 60 * 1000
+/**
+ * Окно ответа ручки разбора: 55 с на сервере (`reviewDeadline`) плюс сеть. Попытка без исхода моложе окна — запрос,
+ * возможно, ещё идёт (вторая вкладка того же телефона); старше — страница не дожила до ответа (RZ-HF2).
+ */
+const REVIEW_INFLIGHT_MS = 90 * 1000
 /** Разделов в запросе — не больше, чем берёт ручка (AI-11). */
 const SELLERS_CATEGORIES_MAX = 40
 
@@ -244,7 +249,10 @@ export const useAiStore = defineStore('ai', () => {
    * согласия (`AI_CONSENT_V`) — запрос в фоне, без «Думаю…»; «да» прежней версии — лист согласия один раз на повод
    * (закрыл — до следующего повода); не спрошено никогда или «Не надо» — молча ничего. 429 / 502 / сеть, тело старой
    * версии (400) и семья без кнопок (`ai_failed` без запроса) — молча, тот же повод на этом телефоне — не чаще раза в
-   * сутки (`ff_ai_auto`, попытка пишется до запроса). Один запрос за раз.
+   * сутки (`ff_ai_auto`, попытка пишется до запроса, исход — после). Страница не дожила до ответа (перезагрузка,
+   * закрытый PWA: ответ идёт 5–55 с; владелец 2026-10-18 — 33 открытия за 2 минуты, ответ 200 пришёл на мёртвую
+   * страницу, RZ-HF2) — попытка без исхода: повод повторяется один раз, как только окно ответа вышло; второй обрыв
+   * подряд — сутки. Один запрос за раз.
    */
   async function autoReview(client: ApiClient = apiClient): Promise<AiReview | null> {
     if (!available.value || consent.value === 'off' || inflight) return null
@@ -257,7 +265,11 @@ export const useAiStore = defineStore('ai', () => {
     // Попытки — только этого месяца: прошлые поводы не копятся.
     const mine = () => Object.fromEntries(Object.entries(readAiAuto()).filter(([k]) => k.endsWith(`:${key}`)))
     const tried = mine()[rk]
-    if (tried?.at && Date.now() - Date.parse(tried.at) < DAY_MS) return null
+    const age = tried?.at ? Date.now() - Date.parse(tried.at) : Infinity
+    // Попытка за сутки: с исходом или уже повторная — молчим; без исхода и моложе окна ответа — запрос, возможно, ещё
+    // идёт (вторая вкладка) — ждём; без исхода и старше окна — оборвана, идём повторять один раз (`lost`).
+    if (age < DAY_MS && (tried!.done || tried!.retry || age < REVIEW_INFLIGHT_MS)) return null
+    const lost = age < DAY_MS
     if (consent.value === 'unknown') {
       // Не спрошено никогда — ИИ ещё не включали: сам не зовём. «Да» прежней версии — спросить заново один раз на повод.
       const c = finance.privateDoc.aiConsent as AiConsent | undefined
@@ -269,10 +281,13 @@ export const useAiStore = defineStore('ai', () => {
       if (consentFailed.value) writeAiAuto({ ...mine(), [rk]: { ...mine()[rk], asked: undefined } })
       if (!ok || autoReason(key) !== reason) return null
     }
-    // Попытка — до запроса: закрыли PWA посреди него (ответ 5–55 с) — повод не платится снова до суток (приёмка).
-    // Удачный разбор закрывает повод сам (`autoReason`).
-    writeAiAuto({ ...mine(), [rk]: { ...mine()[rk], at: new Date().toISOString() } })
+    // Попытка — до запроса, исход — после: закрыли PWA посреди запроса — повтор один раз после окна ответа, не каждый
+    // pull (RZ-HF2; до него — сутки, приёмка). Удачный разбор закрывает повод сам (`autoReason`).
+    writeAiAuto({ ...mine(), [rk]: { ...mine()[rk], at: new Date().toISOString(), done: undefined, retry: lost || undefined } })
     const r = await requestReview(key, reason, client)
+    // Исход — только ответ сервера (разбор или код ручки). Сбой сети неотличим от потерянного ответа: перезагрузка
+    // обрывает fetch, и этот код ещё успевает выполниться (Chrome) — такая попытка остаётся «без исхода».
+    if (r !== 'network') writeAiAuto({ ...mine(), [rk]: { ...mine()[rk], done: true } })
     return typeof r === 'string' ? null : r
   }
 
