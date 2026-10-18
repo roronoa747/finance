@@ -88,7 +88,7 @@ describe('AI-05: карточка «ИИ» в настройках', () => {
     card.querySelector<HTMLButtonElement>('button[aria-label="Что уходит"]')!.click()
     await settle()
     expect(document.body.textContent).toContain(
-      'Claude от Anthropic получает цифры месяца и названия статей без ваших имён, продавцов и суммы частых трат и списаний, скриншот товара, фото чека и фразу о мечте. Разбор приходит сам — 1-го и после зарплаты. На ваших данных не обучается.',
+      'Claude от Anthropic получает цифры месяца и названия статей без ваших имён, продавцов и суммы частых трат, списаний и крупных покупок, скриншот товара, фото чека и фразу о мечте. Разбор приходит сам — 1-го и после зарплаты. На ваших данных не обучается.',
     )
     const sw = card.querySelector<HTMLButtonElement>('[role="switch"]')!
     expect(sw.getAttribute('aria-checked')).toBe('false')
@@ -117,7 +117,7 @@ describe('AI-05: лист согласия', () => {
     expect(document.querySelector('[data-ai-to]')!.textContent).toBe('Claude от Anthropic получит:')
     expect(items).toEqual([
       'Цифры месяца и названия статей без ваших имён',
-      'Продавцы и суммы частых трат и списаний',
+      'Продавцы и суммы частых трат, списаний и крупных покупок',
       'Скриншот товара',
       'Фото чека',
       'Фраза о мечте',
