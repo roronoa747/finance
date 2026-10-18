@@ -11,6 +11,7 @@ import { addDaysIso, addMonths, dayLabel, daysInMonth, isoIn, monthBy, monthFrom
 import { spendColor } from '@/lib/palette'
 import { money, pct, plain } from '@/lib/money'
 import { plural } from '@/lib/utils'
+import { maskNames } from '@/lib/aiSummary'
 /**
  * Расчётное ядро. Чистые функции: ни сети, ни состояния, ни ИИ.
  *
@@ -6030,13 +6031,16 @@ export function whereRows(state: MonthPlanState, ctx: MonthPlanCtx, n = 5): Wher
 export type ReviewOutcome = {
   done: { title: string; done: boolean }[]
   sections: { categoryId: string; name: string; amount: number; usual: number | null }[]
-  dream: { name: string; was: string; now: string | null } | null
+  /** `was` / `now` — строки от одного месяца «сейчас»; `wasMonth` / `nowMonth` — ключи `YYYY-MM` для сравнения. */
+  dream: { name: string; was: string; now: string | null; wasMonth: string; nowMonth: string | null } | null
 }
 
 /**
  * Итог прошлого месяца по его разбору v3 (Р-20): «Сделать» — `shiftMade` за тот месяц; разделы советов «Открыть»
  * (`cat`) — траты того месяца (`monthSpendByCategory`) и «обычно» на сегодня (`usualSpend`); главная мечта — срок из
- * присланного тогда факта «главная мечта … — срок» и сейчас (`goalTerm`). Нет v3-разбора прошлого месяца — null.
+ * присланного тогда факта «главная мечта … — срок» (`raw`) и сейчас (`goalTerm`), оба — от `ctx.key` (разбор декабря →
+ * итог января: тот же срок — одна строка). Имя мечты в факте прошло `nm` (без «») и `maskNames` — сверка тем же путём.
+ * Нет v3-разбора прошлого месяца — null.
  */
 export function reviewOutcome(state: MonthPlanState, ctx: MonthPlanCtx, prev: AiReview | null): ReviewOutcome | null {
   if (!prev || prev.v !== 3 || prev.month !== addMonths(ctx.key, -1)) return null
@@ -6057,14 +6061,17 @@ export function reviewOutcome(state: MonthPlanState, ctx: MonthPlanCtx, prev: Ai
   }))
   const goal = mainGoal(state.goals ?? [], state.goalOrder, state.moneySettings)
   const sent = prev.sent && 'facts' in prev.sent ? prev.sent.facts : []
+  const asSent = goal ? maskNames(goal.name.replace(/[«»]/g, '').trim(), state.people ?? []).slice(0, 30) : ''
   const was = goal
-    ? sent.find((f) => f.about.startsWith('главная мечта') && f.about.includes(goal.name.slice(0, 30)) && typeof f.raw === 'string' && /^\d{4}-\d{2}$/.test(f.raw))
+    ? sent.find((f) => f.about.startsWith('главная мечта') && f.about.includes(asSent) && typeof f.raw === 'string' && /^\d{4}-\d{2}$/.test(f.raw))
     : undefined
   let dream: ReviewOutcome['dream'] = null
   if (goal && was) {
     const item = monthPlan(state, ctx).queue.find((q) => q.goalId === goal.id)
     const term = goalTerm(item, goal, ctx.key)
-    dream = { name: goal.name, was: was.value, now: term.doneMonth ? monthBy(term.doneMonth, ctx.key) : null }
+    const wasMonth = was.raw as string
+    const nowMonth = term.doneMonth ?? null
+    dream = { name: goal.name, was: monthBy(wasMonth, ctx.key), now: nowMonth ? monthBy(nowMonth, ctx.key) : null, wasMonth, nowMonth }
   }
   return { done, sections, dream }
 }

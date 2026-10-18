@@ -37,9 +37,10 @@
   - `lib/finance.ts`: `whereRows(state, ctx, n = 5)` → `WhereRow {categoryId, name, amount, usual: number | null, plan:
     number | null, share}` (`share` 0…1 — доля полосы от самой длинной из фактов, «обычно» и планов); `reviewOutcome(state,
     ctx, prev)` → `ReviewOutcome {done: {title, done}[], sections: {categoryId, name, amount, usual: number | null}[],
-    dream: {name, was, now: string | null} | null} | null` — только по v3 прошлого месяца; `sections` — только советы
-    «Открыть» на раздел; мечта ищется по имени в `about` факта «главная мечта «…» — срок» (имя с «» или с именем участника
-    не совпадёт → `dream: null`); `reviewWork(state, ctx, findings, used)` — `used` (находки X) `requestReview` берёт по
+    dream: {name, was, now: string | null, wasMonth, nowMonth: string | null} | null} | null` — только по v3 прошлого
+    месяца; `sections` — только советы «Открыть» на раздел; `was` и `now` — строки от одного месяца `ctx.key` (тот же срок —
+    одна строка), «раньше на …» — сравнением `wasMonth` / `nowMonth`; мечта ищется по имени в `about` факта «главная мечта
+    «…» — срок» тем же путём, что у факта (без «», `maskNames`; клинап Блока 1, Н-3); `reviewWork(state, ctx, findings, used)` — `used` (находки X) `requestReview` берёт по
     крупной цифре совета (`byFact` из `buildReviewFacts`), без цифры — по кнопке (`byAction`; клинап Блока 1, Н-2);
     **`findMonth(ctx)`** — месяц находок и «Куда
     ушло»: текущий, если выписка у кого-то дошла до 7-го, иначе прошлый (разбор 1-го — о прошлом месяце; подпись карточки

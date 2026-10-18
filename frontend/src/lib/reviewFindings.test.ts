@@ -27,6 +27,7 @@ import {
   type UploadPeriod,
 } from './finance'
 import { monthBy } from './dates'
+import { buildReviewFacts } from './aiFacts'
 import type { ReviewFind, SpendTotal } from './statements/types'
 import { defaultSyncDoc } from '@/stores/finance'
 import { planFamilyDoc, T0 } from '@/test/planFamily'
@@ -290,7 +291,29 @@ describe('reviewOutcome — итог прошлого месяца', () => {
     const main = mainGoal(doc.goals ?? [], doc.goalOrder, doc.moneySettings)!
     const item = monthPlan(state, ctxOf(doc)).queue.find((q) => q.goalId === main.id)
     const now = goalTerm(item, main, KEY).doneMonth
-    expect(out.dream).toEqual({ name: 'Подушка', was: 'к маю 2034', now: now ? monthBy(now, KEY) : null })
+    expect(out.dream).toEqual({ name: 'Подушка', was: 'к маю 2034', now: now ? monthBy(now, KEY) : null, wasMonth: '2034-05', nowMonth: now ?? null })
+  })
+
+  // Ревью frontend Н-3: «было» и «стало» — от одного месяца; имя мечты сверяется так, как его отправили.
+  it('разбор декабря → итог января: срок «было» — от января (тот же срок — та же строка), ключи месяцев', () => {
+    const doc = family()
+    const dec = prev({ month: '2026-12', sent: { facts: [{ id: 'f1', about: 'главная мечта «Подушка» — срок', value: 'к июню 2027', raw: '2027-06' }], candidates: [] } })
+    const dream = reviewOutcome(stateOf(doc), ctxOf(doc, UPLOADS, '2027-01'), dec)!.dream!
+    expect(dream).toMatchObject({ was: monthBy('2027-06', '2027-01'), wasMonth: '2027-06' })
+    expect(dream.was).toBe('к июню')
+  })
+
+  it('мечта с именем участника и с «» в названии — срок находится по факту, как его отправил buildReviewFacts', () => {
+    for (const name of ['Машина Ильяса', 'Отпуск «Море»']) {
+      const base = family()
+      const main = mainGoal(base.goals ?? [], base.goalOrder, base.moneySettings)!
+      const doc = family({ goals: (base.goals ?? []).map((g) => (g.id === main.id ? { ...g, name } : g)) })
+      const sent = buildReviewFacts(doc, { state: stateOf(doc), ctx: ctxOf(doc, UPLOADS, '2026-09') }, 'month').payload
+      const fact = sent.facts.find((f) => f.about.startsWith('главная мечта'))!
+      expect(fact.about, name).not.toContain(name)
+      const dream = reviewOutcome(stateOf(doc), ctxOf(doc), prev({ sent }))!.dream
+      expect(dream, name).toMatchObject({ name, wasMonth: fact.raw })
+    }
   })
 
   it('не v3, не прошлый месяц или нет — null; мечта другая — срока нет', () => {
