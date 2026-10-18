@@ -381,6 +381,21 @@ func TestReviewTextLengthBeforeFill(t *testing.T) {
 	}
 }
 
+// A name in «» that only an action has («Тур 2027»: the goal of a step whose term fact did not fit) keeps its digits in
+// both checks — the actions' strings are in texts() and in numbers() (ревью backend Н-4).
+func TestReviewActionNames(t *testing.T) {
+	body := reviewWith(`{"id":"f1","about":"доход месяца","value":"1 200 000 ₸","raw":1200000}`,
+		`{"id":"a1","kind":"do","about":"из плана «Кафе» в мечту «Тур 2027»","value":"40 000 ₸","effect":"раньше"}`)
+	f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{answer("Хорошо.", adv{"Мечта ближе", "Перенесём в «Тур 2027».", nil, "a1"})}}, true)
+	got := decodeReview(t, f.post(t, f.member, body))
+	if len(f.claude.sent) != 1 {
+		t.Fatalf("calls = %d, want 1 (no defect)", len(f.claude.sent))
+	}
+	if got.Advices[0].Text != "Перенесём в «Тур 2027»." || got.Advices[0].Action != "a1" {
+		t.Errorf("advice = %+v", got.Advices[0])
+	}
+}
+
 func TestReviewModelErrorFailsWithoutSpend(t *testing.T) {
 	f := newReviewFixture(t, &fakeClaudeQueue{status: 500}, true)
 	rec := f.post(t, f.member, reviewBody)
