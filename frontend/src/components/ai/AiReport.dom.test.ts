@@ -8,6 +8,7 @@ import { apiClient, ApiError } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { useAiStore } from '@/stores/ai'
 import { useFinanceStore } from '@/stores/finance'
+import { useOperationsStore } from '@/stores/operations'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
 import type { AiReview, Goal, SyncDoc } from '@/types/finance'
 import type { MonthSummaryAI } from '@/lib/aiSummary'
@@ -143,20 +144,27 @@ const press = async (el: HTMLElement | null | undefined) => {
 const dialog = () => document.querySelector('[data-report]')
 
 describe('AI-09: разбор месяца у остатка', () => {
-  it('семья без ИИ — кнопки нет; с ИИ — круглая кнопка рядом с «Хватит?», той же высоты, не брендовая', async () => {
+  it('семья без ИИ — пилюли нет, «Хватит?» в кольце; с ИИ — пилюля «✦ Разбор» рядом с «Хватит?» под кольцом, той же высоты, не брендовая (RZ-08)', async () => {
     await open({ ai: false })
     expect(q('[data-review-open]')).toBeNull()
+    expect(document.querySelectorAll('[data-afford-open]')).toHaveLength(1)
     app!.unmount()
     document.body.innerHTML = ''
 
     await open()
     const btn = q('[data-review-open]')!
     expect(btn.getAttribute('aria-label')).toBe('Разобрать месяц')
+    expect(txt(btn)).toBe('Разбор')
+    expect(btn.querySelector('svg')).not.toBeNull()
+    expect(document.querySelectorAll('[data-afford-open]')).toHaveLength(1)
     const afford = q('[data-afford-open]')!
     expect(btn.parentElement).toBe(afford.parentElement)
     expect(btn.className).toContain('h-8')
     expect(afford.className).toContain('h-8')
     expect(btn.className).not.toContain('bg-brand ')
+    // «Хватит?» под кольцом открывает свой лист, как в кольце.
+    await press(afford)
+    expect([...document.querySelectorAll('[role="dialog"] h3')].map(txt)).toContain('Хватит?')
   })
 
   it('разбор месяца есть — лист без запроса; точка до первого открытия на этом телефоне', async () => {
@@ -645,6 +653,39 @@ describe('RZ-07: отчёт разбора v3', () => {
     await press(q('[data-review-sent-open]'))
     expect(txt(q('[data-review-sent]'))).toContain('открыть — траты «Кафе»')
     expect(q('[data-review-refresh]')).not.toBeNull()
+  })
+
+  it('RZ-08: «Куда ушло» — полосы разделов месяца находок, выше обычного — отмечено, строка модели под ними; без выписок — строка-заглушка', async () => {
+    await openV3()
+    expect(txt(q('[data-review-where-empty]'))).toBe('Выписок за месяц ещё нет')
+    expect(q('[data-where-bars]')).toBeNull()
+    expect(txt(q('[data-review-where]'))).toBe('Кафе выросло — мечта отодвинулась.')
+    app!.unmount()
+    document.body.innerHTML = ''
+
+    const total = (period: string, categoryId: string, amount: number) => ({ id: `a:month:${period}:${categoryId}`, by: 'a' as const, kind: 'month' as const, period, categoryId, amount, ops: 3, updatedAt: T0 })
+    const spendTotals = [
+      ...['2026-06', '2026-07', '2026-08'].flatMap((m) => [total(m, 'sc_cafe', 30_000), total(m, 'sc_food', 100_000)]),
+      total(KEY, 'sc_cafe', 90_000), total(KEY, 'sc_food', 95_000),
+    ]
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: [{ id: 'u1', slot: 'a', bank: 'kaspi', period_from: '2026-06-01', period_to: '2026-09-12', ops_count: 40, created_at: T0 }] } as never)
+    await open()
+    const c = candidateOf('cushion')
+    app!.unmount()
+    document.body.innerHTML = ''
+    await open({ doc: withFund({ aiReviews: [savedV3(c)], spendTotals }) })
+    await useOperationsStore().loadUploads()
+    await flush()
+    await press(q('[data-review-open]'))
+    await vi.waitFor(() => expect(dialog()).not.toBeNull())
+    // Выписка дошла до 7-го — месяц находок текущий.
+    expect(txt(q('[data-review-where-month]'))).toBe('в сентябре')
+    expect([...document.querySelectorAll('[data-where-row]')].map((el) => el.getAttribute('data-where-row'))).toEqual(['sc_food', 'sc_cafe'])
+    expect(q('[data-where-row="sc_cafe"]')!.hasAttribute('data-over')).toBe(true)
+    expect(q('[data-where-row="sc_food"]')!.hasAttribute('data-over')).toBe(false)
+    expect(q('[data-review-where-empty]')).toBeNull()
+    // Строка — ссылка на лист раздела, листание по ней не срабатывает.
+    expect(q('[data-where-row="sc_cafe"]')!.getAttribute('href')).toBe('/month?cat=sc_cafe')
   })
 
   it('без находок в советах — счётчик без «≈»', async () => {

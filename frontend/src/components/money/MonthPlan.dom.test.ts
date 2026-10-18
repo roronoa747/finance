@@ -929,6 +929,33 @@ describe('AU-02: траты на «Месяце» — разделы семьи,
     }
   })
 
+  it('RZ-08: `?cat=sc_cafe` открывает лист раздела («Открыть» совета); закрытие снимает параметр; неизвестный раздел — ничего', async () => {
+    vi.setSystemTime(new Date('2026-09-17T07:00:00Z'))
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: fullUploads } as never)
+    await open('member', planFamilyDoc({ spendTotals: totals, spendPlans }), '/month?cat=sc_cafe')
+    await useOperationsStore().loadUploads()
+    await flush()
+    expect(q('[data-cat-amount]')).not.toBeNull()
+    expect([...document.querySelectorAll('[role="dialog"] h3')].map(txt)).toContain('Кафе и рестораны')
+    await press(all('[role="dialog"] button').find((b) => b.getAttribute('aria-label') === 'Закрыть'))
+    const router = app!.config.globalProperties.$router
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/month'))
+    expect(q('[data-cat-amount]')).toBeNull()
+    // Строка раздела по-прежнему открывает лист нажатием, адрес не меняется.
+    await press(section('spend'))
+    await press(q('[data-spend-row="sc_cafe"]'))
+    expect(q('[data-cat-amount]')).not.toBeNull()
+    expect(router.currentRoute.value.fullPath).toBe('/month')
+    app!.unmount()
+    app = null
+    document.body.innerHTML = ''
+
+    await open('member', planFamilyDoc({ spendTotals: totals, spendPlans }), '/month?cat=sc_nope')
+    await useOperationsStore().loadUploads()
+    await flush()
+    expect(q('[data-cat-amount]')).toBeNull()
+  })
+
   it('лист раздела: факт, обычно, план, «до плана» в мечту; «Изменить» — «Сколько в месяц» с суммой участника', async () => {
     const finance = await openSpend()
     const cafe = compareOf(finance).rows.find((r) => r.categoryId === 'sc_cafe')!

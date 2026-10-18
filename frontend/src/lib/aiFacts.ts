@@ -336,13 +336,15 @@ export function buildReviewFacts(doc: SyncDoc, input: PlanInput, reason?: Review
 
 /**
  * Адрес «Открыть» (Р-18): раздел — лист раздела «Месяца», мечта — экран цели, долг и платёж — листы «Денег» по адресу,
- * продавец — история с чипом его раздела (экрана продавца нет).
+ * продавец — история с чипом его раздела (экрана продавца нет). Лист долга по `?credit=` открывает «Капитал»
+ * (`CapitalLists`), не квадрат «Долги»: Р-18 писал `/money/debts?credit=`, там адрес ничего не открывал (стенд RZ-08) —
+ * `/money?credit=`, как «Изменить платёж» долга на «Месяце».
  */
 export function openPath(target: OpenTarget): string {
   const q = encodeURIComponent
   if (target.kind === 'cat') return `/month?cat=${q(target.id)}`
   if (target.kind === 'goal') return `/goals/${q(target.id)}`
-  if (target.kind === 'credit') return `/money/debts?credit=${q(target.id)}`
+  if (target.kind === 'credit') return `/money?credit=${q(target.id)}`
   if (target.kind === 'obligation') return `/money?obligation=${q(target.id)}`
   return target.categoryId ? `/money/history?cat=${q(target.categoryId)}` : '/money/history'
 }

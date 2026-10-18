@@ -457,7 +457,7 @@ describe('openPath — адреса «Открыть» (Р-18)', () => {
   it('раздел, мечта, долг, платёж, продавец (с разделом и без)', () => {
     expect(openPath({ kind: 'cat', id: 'sc_cafe', name: 'Кафе' })).toBe('/month?cat=sc_cafe')
     expect(openPath({ kind: 'goal', id: 'trip', name: 'Отпуск' })).toBe('/goals/trip')
-    expect(openPath({ kind: 'credit', id: 'loan', name: 'Кредит' })).toBe('/money/debts?credit=loan')
+    expect(openPath({ kind: 'credit', id: 'loan', name: 'Кредит' })).toBe('/money?credit=loan')
     expect(openPath({ kind: 'obligation', id: 'kino', name: 'Кинопоиск' })).toBe('/money?obligation=kino')
     expect(openPath({ kind: 'seller', id: 'apteka plus', name: 'APTEKA', categoryId: 'sc_health' })).toBe('/money/history?cat=sc_health')
     expect(openPath({ kind: 'seller', id: 'apteka plus', name: 'APTEKA' })).toBe('/money/history')

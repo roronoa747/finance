@@ -16,6 +16,7 @@ import { holdTips } from '@/components/kit/tips'
 import { isTopSheet, popSheet, pushSheet } from '@/components/kit/sheetStack'
 import Button from '@/components/ui/Button.vue'
 import DoSheet from '@/components/plan/DoSheet.vue'
+import WhereBars from './WhereBars.vue'
 
 /**
  * Отчёт разбора месяца (бэклог «Разбор», Р-2, Р-15, Р-17, RZ-07) — на весь экран поверх «Месяца», листаемые карточки
@@ -393,12 +394,7 @@ onUnmounted(() => {
             <template v-else-if="c.kind === 'where'">
               <h2 class="type-h2-lg text-ink">Куда ушло</h2>
               <p class="mt-1 text-[15px] text-ink-2" data-review-where-month>{{ whereMonth }}</p>
-              <ul v-if="rows.length" class="mt-6 flex flex-col" data-review-where-rows>
-                <li v-for="r in rows" :key="r.categoryId" class="flex items-center justify-between gap-3 border-t border-line py-2.5 text-[15px] first:border-t-0" :data-where-row="r.categoryId">
-                  <span class="min-w-0 truncate text-ink">{{ r.name }}</span>
-                  <b class="whitespace-nowrap font-semibold text-ink num">{{ plain(r.amount) }}</b>
-                </li>
-              </ul>
+              <WhereBars v-if="rows.length" class="mt-5" :rows="rows" />
               <p v-else class="mt-6 text-[15px] text-ink-2" data-review-where-empty>Выписок за месяц ещё нет</p>
               <p v-if="review?.where" class="mt-6 text-[17px] leading-snug text-ink num" data-review-where>{{ keep(review.where) }}</p>
             </template>

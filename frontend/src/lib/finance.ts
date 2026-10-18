@@ -6014,8 +6014,22 @@ export function reviewWork(
   return { ops, found: findings.length, yearly: [...new Set(used)].reduce((s, f) => s + f.yearly, 0) }
 }
 
-/** Строка «Куда ушло» (Р-4): раздел, факт, «обычно», план и доля полосы 0…1 от самой длинной полосы картинки. */
-export type WhereRow = { categoryId: string; name: string; amount: number; usual: number | null; plan: number | null; share: number }
+/**
+ * Строка «Куда ушло» (Р-4): раздел, факт, «обычно», план, доля полосы 0…1 от самой длинной полосы картинки, места рисок
+ * «обычно» и плана на той же шкале (`usualShare`, `planShare`; нет числа — null) и `over` — выше обычного по тому же
+ * порогу, что точка раздела на «Месяце» (`spendCompare`; полоса — `--warn`, RZ-08).
+ */
+export type WhereRow = {
+  categoryId: string
+  name: string
+  amount: number
+  usual: number | null
+  plan: number | null
+  share: number
+  usualShare: number | null
+  planShare: number | null
+  over: boolean
+}
 
 /**
  * «Куда ушло» (Р-4) за месяц находок (`findMonth`): разделы `spendCompare` с фактом, без переводов людям и наличных, по
@@ -6027,7 +6041,18 @@ export function whereRows(state: MonthPlanState, ctx: MonthPlanCtx, n = 5): Wher
     .rows.filter((r) => !SPEND_LAST.includes(r.categoryId) && r.amount !== null && r.amount > 0)
     .sort((a, b) => b.amount! - a.amount! || a.categoryId.localeCompare(b.categoryId))
   const max = Math.max(0, ...rows.flatMap((r) => [r.amount!, r.usual ?? 0, r.plan ?? 0]))
-  return rows.slice(0, n).map((r) => ({ categoryId: r.categoryId, name: r.name, amount: r.amount!, usual: r.usual, plan: r.plan, share: max > 0 ? r.amount! / max : 0 }))
+  const at = (v: number | null) => (v === null || max <= 0 ? null : v / max)
+  return rows.slice(0, n).map((r) => ({
+    categoryId: r.categoryId,
+    name: r.name,
+    amount: r.amount!,
+    usual: r.usual,
+    plan: r.plan,
+    share: at(r.amount)!,
+    usualShare: at(r.usual),
+    planShare: r.plan ? at(r.plan) : null,
+    over: r.over,
+  }))
 }
 
 /** Итог прошлого месяца (Р-10, Р-20): советы «Сделать» — сделан / нет, разделы советов к «обычно», срок главной мечты. */

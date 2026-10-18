@@ -19,6 +19,7 @@ import {
   reviewOutcome,
   reviewScenario,
   reviewWork,
+  spendCompare,
   usualMonths,
   whereRows,
   type MonthPlanCtx,
@@ -265,7 +266,15 @@ describe('whereRows — «куда ушло»', () => {
     expect(rows[0]).toMatchObject({ amount: 450_000, usual: 380_000, share: 1 })
     for (const r of rows) expect(r.share).toBeLessThanOrEqual(1)
     expect(rows[1].share).toBeCloseTo(150_000 / 450_000)
-    expect(integers(rows.map(({ share: _s, ...r }) => r))).toEqual([])
+    // Риски «обычно» и плана — на той же шкале; выше обычного — тем же порогом, что точка «Месяца» (RZ-08).
+    expect(rows[0].usualShare).toBeCloseTo(380_000 / 450_000)
+    const compare = spendCompare(stateOf(doc), { ...ctxOf(doc), key: findMonth(ctxOf(doc)) }).rows
+    for (const r of rows) {
+      expect(r.over).toBe(compare.find((c) => c.categoryId === r.categoryId)!.over)
+      if (r.plan) expect(r.planShare).toBeCloseTo(r.plan / 450_000)
+      else expect(r.planShare).toBeNull()
+    }
+    expect(integers(rows.map(({ share: _s, usualShare: _u, planShare: _p, ...r }) => r))).toEqual([])
   })
 })
 

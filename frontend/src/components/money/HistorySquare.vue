@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { PhArrowDown, PhArrowUp } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
@@ -39,6 +39,7 @@ import Button from '@/components/ui/Button.vue'
 import CategoryChips from '@/components/CategoryChips.vue'
 import MarkSheet from '@/components/MarkSheet.vue'
 import MonthSummaryCard from '@/components/MonthSummaryCard.vue'
+import { useQueryValue } from '@/components/useQuerySheet'
 
 /**
  * Квадрат «История» (пивот 3, Р-35; макет `pivot-3/index.html`, «История»): чипы фильтра, итог
@@ -68,11 +69,27 @@ const earlier = () => months.value.push(addMonths(months.value[months.value.leng
 /* ------------------ Фильтр ------------------ */
 type Filter = 'all' | 'ops' | 'marks' | string
 const filter = ref<Filter>('all')
+/**
+ * Раздел по адресу `?cat=<id>` (бэклог «Разбор», Р-18, RZ-08: «Открыть» совета про продавца — история с чипом его раздела):
+ * чип выбран; выбор другого чипа или «Всё» снимает параметр.
+ */
+const { value: catQuery, close: closeCat } = useQueryValue('cat')
+watch(catQuery, (v) => {
+  if (v) filter.value = v
+}, { immediate: true })
+function pick(f: Filter) {
+  filter.value = f
+  if (catQuery.value) closeCat()
+}
 const spendCategories = computed(() => liveSpendCategories(financeStore.householdDoc.spendCategories))
 const categoryOf = (id: string | null) => spendCategories.value.find((c) => c.id === id) ?? null
-const chips = computed(() =>
-  historyCategories(ops.all, months.value).map((id) => ({ id, name: spendCategoryName(spendCategories.value, id) })),
-)
+// Раздел из адреса виден чипом, даже если своих покупок в нём за эти месяцы нет (партнёр, Р-5) — «Всё» рядом.
+const chips = computed(() => {
+  const ids = historyCategories(ops.all, months.value)
+  const f = filter.value
+  const extra = f !== 'all' && f !== 'ops' && f !== 'marks' && !ids.includes(f) ? [f] : []
+  return [...extra, ...ids].map((id) => ({ id, name: spendCategoryName(spendCategories.value, id) }))
+})
 const shown = computed(() =>
   feed.value
     .map((d) => ({
@@ -196,10 +213,10 @@ const markOpen = ref<Payment | null>(null)
 <template>
   <!-- Чипы фильтра -->
   <div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-0.5 [scrollbar-width:none]" role="group" aria-label="Фильтр">
-    <Chip :on="filter === 'all'" @click="filter = 'all'">Всё</Chip>
-    <Chip :on="filter === 'ops'" @click="filter = 'ops'">Операции</Chip>
-    <Chip :on="filter === 'marks'" @click="filter = 'marks'">Отметки</Chip>
-    <Chip v-for="c in chips" :key="c.id" :on="filter === c.id" class="shrink-0 whitespace-nowrap" @click="filter = c.id">{{ c.name }}</Chip>
+    <Chip :on="filter === 'all'" @click="pick('all')">Всё</Chip>
+    <Chip :on="filter === 'ops'" @click="pick('ops')">Операции</Chip>
+    <Chip :on="filter === 'marks'" @click="pick('marks')">Отметки</Chip>
+    <Chip v-for="c in chips" :key="c.id" :on="filter === c.id" class="shrink-0 whitespace-nowrap" :data-chip="c.id" @click="pick(c.id)">{{ c.name }}</Chip>
   </div>
 
   <!-- Итог — строкой, карточка «Наш месяц» с «Поделиться» — в листе -->

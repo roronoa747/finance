@@ -62,7 +62,7 @@ import SalaryRow from '@/components/SalaryRow.vue'
 import ExtraIncomeSheet from '@/components/capital/ExtraIncomeSheet.vue'
 import AffordSheet from '@/components/money/AffordSheet.vue'
 import AiReport from '@/components/ai/AiReport.vue'
-import { useQuerySheet } from '@/components/useQuerySheet'
+import { useQuerySheet, useQueryValue } from '@/components/useQuerySheet'
 import DueRow from '@/components/money/DueRow.vue'
 import MonthRing from '@/components/money/MonthRing.vue'
 import SalarySheet from '@/components/money/SalarySheet.vue'
@@ -376,7 +376,8 @@ const categories = computed(() => {
 })
 const spendShare = (fact: number | null, planned: number | null) =>
   fact === null || !planned || planned <= 0 ? 0 : Math.min(100, Math.round((fact / planned) * 100))
-const catFor = ref<string | null>(null)
+/** Лист раздела: нажатие строки или адрес `?cat=<id>` («Открыть» совета и строка «Куда ушло» отчёта, Р-18, RZ-08); закрыли — параметр снят. */
+const { value: catFor, close: closeCat } = useQueryValue('cat')
 const catRow = computed(() => compare.value.rows.find((r) => r.categoryId === catFor.value) ?? null)
 const catRk = computed(() => (catRow.value?.group ? rkShare(state.value, ctx.value, catRow.value.group) : null))
 /** План раздела по участникам — строки `monthPlan().spend`; у кого плана нет — 0. */
@@ -394,7 +395,7 @@ const moveAction = ref<Extract<ImageAction, { kind: 'move' }> | null>(null)
 /** Действие образа: мечта — сразу на её экран; желание — тост; «Перенести в мечту» — лист с цифрами. */
 function imageAct(a: ImageAction) {
   if (!canEdit.value) return
-  catFor.value = null
+  closeCat()
   if (a.kind === 'goal') {
     const tpl = templateById(a.template)
     const id = finance.addGoal({ name: a.name, need: a.need, monthly: a.monthly, hue: tpl?.hue ?? 'steel', template: a.template })
@@ -409,7 +410,7 @@ function imageAct(a: ImageAction) {
 }
 function editCatPlan(personId: PersonId, amount: number) {
   const id = catFor.value
-  catFor.value = null
+  closeCat()
   if (id) editSpend(personId, id, amount)
 }
 const spendEdit = ref<{ by: PersonId; categoryId: string; amount: string; fresh: boolean } | null>(null)
@@ -523,25 +524,28 @@ function addFund(kind: 'reserve' | 'cushion') {
       <span v-if="plan.short > 0" class="font-num text-[24px] font-bold leading-tight num text-warn">{{ money(plan.short) }}</span>
       <span v-else class="font-num text-[24px] font-bold leading-tight num text-ink" data-rest>{{ money(plan.rest) }}</span>
       <!--
-        Действие у своего предмета (правило 12): «Хватит?» и разбор месяца — у остатка; слот кольца не ловит нажатия —
-        кнопкам свои. Разбор — круглая кнопка той же высоты: слово рядом с «Хватит?» в круг 150 px не помещается.
+        Действие у своего предмета (правило 12): «Хватит?» — у остатка; слот кольца не ловит нажатия — кнопкам свои.
+        С разбором ИИ обе кнопки — строкой под кольцом (Р-22): «Хватит?» и «✦ Разбор» рядом в круг 150 px не помещаются.
       -->
-      <span class="pointer-events-auto relative z-10 mt-1 flex items-center gap-1.5">
+      <span v-if="!reviewShown" class="pointer-events-auto relative z-10 mt-1 flex items-center">
         <Button variant="secondary" size="sm" data-afford-open @click.stop="affordOpen = true">Хватит?</Button>
-        <Button
-          v-if="reviewShown"
-          variant="secondary"
-          size="sm"
-          class="relative w-8 px-0"
-          :aria-label="review ? (reviewDot ? 'Разбор месяца, новый' : 'Разбор месяца') : 'Разобрать месяц'"
-          data-review-open
-          @click.stop="openReview"
-        >
-          <PhSparkle :size="16" />
-          <span v-if="reviewDot" class="absolute -right-0.5 -top-0.5 size-2.5 rounded-full border-2 border-canvas bg-brand" data-review-dot aria-hidden="true" />
-        </Button>
       </span>
     </MonthRing>
+    <!-- Пилюля «✦ Разбор» (Р-3, Р-22, RZ-08): заметный вход в отчёт; точка — разбор новый на этом телефоне. -->
+    <div v-if="reviewShown" class="-mt-1 flex items-center justify-center gap-2">
+      <Button variant="secondary" size="sm" data-afford-open @click="affordOpen = true">Хватит?</Button>
+      <Button
+        variant="secondary"
+        size="sm"
+        class="relative gap-1.5"
+        :aria-label="review ? (reviewDot ? 'Разбор месяца, новый' : 'Разбор месяца') : 'Разобрать месяц'"
+        data-review-open
+        @click="openReview"
+      >
+        <PhSparkle :size="14" weight="fill" class="text-brand" aria-hidden="true" />Разбор
+        <span v-if="reviewDot" class="absolute -right-0.5 -top-0.5 size-2.5 rounded-full border-2 border-canvas bg-brand" data-review-dot aria-hidden="true" />
+      </Button>
+    </div>
 
     <!--
       Зарплаты: ✓ у суммы — пришла, валютная — «1 500 €» под суммой; строка нажимается — лист зарплаты (дата, «хватает
@@ -883,7 +887,7 @@ function addFund(kind: 'reserve' | 'cushion') {
     </Sheet>
 
     <!-- Раздел трат: факт, обычно, план, «до плана», справка РК; план каждого — «Изменить» (member) -->
-    <SpendCategorySheet :row="catRow" :rk="catRk" :plans="catPlans" :can-edit="canEdit" :image="catImage" @close="catFor = null" @edit="editCatPlan" @image="imageAct" />
+    <SpendCategorySheet :row="catRow" :rk="catRk" :plans="catPlans" :can-edit="canEdit" :image="catImage" @close="closeCat" @edit="editCatPlan" @image="imageAct" />
     <ImageMoveSheet :action="moveAction" @close="moveAction = null" />
 
     <!-- Сумма раздела трат -->
