@@ -135,7 +135,7 @@ function findingFacts(f: ReviewFinding, thisMonth: boolean): Draft[] {
 
 /** Факты сценария «если убрать — мечта раньше» (Р-5 (4)). */
 function scenarioFacts(s: ReviewScenario): Draft[] {
-  const who = `если убрать ${nm('name' in s.finding ? s.finding.name : '')}`
+  const who = `если убрать ${nm(s.finding.name)}`
   if ('days' in s) return [{ about: `${who} — мечта ${nm(s.goalName)} раньше на`, value: shiftSpan(s.days), raw: s.days }]
   const out: Draft[] = []
   if (s.saved > 0) out.push({ about: `${who} — процентов банку меньше на`, value: money(s.saved), raw: s.saved })
