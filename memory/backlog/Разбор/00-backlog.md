@@ -385,7 +385,8 @@ viewer/демо каждой фронт-задачи · Р-9, Р-23 → RZ-10, R
   n = 5)` (`share` 0…1 — геометрия), `ReviewOutcome` / `reviewOutcome(state, ctx, prev)`; `earlierDays`, `measureFor`
   экспортированы; `MonthPlanState.reviewFinds`.
 - `aiFacts.ts`: `buildReviewFacts(doc, input, reason)` → `ReviewFactsV3 {payload: {v: 3, facts ≤ 40, actions ≤ 9},
-  doById, openById, findings, byAction}`; `openPath(target)`; `factsLines` v2 и v3. Типы `types/finance.ts`: `AiReview`
+  doById, openById, findings, byFact, byAction}` (`byFact` — находка факта; X счётчика — по крупной цифре совета, без
+  неё — по кнопке; клинап Н-2); `openPath(target)`; `factsLines` v2 и v3. Типы `types/finance.ts`: `AiReview`
   (`v?: 2 | 3`, `where`, `advices: AiAdvice[]`, `work`), `AiAdvice` (`figure: {about, value} | null` — готовый факт,
   `action: {kind: 'do', candidate} | {kind: 'open', target}`), `OpenTarget`, `ReviewAction`, `ReviewPayloadV3`;
   `types/api.ts` `AiReviewAnswer` v3. Стор: `requestReview` — тело v3, совет на неприсланное действие отброшен, нет

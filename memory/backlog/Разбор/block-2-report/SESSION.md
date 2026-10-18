@@ -39,7 +39,9 @@
     ctx, prev)` → `ReviewOutcome {done: {title, done}[], sections: {categoryId, name, amount, usual: number | null}[],
     dream: {name, was, now: string | null} | null} | null` — только по v3 прошлого месяца; `sections` — только советы
     «Открыть» на раздел; мечта ищется по имени в `about` факта «главная мечта «…» — срок» (имя с «» или с именем участника
-    не совпадёт → `dream: null`); `reviewWork(state, ctx, findings, used)`; **`findMonth(ctx)`** — месяц находок и «Куда
+    не совпадёт → `dream: null`); `reviewWork(state, ctx, findings, used)` — `used` (находки X) `requestReview` берёт по
+    крупной цифре совета (`byFact` из `buildReviewFacts`), без цифры — по кнопке (`byAction`; клинап Блока 1, Н-2);
+    **`findMonth(ctx)`** — месяц находок и «Куда
     ушло»: текущий, если выписка у кого-то дошла до 7-го, иначе прошлый (разбор 1-го — о прошлом месяце; подпись карточки
     «Куда ушло» должна называть месяц).
   - Временно в `components/ai/AiReviewSheet.vue` (комментарии `RZ-05 временно, снимает RZ-07`): `v3`, `madeOf`, `v3Rows`,

@@ -77,13 +77,15 @@ export type PlanInput = { state: MonthPlanState; ctx: MonthPlanCtx }
 
 /**
  * Факты и действия для ручки и, локально, что стоит за id ответа: кандидат «Сделать» (`a1` → `StepCandidate` для
- * `DoSheet`), экран «Открыть» (`OpenTarget`), находка действия — для счётчика (Р-19; у «Сделать» — null).
+ * `DoSheet`), экран «Открыть» (`OpenTarget`); для счётчика (Р-19) — находка факта (`byFact`: факты находки и её
+ * сценария; у фактов v2 — нет) и находка действия (`byAction`; у «Сделать» — null).
  */
 export type ReviewFactsV3 = {
   payload: ReviewPayloadV3
   doById: Map<string, StepCandidate>
   openById: Map<string, OpenTarget>
   findings: ReviewFinding[]
+  byFact: Map<string, ReviewFinding>
   byAction: Map<string, ReviewFinding | null>
 }
 
@@ -257,16 +259,21 @@ export function buildReviewFacts(doc: SyncDoc, input: PlanInput, reason?: Review
   const thisMonth = findMonth(ctx) === ctx.key
   const budget = REVIEW_FACTS_MAX - Math.min(base.length, REVIEW_BASE_MIN)
   const found: Draft[] = []
+  const owners: ReviewFinding[] = [] // находка факта `found[i]` — тем же порядком
   const shown: ReviewFinding[] = []
   for (const f of findings) {
     const own = findingFacts(f, thisMonth)
     if (found.length + own.length > budget) break
     found.push(...own)
+    owners.push(...own.map(() => f))
     shown.push(f)
   }
   const scenarioOwn = scenario && shown.includes(scenario.finding) ? scenarioFacts(scenario) : []
   const withScenario = scenarioOwn.length > 0 && found.length + scenarioOwn.length <= budget
-  if (withScenario) found.push(...scenarioOwn)
+  if (withScenario) {
+    found.push(...scenarioOwn)
+    owners.push(...scenarioOwn.map(() => scenario!.finding))
+  }
 
   const facts: ReviewFact[] = [...found, ...base].slice(0, REVIEW_FACTS_MAX).map((d, i) => ({
     id: `f${i + 1}`,
@@ -274,6 +281,7 @@ export function buildReviewFacts(doc: SyncDoc, input: PlanInput, reason?: Review
     value: clip(d.value, REVIEW_TEXT_MAX),
     raw: d.raw,
   }))
+  const byFact = new Map(owners.map((f, i) => [`f${i + 1}`, f]))
 
   // Действия: «Сделать» — кандидаты кода (те же слова, что у v2); «Открыть» — предметы находок и сценария.
   const categories = liveSpendCategories(doc.spendCategories)
@@ -317,7 +325,7 @@ export function buildReviewFacts(doc: SyncDoc, input: PlanInput, reason?: Review
     byAction.set(id, o.finding)
   }
 
-  return { payload: { v: 3, facts, actions }, doById, openById, findings, byAction }
+  return { payload: { v: 3, facts, actions }, doById, openById, findings, byFact, byAction }
 }
 
 /**

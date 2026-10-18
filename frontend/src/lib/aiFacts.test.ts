@@ -365,11 +365,30 @@ describe('buildReviewFacts v3 — находки и действия (RZ-03)', (
       spendTotals: [...family().spendTotals!.filter((t) => !(t.period === KEY && t.categoryId === 'sc_cafe')), { id: `a:month:${KEY}:sc_cafe`, by: 'a', kind: 'month', period: KEY, categoryId: 'sc_cafe', amount: 150_000, ops: 9, updatedAt: T0 }],
       reviewFinds: [...FINDS, rf('a', KEY, 'top', 'sc_cafe', { name: '', categoryId: 'sc_cafe', count: 9, amount: 150_000, top: [{ name: 'Restoran 7', amount: 40_000 }] })],
     })
-    const { payload, openById } = build(doc)
+    const { payload, openById, byFact } = build(doc)
     expect(find(payload.facts, 'траты на «Кафе и рестораны» выше обычного на')).toMatchObject({ raw: 60_000 })
     expect(find(payload.facts, 'что раздуло «Кафе и рестораны»: «Restoran 7»')).toMatchObject({ raw: 40_000, value: money(40_000) })
     const cat = payload.actions.find((a) => a.about === 'открыть траты «Кафе и рестораны»')!
     expect(openById.get(cat.id)).toEqual({ kind: 'cat', id: 'sc_cafe', name: 'Кафе и рестораны' })
+    // Оба факта «раздуло» стоят за своей находкой (ревью frontend Н-2).
+    for (const about of ['траты на «Кафе и рестораны» выше обычного на', 'что раздуло «Кафе и рестораны»: «Restoran 7»']) {
+      expect(byFact.get(find(payload.facts, about)!.id)).toMatchObject({ kind: 'grew', categoryId: 'sc_cafe' })
+    }
+  })
+
+  it('byFact: факт находки → её находка, факты сценария → находка сценария, у фактов v2 — нет (ревью frontend Н-2)', () => {
+    const { payload, findings, byFact } = build(withFinds(), 'month')
+    const owner = (about: string | RegExp) => byFact.get(find(payload.facts, about)!.id)
+    const of = (kind: string) => findings.find((f) => f.kind === kind)
+    expect(owner('частые траты у «APTEKA PLUS» — в месяц')).toBe(of('leak'))
+    expect(owner('частые траты у «APTEKA PLUS» — за год')).toBe(of('leak'))
+    expect(owner('новое регулярное списание «FITNESS LAB 24», которого нет в плане — за год')).toBe(of('recurring'))
+    expect(owner('подписка «Кинопоиск» стала дороже: было')).toBe(of('pricier'))
+    expect(owner('подписка «Кинопоиск» стала дороже: стало')).toBe(of('pricier'))
+    expect(owner('списание «SPORT CLUB» прошло дважды одной суммой')).toBe(of('double'))
+    expect(owner(/^если убрать «FITNESS LAB 24» — мечта «.+» раньше на$/)).toBe(of('recurring'))
+    expect(owner('доход месяца')).toBeUndefined()
+    expect(owner(/^главная мечта/)).toBeUndefined()
   })
 
   it('действия: «Сделать» первыми, «Открыть» — по одному на предмет, без дублей, ≤ 9, about без цифр; byAction — находка', () => {

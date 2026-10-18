@@ -136,7 +136,7 @@ export const useAiStore = defineStore('ai', () => {
     if (inflight) return inflight
     inflight = (async () => {
       const input = finance.planInput(key)
-      const { payload, doById, openById, findings, byAction } = buildReviewFacts(finance.householdDoc, input, reason)
+      const { payload, doById, openById, findings, byFact, byAction } = buildReviewFacts(finance.householdDoc, input, reason)
       // Фактов или кнопок нет (пустая семья; совета без кнопки не бывает, Р-6) — ручка ответит 400: не спрашиваем.
       if (!payload.facts.length || !payload.actions.length) return 'ai_failed'
       try {
@@ -155,7 +155,8 @@ export const useAiStore = defineStore('ai', () => {
             figure: f ? { about: f.about, value: f.value } : null,
             action: candidate ? { kind: 'do', candidate } : { kind: 'open', target: target! },
           })
-          const finding = byAction.get(a.action)
+          // В X — находка, о которой совет: сначала его крупная цифра, без неё — кнопка (Р-19; у «Сделать» — null).
+          const finding = (a.figure ? byFact.get(a.figure) : undefined) ?? byAction.get(a.action)
           if (finding) used.push(finding)
         }
         if (!advices.length) return 'ai_failed'
