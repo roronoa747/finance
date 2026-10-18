@@ -367,6 +367,20 @@ func TestReviewFilled(t *testing.T) {
 	}
 }
 
+// The text's length is counted before the values are put in (ревью backend Н-3): a reference is one word of the
+// model, and 160 runes are the instruction's «up to 20 words» — a long value of an image line must not make it a defect.
+func TestReviewTextLengthBeforeFill(t *testing.T) {
+	text := strings.Repeat("слово ", 25) + "{f6}." // 155 runes; with the value of f6 put in — over 200
+	f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{answer("Хорошо.", adv{"Такси копит", text, "f6", "a4"})}}, true)
+	got := decodeReview(t, f.post(t, f.member, reviewBody))
+	if len(f.claude.sent) != 1 {
+		t.Fatalf("calls = %d, want 1 (no defect)", len(f.claude.sent))
+	}
+	if want := strings.Repeat("слово ", 25) + "Такси за 4 года 10 месяцев — мечта «iPhone 17» без долга."; got.Advices[0].Text != want {
+		t.Errorf("text = %q", got.Advices[0].Text)
+	}
+}
+
 func TestReviewModelErrorFailsWithoutSpend(t *testing.T) {
 	f := newReviewFixture(t, &fakeClaudeQueue{status: 500}, true)
 	rec := f.post(t, f.member, reviewBody)

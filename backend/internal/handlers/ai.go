@@ -405,6 +405,8 @@ func (a ReviewAnswer) defects(q reviewRequest) []string {
 		if len(strings.Fields(q.fill(x.Title))) > maxAdviceWords {
 			add("заголовок до четырёх слов вместе с подставленным значением и названием — лучше без {fN} в заголовке")
 		}
+		// The text — before the values are put in, unlike the title: a reference is one word of the model, and 160
+		// runes are the instruction's «up to 20 words»; a value of an image line is 60+ runes on its own.
 		if utf8.RuneCountInString(x.Text) > maxAdviceRunes {
 			add("совет — одно короткое предложение")
 		}
