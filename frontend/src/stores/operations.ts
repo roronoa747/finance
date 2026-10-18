@@ -454,6 +454,24 @@ export const useOperationsStore = defineStore('operations', () => {
     })
   }
 
+  /**
+   * Месяцы своих операций в окне находок, по которым у участника нет ни одной записи, — досчитываются из всех своих
+   * операций (хотфикс RZ-HF3): итоги находок пишет только пересчёт итогов (загрузка, отметки, правки), стартовый `pull`
+   * — нет, а выписки владельца загружены до Блока 1 → у семьи ни утечек, ни верхушек, ни регулярных за закрытые месяцы
+   * (наблюдатели отметок берут лишь этот и прошлый месяц). Зовёт движок синка после подтянутого документа — правила,
+   * обязательства и разделы уже свежие; до `pull` операций на новом телефоне — нечего считать. Месяц с записью (хоть
+   * нулевой) считан — не трогаем; месяц без находок записи не получает и проверяется снова (пусто — дёшево).
+   */
+  function settleFinds() {
+    if (auth.isViewer || demo.value || !all.value.length) return
+    const by = me()
+    const months = [...new Set(all.value.map((o) => o.date.slice(0, 7)))]
+    const from = findKeepFrom(months)!
+    const have = new Set((finance.householdDoc.reviewFinds ?? []).filter((f) => f.by === by).map((f) => f.period))
+    const missing = months.filter((m) => m >= from && !have.has(m))
+    if (missing.length) writeReviewFinds(missing)
+  }
+
   /** Снятые с поездки операции этого телефона (личный документ) — по цели. */
   const tripExcludedOf = (goalId: string) => new Set(finance.tripExcluded.filter((x) => x.goalId === goalId).map((x) => x.id))
 
@@ -818,6 +836,7 @@ export const useOperationsStore = defineStore('operations', () => {
     seedDemoUploads,
     seedDemoOperations,
     writeTripTotals,
+    settleFinds,
     tripLists,
     clear,
   }

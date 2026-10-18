@@ -1261,4 +1261,32 @@ describe('stores/operations — итоги находок (RZ-01)', () => {
     await nextTick()
     expect(recurring('a:2026-09:recurring:fitness lab')).toMatchObject({ count: 0, amount: 0 })
   })
+
+  // Хотфикс RZ-HF3 (телефон владельца 2026-10-18): выписки загружены до Блока 1 — операции на телефоне, в документе
+  // итоги разделов, находок нет; стартовый `pull` итоги не пишет, наблюдатели — только этот и прошлый месяц.
+  it('RZ-HF3: находок за месяцы выписки в документе нет (или только свежий месяц) → settleFinds дописывает недостающие; второй раз — без записи', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const finance = useFinanceStore()
+    const { client } = fakeServer()
+    store.setDraft(draftOf(statement([...shop(7, '2026-06'), ...shop(7, '2026-07'), ...shop(7, '2026-08'), ...shop(8, '2026-09')], '2026-06-01', '2026-09-25')))
+    await store.send(client)
+    const snapshot = () => JSON.stringify(finds().map((f) => [f.id, f.count, f.amount]).sort())
+    const written = snapshot()
+    expect(finds().filter((f) => f.kind === 'leak').map((f) => f.period)).toEqual(['2026-06', '2026-07', '2026-08', '2026-09'])
+
+    // Документ как у владельца: старый код находок не писал.
+    finance.setHouseholdDoc({ ...finance.householdDoc, reviewFinds: [] }, 2)
+    store.settleFinds()
+    expect(snapshot()).toBe(written)
+
+    const mutate = vi.spyOn(finance, 'mutateHouseholdDoc')
+    store.settleFinds()
+    expect(mutate.mock.calls.length).toBe(0)
+
+    // Наблюдатель отметок уже записал сентябрь — дописываются только июнь…август.
+    finance.setHouseholdDoc({ ...finance.householdDoc, reviewFinds: finance.householdDoc.reviewFinds!.filter((f) => f.period === '2026-09') }, 3)
+    store.settleFinds()
+    expect(snapshot()).toBe(written)
+  })
 })
