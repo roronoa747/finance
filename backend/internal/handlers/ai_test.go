@@ -94,7 +94,6 @@ var cleanAnswer = answer("На «Кафе» ушло {f2} — мечта ото�
 	adv{"Аптека у дома", "Частые траты у «Apteka 24» за год — {f7}.", "f7", "a2"},
 )
 
-
 type reviewFixture struct {
 	router  *chi.Mux
 	aiRepo  *repository.MockAIRepo
@@ -403,7 +402,9 @@ func reviewWith(facts, actions string) string {
 func TestReviewBody(t *testing.T) {
 	f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{cleanAnswer}}, true)
 	fact := func(id string) string { return `{"id":"` + id + `","about":"доход","value":"1 ₸","raw":1}` }
-	do := func(id string) string { return `{"id":"` + id + `","kind":"do","about":"из «Кафе»","value":"1 ₸","effect":""}` }
+	do := func(id string) string {
+		return `{"id":"` + id + `","kind":"do","about":"из «Кафе»","value":"1 ₸","effect":""}`
+	}
 	open := `{"id":"a1","kind":"open","about":"открыть траты «Кафе»","value":"","effect":""}`
 	f1 := fact("f1")
 	many := make([]string, 41)
