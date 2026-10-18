@@ -302,6 +302,8 @@ func TestReviewDefectsRetry(t *testing.T) {
 		{"long text", answer("Хорошо.", adv{"Совет", strings.Repeat("слово ", 30), nil, "a1"}), "совет — одно короткое предложение"},
 		{"action not sent", answer("Хорошо.", adv{"Совет", "Текст.", nil, "a9"}), "действие a9 — такого нет"},
 		{"figure not sent", answer("Хорошо.", adv{"Совет", "Текст.", "f99", "a1"}), "figure f99 — такого факта нет"},
+		// Критик Блока 1: слова заголовка — как их увидят, после подстановки: «Аптека за год 144 000 ₸» — шесть.
+		{"title long after fill", answer("Хорошо.", adv{"Аптека за год {f7}", "Текст.", "f7", "a2"}), "заголовок до четырёх слов"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -610,7 +612,6 @@ func TestLiveReviewV3(t *testing.T) {
 	u := f.usage()
 	t.Logf("total: %d/%d ok, %d requests, %d in, %d out, %d µ$", ok, runs, u.Requests, u.InputTokens, u.OutputTokens, u.CostMicros)
 }
-
 
 // sellersCategories are the starting sections (DEFAULT_SPEND_CATEGORIES, dictionary.ts) as the phone sends them.
 const sellersCategories = `[{"id":"sc_food","name":"Продукты"},{"id":"sc_cafe","name":"Кафе и рестораны"},{"id":"sc_transport","name":"Транспорт"},{"id":"sc_telecom","name":"Связь и интернет"},{"id":"sc_subscriptions","name":"Подписки"},{"id":"sc_health","name":"Здоровье и аптеки"},{"id":"sc_home","name":"Дом и быт"},{"id":"sc_shopping","name":"Одежда и покупки"},{"id":"sc_fun","name":"Развлечения"},{"id":"sc_people","name":"Переводы людям"},{"id":"sc_credit","name":"Кредиты и рассрочки"},{"id":"sc_utilities","name":"Коммуналка"},{"id":"sc_education","name":"Образование"},{"id":"sc_travel","name":"Путешествия"},{"id":"sc_cash","name":"Наличные"},{"id":"sc_fees","name":"Комиссии"},{"id":"sc_other","name":"Прочее"},{"id":"sc_rent","name":"Аренда"}]`

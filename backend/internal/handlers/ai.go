@@ -401,7 +401,8 @@ func (a ReviewAnswer) defects(q reviewRequest) []string {
 		if x.Figure != nil && !facts[*x.Figure] {
 			add("figure " + *x.Figure + " — такого факта нет")
 		}
-		if len(strings.Fields(x.Title)) > maxAdviceWords {
+		// Words as the family sees them: «Аптека {f7}» is «Аптека 144 000 ₸» — four, not two (Р-12).
+		if len(strings.Fields(q.fill(x.Title))) > maxAdviceWords {
 			add("заголовок до четырёх слов")
 		}
 		if utf8.RuneCountInString(x.Text) > maxAdviceRunes {
@@ -428,18 +429,23 @@ func (a ReviewAnswer) defects(q reviewRequest) []string {
 	return bad
 }
 
+// fill puts each fact's value in place of its reference "{fN}" (a reference to no fact — empty; defects names it).
+func (q reviewRequest) fill(t string) string {
+	return reviewRef.ReplaceAllStringFunc(t, func(m string) string {
+		for _, f := range q.Facts {
+			if f.ID == m[1:len(m)-1] {
+				return f.Value
+			}
+		}
+		return ""
+	})
+}
+
 // filled puts every fact's value in place of its reference in where, titles and texts; figure and action stay ids.
 func (a ReviewAnswer) filled(q reviewRequest) ReviewAnswer {
-	values := map[string]string{}
-	for _, f := range q.Facts {
-		values[f.ID] = f.Value
-	}
-	put := func(t string) string {
-		return reviewRef.ReplaceAllStringFunc(t, func(m string) string { return values[m[1:len(m)-1]] })
-	}
-	out := ReviewAnswer{Where: put(a.Where), Advices: make([]ReviewAdvice, len(a.Advices))}
+	out := ReviewAnswer{Where: q.fill(a.Where), Advices: make([]ReviewAdvice, len(a.Advices))}
 	for i, x := range a.Advices {
-		out.Advices[i] = ReviewAdvice{Title: put(x.Title), Text: put(x.Text), Figure: x.Figure, Action: x.Action}
+		out.Advices[i] = ReviewAdvice{Title: q.fill(x.Title), Text: q.fill(x.Text), Figure: x.Figure, Action: x.Action}
 	}
 	return out
 }
