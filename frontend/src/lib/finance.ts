@@ -5949,7 +5949,8 @@ export function reviewFindings(state: MonthPlanState, ctx: MonthPlanCtx): Review
   }
   for (const f of ofMonth('pricier')) {
     const o = obligations.find((x) => x.id === f.targetId)
-    if (!o || f.was === undefined || f.amount <= f.was) continue
+    // Оценка («сумма плавает») — не цена: и запись телефона, который ещё не знает, что платёж стал оценкой.
+    if (!o || o.estimate || f.was === undefined || f.amount <= f.was) continue
     dues.push({ kind: 'pricier', key: findKey(f), name: o.name, obligationId: o.id, amount: f.amount, was: f.was, yearly: (f.amount - f.was) * (o.every === 'year' ? 1 : 12) })
   }
   for (const f of ofMonth('double')) {

@@ -150,6 +150,10 @@ describe('reviewFindings — находки семьи', () => {
     const pricier = of(list, 'pricier')
     expect(pricier.find((p) => p.obligationId === 'ins')).toMatchObject({ name: 'Страховка', amount: 66_000, was: 60_000, yearly: 6_000 })
     expect(pricier.find((p) => p.obligationId === 'kino')).toMatchObject({ name: 'Кинопоиск', amount: 2_990, was: 2_490, yearly: 6_000 })
+    // Платёж стал оценкой, а телефон записал подорожание раньше (несинхронный партнёр) — у семьи его нет.
+    const estimated = family()
+    estimated.obligations = estimated.obligations!.map((o) => (o.id === 'kino' ? { ...o, estimate: true } : o))
+    expect(of(findingsOf(estimated), 'pricier').map((p) => p.obligationId)).toEqual(['ins'])
     expect(of(list, 'double')).toEqual([{ kind: 'double', key: 'sport club', name: 'SPORT CLUB', categoryId: 'sc_fun', amount: 12_000, count: 2, yearly: 144_000 }])
   })
 

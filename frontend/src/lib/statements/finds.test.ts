@@ -136,6 +136,13 @@ describe('dueFinds — новые регулярные, подорожания, 
     expect(dueFinds([kino(-2_590)], 'a', SEP, ctx)).toEqual([])
   })
 
+  it('оценка («сумма плавает») 20 000, пришло 28 000 — не подорожание; та же сумма без оценки — подорожание', () => {
+    const bill = op('ALSECO', -28_000, 'sc_utilities', day(SEP, 15))
+    const rules = [payRule('ALSECO', 'u1')]
+    expect(dueFinds([bill], 'a', SEP, { ...NONE, obligations: [obligation('u1', 'Коммуналка', 20_000, { estimate: true })], rules })).toEqual([])
+    expect(dueFinds([bill], 'a', SEP, { ...NONE, obligations: [obligation('u1', 'Коммуналка', 20_000)], rules }).map((f) => [f.kind, f.amount, f.was])).toEqual([['pricier', 28_000, 20_000]])
+  })
+
   it('два списания 12 000 одному продавцу через день — двойное; через 5 дней — нет; 800 ₸ — нет', () => {
     const at = (d: number, amount = -12_000) => op('SPORT CLUB', amount, 'sc_fun', day(SEP, d))
     expect(dueFinds([at(3), at(4)], 'a', SEP, NONE, 'T')).toEqual([

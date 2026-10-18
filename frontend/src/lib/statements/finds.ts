@@ -164,14 +164,15 @@ export function dueFinds(ops: Operation[], by: PersonId, period: string, ctx: Du
     out.push(find(by, period, 'recurring', key, { name: clipName(last.merchant), categoryId: last.categoryId, count: c.count, amount: c.amount }, at))
   }
 
-  // Подорожания: строка месяца по правилу платежа обязательства дороже плана месяца.
+  // Подорожания: строка месяца по правилу платежа обязательства дороже плана месяца. У оценки («сумма плавает»,
+  // коммуналка) план — не цена: зимний счёт выше оценки — не подорожание.
   const pricier = new Map<string, ReviewFind>()
   for (const op of window) {
     if (!inMonth(op, period)) continue
     const p = paymentOf(op, ctx.rules)
     if (p?.kind !== 'obligation') continue
     const o = ctx.obligations.find((x) => x.id === p.targetId && !x.deletedAt)
-    if (!o) continue
+    if (!o || o.estimate) continue
     const was = amountAt(o, period, ctx.book)
     const paid = -op.amount
     if (was <= 0 || paid * 100 < was * (100 + PRICIER_SHARE) || paid - was < PRICIER_MIN) continue
