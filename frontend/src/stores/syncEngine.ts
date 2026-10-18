@@ -99,6 +99,8 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
     linkPhotos()
     if (!pulled) return
     finance.ensureTermSnap()
+    // Находки месяцев без записи — до разбора (RZ-HF3): выписки, загруженные до Блока 1, иначе их не получат никогда.
+    useOperationsStore().settleFinds()
     void useAiStore().autoReview()
   }
 

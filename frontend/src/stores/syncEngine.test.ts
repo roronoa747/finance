@@ -122,6 +122,21 @@ describe('startSyncEngine — правки партнёра без собств�
     await vi.waitFor(() => expect(auto).toHaveBeenCalledTimes(1))
   })
 
+  it('RZ-HF3: после подтянутого документа — находки месяцев без записи, и только потом разбор сам; без документа — нет', async () => {
+    const order: string[] = []
+    const settle = vi.spyOn(useOperationsStore(), 'settleFinds').mockImplementation(() => void order.push('finds'))
+    const auto = vi.spyOn(useAiStore(), 'autoReview').mockImplementation(async () => (order.push('review'), null))
+    const { finance, pull, win } = setup('real-token')
+    await vi.waitFor(() => expect(pull).toHaveBeenCalledTimes(1))
+    await Promise.resolve()
+    expect(settle).not.toHaveBeenCalled()
+    pull.mockResolvedValue({ rev: 2, data: {} } as never)
+    finance.status = 'idle'
+    win.dispatchEvent(new Event('focus'))
+    await vi.waitFor(() => expect(auto).toHaveBeenCalledTimes(1))
+    expect(order).toEqual(['finds', 'review'])
+  })
+
   it('правка без сети: offline → online — полный круг со слиянием, а не затирание', () => {
     const { finance, pull, sync, win } = setup('real-token')
     sync.mockClear()
