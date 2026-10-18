@@ -33,8 +33,8 @@ export function demoReview(doc: SyncDoc, input: PlanInput): Omit<AiReview, 'id' 
   const key = input.ctx.key
   const planShifts = (doc.planShifts ?? []).filter((s) => s.period !== key)
   const before = { ...doc, planShifts }
-  const { payload, byId } = buildReviewFacts(before, { state: { ...input.state, planShifts }, ctx: input.ctx }, 'month')
-  const candidate = [...byId.values()].find((c) => c.kind === 'cushion') ?? null
+  const { payload, doById } = buildReviewFacts(before, { state: { ...input.state, planShifts }, ctx: input.ctx }, 'month')
+  const candidate = [...doById.values()].find((c) => c.kind === 'cushion') ?? null
   return { v: 2, reason: 'month', good: DEMO_REVIEW.good, risk: DEMO_REVIEW.risk, steps: [], step: { text: DEMO_REVIEW.step, candidate }, sent: payload }
 }
 

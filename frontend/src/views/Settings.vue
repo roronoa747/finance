@@ -30,7 +30,7 @@ const ai = useAiStore()
 // Подсказка: «Claude от Anthropic получает цифры месяца и названия статей без ваших имён, …, фото чека и фразу о
 // мечте. Разбор приходит сам — 1-го и после зарплаты. На ваших данных не обучается.» — «когда» отдельной фразой.
 const lower = (s: string) => s[0].toLowerCase() + s.slice(1)
-const sends = AI_SENDS.map((s) => lower(s).replace(/^фраза /, 'фразу '))
+const sends = AI_SENDS.map((s) => lower(s).replace(/^фраза /, 'фразу ').replace(/^продавцы /, 'продавцов '))
 const aiHint = `${AI_TO} получает ${sends.slice(0, -1).join(', ')} и ${sends.at(-1)}. ${AI_AUTO}. ${AI_NO_TRAINING}.`
 
 const me = computed(() => authStore.slot)

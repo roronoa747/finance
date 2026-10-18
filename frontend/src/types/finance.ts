@@ -47,7 +47,7 @@ export type AiReview = Tracked & {
   good: string
   risk: string
   steps: AiReviewStep[]
-  sent: MonthSummaryAI | ReviewPayload | null
+  sent: MonthSummaryAI | ReviewPayload | ReviewPayloadV3 | null
   v?: 2 | 3
   reason?: ReviewReason
   reasonKey?: string
@@ -86,6 +86,15 @@ export type ReviewCandidate = { id: string; kind: 'move' | 'prepay' | 'cushion';
 
 /** Тело разбора v2 без повода: всё, что уходит в модель, и «что ушло» в листе (Р-9). */
 export type ReviewPayload = { facts: ReviewFact[]; candidates: ReviewCandidate[] }
+
+/**
+ * Действие разбора v3 (бэклог «Разбор», Р-6, Р-16): `do` — кандидат «Сделать» (`about` / `value` / `effect` как у v2),
+ * `open` — экран предмета находки (`about` без цифр, `value` и `effect` пустые).
+ */
+export type ReviewAction = { id: string; kind: 'do' | 'open'; about: string; value: string; effect: string }
+
+/** Тело разбора v3 без повода (Р-16): всё, что уходит в модель, и «что ушло». */
+export type ReviewPayloadV3 = { v: 3; facts: ReviewFact[]; actions: ReviewAction[] }
 
 /**
  * Снимок плана месяца для метки «мечта сдвинулась» (бэклог «ИИ-польза», Р-6, AU-04): первый участник, открывший месяц,

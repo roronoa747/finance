@@ -271,7 +271,7 @@ describe('autoReview — согласие v1', () => {
     ai.answer(true)
     await run
     expect(aiReview).toHaveBeenCalledTimes(1)
-    expect(finance.privateDoc.aiConsent).toMatchObject({ on: true, v: 2 })
+    expect(finance.privateDoc.aiConsent).toMatchObject({ on: true, v: 3 })
   })
 
   it('личный документ не подтянулся — лист не показан, повод не «спрошен»: на следующем круге лист всплывает', async () => {

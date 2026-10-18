@@ -46,7 +46,7 @@ describe('e2e / ИИ-польза Блок 3 — разбор v2 приходи�
     at('2026-10-01T04:00:00Z')
     server = fakeServer(familyDoc())
     pv = fakePrivate()
-    for (const slot of ['a', 'b']) pv.docs.set(`u-${slot}`, { rev: 1, data: { aiConsent: { on: true, at: T0, v: 2 } } })
+    for (const slot of ['a', 'b']) pv.docs.set(`u-${slot}`, { rev: 1, data: { aiConsent: { on: true, at: T0, v: 3 } } })
     aiReview = vi.fn(async (_body: unknown) => ANSWER)
   })
 

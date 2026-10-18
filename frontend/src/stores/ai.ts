@@ -133,7 +133,11 @@ export const useAiStore = defineStore('ai', () => {
   function requestReview(key: string, reason: ReviewReason, client: ApiClient): Promise<AiReview | string> {
     if (inflight) return inflight
     inflight = (async () => {
-      const { payload, byId } = buildReviewFacts(finance.householdDoc, finance.planInput(key), reason)
+      const { payload: v3, doById } = buildReviewFacts(finance.householdDoc, finance.planInput(key), reason)
+      // RZ-03 временно, снимает RZ-05: ручка ещё v2 — тело v2 из фактов v3, кандидаты — действия «Сделать».
+      const dos = v3.actions.filter((a) => a.kind === 'do')
+      const byId = new Map(dos.map((a, i) => [`c${i + 1}`, doById.get(a.id)!]))
+      const payload = { facts: v3.facts, candidates: dos.map((a, i) => ({ id: `c${i + 1}`, kind: doById.get(a.id)!.kind, about: a.about, value: a.value, effect: a.effect })) }
       // Фактов нет (пустая семья) — ручка ответит 400: не спрашиваем.
       if (!payload.facts.length) return 'ai_failed'
       try {
@@ -326,19 +330,22 @@ export const useAiStore = defineStore('ai', () => {
 /** Лимит месяца кончился: «ИИ вернётся 1 ноября» — с месяцем, «1-го» заставляло думать, какого (владелец, `/ux` Блока 2). */
 export const aiLimitText = () => `ИИ вернётся 1 ${MONTHS_GEN[parseMonthKey(addMonths(monthKey(), 1)).month]}`
 
-/** Версия согласия (бэклог «ИИ-польза», Р-12): список ниже вырос — «да» прежней версии спрашивается ещё раз. */
-export const AI_CONSENT_V = 2
+/**
+ * Версия согласия (бэклог «ИИ-польза», Р-12; v3 — «Разбор», Р-21): список ниже изменился — «да» прежней версии
+ * спрашивается ещё раз один раз.
+ */
+export const AI_CONSENT_V = 3
 
 /**
- * Кто получает и что уходит (Р-9; v2 — бэклог «ИИ-польза», Р-12) — одни слова для листа согласия и подсказки в
- * настройках. `AI_AUTO` — не «что», а «когда» (разбор без нажатия): в листе — строкой под списком (Х-16), в подсказке
- * настроек — отдельной фразой.
+ * Кто получает и что уходит (Р-9; v2 — бэклог «ИИ-польза», Р-12; v3 — «Разбор», Р-7, Р-21: продавцы и суммы находок) —
+ * одни слова для листа согласия и подсказки в настройках. `AI_AUTO` — не «что», а «когда» (разбор без нажатия): в листе
+ * — строкой под списком (Х-16), в подсказке настроек — отдельной фразой. Слова v3 — черновик, финал `/ux` Блока 2.
  */
 export const AI_TO = 'Claude от Anthropic'
 export const AI_AUTO = 'Разбор приходит сам — 1-го и после зарплаты'
 export const AI_SENDS = [
   'Цифры месяца и названия статей без ваших имён',
-  'Названия продавцов и подписок',
+  'Продавцы и суммы частых трат и списаний',
   'Скриншот товара',
   'Фото чека',
   'Фраза о мечте',

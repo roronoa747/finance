@@ -51,7 +51,7 @@ describe('e2e / приёмка ИИ-польза Блок 3 — 1-е число 
     at('2026-10-01T04:00:00Z')
     server = fakeServer(familyDoc())
     pv = fakePrivate()
-    pv.docs.set('u-a', { rev: 1, data: { aiConsent: { on: true, at: T0, v: 2 } } })
+    pv.docs.set('u-a', { rev: 1, data: { aiConsent: { on: true, at: T0, v: 3 } } })
     aiReview = vi.fn(async (_body: unknown) => ANSWER)
   })
 

@@ -8,7 +8,7 @@ import { RouterLink } from 'vue-router'
  * ревью магазинов.
  */
 const CONTACT = 'ilyas.muratbek.99@gmail.com'
-const UPDATED = '17 октября 2026'
+const UPDATED = '18 октября 2026'
 </script>
 
 <template>
@@ -59,7 +59,8 @@ const UPDATED = '17 октября 2026'
       <h2 class="type-h3 text-ink">Кому передаём</h2>
       <p class="mt-1.5">
         Google — только для входа. ИИ-помощник (Claude, Anthropic) — только если его включили семье и вы дали согласие:
-        уходят цифры месяца и названия статей и целей без ваших имён и заметок, названия продавцов и подписок без сумм,
+        уходят цифры месяца и названия статей и целей без ваших имён и заметок, названия продавцов, суммы и число
+        повторяющихся трат и списаний (без дат, без людей),
         скриншот товара, фото чека и фраза о мечте — как вы её написали. Разбор месяца приходит сам, без нажатия:
         1-го числа и после отметки зарплаты. На ваших данных не обучается, запросы хранит до 30 дней и удаляет. Для
         рекламы и третьим лицам — ничего.
@@ -88,13 +89,13 @@ const UPDATED = '17 октября 2026'
         notification subscriptions and first-party usage events. Bank statement files never leave your phone. Data is hosted
         on Vercel and Supabase in Seoul (South Korea). We share nothing for advertising; Google is used for sign-in only.
         The AI helper (Claude by Anthropic) runs only if it is enabled for your household and you consent: it receives the
-        month's figures and the titles of budget items and goals without your names or notes, merchant and subscription
-        names without amounts, product screenshots, receipt photos (never stored) and your dream phrase as written. The
+        month's figures and the titles of budget items and goals without your names or notes, merchant names with the
+        amounts and counts of repeated spending and charges (no dates, no people), product screenshots, receipt photos (never stored) and your dream phrase as written. The
         month review arrives by itself, without a tap: on the 1st and after a salary is marked. Anthropic does not train
         on this data, processes it outside Seoul and keeps requests for up to 30 days. We store your consent, the
         household's month reviews with the figures sent, and monthly AI request counts and spend.
         Delete your account and data any time in Settings → “Удалить аккаунт и данные”. Contact:
-        <a :href="`mailto:${CONTACT}`" class="text-brand">{{ CONTACT }}</a>. Updated October 17, 2026.
+        <a :href="`mailto:${CONTACT}`" class="text-brand">{{ CONTACT }}</a>. Updated October 18, 2026.
       </p>
     </section>
   </article>
