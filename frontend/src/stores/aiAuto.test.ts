@@ -408,6 +408,32 @@ describe('autoReview — молча', () => {
     expect(aiReview).toHaveBeenCalledTimes(1)
   })
 
+  it('исход сентябрьской попытки пришёл уже в октябре — попытку октября второй вкладки не стирает: ≤ 2 запроса на повод (критик RZ-HF2)', async () => {
+    vi.setSystemTime(new Date('2026-09-30T18:59:30Z')) // 30 сентября 23:59:30 по Алматы
+    const { client, aiReview } = fakeClient()
+    let fail!: (e: unknown) => void
+    aiReview.mockImplementationOnce(() => new Promise((_, reject) => (fail = reject)))
+    const september = family().ai.autoReview(client)
+    await Promise.resolve()
+    // Полночь: вторая вкладка — повод октября; её запрос оборвали (страницу закрыли).
+    vi.setSystemTime(new Date('2026-09-30T19:00:10Z'))
+    aiReview.mockImplementation(() => new Promise(() => {}))
+    void restart().autoReview(client)
+    await Promise.resolve()
+    expect(aiReview).toHaveBeenCalledTimes(2)
+    // Сентябрьский ответ (502) дошёл после полуночи — пишет свой исход, октябрьскую попытку не трогает.
+    fail(new ApiError('ai_failed', 502))
+    await september
+    expect(JSON.parse(localStorage.getItem('ff_ai_auto')!)['month:2026-10']).toMatchObject({ at: '2026-09-30T19:00:10.000Z' })
+    // Октябрь: один повтор оборванной после окна, дальше — сутки.
+    vi.setSystemTime(new Date('2026-09-30T19:02:00Z'))
+    void restart().autoReview(client)
+    await Promise.resolve()
+    vi.setSystemTime(new Date('2026-09-30T19:04:00Z'))
+    expect(await restart().autoReview(client)).toBeNull()
+    expect(aiReview).toHaveBeenCalledTimes(3)
+  })
+
   it('разбор повода ушёл в надгробие обрезкой «живых ≤ 12» — повод всё равно был: 0', async () => {
     const { ai } = family({ doc: planFamilyDoc({ aiReviews: [review({ deletedAt: '2026-09-11T10:00:00.000Z' })] }) })
     const { client, aiReview } = fakeClient()

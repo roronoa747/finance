@@ -4,7 +4,7 @@ import { apiClient, ApiError, type ApiClient } from '@/api/client'
 import { buildReviewFacts } from '@/lib/aiFacts'
 import { MONTHS_GEN, addMonths, monthKey, parseMonthKey } from '@/lib/dates'
 import { countedPayments, liveSpendCategories, periodMonth, reviewWork, type ReviewFinding } from '@/lib/finance'
-import { AI_SELLERS_KEY, readAiAuto, readAiReviewSeen, readStorage, writeAiAuto, writeAiReviewSeen, writeStorage } from '@/lib/storage'
+import { AI_SELLERS_KEY, readAiAuto, readAiReviewSeen, readStorage, writeAiAuto, writeAiReviewSeen, writeStorage, type AiAutoTry } from '@/lib/storage'
 import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import { aiSellerNames, type UnknownGroup } from '@/lib/statements/model'
 import type { MerchantRule } from '@/lib/statements/types'
@@ -264,6 +264,12 @@ export const useAiStore = defineStore('ai', () => {
     const rk = (reason === 'month' && staleReview(key) ? 'v3:' : '') + reasonKeyOf(reason, key)!
     // Попытки — только этого месяца: прошлые поводы не копятся.
     const mine = () => Object.fromEntries(Object.entries(readAiAuto()).filter(([k]) => k.endsWith(`:${key}`)))
+    // Запись после ожидания — в свежую карту целиком: пока ждали, месяц мог смениться, и попытка нового месяца (вторая
+    // вкладка) стёрлась бы фильтром `mine()` — повод октября заплатил бы третий раз (критик RZ-HF2).
+    const patch = (p: AiAutoTry) => {
+      const all = readAiAuto()
+      writeAiAuto({ ...all, [rk]: { ...all[rk], ...p } })
+    }
     const tried = mine()[rk]
     const age = tried?.at ? Date.now() - Date.parse(tried.at) : Infinity
     // Попытка за сутки: с исходом или уже повторная — молчим; без исхода и моложе окна ответа — запрос, возможно, ещё
@@ -278,7 +284,7 @@ export const useAiStore = defineStore('ai', () => {
       writeAiAuto({ ...mine(), [rk]: { ...tried, asked: true } })
       const ok = await ensureConsent(client)
       // Личный документ не подтянулся — лист не показан: повод не «спрошен», спросим на следующем круге.
-      if (consentFailed.value) writeAiAuto({ ...mine(), [rk]: { ...mine()[rk], asked: undefined } })
+      if (consentFailed.value) patch({ asked: undefined })
       if (!ok || autoReason(key) !== reason) return null
     }
     // Попытка — до запроса, исход — после: закрыли PWA посреди запроса — повтор один раз после окна ответа, не каждый
@@ -287,7 +293,7 @@ export const useAiStore = defineStore('ai', () => {
     const r = await requestReview(key, reason, client)
     // Исход — только ответ сервера (разбор или код ручки). Сбой сети неотличим от потерянного ответа: перезагрузка
     // обрывает fetch, и этот код ещё успевает выполниться (Chrome) — такая попытка остаётся «без исхода».
-    if (r !== 'network') writeAiAuto({ ...mine(), [rk]: { ...mine()[rk], done: true } })
+    if (r !== 'network') patch({ done: true })
     return typeof r === 'string' ? null : r
   }
 
