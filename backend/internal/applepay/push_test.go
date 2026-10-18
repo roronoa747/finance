@@ -261,3 +261,28 @@ func TestParsePushBalanceWithCardMask(t *testing.T) {
 		}
 	}
 }
+
+// Приёмка Б2 п. 3: a time, a date or a "№" right before the amount is not glued to it — one edge
+// rule with the tap's FindAmount; the time and the date never reach the merchant.
+func TestParsePushTimeDateNumberBeforeAmount(t *testing.T) {
+	for _, c := range []struct {
+		app, title, body string
+		minor            int64
+		merchant         string
+	}{
+		{"Homebank", "Halyk Bank", "Покупка 10:23 610 KZT MAGNUM", 61000, "MAGNUM"},
+		{"Kaspi.kz", "Kaspi Gold", "Покупка\n16.10 10:23 630 ₸\nMAGNUM", 63000, "MAGNUM"},
+		{"Kaspi.kz", "Kaspi Gold", "Оплата №12 640 ₸\nBeeline", 64000, "Beeline"},
+		{"Freedom SuperApp", "Покупка", "10:23 −650 ₸\nSULPAK", 65000, "SULPAK"},
+		{"Kaspi.kz", "Kaspi Gold", "Оплата #12 645 ₸\nBeeline", 64500, "Beeline"},
+		{"Kaspi.kz", "Kaspi Gold", "Покупка\n2026-10-16 680 ₸\nMAGNUM", 68000, "MAGNUM"},
+		// Mirrors of Блок 1: the time or the date after the amount.
+		{"Kaspi.kz", "Kaspi Gold", "Покупка: 660 ₸10:23\nMAGNUM", 66000, "MAGNUM"},
+		{"Homebank", "Halyk Bank", "Покупка 670 KZT 16.10.2026 10:23 MAGNUM", 67000, "MAGNUM"},
+	} {
+		op, res := ParsePush(c.app, c.title, c.body)
+		if res != ResultOp || op.Sign != -1 || op.Minor != c.minor || op.Merchant != c.merchant {
+			t.Errorf("%q / %q: %v %+v, want −%d %q", c.title, c.body, res, op, c.minor, c.merchant)
+		}
+	}
+}

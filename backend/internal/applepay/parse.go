@@ -199,18 +199,11 @@ func FindAmount(text string) (currency string, minor int64, rest string, ok bool
 		start, end := offset+loc[0], offset+loc[1]
 		first, size := utf8.DecodeRuneInString(text[start:])
 		offset = start + size // a refused match: the next try starts one character later
-		if start > 0 {
-			before, bsize := utf8.DecodeLastRuneInString(text[:start])
-			prev, _ := utf8.DecodeLastRuneInString(text[:start-bsize])
-			afterDigit := unicode.IsDigit(prev)
-			switch {
-			case strings.ContainsRune(signRunes, before) && !afterDigit:
-				return "", 0, text, false
-			// Not the tail of a longer number or word: "1234 000 ₸" is not 234 000, "тгк" is not тг.
-			case unicode.IsDigit(before), strings.ContainsRune(numberMarks, before),
-				afterDigit && strings.ContainsRune(numberGlue, before), isLetter(before) && wordy(first):
-				continue
-			}
+		switch edgeBefore(text, start) {
+		case edgeSign:
+			return "", 0, text, false
+		case edgeGlued:
+			continue
 		}
 		if end = tokenEnd(text, start, end); end < 0 {
 			continue
@@ -234,6 +227,36 @@ func FindAmount(text string) (currency string, minor int64, rest string, ok bool
 		return Unsupported, 0, "", false
 	}
 	return "", 0, text, false
+}
+
+// edge: how a money token meets what stands right before it.
+type edge int
+
+const (
+	edgeFree  edge = iota // a token of its own
+	edgeSign              // a sign right before it: "−5 000 ₸", "+200 ₸", "(5 000 ₸"
+	edgeGlued             // the tail of a longer number, time, date, "№" or word
+)
+
+// edgeBefore — one rule for the tap's text (FindAmount) and the bank push (pushAmount): a sign
+// counts unless a digit stands before it ("2026-10-16 500 ₸" is a date); "1234 000 ₸" is not
+// 234 000, "10:23 500 ₸" not 23 500, "16.10 500 ₸" not 10 500, "№1 500 ₸" not 1 500, "тгк" not тг.
+func edgeBefore(text string, start int) edge {
+	if start == 0 {
+		return edgeFree
+	}
+	first, _ := utf8.DecodeRuneInString(text[start:])
+	before, bsize := utf8.DecodeLastRuneInString(text[:start])
+	prev, _ := utf8.DecodeLastRuneInString(text[:start-bsize])
+	afterDigit := unicode.IsDigit(prev)
+	switch {
+	case strings.ContainsRune(signRunes, before) && !afterDigit:
+		return edgeSign
+	case unicode.IsDigit(before), strings.ContainsRune(numberMarks, before),
+		afterDigit && strings.ContainsRune(numberGlue, before), isLetter(before) && wordy(first):
+		return edgeGlued
+	}
+	return edgeFree
 }
 
 // tokenEnd is where the money token text[start:end] really ends: there, when the next character

@@ -98,6 +98,10 @@ var (
 	rangeBefore = regexp.MustCompile(`(?i)` + wordStart + `(?:от|до|свыше|from|up to)[ \x{00A0}\x{202F}]*$`)
 	// spacedDigits: a phone or a card number split by spaces ("+7 701 123 45 67") — 6+ digits never stored.
 	spacedDigits = regexp.MustCompile(`\+?\d(?:[ \x{00A0}\x{202F}()\-]*\d){5,}`)
+	// timeOrDateWord: "10:23", "16.10 10:23", "16.10.2026", "2026-10-16" — not the merchant. A lone
+	// "16.10" stays: it may be "$16.10".
+	timeOrDateWord = regexp.MustCompile(`\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}\.\d{1,2}\.\d{2,4}|` +
+		`\d{1,2}\.\d{1,2}\s+\d{1,2}:\d{2}(?::\d{2})?|\d{1,2}:\d{2}(?::\d{2})?)\b`)
 	// cardMask: "**0166", "*1234", "•• 1234" — never stored.
 	cardMask = regexp.MustCompile(`[*•·]+\s?\d{2,4}`)
 	// lineSplit: one-line texts split at "/", "|", ";" and at ". " before a capital letter.
@@ -264,15 +268,20 @@ func kindOf(text string) (string, int) {
 
 // pushAmount finds the first money token of the text and the sign right before it (one space
 // allowed): "+200 ₸" is +1, "−5 000 ₸" −1, "Покупка: 5 000 ₸" 0. Only tokens in currencies the
-// app does not keep — not found, currency Unsupported.
+// app does not keep — not found, currency Unsupported. The token's edge is the tap's rule
+// (edgeBefore): "10:23 610 KZT" is 610, "№12 640 ₸" is 640 (приёмка Б2 п. 3).
 func pushAmount(text string) (sign int, currency string, minor int64, found bool) {
 	unsupported := false
-	for _, loc := range moneyToken.FindAllStringIndex(text, -1) {
-		start, end := loc[0], loc[1]
-		first, _ := utf8.DecodeRuneInString(text[start:])
-		before, bsize := utf8.DecodeLastRuneInString(text[:start])
-		if start > 0 && (unicode.IsDigit(before) || isLetter(before) && wordy(first)) {
-			continue // the tail of a longer number or word
+	for offset := 0; offset < len(text); {
+		loc := moneyToken.FindStringIndex(text[offset:])
+		if loc == nil {
+			break
+		}
+		start, end := offset+loc[0], offset+loc[1]
+		_, size := utf8.DecodeRuneInString(text[start:])
+		offset = start + size // a refused match: the next try starts one character later
+		if edgeBefore(text, start) == edgeGlued {
+			continue
 		}
 		if end = tokenEnd(text, start, end); end < 0 {
 			continue
@@ -288,15 +297,16 @@ func pushAmount(text string) (sign int, currency string, minor int64, found bool
 			continue
 		}
 		s := start
-		if s > 0 && (before == ' ' || before == ' ' || before == ' ') {
-			s -= bsize
-			before, _ = utf8.DecodeLastRuneInString(text[:s])
+		if before, bsize := utf8.DecodeLastRuneInString(text[:s]); s > 0 && strings.ContainsRune(" \u00a0\u202f", before) {
+			s -= bsize // one space allowed: "− 5 000 ₸"
 		}
-		switch {
-		case s > 0 && before == '+':
-			sign = +1
-		case s > 0 && (before == '-' || before == '−'):
-			sign = -1
+		if edgeBefore(text, s) == edgeSign {
+			switch before, _ := utf8.DecodeLastRuneInString(text[:s]); before {
+			case '+':
+				sign = +1
+			case '-', '−':
+				sign = -1
+			}
 		}
 		return sign, code, m, true
 	}
@@ -311,6 +321,8 @@ func pushAmount(text string) (sign int, currency string, minor int64, found bool
 func pushMerchant(kind string, lines []string) (string, bool) {
 	details := make([]string, 0, len(lines))
 	for _, l := range lines {
+		// Before the money: "10:23 610 KZT" would otherwise leave "10:" (приёмка Б2 п. 3).
+		l = timeOrDateWord.ReplaceAllString(l, " ")
 		l = moneyToken.ReplaceAllString(l, " ")
 		l = spacedDigits.ReplaceAllString(l, " ")
 		l = strings.Trim(strings.Join(strings.Fields(l), " "), " +-−.,:;…")
