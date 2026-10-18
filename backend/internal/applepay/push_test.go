@@ -202,3 +202,37 @@ func TestParsePushBalanceAdvertsRefunds(t *testing.T) {
 		}
 	}
 }
+
+// Приёмка Б2 п. 1: a decline or a confirmation code below the first line is still no operation;
+// a lone "скидк" or "бонус" in a merchant line is one (they are lead-only).
+func TestParsePushDeclineAndCodeInAnyLine(t *testing.T) {
+	for _, c := range [][3]string{
+		{"Freedom SuperApp", "Покупка", "−5 110 ₸\nОтклонено: недостаточно средств"},
+		{"Kaspi.kz", "Kaspi Gold", "Оплата: 5 120 ₸\nОперация не выполнена"},
+		{"Kaspi.kz", "Kaspi Gold", "Покупка: 5 040 ₸\nНедостаточно средств"},
+		{"Homebank", "Halyk Bank", "Purchase 5 130,00 KZT MAGNUM. Declined"},
+		{"Homebank", "Halyk Bank", "Покупка 5 130,00 KZT MAGNUM. Отказ: недостаточно средств"},
+		{"Homebank", "Halyk Bank", "Покупка 5 130,00 KZT MAGNUM. Код подтверждения: 1234"},
+		{"Kaspi.kz", "Kaspi Gold", "Оплата 5 140 ₸ в MAGNUM\nОдноразовый код: 5521"},
+		{"Kaspi.kz", "Kaspi Gold", "Покупка: 5 145 ₸\nMAGNUM\nНикому не сообщайте код"},
+	} {
+		if op, res := ParsePush(c[0], c[1], c[2]); res != ResultIgnore {
+			t.Errorf("%q / %q: %v %+v, want ignore", c[1], c[2], res, op)
+		}
+	}
+	// The lead-only words in a merchant line: a purchase.
+	for _, c := range []struct {
+		body     string
+		minor    int64
+		merchant string
+	}{
+		{"Покупка: 5 150 ₸\nМир скидок", 515000, "Мир скидок"},
+		{"Покупка: 5 155 ₸\nБонус Маркет", 515500, "Бонус Маркет"},
+		{"Покупка: 5 160 ₸\nСкидка Плюс", 516000, "Скидка Плюс"},
+	} {
+		op, res := ParsePush("Kaspi.kz", "Kaspi Gold", c.body)
+		if res != ResultOp || op.Minor != c.minor || op.Merchant != c.merchant {
+			t.Errorf("%q: %v %+v, want the purchase %q", c.body, res, op, c.merchant)
+		}
+	}
+}

@@ -81,15 +81,19 @@ var (
 	incomingWords = words(`от\s|входящ|поступ|получен|зачислен|отправител|from\s`)
 	// ownWords: the bank says the money stays with the person (between own accounts).
 	ownWords = words(`между своими|на свой сч|со своего сч|собственн`)
-	// ignoreWords in the lead: not an operation — a decline, a code, a reversal, an advert, an
-	// exchange-rate difference (Kaspi's later correction of a foreign purchase — not a spend).
-	ignoreWords = words(`отклон|отказ|недостаточно|не выполн|не прош|отмен|код|парол|никому|` +
-		`возврат|курсов\S*\s+разниц|кэшбэк|кешбэк|cashback|бонус|акци|скидк|розыгрыш|подарок|declined|code`)
+	// ignoreWords in the lead: not an operation — a code, an advert, an exchange-rate difference
+	// (Kaspi's later correction of a foreign purchase — not a spend). Lead-only: a merchant line may
+	// say "скидок" or "бонус" ("Мир скидок").
+	ignoreWords = words(`код|парол|никому|курсов\S*\s+разниц|кэшбэк|кешбэк|cashback|бонус|акци|скидк|` +
+		`розыгрыш|подарок|code`)
 	// balance: "Доступно: 1 529,82 ₸", "Доступно на карте: …", "Остаток на счёте …" — the rest of the
 	// account, never an operation (Р-8, Р-11): the label and the nearest money after it on its line.
 	balance = regexp.MustCompile(`(?i)` + wordStart + `(?:доступн\p{L}*|остаток|баланс|available|balance)[^\d\n]{0,30}?(?:` + moneyToken.String() + `)`)
-	// reversalWords anywhere in the text: a refund or a cancellation, not an operation (отклонение 3).
-	reversalWords = words(`возврат|отмен|сторно`)
+	// notAnOp anywhere in the text: a refund or a cancellation (отклонение 3), a decline, a
+	// confirmation code — the bank may say it in any line ("Покупка: 5 000 ₸ / Недостаточно
+	// средств", "… MAGNUM. Declined", "Одноразовый код: …"; приёмка Б2 п. 1).
+	notAnOp = words(`возврат|отмен|сторно|отклон|отказ|недостаточно|не выполн|не прош|declined|` +
+		`код подтвержд|одноразов\p{L}*\s+код|никому не сообщ|confirmation code|verification code|one-time code`)
 	// rangeBefore: "до 1 000 000 ₸", "от 50 000 ₸" — an advert's range, never an operation's amount.
 	rangeBefore = regexp.MustCompile(`(?i)` + wordStart + `(?:от|до|свыше|from|up to)[ \x{00A0}\x{202F}]*$`)
 	// spacedDigits: a phone or a card number split by spaces ("+7 701 123 45 67") — 6+ digits never stored.
@@ -155,8 +159,8 @@ func ParsePush(app, title, body string) (PushOp, Result) {
 	}
 	lead := strings.Join(lines[:leadLines(title, lines)], "\n")
 	all := strings.Join(lines, "\n")
-	// A refund anywhere ("Пополнение: 5 000 ₸ / Возврат покупки") — not money of its own.
-	if ignoreWords.MatchString(lead) || reversalWords.MatchString(all) {
+	// A refund, a decline or a code anywhere ("Пополнение: 5 000 ₸ / Возврат покупки") — not money of its own.
+	if ignoreWords.MatchString(lead) || notAnOp.MatchString(all) {
 		return op, ResultIgnore
 	}
 	sign, currency, minor, found := pushAmount(all)
