@@ -277,6 +277,17 @@ describe('whereRows — «куда ушло»', () => {
     }
     expect(integers(rows.map(({ share: _s, usualShare: _u, planShare: _p, ...r }) => r))).toEqual([])
   })
+
+  it('план раздела урезан «Сделать» до нуля — риски плана нет; план есть — риска на своей доле (критик Блока 2)', () => {
+    const plan = (categoryId: string, amount: number) => ({ id: `a:${categoryId}`, by: 'a' as const, categoryId, amount, updatedAt: T0 })
+    const cut = { id: 's1', period: KEY, by: 'a' as const, from: { spend: 'a' as const, categoryId: 'sc_fun' }, to: { goalId: 'trip' }, amount: 30_000, at: T0, updatedAt: T0 }
+    const doc = family({ spendPlans: [plan('sc_fun', 30_000), plan('sc_cafe', 120_000)], planShifts: [cut] })
+    const rows = whereRows(stateOf(doc), ctxOf(doc))
+    const fun = rows.find((r) => r.categoryId === 'sc_fun')!
+    expect(fun.plan).toBe(0)
+    expect(fun.planShare).toBeNull()
+    expect(rows.find((r) => r.categoryId === 'sc_cafe')!.planShare).toBeCloseTo(120_000 / 450_000)
+  })
 })
 
 describe('reviewOutcome — итог прошлого месяца', () => {
